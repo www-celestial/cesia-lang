@@ -3,7 +3,32 @@
  (libraries kepler unix)
  (foreign_stubs
   (language c)
-  (names stubs)))
+  (names stubs calls))
+ (c_library_flags
+  (:include c_flags.sexp)))
+
+(rule
+ (targets calls.c)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run ../gen/gen_calls.exe calls))))
+
+(rule
+ (enabled_if
+  (= %{system} linux))
+ (action
+  (with-stdout-to
+   c_flags.sexp
+   (echo "(-ldl)"))))
+
+(rule
+ (enabled_if
+  (<> %{system} linux))
+ (action
+  (with-stdout-to
+   c_flags.sexp
+   (echo "()"))))
 
 (rule
  (enabled_if

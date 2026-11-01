@@ -60,6 +60,9 @@ val own : ctx -> t -> t
 (** To call before allocating n words. [ctx.site] must be up to date: it bounds the stack. *)
 val reserve : ctx -> int -> unit
 
+(** Stops the program on this limit. *)
+val limit : string -> int -> 'a
+
 (** Before building n elements: counts the steps and reserves the memory. *)
 val build : ctx -> int -> unit
 

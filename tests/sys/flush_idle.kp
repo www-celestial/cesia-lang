@@ -1,0 +1,5 @@
+-- What a program printed shows up before it starts to wait, not after.
+use sys
+print("first")
+sys.sleep(30)
+print("second")

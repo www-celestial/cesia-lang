@@ -1,0 +1,4 @@
+block_limit.kp:2:8: Limit "memory" reached.
+  2 | print(c.alloc(2000000))
+    |        ^
+exit 1

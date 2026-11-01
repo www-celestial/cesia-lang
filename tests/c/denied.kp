@@ -1,0 +1,2 @@
+use c
+print(c.open("m", version = 6))

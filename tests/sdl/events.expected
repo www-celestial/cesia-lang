@@ -1,0 +1,15 @@
+[]
+{kind: "key", key: "a", ctrl: true, alt: false, shift: false, super: false}
+{kind: "key", key: "f1", ctrl: false, alt: false, shift: true, super: false}
+{kind: "key", key: "enter", ctrl: false, alt: false, shift: false, super: false}
+{kind: "key", key: "q", ctrl: false, alt: true, shift: false, super: true}
+{kind: "text", text: "é"}
+{kind: "mouse", action: "down", x: 10, y: 20, button: 1, amount: 0.0}
+{kind: "mouse", action: "up", x: 10, y: 20, button: 1, amount: 0.0}
+{kind: "mouse", action: "move", x: 11, y: 21, button: 0, amount: 0.0}
+{kind: "mouse", action: "wheel", x: 12, y: 22, button: 0, amount: -1.0}
+{kind: "resize", width: 640, height: 480}
+{kind: "quit"}
+[]
+Ok(value = missing)
+exit 0

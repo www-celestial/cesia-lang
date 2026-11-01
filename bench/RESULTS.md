@@ -91,6 +91,55 @@ added header checks and the closing rule, on a slower machine, and the two cause
 
 Not verified: `kqueue` and IOCP are not written. The `select` backend passed the 22 tests of its suite on Linux, in a copy.
 
+## C interop and window, 2026-11-01
+
+Same PC and build, best of 7. `Previous` is the commit before this work, rebuilt outside the repository from `git archive
+HEAD` and run in turn with the current tree, best of 9. Everything here is Linux on x86-64.
+
+| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Previous, in turn | Current, in turn | Drift |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| fib | 442 ms | 1449 ms | 3.28 | 682 ms | 0.65 | 448 ms | 441 ms | -1.6% |
+| mandel | 453 ms | 2579 ms | 5.69 | 427 ms | 1.06 | 454 ms | 454 ms | 0.0% |
+| structs | 543 ms | 1724 ms | 3.17 | 1452 ms | 0.37 | 547 ms | 544 ms | -0.5% |
+| matmul | 946 ms | 4576 ms | 4.84 | 820 ms | 1.15 | 944 ms | 940 ms | -0.4% |
+| dyn | 674 ms | 1401 ms | 2.08 | 706 ms | 0.95 | 691 ms | 673 ms | -2.6% |
+
+| Criterion | Target | Measured | Met |
+|---|---|---|---|
+| The speed gate, `bench/frame.kp`, real window | at least 60 frames/s | 148, 144, 151; 146 with `--no-spec` | yes |
+| A call to a trivial C function, `bench/ccall.kp` | at least 5 million/s | 12.9 million/s; 11.9 with `--no-spec` | yes |
+| The five benchmarks against Python and Lua | the targets above | all met, `dyn` with a 4% margin | yes |
+| The five benchmarks against the previous commit | reported | -2.6% to 0.0% | reported |
+| Loading, resolution included | at least 500,000 lines/s | 505,530 lines/s; in turn, previous 509,555, current 507,133 | yes, 1% margin |
+| `print(1)`, measurement included | under 5 ms | 3.6 to 3.7 ms, of which 0.7 ms of measurement | yes |
+| A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 3.9 s (`tools/check.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 17 ms (`tools/reload_test.sh`) | yes |
+| Tests on both paths | all | 199 + 3 + 22 tests, golden 197/197, on each path | yes |
+| Every call shape | 254 | 254 (`tests/c/shapes`) | yes |
+| The demo in a real window | typing shows text, closing exits with 0 | opened under Wayland, and a quit event from SIGTERM exits with 0 | typing and the close button unverified |
+| `tools/check.sh` | passes, hand-written C under 100 lines | yes, 8,890 lines of 15,000, 80 lines of C | yes |
+| 10-minute fuzz, seed 2026 | no internal error | 189,304 trials, 9,251 ran to the end, 0 failures | yes |
+
+### What the fuzzer found
+
+The first 10-minute run gave 158,532 trials and 11 failures, all one program: a mutant of `tests/c/block_cycle` that ran
+past the 10 s alarm. It wasn't a crash. `c.alloc` paid no steps, so the steps limit took 21.5 s to stop a loop that `zeros`
+of the same size stops in 0.02 s. Two other natives of `c` had the same fault, without any permission: a long name reached
+the zero-byte scan unpaid, 250 times the cost of a normal turn, and `c.fn` read every type before counting them, over 2,600
+times. All three are fixed, each with a test seen failing first. The result in the table is the run after these fixes.
+
+### The frame and the binary layout
+
+The gate gave 164, 151 and 160 frames/s when first measured, and 148, 144 and 151 at closing. Text objects moved into a
+shared block in between, and the two causes, that change and the machine, were not separated. A frame takes 6.6 ms of the
+16.7 ms it has.
+
+The 254 generated C functions did not cost what the last sub-project's runtime did: all five benchmarks stay within the 5%
+that code placement moves from one build to the next.
+
+Not verified: macOS, Windows and arm64, so five of the six targets of the calling conventions. Only this PC's GPU and
+Wayland session ran the gate. Real typing and the close button need a person at the window.
+
 ## Generic path only (`--no-spec`)
 
 | Benchmark | Kepler | Times Python |
@@ -102,6 +151,8 @@ Not verified: `kqueue` and IOCP are not written. The `select` backend passed the
 | dyn | 1541 ms | 0.92 |
 
 After the async work, on the slower machine: 800, 1267, 667, 2935 and 1719 ms, in the same order.
+
+After the C interop work: 754, 1172, 602, 2570 and 1584 ms, in the same order.
 
 ## What made dyn and fib faster
 

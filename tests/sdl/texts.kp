@@ -1,0 +1,18 @@
+use sdl
+
+font = "../../kepacs/fonts/JetBrainsMono-Regular.ttf"
+line(words) = {kind: "text", x: 10, y: 10, text: words, color: 0xFFFFFF}
+long = join("", fill("a", 5000))
+
+function check()
+  window = sdl.open("test", 320, 200, font)?
+  once = sdl.draw(map(line, ["", "é€", "😀", long]), window)
+  print("drawn")
+  match wait(spawn(() -> sdl.draw([line("a$(char(0))b")], once)))
+    Err(e) -> print(e.message)
+    else -> print("no panic")
+  end
+  Ok(missing)
+end
+
+print(check())

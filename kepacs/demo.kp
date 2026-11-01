@@ -1,0 +1,25 @@
+-- A window you can type into. Run from the root of the repository:
+-- kepler run --allow ffi=SDL3,ffi=SDL3_ttf kepacs/demo.kp
+use sdl
+
+function update(event, state)
+  match event
+    {kind: "quit"} -> missing
+    {kind: "text", text} -> {typed: "$(state.typed)$text"}
+    else -> state
+  end
+end
+
+view(state) = [
+  {kind: "clear", color: 0x1E1E1E},
+  {kind: "text", x: 8, y: 8, text: state.typed, color: 0xE0E0E0}
+]
+
+function main()
+  window = sdl.open("Kepacs", 1280, 800, "kepacs/fonts/JetBrainsMono-Regular.ttf")?
+  sdl.run({typed: ""}, update, view, window)
+  sdl.close(window)
+  Ok(missing)
+end
+
+print(main())

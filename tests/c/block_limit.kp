@@ -1,0 +1,2 @@
+use c
+print(c.alloc(2000000))

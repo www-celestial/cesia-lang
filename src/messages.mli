@@ -93,6 +93,29 @@ val question_value : string -> t
 val need_task : string -> t
 val empty_text : string -> t
 val need_array : string -> string -> t
+val c_no_library : string -> string -> t
+val c_no_function : string -> t
+val c_type : string -> t
+val c_void_arg : t
+val c_too_many : int -> t
+val c_need_library : string -> t
+val c_version : string -> t
+val c_fit : string -> string -> t
+val c_return_fit : string -> t
+val c_need_integer : string -> string -> t
+val c_need_number : string -> string -> t
+val c_need_bool : string -> t
+val c_need_ptr : string -> t
+val c_need_text : string -> t
+val c_size : string -> t
+val c_offset : int -> int -> string -> t
+val c_need_offset : string -> t
+val c_block_type : string -> string -> t
+val c_need_block : string -> string -> t
+val c_need_pointer : string -> t
+val c_freed : t
+val c_no_open_library : t
+val c_zero_byte : t
 val bad_sleep : string -> t
 val io_failure : string -> string -> string -> t
 val need_socket : string -> string -> t

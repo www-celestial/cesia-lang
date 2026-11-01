@@ -185,5 +185,5 @@ and equal_at ctx depth a b =
   | Text x, Text y -> String.equal x y
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env
   | Native x, Native y -> x == y
-  | Handle x, Handle y -> x.id = y.id
+  | Handle x, Handle y -> x.id = y.id && String.equal x.kind y.kind
   | _ -> false

@@ -21,5 +21,5 @@ let register ?(max_sleep = infinity) ?tick w =
             Poll.sleep poll ctx (Float.min max_sleep (seconds ctx a.(0)));
             Missing) ]
   in
-  w.native_modules <- ("sys", sys) :: ("net", Net.natives net) :: w.native_modules;
+  w.native_modules <- ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: w.native_modules;
   fun () -> Net.stopping net

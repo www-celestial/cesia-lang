@@ -7,14 +7,16 @@ type _ Effect.t += Suspend : ((unit -> unit) -> unit) -> unit Effect.t
 (* How often the scheduler looks at I/O while fibers are ready, in jobs. *)
 let poll_period = 256
 
-(* Runs what is ready, or waits for something to be. False if nothing can ever run again. *)
+(* Runs what is ready, or shows what was printed and waits for something to be. False if nothing can ever run again. *)
 let step w =
   let s = w.sched in
   s.jobs <- s.jobs + 1;
   if s.jobs mod poll_period = 0 then ignore (w.idle false);
   match Queue.take_opt s.ready with
   | Some job -> job (); true
-  | None -> w.idle true
+  | None ->
+    Runtime.flush_out w;
+    w.idle true
 
 (* A spawned fiber suspends through an effect. The main program isn't a fiber, which keeps its stack and its speed:
    it runs the scheduler itself until it is woken, in FIFO order with the others. *)

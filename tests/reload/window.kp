@@ -1,0 +1,37 @@
+-- A window under --watch: its state must survive a reload. See tools/reload_test.sh.
+use c
+use sdl
+use sys
+
+version() = 1
+finished() = false
+
+function update(event, state)
+  if finished() missing else {count: state.count + 1} end
+end
+
+function view(state)
+  print("version $(version()) $(state.count)")
+  [{kind: "clear", color: 0x000000}]
+end
+
+function feed(send, event)
+  send(event)
+  sys.sleep(0.02)
+  feed(send, event)
+end
+
+function main()
+  lib = c.open("SDL3", version = 0)?
+  send = c.fn("SDL_PushEvent", ["ptr"], "bool", lib)?
+  window = sdl.open("test", 320, 200, "font.ttf")?
+  event = c.alloc(128)
+  c.set("u32", 0, 0x206, event)
+  spawn(() -> feed(send, event))
+  last = sdl.run({count: 0}, update, view, window)
+  sdl.close(window)
+  print("ended $(last.count)")
+  Ok(missing)
+end
+
+main()

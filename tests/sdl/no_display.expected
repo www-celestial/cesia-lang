@@ -1,0 +1,3 @@
+Err(error = "sdl")
+Err(error = true)
+exit 0

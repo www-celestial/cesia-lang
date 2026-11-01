@@ -1,0 +1,18 @@
+-- Bytes could spell any address, so a pointer can't come from a block before a library is open.
+use c
+
+function message(f)
+  match wait(spawn(f))
+    Err(e) -> print(e.message)
+    Ok(v) -> print("no panic: $v")
+  end
+end
+
+b = c.alloc(8)
+c.set("i64", 0, 12345, b)
+message(() -> c.get("ptr", 0, b))
+message(() -> c.text(b))
+message(() -> c.text(missing))
+message(() -> c.set("ptr", 0, b, b))
+c.open("m", version = 6)
+print(is_missing(c.get("ptr", 0, b)))

@@ -1,0 +1,25 @@
+(rule
+ (targets fixture.c)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run ../../gen/gen_calls.exe fixture))))
+
+(rule
+ (targets libfixture.so)
+ (deps fixture.c)
+ (action
+  (run %{ocaml-config:c_compiler} -shared -fPIC -O1 -o %{targets} fixture.c)))
+
+(rule
+ (targets unloadable.c)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run ../../gen/gen_calls.exe unloadable))))
+
+(rule
+ (targets libunloadable.so)
+ (deps unloadable.c)
+ (action
+  (run %{ocaml-config:c_compiler} -shared -fPIC -o %{targets} unloadable.c)))

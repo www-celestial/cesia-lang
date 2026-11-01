@@ -1,0 +1,1 @@
+--allow ffi=kepler_no_such_library,ffi=m

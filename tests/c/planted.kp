@@ -1,0 +1,4 @@
+-- A grant by name must not load a file planted in the current folder.
+use c
+
+print(c.open("planted") then map_err(it.kind))

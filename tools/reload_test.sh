@@ -140,5 +140,31 @@ sleep 0.2
 wait "$load" || fail "server: a request failed during the reload: $(cat "$dir/load")"
 stop
 
+# 8. A window keeps its state through a reload, under SDL's dummy driver.
+if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
+  cp kepacs/fonts/JetBrainsMono-Regular.ttf "$dir/font.ttf"
+  (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$kepler" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf window.kp) \
+    > "$dir/out" 2> "$dir/err" &
+  pid=$!
+  # Waits for a line that starts with this text, and prints the last one.
+  latest() {
+    local limit=$(($(date +%s%N) + $2 * 1000000))
+    until grep -q "^$1" "$dir/out" 2>/dev/null; do
+      [ "$(date +%s%N)" -gt "$limit" ] && return 1
+      sleep 0.002
+    done
+    grep "^$1" "$dir/out" | tail -1
+  }
+  latest "version 1 [1-9]" 2000 > /dev/null || fail "window: no frame after an event"
+  seen=$(grep '^version 1 ' "$dir/out" | tail -1 | cut -d' ' -f3)
+  sed -i 's/^version() = 1$/version() = 2/' "$dir/window.kp"
+  latest "version 2 " 200 > /dev/null || fail "window: a changed view never ran"
+  first=$(grep -m1 '^version 2 ' "$dir/out" | cut -d' ' -f3)
+  [ "${first:-0}" -ge "$seen" ] || fail "window: the state restarted, from $seen to $first"
+  sed -i 's/^finished() = false$/finished() = true/' "$dir/window.kp"
+  latest "ended " 500 > /dev/null || fail "window: a changed update never ran"
+  stop
+fi
+
 [ "$failed" -eq 0 ] && echo "reload: ok"
 exit "$failed"

@@ -98,7 +98,7 @@ let kp_files dir =
 
 let corpus () =
   let read f = In_channel.with_open_bin f In_channel.input_all in
-  let programs = kp_files "tests/lang" @ kp_files "tests/net" in
+  let programs = kp_files "tests/lang" @ kp_files "tests/net" @ kp_files "tests/c" in
   let tests = List.map (fun f -> let s = read f in s ^ "\n" ^ test_calls s) programs in
   let std = List.map (fun f -> read f ^ "\n" ^ prelude_calls) (kp_files "std") in
   Array.of_list (tests @ std)

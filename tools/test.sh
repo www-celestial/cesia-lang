@@ -20,5 +20,9 @@ run_tests std --no-spec
 dune test 2>&1 | tail -5
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 dirs=$(ls -d tests/*/ 2>/dev/null || true)
+if ! pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
+  echo "tests/sdl skipped: SDL3 not found"
+  dirs=$(echo "$dirs" | grep -v '^tests/sdl/$')
+fi
 tools/golden.sh $dirs
 tools/golden.sh --no-spec $dirs
