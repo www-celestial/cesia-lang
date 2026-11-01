@@ -2,13 +2,27 @@
 use net
 use sys
 
-crlf = "$(char(13))$(char(10))"
+crlf = "\r\n"
 blank = "$crlf$crlf"
 max_head = 16384
-max_body = 1048576
+default_max_body = 1048576
+default_timeout = 60
 
 reason(status) = match status
   200 -> "OK"
+  101 -> "Switching Protocols"
+  201 -> "Created"
+  204 -> "No Content"
+  301 -> "Moved Permanently"
+  302 -> "Found"
+  304 -> "Not Modified"
+  401 -> "Unauthorized"
+  403 -> "Forbidden"
+  405 -> "Method Not Allowed"
+  408 -> "Request Timeout"
+  409 -> "Conflict"
+  422 -> "Unprocessable Content"
+  429 -> "Too Many Requests"
   400 -> "Bad Request"
   404 -> "Not Found"
   413 -> "Content Too Large"
@@ -18,10 +32,12 @@ reason(status) = match status
   else -> "Unknown"
 end
 
--- A header line as {name, value}, or missing if it isn't one.
-function header(line)
+_is_digits(s) = s != "" and all(map(b -> b >= 48 and b <= 57, bytes(s)))
+
+-- A header line as {name, value}, or missing if it isn't one: net.is_header says what it refuses, and why.
+defn header(line)
   at = net.find(":", line)
-  if is_missing(at)
+  if is_missing(at) or not net.is_header(at, line)
     missing
   else
     parts = net.split_at(at, line)
@@ -29,19 +45,34 @@ function header(line)
   end
 end
 
-function header_value(name, headers)
-  found = filter(it.name == name, headers)
-  if length(found) == 0 missing else found[1].value end
+-- Loops, not filters: these run on every request, and a filter builds an array and a closure each time.
+defn header_value(name, headers)
+  for h in headers
+    if h.name == name
+      return h.value
+    end
+  end
+  missing
+end
+
+defn _named(name, headers)
+  n = 0
+  for h in headers
+    if h.name == name
+      n += 1
+    end
+  end
+  n
 end
 
 -- The request line and headers, as a request without its body.
-function parse_head(head)
+defn parse_head(head)
   lines = split(crlf, head)
   words = split(" ", lines[1])
-  headers = [header(line) for line in lines[2:end]]
-  if length(words) != 3 or not (words[3] then starts_with("HTTP/1."))
+  headers = [header(lines[i]) for i in 2:length(lines)]
+  if length(words) != 3 or not (words[3] == "HTTP/1.1" or words[3] == "HTTP/1.0")
     Err(400)
-  else if length(filter(is_missing, headers)) > 0
+  else if missing in headers
     Err(400)
   else
     at = net.find("?", words[2])
@@ -51,25 +82,25 @@ function parse_head(head)
 end
 
 -- An HTTP/1.0 client waits for the end of the connection.
-function closes(head)
+defn closes(head)
   asked = header_value("connection", head.headers)
   head.version == "HTTP/1.0" or (is_text(asked) and lower(asked) == "close")
 end
 
 -- The body that follows a head, once it has all arrived.
-function with_body(head, after)
+defn with_body(head, after, limit, used)
   size_text = header_value("content-length", head.headers)
-  size = if is_missing(size_text) 0 else number(size_text) end
+  size = if is_missing(size_text) 0 else if _is_digits(size_text) number(size_text) else -1 end
   if not is_missing(header_value("transfer-encoding", head.headers))
     Err(501)
-  else if length(filter(it.name == "content-length", head.headers)) > 1
+  else if _named("content-length", head.headers) > 1
     Err(400)
   else if not is_int(size) or size < 0
     Err(400)
-  else if size > max_body
+  else if size > limit
     Err(413)
   else if net.size(after) < size
-    Ok(missing)
+    Ok({needs: used + size})
   else
     parts = net.split_at(size, after)
     request = {method: head.method, path: head.path, query: head.query, headers: head.headers, body: parts[1]}
@@ -77,8 +108,9 @@ function with_body(head, after)
   end
 end
 
--- Ok of the first request and what follows it, Ok(missing) if more bytes are needed, or Err of a status.
-function parse_request(buffer)
+-- Ok of the first request and what follows it, Ok(missing) if the head isn't all there, Ok({needs}) with the size of the
+-- whole request if its body isn't, or Err of a status.
+defn parse_request(buffer, limit = default_max_body)
   at = net.find(blank, buffer)
   if is_missing(at)
     if net.size(buffer) > max_head Err(431) else Ok(missing) end
@@ -86,18 +118,18 @@ function parse_request(buffer)
     Err(431)
   else
     cut = net.split_at(at, buffer)
-    with_body(parse_head(cut[1])?, net.split_at(4, cut[2])[2])
+    with_body(parse_head(cut[1])?, net.split_at(4, cut[2])[2], limit, at + 4)
   end
 end
 
 -- A line end here would let data from a client write a response of its own.
-function header_line(h)
+defn header_line(h)
   line = "$(h.name): $(h.value)"
-  assert(not contains(char(13), line) and not contains(char(10), line), "This response header has a line end.")
+  assert(not contains("\r", line) and not contains("\n", line), "This response header has a line end.")
   "$line$crlf"
 end
 
-function render(response)
+defn render(response, head_only = false)
   status = response.status
   assert(is_int(status), "This response has a status that isn't an integer.")
   body = text(response.body)
@@ -105,67 +137,137 @@ function render(response)
     {headers} -> headers
     else -> []
   end
-  custom = join("", map(header_line, extra))
-  "HTTP/1.1 $status $(reason(status))$(crlf)content-length: $(net.size(body))$crlf$custom$crlf$body"
+  custom = if length(extra) == 0 "" else join("", map(header_line, extra)) end
+  length_line = if status == 101 or status == 204 "" else "content-length: $(net.size(body))$crlf" end
+  shown = if head_only "" else body end
+  "HTTP/1.1 $status $(reason(status))$crlf$length_line$custom$crlf$shown"
 end
 
 failure(status) = render({status: status, body: reason(status)})
 
--- A panic in the handler stops its own fiber only.
-answer(handle, request) = match wait(spawn(() -> render(handle(request))))
-  Ok(reply) -> reply
-  else -> failure(500)
+defn ready(response, head_only)
+  upgrade = match response
+    {upgrade} -> upgrade
+    else -> missing
+  end
+  {reply: render(response, head_only = head_only), upgrade: upgrade}
 end
 
-function connection(handle, c, buffer)
-  parsed = if buffer == "" Ok(missing) else parse_request(buffer) end
+-- A panic in the handler stops its own fiber only.
+answer(handle, request) = match wait(spawn(() -> ready(handle(request), request.method == "HEAD")))
+  Ok(done) -> done
+  else -> {reply: failure(500), upgrade: missing}
+end
+
+-- How a connection reads, writes and closes, so that TLS can sit under HTTP.
+defn plain(c)
+  Ok({read: () -> net.read(c), write: s -> net.write(c, s), close: () -> net.close(c), arm: s -> net.arm(c, s)})
+end
+
+_waits(parsed) = match parsed
+  {needs} -> true
+  else -> false
+end
+
+-- Reads until the needed size, or to the end of the connection if it is missing, in one pass: a body sent a byte at a time
+-- doesn't make each read parse it again. Ok holds what arrived, which an early end leaves short.
+defn gather(io, first, needed)
+  pieces = {0: first}
+  total = net.size(first)
+  while is_missing(needed) or total < needed
+    more = io.read()?
+    if net.size(more) == 0
+      break
+    end
+    pieces[length(pieces)] = more
+    total += net.size(more)
+  end
+  Ok(join("", values(pieces)))
+end
+
+-- The deadline covers the head and the body of a request: a slow client can't hold a connection with a byte at a time.
+defn connection(handle, io, buffer, options)
+  parsed = if buffer == "" Ok(missing) else parse_request(buffer, limit = options.max_body) end
   if is_err(parsed)
-    net.write(c, failure(parsed.error))
-    net.close(c)
+    io.write(failure(parsed.error))
+    io.close()
   else if is_missing(parsed.value)
-    more = net.read(c)
+    more = io.read()
     if is_err(more) or net.size(more.value) == 0
-      net.close(c)
+      io.close()
     else
-      connection(handle, c, "$buffer$(more.value)")
+      connection(handle, io, "$buffer$(more.value)", options)
+    end
+  else if _waits(parsed.value)
+    whole = gather(io, buffer, parsed.value.needs)
+    if is_err(whole) or net.size(whole.value) < parsed.value.needs
+      io.close()
+    else
+      connection(handle, io, whole.value, options)
     end
   else
     request = parsed.value.request
-    sent = net.write(c, answer(handle, request))
-    if is_err(sent) or parsed.value.close
-      net.close(c)
+    done = answer(handle, request)
+    sent = io.write(done.reply)
+    if is_err(sent) or (parsed.value.close and is_missing(done.upgrade))
+      io.close()
+    else if not is_missing(done.upgrade)
+      wait(spawn(() -> done.upgrade(io, parsed.value.rest)))
+      io.close()
     else
-      connection(handle, c, parsed.value.rest)
+      io.arm(options.timeout)
+      connection(handle, io, parsed.value.rest, options)
     end
+  end
+end
+
+-- The deadline starts before TLS: a client that connects and says nothing reaches it too.
+defn start(handle, c, options)
+  net.arm(c, options.timeout)
+  made = options.wrap(c)
+  if is_err(made)
+    net.close(c)
+  else
+    connection(handle, made.value, "", options)
   end
 end
 
 -- An accept that fails for lack of descriptors is tried again later, without spinning.
-function accept_loop(handle, listener)
-  next = net.accept(listener)
-  if is_ok(next)
-    spawn(() -> connection(handle, next.value, ""))
-    accept_loop(handle, listener)
-  else if next.error.kind == "stopped"
-    Ok(missing)
-  else
-    sys.sleep(0.1)
-    accept_loop(handle, listener)
+defn accept_loop(handle, listener, options)
+  while true
+    next = net.accept(listener)
+    if is_ok(next)
+      spawn(() -> start(handle, next.value, options))
+    else if next.error.kind == "stopped"
+      return Ok(missing)
+    else
+      sys.sleep(0.1)
+    end
   end
 end
 
-function wait_for_connections(deadline)
-  if net.open_count() > 0 and sys.now() < deadline
+-- Closes what outlived its deadline, at each period, until the last socket is gone.
+defn reaper(period)
+  while net.open_count() > 0
+    sys.sleep(period)
+    net.reap()
+  end
+end
+
+defn wait_for_connections(deadline)
+  while net.open_count() > 0 and sys.now() < deadline
     sys.sleep(0.01)
-    wait_for_connections(deadline)
   end
 end
 
 -- Serves requests until a stop signal, then finishes those in progress for at most 5 seconds.
--- handle(request) receives {method, path, query, headers, body} and returns {status, body}, with optional headers.
-function serve(handle, port = 8080, host = "127.0.0.1")
+-- handle(request) receives {method, path, query, headers, body} and returns {status, body}, with optional headers, and
+-- optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
+-- after the response. wrap sits under HTTP: see tls.
+defn serve(handle, port = 8080, host = "127.0.0.1", timeout = default_timeout, max_body = default_max_body, wrap = plain)
   listener = net.listen(port, host = host)?
-  accept_loop(handle, listener)?
+  spawn(() -> reaper(max(0.01, min(1.0, timeout / 2.0))))
+  accept_loop(handle, listener, {timeout: timeout, max_body: max_body, wrap: wrap})?
   net.close(listener)
   wait_for_connections(sys.now() + 5)
   Ok(missing)
@@ -173,12 +275,11 @@ end
 
 failed(message) = Err({kind: "http", message: message})
 
--- {host, port, path} of an http:// URL.
-function parse_url(url)
-  scheme = "http://"
-  if url then starts_with("https://")
-    failed("This client doesn't do https.")
-  else if not (url then starts_with(scheme))
+-- {host, port, path, secure} of an http:// or https:// URL.
+defn parse_url(url)
+  secure = url then starts_with("https://")
+  scheme = if secure "https://" else "http://" end
+  if not (url then starts_with(scheme))
     failed("This URL doesn't start with http://.")
   else
     rest = net.split_at(net.size(scheme), url)[2]
@@ -186,81 +287,82 @@ function parse_url(url)
     parts = if is_missing(slash) [rest, "/"] else net.split_at(slash, rest) end
     colon = net.find(":", parts[1])
     if is_missing(colon)
-      Ok({host: parts[1], port: 80, path: parts[2]})
+      Ok({host: parts[1], port: if secure 443 else 80 end, path: parts[2], secure: secure})
     else
       address = net.split_at(colon, parts[1])
       port = number(net.split_at(1, address[2])[2])
-      if is_int(port) Ok({host: address[1], port: port, path: parts[2]}) else failed("This URL has a bad port.") end
+      if is_int(port) Ok({host: address[1], port: port, path: parts[2], secure: secure}) else failed("This URL has a bad port.") end
     end
   end
 end
 
--- Has the body announced by content-length arrived? A server may keep the connection open.
-function is_complete(buffer)
-  at = net.find(blank, buffer)
-  if is_missing(at)
-    false
-  else
-    cut = net.split_at(at, buffer)
-    lines = split(crlf, cut[1])
-    size = header_value("content-length", filter(not is_missing(it), map(header, lines[2:end])))
-    is_text(size) and is_int(number(size)) and net.size(cut[2]) - 4 >= number(size)
-  end
+_response_headers(head) = filter(not is_missing(it), map(header, split(crlf, head)[2:end]))
+
+-- The size of a response, from its head and the content-length: a server may keep the connection open. Missing if only
+-- the end of the connection tells.
+defn _full_size(head)
+  size = header_value("content-length", _response_headers(head))
+  if is_text(size) and is_int(number(size)) net.size(head) + 4 + number(size) else missing end
 end
 
-function read_response(c, buffer)
-  if is_complete(buffer)
-    Ok(buffer)
+-- The head comes first, and is read once: the rest of a large response doesn't parse it again.
+defn read_response(io, buffer)
+  at = net.find(blank, buffer)
+  if is_missing(at)
+    more = io.read()?
+    if net.size(more) == 0 Ok(buffer) else read_response(io, "$buffer$more") end
   else
-    more = net.read(c)?
-    if net.size(more) == 0 Ok(buffer) else read_response(c, "$buffer$more") end
+    gather(io, buffer, _full_size(net.split_at(at, buffer)[1]))
   end
 end
 
 -- The value of hexadecimal digits, or missing. Fifteen digits always fit in an integer.
-function hex(digits)
+defn hex(digits)
   values = [net.find(slice(i, i, digits), "0123456789abcdef") for i in 1:length(digits)]
-  if length(values) == 0 or length(values) > 15 or length(filter(is_missing, values)) > 0
+  if length(values) == 0 or length(values) > 15 or missing in values
     missing
   else
     reduce((acc, d) -> acc * 16 + d, 0, values)
   end
 end
 
--- Joins the chunks of a chunked body.
-function unchunk(data, body)
-  at = net.find(crlf, data)
-  if is_missing(at)
-    failed("This chunked body is cut short.")
-  else
-    line = net.split_at(at, data)
-    size = hex(lower(split(";", line[1])[1]))
-    after = net.split_at(2, line[2])[2]
-    if is_missing(size) or net.size(after) < size
-      failed("This chunked body is malformed.")
-    else if size == 0
-      Ok(body)
-    else
-      chunk = net.split_at(size, after)
-      unchunk(net.split_at(2, chunk[2])[2], "$body$(chunk[1])")
+-- Joins the chunks of a chunked body, in one pass: from is where the next size line starts.
+defn unchunk(data)
+  pieces = dict()
+  from = 1
+  while true
+    at = byte_find(crlf, from, data)
+    if is_missing(at)
+      return failed("This chunked body is cut short.")
     end
+    size = hex(lower(split(";", if at == from "" else byte_slice(from, at - 1, data) end)[1]))
+    start = at + 2
+    if is_missing(size) or net.size(data) - start + 1 < size
+      return failed("This chunked body is malformed.")
+    end
+    if size == 0
+      return Ok(join("", values(pieces)))
+    end
+    pieces[length(pieces)] = byte_slice(start, start + size - 1, data)
+    from = start + size + 2
   end
 end
 
-function parse_response(raw)
+defn parse_response(raw)
   at = net.find(blank, raw)
-  words = split(" ", split(crlf, raw)[1])
+  first_end = net.find(crlf, raw)
+  words = split(" ", if is_missing(first_end) raw else net.split_at(first_end, raw)[1] end)
   status = if length(words) >= 2 number(words[2]) else missing end
   if is_missing(at) or not is_int(status) or not (words[1] then starts_with("HTTP/"))
     failed("This response isn't HTTP.")
   else
     cut = net.split_at(at, raw)
-    headers = filter(not is_missing(it), map(header, split(crlf, cut[1])[2:end]))
+    headers = _response_headers(cut[1])
     rest = net.split_at(4, cut[2])[2]
     size = header_value("content-length", headers)
     count = if is_text(size) number(size) else net.size(rest) end
     body = if header_value("transfer-encoding", headers) == "chunked"
-      unchunk(rest, "")
+      unchunk(rest)
     else if not is_int(count) or count < 0 or count > net.size(rest)
       failed("This response is cut short.")
     else
@@ -270,13 +372,32 @@ function parse_response(raw)
   end
 end
 
--- Fetches a URL. The Ok holds {status, headers, body}: a 404 is a response, not an error.
-function get(url)
+_clean(s) = not (contains(" ", s) or contains("\r", s) or contains("\n", s))
+
+-- Sends a request. The Ok holds {status, headers, body}: a 404 is a response, not an error.
+defn request(method, url, body = "", headers = [], secure = missing)
   target = parse_url(url)?
+  if not (_clean(method) and _clean(target.host) and _clean(target.path))
+    return failed("This request has a space or a line end where it can't.")
+  end
+  if target.secure and is_missing(secure)
+    return failed("https needs secure = tls.client(lib): see std/tls.kp.")
+  end
   c = net.connect(target.host, target.port)?
-  request = "GET $(target.path) HTTP/1.1$(crlf)Host: $(target.host)$(crlf)Connection: close$(crlf)$crlf"
-  sent = net.write(c, request)
-  raw = if is_ok(sent) read_response(c, "") else sent end
-  net.close(c)
+  made = if target.secure secure(c, target.host) else plain(c) end
+  if is_err(made)
+    net.close(c)
+    return made
+  end
+  io = made.value
+  custom = join("", map(header_line, headers))
+  sized = if body == "" and method == "GET" "" else "Content-Length: $(net.size(body))$crlf" end
+  text = "$method $(target.path) HTTP/1.1$(crlf)Host: $(target.host)$(crlf)Connection: close$crlf$sized$custom$crlf$body"
+  sent = io.write(text)
+  raw = if is_ok(sent) read_response(io, "") else sent end
+  io.close()
   parse_response(raw?)
 end
+
+get(url, headers = [], secure = missing) = request("GET", url, headers = headers, secure = secure)
+post(url, body, headers = [], secure = missing) = request("POST", url, body = body, headers = headers, secure = secure)

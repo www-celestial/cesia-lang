@@ -3,7 +3,7 @@ use sys
 dir = "./tmp_files/a/b"
 path = "$dir/note.txt"
 
-function round_trip()
+defn round_trip()
   sys.mkdir(dir)?
   sys.mkdir(dir)?
   sys.write(path, "one")?

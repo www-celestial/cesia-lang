@@ -19,7 +19,9 @@ type t =
   | Fun of { proto : proto; env : t array }
   | Native of native
   | Handle of { kind : string; id : int; task : task option }  (** a reference to something outside the values *)
+  | Dict of dict
 
+and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; h : int; n : int }
 and task = { mutable result : t option; mutable waiters : (unit -> unit) list }
 
 and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool }

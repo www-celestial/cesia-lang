@@ -1,9 +1,9 @@
-function total(a, b = 2)
+defn total(a, b = 2)
   a + b
 end
 square(x) = x * x
 f = x -> x + 1
-g = function (x, y) x + y end
+g = defn (x, y) x + y end
 print(total(1), total(1, b = 5), total(b = 1, a = 2), square(3), f(1), g(1, 2))   -- 3 6 3 9 2 3
 print(before(1))                     -- 2, hoisted function
 before(x) = x + 1

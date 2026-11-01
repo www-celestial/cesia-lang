@@ -8,18 +8,18 @@ frames = 300
 letters = join("", fill("abcdefghijklmnopqrstuvwxyz", 12))
 
 -- A line taken from a long text, as an editor would, and different at each frame.
-function line(row, n)
+defn line(row, n)
   from = 1 + mod(row * 3 + n, 26)
   {kind: "text", x: 8, y: 8 + (row - 1) * 19, text: slice(from, from + columns - 1, letters), color: 0xE0E0E0}
 end
 
 view(n) = [if k == 0 {kind: "clear", color: 0x1E1E1E} else line(k, n) end for k in 0:lines]
 
-function run(window, n)
+defn run(window, n)
   if n > frames window else run(sdl.frame(view(n), window), n + 1) end
 end
 
-function measure()
+defn measure()
   window = sdl.open("Kepacs speed gate", 1920, 1080, "kepacs/fonts/JetBrainsMono-Regular.ttf", vsync = false)?
   start = sys.now()
   last = run(window, 1)

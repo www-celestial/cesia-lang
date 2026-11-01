@@ -9,7 +9,7 @@ value() = 1
 following() = value() + 1
 point() = Point(1).x
 
-function report(label, before, after)
+defn report(label, before, after)
   if not equal(before, after)
     print("$label $after")
   end
@@ -21,7 +21,7 @@ attempt(f) = match wait(spawn(f))
   Err(e) -> e.kind
 end
 
-function main_loop()
+defn main_loop()
   a = value()
   print("value $a")
   b = 0
@@ -37,7 +37,7 @@ function main_loop()
   end
 end
 
-function watcher(seen)
+defn watcher(seen)
   v = value()
   if not equal(v, seen)
     print("fiber $v")

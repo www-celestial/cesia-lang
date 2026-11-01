@@ -1,0 +1,29 @@
+-- Undo and redo: values don't change, so a history only keeps the ones it saw.
+
+of(state, limit = 1000) = {past: [], present: state, future: [], limit: limit}
+current(h) = h.present
+
+defn record(state, h)
+  past = push(h.present, h.past)
+  kept = if length(past) > h.limit skip(1, past) else past end
+  {past: kept, present: state, future: [], limit: h.limit}
+end
+
+can_undo(h) = length(h.past) > 0
+can_redo(h) = length(h.future) > 0
+
+defn undo(h)
+  if not can_undo(h)
+    return h
+  end
+  n = length(h.past)
+  {past: take(n - 1, h.past), present: h.past[n], future: push(h.present, h.future), limit: h.limit}
+end
+
+defn redo(h)
+  if not can_redo(h)
+    return h
+  end
+  n = length(h.future)
+  {past: push(h.present, h.past), present: h.future[n], future: take(n - 1, h.future), limit: h.limit}
+end

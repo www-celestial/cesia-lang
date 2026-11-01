@@ -1,0 +1,3 @@
+> kepler run --allow ffi=m --limit memory=64M open.kp
+opened
+exit 0

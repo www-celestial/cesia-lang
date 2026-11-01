@@ -4,7 +4,7 @@ use c
 b = c.alloc(64)
 print(c.get("i64", 0, b), c.get("u8", 63, b), c.get("f64", 56, b), c.get("bool", 0, b))
 
-function round_trip(type, value, last)
+defn round_trip(type, value, last)
   c.set(type, 0, value, b)
   c.set(type, last, value, b)
   [c.get(type, 0, b), c.get(type, last, b)]

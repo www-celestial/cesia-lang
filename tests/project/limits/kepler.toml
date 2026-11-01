@@ -1,0 +1,7 @@
+[project]
+name = "x"
+native = ["m"]
+
+[tasks.go]
+file = "open.kp"
+limit = "memory=64M"

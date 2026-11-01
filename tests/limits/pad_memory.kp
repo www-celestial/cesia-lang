@@ -1,0 +1,1 @@
+print(byte_length(pad_left(10000, repeat(100000, "x"), "")))

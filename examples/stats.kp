@@ -1,0 +1,17 @@
+-- Sales by city, from a CSV text, with the table module: kepler run examples/stats.kp
+use frame
+use num
+
+sales = frame.from_csv("city,item,amount
+Paris,tea,12.5
+Lyon,tea,7
+Paris,coffee,30
+Nice,coffee,4.5
+Lyon,coffee,21
+")
+
+totals = frame.group_by(["city"], [frame.agg("total", "amount", sum), frame.agg("orders", "amount", length)], sales)
+print(frame.show(frame.sort_by("total", totals, descending = true)))
+print("")
+amounts = frame.column("amount", sales)
+print("median", num.median(amounts), "std", round(num.std(1.0 * amounts)))

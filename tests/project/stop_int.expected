@@ -1,0 +1,3 @@
+> sh -c "sleep 0.4; echo finished"
+finished
+exit 1

@@ -1,0 +1,186 @@
+-- Tables of named columns, in the spirit of pandas. A frame is a value: every function gives a new one.
+use csv
+
+defn table(names, columns)
+  {names: names, columns: dict([{key: names[k], value: columns[k]} for k in 1:length(names)])}
+end
+
+of(columns) = table(keys(columns), values(columns))
+empty(names) = table(names, [[] for n in names])
+rows(df) = if length(df.names) == 0 0 else length(df.columns[df.names[1]]) end
+columns(df) = df.names
+column(name, df) = df.columns[name]
+row(i, df) = dict([{key: n, value: df.columns[n][i]} for n in df.names])
+records(df) = [row(i, df) for i in 1:rows(df)]
+
+defn from_records(names, items)
+  table(names, [[get(n, r) for r in items] for n in names])
+end
+
+_pick(ks, xs) = [xs[k] for k in ks]
+_take(ks, df) = table(df.names, [_pick(ks, df.columns[n]) for n in df.names])
+
+head(n, df) = _take(1:min(n, rows(df)), df)
+
+defn tail(n, df)
+  total = rows(df)
+  _take(max(total - n, 0) + 1:total, df)
+end
+
+select(names, df) = table(names, [df.columns[n] for n in names])
+drop_column(name, df) = select(filter(n -> n != name, df.names), df)
+
+defn set_column(name, values, df)
+  names = if name in df.names df.names else push(name, df.names) end
+  {names: names, columns: put(name, values, df.columns)}
+end
+
+-- f takes a row as a dictionary, and gives the value of the new column.
+with_column(name, f, df) = set_column(name, [f(row(i, df)) for i in 1:rows(df)], df)
+
+rename(old, new, df) = table([if n == old new else n end for n in df.names], [df.columns[n] for n in df.names])
+
+where(f, df) = _take([i for i in 1:rows(df) if f(row(i, df))], df)
+
+defn where_column(name, f, df)
+  xs = df.columns[name]
+  _take([i for i in 1:rows(df) if f(xs[i])], df)
+end
+
+defn sort_by(name, df, descending = false)
+  ks = order(df.columns[name])
+  _take(if descending reverse(ks) else ks end, df)
+end
+
+append(a, b) = table(a.names, [concat(a.columns[n], b.columns[n]) for n in a.names])
+drop_missing(df) = where(r -> not any([is_missing(v) for v in values(r)]), df)
+fill_missing(value, df) = table(df.names, [[if is_missing(x) value else x end for x in df.columns[n]] for n in df.names])
+present(xs) = filter(x -> not is_missing(x), xs)
+
+_key(cells) = if length(cells) == 1 cells[1] else join("\t", cells) end
+
+-- One aggregation: a new column, a source column, and a function of its values.
+agg(name, source, f) = {name: name, source: source, f: f}
+
+-- Each row gets the number of its group, in the order of first appearance. Sorting by that number gathers the members
+-- of each group in one pass.
+defn _groups(by, df)
+  n = rows(df)
+  sources = [df.columns[name] for name in by]
+  ids = fill(0, n)
+  seen = dict()
+  for i in 1:n
+    k = _key([xs[i] for xs in sources])
+    g = get(k, seen)
+    if is_missing(g)
+      g = length(seen) + 1
+      seen[k] = g
+    end
+    ids[i] = g
+  end
+  ranked = order(ids)
+  out = fill(missing, length(seen))
+  start = 1
+  for k in 1:n
+    if k == n or ids[ranked[k + 1]] != ids[ranked[k]]
+      out[ids[ranked[k]]] = [ranked[j] for j in start:k]
+      start = k + 1
+    end
+  end
+  out
+end
+
+defn group_by(by, aggregations, df)
+  ids = if rows(df) == 0 [] else _groups(by, df) end
+  firsts = [g[1] for g in ids]
+  out = table(by, [_pick(firsts, df.columns[n]) for n in by])
+  for a in aggregations
+    xs = df.columns[a.source]
+    out = set_column(a.name, [a.f(present([xs[i] for i in members])) for members in ids], out)
+  end
+  out
+end
+
+defn value_counts(name, df)
+  g = group_by([name], [agg("count", name, length)], df)
+  sort_by("count", g, descending = true)
+end
+
+-- An inner join on one column, or all the rows of a with how = "left".
+defn join_on(on, a, b, how = "inner")
+  xs = b.columns[on]
+  ranked = order(xs)
+  firsts = dict()
+  counts = dict()
+  for k in 1:length(ranked)
+    v = xs[ranked[k]]
+    if not has(v, firsts)
+      firsts[v] = k
+    end
+    counts[v] = get_or(v, 0, counts) + 1
+  end
+  ys = a.columns[on]
+  total = 0
+  for i in 1:rows(a)
+    found = get_or(ys[i], 0, counts)
+    total += if found == 0 and how == "left" 1 else found end
+  end
+  left = fill(0, total)
+  right = fill(0, total)
+  used = 0
+  for i in 1:rows(a)
+    found = get_or(ys[i], 0, counts)
+    if found == 0 and how == "left"
+      used += 1
+      left[used] = i
+    end
+    for k in 1:found
+      used += 1
+      left[used] = i
+      right[used] = ranked[firsts[ys[i]] + k - 1]
+    end
+  end
+  out = _take(left, a)
+  for n in filter(n -> n != on, b.names)
+    source = b.columns[n]
+    out = set_column(n, [if j == 0 missing else source[j] end for j in right], out)
+  end
+  out
+end
+
+_stats(xs) = {count: length(xs), mean: mean(xs), min: min(xs), max: max(xs)}
+
+defn describe(df)
+  numeric = filter(n -> length(present(df.columns[n])) > 0 and all(map(is_number, present(df.columns[n]))), df.names)
+  stats = [_stats(1.0 * present(df.columns[n])) for n in numeric]
+  table(["column", "count", "mean", "min", "max"],
+    [numeric, map(it.count, stats), map(it.mean, stats), map(it.min, stats), map(it.max, stats)])
+end
+
+_cell(text_value) = if text_value == "" missing else _number(text_value) end
+
+defn _number(s)
+  n = number(s)
+  if is_missing(n) s else n end
+end
+
+defn from_csv(s, separator = ",")
+  lines = csv.parse(s, separator = separator)
+  if length(lines) == 0
+    return empty([])
+  end
+  names = lines[1]
+  body = skip(1, lines)
+  table(names, [[_cell(if k <= length(r) r[k] else "" end) for r in body] for k in 1:length(names)])
+end
+
+to_csv(df, separator = ",") = csv.write(concat([df.names], [[df.columns[n][i] for n in df.names] for i in 1:rows(df)]), separator = separator)
+
+defn show(df)
+  cell(x) = if is_missing(x) "" else text(x) end
+  widths = [max(length(n), max(concat([0], [length(cell(x)) for x in df.columns[n]]))) for n in df.names]
+  line(cells) = join("  ", [pad_right(widths[k], " ", cells[k]) for k in 1:length(cells)])
+  head_line = line(df.names)
+  body = [line([cell(df.columns[n][i]) for n in df.names]) for i in 1:rows(df)]
+  join("\n", concat([head_line], body))
+end

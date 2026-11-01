@@ -1,0 +1,8 @@
+use c
+
+defn check()
+  c.open("m", version = 6)?
+  Ok("opened")
+end
+
+print(unwrap(check()))

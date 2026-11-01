@@ -13,15 +13,15 @@ is_collect() = equal(collect([Ok(1), Ok(2)]), Ok([1, 2]))
 is_collect_first_err() = collect([Ok(1), Err("a"), Err("b")]) == Err("a")
 is_collect_empty() = equal(collect([]), Ok([]))
 
-function quarter(x)
+defn quarter(x)
   a = half(x)?
   b = half(a)?
   Ok(b)
 end
-function chain()
+defn chain()
   half(half(8)?)
 end
-function in_loop()
+defn in_loop()
   for i in 1:3
     half(i)?
   end

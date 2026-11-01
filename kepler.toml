@@ -1,0 +1,17 @@
+# The tasks of this repository: kepler do lists them.
+[project]
+name = "kepler"
+native = ["SDL3", "SDL3_ttf"]
+
+[tasks.build]
+run = ["dune", "build", "--profile", "release"]
+
+[tasks.test]
+run = ["tools/test.sh"]
+
+[tasks.check]
+run = ["tools/check.sh"]
+
+[tasks.demo]
+needs = ["build"]
+file = "kepacs/demo.kp"

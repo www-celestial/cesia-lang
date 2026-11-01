@@ -1,0 +1,27 @@
+-- A persistent queue open at both ends. Every operation is logarithmic, and a change gives a new queue.
+
+empty() = {items: dict(), first: 1, last: 0}
+count(q) = q.last - q.first + 1
+is_empty(q) = count(q) == 0
+
+defn push(x, q)
+  {items: put(q.last + 1, x, q.items), first: q.first, last: q.last + 1}
+end
+
+defn push_front(x, q)
+  {items: put(q.first - 1, x, q.items), first: q.first - 1, last: q.last}
+end
+
+first(q) = get(q.first, q.items)
+last(q) = get(q.last, q.items)
+
+defn pop(q)
+  if is_empty(q) q else {items: drop(q.first, q.items), first: q.first + 1, last: q.last} end
+end
+
+defn pop_back(q)
+  if is_empty(q) q else {items: drop(q.last, q.items), first: q.first, last: q.last - 1} end
+end
+
+items(q) = values(q.items)
+of(xs) = reduce((q, x) -> push(x, q), empty(), xs)

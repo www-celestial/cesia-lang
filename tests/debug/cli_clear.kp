@@ -1,4 +1,4 @@
-function f(a)
+defn f(a)
   x = a + 1
   x * 2
 end

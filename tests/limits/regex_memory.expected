@@ -1,0 +1,4 @@
+regex_memory.kp:2:24: Limit "memory" reached.
+  2 | print(byte_length(regex.replace("", repeat(500, "x"), repeat(200000, "a"))))
+    |                        ^
+exit 1

@@ -11,7 +11,7 @@ handle(r) = match r.path
   else -> {status: "200$(crlf)x-injected: yes", body: "x"}
 end
 
-function get(path)
+defn get(path)
   c = net.connect("127.0.0.1", 18100)?
   net.write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   net.read(c) then map_ok(r -> [split(crlf, r)[1], r then contains("x-injected")])

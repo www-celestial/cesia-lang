@@ -7,7 +7,7 @@ value_at(mask, k) = if is_float(mask, k) k + 0.5 else k + 10 end
 signature(n, mask) = [if is_float(mask, k) "f64" else "i64" end for k in 0:n - 1]
 sum_of(n, mask) = reduce((acc, k) -> acc + (k + 1) * value_at(mask, k), 0.0, 0:n - 1)
 
-function apply(f, n, a)
+defn apply(f, n, a)
   match n
     0 -> f()
     1 -> f(a[1])
@@ -19,7 +19,7 @@ function apply(f, n, a)
   end
 end
 
-function check(lib, result, n, mask)
+defn check(lib, result, n, mask)
   name = "shape_$(result)_$(n)_$mask"
   f = c.fn(name, signature(n, mask), if result == "d" "f64" else "i64" end, lib)?
   got = apply(f, n, [value_at(mask, k) for k in 0:n - 1])
@@ -27,7 +27,7 @@ function check(lib, result, n, mask)
   if 1.0 * got == want Ok(1) else Err("$name gave $got, not $want") end
 end
 
-function all_shapes(lib)
+defn all_shapes(lib)
   count = 0
   for n in 0:6
     for mask in 0:pow2(n) - 1

@@ -58,13 +58,14 @@ let add_module w md =
 
 let in_module w m name =
   let md = w.modules.(m) in
-  match List.assoc_opt name md.mnames with
+  match List.find_map (fun (n, k) -> if String.equal n name then Some k else None) md.mnames with
   | Some k -> Some (Ast.Cell { m; k; stable = md.stable.(k) })
   | None -> None
 
-(* The prelude: module 1 written in Kepler, then module 0 of natives. A name starting with _ stays private. *)
+(* The prelude: module 1 written in Kepler, then module 0 of natives. A name starting with _ stays private, except the
+   native behind a dictionary literal. *)
 let lookup w name =
-  if String.starts_with ~prefix:"_" name then None
+  if String.starts_with ~prefix:"_" name && not (String.equal name "_dict") then None
   else
     match in_module w 1 name with
     | Some b -> Some b
@@ -211,8 +212,8 @@ let load_debugger ctx name =
 
 (* Module 0 of natives, then the prelude in Kepler. *)
 let init w =
-  w.native_modules <- ("debug", Debug.natives) :: w.native_modules;
-  let natives = Native.prelude @ Fiber.natives in
+  w.native_modules <- ("debug", Debug.natives) :: ("json", Json.natives) :: ("regex", Regex.natives ()) :: w.native_modules;
+  let natives = Native.prelude @ Lists.natives @ Fiber.natives in
   let names = List.mapi (fun i (n, _) -> n, i) natives in
   let cells = Array.of_list (List.map snd natives) in
   let stable = Array.make (Array.length cells) true in

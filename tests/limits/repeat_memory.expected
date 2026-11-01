@@ -1,0 +1,4 @@
+repeat_memory.kp:1:19: Limit "memory" reached.
+  1 | print(byte_length(repeat(150000000, "a")))
+    |                   ^
+exit 1

@@ -40,7 +40,7 @@ let tok_text = function
   | NL -> "the end of the line"
   | EOF -> "the end of the file"
   | IF -> "if" | ELSE -> "else" | END -> "end" | FOR -> "for" | IN -> "in" | WHILE -> "while"
-  | BREAK -> "break" | RETURN -> "return" | FUNCTION -> "function" | MATCH -> "match" | STRUCT -> "struct"
+  | BREAK -> "break" | RETURN -> "return" | DEFN -> "defn" | MATCH -> "match" | STRUCT -> "struct"
   | AND -> "and" | OR -> "or" | NOT -> "not" | THEN -> "then" | USE -> "use" | TRUE -> "true"
   | FALSE -> "false" | MISSING -> "missing" | PLUS -> "+" | MINUS -> "-" | STAR -> "*" | SLASH -> "/"
   | CARET -> "^" | ASSIGN -> "=" | EQEQ -> "==" | NE -> "!=" | LT -> "<" | LE -> "<=" | GT -> ">" | GE -> ">="
@@ -231,7 +231,7 @@ and lambda p =
   in
   node p pos (Lambda f)
 
-(* function name(params) body end, or function (params) body end, after the keyword. *)
+(* defn name(params) body end, or defn (params) body end, after the keyword. *)
 and function_expr p pos =
   with_mode p Lines (fun () ->
       let fname, named =
@@ -408,10 +408,10 @@ and postfix p =
          advance p;
          e := node p t.pos (Field (!e, n));
          go ()
-       | FUNCTION ->
-         (* The field of a debugger frame. *)
+       | STRUCT ->
+         (* c.struct: a keyword is free after a dot. *)
          advance p;
-         e := node p t.pos (Field (!e, "function"));
+         e := node p t.pos (Field (!e, "struct"));
          go ()
        | _ -> unexpected p "a field name")
     | _ -> ()
@@ -522,6 +522,27 @@ and struct_lit p pos =
   with_mode p Ignore (fun () ->
       let saved_index = p.in_index in
       p.in_index <- 0;
+      match (cur p).t with
+      | TEXT _ | INT _ | FLOAT _ | LP -> dict_lit p pos saved_index
+      | _ -> fields_lit p pos saved_index)
+
+(* {"a": 1, 2: "b", (key): 3}: a key is a literal, or an expression in parentheses. *)
+and dict_lit p pos saved_index =
+  let items = ref [] in
+  while (cur p).t <> RC do
+    let key = primary p in
+    expect p COLON "\":\"";
+    let value = expr p in
+    items := { aname = None; value } :: { aname = None; value = key } :: !items;
+    if (cur p).t = COMMA then advance p
+    else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
+  done;
+  advance p;
+  p.in_index <- saved_index;
+  let callee = node p pos (Var { text = "_dict"; b = Unresolved }) in
+  node p pos (Call { callee; args = Array.of_list (List.rev !items); self_tail = false })
+
+and fields_lit p pos saved_index =
       let out = ref [] in
       while (cur p).t <> RC do
         (match (cur p).t with
@@ -535,7 +556,7 @@ and struct_lit p pos =
       done;
       advance p;
       p.in_index <- saved_index;
-      node p pos (Struct_lit { sname = None; sfields = Array.of_list (List.rev !out) }))
+      node p pos (Struct_lit { sname = None; sfields = Array.of_list (List.rev !out) })
 
 (* struct Name { field, field = default }: a function that builds the struct. *)
 and struct_def p pos =
@@ -640,7 +661,7 @@ and primary p =
   | WHILE -> advance p; with_mode p Lines (fun () -> while_expr p t.pos)
   | FOR -> advance p; with_mode p Lines (fun () -> for_expr p t.pos)
   | MATCH -> advance p; with_mode p Lines (fun () -> match_expr p t.pos)
-  | FUNCTION -> advance p; function_expr p t.pos
+  | DEFN -> advance p; function_expr p t.pos
   | LB -> advance p; array_lit p t.pos
   | LC -> advance p; struct_lit p t.pos
   | END when p.in_index > 0 ->

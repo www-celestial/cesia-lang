@@ -1,8 +1,6 @@
 (** Inference: the types of a version's variables and nodes, and its return type. *)
 open Types
 
-val join : ty -> ty -> ty
-
 (** The version for this signature: at most 8 per function, then the generic version. *)
 val version_for : world -> proto -> ty array -> version
 

@@ -16,7 +16,7 @@ is_nested_function() = apply(x -> (y -> y)(x), 1) == 1
 is_lambda_precedence() = (x -> x then abs)(-1) == 1
 is_multiline() = multi() == 6
 
-function multi()
+defn multi()
   [1, 2, 3]
     then map(it * 2)
     then sum(it) / 2

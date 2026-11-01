@@ -1,7 +1,7 @@
 use net
 use sys
 
-function keep_writing(c, n)
+defn keep_writing(c, n)
   if n == 0
     Ok("never failed")
   else

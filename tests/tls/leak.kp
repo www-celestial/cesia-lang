@@ -1,0 +1,27 @@
+-- Failed handshakes give back their memory: this limit stops the server otherwise.
+use tls
+use web
+use net
+use sys
+
+defn garbage()
+  c = net.connect("127.0.0.1", 18210)?
+  net.write(c, "not TLS")?
+  net.read(c)
+  net.close(c)
+  Ok(missing)
+end
+
+defn main()
+  api = tls.open()?
+  wrap = tls.server(args[1], args[2], api)?
+  spawn(() -> web.serve(web.app(), port = 18210, wrap = wrap))
+  sys.sleep(0.05)
+  for k in 1:600
+    garbage()?
+  end
+  print("done")
+  Ok(missing)
+end
+
+print(main())

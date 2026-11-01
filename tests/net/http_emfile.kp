@@ -5,7 +5,7 @@ use sys
 crlf = "$(char(13))$(char(10))"
 handle(r) = {status: 200, body: "fine"}
 
-function open_all(n, opened)
+defn open_all(n, opened)
   if n == 0
     opened
   else
@@ -16,7 +16,7 @@ function open_all(n, opened)
   end
 end
 
-function ask(c)
+defn ask(c)
   net.write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   net.read(c) then map_ok(reply -> split(crlf, reply)[1])
 end
@@ -26,5 +26,5 @@ sys.sleep(0)
 first = unwrap(net.connect("127.0.0.1", 18094))
 print(ask(first))
 open_all(100, missing)
-sys.sleep(1)
+sys.sleep(0.4)
 print(ask(first))

@@ -1,4 +1,4 @@
-function m(p)
+defn m(p)
   match p
     {status: "ok", amount} if amount > 0 -> amount
     [a, b] -> a + b
@@ -14,7 +14,7 @@ is_length() = m([1, 2, 3]) == "other"
 is_literal() = m(0) == "zero"
 is_name() = m("t") == "t"
 
-function if_expr(x)
+defn if_expr(x)
   if x < 0 "neg" else if x == 0 "zero" else "pos" end
 end
 is_if_chain() = if_expr(-1) == "neg" and if_expr(0) == "zero" and if_expr(1) == "pos"
@@ -22,13 +22,13 @@ is_if_chain() = if_expr(-1) == "neg" and if_expr(0) == "zero" and if_expr(1) == 
 is_panic_kind() = (wait(spawn(() -> panic("x"))) then map_err(it.kind)) == Err("user")
 is_assert() = (wait(spawn(() -> assert(false))) then map_err(it.kind)) == Err("user")
 
-function deep(n)
+defn deep(n)
   if n == 0
     panic("bottom")
   end
   deep(n - 1) + 1
 end
-function repeated_panics()
+defn repeated_panics()
   for i in 1:20000
     wait(spawn(() -> deep(3)))
   end

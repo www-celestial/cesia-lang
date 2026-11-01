@@ -1,4 +1,4 @@
-function forever()
+defn forever()
   while true end
 end
 wait(spawn(forever))

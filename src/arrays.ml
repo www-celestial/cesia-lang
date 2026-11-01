@@ -1,6 +1,6 @@
 open Types
 
-type ix = At of int | Slice of int * int | Every | Mask of arr
+type ix = At of int | Slice of int * int | Every | Mask of arr | Key of t
 
 let of_float rows cols d = Array { rows; cols; store = F d; a_owned = true }
 
@@ -13,11 +13,13 @@ let of_vals rows cols (d : t array) =
   end
   else Array { rows; cols; store = V d; a_owned = true }
 
+let list values = if Array.length values = 0 then of_vals 0 0 values else of_vals 1 (Array.length values) values
+
 let int_range ctx lo hi =
   let span = hi - lo in
   if hi >= lo && (span < 0 || span = max_int) then Runtime.fail ctx Overflow Messages.range_too_long;
   let n = if hi < lo then 0 else span + 1 in
-  Runtime.charge ctx ((n / 16) + 1);
+  Runtime.pay ctx n;
   let d = Runtime.alloc_vals ctx n Missing in
   for i = 0 to n - 1 do
     d.(i) <- Int (lo + i)
@@ -39,15 +41,18 @@ let whole_index ctx v =
 let ix_of ctx v =
   match v with
   | Array a -> Mask a
+  | Text _ -> Key v
+  | Float x when not (Float.is_integer x) -> Key v
   | _ -> At (whole_index ctx v)
 
 let mem ctx v xs =
   match xs with
   | Array a ->
     let n = a.rows * a.cols in
-    Runtime.charge ctx ((n / 16) + 1);
+    Runtime.pay ctx n;
     let rec go k = k < n && (Value.equal ctx v (Value.elt a k) || go (k + 1)) in
     Value.of_bool (go 0)
+  | Dict d -> Value.of_bool (Option.is_some (Dict.find ctx v d))
   | _ -> Runtime.fail ctx Type (Messages.cant_in (Value.describe xs))
 
 let check1 ctx a i =
@@ -65,6 +70,7 @@ let positions ctx n ix =
   | At i ->
     if i < 1 || i > n then outside i;
     [| i - 1 |]
+  | Key k -> Runtime.fail ctx Type (Messages.index_type (Value.describe k))
   | Every ->
     Runtime.build ctx n;
     Array.init n Fun.id
@@ -79,7 +85,7 @@ let positions ctx n ix =
   | Mask m ->
     let got = m.rows * m.cols in
     if got <> n then Runtime.fail ctx Index (Messages.mask_size got n);
-    Runtime.charge ctx ((n / 16) + 1);
+    Runtime.pay ctx n;
     let out = ref [] in
     for k = n - 1 downto 0 do
       match Value.elt m k with
@@ -97,8 +103,20 @@ let pick ctx a (ks : int array) rows cols =
 
 let not_array ctx v = Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
+(* The key of an index on a dictionary. *)
+let key_of ctx ixs =
+  match ixs with
+  | [| At i |] -> Int i
+  | [| Key k |] -> k
+  | _ -> Runtime.fail ctx Index Messages.dict_index
+
 let read1 ctx v ix =
   match v with
+  | Dict d ->
+    let k = key_of ctx [| ix |] in
+    (match Dict.find ctx k d with
+     | Some x -> Value.share x
+     | None -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe k)))
   | Array a ->
     (match ix with
      | At i ->
@@ -136,7 +154,7 @@ let store_elt ctx s a k x =
   | F d, _ ->
     ctx.site <- s;
     let n = Float.Array.length d in
-    Runtime.charge ctx ((n / 16) + 1);
+    Runtime.pay ctx n;
     Runtime.reserve ctx (5 * n);
     let vals = Array.init n (fun i -> Float (Float.Array.get d i)) in
     vals.(k) <- x;
@@ -150,6 +168,7 @@ let write ctx v (ixs : ix array) x =
   | Array a, [| At i; At j |] ->
     check2 ctx a i j;
     store_elt ctx ctx.site a (((j - 1) * a.rows) + i - 1) x
+  | Array _, [| Key k |] -> Runtime.fail ctx Type (Messages.index_type (Value.describe k))
   | Array _, _ -> Runtime.fail ctx Index Messages.index_write
   | _ -> not_array ctx v
 

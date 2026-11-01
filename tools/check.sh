@@ -30,8 +30,8 @@ if hits=$(find . \( -name '*.c' -o -name '*.h' \) -not -path './sys/*' -not -pat
   fail "C file outside sys/:
 $hits"
 fi
-c_lines=$(wc -l < sys/stubs.c)
-[ "$c_lines" -le 100 ] || fail "sys/stubs.c has $c_lines lines, the budget is 100"
+c_lines=$(cat sys/stubs.c sys/ffi.c | wc -l)
+[ "$c_lines" -le 300 ] || fail "sys/stubs.c and sys/ffi.c have $c_lines lines, the budget is 300"
 
 # Change loop: a touched .ml, rebuilt and tested in under 5 s, in the dev profile.
 budget_ms=5000

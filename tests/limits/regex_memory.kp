@@ -1,0 +1,2 @@
+use regex
+print(byte_length(regex.replace("", repeat(500, "x"), repeat(200000, "a"))))

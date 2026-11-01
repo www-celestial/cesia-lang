@@ -7,7 +7,7 @@ font = "../../kepacs/fonts/JetBrainsMono-Regular.ttf"
 line(y, words) = {kind: "text", x: 10, y: y, text: words, color: 0xFFFFFF}
 clear = {kind: "clear", color: background}
 
-function check()
+defn check()
   window = sdl.open("test", 320, 200, font)?
   two = sdl.draw([clear, line(10, "first"), line(60, "second")], window)
   print(probe.differing(10, 60, 100, 24, background, probe.pixels(two, 320, 200)) > 0)

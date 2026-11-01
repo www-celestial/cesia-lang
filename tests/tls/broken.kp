@@ -1,0 +1,55 @@
+-- One client's garbage leaves the others alone, a silent TCP close is an error, and a client that says nothing is closed.
+use tls
+use web
+use http
+use net
+use sys
+
+crlf = "\r\n"
+
+defn garbage()
+  c = net.connect("127.0.0.1", 18208)?
+  net.write(c, "this is not TLS at all")?
+  net.read(c)
+  net.close(c)
+  Ok(missing)
+end
+
+defn mute()
+  c = net.connect("127.0.0.1", 18208)?
+  got = net.read(c)
+  net.close(c)
+  print("mute client closed", is_ok(got) and byte_length(got.value) == 0)
+  Ok(missing)
+end
+
+defn truncating(wrap)
+  listener = net.listen(18209)?
+  c = net.accept(listener)?
+  io = wrap(c)?
+  io.read()?
+  io.write("HTTP/1.1 200 OK$crlf$(crlf)partial")?
+  net.close(c)
+  net.close(listener)
+  Ok(missing)
+end
+
+defn main()
+  api = tls.open()?
+  wrap = tls.server(args[1], args[2], api)?
+  a = web.get("/", req -> web.plain("over tls"), web.app())
+  spawn(() -> web.serve(a, port = 18208, wrap = wrap, timeout = 0.2))
+  sys.sleep(0.05)
+  client = tls.client(api, verify = false)
+  for k in 1:20
+    garbage()?
+  end
+  print(http.get("https://127.0.0.1:18208/", secure = client) then map_ok(it.body))
+  mute()?
+  spawn(() -> truncating(wrap))
+  sys.sleep(0.02)
+  print(http.get("https://127.0.0.1:18209/", secure = client) then map_err(it.message))
+  Ok(missing)
+end
+
+print(main())

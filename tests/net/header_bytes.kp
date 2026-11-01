@@ -1,0 +1,15 @@
+-- Every byte of a header name against the list of RFC 9110, and a line end refused anywhere in the line.
+use net
+
+allowed = bytes("!#$$%&'*+-.^_`|~abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+accepted(b) = net.is_header(1, "$(from_bytes([b])): value")
+
+print(equal(filter(accepted, [b for b in 0:255]), sort(allowed)))
+print(net.is_header(1, "a: b"))
+print(net.is_header(0, ": b"))
+print(net.is_header(2, "a : b"))
+print(net.is_header(2, "a\nb: c"))
+print(net.is_header(1, "a: b\nc"))
+print(net.is_header(1, "a: b\rc"))
+print(net.is_header(1, "a: tab	space é"))
+print(wait(spawn(() -> net.is_header(9, "a"))) then map_err(it.kind))

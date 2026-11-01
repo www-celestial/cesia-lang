@@ -9,7 +9,7 @@ end
 
 crlf = "$(char(13))$(char(10))"
 
-function client()
+defn client()
   c = net.connect("127.0.0.1", 18096)?
   net.write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   net.read(c) then map_ok(r -> split(crlf, r))

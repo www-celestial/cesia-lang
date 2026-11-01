@@ -8,8 +8,40 @@ is_field_of_array() = equal([{a: 1}, {a: 2}].a, [1, 2])
 is_shown_name() = text(Car(1, 2)) == "Car(m = 1, k = 2, c = 1500)"
 is_field_count() = length({a: 1, b: 2}) == 2
 
-function adding()
+defn adding()
   s = {x: 1}
   s.y = 2
   s
+end
+
+defn is_deep_write_struct()
+  s = {x: {y: {z: 1}}}
+  s.x.y.z = 2
+  equal(s, {x: {y: {z: 2}}})
+end
+
+defn is_deep_write_array()
+  a = [[[1, 2]]]
+  a[1][1][1] = 5
+  a[1][1][2] = 6
+  a[1][1][1] == 5 and a[1][1][2] == 6
+end
+
+defn is_deep_write_mixed()
+  c = {p: {q: [[1]]}}
+  c.p.q[1][1] = 2
+  c.p.q[1][1] == 2
+end
+
+defn is_deep_write_keeps_a_copy()
+  a = {x: {y: {z: 1}}}
+  b = a
+  b.x.y.z = 2
+  a.x.y.z == 1 and b.x.y.z == 2
+end
+
+defn is_four_levels()
+  a = {b: {c: {d: {e: 1}}}}
+  a.b.c.d.e = 2
+  a.b.c.d.e == 2 and equal(a.b.c.d, {e: 2})
 end

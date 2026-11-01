@@ -1,0 +1,18 @@
+-- A client that sends half a request and waits: the server closes it at its deadline.
+use http
+use net
+use sys
+
+spawn(() -> http.serve(r -> {status: 200, body: "ok"}, port = 18203, timeout = 0.1))
+sys.sleep(0.05)
+
+defn main()
+  c = net.connect("127.0.0.1", 18203)?
+  net.write(c, "GET / HT")?
+  start = sys.now()
+  got = net.read(c)?
+  print(byte_length(got), sys.now() - start < 1.0)
+  Ok(missing)
+end
+
+print(main())

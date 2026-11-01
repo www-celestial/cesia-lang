@@ -27,6 +27,9 @@ value kepler_dlsym(value lib, value name) {
   return Val_long((intnat) find_symbol((void *) Long_val(lib), String_val(name)));
 }
 
+void *kepler_open(const char *name) { return open_library(name); }
+void *kepler_symbol(void *lib, const char *name) { return find_symbol(lib, name); }
+
 /* Why the last load failed. */
 value kepler_dlerror(value unit) {
 #ifdef _WIN32

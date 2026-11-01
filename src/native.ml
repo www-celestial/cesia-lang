@@ -57,17 +57,50 @@ let print ctx args =
   if Buffer.length w.out > 65536 then Runtime.flush_out w;
   Missing
 
-let code_points s =
+let points_between s a b =
   let n = ref 0 in
-  String.iter (fun c -> if Char.code c land 0xC0 <> 0x80 then incr n) s;
+  for k = a to b - 1 do
+    if Char.code s.[k] land 0xC0 <> 0x80 then incr n
+  done;
   !n
+
+let code_points s = points_between s 0 (String.length s)
 
 let length v =
   match v with
+  | Dict d -> Dict.length d
   | Text s -> code_points s
   | Array a -> a.rows * a.cols
   | Struct r -> Array.length r.fields
   | _ -> 1
+
+let as_dict ctx name v =
+  match v with
+  | Dict d -> d
+  | _ -> Runtime.fail ctx Type (Messages.need_dict name (Value.describe v))
+
+let dict_items ctx d f =
+  let items = Value.dict_fold (fun k v rest -> f k v :: rest) d [] in
+  Runtime.build ctx (Dict.length d);
+  Arrays.list (Array.of_list items)
+
+let dict_of_pairs ctx (a : t array) =
+  let pair d p =
+    match p with
+    | Struct r when Value.field_index r.shape "key" >= 0 && Value.field_index r.shape "value" >= 0 ->
+      Dict.add ctx r.fields.(Value.field_index r.shape "key") (Value.share r.fields.(Value.field_index r.shape "value")) d
+    | _ -> Runtime.fail ctx Type (Messages.dict_pair (Value.describe p))
+  in
+  match a with
+  | [||] -> Dict Leaf
+  | [| Array x |] -> Dict (Array.fold_left pair Leaf (Array.init (x.rows * x.cols) (Value.elt x)))
+  | _ -> Runtime.fail ctx Type (Messages.dict_pair (Value.describe a.(0)))
+
+let dict_literal ctx (a : t array) =
+  if Array.length a mod 2 = 1 then Runtime.fail ctx Type (Messages.dict_pair (Value.describe a.(0)));
+  let d = ref Leaf in
+  Array.iteri (fun i k -> if i mod 2 = 0 then d := Dict.add ctx k (Value.share a.(i + 1)) !d) a;
+  Dict !d
 
 let dim ctx name v =
   match v with
@@ -81,7 +114,7 @@ let dims ctx name (a : t array) at =
 
 let filled ctx value rows cols =
   let n = Runtime.cells ctx rows cols in
-  Runtime.charge ctx ((n / 16) + 1);
+  Runtime.pay ctx n;
   match value with
   | Float x -> Arrays.of_float rows cols (Runtime.alloc_float ctx n x)
   | v -> Array { rows; cols; store = V (Runtime.alloc_vals ctx n (Value.share v)); a_owned = true }
@@ -101,7 +134,7 @@ let reshape ctx (a : t array) =
   | Array x ->
     let n = x.rows * x.cols in
     if Runtime.cells ctx rows cols <> n then Runtime.fail ctx Type (Messages.reshape_size n rows cols);
-    Runtime.charge ctx ((n / 16) + 1);
+    Runtime.pay ctx n;
     (match Runtime.copy ctx a.(0) with
      | Array y -> Array { rows; cols; store = y.store; a_owned = true }
      | v -> v)
@@ -189,7 +222,7 @@ let matmul ctx (a : t array) =
   let r1, c1 = shape_of ctx "matmul" a.(0) and r2, c2 = shape_of ctx "matmul" a.(1) in
   if c1 <> r2 then Runtime.fail ctx Type (Messages.matmul_shape r1 c1 r2 c2);
   let out = Runtime.alloc_float ctx (Runtime.cells ctx r1 c2) 0. in
-  Runtime.charge ctx (((r1 * c1 * c2) / 16) + 1);
+  Runtime.pay ctx (r1 * c1 * c2);
   let x = floats ctx "matmul" a.(0) and y = floats ctx "matmul" a.(1) in
   Arrays.of_float r1 c2 (Kernels.matmul ~rows:r1 ~cols:c2 ~inner:c1 ~out x y)
 
@@ -210,11 +243,11 @@ let transpose ctx (a : t array) =
 let sum ctx v =
   match v with
   | Array { rows; cols; store = F d; _ } ->
-    Runtime.charge ctx (((rows * cols) / 16) + 1);
+    Runtime.pay ctx (rows * cols);
     Float (Kernels.sum d)
   | Array x ->
     let n = x.rows * x.cols in
-    Runtime.charge ctx ((n / 16) + 1);
+    Runtime.pay ctx n;
     let acc = ref (Int 0) in
     for k = 0 to n - 1 do acc := Arith.add ctx !acc (Value.elt x k) done;
     !acc
@@ -241,7 +274,7 @@ let best name better ctx (a : t array) =
     | Array x ->
       let n = x.rows * x.cols in
       if n = 0 then Runtime.fail ctx Type (Messages.empty_array name);
-      Runtime.charge ctx ((n / 16) + 1);
+      Runtime.pay ctx n;
       let acc = ref (Value.elt x 0) in
       for k = 1 to n - 1 do acc := pick ctx !acc (Value.elt x k) done;
       Value.share !acc
@@ -251,7 +284,7 @@ let mask_all name stop ctx (a : t array) =
   match a.(0) with
   | Array x ->
     let n = x.rows * x.cols in
-    Runtime.charge ctx ((n / 16) + 1);
+    Runtime.pay ctx n;
     let rec go k =
       if k >= n then not stop
       else
@@ -270,9 +303,29 @@ let text_arg ctx name v =
   | Text s -> s
   | _ -> Runtime.fail ctx Type (Messages.need_text name (Value.describe v))
 
+(* Knuth, Morris and Pratt: linear, for the long patterns where the plain search could be quadratic. *)
+let find_long s part from =
+  let n = String.length s and m = String.length part in
+  let fail = Array.make (m + 1) 0 in
+  let k = ref 0 in
+  for i = 1 to m - 1 do
+    while !k > 0 && part.[i] <> part.[!k] do k := fail.(!k) done;
+    if part.[i] = part.[!k] then incr k;
+    fail.(i + 1) <- !k
+  done;
+  let rec go i k =
+    if k = m then i - m
+    else if i >= n then -1
+    else if s.[i] = part.[k] then go (i + 1) (k + 1)
+    else if k > 0 then go i fail.(k)
+    else go (i + 1) 0
+  in
+  go from 0
+
 (* The first position of [part] in [s] from byte [from], or -1. [part] isn't empty. *)
 let find_from s part from =
   let n = String.length s and m = String.length part in
+  if m >= 32 then find_long s part from else
   let rec same p k = k >= m || (s.[p + k] = part.[k] && same p (k + 1)) in
   let rec go i =
     if i + m > n then -1
@@ -392,9 +445,18 @@ let char ctx (a : t array) =
   | v -> Runtime.fail ctx Type (Messages.bad_char (Value.describe v))
 
 let text_natives =
-  let on_text name f = name, nat name 1 1 (fun ctx a -> f (text_arg ctx name a.(0))) in
+  let pay ctx s = Runtime.pay_bytes ctx (String.length s) in
+  let on_text name f =
+    name, nat name 1 1 (fun ctx a ->
+        let s = text_arg ctx name a.(0) in
+        pay ctx s;
+        f s)
+  in
   let test2 name f =
-    name, nat name 2 2 (fun ctx a -> Value.of_bool (f (text_arg ctx name a.(0)) (text_arg ctx name a.(1))))
+    name, nat name 2 2 (fun ctx a ->
+        let p = text_arg ctx name a.(0) and s = text_arg ctx name a.(1) in
+        pay ctx s;
+        Value.of_bool (f p s))
   in
   [ "split", nat "split" 2 2 split;
     "join", nat "join" 2 2 join;
@@ -434,6 +496,23 @@ let prelude =
         | v -> v);
     "args", Array { rows = 1; cols = 0; store = V [||]; a_owned = false };
     "text", nat "text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
+    "dict", nat "dict" 0 1 dict_of_pairs;
+    "_dict", nat "_dict" 0 max_int dict_literal;
+    "get", nat "get" 2 2 (fun ctx a -> Option.fold ~none:Missing ~some:Value.share (Dict.find ctx a.(0) (as_dict ctx "get" a.(1))));
+    "get_or", nat "get_or" 3 3 (fun ctx a ->
+        match Dict.find ctx a.(0) (as_dict ctx "get_or" a.(2)) with
+        | Some x -> Value.share x
+        | None -> a.(1));
+    "has", nat "has" 2 2 (fun ctx a -> Value.of_bool (Option.is_some (Dict.find ctx a.(0) (as_dict ctx "has" a.(1)))));
+    "put", nat "put" 3 3 (fun ctx a -> Dict (Dict.add ctx a.(0) (Value.share a.(1)) (as_dict ctx "put" a.(2))));
+    "drop", nat "drop" 2 2 (fun ctx a -> Dict (Dict.remove ctx a.(0) (as_dict ctx "drop" a.(1))));
+    "keys", nat "keys" 1 1 (fun ctx a -> dict_items ctx (as_dict ctx "keys" a.(0)) (fun k _ -> k));
+    "values", nat "values" 1 1 (fun ctx a -> dict_items ctx (as_dict ctx "values" a.(0)) (fun _ v -> Value.share v));
+    "pairs", nat "pairs" 1 1 (fun ctx a ->
+        let shape = Value.shape_of ctx.w [| "key"; "value" |] in
+        dict_items ctx (as_dict ctx "pairs" a.(0)) (fun k v ->
+            Struct { shape; fields = [| k; Value.share v |]; r_owned = true }));
+    is_ "is_dict" (function Dict _ -> true | _ -> false);
     "length", nat ~ret:(fun _ -> TI) "length" 1 1 (fun _ a -> Int (length a.(0)));
     "div", int_native "div" Arith.int_div;
     "mod", int_native "mod" Arith.int_mod;

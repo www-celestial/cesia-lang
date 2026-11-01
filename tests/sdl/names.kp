@@ -2,3 +2,4 @@ use sdl
 print(sdl.version_ok(3004016), sdl.version_ok(3002000), sdl.version_ok(3001008))
 print(sdl.key_name(0x61), sdl.key_name(0x0D), sdl.key_name(0x4000003A), sdl.key_name(0x40000045))
 print(sdl.key_name(0x4000004F), sdl.key_name(0x2F), sdl.key_name(0x40000046))
+print(sdl.key_name(0xE9), sdl.key_name(0x40000058))

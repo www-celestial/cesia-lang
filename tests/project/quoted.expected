@@ -1,0 +1,2 @@
+> sh -c "exit 0" "\r> dune build\n"
+exit 0

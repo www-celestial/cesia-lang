@@ -10,7 +10,7 @@ max_texts = 8192
 -- The event offsets read below are those of the ABI of SDL 3.2.
 version_ok(version) = version >= 3002000
 
-function bind_sdl(lib)
+defn bind_sdl(lib)
   f = (name, inputs, output) -> c.fn(name, inputs, output, lib)
   version = f("SDL_GetVersion", [], "i32")?
   init = f("SDL_Init", ["u32"], "bool")?
@@ -26,13 +26,17 @@ function bind_sdl(lib)
   destroy_window = f("SDL_DestroyWindow", ["ptr"], "void")?
   quit = f("SDL_QuitSubSystem", ["u32"], "void")?
   poll = f("SDL_PollEvent", ["ptr"], "bool")?
+  set_clipboard = f("SDL_SetClipboardText", ["text"], "bool")?
+  get_clipboard = f("SDL_GetClipboardText", [], "ptr")?
+  free = f("SDL_free", ["ptr"], "void")?
+  set_title = f("SDL_SetWindowTitle", ["ptr", "text"], "bool")?
   start_text = f("SDL_StartTextInput", ["ptr"], "bool")?
-  Ok({poll: poll, start_text: start_text, version: version, init: init, error: error, create_window: create_window, create_renderer: create_renderer,
+  Ok({set_clipboard: set_clipboard, get_clipboard: get_clipboard, free: free, set_title: set_title, poll: poll, start_text: start_text, version: version, init: init, error: error, create_window: create_window, create_renderer: create_renderer,
     vsync: vsync, color: color, clear: clear, fill_rect: fill_rect, present: present,
     destroy_renderer: destroy_renderer, destroy_window: destroy_window, quit: quit})
 end
 
-function bind_ttf(lib)
+defn bind_ttf(lib)
   f = (name, inputs, output) -> c.fn(name, inputs, output, lib)
   init = f("TTF_Init", [], "bool")?
   create_engine = f("TTF_CreateRendererTextEngine", ["ptr"], "ptr")?
@@ -58,14 +62,14 @@ some(pointer, sdl_api) = if is_missing(pointer) failure(sdl_api) else Ok(pointer
 done(succeeded, sdl_api) = if succeeded Ok(missing) else failure(sdl_api) end
 
 -- A drawing call can't fail on a good window, so a failure is a bug.
-function checked(succeeded, window)
+defn checked(succeeded, window)
   if not succeeded
     panic(window.sdl.error())
   end
 end
 
 -- The font comes before the window: a missing font should open nothing on screen.
-function open(title, width, height, font, size = 15, vsync = true)
+defn open(title, width, height, font, size = 15, vsync = true)
   sdl_api = bind_sdl(c.open("SDL3", version = 0)?)?
   ttf_api = bind_ttf(c.open("SDL3_ttf", version = 0)?)?
   if not version_ok(sdl_api.version())
@@ -73,33 +77,89 @@ function open(title, width, height, font, size = 15, vsync = true)
   else
     done(sdl_api.init(init_video), sdl_api)?
     done(ttf_api.init(), sdl_api)?
-    loaded = some(ttf_api.open_font(font, size), sdl_api)?
-    created = some(sdl_api.create_window(title, width, height, window_resizable), sdl_api)?
-    renderer = some(sdl_api.create_renderer(created, missing), sdl_api)?
-    sdl_api.vsync(renderer, if vsync 1 else 0 end)
-    engine = some(ttf_api.create_engine(renderer), sdl_api)?
-    done(sdl_api.start_text(created), sdl_api)?
-    Ok({sdl: sdl_api, ttf: ttf_api, window: created, renderer: renderer, engine: engine, font: loaded,
-      rect: c.alloc(16), out_width: c.alloc(4), out_height: c.alloc(4), event: c.alloc(128),
-      objects: c.alloc(16 + max_texts * 8), drawn: 0, shown: [], used: 0})
+    made = opened(sdl_api, ttf_api, title, width, height, font, size, vsync)
+    if is_err(made)
+      ttf_api.quit()
+      sdl_api.quit(init_video)
+    end
+    made
   end
 end
+
+-- Each step undoes the ones before it if it fails: the program gets an Err and can go on.
+defn opened(sdl_api, ttf_api, title, width, height, font, size, vsync)
+  loaded = some(ttf_api.open_font(font, size), sdl_api)?
+  made = on_screen(sdl_api, ttf_api, loaded, title, width, height, vsync)
+  if is_err(made)
+    ttf_api.close_font(loaded)
+  end
+  made
+end
+
+defn on_screen(sdl_api, ttf_api, loaded, title, width, height, vsync)
+  created = some(sdl_api.create_window(title, width, height, window_resizable), sdl_api)?
+  made = drawing(sdl_api, ttf_api, loaded, created, vsync)
+  if is_err(made)
+    sdl_api.destroy_window(created)
+  end
+  made
+end
+
+defn drawing(sdl_api, ttf_api, loaded, created, vsync)
+  renderer = some(sdl_api.create_renderer(created, missing), sdl_api)?
+  sdl_api.vsync(renderer, if vsync 1 else 0 end)
+  made = text_engine(sdl_api, ttf_api, loaded, created, renderer)
+  if is_err(made)
+    sdl_api.destroy_renderer(renderer)
+  end
+  made
+end
+
+defn text_engine(sdl_api, ttf_api, loaded, created, renderer)
+  engine = some(ttf_api.create_engine(renderer), sdl_api)?
+  started = done(sdl_api.start_text(created), sdl_api)
+  if is_err(started)
+    ttf_api.destroy_engine(engine)
+    return started
+  end
+  Ok({sdl: sdl_api, ttf: ttf_api, window: created, renderer: renderer, engine: engine, font: loaded,
+      rect: c.alloc(16), out_width: c.alloc(4), out_height: c.alloc(4), event: c.alloc(128),
+      objects: c.alloc(16 + max_texts * 8), drawn: 0, shown: [], used: 0})
+end
+
+-- The clipboard, shared with the other programs.
+defn copy(words, window)
+  checked(window.sdl.set_clipboard(words), window)
+  missing
+end
+
+defn paste(window)
+  p = window.sdl.get_clipboard()
+  if is_missing(p)
+    return ""
+  end
+  words = c.text(p)
+  window.sdl.free(p)
+  words
+end
+
+set_title(title, window) = window.sdl.set_title(window.window, title)
 
 red(color) = div(color, 65536)
 green(color) = mod(div(color, 256), 256)
 blue(color) = mod(color, 256)
 
-function set_color(color, window)
+defn set_color(color, window)
   checked(window.sdl.color(window.renderer, red(color), green(color), blue(color), 255), window)
 end
 
-function draw_clear(one, window)
+defn draw_clear(one, window)
   set_color(one.color, window)
   checked(window.sdl.clear(window.renderer), window)
   window
 end
 
-function draw_rect(one, window)
+defn draw_rect(one, window)
   c.set("f32", 0, one.x, window.rect)
   c.set("f32", 4, one.y, window.rect)
   c.set("f32", 8, one.width, window.rect)
@@ -109,11 +169,9 @@ function draw_rect(one, window)
   window
 end
 
-appended(xs, x) = [if k <= length(xs) xs[k] else x end for k in 1:length(xs) + 1]
-
 -- Text objects are costly to create, so they stay, in a block shared by every copy of the window: their count, the
 -- number of the last draw, then their pointers.
-function object_at(position, window)
+defn object_at(position, window)
   if position > max_texts
     panic("A frame can't have more than $max_texts texts.")
   end
@@ -130,11 +188,11 @@ function object_at(position, window)
   end
 end
 
-function draw_text(one, window)
+defn draw_text(one, window)
   position = window.used + 1
   object = object_at(position, window)
   if position > length(window.shown)
-    window.shown = appended(window.shown, "")
+    window.shown = push("", window.shown)
   end
   if window.shown[position] != one.text
     checked(window.ttf.set_text(object, one.text, 0), window)
@@ -147,7 +205,7 @@ function draw_text(one, window)
   window
 end
 
-function command(window, one)
+defn command(window, one)
   match one.kind
     "clear" -> draw_clear(one, window)
     "rect" -> draw_rect(one, window)
@@ -157,7 +215,7 @@ function command(window, one)
 end
 
 -- Draws without showing, and returns the window, which holds the text objects.
-function draw(commands, window)
+defn draw(commands, window)
   last = c.get("i64", 8, window.objects)
   if window.drawn != last
     window.shown = []  -- an older copy: what it remembers is no longer in the objects
@@ -169,20 +227,20 @@ function draw(commands, window)
 end
 
 -- Draws and shows one frame, and returns the window.
-function frame(commands, window)
+defn frame(commands, window)
   drawn = draw(commands, window)
   checked(drawn.sdl.present(drawn.renderer), drawn)
   drawn
 end
 
 -- The size of a text in pixels, as {width, height}.
-function text_size(words, window)
+defn text_size(words, window)
   checked(window.ttf.string_size(window.font, words, 0, window.out_width, window.out_height), window)
   {width: c.get("i32", 0, window.out_width), height: c.get("i32", 0, window.out_height)}
 end
 
 -- The name of a key, or missing.
-function key_name(code)
+defn key_name(code)
   match code
     0x0D -> "enter"
     0x1B -> "escape"
@@ -190,6 +248,7 @@ function key_name(code)
     0x09 -> "tab"
     0x20 -> "space"
     0x7F -> "delete"
+    0x40000058 -> "enter"
     0x4000004A -> "home"
     0x4000004B -> "pageup"
     0x4000004D -> "end"
@@ -202,8 +261,8 @@ function key_name(code)
   end
 end
 
-function other_key_name(code)
-  if code >= 0x21 and code <= 0x7E
+defn other_key_name(code)
+  if (code >= 0x21 and code <= 0x7E) or (code >= 0xA0 and code < 0x40000000)
     char(code)
   else if code >= 0x4000003A and code <= 0x40000045
     "f$(code - 0x4000003A + 1)"
@@ -214,7 +273,7 @@ end
 
 held(mods, left, right) = mod(div(mods, left), 2) == 1 or mod(div(mods, right), 2) == 1
 
-function key_event(event)
+defn key_event(event)
   name = key_name(c.get("u32", 28, event))
   mods = c.get("u16", 32, event)
   if is_missing(name)
@@ -232,7 +291,7 @@ move_event(event) = mouse("move", c.get("f32", 28, event), c.get("f32", 32, even
 wheel_event(event) = mouse("wheel", c.get("f32", 36, event), c.get("f32", 40, event), 0, c.get("f32", 28, event))
 
 -- The event in the block, or missing if a program has no use for it.
-function decoded(event)
+defn decoded(event)
   match c.get("u32", 0, event)
     0x100 -> {kind: "quit"}
     0x206 -> {kind: "resize", width: c.get("i32", 20, event), height: c.get("i32", 24, event)}
@@ -246,19 +305,19 @@ function decoded(event)
   end
 end
 
-function waiting(window, found)
+defn waiting(window, found)
   if not window.sdl.poll(window.event)
     found
   else
     one = decoded(window.event)
-    waiting(window, if is_missing(one) found else appended(found, one) end)
+    waiting(window, if is_missing(one) found else push(one, found) end)
   end
 end
 
 -- The events waiting, without blocking.
 events(window) = waiting(window, [])
 
-function applied(update, progress, event)
+defn applied(update, progress, event)
   if progress.stopped
     progress
   else
@@ -267,7 +326,7 @@ function applied(update, progress, event)
   end
 end
 
-function step(state, update, view, window)
+defn step(state, update, view, window)
   happened = events(window)
   progress = reduce((p, event) -> applied(update, p, event), {state: state, stopped: false}, happened)
   if progress.stopped
@@ -283,7 +342,7 @@ end
 -- Gives the last state. Between events, other fibers run.
 run(state, update, view, window) = step(state, update, view, frame(view(state), window))
 
-function close(window)
+defn close(window)
   c.free(window.rect)
   c.free(window.out_width)
   c.free(window.out_height)

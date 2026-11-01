@@ -6,8 +6,7 @@ f64 needs a number, not the text "x".
 bool needs true or false, not the number 1.
 i33 isn't a C type.
 void can't be an argument.
-A C function takes at most 6 arguments, not 7.
-A C function takes at most 6 arguments, not 7.
+A C function takes at most 60 arguments, not 61.
 c.fn needs a library, not the number 5.
 This text has a zero byte, which C would read as its end.
 text needs a text or missing, not the number 5.

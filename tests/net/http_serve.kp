@@ -5,12 +5,12 @@ use sys
 crlf = "$(char(13))$(char(10))"
 handle(r) = {status: 200, body: "$(r.method) $(r.path) $(r.query) $(r.headers[2].value)"}
 
-function exchange(c, request)
+defn exchange(c, request)
   net.write(c, request)?
   net.read(c)
 end
 
-function client()
+defn client()
   c = net.connect("127.0.0.1", 18090)?
   request = "GET /a?x=1 HTTP/1.1$(crlf)Host: kepler$(crlf)X-Two: 2$(crlf)$crlf"
   first = exchange(c, request)?

@@ -1,7 +1,7 @@
 use "./probe"
 use sdl
 
-function check()
+defn check()
   window = sdl.open("test", 320, 200, "../../kepacs/fonts/JetBrainsMono-Regular.ttf")?
   print(sdl.events(window))
   probe.push(0x300, [["u32", 28, 0x61], ["u16", 32, 0x40]])

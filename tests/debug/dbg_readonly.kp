@@ -1,4 +1,4 @@
-function on_stop(stop)
+defn on_stop(stop)
   if stop.line == 3
     v = stop.frames[1].vars
     a = v[1].value

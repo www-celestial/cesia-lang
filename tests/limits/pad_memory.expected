@@ -1,0 +1,4 @@
+pad_memory.kp:1:19: Limit "memory" reached.
+  1 | print(byte_length(pad_left(10000, repeat(100000, "x"), "")))
+    |                   ^
+exit 1

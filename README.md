@@ -1,0 +1,138 @@
+# Kepler
+
+A small interpreted language, written in OCaml. Fast, safe by default, with fibers, files, processes, HTTP and C calls.
+
+## Install
+
+```bash
+dune build --profile release
+ln -s "$PWD/_build/default/bin/main.exe" ~/.local/bin/kepler
+```
+
+## Write and run a program
+
+```bash
+kepler new hello       # creates hello/, with kepler.toml and main.kp
+cd hello
+kepler do run
+
+kepler run main.kp           # or run any file directly
+kepler run --watch main.kp   # reloads the code at each save
+```
+
+`examples/tour.kp` shows the language in one file. `examples/notes.kp` is a web app in 23 lines. `examples/stats.kp` works on a table.
+
+## Permissions
+
+A program can touch nothing outside itself until the command line allows it.
+
+| Permission | Allows |
+|---|---|
+| `read`, `read=./data` | reading files |
+| `write`, `write=./out` | writing files |
+| `net`, `net=:8080` | the network |
+| `exec`, `exec=git` | running commands |
+| `env`, `env=HOME` | environment variables |
+| `ffi=NAME` | loading a C library, which is total trust |
+| `all` | everything |
+
+```bash
+kepler run --allow read=./data,net=:8080 server.kp
+kepler run --limit memory=512M,steps=1000000 program.kp
+```
+
+## A project
+
+A `kepler.toml` next to the code declares what can be run, and which C libraries are used:
+
+```toml
+[project]
+name = "notes"
+
+[tasks.serve]
+file = "notes.kp"
+allow = ["read=notes.txt", "write=notes.txt", "net=:8080"]
+```
+
+```bash
+kepler do          # lists the tasks
+kepler do serve    # runs one, and shows the exact command
+```
+
+## Editors
+
+Neovim and Vim: copy `tools/editors/nvim/` into `~/.config/nvim/`.
+
+Emacs: add `(load "/path/to/kepler/tools/editors/kepler-mode.el")` to your `init.el`.
+
+## What's there
+
+In every program, with no `use`:
+
+- Functions: `map`, `filter`, `reduce`, `scan`, `group`, `top`, `range`, `count`, `flat_map`, `sort`, `sort_by`, `order`, `reverse`, `unique`.
+- Lists: `push`, `concat`, `take`, `skip`, `index_of`, `flatten`, `zip`, `length`.
+- Dictionaries: `{"a": 1}`, `d["a"]`, `d["a"] = 2`, `get`, `get_or`, `has`, `put`, `drop`, `keys`, `values`, `pairs`, `map_values`.
+- Texts: `split`, `join`, `replace`, `slice`, `trim`, `lower`, `upper`, `contains`, `starts_with`, `ends_with`, `find`, `repeat`, `chars`, `lines`, `pad_left`, `pad_right`, `number`, `text`, and for bytes `bytes`, `from_bytes`, `byte`, `byte_slice`, `byte_find`.
+- Numbers: arrays and matrices compute element by element, with `sum`, `mean`, `min`, `max`, `matmul`, `transpose`, `sqrt`, `exp`, `log`, `sin`, `cos`, `bit_and`, `bit_or`, `bit_xor`.
+- Results: `Ok`, `Err`, `?`, `unwrap`, `unwrap_or`, `map_ok`, `and_then`. Fibers: `spawn`, `wait`.
+
+With `use`:
+
+| Module | What it gives |
+|---|---|
+| `sys` | files, `stat`, `rename`, environment, `run`, processes in a stream with `start`, clock |
+| `net`, `http` | TCP, HTTP server and client |
+| `web` | routes, `:params`, middleware, JSON, forms, cookies, static files, templates, WebSocket |
+| `tls` | TLS through OpenSSL, server and client, for `http` and `web` |
+| `crypto` | SHA-256, SHA-512, BLAKE2b, HMAC, encryption, public keys, signatures, Argon2, through libsodium |
+| `encode` | hexadecimal, Base64, URLs, queries |
+| `json`, `csv`, `regex`, `date` | parsing and writing; `regex` stays linear on any pattern |
+| `set`, `queue`, `heap`, `algo` | data structures, search, graphs, permutations, Levenshtein |
+| `num` | numpy-like: statistics, linear algebra, QR, eigenvalues, FFT, random numbers |
+| `frame` | pandas-like: tables, `where`, `sort_by`, `group_by`, `join_on`, CSV |
+| `rope`, `history` | a large text with fast edits, and undo |
+| `c` | C libraries: 60 arguments, structures by value, variadic functions, callbacks |
+| `cpp` | C++: classes and functions through a generated layer, exceptions become panics |
+| `sdl` | a native window: text, rectangles, keys, mouse, clipboard |
+
+## A web server
+
+```kepler
+use web
+
+defn hello(request)
+  web.send_json({"hello": request.params["name"]})
+end
+
+app = web.get("/hello/:name", hello, web.app())
+print(web.serve(app, port = 8080))
+```
+
+```bash
+kepler run --allow net=:8080 server.kp
+```
+
+## C and C++
+
+```kepler
+use c
+
+defn main()
+  m = c.open("m", version = 6)?
+  cos = c.fn("cos", ["f64"], "f64", m)?
+  print(cos(0.0))
+  Ok(missing)
+end
+
+print(main())
+```
+
+C++ has no stable binary interface, so `cpp.wrap` generates a small C layer and compiles it once: see `std/cpp.kp`.
+
+Calling C is total trust: it ignores every permission and limit, and a wrong signature can crash the program.
+
+## Limits
+
+- Arrays have two dimensions at most.
+- Only Linux on x86-64 is verified. The code targets macOS and Windows, on x86-64 and arm64: `.github/workflows/ci.yml` runs them once this repository has a remote.
+- Name resolution in `net.connect` blocks every fiber while it runs.

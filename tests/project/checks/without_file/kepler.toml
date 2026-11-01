@@ -1,0 +1,9 @@
+[project]
+name = "x"
+
+[tasks.build]
+run = ["true"]
+
+[tasks.test]
+run = ["true"]
+limit = "memory=1M"

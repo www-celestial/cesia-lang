@@ -1,0 +1,4 @@
+dict_nan.kp:2:7: A dictionary key is a number or a text, not the number nan.
+  2 | print(put(x, 2, dict()))
+    |       ^
+exit 1

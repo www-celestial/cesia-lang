@@ -1,4 +1,4 @@
-function counters()
+defn counters()
   even(n) = if n == 0 true else odd(n - 1) end
   odd(n) = if n == 0 false else even(n - 1) end
   even(4)

@@ -140,6 +140,104 @@ that code placement moves from one build to the next.
 Not verified: macOS, Windows and arm64, so five of the six targets of the calling conventions. Only this PC's GPU and
 Wayland session ran the gate. Real typing and the close button need a person at the window.
 
+## Project file, 2026-11-01
+
+| Criterion | Target | Measured | Met |
+|---|---|---|---|
+| This repository's `kepler.toml` | `build`, `test`, `check`, `demo` work | all exit 0; `demo` in a real window, stopped through `kepler do` | yes |
+| Tests on both paths | all | golden 217/217, `toml_test` ok | yes |
+| `tools/check.sh` | passes | yes, 9,451 lines of 15,000 | yes |
+| A `.ml` in `src/` rebuilt and tested | under 5 s | 4.2 to 4.7 s | yes, thin margin |
+| `print(1)`, measurement included | under 5 ms | 3.9 to 4.6 ms, of which 0.6 to 0.9 ms of measurement | yes |
+| `kepler do` listing this repository | under 10 ms | 3.9 to 4.2 ms | yes |
+| The reader against Python's `tomllib` | the same values | 20,032 inputs, 2,651 accepted, 0 differences | yes |
+| 10-minute fuzz, seed 2026 | no failure | 184,345 trials, 7,465 toml accepted, 0 failures | yes |
+
+Not verified: `kepler do` on macOS and Windows.
+
+## Standard library, interop, web and crypto, 2026-11-01
+
+Same PC, best of 7, on the final tree. A system upgrade on that day kept OCaml 5.5.0 and dune 3.24.2, and moved glibc,
+OpenSSL 3.6.5, SDL3 3.4.18, Python 3.14.9 and Node 26.13.0, so the references are not those of the tables above. Node
+above all: 28,969 req/s at 10 connections before the upgrade, 45,590 after. `Previous` is the last commit, rebuilt outside
+the repository from `git archive HEAD` and run in turn with the current tree.
+
+| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Target | Met |
+|---|---:|---:|---:|---:|---:|---|---|
+| fib | 453 ms | 1486 ms | 3.28 | 694 ms | 0.65 | at least 3 times Python, at most 1.3 times Lua | yes |
+| mandel | 467 ms | 2655 ms | 5.69 | 435 ms | 1.07 | same | yes |
+| structs | 576 ms | 1821 ms | 3.16 | 1512 ms | 0.38 | same | yes |
+| matmul | 960 ms | 5202 ms | 5.42 | 870 ms | 1.10 | same | yes |
+| dyn | 690 ms | 1424 ms | 2.06 | 720 ms | 0.96 | at least 2 times Python | yes, 3% margin |
+
+An earlier build of the same day gave 714 ms on `dyn`, 2.00 times Python: the 5% of code placement can take it to the
+target.
+
+| Criterion | Target | Measured | Met |
+|---|---|---|---|
+| `http.serve`, 10 connections | at least Node | 56,948 req/s, Node 45,590 | yes |
+| `http.serve`, 100 connections | at least Node | 56,874 req/s, Node 42,949 | yes |
+| `http.serve`, 1,000 connections | at least Node | 31,518 req/s, Node 40,062 | no |
+| `http.serve`, 10 active and 900 idle | at least Node | 55,682 req/s, Node 48,789 | yes |
+| 20,000 open connections | held | held, 33,728 req/s | yes |
+| Memory per parked fiber | under 8 KB | 3.43 KB | yes |
+| The speed gate, `bench/frame.kp`, real window | at least 60 frames/s | 156, 173, 161; 168 with `--no-spec` | yes |
+| A call to a trivial C function, `bench/ccall.kp` | at least 5 million/s | 12.4 million/s; 11.8 with `--no-spec` | yes |
+| Loading, resolution included | at least 500,000 lines/s | 468,589 to 484,116 lines/s; previous commit in turn 483,623 | no |
+| `print(1)`, measurement included | under 5 ms | 4.17 ms on average, of which 0.50 ms of measurement | yes |
+| `kepler do` listing this repository | under 10 ms | 2.94 ms | yes |
+| A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.4 to 4.5 s (`tools/check.sh`) | yes, thin margin |
+| A Kepler function active in a running program | under 100 ms | 17 ms (`tools/reload_test.sh`) | yes |
+| Tests on both paths | all | 499 + 3 + 22 tests, golden 244/244, and 218/218 with `--no-spec` | yes |
+| `tools/check.sh` | passes | yes, 11,187 lines of 15,000, 235 lines of C of 300 | yes |
+| 10-minute fuzz, seed 20261102 | no internal error | 194,927 trials, 11,802 ran to the end, 7,705 toml accepted, 0 failures | yes |
+
+`--no-spec` leaves out `tests/project`, `tests/cpp`, `tests/crypto` and `tests/tls`, where it changes nothing.
+
+### HTTP
+
+`http.serve` had lost 20% when this work ended: 51,377 req/s against 64,490 for the previous commit at 10 connections, in
+turn on one machine, and 28,624 against 34,846 at 1,000. The old `std/http.kp` on the current binary gave 66,578, so the
+loss was all in that file, not in the engine.
+
+| Taken out of the module, one at a time | µs per request |
+|---|---:|
+| Nothing | 18.9 |
+| The strict header check | 17.0 |
+| The checks on the body | 18.5 |
+| The `io` closures that let TLS sit under HTTP | 18.6 |
+| `net.arm` at each request, the reaper, named arguments | no change |
+
+The strict check called a Kepler closure per byte and built two arrays per header. `net.is_header` now does it in one pass,
+with the same rules, and header lookups are loops without a closure. `parse_request` went from 4.4 to 2.9 µs, under the 3.4
+of the previous commit, and `tests/net/header_bytes` checks all 256 bytes against RFC 9110.
+
+The result in turn is 58,370 against 64,741 req/s, and 31,242 against 34,339: about 10% remains. It sits in what requests
+now pay for: the `io` closures, HEAD and upgrades.
+
+The miss at 1,000 connections is new because Node moved: the previous commit gives 34,339 req/s against Node's 40,062. Why
+`http.serve` falls from 57,000 to 31,500 req/s between 100 and 1,000 connections has not been investigated.
+
+### Loading
+
+Loading is not a regression of this work: the previous commit gives 483,623 lines/s in turn. The 1% margin noted earlier
+did not survive this machine. `bench/load.sh` had failed since `defn` replaced `function`, and now writes `defn`.
+
+### The change loop
+
+`tools/check.sh` had gone to 5.8 s with the review's tests, unseen because it stopped earlier on a forbidden word. A costly
+model in the rope test and fixed waits in the others account for it. Each of the four tests that changed their numbers was
+seen failing again with its defect put back: no pause after a failed `accept`, no `io.arm(idle)`, no `Runtime.reserve`, a
+leaf merge that loses lines. `sleep_huge`, `flush_idle` and `stop` only wait less, and were not run with a defect.
+
+### The fuzz
+
+Two runs came to 0 failures: seed 20261101 gave 186,126 trials, before the HTTP change, and seed 20261102 gave the line in
+the table, on the final tree. A first run with seed 2026 was lost at about 498 s: the PC went off with its GPU at 95 °C
+while Steam was looping, and went off the same way 10 minutes later without the fuzzer. No failure had been saved.
+
+Not verified: macOS, Windows and arm64. `.github/workflows/ci.yml` is written and has never run, as there is no remote.
+
 ## Generic path only (`--no-spec`)
 
 | Benchmark | Kepler | Times Python |
@@ -153,6 +251,8 @@ Wayland session ran the gate. Real typing and the close button need a person at 
 After the async work, on the slower machine: 800, 1267, 667, 2935 and 1719 ms, in the same order.
 
 After the C interop work: 754, 1172, 602, 2570 and 1584 ms, in the same order.
+
+At the end of the roadmap: 776, 1234, 613, 2725 and 1658 ms, in the same order.
 
 ## What made dyn and fib faster
 

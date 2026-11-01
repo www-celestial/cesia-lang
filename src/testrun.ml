@@ -24,9 +24,9 @@ let comment_text line =
 let is_name_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c >= '\128'
 
-(* A top-level definition: function, struct or name(...) = ... *)
+(* A top-level definition: defn, struct or name(...) = ... *)
 let is_definition line =
-  String.starts_with ~prefix:"function " line
+  String.starts_with ~prefix:"defn " line
   || String.starts_with ~prefix:"struct " line
   || begin
     let n = String.length line and i = ref 0 in
@@ -183,7 +183,7 @@ let has_tests path src =
   || (is_test_file path
       && List.exists
            (fun l ->
-              (String.starts_with ~prefix:"is_" l || String.starts_with ~prefix:"function is_" l))
+              (String.starts_with ~prefix:"is_" l || String.starts_with ~prefix:"defn is_" l))
            (String.split_on_char '\n' src))
 
 let run_file (ctx : ctx) st path =

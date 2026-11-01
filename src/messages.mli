@@ -86,6 +86,70 @@ val invalid_limit : string -> string
 val unknown_limit : string -> string
 val internal : string -> string
 
+(** The texts of the reader of kepler.toml. *)
+val toml_utf8 : string
+val toml_control : string
+val toml_unsupported : string -> string
+val toml_strings_only : string
+val toml_expected : string -> string
+val toml_string_open : string
+val toml_array_open : string
+val toml_escape : char -> string
+val toml_twice : string -> string
+
+(** The texts of kepler do. *)
+val at_line : int -> string -> string
+val project_no_file : string
+val project_no_name : string
+val project_no_task : string
+val project_table : string -> string
+val project_outside : string -> string
+val project_field : string -> string -> string
+val project_type : string -> string -> string -> string
+val project_empty_run : string -> string
+val project_both : string -> string
+val project_without_file : string -> string -> string
+val project_missing : string -> string -> string
+val project_cycle : string -> string list -> string
+val project_listed_needs : string list -> string
+val project_bad_name : string -> string
+val project_exists : string -> string
+val project_created : string -> string
+val project_no_such_task : string -> string
+val project_cant_start : string -> string -> string
+
+val need_count : string -> string -> t
+val cant_sort : string -> string -> t
+val need_char : string -> t
+val need_byte : string -> t
+val json_value : string -> t
+val json_at : string -> int -> string
+val json_unexpected : string
+val json_short_escape : string
+val json_hex_escape : string
+val json_surrogate : string
+val json_open_text : string
+val json_bad_escape : string
+val json_control : string
+val json_digits : string
+val json_large : string
+val json_deep : string
+val json_no_value : string
+val json_no_comma_array : string
+val json_key : string
+val json_colon : string
+val json_no_comma_object : string
+val json_after : string
+val regex_bad : string -> t
+val process_ended : t
+val need_process : string -> string -> t
+val input_closed : t
+val dict_key : string -> t
+val dict_absent : string -> t
+val dict_index : t
+val dict_pair : string -> t
+val need_dict : string -> string -> t
+
 val pattern_mismatch : string -> string -> t
 val question_file : t
 val question_space : t
@@ -98,6 +162,18 @@ val c_no_function : string -> t
 val c_type : string -> t
 val c_void_arg : t
 val c_too_many : int -> t
+val c_no_ffi : t
+val c_bad_signature : t
+val c_need_struct : string -> t
+val c_small_block : int -> int -> t
+val c_need_callback : string -> t
+val c_need_function : string -> t
+val c_struct_empty : t
+val c_struct_field : string -> t
+val c_field_index : int -> int -> t
+val c_need_layout : string -> string -> t
+val c_variadic_type : string -> t
+val c_callback_type : string -> t
 val c_need_library : string -> t
 val c_version : string -> t
 val c_fit : string -> string -> t

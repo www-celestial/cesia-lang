@@ -3,7 +3,7 @@ use c
 lib = unwrap(c.open(args[1]))
 echo = unwrap(c.fn("echo_ptr", ["ptr"], "ptr", lib))
 
-function message(f)
+defn message(f)
   match wait(spawn(f))
     Err(e) -> print(e.message)
     Ok(v) -> print("no panic: $v")

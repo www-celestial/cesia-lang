@@ -1,0 +1,14 @@
+true
+true
+false
+false
+false
+false
+false
+true
+header_bytes.kp:15:27: is_header needs a number of bytes within the text, not the number 9.
+  15 | print(wait(spawn(() -> net.is_header(9, "a"))) then map_err(it.kind))
+     |                           ^
+  in <anonymous> (header_bytes.kp:15)
+Err(error = "type")
+exit 0

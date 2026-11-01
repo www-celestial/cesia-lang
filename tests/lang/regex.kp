@@ -1,0 +1,40 @@
+use regex
+
+defn fails(f, kind)
+  (wait(spawn(f)) then map_err(it.kind)) == Err(kind)
+end
+is_test() = regex.test("h.llo", "say hello") and not regex.test("h.llo", "hllo")
+is_anchors() = regex.test("^ab$", "ab") and not regex.test("^b", "ab") and not regex.test("a$", "ab")
+is_star() = regex.test("^ab*c$", "ac") and regex.test("^ab*c$", "abbbc")
+is_plus() = regex.test("^ab+$", "abb") and not regex.test("^ab+$", "a")
+is_optional() = regex.test("^colou?r$", "color") and regex.test("^colou?r$", "colour")
+is_alternation() = regex.test("^(cat|dog)$", "dog") and not regex.test("^(cat|dog)$", "cow")
+is_class() = regex.test("^[a-c]+$", "abcab") and not regex.test("^[a-c]+$", "abd")
+is_negated_class() = regex.test("^[^0-9]+$", "abc") and not regex.test("^[^0-9]+$", "a1")
+is_escapes() = regex.test("^\d+$", "123") and regex.test("^\w+$", "a_1") and regex.test("^\s$", " ") and not regex.test("^\D$", "1")
+is_escaped_dot() = regex.test("^a\.b$", "a.b") and not regex.test("^a\.b$", "axb")
+is_counts() = regex.test("^a{2,3}$", "aa") and regex.test("^a{2,3}$", "aaa") and not regex.test("^a{2,3}$", "aaaa") and regex.test("^a{2}$", "aa") and regex.test("^a{2,}$", "aaaaa")
+is_word_boundary() = regex.test("\bcat\b", "a cat b") and not regex.test("\bcat\b", "concat")
+is_accents() = regex.test("^.$", "é") and regex.test("^[é]$", "é") and regex.test("^[à-ÿ]+$", "éè")
+is_ignore_case() = regex.test("(?i)^hello$", "HeLLo")
+is_find() = regex.find("b+", "aabbbc").text == "bbb"
+is_find_position() = equal([regex.find("b+", "éabbc").start, regex.find("b+", "éabbc").stop], [3, 4])
+is_find_none() = is_missing(regex.find("z", "abc"))
+is_groups() = equal(regex.find("(\d+)-(\d+)", "tel 12-34").groups, ["12", "34"])
+is_group_unused() = equal(regex.find("(a)|(b)", "b").groups, [missing, "b"])
+is_lazy() = regex.find("a.*?b", "axbxb").text == "axb"
+is_greedy() = regex.find("a.*b", "axbxb").text == "axbxb"
+is_leftmost() = regex.find("b|abc", "abc").text == "abc"
+is_non_capturing() = equal(regex.find("(?:a)(b)", "ab").groups, ["b"])
+is_find_all() = equal(map(it.text, regex.find_all("\d+", "a1 b22 c333")), ["1", "22", "333"])
+is_find_all_empty() = length(regex.find_all("x*", "ab")) == 3
+is_replace() = regex.replace("\d+", "#", "a1 b22") == "a# b#"
+is_replace_groups() = regex.replace("(\w+)@(\w+)", "$2 at $1", "me@home") == "home at me"
+is_replace_whole() = regex.replace("a", "[$0]", "bab") == "b[a]b"
+is_split() = equal(regex.split(",\s*", "a, b,c"), ["a", "b", "c"])
+is_bad_pattern() = all([fails(() -> regex.test(p, "a"), "type") for p in ["(", ")", "[a", "a{2", "*", "\\", "a{3,2}"]])
+is_no_blowup() = regex.test("^(a+)+$", "$(repeat(5000, "a"))!") == false
+is_many_counts() = fails(() -> regex.test("(a{1000}){1000}", "a"), "type")
+is_empty_repeat_bomb() = fails(() -> regex.test("(?:){1000}{1000}{1000}", "a"), "type") and fails(() -> regex.test("a{0}{1000}{1000}{1000}", "a"), "type")
+is_too_many_groups() = fails(() -> regex.test("$(repeat(2000, "()"))x", "a"), "type")
+is_class_too_large() = fails(() -> regex.test("[$(repeat(100000, "a"))]", "a"), "type")

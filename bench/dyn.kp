@@ -1,4 +1,4 @@
-function dyn(n)
+defn dyn(n)
   ops = [(a, b) -> a + b, (a, b) -> a * 0.5 + b]
   xs = [1, 2.5, 3, 4.5]
   total = 0.0

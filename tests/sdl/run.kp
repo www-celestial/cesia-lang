@@ -2,7 +2,7 @@ use "./probe"
 use sdl
 use sys
 
-function update(event, state)
+defn update(event, state)
   match event
     {kind: "quit"} -> missing
     {kind: "text", text} -> {typed: "$(state.typed)$text"}
@@ -10,18 +10,18 @@ function update(event, state)
   end
 end
 
-function view(state)
+defn view(state)
   print("view ""$(state.typed)""")
   [{kind: "clear", color: 0x000000}, {kind: "text", x: 8, y: 8, text: state.typed, color: 0xFFFFFF}]
 end
 
-function later()
+defn later()
   sys.sleep(0.03)
   probe.push_text([0x63])
   probe.push_quit()
 end
 
-function check()
+defn check()
   window = sdl.open("test", 320, 200, "../../kepacs/fonts/JetBrainsMono-Regular.ttf")?
   probe.push_text([0x61])
   probe.push_text([0x62])

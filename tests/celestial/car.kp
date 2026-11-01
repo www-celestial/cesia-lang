@@ -3,7 +3,7 @@ car = Car(250, 16000)
 bump(t) = if t < 0.5 0.05 else 0 end
 peak = 0.06422160859527065
 
-function euler(car, u, dt, n)
+defn euler(car, u, dt, n)
   x = zeros(2, n)
   for i in 2:n
     t = (i - 1) * dt
@@ -17,12 +17,12 @@ end
 step(car, u, dt) = (s, t) -> {x: s.x + dt * s.v,
                               v: s.v + dt * (-car.k * (s.x - u(t)) - car.c * s.v) / car.m}
 
-function is_imperative()
+defn is_imperative()
   path = euler(car, bump, 0.001, 8001)
   abs(max(path[1, :]) - peak) < 1e-12
 end
 
-function is_functional()
+defn is_functional()
   states = range(0, 8, step = 0.001) then scan(step(car, bump, 0.001), {x: 0, v: 0})
   length(states) == 8001 and abs(max(states.x) - peak) < 1e-12
 end

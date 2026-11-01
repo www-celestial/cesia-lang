@@ -1,0 +1,113 @@
+-- More than 6 arguments, structures by value, variadic functions and callbacks.
+use c
+
+path = args[1]
+lib = unwrap(c.open(path))
+ok(r) = unwrap(r)
+
+defn fails(f)
+  r = wait(spawn(f))
+  match r
+    Ok(v) -> "no failure: $v"
+    Err(e) -> e.message
+  end
+end
+
+-- More than 6 arguments.
+sum8 = ok(c.fn("sum_eight", ["i64", "i32", "i64", "i32", "i64", "i32", "i64", "i32"], "i64", lib))
+print(sum8(1, 2, 3, 4, 5, 6, 7, 8))
+sum10 = ok(c.fn("sum_ten", fill("f64", 10), "f64", lib))
+print(sum10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+
+-- Structures by value.
+point = c.struct(["f32", "f32"])
+print(c.size(point), c.offset(2, point))
+add = ok(c.fn("point_add", [point, point], point, lib))
+a = c.alloc(c.size(point))
+b = c.alloc(c.size(point))
+c.set("f32", 0, 1.5, a)
+c.set("f32", 4, 2.5, a)
+c.set("f32", 0, 10.0, b)
+c.set("f32", 4, 20.0, b)
+r = add(a, b)
+print(c.get("f32", 0, r), c.get("f32", 4, r))
+dot = ok(c.fn("point_dot", [point, "f32"], "f64", lib))
+print(dot(a, 2.0))
+
+big = c.struct(["i64", "i64", "i64", "f64"])
+print(c.size(big), c.offset(4, big))
+make = ok(c.fn("big_make", ["i64"], big, lib))
+total = ok(c.fn("big_sum", [big], "f64", lib))
+made = make(10)
+print(c.get("i64", 16, made), c.get("f64", 24, made), total(made))
+
+mixed = c.struct(["i8", "f64"])
+print(c.size(mixed), c.offset(2, mixed))
+mix = ok(c.fn("mixed_make", ["i8", "f64"], mixed, lib))
+read = ok(c.fn("mixed_read", [mixed], "f64", lib))
+print(read(mix(3, 0.25)))
+
+-- Variadic functions: the types of one call are given when binding.
+ints = ok(c.variadic("sum_ints", ["i32"], ["i32", "i32", "i32"], "i64", lib))
+print(ints(3, 10, 20, 30))
+floats = ok(c.variadic("sum_doubles", ["i32"], ["f64", "f64"], "f64", lib))
+print(floats(2, 1.5, 2.5))
+
+-- Callbacks.
+twice = ok(c.fn("apply_twice", ["callback", "i64"], "i64", lib))
+print(twice(c.callback(x -> x * 3, ["i64"], "i64"), 2))
+floaty = ok(c.fn("apply_float", ["callback", "f64"], "f64", lib))
+print(floaty(c.callback((x, y) -> x + y, ["f64", "f32"], "f64"), 1.0))
+texty = ok(c.fn("apply_text", ["callback", "text"], "i32", lib))
+print(texty(c.callback(s -> length(s), ["text"], "i32"), "héllo"))
+nothing = ok(c.fn("apply_nothing", ["callback", "ptr"], "void", lib))
+print(nothing(c.callback(p -> print("called with", is_missing(p)), ["ptr"], "void"), missing))
+
+sorter = ok(c.fn("sort_ints", ["ptr", "i32", "callback"], "void", lib))
+items = c.alloc(20)
+for k in 1:5
+  c.set("i32", (k - 1) * 4, 10 - 3 * mod(k * 2, 5), items)
+end
+sorter(items, 5, c.callback((x, y) -> x - y, ["i32", "i32"], "i32"))
+print([c.get("i32", (k - 1) * 4, items) for k in 1:5])
+
+-- A callback kept by C and called later, from a function that says so.
+keep = ok(c.fn("keep_callback", ["callback"], "void", lib))
+keep(c.callback(x -> x + 1, ["i64"], "i64"))
+kept = ok(c.fn("call_kept", ["i64"], "i64", lib, calls_back = true))
+print(kept(41))
+
+
+-- A panic in a callback comes back to the caller.
+print(fails(() -> twice(c.callback(x -> panic("from the callback"), ["i64"], "i64"), 1)))
+print(fails(() -> twice(c.callback(x -> "text", ["i64"], "i64"), 1)))
+print(fails(() -> add(a, 5)))
+print(fails(() -> add(a, c.alloc(4))))
+print(fails(() -> c.callback(1, ["i64"], "i64")))
+print(fails(() -> twice(5, 1)))
+print(fails(() -> c.struct([])))
+print(fails(() -> c.struct(["text"])))
+print(fails(() -> c.offset(9, point)))
+
+-- A callback that waits for another fiber runs the scheduler inside the C call.
+task = spawn(() -> 7)
+print(twice(c.callback(x -> x + unwrap(wait(task)), ["i64"], "i64"), 1))
+
+-- A panic deep in a callback leaves the next ones working.
+print(fails(() -> twice(c.callback(x -> panic("deep"), ["i64"], "i64"), 1)))
+print(twice(c.callback(x -> x + 1, ["i64"], "i64"), 1))
+-- A callback that frees a block C is reading: it stays alive until the call ends.
+sorted = c.alloc(20)
+for k in 1:5
+  c.set("i32", (k - 1) * 4, 6 - k, sorted)
+end
+defn free_then_compare(x, y)
+  if x == 5 and y == 4
+    c.free(sorted)
+  end
+  x - y
+end
+
+sorter(sorted, 5, c.callback(free_then_compare, ["i32", "i32"], "i32"))
+print(fails(() -> c.get("i32", 0, sorted)))
+print(fails(() -> c.variadic("sum_ints", fill("i32", 40), fill("i32", 40), "i64", lib)))

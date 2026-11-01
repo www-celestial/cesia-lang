@@ -1,0 +1,3 @@
+s = repeat(1000000, "a")
+p = "$(repeat(500000, "a"))b"
+print(find(p, s), contains(p, s), byte_find(p, 1, s))

@@ -1,6 +1,6 @@
 use sys
 
-function nap(seconds, label)
+defn nap(seconds, label)
   sys.sleep(seconds)
   print(label)
 end

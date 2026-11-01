@@ -30,6 +30,9 @@ val ok : world -> t -> t
 
 val err : world -> t -> t
 
+(** An [Err] of a value with a kind and a message. *)
+val failure : world -> string -> string -> t
+
 (** The value written as code. *)
 val show : ctx -> t -> string
 
@@ -41,3 +44,6 @@ val describe : t -> string
 
 (** Equality of whole values: [equal nan nan] is true. *)
 val equal : ctx -> t -> t -> bool
+
+(** Folds a dictionary from its last key to its first. *)
+val dict_fold : (t -> t -> 'a -> 'a) -> dict -> 'a -> 'a

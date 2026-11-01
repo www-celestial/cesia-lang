@@ -3,6 +3,11 @@
  (modules engine_test)
  (libraries kepler))
 
+(test
+ (name toml_test)
+ (modules toml_test)
+ (libraries kepler))
+
 (executable
  (name fuzz)
  (modules fuzz)

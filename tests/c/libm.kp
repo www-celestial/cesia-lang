@@ -1,6 +1,6 @@
 use c
 
-function check()
+defn check()
   m = c.open("m", version = 6)?
   libc = c.open("c", version = 6)?
   cos = c.fn("cos", ["f64"], "f64", m)?

@@ -2,7 +2,7 @@
 -- Commands: break F L, clear F L, continue, step, next, out, print NAME, where.
 use debug
 
-function show_variable(frame, name)
+defn show_variable(frame, name)
   found = filter(it.name == name, frame.vars)
   if length(found) == 0
     print("No variable ""$name"".")
@@ -11,17 +11,17 @@ function show_variable(frame, name)
   end
 end
 
-function show_frames(stop)
+defn show_frames(stop)
   for f in stop.frames
     print("  $(f.function) ($(f.file):$(f.line))")
   end
 end
 
-function is_resume(word)
+defn is_resume(word)
   word == "continue" or word == "step" or word == "next" or word == "out"
 end
 
-function run_command(stop, w)
+defn run_command(stop, w)
   n = length(w)
   if n == 3 and w[1] == "break"
     debug.set_break(w[2], w[3])
@@ -38,7 +38,7 @@ function run_command(stop, w)
   end
 end
 
-function on_stop(stop)
+defn on_stop(stop)
   print("stopped at $(stop.file):$(stop.line) ($(stop.reason))")
   while true
     line = debug.read_line()

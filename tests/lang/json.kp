@@ -1,0 +1,48 @@
+use json
+
+defn fails(f, kind)
+  (wait(spawn(f)) then map_err(it.kind)) == Err(kind)
+end
+ok(s) = unwrap(json.parse(s))
+is_null() = is_missing(ok("null"))
+is_bools() = ok("true") == true and ok("false") == false
+is_whole() = ok("42") == 42 and is_int(ok("-7"))
+is_decimal() = ok("1.5") == 1.5 and ok("1e3") == 1000.0 and is_float(ok("2.0"))
+is_big_int() = is_float(ok("123456789012345678901234567890"))
+is_text() = ok("""a""") == "a"
+is_escapes() = ok("\"\\n\\t\\\"\\\\\\/\"") == "\n\t\"\\/"
+is_unicode() = ok("""\u00e9""") == "é" and ok("""\ud83d\ude00""") == "😀"
+is_array() = equal(ok("[1, ""a"", null, [2]]"), [1, "a", missing, [2]])
+is_empty_array() = equal(ok("[]"), [])
+is_object() = equal(ok("{""a"": 1, ""b"": [true]}"), {"a": 1, "b": [true]})
+is_empty_object() = equal(ok("{}"), dict())
+is_spaces() = equal(ok(" \n { ""a"" : 1 } \t"), {"a": 1})
+is_later_key() = ok("{""a"": 1, ""a"": 2}")["a"] == 2
+is_nested() = ok("{""a"": {""b"": [{""c"": 1}]}}")["a"]["b"][1]["c"] == 1
+bad(s) = is_err(json.parse(s))
+is_bad_inputs() = all([bad(s) for s in ["", "{", "[1,", "tru", "01", "1.", "[1 2]", "{1: 2}", """a", """\x""", "nul", "[1]]", "-", """\ud83d"""]])
+is_error_shape() = (json.parse("{") then map_err(it.kind)) == Err("json")
+is_too_deep() = bad(repeat(5000, "["))
+is_deep_enough() = is_ok(json.parse("$(repeat(200, "["))$(repeat(200, "]"))"))
+is_write_scalars() = json.text(1) == "1" and json.text(1.5) == "1.5" and json.text(true) == "true" and json.text(missing) == "null"
+is_write_control() = json.text(char(1)) == "\"\\u0001\""
+is_write_array() = json.text([1, "a", [true]]) == "[1,""a"",[true]]"
+is_write_struct() = json.text({a: 1, b: "x"}) == "{""a"":1,""b"":""x""}"
+is_write_dict() = json.text({"z": 1, 2: 3}) == "{""2"":3,""z"":1}"
+is_write_whole_float() = json.text(2.0) == "2.0"
+is_write_nan() = fails(() -> json.text(0.0 / 0.0), "type")
+is_write_function() = fails(() -> json.text(print), "type")
+is_round_trip() = equal(ok(json.text({"a": [1, 2.5, "x", missing, {"b": true}]})), {"a": [1, 2.5, "x", missing, {"b": true}]})
+is_pretty() = json.pretty({"a": [1]}) == "{\n  ""a"": [\n    1\n  ]\n}"
+is_pretty_empty() = json.pretty([]) == "[]"
+is_write_text() = json.text("a\"\n\\é") == "\"a\\\"\\n\\\\é\""
+is_nesting_stays_in_its_fiber() = is_err(wait(spawn(() -> text(deep(700))))) and text(1) == "1"
+is_huge_exponent() = bad("1e999")
+
+defn deep(n)
+  x = 1
+  for k in 1:n
+    x = {a: x}
+  end
+  x
+end

@@ -5,7 +5,7 @@ orders = [{status: "paid", region: "EMEA", amount: 100},
           {status: "paid", region: "AMER", amount: 50},
           {status: "paid", region: "LATAM", amount: 20}]
 
-function is_top_three()
+defn is_top_three()
   top3 = orders
     then filter(it.status == "paid")
     then group(it.region, summary = g -> {total: sum(g.amount)})

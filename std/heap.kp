@@ -1,0 +1,38 @@
+-- A persistent leftist heap: the smallest key comes out first.
+
+empty() = missing
+is_empty(h) = is_missing(h)
+_rank(h) = if is_missing(h) 0 else h.rank end
+
+defn _node(key, value, a, b)
+  if _rank(a) >= _rank(b)
+    {key: key, value: value, left: a, right: b, rank: _rank(b) + 1}
+  else
+    {key: key, value: value, left: b, right: a, rank: _rank(a) + 1}
+  end
+end
+
+defn merge(a, b)
+  if is_missing(a)
+    b
+  else if is_missing(b)
+    a
+  else if a.key <= b.key
+    _node(a.key, a.value, a.left, merge(a.right, b))
+  else
+    _node(b.key, b.value, b.left, merge(a, b.right))
+  end
+end
+
+insert(key, value, h) = merge(_node(key, value, missing, missing), h)
+peek(h) = {key: h.key, value: h.value}
+pop(h) = merge(h.left, h.right)
+
+defn items(h)
+  out = dict()
+  while not is_missing(h)
+    out[length(out) + 1] = peek(h)
+    h = pop(h)
+  end
+  values(out)
+end

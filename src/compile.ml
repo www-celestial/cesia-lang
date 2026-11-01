@@ -235,8 +235,11 @@ let step_read ctx v st =
 let step_write ctx v st x =
   match st with
   | Rindex ixs ->
-    Arrays.write ctx v ixs x;
-    v
+    (match v with
+     | Dict d -> Dict (Dict.add ctx (Arrays.key_of ctx ixs) (Value.share x) d)
+     | _ ->
+       Arrays.write ctx v ixs x;
+       v)
   | Rfield name ->
     (match v with
      | Struct r ->
@@ -249,6 +252,12 @@ let step_write ctx v st x =
          | Some sn -> Runtime.fail ctx Field (Messages.named_field sn name)
          | None -> Value.add_field ctx.w r.shape r.fields name x)
      | _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name))
+
+(* The slow path of a write to a variable: owns its value, writes, and stores it again if the write gave a new one. *)
+let write_root ctx set x st y =
+  let top = Runtime.own ctx x in
+  let after = step_write ctx top st y in
+  if after != x then set ctx after
 
 let new_proto ~file ~m (f : func) =
   { pname = f.fname; file; pm = m; func = f; versions = []; generic = None; by_tag = [];
@@ -1177,7 +1186,7 @@ and interp c parts pos =
           ctx.site <- s;
           let text = Value.text_of ctx v in
           Runtime.reserve ctx ((String.length text / 8) + 1);
-          Runtime.charge ctx ((String.length text / 128) + 1);
+          Runtime.pay_bytes ctx (String.length text);
           (try Buffer.add_string b text
            with Out_of_memory | Failure _ -> raise (Value.Limit { what = "memory"; at = s })))
       parts;
@@ -1905,9 +1914,7 @@ and fa_write1 c root sp i value =
       Float.Array.set d (p - 1) y
     | x ->
       ctx.site <- s;
-      let top = Runtime.own ctx x in
-      if top != x then set ctx top;
-      Arrays.write ctx top [| Arrays.At p |] (Float y)
+      write_root ctx set x (Rindex [| Arrays.At p |]) (Float y)
 
 and fa_write2 c root sp i j value =
   let ix = ci c i and jx = ci c j and v = cf c value and s = site c sp in
@@ -1922,9 +1929,7 @@ and fa_write2 c root sp i j value =
       Float.Array.set d (((q - 1) * rows) + p - 1) y
     | x ->
       ctx.site <- s;
-      let top = Runtime.own ctx x in
-      if top != x then set ctx top;
-      Arrays.write ctx top [| Arrays.At p; Arrays.At q |] (Float y)
+      write_root ctx set x (Rindex [| Arrays.At p; Arrays.At q |]) (Float y)
 
 (* x[i] = y in an owned array: no index allocation. *)
 and set_elt c e root sp ix value =
@@ -1942,9 +1947,7 @@ and set_elt c e root sp ix value =
       | Array ({ a_owned = true; _ } as a) when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
       | _ ->
         ctx.site <- s;
-        let top = Runtime.own ctx x in
-        if top != x then set ctx top;
-        Arrays.write ctx top [| Arrays.At k |] y
+        write_root ctx set x (Rindex [| Arrays.At k |]) y
   end else
   let idx = cv c ix in
   fun ctx ->
@@ -1955,9 +1958,7 @@ and set_elt c e root sp ix value =
     | Array ({ a_owned = true; _ } as a), Int k when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
     | _ ->
       ctx.site <- s;
-      let top = Runtime.own ctx x in
-      if top != x then set ctx top;
-      Arrays.write ctx top [| Arrays.ix_of ctx i |] y
+      write_root ctx set x (Rindex [| Arrays.ix_of ctx i |]) y
 
 and set_general c _e root path value =
   let read = var c { id = 0; pos = path.(0).sp; e = Var root } root in
@@ -2010,27 +2011,29 @@ and set_general c _e root path value =
     in
     let y = v ctx in
     ctx.site <- fst steps.(0);
-    let top = Runtime.own ctx root_value in
-    if top != root_value then set ctx top;
-    let container = ref top in
-    let parent = ref None in
+    let container = ref (Runtime.own ctx root_value) in
+    let chain = ref [] in
     for k = 0 to n - 2 do
       let s, st = resolved.(k) in
       ctx.site <- s;
       let child = step_read ctx !container st in
-      let child' = Runtime.own ctx child in
-      if child' != child then ignore (step_write ctx !container st child');
-      parent := Some (!container, st);
-      container := child'
+      chain := (!container, st, s, child) :: !chain;
+      container := Runtime.own ctx child
     done;
     let s, st = resolved.(n - 1) in
     ctx.site <- s;
-    let after = step_write ctx !container st y in
-    if after != !container then begin
-      match !parent with
-      | None -> set ctx after
-      | Some (p, pst) -> ignore (step_write ctx p pst after)
-    end
+    (* A copied child, a struct with a new field and a dictionary all change their parent, up to the root. *)
+    let rec climb value = function
+      | [] -> value
+      | (parent, st, s, child) :: rest ->
+        if value == child then climb parent rest
+        else begin
+          ctx.site <- s;
+          climb (step_write ctx parent st value) rest
+        end
+    in
+    let top = climb (step_write ctx !container st y) !chain in
+    if top != root_value then set ctx top
 
 (* Binds a destructuring pattern: a failure is an error. *)
 and cpat c (pt : pat) pos : ctx -> t -> unit =

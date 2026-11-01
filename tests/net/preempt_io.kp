@@ -1,11 +1,11 @@
 use net
 use sys
 
-function forever()
+defn forever()
   while true end
 end
 
-function answer(listener)
+defn answer(listener)
   c = net.accept(listener)?
   net.write(c, "pong")?
   Ok(missing)

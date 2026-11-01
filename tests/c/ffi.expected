@@ -1,0 +1,33 @@
+204
+385.0
+8 4
+11.5 22.5
+8.0
+32 24
+12 10.5 43.5
+16 8
+3.25
+60
+4.0
+18
+1.5
+5
+called with true
+missing
+[-2, 1, 4, 7, 10]
+42
+from the callback
+i64 needs an integer, not the text "text".
+A structure needs a block, not the number 5.
+This block has 4 bytes, and the structure takes 8.
+c.callback needs a function, not the number 1.
+callback needs a callback, not the number 5.
+c.struct needs at least one field.
+text can't be a field of a structure.
+Field 9 is outside this structure of 2 fields.
+15
+deep
+3
+This block was freed.
+A C function takes at most 60 arguments, not 80.
+exit 0

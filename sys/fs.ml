@@ -1,20 +1,20 @@
 open Kepler
 open Types
 
-let failure w kind text =
-  let shape = Value.shape_of w [| "kind"; "message" |] in
-  Value.err w (Struct { shape; fields = [| Text kind; Text text |]; r_owned = true })
-
+let failure = Value.failure
 let io_error w text = failure w "io" text
-
 let reason e = String.uncapitalize_ascii (Unix.error_message e)
+let failed ctx verb target e = io_error ctx.w (Messages.io_failure verb target (reason e)).text
+
+let retry = function
+  | Unix.EAGAIN | Unix.EWOULDBLOCK | Unix.EINTR -> true
+  | _ -> false
 
 (* Runs an operation on [path]: its value in an Ok, or a failure in an Err. *)
 let attempt ctx verb path f =
   match f () with
   | v -> Value.ok ctx.w v
-  | exception Unix.Unix_error (e, _, _) ->
-    io_error ctx.w (Messages.io_failure verb path (reason e)).text
+  | exception Unix.Unix_error (e, _, _) -> failed ctx verb path e
 
 let path_arg ctx name perm v =
   let path = Native.text_arg ctx name v in
@@ -84,6 +84,16 @@ let natives =
         write_all path [ Unix.O_APPEND ] (Native.text_arg ctx "append" a.(1)));
     on_path "list" Read "list" 1 (fun _ path _ -> list_dir path);
     on_path "remove" Write "remove" 1 (fun _ path _ -> remove path);
+    on_path "stat" Read "read" 1 (fun ctx path _ ->
+        let s = Unix.stat path in
+        let shape = Value.shape_of ctx.w [| "size"; "modified"; "is_dir" |] in
+        Struct
+          { shape;
+            fields = [| Int s.st_size; Float s.st_mtime; Value.of_bool (s.st_kind = Unix.S_DIR) |];
+            r_owned = true });
+    on_path "rename" Write "rename" 2 (fun ctx path a ->
+        Unix.rename path (path_arg ctx "rename" Write a.(1));
+        Missing);
     on_path "mkdir" Write "create" 1 (fun _ path _ -> make_dir path; Missing);
     "exists",
     Native.nat "exists" 1 1 (fun ctx a -> Value.of_bool (Sys.file_exists (path_arg ctx "exists" Read a.(0))));

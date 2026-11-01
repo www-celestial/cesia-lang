@@ -1,0 +1,5 @@
+open.kp:4:4: Permission "ffi" denied. Run again with --allow ffi.
+  4 |   c.open("m", version = 6)?
+    |    ^
+  in check (open.kp:4)
+exit 1

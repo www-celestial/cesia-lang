@@ -179,6 +179,8 @@ let () =
     | _ :: "version" :: _ -> print_endline Version.text
     | _ :: "run" :: args -> run args
     | _ :: "test" :: args -> test args
+    | _ :: "do" :: args -> Project.run args
+    | [ _; "new"; name ] -> Project.create name
     | _ -> usage ()
   with
   | Stdlib.Exit as e -> raise e

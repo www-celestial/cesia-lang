@@ -1,0 +1,47 @@
+defn fails(f, kind)
+  (wait(spawn(f)) then map_err(it.kind)) == Err(kind)
+end
+is_push() = equal(push(3, [1, 2]), [1, 2, 3]) and equal(push("a", []), ["a"])
+is_concat() = equal(concat([1], [2, 3]), [1, 2, 3]) and equal(concat([], []), [])
+is_reverse() = equal(reverse([1, 2, 3]), [3, 2, 1])
+is_take() = equal(take(2, [1, 2, 3]), [1, 2]) and equal(take(9, [1]), [1]) and equal(take(0, [1]), [])
+is_skip() = equal(skip(1, [1, 2, 3]), [2, 3]) and equal(skip(9, [1]), [])
+is_index_of() = index_of(2, [1, 2]) == 2 and is_missing(index_of(9, [1]))
+is_sort() = equal(sort([3, 1.5, 2]), [1.5, 2, 3]) and equal(sort(["b", "a"]), ["a", "b"])
+is_sort_keeps_the_original() = equal(kept(), [2, 1])
+is_order() = equal(order([30, 10, 20]), [2, 3, 1])
+is_order_stable() = equal(order([1, 1, 0]), [3, 1, 2])
+is_sort_by() = equal(sort_by(it.age, [{age: 3}, {age: 1}]), [{age: 1}, {age: 3}])
+is_sort_mixed() = fails(() -> sort([1, "a"]), "type")
+is_unique() = equal(unique([1, 2, 1, "a", "a", 1.0]), [1, 2, "a"])
+is_unique_any() = equal(unique([[1], [1], {a: 1}, {a: 1}]), [[1], {a: 1}])
+is_flatten() = equal(flatten([[1, 2], [3], 4]), [1, 2, 3, 4])
+is_zip() = equal(zip([1, 2, 3], ["a", "b"]), [[1, "a"], [2, "b"]])
+is_count() = count(it > 1, [1, 2, 3]) == 2
+is_flat_map() = equal(flat_map(x -> [x, x], [1, 2]), [1, 1, 2, 2])
+is_map_values() = equal(map_values(it * 2, {"a": 1}), {"a": 2})
+is_upper() = upper("aB-é") == "AB-é"
+is_ends_with() = ("hello" then ends_with("llo")) and not ("lo" then ends_with("hello"))
+is_find() = find("l", "été hello") == 7 and is_missing(find("z", "a")) and find("", "a") == 1
+is_repeat() = repeat(3, "ab") == "ababab" and repeat(0, "a") == ""
+is_chars() = equal(chars("aé"), ["a", "é"])
+is_code() = code("é") == 233 and code("a") == 97
+is_lines() = equal(lines("a\nb\r\nc\n"), ["a", "b", "c"]) and equal(lines(""), [])
+is_pad_left() = pad_left(3, "0", "7") == "007" and pad_left(1, "0", "12") == "12"
+is_pad_right() = pad_right(3, ".", "é") == "é.."
+is_bytes() = equal(bytes("é"), [195, 169]) and from_bytes([195, 169]) == "é"
+is_byte() = byte(1, "a") == 97 and byte_length("é") == 2
+is_byte_slice() = byte_slice(2, 3, "abcd") == "bc"
+is_byte_find() = byte_find("c", 1, "abcabc") == 3 and byte_find("c", 4, "abcabc") == 6 and is_missing(byte_find("z", 1, "a"))
+is_repeat_too_big() = fails(() -> repeat(-1, "a"), "type")
+
+defn kept()
+  xs = [2, 1]
+  sort(xs)
+  xs
+end
+is_bits() = bit_and(12, 10) == 8 and bit_or(12, 10) == 14 and bit_xor(12, 10) == 6 and bit_not(0) == -1
+is_shift() = bit_shift(1, 4) == 16 and bit_shift(16, -4) == 1 and bit_shift(1, 70) == 0 and bit_shift(-1, -1) > 0
+is_xor_bytes() = xor_bytes("a", xor_bytes("a", "hello")) == "hello" and byte(1, xor_bytes("ab", "a")) == 0
+is_repeat_empty() = repeat(1000000000000, "") == ""
+is_pad_empty_filler() = pad_left(5, "", "a") == "a"

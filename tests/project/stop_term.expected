@@ -1,0 +1,3 @@
+> sh -c "trap 'exit 0' TERM; echo started; sleep 1 & wait"
+started
+exit 1

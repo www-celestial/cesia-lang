@@ -1,0 +1,12 @@
+Ok(value = "hello
+")
+Ok(value = "err
+")
+3
+true
+Ok(value = 2) Ok(value = "late
+")
+Err(error = "This process has ended.")
+Ok(value = missing)
+Err(error = {kind: "io", message: "Can't run kepler_no_such_command: no such file or directory."})
+exit 0

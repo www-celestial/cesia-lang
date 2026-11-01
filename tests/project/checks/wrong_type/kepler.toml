@@ -1,0 +1,8 @@
+[project]
+name = "x"
+
+[tasks.build]
+run = ["true"]
+
+[tasks.test]
+run = "x"

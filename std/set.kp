@@ -1,0 +1,13 @@
+-- Sets of numbers and texts: the keys of a dictionary, in order.
+
+empty() = dict()
+of(xs) = reduce((s, x) -> put(x, true, s), dict(), xs)
+add(x, s) = put(x, true, s)
+remove(x, s) = drop(x, s)
+member(x, s) = has(x, s)
+items(s) = keys(s)
+count(s) = length(s)
+union(a, b) = reduce((s, x) -> put(x, true, s), a, keys(b))
+intersection(a, b) = of([x for x in keys(a) if has(x, b)])
+difference(a, b) = of([x for x in keys(a) if not has(x, b)])
+subset(a, b) = all([has(x, b) for x in keys(a)])

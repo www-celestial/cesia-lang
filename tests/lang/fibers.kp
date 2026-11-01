@@ -1,9 +1,9 @@
 add(a, b) = a + b
-function wait_twice()
+defn wait_twice()
   t = spawn(() -> 1)
   wait(t) == wait(t)
 end
-function copied()
+defn copied()
   a = [1, 2]
   t = spawn(() -> a[1])
   a[1] = 9

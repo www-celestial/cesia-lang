@@ -1,4 +1,4 @@
-function inner(n)
+defn inner(n)
   n + 1
 end
 big = zeros(3)

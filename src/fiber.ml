@@ -104,6 +104,10 @@ let spawn (ctx : ctx) g =
     | exception (Value.Kerr { text; kind; at; _ } as e) ->
       w.on_panic fiber e;
       finish (Value.err w (panic_value w text kind at))
+    | exception (Value.Limit { what = "nesting"; _ } as e) ->
+      (* A value too deep to show is the problem of this fiber. The steps and the memory belong to the whole program. *)
+      w.on_panic fiber e;
+      finish (Value.err w (panic_value w (Messages.limit "nesting").text Type fiber.site))
   in
   Queue.add (fun () -> start w fiber body) s.ready;
   Handle { kind = "task"; id; task = Some task }

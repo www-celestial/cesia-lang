@@ -4,6 +4,7 @@ open Types
 type t = {
   poll : Poll.t;
   sockets : (int, Unix.file_descr) Hashtbl.t;
+  deadlines : (int, float) Hashtbl.t;  (* net.arm: when a socket gets closed *)
   buffer : Bytes.t;  (* shared by reads: nothing suspends between a read and copying its bytes *)
   mutable stopping : bool;
   mutable handlers : bool;
@@ -13,13 +14,9 @@ let chunk_size = 65536
 let exit_on_second_signal = 130
 
 let create poll =
-  { poll; sockets = Hashtbl.create 64; buffer = Bytes.create chunk_size; stopping = false; handlers = false }
+  { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; buffer = Bytes.create chunk_size; stopping = false; handlers = false }
 
 let stopping n = n.stopping
-
-let retry = function
-  | Unix.EAGAIN | Unix.EWOULDBLOCK | Unix.EINTR -> true
-  | _ -> false
 
 (* The first stop signal asks accept to end; the second one doesn't wait. *)
 let install_handlers n =
@@ -60,8 +57,6 @@ let with_socket n ctx name v f =
 
 let stopped ctx = Fs.failure ctx.w "stopped" Messages.server_stopped.text
 
-let failed ctx verb target e = Fs.io_error ctx.w (Messages.io_failure verb target (Fs.reason e)).text
-
 let port_arg ctx (v : Types.t) =
   match v with
   | Int p when p >= 0 && p < 65536 -> p
@@ -92,7 +87,7 @@ let listen n ctx (a : Types.t array) =
        raise e)
   with
   | fd -> Value.ok ctx.w (handle n ctx fd)
-  | exception Unix.Unix_error (e, _, _) -> failed ctx "listen on" target e
+  | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "listen on" target e
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
 
 let accept n ctx (a : Types.t array) =
@@ -105,10 +100,10 @@ let accept n ctx (a : Types.t array) =
           | c, _ ->
             Unix.setsockopt c Unix.TCP_NODELAY true;
             Value.ok ctx.w (handle n ctx c)
-          | exception Unix.Unix_error (e, _, _) when retry e ->
+          | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
             Poll.read_ready n.poll ctx fd;
             if Hashtbl.mem n.sockets (socket_arg ctx "accept" a.(0)) then go () else closed ctx
-          | exception Unix.Unix_error (e, _, _) -> failed ctx "accept on" "this socket" e
+          | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "accept on" "this socket" e
       in
       go ())
 
@@ -121,11 +116,11 @@ let connect n ctx (a : Types.t array) =
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
   | addr ->
     match Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 with
-    | exception Unix.Unix_error (e, _, _) -> failed ctx "connect to" target e
+    | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "connect to" target e
     | fd ->
       let give_up e =
         Unix.close fd;
-        failed ctx "connect to" target e
+        Fs.failed ctx "connect to" target e
       in
       Unix.set_nonblock fd;
       let finish () =
@@ -151,13 +146,13 @@ let read n ctx (a : Types.t array) =
     | Some fd ->
       (match Unix.read fd n.buffer 0 chunk_size with
        | got -> Value.ok ctx.w (Text (Bytes.sub_string n.buffer 0 got))
-       | exception Unix.Unix_error (e, _, _) when retry e ->
+       | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
          if n.stopping then stopped ctx
          else begin
            Poll.read_ready n.poll ctx fd;
            go ()
          end
-       | exception Unix.Unix_error (e, _, _) -> failed ctx "read from" "this socket" e)
+       | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "read from" "this socket" e)
   in
   go ()
 
@@ -172,22 +167,44 @@ let write n ctx (a : Types.t array) =
     | Some fd ->
       (match Unix.single_write_substring fd text at (size - at) with
        | sent -> go (at + sent)
-       | exception Unix.Unix_error (e, _, _) when retry e ->
+       | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
          Poll.write_ready n.poll ctx fd;
          go at
-       | exception Unix.Unix_error (e, _, _) -> failed ctx "write to" "this socket" e)
+       | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "write to" "this socket" e)
   in
   go 0
 
+let close_socket n id =
+  Hashtbl.remove n.deadlines id;
+  match Hashtbl.find_opt n.sockets id with
+  | None -> ()
+  | Some fd ->
+    Hashtbl.remove n.sockets id;
+    Poll.forget n.poll fd;
+    Unix.close fd
+
 let close n ctx (a : Types.t array) =
-  let id = socket_arg ctx "close" a.(0) in
-  (match Hashtbl.find_opt n.sockets id with
-   | None -> ()
-   | Some fd ->
-     Hashtbl.remove n.sockets id;
-     Poll.forget n.poll fd;
-     Unix.close fd);
+  close_socket n (socket_arg ctx "close" a.(0));
   Missing
+
+(* A socket that outlives its deadline is closed by net.reap, which wakes whoever waits on it: a slow client can't hold
+   a fiber forever. 0 removes the deadline. *)
+let arm n ctx (a : Types.t array) =
+  let id = socket_arg ctx "arm" a.(0) in
+  let seconds = match a.(1) with
+    | Int i -> float_of_int i
+    | Float x -> x
+    | v -> Runtime.fail ctx Type (Messages.need_number "arm" (Value.describe v))
+  in
+  if seconds <= 0. then Hashtbl.remove n.deadlines id
+  else if Hashtbl.mem n.sockets id then Hashtbl.replace n.deadlines id (Unix.gettimeofday () +. seconds);
+  Missing
+
+let reap n _ _ : Types.t =
+  let now = Unix.gettimeofday () in
+  let late = Hashtbl.fold (fun id t acc -> if t <= now then id :: acc else acc) n.deadlines [] in
+  List.iter (close_socket n) late;
+  Int (List.length late)
 
 (* HTTP lengths count bytes, unlike length and slice, which count code points. *)
 let find ctx (a : Types.t array) =
@@ -205,6 +222,28 @@ let split_at ctx (a : Types.t array) =
     Array { rows = 1; cols = 2; store = V items; a_owned = true }
   | v -> Runtime.fail ctx Type (Messages.need_size "split_at" (Value.describe v))
 
+(* A header name, as RFC 9110 writes it. *)
+let is_token_byte = function
+  | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9'
+  | '!' | '#' | '$' | '%' | '&' | '\'' | '*' | '+' | '-' | '.' | '^' | '_' | '`' | '|' | '~' -> true
+  | _ -> false
+
+(* Is this a header line with its colon at this position? A name with a space, a folded line or a lone line end could be
+   read otherwise by a proxy in front: that is how a second request gets smuggled in. In one pass, because every header
+   of every request comes through here. *)
+let is_header ctx (a : Types.t array) =
+  let line = Native.text_arg ctx "is_header" a.(1) in
+  match a.(0) with
+  | Int at when at >= 0 && at <= String.length line ->
+    Runtime.pay_bytes ctx (String.length line);
+    let rec clean i =
+      i >= String.length line
+      || (let c = line.[i] in
+          c <> '\r' && c <> '\n' && (i >= at || is_token_byte c) && clean (i + 1))
+    in
+    Value.of_bool (at > 0 && clean 0)
+  | v -> Runtime.fail ctx Type (Messages.need_size "is_header" (Value.describe v))
+
 let natives n =
   [ "listen", Native.nat ~params:[| "port"; "host" |] "listen" 1 2 (listen n);
     "accept", Native.nat "accept" 1 1 (accept n);
@@ -212,7 +251,10 @@ let natives n =
     "read", Native.nat "read" 1 1 (read n);
     "write", Native.nat "write" 2 2 (write n);
     "close", Native.nat "close" 1 1 (close n);
+    "arm", Native.nat "arm" 2 2 (arm n);
+    "reap", Native.nat "reap" 0 0 (reap n);
     "find", Native.nat "find" 2 2 find;
     "split_at", Native.nat "split_at" 2 2 split_at;
+    "is_header", Native.nat "is_header" 2 2 is_header;
     "size", Native.nat "size" 1 1 (fun ctx a -> Int (String.length (Native.text_arg ctx "size" a.(0))));
     "open_count", Native.nat "open_count" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]

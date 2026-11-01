@@ -1,0 +1,366 @@
+-- Numerical computing, in the spirit of numpy. An array is a list or a matrix of floats, and the operators of the
+-- language already work element by element: a + b, a * 2.0, a > 0.0, matmul(a, b), transpose(a), sum(a), mean(a).
+
+defn linspace(a, b, n)
+  if n == 1
+    return [1.0 * a]
+  end
+  step = (b - a) / (n - 1)
+  [a + k * step for k in 0:n - 1]
+end
+
+defn eye(n)
+  m = zeros(n, n)
+  for k in 1:n
+    m[k, k] = 1.0
+  end
+  m
+end
+
+defn diag(xs)
+  n = length(xs)
+  m = zeros(n, n)
+  for k in 1:n
+    m[k, k] = xs[k]
+  end
+  m
+end
+
+defn variance(xs)
+  d = xs - mean(xs)
+  sum(d * d) / length(xs)
+end
+
+std(xs) = sqrt(variance(xs))
+
+defn percentile(p, xs)
+  s = sort(xs)
+  at = p / 100.0 * (length(s) - 1) + 1
+  low = floor(at)
+  high = ceil(at)
+  s[low] + (s[high] - s[low]) * (at - low)
+end
+
+median(xs) = percentile(50, xs)
+
+defn cumsum(xs)
+  out = zeros(1, length(xs))
+  total = 0.0
+  for k in 1:length(xs)
+    total += xs[k]
+    out[k] = total
+  end
+  out
+end
+
+diff(xs) = [xs[k + 1] - xs[k] for k in 1:length(xs) - 1]
+dot(a, b) = sum(a * b)
+norm(xs) = sqrt(dot(xs, xs))
+
+defn covariance(a, b)
+  mean((a - mean(a)) * (b - mean(b)))
+end
+
+correlation(a, b) = covariance(a, b) / (std(a) * std(b))
+
+defn histogram(bins, xs)
+  low = min(xs)
+  high = max(xs)
+  width = (high - low) / bins
+  counts = fill(0, bins)
+  for x in xs
+    k = if width == 0.0 1 else min(floor((x - low) / width) + 1, bins) end
+    counts[k] += 1
+  end
+  {counts: counts, edges: [low + k * width for k in 0:bins]}
+end
+
+-- The sum of each row, and of each column.
+sum_rows(m) = [sum(m[i, :]) for i in 1:size(m, 1)]
+sum_cols(m) = [sum(m[:, j]) for j in 1:size(m, 2)]
+
+-- Gaussian elimination with partial pivoting: the triangle, the swaps and their sign.
+defn _eliminate(m, b)
+  n = size(m, 1)
+  sign = 1.0
+  for col in 1:n
+    pivot = col
+    for r in col + 1:n
+      if abs(m[r, col]) > abs(m[pivot, col])
+        pivot = r
+      end
+    end
+    if abs(m[pivot, col]) < 1e-14
+      return {singular: true, m: m, b: b, sign: 0.0}
+    end
+    if pivot != col
+      sign = -sign
+      for c in 1:n
+        t = m[col, c]
+        m[col, c] = m[pivot, c]
+        m[pivot, c] = t
+      end
+      for c in 1:size(b, 2)
+        t = b[col, c]
+        b[col, c] = b[pivot, c]
+        b[pivot, c] = t
+      end
+    end
+    for r in col + 1:n
+      f = m[r, col] / m[col, col]
+      if f != 0.0
+        for c in col:n
+          m[r, c] = m[r, c] - f * m[col, c]
+        end
+        for c in 1:size(b, 2)
+          b[r, c] = b[r, c] - f * b[col, c]
+        end
+      end
+    end
+  end
+  {singular: false, m: m, b: b, sign: sign}
+end
+
+defn det(m)
+  t = _eliminate(m, zeros(size(m, 1), 1))
+  if t.singular
+    return 0.0
+  end
+  d = t.sign
+  for k in 1:size(m, 1)
+    d = d * t.m[k, k]
+  end
+  d
+end
+
+defn _back(t)
+  n = size(t.m, 1)
+  x = t.b
+  for c in 1:size(x, 2)
+    for r in range(n, 1, step = -1)
+      s = x[r, c]
+      for k in r + 1:n
+        s = s - t.m[r, k] * x[k, c]
+      end
+      x[r, c] = s / t.m[r, r]
+    end
+  end
+  x
+end
+
+_singular() = Err({kind: "math", message: "This matrix is singular."})
+
+defn solve(m, b)
+  n = size(m, 1)
+  t = _eliminate(m, reshape(b, n, 1))
+  if t.singular
+    return _singular()
+  end
+  x = _back(t)
+  Ok([x[k, 1] for k in 1:n])
+end
+
+defn inverse(m)
+  t = _eliminate(m, eye(size(m, 1)))
+  if t.singular _singular() else Ok(_back(t)) end
+end
+
+-- Gram-Schmidt, twice for accuracy.
+defn qr(m)
+  rows = size(m, 1)
+  cols = size(m, 2)
+  q = zeros(rows, cols)
+  r = zeros(cols, cols)
+  for j in 1:cols
+    v = m[:, j]
+    for pass in 1:2
+      for i in 1:j - 1
+        qi = q[:, i]
+        c = dot(qi, v)
+        r[i, j] = r[i, j] + c
+        v = v - qi * c
+      end
+    end
+    size_v = norm(v)
+    r[j, j] = size_v
+    for i in 1:rows
+      q[i, j] = if size_v == 0.0 0.0 else v[i] / size_v end
+    end
+  end
+  {q: q, r: r}
+end
+
+-- The eigenvalues and eigenvectors of a symmetric matrix, by Jacobi rotations.
+defn eigen(a)
+  n = size(a, 1)
+  v = eye(n)
+  for sweep in 1:60
+    off = 0.0
+    for p in 1:n
+      for q in p + 1:n
+        off += a[p, q] * a[p, q]
+      end
+    end
+    if off < 1e-22
+      break
+    end
+    for p in 1:n
+      for q in p + 1:n
+        if abs(a[p, q]) > 1e-300
+          theta = (a[q, q] - a[p, p]) / (2.0 * a[p, q])
+          t = sign(theta) / (abs(theta) + sqrt(theta * theta + 1.0))
+          t = if theta == 0.0 1.0 else t end
+          c = 1.0 / sqrt(t * t + 1.0)
+          s = t * c
+          for k in 1:n
+            akp = a[k, p]
+            akq = a[k, q]
+            a[k, p] = c * akp - s * akq
+            a[k, q] = s * akp + c * akq
+          end
+          for k in 1:n
+            apk = a[p, k]
+            aqk = a[q, k]
+            a[p, k] = c * apk - s * aqk
+            a[q, k] = s * apk + c * aqk
+          end
+          for k in 1:n
+            vkp = v[k, p]
+            vkq = v[k, q]
+            v[k, p] = c * vkp - s * vkq
+            v[k, q] = s * vkp + c * vkq
+          end
+        end
+      end
+    end
+  end
+  {values: [a[k, k] for k in 1:n], vectors: v}
+end
+
+-- The x of the smallest |ax - b|, through the normal equations.
+defn least_squares(a, b)
+  t = transpose(a)
+  solve(matmul(t, a), matmul(t, reshape(b, length(b), 1)))
+end
+
+-- The coefficients of a polynomial of a degree through points, the constant first.
+defn polyfit(degree, xs, ys)
+  a = zeros(length(xs), degree + 1)
+  for i in 1:length(xs)
+    for j in 1:degree + 1
+      a[i, j] = 1.0 * xs[i] ^ (j - 1)
+    end
+  end
+  unwrap(least_squares(a, ys))
+end
+
+defn polyval(coefficients, x)
+  total = 0.0
+  for k in range(length(coefficients), 1, step = -1)
+    total = total * x + coefficients[k]
+  end
+  total
+end
+
+defn trapezoid(xs, ys)
+  total = 0.0
+  for k in 1:length(xs) - 1
+    total += (xs[k + 1] - xs[k]) * (ys[k] + ys[k + 1]) / 2.0
+  end
+  total
+end
+
+defn interpolate(x, xs, ys)
+  for k in 1:length(xs) - 1
+    if x <= xs[k + 1]
+      return ys[k] + (ys[k + 1] - ys[k]) * (x - xs[k]) / (xs[k + 1] - xs[k])
+    end
+  end
+  ys[length(ys)]
+end
+
+-- A discrete Fourier transform: radix 2 for powers of two, the plain sum otherwise. Parts are separate arrays.
+defn _dft(re, im, direction)
+  n = length(re)
+  out_re = zeros(1, n)
+  out_im = zeros(1, n)
+  for k in 1:n
+    for t in 1:n
+      angle = direction * 2.0 * pi * (k - 1) * (t - 1) / n
+      c = cos(angle)
+      s = sin(angle)
+      out_re[k] = out_re[k] + re[t] * c - im[t] * s
+      out_im[k] = out_im[k] + re[t] * s + im[t] * c
+    end
+  end
+  {re: out_re, im: out_im}
+end
+
+defn _radix2(re, im, direction)
+  n = length(re)
+  if n == 1
+    return {re: re, im: im}
+  end
+  half = div(n, 2)
+  even = _radix2([re[2 * k - 1] for k in 1:half], [im[2 * k - 1] for k in 1:half], direction)
+  odd = _radix2([re[2 * k] for k in 1:half], [im[2 * k] for k in 1:half], direction)
+  out_re = zeros(1, n)
+  out_im = zeros(1, n)
+  for k in 1:half
+    angle = direction * 2.0 * pi * (k - 1) / n
+    c = cos(angle)
+    s = sin(angle)
+    tr = odd.re[k] * c - odd.im[k] * s
+    ti = odd.re[k] * s + odd.im[k] * c
+    out_re[k] = even.re[k] + tr
+    out_im[k] = even.im[k] + ti
+    out_re[k + half] = even.re[k] - tr
+    out_im[k + half] = even.im[k] - ti
+  end
+  {re: out_re, im: out_im}
+end
+
+_is_power(n) = n > 0 and bit_and(n, n - 1) == 0
+
+defn _transform(re, im, direction)
+  if _is_power(length(re)) _radix2(re, im, direction) else _dft(re, im, direction) end
+end
+
+fft(xs) = _transform(xs, zeros(1, length(xs)), -1.0)
+
+defn ifft(f)
+  r = _transform(f.re, f.im, 1.0)
+  n = 1.0 * length(f.re)
+  {re: r.re / n, im: r.im / n}
+end
+
+-- Random numbers that a seed repeats, for simulations: xorshift, never for secrets. A generator is a value.
+seeded(seed) = {state: bit_or(bit_xor(seed, 88172645463325252), 1)}
+
+defn _next(state)
+  x = state
+  x = bit_xor(x, bit_shift(x, 13))
+  x = bit_xor(x, bit_shift(x, -7))
+  bit_xor(x, bit_shift(x, 17))
+end
+
+defn uniform(n, generator)
+  values = zeros(1, n)
+  s = generator.state
+  for k in 1:n
+    s = _next(s)
+    values[k] = bit_and(s, 1099511627775) / 1099511627776.0
+  end
+  {values: values, next: {state: s}}
+end
+
+defn normal(n, generator)
+  u = uniform(2 * n, generator)
+  values = zeros(1, n)
+  for k in 1:n
+    a = 1.0 - u.values[2 * k - 1]
+    b = u.values[2 * k]
+    values[k] = sqrt(-2.0 * log(a)) * cos(2.0 * pi * b)
+  end
+  {values: values, next: u.next}
+end

@@ -5,6 +5,11 @@ exception Limit of { what : string; at : int }
 
 let of_bool b = if b then True else False
 
+let rec dict_fold f d acc =
+  match d with
+  | Leaf -> acc
+  | Node n -> dict_fold f n.l (f n.k n.v (dict_fold f n.r acc))
+
 let share v =
   (match v with
    | Array a -> a.a_owned <- false
@@ -85,6 +90,10 @@ let result w sname field v =
 let ok w v = result w "Ok" "value" v
 let err w v = result w "Err" "error" v
 
+let failure w kind text =
+  let shape = shape_of w [| "kind"; "message" |] in
+  err w (Struct { shape; fields = [| Text kind; Text text |]; r_owned = true })
+
 let nested ctx depth =
   if depth > ctx.w.limits.nesting then raise (Limit { what = "nesting"; at = -1 })
 
@@ -109,6 +118,16 @@ and show_at ctx depth v =
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
   | Handle h -> Printf.sprintf "<%s %d>" h.kind h.id
+  | Dict d -> show_dict ctx depth d
+
+and show_dict ctx depth d =
+  let pairs = dict_fold (fun k v rest -> (k, v) :: rest) d [] in
+  pay ctx (List.length pairs);
+  match pairs with
+  | [] -> "dict()"
+  | _ ->
+    let item (k, v) = show_at ctx (depth + 1) k ^ ": " ^ show_at ctx (depth + 1) v in
+    "{" ^ String.concat ", " (List.map item pairs) ^ "}"
 
 and show_struct ctx depth (shape : shape) fields =
   let names = shape.names in
@@ -149,6 +168,7 @@ let describe v =
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
   | Handle h -> "a " ^ h.kind
+  | Dict _ -> "a dictionary"
   | Undef -> "an undefined value"
 
 let rec equal ctx a b = equal_at ctx 0 a b
@@ -157,7 +177,8 @@ and equal_at ctx depth a b =
   nested ctx depth;
   match a, b with
   | Array x, Array y ->
-    x.rows = y.rows && x.cols = y.cols
+    (x.rows * x.cols = 0 && y.rows * y.cols = 0)
+    || x.rows = y.rows && x.cols = y.cols
     && begin
       let n = x.rows * x.cols in
       pay ctx n;
@@ -186,4 +207,12 @@ and equal_at ctx depth a b =
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env
   | Native x, Native y -> x == y
   | Handle x, Handle y -> x.id = y.id && String.equal x.kind y.kind
+  | Dict x, Dict y ->
+    let items d = dict_fold (fun k v rest -> (k, v) :: rest) d [] in
+    let xs = items x and ys = items y in
+    pay ctx (List.length xs);
+    List.compare_lengths xs ys = 0
+    && List.for_all2
+         (fun (a, b) (c, d) -> equal_at ctx (depth + 1) a c && equal_at ctx (depth + 1) b d)
+         xs ys
   | _ -> false

@@ -27,9 +27,6 @@ val prepare :
 
 val run_prepared : ctx -> int * int * Ast.func * Ast.layout -> unit
 
-(** Loads and runs a file. *)
-val load : ctx -> string -> int * int * Ast.func * Ast.layout
-
 (** Replaces the functions and structs of a module without rerunning its statements. Everything is parsed first: an
     error returns its text, and the old code stays in place. *)
 val reload : world -> string -> (unit, string) result

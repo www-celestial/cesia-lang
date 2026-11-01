@@ -1,0 +1,4 @@
+dict_key.kp:1:7: A dictionary key is a number or a text, not an array.
+  1 | print(put([1], 2, dict()))
+    |       ^
+exit 1

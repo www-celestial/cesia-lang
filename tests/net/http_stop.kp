@@ -1,7 +1,7 @@
 use http
 use sys
 
-function handle(r)
+defn handle(r)
   sys.sleep(0.2)
   {status: 200, body: "slow"}
 end

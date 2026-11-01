@@ -10,6 +10,16 @@ external cstring : int -> string = "kepler_cstring"
 type memory = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
 external block_address : memory -> int = "kepler_block_address"
+external ffi_load : unit -> int = "kepler_ffi_load"
+external ffi_type : int -> int -> int = "kepler_ffi_type"
+external ffi_struct : int array -> int = "kepler_ffi_struct"
+external ffi_cif : int -> int -> int array -> int -> int = "kepler_ffi_cif"
+external ffi_invoke : int -> int -> Bytes.t -> int -> int -> unit = "kepler_ffi_invoke"
+external ffi_closure : int -> (int -> int -> unit) -> int = "kepler_ffi_closure"
+external strdup : string -> int = "kepler_strdup"
+external free_text : int -> unit = "kepler_free"
+external peek : int -> int -> int64 = "kepler_peek"
+external poke : int -> int64 -> unit = "kepler_poke"
 external get16 : memory -> int -> int = "%caml_bigstring_get16"
 external get32 : memory -> int -> int32 = "%caml_bigstring_get32"
 external get64 : memory -> int -> int64 = "%caml_bigstring_get64"
@@ -17,13 +27,16 @@ external set16 : memory -> int -> int -> unit = "%caml_bigstring_set16"
 external set32 : memory -> int -> int32 -> unit = "%caml_bigstring_set32"
 external set64 : memory -> int -> int64 -> unit = "%caml_bigstring_set64"
 
-type ty = I8 | U8 | I16 | U16 | I32 | U32 | I64 | U64 | F32 | F64 | Bool | Ptr | Text | Void
+type ty = I8 | U8 | I16 | U16 | I32 | U32 | I64 | U64 | F32 | F64 | Bool | Ptr | Text | Void | Callback | Aggregate of layout
+and layout = { fields : ty array; offsets : int array; size : int; alignment : int; description : int }
 
 let types =
   [ "i8", I8; "u8", U8; "i16", I16; "u16", U16; "i32", I32; "u32", U32; "i64", I64; "u64", U64; "f32", F32; "f64", F64;
-    "bool", Bool; "ptr", Ptr; "text", Text; "void", Void ]
+    "bool", Bool; "ptr", Ptr; "text", Text; "void", Void; "callback", Callback ]
 
-let name_of ty = fst (List.find (fun (_, t) -> t = ty) types)
+let name_of = function
+  | Aggregate _ -> "a structure"
+  | ty -> fst (List.find (fun (_, t) -> t = ty) types)
 
 (* Memory outside the OCaml heap, which doesn't move and which C can keep. *)
 type block = { data : memory; address : int; size : int }
@@ -37,25 +50,33 @@ type t = {
   mutable next_block : int;
   mutable live_bytes : int;
   mutable opened : bool;  (** a granted library is open: only then can a pointer exist *)
+  layouts : (int, layout) Hashtbl.t;  (** structures, by id *)
+  mutable ffi : int;  (** libffi's table, once loaded *)
+  mutable pending : exn option;  (** a panic in a callback: it can't cross the C frames, so it waits for their end *)
+  mutable spare : ctx option;  (** the context of callbacks, free between two *)
+  mutable calling : int;  (** how many calls through libffi are running, so a callback may be under way *)
+  mutable freed : block list;  (** blocks freed during such a call: C may still be reading them *)
 }
 
 let max_args = 6
+let max_ffi_args = 60
 let result_offset = 48
 
 let create () =
   { slots = Bytes.make 56 '\000'; texts = Array.make max_args ""; blocks = Hashtbl.create 16; next_block = 1;
-    live_bytes = 0; opened = false }
-
-(* Work that grows with its input pays in steps, at the rate of a text. *)
-let pay_bytes ctx n = Runtime.charge ctx ((n / 128) + 1)
+    live_bytes = 0; opened = false; layouts = Hashtbl.create 8; ffi = 0; pending = None; spare = None;
+    calling = 0; freed = [] }
 
 let c_name ctx name v =
   let s = Native.text_arg ctx name v in
-  pay_bytes ctx (String.length s);
+  Runtime.pay_bytes ctx (String.length s);
   if String.contains s '\000' then Runtime.fail ctx Type Messages.c_zero_byte;
   s
 
-let ty_of ctx v =
+let ty_of st ctx (v : Types.t) =
+  match v with
+  | Handle { kind = "ctype"; id; _ } -> Aggregate (Hashtbl.find st.layouts id)
+  | _ ->
   let name = Native.text_arg ctx "fn" v in
   match List.assoc_opt name types with
   | Some ty -> ty
@@ -119,16 +140,20 @@ let address st ctx (v : Types.t) =
   | Missing -> 0L
   | Handle { kind = "pointer"; id; _ } -> Int64.of_int id
   | Handle { kind = "block"; id; _ } -> Int64.of_int (live_block st ctx id).address
+  | Handle { kind = "callback"; id; _ } -> Int64.of_int id
   | _ -> fail ctx (Messages.c_need_ptr (Value.describe v))
+
+let scalar st ctx ty v =
+  match ty with
+  | F32 | F64 -> float_bits ctx ty v
+  | Bool -> boolean ctx v
+  | Ptr -> address st ctx v
+  | _ -> integer ctx ty v
 
 (* Writes an argument. Gives the bit of the mask for a text. *)
 let arg_slot st ctx k ty (v : Types.t) =
   match ty with
-  | I8 | U8 | I16 | U16 | I32 | U32 | I64 | U64 -> write st k (integer ctx ty v); 0
-  | F32 | F64 -> write st k (float_bits ctx ty v); 0
-  | Bool -> write st k (boolean ctx v); 0
-  | Ptr -> write st k (address st ctx v); 0
-  | Void -> 0
+  | Void | Callback | Aggregate _ -> 0
   | Text ->
     (match v with
      | Types.Text s ->
@@ -137,6 +162,7 @@ let arg_slot st ctx k ty (v : Types.t) =
        1 lsl k
      | Missing -> write st k 0L; 0
      | _ -> fail ctx (Messages.c_need_text (Value.describe v)))
+  | _ -> write st k (scalar st ctx ty v); 0
 
 let sign_extend bits i = (i lsl (Sys.int_size - bits)) asr (Sys.int_size - bits)
 let pointer id : Types.t = Handle { kind = "pointer"; id; task = None }
@@ -159,7 +185,7 @@ let return_value ctx ty r : Types.t =
   | Bool -> Value.of_bool (i land 0xFF <> 0)
   | Ptr -> if i = 0 then Missing else pointer i
   | Text -> if i = 0 then Missing else Types.Text (cstring i)
-  | Void -> Missing
+  | Void | Callback | Aggregate _ -> Missing
 
 let c_function st name address args ret =
   let id = shape_id args ret and n = Array.length args in
@@ -212,24 +238,13 @@ let open_library st ctx (a : Types.t array) =
     st.opened <- true;
     Value.ok ctx.w (library address)
 
-let types_of ctx (v : Types.t) =
+let types_of st ctx (v : Types.t) =
   match v with
   | Array x ->
     let n = x.rows * x.cols in
-    if n > max_args then Runtime.fail ctx Type (Messages.c_too_many n);
-    Array.init n (fun k -> ty_of ctx (Value.elt x k))
+    if n > max_ffi_args then Runtime.fail ctx Type (Messages.c_too_many n);
+    Array.init n (fun k -> ty_of st ctx (Value.elt x k))
   | _ -> Runtime.fail ctx Type (Messages.need_array "fn" (Value.describe v))
-
-let bind st ctx (a : Types.t array) =
-  let name = c_name ctx "fn" a.(0) in
-  let args = types_of ctx a.(1) and ret = ty_of ctx a.(2) in
-  if Array.mem Void args then Runtime.fail ctx Type Messages.c_void_arg;
-  match a.(3) with
-  | Handle { kind = "library"; id = lib; _ } ->
-    (match dlsym lib name with
-     | 0 -> Fs.failure ctx.w "c" (Messages.c_no_function name).text
-     | address -> Value.ok ctx.w (c_function st name address args ret))
-  | v -> Runtime.fail ctx Type (Messages.c_need_library (Value.describe v))
 
 let alloc st ctx (a : Types.t array) : Types.t =
   match a.(0) with
@@ -245,9 +260,14 @@ let alloc st ctx (a : Types.t array) : Types.t =
        st.next_block <- id + 1;
        st.live_bytes <- st.live_bytes + size;
        Hashtbl.replace st.blocks id { data; address = block_address data; size };
-       pay_bytes ctx size;
+       Runtime.pay_bytes ctx size;
        Handle { kind = "block"; id; task = None })
   | v -> fail ctx (Messages.c_size (Value.describe v))
+
+let new_block st ctx size =
+  match alloc st ctx [| Int size |] with
+  | Handle { id; _ } as handle -> handle, live_block st ctx id
+  | _ -> assert false
 
 let block_arg st ctx name (v : Types.t) =
   match v with
@@ -258,13 +278,211 @@ let free st ctx (a : Types.t array) : Types.t =
   let id, b = block_arg st ctx "free" a.(0) in
   Hashtbl.remove st.blocks id;
   st.live_bytes <- st.live_bytes - b.size;
+  if st.calling > 0 then st.freed <- b :: st.freed;
   Missing
 
 let width = function
   | I8 | U8 | Bool -> 1
   | I16 | U16 -> 2
   | I32 | U32 | F32 -> 4
+  | Aggregate l -> l.size
   | _ -> 8
+
+let alignment_of = function
+  | Aggregate l -> l.alignment
+  | ty -> width ty
+
+(* Through libffi. It stays unloaded until a program needs it, and a program with no library has no use for it. *)
+let ready st ctx =
+  if not st.opened then fail ctx Messages.c_no_open_library;
+  if st.ffi = 0 then st.ffi <- ffi_load ();
+  if st.ffi = 0 then fail ctx Messages.c_no_ffi
+
+let description st = function
+  | Void -> ffi_type st.ffi 0
+  | U8 | Bool -> ffi_type st.ffi 1
+  | I8 -> ffi_type st.ffi 2
+  | U16 -> ffi_type st.ffi 3
+  | I16 -> ffi_type st.ffi 4
+  | U32 -> ffi_type st.ffi 5
+  | I32 -> ffi_type st.ffi 6
+  | U64 -> ffi_type st.ffi 7
+  | I64 -> ffi_type st.ffi 8
+  | F32 -> ffi_type st.ffi 9
+  | F64 -> ffi_type st.ffi 10
+  | Ptr | Text | Callback -> ffi_type st.ffi 11
+  | Aggregate l -> l.description
+
+let signature st ctx args ret fixed =
+  match ffi_cif st.ffi (description st ret) (Array.map (description st) args) fixed with
+  | 0 -> fail ctx Messages.c_bad_signature
+  | cif -> cif
+
+(* Writes an argument, which stays valid across a callback: the GC can't move what C reads. *)
+let encode st ctx slots structs texts k ty (v : Types.t) =
+  let put x = Bytes.set_int64_ne slots (k * 8) x in
+  match ty, v with
+  | Aggregate l, Handle { kind = "block"; id; _ } ->
+    let b = live_block st ctx id in
+    if b.size < l.size then fail ctx (Messages.c_small_block b.size l.size);
+    put (Int64.of_int b.address);
+    structs := !structs lor (1 lsl k)
+  | Aggregate _, _ -> fail ctx (Messages.c_need_struct (Value.describe v))
+  | Callback, Handle { kind = "callback"; id; _ } -> put (Int64.of_int id)
+  | Callback, _ -> fail ctx (Messages.c_need_callback (Value.describe v))
+  | Text, Types.Text s ->
+    if String.contains s '\000' then fail ctx Messages.c_zero_byte;
+    let p = strdup s in
+    texts := p :: !texts;
+    put (Int64.of_int p)
+  | Text, Missing -> put 0L
+  | Text, _ -> fail ctx (Messages.c_need_text (Value.describe v))
+  | _ -> put (scalar st ctx ty v)
+
+let rethrow st =
+  match st.pending with
+  | Some e ->
+    st.pending <- None;
+    raise e
+  | None -> ()
+
+let ffi_function st ctx name address args ret fixed =
+  let cif = signature st ctx args ret fixed and n = Array.length args in
+  Native.nat name n n (fun ctx a ->
+      let slots = Bytes.make (8 * (n + 1)) '\000' and structs = ref 0 and texts = ref [] in
+      st.calling <- st.calling + 1;
+      Fun.protect
+        ~finally:(fun () ->
+          List.iter free_text !texts;
+          st.calling <- st.calling - 1;
+          if st.calling = 0 then st.freed <- [])
+        (fun () ->
+           Array.iteri (fun k ty -> encode st ctx slots structs texts k ty a.(k)) args;
+           match ret with
+           | Aggregate l ->
+             let handle, block = new_block st ctx l.size in
+             ffi_invoke cif address slots !structs block.address;
+             rethrow st;
+             handle
+           | _ ->
+             ffi_invoke cif address slots !structs 0;
+             rethrow st;
+             return_value ctx ret (Bytes.get_int64_ne slots (8 * n))))
+
+(* Gives the address of a function to [f], or an Err if the library doesn't have it. *)
+let with_symbol ctx name (lib : Types.t) f =
+  match lib with
+  | Handle { kind = "library"; id; _ } ->
+    (match dlsym id name with
+     | 0 -> Fs.failure ctx.w "c" (Messages.c_no_function name).text
+     | address -> f address)
+  | v -> Runtime.fail ctx Type (Messages.c_need_library (Value.describe v))
+
+let bind st ctx (a : Types.t array) =
+  let name = c_name ctx "fn" a.(0) in
+  let args = types_of st ctx a.(1) and ret = ty_of st ctx a.(2) in
+  if Array.mem Void args then Runtime.fail ctx Type Messages.c_void_arg;
+  let calls_back = Array.length a > 4 && a.(4) = True in
+  let special = function Callback | Aggregate _ -> true | _ -> false in
+  with_symbol ctx name a.(3) (fun address ->
+      if Array.length args <= max_args && (not calls_back) && not (special ret || Array.exists special args) then
+        Value.ok ctx.w (c_function st name address args ret)
+      else begin
+        ready st ctx;
+        Value.ok ctx.w (ffi_function st ctx name address args ret (-1))
+      end)
+
+let variadic st ctx (a : Types.t array) =
+  let name = c_name ctx "variadic" a.(0) in
+  let fixed = types_of st ctx a.(1) and rest = types_of st ctx a.(2) and ret = ty_of st ctx a.(3) in
+  let total = Array.length fixed + Array.length rest in
+  if total > max_ffi_args then Runtime.fail ctx Type (Messages.c_too_many total);
+  Array.iter
+    (function
+      | I8 | U8 | I16 | U16 | Bool | F32 | Void | Callback | Aggregate _ as ty ->
+        fail ctx (Messages.c_variadic_type (name_of ty))
+      | _ -> ())
+    rest;
+  with_symbol ctx name a.(4) (fun address ->
+      ready st ctx;
+      Value.ok ctx.w (ffi_function st ctx name address (Array.append fixed rest) ret (Array.length fixed)))
+
+let c_struct st ctx (a : Types.t array) : Types.t =
+  ready st ctx;
+  let fields = types_of st ctx a.(0) in
+  if fields = [||] then fail ctx Messages.c_struct_empty;
+  Array.iter
+    (function
+      | Text | Void | Callback as ty -> fail ctx (Messages.c_struct_field (name_of ty))
+      | _ -> ())
+    fields;
+  let aligned at alignment = (at + alignment - 1) / alignment * alignment in
+  let next = ref 0 in
+  let offsets =
+    Array.map
+      (fun ty ->
+         let at = aligned !next (alignment_of ty) in
+         next := at + width ty;
+         at)
+      fields
+  in
+  let alignment = Array.fold_left (fun best ty -> max best (alignment_of ty)) 1 fields in
+  let layout =
+    { fields; offsets; size = aligned !next alignment; alignment;
+      description = ffi_struct (Array.map (description st) fields) }
+  in
+  let id = Hashtbl.length st.layouts + 1 in
+  Hashtbl.replace st.layouts id layout;
+  Handle { kind = "ctype"; id; task = None }
+
+let layout_arg st ctx name (v : Types.t) =
+  match v with
+  | Handle { kind = "ctype"; id; _ } -> Hashtbl.find st.layouts id
+  | _ -> fail ctx (Messages.c_need_layout name (Value.describe v))
+
+let c_offset st ctx (a : Types.t array) : Types.t =
+  let l = layout_arg st ctx "c.offset" a.(1) and k = Arrays.whole_index ctx a.(0) in
+  if k < 1 || k > Array.length l.offsets then fail ctx (Messages.c_field_index k (Array.length l.offsets));
+  Int l.offsets.(k - 1)
+
+(* Runs in a context of its own: not a fiber, since a fiber's effects can't cross the C frames under it. A panic leaves
+   a context in the middle of its frames, so it isn't used again. *)
+let with_context st w f =
+  let ctx = match st.spare with Some ctx -> ctx | None -> Runtime.create_ctx w in
+  st.spare <- None;
+  let r = f ctx in
+  st.spare <- Some ctx;
+  r
+
+let c_callback st ctx (a : Types.t array) : Types.t =
+  let f = a.(0) in
+  (match f with
+   | Fun _ | Native _ -> ()
+   | v -> fail ctx (Messages.c_need_function (Value.describe v)));
+  ready st ctx;
+  let args = types_of st ctx a.(1) and ret = ty_of st ctx a.(2) in
+  let plain = function Void | Callback | Aggregate _ -> false | _ -> true in
+  Array.iter (fun ty -> if not (plain ty) then fail ctx (Messages.c_callback_type (name_of ty))) args;
+  if ret <> Void && ((not (plain ret)) || ret = Text) then fail ctx (Messages.c_callback_type (name_of ret));
+  let w = ctx.w in
+  let entry arguments result =
+    match
+      with_context st w (fun inner ->
+          let value k ty =
+            let at = Int64.to_int (peek (arguments + (8 * k)) 8) in
+            return_value inner ty (peek at (width ty))
+          in
+          let r = Compile.call_value inner ~base:0 f (Array.mapi value args) in
+          if ret = Void then 0L else scalar st inner ret r)
+    with
+    | word -> poke result word
+    | exception e ->
+      st.pending <- Some e;
+      poke result 0L
+  in
+  match ffi_closure (signature st ctx args ret (-1)) entry with
+  | 0 -> fail ctx Messages.c_bad_signature
+  | id -> Handle { kind = "callback"; id; task = None }
 
 let offset_arg ctx ty (b : block) (v : Types.t) =
   match v with
@@ -272,12 +490,18 @@ let offset_arg ctx ty (b : block) (v : Types.t) =
   | Int o -> fail ctx (Messages.c_offset o b.size (name_of ty))
   | _ -> fail ctx (Messages.c_need_offset (Value.describe v))
 
+(* A type that a block can hold. Reading a pointer needs an open library, like calling a function that gives one. *)
+let check_word st ctx verb ty =
+  (match ty with
+   | Text | Void | Callback | Aggregate _ -> fail ctx (Messages.c_block_type verb (name_of ty))
+   | _ -> ());
+  if ty = Ptr && not st.opened then fail ctx Messages.c_no_open_library
+
 (* The same conversions as a call: a word read here is what a C function would have returned. *)
 let get st ctx (a : Types.t array) =
-  let ty = ty_of ctx a.(0) in
+  let ty = ty_of st ctx a.(0) in
   let _, b = block_arg st ctx "get" a.(2) in
-  if ty = Text || ty = Void then fail ctx (Messages.c_block_type "read from" (name_of ty));
-  if ty = Ptr && not st.opened then fail ctx Messages.c_no_open_library;
+  check_word st ctx "read from" ty;
   let o = offset_arg ctx ty b a.(1) in
   let word =
     match width ty with
@@ -289,24 +513,34 @@ let get st ctx (a : Types.t array) =
   return_value ctx ty word
 
 let set st ctx (a : Types.t array) : Types.t =
-  let ty = ty_of ctx a.(0) in
+  let ty = ty_of st ctx a.(0) in
   let _, b = block_arg st ctx "set" a.(3) in
-  if ty = Text || ty = Void then fail ctx (Messages.c_block_type "written to" (name_of ty));
-  if ty = Ptr && not st.opened then fail ctx Messages.c_no_open_library;
+  check_word st ctx "written to" ty;
   let o = offset_arg ctx ty b a.(1) in
-  let word =
-    match ty with
-    | F32 | F64 -> float_bits ctx ty a.(2)
-    | Bool -> boolean ctx a.(2)
-    | Ptr -> address st ctx a.(2)
-    | _ -> integer ctx ty a.(2)
-  in
+  let word = scalar st ctx ty a.(2) in
   (match width ty with
    | 1 -> b.data.{o} <- Char.chr (Int64.to_int word land 0xFF)
    | 2 -> set16 b.data o (Int64.to_int word)
    | 4 -> set32 b.data o (Int64.to_int32 word)
    | _ -> set64 b.data o word);
   Missing
+
+(* Bytes between a text and a block, for what C treats as bytes: a text can hold zeros, and goes through whole. *)
+let store st ctx (a : Types.t array) : Types.t =
+  let s = Native.text_arg ctx "store" a.(0) in
+  let _, b = block_arg st ctx "store" a.(2) in
+  let at = Arrays.whole_index ctx a.(1) and n = String.length s in
+  if at < 0 || at > b.size - n then fail ctx (Messages.c_offset at b.size "text");
+  Runtime.pay_bytes ctx n;
+  String.iteri (fun k ch -> b.data.{at + k} <- ch) s;
+  Missing
+
+let load st ctx (a : Types.t array) : Types.t =
+  let _, b = block_arg st ctx "load" a.(2) in
+  let at = Arrays.whole_index ctx a.(0) and n = Arrays.whole_index ctx a.(1) in
+  if n < 0 || at < 0 || at > b.size - n then fail ctx (Messages.c_offset at b.size "text");
+  Runtime.pay_bytes ctx n;
+  Types.Text (String.init n (fun k -> b.data.{at + k}))
 
 let text st ctx (a : Types.t array) : Types.t =
   if not st.opened then fail ctx Messages.c_no_open_library;
@@ -316,9 +550,16 @@ let text st ctx (a : Types.t array) : Types.t =
 
 let natives st =
   [ "open", Native.nat ~params:[| "name"; "version" |] "open" 1 2 (open_library st);
-    "fn", Native.nat "fn" 4 4 (bind st);
+    "fn", Native.nat ~params:[| "name"; "args"; "ret"; "lib"; "calls_back" |] "fn" 4 5 (bind st);
+    "variadic", Native.nat "variadic" 5 5 (variadic st);
+    "callback", Native.nat "callback" 3 3 (c_callback st);
+    "struct", Native.nat "struct" 1 1 (c_struct st);
+    "size", Native.nat "size" 1 1 (fun ctx a -> Int (layout_arg st ctx "c.size" a.(0)).size);
+    "offset", Native.nat "offset" 2 2 (c_offset st);
     "alloc", Native.nat "alloc" 1 1 (alloc st);
     "free", Native.nat "free" 1 1 (free st);
     "get", Native.nat "get" 3 3 (get st);
+    "store", Native.nat "store" 3 3 (store st);
+    "load", Native.nat "load" 3 3 (load st);
     "set", Native.nat "set" 4 4 (set st);
     "text", Native.nat "text" 1 1 (text st) ]

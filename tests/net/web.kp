@@ -1,0 +1,76 @@
+use web
+use http
+use sys
+
+base = "http://127.0.0.1:18201"
+
+defn hello(req)
+  web.plain("hello $(req.params["name"]) $(get_or("q", "none", req.query))")
+end
+
+defn add(req)
+  input = web.body_json(req)?
+  Ok(web.send_json({"sum": input["a"] + input["b"]}, status = 201))
+end
+
+defn notes(req)
+  web.plain(web.form(req)["text"])
+end
+
+defn tag(next, req)
+  web.with_header("x-tag", "seen", next(req))
+end
+
+a = web.app()
+a = web.get("/", req -> web.html("<h1>home</h1>"), a)
+a = web.get("/hello/:name", hello, a)
+a = web.post("/add", add, a)
+a = web.post("/notes", notes, a)
+a = web.get("/boom", req -> panic("boom"), a)
+a = web.get("/err", req -> Err("no"), a)
+a = web.get("/cookie", req -> web.set_cookie("id", "a b", web.plain("set")), a)
+a = web.get("/seen", req -> web.plain(get_or("id", "none", req.cookies)), a)
+a = web.get("/go", req -> web.redirect("/"), a)
+a = web.get("/tpl", req -> web.html(web.template("<b>{{name}}</b>", {"name": req.query["n"]})), a)
+a = web.static("/files", ".", a)
+a = web.wrap(tag, a)
+a = web.wrap(web.cors("*"), a)
+
+defn show(r)
+  match r
+    Ok(v) -> print(v.status, v.body)
+    Err(e) -> print("error", e.message)
+  end
+end
+
+defn hdr(name, r)
+  print(name, web.get_header(name, r.value.headers))
+end
+
+spawn(() -> web.serve(a, port = 18201))
+sys.sleep(0.05)
+show(http.get("$base/"))
+show(http.get("$base/hello/ann?q=x%20y"))
+show(http.get("$base/hello/a%20b"))
+show(http.get("$base/nothing"))
+show(http.get("$base/hello"))
+show(http.request("DELETE", "$base/"))
+show(http.post("$base/add", "{""a"": 2, ""b"": 3}"))
+show(http.post("$base/add", "not json"))
+show(http.post("$base/notes", "text=a+b%21"))
+show(http.get("$base/boom"))
+show(http.get("$base/err"))
+r = http.get("$base/cookie")
+hdr("set-cookie", r)
+hdr("x-tag", r)
+hdr("access-control-allow-origin", r)
+show(http.get("$base/seen", headers = [{name: "cookie", value: "id=a%20b; z=1"}]))
+r2 = http.get("$base/go")
+print(r2.value.status)
+hdr("location", r2)
+show(http.get("$base/tpl?n=%3Cscript%3E"))
+show(http.get("$base/files/web.txt"))
+hdr("content-type", http.get("$base/files/web.txt"))
+show(http.get("$base/files/../web.kp"))
+show(http.get("$base/files/missing.txt"))
+print(web.escape("<a href=""x"">&'"))

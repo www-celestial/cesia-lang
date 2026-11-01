@@ -42,6 +42,12 @@ val settle : ctx -> unit
 
 val charge : ctx -> int -> unit
 
+(** Steps for work over [n] cells. *)
+val pay : ctx -> int -> unit
+
+(** Steps for work over [n] bytes: what grows with a text pays at this rate. *)
+val pay_bytes : ctx -> int -> unit
+
 (** Grows the three stacks to hold [need] entries. *)
 val grow : ctx -> int -> unit
 

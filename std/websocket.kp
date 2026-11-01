@@ -1,0 +1,105 @@
+-- The server side of WebSocket, RFC 6455, on the connection http hands over.
+use encode
+use http
+
+_guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+max_frame = 1048576
+default_idle = 300
+
+-- A frame from the server: never masked.
+defn frame(opcode, payload)
+  n = byte_length(payload)
+  head = if n < 126
+    [128 + opcode, n]
+  else if n < 65536
+    [128 + opcode, 126, div(n, 256), mod(n, 256)]
+  else
+    concat([128 + opcode, 127], [mod(div(n, 256 ^ (8 - k)), 256) for k in 1:8])
+  end
+  "$(from_bytes(head))$payload"
+end
+
+-- The first frame of a buffer, missing if it isn't all there, or {bad: true} for a frame to refuse.
+defn parse_frame(buffer)
+  size = byte_length(buffer)
+  if size < 2
+    return missing
+  end
+  first = byte(1, buffer)
+  second = byte(2, buffer)
+  masked = second >= 128
+  n = bit_and(second, 127)
+  at = 3
+  if n == 126
+    if size < 4
+      return missing
+    end
+    n = byte(3, buffer) * 256 + byte(4, buffer)
+    at = 5
+  else if n == 127
+    if size < 10
+      return missing
+    end
+    if byte(3, buffer) != 0
+      return {bad: true}
+    end
+    n = reduce((total, k) -> total * 256 + byte(k, buffer), 0, 3:10)
+    at = 11
+  end
+  if not masked or n > max_frame or bit_and(first, 112) != 0 or bit_and(first, 128) == 0
+    return {bad: true}
+  end
+  if size < at + 3 + n
+    return missing
+  end
+  key = byte_slice(at, at + 3, buffer)
+  stop = at + 3 + n
+  payload = if n == 0 "" else xor_bytes(key, byte_slice(at + 4, stop, buffer)) end
+  rest = if stop >= size "" else byte_slice(stop + 1, size, buffer) end
+  {bad: false, opcode: bit_and(first, 15), payload: payload, rest: rest}
+end
+
+-- The deadline starts again at each message and ping: an idle client doesn't hold its fiber forever.
+defn _loop(io, buffer, on_message, idle)
+  f = parse_frame(buffer)
+  if is_missing(f)
+    more = io.read()
+    if is_ok(more) and byte_length(more.value) > 0
+      _loop(io, "$buffer$(more.value)", on_message, idle)
+    end
+  else if f.bad or (f.opcode >= 8 and byte_length(f.payload) > 125)
+    io.write(frame(8, from_bytes([3, 234])))
+  else if f.opcode == 8
+    io.write(frame(8, f.payload))
+  else if f.opcode == 9
+    io.arm(idle)
+    io.write(frame(10, f.payload))
+    _loop(io, f.rest, on_message, idle)
+  else if f.opcode == 1 or f.opcode == 2
+    io.arm(idle)
+    on_message(f.payload, s -> io.write(frame(1, s)))
+    _loop(io, f.rest, on_message, idle)
+  else if f.opcode == 10
+    _loop(io, f.rest, on_message, idle)
+  else
+    io.write(frame(8, from_bytes([3, 234])))
+  end
+end
+
+defn _begin(io, rest, on_message, idle)
+  io.arm(idle)
+  _loop(io, rest, on_message, idle)
+end
+
+-- The response that upgrades a request, or a 400 if it isn't a WebSocket one.
+defn accept(headers, on_message, idle = default_idle)
+  key = http.header_value("sec-websocket-key", headers)
+  asked = http.header_value("upgrade", headers)
+  if is_missing(key) or is_missing(asked) or lower(asked) != "websocket"
+    {status: 400, body: "This route takes WebSocket connections."}
+  else
+    answer = encode.base64(encode.sha1("$key$_guid"))
+    {status: 101, body: "", headers: [{name: "upgrade", value: "websocket"}, {name: "connection", value: "Upgrade"},
+      {name: "sec-websocket-accept", value: answer}], upgrade: (io, rest) -> _begin(io, rest, on_message, idle)}
+  end
+end

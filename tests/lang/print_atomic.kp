@@ -1,10 +1,10 @@
 a = fill([], 10000)
-function lines()
+defn lines()
   for i in 1:200
     print("x", a)
   end
 end
-function others()
+defn others()
   for i in 1:400000
     print("B")
   end

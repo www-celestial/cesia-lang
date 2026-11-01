@@ -1,6 +1,6 @@
 use c
 
-function check()
+defn check()
   lib = c.open("m", version = 6)?
   c.fn("kepler_no_such_function", [], "void", lib)
 end

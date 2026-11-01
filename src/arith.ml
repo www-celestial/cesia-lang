@@ -148,6 +148,7 @@ let order int_cmp float_cmp sym ctx a b =
   | Float x, Float y -> Value.of_bool (float_cmp x y)
   | Int x, Float y -> Value.of_bool (float_cmp (float_of_int x) y)
   | Float x, Int y -> Value.of_bool (float_cmp x (float_of_int y))
+  | Text x, Text y -> Value.of_bool (int_cmp (String.compare x y) 0)
   | Missing, (Int _ | Float _ | Missing) | (Int _ | Float _), Missing -> Missing
   | _ -> Runtime.fail ctx Type (Messages.compare_op (Value.describe a) sym (Value.describe b))
 

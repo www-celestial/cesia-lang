@@ -1,0 +1,9 @@
+[project]
+name = "x"
+
+[tasks.a]
+needs = ["b"]
+run = ["sh", "-c", "echo a"]
+
+[tasks.b]
+run = ["sh", "-c", "exit 3"]

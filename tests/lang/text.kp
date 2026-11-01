@@ -1,4 +1,4 @@
-function fails(f, kind)
+defn fails(f, kind)
   (wait(spawn(f)) then map_err(it.kind)) == Err(kind)
 end
 is_split() = equal("a,b,,c" then split(","), ["a", "b", "", "c"])
@@ -33,3 +33,11 @@ is_number_no() = is_missing(number("")) and is_missing(number("0x10")) and is_mi
 is_number_shapes() = is_missing(number("1.")) and is_missing(number(".5")) and is_missing(number("1e")) and is_missing(number("1_000"))
 is_number_overflow() = is_float(number("99999999999999999999"))
 is_not_text() = fails(() -> lower(1), "type")
+is_escape_newline() = byte_length("a\nb") == 3 and byte(2, "a\nb") == 10
+is_escape_tab() = byte(1, "\t") == 9
+is_escape_return() = byte(1, "\r") == 13
+is_escape_backslash() = byte_length("\\") == 1
+is_escape_quote() = "\"" == """"
+is_other_backslash_stays() = byte_length("\d") == 2
+is_empty_arrays_equal() = equal(filter(it > 9, [1]), [])
+is_text_order() = "a" < "b" and "b" > "a" and "a" <= "a" and "a" >= "a" and not ("b" < "a")

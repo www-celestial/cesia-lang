@@ -1,0 +1,5 @@
+[project]
+name = "x"
+
+[tasks.a]
+run = ["sh", "-c", "exit 0", "\r> dune build\n"]

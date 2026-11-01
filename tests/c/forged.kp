@@ -1,7 +1,7 @@
 -- Bytes could spell any address, so a pointer can't come from a block before a library is open.
 use c
 
-function message(f)
+defn message(f)
   match wait(spawn(f))
     Err(e) -> print(e.message)
     Ok(v) -> print("no panic: $v")

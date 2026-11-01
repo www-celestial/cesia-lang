@@ -1,0 +1,5 @@
+> kepler run panic.kp
+panic.kp:1:1: stop
+  1 | panic("stop")
+    | ^
+exit 1

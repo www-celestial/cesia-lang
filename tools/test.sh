@@ -6,23 +6,22 @@ dune build 2>&1 | head -60
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 kepler=_build/default/bin/main.exe
 
-run_tests() {  # folder [--no-spec]: skipped if the folder has no .kp
-  [ -n "$(find "$1" -name '*.kp' 2>/dev/null | head -1)" ] || return 0
-  "$kepler" test "$1" ${2:-}
-}
-
-run_tests tests/lang
-run_tests tests/celestial
-run_tests std
-run_tests tests/lang --no-spec
-run_tests tests/celestial --no-spec
-run_tests std --no-spec
+for flag in "" --no-spec; do
+  for folder in tests/lang tests/celestial std; do
+    "$kepler" test "$folder" $flag
+  done
+done
 dune test 2>&1 | tail -5
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 dirs=$(ls -d tests/*/ 2>/dev/null || true)
-if ! pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
-  echo "tests/sdl skipped: SDL3 not found"
-  dirs=$(echo "$dirs" | grep -v '^tests/sdl/$')
-fi
+skip() {  # folder, reason
+  echo "$1 skipped: $2"
+  dirs=$(echo "$dirs" | grep -v "^$1/\$")
+}
+pkg-config --exists sdl3 sdl3-ttf 2>/dev/null || skip tests/sdl "SDL3 not found"
+command -v g++ > /dev/null || skip tests/cpp "no g++"
+pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
+pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 tools/golden.sh $dirs
-tools/golden.sh --no-spec $dirs
+# kepler do has no --no-spec, and what C does costs the same on both paths.
+tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|cpp|crypto|tls)/$')

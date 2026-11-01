@@ -79,7 +79,19 @@ let c_no_library name reason = plain (Printf.sprintf "Can't load %s: %s." name r
 let c_no_function name = plain (Printf.sprintf "This library has no function %s." name)
 let c_type name = plain (Printf.sprintf "%s isn't a C type." name)
 let c_void_arg = plain "void can't be an argument."
-let c_too_many n = plain (Printf.sprintf "A C function takes at most 6 arguments, not %d." n)
+let c_too_many n = plain (Printf.sprintf "A C function takes at most 60 arguments, not %d." n)
+let c_no_ffi = plain "This needs libffi, which isn't installed."
+let c_bad_signature = plain "libffi refuses this signature."
+let c_need_struct a = plain (Printf.sprintf "A structure needs a block, not %s." a)
+let c_small_block got want = plain (Printf.sprintf "This block has %d bytes, and the structure takes %d." got want)
+let c_need_callback a = plain (Printf.sprintf "callback needs a callback, not %s." a)
+let c_need_function a = plain (Printf.sprintf "c.callback needs a function, not %s." a)
+let c_struct_empty = plain "c.struct needs at least one field."
+let c_struct_field name = plain (Printf.sprintf "%s can't be a field of a structure." name)
+let c_field_index k n = plain (Printf.sprintf "Field %d is outside this structure of %d fields." k n)
+let c_need_layout name a = plain (Printf.sprintf "%s needs a structure type, not %s." name a)
+let c_variadic_type name = plain (Printf.sprintf "%s can't be a variadic argument: C promotes it. Use i32 or f64." name)
+let c_callback_type name = plain (Printf.sprintf "%s can't go through a callback." name)
 let c_need_library a = plain (Printf.sprintf "c.fn needs a library, not %s." a)
 let c_version a = plain (Printf.sprintf "c.open needs a version as an integer or a text, not %s." a)
 let c_fit v ty = plain (Printf.sprintf "%s doesn't fit in %s." v ty)
@@ -120,6 +132,8 @@ let empty_array name = plain (name ^ " of an empty array.")
 let usage =
   "usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.kp [args...]\n\
   \       kepler test [path] [--no-spec]\n\
+  \       kepler do [task]\n\
+  \       kepler new name\n\
   \       kepler version"
 let cant_read path = "can't read " ^ path
 let unknown_permission name = "unknown permission: " ^ name
@@ -128,6 +142,70 @@ let invalid_size s = "invalid size: " ^ s
 let invalid_limit s = "invalid limit: " ^ s
 let unknown_limit name = "unknown limit: " ^ name
 let internal e = "Internal error: " ^ e
+let toml_utf8 = "This line is not valid UTF-8."
+let toml_control = "Control characters aren't allowed here."
+let toml_unsupported what = what ^ " aren't supported in this file."
+let toml_strings_only = "Arrays hold strings only in this file."
+let toml_expected what = Printf.sprintf "Expected %s." what
+let toml_string_open = "This string is not closed."
+let toml_array_open = "This array is not closed."
+let toml_escape c = Printf.sprintf "The escape \\%c isn't supported in this file." c
+let toml_twice name = name ^ " is defined twice."
+let at_line line text = Printf.sprintf "kepler.toml:%d: %s" line text
+let project_no_file = "No kepler.toml in this folder."
+let project_no_name = "kepler.toml has no name in [project]."
+let project_no_task = "kepler.toml has no task."
+let project_table path = Printf.sprintf "Unknown table [%s]." path
+let project_outside key = Printf.sprintf "Unknown field %s outside any table." key
+let project_field subject key = Printf.sprintf "%s has an unknown field %s." subject key
+let project_type subject key what = Printf.sprintf "%s: %s needs %s." subject key what
+let project_empty_run name = Printf.sprintf "Task %s: run needs at least one word." name
+let project_both name = Printf.sprintf "Task %s has both run and file." name
+let project_without_file name key = Printf.sprintf "Task %s has %s without file." name key
+let project_missing name need = Printf.sprintf "Task %s needs %s, which doesn't exist." name need
+
+let project_cycle name through =
+  match through with
+  | [] -> Printf.sprintf "Task %s needs itself." name
+  | _ -> Printf.sprintf "Task %s needs itself, through %s." name (String.concat ", " through)
+
+let project_listed_needs needs = Printf.sprintf "(needs %s)" (String.concat ", " needs)
+let project_bad_name name = Printf.sprintf "A project name holds letters, digits, - and _, not %s." name
+let project_exists name = name ^ " already exists."
+let project_created name = Printf.sprintf "Created %s. Run it: cd %s && kepler do run" name name
+let project_no_such_task name = Printf.sprintf "No task named %s." name
+let project_cant_start program reason = Printf.sprintf "Can't start %s: %s." program reason
+let need_count name a = plain (Printf.sprintf "%s needs a count of 0 or more, not %s." name a)
+let cant_sort a b = plain (Printf.sprintf "Can't sort %s with %s." a b)
+let need_char name = plain (Printf.sprintf "%s needs a text with a character." name)
+let need_byte a = plain (Printf.sprintf "from_bytes needs integers from 0 to 255, not %s." a)
+let json_value a = plain (Printf.sprintf "JSON can't hold %s." a)
+let json_at text byte = Printf.sprintf "%s, at byte %d." text byte
+let json_unexpected = "Unexpected text"
+let json_short_escape = "A \\u escape is too short"
+let json_hex_escape = "A \\u escape needs four hex digits"
+let json_surrogate = "A surrogate is alone"
+let json_open_text = "A text is not closed"
+let json_bad_escape = "A bad escape"
+let json_control = "A control character in a text"
+let json_digits = "A number needs digits"
+let json_large = "A number is too large"
+let json_deep = "Too deep"
+let json_no_value = "Expected a value"
+let json_no_comma_array = "Expected a comma or ]"
+let json_key = "A key needs a text"
+let json_colon = "Expected a colon"
+let json_no_comma_object = "Expected a comma or }"
+let json_after = "Text after the value"
+let regex_bad why = plain (Printf.sprintf "Bad pattern: %s." why)
+let process_ended = plain "This process has ended."
+let need_process name a = plain (Printf.sprintf "%s needs a process, not %s." name a)
+let input_closed = plain "The input of this process is closed."
+let dict_key a = plain (Printf.sprintf "A dictionary key is a number or a text, not %s." a)
+let dict_absent k = plain (Printf.sprintf "This dictionary has no key: %s." k)
+let dict_index = plain "A dictionary takes one key between its brackets."
+let dict_pair a = plain (Printf.sprintf "dict needs structs with a key and a value, not %s." a)
+let need_dict name a = plain (Printf.sprintf "%s needs a dictionary, not %s." name a)
 let no_match a = plain (Printf.sprintf "No branch of this match accepts %s." a)
 let assertion = plain "Assertion failed."
 let use_nested = plain "use can only be used at the top of a file."

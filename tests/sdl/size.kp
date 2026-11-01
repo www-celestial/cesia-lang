@@ -1,6 +1,6 @@
 use sdl
 
-function check()
+defn check()
   window = sdl.open("test", 320, 200, "../../kepacs/fonts/JetBrainsMono-Regular.ttf")?
   one = sdl.text_size("a", window)
   two = sdl.text_size("aa", window)

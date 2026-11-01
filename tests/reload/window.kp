@@ -6,22 +6,22 @@ use sys
 version() = 1
 finished() = false
 
-function update(event, state)
+defn update(event, state)
   if finished() missing else {count: state.count + 1} end
 end
 
-function view(state)
+defn view(state)
   print("version $(version()) $(state.count)")
   [{kind: "clear", color: 0x000000}]
 end
 
-function feed(send, event)
+defn feed(send, event)
   send(event)
   sys.sleep(0.02)
   feed(send, event)
 end
 
-function main()
+defn main()
   lib = c.open("SDL3", version = 0)?
   send = c.fn("SDL_PushEvent", ["ptr"], "bool", lib)?
   window = sdl.open("test", 320, 200, "font.ttf")?

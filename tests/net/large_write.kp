@@ -3,20 +3,20 @@ use sys
 
 big = join("", fill("0123456789abcdef", 655360))
 
-function serve_big(listener)
+defn serve_big(listener)
   c = net.accept(listener)?
   net.write(c, big)?
   net.close(c)
   Ok(missing)
 end
 
-function read_all(c, total)
+defn read_all(c, total)
   text = net.read(c)?
   sys.sleep(0)
   if length(text) == 0 Ok(total) else read_all(c, total + length(text)) end
 end
 
-function client()
+defn client()
   c = net.connect("127.0.0.1", 18087)?
   first = net.read(c)?
   wait(spawn(() -> print("ticking")))

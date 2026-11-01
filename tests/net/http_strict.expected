@@ -1,0 +1,11 @@
+HTTP/1.1 400 Bad Request
+HTTP/1.1 400 Bad Request
+HTTP/1.1 400 Bad Request
+HTTP/1.1 400 Bad Request
+HTTP/1.1 400 Bad Request
+HTTP/1.1 400 Bad Request
+HTTP/1.1 200 OK
+true false true
+Err(error = "This request has a space or a line end where it can't.")
+Err(error = "This request has a space or a line end where it can't.")
+exit 0

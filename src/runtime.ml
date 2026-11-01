@@ -232,8 +232,11 @@ let reserve ctx n =
     if w.big_words >= w.limits.memory_words / 4 then check_memory ctx n (site_top ctx)
   end
 
+let pay ctx n = charge ctx ((n / 16) + 1)
+let pay_bytes ctx n = charge ctx ((n / 128) + 1)
+
 let build ctx n =
-  charge ctx ((n / 16) + 1);
+  pay ctx n;
   reserve ctx n
 
 let alloc_float ctx n x =
@@ -316,7 +319,7 @@ let copy ctx v =
     in
     Array { rows = a.rows; cols = a.cols; store; a_owned = true }
   | Struct r ->
-    charge ctx ((Array.length r.fields / 16) + 1);
+    pay ctx (Array.length r.fields);
     Array.iter (fun x -> ignore (Value.share x)) r.fields;
     Struct { shape = r.shape; fields = Array.copy r.fields; r_owned = true }
   | _ -> v

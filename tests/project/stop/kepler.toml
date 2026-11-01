@@ -1,0 +1,16 @@
+[project]
+name = "x"
+
+[tasks.slow]
+run = ["sh", "-c", "sleep 0.4; echo finished"]
+
+[tasks.last_int]
+needs = ["slow"]
+run = ["sh", "-c", "echo last"]
+
+[tasks.trapped]
+run = ["sh", "-c", "trap 'exit 0' TERM; echo started; sleep 1 & wait"]
+
+[tasks.last_term]
+needs = ["trapped"]
+run = ["sh", "-c", "echo last"]

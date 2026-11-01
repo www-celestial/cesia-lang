@@ -1,0 +1,23 @@
+-- A small web app: GET shows the notes, POST adds one.
+--   kepler run --allow read=notes.txt,write=notes.txt,net=:8080 examples/notes.kp
+--   curl -d "buy milk" localhost:8080
+--   curl localhost:8080
+use http
+use sys
+
+file = "notes.txt"
+
+defn handle(request)
+  if request.method == "POST"
+    sys.append(file, "$(request.body)$(char(10))")?
+  end
+  notes = if sys.exists(file) sys.read(file)? else "" end
+  Ok({status: 200, body: notes})
+end
+
+reply(request) = match handle(request)
+  Ok(response) -> response
+  Err(e) -> {status: 500, body: e.message}
+end
+
+print(http.serve(reply, port = 8080))

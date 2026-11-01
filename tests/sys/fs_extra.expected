@@ -1,0 +1,6 @@
+5 false true
+false Ok(value = "hello")
+true
+true
+Ok(value = missing)
+exit 0

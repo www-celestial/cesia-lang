@@ -28,17 +28,17 @@ is_range_empty() = length(3:1) == 0
 is_in() = 2 in [1, 2] and not (3 in 1:2)
 is_array_in_array() = length([[1, 2], 3]) == 2
 
-function int_in_f()
+defn int_in_f()
   x = zeros(2)
   x[1] = 5
   is_float(x[1])
 end
-function comp_local()
+defn comp_local()
   v = 9
   r = [v for v in [1]]
   v == 9
 end
-function sum_for(xs)
+defn sum_for(xs)
   s = 0
   for v in xs
     s += v

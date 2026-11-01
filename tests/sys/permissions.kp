@@ -16,7 +16,7 @@ calls = [
   ["connect", () -> net.connect("127.0.0.1", 18102)]
 ]
 
-function outcome(call)
+defn outcome(call)
   name = call[1]
   result = match wait(spawn(call[2]))
     Err(e) -> e.kind

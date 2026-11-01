@@ -5,7 +5,7 @@ type tok =
   | FLOAT of float
   | TEXT of part list
   | NAME of string
-  | IF | ELSE | END | FOR | IN | WHILE | BREAK | RETURN | FUNCTION | MATCH | STRUCT
+  | IF | ELSE | END | FOR | IN | WHILE | BREAK | RETURN | DEFN | MATCH | STRUCT
   | AND | OR | NOT | THEN | USE | TRUE | FALSE | MISSING
   | PLUS | MINUS | STAR | SLASH | CARET
   | ASSIGN | EQEQ | NE | LT | LE | GT | GE
@@ -20,7 +20,7 @@ and part = Plain of string | Code of token array
 
 let keyword = function
   | "if" -> Some IF | "else" -> Some ELSE | "end" -> Some END | "for" -> Some FOR | "in" -> Some IN
-  | "while" -> Some WHILE | "break" -> Some BREAK | "return" -> Some RETURN | "function" -> Some FUNCTION
+  | "while" -> Some WHILE | "break" -> Some BREAK | "return" -> Some RETURN | "defn" -> Some DEFN
   | "match" -> Some MATCH | "struct" -> Some STRUCT | "and" -> Some AND | "or" -> Some OR
   | "not" -> Some NOT | "then" -> Some THEN | "use" -> Some USE | "true" -> Some TRUE | "false" -> Some FALSE
   | "missing" -> Some MISSING
@@ -198,45 +198,38 @@ and text st start_pos =
       Buffer.clear run
     end
   in
+  let two c =
+    Buffer.add_char run c;
+    st.i <- st.i + 2
+  in
   let fin = ref false in
   while not !fin do
     if st.i >= n then error st start_pos Messages.text_not_closed;
-    let c = s.[st.i] in
-    if c = '"' then begin
-      if peek_at st 1 = '"' then begin
-        Buffer.add_char run '"';
-        st.i <- st.i + 2
-      end else begin
-        st.i <- st.i + 1;
-        fin := true
-      end
-    end else if c = '$' then begin
-      let c2 = peek_at st 1 in
-      if c2 = '$' then begin
-        Buffer.add_char run '$';
-        st.i <- st.i + 2
-      end else if c2 = '(' then begin
-        flush ();
-        st.i <- st.i + 2;
-        parts := Code (scan st ~in_code:true) :: !parts
-      end else if is_name_start c2 then begin
-        flush ();
-        st.i <- st.i + 1;
-        let pos = pos_at st st.i in
-        let start = st.i in
-        while st.i < n && is_name s.[st.i] do st.i <- st.i + 1 done;
-        let word = String.sub s start (st.i - start) in
-        let tok = match keyword word with Some k -> k | None -> NAME word in
-        parts := Code [| { t = tok; pos; sp = false }; { t = NL; pos; sp = false }; { t = EOF; pos; sp = false } |] :: !parts
-      end else begin
-        Buffer.add_char run '$';
-        st.i <- st.i + 1
-      end
-    end else begin
+    match s.[st.i], peek_at st 1 with
+    | '\\', 'n' -> two '\n'
+    | '\\', 't' -> two '\t'
+    | '\\', 'r' -> two '\r'
+    | '\\', (('\\' | '"') as c) | '"', ('"' as c) | '$', ('$' as c) -> two c
+    | '"', _ ->
+      st.i <- st.i + 1;
+      fin := true
+    | '$', '(' ->
+      flush ();
+      st.i <- st.i + 2;
+      parts := Code (scan st ~in_code:true) :: !parts
+    | '$', c2 when is_name_start c2 ->
+      flush ();
+      st.i <- st.i + 1;
+      let pos = pos_at st st.i in
+      let start = st.i in
+      while st.i < n && is_name s.[st.i] do st.i <- st.i + 1 done;
+      let word = String.sub s start (st.i - start) in
+      let tok = match keyword word with Some k -> k | None -> NAME word in
+      parts := Code [| { t = tok; pos; sp = false }; { t = NL; pos; sp = false }; { t = EOF; pos; sp = false } |] :: !parts
+    | c, _ ->
       Buffer.add_char run c;
       st.i <- st.i + 1;
       if c = '\n' then new_line st
-    end
   done;
   flush ();
   match List.rev !parts with [] -> [ Plain "" ] | l -> l

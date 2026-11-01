@@ -1,4 +1,4 @@
-function f()
+defn f()
   y = zeros(1500000)
   y[1] = 1.0
   y[1]

@@ -1,0 +1,6 @@
+usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.kp [args...]
+       kepler test [path] [--no-spec]
+       kepler do [task]
+       kepler new name
+       kepler version
+exit 2

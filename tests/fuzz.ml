@@ -73,7 +73,7 @@ let test_calls src =
     in
     let found =
       if String.starts_with ~prefix:"is_" line then name_of 0
-      else if String.starts_with ~prefix:"function is_" line then name_of 9
+      else if String.starts_with ~prefix:"defn is_" line then name_of 5
       else None
     in
     Option.map (fun n -> Printf.sprintf "print(wait(spawn(%s)))\n" n) found
@@ -156,6 +156,54 @@ let random_bytes st = String.init (Random.State.int st 400) (fun _ -> Char.chr (
 let generate st corpus =
   if Random.State.bool st || Array.length corpus = 0 then random_bytes st else mutate st (pick st corpus)
 
+let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
+let toml_bytes = "\"'[]=.,#\\\n\r\t"
+
+let rec toml_files dir =
+  if not (Sys.file_exists dir) then []
+  else
+    Sys.readdir dir |> Array.to_list |> List.sort compare
+    |> List.concat_map (fun f ->
+           let path = Filename.concat dir f in
+           if Sys.is_directory path then toml_files path else if f = "kepler.toml" then [ path ] else [])
+
+let toml_corpus () =
+  let read f = In_channel.with_open_bin f In_channel.input_all in
+  Array.of_list (toml_sample :: List.map read (toml_files "tests/project"))
+
+let mutate_toml st src =
+  let text = ref src in
+  for _ = 0 to Random.State.int st 8 do
+    let s = !text in
+    let n = String.length s in
+    let k = Random.State.int st (n + 1) in
+    let c = String.make 1 toml_bytes.[Random.State.int st (String.length toml_bytes)] in
+    text :=
+      (match Random.State.int st 3 with
+       | 0 -> String.sub s 0 k ^ c ^ String.sub s k (n - k)
+       | 1 when k < n -> String.sub s 0 k ^ String.sub s (k + 1) (n - k - 1)
+       | _ when k < n -> String.sub s 0 k ^ c ^ String.sub s (k + 1) (n - k - 1)
+       | _ -> s)
+  done;
+  !text
+
+let generate_toml st corpus = if Random.State.bool st then random_bytes st else mutate_toml st (pick st corpus)
+let toml_accepted = ref 0
+
+(* The reader takes hostile bytes: any input gives a result. *)
+let attempt_toml src =
+  match
+    ignore (Unix.alarm trial_alarm);
+    Toml.parse src
+  with
+  | exception e ->
+    ignore (Unix.alarm 0);
+    Some ("toml exception: " ^ Printexc.to_string e)
+  | result ->
+    ignore (Unix.alarm 0);
+    if Result.is_ok result then incr toml_accepted;
+    None
+
 let args () =
   let seconds = ref 60. and seed = ref 1 in
   Arg.parse
@@ -169,24 +217,29 @@ let () =
   (try Sys.mkdir fail_dir 0o755 with Sys_error _ -> ());
   Array.iter (fun f -> Sys.remove (Filename.concat fail_dir f)) (Sys.readdir fail_dir);
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout));
-  let corpus = corpus () in
+  let corpus = corpus () and tomls = toml_corpus () in
   if Array.length corpus = 0 then failwith "no corpus: run from the root of the repository";
   let master = Random.State.make [| seed |] in
   let stop = Unix.gettimeofday () +. seconds in
   let trials = ref 0 and failures = ref 0 in
-  while Unix.gettimeofday () < stop do
-    let trial_seed = Random.State.bits master in
-    let src = generate (Random.State.make [| trial_seed |]) corpus in
-    incr trials;
-    match attempt src with
+  let report trial_seed extension src = function
     | None -> ()
     | Some what ->
       incr failures;
       if !failures <= max_saved then begin
         let base = Filename.concat fail_dir (string_of_int !failures) in
-        write (base ^ ".kp") src;
+        write (base ^ extension) src;
         write (base ^ ".txt") (Printf.sprintf "seed %d\n%s\n" trial_seed what)
       end
+  in
+  while Unix.gettimeofday () < stop do
+    let trial_seed = Random.State.bits master in
+    let src = generate (Random.State.make [| trial_seed |]) corpus in
+    incr trials;
+    report trial_seed ".kp" src (attempt src);
+    let toml = generate_toml (Random.State.make [| trial_seed |]) tomls in
+    report trial_seed ".toml" toml (attempt_toml toml)
   done;
-  Printf.printf "%d trials, %d finished normally, %d failures\n" !trials !finished !failures;
+  Printf.printf "%d trials, %d finished normally, %d toml accepted, %d failures\n" !trials !finished !toml_accepted
+    !failures;
   if !failures > 0 then exit 1

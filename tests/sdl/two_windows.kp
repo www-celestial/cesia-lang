@@ -4,7 +4,7 @@ use sdl
 
 font = "../../kepacs/fonts/JetBrainsMono-Regular.ttf"
 
-function check()
+defn check()
   first = sdl.open("first", 320, 200, font)?
   second = sdl.open("second", 320, 200, font)?
   sdl.close(first)

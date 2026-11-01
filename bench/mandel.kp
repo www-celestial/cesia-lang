@@ -1,4 +1,4 @@
-function mandel(w, h, maxit)
+defn mandel(w, h, maxit)
   total = 0
   for py in 0:h - 1
     y0 = 2.0 * py / h - 1.0

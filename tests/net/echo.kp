@@ -1,7 +1,7 @@
 use net
 use sys
 
-function serve_once(listener)
+defn serve_once(listener)
   c = net.accept(listener)?
   text = net.read(c)?
   net.write(c, "echo: $text")?
@@ -9,7 +9,7 @@ function serve_once(listener)
   Ok(missing)
 end
 
-function client()
+defn client()
   c = net.connect("127.0.0.1", 18081)?
   net.write(c, "hello")?
   reply = net.read(c)?

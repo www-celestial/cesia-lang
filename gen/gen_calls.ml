@@ -51,7 +51,8 @@ let print_shape n mask float_result =
   else Printf.printf "EXPORT int64_t shape_i_%d_%d(%s) { return (int64_t) (2.0 * (%s)); }\n" n mask signature sum
 
 let fixture =
-  {|#include <stdbool.h>
+  {|#include <stdarg.h>
+#include <stdbool.h>
 #include <stdint.h>
 #ifdef _WIN32
 #define EXPORT __declspec(dllexport)
@@ -69,6 +70,51 @@ EXPORT void *ptr_null(void) { return 0; }
 EXPORT void nothing(void) {}
 EXPORT uint64_t huge_u64(void) { return UINT64_MAX; }
 EXPORT int64_t huge_i64(void) { return INT64_MIN; }
+EXPORT int64_t sum_eight(int64_t a, int32_t b, int64_t c, int32_t d, int64_t e, int32_t f, int64_t g, int32_t h) {
+  return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h;
+}
+EXPORT double sum_ten(double a, double b, double c, double d, double e, double f, double g, double h, double i, double j) {
+  return a + 2 * b + 3 * c + 4 * d + 5 * e + 6 * f + 7 * g + 8 * h + 9 * i + 10 * j;
+}
+typedef struct { float x; float y; } point;
+typedef struct { int64_t a; int64_t b; int64_t c; double d; } big;
+typedef struct { int8_t tag; double value; } mixed;
+EXPORT point point_add(point a, point b) { point r = { a.x + b.x, a.y + b.y }; return r; }
+EXPORT double point_dot(point a, float k) { return (a.x + a.y) * k; }
+EXPORT big big_make(int64_t a) { big r = { a, a + 1, a + 2, a + 0.5 }; return r; }
+EXPORT double big_sum(big b) { return b.a + b.b + b.c + b.d; }
+EXPORT mixed mixed_make(int8_t tag, double value) { mixed r = { tag, value }; return r; }
+EXPORT double mixed_read(mixed m) { return m.tag + m.value; }
+EXPORT int64_t sum_ints(int n, ...) {
+  va_list items;
+  int64_t total = 0;
+  va_start(items, n);
+  for (int i = 0; i < n; i++) total += va_arg(items, int);
+  va_end(items);
+  return total;
+}
+EXPORT double sum_doubles(int n, ...) {
+  va_list items;
+  double total = 0;
+  va_start(items, n);
+  for (int i = 0; i < n; i++) total += va_arg(items, double);
+  va_end(items);
+  return total;
+}
+EXPORT int64_t apply_twice(int64_t (*f)(int64_t), int64_t x) { return f(f(x)); }
+EXPORT double apply_float(double (*f)(double, float), double x) { return f(x, 0.5f); }
+EXPORT int apply_text(int (*f)(const char *), const char *text) { return f(text); }
+EXPORT void apply_nothing(void (*f)(void *), void *p) { f(p); }
+static int compare_with(const void *a, const void *b, int (*f)(int32_t, int32_t)) { return f(*(const int32_t *) a, *(const int32_t *) b); }
+EXPORT void sort_ints(int32_t *items, int n, int (*f)(int32_t, int32_t)) {
+  for (int i = 1; i < n; i++)
+    for (int j = i; j > 0 && compare_with(&items[j - 1], &items[j], f) > 0; j--) {
+      int32_t t = items[j]; items[j] = items[j - 1]; items[j - 1] = t;
+    }
+}
+static int64_t (*kept)(int64_t);
+EXPORT void keep_callback(int64_t (*f)(int64_t)) { kept = f; }
+EXPORT int64_t call_kept(int64_t x) { return kept(x); }
 EXPORT int64_t deep_stack(void) {
   volatile char bytes[256 * 1024];
   int64_t sum = 0;

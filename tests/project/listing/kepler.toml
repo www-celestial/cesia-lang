@@ -1,0 +1,25 @@
+[project]
+name = "kepacs"
+native = ["SDL3", "SDL3_ttf"]
+
+[tasks.build]
+run = ["dune", "build", "--profile", "release"]
+
+[tasks.test]
+needs = ["build"]
+run = ["tools/test.sh"]
+
+[tasks.demo]
+needs = ["build"]
+file = "kepacs/demo.kp"
+limit = "memory=512M"
+
+[tasks.dev]
+file = "kepacs/demo.kp"
+watch = true
+
+[tasks.mark]
+run = ["touch", "ran.txt"]
+
+[tasks.all]
+needs = ["test", "demo"]

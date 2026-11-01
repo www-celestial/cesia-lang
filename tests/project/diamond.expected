@@ -1,0 +1,9 @@
+> sh -c "echo d"
+d
+> sh -c "echo b"
+b
+> sh -c "echo c"
+c
+> sh -c "echo a"
+a
+exit 0

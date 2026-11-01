@@ -5,7 +5,7 @@ use sys
 crlf = "$(char(13))$(char(10))"
 handle(r) = {status: 200, body: "ok"}
 
-function status_of(request)
+defn status_of(request)
   c = net.connect("127.0.0.1", 18092)?
   net.write(c, request)?
   reply = net.read(c)?

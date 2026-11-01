@@ -8,7 +8,7 @@ handle(r) = {status: 200, body: r.path}
 
 count(text) = length(split("HTTP/1.1", text)) - 1
 
-function read_until(c, wanted, got)
+defn read_until(c, wanted, got)
   if count(got) >= wanted
     Ok(got)
   else
@@ -17,7 +17,7 @@ function read_until(c, wanted, got)
   end
 end
 
-function client()
+defn client()
   c = net.connect("127.0.0.1", 18091)?
   net.write(c, "GET /x HT")?
   sys.sleep(0.01)

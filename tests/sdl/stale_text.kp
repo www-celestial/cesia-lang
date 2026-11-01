@@ -7,7 +7,7 @@ clear = {kind: "clear", color: background}
 line(words) = {kind: "text", x: 10, y: 10, text: words, color: 0xFFFFFF}
 lit(window) = probe.differing(10, 10, 100, 24, background, probe.pixels(window, 320, 200))
 
-function check()
+defn check()
   window = sdl.open("test", 320, 200, "../../kepacs/fonts/JetBrainsMono-Regular.ttf")?
   old = sdl.draw([clear, line("MMMMMMMM")], window)
   many = lit(old)
