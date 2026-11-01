@@ -78,6 +78,13 @@ let parse_limit (l : Types.limits) s =
           | name -> bad_option (Messages.unknown_limit name)))
     l (split_list s)
 
+(* 80% of the RAM by default: without a limit, one large array can freeze the machine. *)
+let with_default_memory (o : Runtime.options) =
+  let meminfo =
+    try In_channel.with_open_bin "/proc/meminfo" In_channel.input_all with Sys_error _ -> ""
+  in
+  { o with o_limits = { o.o_limits with memory_words = Runtime.default_memory meminfo } }
+
 (* What tells that a file has changed. *)
 let stamp path =
   match Unix.stat path with
@@ -136,7 +143,7 @@ let run args =
     | file :: rest when not (String.starts_with ~prefix:"--" file) -> o, file, rest
     | _ -> usage ()
   in
-  let o, file, rest = options Runtime.default_options args in
+  let o, file, rest = options (with_default_memory Runtime.default_options) args in
   let readable =
     Sys.file_exists file && (not (Sys.is_directory file))
     && (try In_channel.with_open_bin file ignore; true with Sys_error _ -> false)
@@ -150,7 +157,7 @@ let test args =
   let paths = List.filter (fun a -> a <> "--no-spec") args in
   let path = match paths with [] -> "." | [ p ] -> p | _ -> usage () in
   if List.exists (String.starts_with ~prefix:"--") paths || not (Sys.file_exists path) then usage ();
-  let w = Runtime.create_world { Runtime.default_options with o_no_spec = no_spec } in
+  let w = Runtime.create_world { (with_default_memory Runtime.default_options) with o_no_spec = no_spec } in
   exit (Testrun.run w ~path)
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)

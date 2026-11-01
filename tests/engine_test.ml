@@ -97,6 +97,9 @@ let () =
   check "also denied through a dynamic call" (code = 1);
   let code, _, _ = run "print(map(read_it, [1]))\n" in
   check "also denied from the prelude" (code = 1);
+  check "default memory is 80% of MemTotal"
+    (Runtime.default_memory "MemFree: 1 kB\nMemTotal:     1000 kB\n" = 102_400);
+  check "unknown RAM means no limit" (Runtime.default_memory "" = max_int);
   let program = "f(x) = x + 1\nprint(f(1))\n" in
   let code, count = hooks program in
   check "no hooks without --debugger" (code = 0 && count = 0);
