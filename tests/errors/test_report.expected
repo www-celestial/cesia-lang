@@ -1,0 +1,6 @@
+test_report/failing_test.kp:3: double(2) --> 5, got 4
+test_report/failing_test.kp:6: is_false returned false
+test_report/failing_test.kp:7: is_one returned 1
+test_report/failing_test.kp:8: is_error failed: Can't add the number 1 and the text "a".
+1 passed, 4 failed
+exit 1

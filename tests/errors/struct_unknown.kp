@@ -1,0 +1,3 @@
+struct P { x }
+p = P(1)
+p.y = 2

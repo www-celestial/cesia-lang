@@ -1,0 +1,11 @@
+-- The square of a number.
+--
+--   square(3) --> 9
+--   y = square(2)
+--   y + 1 --> 5
+--   text_plus() --> error
+square(x) = x * x
+text_plus() = "a" + 1
+
+is_square_negative() = square(-2) == 4
+is_ready(x) = true                    -- has a parameter: not a test

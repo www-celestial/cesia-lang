@@ -1,0 +1,2 @@
+memory_stack.kp:1:12: Limit "memory" reached.
+exit 1

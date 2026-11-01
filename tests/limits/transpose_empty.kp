@@ -1,0 +1,2 @@
+x = transpose(zeros(0, 100000000000))
+print(size(x))

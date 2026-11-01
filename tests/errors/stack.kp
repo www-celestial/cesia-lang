@@ -1,0 +1,7 @@
+function total(a)
+  a + "x"
+end
+function main()
+  total(1) + 1
+end
+main()

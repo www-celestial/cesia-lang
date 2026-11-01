@@ -1,0 +1,7 @@
+break cli.kp 4
+continue
+print x
+print nope
+where
+step
+continue

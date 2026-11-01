@@ -1,0 +1,47 @@
+is_row() = equal(size([1, 2, 3]), [1, 3])
+is_column() = equal(size([1; 2; 3]), [3, 1])
+is_matrix() = [1 2; 3 4][2, 1] == 3
+is_empty() = length([]) == 0
+is_space_minus() = length([1 -2]) == 2 and length([1 - 2]) == 1 and length([1-2]) == 1
+is_call_in_row() = length([abs(1) abs(2)]) == 2 and length([abs (1)]) == 2
+is_multiple_rows() = equal(
+  [1 2
+   3 4], [1 2; 3 4])
+is_comma_newline() = equal([1,
+  2], [1, 2])
+is_by_columns() = [1 2; 3 4][2] == 3
+is_whole_row() = equal([1 2; 3 4][2, :], [3, 4])
+is_whole_column() = equal([1 2; 3 4][:, 2], [2; 4])
+is_slice() = equal([1, 2, 3, 4, 5][2:4], [2, 3, 4])
+is_end() = [1, 2, 3][end] == 3 and equal([1, 2, 3][2:end], [2, 3])
+is_mask_as_index() = equal([1, 2, 3][[true, false, true]], [1, 3])
+is_whole_float_index() = [1, 2, 3][2.0] == 2
+is_zeros() = equal(zeros(2), [0.0, 0.0]) and equal(size(zeros(2, 3)), [2, 3])
+is_fill() = equal(fill("a", 2), ["a", "a"])
+is_int_in_f() = int_in_f()
+is_comp() = equal([v * 2 for v in [1, -2, 3] if v > 0], [2, 6])
+is_comp_local() = comp_local()
+is_for_array() = sum_for([1, 2, 3]) == 6
+is_for_empty() = sum_for([]) == 0
+is_range_array() = equal(1:3, [1, 2, 3])
+is_range_empty() = length(3:1) == 0
+is_in() = 2 in [1, 2] and not (3 in 1:2)
+is_array_in_array() = length([[1, 2], 3]) == 2
+
+function int_in_f()
+  x = zeros(2)
+  x[1] = 5
+  is_float(x[1])
+end
+function comp_local()
+  v = 9
+  r = [v for v in [1]]
+  v == 9
+end
+function sum_for(xs)
+  s = 0
+  for v in xs
+    s += v
+  end
+  s
+end

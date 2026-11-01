@@ -1,0 +1,4 @@
+no_perm.kp:2:6: Permission "debug" denied. Run again with --allow debug.
+  2 | debug.set_break("no_perm.kp", 1)
+    |      ^
+exit 1

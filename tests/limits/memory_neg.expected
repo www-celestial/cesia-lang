@@ -1,0 +1,4 @@
+memory_neg.kp:2:5: Limit "memory" reached.
+  2 | b = -a
+    |     ^
+exit 1

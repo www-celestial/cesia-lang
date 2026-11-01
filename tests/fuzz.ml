@@ -1,0 +1,190 @@
+(* The fuzzer: random bytes and mutated valid programs, with strict limits. Only Kepler errors are allowed. The two
+   paths, typed and --no-spec, must also give the same result. Usage: fuzz.exe --seconds N --seed S, from the
+   repository root. Failures go to _build/fuzz_fail/. *)
+open Kepler
+
+exception Timeout
+
+let fail_dir = "_build/fuzz_fail"
+let current = Filename.concat fail_dir "current.kp"
+let max_saved = 40
+let trial_alarm = 10
+
+let limits =
+  { Runtime.default_limits with steps = 1_000_000; memory_words = 64 * 1024 * 1024 / 8; max_depth = 1000 }
+
+type outcome = { code : int; out : string; err : string }
+
+let run ~no_spec path =
+  let out = Buffer.create 256 and err = Buffer.create 256 in
+  let sink b s = if Buffer.length b < 1 lsl 20 then Buffer.add_string b s in
+  let options =
+    { Runtime.default_options with
+      o_limits = limits;
+      o_no_spec = no_spec;
+      o_sink = sink out;
+      o_err = sink err }
+  in
+  let w = Runtime.create_world options in
+  let code = Loader.run_file ~strict:true w path [] in
+  { code; out = Buffer.contents out; err = Buffer.contents err }
+
+let contains text s =
+  let n = String.length s and m = String.length text in
+  let rec go i = i + m <= n && (String.sub s i m = text || go (i + 1)) in
+  go 0
+
+let hit_limit o = contains "Limit \"" o.err
+
+let write path s = Out_channel.with_open_bin path (fun oc -> output_string oc s)
+
+let finished = ref 0
+
+(* None if all is well, else what is wrong. *)
+let attempt src =
+  write current src;
+  match
+    ignore (Unix.alarm trial_alarm);
+    let a = run ~no_spec:false current in
+    let b = run ~no_spec:true current in
+    ignore (Unix.alarm 0);
+    a, b
+  with
+  | exception e ->
+    ignore (Unix.alarm 0);
+    Some ("exception: " ^ Printexc.to_string e)
+  | a, b ->
+    if a.code = 0 then incr finished;
+    if hit_limit a || hit_limit b || a = b then None
+    else
+      Some
+        (Printf.sprintf "paths differ\n--- typed (%d)\n%s%s\n--- no-spec (%d)\n%s%s" a.code a.out a.err b.code
+           b.out b.err)
+
+(* Makes a test file runnable: otherwise its is_ functions would never be called. *)
+let test_calls src =
+  let call line =
+    let name_of start =
+      match String.index_from_opt line start '(' with
+      | Some i when String.sub line i (min 2 (String.length line - i)) = "()" ->
+        Some (String.sub line start (i - start))
+      | _ -> None
+    in
+    let found =
+      if String.starts_with ~prefix:"is_" line then name_of 0
+      else if String.starts_with ~prefix:"function is_" line then name_of 9
+      else None
+    in
+    Option.map (fun n -> Printf.sprintf "print(try %s() else e -> e.message end)\n" n) found
+  in
+  String.concat "" (List.filter_map call (String.split_on_char '\n' src))
+
+let prelude_calls =
+  "print(map(x -> x + 1, [1, 2]))\n\
+   print(filter(x -> x > 1, [1, 2, 3]))\n\
+   print(reduce((a, x) -> a + x, 0, [1, 2, 3]))\n\
+   print(scan((a, x) -> a + x, 0, [1, 2, 3]))\n\
+   print(range(1, 10, step = 3))\n\
+   print(group(x -> mod(x, 2), [1, 2, 3, 4]))\n\
+   print(top(2, [5, 1, 9, 3]))\n"
+
+let kp_files dir =
+  if not (Sys.file_exists dir) then []
+  else
+    Sys.readdir dir |> Array.to_list |> List.sort compare
+    |> List.filter (fun f -> Filename.check_suffix f ".kp")
+    |> List.map (Filename.concat dir)
+
+let corpus () =
+  let read f = In_channel.with_open_bin f In_channel.input_all in
+  let tests = List.map (fun f -> let s = read f in s ^ "\n" ^ test_calls s) (kp_files "tests/lang") in
+  let std = List.map (fun f -> read f ^ "\n" ^ prelude_calls) (kp_files "std") in
+  Array.of_list (tests @ std)
+
+(* Splits into words, spaces and signs: gluing the pieces gives back the original text. *)
+let tokens s =
+  let out = ref [] and n = String.length s and i = ref 0 in
+  let is_word c =
+    (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c = '.'
+  in
+  let is_space c = c = ' ' || c = '\n' || c = '\t' in
+  while !i < n do
+    let start = !i and c = s.[!i] in
+    let same = if is_word c then is_word else if is_space c then is_space else fun _ -> false in
+    incr i;
+    while !i < n && same s.[!i] do incr i done;
+    out := String.sub s start (!i - start) :: !out
+  done;
+  Array.of_list (List.rev !out)
+
+let is_number t = t <> "" && t.[0] >= '0' && t.[0] <= '9'
+let hostile = [| "0"; "-1"; "4611686018427387903"; "nan" |]
+
+let pick st a = a.(Random.State.int st (Array.length a))
+
+let mutate st src =
+  let t = ref (tokens src) in
+  let count () = Array.length !t in
+  let at () = Random.State.int st (count ()) in
+  for _ = 0 to Random.State.int st 4 do
+    if count () > 1 then
+      match Random.State.int st 4 with
+      | 0 ->
+        let k = at () in
+        t := Array.append (Array.sub !t 0 k) (Array.sub !t (k + 1) (count () - k - 1))
+      | 1 ->
+        let k = at () in
+        t := Array.concat [ Array.sub !t 0 k; [| !t.(k) |]; Array.sub !t k (count () - k) ]
+      | 2 ->
+        let a = at () and b = at () in
+        let x = !t.(a) in
+        !t.(a) <- !t.(b);
+        !t.(b) <- x
+      | _ ->
+        let numbers = List.filter (fun k -> is_number !t.(k)) (List.init (count ()) Fun.id) in
+        if numbers <> [] then begin
+          let k = List.nth numbers (Random.State.int st (List.length numbers)) in
+          !t.(k) <- pick st hostile
+        end
+  done;
+  String.concat "" (Array.to_list !t)
+
+let random_bytes st = String.init (Random.State.int st 400) (fun _ -> Char.chr (Random.State.int st 256))
+
+let generate st corpus =
+  if Random.State.bool st || Array.length corpus = 0 then random_bytes st else mutate st (pick st corpus)
+
+let args () =
+  let seconds = ref 60. and seed = ref 1 in
+  Arg.parse
+    [ "--seconds", Arg.Set_float seconds, "duration"; "--seed", Arg.Set_int seed, "seed" ]
+    (fun _ -> ())
+    "fuzz --seconds N --seed S";
+  !seconds, !seed
+
+let () =
+  let seconds, seed = args () in
+  (try Sys.mkdir fail_dir 0o755 with Sys_error _ -> ());
+  Array.iter (fun f -> Sys.remove (Filename.concat fail_dir f)) (Sys.readdir fail_dir);
+  Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout));
+  let corpus = corpus () in
+  if Array.length corpus = 0 then failwith "no corpus: run from the root of the repository";
+  let master = Random.State.make [| seed |] in
+  let stop = Unix.gettimeofday () +. seconds in
+  let trials = ref 0 and failures = ref 0 in
+  while Unix.gettimeofday () < stop do
+    let trial_seed = Random.State.bits master in
+    let src = generate (Random.State.make [| trial_seed |]) corpus in
+    incr trials;
+    match attempt src with
+    | None -> ()
+    | Some what ->
+      incr failures;
+      if !failures <= max_saved then begin
+        let base = Filename.concat fail_dir (string_of_int !failures) in
+        write (base ^ ".kp") src;
+        write (base ^ ".txt") (Printf.sprintf "seed %d\n%s\n" trial_seed what)
+      end
+  done;
+  Printf.printf "%d trials, %d finished normally, %d failures\n" !trials !finished !failures;
+  if !failures > 0 then exit 1

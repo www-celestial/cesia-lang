@@ -1,0 +1,4 @@
+memory.kp:3:11: Limit "memory" reached.
+  3 |   x = [x, zeros(1000)]
+    |           ^
+exit 1

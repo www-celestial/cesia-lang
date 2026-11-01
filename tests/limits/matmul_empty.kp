@@ -1,0 +1,2 @@
+x = matmul(zeros(0, 0), zeros(0, 100000000000))
+print(size(x))

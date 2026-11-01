@@ -1,0 +1,6 @@
+unset.kp:5:3: "v" has no value yet.
+  5 |   v
+    |   ^
+  Give it a value before reading it.
+  in f (unset.kp:5)
+exit 1

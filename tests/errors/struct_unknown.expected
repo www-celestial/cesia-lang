@@ -1,0 +1,4 @@
+struct_unknown.kp:3:2: P has no field "y".
+  3 | p.y = 2
+    |  ^
+exit 1

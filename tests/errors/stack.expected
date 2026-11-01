@@ -1,0 +1,7 @@
+stack.kp:2:5: Can't add the number 1 and the text "x".
+  2 |   a + "x"
+    |     ^
+  To put a value in a text, write "...$x" or text(x).
+  in total (stack.kp:2)
+  called from main (stack.kp:5)
+exit 1

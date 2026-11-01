@@ -1,0 +1,35 @@
+-- Runs forever: tools/reload_test.sh edits this file while it runs.
+use "./lib"
+
+print("start")
+
+struct Point { x }
+
+value() = 1
+following() = value() + 1
+point() = Point(1).x
+
+function report(label, before, after)
+  if not equal(before, after)
+    print("$label $after")
+  end
+  after
+end
+
+function main_loop()
+  a = value()
+  print("value $a")
+  b = 0
+  c = 0
+  d = 0
+  e = 0
+  while true
+    a = report("value", a, value())
+    b = report("following", b, try following() else e -> e.kind end)
+    c = report("direct", c, try value() + 1 else e -> e.kind end)
+    d = report("lib", d, lib.constant())
+    e = report("point", e, point())
+  end
+end
+
+main_loop()

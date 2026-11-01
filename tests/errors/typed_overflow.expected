@@ -1,0 +1,6 @@
+typed_overflow.kp:1:10: The integer result of 4611686018427387903 + 4611686018427387903 doesn't fit in 63 bits.
+  1 | f(a) = a + a
+    |          ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in f (typed_overflow.kp:1)
+exit 1

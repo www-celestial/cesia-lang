@@ -1,0 +1,145 @@
+-- The prelude written in Kepler. Sequence functions: the collection comes last.
+
+-- Applies f to each element, keeping the shape.
+--
+--   map(it * 2, [1, 2]) --> [2, 4]
+function map(f, xs)
+  r = [f(x) for x in xs]
+  if size(xs, 1) == 1 r else reshape(r, size(xs, 1), size(xs, 2)) end
+end
+
+-- The elements for which f is true.
+--
+--   filter(it > 1, [1, 2, 3]) --> [2, 3]
+filter(f, xs) = [x for x in xs if f(x)]
+
+-- Folds xs with f, starting from init.
+--
+--   reduce((a, x) -> a + x, 0, [1, 2, 3]) --> 6
+function reduce(f, init, xs)
+  acc = init
+  for x in xs
+    acc = f(acc, x)
+  end
+  acc
+end
+
+-- The successive results of reduce: one per element, init excluded.
+--
+--   scan((a, x) -> a + x, 0, [1, 2, 3]) --> [1, 3, 6]
+function scan(f, init, xs)
+  out = fill(missing, length(xs))
+  acc = init
+  i = 0
+  for x in xs
+    acc = f(acc, x)
+    i += 1
+    out[i] = acc
+  end
+  out
+end
+
+-- From a to b, by step. Integers if all three are integers, else a + k * step.
+--
+--   range(1, 10, step = 3) --> [1, 4, 7, 10]
+--   range(0, 1, step = 0.25) --> [0.0, 0.25, 0.5, 0.75, 1.0]
+function range(a, b, step = 1)
+  if step == 0
+    error("range: step can't be 0.")
+  end
+  if floor(a) == a and floor(b) == b and floor(step) == step
+    n = div(b - a, step) + 1
+    [a + k * step for k in 0:n - 1]
+  else
+    span = (b - a) / step
+    n = if span < -1e-9 0 else floor(span + 1e-9) + 1 end
+    [a + k * step for k in 0:n - 1]
+  end
+end
+
+function _row(k, members, summary)
+  if is_missing(summary)
+    {key: k, values: members}
+  else
+    s = summary(members)
+    if is_struct(s) _merge({key: k}, s) else {key: k, value: s} end
+  end
+end
+
+-- The elements grouped by key, in order of first appearance of the keys.
+--
+--   group(mod(it, 2), [1, 2, 3]) --> [{key: 1, values: [1, 3]}, {key: 0, values: [2]}]
+function group(key, xs, summary = missing)
+  n = length(xs)
+  keys = fill(missing, n)
+  ids = fill(0, n)
+  count = 0
+  i = 0
+  for x in xs
+    i += 1
+    k = key(x)
+    g = 0
+    for j in 1:count
+      if equal(keys[j], k)
+        g = j
+        break
+      end
+    end
+    if g == 0
+      count += 1
+      keys[count] = k
+      g = count
+    end
+    ids[i] = g
+  end
+  out = fill(missing, count)
+  for g in 1:count
+    members = [xs[p] for p in 1:n if ids[p] == g]
+    out[g] = _row(keys[g], members, summary)
+  end
+  out
+end
+
+-- The positions of keys, from the largest key to the smallest. Stable merge sort.
+function _order(keys)
+  n = length(keys)
+  idx = [k for k in 1:n]
+  tmp = fill(0, n)
+  width = 1
+  while width < n
+    lo = 1
+    while lo <= n
+      mid = min(lo + width, n + 1)
+      hi = min(lo + 2 * width, n + 1)
+      i = lo
+      j = mid
+      k = lo
+      while k < hi
+        if i < mid and (j >= hi or not (keys[idx[j]] > keys[idx[i]]))
+          tmp[k] = idx[i]
+          i += 1
+        else
+          tmp[k] = idx[j]
+          j += 1
+        end
+        k += 1
+      end
+      lo = hi
+    end
+    t = idx
+    idx = tmp
+    tmp = t
+    width = 2 * width
+  end
+  idx
+end
+
+-- The n largest elements, largest first, or those with the largest by.
+--
+--   top(2, [5, 1, 9, 3]) --> [9, 5]
+function top(n, xs, by = missing)
+  keys = if is_missing(by) xs else [by(x) for x in xs] end
+  idx = _order(keys)
+  m = min(n, length(xs))
+  [xs[idx[k]] for k in 1:m]
+end

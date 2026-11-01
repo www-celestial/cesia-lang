@@ -1,0 +1,2591 @@
+open Types
+open Ast
+
+exception Break_loop
+exception Return_value of t
+
+type c = {
+  w : world;
+  file : int;
+  fn : string;
+  func : func;
+  ver : version;
+  tv : ty array;  (* the type of each variable *)
+  tn : ty array;  (* the type of each node *)
+  map : int array;  (* the slot of each variable *)
+  mutable off : int;  (* offset of the next call site *)
+  mutable top : int;  (* the frame size needed *)
+  mutable ends : (int * int * int) list;  (* for [end]: slot of the indexed array, dimension, number of indexes *)
+  mutable live : Bytes.t;  (* the last compiled hook: what is assigned at this statement *)
+}
+
+let ty c (e : expr) = c.tn.(e.id)
+
+let cell_of c i = if c.func.cell_of = [||] then -1 else c.func.cell_of.(i)
+
+let[@inline never] not_int ctx v =
+  Runtime.fail ctx Type (Messages.want_int "This value" (Value.describe v))
+
+let[@inline never] not_float ctx v =
+  Runtime.fail ctx Type (Messages.need_number "This value" (Value.describe v))
+
+let[@inline] to_i ctx v =
+  match v with
+  | Int i -> i
+  | _ -> not_int ctx v
+
+let[@inline] to_f ctx v =
+  match v with
+  | Float x -> x
+  | Int i -> float_of_int i
+  | _ -> not_float ctx v
+
+open struct
+  let[@inline] add_i ctx s x y = Super.add_i ctx s x y
+  let[@inline] sub_i ctx s x y = Super.sub_i ctx s x y
+  let[@inline] mul_i ctx s x y = Super.mul_i ctx s x y
+end
+
+let[@inline] fget (ctx : ctx) k = Float.Array.get ctx.f (ctx.b + k)
+let[@inline] iget (ctx : ctx) k = ctx.i.(ctx.b + k)
+
+let site c pos =
+  let s = c.w.sites in
+  Dynarray.add_last s { sfile = c.file; spos = pos; sfn = c.fn; sver = Some c.ver; soff = c.off; slive = c.live };
+  Dynarray.length s - 1
+
+(* One step. [off]: beyond b + off, the v stack is dead. *)
+let[@inline] tick ctx off =
+  let f = ctx.fuel - 1 in
+  ctx.fuel <- f;
+  if f < 0 then Runtime.checkpoint ctx (ctx.b + off)
+
+let[@inline] truth s ctx v =
+  match v with
+  | True -> true
+  | False -> false
+  | _ ->
+    ctx.site <- s;
+    Runtime.fail ctx Type (Messages.condition (Value.describe v))
+
+(* The fast paths of generic arithmetic. The slow case knows its site. *)
+let[@inline] add_a ctx s p q =
+  match p, q with
+  | Float u, Float w -> Float (u +. w)
+  | Int u, Int w ->
+    let r = u + w in
+    if (u lxor r) land (w lxor r) < 0 then begin
+      ctx.site <- s;
+      Arith.add ctx p q
+    end else Int r
+  | Float u, Int w -> Float (u +. float_of_int w)
+  | Int u, Float w -> Float (float_of_int u +. w)
+  | _ ->
+    ctx.site <- s;
+    Arith.add ctx p q
+
+let[@inline] sub_a ctx s p q =
+  match p, q with
+  | Float u, Float w -> Float (u -. w)
+  | Int u, Int w ->
+    let r = u - w in
+    if (u lxor w) land (u lxor r) < 0 then begin
+      ctx.site <- s;
+      Arith.sub ctx p q
+    end else Int r
+  | Float u, Int w -> Float (u -. float_of_int w)
+  | Int u, Float w -> Float (float_of_int u -. w)
+  | _ ->
+    ctx.site <- s;
+    Arith.sub ctx p q
+
+let[@inline] mul_a ctx s p q =
+  match p, q with
+  | Float u, Float w -> Float (u *. w)
+  | Float u, Int w -> Float (u *. float_of_int w)
+  | Int u, Float w -> Float (float_of_int u *. w)
+  | _ ->
+    ctx.site <- s;
+    Arith.mul ctx p q
+
+let[@inline] div_a ctx s p q =
+  match p, q with
+  | Float u, Float w -> Float (u /. w)
+  | Float u, Int w -> Float (u /. float_of_int w)
+  | Int u, Float w -> Float (float_of_int u /. w)
+  | Int u, Int w -> Float (float_of_int u /. float_of_int w)
+  | _ ->
+    ctx.site <- s;
+    Arith.div ctx p q
+
+let slow_test ctx s f p q =
+  ctx.site <- s;
+  match f ctx p q with
+  | True -> true
+  | False -> false
+  | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v))
+
+let[@inline] lt_b ctx s p q =
+  match p, q with
+  | Int u, Int w -> u < w
+  | Float u, Float w -> u < w
+  | _ -> slow_test ctx s Arith.lt p q
+
+let[@inline] le_b ctx s p q =
+  match p, q with
+  | Int u, Int w -> u <= w
+  | Float u, Float w -> u <= w
+  | _ -> slow_test ctx s Arith.le p q
+
+let[@inline] gt_b ctx s p q =
+  match p, q with
+  | Int u, Int w -> u > w
+  | Float u, Float w -> u > w
+  | _ -> slow_test ctx s Arith.gt p q
+
+let[@inline] ge_b ctx s p q =
+  match p, q with
+  | Int u, Int w -> u >= w
+  | Float u, Float w -> u >= w
+  | _ -> slow_test ctx s Arith.ge p q
+
+let[@inline] eq_b ctx s p q =
+  match p, q with
+  | Int u, Int w -> u = w
+  | Float u, Float w -> u = w
+  | _ -> slow_test ctx s Arith.eq p q
+
+let[@inline] ne_b ctx s p q =
+  match p, q with
+  | Int u, Int w -> u <> w
+  | Float u, Float w -> u <> w
+  | _ -> slow_test ctx s Arith.ne p q
+
+(* Entering a frame: its links are in the caller's argument area, so already covered. *)
+let[@inline] enter_fast (ctx : ctx) (i : int array) b nb s (ver : version) =
+  i.(nb) <- b;
+  i.(nb + 1) <- s;
+  ctx.b <- nb;
+  let need = nb + ver.size in
+  if need > ctx.cap then begin
+    ctx.site <- s;
+    Runtime.grow ctx need
+  end;
+  tick ctx ver.frame
+
+let[@inline] enter (ctx : ctx) nb s (ver : version) = enter_fast ctx ctx.i ctx.b nb s ver
+
+(* x - d, for a constant d > 0: the result can only overflow upward. *)
+let[@inline] sub_const ctx s x d =
+  let r = x - d in
+  if r > x then begin
+    ctx.site <- s;
+    Arith.sub_int ctx x d
+  end else r
+
+let rec seq_u : (ctx -> unit) list -> ctx -> unit = function
+  | [] -> fun _ -> ()
+  | [ a ] -> a
+  | [ a; b ] -> fun ctx -> a ctx; b ctx
+  | [ a; b; d ] -> fun ctx -> a ctx; b ctx; d ctx
+  | a :: b :: d :: e :: rest ->
+    let r = seq_u rest in
+    fun ctx -> a ctx; b ctx; d ctx; e ctx; r ctx
+
+(* Reserves the slot of the indexed array, for [end]. *)
+let with_end c uses_end f =
+  if not uses_end then f (-1)
+  else begin
+    let slot = c.off in
+    c.off <- slot + 1;
+    c.top <- max c.top (c.off + 2);
+    let r = f slot in
+    c.off <- slot;
+    r
+  end
+
+type field_cache = { cs : shape; ci : int }
+
+let no_shape = { sid = -1; names = [||]; sname = None; next = Hashtbl.create 1 }
+
+let field_slot ctx shape name =
+  let i = Value.field_index shape name in
+  if i < 0 then Runtime.fail ctx Field (Messages.no_field name);
+  i
+
+(* The field of an array of structs is the array of that field. *)
+let rec field_slow ctx v name =
+  match v with
+  | Struct r -> r.fields.(field_slot ctx r.shape name)
+  | Array a ->
+    Runtime.build ctx (a.rows * a.cols);
+    Arrays.of_vals a.rows a.cols
+      (Array.init (a.rows * a.cols) (fun k -> Value.share (field_slow ctx (Value.elt a k) name)))
+  | _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name)
+
+type resolved_step = Rfield of string | Rindex of Arrays.ix array
+
+let step_read ctx v st =
+  match st with
+  | Rfield name -> field_slow ctx v name
+  | Rindex ixs -> Arrays.read ctx v ixs
+
+(* Writes to an owned container. Adding a field creates a new struct, which is returned. *)
+let step_write ctx v st x =
+  match st with
+  | Rindex ixs ->
+    Arrays.write ctx v ixs x;
+    v
+  | Rfield name ->
+    (match v with
+     | Struct r ->
+       let i = Value.field_index r.shape name in
+       if i >= 0 then begin
+         r.fields.(i) <- x;
+         v
+       end else (
+         match r.shape.sname with
+         | Some sn -> Runtime.fail ctx Field (Messages.named_field sn name)
+         | None -> Value.add_field ctx.w r.shape r.fields name x)
+     | _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name))
+
+let new_proto ~file ~m (f : func) =
+  { pname = f.fname; file; pm = m; func = f; versions = []; generic = None; by_tag = [];
+    arity = Array.length f.params; last = No_call }
+
+(* No jump table: an indirect branch predicts badly when types alternate. *)
+let[@inline] is_float v = match v with Float _ -> true | _ -> false
+let[@inline] is_int v = match v with Int _ -> true | _ -> false
+
+let arg_other v =
+  match v with
+  | Array { store = F _; _ } -> 2
+  | _ -> 3
+
+let[@inline] arg_type v = if is_float v then 1 else if is_int v then 0 else arg_other v
+
+let[@inline] put (ctx : ctx) pk nb k x =
+  let e = pk.(k) in
+  let p = nb + (e lsr 2) in
+  match e land 3 with
+  | 1 -> ctx.i.(p) <- to_i ctx x
+  | 2 -> Float.Array.set ctx.f p (to_f ctx x)
+  | _ -> ctx.v.(p) <- x
+
+(* The tag of the generic version. Positive and out of reach of a real tag, which fits in 40 bits: the cache key thus
+   keeps the argument count, placed above. *)
+let no_tag = (1 lsl 42) - 1
+
+(* Two bits per argument: the real type of each. no_spec has a single tag. *)
+let arg_tag (ctx : ctx) nb n =
+  if ctx.w.no_spec then no_tag
+  else begin
+    let tag = ref 0 and omitted = ref false in
+    for i = 0 to n - 1 do
+      let x = ctx.v.(nb + i) in
+      if x == Undef then omitted := true;
+      tag := !tag lor (arg_type x lsl (2 * i))
+    done;
+    (* An argument skipped by a named call: only the generic version computes its default. *)
+    if !omitted then no_tag else !tag
+  end
+
+(* An argument: a local variable, or a closure. *)
+let[@inline] arg_value (ctx : ctx) slot (f : ctx -> t) =
+  if slot >= 0 then begin
+    let x = ctx.v.(ctx.b + slot) in
+    (match x with
+     | Array r -> r.a_owned <- false
+     | Struct r -> r.r_owned <- false
+     | _ -> ());
+    x
+  end
+  else f ctx
+
+let[@inline] finish (ctx : ctx) (proto : proto) (ver : version) env nb b s =
+  enter_fast ctx ctx.i b nb s ver;
+  let caps = proto.func.captures in
+  if Array.length caps > 0 then begin
+    let map = ver.map in
+    for j = 0 to Array.length caps - 1 do
+      ctx.v.(nb + map.(snd caps.(j))) <- env.(j)
+    done
+  end;
+  let r = if ver.ret == TF then Float (ver.rf ctx) else ver.rv ctx in
+  ctx.b <- b;
+  r
+
+let rec find_in key = function
+  | [] -> None
+  | (k, v) :: rest -> if k = key then Some v else find_in key rest
+
+let tag_type tag i =
+  match (tag lsr (2 * i)) land 3 with
+  | 0 -> TI
+  | 1 -> TF
+  | 2 -> TFA
+  | _ -> TA
+
+let[@inline never] fa_slow1 ctx x k s =
+  ctx.site <- s;
+  to_f ctx (Arrays.read1 ctx x (Arrays.At k))
+
+let[@inline] fa_get (ctx : ctx) slot k s =
+  match ctx.v.(ctx.b + slot) with
+  | Array { store = F d; _ } when k >= 1 && k <= Float.Array.length d -> Float.Array.get d (k - 1)
+  | x -> fa_slow1 ctx x k s
+
+let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -> 'a) -> ctx -> 'a =
+  fun f frame prologue unbox body ->
+  let once = match prologue with None -> body | Some p -> fun ctx -> p ctx; body ctx in
+  let guarded =
+    if f.has_return then (fun ctx -> try once ctx with Return_value v -> unbox ctx v) else once
+  in
+  let looped =
+    if f.has_self_tail then begin
+      let rec loop (ctx : ctx) =
+        let r = guarded ctx in
+        if ctx.again then begin
+          ctx.again <- false;
+          tick ctx frame;
+          loop ctx
+        end else r
+      in
+      loop
+    end else guarded
+  in
+  looped
+
+let rec compile_version (ctx : ctx) (ver : version) =
+  let w = ctx.w in
+  Infer.run w ver;
+  let f = ver.owner.func in
+  let c =
+    { w; file = ver.owner.file; fn = ver.owner.pname; func = f; ver; tv = ver.tv; tn = ver.tn; map = ver.map;
+      off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty }
+  in
+  let generic = match ver.owner.generic with Some g -> g == ver | None -> false in
+  let defaults =
+    List.filter_map
+      (fun k ->
+         match f.params.(k).default with
+         | Some d when generic ->
+           let d = ce c d and slot = ver.map.(k) in
+           Some (fun (ctx : ctx) ->
+               match ctx.v.(ctx.b + slot) with
+               | Undef ->
+                 let x = d ctx in
+                 ctx.v.(ctx.b + slot) <- x
+               | _ -> ())
+         | Some d when ver.sg.(k) == TBot -> Some (store_var c k d)
+         | _ -> None)
+      (List.init (Array.length f.params) Fun.id)
+  in
+  let np = Array.length f.params in
+  let captured = Array.map snd f.captures in
+  let unset =
+    List.filter
+      (fun i -> f.maybe_undef.(i) && i >= np && (not (Array.mem i captured)) && cell_of c i < 0)
+      (List.init f.nvars Fun.id)
+  in
+  let writes = List.map (fun i -> let k = ver.map.(i) in fun (ctx : ctx) -> ctx.v.(ctx.b + k) <- Undef) unset @ defaults in
+  let prologue = if writes = [] then None else Some (seq_u writes) in
+  (match ver.ret with
+   | TI ->
+     let body = ci_block c f.body in
+     let entry = wrap f ver.frame prologue to_i body in
+     ver.ri <- entry;
+     ver.rv <- (fun ctx -> Int (entry ctx));
+     ver.rf <- (fun ctx -> float_of_int (entry ctx))
+   | TF ->
+     let body = cf_block c f.body in
+     let entry = wrap f ver.frame prologue to_f body in
+     ver.rf <- entry;
+     ver.rv <- (fun ctx -> Float (entry ctx));
+     ver.ri <- (fun ctx -> to_i ctx (Float (entry ctx)))
+   | _ ->
+     let body = ctail_block c f.body in
+     let entry = wrap f ver.frame prologue (fun _ v -> v) body in
+     ver.rv <- entry;
+     ver.ri <- (fun ctx -> to_i ctx (entry ctx));
+     ver.rf <- (fun ctx -> to_f ctx (entry ctx)));
+  ver.size <- c.top;
+  if ctx.b + ver.size > ctx.cap then Runtime.grow ctx (ctx.b + ver.size)
+
+(* Writes the value of an expression to a variable, according to its type. *)
+and store_var c i (e : expr) : ctx -> unit =
+  let k = c.map.(i) in
+  match c.tv.(i) with
+  | TI when cell_of c i < 0 ->
+    (match e.e with
+     | Bin (Add, { e = Var { b = Local j; _ }; _ }, { e = Lint d; _ }) when j = i ->
+       let s = site c e.pos in
+       fun ctx ->
+         let p = ctx.b + k in
+         ctx.i.(p) <- add_i ctx s ctx.i.(p) d
+     | _ ->
+       let a = ci c e in
+       fun ctx ->
+         let x = a ctx in
+         ctx.i.(ctx.b + k) <- x)
+  | TF when cell_of c i < 0 ->
+    (match e.e with
+     | Bin (op, a, b) when ty c e == TF && (op = Add || op = Sub || op = Mul || op = Div) && not (super_float_applies c a b) ->
+       store_float c k op (fleaf3 c a) (fleaf3 c b)
+     | _ ->
+       let a = cf c e in
+       fun ctx ->
+         let x = a ctx in
+         Float.Array.set ctx.f (ctx.b + k) x)
+  | _ ->
+    let cell = cell_of c i in
+    if cell >= 0 then begin
+      let a = ce c e in
+      let md = c.w.modules.(c.ver.owner.pm) in
+      fun ctx -> md.cells.(cell) <- a ctx
+    end else begin
+      match e.e with
+      | Index ({ e = Var { b = Local r; _ }; _ }, [| Ix ix |], false) when plain_local c r && ty c ix == TI ->
+        let slot = c.map.(r) and idx = ci c ix and s = site c e.pos in
+        fun ctx ->
+          let p = idx ctx in
+          let x =
+            match ctx.v.(ctx.b + slot) with
+            | Array { store = V d; _ } when p >= 1 && p <= Array.length d -> d.(p - 1)
+            | base ->
+              ctx.site <- s;
+              Arrays.read1 ctx base (Arrays.At p)
+          in
+          (match x with
+           | Array r -> r.a_owned <- false
+           | Struct r -> r.r_owned <- false
+           | _ -> ());
+          ctx.v.(ctx.b + k) <- x
+      | Var _ | Index _ | Field _ ->
+        let a = cv c e in
+        fun ctx ->
+          let x = a ctx in
+          (match x with
+           | Array r -> r.a_owned <- false
+           | Struct r -> r.r_owned <- false
+           | _ -> ());
+          ctx.v.(ctx.b + k) <- x
+      | _ ->
+        let a = ce c e in
+        fun ctx ->
+          let x = a ctx in
+          ctx.v.(ctx.b + k) <- x
+    end
+
+(* x = a op b on floats: the computation and the write in the same closure. *)
+and store_float c k op x y : ctx -> unit =
+  ignore c;
+  let[@inline] set (ctx : ctx) v = Float.Array.set ctx.f (ctx.b + k) v in
+  match op, x, y with
+  | Add, `L i, `L j -> fun ctx -> set ctx (fget ctx i +. fget ctx j)
+  | Add, `L i, `K q -> fun ctx -> set ctx (fget ctx i +. q)
+  | Add, `K q, `L j -> fun ctx -> set ctx (q +. fget ctx j)
+  | Add, `L i, `X g -> fun ctx -> let v = g ctx in set ctx (fget ctx i +. v)
+  | Add, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u +. fget ctx j)
+  | Add, `X f, `K q -> fun ctx -> set ctx (f ctx +. q)
+  | Add, `K q, `X g -> fun ctx -> set ctx (q +. g ctx)
+  | Add, `X f, `X g ->
+    fun ctx ->
+      let u = f ctx in
+      let v = g ctx in
+      set ctx (u +. v)
+  | Sub, `L i, `L j -> fun ctx -> set ctx (fget ctx i -. fget ctx j)
+  | Sub, `L i, `K q -> fun ctx -> set ctx (fget ctx i -. q)
+  | Sub, `K q, `L j -> fun ctx -> set ctx (q -. fget ctx j)
+  | Sub, `L i, `X g -> fun ctx -> let v = g ctx in set ctx (fget ctx i -. v)
+  | Sub, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u -. fget ctx j)
+  | Sub, `X f, `K q -> fun ctx -> set ctx (f ctx -. q)
+  | Sub, `K q, `X g -> fun ctx -> set ctx (q -. g ctx)
+  | Sub, `X f, `X g ->
+    fun ctx ->
+      let u = f ctx in
+      let v = g ctx in
+      set ctx (u -. v)
+  | Mul, `L i, `L j -> fun ctx -> set ctx (fget ctx i *. fget ctx j)
+  | Mul, `L i, `K q -> fun ctx -> set ctx (fget ctx i *. q)
+  | Mul, `K q, `L j -> fun ctx -> set ctx (q *. fget ctx j)
+  | Mul, `L i, `X g -> fun ctx -> let v = g ctx in set ctx (fget ctx i *. v)
+  | Mul, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u *. fget ctx j)
+  | Mul, `X f, `K q -> fun ctx -> set ctx (f ctx *. q)
+  | Mul, `K q, `X g -> fun ctx -> set ctx (q *. g ctx)
+  | Mul, `X f, `X g ->
+    fun ctx ->
+      let u = f ctx in
+      let v = g ctx in
+      set ctx (u *. v)
+  | Div, `L i, `L j -> fun ctx -> set ctx (fget ctx i /. fget ctx j)
+  | Div, `L i, `K q -> fun ctx -> set ctx (fget ctx i /. q)
+  | Div, `K q, `L j -> fun ctx -> set ctx (q /. fget ctx j)
+  | Div, `L i, `X g -> fun ctx -> let v = g ctx in set ctx (fget ctx i /. v)
+  | Div, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u /. fget ctx j)
+  | Div, `X f, `K q -> fun ctx -> set ctx (f ctx /. q)
+  | Div, `K q, `X g -> fun ctx -> set ctx (q /. g ctx)
+  | Div, `X f, `X g ->
+    fun ctx ->
+      let u = f ctx in
+      let v = g ctx in
+      set ctx (u /. v)
+  | _ -> assert false
+
+(* An expression, as a boxed value. *)
+and cv c (e : expr) : ctx -> t =
+  match e.e with
+  | Lint i -> let v = Int i in fun _ -> v
+  | Lfloat x -> let v = Float x in fun _ -> v
+  | Var n -> var c e n
+  | _ ->
+    match ty c e with
+    | TI ->
+      let i = ci c e in
+      fun ctx -> Int (i ctx)
+    | TF ->
+      let f = cf c e in
+      fun ctx -> Float (f ctx)
+    | _ -> ca c e
+
+(* The generic form. *)
+and ca c (e : expr) : ctx -> t =
+  match e.e with
+  | Lint i -> let v = Int i in fun _ -> v
+  | Lfloat x -> let v = Float x in fun _ -> v
+  | Lbool b -> let v = Value.of_bool b in fun _ -> v
+  | Lmissing -> fun _ -> Missing
+  | Ltext s -> let v = Text s in fun _ -> v
+  | Interp parts -> interp c parts e.pos
+  | Var n -> var c e n
+  | Neg a ->
+    let a = cv c a and s = site c e.pos in
+    fun ctx ->
+      let x = a ctx in
+      ctx.site <- s;
+      Arith.neg ctx x
+  | Bin (op, a, b) -> binary c e op a b
+  | Not _ | And _ | Or _ -> let b = cb c e in fun ctx -> Value.of_bool (b ctx)
+  | Call call -> call_any c e call
+  | If (cond, yes, no) ->
+    let cond = cb c cond and yes = cblock c yes and no = cblock c no in
+    fun ctx -> if cond ctx then yes ctx else no ctx
+  | Lambda f -> closure c f
+  | Range (a, b) ->
+    let l = bound c a e.pos and h = bound c b e.pos and s = site c e.pos in
+    fun ctx ->
+      let lo = l ctx in
+      let hi = h ctx in
+      ctx.site <- s;
+      Arrays.int_range ctx lo hi
+  | In_op (a, b) -> member c e a b
+  | Array_lit rows -> array_lit c e rows
+  | Comp { cbody; cvar; csrc; cguard } -> comprehension c cbody cvar csrc cguard
+  | Index (b, ixs, uses_end) -> index_read c e b ixs uses_end
+  | Field (b, name) -> field_read c e b name
+  | Match { subject; arms } -> match_expr c e subject arms
+  | Try { tbody; ename; handler } -> try_expr c tbody ename handler
+  | Struct_lit { sname; sfields } -> struct_lit c sname sfields
+  | End_index -> end_index c
+  | Return { rvalue; tail } ->
+    let v = match rvalue with Some v -> if tail then ctail c v else ce c v | None -> fun _ -> Missing in
+    if tail then v else fun ctx -> raise_notrace (Return_value (v ctx))
+  | Assign _ | While _ | For _ | Set _ | Break | Fn_def _ | Destructure _ | Use _ | Hook _ ->
+    let u = cu c e in
+    fun ctx -> u ctx; Missing
+
+(* A value about to be stored elsewhere: a second reference leads to it, unless it is new. *)
+and ce c (e : expr) : ctx -> t =
+  match e.e with
+  | Var { b = Local i; _ } when plain_local c i ->
+    let k = c.map.(i) in
+    fun ctx ->
+      let x = ctx.v.(ctx.b + k) in
+      (match x with
+       | Array r -> r.a_owned <- false
+       | Struct r -> r.r_owned <- false
+       | _ -> ());
+      x
+  | Var _ | Index _ | Field _ ->
+    let v = cv c e in
+    fun ctx -> Value.share (v ctx)
+  | If (cond, yes, no) ->
+    let cond = cb c cond and yes = ce_block c yes and no = ce_block c no in
+    fun ctx -> if cond ctx then yes ctx else no ctx
+  | _ -> cv c e
+
+and ce_block c (b : block) : ctx -> t =
+  let n = Array.length b in
+  if n = 0 then fun _ -> Missing
+  else if n = 1 then ce c b.(0)
+  else begin
+    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
+    let last = ce c b.(n - 1) in
+    fun ctx -> pre ctx; last ctx
+  end
+
+(* In tail position, a local variable dies with the frame: it stays owned. *)
+and ctail c (e : expr) : ctx -> t =
+  match e.e with
+  | Var { b = Local _; _ } -> cv c e
+  | Call ({ self_tail = true; _ } as call) -> call_any c e call
+  | If (cond, yes, no) ->
+    let cond = cb c cond and yes = ctail_block c yes and no = ctail_block c no in
+    fun ctx -> if cond ctx then yes ctx else no ctx
+  | Return { tail = true; rvalue = Some v } -> ctail c v
+  | _ -> ce c e
+
+and ctail_block c (b : block) : ctx -> t =
+  let n = Array.length b in
+  if n = 0 then fun _ -> Missing
+  else if n = 1 then ctail c b.(0)
+  else begin
+    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
+    let last = ctail c b.(n - 1) in
+    fun ctx -> pre ctx; last ctx
+  end
+
+(* A bound of a:b, evaluated once. A float with an integer value is accepted. *)
+and bound c (e : expr) pos : ctx -> int =
+  if ty c e == TI then ci c e
+  else begin
+    let v = cv c e and s = site c pos in
+    fun ctx ->
+      match v ctx with
+      | Int i -> i
+      | x ->
+        ctx.site <- s;
+        Arrays.range_bound ctx x
+  end
+
+and member c e a b =
+  let x = cv c a and s = site c e.pos in
+  match b.e with
+  | Range (l, h) ->
+    let l = bound c l b.pos and h = bound c h b.pos in
+    fun ctx ->
+      let v = x ctx in
+      let lo = l ctx in
+      let hi = h ctx in
+      (match v with
+       | Int i -> Value.of_bool (i >= lo && i <= hi)
+       | Float f -> Value.of_bool (Float.is_integer f && f >= float_of_int lo && f <= float_of_int hi)
+       | _ -> False)
+  | _ ->
+    let y = cv c b in
+    fun ctx ->
+      let v = x ctx in
+      let xs = y ctx in
+      ctx.site <- s;
+      Arrays.mem ctx v xs
+
+and array_lit c e rows =
+  let r = Array.length rows in
+  let cols = if r = 0 then 0 else Array.length rows.(0) in
+  if Array.exists (fun row -> Array.length row <> cols) rows then
+    raise_at (site c e.pos) Type Messages.rows_differ
+  else begin
+    let cells = Array.map (Array.map (ce c)) rows in
+    fun ctx ->
+      let out = Array.make (r * cols) Missing in
+      for i = 0 to r - 1 do
+        let row = cells.(i) in
+        for j = 0 to cols - 1 do
+          let x = row.(j) ctx in
+          out.((j * r) + i) <- x
+        done
+      done;
+      Arrays.of_vals r cols out
+  end
+
+(* A loop over a:b or over an array. [st] is the state of one run of the loop. *)
+and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 'st -> ctx -> unit =
+  fun c iter set body ->
+  let off = c.off in
+  match iter.e with
+  | Range (a, b) ->
+    let l = bound c a iter.pos and h = bound c b iter.pos in
+    fun st ctx ->
+      let lo = l ctx in
+      let hi = h ctx in
+      for i = lo to hi do
+        set ctx (Int i);
+        body st ctx;
+        tick ctx off
+      done
+  | _ ->
+    let src = cv c iter and s = site c iter.pos in
+    fun st ctx ->
+      match src ctx with
+      | Array a ->
+        (* The traversal keeps a reference: a write in the body must copy. *)
+        a.a_owned <- false;
+        let n = a.rows * a.cols in
+        for k = 0 to n - 1 do
+          set ctx (Value.share (Value.elt a k));
+          body st ctx;
+          tick ctx off
+        done
+      | v ->
+        ctx.site <- s;
+        Runtime.fail ctx Type (Messages.cant_loop (Value.describe v))
+
+and comprehension c cbody cvar csrc cguard =
+  let set = setter c cvar in
+  let v = ce c cbody in
+  let body : t Dynarray.t -> ctx -> unit =
+    match Option.map (cb c) cguard with
+    | None -> fun out ctx -> Dynarray.add_last out (v ctx)
+    | Some g -> fun out ctx -> if g ctx then Dynarray.add_last out (v ctx)
+  in
+  let run = loop_over c csrc set body in
+  fun ctx ->
+    let out = Dynarray.create () in
+    run out ctx;
+    let items = Dynarray.to_array out in
+    Arrays.of_vals 1 (Array.length items) items
+
+(* An index at run time. *)
+and index_arg c (ix : index) pos : ctx -> Arrays.ix =
+  match ix with
+  | All -> fun _ -> Arrays.Every
+  | Ix { e = Range (a, b); pos = p; _ } ->
+    let l = bound c a p and h = bound c b p in
+    fun ctx ->
+      let lo = l ctx in
+      let hi = h ctx in
+      Arrays.Slice (lo, hi)
+  | Ix e ->
+    let v = cv c e and s = site c pos in
+    fun ctx ->
+      let x = v ctx in
+      ctx.site <- s;
+      Arrays.ix_of ctx x
+
+and index_read c e b ixs uses_end =
+  let base = cv c b and s = site c e.pos in
+  let n = Array.length ixs in
+  with_end c uses_end (fun slot ->
+      let saved = c.ends in
+      let args =
+        Array.mapi
+          (fun d ix ->
+             c.ends <- (slot, d, n) :: saved;
+             index_arg c ix e.pos)
+          ixs
+      in
+      c.ends <- saved;
+      let keep : ctx -> t -> unit =
+        if slot < 0 then fun _ _ -> () else fun ctx x -> ctx.v.(ctx.b + slot) <- x
+      in
+      match ixs, args with
+      | [| Ix i |], _ when (not uses_end) && ty c i == TI ->
+        let idx = ci c i in
+        let read (ctx : ctx) x k =
+          match x with
+          | Array { store = V d; _ } when k >= 1 && k <= Array.length d -> d.(k - 1)
+          | Array { store = F d; _ } when k >= 1 && k <= Float.Array.length d -> Float (Float.Array.get d (k - 1))
+          | _ ->
+            ctx.site <- s;
+            Arrays.read1 ctx x (Arrays.At k)
+        in
+        (match leaf c b with
+         | `L slot ->
+           fun ctx ->
+             let k = idx ctx in
+             read ctx ctx.v.(ctx.b + slot) k
+         | _ ->
+           fun ctx ->
+             let x = base ctx in
+             read ctx x (idx ctx))
+      | [| Ix { e = (Var _ | Lint _ | Bin _ | Call _ | Neg _ | Field _ | Index _ ); _ } as ix |], _ when not uses_end ->
+        let v = (match ix with Ix i -> cv c i | All -> assert false) in
+        fun ctx ->
+          let x = base ctx in
+          let i = v ctx in
+          (match x, i with
+           | Array a, Int k when k >= 1 && k <= a.rows * a.cols ->
+             (match a.store with
+              | F d -> Float (Float.Array.get d (k - 1))
+              | V d -> d.(k - 1))
+           | _ ->
+             ctx.site <- s;
+             Arrays.read1 ctx x (Arrays.ix_of ctx i))
+      | _, [| a |] ->
+        fun ctx ->
+          let x = base ctx in
+          keep ctx x;
+          let i = a ctx in
+          ctx.site <- s;
+          Arrays.read1 ctx x i
+      | _, [| a; d |] ->
+        fun ctx ->
+          let x = base ctx in
+          keep ctx x;
+          let i = a ctx in
+          let j = d ctx in
+          ctx.site <- s;
+          Arrays.read2 ctx x i j
+      | _ -> raise_at s Index Messages.index_count)
+
+and struct_lit c sname fields =
+  let names = Array.map fst fields in
+  let shape = Value.shape_of c.w ?sname names in
+  match Array.map (fun (_, v) -> ce c v) fields with
+  | [| a; b |] ->
+    fun ctx ->
+      let x = a ctx in
+      let y = b ctx in
+      Struct { shape; fields = [| x; y |]; r_owned = true }
+  | [| a; b; d; e |] ->
+    fun ctx ->
+      let x = a ctx in
+      let y = b ctx in
+      let z = d ctx in
+      let w = e ctx in
+      Struct { shape; fields = [| x; y; z; w |]; r_owned = true }
+  | vals -> fun ctx -> Struct { shape; fields = Array.map (fun v -> v ctx) vals; r_owned = true }
+
+and field_read c e b name =
+  let base = (match leaf c b with `L k -> (fun (ctx : ctx) -> ctx.v.(ctx.b + k)) | l -> leaf_value l) in
+  let s = site c e.pos in
+  (* A single immutable word, replaced at once: correct with several OCaml domains. *)
+  let cache = ref { cs = no_shape; ci = 0 } in
+  fun ctx ->
+    match base ctx with
+    | Struct r ->
+      let k = !cache in
+      if r.shape == k.cs then r.fields.(k.ci)
+      else begin
+        ctx.site <- s;
+        let i = field_slot ctx r.shape name in
+        cache := { cs = r.shape; ci = i };
+        r.fields.(i)
+      end
+    | v ->
+      ctx.site <- s;
+      field_slow ctx v name
+
+and match_expr c e subject arms =
+  let v = ce c subject and s = site c e.pos in
+  let arms =
+    Array.map
+      (fun a ->
+         let test = pat_test c a.pt in
+         let guard = Option.map (cb c) a.guard in
+         let body = ce c a.abody in
+         test, guard, body)
+      arms
+  in
+  let n = Array.length arms in
+  fun ctx ->
+    let x = v ctx in
+    let rec go k =
+      if k >= n then begin
+        ctx.site <- s;
+        Runtime.fail ctx Type (Messages.no_match (Value.describe x))
+      end else begin
+        let test, guard, body = arms.(k) in
+        if test ctx x && (match guard with None -> true | Some g -> g ctx) then body ctx else go (k + 1)
+      end
+    in
+    go 0
+
+(* A match pattern: binds its names and says whether it accepts the value. *)
+and pat_test c (pt : pat) : ctx -> t -> bool =
+  match pt with
+  | Pwild -> fun _ _ -> true
+  | Pname n ->
+    let set = setter c n in
+    fun ctx v ->
+      set ctx (Value.share v);
+      true
+  | Plit e ->
+    let lit = cv c e and s = site c e.pos in
+    fun ctx v ->
+      let x = lit ctx in
+      ctx.site <- s;
+      Value.equal ctx v x
+  | Parray ps ->
+    let tests = Array.map (pat_test c) ps in
+    let want = Array.length ps in
+    fun ctx v ->
+      (match v with
+       | Array a when a.rows * a.cols = want ->
+         let rec go k = k >= want || (tests.(k) ctx (Value.elt a k) && go (k + 1)) in
+         go 0
+       | _ -> false)
+  | Pstruct fs ->
+    let tests = Array.map (fun (name, q) -> name, pat_test c q) fs in
+    let want = Array.length fs in
+    fun ctx v ->
+      (match v with
+       | Struct r ->
+         let rec go k =
+           k >= want
+           || begin
+             let name, test = tests.(k) in
+             let i = Value.field_index r.shape name in
+             i >= 0 && test ctx r.fields.(i) && go (k + 1)
+           end
+         in
+         go 0
+       | _ -> false)
+
+and try_expr c tbody ename handler =
+  let body = ce_block c tbody and h = ce_block c handler in
+  let set = Option.map (setter c) ename in
+  let w = c.w in
+  let shape = Value.shape_of w [| "message"; "kind"; "file"; "line" |] in
+  fun ctx ->
+    let saved = ctx.b in
+    try body ctx
+    with Value.Kerr { kind; text; at; _ } ->
+      ctx.b <- saved;
+      (match set with
+       | None -> ()
+       | Some f ->
+         let site = Dynarray.get w.sites at in
+         let path, _ = Dynarray.get w.files site.sfile in
+         f ctx
+           (Struct
+              { shape;
+                fields = [| Text text; Text (Value.kind_name kind); Text path; Int (Pos.line site.spos) |];
+                r_owned = true }));
+      h ctx
+
+and end_index c =
+  match c.ends with
+  | [] -> assert false
+  | (slot, d, n) :: _ ->
+    fun ctx ->
+      (match ctx.v.(ctx.b + slot) with
+       | Array a -> Int (if n = 1 then a.rows * a.cols else if d = 0 then a.rows else a.cols)
+       | _ -> Int 1)
+
+and unset_error ctx s text =
+  ctx.site <- s;
+  Runtime.fail ctx Name (Messages.unset text)
+
+and var c e (n : name) =
+  match n.b with
+  | Local i ->
+    let cell = cell_of c i in
+    let text = n.text and k = c.map.(i) in
+    if cell >= 0 then read_cell c e cell text
+    else if c.tv.(i) == TI then fun ctx -> Int (iget ctx k)
+    else if c.tv.(i) == TF then fun ctx -> Float (fget ctx k)
+    else if c.func.maybe_undef.(i) then begin
+      let s = site c e.pos in
+      fun ctx ->
+        match ctx.v.(ctx.b + k) with
+        | Undef -> unset_error ctx s text
+        | v -> v
+    end else fun ctx -> ctx.v.(ctx.b + k)
+  | Cell { m; k; stable = true } -> let v = c.w.modules.(m).cells.(k) in fun _ -> v
+  | Cell { m; k; stable = false } ->
+    let md = c.w.modules.(m) and s = site c e.pos and text = n.text in
+    fun ctx ->
+      (match md.cells.(k) with
+       | Undef -> unset_error ctx s text
+       | v -> v)
+  | Unresolved -> assert false
+
+and read_cell c e k text =
+  let s = site c e.pos in
+  let md = c.w.modules.(c.ver.owner.pm) in
+  fun ctx ->
+    match md.cells.(k) with
+    | Undef -> unset_error ctx s text
+    | v -> v
+
+(* An operand: unchecked local variable, constant, or expression. *)
+and leaf c (e : expr) =
+  match e.e with
+  | Var { b = Local i; _ } when plain_local c i -> `L c.map.(i)
+  | Lint i -> `K (Int i)
+  | Lfloat x -> `K (Float x)
+  | _ -> `X (cv c e)
+
+and plain_local c i = (not c.func.maybe_undef.(i)) && cell_of c i < 0 && c.tv.(i) != TI && c.tv.(i) != TF
+
+and leaf_value = function
+  | `L i -> fun (ctx : ctx) -> ctx.v.(ctx.b + i)
+  | `K v -> fun _ -> v
+  | `X f -> f
+
+and binary c e op a b =
+  let s = site c e.pos in
+  match op with
+  | Add when ty c b == TF && ty c a != TF && ty c a != TI ->
+    let x = cv c a and f = cf c b in
+    fun ctx ->
+      let p = x ctx in
+      let q = f ctx in
+      (match p with
+       | Float u -> Float (u +. q)
+       | Int u -> Float (float_of_int u +. q)
+       | _ -> add_a ctx s p (Float q))
+  | Add when ty c a == TF && ty c b != TF && ty c b != TI ->
+    let f = cf c a and y = cv c b in
+    fun ctx ->
+      let p = f ctx in
+      let q = y ctx in
+      (match q with
+       | Float u -> Float (p +. u)
+       | Int u -> Float (p +. float_of_int u)
+       | _ -> add_a ctx s (Float p) q)
+  | Sub when ty c b == TF && ty c a != TF && ty c a != TI ->
+    let x = cv c a and f = cf c b in
+    fun ctx ->
+      let p = x ctx in
+      let q = f ctx in
+      (match p with
+       | Float u -> Float (u -. q)
+       | Int u -> Float (float_of_int u -. q)
+       | _ -> sub_a ctx s p (Float q))
+  | Sub when ty c a == TF && ty c b != TF && ty c b != TI ->
+    let f = cf c a and y = cv c b in
+    fun ctx ->
+      let p = f ctx in
+      let q = y ctx in
+      (match q with
+       | Float u -> Float (p -. u)
+       | Int u -> Float (p -. float_of_int u)
+       | _ -> sub_a ctx s (Float p) q)
+  | Mul when ty c b == TF && ty c a != TF && ty c a != TI ->
+    let x = cv c a and f = cf c b in
+    fun ctx ->
+      let p = x ctx in
+      let q = f ctx in
+      (match p with
+       | Float u -> Float (u *. q)
+       | Int u -> Float (float_of_int u *. q)
+       | _ -> mul_a ctx s p (Float q))
+  | Mul when ty c a == TF && ty c b != TF && ty c b != TI ->
+    let f = cf c a and y = cv c b in
+    fun ctx ->
+      let p = f ctx in
+      let q = y ctx in
+      (match q with
+       | Float u -> Float (p *. u)
+       | Int u -> Float (p *. float_of_int u)
+       | _ -> mul_a ctx s (Float p) q)
+  | Div when ty c b == TF && ty c a != TF && ty c a != TI ->
+    let x = cv c a and f = cf c b in
+    fun ctx ->
+      let p = x ctx in
+      let q = f ctx in
+      (match p with
+       | Float u -> Float (u /. q)
+       | Int u -> Float (float_of_int u /. q)
+       | _ -> div_a ctx s p (Float q))
+  | Div when ty c a == TF && ty c b != TF && ty c b != TI ->
+    let f = cf c a and y = cv c b in
+    fun ctx ->
+      let p = f ctx in
+      let q = y ctx in
+      (match q with
+       | Float u -> Float (p /. u)
+       | Int u -> Float (p /. float_of_int u)
+       | _ -> div_a ctx s (Float p) q)
+  | Add ->
+    (match leaf c a, leaf c b with
+     | `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in add_a ctx s v.(p + i) v.(p + j)
+     | `L i, `K k -> fun ctx -> add_a ctx s ctx.v.(ctx.b + i) k
+     | `X f, `L j -> fun ctx -> let x = f ctx in add_a ctx s x ctx.v.(ctx.b + j)
+     | `L i, `X f -> fun ctx -> let y = f ctx in add_a ctx s ctx.v.(ctx.b + i) y
+     | x, y ->
+       let x = leaf_value x and y = leaf_value y in
+       fun ctx ->
+         let p = x ctx in
+         let q = y ctx in
+         add_a ctx s p q)
+  | Sub ->
+    (match leaf c a, leaf c b with
+     | `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in sub_a ctx s v.(p + i) v.(p + j)
+     | `L i, `K k -> fun ctx -> sub_a ctx s ctx.v.(ctx.b + i) k
+     | `X f, `L j -> fun ctx -> let x = f ctx in sub_a ctx s x ctx.v.(ctx.b + j)
+     | `L i, `X f -> fun ctx -> let y = f ctx in sub_a ctx s ctx.v.(ctx.b + i) y
+     | x, y ->
+       let x = leaf_value x and y = leaf_value y in
+       fun ctx ->
+         let p = x ctx in
+         let q = y ctx in
+         sub_a ctx s p q)
+  | Mul ->
+    (match leaf c a, leaf c b with
+     | `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in mul_a ctx s v.(p + i) v.(p + j)
+     | `K k, `L j -> fun ctx -> mul_a ctx s k ctx.v.(ctx.b + j)
+     | `X f, `L j -> fun ctx -> let x = f ctx in mul_a ctx s x ctx.v.(ctx.b + j)
+     | `L i, `X f -> fun ctx -> let y = f ctx in mul_a ctx s ctx.v.(ctx.b + i) y
+     | x, y ->
+       let x = leaf_value x and y = leaf_value y in
+       fun ctx ->
+         let p = x ctx in
+         let q = y ctx in
+         mul_a ctx s p q)
+  | Div ->
+    let x = cv c a and y = cv c b in
+    fun ctx ->
+      let p = x ctx in
+      let q = y ctx in
+      div_a ctx s p q
+  | Pow ->
+    let x = cv c a and y = cv c b in
+    slow x y s Arith.pow
+  | Eq | Ne | Lt | Le | Gt | Ge ->
+    let f =
+      match op with
+      | Eq -> Arith.eq
+      | Ne -> Arith.ne
+      | Lt -> Arith.lt
+      | Le -> Arith.le
+      | Gt -> Arith.gt
+      | _ -> Arith.ge
+    in
+    slow (cv c a) (cv c b) s f
+
+and slow x y s f =
+  fun ctx ->
+    let p = x ctx in
+    let q = y ctx in
+    ctx.site <- s;
+    f ctx p q
+
+and interp c parts pos =
+  let parts =
+    Array.map
+      (function
+        | Lit s -> `Lit s
+        | Hole e -> `Hole (cv c e))
+      parts
+  in
+  let s = site c pos in
+  fun ctx ->
+    let b = Buffer.create 32 in
+    Array.iter
+      (function
+        | `Lit t -> Buffer.add_string b t
+        | `Hole f ->
+          let v = f ctx in
+          ctx.site <- s;
+          let text = Value.text_of ctx v in
+          Runtime.reserve ctx ((String.length text / 8) + 1);
+          Runtime.charge ctx ((String.length text / 128) + 1);
+          (try Buffer.add_string b text
+           with Out_of_memory | Failure _ -> raise (Value.Limit { what = "memory"; at = s })))
+      parts;
+    Text (Buffer.contents b)
+
+and cb c (e : expr) : ctx -> bool =
+  match e.e with
+  | Not a ->
+    let a = cb c a in
+    fun ctx -> not (a ctx)
+  | And (a, b) ->
+    let a = cb c a and b = cb c b in
+    fun ctx -> a ctx && b ctx
+  | Or (a, b) ->
+    let a = cb c a and b = cb c b in
+    fun ctx -> a ctx || b ctx
+  | Bin (((Lt | Le | Gt | Ge | Eq | Ne) as op), a, b) ->
+    (match ty c a, ty c b with
+     | TI, TI -> compare_i c op a b
+     | (TI | TF), (TI | TF) -> compare_f c op a b
+     | _ -> compare_b c e op a b)
+  | Lbool x -> fun _ -> x
+  | _ ->
+    let v = cv c e and s = site c e.pos in
+    fun ctx -> truth s ctx (v ctx)
+
+and compare_i c op a b : ctx -> bool =
+  let x = ci c a in
+  match op, iint c a, iint c b with
+  | Lt, `L p, `L q -> fun ctx -> iget ctx p < iget ctx q
+  | Le, `L p, `L q -> fun ctx -> iget ctx p <= iget ctx q
+  | Gt, `L p, `L q -> fun ctx -> iget ctx p > iget ctx q
+  | Ge, `L p, `L q -> fun ctx -> iget ctx p >= iget ctx q
+  | _ ->
+  match op, iint c a, b.e with
+  | Lt, `L p, Lint k -> fun ctx -> iget ctx p < k
+  | Le, `L p, Lint k -> fun ctx -> iget ctx p <= k
+  | Gt, `L p, Lint k -> fun ctx -> iget ctx p > k
+  | Ge, `L p, Lint k -> fun ctx -> iget ctx p >= k
+  | Eq, `L p, Lint k -> fun ctx -> iget ctx p = k
+  | Ne, `L p, Lint k -> fun ctx -> iget ctx p <> k
+  | _ ->
+  match op, b.e with
+  | Lt, Lint k -> fun ctx -> x ctx < k
+  | Le, Lint k -> fun ctx -> x ctx <= k
+  | Gt, Lint k -> fun ctx -> x ctx > k
+  | Ge, Lint k -> fun ctx -> x ctx >= k
+  | Eq, Lint k -> fun ctx -> x ctx = k
+  | Ne, Lint k -> fun ctx -> x ctx <> k
+  | _ ->
+    let y = ci c b in
+    (match op with
+     | Lt -> fun ctx -> let p = x ctx in p < y ctx
+     | Le -> fun ctx -> let p = x ctx in p <= y ctx
+     | Gt -> fun ctx -> let p = x ctx in p > y ctx
+     | Ge -> fun ctx -> let p = x ctx in p >= y ctx
+     | Eq -> fun ctx -> let p = x ctx in p = y ctx
+     | _ -> fun ctx -> let p = x ctx in p <> y ctx)
+
+and compare_f c op a b : ctx -> bool =
+  (* A closure returning a float allocates it: read the variables directly. *)
+  match op, a.e, b.e with
+  | Lt, Bin (Add, { e = Var { b = Local i; _ }; _ }, { e = Var { b = Local j; _ }; _ }), Lfloat k
+    when c.tv.(i) == TF && c.tv.(j) == TF && cell_of c i < 0 && cell_of c j < 0 ->
+    let p = c.map.(i) and q = c.map.(j) in
+    fun ctx -> fget ctx p +. fget ctx q < k
+  | _ ->
+  match op, fleaf c a, fleaf c b with
+  | Lt, `L i, `K k -> fun ctx -> fget ctx i < k
+  | Le, `L i, `K k -> fun ctx -> fget ctx i <= k
+  | Gt, `L i, `K k -> fun ctx -> fget ctx i > k
+  | Ge, `L i, `K k -> fun ctx -> fget ctx i >= k
+  | Lt, `L i, `L j -> fun ctx -> fget ctx i < fget ctx j
+  | Le, `L i, `L j -> fun ctx -> fget ctx i <= fget ctx j
+  | Gt, `L i, `L j -> fun ctx -> fget ctx i > fget ctx j
+  | Ge, `L i, `L j -> fun ctx -> fget ctx i >= fget ctx j
+  | _ ->
+  let x = cf c a in
+  match op, b.e with
+  | Lt, Lfloat k -> fun ctx -> x ctx < k
+  | Le, Lfloat k -> fun ctx -> x ctx <= k
+  | Gt, Lfloat k -> fun ctx -> x ctx > k
+  | Ge, Lfloat k -> fun ctx -> x ctx >= k
+  | _ ->
+    let y = cf c b in
+    (match op with
+     | Lt -> fun ctx -> let p = x ctx in p < y ctx
+     | Le -> fun ctx -> let p = x ctx in p <= y ctx
+     | Gt -> fun ctx -> let p = x ctx in p > y ctx
+     | Ge -> fun ctx -> let p = x ctx in p >= y ctx
+     | Eq -> fun ctx -> let p = x ctx in p = y ctx
+     | _ -> fun ctx -> let p = x ctx in p <> y ctx)
+
+(* An integer expression. *)
+and ci c (e : expr) : ctx -> int =
+  match e.e with
+  | Lint k -> fun _ -> k
+  | Var { b = Local i; _ } when c.tv.(i) == TI && cell_of c i < 0 ->
+    let k = c.map.(i) in
+    fun ctx -> iget ctx k
+  | Bin (Add, { e = Call { callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ };
+                           args = [| { value = { e = Var { b = Local i; _ }; _ }; _ }; { value = { e = Lint d; _ }; _ } |]; _ };
+                _ }, { e = Lint q; _ })
+    when d > 0 && d land (d - 1) = 0 && c.tv.(i) == TI && cell_of c i < 0
+         && (match c.w.modules.(m).cells.(k) with Native { nname = "mod"; _ } -> true | _ -> false) ->
+    (* xs[mod(i, n) + 1]: the idiom of a 1-indexed language. The result can't overflow while q stays small, which the
+       mask guarantees for d and q on 31 bits. *)
+    if d < 1 lsl 31 && abs q < 1 lsl 31 then begin
+      let p = c.map.(i) and mask = d - 1 in
+      fun ctx -> (iget ctx p land mask) + q
+    end
+    else begin
+      let s = site c e.pos and p = c.map.(i) and mask = d - 1 in
+      fun ctx -> add_i ctx s (iget ctx p land mask) q
+    end
+  | Bin (((Add | Sub | Mul) as op), a, b) when ty c a == TI && ty c b == TI ->
+    (match super_int c e op a b with
+     | Some f -> f
+     | None -> int_binary c e op a b)
+  | Neg a when ty c a == TI ->
+    let s = site c e.pos and x = ci c a in
+    fun ctx ->
+      let p = x ctx in
+      if p = min_int then begin
+        ctx.site <- s;
+        to_i ctx (Arith.neg ctx (Int p))
+      end else -p
+  | If ({ e = Bin (Lt, ({ e = Var { b = Local i; _ }; _ } as a), { e = Lint k; _ }); _ }, yes, no)
+    when ty c a == TI && cell_of c i < 0 ->
+    let p = c.map.(i) and no' = ci_block c no in
+    (match yes with
+     | [| { e = Var { b = Local j; _ }; _ } |] when c.tv.(j) == TI && cell_of c j < 0 ->
+       (* The base case of a recursion: return a variable, without a closure. *)
+       let q = c.map.(j) in
+       fun ctx -> if iget ctx p < k then iget ctx q else no' ctx
+     | _ ->
+       let yes = ci_block c yes in
+       fun ctx -> if iget ctx p < k then yes ctx else no' ctx)
+  | If (cond, yes, no) ->
+    let cond = cb c cond and yes = ci_block c yes and no = ci_block c no in
+    fun ctx -> if cond ctx then yes ctx else no ctx
+  | Return { tail = true; rvalue = Some v } -> ci c v
+  | Call { callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; args = [| a; b |]; _ }
+    when ty c a.value == TI && ty c b.value == TI
+         && (match c.w.modules.(m).cells.(k) with Native { i2 = Some _; _ } -> true | _ -> false) ->
+    let n = (match c.w.modules.(m).cells.(k) with Native n -> n | _ -> assert false) in
+    let f = Option.get n.i2 in
+    (match n.nname, b.value.e with
+     | "mod", Lint d when d > 0 && d land (d - 1) = 0 ->
+       (* idiv costs about twenty ns: a mask gives the same downward rounding. *)
+       let mask = d - 1 in
+       (match iint c a.value with
+        | `L p -> fun ctx -> iget ctx p land mask
+        | _ ->
+          let x = ci c a.value in
+          fun ctx -> x ctx land mask)
+     | _ ->
+       let x = ci c a.value and y = ci c b.value and s = site c e.pos in
+       fun ctx ->
+         let p = x ctx in
+         let q = y ctx in
+         ctx.site <- s;
+         f ctx p q)
+  | Call call ->
+    (match prepare_call c e call with
+     | `Direct (ver, write, off, s) ->
+       fun ctx ->
+         write ctx;
+         let b = ctx.b in
+         enter ctx (b + off) s ver;
+         let r = ver.ri ctx in
+         ctx.b <- b;
+         r
+     | `Direct1 (ver, a, p, off, s) ->
+       fun ctx ->
+         let x = a ctx in
+         let b = ctx.b and i = ctx.i in
+         i.(b + p) <- x;
+         enter_fast ctx i b (b + off) s ver;
+         let r = ver.ri ctx in
+         ctx.b <- b;
+         r
+     | `Minus1 (ver, q, d, p, off, s, sub) ->
+       fun ctx ->
+         let b = ctx.b and i = ctx.i in
+         let x = (if d > 0 then sub_const ctx sub i.(b + q) d else sub_i ctx sub i.(b + q) d) in
+         i.(b + p) <- x;
+         enter_fast ctx i b (b + off) s ver;
+         let r = ver.ri ctx in
+         ctx.b <- b;
+         r
+     | `Tail jump -> fun ctx -> jump ctx; 0
+     | `Other ->
+       let v = ca c e in
+       fun ctx -> to_i ctx (v ctx))
+  | _ ->
+    let v = ca c e in
+    fun ctx -> to_i ctx (v ctx)
+
+and sop = function
+  | Add -> Some Super.Add
+  | Sub -> Some Super.Sub
+  | Mul -> Some Super.Mul
+  | _ -> None
+
+and iint c (e : expr) =
+  match e.e with
+  | Var { b = Local i; _ } when c.tv.(i) == TI && cell_of c i < 0 -> `L c.map.(i)
+  | Lint k -> `K k
+  | _ -> `X
+
+and to_il c (e : expr) =
+  match iint c e with
+  | `L p -> Super.IL p
+  | `K k -> Super.IK k
+  | `X -> Super.IX (ci c e)
+
+and inner_int c (e : expr) =
+  match e.e with
+  | Bin (((Add | Sub | Mul) as op), a, b) when ty c a == TI && ty c b == TI && iint c a <> `X && iint c b <> `X ->
+    (match iint c a, iint c b with
+     | `K _, `K _ -> None
+     | _ -> Some (Option.get (sop op), a, b))
+  | _ -> None
+
+and super_int c (e : expr) op a b =
+  let o2 = Option.get (sop op) in
+  match inner_int c a, inner_int c b with
+  | Some (o1, x, y), _ ->
+    Super.int_left (site c a.pos) (site c e.pos) o1 o2 (to_il c x) (to_il c y) (to_il c b)
+  | None, Some (o1, x, y) ->
+    Super.int_right (site c b.pos) (site c e.pos) o1 o2 (to_il c a) (to_il c x) (to_il c y)
+  | None, None -> None
+
+and int_binary c (e : expr) op a b : ctx -> int =
+  let s = site c e.pos in
+  match op, iint c a, iint c b with
+  | Add, `L p, `K k -> fun ctx -> add_i ctx s (iget ctx p) k
+  | Add, `L p, `L q -> fun ctx -> add_i ctx s (iget ctx p) (iget ctx q)
+  | Add, `X, `K k -> let x = ci c a in fun ctx -> add_i ctx s (x ctx) k
+  | Add, `X, `L q -> let x = ci c a in fun ctx -> let v = x ctx in add_i ctx s v (iget ctx q)
+  | Sub, `L p, `K k -> fun ctx -> sub_i ctx s (iget ctx p) k
+  | Sub, `L p, `L q -> fun ctx -> sub_i ctx s (iget ctx p) (iget ctx q)
+  | Sub, `X, `K k -> let x = ci c a in fun ctx -> sub_i ctx s (x ctx) k
+  | Mul, `L p, `L q -> fun ctx -> mul_i ctx s (iget ctx p) (iget ctx q)
+  | Mul, `L p, `K k -> fun ctx -> mul_i ctx s (iget ctx p) k
+  | Mul, `K k, `L q -> fun ctx -> mul_i ctx s k (iget ctx q)
+  | _ ->
+    let x = ci c a and y = ci c b in
+    (match op with
+     | Add ->
+       fun ctx ->
+         let p = x ctx in
+         let q = y ctx in
+         add_i ctx s p q
+     | Sub ->
+       fun ctx ->
+         let p = x ctx in
+         let q = y ctx in
+         sub_i ctx s p q
+     | _ ->
+       fun ctx ->
+         let p = x ctx in
+         let q = y ctx in
+         mul_i ctx s p q)
+
+and ci_block c (b : block) : ctx -> int =
+  let n = Array.length b in
+  if n = 0 then fun _ -> 0
+  else if n = 1 then ci c b.(0)
+  else begin
+    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
+    let last = ci c b.(n - 1) in
+    fun ctx -> pre ctx; last ctx
+  end
+
+(* A float expression, or a converted integer one. *)
+and cf c (e : expr) : ctx -> float =
+  match e.e with
+  | Lfloat x -> fun _ -> x
+  | Lint k -> let x = float_of_int k in fun _ -> x
+  | _ ->
+    match ty c e, iint c e with
+    | TI, `L p -> fun ctx -> float_of_int (iget ctx p)
+    | TI, _ ->
+      let i = ci c e in
+      fun ctx -> float_of_int (i ctx)
+    | TF, _ -> cff c e
+    | _ ->
+      let v = ca c e in
+      fun ctx -> to_f ctx (v ctx)
+
+and fleaf c (e : expr) =
+  match e.e with
+  | Var { b = Local i; _ } when c.tv.(i) == TF && cell_of c i < 0 -> `L c.map.(i)
+  | Var { b = Local i; _ } when c.tv.(i) == TI && cell_of c i < 0 -> `I c.map.(i)
+  | Lfloat x -> `K x
+  | Lint k -> `K (float_of_int k)
+  | _ -> `X (cf c e)
+
+(* Without the integer leaf, for the forms that have none. *)
+and fleaf3 c (e : expr) =
+  match fleaf c e with
+  | `I p -> `X (fun ctx -> float_of_int (iget ctx p))
+  | `L _ as l -> l
+  | `K _ as k -> k
+  | `X _ as x -> x
+
+and super_float_applies c a b = inner_float c a <> None || inner_float c b <> None
+
+and to_fl c (e : expr) =
+  match fleaf3 c e with
+  | `L p -> Super.FL p
+  | `K k -> Super.FK k
+  | `X f -> Super.FX f
+
+and inner_float c (e : expr) =
+  match e.e with
+  | Bin (((Add | Sub | Mul) as op), a, b) when ty c e == TF ->
+    (match fleaf_kind c a, fleaf_kind c b with
+     | `X, _ | _, `X | `K, `K -> None
+     | _ -> Some (Option.get (sop op), a, b))
+  | _ -> None
+
+and fleaf_kind c (e : expr) =
+  match e.e with
+  | Var { b = Local i; _ } when c.tv.(i) == TF && cell_of c i < 0 -> `L
+  | Lfloat _ | Lint _ -> `K
+  | _ -> `X
+
+and super_float c op a b =
+  let o2 = Option.get (sop op) in
+  match inner_float c a, inner_float c b with
+  | Some (o1, x, y), _ -> Super.float_left o1 o2 (to_fl c x) (to_fl c y) (to_fl c b)
+  | None, Some (o1, x, y) -> Super.float_right o1 o2 (to_fl c a) (to_fl c x) (to_fl c y)
+  | None, None -> None
+
+and cff c (e : expr) : ctx -> float =
+  match e.e with
+  | Var { b = Local i; _ } when c.tv.(i) == TF && cell_of c i < 0 ->
+    let k = c.map.(i) in
+    fun ctx -> fget ctx k
+  | Bin (Mul, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
+         { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
+    when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
+    let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
+    let p = c.map.(p) and q = c.map.(q) in
+    fun ctx ->
+      let k = x ctx in
+      let u = fa_get ctx p k sx in
+      let l = y ctx in
+      u *. fa_get ctx q l sy
+  | Bin (Add, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
+         { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
+    when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
+    let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
+    let p = c.map.(p) and q = c.map.(q) in
+    fun ctx ->
+      let k = x ctx in
+      let u = fa_get ctx p k sx in
+      let l = y ctx in
+      u +. fa_get ctx q l sy
+  | Bin (Sub, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
+         { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
+    when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
+    let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
+    let p = c.map.(p) and q = c.map.(q) in
+    fun ctx ->
+      let k = x ctx in
+      let u = fa_get ctx p k sx in
+      let l = y ctx in
+      u -. fa_get ctx q l sy
+  | Bin (Div, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
+         { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
+    when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
+    let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
+    let p = c.map.(p) and q = c.map.(q) in
+    fun ctx ->
+      let k = x ctx in
+      let u = fa_get ctx p k sx in
+      let l = y ctx in
+      u /. fa_get ctx q l sy
+  | Bin (((Add | Sub | Mul) as op), a, b) when super_float_applies c a b -> Option.get (super_float c op a b)
+  | Var { b = Cell { m; k; stable = true }; _ } ->
+    (match c.w.modules.(m).cells.(k) with
+     | Float x -> fun _ -> x
+     | _ -> assert false)
+  | Bin (Add, a, b) ->
+    (match fleaf c a, fleaf c b with
+     | `L i, `L j -> fun ctx -> fget ctx i +. fget ctx j
+     | `L i, `K k -> fun ctx -> fget ctx i +. k
+     | `K k, `L j -> fun ctx -> k +. fget ctx j
+     | `X f, `L j -> fun ctx -> let x = f ctx in x +. fget ctx j
+     | `L i, `X g -> fun ctx -> let y = g ctx in fget ctx i +. y
+     | `X f, `K k -> fun ctx -> f ctx +. k
+     | `K k, `X g -> fun ctx -> k +. g ctx
+     | `K k, `K m -> let r = k +. m in fun _ -> r
+     | `L i, `I j -> fun ctx -> fget ctx i +. float_of_int (iget ctx j)
+     | `I i, `L j -> fun ctx -> float_of_int (iget ctx i) +. fget ctx j
+     | `K k, `I j -> fun ctx -> k +. float_of_int (iget ctx j)
+     | `I i, `K k -> fun ctx -> float_of_int (iget ctx i) +. k
+     | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) +. float_of_int (iget ctx j)
+     | `X f, `I j -> fun ctx -> let x = f ctx in x +. float_of_int (iget ctx j)
+     | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) +. y
+     | `X f, `X g ->
+       fun ctx ->
+         let x = f ctx in
+         x +. g ctx)
+  | Bin (Sub, a, b) ->
+    (match fleaf c a, fleaf c b with
+     | `L i, `L j -> fun ctx -> fget ctx i -. fget ctx j
+     | `L i, `K k -> fun ctx -> fget ctx i -. k
+     | `K k, `L j -> fun ctx -> k -. fget ctx j
+     | `X f, `L j -> fun ctx -> let x = f ctx in x -. fget ctx j
+     | `L i, `X g -> fun ctx -> let y = g ctx in fget ctx i -. y
+     | `X f, `K k -> fun ctx -> f ctx -. k
+     | `K k, `X g -> fun ctx -> k -. g ctx
+     | `K k, `K m -> let r = k -. m in fun _ -> r
+     | `L i, `I j -> fun ctx -> fget ctx i -. float_of_int (iget ctx j)
+     | `I i, `L j -> fun ctx -> float_of_int (iget ctx i) -. fget ctx j
+     | `K k, `I j -> fun ctx -> k -. float_of_int (iget ctx j)
+     | `I i, `K k -> fun ctx -> float_of_int (iget ctx i) -. k
+     | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) -. float_of_int (iget ctx j)
+     | `X f, `I j -> fun ctx -> let x = f ctx in x -. float_of_int (iget ctx j)
+     | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) -. y
+     | `X f, `X g ->
+       fun ctx ->
+         let x = f ctx in
+         x -. g ctx)
+  | Bin (Mul, a, b) ->
+    (match fleaf c a, fleaf c b with
+     | `L i, `L j -> fun ctx -> fget ctx i *. fget ctx j
+     | `L i, `K k -> fun ctx -> fget ctx i *. k
+     | `K k, `L j -> fun ctx -> k *. fget ctx j
+     | `X f, `L j -> fun ctx -> let x = f ctx in x *. fget ctx j
+     | `L i, `X g -> fun ctx -> let y = g ctx in fget ctx i *. y
+     | `X f, `K k -> fun ctx -> f ctx *. k
+     | `K k, `X g -> fun ctx -> k *. g ctx
+     | `K k, `K m -> let r = k *. m in fun _ -> r
+     | `L i, `I j -> fun ctx -> fget ctx i *. float_of_int (iget ctx j)
+     | `I i, `L j -> fun ctx -> float_of_int (iget ctx i) *. fget ctx j
+     | `K k, `I j -> fun ctx -> k *. float_of_int (iget ctx j)
+     | `I i, `K k -> fun ctx -> float_of_int (iget ctx i) *. k
+     | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) *. float_of_int (iget ctx j)
+     | `X f, `I j -> fun ctx -> let x = f ctx in x *. float_of_int (iget ctx j)
+     | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) *. y
+     | `X f, `X g ->
+       fun ctx ->
+         let x = f ctx in
+         x *. g ctx)
+  | Bin (Div, a, b) ->
+    (match fleaf c a, fleaf c b with
+     | `L i, `L j -> fun ctx -> fget ctx i /. fget ctx j
+     | `L i, `K k -> fun ctx -> fget ctx i /. k
+     | `K k, `L j -> fun ctx -> k /. fget ctx j
+     | `X f, `L j -> fun ctx -> let x = f ctx in x /. fget ctx j
+     | `L i, `X g -> fun ctx -> let y = g ctx in fget ctx i /. y
+     | `X f, `K k -> fun ctx -> f ctx /. k
+     | `K k, `X g -> fun ctx -> k /. g ctx
+     | `K k, `K m -> let r = k /. m in fun _ -> r
+     | `L i, `I j -> fun ctx -> fget ctx i /. float_of_int (iget ctx j)
+     | `I i, `L j -> fun ctx -> float_of_int (iget ctx i) /. fget ctx j
+     | `K k, `I j -> fun ctx -> k /. float_of_int (iget ctx j)
+     | `I i, `K k -> fun ctx -> float_of_int (iget ctx i) /. k
+     | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) /. float_of_int (iget ctx j)
+     | `X f, `I j -> fun ctx -> let x = f ctx in x /. float_of_int (iget ctx j)
+     | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) /. y
+     | `X f, `X g ->
+       fun ctx ->
+         let x = f ctx in
+         x /. g ctx)
+  | Bin (Pow, a, b) ->
+    let x = cf c a and y = cf c b in
+    fun ctx ->
+      let p = x ctx in
+      p ** y ctx
+  | Neg a ->
+    let x = cf c a in
+    fun ctx -> -.x ctx
+  | If (cond, yes, no) ->
+    let cond = cb c cond and yes = cf_block c yes and no = cf_block c no in
+    fun ctx -> if cond ctx then yes ctx else no ctx
+  | Return { tail = true; rvalue = Some v } -> cf c v
+  | Index (b, [| Ix i |], false) -> fa_read1 c e b i
+  | Index (b, [| Ix i; Ix j |], false) -> fa_read2 c e b i j
+  | Call ({ callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; args = [| a |]; _ })
+    when (match c.w.modules.(m).cells.(k) with Native { f1 = Some _; _ } -> true | _ -> false) ->
+    let f = (match c.w.modules.(m).cells.(k) with Native { f1 = Some f; _ } -> f | _ -> assert false) in
+    let x = cf c a.value in
+    fun ctx -> f (x ctx)
+  | Call call ->
+    (match prepare_call c e call with
+     | `Direct (ver, write, off, s) ->
+       fun ctx ->
+         write ctx;
+         let b = ctx.b in
+         enter ctx (b + off) s ver;
+         let r = ver.rf ctx in
+         ctx.b <- b;
+         r
+     | `Direct1 (ver, a, p, off, s) ->
+       fun ctx ->
+         let x = a ctx in
+         let b = ctx.b and i = ctx.i in
+         i.(b + p) <- x;
+         enter_fast ctx i b (b + off) s ver;
+         let r = ver.rf ctx in
+         ctx.b <- b;
+         r
+     | `Minus1 (ver, q, d, p, off, s, sub) ->
+       fun ctx ->
+         let b = ctx.b and i = ctx.i in
+         let x = (if d > 0 then sub_const ctx sub i.(b + q) d else sub_i ctx sub i.(b + q) d) in
+         i.(b + p) <- x;
+         enter_fast ctx i b (b + off) s ver;
+         let r = ver.rf ctx in
+         ctx.b <- b;
+         r
+     | `Tail jump -> fun ctx -> jump ctx; 0.
+     | `Other ->
+       let v = ca c e in
+       fun ctx -> to_f ctx (v ctx))
+  | _ ->
+    let v = ca c e in
+    fun ctx -> to_f ctx (v ctx)
+
+and cf_block c (b : block) : ctx -> float =
+  let n = Array.length b in
+  if n = 0 then fun _ -> 0.
+  else if n = 1 then cf c b.(0)
+  else begin
+    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
+    let last = cf c b.(n - 1) in
+    fun ctx -> pre ctx; last ctx
+  end
+
+(* Reading an element of an FA array: the index is an integer, the read allocates nothing. *)
+and fa_read1 c e b i =
+  let idx = ci c i and s = site c e.pos in
+  match leaf c b with
+  | `L slot ->
+    fun ctx ->
+      let k = idx ctx in
+      (match ctx.v.(ctx.b + slot) with
+       | Array { store = F d; _ } when k >= 1 && k <= Float.Array.length d -> Float.Array.get d (k - 1)
+       | x ->
+         ctx.site <- s;
+         to_f ctx (Arrays.read1 ctx x (Arrays.At k)))
+  | _ ->
+  let base = cv c b in
+  fun ctx ->
+    let x = base ctx in
+    let k = idx ctx in
+    match x with
+    | Array { store = F d; rows; cols; _ } when k >= 1 && k <= rows * cols -> Float.Array.get d (k - 1)
+    | _ ->
+      ctx.site <- s;
+      to_f ctx (Arrays.read1 ctx x (Arrays.At k))
+
+and fa_read2 c e b i j =
+  let base = cv c b and ix = ci c i and jx = ci c j and s = site c e.pos in
+  fun ctx ->
+    let x = base ctx in
+    let p = ix ctx in
+    let q = jx ctx in
+    match x with
+    | Array { store = F d; rows; cols; _ } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
+      Float.Array.get d (((q - 1) * rows) + p - 1)
+    | _ ->
+      ctx.site <- s;
+      to_f ctx (Arrays.read2 ctx x (Arrays.At p) (Arrays.At q))
+
+(* A comparison in a condition: no allocation. *)
+and compare_b c e op a b =
+  let s = site c e.pos in
+  let x = leaf c a and y = leaf c b in
+  match op, x, y with
+  | Gt, `L i, `K (Float k as q) ->
+    fun ctx ->
+      (match ctx.v.(ctx.b + i) with
+       | Float u -> u > k
+       | p -> gt_b ctx s p q)
+  | Lt, `L i, `K (Float k as q) ->
+    fun ctx ->
+      (match ctx.v.(ctx.b + i) with
+       | Float u -> u < k
+       | p -> lt_b ctx s p q)
+  | Lt, `L i, `K k -> fun ctx -> lt_b ctx s ctx.v.(ctx.b + i) k
+  | Lt, `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in lt_b ctx s v.(p + i) v.(p + j)
+  | Le, `L i, `K k -> fun ctx -> le_b ctx s ctx.v.(ctx.b + i) k
+  | Le, `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in le_b ctx s v.(p + i) v.(p + j)
+  | Gt, `L i, `K k -> fun ctx -> gt_b ctx s ctx.v.(ctx.b + i) k
+  | Gt, `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in gt_b ctx s v.(p + i) v.(p + j)
+  | Ge, `L i, `K k -> fun ctx -> ge_b ctx s ctx.v.(ctx.b + i) k
+  | Ge, `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in ge_b ctx s v.(p + i) v.(p + j)
+  | Eq, `L i, `K k -> fun ctx -> eq_b ctx s ctx.v.(ctx.b + i) k
+  | Eq, `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in eq_b ctx s v.(p + i) v.(p + j)
+  | Ne, `L i, `K k -> fun ctx -> ne_b ctx s ctx.v.(ctx.b + i) k
+  | Ne, `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in ne_b ctx s v.(p + i) v.(p + j)
+  | _ ->
+    let x = leaf_value x and y = leaf_value y in
+    (match op with
+     | Lt -> fun ctx -> let p = x ctx in let q = y ctx in lt_b ctx s p q
+     | Le -> fun ctx -> let p = x ctx in let q = y ctx in le_b ctx s p q
+     | Gt -> fun ctx -> let p = x ctx in let q = y ctx in gt_b ctx s p q
+     | Ge -> fun ctx -> let p = x ctx in let q = y ctx in ge_b ctx s p q
+     | Eq -> fun ctx -> let p = x ctx in let q = y ctx in eq_b ctx s p q
+     | _ -> fun ctx -> let p = x ctx in let q = y ctx in ne_b ctx s p q)
+
+and setter c (n : name) : ctx -> t -> unit =
+  match n.b with
+  | Local i ->
+    let cell = cell_of c i and k = c.map.(i) in
+    if cell >= 0 then begin
+      let md = c.w.modules.(c.ver.owner.pm) in
+      fun _ x -> md.cells.(cell) <- x
+    end
+    else if c.tv.(i) == TI then fun ctx x -> ctx.i.(ctx.b + k) <- to_i ctx x
+    else if c.tv.(i) == TF then fun ctx x -> Float.Array.set ctx.f (ctx.b + k) (to_f ctx x)
+    else fun ctx x -> ctx.v.(ctx.b + k) <- x
+  | Cell _ | Unresolved -> assert false
+
+and write_var c (n : name) (v : ctx -> t) : ctx -> unit =
+  let set = setter c n in
+  fun ctx ->
+    let x = v ctx in
+    set ctx x
+
+and cu c (e : expr) : ctx -> unit =
+  match e.e with
+  | Hook h ->
+    c.live <- h.live;
+    c.w.hook_count <- c.w.hook_count + 1;
+    let s = site c e.pos in
+    fun ctx -> ctx.w.on_hook ctx s
+  | Assign ({ b = Local i; _ }, v) -> store_var c i v
+  | If ({ e = Bin (Gt, ({ e = Var { b = Local i; _ }; _ } as a), { e = Lfloat k; _ }); pos; _ }, yes, [||])
+    when plain_local c i && ty c a != TFA ->
+    (* The test and the branch in the same closure. *)
+    let p = c.map.(i) and q = Float k and s = site c pos and yes = cublock c yes in
+    fun ctx ->
+      (match ctx.v.(ctx.b + p) with
+       | Float u -> if u > k then yes ctx
+       | x -> if gt_b ctx s x q then yes ctx)
+  | If (cond, yes, [||]) ->
+    let cond = cb c cond and yes = cublock c yes in
+    fun ctx -> if cond ctx then yes ctx
+  | If (cond, yes, no) ->
+    let cond = cb c cond and yes = cublock c yes and no = cublock c no in
+    fun ctx -> if cond ctx then yes ctx else no ctx
+  | Destructure (pt, v) ->
+    let v = ce c v and bind = cpat c pt e.pos in
+    fun ctx -> bind ctx (v ctx)
+  | For { var = { b = Local i; _ }; iter = { e = Range (a, b); pos; _ }; fbody; f_break }
+    when c.tv.(i) == TI && cell_of c i < 0 ->
+    let l = bound c a pos and h = bound c b pos and body = cublock c fbody and k = c.map.(i) in
+    let off = c.off in
+    let run ctx =
+      let lo = l ctx in
+      let hi = h ctx in
+      for n = lo to hi do
+        ctx.i.(ctx.b + k) <- n;
+        body ctx;
+        tick ctx off
+      done
+    in
+    if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
+  | For { var; iter; fbody; f_break } ->
+    let body = cublock c fbody in
+    let run = loop_over c iter (setter c var) (fun () ctx -> body ctx) () in
+    if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
+  | Set { root; path; value } -> set_path c e root path value
+  | While { cond; body; has_break } ->
+    let cond = cb c cond and body = cublock c body in
+    let off = c.off in
+    let run ctx =
+      while cond ctx do
+        body ctx;
+        tick ctx off
+      done
+    in
+    if has_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
+  | Break -> fun _ -> raise_notrace Break_loop
+  | Fn_def ({ b = Cell _; _ }, _) | Use _ -> fun _ -> ()
+  | Fn_def (n, f) ->
+    let make = closure c f in
+    let self =
+      match n.b with
+      | Local i -> List.filter_map (fun (j, (outer, _)) -> if outer = i then Some j else None)
+                     (List.mapi (fun j p -> j, p) (Array.to_list f.captures))
+      | _ -> []
+    in
+    write_var c n (fun ctx ->
+        match make ctx with
+        | Fun { env; _ } as g -> List.iter (fun j -> env.(j) <- g) self; g
+        | g -> g)
+  | _ ->
+    let v = cv c e in
+    fun ctx -> ignore (v ctx)
+
+(* Writing to a path: evaluate everything, then make each level owned on the way down. *)
+and set_path c e root path value =
+  let fa =
+    match root.b with
+    | Local i -> c.tv.(i) == TFA && cell_of c i < 0 && (ty c value == TF || ty c value == TI)
+    | _ -> false
+  in
+  match path with
+  | [| { sp; sk = Sindex ([| Ix i |], false) } |] when fa && ty c i == TI -> fa_write1 c root sp i value
+  | [| { sp; sk = Sindex ([| Ix i; Ix j |], false) } |] when fa && ty c i == TI && ty c j == TI ->
+    fa_write2 c root sp i j value
+  | [| { sp; sk = Sindex ([| Ix ({ e = (Var _ | Lint _ | Bin _); _ } as ix) |], false) } |] -> set_elt c e root sp ix value
+  | _ -> set_general c e root path value
+
+(* x[i] = f on an owned FA array: neither allocation nor conversion. *)
+and fa_write1 c root sp i value =
+  let idx = ci c i and v = cf c value and s = site c sp in
+  let k = (match root.b with Local r -> c.map.(r) | _ -> assert false) in
+  let set = setter c root in
+  fun ctx ->
+    let p = idx ctx in
+    let y = v ctx in
+    match ctx.v.(ctx.b + k) with
+    | Array { store = F d; a_owned = true; _ } when p >= 1 && p <= Float.Array.length d ->
+      Float.Array.set d (p - 1) y
+    | x ->
+      ctx.site <- s;
+      let top = Runtime.own ctx x in
+      if top != x then set ctx top;
+      Arrays.write ctx top [| Arrays.At p |] (Float y)
+
+and fa_write2 c root sp i j value =
+  let ix = ci c i and jx = ci c j and v = cf c value and s = site c sp in
+  let k = (match root.b with Local r -> c.map.(r) | _ -> assert false) in
+  let set = setter c root in
+  fun ctx ->
+    let p = ix ctx in
+    let q = jx ctx in
+    let y = v ctx in
+    match ctx.v.(ctx.b + k) with
+    | Array { store = F d; a_owned = true; rows; cols } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
+      Float.Array.set d (((q - 1) * rows) + p - 1) y
+    | x ->
+      ctx.site <- s;
+      let top = Runtime.own ctx x in
+      if top != x then set ctx top;
+      Arrays.write ctx top [| Arrays.At p; Arrays.At q |] (Float y)
+
+(* x[i] = y in an owned array: no index allocation. *)
+and set_elt c e root sp ix value =
+  let read = var c { id = 0; pos = sp; e = Var root } root in
+  let v = ce c value and s = site c sp in
+  let set = setter c root in
+  ignore e;
+  if ty c ix == TI then begin
+    let idx = ci c ix in
+    fun ctx ->
+      let k = idx ctx in
+      let y = v ctx in
+      let x = read ctx in
+      match x with
+      | Array ({ a_owned = true; _ } as a) when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
+      | _ ->
+        ctx.site <- s;
+        let top = Runtime.own ctx x in
+        if top != x then set ctx top;
+        Arrays.write ctx top [| Arrays.At k |] y
+  end else
+  let idx = cv c ix in
+  fun ctx ->
+    let i = idx ctx in
+    let y = v ctx in
+    let x = read ctx in
+    match x, i with
+    | Array ({ a_owned = true; _ } as a), Int k when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
+    | _ ->
+      ctx.site <- s;
+      let top = Runtime.own ctx x in
+      if top != x then set ctx top;
+      Arrays.write ctx top [| Arrays.ix_of ctx i |] y
+
+and set_general c _e root path value =
+  let read = var c { id = 0; pos = path.(0).sp; e = Var root } root in
+  let set = setter c root in
+  let v = ce c value in
+  let n = Array.length path in
+  let steps =
+    Array.map
+      (fun { sp; sk } ->
+         let s = site c sp in
+         match sk with
+         | Sfield name -> s, `Field name
+         | Sindex (ixs, uses_end) ->
+           let slot, args =
+             with_end c uses_end (fun slot ->
+                 let saved = c.ends in
+                 let count = Array.length ixs in
+                 let args =
+                   Array.mapi
+                     (fun d ix ->
+                        c.ends <- (slot, d, count) :: saved;
+                        index_arg c ix sp)
+                     ixs
+                 in
+                 c.ends <- saved;
+                 slot, args)
+           in
+           s, `Index (slot, args))
+      path
+  in
+  fun ctx ->
+    let root_value = read ctx in
+    let cur = ref root_value in
+    let resolved =
+      Array.mapi
+        (fun k (s, step) ->
+           let st =
+             match step with
+             | `Field name -> Rfield name
+             | `Index (slot, args) ->
+               if slot >= 0 then ctx.v.(ctx.b + slot) <- !cur;
+               Rindex (Array.map (fun a -> a ctx) args)
+           in
+           if k < n - 1 then begin
+             ctx.site <- s;
+             cur := step_read ctx !cur st
+           end;
+           s, st)
+        steps
+    in
+    let y = v ctx in
+    ctx.site <- fst steps.(0);
+    let top = Runtime.own ctx root_value in
+    if top != root_value then set ctx top;
+    let container = ref top in
+    let parent = ref None in
+    for k = 0 to n - 2 do
+      let s, st = resolved.(k) in
+      ctx.site <- s;
+      let child = step_read ctx !container st in
+      let child' = Runtime.own ctx child in
+      if child' != child then ignore (step_write ctx !container st child');
+      parent := Some (!container, st);
+      container := child'
+    done;
+    let s, st = resolved.(n - 1) in
+    ctx.site <- s;
+    let after = step_write ctx !container st y in
+    if after != !container then begin
+      match !parent with
+      | None -> set ctx after
+      | Some (p, pst) -> ignore (step_write ctx p pst after)
+    end
+
+(* Binds a destructuring pattern: a failure is an error. *)
+and cpat c (pt : pat) pos : ctx -> t -> unit =
+  let s = site c pos in
+  match pt with
+  | Pwild | Plit _ -> fun _ _ -> ()
+  | Pname n -> setter c n
+  | Parray ps ->
+    let binds = Array.map (fun q -> cpat c q pos) ps in
+    let want = Array.length ps in
+    fun ctx v ->
+      (match v with
+       | Array a when a.rows * a.cols = want ->
+         Array.iteri (fun k b -> b ctx (Value.share (Value.elt a k))) binds
+       | Array a ->
+         ctx.site <- s;
+         Runtime.fail ctx Index (Messages.destructure_array want (a.rows * a.cols))
+       | _ ->
+         ctx.site <- s;
+         Runtime.fail ctx Type (Messages.destructure_value (Value.describe v)))
+  | Pstruct fs ->
+    let binds = Array.map (fun (name, q) -> name, cpat c q pos) fs in
+    fun ctx v ->
+      (match v with
+       | Struct r ->
+         ctx.site <- s;
+         Array.iter
+           (fun (name, b) ->
+              let i = field_slot ctx r.shape name in
+              b ctx (Value.share r.fields.(i)))
+           binds
+       | _ ->
+         ctx.site <- s;
+         Runtime.fail ctx Type (Messages.destructure_struct (Value.describe v)))
+
+and cublock c (b : block) : ctx -> unit = seq_u (List.map (cu c) (Array.to_list b))
+
+and cblock c (b : block) : ctx -> t =
+  let n = Array.length b in
+  if n = 0 then fun _ -> Missing
+  else if n = 1 then cv c b.(0)
+  else begin
+    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
+    let last = cv c b.(n - 1) in
+    fun ctx -> pre ctx; last ctx
+  end
+
+and closure c (f : func) : ctx -> t =
+  let proto = new_proto ~file:c.file ~m:c.ver.owner.pm f in
+  if Array.length f.captures = 0 then begin
+    let v = Fun { proto; env = [||] } in
+    fun _ -> v
+  end else begin
+    let reads =
+      Array.map
+        (fun (outer, _) ->
+           let cell = cell_of c outer and k = c.map.(outer) in
+           if cell >= 0 then begin
+             let md = c.w.modules.(c.ver.owner.pm) in
+             fun _ -> md.cells.(cell)
+           end
+           else if c.tv.(outer) == TI then fun ctx -> Int (iget ctx k)
+           else if c.tv.(outer) == TF then fun ctx -> Float (fget ctx k)
+           else fun ctx -> ctx.v.(ctx.b + k))
+        f.captures
+    in
+    fun ctx -> Fun { proto; env = Array.map (fun r -> Value.share (r ctx)) reads }
+  end
+
+(* A call: direct to a version, tail jump, or something else. *)
+and prepare_call c (e : expr) (call : call) =
+  match call.callee.e with
+  | Var { b = Cell { m; k; stable = true }; _ } ->
+    (match c.w.modules.(m).cells.(k) with
+     | Fun { proto; env = [||] } ->
+       (match Infer.bind_args proto.func call.args with
+        | Error _ -> `Other
+        | Ok slots ->
+          let sg =
+            Array.map
+              (function
+                | None -> TBot
+                | Some a -> (match ty c a with TBot -> TA | t -> t))
+              slots
+          in
+          let ver = Infer.version_for c.w proto sg in
+          Infer.run c.w ver;
+          if call.self_tail && ver == c.ver then `Tail (tail_jump c ver slots)
+          else begin
+            let np = Array.length slots in
+            let off = c.off in
+            c.top <- max c.top (off + np + 2);
+            c.off <- off + np + 2;
+            let write = arg_writers c off ver slots in
+            c.off <- off;
+            `Direct (ver, write, off, site c e.pos)
+          end)
+     | _ -> `Other)
+  | _ -> `Other
+
+and call_any c e (call : call) : ctx -> t =
+  match prepare_call c e call with
+  | `Direct (ver, write, off, s) ->
+    fun ctx ->
+      write ctx;
+      let b = ctx.b in
+      enter ctx (b + off) s ver;
+      let r = ver.rv ctx in
+      ctx.b <- b;
+      r
+  | `Direct1 (ver, a, p, off, s) ->
+    fun ctx ->
+      let x = a ctx in
+      let b = ctx.b and i = ctx.i in
+      i.(b + p) <- x;
+      enter_fast ctx i b (b + off) s ver;
+      let r = ver.rv ctx in
+      ctx.b <- b;
+      r
+  | `Minus1 (ver, q, d, p, off, s, sub) ->
+    fun ctx ->
+      let b = ctx.b and i = ctx.i in
+      let x = (if d > 0 then sub_const ctx sub i.(b + q) d else sub_i ctx sub i.(b + q) d) in
+      i.(b + p) <- x;
+      enter_fast ctx i b (b + off) s ver;
+      let r = ver.rv ctx in
+      ctx.b <- b;
+      r
+  | `Tail jump ->
+    fun ctx ->
+      jump ctx;
+      Missing
+  | `Other -> ccall c e call
+
+(* Tail recursion: the arguments go to the outgoing area, then onto the parameters. *)
+and tail_jump c ver slots : ctx -> unit =
+  let np = Array.length slots in
+  let off = c.off in
+  c.top <- max c.top (off + np + 2);
+  c.off <- off + np + 2;
+  let write = arg_writers c off ver slots in
+  c.off <- off;
+  let moves =
+    List.init np (fun k ->
+        let p = ver.map.(k) in
+        match ver.tv.(k) with
+        | TI -> fun (ctx : ctx) -> ctx.i.(ctx.b + p) <- ctx.i.(ctx.b + off + p)
+        | TF -> fun ctx -> Float.Array.set ctx.f (ctx.b + p) (Float.Array.get ctx.f (ctx.b + off + p))
+        | _ -> fun ctx -> ctx.v.(ctx.b + p) <- ctx.v.(ctx.b + off + p))
+  in
+  let move = seq_u moves in
+  fun ctx ->
+    write ctx;
+    move ctx;
+    ctx.again <- true
+
+and ccall c e (call : call) =
+  let s = site c e.pos in
+  match call.callee.e with
+  | Var { b = Cell { m; k; stable = true }; _ } ->
+    (match c.w.modules.(m).cells.(k) with
+     | Native n -> call_native c s n call.args
+     | Fun { proto; env = [||] } ->
+       (match Infer.bind_args proto.func call.args with
+        | Error msg -> raise_at s Type msg
+        | Ok _ -> call_dynamic c s call)
+     | _ -> call_dynamic c s call)
+  | _ -> call_dynamic c s call
+
+and raise_at s kind m = fun ctx ->
+  ctx.site <- s;
+  Runtime.fail ctx kind m
+
+and call_native c s n args =
+  let nargs = Array.length args in
+  if nargs < n.min_args || nargs > n.max_args then begin
+    let want =
+      if n.min_args = n.max_args then Printf.sprintf "%d arguments" n.min_args
+      else Printf.sprintf "%d to %d arguments" n.min_args n.max_args
+    in
+    raise_at s Type (Messages.arg_count n.nname want nargs)
+  end else begin
+    let run =
+      match n.perm with
+      | None -> n.run
+      | Some p ->
+        let inner = n.run in
+        fun ctx a ->
+          Runtime.check_perm ctx p None;
+          inner ctx a
+    in
+    match Array.map (fun a -> cv c a.value) args with
+    | [| a |] ->
+      fun ctx ->
+        let x = a ctx in
+        ctx.site <- s;
+        run ctx [| x |]
+    | [| a; b |] ->
+      fun ctx ->
+        let x = a ctx in
+        let y = b ctx in
+        ctx.site <- s;
+        run ctx [| x; y |]
+    | positional ->
+      fun ctx ->
+        let vals = Array.map (fun a -> a ctx) positional in
+        ctx.site <- s;
+        run ctx vals
+  end
+
+(* Writes the arguments of a direct call to the stacks the version expects. *)
+and arg_writers c off (ver : version) (slots : expr option array) : ctx -> unit =
+  let writer k =
+    let p = off + ver.map.(k) in
+    match slots.(k) with
+    | Some e ->
+      (match ver.tv.(k) with
+       | TI ->
+         let a = ci c e in
+         fun (ctx : ctx) ->
+           let x = a ctx in
+           ctx.i.(ctx.b + p) <- x
+       | TF ->
+         let a = cf c e in
+         fun ctx ->
+           let x = a ctx in
+           Float.Array.set ctx.f (ctx.b + p) x
+       | _ ->
+         let a = ce c e in
+         fun ctx ->
+           let x = a ctx in
+           ctx.v.(ctx.b + p) <- x)
+    | None ->
+      if ver.sg.(k) == TBot then fun _ -> ()
+      else fun ctx -> ctx.v.(ctx.b + p) <- Undef
+  in
+  match slots with
+  | [| _ |] -> writer 0
+  | [| _; _ |] ->
+    let a = writer 0 in
+    let d = writer 1 in
+    fun ctx -> a ctx; d ctx
+  | _ -> seq_u (List.init (Array.length slots) writer)
+
+and call_dynamic c s (call : call) =
+  let callee = cv c call.callee in
+  let args = call.args in
+  let n = Array.length args in
+  let names = Array.map (fun a -> a.aname) args in
+  let plain = Array.for_all (fun a -> a = None) names in
+  if plain && n >= 1 && n <= 3 then call_small c s callee args
+  else
+  let off = c.off in
+  c.top <- max c.top (off + n + 2);
+  c.off <- off + n + 2;
+  let write =
+    seq_u
+      (List.init n (fun k ->
+           let a = ce c args.(k).value in
+           fun (ctx : ctx) ->
+             let x = a ctx in
+             ctx.v.(ctx.b + off + k) <- x))
+  in
+  c.off <- off;
+  fun ctx ->
+    let g = callee ctx in
+    write ctx;
+    ctx.site <- s;
+    if plain then dispatch ctx g off n s else dispatch_named ctx g off names s
+
+(* A dynamic call with 1 to 3 arguments: they stay in OCaml variables until the version is chosen, and only those of
+   type A go through the v stack, where each write costs a caml_modify. *)
+and call_small c s callee args =
+  let off = c.off in
+  let n = Array.length args in
+  c.top <- max c.top (off + n + 2);
+  c.off <- off + n + 2;
+  (* A local variable argument is read without a closure: slot >= 0. *)
+  let source (e : expr) =
+    match e.e with
+    | Var { b = Local i; _ } when plain_local c i -> c.map.(i), (fun _ -> Undef)
+    | _ -> -1, ce c e
+  in
+  let sa, a = source args.(0).value in
+  let sd, d = if n > 1 then source args.(1).value else -1, (fun _ -> Undef) in
+  let sf, f = if n > 2 then source args.(2).value else -1, (fun _ -> Undef) in
+  c.off <- off;
+  let no_spec = c.w.no_spec in
+  let slow (ctx : ctx) g x y z =
+    let nb = ctx.b + off in
+    if nb + n + 2 > ctx.cap then Runtime.grow ctx (nb + n + 2);
+    ctx.v.(nb) <- x;
+    if n > 1 then ctx.v.(nb + 1) <- y;
+    if n > 2 then ctx.v.(nb + 2) <- z;
+    dispatch ctx g off n s
+  in
+  match n with
+  | 1 ->
+    fun ctx ->
+      let g = callee ctx in
+      let x = arg_value ctx sa a in
+      ctx.site <- s;
+      (match g with
+       | Fun { proto; env } when proto.arity = 1 ->
+         let tag = if no_spec then no_tag else arg_type x in
+         let key = tag lor (1 lsl 42) in
+         let ver =
+           match proto.last with
+           | Last l when l.ltag = key -> l.lver
+           | _ -> select_slow ctx proto 1 tag key
+         in
+         let b = ctx.b in
+         let nb = b + off in
+         put ctx ver.pk nb 0 x;
+         finish ctx proto ver env nb b s
+       | _ -> slow ctx g x Undef Undef)
+  | 2 ->
+    fun ctx ->
+      let g = callee ctx in
+      let x = arg_value ctx sa a in
+      let y = arg_value ctx sd d in
+      ctx.site <- s;
+      (match g with
+       | Fun { proto; env } when proto.arity = 2 ->
+         let tag = if no_spec then no_tag else arg_type x lor (arg_type y lsl 2) in
+         let key = tag lor (2 lsl 42) in
+         let ver =
+           match proto.last with
+           | Last l when l.ltag = key -> l.lver
+           | _ -> select_slow ctx proto 2 tag key
+         in
+         let b = ctx.b in
+         let nb = b + off in
+         let pk = ver.pk in
+         put ctx pk nb 0 x;
+         put ctx pk nb 1 y;
+         finish ctx proto ver env nb b s
+       | _ -> slow ctx g x y Undef)
+  | _ ->
+    fun ctx ->
+      let g = callee ctx in
+      let x = arg_value ctx sa a in
+      let y = arg_value ctx sd d in
+      let z = arg_value ctx sf f in
+      ctx.site <- s;
+      (match g with
+       | Fun { proto; env } when proto.arity = 3 ->
+         let tag =
+           if no_spec then no_tag else arg_type x lor (arg_type y lsl 2) lor (arg_type z lsl 4)
+         in
+         let ver = select ctx proto 3 tag in
+         let b = ctx.b in
+         let nb = b + off in
+         let pk = ver.pk in
+         put ctx pk nb 0 x;
+         put ctx pk nb 1 y;
+         put ctx pk nb 2 z;
+         finish ctx proto ver env nb b s
+       | _ -> slow ctx g x y z)
+
+(* The arguments are boxed in v at b + off: read their real types. *)
+and dispatch ctx g off n s =
+  match g with
+  | Fun { proto; env } ->
+    let f = proto.func in
+    let np = Array.length f.params in
+    if n > np then Runtime.fail ctx Type (Messages.too_many f.fname np n);
+    let b = ctx.b in
+    let nb = b + off in
+    let tag = if n > 20 then no_tag else arg_tag ctx nb n in
+    let ver = select ctx proto n tag in
+    let need = Int.max ver.size (ver.frame + 2) in
+    if nb + need > ctx.cap then Runtime.grow ctx (nb + need);
+    (* The parameters go to the stacks the version expects. *)
+    let tv = ver.tv and map = ver.map in
+    for i = 0 to n - 1 do
+      let p = map.(i) in
+      match tv.(i) with
+      | TI -> ctx.i.(nb + p) <- to_i ctx ctx.v.(nb + i)
+      | TF -> Float.Array.set ctx.f (nb + p) (to_f ctx ctx.v.(nb + i))
+      | _ -> if p <> i then ctx.v.(nb + p) <- ctx.v.(nb + i)
+    done;
+    for i = n to np - 1 do
+      if ver.sg.(i) != TBot then ctx.v.(nb + map.(i)) <- Undef
+    done;
+    enter ctx nb s ver;
+    let caps = f.captures in
+    for j = 0 to Array.length caps - 1 do
+      ctx.v.(nb + map.(snd caps.(j))) <- env.(j)
+    done;
+    let r = ver.rv ctx in
+    ctx.b <- b;
+    r
+  | Native nat ->
+    if n < nat.min_args || n > nat.max_args then
+      Runtime.fail ctx Type (Messages.arg_count nat.nname (string_of_int nat.min_args ^ " arguments") n);
+    (match nat.perm with
+     | Some p -> Runtime.check_perm ctx p None
+     | None -> ());
+    let vals = Array.sub ctx.v (ctx.b + off) n in
+    nat.run ctx vals
+  | _ -> Runtime.fail ctx Type (Messages.not_function (Value.describe g))
+
+(* The version for these real types: the last one seen, else the function's table. *)
+and select (ctx : ctx) (proto : proto) n tag =
+  let key = tag lor (n lsl 42) in
+  match proto.last with
+  | Last l when l.ltag = key -> l.lver
+  | _ -> select_slow ctx proto n tag key
+
+and select_slow ctx proto n tag key =
+  let v =
+    match find_in key proto.by_tag with
+    | Some v -> v
+    | None -> pick ctx proto n tag
+  in
+  proto.last <- Last { ltag = key; lver = v };
+  v
+
+(* First time a function sees these types: pick or create the version. *)
+and pick ctx (proto : proto) n tag =
+  let f = proto.func in
+  let np = Array.length f.params in
+  for i = n to np - 1 do
+    if f.params.(i).default = None then
+      Runtime.fail ctx Type (Messages.missing_arg f.fname f.params.(i).pname)
+  done;
+  let v =
+    if tag = no_tag then Infer.generic_version proto
+    else Infer.version_for ctx.w proto (Array.init np (fun i -> if i < n then tag_type tag i else TBot))
+  in
+  Infer.run ctx.w v;
+  (* Compiled right away: version.size is then valid on the fast path. *)
+  if v.size = 0 then compile_version ctx v;
+  proto.by_tag <- (tag lor (n lsl 42), v) :: proto.by_tag;
+  v
+
+and dispatch_named ctx g off names s =
+  let b = ctx.b + off in
+  let n = Array.length names in
+  match g with
+  | Fun { proto; _ } ->
+    let f = proto.func in
+    let np = Array.length f.params in
+    let vals = Array.sub ctx.v b n in
+    let out = Array.make (max np n) Undef in
+    Array.iteri
+      (fun i name ->
+         match name with
+         | None ->
+           if i >= np then Runtime.fail ctx Type (Messages.too_many f.fname np n);
+           out.(i) <- vals.(i)
+         | Some name ->
+           let found = ref (-1) in
+           Array.iteri (fun k (p : param) -> if String.equal p.pname name then found := k) f.params;
+           if !found < 0 then Runtime.fail ctx Type (Messages.unknown_arg f.fname name);
+           if out.(!found) != Undef then Runtime.fail ctx Type (Messages.duplicate_arg f.fname name);
+           out.(!found) <- vals.(i))
+      names;
+    let last = ref 0 in
+    Array.iteri
+      (fun k v ->
+         if k < np then
+           if v == Undef then begin
+             if f.params.(k).default = None then
+               Runtime.fail ctx Type (Messages.missing_arg f.fname f.params.(k).pname)
+           end else last := k + 1)
+      out;
+    if b + np + 2 > ctx.cap then Runtime.grow ctx (b + np + 2);
+    Array.blit out 0 ctx.v b np;
+    dispatch ctx g off !last s
+  | _ -> dispatch ctx g off n s
+
+let run_main (ctx : ctx) ~file ~m (fn : func) =
+  let proto = new_proto ~file ~m fn in
+  let w = ctx.w in
+  w.compile_ver <- compile_version;
+  let ver = Infer.version_for w proto [||] in
+  let ver = if ver.sg = [||] && not w.no_spec then (let v = Infer.make_version proto [||] in proto.versions <- [ v ]; v) else ver in
+  compile_version ctx ver;
+  ignore (ver.rv ctx);
+  (* Variables that stayed local are copied to their cells, for export. *)
+  let md = w.modules.(m) in
+  Array.iteri
+    (fun i k ->
+       if fn.cell_of.(i) < 0 then begin
+         let p = ctx.b + ver.map.(i) in
+         md.cells.(k) <-
+           (match ver.tv.(i) with
+            | TI -> Int ctx.i.(p)
+            | TF -> Float (Float.Array.get ctx.f p)
+            | _ -> Value.share ctx.v.(p))
+       end)
+    fn.export_of
+
+let call_value (ctx : ctx) ~base g args =
+  ctx.w.compile_ver <- compile_version;
+  let n = Array.length args in
+  if ctx.b + base + n + 2 > ctx.cap then Runtime.grow ctx (ctx.b + base + n + 2);
+  Array.blit args 0 ctx.v (ctx.b + base) n;
+  dispatch ctx g base n ctx.site
+
+let call_back (ctx : ctx) g args =
+  let base =
+    match (Dynarray.get ctx.w.sites ctx.site).sver with
+    | Some v -> v.size
+    | None -> 0
+  in
+  call_value ctx ~base g args
+
+(* A version from before a reload. Already compiled code, sometimes still running, calls it: it keeps its frame
+   layout, rereads its arguments and goes back through the dynamic call, hence to the new code. *)
+let retire (old : version) =
+  if old.state = 2 then begin
+    let g = Fun { proto = old.owner; env = [||] } in
+    let np = Array.length old.sg and map = old.map and tv = old.tv in
+    let forward (ctx : ctx) =
+      let nb = ctx.b in
+      let arg k =
+        let p = nb + map.(k) in
+        if old.sg.(k) == TBot then Undef
+        else
+          match tv.(k) with
+          | TI -> Int ctx.i.(p)
+          | TF -> Float (Float.Array.get ctx.f p)
+          | _ -> ctx.v.(p)
+      in
+      let args = Array.init np arg in
+      let n = ref np in
+      while !n > 0 && args.(!n - 1) == Undef do decr n done;
+      let off = Int.max old.size (old.frame + 2) in
+      if nb + off + !n + 2 > ctx.cap then Runtime.grow ctx (nb + off + !n + 2);
+      Array.blit args 0 ctx.v (nb + off) !n;
+      dispatch ctx g off !n ctx.i.(nb + 1)
+    in
+    old.rv <- forward;
+    old.ri <- (fun ctx -> to_i ctx (forward ctx));
+    old.rf <- (fun ctx -> to_f ctx (forward ctx))
+  end
+
+(* Everything recompiles on the next call: the callers of a changed function depend on its types. *)
+let retire_all (w : world) =
+  let forget (proto : proto) =
+    let old = proto.versions @ Option.to_list proto.generic in
+    proto.versions <- [];
+    proto.generic <- None;
+    proto.by_tag <- [];
+    proto.last <- No_call;
+    List.iter retire old
+  in
+  Array.iter
+    (fun md ->
+       Array.iter
+         (function
+           | Fun { proto; env = [||] } -> forget proto
+           | _ -> ())
+         md.cells)
+    w.modules
+
+let replace (proto : proto) ~file (f : func) =
+  proto.func <- f;
+  proto.file <- file;
+  proto.arity <- Array.length f.params

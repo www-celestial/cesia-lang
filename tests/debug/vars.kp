@@ -1,0 +1,10 @@
+function inner(n, x, a, t)
+  n + x
+end
+function outer(k)
+  r = zeros(2)
+  r[2] = 1.5
+  inner(k + 1, 2.5, r, "text") + 1
+end
+not_yet = 0
+print(outer(3))

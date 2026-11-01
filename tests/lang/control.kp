@@ -1,0 +1,41 @@
+function m(p)
+  match p
+    {status: "ok", amount} if amount > 0 -> amount
+    [a, b] -> a + b
+    0 -> "zero"
+    x if is_text(x) -> x
+    else -> "other"
+  end
+end
+is_struct_pattern() = m({status: "ok", amount: 5}) == 5
+is_guard() = m({status: "ok", amount: -5}) == "other"
+is_array_pattern() = m([1, 2]) == 3
+is_length() = m([1, 2, 3]) == "other"
+is_literal() = m(0) == "zero"
+is_name() = m("t") == "t"
+
+function if_expr(x)
+  if x < 0 "neg" else if x == 0 "zero" else "pos" end
+end
+is_if_chain() = if_expr(-1) == "neg" and if_expr(0) == "zero" and if_expr(1) == "pos"
+
+is_try_value() = (try 1 else 2 end) == 1
+is_try_catches() = (try error("x") else 2 end) == 2
+is_try_struct() = (try error("x") else e -> e.message end) == "x"
+is_try_kind() = (try error("x") else e -> e.kind end) == "user"
+is_try_type() = (try 1 + "a" else e -> e.kind end) == "type"
+is_assert() = (try assert(false) else e -> e.kind end) == "user"
+
+function deep(n)
+  if n == 0
+    error("bottom")
+  end
+  deep(n - 1) + 1
+end
+function repeated_tries()
+  for i in 1:20000
+    try deep(3) else 0 end
+  end
+  true
+end
+is_try_restores_stack() = repeated_tries()

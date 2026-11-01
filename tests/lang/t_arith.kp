@@ -1,0 +1,26 @@
+print(1 + 2 * 3)            -- 7
+print(7 / 2)                -- 3.5
+print(2 ^ 10)               -- 1024
+print(2 ^ -1)               -- 0.5
+print(-2 ^ 2)               -- -4
+print(2 ^ 3 ^ 2)            -- 512
+print(div(-7, 2))           -- -4
+print(mod(-7, 2))           -- 1
+print(true + true)          -- 2
+print(missing + 1)          -- missing
+print(missing < 1)          -- missing
+print(1 == 1.0)             -- true
+print(true == 1)            -- false
+print(missing == missing)   -- true
+print(nan == nan)           -- false
+print(equal(nan, nan))      -- true
+print(1_000 + 0xff)         -- 1255
+print(1e3, 1e-3, 1.5e20)    -- 1000.0 0.001 1.5e20
+s = 0
+i = 1
+while i <= 10
+  s += i
+  i += 1
+  if s > 20 break end
+end
+print(s, i)                 -- 21 7

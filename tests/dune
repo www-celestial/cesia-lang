@@ -1,0 +1,9 @@
+(test
+ (name engine_test)
+ (modules engine_test)
+ (libraries kepler))
+
+(executable
+ (name fuzz)
+ (modules fuzz)
+ (libraries kepler unix))

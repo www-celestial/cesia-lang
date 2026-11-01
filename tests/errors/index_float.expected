@@ -1,0 +1,5 @@
+index_float.kp:1:13: An index must be a whole number, not the number 1.5.
+  1 | print([1, 2][1.5])
+    |             ^
+  To get a whole number, use floor(...), ceil(...) or round(...).
+exit 1

@@ -1,0 +1,4 @@
+use_dir.kp:1:5: Can't read the module "./use_dir_target".
+  1 | use "./use_dir_target"
+    |     ^
+exit 1

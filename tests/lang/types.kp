@@ -1,0 +1,60 @@
+function float_times(x)
+  y = 1.5
+  y * x
+end
+is_f_missing() = is_missing(float_times(missing))
+is_f_array() = equal(float_times([2.0, 4.0]), [3.0, 6.0])
+is_f_int() = float_times(2) == 3.0
+
+function mixed(c)
+  x = 1
+  if c
+    x = 1.5
+  end
+  x
+end
+is_join() = is_int(mixed(false)) and is_float(mixed(true))
+
+function fa_becomes_a()
+  x = zeros(2)
+  x[1] = "a"
+  x[1]
+end
+is_fa_to_a() = fa_becomes_a() == "a"
+
+function no_assignment(c)
+  if c
+    v = 1
+  end
+  v
+end
+is_defined() = no_assignment(true) == 1
+
+int_or_float(x) = x + 1
+is_two_versions() = int_or_float(1) == 2 and int_or_float(1.5) == 2.5
+
+fib(n) = if n < 2 n else fib(n - 1) + fib(n - 2) end
+is_typed_recursion() = fib(20) == 6765
+
+even(n) = if n == 0 true else odd(n - 1) end
+odd(n) = if n == 0 false else even(n - 1) end
+is_mutual() = even(10)
+
+function mid_return(x)
+  if x > 0
+    return 1.5
+  end
+  "neg"
+end
+is_return_a() = mid_return(1) == 1.5 and mid_return(-1) == "neg"
+
+function loop_returns()
+  for i in 1:10
+    if i == 3
+      return i
+    end
+  end
+  0
+end
+is_return_in_loop() = loop_returns() == 3
+is_bool_arith() = 0.05 * (1 > 0) == 0.05

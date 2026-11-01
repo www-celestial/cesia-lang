@@ -1,0 +1,4 @@
+use_broken/a_test.kp: can't load: Expected an expression, found the end of the file.
+use_broken/b_test.kp: can't load: Expected an expression, found the end of the file.
+0 passed, 2 failed
+exit 1

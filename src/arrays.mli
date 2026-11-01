@@ -1,0 +1,24 @@
+(** Arrays: construction, indexing, writing. *)
+open Types
+
+type ix = At of int | Slice of int * int | Every | Mask of arr
+
+val of_float : int -> int -> floatarray -> t
+
+(** Stores as F if everything is a float. *)
+val of_vals : int -> int -> t array -> t
+
+val int_range : ctx -> int -> int -> t
+val range_bound : ctx -> t -> int
+val ix_of : ctx -> t -> ix
+val mem : ctx -> t -> t -> t
+val read1 : ctx -> t -> ix -> t
+val read2 : ctx -> t -> ix -> ix -> t
+val write : ctx -> t -> ix array -> t -> unit
+
+(** Reads with one or two indexes. *)
+val read : ctx -> t -> ix array -> t
+
+(** Writes element [k], from 0, in an owned array. The first [int] is the site, for the slow path that converts
+    the storage. *)
+val store_elt : ctx -> int -> arr -> int -> t -> unit

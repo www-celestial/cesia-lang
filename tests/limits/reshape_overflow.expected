@@ -1,0 +1,4 @@
+reshape_overflow.kp:1:5: Limit "memory" reached.
+  1 | x = reshape([], 4294967296, 2147483648)
+    |     ^
+exit 1

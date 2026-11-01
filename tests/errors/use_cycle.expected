@@ -1,0 +1,4 @@
+cycle/b.kp:1:5: This use creates a cycle between modules.
+  1 | use "./a"
+    |     ^
+exit 1

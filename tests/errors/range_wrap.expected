@@ -1,0 +1,4 @@
+range_wrap.kp:2:15: This range has too many elements.
+  2 | print(length(x:4611686018427387903))
+    |               ^
+exit 1

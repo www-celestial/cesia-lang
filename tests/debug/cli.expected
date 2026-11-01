@@ -1,0 +1,11 @@
+stopped at cli.kp:6 (start)
+breakpoint cli.kp:4
+stopped at cli.kp:4 (break)
+x = 2
+No variable "nope".
+  f (cli.kp:4)
+  <file> (cli.kp:6)
+5
+stopped at cli.kp:7 (step)
+done
+exit 0

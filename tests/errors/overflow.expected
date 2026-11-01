@@ -1,0 +1,5 @@
+overflow.kp:1:27: The integer result of 4611686018427387903 + 1 doesn't fit in 63 bits.
+  1 | print(4611686018427387903 + 1)
+    |                           ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+exit 1

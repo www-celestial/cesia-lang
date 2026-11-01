@@ -1,0 +1,7 @@
+function f(c)
+  if c
+    v = 1
+  end
+  v
+end
+f(false)

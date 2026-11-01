@@ -1,0 +1,6 @@
+function f(x)
+  y = x + 1
+  y * 2
+end
+z = f(1)
+print(z)

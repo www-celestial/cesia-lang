@@ -1,0 +1,4 @@
+huge_range.kp:1:6: Limit "memory" reached.
+  1 | x = 1:1000000000000
+    |      ^
+exit 1

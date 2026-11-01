@@ -1,0 +1,2 @@
+apply(f, x) = f(x)
+print(apply(abs(it.x) + 1, {x: -1}))

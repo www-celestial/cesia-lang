@@ -1,0 +1,2 @@
+(executables
+ (names gen_super gen_embed))

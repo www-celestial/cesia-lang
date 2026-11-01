@@ -1,0 +1,2 @@
+out=$(kepler run $no_spec --limit memory=16M,depth=1000000000 memory_stack.kp 2>&1); code=$?
+echo "${out%%$'\n'*}"; (exit $code)

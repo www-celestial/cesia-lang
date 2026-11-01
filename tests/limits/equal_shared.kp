@@ -1,0 +1,7 @@
+x = [1]
+y = [1]
+for i in 1:60
+  x = [x, x]
+  y = [y, y]
+end
+print(equal(x, y))

@@ -1,0 +1,155 @@
+open Types
+
+let frame_shape w = Value.shape_of w [| "function"; "file"; "line"; "vars" |]
+let var_shape w = Value.shape_of w [| "name"; "value" |]
+let stop_shape w = Value.shape_of w [| "file"; "line"; "reason"; "frames" |]
+
+let record shape fields = Struct { shape; fields; r_owned = true }
+
+let row items =
+  let a = Array.of_list items in
+  Array { rows = 1; cols = Array.length a; store = V a; a_owned = true }
+
+let read ctx base (ver : version) (s : slot) =
+  if s.cell >= 0 then ctx.w.modules.(ver.owner.pm).cells.(s.cell)
+  else begin
+    let p = base + s.at in
+    match s.sty with
+    | TI -> Int ctx.i.(p)
+    | TF -> Float (Float.Array.get ctx.f p)
+    | _ -> ctx.v.(p)
+  end
+
+(* A variable not yet assigned has no value to show: its slot holds anything, except for those that can be read before
+   assignment, which the prologue sets to Undef. *)
+let vars ctx base (site : site) =
+  match site.sver with
+  | None -> []
+  | Some ver ->
+    let w = ctx.w in
+    let func = ver.owner.func in
+    let known i = i < Bytes.length site.slive && Bytes.get site.slive i = '\001' in
+    let visible i (s : slot) =
+      (not (String.contains s.vname '#')) && (known i || s.cell >= 0 || func.maybe_undef.(i))
+    in
+    List.filter_map
+      (fun i ->
+         let s = ver.slots.(i) in
+         if not (visible i s) then None
+         else
+           match read ctx base ver s with
+           | Undef -> None
+           | v -> Some (record (var_shape w) [| Text s.vname; Value.share v |]))
+      (List.init (Array.length ver.slots) Fun.id)
+
+let frame ctx base at =
+  let w = ctx.w in
+  let site = Dynarray.get w.sites at in
+  let path, _ = Dynarray.get w.files site.sfile in
+  let name = if site.sfn = "" then "<file>" else site.sfn in
+  record (frame_shape w)
+    [| Text name; Text path; Int (Pos.line site.spos); row (vars ctx base site) |]
+
+(* From the current frame to the file, following the links. *)
+let stop_value ctx s reason =
+  let w = ctx.w in
+  let rec walk base at acc =
+    let acc = frame ctx base at :: acc in
+    if base > 0 then walk (Runtime.link_base ctx.i.(base)) ctx.i.(base + 1) acc else List.rev acc
+  in
+  let site = Dynarray.get w.sites s in
+  let path, _ = Dynarray.get w.files site.sfile in
+  record (stop_shape w) [| Text path; Int (Pos.line site.spos); Text reason; row (walk ctx.b s []) |]
+
+(* The debugger runs on the same ctx, just above what is alive in the current frame. *)
+let stop ctx s reason =
+  let w = ctx.w in
+  let d = w.debug in
+  let value = stop_value ctx s reason in
+  let base = (Dynarray.get w.sites s).soff in
+  d.stopped <- true;
+  ctx.site <- s;
+  let answer =
+    match Compile.call_value ctx ~base d.on_stop [| value |] with
+    | v ->
+      d.stopped <- false;
+      v
+    | exception e ->
+      d.stopped <- false;
+      raise e
+  in
+  ctx.site <- s;
+  d.mode <-
+    (match answer with
+     | Text "continue" -> Running
+     | Text "step" -> Stepping
+     | Text "next" -> Until (Runtime.frames ctx)
+     | Text "out" -> Until (Runtime.frames ctx - 1)
+     | v -> Runtime.fail ctx Type (Messages.bad_answer (Value.describe v)))
+
+let same_file path file =
+  String.equal (Runtime.normalize path) (Runtime.normalize file)
+  || ((not (String.contains file '/')) && String.equal (Filename.basename path) file)
+
+let hook ctx s =
+  let w = ctx.w in
+  let d = w.debug in
+  if not d.stopped then begin
+    let site = Dynarray.get w.sites s in
+    let line = Pos.line site.spos in
+    (* A line with several statements stops only once on its breakpoint. *)
+    let arrived = site.sfile <> d.last_file || line <> d.last_line in
+    d.last_file <- site.sfile;
+    d.last_line <- line;
+    let path, _ = Dynarray.get w.files site.sfile in
+    let on_break = arrived && List.exists (fun (f, l) -> l = line && same_file path f) d.breaks in
+    if on_break then stop ctx s "break"
+    else
+      match d.mode with
+      | Starting -> stop ctx s "start"
+      | Stepping -> stop ctx s "step"
+      | Until depth -> if Runtime.frames ctx <= depth then stop ctx s "step"
+      | Running -> ()
+  end
+
+let hooks_compiled w = w.hook_count
+
+let text_arg ctx name v =
+  match v with
+  | Text s -> s
+  | _ -> Runtime.fail ctx Type (Messages.need_text name (Value.describe v))
+
+let line_arg ctx name v =
+  match v with
+  | Int i -> i
+  | _ -> Runtime.fail ctx Type (Messages.want_int name (Value.describe v))
+
+let set_break ctx (a : t array) =
+  let d = ctx.w.debug in
+  let place = text_arg ctx "set_break" a.(0), line_arg ctx "set_break" a.(1) in
+  if not (List.mem place d.breaks) then d.breaks <- place :: d.breaks;
+  Missing
+
+let clear_break ctx (a : t array) =
+  let d = ctx.w.debug in
+  let place = text_arg ctx "clear_break" a.(0), line_arg ctx "clear_break" a.(1) in
+  d.breaks <- List.filter (fun b -> b <> place) d.breaks;
+  Missing
+
+let read_line ctx _ =
+  Runtime.flush_out ctx.w;
+  match In_channel.input_line stdin with
+  | Some l -> Text l
+  | None -> Missing
+
+(* A command line into words: the core has no text functions. A number becomes an integer. *)
+let words ctx (a : t array) =
+  let word w = match int_of_string_opt w with Some i -> Int i | None -> Text w in
+  let spaced = String.map (fun c -> if c = '\t' || c = '\r' then ' ' else c) (text_arg ctx "words" a.(0)) in
+  row (List.map word (List.filter (fun w -> w <> "") (String.split_on_char ' ' spaced)))
+
+let natives =
+  [ "set_break", Native.nat ~perm:Debug "set_break" 2 2 set_break;
+    "clear_break", Native.nat ~perm:Debug "clear_break" 2 2 clear_break;
+    "read_line", Native.nat ~perm:Debug "read_line" 0 0 read_line;
+    "words", Native.nat "words" 1 1 words ]

@@ -1,0 +1,4 @@
+memory_transpose.kp:2:5: Limit "memory" reached.
+  2 | b = transpose(a)
+    |     ^
+exit 1

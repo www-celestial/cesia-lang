@@ -1,0 +1,3 @@
+use "./mods/a1"
+use "./mods/a2"
+print(a1.v, a2.v)

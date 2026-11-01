@@ -1,0 +1,21 @@
+function simulate(n, steps)
+  ps = fill(0, n)
+  for i in 1:n
+    ps[i] = {x: i * 1.0, y: 0.0, vx: 1.0, vy: i * 0.5}
+  end
+  dt = 0.001
+  for s in 1:steps
+    for i in 1:n
+      p = ps[i]
+      vy = p.vy - 9.81 * dt
+      ps[i] = {x: p.x + p.vx * dt, y: p.y + vy * dt, vx: p.vx, vy: vy}
+    end
+  end
+  e = 0.0
+  for i in 1:n
+    p = ps[i]
+    e = e + p.x + p.y
+  end
+  e
+end
+print(simulate(1000, 5000))
