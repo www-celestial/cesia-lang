@@ -45,8 +45,8 @@ and node =
   | Set of { root : name; path : step array; value : expr }  (** write to a path *)
   | Destructure of pat * expr
   | Match of { subject : expr; arms : arm array }
-  | Try of { tbody : block; ename : name option; handler : block }
   | Use of { upath : string; is_name : bool; ualias : string }
+  | Question of expr  (** e? *)
   | Hook of hook  (** debugger hook: only exists with --debugger *)
 
 and hook = { mutable live : Bytes.t  (** per variable: surely assigned before this statement *) }
@@ -59,6 +59,7 @@ and pat =
   | Plit of expr
   | Parray of pat array
   | Pstruct of (string * pat) array
+  | Pcons of string * pat array  (** a named struct: its name, then its fields in order *)
 
 and step = { sp : pos; sk : step_kind }
 and step_kind = Sindex of index array * bool | Sfield of string

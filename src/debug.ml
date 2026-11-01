@@ -53,9 +53,11 @@ let frame ctx base at =
 (* From the current frame to the file, following the links. *)
 let stop_value ctx s reason =
   let w = ctx.w in
+  (* The first frame of a fiber links back to the site of its spawn, which lives on another stack. *)
   let rec walk base at acc =
     let acc = frame ctx base at :: acc in
-    if base > 0 then walk (Runtime.link_base ctx.i.(base)) ctx.i.(base + 1) acc else List.rev acc
+    let caller = Runtime.link_base ctx.i.(base) in
+    if base = 0 || (ctx.fiber && caller = 0) then List.rev acc else walk caller ctx.i.(base + 1) acc
   in
   let site = Dynarray.get w.sites s in
   let path, _ = Dynarray.get w.files site.sfile in
@@ -114,11 +116,6 @@ let hook ctx s =
 
 let hooks_compiled w = w.hook_count
 
-let text_arg ctx name v =
-  match v with
-  | Text s -> s
-  | _ -> Runtime.fail ctx Type (Messages.need_text name (Value.describe v))
-
 let line_arg ctx name v =
   match v with
   | Int i -> i
@@ -126,13 +123,13 @@ let line_arg ctx name v =
 
 let set_break ctx (a : t array) =
   let d = ctx.w.debug in
-  let place = text_arg ctx "set_break" a.(0), line_arg ctx "set_break" a.(1) in
+  let place = Native.text_arg ctx "set_break" a.(0), line_arg ctx "set_break" a.(1) in
   if not (List.mem place d.breaks) then d.breaks <- place :: d.breaks;
   Missing
 
 let clear_break ctx (a : t array) =
   let d = ctx.w.debug in
-  let place = text_arg ctx "clear_break" a.(0), line_arg ctx "clear_break" a.(1) in
+  let place = Native.text_arg ctx "clear_break" a.(0), line_arg ctx "clear_break" a.(1) in
   d.breaks <- List.filter (fun b -> b <> place) d.breaks;
   Missing
 
@@ -145,7 +142,7 @@ let read_line ctx _ =
 (* A command line into words: the core has no text functions. A number becomes an integer. *)
 let words ctx (a : t array) =
   let word w = match int_of_string_opt w with Some i -> Int i | None -> Text w in
-  let spaced = String.map (fun c -> if c = '\t' || c = '\r' then ' ' else c) (text_arg ctx "words" a.(0)) in
+  let spaced = String.map (fun c -> if c = '\t' || c = '\r' then ' ' else c) (Native.text_arg ctx "words" a.(0)) in
   row (List.map word (List.filter (fun w -> w <> "") (String.split_on_char ' ' spaced)))
 
 let natives =

@@ -1,0 +1,18 @@
+(library
+ (name kepler_sys)
+ (libraries kepler unix)
+ (foreign_stubs
+  (language c)
+  (names stubs)))
+
+(rule
+ (enabled_if
+  (= %{system} linux))
+ (action
+  (copy epoll.ml.in backend.ml)))
+
+(rule
+ (enabled_if
+  (<> %{system} linux))
+ (action
+  (copy select.ml.in backend.ml)))

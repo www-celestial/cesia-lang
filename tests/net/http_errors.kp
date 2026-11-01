@@ -1,0 +1,30 @@
+use http
+use net
+use sys
+
+crlf = "$(char(13))$(char(10))"
+handle(r) = {status: 200, body: "ok"}
+
+function status_of(request)
+  c = net.connect("127.0.0.1", 18092)?
+  net.write(c, request)?
+  reply = net.read(c)?
+  net.close(c)
+  Ok(split(crlf, reply)[1])
+end
+
+big_header = "GET / HTTP/1.1$(crlf)X-Big: $(join("", fill("0123456789abcdef", 1100)))$(crlf)$crlf"
+big_body = "POST / HTTP/1.1$(crlf)Content-Length: 2097152$(crlf)$crlf"
+chunked = "POST / HTTP/1.1$(crlf)Transfer-Encoding: chunked$(crlf)$crlf"
+bad_header = "GET / HTTP/1.1$(crlf)no colon here$(crlf)$crlf"
+
+two_sizes = "POST / HTTP/1.1$(crlf)Content-Length: 3$(crlf)Content-Length: 1$(crlf)$(crlf)abc"
+
+spawn(() -> http.serve(handle, port = 18092))
+sys.sleep(0)
+print(status_of("garbage$crlf$crlf"))
+print(status_of(big_header))
+print(status_of(big_body))
+print(status_of(chunked))
+print(status_of(bad_header))
+print(status_of(two_sizes))

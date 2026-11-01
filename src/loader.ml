@@ -107,9 +107,6 @@ let locate w ~from ~pos upath is_name =
     path, read_module ~from ~pos upath path
   end
 
-(* The modules written in OCaml, which use finds before std/. *)
-let native_modules = [ "debug", Debug.natives ]
-
 let native_module w name natives =
   let key = "native:" ^ name in
   match Hashtbl.find_opt w.loaded key with
@@ -122,7 +119,8 @@ let native_module w name natives =
     Hashtbl.replace w.loaded key m;
     m
 
-let find_native upath is_name = if is_name then List.assoc_opt upath native_modules else None
+(* The modules written in OCaml, which use finds before std/. *)
+let find_native w upath is_name = if is_name then List.assoc_opt upath w.native_modules else None
 
 (* Lexes and parses a source. [use] returns the module of each use. *)
 let parse w ~hooks ~path ~src ~use =
@@ -158,7 +156,7 @@ let rec prepare ?(hooks = false) ctx ~path ~src ~lookup =
 
 and use_module ctx ~hooks ~from ~pos upath is_name =
   let w = ctx.w in
-  match find_native upath is_name with
+  match find_native w upath is_name with
   | Some natives -> native_module w upath natives
   | None ->
     let path, src = locate w ~from ~pos upath is_name in
@@ -213,8 +211,10 @@ let load_debugger ctx name =
 
 (* Module 0 of natives, then the prelude in Kepler. *)
 let init w =
-  let names = List.mapi (fun i (n, _) -> n, i) Native.prelude in
-  let cells = Array.of_list (List.map snd Native.prelude) in
+  w.native_modules <- ("debug", Debug.natives) :: w.native_modules;
+  let natives = Native.prelude @ Fiber.natives in
+  let names = List.mapi (fun i (n, _) -> n, i) natives in
+  let cells = Array.of_list (List.map snd natives) in
   let stable = Array.make (Array.length cells) true in
   w.modules <- [| { mname = "natives"; path = ""; cells; mnames = names; stable } |];
   let ctx = Runtime.create_ctx w in
@@ -228,7 +228,7 @@ let init w =
 
 (* A use in a reloaded file: the module must already be there, since we are in the middle of the program. *)
 let loaded_module w ~from ~pos upath is_name =
-  match find_native upath is_name with
+  match find_native w upath is_name with
   | Some natives -> native_module w upath natives
   | None ->
     let path, _ = locate w ~from ~pos upath is_name in
@@ -298,12 +298,14 @@ let set_args w (args : string list) =
    refusal from the system propagate: the fuzzer wants them, a normal program doesn't. *)
 let guarded ?(strict = false) w body =
   let ctx = Runtime.create_ctx w in
+  (* The fiber that was running: an error shows its stack. *)
+  let current () = Option.value w.sched.current ~default:ctx in
   (* A site keeps the source of its compilation: the file may have changed since. *)
-  let report_at ~text ~hint at =
+  let report_at fiber ~text ~hint at =
     let site = Dynarray.get w.sites at in
     let path, src = Dynarray.get w.files site.sfile in
     w.err
-      (format_error ~source:(Some src) ~path ~pos:site.spos ~text ~hint ~trace:(Runtime.backtrace ctx at))
+      (format_error ~source:(Some src) ~path ~pos:site.spos ~text ~hint ~trace:(Runtime.backtrace fiber at))
   in
   let flushed f =
     Runtime.flush_out w;
@@ -315,19 +317,31 @@ let guarded ?(strict = false) w body =
     flushed (fun () ->
         let m = Messages.limit what in
         if at < 0 || at >= Dynarray.length w.sites then w.err (m.text ^ "\n")
-        else report_at ~text:m.text ~hint:m.hint at)
+        else report_at (current ()) ~text:m.text ~hint:m.hint at)
   in
+  w.yield <- Fiber.yield;
+  w.on_panic <-
+    (fun fiber e ->
+       match e with
+       | Value.Kerr { text; hint; at; _ } ->
+         Runtime.flush_out w;
+         flush stdout;
+         report_at fiber ~text ~hint at
+       | _ -> ());
   let code =
-    try body ctx with
+    try
+      w.sched.current <- Some ctx;
+      body ctx
+    with
     | Pos.Load_error { file; pos; text; hint; _ } ->
       flushed (fun () ->
           w.err (format_error ~source:(source_of w file) ~path:file ~pos ~text ~hint ~trace:[]))
-    | Value.Kerr { text; hint; at; _ } -> flushed (fun () -> report_at ~text ~hint at)
+    | Value.Kerr { text; hint; at; _ } -> flushed (fun () -> report_at (current ()) ~text ~hint at)
     | Value.Limit { what; at } -> limit_reached what at
     | Sys_error text -> flushed (fun () -> w.err ("kepler: " ^ text ^ "\n"))
     (* The OCaml stack or the system said no: that is a limit, not a bug. *)
-    | Stack_overflow when not strict -> limit_reached "depth" ctx.site
-    | Out_of_memory when not strict -> limit_reached "memory" ctx.site
+    | Stack_overflow when not strict -> limit_reached "depth" (current ()).site
+    | Out_of_memory when not strict -> limit_reached "memory" (current ()).site
   in
   Runtime.flush_out w;
   flush stdout;

@@ -85,3 +85,21 @@ val invalid_size : string -> string
 val invalid_limit : string -> string
 val unknown_limit : string -> string
 val internal : string -> string
+
+val pattern_mismatch : string -> string -> t
+val question_file : t
+val question_space : t
+val question_value : string -> t
+val need_task : string -> t
+val empty_text : string -> t
+val need_array : string -> string -> t
+val bad_sleep : string -> t
+val io_failure : string -> string -> string -> t
+val need_socket : string -> string -> t
+val need_port : string -> t
+val socket_closed : t
+val too_many_sockets : t
+val server_stopped : t
+val bad_char : string -> t
+val need_size : string -> string -> t
+val deadlock : t

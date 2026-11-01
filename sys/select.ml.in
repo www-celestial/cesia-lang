@@ -1,0 +1,12 @@
+type state = unit
+
+let capacity = 1000
+let create () = ()
+let add () _ = ()
+let remove () _ = ()
+
+let wait () timeout waiting =
+  let reads, writes = waiting () in
+  match Unix.select reads writes [] timeout with
+  | r, w, _ -> r @ w
+  | exception Unix.Unix_error (Unix.EINTR, _, _) -> []

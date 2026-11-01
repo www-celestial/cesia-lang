@@ -17,7 +17,8 @@ val default_limits : limits
 val default_memory : string -> int
 val default_options : options
 val create_world : options -> world
-val create_ctx : world -> ctx
+(** A new context, with stacks of [stack] entries that grow on demand. *)
+val create_ctx : ?stack:int -> ?fiber:bool -> world -> ctx
 
 (** Flushes the output buffer to [world.sink]. *)
 val flush_out : world -> unit
@@ -36,6 +37,9 @@ val fail : ctx -> kind -> Messages.t -> 'a
 val checkpoint : ctx -> int -> unit
 
 (** Counts [n] steps. *)
+val settle : ctx -> unit
+(** Counts the last steps of a fiber that ends. *)
+
 val charge : ctx -> int -> unit
 
 (** Grows the three stacks to hold [need] entries. *)
@@ -73,3 +77,6 @@ val normalize : string -> string
 
 (** Is [path] inside [dir]? *)
 val inside : string -> string -> bool
+
+(** Does a scope of [--allow] cover this target? *)
+val scope_matches : perm -> string -> string -> bool

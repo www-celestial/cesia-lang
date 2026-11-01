@@ -1,0 +1,6 @@
+function inner(n)
+  n + 1
+end
+big = zeros(3)
+t = spawn(() -> inner(1))
+print(wait(t))

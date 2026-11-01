@@ -1,0 +1,7 @@
+a = spawn(() -> print("a"))
+b = spawn(() -> print("b"))
+print("main")
+print(a)
+wait(a)
+wait(b)
+print("end")

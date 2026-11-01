@@ -1,0 +1,4 @@
+function forever()
+  while true end
+end
+wait(spawn(forever))

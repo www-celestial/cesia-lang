@@ -1,0 +1,8 @@
+Ok(value = {code: 3, out: "out
+", err: "err
+"})
+Ok(value = {code: 0, out: "typed", err: ""})
+Ok(value = "a; rm -rf b
+")
+Ok(value = "x")
+exit 0

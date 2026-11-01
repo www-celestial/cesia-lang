@@ -1,0 +1,5 @@
+use sys
+print(sys.run("sh", args = ["-c", "echo out; echo err >&2; exit 3"]))
+print(sys.run("sh", args = ["-c", "cat"], input = "typed"))
+print(sys.run("sh", args = ["-c", "echo ""$1""", "--", "a; rm -rf b"]) then map_ok(it.out))
+print(sys.run("sh", input = "x", args = ["-c", "cat"]) then map_ok(it.out))

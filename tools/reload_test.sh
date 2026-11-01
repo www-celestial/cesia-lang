@@ -59,6 +59,8 @@ ms=$((($(date +%s%N) - t0) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "1: $ms ms, budget $budget_ms ms"
 echo "reload: new code active in $ms ms"
 
+wait_for out "fiber 2" 2000 || fail "1: a fiber still runs the old loop on the new code"
+
 # 2. An invalid file leaves the program running, and the fixed file is picked up.
 sed -i 's/^value() = 2$/value() = (/' "$dir/app.kp"
 until grep -q "app.kp:" "$dir/err" 2>/dev/null; do
@@ -112,6 +114,30 @@ sleep 0.1
 alive "6: finished program"
 sed -i 's/^print("done 1")$/print("done 2")/' "$dir/done.kp"
 wait_for out "done 2" 2000 || fail "6: program not restarted"
+stop
+
+# An HTTP server: a change applies when it is idle, and under load without a failed request.
+sed 's/19100/19102/' bench/http.kp > "$dir/server.kp"
+get() {
+  exec 3<>/dev/tcp/127.0.0.1/19102
+  printf 'GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n' >&3
+  tail -c 1000 <&3 | tail -1
+  exec 3<&-
+}
+(cd "$dir" && exec "$kepler" run --watch $flags --allow net=:19102 server.kp) > "$dir/out" 2> "$dir/err" &
+pid=$!
+for _ in $(seq 1 50); do (exec 3<>/dev/tcp/127.0.0.1/19102) 2>/dev/null && break; sleep 0.05; done
+[ "$(get)" = "Kepler" ] || fail "server: first answer"
+sed -i 's/body: "Kepler"/body: "Idle"/' "$dir/server.kp"
+sleep 0.15
+[ "$(get)" = "Idle" ] || fail "server: a change while idle"
+_build/default/bench/http_load.exe --port 19102 --connections 20 --seconds 1 > "$dir/load" 2>&1 &
+load=$!
+sleep 0.3
+sed -i 's/body: "Idle"/body: "Busy"/' "$dir/server.kp"
+sleep 0.2
+[ "$(get)" = "Busy" ] || fail "server: a change under load"
+wait "$load" || fail "server: a request failed during the reload: $(cat "$dir/load")"
 stop
 
 [ "$failed" -eq 0 ] && echo "reload: ok"

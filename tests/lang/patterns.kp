@@ -1,0 +1,16 @@
+struct Car { m, k, c = 1500 }
+
+mass(v) = match v
+  Car(m, k, c) -> m
+  else -> 0
+end
+is_named_pattern() = mass(Car(250, 16000)) == 250
+is_other_struct() = mass({m: 1, k: 2, c: 3}) == 0
+is_nested_pattern() = (match Ok(Ok(3))
+  Ok(Ok(x)) -> x
+  else -> 0
+end) == 3
+is_field_count() = (match Ok(1)
+  Ok(a, b) -> 1
+  else -> 2
+end) == 2

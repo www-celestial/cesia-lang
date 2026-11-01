@@ -1,0 +1,6 @@
+use sys
+start = sys.now()
+t = spawn(() -> sys.run("sh", args = ["-c", "sleep 0.2"]))
+other = spawn(() -> sys.now() - start)
+print(unwrap(wait(other)) < 0.1)
+wait(t)

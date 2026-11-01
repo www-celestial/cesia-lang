@@ -239,11 +239,9 @@ and ty env (e : expr) : ty =
       Array.iter (fun a -> pattern env a.pt) arms;
       Resolve.children (fun x -> ignore (ty env x)) e;
       TA
-    | Try { ename; _ } ->
-      (match ename with
-       | Some { b = Local i; _ } -> set_var env i TA
-       | _ -> ());
-      Resolve.children (fun x -> ignore (ty env x)) e;
+    | Question a ->
+      ignore (ty env a);
+      env.rett <- join env.rett TA;
       TA
     | Return r ->
       let t = match r.rvalue with Some v -> ty env v | None -> TA in
@@ -285,7 +283,7 @@ and element env (iter : expr) =
 and pattern env = function
   | Pname { b = Local i; _ } -> set_var env i TA
   | Pname _ | Pwild | Plit _ -> ()
-  | Parray ps -> Array.iter (pattern env) ps
+  | Parray ps | Pcons (_, ps) -> Array.iter (pattern env) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> pattern env q) fs
 
 and call_type env (call : call) =

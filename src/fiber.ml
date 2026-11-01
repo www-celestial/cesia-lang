@@ -1,0 +1,120 @@
+open Types
+open Effect
+open Effect.Deep
+
+type _ Effect.t += Suspend : ((unit -> unit) -> unit) -> unit Effect.t
+
+(* How often the scheduler looks at I/O while fibers are ready, in jobs. *)
+let poll_period = 256
+
+(* Runs what is ready, or waits for something to be. False if nothing can ever run again. *)
+let step w =
+  let s = w.sched in
+  s.jobs <- s.jobs + 1;
+  if s.jobs mod poll_period = 0 then ignore (w.idle false);
+  match Queue.take_opt s.ready with
+  | Some job -> job (); true
+  | None -> w.idle true
+
+(* A spawned fiber suspends through an effect. The main program isn't a fiber, which keeps its stack and its speed:
+   it runs the scheduler itself until it is woken, in FIFO order with the others. *)
+let suspend (ctx : ctx) register =
+  if ctx.fiber then perform (Suspend register)
+  else begin
+    let w = ctx.w in
+    let woken = ref false in
+    register (fun () -> Queue.add (fun () -> woken := true) w.sched.ready);
+    while not !woken do
+      if not (step w) then begin
+        w.sched.current <- Some ctx;
+        Runtime.fail ctx User Messages.deadlock
+      end
+    done;
+    w.sched.current <- Some ctx
+  end
+
+(* A long computation lets the others run at each full checkpoint, except while the debugger holds the program. *)
+let yield (ctx : ctx) =
+  let w = ctx.w in
+  if not w.debug.stopped then begin
+    ignore (w.idle false);
+    if not (Queue.is_empty w.sched.ready) then suspend ctx (fun resume -> resume ())
+  end
+
+(* Runs a fiber until it ends or suspends. A panic is handled by the body, so what leaves here stops the program. *)
+let start w ctx body =
+  let s = w.sched in
+  s.current <- Some ctx;
+  match_with body ()
+    { retc = Fun.id;
+      exnc = raise;
+      effc =
+        (fun (type a) (e : a Effect.t) ->
+           match e with
+           | Suspend register ->
+             Some
+               (fun (k : (a, unit) continuation) ->
+                  register (fun () ->
+                      Queue.add
+                        (fun () ->
+                           s.current <- Some ctx;
+                           continue k ())
+                        s.ready))
+           | _ -> None) }
+
+(* What [wait] gives for a panic: the same fields as an error shown to the user. *)
+let panic_value w text kind at =
+  let site = Dynarray.get w.sites at in
+  let path, _ = Dynarray.get w.files site.sfile in
+  let shape = Value.shape_of w [| "message"; "kind"; "file"; "line" |] in
+  Struct
+    { shape;
+      fields = [| Text text; Text (Value.kind_name kind); Text path; Int (Pos.line site.spos) |];
+      r_owned = true }
+
+(* The stacks of a new fiber, in entries. They grow on demand, and a server has thousands of idle fibers. *)
+let fiber_stack = 64
+
+(* What a new fiber takes in memory, as measured by tools/fiber_size.sh. *)
+let fiber_words = 450
+
+let spawn (ctx : ctx) g =
+  let w = ctx.w in
+  (match g with
+   | Fun _ | Native _ -> ()
+   | v -> Runtime.fail ctx Type (Messages.not_function (Value.describe v)));
+  Runtime.build ctx fiber_words;
+  let s = w.sched in
+  let id = s.next_id in
+  s.next_id <- id + 1;
+  let task = { result = None; waiters = [] } in
+  let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true w in
+  fiber.site <- ctx.site;
+  let finish r =
+    Runtime.settle fiber;
+    task.result <- Some r;
+    List.iter (fun wake -> wake ()) (List.rev task.waiters);
+    task.waiters <- []
+  in
+  let body () =
+    match Compile.call_value fiber ~base:2 g [||] with
+    | v -> finish (Value.ok w v)
+    | exception (Value.Kerr { text; kind; at; _ } as e) ->
+      w.on_panic fiber e;
+      finish (Value.err w (panic_value w text kind at))
+  in
+  Queue.add (fun () -> start w fiber body) s.ready;
+  Handle { kind = "task"; id; task = Some task }
+
+let wait (ctx : ctx) t =
+  match t with
+  | Handle { task = Some task; _ } ->
+    if Option.is_none task.result then suspend ctx (fun resume -> task.waiters <- resume :: task.waiters);
+    (match task.result with
+     | Some r -> Value.share r
+     | None -> Runtime.fail ctx Type (Messages.need_task (Value.describe t)))
+  | v -> Runtime.fail ctx Type (Messages.need_task (Value.describe v))
+
+let natives =
+  [ "spawn", Native.nat "spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
+    "wait", Native.nat "wait" 1 1 (fun ctx a -> wait ctx a.(0)) ]

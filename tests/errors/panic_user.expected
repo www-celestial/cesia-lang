@@ -1,0 +1,4 @@
+panic_user.kp:1:1: boom
+  1 | panic("boom")
+    | ^
+exit 1

@@ -1,0 +1,4 @@
+denied_write.kp:2:10: Permission "write" denied. Run again with --allow write.
+  2 | print(sys.write("./x", "a"))
+    |          ^
+exit 1

@@ -1,0 +1,6 @@
+use sys
+
+t = spawn(() -> print("fiber"))
+sys.sleep(0)
+print("main")
+wait(t)

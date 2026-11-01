@@ -1,0 +1,35 @@
+function fails(f, kind)
+  (wait(spawn(f)) then map_err(it.kind)) == Err(kind)
+end
+is_split() = equal("a,b,,c" then split(","), ["a", "b", "", "c"])
+is_split_none() = equal("abc" then split(","), ["abc"])
+is_split_empty_text() = equal("" then split(","), [""])
+is_split_long_sep() = equal("a--b" then split("--"), ["a", "b"])
+is_split_empty_sep() = fails(() -> split("", "a"), "type")
+is_join() = (["a", "b"] then join(", ")) == "a, b"
+is_join_values() = ([1, 2.5] then join("-")) == "1-2.5"
+is_join_empty() = ([] then join(",")) == ""
+is_join_not_array() = fails(() -> join(",", 1), "type")
+is_trim() = trim("  a b  ") == "a b"
+is_trim_lines() = trim("
+a
+") == "a"
+is_slice() = ("hello" then slice(2, 4)) == "ell"
+is_slice_accents() = ("été" then slice(2, 3)) == "té"
+is_slice_all() = ("ab" then slice(1, 2)) == "ab"
+is_slice_empty() = ("ab" then slice(2, 1)) == ""
+is_slice_low() = fails(() -> slice(0, 1, "ab"), "index")
+is_slice_high() = fails(() -> slice(1, 3, "ab"), "index")
+is_lower() = lower("AbC-1") == "abc-1"
+is_starts_with() = ("hello" then starts_with("he")) and not ("he" then starts_with("hello"))
+is_contains() = ("hello" then contains("ll")) and ("hello" then contains("")) and not ("a" then contains("b"))
+is_replace() = ("a-b-c" then replace("-", "+")) == "a+b+c"
+is_replace_none() = ("abc" then replace("x", "y")) == "abc"
+is_replace_grows() = ("aa" then replace("a", "bb")) == "bbbb"
+is_replace_empty() = fails(() -> replace("", "x", "a"), "type")
+is_number_int() = number("42") == 42 and is_int(number("-42"))
+is_number_float() = number("1.5e3") == 1500.0 and is_float(number("1.5"))
+is_number_no() = is_missing(number("")) and is_missing(number("0x10")) and is_missing(number(" 1"))
+is_number_shapes() = is_missing(number("1.")) and is_missing(number(".5")) and is_missing(number("1e")) and is_missing(number("1_000"))
+is_number_overflow() = is_float(number("99999999999999999999"))
+is_not_text() = fails(() -> lower(1), "type")

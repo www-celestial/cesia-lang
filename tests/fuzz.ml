@@ -26,6 +26,7 @@ let run ~no_spec path =
       o_err = sink err }
   in
   let w = Runtime.create_world options in
+  let (_ : unit -> bool) = Kepler_sys.Sys_modules.register ~max_sleep:0.001 w in
   let code = Loader.run_file ~strict:true w path [] in
   { code; out = Buffer.contents out; err = Buffer.contents err }
 
@@ -75,7 +76,7 @@ let test_calls src =
       else if String.starts_with ~prefix:"function is_" line then name_of 9
       else None
     in
-    Option.map (fun n -> Printf.sprintf "print(try %s() else e -> e.message end)\n" n) found
+    Option.map (fun n -> Printf.sprintf "print(wait(spawn(%s)))\n" n) found
   in
   String.concat "" (List.filter_map call (String.split_on_char '\n' src))
 
@@ -97,7 +98,8 @@ let kp_files dir =
 
 let corpus () =
   let read f = In_channel.with_open_bin f In_channel.input_all in
-  let tests = List.map (fun f -> let s = read f in s ^ "\n" ^ test_calls s) (kp_files "tests/lang") in
+  let programs = kp_files "tests/lang" @ kp_files "tests/net" in
+  let tests = List.map (fun f -> let s = read f in s ^ "\n" ^ test_calls s) programs in
   let std = List.map (fun f -> read f ^ "\n" ^ prelude_calls) (kp_files "std") in
   Array.of_list (tests @ std)
 
@@ -118,7 +120,7 @@ let tokens s =
   Array.of_list (List.rev !out)
 
 let is_number t = t <> "" && t.[0] >= '0' && t.[0] <= '9'
-let hostile = [| "0"; "-1"; "4611686018427387903"; "nan" |]
+let hostile = [| "0"; "-1"; "4611686018427387903"; "nan"; "1e19"; "1.5"; "(1.0 / 0.0)"; "spawn"; "wait"; "missing" |]
 
 let pick st a = a.(Random.State.int st (Array.length a))
 

@@ -1,0 +1,4 @@
+denied.kp:2:4: Permission "net" denied. Run again with --allow net.
+  2 | net.listen(18086)
+    |    ^
+exit 1

@@ -1,0 +1,4 @@
+run_denied.kp:2:4: Permission "exec" denied. Run again with --allow exec.
+  2 | sys.run("sh")
+    |    ^
+exit 1

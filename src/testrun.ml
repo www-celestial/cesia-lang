@@ -213,6 +213,7 @@ let run_file (ctx : ctx) st path =
 
 let run w ~path =
   Loader.guarded w (fun ctx ->
+      w.on_panic <- (fun _ _ -> ());
       Loader.init w;
       let st = { passed = 0; failed = 0 } in
       List.iter (run_file ctx st) (kp_files path);

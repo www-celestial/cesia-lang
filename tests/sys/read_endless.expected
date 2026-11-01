@@ -1,0 +1,2 @@
+read_endless.kp:2:10: Limit "memory" reached.
+exit 0

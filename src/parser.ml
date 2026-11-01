@@ -41,11 +41,11 @@ let tok_text = function
   | EOF -> "the end of the file"
   | IF -> "if" | ELSE -> "else" | END -> "end" | FOR -> "for" | IN -> "in" | WHILE -> "while"
   | BREAK -> "break" | RETURN -> "return" | FUNCTION -> "function" | MATCH -> "match" | STRUCT -> "struct"
-  | TRY -> "try" | AND -> "and" | OR -> "or" | NOT -> "not" | THEN -> "then" | USE -> "use" | TRUE -> "true"
+  | AND -> "and" | OR -> "or" | NOT -> "not" | THEN -> "then" | USE -> "use" | TRUE -> "true"
   | FALSE -> "false" | MISSING -> "missing" | PLUS -> "+" | MINUS -> "-" | STAR -> "*" | SLASH -> "/"
   | CARET -> "^" | ASSIGN -> "=" | EQEQ -> "==" | NE -> "!=" | LT -> "<" | LE -> "<=" | GT -> ">" | GE -> ">="
   | PLUSEQ -> "+=" | MINUSEQ -> "-=" | STAREQ -> "*=" | SLASHEQ -> "/=" | ARROW -> "->" | COLON -> ":"
-  | SEMI -> ";" | COMMA -> "," | DOT -> "." | LP -> "(" | RP -> ")" | LB -> "[" | RB -> "]" | LC -> "{" | RC -> "}"
+  | SEMI -> ";" | COMMA -> "," | DOT -> "." | QUESTION -> "?" | LP -> "(" | RP -> ")" | LB -> "[" | RB -> "]" | LC -> "{" | RC -> "}"
 
 let unexpected p what =
   let t = cur p in
@@ -395,6 +395,12 @@ and postfix p =
       let ixs, uses_end = index_args p in
       e := node p t.pos (Index (!e, ixs, uses_end));
       go ()
+    | QUESTION ->
+      if t.sp then error p t.pos Messages.question_space;
+      if not p.in_function then error p t.pos Messages.question_file;
+      advance p;
+      e := node p t.pos (Question !e);
+      go ()
     | DOT ->
       advance p;
       (match (cur p).t with
@@ -454,6 +460,18 @@ and pattern p =
   let t = cur p in
   match t.t with
   | NAME "_" -> advance p; Pwild
+  | NAME n when p.toks.(p.i + 1).t = LP && not p.toks.(p.i + 1).sp ->
+    advance p;
+    advance p;
+    with_mode p Ignore (fun () ->
+        let out = ref [] in
+        while (cur p).t <> RP do
+          out := pattern p :: !out;
+          if (cur p).t = COMMA then advance p
+          else if (cur p).t <> RP then unexpected p "\",\" or \")\""
+        done;
+        advance p;
+        Pcons (n, Array.of_list (List.rev !out)))
   | NAME n -> advance p; Pname (name n)
   | LB ->
     advance p;
@@ -622,7 +640,6 @@ and primary p =
   | WHILE -> advance p; with_mode p Lines (fun () -> while_expr p t.pos)
   | FOR -> advance p; with_mode p Lines (fun () -> for_expr p t.pos)
   | MATCH -> advance p; with_mode p Lines (fun () -> match_expr p t.pos)
-  | TRY -> advance p; with_mode p Lines (fun () -> try_expr p t.pos)
   | FUNCTION -> advance p; function_expr p t.pos
   | LB -> advance p; array_lit p t.pos
   | LC -> advance p; struct_lit p t.pos
@@ -707,21 +724,6 @@ and match_expr p pos =
   advance p;
   p.in_index <- saved;
   node p pos (Match { subject; arms = Array.of_list (List.rev !arms) })
-
-and try_expr p pos =
-  let tbody = block p (fun t -> t = ELSE) in
-  advance p;
-  let ename =
-    match (cur p).t with
-    | NAME n when next_tok p = ARROW ->
-      advance p;
-      advance p;
-      Some (name n)
-    | _ -> None
-  in
-  let handler = block p (fun t -> t = END) in
-  expect p END "end";
-  node p pos (Try { tbody; ename; handler })
 
 and for_expr p pos =
   let var =

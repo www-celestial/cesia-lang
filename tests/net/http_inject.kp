@@ -1,0 +1,24 @@
+use http
+use net
+use sys
+
+crlf = "$(char(13))$(char(10))"
+forged = "1$(crlf)x-injected: yes"
+
+handle(r) = match r.path
+  "/value" -> {status: 200, body: "x", headers: [{name: "x-echo", value: forged}]}
+  "/name" -> {status: 200, body: "x", headers: [{name: forged, value: "1"}]}
+  else -> {status: "200$(crlf)x-injected: yes", body: "x"}
+end
+
+function get(path)
+  c = net.connect("127.0.0.1", 18100)?
+  net.write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
+  net.read(c) then map_ok(r -> [split(crlf, r)[1], r then contains("x-injected")])
+end
+
+spawn(() -> http.serve(handle, port = 18100))
+sys.sleep(0)
+print(get("/value"))
+print(get("/name"))
+print(get("/status"))

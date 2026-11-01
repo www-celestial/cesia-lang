@@ -1,0 +1,5 @@
+frame inner fiber.kp:2
+n = 1
+frame <anonymous> fiber.kp:5
+Ok(value = 2)
+exit 0

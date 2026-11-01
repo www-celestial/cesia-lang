@@ -1,0 +1,10 @@
+use http
+use sys
+
+function handle(r)
+  sys.sleep(0.2)
+  {status: 200, body: "slow"}
+end
+
+print(http.serve(handle, port = 18095))
+print("stopped")

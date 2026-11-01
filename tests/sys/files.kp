@@ -1,0 +1,19 @@
+use sys
+
+dir = "./tmp_files/a/b"
+path = "$dir/note.txt"
+
+function round_trip()
+  sys.mkdir(dir)?
+  sys.mkdir(dir)?
+  sys.write(path, "one")?
+  sys.append(path, " two")?
+  text = sys.read(path)?
+  names = sys.list(dir)?
+  sys.remove(path)?
+  sys.remove(dir)?
+  sys.remove("./tmp_files/a")?
+  sys.remove("./tmp_files")?
+  Ok([text, names, sys.exists(path)])
+end
+print(round_trip())

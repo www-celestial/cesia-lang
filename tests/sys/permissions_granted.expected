@@ -1,0 +1,12 @@
+write: ran
+append: ran
+read: ran
+list: ran
+exists: ran
+mkdir: ran
+remove: ran
+env: ran
+run: ran
+listen: ran
+connect: ran
+exit 0

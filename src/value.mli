@@ -3,7 +3,7 @@ open Types
 
 exception Kerr of { kind : kind; text : string; hint : string option; at : int }
 
-(** A limit reached. [try] never catches it. *)
+(** A limit reached. Nothing in the language catches it. *)
 exception Limit of { what : string; at : int }
 
 val of_bool : bool -> t
@@ -24,6 +24,11 @@ val field_index : shape -> string -> int
 
 (** A new struct with one more field. *)
 val add_field : world -> shape -> t array -> string -> t -> t
+
+(** The results of the prelude: [Ok(v)] and [Err(v)]. *)
+val ok : world -> t -> t
+
+val err : world -> t -> t
 
 (** The value written as code. *)
 val show : ctx -> t -> string

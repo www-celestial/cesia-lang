@@ -1,0 +1,20 @@
+use http
+use net
+use sys
+
+handle(request) = match sys.read("page.html")
+  Ok(text) -> {status: 200, body: text}
+  Err(e) -> {status: 404, body: e.message}
+end
+
+crlf = "$(char(13))$(char(10))"
+
+function client()
+  c = net.connect("127.0.0.1", 18096)?
+  net.write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
+  net.read(c) then map_ok(r -> split(crlf, r))
+end
+
+spawn(() -> http.serve(handle, port = 18096))
+sys.sleep(0)
+print(client())

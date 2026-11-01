@@ -22,3 +22,6 @@ val read : ctx -> t -> ix array -> t
 (** Writes element [k], from 0, in an owned array. The first [int] is the site, for the slow path that converts
     the storage. *)
 val store_elt : ctx -> int -> arr -> int -> t -> unit
+
+(** An index: an integer, or a float with an integer value. *)
+val whole_index : ctx -> t -> int

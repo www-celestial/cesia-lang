@@ -1,0 +1,34 @@
+half(x) = if mod(x, 2) == 0 Ok(div(x, 2)) else Err("odd") end
+
+is_value() = Ok(1).value == 1
+is_equal() = Ok(1) == Ok(1) and Ok(1) != Err(1)
+is_and_then() = (half(8) then and_then(half)) == Ok(2)
+is_and_then_err() = (half(3) then and_then(half)) == Err("odd")
+is_map_ok() = (half(8) then map_ok(it + 1)) == Ok(5)
+is_map_err() = (half(3) then map_err(x -> "$(x)!")) == Err("odd!")
+is_unwrap_or() = (half(3) then unwrap_or(0)) == 0
+is_unwrap() = unwrap(Ok(1)) == 1
+is_kinds() = is_ok(Ok(1)) and is_err(Err(1)) and not is_ok(Err(1))
+is_collect() = equal(collect([Ok(1), Ok(2)]), Ok([1, 2]))
+is_collect_first_err() = collect([Ok(1), Err("a"), Err("b")]) == Err("a")
+is_collect_empty() = equal(collect([]), Ok([]))
+
+function quarter(x)
+  a = half(x)?
+  b = half(a)?
+  Ok(b)
+end
+function chain()
+  half(half(8)?)
+end
+function in_loop()
+  for i in 1:3
+    half(i)?
+  end
+  Ok("done")
+end
+is_question() = quarter(8) == Ok(2)
+is_question_propagates() = quarter(6) == Err("odd")
+is_question_in_lambda() = (x -> Ok(half(x)? + 1))(4) == Ok(3)
+is_question_chain() = chain() == Ok(2)
+is_question_in_loop() = in_loop() == Err("odd")

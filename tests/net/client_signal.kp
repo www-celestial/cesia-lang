@@ -1,0 +1,7 @@
+use net
+c = net.connect("127.0.0.1", 18088)
+print("started")
+function forever()
+  while true end
+end
+forever()

@@ -1,5 +1,0 @@
-try
-  while true end
-else
-  print("caught")
-end

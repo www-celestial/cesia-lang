@@ -1,0 +1,30 @@
+use http
+use net
+use sys
+
+crlf = "$(char(13))$(char(10))"
+handle(r) = {status: 200, body: "fine"}
+
+function open_all(n, opened)
+  if n == 0
+    opened
+  else
+    match net.connect("127.0.0.1", 18094)
+      Ok(c) -> open_all(n - 1, [c, opened])
+      else -> opened
+    end
+  end
+end
+
+function ask(c)
+  net.write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
+  net.read(c) then map_ok(reply -> split(crlf, reply)[1])
+end
+
+spawn(() -> http.serve(handle, port = 18094))
+sys.sleep(0)
+first = unwrap(net.connect("127.0.0.1", 18094))
+print(ask(first))
+open_all(100, missing)
+sys.sleep(1)
+print(ask(first))

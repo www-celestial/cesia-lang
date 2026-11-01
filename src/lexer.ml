@@ -5,12 +5,12 @@ type tok =
   | FLOAT of float
   | TEXT of part list
   | NAME of string
-  | IF | ELSE | END | FOR | IN | WHILE | BREAK | RETURN | FUNCTION | MATCH | STRUCT | TRY
+  | IF | ELSE | END | FOR | IN | WHILE | BREAK | RETURN | FUNCTION | MATCH | STRUCT
   | AND | OR | NOT | THEN | USE | TRUE | FALSE | MISSING
   | PLUS | MINUS | STAR | SLASH | CARET
   | ASSIGN | EQEQ | NE | LT | LE | GT | GE
   | PLUSEQ | MINUSEQ | STAREQ | SLASHEQ
-  | ARROW | COLON | SEMI | COMMA | DOT
+  | ARROW | COLON | SEMI | COMMA | DOT | QUESTION
   | LP | RP | LB | RB | LC | RC
   | NL
   | EOF
@@ -21,7 +21,7 @@ and part = Plain of string | Code of token array
 let keyword = function
   | "if" -> Some IF | "else" -> Some ELSE | "end" -> Some END | "for" -> Some FOR | "in" -> Some IN
   | "while" -> Some WHILE | "break" -> Some BREAK | "return" -> Some RETURN | "function" -> Some FUNCTION
-  | "match" -> Some MATCH | "struct" -> Some STRUCT | "try" -> Some TRY | "and" -> Some AND | "or" -> Some OR
+  | "match" -> Some MATCH | "struct" -> Some STRUCT | "and" -> Some AND | "or" -> Some OR
   | "not" -> Some NOT | "then" -> Some THEN | "use" -> Some USE | "true" -> Some TRUE | "false" -> Some FALSE
   | "missing" -> Some MISSING
   | _ -> None
@@ -166,6 +166,7 @@ let rec scan st ~in_code : token array =
         | ';', _ -> one SEMI
         | ',', _ -> one COMMA
         | '.', _ -> one DOT
+        | '?', _ -> one QUESTION
         | '(', _ -> incr depth; one LP
         | ')', _ ->
           if in_code && !depth = 0 then begin

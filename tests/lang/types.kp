@@ -58,3 +58,15 @@ function loop_returns()
 end
 is_return_in_loop() = loop_returns() == 3
 is_bool_arith() = 0.05 * (1 > 0) == 0.05
+
+function constant_floats(y)
+  x = 0.5
+  x = 1.5 * 2.0
+  x = x + (1.5 + 2.5)
+  z = y
+  z = 3.0 - 1.0
+  w = y
+  w = 1.0 / 2.0
+  x + z + w
+end
+is_constant_floats() = constant_floats(0.5) == 9.5

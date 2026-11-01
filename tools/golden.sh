@@ -11,11 +11,15 @@ if [ "${1:-}" = "--no-spec" ]; then no_spec="--no-spec"; shift; fi
 
 failed=0
 total=0
-tmp=$(mktemp)
-trap 'rm -f "$tmp"' EXIT
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+
+# Golden tests are small and independent: their ports and folders differ, so they run side by side.
+max_jobs=$(nproc)
+running=0
 
 run_one() {
-  local dir="$1" name="$2"
+  local dir="$1" name="$2" out="$3"
   local flags="" args="" input=/dev/null
   [ -f "$dir/$name.flags" ] && flags=$(cat "$dir/$name.flags")
   [ -f "$dir/$name.args" ] && args=$(cat "$dir/$name.args")
@@ -32,14 +36,8 @@ run_one() {
       "$kepler" run $no_spec $flags "$name.kp" $args < "$abs_input"
     fi
     echo "exit $?"
-  ) > "$tmp" 2>&1
-  total=$((total + 1))
-  if ! diff -u "$dir/$name.expected" "$tmp" > "$tmp.diff"; then
-    echo "golden: FAILED $dir/$name"
-    cat "$tmp.diff"
-    failed=$((failed + 1))
-  fi
-  rm -f "$tmp.diff"
+  ) > "$out" 2>&1
+  diff -u "$dir/$name.expected" "$out" > "$out.diff" || echo "$dir/$name" > "$out.failed"
 }
 
 for dir in "$@"; do
@@ -48,8 +46,23 @@ for dir in "$@"; do
   for expected in "$dir"/*.expected; do
     [ -f "$expected" ] || continue
     name=$(basename "$expected" .expected)
-    run_one "$dir" "$name"
+    total=$((total + 1))
+    run_one "$dir" "$name" "$tmp/$total" &
+    running=$((running + 1))
+    if [ "$running" -ge "$max_jobs" ]; then
+      wait -n
+      running=$((running - 1))
+    fi
   done
+done
+wait
+
+for ((i = 1; i <= total; i++)); do
+  if [ -f "$tmp/$i.failed" ]; then
+    echo "golden: FAILED $(cat "$tmp/$i.failed")"
+    cat "$tmp/$i.diff"
+    failed=$((failed + 1))
+  fi
 done
 
 echo "golden: $((total - failed))/$total ${no_spec}"

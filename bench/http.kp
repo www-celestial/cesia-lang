@@ -1,0 +1,4 @@
+use http
+
+handle(request) = {status: 200, body: "Kepler"}
+http.serve(handle, port = 19100)

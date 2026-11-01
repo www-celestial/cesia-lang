@@ -3,6 +3,7 @@ open Ast
 
 exception Break_loop
 exception Return_value of t
+exception Bad_arg of Messages.t
 
 type c = {
   w : world;
@@ -530,6 +531,10 @@ and store_float c k op x y : ctx -> unit =
       let u = f ctx in
       let v = g ctx in
       set ctx (u /. v)
+  | Add, `K p, `K q -> let r = p +. q in fun ctx -> set ctx r
+  | Sub, `K p, `K q -> let r = p -. q in fun ctx -> set ctx r
+  | Mul, `K p, `K q -> let r = p *. q in fun ctx -> set ctx r
+  | Div, `K p, `K q -> let r = p /. q in fun ctx -> set ctx r
   | _ -> assert false
 
 (* An expression, as a boxed value. *)
@@ -584,9 +589,9 @@ and ca c (e : expr) : ctx -> t =
   | Index (b, ixs, uses_end) -> index_read c e b ixs uses_end
   | Field (b, name) -> field_read c e b name
   | Match { subject; arms } -> match_expr c e subject arms
-  | Try { tbody; ename; handler } -> try_expr c tbody ename handler
   | Struct_lit { sname; sfields } -> struct_lit c sname sfields
   | End_index -> end_index c
+  | Question a -> question c e a
   | Return { rvalue; tail } ->
     let v = match rvalue with Some v -> if tail then ctail c v else ce c v | None -> fun _ -> Missing in
     if tail then v else fun ctx -> raise_notrace (Return_value (v ctx))
@@ -828,6 +833,19 @@ and index_read c e b ixs uses_end =
           Arrays.read2 ctx x i j
       | _ -> raise_at s Index Messages.index_count)
 
+(* e?: the value of an Ok, or an early return of the Err. *)
+and question c e a =
+  let v = ce c a and s = site c e.pos in
+  let ok = Value.shape_of c.w ~sname:"Ok" [| "value" |] in
+  let err = Value.shape_of c.w ~sname:"Err" [| "error" |] in
+  fun ctx ->
+    match v ctx with
+    | Struct r when r.shape == ok -> Value.share r.fields.(0)
+    | Struct r as x when r.shape == err -> raise_notrace (Return_value x)
+    | x ->
+      ctx.site <- s;
+      Runtime.fail ctx Type (Messages.question_value (Value.describe x))
+
 and struct_lit c sname fields =
   let names = Array.map fst fields in
   let shape = Value.shape_of c.w ?sname names in
@@ -915,6 +933,15 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
          let rec go k = k >= want || (tests.(k) ctx (Value.elt a k) && go (k + 1)) in
          go 0
        | _ -> false)
+  | Pcons (name, ps) ->
+    let tests = Array.map (pat_test c) ps in
+    let want = Array.length ps and sname = Some name in
+    fun ctx v ->
+      (match v with
+       | Struct r when Array.length r.fields = want && r.shape.sname = sname ->
+         let rec go k = k >= want || (tests.(k) ctx r.fields.(k) && go (k + 1)) in
+         go 0
+       | _ -> false)
   | Pstruct fs ->
     let tests = Array.map (fun (name, q) -> name, pat_test c q) fs in
     let want = Array.length fs in
@@ -931,28 +958,6 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
          in
          go 0
        | _ -> false)
-
-and try_expr c tbody ename handler =
-  let body = ce_block c tbody and h = ce_block c handler in
-  let set = Option.map (setter c) ename in
-  let w = c.w in
-  let shape = Value.shape_of w [| "message"; "kind"; "file"; "line" |] in
-  fun ctx ->
-    let saved = ctx.b in
-    try body ctx
-    with Value.Kerr { kind; text; at; _ } ->
-      ctx.b <- saved;
-      (match set with
-       | None -> ()
-       | Some f ->
-         let site = Dynarray.get w.sites at in
-         let path, _ = Dynarray.get w.files site.sfile in
-         f ctx
-           (Struct
-              { shape;
-                fields = [| Text text; Text (Value.kind_name kind); Text path; Int (Pos.line site.spos) |];
-                r_owned = true }));
-      h ctx
 
 and end_index c =
   match c.ends with
@@ -2046,6 +2051,16 @@ and cpat c (pt : pat) pos : ctx -> t -> unit =
        | _ ->
          ctx.site <- s;
          Runtime.fail ctx Type (Messages.destructure_value (Value.describe v)))
+  | Pcons (name, ps) ->
+    let binds = Array.map (fun q -> cpat c q pos) ps in
+    let want = Array.length ps and sname = Some name in
+    fun ctx v ->
+      (match v with
+       | Struct r when Array.length r.fields = want && r.shape.sname = sname ->
+         Array.iteri (fun k b -> b ctx (Value.share r.fields.(k))) binds
+       | _ ->
+         ctx.site <- s;
+         Runtime.fail ctx Field (Messages.pattern_mismatch name (Value.describe v)))
   | Pstruct fs ->
     let binds = Array.map (fun (name, q) -> name, cpat c q pos) fs in
     fun ctx v ->
@@ -2199,8 +2214,33 @@ and raise_at s kind m = fun ctx ->
   ctx.site <- s;
   Runtime.fail ctx kind m
 
+(* Places named arguments by the parameters of a native. A gap stays Undef, which the native reads as absent. *)
+and native_args c (n : native) (args : arg array) : (ctx -> t) array =
+  let names = Array.map (fun (a : arg) -> a.aname) args in
+  if Array.for_all Option.is_none names then Array.map (fun (a : arg) -> cv c a.value) args
+  else begin
+    let position i (a : arg) =
+      match a.aname with
+      | None -> i
+      | Some name ->
+        (match Array.find_index (String.equal name) n.params with
+         | Some k -> k
+         | None -> raise (Bad_arg (Messages.unknown_arg n.nname name)))
+    in
+    let placed = Array.mapi (fun i a -> position i a, a) args in
+    let size = Array.fold_left (fun acc (k, _) -> max acc (k + 1)) 0 placed in
+    let out = Array.make size (fun _ -> Undef) in
+    Array.iter (fun (k, (a : arg)) -> out.(k) <- cv c a.value) placed;
+    out
+  end
+
 and call_native c s n args =
-  let nargs = Array.length args in
+  match native_args c n args with
+  | exception Bad_arg m -> raise_at s Type m
+  | compiled -> call_native_placed s n compiled
+
+and call_native_placed s n compiled =
+  let nargs = Array.length compiled in
   if nargs < n.min_args || nargs > n.max_args then begin
     let want =
       if n.min_args = n.max_args then Printf.sprintf "%d arguments" n.min_args
@@ -2217,7 +2257,7 @@ and call_native c s n args =
           Runtime.check_perm ctx p None;
           inner ctx a
     in
-    match Array.map (fun a -> cv c a.value) args with
+    match compiled with
     | [| a |] ->
       fun ctx ->
         let x = a ctx in
@@ -2497,6 +2537,21 @@ and dispatch_named ctx g off names s =
     if b + np + 2 > ctx.cap then Runtime.grow ctx (b + np + 2);
     Array.blit out 0 ctx.v b np;
     dispatch ctx g off !last s
+  | Native nat ->
+    let vals = Array.sub ctx.v b n in
+    let position i = function
+      | None -> i
+      | Some name ->
+        (match Array.find_index (String.equal name) nat.params with
+         | Some k -> k
+         | None -> Runtime.fail ctx Type (Messages.unknown_arg nat.nname name))
+    in
+    let places = Array.mapi position names in
+    let size = Array.fold_left (fun acc k -> max acc (k + 1)) 0 places in
+    if b + size + 2 > ctx.cap then Runtime.grow ctx (b + size + 2);
+    Array.fill ctx.v b size Undef;
+    Array.iteri (fun i k -> ctx.v.(b + k) <- vals.(i)) places;
+    dispatch ctx g off size s
   | _ -> dispatch ctx g off n s
 
 let run_main (ctx : ctx) ~file ~m (fn : func) =

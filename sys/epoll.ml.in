@@ -1,0 +1,15 @@
+external create_fd : unit -> int = "kepler_epoll_create"
+external ctl : int -> bool -> Unix.file_descr -> int = "kepler_epoll_ctl"
+external wait_fds : int -> Unix.file_descr array -> int -> int = "kepler_epoll_wait"
+
+type state = { ep : int; out : Unix.file_descr array }
+
+let capacity = max_int
+let create () = { ep = create_fd (); out = Array.make 1024 Unix.stdin }
+let add s fd = ignore (ctl s.ep true fd)
+let remove s fd = ignore (ctl s.ep false fd)
+
+let wait s timeout _ =
+  let ms = if timeout < 0. then -1 else int_of_float (Float.ceil (timeout *. 1000.)) in
+  let n = wait_fds s.ep s.out ms in
+  Array.to_list (Array.sub s.out 0 n)

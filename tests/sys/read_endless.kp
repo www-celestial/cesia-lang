@@ -1,0 +1,2 @@
+use sys
+print(sys.read("/dev/zero"))

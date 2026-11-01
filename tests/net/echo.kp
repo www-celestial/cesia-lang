@@ -1,0 +1,24 @@
+use net
+use sys
+
+function serve_once(listener)
+  c = net.accept(listener)?
+  text = net.read(c)?
+  net.write(c, "echo: $text")?
+  net.close(c)
+  Ok(missing)
+end
+
+function client()
+  c = net.connect("127.0.0.1", 18081)?
+  net.write(c, "hello")?
+  reply = net.read(c)?
+  net.close(c)
+  Ok(reply)
+end
+
+listener = unwrap(net.listen(18081))
+server = spawn(() -> serve_once(listener))
+sys.sleep(0)
+print(client())
+print(wait(server))

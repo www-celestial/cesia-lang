@@ -1,0 +1,2 @@
+use sys
+print(sys.run("sh", args = ["-c", "yes | head -1"]) then map_ok(it.err))

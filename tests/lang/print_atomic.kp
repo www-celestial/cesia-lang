@@ -1,0 +1,15 @@
+a = fill([], 10000)
+function lines()
+  for i in 1:200
+    print("x", a)
+  end
+end
+function others()
+  for i in 1:400000
+    print("B")
+  end
+end
+t = spawn(lines)
+u = spawn(others)
+wait(t)
+wait(u)

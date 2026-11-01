@@ -1,0 +1,5 @@
+f() = wait(b)
+g() = wait(a)
+a = spawn(f)
+b = spawn(g)
+print(wait(a))

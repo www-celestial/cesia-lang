@@ -1,0 +1,4 @@
+memory_join.kp:2:5: Limit "memory" reached.
+  2 | b = join("", xs)
+    |     ^
+exit 1

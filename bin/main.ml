@@ -114,15 +114,19 @@ let rec watch (o : Runtime.options) file rest =
   let w = Runtime.create_world o in
   let stamps = Hashtbl.create 8 in
   ignore (changed stamps [ file ]);
-  w.on_checkpoint <-
-    (fun _ ->
-       List.iter
-         (fun path ->
-            match Loader.reload w path with
-            | Ok () -> ()
-            | Error text -> w.err text)
-         (changed stamps (Loader.watched w)));
-  ignore (Loader.run_file w file rest);
+  let reload_changed () =
+    List.iter
+      (fun path ->
+         match Loader.reload w path with
+         | Ok () -> ()
+         | Error text -> w.err text)
+      (changed stamps (Loader.watched w))
+  in
+  let stopped = Kepler_sys.Sys_modules.register ~tick:(poll_period, reload_changed) w in
+  w.on_checkpoint <- (fun _ -> reload_changed ());
+  let code = Loader.run_file w file rest in
+  (* A stop signal means stop, not wait for the next change. *)
+  if stopped () then exit code;
   while changed stamps (file :: Loader.watched w) = [] do
     Unix.sleepf poll_period
   done;
@@ -150,7 +154,11 @@ let run args =
   in
   if not readable then bad_option (Messages.cant_read file);
   if !watching then watch { o with o_period = watch_period } file rest
-  else exit (Loader.run_file (Runtime.create_world o) file rest)
+  else begin
+    let w = Runtime.create_world o in
+    let (_ : unit -> bool) = Kepler_sys.Sys_modules.register w in
+    exit (Loader.run_file w file rest)
+  end
 
 let test args =
   let no_spec = List.mem "--no-spec" args in
@@ -158,6 +166,7 @@ let test args =
   let path = match paths with [] -> "." | [ p ] -> p | _ -> usage () in
   if List.exists (String.starts_with ~prefix:"--") paths || not (Sys.file_exists path) then usage ();
   let w = Runtime.create_world { (with_default_memory Runtime.default_options) with o_no_spec = no_spec } in
+  let (_ : unit -> bool) = Kepler_sys.Sys_modules.register w in
   exit (Testrun.run w ~path)
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)

@@ -1,0 +1,24 @@
+use http
+use net
+use sys
+
+crlf = "$(char(13))$(char(10))"
+handle(r) = {status: 200, body: "$(r.method) $(r.path) $(r.query) $(r.headers[2].value)"}
+
+function exchange(c, request)
+  net.write(c, request)?
+  net.read(c)
+end
+
+function client()
+  c = net.connect("127.0.0.1", 18090)?
+  request = "GET /a?x=1 HTTP/1.1$(crlf)Host: kepler$(crlf)X-Two: 2$(crlf)$crlf"
+  first = exchange(c, request)?
+  second = exchange(c, request)?
+  net.close(c)
+  Ok([first, second])
+end
+
+spawn(() -> http.serve(handle, port = 18090))
+sys.sleep(0)
+print(client() then map_ok(xs -> map(t -> replace(crlf, "|", t), xs)))

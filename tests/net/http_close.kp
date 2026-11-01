@@ -1,0 +1,22 @@
+use http
+use net
+use sys
+
+crlf = "$(char(13))$(char(10))"
+handle(r) = {status: 200, body: "x"}
+
+function read_to_end(c, got)
+  more = net.read(c)?
+  if net.size(more) == 0 Ok(got) else read_to_end(c, "$got$more") end
+end
+
+function closes(request)
+  c = net.connect("127.0.0.1", 18101)?
+  net.write(c, request)?
+  read_to_end(c, "") then map_ok(reply -> split(crlf, reply)[1])
+end
+
+spawn(() -> http.serve(handle, port = 18101))
+sys.sleep(0)
+print(closes("GET / HTTP/1.0$(crlf)$crlf"))
+print(closes("GET / HTTP/1.1$(crlf)Connection: Close$(crlf)$crlf"))

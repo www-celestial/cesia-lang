@@ -1,0 +1,2 @@
+Err(error = {kind: "io", message: "Can't read ./nope.txt: no such file or directory."})
+exit 0

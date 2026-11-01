@@ -45,7 +45,7 @@ end
 --   range(0, 1, step = 0.25) --> [0.0, 0.25, 0.5, 0.75, 1.0]
 function range(a, b, step = 1)
   if step == 0
-    error("range: step can't be 0.")
+    panic("range: step can't be 0.")
   end
   if floor(a) == a and floor(b) == b and floor(step) == step
     n = div(b - a, step) + 1
@@ -143,3 +143,90 @@ function top(n, xs, by = missing)
   m = min(n, length(xs))
   [xs[idx[k]] for k in 1:m]
 end
+
+-- A successful result.
+--
+--   Ok(1).value --> 1
+struct Ok { value }
+
+-- A failed result: the error is a value, returned rather than raised.
+--
+--   Err("no").error --> "no"
+struct Err { error }
+
+-- The next step of a result: f(v) for an Ok, the Err unchanged otherwise.
+--
+--   Ok(2) then and_then(x -> Ok(x + 1)) --> Ok(3)
+--   Err("no") then and_then(x -> Ok(x + 1)) --> Err("no")
+and_then(f, r) = match r
+  Ok(v) -> f(v)
+  else -> r
+end
+
+-- Applies f to the value of an Ok.
+--
+--   Ok(2) then map_ok(it + 1) --> Ok(3)
+map_ok(f, r) = match r
+  Ok(v) -> Ok(f(v))
+  else -> r
+end
+
+-- Applies f to the error of an Err.
+--
+--   Err(2) then map_err(it + 1) --> Err(3)
+map_err(f, r) = match r
+  Err(e) -> Err(f(e))
+  else -> r
+end
+
+-- The value of an Ok, or the default.
+--
+--   Err("no") then unwrap_or(0) --> 0
+unwrap_or(default, r) = match r
+  Ok(v) -> v
+  else -> default
+end
+
+_error_text(e) = match e
+  {message} -> message
+  else -> text(e)
+end
+
+-- The value of an Ok. An Err is a bug here, and stops the fiber.
+--
+--   unwrap(Ok(1)) --> 1
+--   unwrap(Err("no")) --> error
+unwrap(r) = match r
+  Ok(v) -> v
+  Err(e) -> panic("unwrap on an error: $(_error_text(e))")
+end
+
+-- Is this result an Ok?
+--
+--   is_ok(Ok(1)) --> true
+is_ok(r) = match r
+  Ok(v) -> true
+  else -> false
+end
+
+-- Is this result an Err?
+--
+--   is_err(Err(1)) --> true
+is_err(r) = match r
+  Err(e) -> true
+  else -> false
+end
+
+-- An array of results as one result: Ok of all the values, or the first Err.
+--
+--   collect([Ok(1), Ok(2)]) --> Ok([1, 2])
+--   collect([Ok(1), Err("a")]) --> Err("a")
+function collect(rs)
+  errors = filter(is_err, rs)
+  if length(errors) > 0 errors[1] else Ok(map(it.value, rs)) end
+end
+
+-- Like map, with one fiber per element: useful when f waits. A panic in f comes back as a panic here.
+--
+--   pmap(it * 2, [1, 2]) --> [2, 4]
+pmap(f, xs) = map(unwrap, map(wait, map(x -> spawn(() -> f(x)), xs)))

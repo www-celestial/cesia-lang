@@ -94,7 +94,8 @@ let full_checkpoint ctx top =
     check_memory ctx 0 top;
     w.big_words <- 0
   end;
-  w.on_checkpoint ctx
+  w.on_checkpoint ctx;
+  w.yield ctx
 
 (* The checkpoint, with the top of the v stack still in use. A call adds a single frame and counts one step: at depth
    d, the limit can't fall before max_depth - d steps. Bounding fuel this way makes the limit exact without adding
@@ -123,6 +124,14 @@ let charge ctx n =
   ctx.fuel <- ctx.fuel - n;
   if ctx.fuel < 0 then checkpoint ctx (site_top ctx)
 
+(* What a fiber spent since its last checkpoint, when it ends. Short fibers would otherwise run for free. *)
+let settle ctx =
+  let w = ctx.w in
+  if w.steps_left <> max_int then begin
+    w.steps_left <- w.steps_left - (ctx.refill - ctx.fuel);
+    if w.steps_left <= 0 then limit "steps" (-1)
+  end
+
 let create_world o =
   { modules = [||];
     files = Dynarray.create ();
@@ -136,6 +145,11 @@ let create_world o =
     debug = { mode = Starting; stopped = false; breaks = []; on_stop = Missing; last_file = -1; last_line = 0 };
     on_hook = (fun _ _ -> ());
     hook_count = 0;
+    sched = { ready = Queue.create (); next_id = 1; jobs = 0; current = None };
+    idle = (fun block -> not block);
+    native_modules = [];
+    yield = (fun _ -> ());
+    on_panic = (fun _ _ -> ());
     out = Buffer.create 4096;
     sink = o.o_sink;
     err = o.o_err;
@@ -150,18 +164,19 @@ let create_world o =
 
 let first_refill w = min (min w.period w.limits.steps) w.limits.max_depth
 
-let create_ctx w =
-  { v = Array.make initial_stack Undef;
-    f = Float.Array.make initial_stack 0.;
-    i = Array.make initial_stack 0;
+let create_ctx ?(stack = initial_stack) ?(fiber = false) w =
+  { v = Array.make stack Undef;
+    f = Float.Array.make stack 0.;
+    i = Array.make stack 0;
     b = 0;
-    cap = initial_stack;
+    cap = stack;
     fuel = first_refill w;
     refill = first_refill w;
     until = w.period;
     site = 0;
     again = false;
     max_depth = w.limits.max_depth;
+    fiber;
     w }
 
 (* Three stacks of [cap] entries. *)
@@ -266,6 +281,15 @@ let inside dir path =
   else if dir = "/" then is_absolute
   else path = dir || String.starts_with ~prefix:(dir ^ "/") path
 
+(* Does a scope of --allow cover this target? Paths nest, a network scope may name a host alone, the rest is exact. *)
+let scope_matches perm scope target =
+  match perm with
+  | Read | Write -> inside scope target
+  | Net ->
+    String.equal scope target
+    || ((not (String.contains scope ':')) && String.starts_with ~prefix:(scope ^ ":") target)
+  | Exec | Env | Ffi | Debug -> String.equal scope target
+
 let granted w perm path =
   w.grants.all
   || List.exists
@@ -273,7 +297,7 @@ let granted w perm path =
           p = perm
           && (match scope, path with
               | None, _ | _, None -> true
-              | Some dir, Some f -> inside dir f))
+              | Some scope, Some target -> scope_matches perm scope target))
        w.grants.perms
 
 let check_perm ctx perm path =

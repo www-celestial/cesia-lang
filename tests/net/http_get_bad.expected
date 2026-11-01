@@ -1,0 +1,9 @@
+Err(error = "This client doesn't do https.")
+Err(error = "This URL doesn't start with http://.")
+Err(error = "http")
+Err(error = "http")
+Err(error = "http")
+Err(error = "http")
+Err(error = "http")
+Err(error = "io")
+exit 0

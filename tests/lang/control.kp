@@ -19,23 +19,19 @@ function if_expr(x)
 end
 is_if_chain() = if_expr(-1) == "neg" and if_expr(0) == "zero" and if_expr(1) == "pos"
 
-is_try_value() = (try 1 else 2 end) == 1
-is_try_catches() = (try error("x") else 2 end) == 2
-is_try_struct() = (try error("x") else e -> e.message end) == "x"
-is_try_kind() = (try error("x") else e -> e.kind end) == "user"
-is_try_type() = (try 1 + "a" else e -> e.kind end) == "type"
-is_assert() = (try assert(false) else e -> e.kind end) == "user"
+is_panic_kind() = (wait(spawn(() -> panic("x"))) then map_err(it.kind)) == Err("user")
+is_assert() = (wait(spawn(() -> assert(false))) then map_err(it.kind)) == Err("user")
 
 function deep(n)
   if n == 0
-    error("bottom")
+    panic("bottom")
   end
   deep(n - 1) + 1
 end
-function repeated_tries()
+function repeated_panics()
   for i in 1:20000
-    try deep(3) else 0 end
+    wait(spawn(() -> deep(3)))
   end
   true
 end
-is_try_restores_stack() = repeated_tries()
+is_panic_keeps_the_stack() = repeated_panics()

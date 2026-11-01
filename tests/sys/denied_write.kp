@@ -1,0 +1,2 @@
+use sys
+print(sys.write("./x", "a"))

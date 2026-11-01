@@ -18,6 +18,9 @@ type t =
   | Struct of { shape : shape; fields : t array; mutable r_owned : bool }
   | Fun of { proto : proto; env : t array }
   | Native of native
+  | Handle of { kind : string; id : int; task : task option }  (** a reference to something outside the values *)
+
+and task = { mutable result : t option; mutable waiters : (unit -> unit) list }
 
 and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool }
 and store = F of floatarray | V of t array
@@ -93,6 +96,7 @@ and ctx = {
   mutable site : int;
   mutable again : bool;  (** tail recursion: the function must loop again *)
   max_depth : int;
+  fiber : bool;  (** a spawned fiber, as opposed to the main program *)
   w : world;
 }
 
@@ -131,6 +135,13 @@ and debug = {
 and limits = { steps : int; memory_words : int; max_depth : int; nesting : int }
 and grants = { all : bool; perms : (perm * string option) list }
 
+and sched = {
+  ready : (unit -> unit) Queue.t;  (** the jobs of the fibers ready to run, in order *)
+  mutable next_id : int;
+  mutable jobs : int;  (** the jobs run so far: I/O is polled every so often, even under load *)
+  mutable current : ctx option;  (** the running fiber *)
+}
+
 and world = {
   mutable modules : modul array;
   files : (string * string) Dynarray.t;  (** displayed path, source *)
@@ -144,6 +155,12 @@ and world = {
   debug : debug;
   mutable on_hook : ctx -> int -> unit;  (** set by [Loader], so that [Compile] doesn't know [Debug] *)
   mutable hook_count : int;  (** the compiled hooks *)
+  sched : sched;
+  mutable idle : bool -> bool;
+      (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
+  mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
+  mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)
+  mutable on_panic : ctx -> exn -> unit;  (** set by [Loader]: reports the panic of a fiber *)
   out : Buffer.t;
   sink : string -> unit;
   err : string -> unit;

@@ -1,6 +1,0 @@
-r = try
-  error("x")
-else e ->
-  e
-end
-print(r.file, r.line)

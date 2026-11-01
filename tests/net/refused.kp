@@ -1,0 +1,2 @@
+use net
+print(net.connect("127.0.0.1", 18084) then map_err(it.kind))

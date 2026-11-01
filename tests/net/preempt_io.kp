@@ -1,0 +1,19 @@
+use net
+use sys
+
+function forever()
+  while true end
+end
+
+function answer(listener)
+  c = net.accept(listener)?
+  net.write(c, "pong")?
+  Ok(missing)
+end
+
+listener = unwrap(net.listen(18083))
+server = spawn(() -> answer(listener))
+spinner = spawn(forever)
+sys.sleep(0)
+c = unwrap(net.connect("127.0.0.1", 18083))
+print(net.read(c))

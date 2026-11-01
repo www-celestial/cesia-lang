@@ -97,6 +97,14 @@ let () =
   check "also denied through a dynamic call" (code = 1);
   let code, _, _ = run "print(map(read_it, [1]))\n" in
   check "also denied from the prelude" (code = 1);
+  check "exec is exact" (Runtime.scope_matches Exec "git" "git" && not (Runtime.scope_matches Exec "git" "git2"));
+  check "env is exact" (Runtime.scope_matches Env "HOME" "HOME" && not (Runtime.scope_matches Env "HOME" "PATH"));
+  check "net port" (Runtime.scope_matches Net ":8080" ":8080" && not (Runtime.scope_matches Net ":8080" ":8081"));
+  check "net host" (Runtime.scope_matches Net "a.com" "a.com:443" && not (Runtime.scope_matches Net "a.com" "b.com:443"));
+  check "net host and port"
+    (Runtime.scope_matches Net "a.com:443" "a.com:443" && not (Runtime.scope_matches Net "a.com:443" "a.com:80"));
+  check "net host is no suffix" (not (Runtime.scope_matches Net "a.com" "evil-a.com:443"));
+  check "read stays a path" (Runtime.scope_matches Read "./data" "./data/a" && not (Runtime.scope_matches Read "./data" "./b"));
   check "default memory is 80% of MemTotal"
     (Runtime.default_memory "MemFree: 1 kB\nMemTotal:     1000 kB\n" = 102_400);
   check "unknown RAM means no limit" (Runtime.default_memory "" = max_int);

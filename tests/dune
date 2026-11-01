@@ -6,4 +6,4 @@
 (executable
  (name fuzz)
  (modules fuzz)
- (libraries kepler unix))
+ (libraries kepler kepler_sys unix))

@@ -1,0 +1,2 @@
+use sys
+print(sys.run("true") then map_ok(it.code))

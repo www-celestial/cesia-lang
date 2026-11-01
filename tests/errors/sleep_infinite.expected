@@ -1,0 +1,4 @@
+sleep_infinite.kp:4:4: sleep needs a finite duration of 0 or more, not the number inf.
+  4 | sys.sleep(x / y)
+    |    ^
+exit 1

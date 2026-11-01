@@ -1,0 +1,2 @@
+use sys
+print(sys.read("./data/../secret"))

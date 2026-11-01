@@ -16,6 +16,11 @@ function report(label, before, after)
   after
 end
 
+attempt(f) = match wait(spawn(f))
+  Ok(v) -> v
+  Err(e) -> e.kind
+end
+
 function main_loop()
   a = value()
   print("value $a")
@@ -25,11 +30,20 @@ function main_loop()
   e = 0
   while true
     a = report("value", a, value())
-    b = report("following", b, try following() else e -> e.kind end)
-    c = report("direct", c, try value() + 1 else e -> e.kind end)
+    b = report("following", b, attempt(following))
+    c = report("direct", c, attempt(() -> value() + 1))
     d = report("lib", d, lib.constant())
     e = report("point", e, point())
   end
 end
 
+function watcher(seen)
+  v = value()
+  if not equal(v, seen)
+    print("fiber $v")
+  end
+  watcher(v)
+end
+
+background = spawn(() -> watcher(0))
 main_loop()

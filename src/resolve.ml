@@ -51,13 +51,13 @@ let cell env text =
 let rec pat_names f = function
   | Pname n -> f n
   | Pwild | Plit _ -> ()
-  | Parray ps -> Array.iter (pat_names f) ps
+  | Parray ps | Pcons (_, ps) -> Array.iter (pat_names f) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> pat_names f q) fs
 
 let rec pat_exprs f = function
   | Plit e -> f e
   | Pname _ | Pwild -> ()
-  | Parray ps -> Array.iter (pat_exprs f) ps
+  | Parray ps | Pcons (_, ps) -> Array.iter (pat_exprs f) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> pat_exprs f q) fs
 
 (* The subexpressions, without entering nested functions. *)
@@ -65,7 +65,7 @@ let children (f : expr -> unit) (e : expr) =
   let index = function All -> () | Ix e -> f e in
   match e.e with
   | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> f a; f b
-  | Neg a | Not a | Field (a, _) -> f a
+  | Neg a | Not a | Field (a, _) | Question a -> f a
   | Assign (_, v) | Destructure (_, v) -> f v
   | Struct_lit { sfields; _ } -> Array.iter (fun (_, v) -> f v) sfields
   | Call { callee; args; _ } -> f callee; Array.iter (fun a -> f a.value) args
@@ -88,7 +88,6 @@ let children (f : expr -> unit) (e : expr) =
          Option.iter f a.guard;
          f a.abody)
       arms
-  | Try { tbody; handler; _ } -> Array.iter f tbody; Array.iter f handler
   | Return _ | Lambda _ | Fn_def _ | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | End_index | Use _ | Hook _ -> ()
 
 (* The assigned names, without entering nested functions. *)
@@ -99,9 +98,6 @@ let rec assigned sc (e : expr) =
   | Destructure (pt, _) -> pat_names (fun n -> ignore (var sc n.text)) pt; children (assigned sc) e
   | Match { arms; _ } ->
     Array.iter (fun a -> pat_names (fun n -> ignore (var sc n.text)) a.pt) arms;
-    children (assigned sc) e
-  | Try { ename; _ } ->
-    Option.iter (fun n -> ignore (var sc n.text)) ename;
     children (assigned sc) e
   | For { var = v; _ } -> ignore (var sc v.text); children (assigned sc) e
   | Fn_def (n, _) -> ignore (var sc n.text)
@@ -160,9 +156,6 @@ let rec reads env sc celled (e : expr) =
   | Destructure (pt, _) -> pat_names (fun n -> n.b <- Local (var sc n.text)) pt; children go e
   | Match { arms; _ } ->
     Array.iter (fun a -> pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt) arms;
-    children go e
-  | Try { ename; _ } ->
-    Option.iter (fun n -> n.b <- Local (var sc n.text)) ename;
     children go e
   | For { var = v; _ } -> v.b <- Local (var sc v.text); children go e
   | Comp { cbody; cvar; csrc; cguard } ->
@@ -259,16 +252,6 @@ and flow (f : func) =
           arms
       in
       if Array.length after > 0 then set := Array.fold_left inter after.(0) after
-    | Try { tbody; ename; handler } ->
-      let body_end = branch (fun () -> Array.iter go tbody) in
-      let handler_end =
-        branch (fun () ->
-            (match ename with
-             | Some { b = Local i; _ } -> Bytes.set !set i '\001'
-             | _ -> ());
-            Array.iter go handler)
-      in
-      set := inter body_end handler_end
     | Return r -> Option.iter go r.rvalue; set := all ()
     | Break -> set := all ()
     | _ -> children go e
@@ -304,7 +287,7 @@ and mark_block self f (b : block) =
 (* After [mark_tail]: is there a return that needs an exception? *)
 let rec nontail (e : expr) =
   match e.e with
-  | Return { tail = false; _ } -> true
+  | Return { tail = false; _ } | Question _ -> true
   | _ ->
     let found = ref false in
     children (fun x -> if nontail x then found := true) e;

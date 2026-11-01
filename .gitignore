@@ -8,3 +8,6 @@ _opam/
 *.swp
 *~
 .DS_Store
+
+# C tooling
+compile_commands.json

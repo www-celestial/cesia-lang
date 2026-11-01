@@ -1,0 +1,12 @@
+write: permission
+append: permission
+read: ran
+list: ran
+exists: ran
+mkdir: permission
+remove: permission
+env: permission
+run: permission
+listen: permission
+connect: permission
+exit 0

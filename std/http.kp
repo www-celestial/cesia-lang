@@ -1,0 +1,282 @@
+-- A small HTTP/1.1 server and client, written on net and the text functions.
+use net
+use sys
+
+crlf = "$(char(13))$(char(10))"
+blank = "$crlf$crlf"
+max_head = 16384
+max_body = 1048576
+
+reason(status) = match status
+  200 -> "OK"
+  400 -> "Bad Request"
+  404 -> "Not Found"
+  413 -> "Content Too Large"
+  431 -> "Request Header Fields Too Large"
+  500 -> "Internal Server Error"
+  501 -> "Not Implemented"
+  else -> "Unknown"
+end
+
+-- A header line as {name, value}, or missing if it isn't one.
+function header(line)
+  at = net.find(":", line)
+  if is_missing(at)
+    missing
+  else
+    parts = net.split_at(at, line)
+    {name: lower(parts[1]), value: trim(net.split_at(1, parts[2])[2])}
+  end
+end
+
+function header_value(name, headers)
+  found = filter(it.name == name, headers)
+  if length(found) == 0 missing else found[1].value end
+end
+
+-- The request line and headers, as a request without its body.
+function parse_head(head)
+  lines = split(crlf, head)
+  words = split(" ", lines[1])
+  headers = [header(line) for line in lines[2:end]]
+  if length(words) != 3 or not (words[3] then starts_with("HTTP/1."))
+    Err(400)
+  else if length(filter(is_missing, headers)) > 0
+    Err(400)
+  else
+    at = net.find("?", words[2])
+    parts = if is_missing(at) [words[2], "?"] else net.split_at(at, words[2]) end
+    Ok({method: words[1], path: parts[1], query: net.split_at(1, parts[2])[2], headers: headers, version: words[3]})
+  end
+end
+
+-- An HTTP/1.0 client waits for the end of the connection.
+function closes(head)
+  asked = header_value("connection", head.headers)
+  head.version == "HTTP/1.0" or (is_text(asked) and lower(asked) == "close")
+end
+
+-- The body that follows a head, once it has all arrived.
+function with_body(head, after)
+  size_text = header_value("content-length", head.headers)
+  size = if is_missing(size_text) 0 else number(size_text) end
+  if not is_missing(header_value("transfer-encoding", head.headers))
+    Err(501)
+  else if length(filter(it.name == "content-length", head.headers)) > 1
+    Err(400)
+  else if not is_int(size) or size < 0
+    Err(400)
+  else if size > max_body
+    Err(413)
+  else if net.size(after) < size
+    Ok(missing)
+  else
+    parts = net.split_at(size, after)
+    request = {method: head.method, path: head.path, query: head.query, headers: head.headers, body: parts[1]}
+    Ok({request: request, rest: parts[2], close: closes(head)})
+  end
+end
+
+-- Ok of the first request and what follows it, Ok(missing) if more bytes are needed, or Err of a status.
+function parse_request(buffer)
+  at = net.find(blank, buffer)
+  if is_missing(at)
+    if net.size(buffer) > max_head Err(431) else Ok(missing) end
+  else if at > max_head
+    Err(431)
+  else
+    cut = net.split_at(at, buffer)
+    with_body(parse_head(cut[1])?, net.split_at(4, cut[2])[2])
+  end
+end
+
+-- A line end here would let data from a client write a response of its own.
+function header_line(h)
+  line = "$(h.name): $(h.value)"
+  assert(not contains(char(13), line) and not contains(char(10), line), "This response header has a line end.")
+  "$line$crlf"
+end
+
+function render(response)
+  status = response.status
+  assert(is_int(status), "This response has a status that isn't an integer.")
+  body = text(response.body)
+  extra = match response
+    {headers} -> headers
+    else -> []
+  end
+  custom = join("", map(header_line, extra))
+  "HTTP/1.1 $status $(reason(status))$(crlf)content-length: $(net.size(body))$crlf$custom$crlf$body"
+end
+
+failure(status) = render({status: status, body: reason(status)})
+
+-- A panic in the handler stops its own fiber only.
+answer(handle, request) = match wait(spawn(() -> render(handle(request))))
+  Ok(reply) -> reply
+  else -> failure(500)
+end
+
+function connection(handle, c, buffer)
+  parsed = if buffer == "" Ok(missing) else parse_request(buffer) end
+  if is_err(parsed)
+    net.write(c, failure(parsed.error))
+    net.close(c)
+  else if is_missing(parsed.value)
+    more = net.read(c)
+    if is_err(more) or net.size(more.value) == 0
+      net.close(c)
+    else
+      connection(handle, c, "$buffer$(more.value)")
+    end
+  else
+    request = parsed.value.request
+    sent = net.write(c, answer(handle, request))
+    if is_err(sent) or parsed.value.close
+      net.close(c)
+    else
+      connection(handle, c, parsed.value.rest)
+    end
+  end
+end
+
+-- An accept that fails for lack of descriptors is tried again later, without spinning.
+function accept_loop(handle, listener)
+  next = net.accept(listener)
+  if is_ok(next)
+    spawn(() -> connection(handle, next.value, ""))
+    accept_loop(handle, listener)
+  else if next.error.kind == "stopped"
+    Ok(missing)
+  else
+    sys.sleep(0.1)
+    accept_loop(handle, listener)
+  end
+end
+
+function wait_for_connections(deadline)
+  if net.open_count() > 0 and sys.now() < deadline
+    sys.sleep(0.01)
+    wait_for_connections(deadline)
+  end
+end
+
+-- Serves requests until a stop signal, then finishes those in progress for at most 5 seconds.
+-- handle(request) receives {method, path, query, headers, body} and returns {status, body}, with optional headers.
+function serve(handle, port = 8080, host = "127.0.0.1")
+  listener = net.listen(port, host = host)?
+  accept_loop(handle, listener)?
+  net.close(listener)
+  wait_for_connections(sys.now() + 5)
+  Ok(missing)
+end
+
+failed(message) = Err({kind: "http", message: message})
+
+-- {host, port, path} of an http:// URL.
+function parse_url(url)
+  scheme = "http://"
+  if url then starts_with("https://")
+    failed("This client doesn't do https.")
+  else if not (url then starts_with(scheme))
+    failed("This URL doesn't start with http://.")
+  else
+    rest = net.split_at(net.size(scheme), url)[2]
+    slash = net.find("/", rest)
+    parts = if is_missing(slash) [rest, "/"] else net.split_at(slash, rest) end
+    colon = net.find(":", parts[1])
+    if is_missing(colon)
+      Ok({host: parts[1], port: 80, path: parts[2]})
+    else
+      address = net.split_at(colon, parts[1])
+      port = number(net.split_at(1, address[2])[2])
+      if is_int(port) Ok({host: address[1], port: port, path: parts[2]}) else failed("This URL has a bad port.") end
+    end
+  end
+end
+
+-- Has the body announced by content-length arrived? A server may keep the connection open.
+function is_complete(buffer)
+  at = net.find(blank, buffer)
+  if is_missing(at)
+    false
+  else
+    cut = net.split_at(at, buffer)
+    lines = split(crlf, cut[1])
+    size = header_value("content-length", filter(not is_missing(it), map(header, lines[2:end])))
+    is_text(size) and is_int(number(size)) and net.size(cut[2]) - 4 >= number(size)
+  end
+end
+
+function read_response(c, buffer)
+  if is_complete(buffer)
+    Ok(buffer)
+  else
+    more = net.read(c)?
+    if net.size(more) == 0 Ok(buffer) else read_response(c, "$buffer$more") end
+  end
+end
+
+-- The value of hexadecimal digits, or missing. Fifteen digits always fit in an integer.
+function hex(digits)
+  values = [net.find(slice(i, i, digits), "0123456789abcdef") for i in 1:length(digits)]
+  if length(values) == 0 or length(values) > 15 or length(filter(is_missing, values)) > 0
+    missing
+  else
+    reduce((acc, d) -> acc * 16 + d, 0, values)
+  end
+end
+
+-- Joins the chunks of a chunked body.
+function unchunk(data, body)
+  at = net.find(crlf, data)
+  if is_missing(at)
+    failed("This chunked body is cut short.")
+  else
+    line = net.split_at(at, data)
+    size = hex(lower(split(";", line[1])[1]))
+    after = net.split_at(2, line[2])[2]
+    if is_missing(size) or net.size(after) < size
+      failed("This chunked body is malformed.")
+    else if size == 0
+      Ok(body)
+    else
+      chunk = net.split_at(size, after)
+      unchunk(net.split_at(2, chunk[2])[2], "$body$(chunk[1])")
+    end
+  end
+end
+
+function parse_response(raw)
+  at = net.find(blank, raw)
+  words = split(" ", split(crlf, raw)[1])
+  status = if length(words) >= 2 number(words[2]) else missing end
+  if is_missing(at) or not is_int(status) or not (words[1] then starts_with("HTTP/"))
+    failed("This response isn't HTTP.")
+  else
+    cut = net.split_at(at, raw)
+    headers = filter(not is_missing(it), map(header, split(crlf, cut[1])[2:end]))
+    rest = net.split_at(4, cut[2])[2]
+    size = header_value("content-length", headers)
+    count = if is_text(size) number(size) else net.size(rest) end
+    body = if header_value("transfer-encoding", headers) == "chunked"
+      unchunk(rest, "")
+    else if not is_int(count) or count < 0 or count > net.size(rest)
+      failed("This response is cut short.")
+    else
+      Ok(net.split_at(count, rest)[1])
+    end
+    map_ok(b -> {status: status, headers: headers, body: b}, body)
+  end
+end
+
+-- Fetches a URL. The Ok holds {status, headers, body}: a 404 is a response, not an error.
+function get(url)
+  target = parse_url(url)?
+  c = net.connect(target.host, target.port)?
+  request = "GET $(target.path) HTTP/1.1$(crlf)Host: $(target.host)$(crlf)Connection: close$(crlf)$crlf"
+  sent = net.write(c, request)
+  raw = if is_ok(sent) read_response(c, "") else sent end
+  net.close(c)
+  parse_response(raw?)
+end

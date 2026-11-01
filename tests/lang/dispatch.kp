@@ -33,7 +33,7 @@ with_one(h) = h(1)
 no_argument(h) = h()
 function cache_by_arity()
   with_one(plus_one)
-  (try no_argument(plus_one) else e -> e.message end) == "plus_one needs the argument ""x""."
+  (wait(spawn(() -> no_argument(plus_one))) then map_err(it.message)) == Err("plus_one needs the argument ""x"".")
 end
 is_cache_by_arity() = cache_by_arity()
 

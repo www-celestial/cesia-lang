@@ -79,6 +79,12 @@ let add_field w (shape : shape) fields name x =
   in
   Struct { shape = next; fields = Array.append fields [| x |]; r_owned = true }
 
+let result w sname field v =
+  Struct { shape = shape_of w ~sname [| field |]; fields = [| share v |]; r_owned = true }
+
+let ok w v = result w "Ok" "value" v
+let err w v = result w "Err" "error" v
+
 let nested ctx depth =
   if depth > ctx.w.limits.nesting then raise (Limit { what = "nesting"; at = -1 })
 
@@ -102,6 +108,7 @@ and show_at ctx depth v =
   | Struct r -> show_struct ctx depth r.shape r.fields
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
+  | Handle h -> Printf.sprintf "<%s %d>" h.kind h.id
 
 and show_struct ctx depth (shape : shape) fields =
   let names = shape.names in
@@ -141,6 +148,7 @@ let describe v =
   | Struct _ -> "a struct"
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
+  | Handle h -> "a " ^ h.kind
   | Undef -> "an undefined value"
 
 let rec equal ctx a b = equal_at ctx 0 a b
@@ -177,4 +185,5 @@ and equal_at ctx depth a b =
   | Text x, Text y -> String.equal x y
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env
   | Native x, Native y -> x == y
+  | Handle x, Handle y -> x.id = y.id
   | _ -> false

@@ -48,13 +48,11 @@ let same_fa (a : ty array) =
   | [| TFA |] -> TFA
   | _ -> TA
 
+(* The line is built apart: showing a long value can let another fiber run. *)
 let print ctx args =
   let w = ctx.w in
-  Array.iteri
-    (fun i v ->
-       if i > 0 then Buffer.add_char w.out ' ';
-       Buffer.add_string w.out (Value.text_of ctx v))
-    args;
+  let line = String.concat " " (Array.to_list (Array.map (Value.text_of ctx) args)) in
+  Buffer.add_string w.out line;
   Buffer.add_char w.out '\n';
   if Buffer.length w.out > 65536 then Runtime.flush_out w;
   Missing
@@ -267,9 +265,152 @@ let mask_all name stop ctx (a : t array) =
   | False | Missing -> False
   | v -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
 
+let text_arg ctx name v =
+  match v with
+  | Text s -> s
+  | _ -> Runtime.fail ctx Type (Messages.need_text name (Value.describe v))
+
+(* The first position of [part] in [s] from byte [from], or -1. [part] isn't empty. *)
+let find_from s part from =
+  let n = String.length s and m = String.length part in
+  let rec same p k = k >= m || (s.[p + k] = part.[k] && same p (k + 1)) in
+  let rec go i =
+    if i + m > n then -1
+    else
+      match String.index_from_opt s i part.[0] with
+      | None -> -1
+      | Some p -> if p + m <= n && same p 1 then p else go (p + 1)
+  in
+  go from
+
+(* The pieces of [s] between the occurrences of [sep]. *)
+let pieces s sep =
+  let rec go from acc =
+    match find_from s sep from with
+    | -1 -> List.rev (String.sub s from (String.length s - from) :: acc)
+    | p -> go (p + String.length sep) (String.sub s from (p - from) :: acc)
+  in
+  go 0 []
+
+let non_empty ctx name part =
+  if part = "" then Runtime.fail ctx Type (Messages.empty_text name);
+  part
+
+let split ctx (a : t array) =
+  let sep = non_empty ctx "split" (text_arg ctx "split" a.(0)) and s = text_arg ctx "split" a.(1) in
+  Runtime.build ctx ((String.length s / 8) + 1);
+  let items = Array.of_list (List.map (fun p -> Text p) (pieces s sep)) in
+  Array { rows = 1; cols = Array.length items; store = V items; a_owned = true }
+
+let join ctx (a : t array) =
+  let sep = text_arg ctx "join" a.(0) in
+  match a.(1) with
+  | Array x ->
+    let n = x.rows * x.cols in
+    Runtime.build ctx n;
+    let b = Buffer.create 64 in
+    for k = 0 to n - 1 do
+      if k > 0 then Buffer.add_string b sep;
+      let text = Value.text_of ctx (Value.elt x k) in
+      Runtime.reserve ctx ((String.length text / 8) + 1);
+      Buffer.add_string b text
+    done;
+    Text (Buffer.contents b)
+  | v -> Runtime.fail ctx Type (Messages.need_array "join" (Value.describe v))
+
+(* The byte where code point [k] starts, counting from 0, or the length of [s] past the end. *)
+let byte_of_point s k =
+  let n = String.length s in
+  let rec go i left =
+    if i >= n then i
+    else if Char.code s.[i] land 0xC0 = 0x80 then go (i + 1) left
+    else if left = 0 then i
+    else go (i + 1) (left - 1)
+  in
+  go 0 k
+
+let slice ctx (a : t array) =
+  let first = Arrays.whole_index ctx a.(0) and last = Arrays.whole_index ctx a.(1) in
+  let s = text_arg ctx "slice" a.(2) in
+  let n = code_points s in
+  if first < 1 then Runtime.fail ctx Index (Messages.index_outside first n);
+  if last > n then Runtime.fail ctx Index (Messages.index_outside last n);
+  if last < first then Text ""
+  else begin
+    Runtime.build ctx ((String.length s / 8) + 1);
+    let start = byte_of_point s (first - 1) in
+    Text (String.sub s start (byte_of_point s last - start))
+  end
+
+let replace ctx (a : t array) =
+  let old_text = non_empty ctx "replace" (text_arg ctx "replace" a.(0)) in
+  let by = text_arg ctx "replace" a.(1) and s = text_arg ctx "replace" a.(2) in
+  let parts = pieces s old_text in
+  let size = String.length s + (List.length parts * String.length by) in
+  Runtime.build ctx ((size / 8) + 1);
+  Text (String.concat by parts)
+
+(* A sign, digits, then optionally a fraction and an exponent: nothing else reads as a number. *)
+let number v =
+  let n = String.length v in
+  let digits i =
+    let j = ref i in
+    while !j < n && v.[!j] >= '0' && v.[!j] <= '9' do incr j done;
+    !j
+  in
+  let sign i = if i < n && (v.[i] = '-' || v.[i] = '+') then i + 1 else i in
+  let start = sign 0 in
+  let whole = digits start in
+  let part_end =
+    if whole = start then -1
+    else if whole < n && v.[whole] = '.' then
+      (let e = digits (whole + 1) in
+       if e = whole + 1 then -1 else e)
+    else whole
+  in
+  let stop =
+    if part_end >= 0 && part_end < n && (v.[part_end] = 'e' || v.[part_end] = 'E') then
+      (let exp = sign (part_end + 1) in
+       let e = digits exp in
+       if e = exp then -1 else e)
+    else part_end
+  in
+  if stop <> n then Missing
+  else if stop = whole then
+    match int_of_string_opt v with
+    | Some i -> Int i
+    | None -> Float (float_of_string v)
+  else Float (float_of_string v)
+
+(* A text from a code point: the only way to write a line end or a tab, since texts have no escapes. *)
+let char ctx (a : t array) =
+  match a.(0) with
+  | Int i when Uchar.is_valid i ->
+    let b = Buffer.create 4 in
+    Buffer.add_utf_8_uchar b (Uchar.of_int i);
+    Text (Buffer.contents b)
+  | v -> Runtime.fail ctx Type (Messages.bad_char (Value.describe v))
+
+let text_natives =
+  let on_text name f = name, nat name 1 1 (fun ctx a -> f (text_arg ctx name a.(0))) in
+  let test2 name f =
+    name, nat name 2 2 (fun ctx a -> Value.of_bool (f (text_arg ctx name a.(0)) (text_arg ctx name a.(1))))
+  in
+  [ "split", nat "split" 2 2 split;
+    "join", nat "join" 2 2 join;
+    "slice", nat "slice" 3 3 slice;
+    "replace", nat "replace" 3 3 replace;
+    "char", nat "char" 1 1 char;
+    on_text "trim" (fun s -> Text (String.trim s));
+    on_text "lower" (fun s -> Text (String.lowercase_ascii s));
+    on_text "number" number;
+    test2 "starts_with" (fun prefix s -> String.starts_with ~prefix s);
+    test2 "contains" (fun part s -> part = "" || find_from s part 0 >= 0) ]
+
 let prelude =
-  [ "print", nat "print" 0 max_int print;
-    "error", nat "error" 1 1 (fun ctx a -> Runtime.fail ctx User (Messages.plain (Value.text_of ctx a.(0))));
+  text_natives
+  @ [ "print", nat "print" 0 max_int print;
+    "panic", nat "panic" 1 1 (fun ctx a -> Runtime.fail ctx User (Messages.plain (Value.text_of ctx a.(0))));
     "assert", nat "assert" 1 2 (fun ctx a ->
         match a.(0) with
         | True -> Missing
