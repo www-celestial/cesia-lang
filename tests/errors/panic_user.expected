@@ -1,4 +1,0 @@
-panic_user.k:1:1: boom
-  1 | Panic("boom")
-    | ^
-exit 1

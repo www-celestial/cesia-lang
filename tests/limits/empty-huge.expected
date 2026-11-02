@@ -1,0 +1,4 @@
+empty-huge.k:1:5: Limit "memory" reached.
+  1 | x = Zeros(0, 4000000000000000000)
+    |     ^
+exit 1

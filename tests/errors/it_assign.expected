@@ -1,4 +1,0 @@
-it_assign.k:1:1: "it" is a reserved name and can't be assigned.
-  1 | it = 1
-    | ^
-exit 1

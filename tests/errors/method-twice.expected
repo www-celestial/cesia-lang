@@ -1,0 +1,4 @@
+method-twice.k:3:1: The function "Rect.Area" is defined twice.
+  3 | (r Rect) Area() = 2
+    | ^
+exit 1

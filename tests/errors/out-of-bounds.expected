@@ -1,0 +1,4 @@
+out-of-bounds.k:2:2: Index 3 is outside this array of 2 elements.
+  2 | x[3] = 1
+    |  ^
+exit 1

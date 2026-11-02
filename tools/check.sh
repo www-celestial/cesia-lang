@@ -9,6 +9,12 @@ fail() { echo "check: $1" >&2; exit 1; }
 lines=$(cat $(ls src/*.ml src/*.mli bin/*.ml sys/*.ml sys/*.mli sys/*.ml.in 2>/dev/null | grep -vE 'src/(super|embedded)\.ml$|sys/backend\.ml$') 2>/dev/null | wc -l)
 [ "$lines" -le 15000 ] || fail "over budget: $lines lines of 15000"
 
+# File names are separated with -. OCaml can't: a file name is a module name there.
+if hits=$(find . \( -name '*_*.k' -o -name '*_*.kn' -o -name '*_*.sh' \) -not -path './_build/*' -not -path './docs/*' 2>/dev/null | grep .); then
+  fail "a file name with _:
+$hits"
+fi
+
 # Forbidden words in src/.
 if hits=$(grep -nE '\bObj\b|unsafe|\bexternal\b|Marshal|\bUnix\b' src/*.ml src/*.mli 2>/dev/null); then
   fail "forbidden word in src/:

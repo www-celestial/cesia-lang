@@ -1,7 +1,0 @@
-nested_mutual.k:2:33: "odd" has no value yet.
-  2 |   even(n) = if n == 0 true else odd(n - 1) end
-    |                                 ^
-  Give it a value before reading it.
-  in even (nested_mutual.k:2)
-  called from counters (nested_mutual.k:4)
-exit 1

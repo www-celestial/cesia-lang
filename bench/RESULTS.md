@@ -18,7 +18,7 @@ Python 3.14.7, Lua 5.5.1. Outputs checked to 6 decimals by `tools/bench.sh`.
 | `print(1)`, measurement included | under 5 ms | 3.9 ms, of which 1.2 ms of measurement | yes |
 | Loading, resolution included | at least 500,000 lines/s | 505,530 lines/s | yes, 1% margin |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 3.5 s (`tools/check.sh`) | yes |
-| A Kepler function active in a running program | under 100 ms | 12 ms (`tools/reload_test.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 12 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 137 + 3 + 8 tests, golden 102/102, on each path | yes |
 | `tools/check.sh` | passes | yes, 7,325 lines of 15,000 | yes |
 | 10-minute fuzz, seed 2026 | no internal error | 391,884 trials, 42,319 ran to the end, 0 failures | yes |
@@ -52,15 +52,15 @@ programs took up to 9% longer.
 | `http.serve`, 100 connections | at least Node | 52,156 req/s, Node 30,041 | yes |
 | `http.serve`, 1,000 connections | at least Node | 31,592 req/s, Node 26,918 | yes |
 | `http.serve`, 10 active and 900 idle | at least Node | 57,883 req/s, Node 30,758 | yes |
-| 20,000 open connections | held | held, 33,775 req/s (`tools/http_bench.sh`) | yes |
-| Memory per parked fiber | under 8 KB | 3.49 KB (`tools/fiber_size.sh`) | yes |
+| 20,000 open connections | held | held, 33,775 req/s (`tools/http-bench.sh`) | yes |
+| Memory per parked fiber | under 8 KB | 3.49 KB (`tools/fiber-size.sh`) | yes |
 | The five benchmarks against Python and Lua | the targets above | all met, `structs` with a 1% margin | yes |
 | The five benchmarks against the core | within 2% | `mandel` and `structs` yes, `fib` +2.6%, `matmul` +6.2%, `dyn` +7.5% | no |
 | Loading, resolution included | at least 500,000 lines/s | 451,341 to 470,589 lines/s; core commit in turn 463,769 | no |
 | `print(1)`, measurement included | under 5 ms | 3.6 ms, of which 0.5 ms of measurement | yes |
-| A Kepler function active in a running program | under 100 ms | 12 to 19 ms (`tools/reload_test.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 12 to 19 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 199 + 3 + 22 tests, golden 162/162, on each path | yes |
-| No `try` | none | none in `std/` or the programs; `tests/errors/try_gone` checks it is rejected | yes |
+| No `try` | none | none in `std/` or the programs; `tests/errors/try-gone` checks it is rejected | yes |
 | Each function under a permission | denied, granted, out of scope | 11 functions, `tests/sys/permissions_*` | yes |
 | `tools/check.sh` | passes | yes, 8,506 lines of 15,000, change loop in 4.1 s | yes |
 | 10-minute fuzz, seed 2026 | no internal error | 171,518 trials, 10,008 ran to the end, 0 failures | yes |
@@ -113,7 +113,7 @@ HEAD` and run in turn with the current tree, best of 9. Everything here is Linux
 | Loading, resolution included | at least 500,000 lines/s | 505,530 lines/s; in turn, previous 509,555, current 507,133 | yes, 1% margin |
 | `print(1)`, measurement included | under 5 ms | 3.6 to 3.7 ms, of which 0.7 ms of measurement | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 3.9 s (`tools/check.sh`) | yes |
-| A Kepler function active in a running program | under 100 ms | 17 ms (`tools/reload_test.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 17 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 199 + 3 + 22 tests, golden 197/197, on each path | yes |
 | Every call shape | 254 | 254 (`tests/c/shapes`) | yes |
 | The demo in a real window | typing shows text, closing exits with 0 | opened under Wayland, and a quit event from SIGTERM exits with 0 | typing and the close button unverified |
@@ -122,7 +122,7 @@ HEAD` and run in turn with the current tree, best of 9. Everything here is Linux
 
 ### What the fuzzer found
 
-The first 10-minute run gave 158,532 trials and 11 failures, all one program: a mutant of `tests/c/block_cycle` that ran
+The first 10-minute run gave 158,532 trials and 11 failures, all one program: a mutant of `tests/c/block-cycle` that ran
 past the 10 s alarm. It wasn't a crash. `c.alloc` paid no steps, so the steps limit took 21.5 s to stop a loop that `zeros`
 of the same size stops in 0.02 s. Two other natives of `c` had the same fault, without any permission: a long name reached
 the zero-byte scan unpaid, 250 times the cost of a normal turn, and `c.fn` read every type before counting them, over 2,600
@@ -187,7 +187,7 @@ target.
 | `print(1)`, measurement included | under 5 ms | 4.36 ms on average, of which 0.49 ms of measurement | yes |
 | `kepler do` listing this repository | under 10 ms | 3.48 ms | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.3 to 4.4 s (`tools/check.sh`) | yes, thin margin |
-| A Kepler function active in a running program | under 100 ms | 14 ms (`tools/reload_test.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 14 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 499 + 3 + 22 tests, golden 245/245, and 219/219 with `--no-spec` | yes |
 | `tools/check.sh` | passes | yes, 11,187 lines of 15,000, 235 lines of C of 300 | yes |
 | 10-minute fuzz, seed 20261103 | no internal error | 190,695 trials, 11,649 ran to the end, 7,719 toml accepted, 0 failures | yes |
@@ -210,7 +210,7 @@ loss was all in that file, not in the engine.
 
 The strict check called a Kepler closure per byte and built two arrays per header. `net.is_header` now does it in one pass,
 with the same rules, and header lookups are loops without a closure. `parse_request` went from 4.4 to 2.9 µs, under the 3.4
-of the previous commit, and `tests/net/header_bytes` checks all 256 bytes against RFC 9110.
+of the previous commit, and `tests/net/header-bytes` checks all 256 bytes against RFC 9110.
 
 With the cleanup below, the result in turn is 60,728 against 64,048 req/s, and 33,104 against 33,874: 5% and 2% remain. They
 sit in what requests now pay for: the `io` closures, HEAD and upgrades.
@@ -253,7 +253,7 @@ turns of a loop give 200,150, so the comparison sees small differences.
 | 4,000 `push` | 124 ms | 86 ms |
 
 Two results moved. A chunked response cut right after a chunk's data made the client panic, and is now an `Err`:
-`tests/net/http_chunk_cut` was seen failing on the old library. `join_on` on a key column of `missing` or booleans still
+`tests/net/http-chunk-cut` was seen failing on the old library. `join_on` on a key column of `missing` or booleans still
 panics, with the message of `order` instead of the dictionary's.
 
 Not verified: macOS, Windows and arm64. `.github/workflows/ci.yml` is written and has never run, as there is no remote.
@@ -309,7 +309,7 @@ of code placement.
 | `print(1)`, measurement included | under 5 ms | 4.88 ms, of which 0.49 ms of measurement | yes, 2% margin |
 | `kepler do` listing this repository | under 10 ms | 3.53 ms | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.9 s, and 5.006 s once on a hot machine | yes, at the limit |
-| A Kepler function active in a running program | under 100 ms | 13 ms (`tools/reload_test.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 13 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 614 + 3 + 74 tests, golden 247/247, and 219/219 with `--no-spec` | yes |
 | Results don't depend on the cores | the same bits | `tests/columns/cores`, 1 and 3 cores | yes |
 | `tools/check.sh` | passes | yes, 11,913 lines of 15,000, 306 lines of C of 350 | yes |
@@ -344,7 +344,7 @@ The owner installed OpenBLAS 0.3.34 after the table above. In 1,000 by 1,000, on
 | `doc` on all 539 names | fast enough for an editor | 2 ms in all | yes |
 | `print(1)`, measurement included | under 5 ms | 3.87 ms in this run, 4.84 ms in the previous one | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.6 to 4.7 s (`tools/check.sh`) | yes |
-| A Kepler function active in a running program | under 100 ms | 12 ms (`tools/reload_test.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 12 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 633 + 3 + 330 tests, golden 248/248, and 220/220 with `--no-spec` | yes |
 | `tools/check.sh` | passes | yes, 12,168 lines of 15,000 | yes |
 | 10-minute fuzz, seed 20261106 | no internal error | 136,389 trials, 9,751 ran to the end, 5,546 toml accepted, 0 failures | yes |
@@ -402,9 +402,9 @@ and each guard has its own test instead. All 24 guards were removed one at a tim
 ### What the checks found
 
 - A module variable can't be lent: another fiber can write it while the function sleeps. No existing test saw this, and the
-  random programs didn't either. `tests/lang/t_lend_fiber` covers it.
+  random programs didn't either. `tests/lang/t-lend-fiber` covers it.
 - Looking for writes in the arguments cost a square on calls nested in calls: a pipeline of 20,000 steps compiled in 23 s, for
-  0.1 s before. The look is now bounded, and `tests/limits/long_pipeline` watches it.
+  0.1 s before. The look is now bounded, and `tests/limits/long-pipeline` watches it.
 - The first version of the new tests took the change loop to 5.2 s. They now run 100,000 turns, which still shows a square.
 
 Not verified: why one formula costs 40 to 50 times C++ cell by cell. It wasn't profiled, as `perf` isn't on this PC. `ev` returns
@@ -416,11 +416,11 @@ The reviews had listed these without running them. Each one was tried first, and
 
 | Defect | Seen failing | Fix | Test |
 |---|---|---|---|
-| `net.find` paid no steps | a loop on 2 MB ran to its end under 20,000 steps | pays on the text | `tests/limits/find_net_pays` |
-| `byte_find` paid on what it looks for | the same | pays on the text too | `tests/limits/find_byte_pays` |
+| `net.find` paid no steps | a loop on 2 MB ran to its end under 20,000 steps | pays on the text | `tests/limits/find-net-pays` |
+| `byte_find` paid on what it looks for | the same | pays on the text too | `tests/limits/find-byte-pays` |
 | `upper`, `lower` and `trim` copied without reserving | a copy of 3 MB passed a limit of 4 MB | reserve first; `trim` only if it copies | `tests/limits/text_*` |
-| A variable named `_dict` took the place of dictionary literals | `{"a": 1}` called the number 5 | the native has a name the lexer can't produce | `tests/lang/t_dict_name` |
-| The panics of `sys.start` said `run` | yes | the name is passed along | `tests/sys/start_panic_name` |
+| A variable named `_dict` took the place of dictionary literals | `{"a": 1}` called the number 5 | the native has a name the lexer can't produce | `tests/lang/t-dict-name` |
+| The panics of `sys.start` said `run` | yes | the name is passed along | `tests/sys/start-panic-name` |
 | Name resolution stopped every fiber | a fiber ran only after the lookup | a domain resolves, the fiber waits on a pipe | `tests/net_test` |
 | `std/tls`, `std/crypto` and `std/cpp` don't run with `--no-spec` | no: they pass | they are now tested on that path | `crypto` in `tools/test.sh`, the two slow ones in `tools/check.sh` |
 

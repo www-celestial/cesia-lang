@@ -1,4 +1,0 @@
-private_native.k:1:7: Name "merge" doesn't exist.
-  1 | Print(merge({A: 1}, {B: 2}))
-    |       ^
-exit 1

@@ -1,9 +1,0 @@
-http_panic.k:6:34: broken
-  6 | handle(r) = if r.Path == "/boom" Panic("broken") else {Status: 200, Body: "fine"} end
-    |                                  ^
-  in handle (http_panic.k:6)
-  called from <anonymous> (std/http.k:161)
-  called from Answer (std/http.k:161)
-Ok(Value = "HTTP/1.1 500 Internal Server Error")
-Ok(Value = "HTTP/1.1 200 OK")
-exit 0

@@ -77,7 +77,7 @@ let panic_value w text kind at =
 (* The stacks of a new fiber, in entries. They grow on demand, and a server has thousands of idle fibers. *)
 let fiber_stack = 64
 
-(* What a new fiber takes in memory, as measured by tools/fiber_size.sh. *)
+(* What a new fiber takes in memory, as measured by tools/fiber-size.sh. *)
 let fiber_words = 450
 
 let spawn (ctx : ctx) g =

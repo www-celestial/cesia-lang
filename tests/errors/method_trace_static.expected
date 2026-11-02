@@ -1,7 +1,0 @@
-method_trace_static.k:2:16: Can't add the number 1 and the text "a".
-  2 | Rect.Bad() = 1 + "a"
-    |                ^
-  To put a value in a text, write "...$x" or Text(x).
-  in Rect.Bad (method_trace_static.k:2)
-  called from run (method_trace_static.k:4)
-exit 1

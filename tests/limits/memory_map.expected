@@ -1,4 +1,0 @@
-memory_map.k:2:5: Limit "memory" reached.
-  2 | b = Sqrt(a)
-    |     ^
-exit 1

@@ -66,7 +66,7 @@ A name says by its first letter whether it is public, as in Go.
 - A capital is public: `rope.LineCount`, `ui.Dark`, `Print`. So is a field: `date.Year`, `err.Kind`, `Ok(Value = 1)`.
 - A small first letter is private, and visible only in its package: `chunk`. So is a small field, and using one from another
   package is an error at load time.
-- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use rope`.
+- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use rope`. A file name separates its words with `-`: `material-scene.k`.
 - A name has no `_`: words join by capitals, `byteLength` or `ByteLength`. The lone `_` is the wildcard of a pattern.
 - A test is a private function with no parameter, `is` then a capital: `isGrows()`.
 - Dictionary keys and texts are data: `{"a": 1}`, `{Kind: "box"}`. `json.Text` writes the fields of a record as they are, with their

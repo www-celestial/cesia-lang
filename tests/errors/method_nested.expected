@@ -1,4 +1,0 @@
-method_nested.k:3:3: A method can only be defined at the top of a file.
-  3 |   defn (r Rect) Area()
-    |   ^
-exit 1

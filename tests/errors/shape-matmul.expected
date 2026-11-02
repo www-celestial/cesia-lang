@@ -1,0 +1,4 @@
+shape-matmul.k:1:7: Matmul can't multiply 1 by 2 with 1 by 2: the columns of the first must equal the rows of the second.
+  1 | Print(Matmul([1, 2], [1, 2]))
+    |       ^
+exit 1

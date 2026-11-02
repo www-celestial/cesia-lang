@@ -1,4 +1,0 @@
-method_colon.k:3:12: Name "Square" doesn't exist.
-  3 | Print(Rect:Square())
-    |            ^
-exit 1

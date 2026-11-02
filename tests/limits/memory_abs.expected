@@ -1,4 +1,0 @@
-memory_abs.k:2:5: Limit "memory" reached.
-  2 | b = Abs(a)
-    |     ^
-exit 1

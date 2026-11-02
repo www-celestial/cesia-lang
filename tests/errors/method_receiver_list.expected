@@ -1,4 +1,0 @@
-method_receiver_list.k:2:13: Expected ")", found ,.
-  2 | defn (r Rect, s) Area()
-    |             ^
-exit 1

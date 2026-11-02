@@ -1,0 +1,4 @@
+memory-big.k:1:5: Limit "memory" reached.
+  1 | x = Zeros(100000000)
+    |     ^
+exit 1

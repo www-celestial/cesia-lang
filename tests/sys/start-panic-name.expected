@@ -1,0 +1,4 @@
+start-panic-name.k:3:4: Start needs an array, not the number 5.
+  3 | sys.Start("true", 5)
+    |    ^
+exit 1

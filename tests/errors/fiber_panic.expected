@@ -1,6 +1,0 @@
-fiber_panic.k:1:17: boom
-  1 | t = Spawn(() -> Panic("boom"))
-    |                 ^
-  in <anonymous> (fiber_panic.k:1)
-true
-exit 0

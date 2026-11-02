@@ -1,4 +1,4 @@
--- The worst case of a window: every line of a full screen changes at every frame. Run through tools/frame_bench.sh.
+-- The worst case of a window: every line of a full screen changes at every frame. Run through tools/frame-bench.sh.
 use sdl
 use sys
 

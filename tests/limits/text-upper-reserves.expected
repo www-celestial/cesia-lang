@@ -1,0 +1,4 @@
+text-upper-reserves.k:3:5: Limit "memory" reached.
+  3 | y = Upper(x)
+    |     ^
+exit 1

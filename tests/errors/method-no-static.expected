@@ -1,0 +1,4 @@
+method-no-static.k:2:11: Rect has no static method "Nope".
+  2 | Print(Rect.Nope())
+    |           ^
+exit 1

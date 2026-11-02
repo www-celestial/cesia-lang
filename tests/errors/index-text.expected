@@ -1,0 +1,5 @@
+index-text.k:1:7: An index must be a whole number, not the text "a".
+  1 | [1, 2]["a"]
+    |       ^
+  To get a whole number, use Floor(...), Ceil(...) or Round(...).
+exit 1

@@ -1,4 +1,4 @@
--- Runs forever: tools/reload_test.sh edits this file while it runs.
+-- Runs forever: tools/reload-test.sh edits this file while it runs.
 use lib
 
 Print("start")

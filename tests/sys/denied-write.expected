@@ -1,0 +1,4 @@
+denied-write.k:2:10: Permission "write" denied. Run again with --allow write.
+  2 | Print(sys.Write("./x", "a"))
+    |          ^
+exit 1

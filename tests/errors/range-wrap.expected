@@ -1,0 +1,4 @@
+range-wrap.k:2:12: This range has too many elements.
+  2 | Print(Len(x:4611686018427387903))
+    |            ^
+exit 1

@@ -1,5 +1,0 @@
-method_uncalled.k:3:14: "Area" is a method of Rect: it must be called.
-  3 | Print(Rect(1).Area)
-    |              ^
-  Write x.Area(). On an array: Map(it.Area(), xs).
-exit 1

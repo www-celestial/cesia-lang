@@ -1,5 +1,0 @@
-int_literal.k:1:5: The number 99999999999999999999 doesn't fit in 63 bits.
-  1 | x = 99999999999999999999
-    |     ^
-  Write it as a float: 99999999999999999999.0.
-exit 1

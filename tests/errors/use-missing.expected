@@ -1,0 +1,4 @@
+use-missing.k:1:5: Module "tests/errors/nope" doesn't exist.
+  1 | use tests/errors/nope
+    |     ^
+exit 1

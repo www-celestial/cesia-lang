@@ -1,0 +1,5 @@
+method-on-record.k:2:1: There is no struct "Point" in this package.
+  2 | (p Point) Area() = p.X
+    | ^
+  A method belongs to a struct declared in the same package.
+exit 1

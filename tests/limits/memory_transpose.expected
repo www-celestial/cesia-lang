@@ -1,4 +1,0 @@
-memory_transpose.k:2:5: Limit "memory" reached.
-  2 | b = Transpose(a)
-    |     ^
-exit 1

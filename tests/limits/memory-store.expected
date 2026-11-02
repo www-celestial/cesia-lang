@@ -1,0 +1,4 @@
+memory-store.k:2:2: Limit "memory" reached.
+  2 | a[1] = "x"
+    |  ^
+exit 1

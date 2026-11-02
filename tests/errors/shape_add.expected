@@ -1,4 +1,0 @@
-shape_add.k:1:14: Can't combine an array of 1 by 2 with an array of 1 by 3.
-  1 | Print([1, 2] + [1, 2, 3])
-    |              ^
-exit 1

@@ -1,7 +1,0 @@
-method_trace.k:2:26: Can't add the number 1 and the text "a".
-  2 | (r Rect) Bad() = r.Width + "a"
-    |                          ^
-  To put a value in a text, write "...$x" or Text(x).
-  in Rect.Bad (method_trace.k:2)
-  called from run (method_trace.k:4)
-exit 1

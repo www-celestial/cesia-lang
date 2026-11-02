@@ -1,4 +1,0 @@
-method_field_instance.k:2:1: The method "Width" has the name of a field of Rect.
-  2 | (r Rect) Width() = 1
-    | ^
-exit 1

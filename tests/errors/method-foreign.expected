@@ -1,0 +1,5 @@
+method-foreign.k:2:1: There is no struct "Date" in this package.
+  2 | (d Date) Twice() = 2
+    | ^
+  A method belongs to a struct declared in the same package.
+exit 1

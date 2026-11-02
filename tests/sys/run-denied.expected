@@ -1,0 +1,4 @@
+run-denied.k:2:4: Permission "exec" denied. Run again with --allow exec.
+  2 | sys.Run("sh")
+    |    ^
+exit 1

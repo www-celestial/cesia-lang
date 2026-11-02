@@ -1,4 +1,0 @@
-memory_field.k:2:6: Limit "memory" reached.
-  2 | b = s.A
-    |      ^
-exit 1

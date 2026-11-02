@@ -1,4 +1,0 @@
-method_call_assigned.k:2:10: Only a variable can be assigned here.
-  2 |   x.g(1) = 2
-    |          ^
-exit 1

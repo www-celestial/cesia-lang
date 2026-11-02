@@ -1,0 +1,4 @@
+pad-memory.k:1:18: Limit "memory" reached.
+  1 | Print(ByteLength(PadLeft(10000, Repeat(100000, "x"), "")))
+    |                  ^
+exit 1

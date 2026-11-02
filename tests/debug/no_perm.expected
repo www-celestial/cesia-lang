@@ -1,4 +1,0 @@
-no_perm.k:2:6: Permission "debug" denied. Run again with --allow debug.
-  2 | debug.SetBreak("no_perm.k", 1)
-    |      ^
-exit 1

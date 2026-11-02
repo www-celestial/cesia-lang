@@ -1,4 +1,0 @@
-push_free_cell.k:5:9: Index 10 is outside this array of 9 elements.
-  5 | Print(xs[10])
-    |         ^
-exit 1

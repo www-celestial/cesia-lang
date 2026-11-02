@@ -1,0 +1,5 @@
+add-text.k:2:7: Can't add the text "a" and the number 1.
+  2 | y = x + 1
+    |       ^
+  To put a value in a text, write "...$x" or Text(x).
+exit 1

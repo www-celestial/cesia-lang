@@ -1,4 +1,0 @@
-comment_nested_open.k:1:1: This comment is not closed: a closing *) is missing.
-  1 | (* an outer one (* an inner one *)
-    | ^
-exit 1

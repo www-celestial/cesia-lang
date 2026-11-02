@@ -1,4 +1,0 @@
-text_trim_reserves.k:3:5: Limit "memory" reached.
-  3 | y = Trim(x)
-    |     ^
-exit 1

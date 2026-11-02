@@ -1,0 +1,4 @@
+block-limit.k:2:8: Limit "memory" reached.
+  2 | Print(c.Alloc(2000000))
+    |        ^
+exit 1

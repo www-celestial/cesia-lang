@@ -1,0 +1,4 @@
+native-named.k:1:7: Zeros has no argument named "nope".
+  1 | Print(Zeros(2, nope = 3))
+    |       ^
+exit 1

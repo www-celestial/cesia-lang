@@ -1,0 +1,4 @@
+memory-copy.k:3:2: Limit "memory" reached.
+  3 | b[1] = 1.0
+    |  ^
+exit 1

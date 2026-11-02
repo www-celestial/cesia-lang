@@ -1,0 +1,4 @@
+use-dir.k:1:5: The folder "tests/errors/emptyfolder" holds no .k file.
+  1 | use tests/errors/emptyfolder
+    |     ^
+exit 1

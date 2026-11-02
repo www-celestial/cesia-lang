@@ -1,0 +1,5 @@
+method-dot-static.k:4:8: "AreaOf" is a static method of Rect.
+  4 | Print(r.AreaOf(2, 3))
+    |        ^
+  Write Rect.AreaOf(...).
+exit 1

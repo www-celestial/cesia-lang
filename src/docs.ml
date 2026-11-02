@@ -251,11 +251,18 @@ let lookup w name =
   in
   if public_name short then Option.map shown entry else None
 
-(* An instance method of the running program has no value to ask about: only its name leads to it. *)
-let program_method w name =
+(* An instance method of the running program has no value to ask about: only its name leads to it. Two packages can each have
+   a Rect.Area, so the file that asks comes first. *)
+let program_method (ctx : ctx) name =
+  let w = ctx.w in
   let wanted = Lexer.split_method name <> None && public_name name in
   let in_file (_, src) = if wanted then find name (entries src) else None in
-  Option.map shown (Seq.find_map in_file (Dynarray.to_seq w.files))
+  let asking =
+    if ctx.site >= 0 && ctx.site < Dynarray.length w.sites then
+      Seq.return (Dynarray.get w.files (Dynarray.get w.sites ctx.site).sfile)
+    else Seq.empty
+  in
+  Option.map shown (Seq.find_map in_file (Seq.append asking (Dynarray.to_seq w.files)))
 
 let modules w =
   let embedded = List.filter (fun m -> not (List.mem m not_modules)) (List.map fst Embedded.files) in
@@ -297,7 +304,7 @@ let doc ctx (a : t array) =
       (match lookup ctx.w name with
        | Some text -> Some text
        | None when is_module ctx.w name -> Option.map module_text (module_source ctx.w name)
-       | None -> program_method ctx.w name)
+       | None -> program_method ctx name)
     | v -> of_function ctx.w v
   in
   match found with Some text -> Text text | None -> Missing

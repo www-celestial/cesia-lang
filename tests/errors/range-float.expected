@@ -1,0 +1,5 @@
+range-float.k:2:11: A range needs whole numbers, not the number 2.5.
+  2 | for i in 1:n / 2 Print(i) end
+    |           ^
+  To get a whole number, use Floor(...), Ceil(...) or Round(...).
+exit 1
