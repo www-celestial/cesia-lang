@@ -513,3 +513,9 @@ After ownership through calls: 774, 1200, 616, 2743 and 1611 ms, in the same ord
 - No jump table to read an argument's type: an indirect jump predicts badly when types alternate.
 - Cold paths out of the closure: `Runtime.grow` was inlined in every call site.
 - `float op int` and `array[i] op array[j]` without a closure: a closure returning a float allocates it.
+
+The change loop went past 5 s again: 5.13 s on the last commit. `tools/test.sh` now runs the two paths side by side, `tools/golden.sh`
+no longer starts a process per test in the loop that hands them out, and `limits/memory_churn`, `regex_memory` and `regex_steps` are
+smaller, with the same ratio to their limits. 4.6 s on a cool CPU, with no test removed, and 4.9 to 5.9 s once long loops of tests have
+heated it and the CPU throttles. One run of the suite failed during these measures, at the time of the golden tests, and its output was
+not kept: no failure in more than 30 runs since, so its test is unknown.

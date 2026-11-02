@@ -21,7 +21,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libffi-dev libsodium-dev
       - name: Libraries on macOS
         if: runner.os == 'macOS'
-        run: brew install libffi libsodium
+        run: |
+          brew install libffi libsodium coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - run: opam install -y dune
       - run: opam exec -- dune build
       - name: Tests

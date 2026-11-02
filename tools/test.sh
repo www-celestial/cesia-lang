@@ -6,11 +6,15 @@ dune build 2>&1 | head -60
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 kepler=_build/default/bin/main.exe
 
-for flag in "" --no-spec; do
+# The two paths side by side: one after the other, this was the longest part on a single core.
+each_folder() {
   for folder in tests/lang tests/celestial std; do
-    "$kepler" test "$folder" $flag
+    "$kepler" test "$folder" $1
   done
-done
+}
+each_folder "" &
+each_folder --no-spec
+wait $!
 dune test 2>&1 | tail -5
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 dirs=$(ls -d tests/*/ 2>/dev/null || true)

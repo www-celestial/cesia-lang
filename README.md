@@ -193,8 +193,7 @@ OpenBLAS for speed.
 ## Limits
 
 - Arrays have two dimensions at most.
-- Only Linux on x86-64 is verified. The code targets macOS and Windows, on x86-64 and arm64: `.github/workflows/ci.yml` runs them once this repository has a remote.
-- Name resolution in `net.connect` blocks every fiber while it runs.
+- Linux on x86-64 is the verified platform. `.github/workflows/ci.yml` also runs the tests on macOS, and only builds on Windows.
 
 ## License
 

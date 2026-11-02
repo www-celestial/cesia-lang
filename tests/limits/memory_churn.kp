@@ -1,4 +1,4 @@
-for i in 1:300
+for i in 1:100
   x = zeros(100000)
 end
 print("done")

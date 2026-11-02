@@ -15,7 +15,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 # Golden tests are small and independent: their ports and folders differ, so they run side by side.
-max_jobs=$(nproc)
+max_jobs=$(getconf _NPROCESSORS_ONLN)
 running=0
 
 run_one() {
@@ -23,17 +23,16 @@ run_one() {
   local flags="" args="" input=/dev/null
   [ -f "$dir/$name.flags" ] && flags=$(cat "$dir/$name.flags")
   [ -f "$dir/$name.args" ] && args=$(cat "$dir/$name.args")
-  [ -f "$dir/$name.stdin" ] && input="$dir/$name.stdin"
-  local abs_input; abs_input=$(realpath "$input")
+  [ -f "$dir/$name.stdin" ] && input=$(realpath "$dir/$name.stdin")
   (
     cd "$dir" || exit 99
     kepler() { "$root/_build/default/bin/main.exe" "$@"; }
     if [ -f "$name.cmd" ]; then
       # shellcheck disable=SC1090
-      source "./$name.cmd" < "$abs_input"
+      source "./$name.cmd" < "$input"
     else
       # shellcheck disable=SC2086
-      "$kepler" run $no_spec $flags "$name.kp" $args < "$abs_input"
+      "$kepler" run $no_spec $flags "$name.kp" $args < "$input"
     fi
     echo "exit $?"
   ) > "$out" 2>&1
@@ -45,7 +44,8 @@ for dir in "$@"; do
   [ -d "$dir" ] || continue
   for expected in "$dir"/*.expected; do
     [ -f "$expected" ] || continue
-    name=$(basename "$expected" .expected)
+    name=${expected##*/}
+    name=${name%.expected}
     total=$((total + 1))
     run_one "$dir" "$name" "$tmp/$total" &
     running=$((running + 1))
