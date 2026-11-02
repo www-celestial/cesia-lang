@@ -3,7 +3,7 @@
  (action
   (with-stdout-to
    %{targets}
-   (run ../../gen/gen_calls.exe fixture))))
+   (run ../../src/gen/gen_calls.exe fixture))))
 
 (rule
  (targets libfixture.so)
@@ -16,7 +16,7 @@
  (action
   (with-stdout-to
    %{targets}
-   (run ../../gen/gen_calls.exe unloadable))))
+   (run ../../src/gen/gen_calls.exe unloadable))))
 
 ; This library calls a symbol that exists nowhere, on purpose. Linux links it as it is, macOS needs to be told to,
 ; and Windows can't link it at all, so it has no such library.

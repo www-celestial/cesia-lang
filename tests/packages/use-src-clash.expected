@@ -1,0 +1,4 @@
+main.k:1:5: "json" is both a module of the standard library and the folder src/json.
+  1 | use json
+    |     ^
+exit 1

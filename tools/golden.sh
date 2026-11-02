@@ -6,7 +6,7 @@
 set -u
 cd "$(dirname "$0")/.."
 root=$PWD
-kepler="$root/_build/default/bin/main.exe"
+kepler="$root/_build/default/src/bin/main.exe"
 no_spec=""
 if [ "${1:-}" = "--no-spec" ]; then no_spec="--no-spec"; shift; fi
 
@@ -27,7 +27,7 @@ run_one() {
   [ -f "$dir/$name.stdin" ] && input=$(realpath "$dir/$name.stdin")
   (
     cd "$dir" || exit 99
-    kepler() { "$root/_build/default/bin/main.exe" "$@"; }
+    kepler() { "$root/_build/default/src/bin/main.exe" "$@"; }
     if [ -f "$name.cmd" ]; then
       # shellcheck disable=SC1090
       source "./$name.cmd" < "$input"

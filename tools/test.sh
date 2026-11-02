@@ -4,11 +4,11 @@ set -eu
 cd "$(dirname "$0")/.."
 dune build 2>&1 | head -60
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
-kepler=_build/default/bin/main.exe
+kepler=_build/default/src/bin/main.exe
 
 # The two paths side by side: one after the other, this was the longest part on a single core.
 each_folder() {
-  for folder in tests/lang tests/celestial std; do
+  for folder in tests/lang tests/celestial src/std; do
     "$kepler" test "$folder" $1
   done
 }

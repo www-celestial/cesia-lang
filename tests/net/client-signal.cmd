@@ -1,4 +1,4 @@
-"$root/_build/default/bin/main.exe" run $no_spec --allow net=127.0.0.1:18088 client-signal.k &
+"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=127.0.0.1:18088 client-signal.k &
 pid=$!
 sleep 0.2
 kill -TERM $pid

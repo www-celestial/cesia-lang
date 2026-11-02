@@ -1,0 +1,13 @@
+empty.txt true false 0
+text.txt true false 5
+link-text true false 5
+. false true folder
+link-folder false true folder
+/dev/zero false false 0
+link-device false false 0
+pipe false false 0
+link-pipe false false 0
+broken link true
+proc true
+Ok(Value = missing)
+exit 0

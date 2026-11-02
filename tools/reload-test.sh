@@ -5,7 +5,7 @@ flags=${1:-}
 cd "$(dirname "$0")/.."
 dune build 2>&1 | head -40
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
-kepler=$PWD/_build/default/bin/main.exe
+kepler=$PWD/_build/default/src/bin/main.exe
 dir=$(mktemp -d)
 pid=""
 failed=0
@@ -135,6 +135,10 @@ stop
 start done.k "done 1"
 sleep 0.1
 alive "6: finished program"
+# A background job of a script ignores INT from the start, and stays that way.
+kill -INT "$pid"
+sleep 0.05
+alive "6: an INT that was ignored from the start"
 sed -i 's/^Print("done 1")$/Print("done 2")/' "$dir/done.k"
 wait_for out "done 2" 2000 || fail "6: program not restarted"
 stop
@@ -215,7 +219,153 @@ if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
   sed -i 's/^finished() = false$/finished() = true/' "$dir/window.k"
   latest "ended " 500 > /dev/null || fail "window: a changed update never ran"
   stop
+
+  # 9. A stop signal ends the whole of --watch, once the program has heard of it as a quit event.
+  # Job control leaves INT as it is: a background job of a script ignores it otherwise.
+  open_window() {
+    set -m
+    # shellcheck disable=SC2086
+    (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$kepler" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf quit.k) \
+      > "$dir/out" 2> "$dir/err" &
+    pid=$!
+    set +m
+    wait_for out "open $1" 2000 || fail "$2: the window never opened"
+  }
+  # Waits for the process to end by itself. One that doesn't is killed: a test must not hang.
+  ends() {
+    local limit=$(($(date +%s%N) + 3000 * 1000000))
+    while kill -0 "$pid" 2> /dev/null; do
+      if [ "$(date +%s%N)" -gt "$limit" ]; then
+        fail "$1: still running"
+        kill -KILL "$pid"
+        break
+      fi
+      sleep 0.01
+    done
+    wait "$pid" 2> /dev/null
+    code=$?
+    pid=""
+  }
+  heard() {
+    grep -qxF "quit $2" "$dir/out" || fail "$1: no quit event"
+    grep -qxF "ended 1" "$dir/out" || fail "$1: the program didn't end by itself"
+    [ "$code" -eq 0 ] || fail "$1: exit $code"
+    [ "$(grep -c '^open ' "$dir/out")" -eq 1 ] || fail "$1: the program ran again"
+  }
+  for signal in TERM INT; do
+    open_window 1 "$signal"
+    kill -"$signal" "$pid"
+    ends "$signal"
+    heard "$signal" 1
+  done
+
+  # A program can answer with a question. Each signal is one quit event, and none ends it by force: two can also come in a
+  # row, from timeout and from kepler do, and the second one must not cut the program short.
+  sed -i 's/^needed() = 1$/needed() = 2/' "$dir/quit.k"
+  open_window 1 "a question"
+  kill -TERM "$pid"
+  wait_for out "quit 1" 2000 || fail "a question: no quit event"
+  sleep 0.1
+  alive "a question"
+  if grep -qxF "quit 2" "$dir/out"; then fail "a question: one signal made two quit events"; fi
+  kill -TERM "$pid"
+  ends "a question"
+  heard "a question" 2
+
+  # A closed window is no stop signal: --watch waits, restarts the program, and a signal still stops that one.
+  sed -i 's/^needed() = 2$/needed() = 1/; s/^closing() = false$/closing() = true/' "$dir/quit.k"
+  open_window 1 "closed window"
+  wait_for out "ended 1" 2000 || fail "closed window: the program didn't end"
+  sleep 0.1
+  alive "closed window"
+  sed -i 's/^closing() = true$/closing() = false/; s/^run() = 1$/run() = 2/' "$dir/quit.k"
+  wait_for out "open 2" 2000 || fail "closed window: no restart"
+  kill -TERM "$pid"
+  ends "after a restart"
+  grep -qxF "ended 2" "$dir/out" || fail "after a restart: the program didn't end by itself"
+  [ "$code" -eq 0 ] || fail "after a restart: exit $code"
+
+  # While it waits for a change, a signal ends it at once, even if the program left its window open.
+  sed -i 's/^closing() = false$/closing() = true/; /^  sdl.Close(window)$/d' "$dir/quit.k"
+  open_window 2 "waiting"
+  wait_for out "ended 2" 2000 || fail "waiting: the program didn't end"
+  sleep 0.1
+  alive "waiting"
+  kill -TERM "$pid"
+  ends "waiting"
 fi
+
+# 10. A package that uses another: what failed because the other wasn't there yet loads as soon as it is.
+# Each case starts from the files of tests/reload. It waits for the first pass, the one that notes the stamps of a package.
+fresh() {
+  stop
+  cp -r tests/reload/board.k tests/reload/commands tests/reload/view "$dir"
+  start board.k "board old"
+  sleep 0.05
+}
+# Waits until a file has had this many errors, then checks that no more come: a pass goes by about every millisecond.
+errors() {
+  local limit=$(($(date +%s%N) + 2000 * 1000000))
+  until [ "$(grep -c "^$1:" "$dir/err")" -ge "$2" ] || [ "$(date +%s%N)" -gt "$limit" ]; do
+    sleep 0.002
+  done
+  sleep 0.1
+  local n
+  n=$(grep -c "^$1:" "$dir/err")
+  [ "$n" -eq "$2" ] || fail "$3: $n errors in $1, expected $2"
+}
+
+# Saved at once, what calls first in sorted order. A stopped program sees both in one pass, and no error is left to show.
+fresh
+kill -STOP "$pid"
+sed -i 's/^Value() = view.Label()$/Value() = view.Added()/' "$dir/commands/commands.k"
+sed -i '$a Added() = "both"' "$dir/view/view.k"
+kill -CONT "$pid"
+wait_for out "board both" 2000 || fail "10: saved at once"
+errors commands/commands.k 0 "10: saved at once"
+
+# Saved in two steps, what calls first: its error is true for a while, and it is shown once.
+fresh
+sed -i 's/^Value() = view.Label()$/Value() = view.Added()/' "$dir/commands/commands.k"
+errors commands/commands.k 1 "10: the caller saved first"
+sed -i '$a Added() = "steps"' "$dir/view/view.k"
+wait_for out "board steps" 2000 || fail "10: saved in two steps"
+errors commands/commands.k 1 "10: saved in two steps"
+
+# A chain saved at once: the program needs commands, which needs view, so one more try isn't enough.
+fresh
+kill -STOP "$pid"
+sed -i 's/^shown() = commands.Value()$/shown() = commands.Added()/' "$dir/board.k"
+sed -i '$a Added() = view.Added()' "$dir/commands/commands.k"
+sed -i '$a Added() = "chain"' "$dir/view/view.k"
+kill -CONT "$pid"
+wait_for out "board chain" 2000 || fail "10: a chain saved at once"
+errors board.k 0 "10: a chain saved at once"
+errors commands/commands.k 0 "10: a chain saved at once"
+
+# Broken for a real reason: the old code stays and the error shows once, with no retry until something changes.
+fresh
+sed -i 's/^Value() = view.Label()$/Value() = view.Never()/' "$dir/commands/commands.k"
+errors commands/commands.k 1 "10: a broken caller"
+alive "10: a broken caller"
+# Another change is another attempt: the error shows once more, and the old code of the caller runs on the new view.
+sed -i 's/^Label() = "old"$/Label() = "kept"/' "$dir/view/view.k"
+wait_for out "board kept" 2000 || fail "10: the old code of a broken caller"
+errors commands/commands.k 2 "10: a broken caller, tried again"
+sed -i 's/^Value() = view.Never()$/Value() = "fixed"/' "$dir/commands/commands.k"
+wait_for out "board fixed" 2000 || fail "10: a broken caller, fixed"
+errors commands/commands.k 2 "10: a broken caller, fixed"
+
+# Two files of a package make one reload, and one error.
+fresh
+kill -STOP "$pid"
+sed -i '$a Broken() = (' "$dir/view/view.k"
+sed -i '$a Touched() = 2' "$dir/view/more.k"
+kill -CONT "$pid"
+errors view/view.k 1 "10: two files of a broken package"
+alive "10: two files of a broken package"
+no_internal "10"
+stop
 
 [ "$failed" -eq 0 ] && echo "reload: ok"
 exit "$failed"

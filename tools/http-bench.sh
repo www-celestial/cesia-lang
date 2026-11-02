@@ -3,7 +3,7 @@
 set -u
 cd "$(dirname "$0")/.."
 dune build --profile release 2>&1 | head -20
-kepler=_build/default/bin/main.exe
+kepler=_build/default/src/bin/main.exe
 client=_build/default/bench/http_load.exe
 ulimit -n 100000
 only=""

@@ -1,0 +1,4 @@
+-- A program out of src/ finds the same packages.
+use shapes
+
+Print(shapes.Where())

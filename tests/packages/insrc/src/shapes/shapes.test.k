@@ -1,0 +1,2 @@
+-- A test in src/ sees the small names of its package.
+isInner() = inner() == "in src"

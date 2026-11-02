@@ -1,0 +1,28 @@
+-- sys.Stat tells a regular file from the rest: a device or a FIFO has the size of an empty file, and reading one never ends.
+use sys
+
+defn show(path)
+  s = sys.Stat(path)?
+  Print(path, s.IsFile, s.IsDir, if s.IsDir "folder" else s.Size end)
+  Ok(missing)
+end
+
+defn main()
+  sys.Write("empty.txt", "")?
+  sys.Write("text.txt", "hello")?
+  show("empty.txt")?
+  show("text.txt")?
+  show("link-text")?
+  show(".")?
+  show("link-folder")?
+  show("/dev/zero")?
+  show("link-device")?
+  show("pipe")?
+  show("link-pipe")?
+  Print("broken link", IsErr(sys.Stat("link-broken")))
+  -- A real file of size 0 on Linux. Other systems have no such file, and nothing to check.
+  Print("proc", not sys.Exists("/proc/version") or sys.Stat("/proc/version")?.IsFile)
+  Ok(missing)
+end
+
+Print(main())

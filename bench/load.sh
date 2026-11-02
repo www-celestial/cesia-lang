@@ -13,7 +13,7 @@ lines=$(wc -l < "$corpus")
 best=""
 for _ in 1 2 3; do
   s=$(date +%s%N)
-  _build/default/bin/main.exe run "$corpus" > /dev/null
+  _build/default/src/bin/main.exe run "$corpus" > /dev/null
   e=$(date +%s%N)
   ms=$(((e - s) / 1000000))
   if [ -z "$best" ] || [ "$ms" -lt "$best" ]; then best=$ms; fi

@@ -1,4 +1,4 @@
-use-quoted.k:1:5: A use takes no quotes: it names a package from the root of the project.
+use-quoted.k:1:5: A use takes no quotes: it names a package of the project.
   1 | use "./mods/x" as y
     |     ^
   Write use mods/x.

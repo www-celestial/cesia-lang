@@ -1,0 +1,2 @@
+-- A package in src/ with the name of a module of the standard library.
+Text(x) = "mine"

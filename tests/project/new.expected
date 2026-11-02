@@ -3,9 +3,9 @@ Created hello. Run it: cd hello && kepler do run
 name = "hello"
 
 [tasks.run]
-file = "main.k"
+file = "src/main.k"
 Print("Hello from hello")
-> kepler run main.k
+> kepler run src/main.k
 Hello from hello
 hello already exists.
 exit 1

@@ -6,18 +6,18 @@ A small interpreted language, written in OCaml. Fast, safe by default, with fibe
 
 ```bash
 dune build --profile release
-ln -s "$PWD/_build/default/bin/main.exe" ~/.local/bin/kepler
+ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/kepler
 ```
 
 ## Write and run a program
 
 ```bash
-kepler new hello       # creates hello/, with kepler.toml and main.k
+kepler new hello       # creates hello/, with kepler.toml and src/main.k
 cd hello
 kepler do run
 
-kepler run main.k           # or run any file directly
-kepler run --watch main.k   # reloads the code at each save
+kepler run src/main.k           # or run any file directly
+kepler run --watch src/main.k   # reloads the code at each save
 ```
 
 `examples/tour.k` shows the language in one file. `examples/notes.k` is a web app in 23 lines. `examples/stats.k` works on a table.
@@ -119,16 +119,18 @@ A package is a folder, as in Go: there is no import by file, and no `package` li
 ```
 myproject/
   kepler.toml
-  main.k
-  geometry/
-    rect.k
-    circle.k
-    shapes/
-      square.k
+  src/
+    main.k
+    geometry/
+      rect.k
+      circle.k
+      shapes/
+        square.k
+  tests/
 ```
 
 ```kepler
--- main.k
+-- src/main.k
 use geometry
 use geometry/shapes
 
@@ -136,15 +138,17 @@ r = geometry.Rect(2, 3)
 Print(r.Area(), shapes.Square(2))
 ```
 
-- A `use` is absolute: it starts at the root of the project, the folder of the nearest `kepler.toml` above the program, and takes no
-  `./`, no `../` and no quotes. Without a `kepler.toml`, the root is the folder of the file that runs.
+- The code of a project goes in `src/`. A `use` is absolute: it looks in the `src` folder of the root of the project, then at the root
+  itself, so `use geometry` finds `src/geometry/` from any file, and `use tests/helpers` a folder out of `src/`. If both exist, `src/`
+  wins. The root is the folder of the nearest `kepler.toml` above the program or, without one, the folder of the file that runs. A
+  `use` takes no `./`, no `../` and no quotes.
 - The name in the code is the last part of the path: `use geometry/shapes` gives `shapes.Square`, and `as` renames it. Two uses of
   a file can't give one name.
 - A package is all the `.k` files of its folder, in the order of their names. Its subfolders are other packages, and its `.test.k`
   files aren't part of it.
 - The files of a package need no `use` to see each other, and share their small names, fields and methods. Each file keeps its own
   `use`. Two files of a package can't define one name, but the variable of a loop stays in its file.
-- The standard library doesn't change: `use rope`. A folder at the root with the name of one of its modules is an error, once used.
+- The standard library doesn't change: `use rope`. A folder of the project with the name of one of its modules is an error, once used.
 - `kepler run file.k` runs that file alone, and it can `use` packages. `kepler run .` runs all the files of a folder as one program,
   and a task of `kepler.toml` can say `file = "."`.
 - `kepler test` sees a folder as a package: the examples of its files run together, and each `.test.k` sees its private names. In a

@@ -1,0 +1,2 @@
+-- The second file of the package: it reloads with the first.
+Other() = 1
