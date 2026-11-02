@@ -1,5 +1,5 @@
 [project]
-name = "kepacs"
+name = "window"
 native = ["SDL3", "SDL3_ttf"]
 
 [tasks.build]
@@ -11,11 +11,11 @@ run = ["tools/test.sh"]
 
 [tasks.demo]
 needs = ["build"]
-file = "kepacs/demo.kp"
+file = "examples/window.kp"
 limit = "memory=512M"
 
 [tasks.dev]
-file = "kepacs/demo.kp"
+file = "examples/window.kp"
 watch = true
 
 [tasks.mark]

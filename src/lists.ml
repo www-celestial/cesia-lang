@@ -208,6 +208,7 @@ let natives =
     "upper", nat "upper" 1 1 (fun ctx a ->
         let s = text_arg ctx "upper" a.(0) in
         pay ctx s;
+        Runtime.reserve ctx ((String.length s / 8) + 1);
         Text (String.uppercase_ascii s));
     "ends_with", nat "ends_with" 2 2 (fun ctx a ->
         let suffix = text_arg ctx "ends_with" a.(0) in
@@ -247,6 +248,7 @@ let natives =
         let part = text_arg ctx "byte_find" a.(0) and from = Arrays.whole_index ctx a.(1) in
         let s = text_arg ctx "byte_find" a.(2) in
         pay ctx part;
+        pay ctx s;
         if part = "" then Int from
         else if from < 1 || from > String.length s then Missing
         else

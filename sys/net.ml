@@ -62,9 +62,40 @@ let port_arg ctx (v : Types.t) =
   | Int p when p >= 0 && p < 65536 -> p
   | _ -> Runtime.fail ctx Type (Messages.need_port (Value.describe v))
 
-let address host =
-  try Unix.inet_addr_of_string host
-  with Failure _ -> (Unix.gethostbyname host).Unix.h_addr_list.(0)
+let resolver = ref (fun host -> (Unix.gethostbyname host).Unix.h_addr_list.(0))
+
+(* The fiber waits on a pipe that the domain closes when it has the answer. With no domain left, it asks by itself. *)
+let looked_up n ctx host =
+  let resolve = !resolver in
+  let reader, writer = Unix.pipe ~cloexec:true () in
+  let answer = Atomic.make None in
+  let work () =
+    let found =
+      match resolve host with
+      | addr -> Some addr
+      | exception (Not_found | Invalid_argument _) -> None
+    in
+    Atomic.set answer (Some found);
+    Unix.close writer
+  in
+  match Domain.spawn work with
+  | exception Failure _ ->
+    Unix.close reader;
+    Unix.close writer;
+    resolve host
+  | domain ->
+    Poll.watch n.poll reader;
+    while Atomic.get answer = None do
+      Poll.read_ready n.poll ctx reader
+    done;
+    Poll.forget n.poll reader;
+    Unix.close reader;
+    Domain.join domain;
+    (match Atomic.get answer with
+     | Some (Some addr) -> addr
+     | _ -> raise Not_found)
+
+let address n ctx host = try Unix.inet_addr_of_string host with Failure _ -> looked_up n ctx host
 
 let family addr = Unix.domain_of_sockaddr (Unix.ADDR_INET (addr, 0))
 
@@ -75,7 +106,7 @@ let listen n ctx (a : Types.t array) =
   install_handlers n;
   let target = Printf.sprintf "%s:%d" host port in
   match
-    let addr = address host in
+    let addr = address n ctx host in
     let fd = Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 in
     (try
        Unix.setsockopt fd Unix.SO_REUSEADDR true;
@@ -112,7 +143,7 @@ let connect n ctx (a : Types.t array) =
   let target = Printf.sprintf "%s:%d" host port in
   Runtime.check_perm ctx Net (Some target);
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
-  match address host with
+  match address n ctx host with
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
   | addr ->
     match Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 with
@@ -209,6 +240,7 @@ let reap n _ _ : Types.t =
 (* HTTP lengths count bytes, unlike length and slice, which count code points. *)
 let find ctx (a : Types.t array) =
   let part = Native.text_arg ctx "find" a.(0) and text = Native.text_arg ctx "find" a.(1) in
+  Runtime.pay_bytes ctx (String.length text);
   match if part = "" then 0 else Native.find_from text part 0 with
   | -1 -> Missing
   | at -> Int at

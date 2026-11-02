@@ -1,0 +1,17 @@
+-- One arm gives the array back: it must stay owned.
+defn pass_on(e, xs)
+  match e
+    0 -> xs
+    _ -> [e]
+  end
+end
+
+defn run(n)
+  x = zeros(n)
+  for i in 1:n
+    x = pass_on(0, x)
+    x[i] = 1.0
+  end
+  x[n]
+end
+print(run(100000))

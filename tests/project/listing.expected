@@ -1,8 +1,8 @@
-kepacs
+window
   build  dune build --profile release
   test   tools/test.sh (needs build)
-  demo   kepler run --allow ffi=SDL3,ffi=SDL3_ttf --limit memory=512M kepacs/demo.kp (needs build)
-  dev    kepler run --allow ffi=SDL3,ffi=SDL3_ttf --watch kepacs/demo.kp
+  demo   kepler run --allow ffi=SDL3,ffi=SDL3_ttf --limit memory=512M examples/window.kp (needs build)
+  dev    kepler run --allow ffi=SDL3,ffi=SDL3_ttf --watch examples/window.kp
   mark   touch ran.txt
   all    (needs test, demo)
 kepler.toml

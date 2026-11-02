@@ -1,0 +1,4 @@
+text_lower_reserves.kp:3:5: Limit "memory" reached.
+  3 | y = lower(x)
+    |     ^
+exit 1

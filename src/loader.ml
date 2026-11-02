@@ -62,10 +62,9 @@ let in_module w m name =
   | Some k -> Some (Ast.Cell { m; k; stable = md.stable.(k) })
   | None -> None
 
-(* The prelude: module 1 written in Kepler, then module 0 of natives. A name starting with _ stays private, except the
-   native behind a dictionary literal. *)
+(* The prelude: module 1 written in Kepler, then module 0 of natives. A name starting with _ stays private. *)
 let lookup w name =
-  if String.starts_with ~prefix:"_" name && not (String.equal name "_dict") then None
+  if String.starts_with ~prefix:"_" name then None
   else
     match in_module w 1 name with
     | Some b -> Some b

@@ -1,7 +1,7 @@
 use sdl
 
 defn main()
-  w = sdl.open("t", 100, 100, "../../kepacs/fonts/JetBrainsMono-Regular.ttf")?
+  w = sdl.open("t", 100, 100, "../../fonts/JetBrainsMono-Regular.ttf")?
   sdl.copy("héllo", w)
   print(sdl.paste(w))
   print(sdl.set_title("other", w))

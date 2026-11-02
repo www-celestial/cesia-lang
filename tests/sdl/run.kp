@@ -22,7 +22,7 @@ defn later()
 end
 
 defn check()
-  window = sdl.open("test", 320, 200, "../../kepacs/fonts/JetBrainsMono-Regular.ttf")?
+  window = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
   probe.push_text([0x61])
   probe.push_text([0x62])
   spawn(later)

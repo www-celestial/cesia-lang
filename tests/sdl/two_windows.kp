@@ -2,7 +2,7 @@
 use "./probe"
 use sdl
 
-font = "../../kepacs/fonts/JetBrainsMono-Regular.ttf"
+font = "../../fonts/JetBrainsMono-Regular.ttf"
 
 defn check()
   first = sdl.open("first", 320, 200, font)?

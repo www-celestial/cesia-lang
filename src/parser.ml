@@ -167,7 +167,7 @@ and short_function p (body : expr) =
   let f =
     { fname = "<anonymous>"; params = [| { pname = "it"; default = None } |]; body = [| ret |];
       nnodes = p.next_id; fpos = body.pos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
-      has_return = false; has_self_tail = false; cell_of = [||]; export_of = [||] }
+      has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
   in
   node p body.pos (Lambda f)
 
@@ -190,7 +190,7 @@ and in_func p fname fpos parse =
   p.loop <- saved_loop;
   p.in_function <- saved_fn;
   { fname; params; body; nnodes; fpos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
-    has_return = false; has_self_tail = false; cell_of = [||]; export_of = [||] }
+    has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
 
 and params p =
   with_mode p Ignore (fun () ->
@@ -539,7 +539,7 @@ and dict_lit p pos saved_index =
   done;
   advance p;
   p.in_index <- saved_index;
-  let callee = node p pos (Var { text = "_dict"; b = Unresolved }) in
+  let callee = node p pos (Var { text = "#dict"; b = Unresolved }) in
   node p pos (Call { callee; args = Array.of_list (List.rev !items); self_tail = false })
 
 and fields_lit p pos saved_index =
@@ -883,4 +883,5 @@ let program ?(hooks = false) ~file ~nesting toks =
             in_index = 0; saw_end = false } in
   let body = block p (fun t -> t = EOF) in
   { fname = ""; params = [||]; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
-    captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; cell_of = [||]; export_of = [||] }
+    captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||];
+    export_of = [||] }

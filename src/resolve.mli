@@ -8,3 +8,6 @@ val file :
 
 (** Applies a function to the direct subexpressions, without entering nested functions. *)
 val children : (Ast.expr -> unit) -> Ast.expr -> unit
+
+(** Says that parameter [k] must not be lent: the function can write it, reassign it or return it. *)
+val keeps : Ast.func -> int -> bool

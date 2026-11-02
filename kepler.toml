@@ -14,4 +14,4 @@ run = ["tools/check.sh"]
 
 [tasks.demo]
 needs = ["build"]
-file = "kepacs/demo.kp"
+file = "examples/window.kp"

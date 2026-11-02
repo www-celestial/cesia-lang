@@ -1,0 +1,4 @@
+text_trim_reserves.kp:3:5: Limit "memory" reached.
+  3 | y = trim(x)
+    |     ^
+exit 1

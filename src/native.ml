@@ -455,6 +455,14 @@ let char ctx (a : t array) =
     Text (Buffer.contents b)
   | v -> Runtime.fail ctx Type (Messages.bad_char (Value.describe v))
 
+(* String.trim gives the text back when there is nothing to take off: only a real copy reserves its memory. *)
+let trim ctx (a : t array) =
+  let s = text_arg ctx "trim" a.(0) in
+  Runtime.pay_bytes ctx (String.length s);
+  let space c = c = ' ' || c = '\012' || c = '\n' || c = '\r' || c = '\t' in
+  if s <> "" && (space s.[0] || space s.[String.length s - 1]) then Runtime.reserve ctx ((String.length s / 8) + 1);
+  Text (String.trim s)
+
 let text_natives =
   let pay ctx s = Runtime.pay_bytes ctx (String.length s) in
   let on_text name f =
@@ -474,8 +482,12 @@ let text_natives =
     "slice", nat "slice" 3 3 slice;
     "replace", nat "replace" 3 3 replace;
     "char", nat "char" 1 1 char;
-    on_text "trim" (fun s -> Text (String.trim s));
-    on_text "lower" (fun s -> Text (String.lowercase_ascii s));
+    "trim", nat "trim" 1 1 trim;
+    "lower", nat "lower" 1 1 (fun ctx a ->
+        let s = text_arg ctx "lower" a.(0) in
+        pay ctx s;
+        Runtime.reserve ctx ((String.length s / 8) + 1);
+        Text (String.lowercase_ascii s));
     on_text "number" number;
     test2 "starts_with" (fun prefix s -> String.starts_with ~prefix s);
     test2 "contains" (fun part s -> part = "" || find_from s part 0 >= 0) ]
@@ -509,7 +521,7 @@ let prelude =
     "args", Array { rows = 1; cols = 0; store = V [||]; a_owned = false };
     "text", nat "text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
     "dict", nat "dict" 0 1 dict_of_pairs;
-    "_dict", nat "_dict" 0 max_int dict_literal;
+    "#dict", nat "dict literal" 0 max_int dict_literal;
     "get", nat "get" 2 2 (fun ctx a -> Option.fold ~none:Missing ~some:Value.share (Dict.find ctx a.(0) (as_dict ctx "get" a.(1))));
     "get_or", nat "get_or" 3 3 (fun ctx a ->
         match Dict.find ctx a.(0) (as_dict ctx "get_or" a.(2)) with

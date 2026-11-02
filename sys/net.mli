@@ -5,6 +5,9 @@ type t
 
 val create : Poll.t -> t
 
+(** Finds the address of a name, or raises [Not_found]. It may block: it doesn't run on the fibers' domain. *)
+val resolver : (string -> Unix.inet_addr) ref
+
 (** Did a stop signal arrive? *)
 val stopping : t -> bool
 

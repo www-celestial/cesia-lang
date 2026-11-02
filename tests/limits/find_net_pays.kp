@@ -1,0 +1,7 @@
+-- A search pays for the text it reads, wherever it comes from.
+use net
+s = repeat(2000000, "a")
+for i in 1:100
+  net.find("b", s)
+end
+print("not stopped")

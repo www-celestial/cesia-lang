@@ -1,5 +1,5 @@
 -- A window you can type into. Run from the root of the repository:
--- kepler run --allow ffi=SDL3,ffi=SDL3_ttf kepacs/demo.kp
+-- kepler run --allow ffi=SDL3,ffi=SDL3_ttf examples/window.kp
 use sdl
 
 defn update(event, state)
@@ -16,7 +16,7 @@ view(state) = [
 ]
 
 defn main()
-  window = sdl.open("Kepacs", 1280, 800, "kepacs/fonts/JetBrainsMono-Regular.ttf")?
+  window = sdl.open("Kepler", 1280, 800, "fonts/JetBrainsMono-Regular.ttf")?
   sdl.run({typed: ""}, update, view, window)
   sdl.close(window)
   Ok(missing)

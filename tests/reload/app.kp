@@ -8,6 +8,7 @@ struct Point { x }
 value() = 1
 following() = value() + 1
 point() = Point(1).x
+read_kept(xs) = xs[1]
 
 defn report(label, before, after)
   if not equal(before, after)
@@ -28,12 +29,17 @@ defn main_loop()
   c = 0
   d = 0
   e = 0
+  f = 0
+  g = 0
+  x = [1, 2]
   while true
     a = report("value", a, value())
     b = report("following", b, attempt(following))
     c = report("direct", c, attempt(() -> value() + 1))
     d = report("lib", d, lib.constant())
     e = report("point", e, point())
+    f = report("kept", f, read_kept(x))
+    g = report("owner", g, x[1])
   end
 end
 

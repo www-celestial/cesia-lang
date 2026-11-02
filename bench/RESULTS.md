@@ -360,6 +360,85 @@ The owner installed OpenBLAS 0.3.34 after the table above. In 1,000 by 1,000, on
 The comments of `std/` cost a program nothing at start, except those of the prelude. `doc` reads the sources only when asked.
 Loading stays under its target, at 479,761 to 487,806 lines/s.
 
+## Ownership through calls, 2026-11-02
+
+A toy spreadsheet showed the defect: an array passed to any function lost `owned`, so `cells[i] = f(cells, i)` copied the whole
+array at each cell. The toy is a flat array of 3 columns, with the formula `=A*B+1` on each row.
+
+| Work, on the old and the new tree | Before | After |
+|---|---:|---:|
+| 32,000 cells, written to the array the formula reads | 6,198 ms | 21 ms |
+| 1 million cells, the same loop | not run: about 1 h 40 by the square | 496 ms |
+| 200 edits of a 24 MB array, `a = f(a)` | 681 ms | 4.2 ms |
+| 200,000 edits in chunks of 1,024 | 1,622 ms | 301 ms |
+
+| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Met |
+|---|---:|---:|---:|---:|---:|---|
+| fib | 457 ms | 1477 ms | 3.23 | 703 ms | 0.65 | yes |
+| mandel | 463 ms | 2656 ms | 5.74 | 444 ms | 1.04 | yes |
+| structs | 558 ms | 1820 ms | 3.26 | 1524 ms | 0.37 | yes |
+| matmul | 921 ms | 5272 ms | 5.72 | 855 ms | 1.08 | yes |
+| dyn | 665 ms | 1419 ms | 2.13 | 721 ms | 0.92 | yes |
+
+| Criterion | Target | Measured | Met |
+|---|---|---|---|
+| `http.serve`, 10 connections | at least Node | 62,975 req/s, Node 48,809 | yes |
+| `http.serve`, 100 connections | at least Node | 63,494 req/s, Node 47,918 | yes |
+| `http.serve`, 1,000 connections | at least Node | 35,138 req/s, Node 42,037 | no |
+| `http.serve`, 10 active and 900 idle | at least Node | 61,263 req/s, Node 48,383 | yes |
+| The speed gate, real window | at least 60 frames/s | 172, 176, 190 | yes |
+| Loading, resolution included | at least 500,000 lines/s | 499,221 lines/s | no, by 0.2% |
+| A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.6 s, as the commit before on the same machine | yes |
+| A Kepler function active in a running program | under 100 ms | 12 to 13 ms | yes |
+| Tests on both paths | all | 670 + 3 + 330 tests, golden 261/261, and 233/233 with `--no-spec` | yes |
+| `tools/check.sh` | passes | yes, 12,276 lines of 15,000 | yes |
+| Fuzz of 590 s, seed 20261107 | no internal error | 124,610 trials, 9,244 ran to the end, 5,122 toml accepted, 0 failures | yes |
+| Random programs against the commit before, on both paths | the same output | 6,000 programs, 0 differences | yes |
+
+The commit before always copies, which makes it the reference for value semantics. The random programs are full of aliases,
+dynamic calls, tail calls and fibers. On deliberately broken engines they found 6 of 10 faults in 150 programs: they are a net,
+and each guard has its own test instead. All 24 guards were removed one at a time, and a test noticed each one.
+
+### What the checks found
+
+- A module variable can't be lent: another fiber can write it while the function sleeps. No existing test saw this, and the
+  random programs didn't either. `tests/lang/t_lend_fiber` covers it.
+- Looking for writes in the arguments cost a square on calls nested in calls: a pipeline of 20,000 steps compiled in 23 s, for
+  0.1 s before. The look is now bounded, and `tests/limits/long_pipeline` watches it.
+- The first version of the new tests took the change loop to 5.2 s. They now run 100,000 turns, which still shows a square.
+
+Not verified: why one formula costs 40 to 50 times C++ cell by cell. It wasn't profiled, as `perf` isn't on this PC. `ev` returns
+boxed floats and writes two pointers per call, which may be all of it.
+
+## Known defects, 2026-11-02
+
+The reviews had listed these without running them. Each one was tried first, and all but the last were real.
+
+| Defect | Seen failing | Fix | Test |
+|---|---|---|---|
+| `net.find` paid no steps | a loop on 2 MB ran to its end under 20,000 steps | pays on the text | `tests/limits/find_net_pays` |
+| `byte_find` paid on what it looks for | the same | pays on the text too | `tests/limits/find_byte_pays` |
+| `upper`, `lower` and `trim` copied without reserving | a copy of 3 MB passed a limit of 4 MB | reserve first; `trim` only if it copies | `tests/limits/text_*` |
+| A variable named `_dict` took the place of dictionary literals | `{"a": 1}` called the number 5 | the native has a name the lexer can't produce | `tests/lang/t_dict_name` |
+| The panics of `sys.start` said `run` | yes | the name is passed along | `tests/sys/start_panic_name` |
+| Name resolution stopped every fiber | a fiber ran only after the lookup | a domain resolves, the fiber waits on a pipe | `tests/net_test` |
+| `std/tls`, `std/crypto` and `std/cpp` don't run with `--no-spec` | no: they pass | they are now tested on that path | `crypto` in `tools/test.sh`, the two slow ones in `tools/check.sh` |
+
+A lookup that never answers doesn't hold a program back at its end: a domain left asleep for 30 s, and the test took 0.6 s.
+
+| Criterion | Target | Measured | Met |
+|---|---|---|---|
+| The five benchmarks, Kepler alone | no loss | fib 458, mandel 469, structs 572, matmul 945, dyn 668 ms | yes |
+| The speed gate, real window | at least 60 frames/s | 186 | yes |
+| Loading, resolution included | at least 500,000 lines/s | 501,568 lines/s | yes, by 0.3% |
+| A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.6 to 4.8 s | yes |
+| Tests on both paths | all | 670 + 3 + 330 tests, golden 269/269, and 242/242 with `--no-spec` | yes |
+| `tools/check.sh` | passes | yes, 12,324 lines of 15,000 | yes |
+| Fuzz of 590 s, seed 20261108 | no internal error | 127,985 trials, 9,529 ran to the end, 5,200 toml accepted, 0 failures, 80 C at most | yes |
+
+The new tests first took the change loop past 5 s, and so did the two slow folders on `--no-spec`: the tests now use smaller
+texts and shorter waits, and those two folders run in `tools/check.sh`, past the budget.
+
 ## Generic path only (`--no-spec`)
 
 | Benchmark | Kepler | Times Python |
@@ -377,6 +456,8 @@ After the C interop work: 754, 1172, 602, 2570 and 1584 ms, in the same order.
 At the end of the roadmap: 773, 1236, 625, 2839 and 1610 ms, in the same order.
 
 After the typed columns: 774, 1225, 624, 2762 and 1543 ms, in the same order.
+
+After ownership through calls: 774, 1200, 616, 2743 and 1611 ms, in the same order.
 
 ## What made dyn and fib faster
 

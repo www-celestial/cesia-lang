@@ -103,6 +103,13 @@ wait_for out "value 10" 2000 || fail "after a deleted function"
 alive "deleted function"
 no_internal "deleted function"
 
+# A function that only read its argument starts writing it, under a loop compiled for the old one.
+wait_for out "kept 1" 2000 || fail "read_kept before the change"
+sed -i 's/^read_kept(xs) = xs\[1\]$/defn read_kept(xs)\n  xs[1] = 7\n  xs[1]\nend/' "$dir/app.kp"
+wait_for out "kept 7" 2000 || fail "read_kept never changed"
+sleep 0.02
+if grep -qxF "owner 7" "$dir/out"; then fail "a function that writes changed its caller's array"; fi
+
 # 5. File-level statements are not rerun.
 n=$(grep -cxF "start" "$dir/out")
 [ "$n" -eq 1 ] || fail "5: file-level statements ran $n times"
@@ -142,7 +149,7 @@ stop
 
 # 8. A window keeps its state through a reload, under SDL's dummy driver.
 if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
-  cp kepacs/fonts/JetBrainsMono-Regular.ttf "$dir/font.ttf"
+  cp fonts/JetBrainsMono-Regular.ttf "$dir/font.ttf"
   (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$kepler" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf window.kp) \
     > "$dir/out" 2> "$dir/err" &
   pid=$!

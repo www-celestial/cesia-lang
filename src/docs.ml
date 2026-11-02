@@ -86,7 +86,7 @@ let entries src =
   close_native ();
   List.rev !out
 
-let public name = String.length name > 0 && name.[0] <> '_'
+let public name = String.length name > 0 && name.[0] <> '_' && name.[0] <> '#'
 let shown e = if e.text = "" then e.signature else e.signature ^ "\n\n" ^ e.text
 let std name = List.assoc_opt name Embedded.files
 let not_modules = [ "prelude"; "natives" ]

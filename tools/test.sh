@@ -24,4 +24,4 @@ pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
 pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 tools/golden.sh $dirs
 # kepler do has no --no-spec, and native code runs the same on both paths.
-tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|columns|cpp|crypto|tls)/$')
+tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|columns|cpp|tls)/$')

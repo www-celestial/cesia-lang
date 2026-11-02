@@ -3,11 +3,11 @@ open Types
 
 let chunk_size = 65536
 
-let text_list ctx (v : t) =
+let text_list ctx name (v : t) =
   match v with
   | Undef -> [||]
-  | Array x -> Array.init (x.rows * x.cols) (fun k -> Native.text_arg ctx "run" (Value.elt x k))
-  | _ -> Runtime.fail ctx Type (Messages.need_array "run" (Value.describe v))
+  | Array x -> Array.init (x.rows * x.cols) (fun k -> Native.text_arg ctx name (Value.elt x k))
+  | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
 
 (* A stream of the command, while it is open. *)
 type pipe = { fd : Unix.file_descr; mutable live : bool }
@@ -96,7 +96,7 @@ let run poll ctx (a : t array) =
   let cmd = Native.text_arg ctx "run" a.(0) in
   Runtime.check_perm ctx Exec (Some cmd);
   let arg k = if Array.length a > k then a.(k) else Undef in
-  let args = text_list ctx (arg 1) in
+  let args = text_list ctx "run" (arg 1) in
   let input = match arg 2 with Undef -> "" | v -> Native.text_arg ctx "run" v in
   let failed e = Fs.failed ctx "run" cmd e in
   match pipes 3 with
@@ -128,7 +128,7 @@ let start_process poll procs ctx (a : t array) : t =
   let w = ctx.w in
   let cmd = Native.text_arg ctx "start" a.(0) in
   Runtime.check_perm ctx Exec (Some cmd);
-  let args = text_list ctx (if Array.length a > 1 then a.(1) else Undef) in
+  let args = text_list ctx "start" (if Array.length a > 1 then a.(1) else Undef) in
   let failed e = Fs.failed ctx "run" cmd e in
   match pipes 2 with
   | exception Unix.Unix_error (e, _, _) -> failed e

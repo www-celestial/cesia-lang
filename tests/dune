@@ -8,6 +8,11 @@
  (modules toml_test)
  (libraries kepler))
 
+(test
+ (name net_test)
+ (modules net_test)
+ (libraries kepler kepler_sys unix))
+
 (executable
  (name fuzz)
  (modules fuzz)

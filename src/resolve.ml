@@ -261,9 +261,21 @@ and flow (f : func) =
   Array.iter go f.body;
   f.maybe_undef <- undef
 
-(* Tail positions: a return costs nothing there, a call to itself becomes a loop. *)
+(* The mask has 62 bits: past them, every parameter counts as kept. *)
+let keeps (f : func) k = k >= 62 || f.kept land (1 lsl k) <> 0
+let keep (f : func) k = if k < Array.length f.params && k < 62 then f.kept <- f.kept lor (1 lsl k)
+
+let rec note_writes (f : func) (e : expr) =
+  (match e.e with
+   | Set { root = { b = Local k; _ }; _ } | Assign ({ b = Local k; _ }, _) -> keep f k
+   | _ -> ());
+  children (note_writes f) e
+
+(* Tail positions: a return costs nothing there, a call to itself becomes a loop. A variable returned there stays owned,
+   so a parameter that is must not be lent. *)
 let rec mark_tail self (f : func) (e : expr) =
   match e.e with
+  | Var { b = Local k; _ } -> keep f k
   | Return r ->
     r.tail <- true;
     Option.iter (mark_tail self f) r.rvalue
@@ -297,6 +309,8 @@ let rec nontail (e : expr) =
 let rec finish_tail self (f : func) =
   mark_block self f f.body;
   f.has_return <- Array.exists nontail f.body;
+  Array.iter (note_writes f) f.body;
+  Array.iter (fun p -> Option.iter (note_writes f) p.default) f.params;
   Array.iter nested f.body;
   Array.iter (fun p -> Option.iter nested p.default) f.params
 

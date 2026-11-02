@@ -301,16 +301,44 @@ let arg_tag (ctx : ctx) nb n =
   end
 
 (* An argument: a local variable, or a closure. *)
-let[@inline] arg_value (ctx : ctx) slot (f : ctx -> t) =
-  if slot >= 0 then begin
-    let x = ctx.v.(ctx.b + slot) in
-    (match x with
-     | Array r -> r.a_owned <- false
-     | Struct r -> r.r_owned <- false
-     | _ -> ());
-    x
-  end
-  else f ctx
+let[@inline] arg_value (ctx : ctx) slot (f : ctx -> t) = if slot >= 0 then ctx.v.(ctx.b + slot) else f ctx
+
+(* How a call passes an argument. [Give]: the caller's variable ends with the call, so the function owns the value.
+   [Lend]: the parameter only reads it, and it stays owned for the caller, who is stopped meanwhile. [Share]: a second
+   reference. A dynamic call lends what is marked [Lend], unless the function it reaches keeps that parameter. *)
+type pass = Give | Lend | Share
+
+let[@inline] share_if bits k x = if bits land (1 lsl k) <> 0 then ignore (Value.share x)
+
+let share_kept (ctx : ctx) g nb n lent =
+  let kept = match g with Fun { proto; _ } -> proto.func.kept | _ -> -1 in
+  let bits = kept land lent in
+  if bits <> 0 then
+    for k = 0 to min n 62 - 1 do
+      share_if bits k ctx.v.(nb + k)
+    done
+
+(* Reads a bounded part of the expression, or calls nested in calls would cost a square. Past it the answer is yes, which
+   only shares an argument. *)
+let any_node p (e : expr) =
+  let left = ref 256 in
+  let rec go (e : expr) =
+    decr left;
+    !left < 0 || p e
+    || begin
+      let found = ref false in
+      Resolve.children (fun x -> if go x then found := true) e;
+      !found
+    end
+  in
+  go e
+
+let bare (e : expr) = match e.e with Var { b = Local i; _ } -> i | _ -> -1
+let writes = any_node (fun e -> match e.e with Set _ | Assign _ -> true | _ -> false)
+let mentions i = any_node (fun e -> bare e = i)
+
+(* A module variable is within reach of another fiber, which may run while the function sleeps. *)
+let reads_module = any_node (fun e -> match e.e with Var { b = Cell { stable = false; _ }; _ } -> true | _ -> false)
 
 let[@inline] finish (ctx : ctx) (proto : proto) (ver : version) env nb b s =
   enter_fast ctx ctx.i b nb s ver;
@@ -481,6 +509,12 @@ and store_var c i (e : expr) : ctx -> unit =
            | Struct r -> r.r_owned <- false
            | _ -> ());
           ctx.v.(ctx.b + k) <- x
+      | Call call when plain_local c i && not c.w.hooks ->
+        (* a = f(a): the variable ends with the call. A debugger still shows it to the callee's stops. *)
+        let a = call_any ~target:i c e call in
+        fun ctx ->
+          let x = a ctx in
+          ctx.v.(ctx.b + k) <- x
       | _ ->
         let a = ce c e in
         fun ctx ->
@@ -598,7 +632,7 @@ and ca c (e : expr) : ctx -> t =
   | Comp { cbody; cvar; csrc; cguard } -> comprehension c cbody cvar csrc cguard
   | Index (b, ixs, uses_end) -> index_read c e b ixs uses_end
   | Field (b, name) -> field_read c e b name
-  | Match { subject; arms } -> match_expr c e subject arms
+  | Match { subject; arms } -> match_expr c e subject arms (ce c)
   | Struct_lit { sname; sfields } -> struct_lit c sname sfields
   | End_index -> end_index c
   | Question a -> question c e a
@@ -647,6 +681,7 @@ and ctail c (e : expr) : ctx -> t =
   | If (cond, yes, no) ->
     let cond = cb c cond and yes = ctail_block c yes and no = ctail_block c no in
     fun ctx -> if cond ctx then yes ctx else no ctx
+  | Match { subject; arms } -> match_expr c e subject arms (ctail c)
   | Return { tail = true; rvalue = Some v } -> ctail c v
   | _ -> ce c e
 
@@ -896,14 +931,14 @@ and field_read c e b name =
       ctx.site <- s;
       field_slow ctx v name
 
-and match_expr c e subject arms =
+and match_expr c e subject arms compile_body =
   let v = ce c subject and s = site c e.pos in
   let arms =
     Array.map
       (fun a ->
          let test = pat_test c a.pt in
          let guard = Option.map (cb c) a.guard in
-         let body = ce c a.abody in
+         let body = compile_body a.abody in
          test, guard, body)
       arms
   in
@@ -2117,7 +2152,7 @@ and closure c (f : func) : ctx -> t =
   end
 
 (* A call: direct to a version, tail jump, or something else. *)
-and prepare_call c (e : expr) (call : call) =
+and prepare_call ?(target = -1) c (e : expr) (call : call) =
   match call.callee.e with
   | Var { b = Cell { m; k; stable = true }; _ } ->
     (match c.w.modules.(m).cells.(k) with
@@ -2140,15 +2175,16 @@ and prepare_call c (e : expr) (call : call) =
             let off = c.off in
             c.top <- max c.top (off + np + 2);
             c.off <- off + np + 2;
-            let write = arg_writers c off ver slots in
+            let modes = passes c (Resolve.keeps proto.func) (fun _ i -> i = target) slots in
+            let write = arg_writers c off ver modes slots in
             c.off <- off;
             `Direct (ver, write, off, site c e.pos)
           end)
      | _ -> `Other)
   | _ -> `Other
 
-and call_any c e (call : call) : ctx -> t =
-  match prepare_call c e call with
+and call_any ?(target = -1) c e (call : call) : ctx -> t =
+  match prepare_call ~target c e call with
   | `Direct (ver, write, off, s) ->
     fun ctx ->
       write ctx;
@@ -2179,15 +2215,17 @@ and call_any c e (call : call) : ctx -> t =
     fun ctx ->
       jump ctx;
       Missing
-  | `Other -> ccall c e call
+  | `Other -> ccall c e call target
 
-(* Tail recursion: the arguments go to the outgoing area, then onto the parameters. *)
+(* Tail recursion: the arguments go to the outgoing area, then onto the parameters. The frame ends with the jump, so a
+   local variable is given. A parameter is too if it stays in its place: elsewhere, it could reach a kept one. *)
 and tail_jump c ver slots : ctx -> unit =
   let np = Array.length slots in
   let off = c.off in
   c.top <- max c.top (off + np + 2);
   c.off <- off + np + 2;
-  let write = arg_writers c off ver slots in
+  let modes = passes c (Resolve.keeps ver.owner.func) (fun k i -> i = k || i >= np) slots in
+  let write = arg_writers c off ver modes slots in
   c.off <- off;
   let moves =
     List.init np (fun k ->
@@ -2203,7 +2241,7 @@ and tail_jump c ver slots : ctx -> unit =
     move ctx;
     ctx.again <- true
 
-and ccall c e (call : call) =
+and ccall c e (call : call) target =
   let s = site c e.pos in
   match call.callee.e with
   | Var { b = Cell { m; k; stable = true }; _ } ->
@@ -2212,9 +2250,9 @@ and ccall c e (call : call) =
      | Fun { proto; env = [||] } ->
        (match Infer.bind_args proto.func call.args with
         | Error msg -> raise_at s Type msg
-        | Ok _ -> call_dynamic c s call)
-     | _ -> call_dynamic c s call)
-  | _ -> call_dynamic c s call
+        | Ok _ -> call_dynamic c s call target)
+     | _ -> call_dynamic c s call target)
+  | _ -> call_dynamic c s call target
 
 and raise_at s kind m = fun ctx ->
   ctx.site <- s;
@@ -2282,8 +2320,39 @@ and call_native_placed s n compiled =
         run ctx vals
   end
 
+(* How each argument of a call is passed. [keeps k] says that parameter [k] can't be lent, [gives k i] that variable [i],
+   as argument [k], ends with the call. An argument that mentions a given variable shares what it reads. A write among
+   the arguments keeps them all shared: an earlier argument must not see it. *)
+and passes c keeps gives (slots : expr option array) =
+  let args = List.filter_map Fun.id (Array.to_list slots) in
+  let given k (e : expr) =
+    let i = bare e in
+    i >= 0 && plain_local c i && gives k i && List.length (List.filter (fun a -> bare a = i) args) = 1
+  in
+  let gone =
+    Array.to_seqi slots
+    |> Seq.filter_map (fun (k, slot) -> Option.bind slot (fun e -> if given k e then Some (bare e) else None))
+    |> List.of_seq
+  in
+  let written = List.exists writes args in
+  Array.mapi
+    (fun k slot ->
+       match slot with
+       | Some e when not written ->
+         if given k e then Give
+         else if keeps k || reads_module e || List.exists (fun i -> mentions i e) gone then Share
+         else Lend
+       | _ -> Share)
+    slots
+
+and read_arg c mode e = if mode = Share then ce c e else cv c e
+
+(* The arguments a dynamic call can lend. A given variable has no bit: the function can do what it wants with it. *)
+and lent_bits modes =
+  Array.fold_left (fun (bits, k) mode -> (if mode = Lend then bits lor (1 lsl k) else bits), k + 1) (0, 0) modes |> fst
+
 (* Writes the arguments of a direct call to the stacks the version expects. *)
-and arg_writers c off (ver : version) (slots : expr option array) : ctx -> unit =
+and arg_writers c off (ver : version) modes (slots : expr option array) : ctx -> unit =
   let writer k =
     let p = off + ver.map.(k) in
     match slots.(k) with
@@ -2300,7 +2369,7 @@ and arg_writers c off (ver : version) (slots : expr option array) : ctx -> unit 
            let x = a ctx in
            Float.Array.set ctx.f (ctx.b + p) x
        | _ ->
-         let a = ce c e in
+         let a = read_arg c modes.(k) e in
          fun ctx ->
            let x = a ctx in
            ctx.v.(ctx.b + p) <- x)
@@ -2316,13 +2385,15 @@ and arg_writers c off (ver : version) (slots : expr option array) : ctx -> unit 
     fun ctx -> a ctx; d ctx
   | _ -> seq_u (List.init (Array.length slots) writer)
 
-and call_dynamic c s (call : call) =
+and call_dynamic c s (call : call) target =
   let callee = cv c call.callee in
   let args = call.args in
   let n = Array.length args in
   let names = Array.map (fun a -> a.aname) args in
   let plain = Array.for_all (fun a -> a = None) names in
-  if plain && n >= 1 && n <= 3 then call_small c s callee args
+  let slots = Array.map (fun a -> Some a.value) args in
+  let modes = passes c (fun k -> k >= 62 || not plain) (fun _ i -> i = target) slots in
+  if plain && n >= 1 && n <= 3 then call_small c s callee slots modes
   else
   let off = c.off in
   c.top <- max c.top (off + n + 2);
@@ -2330,37 +2401,47 @@ and call_dynamic c s (call : call) =
   let write =
     seq_u
       (List.init n (fun k ->
-           let a = ce c args.(k).value in
+           let a = read_arg c modes.(k) args.(k).value in
            fun (ctx : ctx) ->
              let x = a ctx in
              ctx.v.(ctx.b + off + k) <- x))
   in
   c.off <- off;
+  let lent = lent_bits modes in
   fun ctx ->
     let g = callee ctx in
     write ctx;
     ctx.site <- s;
-    if plain then dispatch ctx g off n s else dispatch_named ctx g off names s
+    if plain then begin
+      share_kept ctx g (ctx.b + off) n lent;
+      dispatch ctx g off n s
+    end
+    else dispatch_named ctx g off names s
 
 (* A dynamic call with 1 to 3 arguments: they stay in OCaml variables until the version is chosen, and only those of
    type A go through the v stack, where each write costs a caml_modify. *)
-and call_small c s callee args =
+and call_small c s callee slots modes =
   let off = c.off in
-  let n = Array.length args in
+  let n = Array.length slots in
   c.top <- max c.top (off + n + 2);
   c.off <- off + n + 2;
   (* A local variable argument is read without a closure: slot >= 0. *)
-  let source (e : expr) =
+  let source k =
+    let e = Option.get slots.(k) in
     match e.e with
-    | Var { b = Local i; _ } when plain_local c i -> c.map.(i), (fun _ -> Undef)
-    | _ -> -1, ce c e
+    | Var { b = Local i; _ } when plain_local c i && modes.(k) <> Share -> c.map.(i), (fun _ -> Undef)
+    | _ -> -1, read_arg c modes.(k) e
   in
-  let sa, a = source args.(0).value in
-  let sd, d = if n > 1 then source args.(1).value else -1, (fun _ -> Undef) in
-  let sf, f = if n > 2 then source args.(2).value else -1, (fun _ -> Undef) in
+  let sa, a = source 0 in
+  let sd, d = if n > 1 then source 1 else -1, (fun _ -> Undef) in
+  let sf, f = if n > 2 then source 2 else -1, (fun _ -> Undef) in
   c.off <- off;
   let no_spec = c.w.no_spec in
+  let lent = lent_bits modes in
   let slow (ctx : ctx) g x y z =
+    share_if lent 0 x;
+    share_if lent 1 y;
+    share_if lent 2 z;
     let nb = ctx.b + off in
     if nb + n + 2 > ctx.cap then Runtime.grow ctx (nb + n + 2);
     ctx.v.(nb) <- x;
@@ -2376,6 +2457,7 @@ and call_small c s callee args =
       ctx.site <- s;
       (match g with
        | Fun { proto; env } when proto.arity = 1 ->
+         share_if (proto.func.kept land lent) 0 x;
          let tag = if no_spec then no_tag else arg_type x in
          let key = tag lor (1 lsl 42) in
          let ver =
@@ -2396,6 +2478,9 @@ and call_small c s callee args =
       ctx.site <- s;
       (match g with
        | Fun { proto; env } when proto.arity = 2 ->
+         let kept = proto.func.kept land lent in
+         share_if kept 0 x;
+         share_if kept 1 y;
          let tag = if no_spec then no_tag else arg_type x lor (arg_type y lsl 2) in
          let key = tag lor (2 lsl 42) in
          let ver =
@@ -2422,6 +2507,10 @@ and call_small c s callee args =
          let tag =
            if no_spec then no_tag else arg_type x lor (arg_type y lsl 2) lor (arg_type z lsl 4)
          in
+         let kept = proto.func.kept land lent in
+         share_if kept 0 x;
+         share_if kept 1 y;
+         share_if kept 2 z;
          let ver = select ctx proto 3 tag in
          let b = ctx.b in
          let nb = b + off in
@@ -2612,7 +2701,7 @@ let retire (old : version) =
           match tv.(k) with
           | TI -> Int ctx.i.(p)
           | TF -> Float (Float.Array.get ctx.f p)
-          | _ -> ctx.v.(p)
+          | _ -> Value.share ctx.v.(p)
       in
       let args = Array.init np arg in
       let n = ref np in

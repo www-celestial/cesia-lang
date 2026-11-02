@@ -83,6 +83,7 @@ and func = {
   mutable maybe_undef : bool array;  (** variable that can be read before any assignment *)
   mutable has_return : bool;  (** contains a [return] that is not in tail position *)
   mutable has_self_tail : bool;
+  mutable kept : int;  (** bit k: parameter k is written, reassigned or returned, so it can't be lent *)
   mutable cell_of : int array;  (** file only: variable to cell, -1 if it stays local *)
   mutable export_of : int array;  (** file only: variable to its export cell *)
 }

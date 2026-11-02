@@ -1,0 +1,10 @@
+reader(xs, i) = xs[i] + 1.0
+
+defn run(n)
+  x = zeros(n)
+  for i in 1:n
+    x[i] = reader(x, i)
+  end
+  x[n]
+end
+print(run(100000))

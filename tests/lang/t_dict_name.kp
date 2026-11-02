@@ -1,0 +1,5 @@
+-- A dictionary literal doesn't depend on the names of the file.
+_dict = 5
+d = {"a": 1}
+print(get("a", d))
+print(_dict)

@@ -1,0 +1,4 @@
+-- A copy is reserved before it is built.
+x = repeat(1500000, "a ")
+y = trim(x)
+print(length(y))

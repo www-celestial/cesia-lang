@@ -45,4 +45,13 @@ tools/test.sh > /dev/null 2>&1 || fail "tools/test.sh fails"
 ms=$((($(date +%s%N) - s) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "change loop: $ms ms, budget $budget_ms ms"
 
+# Past the budget: these two compile C++ and shake hands over TLS, on the path tools/test.sh leaves out for them.
+slow=""
+command -v g++ > /dev/null && slow="tests/cpp"
+pkg-config --exists openssl 2>/dev/null && slow="$slow tests/tls"
+if [ -n "$slow" ]; then
+  # shellcheck disable=SC2086
+  tools/golden.sh --no-spec $slow > /dev/null 2>&1 || fail "--no-spec fails on $slow"
+fi
+
 echo "check: ok ($lines lines, change loop in $ms ms)"
