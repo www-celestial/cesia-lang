@@ -2,6 +2,7 @@
 # Golden tests: for each name.kp with name.expected, runs kepler from the test's folder
 # and compares stdout then stderr (2>&1), followed by an "exit N" line.
 # Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "kepler run").
+# GOLDEN_TRACE=1 names each test as it starts: a test that hangs would otherwise leave no trace.
 set -u
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -47,11 +48,17 @@ for dir in "$@"; do
     name=${expected##*/}
     name=${name%.expected}
     total=$((total + 1))
+    [ -z "${GOLDEN_TRACE:-}" ] || echo "golden: $dir/$name"
     run_one "$dir" "$name" "$tmp/$total" &
     running=$((running + 1))
     if [ "$running" -ge "$max_jobs" ]; then
-      wait -n
-      running=$((running - 1))
+      # macOS has bash 3.2, which has no wait -n: there, the tests go by batches.
+      if wait -n 2> /dev/null; then
+        running=$((running - 1))
+      else
+        wait
+        running=0
+      fi
     fi
   done
 done

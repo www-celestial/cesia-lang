@@ -28,4 +28,7 @@ jobs:
       - run: opam exec -- dune build
       - name: Tests
         if: runner.os != 'Windows'
+        timeout-minutes: 10
+        env:
+          GOLDEN_TRACE: 1
         run: opam exec -- tools/test.sh

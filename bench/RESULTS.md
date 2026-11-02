@@ -518,7 +518,8 @@ The change loop went past 5 s again: 5.13 s on the last commit. `tools/test.sh` 
 no longer starts a process per test in the loop that hands them out, and `limits/memory_churn`, `regex_memory` and `regex_steps` are
 smaller, with the same ratio to their limits. 4.6 s on a cool CPU, with no test removed, and 4.9 to 5.9 s once long loops of tests have
 heated it and the CPU throttles. One run of the suite failed during these measures, at the time of the golden tests, and its output was
-not kept: no failure in more than 30 runs since, so its test is unknown.
+not kept: no failure in more than 30 runs since, so its test is unknown. A later run failed on `tests/sdl/demo`, with exit 143 and no output:
+a SIGTERM killed it. It isn't reproduced: not with 15 runs under load, nor 240 on one busy core, and no test sends that signal to another.
 
 A person ran `kepler do material` in a real window: the mouse did nothing until the window was resized. Under Wayland, the frame that
 libdecor draws around a window is made of subsurfaces, which apply only with a commit of the window. Its shadow took the mouse, and
