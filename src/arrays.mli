@@ -7,6 +7,7 @@ val of_float : int -> int -> floatarray -> t
 
 (** Stores as F if everything is a float. *)
 val of_vals : int -> int -> t array -> t
+val of_ints : int -> int -> int array -> t
 
 (** A list. An empty one has the shape of [[]], so that the two are equal. *)
 val list : t array -> t
@@ -15,6 +16,8 @@ val int_range : ctx -> int -> int -> t
 val range_bound : ctx -> t -> int
 val ix_of : ctx -> t -> ix
 val mem : ctx -> t -> t -> t
+val positions : ctx -> int -> ix -> int array
+val pick : ctx -> arr -> int array -> int -> int -> t
 val read1 : ctx -> t -> ix -> t
 val read2 : ctx -> t -> ix -> ix -> t
 val write : ctx -> t -> ix array -> t -> unit

@@ -55,6 +55,7 @@ let quote s =
 let elt a k =
   match a.store with
   | F d -> Float (Float.Array.get d k)
+  | I d -> Int d.(k)
   | V d -> d.(k)
 
 let is_number = function Int _ | Float _ -> true | _ -> false
@@ -146,7 +147,7 @@ and show_array ctx depth a =
   else if a.rows = 1 then "[" ^ String.concat ", " (List.init n cell) ^ "]"
   else if a.cols = 1 then "[" ^ String.concat "; " (List.init n cell) ^ "]"
   else begin
-    let numeric = match a.store with F _ -> true | V d -> Array.for_all is_number d in
+    let numeric = match a.store with F _ | I _ -> true | V d -> Array.for_all is_number d in
     let sep = if numeric then " " else ", " in
     let row i = String.concat sep (List.init a.cols (fun j -> cell ((j * a.rows) + i))) in
     "[" ^ String.concat "; " (List.init a.rows row) ^ "]"

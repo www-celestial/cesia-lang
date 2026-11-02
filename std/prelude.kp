@@ -242,3 +242,272 @@ end
 --
 --   pmap(it * 2, [1, 2]) --> [2, 4]
 pmap(f, xs) = map(unwrap, map(wait, map(x -> spawn(() -> f(x)), xs)))
+
+-- One more, and one less. Both work on arrays, element by element.
+--
+--   inc(1) --> 2
+inc(x) = x + 1
+
+--   dec(1) --> 0
+dec(x) = x - 1
+
+-- The operators as functions, to pass to reduce or map.
+--
+--   reduce(add, 0, [1, 2, 3]) --> 6
+add(a, b) = a + b
+
+--   sub(5, 2) --> 3
+sub(a, b) = a - b
+
+--   reduce(mul, 1, [2, 3]) --> 6
+mul(a, b) = a * b
+
+--   is_zero(0) --> true
+is_zero(x) = x == 0
+
+--   is_pos(1) --> true
+is_pos(x) = x > 0
+
+--   is_neg(1) --> false
+is_neg(x) = x < 0
+
+--   is_even(2) --> true
+is_even(x) = mod(x, 2) == 0
+
+--   is_odd(2) --> false
+is_odd(x) = mod(x, 2) != 0
+
+--   is_some(0) --> true
+is_some(x) = not is_missing(x)
+
+--   identity(3) --> 3
+identity(x) = x
+
+-- A function that always gives x.
+--
+--   constantly(7)(1) --> 7
+constantly(x) = y -> x
+
+-- f after g, after h if there is one.
+--
+--   comp(inc, it * 2)(3) --> 7
+comp(f, g, h = identity) = x -> f(g(h(x)))
+
+-- f with its first argument given. As the collection comes last, this names a step of a pipeline.
+--
+--   partial(add, 2)(3) --> 5
+partial(f, a) = x -> f(a, x)
+
+--   complement(is_even)(3) --> true
+complement(f) = x -> not f(x)
+
+-- The results of several functions on one value.
+--
+--   juxt(inc, dec)(1) --> [2, 0]
+defn juxt(f, g, h = missing)
+  if is_missing(h) (x -> [f(x), g(x)]) else (x -> [f(x), g(x), h(x)]) end
+end
+
+-- x through up to four functions, in order.
+--
+--   pipe(1, inc, it * 3) --> 6
+pipe(x, f, g = identity, h = identity, k = identity) = k(h(g(f(x))))
+
+--   first([1, 2]) --> 1
+first(xs) = if length(xs) == 0 missing else xs[1] end
+
+--   second([1, 2]) --> 2
+second(xs) = if length(xs) < 2 missing else xs[2] end
+
+--   last([1, 2]) --> 2
+last(xs) = if length(xs) == 0 missing else xs[length(xs)] end
+
+--   rest([1, 2, 3]) --> [2, 3]
+rest(xs) = skip(1, xs)
+
+--   butlast([1, 2, 3]) --> [1, 2]
+butlast(xs) = take(max(length(xs) - 1, 0), xs)
+
+--   nth(2, [5, 6]) --> 6
+nth(k, xs) = xs[k]
+
+--   is_empty([]) --> true
+is_empty(xs) = length(xs) == 0
+
+--   prepend(1, [2]) --> [1, 2]
+prepend(x, xs) = concat([x], xs)
+
+--   take_last(2, [1, 2, 3]) --> [2, 3]
+take_last(n, xs) = skip(max(length(xs) - n, 0), xs)
+
+--   drop_last(2, [1, 2, 3]) --> [1]
+drop_last(n, xs) = take(max(length(xs) - n, 0), xs)
+
+defn _run_length(f, xs)
+  for k in 1:length(xs)
+    if not f(xs[k])
+      return k - 1
+    end
+  end
+  length(xs)
+end
+
+--   take_while(is_odd, [1, 3, 4, 5]) --> [1, 3]
+take_while(f, xs) = take(_run_length(f, xs), xs)
+
+--   drop_while(is_odd, [1, 3, 4, 5]) --> [4, 5]
+drop_while(f, xs) = skip(_run_length(f, xs), xs)
+
+-- The first element that f accepts, or missing.
+--
+--   find_first(is_even, [1, 2, 4]) --> 2
+defn find_first(f, xs)
+  for x in xs
+    if f(x)
+      return x
+    end
+  end
+  missing
+end
+
+--   remove(is_even, [1, 2, 3]) --> [1, 3]
+remove(f, xs) = filter(x -> not f(x), xs)
+
+-- The results of f that aren't missing.
+--
+--   keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3]) --> [4, 6]
+keep(f, xs) = filter(is_some, map(f, xs))
+
+--   map_indexed((k, x) -> k * x, [5, 6]) --> [5, 12]
+map_indexed(f, xs) = [f(k, xs[k]) for k in 1:length(xs)]
+
+--   interleave([1, 2], ["a", "b"]) --> [1, "a", 2, "b"]
+interleave(a, b) = flatten([[a[k], b[k]] for k in 1:min(length(a), length(b))])
+
+--   interpose(0, [1, 2]) --> [1, 0, 2]
+interpose(sep, xs) = flatten([if k == 1 [xs[k]] else [sep, xs[k]] end for k in 1:length(xs)])
+
+-- Does f accept every element? It stops at the first refusal.
+--
+--   every(is_odd, [1, 3]) --> true
+defn every(f, xs)
+  for x in xs
+    if not f(x)
+      return false
+    end
+  end
+  true
+end
+
+--   some(is_odd, [2, 3]) --> true
+some(f, xs) = not every(complement(f), xs)
+
+-- n values: x, f(x), f(f(x)) and so on.
+--
+--   iterate(inc, 1, 3) --> [1, 2, 3]
+defn iterate(f, x, n)
+  out = fill(x, n)
+  for k in 2:n
+    out[k] = f(out[k - 1])
+  end
+  out
+end
+
+--   repeatedly(() -> 5, 2) --> [5, 5]
+repeatedly(f, n) = [f() for k in 1:n]
+
+-- How many times each value appears, in a dictionary.
+--
+--   frequencies(["a", "b", "a"])["a"] --> 2
+defn frequencies(xs)
+  out = dict()
+  for x in xs
+    out[x] = get_or(x, 0, out) + 1
+  end
+  out
+end
+
+--   min_by(abs, [-3, 1, 2]) --> 1
+min_by(f, xs) = if length(xs) == 0 missing else xs[order(map(f, xs))[1]] end
+
+--   max_by(abs, [-3, 1, 2]) --> -3
+max_by(f, xs) = if length(xs) == 0 missing else xs[order(map(f, xs))[length(xs)]] end
+
+-- A dictionary with f applied to the value of a key, which is missing if the key is absent.
+--
+--   update("a", inc, {"a": 1})["a"] --> 2
+update(k, f, d) = put(k, f(get(k, d)), d)
+
+-- Both dictionaries. For a key in both, b wins.
+--
+--   merge({"a": 1}, {"a": 2})["a"] --> 2
+defn merge(a, b)
+  out = a
+  for k in keys(b)
+    out[k] = b[k]
+  end
+  out
+end
+
+-- Both dictionaries. For a key in both, f combines the two values.
+--
+--   merge_with(add, {"a": 1}, {"a": 2})["a"] --> 3
+defn merge_with(f, a, b)
+  out = a
+  for k in keys(b)
+    out[k] = if has(k, out) f(out[k], b[k]) else b[k] end
+  end
+  out
+end
+
+--   length(select_keys(["a", "z"], {"a": 1, "b": 2})) --> 1
+defn select_keys(ks, d)
+  out = dict()
+  for k in ks
+    if has(k, d)
+      out[k] = d[k]
+    end
+  end
+  out
+end
+
+--   zipmap(["a", "b"], [1, 2])["b"] --> 2
+zipmap(ks, vs) = dict([{key: ks[k], value: vs[k]} for k in 1:min(length(ks), length(vs))])
+
+--   invert({"a": 1})[1] --> "a"
+defn invert(d)
+  out = dict()
+  for k in keys(d)
+    out[d[k]] = k
+  end
+  out
+end
+
+-- The value at the end of a path of keys, or missing.
+--
+--   get_in(["a", "b"], {"a": {"b": 2}}) --> 2
+defn get_in(path, d)
+  at = d
+  for k in path
+    if not is_dict(at)
+      return missing
+    end
+    at = get(k, at)
+  end
+  at
+end
+
+-- A dictionary with a value at the end of a path of keys. The dictionaries on the way are created if they are absent.
+--
+--   put_in(["a", "b"], 3, dict())["a"]["b"] --> 3
+defn put_in(path, value, d)
+  k = path[1]
+  if length(path) == 1
+    return put(k, value, d)
+  end
+  inner = get(k, d)
+  put(k, put_in(rest(path), value, if is_dict(inner) inner else dict() end), d)
+end
+
+--   update_in(["a"], inc, {"a": 1})["a"] --> 2
+update_in(path, f, d) = put_in(path, f(get_in(path, d)), d)

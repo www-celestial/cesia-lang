@@ -251,6 +251,12 @@ let alloc_vals ctx n x =
   | d -> d
   | exception (Out_of_memory | Invalid_argument _) -> limit "memory" ctx.site
 
+let alloc_ints ctx n x =
+  reserve ctx n;
+  match Array.make n x with
+  | d -> d
+  | exception (Out_of_memory | Invalid_argument _) -> limit "memory" ctx.site
+
 let perm_name = function
   | Read -> "read"
   | Write -> "write"
@@ -313,6 +319,7 @@ let copy ctx v =
     let store =
       match a.store with
       | F d -> F (Float.Array.copy d)
+      | I d -> I (Array.copy d)
       | V d ->
         Array.iter (fun x -> ignore (Value.share x)) d;
         V (Array.copy d)

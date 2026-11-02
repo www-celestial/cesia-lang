@@ -1,4 +1,6 @@
--- Tables of named columns, in the spirit of pandas. A frame is a value: every function gives a new one.
+-- Tables of named columns, in the spirit of pandas. A frame is a value: every function gives a new one. The work on whole
+-- columns is native, and a column of integers or floats is stored without a box.
+use columns as col
 use csv
 
 defn table(names, columns)
@@ -17,8 +19,7 @@ defn from_records(names, items)
   table(names, [[get(n, r) for r in items] for n in names])
 end
 
-_pick(ks, xs) = [xs[k] for k in ks]
-_take(ks, df) = table(df.names, [_pick(ks, df.columns[n]) for n in df.names])
+_take(ks, df) = table(df.names, [col.pick(ks, df.columns[n]) for n in df.names])
 
 head(n, df) = _take(1:min(n, rows(df)), df)
 
@@ -47,6 +48,12 @@ defn where_column(name, f, df)
   _take([i for i in 1:rows(df) if f(xs[i])], df)
 end
 
+-- The rows where a mask of booleans is true: where_mask(column("v", df) > 2.0, df).
+where_mask(mask, df) = _take(col.positions(mask), df)
+
+-- The storage of each column: "int", "float" or "value".
+kinds(df) = [col.kind(df.columns[n]) for n in df.names]
+
 defn sort_by(name, df, descending = false)
   ks = order(df.columns[name])
   _take(if descending reverse(ks) else ks end, df)
@@ -55,48 +62,16 @@ end
 append(a, b) = table(a.names, [concat(a.columns[n], b.columns[n]) for n in a.names])
 drop_missing(df) = where(r -> not any([is_missing(v) for v in values(r)]), df)
 fill_missing(value, df) = table(df.names, [[if is_missing(x) value else x end for x in df.columns[n]] for n in df.names])
-present(xs) = filter(x -> not is_missing(x), xs)
-
-_key(cells) = if length(cells) == 1 cells[1] else join("\t", cells) end
+present(xs) = col.present(xs)
 
 -- One aggregation: a new column, a source column, and a function of its values.
 agg(name, source, f) = {name: name, source: source, f: f}
 
--- Each row gets the number of its group, in the order of first appearance. Sorting by that number gathers the members
--- of each group in one pass.
-defn _groups(by, df)
-  n = rows(df)
-  sources = [df.columns[name] for name in by]
-  ids = fill(0, n)
-  seen = dict()
-  for i in 1:n
-    k = _key([xs[i] for xs in sources])
-    g = get(k, seen)
-    if is_missing(g)
-      g = length(seen) + 1
-      seen[k] = g
-    end
-    ids[i] = g
-  end
-  ranked = order(ids)
-  out = fill(missing, length(seen))
-  start = 1
-  for k in 1:n
-    if k == n or ids[ranked[k + 1]] != ids[ranked[k]]
-      out[ids[ranked[k]]] = [ranked[j] for j in start:k]
-      start = k + 1
-    end
-  end
-  out
-end
-
 defn group_by(by, aggregations, df)
-  ids = if rows(df) == 0 [] else _groups(by, df) end
-  firsts = [g[1] for g in ids]
-  out = table(by, [_pick(firsts, df.columns[n]) for n in by])
+  g = col.groups(if length(by) == 0 [fill(0, rows(df))] else [df.columns[n] for n in by] end)
+  out = table(by, [col.pick(g.firsts, df.columns[n]) for n in by])
   for a in aggregations
-    xs = df.columns[a.source]
-    out = set_column(a.name, [a.f(present([xs[i] for i in members])) for members in ids], out)
+    out = set_column(a.name, [a.f(part) for part in col.split(g, df.columns[a.source])], out)
   end
   out
 end
@@ -108,42 +83,10 @@ end
 
 -- An inner join on one column, or all the rows of a with how = "left".
 defn join_on(on, a, b, how = "inner")
-  xs = b.columns[on]
-  ranked = order(xs)
-  firsts = dict()
-  counts = dict()
-  for k in 1:length(ranked)
-    v = xs[ranked[k]]
-    if not has(v, firsts)
-      firsts[v] = k
-    end
-    counts[v] = get_or(v, 0, counts) + 1
-  end
-  ys = a.columns[on]
-  total = 0
-  for i in 1:rows(a)
-    found = get_or(ys[i], 0, counts)
-    total += if found == 0 and how == "left" 1 else found end
-  end
-  left = fill(0, total)
-  right = fill(0, total)
-  used = 0
-  for i in 1:rows(a)
-    found = get_or(ys[i], 0, counts)
-    if found == 0 and how == "left"
-      used += 1
-      left[used] = i
-    end
-    for k in 1:found
-      used += 1
-      left[used] = i
-      right[used] = ranked[firsts[ys[i]] + k - 1]
-    end
-  end
-  out = _take(left, a)
+  m = col.join(a.columns[on], b.columns[on], how == "left")
+  out = _take(m.left, a)
   for n in filter(n -> n != on, b.names)
-    source = b.columns[n]
-    out = set_column(n, [if j == 0 missing else source[j] end for j in right], out)
+    out = set_column(n, col.pick(m.right, b.columns[n]), out)
   end
   out
 end
@@ -157,21 +100,9 @@ defn describe(df)
     [numeric, map(it.count, stats), map(it.mean, stats), map(it.min, stats), map(it.max, stats)])
 end
 
-_cell(text_value) = if text_value == "" missing else _number(text_value) end
-
-defn _number(s)
-  n = number(s)
-  if is_missing(n) s else n end
-end
-
 defn from_csv(s, separator = ",")
-  lines = csv.parse(s, separator = separator)
-  if length(lines) == 0
-    return empty([])
-  end
-  names = lines[1]
-  body = skip(1, lines)
-  table(names, [[_cell(if k <= length(r) r[k] else "" end) for r in body] for k in 1:length(names)])
+  data = col.read_csv(s, separator)
+  if length(data.names) == 0 empty([]) else table(data.names, data.columns) end
 end
 
 to_csv(df, separator = ",") = csv.write(concat([df.names], [[df.columns[n][i] for n in df.names] for i in 1:rows(df)]), separator = separator)

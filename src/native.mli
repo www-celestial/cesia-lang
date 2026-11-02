@@ -9,6 +9,9 @@ val register : world -> string -> t -> unit
 (** The byte where [part], which isn't empty, first appears in a text from a byte, or -1. *)
 val find_from : string -> string -> int -> int
 
+(** The number that a text writes, or [missing]. *)
+val number : string -> t
+
 (** The code points of a text. *)
 val code_points : string -> int
 

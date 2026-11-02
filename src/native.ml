@@ -66,6 +66,12 @@ let points_between s a b =
 
 let code_points s = points_between s 0 (String.length s)
 
+(* The text of each value, one after the other. *)
+let str ctx args =
+  let parts = Array.map (Value.text_of ctx) args in
+  Runtime.build ctx ((Array.fold_left (fun n s -> n + String.length s) 0 parts / 8) + 1);
+  Text (String.concat "" (Array.to_list parts))
+
 let length v =
   match v with
   | Dict d -> Dict.length d
@@ -117,6 +123,7 @@ let filled ctx value rows cols =
   Runtime.pay ctx n;
   match value with
   | Float x -> Arrays.of_float rows cols (Runtime.alloc_float ctx n x)
+  | Int i when n > 0 -> Arrays.of_ints rows cols (Runtime.alloc_ints ctx n i)
   | v -> Array { rows; cols; store = V (Runtime.alloc_vals ctx n (Value.share v)); a_owned = true }
 
 let size ctx (a : t array) =
@@ -234,6 +241,10 @@ let transpose ctx (a : t array) =
     let at k = let j = k / x.rows and i = k mod x.rows in (i * x.cols) + j in
     (match x.store with
      | F d -> Arrays.of_float x.cols x.rows (Kernels.transpose ~rows:x.rows ~cols:x.cols d)
+     | I d ->
+       let out = Array.make n 0 in
+       Array.iteri (fun k v -> out.(at k) <- v) d;
+       Arrays.of_ints x.cols x.rows out
      | V d ->
        let out = Array.make n Missing in
        if n > 0 then Array.iteri (fun k v -> out.(at k) <- Value.share v) d;
@@ -472,6 +483,7 @@ let text_natives =
 let prelude =
   text_natives
   @ [ "print", nat "print" 0 max_int print;
+    "str", nat "str" 0 max_int str;
     "panic", nat "panic" 1 1 (fun ctx a -> Runtime.fail ctx User (Messages.plain (Value.text_of ctx a.(0))));
     "assert", nat "assert" 1 2 (fun ctx a ->
         match a.(0) with

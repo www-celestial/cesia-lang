@@ -34,18 +34,25 @@ let compare_values ctx a b =
   | (Int _ | Float _), (Int _ | Float _) | Text _, Text _ -> Dict.compare_keys a b
   | _ -> Runtime.fail ctx Type (Messages.cant_sort (Value.describe a) (Value.describe b))
 
+(* A list and the positions of its elements in sorted order. A typed list needs no comparison of values. *)
+let sorted_positions ctx name v =
+  let a, n = cells ctx name v in
+  Runtime.charge ctx (n + 1);
+  let compare_at =
+    match a.store with
+    | F d -> fun i j -> Float.compare (Float.Array.get d i) (Float.Array.get d j)
+    | I d -> fun i j -> Int.compare d.(i) d.(j)
+    | V d -> fun i j -> compare_values ctx d.(i) d.(j)
+  in
+  a, Kernels.sort_positions ~parallel:(match a.store with V _ -> false | _ -> true) n compare_at
+
 let sort ctx (a : t array) =
-  let values = elements ctx "sort" a.(0) in
-  Runtime.charge ctx (Array.length values + 1);
-  Array.stable_sort (compare_values ctx) values;
-  list values
+  let x, ks = sorted_positions ctx "sort" a.(0) in
+  if Array.length ks = 0 then list [||] else Arrays.pick ctx x ks 1 (Array.length ks)
 
 let order ctx (a : t array) =
-  let keys = elements ctx "order" a.(0) in
-  Runtime.charge ctx (Array.length keys + 1);
-  let positions = Array.init (Array.length keys) Fun.id in
-  Array.stable_sort (fun i j -> compare_values ctx keys.(i) keys.(j)) positions;
-  list (Array.map (fun i -> Int (i + 1)) positions)
+  let _, ks = sorted_positions ctx "order" a.(0) in
+  if Array.length ks = 0 then list [||] else Arrays.of_ints 1 (Array.length ks) (Array.map succ ks)
 
 let unique ctx (a : t array) =
   let seen = ref Leaf and others = ref [] and out = ref [] in

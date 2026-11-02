@@ -462,6 +462,7 @@ and store_var c i (e : expr) : ctx -> unit =
           let x =
             match ctx.v.(ctx.b + slot) with
             | Array { store = V d; _ } when p >= 1 && p <= Array.length d -> d.(p - 1)
+            | Array { store = I d; _ } when p >= 1 && p <= Array.length d -> Int d.(p - 1)
             | base ->
               ctx.site <- s;
               Arrays.read1 ctx base (Arrays.At p)
@@ -798,6 +799,7 @@ and index_read c e b ixs uses_end =
         let read (ctx : ctx) x k =
           match x with
           | Array { store = V d; _ } when k >= 1 && k <= Array.length d -> d.(k - 1)
+          | Array { store = I d; _ } when k >= 1 && k <= Array.length d -> Int d.(k - 1)
           | Array { store = F d; _ } when k >= 1 && k <= Float.Array.length d -> Float (Float.Array.get d (k - 1))
           | _ ->
             ctx.site <- s;
@@ -821,6 +823,7 @@ and index_read c e b ixs uses_end =
            | Array a, Int k when k >= 1 && k <= a.rows * a.cols ->
              (match a.store with
               | F d -> Float (Float.Array.get d (k - 1))
+              | I d -> Int d.(k - 1)
               | V d -> d.(k - 1))
            | _ ->
              ctx.site <- s;

@@ -131,6 +131,19 @@ C++ has no stable binary interface, so `cpp.wrap` generates a small C layer and 
 
 Calling C is total trust: it ignores every permission and limit, and a wrong signature can crash the program.
 
+## Large data
+
+`frame` and `num` work on whole columns in OCaml. A column of integers or floats is stored without a box, and `group_by`,
+`sort_by`, `join_on`, `where_mask` and `from_csv` are native. As with pandas, the data stays in memory.
+
+Large work uses half of the logical cores, or the number in `KEPLER_CORES`. The results are the same to the last bit, whatever
+that number.
+
+`num.solve`, `num.inverse`, `num.det`, `num.qr` and `num.eigen` go through LAPACK when the machine has it, and `matmul` through
+a fast BLAS such as OpenBLAS. They are found at run time, and without them the same functions work, more slowly. Install
+OpenBLAS for speed.
+`num.backend()` names the library in use, and `KEPLER_BLAS` chooses one, or `none`.
+
 ## Limits
 
 - Arrays have two dimensions at most.

@@ -1,0 +1,74 @@
+-- Linear algebra above the size where a library takes over, when there is one. The answers hold with it or without it.
+use num
+
+defn sample(n)
+  m = zeros(n, n)
+  for i in 1:n
+    for j in 1:n
+      m[i, j] = 1.0 / (i + j) + if i == j 2.0 else 0.0 end
+    end
+  end
+  m
+end
+
+defn slow_matmul(a, b)
+  n = size(a, 1)
+  out = zeros(n, n)
+  for i in 1:n
+    for j in 1:n
+      total = 0.0
+      for k in 1:n
+        total += a[i, k] * b[k, j]
+      end
+      out[i, j] = total
+    end
+  end
+  out
+end
+
+near(a, b) = max(abs(a - b)) < 1e-8
+big = sample(40)
+
+is_matmul() = near(matmul(big, big), slow_matmul(big, big))
+
+defn is_solve()
+  b = [1.0 * k for k in 1:40]
+  x = unwrap(num.solve(big, b))
+  near(matmul(big, reshape(x, 40, 1)), reshape(b, 40, 1))
+end
+
+defn is_solve_singular()
+  r = num.solve(zeros(40, 40) + 1.0, [1.0 for k in 1:40])
+  is_err(r) and r.error.kind == "math"
+end
+
+is_inverse() = near(matmul(big, unwrap(num.inverse(big))), num.eye(40))
+
+defn is_det_is_the_product_of_the_eigenvalues()
+  values = num.eigen(big).values
+  a = reduce((acc, x) -> acc * x, 1.0, values)
+  abs(num.det(big) / a - 1.0) < 1e-8
+end
+
+defn is_qr()
+  f = num.qr(big)
+  near(matmul(f.q, f.r), big) and near(matmul(transpose(f.q), f.q), num.eye(40))
+end
+
+defn is_qr_positive_diagonal()
+  r = num.qr(big).r
+  all([r[k, k] > 0.0 for k in 1:40])
+end
+
+defn is_qr_tall()
+  m = sample(50)[1:50, 1:40]
+  f = num.qr(m)
+  size(f.q, 1) == 50 and size(f.r, 1) == 40 and near(matmul(f.q, f.r), m)
+end
+
+defn is_eigen()
+  e = num.eigen(big)
+  near(matmul(big, e.vectors), matmul(e.vectors, num.diag(e.values)))
+end
+
+is_backend_names_a_library_or_nothing() = is_missing(num.backend()) or is_text(num.backend())

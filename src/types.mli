@@ -25,7 +25,7 @@ and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; h : int; n : int }
 and task = { mutable result : t option; mutable waiters : (unit -> unit) list }
 
 and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool }
-and store = F of floatarray | V of t array
+and store = F of floatarray | V of t array | I of int array
 
 and shape = {
   sid : int;

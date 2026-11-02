@@ -3,7 +3,7 @@
  (libraries kepler unix)
  (foreign_stubs
   (language c)
-  (names stubs ffi calls))
+  (names stubs ffi calls linalg))
  (c_library_flags
   (:include c_flags.sexp)))
 

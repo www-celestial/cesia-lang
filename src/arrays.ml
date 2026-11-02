@@ -4,6 +4,9 @@ type ix = At of int | Slice of int * int | Every | Mask of arr | Key of t
 
 let of_float rows cols d = Array { rows; cols; store = F d; a_owned = true }
 
+let of_ints rows cols d = Array { rows; cols; store = I d; a_owned = true }
+
+(* All floats or all integers take the typed storage. *)
 let of_vals rows cols (d : t array) =
   if Array.length d > 0 && Array.for_all (function Float _ -> true | _ -> false) d then begin
     let n = Array.length d in
@@ -11,6 +14,8 @@ let of_vals rows cols (d : t array) =
     Array.iteri (fun i v -> match v with Float x -> Float.Array.set f i x | _ -> ()) d;
     of_float rows cols f
   end
+  else if Array.length d > 0 && Array.for_all (function Int _ -> true | _ -> false) d then
+    of_ints rows cols (Array.map (function Int i -> i | _ -> 0) d)
   else Array { rows; cols; store = V d; a_owned = true }
 
 let list values = if Array.length values = 0 then of_vals 0 0 values else of_vals 1 (Array.length values) values
@@ -20,11 +25,11 @@ let int_range ctx lo hi =
   if hi >= lo && (span < 0 || span = max_int) then Runtime.fail ctx Overflow Messages.range_too_long;
   let n = if hi < lo then 0 else span + 1 in
   Runtime.pay ctx n;
-  let d = Runtime.alloc_vals ctx n Missing in
+  let d = Runtime.alloc_ints ctx n 0 in
   for i = 0 to n - 1 do
-    d.(i) <- Int (lo + i)
+    d.(i) <- lo + i
   done;
-  Array { rows = 1; cols = n; store = V d; a_owned = true }
+  of_ints 1 n d
 
 let range_bound ctx v =
   match v with
@@ -86,19 +91,29 @@ let positions ctx n ix =
     let got = m.rows * m.cols in
     if got <> n then Runtime.fail ctx Index (Messages.mask_size got n);
     Runtime.pay ctx n;
-    let out = ref [] in
-    for k = n - 1 downto 0 do
+    let out = Array.make n 0 and used = ref 0 in
+    for k = 0 to n - 1 do
       match Value.elt m k with
-      | True -> out := k :: !out
+      | True ->
+        out.(!used) <- k;
+        incr used
       | False | Missing -> ()
       | v -> Runtime.fail ctx Type (Messages.index_type (Value.describe v))
     done;
-    Array.of_list !out
+    Array.sub out 0 !used
 
 let pick ctx a (ks : int array) rows cols =
   Runtime.reserve ctx (Array.length ks);
   match a.store with
-  | F d -> of_float rows cols (Float.Array.init (Array.length ks) (fun i -> Float.Array.get d ks.(i)))
+  | F d ->
+    let out = Float.Array.create (Array.length ks) in
+    Par.ranges (Array.length ks) (fun lo hi ->
+        for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get d ks.(i)) done);
+    of_float rows cols out
+  | I d ->
+    let out = Array.make (Array.length ks) 0 in
+    Par.ranges (Array.length ks) (fun lo hi -> for i = lo to hi - 1 do out.(i) <- d.(ks.(i)) done);
+    of_ints rows cols out
   | V d -> Array { rows; cols; store = V (Array.map (fun k -> Value.share d.(k)) ks); a_owned = true }
 
 let not_array ctx v = Runtime.fail ctx Type (Messages.index_value (Value.describe v))
@@ -145,18 +160,19 @@ let read2 ctx v ix jx =
        pick ctx a ks r c)
   | _ -> not_array ctx v
 
-(* A non-numeric value converts F storage to V; an integer becomes a float. *)
+(* A value of another kind converts typed storage to V. In F storage, an integer becomes a float. *)
 let store_elt ctx s a k x =
   match a.store, x with
   | F d, Float f -> Float.Array.set d k f
   | F d, Int i -> Float.Array.set d k (float_of_int i)
+  | I d, Int i -> d.(k) <- i
   | V d, _ -> d.(k) <- x
-  | F d, _ ->
+  | (F _ | I _), _ ->
     ctx.site <- s;
-    let n = Float.Array.length d in
+    let n = a.rows * a.cols in
     Runtime.pay ctx n;
     Runtime.reserve ctx (5 * n);
-    let vals = Array.init n (fun i -> Float (Float.Array.get d i)) in
+    let vals = Array.init n (Value.elt a) in
     vals.(k) <- x;
     a.store <- V vals
 

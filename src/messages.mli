@@ -123,6 +123,8 @@ val cant_sort : string -> string -> t
 val need_char : string -> t
 val need_byte : string -> t
 val json_value : string -> t
+val column_sizes : int -> int -> t
+val need_groups : string -> t
 val json_at : string -> int -> string
 val json_unexpected : string
 val json_short_escape : string

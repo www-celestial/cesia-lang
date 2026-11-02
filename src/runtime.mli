@@ -74,6 +74,7 @@ val build : ctx -> int -> unit
 
 val alloc_float : ctx -> int -> float -> floatarray
 val alloc_vals : ctx -> int -> t -> t array
+val alloc_ints : ctx -> int -> int -> int array
 
 (** Checks a permission, with the path concerned if any. *)
 val check_perm : ctx -> perm -> string option -> unit

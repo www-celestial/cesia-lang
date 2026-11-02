@@ -1,0 +1,16 @@
+-- Without a library, the same functions give the same answers, more slowly.
+use num
+
+n = 33
+m = zeros(n, n)
+for i in 1:n
+  for j in 1:n
+    m[i, j] = 1.0 / (i + j) + if i == j 2.0 else 0.0 end
+  end
+end
+print(num.backend())
+x = unwrap(num.solve(m, [1.0 for k in 1:n]))
+print(max(abs(matmul(m, reshape(x, n, 1)) - 1.0)) < 1e-8)
+f = num.qr(m)
+print(max(abs(matmul(f.q, f.r) - m)) < 1e-8)
+print(num.det(m) > 0.0)

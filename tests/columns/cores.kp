@@ -1,0 +1,19 @@
+-- Large columns go through several cores. The results don't depend on how many, to the last bit.
+use columns
+
+base = [mod(k * 7919, 10007) for k in 1:10007]
+ks = flatten([base for copy in 1:30])
+n = length(ks)
+xs = ks / 3.0
+print(columns.cores())
+print(sum(xs))
+print(sum((xs + 1.5) * xs - xs / 3.0))
+print(sum(sin(xs)))
+print(sum(transpose(reshape(xs, 3, div(n, 3)))))
+m = matmul(reshape(xs[1:40000], 200, 200), reshape(xs[1:40000], 200, 200))
+print(sum(m))
+o = order(xs)
+print(o[1], o[n], sum(abs(columns.pick(o, xs) - sort(xs))) == 0.0)
+print(sum(abs(order(ks) - o)) == 0)
+print(sum(abs(columns.pick(1:n, ks) - ks)) == 0)
+print(columns.join(ks, 0:10006, false).right[n])

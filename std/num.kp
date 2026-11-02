@@ -1,5 +1,9 @@
 -- Numerical computing, in the spirit of numpy. An array is a list or a matrix of floats, and the operators of the
 -- language already work element by element: a + b, a * 2.0, a > 0.0, matmul(a, b), transpose(a), sum(a), mean(a).
+use lapack
+
+-- The library that does the large computations, or missing if the code of Kepler does them all.
+backend() = lapack.name()
 
 defn linspace(a, b, n)
   if n == 1
@@ -122,6 +126,10 @@ defn _eliminate(m, b)
 end
 
 defn det(m)
+  fast = lapack.det(m)
+  if not is_missing(fast)
+    return fast
+  end
   t = _eliminate(m, zeros(size(m, 1), 1))
   if t.singular
     return 0.0
@@ -150,23 +158,29 @@ end
 
 _singular() = Err({kind: "math", message: "This matrix is singular."})
 
-defn solve(m, b)
-  n = size(m, 1)
-  t = _eliminate(m, reshape(b, n, 1))
-  if t.singular
-    return _singular()
+-- x of a x = b, with a library for a large a. b has as many rows as a.
+defn _solved(m, b)
+  fast = lapack.solve(m, b)
+  if not is_missing(fast)
+    return if is_array(fast) Ok(fast) else _singular() end
   end
-  x = _back(t)
-  Ok([x[k, 1] for k in 1:n])
-end
-
-defn inverse(m)
-  t = _eliminate(m, eye(size(m, 1)))
+  t = _eliminate(m, b)
   if t.singular _singular() else Ok(_back(t)) end
 end
 
+defn solve(m, b)
+  n = size(m, 1)
+  map_ok(x -> reshape(x, 1, n), _solved(m, reshape(b, n, 1)))
+end
+
+inverse(m) = _solved(m, eye(size(m, 1)))
+
 -- Gram-Schmidt, twice for accuracy.
 defn qr(m)
+  fast = lapack.qr(m)
+  if not is_missing(fast)
+    return fast
+  end
   rows = size(m, 1)
   cols = size(m, 2)
   q = zeros(rows, cols)
@@ -192,6 +206,10 @@ end
 
 -- The eigenvalues and eigenvectors of a symmetric matrix, by Jacobi rotations.
 defn eigen(a)
+  fast = lapack.eigen(a)
+  if not is_missing(fast)
+    return fast
+  end
   n = size(a, 1)
   v = eye(n)
   for sweep in 1:60

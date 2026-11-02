@@ -1,0 +1,131 @@
+-- Typed columns: integers without a box, and the native work on columns.
+use columns
+use frame
+use csv
+
+defn fails(f, kind)
+  (wait(spawn(f)) then map_err(it.kind)) == Err(kind)
+end
+
+is_ints_are_typed() = columns.kind([1, 2, 3]) == "int" and columns.kind(1:3) == "int" and columns.kind([k * 2 for k in 1:4]) == "int"
+is_floats_are_typed() = columns.kind([1.0, 2.0]) == "float"
+is_mixed_stays_general() = columns.kind([1, 2.5]) == "value" and columns.kind([1, "a"]) == "value" and columns.kind([]) == "value"
+is_fill_is_typed() = columns.kind(fill(0, 3)) == "int" and equal(fill(7, 2), [7, 7])
+is_a_slice_stays_typed() = columns.kind((1:5)[2:3]) == "int" and equal((1:5)[2:3], [2, 3])
+
+defn is_a_matrix_of_ints()
+  m = reshape(1:6, 2, 3)
+  columns.kind(m) == "int" and m[2, 3] == 6 and equal(m[:, 2], reshape([3, 4], 2, 1)) and transpose(m)[3, 2] == 6 and columns.kind(transpose(m)) == "int"
+end
+
+defn is_write_an_int()
+  xs = [1, 2, 3]
+  xs[2] = 9
+  equal(xs, [1, 9, 3]) and columns.kind(xs) == "int"
+end
+
+defn is_write_a_float_in_ints()
+  xs = [1, 2, 3]
+  xs[2] = 2.5
+  equal(xs, [1, 2.5, 3]) and is_int(xs[1]) and is_float(xs[2])
+end
+
+defn is_write_a_text_in_ints()
+  xs = 1:3
+  xs[3] = "a"
+  xs[1] == 1 and xs[3] == "a"
+end
+
+defn is_a_copy_is_a_value()
+  xs = [1, 2, 3]
+  ys = xs
+  ys[1] = 9
+  xs[1] == 1 and ys[1] == 9
+end
+
+is_equal_across_storages() = equal([1, 2], 1:2) and not equal([1, 2], [1, 3]) and equal([1, 2], [1.0, 2.0]) and equal(reshape(1:4, 2, 2), reshape([1, 2, 3, 4], 2, 2))
+is_show() = "$([1, 2])" == "[1, 2]" and "$(reshape(1:4, 2, 2))" == "[1 3; 2 4]"
+is_in() = 2 in [1, 2] and not (3 in [1, 2]) and 1.0 in [1, 2]
+is_sum_ints() = sum(1:10) == 55 and is_int(sum(1:10))
+is_sum_overflows() = fails(() -> sum([4611686018427387903, 1]), "overflow")
+is_mean_ints() = mean([1, 2, 3]) == 2.0
+is_arithmetic() = equal([1, 2] + [3, 4], [4, 6]) and columns.kind([1, 2] + 1) == "int" and equal([1, 2] * 2.5, [2.5, 5.0])
+is_loop() = reduce((a, x) -> a + x, 0, [x for x in 1:4]) == 10
+is_push_keeps_values() = equal(push(3, [1, 2]), [1, 2, 3]) and equal(concat([1], [2.5]), [1, 2.5]) and equal(reverse(1:3), [3, 2, 1])
+
+is_order_ints() = equal(order([3, -1, 2]), [2, 3, 1])
+is_order_floats() = equal(order([2.5, -1.0, 0.5]), [2, 3, 1])
+is_order_texts() = equal(order(["b", "a", "c"]), [2, 1, 3])
+is_order_numbers() = equal(order([2, 1.5, 3]), [2, 1, 3])
+is_order_is_stable() = equal(order([1, 0, 1, 0, 1]), [2, 4, 1, 3, 5])
+is_order_empty() = equal(order([]), []) and equal(sort([]), [])
+is_order_large() = equal(sort([mod(k * 7919, 1009) for k in 1:1009]), 0:1008)
+is_sort_keeps_the_kind() = columns.kind(sort([3, 1, 2])) == "int" and columns.kind(sort([3.0, 1.0])) == "float"
+is_sort_panics_on_mixed() = fails(() -> sort([1, "a"]), "type")
+
+is_pick() = equal(columns.pick([3, 1], [10, 20, 30]), [30, 10]) and columns.kind(columns.pick([1], [1, 2])) == "int"
+is_pick_floats_and_texts() = equal(columns.pick([2], [1.5, 2.5]), [2.5]) and equal(columns.pick([2, 1], ["a", "b"]), ["b", "a"])
+is_pick_zero_is_missing() = equal(columns.pick([0, 1], [5, 6]), [missing, 5]) and equal(columns.pick([0], [1.5]), [missing])
+is_pick_outside() = fails(() -> columns.pick([4], [1, 2]), "index")
+is_positions() = equal(columns.positions([true, false, true]), [1, 3]) and equal(columns.positions([1, 2] > 5), [])
+
+defn is_groups()
+  g = columns.groups([["b", "a", "b", "c"]])
+  equal(g.ids, [1, 2, 1, 3]) and g.count == 3 and equal(g.firsts, [1, 2, 4])
+end
+
+is_groups_of_ints() = equal(columns.groups([[5, 5, 2]]).ids, [1, 1, 2])
+is_groups_of_floats() = columns.groups([[0.5, 2.0, 0.5]]).count == 2
+is_groups_of_numbers() = columns.groups([[1, 1.0, 2]]).count == 2
+is_groups_of_many() = columns.groups([[mod(k, 5000) for k in 1:20000]]).count == 5000
+is_groups_of_two_columns() = equal(columns.groups([[1, 1, 2, 1], ["a", "b", "a", "a"]]).ids, [1, 2, 3, 1])
+is_groups_pair_is_not_text() = columns.groups([["a\tb", "a"], ["c", "b\tc"]]).count == 2
+is_groups_empty() = columns.groups([[]]).count == 0
+is_groups_refuse_missing() = fails(() -> columns.groups([[1, missing]]), "type")
+is_groups_refuse_nan() = fails(() -> columns.groups([[1.0, 0.0 / 0.0]]), "type")
+
+defn is_split()
+  g = columns.groups([["a", "b", "a"]])
+  equal(columns.split(g, [1, 2, 3]), [[1, 3], [2]])
+end
+
+defn is_split_drops_missing()
+  g = columns.groups([["a", "a"]])
+  equal(columns.split(g, [missing, 2.5]), [[2.5]]) and columns.kind(columns.split(g, [missing, 2.5])[1]) == "float"
+end
+
+defn is_join()
+  m = columns.join([1, 2, 1], [1, 1, 3], false)
+  equal(m.left, [1, 1, 3, 3]) and equal(m.right, [1, 2, 1, 2])
+end
+
+defn is_join_left()
+  m = columns.join([9, 3], [3], true)
+  equal(m.left, [1, 2]) and equal(m.right, [0, 1])
+end
+
+is_join_numbers() = equal(columns.join([1, 2], [1.0, 2.5], false).right, [1])
+is_join_texts() = equal(columns.join(["a", "b"], ["b"], false).left, [2])
+is_join_refuses_missing() = fails(() -> columns.join([missing], [1], false), "type")
+
+defn is_csv_columns_are_typed()
+  df = frame.from_csv("i,f,t,g\n1,1.5,a,1\n2,2.5,b,\n")
+  columns.kind(frame.column("i", df)) == "int" and columns.kind(frame.column("f", df)) == "float" and equal(frame.column("t", df), ["a", "b"]) and is_missing(frame.column("g", df)[2])
+end
+
+is_csv_parse() = equal(csv.parse("a,\"b,c\"\r\n\"d\"\"e\",f"), [["a", "b,c"], ["d\"e", "f"]])
+is_csv_parse_empty() = equal(csv.parse(""), []) and equal(csv.parse("\n"), [[""]])
+
+defn is_group_by()
+  df = frame.of({"k": ["a", "b", "a"], "v": [1.0, 2.0, 4.0]})
+  g = frame.group_by(["k"], [frame.agg("total", "v", sum), frame.agg("n", "v", length)], df)
+  equal(frame.column("k", g), ["a", "b"]) and equal(frame.column("total", g), [5.0, 2.0]) and equal(frame.column("n", g), [2, 1])
+end
+
+is_where_mask() = equal(frame.column("v", frame.where_mask([1, 2, 3] > 1, frame.of({"v": [1, 2, 3]}))), [2, 3])
+is_kinds() = equal(frame.kinds(frame.of({"a": [1], "b": [1.5], "c": ["x"]})), ["int", "float", "value"])
+
+is_split_refuses_forged_groups() = fails(() -> columns.split({ids: [5], count: 1, firsts: [1]}, [1]), "type")
+is_split_refuses_a_negative_count() = fails(() -> columns.split({ids: [], count: -1, firsts: []}, []), "type")
+is_groups_refuse_arrays_as_keys() = fails(() -> columns.groups([[1, 2], [[1], [2]]]), "type")
+is_groups_take_missing_with_two_columns() = columns.groups([[1, 1], [missing, missing]]).count == 1
