@@ -1,9 +1,0 @@
-use sys
-
-defn nap(seconds, label)
-  sys.sleep(seconds)
-  print(label)
-end
-start = sys.now()
-[spawn(() -> nap(0.03, "slow")), spawn(() -> nap(0.01, "fast"))] then map(wait)
-print(sys.now() - start < 0.2)

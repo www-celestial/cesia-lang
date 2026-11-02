@@ -1,0 +1,5 @@
+use sys
+Print(sys.Run("sh", args = ["-c", "echo out; echo err >&2; exit 3"]))
+Print(sys.Run("sh", args = ["-c", "cat"], input = "typed"))
+Print(sys.Run("sh", args = ["-c", "echo ""$1""", "--", "a; rm -rf b"]) then MapOk(it.Out))
+Print(sys.Run("sh", input = "x", args = ["-c", "cat"]) then MapOk(it.Out))

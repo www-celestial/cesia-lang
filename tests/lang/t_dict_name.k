@@ -1,0 +1,5 @@
+-- A dictionary literal doesn't depend on the names of the file.
+dict = 5
+d = {"a": 1}
+Print(Get("a", d))
+Print(dict)

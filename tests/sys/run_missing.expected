@@ -1,2 +1,2 @@
-Err(error = "io")
+Err(Error = "io")
 exit 0

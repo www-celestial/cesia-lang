@@ -1,5 +1,0 @@
-x = 1
-y = x + 1
-if y > 1
-  print(y)
-end

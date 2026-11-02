@@ -20,11 +20,12 @@ type t =
   | Native of native
   | Handle of { kind : string; id : int; task : task option }  (** a reference to something outside the values *)
   | Dict of dict
+  | Bound of { g : t; self : t }  (** a method and its object, on their way to the call: never visible to the program *)
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; h : int; n : int }
 and task = { mutable result : t option; mutable waiters : (unit -> unit) list }
 
-(** A list that push made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its
+(** A list that Append made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its
     cells through [rows] and [cols], and call [Value.trim] before reading a store as a whole. [a_tip]: no push went on from
     this array yet, so the free cells are still free. *)
 and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool; mutable a_tip : bool }
@@ -34,6 +35,7 @@ and shape = {
   sid : int;
   names : string array;
   sname : string option;
+  sm : int;  (** the module that declares this struct, whose methods it has; -1 for the others *)
   next : (string, shape) Hashtbl.t;
 }
 
@@ -120,6 +122,8 @@ and modul = {
   mutable cells : t array;
   mutable mnames : (string * int) list;
   mutable stable : bool array;  (** cell never reassigned: function or native *)
+  host : int;  (** the first module of the package whose private names this one sees *)
+  package : int array;  (** the modules of its files, in the order of their names *)
 }
 
 and stop_mode =
@@ -176,5 +180,7 @@ and world = {
   mutable compile_ver : ctx -> version -> unit;  (** set by [Compile], to break the cycle with [Infer] *)
   charge : ctx -> int -> unit;  (** [Runtime.charge], for [Value], which doesn't know [Runtime] *)
   loaded : (string, int) Hashtbl.t;  (** path to module, -1 while loading *)
-  mutable entry_dir : string;  (** a relative [use] can't leave it without --allow read *)
+  methods : (int * string * string, t * bool) Hashtbl.t;
+      (** module, struct and method name to the function, and whether it is static *)
+  mutable root : string;  (** where every [use] of the project starts *)
 }

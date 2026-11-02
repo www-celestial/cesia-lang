@@ -1,0 +1,31 @@
+-- Requests that a front proxy could read otherwise are refused, and HEAD has no body.
+use http
+use net
+use sys
+
+crlf = "\r\n"
+Spawn(() -> http.Serve(r -> {Status: 200, Body: "hello"}, port = 18206))
+sys.Sleep(0.05)
+
+defn exchange(raw)
+  c = net.Connect("127.0.0.1", 18206)?
+  net.Write(c, raw)?
+  got = net.Read(c)?
+  net.Close(c)
+  Ok(got)
+end
+
+first(r) = Split(crlf, Unwrap(r))[1]
+h(lines) = "$(Join(crlf, lines))$crlf$crlf"
+
+Print(first(exchange(h(["GET / HTTP/1.1", "Content-Length : 2"]))))
+Print(first(exchange(h(["GET / HTTP/1.1", "Transfer-Encoding : chunked"]))))
+Print(first(exchange(h(["GET / HTTP/1.1", "X: y\nContent-Length: 2"]))))
+Print(first(exchange(h(["GET / HTTP/1.1", " Content-Length: 2"]))))
+Print(first(exchange(h(["GET / HTTP/1.9"]))))
+Print(first(exchange(h(["GET / HTTP/1.1", "Content-Length: +2"]))))
+Print(first(exchange(h(["GET / HTTP/1.1"]))))
+head = Unwrap(exchange(h(["HEAD / HTTP/1.1", "Connection: close"])))
+Print(EndsWith(crlf, head), Contains("hello", head), Contains("content-length: 5", head))
+Print(http.Get("http://127.0.0.1:18206/a\r\nX: 1") then MapErr(it.Message))
+Print(http.Request("GET X", "http://127.0.0.1:18206/") then MapErr(it.Message))

@@ -1,2 +1,0 @@
-x = 0.0 / 0.0
-print(put(x, 2, dict()))

@@ -1,0 +1,3 @@
+test_names/names.test.k:3: isFailing returned false
+1 passed, 1 failed
+exit 1

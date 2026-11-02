@@ -93,11 +93,11 @@ let start cmd argv child_in child_out child_err =
 
 let run poll ctx (a : t array) =
   let w = ctx.w in
-  let cmd = Native.text_arg ctx "run" a.(0) in
+  let cmd = Native.text_arg ctx "Run" a.(0) in
   Runtime.check_perm ctx Exec (Some cmd);
   let arg k = if Array.length a > k then a.(k) else Undef in
-  let args = text_list ctx "run" (arg 1) in
-  let input = match arg 2 with Undef -> "" | v -> Native.text_arg ctx "run" v in
+  let args = text_list ctx "Run" (arg 1) in
+  let input = match arg 2 with Undef -> "" | v -> Native.text_arg ctx "Run" v in
   let failed e = Fs.failed ctx "run" cmd e in
   match pipes 3 with
   | exception Unix.Unix_error (e, _, _) -> failed e
@@ -117,7 +117,7 @@ let run poll ctx (a : t array) =
        let stdin_pipe = open_pipe in_write and stdout_pipe = open_pipe out_read and stderr_pipe = open_pipe err_read in
        let out, err = exchange ctx poll stdin_pipe stdout_pipe stderr_pipe input in
        let code = exit_code ctx poll pid 0.0005 in
-       let shape = Value.shape_of w [| "code"; "out"; "err" |] in
+       let shape = Value.shape_of w [| "Code"; "Out"; "Err" |] in
        Value.ok w (Struct { shape; fields = [| Int code; Text out; Text err |]; r_owned = true }))
   | _ -> assert false
 
@@ -126,9 +126,9 @@ type process = { pid : int; input : pipe; output : pipe }
 
 let start_process poll procs ctx (a : t array) : t =
   let w = ctx.w in
-  let cmd = Native.text_arg ctx "start" a.(0) in
+  let cmd = Native.text_arg ctx "Start" a.(0) in
   Runtime.check_perm ctx Exec (Some cmd);
-  let args = text_list ctx "start" (if Array.length a > 1 then a.(1) else Undef) in
+  let args = text_list ctx "Start" (if Array.length a > 1 then a.(1) else Undef) in
   let failed e = Fs.failed ctx "run" cmd e in
   match pipes 2 with
   | exception Unix.Unix_error (e, _, _) -> failed e
@@ -159,7 +159,7 @@ let process_arg procs ctx name (v : t) =
 
 (* What the process wrote, as it comes. An empty text means that it closed its output. *)
 let rec read_output poll procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "read_output" a.(0) in
+  let _, p = process_arg procs ctx "ReadOutput" a.(0) in
   if not p.output.live then Value.ok ctx.w (Text "")
   else begin
     let chunk = Bytes.create chunk_size in
@@ -174,8 +174,8 @@ let rec read_output poll procs ctx (a : t array) : t =
   end
 
 let write_input poll procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "write_input" a.(0) in
-  let s = Native.text_arg ctx "write_input" a.(1) in
+  let _, p = process_arg procs ctx "WriteInput" a.(0) in
+  let s = Native.text_arg ctx "WriteInput" a.(1) in
   let n = String.length s in
   let rec go at =
     if not p.input.live then Fs.io_error ctx.w Messages.input_closed.text
@@ -191,13 +191,13 @@ let write_input poll procs ctx (a : t array) : t =
   go 0
 
 let close_input poll procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "close_input" a.(0) in
+  let _, p = process_arg procs ctx "CloseInput" a.(0) in
   finish poll p.input;
   Missing
 
 (* Waits for the end, closes the pipes and gives the exit code. *)
 let wait_exit poll procs ctx (a : t array) : t =
-  let id, p = process_arg procs ctx "wait_exit" a.(0) in
+  let id, p = process_arg procs ctx "WaitExit" a.(0) in
   let code = exit_code ctx poll p.pid 0.0005 in
   finish poll p.input;
   finish poll p.output;
@@ -205,16 +205,16 @@ let wait_exit poll procs ctx (a : t array) : t =
   Int code
 
 let stop_process procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "stop" a.(0) in
+  let _, p = process_arg procs ctx "Stop" a.(0) in
   (try Unix.kill p.pid Sys.sigterm with Unix.Unix_error _ -> ());
   Missing
 
 let natives poll =
   let procs = Hashtbl.create 8 in
-  [ "run", Native.nat ~params:[| "cmd"; "args"; "input" |] "run" 1 3 (run poll);
-    "start", Native.nat ~params:[| "cmd"; "args" |] "start" 1 2 (start_process poll procs);
-    "read_output", Native.nat "read_output" 1 1 (read_output poll procs);
-    "write_input", Native.nat "write_input" 2 2 (write_input poll procs);
-    "close_input", Native.nat "close_input" 1 1 (close_input poll procs);
-    "wait_exit", Native.nat "wait_exit" 1 1 (wait_exit poll procs);
-    "stop", Native.nat "stop" 1 1 (stop_process procs) ]
+  [ "Run", Native.nat ~params:[| "cmd"; "args"; "input" |] "Run" 1 3 (run poll);
+    "Start", Native.nat ~params:[| "cmd"; "args" |] "Start" 1 2 (start_process poll procs);
+    "ReadOutput", Native.nat "ReadOutput" 1 1 (read_output poll procs);
+    "WriteInput", Native.nat "WriteInput" 2 2 (write_input poll procs);
+    "CloseInput", Native.nat "CloseInput" 1 1 (close_input poll procs);
+    "WaitExit", Native.nat "WaitExit" 1 1 (wait_exit poll procs);
+    "Stop", Native.nat "Stop" 1 1 (stop_process procs) ]

@@ -1,0 +1,103 @@
+-- push keeps free cells behind a list, so a loop of pushes stays linear. No list may ever see them, or another list's cells.
+
+-- Two lists alike, whatever their cells: == works cell by cell.
+same(a, b) = "$a" == "$b"
+
+defn pushed(n, first)
+  xs = first
+  for k in 1:n
+    xs = Append(k * 2, xs)
+  end
+  xs
+end
+
+isGrows() = same(pushed(3, [0]), [0, 2, 4, 6])
+isFromEmpty() = same(pushed(2, []), [2, 4])
+isLength() = Len(pushed(20, [])) == 20
+
+-- Two lists pushed from one list don't see each other.
+defn isOlderListUnchanged()
+  xs = pushed(20, [])
+  y = Append(99, xs)
+  z = Append(100, xs)
+  Len(xs) == 20 and Len(y) == 21 and y[21] == 99 and z[21] == 100
+end
+
+defn isChainFromTheMiddle()
+  a = pushed(9, [])
+  b = Append(1, a)
+  c = Append(2, b)
+  d = Append(3, b)
+  c[11] == 2 and d[11] == 3 and b[10] == 1 and Len(a) == 9
+end
+
+-- A write copies: neither list sees the write of the other.
+defn isWriteAfterPush()
+  xs = pushed(20, [])
+  ys = Append(1, xs)
+  ys[1] = 77
+  xs[2] = 88
+  xs[1] == 2 and ys[1] == 77 and ys[2] == 4 and xs[2] == 88
+end
+
+defn isWriteThenPush()
+  xs = pushed(20, [])
+  xs[1] = 5
+  ys = Append(6, xs)
+  ys[1] == 5 and ys[21] == 6 and Len(ys) == 21
+end
+
+defn floats(n)
+  xs = [0.5]
+  for k in 1:n
+    xs = Append(k * 1.5, xs)
+  end
+  xs
+end
+
+defn texts(n)
+  xs = ["a"]
+  for k in 1:n
+    xs = Append("b", xs)
+  end
+  xs
+end
+
+isFloats() = same(floats(2), [0.5, 1.5, 3.0])
+isTexts() = same(texts(2), ["a", "b", "b"])
+isAFloatInInts() = same(Append(1.5, pushed(2, [])), [2, 4, 1.5])
+isATextInFloats() = same(Append("x", floats(1)), [0.5, 1.5, "x"])
+isAListInAList() = same(Append([1], pushed(1, [])), [2, [1]])
+
+defn isInnerListUnchanged()
+  inner = [1, 2]
+  outer = Append(inner, pushed(9, []))
+  inner[1] = 5
+  same(outer[10], [1, 2])
+end
+
+-- Everything that reads a whole list must stop at its last cell.
+isSumInts() = Sum(pushed(9, [])) == 90
+isSumFloats() = Abs(Sum(floats(9)) - 68.0) < 0.001
+isAdd() = same(floats(9) + floats(9), floats(9) * 2.0)
+isAddLength() = Len(floats(9) + 1.0) == 10
+-- A list with free cells against one without, either way round.
+isAddOtherRoom() = same(floats(1) + [1.0, 2.0], [1.5, 3.5])
+isAddOtherRoomLeft() = same([1.0, 2.0] + floats(1), [1.5, 3.5])
+isTimesOtherRoom() = Abs(Sum(floats(9) * floats(9)[1:10]) - Sum(floats(9)[1:10] * floats(9))) < 0.001
+isMatmulList() = Abs(Sum(Matmul(floats(2), Transpose(floats(2))))) > 0.0
+isMap() = Len(Sqrt(floats(9))) == 10
+isEqual() = All(pushed(9, []) == pushed(9, []))
+isPrint() = "$(pushed(2, []))" == "[2, 4]"
+isSort() = Sort(pushed(9, []))[9] == 18
+isReverse() = Reverse(pushed(9, []))[1] == 18
+isConcat() = Len(Concat(pushed(9, []), pushed(9, []))) == 18
+isMapFunction() = Len(Map(x -> x, pushed(9, []))) == 9
+isFor() = Reduce((a, x) -> a + 1, 0, pushed(9, [])) == 9
+isTranspose() = Len(Transpose(floats(9))) == 10
+isTransposeTexts() = Len(Transpose(texts(9))) == 10
+isTransposeInts() = Len(Transpose(pushed(9, []))) == 9
+isReshape() = same(Size(Reshape(floats(9), 2, 5)), [2, 5])
+isSlice() = same(pushed(9, [])[2:3], [4, 6])
+isIn() = not (0 in pushed(9, []))
+isTextList() = Join(",", texts(1)) == "a,b"

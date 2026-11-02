@@ -1,0 +1,381 @@
+-- Methods on structs: the object of an instance method is written apart, and a dot calls both kinds.
+use date
+use sys
+
+-- Before its struct, as a function can come before its call.
+(l Later) Value() = l.X
+
+struct Later { X }
+struct Rect { X, Y, Width, Height }
+struct Look { Width, Name = "look" }
+struct Circle { Radius }
+struct piece { size }
+struct Node { Value, Rest = missing }
+
+defn Rect.Square(side)
+  Rect(0, 0, side, side)
+end
+
+Rect.Unit() = Rect.Square(1)
+Rect.AreaOf(w, h) = w * h
+Rect.hidden() = Rect.Square(7)
+
+defn Rect.Count(n, acc = 0)
+  if n == 0
+    return acc
+  end
+  Rect.Count(n - 1, acc + 1)
+end
+
+-- The area of a rectangle.
+--
+--   Rect(0, 0, 2, 3).Area() --> 6
+--   Rect.Square(3).Area() --> 9
+--   r = Rect.Unit()
+--   r.Area() --> 1
+--   Rect(0, 0, "a", 3).Area() --> error
+defn (r Rect) Area()
+  r.Width * r.Height
+end
+
+-- Is it flat?
+--
+--   Rect.Square(0).IsEmpty() --> true
+(r Rect) IsEmpty() = r.Width == 0 or r.Height == 0
+
+(r Rect) Moved(dx, dy) = Rect(r.X + dx, r.Y + dy, r.Width, r.Height)
+(r Rect) Scaled(by = 2) = Rect(r.X, r.Y, r.Width * by, r.Height * by)
+(r Rect) center() = r.X + r.Width / 2
+(r Rect) Center() = r.center()
+(r Rect) Plus(a, b, d) = r.X + a + b + d
+(r Rect) Five(a, b, d, e) = r.X + a + b + d + e
+
+defn (r Rect) Grown()
+  r.Width = r.Width + 1
+  r
+end
+
+defn (r Rect) Same()
+  r
+end
+
+defn (r Rect) Filled(xs)
+  xs[1] = r.Width
+  xs
+end
+
+defn (r Rect) Read(xs)
+  xs[1] + r.Width
+end
+
+defn (r Rect) Twice(s)
+  s.Width = s.Width + 2
+  r.Width = r.Width + s.Width - 2
+  r
+end
+
+defn (r Rect) ReadsItself(s)
+  s.Width = 3
+  r.Width
+end
+
+(r Rect) Float() = r.Width * 1.5
+(r Rect) Fails() = r.Width + "a"
+(c Circle) Area() = 3 * c.Radius
+(l Look) Measure() = l.Width("M", "code")
+(p piece) Doubled() = 2 * p.size
+(n Node) Length() = if IsMissing(n.Rest) 1 else 1 + n.Rest.Length() end
+
+hi(x) = x + 1
+Hi(x) = x + 2
+measure(text, font) = Len(text) + Len(font)
+
+isInstanceMethod() = Rect(0, 0, 2, 3).Area() == 6
+isMethodBeforeItsStruct() = Later(2).Value() == 2
+isInstanceShortForm() = Rect.Square(0).IsEmpty() and not Rect.Square(1).IsEmpty()
+isStaticMethod() = Rect.Square(3).Width == 3
+isStaticShortForm() = Rect.Unit().Height == 1
+isStaticArguments() = Rect.AreaOf(2, 3) == 6
+isStaticDefaults() = Rect.Count(5) == 5 and Rect.Count(2, acc = 3) == 5
+isStaticPrivate() = Rect.hidden().Width == 7
+isStaticTailCall() = Rect.Count(200000) == 200000
+isChain() = Rect.Square(10).Moved(1, 2).Area() == 100 and Rect.Square(10).Moved(1, 2).X == 1
+isPrivateMethod() = Rect.Square(4).center() == 2 and Rect.Square(4).Center() == 2
+isPrivateStruct() = piece(4).Doubled() == 8
+isMethodCallsMethod() = Node(1, Node(2, Node(3))).Length() == 3
+isOneArgument() = Rect.Unit().Scaled(3).Width == 3
+isDefaultArgument() = Rect.Unit().Scaled().Width == 2
+isNamedArgument() = Rect.Unit().Scaled(by = 5).Width == 5 and Rect.Unit().Moved(dy = 1, dx = 2).X == 2
+isThreeArguments() = Rect.Unit().Plus(1, 2, 3) == 6
+isFourArguments() = Rect.Unit().Five(1, 2, 3, 4) == 10
+isFloatMethod() = Rect.Square(2).Float() == 3.0
+isMethodValueInArithmetic() = 1 + Rect.Square(2).Area() * 3 == 13
+isStaticInsideASum() = 2 * Rect.Square(2).Area() - Rect.Square(1).Area() == 7
+isStaticOppositeAndPower() = -Rect.Square(2).Area() == -4 and Rect.Square(2).Area() ^ 2 == 16
+isStaticInAComparison() = Rect.Square(2).Area() > Rect.Unit().Area()
+isStaticInAnIndex() = [5, 6, 7][Rect.AreaOf(1, 2)] == 6
+isStaticInARange() = Equal(Rect.AreaOf(1, 2):Rect.AreaOf(2, 2), [2, 3, 4])
+isStaticInAText() = "$(Rect.Square(2).Area())" == "4"
+isMethodInAText() = "$(Rect.Unit().Area()) and $(Rect.Square(3).Area())" == "1 and 9"
+isStaticInARecord() = {A: Rect.Unit().Width}.A == 1
+
+defn isReceiverIsACopy()
+  r = Rect(0, 0, 1, 1)
+  s = r.Grown()
+  r.Width == 1 and s.Width == 2
+end
+
+defn isReceiverReturnedIsACopy()
+  r = Rect(0, 0, 1, 1)
+  s = r.Same()
+  s.Width = 9
+  r.Width == 1 and s.Width == 9
+end
+
+defn isReceiverInALoop()
+  r = Rect(0, 0, 1, 1)
+  for i in 1:3
+    r = r.Grown()
+  end
+  r.Width == 4
+end
+
+defn isReceiverThenWrite()
+  r = Rect(0, 0, 1, 1)
+  a = r.Area()
+  r.Width = 5
+  b = r.Area()
+  a == 1 and b == 5
+end
+
+defn isReassignFromItself()
+  r = Rect(0, 0, 1, 1)
+  s = r
+  r = r.Grown()
+  r.Width == 2 and s.Width == 1
+end
+
+defn isArgumentIsACopy()
+  xs = [1, 2]
+  ys = Rect.Square(9).Filled(xs)
+  xs[1] == 1 and ys[1] == 9
+end
+
+defn isArgumentGivenBack()
+  xs = [1, 2]
+  xs = Rect.Square(9).Filled(xs)
+  xs[1] == 9
+end
+
+defn isLentArgumentStaysOwned()
+  xs = [1, 2]
+  r = Rect.Square(1)
+  a = r.Read(xs)
+  xs[1] = 5
+  a == 2 and r.Read(xs) == 6
+end
+
+defn isWriteAmongTheArguments()
+  r = Rect(0, 0, 1, 1)
+  v = r.Scaled(if true
+    r.Width = 5
+    2
+  end)
+  v.Width == 2 and r.Width == 5
+end
+
+defn isObjectGivenAsArgument()
+  r = Rect.Square(1)
+  r = r.Twice(r)
+  r.Width == 2 and r.Height == 1
+end
+
+defn isObjectReadWhileItsArgumentIsWritten()
+  r = Rect.Square(1)
+  r = r.ReadsItself(r)
+  r == 1
+end
+
+defn (r Rect) Slept()
+  sys.Sleep(0)
+  r.Width
+end
+
+-- A module variable is within reach of the file, while a fiber sleeps in a method on it.
+current = Rect.Square(1)
+readCurrent() = current.Slept()
+task = Spawn(readCurrent)
+sys.Sleep(0)
+current.Width = 5
+seen = Wait(task)
+
+isObjectOfAModuleVariableIsACopy() = seen == Ok(1) and current.Width == 5
+
+isFieldBeforeMethods() = {Area: () -> 41}.Area() == 41
+isFieldFunctionArguments() = Look((a, b) -> Len(a) + Len(b)).Width("M", "code") == 5
+isFieldFunctionFromAMethod() = Look(measure).Measure() == 5
+isFieldFunctionNoArgument() = {F: () -> 1}.F() == 1
+isFieldFunctionFourArguments() = {F: (a, b, c, d) -> a + b + c + d}.F(1, 2, 3, 4) == 10
+isFieldFunctionNamed() = {F: (a, b) -> a - b}.F(b = 1, a = 3) == 2
+
+defn isSiteSeesManyStructs()
+  items = [Rect.Square(2), Circle(2), {Area: () -> 1}, Rect.Unit()]
+  Equal(Map(it.Area(), items), [4, 6, 1, 1])
+end
+
+struct S1 { V }
+struct S2 { V }
+struct S3 { V }
+struct S4 { V }
+struct S5 { V }
+struct S6 { V }
+struct S7 { V }
+struct S8 { V }
+struct S9 { V }
+struct S10 { V }
+struct S11 { V }
+(s S1) Id() = 1
+(s S2) Id() = 2
+(s S3) Id() = 3
+(s S4) Id() = 4
+(s S5) Id() = 5
+(s S6) Id() = 6
+(s S7) Id() = 7
+(s S8) Id() = 8
+(s S9) Id() = 9
+(s S10) Id() = 10
+(s S11) Id() = 11
+
+defn isSitePastItsMemory()
+  xs = [S1(0), S2(0), S3(0), S4(0), S5(0), S6(0), S7(0), S8(0), S9(0), S10(0), S11(0)]
+  total = 0
+  for round in 1:3
+    total = total + Sum(Map(it.Id(), xs))
+  end
+  total == 198
+end
+
+defn isSiteSeesAFieldThenAMethod()
+  total = 0
+  for x in [{Area: () -> 1}, Rect.Square(2), {Area: () -> 2}, Rect.Square(3)]
+    total = total + x.Area()
+  end
+  total == 16
+end
+
+defn isLowerBoundIsAVariable()
+  lo = 1
+  Equal(lo:hi(2), [1, 2, 3])
+end
+
+defn isLowerBoundThenPublicFunction()
+  lo = 1
+  Equal(lo:Hi(1), [1, 2, 3])
+end
+
+defn isUpperBoundIsASum()
+  lo = 1
+  Equal(lo:hi(1) + 1, [1, 2, 3]) and Equal(lo:hi(1) * 1, [1, 2])
+end
+
+defn isSliceToAFunction()
+  xs = [1, 2, 3, 4]
+  i = 2
+  Equal(xs[i:Len(xs)], [2, 3, 4]) and Equal(xs[1:hi(1)], [1, 2]) and Equal(xs[i:i + 1], [2, 3])
+end
+
+defn isRangeOfAField()
+  r = {Lo: 1}
+  Equal(r.Lo:hi(2), [1, 2, 3]) and Equal(r.Lo:Hi(1) + 1, [1, 2, 3, 4])
+end
+
+isRangeLoop() = Sum([i for i in 1:Len([1, 2, 3])]) == 6
+isRangeInAnIndex() = Equal([1, 2, 3][1:Len([1, 2])], [1, 2])
+isRangeLiteral() = Text([1:3]) == "[[1, 2, 3]]"
+
+isThen() = (Rect.Square(2) then it.Area()) == 4
+isThenChain() = (Rect.Square(2) then it.Moved(1, 1) then it.X) == 1
+isThenCallAfterIt() = (Rect.Square(2) then it.Moved(1, 1).Area()) == 4
+isThenMethodArgument() = (Rect.Unit() then it.Plus(1, 2, 3)) == 6
+isThenStatic() = (3 then Rect.Square()).Width == 3
+isItInAStaticCall() = Equal(Map(Rect.Square(it).Area(), [1, 2]), [1, 4])
+isItAsAnObject() = Equal(Map(it.Area(), [Rect.Unit(), Rect.Square(2)]), [1, 4])
+isFilterOnAMethod() = Len(Filter(it.IsEmpty(), [Rect.Unit(), Rect.Square(0)])) == 1
+
+isCapturedInAFunction() = (() -> Rect.Unit().Area())() == 1
+
+defn isClosureOverAnObject()
+  r = Rect.Square(2)
+  f = () -> r.Area()
+  f() == 4
+end
+
+isInAFiber() = Wait(Spawn(() -> Rect.Square(2).Area())) == Ok(4)
+
+defn isStaticNamedLikeAFunction()
+  Rect.Square(1).Width == 1
+end
+
+defn isLocalNamedLikeAStaticIsFine()
+  Square = 5
+  Rect.Square(Square).Width == 5
+end
+
+isShownIsStillAStruct() = Text(Rect.Unit()) == "Rect(X = 0, Y = 0, Width = 1, Height = 1)"
+isEqualIsStillByValue() = Rect.Unit() == Rect(0, 0, 1, 1)
+isPatternIsStillAStruct() = match Rect.Unit()
+  Rect(_, _, w, _) -> w == 1
+end
+
+isDateStaysAStruct() = date.Date(2026, 1, 1).Year == 2026
+
+failure(f) = match Wait(Spawn(f))
+  Ok(v) -> v
+  Err(e) -> e
+end
+
+isRecordHasNoMethods() = failure(() -> {X: 1}.Area()).Message == "This struct has no field ""Area""."
+isRecordKeepsItsKind() = failure(() -> {X: 1}.Area()).Kind == "field"
+isTextHasNoMethods() = failure(() -> "a".Area()).Kind == "type"
+isArrayHasNoMethods() = failure(() -> [Rect.Unit()].Area()).Kind == "field"
+isUnknownMethod() = failure(() -> Rect.Unit().Nope()).Message == "Rect has no field or method ""Nope""."
+isStaticOnAValue() = failure(() -> Rect.Unit().AreaOf(2, 3)).Kind == "field"
+isMethodNotCalled() = failure(() -> Rect.Unit().Area).Kind == "field"
+isTooManyArguments() = failure(() -> Rect.Unit().Area(1)).Kind == "type"
+isFieldIsNoFunction() = failure(() -> Rect.Unit().Width()).Kind == "type"
+
+isDocOfAMethod() = StartsWith("(r Rect) Area()", Doc("Rect.Area")) and Contains("The area of a rectangle", Doc("Rect.Area"))
+isDocOfAShortForm() = StartsWith("(r Rect) IsEmpty()", Doc("Rect.IsEmpty")) and Contains("Is it flat", Doc("Rect.IsEmpty"))
+isDocHidesAPrivateMethod() = IsMissing(Doc("Rect.center"))
+isDocOfAStatic() = StartsWith("Rect.Square(side)", Doc("Rect.Square"))
+isDocOfNoMethod() = IsMissing(Doc("Rect.Nope"))
+isDocOfAStaticValue() = StartsWith("Rect.Square(side)", Doc(Rect.Square))
+
+-- The object is written apart and is the first parameter of the function underneath.
+defn (r Rect) WithDefault(a, b = 2)
+  r.Width + a + b
+end
+
+isObjectThenDefault() = Rect.Square(1).WithDefault(1) == 4 and Rect.Square(1).WithDefault(1, b = 0) == 2
+
+-- A dot reaches a static method as a value too: there is nothing left to tell apart from a range.
+isStaticIsAValue() = Equal(Map(Rect.Square, [1, 2]).Width, [1, 2])
+isStaticPipedWithoutACall() = (3 then Rect.Square).Width == 3
+
+-- A variable named like a struct is a variable: its fields, and a range that ends in a call.
+defn fieldOfAVariable(piece)
+  piece.size
+end
+
+defn rangeFromAVariable(piece, xs)
+  piece:Len(xs)
+end
+
+isVariableNamedLikeAStructHasItsFields() = fieldOfAVariable(piece(3)) == 3
+isVariableNamedLikeAStructStartsARange() = Equal(rangeFromAVariable(1, [1, 2]), [1, 2])
+
+-- defn before a parenthesis stays a function with no name.
+isAnonymousFunctionOneParameter() = (defn (x) x + 1 end)(1) == 2
+isAnonymousFunctionTwoParameters() = (defn (a, b) a + b end)(1, 2) == 3
+isAnonymousFunctionDefault() = (defn (a = 1) a end)() == 1
+isAnonymousFunctionNoParameter() = (defn () 5 end)() == 5

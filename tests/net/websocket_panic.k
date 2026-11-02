@@ -1,0 +1,35 @@
+-- A panic in a WebSocket handler closes its connection, and an idle one reaches its deadline.
+use web
+use net
+use sys
+
+crlf = "\r\n"
+a = web.Websocket("/boom", (m, send) -> Panic("boom"), web.App(), idle = 0.2)
+a = web.Websocket("/echo", (m, send) -> send(m), a, idle = 0.1)
+-- The reaper passes every 0.5 s: idle closes by 0.6 s, the timeout alone never before 1 s.
+Spawn(() -> web.Serve(a, port = 18207, timeout = 1))
+sys.Sleep(0.05)
+
+defn opened(path)
+  c = net.Connect("127.0.0.1", 18207)?
+  net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: x$(crlf)$crlf")?
+  net.Read(c)?
+  Ok(c)
+end
+
+defn main()
+  c = opened("/boom")?
+  key = "abcd"
+  net.Write(c, "$(FromBytes([129, 129]))$key$(XorBytes(key, "x"))")?
+  Print(ByteLength(net.Read(c)?))
+  net.Close(c)
+  idle = opened("/echo")?
+  start = sys.Now()
+  Print(ByteLength(net.Read(idle)?), sys.Now() - start < 0.9)
+  net.Close(idle)
+  sys.Sleep(0.05)
+  Print(net.OpenCount())
+  Ok(missing)
+end
+
+Print(main())

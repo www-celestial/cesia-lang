@@ -1,2 +1,0 @@
-use regex
-print(length(regex.find_all(".", repeat(25000, "a"))))

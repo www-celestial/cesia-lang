@@ -1,3 +1,0 @@
-use sys
-sys.sleep(1e19)
-print("after")

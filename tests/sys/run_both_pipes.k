@@ -1,0 +1,5 @@
+use sys
+input = Join("", Fill("0123456789abcdef", 65536))
+script = "head -c 1048576 /dev/zero; head -c 1048576 /dev/zero >&2; cat > /dev/null"
+r = sys.Run("sh", args = ["-c", script], input = input)
+Print(r then MapOk(x -> [Len(x.Out), Len(x.Err)]))

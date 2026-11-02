@@ -1,0 +1,345 @@
+-- The surfaces of a professional tool, as commands for sdl: themes, rectangles, widgets and nodes. Everything here is pure, so
+-- it needs no window and no permission. Widgets take a look last and give arrays of commands, which a program joins with flatten.
+
+-- A dark theme: charcoal surfaces, for long hours.
+Dark = {Ground: 0x0E1013, Code: 0x1C1E22, Panel: 0x1C1E22, Header: 0x25282D, Tab: 0x2C3036, Well: 0x131518, Edge: 0x2B2E34, Line: 0x34383F,
+  Ink: 0xDADDE2, Bright: 0xFFFFFF, Muted: 0x8D929A, Faint: 0x5E636B, Accent: 0x3B82F6, Fill: 0x2C5EA8, Hover: 0x2A2D33, Picked: 0x25457C,
+  Graph: 0x17191C, GridMinor: 0x1C1E22, GridMajor: 0x23262B, Body: 0x1F2125, Big: 0x2B2E34, Shadow: 140,
+  Syntax: [0xCF8E6D, 0x56A8F5, 0x6AAB73, 0x2AACB8, 0x7A7E85, 0xBCBEC4, 0xC77DBB]}
+
+-- A light theme: a pale blue-gray ground, near-white panels, and white where one reads.
+Light = {Ground: 0xEBECF0, Panel: 0xF7F8FA, Header: 0xEBECF0, Tab: 0xFFFFFF, Well: 0xFFFFFF, Edge: 0xDFE1E5, Line: 0xD3D5DB, Code: 0xFFFFFF,
+  Ink: 0x1E1F22, Bright: 0x000000, Muted: 0x6C707E, Faint: 0xA8ADBD, Accent: 0x3574F0, Fill: 0xC2D6FC, Hover: 0xEBECF0, Picked: 0xD4E2FF,
+  Graph: 0xFFFFFF, GridMinor: 0xF8F8F8, GridMajor: 0xF1F1F1, Body: 0xFFFFFF, Big: 0xEBECF0, Shadow: 40,
+  Syntax: [0x0033B3, 0x00627A, 0x067D17, 0x1750EB, 0x8C8C8C, 0x080808, 0x871094]}
+
+-- What widgets need: a theme, width(words, font) in pixels, and height, that of a line. sdl.Measure gives the last two.
+--   Look(Dark, (words, font) -> 7, 16).Height --> 16
+Look(theme, width, height) = {Theme: theme, Width: width, Height: height}
+
+clamp01(x) = Max(0.0, Min(1.0, x))
+
+-- Moves a value towards its goal, at a speed that doesn't depend on the frame rate.
+--   Ease(1.0, 2.0, 0.0) --> 1.0
+Ease(value, goal, seconds, speed = 22.0) = value + (goal - value) * (1.0 - Exp(-speed * seconds))
+
+-- Is a value close enough to its goal to stop moving?
+--   Rests(1.0, 1.001) --> true
+Rests(value, goal) = Abs(value - goal) <= 0.002
+
+-- A rectangle made smaller on every side. No size goes below zero.
+--   Inset(2, {X: 0, Y: 0, Width: 10, Height: 10}).Width --> 6
+Inset(n, rect) = {X: rect.X + n, Y: rect.Y + n, Width: Max(0, rect.Width - 2 * n), Height: Max(0, rect.Height - 2 * n)}
+
+fitSize(wanted, whole) = Max(0, Min(wanted, whole))
+
+-- Cuts a width off the left of a rectangle: {Part, Rest}. No size goes below zero.
+--   Left(3, {X: 0, Y: 0, Width: 10, Height: 2}).Rest.Width --> 7
+defn Left(w, rect)
+  size = fitSize(w, rect.Width)
+  {Part: {X: rect.X, Y: rect.Y, Width: size, Height: rect.Height}, Rest: {X: rect.X + size, Y: rect.Y, Width: rect.Width - size, Height: rect.Height}}
+end
+
+-- Cuts a width off the right of a rectangle: {Part, Rest}. No size goes below zero.
+--   Right(3, {X: 0, Y: 0, Width: 10, Height: 2}).Part.X --> 7
+defn Right(w, rect)
+  size = fitSize(w, rect.Width)
+  {Part: {X: rect.X + rect.Width - size, Y: rect.Y, Width: size, Height: rect.Height}, Rest: {X: rect.X, Y: rect.Y, Width: rect.Width - size, Height: rect.Height}}
+end
+
+-- Cuts a height off the top of a rectangle: {Part, Rest}. No size goes below zero.
+--   Top(3, {X: 0, Y: 0, Width: 2, Height: 10}).Rest.Y --> 3
+defn Top(h, rect)
+  size = fitSize(h, rect.Height)
+  {Part: {X: rect.X, Y: rect.Y, Width: rect.Width, Height: size}, Rest: {X: rect.X, Y: rect.Y + size, Width: rect.Width, Height: rect.Height - size}}
+end
+
+-- Cuts a height off the bottom of a rectangle: {Part, Rest}. No size goes below zero.
+--   Bottom(3, {X: 0, Y: 0, Width: 2, Height: 10}).Part.Y --> 7
+defn Bottom(h, rect)
+  size = fitSize(h, rect.Height)
+  {Part: {X: rect.X, Y: rect.Y + rect.Height - size, Width: rect.Width, Height: size}, Rest: {X: rect.X, Y: rect.Y, Width: rect.Width, Height: rect.Height - size}}
+end
+
+-- Is a point {X, Y} inside a rectangle? The right and bottom edges are outside it.
+--   Contains({X: 1, Y: 1}, {X: 0, Y: 0, Width: 2, Height: 2}) --> true
+Contains(point, rect) = point.X >= rect.X and point.X < rect.X + rect.Width and point.Y >= rect.Y and point.Y < rect.Y + rect.Height
+
+-- The value of a slider at a point, from 0.0 to 1.0.
+--   SliderValue({X: 5, Y: 0}, {X: 0, Y: 0, Width: 10, Height: 2}) --> 0.5
+SliderValue(point, rect) = if rect.Width <= 0 0.0 else clamp01((point.X - rect.X) / (rect.Width * 1.0)) end
+
+TitleHeight = 26
+PinRow = 24
+
+box(x, y, w, h, color, radius) = {Kind: "box", X: x, Y: y, Width: w, Height: h, Color: color, Radius: radius}
+edge(x, y, w, h, color, radius) = {Kind: "ring", X: x, Y: y, Width: w, Height: h, Color: color, Radius: radius}
+rule(x, y, w, h, color) = {Kind: "rect", X: x, Y: y, Width: Max(0, w), Height: Max(0, h), Color: color}
+label(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color}
+strong(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color, Font: "strong"}
+icon(shape, x, y, color) = {Kind: "icon", Shape: shape, X: x, Y: y, Color: color}
+middle(look, y, h) = y + Div(h - look.Height, 2)
+
+-- The shapes of the tool bar, and the arrow of sections and dropdowns.
+Icons = {
+  Save: {Name: "save", Paths: [[3.0, 3.0, 13.0, 3.0, 13.0, 13.0, 3.0, 13.0, 3.0, 3.0], [6.0, 3.0, 6.0, 6.0, 10.0, 6.0, 10.0, 3.0], [5.0, 13.0, 5.0, 9.0, 11.0, 9.0, 11.0, 13.0]], Rings: []},
+  Browse: {Name: "browse", Paths: [[2.0, 13.0, 14.0, 13.0, 14.0, 5.0, 8.0, 5.0, 6.5, 3.0, 2.0, 3.0, 2.0, 13.0]], Rings: []},
+  Apply: {Name: "apply", Paths: [[3.0, 8.5, 6.5, 12.0, 13.0, 4.5]], Rings: []},
+  Search: {Name: "search", Paths: [[10.2, 10.2, 14.0, 14.0]], Rings: [[7.0, 7.0, 4.2]]},
+  Home: {Name: "home", Paths: [[2.0, 8.0, 8.0, 2.5, 14.0, 8.0], [4.0, 7.0, 4.0, 13.5, 12.0, 13.5, 12.0, 7.0]], Rings: []},
+  Hierarchy: {Name: "hierarchy", Paths: [[8.0, 5.0, 8.0, 7.5], [3.5, 7.5, 12.5, 7.5], [3.5, 7.5, 3.5, 10.0], [12.5, 7.5, 12.5, 10.0]], Rings: [[8.0, 3.5, 1.5], [3.5, 12.0, 1.8], [12.5, 12.0, 1.8]]},
+  Live: {Name: "live", Paths: [[9.0, 2.0, 4.0, 9.0, 8.0, 9.0, 7.0, 14.0, 12.0, 7.0, 8.0, 7.0, 9.0, 2.0]], Rings: []},
+  Stats: {Name: "stats", Paths: [[3.0, 13.5, 3.0, 9.0], [8.0, 13.5, 8.0, 3.5], [13.0, 13.5, 13.0, 6.5]], Rings: []},
+  Arrow: {Name: "arrow", Paths: [[5.0, 6.5, 8.0, 9.5, 11.0, 6.5]], Rings: []}
+}
+
+-- A panel and its title, flat on the panel. Only the active panel has the blue line under its title.
+defn Panel(title, rect, look, active = false)
+  th = look.Theme
+  x = rect.X
+  y = rect.Y
+  titleWidth = look.Width(title, "strong")
+  mark = if active [box(x + 10, y + 25, titleWidth + 8, 2, th.Accent, 1)] else [] end
+  Concat([box(x, y, rect.Width, rect.Height, th.Panel, 6), edge(x, y, rect.Width, rect.Height, th.Edge, 6), rule(x + 1, y + 26, rect.Width - 2, 1, th.Edge),
+    strong(x + 14, middle(look, y, 27), title, if active th.Bright else th.Ink end)], mark)
+end
+
+-- A menu bar: names, then a title at the right. Its menus don't open.
+defn MenuBar(items, title, rect, look)
+  th = look.Theme
+  out = [box(rect.X + rect.Width - 156, rect.Y + 4, 150, 18, th.Header, 4), label(rect.X + rect.Width - 144, middle(look, rect.Y + 4, 18), title, th.Muted)]
+  x = rect.X + 12
+  for name in items
+    out = Append(label(x, middle(look, rect.Y, rect.Height), name, th.Ink), out)
+    x = x + look.Width(name, "body") + 22
+  end
+  out
+end
+
+-- A tool bar: {Shape, Name, Color} for each tool, missing for a separator. The tool under the mouse answers it.
+defn ToolBar(items, mouse, rect, look)
+  th = look.Theme
+  out = []
+  x = rect.X + 12
+  for item in items
+    if IsMissing(item)
+      out = Append(rule(x + 4, rect.Y + 5, 1, 20, th.Line), out)
+      x = x + 14
+    else
+      width = 23 + look.Width(item.Name, "body")
+      if Contains(mouse, {X: x - 7, Y: rect.Y, Width: width + 14, Height: rect.Height})
+        out = Append(box(x - 7, rect.Y + 2, width + 14, 28, th.Hover, 6), out)
+      end
+      out = Append(icon(item.Shape, x, rect.Y + 8, item.Color), out)
+      out = Append(label(x + 23, middle(look, rect.Y, rect.Height), item.Name, th.Ink), out)
+      x = x + width + 22
+    end
+  end
+  out
+end
+
+-- A header with an arrow.
+Section(name, rect, look) = [rule(rect.X, rect.Y + rect.Height - 1, rect.Width, 1, look.Theme.Edge), icon(Icons.Arrow, rect.X, rect.Y + 3, look.Theme.Muted), strong(rect.X + 19, middle(look, rect.Y, rect.Height), name, look.Theme.Ink)]
+
+-- A sunken field that shows some words, faint if they only say what goes there.
+Field(words, rect, look, hint = false) = [box(rect.X, rect.Y, rect.Width, rect.Height, look.Theme.Well, 4), edge(rect.X, rect.Y, rect.Width, rect.Height, look.Theme.Edge, 4), label(rect.X + 8, middle(look, rect.Y, rect.Height), words, if hint look.Theme.Faint else look.Theme.Ink end)]
+
+-- A raised field with an arrow. It doesn't open.
+Dropdown(words, rect, look) = [box(rect.X, rect.Y, rect.Width, rect.Height, look.Theme.Header, 4), edge(rect.X, rect.Y, rect.Width, rect.Height, look.Theme.Edge, 4), label(rect.X + 8, middle(look, rect.Y, rect.Height), words, look.Theme.Ink), icon(Icons.Arrow, rect.X + rect.Width - 20, rect.Y + 3, look.Theme.Muted)]
+
+-- A number with two decimals.
+--   TwoDecimals(0.5) --> "0.50"
+defn TwoDecimals(x)
+  n = Div(Floor(x * 100.0 + 0.5), 1)
+  part = Mod(n, 100)
+  "$(Div(n, 100)).$(if part < 10 "0" else "" end)$part"
+end
+
+-- How far a tick stays from the top and the bottom of a slider, at a distance from its end: nothing, except along the round
+-- corner of that radius.
+defn tickInset(distance, radius)
+  across = radius - distance
+  if across <= 0.0 0.0 else radius - Sqrt(radius * radius - across * across) end
+end
+
+-- The filled part of a slider, nothing at 0.0. Too short for a box with round corners, it is cut in columns that follow the corner.
+defn sliderFill(width, rect, th)
+  if width >= 8.0
+    return [box(rect.X, rect.Y, width, rect.Height, th.Fill, 4)]
+  end
+  out = []
+  for k in 0:(Ceil(width) - 1)
+    inset = tickInset(k * 1.0, 4.0)
+    out = Append(rule(rect.X + k, rect.Y + inset, Min(1.0, width - k), rect.Height - 2.0 * inset, th.Fill), out)
+  end
+  out
+end
+
+-- A bar filled to a value from 0.0 to 1.0, with a tick at its end and the value at the right.
+defn Slider(value, rect, look)
+  th = look.Theme
+  shown = TwoDecimals(value)
+  fillWidth = rect.Width * clamp01(value)
+  tick = Max(0.0, Min(rect.Width - 2.0, fillWidth - 1.0))
+  inset = tickInset(Min(tick, rect.Width - 2.0 - tick), 4.0)
+  Flatten([[box(rect.X, rect.Y, rect.Width, rect.Height, th.Well, 4)], sliderFill(fillWidth, rect, th), [edge(rect.X, rect.Y, rect.Width, rect.Height, th.Edge, 4),
+    rule(rect.X + tick, rect.Y + inset, 2, rect.Height - 2.0 * inset, th.Accent), label(rect.X + rect.Width - 9 - look.Width(shown, "body"), middle(look, rect.Y, rect.Height), shown, th.Bright)]])
+end
+
+-- A square, with its mark if on.
+defn Checkbox(on, rect, look)
+  th = look.Theme
+  y = rect.Y + Div(rect.Height - 16, 2)
+  if on
+    [box(rect.X, y, 16, 16, th.Accent, 4), icon(Icons.Apply, rect.X, y, 0xFFFFFF)]
+  else
+    [box(rect.X, y, 16, 16, th.Well, 4), edge(rect.X, y, 16, 16, th.Line, 4)]
+  end
+end
+
+-- A square of color, and its value in a field.
+defn Swatch(color, words, rect, look)
+  rest = Left(28, rect).Rest
+  Concat([box(rect.X, rect.Y, rect.Height, rect.Height, color, 4), edge(rect.X, rect.Y, rect.Height, rect.Height, look.Theme.Edge, 4)], Field(words, rest, look))
+end
+
+headersUpTo(k, items) = Len(Filter(it.Header, Take(k, items)))
+
+-- The y of row k of a list, with a gap above each header but the first.
+ListRow(k, items, rect) = rect.Y + (k - 1) * 22 + 7 * Max(0, headersUpTo(k, items) - 1)
+
+-- The row of a list nearest to a height, that isn't a header, or 0.
+defn RowAt(y, items, rect)
+  best = 0
+  for k in 1:Len(items)
+    if not items[k].Header and (best == 0 or Abs(ListRow(k, items, rect) + 11 - y) < Abs(ListRow(best, items, rect) + 11 - y))
+      best = k
+    end
+  end
+  best
+end
+
+-- Rows and section headers, each {Name, Header}. picked is an index or 0. hover is a height or missing, so that it can ease.
+defn List(items, picked, hover, rect, look)
+  th = look.Theme
+  out = []
+  if not IsMissing(hover) and Len(items) > 0
+    out = Append(box(rect.X + 2, hover, rect.Width - 4, 22, th.Hover, 4), out)
+  end
+  if picked > 0
+    out = Append(box(rect.X + 2, ListRow(picked, items, rect), rect.Width - 4, 22, th.Picked, 4), out)
+  end
+  for k in 1:Len(items)
+    y = ListRow(k, items, rect)
+    if items[k].Header
+      out = Concat(out, Section(items[k].Name, {X: rect.X, Y: y, Width: rect.Width, Height: 22}, look))
+    else
+      out = Append(label(rect.X + 18, middle(look, y, 22), items[k].Name, th.Ink), out)
+    end
+  end
+  out
+end
+
+codeText(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color, Font: "code"}
+
+-- Numbered lines of tokens [role, text], role being an index in the theme's syntax, in the "code" font. marked is a line or 0.
+defn Code(lines, marked, rect, look)
+  th = look.Theme
+  cw = look.Width("M", "code")
+  out = if marked > 0 [box(rect.X + 4, rect.Y + 3 + (marked - 1) * 19, rect.Width - 8, 19, th.Hover, 4)] else [] end
+  for k in 1:Len(lines)
+    y = rect.Y + 4 + (k - 1) * 19
+    out = Append(codeText(rect.X + 46 - Len("$k") * cw, y, "$k", th.Faint), out)
+    x = rect.X + 62
+    for token in lines[k]
+      out = Append(codeText(x, y, token[2], th.Syntax[token[1]]), out)
+      x = x + Len(token[2]) * cw
+    end
+  end
+  out
+end
+
+-- The lines of a graph, every 16 pixels, and stronger every 128.
+defn Grid(rect, look)
+  th = look.Theme
+  out = []
+  for k in 0:Div(rect.Width, 16)
+    out = Append(rule(rect.X + k * 16, rect.Y, 1, rect.Height, if Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
+  end
+  for k in 0:Div(rect.Height, 16)
+    out = Append(rule(rect.X, rect.Y + k * 16, rect.Width, 1, if Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
+  end
+  out
+end
+
+-- The height of a node {X, Y, Width, Title, Color, Inputs, Outputs, Body}.
+NodeHeight(n) = TitleHeight + Max(Max(Len(n.Inputs), Len(n.Outputs)) * PinRow + n.Body, TitleHeight) + 6
+
+-- Where input pin k of a node sits.
+InputAt(n, k) = {X: n.X * 1.0, Y: n.Y + TitleHeight + (k - 0.5) * PinRow}
+
+-- Where output pin k of a node sits, under its body.
+OutputAt(n, k) = {X: n.X + n.Width * 1.0, Y: n.Y + TitleHeight + n.Body + (k - 0.5) * PinRow}
+
+inputLinked(index, k, links) = Len(Filter(it.To == index and it.Input == k, links)) > 0
+outputLinked(index, k, links) = Len(Filter(it.From == index and it.Output == k, links)) > 0
+
+defn pin(place, color, linked)
+  x = place.X - 5.0
+  y = place.Y - 5.0
+  if linked box(x, y, 10, 10, color, 5) else edge(x, y, 10, 10, color, 5) end
+end
+
+defn node(index, n, picked, links, look)
+  th = look.Theme
+  h = NodeHeight(n)
+  x = n.X
+  y = n.Y
+  out = [{Kind: "shadow", X: x, Y: y, Width: n.Width, Height: h, Alpha: th.Shadow}, box(x, y, n.Width, h, th.Body, 6), {Kind: "fade", X: x, Y: y, Width: n.Width, Height: TitleHeight, Color: n.Color, Radius: 6}, strong(x + 12, middle(look, y, TitleHeight), n.Title, 0xFFFFFF)]
+  outline = if index == picked [edge(x - 2, y - 2, n.Width + 4, h + 4, 0xF5A623, 6), edge(x - 1, y - 1, n.Width + 2, h + 2, 0xF5A623, 6)] else [edge(x, y, n.Width, h, th.Edge, 6)] end
+  out = Concat(out, outline)
+  for k in 1:Len(n.Inputs)
+    place = InputAt(n, k)
+    out = Append(pin(place, n.Inputs[k].Color, inputLinked(index, k, links)), out)
+    out = Append(label(x + 13, place.Y - Div(look.Height, 2), n.Inputs[k].Name, th.Ink), out)
+  end
+  for k in 1:Len(n.Outputs)
+    place = OutputAt(n, k)
+    out = Append(pin(place, n.Outputs[k].Color, outputLinked(index, k, links)), out)
+    out = Append(label(x + n.Width - 13 - look.Width(n.Outputs[k].Name, "body"), place.Y - Div(look.Height, 2), n.Outputs[k].Name, th.Ink), out)
+  end
+  out
+end
+
+-- Nodes with their title bars, pins, labels and shadows. A pin that no link reaches is hollow. picked is an index or 0.
+Nodes(items, picked, links, look) = Flatten([node(k, items[k], picked, links, look) for k in 1:Len(items)])
+
+-- The curves between pins, for links {From, Output, To, Input, Color}.
+Links(items, nodeList, look) = [{Kind: "curves", Items: [curve(link, nodeList) for link in items]}]
+
+defn curve(link, nodeList)
+  a = OutputAt(nodeList[link.From], link.Output)
+  b = InputAt(nodeList[link.To], link.Input)
+  {X0: a.X, Y0: a.Y, X1: b.X, Y1: b.Y, Color: link.Color}
+end
+
+-- The index of the top node under a point, or 0.
+defn NodeAt(point, nodeList)
+  found = 0
+  for k in 1:Len(nodeList)
+    n = nodeList[k]
+    if Contains(point, {X: n.X, Y: n.Y, Width: n.Width, Height: NodeHeight(n)})
+      found = k
+    end
+  end
+  found
+end
+
+-- The nodes with node k moved under a point, where it was held by grab, and kept inside an area.
+defn MoveNode(k, point, grab, area, nodeList)
+  n = nodeList[k]
+  next = nodeList
+  next[k].X = Max(area.X, Min(area.X + area.Width - n.Width, point.X - grab.X))
+  next[k].Y = Max(area.Y, Min(area.Y + area.Height - NodeHeight(n), point.Y - grab.Y))
+  next
+end

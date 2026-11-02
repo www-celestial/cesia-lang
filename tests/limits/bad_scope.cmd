@@ -1,1 +1,1 @@
-kepler run --allow read= bad_scope.kp
+kepler run --allow read= bad_scope.k

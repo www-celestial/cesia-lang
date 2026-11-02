@@ -17,15 +17,22 @@ val init : world -> unit
 (** A name of module [m], if it exists. *)
 val in_module : world -> int -> string -> Ast.binding option
 
+(** A name of any file of the package of module [m]. *)
+val in_package : world -> int -> string -> Ast.binding option
+
 (** A name of the prelude. *)
 val lookup : world -> string -> Ast.binding option
 
-(** Loads a source as a new module, without running it. *)
+(** Loads a source as a new module, without running it. With [host], the source sees the private fields and methods of
+    that module. *)
 val prepare :
-  ?hooks:bool -> ctx -> path:string -> src:string -> lookup:(string -> Ast.binding option) ->
+  ?hooks:bool -> ?host:int -> ctx -> path:string -> src:string -> lookup:(string -> Ast.binding option) ->
   int * int * Ast.func * Ast.layout
 
 val run_prepared : ctx -> int * int * Ast.func * Ast.layout -> unit
+
+(** Loads a folder as a package and runs its statements, once, and gives its first module. *)
+val folder : ctx -> string -> int
 
 (** Replaces the functions and structs of a module without rerunning its statements. Everything is parsed first: an
     error returns its text, and the old code stays in place. *)

@@ -1,0 +1,33 @@
+use web
+use net
+use sys
+use encode
+
+crlf = "$(Char(13))$(Char(10))"
+a = web.App()
+a = web.Websocket("/echo", (m, send) -> send("got $m"), a)
+Spawn(() -> web.Serve(a, port = 18202))
+sys.Sleep(0.05)
+
+-- A frame from a client: always masked.
+defn masked(opcode, textValue)
+  key = "abcd"
+  "$(FromBytes([128 + opcode, 128 + ByteLength(textValue)]))$key$(XorBytes(key, textValue))"
+end
+
+defn main()
+  c = net.Connect("127.0.0.1", 18202)?
+  net.Write(c, "GET /echo HTTP/1.1$(crlf)Host: a$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==$(crlf)$crlf")?
+  head = net.Read(c)?
+  Print(Split(crlf, head)[1])
+  Print(Filter(l -> StartsWith("sec-websocket-accept", l), Split(crlf, head)))
+  net.Write(c, masked(1, "hello"))?
+  Print(Bytes(net.Read(c)?))
+  net.Write(c, masked(9, "ping"))?
+  Print(Bytes(net.Read(c)?))
+  net.Write(c, masked(8, ""))?
+  Print(Bytes(net.Read(c)?))
+  Ok(missing)
+end
+
+Print(main())

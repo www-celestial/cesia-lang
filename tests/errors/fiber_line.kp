@@ -1,2 +1,0 @@
-r = wait(spawn(() -> panic("x")))
-print(r.error.file, r.error.line)

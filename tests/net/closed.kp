@@ -1,6 +1,0 @@
-use net
-l = unwrap(net.listen(18085))
-net.close(l)
-net.close(l)
-print(net.accept(l) then map_err(it.kind))
-print(l)

@@ -7,7 +7,7 @@ bool needs true or false, not the number 1.
 i33 isn't a C type.
 void can't be an argument.
 A C function takes at most 60 arguments, not 61.
-c.fn needs a library, not the number 5.
+c.Fn needs a library, not the number 5.
 This text has a zero byte, which C would read as its end.
 text needs a text or missing, not the number 5.
 ptr needs a pointer, a block or missing, not the number 5.

@@ -1,5 +1,0 @@
-xs = []
-for k in 1:300000
-  xs = push(k, xs)
-end
-print(length(xs), xs[300000])

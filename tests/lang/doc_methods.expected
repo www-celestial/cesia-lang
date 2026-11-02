@@ -1,0 +1,19 @@
+(r Rect) Area()
+
+The area.
+(d Date) Next()
+
+The next year.
+
+  Date(1).Next().Year --> 2
+Date.Parse(text)
+
+A date from its text.
+kepler: nothing is documented under date.Date.hidden
+kepler: nothing is documented under date.piece.Size2
+A date, for the test of kepler doc on methods.
+
+date.Date        A date, for the test of kepler doc on methods.
+date.Date.Next   The next year.
+date.Date.Parse  A date from its text.
+exit 0

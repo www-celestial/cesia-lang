@@ -1,4 +1,4 @@
-sleep_negative.kp:2:4: sleep needs a finite duration of 0 or more, not the number -1.
-  2 | sys.sleep(-1)
+sleep_negative.k:2:4: Sleep needs a finite duration of 0 or more, not the number -1.
+  2 | sys.Sleep(-1)
     |    ^
 exit 1

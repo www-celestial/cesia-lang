@@ -1,2 +1,0 @@
-use "./priv/mod" as r
-r._cache()

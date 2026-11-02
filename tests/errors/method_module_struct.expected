@@ -1,0 +1,5 @@
+method_module_struct.k:2:12: "Shown" needs a Far.
+  2 | Print(f.Far.Shown())
+    |            ^
+  Write x.Shown(), with x a Far.
+exit 1

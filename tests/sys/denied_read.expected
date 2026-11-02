@@ -1,4 +1,4 @@
-denied_read.kp:2:10: Permission "read" denied. Run again with --allow read.
-  2 | print(sys.read("./x"))
+denied_read.k:2:10: Permission "read" denied. Run again with --allow read.
+  2 | Print(sys.Read("./x"))
     |          ^
 exit 1

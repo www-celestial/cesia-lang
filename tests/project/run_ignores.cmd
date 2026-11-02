@@ -1,1 +1,1 @@
-cd run_ignores && kepler run open.kp
+cd run_ignores && kepler run open.k

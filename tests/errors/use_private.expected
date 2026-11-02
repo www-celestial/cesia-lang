@@ -1,4 +1,4 @@
-use_private.kp:2:2: Module "r" has no name "_cache".
-  2 | r._cache()
+use_private.k:2:2: Module "r" has no name "cache".
+  2 | r.cache()
     |  ^
 exit 1

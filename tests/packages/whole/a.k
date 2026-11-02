@@ -1,0 +1,3 @@
+-- Runs first: its name comes first.
+Print("a")
+Print(Later())

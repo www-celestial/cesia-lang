@@ -106,8 +106,8 @@ HEAD` and run in turn with the current tree, best of 9. Everything here is Linux
 
 | Criterion | Target | Measured | Met |
 |---|---|---|---|
-| The speed gate, `bench/frame.kp`, real window | at least 60 frames/s | 148, 144, 151; 146 with `--no-spec` | yes |
-| A call to a trivial C function, `bench/ccall.kp` | at least 5 million/s | 12.9 million/s; 11.9 with `--no-spec` | yes |
+| The speed gate, `bench/frame.k`, real window | at least 60 frames/s | 148, 144, 151; 146 with `--no-spec` | yes |
+| A call to a trivial C function, `bench/ccall.k` | at least 5 million/s | 12.9 million/s; 11.9 with `--no-spec` | yes |
 | The five benchmarks against Python and Lua | the targets above | all met, `dyn` with a 4% margin | yes |
 | The five benchmarks against the previous commit | reported | -2.6% to 0.0% | reported |
 | Loading, resolution included | at least 500,000 lines/s | 505,530 lines/s; in turn, previous 509,555, current 507,133 | yes, 1% margin |
@@ -181,8 +181,8 @@ target.
 | `http.serve`, 10 active and 900 idle | at least Node | 58,962 req/s, Node 42,985 | yes |
 | 20,000 open connections | held | held, 33,725 req/s | yes |
 | Memory per parked fiber | under 8 KB | 3.43 KB | yes |
-| The speed gate, `bench/frame.kp`, real window | at least 60 frames/s | 154, 154, 159; 167 with `--no-spec` | yes |
-| A call to a trivial C function, `bench/ccall.kp` | at least 5 million/s | 12.7 million/s; 11.3 with `--no-spec` | yes |
+| The speed gate, `bench/frame.k`, real window | at least 60 frames/s | 154, 154, 159; 167 with `--no-spec` | yes |
+| A call to a trivial C function, `bench/ccall.k` | at least 5 million/s | 12.7 million/s; 11.3 with `--no-spec` | yes |
 | Loading, resolution included | at least 500,000 lines/s | 471,282 to 499,221 lines/s; previous commit in turn 483,623 | no |
 | `print(1)`, measurement included | under 5 ms | 4.36 ms on average, of which 0.49 ms of measurement | yes |
 | `kepler do` listing this repository | under 10 ms | 3.48 ms | yes |
@@ -197,7 +197,7 @@ target.
 ### HTTP
 
 `http.serve` had lost 20% when this work ended: 51,377 req/s against 64,490 for the previous commit at 10 connections, in
-turn on one machine, and 28,624 against 34,846 at 1,000. The old `std/http.kp` on the current binary gave 66,578, so the
+turn on one machine, and 28,624 against 34,846 at 1,000. The old `std/http.k` on the current binary gave 66,578, so the
 loss was all in that file, not in the engine.
 
 | Taken out of the module, one at a time | µs per request |
@@ -441,8 +441,8 @@ texts and shorter waits, and those two folders run in `tools/check.sh`, past the
 
 ## Interface library, 2026-11-02
 
-`std/sdl.kp` gained rounded surfaces, shadows, images, icons, curves, several fonts and motion, and `std/ui.kp` builds them. Not a line of
-OCaml or C went into this. `examples/material.kp` is the approved preview, rewritten on the library.
+`std/sdl.k` gained rounded surfaces, shadows, images, icons, curves, several fonts and motion, and `std/ui.k` builds them. Not a line of
+OCaml or C went into this. `examples/material.k` is the approved preview, rewritten on the library.
 
 | Criterion, real window of 1280 by 720, Intel HD 4600 | Target | Measured | Met |
 |---|---|---|---|
@@ -535,3 +535,10 @@ be longer than its array, so reads go through `rows * cols`, and code that takes
 
 A more modern look, on the owner's order, without changing the layout or the density: slightly blue grays, fine edges in place of black ones, flat panel titles with a blue line under the active one, and
 sections with no box. `ui.slider` keeps its tick and its fill inside its rounded bar at every value.
+
+Names as in Go, on the owner's order: a capital first letter is public, a small one private, fields too, and a name has no `_`. A tool that reads the tokens and scopes of the compiler renamed 12,611 names, and the
+293 `.expected` files were compared word by word with the old ones: only names changed, and 4 of them moved a column. `json.Text` of a record now writes the capitals of its fields. Against the previous commit, both built
+in `release`, alternated, best of 7: fib 473 to 463 ms, mandel 476 to 476, structs 587 to 588, matmul 987 to 1,014, dyn 719 to 693, all within what code placement moves. `tools/bench.sh` alone gave matmul 1,064 ms against 921 in
+the last table, but Python and Lua were 1 to 10% slower that hour too, and the previous commit took 1,006 ms. The checks at load time first cost 6.5% of the load: the fields of a file were collected for every file, and `String.contains`
+raised an exception for each name. Now the fields are collected only for a file that reads a small one, and loading gives 477,236 lines/s against 483,101 for the previous commit, on the same warm CPU, with `Print(1)` at 4.60 ms against 4.51.
+Two fuzz runs of 60 s, seeds 20261102 and 20261103: 12,069 and 12,827 trials, 0 failures, 7.1% and 7.6% ran to the end, against 7.5% before.

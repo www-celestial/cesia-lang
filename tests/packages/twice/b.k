@@ -1,0 +1,2 @@
+-- Second.
+scale(x) = 2 * x

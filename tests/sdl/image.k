@@ -1,0 +1,51 @@
+use tests/sdl/probe
+use c
+use sdl
+
+black = 0x000000
+near(a, b) = Abs(sdl.Red(a) - sdl.Red(b)) <= 8 and Abs(sdl.Green(a) - sdl.Green(b)) <= 8 and Abs(sdl.Blue(a) - sdl.Blue(b)) <= 8
+
+defn shot(commands, window)
+  drawn = sdl.Draw(Concat([{Kind: "clear", Color: black}], commands), window)
+  {Window: drawn, Image: probe.Pixels(drawn, 320, 200)}
+end
+
+line = {Name: "line", Paths: [[3.0, 8.5, 13.0, 8.5]], Rings: []}
+circle = {Name: "circle", Paths: [], Rings: [[8.0, 8.5, 5.5]]}
+dot = {Name: "dot", Paths: [[5.25, 5.25, 5.25, 5.25]], Rings: []}
+
+defn check()
+  w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  Print(sdl.Rgba(1, 2, 3, 4) == 0x04030201)
+  made = sdl.Image(4, 4, w)?
+  red = made.Image
+  sdl.FillImage((x, y) -> sdl.Rgba(255, 0, 0, 255), red, made.Window)
+  a = shot([{Kind: "image", Image: red, X: 20, Y: 20, Width: 40, Height: 40}], made.Window)
+  Print(near(probe.Pixel(30, 30, a.Image), 0xFF0000))
+  Print(near(probe.Pixel(100, 100, a.Image), black))
+  b = shot([{Kind: "image", Image: red, X: 20, Y: 20, Width: 40, Height: 40, Color: 0x808080}], a.Window)
+  Print(near(probe.Pixel(30, 30, b.Image), 0x800000))
+  more = sdl.Image(4, 4, b.Window)?
+  corner = more.Image
+  sdl.FillImage((x, y) -> if x == 0 and y == 0 sdl.Rgba(255, 255, 255, 255) else sdl.Rgba(0, 0, 0, 0) end, corner, more.Window)
+  d = shot([{Kind: "tile", Image: corner, X: 40, Y: 40, Width: 16, Height: 16}], more.Window)
+  Print(near(probe.Pixel(40, 40, d.Image), 0xFFFFFF))
+  Print(near(probe.Pixel(44, 44, d.Image), 0xFFFFFF))
+  Print(near(probe.Pixel(42, 42, d.Image), black))
+  e = shot([{Kind: "icon", Shape: line, X: 100, Y: 100, Color: 0xFFFFFF}], d.Window)
+  Print(near(probe.Pixel(108, 108, e.Image), 0xFFFFFF))
+  Print(near(probe.Pixel(101, 101, e.Image), black))
+  count = c.Get("i64", 0, e.Window.Images)
+  f = shot([{Kind: "icon", Shape: line, X: 100, Y: 100}], e.Window)
+  Print(c.Get("i64", 0, f.Window.Images) == count)
+  g = shot([{Kind: "icon", Shape: circle, X: 100, Y: 100, Color: 0xFFFFFF}], f.Window)
+  Print(near(probe.Pixel(113, 108, g.Image), 0xFFFFFF))
+  Print(near(probe.Pixel(108, 108, g.Image), black))
+  h = shot([{Kind: "icon", Shape: dot, X: 100, Y: 100, Size: 32, Color: 0xFFFFFF}], g.Window)
+  Print(near(probe.Pixel(110, 110, h.Image), 0xFFFFFF))
+  sdl.Frame([{Kind: "clear", Color: black}], h.Window)
+  Print(sdl.Close(h.Window))
+  Ok("closed")
+end
+
+Print(check())

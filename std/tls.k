@@ -1,0 +1,193 @@
+-- TLS through OpenSSL, with memory buffers: the sockets stay with net, so a fiber never blocks the others during a
+-- handshake. Run with --allow ffi=ssl,ffi=crypto.
+use c
+use net
+
+chunk = 65536
+
+-- Loads OpenSSL: an Ok of the api that server and client take, or an Err.
+defn Open()
+  ssl = c.Open("ssl", version = 3)?
+  lib = c.Open("crypto", version = 3)?
+  Ok({
+    ServerMethod: c.Fn("TLS_server_method", [], "ptr", ssl)?,
+    ClientMethod: c.Fn("TLS_client_method", [], "ptr", ssl)?,
+    CtxNew: c.Fn("SSL_CTX_new", ["ptr"], "ptr", ssl)?,
+    UseChain: c.Fn("SSL_CTX_use_certificate_chain_file", ["ptr", "text"], "i32", ssl)?,
+    UseKey: c.Fn("SSL_CTX_use_PrivateKey_file", ["ptr", "text", "i32"], "i32", ssl)?,
+    DefaultPaths: c.Fn("SSL_CTX_set_default_verify_paths", ["ptr"], "i32", ssl)?,
+    SetVerify: c.Fn("SSL_CTX_set_verify", ["ptr", "i32", "ptr"], "void", ssl)?,
+    SslNew: c.Fn("SSL_new", ["ptr"], "ptr", ssl)?,
+    SslFree: c.Fn("SSL_free", ["ptr"], "void", ssl)?,
+    SetBio: c.Fn("SSL_set_bio", ["ptr", "ptr", "ptr"], "void", ssl)?,
+    AcceptState: c.Fn("SSL_set_accept_state", ["ptr"], "void", ssl)?,
+    ConnectState: c.Fn("SSL_set_connect_state", ["ptr"], "void", ssl)?,
+    Handshake: c.Fn("SSL_do_handshake", ["ptr"], "i32", ssl)?,
+    SslRead: c.Fn("SSL_read", ["ptr", "ptr", "i32"], "i32", ssl)?,
+    SslWrite: c.Fn("SSL_write", ["ptr", "ptr", "i32"], "i32", ssl)?,
+    GetError: c.Fn("SSL_get_error", ["ptr", "i32"], "i32", ssl)?,
+    Shutdown: c.Fn("SSL_shutdown", ["ptr"], "i32", ssl)?,
+    Control: c.Fn("SSL_ctrl", ["ptr", "i32", "i64", "text"], "i64", ssl)?,
+    SetHost: c.Fn("SSL_set1_host", ["ptr", "text"], "i32", ssl)?,
+    ClearErrors: c.Fn("ERR_clear_error", [], "void", lib)?,
+    BioNew: c.Fn("BIO_new", ["ptr"], "ptr", lib)?,
+    BioMem: c.Fn("BIO_s_mem", [], "ptr", lib)?,
+    BioRead: c.Fn("BIO_read", ["ptr", "ptr", "i32"], "i32", lib)?,
+    BioWrite: c.Fn("BIO_write", ["ptr", "ptr", "i32"], "i32", lib)?
+  })
+end
+
+failed(message) = Err({Kind: "tls", Message: message})
+
+-- The state of one connection: its handles are C objects, so a copy of this value is the same connection.
+defn link(api, ctx, socket)
+  ssl = api.SslNew(ctx)
+  incoming = api.BioNew(api.BioMem())
+  outgoing = api.BioNew(api.BioMem())
+  api.SetBio(ssl, incoming, outgoing)
+  {Api: api, Ssl: ssl, Incoming: incoming, Outgoing: outgoing, Socket: socket, Block: c.Alloc(chunk)}
+end
+
+-- Sends what OpenSSL wrote.
+defn flush(t)
+  n = t.Api.BioRead(t.Outgoing, t.Block, chunk)
+  while n > 0
+    net.Write(t.Socket, c.Load(0, n, t.Block))?
+    n = t.Api.BioRead(t.Outgoing, t.Block, chunk)
+  end
+  Ok(missing)
+end
+
+-- Gives OpenSSL what the other side sent. False at the end of the connection.
+defn feed(t)
+  got = net.Read(t.Socket)?
+  n = ByteLength(got)
+  if n == 0
+    return Ok(false)
+  end
+  c.Store(got, 0, t.Block)
+  t.Api.BioWrite(t.Incoming, t.Block, n)
+  Ok(true)
+end
+
+defn shake(t)
+  while true
+    t.Api.ClearErrors()
+    r = t.Api.Handshake(t.Ssl)
+    flush(t)?
+    if r == 1
+      return Ok(missing)
+    end
+    e = t.Api.GetError(t.Ssl, r)
+    if e != 2
+      return failed("The TLS handshake failed.")
+    end
+    if not feed(t)?
+      return failed("The connection closed during the TLS handshake.")
+    end
+  end
+end
+
+defn read(t)
+  while true
+    t.Api.ClearErrors()
+    n = t.Api.SslRead(t.Ssl, t.Block, chunk)
+    if n > 0
+      return Ok(c.Load(0, n, t.Block))
+    end
+    e = t.Api.GetError(t.Ssl, n)
+    if e == 6
+      return Ok("")
+    end
+    if e != 2
+      return failed("A TLS read failed.")
+    end
+    flush(t)?
+    if not feed(t)?
+      return failed("The connection ended without a TLS close.")
+    end
+  end
+end
+
+defn write(t, s)
+  size = ByteLength(s)
+  at = 0
+  while at < size
+    piece = ByteSlice(at + 1, Min(at + chunk, size), s)
+    c.Store(piece, 0, t.Block)
+    t.Api.ClearErrors()
+    n = t.Api.SslWrite(t.Ssl, t.Block, ByteLength(piece))
+    if n <= 0
+      return failed("A TLS write failed.")
+    end
+    at += n
+    flush(t)?
+  end
+  Ok(missing)
+end
+
+defn release(t)
+  t.Api.SslFree(t.Ssl)
+  c.Free(t.Block)
+end
+
+defn close(t)
+  t.Api.ClearErrors()
+  t.Api.Shutdown(t.Ssl)
+  flush(t)
+  release(t)
+  net.Close(t.Socket)
+end
+
+-- The handshake, and what it took back if it fails: a client that talks nonsense leaves nothing behind.
+defn shaken(t)
+  r = shake(t)
+  if IsErr(r)
+    release(t)
+    r
+  else
+    Ok(io(t))
+  end
+end
+
+defn io(t)
+  {Read: () -> read(t), Write: s -> write(t, s), Close: () -> close(t), Arm: s -> net.Arm(t.Socket, s)}
+end
+
+-- For http.Serve and web.Serve: wrap = tls.Server(certificate, key, api)?
+defn Server(certificate, key, api)
+  ctx = api.CtxNew(api.ServerMethod())
+  if api.UseChain(ctx, certificate) != 1
+    return failed("Can't read the certificate $certificate.")
+  end
+  if api.UseKey(ctx, key, 1) != 1
+    return failed("Can't read the key $key.")
+  end
+  Ok(socket -> accept(api, ctx, socket))
+end
+
+defn accept(api, ctx, socket)
+  t = link(api, ctx, socket)
+  api.AcceptState(t.Ssl)
+  shaken(t)
+end
+
+-- For http.Request: secure = tls.Client(api). With verify = false, any certificate passes: only for tests.
+defn Client(api, verify = true)
+  ctx = api.CtxNew(api.ClientMethod())
+  if verify
+    api.DefaultPaths(ctx)
+    api.SetVerify(ctx, 1, missing)
+  end
+  (socket, host) -> connect(api, ctx, socket, host, verify)
+end
+
+defn connect(api, ctx, socket, host, verify)
+  t = link(api, ctx, socket)
+  api.Control(t.Ssl, 55, 0, host)
+  if verify
+    api.SetHost(t.Ssl, host)
+  end
+  api.ConnectState(t.Ssl)
+  shaken(t)
+end

@@ -1,0 +1,28 @@
+struct Car { M, K, C = 1500 }
+car = Car(250, 16000)
+bump(t) = if t < 0.5 0.05 else 0 end
+peak = 0.06422160859527065
+
+defn euler(car, u, dt, n)
+  x = Zeros(2, n)
+  for i in 2:n
+    t = (i - 1) * dt
+    a = (-car.K * (x[1, i - 1] - u(t)) - car.C * x[2, i - 1]) / car.M
+    x[1, i] = x[1, i - 1] + dt * x[2, i - 1]
+    x[2, i] = x[2, i - 1] + dt * a
+  end
+  x
+end
+
+step(car, u, dt) = (s, t) -> {X: s.X + dt * s.V,
+                              V: s.V + dt * (-car.K * (s.X - u(t)) - car.C * s.V) / car.M}
+
+defn isImperative()
+  path = euler(car, bump, 0.001, 8001)
+  Abs(Max(path[1, :]) - peak) < 1e-12
+end
+
+defn isFunctional()
+  states = Range(0, 8, step = 0.001) then Scan(step(car, bump, 0.001), {X: 0, V: 0})
+  Len(states) == 8001 and Abs(Max(states.X) - peak) < 1e-12
+end

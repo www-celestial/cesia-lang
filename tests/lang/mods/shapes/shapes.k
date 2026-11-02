@@ -1,0 +1,38 @@
+-- Structs with methods, for the tests of a use.
+struct Circle { Radius }
+struct Rect { Side }
+struct piece { Size }
+
+First = 1
+
+Circle.Unit() = Circle(1)
+
+defn Circle.Of(radius)
+  Circle(radius)
+end
+
+Circle.built() = Circle(2)
+Circle.Reached() = Circle.built()
+
+-- The area of a circle, with pi at 3.
+--
+--   Circle(2).Area() --> 12
+--   Circle.Unit().Area() --> 3
+--   Circle(1).hidden() --> 1
+(c Circle) Area() = 3 * c.Radius * c.Radius
+
+-- Twice the radius.
+--
+--   Circle(2).Twice() --> 4
+defn (c Circle) Twice()
+  2 * c.Radius
+end
+
+(c Circle) hidden() = c.Radius
+(c Circle) Shown() = c.hidden() + 1
+(r Rect) Area() = r.Side * r.Side
+(p piece) Double() = 2 * p.Size
+
+Make(radius) = Circle.Of(radius)
+MakeRect(side) = Rect(side)
+MakePiece(size) = piece(size)

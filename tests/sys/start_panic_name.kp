@@ -1,3 +1,0 @@
--- A panic names the function that was called.
-use sys
-sys.start("true", 5)

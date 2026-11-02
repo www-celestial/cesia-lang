@@ -1,0 +1,24 @@
+use tests/sdl/probe
+use sdl
+
+background = 0x102030
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+
+defn check()
+  window = sdl.Open("test", 320, 200, font)?
+  drawn = sdl.Draw([
+    {Kind: "clear", Color: background},
+    {Kind: "rect", X: 10, Y: 10, Width: 20, Height: 20, Color: 0xFF0000},
+    {Kind: "text", X: 100, Y: 100, Text: "Bonjour é", Color: 0xFFFFFF}
+  ], window)
+  image = probe.Pixels(drawn, 320, 200)
+  Print(probe.Pixel(0, 0, image) == background)
+  Print(probe.Pixel(15, 15, image) == 0xFF0000)
+  Print(probe.Pixel(40, 40, image) == background)
+  Print(probe.Differing(100, 100, 120, 24, background, image) > 50)
+  sdl.Frame([{Kind: "clear", Color: background}], drawn)
+  Print(sdl.Close(drawn))
+  Ok("closed")
+end
+
+Print(check())

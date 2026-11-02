@@ -1,0 +1,31 @@
+use tests/sdl/probe
+use sdl
+use ui
+
+fonts = "../../examples/fonts/"
+near(a, b) = Abs(sdl.Red(a) - sdl.Red(b)) <= 8 and Abs(sdl.Green(a) - sdl.Green(b)) <= 8 and Abs(sdl.Blue(a) - sdl.Blue(b)) <= 8
+
+node = {X: 200, Y: 20, Width: 100, Title: "Multiply", Color: 0x3F7A54, Inputs: [{Name: "A", Color: 0xE8C547}], Outputs: [], Body: 0}
+
+defn check()
+  opened = sdl.Open("test", 320, 200, "$(fonts)AdwaitaSans-Regular.ttf", light = true)?
+  withStrong = sdl.AddFont("strong", "$(fonts)NotoSans-Medium.ttf", 13, opened, light = true)?
+  w = sdl.AddFont("code", "$(fonts)JetBrainsMono-Regular.ttf", 13, withStrong)?
+  m = sdl.Measure(w)
+  look = ui.Look(ui.Dark, m.Width, m.Height)
+  commands = Flatten([[{Kind: "clear", Color: ui.Dark.Ground}], ui.Panel("Details", {X: 10, Y: 10, Width: 170, Height: 150}, look, active = true), ui.Slider(0.5, {X: 20, Y: 60, Width: 150, Height: 22}, look),
+    ui.Code([[[1, "defn "], [2, "f"]]], 1, {X: 10, Y: 100, Width: 170, Height: 40}, look), ui.Nodes([node], 1, [], look)])
+  drawn = sdl.Draw(commands, w)
+  image = probe.Pixels(drawn, 320, 200)
+  Print(near(probe.Pixel(100, 150, image), ui.Dark.Panel))
+  Print(near(probe.Pixel(30, 70, image), ui.Dark.Fill))
+  Print(near(probe.Pixel(115, 70, image), ui.Dark.Well))
+  Print(near(probe.Pixel(205, 33, image), 0x3F7A54))
+  Print(near(probe.Pixel(198, 40, image), 0xF5A623) or near(probe.Pixel(199, 40, image), 0xF5A623))
+  Print(not near(probe.Pixel(200, 45, image), ui.Dark.Ground))
+  sdl.Frame([{Kind: "clear", Color: 0}], drawn)
+  Print(sdl.Close(drawn))
+  Ok("closed")
+end
+
+Print(check())

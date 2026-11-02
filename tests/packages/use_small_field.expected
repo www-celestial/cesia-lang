@@ -1,0 +1,5 @@
+use_small_field.k:2:26: The field or method "tag" is private to the package that declares it.
+  2 | Print(geometry.Rect(2, 3).tag)
+    |                          ^
+  A field or a method is public when its first letter is a capital.
+exit 1

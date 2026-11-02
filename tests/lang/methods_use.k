@@ -1,0 +1,21 @@
+-- Methods across files: a static call through a module, and a method that goes with its value.
+use tests/lang/mods/shapes
+use tests/lang/mods/shapes as other
+
+struct Rect { Width }
+
+Rect.Square(side) = Rect(side)
+(r Rect) Area() = r.Width * r.Width
+
+isRangeOfAModuleConstant() = Equal(shapes.First:Len([1, 2]), [1, 2])
+isModuleStatic() = shapes.Circle.Unit().Radius == 1 and shapes.Circle.Of(2).Radius == 2
+isModuleStaticAlias() = other.Circle.Of(3).Radius == 3
+isModuleStaticInAnExpression() = 1 + shapes.Circle.Of(2).Area() * 2 == 25
+isModuleStaticCallsPrivate() = shapes.Circle.Reached().Radius == 2
+isValueOfAModule() = shapes.Make(2).Area() == 12 and shapes.Make(2).Twice() == 4
+isConstructorOfAModule() = shapes.Circle(2).Area() == 12
+isPublicMethodCallsPrivate() = shapes.Make(2).Shown() == 3
+isSameNameTwoFiles() = shapes.MakeRect(3).Area() == 9 and Rect.Square(2).Area() == 4
+isPrivateStructPublicMethod() = shapes.MakePiece(2).Double() == 4
+isModuleStaticInThen() = (2 then shapes.Circle.Of()).Radius == 2
+isDocOfAModuleMethod() = Contains("with pi at 3", Doc("shapes.Circle.Area"))

@@ -1,4 +1,4 @@
-match_none.kp:1:1: No branch of this match accepts the number 1.
+match_none.k:1:1: No branch of this match accepts the number 1.
   1 | match 1 2 -> 3 end
     | ^
 exit 1

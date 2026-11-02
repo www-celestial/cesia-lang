@@ -1,12 +1,12 @@
-Ok(value = "hello
+Ok(Value = "hello
 ")
-Ok(value = "err
+Ok(Value = "err
 ")
 3
 true
-Ok(value = 2) Ok(value = "late
+Ok(Value = 2) Ok(Value = "late
 ")
-Err(error = "This process has ended.")
-Ok(value = missing)
-Err(error = {kind: "io", message: "Can't run kepler_no_such_command: no such file or directory."})
+Err(Error = "This process has ended.")
+Ok(Value = missing)
+Err(Error = {Kind: "io", Message: "Can't run kepler_no_such_command: no such file or directory."})
 exit 0

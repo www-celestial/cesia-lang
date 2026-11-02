@@ -1,0 +1,2 @@
+use sys
+Print(sys.Run("sh", args = ["-c", "yes | head -1"]) then MapOk(it.Err))

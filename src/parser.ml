@@ -80,6 +80,12 @@ let hook p pos = node p pos (Hook { live = Bytes.empty })
 (* The body of a short form: a single statement. *)
 let hooked p pos (e : expr) = if p.hooks then [| hook p pos; e |] else [| e |]
 
+(* (r Rect), the current token being the parenthesis: no expression has two names in a row. *)
+let is_receiver p =
+  match p.toks.(p.i + 1).t with
+  | NAME _ -> (match p.toks.(p.i + 2).t with NAME _ -> true | _ -> false)
+  | _ -> false
+
 (* The token after the [)] matching the current [(]. *)
 let after_paren p =
   let k = ref (p.i + 1) and depth = ref 1 in
@@ -134,7 +140,7 @@ and following p =
 and apply_then p pos value (rhs : expr) =
   let arg v = { aname = None; value = v } in
   match rhs.e with
-  | Call call ->
+  | Call call when not (mentions_it call.callee) ->
     let is_it (a : arg) = is_it_alone a.value in
     if Array.exists is_it call.args then begin
       let args = Array.map (fun a -> if is_it a then { a with value } else a) call.args in
@@ -231,36 +237,60 @@ and lambda p =
   in
   node p pos (Lambda f)
 
-(* defn name(params) body end, or defn (params) body end, after the keyword. *)
+(* defn name(params) body end, defn (r Rect) name(params) body end, or defn (params) body end, after the keyword. *)
 and function_expr p pos =
   with_mode p Lines (fun () ->
-      let fname, named =
-        match (cur p).t with
-        | NAME n -> advance p; n, true
-        | _ -> "<anonymous>", false
-      in
+      let named = match (cur p).t with NAME _ -> true | LP -> is_receiver p | _ -> false in
+      let self, key, fname = if named then definition_name p else [||], "", "<anonymous>" in
       let f =
         in_func p fname pos (fun () ->
-            let ps = params p in
+            let ps = Array.append self (params p) in
             let body = block p (fun t -> t = END) in
             expect p END "end";
             ps, body)
       in
-      if named then node p pos (Fn_def (name fname, f)) else node p pos (Lambda f))
+      if named then node p pos (Fn_def (name key, f)) else node p pos (Lambda f))
 
-(* name(params) = expression *)
-and short_def p pos fname =
-  advance p;
+(* What a definition says before its parameters: (r Rect) Area, Rect.Square or a plain name. Gives the object as a parameter,
+   the name inside the core, where a static method has the mark that Lexer.split_method reads, and the name to show. *)
+and definition_name p =
+  let word what =
+    match (cur p).t with
+    | NAME n -> advance p; n
+    | _ -> unexpected p what
+  in
+  if (cur p).t = LP then begin
+    advance p;
+    let pname = word "a parameter name" in
+    let sname = word "the name of a struct" in
+    if (cur p).t = DOT then error p (cur p).pos Messages.method_foreign;
+    expect p RP "\")\"";
+    let shown = sname ^ "." ^ word "a method name" in
+    [| { pname; default = None } |], shown, shown
+  end
+  else begin
+    let n = word "a name" in
+    if (cur p).t = DOT then begin
+      advance p;
+      let m = word "a method name" in
+      if (cur p).t = DOT then error p (cur p).pos Messages.method_foreign;
+      [||], n ^ ":" ^ m, n ^ "." ^ m
+    end
+    else [||], n, n
+  end
+
+(* (params) = expression, after what [definition_name] gives. *)
+and short_def p pos (self, key, fname) =
   let f =
     in_func p fname pos (fun () ->
-        let ps = params p in
+        let ps = Array.append self (params p) in
         let eq = cur p in
         expect p ASSIGN "\"=\"";
         skip_nl p;
         let body = expr p in
         ps, hooked p body.pos (node p eq.pos (Return { rvalue = Some body; tail = true })))
   in
-  node p pos (Fn_def (name fname, f))
+  node p pos (Fn_def (name key, f))
 
 and or_expr p =
   let l = ref (and_expr p) in
@@ -407,11 +437,6 @@ and postfix p =
        | NAME n ->
          advance p;
          e := node p t.pos (Field (!e, n));
-         go ()
-       | STRUCT ->
-         (* c.struct: a keyword is free after a dot. *)
-         advance p;
-         e := node p t.pos (Field (!e, "struct"));
          go ()
        | _ -> unexpected p "a field name")
     | _ -> ()
@@ -784,12 +809,21 @@ and block p stop =
           p.in_index <- saved_index;
           Array.of_list (List.rev !items)))
 
-and after_call_is_def p =
+(* Is the ( at token k the start of name(params) = expression? *)
+and after_call_is_def p k =
   let saved = p.i in
-  p.i <- p.i + 1;
+  p.i <- k;
   let t = after_paren p in
   p.i <- saved;
   t = ASSIGN
+
+(* Rect.Unit() = ... *)
+and short_method p =
+  (not p.in_function)
+  && next_tok p = DOT
+  && (match p.toks.(p.i + 2).t with NAME _ -> true | _ -> false)
+  && (let t = p.toks.(p.i + 3) in t.t = LP && not t.sp)
+  && after_call_is_def p (p.i + 3)
 
 and stmt p =
   let t = cur p in
@@ -805,12 +839,20 @@ and stmt p =
     if p.in_function then error p t.pos Messages.use_nested;
     advance p;
     let start = (cur p).pos in
-    let upath, is_name =
+    let rec path_from acc =
       match (cur p).t with
-      | NAME n -> advance p; n, true
-      | TEXT [ Plain s ] -> advance p; s, false
-      | _ -> unexpected p "a module name or a path"
+      | NAME n ->
+        advance p;
+        if (cur p).t = SLASH then begin
+          advance p;
+          path_from (acc ^ n ^ "/")
+        end
+        else acc ^ n
+      | DOT -> error p start Messages.use_relative
+      | TEXT [ Plain s ] -> error p start (Messages.use_quoted s)
+      | _ -> unexpected p "a package name"
     in
+    let upath = path_from "" in
     let default = Filename.basename upath in
     let ualias =
       match (cur p).t with
@@ -821,7 +863,7 @@ and stmt p =
          | _ -> unexpected p "a name")
       | _ -> default
     in
-    node p start (Use { upath; is_name; ualias })
+    node p start (Use { upath; ualias })
   | (LB | LC) when after_close p = ASSIGN ->
     let pt = pattern p in
     let pos = (cur p).pos in
@@ -834,7 +876,10 @@ and stmt p =
     let next = (cur p).t in
     let rvalue = if next = NL || next = END || next = ELSE || next = EOF then None else Some (expr p) in
     node p t.pos (Return { rvalue; tail = false })
-  | NAME n when next_tok p = LP && not p.toks.(p.i + 1).sp && after_call_is_def p -> short_def p t.pos n
+  | NAME _ when next_tok p = LP && not p.toks.(p.i + 1).sp && after_call_is_def p (p.i + 1) ->
+    short_def p t.pos (definition_name p)
+  | NAME _ when short_method p -> short_def p t.pos (definition_name p)
+  | LP when is_receiver p -> short_def p t.pos (definition_name p)
   | _ ->
     let e = expr p in
     (* The path of a write: a variable, followed by indexes and fields. *)

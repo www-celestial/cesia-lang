@@ -1,4 +1,4 @@
-huge_matmul.kp:3:5: Limit "memory" reached.
-  3 | c = matmul(a, b)
+huge_matmul.k:3:5: Limit "memory" reached.
+  3 | c = Matmul(a, b)
     |     ^
 exit 1

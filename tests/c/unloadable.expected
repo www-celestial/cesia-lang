@@ -1,2 +1,2 @@
-Err(error = true)
+Err(Error = true)
 exit 0

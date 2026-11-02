@@ -1,0 +1,16 @@
+-- The cost of a call to a trivial C function.
+use c
+use sys
+
+defn repeatCall(f, n)
+  for i in 1:n
+    f(-5)
+  end
+end
+
+lib = Unwrap(c.Open("c", version = 6))
+absValue = Unwrap(c.Fn("abs", ["i32"], "i32", lib))
+n = 10000000
+start = sys.Now()
+repeatCall(absValue, n)
+Print("calls per second: $(Floor(n / (sys.Now() - start)))")

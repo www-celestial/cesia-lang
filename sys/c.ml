@@ -77,7 +77,7 @@ let ty_of st ctx (v : Types.t) =
   match v with
   | Handle { kind = "ctype"; id; _ } -> Aggregate (Hashtbl.find st.layouts id)
   | _ ->
-  let name = Native.text_arg ctx "fn" v in
+  let name = Native.text_arg ctx "Fn" v in
   match List.assoc_opt name types with
   | Some ty -> ty
   | None -> Runtime.fail ctx Type (Messages.c_type name)
@@ -222,7 +222,7 @@ let version_arg ctx (a : Types.t array) =
 let library address : Types.t = Handle { kind = "library"; id = address; task = None }
 
 let open_library st ctx (a : Types.t array) =
-  let name = c_name ctx "open" a.(0) in
+  let name = c_name ctx "Open" a.(0) in
   Runtime.check_perm ctx Ffi (Some name);
   (* The first reason is the one for the most exact name. *)
   let load (found, reason) path =
@@ -244,7 +244,7 @@ let types_of st ctx (v : Types.t) =
     let n = x.rows * x.cols in
     if n > max_ffi_args then Runtime.fail ctx Type (Messages.c_too_many n);
     Array.init n (fun k -> ty_of st ctx (Value.elt x k))
-  | _ -> Runtime.fail ctx Type (Messages.need_array "fn" (Value.describe v))
+  | _ -> Runtime.fail ctx Type (Messages.need_array "Fn" (Value.describe v))
 
 let alloc st ctx (a : Types.t array) : Types.t =
   match a.(0) with
@@ -275,7 +275,7 @@ let block_arg st ctx name (v : Types.t) =
   | _ -> fail ctx (Messages.c_need_block name (Value.describe v))
 
 let free st ctx (a : Types.t array) : Types.t =
-  let id, b = block_arg st ctx "free" a.(0) in
+  let id, b = block_arg st ctx "Free" a.(0) in
   Hashtbl.remove st.blocks id;
   st.live_bytes <- st.live_bytes - b.size;
   if st.calling > 0 then st.freed <- b :: st.freed;
@@ -379,7 +379,7 @@ let with_symbol ctx name (lib : Types.t) f =
   | v -> Runtime.fail ctx Type (Messages.c_need_library (Value.describe v))
 
 let bind st ctx (a : Types.t array) =
-  let name = c_name ctx "fn" a.(0) in
+  let name = c_name ctx "Fn" a.(0) in
   let args = types_of st ctx a.(1) and ret = ty_of st ctx a.(2) in
   if Array.mem Void args then Runtime.fail ctx Type Messages.c_void_arg;
   let calls_back = Array.length a > 4 && a.(4) = True in
@@ -393,7 +393,7 @@ let bind st ctx (a : Types.t array) =
       end)
 
 let variadic st ctx (a : Types.t array) =
-  let name = c_name ctx "variadic" a.(0) in
+  let name = c_name ctx "Variadic" a.(0) in
   let fixed = types_of st ctx a.(1) and rest = types_of st ctx a.(2) and ret = ty_of st ctx a.(3) in
   let total = Array.length fixed + Array.length rest in
   if total > max_ffi_args then Runtime.fail ctx Type (Messages.c_too_many total);
@@ -441,7 +441,7 @@ let layout_arg st ctx name (v : Types.t) =
   | _ -> fail ctx (Messages.c_need_layout name (Value.describe v))
 
 let c_offset st ctx (a : Types.t array) : Types.t =
-  let l = layout_arg st ctx "c.offset" a.(1) and k = Arrays.whole_index ctx a.(0) in
+  let l = layout_arg st ctx "c.Offset" a.(1) and k = Arrays.whole_index ctx a.(0) in
   if k < 1 || k > Array.length l.offsets then fail ctx (Messages.c_field_index k (Array.length l.offsets));
   Int l.offsets.(k - 1)
 
@@ -500,7 +500,7 @@ let check_word st ctx verb ty =
 (* The same conversions as a call: a word read here is what a C function would have returned. *)
 let get st ctx (a : Types.t array) =
   let ty = ty_of st ctx a.(0) in
-  let _, b = block_arg st ctx "get" a.(2) in
+  let _, b = block_arg st ctx "Get" a.(2) in
   check_word st ctx "read from" ty;
   let o = offset_arg ctx ty b a.(1) in
   let word =
@@ -514,7 +514,7 @@ let get st ctx (a : Types.t array) =
 
 let set st ctx (a : Types.t array) : Types.t =
   let ty = ty_of st ctx a.(0) in
-  let _, b = block_arg st ctx "set" a.(3) in
+  let _, b = block_arg st ctx "Set" a.(3) in
   check_word st ctx "written to" ty;
   let o = offset_arg ctx ty b a.(1) in
   let word = scalar st ctx ty a.(2) in
@@ -527,8 +527,8 @@ let set st ctx (a : Types.t array) : Types.t =
 
 (* Bytes between a text and a block, for what C treats as bytes: a text can hold zeros, and goes through whole. *)
 let store st ctx (a : Types.t array) : Types.t =
-  let s = Native.text_arg ctx "store" a.(0) in
-  let _, b = block_arg st ctx "store" a.(2) in
+  let s = Native.text_arg ctx "Store" a.(0) in
+  let _, b = block_arg st ctx "Store" a.(2) in
   let at = Arrays.whole_index ctx a.(1) and n = String.length s in
   if at < 0 || at > b.size - n then fail ctx (Messages.c_offset at b.size "text");
   Runtime.pay_bytes ctx n;
@@ -536,7 +536,7 @@ let store st ctx (a : Types.t array) : Types.t =
   Missing
 
 let load st ctx (a : Types.t array) : Types.t =
-  let _, b = block_arg st ctx "load" a.(2) in
+  let _, b = block_arg st ctx "Load" a.(2) in
   let at = Arrays.whole_index ctx a.(0) and n = Arrays.whole_index ctx a.(1) in
   if n < 0 || at < 0 || at > b.size - n then fail ctx (Messages.c_offset at b.size "text");
   Runtime.pay_bytes ctx n;
@@ -549,17 +549,17 @@ let text st ctx (a : Types.t array) : Types.t =
   | v -> fail ctx (Messages.c_need_pointer (Value.describe v))
 
 let natives st =
-  [ "open", Native.nat ~params:[| "name"; "version" |] "open" 1 2 (open_library st);
-    "fn", Native.nat ~params:[| "name"; "args"; "ret"; "lib"; "calls_back" |] "fn" 4 5 (bind st);
-    "variadic", Native.nat "variadic" 5 5 (variadic st);
-    "callback", Native.nat "callback" 3 3 (c_callback st);
-    "struct", Native.nat "struct" 1 1 (c_struct st);
-    "size", Native.nat "size" 1 1 (fun ctx a -> Int (layout_arg st ctx "c.size" a.(0)).size);
-    "offset", Native.nat "offset" 2 2 (c_offset st);
-    "alloc", Native.nat "alloc" 1 1 (alloc st);
-    "free", Native.nat "free" 1 1 (free st);
-    "get", Native.nat "get" 3 3 (get st);
-    "store", Native.nat "store" 3 3 (store st);
-    "load", Native.nat "load" 3 3 (load st);
-    "set", Native.nat "set" 4 4 (set st);
-    "text", Native.nat "text" 1 1 (text st) ]
+  [ "Open", Native.nat ~params:[| "name"; "version" |] "Open" 1 2 (open_library st);
+    "Fn", Native.nat ~params:[| "name"; "args"; "ret"; "lib"; "callsBack" |] "Fn" 4 5 (bind st);
+    "Variadic", Native.nat "Variadic" 5 5 (variadic st);
+    "Callback", Native.nat "Callback" 3 3 (c_callback st);
+    "Struct", Native.nat "Struct" 1 1 (c_struct st);
+    "Size", Native.nat "Size" 1 1 (fun ctx a -> Int (layout_arg st ctx "c.Size" a.(0)).size);
+    "Offset", Native.nat "Offset" 2 2 (c_offset st);
+    "Alloc", Native.nat "Alloc" 1 1 (alloc st);
+    "Free", Native.nat "Free" 1 1 (free st);
+    "Get", Native.nat "Get" 3 3 (get st);
+    "Store", Native.nat "Store" 3 3 (store st);
+    "Load", Native.nat "Load" 3 3 (load st);
+    "Set", Native.nat "Set" 4 4 (set st);
+    "Text", Native.nat "Text" 1 1 (text st) ]

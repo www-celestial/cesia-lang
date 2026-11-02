@@ -1,4 +1,4 @@
-struct_field.kp:2:8: This struct has no field "b".
-  2 | print(s.b)
+struct_field.k:2:8: This struct has no field "B".
+  2 | Print(s.B)
     |        ^
 exit 1

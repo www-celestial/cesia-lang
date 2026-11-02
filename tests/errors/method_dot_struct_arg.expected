@@ -1,0 +1,5 @@
+method_dot_struct_arg.k:4:11: "Area" needs a Rect.
+  4 | Print(Rect.Area(r))
+    |           ^
+  Write x.Area(), with x a Rect.
+exit 1

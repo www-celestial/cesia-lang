@@ -1,0 +1,7 @@
+-- Used by the method errors: a struct with a private method.
+struct Far { X }
+(f Far) hidden() = f.X
+(f Far) Shown() = f.hidden()
+Far.Make() = Far(1)
+Far.built() = Far(2)
+New() = Far(1)

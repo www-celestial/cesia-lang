@@ -254,6 +254,6 @@ let create name =
   if Sys.file_exists name then stop 1 (Messages.project_exists name);
   Sys.mkdir name 0o755;
   write (Filename.concat name file_name)
-    (Printf.sprintf "[project]\nname = \"%s\"\n\n[tasks.run]\nfile = \"main.kp\"\n" name);
-  write (Filename.concat name "main.kp") (Printf.sprintf "print(\"Hello from %s\")\n" name);
+    (Printf.sprintf "[project]\nname = \"%s\"\n\n[tasks.run]\nfile = \"main.k\"\n" name);
+  write (Filename.concat name "main.k") (Printf.sprintf "Print(\"Hello from %s\")\n" name);
   print_endline (Messages.project_created name)

@@ -1,4 +1,4 @@
-dict_pairs.kp:1:7: dict needs structs with a key and a value, not the number 1.
-  1 | print(dict([1]))
+dict_pairs.k:1:7: Dict needs structs with a Key and a Value, not the number 1.
+  1 | Print(Dict([1]))
     |       ^
 exit 1

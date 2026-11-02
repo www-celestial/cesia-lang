@@ -56,17 +56,24 @@ let name_end line from =
   while !i < String.length line && is_name_char line.[!i] do incr i done;
   !i
 
-let is_definition line =
-  String.starts_with ~prefix:"defn " line
-  || String.starts_with ~prefix:"struct " line
-  || (let i = name_end line 0 in i > 0 && i < String.length line && line.[i] = '(')
-
 let native_header line =
   if String.starts_with ~prefix:"--- " line then Some (String.trim (String.sub line 4 (String.length line - 4))) else None
 
-(* A line up to the parenthesis that closes its first one, which may be followed by = and a body. *)
+(* Where the space after the (r Rect) of a line is, when the line starts with one. *)
+let receiver_end line =
+  let n = String.length line in
+  if n = 0 || line.[0] <> '(' then None
+  else
+    let self = name_end line 1 in
+    if self = 1 || self >= n || line.[self] <> ' ' then None
+    else
+      let sname = name_end line (self + 1) in
+      if sname > self + 1 && sname + 1 < n && line.[sname] = ')' && line.[sname + 1] = ' ' then Some (sname + 1) else None
+
+(* A line up to the parenthesis that closes its first one, after an object if it has one, which may be followed by = and a
+   body. *)
 let signature_of line =
-  match String.index_opt line '(' with
+  match String.index_from_opt line (Option.value (receiver_end line) ~default:0) '(' with
   | None -> line
   | Some start ->
     let n = String.length line in
@@ -83,15 +90,40 @@ let signature_of line =
     in
     go start 0 false
 
+(* (r Rect) IsEmpty() = ... or Rect.Unit() = ..., and not a call of a module at the start of a line: the name is after [i]. *)
+let is_short_method line i =
+  let from = i + 1 in
+  let upto = name_end line from in
+  upto > from && upto < String.length line && line.[upto] = '('
+  &&
+  let n = String.length (signature_of line) in
+  let rest = String.trim (String.sub line n (String.length line - n)) in
+  String.starts_with ~prefix:"=" rest && not (String.starts_with ~prefix:"==" rest)
+
+let is_definition line =
+  String.starts_with ~prefix:"defn " line
+  || String.starts_with ~prefix:"struct " line
+  ||
+  match receiver_end line with
+  | Some i -> is_short_method line i
+  | None ->
+    let i = name_end line 0 in
+    i > 0 && i < String.length line && (line.[i] = '(' || (line.[i] = '.' && is_short_method line i))
+
 let drop_prefix prefix s =
   if String.starts_with ~prefix s then Some (String.sub s (String.length prefix) (String.length s - String.length prefix))
   else None
 
-(* The name in a signature: a module's name comes with its dot. *)
+(* The name in a signature: a module's name comes with its dot, and a method's with its struct, static or not. *)
 let name_of signature =
-  let i = name_end signature 0 in
-  if i < String.length signature && signature.[i] = '.' then String.sub signature 0 (name_end signature (i + 1))
-  else String.sub signature 0 i
+  match receiver_end signature with
+  | Some i ->
+    let sname = String.index signature ' ' + 1 in
+    String.sub signature sname (i - 1 - sname) ^ "." ^ String.sub signature (i + 1) (name_end signature (i + 1) - i - 1)
+  | None ->
+    let i = name_end signature 0 in
+    if i < String.length signature && signature.[i] = '.' then String.sub signature 0 (name_end signature (i + 1))
+    else String.sub signature 0 i
 
 let text_of_block block =
   let unindent t = if String.starts_with ~prefix:" " t then String.sub t 1 (String.length t - 1) else t in
@@ -128,9 +160,24 @@ let entries src =
   close_native ();
   List.rev !out
 
-let public name = String.length name > 0 && name.[0] <> '_' && name.[0] <> '#'
+let public = Lexer.is_public
+
+(* A method is public if its struct and its name are. *)
+let public_name name =
+  match Lexer.split_method name with
+  | Some (sname, _, m) -> public sname && public m
+  | None -> public name
+
 let shown e = if e.text = "" then e.signature else e.signature ^ "\n\n" ^ e.text
-let std name = List.assoc_opt name Embedded.files
+
+(* Like [use], which reads the sources of KEPLER_STD when it is set. *)
+let std name =
+  match Sys.getenv_opt "KEPLER_STD" with
+  | Some dir ->
+    let path = Filename.concat dir (name ^ Package.suffix) in
+    if Sys.file_exists path then Some (In_channel.with_open_bin path In_channel.input_all) else None
+  | None -> List.assoc_opt name Embedded.files
+
 let not_modules = [ "prelude"; "natives" ]
 
 (* An editor asks often, so a file of std/ is read once. *)
@@ -146,6 +193,32 @@ let std_entries name =
 
 let natives_entries () = std_entries "natives"
 
+(* The folder of a module of the project: a path from the root, or the last part of a folder in use. No name leads out of
+   the root: reading it takes no permission. *)
+let folder_of w m =
+  let path = Filename.concat w.root m in
+  if m = "" then None
+  else if Package.is_dir path then (if Runtime.inside w.root path then Some path else None)
+  else
+    Hashtbl.fold
+      (fun key _ found ->
+         if found = None && Package.is_dir key && String.equal (Filename.basename key) m then Some key else found)
+      w.loaded None
+
+let package_sources w m =
+  match folder_of w m with
+  | Some dir -> List.map (fun path -> In_channel.with_open_bin path In_channel.input_all) (Package.files dir)
+  | None -> []
+
+(* A package is one module, whichever file holds a name. *)
+let module_entries w m = std_entries m @ List.concat_map entries (package_sources w m)
+
+(* The source whose top comment says what a module is for. *)
+let module_source w m =
+  match std m with
+  | Some src -> Some src
+  | None -> List.nth_opt (package_sources w m) 0
+
 let find name es = List.find_opt (fun e -> String.equal e.name name) es
 
 (* A comment at the top of a file says what the module is for. *)
@@ -156,26 +229,39 @@ let module_text src =
   in
   go [] (String.split_on_char '\n' src)
 
-let lookup name =
+let short_name n = match String.rindex_opt n '.' with Some i -> String.sub n (i + 1) (String.length n - i - 1) | None -> n
+
+(* Without its module: num.Solve, date.Date.Year, date.Date.Parse. *)
+let without_module name =
+  match String.index_opt name '.' with
+  | Some i -> String.sub name 0 i, String.sub name (i + 1) (String.length name - i - 1)
+  | None -> "", name
+
+let lookup w name =
   let native = find name (natives_entries ()) in
-  let entry =
-    match String.index_opt name '.' with
-    | None -> (match find name (std_entries "prelude") with Some e -> Some e | None -> native)
-    | Some i ->
-      let m = String.sub name 0 i and short = String.sub name (i + 1) (String.length name - i - 1) in
-      (match if public short then find short (std_entries m) else None with
-       | Some e -> Some e
-       | None -> native)
+  let m, short = without_module name in
+  let entry, short =
+    match find name (std_entries "prelude") with
+    | Some e -> Some e, name
+    | None when m = "" -> native, name
+    | None ->
+      (match find short (module_entries w m) with
+       | Some e -> Some e, short
+       | None -> native, short)
   in
-  if public name then Option.map shown entry else None
+  if public_name short then Option.map shown entry else None
+
+(* An instance method of the running program has no value to ask about: only its name leads to it. *)
+let program_method w name =
+  let wanted = Lexer.split_method name <> None && public_name name in
+  let in_file (_, src) = if wanted then find name (entries src) else None in
+  Option.map shown (Seq.find_map in_file (Dynarray.to_seq w.files))
 
 let modules w =
   let embedded = List.filter (fun m -> not (List.mem m not_modules)) (List.map fst Embedded.files) in
   "prelude" :: List.sort_uniq String.compare (embedded @ List.map fst w.native_modules)
 
-let is_module w m = List.mem m (modules w)
-
-let short_name n = match String.rindex_opt n '.' with Some i -> String.sub n (i + 1) (String.length n - i - 1) | None -> n
+let is_module w m = List.mem m (modules w) || package_sources w m <> []
 
 let names w m =
   let qualified n = if m = "prelude" then n else m ^ "." ^ n in
@@ -187,8 +273,8 @@ let names w m =
       List.map (fun (n, _) -> m ^ "." ^ n) (Option.value (List.assoc_opt m w.native_modules) ~default:[])
       @ List.filter_map (fun e -> Option.map (fun _ -> e.name) (drop_prefix (m ^ ".") e.name)) (natives_entries ())
   in
-  let written = List.map (fun e -> qualified e.name) (std_entries m) in
-  List.sort_uniq String.compare (List.filter (fun n -> public (short_name n)) (native_names @ written))
+  let written = List.filter_map (fun e -> if public_name e.name then Some (qualified e.name) else None) (module_entries w m) in
+  List.sort_uniq String.compare (List.filter (fun n -> public (short_name n)) native_names @ written)
 
 (* What a function value was defined as. A native knows only its short name. *)
 let of_function w v =
@@ -197,7 +283,7 @@ let of_function w v =
     let _, src = Dynarray.get w.files proto.file in
     if public proto.pname then Option.map shown (find proto.pname (entries src)) else None
   | Native n ->
-    (match lookup n.nname with
+    (match lookup w n.nname with
      | Some text -> Some text
      | None ->
        let suffix = "." ^ n.nname in
@@ -208,10 +294,10 @@ let doc ctx (a : t array) =
   let found =
     match a.(0) with
     | Text name ->
-      (match lookup name with
+      (match lookup ctx.w name with
        | Some text -> Some text
-       | None when is_module ctx.w name -> Option.map module_text (std name)
-       | None -> None)
+       | None when is_module ctx.w name -> Option.map module_text (module_source ctx.w name)
+       | None -> program_method ctx.w name)
     | v -> of_function ctx.w v
   in
   match found with Some text -> Text text | None -> Missing
@@ -221,20 +307,20 @@ let doc_names ctx (a : t array) =
     match a with
     | [||] -> modules ctx.w
     | _ ->
-      let m = Native.text_arg ctx "doc_names" a.(0) in
+      let m = Native.text_arg ctx "DocNames" a.(0) in
       if is_module ctx.w m then names ctx.w m else []
   in
   Arrays.list (Array.of_list (List.map (fun s -> Text s) found))
 
 let natives =
-  [ "doc", Native.nat "doc" 1 1 doc;
-    "doc_names", Native.nat "doc_names" 0 1 doc_names ]
+  [ "Doc", Native.nat "Doc" 1 1 doc;
+    "DocNames", Native.nat "DocNames" 0 1 doc_names ]
 
 let first_line text = match String.index_opt text '\n' with Some i -> String.sub text 0 i | None -> text
 
 (* The sentence after the signature of a name. *)
-let summary name =
-  match lookup name with
+let summary w name =
+  match lookup w name with
   | None -> ""
   | Some text ->
     (match String.index_opt text '\n' with
@@ -242,6 +328,7 @@ let summary name =
      | None -> "")
 
 let command w args =
+  w.root <- Package.root_of ".";
   let table rows =
     let width = List.fold_left (fun n (a, _) -> max n (String.length a)) 0 rows in
     List.iter (fun (a, b) -> print_endline (String.trim (Printf.sprintf "%-*s  %s" width a b))) rows
@@ -251,12 +338,12 @@ let command w args =
     table (List.map (fun m -> m, first_line (module_text (Option.value (std m) ~default:""))) (modules w));
     0
   | [ name ] when is_module w name ->
-    let head = module_text (Option.value (std name) ~default:"") in
+    let head = module_text (Option.value (module_source w name) ~default:"") in
     if head <> "" && name <> "prelude" then print_endline (head ^ "\n");
-    table (List.map (fun n -> n, summary n) (names w name));
+    table (List.map (fun n -> n, summary w n) (names w name));
     0
   | [ name ] ->
-    (match lookup name with
+    (match lookup w name with
      | Some text ->
        print_endline text;
        0

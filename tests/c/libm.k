@@ -1,0 +1,13 @@
+use c
+
+defn check()
+  m = c.Open("m", version = 6)?
+  libc = c.Open("c", version = 6)?
+  cos = c.Fn("cos", ["f64"], "f64", m)?
+  ldexp = c.Fn("ldexp", ["f64", "i32"], "f64", m)?
+  strlen = c.Fn("strlen", ["text"], "u64", libc)?
+  absValue = c.Fn("abs", ["i32"], "i32", libc)?
+  Ok([cos(0.0), ldexp(1.5, 3), strlen("héllo"), absValue(-5)])
+end
+
+Print(check())

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Golden tests: for each name.kp with name.expected, runs kepler from the test's folder
+# Golden tests: for each name.k with name.expected, runs kepler from the test's folder
 # and compares stdout then stderr (2>&1), followed by an "exit N" line.
 # Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "kepler run").
 # GOLDEN_TRACE=1 names each test as it starts: a test that hangs would otherwise leave no trace.
@@ -33,7 +33,7 @@ run_one() {
       source "./$name.cmd" < "$input"
     else
       # shellcheck disable=SC2086
-      "$kepler" run $no_spec $flags "$name.kp" $args < "$input"
+      "$kepler" run $no_spec $flags "$name.k" $args < "$input"
     fi
     echo "exit $?"
   ) > "$out" 2>&1

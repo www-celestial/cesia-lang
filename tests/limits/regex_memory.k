@@ -1,0 +1,2 @@
+use regex
+Print(ByteLength(regex.Replace("", Repeat(500, "x"), Repeat(35000, "a"))))

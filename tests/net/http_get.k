@@ -1,0 +1,35 @@
+use http
+use net
+use sys
+
+crlf = "$(Char(13))$(Char(10))"
+sized = "HTTP/1.1 200 OK$(crlf)Content-Length: 5$(crlf)X-A: 1$(crlf)$(crlf)hello"
+chunked = "HTTP/1.1 200 OK$(crlf)Transfer-Encoding: chunked$(crlf)$(crlf)5$(crlf)hello$(crlf)A;x=1$(crlf)0123456789$(crlf)0$(crlf)$crlf"
+closing = "HTTP/1.1 404 Not Found$(crlf)$(crlf)gone"
+
+defn reply(listener, text, close)
+  c = net.Accept(listener)?
+  net.Read(c)?
+  net.Write(c, text)?
+  if close net.Close(c) end
+  Ok(missing)
+end
+
+defn rawServer(listener)
+  reply(listener, sized, true)?
+  reply(listener, chunked, true)?
+  reply(listener, closing, true)?
+  reply(listener, sized, false)
+end
+
+summary(r) = r then MapOk(x -> [x.Status, x.Body, Len(x.Headers)])
+
+listener = Unwrap(net.Listen(18097))
+Spawn(() -> rawServer(listener))
+Spawn(() -> http.Serve(r -> {Status: 201, Body: "é"}, port = 18098))
+sys.Sleep(0)
+Print(http.Get("http://127.0.0.1:18097/a") then summary)
+Print(http.Get("http://127.0.0.1:18097/b?x=1") then summary)
+Print(http.Get("http://127.0.0.1:18097") then summary)
+Print(http.Get("http://127.0.0.1:18097/keep") then summary)
+Print(http.Get("http://127.0.0.1:18098/") then summary)

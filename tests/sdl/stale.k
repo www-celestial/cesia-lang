@@ -1,0 +1,17 @@
+-- sdl.Frame returns the window, but a program that keeps the old value must not lose text objects.
+use c
+use sdl
+
+line = {Kind: "text", X: 8, Y: 8, Text: "same", Color: 0xFFFFFF}
+
+defn check()
+  window = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  sdl.Frame([line], window)
+  sdl.Frame([line], window)
+  sdl.Frame([line, line], window)
+  Print(c.Get("i64", 0, window.Objects))
+  sdl.Close(window)
+  Ok(missing)
+end
+
+Print(check())

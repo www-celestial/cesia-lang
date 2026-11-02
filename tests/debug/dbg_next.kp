@@ -1,4 +1,0 @@
-defn on_stop(stop)
-  print("$(stop.file):$(stop.line) $(stop.reason)")
-  "next"
-end

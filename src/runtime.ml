@@ -153,7 +153,8 @@ let create_world o =
     compile_ver = (fun _ _ -> ());
     charge;
     loaded = Hashtbl.create 8;
-    entry_dir = "." }
+    methods = Hashtbl.create 16;
+    root = "." }
 
 let first_refill w = min (min w.period w.limits.steps) w.limits.max_depth
 

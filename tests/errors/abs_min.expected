@@ -1,5 +1,5 @@
-abs_min.kp:2:7: The integer result of -(-4611686018427387904) doesn't fit in 63 bits.
-  2 | print(abs(x))
+abs_min.k:2:7: The integer result of -(-4611686018427387904) doesn't fit in 63 bits.
+  2 | Print(Abs(x))
     |       ^
   Integers have 63 bits. To go further, use a float: 1.0 * x.
 exit 1

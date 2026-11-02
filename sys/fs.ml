@@ -77,29 +77,29 @@ let on_path name perm verb arity f =
       attempt ctx verb path (fun () -> f ctx path a))
 
 let natives =
-  [ on_path "read" Read "read" 1 (fun ctx path _ -> read_all ctx path);
-    on_path "write" Write "write" 2 (fun ctx path a ->
-        write_all path [ Unix.O_TRUNC ] (Native.text_arg ctx "write" a.(1)));
-    on_path "append" Write "append to" 2 (fun ctx path a ->
-        write_all path [ Unix.O_APPEND ] (Native.text_arg ctx "append" a.(1)));
-    on_path "list" Read "list" 1 (fun _ path _ -> list_dir path);
-    on_path "remove" Write "remove" 1 (fun _ path _ -> remove path);
-    on_path "stat" Read "read" 1 (fun ctx path _ ->
+  [ on_path "Read" Read "read" 1 (fun ctx path _ -> read_all ctx path);
+    on_path "Write" Write "write" 2 (fun ctx path a ->
+        write_all path [ Unix.O_TRUNC ] (Native.text_arg ctx "Write" a.(1)));
+    on_path "Append" Write "append to" 2 (fun ctx path a ->
+        write_all path [ Unix.O_APPEND ] (Native.text_arg ctx "Append" a.(1)));
+    on_path "List" Read "list" 1 (fun _ path _ -> list_dir path);
+    on_path "Remove" Write "remove" 1 (fun _ path _ -> remove path);
+    on_path "Stat" Read "read" 1 (fun ctx path _ ->
         let s = Unix.stat path in
-        let shape = Value.shape_of ctx.w [| "size"; "modified"; "is_dir" |] in
+        let shape = Value.shape_of ctx.w [| "Size"; "Modified"; "IsDir" |] in
         Struct
           { shape;
             fields = [| Int s.st_size; Float s.st_mtime; Value.of_bool (s.st_kind = Unix.S_DIR) |];
             r_owned = true });
-    on_path "rename" Write "rename" 2 (fun ctx path a ->
-        Unix.rename path (path_arg ctx "rename" Write a.(1));
+    on_path "Rename" Write "rename" 2 (fun ctx path a ->
+        Unix.rename path (path_arg ctx "Rename" Write a.(1));
         Missing);
-    on_path "mkdir" Write "create" 1 (fun _ path _ -> make_dir path; Missing);
-    "exists",
-    Native.nat "exists" 1 1 (fun ctx a -> Value.of_bool (Sys.file_exists (path_arg ctx "exists" Read a.(0))));
-    "env",
-    Native.nat "env" 1 1 (fun ctx a ->
-        let name = Native.text_arg ctx "env" a.(0) in
+    on_path "Mkdir" Write "create" 1 (fun _ path _ -> make_dir path; Missing);
+    "Exists",
+    Native.nat "Exists" 1 1 (fun ctx a -> Value.of_bool (Sys.file_exists (path_arg ctx "Exists" Read a.(0))));
+    "Env",
+    Native.nat "Env" 1 1 (fun ctx a ->
+        let name = Native.text_arg ctx "Env" a.(0) in
         Runtime.check_perm ctx Env (Some name);
         match Sys.getenv_opt name with
         | Some v -> Text v

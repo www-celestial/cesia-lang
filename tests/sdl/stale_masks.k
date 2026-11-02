@@ -1,0 +1,20 @@
+use tests/sdl/probe
+use c
+use sdl
+
+defn check()
+  w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  one = {Kind: "box", X: 10, Y: 10, Width: 60, Height: 60, Color: 0xFF0000, Radius: 6}
+  newer = sdl.Draw([one], w)
+  older = sdl.Draw([{Kind: "clear", Color: 0}, one], w)
+  Print(Mod(Div(probe.Pixel(40, 40, probe.Pixels(older, 320, 200)), 65536), 256) > 240)
+  count = c.Get("i64", 0, w.Images)
+  for k in 1:20
+    sdl.Draw([one, {Kind: "ring", X: 10, Y: 10, Width: 60, Height: 60, Color: 0, Radius: 6}, {Kind: "shadow", X: 10, Y: 10, Width: 60, Height: 60}], w)
+  end
+  Print(c.Get("i64", 0, w.Images) <= count + 2)
+  Print(sdl.Close(newer))
+  Ok("closed")
+end
+
+Print(check())

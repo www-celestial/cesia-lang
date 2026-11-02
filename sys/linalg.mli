@@ -3,7 +3,7 @@
 open Kepler
 open Types
 
-(** Sends the [matmul] of large arrays to BLAS. *)
+(** Sends the [Matmul] of large arrays to BLAS. *)
 val install : unit -> unit
 
 (** The [lapack] module. Each function gives [missing] when it can't help, and the caller then does the work itself. *)

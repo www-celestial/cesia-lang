@@ -1,4 +1,0 @@
--- A copy is reserved before it is built.
-x = repeat(3000000, "a")
-y = lower(x)
-print(length(y))

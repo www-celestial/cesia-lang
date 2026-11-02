@@ -1,0 +1,6 @@
+use c
+
+for i in 1:1000
+  c.Free(c.Alloc(100000))
+end
+Print("done")

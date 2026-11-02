@@ -1,0 +1,5 @@
+underscore_arg.k:1:16: A name can't hold a _: "some_arg".
+  1 | Print(Len([1], some_arg = 2))
+    |                ^
+  Join the words with capitals: someArg, or SomeArg when it is public.
+exit 1

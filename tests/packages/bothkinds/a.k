@@ -1,0 +1,3 @@
+-- An instance method.
+struct Rect { Width }
+(r Rect) Area() = 1

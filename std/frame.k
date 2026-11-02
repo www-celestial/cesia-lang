@@ -1,0 +1,199 @@
+-- Tables of named columns, in the spirit of pandas. A frame is a value: every function gives a new one. The work on whole
+-- columns is native, and a column of integers or floats is stored without a box.
+use columns as col
+use csv
+
+-- A frame from the names of its columns and the columns, in the same order.
+--
+--   Columns(Table(["a"], [[1]])) --> ["a"]
+defn Table(names, columns)
+  {Names: names, Columns: Dict([{Key: names[k], Value: columns[k]} for k in 1:Len(names)])}
+end
+
+-- A frame from a dictionary of columns.
+--
+--   Rows(Of({"a": [1, 2]})) --> 2
+Of(columns) = Table(Keys(columns), Values(columns))
+-- A frame with these columns and no row.
+--
+--   Rows(Empty(["a"])) --> 0
+Empty(names) = Table(names, [[] for n in names])
+-- The number of rows.
+--
+--   Rows(Of({"a": [1, 2]})) --> 2
+Rows(df) = if Len(df.Names) == 0 0 else Len(df.Columns[df.Names[1]]) end
+-- The names of the columns.
+--
+--   Columns(Of({"a": [1], "b": [2]})) --> ["a", "b"]
+Columns(df) = df.Names
+-- The values of a column.
+--
+--   Column("a", Of({"a": [1, 2]})) --> [1, 2]
+Column(name, df) = df.Columns[name]
+-- A row as a dictionary from the column names.
+--
+--   Row(2, Of({"a": [1, 2]}))["a"] --> 2
+Row(i, df) = Dict([{Key: n, Value: df.Columns[n][i]} for n in df.Names])
+-- All the rows, each as a dictionary.
+--
+--   Len(Records(Of({"a": [1, 2]}))) --> 2
+Records(df) = [Row(i, df) for i in 1:Rows(df)]
+
+-- A frame from the dictionaries of the rows, taking the given columns. A missing key gives a missing value.
+--
+--   Rows(FromRecords(["a"], [{"a": 1}, {"a": 2}])) --> 2
+defn FromRecords(names, items)
+  Table(names, [[Get(n, r) for r in items] for n in names])
+end
+
+take(ks, df) = Table(df.Names, [col.Pick(ks, df.Columns[n]) for n in df.Names])
+
+-- The first n rows.
+--
+--   Column("a", Head(2, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [1, 2]
+Head(n, df) = take(1:Min(n, Rows(df)), df)
+
+-- The last n rows.
+--
+--   Column("a", Tail(2, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3]
+defn Tail(n, df)
+  total = Rows(df)
+  take(Max(total - n, 0) + 1:total, df)
+end
+
+-- A frame with only these columns, in this order.
+--
+--   Columns(Select(["b"], Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> ["b"]
+Select(names, df) = Table(names, [df.Columns[n] for n in names])
+-- A frame without a column.
+--
+--   Columns(DropColumn("a", Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> ["b"]
+DropColumn(name, df) = Select(Filter(n -> n != name, df.Names), df)
+
+-- A frame with a column replaced, or added at the end.
+--
+--   Column("c", SetColumn("c", [7, 8, 9], Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [7, 8, 9]
+defn SetColumn(name, values, df)
+  names = if name in df.Names df.Names else Concat(df.Names, [name]) end
+  {Names: names, Columns: Put(name, values, df.Columns)}
+end
+
+-- f takes a row as a dictionary, and gives the value of the new column.
+WithColumn(name, f, df) = SetColumn(name, [f(Row(i, df)) for i in 1:Rows(df)], df)
+
+-- A frame with a column renamed.
+--
+--   Columns(Rename("a", "z", Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> ["z", "b"]
+Rename(old, new, df) = Table([if n == old new else n end for n in df.Names], [df.Columns[n] for n in df.Names])
+
+-- The rows for which f accepts the row as a dictionary.
+--
+--   Column("a", Where(r -> r["a"] > 1, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3]
+Where(f, df) = take([i for i in 1:Rows(df) if f(Row(i, df))], df)
+
+-- The rows for which f accepts the value of a column.
+--
+--   Column("a", WhereColumn("a", it > 1, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3]
+defn WhereColumn(name, f, df)
+  xs = df.Columns[name]
+  take([i for i in 1:Rows(df) if f(xs[i])], df)
+end
+
+-- The rows where a mask of booleans is true: WhereMask(Column("v", df) > 2.0, df).
+WhereMask(mask, df) = take(col.Positions(mask), df)
+
+-- The storage of each column: "int", "float" or "value".
+Kinds(df) = [col.Kind(df.Columns[n]) for n in df.Names]
+
+-- The rows ordered by a column, increasing, or decreasing with descending. Equal values keep their order.
+--
+--   Column("a", SortBy("a", Of({"a": [1, 2, 3], "b": [4, 5, 6]}), descending = true)) --> [3, 2, 1]
+defn SortBy(name, df, descending = false)
+  ks = Order(df.Columns[name])
+  take(if descending Reverse(ks) else ks end, df)
+end
+
+-- The rows of a followed by the rows of b, which has the same columns.
+--
+--   Rows(Append(Of({"a": [1, 2, 3], "b": [4, 5, 6]}), Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> 6
+Append(a, b) = Table(a.Names, [Concat(a.Columns[n], b.Columns[n]) for n in a.Names])
+-- The rows that have no missing value.
+--
+--   Rows(DropMissing(Of({"a": [1, missing]}))) --> 1
+DropMissing(df) = Where(r -> not Any([IsMissing(v) for v in Values(r)]), df)
+-- A frame where every missing value is replaced by a value.
+--
+--   Column("a", FillMissing(0, Of({"a": [1, missing]}))) --> [1, 0]
+FillMissing(value, df) = Table(df.Names, [[if IsMissing(x) value else x end for x in df.Columns[n]] for n in df.Names])
+-- The values of a column that aren't missing.
+--
+--   Present([1, missing, 2]) --> [1, 2]
+Present(xs) = col.Present(xs)
+
+-- One aggregation: a new column, a source column, and a function of its values.
+Agg(name, source, f) = {Name: name, Source: source, F: f}
+
+-- A frame with one row for each combination of the columns in by, and a column for each aggregation (see agg).
+--
+--   Column("n", GroupBy(["k"], [Agg("n", "v", Len)], Of({"k": ["x", "y", "x"], "v": [1, 2, 3]}))) --> [2, 1]
+defn GroupBy(by, aggregations, df)
+  g = col.Groups(if Len(by) == 0 [Fill(0, Rows(df))] else [df.Columns[n] for n in by] end)
+  out = Table(by, [col.Pick(g.Firsts, df.Columns[n]) for n in by])
+  for a in aggregations
+    out = SetColumn(a.Name, [a.F(part) for part in col.Split(g, df.Columns[a.Source])], out)
+  end
+  out
+end
+
+-- How many rows hold each value of a column, the most frequent first.
+--
+--   Column("a", ValueCounts("a", Of({"a": ["x", "y", "x"]}))) --> ["x", "y"]
+defn ValueCounts(name, df)
+  g = GroupBy([name], [Agg("count", name, Len)], df)
+  SortBy("count", g, descending = true)
+end
+
+-- An inner join on one column, or all the rows of a with how = "left".
+defn JoinOn(on, a, b, how = "inner")
+  m = col.Join(a.Columns[on], b.Columns[on], how == "left")
+  out = take(m.Left, a)
+  for n in Filter(n -> n != on, b.Names)
+    out = SetColumn(n, col.Pick(m.Right, b.Columns[n]), out)
+  end
+  out
+end
+
+statsOf(xs) = {Count: Len(xs), Mean: Mean(xs), Min: Min(xs), Max: Max(xs)}
+
+-- The count, mean, minimum and maximum of each numeric column, as a frame.
+defn Describe(df)
+  numeric = Filter(n -> Len(Present(df.Columns[n])) > 0 and All(Map(IsNumber, Present(df.Columns[n]))), df.Names)
+  stats = [statsOf(1.0 * Present(df.Columns[n])) for n in numeric]
+  Table(["column", "count", "mean", "min", "max"],
+    [numeric, Map(it.Count, stats), Map(it.Mean, stats), Map(it.Min, stats), Map(it.Max, stats)])
+end
+
+-- A frame from CSV text with a header row. An empty cell is missing and a number is read as one.
+--
+--   Column("a", FromCsv("a,b\n1,2\n")) --> [1]
+defn FromCsv(s, separator = ",")
+  data = col.ReadCsv(s, separator)
+  if Len(data.Names) == 0 Empty([]) else Table(data.Names, data.Columns) end
+end
+
+-- The CSV text of a frame, with the names as its first row.
+--
+--   ToCsv(Of({"a": [1]})) --> "a\n1\n"
+ToCsv(df, separator = ",") = csv.Write(Concat([df.Names], [[df.Columns[n][i] for n in df.Names] for i in 1:Rows(df)]), separator = separator)
+
+-- The text of a frame as an aligned table, one line for each row.
+--
+--   Show(Of({"a": [1]})) --> "a\n1"
+defn Show(df)
+  cell(x) = if IsMissing(x) "" else Text(x) end
+  widths = [Max(Len(n), Max(Concat([0], [Len(cell(x)) for x in df.Columns[n]]))) for n in df.Names]
+  line(cells) = Join("  ", [PadRight(widths[k], " ", cells[k]) for k in 1:Len(cells)])
+  headLine = line(df.Names)
+  body = [line([cell(df.Columns[n][i]) for n in df.Names]) for i in 1:Rows(df)]
+  Join("\n", Concat([headLine], body))
+end

@@ -1,4 +1,4 @@
-Err(error = "c")
-Err(error = true)
-Err(error = "This library has no function kepler_no_such_function.")
+Err(Error = "c")
+Err(Error = true)
+Err(Error = "This library has no function kepler_no_such_function.")
 exit 0

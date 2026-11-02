@@ -1,0 +1,4 @@
+twice/b.k:2:1: "scale" is also defined at twice/a.k:2.
+  2 | scale(x) = 2 * x
+    | ^
+exit 1

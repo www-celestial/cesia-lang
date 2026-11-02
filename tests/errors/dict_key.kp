@@ -1,1 +1,0 @@
-print(put([1], 2, dict()))

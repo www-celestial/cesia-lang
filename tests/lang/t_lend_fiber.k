@@ -1,0 +1,17 @@
+-- A module variable can be reached by two fibers: a function that sleeps on it keeps the value it was given.
+use sys
+
+cell = [1, 2]
+
+defn hold(p)
+  sys.Sleep(0.02)
+  p[1]
+end
+
+readsCell() = hold(cell)
+
+t = Spawn(readsCell)
+sys.Sleep(0.005)
+cell[1] = 9
+Print(Unwrap(Wait(t)))
+Print(cell[1])

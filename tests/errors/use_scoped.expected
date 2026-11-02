@@ -1,4 +1,0 @@
-use_scoped.kp:1:5: Permission "read" denied. Run again with --allow read.
-  1 | use "../lang/mods/routes"
-    |     ^
-exit 1

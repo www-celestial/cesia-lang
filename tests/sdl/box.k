@@ -1,0 +1,50 @@
+use tests/sdl/probe
+use sdl
+
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+black = 0x000000
+red = 0xFF0000
+halfRed = 0x800000
+
+-- Two colors within 8 out of 255 on each channel.
+near(a, b) = Abs(sdl.Red(a) - sdl.Red(b)) <= 8 and Abs(sdl.Green(a) - sdl.Green(b)) <= 8 and Abs(sdl.Blue(a) - sdl.Blue(b)) <= 8
+
+defn shot(commands, window)
+  drawn = sdl.Draw(Concat([{Kind: "clear", Color: black}], commands), window)
+  {Window: drawn, Image: probe.Pixels(drawn, 320, 200)}
+end
+
+box(x, y, w, h, radius, alpha) = {Kind: "box", X: x, Y: y, Width: w, Height: h, Color: red, Radius: radius, Alpha: alpha}
+
+defn check()
+  w = sdl.Open("test", 320, 200, font)?
+  a = shot([box(20, 20, 100, 60, 6, 255)], w)
+  Print(near(probe.Pixel(70, 50, a.Image), red))
+  Print(near(probe.Pixel(20, 20, a.Image), black))
+  Print(near(probe.Pixel(119, 79, a.Image), black))
+  b = shot([box(20, 20, 100, 60, 6, 127.5)], a.Window)
+  Print(near(probe.Pixel(70, 50, b.Image), halfRed))
+  c1 = shot([box(20, 20, 0, 60, 6, 255), box(20, 20, 60, -3, 6, 255)], b.Window)
+  Print(probe.Differing(0, 0, 320, 200, black, c1.Image) == 0)
+  d = shot([box(20, 20, 100, 10, 24, 255)], c1.Window)
+  Print(near(probe.Pixel(70, 25, d.Image), red))
+  Print(near(probe.Pixel(70, 20, d.Image), red))
+  Print(near(probe.Pixel(70, 29, d.Image), red))
+  Print(near(probe.Pixel(22, 25, d.Image), red))
+  Print(near(probe.Pixel(20, 20, d.Image), black))
+  e = shot([{Kind: "ring", X: 20, Y: 20, Width: 100, Height: 60, Color: red, Radius: 6}], d.Window)
+  Print(near(probe.Pixel(70, 50, e.Image), black))
+  Print(near(probe.Pixel(70, 20, e.Image), red))
+  Print(near(probe.Pixel(20, 50, e.Image), red))
+  f = shot([box(20, 20, 100, 60, 0, 127)], e.Window)
+  Print(near(probe.Pixel(20, 20, f.Image), halfRed))
+  g = shot([{Kind: "fade", X: 20, Y: 20, Width: 200, Height: 26, Color: 0xFFFFFF, Radius: 6}], f.Window)
+  Print(Mod(probe.Pixel(210, 33, g.Image), 256) < Mod(probe.Pixel(30, 33, g.Image), 256) - 80)
+  Print(near(probe.Pixel(20, 20, g.Image), black))
+  Print(near(probe.Pixel(20, 45, g.Image), 0xFFFFFF))
+  sdl.Frame([{Kind: "clear", Color: black}], g.Window)
+  Print(sdl.Close(g.Window))
+  Ok("closed")
+end
+
+Print(check())

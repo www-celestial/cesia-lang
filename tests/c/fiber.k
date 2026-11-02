@@ -1,0 +1,6 @@
+-- A C function that needs a large stack, from a fiber whose own stack is small.
+use c
+
+lib = Unwrap(c.Open(Args[1]))
+deep = Unwrap(c.Fn("deep_stack", [], "i64", lib))
+Print(Wait(Spawn(() -> deep())) == Ok(deep()))

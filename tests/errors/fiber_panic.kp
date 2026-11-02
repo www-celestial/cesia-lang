@@ -1,2 +1,0 @@
-t = spawn(() -> panic("boom"))
-print(is_err(wait(t)))

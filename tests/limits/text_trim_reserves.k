@@ -1,0 +1,4 @@
+-- A copy is reserved before it is built.
+x = Repeat(1500000, "a ")
+y = Trim(x)
+Print(Len(y))

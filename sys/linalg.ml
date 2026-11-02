@@ -89,7 +89,7 @@ let with_library f = match Lazy.force library with None -> Missing | Some lib ->
 let record w names values =
   Struct { shape = Value.shape_of w names; fields = values; r_owned = true }
 
-(* solve(a, b), where b has one column or more: its x, false if a is singular. *)
+(* Solve(a, b), where b has one column or more: its x, false if a is singular. *)
 let solve ctx (a : t array) =
   with_library (fun lib ->
       match square ctx a.(0), matrix ctx a.(1) with
@@ -135,7 +135,7 @@ let qr ctx (a : t array) =
                done
              end
            done;
-           record ctx.w [| "q"; "r" |] [| Arrays.of_float rows cols q; Arrays.of_float cols cols r |]
+           record ctx.w [| "Q"; "R" |] [| Arrays.of_float rows cols q; Arrays.of_float cols cols r |]
          | _ -> Missing)
       | _ -> Missing)
 
@@ -147,13 +147,13 @@ let eigen ctx (a : t array) =
         pay ctx n;
         let w = Runtime.alloc_float ctx n 0. in
         (match dsyev lib.syev n m w with
-         | 0 -> record ctx.w [| "values"; "vectors" |] [| Arrays.of_float 1 n w; Arrays.of_float n n m |]
+         | 0 -> record ctx.w [| "Values"; "Vectors" |] [| Arrays.of_float 1 n w; Arrays.of_float n n m |]
          | _ -> Missing))
 
 let natives =
-  [ "name", Native.nat "name" 0 0 (fun _ _ ->
+  [ "Name", Native.nat "Name" 0 0 (fun _ _ ->
         match Lazy.force library with None -> Missing | Some lib -> Text lib.name);
-    "solve", Native.nat "solve" 2 2 solve;
-    "det", Native.nat "det" 1 1 det;
-    "qr", Native.nat "qr" 1 1 qr;
-    "eigen", Native.nat "eigen" 1 1 eigen ]
+    "Solve", Native.nat "Solve" 2 2 solve;
+    "Det", Native.nat "Det" 1 1 det;
+    "Qr", Native.nat "Qr" 1 1 qr;
+    "Eigen", Native.nat "Eigen" 1 1 eigen ]

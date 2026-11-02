@@ -1,9 +1,9 @@
-stopped at cli_clear.kp:5 (start)
-breakpoint cli_clear.kp:2
-stopped at cli_clear.kp:2 (break)
-stopped at cli_clear.kp:3 (step)
+stopped at cli_clear.k:5 (start)
+breakpoint cli_clear.k:2
+stopped at cli_clear.k:2 (break)
+stopped at cli_clear.k:3 (step)
 4
-stopped at cli_clear.kp:6 (step)
-cleared cli_clear.kp:2
+stopped at cli_clear.k:6 (step)
+cleared cli_clear.k:2
 6
 exit 0

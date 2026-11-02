@@ -1,0 +1,163 @@
+-- A persistent text: a balanced tree of chunks, so that an edit in a large file stays logarithmic and a copy is free.
+-- Positions count bytes from 0, and lines count from 1.
+
+chunk = 1024
+
+newlines(s) = Len(Split("\n", s)) - 1
+leaf(s) = {Left: missing, Right: missing, Text: s, Size: ByteLength(s), Lines: newlines(s), Height: 0}
+isLeaf(r) = IsMissing(r.Left)
+
+defn node(a, b)
+  {Left: a, Right: b, Text: "", Size: a.Size + b.Size, Lines: a.Lines + b.Lines, Height: 1 + Max(a.Height, b.Height)}
+end
+
+defn balance(a, b)
+  if a.Height > b.Height + 1
+    if a.Left.Height >= a.Right.Height
+      node(a.Left, node(a.Right, b))
+    else
+      node(node(a.Left, a.Right.Left), node(a.Right.Right, b))
+    end
+  else if b.Height > a.Height + 1
+    if b.Right.Height >= b.Left.Height
+      node(node(a, b.Left), b.Right)
+    else
+      node(node(a, b.Left.Left), node(b.Left.Right, b.Right))
+    end
+  else
+    node(a, b)
+  end
+end
+
+-- Both ropes, one after the other.
+--
+--   Text(JoinRopes(Of("ab"), Of("cd"))) --> "abcd"
+defn JoinRopes(a, b)
+  if a.Size == 0
+    b
+  else if b.Size == 0
+    a
+  else if isLeaf(a) and isLeaf(b) and a.Size + b.Size <= chunk
+    leaf("$(a.Text)$(b.Text)")
+  else if a.Height > b.Height + 1
+    balance(a.Left, JoinRopes(a.Right, b))
+  else if b.Height > a.Height + 1
+    balance(JoinRopes(a, b.Left), b.Right)
+  else
+    node(a, b)
+  end
+end
+
+-- A rope holding a text.
+--
+--   Text(Of("ab")) --> "ab"
+defn Of(s)
+  n = ByteLength(s)
+  if n <= chunk
+    return leaf(s)
+  end
+  half = Div(n, 2)
+  JoinRopes(Of(ByteSlice(1, half, s)), Of(ByteSlice(half + 1, n, s)))
+end
+
+-- The bytes before a position, and the others.
+defn SplitAt(at, r)
+  if at <= 0
+    [leaf(""), r]
+  else if at >= r.Size
+    [r, leaf("")]
+  else if isLeaf(r)
+    [leaf(ByteSlice(1, at, r.Text)), leaf(ByteSlice(at + 1, r.Size, r.Text))]
+  else if at < r.Left.Size
+    parts = SplitAt(at, r.Left)
+    [parts[1], JoinRopes(parts[2], r.Right)]
+  else
+    parts = SplitAt(at - r.Left.Size, r.Right)
+    [JoinRopes(r.Left, parts[1]), parts[2]]
+  end
+end
+
+-- The size of the rope in bytes.
+--
+--   Size(Of("ab")) --> 2
+Size(r) = r.Size
+-- The number of lines: one more than the line ends.
+--
+--   LineCount(Of("a\nb")) --> 2
+LineCount(r) = r.Lines + 1
+
+-- A rope with a text inserted before the byte at a position.
+--
+--   Text(Insert(1, "X", Of("ab"))) --> "aXb"
+defn Insert(at, s, r)
+  parts = SplitAt(at, r)
+  JoinRopes(JoinRopes(parts[1], Of(s)), parts[2])
+end
+
+-- A rope without the bytes from position from up to, but not including, position to.
+--
+--   Text(Delete(1, 2, Of("abc"))) --> "ac"
+defn Delete(from, to, r)
+  parts = SplitAt(from, r)
+  JoinRopes(parts[1], SplitAt(to - from, parts[2])[2])
+end
+
+pieces(r) = if isLeaf(r) [r.Text] else Concat(pieces(r.Left), pieces(r.Right)) end
+
+-- The whole text of the rope.
+--
+--   Text(Of("hi")) --> "hi"
+Text(r) = Join("", pieces(r))
+-- The text of the bytes from position from up to, but not including, position to.
+--
+--   Slice(1, 3, Of("hello")) --> "el"
+Slice(from, to, r) = Text(SplitAt(to - from, SplitAt(from, r)[2])[1])
+
+-- The position of the first byte after the nth newline.
+defn afterNewline(n, r)
+  if n <= 0
+    0
+  else if isLeaf(r)
+    at = 0
+    for k in 1:n
+      at = ByteFind("\n", at + 1, r.Text)
+    end
+    at
+  else if n <= r.Left.Lines
+    afterNewline(n, r.Left)
+  else
+    r.Left.Size + afterNewline(n - r.Left.Lines, r.Right)
+  end
+end
+
+-- The position of the first byte of line n.
+--
+--   LineStart(2, Of("ab\ncd")) --> 3
+LineStart(n, r) = afterNewline(n - 1, r)
+
+-- The position of the end of line n, before its line end.
+--
+--   LineEnd(1, Of("ab\ncd")) --> 2
+defn LineEnd(n, r)
+  if n >= LineCount(r) r.Size else LineStart(n + 1, r) - 1 end
+end
+
+-- The text of line n, without its line end.
+--
+--   Line(2, Of("ab\ncd")) --> "cd"
+Line(n, r) = Slice(LineStart(n, r), LineEnd(n, r), r)
+
+-- The line of a position.
+defn LineOf(at, r)
+  if at <= 0
+    1
+  else if at >= r.Size
+    r.Lines + 1
+  else if isLeaf(r)
+    newlines(ByteSlice(1, at, r.Text)) + 1
+  else if at <= r.Left.Size
+    LineOf(at, r.Left)
+  else
+    r.Left.Lines + LineOf(at - r.Left.Size, r.Right)
+  end
+end

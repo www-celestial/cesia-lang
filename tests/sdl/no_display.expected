@@ -1,3 +1,3 @@
-Err(error = "sdl")
-Err(error = true)
+Err(Error = "sdl")
+Err(Error = true)
 exit 0

@@ -1,4 +1,4 @@
-block_leak.kp:4:4: Limit "memory" reached.
-  4 |   c.alloc(100000)
+block_leak.k:4:4: Limit "memory" reached.
+  4 |   c.Alloc(100000)
     |    ^
 exit 1

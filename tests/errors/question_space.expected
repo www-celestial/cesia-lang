@@ -1,4 +1,4 @@
-question_space.kp:1:10: ? must follow its value, with no space.
+question_space.k:1:10: ? must follow its value, with no space.
   1 | f(x) = x ?
     |          ^
 exit 1

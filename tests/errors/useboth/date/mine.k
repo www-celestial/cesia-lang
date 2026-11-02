@@ -1,0 +1,2 @@
+-- A package with the name of a module of the standard library.
+Today = 1

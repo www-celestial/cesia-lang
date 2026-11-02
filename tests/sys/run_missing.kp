@@ -1,2 +1,0 @@
-use sys
-print(sys.run("no-such-command-kepler") then map_err(it.kind))

@@ -2,7 +2,7 @@
 open Kepler
 
 let run source =
-  let path = Filename.temp_file "net_test" ".kp" in
+  let path = Filename.temp_file "net_test" ".k" in
   let file = open_out path in
   output_string file source;
   close_out file;
@@ -36,22 +36,22 @@ let () =
        {|use sys
 use net
 defn ticks()
-  sys.sleep(0.005)
-  print("tick")
-  sys.sleep(0.005)
-  print("tick")
+  sys.Sleep(0.005)
+  Print("tick")
+  sys.Sleep(0.005)
+  Print("tick")
 end
-t = spawn(ticks)
-r = net.connect("slow.example", 1)
-print("done")
-wait(t)
+t = Spawn(ticks)
+r = net.Connect("slow.example", 1)
+Print("done")
+Wait(t)
 |});
   Kepler_sys.Net.resolver := slow (fun _ -> raise Not_found);
   check "an unknown name is an error" "unknown\n"
     (run
        {|use net
-print(match net.connect("nowhere.example", 1)
-  Err(e) -> if contains("unknown host", e.message) "unknown" else e.message end
+Print(match net.Connect("nowhere.example", 1)
+  Err(e) -> if Contains("unknown host", e.Message) "unknown" else e.Message end
   Ok(s) -> "connected"
 end)
 |});
@@ -59,15 +59,15 @@ end)
   check "several fibers wait at once" "2\n"
     (run
        {|use net
-tasks = map(h -> spawn(() -> net.connect(h, 1)), ["a.example", "b.example"])
-print(length(map(wait, tasks)))
+tasks = Map(h -> Spawn(() -> net.Connect(h, 1)), ["a.example", "b.example"])
+Print(Len(Map(Wait, tasks)))
 |});
   Kepler_sys.Net.resolver := (fun _ -> failwith "no lookup for an address");
   check "an address needs no lookup" "done\n"
     (run
        {|use net
-r = net.connect("127.0.0.1", 1)
-print("done")
+r = net.Connect("127.0.0.1", 1)
+Print("done")
 |});
   (* The domain still sleeps when the program ends: the test only finishes if nothing waits for it. *)
   Kepler_sys.Net.resolver := (fun _ -> Unix.sleepf 30.; Unix.inet_addr_loopback);
@@ -75,9 +75,9 @@ print("done")
     (run
        {|use sys
 use net
-t = spawn(() -> net.connect("a.example", 1))
-sys.sleep(0.005)
-print("end")
+t = Spawn(() -> net.Connect("a.example", 1))
+sys.Sleep(0.005)
+Print("end")
 |});
   if Kepler_sys.Sys_modules.ram () < 1_000_000 then failwith "the RAM of the machine isn't known";
   print_endline "net_test: ok"

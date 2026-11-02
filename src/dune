@@ -12,7 +12,7 @@
 (rule
  (targets embedded.ml)
  (deps
-  (glob_files ../std/*.kp))
+  (glob_files ../std/*.k))
  (action
   (with-stdout-to
    %{targets}

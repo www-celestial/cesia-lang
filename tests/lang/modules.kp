@@ -1,5 +1,0 @@
-use "./mods/routes" as r
-use "./mods/routes2"
-is_alias() = r.listing() == 3
-is_default_name() = routes2.value() == 1
-is_exported_variable() = routes2.counter == 1

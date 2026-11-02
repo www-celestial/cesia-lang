@@ -1,3 +1,0 @@
-xs = fill("abcdefghijklmnopqrstuvwxyz0123456789", 1000000)
-b = join("", xs)
-print(length(b))

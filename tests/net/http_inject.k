@@ -1,0 +1,24 @@
+use http
+use net
+use sys
+
+crlf = "$(Char(13))$(Char(10))"
+forged = "1$(crlf)x-injected: yes"
+
+handle(r) = match r.Path
+  "/value" -> {Status: 200, Body: "x", Headers: [{Name: "x-echo", Value: forged}]}
+  "/name" -> {Status: 200, Body: "x", Headers: [{Name: forged, Value: "1"}]}
+  else -> {Status: "200$(crlf)x-injected: yes", Body: "x"}
+end
+
+defn get(path)
+  c = net.Connect("127.0.0.1", 18100)?
+  net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
+  net.Read(c) then MapOk(r -> [Split(crlf, r)[1], r then Contains("x-injected")])
+end
+
+Spawn(() -> http.Serve(handle, port = 18100))
+sys.Sleep(0)
+Print(get("/value"))
+Print(get("/name"))
+Print(get("/status"))

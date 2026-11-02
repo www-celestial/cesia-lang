@@ -1,0 +1,74 @@
+-- Linear algebra above the size where a library takes over, when there is one. The answers hold with it or without it.
+use num
+
+defn sample(n)
+  m = Zeros(n, n)
+  for i in 1:n
+    for j in 1:n
+      m[i, j] = 1.0 / (i + j) + if i == j 2.0 else 0.0 end
+    end
+  end
+  m
+end
+
+defn slowMatmul(a, b)
+  n = Size(a, 1)
+  out = Zeros(n, n)
+  for i in 1:n
+    for j in 1:n
+      total = 0.0
+      for k in 1:n
+        total += a[i, k] * b[k, j]
+      end
+      out[i, j] = total
+    end
+  end
+  out
+end
+
+near(a, b) = Max(Abs(a - b)) < 1e-8
+big = sample(40)
+
+isMatmul() = near(Matmul(big, big), slowMatmul(big, big))
+
+defn isSolve()
+  b = [1.0 * k for k in 1:40]
+  x = Unwrap(num.Solve(big, b))
+  near(Matmul(big, Reshape(x, 40, 1)), Reshape(b, 40, 1))
+end
+
+defn isSolveSingular()
+  r = num.Solve(Zeros(40, 40) + 1.0, [1.0 for k in 1:40])
+  IsErr(r) and r.Error.Kind == "math"
+end
+
+isInverse() = near(Matmul(big, Unwrap(num.Inverse(big))), num.Eye(40))
+
+defn isDetIsTheProductOfTheEigenvalues()
+  values = num.Eigen(big).Values
+  a = Reduce((acc, x) -> acc * x, 1.0, values)
+  Abs(num.Det(big) / a - 1.0) < 1e-8
+end
+
+defn isQr()
+  f = num.Qr(big)
+  near(Matmul(f.Q, f.R), big) and near(Matmul(Transpose(f.Q), f.Q), num.Eye(40))
+end
+
+defn isQrPositiveDiagonal()
+  r = num.Qr(big).R
+  All([r[k, k] > 0.0 for k in 1:40])
+end
+
+defn isQrTall()
+  m = sample(50)[1:50, 1:40]
+  f = num.Qr(m)
+  Size(f.Q, 1) == 50 and Size(f.R, 1) == 40 and near(Matmul(f.Q, f.R), m)
+end
+
+defn isEigen()
+  e = num.Eigen(big)
+  near(Matmul(big, e.Vectors), Matmul(e.Vectors, num.Diag(e.Values)))
+end
+
+isBackendNamesALibraryOrNothing() = IsMissing(num.Backend()) or IsText(num.Backend())

@@ -1,0 +1,104 @@
+isLiteral() = {"a": 1, "b": 2}["b"] == 2
+isNumberKeys() = {1: "x", 2: "y"}[2] == "y"
+isWholeFloatKey() = {1: "x"}[1.0] == "x"
+isFloatKey() = {1.5: "x"}[1.5] == "x"
+isComputedKey() = {(1 + 1): "x"}[2] == "x"
+isGet() = Get("a", {"a": 1}) == 1
+isGetAbsent() = IsMissing(Get("z", {"a": 1}))
+isGetOr() = GetOr("z", 5, {"a": 1}) == 5 and GetOr("a", 5, {"a": 1}) == 1
+isHas() = Has("a", {"a": 1}) and not Has("b", {"a": 1})
+isIn() = "a" in {"a": 1} and not ("b" in {"a": 1})
+isEmpty() = Len(Dict()) == 0
+isLength() = Len({"a": 1, "b": 2}) == 2
+isKeysSorted() = Equal(Keys({"b": 1, "a": 2, 3: 3}), [3, "a", "b"])
+isValues() = Equal(Values({"b": 1, "a": 2}), [2, 1])
+isPairs() = Equal(Pairs({"a": 1}), [{Key: "a", Value: 1}])
+isFromPairs() = Equal(Dict([{Key: "a", Value: 1}]), {"a": 1})
+isRoundTrip() = Equal(Dict(Pairs({"a": 1, "b": 2})), {"a": 1, "b": 2})
+isEqualAnyOrder() = {"a": 1, "b": 2} == {"b": 2, "a": 1}
+isNotEqual() = {"a": 1} != {"a": 2} and {"a": 1} != {"b": 1}
+isTextForm() = Text({"b": 1, 2: "x"}) == "{2: ""x"", ""b"": 1}"
+isKind() = IsDict({"a": 1}) and not IsDict({A: 1})
+isLaterWins() = {"a": 1, "a": 2}["a"] == 2
+
+defn isPutKeepsTheOriginal()
+  a = {"x": 1}
+  b = Put("x", 2, a)
+  a["x"] == 1 and b["x"] == 2
+end
+
+defn isDrop()
+  a = {"x": 1, "y": 2}
+  b = Drop("x", a)
+  Len(a) == 2 and Len(b) == 1 and not Has("x", b) and Equal(Drop("z", b), b)
+end
+
+defn isAssign()
+  d = Dict()
+  d["a"] = 1
+  d[2] = "two"
+  d["a"] = 3
+  Len(d) == 2 and d["a"] == 3 and d[2] == "two"
+end
+
+defn isAssignKeepsACopy()
+  a = {"x": 1}
+  b = a
+  b["x"] = 2
+  a["x"] == 1 and b["x"] == 2
+end
+
+defn isArrayInside()
+  a = {"x": [1, 2]}
+  b = a
+  b["x"][1] = 9
+  a["x"][1] == 1 and b["x"][1] == 9
+end
+
+defn isDictInside()
+  a = {"x": {"y": {"z": 1}}}
+  b = a
+  b["x"]["y"]["z"] = 2
+  b["x"]["y"]["w"] = 3
+  a["x"]["y"]["z"] == 1 and b["x"]["y"]["z"] == 2 and b["x"]["y"]["w"] == 3
+end
+
+defn isInAStruct()
+  s = {D: {"a": 1}}
+  s.D["a"] = 2
+  s.D["b"] = 3
+  s.D["a"] == 2 and s.D["b"] == 3
+end
+
+defn isInAnArray()
+  xs = [{"a": 1}, {"a": 2}]
+  xs[2]["a"] = 5
+  xs[1]["a"] == 1 and xs[2]["a"] == 5
+end
+
+defn isCompoundAssign()
+  d = {"n": 1}
+  d["n"] += 2
+  d["n"] == 3
+end
+
+defn isMany()
+  d = Dict()
+  for i in 1:5000
+    d[i * 7 - 3] = i
+  end
+  total = 0
+  for i in 1:5000
+    total += d[i * 7 - 3]
+  end
+  for i in 1:2500
+    d = Drop(i * 7 - 3, d)
+  end
+  Len(d) == 2500 and total == 12502500 and Equal(Keys(d)[1], 2501 * 7 - 3)
+end
+
+defn isStructKeepsLiteral()
+  x = {A: 1}
+  x.A == 1
+end
+

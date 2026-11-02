@@ -1,0 +1,113 @@
+-- More than 6 arguments, structures by value, variadic functions and callbacks.
+use c
+
+path = Args[1]
+lib = Unwrap(c.Open(path))
+ok(r) = Unwrap(r)
+
+defn fails(f)
+  r = Wait(Spawn(f))
+  match r
+    Ok(v) -> "no failure: $v"
+    Err(e) -> e.Message
+  end
+end
+
+-- More than 6 arguments.
+sum8 = ok(c.Fn("sum_eight", ["i64", "i32", "i64", "i32", "i64", "i32", "i64", "i32"], "i64", lib))
+Print(sum8(1, 2, 3, 4, 5, 6, 7, 8))
+sum10 = ok(c.Fn("sum_ten", Fill("f64", 10), "f64", lib))
+Print(sum10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
+
+-- Structures by value.
+point = c.Struct(["f32", "f32"])
+Print(c.Size(point), c.Offset(2, point))
+add = ok(c.Fn("point_add", [point, point], point, lib))
+a = c.Alloc(c.Size(point))
+b = c.Alloc(c.Size(point))
+c.Set("f32", 0, 1.5, a)
+c.Set("f32", 4, 2.5, a)
+c.Set("f32", 0, 10.0, b)
+c.Set("f32", 4, 20.0, b)
+r = add(a, b)
+Print(c.Get("f32", 0, r), c.Get("f32", 4, r))
+dot = ok(c.Fn("point_dot", [point, "f32"], "f64", lib))
+Print(dot(a, 2.0))
+
+big = c.Struct(["i64", "i64", "i64", "f64"])
+Print(c.Size(big), c.Offset(4, big))
+make = ok(c.Fn("big_make", ["i64"], big, lib))
+total = ok(c.Fn("big_sum", [big], "f64", lib))
+made = make(10)
+Print(c.Get("i64", 16, made), c.Get("f64", 24, made), total(made))
+
+mixed = c.Struct(["i8", "f64"])
+Print(c.Size(mixed), c.Offset(2, mixed))
+mix = ok(c.Fn("mixed_make", ["i8", "f64"], mixed, lib))
+read = ok(c.Fn("mixed_read", [mixed], "f64", lib))
+Print(read(mix(3, 0.25)))
+
+-- Variadic functions: the types of one call are given when binding.
+ints = ok(c.Variadic("sum_ints", ["i32"], ["i32", "i32", "i32"], "i64", lib))
+Print(ints(3, 10, 20, 30))
+floats = ok(c.Variadic("sum_doubles", ["i32"], ["f64", "f64"], "f64", lib))
+Print(floats(2, 1.5, 2.5))
+
+-- Callbacks.
+twice = ok(c.Fn("apply_twice", ["callback", "i64"], "i64", lib))
+Print(twice(c.Callback(x -> x * 3, ["i64"], "i64"), 2))
+floaty = ok(c.Fn("apply_float", ["callback", "f64"], "f64", lib))
+Print(floaty(c.Callback((x, y) -> x + y, ["f64", "f32"], "f64"), 1.0))
+texty = ok(c.Fn("apply_text", ["callback", "text"], "i32", lib))
+Print(texty(c.Callback(s -> Len(s), ["text"], "i32"), "héllo"))
+nothing = ok(c.Fn("apply_nothing", ["callback", "ptr"], "void", lib))
+Print(nothing(c.Callback(p -> Print("called with", IsMissing(p)), ["ptr"], "void"), missing))
+
+sorter = ok(c.Fn("sort_ints", ["ptr", "i32", "callback"], "void", lib))
+items = c.Alloc(20)
+for k in 1:5
+  c.Set("i32", (k - 1) * 4, 10 - 3 * Mod(k * 2, 5), items)
+end
+sorter(items, 5, c.Callback((x, y) -> x - y, ["i32", "i32"], "i32"))
+Print([c.Get("i32", (k - 1) * 4, items) for k in 1:5])
+
+-- A callback kept by C and called later, from a function that says so.
+keep = ok(c.Fn("keep_callback", ["callback"], "void", lib))
+keep(c.Callback(x -> x + 1, ["i64"], "i64"))
+kept = ok(c.Fn("call_kept", ["i64"], "i64", lib, callsBack = true))
+Print(kept(41))
+
+
+-- A panic in a callback comes back to the caller.
+Print(fails(() -> twice(c.Callback(x -> Panic("from the callback"), ["i64"], "i64"), 1)))
+Print(fails(() -> twice(c.Callback(x -> "text", ["i64"], "i64"), 1)))
+Print(fails(() -> add(a, 5)))
+Print(fails(() -> add(a, c.Alloc(4))))
+Print(fails(() -> c.Callback(1, ["i64"], "i64")))
+Print(fails(() -> twice(5, 1)))
+Print(fails(() -> c.Struct([])))
+Print(fails(() -> c.Struct(["text"])))
+Print(fails(() -> c.Offset(9, point)))
+
+-- A callback that waits for another fiber runs the scheduler inside the C call.
+task = Spawn(() -> 7)
+Print(twice(c.Callback(x -> x + Unwrap(Wait(task)), ["i64"], "i64"), 1))
+
+-- A panic deep in a callback leaves the next ones working.
+Print(fails(() -> twice(c.Callback(x -> Panic("deep"), ["i64"], "i64"), 1)))
+Print(twice(c.Callback(x -> x + 1, ["i64"], "i64"), 1))
+-- A callback that frees a block C is reading: it stays alive until the call ends.
+sorted = c.Alloc(20)
+for k in 1:5
+  c.Set("i32", (k - 1) * 4, 6 - k, sorted)
+end
+defn freeThenCompare(x, y)
+  if x == 5 and y == 4
+    c.Free(sorted)
+  end
+  x - y
+end
+
+sorter(sorted, 5, c.Callback(freeThenCompare, ["i32", "i32"], "i32"))
+Print(fails(() -> c.Get("i32", 0, sorted)))
+Print(fails(() -> c.Variadic("sum_ints", Fill("i32", 40), Fill("i32", 40), "i64", lib)))

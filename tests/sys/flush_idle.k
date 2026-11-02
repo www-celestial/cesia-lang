@@ -1,0 +1,5 @@
+-- What a program printed shows up before it starts to wait, not after.
+use sys
+Print("first")
+sys.Sleep(30)
+Print("second")

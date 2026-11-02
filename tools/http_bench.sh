@@ -35,6 +35,6 @@ measure() {  # name, port, command...
   wait "$pid" 2>/dev/null
 }
 
-measure kepler 19100 "$kepler" run --allow net=:19100 bench/http.kp
+measure kepler 19100 "$kepler" run --allow net=:19100 bench/http.k
 [ -n "$only" ] || measure node 19101 node bench/http.js
 exit 0

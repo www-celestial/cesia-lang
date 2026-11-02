@@ -1,4 +1,0 @@
--- Nothing to take off, so nothing to copy: the same text fits.
-x = repeat(3000000, "a")
-y = trim(x)
-print(length(y))

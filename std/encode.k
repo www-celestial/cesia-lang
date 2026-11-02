@@ -1,0 +1,225 @@
+-- Text forms of bytes: hexadecimal, Base64 and URLs.
+
+hexDigits = "0123456789abcdef"
+base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+digit(k, digits) = ByteSlice(k + 1, k + 1, digits)
+
+-- The hexadecimal text of the bytes of a text, in lower case.
+--
+--   Hex("hi") --> "6869"
+defn Hex(s)
+  Join("", ["$(digit(Div(b, 16), hexDigits))$(digit(Mod(b, 16), hexDigits))" for b in Bytes(s)])
+end
+
+defn hexValue(b)
+  if b >= 48 and b <= 57
+    b - 48
+  else if b >= 97 and b <= 102
+    b - 87
+  else if b >= 65 and b <= 70
+    b - 55
+  else
+    missing
+  end
+end
+
+bad(what) = Err({Kind: "encoding", Message: "This isn't valid $what."})
+
+-- The text of bytes written in hexadecimal, in an Ok, or an Err of the kind "encoding".
+--
+--   Unhex("6869") --> Ok("hi")
+defn Unhex(s)
+  codes = Bytes(s)
+  n = Len(codes)
+  if Mod(n, 2) != 0
+    return bad("hexadecimal")
+  end
+  out = Fill(0, Div(n, 2))
+  for k in 1:Div(n, 2)
+    high = hexValue(codes[2 * k - 1])
+    low = hexValue(codes[2 * k])
+    if IsMissing(high) or IsMissing(low)
+      return bad("hexadecimal")
+    end
+    out[k] = 16 * high + low
+  end
+  Ok(FromBytes(out))
+end
+
+-- The Base64 text of the bytes of a text, with padding.
+--
+--   Base64("hi") --> "aGk="
+defn Base64(s)
+  codes = Bytes(s)
+  n = Len(codes)
+  parts = Fill("", Div(n + 2, 3))
+  k = 1
+  while k <= n
+    a = codes[k]
+    b = if k + 1 <= n codes[k + 1] else 0 end
+    d = if k + 2 <= n codes[k + 2] else 0 end
+    word = a * 65536 + b * 256 + d
+    one = digit(Div(word, 262144), base64Digits)
+    two = digit(Mod(Div(word, 4096), 64), base64Digits)
+    three = if k + 1 <= n digit(Mod(Div(word, 64), 64), base64Digits) else "=" end
+    four = if k + 2 <= n digit(Mod(word, 64), base64Digits) else "=" end
+    parts[Div(k + 2, 3)] = "$one$two$three$four"
+    k += 3
+  end
+  Join("", parts)
+end
+
+defn base64Value(b)
+  if b >= 65 and b <= 90
+    b - 65
+  else if b >= 97 and b <= 122
+    b - 71
+  else if b >= 48 and b <= 57
+    b + 4
+  else if b == 43 or b == 45
+    62
+  else if b == 47 or b == 95
+    63
+  else
+    missing
+  end
+end
+
+-- Takes the standard alphabet and the one of URLs, with or without padding.
+--
+--   Unbase64("aGk=") --> Ok("hi")
+defn Unbase64(s)
+  clean = Replace("=", "", s)
+  codes = Bytes(clean)
+  n = Len(codes)
+  if Mod(n, 4) == 1
+    return bad("Base64")
+  end
+  out = Fill(0, Div(n * 3, 4))
+  used = 0
+  word = 0
+  bits = 0
+  for code in codes
+    v = base64Value(code)
+    if IsMissing(v)
+      return bad("Base64")
+    end
+    word = word * 64 + v
+    bits += 6
+    if bits >= 8
+      bits -= 8
+      used += 1
+      out[used] = Mod(Div(word, 2 ^ bits), 256)
+      word = Mod(word, 2 ^ bits)
+    end
+  end
+  Ok(FromBytes(Take(used, out)))
+end
+
+urlSafe(b) = (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b == 45 or b == 46 or b == 95 or b == 126
+
+-- A text with every byte percent-encoded except letters, digits and - . _ ~
+--
+--   UrlEncode("a b") --> "a%20b"
+defn UrlEncode(s)
+  Join("", [if urlSafe(b) Char(b) else "%$(Upper(Hex(FromBytes([b]))))" end for b in Bytes(s)])
+end
+
+-- Decodes %41, and + as a space, as forms write it.
+--
+--   UrlDecode("a%20b+c") --> "a b c"
+defn UrlDecode(s)
+  if not Contains("%", s) and not Contains("+", s)
+    return s
+  end
+  codes = Bytes(s)
+  n = Len(codes)
+  out = Fill(0, n)
+  used = 0
+  k = 1
+  while k <= n
+    b = codes[k]
+    used += 1
+    if b == 37 and k + 2 <= n and not IsMissing(hexValue(codes[k + 1])) and not IsMissing(hexValue(codes[k + 2]))
+      out[used] = 16 * hexValue(codes[k + 1]) + hexValue(codes[k + 2])
+      k += 3
+    else if b == 43
+      out[used] = 32
+      k += 1
+    else
+      out[used] = b
+      k += 1
+    end
+  end
+  FromBytes(Take(used, out))
+end
+
+-- The fields of a query or a form: a=1&b=two
+--
+--   ParseQuery("a=1&b=2")["b"] --> "2"
+defn ParseQuery(s)
+  out = Dict()
+  if s == ""
+    return out
+  end
+  for part in Split("&", s)
+    pair = Split("=", part)
+    if pair[1] != ""
+      value = if Len(pair) >= 2 UrlDecode(Join("=", Skip(1, pair))) else "" end
+      out[UrlDecode(pair[1])] = value
+    end
+  end
+  out
+end
+
+-- SHA-1 is broken for signatures. It stays here because the WebSocket handshake asks for it.
+--
+--   Hex(Sha1("abc")) --> "a9993e364706816aba3e25717850c26c9cd0d89d"
+defn Sha1(s)
+  m = Bytes(s)
+  n = Len(m)
+  padded = Concat(Concat(m, [128]), Fill(0, Mod(55 - n, 64)))
+  sizeBits = n * 8
+  padded = Concat(padded, [Mod(Div(sizeBits, 256 ^ (8 - k)), 256) for k in 1:8])
+  h = [1732584193, 4023233417, 2562383102, 271733878, 3285377520]
+  mask = 4294967295
+  rotate(x, k) = BitAnd(BitOr(BitShift(x, k), BitShift(x, k - 32)), mask)
+  for start in Range(1, Len(padded), step = 64)
+    w = Fill(0, 80)
+    for t in 1:16
+      at = start + 4 * (t - 1)
+      w[t] = padded[at] * 16777216 + padded[at + 1] * 65536 + padded[at + 2] * 256 + padded[at + 3]
+    end
+    for t in 17:80
+      w[t] = rotate(BitXor(BitXor(BitXor(w[t - 3], w[t - 8]), w[t - 14]), w[t - 16]), 1)
+    end
+    a = h[1]
+    b = h[2]
+    d = h[3]
+    e = h[4]
+    f = h[5]
+    for t in 1:80
+      if t <= 20
+        mix = BitOr(BitAnd(b, d), BitAnd(BitAnd(BitNot(b), mask), e))
+        k = 1518500249
+      else if t <= 40
+        mix = BitXor(BitXor(b, d), e)
+        k = 1859775393
+      else if t <= 60
+        mix = BitOr(BitOr(BitAnd(b, d), BitAnd(b, e)), BitAnd(d, e))
+        k = 2400959708
+      else
+        mix = BitXor(BitXor(b, d), e)
+        k = 3395469782
+      end
+      next = BitAnd(rotate(a, 5) + mix + f + k + w[t], mask)
+      f = e
+      e = d
+      d = rotate(b, 30)
+      b = a
+      a = next
+    end
+    h = [BitAnd(h[1] + a, mask), BitAnd(h[2] + b, mask), BitAnd(h[3] + d, mask), BitAnd(h[4] + e, mask), BitAnd(h[5] + f, mask)]
+  end
+  FromBytes(Flatten([[Div(x, 16777216), Mod(Div(x, 65536), 256), Mod(Div(x, 256), 256), Mod(x, 256)] for x in h]))
+end

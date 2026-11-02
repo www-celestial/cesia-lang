@@ -1,4 +1,4 @@
-deadlock.kp:5:7: All fibers are waiting and nothing can wake them.
-  5 | print(wait(a))
+deadlock.k:5:7: All fibers are waiting and nothing can wake them.
+  5 | Print(Wait(a))
     |       ^
 exit 1

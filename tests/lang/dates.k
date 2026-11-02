@@ -1,0 +1,28 @@
+use date
+use csv
+
+isEpoch() = date.Format(date.FromUnix(0)) == "1970-01-01T00:00:00Z"
+isKnown() = date.Format(date.FromUnix(1793534400)) == "2026-11-01T12:00:00Z"
+isBeforeEpoch() = date.Format(date.FromUnix(-1)) == "1969-12-31T23:59:59Z"
+isLeapDay() = date.FormatDate(date.FromUnix(date.ToUnix(date.Date(2024, 2, 29)))) == "2024-02-29"
+isRoundTrip() = date.ToUnix(date.FromUnix(1234567890)) == 1234567890
+isLeapRules() = date.IsLeap(2000) and date.IsLeap(2024) and not date.IsLeap(1900) and not date.IsLeap(2026)
+isDaysInMonth() = date.DaysInMonth(2024, 2) == 29 and date.DaysInMonth(2026, 4) == 30
+isWeekday() = date.Weekday(date.Date(2026, 11, 1)) == 7 and date.Weekday(date.Date(1970, 1, 1)) == 4
+isAddDays() = date.FormatDate(date.AddDays(31, date.Date(2026, 12, 15))) == "2027-01-15"
+isBetween() = date.DaysBetween(date.Date(2026, 1, 1), date.Date(2026, 12, 31)) == 364
+isParse() = date.ToUnix(Unwrap(date.Parse("1970-01-02T00:00:01Z"))) == 86401
+isParseDay() = Unwrap(date.Parse("2026-11-01")).Month == 11
+isParseBad() = All(Map(IsErr, Map(date.Parse, ["", "2026", "2026-13-01", "2026-02-30", "a-b-c", "2026-01-01T25:00:00Z"])))
+
+isCsvPlain() = Equal(csv.Parse("a,b\n1,2\n"), [["a", "b"], ["1", "2"]])
+isCsvNoLastNewline() = Equal(csv.Parse("a,b"), [["a", "b"]])
+isCsvCrlf() = Equal(csv.Parse("a\r\nb\r\n"), [["a"], ["b"]])
+isCsvQuotes() = Equal(csv.Parse("\"a,b\",\"c\"\"d\"\n"), [["a,b", "c\"d"]])
+isCsvNewlineInQuotes() = Equal(csv.Parse("\"a\nb\",c\n"), [["a\nb", "c"]])
+isCsvEmptyFields() = Equal(csv.Parse(",\n"), [["", ""]])
+isCsvEmpty() = Equal(csv.Parse(""), [])
+isCsvSeparator() = Equal(csv.Parse("a;b\n", separator = ";"), [["a", "b"]])
+isCsvRecords() = csv.Records("name,age\nann,30\n")[1]["age"] == "30"
+isCsvWrite() = csv.Write([["a", "b,c"], [1, "d\"e"]]) == "a,\"b,c\"\n1,\"d\"\"e\"\n"
+isCsvRoundTrip() = Equal(csv.Parse(csv.Write([["a,b", "c\nd", "e\"f"]])), [["a,b", "c\nd", "e\"f"]])

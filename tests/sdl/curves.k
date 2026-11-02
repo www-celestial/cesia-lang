@@ -1,0 +1,61 @@
+use tests/sdl/probe
+use c
+use sdl
+
+black = 0x000000
+green = 0x00FF00
+bright(x, y, image) = Div(Mod(probe.Pixel(x, y, image), 65536), 256) > 150
+
+defn shot(items, window)
+  drawn = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: items}], window)
+  {Window: drawn, Image: probe.Pixels(drawn, 320, 200)}
+end
+
+one = [{X0: 10, Y0: 10, X1: 110, Y1: 60, Color: green}]
+other = [{X0: 10, Y0: 20, X1: 110, Y1: 70, Color: green}]
+
+-- A number is equal to itself, unless it is nan.
+defn allFinite(block, vertices)
+  good = true
+  for k in 0:(vertices - 1)
+    x = c.Get("f32", k * 32, block)
+    y = c.Get("f32", k * 32 + 4, block)
+    good = good and x == x and y == y
+  end
+  good
+end
+
+defn check()
+  w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  a = shot(one, w)
+  Print(bright(11, 10, a.Image))
+  Print(bright(107, 59, a.Image))
+  Print(bright(60, 35, a.Image))
+  Print(not bright(60, 100, a.Image))
+  writes = a.Window.CurveWrites
+  b = shot(one, a.Window)
+  Print(b.Window.CurveWrites == writes)
+  Print(bright(60, 35, b.Image))
+  d = shot(other, b.Window)
+  Print(d.Window.CurveWrites == writes + 1)
+  Print(bright(60, 45, d.Image))
+  Print(not bright(60, 35, d.Image))
+  e = shot([], d.Window)
+  Print(probe.Differing(0, 0, 320, 200, black, e.Image) == 0)
+  flat = [{X0: 10, Y0: 50, X1: 40, Y1: 50, Color: green}]
+  f = shot(flat, e.Window)
+  Print(bright(25, 49, f.Image))
+  Print(allFinite(f.Window.CurveBlocks[1].Verts, 100))
+  older = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: flat}], f.Window)
+  sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: other}], older)
+  stale = shot(flat, older)
+  Print(bright(25, 49, stale.Image))
+  many = [{X0: 10, Y0: k * 10, X1: 110, Y1: k * 10, Color: green} for k in 1:12]
+  g = shot(many, f.Window)
+  Print(bright(60, 119, g.Image))
+  sdl.Frame([{Kind: "clear", Color: black}], g.Window)
+  Print(sdl.Close(g.Window))
+  Ok("closed")
+end
+
+Print(check())

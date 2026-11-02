@@ -3,4 +3,4 @@ name = "x"
 native = ["m"]
 
 [tasks.go]
-file = "open.kp"
+file = "open.k"

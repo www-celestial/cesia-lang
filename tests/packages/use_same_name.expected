@@ -1,0 +1,5 @@
+use_same_name.k:2:5: "other" already names tests/packages/other, at line 1.
+  2 | use tests/packages/dup/other
+    |     ^
+  Give one of them another name with as.
+exit 1

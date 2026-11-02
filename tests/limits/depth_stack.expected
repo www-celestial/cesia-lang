@@ -1,2 +1,2 @@
-depth_stack.kp:1:12: Limit "depth" reached.
+depth_stack.k:1:12: Limit "depth" reached.
 exit 1

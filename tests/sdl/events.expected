@@ -1,15 +1,15 @@
 []
-{kind: "key", key: "a", ctrl: true, alt: false, shift: false, super: false}
-{kind: "key", key: "f1", ctrl: false, alt: false, shift: true, super: false}
-{kind: "key", key: "enter", ctrl: false, alt: false, shift: false, super: false}
-{kind: "key", key: "q", ctrl: false, alt: true, shift: false, super: true}
-{kind: "text", text: "é"}
-{kind: "mouse", action: "down", x: 10, y: 20, button: 1, amount: 0.0}
-{kind: "mouse", action: "up", x: 10, y: 20, button: 1, amount: 0.0}
-{kind: "mouse", action: "move", x: 11, y: 21, button: 0, amount: 0.0}
-{kind: "mouse", action: "wheel", x: 12, y: 22, button: 0, amount: -1.0}
-{kind: "resize", width: 640, height: 480}
-{kind: "quit"}
+{Kind: "key", Key: "a", Ctrl: true, Alt: false, Shift: false, Super: false}
+{Kind: "key", Key: "f1", Ctrl: false, Alt: false, Shift: true, Super: false}
+{Kind: "key", Key: "enter", Ctrl: false, Alt: false, Shift: false, Super: false}
+{Kind: "key", Key: "q", Ctrl: false, Alt: true, Shift: false, Super: true}
+{Kind: "text", Text: "é"}
+{Kind: "mouse", Action: "down", X: 10, Y: 20, Button: 1, Amount: 0.0}
+{Kind: "mouse", Action: "up", X: 10, Y: 20, Button: 1, Amount: 0.0}
+{Kind: "mouse", Action: "move", X: 11, Y: 21, Button: 0, Amount: 0.0}
+{Kind: "mouse", Action: "wheel", X: 12, Y: 22, Button: 0, Amount: -1.0}
+{Kind: "resize", Width: 640, Height: 480}
+{Kind: "quit"}
 []
-Ok(value = missing)
+Ok(Value = missing)
 exit 0

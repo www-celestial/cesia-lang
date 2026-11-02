@@ -1,0 +1,14 @@
+-- A date, for the test of kepler doc on methods.
+struct Date { Year }
+struct piece { Size }
+
+-- A date from its text.
+Date.Parse(text) = Date(1)
+
+-- The next year.
+--
+--   Date(1).Next().Year --> 2
+(d Date) Next() = Date(d.Year + 1)
+
+(d Date) hidden() = d.Year
+(p piece) Size2() = p.Size

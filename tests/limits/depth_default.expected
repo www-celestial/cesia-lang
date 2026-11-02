@@ -1,15 +1,15 @@
-depth_default.kp:1:12: Limit "depth" reached.
+depth_default.k:1:12: Limit "depth" reached.
   1 | f(n) = 1 + f(n + 1)
     |            ^
-  in f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
-  called from f (depth_default.kp:1)
+  in f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
+  called from f (depth_default.k:1)
   ... and 9991 more
 exit 1

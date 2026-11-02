@@ -1,0 +1,4 @@
+twicevar/b.k:2:7: "scale" is also defined at twicevar/a.k:2.
+  2 | scale = 2
+    |       ^
+exit 1

@@ -1,0 +1,5 @@
+-- The same variable here, and that is fine.
+Other = 0
+for i in 1:3
+  Other = Other + i
+end

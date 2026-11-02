@@ -1,5 +1,0 @@
-xs = []
-for k in 1:9
-  xs = push(k, xs)
-end
-print(xs[10])

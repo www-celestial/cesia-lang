@@ -89,11 +89,11 @@ let sorted_positions ctx name v =
   a, Kernels.sort_positions ~parallel:(match a.store with V _ -> false | _ -> true) n compare_at
 
 let sort ctx (a : t array) =
-  let x, ks = sorted_positions ctx "sort" a.(0) in
+  let x, ks = sorted_positions ctx "Sort" a.(0) in
   if Array.length ks = 0 then list [||] else Arrays.pick ctx x ks 1 (Array.length ks)
 
 let order ctx (a : t array) =
-  let _, ks = sorted_positions ctx "order" a.(0) in
+  let _, ks = sorted_positions ctx "Order" a.(0) in
   if Array.length ks = 0 then list [||] else Arrays.of_ints 1 (Array.length ks) (Array.map succ ks)
 
 let unique ctx (a : t array) =
@@ -112,7 +112,7 @@ let unique ctx (a : t array) =
          end
        in
        if fresh then out := v :: !out)
-    (elements ctx "unique" a.(0));
+    (elements ctx "Unique" a.(0));
   list (Array.of_list (List.rev !out))
 
 let flatten ctx (a : t array) =
@@ -120,18 +120,18 @@ let flatten ctx (a : t array) =
     Array.map
       (fun v ->
          match v with
-         | Array _ -> elements ctx "flatten" v
+         | Array _ -> elements ctx "Flatten" v
          | _ -> [| v |])
-      (elements ctx "flatten" a.(0))
+      (elements ctx "Flatten" a.(0))
   in
   list (Array.concat (Array.to_list pieces))
 
 let zip ctx (a : t array) =
-  let xs = elements ctx "zip" a.(0) and ys = elements ctx "zip" a.(1) in
+  let xs = elements ctx "Zip" a.(0) and ys = elements ctx "Zip" a.(1) in
   list (Array.init (min (Array.length xs) (Array.length ys)) (fun k -> list [| xs.(k); ys.(k) |]))
 
 let index_of ctx (a : t array) =
-  let xs = elements ctx "index_of" a.(1) in
+  let xs = elements ctx "IndexOf" a.(1) in
   let rec go k =
     if k >= Array.length xs then Missing
     else if Value.equal ctx a.(0) xs.(k) then Int (k + 1)
@@ -158,7 +158,7 @@ let repeated ctx n s =
   String.init (n * size) (fun i -> s.[i mod size])
 
 let find ctx (a : t array) =
-  let part = text_arg ctx "find" a.(0) and s = text_arg ctx "find" a.(1) in
+  let part = text_arg ctx "Find" a.(0) and s = text_arg ctx "Find" a.(1) in
   pay ctx s;
   if part = "" then Int 1
   else
@@ -167,11 +167,11 @@ let find ctx (a : t array) =
     | at -> Int (Native.points_between s 0 at + 1)
 
 let repeat ctx (a : t array) =
-  let n = count_arg ctx "repeat" a.(0) and s = text_arg ctx "repeat" a.(1) in
+  let n = count_arg ctx "Repeat" a.(0) and s = text_arg ctx "Repeat" a.(1) in
   if s = "" then Text "" else Text (repeated ctx n s)
 
 let lines ctx (a : t array) =
-  let s = text_arg ctx "lines" a.(0) in
+  let s = text_arg ctx "Lines" a.(0) in
   let count = ref 0 in
   String.iter (fun c -> if c = '\n' then incr count) s;
   Runtime.build ctx ((String.length s / 8) + (6 * !count) + 1);
@@ -188,14 +188,14 @@ let pad name add ctx (a : t array) =
   if missing <= 0 || filler = "" then Text s else Text (add (repeated ctx missing filler) s)
 
 let code ctx (a : t array) =
-  let s = text_arg ctx "code" a.(0) in
-  if s = "" then Runtime.fail ctx Type (Messages.need_char "code") else Int (Uchar.to_int (Uchar.utf_decode_uchar (String.get_utf_8_uchar s 0)))
+  let s = text_arg ctx "Code" a.(0) in
+  if s = "" then Runtime.fail ctx Type (Messages.need_char "Code") else Int (Uchar.to_int (Uchar.utf_decode_uchar (String.get_utf_8_uchar s 0)))
 
 let byte_position ctx i s =
   if i < 1 || i > String.length s then Runtime.fail ctx Index (Messages.index_outside i (String.length s))
 
 let from_bytes ctx (a : t array) =
-  let values = elements ctx "from_bytes" a.(0) in
+  let values = elements ctx "FromBytes" a.(0) in
   let b = Buffer.create (Array.length values) in
   Array.iter
     (fun v ->
@@ -212,71 +212,71 @@ let shift x n =
   if n >= Sys.int_size || n <= -Sys.int_size then 0 else if n >= 0 then x lsl n else x lsr -n
 
 let xor_bytes ctx (a : t array) =
-  let key = text_arg ctx "xor_bytes" a.(0) and s = text_arg ctx "xor_bytes" a.(1) in
-  if key = "" then Runtime.fail ctx Type (Messages.need_char "xor_bytes");
+  let key = text_arg ctx "XorBytes" a.(0) and s = text_arg ctx "XorBytes" a.(1) in
+  if key = "" then Runtime.fail ctx Type (Messages.need_char "XorBytes");
   Runtime.build ctx ((String.length s / 8) + 1);
   Text (String.mapi (fun i c -> Char.chr (Char.code c lxor Char.code key.[i mod String.length key])) s)
 
 let natives =
-  [ bits "bit_and" ( land );
-    "xor_bytes", nat "xor_bytes" 2 2 xor_bytes;
-    bits "bit_or" ( lor );
-    bits "bit_xor" ( lxor );
-    bits "bit_shift" shift;
-    "bit_not", nat "bit_not" 1 1 (fun ctx a -> Int (lnot (Arrays.whole_index ctx a.(0))));
-    "push", nat "push" 2 2 (fun ctx a -> push ctx a.(0) (items ctx "push" a.(1)));
-    "concat", nat "concat" 2 2 (fun ctx a ->
-        let ys, m = cells ctx "concat" a.(1) in
-        let xs, n = cells ctx "concat" a.(0) in
+  [ bits "BitAnd" ( land );
+    "XorBytes", nat "XorBytes" 2 2 xor_bytes;
+    bits "BitOr" ( lor );
+    bits "BitXor" ( lxor );
+    bits "BitShift" shift;
+    "BitNot", nat "BitNot" 1 1 (fun ctx a -> Int (lnot (Arrays.whole_index ctx a.(0))));
+    "Append", nat "Append" 2 2 (fun ctx a -> push ctx a.(0) (items ctx "Append" a.(1)));
+    "Concat", nat "Concat" 2 2 (fun ctx a ->
+        let ys, m = cells ctx "Concat" a.(1) in
+        let xs, n = cells ctx "Concat" a.(0) in
         list (Array.init (n + m) (fun k -> Value.share (if k < n then Value.elt xs k else Value.elt ys (k - n)))));
-    "reverse", nat "reverse" 1 1 (fun ctx a ->
-        let xs, n = cells ctx "reverse" a.(0) in
+    "Reverse", nat "Reverse" 1 1 (fun ctx a ->
+        let xs, n = cells ctx "Reverse" a.(0) in
         list (picked xs n (fun k -> n - 1 - k)));
-    "take", nat "take" 2 2 (fun ctx a ->
-        let xs, n = cells ctx "take" a.(1) in
-        list (picked xs (min (count_arg ctx "take" a.(0)) n) Fun.id));
-    "skip", nat "skip" 2 2 (fun ctx a ->
-        let xs, n = cells ctx "skip" a.(1) in
-        let k = min (count_arg ctx "skip" a.(0)) n in
+    "Take", nat "Take" 2 2 (fun ctx a ->
+        let xs, n = cells ctx "Take" a.(1) in
+        list (picked xs (min (count_arg ctx "Take" a.(0)) n) Fun.id));
+    "Skip", nat "Skip" 2 2 (fun ctx a ->
+        let xs, n = cells ctx "Skip" a.(1) in
+        let k = min (count_arg ctx "Skip" a.(0)) n in
         list (picked xs (n - k) (fun i -> k + i)));
-    "index_of", nat "index_of" 2 2 index_of;
-    "sort", nat "sort" 1 1 sort;
-    "order", nat "order" 1 1 order;
-    "unique", nat "unique" 1 1 unique;
-    "flatten", nat "flatten" 1 1 flatten;
-    "zip", nat "zip" 2 2 zip;
-    "upper", nat "upper" 1 1 (fun ctx a ->
-        let s = text_arg ctx "upper" a.(0) in
+    "IndexOf", nat "IndexOf" 2 2 index_of;
+    "Sort", nat "Sort" 1 1 sort;
+    "Order", nat "Order" 1 1 order;
+    "Unique", nat "Unique" 1 1 unique;
+    "Flatten", nat "Flatten" 1 1 flatten;
+    "Zip", nat "Zip" 2 2 zip;
+    "Upper", nat "Upper" 1 1 (fun ctx a ->
+        let s = text_arg ctx "Upper" a.(0) in
         pay ctx s;
         Runtime.reserve ctx ((String.length s / 8) + 1);
         Text (String.uppercase_ascii s));
-    "ends_with", nat "ends_with" 2 2 (fun ctx a ->
-        let suffix = text_arg ctx "ends_with" a.(0) in
+    "EndsWith", nat "EndsWith" 2 2 (fun ctx a ->
+        let suffix = text_arg ctx "EndsWith" a.(0) in
         pay ctx suffix;
-        Value.of_bool (String.ends_with ~suffix (text_arg ctx "ends_with" a.(1))));
-    "find", nat "find" 2 2 find;
-    "repeat", nat "repeat" 2 2 repeat;
-    "chars", nat "chars" 1 1 (fun ctx a ->
-        let s = text_arg ctx "chars" a.(0) in
+        Value.of_bool (String.ends_with ~suffix (text_arg ctx "EndsWith" a.(1))));
+    "Find", nat "Find" 2 2 find;
+    "Repeat", nat "Repeat" 2 2 repeat;
+    "Chars", nat "Chars" 1 1 (fun ctx a ->
+        let s = text_arg ctx "Chars" a.(0) in
         Runtime.build ctx (6 * String.length s);
         list (Array.of_list (List.map (fun c -> Text c) (points s))));
-    "code", nat "code" 1 1 code;
-    "lines", nat "lines" 1 1 lines;
-    "pad_left", nat "pad_left" 3 3 (pad "pad_left" (fun fill s -> fill ^ s));
-    "pad_right", nat "pad_right" 3 3 (pad "pad_right" (fun fill s -> s ^ fill));
-    "bytes", nat "bytes" 1 1 (fun ctx a ->
-        let s = text_arg ctx "bytes" a.(0) in
+    "Code", nat "Code" 1 1 code;
+    "Lines", nat "Lines" 1 1 lines;
+    "PadLeft", nat "PadLeft" 3 3 (pad "PadLeft" (fun fill s -> fill ^ s));
+    "PadRight", nat "PadRight" 3 3 (pad "PadRight" (fun fill s -> s ^ fill));
+    "Bytes", nat "Bytes" 1 1 (fun ctx a ->
+        let s = text_arg ctx "Bytes" a.(0) in
         Runtime.build ctx (String.length s);
         list (Array.init (String.length s) (fun k -> Int (Char.code s.[k]))));
-    "from_bytes", nat "from_bytes" 1 1 from_bytes;
-    "byte", nat "byte" 2 2 (fun ctx a ->
-        let i = Arrays.whole_index ctx a.(0) and s = text_arg ctx "byte" a.(1) in
+    "FromBytes", nat "FromBytes" 1 1 from_bytes;
+    "Byte", nat "Byte" 2 2 (fun ctx a ->
+        let i = Arrays.whole_index ctx a.(0) and s = text_arg ctx "Byte" a.(1) in
         byte_position ctx i s;
         Int (Char.code s.[i - 1]));
-    "byte_length", nat "byte_length" 1 1 (fun ctx a -> Int (String.length (text_arg ctx "byte_length" a.(0))));
-    "byte_slice", nat "byte_slice" 3 3 (fun ctx a ->
+    "ByteLength", nat "ByteLength" 1 1 (fun ctx a -> Int (String.length (text_arg ctx "ByteLength" a.(0))));
+    "ByteSlice", nat "ByteSlice" 3 3 (fun ctx a ->
         let first = Arrays.whole_index ctx a.(0) and last = Arrays.whole_index ctx a.(1) in
-        let s = text_arg ctx "byte_slice" a.(2) in
+        let s = text_arg ctx "ByteSlice" a.(2) in
         if last < first then Text ""
         else begin
           byte_position ctx first s;
@@ -284,9 +284,9 @@ let natives =
           Runtime.build ctx ((last - first) / 8 + 1);
           Text (String.sub s (first - 1) (last - first + 1))
         end);
-    "byte_find", nat "byte_find" 3 3 (fun ctx a ->
-        let part = text_arg ctx "byte_find" a.(0) and from = Arrays.whole_index ctx a.(1) in
-        let s = text_arg ctx "byte_find" a.(2) in
+    "ByteFind", nat "ByteFind" 3 3 (fun ctx a ->
+        let part = text_arg ctx "ByteFind" a.(0) and from = Arrays.whole_index ctx a.(1) in
+        let s = text_arg ctx "ByteFind" a.(2) in
         pay ctx part;
         pay ctx s;
         if part = "" then Int from

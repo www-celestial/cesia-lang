@@ -6,7 +6,7 @@ open Kepler
 exception Timeout
 
 let fail_dir = "_build/fuzz_fail"
-let current = Filename.concat fail_dir "current.kp"
+let current = Filename.concat fail_dir "current.k"
 let max_saved = 40
 let trial_alarm = 10
 
@@ -62,7 +62,7 @@ let attempt src =
         (Printf.sprintf "paths differ\n--- typed (%d)\n%s%s\n--- no-spec (%d)\n%s%s" a.code a.out a.err b.code
            b.out b.err)
 
-(* Makes a test file runnable: otherwise its is_ functions would never be called. *)
+(* Makes a test file runnable: otherwise its isFoo functions would never be called. *)
 let test_calls src =
   let call line =
     let name_of start =
@@ -71,29 +71,32 @@ let test_calls src =
         Some (String.sub line start (i - start))
       | _ -> None
     in
+    let is_test at =
+      String.length line > at + 2 && String.sub line at 2 = "is" && line.[at + 2] >= 'A' && line.[at + 2] <= 'Z'
+    in
     let found =
-      if String.starts_with ~prefix:"is_" line then name_of 0
-      else if String.starts_with ~prefix:"defn is_" line then name_of 5
+      if is_test 0 then name_of 0
+      else if String.starts_with ~prefix:"defn " line && is_test 5 then name_of 5
       else None
     in
-    Option.map (fun n -> Printf.sprintf "print(wait(spawn(%s)))\n" n) found
+    Option.map (fun n -> Printf.sprintf "Print(Wait(Spawn(%s)))\n" n) found
   in
   String.concat "" (List.filter_map call (String.split_on_char '\n' src))
 
 let prelude_calls =
-  "print(map(x -> x + 1, [1, 2]))\n\
-   print(filter(x -> x > 1, [1, 2, 3]))\n\
-   print(reduce((a, x) -> a + x, 0, [1, 2, 3]))\n\
-   print(scan((a, x) -> a + x, 0, [1, 2, 3]))\n\
-   print(range(1, 10, step = 3))\n\
-   print(group(x -> mod(x, 2), [1, 2, 3, 4]))\n\
-   print(top(2, [5, 1, 9, 3]))\n"
+  "Print(Map(x -> x + 1, [1, 2]))\n\
+   Print(Filter(x -> x > 1, [1, 2, 3]))\n\
+   Print(Reduce((a, x) -> a + x, 0, [1, 2, 3]))\n\
+   Print(Scan((a, x) -> a + x, 0, [1, 2, 3]))\n\
+   Print(Range(1, 10, step = 3))\n\
+   Print(Group(x -> Mod(x, 2), [1, 2, 3, 4]))\n\
+   Print(Top(2, [5, 1, 9, 3]))\n"
 
 let kp_files dir =
   if not (Sys.file_exists dir) then []
   else
     Sys.readdir dir |> Array.to_list |> List.sort compare
-    |> List.filter (fun f -> Filename.check_suffix f ".kp")
+    |> List.filter (fun f -> Filename.check_suffix f ".k")
     |> List.map (Filename.concat dir)
 
 let corpus () =
@@ -120,7 +123,7 @@ let tokens s =
   Array.of_list (List.rev !out)
 
 let is_number t = t <> "" && t.[0] >= '0' && t.[0] <= '9'
-let hostile = [| "0"; "-1"; "4611686018427387903"; "nan"; "1e19"; "1.5"; "(1.0 / 0.0)"; "spawn"; "wait"; "missing" |]
+let hostile = [| "0"; "-1"; "4611686018427387903"; "nan"; "1e19"; "1.5"; "(1.0 / 0.0)"; "Spawn"; "Wait"; "missing" |]
 
 let pick st a = a.(Random.State.int st (Array.length a))
 
@@ -236,7 +239,7 @@ let () =
     let trial_seed = Random.State.bits master in
     let src = generate (Random.State.make [| trial_seed |]) corpus in
     incr trials;
-    report trial_seed ".kp" src (attempt src);
+    report trial_seed ".k" src (attempt src);
     let toml = generate_toml (Random.State.make [| trial_seed |]) tomls in
     report trial_seed ".toml" toml (attempt_toml toml)
   done;

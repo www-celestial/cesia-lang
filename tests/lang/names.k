@@ -1,0 +1,41 @@
+-- The rules of names: a capital is public, a small first letter private, and fields follow the same rule.
+struct piece { size, Label = "x" }
+
+hidden() = 1
+Shown() = hidden() + 1
+smallConstant = 2
+
+defn readSmall()
+  p = piece(3)
+  p.size + {count: 4}.count
+end
+
+defn writeSmall()
+  p = piece(3)
+  p.size = 5
+  p.size
+end
+
+defn patternSmall()
+  {size: n} = piece(6)
+  n
+end
+
+matchSmall(p) = match p
+  {size} -> size
+  else -> 0
+end
+
+isPrivateFunctionInItsFile() = hidden() == 1 and Shown() == 2
+isPrivateVariableInItsFile() = smallConstant == 2
+isSmallFieldRead() = readSmall() == 7
+isSmallFieldWritten() = writeSmall() == 5
+isSmallFieldInAPattern() = patternSmall() == 6 and matchSmall(piece(8)) == 8
+isSmallStructShowsItsName() = Text(piece(1)) == "piece(size = 1, Label = ""x"")"
+isLoneWildcard() = match [1, 2]
+  [_, x] -> x == 2
+end
+isCapitalFieldNeedsNoDeclaration() = (Wait(Spawn(() -> Ok(1).Other)) then MapErr(it.Kind)) == Err("field")
+isNumberKeepsItsSeparator() = 1_000 == 1000
+isPublicOnlyInDocs() = IsMissing(Doc("merge")) and "Merge" in DocNames("prelude") and not ("merge" in DocNames("prelude"))
+isIsIntIsNoTest() = IsInt(1)

@@ -1,0 +1,11 @@
+use sdl
+
+defn check()
+  window = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  one = sdl.TextSize("a", window)
+  two = sdl.TextSize("aa", window)
+  Print(two.Width == 2 * one.Width, one.Height > 0, one.Width > 0)
+  Ok(missing)
+end
+
+Print(check())

@@ -1,1 +1,1 @@
-au BufRead,BufNewFile *.kp setfiletype kepler
+au BufRead,BufNewFile *.k setfiletype kepler

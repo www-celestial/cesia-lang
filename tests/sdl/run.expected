@@ -1,5 +1,5 @@
 view ""
 view "ab"
-{typed: "abc"}
-Ok(value = missing)
+{Typed: "abc"}
+Ok(Value = missing)
 exit 0

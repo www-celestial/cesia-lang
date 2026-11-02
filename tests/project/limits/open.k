@@ -1,0 +1,8 @@
+use c
+
+defn check()
+  c.Open("m", version = 6)?
+  Ok("opened")
+end
+
+Print(Unwrap(check()))

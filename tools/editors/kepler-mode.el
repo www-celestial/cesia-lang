@@ -26,7 +26,7 @@
   (setq-local font-lock-defaults '(kepler-font-lock)))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.kp\\'" . kepler-mode))
+(add-to-list 'auto-mode-alist '("\\.k\\'" . kepler-mode))
 
 (provide 'kepler-mode)
 ;;; kepler-mode.el ends here

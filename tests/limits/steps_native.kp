@@ -1,2 +1,0 @@
-a = zeros(500, 500)
-b = matmul(a, a)

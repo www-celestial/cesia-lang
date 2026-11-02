@@ -1,1 +1,1 @@
-"$root/_build/default/bin/main.exe" run $no_spec permissions.kp 2>/dev/null
+"$root/_build/default/bin/main.exe" run $no_spec permissions.k 2>/dev/null

@@ -1,0 +1,131 @@
+-- Typed columns: integers without a box, and the native work on columns.
+use columns
+use frame
+use csv
+
+defn fails(f, kind)
+  (Wait(Spawn(f)) then MapErr(it.Kind)) == Err(kind)
+end
+
+isIntsAreTyped() = columns.Kind([1, 2, 3]) == "int" and columns.Kind(1:3) == "int" and columns.Kind([k * 2 for k in 1:4]) == "int"
+isFloatsAreTyped() = columns.Kind([1.0, 2.0]) == "float"
+isMixedStaysGeneral() = columns.Kind([1, 2.5]) == "value" and columns.Kind([1, "a"]) == "value" and columns.Kind([]) == "value"
+isFillIsTyped() = columns.Kind(Fill(0, 3)) == "int" and Equal(Fill(7, 2), [7, 7])
+isASliceStaysTyped() = columns.Kind((1:5)[2:3]) == "int" and Equal((1:5)[2:3], [2, 3])
+
+defn isAMatrixOfInts()
+  m = Reshape(1:6, 2, 3)
+  columns.Kind(m) == "int" and m[2, 3] == 6 and Equal(m[:, 2], Reshape([3, 4], 2, 1)) and Transpose(m)[3, 2] == 6 and columns.Kind(Transpose(m)) == "int"
+end
+
+defn isWriteAnInt()
+  xs = [1, 2, 3]
+  xs[2] = 9
+  Equal(xs, [1, 9, 3]) and columns.Kind(xs) == "int"
+end
+
+defn isWriteAFloatInInts()
+  xs = [1, 2, 3]
+  xs[2] = 2.5
+  Equal(xs, [1, 2.5, 3]) and IsInt(xs[1]) and IsFloat(xs[2])
+end
+
+defn isWriteATextInInts()
+  xs = 1:3
+  xs[3] = "a"
+  xs[1] == 1 and xs[3] == "a"
+end
+
+defn isACopyIsAValue()
+  xs = [1, 2, 3]
+  ys = xs
+  ys[1] = 9
+  xs[1] == 1 and ys[1] == 9
+end
+
+isEqualAcrossStorages() = Equal([1, 2], 1:2) and not Equal([1, 2], [1, 3]) and Equal([1, 2], [1.0, 2.0]) and Equal(Reshape(1:4, 2, 2), Reshape([1, 2, 3, 4], 2, 2))
+isShow() = "$([1, 2])" == "[1, 2]" and "$(Reshape(1:4, 2, 2))" == "[1 3; 2 4]"
+isIn() = 2 in [1, 2] and not (3 in [1, 2]) and 1.0 in [1, 2]
+isSumInts() = Sum(1:10) == 55 and IsInt(Sum(1:10))
+isSumOverflows() = fails(() -> Sum([4611686018427387903, 1]), "overflow")
+isMeanInts() = Mean([1, 2, 3]) == 2.0
+isArithmetic() = Equal([1, 2] + [3, 4], [4, 6]) and columns.Kind([1, 2] + 1) == "int" and Equal([1, 2] * 2.5, [2.5, 5.0])
+isLoop() = Reduce((a, x) -> a + x, 0, [x for x in 1:4]) == 10
+isPushKeepsValues() = Equal(Append(3, [1, 2]), [1, 2, 3]) and Equal(Concat([1], [2.5]), [1, 2.5]) and Equal(Reverse(1:3), [3, 2, 1])
+
+isOrderInts() = Equal(Order([3, -1, 2]), [2, 3, 1])
+isOrderFloats() = Equal(Order([2.5, -1.0, 0.5]), [2, 3, 1])
+isOrderTexts() = Equal(Order(["b", "a", "c"]), [2, 1, 3])
+isOrderNumbers() = Equal(Order([2, 1.5, 3]), [2, 1, 3])
+isOrderIsStable() = Equal(Order([1, 0, 1, 0, 1]), [2, 4, 1, 3, 5])
+isOrderEmpty() = Equal(Order([]), []) and Equal(Sort([]), [])
+isOrderLarge() = Equal(Sort([Mod(k * 7919, 1009) for k in 1:1009]), 0:1008)
+isSortKeepsTheKind() = columns.Kind(Sort([3, 1, 2])) == "int" and columns.Kind(Sort([3.0, 1.0])) == "float"
+isSortPanicsOnMixed() = fails(() -> Sort([1, "a"]), "type")
+
+isPick() = Equal(columns.Pick([3, 1], [10, 20, 30]), [30, 10]) and columns.Kind(columns.Pick([1], [1, 2])) == "int"
+isPickFloatsAndTexts() = Equal(columns.Pick([2], [1.5, 2.5]), [2.5]) and Equal(columns.Pick([2, 1], ["a", "b"]), ["b", "a"])
+isPickZeroIsMissing() = Equal(columns.Pick([0, 1], [5, 6]), [missing, 5]) and Equal(columns.Pick([0], [1.5]), [missing])
+isPickOutside() = fails(() -> columns.Pick([4], [1, 2]), "index")
+isPositions() = Equal(columns.Positions([true, false, true]), [1, 3]) and Equal(columns.Positions([1, 2] > 5), [])
+
+defn isGroups()
+  g = columns.Groups([["b", "a", "b", "c"]])
+  Equal(g.Ids, [1, 2, 1, 3]) and g.Count == 3 and Equal(g.Firsts, [1, 2, 4])
+end
+
+isGroupsOfInts() = Equal(columns.Groups([[5, 5, 2]]).Ids, [1, 1, 2])
+isGroupsOfFloats() = columns.Groups([[0.5, 2.0, 0.5]]).Count == 2
+isGroupsOfNumbers() = columns.Groups([[1, 1.0, 2]]).Count == 2
+isGroupsOfMany() = columns.Groups([[Mod(k, 5000) for k in 1:20000]]).Count == 5000
+isGroupsOfTwoColumns() = Equal(columns.Groups([[1, 1, 2, 1], ["a", "b", "a", "a"]]).Ids, [1, 2, 3, 1])
+isGroupsPairIsNotText() = columns.Groups([["a\tb", "a"], ["c", "b\tc"]]).Count == 2
+isGroupsEmpty() = columns.Groups([[]]).Count == 0
+isGroupsRefuseMissing() = fails(() -> columns.Groups([[1, missing]]), "type")
+isGroupsRefuseNan() = fails(() -> columns.Groups([[1.0, 0.0 / 0.0]]), "type")
+
+defn isSplit()
+  g = columns.Groups([["a", "b", "a"]])
+  Equal(columns.Split(g, [1, 2, 3]), [[1, 3], [2]])
+end
+
+defn isSplitDropsMissing()
+  g = columns.Groups([["a", "a"]])
+  Equal(columns.Split(g, [missing, 2.5]), [[2.5]]) and columns.Kind(columns.Split(g, [missing, 2.5])[1]) == "float"
+end
+
+defn isJoin()
+  m = columns.Join([1, 2, 1], [1, 1, 3], false)
+  Equal(m.Left, [1, 1, 3, 3]) and Equal(m.Right, [1, 2, 1, 2])
+end
+
+defn isJoinLeft()
+  m = columns.Join([9, 3], [3], true)
+  Equal(m.Left, [1, 2]) and Equal(m.Right, [0, 1])
+end
+
+isJoinNumbers() = Equal(columns.Join([1, 2], [1.0, 2.5], false).Right, [1])
+isJoinTexts() = Equal(columns.Join(["a", "b"], ["b"], false).Left, [2])
+isJoinRefusesMissing() = fails(() -> columns.Join([missing], [1], false), "type")
+
+defn isCsvColumnsAreTyped()
+  df = frame.FromCsv("i,f,t,g\n1,1.5,a,1\n2,2.5,b,\n")
+  columns.Kind(frame.Column("i", df)) == "int" and columns.Kind(frame.Column("f", df)) == "float" and Equal(frame.Column("t", df), ["a", "b"]) and IsMissing(frame.Column("g", df)[2])
+end
+
+isCsvParse() = Equal(csv.Parse("a,\"b,c\"\r\n\"d\"\"e\",f"), [["a", "b,c"], ["d\"e", "f"]])
+isCsvParseEmpty() = Equal(csv.Parse(""), []) and Equal(csv.Parse("\n"), [[""]])
+
+defn isGroupBy()
+  df = frame.Of({"k": ["a", "b", "a"], "v": [1.0, 2.0, 4.0]})
+  g = frame.GroupBy(["k"], [frame.Agg("total", "v", Sum), frame.Agg("n", "v", Len)], df)
+  Equal(frame.Column("k", g), ["a", "b"]) and Equal(frame.Column("total", g), [5.0, 2.0]) and Equal(frame.Column("n", g), [2, 1])
+end
+
+isWhereMask() = Equal(frame.Column("v", frame.WhereMask([1, 2, 3] > 1, frame.Of({"v": [1, 2, 3]}))), [2, 3])
+isKinds() = Equal(frame.Kinds(frame.Of({"a": [1], "b": [1.5], "c": ["x"]})), ["int", "float", "value"])
+
+isSplitRefusesForgedGroups() = fails(() -> columns.Split({Ids: [5], Count: 1, Firsts: [1]}, [1]), "type")
+isSplitRefusesANegativeCount() = fails(() -> columns.Split({Ids: [], Count: -1, Firsts: []}, []), "type")
+isGroupsRefuseArraysAsKeys() = fails(() -> columns.Groups([[1, 2], [[1], [2]]]), "type")
+isGroupsTakeMissingWithTwoColumns() = columns.Groups([[1, 1], [missing, missing]]).Count == 1

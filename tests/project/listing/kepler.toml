@@ -11,11 +11,11 @@ run = ["tools/test.sh"]
 
 [tasks.demo]
 needs = ["build"]
-file = "examples/window.kp"
+file = "examples/window.k"
 limit = "memory=512M"
 
 [tasks.dev]
-file = "examples/window.kp"
+file = "examples/window.k"
 watch = true
 
 [tasks.mark]

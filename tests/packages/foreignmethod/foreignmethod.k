@@ -1,0 +1,3 @@
+-- A method on a struct of another package.
+use tests/packages/other
+(r Rect) Twice() = 2

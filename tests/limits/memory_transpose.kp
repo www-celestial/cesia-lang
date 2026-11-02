@@ -1,3 +1,0 @@
-a = zeros(1500000)
-b = transpose(a)
-print(b[1])

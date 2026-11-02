@@ -1,5 +1,5 @@
-Ok(value = "hello")
-Err(error = "This chunked body is cut short.")
-Err(error = "This chunked body is cut short.")
-Err(error = "This chunked body is cut short.")
+Ok(Value = "hello")
+Err(Error = "This chunked body is cut short.")
+Err(Error = "This chunked body is cut short.")
+Err(Error = "This chunked body is cut short.")
 exit 0

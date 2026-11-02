@@ -1,0 +1,18 @@
+-- A client that sends half a request and waits: the server closes it at its deadline.
+use http
+use net
+use sys
+
+Spawn(() -> http.Serve(r -> {Status: 200, Body: "ok"}, port = 18203, timeout = 0.1))
+sys.Sleep(0.05)
+
+defn main()
+  c = net.Connect("127.0.0.1", 18203)?
+  net.Write(c, "GET / HT")?
+  start = sys.Now()
+  got = net.Read(c)?
+  Print(ByteLength(got), sys.Now() - start < 1.0)
+  Ok(missing)
+end
+
+Print(main())

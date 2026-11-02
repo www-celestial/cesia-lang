@@ -1,0 +1,19 @@
+use net
+use sys
+
+defn keepWriting(c, n)
+  if n == 0
+    Ok("never failed")
+  else
+    net.Write(c, "hello")?
+    sys.Sleep(0.001)
+    keepWriting(c, n - 1)
+  end
+end
+
+listener = Unwrap(net.Listen(18082))
+server = Spawn(() -> net.Accept(listener) then AndThen(c -> keepWriting(c, 200)))
+sys.Sleep(0)
+net.Close(Unwrap(net.Connect("127.0.0.1", 18082)))
+Print(Unwrap(Wait(server)) then MapErr(it.Kind))
+Print("alive")

@@ -1,3 +1,0 @@
-use sys
-print(sys.run("true") then map_err(it.kind))
-print(is_ok(sys.read("run_no_fds.kp")))

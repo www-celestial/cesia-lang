@@ -1,4 +1,4 @@
-dict_absent.kp:2:8: This dictionary has no key: the text "z".
-  2 | print(d["z"])
+dict_absent.k:2:8: This dictionary has no key: the text "z".
+  2 | Print(d["z"])
     |        ^
 exit 1

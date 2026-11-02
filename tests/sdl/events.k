@@ -1,0 +1,27 @@
+use tests/sdl/probe
+use sdl
+
+defn check()
+  window = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  Print(sdl.Events(window))
+  probe.Push(0x300, [["u32", 28, 0x61], ["u16", 32, 0x40]])
+  probe.Push(0x301, [["u32", 28, 0x61]])
+  probe.Push(0x300, [["u32", 28, 0x4000003A], ["u16", 32, 0x1]])
+  probe.Push(0x300, [["u32", 28, 0x0D]])
+  probe.Push(0x300, [["u32", 28, 0x40000046]])
+  probe.Push(0x300, [["u32", 28, 0x71], ["u16", 32, 0x900]])
+  probe.PushText([0xC3, 0xA9])
+  probe.Push(0x401, [["u8", 24, 1], ["f32", 28, 10.0], ["f32", 32, 20.0]])
+  probe.Push(0x402, [["u8", 24, 1], ["f32", 28, 10.0], ["f32", 32, 20.0]])
+  probe.Push(0x400, [["f32", 28, 11.5], ["f32", 32, 21.5]])
+  probe.Push(0x403, [["f32", 28, -1.0], ["f32", 36, 12.0], ["f32", 40, 22.0]])
+  probe.Push(0x206, [["i32", 20, 640], ["i32", 24, 480]])
+  probe.PushQuit()
+  for event in sdl.Events(window)
+    Print(event)
+  end
+  Print(sdl.Events(window))
+  Ok(missing)
+end
+
+Print(check())

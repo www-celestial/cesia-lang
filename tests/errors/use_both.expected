@@ -1,0 +1,4 @@
+useboth/main.k:1:5: "date" is both a module of the standard library and the folder useboth/date.
+  1 | use date
+    |     ^
+exit 1

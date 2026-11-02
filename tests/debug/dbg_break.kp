@@ -1,9 +1,0 @@
-use debug
-
-defn on_stop(stop)
-  print("$(stop.file):$(stop.line) $(stop.reason)")
-  if stop.reason == "start"
-    debug.set_break("break.kp", 4)
-  end
-  "continue"
-end

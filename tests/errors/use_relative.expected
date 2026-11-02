@@ -1,0 +1,5 @@
+use_relative.k:1:5: A use starts at the root of the project, with no ./ and no ../.
+  1 | use ./x
+    |     ^
+  Write the whole path: use geometry/shapes.
+exit 1

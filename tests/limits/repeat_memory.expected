@@ -1,4 +1,4 @@
-repeat_memory.kp:1:19: Limit "memory" reached.
-  1 | print(byte_length(repeat(150000000, "a")))
-    |                   ^
+repeat_memory.k:1:18: Limit "memory" reached.
+  1 | Print(ByteLength(Repeat(150000000, "a")))
+    |                  ^
 exit 1

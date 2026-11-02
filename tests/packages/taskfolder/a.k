@@ -1,0 +1,2 @@
+-- A task can run a folder.
+Print("in the folder")

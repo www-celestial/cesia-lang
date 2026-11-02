@@ -1,0 +1,22 @@
+use http
+use net
+use sys
+
+crlf = "$(Char(13))$(Char(10))"
+handle(r) = {Status: 200, Body: "x"}
+
+defn readToEnd(c, got)
+  more = net.Read(c)?
+  if net.Size(more) == 0 Ok(got) else readToEnd(c, "$got$more") end
+end
+
+defn closes(request)
+  c = net.Connect("127.0.0.1", 18101)?
+  net.Write(c, request)?
+  readToEnd(c, "") then MapOk(reply -> Split(crlf, reply)[1])
+end
+
+Spawn(() -> http.Serve(handle, port = 18101))
+sys.Sleep(0)
+Print(closes("GET / HTTP/1.0$(crlf)$crlf"))
+Print(closes("GET / HTTP/1.1$(crlf)Connection: Close$(crlf)$crlf"))

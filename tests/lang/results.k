@@ -1,0 +1,34 @@
+half(x) = if Mod(x, 2) == 0 Ok(Div(x, 2)) else Err("odd") end
+
+isValue() = Ok(1).Value == 1
+isEqual() = Ok(1) == Ok(1) and Ok(1) != Err(1)
+isAndThen() = (half(8) then AndThen(half)) == Ok(2)
+isAndThenErr() = (half(3) then AndThen(half)) == Err("odd")
+isMapOk() = (half(8) then MapOk(it + 1)) == Ok(5)
+isMapErr() = (half(3) then MapErr(x -> "$(x)!")) == Err("odd!")
+isUnwrapOr() = (half(3) then UnwrapOr(0)) == 0
+isUnwrap() = Unwrap(Ok(1)) == 1
+isKinds() = IsOk(Ok(1)) and IsErr(Err(1)) and not IsOk(Err(1))
+isCollect() = Equal(Collect([Ok(1), Ok(2)]), Ok([1, 2]))
+isCollectFirstErr() = Collect([Ok(1), Err("a"), Err("b")]) == Err("a")
+isCollectEmpty() = Equal(Collect([]), Ok([]))
+
+defn quarter(x)
+  a = half(x)?
+  b = half(a)?
+  Ok(b)
+end
+defn chain()
+  half(half(8)?)
+end
+defn inLoop()
+  for i in 1:3
+    half(i)?
+  end
+  Ok("done")
+end
+isQuestion() = quarter(8) == Ok(2)
+isQuestionPropagates() = quarter(6) == Err("odd")
+isQuestionInLambda() = (x -> Ok(half(x)? + 1))(4) == Ok(3)
+isQuestionChain() = chain() == Ok(2)
+isQuestionInLoop() = inLoop() == Err("odd")

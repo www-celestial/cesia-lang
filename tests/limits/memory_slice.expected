@@ -1,4 +1,4 @@
-memory_slice.kp:2:6: Limit "memory" reached.
+memory_slice.k:2:6: Limit "memory" reached.
   2 | b = a[1:1500000]
     |      ^
 exit 1

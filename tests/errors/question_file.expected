@@ -1,4 +1,4 @@
-question_file.kp:1:10: ? can only be used inside a function.
+question_file.k:1:10: ? can only be used inside a function.
   1 | x = Ok(1)?
     |          ^
 exit 1

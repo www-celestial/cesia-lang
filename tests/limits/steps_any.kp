@@ -1,4 +1,0 @@
-m = zeros(100000) > 1.0
-for i in 1:1000
-  b = any(m)
-end

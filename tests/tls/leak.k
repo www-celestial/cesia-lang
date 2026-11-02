@@ -1,0 +1,27 @@
+-- Failed handshakes give back their memory: this limit stops the server otherwise.
+use tls
+use web
+use net
+use sys
+
+defn garbage()
+  c = net.Connect("127.0.0.1", 18210)?
+  net.Write(c, "not TLS")?
+  net.Read(c)
+  net.Close(c)
+  Ok(missing)
+end
+
+defn main()
+  api = tls.Open()?
+  wrap = tls.Server(Args[1], Args[2], api)?
+  Spawn(() -> web.Serve(web.App(), port = 18210, wrap = wrap))
+  sys.Sleep(0.05)
+  for k in 1:600
+    garbage()?
+  end
+  Print("done")
+  Ok(missing)
+end
+
+Print(main())

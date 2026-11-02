@@ -1,9 +1,0 @@
-defn on_stop(stop)
-  if stop.line == 3
-    v = stop.frames[1].vars
-    a = v[1].value
-    a[1] = 99.0
-    v[1].value = 7
-  end
-  "step"
-end

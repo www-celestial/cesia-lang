@@ -1,0 +1,75 @@
+use num
+
+near(a, b) = Abs(a - b) < 1e-9
+
+defn allNear(xs, ys)
+  Size(xs, 1) == Size(ys, 1) and Size(xs, 2) == Size(ys, 2) and All([near(xs[k], ys[k]) for k in 1:Len(xs)])
+end
+
+isLinspace() = allNear(num.Linspace(0.0, 1.0, 3), [0.0, 0.5, 1.0])
+isEye() = allNear(num.Eye(2), Reshape([1.0, 0.0, 0.0, 1.0], 2, 2))
+isDiag() = allNear(num.Diag([2.0, 3.0]), Reshape([2.0, 0.0, 0.0, 3.0], 2, 2))
+isVariance() = near(num.Variance([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]), 4.0)
+isStd() = near(num.Std([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]), 2.0)
+isMedian() = near(num.Median([3.0, 1.0, 2.0]), 2.0) and near(num.Median([4.0, 1.0, 2.0, 3.0]), 2.5)
+isPercentile() = near(num.Percentile(50, [1.0, 2.0, 3.0, 4.0, 5.0]), 3.0) and near(num.Percentile(25, [1.0, 2.0, 3.0, 4.0, 5.0]), 2.0)
+isCumsum() = allNear(num.Cumsum([1.0, 2.0, 3.0]), [1.0, 3.0, 6.0])
+isDiff() = allNear(num.Diff([1.0, 4.0, 9.0]), [3.0, 5.0])
+isDot() = near(num.Dot([1.0, 2.0], [3.0, 4.0]), 11.0)
+isNorm() = near(num.Norm([3.0, 4.0]), 5.0)
+isCorrelation() = near(num.Correlation([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]), 1.0) and near(num.Correlation([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]), -1.0)
+isHistogram() = Equal(num.Histogram(2, [0.0, 0.1, 0.9, 1.0]).Counts, [2, 2])
+isSumAxis() = allNear(num.SumRows(Reshape([1.0, 2.0, 3.0, 4.0], 2, 2)), [4.0, 6.0]) and allNear(num.SumCols(Reshape([1.0, 2.0, 3.0, 4.0], 2, 2)), [3.0, 7.0])
+
+a = Reshape([2.0, 1.0, 1.0, 3.0], 2, 2)
+isDet() = near(num.Det(a), 5.0)
+isDetSingular() = near(num.Det(Reshape([1.0, 2.0, 2.0, 4.0], 2, 2)), 0.0)
+isSolve() = allNear(Unwrap(num.Solve(a, [3.0, 5.0])), [0.8, 1.4])
+isSolveSingular() = IsErr(num.Solve(Reshape([1.0, 2.0, 2.0, 4.0], 2, 2), [1.0, 1.0]))
+isInverse() = allNear(Matmul(a, Unwrap(num.Inverse(a))), num.Eye(2))
+
+defn isQr()
+  m = Reshape([1.0, 3.0, 5.0, 2.0, 4.0, 7.0], 3, 2)
+  f = num.Qr(m)
+  allNear(Matmul(f.Q, f.R), m) and allNear(Matmul(Transpose(f.Q), f.Q), num.Eye(2))
+end
+
+defn isEigen()
+  m = Reshape([2.0, 1.0, 1.0, 2.0], 2, 2)
+  e = num.Eigen(m)
+  allNear(Sort(e.Values), [1.0, 3.0]) and allNear(Matmul(Matmul(e.Vectors, num.Diag(e.Values)), Transpose(e.Vectors)), m)
+end
+
+isPolyfit() = allNear(num.Polyfit(1, [0.0, 1.0, 2.0], [1.0, 3.0, 5.0]), [1.0, 2.0])
+isPolyval() = near(num.Polyval([1.0, 2.0, 3.0], 2.0), 17.0)
+isLeastSquares() = allNear(Unwrap(num.LeastSquares(Reshape([1.0, 1.0, 1.0, 1.0, 2.0, 3.0], 3, 2), [2.0, 3.0, 4.0])), [1.0, 1.0])
+isTrapezoid() = near(num.Trapezoid([0.0, 1.0, 2.0], [0.0, 1.0, 2.0]), 2.0)
+isInterpolate() = near(num.Interpolate(1.5, [1.0, 2.0], [10.0, 20.0]), 15.0)
+
+defn isFft()
+  f = num.Fft([1.0, 0.0, 0.0, 0.0])
+  back = num.Ifft(f)
+  allNear(f.Re, [1.0, 1.0, 1.0, 1.0]) and allNear(f.Im, [0.0, 0.0, 0.0, 0.0]) and allNear(back.Re, [1.0, 0.0, 0.0, 0.0])
+end
+
+defn isFftAnySize()
+  xs = [1.0, 2.0, 3.0, 4.0, 5.0]
+  allNear(num.Ifft(num.Fft(xs)).Re, xs)
+end
+
+defn isRandomRepeatable()
+  a = num.Uniform(5, num.Seeded(42))
+  b = num.Uniform(5, num.Seeded(42))
+  allNear(a.Values, b.Values) and All([x >= 0.0 and x < 1.0 for x in a.Values])
+end
+
+defn isRandomDiffers()
+  a = num.Uniform(2, num.Seeded(1))
+  b = num.Uniform(2, a.Next)
+  not near(a.Values[1], b.Values[1])
+end
+
+defn isNormal()
+  xs = num.Normal(4000, num.Seeded(7)).Values
+  Abs(Mean(xs)) < 0.1 and Abs(num.Std(xs) - 1.0) < 0.1
+end

@@ -1,0 +1,4 @@
+method_colon_definition.k:2:15: Only a variable can be assigned here.
+  2 | Rect:Square() = Rect(1)
+    |               ^
+exit 1

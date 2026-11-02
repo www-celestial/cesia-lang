@@ -1,0 +1,68 @@
+-- For tests: reads what a window drew. SDL_ReadSurfacePixel has more arguments than c.Fn takes, so the pixels are blitted
+-- into a block. Read them after sdl.Draw, not sdl.Frame: nothing is defined after a present.
+use c
+
+argb8888 = 0x16362004
+
+defn bound()
+  lib = c.Open("SDL3", version = 0)?
+  read = c.Fn("SDL_RenderReadPixels", ["ptr", "ptr"], "ptr", lib)?
+  wrap = c.Fn("SDL_CreateSurfaceFrom", ["i32", "i32", "u32", "ptr", "i32"], "ptr", lib)?
+  blend = c.Fn("SDL_SetSurfaceBlendMode", ["ptr", "u32"], "bool", lib)?
+  blit = c.Fn("SDL_BlitSurface", ["ptr", "ptr", "ptr", "ptr"], "bool", lib)?
+  destroy = c.Fn("SDL_DestroySurface", ["ptr"], "void", lib)?
+  Ok({Read: read, Wrap: wrap, Blend: blend, Blit: blit, Destroy: destroy})
+end
+
+-- The pixels of a window of this size.
+defn Pixels(window, width, height)
+  api = Unwrap(bound())
+  block = c.Alloc(width * height * 4)
+  source = api.Read(window.Renderer, missing)
+  target = api.Wrap(width, height, argb8888, block, width * 4)
+  api.Blend(source, 0)
+  api.Blit(source, missing, target, missing)
+  api.Destroy(source)
+  api.Destroy(target)
+  {Width: width, Height: height, Block: block}
+end
+
+-- A pixel as 0xRRGGBB.
+Pixel(x, y, image) = Mod(c.Get("u32", (y * image.Width + x) * 4, image.Block), 0x1000000)
+
+-- How many pixels of a rectangle differ from a color.
+defn Differing(x, y, width, height, color, image)
+  count = 0
+  for j in y:y + height - 1
+    for i in x:x + width - 1
+      if Pixel(i, j, image) != color
+        count += 1
+      end
+    end
+  end
+  count
+end
+
+-- Pushes an event of this type, with its fields as [type, offset, value].
+defn Push(type, fields)
+  lib = Unwrap(c.Open("SDL3", version = 0))
+  send = Unwrap(c.Fn("SDL_PushEvent", ["ptr"], "bool", lib))
+  event = c.Alloc(128)
+  c.Set("u32", 0, type, event)
+  for field in fields
+    c.Set(field[1], field[2], field[3], event)
+  end
+  send(event)
+  c.Free(event)
+end
+
+-- A text event, from its UTF-8 bytes. The block stays: SDL keeps its address until the event is read.
+defn PushText(bytes)
+  held = c.Alloc(Len(bytes) + 1)
+  for k in 1:Len(bytes)
+    c.Set("u8", k - 1, bytes[k], held)
+  end
+  Push(0x303, [["ptr", 24, held]])
+end
+
+PushQuit() = Push(0x100, [])

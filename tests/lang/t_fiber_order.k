@@ -1,0 +1,7 @@
+a = Spawn(() -> Print("a"))
+b = Spawn(() -> Print("b"))
+Print("main")
+Print(a)
+Wait(a)
+Wait(b)
+Print("end")

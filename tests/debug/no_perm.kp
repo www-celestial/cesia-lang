@@ -1,2 +1,0 @@
-use debug
-debug.set_break("no_perm.kp", 1)

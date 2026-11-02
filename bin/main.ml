@@ -146,8 +146,9 @@ let run args =
   in
   let o, file, rest = options (with_default_memory Runtime.default_options) args in
   let readable =
-    Sys.file_exists file && (not (Sys.is_directory file))
-    && (try In_channel.with_open_bin file ignore; true with Sys_error _ -> false)
+    Package.files file <> []
+    || (Sys.file_exists file && (not (Sys.is_directory file))
+        && (try In_channel.with_open_bin file ignore; true with Sys_error _ -> false))
   in
   if not readable then bad_option (Messages.cant_read file);
   if !watching then watch { o with o_period = watch_period } file rest

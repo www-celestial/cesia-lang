@@ -1,0 +1,22 @@
+use tls
+use web
+use http
+use sys
+
+defn main()
+  api = tls.Open()?
+  a = web.Post("/echo", req -> web.Plain("secure: $(req.Body)"), web.Get("/", req -> web.Plain("over tls"), web.App()))
+  wrap = tls.Server(Args[1], Args[2], api)?
+  Spawn(() -> web.Serve(a, port = 18204, wrap = wrap))
+  sys.Sleep(0.05)
+  insecure = tls.Client(api, verify = false)
+  r = http.Get("https://127.0.0.1:18204/", secure = insecure)?
+  Print(r.Status, r.Body)
+  r = http.Post("https://127.0.0.1:18204/echo", Repeat(100000, "x"), secure = insecure)?
+  Print(r.Status, ByteLength(r.Body))
+  Print(http.Get("https://127.0.0.1:18204/", secure = tls.Client(api)) then MapErr(it.Message))
+  Print(tls.Server("nothing.pem", Args[2], api) then MapErr(it.Kind))
+  Ok(missing)
+end
+
+Print(main())

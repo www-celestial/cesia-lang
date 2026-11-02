@@ -1,0 +1,1 @@
+cd whole && kepler run .

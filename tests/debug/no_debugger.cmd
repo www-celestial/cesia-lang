@@ -1,1 +1,1 @@
-kepler run --debugger inconnu no_debugger.kp
+kepler run --debugger inconnu no_debugger.k

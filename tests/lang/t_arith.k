@@ -1,0 +1,26 @@
+Print(1 + 2 * 3)            -- 7
+Print(7 / 2)                -- 3.5
+Print(2 ^ 10)               -- 1024
+Print(2 ^ -1)               -- 0.5
+Print(-2 ^ 2)               -- -4
+Print(2 ^ 3 ^ 2)            -- 512
+Print(Div(-7, 2))           -- -4
+Print(Mod(-7, 2))           -- 1
+Print(true + true)          -- 2
+Print(missing + 1)          -- missing
+Print(missing < 1)          -- missing
+Print(1 == 1.0)             -- true
+Print(true == 1)            -- false
+Print(missing == missing)   -- true
+Print(Nan == Nan)           -- false
+Print(Equal(Nan, Nan))      -- true
+Print(1_000 + 0xff)         -- 1255
+Print(1e3, 1e-3, 1.5e20)    -- 1000.0 0.001 1.5e20
+s = 0
+i = 1
+while i <= 10
+  s += i
+  i += 1
+  if s > 20 break end
+end
+Print(s, i)                 -- 21 7

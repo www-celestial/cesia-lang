@@ -1,0 +1,30 @@
+use c
+
+lib = Unwrap(c.Open(Args[1]))
+bound(name, inputs, output) = Unwrap(c.Fn(name, inputs, output, lib))
+echo(type) = bound("echo_$type", [type], type)
+
+defn message(f)
+  match Wait(Spawn(f))
+    Err(e) -> Print(e.Message)
+    Ok(v) -> Print("no panic: $v")
+  end
+end
+
+lengthOf = bound("text_length", ["text"], "i64")
+
+message(() -> echo("u8")(300))
+message(() -> echo("i8")(-129))
+message(() -> echo("u64")(-1))
+message(() -> echo("i32")(1.5))
+message(() -> echo("f64")("x"))
+message(() -> echo("bool")(1))
+message(() -> c.Fn("x", ["i33"], "i32", lib))
+message(() -> c.Fn("x", ["void"], "i32", lib))
+message(() -> c.Fn("x", Fill("i32", 61), "i32", lib))
+message(() -> c.Fn("x", [], "i32", 5))
+message(() -> lengthOf("a$(Char(0))b"))
+message(() -> lengthOf(5))
+message(() -> echo("ptr")(5))
+message(() -> bound("huge_u64", [], "u64")())
+message(() -> bound("huge_i64", [], "i64")())

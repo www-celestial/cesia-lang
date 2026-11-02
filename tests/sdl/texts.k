@@ -1,0 +1,18 @@
+use sdl
+
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+line(words) = {Kind: "text", X: 10, Y: 10, Text: words, Color: 0xFFFFFF}
+long = Join("", Fill("a", 5000))
+
+defn check()
+  window = sdl.Open("test", 320, 200, font)?
+  once = sdl.Draw(Map(line, ["", "é€", "😀", long]), window)
+  Print("drawn")
+  match Wait(Spawn(() -> sdl.Draw([line("a$(Char(0))b")], once)))
+    Err(e) -> Print(e.Message)
+    else -> Print("no panic")
+  end
+  Ok(missing)
+end
+
+Print(check())

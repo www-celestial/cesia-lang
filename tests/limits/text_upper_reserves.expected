@@ -1,4 +1,4 @@
-text_upper_reserves.kp:3:5: Limit "memory" reached.
-  3 | y = upper(x)
+text_upper_reserves.k:3:5: Limit "memory" reached.
+  3 | y = Upper(x)
     |     ^
 exit 1

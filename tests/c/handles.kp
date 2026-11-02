@@ -1,8 +1,0 @@
--- A block and a task can have the same id without being equal.
-use c
-
-f() = 1
-t = spawn(f)
-b = c.alloc(8)
-wait(t)
-print(b == t, b == b, b == c.alloc(8))

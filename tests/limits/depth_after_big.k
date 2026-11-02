@@ -1,0 +1,22 @@
+-- Large frames first, small ones next: the limit stays exact.
+defn big(n)
+  a = 1
+  b = a + 1
+  c = b + 1
+  d = [c]
+  e = [c, d]
+  f = [c, e]
+  g = [c, f]
+  h = [c, g]
+  i = [c, h]
+  j = [c, i]
+  k = [c, j]
+  l = [c, k]
+  m = [c, l]
+  o = [c, m]
+  p = [c, o]
+  if n == 0 0 else 1 + big(n - 1) end
+end
+small(n) = if n == 0 0 else 1 + small(n - 1) end
+Print("big", big(95))
+Print("small", small(1500))

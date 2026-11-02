@@ -69,12 +69,20 @@ let trim a =
 
 let is_number = function Int _ | Float _ -> true | _ -> false
 
-let shape_of w ?sname names =
-  let key = match sname with Some n -> Array.append [| "#" ^ n |] names | None -> names in
+(* A struct belongs to its package: two packages can each have a Rect, with its own methods. Ok and Err have one shape for
+   everyone, since natives build them and ? compares them. *)
+let shape_of w ?sname ?(m = -1) names =
+  let sm = match sname with Some ("Ok" | "Err") -> -1 | _ -> m in
+  let key =
+    match sname with
+    | Some n when sm >= 0 -> Array.append [| Printf.sprintf "#%d:%s" sm n |] names
+    | Some n -> Array.append [| "#" ^ n |] names
+    | None -> names
+  in
   match Hashtbl.find_opt w.shapes key with
   | Some s -> s
   | None ->
-    let s = { sid = Hashtbl.length w.shapes; names; sname; next = Hashtbl.create 4 } in
+    let s = { sid = Hashtbl.length w.shapes; names; sname; sm; next = Hashtbl.create 4 } in
     Hashtbl.add w.shapes key s;
     s
 
@@ -97,11 +105,11 @@ let add_field w (shape : shape) fields name x =
 let result w sname field v =
   Struct { shape = shape_of w ~sname [| field |]; fields = [| share v |]; r_owned = true }
 
-let ok w v = result w "Ok" "value" v
-let err w v = result w "Err" "error" v
+let ok w v = result w "Ok" "Value" v
+let err w v = result w "Err" "Error" v
 
 let failure w kind text =
-  let shape = shape_of w [| "kind"; "message" |] in
+  let shape = shape_of w [| "Kind"; "Message" |] in
   err w (Struct { shape; fields = [| Text kind; Text text |]; r_owned = true })
 
 let nested ctx depth =
@@ -117,7 +125,7 @@ and show_at ctx depth v =
   nested ctx depth;
   match v with
   | Missing -> "missing"
-  | Undef -> "undefined"
+  | Undef | Bound _ -> "undefined"
   | True -> "true"
   | False -> "false"
   | Int i -> string_of_int i
@@ -179,7 +187,7 @@ let describe v =
   | Native n -> "function " ^ n.nname
   | Handle h -> "a " ^ h.kind
   | Dict _ -> "a dictionary"
-  | Undef -> "an undefined value"
+  | Undef | Bound _ -> "an undefined value"
 
 let rec equal ctx a b = equal_at ctx 0 a b
 

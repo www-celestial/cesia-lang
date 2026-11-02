@@ -1,9 +1,0 @@
--- A wrong example.
---
---   double(2) --> 5
-double(x) = x * 2
-
-is_false() = false
-is_one() = 1
-is_error() = 1 + "a"
-is_good() = true

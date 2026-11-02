@@ -1,0 +1,28 @@
+-- The window waits without stopping the other fibers: only one of them can end it.
+use tests/sdl/probe
+use sdl
+use sys
+
+update(event, state) = match event
+  {Kind: "quit"} -> missing
+  else -> state
+end
+
+view(state) = [{Kind: "clear", Color: 0x000000}]
+
+defn worker()
+  for i in 1:5
+    sys.Sleep(0.002)
+  end
+  Print("the worker ran")
+  probe.PushQuit()
+end
+
+defn check()
+  window = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  Spawn(worker)
+  Print(sdl.Run("state", update, view, window))
+  Ok(missing)
+end
+
+Print(check())

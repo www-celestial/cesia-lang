@@ -1,0 +1,5 @@
+method_on_function.k:2:1: There is no struct "Rect" in this package.
+  2 | (r Rect) Area() = 1
+    | ^
+  A method belongs to a struct declared in the same package.
+exit 1

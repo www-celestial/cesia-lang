@@ -1,0 +1,25 @@
+use tests/sdl/probe
+use sdl
+
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+black = 0x000000
+green = 0x00FF00
+one = [{X0: 10, Y0: 10, X1: 110, Y1: 60, Color: green}]
+many = [{X0: 10, Y0: k * 10, X1: 110, Y1: k * 10, Color: green} for k in 1:12]
+bright(x, y, image) = Div(Mod(probe.Pixel(x, y, image), 65536), 256) > 150
+
+defn check()
+  w = sdl.Open("test", 320, 200, font)?
+  a = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: []}, {Kind: "curves", Items: one}], w)
+  Print(bright(60, 35, probe.Pixels(a, 320, 200)))
+  small = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: one}], a)
+  grown = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: many}], small)
+  Print(bright(60, 119, probe.Pixels(grown, 320, 200)))
+  back = sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: one}], small)
+  Print(bright(60, 35, probe.Pixels(back, 320, 200)))
+  sdl.Frame([{Kind: "clear", Color: black}], back)
+  Print(sdl.Close(grown))
+  Ok("closed")
+end
+
+Print(check())

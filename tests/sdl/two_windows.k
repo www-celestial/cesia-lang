@@ -1,0 +1,17 @@
+-- Closing a window leaves the others working.
+use tests/sdl/probe
+use sdl
+
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+
+defn check()
+  first = sdl.Open("first", 320, 200, font)?
+  second = sdl.Open("second", 320, 200, font)?
+  sdl.Close(first)
+  drawn = sdl.Draw([{Kind: "clear", Color: 0x102030}], second)
+  Print(probe.Pixel(0, 0, probe.Pixels(drawn, 320, 200)) == 0x102030)
+  sdl.Close(drawn)
+  Ok(missing)
+end
+
+Print(check())

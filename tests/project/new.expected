@@ -3,15 +3,15 @@ Created hello. Run it: cd hello && kepler do run
 name = "hello"
 
 [tasks.run]
-file = "main.kp"
-print("Hello from hello")
-> kepler run main.kp
+file = "main.k"
+Print("Hello from hello")
+> kepler run main.k
 Hello from hello
 hello already exists.
 exit 1
 A project name holds letters, digits, - and _, not a/b.
 exit 2
-usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.kp [args...]
+usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.k [args...]
        kepler test [path] [--no-spec]
        kepler do [task]
        kepler new name

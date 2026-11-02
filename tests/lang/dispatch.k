@@ -1,0 +1,42 @@
+f(x) = x + 1
+g(x) = x * 2.0
+choose(c) = if c f else g end
+apply(h, x) = h(x)
+isCalledValue() = choose(true)(1) == 2 and choose(false)(1) == 2.0
+isFunctionParameter() = apply(f, 1) == 2 and apply(g, 1.5) == 3.0
+isDynamicDefault() = apply((a, b = 2) -> a + b, 1) == 3
+
+defn sameSite()
+  s = 0
+  for x in [1, 2.5, "a"]
+    s = s + (if IsText(x) 1 else f(x) end)
+  end
+  s == 6.5
+end
+isTwoSignaturesSameSite() = sameSite()
+
+poly(a, b) = 1
+defn bomb()
+  vals = [1, 1.5, "a", Zeros(1)]
+  n = 0
+  for a in vals
+    for b in vals
+      n += poly(a, b)
+    end
+  end
+  n == 16
+end
+isBounded8() = bomb()
+
+plusOne(x) = x + 1
+withOne(h) = h(1)
+noArgument(h) = h()
+defn cacheByArity()
+  withOne(plusOne)
+  (Wait(Spawn(() -> noArgument(plusOne))) then MapErr(it.Message)) == Err("plusOne needs the argument ""x"".")
+end
+isCacheByArity() = cacheByArity()
+
+three(a, b = 2, c = 3) = a + b + c
+viaNames(h) = h(a = 1, c = 5)
+isNamedSkipsDefault() = viaNames(three) == 8

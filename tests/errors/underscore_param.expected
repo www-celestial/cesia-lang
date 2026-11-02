@@ -1,0 +1,5 @@
+underscore_param.k:1:8: A name can't hold a _: "first_name".
+  1 | defn f(first_name)
+    |        ^
+  Join the words with capitals: firstName, or FirstName when it is public.
+exit 1

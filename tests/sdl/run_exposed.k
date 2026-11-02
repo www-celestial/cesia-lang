@@ -1,0 +1,39 @@
+-- A window event asks for a frame and wakes no update: under Wayland, the frame of the window applies only with the next frame.
+use tests/sdl/probe
+use sdl
+use sys
+
+defn noted(state)
+  Print("update")
+  state
+end
+
+defn update(event, state)
+  match event
+    {Kind: "quit"} -> missing
+    else -> noted(state)
+  end
+end
+
+defn view(state)
+  Print("view")
+  [{Kind: "clear", Color: 0x000000}]
+end
+
+defn later()
+  sys.Sleep(0.05)
+  Print("exposed")
+  probe.Push(0x204, [])
+  sys.Sleep(0.05)
+  Print("quit")
+  probe.PushQuit()
+end
+
+defn check()
+  w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  Spawn(later)
+  sdl.Run(0, update, view, w)
+  Ok("ran")
+end
+
+Print(check())

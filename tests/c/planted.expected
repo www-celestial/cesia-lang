@@ -1,2 +1,2 @@
-Err(error = "c")
+Err(Error = "c")
 exit 0

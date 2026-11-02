@@ -1,0 +1,21 @@
+-- An older copy of the window remembers texts that its objects no longer hold.
+use tests/sdl/probe
+use sdl
+
+background = 0x000000
+clear = {Kind: "clear", Color: background}
+line(words) = {Kind: "text", X: 10, Y: 10, Text: words, Color: 0xFFFFFF}
+lit(window) = probe.Differing(10, 10, 100, 24, background, probe.Pixels(window, 320, 200))
+
+defn check()
+  window = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  old = sdl.Draw([clear, line("MMMMMMMM")], window)
+  many = lit(old)
+  newer = sdl.Draw([clear, line("........")], old)
+  Print(lit(newer) < many)
+  again = sdl.Draw([clear, line("MMMMMMMM")], old)
+  Print(lit(again) == many)
+  Ok(missing)
+end
+
+Print(check())

@@ -1,1 +1,1 @@
-KEPLER_STD=bad_std kepler test bad_prelude.kp
+KEPLER_STD=bad_std kepler test bad_prelude.k

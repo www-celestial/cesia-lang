@@ -1,0 +1,43 @@
+defn fails(f, kind)
+  (Wait(Spawn(f)) then MapErr(it.Kind)) == Err(kind)
+end
+isSplit() = Equal("a,b,,c" then Split(","), ["a", "b", "", "c"])
+isSplitNone() = Equal("abc" then Split(","), ["abc"])
+isSplitEmptyText() = Equal("" then Split(","), [""])
+isSplitLongSep() = Equal("a--b" then Split("--"), ["a", "b"])
+isSplitEmptySep() = fails(() -> Split("", "a"), "type")
+isJoin() = (["a", "b"] then Join(", ")) == "a, b"
+isJoinValues() = ([1, 2.5] then Join("-")) == "1-2.5"
+isJoinEmpty() = ([] then Join(",")) == ""
+isJoinNotArray() = fails(() -> Join(",", 1), "type")
+isTrim() = Trim("  a b  ") == "a b"
+isTrimLines() = Trim("
+a
+") == "a"
+isSlice() = ("hello" then Slice(2, 4)) == "ell"
+isSliceAccents() = ("été" then Slice(2, 3)) == "té"
+isSliceAll() = ("ab" then Slice(1, 2)) == "ab"
+isSliceEmpty() = ("ab" then Slice(2, 1)) == ""
+isSliceLow() = fails(() -> Slice(0, 1, "ab"), "index")
+isSliceHigh() = fails(() -> Slice(1, 3, "ab"), "index")
+isLower() = Lower("AbC-1") == "abc-1"
+isStartsWith() = ("hello" then StartsWith("he")) and not ("he" then StartsWith("hello"))
+isContains() = ("hello" then Contains("ll")) and ("hello" then Contains("")) and not ("a" then Contains("b"))
+isReplace() = ("a-b-c" then Replace("-", "+")) == "a+b+c"
+isReplaceNone() = ("abc" then Replace("x", "y")) == "abc"
+isReplaceGrows() = ("aa" then Replace("a", "bb")) == "bbbb"
+isReplaceEmpty() = fails(() -> Replace("", "x", "a"), "type")
+isNumberInt() = Number("42") == 42 and IsInt(Number("-42"))
+isNumberFloat() = Number("1.5e3") == 1500.0 and IsFloat(Number("1.5"))
+isNumberNo() = IsMissing(Number("")) and IsMissing(Number("0x10")) and IsMissing(Number(" 1"))
+isNumberShapes() = IsMissing(Number("1.")) and IsMissing(Number(".5")) and IsMissing(Number("1e")) and IsMissing(Number("1_000"))
+isNumberOverflow() = IsFloat(Number("99999999999999999999"))
+isNotText() = fails(() -> Lower(1), "type")
+isEscapeNewline() = ByteLength("a\nb") == 3 and Byte(2, "a\nb") == 10
+isEscapeTab() = Byte(1, "\t") == 9
+isEscapeReturn() = Byte(1, "\r") == 13
+isEscapeBackslash() = ByteLength("\\") == 1
+isEscapeQuote() = "\"" == """"
+isOtherBackslashStays() = ByteLength("\d") == 2
+isEmptyArraysEqual() = Equal(Filter(it > 9, [1]), [])
+isTextOrder() = "a" < "b" and "b" > "a" and "a" <= "a" and "a" >= "a" and not ("b" < "a")

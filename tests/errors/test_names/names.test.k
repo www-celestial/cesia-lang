@@ -1,0 +1,9 @@
+-- isGrows is a test: is, then a capital, with no parameter.
+isGrows() = true
+isFailing() = false
+
+-- None of these is a test: a public name, a parameter, no capital after is.
+IsPublic() = false
+isWithParameter(x) = false
+isolated() = false
+is() = false

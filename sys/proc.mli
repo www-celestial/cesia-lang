@@ -2,5 +2,5 @@
 open Kepler
 open Types
 
-(** The function [sys.run]. *)
+(** The function [sys.Run]. *)
 val natives : Poll.t -> (string * t) list

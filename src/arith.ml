@@ -169,7 +169,7 @@ let ne ctx a b = broadcast ctx (fun ctx x y -> Value.of_bool (not (same ctx x y)
 
 (* div and mod round down. *)
 let int_div ctx a b =
-  if b = 0 then Runtime.fail ctx Overflow (Messages.div_zero "div")
+  if b = 0 then Runtime.fail ctx Overflow (Messages.div_zero "Div")
   else if a = min_int && b = -1 then Runtime.fail ctx Overflow (Messages.overflow (string_of_int a) "/" "-1")
   else begin
     let q = a / b in
@@ -177,7 +177,7 @@ let int_div ctx a b =
   end
 
 let int_mod ctx a b =
-  if b = 0 then Runtime.fail ctx Overflow (Messages.div_zero "mod")
+  if b = 0 then Runtime.fail ctx Overflow (Messages.div_zero "Mod")
   else begin
     let r = a mod b in
     if r <> 0 && r < 0 <> (b < 0) then r + b else r

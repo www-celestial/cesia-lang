@@ -1,0 +1,30 @@
+use http
+use net
+use sys
+
+crlf = "$(Char(13))$(Char(10))"
+handle(r) = {Status: 200, Body: "fine"}
+
+defn openAll(n, opened)
+  if n == 0
+    opened
+  else
+    match net.Connect("127.0.0.1", 18094)
+      Ok(c) -> openAll(n - 1, [c, opened])
+      else -> opened
+    end
+  end
+end
+
+defn ask(c)
+  net.Write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
+  net.Read(c) then MapOk(reply -> Split(crlf, reply)[1])
+end
+
+Spawn(() -> http.Serve(handle, port = 18094))
+sys.Sleep(0)
+first = Unwrap(net.Connect("127.0.0.1", 18094))
+Print(ask(first))
+openAll(100, missing)
+sys.Sleep(0.4)
+Print(ask(first))

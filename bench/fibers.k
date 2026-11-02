@@ -1,0 +1,10 @@
+defn gateWork()
+  s = 0
+  for i in 1:3000000
+    s += 1
+  end
+  s
+end
+gate = Spawn(gateWork)
+tasks = [Spawn(() -> Wait(gate)) for i in 1:COUNT]
+Print(Len(tasks then Map(Wait)))

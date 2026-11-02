@@ -1,0 +1,5 @@
+use sdl
+Print(sdl.VersionOk(3004016), sdl.VersionOk(3002000), sdl.VersionOk(3001008))
+Print(sdl.KeyName(0x61), sdl.KeyName(0x0D), sdl.KeyName(0x4000003A), sdl.KeyName(0x40000045))
+Print(sdl.KeyName(0x4000004F), sdl.KeyName(0x2F), sdl.KeyName(0x40000046))
+Print(sdl.KeyName(0xE9), sdl.KeyName(0x40000058))

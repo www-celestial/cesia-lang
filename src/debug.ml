@@ -1,8 +1,8 @@
 open Types
 
-let frame_shape w = Value.shape_of w [| "function"; "file"; "line"; "vars" |]
-let var_shape w = Value.shape_of w [| "name"; "value" |]
-let stop_shape w = Value.shape_of w [| "file"; "line"; "reason"; "frames" |]
+let frame_shape w = Value.shape_of w [| "Function"; "File"; "Line"; "Vars" |]
+let var_shape w = Value.shape_of w [| "Name"; "Value" |]
+let stop_shape w = Value.shape_of w [| "File"; "Line"; "Reason"; "Frames" |]
 
 let record shape fields = Struct { shape; fields; r_owned = true }
 
@@ -123,13 +123,13 @@ let line_arg ctx name v =
 
 let set_break ctx (a : t array) =
   let d = ctx.w.debug in
-  let place = Native.text_arg ctx "set_break" a.(0), line_arg ctx "set_break" a.(1) in
+  let place = Native.text_arg ctx "SetBreak" a.(0), line_arg ctx "SetBreak" a.(1) in
   if not (List.mem place d.breaks) then d.breaks <- place :: d.breaks;
   Missing
 
 let clear_break ctx (a : t array) =
   let d = ctx.w.debug in
-  let place = Native.text_arg ctx "clear_break" a.(0), line_arg ctx "clear_break" a.(1) in
+  let place = Native.text_arg ctx "ClearBreak" a.(0), line_arg ctx "ClearBreak" a.(1) in
   d.breaks <- List.filter (fun b -> b <> place) d.breaks;
   Missing
 
@@ -142,11 +142,11 @@ let read_line ctx _ =
 (* A command line into words: the core has no text functions. A number becomes an integer. *)
 let words ctx (a : t array) =
   let word w = match int_of_string_opt w with Some i -> Int i | None -> Text w in
-  let spaced = String.map (fun c -> if c = '\t' || c = '\r' then ' ' else c) (Native.text_arg ctx "words" a.(0)) in
+  let spaced = String.map (fun c -> if c = '\t' || c = '\r' then ' ' else c) (Native.text_arg ctx "Words" a.(0)) in
   row (List.map word (List.filter (fun w -> w <> "") (String.split_on_char ' ' spaced)))
 
 let natives =
-  [ "set_break", Native.nat ~perm:Debug "set_break" 2 2 set_break;
-    "clear_break", Native.nat ~perm:Debug "clear_break" 2 2 clear_break;
-    "read_line", Native.nat ~perm:Debug "read_line" 0 0 read_line;
-    "words", Native.nat "words" 1 1 words ]
+  [ "SetBreak", Native.nat ~perm:Debug "SetBreak" 2 2 set_break;
+    "ClearBreak", Native.nat ~perm:Debug "ClearBreak" 2 2 clear_break;
+    "ReadLine", Native.nat ~perm:Debug "ReadLine" 0 0 read_line;
+    "Words", Native.nat "Words" 1 1 words ]

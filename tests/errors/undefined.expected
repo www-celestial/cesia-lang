@@ -1,4 +1,4 @@
-undefined.kp:1:8: Name "y" doesn't exist.
+undefined.k:1:8: Name "y" doesn't exist.
   1 | f(x) = y + 1
     |        ^
 exit 1

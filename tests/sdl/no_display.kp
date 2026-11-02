@@ -1,5 +1,0 @@
-use sdl
-
-result = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")
-print(result then map_err(it.kind))
-print(result then map_err(e -> length(e.message) > 0))

@@ -1,0 +1,36 @@
+-- CSV, as RFC 4180 writes it: quotes around a field, doubled inside.
+use columns
+
+-- The rows of CSV text, each as a list of texts.
+--
+--   Parse("a,b\n1,2\n") --> [["a", "b"], ["1", "2"]]
+Parse(s, separator = ",") = columns.Csv(s, separator)
+
+-- Each row after the first as a dictionary, by the names of the first.
+--
+--   Records("a,b\n1,2\n")[1]["b"] --> "2"
+defn Records(s, separator = ",")
+  rows = Parse(s, separator = separator)
+  if Len(rows) == 0
+    return []
+  end
+  names = rows[1]
+  [Dict([{Key: names[k], Value: row[k]} for k in 1:Min(Len(names), Len(row))]) for row in Skip(1, rows)]
+end
+
+defn field(x, separator)
+  s = Text(x)
+  if Contains(separator, s) or Contains("\"", s) or Contains("\n", s) or Contains("\r", s)
+    "\"$(Replace("\"", "\"\"", s))\""
+  else
+    s
+  end
+end
+
+-- The CSV text of rows of values, quoting the fields that need it. Every row ends with a line end.
+--
+--   Write([["a", 1], ["b,c", 2]]) --> "a,1\n\"b,c\",2\n"
+defn Write(rows, separator = ",")
+  lines = [Join(separator, [field(x, separator) for x in row]) for row in rows]
+  "$(Join("\n", lines))\n"
+end

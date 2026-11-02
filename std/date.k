@@ -1,0 +1,120 @@
+-- Dates and times in UTC, from the seconds since 1970. The calendar is the proleptic Gregorian one.
+
+-- A date and a time in UTC. The clock fields start at 0, so Date(2026, 11, 1) is midnight.
+struct Date { Year, Month, Day, Hour = 0, Minute = 0, Second = 0 }
+
+-- Is this year a leap year?
+--
+--   IsLeap(2024) --> true
+IsLeap(y) = Mod(y, 4) == 0 and (Mod(y, 100) != 0 or Mod(y, 400) == 0)
+
+-- The number of days of a month (1 to 12) of a year.
+--
+--   DaysInMonth(2024, 2) --> 29
+defn DaysInMonth(y, m)
+  if m == 2
+    if IsLeap(y) 29 else 28 end
+  else if m == 4 or m == 6 or m == 9 or m == 11
+    30
+  else
+    31
+  end
+end
+
+-- The days since 1970-01-01.
+--
+--   DaysFromCivil(1970, 1, 2) --> 1
+defn DaysFromCivil(y, m, d)
+  y = if m <= 2 y - 1 else y end
+  era = Div(y, 400)
+  yoe = y - era * 400
+  mp = Mod(m + 9, 12)
+  doy = Div(153 * mp + 2, 5) + d - 1
+  doe = yoe * 365 + Div(yoe, 4) - Div(yoe, 100) + doy
+  era * 146097 + doe - 719468
+end
+
+defn civil(z)
+  z = z + 719468
+  era = Div(z, 146097)
+  doe = z - era * 146097
+  yoe = Div(doe - Div(doe, 1460) + Div(doe, 36524) - Div(doe, 146096), 365)
+  doy = doe - (365 * yoe + Div(yoe, 4) - Div(yoe, 100))
+  mp = Div(5 * doy + 2, 153)
+  d = doy - Div(153 * mp + 2, 5) + 1
+  m = if mp < 10 mp + 3 else mp - 9 end
+  y = yoe + era * 400 + (if m <= 2 1 else 0 end)
+  {Year: y, Month: m, Day: d}
+end
+
+-- The Date of a number of seconds since 1970; a fraction is dropped.
+--
+--   FromUnix(86400) == Date(1970, 1, 2) --> true
+defn FromUnix(seconds)
+  whole = Floor(seconds)
+  days = Div(whole, 86400)
+  rest = whole - days * 86400
+  c = civil(days)
+  Date(c.Year, c.Month, c.Day, Div(rest, 3600), Div(Mod(rest, 3600), 60), Mod(rest, 60))
+end
+
+-- The seconds since 1970 of a Date.
+--
+--   ToUnix(Date(1970, 1, 2)) --> 86400
+ToUnix(d) = DaysFromCivil(d.Year, d.Month, d.Day) * 86400 + d.Hour * 3600 + d.Minute * 60 + d.Second
+
+-- 1 is Monday and 7 is Sunday.
+--
+--   Weekday(Date(1970, 1, 1)) --> 4
+Weekday(d) = Mod(DaysFromCivil(d.Year, d.Month, d.Day) + 3, 7) + 1
+
+-- The Date n seconds later, or earlier if n is negative.
+--
+--   AddSeconds(60, Date(1970, 1, 1)).Minute --> 1
+AddSeconds(n, d) = FromUnix(ToUnix(d) + n)
+-- The Date n days later, or earlier if n is negative.
+--
+--   AddDays(1, Date(2026, 11, 1)).Day --> 2
+AddDays(n, d) = AddSeconds(n * 86400, d)
+-- The days from the day of a to the day of b, whatever the hours: negative if b comes first.
+--
+--   DaysBetween(Date(2026, 11, 1), Date(2026, 11, 5)) --> 4
+DaysBetween(a, b) = DaysFromCivil(b.Year, b.Month, b.Day) - DaysFromCivil(a.Year, a.Month, a.Day)
+
+two(n) = PadLeft(2, "0", Text(n))
+-- The day of a Date as 2026-11-01.
+--
+--   FormatDate(Date(2026, 11, 1)) --> "2026-11-01"
+FormatDate(d) = "$(PadLeft(4, "0", Text(d.Year)))-$(two(d.Month))-$(two(d.Day))"
+-- A Date as 2026-11-01T12:30:05Z, the form that parse reads.
+--
+--   Format(Date(2026, 11, 1, 12, 30, 5)) --> "2026-11-01T12:30:05Z"
+Format(d) = "$(FormatDate(d))T$(two(d.Hour)):$(two(d.Minute)):$(two(d.Second))Z"
+
+bad(s) = Err({Kind: "date", Message: "Not a date: $s."})
+
+whole(s) = if All([c >= "0" and c <= "9" for c in Chars(s)]) and s != "" Number(s) else missing end
+
+-- 2026-11-01, or 2026-11-01T12:30:05Z.
+--
+--   Parse("2026-11-01") == Ok(Date(2026, 11, 1)) --> true
+defn Parse(s)
+  parts = Split("T", Replace("Z", "", s))
+  day = Split("-", parts[1])
+  if Len(parts) > 2 or Len(day) != 3
+    return bad(s)
+  end
+  clock = if Len(parts) == 2 Split(":", parts[2]) else ["0", "0", "0"] end
+  if Len(clock) != 3
+    return bad(s)
+  end
+  n = Map(whole, Concat(day, clock))
+  if Any(Map(IsMissing, n))
+    return bad(s)
+  end
+  ok = n[2] >= 1 and n[2] <= 12 and n[3] >= 1 and n[4] < 24 and n[5] < 60 and n[6] < 60
+  if not ok or n[3] > DaysInMonth(n[1], n[2])
+    return bad(s)
+  end
+  Ok(Date(n[1], n[2], n[3], n[4], n[5], n[6]))
+end

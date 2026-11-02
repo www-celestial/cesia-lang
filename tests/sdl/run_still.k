@@ -1,0 +1,31 @@
+use tests/sdl/probe
+use sdl
+use sys
+
+defn update(event, state)
+  match event
+    {Kind: "quit"} -> missing
+    {Kind: "tick"} -> {Ticks: state.Ticks + 1}
+    else -> state
+  end
+end
+
+defn view(state)
+  Print("view")
+  [{Kind: "clear", Color: 0x000000}]
+end
+
+defn later()
+  sys.Sleep(0.05)
+  probe.PushQuit()
+end
+
+defn check()
+  w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  Spawn(later)
+  last = sdl.Run({Ticks: 0}, update, view, w)
+  Print(last.Ticks)
+  Ok("ran")
+end
+
+Print(check())

@@ -1,5 +1,0 @@
-use sys
-x = 1.0
-y = 0.0
-sys.sleep(x / y)
-print("after")

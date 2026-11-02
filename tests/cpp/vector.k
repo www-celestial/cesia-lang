@@ -1,0 +1,30 @@
+use cpp
+
+spec = {
+  Name: "demo",
+  Include: ["<vector>", "<numeric>", "\"shout.hpp\""],
+  Classes: [cpp.Class("Numbers", "std::vector<int>", [
+    cpp.Method("push", ["i32"], "void", call = "push_back"),
+    cpp.Method("count", [], "u64", call = "size"),
+    cpp.Method("get", ["u64"], "i32", call = "at")
+  ])],
+  Functions: [
+    cpp.Fn("gcd", ["i64", "i64"], "i64", call = "std::gcd<long, long>"),
+    cpp.Fn("upper", ["text"], "text", call = "shout")
+  ]
+}
+
+defn main()
+  m = cpp.Wrap(spec, folder = Args[1], compiler = "g++")?
+  xs = m["Numbers.new"]()
+  m["Numbers.push"](xs, 5)
+  m["Numbers.push"](xs, 7)
+  Print(m["Numbers.count"](xs), m["Numbers.get"](xs, 1))
+  Print(Wait(Spawn(() -> m["Numbers.get"](xs, 9))) then MapErr(it.Message))
+  m["Numbers.delete"](xs)
+  Print(m["gcd"](12, 18))
+  Print(m["upper"]("hello"))
+  Ok(missing)
+end
+
+Print(main())

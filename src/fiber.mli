@@ -8,5 +8,5 @@ val suspend : ctx -> ((unit -> unit) -> unit) -> unit
 (** Lets the other fibers run, if there are any. *)
 val yield : ctx -> unit
 
-(** [spawn] and [wait], for the prelude. *)
+(** [Spawn] and [Wait], for the prelude. *)
 val natives : (string * t) list

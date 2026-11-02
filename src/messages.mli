@@ -12,7 +12,24 @@ val expected : string -> string -> t
 val too_nested : t
 val cant_assign : t
 val break_outside : t
+val underscore_name : string -> string -> string -> t
+val private_field : string -> t
+val private_member : string -> t
 val undefined : string -> t
+val method_foreign : t
+val method_no_struct : string -> t
+
+(** [package_twice name other line]: the other place that defines this name. *)
+val package_twice : string -> string -> int -> t
+
+val method_nested : t
+val method_both : string -> string -> t
+val method_field : string -> string -> t
+val method_uncalled : string -> string -> t
+val static_on_value : string -> string -> t
+val needs_object : string -> string -> t
+val no_static : string -> string -> t
+val no_member : string -> string -> t
 val unset : string -> t
 
 (** [binary "add" a "and" b is_text]: [is_text] adds the hint about texts. *)
@@ -64,6 +81,19 @@ val no_match : string -> t
 val assertion : t
 val use_nested : t
 val use_cycle : t
+
+(** [use_quoted path]: the hint shows that path from the root. *)
+val use_quoted : string -> t
+
+val use_relative : t
+val use_empty : string -> t
+
+(** [use_same name other line]: two uses of a file give one name. *)
+val use_same : string -> string -> int -> t
+
+(** [use_both name folder]: a package named like a module of the standard library. *)
+val use_both : string -> string -> t
+
 val use_missing : string -> t
 val no_name : string -> string -> t
 val denied : string -> t

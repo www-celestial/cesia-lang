@@ -2,5 +2,5 @@
 name = "x"
 
 [tasks.go]
-file = "open.kp"
+file = "open.k"
 allow = ["ffi=m"]

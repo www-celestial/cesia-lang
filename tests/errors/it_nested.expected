@@ -1,5 +1,5 @@
-it_nested.kp:2:13: abs needs numbers, not function <anonymous>.
-  2 | print(apply(abs(it.x) + 1, {x: -1}))
+it_nested.k:2:13: Abs needs numbers, not function <anonymous>.
+  2 | Print(apply(Abs(it.X) + 1, {X: -1}))
     |             ^
   "it" belongs to the nearest call. Write x -> ... to use it further out.
 exit 1

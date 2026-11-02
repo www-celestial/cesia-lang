@@ -1,0 +1,23 @@
+-- Text objects are kept by position: a frame with fewer texts must not show the old ones.
+use tests/sdl/probe
+use sdl
+
+background = 0x000000
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+line(y, words) = {Kind: "text", X: 10, Y: y, Text: words, Color: 0xFFFFFF}
+clear = {Kind: "clear", Color: background}
+
+defn check()
+  window = sdl.Open("test", 320, 200, font)?
+  two = sdl.Draw([clear, line(10, "first"), line(60, "second")], window)
+  Print(probe.Differing(10, 60, 100, 24, background, probe.Pixels(two, 320, 200)) > 0)
+  one = sdl.Draw([clear, line(10, "first")], two)
+  image = probe.Pixels(one, 320, 200)
+  Print(probe.Differing(10, 10, 100, 24, background, image) > 0)
+  Print(probe.Differing(10, 60, 100, 24, background, image))
+  back = sdl.Draw([clear, line(10, "first"), line(60, "again")], one)
+  Print(probe.Differing(10, 60, 100, 24, background, probe.Pixels(back, 320, 200)) > 0)
+  Ok(missing)
+end
+
+Print(check())

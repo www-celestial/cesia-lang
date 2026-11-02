@@ -1,0 +1,6 @@
+use sys
+start = sys.Now()
+t = Spawn(() -> sys.Run("sh", args = ["-c", "sleep 0.2"]))
+other = Spawn(() -> sys.Now() - start)
+Print(Unwrap(Wait(other)) < 0.1)
+Wait(t)

@@ -4,7 +4,7 @@ open Types
 type t = {
   poll : Poll.t;
   sockets : (int, Unix.file_descr) Hashtbl.t;
-  deadlines : (int, float) Hashtbl.t;  (* net.arm: when a socket gets closed *)
+  deadlines : (int, float) Hashtbl.t;  (* net.Arm: when a socket gets closed *)
   buffer : Bytes.t;  (* shared by reads: nothing suspends between a read and copying its bytes *)
   mutable stopping : bool;
   mutable handlers : bool;
@@ -101,7 +101,7 @@ let family addr = Unix.domain_of_sockaddr (Unix.ADDR_INET (addr, 0))
 
 let listen n ctx (a : Types.t array) =
   let port = port_arg ctx a.(0) in
-  let host = if Array.length a > 1 && a.(1) != Undef then Native.text_arg ctx "listen" a.(1) else "127.0.0.1" in
+  let host = if Array.length a > 1 && a.(1) != Undef then Native.text_arg ctx "Listen" a.(1) else "127.0.0.1" in
   Runtime.check_perm ctx Net (Some (Printf.sprintf ":%d" port));
   install_handlers n;
   let target = Printf.sprintf "%s:%d" host port in
@@ -122,7 +122,7 @@ let listen n ctx (a : Types.t array) =
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
 
 let accept n ctx (a : Types.t array) =
-  with_socket n ctx "accept" a.(0) (fun fd ->
+  with_socket n ctx "Accept" a.(0) (fun fd ->
       let rec go () =
         if n.stopping then stopped ctx
         else if Hashtbl.length n.sockets >= Backend.capacity then Fs.io_error ctx.w Messages.too_many_sockets.text
@@ -133,13 +133,13 @@ let accept n ctx (a : Types.t array) =
             Value.ok ctx.w (handle n ctx c)
           | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
             Poll.read_ready n.poll ctx fd;
-            if Hashtbl.mem n.sockets (socket_arg ctx "accept" a.(0)) then go () else closed ctx
+            if Hashtbl.mem n.sockets (socket_arg ctx "Accept" a.(0)) then go () else closed ctx
           | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "accept on" "this socket" e
       in
       go ())
 
 let connect n ctx (a : Types.t array) =
-  let host = Native.text_arg ctx "connect" a.(0) and port = port_arg ctx a.(1) in
+  let host = Native.text_arg ctx "Connect" a.(0) and port = port_arg ctx a.(1) in
   let target = Printf.sprintf "%s:%d" host port in
   Runtime.check_perm ctx Net (Some target);
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
@@ -170,7 +170,7 @@ let connect n ctx (a : Types.t array) =
        | exception Unix.Unix_error (e, _, _) -> give_up e)
 
 let read n ctx (a : Types.t array) =
-  let id = socket_arg ctx "read" a.(0) in
+  let id = socket_arg ctx "Read" a.(0) in
   let rec go () =
     match Hashtbl.find_opt n.sockets id with
     | None -> closed ctx
@@ -188,8 +188,8 @@ let read n ctx (a : Types.t array) =
   go ()
 
 let write n ctx (a : Types.t array) =
-  let id = socket_arg ctx "write" a.(0) in
-  let text = Native.text_arg ctx "write" a.(1) in
+  let id = socket_arg ctx "Write" a.(0) in
+  let text = Native.text_arg ctx "Write" a.(1) in
   let size = String.length text in
   let rec go at =
     match Hashtbl.find_opt n.sockets id with
@@ -215,17 +215,17 @@ let close_socket n id =
     Unix.close fd
 
 let close n ctx (a : Types.t array) =
-  close_socket n (socket_arg ctx "close" a.(0));
+  close_socket n (socket_arg ctx "Close" a.(0));
   Missing
 
-(* A socket that outlives its deadline is closed by net.reap, which wakes whoever waits on it: a slow client can't hold
+(* A socket that outlives its deadline is closed by net.Reap, which wakes whoever waits on it: a slow client can't hold
    a fiber forever. 0 removes the deadline. *)
 let arm n ctx (a : Types.t array) =
-  let id = socket_arg ctx "arm" a.(0) in
+  let id = socket_arg ctx "Arm" a.(0) in
   let seconds = match a.(1) with
     | Int i -> float_of_int i
     | Float x -> x
-    | v -> Runtime.fail ctx Type (Messages.need_number "arm" (Value.describe v))
+    | v -> Runtime.fail ctx Type (Messages.need_number "Arm" (Value.describe v))
   in
   if seconds <= 0. then Hashtbl.remove n.deadlines id
   else if Hashtbl.mem n.sockets id then Hashtbl.replace n.deadlines id (Unix.gettimeofday () +. seconds);
@@ -239,20 +239,20 @@ let reap n _ _ : Types.t =
 
 (* HTTP lengths count bytes, unlike length and slice, which count code points. *)
 let find ctx (a : Types.t array) =
-  let part = Native.text_arg ctx "find" a.(0) and text = Native.text_arg ctx "find" a.(1) in
+  let part = Native.text_arg ctx "Find" a.(0) and text = Native.text_arg ctx "Find" a.(1) in
   Runtime.pay_bytes ctx (String.length text);
   match if part = "" then 0 else Native.find_from text part 0 with
   | -1 -> Missing
   | at -> Int at
 
 let split_at ctx (a : Types.t array) =
-  let text = Native.text_arg ctx "split_at" a.(1) in
+  let text = Native.text_arg ctx "SplitAt" a.(1) in
   match a.(0) with
   | Int k when k >= 0 && k <= String.length text ->
     Runtime.build ctx ((String.length text / 8) + 1);
     let items = [| Text (String.sub text 0 k); Text (String.sub text k (String.length text - k)) |] in
     Array { rows = 1; cols = 2; store = V items; a_owned = true; a_tip = true }
-  | v -> Runtime.fail ctx Type (Messages.need_size "split_at" (Value.describe v))
+  | v -> Runtime.fail ctx Type (Messages.need_size "SplitAt" (Value.describe v))
 
 (* A header name, as RFC 9110 writes it. *)
 let is_token_byte = function
@@ -264,7 +264,7 @@ let is_token_byte = function
    read otherwise by a proxy in front: that is how a second request gets smuggled in. In one pass, because every header
    of every request comes through here. *)
 let is_header ctx (a : Types.t array) =
-  let line = Native.text_arg ctx "is_header" a.(1) in
+  let line = Native.text_arg ctx "IsHeader" a.(1) in
   match a.(0) with
   | Int at when at >= 0 && at <= String.length line ->
     Runtime.pay_bytes ctx (String.length line);
@@ -274,19 +274,19 @@ let is_header ctx (a : Types.t array) =
           c <> '\r' && c <> '\n' && (i >= at || is_token_byte c) && clean (i + 1))
     in
     Value.of_bool (at > 0 && clean 0)
-  | v -> Runtime.fail ctx Type (Messages.need_size "is_header" (Value.describe v))
+  | v -> Runtime.fail ctx Type (Messages.need_size "IsHeader" (Value.describe v))
 
 let natives n =
-  [ "listen", Native.nat ~params:[| "port"; "host" |] "listen" 1 2 (listen n);
-    "accept", Native.nat "accept" 1 1 (accept n);
-    "connect", Native.nat "connect" 2 2 (connect n);
-    "read", Native.nat "read" 1 1 (read n);
-    "write", Native.nat "write" 2 2 (write n);
-    "close", Native.nat "close" 1 1 (close n);
-    "arm", Native.nat "arm" 2 2 (arm n);
-    "reap", Native.nat "reap" 0 0 (reap n);
-    "find", Native.nat "find" 2 2 find;
-    "split_at", Native.nat "split_at" 2 2 split_at;
-    "is_header", Native.nat "is_header" 2 2 is_header;
-    "size", Native.nat "size" 1 1 (fun ctx a -> Int (String.length (Native.text_arg ctx "size" a.(0))));
-    "open_count", Native.nat "open_count" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]
+  [ "Listen", Native.nat ~params:[| "port"; "host" |] "Listen" 1 2 (listen n);
+    "Accept", Native.nat "Accept" 1 1 (accept n);
+    "Connect", Native.nat "Connect" 2 2 (connect n);
+    "Read", Native.nat "Read" 1 1 (read n);
+    "Write", Native.nat "Write" 2 2 (write n);
+    "Close", Native.nat "Close" 1 1 (close n);
+    "Arm", Native.nat "Arm" 2 2 (arm n);
+    "Reap", Native.nat "Reap" 0 0 (reap n);
+    "Find", Native.nat "Find" 2 2 find;
+    "SplitAt", Native.nat "SplitAt" 2 2 split_at;
+    "IsHeader", Native.nat "IsHeader" 2 2 is_header;
+    "Size", Native.nat "Size" 1 1 (fun ctx a -> Int (String.length (Native.text_arg ctx "Size" a.(0))));
+    "OpenCount", Native.nat "OpenCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]

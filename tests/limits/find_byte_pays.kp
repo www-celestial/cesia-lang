@@ -1,6 +1,0 @@
--- A search pays for the text, not for what it looks for.
-s = repeat(2000000, "a")
-for i in 1:100
-  byte_find("b", 1, s)
-end
-print("not stopped")

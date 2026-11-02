@@ -4,12 +4,12 @@ f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8
 ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d17d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923
 16 true
 true false false
-49 Ok(value = 9)
-Err(error = "This message was changed, or the key is wrong.")
+49 Ok(Value = 9)
+Err(Error = "This message was changed, or the key is wrong.")
 true
 true
 true
-Ok(value = "hello bob")
+Ok(Value = "hello bob")
 true
 64 true false
 true true false
@@ -19,5 +19,5 @@ A secret key has 64 bytes.
 A public key has 32 bytes.
 false
 false
-Ok(value = missing)
+Ok(Value = missing)
 exit 0

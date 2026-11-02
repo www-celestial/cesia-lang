@@ -18,7 +18,7 @@ stop() {
 }
 cleanup() { stop; rm -rf "$dir"; }
 trap cleanup EXIT
-cp tests/reload/*.kp "$dir"
+cp -r tests/reload/* "$dir"
 
 fail() {
   echo "reload: FAILED $*"
@@ -49,11 +49,11 @@ no_internal() {
   if grep -q "Internal error" "$dir/err"; then fail "internal error: $1"; fi
 }
 
-start app.kp "value 1"
+start app.k "value 1"
 
 # 1. The new code is active in under 100 ms.
 t0=$(date +%s%N)
-sed -i 's/^value() = 1$/value() = 2/' "$dir/app.kp"
+sed -i 's/^value() = 1$/value() = 2/' "$dir/app.k"
 wait_for out "value 2" 2000 || fail "1: new code never active"
 ms=$((($(date +%s%N) - t0) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "1: $ms ms, budget $budget_ms ms"
@@ -62,51 +62,67 @@ echo "reload: new code active in $ms ms"
 wait_for out "fiber 2" 2000 || fail "1: a fiber still runs the old loop on the new code"
 
 # 2. An invalid file leaves the program running, and the fixed file is picked up.
-sed -i 's/^value() = 2$/value() = (/' "$dir/app.kp"
-until grep -q "app.kp:" "$dir/err" 2>/dev/null; do
+sed -i 's/^value() = 2$/value() = (/' "$dir/app.k"
+until grep -q "app.k:" "$dir/err" 2>/dev/null; do
   sleep 0.01
   alive "2: invalid file"
   [ $((($(date +%s%N) - t0) / 1000000)) -gt 3000 ] && { fail "2: no error on stderr"; break; }
 done
 alive "2: invalid file"
-sed -i 's/^value() = ($/value() = 3/' "$dir/app.kp"
+sed -i 's/^value() = ($/value() = 3/' "$dir/app.k"
 wait_for out "value 3" 2000 || fail "2: fixed file not picked up"
 
 # 3. A file missing for a moment, then recreated, is picked up.
-sed 's/^value() = 3$/value() = 4/' "$dir/app.kp" > "$dir/copie"
-rm "$dir/app.kp"
+sed 's/^value() = 3$/value() = 4/' "$dir/app.k" > "$dir/copie"
+rm "$dir/app.k"
 sleep 0.05
 alive "3: missing file"
-mv "$dir/copie" "$dir/app.kp"
+mv "$dir/copie" "$dir/app.k"
 wait_for out "value 4" 2000 || fail "3: recreated file not picked up"
 
 # 4. A function that changes its return type keeps working for its callers.
 wait_for out "following 5" 2000 || fail "4: following before the change"
-sed -i 's/^value() = 4$/value() = "a"/' "$dir/app.kp"
+sed -i 's/^value() = 4$/value() = "a"/' "$dir/app.k"
 wait_for out "value a" 2000 || fail "4: new return type"
 wait_for out "following type" 2000 || fail "4: recompiled caller"
 wait_for out "direct type" 2000 || fail "4: old code still running"
 no_internal "4"
-sed -i 's/^value() = "a"$/value() = 1.5/' "$dir/app.kp"
+sed -i 's/^value() = "a"$/value() = 1.5/' "$dir/app.k"
 wait_for out "value 1.5" 2000 || fail "4: float return"
 wait_for out "direct 2.5" 2000 || fail "4: old code with a float"
 
 # A new function, a loaded module, a changed struct, a deleted function.
-sed -i 's/^value() = 1.5$/value() = added()\nadded() = 9/' "$dir/app.kp"
+sed -i 's/^value() = 1.5$/value() = added()\nadded() = 9/' "$dir/app.k"
 wait_for out "value 9" 2000 || fail "new function"
-sed -i 's/^constant() = 10$/constant() = 11/' "$dir/lib.kp"
+sed -i 's/^Constant() = 10$/Constant() = 11/' "$dir/lib/lib.k"
 wait_for out "lib 11" 2000 || fail "loaded module"
-sed -i 's/^struct Point { x }$/struct Point { x, y = 5 }/; s/^point() = Point(1).x$/point() = Point(1).y/' "$dir/app.kp"
+sed -i 's/^struct Point { X }$/struct Point { X, Y = 5 }/; s/^point() = Point(1).X$/point() = Point(1).Y/' "$dir/app.k"
 wait_for out "point 5" 2000 || fail "changed struct"
-sed -i '/following/d; s/^added() = 9$/added() = 10/' "$dir/app.kp"
+sed -i '/following/d; s/^added() = 9$/added() = 10/' "$dir/app.k"
 wait_for out "value 10" 2000 || fail "after a deleted function"
 alive "deleted function"
 no_internal "deleted function"
 
+# Methods change as functions do, and a value made before its struct changed keeps them.
+wait_for out "method 1" 2000 || fail "method before the change"
+sed -i 's/^(p Point) Value() = 1$/(p Point) Value() = 2/' "$dir/app.k"
+wait_for out "method 2" 2000 || fail "a changed method never ran"
+wait_for out "old 2" 2000 || fail "a value of the old struct lost its methods"
+sed -i 's/^Point.Made() = Point(1)$/Point.Made() = Point(3)/; s/^(p Point) Value() = 2$/(p Point) Value() = p.X/' "$dir/app.k"
+wait_for out "method 3" 2000 || fail "a changed static method never ran"
+sed -i 's/^(p Point) Value() = p.X$/(p Point) Value() = p.Added()\n(p Point) Added() = 4/' "$dir/app.k"
+wait_for out "method 4" 2000 || fail "a new method"
+sed -i '/^(p Point) Added() = 4$/d' "$dir/app.k"
+wait_for out "method field" 2000 || fail "a deleted method still runs"
+sed -i 's/^(p Point) Value() = p.Added()$/Point.Value() = 5/; s/^method() = Point.Made().Value()$/method() = Point.Value()/' "$dir/app.k"
+wait_for out "method 5" 2000 || fail "an instance method that becomes static"
+wait_for out "old field" 2000 || fail "a static method called on a value"
+no_internal "methods"
+
 # A function that only read its argument starts writing it, under a loop compiled for the old one.
-wait_for out "kept 1" 2000 || fail "read_kept before the change"
-sed -i 's/^read_kept(xs) = xs\[1\]$/defn read_kept(xs)\n  xs[1] = 7\n  xs[1]\nend/' "$dir/app.kp"
-wait_for out "kept 7" 2000 || fail "read_kept never changed"
+wait_for out "kept 1" 2000 || fail "readKept before the change"
+sed -i 's/^readKept(xs) = xs\[1\]$/defn readKept(xs)\n  xs[1] = 7\n  xs[1]\nend/' "$dir/app.k"
+wait_for out "kept 7" 2000 || fail "readKept never changed"
 sleep 0.02
 if grep -qxF "owner 7" "$dir/out"; then fail "a function that writes changed its caller's array"; fi
 
@@ -116,32 +132,60 @@ n=$(grep -cxF "start" "$dir/out")
 stop
 
 # 6. A finished program restarts when a file changes.
-start done.kp "done 1"
+start done.k "done 1"
 sleep 0.1
 alive "6: finished program"
-sed -i 's/^print("done 1")$/print("done 2")/' "$dir/done.kp"
+sed -i 's/^Print("done 1")$/Print("done 2")/' "$dir/done.k"
 wait_for out "done 2" 2000 || fail "6: program not restarted"
 stop
 
+# 7. A package reloads as one: its files see each other through a change.
+start packrun.k "pack 1"
+sed -i 's/^base() = 1$/base() = 2/' "$dir/pack/second.k"
+wait_for out "pack 2" 2000 || fail "7: a change in the other file of a package"
+# Saved one after the other: the caller first, then what it calls.
+sed -i 's/^Value() = base()$/Value() = added()/' "$dir/pack/first.k"
+sed -i 's/^base() = 2$/added() = 3/' "$dir/pack/second.k"
+wait_for out "pack 3" 2000 || fail "7: a new function called from the other file"
+# And the other way round.
+sed -i 's/^Value() = added()$/Value() = added()\nfromFirst() = 4/' "$dir/pack/first.k"
+sed -i 's/^added() = 3$/added() = fromFirst()/' "$dir/pack/second.k"
+wait_for out "pack 4" 2000 || fail "7: a new function, the other way round"
+# A broken file keeps the old code of both.
+sed -i 's/^added() = fromFirst()$/added() = (/' "$dir/pack/second.k"
+until grep -q "second.k:" "$dir/err" 2>/dev/null; do sleep 0.002; done
+alive "7: a broken file"
+sed -i 's/^added() = ($/added() = 5/' "$dir/pack/second.k"
+wait_for out "pack 5" 2000 || fail "7: after a broken file"
+# A method in another file than its struct.
+sed -i 's/^Value() = added()$/Value() = Item(6).Got()/' "$dir/pack/first.k"
+wait_for out "pack 6" 2000 || fail "7: a method in another file than its struct"
+# A function moved to the other file: a caller outside the package holds the cell of the old file.
+sed -i '/^Value() = Item(6).Got()$/d' "$dir/pack/first.k"
+sed -i '$a Value() = Item(7).Got()' "$dir/pack/second.k"
+wait_for out "pack 7" 2000 || fail "7: a function moved to the other file"
+no_internal "package"
+stop
+
 # An HTTP server: a change applies when it is idle, and under load without a failed request.
-sed 's/19100/19102/' bench/http.kp > "$dir/server.kp"
+sed 's/19100/19102/' bench/http.k > "$dir/server.k"
 get() {
   exec 3<>/dev/tcp/127.0.0.1/19102
   printf 'GET / HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n' >&3
   tail -c 1000 <&3 | tail -1
   exec 3<&-
 }
-(cd "$dir" && exec "$kepler" run --watch $flags --allow net=:19102 server.kp) > "$dir/out" 2> "$dir/err" &
+(cd "$dir" && exec "$kepler" run --watch $flags --allow net=:19102 server.k) > "$dir/out" 2> "$dir/err" &
 pid=$!
 for _ in $(seq 1 50); do (exec 3<>/dev/tcp/127.0.0.1/19102) 2>/dev/null && break; sleep 0.05; done
 [ "$(get)" = "Kepler" ] || fail "server: first answer"
-sed -i 's/body: "Kepler"/body: "Idle"/' "$dir/server.kp"
+sed -i 's/Body: "Kepler"/Body: "Idle"/' "$dir/server.k"
 sleep 0.15
 [ "$(get)" = "Idle" ] || fail "server: a change while idle"
 _build/default/bench/http_load.exe --port 19102 --connections 20 --seconds 1 > "$dir/load" 2>&1 &
 load=$!
 sleep 0.3
-sed -i 's/body: "Idle"/body: "Busy"/' "$dir/server.kp"
+sed -i 's/Body: "Idle"/Body: "Busy"/' "$dir/server.k"
 sleep 0.2
 [ "$(get)" = "Busy" ] || fail "server: a change under load"
 wait "$load" || fail "server: a request failed during the reload: $(cat "$dir/load")"
@@ -150,7 +194,7 @@ stop
 # 8. A window keeps its state through a reload, under SDL's dummy driver.
 if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
   cp examples/fonts/JetBrainsMono-Regular.ttf "$dir/font.ttf"
-  (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$kepler" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf window.kp) \
+  (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$kepler" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf window.k) \
     > "$dir/out" 2> "$dir/err" &
   pid=$!
   # Waits for a line that starts with this text, and prints the last one.
@@ -164,11 +208,11 @@ if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
   }
   latest "version 1 [1-9]" 2000 > /dev/null || fail "window: no frame after an event"
   seen=$(grep '^version 1 ' "$dir/out" | tail -1 | cut -d' ' -f3)
-  sed -i 's/^version() = 1$/version() = 2/' "$dir/window.kp"
+  sed -i 's/^version() = 1$/version() = 2/' "$dir/window.k"
   latest "version 2 " 200 > /dev/null || fail "window: a changed view never ran"
   first=$(grep -m1 '^version 2 ' "$dir/out" | cut -d' ' -f3)
   [ "${first:-0}" -ge "$seen" ] || fail "window: the state restarted, from $seen to $first"
-  sed -i 's/^finished() = false$/finished() = true/' "$dir/window.kp"
+  sed -i 's/^finished() = false$/finished() = true/' "$dir/window.k"
   latest "ended " 500 > /dev/null || fail "window: a changed update never ran"
   stop
 fi

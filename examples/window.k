@@ -1,0 +1,25 @@
+-- A window you can type into. Run from the root of the repository:
+-- kepler run --allow ffi=SDL3,ffi=SDL3_ttf examples/window.k
+use sdl
+
+defn update(event, state)
+  match event
+    {Kind: "quit"} -> missing
+    {Kind: "text", Text: text} -> {Typed: "$(state.Typed)$text"}
+    else -> state
+  end
+end
+
+view(state) = [
+  {Kind: "clear", Color: 0x1E1E1E},
+  {Kind: "text", X: 8, Y: 8, Text: state.Typed, Color: 0xE0E0E0}
+]
+
+defn main()
+  window = sdl.Open("Kepler", 1280, 800, "examples/fonts/JetBrainsMono-Regular.ttf")?
+  sdl.Run({Typed: ""}, update, view, window)
+  sdl.Close(window)
+  Ok(missing)
+end
+
+Print(main())

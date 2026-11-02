@@ -1,0 +1,10 @@
+use debug
+
+defn OnStop(stop)
+  if stop.Reason == "start"
+    debug.SetBreak("given.k", 3)
+  else
+    Print(Filter(it.Name == "a", stop.Frames[2].Vars)[1].Value)
+  end
+  "continue"
+end

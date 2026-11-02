@@ -1,4 +1,4 @@
-dict_nan.kp:2:7: A dictionary key is a number or a text, not the number nan.
-  2 | print(put(x, 2, dict()))
+dict_nan.k:2:7: A dictionary key is a number or a text, not the number nan.
+  2 | Print(Put(x, 2, Dict()))
     |       ^
 exit 1

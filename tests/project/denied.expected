@@ -1,6 +1,6 @@
-> kepler run open.kp
-open.kp:4:4: Permission "ffi" denied. Run again with --allow ffi.
-  4 |   c.open("m", version = 6)?
+> kepler run open.k
+open.k:4:4: Permission "ffi" denied. Run again with --allow ffi.
+  4 |   c.Open("m", version = 6)?
     |    ^
-  in check (open.kp:4)
+  in check (open.k:4)
 exit 1

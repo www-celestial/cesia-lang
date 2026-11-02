@@ -207,12 +207,44 @@ let with_end c uses_end f =
 
 type field_cache = { cs : shape; ci : int }
 
-let no_shape = { sid = -1; names = [||]; sname = None; next = Hashtbl.create 1 }
+(* What a call finds under a name: field [mi] of the value, or, if [mi] < 0, the method [mg]. *)
+type member = { ms : shape; mi : int; mg : t }
 
-let field_slot ctx shape name =
+let no_shape = { sid = -1; names = [||]; sname = None; sm = -1; next = Hashtbl.create 1 }
+
+let method_of (w : world) (shape : shape) name =
+  match shape.sname with
+  | Some sn when shape.sm >= 0 -> Hashtbl.find_opt w.methods (shape.sm, sn, name)
+  | _ -> None
+
+let field_slot (ctx : ctx) (shape : shape) name =
   let i = Value.field_index shape name in
-  if i < 0 then Runtime.fail ctx Field (Messages.no_field name);
+  if i < 0 then
+    Runtime.fail ctx Field
+      (match shape.sname, method_of ctx.w shape name with
+       | Some sn, Some _ -> Messages.method_uncalled sn name
+       | _ -> Messages.no_field name);
   i
+
+(* A field first, then the methods of the struct. A small method is private to the package of the struct: the site says
+   which file it is in, [pm], and this runs the first times it meets a shape. *)
+let member_of (ctx : ctx) pm (shape : shape) name =
+  let i = Value.field_index shape name in
+  if i >= 0 then { ms = shape; mi = i; mg = Undef }
+  else
+    let sn = Option.value shape.sname ~default:"" in
+    match method_of ctx.w shape name with
+    | Some (_, true) -> Runtime.fail ctx Field (Messages.static_on_value sn name)
+    | Some (mg, false) when Lexer.is_public name || ctx.w.modules.(pm).host = shape.sm -> { ms = shape; mi = -1; mg }
+    | Some _ -> Runtime.fail ctx Field (Messages.private_member name)
+    | None -> Runtime.fail ctx Field (if sn = "" then Messages.no_field name else Messages.no_member sn name)
+
+(* The shapes a site met after its first one: a list of several structs must not search at each call. *)
+let max_met = 8
+
+let rec met (shape : shape) = function
+  | [] -> None
+  | k :: rest -> if k.ms == shape then Some k else met shape rest
 
 (* The field of an array of structs is the array of that field. *)
 let rec field_slow ctx v name =
@@ -310,9 +342,16 @@ type pass = Give | Lend | Share
 
 let[@inline] share_if bits k x = if bits land (1 lsl k) <> 0 then ignore (Value.share x)
 
+(* What a function keeps of the arguments of a call. The object of a method comes before them, and the mask only reaches
+   parameter 61: the argument that lands on the next one counts as kept. *)
+let args_kept g =
+  match g with
+  | Fun { proto; _ } -> proto.func.kept
+  | Bound { g = Fun { proto; _ }; _ } -> (proto.func.kept lsr 1) lor (1 lsl 61)
+  | _ -> -1
+
 let share_kept (ctx : ctx) g nb n lent =
-  let kept = match g with Fun { proto; _ } -> proto.func.kept | _ -> -1 in
-  let bits = kept land lent in
+  let bits = args_kept g land lent in
   if bits <> 0 then
     for k = 0 to min n 62 - 1 do
       share_if bits k ctx.v.(nb + k)
@@ -883,8 +922,8 @@ and index_read c e b ixs uses_end =
 (* e?: the value of an Ok, or an early return of the Err. *)
 and question c e a =
   let v = ce c a and s = site c e.pos in
-  let ok = Value.shape_of c.w ~sname:"Ok" [| "value" |] in
-  let err = Value.shape_of c.w ~sname:"Err" [| "error" |] in
+  let ok = Value.shape_of c.w ~sname:"Ok" [| "Value" |] in
+  let err = Value.shape_of c.w ~sname:"Err" [| "Error" |] in
   fun ctx ->
     match v ctx with
     | Struct r when r.shape == ok -> Value.share r.fields.(0)
@@ -895,7 +934,7 @@ and question c e a =
 
 and struct_lit c sname fields =
   let names = Array.map fst fields in
-  let shape = Value.shape_of c.w ?sname names in
+  let shape = Value.shape_of c.w ?sname ~m:c.w.modules.(c.ver.owner.pm).host names in
   match Array.map (fun (_, v) -> ce c v) fields with
   | [| a; b |] ->
     fun ctx ->
@@ -926,6 +965,36 @@ and field_read c e b name =
         let i = field_slot ctx r.shape name in
         cache := { cs = r.shape; ci = i };
         r.fields.(i)
+      end
+    | v ->
+      ctx.site <- s;
+      field_slow ctx v name
+
+(* The function of a call x.name(...): what a field holds, or the method of the struct of x and its object. With [shared],
+   the object can't be lent: an argument writes, or another fiber can reach it. *)
+and member_read c e b name ~shared =
+  let base = (match leaf c b with `L k -> (fun (ctx : ctx) -> ctx.v.(ctx.b + k)) | l -> leaf_value l) in
+  let s = site c e.pos and pm = c.ver.owner.pm in
+  let cache = ref { ms = no_shape; mi = 0; mg = Undef } and others = ref [] in
+  let other ctx shape =
+    match met shape !others with
+    | Some k -> k
+    | None ->
+      ctx.site <- s;
+      let k = member_of ctx pm shape name in
+      if !cache.ms == no_shape then cache := k
+      else if List.compare_length_with !others max_met < 0 then others := k :: !others;
+      k
+  in
+  fun ctx ->
+    match base ctx with
+    | Struct r as x ->
+      let k = !cache in
+      if r.shape == k.ms then
+        if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
+      else begin
+        let k = other ctx r.shape in
+        if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       end
     | v ->
       ctx.site <- s;
@@ -1329,8 +1398,8 @@ and ci c (e : expr) : ctx -> int =
                            args = [| { value = { e = Var { b = Local i; _ }; _ }; _ }; { value = { e = Lint d; _ }; _ } |]; _ };
                 _ }, { e = Lint q; _ })
     when d > 0 && d land (d - 1) = 0 && c.tv.(i) == TI && cell_of c i < 0
-         && (match c.w.modules.(m).cells.(k) with Native { nname = "mod"; _ } -> true | _ -> false) ->
-    (* xs[mod(i, n) + 1]: the idiom of a 1-indexed language. The result can't overflow while q stays small, which the
+         && (match c.w.modules.(m).cells.(k) with Native { nname = "Mod"; _ } -> true | _ -> false) ->
+    (* xs[Mod(i, n) + 1]: the idiom of a 1-indexed language. The result can't overflow while q stays small, which the
        mask guarantees for d and q on 31 bits. *)
     if d < 1 lsl 31 && abs q < 1 lsl 31 then begin
       let p = c.map.(i) and mask = d - 1 in
@@ -1373,7 +1442,7 @@ and ci c (e : expr) : ctx -> int =
     let n = (match c.w.modules.(m).cells.(k) with Native n -> n | _ -> assert false) in
     let f = Option.get n.i2 in
     (match n.nname, b.value.e with
-     | "mod", Lint d when d > 0 && d land (d - 1) = 0 ->
+     | "Mod", Lint d when d > 0 && d land (d - 1) = 0 ->
        (* idiv costs about twenty ns: a mask gives the same downward rounding. *)
        let mask = d - 1 in
        (match iint c a.value with
@@ -2386,14 +2455,21 @@ and arg_writers c off (ver : version) modes (slots : expr option array) : ctx ->
   | _ -> seq_u (List.init (Array.length slots) writer)
 
 and call_dynamic c s (call : call) target =
-  let callee = cv c call.callee in
   let args = call.args in
+  let callee, target, room =
+    match call.callee.e with
+    | Field (b, name) ->
+      (* The object is a parameter too: a variable given as an argument must not also be the object. *)
+      let shared = reads_module b || Array.exists (fun (a : arg) -> writes a.value) args in
+      member_read c call.callee b name ~shared, (if target >= 0 && mentions target b then -1 else target), 1
+    | _ -> cv c call.callee, target, 0
+  in
   let n = Array.length args in
   let names = Array.map (fun a -> a.aname) args in
   let plain = Array.for_all (fun a -> a = None) names in
   let slots = Array.map (fun a -> Some a.value) args in
   let modes = passes c (fun k -> k >= 62 || not plain) (fun _ i -> i = target) slots in
-  if plain && n >= 1 && n <= 3 then call_small c s callee slots modes
+  if plain && n <= 3 && (n >= 1 || room = 1) then call_small c s callee slots modes room
   else
   let off = c.off in
   c.top <- max c.top (off + n + 2);
@@ -2419,11 +2495,12 @@ and call_dynamic c s (call : call) target =
     else dispatch_named ctx g off names s
 
 (* A dynamic call with 1 to 3 arguments: they stay in OCaml variables until the version is chosen, and only those of
-   type A go through the v stack, where each write costs a caml_modify. *)
-and call_small c s callee slots modes =
+   type A go through the v stack, where each write costs a caml_modify. A call x.name() can also have none. [room] makes
+   room for the object of a method. *)
+and call_small c s callee slots modes room =
   let off = c.off in
   let n = Array.length slots in
-  c.top <- max c.top (off + n + 2);
+  c.top <- max c.top (off + n + room + 2);
   c.off <- off + n + 2;
   (* A local variable argument is read without a closure: slot >= 0. *)
   let source k =
@@ -2432,24 +2509,58 @@ and call_small c s callee slots modes =
     | Var { b = Local i; _ } when plain_local c i && modes.(k) <> Share -> c.map.(i), (fun _ -> Undef)
     | _ -> -1, read_arg c modes.(k) e
   in
-  let sa, a = source 0 in
+  let sa, a = if n > 0 then source 0 else -1, (fun _ -> Undef) in
   let sd, d = if n > 1 then source 1 else -1, (fun _ -> Undef) in
   let sf, f = if n > 2 then source 2 else -1, (fun _ -> Undef) in
   c.off <- off;
   let no_spec = c.w.no_spec in
   let lent = lent_bits modes in
-  let slow (ctx : ctx) g x y z =
-    share_if lent 0 x;
-    share_if lent 1 y;
-    share_if lent 2 z;
+  let others (ctx : ctx) g x y z =
+    let bits = match g with Bound _ -> args_kept g land lent | _ -> lent in
+    share_if bits 0 x;
+    share_if bits 1 y;
+    share_if bits 2 z;
     let nb = ctx.b + off in
     if nb + n + 2 > ctx.cap then Runtime.grow ctx (nb + n + 2);
-    ctx.v.(nb) <- x;
+    if n > 0 then ctx.v.(nb) <- x;
     if n > 1 then ctx.v.(nb + 1) <- y;
     if n > 2 then ctx.v.(nb + 2) <- z;
     dispatch ctx g off n s
   in
+  (* A method with exactly these arguments: as a call of a function, with the object first. *)
+  let slow (ctx : ctx) g x y z =
+    match g with
+    | Bound { g = Fun { proto; env }; self } when proto.arity = n + 1 ->
+      share_if proto.func.kept 0 self;
+      let bits = args_kept g land lent in
+      share_if bits 0 x;
+      share_if bits 1 y;
+      share_if bits 2 z;
+      let tag =
+        if no_spec then no_tag
+        else
+          arg_type self
+          lor (if n > 0 then arg_type x lsl 2 else 0)
+          lor (if n > 1 then arg_type y lsl 4 else 0)
+          lor (if n > 2 then arg_type z lsl 6 else 0)
+      in
+      let ver = select ctx proto (n + 1) tag in
+      let b = ctx.b in
+      let nb = b + off in
+      let pk = ver.pk in
+      put ctx pk nb 0 self;
+      if n > 0 then put ctx pk nb 1 x;
+      if n > 1 then put ctx pk nb 2 y;
+      if n > 2 then put ctx pk nb 3 z;
+      finish ctx proto ver env nb b s
+    | _ -> others ctx g x y z
+  in
   match n with
+  | 0 ->
+    fun ctx ->
+      let g = callee ctx in
+      ctx.site <- s;
+      slow ctx g Undef Undef Undef
   | 1 ->
     fun ctx ->
       let g = callee ctx in
@@ -2562,7 +2673,20 @@ and dispatch ctx g off n s =
      | None -> ());
     let vals = Array.sub ctx.v (ctx.b + off) n in
     nat.run ctx vals
+  | Bound { g; self } ->
+    with_object ctx off n g self;
+    dispatch ctx g off (n + 1) s
   | _ -> Runtime.fail ctx Type (Messages.not_function (Value.describe g))
+
+(* The object of a method goes under the arguments, boxed in v at b + off. *)
+and with_object ctx off n g self =
+  let nb = ctx.b + off in
+  if nb + n + 3 > ctx.cap then Runtime.grow ctx (nb + n + 3);
+  Array.blit ctx.v nb ctx.v (nb + 1) n;
+  (match g with
+   | Fun { proto; _ } -> share_if proto.func.kept 0 self
+   | _ -> ());
+  ctx.v.(nb) <- self
 
 (* The version for these real types: the last one seen, else the function's table. *)
 and select (ctx : ctx) (proto : proto) n tag =
@@ -2647,6 +2771,9 @@ and dispatch_named ctx g off names s =
     Array.fill ctx.v b size Undef;
     Array.iteri (fun i k -> ctx.v.(b + k) <- vals.(i)) places;
     dispatch ctx g off size s
+  | Bound { g; self } ->
+    with_object ctx off n g self;
+    dispatch_named ctx g off (Array.append [| None |] names) s
   | _ -> dispatch ctx g off n s
 
 let run_main (ctx : ctx) ~file ~m (fn : func) =

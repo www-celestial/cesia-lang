@@ -1,6 +1,0 @@
-defn f(a)
-  x = a + 1
-  x * 2
-end
-print(f(1))
-print(f(2))

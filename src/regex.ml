@@ -345,7 +345,7 @@ let group s (caps : int array) k =
 
 (* [before] is the number of code points before the match. *)
 let result ctx s re caps before =
-  let shape = Value.shape_of ctx.w [| "text"; "start"; "stop"; "groups" |] in
+  let shape = Value.shape_of ctx.w [| "Text"; "Start"; "Stop"; "Groups" |] in
   let names = Array.init re.groups (fun k -> group s caps (k + 1)) in
   let groups = Arrays.list names in
   let start = before + 1 in
@@ -409,16 +409,16 @@ let natives () =
     let re = compiled ctx (Native.text_arg ctx name a.(0)) and s = Native.text_arg ctx name a.(k) in
     re, s
   in
-  [ "test", Native.nat "test" 2 2 (fun ctx a ->
-        let re, s = args ctx "test" a 1 in
+  [ "Test", Native.nat "Test" 2 2 (fun ctx a ->
+        let re, s = args ctx "Test" a 1 in
         Value.of_bool (Option.is_some (exec ctx re s 0)));
-    "find", Native.nat "find" 2 2 (fun ctx a ->
-        let re, s = args ctx "find" a 1 in
+    "Find", Native.nat "Find" 2 2 (fun ctx a ->
+        let re, s = args ctx "Find" a 1 in
         match exec ctx re s 0 with
         | Some caps -> result ctx s re caps (points s 0 caps.(0))
         | None -> Missing);
-    "find_all", Native.nat "find_all" 2 2 (fun ctx a ->
-        let re, s = args ctx "find_all" a 1 in
+    "FindAll", Native.nat "FindAll" 2 2 (fun ctx a ->
+        let re, s = args ctx "FindAll" a 1 in
         let last = ref 0 and seen = ref 0 in
         let shown (caps : int array) =
           seen := !seen + points s !last caps.(0);
@@ -426,9 +426,9 @@ let natives () =
           result ctx s re caps !seen
         in
         Arrays.list (Array.of_list (List.map shown (all_matches ctx re s))));
-    "replace", Native.nat "replace" 3 3 (fun ctx a ->
-        let re, s = args ctx "replace" a 2 in
-        let by = Native.text_arg ctx "replace" a.(1) in
+    "Replace", Native.nat "Replace" 3 3 (fun ctx a ->
+        let re, s = args ctx "Replace" a 2 in
+        let by = Native.text_arg ctx "Replace" a.(1) in
         let b = Buffer.create (String.length s) and last = ref 0 in
         List.iter
           (fun (caps : int array) ->
@@ -440,8 +440,8 @@ let natives () =
           (all_matches ctx re s);
         Buffer.add_string b (String.sub s !last (String.length s - !last));
         Text (Buffer.contents b));
-    "split", Native.nat "split" 2 2 (fun ctx a ->
-        let re, s = args ctx "split" a 1 in
+    "Split", Native.nat "Split" 2 2 (fun ctx a ->
+        let re, s = args ctx "Split" a 1 in
         let pieces = ref [] and last = ref 0 in
         List.iter
           (fun (caps : int array) ->

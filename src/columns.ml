@@ -128,11 +128,11 @@ let lookup t hash equal k =
 
 let int_list d = if Array.length d = 0 then Arrays.list [||] else Arrays.of_ints 1 (Array.length d) d
 
-(* groups(keys): {ids, count, firsts} for rows that share the values of these columns. One column follows the rules of a
+(* Groups(keys): {Ids, Count, Firsts} for rows that share the values of these columns. One column follows the rules of a
    dictionary's keys. For several, the pair of the groups so far and of the next column gets a new group: a group stays
    below the number of rows, so that a pair can't overflow. *)
 let groups ctx (a : t array) =
-  let cols = column_list ctx "groups" a.(0) in
+  let cols = column_list ctx "Groups" a.(0) in
   let n = if Array.length cols = 0 then 0 else size cols.(0) in
   Array.iter (fun c -> Runtime.build ctx (size c)) cols;
   let of_column c = factorize ctx n (hasher c) (same c c) in
@@ -151,18 +151,18 @@ let groups ctx (a : t array) =
            factorize ctx n (fun k -> mix pairs.(k)) (fun i j -> pairs.(i) = pairs.(j)))
         (of_column c) rest
   in
-  record ctx [| "ids"; "count"; "firsts" |]
+  record ctx [| "Ids"; "Count"; "Firsts" |]
     [| int_list (Array.map succ ids); Int t.groups; int_list (Array.init t.groups (fun g -> t.firsts.(g) + 1)) |]
 
-(* split(g, xs): the values of xs in each group, in order, without the missing ones. *)
+(* Split(g, xs): the values of xs in each group, in order, without the missing ones. *)
 let split ctx (a : t array) =
   let field g name =
     match g with
     | Struct r when Value.field_index r.shape name >= 0 -> r.fields.(Value.field_index r.shape name)
     | v -> Runtime.fail ctx Type (Messages.need_groups (Value.describe v))
   in
-  let ids = ints ctx "split" (field a.(0) "ids") and count = Arrays.whole_index ctx (field a.(0) "count") in
-  let x = array_arg ctx "split" a.(1) in
+  let ids = ints ctx "Split" (field a.(0) "Ids") and count = Arrays.whole_index ctx (field a.(0) "Count") in
+  let x = array_arg ctx "Split" a.(1) in
   let n = size x in
   if Array.length ids <> n then Runtime.fail ctx Type (Messages.column_sizes (Array.length ids) n);
   if count < 0 || count > n || Array.exists (fun id -> id < 1 || id > count) ids then
@@ -207,9 +207,9 @@ let split ctx (a : t array) =
   in
   Arrays.list parts
 
-(* pick(ks, xs): the values at these positions. Position 0 gives missing: an unmatched row of a left join. *)
+(* Pick(ks, xs): the values at these positions. Position 0 gives missing: an unmatched row of a left join. *)
 let pick ctx (a : t array) =
-  let ks = ints ctx "pick" a.(0) and x = array_arg ctx "pick" a.(1) in
+  let ks = ints ctx "Pick" a.(0) and x = array_arg ctx "Pick" a.(1) in
   let n = size x and k = Array.length ks in
   Runtime.build ctx k;
   Array.iter (fun i -> if i < 0 || i > n then Runtime.fail ctx Index (Messages.index_outside i n)) ks;
@@ -217,10 +217,10 @@ let pick ctx (a : t array) =
   else if Array.mem 0 ks then Arrays.list (Array.map (fun i -> if i = 0 then Missing else Value.share (Value.elt x (i - 1))) ks)
   else Arrays.pick ctx x (Array.map pred ks) 1 k
 
-(* join(ys, xs, keep): {left, right}, the positions in ys and xs of the rows that match, in the order of ys then xs. With
+(* Join(ys, xs, keep): {Left, Right}, the positions in ys and xs of the rows that match, in the order of ys then xs. With
    keep, a row of ys that matches nothing stays, with position 0 in xs. *)
 let join ctx (a : t array) =
-  let ys = array_arg ctx "join" a.(0) and xs = array_arg ctx "join" a.(1) and keep = a.(2) = True in
+  let ys = array_arg ctx "Join" a.(0) and xs = array_arg ctx "Join" a.(1) and keep = a.(2) = True in
   let n = size xs and m = size ys in
   Runtime.build ctx (n + m);
   check_keys ctx xs;
@@ -255,14 +255,14 @@ let join ctx (a : t array) =
            add k (members.(at) + 1)
          done)
     found;
-  record ctx [| "left"; "right" |] [| int_list left; int_list right |]
+  record ctx [| "Left"; "Right" |] [| int_list left; int_list right |]
 
 let positions ctx (a : t array) =
-  let m = array_arg ctx "positions" a.(0) in
+  let m = array_arg ctx "Positions" a.(0) in
   int_list (Array.map succ (Arrays.positions ctx (size m) (Arrays.Mask m)))
 
 let present ctx (a : t array) =
-  let x = array_arg ctx "present" a.(0) in
+  let x = array_arg ctx "Present" a.(0) in
   match x.store with
   | F _ | I _ -> a.(0)
   | V d ->
@@ -329,12 +329,12 @@ let csv_rows ctx s separator =
 let texts row = Arrays.list (Array.map (fun s -> Text s) row)
 
 let csv ctx (a : t array) =
-  let s = Native.text_arg ctx "csv" a.(0) and separator = Native.text_arg ctx "csv" a.(1) in
+  let s = Native.text_arg ctx "Csv" a.(0) and separator = Native.text_arg ctx "Csv" a.(1) in
   Arrays.list (Array.map texts (csv_rows ctx s separator))
 
-(* read_csv(s, separator): {names, columns}. An empty cell is missing, and a column of numbers takes its typed storage. *)
+(* ReadCsv(s, separator): {Names, Columns}. An empty cell is missing, and a column of numbers takes its typed storage. *)
 let read_csv ctx (a : t array) =
-  let s = Native.text_arg ctx "read_csv" a.(0) and separator = Native.text_arg ctx "read_csv" a.(1) in
+  let s = Native.text_arg ctx "ReadCsv" a.(0) and separator = Native.text_arg ctx "ReadCsv" a.(1) in
   let rows = csv_rows ctx s separator in
   let names = if Array.length rows = 0 then [||] else rows.(0) in
   let body = max 0 (Array.length rows - 1) in
@@ -346,7 +346,7 @@ let read_csv ctx (a : t array) =
       | v -> v
   in
   let column k = Arrays.list (Array.init body (fun r -> cell k rows.(r + 1))) in
-  record ctx [| "names"; "columns" |] [| texts names; Arrays.list (Array.init (Array.length names) column) |]
+  record ctx [| "Names"; "Columns" |] [| texts names; Arrays.list (Array.init (Array.length names) column) |]
 
 let kind (a : t array) =
   match a.(0) with
@@ -355,13 +355,13 @@ let kind (a : t array) =
   | _ -> Text "value"
 
 let natives =
-  [ "kind", Native.nat "kind" 1 1 (fun _ a -> kind a);
-    "cores", Native.nat "cores" 0 0 (fun _ _ -> Int (Par.cores ()));
-    "groups", Native.nat "groups" 1 1 groups;
-    "split", Native.nat "split" 2 2 split;
-    "pick", Native.nat "pick" 2 2 pick;
-    "join", Native.nat "join" 3 3 join;
-    "positions", Native.nat "positions" 1 1 positions;
-    "present", Native.nat "present" 1 1 present;
-    "csv", Native.nat "csv" 2 2 csv;
-    "read_csv", Native.nat "read_csv" 2 2 read_csv ]
+  [ "Kind", Native.nat "Kind" 1 1 (fun _ a -> kind a);
+    "Cores", Native.nat "Cores" 0 0 (fun _ _ -> Int (Par.cores ()));
+    "Groups", Native.nat "Groups" 1 1 groups;
+    "Split", Native.nat "Split" 2 2 split;
+    "Pick", Native.nat "Pick" 2 2 pick;
+    "Join", Native.nat "Join" 3 3 join;
+    "Positions", Native.nat "Positions" 1 1 positions;
+    "Present", Native.nat "Present" 1 1 present;
+    "Csv", Native.nat "Csv" 2 2 csv;
+    "ReadCsv", Native.nat "ReadCsv" 2 2 read_csv ]

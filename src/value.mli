@@ -20,7 +20,7 @@ val kind_name : kind -> string
 val float_text : float -> string
 
 (** The shape of these fields. Two identical requests return the same shape. *)
-val shape_of : world -> ?sname:string -> string array -> shape
+val shape_of : world -> ?sname:string -> ?m:int -> string array -> shape
 
 (** The position of a field, or -1. *)
 val field_index : shape -> string -> int
@@ -39,7 +39,7 @@ val failure : world -> string -> string -> t
 (** The value written as code. *)
 val show : ctx -> t -> string
 
-(** Like [show], but a text stays raw: what [print] and [text] display. *)
+(** Like [show], but a text stays raw: what [Print] and [Text] display. *)
 val text_of : ctx -> t -> string
 
 (** How a message names a value: [the text "a"], [the number 1]. *)

@@ -1,0 +1,37 @@
+defn m(p)
+  match p
+    {Status: "ok", Amount: amount} if amount > 0 -> amount
+    [a, b] -> a + b
+    0 -> "zero"
+    x if IsText(x) -> x
+    else -> "other"
+  end
+end
+isStructPattern() = m({Status: "ok", Amount: 5}) == 5
+isGuard() = m({Status: "ok", Amount: -5}) == "other"
+isArrayPattern() = m([1, 2]) == 3
+isLength() = m([1, 2, 3]) == "other"
+isLiteral() = m(0) == "zero"
+isName() = m("t") == "t"
+
+defn ifExpr(x)
+  if x < 0 "neg" else if x == 0 "zero" else "pos" end
+end
+isIfChain() = ifExpr(-1) == "neg" and ifExpr(0) == "zero" and ifExpr(1) == "pos"
+
+isPanicKind() = (Wait(Spawn(() -> Panic("x"))) then MapErr(it.Kind)) == Err("user")
+isAssert() = (Wait(Spawn(() -> Assert(false))) then MapErr(it.Kind)) == Err("user")
+
+defn deep(n)
+  if n == 0
+    Panic("bottom")
+  end
+  deep(n - 1) + 1
+end
+defn repeatedPanics()
+  for i in 1:20000
+    Wait(Spawn(() -> deep(3)))
+  end
+  true
+end
+isPanicKeepsTheStack() = repeatedPanics()

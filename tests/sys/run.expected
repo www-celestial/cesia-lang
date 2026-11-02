@@ -1,8 +1,8 @@
-Ok(value = {code: 3, out: "out
-", err: "err
+Ok(Value = {Code: 3, Out: "out
+", Err: "err
 "})
-Ok(value = {code: 0, out: "typed", err: ""})
-Ok(value = "a; rm -rf b
+Ok(Value = {Code: 0, Out: "typed", Err: ""})
+Ok(Value = "a; rm -rf b
 ")
-Ok(value = "x")
+Ok(Value = "x")
 exit 0

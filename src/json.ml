@@ -167,7 +167,7 @@ let parse_text ctx s =
   v
 
 let parse ctx (a : t array) =
-  let s = Native.text_arg ctx "parse" a.(0) in
+  let s = Native.text_arg ctx "Parse" a.(0) in
   Runtime.pay_bytes ctx (String.length s);
   match parse_text ctx s with
   | v -> Value.ok ctx.w v
@@ -245,6 +245,6 @@ let write ctx ~pretty v =
   Text (Buffer.contents b)
 
 let natives =
-  [ "parse", Native.nat "parse" 1 1 parse;
-    "text", Native.nat "text" 1 1 (fun ctx a -> write ctx ~pretty:false a.(0));
-    "pretty", Native.nat "pretty" 1 1 (fun ctx a -> write ctx ~pretty:true a.(0)) ]
+  [ "Parse", Native.nat "Parse" 1 1 parse;
+    "Text", Native.nat "Text" 1 1 (fun ctx a -> write ctx ~pretty:false a.(0));
+    "Pretty", Native.nat "Pretty" 1 1 (fun ctx a -> write ctx ~pretty:true a.(0)) ]

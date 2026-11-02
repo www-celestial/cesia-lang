@@ -1,4 +1,4 @@
-regex_memory.kp:2:24: Limit "memory" reached.
-  2 | print(byte_length(regex.replace("", repeat(500, "x"), repeat(35000, "a"))))
-    |                        ^
+regex_memory.k:2:23: Limit "memory" reached.
+  2 | Print(ByteLength(regex.Replace("", Repeat(500, "x"), Repeat(35000, "a"))))
+    |                       ^
 exit 1

@@ -1,4 +1,4 @@
-comment_lines.kp:4:7: Name "nope" doesn't exist.
-  4 | print(nope)
+comment_lines.k:4:7: Name "nope" doesn't exist.
+  4 | Print(nope)
     |       ^
 exit 1

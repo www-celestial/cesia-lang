@@ -1,0 +1,36 @@
+use c
+
+lib = Unwrap(c.Open(Args[1]))
+echo = Unwrap(c.Fn("echo_ptr", ["ptr"], "ptr", lib))
+
+defn message(f)
+  match Wait(Spawn(f))
+    Err(e) -> Print(e.Message)
+    Ok(v) -> Print("no panic: $v")
+  end
+end
+
+b = c.Alloc(64)
+freed = c.Alloc(8)
+c.Free(freed)
+
+message(() -> c.Alloc(0))
+message(() -> c.Alloc(-1))
+message(() -> c.Alloc("x"))
+message(() -> c.Get("i32", 61, b))
+message(() -> c.Get("i32", -1, b))
+message(() -> c.Get("u8", 64, b))
+message(() -> c.Get("i32", 4611686018427387903, b))
+message(() -> c.Get("i32", "x", b))
+message(() -> c.Get("text", 0, b))
+message(() -> c.Set("void", 0, 1, b))
+message(() -> c.Set("u8", 0, 300, b))
+message(() -> c.Get("u8", 0, 5))
+message(() -> c.Get("u8", 0, echo(b)))
+message(() -> c.Get("u8", 0, freed))
+message(() -> echo(freed))
+message(() -> c.Set("ptr", 0, freed, b))
+message(() -> c.Free(freed))
+message(() -> c.Free(5))
+message(() -> c.Text(missing))
+message(() -> c.Text(b))

@@ -1,0 +1,4 @@
+-- The first file of a package that changes while it runs.
+struct Item { X }
+
+Value() = base()

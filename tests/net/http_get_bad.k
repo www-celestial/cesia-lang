@@ -1,0 +1,34 @@
+use http
+use net
+use sys
+
+defn reply(listener, text)
+  c = net.Accept(listener)?
+  net.Read(c)?
+  net.Write(c, text)?
+  net.Close(c)
+  Ok(missing)
+end
+
+kind(r) = r then MapErr(it.Kind)
+
+defn replies(listener)
+  reply(listener, "not http at all")?
+  reply(listener, "HTTP/1.1 200 OK$(crlf)Content-Length: 99$(crlf)$(crlf)short")?
+  reply(listener, "HTTP/1.1 200 OK$(crlf)Content-Length: abc$(crlf)$(crlf)short")?
+  reply(listener, "HTTP/1.1 200 OK$(crlf)Transfer-Encoding: chunked$(crlf)$(crlf)zz$(crlf)x")?
+  reply(listener, "HTTP/1.1 200 OK$(crlf)Transfer-Encoding: chunked$(crlf)$(crlf)ffffffffffffffffffff$(crlf)x$(crlf)0$(crlf)$crlf")
+end
+
+crlf = "$(Char(13))$(Char(10))"
+listener = Unwrap(net.Listen(18099))
+Spawn(() -> replies(listener))
+sys.Sleep(0)
+Print(http.Get("https://example.com/") then MapErr(it.Message))
+Print(http.Get("ftp://example.com/") then MapErr(it.Message))
+Print(kind(http.Get("http://127.0.0.1:18099/")))
+Print(kind(http.Get("http://127.0.0.1:18099/")))
+Print(kind(http.Get("http://127.0.0.1:18099/")))
+Print(kind(http.Get("http://127.0.0.1:18099/")))
+Print(kind(http.Get("http://127.0.0.1:18099/")))
+Print(kind(http.Get("http://127.0.0.1:18079/")))

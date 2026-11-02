@@ -1,0 +1,43 @@
+-- Calls the function of every shape in the fixture, with every class of argument.
+use c
+
+pow2(k) = Reduce((acc, i) -> acc * 2, 1, 1:k)
+isFloat(mask, k) = Mod(Div(mask, pow2(k)), 2) == 1
+valueAt(mask, k) = if isFloat(mask, k) k + 0.5 else k + 10 end
+signature(n, mask) = [if isFloat(mask, k) "f64" else "i64" end for k in 0:n - 1]
+sumOf(n, mask) = Reduce((acc, k) -> acc + (k + 1) * valueAt(mask, k), 0.0, 0:n - 1)
+
+defn apply(f, n, a)
+  match n
+    0 -> f()
+    1 -> f(a[1])
+    2 -> f(a[1], a[2])
+    3 -> f(a[1], a[2], a[3])
+    4 -> f(a[1], a[2], a[3], a[4])
+    5 -> f(a[1], a[2], a[3], a[4], a[5])
+    else -> f(a[1], a[2], a[3], a[4], a[5], a[6])
+  end
+end
+
+defn check(lib, result, n, mask)
+  name = "shape_$(result)_$(n)_$mask"
+  f = c.Fn(name, signature(n, mask), if result == "d" "f64" else "i64" end, lib)?
+  got = apply(f, n, [valueAt(mask, k) for k in 0:n - 1])
+  want = if result == "d" sumOf(n, mask) else 2.0 * sumOf(n, mask) end
+  if 1.0 * got == want Ok(1) else Err("$name gave $got, not $want") end
+end
+
+defn allShapes(lib)
+  count = 0
+  for n in 0:6
+    for mask in 0:pow2(n) - 1
+      for result in ["i", "d"]
+        check(lib, result, n, mask)?
+        count += 1
+      end
+    end
+  end
+  Ok("$count shapes")
+end
+
+Print(c.Open(Args[1]) then AndThen(allShapes))

@@ -1,0 +1,2 @@
+-- A static one of the same name.
+Rect.Area() = 2

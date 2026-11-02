@@ -1,4 +1,4 @@
-negative.kp:1:1: zeros needs a size, not the number -1.
-  1 | zeros(-1)
+negative.k:1:1: Zeros needs a size, not the number -1.
+  1 | Zeros(-1)
     | ^
 exit 1

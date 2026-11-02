@@ -1,0 +1,19 @@
+use net
+use sys
+
+defn forever()
+  while true end
+end
+
+defn answer(listener)
+  c = net.Accept(listener)?
+  net.Write(c, "pong")?
+  Ok(missing)
+end
+
+listener = Unwrap(net.Listen(18083))
+server = Spawn(() -> answer(listener))
+spinner = Spawn(forever)
+sys.Sleep(0)
+c = Unwrap(net.Connect("127.0.0.1", 18083))
+Print(net.Read(c))

@@ -1,0 +1,4 @@
+for i in 1:100
+  x = Zeros(100000)
+end
+Print("done")

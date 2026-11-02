@@ -1,3 +1,0 @@
-use sdl
-
-print(sdl.open("test", 320, 200, "no_such_font.ttf") then map_err(it.kind))

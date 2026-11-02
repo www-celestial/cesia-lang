@@ -1,0 +1,51 @@
+-- The small functions of the prelude, in the spirit of clojure.core.
+
+isIncDec() = Inc(1) == 2 and Dec(1) == 0 and Equal(Inc([1, 2]), [2, 3]) and Inc(1.5) == 2.5
+isAddSubMul() = Reduce(Add, 0, [1, 2, 3]) == 6 and Sub(5, 2) == 3 and Reduce(Mul, 1, [2, 3]) == 6
+isSigns() = IsZero(0) and IsPos(1) and IsNeg(-1) and not IsZero(1) and not IsPos(0) and not IsNeg(0)
+isParity() = IsEven(2) and IsOdd(3) and not IsEven(3) and IsEven(0) and IsOdd(-1)
+isSomeValue() = IsSome(0) and not IsSome(missing)
+
+isIdentity() = Identity(3) == 3
+isConstantly() = Constantly(7)(1) == 7
+isComp() = Comp(Inc, it * 2)(3) == 7 and Comp(Inc, Inc, Inc)(0) == 3
+isPartial() = Partial(Add, 2)(3) == 5 and Equal(Partial(Map, Inc)([1, 2]), [2, 3])
+isComplement() = Complement(IsEven)(3) and not Complement(IsEven)(2)
+isJuxt() = Equal(Juxt(Inc, Dec)(1), [2, 0]) and Equal(Juxt(Inc, Dec, Identity)(1), [2, 0, 1])
+isPipe() = Pipe(1, Inc) == 2 and Pipe(1, Inc, it * 3) == 6 and Pipe(1, Inc, Inc, Inc, Inc) == 5
+
+isFirstSecondLast() = First([1, 2, 3]) == 1 and Second([1, 2, 3]) == 2 and Last([1, 2, 3]) == 3
+isFirstOfNothing() = IsMissing(First([])) and IsMissing(Second([1])) and IsMissing(Last([]))
+isRest() = Equal(Rest([1, 2, 3]), [2, 3]) and Equal(Rest([1]), []) and Equal(Rest([]), [])
+isButlast() = Equal(Butlast([1, 2, 3]), [1, 2]) and Equal(Butlast([]), [])
+isNth() = Nth(2, [5, 6]) == 6
+isIsEmpty() = IsEmpty([]) and not IsEmpty([1]) and IsEmpty("") and IsEmpty(Dict())
+isPrepend() = Equal(Prepend(1, [2]), [1, 2]) and Equal(Prepend(1, []), [1])
+isTakeLast() = Equal(TakeLast(2, [1, 2, 3]), [2, 3]) and Equal(TakeLast(5, [1]), [1]) and Equal(TakeLast(0, [1]), [])
+isDropLast() = Equal(DropLast(2, [1, 2, 3]), [1]) and Equal(DropLast(5, [1]), [])
+isTakeWhile() = Equal(TakeWhile(IsOdd, [1, 3, 4, 5]), [1, 3]) and Equal(TakeWhile(IsOdd, []), []) and Equal(TakeWhile(IsOdd, [2]), [])
+isDropWhile() = Equal(DropWhile(IsOdd, [1, 3, 4, 5]), [4, 5]) and Equal(DropWhile(IsOdd, [1]), [])
+isFindFirst() = FindFirst(IsEven, [1, 2, 4]) == 2 and IsMissing(FindFirst(IsEven, [1]))
+isRemove() = Equal(Remove(IsEven, [1, 2, 3]), [1, 3])
+isKeep() = Equal(Keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3]), [4, 6])
+isMapIndexed() = Equal(MapIndexed((k, x) -> k * x, [5, 6]), [5, 12])
+isInterleave() = Equal(Interleave([1, 2, 3], ["a", "b"]), [1, "a", 2, "b"])
+isInterpose() = Equal(Interpose(0, [1, 2, 3]), [1, 0, 2, 0, 3]) and Equal(Interpose(0, [1]), [1]) and Equal(Interpose(0, []), [])
+isEvery() = Every(IsOdd, [1, 3]) and not Every(IsOdd, [1, 2]) and Every(IsOdd, [])
+isSomeOf() = Some(IsOdd, [2, 3]) and not Some(IsOdd, [2]) and not Some(IsOdd, [])
+isIterate() = Equal(Iterate(Inc, 1, 3), [1, 2, 3]) and Equal(Iterate(Inc, 1, 0), [])
+isRepeatedly() = Equal(Repeatedly(() -> 5, 2), [5, 5]) and Equal(Repeatedly(() -> 5, 0), [])
+isFrequencies() = Equal(Frequencies(["a", "b", "a"]), {"a": 2, "b": 1})
+isMinByMaxBy() = MinBy(Abs, [-3, 1, 2]) == 1 and MaxBy(Abs, [-3, 1, 2]) == -3 and IsMissing(MinBy(Abs, []))
+
+isUpdate() = Equal(Update("a", Inc, {"a": 1}), {"a": 2}) and Equal(Update("b", IsMissing, {"a": 1}), {"a": 1, "b": true})
+isMerge() = Equal(Merge({"a": 1, "b": 2}, {"b": 3}), {"a": 1, "b": 3})
+isMergeWith() = Equal(MergeWith(Add, {"a": 1, "b": 2}, {"b": 3}), {"a": 1, "b": 5})
+isSelectKeys() = Equal(SelectKeys(["a", "z"], {"a": 1, "b": 2}), {"a": 1})
+isZipmap() = Equal(Zipmap(["a", "b"], [1, 2]), {"a": 1, "b": 2})
+isInvert() = Equal(Invert({"a": 1}), {1: "a"})
+isGetIn() = GetIn(["a", "b"], {"a": {"b": 2}}) == 2 and IsMissing(GetIn(["a", "z"], {"a": {"b": 2}})) and IsMissing(GetIn(["a", "b"], {"a": 1}))
+isPutIn() = Equal(PutIn(["a", "b"], 3, {"a": {"b": 2}}), {"a": {"b": 3}}) and Equal(PutIn(["x", "y"], 1, Dict()), {"x": {"y": 1}})
+isUpdateIn() = Equal(UpdateIn(["a", "b"], Inc, {"a": {"b": 2}}), {"a": {"b": 3}})
+
+isStr() = Str() == "" and Str("a", 1, 2.5, [1]) == "a12.5[1]" and Str(missing) == "missing"

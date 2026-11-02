@@ -1,0 +1,12 @@
+use sdl
+
+defn main()
+  w = sdl.Open("t", 100, 100, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  sdl.Copy("héllo", w)
+  Print(sdl.Paste(w))
+  Print(sdl.SetTitle("other", w))
+  sdl.Close(w)
+  Ok(missing)
+end
+
+Print(main())

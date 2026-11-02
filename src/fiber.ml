@@ -64,11 +64,11 @@ let start w ctx body =
                         s.ready))
            | _ -> None) }
 
-(* What [wait] gives for a panic: the same fields as an error shown to the user. *)
+(* What [Wait] gives for a panic: the same fields as an error shown to the user. *)
 let panic_value w text kind at =
   let site = Dynarray.get w.sites at in
   let path, _ = Dynarray.get w.files site.sfile in
-  let shape = Value.shape_of w [| "message"; "kind"; "file"; "line" |] in
+  let shape = Value.shape_of w [| "Message"; "Kind"; "File"; "Line" |] in
   Struct
     { shape;
       fields = [| Text text; Text (Value.kind_name kind); Text path; Int (Pos.line site.spos) |];
@@ -122,5 +122,5 @@ let wait (ctx : ctx) t =
   | v -> Runtime.fail ctx Type (Messages.need_task (Value.describe v))
 
 let natives =
-  [ "spawn", Native.nat "spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
-    "wait", Native.nat "wait" 1 1 (fun ctx a -> wait ctx a.(0)) ]
+  [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
+    "Wait", Native.nat "Wait" 1 1 (fun ctx a -> wait ctx a.(0)) ]

@@ -1,0 +1,5 @@
+bothkinds/b.k:2:1: Rect has an instance method and a static method named "Area".
+  2 | Rect.Area() = 2
+    | ^
+  A struct has one method of a name.
+exit 1

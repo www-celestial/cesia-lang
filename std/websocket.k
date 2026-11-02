@@ -1,0 +1,105 @@
+-- The server side of WebSocket, RFC 6455, on the connection http hands over.
+use encode
+use http
+
+guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+MaxFrame = 1048576
+DefaultIdle = 300
+
+-- A frame from the server: never masked.
+defn Frame(opcode, payload)
+  n = ByteLength(payload)
+  head = if n < 126
+    [128 + opcode, n]
+  else if n < 65536
+    [128 + opcode, 126, Div(n, 256), Mod(n, 256)]
+  else
+    Concat([128 + opcode, 127], [Mod(Div(n, 256 ^ (8 - k)), 256) for k in 1:8])
+  end
+  "$(FromBytes(head))$payload"
+end
+
+-- The first frame of a buffer, missing if it isn't all there, or {Bad: true} for a frame to refuse.
+defn ParseFrame(buffer)
+  size = ByteLength(buffer)
+  if size < 2
+    return missing
+  end
+  first = Byte(1, buffer)
+  second = Byte(2, buffer)
+  masked = second >= 128
+  n = BitAnd(second, 127)
+  at = 3
+  if n == 126
+    if size < 4
+      return missing
+    end
+    n = Byte(3, buffer) * 256 + Byte(4, buffer)
+    at = 5
+  else if n == 127
+    if size < 10
+      return missing
+    end
+    if Byte(3, buffer) != 0
+      return {Bad: true}
+    end
+    n = Reduce((total, k) -> total * 256 + Byte(k, buffer), 0, 3:10)
+    at = 11
+  end
+  if not masked or n > MaxFrame or BitAnd(first, 112) != 0 or BitAnd(first, 128) == 0
+    return {Bad: true}
+  end
+  if size < at + 3 + n
+    return missing
+  end
+  key = ByteSlice(at, at + 3, buffer)
+  stop = at + 3 + n
+  payload = if n == 0 "" else XorBytes(key, ByteSlice(at + 4, stop, buffer)) end
+  rest = if stop >= size "" else ByteSlice(stop + 1, size, buffer) end
+  {Bad: false, Opcode: BitAnd(first, 15), Payload: payload, Rest: rest}
+end
+
+-- The deadline starts again at each message and ping: an idle client doesn't hold its fiber forever.
+defn loop(io, buffer, onMessage, idle)
+  f = ParseFrame(buffer)
+  if IsMissing(f)
+    more = io.Read()
+    if IsOk(more) and ByteLength(more.Value) > 0
+      loop(io, "$buffer$(more.Value)", onMessage, idle)
+    end
+  else if f.Bad or (f.Opcode >= 8 and ByteLength(f.Payload) > 125)
+    io.Write(Frame(8, FromBytes([3, 234])))
+  else if f.Opcode == 8
+    io.Write(Frame(8, f.Payload))
+  else if f.Opcode == 9
+    io.Arm(idle)
+    io.Write(Frame(10, f.Payload))
+    loop(io, f.Rest, onMessage, idle)
+  else if f.Opcode == 1 or f.Opcode == 2
+    io.Arm(idle)
+    onMessage(f.Payload, s -> io.Write(Frame(1, s)))
+    loop(io, f.Rest, onMessage, idle)
+  else if f.Opcode == 10
+    loop(io, f.Rest, onMessage, idle)
+  else
+    io.Write(Frame(8, FromBytes([3, 234])))
+  end
+end
+
+defn begin(io, rest, onMessage, idle)
+  io.Arm(idle)
+  loop(io, rest, onMessage, idle)
+end
+
+-- The response that upgrades a request, or a 400 if it isn't a WebSocket one.
+defn Accept(headers, onMessage, idle = DefaultIdle)
+  key = http.HeaderValue("sec-websocket-key", headers)
+  asked = http.HeaderValue("upgrade", headers)
+  if IsMissing(key) or IsMissing(asked) or Lower(asked) != "websocket"
+    {Status: 400, Body: "This route takes WebSocket connections."}
+  else
+    answer = encode.Base64(encode.Sha1("$key$guid"))
+    {Status: 101, Body: "", Headers: [{Name: "upgrade", Value: "websocket"}, {Name: "connection", Value: "Upgrade"},
+      {Name: "sec-websocket-accept", Value: answer}], Upgrade: (io, rest) -> begin(io, rest, onMessage, idle)}
+  end
+end

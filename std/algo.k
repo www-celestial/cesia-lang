@@ -1,0 +1,238 @@
+-- Classic algorithms. Functions come first, the collection last.
+use heap
+use queue
+
+-- The greatest common divisor of two integers.
+--   Gcd(12, 18) --> 6
+defn Gcd(a, b)
+  while b != 0
+    t = Mod(a, b)
+    a = b
+    b = t
+  end
+  Abs(a)
+end
+
+-- The least common multiple of two integers, which is 0 if one is 0.
+--
+--   Lcm(4, 6) --> 12
+Lcm(a, b) = if a == 0 or b == 0 0 else Abs(Div(a, Gcd(a, b)) * b) end
+
+-- Is this integer a prime number? Tried by division, so it suits numbers that aren't huge.
+--
+--   IsPrime(7) --> true
+defn IsPrime(n)
+  if n < 2
+    return false
+  end
+  d = 2
+  while d * d <= n
+    if Mod(n, d) == 0
+      return false
+    end
+    d += 1
+  end
+  true
+end
+
+-- The prime numbers up to n, by the sieve of Eratosthenes.
+--
+--   Primes(10) --> [2, 3, 5, 7]
+defn Primes(n)
+  if n < 2
+    return []
+  end
+  sieve = Fill(true, n)
+  sieve[1] = false
+  d = 2
+  while d * d <= n
+    if sieve[d]
+      k = d * d
+      while k <= n
+        sieve[k] = false
+        k += d
+      end
+    end
+    d += 1
+  end
+  [k for k in 1:n if sieve[k]]
+end
+
+-- The first position whose element isn't below x, in a sorted array.
+--
+--   LowerBound(3, [1, 3, 5]) --> 2
+defn LowerBound(x, xs)
+  lo = 1
+  hi = Len(xs) + 1
+  while lo < hi
+    mid = Div(lo + hi, 2)
+    if xs[mid] < x
+      lo = mid + 1
+    else
+      hi = mid
+    end
+  end
+  lo
+end
+
+-- The position of x in a sorted array, or missing if it isn't there.
+--
+--   BinarySearch(3, [1, 3, 5]) --> 2
+defn BinarySearch(x, xs)
+  at = LowerBound(x, xs)
+  if at <= Len(xs) and xs[at] == x at else missing end
+end
+
+-- The elements split in a struct with yes (those f accepts) and no (the others).
+--
+--   Partition(IsEven, [1, 2, 3]).Yes --> [2]
+defn Partition(f, xs)
+  {Yes: Filter(f, xs), No: Filter(x -> not f(x), xs)}
+end
+
+-- The elements cut in pieces of n, the last one shorter if needed.
+--
+--   Chunk(2, [1, 2, 3]) --> [[1, 2], [3]]
+defn Chunk(n, xs)
+  count = Len(xs)
+  [[xs[k] for k in i:Min(i + n - 1, count)] for i in Range(1, count, step = n)]
+end
+
+-- Every run of n consecutive elements, sliding by one.
+--
+--   Windows(2, [1, 2, 3]) --> [[1, 2], [2, 3]]
+defn Windows(n, xs)
+  [[xs[k] for k in i:i + n - 1] for i in 1:Len(xs) - n + 1]
+end
+
+-- Every ordering of the elements.
+--
+--   Permutations([1, 2]) --> [[1, 2], [2, 1]]
+defn Permutations(xs)
+  if Len(xs) <= 1
+    return [xs]
+  end
+  Flatten([[Concat([xs[i]], p) for p in Permutations(Concat(Take(i - 1, xs), Skip(i, xs)))] for i in 1:Len(xs)])
+end
+
+-- Every choice of k elements, keeping their order.
+--
+--   Combinations(2, [1, 2, 3]) --> [[1, 2], [1, 3], [2, 3]]
+defn Combinations(k, xs)
+  if k == 0
+    return [[]]
+  end
+  if Len(xs) < k
+    return []
+  end
+  rest = Skip(1, xs)
+  withFirst = [Concat([xs[1]], c) for c in Combinations(k - 1, rest)]
+  Concat(withFirst, Combinations(k, rest))
+end
+
+-- The edit distance between two texts: the fewest insertions, deletions and replacements of a character.
+--
+--   Levenshtein("kitten", "sitting") --> 3
+defn Levenshtein(a, b)
+  xs = Chars(a)
+  ys = Chars(b)
+  row = [k for k in 0:Len(ys)]
+  for i in 1:Len(xs)
+    next = Fill(i, Len(ys) + 1)
+    for j in 1:Len(ys)
+      cost = if xs[i] == ys[j] 0 else 1 end
+      next[j + 1] = Min(Min(next[j] + 1, row[j + 1] + 1), row[j] + cost)
+    end
+    row = next
+  end
+  row[Len(ys) + 1]
+end
+
+-- Graphs: neighbors(node) gives the nodes next to one, and nodes are numbers or texts.
+defn Bfs(start, neighbors)
+  seen = {(start): true}
+  visited = Dict()
+  todo = queue.Of([start])
+  while not queue.IsEmpty(todo)
+    node = queue.First(todo)
+    todo = queue.Pop(todo)
+    visited[Len(visited) + 1] = node
+    for next in neighbors(node)
+      if not Has(next, seen)
+        seen[next] = true
+        todo = queue.Push(next, todo)
+      end
+    end
+  end
+  Values(visited)
+end
+
+-- The nodes reached from start, depth first, as bfs does breadth first.
+--
+--   Dfs(1, n -> if n == 1 [2, 3] else [] end) --> [1, 2, 3]
+defn Dfs(start, neighbors)
+  seen = Dict()
+  visited = Dict()
+  stack = {1: start}
+  while Len(stack) > 0
+    top = Len(stack)
+    node = stack[top]
+    stack = Drop(top, stack)
+    if not Has(node, seen)
+      seen[node] = true
+      visited[Len(visited) + 1] = node
+      for next in Reverse(neighbors(node))
+        stack[Len(stack) + 1] = next
+      end
+    end
+  end
+  Values(visited)
+end
+
+-- edges(node) gives {Node, Weight} structs. The result gives the distance of each node reached.
+defn Dijkstra(start, edges)
+  best = Dict()
+  todo = heap.Insert(0, start, heap.Empty())
+  while not heap.IsEmpty(todo)
+    top = heap.Peek(todo)
+    todo = heap.Pop(todo)
+    if not Has(top.Value, best)
+      best[top.Value] = top.Key
+      for e in edges(top.Value)
+        if not Has(e.Node, best)
+          todo = heap.Insert(top.Key + e.Weight, e.Node, todo)
+        end
+      end
+    end
+  end
+  best
+end
+
+-- needs(node) gives the nodes that come before it. An Err names a cycle.
+defn visit(node, needs, walk)
+  mark = Get(node, walk.State)
+  if mark == "done"
+    return Ok(walk)
+  end
+  if mark == "active"
+    return Err({Kind: "cycle", Message: "A cycle goes through $node."})
+  end
+  walk.State[node] = "active"
+  for before in needs(node)
+    walk = visit(before, needs, walk)?
+  end
+  walk.State[node] = "done"
+  walk.Order[Len(walk.Order) + 1] = node
+  Ok(walk)
+end
+
+-- The nodes ordered so that each comes after the ones it needs, in an Ok, or an Err of the kind "cycle".
+--
+--   TopologicalSort([1, 2], n -> if n == 2 [1] else [] end) --> Ok([1, 2])
+defn TopologicalSort(nodes, needs)
+  walk = {State: Dict(), Order: Dict()}
+  for node in nodes
+    walk = visit(node, needs, walk)?
+  end
+  Ok(Values(walk.Order))
+end

@@ -1,0 +1,34 @@
+use tests/sdl/probe
+use sdl
+use sys
+
+defn update(event, state)
+  match event
+    {Kind: "quit"} -> missing
+    {Kind: "text", Text: text} -> {Typed: "$(state.Typed)$text"}
+    else -> state
+  end
+end
+
+defn view(state)
+  Print("view ""$(state.Typed)""")
+  [{Kind: "clear", Color: 0x000000}, {Kind: "text", X: 8, Y: 8, Text: state.Typed, Color: 0xFFFFFF}]
+end
+
+defn later()
+  sys.Sleep(0.03)
+  probe.PushText([0x63])
+  probe.PushQuit()
+end
+
+defn check()
+  window = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  probe.PushText([0x61])
+  probe.PushText([0x62])
+  Spawn(later)
+  Print(sdl.Run({Typed: ""}, update, view, window))
+  sdl.Close(window)
+  Ok(missing)
+end
+
+Print(check())

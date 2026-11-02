@@ -20,3 +20,10 @@ and token = { t : tok; pos : Pos.t; sp : bool  (** a space precedes the token *)
 and part = Plain of string | Code of token array
 
 val tokens : file:string -> string -> token array
+
+(** A capital first letter makes a name public. *)
+val is_public : string -> bool
+
+(** The name of a method inside the core. [Rect.Area] gives the struct, [false] and the method; [Rect:Square], which only the
+    core writes, gives [true]; another name gives [None]. *)
+val split_method : string -> (string * bool * string) option

@@ -1,2 +1,2 @@
-Err(error = "stopped")
+Err(Error = "stopped")
 exit 0

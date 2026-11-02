@@ -1,0 +1,2 @@
+use regex
+Print(Len(regex.FindAll(".", Repeat(25000, "a"))))

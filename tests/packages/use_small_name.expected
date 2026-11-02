@@ -1,0 +1,4 @@
+use_small_name.k:2:15: Module "geometry" has no name "half".
+  2 | Print(geometry.half(2))
+    |               ^
+exit 1

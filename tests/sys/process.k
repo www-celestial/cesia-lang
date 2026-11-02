@@ -1,0 +1,27 @@
+use sys
+
+defn allOutput(p, seen)
+  got = sys.ReadOutput(p)?
+  if got == "" Ok(seen) else allOutput(p, "$seen$got") end
+end
+
+defn main()
+  p = sys.Start("sh", args = ["-c", "cat; echo err >&2; exit 3"])?
+  sys.WriteInput(p, "hello\n")?
+  Print(sys.ReadOutput(p))
+  sys.CloseInput(p)
+  Print(allOutput(p, ""))
+  Print(sys.WaitExit(p))
+  long = sys.Start("sh", args = ["-c", "exec sleep 5"])?
+  sys.Stop(long)
+  Print(sys.WaitExit(long) != 0)
+  ticks = Spawn(() -> 1 + 1)
+  slow = sys.Start("sh", args = ["-c", "sleep 0.05; echo late"])?
+  Print(Wait(ticks), allOutput(slow, ""))
+  sys.WaitExit(slow)
+  Print(Wait(Spawn(() -> sys.WaitExit(p))) then MapErr(it.Message))
+  Ok(missing)
+end
+
+Print(main())
+Print(sys.Start("kepler_no_such_command"))

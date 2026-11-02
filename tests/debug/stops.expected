@@ -1,6 +1,6 @@
-stops.kp:1 start
-stops.kp:2 step
-stops.kp:3 step
-stops.kp:4 step
+stops.k:1 start
+stops.k:2 step
+stops.k:3 step
+stops.k:4 step
 2
 exit 0

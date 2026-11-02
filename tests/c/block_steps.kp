@@ -1,7 +1,0 @@
--- Filling a block is work: it pays in steps like an array of the same size.
-use c
-
-for i in 1:1000
-  c.free(c.alloc(100000))
-end
-print("the limit should have stopped this")

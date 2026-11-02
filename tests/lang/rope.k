@@ -1,0 +1,60 @@
+use rope
+use history
+use num
+
+big = Join("\n", ["line $k" for k in 1:2000])
+
+isOf() = rope.Text(rope.Of("abc")) == "abc" and rope.Size(rope.Of("abc")) == 3
+isBig() = rope.Text(rope.Of(big)) == big and rope.LineCount(rope.Of(big)) == 2000
+isBalanced() = rope.Of(big).Height < 8
+isInsert() = rope.Text(rope.Insert(1, "XY", rope.Of("abc"))) == "aXYbc"
+isInsertEnds() = rope.Text(rope.Insert(0, "<", rope.Insert(3, ">", rope.Of("abc")))) == "<abc>"
+isDelete() = rope.Text(rope.Delete(1, 3, rope.Of("abcd"))) == "ad"
+isSlice() = rope.Slice(1, 3, rope.Of("abcd")) == "bc"
+isLine() = rope.Line(2, rope.Of("a\nbc\nd")) == "bc" and rope.Line(3, rope.Of("a\nbc\nd")) == "d"
+isBigLine() = rope.Line(1500, rope.Of(big)) == "line 1500"
+isLineStart() = rope.LineStart(3, rope.Of("a\nbc\nd")) == 5 and rope.LineStart(1, rope.Of("x")) == 0
+isLineOf() = rope.LineOf(0, rope.Of("a\nb")) == 1 and rope.LineOf(2, rope.Of("a\nb")) == 2 and rope.LineOf(1, rope.Of("a\nb")) == 1
+isEmpty() = rope.Text(rope.Of("")) == "" and rope.LineCount(rope.Of("")) == 1 and rope.Line(1, rope.Of("")) == ""
+isKeepsTheOriginal() = kept() == "abc"
+
+defn kept()
+  r = rope.Of("abc")
+  rope.Insert(1, "X", r)
+  rope.Text(r)
+end
+
+-- Random edits against a plain text.
+defn isAgainstAModel()
+  r = rope.Of(big)
+  model = big
+  dice = num.Uniform(3000, num.Seeded(5)).Values
+  for k in 1:1000
+    n = ByteLength(model)
+    at = Floor(dice[3 * k - 2] * n)
+    if dice[3 * k - 1] < 0.6
+      piece = if Mod(k, 7) == 0 "new\nline" else "ab" end
+      r = rope.Insert(at, piece, r)
+      before = if at == 0 "" else ByteSlice(1, at, model) end
+      after = if at == n "" else ByteSlice(at + 1, n, model) end
+      model = "$before$piece$after"
+    else
+      to = Min(at + Floor(dice[3 * k] * 40), n)
+      r = rope.Delete(at, to, r)
+      before = if at == 0 "" else ByteSlice(1, at, model) end
+      after = if to == n "" else ByteSlice(to + 1, n, model) end
+      model = "$before$after"
+    end
+    -- The count of lines only moves by steps, so a drift stays visible at the next check.
+    if r.Size != ByteLength(model) or (Mod(k, 50) == 0 and r.Lines != Len(Split("\n", model)) - 1)
+      return false
+    end
+  end
+  rope.Text(r) == model and rope.Line(rope.LineCount(r), r) == Split("\n", model)[rope.LineCount(r)]
+end
+
+isHistory() = history.Current(history.Undo(history.Record(2, history.Of(1)))) == 1
+isRedo() = history.Current(history.Redo(history.Undo(history.Record(2, history.Of(1))))) == 2
+isRecordClearsRedo() = not history.CanRedo(history.Record(3, history.Undo(history.Record(2, history.Of(1)))))
+isUndoAtStart() = history.Current(history.Undo(history.Of(1))) == 1 and history.Current(history.Redo(history.Of(1))) == 1
+isLimit() = Len(Reduce((h, x) -> history.Record(x, h), history.Of(0, limit = 3), [1, 2, 3, 4, 5]).Past) == 3

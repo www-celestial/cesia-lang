@@ -1,0 +1,24 @@
+use net
+use sys
+
+defn serveOnce(listener)
+  c = net.Accept(listener)?
+  text = net.Read(c)?
+  net.Write(c, "echo: $text")?
+  net.Close(c)
+  Ok(missing)
+end
+
+defn client()
+  c = net.Connect("127.0.0.1", 18081)?
+  net.Write(c, "hello")?
+  reply = net.Read(c)?
+  net.Close(c)
+  Ok(reply)
+end
+
+listener = Unwrap(net.Listen(18081))
+server = Spawn(() -> serveOnce(listener))
+sys.Sleep(0)
+Print(client())
+Print(Wait(server))

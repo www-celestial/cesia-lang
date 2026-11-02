@@ -45,7 +45,7 @@ and node =
   | Set of { root : name; path : step array; value : expr }  (** write to a path *)
   | Destructure of pat * expr
   | Match of { subject : expr; arms : arm array }
-  | Use of { upath : string; is_name : bool; ualias : string }
+  | Use of { upath : string; ualias : string }
   | Question of expr  (** e? *)
   | Hook of hook  (** debugger hook: only exists with --debugger *)
 
@@ -92,4 +92,5 @@ and func = {
 type layout = {
   cell_names : string array;  (** the names of the module's cells, by index *)
   hoisted : (int * func) array;  (** cell, hoisted function *)
+  methods : (string * string * bool * int) list;  (** struct, method name, static, cell *)
 }

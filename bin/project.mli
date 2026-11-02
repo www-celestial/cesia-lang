@@ -3,5 +3,5 @@
 (** Takes the words after [do], and ends the program. *)
 val run : string list -> unit
 
-(** kepler new: a folder with a kepler.toml and a main.kp, and ends the program. *)
+(** kepler new: a folder with a kepler.toml and a main.k, and ends the program. *)
 val create : string -> unit

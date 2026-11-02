@@ -1,0 +1,30 @@
+use net
+use sys
+
+big = Join("", Fill("0123456789abcdef", 655360))
+
+defn serveBig(listener)
+  c = net.Accept(listener)?
+  net.Write(c, big)?
+  net.Close(c)
+  Ok(missing)
+end
+
+defn readAll(c, total)
+  text = net.Read(c)?
+  sys.Sleep(0)
+  if Len(text) == 0 Ok(total) else readAll(c, total + Len(text)) end
+end
+
+defn client()
+  c = net.Connect("127.0.0.1", 18087)?
+  first = net.Read(c)?
+  Wait(Spawn(() -> Print("ticking")))
+  readAll(c, Len(first))
+end
+
+listener = Unwrap(net.Listen(18087))
+server = Spawn(() -> serveBig(listener))
+sys.Sleep(0)
+Print(client())
+Print(Wait(server))

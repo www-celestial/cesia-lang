@@ -1,0 +1,15 @@
+defn dyn(n)
+  ops = [(a, b) -> a + b, (a, b) -> a * 0.5 + b]
+  xs = [1, 2.5, 3, 4.5]
+  total = 0.0
+  for i in 1:n
+    f = ops[Mod(i, 2) + 1]
+    x = xs[Mod(i, 4) + 1]
+    total = f(total, x)
+    if total > 1000000.0
+      total = total / 2
+    end
+  end
+  total
+end
+Print(dyn(10000000))

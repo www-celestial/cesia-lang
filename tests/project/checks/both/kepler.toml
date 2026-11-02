@@ -6,4 +6,4 @@ run = ["true"]
 
 [tasks.test]
 run = ["true"]
-file = "a.kp"
+file = "a.k"

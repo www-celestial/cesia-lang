@@ -1,0 +1,6 @@
+use net
+l = Unwrap(net.Listen(18085))
+net.Close(l)
+net.Close(l)
+Print(net.Accept(l) then MapErr(it.Kind))
+Print(l)

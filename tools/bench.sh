@@ -44,7 +44,7 @@ measure() {
 }
 
 for t in $tests; do
-  measure "$t" kepler "$kepler" run $no_spec "bench/$t.kp"
+  measure "$t" kepler "$kepler" run $no_spec "bench/$t.k"
   for r in $refs; do
     case "$r" in
       python) measure "$t" python python3 "bench/$t.py" ;;

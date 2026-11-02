@@ -1,8 +1,0 @@
-x = 3
-print("v=$x, square=$(x * x), $$5")   -- v=3, square=9, $5
-print("a""b $ c")                    -- a"b $ c
-print(length("été"))                 -- 3
-print(text(1.5), text(true))         -- 1.5 true
-print(0.1 + 0.2)                     -- 0.30000000000000004
-print(1.0, 1e20, 1 / 0, -1 / 0)      -- 1.0 1e20 inf -inf
-print(0 / 0)                         -- nan

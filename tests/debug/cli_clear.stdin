@@ -1,6 +1,6 @@
-break cli_clear.kp 2
+break cli_clear.k 2
 continue
 next
 next
-clear cli_clear.kp 2
+clear cli_clear.k 2
 continue

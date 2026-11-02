@@ -1,0 +1,7 @@
+-- A search pays for the text it reads, wherever it comes from.
+use net
+s = Repeat(2000000, "a")
+for i in 1:100
+  net.Find("b", s)
+end
+Print("not stopped")

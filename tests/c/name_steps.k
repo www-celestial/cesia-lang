@@ -1,0 +1,11 @@
+-- A name is scanned for a zero byte, without any permission: a long one pays like any other long text.
+use c
+
+name = "abcdefghij"
+for i in 1:17
+  name = "$name$name"
+end
+for i in 1:20
+  Wait(Spawn(() -> c.Open(name)))
+end
+Print("the limit should have stopped this")

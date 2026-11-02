@@ -1,0 +1,9 @@
+use sys
+
+defn nap(seconds, label)
+  sys.Sleep(seconds)
+  Print(label)
+end
+start = sys.Now()
+[Spawn(() -> nap(0.03, "slow")), Spawn(() -> nap(0.01, "fast"))] then Map(Wait)
+Print(sys.Now() - start < 0.2)

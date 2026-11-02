@@ -1,0 +1,4 @@
+method_foreign_path.k:2:15: A method belongs to a struct declared in the same package: this one can't be reached from here.
+  2 | defn date.Date.Twice(d)
+    |               ^
+exit 1

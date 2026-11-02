@@ -1,0 +1,30 @@
+-- A chunked response cut anywhere is an Err of the client, never a panic.
+use http
+use net
+
+crlf = "\r\n"
+head = "HTTP/1.1 200 OK$(crlf)transfer-encoding: chunked$crlf$crlf"
+
+defn serveOne(listener, reply)
+  c = net.Accept(listener)?
+  net.Read(c)?
+  net.Write(c, reply)?
+  net.Close(c)
+  Ok(missing)
+end
+
+defn ask(reply)
+  listener = net.Listen(18211)?
+  server = Spawn(() -> serveOne(listener, reply))
+  got = http.Get("http://127.0.0.1:18211/")
+  Wait(server)
+  net.Close(listener)
+  got
+end
+
+shown(r) = r then MapOk(it.Body) then MapErr(it.Message)
+
+Print(shown(ask("$(head)5$(crlf)hello$(crlf)0$crlf$crlf")))
+Print(shown(ask("$(head)5$(crlf)hello")))
+Print(shown(ask("$(head)5$(crlf)hello$crlf")))
+Print(shown(ask(head)))

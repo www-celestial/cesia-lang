@@ -1,6 +1,0 @@
-is_float_division() = is_float(4 / 2)
-is_floor() = floor(1.5) == 1 and is_float(floor(1.5)) and is_int(floor(2))
-is_round() = round(2.5) == 3 and round(-2.5) == -3
-is_atan2() = atan2(1, 1) == pi / 4
-is_kinds() = is_int(1) and is_float(1.0) and is_number(1) and is_bool(true) and is_text("") and
-  is_array([]) and is_struct({a: 1}) and is_function(abs) and is_function(x -> x) and is_missing(missing)

@@ -1,0 +1,126 @@
+isAssignment() = assignment()
+isArgument() = argument()
+isField() = field()
+isCapture() = capture()
+isNested() = nested()
+isPath() = nestedPath()
+isForCopies() = forCopies()
+isReturnKeeps() = Equal(build(3), [1.0, 1.0, 1.0])
+isDestructure() = destructure() == 3
+
+defn assignment()
+  a = [1, 2]
+  b = a
+  b[1] = 9
+  a[1] == 1 and b[1] == 9
+end
+defn touch(x)
+  x[1] = 9
+  x
+end
+defn argument()
+  a = [1, 2]
+  b = touch(a)
+  a[1] == 1 and b[1] == 9
+end
+defn field()
+  a = [1, 2]
+  s = {V: a}
+  a[1] = 9
+  s.V[1] == 1
+end
+defn capture()
+  a = [1, 2]
+  f = () -> a[1]
+  a[1] = 9
+  f() == 1
+end
+defn nested()
+  a = [[1, 2], [3, 4]]
+  b = a
+  b[1][1] = 9
+  a[1][1] == 1 and b[1][1] == 9
+end
+defn nestedPath()
+  s = {A: {B: [{C: 1}]}}
+  t = s
+  t.A.B[1].C = 2
+  s.A.B[1].C == 1 and t.A.B[1].C == 2
+end
+defn forCopies()
+  xs = [1, 2, 3]
+  seen = Zeros(3)
+  i = 1
+  for v in xs
+    xs[3] = 100
+    seen[i] = v
+    i += 1
+  end
+  Equal(seen, [1.0, 2.0, 3.0])
+end
+defn build(n)
+  x = Zeros(n)
+  for i in 1:n
+    x[i] = 1
+  end
+  x
+end
+defn destructure()
+  {A: a, B: b} = {A: 1, B: 2}
+  [x, y] = [a, b]
+  x + y
+end
+
+-- A native returning one of its inputs: the result must stay a logical copy.
+defn returnsSum()
+  s = {A: 1}
+  t = Sum(s)
+  t.A = 99
+  s.A == 1 and t.A == 99
+end
+defn returnsMean()
+  s = {A: 1}
+  t = Mean(s)
+  t.A = 99
+  s.A == 1 and t.A == 99
+end
+defn returnsMin()
+  s = {A: 1}
+  t = Min(s)
+  t.A = 99
+  s.A == 1 and t.A == 99
+end
+defn returnsMax()
+  s = {A: 1}
+  t = Max(s)
+  t.A = 99
+  s.A == 1 and t.A == 99
+end
+defn returnsTranspose()
+  s = {A: 1}
+  t = Transpose(s)
+  t.A = 99
+  s.A == 1 and t.A == 99
+end
+defn returnsElement()
+  xs = [{A: 1}]
+  t = Sum(xs[1])
+  t.A = 99
+  xs[1].A == 1 and t.A == 99
+end
+isNativeReturnsSum() = returnsSum()
+isNativeReturnsMean() = returnsMean()
+isNativeReturnsMin() = returnsMin()
+isNativeReturnsMax() = returnsMax()
+isNativeReturnsTranspose() = returnsTranspose()
+isNativeReturnsElement() = returnsElement()
+
+-- Measuring a variable does not copy it: otherwise this loop would become quadratic.
+defn measureKeeps()
+  x = Zeros(2000)
+  for i in 1:2000
+    x[i] = Len(x) + Sum(x[1:1])
+  end
+  x[2000] == 4000
+end
+isMeasuringDoesNotCopy() = measureKeeps()

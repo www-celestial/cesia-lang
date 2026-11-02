@@ -1,0 +1,4 @@
+method_use_nested.k:4:7: Name "far" doesn't exist.
+  4 | Print(far.Far.Make())
+    |       ^
+exit 1

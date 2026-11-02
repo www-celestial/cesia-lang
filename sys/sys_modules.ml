@@ -17,9 +17,9 @@ let register ?(max_sleep = infinity) ?tick w =
   let net = Net.create poll in
   let sys =
     Fs.natives @ Proc.natives poll
-    @ [ "now", Native.nat "now" 0 0 (fun _ _ -> Float (Unix.gettimeofday ()));
-        "sleep",
-        Native.nat "sleep" 1 1 (fun ctx a ->
+    @ [ "Now", Native.nat "Now" 0 0 (fun _ _ -> Float (Unix.gettimeofday ()));
+        "Sleep",
+        Native.nat "Sleep" 1 1 (fun ctx a ->
             Poll.sleep poll ctx (Float.min max_sleep (seconds ctx a.(0)));
             Missing) ]
   in

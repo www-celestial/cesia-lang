@@ -1,0 +1,2 @@
+use net
+Print(net.Connect("127.0.0.1", 18084) then MapErr(it.Kind))

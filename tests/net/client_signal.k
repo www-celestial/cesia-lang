@@ -1,0 +1,7 @@
+use net
+c = net.Connect("127.0.0.1", 18088)
+Print("started")
+defn forever()
+  while true end
+end
+forever()

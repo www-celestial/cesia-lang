@@ -40,6 +40,27 @@ let is_digit c = c >= '0' && c <= '9'
 let is_name_start c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c >= '\128'
 let is_name c = is_name_start c || is_digit c
 
+let is_public name = name <> "" && name.[0] >= 'A' && name.[0] <= 'Z'
+
+(* Inside the core, the name of a method says its kind: Rect.Area, or Rect:Square when static. Gives the struct, whether it is
+   static, and the method. A program only ever sees a dot: a static method's function is named Rect.Square. *)
+let split_method text =
+  let n = String.length text in
+  let rec go i =
+    if i >= n then None
+    else
+      match text.[i] with
+      | '.' | ':' -> Some (String.sub text 0 i, text.[i] = ':', String.sub text (i + 1) (n - i - 1))
+      | _ -> go (i + 1)
+  in
+  go 0
+
+(* The words of a name with a _, joined by capitals, for the hint of its error. *)
+let joined ~public name =
+  let words = List.filter (fun w -> w <> "") (String.split_on_char '_' name) in
+  let cap = String.concat "" (List.map String.capitalize_ascii words) in
+  if public then cap else String.uncapitalize_ascii cap
+
 (* The column in code points: a UTF-8 continuation byte doesn't count. *)
 let pos_at st i =
   if st.seen_i < st.line_start then begin
@@ -54,6 +75,12 @@ let pos_at st i =
 
 let error st pos (m : Messages.t) =
   raise (Load_error { file = st.file; pos; kind = "syntax"; text = m.text; hint = m.hint })
+
+(* A name, or a keyword. The lone _ is the wildcard of a pattern. *)
+let word_token st pos word =
+  if Option.is_some (String.index_opt word '_') && word <> "_" then
+    error st pos (Messages.underscore_name word (joined ~public:false word) (joined ~public:true word));
+  match keyword word with Some k -> k | None -> NAME word
 
 let peek_at st k = if st.i + k < String.length st.src then st.src.[st.i + k] else '\000'
 
@@ -164,8 +191,7 @@ let rec scan st ~in_code : token array =
         let start = st.i in
         let pos = pos_at st st.i in
         while st.i < n && is_name s.[st.i] do st.i <- st.i + 1 done;
-        let word = String.sub s start (st.i - start) in
-        push (match keyword word with Some k -> k | None -> NAME word) pos
+        push (word_token st pos (String.sub s start (st.i - start))) pos
       | _ ->
         let pos = pos_at st st.i in
         let c2 = peek_at st 1 in
@@ -250,8 +276,7 @@ and text st start_pos =
       let pos = pos_at st st.i in
       let start = st.i in
       while st.i < n && is_name s.[st.i] do st.i <- st.i + 1 done;
-      let word = String.sub s start (st.i - start) in
-      let tok = match keyword word with Some k -> k | None -> NAME word in
+      let tok = word_token st pos (String.sub s start (st.i - start)) in
       parts := Code [| { t = tok; pos; sp = false }; { t = NL; pos; sp = false }; { t = EOF; pos; sp = false } |] :: !parts
     | c, _ ->
       Buffer.add_char run c;

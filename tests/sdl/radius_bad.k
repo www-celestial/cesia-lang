@@ -1,0 +1,9 @@
+use sdl
+
+defn check()
+  w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
+  sdl.Draw([{Kind: "box", X: 0, Y: 0, Width: 80, Height: 80, Color: 0, Radius: 25}], w)
+  Ok("drawn")
+end
+
+Print(check())

@@ -1,0 +1,29 @@
+-- Every function under a permission, run the same way under the three cases of permissions_*.cmd.
+use net
+use sys
+
+calls = [
+  ["write", () -> sys.Write("perm_work/a", "x")],
+  ["append", () -> sys.Append("perm_work/a", "y")],
+  ["read", () -> sys.Read("perm_work/a")],
+  ["list", () -> sys.List("perm_work")],
+  ["exists", () -> sys.Exists("perm_work/a")],
+  ["mkdir", () -> sys.Mkdir("perm_work/sub")],
+  ["remove", () -> sys.Remove("perm_work/a")],
+  ["env", () -> sys.Env("KEPLER_PERM")],
+  ["run", () -> sys.Run("true")],
+  ["listen", () -> net.Listen(18102)],
+  ["connect", () -> net.Connect("127.0.0.1", 18102)]
+]
+
+defn outcome(call)
+  name = call[1]
+  result = match Wait(Spawn(call[2]))
+    Err(e) -> e.Kind
+    Ok(Err(e)) -> e.Kind
+    else -> "ran"
+  end
+  Print("$name: $result")
+end
+
+Map(outcome, calls)

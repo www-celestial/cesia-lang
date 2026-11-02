@@ -1,0 +1,4 @@
+-- A copy is reserved before it is built.
+x = Repeat(3000000, "a")
+y = Upper(x)
+Print(Len(y))

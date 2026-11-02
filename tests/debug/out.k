@@ -1,0 +1,6 @@
+defn f(x)
+  y = x + 1
+  y * 2
+end
+z = f(1)
+Print(z)

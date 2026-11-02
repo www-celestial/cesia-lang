@@ -1,6 +1,6 @@
-c.alloc needs a size of 1 or more, not the number 0.
-c.alloc needs a size of 1 or more, not the number -1.
-c.alloc needs a size of 1 or more, not the text "x".
+c.Alloc needs a size of 1 or more, not the number 0.
+c.Alloc needs a size of 1 or more, not the number -1.
+c.Alloc needs a size of 1 or more, not the text "x".
 Offset 61 is outside this block of 64 bytes for an i32.
 Offset -1 is outside this block of 64 bytes for an i32.
 Offset 64 is outside this block of 64 bytes for a u8.
@@ -9,13 +9,13 @@ An offset is an integer, not the text "x".
 text can't be read from a block.
 void can't be written to a block.
 300 doesn't fit in u8.
-c.get needs a block, not the number 5.
-c.get needs a block, not a pointer.
+c.Get needs a block, not the number 5.
+c.Get needs a block, not a pointer.
 This block was freed.
 This block was freed.
 This block was freed.
 This block was freed.
-c.free needs a block, not the number 5.
-c.text needs a pointer, not missing.
-c.text needs a pointer, not a block.
+c.Free needs a block, not the number 5.
+c.Text needs a pointer, not missing.
+c.Text needs a pointer, not a block.
 exit 0

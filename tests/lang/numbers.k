@@ -1,0 +1,6 @@
+isFloatDivision() = IsFloat(4 / 2)
+isFloor() = Floor(1.5) == 1 and IsFloat(Floor(1.5)) and IsInt(Floor(2))
+isRound() = Round(2.5) == 3 and Round(-2.5) == -3
+isAtan2() = Atan2(1, 1) == Pi / 4
+isKinds() = IsInt(1) and IsFloat(1.0) and IsNumber(1) and IsBool(true) and IsText("") and
+  IsArray([]) and IsStruct({A: 1}) and IsFunction(Abs) and IsFunction(x -> x) and IsMissing(missing)

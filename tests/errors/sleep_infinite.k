@@ -1,0 +1,5 @@
+use sys
+x = 1.0
+y = 0.0
+sys.Sleep(x / y)
+Print("after")

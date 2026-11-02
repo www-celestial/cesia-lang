@@ -1,4 +1,4 @@
-usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.kp [args...]
+usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.k [args...]
        kepler test [path] [--no-spec]
        kepler do [task]
        kepler new name

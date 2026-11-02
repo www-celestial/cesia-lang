@@ -1,3 +1,0 @@
-a = zeros(2000000, 1)
-b = zeros(1, 2000000)
-c = matmul(a, b)

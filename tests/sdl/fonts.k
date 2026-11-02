@@ -1,0 +1,53 @@
+use tests/sdl/probe
+use sdl
+
+body = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+strong = "../../examples/fonts/NotoSans-Medium.ttf"
+
+defn differs(a, b)
+  count = 0
+  for j in 0:40
+    for i in 0:120
+      if probe.Pixel(i, j, a) != probe.Pixel(i, j, b)
+        count += 1
+      end
+    end
+  end
+  count
+end
+
+defn brightest(image)
+  best = 0
+  for j in 0:40
+    for i in 0:60
+      best = Max(best, Mod(probe.Pixel(i, j, image), 256))
+    end
+  end
+  best
+end
+
+defn check()
+  opened = sdl.Open("test", 320, 200, body)?
+  w = sdl.AddFont("strong", strong, 15, opened)?
+  Print(sdl.TextSize("Abc", w).Width != sdl.TextSize("Abc", w, font = "strong").Width)
+  Print(sdl.AddFont("x", "missing.ttf", 13, w).Error.Kind)
+  clear = {Kind: "clear", Color: 0x000000}
+  first = sdl.Draw([clear, {Kind: "text", X: 10, Y: 10, Text: "Abc def", Color: 0xFFFFFF, Font: "strong"}], w)
+  a = probe.Pixels(first, 320, 200)
+  second = sdl.Draw([clear, {Kind: "text", X: 10, Y: 10, Text: "Abc def", Color: 0xFFFFFF}], first)
+  b = probe.Pixels(second, 320, 200)
+  Print(differs(a, b) > 20)
+  back = sdl.Draw([clear, {Kind: "text", X: 10, Y: 10, Text: "Abc def", Color: 0xFFFFFF, Font: "strong"}], second)
+  Print(differs(a, probe.Pixels(back, 320, 200)) == 0)
+  Print(sdl.Measure(back).Width("Abc", "strong") == sdl.TextSize("Abc", back, font = "strong").Width)
+  Print(sdl.Measure(back).Height > 8)
+  faint = sdl.Draw([clear, {Kind: "text", X: 10, Y: 10, Text: "██", Color: 0xFFFFFF, Alpha: 127}], back)
+  Print(Abs(brightest(probe.Pixels(faint, 320, 200)) - 127) <= 8)
+  floatAlpha = sdl.Draw([clear, {Kind: "text", X: 10, Y: 10, Text: "██", Color: 0xFFFFFF, Alpha: 127.5}], faint)
+  Print(Abs(brightest(probe.Pixels(floatAlpha, 320, 200)) - 128) <= 8)
+  sdl.Frame([clear], floatAlpha)
+  Print(sdl.Close(floatAlpha))
+  Ok("closed")
+end
+
+Print(check())

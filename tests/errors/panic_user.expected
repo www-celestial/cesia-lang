@@ -1,4 +1,4 @@
-panic_user.kp:1:1: boom
-  1 | panic("boom")
+panic_user.k:1:1: boom
+  1 | Panic("boom")
     | ^
 exit 1

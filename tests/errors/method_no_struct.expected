@@ -1,0 +1,5 @@
+method_no_struct.k:1:1: There is no struct "Nope" in this package.
+  1 | defn (n Nope) Area()
+    | ^
+  A method belongs to a struct declared in the same package.
+exit 1
