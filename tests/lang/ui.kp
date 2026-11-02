@@ -1,0 +1,173 @@
+use ui
+
+r = {x: 10, y: 20, width: 100, height: 40}
+
+defn is_left_adds_up()
+  cut = ui.left(30, r)
+  cut.part.x == 10 and cut.part.width == 30 and cut.rest.x == 40 and cut.rest.width == 70 and cut.rest.height == 40
+end
+
+defn is_right_adds_up()
+  cut = ui.right(30, r)
+  cut.part.x == 80 and cut.part.width == 30 and cut.rest.x == 10 and cut.rest.width == 70
+end
+
+defn is_top_adds_up()
+  cut = ui.top(10, r)
+  cut.part.y == 20 and cut.part.height == 10 and cut.rest.y == 30 and cut.rest.height == 30
+end
+
+defn is_bottom_adds_up()
+  cut = ui.bottom(10, r)
+  cut.part.y == 50 and cut.part.height == 10 and cut.rest.y == 20 and cut.rest.height == 30
+end
+
+defn is_cut_past_the_end()
+  cut = ui.left(500, {x: 0, y: 0, width: 100, height: 10})
+  cut.part.width == 100 and cut.rest.width == 0 and cut.rest.x == 100
+end
+
+defn is_cut_of_a_negative_size()
+  cut = ui.top(-5, r)
+  cut.part.height == 0 and cut.rest.height == 40
+end
+
+defn is_inset_keeps_the_middle()
+  smaller = ui.inset(4, r)
+  smaller.x == 14 and smaller.y == 24 and smaller.width == 92 and smaller.height == 32
+end
+
+defn is_inset_past_the_middle()
+  smaller = ui.inset(60, r)
+  smaller.width == 0 and smaller.height == 0
+end
+
+defn is_contains_edges()
+  ui.contains({x: 10, y: 20}, r) and not ui.contains({x: 110, y: 20}, r) and not ui.contains({x: 10, y: 60}, r) and ui.contains({x: 109, y: 59}, r)
+end
+
+defn stepped(n, seconds)
+  value = 0.0
+  for k in 1:n
+    value = ui.ease(value, 1.0, seconds)
+  end
+  value
+end
+
+is_ease_stays_the_same_in_steps() = abs(stepped(10, 0.001) - stepped(1, 0.01)) < 0.0001
+is_ease_of_no_time() = ui.ease(1.0, 2.0, 0.0) == 1.0
+is_ease_reaches_its_goal() = ui.rests(stepped(200, 0.016), 1.0)
+is_rests() = ui.rests(1.0, 1.001) and not ui.rests(1.0, 1.01)
+
+defn is_slider_value_at_both_ends()
+  ui.slider_value({x: 10, y: 0}, r) == 0.0 and ui.slider_value({x: 110, y: 0}, r) == 1.0 and ui.slider_value({x: 60, y: 0}, r) == 0.5 and ui.slider_value({x: 0, y: 0}, r) == 0.0 and ui.slider_value({x: 900, y: 0}, r) == 1.0
+end
+
+is_slider_of_no_width() = ui.slider_value({x: 10, y: 0}, {x: 10, y: 0, width: 0, height: 4}) == 0.0
+
+theme_fields(t) = [t.ground, t.panel, t.header, t.tab, t.well, t.edge, t.line, t.code, t.ink, t.bright, t.muted, t.faint, t.accent, t.fill, t.hover, t.picked, t.graph, t.body, t.big, t.shadow, t.grid_minor, t.grid_major]
+
+is_themes_have_the_same_fields() = length(theme_fields(ui.dark)) == length(theme_fields(ui.light)) and length(ui.dark.syntax) == 7 and length(ui.light.syntax) == 7
+is_light_palette() = ui.light.ground == 0xEBECF0 and ui.light.panel == 0xF7F8FA and ui.light.graph == 0xFFFFFF and ui.light.code == 0xFFFFFF
+
+defn is_look_holds_its_parts()
+  look = ui.look(ui.dark, (words, font) -> length(words) * 7, 16)
+  look.height == 16 and look.width("abc", "body") == 21 and look.theme.ground == ui.dark.ground
+end
+
+look = ui.look(ui.dark, (words, font) -> length(words) * 7, 16)
+area = {x: 10, y: 10, width: 300, height: 200}
+nothing = {x: 10, y: 10, width: 0, height: 0}
+arrow = ui.icons.arrow
+
+pin(name) = {name: name, color: 0xE8C547}
+node_a = {x: 20, y: 20, width: 100, title: "A", color: 0x336699, inputs: [], outputs: [pin("Out")], body: 0}
+node_b = {x: 60, y: 40, width: 100, title: "B", color: 0x336699, inputs: [pin("In"), pin("Other")], outputs: [], body: 30}
+two = [node_a, node_b]
+link = {from: 1, output: 1, to: 2, input: 1, color: 0xE8C547}
+known = ["clear", "rect", "box", "ring", "fade", "shadow", "text", "image", "tile", "icon", "curves"]
+
+is_known(commands) = all(map(c -> c.kind in known, commands))
+
+defn widgets(rect)
+  tools = [{shape: arrow, name: "Save", color: 0x8E8E8E}, missing, {shape: arrow, name: "Run", color: 0x3FA34D}]
+  items = [{name: "Math", header: true}, {name: "Add", header: false}]
+  lines = [[[1, "defn "], [2, "f"]], [], [[6, "x"]]]
+  [ui.panel("Title", rect, look), ui.panel("Title", rect, look, active = true), ui.menu_bar(["File", "Edit"], "Name", rect, look), ui.tool_bar(tools, {x: 0, y: 0}, rect, look),
+    ui.section("Name", rect, look), ui.field("Words", rect, look), ui.dropdown("Words", rect, look), ui.slider(0.5, rect, look), ui.slider(0.0, rect, look), ui.checkbox(true, rect, look),
+    ui.checkbox(false, rect, look), ui.swatch(0xD98F4E, "#D98F4E", rect, look), ui.list(items, 2, 40.0, rect, look), ui.code(lines, 1, rect, look), ui.grid(rect, look), ui.nodes(two, 1, [link], look), ui.links([link], two, look)]
+end
+
+is_widgets_give_known_kinds() = all(map(is_known, widgets(area)))
+is_widgets_of_an_empty_rectangle() = all(map(is_known, widgets(nothing)))
+is_widgets_of_nothing() = equal(ui.list([], 0, missing, area, look), []) and is_known(ui.nodes([], 0, [], look)) and is_known(ui.links([], [], look)) and is_known(ui.code([], 0, area, look)) and is_known(ui.menu_bar([], "", area, look)) and is_known(ui.tool_bar([], {x: 0, y: 0}, area, look))
+
+accents(commands) = length(filter(c -> c.kind == "rect" and c.color == ui.dark.accent, commands))
+is_only_active_panel_has_accent() = accents(ui.panel("T", area, look, active = true)) == 1 and accents(ui.panel("T", area, look)) == 0
+
+boxes(commands) = length(filter(it.kind == "box", commands))
+
+defn is_tool_answers_the_mouse()
+  tools = [{shape: arrow, name: "Save", color: 0x8E8E8E}]
+  bar = {x: 0, y: 0, width: 300, height: 32}
+  boxes(ui.tool_bar(tools, {x: 15, y: 15}, bar, look)) == 1 and boxes(ui.tool_bar(tools, {x: 250, y: 15}, bar, look)) == 0
+end
+
+rings(commands) = filter(c -> c.kind == "ring" and c.width == 10, commands)
+
+defn is_pin_hollow_when_unlinked()
+  length(rings(ui.nodes(two, 0, [link], look))) == 1 and length(rings(ui.nodes(two, 0, [], look))) == 3
+end
+
+is_node_at_takes_the_top() = ui.node_at({x: 70, y: 50}, two) == 2 and ui.node_at({x: 25, y: 25}, two) == 1 and ui.node_at({x: 250, y: 150}, two) == 0
+is_node_at_of_nothing() = ui.node_at({x: 0, y: 0}, []) == 0
+
+defn is_move_node_stays_inside()
+  moved = ui.move_node(1, {x: 5000, y: 5000}, {x: 0, y: 0}, area, two)
+  moved[1].x + moved[1].width <= 310 and moved[1].y + ui.node_height(moved[1]) <= 210
+end
+
+defn is_move_node_leaves_nodes_alone()
+  moved = ui.move_node(1, {x: 100, y: 100}, {x: 10, y: 10}, area, two)
+  moved[1].x == 90 and moved[1].y == 90 and two[1].x == 20 and moved[2].x == 60
+end
+
+defn is_code_counts_code_points()
+  texts = filter(it.kind == "text", ui.code([[[6, "é"], [1, "x"]]], 0, area, look))
+  places = [c.x for c in filter(it.text != "1", texts)]
+  places[2] - places[1] == 7
+end
+
+defn is_slider_value_measured()
+  wide = ui.look(ui.dark, (words, font) -> length(words) * 7 + 3, 16)
+  texts = filter(it.kind == "text", ui.slider(0.1, area, wide))
+  last(texts).x + wide.width(last(texts).text, "body") == area.x + area.width - 9
+end
+
+is_code_font() = all(map(c -> c.kind != "text" or c.font == "code", ui.code([[[6, "x"]]], 1, area, look)))
+is_only_code_uses_it() = all(map(c -> c.kind != "text" or font_is_not_code(c), flatten(without_code(widgets(area)))))
+
+defn font_is_not_code(c)
+  match c
+    {font} -> font != "code"
+    else -> true
+  end
+end
+
+without_code(all_widgets) = [all_widgets[k] for k in 1:length(all_widgets) if k != 14]
+
+defn is_output_sits_under_a_body()
+  with_body = {x: 0, y: 0, width: 100, title: "T", color: 0, inputs: [], outputs: [pin("O")], body: 30}
+  ui.output_at(with_body, 1).y == 68.0 and ui.input_at(node_b, 1).y == 78.0 and ui.output_at(with_body, 1).x == 100.0
+end
+
+defn is_links_are_one_command()
+  drawn = ui.links([link], two, look)
+  length(drawn) == 1 and length(drawn[1].items) == 1 and drawn[1].items[1].x0 == 120.0
+end
+
+defn is_hint_is_faint()
+  hinted = filter(it.kind == "text", ui.field("Search", area, look, hint = true))
+  plain = filter(it.kind == "text", ui.field("Search", area, look))
+  hinted[1].color == ui.dark.faint and plain[1].color == ui.dark.ink
+end

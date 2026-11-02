@@ -3,6 +3,10 @@
     after a line [--- signature]. *)
 open Types
 
+(** The lines of a source, with its comment blocks read: a [(** ... *)] at the start of a line becomes [--] lines, and another
+    block empty lines. They keep their numbers. *)
+val lines : string -> string list
+
 (** A comment line: the text after [--]. *)
 val comment_text : string -> string option
 

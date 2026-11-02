@@ -10,6 +10,7 @@ syn match keplerFunction "\<\h\w*\ze("
 syn match keplerHole "\$\h\w*\|\$(.\{-})" contained
 syn region keplerString start=+"+ end=+"+ contains=keplerHole
 syn match keplerComment "--.*$"
+syn region keplerComment start="(\*" end="\*)" contains=keplerComment
 hi def link keplerKeyword Keyword
 hi def link keplerOperator Operator
 hi def link keplerConstant Constant

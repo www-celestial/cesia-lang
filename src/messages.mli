@@ -6,6 +6,7 @@ val plain : string -> t
 val invalid_utf8 : t
 val unexpected_char : char -> t
 val text_not_closed : t
+val comment_not_closed : t
 val number_too_big : string -> t
 val expected : string -> string -> t
 val too_nested : t

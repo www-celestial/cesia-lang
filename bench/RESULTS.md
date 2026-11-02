@@ -439,6 +439,50 @@ A lookup that never answers doesn't hold a program back at its end: a domain lef
 The new tests first took the change loop past 5 s, and so did the two slow folders on `--no-spec`: the tests now use smaller
 texts and shorter waits, and those two folders run in `tools/check.sh`, past the budget.
 
+## Interface library, 2026-11-02
+
+`std/sdl.kp` gained rounded surfaces, shadows, images, icons, curves, several fonts and motion, and `std/ui.kp` builds them. Not a line of
+OCaml or C went into this. `examples/material.kp` is the approved preview, rewritten on the library.
+
+| Criterion, real window of 1280 by 720, Intel HD 4600 | Target | Measured | Met |
+|---|---|---|---|
+| Frames per second, whole scene, 328 commands | at least 60 | 211 | yes |
+| 99% of the frames, scene | under 16.7 ms | 7.8 ms | yes |
+| Frames per second with the small sphere at every frame | at least 60 | 87 | yes |
+| 99% of the frames, with the small sphere | under 16.7 ms | 13.1 ms | yes |
+| Sharp sphere, once at rest | under 100 ms | 74 ms | yes |
+
+The worst frame is 47 ms in the first pass, and 16.8 ms in the second, which suggests the first frame's masks: this wasn't measured apart.
+Building the scene takes 0.5 ms, painting it about 5 ms, and the small sphere 7 ms. A first run missed the 99% target, at 22 ms, with a
+preview window open on the same GPU. The gate only means something alone on the machine.
+
+| Criterion | Target | Measured | Met |
+|---|---|---|---|
+| The five benchmarks, Kepler alone | no loss | fib 456, mandel 468, structs 561, matmul 945, dyn 658 ms | yes |
+| Loading, resolution included | at least 500,000 lines/s | 494,591 lines/s, after the lexer learned block comments | no, by 1% |
+| A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.9 s, four runs out of four | yes |
+| Tests on both paths | all | 710 + 3 + 341 tests, golden 287/287, and 232/232 with `--no-spec`; `tests/material` and the slow folders in `tools/check.sh` | yes |
+| `tools/check.sh` | passes | yes, 12,399 lines of 15,000 | yes |
+| Fuzz of 590 s, seed 20261110, block comments included | no internal error | 131,743 trials, 9,828 ran to the end, 5,375 toml accepted, 0 failures | yes |
+
+29 guards were removed one at a time: a test noticed 28. The last, the zero-length segment of an icon, changes nothing, as `max` and `min`
+absorb `nan`, and it stays so as not to depend on that. The first pass left six unnoticed: the checks of a curve whose tangent vanishes had
+been too weak to see a gap below one pixel, and now read the vertices.
+
+A fresh review found what the tests hadn't: an empty `curves` command before another panicked, a grown curve block was freed under an older
+copy of the window, and a loop that didn't rebind its window made new masks every frame until the limit of 4,096, in seconds. All three are
+fixed, each with a test seen failing. A loop like that which draws curves still allocates a block per frame, as blocks can't go in shared
+memory: `sdl.frame` gives the window for that reason.
+
+The change loop had reached 5.2 s. `tests/material`, and `tests/sdl` on `--no-spec`, moved to `tools/check.sh`, past the budget. What
+mattered most was an old test, `project/stop_term`: a background `sleep 1` held its output for 1 s.
+
+Not verified: macOS, Windows, arm64, other GPUs and pixel density above 1. A person hasn't confirmed the example's mouse and keys in a real
+window: they ran through `update`, with simulated events, in `tests/material`.
+
+Block comments came with this work, at the owner's request: `(* ... *)`, nested, and `(** ... *)` as documentation, read by `kepler doc`
+and `kepler test`.
+
 ## Generic path only (`--no-spec`)
 
 | Benchmark | Kepler | Times Python |

@@ -15,3 +15,7 @@ run = ["tools/check.sh"]
 [tasks.demo]
 needs = ["build"]
 file = "examples/window.kp"
+
+[tasks.material]
+needs = ["build"]
+file = "examples/material.kp"

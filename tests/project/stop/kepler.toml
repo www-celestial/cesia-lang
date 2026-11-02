@@ -9,7 +9,7 @@ needs = ["slow"]
 run = ["sh", "-c", "echo last"]
 
 [tasks.trapped]
-run = ["sh", "-c", "trap 'exit 0' TERM; echo started; sleep 1 & wait"]
+run = ["sh", "-c", "trap 'exit 0' TERM; echo started; sleep 0.35 & wait"]
 
 [tasks.last_term]
 needs = ["trapped"]

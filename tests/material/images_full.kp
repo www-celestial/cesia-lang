@@ -1,0 +1,12 @@
+use sdl
+
+defn check()
+  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  for k in 1:4097
+    made = sdl.image(1, 1, w)?
+    w = made.window
+  end
+  Ok("filled")
+end
+
+print(check())

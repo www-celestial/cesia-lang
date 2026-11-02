@@ -1,0 +1,26 @@
+use "./probe"
+use sdl
+
+white = 0xFFFFFF
+
+defn check()
+  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  a = sdl.draw([{kind: "clear", color: white}, {kind: "shadow", x: 100, y: 60, width: 120, height: 60, alpha: 200}], w)
+  image = probe.pixels(a, 320, 200)
+  print(mod(probe.pixel(160, 124, image), 256) < 200)
+  print(probe.pixel(20, 20, image) == white)
+  print(probe.pixel(300, 180, image) == white)
+  b = sdl.draw([{kind: "clear", color: white}, {kind: "shadow", x: 140, y: 80, width: 40, height: 20, alpha: 200}], a)
+  small = probe.pixels(b, 320, 200)
+  print(abs(mod(probe.pixel(135, 90, small), 256) - mod(probe.pixel(184, 90, small), 256)) <= 8)
+  print(mod(probe.pixel(135, 90, small), 256) < 250)
+  print(abs(mod(probe.pixel(160, 90, small), 256) - mod(probe.pixel(150, 90, small), 256)) <= 8)
+  print(mod(probe.pixel(160, 74, small), 256) >= mod(probe.pixel(160, 90, small), 256))
+  print(abs(mod(probe.pixel(150, 90, small), 256) - mod(probe.pixel(170, 90, small), 256)) <= 4)
+  c1 = sdl.draw([{kind: "clear", color: white}, {kind: "shadow", x: 140, y: 80, width: 0, height: 20, alpha: 200}], b)
+  sdl.frame([{kind: "clear", color: white}], c1)
+  print(sdl.close(c1))
+  Ok("closed")
+end
+
+print(check())

@@ -1,0 +1,50 @@
+use "./probe"
+use sdl
+
+font = "../../fonts/JetBrainsMono-Regular.ttf"
+black = 0x000000
+red = 0xFF0000
+half_red = 0x800000
+
+-- Two colors within 8 out of 255 on each channel.
+near(a, b) = abs(sdl.red(a) - sdl.red(b)) <= 8 and abs(sdl.green(a) - sdl.green(b)) <= 8 and abs(sdl.blue(a) - sdl.blue(b)) <= 8
+
+defn shot(commands, window)
+  drawn = sdl.draw(concat([{kind: "clear", color: black}], commands), window)
+  {window: drawn, image: probe.pixels(drawn, 320, 200)}
+end
+
+box(x, y, w, h, radius, alpha) = {kind: "box", x: x, y: y, width: w, height: h, color: red, radius: radius, alpha: alpha}
+
+defn check()
+  w = sdl.open("test", 320, 200, font)?
+  a = shot([box(20, 20, 100, 60, 6, 255)], w)
+  print(near(probe.pixel(70, 50, a.image), red))
+  print(near(probe.pixel(20, 20, a.image), black))
+  print(near(probe.pixel(119, 79, a.image), black))
+  b = shot([box(20, 20, 100, 60, 6, 127.5)], a.window)
+  print(near(probe.pixel(70, 50, b.image), half_red))
+  c1 = shot([box(20, 20, 0, 60, 6, 255), box(20, 20, 60, -3, 6, 255)], b.window)
+  print(probe.differing(0, 0, 320, 200, black, c1.image) == 0)
+  d = shot([box(20, 20, 100, 10, 24, 255)], c1.window)
+  print(near(probe.pixel(70, 25, d.image), red))
+  print(near(probe.pixel(70, 20, d.image), red))
+  print(near(probe.pixel(70, 29, d.image), red))
+  print(near(probe.pixel(22, 25, d.image), red))
+  print(near(probe.pixel(20, 20, d.image), black))
+  e = shot([{kind: "ring", x: 20, y: 20, width: 100, height: 60, color: red, radius: 6}], d.window)
+  print(near(probe.pixel(70, 50, e.image), black))
+  print(near(probe.pixel(70, 20, e.image), red))
+  print(near(probe.pixel(20, 50, e.image), red))
+  f = shot([box(20, 20, 100, 60, 0, 127)], e.window)
+  print(near(probe.pixel(20, 20, f.image), half_red))
+  g = shot([{kind: "fade", x: 20, y: 20, width: 200, height: 26, color: 0xFFFFFF, radius: 6}], f.window)
+  print(mod(probe.pixel(210, 33, g.image), 256) < mod(probe.pixel(30, 33, g.image), 256) - 80)
+  print(near(probe.pixel(20, 20, g.image), black))
+  print(near(probe.pixel(20, 45, g.image), 0xFFFFFF))
+  sdl.frame([{kind: "clear", color: black}], g.window)
+  print(sdl.close(g.window))
+  Ok("closed")
+end
+
+print(check())

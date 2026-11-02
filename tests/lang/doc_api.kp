@@ -11,6 +11,23 @@ defn undocumented(a, b = 1)
   a + b
 end
 
+(** Two lines
+    of documentation.
+      documented(1) --> 2 **)
+documented(x) = x + 1
+
+(** On one line. *)
+short(x) = x
+
+(* Not documentation.
+hidden(x) = x *)
+plain(x) = x
+
+is_doc_block() = starts_with("documented(x)", doc(documented)) and contains("Two lines", doc(documented)) and contains("of documentation.", doc(documented))
+is_doc_block_on_one_line() = contains("On one line.", doc(short))
+is_doc_block_keeps_no_marks() = not contains("(*", doc(documented)) and not contains("*)", doc(documented)) and not contains("*)", doc(short))
+is_doc_plain_comment_is_no_doc() = not contains("Not documentation", doc(plain))
+
 is_doc_of_a_kepler_function() = contains("One more", doc("inc")) and starts_with("inc(x)", doc("inc"))
 is_doc_keeps_the_examples() = contains("inc(1) --> 2", doc("inc"))
 is_doc_of_a_defn() = starts_with("find_first(f, xs)", doc("find_first"))

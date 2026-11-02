@@ -1,0 +1,55 @@
+-- The interactions of the example, through its update function.
+use sdl
+use "../../examples/material_scene" as scene
+
+fonts = "../../fonts/"
+
+defn opened()
+  first = sdl.open("test", 1280, 720, "$(fonts)AdwaitaSans-Regular.ttf", size = 13, light = true)?
+  second = sdl.add_font("strong", "$(fonts)NotoSans-Medium.ttf", 13, first, light = true)?
+  third = sdl.add_font("code", "$(fonts)JetBrainsMono-Regular.ttf", 13, second)?
+  sdl.add_font("large", "$(fonts)AdwaitaSans-Regular.ttf", 42, third, light = true)
+end
+
+mouse(action, x, y) = {kind: "mouse", action: action, x: x, y: y, button: 1, amount: 0.0}
+
+defn check()
+  begun = scene.start(opened()?)?
+  s = begun.state
+  print(not scene.moving(s))
+  n = s.nodes[4]
+  s = scene.update(mouse("down", n.x + 20, n.y + 10), s)
+  print(s.picked == 4)
+  s = scene.update(mouse("move", n.x + 60, n.y - 30), s)
+  print(s.nodes[4].x == n.x + 40 and s.nodes[4].y == n.y - 40)
+  s = scene.update(mouse("up", n.x + 60, n.y - 30), s)
+  s = scene.update(mouse("down", 1000, 500), s)
+  print(s.picked == 0)
+  s = scene.update(mouse("up", 1000, 500), s)
+  rough = scene.slider_rect(s.rects.details, 1)
+  s = scene.update(mouse("down", rough.x + rough.width - 1, rough.y + 5), s)
+  print(s.rough > 0.9 and s.dragging == 2)
+  print(scene.moving(s))
+  s = scene.update(mouse("up", 0, 0), s)
+  s = scene.update({kind: "tick", seconds: 0.05}, s)
+  print(s.shown_rough > 0.32 and s.shown_rough < 1.0)
+  for k in 1:10
+    s = scene.update({kind: "tick", seconds: 0.05}, s)
+  end
+  print(not scene.moving(s))
+  s = scene.update(mouse("down", 150, 200), s)
+  s = scene.update(mouse("move", 250, 200), s)
+  print(abs(s.light - 1.4) < 0.001 and s.dragging == 3)
+  s = scene.update(mouse("up", 250, 200), s)
+  s = scene.update({kind: "key", key: "t"}, s)
+  print(not s.dark)
+  s = scene.update({kind: "resize", width: 900, height: 500}, s)
+  print(s.rects.graph.width < 736 and s.width == 900)
+  s = scene.update({kind: "resize", width: 40, height: 30}, s)
+  print(length(scene.view(s)) > 10)
+  print(is_missing(scene.update({kind: "quit"}, s)))
+  print(sdl.close(begun.window))
+  Ok("closed")
+end
+
+print(check())

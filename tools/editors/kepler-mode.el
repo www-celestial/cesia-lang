@@ -3,6 +3,9 @@
 (defvar kepler-mode-syntax-table
   (let ((table (make-syntax-table)))
     (modify-syntax-entry ?- ". 12" table)
+    (modify-syntax-entry ?\( "()1nb" table)
+    (modify-syntax-entry ?* ". 23nb" table)
+    (modify-syntax-entry ?\) ")(4nb" table)
     (modify-syntax-entry ?\n ">" table)
     (modify-syntax-entry ?_ "w" table)
     table))

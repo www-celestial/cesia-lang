@@ -1,0 +1,341 @@
+-- The scene of a material editor: a sphere lit by Kepler, a graph of nodes, details, a palette and a code pane. examples/material.kp
+-- runs it, and bench/ui_frame.kp measures it. c is used for one thing: the pixels of the sphere, which follow the mouse.
+use c
+use sdl
+use ui
+
+sharp_size = 208
+quick_size = 64
+tint_color = 0xD98F4E
+vec = 0xE8C547
+number = 0x8BC34A
+channel = 0xE5534B
+
+pin(name, color) = {name: name, color: color}
+
+nodes = [
+  {x: 330, y: 126, width: 150, title: "Base Tint", color: 0x6E7B2A, inputs: [], outputs: [pin("RGB", vec)], body: 64},
+  {x: 330, y: 258, width: 150, title: "T_Brushed_D", color: 0x2A6FA8, inputs: [pin("UVs", vec)], outputs: [pin("RGB", vec), pin("R", channel)], body: 80},
+  {x: 560, y: 176, width: 112, title: "Multiply", color: 0x3F7A54, inputs: [pin("A", vec), pin("B", vec)], outputs: [pin("", vec)], body: 0},
+  {x: 560, y: 384, width: 112, title: "Metallic", color: 0x3F7A54, inputs: [], outputs: [pin("", number)], body: 0},
+  {x: 560, y: 452, width: 112, title: "Roughness", color: 0x3F7A54, inputs: [], outputs: [pin("", number)], body: 0},
+  {x: 790, y: 126, width: 200, title: "M_Surface", color: 0x7A5A2E, outputs: [], body: 0, inputs: [pin("Base Color", vec), pin("Metallic", number), pin("Specular", number), pin("Roughness", number),
+    pin("Anisotropy", number), pin("Emissive Color", number), pin("Opacity", number), pin("Normal", number), pin("Tangent", number), pin("Ambient Occlusion", number)]}
+]
+
+link(from, output, to, input, color) = {from: from, output: output, to: to, input: input, color: color}
+links = [link(1, 1, 3, 1, vec), link(2, 1, 3, 2, vec), link(3, 1, 6, 1, vec), link(4, 1, 6, 2, number), link(5, 1, 6, 4, number), link(2, 2, 6, 3, channel)]
+
+row(name) = {name: name, header: false}
+head(name) = {name: name, header: true}
+palette = [head("Math"), row("Add"), row("Lerp"), row("Multiply"), row("Power"), row("Saturate"), head("Texture"), row("TextureCoordinate"), row("TextureSample"), row("Panner"),
+  head("Constants"), row("Constant"), row("Constant3Vector"), row("Time"), head("Utility"), row("Fresnel"), row("If"), row("StaticSwitch"), row("VertexNormal")]
+
+menus = ["File", "Edit", "Asset", "Window", "Tools", "Help"]
+
+defn tools(th)
+  tool = (shape, name) -> {shape: shape, name: name, color: th.muted}
+  [tool(ui.icons.save, "Save"), tool(ui.icons.browse, "Browse"), missing, {shape: ui.icons.apply, name: "Apply", color: 0x57B368}, missing, tool(ui.icons.search, "Search"), tool(ui.icons.home, "Home"),
+    tool(ui.icons.hierarchy, "Hierarchy"), missing, {shape: ui.icons.live, name: "Live Update", color: 0x3B9BFF}, tool(ui.icons.stats, "Stats")]
+end
+
+clamp01(x) = max(0.0, min(1.0, x))
+smooth(t) = t * t * (3.0 - 2.0 * t)
+mix(a, b, t) = a + (b - a) * t
+
+-- The sphere: a diffuse part, a highlight that tightens as roughness falls, and a sky that metal reflects.
+defn shade_sphere(block, n, rough, metal, turn)
+  radius = n / 2.0 - 1.5
+  center = n / 2.0
+  lx = -0.46 * cos(turn) + 0.634 * sin(turn)
+  ly = 0.62
+  lz = 0.46 * sin(turn) + 0.634 * cos(turn)
+  size = sqrt(lx * lx + ly * ly + (lz + 1.0) * (lz + 1.0))
+  hx = lx / size
+  hy = ly / size
+  hz = (lz + 1.0) / size
+  smoothness = 1.0 - rough
+  power = 4.0 + 900.0 * smoothness * smoothness * smoothness
+  strength = 0.25 + 3.2 * smoothness * smoothness
+  sheen = 1.0 - rough * 0.82
+  spread = 0.04 + rough * 0.9
+  br = 0.72
+  bg = 0.31
+  bb = 0.09
+  fr = mix(0.04, br, metal)
+  fg = mix(0.04, bg, metal)
+  fb = mix(0.04, bb, metal)
+  matte = 1.0 - metal
+  for y in 0:(n - 1)
+    ny = (center - y - 0.5) / radius
+    for x in 0:(n - 1)
+      nx = (x + 0.5 - center) / radius
+      r2 = nx * nx + ny * ny
+      if r2 >= 1.06
+        c.set("u32", (y * n + x) * 4, 0, block)
+      else
+        nz = sqrt(max(0.0, 1.0 - r2))
+        coverage = clamp01((1.0 - sqrt(r2)) * radius + 0.5)
+        diffuse = max(0.0, nx * lx + ny * ly + nz * lz)
+        nh = max(0.0, nx * hx + ny * hy + nz * hz)
+        spec = strength * (nh ^ power)
+        edge = 1.0 - nz
+        rim = edge * edge * edge * edge * edge
+        up = 2.0 * nz * ny
+        horizon = smooth(clamp01((up + spread) / (2.0 * spread)))
+        env = mix(0.04 + 0.10 * clamp01(-up), 0.34 + 0.72 * clamp01(up), horizon)
+        light = 0.10 + 0.95 * diffuse
+        r = br * matte * light + fr * env + (fr + (1.0 - fr) * rim) * spec + rim * 0.08 * sheen
+        g = bg * matte * light + fg * env + (fg + (1.0 - fg) * rim) * spec + rim * 0.08 * sheen
+        b = bb * matte * light + fb * env + (fb + (1.0 - fb) * rim) * spec + rim * 0.09 * sheen
+        pr = sdl.whole_number(255.0 * sqrt(1.0 - exp(-1.5 * r)))
+        pg = sdl.whole_number(255.0 * sqrt(1.0 - exp(-1.5 * g)))
+        pb = sdl.whole_number(255.0 * sqrt(1.0 - exp(-1.5 * b)))
+        c.set("u32", (y * n + x) * 4, pr + pg * 256 + pb * 65536 + sdl.whole_number(coverage * 255.0) * 0x1000000, block)
+      end
+    end
+  end
+end
+
+-- The panels follow the size of the window.
+defn layout(w, h)
+  body = {x: 4, y: 68, width: max(0, w - 8), height: max(0, h - 72)}
+  columns = ui.left(292, body)
+  sides = ui.right(236, columns.rest)
+  center = ui.left(4, ui.right(4, sides.rest).rest).rest
+  stack = ui.top(250, columns.part)
+  pane = ui.bottom(192, center)
+  {menu: {x: 0, y: 0, width: w, height: 24}, tools: {x: 0, y: 28, width: w, height: 32}, viewport: stack.part, details: ui.top(4, stack.rest).rest, graph: ui.bottom(4, pane.rest).rest, code: pane.part, palette: sides.part}
+end
+
+graph_area(rect) = {x: rect.x + 2, y: rect.y + 28, width: max(0, rect.width - 4), height: max(0, rect.height - 30)}
+palette_area(rect) = {x: rect.x + 8, y: rect.y + 60, width: max(0, rect.width - 16), height: max(0, rect.height - 68)}
+
+-- The slider k of the details: 0 for Metallic, 1 for Roughness.
+slider_rect(details, k) = {x: details.x + 130, y: details.y + 246 + k * 26, width: max(0, details.width - 138), height: 22}
+
+defn start(window)
+  sharp = sdl.image(sharp_size, sharp_size, window)?
+  quick = sdl.image(quick_size, quick_size, sharp.window)?
+  brushed = sdl.image(62, 62, quick.window)?
+  sky = sdl.image(2, 32, brushed.window)?
+  floor_image = sdl.image(64, 16, sky.window)?
+  w = floor_image.window
+  sdl.fill_image((x, y) -> sdl.rgba(132 + mod(y * 37 + div(x, 19) * 13, 15) + mod(y * 5, 6), 132 + mod(y * 37 + div(x, 19) * 13, 15) + mod(y * 5, 6), 132 + mod(y * 37 + div(x, 19) * 13, 15) + mod(y * 5, 6), 255), brushed.image, w)
+  sdl.fill_image((x, y) -> sdl.rgba(51 - y, 59 - y, 69 - div(y * 16, 10), 255), sky.image, w)
+  sdl.fill_image((x, y) -> sdl.rgba(0, 0, 0, sdl.whole_number(200.0 * smooth(clamp01(1.0 - sqrt(((x + 0.5 - 32.0) / 32.0) ^ 2 + ((y + 0.5 - 8.0) / 8.0) ^ 2))))), floor_image.image, w)
+  shade_sphere(sharp.image.pixels, sharp_size, 0.32, 0.9, 0.0)
+  sdl.show_image(sharp.image, w)
+  shade_sphere(quick.image.pixels, quick_size, 0.32, 0.9, 0.0)
+  sdl.show_image(quick.image, w)
+  images = {sharp: sharp.image, quick: quick.image, brushed: brushed.image, sky: sky.image, floor: floor_image.image}
+  hover = ui.list_row(2, palette, palette_area(layout(1280, 720).palette)) * 1.0
+  m = sdl.measure(w)
+  Ok({window: w, state: {width: 1280, height: 720, rects: layout(1280, 720), width_of: m.width, line: m.height, big_width: sdl.text_size("MATERIAL", w, font = "large").width, window: w, images: images, nodes: nodes, picked: 3,
+    dark: true, rough: 0.32, shown_rough: 0.32, metal: 0.9, shown_metal: 0.9, light: 0.0, shown_light: 0.0, lit: {rough: 0.32, metal: 0.9, light: 0.0}, sharp: true, rested: true,
+    hover: hover, target: hover, dragging: 0, grab: {x: 0, y: 0}, last_x: 0, mouse: {x: -1, y: -1}, fps: 0.0}})
+end
+
+theme_of(state) = if state.dark ui.dark else ui.light end
+
+defn code_lines(state)
+  [[[5, "-- The material, as the graph computes it."]],
+   [[1, "defn "], [2, "surface"], [6, "("], [7, "uv"], [6, ")"]],
+   [[6, "  grain = sample(brushed, uv)"]],
+   [[6, "  {base_color: tint * grain.rgb,"]],
+   [[6, "   specular: grain.r,"]],
+   [[6, "   metallic: "], [4, ui.two_decimals(state.shown_metal)], [6, ","]],
+   [[6, "   roughness: "], [4, ui.two_decimals(state.shown_rough)], [6, "}"]],
+   [[1, "end"]]]
+end
+
+label(x, y, words, color) = {kind: "text", x: x, y: y, text: words, color: color}
+
+defn viewport(state, look)
+  r = state.rects.viewport
+  th = look.theme
+  size = 176
+  x = r.x + div(r.width - size, 2)
+  y = r.y + 42
+  counter = if moving(state) and state.fps > 0.0 [label(r.x + r.width - 56, r.y + 226, "$(sdl.whole(state.fps)) fps", 0x8A8A8A)] else [] end
+  flatten([ui.panel("Viewport", r, look), [{kind: "image", image: state.images.sky, x: r.x + 4, y: r.y + 28, width: max(0, r.width - 8), height: max(0, r.height - 32)},
+    {kind: "image", image: state.images.floor, x: x + 6, y: y + 158, width: size - 12, height: 26},
+    {kind: "image", image: if state.sharp state.images.sharp else state.images.quick end, x: x, y: y, width: size, height: size},
+    {kind: "box", x: r.x + 10, y: r.y + 34, width: 34, height: 20, color: 0x2B2F36, radius: 4}, label(r.x + 18, r.y + 34 + div(20 - look.height, 2), "Lit", 0xD0D0D0),
+    {kind: "box", x: r.x + 48, y: r.y + 34, width: 48, height: 20, color: 0x2B2F36, radius: 4}, label(r.x + 56, r.y + 34 + div(20 - look.height, 2), "Persp", 0xA8A8A8),
+    label(r.x + 10, r.y + 226, "Base pass: 184 instructions", 0x8A8A8A)], counter])
+end
+
+defn details(state, look)
+  r = state.rects.details
+  th = look.theme
+  x = r.x + 8
+  w = max(0, r.width - 16)
+  field_x = r.x + 130
+  field_w = max(0, r.width - 138)
+  rect_at = y -> {x: field_x, y: r.y + y, width: field_w, height: 22}
+  name = (y, words) -> label(x + 10, r.y + y + div(22 - look.height, 2), words, th.muted)
+  flatten([ui.panel("Details", r, look), ui.field("Search details", {x: x, y: r.y + 32, width: w, height: 22}, look, hint = true),
+    ui.section("Material", {x: x, y: r.y + 60, width: w, height: 22}, look),
+    [name(86, "Material Domain")], ui.dropdown("Surface", rect_at(86), look),
+    [name(112, "Blend Mode")], ui.dropdown("Opaque", rect_at(112), look),
+    [name(138, "Shading Model")], ui.dropdown("Default Lit", rect_at(138), look),
+    [name(164, "Two Sided")], ui.checkbox(false, rect_at(164), look),
+    ui.section("Parameters", {x: x, y: r.y + 194, width: w, height: 22}, look),
+    [name(220, "Base Color")], ui.swatch(tint_color, "#D98F4E", rect_at(220), look),
+    [name(246, "Metallic")], ui.slider(state.shown_metal, slider_rect(r, 0), look),
+    [name(272, "Roughness")], ui.slider(state.shown_rough, slider_rect(r, 1), look),
+    ui.section("Advanced", {x: x, y: r.y + 304, width: w, height: 22}, look),
+    [name(330, "Tessellation")], ui.checkbox(true, rect_at(330), look),
+    [name(356, "Displacement")], ui.field("0.0", rect_at(356), look)])
+end
+
+defn node_insides(state, look)
+  n = state.nodes
+  th = look.theme
+  [{kind: "box", x: n[1].x + 10, y: n[1].y + 34, width: 56, height: 48, color: tint_color, radius: 4}, {kind: "ring", x: n[1].x + 10, y: n[1].y + 34, width: 56, height: 48, color: th.edge, radius: 4},
+    {kind: "image", image: state.images.brushed, x: n[2].x + 44, y: n[2].y + 34, width: 62, height: 62}, {kind: "ring", x: n[2].x + 44, y: n[2].y + 34, width: 62, height: 62, color: th.edge, radius: 4},
+    label(n[4].x + 13, n[4].y + 32, ui.two_decimals(state.shown_metal), th.muted), label(n[5].x + 13, n[5].y + 32, ui.two_decimals(state.shown_rough), th.muted)]
+end
+
+defn graph(state, look)
+  r = state.rects.graph
+  th = look.theme
+  area = graph_area(r)
+  flatten([ui.panel("Material Graph", r, look, active = true), [{kind: "box", x: area.x, y: area.y, width: area.width, height: area.height, color: th.graph, radius: 4}], ui.grid(area, look),
+    [{kind: "text", font: "large", x: r.x + r.width - 14 - state.big_width, y: r.y + r.height - 56, text: "MATERIAL", color: th.big}, label(r.x + 12, r.y + 34, "M_Surface  >  Material Graph", th.muted), label(r.x + r.width - 62, r.y + 34, "Zoom 1:1", th.muted)],
+    ui.links(links, state.nodes, look), ui.nodes(state.nodes, state.picked, links, look), node_insides(state, look)])
+end
+
+marked_line(state) = match state.dragging
+  1 -> 6
+  2 -> 7
+  else -> 0
+end
+
+defn view(state)
+  th = theme_of(state)
+  look = ui.look(th, state.width_of, state.line)
+  r = state.rects
+  code_area = {x: r.code.x, y: r.code.y + 28, width: r.code.width, height: max(0, r.code.height - 28)}
+  list_area = palette_area(r.palette)
+  flatten([[{kind: "clear", color: th.ground}], ui.menu_bar(menus, "M_Surface", r.menu, look), ui.tool_bar(tools(th), state.mouse, r.tools, look), [{kind: "rect", x: 0, y: 62, width: state.width, height: 1, color: th.edge}],
+    viewport(state, look), details(state, look), graph(state, look), ui.panel("Kepler", r.code, look), [{kind: "box", x: r.code.x + 2, y: r.code.y + 28, width: max(0, r.code.width - 4), height: max(0, r.code.height - 30), color: th.code, radius: 4}], ui.code(code_lines(state), marked_line(state), code_area, look),
+    ui.panel("Palette", r.palette, look), ui.field("Search nodes", {x: r.palette.x + 8, y: r.palette.y + 32, width: max(0, r.palette.width - 16), height: 22}, look, hint = true), ui.list(palette, 4, state.hover, list_area, look)])
+end
+
+-- Something still eases, or the sharp sphere hasn't come back.
+moving(state) = state.dragging == 1 or state.dragging == 2 or not state.rested or not ui.rests(state.shown_rough, state.rough) or not ui.rests(state.shown_metal, state.metal) or not ui.rests(state.shown_light, state.light) or not ui.rests(state.hover, state.target)
+
+defn on_press(state, point)
+  s = state
+  r = s.rects
+  if ui.contains(point, slider_rect(r.details, 0))
+    s.dragging = 1
+    s.metal = ui.slider_value(point, slider_rect(r.details, 0))
+  else if ui.contains(point, slider_rect(r.details, 1))
+    s.dragging = 2
+    s.rough = ui.slider_value(point, slider_rect(r.details, 1))
+  else if ui.contains(point, r.viewport)
+    s.dragging = 3
+    s.last_x = point.x
+  else if ui.contains(point, graph_area(r.graph))
+    s.picked = ui.node_at(point, s.nodes)
+    if s.picked > 0
+      s.dragging = 4
+      s.grab = {x: point.x - s.nodes[s.picked].x, y: point.y - s.nodes[s.picked].y}
+    end
+  end
+  s
+end
+
+defn on_move(state, point)
+  s = state
+  s.mouse = point
+  if s.dragging == 1
+    s.metal = ui.slider_value(point, slider_rect(s.rects.details, 0))
+  else if s.dragging == 2
+    s.rough = ui.slider_value(point, slider_rect(s.rects.details, 1))
+  else if s.dragging == 3
+    s.light = s.light + (point.x - s.last_x) * 0.014
+    s.last_x = point.x
+  else if s.dragging == 4
+    s.nodes = ui.move_node(s.picked, point, s.grab, graph_area(s.rects.graph), s.nodes)
+  end
+  area = palette_area(s.rects.palette)
+  if ui.contains(point, area)
+    s.target = ui.list_row(ui.row_at(point.y, palette, area), palette, area) * 1.0
+  end
+  s
+end
+
+-- While a value moves, the small sphere keeps the frame rate. Once it rests, the sharp one comes back.
+defn relight(state)
+  s = state
+  changed = abs(s.shown_rough - s.lit.rough) + abs(s.shown_metal - s.lit.metal) + abs(s.shown_light - s.lit.light)
+  if changed > 0.004
+    shade_sphere(s.images.quick.pixels, quick_size, s.shown_rough, s.shown_metal, s.shown_light)
+    sdl.show_image(s.images.quick, s.window)
+    s.lit = {rough: s.shown_rough, metal: s.shown_metal, light: s.shown_light}
+    s.sharp = false
+    s.rested = false
+  else if not s.rested and s.dragging == 0
+    shade_sphere(s.images.sharp.pixels, sharp_size, s.shown_rough, s.shown_metal, s.shown_light)
+    sdl.show_image(s.images.sharp, s.window)
+    s.sharp = true
+    s.rested = true
+  end
+  s
+end
+
+defn on_tick(state, seconds)
+  s = state
+  s.shown_rough = ui.ease(s.shown_rough, s.rough, seconds)
+  s.shown_metal = ui.ease(s.shown_metal, s.metal, seconds)
+  s.shown_light = ui.ease(s.shown_light, s.light, seconds)
+  s.hover = ui.ease(s.hover, s.target, seconds)
+  if seconds > 0.0
+    s.fps = if s.fps == 0.0 1.0 / seconds else s.fps + (1.0 / seconds - s.fps) * 0.04 end
+  end
+  relight(s)
+end
+
+defn on_mouse(state, event)
+  s = state
+  point = {x: event.x, y: event.y}
+  if event.action == "down"
+    s = on_press(s, point)
+  else if event.action == "up"
+    s.dragging = 0
+  else if event.action == "move"
+    s = on_move(s, point)
+  end
+  s
+end
+
+defn on_resize(state, event)
+  s = state
+  s.width = event.width
+  s.height = event.height
+  s.rects = layout(event.width, event.height)
+  s
+end
+
+defn on_key(state, event)
+  s = state
+  if event.key == "t"
+    s.dark = not s.dark
+  end
+  s
+end
+
+defn update(event, state)
+  match event.kind
+    "quit" -> missing
+    "key" -> on_key(state, event)
+    "mouse" -> on_mouse(state, event)
+    "tick" -> on_tick(state, event.seconds)
+    "resize" -> on_resize(state, event)
+    else -> state
+  end
+end

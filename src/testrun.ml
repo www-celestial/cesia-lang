@@ -25,7 +25,7 @@ let find_sub s sub =
 
 (* The examples: the indented lines of a comment placed just above a definition. *)
 let examples src =
-  let lines = Array.of_list (String.split_on_char '\n' src) in
+  let lines = Array.of_list (Docs.lines src) in
   let out = ref [] and block = ref [] and native = ref false in
   let collect () =
     List.iter

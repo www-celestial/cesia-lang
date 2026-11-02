@@ -5,3 +5,4 @@ set -u
 cd "$(dirname "$0")/.."
 dune build --profile release 2>&1 | head -20
 timeout -s KILL 60 _build/default/bin/main.exe run --allow ffi=SDL3,ffi=SDL3_ttf bench/frame.kp
+timeout -s KILL 60 _build/default/bin/main.exe run --allow ffi=SDL3,ffi=SDL3_ttf,read bench/ui_frame.kp

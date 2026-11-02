@@ -131,7 +131,38 @@ C++ has no stable binary interface, so `cpp.wrap` generates a small C layer and 
 
 Calling C is total trust: it ignores every permission and limit, and a wrong signature can crash the program.
 
+## Windows and interfaces
+
+A window is a value, and a frame an array of commands. `sdl` draws them: rounded surfaces, fine edges, soft shadows, images, icons and
+curves. `ui` builds them, with pure functions: dark and light themes, rectangles that follow the window, panels, sliders, lists, code
+and graphs of nodes.
+
+```bash
+kepler do material    # a material editor: drag a node, turn the light, move the sliders, press t
+```
+
+```kepler
+use sdl
+use ui
+
+look = ui.look(ui.dark, sdl.measure(window).width, sdl.measure(window).height)
+frame = flatten([ui.panel("Details", area, look), ui.slider(0.5, bar, look)])
+```
+
+`update` gets a `tick` while `moving(state)` is true, and `ui.ease` moves a value at the same speed at any frame rate. A window with
+nothing moving draws nothing. The interface font is Adwaita Sans, titles use Noto Sans Medium, and code JetBrains Mono: all three are in
+`fonts/`, under the SIL Open Font License.
+
 ## Documentation
+
+Comments are `--` for a line and `(* ... *)` for several, which can hold one another. A `(** ... *)` above a definition documents it,
+like `--` lines:
+
+```kepler
+(** The next number.
+      inc(1) --> 2 *)
+inc(x) = x + 1
+```
 
 The documentation comes from the language. A comment just above a definition documents it, and the examples in it run under
 `kepler test`.

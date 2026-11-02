@@ -1,0 +1,323 @@
+-- The surfaces of a professional tool, as commands for sdl: themes, rectangles, widgets and nodes. Everything here is pure, so
+-- it needs no window and no permission. Widgets take a look last and give arrays of commands, which a program joins with flatten.
+
+-- A dark theme: charcoal surfaces, for long hours.
+dark = {ground: 0x101010, code: 0x242424, panel: 0x242424, header: 0x2F2F2F, tab: 0x383838, well: 0x0F0F0F, edge: 0x0A0A0A, line: 0x3A3A3A,
+  ink: 0xD4D4D4, bright: 0xFFFFFF, muted: 0x8E8E8E, faint: 0x5E5E5E, accent: 0x0070E0, fill: 0x2B5E96, hover: 0x323232, picked: 0x1B4A7A,
+  graph: 0x262626, grid_minor: 0x212121, grid_major: 0x191919, body: 0x1B1B1B, big: 0x363636, shadow: 170,
+  syntax: [0xCF8E6D, 0x56A8F5, 0x6AAB73, 0x2AACB8, 0x7A7E85, 0xBCBEC4, 0xC77DBB]}
+
+-- A light theme: a pale blue-gray ground, near-white panels, and white where one reads.
+light = {ground: 0xEBECF0, panel: 0xF7F8FA, header: 0xEBECF0, tab: 0xFFFFFF, well: 0xFFFFFF, edge: 0xDFE1E5, line: 0xD3D5DB, code: 0xFFFFFF,
+  ink: 0x1E1F22, bright: 0x000000, muted: 0x6C707E, faint: 0xA8ADBD, accent: 0x3574F0, fill: 0xC2D6FC, hover: 0xEBECF0, picked: 0xD4E2FF,
+  graph: 0xFFFFFF, grid_minor: 0xF8F8F8, grid_major: 0xF1F1F1, body: 0xFFFFFF, big: 0xEBECF0, shadow: 40,
+  syntax: [0x0033B3, 0x00627A, 0x067D17, 0x1750EB, 0x8C8C8C, 0x080808, 0x871094]}
+
+-- What widgets need: a theme, width(words, font) in pixels, and height, that of a line. sdl.measure gives the last two.
+--   look(dark, (words, font) -> 7, 16).height --> 16
+look(theme, width, height) = {theme: theme, width: width, height: height}
+
+_clamp01(x) = max(0.0, min(1.0, x))
+
+-- Moves a value towards its goal, at a speed that doesn't depend on the frame rate.
+--   ease(1.0, 2.0, 0.0) --> 1.0
+ease(value, goal, seconds, speed = 22.0) = value + (goal - value) * (1.0 - exp(-speed * seconds))
+
+-- Is a value close enough to its goal to stop moving?
+--   rests(1.0, 1.001) --> true
+rests(value, goal) = abs(value - goal) <= 0.002
+
+-- A rectangle made smaller on every side. No size goes below zero.
+--   inset(2, {x: 0, y: 0, width: 10, height: 10}).width --> 6
+inset(n, rect) = {x: rect.x + n, y: rect.y + n, width: max(0, rect.width - 2 * n), height: max(0, rect.height - 2 * n)}
+
+_size(wanted, whole) = max(0, min(wanted, whole))
+
+-- Cuts a width off the left of a rectangle: {part, rest}. No size goes below zero.
+--   left(3, {x: 0, y: 0, width: 10, height: 2}).rest.width --> 7
+defn left(w, rect)
+  size = _size(w, rect.width)
+  {part: {x: rect.x, y: rect.y, width: size, height: rect.height}, rest: {x: rect.x + size, y: rect.y, width: rect.width - size, height: rect.height}}
+end
+
+-- Cuts a width off the right of a rectangle: {part, rest}. No size goes below zero.
+--   right(3, {x: 0, y: 0, width: 10, height: 2}).part.x --> 7
+defn right(w, rect)
+  size = _size(w, rect.width)
+  {part: {x: rect.x + rect.width - size, y: rect.y, width: size, height: rect.height}, rest: {x: rect.x, y: rect.y, width: rect.width - size, height: rect.height}}
+end
+
+-- Cuts a height off the top of a rectangle: {part, rest}. No size goes below zero.
+--   top(3, {x: 0, y: 0, width: 2, height: 10}).rest.y --> 3
+defn top(h, rect)
+  size = _size(h, rect.height)
+  {part: {x: rect.x, y: rect.y, width: rect.width, height: size}, rest: {x: rect.x, y: rect.y + size, width: rect.width, height: rect.height - size}}
+end
+
+-- Cuts a height off the bottom of a rectangle: {part, rest}. No size goes below zero.
+--   bottom(3, {x: 0, y: 0, width: 2, height: 10}).part.y --> 7
+defn bottom(h, rect)
+  size = _size(h, rect.height)
+  {part: {x: rect.x, y: rect.y + rect.height - size, width: rect.width, height: size}, rest: {x: rect.x, y: rect.y, width: rect.width, height: rect.height - size}}
+end
+
+-- Is a point {x, y} inside a rectangle? The right and bottom edges are outside it.
+--   contains({x: 1, y: 1}, {x: 0, y: 0, width: 2, height: 2}) --> true
+contains(point, rect) = point.x >= rect.x and point.x < rect.x + rect.width and point.y >= rect.y and point.y < rect.y + rect.height
+
+-- The value of a slider at a point, from 0.0 to 1.0.
+--   slider_value({x: 5, y: 0}, {x: 0, y: 0, width: 10, height: 2}) --> 0.5
+slider_value(point, rect) = if rect.width <= 0 0.0 else _clamp01((point.x - rect.x) / (rect.width * 1.0)) end
+
+title_height = 26
+pin_row = 24
+
+_box(x, y, w, h, color, radius) = {kind: "box", x: x, y: y, width: w, height: h, color: color, radius: radius}
+_edge(x, y, w, h, color, radius) = {kind: "ring", x: x, y: y, width: w, height: h, color: color, radius: radius}
+_rule(x, y, w, h, color) = {kind: "rect", x: x, y: y, width: max(0, w), height: max(0, h), color: color}
+_label(x, y, words, color) = {kind: "text", x: x, y: y, text: words, color: color}
+_strong(x, y, words, color) = {kind: "text", x: x, y: y, text: words, color: color, font: "strong"}
+_icon(shape, x, y, color) = {kind: "icon", shape: shape, x: x, y: y, color: color}
+_middle(look, y, h) = y + div(h - look.height, 2)
+
+-- The shapes of the tool bar, and the arrow of sections and dropdowns.
+icons = {
+  save: {name: "save", paths: [[3.0, 3.0, 13.0, 3.0, 13.0, 13.0, 3.0, 13.0, 3.0, 3.0], [6.0, 3.0, 6.0, 6.0, 10.0, 6.0, 10.0, 3.0], [5.0, 13.0, 5.0, 9.0, 11.0, 9.0, 11.0, 13.0]], rings: []},
+  browse: {name: "browse", paths: [[2.0, 13.0, 14.0, 13.0, 14.0, 5.0, 8.0, 5.0, 6.5, 3.0, 2.0, 3.0, 2.0, 13.0]], rings: []},
+  apply: {name: "apply", paths: [[3.0, 8.5, 6.5, 12.0, 13.0, 4.5]], rings: []},
+  search: {name: "search", paths: [[10.2, 10.2, 14.0, 14.0]], rings: [[7.0, 7.0, 4.2]]},
+  home: {name: "home", paths: [[2.0, 8.0, 8.0, 2.5, 14.0, 8.0], [4.0, 7.0, 4.0, 13.5, 12.0, 13.5, 12.0, 7.0]], rings: []},
+  hierarchy: {name: "hierarchy", paths: [[8.0, 5.0, 8.0, 7.5], [3.5, 7.5, 12.5, 7.5], [3.5, 7.5, 3.5, 10.0], [12.5, 7.5, 12.5, 10.0]], rings: [[8.0, 3.5, 1.5], [3.5, 12.0, 1.8], [12.5, 12.0, 1.8]]},
+  live: {name: "live", paths: [[9.0, 2.0, 4.0, 9.0, 8.0, 9.0, 7.0, 14.0, 12.0, 7.0, 8.0, 7.0, 9.0, 2.0]], rings: []},
+  stats: {name: "stats", paths: [[3.0, 13.5, 3.0, 9.0], [8.0, 13.5, 8.0, 3.5], [13.0, 13.5, 13.0, 6.5]], rings: []},
+  arrow: {name: "arrow", paths: [[5.0, 6.5, 8.0, 9.5, 11.0, 6.5]], rings: []}
+}
+
+-- A panel and its tab. Only the active panel shows the accent.
+defn panel(title, rect, look, active = false)
+  th = look.theme
+  x = rect.x
+  y = rect.y
+  tab_width = look.width(title, "strong") + 26
+  mark = if active [_rule(x + 8, y + 3, tab_width - 8, 2, th.accent)] else [] end
+  concat(concat([_box(x, y, rect.width, rect.height, th.panel, 4), _edge(x, y, rect.width, rect.height, th.edge, 4), _box(x + 4, y + 3, tab_width, 22, th.tab, 4)], mark),
+    [_strong(x + 17, _middle(look, y + 3, 22), title, th.ink), _rule(x + 1, y + 26, rect.width - 2, 1, th.edge)])
+end
+
+-- A menu bar: names, then a title at the right. Its menus don't open.
+defn menu_bar(items, title, rect, look)
+  th = look.theme
+  out = [_box(rect.x + rect.width - 156, rect.y + 4, 150, 18, th.header, 4), _label(rect.x + rect.width - 144, _middle(look, rect.y + 4, 18), title, th.muted)]
+  x = rect.x + 12
+  for name in items
+    out = push(_label(x, _middle(look, rect.y, rect.height), name, th.ink), out)
+    x = x + look.width(name, "body") + 22
+  end
+  out
+end
+
+-- A tool bar: {shape, name, color} for each tool, missing for a separator. The tool under the mouse answers it.
+defn tool_bar(items, mouse, rect, look)
+  th = look.theme
+  out = []
+  x = rect.x + 12
+  for item in items
+    if is_missing(item)
+      out = push(_rule(x + 4, rect.y + 5, 1, 20, th.line), out)
+      x = x + 14
+    else
+      width = 23 + look.width(item.name, "body")
+      if contains(mouse, {x: x - 7, y: rect.y, width: width + 14, height: rect.height})
+        out = push(_box(x - 7, rect.y + 2, width + 14, 28, th.hover, 4), out)
+      end
+      out = push(_icon(item.shape, x, rect.y + 8, item.color), out)
+      out = push(_label(x + 23, _middle(look, rect.y, rect.height), item.name, th.ink), out)
+      x = x + width + 22
+    end
+  end
+  out
+end
+
+-- A header with an arrow.
+section(name, rect, look) = [_box(rect.x, rect.y, rect.width, rect.height, look.theme.header, 4), _icon(icons.arrow, rect.x + 5, rect.y + 3, look.theme.muted), _strong(rect.x + 24, _middle(look, rect.y, rect.height), name, look.theme.ink)]
+
+-- A sunken field that shows some words, faint if they only say what goes there.
+field(words, rect, look, hint = false) = [_box(rect.x, rect.y, rect.width, rect.height, look.theme.well, 4), _edge(rect.x, rect.y, rect.width, rect.height, look.theme.edge, 4), _label(rect.x + 8, _middle(look, rect.y, rect.height), words, if hint look.theme.faint else look.theme.ink end)]
+
+-- A raised field with an arrow. It doesn't open.
+dropdown(words, rect, look) = [_box(rect.x, rect.y, rect.width, rect.height, look.theme.header, 4), _edge(rect.x, rect.y, rect.width, rect.height, look.theme.edge, 4), _label(rect.x + 8, _middle(look, rect.y, rect.height), words, look.theme.ink), _icon(icons.arrow, rect.x + rect.width - 20, rect.y + 3, look.theme.muted)]
+
+-- A number with two decimals.
+--   two_decimals(0.5) --> "0.50"
+defn two_decimals(x)
+  n = div(floor(x * 100.0 + 0.5), 1)
+  part = mod(n, 100)
+  "$(div(n, 100)).$(if part < 10 "0" else "" end)$part"
+end
+
+-- A bar filled to a value from 0.0 to 1.0, with a tick at its end and the value at the right.
+defn slider(value, rect, look)
+  th = look.theme
+  shown = two_decimals(value)
+  fill_width = rect.width * value
+  [_box(rect.x, rect.y, rect.width, rect.height, th.well, 4), _box(rect.x, rect.y, max(min(10.0, rect.width * 1.0), fill_width), rect.height, th.fill, 4), _edge(rect.x, rect.y, rect.width, rect.height, th.edge, 4),
+    _rule(rect.x + fill_width - 1.0, rect.y + 1, 2, rect.height - 2, th.accent), _label(rect.x + rect.width - 9 - look.width(shown, "body"), _middle(look, rect.y, rect.height), shown, th.bright)]
+end
+
+-- A square, with its mark if on.
+defn checkbox(on, rect, look)
+  th = look.theme
+  y = rect.y + div(rect.height - 16, 2)
+  if on
+    [_box(rect.x, y, 16, 16, th.accent, 4), _icon(icons.apply, rect.x, y, 0xFFFFFF)]
+  else
+    [_box(rect.x, y, 16, 16, th.well, 4), _edge(rect.x, y, 16, 16, th.line, 4)]
+  end
+end
+
+-- A square of color, and its value in a field.
+defn swatch(color, words, rect, look)
+  rest = left(28, rect).rest
+  concat([_box(rect.x, rect.y, rect.height, rect.height, color, 4), _edge(rect.x, rect.y, rect.height, rect.height, look.theme.edge, 4)], field(words, rest, look))
+end
+
+_headers_up_to(k, items) = length(filter(it.header, take(k, items)))
+
+-- The y of row k of a list, with a gap above each header but the first.
+list_row(k, items, rect) = rect.y + (k - 1) * 22 + 7 * max(0, _headers_up_to(k, items) - 1)
+
+-- The row of a list nearest to a height, that isn't a header, or 0.
+defn row_at(y, items, rect)
+  best = 0
+  for k in 1:length(items)
+    if not items[k].header and (best == 0 or abs(list_row(k, items, rect) + 11 - y) < abs(list_row(best, items, rect) + 11 - y))
+      best = k
+    end
+  end
+  best
+end
+
+-- Rows and section headers, each {name, header}. picked is an index or 0. hover is a height or missing, so that it can ease.
+defn list(items, picked, hover, rect, look)
+  th = look.theme
+  out = []
+  if not is_missing(hover) and length(items) > 0
+    out = push(_box(rect.x + 2, hover, rect.width - 4, 22, th.hover, 4), out)
+  end
+  if picked > 0
+    out = push(_box(rect.x + 2, list_row(picked, items, rect), rect.width - 4, 22, th.picked, 4), out)
+  end
+  for k in 1:length(items)
+    y = list_row(k, items, rect)
+    if items[k].header
+      out = concat(out, section(items[k].name, {x: rect.x, y: y, width: rect.width, height: 22}, look))
+    else
+      out = push(_label(rect.x + 18, _middle(look, y, 22), items[k].name, th.ink), out)
+    end
+  end
+  out
+end
+
+_code_text(x, y, words, color) = {kind: "text", x: x, y: y, text: words, color: color, font: "code"}
+
+-- Numbered lines of tokens [role, text], role being an index in the theme's syntax, in the "code" font. marked is a line or 0.
+defn code(lines, marked, rect, look)
+  th = look.theme
+  cw = look.width("M", "code")
+  out = if marked > 0 [_box(rect.x + 4, rect.y + 3 + (marked - 1) * 19, rect.width - 8, 19, th.hover, 4)] else [] end
+  for k in 1:length(lines)
+    y = rect.y + 4 + (k - 1) * 19
+    out = push(_code_text(rect.x + 46 - length("$k") * cw, y, "$k", th.faint), out)
+    x = rect.x + 62
+    for token in lines[k]
+      out = push(_code_text(x, y, token[2], th.syntax[token[1]]), out)
+      x = x + length(token[2]) * cw
+    end
+  end
+  out
+end
+
+-- The lines of a graph, every 16 pixels, and stronger every 128.
+defn grid(rect, look)
+  th = look.theme
+  out = []
+  for k in 0:div(rect.width, 16)
+    out = push(_rule(rect.x + k * 16, rect.y, 1, rect.height, if mod(k, 8) == 0 th.grid_major else th.grid_minor end), out)
+  end
+  for k in 0:div(rect.height, 16)
+    out = push(_rule(rect.x, rect.y + k * 16, rect.width, 1, if mod(k, 8) == 0 th.grid_major else th.grid_minor end), out)
+  end
+  out
+end
+
+-- The height of a node {x, y, width, title, color, inputs, outputs, body}.
+node_height(n) = title_height + max(max(length(n.inputs), length(n.outputs)) * pin_row + n.body, title_height) + 6
+
+-- Where input pin k of a node sits.
+input_at(n, k) = {x: n.x * 1.0, y: n.y + title_height + (k - 0.5) * pin_row}
+
+-- Where output pin k of a node sits, under its body.
+output_at(n, k) = {x: n.x + n.width * 1.0, y: n.y + title_height + n.body + (k - 0.5) * pin_row}
+
+_input_linked(index, k, links) = length(filter(it.to == index and it.input == k, links)) > 0
+_output_linked(index, k, links) = length(filter(it.from == index and it.output == k, links)) > 0
+
+defn _pin(place, color, linked)
+  x = place.x - 5.0
+  y = place.y - 5.0
+  if linked _box(x, y, 10, 10, color, 5) else _edge(x, y, 10, 10, color, 5) end
+end
+
+defn _node(index, n, picked, links, look)
+  th = look.theme
+  h = node_height(n)
+  x = n.x
+  y = n.y
+  out = [{kind: "shadow", x: x, y: y, width: n.width, height: h, alpha: th.shadow}, _box(x, y, n.width, h, th.body, 6), {kind: "fade", x: x, y: y, width: n.width, height: title_height, color: n.color, radius: 6}, _strong(x + 12, _middle(look, y, title_height), n.title, 0xFFFFFF)]
+  outline = if index == picked [_edge(x - 2, y - 2, n.width + 4, h + 4, 0xF5A623, 6), _edge(x - 1, y - 1, n.width + 2, h + 2, 0xF5A623, 6)] else [_edge(x, y, n.width, h, th.edge, 6)] end
+  out = concat(out, outline)
+  for k in 1:length(n.inputs)
+    place = input_at(n, k)
+    out = push(_pin(place, n.inputs[k].color, _input_linked(index, k, links)), out)
+    out = push(_label(x + 13, place.y - div(look.height, 2), n.inputs[k].name, th.ink), out)
+  end
+  for k in 1:length(n.outputs)
+    place = output_at(n, k)
+    out = push(_pin(place, n.outputs[k].color, _output_linked(index, k, links)), out)
+    out = push(_label(x + n.width - 13 - look.width(n.outputs[k].name, "body"), place.y - div(look.height, 2), n.outputs[k].name, th.ink), out)
+  end
+  out
+end
+
+-- Nodes with their title bars, pins, labels and shadows. A pin that no link reaches is hollow. picked is an index or 0.
+nodes(items, picked, links, look) = flatten([_node(k, items[k], picked, links, look) for k in 1:length(items)])
+
+-- The curves between pins, for links {from, output, to, input, color}.
+links(items, node_list, look) = [{kind: "curves", items: [_curve(link, node_list) for link in items]}]
+
+defn _curve(link, node_list)
+  a = output_at(node_list[link.from], link.output)
+  b = input_at(node_list[link.to], link.input)
+  {x0: a.x, y0: a.y, x1: b.x, y1: b.y, color: link.color}
+end
+
+-- The index of the top node under a point, or 0.
+defn node_at(point, node_list)
+  found = 0
+  for k in 1:length(node_list)
+    n = node_list[k]
+    if contains(point, {x: n.x, y: n.y, width: n.width, height: node_height(n)})
+      found = k
+    end
+  end
+  found
+end
+
+-- The nodes with node k moved under a point, where it was held by grab, and kept inside an area.
+defn move_node(k, point, grab, area, node_list)
+  n = node_list[k]
+  next = node_list
+  next[k].x = max(area.x, min(area.x + area.width - n.width, point.x - grab.x))
+  next[k].y = max(area.y, min(area.y + area.height - node_height(n), point.y - grab.y))
+  next
+end

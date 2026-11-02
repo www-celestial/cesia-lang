@@ -27,7 +27,7 @@ let check name want (code, got) =
 
 let () =
   let slow answer host =
-    Unix.sleepf 0.06;
+    Unix.sleepf 0.03;
     answer host
   in
   Kepler_sys.Net.resolver := slow (fun _ -> Unix.inet_addr_loopback);
@@ -36,9 +36,9 @@ let () =
        {|use sys
 use net
 defn ticks()
-  sys.sleep(0.01)
+  sys.sleep(0.005)
   print("tick")
-  sys.sleep(0.01)
+  sys.sleep(0.005)
   print("tick")
 end
 t = spawn(ticks)
@@ -76,7 +76,7 @@ print("done")
        {|use sys
 use net
 t = spawn(() -> net.connect("a.example", 1))
-sys.sleep(0.01)
+sys.sleep(0.005)
 print("end")
 |});
   print_endline "net_test: ok"

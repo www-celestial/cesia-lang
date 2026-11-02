@@ -1,0 +1,4 @@
+comment_open.kp:2:1: This comment is not closed: a closing *) is missing.
+  2 | (* never closed
+    | ^
+exit 1

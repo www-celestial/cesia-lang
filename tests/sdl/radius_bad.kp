@@ -1,0 +1,9 @@
+use sdl
+
+defn check()
+  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  sdl.draw([{kind: "box", x: 0, y: 0, width: 80, height: 80, color: 0, radius: 25}], w)
+  Ok("drawn")
+end
+
+print(check())

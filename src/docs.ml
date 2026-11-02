@@ -6,6 +6,48 @@ let comment_text line =
   let t = String.trim line in
   if String.starts_with ~prefix:"--" t then Some (String.sub t 2 (String.length t - 2)) else None
 
+(* How deep in comments a line ends, starting at this depth. A text or a -- in code hides what follows it. *)
+let depth_after depth line =
+  let n = String.length line in
+  let rec go i d in_text =
+    if i >= n then d
+    else if in_text then go (i + 1) d (line.[i] <> '"')
+    else if i + 1 < n && line.[i] = '(' && line.[i + 1] = '*' then go (i + 2) (d + 1) false
+    else if d > 0 && i + 1 < n && line.[i] = '*' && line.[i + 1] = ')' then go (i + 2) (d - 1) false
+    else if d = 0 && line.[i] = '"' then go (i + 1) d true
+    else if d = 0 && i + 1 < n && line.[i] = '-' && line.[i + 1] = '-' then d
+    else go (i + 1) d false
+  in
+  go 0 depth false
+
+(* The words of one line of a documentation comment, as the line after -- would give them. *)
+let block_text ~first line =
+  let t = if first then String.sub line 3 (String.length line - 3) else line in
+  let t = String.trim (if String.ends_with ~suffix:"**)" t then String.sub t 0 (String.length t - 3) else if String.ends_with ~suffix:"*)" t then String.sub t 0 (String.length t - 2) else t) in
+  let n = String.length line in
+  let rec spaces i = if i < n && line.[i] = ' ' then spaces (i + 1) else i in
+  let extra = if first then 0 else max 0 (spaces 0 - 4) in
+  "-- " ^ String.make extra ' ' ^ t
+
+(* The lines of a source with its comment blocks read: a (** ... *) at the start of a line becomes -- lines, and any other block
+   empty lines, so that its contents aren't taken for definitions. Lines keep their numbers. *)
+let lines src =
+  let depth = ref 0 and doc = ref false in
+  List.map
+    (fun line ->
+       let before = !depth in
+       depth := depth_after before line;
+       if before > 0 then (if !doc then block_text ~first:false line else "")
+       else if String.starts_with ~prefix:"(*" line then begin
+         doc := String.starts_with ~prefix:"(**" line && String.length line > 4;
+         if !doc then block_text ~first:true line else ""
+       end
+       else begin
+         doc := false;
+         line
+       end)
+    (String.split_on_char '\n' src)
+
 let is_name_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c >= '\128'
 
@@ -82,7 +124,7 @@ let entries src =
            add rest
          end;
          block := [])
-    (String.split_on_char '\n' src);
+    (lines src);
   close_native ();
   List.rev !out
 

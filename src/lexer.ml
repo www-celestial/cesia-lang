@@ -61,6 +61,30 @@ let new_line st =
   st.line <- st.line + 1;
   st.line_start <- st.i
 
+(* (* ... *), which can hold another one. *)
+let block_comment st =
+  let pos = pos_at st st.i in
+  let n = String.length st.src in
+  let depth = ref 0 in
+  let looking = ref true in
+  while !looking do
+    if st.i >= n then error st pos Messages.comment_not_closed
+    else if st.src.[st.i] = '(' && peek_at st 1 = '*' then begin
+      incr depth;
+      st.i <- st.i + 2
+    end
+    else if st.src.[st.i] = '*' && peek_at st 1 = ')' then begin
+      decr depth;
+      st.i <- st.i + 2;
+      if !depth = 0 then looking := false
+    end
+    else begin
+      let line_end = st.src.[st.i] = '\n' in
+      st.i <- st.i + 1;
+      if line_end then new_line st
+    end
+  done
+
 let number st start_pos sp =
   let s = st.src and n = String.length st.src in
   let start = st.i in
@@ -123,6 +147,9 @@ let rec scan st ~in_code : token array =
         sp := true
       | '-' when peek_at st 1 = '-' ->
         while st.i < n && s.[st.i] <> '\n' do st.i <- st.i + 1 done;
+        sp := true
+      | '(' when peek_at st 1 = '*' ->
+        block_comment st;
         sp := true
       | '"' ->
         let pos = pos_at st st.i in

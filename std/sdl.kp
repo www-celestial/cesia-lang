@@ -6,6 +6,15 @@ use sys
 init_video = 0x20
 window_resizable = 0x20
 max_texts = 8192
+max_images = 4096
+max_curves = 1024
+max_shared_masks = 512
+mask_entry = 96
+mask_key = 70
+curve_points = 25
+curve_across = 4
+blend_alpha = 1
+pixels_rgba = 0x16762004
 
 -- The event offsets read below are those of the ABI of SDL 3.2.
 version_ok(version) = version >= 3002000
@@ -32,7 +41,18 @@ defn bind_sdl(lib)
   free = f("SDL_free", ["ptr"], "void")?
   set_title = f("SDL_SetWindowTitle", ["ptr", "text"], "bool")?
   start_text = f("SDL_StartTextInput", ["ptr"], "bool")?
-  Ok({set_clipboard: set_clipboard, get_clipboard: get_clipboard, free: free, set_title: set_title, poll: poll, start_text: start_text, version: version, init: init, error: error, create_window: create_window, create_renderer: create_renderer,
+  create_texture = f("SDL_CreateTexture", ["ptr", "u32", "i32", "i32", "i32"], "ptr")?
+  update_texture = f("SDL_UpdateTexture", ["ptr", "ptr", "ptr", "i32"], "bool")?
+  nine = f("SDL_RenderTexture9Grid", ["ptr", "ptr", "ptr", "f32", "f32", "f32", "f32", "f32", "ptr"], "bool")?
+  color_mod = f("SDL_SetTextureColorMod", ["ptr", "u8", "u8", "u8"], "bool")?
+  alpha_mod = f("SDL_SetTextureAlphaMod", ["ptr", "u8"], "bool")?
+  texture_blend = f("SDL_SetTextureBlendMode", ["ptr", "u32"], "bool")?
+  draw_blend = f("SDL_SetRenderDrawBlendMode", ["ptr", "u32"], "bool")?
+  render_texture = f("SDL_RenderTexture", ["ptr", "ptr", "ptr", "ptr"], "bool")?
+  render_tiled = f("SDL_RenderTextureTiled", ["ptr", "ptr", "ptr", "f32", "ptr"], "bool")?
+  geometry = f("SDL_RenderGeometry", ["ptr", "ptr", "ptr", "i32", "ptr", "i32"], "bool")?
+  Ok({geometry: geometry, render_texture: render_texture, render_tiled: render_tiled, create_texture: create_texture, update_texture: update_texture, nine: nine, color_mod: color_mod, alpha_mod: alpha_mod,
+    texture_blend: texture_blend, draw_blend: draw_blend, set_clipboard: set_clipboard, get_clipboard: get_clipboard, free: free, set_title: set_title, poll: poll, start_text: start_text, version: version, init: init, error: error, create_window: create_window, create_renderer: create_renderer,
     vsync: vsync, color: color, clear: clear, fill_rect: fill_rect, present: present,
     destroy_renderer: destroy_renderer, destroy_window: destroy_window, quit: quit})
 end
@@ -52,7 +72,9 @@ defn bind_ttf(lib)
   close_font = f("TTF_CloseFont", ["ptr"], "void")?
   destroy_engine = f("TTF_DestroyRendererTextEngine", ["ptr"], "void")?
   quit = f("TTF_Quit", [], "void")?
-  Ok({init: init, create_engine: create_engine, open_font: open_font, create_text: create_text, set_text: set_text,
+  set_font = f("TTF_SetTextFont", ["ptr", "ptr"], "bool")?
+  hinting = f("TTF_SetFontHinting", ["ptr", "i32"], "void")?
+  Ok({set_font: set_font, hinting: hinting, init: init, create_engine: create_engine, open_font: open_font, create_text: create_text, set_text: set_text,
     color: color, draw_text: draw_text, string_size: string_size, destroy_text: destroy_text, close_font: close_font,
     destroy_engine: destroy_engine, quit: quit})
 end
@@ -73,7 +95,8 @@ defn checked(succeeded, window)
 end
 
 -- The font comes before the window: a missing font should open nothing on screen.
-defn open(title, width, height, font, size = 15, vsync = true)
+-- A proportional font spaces its letters better with light = true.
+defn open(title, width, height, font, size = 15, vsync = true, light = false)
   sdl_api = bind_sdl(c.open("SDL3", version = 0)?)?
   ttf_api = bind_ttf(c.open("SDL3_ttf", version = 0)?)?
   if not version_ok(sdl_api.version())
@@ -81,7 +104,7 @@ defn open(title, width, height, font, size = 15, vsync = true)
   else
     done(sdl_api.init(init_video), sdl_api)?
     done(ttf_api.init(), sdl_api)?
-    made = opened(sdl_api, ttf_api, title, width, height, font, size, vsync)
+    made = opened(sdl_api, ttf_api, title, width, height, font, size, vsync, light)
     if is_err(made)
       ttf_api.quit()
       sdl_api.quit(init_video)
@@ -91,13 +114,21 @@ defn open(title, width, height, font, size = 15, vsync = true)
 end
 
 -- Each step undoes the ones before it if it fails: the program gets an Err and can go on.
-defn opened(sdl_api, ttf_api, title, width, height, font, size, vsync)
+defn opened(sdl_api, ttf_api, title, width, height, font, size, vsync, light)
   loaded = some(ttf_api.open_font(font, size), sdl_api)?
+  hint(loaded, light, ttf_api)
   made = on_screen(sdl_api, ttf_api, loaded, title, width, height, vsync)
   if is_err(made)
     ttf_api.close_font(loaded)
   end
   made
+end
+
+-- Light hinting with subpixel rendering, for a font that asks for it.
+defn hint(font, light, ttf_api)
+  if light
+    ttf_api.hinting(font, 4)
+  end
 end
 
 -- Opens the window, the renderer and the text engine, and undoes what it did if one fails.
@@ -114,6 +145,7 @@ end
 defn drawing(sdl_api, ttf_api, loaded, created, vsync)
   renderer = some(sdl_api.create_renderer(created, missing), sdl_api)?
   sdl_api.vsync(renderer, if vsync 1 else 0 end)
+  sdl_api.draw_blend(renderer, blend_alpha)
   made = text_engine(sdl_api, ttf_api, loaded, created, renderer)
   if is_err(made)
     sdl_api.destroy_renderer(renderer)
@@ -129,9 +161,27 @@ defn text_engine(sdl_api, ttf_api, loaded, created, renderer)
     ttf_api.destroy_engine(engine)
     return started
   end
-  Ok({sdl: sdl_api, ttf: ttf_api, window: created, renderer: renderer, engine: engine, font: loaded,
+  Ok({sdl: sdl_api, ttf: ttf_api, window: created, renderer: renderer, engine: engine, font: loaded, fonts: dict([{key: "body", value: loaded}]), shown_fonts: [],
       rect: c.alloc(16), out_width: c.alloc(4), out_height: c.alloc(4), event: c.alloc(128),
-      objects: c.alloc(16 + max_texts * 8), drawn: 0, shown: [], used: 0})
+      objects: c.alloc(16 + max_texts * 8), images: c.alloc(8 + max_images * 8), masks: dict(), image_blocks: [], curve_blocks: [], curves_retired: [], curve_used: 0, mask_table: c.alloc(8 + max_shared_masks * mask_entry), curve_writes: 0, drawn: 0, shown: [], used: 0})
+end
+
+-- Adds a font under a name that text commands give as font: an Ok of the window, or an Err if it can't be read.
+defn add_font(name, path, size, window, light = false)
+  loaded = some(window.ttf.open_font(path, size), window.sdl)?
+  hint(loaded, light, window.ttf)
+  next = window
+  next.fonts = put(name, loaded, window.fonts)
+  Ok(next)
+end
+
+-- The font of this name, which a window must have.
+defn font_named(name, window)
+  found = get(name, window.fonts)
+  if is_missing(found)
+    panic("This window has no font ""$name"".")
+  end
+  found
 end
 
 -- The clipboard, shared with the other programs.
@@ -203,22 +253,440 @@ defn object_at(position, window)
   end
 end
 
--- Draws a text: a command {kind: "text", text, x, y, color}.
+-- A number rounded to an integer, for the arguments that take one.
+whole_number(x) = div(floor(x + 0.5), 1)
+
+-- The font of a text command, which may not name one.
+font_of(one) = match one
+  {font} -> font
+  else -> "body"
+end
+
+-- The alpha of a command, which may not give one.
+alpha_of(one) = match one
+  {alpha} -> whole_number(alpha)
+  else -> 255
+end
+
+-- Draws a text: a command {kind: "text", text, x, y, color}, with a font and an alpha if it wants.
 defn draw_text(one, window)
   position = window.used + 1
   object = object_at(position, window)
   if position > length(window.shown)
     window.shown = push("", window.shown)
+    window.shown_fonts = push("", window.shown_fonts)
+  end
+  name = font_of(one)
+  if window.shown_fonts[position] != name
+    checked(window.ttf.set_font(object, font_named(name, window)), window)
+    window.shown_fonts[position] = name
   end
   if window.shown[position] != one.text
     checked(window.ttf.set_text(object, one.text, 0), window)
     window.shown[position] = one.text
   end
   color = one.color
-  checked(window.ttf.color(object, red(color), green(color), blue(color), 255), window)
+  checked(window.ttf.color(object, red(color), green(color), blue(color), alpha_of(one)), window)
   checked(window.ttf.draw_text(object, one.x, one.y), window)
   window.used = position
   window
+end
+
+-- Counts a texture, in a block shared by every copy of the window. SDL frees textures with the renderer.
+defn _remember(texture, window)
+  count = c.get("i64", 0, window.images)
+  if count >= max_images
+    panic("A window can't hold more than $max_images images.")
+  end
+  c.set("ptr", 8 + count * 8, texture, window.images)
+  c.set("i64", 0, count + 1, window.images)
+end
+
+-- A white texture whose alpha, and gray for a shaded one, come from shade(x, y) as {gray, alpha}.
+defn _shaded(width, height, shade, window)
+  pixels = c.alloc(width * height * 4)
+  for y in 0:(height - 1)
+    for x in 0:(width - 1)
+      p = shade(x, y)
+      v = p.gray
+      c.set("u32", (y * width + x) * 4, v + v * 256 + v * 65536 + whole_number(p.alpha * 255.0) * 0x1000000, pixels)
+    end
+  end
+  texture = window.sdl.create_texture(window.renderer, pixels_rgba, 0, width, height)
+  if is_missing(texture)
+    panic(window.sdl.error())
+  end
+  checked(window.sdl.update_texture(texture, missing, pixels, width * 4), window)
+  checked(window.sdl.texture_blend(texture, blend_alpha), window)
+  c.free(pixels)
+  _remember(texture, window)
+  texture
+end
+
+-- The mask of a key in the table that every copy of the window shares, or missing.
+defn _shared_mask(key, window)
+  table = window.mask_table
+  size = byte_length(key)
+  for k in 0:(c.get("i64", 0, table) - 1)
+    at = 8 + k * mask_entry
+    if c.get("u16", at + 24, table) == size and c.load(at + 26, size, table) == key
+      return {texture: c.get("ptr", at, table), left: c.get("i32", at + 8, table), right: c.get("i32", at + 12, table), top: c.get("i32", at + 16, table), bottom: c.get("i32", at + 20, table)}
+    end
+  end
+  missing
+end
+
+-- Records a mask in the shared table, if it has room. Gives the mask.
+defn _share_mask(key, made, window)
+  table = window.mask_table
+  count = c.get("i64", 0, table)
+  if count < max_shared_masks and byte_length(key) <= mask_key
+    at = 8 + count * mask_entry
+    c.set("ptr", at, made.texture, table)
+    c.set("i32", at + 8, made.left, table)
+    c.set("i32", at + 12, made.right, table)
+    c.set("i32", at + 16, made.top, table)
+    c.set("i32", at + 20, made.bottom, table)
+    c.set("u16", at + 24, byte_length(key), table)
+    c.store(key, at + 26, table)
+    c.set("i64", 0, count + 1, table)
+  end
+  made
+end
+
+-- A mask made once per key, whatever the copy of the window: {mask: {texture, left, right, top, bottom}, window}.
+defn _mask(key, width, height, left, right, top, bottom, shade, window)
+  found = get(key, window.masks)
+  if not is_missing(found)
+    return {mask: found, window: window}
+  end
+  shared = _shared_mask(key, window)
+  made = if is_missing(shared) _share_mask(key, {texture: _shaded(width, height, shade, window), left: left, right: right, top: top, bottom: bottom}, window) else shared end
+  next = window
+  next.masks = put(key, made, window.masks)
+  {mask: made, window: next}
+end
+
+-- Draws a mask stretched as a 9-grid, tinted by the color of a command.
+defn _stamp(made, scale, x, y, width, height, color, alpha, window)
+  texture = made.texture
+  checked(window.sdl.color_mod(texture, red(color), green(color), blue(color)), window)
+  checked(window.sdl.alpha_mod(texture, alpha), window)
+  c.set("f32", 0, x, window.rect)
+  c.set("f32", 4, y, window.rect)
+  c.set("f32", 8, width, window.rect)
+  c.set("f32", 12, height, window.rect)
+  checked(window.sdl.nine(window.renderer, texture, missing, made.left * 1.0, made.right * 1.0, made.top * 1.0, made.bottom * 1.0, scale, window.rect), window)
+  window
+end
+
+_clamp01(x) = max(0.0, min(1.0, x))
+_smooth(t) = t * t * (3.0 - 2.0 * t)
+-- How much of a pixel at distance d from a center lies inside a radius.
+_inside(radius, d) = _clamp01(radius + 0.5 - d)
+
+-- The distance from a pixel to the 2-pixel middle of a shape of this size.
+defn _middle_distance(x, y, width, height)
+  dx = max(0.0, abs(x + 0.5 - width / 2.0) - 1.0)
+  dy = max(0.0, abs(y + 0.5 - height / 2.0) - 1.0)
+  sqrt(dx * dx + dy * dy)
+end
+
+-- The largest radius that a rectangle can take, so that a 9-grid doesn't overlap itself.
+defn _radius_of(one)
+  radius = one.radius
+  if radius < 0 or radius > 24
+    panic("A radius goes from 0 to 24, not $radius.")
+  end
+  max(0, min(radius, div(div(floor(min(one.width, one.height)), 1), 2)))
+end
+
+_round_mask(r, window) = _mask("box$r", 2 * r + 2, 2 * r + 2, r, r, r, r, (x, y) -> {gray: 255, alpha: _inside(r * 1.0, _middle_distance(x, y, 2 * r + 2, 2 * r + 2))}, window)
+
+defn _ring_alpha(r, x, y)
+  d = _middle_distance(x, y, 2 * r + 2, 2 * r + 2)
+  _inside(r * 1.0, d) - _inside(r - 1.0, d)
+end
+
+_ring_mask(r, window) = _mask("ring$r", 2 * r + 2, 2 * r + 2, r, r, r, r, (x, y) -> {gray: 255, alpha: _ring_alpha(r, x, y)}, window)
+
+-- Fills a rectangle with an alpha, which draw_rect doesn't take.
+defn _fill(one, alpha, window)
+  c.set("f32", 0, one.x, window.rect)
+  c.set("f32", 4, one.y, window.rect)
+  c.set("f32", 8, one.width, window.rect)
+  c.set("f32", 12, one.height, window.rect)
+  checked(window.sdl.color(window.renderer, red(one.color), green(one.color), blue(one.color), alpha), window)
+  checked(window.sdl.fill_rect(window.renderer, window.rect), window)
+  window
+end
+
+_empty(one) = one.width <= 0 or one.height <= 0
+
+-- Fills a rounded rectangle: a command {kind: "box", x, y, width, height, color, radius}, with an alpha if it wants.
+defn draw_box(one, window)
+  r = _radius_of(one)
+  if _empty(one)
+    window
+  else if r == 0
+    _fill(one, alpha_of(one), window)
+  else
+    got = _round_mask(r, window)
+    _stamp(got.mask, 1.0, one.x, one.y, one.width, one.height, one.color, alpha_of(one), got.window)
+  end
+end
+
+-- Draws a 1-pixel edge: a command {kind: "ring", x, y, width, height, color, radius}, with an alpha if it wants.
+defn draw_ring(one, window)
+  r = max(1, _radius_of(one))
+  if _empty(one)
+    window
+  else
+    got = _ring_mask(r, window)
+    _stamp(got.mask, 1.0, one.x, one.y, one.width, one.height, one.color, alpha_of(one), got.window)
+  end
+end
+
+-- The mask of a title bar: round on top, darkening to the right.
+defn _fade_pixel(r, x, y)
+  dx = max(0.0, abs(x + 0.5 - 32.0) - (32.0 - r))
+  dy = max(0.0, r - y - 0.5)
+  {gray: whole_number(255.0 - 150.0 * _clamp01((x - r * 1.0) / (64.0 - 2.0 * r))), alpha: _inside(r * 1.0, sqrt(dx * dx + dy * dy))}
+end
+
+-- A title bar: a command {kind: "fade", x, y, width, height, color, radius}, with an alpha if it wants.
+defn draw_fade(one, window)
+  r = max(1, _radius_of(one))
+  if _empty(one)
+    window
+  else
+    got = _mask("fade$r", 64, 2 * r + 2, r, r, r, 1, (x, y) -> _fade_pixel(r, x, y), window)
+    _stamp(got.mask, 1.0, one.x, one.y, one.width, one.height, one.color, alpha_of(one), got.window)
+  end
+end
+
+-- A soft shadow around a rectangle: a command {kind: "shadow", x, y, width, height}, with an alpha if it wants. A small
+-- one scales its corners down, so that it stays a shadow.
+defn draw_shadow(one, window)
+  if _empty(one)
+    window
+  else
+    got = _mask("shadow", 90, 90, 44, 44, 44, 44, (x, y) -> {gray: 255, alpha: _smooth(_clamp01((44.0 - _middle_distance(x, y, 90, 90)) / 44.0))}, window)
+    width = one.width + 44.0
+    height = one.height + 42.0
+    _stamp(got.mask, min(1.0, min(width, height) / 88.0), one.x - 22.0, one.y - 14.0, width, height, 0x000000, alpha_of(one), got.window)
+  end
+end
+
+-- A pixel of an image, from four integers from 0 to 255.
+rgba(r, g, b, a) = r + g * 256 + b * 65536 + a * 0x1000000
+
+-- A new image, clear: an Ok of {image: {width, height, pixels, texture}, window}, or an Err. Write its pixels with fill_image,
+-- or with c.set then show_image. sdl.close frees it.
+defn image(width, height, window)
+  texture = some(window.sdl.create_texture(window.renderer, pixels_rgba, 0, width, height), window.sdl)?
+  done(window.sdl.texture_blend(texture, blend_alpha), window.sdl)?
+  _remember(texture, window)
+  pixels = c.alloc(width * height * 4)
+  next = window
+  next.image_blocks = push(pixels, window.image_blocks)
+  Ok({image: {width: width, height: height, pixels: pixels, texture: texture}, window: next})
+end
+
+-- Sends the pixels of an image to the screen's memory.
+show_image(picture, window) = checked(window.sdl.update_texture(picture.texture, missing, picture.pixels, picture.width * 4), window)
+
+-- Writes f(x, y), a pixel from rgba, everywhere in an image, and shows it.
+defn fill_image(f, picture, window)
+  for y in 0:(picture.height - 1)
+    for x in 0:(picture.width - 1)
+      c.set("u32", (y * picture.width + x) * 4, f(x, y), picture.pixels)
+    end
+  end
+  show_image(picture, window)
+end
+
+-- The color of a command that may not give one: white, which leaves an image as it is.
+color_of(one) = match one
+  {color} -> color
+  else -> 0xFFFFFF
+end
+
+defn _tint(texture, one, window)
+  color = color_of(one)
+  checked(window.sdl.color_mod(texture, red(color), green(color), blue(color)), window)
+  checked(window.sdl.alpha_mod(texture, alpha_of(one)), window)
+end
+
+defn _area(x, y, width, height, window)
+  c.set("f32", 0, x, window.rect)
+  c.set("f32", 4, y, window.rect)
+  c.set("f32", 8, width, window.rect)
+  c.set("f32", 12, height, window.rect)
+  window.rect
+end
+
+-- Draws an image, stretched: a command {kind: "image", image, x, y, width, height}, with a color and an alpha if it wants.
+defn draw_image(one, window)
+  _tint(one.image.texture, one, window)
+  checked(window.sdl.render_texture(window.renderer, one.image.texture, missing, _area(one.x, one.y, one.width, one.height, window)), window)
+  window
+end
+
+-- Repeats an image over a rectangle: a command {kind: "tile", image, x, y, width, height}, with a color and an alpha if it wants.
+defn draw_tile(one, window)
+  _tint(one.image.texture, one, window)
+  checked(window.sdl.render_tiled(window.renderer, one.image.texture, missing, 1.0, _area(one.x, one.y, one.width, one.height, window)), window)
+  window
+end
+
+defn _segment_distance(px, py, ax, ay, bx, by)
+  dx = bx - ax
+  dy = by - ay
+  length2 = dx * dx + dy * dy
+  t = if length2 == 0.0 0.0 else _clamp01(((px - ax) * dx + (py - ay) * dy) / length2) end
+  ex = px - ax - t * dx
+  ey = py - ay - t * dy
+  sqrt(ex * ex + ey * ey)
+end
+
+-- The distance from a point of the 16-pixel square to the nearest line or ring of a shape.
+defn _shape_distance(px, py, shape)
+  best = 99.0
+  for path in shape.paths
+    for k in 1:max(1, div(length(path), 2) - 1)
+      best = min(best, _segment_distance(px, py, path[2 * k - 1], path[2 * k], path[2 * k + 1], path[2 * k + 2]))
+    end
+  end
+  for ring in shape.rings
+    dx = px - ring[1]
+    dy = py - ring[2]
+    best = min(best, abs(sqrt(dx * dx + dy * dy) - ring[3]))
+  end
+  best
+end
+
+_size_of(one) = match one
+  {size} -> size
+  else -> 16
+end
+
+defn _icon_alpha(shape, size, x, y)
+  scale = 16.0 / size
+  _clamp01(1.2 - _shape_distance((x + 0.5) * scale, (y + 0.5) * scale, shape) / scale)
+end
+
+-- Draws a shape of lines and rings: a command {kind: "icon", shape: {name, paths, rings}, x, y}, with a size and a color if it wants.
+defn draw_icon(one, window)
+  size = _size_of(one)
+  shape = one.shape
+  got = _mask("icon$(shape.name)$size", size, size, 0, 0, 0, 0, (x, y) -> {gray: 255, alpha: _icon_alpha(shape, size, x, y)}, window)
+  _tint(got.mask.texture, one, got.window)
+  checked(got.window.sdl.render_texture(got.window.renderer, got.mask.texture, missing, _area(one.x, one.y, size, size, got.window)), got.window)
+  got.window
+end
+
+-- The memory of a curves command, with room for this many curves. Each is a strip whose four rows of vertices never change
+-- their links, so the indices are written once.
+defn _curve_block(capacity)
+  indices = c.alloc(capacity * (curve_points - 1) * (curve_across - 1) * 6 * 4)
+  at = 0
+  for l in 0:(capacity - 1)
+    for s in 0:(curve_points - 2)
+      for j in 0:(curve_across - 2)
+        a = (l * curve_points + s) * curve_across + j
+        for v in [a, a + 1, a + curve_across, a + 1, a + curve_across + 1, a + curve_across]
+          c.set("i32", at, v, indices)
+          at = at + 4
+        end
+      end
+    end
+  end
+  {verts: c.alloc(capacity * curve_points * curve_across * 32), indices: indices, items: missing, capacity: capacity}
+end
+
+-- Writes one curve from a byte offset, and gives the next offset. Where the tangent vanishes, the last direction holds.
+defn _write_curve(item, start, block)
+  offsets = [-1.7, -0.8, 0.8, 1.7]
+  clear = [0.0, 1.0, 1.0, 0.0]
+  r = red(item.color) / 255.0
+  g = green(item.color) / 255.0
+  b = blue(item.color) / 255.0
+  x0 = item.x0 * 1.0
+  y0 = item.y0 * 1.0
+  x3 = item.x1 * 1.0
+  y3 = item.y1 * 1.0
+  dx = max(30.0, abs(x3 - x0) * 0.5)
+  nx = 0.0
+  ny = 1.0
+  at = start
+  for s in 0:(curve_points - 1)
+    u = s / (curve_points - 1.0)
+    v = 1.0 - u
+    px = v * v * v * x0 + 3.0 * v * v * u * (x0 + dx) + 3.0 * v * u * u * (x3 - dx) + u * u * u * x3
+    py = v * v * v * y0 + 3.0 * v * v * u * y0 + 3.0 * v * u * u * y3 + u * u * u * y3
+    tx = 3.0 * v * v * dx + 6.0 * v * u * (x3 - x0 - 2.0 * dx) + 3.0 * u * u * dx
+    ty = 6.0 * v * u * (y3 - y0)
+    size = sqrt(tx * tx + ty * ty)
+    if size >= 0.000001
+      nx = -ty / size
+      ny = tx / size
+    end
+    for j in 1:curve_across
+      c.set("f32", at, px + nx * offsets[j], block)
+      c.set("f32", at + 4, py + ny * offsets[j], block)
+      c.set("f32", at + 8, r, block)
+      c.set("f32", at + 12, g, block)
+      c.set("f32", at + 16, b, block)
+      c.set("f32", at + 20, clear[j], block)
+      at = at + 32
+    end
+  end
+  at
+end
+
+-- Draws curves with soft edges: a command {kind: "curves", items: [{x0, y0, x1, y1, color}]}. The Nth command of a frame keeps
+-- its memory, and only writes it when its items change, so a still graph costs one call.
+defn draw_curves(one, window)
+  items = one.items
+  n = length(items)
+  if n > max_curves
+    panic("A curves command holds at most $max_curves curves.")
+  end
+  if n == 0
+    return window
+  end
+  next = window
+  next.curve_used = window.curve_used + 1
+  at = next.curve_used
+  if at > length(next.curve_blocks)
+    next.curve_blocks = push(_curve_block(max(8, n)), next.curve_blocks)
+  else if n > next.curve_blocks[at].capacity
+    next.curves_retired = push(next.curve_blocks[at], next.curves_retired)
+    next.curve_blocks[at] = _curve_block(max(n, 2 * next.curve_blocks[at].capacity))
+  end
+  block = next.curve_blocks[at]
+  if not equal(items, block.items)
+    offset = 0
+    for item in items
+      offset = _write_curve(item, offset, block.verts)
+    end
+    next.curve_blocks[at].items = items
+    next.curve_writes = next.curve_writes + 1
+  end
+  checked(next.sdl.geometry(next.renderer, missing, block.verts, n * curve_points * curve_across, block.indices, n * (curve_points - 1) * (curve_across - 1) * 6), next)
+  next
+end
+
+defn _free_curves(block)
+  c.free(block.verts)
+  c.free(block.indices)
+end
+
+defn _forget_items(block)
+  next = block
+  next.items = missing
+  next
 end
 
 -- Runs one command of a frame on the window and gives the window.
@@ -226,6 +694,14 @@ defn command(window, one)
   match one.kind
     "clear" -> draw_clear(one, window)
     "rect" -> draw_rect(one, window)
+    "box" -> draw_box(one, window)
+    "ring" -> draw_ring(one, window)
+    "fade" -> draw_fade(one, window)
+    "shadow" -> draw_shadow(one, window)
+    "image" -> draw_image(one, window)
+    "tile" -> draw_tile(one, window)
+    "icon" -> draw_icon(one, window)
+    "curves" -> draw_curves(one, window)
     "text" -> if one.text == "" window else draw_text(one, window) end
     else -> panic("A frame has no command ""$(one.kind)"".")
   end
@@ -236,10 +712,13 @@ defn draw(commands, window)
   last = c.get("i64", 8, window.objects)
   if window.drawn != last
     window.shown = []  -- an older copy: what it remembers is no longer in the objects
+    window.shown_fonts = []
+    window.curve_blocks = map(_forget_items, window.curve_blocks)
   end
   window.drawn = last + 1
   c.set("i64", 8, last + 1, window.objects)
   window.used = 0
+  window.curve_used = 0
   reduce(command, window, commands)
 end
 
@@ -251,10 +730,13 @@ defn frame(commands, window)
 end
 
 -- The size of a text in pixels, as {width, height}.
-defn text_size(words, window)
-  checked(window.ttf.string_size(window.font, words, 0, window.out_width, window.out_height), window)
+defn text_size(words, window, font = "body")
+  checked(window.ttf.string_size(font_named(font, window), words, 0, window.out_width, window.out_height), window)
   {width: c.get("i32", 0, window.out_width), height: c.get("i32", 0, window.out_height)}
 end
+
+-- What a program needs to place text: width(words, font) in pixels, and height, that of a line.
+measure(window) = {width: (words, font) -> text_size(words, window, font = font).width, height: text_size("Ag", window).height}
 
 -- The name of a key, or missing.
 defn key_name(code)
@@ -353,22 +835,40 @@ defn applied(update, progress, event)
   end
 end
 
--- The loop of run: reads the events, updates the state, draws when something happened, and calls itself again.
-defn step(state, update, view, window)
+-- Does the state ask for frames of its own? With no moving, it never does.
+still_moving(moving, state) = if is_missing(moving) false else moving(state) end
+
+-- One pass of a state that moves: a tick of the time since the last pass, at most 0.05 s so that nothing jumps after a pause,
+-- then a frame. Gives {state, stopped, window, last}.
+defn moved(progress, update, view, window, last)
+  now = sys.now()
+  ticked = applied(update, progress, {kind: "tick", seconds: min(now - last, 0.05)})
+  drawn = if ticked.stopped window else frame(view(ticked.state), window) end
+  sys.sleep(0)
+  {state: ticked.state, stopped: ticked.stopped, window: drawn, last: now}
+end
+
+-- The loop of run: reads the events, updates the state, draws when something happened or moves, and calls itself again.
+defn step(state, update, view, window, moving, last)
   happened = events(window)
   progress = reduce((p, event) -> applied(update, p, event), {state: state, stopped: false}, happened)
   if progress.stopped
     progress.state
+  else if still_moving(moving, progress.state)
+    pass = moved(progress, update, view, window, last)
+    if pass.stopped pass.state else step(pass.state, update, view, pass.window, moving, pass.last) end
   else
     drawn = if length(happened) > 0 frame(view(progress.state), window) else window end
     sys.sleep(0.005)
-    step(progress.state, update, view, drawn)
+    step(progress.state, update, view, drawn, moving, sys.now())
   end
 end
 
 -- Calls update(event, state) for each event, and view(state) when something happened, until update gives missing.
--- Gives the last state. Between events, other fibers run.
-run(state, update, view, window) = step(state, update, view, frame(view(state), window))
+-- Gives the last state. Between events, other fibers run. While moving(state) is true, update also gets {kind: "tick", seconds}
+-- before each frame, and a frame is drawn at every pass; a still program draws nothing. With vsync, a frame can hold other
+-- fibers back for up to its own length.
+run(state, update, view, window, moving = missing) = step(state, update, view, frame(view(state), window), moving, sys.now())
 
 -- Closes the window and frees everything it took.
 defn close(window)
@@ -380,10 +880,20 @@ defn close(window)
     window.ttf.destroy_text(c.get("ptr", 8 + k * 8, window.objects))
   end
   c.free(window.objects)
+  c.free(window.images)
+  for block in concat(window.curve_blocks, window.curves_retired)
+    _free_curves(block)
+  end
+  c.free(window.mask_table)
+  for block in window.image_blocks
+    c.free(block)
+  end
   window.ttf.destroy_engine(window.engine)
   window.sdl.destroy_renderer(window.renderer)
   window.sdl.destroy_window(window.window)
-  window.ttf.close_font(window.font)
+  for font in values(window.fonts)
+    window.ttf.close_font(font)
+  end
   window.ttf.quit()
   window.sdl.quit(init_video)
 end

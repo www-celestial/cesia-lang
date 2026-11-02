@@ -1,0 +1,41 @@
+use "./probe"
+use sdl
+use sys
+
+defn tick(event, state)
+  if event.seconds <= 0.0 or event.seconds > 0.05
+    print("bad seconds $(event.seconds)")
+  end
+  if state.left == 3
+    sys.sleep(0.07)
+  end
+  {left: state.left - 1}
+end
+
+defn update(event, state)
+  match event
+    {kind: "quit"} -> missing
+    {kind: "tick"} -> tick(event, state)
+    else -> state
+  end
+end
+
+defn view(state)
+  print("view $(state.left)")
+  [{kind: "clear", color: 0x000000}]
+end
+
+defn later()
+  sys.sleep(0.1)
+  probe.push_quit()
+end
+
+defn check()
+  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  spawn(later)
+  last = sdl.run({left: 5}, update, view, w, moving = s -> s.left > 0)
+  print(last.left)
+  Ok("ran")
+end
+
+print(check())

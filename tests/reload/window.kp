@@ -7,6 +7,9 @@ version() = 1
 finished() = false
 
 defn update(event, state)
+  if event.kind == "tick"
+    sys.sleep(0.005)
+  end
   if finished() missing else {count: state.count + 1} end
 end
 
@@ -28,7 +31,7 @@ defn main()
   event = c.alloc(128)
   c.set("u32", 0, 0x206, event)
   spawn(() -> feed(send, event))
-  last = sdl.run({count: 0}, update, view, window)
+  last = sdl.run({count: 0}, update, view, window, moving = s -> true)
   sdl.close(window)
   print("ended $(last.count)")
   Ok(missing)

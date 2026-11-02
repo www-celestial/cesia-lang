@@ -19,9 +19,10 @@ skip() {  # folder, reason
   dirs=$(echo "$dirs" | grep -v "^$1/\$")
 }
 pkg-config --exists sdl3 sdl3-ttf 2>/dev/null || skip tests/sdl "SDL3 not found"
+skip tests/material "tools/check.sh runs it"
 command -v g++ > /dev/null || skip tests/cpp "no g++"
 pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
 pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 tools/golden.sh $dirs
 # kepler do has no --no-spec, and native code runs the same on both paths.
-tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|columns|cpp|tls)/$')
+tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|columns|cpp|tls|sdl)/$')
