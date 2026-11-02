@@ -29,6 +29,9 @@ defn _balance(a, b)
   end
 end
 
+-- Both ropes, one after the other.
+--
+--   text(join_ropes(of("ab"), of("cd"))) --> "abcd"
 defn join_ropes(a, b)
   if a.size == 0
     b
@@ -45,6 +48,9 @@ defn join_ropes(a, b)
   end
 end
 
+-- A rope holding a text.
+--
+--   text(of("ab")) --> "ab"
 defn of(s)
   n = byte_length(s)
   if n <= _chunk
@@ -71,14 +77,26 @@ defn split_at(at, r)
   end
 end
 
+-- The size of the rope in bytes.
+--
+--   size(of("ab")) --> 2
 size(r) = r.size
+-- The number of lines: one more than the line ends.
+--
+--   line_count(of("a\nb")) --> 2
 line_count(r) = r.lines + 1
 
+-- A rope with a text inserted before the byte at a position.
+--
+--   text(insert(1, "X", of("ab"))) --> "aXb"
 defn insert(at, s, r)
   parts = split_at(at, r)
   join_ropes(join_ropes(parts[1], of(s)), parts[2])
 end
 
+-- A rope without the bytes from position from up to, but not including, position to.
+--
+--   text(delete(1, 2, of("abc"))) --> "ac"
 defn delete(from, to, r)
   parts = split_at(from, r)
   join_ropes(parts[1], split_at(to - from, parts[2])[2])
@@ -86,7 +104,13 @@ end
 
 _pieces(r) = if _is_leaf(r) [r.text] else concat(_pieces(r.left), _pieces(r.right)) end
 
+-- The whole text of the rope.
+--
+--   text(of("hi")) --> "hi"
 text(r) = join("", _pieces(r))
+-- The text of the bytes from position from up to, but not including, position to.
+--
+--   slice(1, 3, of("hello")) --> "el"
 slice(from, to, r) = text(split_at(to - from, split_at(from, r)[2])[1])
 
 -- The position of the first byte after the nth newline.
@@ -106,12 +130,21 @@ defn _after_newline(n, r)
   end
 end
 
+-- The position of the first byte of line n.
+--
+--   line_start(2, of("ab\ncd")) --> 3
 line_start(n, r) = _after_newline(n - 1, r)
 
+-- The position of the end of line n, before its line end.
+--
+--   line_end(1, of("ab\ncd")) --> 2
 defn line_end(n, r)
   if n >= line_count(r) r.size else line_start(n + 1, r) - 1 end
 end
 
+-- The text of line n, without its line end.
+--
+--   line(2, of("ab\ncd")) --> "cd"
 line(n, r) = slice(line_start(n, r), line_end(n, r), r)
 
 -- The line of a position.

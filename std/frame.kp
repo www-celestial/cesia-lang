@@ -3,34 +3,76 @@
 use columns as col
 use csv
 
+-- A frame from the names of its columns and the columns, in the same order.
+--
+--   columns(table(["a"], [[1]])) --> ["a"]
 defn table(names, columns)
   {names: names, columns: dict([{key: names[k], value: columns[k]} for k in 1:length(names)])}
 end
 
+-- A frame from a dictionary of columns.
+--
+--   rows(of({"a": [1, 2]})) --> 2
 of(columns) = table(keys(columns), values(columns))
+-- A frame with these columns and no row.
+--
+--   rows(empty(["a"])) --> 0
 empty(names) = table(names, [[] for n in names])
+-- The number of rows.
+--
+--   rows(of({"a": [1, 2]})) --> 2
 rows(df) = if length(df.names) == 0 0 else length(df.columns[df.names[1]]) end
+-- The names of the columns.
+--
+--   columns(of({"a": [1], "b": [2]})) --> ["a", "b"]
 columns(df) = df.names
+-- The values of a column.
+--
+--   column("a", of({"a": [1, 2]})) --> [1, 2]
 column(name, df) = df.columns[name]
+-- A row as a dictionary from the column names.
+--
+--   row(2, of({"a": [1, 2]}))["a"] --> 2
 row(i, df) = dict([{key: n, value: df.columns[n][i]} for n in df.names])
+-- All the rows, each as a dictionary.
+--
+--   length(records(of({"a": [1, 2]}))) --> 2
 records(df) = [row(i, df) for i in 1:rows(df)]
 
+-- A frame from the dictionaries of the rows, taking the given columns. A missing key gives a missing value.
+--
+--   rows(from_records(["a"], [{"a": 1}, {"a": 2}])) --> 2
 defn from_records(names, items)
   table(names, [[get(n, r) for r in items] for n in names])
 end
 
 _take(ks, df) = table(df.names, [col.pick(ks, df.columns[n]) for n in df.names])
 
+-- The first n rows.
+--
+--   column("a", head(2, of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [1, 2]
 head(n, df) = _take(1:min(n, rows(df)), df)
 
+-- The last n rows.
+--
+--   column("a", tail(2, of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3]
 defn tail(n, df)
   total = rows(df)
   _take(max(total - n, 0) + 1:total, df)
 end
 
+-- A frame with only these columns, in this order.
+--
+--   columns(select(["b"], of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> ["b"]
 select(names, df) = table(names, [df.columns[n] for n in names])
+-- A frame without a column.
+--
+--   columns(drop_column("a", of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> ["b"]
 drop_column(name, df) = select(filter(n -> n != name, df.names), df)
 
+-- A frame with a column replaced, or added at the end.
+--
+--   column("c", set_column("c", [7, 8, 9], of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [7, 8, 9]
 defn set_column(name, values, df)
   names = if name in df.names df.names else push(name, df.names) end
   {names: names, columns: put(name, values, df.columns)}
@@ -39,10 +81,19 @@ end
 -- f takes a row as a dictionary, and gives the value of the new column.
 with_column(name, f, df) = set_column(name, [f(row(i, df)) for i in 1:rows(df)], df)
 
+-- A frame with a column renamed.
+--
+--   columns(rename("a", "z", of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> ["z", "b"]
 rename(old, new, df) = table([if n == old new else n end for n in df.names], [df.columns[n] for n in df.names])
 
+-- The rows for which f accepts the row as a dictionary.
+--
+--   column("a", where(r -> r["a"] > 1, of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3]
 where(f, df) = _take([i for i in 1:rows(df) if f(row(i, df))], df)
 
+-- The rows for which f accepts the value of a column.
+--
+--   column("a", where_column("a", it > 1, of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3]
 defn where_column(name, f, df)
   xs = df.columns[name]
   _take([i for i in 1:rows(df) if f(xs[i])], df)
@@ -54,19 +105,37 @@ where_mask(mask, df) = _take(col.positions(mask), df)
 -- The storage of each column: "int", "float" or "value".
 kinds(df) = [col.kind(df.columns[n]) for n in df.names]
 
+-- The rows ordered by a column, increasing, or decreasing with descending. Equal values keep their order.
+--
+--   column("a", sort_by("a", of({"a": [1, 2, 3], "b": [4, 5, 6]}), descending = true)) --> [3, 2, 1]
 defn sort_by(name, df, descending = false)
   ks = order(df.columns[name])
   _take(if descending reverse(ks) else ks end, df)
 end
 
+-- The rows of a followed by the rows of b, which has the same columns.
+--
+--   rows(append(of({"a": [1, 2, 3], "b": [4, 5, 6]}), of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> 6
 append(a, b) = table(a.names, [concat(a.columns[n], b.columns[n]) for n in a.names])
+-- The rows that have no missing value.
+--
+--   rows(drop_missing(of({"a": [1, missing]}))) --> 1
 drop_missing(df) = where(r -> not any([is_missing(v) for v in values(r)]), df)
+-- A frame where every missing value is replaced by a value.
+--
+--   column("a", fill_missing(0, of({"a": [1, missing]}))) --> [1, 0]
 fill_missing(value, df) = table(df.names, [[if is_missing(x) value else x end for x in df.columns[n]] for n in df.names])
+-- The values of a column that aren't missing.
+--
+--   present([1, missing, 2]) --> [1, 2]
 present(xs) = col.present(xs)
 
 -- One aggregation: a new column, a source column, and a function of its values.
 agg(name, source, f) = {name: name, source: source, f: f}
 
+-- A frame with one row for each combination of the columns in by, and a column for each aggregation (see agg).
+--
+--   column("n", group_by(["k"], [agg("n", "v", length)], of({"k": ["x", "y", "x"], "v": [1, 2, 3]}))) --> [2, 1]
 defn group_by(by, aggregations, df)
   g = col.groups(if length(by) == 0 [fill(0, rows(df))] else [df.columns[n] for n in by] end)
   out = table(by, [col.pick(g.firsts, df.columns[n]) for n in by])
@@ -76,6 +145,9 @@ defn group_by(by, aggregations, df)
   out
 end
 
+-- How many rows hold each value of a column, the most frequent first.
+--
+--   column("a", value_counts("a", of({"a": ["x", "y", "x"]}))) --> ["x", "y"]
 defn value_counts(name, df)
   g = group_by([name], [agg("count", name, length)], df)
   sort_by("count", g, descending = true)
@@ -93,6 +165,7 @@ end
 
 _stats(xs) = {count: length(xs), mean: mean(xs), min: min(xs), max: max(xs)}
 
+-- The count, mean, minimum and maximum of each numeric column, as a frame.
 defn describe(df)
   numeric = filter(n -> length(present(df.columns[n])) > 0 and all(map(is_number, present(df.columns[n]))), df.names)
   stats = [_stats(1.0 * present(df.columns[n])) for n in numeric]
@@ -100,13 +173,22 @@ defn describe(df)
     [numeric, map(it.count, stats), map(it.mean, stats), map(it.min, stats), map(it.max, stats)])
 end
 
+-- A frame from CSV text with a header row. An empty cell is missing and a number is read as one.
+--
+--   column("a", from_csv("a,b\n1,2\n")) --> [1]
 defn from_csv(s, separator = ",")
   data = col.read_csv(s, separator)
   if length(data.names) == 0 empty([]) else table(data.names, data.columns) end
 end
 
+-- The CSV text of a frame, with the names as its first row.
+--
+--   to_csv(of({"a": [1]})) --> "a\n1\n"
 to_csv(df, separator = ",") = csv.write(concat([df.names], [[df.columns[n][i] for n in df.names] for i in 1:rows(df)]), separator = separator)
 
+-- The text of a frame as an aligned table, one line for each row.
+--
+--   show(of({"a": [1]})) --> "a\n1"
 defn show(df)
   cell(x) = if is_missing(x) "" else text(x) end
   widths = [max(length(n), max(concat([0], [length(cell(x)) for x in df.columns[n]]))) for n in df.names]

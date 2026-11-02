@@ -2,6 +2,7 @@
 -- Commands: break F L, clear F L, continue, step, next, out, print NAME, where.
 use debug
 
+-- Prints the value of a variable of a frame, or says that there is none.
 defn show_variable(frame, name)
   found = filter(it.name == name, frame.vars)
   if length(found) == 0
@@ -11,16 +12,19 @@ defn show_variable(frame, name)
   end
 end
 
+-- Prints the frames of a stop, from the innermost.
 defn show_frames(stop)
   for f in stop.frames
     print("  $(f.function) ($(f.file):$(f.line))")
   end
 end
 
+-- Is this word a command that resumes the program?
 defn is_resume(word)
   word == "continue" or word == "step" or word == "next" or word == "out"
 end
 
+-- Runs one command (a list of words) that doesn't resume the program.
 defn run_command(stop, w)
   n = length(w)
   if n == 3 and w[1] == "break"
@@ -38,6 +42,7 @@ defn run_command(stop, w)
   end
 end
 
+-- Reads and runs commands at a stop, until one resumes the program: gives its word.
 defn on_stop(stop)
   print("stopped at $(stop.file):$(stop.line) ($(stop.reason))")
   while true

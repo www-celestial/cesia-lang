@@ -1,0 +1,792 @@
+-- The documentation of the natives, which have no source in Kepler: kepler doc reads it, and kepler test runs its examples.
+-- A line --- signature opens each one. Nothing here is code.
+use sys
+use json
+use regex
+use columns
+use debug
+use net
+use c
+use lapack
+
+--- pi
+-- The ratio of a circle to its diameter.
+--
+--   pi > 3.14 --> true
+
+--- sort(xs)
+-- The elements in increasing order, keeping the order of equal ones.
+--
+--   sort([3, 1, 2]) --> [1, 2, 3]
+
+--- sys.now()
+-- The time in seconds since 1970, as a float.
+--
+--   sys.now() > 0.0 --> true
+
+--- print(...)
+-- Writes the texts of its arguments on one line, separated by spaces.
+
+--- str(...)
+-- The texts of its arguments, joined with nothing between.
+--
+--   str("a", 1, true) --> "a1true"
+
+--- text(x)
+-- The text of a value, as print shows it.
+--
+--   text(12) --> "12"
+
+--- panic(message)
+-- Stops the fiber with a user error: a bug, not a value to handle.
+
+--- assert(condition, message = missing)
+-- Does nothing if the condition is true. Otherwise it panics, with the message if there is one.
+--
+--   assert(1 < 2) --> missing
+
+--- args
+-- The command-line arguments after the script, as an array of texts.
+
+--- doc(name)
+-- The signature and the comment of a name given as text ("sort", "num.solve") or of a function, or missing if there is none.
+--
+--   contains("One more", doc("inc")) --> true
+
+--- doc_names(module = missing)
+-- The public names documented in a module, or the names of all the modules without an argument.
+--
+--   "inc" in doc_names("prelude") --> true
+
+--- spawn(f)
+-- Starts f() in a new fiber and gives a task to wait for.
+
+--- wait(task)
+-- The result of a task, once it is done: an Ok of its value, or an Err if the fiber panicked.
+--
+--   wait(spawn(() -> 1)) --> Ok(1)
+
+--- length(x)
+-- The number of elements of an array, of characters of a text, of pairs of a dictionary, or of fields of a struct; 1 for any other value.
+--
+--   length("héllo") --> 5
+
+--- size(x, dim = missing)
+-- The rows and columns of an array as [rows, cols], or only the rows (1) or the columns (2). A list has one row.
+--
+--   size([1, 2, 3], 2) --> 3
+
+--- reshape(xs, rows, cols)
+-- The same elements, filled column by column into a new shape. The count must stay the same.
+--
+--   size(reshape([1, 2, 3, 4], 2, 2)) --> [2, 2]
+
+--- zeros(rows, cols = missing)
+-- An array of 0.0: a list of n with one argument, rows by columns with two.
+--
+--   zeros(2) --> [0.0, 0.0]
+
+--- ones(rows, cols = missing)
+-- An array of 1.0: a list of n with one argument, rows by columns with two.
+--
+--   ones(2) --> [1.0, 1.0]
+
+--- fill(value, rows, cols = missing)
+-- An array where every element is the value: a list of n with one size, rows by columns with two.
+--
+--   fill("a", 2) --> ["a", "a"]
+
+--- matmul(a, b)
+-- The matrix product of two arrays, as floats. The columns of a must match the rows of b.
+--
+--   matmul(ones(1, 2), ones(2, 1))[1] --> 2.0
+
+--- transpose(m)
+-- The array with rows and columns swapped.
+--
+--   size(transpose([1, 2, 3])) --> [3, 1]
+
+--- sum(xs)
+-- The sum of the elements of an array.
+--
+--   sum([1, 2, 3]) --> 6
+
+--- mean(xs)
+-- The mean of the elements of an array, which is nan if it is empty.
+--
+--   mean([1, 2, 3]) --> 2
+
+--- min(xs)
+-- The smallest element of an array, or with two arguments min(a, b), the smaller of each pair. A missing value gives missing.
+--
+--   min([3, 1, 2]) --> 1
+
+--- max(xs)
+-- The largest element of an array, or with two arguments max(a, b), the larger of each pair. A missing value gives missing.
+--
+--   max([3, 1, 2]) --> 3
+
+--- any(mask)
+-- Is some element of an array of booleans true?
+--
+--   any([false, true]) --> true
+
+--- all(mask)
+-- Are all the elements of an array of booleans true?
+--
+--   all([true, false]) --> false
+
+--- abs(x)
+-- The absolute value of a number, element by element for an array.
+--
+--   abs(-3) --> 3
+
+--- sign(x)
+-- -1, 0 or 1 by the sign of a number, element by element for an array.
+--
+--   sign(-3) --> -1
+
+--- sqrt(x)
+-- The square root, as a float, element by element for an array.
+--
+--   sqrt(9) --> 3.0
+
+--- exp(x)
+-- e to the power x, as a float, element by element for an array.
+--
+--   exp(0) --> 1.0
+
+--- log(x)
+-- The natural logarithm, as a float, element by element for an array.
+--
+--   log(1) --> 0.0
+
+--- sin(x)
+-- The sine of an angle in radians, element by element for an array.
+--
+--   sin(0) --> 0.0
+
+--- cos(x)
+-- The cosine of an angle in radians, element by element for an array.
+--
+--   cos(0) --> 1.0
+
+--- tan(x)
+-- The tangent of an angle in radians, element by element for an array.
+--
+--   tan(0) --> 0.0
+
+--- asin(x)
+-- The arc sine, in radians, element by element for an array.
+--
+--   asin(0) --> 0.0
+
+--- acos(x)
+-- The arc cosine, in radians, element by element for an array.
+--
+--   acos(1) --> 0.0
+
+--- atan(x)
+-- The arc tangent, in radians, element by element for an array.
+--
+--   atan(0) --> 0.0
+
+--- atan2(y, x)
+-- The angle in radians of the point (x, y), from -pi to pi.
+--
+--   atan2(0, 1) --> 0.0
+
+--- floor(x)
+-- The largest whole number not above x. An integer stays an integer.
+--
+--   floor(2.7) --> 2.0
+
+--- ceil(x)
+-- The smallest whole number not below x. An integer stays an integer.
+--
+--   ceil(2.1) --> 3.0
+
+--- round(x)
+-- The nearest whole number, halves away from zero. An integer stays an integer.
+--
+--   round(2.5) --> 3.0
+
+--- div(a, b)
+-- The integer quotient of a by b, rounded down. Dividing by 0 is an error.
+--
+--   div(-7, 2) --> -4
+
+--- mod(a, b)
+-- The remainder of a by b, with the sign of b, so that a == div(a, b) * b + mod(a, b).
+--
+--   mod(-7, 2) --> 1
+
+--- nan
+-- The float that is not a number.
+--
+--   nan == nan --> false
+
+--- equal(a, b)
+-- Are two values equal in content, whatever their kind of array or struct?
+--
+--   equal([1, 2], [1, 2]) --> true
+
+--- is_int(x)
+-- Is this value an integer?
+--
+--   is_int(1) --> true
+
+--- is_float(x)
+-- Is this value a float?
+--
+--   is_float(1) --> false
+
+--- is_number(x)
+-- Is this value an integer or a float?
+--
+--   is_number(1.5) --> true
+
+--- is_bool(x)
+-- Is this value true or false?
+--
+--   is_bool(true) --> true
+
+--- is_text(x)
+-- Is this value a text?
+--
+--   is_text("a") --> true
+
+--- is_array(x)
+-- Is this value an array?
+--
+--   is_array([1]) --> true
+
+--- is_dict(x)
+-- Is this value a dictionary?
+--
+--   is_dict(dict()) --> true
+
+--- is_struct(x)
+-- Is this value a struct?
+--
+--   is_struct(Ok(1)) --> true
+
+--- is_function(x)
+-- Is this value a function, native ones included?
+--
+--   is_function(inc) --> true
+
+--- is_missing(x)
+-- Is this value missing?
+--
+--   is_missing(missing) --> true
+
+--- dict(pairs = missing)
+-- A dictionary from an array of structs with a key and a value (see pairs), or an empty one.
+--
+--   dict([{key: "a", value: 1}])["a"] --> 1
+
+--- get(key, d)
+-- The value of a key in a dictionary, or missing if it is absent.
+--
+--   get("a", {"a": 1}) --> 1
+
+--- get_or(key, default, d)
+-- The value of a key in a dictionary, or the default if it is absent.
+--
+--   get_or("b", 0, {"a": 1}) --> 0
+
+--- has(key, d)
+-- Does the dictionary have this key?
+--
+--   has("a", {"a": 1}) --> true
+
+--- put(key, value, d)
+-- A dictionary with the key set to the value. The original is unchanged.
+--
+--   put("a", 2, {"a": 1})["a"] --> 2
+
+--- drop(key, d)
+-- A dictionary without the key. The original is unchanged.
+--
+--   has("a", drop("a", {"a": 1})) --> false
+
+--- keys(d)
+-- The keys of a dictionary, as an array.
+--
+--   keys({"a": 1}) --> ["a"]
+
+--- values(d)
+-- The values of a dictionary, as an array, in the order of keys.
+--
+--   values({"a": 1}) --> [1]
+
+--- pairs(d)
+-- The entries of a dictionary, as an array of structs with a key and a value.
+--
+--   pairs({"a": 1})[1].value --> 1
+
+--- push(x, xs)
+-- A list with x added at the end.
+--
+--   push(3, [1, 2]) --> [1, 2, 3]
+
+--- concat(a, b)
+-- The elements of a followed by the elements of b.
+--
+--   concat([1], [2, 3]) --> [1, 2, 3]
+
+--- reverse(xs)
+-- The elements in the opposite order.
+--
+--   reverse([1, 2, 3]) --> [3, 2, 1]
+
+--- take(n, xs)
+-- The first n elements, or all of them if there are fewer.
+--
+--   take(2, [1, 2, 3]) --> [1, 2]
+
+--- skip(n, xs)
+-- The elements after the first n.
+--
+--   skip(1, [1, 2, 3]) --> [2, 3]
+
+--- index_of(x, xs)
+-- The position, from 1, of the first element equal to x, or missing.
+--
+--   index_of(3, [1, 3]) --> 2
+
+--- order(xs)
+-- The positions, from 1, that put the elements in increasing order. Stable.
+--
+--   order([30, 10, 20]) --> [2, 3, 1]
+
+--- unique(xs)
+-- The elements without repeats, keeping the first of each.
+--
+--   unique([1, 2, 1]) --> [1, 2]
+
+--- flatten(xs)
+-- The elements of xs, where each array element is replaced by its own elements, one level deep.
+--
+--   flatten([[1], [2, 3]]) --> [1, 2, 3]
+
+--- zip(a, b)
+-- The pairs [a[k], b[k]], as many as the shorter list.
+--
+--   zip([1, 2], [3, 4]) --> [[1, 3], [2, 4]]
+
+--- split(sep, s)
+-- The pieces of a text between the occurrences of a separator, which isn't empty.
+--
+--   split(",", "a,b") --> ["a", "b"]
+
+--- join(sep, xs)
+-- The texts of the elements, with the separator between.
+--
+--   join("-", [1, 2]) --> "1-2"
+
+--- slice(first, last, s)
+-- The characters of a text from position first to last, from 1, both included. Outside the text is an error.
+--
+--   slice(2, 3, "hello") --> "el"
+
+--- replace(old, by, s)
+-- The text with every occurrence of old replaced by another text. Old isn't empty.
+--
+--   replace("a", "b", "banana") --> "bbnbnb"
+
+--- find(part, s)
+-- The position, from 1, in characters, where part first occurs in a text, or missing.
+--
+--   find("l", "hello") --> 3
+
+--- contains(part, s)
+-- Does the text hold the part?
+--
+--   contains("ell", "hello") --> true
+
+--- starts_with(prefix, s)
+-- Does the text begin with the prefix?
+--
+--   starts_with("he", "hello") --> true
+
+--- ends_with(suffix, s)
+-- Does the text end with the suffix?
+--
+--   ends_with("lo", "hello") --> true
+
+--- trim(s)
+-- The text without the spaces and line ends at both ends.
+--
+--   trim("  a ") --> "a"
+
+--- lower(s)
+-- The text with the letters A to Z in lower case. Other letters are unchanged.
+--
+--   lower("AbC") --> "abc"
+
+--- upper(s)
+-- The text with the letters a to z in upper case. Other letters are unchanged.
+--
+--   upper("AbC") --> "ABC"
+
+--- repeat(n, s)
+-- The text n times in a row.
+--
+--   repeat(3, "ab") --> "ababab"
+
+--- lines(s)
+-- The lines of a text, without their line ends. A last line end opens no empty line.
+--
+--   lines("a\nb\n") --> ["a", "b"]
+
+--- pad_left(n, filler, s)
+-- The text, filled at the left with the filler up to n characters.
+--
+--   pad_left(3, "0", "7") --> "007"
+
+--- pad_right(n, filler, s)
+-- The text, filled at the right with the filler up to n characters.
+--
+--   pad_right(3, ".", "7") --> "7.."
+
+--- chars(s)
+-- The characters of a text, each as a text.
+--
+--   chars("héy") --> ["h", "é", "y"]
+
+--- char(code)
+-- The text of one character, from its code point.
+--
+--   char(65) --> "A"
+
+--- code(s)
+-- The code point of the first character of a text.
+--
+--   code("A") --> 65
+
+--- number(s)
+-- The integer or float that a text writes, or missing if it isn't a number.
+--
+--   number("1.5") --> 1.5
+
+--- bytes(s)
+-- The bytes of a text, as an array of integers from 0 to 255.
+--
+--   bytes("hi") --> [104, 105]
+
+--- from_bytes(xs)
+-- The text made of an array of bytes (integers from 0 to 255).
+--
+--   from_bytes([104, 105]) --> "hi"
+
+--- byte(i, s)
+-- The byte at position i, from 1, of a text.
+--
+--   byte(1, "A") --> 65
+
+--- byte_length(s)
+-- The size of a text in bytes.
+--
+--   byte_length("é") --> 2
+
+--- byte_slice(first, last, s)
+-- The bytes of a text from position first to last, from 1, both included.
+--
+--   byte_slice(1, 2, "abc") --> "ab"
+
+--- byte_find(part, from, s)
+-- The byte position, from 1, where part first occurs in a text at or after byte from, or missing.
+--
+--   byte_find("b", 1, "abc") --> 2
+
+--- xor_bytes(key, s)
+-- Each byte of a text xor-ed with the bytes of the key, which repeats. Applying it twice gives the text back.
+--
+--   xor_bytes("k", xor_bytes("k", "hi")) --> "hi"
+
+--- bit_and(a, b)
+-- The bits that are set in both integers.
+--
+--   bit_and(6, 3) --> 2
+
+--- bit_or(a, b)
+-- The bits that are set in either integer.
+--
+--   bit_or(6, 3) --> 7
+
+--- bit_xor(a, b)
+-- The bits that are set in exactly one integer.
+--
+--   bit_xor(6, 3) --> 5
+
+--- bit_not(a)
+-- The integer with all its bits flipped.
+--
+--   bit_not(0) --> -1
+
+--- bit_shift(a, n)
+-- An integer shifted left by n bits, or right if n is negative.
+--
+--   bit_shift(1, 3) --> 8
+
+--- json.parse(s)
+-- Reads JSON text: an Ok of the value (objects become dictionaries, null becomes missing), or an Err with the kind "json" and the place of the mistake.
+--
+--   json.parse("[1, 2]") --> Ok([1, 2])
+
+--- json.text(x)
+-- The JSON text of a value, on one line. A function, nan or an infinite float is an error.
+--
+--   json.text([1, "a"]) --> "[1,\"a\"]"
+
+--- json.pretty(x)
+-- The JSON text of a value, with line breaks and two spaces of indent.
+--
+--   json.pretty([1]) --> "[\n  1\n]"
+
+--- regex.test(pattern, s)
+-- Does the pattern match somewhere in the text?
+--
+--   regex.test("^a", "abc") --> true
+
+--- regex.find(pattern, s)
+-- The first match as a struct with text, start, stop (positions in characters, from 1) and groups, or missing.
+--
+--   regex.find("[0-9]+", "ab12c").text --> "12"
+
+--- regex.find_all(pattern, s)
+-- Every match, each as in regex.find, from left to right without overlap.
+--
+--   length(regex.find_all("[0-9]", "a1b2")) --> 2
+
+--- regex.replace(pattern, by, s)
+-- The text with every match replaced by another text, where $1 to $9 stand for the groups and $$ for a dollar.
+--
+--   regex.replace("(a)(b)", "$2$1", "abab") --> "baba"
+
+--- regex.split(pattern, s)
+-- The pieces of a text between the matches of the pattern.
+--
+--   regex.split(",\\s*", "a, b,c") --> ["a", "b", "c"]
+
+--- columns.kind(xs)
+-- How an array is stored: "int", "float" or "value".
+--
+--   columns.kind([1.5]) --> "float"
+
+--- columns.cores()
+-- The number of processor cores that heavy computations may use.
+
+--- columns.groups(cols)
+-- Groups the rows that share the same values in a list of key columns: a struct with ids (the group of each row, from 1), count and firsts (the first row of each group).
+--
+--   columns.groups([[1, 2, 1]]).ids --> [1, 2, 1]
+
+--- columns.split(groups, xs)
+-- The values of a column in each group, in order, without the missing ones.
+--
+--   columns.split(columns.groups([[1, 2, 1]]), [10, 20, 30]) --> [[10, 30], [20]]
+
+--- columns.pick(positions, xs)
+-- The values at these positions, from 1. Position 0 gives missing.
+--
+--   columns.pick([2, 0], [5, 6]) --> [6, missing]
+
+--- columns.join(ys, xs, keep)
+-- The rows of two key columns that match, as a struct with left (positions in ys) and right (positions in xs). If keep is true, a row of ys with no match stays, with right at 0.
+--
+--   columns.join([1, 2], [2, 3], false).left --> [2]
+
+--- columns.positions(mask)
+-- The positions, from 1, where a mask of booleans is true.
+--
+--   columns.positions([true, false, true]) --> [1, 3]
+
+--- columns.present(xs)
+-- The elements of an array that are not missing.
+--
+--   columns.present([1, missing, 2]) --> [1, 2]
+
+--- columns.csv(s, separator)
+-- The rows of CSV text (RFC 4180, quotes allowed) as lists of texts. The separator is one character.
+--
+--   columns.csv("a,b\n1,2\n", ",") --> [["a", "b"], ["1", "2"]]
+
+--- columns.read_csv(s, separator)
+-- CSV text with a header row, as a struct with names and columns. An empty cell is missing, and a cell that reads as a number is one.
+--
+--   columns.read_csv("a\n1\n", ",").columns --> [[1]]
+
+--- debug.set_break(file, line)
+-- Sets a breakpoint at a line of a file, which stops the program there. Needs the debug permission.
+
+--- debug.clear_break(file, line)
+-- Removes the breakpoint at a line of a file. Needs the debug permission.
+
+--- debug.read_line()
+-- A line read from the standard input without its line end, or missing at the end of the input. Needs the debug permission.
+
+--- debug.words(s)
+-- The words of a command line, split on spaces; a word that is a whole number becomes an integer.
+--
+--   debug.words("break 12") --> ["break", 12]
+
+--- sys.read(path)
+-- The text of a file, in an Ok, or an Err. Needs the read permission.
+
+--- sys.write(path, text)
+-- Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission.
+
+--- sys.append(path, text)
+-- Adds a text at the end of a file, creating it if needed: Ok(missing) or an Err. Needs the write permission.
+
+--- sys.list(path)
+-- The sorted names of the entries of a folder, in an Ok, or an Err. Needs the read permission.
+
+--- sys.remove(path)
+-- Deletes a file or an empty folder: Ok(missing) or an Err. Needs the write permission.
+
+--- sys.stat(path)
+-- A struct with size (bytes), modified (seconds since 1970) and is_dir, in an Ok, or an Err. Needs the read permission.
+
+--- sys.rename(from, to)
+-- Moves a file or a folder: Ok(missing) or an Err. Needs the write permission on both paths.
+
+--- sys.mkdir(path)
+-- Creates a folder and the missing folders above it, like mkdir -p: Ok(missing) or an Err. Needs the write permission.
+
+--- sys.exists(path)
+-- Does this file or folder exist? Needs the read permission.
+
+--- sys.env(name)
+-- The value of an environment variable, or missing. Needs the env permission.
+
+--- sys.sleep(seconds)
+-- Waits for a number of seconds, letting the other fibers run.
+
+--- sys.run(cmd, args = [], input = "")
+-- Runs a program to its end, giving it the input text, and gives an Ok of a struct with code, out and err, or an Err if it can't start. Needs the exec permission.
+
+--- sys.start(cmd, args = [])
+-- Starts a program that keeps running and gives an Ok of its process. Its output and its errors come as one stream. Needs the exec permission.
+
+--- sys.read_output(process)
+-- The next chunk of what a process wrote, in an Ok. An empty text means that its output is closed.
+
+--- sys.write_input(process, text)
+-- Sends a text to the input of a process: Ok(missing) or an Err, for instance if the input is closed.
+
+--- sys.close_input(process)
+-- Closes the input of a process, so that it sees the end of its input.
+
+--- sys.wait_exit(process)
+-- Waits for a process to end and gives its exit code. The process is finished with after that.
+
+--- sys.stop(process)
+-- Asks a process to end, with the TERM signal.
+
+--- net.listen(port, host = "127.0.0.1")
+-- Opens a listening socket: an Ok of the socket, or an Err. Needs the net permission.
+
+--- net.accept(listener)
+-- Waits for a connection and gives an Ok of its socket. An Err of the kind "stopped" means that the program was asked to stop.
+
+--- net.connect(host, port)
+-- Opens a connection to a host: an Ok of the socket, or an Err. Needs the net permission.
+
+--- net.read(socket)
+-- Waits for bytes and gives an Ok of the text received. An empty text means that the other side closed.
+
+--- net.write(socket, text)
+-- Sends a whole text: Ok(missing) or an Err.
+
+--- net.close(socket)
+-- Closes a socket, which does nothing if it is already closed.
+
+--- net.arm(socket, seconds)
+-- Gives a socket a deadline, after which net.reap closes it. Zero removes the deadline.
+
+--- net.reap()
+-- Closes the sockets that passed their deadline and gives how many.
+
+--- net.open_count()
+-- How many sockets are open.
+
+--- net.size(s)
+-- The size of a text in bytes.
+--
+--   net.size("é") --> 2
+
+--- net.find(part, s)
+-- The byte offset, from 0, where part first occurs in a text, or missing.
+--
+--   net.find("lo", "hello") --> 3
+
+--- net.split_at(k, s)
+-- A text cut after its first k bytes, as [first, rest].
+--
+--   net.split_at(2, "hello") --> ["he", "llo"]
+
+--- net.is_header(colon, line)
+-- Is this a safe header line with its colon at this byte offset? A name with a space or a stray line end is refused, as request smuggling uses them.
+--
+--   net.is_header(4, "host: a") --> true
+
+--- c.open(name, version = missing)
+-- Loads a shared library by its short name ("m", "sodium"), trying the usual file names of each system: an Ok of the library, or an Err. Needs the ffi permission.
+
+--- c.fn(name, args, ret, lib, calls_back = false)
+-- Binds a function of a library: an Ok of a Kepler function. The types are given by name ("i32", "f64", "text", "ptr", "void", and so on) or by c.struct. Set calls_back if the function calls back into Kepler.
+
+--- c.variadic(name, fixed, rest, ret, lib)
+-- Binds a function with a variable argument list, like printf: the types of the fixed arguments, then those of the ones used. An Ok of a Kepler function.
+
+--- c.callback(f, args, ret)
+-- Makes a C function pointer from a Kepler function, to pass where C expects a callback.
+
+--- c.struct(fields)
+-- A C structure type from the types of its fields, laid out as C does.
+
+--- c.size(type)
+-- The size in bytes of a structure type from c.struct.
+
+--- c.offset(k, type)
+-- The offset in bytes of the field k, from 1, of a structure type from c.struct.
+
+--- c.alloc(size)
+-- A block of memory of this many bytes, set to zero, outside the Kepler heap. Free it with c.free.
+
+--- c.free(block)
+-- Releases a block. It can't be used after that.
+
+--- c.get(type, offset, block)
+-- The number of this type that a block holds at a byte offset.
+
+--- c.set(type, offset, value, block)
+-- Writes a value of this type into a block at a byte offset.
+
+--- c.store(text, offset, block)
+-- Copies the bytes of a text into a block at a byte offset.
+
+--- c.load(offset, size, block)
+-- A text of the given number of bytes read from a block at a byte offset.
+
+--- c.text(pointer)
+-- The text that a pointer from C points to, read up to its zero byte.
+
+--- lapack.name()
+-- The name of the LAPACK library found on this machine, or missing if there is none. The functions below then give missing as well, and num falls back on its own code.
+
+--- lapack.solve(a, b)
+-- The x of a * x = b for a square a, or false if a is singular. Missing without a library.
+
+--- lapack.det(a)
+-- The determinant of a square matrix. Missing without a library.
+
+--- lapack.qr(a)
+-- The QR factorization of a matrix with at least as many rows as columns, as a struct with q and r. Missing without a library.
+
+--- lapack.eigen(a)
+-- The eigenvalues and eigenvectors of a symmetric matrix, as a struct with values and vectors. Missing without a library.

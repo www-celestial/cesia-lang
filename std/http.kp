@@ -8,6 +8,7 @@ max_head = 16384
 default_max_body = 1048576
 default_timeout = 60
 
+-- The standard reason text of a status code, or "Unknown".
 reason(status) = match status
   200 -> "OK"
   101 -> "Switching Protocols"
@@ -129,6 +130,7 @@ defn header_line(h)
   "$line$crlf"
 end
 
+-- The text of an HTTP/1.1 response from {status, body} and optional headers. With head_only, the body is left out.
 defn render(response, head_only = false)
   status = response.status
   assert(is_int(status), "This response has a status that isn't an integer.")
@@ -143,8 +145,10 @@ defn render(response, head_only = false)
   "HTTP/1.1 $status $(reason(status))$crlf$length_line$custom$crlf$shown"
 end
 
+-- The text of a response with just a status and its reason.
 failure(status) = render({status: status, body: reason(status)})
 
+-- A response made ready to send: a struct with reply (its text) and upgrade (a function or missing).
 defn ready(response, head_only)
   upgrade = match response
     {upgrade} -> upgrade
@@ -254,6 +258,7 @@ defn reaper(period)
   end
 end
 
+-- Waits until no socket is open, or until the time in seconds since 1970 that deadline gives.
 defn wait_for_connections(deadline)
   while net.open_count() > 0 and sys.now() < deadline
     sys.sleep(0.01)
@@ -273,6 +278,7 @@ defn serve(handle, port = 8080, host = "127.0.0.1", timeout = default_timeout, m
   Ok(missing)
 end
 
+-- An Err of the kind "http" with a message.
 failed(message) = Err({kind: "http", message: message})
 
 -- {host, port, path, secure} of an http:// or https:// URL.
@@ -348,6 +354,7 @@ defn unchunk(data)
   end
 end
 
+-- Reads the text of a response: an Ok of {status, headers, body} (a chunked body is joined), or an Err.
 defn parse_response(raw)
   at = net.find(blank, raw)
   first_end = net.find(crlf, raw)
@@ -399,5 +406,7 @@ defn request(method, url, body = "", headers = [], secure = missing)
   parse_response(raw?)
 end
 
+-- Sends a GET request: see request.
 get(url, headers = [], secure = missing) = request("GET", url, headers = headers, secure = secure)
+-- Sends a POST request with a body: see request.
 post(url, body, headers = [], secure = missing) = request("POST", url, body = body, headers = headers, secure = secure)

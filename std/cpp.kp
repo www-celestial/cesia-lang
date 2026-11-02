@@ -9,7 +9,9 @@ _types = {"i8": "int8_t", "u8": "uint8_t", "i16": "int16_t", "u16": "uint16_t", 
 
 -- What can be wrapped. call is the C++ name, when it isn't the name in Kepler.
 fn(name, args, ret, call = missing) = {name: name, args: args, ret: ret, call: if is_missing(call) name else call end}
+-- A method of a class, described like fn.
 method(name, args, ret, call = missing) = fn(name, args, ret, call = call)
+-- A class to wrap: its name in Kepler, its C++ type, its methods and the argument types of its constructor.
 class(name, type, methods, new = []) = {name: name, type: type, methods: methods, new: new}
 
 _arguments(types) = join(", ", ["a$k" for k in 1:length(types)])

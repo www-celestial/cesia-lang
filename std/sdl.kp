@@ -10,6 +10,7 @@ max_texts = 8192
 -- The event offsets read below are those of the ABI of SDL 3.2.
 version_ok(version) = version >= 3002000
 
+-- The SDL3 functions that the window uses, found in a loaded library: an Ok of a struct of functions, or an Err.
 defn bind_sdl(lib)
   f = (name, inputs, output) -> c.fn(name, inputs, output, lib)
   version = f("SDL_GetVersion", [], "i32")?
@@ -36,6 +37,7 @@ defn bind_sdl(lib)
     destroy_renderer: destroy_renderer, destroy_window: destroy_window, quit: quit})
 end
 
+-- The SDL3_ttf functions that the window uses, found in a loaded library: an Ok of a struct of functions, or an Err.
 defn bind_ttf(lib)
   f = (name, inputs, output) -> c.fn(name, inputs, output, lib)
   init = f("TTF_Init", [], "bool")?
@@ -55,10 +57,12 @@ defn bind_ttf(lib)
     destroy_engine: destroy_engine, quit: quit})
 end
 
+-- An Err of the kind "sdl" with the last reason that SDL gave.
 failure(sdl_api) = Err({kind: "sdl", message: sdl_api.error()})
 
 -- A pointer from SDL, or SDL's own reason for giving none.
 some(pointer, sdl_api) = if is_missing(pointer) failure(sdl_api) else Ok(pointer) end
+-- Ok(missing) if an SDL call succeeded, else the Err that failure gives.
 done(succeeded, sdl_api) = if succeeded Ok(missing) else failure(sdl_api) end
 
 -- A drawing call can't fail on a good window, so a failure is a bug.
@@ -96,6 +100,7 @@ defn opened(sdl_api, ttf_api, title, width, height, font, size, vsync)
   made
 end
 
+-- Opens the window, the renderer and the text engine, and undoes what it did if one fails.
 defn on_screen(sdl_api, ttf_api, loaded, title, width, height, vsync)
   created = some(sdl_api.create_window(title, width, height, window_resizable), sdl_api)?
   made = drawing(sdl_api, ttf_api, loaded, created, vsync)
@@ -105,6 +110,7 @@ defn on_screen(sdl_api, ttf_api, loaded, title, width, height, vsync)
   made
 end
 
+-- Opens the renderer and the text engine of a window.
 defn drawing(sdl_api, ttf_api, loaded, created, vsync)
   renderer = some(sdl_api.create_renderer(created, missing), sdl_api)?
   sdl_api.vsync(renderer, if vsync 1 else 0 end)
@@ -115,6 +121,7 @@ defn drawing(sdl_api, ttf_api, loaded, created, vsync)
   made
 end
 
+-- Opens the text engine and gives the window value, with the blocks of memory it uses.
 defn text_engine(sdl_api, ttf_api, loaded, created, renderer)
   engine = some(ttf_api.create_engine(renderer), sdl_api)?
   started = done(sdl_api.start_text(created), sdl_api)
@@ -133,6 +140,7 @@ defn copy(words, window)
   missing
 end
 
+-- The text of the clipboard, or an empty text.
 defn paste(window)
   p = window.sdl.get_clipboard()
   if is_missing(p)
@@ -143,22 +151,29 @@ defn paste(window)
   words
 end
 
+-- Changes the title of the window.
 set_title(title, window) = window.sdl.set_title(window.window, title)
 
+-- The red part, from 0 to 255, of a color written as 0xRRGGBB.
 red(color) = div(color, 65536)
+-- The green part, from 0 to 255, of a color written as 0xRRGGBB.
 green(color) = mod(div(color, 256), 256)
+-- The blue part, from 0 to 255, of a color written as 0xRRGGBB.
 blue(color) = mod(color, 256)
 
+-- Sets the color of the next drawing, written as 0xRRGGBB.
 defn set_color(color, window)
   checked(window.sdl.color(window.renderer, red(color), green(color), blue(color), 255), window)
 end
 
+-- Fills the window with a color: a command {kind: "clear", color}.
 defn draw_clear(one, window)
   set_color(one.color, window)
   checked(window.sdl.clear(window.renderer), window)
   window
 end
 
+-- Fills a rectangle: a command {kind: "rect", x, y, width, height, color}.
 defn draw_rect(one, window)
   c.set("f32", 0, one.x, window.rect)
   c.set("f32", 4, one.y, window.rect)
@@ -188,6 +203,7 @@ defn object_at(position, window)
   end
 end
 
+-- Draws a text: a command {kind: "text", text, x, y, color}.
 defn draw_text(one, window)
   position = window.used + 1
   object = object_at(position, window)
@@ -205,6 +221,7 @@ defn draw_text(one, window)
   window
 end
 
+-- Runs one command of a frame on the window and gives the window.
 defn command(window, one)
   match one.kind
     "clear" -> draw_clear(one, window)
@@ -261,6 +278,7 @@ defn key_name(code)
   end
 end
 
+-- The name of a key that has no special name: its character, or f1 to f12, or missing.
 defn other_key_name(code)
   if (code >= 0x21 and code <= 0x7E) or (code >= 0xA0 and code < 0x40000000)
     char(code)
@@ -271,8 +289,10 @@ defn other_key_name(code)
   end
 end
 
+-- Is a modifier key down? The mods bits of an event have one bit for each of the left and right keys.
 held(mods, left, right) = mod(div(mods, left), 2) == 1 or mod(div(mods, right), 2) == 1
 
+-- The key event in the event block as {kind: "key", key, ctrl, alt, shift, super}, or missing for a key with no name.
 defn key_event(event)
   name = key_name(c.get("u32", 28, event))
   mods = c.get("u16", 32, event)
@@ -284,10 +304,15 @@ defn key_event(event)
   end
 end
 
+-- A coordinate rounded down to an integer.
 whole(x) = div(floor(x), 1)
+-- A mouse event as {kind: "mouse", action, x, y, button, amount}.
 mouse(action, x, y, button, amount) = {kind: "mouse", action: action, x: whole(x), y: whole(y), button: button, amount: amount}
+-- A mouse button event (action is "down" or "up") read from the event block.
 button_event(action, event) = mouse(action, c.get("f32", 28, event), c.get("f32", 32, event), c.get("u8", 24, event), 0.0)
+-- A mouse move event read from the event block.
 move_event(event) = mouse("move", c.get("f32", 28, event), c.get("f32", 32, event), 0, 0.0)
+-- A mouse wheel event read from the event block; amount is the scroll.
 wheel_event(event) = mouse("wheel", c.get("f32", 36, event), c.get("f32", 40, event), 0, c.get("f32", 28, event))
 
 -- The event in the block, or missing if a program has no use for it.
@@ -305,6 +330,7 @@ defn decoded(event)
   end
 end
 
+-- Reads the events that are waiting, adding them to found.
 defn waiting(window, found)
   if not window.sdl.poll(window.event)
     found
@@ -317,6 +343,7 @@ end
 -- The events waiting, without blocking.
 events(window) = waiting(window, [])
 
+-- One step of run: update on an event, unless an earlier event already stopped the program.
 defn applied(update, progress, event)
   if progress.stopped
     progress
@@ -326,6 +353,7 @@ defn applied(update, progress, event)
   end
 end
 
+-- The loop of run: reads the events, updates the state, draws when something happened, and calls itself again.
 defn step(state, update, view, window)
   happened = events(window)
   progress = reduce((p, event) -> applied(update, p, event), {state: state, stopped: false}, happened)
@@ -342,6 +370,7 @@ end
 -- Gives the last state. Between events, other fibers run.
 run(state, update, view, window) = step(state, update, view, frame(view(state), window))
 
+-- Closes the window and frees everything it took.
 defn close(window)
   c.free(window.rect)
   c.free(window.out_width)

@@ -1,9 +1,16 @@
 -- Dates and times in UTC, from the seconds since 1970. The calendar is the proleptic Gregorian one.
 
+-- A date and a time in UTC. The clock fields start at 0, so Date(2026, 11, 1) is midnight.
 struct Date { year, month, day, hour = 0, minute = 0, second = 0 }
 
+-- Is this year a leap year?
+--
+--   is_leap(2024) --> true
 is_leap(y) = mod(y, 4) == 0 and (mod(y, 100) != 0 or mod(y, 400) == 0)
 
+-- The number of days of a month (1 to 12) of a year.
+--
+--   days_in_month(2024, 2) --> 29
 defn days_in_month(y, m)
   if m == 2
     if is_leap(y) 29 else 28 end
@@ -15,6 +22,8 @@ defn days_in_month(y, m)
 end
 
 -- The days since 1970-01-01.
+--
+--   days_from_civil(1970, 1, 2) --> 1
 defn days_from_civil(y, m, d)
   y = if m <= 2 y - 1 else y end
   era = div(y, 400)
@@ -38,6 +47,9 @@ defn _civil(z)
   {year: y, month: m, day: d}
 end
 
+-- The Date of a number of seconds since 1970; a fraction is dropped.
+--
+--   from_unix(86400) == Date(1970, 1, 2) --> true
 defn from_unix(seconds)
   whole = floor(seconds)
   days = div(whole, 86400)
@@ -46,17 +58,37 @@ defn from_unix(seconds)
   Date(c.year, c.month, c.day, div(rest, 3600), div(mod(rest, 3600), 60), mod(rest, 60))
 end
 
+-- The seconds since 1970 of a Date.
+--
+--   to_unix(Date(1970, 1, 2)) --> 86400
 to_unix(d) = days_from_civil(d.year, d.month, d.day) * 86400 + d.hour * 3600 + d.minute * 60 + d.second
 
 -- 1 is Monday and 7 is Sunday.
+--
+--   weekday(Date(1970, 1, 1)) --> 4
 weekday(d) = mod(days_from_civil(d.year, d.month, d.day) + 3, 7) + 1
 
+-- The Date n seconds later, or earlier if n is negative.
+--
+--   add_seconds(60, Date(1970, 1, 1)).minute --> 1
 add_seconds(n, d) = from_unix(to_unix(d) + n)
+-- The Date n days later, or earlier if n is negative.
+--
+--   add_days(1, Date(2026, 11, 1)).day --> 2
 add_days(n, d) = add_seconds(n * 86400, d)
+-- The days from the day of a to the day of b, whatever the hours: negative if b comes first.
+--
+--   days_between(Date(2026, 11, 1), Date(2026, 11, 5)) --> 4
 days_between(a, b) = days_from_civil(b.year, b.month, b.day) - days_from_civil(a.year, a.month, a.day)
 
 _two(n) = pad_left(2, "0", text(n))
+-- The day of a Date as 2026-11-01.
+--
+--   format_date(Date(2026, 11, 1)) --> "2026-11-01"
 format_date(d) = "$(pad_left(4, "0", text(d.year)))-$(_two(d.month))-$(_two(d.day))"
+-- A Date as 2026-11-01T12:30:05Z, the form that parse reads.
+--
+--   format(Date(2026, 11, 1, 12, 30, 5)) --> "2026-11-01T12:30:05Z"
 format(d) = "$(format_date(d))T$(_two(d.hour)):$(_two(d.minute)):$(_two(d.second))Z"
 
 _bad(s) = Err({kind: "date", message: "Not a date: $s."})
@@ -64,6 +96,8 @@ _bad(s) = Err({kind: "date", message: "Not a date: $s."})
 _whole(s) = if all([c >= "0" and c <= "9" for c in chars(s)]) and s != "" number(s) else missing end
 
 -- 2026-11-01, or 2026-11-01T12:30:05Z.
+--
+--   parse("2026-11-01") == Ok(Date(2026, 11, 1)) --> true
 defn parse(s)
   parts = split("T", replace("Z", "", s))
   day = split("-", parts[1])

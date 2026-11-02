@@ -144,10 +144,22 @@ defn top(n, xs, by = missing)
   [xs[idx[k]] for k in 1:m]
 end
 
+-- The elements ordered by f of each.
+--
+--   sort_by(abs, [-3, 1, 2]) --> [1, 2, -3]
 sort_by(f, xs) = [xs[i] for i in order(map(f, xs))]
+-- How many elements f accepts.
+--
+--   count(is_odd, [1, 2, 3]) --> 2
 count(f, xs) = length(filter(f, xs))
+-- The results of f, joined in one list.
+--
+--   flat_map(x -> [x, x], [1, 2]) --> [1, 1, 2, 2]
 flat_map(f, xs) = flatten(map(f, xs))
 
+-- A dictionary with f applied to each value.
+--
+--   map_values(inc, {"a": 1})["a"] --> 2
 defn map_values(f, d)
   out = dict()
   for k in keys(d)

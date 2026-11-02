@@ -131,6 +131,21 @@ C++ has no stable binary interface, so `cpp.wrap` generates a small C layer and 
 
 Calling C is total trust: it ignores every permission and limit, and a wrong signature can crash the program.
 
+## Documentation
+
+The documentation comes from the language. A comment just above a definition documents it, and the examples in it run under
+`kepler test`.
+
+```kepler
+-- The square of a number.
+--
+--   square(3) --> 9
+square(x) = x * x
+```
+
+`kepler doc` lists the modules, `kepler doc num` the names of a module, and `kepler doc num.solve` shows one. A program, or an
+editor, asks the same way: `doc("num.solve")` or `doc(sort)` give the text or `missing`, and `doc_names("num")` the names.
+
 ## Large data
 
 `frame` and `num` work on whole columns in OCaml. A column of integers or floats is stored without a box, and `group_by`,

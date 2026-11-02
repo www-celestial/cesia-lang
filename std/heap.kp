@@ -1,6 +1,10 @@
 -- A persistent leftist heap: the smallest key comes out first.
 
+-- A heap with nothing in it.
 empty() = missing
+-- Is this heap empty?
+--
+--   is_empty(empty()) --> true
 is_empty(h) = is_missing(h)
 _rank(h) = if is_missing(h) 0 else h.rank end
 
@@ -12,6 +16,7 @@ defn _node(key, value, a, b)
   end
 end
 
+-- One heap from two.
 defn merge(a, b)
   if is_missing(a)
     b
@@ -24,10 +29,22 @@ defn merge(a, b)
   end
 end
 
+-- A heap with a value added under a key; the smallest key comes out first.
+--
+--   peek(insert(1, "a", empty())).value --> "a"
 insert(key, value, h) = merge(_node(key, value, missing, missing), h)
+-- The smallest key and its value, as a struct with key and value. The heap must not be empty.
+--
+--   peek(insert(2, "b", insert(1, "a", empty()))).key --> 1
 peek(h) = {key: h.key, value: h.value}
+-- The heap without its smallest key. The heap must not be empty.
+--
+--   peek(pop(insert(2, "b", insert(1, "a", empty())))).key --> 2
 pop(h) = merge(h.left, h.right)
 
+-- All the entries as structs with key and value, smallest key first.
+--
+--   length(items(insert(1, "a", empty()))) --> 1
 defn items(h)
   out = dict()
   while not is_missing(h)

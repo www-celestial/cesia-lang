@@ -1,0 +1,13 @@
+inc(x)
+
+One more, and one less. Both work on arrays, element by element.
+
+  inc(1) --> 2
+exit 0
+kepler: nothing is documented under no_such_name
+exit 1
+usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.kp [args...]
+A persistent leftist heap: the smallest key comes out first.
+
+prelude
+exit 0

@@ -5,6 +5,9 @@ use lapack
 -- The library that does the large computations, or missing if the code of Kepler does them all.
 backend() = lapack.name()
 
+-- n evenly spaced floats from a to b, both included.
+--
+--   linspace(0, 1, 3) --> [0.0, 0.5, 1.0]
 defn linspace(a, b, n)
   if n == 1
     return [1.0 * a]
@@ -13,6 +16,9 @@ defn linspace(a, b, n)
   [a + k * step for k in 0:n - 1]
 end
 
+-- The identity matrix of order n.
+--
+--   sum(eye(2)) --> 2.0
 defn eye(n)
   m = zeros(n, n)
   for k in 1:n
@@ -21,6 +27,9 @@ defn eye(n)
   m
 end
 
+-- A square matrix with the elements on its diagonal and 0.0 elsewhere.
+--
+--   sum(diag([1, 2])) --> 3.0
 defn diag(xs)
   n = length(xs)
   m = zeros(n, n)
@@ -30,13 +39,22 @@ defn diag(xs)
   m
 end
 
+-- The variance of the elements: the mean of the squares of their distance from the mean.
+--
+--   variance([1.0, 3.0]) --> 1.0
 defn variance(xs)
   d = xs - mean(xs)
   sum(d * d) / length(xs)
 end
 
+-- The standard deviation of the elements.
+--
+--   std([1.0, 3.0]) --> 1.0
 std(xs) = sqrt(variance(xs))
 
+-- The value below which p percent of the elements fall, interpolating between the two nearest ones.
+--
+--   percentile(50, [1.0, 2.0, 3.0]) --> 2.0
 defn percentile(p, xs)
   s = sort(xs)
   at = p / 100.0 * (length(s) - 1) + 1
@@ -45,8 +63,14 @@ defn percentile(p, xs)
   s[low] + (s[high] - s[low]) * (at - low)
 end
 
+-- The middle value of the elements.
+--
+--   median([3.0, 1.0, 2.0]) --> 2.0
 median(xs) = percentile(50, xs)
 
+-- The running sum of the elements.
+--
+--   cumsum([1.0, 2.0, 3.0]) --> [1.0, 3.0, 6.0]
 defn cumsum(xs)
   out = zeros(1, length(xs))
   total = 0.0
@@ -57,16 +81,34 @@ defn cumsum(xs)
   out
 end
 
+-- The differences between consecutive elements.
+--
+--   diff([1, 4, 9]) --> [3, 5]
 diff(xs) = [xs[k + 1] - xs[k] for k in 1:length(xs) - 1]
+-- The dot product of two arrays.
+--
+--   dot([1, 2], [3, 4]) --> 11
 dot(a, b) = sum(a * b)
+-- The Euclidean length of an array.
+--
+--   norm([3.0, 4.0]) --> 5.0
 norm(xs) = sqrt(dot(xs, xs))
 
+-- The covariance of two arrays of the same length.
+--
+--   abs(covariance([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 4.0 / 3.0) < 1e-9 --> true
 defn covariance(a, b)
   mean((a - mean(a)) * (b - mean(b)))
 end
 
+-- The correlation of two arrays of the same length, from -1 to 1.
+--
+--   abs(correlation([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 1.0) < 1e-9 --> true
 correlation(a, b) = covariance(a, b) / (std(a) * std(b))
 
+-- The elements counted in a number of equal bins, as a struct with counts and edges.
+--
+--   histogram(2, [1, 2, 3, 4]).counts --> [2, 2]
 defn histogram(bins, xs)
   low = min(xs)
   high = max(xs)
@@ -81,6 +123,9 @@ end
 
 -- The sum of each row, and of each column.
 sum_rows(m) = [sum(m[i, :]) for i in 1:size(m, 1)]
+-- The sum of each column of a matrix.
+--
+--   sum_cols(eye(2)) --> [1.0, 1.0]
 sum_cols(m) = [sum(m[:, j]) for j in 1:size(m, 2)]
 
 -- Gaussian elimination with partial pivoting: the triangle, the swaps and their sign.
@@ -125,6 +170,9 @@ defn _eliminate(m, b)
   {singular: false, m: m, b: b, sign: sign}
 end
 
+-- The determinant of a square matrix.
+--
+--   abs(det(reshape([1.0, 3.0, 2.0, 4.0], 2, 2)) + 2.0) < 1e-9 --> true
 defn det(m)
   fast = lapack.det(m)
   if not is_missing(fast)
@@ -168,11 +216,17 @@ defn _solved(m, b)
   if t.singular _singular() else Ok(_back(t)) end
 end
 
+-- The x of m * x = b, in an Ok, or an Err of the kind "math" if the matrix is singular.
+--
+--   solve(eye(2), [1.0, 2.0]).value --> [1.0, 2.0]
 defn solve(m, b)
   n = size(m, 1)
   map_ok(x -> reshape(x, 1, n), _solved(m, reshape(b, n, 1)))
 end
 
+-- The inverse of a square matrix, in an Ok, or an Err of the kind "math" if it is singular.
+--
+--   sum(inverse(eye(2)).value) --> 2.0
 inverse(m) = _solved(m, eye(size(m, 1)))
 
 -- Gram-Schmidt, twice for accuracy.
@@ -272,6 +326,9 @@ defn polyfit(degree, xs, ys)
   unwrap(least_squares(a, ys))
 end
 
+-- The value of a polynomial at x, given its coefficients with the constant first.
+--
+--   polyval([1, 2], 3) --> 7.0
 defn polyval(coefficients, x)
   total = 0.0
   for k in range(length(coefficients), 1, step = -1)
@@ -280,6 +337,9 @@ defn polyval(coefficients, x)
   total
 end
 
+-- The area under the points (xs, ys), by the trapezoid rule.
+--
+--   trapezoid([0, 1], [0, 2]) --> 1.0
 defn trapezoid(xs, ys)
   total = 0.0
   for k in 1:length(xs) - 1
@@ -288,6 +348,9 @@ defn trapezoid(xs, ys)
   total
 end
 
+-- The value at x of the line through the nearest points of (xs, ys), which are sorted by xs. Past the last point it gives the last y.
+--
+--   interpolate(0.5, [0, 1], [0, 2]) --> 1.0
 defn interpolate(x, xs, ys)
   for k in 1:length(xs) - 1
     if x <= xs[k + 1]
@@ -344,8 +407,12 @@ defn _transform(re, im, direction)
   if _is_power(length(re)) _radix2(re, im, direction) else _dft(re, im, direction) end
 end
 
+-- The Fourier transform of an array, as a struct with re and im.
+--
+--   fft([1.0, 0.0, 0.0, 0.0]).re --> [1.0, 1.0, 1.0, 1.0]
 fft(xs) = _transform(xs, zeros(1, length(xs)), -1.0)
 
+-- The inverse of fft, from a struct with re and im.
 defn ifft(f)
   r = _transform(f.re, f.im, 1.0)
   n = 1.0 * length(f.re)
@@ -362,6 +429,9 @@ defn _next(state)
   bit_xor(x, bit_shift(x, 17))
 end
 
+-- n floats in [0, 1) from a generator, as a struct with values and the next generator. See seeded.
+--
+--   length(uniform(3, seeded(1)).values) --> 3
 defn uniform(n, generator)
   values = zeros(1, n)
   s = generator.state
@@ -372,6 +442,9 @@ defn uniform(n, generator)
   {values: values, next: {state: s}}
 end
 
+-- n floats from the normal distribution (mean 0, deviation 1) from a generator, as a struct with values and the next generator.
+--
+--   length(normal(3, seeded(1)).values) --> 3
 defn normal(n, generator)
   u = uniform(2 * n, generator)
   values = zeros(1, n)

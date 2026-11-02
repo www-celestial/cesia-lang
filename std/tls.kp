@@ -5,6 +5,7 @@ use net
 
 _chunk = 65536
 
+-- Loads OpenSSL: an Ok of the api that server and client take, or an Err.
 defn open()
   ssl = c.open("ssl", version = 3)?
   lib = c.open("crypto", version = 3)?

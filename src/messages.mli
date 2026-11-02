@@ -122,6 +122,7 @@ val need_count : string -> string -> t
 val cant_sort : string -> string -> t
 val need_char : string -> t
 val need_byte : string -> t
+val doc_missing : string -> string
 val json_value : string -> t
 val column_sizes : int -> int -> t
 val need_groups : string -> t

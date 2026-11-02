@@ -1,0 +1,47 @@
+-- The documentation of the language, from the language: what an editor shows.
+use num
+use sys
+
+-- Twice x, for the test of a function of this file.
+--
+--   twice(2) --> 4
+twice(x) = 2 * x
+
+defn undocumented(a, b = 1)
+  a + b
+end
+
+is_doc_of_a_kepler_function() = contains("One more", doc("inc")) and starts_with("inc(x)", doc("inc"))
+is_doc_keeps_the_examples() = contains("inc(1) --> 2", doc("inc"))
+is_doc_of_a_defn() = starts_with("find_first(f, xs)", doc("find_first"))
+is_doc_of_a_module_function() = starts_with("solve(m, b)", doc("num.solve"))
+is_doc_of_a_native() = starts_with("sort(xs)", doc("sort"))
+is_doc_of_a_module_native() = starts_with("sys.now()", doc("sys.now"))
+is_doc_of_a_constant() = starts_with("pi", doc("pi"))
+is_doc_of_a_value() = doc(inc) == doc("inc") and doc(sort) == doc("sort") and doc(num.solve) == doc("num.solve")
+is_doc_of_a_local_function() = contains("Twice x", doc(twice))
+is_doc_without_a_comment() = starts_with("undocumented(a, b = 1)", doc(undocumented)) and not contains("\n", doc(undocumented))
+is_doc_of_nothing() = is_missing(doc("no_such_name")) and is_missing(doc("num.no_such_name")) and is_missing(doc("no_such_module.x"))
+is_doc_hides_private_names() = is_missing(doc("_run_length"))
+is_doc_of_a_lambda() = is_missing(doc(x -> x))
+
+is_doc_names_of_the_modules() = "num" in doc_names() and "sys" in doc_names() and "prelude" in doc_names() and not ("natives" in doc_names())
+is_doc_names_of_the_prelude() = "inc" in doc_names("prelude") and "sort" in doc_names("prelude") and not ("_run_length" in doc_names("prelude"))
+is_doc_names_of_a_module() = "num.solve" in doc_names("num") and "sys.now" in doc_names("sys")
+is_doc_names_of_nothing() = equal(doc_names("no_such_module"), [])
+
+-- A name without a comment shows only its signature, on one line.
+defn undocumented_names()
+  out = []
+  for m in doc_names()
+    for name in doc_names(m)
+      text = doc(name)
+      if is_missing(text) or not contains("\n", text)
+        out = push(name, out)
+      end
+    end
+  end
+  out
+end
+
+is_everything_public_has_a_comment() = equal(undocumented_names(), [])

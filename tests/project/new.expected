@@ -15,5 +15,6 @@ usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--n
        kepler test [path] [--no-spec]
        kepler do [task]
        kepler new name
+       kepler doc [name]
        kepler version
 exit 2

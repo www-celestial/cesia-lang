@@ -5,32 +5,44 @@ use encode
 use sys
 use websocket as ws
 
+-- An application with no route and no middleware.
 app() = {routes: [], middleware: []}
 
 _segments(path) = filter(s -> s != "", split("/", path))
 
+-- An application with a route added. The pattern may hold :name parts, which the handler finds in its params, and a final * for the rest of the path.
 defn route(method, pattern, handler, a)
   entry = {method: method, parts: _segments(pattern), handler: handler}
   {routes: push(entry, a.routes), middleware: a.middleware}
 end
 
+-- An application with a GET route added: handler(request) gives a response.
 get(pattern, handler, a) = route("GET", pattern, handler, a)
+-- An application with a POST route added.
 post(pattern, handler, a) = route("POST", pattern, handler, a)
+-- An application with a PUT route added.
 put_route(pattern, handler, a) = route("PUT", pattern, handler, a)
+-- An application with a DELETE route added.
 delete(pattern, handler, a) = route("DELETE", pattern, handler, a)
+-- An application with a route added that takes any method.
 any_method(pattern, handler, a) = route("*", pattern, handler, a)
 
 -- A middleware is f(next, request), and calls next(request) to go on.
 wrap(f, a) = {routes: a.routes, middleware: push(f, a.middleware)}
 
--- Responses.
+-- A plain text response. The functions below build the other responses.
 plain(s, status = 200) = {status: status, body: s, headers: [_type("text/plain; charset=utf-8")]}
+-- An HTML response.
 html(s, status = 200) = {status: status, body: s, headers: [_type("text/html; charset=utf-8")]}
+-- A response with the JSON text of a value.
 send_json(value, status = 200) = {status: status, body: json.text(value), headers: [_type("application/json")]}
+-- A response that sends the client to another URL.
 redirect(url, status = 302) = {status: status, body: "", headers: [{name: "location", value: url}]}
+-- A 404 response.
 not_found() = plain("Not Found", status = 404)
 _type(value) = {name: "content-type", value: value}
 
+-- A response with one more header.
 defn with_header(name, value, response)
   headers = match response
     {headers} -> headers
@@ -41,6 +53,7 @@ defn with_header(name, value, response)
   out
 end
 
+-- A response with a cookie set. The value is URL-encoded.
 defn set_cookie(name, value, response, options = "Path=/; HttpOnly; SameSite=Lax")
   with_header("set-cookie", "$name=$(encode.url_encode(value)); $options", response)
 end
@@ -60,6 +73,7 @@ defn _cookies(headers)
   out
 end
 
+-- The value of a header by its name in lower case, or missing.
 get_header(name, headers) = http.header_value(name, headers)
 
 -- Binds :name parts, and a final * takes what remains. The parameters, or missing if the path doesn't match.
@@ -91,6 +105,7 @@ end
 
 -- The body of a form, or of JSON.
 form(request) = encode.parse_query(request.body)
+-- The body of a request read as JSON: an Ok of the value, or an Err.
 body_json(request) = json.parse(request.body)
 
 defn _result(value)
@@ -127,6 +142,7 @@ defn _chain(a, k)
   end
 end
 
+-- The function of a request that http.serve takes: the routes behind the middleware.
 handler(a) = _chain(a, length(a.middleware))
 
 -- Serves until a stop signal. Options go to http.serve.
@@ -144,6 +160,7 @@ defn logger(next, request)
   response
 end
 
+-- A middleware that lets a given origin read the responses.
 defn cors(origin)
   (next, request) -> with_header("access-control-allow-origin", origin, next(request))
 end
@@ -152,6 +169,7 @@ end
 _types = {"html": "text/html; charset=utf-8", "css": "text/css", "js": "text/javascript", "json": "application/json",
   "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8"}
 
+-- The response with the content of a file, typed by its extension, or a 404 if it can't be read.
 defn file_response(path)
   parts = split(".", path)
   kind = get_or(lower(parts[length(parts)]), "application/octet-stream", _types)
@@ -161,6 +179,7 @@ defn file_response(path)
   end
 end
 
+-- An application with a route added that serves the files of a folder under a URL prefix. A path can't leave the folder.
 defn static(prefix, folder, a)
   serve_file(request) = _static(folder, request.params["*"])
   get("$prefix/*", serve_file, a)

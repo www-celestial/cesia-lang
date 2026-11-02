@@ -172,6 +172,14 @@ let test args =
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)
 let tune_gc () = Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 20 }
 
+let doc args =
+  let w = Runtime.create_world Runtime.default_options in
+  let (_ : unit -> bool) = Kepler_sys.Sys_modules.register w in
+  exit
+    (Loader.guarded w (fun _ ->
+         Loader.init w;
+         Docs.command w args))
+
 let () =
   try
     tune_gc ();
@@ -181,6 +189,7 @@ let () =
     | _ :: "test" :: args -> test args
     | _ :: "do" :: args -> Project.run args
     | [ _; "new"; name ] -> Project.create name
+    | _ :: "doc" :: args -> doc args
     | _ -> usage ()
   with
   | Stdlib.Exit as e -> raise e

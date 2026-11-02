@@ -16,24 +16,6 @@ let rec kp_files path =
 let in_tests_dir path = List.mem "tests" (String.split_on_char '/' (Filename.dirname path))
 let is_test_file path = Filename.check_suffix path "_test.kp" || in_tests_dir path
 
-(* A comment line: the text after --. *)
-let comment_text line =
-  let t = String.trim line in
-  if String.starts_with ~prefix:"--" t then Some (String.sub t 2 (String.length t - 2)) else None
-
-let is_name_char c =
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c >= '\128'
-
-(* A top-level definition: defn, struct or name(...) = ... *)
-let is_definition line =
-  String.starts_with ~prefix:"defn " line
-  || String.starts_with ~prefix:"struct " line
-  || begin
-    let n = String.length line and i = ref 0 in
-    while !i < n && is_name_char line.[!i] do incr i done;
-    !i > 0 && !i < n && line.[!i] = '('
-  end
-
 type example = { line : int; code : string; want : [ `Stmt | `Value of string | `Error ] }
 
 let find_sub s sub =
@@ -44,30 +26,38 @@ let find_sub s sub =
 (* The examples: the indented lines of a comment placed just above a definition. *)
 let examples src =
   let lines = Array.of_list (String.split_on_char '\n' src) in
-  let out = ref [] and block = ref [] in
+  let out = ref [] and block = ref [] and native = ref false in
+  let collect () =
+    List.iter
+      (fun (n, text) ->
+         if String.starts_with ~prefix:"  " text then begin
+           let text = String.trim text in
+           let example =
+             match find_sub text "-->" with
+             | None -> { line = n; code = text; want = `Stmt }
+             | Some k ->
+               let code = String.trim (String.sub text 0 k) in
+               let r = String.trim (String.sub text (k + 3) (String.length text - k - 3)) in
+               { line = n; code; want = (if r = "error" then `Error else `Value r) }
+           in
+           out := example :: !out
+         end)
+      (List.rev !block);
+    block := []
+  in
   Array.iteri
     (fun i line ->
-       match comment_text line with
-       | Some text when String.length line > 0 && line.[0] = '-' -> block := (i + 1, text) :: !block
+       match Docs.native_header line, Docs.comment_text line with
+       | Some _, _ ->
+         collect ();
+         native := true
+       | None, Some text when String.length line > 0 && line.[0] = '-' -> block := (i + 1, text) :: !block
        | _ ->
-         if is_definition line then
-           List.iter
-             (fun (n, text) ->
-                if String.starts_with ~prefix:"  " text then begin
-                  let text = String.trim text in
-                  let example =
-                    match find_sub text "-->" with
-                    | None -> { line = n; code = text; want = `Stmt }
-                    | Some k ->
-                      let code = String.trim (String.sub text 0 k) in
-                      let r = String.trim (String.sub text (k + 3) (String.length text - k - 3)) in
-                      { line = n; code; want = (if r = "error" then `Error else `Value r) }
-                  in
-                  out := example :: !out
-                end)
-             (List.rev !block);
+         if !native || Docs.is_definition line then collect ();
+         native := false;
          block := [])
     lines;
+  if !native then collect ();
   List.rev !out
 
 let quote s =
@@ -82,8 +72,16 @@ let quote s =
   Buffer.add_char b '"';
   Buffer.contents b
 
-let example_source ex =
+(* The examples of a file see the modules it uses. *)
+let example_source src ex =
   let b = Buffer.create 256 in
+  List.iter
+    (fun line ->
+       if String.starts_with ~prefix:"use " line then begin
+         Buffer.add_string b line;
+         Buffer.add_char b '\n'
+       end)
+    (String.split_on_char '\n' src);
   List.iter
     (fun e ->
        Buffer.add_string b
@@ -146,7 +144,7 @@ let run_examples (ctx : ctx) st path m src =
         | None -> Loader.lookup w name
     in
     (try
-       let prepared = Loader.prepare ctx ~path:(path ^ " (examples)") ~src:(example_source ex) ~lookup in
+       let prepared = Loader.prepare ctx ~path:(path ^ " (examples)") ~src:(example_source src ex) ~lookup in
        ctx.b <- 0;
        Loader.run_prepared ctx prepared
      with e ->
@@ -192,9 +190,9 @@ let run_file (ctx : ctx) st path =
   if has_tests path src then begin
     ctx.b <- 0;
     w.entry_dir <- Filename.dirname path;
-    (* std/ sees the private natives, as when loading the prelude. *)
-    let in_std = Filename.basename (Filename.dirname path) = "std" in
-    let lookup = if in_std then Loader.in_module w 0 else Loader.lookup w in
+    (* The prelude sees the private natives, as when it loads. *)
+    let is_prelude = Filename.basename path = "prelude.kp" && Filename.basename (Filename.dirname path) = "std" in
+    let lookup = if is_prelude then Loader.in_module w 0 else Loader.lookup w in
     match Loader.prepare ctx ~path ~src ~lookup with
     | exception e when Loader.message_of_error e <> None ->
       st.failed <- st.failed + 1;

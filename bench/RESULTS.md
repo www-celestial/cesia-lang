@@ -324,6 +324,42 @@ The doubled prelude costs each program about 0.44 ms at start, and `print(1)` ha
 Not verified: OpenBLAS, MKL and Accelerate, as only the reference libraries are here. Sizes beyond a few million rows have not
 been run: the data must fit in RAM, like with pandas, at 8 bytes per cell of a typed column.
 
+### With OpenBLAS
+
+The owner installed OpenBLAS 0.3.34 after the table above. In 1,000 by 1,000, on 4 cores and 8 threads:
+
+| Work | Reference libraries, or OCaml | OpenBLAS |
+|---|---:|---:|
+| `matmul` | 566 ms | 19 ms |
+| `num.solve` | 207 ms | 22 ms |
+| `num.qr` | 1,047 ms | 83 ms |
+| `num.eigen` | 2,170 ms | 1,477 ms |
+
+## Documentation, 2026-11-02
+
+| Criterion | Target | Measured | Met |
+|---|---|---|---|
+| Every public name has a comment | all | 539 names, `is_everything_public_has_a_comment` | yes |
+| Examples that `kepler test` runs | pass | 330 in `std/`, 0 failed | yes |
+| `doc` on all 539 names | fast enough for an editor | 2 ms in all | yes |
+| `print(1)`, measurement included | under 5 ms | 3.87 ms in this run, 4.84 ms in the previous one | yes |
+| A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.6 to 4.7 s (`tools/check.sh`) | yes |
+| A Kepler function active in a running program | under 100 ms | 12 ms (`tools/reload_test.sh`) | yes |
+| Tests on both paths | all | 633 + 3 + 330 tests, golden 248/248, and 220/220 with `--no-spec` | yes |
+| `tools/check.sh` | passes | yes, 12,168 lines of 15,000 | yes |
+| 10-minute fuzz, seed 20261106 | no internal error | 136,389 trials, 9,751 ran to the end, 5,546 toml accepted, 0 failures | yes |
+
+| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Met |
+|---|---:|---:|---:|---:|---:|---|
+| fib | 474 ms | 1501 ms | 3.17 | 696 ms | 0.68 | yes |
+| mandel | 471 ms | 2658 ms | 5.64 | 440 ms | 1.07 | yes |
+| structs | 579 ms | 1819 ms | 3.14 | 1545 ms | 0.37 | yes |
+| matmul | 976 ms | 5307 ms | 5.44 | 878 ms | 1.11 | yes |
+| dyn | 656 ms | 1438 ms | 2.19 | 723 ms | 0.91 | yes |
+
+The comments of `std/` cost a program nothing at start, except those of the prelude. `doc` reads the sources only when asked.
+Loading stays under its target, at 479,761 to 487,806 lines/s.
+
 ## Generic path only (`--no-spec`)
 
 | Benchmark | Kepler | Times Python |

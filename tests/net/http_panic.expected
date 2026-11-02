@@ -2,8 +2,8 @@ http_panic.kp:6:34: broken
   6 | handle(r) = if r.path == "/boom" panic("broken") else {status: 200, body: "fine"} end
     |                                  ^
   in handle (http_panic.kp:6)
-  called from <anonymous> (std/http.kp:157)
-  called from answer (std/http.kp:157)
+  called from <anonymous> (std/http.kp:161)
+  called from answer (std/http.kp:161)
 Ok(value = "HTTP/1.1 500 Internal Server Error")
 Ok(value = "HTTP/1.1 200 OK")
 exit 0

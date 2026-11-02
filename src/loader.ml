@@ -213,7 +213,7 @@ let load_debugger ctx name =
 (* Module 0 of natives, then the prelude in Kepler. *)
 let init w =
   w.native_modules <- ("debug", Debug.natives) :: ("json", Json.natives) :: ("regex", Regex.natives ()) :: ("columns", Columns.natives) :: w.native_modules;
-  let natives = Native.prelude @ Lists.natives @ Fiber.natives in
+  let natives = Native.prelude @ Lists.natives @ Fiber.natives @ Docs.natives in
   let names = List.mapi (fun i (n, _) -> n, i) natives in
   let cells = Array.of_list (List.map snd natives) in
   let stable = Array.make (Array.length cells) true in

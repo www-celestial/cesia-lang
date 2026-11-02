@@ -1,9 +1,14 @@
 -- CSV, as RFC 4180 writes it: quotes around a field, doubled inside.
 use columns
 
+-- The rows of CSV text, each as a list of texts.
+--
+--   parse("a,b\n1,2\n") --> [["a", "b"], ["1", "2"]]
 parse(s, separator = ",") = columns.csv(s, separator)
 
 -- Each row after the first as a dictionary, by the names of the first.
+--
+--   records("a,b\n1,2\n")[1]["b"] --> "2"
 defn records(s, separator = ",")
   rows = parse(s, separator = separator)
   if length(rows) == 0
@@ -22,6 +27,9 @@ defn _field(x, separator)
   end
 end
 
+-- The CSV text of rows of values, quoting the fields that need it. Every row ends with a line end.
+--
+--   write([["a", 1], ["b,c", 2]]) --> "a,1\n\"b,c\",2\n"
 defn write(rows, separator = ",")
   lines = [join(separator, [_field(x, separator) for x in row]) for row in rows]
   "$(join("\n", lines))\n"

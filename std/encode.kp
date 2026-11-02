@@ -4,6 +4,9 @@ _hex_digits = "0123456789abcdef"
 _base64_digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 _digit(k, digits) = byte_slice(k + 1, k + 1, digits)
 
+-- The hexadecimal text of the bytes of a text, in lower case.
+--
+--   hex("hi") --> "6869"
 defn hex(s)
   join("", ["$(_digit(div(b, 16), _hex_digits))$(_digit(mod(b, 16), _hex_digits))" for b in bytes(s)])
 end
@@ -22,6 +25,9 @@ end
 
 _bad(what) = Err({kind: "encoding", message: "This isn't valid $what."})
 
+-- The text of bytes written in hexadecimal, in an Ok, or an Err of the kind "encoding".
+--
+--   unhex("6869") --> Ok("hi")
 defn unhex(s)
   codes = bytes(s)
   n = length(codes)
@@ -40,6 +46,9 @@ defn unhex(s)
   Ok(from_bytes(out))
 end
 
+-- The Base64 text of the bytes of a text, with padding.
+--
+--   base64("hi") --> "aGk="
 defn base64(s)
   codes = bytes(s)
   n = length(codes)
@@ -77,6 +86,8 @@ defn _base64_value(b)
 end
 
 -- Takes the standard alphabet and the one of URLs, with or without padding.
+--
+--   unbase64("aGk=") --> Ok("hi")
 defn unbase64(s)
   clean = replace("=", "", s)
   codes = bytes(clean)
@@ -107,11 +118,16 @@ end
 
 _url_safe(b) = (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b == 45 or b == 46 or b == 95 or b == 126
 
+-- A text with every byte percent-encoded except letters, digits and - . _ ~
+--
+--   url_encode("a b") --> "a%20b"
 defn url_encode(s)
   join("", [if _url_safe(b) char(b) else "%$(upper(hex(from_bytes([b]))))" end for b in bytes(s)])
 end
 
 -- Decodes %41, and + as a space, as forms write it.
+--
+--   url_decode("a%20b+c") --> "a b c"
 defn url_decode(s)
   if not contains("%", s) and not contains("+", s)
     return s
@@ -139,6 +155,8 @@ defn url_decode(s)
 end
 
 -- The fields of a query or a form: a=1&b=two
+--
+--   parse_query("a=1&b=2")["b"] --> "2"
 defn parse_query(s)
   out = dict()
   if s == ""
@@ -155,6 +173,8 @@ defn parse_query(s)
 end
 
 -- SHA-1 is broken for signatures. It stays here because the WebSocket handshake asks for it.
+--
+--   hex(sha1("abc")) --> "a9993e364706816aba3e25717850c26c9cd0d89d"
 defn sha1(s)
   m = bytes(s)
   n = length(m)

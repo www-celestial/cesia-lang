@@ -19,6 +19,7 @@ end
 
 _ints() = ["ptr", "ptr", "u64"]
 
+-- Loads libsodium: an Ok of the api that the other functions take as their last argument s, or an Err.
 defn open()
   lib = c.open("sodium", version = 26)?
   init = c.fn("sodium_init", [], "i32", lib)?
@@ -63,6 +64,7 @@ defn _out(size, inputs, f)
   {status: status, bytes: result}
 end
 
+-- n random bytes from the system, as a text.
 defn random(n, s)
   _out(n, [], (out, blocks) -> s.random(out, n)).bytes
 end
@@ -73,14 +75,18 @@ defn _done(r)
   r.bytes
 end
 
+-- The SHA-256 hash of a text, as 32 bytes.
 sha256(text_value, s) = _done(_out(32, [text_value], (out, b) -> s.sha256(out, b[1], byte_length(text_value))))
+-- The SHA-512 hash of a text, as 64 bytes.
 sha512(text_value, s) = _done(_out(64, [text_value], (out, b) -> s.sha512(out, b[1], byte_length(text_value))))
 
+-- The BLAKE2b hash of a text, as a number of bytes from 16 to 64 (32 by default).
 defn blake2b(text_value, s, size = 32)
   assert(size >= 16 and size <= 64, "blake2b needs a size from 16 to 64.")
   _done(_out(size, [text_value], (out, b) -> s.blake2b(out, size, b[1], byte_length(text_value), missing, 0)))
 end
 
+-- The HMAC-SHA-256 of a text under a key, as 32 bytes.
 defn hmac_sha256(key, text_value, s)
   state = c.alloc(s.hmac_size())
   r = _out(32, [key, text_value], (out, b) -> _hmac(s, state, out, b, byte_length(key), byte_length(text_value)))
@@ -125,11 +131,13 @@ defn _opened(sealed, keys, f)
   if r.status == 0 Ok(r.bytes) else _refused() end
 end
 
+-- A message encrypted and authenticated under a 32-byte key. The random nonce is kept in front of the result.
 defn seal(message, key, s)
   _sized(key, secret_key_size, "A key")
   _sealed(message, [key], s, (out, b, size) -> s.secret_seal(out, b[1], size, b[2], b[3]))
 end
 
+-- The message of a result of seal, in an Ok, or an Err if it was changed or the key is wrong.
 defn unseal(sealed, key, s)
   _sized(key, secret_key_size, "A key")
   _opened(sealed, [key], (out, b, size) -> s.secret_open(out, b[1], size, b[2], b[3]))
@@ -146,28 +154,34 @@ defn _pair(public_size, secret_size, f)
   out
 end
 
+-- A new key pair for box_seal, as a struct with public and secret.
 box_pair(s) = _pair(public_key_size, secret_key_size, s.box_pair)
 
+-- A message encrypted for the owner of a public key, and authenticated by the sender's secret key. The nonce is kept in front.
 defn box_seal(message, to_public, from_secret, s)
   _sized(to_public, public_key_size, "A public key")
   _sized(from_secret, secret_key_size, "A secret key")
   _sealed(message, [to_public, from_secret], s, (out, b, size) -> s.box_seal(out, b[1], size, b[2], b[3], b[4]))
 end
 
+-- The message of a result of box_seal, in an Ok, or an Err if it was changed or the keys are wrong.
 defn box_open(sealed, from_public, to_secret, s)
   _sized(from_public, public_key_size, "A public key")
   _sized(to_secret, secret_key_size, "A secret key")
   _opened(sealed, [from_public, to_secret], (out, b, size) -> s.box_open(out, b[1], size, b[2], b[3], b[4]))
 end
 
+-- A new key pair for sign, as a struct with public and secret.
 sign_pair(s) = _pair(sign_public_size, sign_secret_size, s.sign_pair)
 
+-- The 64-byte signature of a message under a secret signing key.
 defn sign(message, secret, s)
   _sized(secret, sign_secret_size, "A secret key")
   size = byte_length(message)
   _done(_out(signature_size, [message, secret], (out, b) -> s.sign(out, missing, b[1], size, b[2])))
 end
 
+-- Is this signature the one of the message under the public signing key?
 defn verify(signature, message, public, s)
   if byte_length(signature) != signature_size or byte_length(public) != sign_public_size
     return false
@@ -183,6 +197,7 @@ defn hash_password(password, s)
   byte_slice(1, byte_find(char(0), 1, r) - 1, r)
 end
 
+-- Does the password match a result of hash_password?
 defn check_password(password, stored, s)
   if byte_length(stored) >= password_size
     return false

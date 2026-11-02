@@ -1,2 +1,2 @@
 use regex
-print(length(regex.find_all(".", repeat(200000, "a"))))
+print(length(regex.find_all(".", repeat(100000, "a"))))

@@ -1,13 +1,44 @@
 -- Sets of numbers and texts: the keys of a dictionary, in order.
 
+-- A set with nothing in it.
 empty() = dict()
+-- A set of the elements of an array.
+--
+--   count(of([1, 2, 1])) --> 2
 of(xs) = reduce((s, x) -> put(x, true, s), dict(), xs)
+-- A set with x added.
+--
+--   member(1, add(1, empty())) --> true
 add(x, s) = put(x, true, s)
+-- A set without x.
+--
+--   count(remove(1, of([1, 2]))) --> 1
 remove(x, s) = drop(x, s)
+-- Is x in the set?
+--
+--   member(1, of([1])) --> true
 member(x, s) = has(x, s)
+-- The elements of the set, in order.
+--
+--   items(of([2, 1])) --> [1, 2]
 items(s) = keys(s)
+-- How many elements the set holds.
+--
+--   count(of([1, 2])) --> 2
 count(s) = length(s)
+-- The elements of either set.
+--
+--   items(union(of([1]), of([2]))) --> [1, 2]
 union(a, b) = reduce((s, x) -> put(x, true, s), a, keys(b))
+-- The elements of both sets.
+--
+--   items(intersection(of([1, 2]), of([2, 3]))) --> [2]
 intersection(a, b) = of([x for x in keys(a) if has(x, b)])
+-- The elements of the first set that aren't in the second.
+--
+--   items(difference(of([1, 2]), of([2]))) --> [1]
 difference(a, b) = of([x for x in keys(a) if not has(x, b)])
+-- Are all the elements of the first set in the second?
+--
+--   subset(of([1]), of([1, 2])) --> true
 subset(a, b) = all([has(x, b) for x in keys(a)])

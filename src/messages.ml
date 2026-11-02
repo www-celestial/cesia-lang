@@ -134,6 +134,7 @@ let usage =
   \       kepler test [path] [--no-spec]\n\
   \       kepler do [task]\n\
   \       kepler new name\n\
+  \       kepler doc [name]\n\
   \       kepler version"
 let cant_read path = "can't read " ^ path
 let unknown_permission name = "unknown permission: " ^ name
@@ -179,6 +180,7 @@ let need_count name a = plain (Printf.sprintf "%s needs a count of 0 or more, no
 let cant_sort a b = plain (Printf.sprintf "Can't sort %s with %s." a b)
 let need_char name = plain (Printf.sprintf "%s needs a text with a character." name)
 let need_byte a = plain (Printf.sprintf "from_bytes needs integers from 0 to 255, not %s." a)
+let doc_missing name = "kepler: nothing is documented under " ^ name
 let json_value a = plain (Printf.sprintf "JSON can't hold %s." a)
 let column_sizes a b = plain (Printf.sprintf "These columns have %d and %d rows." a b)
 let need_groups a = plain (Printf.sprintf "split needs the result of groups, not %s." a)
