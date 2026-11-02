@@ -79,4 +79,5 @@ t = spawn(() -> net.connect("a.example", 1))
 sys.sleep(0.005)
 print("end")
 |});
+  if Kepler_sys.Sys_modules.ram () < 1_000_000 then failwith "the RAM of the machine isn't known";
   print_endline "net_test: ok"

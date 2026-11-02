@@ -13,8 +13,8 @@ type options = {
 
 val default_limits : limits
 
-(** The default memory limit, in words, from the text of /proc/meminfo: 80% of the RAM, or [max_int] if unknown. *)
-val default_memory : string -> int
+(** The default memory limit, in words, from the size of the RAM in bytes: 80% of it, or [max_int] if the size is 0. *)
+val default_memory : int -> int
 val default_options : options
 val create_world : options -> world
 (** A new context, with stacks of [stack] entries that grow on demand. *)

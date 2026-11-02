@@ -5,15 +5,8 @@ let initial_stack = 4096
 
 let default_limits = { steps = max_int; memory_words = max_int; max_depth = 10_000; nesting = 600 }
 
-(* 80% of the RAM, in words, from the text of /proc/meminfo. Unknown RAM means no limit. *)
-let default_memory meminfo =
-  let total_kb line =
-    try Some (Scanf.sscanf line "MemTotal: %d kB" Fun.id)
-    with Scanf.Scan_failure _ | Failure _ | End_of_file -> None
-  in
-  match List.find_map total_kb (String.split_on_char '\n' meminfo) with
-  | Some kb -> kb * 512 / 5
-  | None -> max_int
+(* 80% of the RAM, in words, from its size in bytes. Unknown RAM, given as 0, means no limit. *)
+let default_memory bytes = if bytes > 0 then bytes / 10 else max_int
 
 type options = {
   o_limits : limits;

@@ -80,10 +80,7 @@ let parse_limit (l : Types.limits) s =
 
 (* 80% of the RAM by default: without a limit, one large array can freeze the machine. *)
 let with_default_memory (o : Runtime.options) =
-  let meminfo =
-    try In_channel.with_open_bin "/proc/meminfo" In_channel.input_all with Sys_error _ -> ""
-  in
-  { o with o_limits = { o.o_limits with memory_words = Runtime.default_memory meminfo } }
+  { o with o_limits = { o.o_limits with memory_words = Runtime.default_memory (Kepler_sys.Sys_modules.ram ()) } }
 
 (* What tells that a file has changed. *)
 let stamp path =

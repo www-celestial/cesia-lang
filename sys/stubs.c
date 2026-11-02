@@ -1,4 +1,4 @@
-/* What OCaml's unix library doesn't offer: the epoll system calls, and loading C libraries. */
+/* What OCaml's unix library doesn't offer: the epoll system calls, loading C libraries, and the size of the RAM. */
 #include <caml/alloc.h>
 #include <caml/bigarray.h>
 #include <caml/memory.h>
@@ -14,6 +14,7 @@ _Static_assert(sizeof(void *) == 8, "Kepler needs 64 bits.");
 #define find_symbol(lib, name) ((void *) GetProcAddress((HMODULE) (lib), name))
 #else
 #include <dlfcn.h>
+#include <unistd.h>
 #define open_library(name) dlopen(name, RTLD_NOW | RTLD_LOCAL)
 #define find_symbol(lib, name) dlsym(lib, name)
 #endif
@@ -39,6 +40,18 @@ value kepler_dlerror(value unit) {
 #else
   const char *text = dlerror();
   return caml_copy_string(text ? text : "unknown error");
+#endif
+}
+
+/* The RAM of the machine in bytes, or 0 if it can't be known. */
+value kepler_ram(value unit) {
+#ifdef _WIN32
+  MEMORYSTATUSEX status;
+  status.dwLength = sizeof status;
+  return Val_long(GlobalMemoryStatusEx(&status) ? (intnat) status.ullTotalPhys : 0);
+#else
+  long pages = sysconf(_SC_PHYS_PAGES), size = sysconf(_SC_PAGE_SIZE);
+  return Val_long(pages > 0 && size > 0 ? (intnat) pages * size : 0);
 #endif
 }
 

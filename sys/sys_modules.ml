@@ -1,3 +1,5 @@
+external ram : unit -> int = "kepler_ram"
+
 open Kepler
 open Types
 

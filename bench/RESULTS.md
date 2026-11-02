@@ -525,3 +525,6 @@ A person ran `kepler do material` in a real window: the mouse did nothing until 
 libdecor draws around a window is made of subsurfaces, which apply only with a commit of the window. Its shadow took the mouse, and
 `sdl.run` waited for input before drawing, so nothing ever changed. `sdl.run` now draws for every event about the window, and programs
 see nothing new. `WAYLAND_DEBUG=1` shows the pointer entering the surface of the window instead of the shadow.
+
+The first runs on macOS hung for 56 minutes in `tests/limits`. The default memory limit came from `/proc/meminfo`, which only Linux has, and an unknown size meant no limit: `zeros(1e12)` really tried, and
+the machine sank into its swap. The limit now comes from `kepler_ram` in `sys/stubs.c`, through `sysconf` or `GlobalMemoryStatusEx`. It gives the same 1,195,487,641 words as before on this PC.

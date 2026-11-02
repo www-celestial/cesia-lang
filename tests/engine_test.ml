@@ -105,9 +105,9 @@ let () =
     (Runtime.scope_matches Net "a.com:443" "a.com:443" && not (Runtime.scope_matches Net "a.com:443" "a.com:80"));
   check "net host is no suffix" (not (Runtime.scope_matches Net "a.com" "evil-a.com:443"));
   check "read stays a path" (Runtime.scope_matches Read "./data" "./data/a" && not (Runtime.scope_matches Read "./data" "./b"));
-  check "default memory is 80% of MemTotal"
-    (Runtime.default_memory "MemFree: 1 kB\nMemTotal:     1000 kB\n" = 102_400);
-  check "unknown RAM means no limit" (Runtime.default_memory "" = max_int);
+  check "default memory is 80% of the RAM"
+    (Runtime.default_memory 1_024_000 = 102_400);
+  check "unknown RAM means no limit" (Runtime.default_memory 0 = max_int);
   let program = "f(x) = x + 1\nprint(f(1))\n" in
   let code, count = hooks program in
   check "no hooks without --debugger" (code = 0 && count = 0);
