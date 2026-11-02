@@ -19,6 +19,48 @@ let elements ctx name v =
   let a, n = cells ctx name v in
   Array.init n (fun k -> Value.share (Value.elt a k))
 
+(* A list with a value at its end. A list keeps free cells behind its last one, doubled when they run out, so a loop of
+   pushes stays linear. The new list shares the store: the old one still ends where it did, and it stops being the tip, so
+   a second push from it copies instead of taking the same cell. Sharing a store ends ownership: a write copies. *)
+let push ctx x a =
+  let n = a.rows * a.cols in
+  let took () =
+    Runtime.pay ctx 1;
+    a.a_tip <- false;
+    a.a_owned <- false;
+    Array { rows = 1; cols = n + 1; store = a.store; a_owned = false; a_tip = true }
+  in
+  let grown store = Array { rows = 1; cols = n + 1; store; a_owned = true; a_tip = true } in
+  let room = max 8 (2 * n) in
+  match a.store, x with
+  | _ when a.rows <> 1 ->
+    Runtime.build ctx (n + 1);
+    Arrays.list (Array.init (n + 1) (fun k -> Value.share (if k < n then Value.elt a k else x)))
+  | F d, Float y when a.a_tip && n < Float.Array.length d -> Float.Array.set d n y; took ()
+  | I d, Int y when a.a_tip && n < Array.length d -> d.(n) <- y; took ()
+  | V d, _ when a.a_tip && n < Array.length d -> d.(n) <- Value.share x; took ()
+  | F d, Float y ->
+    Runtime.build ctx room;
+    let out = Float.Array.create room in
+    Float.Array.blit d 0 out 0 n;
+    Float.Array.set out n y;
+    grown (F out)
+  | I d, Int y ->
+    Runtime.build ctx room;
+    let out = Array.make room 0 in
+    Array.blit d 0 out 0 n;
+    out.(n) <- y;
+    grown (I out)
+  | V d, _ ->
+    Runtime.build ctx room;
+    let out = Array.make room Missing in
+    for k = 0 to n - 1 do out.(k) <- Value.share d.(k) done;
+    out.(n) <- Value.share x;
+    grown (V out)
+  | _ ->
+    Runtime.build ctx (n + 1);
+    Arrays.list (Array.init (n + 1) (fun k -> Value.share (if k < n then Value.elt a k else x)))
+
 (* [n] cells of a list, each from the position that [at] gives. *)
 let picked a n at = Array.init n (fun k -> Value.share (Value.elt a (at k)))
 
@@ -182,9 +224,7 @@ let natives =
     bits "bit_xor" ( lxor );
     bits "bit_shift" shift;
     "bit_not", nat "bit_not" 1 1 (fun ctx a -> Int (lnot (Arrays.whole_index ctx a.(0))));
-    "push", nat "push" 2 2 (fun ctx a ->
-        let xs, n = cells ctx "push" a.(1) in
-        list (Array.init (n + 1) (fun k -> Value.share (if k < n then Value.elt xs k else a.(0)))));
+    "push", nat "push" 2 2 (fun ctx a -> push ctx a.(0) (items ctx "push" a.(1)));
     "concat", nat "concat" 2 2 (fun ctx a ->
         let ys, m = cells ctx "concat" a.(1) in
         let xs, n = cells ctx "concat" a.(0) in

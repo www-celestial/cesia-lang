@@ -2,7 +2,7 @@ open Types
 
 let array_arg ctx name v =
   match v with
-  | Array a -> a
+  | Array a -> Value.trim a
   | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
 
 let size a = a.rows * a.cols

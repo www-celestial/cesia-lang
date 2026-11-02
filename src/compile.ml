@@ -370,7 +370,7 @@ let[@inline never] fa_slow1 ctx x k s =
 
 let[@inline] fa_get (ctx : ctx) slot k s =
   match ctx.v.(ctx.b + slot) with
-  | Array { store = F d; _ } when k >= 1 && k <= Float.Array.length d -> Float.Array.get d (k - 1)
+  | Array { store = F d; rows; cols; _ } when k >= 1 && k <= rows * cols -> Float.Array.get d (k - 1)
   | x -> fa_slow1 ctx x k s
 
 let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -> 'a) -> ctx -> 'a =
@@ -489,8 +489,8 @@ and store_var c i (e : expr) : ctx -> unit =
           let p = idx ctx in
           let x =
             match ctx.v.(ctx.b + slot) with
-            | Array { store = V d; _ } when p >= 1 && p <= Array.length d -> d.(p - 1)
-            | Array { store = I d; _ } when p >= 1 && p <= Array.length d -> Int d.(p - 1)
+            | Array { store = V d; rows; cols; _ } when p >= 1 && p <= rows * cols -> d.(p - 1)
+            | Array { store = I d; rows; cols; _ } when p >= 1 && p <= rows * cols -> Int d.(p - 1)
             | base ->
               ctx.site <- s;
               Arrays.read1 ctx base (Arrays.At p)
@@ -833,9 +833,9 @@ and index_read c e b ixs uses_end =
         let idx = ci c i in
         let read (ctx : ctx) x k =
           match x with
-          | Array { store = V d; _ } when k >= 1 && k <= Array.length d -> d.(k - 1)
-          | Array { store = I d; _ } when k >= 1 && k <= Array.length d -> Int d.(k - 1)
-          | Array { store = F d; _ } when k >= 1 && k <= Float.Array.length d -> Float (Float.Array.get d (k - 1))
+          | Array { store = V d; rows; cols; _ } when k >= 1 && k <= rows * cols -> d.(k - 1)
+          | Array { store = I d; rows; cols; _ } when k >= 1 && k <= rows * cols -> Int d.(k - 1)
+          | Array { store = F d; rows; cols; _ } when k >= 1 && k <= rows * cols -> Float (Float.Array.get d (k - 1))
           | _ ->
             ctx.site <- s;
             Arrays.read1 ctx x (Arrays.At k)
@@ -1769,7 +1769,7 @@ and fa_read1 c e b i =
     fun ctx ->
       let k = idx ctx in
       (match ctx.v.(ctx.b + slot) with
-       | Array { store = F d; _ } when k >= 1 && k <= Float.Array.length d -> Float.Array.get d (k - 1)
+       | Array { store = F d; rows; cols; _ } when k >= 1 && k <= rows * cols -> Float.Array.get d (k - 1)
        | x ->
          ctx.site <- s;
          to_f ctx (Arrays.read1 ctx x (Arrays.At k)))
@@ -1948,7 +1948,7 @@ and fa_write1 c root sp i value =
     let p = idx ctx in
     let y = v ctx in
     match ctx.v.(ctx.b + k) with
-    | Array { store = F d; a_owned = true; _ } when p >= 1 && p <= Float.Array.length d ->
+    | Array { store = F d; a_owned = true; rows; cols; _ } when p >= 1 && p <= rows * cols ->
       Float.Array.set d (p - 1) y
     | x ->
       ctx.site <- s;
@@ -1963,7 +1963,7 @@ and fa_write2 c root sp i j value =
     let q = jx ctx in
     let y = v ctx in
     match ctx.v.(ctx.b + k) with
-    | Array { store = F d; a_owned = true; rows; cols } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
+    | Array { store = F d; a_owned = true; rows; cols; _ } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
       Float.Array.set d (((q - 1) * rows) + p - 1) y
     | x ->
       ctx.site <- s;

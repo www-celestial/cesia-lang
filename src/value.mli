@@ -8,6 +8,9 @@ exception Limit of { what : string; at : int }
 
 val of_bool : bool -> t
 
+(** The array, with its store cut to its cells. See [arr]. *)
+val trim : arr -> arr
+
 (** Clears [owned] and returns the value: a second reference is about to lead to it. *)
 val share : t -> t
 

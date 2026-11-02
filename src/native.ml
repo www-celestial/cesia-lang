@@ -124,11 +124,11 @@ let filled ctx value rows cols =
   match value with
   | Float x -> Arrays.of_float rows cols (Runtime.alloc_float ctx n x)
   | Int i when n > 0 -> Arrays.of_ints rows cols (Runtime.alloc_ints ctx n i)
-  | v -> Array { rows; cols; store = V (Runtime.alloc_vals ctx n (Value.share v)); a_owned = true }
+  | v -> Array { rows; cols; store = V (Runtime.alloc_vals ctx n (Value.share v)); a_owned = true; a_tip = true }
 
 let size ctx (a : t array) =
   let rows, cols = match a.(0) with Array x -> x.rows, x.cols | _ -> 1, 1 in
-  if Array.length a = 1 then Array { rows = 1; cols = 2; store = V [| Int rows; Int cols |]; a_owned = true }
+  if Array.length a = 1 then Array { rows = 1; cols = 2; store = V [| Int rows; Int cols |]; a_owned = true; a_tip = true }
   else
     match a.(1) with
     | Int 1 -> Int rows
@@ -143,7 +143,7 @@ let reshape ctx (a : t array) =
     if Runtime.cells ctx rows cols <> n then Runtime.fail ctx Type (Messages.reshape_size n rows cols);
     Runtime.pay ctx n;
     (match Runtime.copy ctx a.(0) with
-     | Array y -> Array { rows; cols; store = y.store; a_owned = true }
+     | Array y -> Array { rows; cols; store = y.store; a_owned = true; a_tip = true }
      | v -> v)
   | v -> Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
@@ -176,9 +176,9 @@ let math1 name f =
     | True -> Float (f 1.)
     | False -> Float (f 0.)
     | Missing -> Missing
-    | Array { rows; cols; store = F d; _ } ->
+    | Array ({ rows; cols; store = F _; _ } as x) ->
       Runtime.build ctx (rows * cols);
-      Arrays.of_float rows cols (Kernels.map1 f d)
+      (match (Value.trim x).store with F d -> Arrays.of_float rows cols (Kernels.map1 f d) | _ -> v)
     | Array _ -> elementwise ctx name go v
     | _ -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
   in
@@ -210,7 +210,7 @@ let rec sign ctx v =
 
 let floats ctx name v =
   match v with
-  | Array { store = F d; _ } -> d
+  | Array ({ store = F _; _ } as a) -> (match (Value.trim a).store with F d -> d | _ -> assert false)
   | Array a ->
     Runtime.reserve ctx (a.rows * a.cols);
     Float.Array.init (a.rows * a.cols) (fun k ->
@@ -239,7 +239,7 @@ let transpose ctx (a : t array) =
     let n = x.rows * x.cols in
     Runtime.build ctx n;
     let at k = let j = k / x.rows and i = k mod x.rows in (i * x.cols) + j in
-    (match x.store with
+    (match (Value.trim x).store with
      | F d -> Arrays.of_float x.cols x.rows (Kernels.transpose ~rows:x.rows ~cols:x.cols d)
      | I d ->
        let out = Array.make n 0 in
@@ -248,14 +248,14 @@ let transpose ctx (a : t array) =
      | V d ->
        let out = Array.make n Missing in
        if n > 0 then Array.iteri (fun k v -> out.(at k) <- Value.share v) d;
-       Array { rows = x.cols; cols = x.rows; store = V out; a_owned = true })
+       Array { rows = x.cols; cols = x.rows; store = V out; a_owned = true; a_tip = true })
   | v -> v
 
 let sum ctx v =
   match v with
-  | Array { rows; cols; store = F d; _ } ->
+  | Array ({ rows; cols; store = F _; _ } as x) ->
     Runtime.pay ctx (rows * cols);
-    Float (Kernels.sum d)
+    (match (Value.trim x).store with F d -> Float (Kernels.sum d) | _ -> v)
   | Array x ->
     let n = x.rows * x.cols in
     Runtime.pay ctx n;
@@ -364,7 +364,7 @@ let split ctx (a : t array) =
   let sep = non_empty ctx "split" (text_arg ctx "split" a.(0)) and s = text_arg ctx "split" a.(1) in
   Runtime.build ctx ((String.length s / 8) + 1);
   let items = Array.of_list (List.map (fun p -> Text p) (pieces s sep)) in
-  Array { rows = 1; cols = Array.length items; store = V items; a_owned = true }
+  Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true }
 
 let join ctx (a : t array) =
   let sep = text_arg ctx "join" a.(0) in
@@ -518,7 +518,7 @@ let prelude =
             r.shape.names;
           !acc
         | v -> v);
-    "args", Array { rows = 1; cols = 0; store = V [||]; a_owned = false };
+    "args", Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true };
     "text", nat "text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
     "dict", nat "dict" 0 1 dict_of_pairs;
     "#dict", nat "dict literal" 0 max_int dict_literal;

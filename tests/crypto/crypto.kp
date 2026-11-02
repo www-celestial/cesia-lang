@@ -15,7 +15,8 @@ defn main()
   print(byte_length(box), crypto.unseal(box, key, s) then map_ok(byte_length))
   print(crypto.unseal(box, crypto.secret_key(s), s) then map_err(it.message))
   print(is_err(crypto.unseal("short", key, s)))
-  print(crypto.unseal("x$(byte_slice(2, byte_length(box), box))", key, s) then is_err)
+  other = if byte(1, box) == 120 "y" else "x" end
+  print(crypto.unseal("$other$(byte_slice(2, byte_length(box), box))", key, s) then is_err)
   print(crypto.seal("same", key, s) != crypto.seal("same", key, s))
 
   alice = crypto.box_pair(s)

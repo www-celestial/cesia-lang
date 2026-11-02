@@ -102,7 +102,7 @@ is_widgets_give_known_kinds() = all(map(is_known, widgets(area)))
 is_widgets_of_an_empty_rectangle() = all(map(is_known, widgets(nothing)))
 is_widgets_of_nothing() = equal(ui.list([], 0, missing, area, look), []) and is_known(ui.nodes([], 0, [], look)) and is_known(ui.links([], [], look)) and is_known(ui.code([], 0, area, look)) and is_known(ui.menu_bar([], "", area, look)) and is_known(ui.tool_bar([], {x: 0, y: 0}, area, look))
 
-accents(commands) = length(filter(c -> c.kind == "rect" and c.color == ui.dark.accent, commands))
+accents(commands) = length(filter(c -> c.kind == "box" and c.color == ui.dark.accent, commands))
 is_only_active_panel_has_accent() = accents(ui.panel("T", area, look, active = true)) == 1 and accents(ui.panel("T", area, look)) == 0
 
 boxes(commands) = length(filter(it.kind == "box", commands))
@@ -171,3 +171,31 @@ defn is_hint_is_faint()
   plain = filter(it.kind == "text", ui.field("Search", area, look))
   hinted[1].color == ui.dark.faint and plain[1].color == ui.dark.ink
 end
+
+-- A slider stays inside its rectangle, whatever its value: its tick goes to both ends and follows the round corners.
+zone = {x: 100, y: 50, width: 200, height: 22}
+
+defn slider_inside(value)
+  shapes = filter(it.kind == "box" or it.kind == "rect", ui.slider(value, zone, look))
+  all(map(c -> c.x >= zone.x and c.y >= zone.y and c.x + c.width <= zone.x + zone.width and c.y + c.height <= zone.y + zone.height, shapes))
+end
+
+tick_of(value) = filter(it.kind == "rect" and it.color == ui.dark.accent, ui.slider(value, zone, look))[1]
+
+-- The commands of the filled part, of any shape.
+fill_of(value) = filter((it.kind == "rect" or it.kind == "box") and it.color == ui.dark.fill, ui.slider(value, zone, look))
+
+is_slider_inside_at_zero() = slider_inside(0.0)
+is_slider_inside_at_one() = slider_inside(1.0)
+is_slider_inside_past_one() = slider_inside(1.5)
+is_slider_inside_below_zero() = slider_inside(-0.5)
+is_tick_reaches_the_left_end() = tick_of(0.0).x == zone.x
+is_tick_reaches_the_right_end() = tick_of(1.0).x + tick_of(1.0).width == zone.x + zone.width
+is_tick_follows_the_corners() = tick_of(0.0).y == zone.y + 4 and tick_of(0.0).height == zone.height - 8
+is_tick_moves() = tick_of(0.2).x < tick_of(0.8).x
+is_nothing_filled_at_zero() = length(fill_of(0.0)) == 0
+is_a_little_filled_shows() = length(fill_of(0.01)) > 0 and length(fill_of(0.02)) > 0 and length(fill_of(0.03)) > 0
+is_small_fill_inside() = slider_inside(0.01) and slider_inside(0.02) and slider_inside(0.03)
+is_small_fill_follows_the_corner() = fill_of(0.02)[1].y > zone.y
+is_tick_full_height() = tick_of(0.5).y == zone.y and tick_of(0.5).height == zone.height
+

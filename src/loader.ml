@@ -291,7 +291,7 @@ let set_args w (args : string list) =
   match List.assoc_opt "args" w.modules.(0).mnames with
   | Some k ->
     let items = Array.of_list (List.map (fun a -> Text a) args) in
-    w.modules.(0).cells.(k) <- Array { rows = 1; cols = Array.length items; store = V items; a_owned = false }
+    w.modules.(0).cells.(k) <- Array { rows = 1; cols = Array.length items; store = V items; a_owned = false; a_tip = true }
   | None -> ()
 
 (* Runs [body] and prints any Kepler error. Returns the exit code. With [strict], an OCaml stack overflow or a memory

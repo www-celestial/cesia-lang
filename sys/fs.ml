@@ -57,7 +57,7 @@ let list_dir path =
         | exception End_of_file -> acc
       in
       let names = Array.of_list (List.sort compare (go [])) in
-      Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true })
+      Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true; a_tip = true })
 
 let remove path =
   (if Sys.file_exists path && Sys.is_directory path then Unix.rmdir else Unix.unlink) path;

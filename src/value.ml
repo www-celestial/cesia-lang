@@ -58,6 +58,15 @@ let elt a k =
   | I d -> Int d.(k)
   | V d -> d.(k)
 
+(* The free cells behind a list stay behind: this is for code that reads a store as a whole. *)
+let trim a =
+  let n = a.rows * a.cols in
+  (match a.store with
+   | F d -> if Float.Array.length d <> n then a.store <- F (Float.Array.sub d 0 n)
+   | I d -> if Array.length d <> n then a.store <- I (Array.sub d 0 n)
+   | V d -> if Array.length d <> n then a.store <- V (Array.sub d 0 n));
+  a
+
 let is_number = function Int _ | Float _ -> true | _ -> false
 
 let shape_of w ?sname names =
@@ -147,7 +156,7 @@ and show_array ctx depth a =
   else if a.rows = 1 then "[" ^ String.concat ", " (List.init n cell) ^ "]"
   else if a.cols = 1 then "[" ^ String.concat "; " (List.init n cell) ^ "]"
   else begin
-    let numeric = match a.store with F _ | I _ -> true | V d -> Array.for_all is_number d in
+    let numeric = match (trim a).store with F _ | I _ -> true | V d -> Array.for_all is_number d in
     let sep = if numeric then " " else ", " in
     let row i = String.concat sep (List.init a.cols (fun j -> cell ((j * a.rows) + i))) in
     "[" ^ String.concat "; " (List.init a.rows row) ^ "]"

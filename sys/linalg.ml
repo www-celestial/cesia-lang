@@ -61,7 +61,7 @@ let matrix ctx v =
     Runtime.reserve ctx (a.rows * a.cols);
     Option.map
       (fun d -> a.rows, a.cols, d)
-      (match a.store with
+      (match (Value.trim a).store with
        | F d -> Some (Float.Array.copy d)
        | _ ->
          let d = Float.Array.create (a.rows * a.cols) in

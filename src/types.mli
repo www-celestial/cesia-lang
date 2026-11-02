@@ -24,7 +24,10 @@ type t =
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; h : int; n : int }
 and task = { mutable result : t option; mutable waiters : (unit -> unit) list }
 
-and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool }
+(** A list that push made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its
+    cells through [rows] and [cols], and call [Value.trim] before reading a store as a whole. [a_tip]: no push went on from
+    this array yet, so the free cells are still free. *)
+and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool; mutable a_tip : bool }
 and store = F of floatarray | V of t array | I of int array
 
 and shape = {

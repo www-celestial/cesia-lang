@@ -528,3 +528,10 @@ see nothing new. `WAYLAND_DEBUG=1` shows the pointer entering the surface of the
 
 The first runs on macOS hung for 56 minutes in `tests/limits`. The default memory limit came from `/proc/meminfo`, which only Linux has, and an unknown size meant no limit: `zeros(1e12)` really tried, and
 the machine sank into its swap. The limit now comes from `kepler_ram` in `sys/stubs.c`, through `sysconf` or `GlobalMemoryStatusEx`. It gives the same 1,195,487,641 words as before on this PC.
+
+`push` copied the whole list at each call, so a loop of pushes was quadratic: 20,000 of them took 9.07 s. A list now keeps free cells behind its last one, doubled when they run out: 0.002 s. A store can
+be longer than its array, so reads go through `rows * cols`, and code that takes a store as a whole calls `Value.trim`. Reading `x[k]` 40 million times didn't change: 1,161 ms against 1,155 for floats, and
+1,146 against 1,147 for integers. With three poisoned free cells behind every list of the language, the whole suite passes, and removing a guard makes it fail.
+
+A more modern look, on the owner's order, without changing the layout or the density: slightly blue grays, fine edges in place of black ones, flat panel titles with a blue line under the active one, and
+sections with no box. `ui.slider` keeps its tick and its fill inside its rounded bar at every value.

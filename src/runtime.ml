@@ -311,13 +311,14 @@ let copy ctx v =
     build ctx (a.rows * a.cols);
     let store =
       match a.store with
-      | F d -> F (Float.Array.copy d)
-      | I d -> I (Array.copy d)
+      | F d -> F (Float.Array.sub d 0 (a.rows * a.cols))
+      | I d -> I (Array.sub d 0 (a.rows * a.cols))
       | V d ->
-        Array.iter (fun x -> ignore (Value.share x)) d;
-        V (Array.copy d)
+        let cells = Array.sub d 0 (a.rows * a.cols) in
+        Array.iter (fun x -> ignore (Value.share x)) cells;
+        V cells
     in
-    Array { rows = a.rows; cols = a.cols; store; a_owned = true }
+    Array { rows = a.rows; cols = a.cols; store; a_owned = true; a_tip = true }
   | Struct r ->
     pay ctx (Array.length r.fields);
     Array.iter (fun x -> ignore (Value.share x)) r.fields;

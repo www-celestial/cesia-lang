@@ -1,0 +1,4 @@
+push_free_cell.kp:5:9: Index 10 is outside this array of 9 elements.
+  5 | print(xs[10])
+    |         ^
+exit 1

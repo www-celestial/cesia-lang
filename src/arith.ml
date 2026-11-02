@@ -58,6 +58,8 @@ let fast ctx op a b =
     Runtime.build ctx (rows * cols);
     Some (Arrays.of_float rows cols (kernel ()))
   in
+  (match a with Array x -> ignore (Value.trim x) | _ -> ());
+  (match b with Array y -> ignore (Value.trim y) | _ -> ());
   match a, b with
   | Array { rows; cols; store = F x; _ }, Array { rows = r; cols = c; store = F y; _ } when rows = r && cols = c ->
     result rows cols (fun () -> Kernels.both op x y)

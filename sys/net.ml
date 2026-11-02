@@ -251,7 +251,7 @@ let split_at ctx (a : Types.t array) =
   | Int k when k >= 0 && k <= String.length text ->
     Runtime.build ctx ((String.length text / 8) + 1);
     let items = [| Text (String.sub text 0 k); Text (String.sub text k (String.length text - k)) |] in
-    Array { rows = 1; cols = 2; store = V items; a_owned = true }
+    Array { rows = 1; cols = 2; store = V items; a_owned = true; a_tip = true }
   | v -> Runtime.fail ctx Type (Messages.need_size "split_at" (Value.describe v))
 
 (* A header name, as RFC 9110 writes it. *)

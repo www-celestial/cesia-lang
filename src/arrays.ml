@@ -2,9 +2,9 @@ open Types
 
 type ix = At of int | Slice of int * int | Every | Mask of arr | Key of t
 
-let of_float rows cols d = Array { rows; cols; store = F d; a_owned = true }
+let of_float rows cols d = Array { rows; cols; store = F d; a_owned = true; a_tip = true }
 
-let of_ints rows cols d = Array { rows; cols; store = I d; a_owned = true }
+let of_ints rows cols d = Array { rows; cols; store = I d; a_owned = true; a_tip = true }
 
 (* All floats or all integers take the typed storage. *)
 let of_vals rows cols (d : t array) =
@@ -16,7 +16,7 @@ let of_vals rows cols (d : t array) =
   end
   else if Array.length d > 0 && Array.for_all (function Int _ -> true | _ -> false) d then
     of_ints rows cols (Array.map (function Int i -> i | _ -> 0) d)
-  else Array { rows; cols; store = V d; a_owned = true }
+  else Array { rows; cols; store = V d; a_owned = true; a_tip = true }
 
 let list values = if Array.length values = 0 then of_vals 0 0 values else of_vals 1 (Array.length values) values
 
@@ -114,7 +114,7 @@ let pick ctx a (ks : int array) rows cols =
     let out = Array.make (Array.length ks) 0 in
     Par.ranges (Array.length ks) (fun lo hi -> for i = lo to hi - 1 do out.(i) <- d.(ks.(i)) done);
     of_ints rows cols out
-  | V d -> Array { rows; cols; store = V (Array.map (fun k -> Value.share d.(k)) ks); a_owned = true }
+  | V d -> Array { rows; cols; store = V (Array.map (fun k -> Value.share d.(k)) ks); a_owned = true; a_tip = true }
 
 let not_array ctx v = Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
