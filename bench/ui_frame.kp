@@ -7,10 +7,10 @@ use "../examples/material_scene" as scene
 frames = 300
 
 defn opened()
-  first = sdl.open("Kepler speed gate", 1280, 720, "fonts/AdwaitaSans-Regular.ttf", size = 13, vsync = false, light = true)?
-  second = sdl.add_font("strong", "fonts/NotoSans-Medium.ttf", 13, first, light = true)?
-  third = sdl.add_font("code", "fonts/JetBrainsMono-Regular.ttf", 13, second)?
-  sdl.add_font("large", "fonts/AdwaitaSans-Regular.ttf", 42, third, light = true)
+  first = sdl.open("Kepler speed gate", 1280, 720, "examples/fonts/AdwaitaSans-Regular.ttf", size = 13, vsync = false, light = true)?
+  second = sdl.add_font("strong", "examples/fonts/NotoSans-Medium.ttf", 13, first, light = true)?
+  third = sdl.add_font("code", "examples/fonts/JetBrainsMono-Regular.ttf", 13, second)?
+  sdl.add_font("large", "examples/fonts/AdwaitaSans-Regular.ttf", 42, third, light = true)
 end
 
 defn moved(state, n)

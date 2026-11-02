@@ -31,7 +31,7 @@ defn later()
 end
 
 defn check()
-  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  w = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   spawn(later)
   last = sdl.run({left: 5}, update, view, w, moving = s -> s.left > 0)
   print(last.left)

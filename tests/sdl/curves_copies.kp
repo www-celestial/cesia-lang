@@ -1,7 +1,7 @@
 use "./probe"
 use sdl
 
-font = "../../fonts/JetBrainsMono-Regular.ttf"
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 black = 0x000000
 green = 0x00FF00
 one = [{x0: 10, y0: 10, x1: 110, y1: 60, color: green}]

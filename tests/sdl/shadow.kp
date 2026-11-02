@@ -4,7 +4,7 @@ use sdl
 white = 0xFFFFFF
 
 defn check()
-  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  w = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   a = sdl.draw([{kind: "clear", color: white}, {kind: "shadow", x: 100, y: 60, width: 120, height: 60, alpha: 200}], w)
   image = probe.pixels(a, 320, 200)
   print(mod(probe.pixel(160, 124, image), 256) < 200)

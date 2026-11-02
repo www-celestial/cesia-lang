@@ -26,7 +26,7 @@ defn all_finite(block, vertices)
 end
 
 defn check()
-  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  w = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   a = shot(one, w)
   print(bright(11, 10, a.image))
   print(bright(107, 59, a.image))

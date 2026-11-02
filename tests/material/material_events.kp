@@ -2,7 +2,7 @@
 use sdl
 use "../../examples/material_scene" as scene
 
-fonts = "../../fonts/"
+fonts = "../../examples/fonts/"
 
 defn opened()
   first = sdl.open("test", 1280, 720, "$(fonts)AdwaitaSans-Regular.ttf", size = 13, light = true)?

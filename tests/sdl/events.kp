@@ -2,7 +2,7 @@ use "./probe"
 use sdl
 
 defn check()
-  window = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  window = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   print(sdl.events(window))
   probe.push(0x300, [["u32", 28, 0x61], ["u16", 32, 0x40]])
   probe.push(0x301, [["u32", 28, 0x61]])

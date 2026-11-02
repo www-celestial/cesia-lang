@@ -20,7 +20,7 @@ defn run(window, n)
 end
 
 defn measure()
-  window = sdl.open("Kepler speed gate", 1920, 1080, "fonts/JetBrainsMono-Regular.ttf", vsync = false)?
+  window = sdl.open("Kepler speed gate", 1920, 1080, "examples/fonts/JetBrainsMono-Regular.ttf", vsync = false)?
   start = sys.now()
   last = run(window, 1)
   seconds = sys.now() - start

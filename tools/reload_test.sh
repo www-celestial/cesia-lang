@@ -149,7 +149,7 @@ stop
 
 # 8. A window keeps its state through a reload, under SDL's dummy driver.
 if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
-  cp fonts/JetBrainsMono-Regular.ttf "$dir/font.ttf"
+  cp examples/fonts/JetBrainsMono-Regular.ttf "$dir/font.ttf"
   (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$kepler" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf window.kp) \
     > "$dir/out" 2> "$dir/err" &
   pid=$!

@@ -19,7 +19,7 @@ defn worker()
 end
 
 defn check()
-  window = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  window = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   spawn(worker)
   print(sdl.run("state", update, view, window))
   Ok(missing)

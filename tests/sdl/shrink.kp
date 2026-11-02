@@ -3,7 +3,7 @@ use "./probe"
 use sdl
 
 background = 0x000000
-font = "../../fonts/JetBrainsMono-Regular.ttf"
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 line(y, words) = {kind: "text", x: 10, y: y, text: words, color: 0xFFFFFF}
 clear = {kind: "clear", color: background}
 

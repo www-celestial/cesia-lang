@@ -1,7 +1,7 @@
 use "./probe"
 use sdl
 
-font = "../../fonts/JetBrainsMono-Regular.ttf"
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 black = 0x000000
 red = 0xFF0000
 half_red = 0x800000

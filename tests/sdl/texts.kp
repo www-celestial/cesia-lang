@@ -1,6 +1,6 @@
 use sdl
 
-font = "../../fonts/JetBrainsMono-Regular.ttf"
+font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 line(words) = {kind: "text", x: 10, y: 10, text: words, color: 0xFFFFFF}
 long = join("", fill("a", 5000))
 

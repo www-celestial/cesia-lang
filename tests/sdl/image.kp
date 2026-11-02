@@ -15,7 +15,7 @@ circle = {name: "circle", paths: [], rings: [[8.0, 8.5, 5.5]]}
 dot = {name: "dot", paths: [[5.25, 5.25, 5.25, 5.25]], rings: []}
 
 defn check()
-  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  w = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   print(sdl.rgba(1, 2, 3, 4) == 0x04030201)
   made = sdl.image(4, 4, w)?
   red = made.image

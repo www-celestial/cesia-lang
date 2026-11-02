@@ -1,7 +1,7 @@
 use sdl
 
 defn check()
-  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  w = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   sdl.draw([{kind: "text", x: 0, y: 0, text: "a", color: 0, font: "nope"}], w)
   Ok("drawn")
 end

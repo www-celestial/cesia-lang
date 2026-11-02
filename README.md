@@ -151,7 +151,7 @@ frame = flatten([ui.panel("Details", area, look), ui.slider(0.5, bar, look)])
 
 `update` gets a `tick` while `moving(state)` is true, and `ui.ease` moves a value at the same speed at any frame rate. A window with
 nothing moving draws nothing. The interface font is Adwaita Sans, titles use Noto Sans Medium, and code JetBrains Mono: all three are in
-`fonts/`, under the SIL Open Font License.
+`examples/fonts/`, under the SIL Open Font License.
 
 ## Documentation
 
@@ -195,3 +195,10 @@ OpenBLAS for speed.
 - Arrays have two dimensions at most.
 - Only Linux on x86-64 is verified. The code targets macOS and Windows, on x86-64 and arm64: `.github/workflows/ci.yml` runs them once this repository has a remote.
 - Name resolution in `net.connect` blocks every fiber while it runs.
+
+## License
+
+Kepler is under the MIT License: see `LICENSE`.
+
+The fonts in `examples/fonts/` keep their own license, the SIL Open Font License, with its text next to them: `AdwaitaSans-OFL.txt`,
+`NotoSans-OFL.txt`, and `OFL.txt` for JetBrains Mono.

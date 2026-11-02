@@ -3,7 +3,7 @@ use c
 use sdl
 
 defn check()
-  w = sdl.open("test", 320, 200, "../../fonts/JetBrainsMono-Regular.ttf")?
+  w = sdl.open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
   one = {kind: "box", x: 10, y: 10, width: 60, height: 60, color: 0xFF0000, radius: 6}
   newer = sdl.draw([one], w)
   older = sdl.draw([{kind: "clear", color: 0}, one], w)

@@ -1,8 +1,8 @@
 use "./probe"
 use sdl
 
-body = "../../fonts/JetBrainsMono-Regular.ttf"
-strong = "../../fonts/NotoSans-Medium.ttf"
+body = "../../examples/fonts/JetBrainsMono-Regular.ttf"
+strong = "../../examples/fonts/NotoSans-Medium.ttf"
 
 defn differs(a, b)
   count = 0
