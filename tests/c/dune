@@ -18,8 +18,20 @@
    %{targets}
    (run ../../gen/gen_calls.exe unloadable))))
 
+; This library calls a symbol that exists nowhere, on purpose. Linux links it as it is, macOS needs to be told to,
+; and Windows can't link it at all, so it has no such library.
 (rule
  (targets libunloadable.so)
  (deps unloadable.c)
+ (enabled_if
+  (= %{system} linux))
  (action
   (run %{ocaml-config:c_compiler} -shared -fPIC -o %{targets} unloadable.c)))
+
+(rule
+ (targets libunloadable.so)
+ (deps unloadable.c)
+ (enabled_if
+  (= %{system} macosx))
+ (action
+  (run %{ocaml-config:c_compiler} -shared -fPIC -undefined dynamic_lookup -o %{targets} unloadable.c)))
