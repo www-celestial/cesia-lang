@@ -5,6 +5,8 @@ use sys
 
 init_video = 0x20
 window_resizable = 0x20
+first_window_event = 0x202
+last_window_event = 0x21A
 max_texts = 8192
 max_images = 4096
 max_curves = 1024
@@ -797,9 +799,11 @@ move_event(event) = mouse("move", c.get("f32", 28, event), c.get("f32", 32, even
 -- A mouse wheel event read from the event block; amount is the scroll.
 wheel_event(event) = mouse("wheel", c.get("f32", 36, event), c.get("f32", 40, event), 0, c.get("f32", 28, event))
 
--- The event in the block, or missing if a program has no use for it.
+-- The event in the block, or missing if a program has no use for it. Any other event about the window gives {kind: "window"},
+-- which no program sees: run draws a frame for it.
 defn decoded(event)
-  match c.get("u32", 0, event)
+  code = c.get("u32", 0, event)
+  match code
     0x100 -> {kind: "quit"}
     0x206 -> {kind: "resize", width: c.get("i32", 20, event), height: c.get("i32", 24, event)}
     0x300 -> key_event(event)
@@ -808,7 +812,7 @@ defn decoded(event)
     0x401 -> button_event("down", event)
     0x402 -> button_event("up", event)
     0x403 -> wheel_event(event)
-    else -> missing
+    else -> if code >= first_window_event and code <= last_window_event {kind: "window"} else missing end
   end
 end
 
@@ -822,8 +826,11 @@ defn waiting(window, found)
   end
 end
 
+-- Is this event for the program, and not only for the frame?
+for_program(event) = event.kind != "window"
+
 -- The events waiting, without blocking.
-events(window) = waiting(window, [])
+events(window) = filter(for_program, waiting(window, []))
 
 -- One step of run: update on an event, unless an earlier event already stopped the program.
 defn applied(update, progress, event)
@@ -849,9 +856,11 @@ defn moved(progress, update, view, window, last)
 end
 
 -- The loop of run: reads the events, updates the state, draws when something happened or moves, and calls itself again.
+-- An event about the window draws too, even if the program has no use for it. Under Wayland, the frame around a window applies
+-- only with its next frame, and until then the shadow of that frame takes the mouse: a window waiting for input would never get it.
 defn step(state, update, view, window, moving, last)
-  happened = events(window)
-  progress = reduce((p, event) -> applied(update, p, event), {state: state, stopped: false}, happened)
+  happened = waiting(window, [])
+  progress = reduce((p, event) -> applied(update, p, event), {state: state, stopped: false}, filter(for_program, happened))
   if progress.stopped
     progress.state
   else if still_moving(moving, progress.state)

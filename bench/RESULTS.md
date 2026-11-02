@@ -519,3 +519,8 @@ no longer starts a process per test in the loop that hands them out, and `limits
 smaller, with the same ratio to their limits. 4.6 s on a cool CPU, with no test removed, and 4.9 to 5.9 s once long loops of tests have
 heated it and the CPU throttles. One run of the suite failed during these measures, at the time of the golden tests, and its output was
 not kept: no failure in more than 30 runs since, so its test is unknown.
+
+A person ran `kepler do material` in a real window: the mouse did nothing until the window was resized. Under Wayland, the frame that
+libdecor draws around a window is made of subsurfaces, which apply only with a commit of the window. Its shadow took the mouse, and
+`sdl.run` waited for input before drawing, so nothing ever changed. `sdl.run` now draws for every event about the window, and programs
+see nothing new. `WAYLAND_DEBUG=1` shows the pointer entering the surface of the window instead of the shadow.

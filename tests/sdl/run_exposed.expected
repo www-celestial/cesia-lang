@@ -1,0 +1,7 @@
+view
+view
+exposed
+view
+quit
+Ok(value = "ran")
+exit 0
