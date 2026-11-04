@@ -2,7 +2,8 @@ usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no
        cesia test [path] [--no-spec]
        cesia do [task]
        cesia new name
-       cesia pkg [update name...]
+       cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]
+       cesia upgrade [--nightly]
        cesia doc [name]
        cesia version
 exit 2

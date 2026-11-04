@@ -1,0 +1,236 @@
+(** cesia pkg: the packages of a project. pkg/ holds Cesia's libraries, deps/ the packages of other projects; both are read
+    only, and cesia.lock keeps the fingerprint of each of their files, which the loader checks at each use.
+    Run by the binary: cesia pkg, cesia pkg install, cesia pkg update. *)
+use sys
+use cesia
+
+usage = "usage: cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]"
+lockFile = "cesia.lock"
+quote = Char(34)
+backslash = Char(92)
+
+defn parent(path)
+  (** The folder of a path: "pkg/rope/rope.ce" gives "pkg/rope", "a" gives "". *)
+  parts = Split("/", path)
+  Join("/", parts[1:Len(parts) - 1])
+end
+
+defn walk(dir)
+  (** The files under a folder, at any depth, without following a link to a folder; none if it isn't there. *)
+  listed = sys.List(dir)
+  found = []
+  if IsOk(listed)
+    for name in listed.Value
+      path = "$dir/$name"
+      stat = sys.Stat(path)
+      found = if IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink Concat(found, walk(path)) else Append(path, found) end
+    end
+  end
+  found
+end
+
+defn removeAll(path)
+  (** Deletes a file or a folder with all it holds. A link goes, never what it points to. *)
+  stat = sys.Stat(path)
+  link = sys.List(path)
+  if IsErr(stat) and IsErr(link) and not sys.Exists(path)
+    return Ok(missing)
+  end
+  if IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
+    for name in link?
+      removeAll("$path/$name")?
+    end
+  end
+  sys.Remove(path)
+end
+
+defn quoted(s)
+  (** A text as cesia.toml writes it, between quotes. *)
+  "$quote$(Replace(quote, "$backslash$quote", Replace(backslash, "$backslash$backslash", s)))$quote"
+end
+
+defn texts(xs)
+  (** An array of texts as cesia.toml writes it, on one line. *)
+  "[$(Join(", ", Map(quoted, xs)))]"
+end
+
+defn fileLines(files)
+  (** The files of a part of the lock, a line each: its path and its fingerprint. *)
+  Concat(Concat(["files = ["], ["  $(quoted("$(f.Path) $(f.Fingerprint)"))," for f in files]), ["]"])
+end
+
+defn lockText(lock)
+  (** The text of cesia.lock: the dependencies by label, then the libraries of Cesia. *)
+  lines = ["# Written by cesia pkg, which the loader checks: run cesia pkg install to make pkg/ and deps/ match it.", ""]
+  for d in SortBy(it.Label, lock.Deps)
+    head = ["[deps.$(d.Label)]", "from = $(quoted(d.From))", "version = $(quoted(d.Version))", "commit = $(quoted(d.Commit))",
+      "packages = $(texts(d.Packages))"]
+    lines = Concat(Concat(lines, Concat(head, fileLines(d.Files))), [""])
+  end
+  if not IsMissing(lock.Pkg)
+    lines = Concat(Concat(lines, Concat(["[pkg]", "cesia = $(quoted(lock.Pkg.Cesia))"], fileLines(lock.Pkg.Files))), [""])
+  end
+  Join("\n", lines)
+end
+
+defn readToml(file)
+  (** The tables of a file of the project, or an Err naming its line. *)
+  text = sys.Read(file)?
+  match cesia.Toml(text)
+    Ok(tables) -> Ok(tables)
+    Err(e) -> Err("$file:$(e.Line): $(e.Message)")
+  end
+end
+
+defn fields(table)
+  (** The entries of a table, by key. *)
+  found = Dict()
+  for e in table.Entries
+    found[e.Key] = e.Value
+  end
+  found
+end
+
+defn fileOf(line)
+  (** {Path, Fingerprint} from a line of the lock: the fingerprint comes after the last space. *)
+  parts = Split(" ", line)
+  {Path: Join(" ", parts[1:Len(parts) - 1]), Fingerprint: Last(parts)}
+end
+
+defn readLock()
+  (** What cesia.lock says, as {Pkg, Deps}: no Pkg and no Deps without it. *)
+  lock = {Pkg: missing, Deps: []}
+  if not sys.Exists(lockFile)
+    return Ok(lock)
+  end
+  for t in readToml(lockFile)?
+    f = fields(t)
+    files = Map(fileOf, GetOr("files", [], f))
+    if Equal(t.Path, ["pkg"])
+      lock.Pkg = {Cesia: GetOr("cesia", "", f), Files: files}
+    else if Len(t.Path) == 2 and t.Path[1] == "deps"
+      dep = {Label: t.Path[2], From: GetOr("from", "", f), Version: GetOr("version", "", f), Commit: GetOr("commit", "", f),
+        Packages: GetOr("packages", [], f), Files: files}
+      lock.Deps = Append(dep, lock.Deps)
+    end
+  end
+  Ok(lock)
+end
+
+defn writeLock(lock)
+  (** Writes cesia.lock whole, through a new file renamed over the old one: a failure leaves the old one. *)
+  text = lockText(lock)
+  if UnwrapOr("", sys.Read(lockFile)) == text
+    return Ok(missing)
+  end
+  sys.Write("$lockFile.new", text)?
+  sys.Rename("$lockFile.new", lockFile)
+end
+
+defn stateOf(dir, files)
+  (** "as installed", "changed by hand" or "not installed": the files of a folder against what the lock says of them. *)
+  onDisk = Sort(walk(dir))
+  if Len(onDisk) == 0
+    return "not installed"
+  end
+  same = Equal(onDisk, Sort(Map(it.Path, files)))
+  for f in files
+    read = sys.Read(f.Path)
+    same = same and IsOk(read) and cesia.Fingerprint(read.Value) == f.Fingerprint
+  end
+  if same "as installed" else "changed by hand" end
+end
+
+defn show(rows)
+  (** Prints rows of words in columns. *)
+  widths = [Reduce((w, r) -> Max([w, Len(r[i])]), 0, rows) for i in 1:3]
+  for r in rows
+    Print(Trim(Join("  ", [PadRight(widths[i], " ", r[i]) for i in 1:3])))
+  end
+end
+
+defn listing(lock)
+  (** cesia pkg: each package, who gives it, its version, and whether it is as installed. *)
+  rows = []
+  if not IsMissing(lock.Pkg) and not sys.Exists("pkg")
+    rows = Append(["pkg", "cesia $(lock.Pkg.Cesia)", "not installed"], rows)
+  else if not IsMissing(lock.Pkg)
+    byLibrary = Dict()
+    for f in lock.Pkg.Files
+      name = Split("/", f.Path)[2]
+      byLibrary[name] = Append(f, GetOr(name, [], byLibrary))
+    end
+    for name in Keys(byLibrary)
+      rows = Append(["pkg/$name", "cesia $(lock.Pkg.Cesia)", stateOf("pkg/$name", byLibrary[name])], rows)
+    end
+  else if sys.Exists("pkg")
+    rows = Append(["pkg", "", "not installed"], rows)
+  end
+  show(rows)
+  Ok(missing)
+end
+
+defn libraryFiles()
+  (** The libraries of this Cesia as pkg/ holds them: pkg/rope/rope.ce. *)
+  [{Path: "pkg/$(l.Name)/$(l.Name).ce", Source: l.Source} for l in cesia.Libraries()]
+end
+
+defn installPkg(lock)
+  (** Makes pkg/ this Cesia's libraries, when the project has a pkg/: written only if it differs, into a new folder renamed
+      over the old one. Gives the lock with its [pkg]. *)
+  if IsMissing(lock.Pkg) and not sys.Exists("pkg")
+    return Ok(lock)
+  end
+  wanted = libraryFiles()
+  same = Equal(Sort(walk("pkg")), Sort(Map(it.Path, wanted)))
+  for f in wanted
+    same = same and UnwrapOr("", sys.Read(f.Path)) == f.Source
+  end
+  if not same
+    removeAll(".pkg-new")?
+    for f in wanted
+      path = ".pkg-new/$(Join("/", Split("/", f.Path)[2:end]))"
+      sys.Mkdir(parent(path))?
+      sys.Write(path, f.Source)?
+    end
+    removeAll(".pkg-old")?
+    if sys.Exists("pkg")
+      sys.Rename("pkg", ".pkg-old")?
+    end
+    sys.Rename(".pkg-new", "pkg")?
+    removeAll(".pkg-old")?
+    Print("pkg/ holds the libraries of Cesia $(cesia.Version()).")
+  end
+  lock.Pkg = {Cesia: cesia.Version(), Files: [{Path: f.Path, Fingerprint: cesia.Fingerprint(f.Source)} for f in wanted]}
+  Ok(lock)
+end
+
+defn install(lock)
+  (** cesia pkg install: makes pkg/ and deps/ what cesia.toml and cesia.lock say, then writes the lock. *)
+  done = installPkg(lock)?
+  writeLock(done)
+end
+
+defn run(args)
+  (** A command of cesia pkg. *)
+  if not sys.Exists("cesia.toml")
+    return Err("No cesia.toml in this folder.")
+  end
+  lock = readLock()?
+  n = Len(args)
+  if n == 0
+    listing(lock)
+  else if n == 1 and (args[1] == "install" or args[1] == "update")
+    install(lock)
+  else
+    Err(usage)
+  end
+end
+
+defn Main()
+  (** Runs the command of Args; an error is a text, which the binary shows. *)
+  match run(Args)
+    Err(e) -> Err(if IsText(e) e else e.Message end)
+    done -> done
+  end
+end

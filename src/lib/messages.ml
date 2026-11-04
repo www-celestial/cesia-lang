@@ -183,6 +183,7 @@ let deadlock = plain "All fibers are waiting and nothing can wake them."
 let index_count = plain "An array has 2 dimensions: use one or two indexes."
 let range_too_long = plain "This range has too many elements."
 let no_on_stop = plain "The debugger has no function OnStop(stop)."
+let no_main = plain "This tool has no function Main()."
 let bad_answer a =
   plain (Printf.sprintf "OnStop must return \"continue\", \"step\", \"next\" or \"out\", not %s." a)
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
@@ -192,7 +193,8 @@ let usage =
   \       cesia test [path] [--no-spec]\n\
   \       cesia do [task]\n\
   \       cesia new name\n\
-  \       cesia pkg [update name...]\n\
+  \       cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]\n\
+  \       cesia upgrade [--nightly]\n\
   \       cesia doc [name]\n\
   \       cesia version"
 let cant_read path = "can't read " ^ path
@@ -232,8 +234,6 @@ let project_cycle name through =
 let project_listed_needs needs = Printf.sprintf "(needs %s)" (String.concat ", " needs)
 let project_bad_name name = Printf.sprintf "A project name holds letters, digits, - and _, not %s." name
 let project_exists name = name ^ " already exists."
-let pkg_not_library name = Printf.sprintf "\"%s\" is not a library of Cesia." name
-let pkg_updated name = Printf.sprintf "pkg/%s is this Cesia's version again." name
 let project_created name = Printf.sprintf "Created %s. Run it: cd %s && cesia do run" name name
 let project_no_such_task name = Printf.sprintf "No task named %s." name
 let project_cant_start program reason = Printf.sprintf "Can't start %s: %s." program reason

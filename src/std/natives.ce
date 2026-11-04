@@ -8,6 +8,7 @@ use debug
 use net
 use c
 use lapack
+use cesia
 
 (** Pi
     The ratio of a circle to its diameter.
@@ -647,11 +648,11 @@ use lapack
     The sorted names of the entries of a folder, in an Ok, or an Err. Needs the read permission. *)
 
 (** sys.Remove(path)
-    Deletes a file or an empty folder: Ok(missing) or an Err. Needs the write permission. *)
+    Deletes a file or an empty folder: Ok(missing) or an Err. A symbolic link is deleted, never what it points to. Needs the write permission. *)
 
 (** sys.Stat(path)
-    A struct with Size (bytes), Modified (seconds since 1970), IsDir and IsFile, in an Ok, or an Err. A symbolic link counts as what
-    it points to. IsFile is true for a regular file only, not for a folder, a device, a FIFO or a socket: their Size says nothing,
+    A struct with Size (bytes), Modified (seconds since 1970), IsDir, IsFile and IsLink, in an Ok, or an Err. A symbolic link
+    counts as what it points to, and IsLink says that it is one. IsFile is true for a regular file only, not for a folder, a device, a FIFO or a socket: their Size says nothing,
     and reading one can use all the memory or hang. Needs the read permission. *)
 
 (** sys.TakeStops(taken)
@@ -801,3 +802,44 @@ use lapack
 
 (** lapack.Eigen(a)
     The eigenvalues and eigenvectors of a symmetric matrix, as a struct with Values and Vectors. Missing without a library. *)
+
+(** cesia.Version()
+    The version of this Cesia, without what follows a + or a -.
+
+      cesia.IsVersion(cesia.Version()) --> true *)
+
+(** cesia.Dev()
+    Was this Cesia built from its sources, and not by a release? Then its version text ends in +dev. *)
+
+(** cesia.Binary()
+    The path of the running binary of Cesia, from the top of the file system. *)
+
+(** cesia.Fingerprint(text)
+    blake2: and the 64 hexadecimal digits of the BLAKE2b-256 of a text, as cesia.lock keeps them.
+
+      cesia.Fingerprint("abc") --> "blake2:bddd813c634239723171ef3fee98579b94964e3bb1cb3e427262c8c068d52319" *)
+
+(** cesia.Compare(a, b)
+    Compares two versions number by number, as tags: negative if a comes first, 0 if they are the same, positive after. A leading
+    v and what follows a + or a - are left out, and a missing number is 0.
+
+      cesia.Compare("v1.10.0", "1.9") > 0 --> true *)
+
+(** cesia.IsVersion(text)
+    Is it numbers between dots, after an optional v?
+
+      cesia.IsVersion("v0.3") --> true *)
+
+(** cesia.Libraries()
+    The libraries of this Cesia, as an array of structs with Name and Source: what a project's pkg/ holds. *)
+
+(** cesia.Toml(text)
+    The tables of a cesia.toml or cesia.lock, in an Ok: each a struct with Path (an array of texts), Line and Entries, an entry a
+    struct with Key, Value and Line. An Err of {Line, Message} for a text that isn't the TOML Cesia reads.
+
+      cesia.Toml("[a]")?[1].Path --> ["a"] *)
+
+(** cesia.Uses(source)
+    The paths of the use lines of a source, as the loader reads them, in an Ok, or an Err of {Line, Message}. Nothing runs.
+
+      cesia.Uses("use pkg/rope")? --> ["pkg/rope"] *)

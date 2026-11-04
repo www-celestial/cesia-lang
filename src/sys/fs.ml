@@ -59,8 +59,9 @@ let list_dir path =
       let names = Array.of_list (List.sort compare (go [])) in
       Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true; a_tip = true })
 
+(* A link goes, never what it points to. *)
 let remove path =
-  (if Sys.file_exists path && Sys.is_directory path then Unix.rmdir else Unix.unlink) path;
+  (if (Unix.lstat path).st_kind = Unix.S_DIR then Unix.rmdir else Unix.unlink) path;
   Missing
 
 (* With parents, like mkdir -p: a folder that exists is fine. *)
@@ -86,12 +87,12 @@ let natives =
     on_path "Remove" Write "remove" 1 (fun _ path _ -> remove path);
     on_path "Stat" Read "read" 1 (fun ctx path _ ->
         let s = Unix.stat path in
-        let shape = Value.shape_of ctx.w [| "Size"; "Modified"; "IsDir"; "IsFile" |] in
+        let shape = Value.shape_of ctx.w [| "Size"; "Modified"; "IsDir"; "IsFile"; "IsLink" |] in
         Struct
           { shape;
             fields =
               [| Int s.st_size; Float s.st_mtime; Value.of_bool (s.st_kind = Unix.S_DIR);
-                 Value.of_bool (s.st_kind = Unix.S_REG) |];
+                 Value.of_bool (s.st_kind = Unix.S_REG); Value.of_bool ((Unix.lstat path).st_kind = Unix.S_LNK) |];
             r_owned = true });
     on_path "Rename" Write "rename" 2 (fun ctx path a ->
         Unix.rename path (path_arg ctx "Rename" Write a.(1));

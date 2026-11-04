@@ -205,6 +205,25 @@ let doc args =
          Loader.init w;
          Docs.command w args))
 
+(* What each tool may touch: see src/tools/. *)
+let tool_grants = function
+  | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
+  | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES"
+
+let tool name args =
+  let o = with_default_memory Runtime.default_options in
+  let w = Runtime.create_world { o with o_grants = parse_allow o.o_grants (tool_grants name) } in
+  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
+  Loader.run_tool w name args
+
+(* The project, then its pkg/ through the tool that keeps it: one way to write pkg/ and cesia.lock. *)
+let create name =
+  Project.create name;
+  Sys.chdir name;
+  let code = tool "pkg" [ "install" ] in
+  if code = 0 then print_endline (Messages.project_created name);
+  exit code
+
 let () =
   try
     tune_gc ();
@@ -213,8 +232,8 @@ let () =
     | _ :: "run" :: args -> run args
     | _ :: "test" :: args -> test args
     | _ :: "do" :: args -> Project.run args
-    | [ _; "new"; name ] -> Project.create name
-    | _ :: "pkg" :: args -> Project.pkg args
+    | [ _; "new"; name ] -> create name
+    | _ :: (("pkg" | "upgrade") as name) :: args -> exit (tool name args)
     | _ :: "doc" :: args -> doc args
     | _ -> usage ()
   with

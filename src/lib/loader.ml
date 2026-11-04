@@ -352,13 +352,17 @@ let load ctx path =
     let src = In_channel.with_open_bin path In_channel.input_all in
     run_prepared ctx (prepare ~hooks:w.hooks ctx ~path ~src ~lookup:(lookup w))
 
-(* The debugger loads before the program, with no hooks. A name without / or .ce is looked up like use. *)
+let tool_path name = "tools/" ^ name ^ Package.suffix
+
+(* The debugger loads before the program, with no hooks. A name without / or .ce is a tool of Cesia, or else looked up like
+   use. *)
 let load_debugger ctx name =
   let w = ctx.w in
   let pos = Pos.make 1 1 in
   let is_file = (String.contains name '/' && library name = None) || Package.is_source name in
   let path, src =
-    if is_file then
+    if List.mem_assoc name Embedded.tools then tool_path name, List.assoc name Embedded.tools
+    else if is_file then
       if Sys.file_exists name then name, read_module ~from:name ~pos name name
       else use_error ~file:name ~pos ~kind:"name" (Messages.use_missing name)
     else
@@ -375,7 +379,7 @@ let load_debugger ctx name =
 
 (* Module 0 of natives, then the prelude in Cesia. *)
 let init w =
-  w.native_modules <- ("debug", Debug.natives) :: ("json", Json.natives) :: ("regex", Regex.natives ()) :: ("columns", Columns.natives) :: w.native_modules;
+  w.native_modules <- ("cesia", Tooling.natives ~libraries) :: ("debug", Debug.natives) :: ("json", Json.natives) :: ("regex", Regex.natives ()) :: ("columns", Columns.natives) :: w.native_modules;
   let natives = Native.prelude @ Lists.natives @ Fiber.natives @ Docs.natives in
   let names = List.mapi (fun i (n, _) -> n, i) natives in
   let cells = Array.of_list (List.map snd natives) in
@@ -487,8 +491,9 @@ let reload w path =
 (* The files to watch. Sources embedded in the binary don't change. *)
 let watched w =
   let is_embedded path =
-    Sys.getenv_opt "CESIA_STD" = None
-    && List.exists (fun (name, _) -> String.equal path ("std/" ^ name ^ Package.suffix)) Embedded.files
+    List.exists (fun (name, _) -> String.equal path (tool_path name)) Embedded.tools
+    || Sys.getenv_opt "CESIA_STD" = None
+       && List.exists (fun (name, _) -> String.equal path ("std/" ^ name ^ Package.suffix)) Embedded.files
   in
   List.filter (fun p -> p <> "" && not (is_embedded p)) (List.map (fun md -> md.path) (Array.to_list w.modules))
 
@@ -567,3 +572,34 @@ let run_file ?strict w path args =
   guarded ?strict w (fun ctx ->
       init w;
       program ctx path args)
+
+(* A root that no folder can be, as it holds a zero byte: a tool sees Cesia's own libraries, never a project's copies, which
+   may come from another version. *)
+let tool_root = "\000tools"
+
+let run_tool w name args =
+  guarded w (fun ctx ->
+      init w;
+      set_args w args;
+      w.root <- tool_root;
+      let path = tool_path name in
+      let pos = Pos.make 1 1 in
+      let src =
+        match List.assoc_opt name Embedded.tools with
+        | Some src -> src
+        | None -> use_error ~file:path ~pos ~kind:"name" (Messages.use_missing path)
+      in
+      let ((_, m, _, _) as prepared) = prepare ctx ~path ~src ~lookup:(lookup w) in
+      run_prepared ctx prepared;
+      match List.assoc_opt "Main" w.modules.(m).mnames with
+      | None -> use_error ~file:path ~pos ~kind:"name" Messages.no_main
+      | Some k ->
+        ctx.b <- 0;
+        ctx.site <- 0;
+        (match Compile.call_value ctx ~base:2 w.modules.(m).cells.(k) [||] with
+         | Struct { shape = { sname = Some "Err"; _ }; fields = [| e |]; _ } ->
+           Runtime.flush_out w;
+           flush stdout;
+           w.err (Value.text_of ctx e ^ "\n");
+           1
+         | _ -> 0))

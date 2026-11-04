@@ -12,7 +12,8 @@
 (rule
  (targets embedded.ml)
  (deps
-  (glob_files ../std/*.ce))
+  (glob_files ../std/*.ce)
+  (glob_files ../tools/*.ce))
  (action
   (with-stdout-to
    %{targets}

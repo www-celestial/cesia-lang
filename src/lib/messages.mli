@@ -143,6 +143,7 @@ val use_unreadable : string -> t
 val no_prelude : t
 val range_too_long : t
 val no_on_stop : t
+val no_main : t
 val bad_answer : string -> t
 val need_text : string -> string -> t
 val empty_array : string -> t
@@ -185,10 +186,6 @@ val project_cycle : string -> string list -> string
 val project_listed_needs : string list -> string
 val project_bad_name : string -> string
 val project_exists : string -> string
-(** [pkg_not_library name], [pkg_updated name]: cesia pkg update. *)
-val pkg_not_library : string -> string
-
-val pkg_updated : string -> string
 val project_created : string -> string
 val project_no_such_task : string -> string
 val project_cant_start : string -> string -> string

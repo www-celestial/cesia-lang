@@ -62,10 +62,10 @@ cesia do          # lists the tasks
 cesia do serve    # runs one, and shows the exact command
 ```
 
-`cesia new notes` makes a project: its `cesia.toml`, `src/main.ce`, and `pkg/`, which holds a copy of each library of Cesia
-(`pkg/rope/rope.ce`, `pkg/ui/ui.ce`...). A copy belongs to the project: read it, change it, and an update of Cesia leaves it as
-it is. `cesia pkg` lists the copies that differ from this Cesia's libraries, and `cesia pkg update rope ui` puts back the ones
-named. `cesia test .` leaves `pkg/` out: `cesia test pkg/rope` runs its examples.
+`cesia new notes` makes a project: its `cesia.toml`, `.gitignore`, `src/main.ce`, `pkg/`, which holds a copy of each library of
+Cesia (`pkg/rope/rope.ce`, `pkg/ui/ui.ce`...), and `cesia.lock`, which keeps the fingerprint of each of its files. `pkg/` is read
+only: `cesia pkg` says whether each library is as installed, and `cesia pkg install` makes it again, after a clone (git keeps
+neither `pkg/` nor `deps/`) or a change by hand. `cesia test .` leaves `pkg/` out: `cesia test pkg/rope` runs its examples.
 
 The code can live in more than `src/`: `src = ["src", "apps"]` under `[project]` makes `use emacs` find `apps/emacs/`. A use
 looks in these folders in order, then at the root.

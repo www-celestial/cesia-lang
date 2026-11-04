@@ -46,3 +46,7 @@ val message_of_error : exn -> string option
 
 (** The libraries of this Cesia, as [use pkg/x] finds them without a copy: each name and its source. *)
 val libraries : unit -> (string * string) list
+
+(** [run_tool w name args] runs the tool [src/tools/NAME.ce] that the binary holds, with these arguments: its [Main()] gives
+    [Ok], or an [Err] whose text goes to the errors, and then the code is 1. A tool sees no project's [pkg/]. *)
+val run_tool : world -> string -> string list -> int

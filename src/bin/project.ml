@@ -254,38 +254,6 @@ let run args =
 let write path text = Out_channel.with_open_bin path (fun oc -> output_string oc text)
 let mkdir dir = if not (Sys.file_exists dir) then Sys.mkdir dir 0o755
 
-(* A library of Cesia in pkg/ of a project, where use pkg/x finds it before Cesia's own. *)
-let put_library root (name, src) =
-  let dir = Filename.concat (Filename.concat root "pkg") name in
-  mkdir (Filename.dirname dir);
-  mkdir dir;
-  write (Filename.concat dir (name ^ Package.suffix)) src
-
-(* cesia pkg lists the copies that differ from this Cesia's libraries; cesia pkg update puts back the ones named. *)
-let pkg args =
-  if not (Sys.file_exists file_name) then stop 2 Messages.project_no_file;
-  let libraries = Loader.libraries () in
-  match args with
-  | [] ->
-    List.iter
-      (fun (name, src) ->
-         let dir = Filename.concat "pkg" name in
-         let same () =
-           match Package.files dir with
-           | [ path ] -> String.equal (Filename.basename path) (name ^ Package.suffix) && String.equal (In_channel.with_open_bin path In_channel.input_all) src
-           | _ -> false
-         in
-         if Package.is_dir dir && not (same ()) then print_endline ("pkg/" ^ name))
-      libraries
-  | "update" :: (_ :: _ as names) ->
-    List.iter (fun name -> if not (List.mem_assoc name libraries) then stop 1 (Messages.pkg_not_library name)) names;
-    List.iter
-      (fun name ->
-         put_library "." (name, List.assoc name libraries);
-         print_endline (Messages.pkg_updated name))
-      names
-  | _ -> stop 2 Messages.usage
-
 let create name =
   let allowed = function 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '-' -> true | _ -> false in
   if name = "" || not (String.for_all allowed name) then stop 2 (Messages.project_bad_name (quote name));
@@ -293,9 +261,11 @@ let create name =
   Sys.mkdir name 0o755;
   let code = Filename.concat name "src" in
   Sys.mkdir code 0o755;
+  (* 0.2.0 needs 0.2: in 0.x, the middle number rises when a change can break a program. *)
+  let needed = String.concat "." (List.filteri (fun i _ -> i < 2) (String.split_on_char '.' Version.number)) in
   write (Filename.concat name file_name)
-    (Printf.sprintf "[project]\nname = \"%s\"\n\n[tasks.run]\nfile = \"src/main.ce\"\n" name);
+    (Printf.sprintf "[project]\nname = \"%s\"\ncesia = \"%s\"\n\n[tasks.run]\nfile = \"src/main.ce\"\n" name needed);
+  write (Filename.concat name ".gitignore") "pkg/\ndeps/\n";
   write (Filename.concat code "main.ce") (Printf.sprintf "Print(\"Hello from %s\")\n" name);
-  (* The debugger is a tool of Cesia, not a library a program uses. *)
-  List.iter (fun ((lib, _) as library) -> if lib <> "debugger" then put_library name library) (Loader.libraries ());
-  print_endline (Messages.project_created name)
+  (* An empty pkg/ asks cesia pkg install for Cesia's libraries. *)
+  Sys.mkdir (Filename.concat name "pkg") 0o755

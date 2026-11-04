@@ -1,19 +1,29 @@
+pkg/ holds the libraries of Cesia 0.2.0.
 Created hello. Run it: cd hello && cesia do run
 [project]
 name = "hello"
+cesia = "0.2"
 
 [tasks.run]
 file = "src/main.ce"
+pkg/
+deps/
 Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
 algo cpp crypto csv date encode frame heap history http num queue rope sdl set tls ui web websocket 
-all agree
-pkg/rope
-pkg/rope is this Cesia's version again.
-all agree again
+ 19 1
+all as installed
+pkg/rope       cesia 0.2.0  changed by hand
+pkg/ holds the libraries of Cesia 0.2.0.
+all as installed again
+nothing to install: 0
+pkg  cesia 0.2.0  not installed
+pkg/ holds the libraries of Cesia 0.2.0.
 0 passed, 0 failed
-"nope" is not a library of Cesia.
+usage: cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]
+exit 1
+No cesia.toml in this folder.
 exit 1
 hello already exists.
 exit 1
@@ -23,7 +33,8 @@ usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no
        cesia test [path] [--no-spec]
        cesia do [task]
        cesia new name
-       cesia pkg [update name...]
+       cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]
+       cesia upgrade [--nightly]
        cesia doc [name]
        cesia version
 exit 2
