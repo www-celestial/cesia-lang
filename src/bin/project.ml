@@ -42,6 +42,17 @@ let read_project (table : Toml.table) =
        | key -> wrong_at e.line (Messages.project_field "Project" key))
     (None, []) table.entries
 
+(* What cesia pkg reads: here only checked, so that a wrong one stops cesia do too. *)
+let read_dep (table : Toml.table) =
+  let subject = "Dependency " ^ List.nth table.path 1 in
+  List.iter
+    (fun (e : Toml.entry) ->
+       match e.key with
+       | "from" | "version" -> ignore (text_field subject e)
+       | "take" -> ignore (texts_field subject e)
+       | key -> wrong_at e.line (Messages.project_field subject key))
+    table.entries
+
 let read_task (table : Toml.table) name =
   let subject = "Task " ^ name in
   List.iter
@@ -123,6 +134,7 @@ let of_tables (tables : Toml.table list) =
        | [], [] -> ()
        | [ "project" ], _ -> project := read_project table
        | [ "tasks"; name ], _ -> tasks := read_task table name :: !tasks
+       | [ "deps"; _ ], _ -> read_dep table
        | path, _ -> wrong_at table.start (Messages.project_table (String.concat "." path)))
     tables;
   let tasks = List.rev !tasks in

@@ -944,15 +944,31 @@ and stmt p =
     if p.in_function then error p t.pos Messages.use_nested;
     advance p;
     let start = (cur p).pos in
+    (* A folder before the last part may hold - and . with no space around them, as www-celestial or gitlab.com in
+       deps/www-celestial/cesia-lang/x and deps/gitlab.com/x/y/z. The last part is the name in the code. *)
+    let rec glued n =
+      let t = cur p and after = p.toks.(p.i + 1) in
+      match t.t, after.t with
+      | (MINUS | DOT), NAME m when (not t.sp) && not after.sp ->
+        advance p;
+        advance p;
+        glued (n ^ (if t.t = MINUS then "-" else ".") ^ m)
+      | _ -> n
+    in
     let rec path_from acc =
       match (cur p).t with
       | NAME n ->
         advance p;
+        let start = p.i in
+        let n' = glued n in
         if (cur p).t = SLASH then begin
           advance p;
-          path_from (acc ^ n ^ "/")
+          path_from (acc ^ n' ^ "/")
         end
-        else acc ^ n
+        else begin
+          p.i <- start;
+          acc ^ n
+        end
       | DOT -> error p start Messages.use_relative
       | TEXT [ Plain s ] -> error p start (Messages.use_quoted s)
       | _ -> unexpected p "a package name"

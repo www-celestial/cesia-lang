@@ -149,7 +149,21 @@ let locate w ~from ~pos upath =
          if List.mem_assoc name w.native_modules then use_error ~file:from ~pos ~kind:"name" (Messages.use_binary name);
          missing dir)
   | None ->
-    let dir = Package.folder w.root upath in
+    let root, path =
+      match Package.dep upath with
+      | Some (project, package) ->
+        let root = Filename.concat w.root project in
+        if not (Sys.file_exists (Filename.concat root Package.project_file)) then
+          use_error ~file:from ~pos ~kind:"name" (Messages.not_installed project);
+        root, package
+      | None when String.starts_with ~prefix:"deps/" upath -> use_error ~file:from ~pos ~kind:"name" (Messages.use_dep upath)
+      | None ->
+        (* The code of a project in deps/ reads its own project, from its root and its source folders. *)
+        (match Package.installed w.root from with
+         | Some folder when String.starts_with ~prefix:"deps/" folder -> Filename.concat w.root folder, upath
+         | _ -> w.root, upath)
+    in
+    let dir = Package.folder root path in
     let files = Package.files dir in
     if files = [] then begin
       if (not (String.contains upath '/')) && own_library upath <> None then

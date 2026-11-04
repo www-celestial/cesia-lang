@@ -78,6 +78,20 @@ let library upath =
     Some (String.sub upath 4 (n - 4))
   else None
 
+(* deps/OWNER/REPO, or deps/HOST/OWNER/REPO when the first part holds a dot: how many parts name the project. *)
+let dep_depth = function
+  | "deps" :: first :: _ when String.contains first '.' -> 4
+  | "deps" :: _ -> 3
+  | _ -> 0
+
+let dep upath =
+  let parts = String.split_on_char '/' upath in
+  let depth = dep_depth parts in
+  if depth = 0 || List.length parts <= depth || List.mem "" parts then None
+  else
+    let project = List.filteri (fun i _ -> i < depth) parts and package = List.filteri (fun i _ -> i >= depth) parts in
+    Some (String.concat "/" project, String.concat "/" package)
+
 let folder root upath =
   let rec first = function
     | [] -> Filename.concat root upath
@@ -145,6 +159,5 @@ let installed root path =
   if not (String.starts_with ~prefix:from path) then None
   else
     let parts = String.split_on_char '/' (String.sub path (String.length from) (String.length path - String.length from)) in
-    (* deps/OWNER/REPO, or deps/HOST/OWNER/REPO when the first part holds a dot. *)
-    let depth = match parts with "pkg" :: _ -> 2 | "deps" :: first :: _ when String.contains first '.' -> 4 | "deps" :: _ -> 3 | _ -> 0 in
+    let depth = match parts with "pkg" :: _ -> 2 | _ -> dep_depth parts in
     if depth = 0 || List.length parts <= depth then None else Some (String.concat "/" (List.filteri (fun i _ -> i < depth) parts))

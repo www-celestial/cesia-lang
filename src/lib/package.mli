@@ -34,6 +34,10 @@ val sources : string -> string list
 (** [use pkg/rope] names a library: [Some "rope"], the name after [pkg/] when nothing follows it. *)
 val library : string -> string option
 
+(** [use deps/www-celestial/cemacs/folders] names a package of another project: [Some ("deps/www-celestial/cemacs",
+    "folders")]. A first part with a dot is a host: [deps/gitlab.com/x/y/z] gives [Some ("deps/gitlab.com/x/y", "z")]. *)
+val dep : string -> (string * string) option
+
 (** The folder a use names in a project: in the first source folder of the root that holds it, or else from the root, where
     [tests] and [examples] are. *)
 val folder : string -> string -> string

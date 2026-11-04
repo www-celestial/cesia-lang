@@ -301,5 +301,7 @@ let cesia_needed needed this =
 let cesia_not_version = "a version such as \"0.2\""
 let changed_by_hand path = plain (Printf.sprintf "%s was changed by hand: run cesia pkg install." path)
 let not_installed folder = plain (Printf.sprintf "%s isn't installed: run cesia pkg install." folder)
+let use_dep upath =
+  plain (Printf.sprintf "%s names no package: a use of deps/ is deps/OWNER/REPO/PACKAGE, as the [deps] of cesia.toml bring it." upath)
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)
 let denied perm = plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)

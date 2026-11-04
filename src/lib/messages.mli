@@ -140,6 +140,9 @@ val cesia_not_version : string
 val changed_by_hand : string -> t
 
 val not_installed : string -> t
+
+(** [use_dep upath]: [use deps/x/y], with no package. *)
+val use_dep : string -> t
 val no_name : string -> string -> t
 val denied : string -> t
 
