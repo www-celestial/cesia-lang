@@ -32,7 +32,7 @@ let library =
     (match Sys.getenv_opt "CESIA_BLAS" with
      | Some "none" -> None
      | Some name -> open_library ~chosen:true name
-     | None -> List.find_map open_library candidates)
+     | None -> List.find_map open_library (C.in_release candidates @ candidates))
 
 (* Below this order, the code of Cesia is fast enough and gives the same bits on every machine. *)
 let min_order = 32

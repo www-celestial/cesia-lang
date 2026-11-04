@@ -208,7 +208,7 @@ let doc args =
 (* What each tool may touch: see src/tools/. *)
 let tool_grants = function
   | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
-  | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES"
+  | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug"
 
 let tool name args =
   let o = with_default_memory Runtime.default_options in

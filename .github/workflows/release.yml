@@ -1,0 +1,132 @@
+name: release
+
+# A tag vX.Y.Z makes the release vX.Y.Z; each push to main replaces the pre-release nightly. Each holds, for each system, an
+# archive of bin/cesia and lib/ (the C libraries of tools/release-libs.sh) with its fingerprint in a .blake2 file, and the notes
+# of tools/notes.sh. cesia upgrade reads them.
+on:
+  push:
+    tags: ["v*"]
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          # The oldest Linux GitHub offers, so that the binary runs on older systems too.
+          - { os: ubuntu-22.04, system: linux-x86_64, archive: tar.gz }
+          - { os: macos-14, system: macos-arm64, archive: tar.gz }
+          - { os: windows-latest, system: windows-x86_64, archive: zip }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+      - name: Tools on Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libffi-dev libsodium-dev patchelf cmake libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
+            libxi-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libdrm-dev \
+            libgbm-dev libpulse-dev libasound2-dev
+      - name: Tools on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install libffi libsodium openssl@3 coreutils cmake
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+      - name: The version of this build
+        run: |
+          file=src/lib/version.ml
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            have=$(sed -n 's/^let text = "cesia \(.*\)+dev"$/\1/p' "$file")
+            if [ "v$have" != "$GITHUB_REF_NAME" ]; then
+              echo "The tag is $GITHUB_REF_NAME and $file says $have: run tools/release.sh first."
+              exit 1
+            fi
+            sed -e 's/+dev"$/"/' "$file" > "$file.new"
+          else
+            sed -e "s/+dev\"\$/-nightly+$(git rev-parse --short HEAD)\"/" "$file" > "$file.new"
+          fi
+          mv "$file.new" "$file"
+          grep '^let text' "$file"
+      - run: opam install -y dune
+      - run: opam exec -- dune build --profile release
+      - name: Tests
+        if: runner.os != 'Windows'
+        timeout-minutes: 15
+        run: opam exec -- tools/test.sh
+      - uses: actions/cache@v4
+        with:
+          path: libraries
+          key: libraries-${{ matrix.system }}-${{ hashFiles('tools/release-libs.sh') }}
+      - name: The C libraries
+        run: if [ ! -d libraries/lib ]; then tools/release-libs.sh ${{ matrix.system }} libraries; fi
+      - name: The archive
+        run: |
+          mkdir -p out/bin
+          cp -R libraries/lib out/lib
+          if [ "${{ runner.os }}" = Windows ]; then
+            cp _build/default/src/bin/main.exe out/bin/cesia.exe
+            # The DLLs the binary itself was linked with, from the toolchain of OCaml: not those of Windows.
+            for dll in $(objdump -p out/bin/cesia.exe | awk '/DLL Name/ { print $3 }'); do
+              found=$(opam exec -- which "$dll" 2> /dev/null || true)
+              case "$found" in "" | /c/Windows/* | /c/WINDOWS/*) ;; *) cp "$found" out/bin/ ;; esac
+            done
+            out/bin/cesia.exe version
+            (cd out && pwsh -Command "Compress-Archive -Path bin, lib -DestinationPath ../cesia-${{ matrix.system }}.zip")
+          else
+            cp _build/default/src/bin/main.exe out/bin/cesia
+            out/bin/cesia version | tee "version-${{ matrix.system }}.txt"
+            tar -czf "cesia-${{ matrix.system }}.tar.gz" -C out bin lib
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cesia-${{ matrix.system }}
+          path: |
+            cesia-${{ matrix.system }}.${{ matrix.archive }}
+            version-*.txt
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Fingerprints and notes
+        run: |
+          # .blake2 for cesia upgrade, .sha256 for install.sh and install.ps1: macOS and Windows can check it with no tool added.
+          for f in assets/cesia-*; do
+            echo "blake2:$(b2sum -l 256 "$f" | cut -d' ' -f1)" > "$f.blake2"
+            sha256sum "$f" | cut -d' ' -f1 > "$f.sha256"
+          done
+          tools/notes.sh > notes.md
+          cat notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title=$(cat assets/version-linux-x86_64.txt)
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            gh release create "$GITHUB_REF_NAME" assets/cesia-* --title "$title" --notes-file notes.md
+          else
+            gh release delete nightly --yes --cleanup-tag || true
+            git tag -f nightly
+            git push -f origin nightly
+            gh release create nightly assets/cesia-* --prerelease --title "$title" --notes-file notes.md
+          fi

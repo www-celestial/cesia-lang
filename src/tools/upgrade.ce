@@ -1,0 +1,204 @@
+(** cesia upgrade: Cesia itself, from its releases on GitHub, the newest one, or the nightly one with --nightly. It shows the
+    notes and asks, downloads the archive of this system (bin/ and lib/), checks its fingerprint, tries the new binary, and
+    only then puts it in place of the old one, with its lib/: any failure before leaves the old one as it was.
+    CESIA_RELEASES=file:///folder reads folder/latest.json or folder/nightly.json instead of GitHub: for tests and mirrors.
+    Run by the binary. *)
+use sys
+use json
+use cesia
+use debug
+use pkg/http
+use pkg/tls
+
+github = "https://api.github.com/repos/www-celestial/cesia-lang/releases"
+backslash = Char(92)
+
+defn parent(path)
+  (** The folder of a path. *)
+  parts = Split("/", path)
+  Join("/", parts[1:Len(parts) - 1])
+end
+
+defn download(url)
+  (** The bytes at a URL: a file:// one is read, an https:// one fetched, following its redirects. *)
+  if StartsWith("file://", url)
+    return sys.Read(Slice(8, Len(url), url))
+  end
+  secure = tls.Client(tls.Open()?)
+  at = url
+  for hop in 1:5
+    r = http.Get(at, headers = [{Name: "User-Agent", Value: "cesia-upgrade"}], secure = secure)?
+    location = http.HeaderValue("location", r.Headers)
+    if r.Status >= 300 and r.Status < 400 and not IsMissing(location)
+      at = location
+    else if r.Status != 200
+      return Err("$at answered $(r.Status).")
+    else
+      return Ok(r.Body)
+    end
+  end
+  Err("$url redirects too many times.")
+end
+
+defn release(nightly)
+  (** The release to install, as GitHub's API gives it: tag_name, name, body and assets. *)
+  mirror = sys.Env("CESIA_RELEASES")
+  url = if not IsMissing(mirror) and mirror != ""
+    "$mirror/$(if nightly "nightly" else "latest" end).json"
+  else
+    "$github/$(if nightly "tags/nightly" else "latest" end)"
+  end
+  text = download(url)
+  if IsErr(text)
+    return Err("Can't read the releases of Cesia: $(if IsText(text.Error) text.Error else text.Error.Message end)")
+  end
+  json.Parse(text.Value)
+end
+
+defn system()
+  (** The name of this system in the names of the archives: linux-x86_64, macos-arm64, windows-x86_64. *)
+  said = sys.Run("uname", args = ["-s", "-m"])
+  if IsErr(said) or said.Value.Code != 0
+    return "windows-x86_64"
+  end
+  words = Split(" ", Lower(Trim(said.Value.Out)))
+  os = if words[1] == "darwin" "macos" else words[1] end
+  machine = Last(words)
+  arch = if machine == "amd64" "x86_64" else if machine == "aarch64" "arm64" else machine end
+  "$os-$arch"
+end
+
+defn asset(rel, name)
+  (** The download URL of an asset of a release, or missing. *)
+  for a in GetOr("assets", [], rel)
+    if a["name"] == name
+      return a["browser_download_url"]
+    end
+  end
+  missing
+end
+
+defn versionOf(binary)
+  (** What a binary of Cesia answers to version, or an Err. *)
+  r = sys.Run(binary, args = ["version"])?
+  if r.Code == 0 Ok(Trim(r.Out)) else Err("$binary didn't run: $(Trim(r.Err))") end
+end
+
+defn replace(home, fresh, binary)
+  (** Puts the new cesia and lib/ in place of the old ones. A running binary can be renamed on every system, but not always
+      replaced, so the old one is moved away first. On Windows ce.exe is a copy of cesia.exe, not a link: it gets one too. *)
+  ext = if EndsWith(".exe", binary) ".exe" else "" end
+  target = "$home/bin/cesia$ext"
+  old = "$home/bin/.old-cesia$ext"
+  if sys.Exists(old)
+    sys.Remove(old)
+  end
+  if sys.Exists(target)
+    sys.Rename(target, old)?
+  end
+  moved = sys.Rename("$fresh/bin/cesia$ext", target)
+  if IsErr(moved)
+    sys.Rename(old, target)
+    return moved
+  end
+  short = "$home/bin/ce$ext"
+  stat = sys.Stat(short)
+  if ext != "" and IsOk(stat) and not stat.Value.IsLink
+    sys.Rename(short, "$home/bin/.old-ce$ext")?
+    sys.Write(short, sys.Read(target)?)?
+  end
+  if sys.Exists("$fresh/lib")
+    if sys.Exists("$home/lib")
+      sys.Rename("$home/lib", "$fresh/old-lib")?
+    end
+    sys.Rename("$fresh/lib", "$home/lib")?
+  end
+  sys.Remove(old)
+  Ok(missing)
+end
+
+defn removeAll(path)
+  (** Deletes a folder with all it holds; a link goes, never what it points to. *)
+  stat = sys.Stat(path)
+  if IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
+    for name in sys.List(path)?
+      removeAll("$path/$name")?
+    end
+  end
+  if sys.Exists(path) or IsOk(sys.List(path)) sys.Remove(path) else Ok(missing) end
+end
+
+defn upgrade(args)
+  (** cesia upgrade [--nightly]. *)
+  if Len(args) > 1 or (Len(args) == 1 and args[1] != "--nightly")
+    return Err("usage: cesia upgrade [--nightly]")
+  end
+  nightly = Len(args) == 1
+  binary = Replace(backslash, "/", cesia.Binary())
+  current = versionOf(binary)?
+  mirror = sys.Env("CESIA_RELEASES")
+  if cesia.Dev() and (IsMissing(mirror) or mirror == "")
+    return Err("This Cesia was built from its sources ($current): git pull and dune build bring it up to date, not cesia upgrade.")
+  end
+  rel = release(nightly)?
+  tag = GetOr("tag_name", "", rel)
+  title = GetOr("name", tag, rel)
+  newer = if nightly title != current else cesia.Compare(tag, cesia.Version()) > 0 end
+  if not newer
+    Print("$current is the newest$(if nightly " nightly" else "" end): nothing to do.")
+    return Ok(missing)
+  end
+  Print("$title")
+  notes = Trim(GetOr("body", "", rel))
+  if notes != ""
+    Print("")
+    Print(notes)
+    Print("")
+  end
+  Print("Replace $current by $title? [y/n]")
+  answer = debug.ReadLine()
+  if IsMissing(answer) or Lower(Trim(answer)) != "y"
+    Print("Nothing changed.")
+    return Ok(missing)
+  end
+  windows = system() == "windows-x86_64"
+  archive = "cesia-$(system()).$(if windows "zip" else "tar.gz" end)"
+  url = asset(rel, archive)
+  print = asset(rel, "$archive.blake2")
+  if IsMissing(url) or IsMissing(print)
+    return Err("This release has no $archive with its fingerprint: nothing changed.")
+  end
+  bytes = download(url)?
+  expected = Trim(download(print)?)
+  if cesia.Fingerprint(bytes) != expected
+    return Err("The download of $archive doesn't match its fingerprint: nothing changed.")
+  end
+  bin = parent(binary)
+  home = if Last(Split("/", bin)) == "bin" parent(bin) else bin end
+  fresh = "$home/.upgrade"
+  removeAll(fresh)?
+  sys.Mkdir(fresh)?
+  sys.Write("$fresh/$archive", bytes)?
+  unpacked = sys.Run("tar", args = [if windows "-xf" else "-xzf" end, "$fresh/$archive", "-C", fresh])?
+  if unpacked.Code != 0
+    removeAll(fresh)
+    return Err("Can't unpack $archive: $(Trim(unpacked.Err)). Nothing changed.")
+  end
+  tried = versionOf("$fresh/bin/cesia$(if EndsWith(".exe", binary) ".exe" else "" end)")
+  if IsErr(tried) or not StartsWith("cesia ", tried.Value)
+    removeAll(fresh)
+    return Err("The new binary doesn't answer as Cesia: nothing changed.")
+  end
+  replace(home, fresh, binary)?
+  removeAll(fresh)
+  Print("$(tried.Value) is in place.")
+  Ok(missing)
+end
+
+defn Main()
+  (** Runs the command of Args; an error is a text, which the binary shows. *)
+  match upgrade(Args)
+    Err(e) -> Err(if IsText(e) e else e.Message end)
+    done -> done
+  end
+end

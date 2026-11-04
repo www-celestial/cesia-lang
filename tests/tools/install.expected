@@ -1,0 +1,14 @@
+The download of ARCHIVE doesn't match its fingerprint: nothing installed.
+bad out rel 
+Installed cesia 0.2.0+dev in TOP/home: cesia and ce are in TOP/links.
+cesia 0.2.0+dev
+.:
+bin
+lib
+
+bin:
+cesia
+
+lib:
+libsome.so
+exit 0

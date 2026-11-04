@@ -207,18 +207,39 @@ let stubs = [ "libssl.dylib"; "libcrypto.dylib" ]
    the loader would read that from the current folder, where anyone can plant a file. The names with the version come first,
    also in Homebrew's folders, then those without it, which may be another version: libm.dylib of macOS has none, and a
    system can hold libsodium.so.23 where 26 is asked. *)
+(* The lib/ of a release, beside the bin/ that holds the binary, found from the binary itself with its links followed, never
+   from the current folder. *)
+let beside =
+  lazy
+    (match Unix.realpath Sys.executable_name with
+     | exception Unix.Unix_error _ -> None
+     | exe ->
+       let bin = Filename.dirname exe in
+       let lib = Filename.concat (Filename.dirname bin) "lib" in
+       if Filename.basename bin = "bin" && Sys.file_exists lib && Sys.is_directory lib then Some lib else None)
+
+let in_release files =
+  match Lazy.force beside with
+  | None -> []
+  | Some lib -> List.filter_map (fun f -> if Filename.basename f = f then Some (Filename.concat lib f) else None) files
+
 let candidates name version =
   if String.contains name '/' || String.contains name '\\' then [ name ]
   else begin
     let names so dylib = so :: dylib :: List.map (fun dir -> Filename.concat dir dylib) brew in
     let versioned =
       match version with
-      | Some v -> names (Printf.sprintf "lib%s.so.%s" name v) (Printf.sprintf "lib%s.%s.dylib" name v)
+      | Some v ->
+        names (Printf.sprintf "lib%s.so.%s" name v) (Printf.sprintf "lib%s.%s.dylib" name v)
+        @ [ Printf.sprintf "lib%s-%s-x64.dll" name v ]
       | None -> []
     in
     let plain = List.filter (fun file -> not (List.mem (Filename.basename file) stubs)) (names (Printf.sprintf "lib%s.so" name) (Printf.sprintf "lib%s.dylib" name)) in
-    versioned @ plain
-    @ [ Printf.sprintf "/Library/Frameworks/%s.framework/%s" name name; name ^ ".dll"; Printf.sprintf "lib%s.dll" name ]
+    let usual =
+      versioned @ plain
+      @ [ Printf.sprintf "/Library/Frameworks/%s.framework/%s" name name; name ^ ".dll"; Printf.sprintf "lib%s.dll" name ]
+    in
+    in_release usual @ usual
   end
 
 let version_arg ctx (a : Types.t array) =
