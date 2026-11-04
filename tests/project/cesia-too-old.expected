@@ -1,0 +1,22 @@
+cesia = "99.0"
+cesia.toml:3:1: This project needs Cesia 99.0 or later, and this is 0.2.0: run cesia upgrade.
+run: 1
+cesia.toml:3: This project needs Cesia 99.0 or later, and this is 0.2.0: run cesia upgrade.
+do: 1
+cesia = "0.1"
+runs
+run: 0
+> cesia run src/main.ce
+runs
+do: 0
+cesia = 2
+cesia.toml:3:1: Numbers and dates aren't supported in this file.
+run: 1
+cesia.toml:3: Numbers and dates aren't supported in this file.
+do: 1
+cesia = "latest"
+cesia.toml:3:1: Project: cesia needs a version such as "0.2".
+run: 1
+cesia.toml:3: Project: cesia needs a version such as "0.2".
+do: 1
+exit 0

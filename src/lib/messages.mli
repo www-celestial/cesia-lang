@@ -129,6 +129,12 @@ val use_binary : string -> t
 val source_missing : string -> t
 
 val source_outside : string -> t
+
+(** [cesia_needed needed this]: [cesia = "0.3"] in cesia.toml, read by Cesia [0.2.0]. *)
+val cesia_needed : string -> string -> t
+
+(** What [cesia] in cesia.toml holds, for {!project_type}. *)
+val cesia_not_version : string
 val no_name : string -> string -> t
 val denied : string -> t
 

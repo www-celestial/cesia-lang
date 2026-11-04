@@ -23,6 +23,10 @@ val absolute : string -> string
 (** The folder of the nearest {!project_file} above this file or folder, or else the folder itself. *)
 val root_of : string -> string
 
+(** [cesia = "0.3"] in [project] asks for a newer Cesia, or holds no version: its line and why. The first thing read in a
+    cesia.toml, so that an older Cesia says so before it finds a field it doesn't know. *)
+val wrong_cesia : Toml.table list -> (int * Messages.t) option
+
 (** The source folders of a root: [project] src of its cesia.toml, or else [["src"]]. Read once per root; a wrong one raises
     {!Pos.Load_error} at its line. *)
 val sources : string -> string list

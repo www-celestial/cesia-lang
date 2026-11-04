@@ -555,6 +555,8 @@ let guarded ?(strict = false) w body =
 let program ctx path args =
   set_args ctx.w args;
   ctx.w.root <- Package.root_of path;
+  (* A cesia.toml that asks for a newer Cesia stops the program before it starts, uses or not. *)
+  ignore (Package.sources ctx.w.root);
   Option.iter (load_debugger ctx) ctx.w.debugger;
   load ctx path;
   0

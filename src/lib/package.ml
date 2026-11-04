@@ -28,6 +28,16 @@ let shown path =
     String.sub path (String.length here) (String.length path - String.length here)
   else path
 
+let wrong_cesia (tables : Toml.table list) =
+  let check (e : Toml.entry) =
+    match e.key, e.value with
+    | "cesia", Text v when Version.valid v ->
+      if Version.at_least v then None else Some (e.line, Messages.cesia_needed v Version.number)
+    | "cesia", _ -> Some (e.line, Messages.plain (Messages.project_type "Project" "cesia" Messages.cesia_not_version))
+    | _ -> None
+  in
+  List.find_map (fun (t : Toml.table) -> if t.path = [ "project" ] then List.find_map check t.entries else None) tables
+
 (* The source folders of a root, from [project] src of its cesia.toml, read once: every use asks. *)
 let known_sources = Hashtbl.create 4
 
@@ -40,6 +50,7 @@ let read_sources root =
   match Toml.parse src with
   | Error (line, reason) -> wrong line (Messages.plain reason)
   | Ok tables ->
+    Option.iter (fun (line, m) -> wrong line m) (wrong_cesia tables);
     let project = List.concat_map (fun (t : Toml.table) -> if t.path = [ "project" ] then t.entries else []) tables in
     match List.find_opt (fun (e : Toml.entry) -> String.equal e.key "src") project with
     | None -> [ "src" ]

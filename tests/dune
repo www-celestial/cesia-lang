@@ -17,3 +17,8 @@
  (name fuzz)
  (modules fuzz)
  (libraries cesia cesia_sys unix))
+
+(test
+ (name version_test)
+ (modules version_test)
+ (libraries cesia))

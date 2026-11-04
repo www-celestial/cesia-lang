@@ -294,5 +294,10 @@ let use_library name = plain (Printf.sprintf "\"%s\" is a library: write use pkg
 let use_binary name = plain (Printf.sprintf "\"%s\" is a module of the binary: write use %s." name name)
 let source_missing dir = plain (Printf.sprintf "The source folder \"%s\" doesn't exist." dir)
 let source_outside dir = plain (Printf.sprintf "The source folder \"%s\" is outside the project." dir)
+
+let cesia_needed needed this =
+  plain (Printf.sprintf "This project needs Cesia %s or later, and this is %s: run cesia upgrade." needed this)
+
+let cesia_not_version = "a version such as \"0.2\""
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)
 let denied perm = plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)

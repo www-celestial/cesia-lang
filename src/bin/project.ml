@@ -38,6 +38,7 @@ let read_project (table : Toml.table) =
        | "src" ->
          ignore (texts_field "Project" e);
          title, native
+       | "cesia" -> title, native
        | key -> wrong_at e.line (Messages.project_field "Project" key))
     (None, []) table.entries
 
@@ -113,6 +114,7 @@ let check_cycles by_name tasks =
   List.iter (visit []) tasks
 
 let of_tables (tables : Toml.table list) =
+  Option.iter (fun (line, (m : Messages.t)) -> wrong_at line m.text) (Package.wrong_cesia tables);
   let project = ref (None, []) and tasks = ref [] in
   List.iter
     (fun (table : Toml.table) ->
