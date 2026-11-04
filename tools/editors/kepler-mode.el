@@ -11,8 +11,8 @@
     table))
 
 (defvar kepler-font-lock
-  `((,(regexp-opt '("if" "else" "end" "for" "in" "while" "break" "return" "defn" "match" "struct" "then"
-                    "use" "and" "or" "not")
+  `((,(regexp-opt '("if" "else" "end" "for" "in" "while" "break" "return" "defn" "match" "struct" "interface"
+                    "then" "use" "and" "or" "not")
                   'words)
      . font-lock-keyword-face)
     (,(regexp-opt '("true" "false" "missing") 'words) . font-lock-constant-face)

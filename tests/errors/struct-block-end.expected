@@ -1,0 +1,4 @@
+struct-block-end.k:5:1: Expected end, found the end of the file.
+  5 | 
+    | ^
+exit 1

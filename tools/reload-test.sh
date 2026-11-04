@@ -98,6 +98,8 @@ sed -i 's/^Constant() = 10$/Constant() = 11/' "$dir/lib/lib.k"
 wait_for out "lib 11" 2000 || fail "loaded module"
 sed -i 's/^struct Point { X }$/struct Point { X, Y = 5 }/; s/^point() = Point(1).X$/point() = Point(1).Y/' "$dir/app.k"
 wait_for out "point 5" 2000 || fail "changed struct"
+sed -i 's/^struct Point { X, Y = 5 }$/struct Point\n  X\n  Y = 6\nend/' "$dir/app.k"
+wait_for out "point 6" 2000 || fail "a struct that takes the block form"
 sed -i '/following/d; s/^added() = 9$/added() = 10/' "$dir/app.k"
 wait_for out "value 10" 2000 || fail "after a deleted function"
 alive "deleted function"
@@ -118,6 +120,37 @@ sed -i 's/^(p Point) Value() = p.Added()$/Point.Value() = 5/; s/^method() = Poin
 wait_for out "method 5" 2000 || fail "an instance method that becomes static"
 wait_for out "old field" 2000 || fail "a static method called on a value"
 no_internal "methods"
+
+# A changed type applies at the next call, construction or write, and a value made before is not checked again.
+wait_for out "param type" 2000 || fail "types: a parameter of the wrong type"
+wait_for out "box type" 2000 || fail "types: a write of the wrong type"
+wait_for out "made 2" 2000 || fail "types: a construction"
+sed -i 's/^struct Box { V Int }$/struct Box { V Number }/; s/^scaled(by Int) = by \* 2$/scaled(by Number) = by * 2/' "$dir/app.k"
+wait_for out "param 3.0" 2000 || fail "types: a changed parameter type"
+wait_for out "box 1.5" 2000 || fail "types: a changed field type, written"
+sed -i 's/^struct Box { V Number }$/struct Box\n  V Text\nend/' "$dir/app.k"
+wait_for out "made type" 2000 || fail "types: a changed field type, at construction"
+if grep -qxF "held type" "$dir/out"; then fail "types: a value made before was checked again"; fi
+grep -qxF "held 1" "$dir/out" || fail "types: a value made before"
+no_internal "types"
+
+# A changed interface applies at the next call: a value that met it stops, and the other way round. So does a method on it,
+# also at a place of the loop that keeps running ("loop").
+wait_for out "iface 2" 2000 || fail "interfaces: a parameter of an interface"
+wait_for out "twice 2" 2000 || fail "interfaces: a method on an interface"
+wait_for out "loop 2" 2000 || fail "interfaces: a method on an interface, in the running loop"
+sed -i 's/^interface Sized { Size() }$/interface Sized { Size(), Weight() }/' "$dir/app.k"
+wait_for out "iface type" 2000 || fail "interfaces: a value that no longer meets it, as a type"
+wait_for out "twice field" 2000 || fail "interfaces: a value that no longer meets it, for a method"
+wait_for out "loop field" 2000 || fail "interfaces: a value that no longer meets it, in the running loop"
+sed -i 's/^(t Tile) Size() = t.N$/(t Tile) Size() = t.N + 1\n(t Tile) Weight() = 0/; s/^(s Sized) Twice() = 2 \* s.Size()$/(s Sized) Twice() = 3 * s.Size()/' "$dir/app.k"
+wait_for out "iface 3" 2000 || fail "interfaces: a value that meets it again"
+wait_for out "twice 6" 2000 || fail "interfaces: a changed method on an interface"
+wait_for out "loop 6" 2000 || fail "interfaces: a value that meets it again, in the running loop"
+sed -i 's/^(t Tile) Weight() = 0$/(t Tile) Weight() = 0\n(t Tile) Twice() = 100/' "$dir/app.k"
+wait_for out "twice 100" 2000 || fail "interfaces: a method of the struct, added, wins"
+wait_for out "loop 100" 2000 || fail "interfaces: a method of the struct, added, wins in the running loop"
+no_internal "interfaces"
 
 # A function that only read its argument starts writing it, under a loop compiled for the old one.
 wait_for out "kept 1" 2000 || fail "readKept before the change"

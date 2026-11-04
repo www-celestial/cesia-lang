@@ -1,0 +1,7 @@
+-- A definition inside a struct in the block form: its end is missing.
+struct Car
+  Mass
+
+defn Drive(c)
+  c.Mass
+end

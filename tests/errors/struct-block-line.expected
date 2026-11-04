@@ -1,0 +1,4 @@
+struct-block-line.k:3:7: In the block form of a struct, each field has its own line.
+  3 |   Mass, Speed
+    |       ^
+exit 1

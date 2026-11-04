@@ -72,6 +72,25 @@ val no_field : string -> t
 val named_field : string -> string -> t
 val field_of : string -> string -> t
 val struct_nested : t
+val struct_not_field : t
+val struct_line : t
+val lambda_type : t
+val no_type : string -> t
+val interface_nested : t
+val interface_not_method : t
+val interface_body : t
+val interface_line : t
+val interface_default : t
+val interface_call : string -> t
+
+(** [method_two a b name found]: two interfaces give a method of that name to a value that meets both. *)
+val method_two : string -> string -> string -> string -> t
+
+(** [wrong_type fname name want found]: a value of the wrong type for a parameter or a field. *)
+val wrong_type : string -> string -> string -> string -> t
+
+(** The name with its article: [an Int], [a Point]. *)
+val article : string -> string
 val destructure_array : int -> int -> t
 val destructure_struct : string -> t
 val destructure_value : string -> t

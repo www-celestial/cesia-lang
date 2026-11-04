@@ -2,7 +2,7 @@
 if exists("b:current_syntax")
   finish
 endif
-syn keyword keplerKeyword if else end for in while break return defn match struct then use
+syn keyword keplerKeyword if else end for in while break return defn match struct interface then use
 syn keyword keplerOperator and or not
 syn keyword keplerConstant true false missing
 syn match keplerNumber "\<\d\+\(\.\d\+\)\?\>"

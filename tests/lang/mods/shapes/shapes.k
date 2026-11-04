@@ -32,7 +32,19 @@ end
 (c Circle) Shown() = c.hidden() + 1
 (r Rect) Area() = r.Side * r.Side
 (p piece) Double() = 2 * p.Size
+(p piece) area() = 10 * p.Size
 
 Make(radius) = Circle.Of(radius)
 MakeRect(side) = Rect(side)
 MakePiece(size) = piece(size)
+
+-- A square, in the block form of a struct.
+struct Square
+  Side = 1
+end
+
+-- A square with twice the side.
+Square.Twice(s) = Square(2 * s.Side)
+
+-- The area of a square.
+(s Square) Area() = s.Side * s.Side

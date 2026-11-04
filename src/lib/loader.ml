@@ -130,7 +130,7 @@ let native_module w name natives =
     let mnames = List.mapi (fun i (n, _) -> n, i) natives in
     let stable = Array.make (Array.length cells) true in
     let host = Array.length w.modules in
-    let m = add_module w { mname = name; path = ""; cells; mnames; stable; host; package = [| host |] } in
+    let m = add_module w { mname = name; path = ""; cells; mnames; stable; host; package = [| host |]; uses = [] } in
     Hashtbl.replace w.loaded key m;
     m
 
@@ -154,21 +154,24 @@ let check_uses path (fn : Ast.func) =
        | _ -> ())
     fn.body
 
-(* Lexes and parses a source. [use] returns the module of each use. *)
+(* Lexes and parses a source. [use] returns the module of each use. Gives the names of the uses, and the first module of each
+   package they name. *)
 let parse w ~hooks ~path ~src ~use =
   let file = register_file w path src in
   let toks = Lexer.tokens ~file:path src in
   let fn = Parser.program ~hooks ~file:path ~nesting:w.limits.nesting toks in
   check_uses path fn;
-  let spaces =
+  let uses =
     List.filter_map
       (fun (e : Ast.expr) ->
          match e.e with
-         | Use { upath; ualias } -> Some (ualias, in_package w (use ~pos:e.pos upath))
+         | Use { upath; ualias } ->
+           let m = use ~pos:e.pos upath in
+           Some ((ualias, in_package w m), w.modules.(m).host)
          | _ -> None)
       (Array.to_list fn.body)
   in
-  file, fn, spaces
+  file, fn, List.split uses
 
 (* The methods of a package are looked for by a value, which knows its struct and not the cells. The struct can be in another
    file than its method: they meet at the host. *)
@@ -177,11 +180,36 @@ let add_methods w ~host m (layout : Ast.layout) =
     (fun (sname, name, static, k) -> Hashtbl.replace w.methods (host, sname, name) (w.modules.(m).cells.(k), static))
     layout.methods
 
+(* A struct or an interface of a module already loaded, which a type can name. *)
+let is_type w = function
+  | Ast.Cell { m; k; _ } when m < Array.length w.modules && k < Array.length w.modules.(m).cells ->
+    (match w.modules.(m).cells.(k) with
+     | Fun { proto; _ } -> Resolve.struct_fields proto.func <> None
+     | Native n -> Hashtbl.mem w.interfaces (w.modules.(m).host, n.nname)
+     | _ -> false)
+  | _ -> false
+
+(* What the name of an interface holds: it is no value, and the interface itself goes to the world. *)
+let add_interfaces w ~host m (layout : Ast.layout) =
+  let md = w.modules.(m) in
+  List.iter
+    (fun (k, (i : Ast.iface)) ->
+       md.cells.(k) <- Native.nat i.iname 0 max_int (fun ctx _ -> Runtime.fail ctx Type (Messages.interface_call i.iname));
+       md.stable.(k) <- true;
+       Hashtbl.replace w.interfaces (host, i.iname) i)
+    layout.interfaces
+
+(* The types of the fields of the structs of a package, once its modules are there. *)
+let set_checks w (prepared : (int * Ast.layout) list) =
+  List.iter (fun (m, (layout : Ast.layout)) -> Array.iter (fun (_, f) -> Compile.set_checks w m f) layout.hoisted) prepared
+
 (* Resolves the files of a package, the modules from [first] on. Each one sees what the others define, small names included,
    before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload. *)
-let resolve_files ~sees_private ~lookup ~first ~old parsed =
+let resolve_files w ~sees_private ~lookup ~first ~old parsed =
+  let is_type = is_type w in
   match parsed with
-  | [ (path, _, fn, spaces) ] -> [ Resolve.file ~keep:(old 0) ~sees_private ~file:path ~m:first ~lookup ~spaces fn ]
+  | [ (path, _, fn, (spaces, _)) ] ->
+    [ Resolve.file ~keep:(old 0) ~sees_private ~is_type ~file:path ~m:first ~lookup ~spaces fn ]
   | _ ->
     Resolve.check_package (List.map (fun (path, _, fn, _) -> path, fn) parsed);
     let seen = Hashtbl.create 64 in
@@ -211,8 +239,8 @@ let resolve_files ~sees_private ~lookup ~first ~old parsed =
     in
     let peers = List.map (fun (_, _, fn, _) -> fn) parsed in
     List.mapi
-      (fun i ((path, _, fn, spaces), keep) ->
-         Resolve.file ~keep ~peers ~sees_private ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
+      (fun i ((path, _, fn, (spaces, _)), keep) ->
+         Resolve.file ~keep ~peers ~sees_private ~is_type ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
       (List.combine parsed keeps)
 
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
@@ -228,10 +256,10 @@ let rec prepare_files ?(hooks = false) ?host ctx ~sources ~lookup =
   in
   let first = Array.length w.modules in
   let package = Array.init (List.length parsed) (fun i -> first + i) in
-  let layouts = resolve_files ~sees_private:(host <> None) ~lookup ~first ~old:(fun _ -> [||]) parsed in
+  let layouts = resolve_files w ~sees_private:(host <> None) ~lookup ~first ~old:(fun _ -> [||]) parsed in
   let host = match host with Some h -> w.modules.(h).host | None -> first in
-  List.map2
-    (fun (path, file, fn, _) (layout : Ast.layout) ->
+  let prepared = List.map2
+    (fun (path, file, fn, (_, uses)) (layout : Ast.layout) ->
        let m = Array.length w.modules in
        let n = Array.length layout.cell_names in
        let cells = Array.make n Undef and stable = Array.make n false in
@@ -241,10 +269,14 @@ let rec prepare_files ?(hooks = false) ?host ctx ~sources ~lookup =
             stable.(k) <- true)
          layout.hoisted;
        let names = List.mapi (fun k n -> n, k) (Array.to_list layout.cell_names) in
-       ignore (add_module w { mname = path; path; cells; mnames = names; stable; host; package });
+       ignore (add_module w { mname = path; path; cells; mnames = names; stable; host; package; uses });
        add_methods w ~host m layout;
+       add_interfaces w ~host m layout;
        file, m, fn, layout)
     parsed layouts
+  in
+  set_checks w (List.map (fun (_, m, _, layout) -> m, layout) prepared);
+  prepared
 
 and use_module ctx ~hooks ~from ~pos upath =
   let w = ctx.w in
@@ -326,7 +358,7 @@ let init w =
   let names = List.mapi (fun i (n, _) -> n, i) natives in
   let cells = Array.of_list (List.map snd natives) in
   let stable = Array.make (Array.length cells) true in
-  w.modules <- [| { mname = "natives"; path = ""; cells; mnames = names; stable; host = 0; package = [| 0 |] } |];
+  w.modules <- [| { mname = "natives"; path = ""; cells; mnames = names; stable; host = 0; package = [| 0 |]; uses = [] } |];
   let ctx = Runtime.create_ctx w in
   match std_source "prelude" with
   | Some (path, src) ->
@@ -409,19 +441,24 @@ let reload w path =
           members
       in
       let old i = Array.of_list (List.map fst w.modules.(first + i).mnames) in
-      List.combine parsed (resolve_files ~sees_private:false ~lookup:look ~first ~old parsed)
+      List.combine parsed (resolve_files w ~sees_private:false ~lookup:look ~first ~old parsed)
     with
     | exception Pos.Load_error { file; pos; text; hint; _ } ->
       Error (format_error ~source:(source_of w file) ~path:file ~pos ~text ~hint ~trace:[])
     | exception Sys_error text -> Error (text ^ "\n")
     | resolved ->
       Hashtbl.filter_map_inplace (fun (owner, _, _) entry -> if owner = first then None else Some entry) w.methods;
+      Hashtbl.filter_map_inplace (fun (owner, _) entry -> if owner = first then None else Some entry) w.interfaces;
+      w.reloads <- w.reloads + 1;
       List.iteri
-        (fun i ((_, file, _, _), layout) ->
+        (fun i ((_, file, _, (_, uses)), layout) ->
            install w (first + i) file layout;
-           add_methods w ~host:first (first + i) layout)
+           w.modules.(first + i).uses <- uses;
+           add_methods w ~host:first (first + i) layout;
+           add_interfaces w ~host:first (first + i) layout)
         resolved;
       follow_moved w ~first resolved;
+      set_checks w (List.mapi (fun i (_, layout) -> first + i, layout) resolved);
       Compile.retire_all w;
       Ok ()
 

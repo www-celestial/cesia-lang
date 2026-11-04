@@ -1,0 +1,5 @@
+-- A parameter of the wrong type, in a method.
+struct Rect { Width, Height }
+(r Rect) Scaled(by Number) = Rect(r.Width * by, r.Height * by)
+Print(Rect(1, 2).Scaled(2).Width)
+Print(Rect(1, 2).Scaled("a"))

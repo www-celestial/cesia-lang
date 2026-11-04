@@ -1,0 +1,142 @@
+-- Interfaces: a value meets one when it has its methods, with their numbers of parameters, and nothing declares it.
+use tests/lang/mods/geo
+use tests/lang/mods/shapes
+
+-- Something with an area and a perimeter.
+interface Shape
+  Area()
+
+  -- A comment and an empty line, inside the block.
+  Perimeter()
+end
+
+interface Named { Name() }
+interface Scalable { Scaled(by Number), Area() }
+interface Sized { Area() }
+
+interface lowered
+  inner()
+end
+
+interface hasArea { area() }
+interface Doubling { Double() }
+
+struct Rect { Width, Height = 1 }
+(r Rect) Area() = r.Width * r.Height
+(r Rect) Perimeter() = 2 * (r.Width + r.Height)
+(r Rect) Scaled(by) = Rect(r.Width * by, r.Height * by)
+
+struct Square { Side }
+(s Square) Area() = s.Side * s.Side
+(s Square) Scaled() = s
+
+struct Tag { Words, Name = () -> "label" }
+struct Pair { Area, Name }
+struct Plot { S }
+(p Plot) area() = p.S
+
+struct Circle { Radius }
+(c Circle) Area() = 3 * c.Radius * c.Radius
+(c Circle) Perimeter() = 6 * c.Radius
+(c Circle) Describe() = "a circle"
+
+-- A frame holds a shape, and maybe another.
+struct Frame
+  Inner Shape
+  Outer Shape?
+end
+
+(s Shape) Describe() = "area $(s.Area()), perimeter $(s.Perimeter())"
+(s Shape) Info() = "shape"
+(s Sized) Info() = "sized"
+(s Sized) Doubled() = 2 * s.Area()
+(s Sized) Label() = "sized"
+(s Shape) hidden() = "hidden"
+(n Named) Hello() = "hello $(n.Name())"
+(n Named) Kind() = "named"
+(s Sized) Kind() = "sized"
+(d Doubling) area() = "doubled"
+
+-- What a call that stops says: its kind and its message.
+stop(f) = match Wait(Spawn(f))
+  Err(e) -> "$(e.Kind): $(e.Message)"
+  Ok(v) -> v
+end
+
+total(s Shape) = s.Area() + s.Perimeter()
+named(n Named) = n.Name()
+scaled(s Scalable) = s.Scaled(2).Area()
+maybe(s Shape?) = if IsMissing(s) 0 else s.Area() end
+low(x lowered) = x.inner()
+sized(s Sized) = s.Area()
+twice(m geo.Measured) = m.Area() * 2
+geoArea(r geo.Rect) = r.Area()
+kindOf(x) = x.Kind()
+areaOf(x hasArea) = x.area()
+
+isMeetsByMethods() = total(Rect(1, 2)) == 8 and total(Circle(1)) == 9
+isNotMeets() = stop(() -> total(Square(1))) == "type: total: s must be a Shape, found a Square, which has no Perimeter()."
+isNumberOfParameters() = scaled(Rect(1, 2)) == 8 and stop(() -> scaled(Square(1))) == "type: scaled: s must be a Scalable, found a Square, which has no Scaled(by Number)."
+isKindNeverMeets() = stop(() -> total(3)) == "type: total: s must be a Shape, found an Int." and stop(() -> total([Rect(1)])) == "type: total: s must be a Shape, found an Array."
+isRecordMeets() = total({Area: () -> 2, Perimeter: () -> 6}) == 8 and named({Name: () -> "r"}) == "r"
+isRecordFieldNotAFunction() = total({Area: () -> 1, Perimeter: () -> 1}) == 2 and stop(() -> total({Area: () -> 1, Perimeter: 1})) == "type: total: s must be a Shape, found a struct, which has no Perimeter()."
+isRecordFieldParameters() = stop(() -> named({Name: x -> x})) == "type: named: n must be a Named, found a struct, which has no Name()."
+isStructFieldFunction() = named(Tag("a")) == "label" and stop(() -> named(Tag("a", Name = 1))) == "type: named: n must be a Named, found a Tag, which has no Name()."
+isOptionalInterface() = maybe(missing) == 0 and maybe(Rect(2)) == 2 and stop(() -> maybe(Square(1))) == "type: maybe: s must be a Shape or missing, found a Square, which has no Perimeter()."
+isFieldOfAnInterface() = Frame(Rect(1)).Inner.Area() == 1 and IsMissing(Frame(Rect(1)).Outer) and stop(() -> Frame(Square(1))) == "type: Frame: Inner must be a Shape, found a Square, which has no Perimeter()."
+isPrivateInterface() = low({inner: () -> 5}) == 5 and stop(() -> low(Rect(1))) == "type: low: x must be a lowered, found a Rect, which has no inner()."
+
+defn writeFrame(s)
+  f = Frame(Rect(1))
+  f.Outer = s
+  f.Outer.Area()
+end
+
+-- A write inside a field of an interface checks that field again, whether the write copies its value or not.
+defn writeInside(first)
+  f = Frame({Area: () -> 1, Perimeter: () -> 1, B: 1})
+  if first
+    f.Inner.B = 2
+  end
+  f.Inner.Area = 5
+  f
+end
+
+isWriteInsideAnInterface() = stop(() -> writeInside(false)) == "type: Frame: Inner must be a Shape, found a struct, which has no Area()." and stop(() -> writeInside(true)) == "type: Frame: Inner must be a Shape, found a struct, which has no Area()."
+isWriteOfAnInterface() = writeFrame(Circle(1)) == 3 and stop(() -> writeFrame(Square(1))) == "type: Frame: Outer must be a Shape or missing, found a Square, which has no Perimeter()."
+
+-- Several shapes at one place: the answer kept for one doesn't hold for another.
+defn totals()
+  out = []
+  for s in [Rect(1, 2), Circle(1), {Area: () -> 1, Perimeter: () -> 1}, Rect(1, 2), Circle(1)]
+    out = Append([total(s), s.Describe()], out)
+  end
+  out
+end
+
+isSeveralShapes() = Equal(totals(), [[8, "area 2, perimeter 6"], [9, "a circle"], [2, "area 1, perimeter 1"], [8, "area 2, perimeter 6"], [9, "a circle"]])
+
+isMethodOnAnInterface() = Rect(1, 2).Describe() == "area 2, perimeter 6" and Tag("a").Hello() == "hello label"
+isMethodOnAnInterfaceForARecord() = {Area: () -> 1, Perimeter: () -> 4}.Describe() == "area 1, perimeter 4"
+isOwnMethodWins() = Circle(1).Describe() == "a circle"
+isFieldWins() = {Area: () -> 1, Perimeter: () -> 4, Describe: () -> "own"}.Describe() == "own"
+isNoMethodWithoutMeeting() = stop(() -> Square(1).Describe()) == "field: Square has no field or method \"Describe\"."
+isTwoInterfaces() = Square(2).Info() == "sized" and stop(() -> Rect(1).Info()) == "type: Both Shape and Sized have a method \"Info\", and a Rect meets both."
+isPrivateMethodOnAnInterface() = Rect(1).hidden() == "hidden"
+
+isInterfaceOfAPackage() = twice(Rect(1, 2)) == 4 and geo.Total(Rect(2)) == 2 and stop(() -> twice(Tag("a"))) == "type: twice: m must be a geo.Measured, found a Tag, which has no Area()."
+isMethodOfAPackageInterface() = Rect(1, 2).Double() == 4 and geo.MakeRect(1, 3).Double() == 6
+isPrivateMethodInItsPackage() = Rect(4).Shown() == 3
+isPrivateInterfacePublicMethod() = geo.MakeRect(2, 1).Sides() == 8
+isValueOfAPackage() = sized(shapes.Circle(1)) == 3 and shapes.Circle(1).Doubled() == 6
+isOnlyUsedPackages() = geo.Extra(Rect(1)) == "extra" and stop(() -> Rect(1).Extra()) == "field: Rect has no field or method \"Extra\"."
+isTwoInterfacesOfTwoPackages() = stop(() -> Rect(1).Label()) == "type: Both Sized and geo.Measured have a method \"Label\", and a Rect meets both."
+isSameNameInTwoPackages() = geoArea(geo.MakeRect(1, 2)) == 2 and stop(() -> geoArea(Rect(1))) == "type: geoArea: r must be a geo.Rect, found an interfaces.Rect."
+
+-- One place, values of one shape: what the fields hold chooses the interface.
+isDispatchByValue() = kindOf({Area: () -> 1, Name: 0}) == "sized" and kindOf({Area: 0, Name: () -> "n"}) == "named" and stop(() -> kindOf({Area: () -> 1, Name: () -> "n"})) == "type: Both Named and Sized have a method \"Kind\", and a struct meets both." and stop(() -> kindOf({Area: 0, Name: 0})) == "field: This struct has no field \"Kind\"."
+isDispatchByValueOfAStruct() = kindOf(Pair(() -> 1, 0)) == "sized" and kindOf(Pair(0, () -> "n")) == "named" and kindOf(Pair(() -> 2, 1)) == "sized"
+
+-- A small method of an interface is met only by a value of its package, and a small method of another package hides nothing.
+isPrivateMethodMeetsInItsPackage() = areaOf(Plot(3)) == 3 and stop(() -> areaOf(shapes.MakePiece(2))) == "type: areaOf: x must be a hasArea, found a piece, which has no area()."
+isPrivateMethodOfAnotherPackage() = shapes.MakePiece(2).area() == "doubled"

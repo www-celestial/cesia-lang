@@ -1,0 +1,27 @@
+Shape { Area(), Perimeter() }
+
+Something with an area and a perimeter.
+
+  total(Square(2)) --> 12
+Named { Name() }
+
+Something with a name.
+(s Shape) Describe()
+
+What a shape is.
+
+  Square(1).Describe() --> "area 1, perimeter 4"
+kepler: nothing is documented under shape.Perimeter
+Interfaces and their methods, for the tests of a use.
+
+tests/lang/mods/geo.Extra            A method of an interface of far, which geo uses.
+tests/lang/mods/geo.MakeRect         A rectangle.
+tests/lang/mods/geo.Measured         Something measured by its area.
+tests/lang/mods/geo.Measured.Double  Twice the area of what is measured.
+tests/lang/mods/geo.Measured.Label   What is measured, by geo.
+tests/lang/mods/geo.Measured.Shown   Half the area, and one.
+tests/lang/mods/geo.Rect             A rectangle of geo.
+tests/lang/mods/geo.Rect.Area        The area of a rectangle.
+tests/lang/mods/geo.Rect.Side        The width.
+tests/lang/mods/geo.Total            The area of what is measured.
+exit 0

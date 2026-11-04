@@ -1,0 +1,4 @@
+-- A method of an interface, with a body.
+interface Shape
+  Area() = 1
+end

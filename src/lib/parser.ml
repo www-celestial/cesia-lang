@@ -17,6 +17,7 @@ type p = {
   mutable in_function : bool;
   mutable in_index : int;  (* > 0: [end] means the end of the indexed array *)
   mutable saw_end : bool;
+  mutable stmt_at : int;  (* where the current statement starts *)
 }
 
 let error p pos (m : Messages.t) =
@@ -40,7 +41,7 @@ let tok_text = function
   | NL -> "the end of the line"
   | EOF -> "the end of the file"
   | IF -> "if" | ELSE -> "else" | END -> "end" | FOR -> "for" | IN -> "in" | WHILE -> "while"
-  | BREAK -> "break" | RETURN -> "return" | DEFN -> "defn" | MATCH -> "match" | STRUCT -> "struct"
+  | BREAK -> "break" | RETURN -> "return" | DEFN -> "defn" | MATCH -> "match" | STRUCT -> "struct" | INTERFACE -> "interface"
   | AND -> "and" | OR -> "or" | NOT -> "not" | THEN -> "then" | USE -> "use" | TRUE -> "true"
   | FALSE -> "false" | MISSING -> "missing" | PLUS -> "+" | MINUS -> "-" | STAR -> "*" | SLASH -> "/"
   | CARET -> "^" | ASSIGN -> "=" | EQEQ -> "==" | NE -> "!=" | LT -> "<" | LE -> "<=" | GT -> ">" | GE -> ">="
@@ -80,14 +81,8 @@ let hook p pos = node p pos (Hook { live = Bytes.empty })
 (* The body of a short form: a single statement. *)
 let hooked p pos (e : expr) = if p.hooks then [| hook p pos; e |] else [| e |]
 
-(* (r Rect), the current token being the parenthesis: no expression has two names in a row. *)
-let is_receiver p =
-  match p.toks.(p.i + 1).t with
-  | NAME _ -> (match p.toks.(p.i + 2).t with NAME _ -> true | _ -> false)
-  | _ -> false
-
-(* The token after the [)] matching the current [(]. *)
-let after_paren p =
+(* Where the token after the [)] matching the current [(] is. *)
+let paren_end p =
   let k = ref (p.i + 1) and depth = ref 1 in
   while !depth > 0 && p.toks.(!k).t <> EOF do
     (match p.toks.(!k).t with
@@ -98,7 +93,18 @@ let after_paren p =
   done;
   if p.mode = Ignore then
     while p.toks.(!k).t = NL do incr k done;
-  p.toks.(!k).t
+  !k
+
+let after_paren p = p.toks.(paren_end p).t
+
+(* (r Rect) Area(, the current token being the parenthesis: no expression has two names in a row. A typed parameter has
+   them too, in (s Shape) -> or defn (s Shape), but no name and parenthesis after it, except in the body of a defn on one
+   line, which [function_expr] tells apart. *)
+let is_receiver p =
+  (match p.toks.(p.i + 1).t, p.toks.(p.i + 2).t with NAME _, NAME _ -> true | _ -> false)
+  &&
+  let k = paren_end p in
+  (match p.toks.(k).t with NAME _ -> true | _ -> false) && p.toks.(k + 1).t = LP
 
 let next_tok p =
   let k = ref (p.i + 1) in
@@ -171,7 +177,7 @@ and mentions_it (e : expr) =
 and short_function p (body : expr) =
   let ret = node p body.pos (Return { rvalue = Some body; tail = true }) in
   let f =
-    { fname = "<anonymous>"; params = [| { pname = "it"; default = None } |]; body = [| ret |];
+    { fname = "<anonymous>"; params = [| { pname = "it"; default = None; ptype = None } |]; body = [| ret |];
       nnodes = p.next_id; fpos = body.pos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
       has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
   in
@@ -198,27 +204,45 @@ and in_func p fname fpos parse =
   { fname; params; body; nnodes; fpos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
     has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
 
-and params p =
+(* NAME [TYPE] [= default]: a parameter, or a field of a struct in either form. *)
+and param p what =
+  match (cur p).t with
+  | NAME pname ->
+    advance p;
+    let ptype = match (cur p).t with NAME _ -> Some (type_ref p) | _ -> None in
+    let default =
+      if (cur p).t = ASSIGN then begin
+        advance p;
+        Some (expr p)
+      end else None
+    in
+    { pname; default; ptype }
+  | _ -> unexpected p what
+
+(* Point, geo.Point, and ? when it also takes missing. *)
+and type_ref p =
+  let tpos = (cur p).pos in
+  let word () = match (cur p).t with NAME n -> advance p; n | _ -> unexpected p "a type" in
+  let first = word () in
+  let tpkg, tname = if (cur p).t = DOT then (advance p; Some first, word ()) else None, first in
+  let topt = (cur p).t = QUESTION in
+  if topt then advance p;
+  { tpos; tpkg; tname; topt; tb = Unresolved }
+
+(* (params) or { fields }. *)
+and listed p opening close what =
   with_mode p Ignore (fun () ->
-      expect p LP "\"(\"";
+      expect p opening (Printf.sprintf "\"%s\"" (tok_text opening));
       let out = ref [] in
-      while (cur p).t <> RP do
-        (match (cur p).t with
-         | NAME pname ->
-           advance p;
-           let default =
-             if (cur p).t = ASSIGN then begin
-               advance p;
-               Some (expr p)
-             end else None
-           in
-           out := { pname; default } :: !out
-         | _ -> unexpected p "a parameter name");
+      while (cur p).t <> close do
+        out := param p what :: !out;
         if (cur p).t = COMMA then advance p
-        else if (cur p).t <> RP then unexpected p "\",\" or \")\""
+        else if (cur p).t <> close then unexpected p (Printf.sprintf "\",\" or \"%s\"" (tok_text close))
       done;
       advance p;
       Array.of_list (List.rev !out))
+
+and params p = listed p LP RP "a parameter name"
 
 and lambda p =
   let pos = (cur p).pos in
@@ -226,9 +250,10 @@ and lambda p =
     in_func p "<anonymous>" pos (fun () ->
         let ps =
           match (cur p).t with
-          | NAME pname -> advance p; [| { pname; default = None } |]
+          | NAME pname -> advance p; [| { pname; default = None; ptype = None } |]
           | _ -> params p
         in
+        Array.iter (fun q -> Option.iter (fun t -> error p t.tpos Messages.lambda_type) q.ptype) ps;
         let arrow = cur p in
         expect p ARROW "\"->\"";
         skip_nl p;
@@ -240,7 +265,17 @@ and lambda p =
 (* defn name(params) body end, defn (r Rect) name(params) body end, or defn (params) body end, after the keyword. *)
 and function_expr p pos =
   with_mode p Lines (fun () ->
-      let named = match (cur p).t with NAME _ -> true | LP -> is_receiver p | _ -> false in
+      (* A method starts a statement, and its parameters end their line: defn (p Pt) Text(p.X) end is a function. *)
+      let method_line () =
+        let saved = p.i in
+        p.i <- paren_end p + 1;
+        let t = after_paren p in
+        p.i <- saved;
+        t = NL || t = EOF
+      in
+      let named =
+        match (cur p).t with NAME _ -> true | LP -> p.i - 1 = p.stmt_at && is_receiver p && method_line () | _ -> false
+      in
       let self, key, fname = if named then definition_name p else [||], "", "<anonymous>" in
       let f =
         in_func p fname pos (fun () ->
@@ -266,7 +301,7 @@ and definition_name p =
     if (cur p).t = DOT then error p (cur p).pos Messages.method_foreign;
     expect p RP "\")\"";
     let shown = sname ^ "." ^ word "a method name" in
-    [| { pname; default = None } |], shown, shown
+    [| { pname; default = None; ptype = None } |], shown, shown
   end
   else begin
     let n = word "a name" in
@@ -583,7 +618,8 @@ and fields_lit p pos saved_index =
       p.in_index <- saved_index;
       node p pos (Struct_lit { sname = None; sfields = Array.of_list (List.rev !out) })
 
-(* struct Name { field, field = default }: a function that builds the struct. *)
+(* struct Name { field, field = default }, or struct Name and a line end, then one field per line until end: a function
+   that builds the struct. *)
 and struct_def p pos =
   if p.in_function then error p pos Messages.struct_nested;
   advance p;
@@ -594,33 +630,85 @@ and struct_def p pos =
   in
   let f =
     in_func p sname pos (fun () ->
-        let ps =
-          with_mode p Ignore (fun () ->
-              expect p LC "\"{\"";
-              let out = ref [] in
-              while (cur p).t <> RC do
-                (match (cur p).t with
-                 | NAME pname ->
-                   advance p;
-                   let default =
-                     if (cur p).t = ASSIGN then begin
-                       advance p;
-                       Some (expr p)
-                     end else None
-                   in
-                   out := { pname; default } :: !out
-                 | _ -> unexpected p "a field name");
-                if (cur p).t = COMMA then advance p
-                else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
-              done;
-              advance p;
-              Array.of_list (List.rev !out))
+        let ps = if p.toks.(p.i).t = NL then field_lines p else listed p LC RC "a field name" in
+        (* A field that takes missing has it as its default. *)
+        let optional q =
+          match q.ptype with
+          | Some t when t.topt && q.default = None -> { q with default = Some (node p t.tpos Lmissing) }
+          | _ -> q
         in
+        let ps = Array.map optional ps in
         let sfields = Array.map (fun q -> q.pname, node p pos (Var (name q.pname))) ps in
         let body = node p pos (Struct_lit { sname = Some sname; sfields }) in
         ps, [| node p pos (Return { rvalue = Some body; tail = true }) |])
   in
   node p pos (Fn_def (name sname, f))
+
+(* The fields of the block form, each alone on its line, up to end. *)
+and field_lines p =
+  with_mode p Lines (fun () ->
+      let out = ref [] in
+      skip_nl p;
+      while (cur p).t <> END do
+        if (cur p).t = EOF then unexpected p "end";
+        (match (cur p).t, p.toks.(p.i + 1).t with
+         | NAME _, (NL | ASSIGN | COMMA | NAME _ | END) -> out := param p "a field name" :: !out
+         | _ -> error p (cur p).pos Messages.struct_not_field);
+        (match (cur p).t with
+         | NL -> skip_nl p
+         | COMMA | NAME _ -> error p (cur p).pos Messages.struct_line
+         | _ -> unexpected p "the end of the line")
+      done;
+      advance p;
+      Array.of_list (List.rev !out))
+
+(* interface Name { Method(params), ... }, or interface Name and a line end, then one method per line until end. *)
+and interface_def p pos =
+  if p.in_function || p.depth > 1 then error p pos Messages.interface_nested;
+  advance p;
+  let iname =
+    match (cur p).t with
+    | NAME n -> advance p; n
+    | _ -> unexpected p "an interface name"
+  in
+  let imethods =
+    if p.toks.(p.i).t <> NL then
+      with_mode p Ignore (fun () ->
+          expect p LC "\"{\"";
+          let out = ref [] in
+          while (cur p).t <> RC do
+            out := iface_method p :: !out;
+            if (cur p).t = COMMA then advance p else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
+          done;
+          advance p;
+          !out)
+    else
+      with_mode p Lines (fun () ->
+          let out = ref [] in
+          skip_nl p;
+          while (cur p).t <> END do
+            if (cur p).t = EOF then unexpected p "end";
+            out := iface_method p :: !out;
+            (match (cur p).t with
+             | NL -> skip_nl p
+             | COMMA | NAME _ -> error p (cur p).pos Messages.interface_line
+             | _ -> unexpected p "the end of the line")
+          done;
+          advance p;
+          !out)
+  in
+  node p pos (Interface { iname; imethods = Array.of_list (List.rev imethods) })
+
+(* Name(params), with no body and no default. *)
+and iface_method p =
+  match (cur p).t, next_tok p with
+  | NAME n, LP ->
+    advance p;
+    let ps = params p in
+    Array.iter (fun q -> Option.iter (fun (d : expr) -> error p d.pos Messages.interface_default) q.default) ps;
+    if (cur p).t = ASSIGN then error p (cur p).pos Messages.interface_body;
+    n, ps
+  | _ -> error p (cur p).pos Messages.interface_not_method
 
 (* After [: rows, or a comprehension. *)
 and array_lit p pos =
@@ -801,7 +889,7 @@ and block p stop =
             (* A file-level definition and a use run nothing: no stop on them. *)
             (match s.e with
              | Fn_def _ when not p.in_function -> ()
-             | Use _ -> ()
+             | Use _ | Interface _ -> ()
              | _ -> if p.hooks then items := hook p pos :: !items);
             items := s :: !items;
             skip_nl p
@@ -827,6 +915,7 @@ and short_method p =
 
 and stmt p =
   let t = cur p in
+  p.stmt_at <- p.i;
   match t.t with
   | BREAK ->
     (match p.loop with
@@ -835,6 +924,7 @@ and stmt p =
     advance p;
     node p t.pos Break
   | STRUCT -> struct_def p t.pos
+  | INTERFACE -> interface_def p t.pos
   | USE ->
     if p.in_function then error p t.pos Messages.use_nested;
     advance p;
@@ -925,7 +1015,7 @@ and stmt p =
 
 let program ?(hooks = false) ~file ~nesting toks =
   let p = { toks; file; nesting; hooks; i = 0; depth = 0; mode = Lines; next_id = 0; loop = None; in_function = false;
-            in_index = 0; saw_end = false } in
+            in_index = 0; saw_end = false; stmt_at = 0 } in
   let body = block p (fun t -> t = EOF) in
   { fname = ""; params = [||]; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
     captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||];

@@ -1,0 +1,5 @@
+type-lambda.k:3:4: The parameters of a lambda can't have types.
+  3 | (s Shape) -> s.Side
+    |    ^
+  Write the function with defn to give them some.
+exit 1

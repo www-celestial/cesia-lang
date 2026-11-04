@@ -1,0 +1,5 @@
+interface-field.k:4:3: Only methods can be written inside an interface.
+  4 |   Sides Int
+    |   ^
+  A method is a name and its parameters in parentheses, as Area() or Scaled(by Number).
+exit 1

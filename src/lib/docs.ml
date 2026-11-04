@@ -103,6 +103,7 @@ let is_short_method line i =
 let is_definition line =
   String.starts_with ~prefix:"defn " line
   || String.starts_with ~prefix:"struct " line
+  || String.starts_with ~prefix:"interface " line
   ||
   match receiver_end line with
   | Some i -> is_short_method line i
@@ -129,6 +130,27 @@ let text_of_block block =
   let unindent t = if String.starts_with ~prefix:" " t then String.sub t 1 (String.length t - 1) else t in
   String.trim (String.concat "\n" (List.rev_map unindent block))
 
+(* A line without its comment, a -- outside a text. *)
+let code_of line =
+  let n = String.length line in
+  let rec go i quoted =
+    if i + 1 >= n then line
+    else if line.[i] = '"' then go (i + 1) (not quoted)
+    else if (not quoted) && line.[i] = '-' && line.[i + 1] = '-' then String.sub line 0 i
+    else go (i + 1) quoted
+  in
+  String.trim (go 0 false)
+
+(* What follows struct: Car { Mass, Speed = 0.0 }, also for the block form, whose fields are the lines up to end. The same
+   for the methods of an interface. *)
+let struct_signature r following =
+  let rec fields = function
+    | l :: rest -> (match code_of l with "end" -> [] | "" -> fields rest | f -> f :: fields rest)
+    | [] -> []
+  in
+  let r = code_of r in
+  if String.contains r '{' then r else Printf.sprintf "%s { %s }" r (String.concat ", " (fields following))
+
 let entries src =
   let out = ref [] and block = ref [] and native = ref None in
   let add signature = out := { name = name_of signature; signature; text = text_of_block !block } :: !out in
@@ -136,9 +158,11 @@ let entries src =
     Option.iter add !native;
     native := None
   in
-  List.iter
-    (fun line ->
-       match native_header line, comment_text line with
+  let rec go = function
+    | [] -> ()
+    | line :: following ->
+      let block_form = ref false in
+      (match native_header line, comment_text line with
        | Some signature, _ ->
          close_native ();
          block := [];
@@ -148,15 +172,20 @@ let entries src =
          close_native ();
          if is_definition line then begin
            let rest =
-             match drop_prefix "defn " line, drop_prefix "struct " line with
-             | Some r, _ -> signature_of r
-             | _, Some r -> String.trim r
-             | None, None -> signature_of line
+             match drop_prefix "defn " line, drop_prefix "struct " line, drop_prefix "interface " line with
+             | Some r, _, _ -> signature_of r
+             | _, Some r, _ | _, _, Some r ->
+               block_form := not (String.contains r '{');
+               struct_signature r following
+             | None, None, None -> signature_of line
            in
            add rest
          end;
-         block := [])
-    (lines src);
+         block := []);
+      (* The lines of a block are no definitions of their own. *)
+      go (if !block_form then List.drop_while (fun l -> code_of l <> "end") following else following)
+  in
+  go (lines src);
   close_native ();
   List.rev !out
 

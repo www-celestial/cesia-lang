@@ -74,6 +74,19 @@ A name says by its first letter whether it is public, as in Go.
 
 ## Methods
 
+A struct holds its fields on one line, or in a block with one field per line, until `end`, which leaves room for a comment on
+each. Both forms build the same values, with the same defaults, named arguments, patterns and methods.
+
+```kepler
+struct Point { X, Y = 0 }
+
+-- A car on the road.
+struct Car
+  Mass
+  Speed = 0.0   -- metres per second
+end
+```
+
 A struct can have methods. An instance method writes its object apart, as in Go, and a static method has the name of the struct
 before its own. A dot calls both.
 
@@ -111,6 +124,86 @@ Print(r then it.Area())
 
 `Rect.Area()` on an instance method and `r.Square(2)` on a static one are errors that say what to write. So are `(r Rect) Area`
 with `Rect.Area` in one struct, and a method named like a field.
+
+## Types
+
+A field or a parameter can have a type, written after its name. Code without types runs as before, and costs the same.
+
+```kepler
+struct Point { X Int, Y Int = 0 }
+struct Line { From Point, To Point = Point(0) }
+
+-- A car on the road.
+struct Car
+  Mass Float
+  Speed Float = 0.0   -- metres per second
+  Name Text?          -- missing unless it is given
+end
+
+defn Describe(l Line, prefix Text = "")
+  "$prefix$(l.From.X)"
+end
+
+(r Rect) Scaled(by Number) = Rect(r.X, r.Y, r.Width * by, r.Height * by)   -- the Rect above
+```
+
+- The types are `Int`, `Float`, `Number` (an `Int` or a `Float`), `Bool`, `Text`, `Array`, `Dict`, `Function`, the structs,
+  `Point`, or `geo.Point` for one of a package the file uses, and the interfaces below. `?` also takes `missing`: `Text?`, and a
+  field of such a type without a default has `missing` as its default. As a type, `Text` and `Dict` are not the functions of
+  those names.
+- Where: the fields of a struct, in both forms, and the parameters of `defn`, of a short definition and of a method. Not on a
+  lambda: `(p Point) -> p.X` is an error, and `defn (p Point) p.X end` the way to write it.
+- When: each time a value enters its place. At construction for a field, at each call for a parameter, once its default is put
+  in, and at each write of a typed field, also inside a path: `d.Lines[2].From = p`.
+- An `Int` where a `Float` is wanted becomes a `Float`: `Car(1500).Mass` is `1500.0`. `Number` keeps either.
+- A wrong value is a bug: the program stops, `Line: From must be a Point, found an Int.`, at the call or the write. A type that
+  names nothing, `Pont`, is an error before the program starts.
+- Under `--watch`, a changed type applies at the next call, construction or write; values made before are not checked again.
+- When two structs have one name, the message names their packages: `r must be a geo.Rect, found a shapes.Rect.`
+
+## Interfaces
+
+An interface lists methods, with no code. A value meets it when it has each of them with that number of parameters, written
+apart from the object: nothing declares it, as in Go.
+
+```kepler
+-- Something with an area and a perimeter.
+interface Shape
+  Area()
+  Perimeter()
+end
+
+interface Named { Name() }
+
+(r Rect) Perimeter() = 2 * (r.Width + r.Height)   -- the Rect above, which has its Area()
+
+(s Shape) Describe() = "area $(s.Area()), perimeter $(s.Perimeter())"
+
+defn Total(shapes Array)
+  sum = 0
+  for s in shapes
+    sum += Measured(s)
+  end
+  sum
+end
+
+Measured(s Shape) = s.Area() + s.Perimeter()
+
+Print(Rect.Square(2).Describe())
+Print(Total([Rect.Square(1), {Area: () -> 2, Perimeter: () -> 6}]))
+```
+
+- Both forms, as for a struct: one method per line until `end`, or `{ Area(), Perimeter() }`. A method has no body. Its
+  parameters may have types, `Scaled(by Number)`, and only their number counts to meet the interface.
+- A struct meets an interface through its methods, or through fields that hold functions; a record through fields that hold
+  functions. The answer is kept for each shape of value, and forgotten when a file reloads.
+- An interface is a type: `s Shape`, `Inner Shape?`, `s geo.Shape`. A value that doesn't meet it stops the program, and the
+  message names what it lacks: `Measured: s must be a Shape, found a Circle, which has no Perimeter().`
+- A method on an interface, `(s Shape) Describe()`, is a method of every value that meets it, records too. A field or a method
+  of the value itself wins over it. A call looks at the interfaces of its package and of the packages its file uses; when two of
+  them give the method to a value that meets both, the call stops and names them.
+- A small interface or method is private to its package, as any name, and a public interface needs a comment.
+- Not there: an interface made of others, `match` on an interface, types with parameters.
 
 ## Packages
 

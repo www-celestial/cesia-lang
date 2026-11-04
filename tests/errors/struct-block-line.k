@@ -1,0 +1,4 @@
+-- Two fields on one line of a struct in the block form.
+struct Car
+  Mass, Speed
+end

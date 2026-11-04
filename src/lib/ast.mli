@@ -46,6 +46,7 @@ and node =
   | Destructure of pat * expr
   | Match of { subject : expr; arms : arm array }
   | Use of { upath : string; ualias : string }
+  | Interface of iface  (** at the top of a file *)
   | Question of expr  (** e? *)
   | Hook of hook  (** debugger hook: only exists with --debugger *)
 
@@ -69,7 +70,14 @@ and ret = { rvalue : expr option; mutable tail : bool  (** in tail position: cos
 and block = expr array
 and part = Lit of string | Hole of expr
 and arg = { aname : string option; value : expr }
-and param = { pname : string; default : expr option }
+and param = { pname : string; default : expr option; ptype : ptype option }
+
+(** An interface: its name, and each of its methods with its parameters, whose number alone counts. *)
+and iface = { iname : string; imethods : (string * param array) array }
+
+(** A type written after a parameter or a field: a kind, as [Int], or a struct or an interface, [Point] or [geo.Point], which
+    [Resolve] binds. [topt]: it ends with [?] and also takes [missing]. *)
+and ptype = { tpos : pos; tpkg : string option; tname : string; topt : bool; mutable tb : binding }
 
 and func = {
   fname : string;
@@ -92,5 +100,6 @@ and func = {
 type layout = {
   cell_names : string array;  (** the names of the module's cells, by index *)
   hoisted : (int * func) array;  (** cell, hoisted function *)
-  methods : (string * string * bool * int) list;  (** struct, method name, static, cell *)
+  methods : (string * string * bool * int) list;  (** struct or interface, method name, static, cell *)
+  interfaces : (int * iface) list;  (** cell, interface *)
 }

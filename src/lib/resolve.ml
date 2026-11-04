@@ -23,7 +23,9 @@ type env = {
   fields : (string, unit) Hashtbl.t Lazy.t;  (* the fields and methods this file declares: few files read a small one *)
   sees_private : bool;  (* the examples of a file see what the file declares *)
   hoisted : (string, int) Hashtbl.t;
-  structs : (string, (string * expr) array) Hashtbl.t;  (* those of this file, with their fields *)
+  structs : (string, (string * expr) array) Hashtbl.t;  (* those of this file and of its package, with their fields *)
+  interfaces : (string, unit) Hashtbl.t;  (* those of this file and of its package *)
+  is_type : binding -> bool;  (* a struct or an interface of a package already loaded *)
   cells : (string, int) Hashtbl.t;
   mutable cell_list : string list;
 }
@@ -91,7 +93,8 @@ let children (f : expr -> unit) (e : expr) =
          Option.iter f a.guard;
          f a.abody)
       arms
-  | Return _ | Lambda _ | Fn_def _ | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | End_index | Use _ | Hook _ -> ()
+  | Return _ | Lambda _ | Fn_def _ | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | End_index | Use _
+  | Interface _ | Hook _ -> ()
 
 (* The fields of the structs and record literals of a file, nested functions included. *)
 let rec declared found (e : expr) =
@@ -101,6 +104,7 @@ let rec declared found (e : expr) =
    | Fn_def (n, f) ->
      Option.iter (fun (_, _, name) -> Hashtbl.replace found name ()) (Lexer.split_method n.text);
      declared_in found f
+   | Interface i -> Array.iter (fun (name, _) -> Hashtbl.replace found name ()) i.imethods
    | _ -> ());
   children (declared found) e
 
@@ -195,6 +199,29 @@ let static env sc celled (base : expr) name =
     Option.bind (List.assoc_opt alias env.spaces) (in_space sname)
   | _ -> None
 
+let kinds = [ "Int"; "Float"; "Number"; "Bool"; "Text"; "Array"; "Dict"; "Function" ]
+
+(* A type: a kind, or a struct or an interface of this package or of a package the file uses, found as other names are. *)
+let type_ref env (t : ptype) =
+  if not (t.tpkg = None && List.mem t.tname kinds) then begin
+    let found =
+      match t.tpkg with
+      | None ->
+        (match Hashtbl.find_opt env.hoisted t.tname with
+         | Some k -> Some (Cell { m = env.m; k; stable = true })
+         | None -> env.lookup t.tname)
+      | Some alias ->
+        if Lexer.is_public t.tname then Option.bind (List.assoc_opt alias env.spaces) (fun look -> look t.tname) else None
+    in
+    let is_here name = Hashtbl.mem env.structs name || Hashtbl.mem env.interfaces name in
+    let here = t.tpkg = None && (Hashtbl.mem env.hoisted t.tname || is_here t.tname) in
+    match found with
+    | Some b when (if here then is_here t.tname else env.is_type b) -> t.tb <- b
+    | _ ->
+      let shown = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname in
+      error env.path t.tpos (Messages.no_type shown)
+  end
+
 let rec reads env sc celled (e : expr) =
   let go = reads env sc celled in
   match e.e with
@@ -257,6 +284,7 @@ let rec reads env sc celled (e : expr) =
 and func env parent kind celled (f : func) =
   let sc = { fn = f; kind; parent; vars = Hashtbl.create 8; names = []; caps = []; overlay = [] } in
   Array.iter (fun p -> ignore (new_var sc p.pname)) f.params;
+  Array.iter (fun p -> Option.iter (type_ref env) p.ptype) f.params;
   Array.iter (assigned sc) f.body;
   Array.iter (fun p -> Option.iter (reads env sc celled) p.default) f.params;
   Array.iter (reads env sc celled) f.body;
@@ -410,6 +438,7 @@ let struct_fields (f : func) =
 
 let check_method env pos sname static name =
   match Hashtbl.find_opt env.structs sname with
+  | None when Hashtbl.mem env.interfaces sname -> ()
   | None -> error env.path pos (Messages.method_no_struct sname)
   | Some sfields ->
     if Array.exists (fun (field, _) -> String.equal field name) sfields then
@@ -426,6 +455,7 @@ let definitions (fn : func) =
     (fun (e : expr) ->
        match e.e with
        | Fn_def (n, f) -> add n.text f.fname e.pos true
+       | Interface i -> add i.iname i.iname e.pos true
        | Assign (n, _) -> add n.text n.text e.pos false
        | Destructure (pt, _) -> pat_names (fun n -> add n.text n.text e.pos false) pt
        | _ -> ())
@@ -447,9 +477,11 @@ let check_package files =
   in
   List.iter (fun (path, fn) -> List.iter (check path) (definitions fn)) files
 
-let file ?(keep = [||]) ?(peers = []) ?(sees_private = false) ~file:path ~m ~lookup ~spaces (fn : func) =
+let file ?(keep = [||]) ?(peers = []) ?(sees_private = false) ?(is_type = fun _ -> false) ~file:path ~m ~lookup ~spaces
+    (fn : func) =
   let env =
-    { path; m; lookup; spaces; sees_private; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8; cells = Hashtbl.create 16;
+    { path; m; lookup; spaces; sees_private; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8;
+      interfaces = Hashtbl.create 4; is_type; cells = Hashtbl.create 16;
       cell_list = [];
       fields =
         lazy
@@ -460,28 +492,38 @@ let file ?(keep = [||]) ?(peers = []) ?(sees_private = false) ~file:path ~m ~loo
   in
   Array.iter (fun text -> ignore (cell env text)) keep;
   let sc = { fn; kind = File; parent = None; vars = Hashtbl.create 16; names = []; caps = []; overlay = [] } in
-  let hoisted = ref [] and defined = ref [] in
+  let hoisted = ref [] and defined = ref [] and interfaces = ref [] in
   List.iter
     (fun (peer : func) ->
        Array.iter
          (fun (e : expr) ->
             match e.e with
             | Fn_def (n, f) -> Option.iter (Hashtbl.replace env.structs n.text) (struct_fields f)
+            | Interface i -> Hashtbl.replace env.interfaces i.iname ()
             | _ -> ())
          peer.body)
     peers;
+  let hoist (e : expr) text shown =
+    if Hashtbl.mem env.hoisted text then error path e.pos (Messages.duplicate shown);
+    let k = cell env text in
+    Hashtbl.add env.hoisted text k;
+    k
+  in
   Array.iter
     (fun (e : expr) ->
        match e.e with
        | Fn_def (n, f) ->
-         if Hashtbl.mem env.hoisted n.text then error path e.pos (Messages.duplicate f.fname);
-         let k = cell env n.text in
-         Hashtbl.add env.hoisted n.text k;
+         let k = hoist e n.text f.fname in
          hoisted := (k, f) :: !hoisted;
          Option.iter (Hashtbl.replace env.structs n.text) (struct_fields f);
          Option.iter (fun it -> defined := (e.pos, it, k) :: !defined) (Lexer.split_method n.text)
+       | Interface i ->
+         interfaces := (hoist e i.iname i.iname, i) :: !interfaces;
+         Hashtbl.replace env.interfaces i.iname ()
        | _ -> ())
     fn.body;
+  let method_types (_, ps) = Array.iter (fun p -> Option.iter (type_ref env) p.ptype) ps in
+  List.iter (fun (_, i) -> Array.iter method_types i.imethods) !interfaces;
   let methods =
     List.rev_map
       (fun (pos, (sname, static, name), k) ->
@@ -489,7 +531,7 @@ let file ?(keep = [||]) ?(peers = []) ?(sees_private = false) ~file:path ~m ~loo
          sname, name, static, k)
       !defined
   in
-  let top_hoisted (e : expr) = match e.e with Fn_def _ -> true | _ -> false in
+  let top_hoisted (e : expr) = match e.e with Fn_def _ | Interface _ -> true | _ -> false in
   Array.iter (fun e -> if not (top_hoisted e) then assigned sc e) fn.body;
   Hashtbl.iter
     (fun text _ ->
@@ -518,4 +560,5 @@ let file ?(keep = [||]) ?(peers = []) ?(sees_private = false) ~file:path ~m ~loo
     fn.body;
   Array.iter nested fn.body;
   fn.has_return <- false;
-  { cell_names = Array.of_list (List.rev env.cell_list); hoisted = Array.of_list (List.rev !hoisted); methods }
+  { cell_names = Array.of_list (List.rev env.cell_list); hoisted = Array.of_list (List.rev !hoisted); methods;
+    interfaces = List.rev !interfaces }

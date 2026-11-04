@@ -1,0 +1,7 @@
+-- A field of the wrong type, at construction.
+struct Point { X, Y }
+struct Line { From Point, To Point = Point(0, 0) }
+defn make()
+  Line(1)
+end
+make()

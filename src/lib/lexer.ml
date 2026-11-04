@@ -5,7 +5,7 @@ type tok =
   | FLOAT of float
   | TEXT of part list
   | NAME of string
-  | IF | ELSE | END | FOR | IN | WHILE | BREAK | RETURN | DEFN | MATCH | STRUCT
+  | IF | ELSE | END | FOR | IN | WHILE | BREAK | RETURN | DEFN | MATCH | STRUCT | INTERFACE
   | AND | OR | NOT | THEN | USE | TRUE | FALSE | MISSING
   | PLUS | MINUS | STAR | SLASH | CARET
   | ASSIGN | EQEQ | NE | LT | LE | GT | GE
@@ -21,7 +21,7 @@ and part = Plain of string | Code of token array
 let keyword = function
   | "if" -> Some IF | "else" -> Some ELSE | "end" -> Some END | "for" -> Some FOR | "in" -> Some IN
   | "while" -> Some WHILE | "break" -> Some BREAK | "return" -> Some RETURN | "defn" -> Some DEFN
-  | "match" -> Some MATCH | "struct" -> Some STRUCT | "and" -> Some AND | "or" -> Some OR
+  | "match" -> Some MATCH | "struct" -> Some STRUCT | "interface" -> Some INTERFACE | "and" -> Some AND | "or" -> Some OR
   | "not" -> Some NOT | "then" -> Some THEN | "use" -> Some USE | "true" -> Some TRUE | "false" -> Some FALSE
   | "missing" -> Some MISSING
   | _ -> None

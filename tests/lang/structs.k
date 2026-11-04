@@ -45,3 +45,48 @@ defn isFourLevels()
   a.B.C.D.E = 2
   a.B.C.D.E == 2 and Equal(a.B.C.D, {E: 2})
 end
+
+-- A truck on the road: the block form of a struct, one field per line.
+--
+--   Truck(1500).Speed --> 0.0
+--   Truck(1, Speed = 2.0).Speed --> 2.0
+struct Truck
+  Mass
+
+  -- Its speed.
+  Speed = 0.0   -- metres per second
+  Name = "a--b"
+end
+
+struct empty
+end
+
+Truck.Parked(mass) = Truck(mass, Name = "parked")
+(t Truck) Momentum() = t.Mass * t.Speed
+
+defn (t Truck) Faster(by = 1.0)
+  t.Speed = t.Speed + by
+  t
+end
+
+momentum(v) = match v
+  Truck(m, s, n) -> m * s
+  else -> -1
+end
+
+isBlockDefault() = Truck(1500).Speed == 0.0 and Truck(1500).Name == "a--b"
+isBlockNamed() = Truck(1, Speed = 2.0).Speed == 2.0 and Truck(Speed = 3.0, Mass = 2).Mass == 2
+isBlockShown() = Text(Truck(1)) == "Truck(Mass = 1, Speed = 0.0, Name = \"a--b\")"
+isBlockEqual() = Truck(1) == Truck(1) and Truck(1) != Truck(2)
+isBlockEmpty() = Text(empty()) == "empty()"
+isBlockMethods() = Truck(2, 3.0).Momentum() == 6.0 and Truck.Parked(5).Name == "parked"
+isBlockMethodWrites() = Truck(2).Faster().Faster(2.0).Speed == 3.0
+isBlockMatch() = momentum(Truck(2, 4.0)) == 8.0 and momentum({Mass: 2, Speed: 4.0, Name: ""}) == -1
+isBlockFieldWrite() = written().Speed == 9.0
+isBlockDoc() = StartsWith("Truck { Mass, Speed = 0.0, Name = \"a--b\" }", Doc(Truck)) and Contains("A truck on the road", Doc(Truck))
+
+defn written()
+  t = Truck(1)
+  t.Speed = 9.0
+  t
+end

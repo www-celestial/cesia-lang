@@ -1,0 +1,3 @@
+-- An interface in the block form, without its end.
+interface Shape
+  Area()

@@ -1,0 +1,4 @@
+interface-end.k:4:1: Expected end, found the end of the file.
+  4 | 
+    | ^
+exit 1

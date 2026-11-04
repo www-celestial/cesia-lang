@@ -1,5 +1,5 @@
-method-no-struct.k:1:1: There is no struct "Nope" in this package.
+method-no-struct.k:1:1: There is no struct or interface "Nope" in this package.
   1 | defn (n Nope) Area()
     | ^
-  A method belongs to a struct declared in the same package.
+  A method belongs to a struct or an interface declared in the same package.
 exit 1

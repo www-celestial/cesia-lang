@@ -1,5 +1,5 @@
-method-on-function.k:2:1: There is no struct "Rect" in this package.
+method-on-function.k:2:1: There is no struct or interface "Rect" in this package.
   2 | (r Rect) Area() = 1
     | ^
-  A method belongs to a struct declared in the same package.
+  A method belongs to a struct or an interface declared in the same package.
 exit 1

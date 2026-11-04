@@ -1,0 +1,4 @@
+interface-line.k:3:9: In the block form of an interface, each method has its own line.
+  3 |   Area(), Perimeter()
+    |         ^
+exit 1

@@ -154,6 +154,8 @@ let create_world o =
     charge;
     loaded = Hashtbl.create 8;
     methods = Hashtbl.create 16;
+    interfaces = Hashtbl.create 8;
+    reloads = 0;
     root = "." }
 
 let first_refill w = min (min w.period w.limits.steps) w.limits.max_depth

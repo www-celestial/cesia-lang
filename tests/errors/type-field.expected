@@ -1,0 +1,5 @@
+type-field.k:5:3: Line: From must be a Point, found an Int.
+  5 |   Line(1)
+    |   ^
+  in make (type-field.k:5)
+exit 1

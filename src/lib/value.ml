@@ -71,8 +71,10 @@ let is_number = function Int _ | Float _ -> true | _ -> false
 
 (* A struct belongs to its package: two packages can each have a Rect, with its own methods. Ok and Err have one shape for
    everyone, since natives build them and ? compares them. *)
+let struct_module sname m = match sname with "Ok" | "Err" -> -1 | _ -> m
+
 let shape_of w ?sname ?(m = -1) names =
-  let sm = match sname with Some ("Ok" | "Err") -> -1 | _ -> m in
+  let sm = match sname with Some n -> struct_module n m | None -> m in
   let key =
     match sname with
     | Some n when sm >= 0 -> Array.append [| Printf.sprintf "#%d:%s" sm n |] names
@@ -82,7 +84,7 @@ let shape_of w ?sname ?(m = -1) names =
   match Hashtbl.find_opt w.shapes key with
   | Some s -> s
   | None ->
-    let s = { sid = Hashtbl.length w.shapes; names; sname; sm; next = Hashtbl.create 4 } in
+    let s = { sid = Hashtbl.length w.shapes; names; sname; sm; next = Hashtbl.create 4; checks = [||] } in
     Hashtbl.add w.shapes key s;
     s
 
@@ -172,6 +174,9 @@ and show_array ctx depth a =
 
 let text_of ctx v = match v with Text s -> s | _ -> show ctx v
 
+(* Out of line: inlined in [describe], it slows down the hot code that names a value on its cold path. *)
+let[@inline never] struct_name n = Messages.article n
+
 (* How a message names a value. *)
 let describe v =
   match v with
@@ -182,12 +187,24 @@ let describe v =
   | True -> "true"
   | False -> "false"
   | Array _ -> "an array"
+  | Struct { shape = { sname = Some n; _ }; _ } -> struct_name n
   | Struct _ -> "a struct"
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
   | Handle h -> "a " ^ h.kind
   | Dict _ -> "a dictionary"
   | Undef | Bound _ -> "an undefined value"
+
+let type_of v =
+  match v with
+  | Int _ -> "an Int"
+  | Float _ -> "a Float"
+  | Text _ -> "a Text"
+  | True | False -> "a Bool"
+  | Array _ -> "an Array"
+  | Dict _ -> "a Dict"
+  | Fun _ | Native _ -> "a Function"
+  | _ -> describe v
 
 let rec equal ctx a b = equal_at ctx 0 a b
 

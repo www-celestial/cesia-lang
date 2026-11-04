@@ -19,6 +19,9 @@ val elt : arr -> int -> t
 val kind_name : kind -> string
 val float_text : float -> string
 
+(** The module of the shape of a struct of this name declared in module [m]: [Ok] and [Err] have one for everyone. *)
+val struct_module : string -> int -> int
+
 (** The shape of these fields. Two identical requests return the same shape. *)
 val shape_of : world -> ?sname:string -> ?m:int -> string array -> shape
 
@@ -44,6 +47,9 @@ val text_of : ctx -> t -> string
 
 (** How a message names a value: [the text "a"], [the number 1]. *)
 val describe : t -> string
+
+(** How a type error names the kind of a value: [an Int], [a Rect], [missing]. *)
+val type_of : t -> string
 
 (** Equality of whole values: [equal nan nan] is true. *)
 val equal : ctx -> t -> t -> bool

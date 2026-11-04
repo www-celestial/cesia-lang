@@ -208,14 +208,135 @@ let with_end c uses_end f =
 type field_cache = { cs : shape; ci : int }
 
 (* What a call finds under a name: field [mi] of the value, or, if [mi] < 0, the method [mg]. *)
-type member = { ms : shape; mi : int; mg : t }
+(* [mi]: the place of a field, or -1 for a method of the struct, or -2 for a method of an interface, which holds until the
+   reload [mr]. *)
+type member = { ms : shape; mi : int; mg : t; mr : int }
 
-let no_shape = { sid = -1; names = [||]; sname = None; sm = -1; next = Hashtbl.create 1 }
+let no_shape = { sid = -1; names = [||]; sname = None; sm = -1; next = Hashtbl.create 1; checks = [||] }
+
+(* The name of a package, as a use names it: its folder, or its file without .k. *)
+let package_name (w : world) host =
+  let folder key m found = if m = host && not (Package.is_source key) then Some key else found in
+  match Hashtbl.fold folder w.loaded None with
+  | Some dir -> Filename.basename dir
+  | None -> Filename.remove_extension (Filename.basename w.modules.(host).path)
 
 let method_of (w : world) (shape : shape) name =
   match shape.sname with
   | Some sn when shape.sm >= 0 -> Hashtbl.find_opt w.methods (shape.sm, sn, name)
   | _ -> None
+
+let takes n = function
+  | Fun { proto; _ } -> proto.arity = n
+  | Native f -> f.min_args <= n && n <= f.max_args
+  | _ -> false
+
+(* What the values of a shape need to meet the interface of package [host]: the methods of their struct, with that number of
+   parameters besides the object, or fields that hold functions, which each value must hold. Gives those fields, with their
+   numbers of parameters and the place of their method, and the place of the first method that no value of the shape has, or
+   -1. A small method is met only in the package of the interface, as in Go. *)
+let plan w host (shape : shape) (i : Ast.iface) =
+  let rec go k need =
+    if k = Array.length i.imethods then need, -1
+    else
+      let name, ps = i.imethods.(k) in
+      let n = Array.length ps and f = Value.field_index shape name in
+      if not (Lexer.is_public name || shape.sm = host) then need, k
+      else if f >= 0 then go (k + 1) ((f, n, k) :: need)
+      else
+        match method_of w shape name with
+        | Some (Fun { proto; _ }, false) when proto.arity = n + 1 -> go (k + 1) need
+        | _ -> need, k
+  in
+  go 0 []
+
+let holds fields need = List.for_all (fun (f, n, _) -> takes n fields.(f)) need
+
+(* The place of the first method of the interface that a value lacks, or -1. *)
+let lacks fields (need, lack) = List.fold_left (fun first (f, n, k) -> if takes n fields.(f) then first else k) lack need
+let type_name (t : ptype) = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname
+
+(* A method as its interface writes it: Scaled(by Number). *)
+let method_text (name, ps) =
+  let param (p : param) =
+    match p.ptype with Some t -> p.pname ^ " " ^ type_name t ^ (if t.topt then "?" else "") | None -> p.pname
+  in
+  name ^ "(" ^ String.concat ", " (Array.to_list (Array.map param ps)) ^ ")"
+
+(* A type written in the code, as a check. A struct is known by its package and its name, and an interface by the methods of
+   a value: the last shape that fit is kept, until a reload for an interface. *)
+let type_check (w : world) (t : ptype) =
+  let shown = type_name t in
+  let plain accept = accept, fun x -> Messages.article shown, Value.type_of x in
+  let accept, wrong =
+    match t.tname, t.tb with
+    | "Int", Unresolved -> plain (function Int _ as x -> x | _ -> Undef)
+    | "Float", Unresolved -> plain (function Float _ as x -> x | Int i -> Float (float_of_int i) | _ -> Undef)
+    | "Number", Unresolved -> plain (function (Int _ | Float _) as x -> x | _ -> Undef)
+    | "Bool", Unresolved -> plain (function (True | False) as x -> x | _ -> Undef)
+    | "Text", Unresolved -> plain (function Text _ as x -> x | _ -> Undef)
+    | "Array", Unresolved -> plain (function Array _ as x -> x | _ -> Undef)
+    | "Dict", Unresolved -> plain (function Dict _ as x -> x | _ -> Undef)
+    | "Function", Unresolved -> plain (function (Fun _ | Native _) as x -> x | _ -> Undef)
+    | name, Cell { m; _ } when Hashtbl.mem w.interfaces (w.modules.(m).host, name) ->
+      let host = w.modules.(m).host and last = ref (no_shape, [], -1) in
+      (* An interface gone at a reload is met by nothing. *)
+      let plan_of shape =
+        match Hashtbl.find_opt w.interfaces (host, name) with Some i -> plan w host shape i | None -> [], -2
+      in
+      (function
+        | Struct r as x ->
+          let s, need, seen = !last in
+          if r.shape == s && seen = w.reloads && holds r.fields need then x
+          else (
+            match plan_of r.shape with
+            | need, -1 when holds r.fields need -> last := (r.shape, need, w.reloads); x
+            | _ -> Undef)
+        | _ -> Undef),
+      (function
+        | Struct r as x ->
+          (match Hashtbl.find_opt w.interfaces (host, name), lacks r.fields (plan_of r.shape) with
+           | Some i, k when k >= 0 -> Messages.article shown, Value.type_of x ^ ", which has no " ^ method_text i.imethods.(k)
+           | _ -> Messages.article shown, Value.type_of x)
+        | x -> Messages.article shown, Value.type_of x)
+    | name, Cell { m; _ } ->
+      let sm = Value.struct_module name w.modules.(m).host and sname = Some name and last = ref no_shape in
+      (function
+        | Struct r as x when r.shape == !last -> x
+        | Struct r as x when r.shape.sm = sm && r.shape.sname = sname -> last := r.shape; x
+        | _ -> Undef),
+      (function
+        (* Two structs of one name: their packages tell them apart. *)
+        | Struct { shape = { sname = Some n; sm = other; _ }; _ } when String.equal n name ->
+          Messages.article (package_name w sm ^ "." ^ name), Messages.article (package_name w other ^ "." ^ n)
+        | x -> Messages.article shown, Value.type_of x)
+    | _ -> assert false (* Resolve binds a type that is not a kind, or refuses it *)
+  in
+  if t.topt then
+    { accept = (function Missing -> Missing | x -> accept x); wrong = (fun x -> let a, b = wrong x in a ^ " or missing", b) }
+  else { accept; wrong }
+
+(* The shape of a struct keeps the types of its fields, for the writes: at its definition, and again at a reload. *)
+let set_checks w m (f : func) =
+  match Resolve.struct_fields f with
+  | Some fields ->
+    let shape = Value.shape_of w ~sname:f.fname ~m:w.modules.(m).host (Array.map fst fields) in
+    shape.checks <-
+      (if Array.exists (fun p -> p.ptype <> None) f.params then Array.map (fun p -> Option.map (type_check w) p.ptype) f.params
+       else [||])
+  | None -> ()
+
+(* A write to a field of a struct with types. Out of line, as a write to an untyped field doesn't need it. *)
+let[@inline never] checked ctx (shape : shape) i x =
+  match shape.checks.(i) with
+  | None -> x
+  | Some ch ->
+    let y = ch.accept x in
+    if y == Undef then begin
+      let want, found = ch.wrong x in
+      Runtime.fail ctx Type (Messages.wrong_type (Option.value shape.sname ~default:"") shape.names.(i) want found)
+    end;
+    y
 
 let field_slot (ctx : ctx) (shape : shape) name =
   let i = Value.field_index shape name in
@@ -226,18 +347,67 @@ let field_slot (ctx : ctx) (shape : shape) name =
        | _ -> Messages.no_field name);
   i
 
-(* A field first, then the methods of the struct. A small method is private to the package of the struct: the site says
-   which file it is in, [pm], and this runs the first times it meets a shape. *)
+(* The interfaces that give a method to the values of a shape, when their fields hold the functions they need: for each, its
+   name, the method and those fields. [hidden]: the struct has a small method of that name, of another package. A reload makes
+   it old. *)
+type via = { vs : shape; seen : int; can : (string * t * (int * int * int) list) list; hidden : bool }
+
+let no_via = { vs = no_shape; seen = -1; can = []; hidden = false }
+
+let rec via_in shape seen = function
+  | [] -> no_via
+  | v :: rest -> if v.vs == shape && v.seen = seen then v else via_in shape seen rest
+
+let lost ctx (v : via) name =
+  Runtime.fail ctx Field
+    (if v.hidden then Messages.private_member name
+     else match v.vs.sname with Some sn -> Messages.no_member sn name | None -> Messages.no_field name)
+
+(* What a shape finds under a name that is neither a field nor a method of its struct: the interfaces of the package of the
+   call [pm], or of a package that its file uses, that give it a method of that name. Out of line, as only the first call at a
+   site for a shape comes here. *)
+let[@inline never] by_interface (ctx : ctx) pm (shape : shape) name ~hidden =
+  let w = ctx.w and md = ctx.w.modules.(pm) in
+  let seen = md.host :: md.uses in
+  let can =
+    Hashtbl.fold
+      (fun (host, iname) i found ->
+         match Hashtbl.find_opt w.methods (host, iname, name) with
+         | Some (mg, false) when List.mem host seen && (Lexer.is_public name || host = md.host) ->
+           (match plan w host shape i with
+            | need, -1 -> ((if host = md.host then iname else package_name w host ^ "." ^ iname), mg, need) :: found
+            | _ -> found)
+         | _ -> found)
+      w.interfaces []
+  in
+  let v = { vs = shape; seen = w.reloads; can = List.sort (fun (a, _, _) (b, _, _) -> String.compare a b) can; hidden } in
+  match can with [] -> lost ctx v name | _ -> v
+
+(* The method that a value gets from the interfaces of [v]: from the one it meets, as two are one too many. *)
+let[@inline never] choose ctx (v : via) fields name =
+  let rec go found = function
+    | [] -> (match found with Some (_, mg) -> mg | None -> lost ctx v name)
+    | (iname, mg, need) :: rest when holds fields need ->
+      (match found with
+       | None -> go (Some (iname, mg)) rest
+       | Some (first, _) ->
+         let value = match v.vs.sname with Some n -> Messages.article n | None -> "a struct" in
+         Runtime.fail ctx Type (Messages.method_two first iname name value))
+    | _ :: rest -> go found rest
+  in
+  go None v.can
+
+(* A field first, then the methods of the struct, then those of the interfaces it meets. A small method is private to the
+   package of the struct: the site says which file it is in, [pm], and this runs the first times it meets a shape. *)
 let member_of (ctx : ctx) pm (shape : shape) name =
   let i = Value.field_index shape name in
-  if i >= 0 then { ms = shape; mi = i; mg = Undef }
+  if i >= 0 then Ok { ms = shape; mi = i; mg = Undef; mr = 0 }
   else
     let sn = Option.value shape.sname ~default:"" in
     match method_of ctx.w shape name with
     | Some (_, true) -> Runtime.fail ctx Field (Messages.static_on_value sn name)
-    | Some (mg, false) when Lexer.is_public name || ctx.w.modules.(pm).host = shape.sm -> { ms = shape; mi = -1; mg }
-    | Some _ -> Runtime.fail ctx Field (Messages.private_member name)
-    | None -> Runtime.fail ctx Field (if sn = "" then Messages.no_field name else Messages.no_member sn name)
+    | Some (mg, false) when Lexer.is_public name || ctx.w.modules.(pm).host = shape.sm -> Ok { ms = shape; mi = -1; mg; mr = 0 }
+    | own -> Error (by_interface ctx pm shape name ~hidden:(Option.is_some own))
 
 (* The shapes a site met after its first one: a list of several structs must not search at each call. *)
 let max_met = 8
@@ -277,7 +447,7 @@ let step_write ctx v st x =
      | Struct r ->
        let i = Value.field_index r.shape name in
        if i >= 0 then begin
-         r.fields.(i) <- x;
+         r.fields.(i) <- (if Array.length r.shape.checks = 0 then x else checked ctx r.shape i x);
          v
        end else (
          match r.shape.sname with
@@ -465,7 +635,10 @@ let rec compile_version (ctx : ctx) (ver : version) =
       (fun i -> f.maybe_undef.(i) && i >= np && (not (Array.mem i captured)) && cell_of c i < 0)
       (List.init f.nvars Fun.id)
   in
-  let writes = List.map (fun i -> let k = ver.map.(i) in fun (ctx : ctx) -> ctx.v.(ctx.b + k) <- Undef) unset @ defaults in
+  let checks = List.filter_map (fun k -> Option.bind f.params.(k).ptype (param_check c k)) (List.init np Fun.id) in
+  let writes =
+    List.map (fun i -> let k = ver.map.(i) in fun (ctx : ctx) -> ctx.v.(ctx.b + k) <- Undef) unset @ defaults @ checks
+  in
   let prologue = if writes = [] then None else Some (seq_u writes) in
   (match ver.ret with
    | TI ->
@@ -488,6 +661,31 @@ let rec compile_version (ctx : ctx) (ver : version) =
      ver.rf <- (fun ctx -> to_f ctx (entry ctx)));
   ver.size <- c.top;
   if ctx.b + ver.size > ctx.cap then Runtime.grow ctx (ctx.b + ver.size)
+
+(* A typed parameter, after its default. Its version may already know the answer: an Int or a Float for a number. Else
+   the value is checked, and a wrong one stops the program at the call. *)
+and param_check c k (t : ptype) : (ctx -> unit) option =
+  let number = t.tb = Unresolved && (t.tname = "Number" || t.tname = (if c.tv.(k) == TI then "Int" else "Float")) in
+  if (c.tv.(k) == TI || c.tv.(k) == TF) && number then None
+  else begin
+    let ch = type_check c.w t and slot = c.map.(k) in
+    let wrong (ctx : ctx) x =
+      let b = ctx.b in
+      ctx.site <- ctx.i.(b + 1);
+      ctx.b <- Runtime.link_base ctx.i.(b);
+      let want, found = ch.wrong x in
+      Runtime.fail ctx Type (Messages.wrong_type c.func.fname c.func.params.(k).pname want found)
+    in
+    match c.tv.(k) with
+    | TI -> Some (fun ctx -> wrong ctx (Int (iget ctx slot)))
+    | TF -> Some (fun ctx -> wrong ctx (Float (fget ctx slot)))
+    | _ ->
+      Some (fun ctx ->
+          let p = ctx.b + slot in
+          let x = ctx.v.(p) in
+          let y = ch.accept x in
+          if y != x then if y == Undef then wrong ctx x else ctx.v.(p) <- y)
+  end
 
 (* Writes the value of an expression to a variable, according to its type. *)
 and store_var c i (e : expr) : ctx -> unit =
@@ -678,7 +876,7 @@ and ca c (e : expr) : ctx -> t =
   | Return { rvalue; tail } ->
     let v = match rvalue with Some v -> if tail then ctail c v else ce c v | None -> fun _ -> Missing in
     if tail then v else fun ctx -> raise_notrace (Return_value (v ctx))
-  | Assign _ | While _ | For _ | Set _ | Break | Fn_def _ | Destructure _ | Use _ | Hook _ ->
+  | Assign _ | While _ | For _ | Set _ | Break | Fn_def _ | Destructure _ | Use _ | Interface _ | Hook _ ->
     let u = cu c e in
     fun ctx -> u ctx; Missing
 
@@ -975,25 +1173,40 @@ and field_read c e b name =
 and member_read c e b name ~shared =
   let base = (match leaf c b with `L k -> (fun (ctx : ctx) -> ctx.v.(ctx.b + k)) | l -> leaf_value l) in
   let s = site c e.pos and pm = c.ver.owner.pm in
-  let cache = ref { ms = no_shape; mi = 0; mg = Undef } and others = ref [] in
-  let other ctx shape =
+  let cache = ref { ms = no_shape; mi = 0; mg = Undef; mr = 0 } and others = ref [] and vias = ref [] in
+  let keep k =
+    if !cache.ms == no_shape || !cache.ms == k.ms then cache := k
+    else
+      let rest = List.filter (fun o -> o.ms != k.ms) !others in
+      if List.compare_length_with rest max_met < 0 then others := k :: rest
+  in
+  let other (ctx : ctx) shape fields =
     match met shape !others with
-    | Some k -> k
-    | None ->
+    | Some k when k.mi <> -2 || k.mr = ctx.w.reloads -> k
+    | _ ->
       ctx.site <- s;
-      let k = member_of ctx pm shape name in
-      if !cache.ms == no_shape then cache := k
-      else if List.compare_length_with !others max_met < 0 then others := k :: !others;
-      k
+      (* Through an interface, a reload forgets, and what the fields hold chooses at each call when it can change the answer. *)
+      let v = via_in shape ctx.w.reloads !vias in
+      if v != no_via then { ms = shape; mi = -1; mg = choose ctx v fields name; mr = 0 }
+      else
+        match member_of ctx pm shape name with
+        | Ok k -> keep k; k
+        | Error v when List.for_all (fun (_, _, need) -> need = []) v.can ->
+          let k = { ms = shape; mi = -2; mg = choose ctx v fields name; mr = v.seen } in
+          keep k; k
+        | Error v ->
+          let rest = List.filter (fun o -> o.vs != shape) !vias in
+          if List.compare_length_with rest max_met < 0 then vias := v :: rest;
+          { ms = shape; mi = -1; mg = choose ctx v fields name; mr = 0 }
   in
   fun ctx ->
     match base ctx with
     | Struct r as x ->
       let k = !cache in
-      if r.shape == k.ms then
+      if r.shape == k.ms && (k.mi <> -2 || k.mr = ctx.w.reloads) then
         if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       else begin
-        let k = other ctx r.shape in
+        let k = other ctx r.shape r.fields in
         if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       end
     | v ->
@@ -1977,7 +2190,7 @@ and cu c (e : expr) : ctx -> unit =
     in
     if has_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
   | Break -> fun _ -> raise_notrace Break_loop
-  | Fn_def ({ b = Cell _; _ }, _) | Use _ -> fun _ -> ()
+  | Fn_def ({ b = Cell _; _ }, _) | Use _ | Interface _ -> fun _ -> ()
   | Fn_def (n, f) ->
     let make = closure c f in
     let self =
@@ -2129,12 +2342,19 @@ and set_general c _e root path value =
     done;
     let s, st = resolved.(n - 1) in
     ctx.site <- s;
-    (* A copied child, a struct with a new field and a dictionary all change their parent, up to the root. *)
+    (* A copied child, a struct with a new field and a dictionary all change their parent, up to the root. A child written in
+       place stays in its field, whose type is checked again: an interface depends on what the child holds. *)
     let rec climb value = function
       | [] -> value
       | (parent, st, s, child) :: rest ->
-        if value == child then climb parent rest
-        else begin
+        if value == child then begin
+          (match parent, st with
+           | Struct r, Rfield name when Array.length r.shape.checks > 0 ->
+             ctx.site <- s;
+             ignore (checked ctx r.shape (Value.field_index r.shape name) value)
+           | _ -> ());
+          climb parent rest
+        end else begin
           ctx.site <- s;
           climb (step_write ctx parent st value) rest
         end

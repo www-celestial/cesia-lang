@@ -14,6 +14,25 @@ Point.Made() = Point(1)
 method() = Point.Made().Value()
 held = Point(1)
 old() = held.Value()
+struct Box { V Int }
+box = Box(1)
+made() = Box(2).V
+heldBox() = box.V
+scaled(by Int) = by * 2
+param() = scaled(1.5)
+interface Sized { Size() }
+struct Tile { N }
+(t Tile) Size() = t.N
+(s Sized) Twice() = 2 * s.Size()
+sized(s Sized) = s.Size()
+measured() = sized(Tile(2))
+twice() = Tile(1).Twice()
+
+defn boxed()
+  b = box
+  b.V = 1.5
+  b.V
+end
 
 defn report(label, before, after)
   if not Equal(before, after)
@@ -38,6 +57,14 @@ defn mainLoop()
   g = 0
   h = 0
   i = 0
+  j = 0
+  k = 0
+  l = 0
+  m = 0
+  n = 0
+  o = 0
+  q = 0
+  tile = Tile(1)
   x = [1, 2]
   while true
     a = report("value", a, value())
@@ -49,6 +76,13 @@ defn mainLoop()
     g = report("owner", g, x[1])
     h = report("method", h, attempt(method))
     i = report("old", i, attempt(old))
+    j = report("made", j, attempt(made))
+    k = report("held", k, attempt(heldBox))
+    l = report("param", l, attempt(param))
+    m = report("box", m, attempt(boxed))
+    n = report("iface", n, attempt(measured))
+    o = report("twice", o, attempt(twice))
+    q = report("loop", q, attempt(() -> tile.Twice()))
   end
 end
 

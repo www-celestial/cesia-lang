@@ -37,7 +37,12 @@ and shape = {
   sname : string option;
   sm : int;  (** the module that declares this struct, whose methods it has; -1 for the others *)
   next : (string, shape) Hashtbl.t;
+  mutable checks : check option array;  (** the type of each field, for the writes; empty when none has one *)
 }
+
+(** A type written in the code: [accept] gives the value, a Float for an Int that a Float wants, or [Undef] when it doesn't
+    fit; [wrong] says, for a value that doesn't, what was wanted and what was found: "a Text or missing", "an Int". *)
+and check = { accept : t -> t; wrong : t -> string * string }
 
 
 and proto = {
@@ -124,6 +129,7 @@ and modul = {
   mutable stable : bool array;  (** cell never reassigned: function or native *)
   host : int;  (** the first module of the package whose private names this one sees *)
   package : int array;  (** the modules of its files, in the order of their names *)
+  mutable uses : int list;  (** the first module of each package its file uses *)
 }
 
 and stop_mode =
@@ -181,6 +187,8 @@ and world = {
   charge : ctx -> int -> unit;  (** [Runtime.charge], for [Value], which doesn't know [Runtime] *)
   loaded : (string, int) Hashtbl.t;  (** path to module, -1 while loading *)
   methods : (int * string * string, t * bool) Hashtbl.t;
-      (** module, struct and method name to the function, and whether it is static *)
+      (** module, struct or interface, and method name to the function, and whether it is static *)
+  interfaces : (int * string, Ast.iface) Hashtbl.t;  (** the first module of a package, and a name, to its interface *)
+  mutable reloads : int;  (** what a type found about an interface holds until the next reload *)
   mutable root : string;  (** where every [use] of the project starts *)
 }

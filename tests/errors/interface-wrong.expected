@@ -1,0 +1,4 @@
+interface-wrong.k:14:7: Describe: s must be a Shape, found a Rect, which has no Perimeter().
+  14 | Print(Describe(Rect(1, 2)))
+     |       ^
+exit 1

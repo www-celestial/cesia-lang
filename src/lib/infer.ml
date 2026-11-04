@@ -100,6 +100,12 @@ let set_var env i t =
     env.changed <- true
   end
 
+(* An Int that a parameter of type Float receives is a Float there. *)
+let as_param (fn : func) k t =
+  match t, fn.params.(k).ptype with
+  | TI, Some { tname = "Float"; tpkg = None; _ } -> TF
+  | _ -> t
+
 let rec run w (ver : version) =
   if ver.state = 0 then begin
     ver.state <- 1;
@@ -121,7 +127,7 @@ and analyze w ver fn =
   Array.iter (fun (_, inner) -> tv.(inner) <- TA) fn.captures;
   Array.iteri (fun i u -> if u then tv.(i) <- TA) fn.maybe_undef;
   Array.iteri (fun i k -> if k >= 0 then tv.(i) <- TA) fn.cell_of;
-  Array.iteri (fun k t -> if t != TBot then tv.(k) <- join tv.(k) t) ver.sg;
+  Array.iteri (fun k t -> if t != TBot then tv.(k) <- join tv.(k) (as_param fn k t)) ver.sg;
   ver.tv <- tv;
   ver.tn <- env.tn;
   let pass () =
@@ -130,7 +136,7 @@ and analyze w ver fn =
       (fun k t ->
          if t == TBot then
            match fn.params.(k).default with
-           | Some d -> set_var env k (ty env d)
+           | Some d -> set_var env k (as_param fn k (ty env d))
            | None -> ())
       ver.sg;
     let last = block env fn.body in

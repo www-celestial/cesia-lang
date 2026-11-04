@@ -70,3 +70,146 @@ defn constantFloats(y)
   x + z + w
 end
 isConstantFloats() = constantFloats(0.5) == 9.5
+
+-- Types written in the code: after a field or a parameter, checked each time a value enters its place.
+use tests/lang/mods/shapes
+
+struct Pt { X Int, Y Int = 0 }
+struct Seg { From Pt, To Pt = Pt(0) }
+struct Rect { Side }
+
+-- A car, with its types.
+struct Car
+  Mass Float
+  Speed Float = 0       -- an Int default becomes a Float too
+  Name Text? = missing
+end
+
+-- What a call that stops says: its kind and its message.
+stop(f) = match Wait(Spawn(f))
+  Err(e) -> "$(e.Kind): $(e.Message)"
+  Ok(v) -> v
+end
+
+isTypedField() = Pt(1, 2).Y == 2 and Pt(1).Y == 0
+isIntBecomesFloat() = IsFloat(Car(1500).Mass) and Car(1500).Mass == 1500.0 and Text(Car(2).Mass) == "2.0"
+isDefaultBecomesFloat() = IsFloat(Car(1).Speed) and Text(Car(1).Speed) == "0.0"
+isOptionalField() = IsMissing(Car(1).Name) and Car(1, Name = "a").Name == "a"
+isStructField() = Seg(Pt(1)).To == Pt(0) and Seg(Pt(1), Pt(2)).To.X == 2
+isFieldWrong() = stop(() -> Car("heavy")) == "type: Car: Mass must be a Float, found a Text."
+isFieldStructWrong() = stop(() -> Seg(3)) == "type: Seg: From must be a Pt, found an Int."
+isFieldMissing() = stop(() -> Pt(missing)) == "type: Pt: X must be an Int, found missing."
+isFieldOptionalWrong() = stop(() -> Car(1, Name = 2)) == "type: Car: Name must be a Text or missing, found an Int."
+isFieldFloatForInt() = stop(() -> Pt(1.5)) == "type: Pt: X must be an Int, found a Float."
+
+-- A field whose type takes missing has missing as its default; a parameter stays required.
+struct Pet
+  Kind Text
+  Name Text?
+end
+
+isOptionalFieldDefault() = IsMissing(Pet("cat").Name) and Pet("cat", "Tom").Name == "Tom" and IsMissing(Pet(Kind = "dog").Name)
+
+scaled(x Number, by Number = 2) = x * by
+asFloat(x Float) = x
+maybe(t Text?) = t
+norm(p Pt) = p.X + p.Y
+wrongDefault(n Int = "a") = n
+callWith(f, x) = f(x)
+down(n Int) = if n == 0 0 else down(n - 1) end
+unwrap(r Ok) = r.Value
+(p Pt) Plus(d Int) = Pt(p.X + d, p.Y + d)
+Pt.Of(x Int) = Pt(x, x)
+
+defn apply(f Function, x)
+  f(x)
+end
+
+defn kinds(b Bool, t Text, a Array, d Dict)
+  "$b $t $(Len(a)) $(Len(d))"
+end
+
+isNumberKeeps() = IsInt(scaled(3)) and scaled(3) == 6 and IsFloat(scaled(1.5)) and scaled(by = 3, x = 2) == 6
+isParamFloat() = IsFloat(asFloat(3)) and Text(asFloat(3)) == "3.0" and asFloat(2.5) == 2.5
+isParamFloatDynamic() = Text(callWith(asFloat, 3)) == "3.0"
+isParamOptional() = IsMissing(maybe(missing)) and maybe("a") == "a" and stop(() -> maybe()) == "type: maybe needs the argument \"t\"."
+isParamStruct() = norm(Pt(3, 4)) == 7
+isParamWrong() = stop(() -> scaled("a")) == "type: scaled: x must be a Number, found a Text."
+isParamWrongNamed() = stop(() -> scaled(by = "a", x = 1)) == "type: scaled: by must be a Number, found a Text."
+isParamWrongDynamic() = stop(() -> callWith(scaled, [1])) == "type: scaled: x must be a Number, found an Array."
+isParamDefaultChecked() = stop(() -> wrongDefault()) == "type: wrongDefault: n must be an Int, found a Text."
+isParamTail() = down(100000) == 0 and stop(() -> down(2.5)) == "type: down: n must be an Int, found a Float."
+isParamOk() = unwrap(Ok(3)) == 3 and stop(() -> unwrap(Err(1))) == "type: unwrap: r must be an Ok, found an Err."
+isMethodParam() = Pt(1, 2).Plus(3) == Pt(4, 5) and stop(() -> Pt(1).Plus(1.5)) == "type: Pt.Plus: d must be an Int, found a Float."
+isStaticParam() = Pt.Of(2) == Pt(2, 2) and stop(() -> Pt.Of("a")) == "type: Pt.Of: x must be an Int, found a Text."
+isFunctionParam() = apply(x -> x + 1, 1) == 2 and apply(Abs, -1) == 1 and stop(() -> apply(1, 1)) == "type: apply: f must be a Function, found an Int."
+isKinds() = kinds(true, "a", [1, 2], {"k": 1}) == "true a 2 1"
+isKindsWrong() = stop(() -> kinds(1, "a", [1], {"k": 1})) == "type: kinds: b must be a Bool, found an Int." and stop(() -> kinds(true, "a", [1], {K: 1})) == "type: kinds: d must be a Dict, found a struct."
+
+defn circleArea(c shapes.Circle)
+  c.Area()
+end
+rectSide(r shapes.Rect) = r.Side
+localSide(r Rect) = r.Side
+
+isQualifiedType() = circleArea(shapes.Circle(2)) == 12 and rectSide(shapes.MakeRect(3)) == 3
+isOtherPackageStruct() = stop(() -> rectSide(Rect(1))) == "type: rectSide: r must be a shapes.Rect, found a types.Rect." and stop(() -> localSide(shapes.MakeRect(1))) == "type: localSide: r must be a types.Rect, found a shapes.Rect."
+
+-- An anonymous defn with a typed parameter is not a method.
+defn anonymous()
+  f = defn (p Pt)
+    p.X
+  end
+  g = defn (p Pt) p.Y end
+  f(Pt(5)) + g(Pt(1, 2))
+end
+-- On one line, a body that starts with a call.
+defn oneLine()
+  f = defn (p Pt) Text(p.X) end
+  g = defn (p Pt, q Pt) norm(p) + norm(q) end
+  [f(Pt(1)), g(Pt(1), Pt(2, 3)), Map(defn (p Pt) norm(p) end, [Pt(4)])]
+end
+
+isOneLineAnonymousTyped() = Equal(oneLine(), ["1", 6, [4]])
+isAnonymousTyped() = anonymous() == 7 and stop(() -> (defn (p Pt) p.X end)(1)) == "type: <anonymous>: p must be a Pt, found an Int."
+
+defn writeConverts()
+  c = Car(1)
+  c.Mass = 2
+  c.Speed += 1
+  [c.Mass, c.Speed]
+end
+
+defn writeWrong()
+  c = Car(1)
+  c.Mass = "a"
+  c
+end
+
+defn writePath()
+  s = Seg(Pt(1, 1))
+  s.From.X = 5
+  s.To = Pt(2)
+  s.From.X + s.To.X
+end
+
+defn writeDeep()
+  a = {Segs: [Seg(Pt(1, 1)), Seg(Pt(2, 2))]}
+  a.Segs[2].From.Y = 7
+  b = a
+  b.Segs[2].From = 3
+  b
+end
+
+defn writeRecord()
+  r = {Mass: 1}
+  r.Mass = "a"
+  r.Mass
+end
+
+isWriteConverts() = Text(writeConverts()) == "[2.0, 1.0]"
+isWriteWrong() = stop(writeWrong) == "type: Car: Mass must be a Float, found a Text."
+isWritePath() = writePath() == 7
+isWriteDeep() = stop(writeDeep) == "type: Seg: From must be a Pt, found an Int."
+isWriteRecord() = writeRecord() == "a"
+isDescribeNamesTheStruct() = stop(() -> Pt(1) + 1) == "type: Can't add a Pt and the number 1."

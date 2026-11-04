@@ -1,0 +1,4 @@
+interface-default.k:2:34: A parameter of an interface has no default.
+  2 | interface Scalable { Scaled(by = 2) }
+    |                                  ^
+exit 1

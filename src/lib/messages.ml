@@ -24,9 +24,11 @@ let private_member name =
   hinted (Printf.sprintf "The field or method \"%s\" is private to the package that declares it." name)
     "A field or a method is public when its first letter is a capital."
 let undefined name = plain (Printf.sprintf "Name \"%s\" doesn't exist." name)
-let method_foreign = plain "A method belongs to a struct declared in the same package: this one can't be reached from here."
+let method_foreign =
+  plain "A method belongs to a struct or an interface declared in the same package: this one can't be reached from here."
 let method_no_struct name =
-  hinted (Printf.sprintf "There is no struct \"%s\" in this package." name) "A method belongs to a struct declared in the same package."
+  hinted (Printf.sprintf "There is no struct or interface \"%s\" in this package." name)
+    "A method belongs to a struct or an interface declared in the same package."
 let package_twice name other line = plain (Printf.sprintf "\"%s\" is also defined at %s:%d." name other line)
 let method_nested = plain "A method can only be defined at the top of a file."
 let method_both sname name =
@@ -92,6 +94,32 @@ let no_field name = plain (Printf.sprintf "This struct has no field \"%s\"." nam
 let named_field sname name = plain (Printf.sprintf "%s has no field \"%s\"." sname name)
 let field_of a name = plain (Printf.sprintf "Can't read the field \"%s\" of %s." name a)
 let struct_nested = plain "A struct can only be defined at the top of a file."
+let struct_not_field =
+  hinted "Only fields can be written inside a struct."
+    "One per line: a name, its type if it has one, and = with a default. The struct ends with end."
+let struct_line = plain "In the block form of a struct, each field has its own line."
+let lambda_type = hinted "The parameters of a lambda can't have types." "Write the function with defn to give them some."
+let no_type name =
+  hinted (Printf.sprintf "There is no type \"%s\"." name)
+    "A type is Int, Float, Number, Bool, Text, Array, Dict, Function, a struct or an interface."
+let interface_nested = plain "An interface can only be defined at the top of a file."
+let interface_not_method =
+  hinted "Only methods can be written inside an interface."
+    "A method is a name and its parameters in parentheses, as Area() or Scaled(by Number)."
+let interface_body =
+  hinted "A method of an interface has no body."
+    "A method written apart, as (s Shape) Describe() = ..., is a method of every value that meets the interface."
+let interface_line = plain "In the block form of an interface, each method has its own line."
+let interface_default = plain "A parameter of an interface has no default."
+let interface_call name =
+  hinted (Printf.sprintf "%s is an interface: it can't be called." name)
+    (Printf.sprintf "A value meets it by having its methods. To check one, write the interface after a parameter or a field: s %s."
+       name)
+let method_two a b name found =
+  hinted (Printf.sprintf "Both %s and %s have a method \"%s\", and %s meets both." a b name found)
+    "A field or a method of the value itself would win over theirs."
+let wrong_type fname name want found = plain (Printf.sprintf "%s: %s must be %s, found %s." fname name want found)
+let article name = (if name <> "" && String.contains "AEIOUaeiou" name.[0] then "an " else "a ") ^ name
 let destructure_array want got = plain (Printf.sprintf "This pattern takes %d elements, the value has %d." want got)
 let destructure_struct a = plain (Printf.sprintf "This pattern needs a struct, not %s." a)
 let destructure_value a = plain (Printf.sprintf "This pattern needs an array, not %s." a)

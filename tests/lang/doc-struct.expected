@@ -1,0 +1,12 @@
+Car { Mass Float, Speed Float = 0.0, Name Text? = "a--b" }
+
+A car, for the test of kepler doc on the block form of a struct.
+
+  Car(1500).Speed --> 0.0
+  Car(1500, Speed = 2.0).Moved(3.0) --> 6.0
+(c Car) Moved(time Number)
+
+How far it goes in this time.
+
+  Car(1, 1.0).Moved(2.0) --> 2.0
+exit 0

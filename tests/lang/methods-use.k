@@ -19,3 +19,4 @@ isSameNameTwoFiles() = shapes.MakeRect(3).Area() == 9 and Rect.Square(2).Area() 
 isPrivateStructPublicMethod() = shapes.MakePiece(2).Double() == 4
 isModuleStaticInThen() = (2 then shapes.Circle.Of()).Radius == 2
 isDocOfAModuleMethod() = Contains("with pi at 3", Doc("shapes.Circle.Area"))
+isBlockStructOfAModule() = shapes.Square(3).Area() == 9 and shapes.Square().Side == 1 and other.Square.Twice(shapes.Square(2)).Area() == 16

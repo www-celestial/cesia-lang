@@ -132,7 +132,7 @@ let run_examples (ctx : ctx) st path m src =
     let doc_m = Array.length w.modules in
     let helpers =
       { mname = "doc"; path = ""; cells = [| doc_eq; doc_err |]; mnames = [ "docEq", 0; "docErr", 1 ];
-        stable = [| true; true |]; host = doc_m; package = [| doc_m |] }
+        stable = [| true; true |]; host = doc_m; package = [| doc_m |]; uses = [] }
     in
     w.modules <- Array.append w.modules [| helpers |];
     let lookup name =
