@@ -1,0 +1,15 @@
+the copy of heap
+the copy of date
+6
+shapes, in src
+tools, in apps
+0 passed, 0 failed
+5 passed, 0 failed
+src/nope.ce:1:5: Module "pkg/nope" doesn't exist.
+  1 | use pkg/nope
+    |     ^
+src/binary.ce:1:5: "json" is a module of the binary: write use json.
+  1 | use pkg/json
+    |     ^
+cesia.toml:3:1: The source folder "nope" doesn't exist.
+exit 1

@@ -1,6 +1,6 @@
 (** A material editor: drag a node, turn the light on the sphere, move Metallic or Roughness, press t for the other theme.
     Run from the root of the repository: cesia run --allow ffi=SDL3,ffi=SDL3_ttf examples/material.ce *)
-use sdl
+use pkg/sdl
 use examples/scene as scene
 
 defn opened()

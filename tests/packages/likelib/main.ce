@@ -1,0 +1,4 @@
+use date
+use pkg/date as day
+Print(date.Today)
+Print(day.IsLeap(2024))

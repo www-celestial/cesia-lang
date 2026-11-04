@@ -1,2 +1,2 @@
-inconnu:1:1: Module "inconnu" doesn't exist.
+inconnu:1:1: Module "pkg/inconnu" doesn't exist.
 exit 1

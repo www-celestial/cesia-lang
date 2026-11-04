@@ -1,8 +1,8 @@
 (** The scene of a material editor: a sphere lit by Cesia, a graph of nodes, details, a palette and a code pane. examples/material.ce
     runs it, and bench/ui-frame.ce measures it. c is used for one thing: the pixels of the sphere, which follow the mouse. *)
 use c
-use sdl
-use ui
+use pkg/sdl
+use pkg/ui
 
 sharpSize = 208
 quickSize = 64

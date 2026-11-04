@@ -192,6 +192,7 @@ let usage =
   \       cesia test [path] [--no-spec]\n\
   \       cesia do [task]\n\
   \       cesia new name\n\
+  \       cesia pkg [update name...]\n\
   \       cesia doc [name]\n\
   \       cesia version"
 let cant_read path = "can't read " ^ path
@@ -231,6 +232,8 @@ let project_cycle name through =
 let project_listed_needs needs = Printf.sprintf "(needs %s)" (String.concat ", " needs)
 let project_bad_name name = Printf.sprintf "A project name holds letters, digits, - and _, not %s." name
 let project_exists name = name ^ " already exists."
+let pkg_not_library name = Printf.sprintf "\"%s\" is not a library of Cesia." name
+let pkg_updated name = Printf.sprintf "pkg/%s is this Cesia's version again." name
 let project_created name = Printf.sprintf "Created %s. Run it: cd %s && cesia do run" name name
 let project_no_such_task name = Printf.sprintf "No task named %s." name
 let project_cant_start program reason = Printf.sprintf "Can't start %s: %s." program reason
@@ -287,5 +290,9 @@ let use_unreadable path = plain (Printf.sprintf "Can't read the module \"%s\"." 
 let no_prelude = plain "The folder of CESIA_STD has no prelude.ce."
 let reload_use = plain "A running program can't load a new module. Restart it to use this one."
 let use_missing path = plain (Printf.sprintf "Module \"%s\" doesn't exist." path)
+let use_library name = plain (Printf.sprintf "\"%s\" is a library: write use pkg/%s." name name)
+let use_binary name = plain (Printf.sprintf "\"%s\" is a module of the binary: write use %s." name name)
+let source_missing dir = plain (Printf.sprintf "The source folder \"%s\" doesn't exist." dir)
+let source_outside dir = plain (Printf.sprintf "The source folder \"%s\" is outside the project." dir)
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)
 let denied perm = plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)

@@ -23,8 +23,15 @@ val absolute : string -> string
 (** The folder of the nearest {!project_file} above this file or folder, or else the folder itself. *)
 val root_of : string -> string
 
-(** The folder a use names in a project: in the [src] folder of the root if it is there, or else from the root, where [tests]
-    and [examples] are. *)
+(** The source folders of a root: [project] src of its cesia.toml, or else [["src"]]. Read once per root; a wrong one raises
+    {!Pos.Load_error} at its line. *)
+val sources : string -> string list
+
+(** [use pkg/rope] names a library: [Some "rope"], the name after [pkg/] when nothing follows it. *)
+val library : string -> string option
+
+(** The folder a use names in a project: in the first source folder of the root that holds it, or else from the root, where
+    [tests] and [examples] are. *)
 val folder : string -> string -> string
 
 (** A path as a person reads it: from the working directory when it is under it. *)

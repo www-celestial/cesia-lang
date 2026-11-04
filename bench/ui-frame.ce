@@ -1,6 +1,6 @@
 (** The speed gate of the interface: the whole scene of the material editor, in a real window, without vsync. Run through
     tools/frame-bench.sh. Each frame moves a node, so the curves are rewritten. *)
-use sdl
+use pkg/sdl
 use sys
 use examples/scene as scene
 

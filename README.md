@@ -62,6 +62,14 @@ cesia do          # lists the tasks
 cesia do serve    # runs one, and shows the exact command
 ```
 
+`cesia new notes` makes a project: its `cesia.toml`, `src/main.ce`, and `pkg/`, which holds a copy of each library of Cesia
+(`pkg/rope/rope.ce`, `pkg/ui/ui.ce`...). A copy belongs to the project: read it, change it, and an update of Cesia leaves it as
+it is. `cesia pkg` lists the copies that differ from this Cesia's libraries, and `cesia pkg update rope ui` puts back the ones
+named. `cesia test .` leaves `pkg/` out: `cesia test pkg/rope` runs its examples.
+
+The code can live in more than `src/`: `src = ["src", "apps"]` under `[project]` makes `use emacs` find `apps/emacs/`. A use
+looks in these folders in order, then at the root.
+
 ## Names
 
 A name says by its first letter whether it is public, as in Go.
@@ -69,7 +77,7 @@ A name says by its first letter whether it is public, as in Go.
 - A capital is public: `rope.LineCount`, `ui.Dark`, `Print`. So is a field: `date.Year`, `err.Kind`, `Ok(Value = 1)`.
 - A small first letter is private, and visible only in its package: `chunk`. So is a small field, and using one from another
   package is an error at load time.
-- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use rope`. A file name separates its words with `-`: `material-scene.ce`.
+- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use pkg/rope`. A file name separates its words with `-`: `material-scene.ce`.
 - A name has no `_`: words join by capitals, `byteLength` or `ByteLength`. The lone `_` is the wildcard of a pattern.
 - A test is a private function with no parameter, `is` then a capital: `isGrows()`.
 - Dictionary keys and texts are data: `{"a": 1}`, `{Kind: "box"}`. `json.Text` writes the fields of a record as they are, with their
@@ -242,17 +250,19 @@ r = geometry.Rect(2, 3)
 Print(r.Area(), shapes.Square(2))
 ```
 
-- The code of a project goes in `src/`. A `use` is absolute: it looks in the `src` folder of the root of the project, then at the root
-  itself, so `use geometry` finds `src/geometry/` from any file, and `use tests/helpers` a folder out of `src/`. If both exist, `src/`
-  wins. The root is the folder of the nearest `cesia.toml` above the program or, without one, the folder of the file that runs. A
-  `use` takes no `./`, no `../` and no quotes.
+- The code of a project goes in `src/`. A `use` is absolute: it looks in each source folder of the root of the project, in order,
+  then at the root itself, so `use geometry` finds `src/geometry/` from any file, and `use tests/helpers` a folder out of `src/`.
+  The first that holds it wins. The root is the folder of the nearest `cesia.toml` above the program or, without one, the folder of
+  the file that runs. A `use` takes no `./`, no `../` and no quotes.
 - The name in the code is the last part of the path: `use geometry/shapes` gives `shapes.Square`, and `as` renames it. Two uses of
   a file can't give one name.
 - A package is all the `.ce` files of its folder, in the order of their names. Its subfolders are other packages, and its `.test.ce`
   files aren't part of it.
 - The files of a package need no `use` to see each other, and share their small names, fields and methods. Each file keeps its own
   `use`. Two files of a package can't define one name, but the variable of a loop stays in its file.
-- The standard library doesn't change: `use rope`. A folder of the project with the name of one of its modules is an error, once used.
+- A library is written with `pkg/`: `use pkg/rope` takes `pkg/rope/` of the project when it is there, or else the one Cesia holds,
+  and the name in the code is `rope`. `use rope` alone is an error. The modules written in OCaml have no `pkg/`: `use sys`,
+  `use json`, `use net`, `use c`, `use regex`, `use columns`, `use debug`, `use lapack`; a folder of the project can't have their names.
 - `cesia run file.ce` runs that file alone, and it can `use` packages. `cesia run .` runs all the files of a folder as one program,
   and a task of `cesia.toml` can say `file = "."`.
 - `cesia test` sees a folder as a package: the examples of its files run together, and each `.test.ce` sees its private names. In a
@@ -299,7 +309,7 @@ With `use`:
 ## A web server
 
 ```cesia
-use web
+use pkg/web
 
 defn hello(request)
   web.SendJson({"hello": request.Params["name"]})
@@ -343,8 +353,8 @@ cesia do material    # a material editor: drag a node, turn the light, move the 
 ```
 
 ```cesia
-use sdl
-use ui
+use pkg/sdl
+use pkg/ui
 
 look = ui.Look(ui.Dark, sdl.Measure(window).Width, sdl.Measure(window).Height)
 frame = Flatten([ui.Panel("Details", area, look), ui.Slider(0.5, bar, look)])
@@ -398,8 +408,8 @@ defn Grown(
 end
 ```
 
-`cesia doc` lists the modules, `cesia doc num` the names of a module, and `cesia doc num.Solve` shows one, as `cesia doc
-date.Date.Year` shows a method. A program, or an editor, asks the same way: `Doc("num.Solve")` or `Doc(Sort)` give the text or
+`cesia doc` lists the modules, `cesia doc pkg/num` the names of a module (from the project's copy when there is one), and
+`cesia doc num.Solve` shows one, written as in the code, as `cesia doc date.Date.Year` shows a method. A program, or an editor, asks the same way: `Doc("num.Solve")` or `Doc(Sort)` give the text or
 `missing`, and `DocNames("num")` the names. An instance method has no value to pass, so `Doc("Rect.Area")` also finds those of the program.
 
 ## Large data

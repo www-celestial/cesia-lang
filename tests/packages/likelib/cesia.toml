@@ -1,5 +1,5 @@
 [project]
-name = "useboth"
+name = "likelib"
 
 [tasks.run]
 file = "main.ce"

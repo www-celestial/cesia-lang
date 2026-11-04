@@ -1,6 +1,6 @@
 (** Text objects are kept by position: a frame with fewer texts must not show the old ones. *)
 use tests/sdl/probe
-use sdl
+use pkg/sdl
 
 background = 0x000000
 font = "../../examples/fonts/JetBrainsMono-Regular.ttf"

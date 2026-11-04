@@ -1,6 +1,6 @@
 use tests/sdl/probe
 use c
-use sdl
+use pkg/sdl
 
 black = 0x000000
 near(a, b) = Abs(sdl.Red(a) - sdl.Red(b)) <= 8 and Abs(sdl.Green(a) - sdl.Green(b)) <= 8 and Abs(sdl.Blue(a) - sdl.Blue(b)) <= 8

@@ -5,3 +5,6 @@ val run : string list -> unit
 
 (** cesia new: a folder with a cesia.toml and a main.ce, and ends the program. *)
 val create : string -> unit
+
+(** [cesia pkg]: the copies of pkg/ that differ from this Cesia's libraries. [cesia pkg update NAME...]: puts those back. *)
+val pkg : string list -> unit

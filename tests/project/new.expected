@@ -7,6 +7,14 @@ file = "src/main.ce"
 Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
+algo cpp crypto csv date encode frame heap history http num queue rope sdl set tls ui web websocket 
+all agree
+pkg/rope
+pkg/rope is this Cesia's version again.
+all agree again
+0 passed, 0 failed
+"nope" is not a library of Cesia.
+exit 1
 hello already exists.
 exit 1
 A project name holds letters, digits, - and _, not a/b.
@@ -15,6 +23,7 @@ usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no
        cesia test [path] [--no-spec]
        cesia do [task]
        cesia new name
+       cesia pkg [update name...]
        cesia doc [name]
        cesia version
 exit 2

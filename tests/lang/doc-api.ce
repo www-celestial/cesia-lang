@@ -1,5 +1,5 @@
 (** The documentation of the language, from the language: what an editor shows. *)
-use num
+use pkg/num
 use sys
 
 (** Twice x, for the test of a function of this file.
@@ -42,9 +42,9 @@ isDocOfNothing() = IsMissing(Doc("NoSuchName")) and IsMissing(Doc("num.NoSuchNam
 isDocHidesPrivateNames() = IsMissing(Doc("runLength"))
 isDocOfALambda() = IsMissing(Doc(x -> x))
 
-isDocNamesOfTheModules() = "num" in DocNames() and "sys" in DocNames() and "prelude" in DocNames() and not ("natives" in DocNames())
+isDocNamesOfTheModules() = "pkg/num" in DocNames() and not ("num" in DocNames()) and "sys" in DocNames() and "prelude" in DocNames() and not ("natives" in DocNames())
 isDocNamesOfThePrelude() = "Inc" in DocNames("prelude") and "Sort" in DocNames("prelude") and not ("runLength" in DocNames("prelude"))
-isDocNamesOfAModule() = "num.Solve" in DocNames("num") and "sys.Now" in DocNames("sys")
+isDocNamesOfAModule() = "num.Solve" in DocNames("pkg/num") and "num.Solve" in DocNames("num") and "sys.Now" in DocNames("sys")
 isDocNamesOfNothing() = Equal(DocNames("no_such_module"), [])
 
 defn undocumentedNames()

@@ -1,4 +1,4 @@
-use http
+use pkg/http
 use net
 use sys
 

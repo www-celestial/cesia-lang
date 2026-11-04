@@ -1,0 +1,4 @@
+use-library.ce:1:5: "rope" is a library: write use pkg/rope.
+  1 | use rope
+    |     ^
+exit 1

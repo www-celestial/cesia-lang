@@ -1,5 +1,5 @@
 use tests/sdl/probe
-use sdl
+use pkg/sdl
 
 font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 black = 0x000000

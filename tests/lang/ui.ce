@@ -1,4 +1,4 @@
-use ui
+use pkg/ui
 
 r = {X: 10, Y: 20, Width: 100, Height: 40}
 

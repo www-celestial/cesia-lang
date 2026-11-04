@@ -354,14 +354,32 @@ let package_sources w m =
   | Some dir -> List.map (fun path -> In_channel.with_open_bin path In_channel.input_all) (Package.files dir)
   | None -> []
 
+(* The name in the code: rope for pkg/rope. *)
+let code_name m = Option.value (Package.library m) ~default:m
+
+(* The sources of a module that aren't Cesia's own, as use finds them: a folder of the project, or the copy of a library in
+   pkg/. A name of the code, rope, is the library when no folder of the project has it. *)
+let own_sources w m =
+  let copy name =
+    match Package.files (Filename.concat (Filename.concat w.root "pkg") name) with
+    | [] -> None
+    | files -> Some (List.map (fun path -> In_channel.with_open_bin path In_channel.input_all) files)
+  in
+  match Package.library m with
+  | Some name -> copy name
+  | None -> (match package_sources w m with [] -> copy m | srcs -> Some srcs)
+
 (* A package is one module, whichever file holds a name. *)
-let module_entries w m = std_entries m @ List.concat_map entries (package_sources w m)
+let module_entries w m =
+  match own_sources w m with
+  | Some srcs -> List.concat_map entries srcs
+  | None -> std_entries (code_name m)
 
 (* The source whose top comment says what a module is for. *)
 let module_source w m =
-  match std m with
-  | Some src -> Some src
-  | None -> List.nth_opt (package_sources w m) 0
+  match own_sources w m with
+  | Some (src :: _) -> Some src
+  | _ -> std (code_name m)
 
 let find name es = List.find_opt (fun e -> String.equal e.name name) es
 
@@ -408,13 +426,16 @@ let program_method (ctx : ctx) name =
   Option.map shown (Seq.find_map in_file (Seq.append asking (Dynarray.to_seq w.files)))
 
 let modules w =
-  let embedded = List.filter (fun m -> not (List.mem m not_modules)) (List.map fst Embedded.files) in
-  "prelude" :: List.sort_uniq String.compare (embedded @ List.map fst w.native_modules)
+  let libraries = List.filter_map (fun (m, _) -> if List.mem m not_modules then None else Some ("pkg/" ^ m)) Embedded.files in
+  "prelude" :: List.sort_uniq String.compare (libraries @ List.map fst w.native_modules)
 
-let is_module w m = List.mem m (modules w) || package_sources w m <> []
+let is_library m = (not (List.mem m not_modules)) && std m <> None
+
+let is_module w m =
+  List.mem m (modules w) || is_library (code_name m) || package_sources w m <> [] || own_sources w m <> None
 
 let names w m =
-  let qualified n = if m = "prelude" then n else m ^ "." ^ n in
+  let qualified n = if m = "prelude" then n else code_name m ^ "." ^ n in
   let native_names =
     if m = "prelude" then
       List.map fst w.modules.(0).mnames
@@ -485,7 +506,7 @@ let command w args =
   in
   match args with
   | [] ->
-    table (List.map (fun m -> m, first_line (module_text (Option.value (std m) ~default:""))) (modules w));
+    table (List.map (fun m -> m, first_line (module_text (Option.value (module_source w m) ~default:""))) (modules w));
     0
   | [ name ] when is_module w name ->
     let head = module_text (Option.value (module_source w name) ~default:"") in

@@ -1,7 +1,7 @@
 (** Typed columns: integers without a box, and the native work on columns. *)
 use columns
-use frame
-use csv
+use pkg/frame
+use pkg/csv
 
 defn fails(f, kind)
   (Wait(Spawn(f)) then MapErr(it.Kind)) == Err(kind)

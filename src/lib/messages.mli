@@ -114,10 +114,21 @@ val use_empty : string -> t
 (** [use_same name other line]: two uses of a file give one name. *)
 val use_same : string -> string -> int -> t
 
-(** [use_both name folder]: a package named like a module of the standard library. *)
+(** [use_both name folder]: a package named like a module of the binary. *)
 val use_both : string -> string -> t
 
 val use_missing : string -> t
+
+(** [use_library name]: [use rope], for a library of Cesia. *)
+val use_library : string -> t
+
+(** [use_binary name]: [use pkg/json], for a module written in OCaml. *)
+val use_binary : string -> t
+
+(** [source_missing dir], [source_outside dir]: a folder of [src] in cesia.toml. *)
+val source_missing : string -> t
+
+val source_outside : string -> t
 val no_name : string -> string -> t
 val denied : string -> t
 
@@ -168,6 +179,10 @@ val project_cycle : string -> string list -> string
 val project_listed_needs : string list -> string
 val project_bad_name : string -> string
 val project_exists : string -> string
+(** [pkg_not_library name], [pkg_updated name]: cesia pkg update. *)
+val pkg_not_library : string -> string
+
+val pkg_updated : string -> string
 val project_created : string -> string
 val project_no_such_task : string -> string
 val project_cant_start : string -> string -> string

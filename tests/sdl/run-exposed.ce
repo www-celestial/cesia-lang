@@ -1,6 +1,6 @@
 (** A window event asks for a frame and wakes no update: under Wayland, the frame of the window applies only with the next frame. *)
 use tests/sdl/probe
-use sdl
+use pkg/sdl
 use sys
 
 defn noted(state)

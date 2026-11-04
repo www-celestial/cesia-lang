@@ -1,2 +1,2 @@
-use date
+use pkg/date
 (d Date) Twice() = 2

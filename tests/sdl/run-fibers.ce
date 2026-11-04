@@ -1,6 +1,6 @@
 (** The window waits without stopping the other fibers: only one of them can end it. *)
 use tests/sdl/probe
-use sdl
+use pkg/sdl
 use sys
 
 update(event, state) = match event

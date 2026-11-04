@@ -1,5 +1,5 @@
 (** Methods on structs: the object of an instance method is written apart, and a dot calls both kinds. *)
-use date
+use pkg/date
 use sys
 
 (l Later) Value() = l.X   (** Before its struct, as a function can come before its call. *)

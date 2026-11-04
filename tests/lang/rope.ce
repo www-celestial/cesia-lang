@@ -1,6 +1,6 @@
-use rope
-use history
-use num
+use pkg/rope
+use pkg/history
+use pkg/num
 
 big = Join("\n", ["line $k" for k in 1:2000])
 

@@ -2,7 +2,7 @@
       cesia run --allow read=notes.txt,write=notes.txt,net=:8080 examples/notes.ce
       curl -d "buy milk" localhost:8080
       curl localhost:8080 *)
-use http
+use pkg/http
 use sys
 
 file = "notes.txt"

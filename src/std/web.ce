@@ -1,9 +1,9 @@
 (** Web applications on http: routes, parameters, middleware, JSON, cookies, static files and templates. *)
-use http
+use pkg/http
 use json
-use encode
+use pkg/encode
 use sys
-use websocket as ws
+use pkg/websocket as ws
 
 App() = {Routes: [], Middleware: []}   (** An application with no route and no middleware. *)
 

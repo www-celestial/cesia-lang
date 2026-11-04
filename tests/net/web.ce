@@ -1,5 +1,5 @@
-use web
-use http
+use pkg/web
+use pkg/http
 use sys
 
 base = "http://127.0.0.1:18201"

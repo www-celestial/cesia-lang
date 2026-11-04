@@ -1,4 +1,4 @@
-use encode
+use pkg/encode
 
 isHex() = encode.Hex("é!") == "c3a921"
 isUnhex() = Unwrap(encode.Unhex("c3A921")) == "é!" and IsErr(encode.Unhex("0")) and IsErr(encode.Unhex("zz"))

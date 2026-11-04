@@ -1,5 +1,5 @@
 (** Requests that a front proxy could read otherwise are refused, and HEAD has no body. *)
-use http
+use pkg/http
 use net
 use sys
 

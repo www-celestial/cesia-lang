@@ -1,6 +1,6 @@
-use tls
-use web
-use http
+use pkg/tls
+use pkg/web
+use pkg/http
 use sys
 
 defn main()

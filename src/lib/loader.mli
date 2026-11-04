@@ -43,3 +43,6 @@ val watched : world -> string list
 
 (** The text of a Cesia error, or [None] for another exception. *)
 val message_of_error : exn -> string option
+
+(** The libraries of this Cesia, as [use pkg/x] finds them without a copy: each name and its source. *)
+val libraries : unit -> (string * string) list

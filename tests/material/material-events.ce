@@ -1,5 +1,5 @@
 (** The interactions of the example, through its update function. *)
-use sdl
+use pkg/sdl
 use examples/scene as scene
 
 fonts = "../../examples/fonts/"

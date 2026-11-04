@@ -214,6 +214,7 @@ let () =
     | _ :: "test" :: args -> test args
     | _ :: "do" :: args -> Project.run args
     | [ _; "new"; name ] -> Project.create name
+    | _ :: "pkg" :: args -> Project.pkg args
     | _ :: "doc" :: args -> doc args
     | _ -> usage ()
   with

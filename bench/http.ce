@@ -1,4 +1,4 @@
-use http
+use pkg/http
 
 handle(request) = {Status: 200, Body: "Cesia"}
 http.Serve(handle, port = 19100)

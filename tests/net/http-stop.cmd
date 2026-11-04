@@ -1,4 +1,5 @@
-"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=:18095 http-stop.ce &
+out=$(mktemp)
+"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=:18095 http-stop.ce > "$out" &
 pid=$!
 sleep 0.2
 exec 3<>/dev/tcp/127.0.0.1/18095
@@ -8,3 +9,7 @@ kill -TERM $pid
 head -c 15 <&3
 echo
 wait $pid
+code=$?
+cat "$out"
+rm -f "$out"
+(exit $code)

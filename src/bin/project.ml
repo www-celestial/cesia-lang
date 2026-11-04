@@ -35,6 +35,9 @@ let read_project (table : Toml.table) =
        match e.key with
        | "name" -> Some (text_field "Project" e), native
        | "native" -> title, texts_field "Project" e
+       | "src" ->
+         ignore (texts_field "Project" e);
+         title, native
        | key -> wrong_at e.line (Messages.project_field "Project" key))
     (None, []) table.entries
 
@@ -247,6 +250,39 @@ let run args =
   | _ -> stop 2 Messages.usage
 
 let write path text = Out_channel.with_open_bin path (fun oc -> output_string oc text)
+let mkdir dir = if not (Sys.file_exists dir) then Sys.mkdir dir 0o755
+
+(* A library of Cesia in pkg/ of a project, where use pkg/x finds it before Cesia's own. *)
+let put_library root (name, src) =
+  let dir = Filename.concat (Filename.concat root "pkg") name in
+  mkdir (Filename.dirname dir);
+  mkdir dir;
+  write (Filename.concat dir (name ^ Package.suffix)) src
+
+(* cesia pkg lists the copies that differ from this Cesia's libraries; cesia pkg update puts back the ones named. *)
+let pkg args =
+  if not (Sys.file_exists file_name) then stop 2 Messages.project_no_file;
+  let libraries = Loader.libraries () in
+  match args with
+  | [] ->
+    List.iter
+      (fun (name, src) ->
+         let dir = Filename.concat "pkg" name in
+         let same () =
+           match Package.files dir with
+           | [ path ] -> String.equal (Filename.basename path) (name ^ Package.suffix) && String.equal (In_channel.with_open_bin path In_channel.input_all) src
+           | _ -> false
+         in
+         if Package.is_dir dir && not (same ()) then print_endline ("pkg/" ^ name))
+      libraries
+  | "update" :: (_ :: _ as names) ->
+    List.iter (fun name -> if not (List.mem_assoc name libraries) then stop 1 (Messages.pkg_not_library name)) names;
+    List.iter
+      (fun name ->
+         put_library "." (name, List.assoc name libraries);
+         print_endline (Messages.pkg_updated name))
+      names
+  | _ -> stop 2 Messages.usage
 
 let create name =
   let allowed = function 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' | '-' -> true | _ -> false in
@@ -258,4 +294,6 @@ let create name =
   write (Filename.concat name file_name)
     (Printf.sprintf "[project]\nname = \"%s\"\n\n[tasks.run]\nfile = \"src/main.ce\"\n" name);
   write (Filename.concat code "main.ce") (Printf.sprintf "Print(\"Hello from %s\")\n" name);
+  (* The debugger is a tool of Cesia, not a library a program uses. *)
+  List.iter (fun ((lib, _) as library) -> if lib <> "debugger" then put_library name library) (Loader.libraries ());
   print_endline (Messages.project_created name)

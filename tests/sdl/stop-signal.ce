@@ -1,6 +1,6 @@
 (** Without --watch, a stop signal is a quit event, and it is one no longer once the window is closed. See stop-signal.cmd. *)
 use tests/sdl/probe
-use sdl
+use pkg/sdl
 use sys
 
 defn update(event, state)

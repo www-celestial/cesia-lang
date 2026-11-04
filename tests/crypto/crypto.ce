@@ -1,5 +1,5 @@
-use crypto
-use encode
+use pkg/crypto
+use pkg/encode
 
 defn main()
   s = crypto.Open()?

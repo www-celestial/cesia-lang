@@ -1,6 +1,6 @@
 (** A window under --watch: its state must survive a reload. See tools/reload-test.sh. *)
 use c
-use sdl
+use pkg/sdl
 use sys
 
 version() = 1

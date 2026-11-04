@@ -1,5 +1,5 @@
 (** A chunked response cut anywhere is an Err of the client, never a panic. *)
-use http
+use pkg/http
 use net
 
 crlf = "\r\n"
