@@ -1,0 +1,77 @@
+== add: geometry, and what it uses
+deps/alice/shapes: v1.0.0, src/area, src/geometry.
+deps/bob/units: v1.0.0, src/meters.
+deps/alice/shapes/cesia.toml
+deps/alice/shapes/src/area/area.ce
+deps/alice/shapes/src/geometry/geometry.ce
+deps/bob/units/cesia.toml
+deps/bob/units/src/meters/meters.ce
+
+[deps.shapes]
+from = "file://TOP/repos/alice/shapes"
+version = "v1.0.0"
+take = ["geometry"]
+a square, 4 meters of units v1.0.0
+== a second project asks for units v1.2.0: the highest
+deps/bob/units: v1.2.0, src/meters.
+deps/erin/tools: v1.0.0, src/tool.
+a square, 4 meters of units v1.2.0
+deps/alice/shapes  v1.0.0  as installed
+deps/erin/tools    v1.0.0  as installed
+deps/bob/units     v1.2.0  as installed, for erin/tools
+== install from the cache, after a clone
+deps/alice/shapes: v1.0.0, src/area, src/geometry.
+deps/bob/units: v1.2.0, src/meters.
+deps/erin/tools: v1.0.0, src/tool.
+nothing to do: 0
+== what fails leaves deps/ and cesia.lock as they were
+dan/plain has no cesia.toml at v1.0.0: it is not a Cesia project.
+carol/ring has no package "nope": it has a, b.
+Can't fetch carol/ring at v9.9.9: fatal: Remote branch v9.9.9 not found in upstream origin
+lock unchanged
+deps
+deps/alice
+deps/alice/shapes
+deps/bob
+deps/bob/units
+deps/erin
+deps/erin/tools
+== a ring of uses ends
+deps/carol/ring: v1.0.0, src/a, src/b.
+== a moved tag
+alice/shapes moved its tag v1.0.0: cesia.lock says HASH, and it is HASH now. If that is right: cesia pkg update shapes --to v1.0.0.
+lock unchanged
+no deps/, as before
+deps/alice/shapes: v1.0.0, src/area, src/geometry.
+deps/bob/units: v1.2.0, src/meters.
+deps/carol/ring: v1.0.0, src/a, src/b.
+deps/erin/tools: v1.0.0, src/tool.
+== update to the newest tag
+shapes: v1.0.0 to v1.1.0
+version = "v1.1.0"
+version = "v1.0.0"
+version = "v1.0.0"
+a square of v1.1.0, 9 meters of units v1.2.0
+== move to a fork
+deps/frank/shapes: v1.1.0, src/area, src/geometry.
+deps/alice/shapes: removed.
+src/main.ce: use deps/frank/shapes/
+from = "file://TOP/repos/frank/shapes"
+from = "file://TOP/repos/erin/tools"
+from = "file://TOP/repos/carol/ring"
+use deps/frank/shapes/geometry
+Print(geometry.Describe())
+bob
+carol
+erin
+frank
+a square of v1.1.0, 9 meters of units v1.2.0
+deps/frank/shapes  v1.1.0  as installed
+deps/erin/tools    v1.0.0  as installed
+deps/carol/ring    v1.0.0  as installed
+deps/bob/units     v1.2.0  as installed, for erin/tools
+== newer tags
+shapes  v1.1.0  the newest
+tools   v1.0.0  the newest
+ring    v1.0.0  v1.1.0 is out: cesia pkg update ring
+exit 0

@@ -1,11 +1,13 @@
 (** cesia pkg: the packages of a project. pkg/ holds Cesia's libraries, deps/ the packages of other projects; both are read
     only, and cesia.lock keeps the fingerprint of each of their files, which the loader checks at each use.
-    Run by the binary: cesia pkg, cesia pkg install, cesia pkg update. *)
+    Run by the binary: cesia pkg [install | update | add | move | --check]. git fetches the other projects, once per tag, into
+    a cache, so that a second install needs no network. *)
 use sys
 use cesia
 
 usage = "usage: cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]"
 lockFile = "cesia.lock"
+projectFile = "cesia.toml"
 quote = Char(34)
 backslash = Char(92)
 
@@ -64,7 +66,11 @@ defn lockText(lock)
   lines = ["# Written by cesia pkg, which the loader checks: run cesia pkg install to make pkg/ and deps/ match it.", ""]
   for d in SortBy(it.Label, lock.Deps)
     head = ["[deps.$(d.Label)]", "from = $(quoted(d.From))", "version = $(quoted(d.Version))", "commit = $(quoted(d.Commit))",
-      "packages = $(texts(d.Packages))"]
+      "asked = $(quoted(d.Asked))"]
+    if not IsMissing(d.Take)
+      head = Append("take = $(texts(d.Take))", head)
+    end
+    head = Append("packages = $(texts(d.Packages))", head)
     lines = Concat(Concat(lines, Concat(head, fileLines(d.Files))), [""])
   end
   if not IsMissing(lock.Pkg)
@@ -110,7 +116,7 @@ defn readLock()
       lock.Pkg = {Cesia: GetOr("cesia", "", f), Files: files}
     else if Len(t.Path) == 2 and t.Path[1] == "deps"
       dep = {Label: t.Path[2], From: GetOr("from", "", f), Version: GetOr("version", "", f), Commit: GetOr("commit", "", f),
-        Packages: GetOr("packages", [], f), Files: files}
+        Asked: GetOr("asked", "", f), Take: Get("take", f), Packages: GetOr("packages", [], f), Files: files}
       lock.Deps = Append(dep, lock.Deps)
     end
   end
@@ -149,6 +155,565 @@ defn show(rows)
   end
 end
 
+defn isDir(path)
+  (** Is it a folder, and not a link to one? *)
+  stat = sys.Stat(path)
+  IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
+end
+
+defn codeFiles(dir)
+  (** The names of the code of a package: its .ce files, without its tests, its dot files and its folders. *)
+  listed = sys.List(dir)
+  if IsErr(listed)
+    return []
+  end
+  [n for n in listed.Value if EndsWith(".ce", n) and not EndsWith(".test.ce", n) and not StartsWith(".", n) and not isDir("$dir/$n")]
+end
+
+defn sameFolder(target, wanted)
+  (** Does a folder hold exactly these files, {Path, Source}, and nothing else? *)
+  same = Equal(Sort(walk(target)), Sort(Map(it.Path, wanted)))
+  for f in wanted
+    same = same and UnwrapOr("", sys.Read(f.Path)) == f.Source
+  end
+  same
+end
+
+defn replaceFolder(target, wanted)
+  (** Writes the files {Path, Source} of a folder into a new one beside it, renamed over the old one: a failure leaves the old
+      one whole. *)
+  folder = parent(target)
+  at = if folder == "" "" else "$folder/" end
+  base = Last(Split("/", target))
+  staging = "$(at).new-$base"
+  old = "$(at).old-$base"
+  removeAll(staging)?
+  for f in wanted
+    path = "$staging$(Slice(Len(target) + 1, Len(f.Path), f.Path))"
+    sys.Mkdir(parent(path))?
+    sys.Write(path, f.Source)?
+  end
+  removeAll(old)?
+  if sys.Exists(target)
+    sys.Rename(target, old)?
+  end
+  if folder != ""
+    sys.Mkdir(folder)?
+  end
+  sys.Rename(staging, target)?
+  removeAll(old)
+end
+
+defn fingerprints(wanted)
+  (** The lines of the lock for files {Path, Source}. *)
+  [{Path: f.Path, Fingerprint: cesia.Fingerprint(f.Source)} for f in wanted]
+end
+
+defn depPath(from)
+  (** Where a repository goes under deps/: its owner and name, after its host unless that is github.com, so two authors never
+      mix; for a file:// URL, its last two folders. "github.com/www-celestial/cemacs" gives "www-celestial/cemacs". *)
+  s = from
+  local = StartsWith("file://", s)
+  for scheme in ["https://", "http://", "ssh://", "git://", "file://"]
+    if StartsWith(scheme, s) and Len(s) > Len(scheme)
+      s = Slice(Len(scheme) + 1, Len(s), s)
+    end
+  end
+  if StartsWith("git@", s) and Len(s) > 4
+    s = Replace(":", "/", Slice(5, Len(s), s))
+  end
+  if EndsWith(".git", s) and Len(s) > 4
+    s = Slice(1, Len(s) - 4, s)
+  end
+  parts = Filter(it != "", Split("/", s))
+  if local or Len(parts) < 3
+    Join("/", TakeLast(2, parts))
+  else if parts[1] == "github.com"
+    Join("/", parts[2:end])
+  else
+    Join("/", parts)
+  end
+end
+
+defn gitUrl(from)
+  (** What git fetches: the URL as written, or https:// before a host. *)
+  if Contains("://", from) or StartsWith("git@", from) from else "https://$from" end
+end
+
+defn splitDep(u)
+  (** {Path, Name} of a use of deps/: deps/www-celestial/cemacs/folders gives www-celestial/cemacs and folders; a first part
+      with a dot is a host. *)
+  parts = Split("/", u)
+  depth = if Len(parts) > 1 and Contains(".", parts[2]) 4 else 3 end
+  if Len(parts) <= depth
+    return missing
+  end
+  {Path: Join("/", parts[2:depth]), Name: Join("/", parts[depth + 1:end])}
+end
+
+defn git(args)
+  (** Runs git: an Ok of its output, or an Err of the last line of its errors. *)
+  r = sys.Run("git", args = args)?
+  if r.Code == 0
+    return Ok(r.Out)
+  end
+  said = Lines(Trim(r.Err))
+  Err(if Len(said) == 0 "git ended with $(r.Code)" else Last(said) end)
+end
+
+defn cacheDir()
+  (** Where the clones are kept: $XDG_CACHE_HOME/cesia/git, or ~/.cache/cesia/git. *)
+  base = sys.Env("XDG_CACHE_HOME")
+  if IsMissing(base) or base == ""
+    base = "$(sys.Env("HOME"))/.cache"
+  end
+  "$base/cesia/git"
+end
+
+defn fetch(path, from, version)
+  (** A project at a tag, from the cache, cloned there the first time: {Path, From, Version, Dir, Commit, Src, Deps}. *)
+  dir = "$(cacheDir())/$path/$version"
+  if not sys.Exists("$dir/.git")
+    staging = "$dir.new"
+    removeAll(staging)?
+    sys.Mkdir(parent(dir))?
+    cloned = git(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", version, gitUrl(from), staging])
+    if IsErr(cloned)
+      removeAll(staging)
+      return Err("Can't fetch $path at $version: $(cloned.Error)")
+    end
+    removeAll(dir)?
+    sys.Rename(staging, dir)?
+  end
+  commit = Trim(git(["-C", dir, "rev-parse", "HEAD"])?)
+  if not sys.Exists("$dir/$projectFile")
+    return Err("$path has no cesia.toml at $version: it is not a Cesia project.")
+  end
+  src = ["src"]
+  deps = []
+  needed = missing
+  for t in readToml("$dir/$projectFile")?
+    f = fields(t)
+    if Equal(t.Path, ["project"])
+      src = GetOr("src", ["src"], f)
+      needed = Get("cesia", f)
+    else if Len(t.Path) == 2 and t.Path[1] == "deps"
+      theirs = GetOr("from", "", f)
+      deps = Append({Label: t.Path[2], From: theirs, Version: GetOr("version", "", f), Path: depPath(theirs)}, deps)
+    end
+  end
+  if IsText(needed) and cesia.Compare(cesia.Version(), needed) < 0
+    return Err("$path $version needs Cesia $needed or later, and this is $(cesia.Version()): run cesia upgrade.")
+  end
+  Ok({Path: path, From: from, Version: version, Dir: dir, Commit: commit, Src: src, Deps: deps})
+end
+
+defn packageDir(p, name)
+  (** Where a package of a project is, from its root, as its own uses find it: in the first source folder that has it, or
+      else at the root; missing if it isn't there. *)
+  for s in p.Src
+    rel = if s == "." name else "$s/$name" end
+    if isDir("$(p.Dir)/$rel")
+      return rel
+    end
+  end
+  if isDir("$(p.Dir)/$name") name else missing end
+end
+
+defn packagesUnder(base, prefix)
+  (** The folders under a source folder that hold code, by the names a use gives them: "folders", "geometry/shapes". *)
+  here = if prefix == "" base else "$base/$prefix" end
+  listed = sys.List(here)
+  found = []
+  if IsOk(listed)
+    for name in listed.Value
+      rel = if prefix == "" name else "$prefix/$name" end
+      if not StartsWith(".", name) and name != "_build" and isDir("$here/$name")
+        if Len(codeFiles("$base/$rel")) > 0
+          found = Append(rel, found)
+        end
+        found = Concat(found, packagesUnder(base, rel))
+      end
+    end
+  end
+  found
+end
+
+defn allPackages(p)
+  (** Every package of the source folders of a project. *)
+  Unique(FlatMap(s -> packagesUnder("$(p.Dir)/$s", ""), p.Src))
+end
+
+defn resolve(wanted)
+  (** What to install for the [deps] of cesia.toml: each package taken (all of a project without take), then what their uses
+      need, to the end, each package once; a use of deps/ brings that project at the version its own cesia.toml asks, flat, one
+      version per repository, the highest asked for. Gives {Projects, Brought, Asks}: by path, the project, its package folders,
+      and who asked for it. *)
+  versions = Dict()
+  for d in wanted
+    path = depPath(d.From)
+    if Has(path, versions)
+      return Err("cesia.toml takes $path twice: as $(versions[path].Label) and as $(d.Label).")
+    end
+    versions[path] = {Version: d.Version, From: d.From, Label: d.Label, Asked: projectFile, Take: d.Take}
+  end
+  while true
+    raised = false
+    projects = Dict()
+    brought = Dict()
+    queue = []
+    for d in wanted
+      path = depPath(d.From)
+      p = fetch(path, d.From, versions[path].Version)?
+      projects[path] = p
+      brought[path] = []
+      names = if IsMissing(d.Take) allPackages(p) else Filter(not StartsWith("pkg/", it), d.Take) end
+      for n in names
+        if IsMissing(packageDir(p, n))
+          return Err("$path has no package $quote$n$quote: it has $(Join(", ", allPackages(p))).")
+        end
+        queue = Append({Path: path, Name: n}, queue)
+      end
+    end
+    while Len(queue) > 0 and not raised
+      item = First(queue)
+      queue = Rest(queue)
+      p = projects[item.Path]
+      dir = packageDir(p, item.Name)
+      have = GetOr(item.Path, [], brought)
+      if not IsMissing(dir) and not (dir in have)
+        brought[item.Path] = Append(dir, have)
+        for name in codeFiles("$(p.Dir)/$dir")
+          uses = cesia.Uses(sys.Read("$(p.Dir)/$dir/$name")?)
+          if IsErr(uses)
+            return Err("$(item.Path)/$dir/$name:$(uses.Error.Line): $(uses.Error.Message)")
+          end
+          for u in uses.Value
+            target = if StartsWith("deps/", u) splitDep(u) else missing end
+            if StartsWith("deps/", u) and IsMissing(target)
+              return Err("$(item.Path)/$dir/$name uses $u, which names no package.")
+            else if not IsMissing(target)
+              asked = Filter(it.Path == target.Path, p.Deps)
+              if Len(asked) == 0
+                return Err("$(item.Path)/$dir/$name uses $u, and the cesia.toml of $(item.Path) has no [deps] for $(target.Path).")
+              end
+              known = Get(target.Path, versions)
+              if IsMissing(known) or cesia.Compare(asked[1].Version, known.Version) > 0
+                versions[target.Path] = {Version: asked[1].Version, From: asked[1].From, Label: asked[1].Label, Asked: item.Path,
+                  Take: missing}
+                raised = true
+              else
+                if not Has(target.Path, projects)
+                  projects[target.Path] = fetch(target.Path, known.From, known.Version)?
+                end
+                queue = Append({Path: target.Path, Name: target.Name}, queue)
+              end
+            else if not StartsWith("pkg/", u)
+              queue = Append({Path: item.Path, Name: u}, queue)
+            end
+          end
+        end
+      end
+    end
+    if not raised
+      return Ok({Projects: projects, Brought: brought, Asks: versions})
+    end
+  end
+end
+
+defn readDeps(text)
+  (** The [deps] tables of cesia.toml: {Label, From, Version, Take, Lines}, Take missing without take, Lines the line of each
+      key. *)
+  tables = cesia.Toml(text)
+  if IsErr(tables)
+    return Err("cesia.toml:$(tables.Error.Line): $(tables.Error.Message)")
+  end
+  deps = []
+  for t in tables.Value
+    if Len(t.Path) == 2 and t.Path[1] == "deps"
+      f = fields(t)
+      if not (IsText(Get("from", f)) and IsText(Get("version", f)))
+        return Err("cesia.toml:$(t.Line): [deps.$(t.Path[2])] needs from and version.")
+      end
+      lines = Dict()
+      for e in t.Entries
+        lines[e.Key] = e.Line
+      end
+      deps = Append({Label: t.Path[2], From: f["from"], Version: f["version"], Take: Get("take", f), Lines: lines, Line: t.Line}, deps)
+    end
+  end
+  Ok(deps)
+end
+
+defn setLine(text, n, line)
+  (** A text with its line n replaced. *)
+  lines = Split("\n", text)
+  lines[n] = line
+  Join("\n", lines)
+end
+
+defn lockedAs(lock, d)
+  (** The entry of the lock for a dependency of cesia.toml, at the same repository and version, or missing. *)
+  found = Filter(l -> depPath(l.From) == depPath(d.From) and l.Version == d.Version, lock.Deps)
+  if Len(found) == 0 missing else found[1] end
+end
+
+defn asInstalled(lock, wanted)
+  (** Is deps/ already what cesia.toml and the lock say? Then install needs neither git nor the network. *)
+  if Len(wanted) != Len(Filter(it.Asked == projectFile, lock.Deps))
+    return false
+  end
+  for d in wanted
+    l = lockedAs(lock, d)
+    if IsMissing(l) or l.Asked != projectFile or not Equal(l.Take, d.Take)
+      return false
+    end
+  end
+  All([stateOf("deps/$(depPath(l.From))", l.Files) == "as installed" for l in lock.Deps])
+end
+
+defn installDeps(lock, resolved, fresh)
+  (** Writes deps/ for what resolve found, and gives the lock with its [deps]. A tag that moved since the lock stops it, unless
+      its label is fresh (add, update, move). *)
+  entries = []
+  used = Dict()
+  for path in Sort(Keys(resolved.Brought))
+    p = resolved.Projects[path]
+    ask = resolved.Asks[path]
+    label = ask.Label
+    if Has(label, used)
+      label = Replace(".", "-", Replace("/", "-", path))
+    end
+    used[label] = true
+    before = Filter(l -> depPath(l.From) == path and l.Version == p.Version, lock.Deps)
+    if Len(before) > 0 and before[1].Commit != "" and before[1].Commit != p.Commit and not (label in fresh)
+      return Err("$path moved its tag $(p.Version): cesia.lock says $(Slice(1, 12, before[1].Commit)), and it is $(Slice(1, 12, p.Commit)) now. If that is right: cesia pkg update $label --to $(p.Version).")
+    end
+    packages = Sort(resolved.Brought[path])
+    files = Concat([projectFile], FlatMap(dir -> ["$dir/$n" for n in codeFiles("$(p.Dir)/$dir")], packages))
+    target = "deps/$path"
+    wanted = [{Path: "$target/$rel", Source: sys.Read("$(p.Dir)/$rel")?} for rel in files]
+    if not sameFolder(target, wanted)
+      replaceFolder(target, wanted)?
+      Print("deps/$path: $(p.Version), $(Join(", ", packages)).")
+    end
+    entries = Append({Label: label, From: p.From, Version: p.Version, Commit: p.Commit, Asked: ask.Asked, Take: ask.Take, Packages: packages,
+      Files: fingerprints(wanted)}, entries)
+  end
+  for d in lock.Deps
+    path = depPath(d.From)
+    if not Has(path, resolved.Brought) and sys.Exists("deps/$path")
+      removeAll("deps/$path")?
+      Print("deps/$path: removed.")
+      owner = parent("deps/$path")
+      if owner != "deps" and Len(UnwrapOr(["?"], sys.List(owner))) == 0
+        sys.Remove(owner)?
+      end
+    end
+  end
+  lock.Deps = entries
+  Ok(lock)
+end
+
+defn libraryFiles()
+  (** The libraries of this Cesia as pkg/ holds them: pkg/rope/rope.ce. *)
+  [{Path: "pkg/$(l.Name)/$(l.Name).ce", Source: l.Source} for l in cesia.Libraries()]
+end
+
+defn installPkg(lock)
+  (** Makes pkg/ this Cesia's libraries, when the project has a pkg/: written only if it differs. Gives the lock with its
+      [pkg]. *)
+  if IsMissing(lock.Pkg) and not sys.Exists("pkg")
+    return Ok(lock)
+  end
+  wanted = libraryFiles()
+  if not sameFolder("pkg", wanted)
+    replaceFolder("pkg", wanted)?
+    Print("pkg/ holds the libraries of Cesia $(cesia.Version()).")
+  end
+  lock.Pkg = {Cesia: cesia.Version(), Files: fingerprints(wanted)}
+  Ok(lock)
+end
+
+defn installWith(lock, wanted, fresh)
+  (** Makes pkg/ and deps/ what these dependencies need, and gives the new lock, not yet written. Everything is fetched and
+      read before anything is written. *)
+  if asInstalled(lock, wanted) and Len(fresh) == 0
+    return installPkg(lock)
+  end
+  resolved = resolve(wanted)?
+  done = installPkg(lock)?
+  installDeps(done, resolved, fresh)
+end
+
+defn install(lock)
+  (** cesia pkg install: makes pkg/ and deps/ what cesia.toml and cesia.lock say, then writes the lock. *)
+  wanted = readDeps(sys.Read(projectFile)?)?
+  writeLock(installWith(lock, wanted, [])?)
+end
+
+defn label(from)
+  (** The name of a new [deps] table: the name of the repository, with - for what a bare key can't hold. *)
+  name = Last(Split("/", depPath(from)))
+  Join("", [if Contains(c, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") c else "-" end for c in Chars(name)])
+end
+
+defn add(lock, args)
+  (** cesia pkg add URL@TAG [package...]: a new [deps] table at the end of cesia.toml, then the install. *)
+  parts = Split("@", args[2])
+  if Len(parts) < 2 or Last(parts) == ""
+    return Err("cesia pkg add needs a tag: cesia pkg add github.com/x/y@v1.2.0.")
+  end
+  from = Join("@", parts[1:Len(parts) - 1])
+  version = Last(parts)
+  take = args[3:end]
+  name = label(from)
+  text = sys.Read(projectFile)?
+  wanted = readDeps(text)?
+  for d in wanted
+    if d.Label == name
+      return Err("cesia.toml has [deps.$name] already: cesia pkg update $name --to $version changes its version.")
+    end
+    if depPath(d.From) == depPath(from)
+      return Err("cesia.toml takes $(depPath(from)) already, as $(d.Label).")
+    end
+  end
+  table = ["[deps.$name]", "from = $(quoted(from))", "version = $(quoted(version))"]
+  if Len(take) > 0
+    table = Append("take = $(texts(take))", table)
+  end
+  wanted = Append({Label: name, From: from, Version: version, Take: if Len(take) == 0 missing else take end}, wanted)
+  done = installWith(lock, wanted, [name])?
+  start = if text == "" or EndsWith("\n", text) text else "$text\n" end
+  sys.Write(projectFile, "$start$(if start == "" "" else "\n" end)$(Join("\n", table))\n")?
+  writeLock(done)
+end
+
+defn newestTag(from)
+  (** The highest tag of a repository that is a version, through git ls-remote. *)
+  out = git(["ls-remote", "--tags", "--refs", gitUrl(from)])
+  if IsErr(out)
+    return Err("Can't read the tags of $(depPath(from)): $(out.Error)")
+  end
+  tags = [Replace("refs/tags/", "", Last(Split(Char(9), line))) for line in Lines(out.Value)]
+  versions = Filter(cesia.IsVersion, tags)
+  if Len(versions) == 0
+    return Err("$(depPath(from)) has no tag that is a version.")
+  end
+  Ok(Reduce((best, v) -> if cesia.Compare(v, best) > 0 v else best end, versions[1], versions))
+end
+
+defn update(lock, args)
+  (** cesia pkg update [label] [--to tag]: to the newest tag, or that one, and pkg/ to this Cesia. *)
+  rest = args[2:end]
+  to = missing
+  if Len(rest) >= 2 and rest[Len(rest) - 1] == "--to"
+    to = Last(rest)
+    rest = rest[1:Len(rest) - 2]
+  end
+  if Len(rest) > 1 or (Len(rest) == 0 and not IsMissing(to))
+    return Err(if Len(rest) > 1 usage else "--to needs a label: cesia pkg update cemacs --to v0.4.0." end)
+  end
+  text = sys.Read(projectFile)?
+  wanted = readDeps(text)?
+  names = Map(it.Label, wanted)
+  chosen = if Len(rest) == 0 names else rest end
+  if Len(rest) == 1 and not (rest[1] in names)
+    return Err("cesia.toml has no [deps.$(rest[1])]: it has $(if Len(names) == 0 "none" else Join(", ", names) end).")
+  end
+  moved = []
+  for d in wanted
+    if d.Label in chosen
+      newest = if IsMissing(to) newestTag(d.From)? else to end
+      if newest != d.Version
+        text = setLine(text, d.Lines["version"], "version = $(quoted(newest))")
+        Print("$(d.Label): $(d.Version) to $newest")
+      end
+      d.Version = newest
+    end
+    moved = Append(d, moved)
+  end
+  done = installWith(lock, moved, chosen)?
+  sys.Write(projectFile, text)?
+  writeLock(done)
+end
+
+defn sourceFiles(dir)
+  (** The .ce files of the project, outside pkg/, deps/, _build and dot folders. *)
+  found = []
+  listed = sys.List(dir)
+  if IsOk(listed)
+    for name in listed.Value
+      path = if dir == "." name else "$dir/$name" end
+      if StartsWith(".", name) or (dir == "." and (name == "pkg" or name == "deps" or name == "_build"))
+        found = found
+      else if isDir(path)
+        found = Concat(found, sourceFiles(path))
+      else if EndsWith(".ce", name)
+        found = Append(path, found)
+      end
+    end
+  end
+  found
+end
+
+defn move(lock, args)
+  (** cesia pkg move OLD NEW: the dependency at deps/OLD comes from NEW, a fork; every use deps/OLD/ of the project says NEW. *)
+  old = args[2]
+  new = args[3]
+  text = sys.Read(projectFile)?
+  wanted = readDeps(text)?
+  found = Filter(w -> depPath(w.From) == old, wanted)
+  if Len(found) == 0
+    return Err("cesia.toml takes nothing from $old: it takes $(Join(", ", Map(d -> depPath(d.From), wanted))).")
+  end
+  d = found[1]
+  from = if EndsWith("$old.git", d.From)
+    "$(Slice(1, Len(d.From) - Len(old) - 4, d.From))$new.git"
+  else if EndsWith(old, d.From)
+    "$(Slice(1, Len(d.From) - Len(old), d.From))$new"
+  else
+    new
+  end
+  text = setLine(text, d.Lines["from"], "from = $(quoted(from))")
+  moved = Map(x -> if x.Label == d.Label {Label: x.Label, From: from, Version: x.Version, Take: x.Take, Lines: x.Lines, Line: x.Line} else x end, wanted)
+  done = installWith(lock, moved, [d.Label])?
+  sys.Write(projectFile, text)?
+  for file in sourceFiles(".")
+    source = sys.Read(file)?
+    lines = Split("\n", source)
+    for i in 1:Len(lines)
+      if StartsWith("use deps/$old/", Trim(lines[i]))
+        lines[i] = Replace("deps/$old/", "deps/$new/", lines[i])
+      end
+    end
+    changed = Join("\n", lines)
+    if changed != source
+      sys.Write(file, changed)?
+      Print("$file: use deps/$new/")
+    end
+  end
+  writeLock(done)
+end
+
+defn check()
+  (** cesia pkg --check: for each dependency, whether a newer tag is out. *)
+  rows = []
+  for d in readDeps(sys.Read(projectFile)?)?
+    newest = newestTag(d.From)
+    state = if IsErr(newest)
+      newest.Error
+    else if cesia.Compare(newest.Value, d.Version) > 0
+      "$(newest.Value) is out: cesia pkg update $(d.Label)"
+    else
+      "the newest"
+    end
+    rows = Append([d.Label, d.Version, state], rows)
+  end
+  show(rows)
+  Ok(missing)
+end
+
 defn listing(lock)
   (** cesia pkg: each package, who gives it, its version, and whether it is as installed. *)
   rows = []
@@ -166,62 +731,41 @@ defn listing(lock)
   else if sys.Exists("pkg")
     rows = Append(["pkg", "", "not installed"], rows)
   end
+  for d in readDeps(sys.Read(projectFile)?)?
+    l = lockedAs(lock, d)
+    path = "deps/$(depPath(d.From))"
+    rows = Append([path, d.Version, if IsMissing(l) "not installed" else stateOf(path, l.Files) end], rows)
+  end
+  for l in lock.Deps
+    if l.Asked != projectFile
+      path = "deps/$(depPath(l.From))"
+      rows = Append([path, l.Version, "$(stateOf(path, l.Files)), for $(l.Asked)"], rows)
+    end
+  end
   show(rows)
   Ok(missing)
 end
 
-defn libraryFiles()
-  (** The libraries of this Cesia as pkg/ holds them: pkg/rope/rope.ce. *)
-  [{Path: "pkg/$(l.Name)/$(l.Name).ce", Source: l.Source} for l in cesia.Libraries()]
-end
-
-defn installPkg(lock)
-  (** Makes pkg/ this Cesia's libraries, when the project has a pkg/: written only if it differs, into a new folder renamed
-      over the old one. Gives the lock with its [pkg]. *)
-  if IsMissing(lock.Pkg) and not sys.Exists("pkg")
-    return Ok(lock)
-  end
-  wanted = libraryFiles()
-  same = Equal(Sort(walk("pkg")), Sort(Map(it.Path, wanted)))
-  for f in wanted
-    same = same and UnwrapOr("", sys.Read(f.Path)) == f.Source
-  end
-  if not same
-    removeAll(".pkg-new")?
-    for f in wanted
-      path = ".pkg-new/$(Join("/", Split("/", f.Path)[2:end]))"
-      sys.Mkdir(parent(path))?
-      sys.Write(path, f.Source)?
-    end
-    removeAll(".pkg-old")?
-    if sys.Exists("pkg")
-      sys.Rename("pkg", ".pkg-old")?
-    end
-    sys.Rename(".pkg-new", "pkg")?
-    removeAll(".pkg-old")?
-    Print("pkg/ holds the libraries of Cesia $(cesia.Version()).")
-  end
-  lock.Pkg = {Cesia: cesia.Version(), Files: [{Path: f.Path, Fingerprint: cesia.Fingerprint(f.Source)} for f in wanted]}
-  Ok(lock)
-end
-
-defn install(lock)
-  (** cesia pkg install: makes pkg/ and deps/ what cesia.toml and cesia.lock say, then writes the lock. *)
-  done = installPkg(lock)?
-  writeLock(done)
-end
-
 defn run(args)
   (** A command of cesia pkg. *)
-  if not sys.Exists("cesia.toml")
+  if not sys.Exists(projectFile)
     return Err("No cesia.toml in this folder.")
   end
   lock = readLock()?
   n = Len(args)
+  word = if n == 0 "" else args[1] end
   if n == 0
     listing(lock)
-  else if n == 1 and (args[1] == "install" or args[1] == "update")
+  else if n == 1 and word == "install"
     install(lock)
+  else if word == "update"
+    update(lock, args)
+  else if word == "add" and n >= 2
+    add(lock, args)
+  else if word == "move" and n == 3
+    move(lock, args)
+  else if n == 1 and word == "--check"
+    check()
   else
     Err(usage)
   end
