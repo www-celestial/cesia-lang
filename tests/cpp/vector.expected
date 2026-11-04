@@ -1,5 +1,5 @@
 2 7
-Err(Error = "C++: vector::_M_range_check: __n (which is 9) >= this->size() (which is 2)")
+Err(Error = true)
 6
 HELLO
 Ok(Value = missing)

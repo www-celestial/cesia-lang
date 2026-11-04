@@ -2,4 +2,4 @@
 pid=$!
 sleep 0.2
 kill -TERM $pid
-wait $pid
+wait $pid 2> /dev/null
