@@ -1,0 +1,167 @@
+(** Return types: written after the parameters, checked at each way out of the function. *)
+use tests/lang/mods/shapes
+
+struct Rect { Width, Height }
+struct Pt { X, Y = 0 }
+
+stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and its message. *)
+  Err(e) -> "$(e.Kind): $(e.Message)"
+  Ok(v) -> v
+end
+
+callWith(f, x) = f(x)
+
+Cube(x Number) Number = x * x * x
+
+defn Half(x Float) Float
+  x / 2
+end
+
+(r Rect) Area() Number = r.Width * r.Height
+
+defn Rect.Square(side Number) Rect
+  Rect(side, side)
+end
+
+defn (r Rect) Scaled(by Number) Rect
+  Rect(r.Width * by, r.Height * by)
+end
+
+Rect.Unit() Rect = Rect(1, 1)
+
+isTypedResult() = Cube(2) == 8 and IsInt(Cube(2)) and Cube(0.5) == 0.125
+isBlockResult() = Half(3) == 1.5 and Half(1.0) == 0.5 and callWith(Half, 5) == 2.5
+isMethodResult() = Rect.Square(2).Area() == 4 and Rect(1, 2).Scaled(3).Area() == 18 and Rect.Unit().Area() == 1
+
+defn Half2(x) Float
+  (** An Int becomes a Float for a Float, also from a version that only knows Ints. *)
+  x / 2
+end
+twice(x) Float = x * 2
+maybeTwice(x) Float? = if x > 0 x * 2 else missing end
+
+defn twiceEarly(x) Float
+  if x > 0
+    return x * 2
+  end
+  0.5
+end
+
+isIntResultBecomesFloat() = IsFloat(Half2(3)) and IsFloat(twice(2)) and Text(twice(2)) == "4.0" and IsFloat(twice(2) + 1) and IsFloat(callWith(twice, 2)) and IsFloat(maybeTwice(1)) and IsFloat(twiceEarly(2)) and Text(twiceEarly(2)) == "4.0"
+
+(** With ?, a function can give missing: also by its end, or by a return with no value. *)
+maybeName(x) Text? = if x > 0 "a" else missing end
+
+defn firstBig(xs Array) Int?
+  for x in xs
+    if x > 9
+      return x
+    end
+  end
+end
+
+defn quiet(x) Text?
+  if x > 0
+    return
+  end
+  "loud"
+end
+
+defn noValue(x) Int
+  if x > 0
+    return
+  end
+end
+
+isOptionalResult() = IsMissing(maybeName(0)) and maybeName(1) == "a" and firstBig([1, 20]) == 20 and IsMissing(firstBig([1])) and IsMissing(quiet(1)) and quiet(0) == "loud"
+isMissingResultRefused() = stop(() -> noValue(1)) == "type: noValue: the result must be an Int, found missing." and stop(() -> noValue(0)) == "type: noValue: the result must be an Int, found missing."
+
+defn early(x) Int
+  if x > 0
+    return "big"
+  end
+  0
+end
+
+isEarlyReturnChecked() = early(0) == 0 and stop(() -> early(1)) == "type: early: the result must be an Int, found a Text."
+isWrongResult() = stop(() -> Half2([1])) == "type: Half2: the result must be a Float, found an Array." and stop(() -> callWith(Half2, [1])) == "type: Half2: the result must be a Float, found an Array."
+
+defn count(xs) Int
+  (** A return inside a lambda belongs to the lambda. *)
+  names = Map(x -> "a", xs)
+  label = defn (x)
+    if x > 1
+      return "big"
+    end
+    "small"
+  end
+  Len(names) + Len(Map(label, xs))
+end
+
+isLambdaReturnNotChecked() = count([1, 2]) == 4
+
+defn local()
+  (** An anonymous defn and a nested one have a return type the same way. *)
+  f = defn (x) Int
+    "a"
+  end
+  defn inner(x) Text
+    x
+  end
+  [stop(() -> f(1)), stop(() -> inner(1)), inner("b")]
+end
+
+isAnonymousResult() = Equal(local(), ["type: <anonymous>: the result must be an Int, found a Text.", "type: inner: the result must be a Text, found an Int.", "b"])
+
+defn countdown(n) Text
+  (** A function that calls itself in tail position checks only its last result. *)
+  if n == 0
+    "done"
+  else
+    countdown(n - 1)
+  end
+end
+down(n Int) Int = if n == 0 0 else down(n - 1) end
+wrongDown(n) Int = if n == 0 "done" else wrongDown(n - 1) end
+
+isSelfTailResult() = countdown(100000) == "done" and down(100000) == 0 and stop(() -> wrongDown(3)) == "type: wrongDown: the result must be an Int, found a Text."
+
+outside() shapes.Rect = shapes.MakeRect(2)   (** A type of another package, and a struct with its package. *)
+mixedUp() Rect = shapes.MakeRect(2)
+
+isQualifiedResult() = outside().Side == 2 and stop(mixedUp) == "type: mixedUp: the result must be a returns.Rect, found a shapes.Rect."
+
+(** An Err that ? passes on leaves the function whatever its type. *)
+positive(x) = if x > 0 Ok(x) else Err("negative") end
+
+defn checked(x) Int
+  y = positive(x)?
+  y
+end
+
+isQuestionPassesTheErr() = checked(2) == 2 and Equal(checked(-1), Err("negative"))
+
+interface Shape
+  (** In an interface, a return type documents the method: meeting it counts only the methods and their parameters. *)
+  Area() Number
+end
+interface Sized { Area() Number }
+
+struct Square { Side }
+(s Square) Area() = s.Side * s.Side
+struct Label { Words }
+(l Label) Area() = l.Words
+
+measured(s Shape) = s.Area()
+sized(s Sized) = s.Area()
+
+isInterfaceReturn() = measured(Square(3)) == 9 and sized(Square(2)) == 4 and measured(Label("x")) == "x"
+
+defn oneLine()
+  (** On one line, a body that starts with a call stays a body. *)
+  f = defn (p Pt) Text(p.X) end
+  g = defn (p Pt) Cube(p.X) end
+  [f(Pt(1)), g(Pt(2))]
+end
+
+isOneLineBodyStays() = Equal(oneLine(), ["1", 8])

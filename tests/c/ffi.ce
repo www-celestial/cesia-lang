@@ -1,4 +1,4 @@
--- More than 6 arguments, structures by value, variadic functions and callbacks.
+(** More than 6 arguments, structures by value, variadic functions and callbacks. *)
 use c
 
 path = Args[1]
@@ -13,13 +13,13 @@ defn fails(f)
   end
 end
 
--- More than 6 arguments.
+(* More than 6 arguments. *)
 sum8 = ok(c.Fn("sum_eight", ["i64", "i32", "i64", "i32", "i64", "i32", "i64", "i32"], "i64", lib))
 Print(sum8(1, 2, 3, 4, 5, 6, 7, 8))
 sum10 = ok(c.Fn("sum_ten", Fill("f64", 10), "f64", lib))
 Print(sum10(1, 2, 3, 4, 5, 6, 7, 8, 9, 10))
 
--- Structures by value.
+(* Structures by value. *)
 point = c.Struct(["f32", "f32"])
 Print(c.Size(point), c.Offset(2, point))
 add = ok(c.Fn("point_add", [point, point], point, lib))
@@ -47,13 +47,13 @@ mix = ok(c.Fn("mixed_make", ["i8", "f64"], mixed, lib))
 read = ok(c.Fn("mixed_read", [mixed], "f64", lib))
 Print(read(mix(3, 0.25)))
 
--- Variadic functions: the types of one call are given when binding.
+(* Variadic functions: the types of one call are given when binding. *)
 ints = ok(c.Variadic("sum_ints", ["i32"], ["i32", "i32", "i32"], "i64", lib))
 Print(ints(3, 10, 20, 30))
 floats = ok(c.Variadic("sum_doubles", ["i32"], ["f64", "f64"], "f64", lib))
 Print(floats(2, 1.5, 2.5))
 
--- Callbacks.
+(* Callbacks. *)
 twice = ok(c.Fn("apply_twice", ["callback", "i64"], "i64", lib))
 Print(twice(c.Callback(x -> x * 3, ["i64"], "i64"), 2))
 floaty = ok(c.Fn("apply_float", ["callback", "f64"], "f64", lib))
@@ -71,14 +71,14 @@ end
 sorter(items, 5, c.Callback((x, y) -> x - y, ["i32", "i32"], "i32"))
 Print([c.Get("i32", (k - 1) * 4, items) for k in 1:5])
 
--- A callback kept by C and called later, from a function that says so.
+(* A callback kept by C and called later, from a function that says so. *)
 keep = ok(c.Fn("keep_callback", ["callback"], "void", lib))
 keep(c.Callback(x -> x + 1, ["i64"], "i64"))
 kept = ok(c.Fn("call_kept", ["i64"], "i64", lib, callsBack = true))
 Print(kept(41))
 
 
--- A panic in a callback comes back to the caller.
+(** A panic in a callback comes back to the caller. *)
 Print(fails(() -> twice(c.Callback(x -> Panic("from the callback"), ["i64"], "i64"), 1)))
 Print(fails(() -> twice(c.Callback(x -> "text", ["i64"], "i64"), 1)))
 Print(fails(() -> add(a, 5)))
@@ -89,14 +89,14 @@ Print(fails(() -> c.Struct([])))
 Print(fails(() -> c.Struct(["text"])))
 Print(fails(() -> c.Offset(9, point)))
 
--- A callback that waits for another fiber runs the scheduler inside the C call.
+(* A callback that waits for another fiber runs the scheduler inside the C call. *)
 task = Spawn(() -> 7)
 Print(twice(c.Callback(x -> x + Unwrap(Wait(task)), ["i64"], "i64"), 1))
 
--- A panic deep in a callback leaves the next ones working.
+(** A panic deep in a callback leaves the next ones working. *)
 Print(fails(() -> twice(c.Callback(x -> Panic("deep"), ["i64"], "i64"), 1)))
 Print(twice(c.Callback(x -> x + 1, ["i64"], "i64"), 1))
--- A callback that frees a block C is reading: it stays alive until the call ends.
+(* A callback that frees a block C is reading: it stays alive until the call ends. *)
 sorted = c.Alloc(20)
 for k in 1:5
   c.Set("i32", (k - 1) * 4, 6 - k, sorted)

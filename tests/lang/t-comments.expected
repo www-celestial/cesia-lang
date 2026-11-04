@@ -7,4 +7,6 @@
 (* a text *)
 11
 3
+a -- b (* c *) d
+7
 exit 0

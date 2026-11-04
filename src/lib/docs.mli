@@ -1,20 +1,11 @@
 (** The documentation of the language, read from the sources when it is asked for, so that it costs nothing at start. A
-    comment placed just above a definition documents it. Natives have no source: [std/natives.ce] holds their comments, each
-    after a line [--- signature]. *)
+    [(** *)] documents what it belongs to: the definition whose body it opens, or the one-line definition at the end of whose line
+    or just above which it is; a field, a parameter or the result at the end of its line. Natives have no source:
+    [std/natives.ce] holds a [(** *)] for each, whose first line is its signature. *)
 open Types
 
-(** The lines of a source, with its comment blocks read: a [(** ... *)] at the start of a line becomes [--] lines, and another
-    block empty lines. They keep their numbers. *)
-val lines : string -> string list
-
-(** A comment line: the text after [--]. *)
-val comment_text : string -> string option
-
-(** A top-level definition: [defn], [struct], [name(...) = ...], or the short form of a method. *)
-val is_definition : string -> bool
-
-(** The signature in a line [--- signature] of comments for a native. *)
-val native_header : string -> string option
+(** The lines of a documentation that are examples, indented under its text, each with its line number. *)
+val examples : string -> (int * string) list
 
 (** [Doc] and [DocNames]. *)
 val natives : (string * t) list

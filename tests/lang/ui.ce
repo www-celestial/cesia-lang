@@ -172,7 +172,7 @@ defn isHintIsFaint()
   hinted[1].Color == ui.Dark.Faint and plain[1].Color == ui.Dark.Ink
 end
 
--- A slider stays inside its rectangle, whatever its value: its tick goes to both ends and follows the round corners.
+(* A slider stays inside its rectangle, whatever its value: its tick goes to both ends and follows the round corners. *)
 zone = {X: 100, Y: 50, Width: 200, Height: 22}
 
 defn sliderInside(value)
@@ -182,7 +182,7 @@ end
 
 tickOf(value) = Filter(it.Kind == "rect" and it.Color == ui.Dark.Accent, ui.Slider(value, zone, look))[1]
 
--- The commands of the filled part, of any shape.
+(** The commands of the filled part, of any shape. *)
 fillOf(value) = Filter((it.Kind == "rect" or it.Kind == "box") and it.Color == ui.Dark.Fill, ui.Slider(value, zone, look))
 
 isSliderInsideAtZero() = sliderInside(0.0)

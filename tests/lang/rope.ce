@@ -24,8 +24,8 @@ defn kept()
   rope.Text(r)
 end
 
--- Random edits against a plain text.
 defn isAgainstAModel()
+  (** Random edits against a plain text. *)
   r = rope.Of(big)
   model = big
   dice = num.Uniform(3000, num.Seeded(5)).Values
@@ -45,7 +45,7 @@ defn isAgainstAModel()
       after = if to == n "" else ByteSlice(to + 1, n, model) end
       model = "$before$after"
     end
-    -- The count of lines only moves by steps, so a drift stays visible at the next check.
+    (* The count of lines only moves by steps, so a drift stays visible at the next check. *)
     if r.Size != ByteLength(model) or (Mod(k, 50) == 0 and r.Lines != Len(Split("\n", model)) - 1)
       return false
     end

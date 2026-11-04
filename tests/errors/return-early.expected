@@ -1,0 +1,6 @@
+1
+return-early.ce:4:5: Sign: the result must be an Int, found a Text.
+  4 |     return "negative"
+    |     ^
+  in Sign (return-early.ce:4)
+exit 1

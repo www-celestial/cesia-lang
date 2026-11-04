@@ -1,4 +1,4 @@
--- Filling a block is work: it pays in steps like an array of the same size.
+(** Filling a block is work: it pays in steps like an array of the same size. *)
 use c
 
 for i in 1:1000

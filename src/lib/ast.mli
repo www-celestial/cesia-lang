@@ -72,16 +72,17 @@ and part = Lit of string | Hole of expr
 and arg = { aname : string option; value : expr }
 and param = { pname : string; default : expr option; ptype : ptype option }
 
-(** An interface: its name, and each of its methods with its parameters, whose number alone counts. *)
-and iface = { iname : string; imethods : (string * param array) array }
+(** An interface: its name, and each of its methods with its parameters, whose number alone counts, and its return type. *)
+and iface = { iname : string; imethods : (string * param array * ptype option) array }
 
-(** A type written after a parameter or a field: a kind, as [Int], or a struct or an interface, [Point] or [geo.Point], which
-    [Resolve] binds. [topt]: it ends with [?] and also takes [missing]. *)
+(** A type written after a parameter, a field or the parameters of a function: a kind, as [Int], or a struct or an
+    interface, [Point] or [geo.Point], which [Resolve] binds. [topt]: it ends with [?] and also takes [missing]. *)
 and ptype = { tpos : pos; tpkg : string option; tname : string; topt : bool; mutable tb : binding }
 
 and func = {
   fname : string;
   params : param array;
+  ret : ptype option;  (** the return type *)
   body : block;
   nnodes : int;
   fpos : pos;

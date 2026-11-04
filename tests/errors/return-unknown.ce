@@ -1,0 +1,5 @@
+(** A return type that names nothing. *)
+struct Point { X, Y }
+defn Origin() Pont
+  Point(0, 0)
+end

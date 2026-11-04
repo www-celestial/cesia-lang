@@ -1,0 +1,5 @@
+return-unknown.ce:3:15: There is no type "Pont".
+  3 | defn Origin() Pont
+    |               ^
+  A type is Int, Float, Number, Bool, Text, Array, Dict, Function, a struct or an interface.
+exit 1

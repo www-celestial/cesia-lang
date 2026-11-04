@@ -1,0 +1,7 @@
+missing
+0
+return-missing.ce:11:5: F: the result must be an Int, found missing.
+  11 |     return
+     |     ^
+  in F (return-missing.ce:11)
+exit 1

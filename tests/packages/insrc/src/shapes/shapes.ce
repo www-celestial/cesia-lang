@@ -1,7 +1,5 @@
--- Shapes, which a use finds in src/ without naming it.
+(** Shapes, which a use finds in src/ without naming it. *)
 
--- Where this package is.
-Where() = "shapes, $(inner())"
+Where() = "shapes, $(inner())"   (** Where this package is. *)
 
--- A small name, for the test of the package.
-inner() = "in src"
+inner() = "in src"   (** A small name, for the test of the package. *)

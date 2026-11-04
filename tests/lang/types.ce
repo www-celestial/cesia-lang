@@ -71,22 +71,21 @@ defn constantFloats(y)
 end
 isConstantFloats() = constantFloats(0.5) == 9.5
 
--- Types written in the code: after a field or a parameter, checked each time a value enters its place.
+(* Types written in the code: after a field or a parameter, checked each time a value enters its place. *)
 use tests/lang/mods/shapes
 
 struct Pt { X Int, Y Int = 0 }
 struct Seg { From Pt, To Pt = Pt(0) }
 struct Rect { Side }
 
--- A car, with its types.
 struct Car
+  (** A car, with its types. *)
   Mass Float
-  Speed Float = 0       -- an Int default becomes a Float too
+  Speed Float = 0       (** an Int default becomes a Float too *)
   Name Text? = missing
 end
 
--- What a call that stops says: its kind and its message.
-stop(f) = match Wait(Spawn(f))
+stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and its message. *)
   Err(e) -> "$(e.Kind): $(e.Message)"
   Ok(v) -> v
 end
@@ -102,8 +101,8 @@ isFieldMissing() = stop(() -> Pt(missing)) == "type: Pt: X must be an Int, found
 isFieldOptionalWrong() = stop(() -> Car(1, Name = 2)) == "type: Car: Name must be a Text or missing, found an Int."
 isFieldFloatForInt() = stop(() -> Pt(1.5)) == "type: Pt: X must be an Int, found a Float."
 
--- A field whose type takes missing has missing as its default; a parameter stays required.
 struct Pet
+  (** A field whose type takes missing has missing as its default; a parameter stays required. *)
   Kind Text
   Name Text?
 end
@@ -155,16 +154,16 @@ localSide(r Rect) = r.Side
 isQualifiedType() = circleArea(shapes.Circle(2)) == 12 and rectSide(shapes.MakeRect(3)) == 3
 isOtherPackageStruct() = stop(() -> rectSide(Rect(1))) == "type: rectSide: r must be a shapes.Rect, found a types.Rect." and stop(() -> localSide(shapes.MakeRect(1))) == "type: localSide: r must be a types.Rect, found a shapes.Rect."
 
--- An anonymous defn with a typed parameter is not a method.
 defn anonymous()
+  (** An anonymous defn with a typed parameter is not a method. *)
   f = defn (p Pt)
     p.X
   end
   g = defn (p Pt) p.Y end
   f(Pt(5)) + g(Pt(1, 2))
 end
--- On one line, a body that starts with a call.
 defn oneLine()
+  (** On one line, a body that starts with a call. *)
   f = defn (p Pt) Text(p.X) end
   g = defn (p Pt, q Pt) norm(p) + norm(q) end
   [f(Pt(1)), g(Pt(1), Pt(2, 3)), Map(defn (p Pt) norm(p) end, [Pt(4)])]

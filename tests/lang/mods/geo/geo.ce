@@ -1,41 +1,30 @@
--- Interfaces and their methods, for the tests of a use.
+(** Interfaces and their methods, for the tests of a use. *)
 use tests/lang/mods/far
 
--- Something measured by its area.
-interface Measured { Area() }
+interface Measured { Area() }   (** Something measured by its area. *)
 
 interface sided
   Side()
 end
 
--- Twice the area of what is measured.
-(m Measured) Double() = 2 * m.Area()
+(m Measured) Double() = 2 * m.Area()   (** Twice the area of what is measured. *)
 
--- What is measured, by geo.
-(m Measured) Label() = "measured"
+(m Measured) Label() = "measured"   (** What is measured, by geo. *)
 
--- Half the area, and one.
-(m Measured) Shown() = m.half() + 1
+(m Measured) Shown() = m.half() + 1   (** Half the area, and one. *)
 
 (m Measured) half() = m.Area() / 2
 
--- Four times the side.
-(s sided) Sides() = 4 * s.Side()
+(s sided) Sides() = 4 * s.Side()   (** Four times the side. *)
 
--- A rectangle of geo.
-struct Rect { Width, Height }
+struct Rect { Width, Height }   (** A rectangle of geo. *)
 
--- The area of a rectangle.
-(r Rect) Area() = r.Width * r.Height
+(r Rect) Area() = r.Width * r.Height   (** The area of a rectangle. *)
 
--- The width.
-(r Rect) Side() = r.Width
+(r Rect) Side() = r.Width   (** The width. *)
 
--- A rectangle.
-MakeRect(width, height) = Rect(width, height)
+MakeRect(width, height) = Rect(width, height)   (** A rectangle. *)
 
--- The area of what is measured.
-Total(m Measured) = m.Area()
+Total(m Measured) = m.Area()   (** The area of what is measured. *)
 
--- A method of an interface of far, which geo uses.
-Extra(x) = x.Extra()
+Extra(x) = x.Extra()   (** A method of an interface of far, which geo uses. *)

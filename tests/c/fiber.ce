@@ -1,4 +1,4 @@
--- A C function that needs a large stack, from a fiber whose own stack is small.
+(** A C function that needs a large stack, from a fiber whose own stack is small. *)
 use c
 
 lib = Unwrap(c.Open(Args[1]))

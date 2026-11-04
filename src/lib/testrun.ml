@@ -23,42 +23,18 @@ let find_sub s sub =
   let rec go i = if i + m > n then None else if String.sub s i m = sub then Some i else go (i + 1) in
   go 0
 
-(* The examples: the indented lines of a comment placed just above a definition. *)
+(* The examples: the indented lines of a documentation, each with its line. *)
 let examples src =
-  let lines = Array.of_list (Docs.lines src) in
-  let out = ref [] and block = ref [] and native = ref false in
-  let collect () =
-    List.iter
-      (fun (n, text) ->
-         if String.starts_with ~prefix:"  " text then begin
-           let text = String.trim text in
-           let example =
-             match find_sub text "-->" with
-             | None -> { line = n; code = text; want = `Stmt }
-             | Some k ->
-               let code = String.trim (String.sub text 0 k) in
-               let r = String.trim (String.sub text (k + 3) (String.length text - k - 3)) in
-               { line = n; code; want = (if r = "error" then `Error else `Value r) }
-           in
-           out := example :: !out
-         end)
-      (List.rev !block);
-    block := []
-  in
-  Array.iteri
-    (fun i line ->
-       match Docs.native_header line, Docs.comment_text line with
-       | Some _, _ ->
-         collect ();
-         native := true
-       | None, Some text when String.length line > 0 && line.[0] = '-' -> block := (i + 1, text) :: !block
-       | _ ->
-         if !native || Docs.is_definition line then collect ();
-         native := false;
-         block := [])
-    lines;
-  if !native then collect ();
-  List.rev !out
+  List.map
+    (fun (line, text) ->
+       let text = String.trim text in
+       match find_sub text "-->" with
+       | None -> { line; code = text; want = `Stmt }
+       | Some k ->
+         let code = String.trim (String.sub text 0 k) in
+         let r = String.trim (String.sub text (k + 3) (String.length text - k - 3)) in
+         { line; code; want = (if r = "error" then `Error else `Value r) })
+    (Docs.examples src)
 
 let quote s =
   let b = Buffer.create (String.length s + 2) in

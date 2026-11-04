@@ -1,0 +1,39 @@
+(** Return types, for the test of cesia doc. *)
+
+(** A number cubed.
+
+      Cube(2) --> 8 *)
+Cube(x Number) Number = x * x * x
+
+defn Half(x Float) Float
+  (** Half of x. *)
+  x / 2
+end
+
+struct Rect { Width, Height }   (** A rectangle. *)
+
+(r Rect) Area() Number = r.Width * r.Height   (** The area. *)
+
+defn Rect.Square(side Number) Rect
+  (** A square. *)
+  Rect(side, side)
+end
+
+Rect.Unit() Rect = Rect(1, 1)   (** The unit square. *)
+
+defn (r Rect) Scaled(by Number) Rect
+  (** Larger.
+
+        Rect(1, 2).Scaled(2).Width --> 2 *)
+  Rect(r.Width * by, r.Height * by)
+end
+
+Named(x) Text? = missing   (** Its name, if it has one. *)
+
+interface Shape
+  (** Something with an area. *)
+  Area() Number
+  Name() Text?
+end
+
+interface Sized { Size() Int }   (** Something with a size. *)

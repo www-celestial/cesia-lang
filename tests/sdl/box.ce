@@ -6,7 +6,7 @@ black = 0x000000
 red = 0xFF0000
 halfRed = 0x800000
 
--- Two colors within 8 out of 255 on each channel.
+(** Two colors within 8 out of 255 on each channel. *)
 near(a, b) = Abs(sdl.Red(a) - sdl.Red(b)) <= 8 and Abs(sdl.Green(a) - sdl.Green(b)) <= 8 and Abs(sdl.Blue(a) - sdl.Blue(b)) <= 8
 
 defn shot(commands, window)

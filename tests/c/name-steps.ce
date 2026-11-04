@@ -1,4 +1,4 @@
--- A name is scanned for a zero byte, without any permission: a long one pays like any other long text.
+(** A name is scanned for a zero byte, without any permission: a long one pays like any other long text. *)
 use c
 
 name = "abcdefghij"

@@ -1,4 +1,4 @@
--- Blocks need no permission: they are checked, and counted against the memory limit.
+(** Blocks need no permission: they are checked, and counted against the memory limit. *)
 use c
 
 b = c.Alloc(64)

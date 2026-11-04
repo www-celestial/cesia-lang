@@ -1,4 +1,4 @@
--- Runs forever: tools/reload-test.sh edits this file while it runs.
+(** Runs forever: tools/reload-test.sh edits this file while it runs. *)
 use lib
 
 Print("start")
@@ -20,6 +20,7 @@ made() = Box(2).V
 heldBox() = box.V
 scaled(by Int) = by * 2
 param() = scaled(1.5)
+answer() Int = 1.5
 interface Sized { Size() }
 struct Tile { N }
 (t Tile) Size() = t.N
@@ -64,6 +65,7 @@ defn mainLoop()
   n = 0
   o = 0
   q = 0
+  r = 0
   tile = Tile(1)
   x = [1, 2]
   while true
@@ -83,6 +85,7 @@ defn mainLoop()
     n = report("iface", n, attempt(measured))
     o = report("twice", o, attempt(twice))
     q = report("loop", q, attempt(() -> tile.Twice()))
+    r = report("result", r, attempt(answer))
   end
 end
 

@@ -1,0 +1,4 @@
+(** The return type of a method of an interface names nothing. *)
+interface Shape
+  Area() Nmber
+end

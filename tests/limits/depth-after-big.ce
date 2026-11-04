@@ -1,4 +1,4 @@
--- Large frames first, small ones next: the limit stays exact.
+(** Large frames first, small ones next: the limit stays exact. *)
 defn big(n)
   a = 1
   b = a + 1

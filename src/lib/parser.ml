@@ -106,6 +106,17 @@ let is_receiver p =
   let k = paren_end p in
   (match p.toks.(k).t with NAME _ -> true | _ -> false) && p.toks.(k + 1).t = LP
 
+(* Where a type written at token k ends, Point or geo.Point, either with ?: k itself if there is none. *)
+let type_end p k =
+  let opt j = if p.toks.(j).t = QUESTION then j + 1 else j in
+  match p.toks.(k).t with
+  | NAME _ when p.toks.(k + 1).t = DOT -> (match p.toks.(k + 2).t with NAME _ -> opt (k + 3) | _ -> k)
+  | NAME _ -> opt (k + 1)
+  | _ -> k
+
+(* At token k, the end of the line of a defn header, after its return type if it has one. *)
+let ends_header p k = match p.toks.(type_end p k).t with NL | EOF -> true | _ -> false
+
 let next_tok p =
   let k = ref (p.i + 1) in
   if p.mode = Ignore then
@@ -175,10 +186,10 @@ and mentions_it (e : expr) =
 
 (* it -> body. The body was parsed in the enclosing function: its ids stay unique there. *)
 and short_function p (body : expr) =
-  let ret = node p body.pos (Return { rvalue = Some body; tail = true }) in
+  let returned = node p body.pos (Return { rvalue = Some body; tail = true }) in
   let f =
-    { fname = "<anonymous>"; params = [| { pname = "it"; default = None; ptype = None } |]; body = [| ret |];
-      nnodes = p.next_id; fpos = body.pos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
+    { fname = "<anonymous>"; params = [| { pname = "it"; default = None; ptype = None } |]; body = [| returned |];
+      ret = None; nnodes = p.next_id; fpos = body.pos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
       has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
   in
   node p body.pos (Lambda f)
@@ -196,12 +207,12 @@ and in_func p fname fpos parse =
   p.next_id <- 0;
   p.loop <- None;
   p.in_function <- true;
-  let params, body = parse () in
+  let params, ret, body = parse () in
   let nnodes = p.next_id in
   p.next_id <- saved_id;
   p.loop <- saved_loop;
   p.in_function <- saved_fn;
-  { fname; params; body; nnodes; fpos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
+  { fname; params; ret; body; nnodes; fpos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
     has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
 
 (* NAME [TYPE] [= default]: a parameter, or a field of a struct in either form. *)
@@ -258,20 +269,21 @@ and lambda p =
         expect p ARROW "\"->\"";
         skip_nl p;
         let body = expr p in
-        ps, hooked p body.pos (node p arrow.pos (Return { rvalue = Some body; tail = true })))
+        ps, None, hooked p body.pos (node p arrow.pos (Return { rvalue = Some body; tail = true })))
   in
   node p pos (Lambda f)
 
 (* defn name(params) body end, defn (r Rect) name(params) body end, or defn (params) body end, after the keyword. *)
 and function_expr p pos =
   with_mode p Lines (fun () ->
-      (* A method starts a statement, and its parameters end their line: defn (p Pt) Text(p.X) end is a function. *)
+      (* A method starts a statement, and its parameters end their line, or its return type does: defn (p Pt) Text(p.X) end
+         is a function. *)
       let method_line () =
         let saved = p.i in
         p.i <- paren_end p + 1;
-        let t = after_paren p in
+        let k = paren_end p in
         p.i <- saved;
-        t = NL || t = EOF
+        ends_header p k
       in
       let named =
         match (cur p).t with NAME _ -> true | LP -> p.i - 1 = p.stmt_at && is_receiver p && method_line () | _ -> false
@@ -280,9 +292,10 @@ and function_expr p pos =
       let f =
         in_func p fname pos (fun () ->
             let ps = Array.append self (params p) in
+            let ret = match (cur p).t with NAME _ when ends_header p p.i -> Some (type_ref p) | _ -> None in
             let body = block p (fun t -> t = END) in
             expect p END "end";
-            ps, body)
+            ps, ret, body)
       in
       if named then node p pos (Fn_def (name key, f)) else node p pos (Lambda f))
 
@@ -314,16 +327,17 @@ and definition_name p =
     else [||], n, n
   end
 
-(* (params) = expression, after what [definition_name] gives. *)
+(* (params) = expression, or (params) Type = expression, after what [definition_name] gives. *)
 and short_def p pos (self, key, fname) =
   let f =
     in_func p fname pos (fun () ->
         let ps = Array.append self (params p) in
+        let ret = match (cur p).t with NAME _ -> Some (type_ref p) | _ -> None in
         let eq = cur p in
         expect p ASSIGN "\"=\"";
         skip_nl p;
         let body = expr p in
-        ps, hooked p body.pos (node p eq.pos (Return { rvalue = Some body; tail = true })))
+        ps, ret, hooked p body.pos (node p eq.pos (Return { rvalue = Some body; tail = true })))
   in
   node p pos (Fn_def (name key, f))
 
@@ -640,7 +654,7 @@ and struct_def p pos =
         let ps = Array.map optional ps in
         let sfields = Array.map (fun q -> q.pname, node p pos (Var (name q.pname))) ps in
         let body = node p pos (Struct_lit { sname = Some sname; sfields }) in
-        ps, [| node p pos (Return { rvalue = Some body; tail = true }) |])
+        ps, None, [| node p pos (Return { rvalue = Some body; tail = true }) |])
   in
   node p pos (Fn_def (name sname, f))
 
@@ -699,15 +713,16 @@ and interface_def p pos =
   in
   node p pos (Interface { iname; imethods = Array.of_list (List.rev imethods) })
 
-(* Name(params), with no body and no default. *)
+(* Name(params) and maybe its return type, with no body and no default. *)
 and iface_method p =
   match (cur p).t, next_tok p with
   | NAME n, LP ->
     advance p;
     let ps = params p in
     Array.iter (fun q -> Option.iter (fun (d : expr) -> error p d.pos Messages.interface_default) q.default) ps;
+    let ret = match (cur p).t, next_tok p with NAME _, LP -> None | NAME _, _ -> Some (type_ref p) | _ -> None in
     if (cur p).t = ASSIGN then error p (cur p).pos Messages.interface_body;
-    n, ps
+    n, ps, ret
   | _ -> error p (cur p).pos Messages.interface_not_method
 
 (* After [: rows, or a comprehension. *)
@@ -897,13 +912,13 @@ and block p stop =
           p.in_index <- saved_index;
           Array.of_list (List.rev !items)))
 
-(* Is the ( at token k the start of name(params) = expression? *)
+(* Is the ( at token k the start of name(params) = expression, or name(params) Type = expression? *)
 and after_call_is_def p k =
   let saved = p.i in
   p.i <- k;
-  let t = after_paren p in
+  let j = paren_end p in
   p.i <- saved;
-  t = ASSIGN
+  p.toks.(type_end p j).t = ASSIGN
 
 (* Rect.Unit() = ... *)
 and short_method p =
@@ -1017,6 +1032,6 @@ let program ?(hooks = false) ~file ~nesting toks =
   let p = { toks; file; nesting; hooks; i = 0; depth = 0; mode = Lines; next_id = 0; loop = None; in_function = false;
             in_index = 0; saw_end = false; stmt_at = 0 } in
   let body = block p (fun t -> t = EOF) in
-  { fname = ""; params = [||]; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
+  { fname = ""; params = [||]; ret = None; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
     captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||];
     export_of = [||] }

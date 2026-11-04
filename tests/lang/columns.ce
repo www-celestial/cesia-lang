@@ -1,4 +1,4 @@
--- Typed columns: integers without a box, and the native work on columns.
+(** Typed columns: integers without a box, and the native work on columns. *)
 use columns
 use frame
 use csv

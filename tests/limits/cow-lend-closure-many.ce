@@ -1,4 +1,4 @@
--- Four arguments: past the small dynamic call.
+(** Four arguments: past the small dynamic call. *)
 defn run(n, f)
   x = Zeros(n)
   for i in 1:n

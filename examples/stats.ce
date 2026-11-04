@@ -1,4 +1,4 @@
--- Sales by city, from a CSV text, with the table module: cesia run examples/stats.ce
+(** Sales by city, from a CSV text, with the table module: cesia run examples/stats.ce *)
 use frame
 use num
 

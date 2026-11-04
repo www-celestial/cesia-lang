@@ -1,7 +1,5 @@
--- An interface that geo uses and the tests of interfaces don't.
+(** An interface that geo uses and the tests of interfaces don't. *)
 
--- Anything with an area.
-interface Anything { Area() }
+interface Anything { Area() }   (** Anything with an area. *)
 
--- A method of anything with an area.
-(a Anything) Extra() = "extra"
+(a Anything) Extra() = "extra"   (** A method of anything with an area. *)

@@ -1,4 +1,4 @@
--- sdl.Frame returns the window, but a program that keeps the old value must not lose text objects.
+(** sdl.Frame returns the window, but a program that keeps the old value must not lose text objects. *)
 use c
 use sdl
 

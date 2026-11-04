@@ -1,12 +1,12 @@
--- TLS through OpenSSL, with memory buffers: the sockets stay with net, so a fiber never blocks the others during a
--- handshake. Run with --allow ffi=ssl,ffi=crypto.
+(** TLS through OpenSSL, with memory buffers: the sockets stay with net, so a fiber never blocks the others during a
+    handshake. Run with --allow ffi=ssl,ffi=crypto. *)
 use c
 use net
 
 chunk = 65536
 
--- Loads OpenSSL: an Ok of the api that server and client take, or an Err.
 defn Open()
+  (** Loads OpenSSL: an Ok of the api that server and client take, or an Err. *)
   ssl = c.Open("ssl", version = 3)?
   lib = c.Open("crypto", version = 3)?
   Ok({
@@ -39,8 +39,8 @@ end
 
 failed(message) = Err({Kind: "tls", Message: message})
 
--- The state of one connection: its handles are C objects, so a copy of this value is the same connection.
 defn link(api, ctx, socket)
+  (** The state of one connection: its handles are C objects, so a copy of this value is the same connection. *)
   ssl = api.SslNew(ctx)
   incoming = api.BioNew(api.BioMem())
   outgoing = api.BioNew(api.BioMem())
@@ -48,8 +48,8 @@ defn link(api, ctx, socket)
   {Api: api, Ssl: ssl, Incoming: incoming, Outgoing: outgoing, Socket: socket, Block: c.Alloc(chunk)}
 end
 
--- Sends what OpenSSL wrote.
 defn flush(t)
+  (** Sends what OpenSSL wrote. *)
   n = t.Api.BioRead(t.Outgoing, t.Block, chunk)
   while n > 0
     net.Write(t.Socket, c.Load(0, n, t.Block))?
@@ -58,8 +58,8 @@ defn flush(t)
   Ok(missing)
 end
 
--- Gives OpenSSL what the other side sent. False at the end of the connection.
 defn feed(t)
+  (** Gives OpenSSL what the other side sent. False at the end of the connection. *)
   got = net.Read(t.Socket)?
   n = ByteLength(got)
   if n == 0
@@ -139,8 +139,8 @@ defn close(t)
   net.Close(t.Socket)
 end
 
--- The handshake, and what it took back if it fails: a client that talks nonsense leaves nothing behind.
 defn shaken(t)
+  (** The handshake, and what it took back if it fails: a client that talks nonsense leaves nothing behind. *)
   r = shake(t)
   if IsErr(r)
     release(t)
@@ -154,8 +154,8 @@ defn io(t)
   {Read: () -> read(t), Write: s -> write(t, s), Close: () -> close(t), Arm: s -> net.Arm(t.Socket, s)}
 end
 
--- For http.Serve and web.Serve: wrap = tls.Server(certificate, key, api)?
 defn Server(certificate, key, api)
+  (** For http.Serve and web.Serve: wrap = tls.Server(certificate, key, api)? *)
   ctx = api.CtxNew(api.ServerMethod())
   if api.UseChain(ctx, certificate) != 1
     return failed("Can't read the certificate $certificate.")
@@ -172,8 +172,8 @@ defn accept(api, ctx, socket)
   shaken(t)
 end
 
--- For http.Request: secure = tls.Client(api). With verify = false, any certificate passes: only for tests.
 defn Client(api, verify = true)
+  (** For http.Request: secure = tls.Client(api). With verify = false, any certificate passes: only for tests. *)
   ctx = api.CtxNew(api.ClientMethod())
   if verify
     api.DefaultPaths(ctx)

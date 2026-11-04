@@ -1,4 +1,4 @@
--- A chunked response cut anywhere is an Err of the client, never a panic.
+(** A chunked response cut anywhere is an Err of the client, never a panic. *)
 use http
 use net
 

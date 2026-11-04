@@ -1,4 +1,4 @@
--- Without --watch, a stop signal is a quit event, and it is one no longer once the window is closed. See stop-signal.cmd.
+(** Without --watch, a stop signal is a quit event, and it is one no longer once the window is closed. See stop-signal.cmd. *)
 use tests/sdl/probe
 use sdl
 use sys
@@ -14,8 +14,8 @@ end
 
 view(state) = [{Kind: "clear", Color: 0x000000}]
 
--- So that a test that fails doesn't hang.
 defn giveUp()
+  (** So that a test that fails doesn't hang. *)
   sys.Sleep(3)
   probe.PushText([0x61])
 end

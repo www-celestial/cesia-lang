@@ -46,15 +46,15 @@ defn isFourLevels()
   a.B.C.D.E == 2 and Equal(a.B.C.D, {E: 2})
 end
 
--- A truck on the road: the block form of a struct, one field per line.
---
---   Truck(1500).Speed --> 0.0
---   Truck(1, Speed = 2.0).Speed --> 2.0
 struct Truck
+  (** A truck on the road: the block form of a struct, one field per line.
+
+        Truck(1500).Speed --> 0.0
+        Truck(1, Speed = 2.0).Speed --> 2.0 *)
   Mass
 
-  -- Its speed.
-  Speed = 0.0   -- metres per second
+  (* Its speed. *)
+  Speed = 0.0   (** metres per second *)
   Name = "a--b"
 end
 

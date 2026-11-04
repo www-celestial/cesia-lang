@@ -1,4 +1,4 @@
--- A struct in the block form, without its end.
+(** A struct in the block form, without its end. *)
 struct Car
   Mass
   Speed = 0.0

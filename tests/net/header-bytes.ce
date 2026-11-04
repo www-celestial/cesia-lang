@@ -1,4 +1,4 @@
--- Every byte of a header name against the list of RFC 9110, and a line end refused anywhere in the line.
+(** Every byte of a header name against the list of RFC 9110, and a line end refused anywhere in the line. *)
 use net
 
 allowed = Bytes("!#$$%&'*+-.^_`|~abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")

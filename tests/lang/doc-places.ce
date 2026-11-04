@@ -1,0 +1,29 @@
+(* The places of the documentation, read by Doc: inside a block, at the end of a line, on parameters. *)
+
+defn Halved(x)
+  (** Half of a number, documented inside its block.
+
+        Halved(4) --> 2.0 *)
+  x / 2
+end
+
+Tripled(x) = 3 * x   (** Three times a number. *)
+
+defn Grown(
+  r,    (** the number to grow *)
+  by    (** how many times larger *)
+)       (** the larger number *)
+  (** A number larger by some factor. *)
+  r * by
+end
+
+(** Above a block, this documents nothing. *)
+defn Above(x)
+  x
+end
+
+isDocInsideABlock() = StartsWith("Halved(x)\n\nHalf of a number, documented inside its block.", Doc(Halved))
+isDocExampleInsideABlock() = Contains("  Halved(4) --> 2.0", Doc(Halved))
+isDocAtTheEndOfALine() = Doc(Tripled) == "Tripled(x)\n\nThree times a number."
+isDocListsTheParts() = EndsWith("\n\n  r       the number to grow\n  by      how many times larger\n  result  the larger number", Doc(Grown))
+isDocAboveABlockIsNone() = Doc(Above) == "Above(x)"

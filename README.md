@@ -83,10 +83,10 @@ each. Both forms build the same values, with the same defaults, named arguments,
 ```cesia
 struct Point { X, Y = 0 }
 
--- A car on the road.
 struct Car
+  (** A car on the road. *)
   Mass
-  Speed = 0.0   -- metres per second
+  Speed = 0.0   (** metres per second *)
 end
 ```
 
@@ -96,17 +96,17 @@ before its own. A dot calls both.
 ```cesia
 struct Rect { X, Y, Width, Height }
 
-defn Rect.Square(side)                 -- static: no object
+defn Rect.Square(side)                 (* static: no object *)
   Rect(0, 0, side, side)
 end
 
-defn (r Rect) Area()                   -- instance: the object is written apart
+defn (r Rect) Area()                   (* instance: the object is written apart *)
   r.Width * r.Height
 end
 
-(r Rect) IsEmpty() = r.Width == 0      -- the short form
+(r Rect) IsEmpty() = r.Width == 0      (* the short form *)
 (r Rect) Moved(dx, dy) = Rect(r.X + dx, r.Y + dy, r.Width, r.Height)
-(r Rect) center() = r.X + r.Width / 2  -- private: a small first letter
+(r Rect) center() = r.X + r.Width / 2  (* private: a small first letter *)
 Rect.Unit() = Rect(0, 0, 1, 1)
 
 r = Rect.Square(10)
@@ -130,37 +130,44 @@ with `Rect.Area` in one struct, and a method named like a field.
 
 ## Types
 
-A field or a parameter can have a type, written after its name. Code without types runs as before, and costs the same.
+A field or a parameter can have a type, written after its name, and a function the type of its result, after its parameters
+as in Go. Code without types runs as before, and costs the same.
 
 ```cesia
 struct Point { X Int, Y Int = 0 }
 struct Line { From Point, To Point = Point(0) }
 
--- A car on the road.
 struct Car
+  (** A car on the road. *)
   Mass Float
-  Speed Float = 0.0   -- metres per second
-  Name Text?          -- missing unless it is given
+  Speed Float = 0.0   (** metres per second *)
+  Name Text?          (** missing unless it is given *)
 end
 
-defn Describe(l Line, prefix Text = "")
+defn Describe(l Line, prefix Text = "") Text
   "$prefix$(l.From.X)"
 end
 
-(r Rect) Scaled(by Number) = Rect(r.X, r.Y, r.Width * by, r.Height * by)   -- the Rect above
+(r Rect) Scaled(by Number) Rect = Rect(r.X, r.Y, r.Width * by, r.Height * by)   (* the Rect above *)
+Half(x Float) Float = x / 2
 ```
 
 - The types are `Int`, `Float`, `Number` (an `Int` or a `Float`), `Bool`, `Text`, `Array`, `Dict`, `Function`, the structs,
   `Point`, or `geo.Point` for one of a package the file uses, and the interfaces below. `?` also takes `missing`: `Text?`, and a
   field of such a type without a default has `missing` as its default. As a type, `Text` and `Dict` are not the functions of
   those names.
-- Where: the fields of a struct, in both forms, and the parameters of `defn`, of a short definition and of a method. Not on a
-  lambda: `(p Point) -> p.X` is an error, and `defn (p Point) p.X end` the way to write it.
+- Where: the fields of a struct, in both forms, and the parameters and the result of `defn`, of a short definition and of a
+  method. After a `defn`, the type of the result ends the line: `defn (p Point) Text(p.X) end` is a function whose body is
+  `Text(p.X)`. Not on a lambda: `(p Point) -> p.X` is an error, and `defn (p Point) p.X end` the way to write it.
 - When: each time a value enters its place. At construction for a field, at each call for a parameter, once its default is put
-  in, and at each write of a typed field, also inside a path: `d.Lines[2].From = p`.
-- An `Int` where a `Float` is wanted becomes a `Float`: `Car(1500).Mass` is `1500.0`. `Number` keeps either.
-- A wrong value is a bug: the program stops, `Line: From must be a Point, found an Int.`, at the call or the write. A type that
-  names nothing, `Pont`, is an error before the program starts.
+  in, at each write of a typed field, also inside a path: `d.Lines[2].From = p`, and for a result at each way out of the
+  function, its last expression and each `return`. An `Err` that `?` passes on leaves as it is.
+- A function that ends with no value, or a `return` alone, gives `missing`: its type needs `?`, as `Int?`.
+- An `Int` where a `Float` is wanted becomes a `Float`: `Car(1500).Mass` is `1500.0`, and a function of type `Float` that
+  gives `2` gives `2.0`. `Number` keeps either.
+- A wrong value is a bug: the program stops, `Line: From must be a Point, found an Int.`, at the call or the write, and
+  `Half: the result must be a Float, found a Text.` at the way out. A type that names nothing, `Pont`, is an error before the
+  program starts.
 - Under `--watch`, a changed type applies at the next call, construction or write; values made before are not checked again.
 - When two structs have one name, the message names their packages: `r must be a geo.Rect, found a shapes.Rect.`
 
@@ -170,15 +177,15 @@ An interface lists methods, with no code. A value meets it when it has each of t
 apart from the object: nothing declares it, as in Go.
 
 ```cesia
--- Something with an area and a perimeter.
 interface Shape
+  (** Something with an area and a perimeter. *)
   Area()
   Perimeter()
 end
 
 interface Named { Name() }
 
-(r Rect) Perimeter() = 2 * (r.Width + r.Height)   -- the Rect above, which has its Area()
+(r Rect) Perimeter() = 2 * (r.Width + r.Height)   (* the Rect above, which has its Area() *)
 
 (s Shape) Describe() = "area $(s.Area()), perimeter $(s.Perimeter())"
 
@@ -197,7 +204,8 @@ Print(Total([Rect.Square(1), {Area: () -> 2, Perimeter: () -> 6}]))
 ```
 
 - Both forms, as for a struct: one method per line until `end`, or `{ Area(), Perimeter() }`. A method has no body. Its
-  parameters may have types, `Scaled(by Number)`, and only their number counts to meet the interface.
+  parameters may have types, `Scaled(by Number)`, and only their number counts to meet the interface. Its result may have one,
+  `Area() Number`, which documents it: no result is known before a call.
 - A struct meets an interface through its methods, or through fields that hold functions; a record through fields that hold
   functions. The answer is kept for each shape of value, and forgotten when a file reloads.
 - An interface is a type: `s Shape`, `Inner Shape?`, `s geo.Shape`. A value that doesn't meet it stops the program, and the
@@ -226,7 +234,7 @@ myproject/
 ```
 
 ```cesia
--- src/main.ce
+(* src/main.ce *)
 use geometry
 use geometry/shapes
 
@@ -346,25 +354,48 @@ frame = Flatten([ui.Panel("Details", area, look), ui.Slider(0.5, bar, look)])
 nothing moving draws nothing. The interface font is Adwaita Sans, titles use Noto Sans Medium, and code JetBrains Mono: all three are in
 `examples/fonts/`, under the SIL Open Font License.
 
-## Documentation
+## Comments and documentation
 
-Comments are `--` for a line and `(* ... *)` for several, which can hold one another. A `(** ... *)` above a definition documents it,
-like `--` lines:
+`(* ... *)` is a note, on one line or several, and can hold another one. `(** ... *)` documents what it belongs to. `--` is no
+comment: written outside a text, it is an error that says how comments are written.
+
+A block, `defn … end` or the block form of `struct` and `interface`, has its documentation first in its body. A one-line
+definition has it at the end of its line when one sentence is enough, else just above it. The first `(** *)` of a file, before any
+code, says what the module is for. The examples, indented under the text with `-->`, run under `cesia test`.
 
 ```cesia
-(** The next number.
-      Next(1) --> 2 *)
-Next(x) = x + 1
+defn Scaled(r Rect, by Number) Rect
+  (** A rectangle larger by some factor.
+
+        Scaled(Rect(1, 2), 2) --> Rect(2, 4) *)
+  Rect(r.Width * by, r.Height * by)
+end
+
+struct Rect
+  (** A rectangle, in metres. *)
+  Width Number    (** along x *)
+  Height Number   (** along y *)
+end
+
+Square(x Number) Number = x * x   (** The square of a number. *)
+
+(** The cube of a number.
+
+      Cube(2) --> 8 *)
+Cube(x Number) Number = x * x * x
 ```
 
-The documentation comes from the language. A comment just above a definition documents it, and the examples in it run under
-`cesia test`.
+A `(** *)` at the end of the line of a field, of a parameter, or of the `)` that closes the parameters, documents that one, and
+`cesia doc` lists them after the text, with `result` for the `)`:
 
 ```cesia
--- The square of a number.
---
---   Square(3) --> 9
-Square(x) = x * x
+defn Grown(
+  r Number,    (** the number to grow *)
+  by Number    (** how many times larger *)
+) Number       (** the larger number *)
+  (** A number larger by some factor. *)
+  r * by
+end
 ```
 
 `cesia doc` lists the modules, `cesia doc num` the names of a module, and `cesia doc num.Solve` shows one, as `cesia doc

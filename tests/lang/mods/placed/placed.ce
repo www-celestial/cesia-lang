@@ -1,0 +1,3 @@
+(** A module documented by the first block of its file, for the test of cesia doc in doc-places.cmd. *)
+
+Twice(x) = 2 * x   (** Twice a number. *)

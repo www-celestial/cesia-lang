@@ -8,6 +8,7 @@ let invalid_utf8 = plain "This file is not valid UTF-8."
 let unexpected_char c = plain (Printf.sprintf "Unexpected character %C." c)
 let text_not_closed = plain "This text is not closed: a closing \" is missing."
 let comment_not_closed = plain "This comment is not closed: a closing *) is missing."
+let comment_dashes = plain "Comments are written (* ... *)."
 let number_too_big s = hinted (Printf.sprintf "The number %s doesn't fit in 63 bits." s) (Printf.sprintf "Write it as a float: %s.0." s)
 let expected what got = plain (Printf.sprintf "Expected %s, found %s." what got)
 let too_nested = plain "This code is nested too deeply."
@@ -119,6 +120,7 @@ let method_two a b name found =
   hinted (Printf.sprintf "Both %s and %s have a method \"%s\", and %s meets both." a b name found)
     "A field or a method of the value itself would win over theirs."
 let wrong_type fname name want found = plain (Printf.sprintf "%s: %s must be %s, found %s." fname name want found)
+let wrong_result fname = wrong_type fname "the result"
 let article name = (if name <> "" && String.contains "AEIOUaeiou" name.[0] then "an " else "a ") ^ name
 let destructure_array want got = plain (Printf.sprintf "This pattern takes %d elements, the value has %d." want got)
 let destructure_struct a = plain (Printf.sprintf "This pattern needs a struct, not %s." a)

@@ -1,4 +1,4 @@
--- A value that doesn't meet the interface of a parameter.
+(** A value that doesn't meet the interface of a parameter. *)
 interface Shape
   Area()
   Perimeter()

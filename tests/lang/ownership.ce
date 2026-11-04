@@ -1,5 +1,5 @@
--- Calls lend values to functions that only read them, and hand over variables that end with the call. None of it may
--- show: what a function does to its arguments stays invisible to the caller.
+(** Calls lend values to functions that only read them, and hand over variables that end with the call. None of it may
+    show: what a function does to its arguments stays invisible to the caller. *)
 
 same(x) = x
 head(s) = s.V
@@ -28,19 +28,19 @@ defn setX(r)
   r
 end
 
--- Sixty-four parameters: past the 62 bits of the mask.
 defn lastWritten(p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18, p19, p20, p21, p22, p23, p24, p25, p26, p27, p28, p29, p30, p31, p32, p33, p34, p35, p36, p37, p38, p39, p40, p41, p42, p43, p44, p45, p46, p47, p48, p49, p50, p51, p52, p53, p54, p55, p56, p57, p58, p59, p60, p61, p62, p63, p64)
+  (** Sixty-four parameters: past the 62 bits of the mask. *)
   p64[1] = 9
   p64
 end
 
--- A default value can write to the parameter before it.
 defn writtenByDefault(x, y = if true
   x[1] = 9
   0
 else
   0
 end)
+  (** A default value can write to the parameter before it. *)
   x[1]
 end
 
@@ -60,8 +60,8 @@ defn replaced(x)
   x
 end
 
--- Never returned nor written here: only reassigned.
 defn replacedInside(x)
+  (** Never returned nor written here: only reassigned. *)
   x = touch(x)
   x[1]
 end
@@ -96,8 +96,8 @@ defn merge(x, y)
   x
 end
 
--- The array read at position 1 is written once it has moved to position 2.
 defn spin(a, b, n)
+  (** The array read at position 1 is written once it has moved to position 2. *)
   if n == 0
     0
   else

@@ -9,8 +9,8 @@ a = web.Websocket("/echo", (m, send) -> send("got $m"), a)
 Spawn(() -> web.Serve(a, port = 18202))
 sys.Sleep(0.05)
 
--- A frame from a client: always masked.
 defn masked(opcode, textValue)
+  (** A frame from a client: always masked. *)
   key = "abcd"
   "$(FromBytes([128 + opcode, 128 + ByteLength(textValue)]))$key$(XorBytes(key, textValue))"
 end

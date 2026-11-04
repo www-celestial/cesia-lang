@@ -1,13 +1,13 @@
--- Text forms of bytes: hexadecimal, Base64 and URLs.
+(** Text forms of bytes: hexadecimal, Base64 and URLs. *)
 
 hexDigits = "0123456789abcdef"
 base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 digit(k, digits) = ByteSlice(k + 1, k + 1, digits)
 
--- The hexadecimal text of the bytes of a text, in lower case.
---
---   Hex("hi") --> "6869"
 defn Hex(s)
+  (** The hexadecimal text of the bytes of a text, in lower case.
+
+        Hex("hi") --> "6869" *)
   Join("", ["$(digit(Div(b, 16), hexDigits))$(digit(Mod(b, 16), hexDigits))" for b in Bytes(s)])
 end
 
@@ -25,10 +25,10 @@ end
 
 bad(what) = Err({Kind: "encoding", Message: "This isn't valid $what."})
 
--- The text of bytes written in hexadecimal, in an Ok, or an Err of the kind "encoding".
---
---   Unhex("6869") --> Ok("hi")
 defn Unhex(s)
+  (** The text of bytes written in hexadecimal, in an Ok, or an Err of the kind "encoding".
+
+        Unhex("6869") --> Ok("hi") *)
   codes = Bytes(s)
   n = Len(codes)
   if Mod(n, 2) != 0
@@ -46,10 +46,10 @@ defn Unhex(s)
   Ok(FromBytes(out))
 end
 
--- The Base64 text of the bytes of a text, with padding.
---
---   Base64("hi") --> "aGk="
 defn Base64(s)
+  (** The Base64 text of the bytes of a text, with padding.
+
+        Base64("hi") --> "aGk=" *)
   codes = Bytes(s)
   n = Len(codes)
   parts = Fill("", Div(n + 2, 3))
@@ -85,10 +85,10 @@ defn base64Value(b)
   end
 end
 
--- Takes the standard alphabet and the one of URLs, with or without padding.
---
---   Unbase64("aGk=") --> Ok("hi")
 defn Unbase64(s)
+  (** Takes the standard alphabet and the one of URLs, with or without padding.
+
+        Unbase64("aGk=") --> Ok("hi") *)
   clean = Replace("=", "", s)
   codes = Bytes(clean)
   n = Len(codes)
@@ -118,17 +118,17 @@ end
 
 urlSafe(b) = (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b == 45 or b == 46 or b == 95 or b == 126
 
--- A text with every byte percent-encoded except letters, digits and - . _ ~
---
---   UrlEncode("a b") --> "a%20b"
 defn UrlEncode(s)
+  (** A text with every byte percent-encoded except letters, digits and - . _ ~
+
+        UrlEncode("a b") --> "a%20b" *)
   Join("", [if urlSafe(b) Char(b) else "%$(Upper(Hex(FromBytes([b]))))" end for b in Bytes(s)])
 end
 
--- Decodes %41, and + as a space, as forms write it.
---
---   UrlDecode("a%20b+c") --> "a b c"
 defn UrlDecode(s)
+  (** Decodes %41, and + as a space, as forms write it.
+
+        UrlDecode("a%20b+c") --> "a b c" *)
   if not Contains("%", s) and not Contains("+", s)
     return s
   end
@@ -154,10 +154,10 @@ defn UrlDecode(s)
   FromBytes(Take(used, out))
 end
 
--- The fields of a query or a form: a=1&b=two
---
---   ParseQuery("a=1&b=2")["b"] --> "2"
 defn ParseQuery(s)
+  (** The fields of a query or a form: a=1&b=two
+
+        ParseQuery("a=1&b=2")["b"] --> "2" *)
   out = Dict()
   if s == ""
     return out
@@ -172,10 +172,10 @@ defn ParseQuery(s)
   out
 end
 
--- SHA-1 is broken for signatures. It stays here because the WebSocket handshake asks for it.
---
---   Hex(Sha1("abc")) --> "a9993e364706816aba3e25717850c26c9cd0d89d"
 defn Sha1(s)
+  (** SHA-1 is broken for signatures. It stays here because the WebSocket handshake asks for it.
+
+        Hex(Sha1("abc")) --> "a9993e364706816aba3e25717850c26c9cd0d89d" *)
   m = Bytes(s)
   n = Len(m)
   padded = Concat(Concat(m, [128]), Fill(0, Mod(55 - n, 64)))

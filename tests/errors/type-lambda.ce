@@ -1,3 +1,3 @@
--- A lambda takes no types: a statement that starts with one is not a method.
+(** A lambda takes no types: a statement that starts with one is not a method. *)
 struct Shape { Side }
 (s Shape) -> s.Side

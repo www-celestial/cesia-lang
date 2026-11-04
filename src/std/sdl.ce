@@ -1,5 +1,5 @@
--- A window through SDL3 and SDL3_ttf, found at run time. Needs --allow ffi=SDL3,ffi=SDL3_ttf.
--- The screen is a value: an array of commands, each one a struct.
+(** A window through SDL3 and SDL3_ttf, found at run time. Needs --allow ffi=SDL3,ffi=SDL3_ttf.
+    The screen is a value: an array of commands, each one a struct. *)
 use c
 use sys
 
@@ -18,11 +18,10 @@ CurveAcross = 4
 BlendAlpha = 1
 PixelsRgba = 0x16762004
 
--- The event offsets read below are those of the ABI of SDL 3.2.
-VersionOk(version) = version >= 3002000
+VersionOk(version) = version >= 3002000   (** The event offsets read below are those of the ABI of SDL 3.2. *)
 
--- The SDL3 functions that the window uses, found in a loaded library: an Ok of a struct of functions, or an Err.
 defn BindSdl(lib)
+  (** The SDL3 functions that the window uses, found in a loaded library: an Ok of a struct of functions, or an Err. *)
   f = (name, inputs, output) -> c.Fn(name, inputs, output, lib)
   version = f("SDL_GetVersion", [], "i32")?
   init = f("SDL_Init", ["u32"], "bool")?
@@ -59,8 +58,8 @@ defn BindSdl(lib)
     DestroyRenderer: destroyRenderer, DestroyWindow: destroyWindow, Quit: quit})
 end
 
--- The SDL3_ttf functions that the window uses, found in a loaded library: an Ok of a struct of functions, or an Err.
 defn BindTtf(lib)
+  (** The SDL3_ttf functions that the window uses, found in a loaded library: an Ok of a struct of functions, or an Err. *)
   f = (name, inputs, output) -> c.Fn(name, inputs, output, lib)
   init = f("TTF_Init", [], "bool")?
   createEngine = f("TTF_CreateRendererTextEngine", ["ptr"], "ptr")?
@@ -81,24 +80,24 @@ defn BindTtf(lib)
     DestroyEngine: destroyEngine, Quit: quit})
 end
 
--- An Err of the kind "sdl" with the last reason that SDL gave.
+(** An Err of the kind "sdl" with the last reason that SDL gave. *)
 Failure(sdlApi) = Err({Kind: "sdl", Message: sdlApi.Error()})
 
--- A pointer from SDL, or SDL's own reason for giving none.
+(** A pointer from SDL, or SDL's own reason for giving none. *)
 Some(pointer, sdlApi) = if IsMissing(pointer) Failure(sdlApi) else Ok(pointer) end
--- Ok(missing) if an SDL call succeeded, else the Err that failure gives.
+(** Ok(missing) if an SDL call succeeded, else the Err that failure gives. *)
 Done(succeeded, sdlApi) = if succeeded Ok(missing) else Failure(sdlApi) end
 
--- A drawing call can't fail on a good window, so a failure is a bug.
 defn Checked(succeeded, window)
+  (** A drawing call can't fail on a good window, so a failure is a bug. *)
   if not succeeded
     Panic(window.Sdl.Error())
   end
 end
 
--- The font comes before the window: a missing font should open nothing on screen.
--- A proportional font spaces its letters better with light = true.
 defn Open(title, width, height, font, size = 15, vsync = true, light = false)
+  (** The font comes before the window: a missing font should open nothing on screen.
+      A proportional font spaces its letters better with light = true. *)
   sdlApi = BindSdl(c.Open("SDL3", version = 0)?)?
   ttfApi = BindTtf(c.Open("SDL3_ttf", version = 0)?)?
   if not VersionOk(sdlApi.Version())
@@ -113,9 +112,9 @@ defn Open(title, width, height, font, size = 15, vsync = true, light = false)
   end
 end
 
--- SDL, SDL3_ttf and the window. SDL turns TERM and INT into a quit event, and --watch couldn't tell that from a closed window,
--- so there Open takes them first, which makes SDL leave them alone, and Waiting makes the quit event instead.
 defn started(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
+  (** SDL, SDL3_ttf and the window. SDL turns TERM and INT into a quit event, and --watch couldn't tell that from a closed window,
+      so there Open takes them first, which makes SDL leave them alone, and Waiting makes the quit event instead. *)
   Done(sdlApi.Init(InitVideo), sdlApi)?
   Done(ttfApi.Init(), sdlApi)?
   made = Opened(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
@@ -126,8 +125,8 @@ defn started(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
   made
 end
 
--- Each step undoes the ones before it if it fails: the program gets an Err and can go on.
 defn Opened(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
+  (** Each step undoes the ones before it if it fails: the program gets an Err and can go on. *)
   loaded = Some(ttfApi.OpenFont(font, size), sdlApi)?
   Hint(loaded, light, ttfApi)
   made = OnScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
@@ -137,15 +136,15 @@ defn Opened(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
   made
 end
 
--- Light hinting with subpixel rendering, for a font that asks for it.
 defn Hint(font, light, ttfApi)
+  (** Light hinting with subpixel rendering, for a font that asks for it. *)
   if light
     ttfApi.Hinting(font, 4)
   end
 end
 
--- Opens the window, the renderer and the text engine, and undoes what it did if one fails.
 defn OnScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
+  (** Opens the window, the renderer and the text engine, and undoes what it did if one fails. *)
   created = Some(sdlApi.CreateWindow(title, width, height, WindowResizable), sdlApi)?
   made = Drawing(sdlApi, ttfApi, loaded, created, vsync)
   if IsErr(made)
@@ -154,8 +153,8 @@ defn OnScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
   made
 end
 
--- Opens the renderer and the text engine of a window.
 defn Drawing(sdlApi, ttfApi, loaded, created, vsync)
+  (** Opens the renderer and the text engine of a window. *)
   renderer = Some(sdlApi.CreateRenderer(created, missing), sdlApi)?
   sdlApi.Vsync(renderer, if vsync 1 else 0 end)
   sdlApi.DrawBlend(renderer, BlendAlpha)
@@ -166,8 +165,8 @@ defn Drawing(sdlApi, ttfApi, loaded, created, vsync)
   made
 end
 
--- Opens the text engine and gives the window value, with the blocks of memory it uses.
 defn TextEngine(sdlApi, ttfApi, loaded, created, renderer)
+  (** Opens the text engine and gives the window value, with the blocks of memory it uses. *)
   engine = Some(ttfApi.CreateEngine(renderer), sdlApi)?
   started = Done(sdlApi.StartText(created), sdlApi)
   if IsErr(started)
@@ -179,8 +178,8 @@ defn TextEngine(sdlApi, ttfApi, loaded, created, renderer)
       Objects: c.Alloc(16 + MaxTexts * 8), Images: c.Alloc(8 + MaxImages * 8), Masks: Dict(), ImageBlocks: [], CurveBlocks: [], CurvesRetired: [], CurveUsed: 0, MaskTable: c.Alloc(8 + MaxSharedMasks * MaskEntry), CurveWrites: 0, Drawn: 0, Shown: [], Used: 0})
 end
 
--- Adds a font under a name that text commands give as font: an Ok of the window, or an Err if it can't be read.
 defn AddFont(name, path, size, window, light = false)
+  (** Adds a font under a name that text commands give as font: an Ok of the window, or an Err if it can't be read. *)
   loaded = Some(window.Ttf.OpenFont(path, size), window.Sdl)?
   Hint(loaded, light, window.Ttf)
   next = window
@@ -188,8 +187,8 @@ defn AddFont(name, path, size, window, light = false)
   Ok(next)
 end
 
--- The font of this name, which a window must have.
 defn FontNamed(name, window)
+  (** The font of this name, which a window must have. *)
   found = Get(name, window.Fonts)
   if IsMissing(found)
     Panic("This window has no font ""$name"".")
@@ -197,14 +196,14 @@ defn FontNamed(name, window)
   found
 end
 
--- The clipboard, shared with the other programs.
 defn Copy(words, window)
+  (** The clipboard, shared with the other programs. *)
   Checked(window.Sdl.SetClipboard(words), window)
   missing
 end
 
--- The text of the clipboard, or an empty text.
 defn Paste(window)
+  (** The text of the clipboard, or an empty text. *)
   p = window.Sdl.GetClipboard()
   if IsMissing(p)
     return ""
@@ -214,30 +213,26 @@ defn Paste(window)
   words
 end
 
--- Changes the title of the window.
-SetTitle(title, window) = window.Sdl.SetTitle(window.Window, title)
+SetTitle(title, window) = window.Sdl.SetTitle(window.Window, title)   (** Changes the title of the window. *)
 
--- The red part, from 0 to 255, of a color written as 0xRRGGBB.
-Red(color) = Div(color, 65536)
--- The green part, from 0 to 255, of a color written as 0xRRGGBB.
-Green(color) = Mod(Div(color, 256), 256)
--- The blue part, from 0 to 255, of a color written as 0xRRGGBB.
-Blue(color) = Mod(color, 256)
+Red(color) = Div(color, 65536)   (** The red part, from 0 to 255, of a color written as 0xRRGGBB. *)
+Green(color) = Mod(Div(color, 256), 256)   (** The green part, from 0 to 255, of a color written as 0xRRGGBB. *)
+Blue(color) = Mod(color, 256)   (** The blue part, from 0 to 255, of a color written as 0xRRGGBB. *)
 
--- Sets the color of the next drawing, written as 0xRRGGBB.
 defn SetColor(color, window)
+  (** Sets the color of the next drawing, written as 0xRRGGBB. *)
   Checked(window.Sdl.Color(window.Renderer, Red(color), Green(color), Blue(color), 255), window)
 end
 
--- Fills the window with a color: a command {Kind: "clear", Color}.
 defn DrawClear(one, window)
+  (** Fills the window with a color: a command {Kind: "clear", Color}. *)
   SetColor(one.Color, window)
   Checked(window.Sdl.Clear(window.Renderer), window)
   window
 end
 
--- Fills a rectangle: a command {Kind: "rect", X, Y, Width, Height, Color}.
 defn DrawRect(one, window)
+  (** Fills a rectangle: a command {Kind: "rect", X, Y, Width, Height, Color}. *)
   c.Set("f32", 0, one.X, window.Rect)
   c.Set("f32", 4, one.Y, window.Rect)
   c.Set("f32", 8, one.Width, window.Rect)
@@ -247,9 +242,9 @@ defn DrawRect(one, window)
   window
 end
 
--- Text objects are costly to create, so they stay, in a block shared by every copy of the window: their count, the
--- number of the last draw, then their pointers.
 defn ObjectAt(position, window)
+  (** Text objects are costly to create, so they stay, in a block shared by every copy of the window: their count, the
+      number of the last draw, then their pointers. *)
   if position > MaxTexts
     Panic("A frame can't have more than $MaxTexts texts.")
   end
@@ -266,23 +261,20 @@ defn ObjectAt(position, window)
   end
 end
 
--- A number rounded to an integer, for the arguments that take one.
-WholeNumber(x) = Div(Floor(x + 0.5), 1)
+WholeNumber(x) = Div(Floor(x + 0.5), 1)   (** A number rounded to an integer, for the arguments that take one. *)
 
--- The font of a text command, which may not name one.
-FontOf(one) = match one
+FontOf(one) = match one   (** The font of a text command, which may not name one. *)
   {Font: font} -> font
   else -> "body"
 end
 
--- The alpha of a command, which may not give one.
-AlphaOf(one) = match one
+AlphaOf(one) = match one   (** The alpha of a command, which may not give one. *)
   {Alpha: alpha} -> WholeNumber(alpha)
   else -> 255
 end
 
--- Draws a text: a command {Kind: "text", Text, X, Y, Color}, with a font and an alpha if it wants.
 defn DrawText(one, window)
+  (** Draws a text: a command {Kind: "text", Text, X, Y, Color}, with a font and an alpha if it wants. *)
   position = window.Used + 1
   object = ObjectAt(position, window)
   if position > Len(window.Shown)
@@ -305,8 +297,8 @@ defn DrawText(one, window)
   window
 end
 
--- Counts a texture, in a block shared by every copy of the window. SDL frees textures with the renderer.
 defn remember(texture, window)
+  (** Counts a texture, in a block shared by every copy of the window. SDL frees textures with the renderer. *)
   count = c.Get("i64", 0, window.Images)
   if count >= MaxImages
     Panic("A window can't hold more than $MaxImages images.")
@@ -315,8 +307,8 @@ defn remember(texture, window)
   c.Set("i64", 0, count + 1, window.Images)
 end
 
--- A white texture whose alpha, and gray for a shaded one, come from shade(x, y) as {Gray, Alpha}.
 defn shaded(width, height, shade, window)
+  (** A white texture whose alpha, and gray for a shaded one, come from shade(x, y) as {Gray, Alpha}. *)
   pixels = c.Alloc(width * height * 4)
   for y in 0:(height - 1)
     for x in 0:(width - 1)
@@ -336,8 +328,8 @@ defn shaded(width, height, shade, window)
   texture
 end
 
--- The mask of a key in the table that every copy of the window shares, or missing.
 defn sharedMask(key, window)
+  (** The mask of a key in the table that every copy of the window shares, or missing. *)
   table = window.MaskTable
   size = ByteLength(key)
   for k in 0:(c.Get("i64", 0, table) - 1)
@@ -349,8 +341,8 @@ defn sharedMask(key, window)
   missing
 end
 
--- Records a mask in the shared table, if it has room. Gives the mask.
 defn shareMask(key, made, window)
+  (** Records a mask in the shared table, if it has room. Gives the mask. *)
   table = window.MaskTable
   count = c.Get("i64", 0, table)
   if count < MaxSharedMasks and ByteLength(key) <= MaskKey
@@ -367,8 +359,8 @@ defn shareMask(key, made, window)
   made
 end
 
--- A mask made once per key, whatever the copy of the window: {mask: {Texture, Left, Right, Top, Bottom}, window}.
 defn mask(key, width, height, left, right, top, bottom, shade, window)
+  (** A mask made once per key, whatever the copy of the window: {mask: {Texture, Left, Right, Top, Bottom}, window}. *)
   found = Get(key, window.Masks)
   if not IsMissing(found)
     return {Mask: found, Window: window}
@@ -380,8 +372,8 @@ defn mask(key, width, height, left, right, top, bottom, shade, window)
   {Mask: made, Window: next}
 end
 
--- Draws a mask stretched as a 9-grid, tinted by the color of a command.
 defn stamp(made, scale, x, y, width, height, color, alpha, window)
+  (** Draws a mask stretched as a 9-grid, tinted by the color of a command. *)
   texture = made.Texture
   Checked(window.Sdl.ColorMod(texture, Red(color), Green(color), Blue(color)), window)
   Checked(window.Sdl.AlphaMod(texture, alpha), window)
@@ -395,18 +387,18 @@ end
 
 clamp01(x) = Max(0.0, Min(1.0, x))
 smooth(t) = t * t * (3.0 - 2.0 * t)
--- How much of a pixel at distance d from a center lies inside a radius.
+(** How much of a pixel at distance d from a center lies inside a radius. *)
 inside(radius, d) = clamp01(radius + 0.5 - d)
 
--- The distance from a pixel to the 2-pixel middle of a shape of this size.
 defn middleDistance(x, y, width, height)
+  (** The distance from a pixel to the 2-pixel middle of a shape of this size. *)
   dx = Max(0.0, Abs(x + 0.5 - width / 2.0) - 1.0)
   dy = Max(0.0, Abs(y + 0.5 - height / 2.0) - 1.0)
   Sqrt(dx * dx + dy * dy)
 end
 
--- The largest radius that a rectangle can take, so that a 9-grid doesn't overlap itself.
 defn radiusOf(one)
+  (** The largest radius that a rectangle can take, so that a 9-grid doesn't overlap itself. *)
   radius = one.Radius
   if radius < 0 or radius > 24
     Panic("A radius goes from 0 to 24, not $radius.")
@@ -423,8 +415,8 @@ end
 
 ringMask(r, window) = mask("ring$r", 2 * r + 2, 2 * r + 2, r, r, r, r, (x, y) -> {Gray: 255, Alpha: ringAlpha(r, x, y)}, window)
 
--- Fills a rectangle with an alpha, which DrawRect doesn't take.
 defn fill(one, alpha, window)
+  (** Fills a rectangle with an alpha, which DrawRect doesn't take. *)
   c.Set("f32", 0, one.X, window.Rect)
   c.Set("f32", 4, one.Y, window.Rect)
   c.Set("f32", 8, one.Width, window.Rect)
@@ -436,8 +428,8 @@ end
 
 empty(one) = one.Width <= 0 or one.Height <= 0
 
--- Fills a rounded rectangle: a command {Kind: "box", X, Y, Width, Height, Color, Radius}, with an alpha if it wants.
 defn DrawBox(one, window)
+  (** Fills a rounded rectangle: a command {Kind: "box", X, Y, Width, Height, Color, Radius}, with an alpha if it wants. *)
   r = radiusOf(one)
   if empty(one)
     window
@@ -449,8 +441,8 @@ defn DrawBox(one, window)
   end
 end
 
--- Draws a 1-pixel edge: a command {Kind: "ring", X, Y, Width, Height, Color, Radius}, with an alpha if it wants.
 defn DrawRing(one, window)
+  (** Draws a 1-pixel edge: a command {Kind: "ring", X, Y, Width, Height, Color, Radius}, with an alpha if it wants. *)
   r = Max(1, radiusOf(one))
   if empty(one)
     window
@@ -460,15 +452,15 @@ defn DrawRing(one, window)
   end
 end
 
--- The mask of a title bar: round on top, darkening to the right.
 defn fadePixel(r, x, y)
+  (** The mask of a title bar: round on top, darkening to the right. *)
   dx = Max(0.0, Abs(x + 0.5 - 32.0) - (32.0 - r))
   dy = Max(0.0, r - y - 0.5)
   {Gray: WholeNumber(255.0 - 150.0 * clamp01((x - r * 1.0) / (64.0 - 2.0 * r))), Alpha: inside(r * 1.0, Sqrt(dx * dx + dy * dy))}
 end
 
--- A title bar: a command {Kind: "fade", X, Y, Width, Height, Color, Radius}, with an alpha if it wants.
 defn DrawFade(one, window)
+  (** A title bar: a command {Kind: "fade", X, Y, Width, Height, Color, Radius}, with an alpha if it wants. *)
   r = Max(1, radiusOf(one))
   if empty(one)
     window
@@ -478,9 +470,9 @@ defn DrawFade(one, window)
   end
 end
 
--- A soft shadow around a rectangle: a command {Kind: "shadow", X, Y, Width, Height}, with an alpha if it wants. A small
--- one scales its corners down, so that it stays a shadow.
 defn DrawShadow(one, window)
+  (** A soft shadow around a rectangle: a command {Kind: "shadow", X, Y, Width, Height}, with an alpha if it wants. A small
+      one scales its corners down, so that it stays a shadow. *)
   if empty(one)
     window
   else
@@ -491,12 +483,12 @@ defn DrawShadow(one, window)
   end
 end
 
--- A pixel of an image, from four integers from 0 to 255.
+(** A pixel of an image, from four integers from 0 to 255. *)
 Rgba(r, g, b, a) = r + g * 256 + b * 65536 + a * 0x1000000
 
--- A new image, clear: an Ok of {image: {Width, Height, Pixels, Texture}, window}, or an Err. Write its pixels with FillImage,
--- or with c.Set then ShowImage. sdl.Close frees it.
 defn Image(width, height, window)
+  (** A new image, clear: an Ok of {image: {Width, Height, Pixels, Texture}, window}, or an Err. Write its pixels with FillImage,
+      or with c.Set then ShowImage. sdl.Close frees it. *)
   texture = Some(window.Sdl.CreateTexture(window.Renderer, PixelsRgba, 0, width, height), window.Sdl)?
   Done(window.Sdl.TextureBlend(texture, BlendAlpha), window.Sdl)?
   remember(texture, window)
@@ -506,11 +498,11 @@ defn Image(width, height, window)
   Ok({Image: {Width: width, Height: height, Pixels: pixels, Texture: texture}, Window: next})
 end
 
--- Sends the pixels of an image to the screen's memory.
+(** Sends the pixels of an image to the screen's memory. *)
 ShowImage(picture, window) = Checked(window.Sdl.UpdateTexture(picture.Texture, missing, picture.Pixels, picture.Width * 4), window)
 
--- Writes f(x, y), a pixel from rgba, everywhere in an image, and shows it.
 defn FillImage(f, picture, window)
+  (** Writes f(x, y), a pixel from rgba, everywhere in an image, and shows it. *)
   for y in 0:(picture.Height - 1)
     for x in 0:(picture.Width - 1)
       c.Set("u32", (y * picture.Width + x) * 4, f(x, y), picture.Pixels)
@@ -519,8 +511,7 @@ defn FillImage(f, picture, window)
   ShowImage(picture, window)
 end
 
--- The color of a command that may not give one: white, which leaves an image as it is.
-ColorOf(one) = match one
+ColorOf(one) = match one   (** The color of a command that may not give one: white, which leaves an image as it is. *)
   {Color: color} -> color
   else -> 0xFFFFFF
 end
@@ -539,15 +530,15 @@ defn area(x, y, width, height, window)
   window.Rect
 end
 
--- Draws an image, stretched: a command {Kind: "image", Image, X, Y, Width, Height}, with a color and an alpha if it wants.
 defn DrawImage(one, window)
+  (** Draws an image, stretched: a command {Kind: "image", Image, X, Y, Width, Height}, with a color and an alpha if it wants. *)
   tint(one.Image.Texture, one, window)
   Checked(window.Sdl.RenderTexture(window.Renderer, one.Image.Texture, missing, area(one.X, one.Y, one.Width, one.Height, window)), window)
   window
 end
 
--- Repeats an image over a rectangle: a command {Kind: "tile", Image, X, Y, Width, Height}, with a color and an alpha if it wants.
 defn DrawTile(one, window)
+  (** Repeats an image over a rectangle: a command {Kind: "tile", Image, X, Y, Width, Height}, with a color and an alpha if it wants. *)
   tint(one.Image.Texture, one, window)
   Checked(window.Sdl.RenderTiled(window.Renderer, one.Image.Texture, missing, 1.0, area(one.X, one.Y, one.Width, one.Height, window)), window)
   window
@@ -563,8 +554,8 @@ defn segmentDistance(px, py, ax, ay, bx, by)
   Sqrt(ex * ex + ey * ey)
 end
 
--- The distance from a point of the 16-pixel square to the nearest line or ring of a shape.
 defn shapeDistance(px, py, shape)
+  (** The distance from a point of the 16-pixel square to the nearest line or ring of a shape. *)
   best = 99.0
   for path in shape.Paths
     for k in 1:Max(1, Div(Len(path), 2) - 1)
@@ -589,8 +580,8 @@ defn iconAlpha(shape, size, x, y)
   clamp01(1.2 - shapeDistance((x + 0.5) * scale, (y + 0.5) * scale, shape) / scale)
 end
 
--- Draws a shape of lines and rings: a command {kind: "icon", shape: {Name, Paths, Rings}, x, y}, with a size and a color if it wants.
 defn DrawIcon(one, window)
+  (** Draws a shape of lines and rings: a command {kind: "icon", shape: {Name, Paths, Rings}, x, y}, with a size and a color if it wants. *)
   size = sizeOf(one)
   shape = one.Shape
   got = mask("icon$(shape.Name)$size", size, size, 0, 0, 0, 0, (x, y) -> {Gray: 255, Alpha: iconAlpha(shape, size, x, y)}, window)
@@ -599,9 +590,9 @@ defn DrawIcon(one, window)
   got.Window
 end
 
--- The memory of a curves command, with room for this many curves. Each is a strip whose four rows of vertices never change
--- their links, so the indices are written once.
 defn curveBlock(capacity)
+  (** The memory of a curves command, with room for this many curves. Each is a strip whose four rows of vertices never change
+      their links, so the indices are written once. *)
   indices = c.Alloc(capacity * (CurvePoints - 1) * (CurveAcross - 1) * 6 * 4)
   at = 0
   for l in 0:(capacity - 1)
@@ -618,8 +609,8 @@ defn curveBlock(capacity)
   {Verts: c.Alloc(capacity * CurvePoints * CurveAcross * 32), Indices: indices, Items: missing, Capacity: capacity}
 end
 
--- Writes one curve from a byte offset, and gives the next offset. Where the tangent vanishes, the last direction holds.
 defn writeCurve(item, start, block)
+  (** Writes one curve from a byte offset, and gives the next offset. Where the tangent vanishes, the last direction holds. *)
   offsets = [-1.7, -0.8, 0.8, 1.7]
   clear = [0.0, 1.0, 1.0, 0.0]
   r = Red(item.Color) / 255.0
@@ -658,9 +649,9 @@ defn writeCurve(item, start, block)
   at
 end
 
--- Draws curves with soft edges: a command {kind: "curves", items: [{X0, Y0, X1, Y1, Color}]}. The Nth command of a frame keeps
--- its memory, and only writes it when its items change, so a still graph costs one call.
 defn DrawCurves(one, window)
+  (** Draws curves with soft edges: a command {kind: "curves", items: [{X0, Y0, X1, Y1, Color}]}. The Nth command of a frame keeps
+      its memory, and only writes it when its items change, so a still graph costs one call. *)
   items = one.Items
   n = Len(items)
   if n > MaxCurves
@@ -702,8 +693,8 @@ defn forgetItems(block)
   next
 end
 
--- Runs one command of a frame on the window and gives the window.
 defn Command(window, one)
+  (** Runs one command of a frame on the window and gives the window. *)
   match one.Kind
     "clear" -> DrawClear(one, window)
     "rect" -> DrawRect(one, window)
@@ -720,11 +711,11 @@ defn Command(window, one)
   end
 end
 
--- Draws without showing, and returns the window, which holds the text objects.
 defn Draw(commands, window)
+  (** Draws without showing, and returns the window, which holds the text objects. *)
   last = c.Get("i64", 8, window.Objects)
   if window.Drawn != last
-    window.Shown = []  -- an older copy: what it remembers is no longer in the objects
+    window.Shown = []  (* an older copy: what it remembers is no longer in the objects *)
     window.ShownFonts = []
     window.CurveBlocks = Map(forgetItems, window.CurveBlocks)
   end
@@ -735,24 +726,24 @@ defn Draw(commands, window)
   Reduce(Command, window, commands)
 end
 
--- Draws and shows one frame, and returns the window.
 defn Frame(commands, window)
+  (** Draws and shows one frame, and returns the window. *)
   drawn = Draw(commands, window)
   Checked(drawn.Sdl.Present(drawn.Renderer), drawn)
   drawn
 end
 
--- The size of a text in pixels, as {Width, Height}.
 defn TextSize(words, window, font = "body")
+  (** The size of a text in pixels, as {Width, Height}. *)
   Checked(window.Ttf.StringSize(FontNamed(font, window), words, 0, window.OutWidth, window.OutHeight), window)
   {Width: c.Get("i32", 0, window.OutWidth), Height: c.Get("i32", 0, window.OutHeight)}
 end
 
--- What a program needs to place text: width(words, font) in pixels, and height, that of a line.
+(** What a program needs to place text: width(words, font) in pixels, and height, that of a line. *)
 Measure(window) = {Width: (words, font) -> TextSize(words, window, font = font).Width, Height: TextSize("Ag", window).Height}
 
--- The name of a key, or missing.
 defn KeyName(code)
+  (** The name of a key, or missing. *)
   match code
     0x0D -> "enter"
     0x1B -> "escape"
@@ -773,8 +764,8 @@ defn KeyName(code)
   end
 end
 
--- The name of a key that has no special name: its character, or f1 to f12, or missing.
 defn OtherKeyName(code)
+  (** The name of a key that has no special name: its character, or f1 to f12, or missing. *)
   if (code >= 0x21 and code <= 0x7E) or (code >= 0xA0 and code < 0x40000000)
     Char(code)
   else if code >= 0x4000003A and code <= 0x40000045
@@ -784,11 +775,11 @@ defn OtherKeyName(code)
   end
 end
 
--- Is a modifier key down? The mods bits of an event have one bit for each of the left and right keys.
+(** Is a modifier key down? The mods bits of an event have one bit for each of the left and right keys. *)
 Held(mods, left, right) = Mod(Div(mods, left), 2) == 1 or Mod(Div(mods, right), 2) == 1
 
--- The key event in the event block as {Kind: "key", Key, Ctrl, Alt, Shift, Super}, or missing for a key with no name.
 defn KeyEvent(event)
+  (** The key event in the event block as {Kind: "key", Key, Ctrl, Alt, Shift, Super}, or missing for a key with no name. *)
   name = KeyName(c.Get("u32", 28, event))
   mods = c.Get("u16", 32, event)
   if IsMissing(name)
@@ -799,20 +790,19 @@ defn KeyEvent(event)
   end
 end
 
--- A coordinate rounded down to an integer.
-Whole(x) = Div(Floor(x), 1)
--- A mouse event as {Kind: "mouse", Action, X, Y, Button, Amount}.
+Whole(x) = Div(Floor(x), 1)   (** A coordinate rounded down to an integer. *)
+(** A mouse event as {Kind: "mouse", Action, X, Y, Button, Amount}. *)
 Mouse(action, x, y, button, amount) = {Kind: "mouse", Action: action, X: Whole(x), Y: Whole(y), Button: button, Amount: amount}
--- A mouse button event (action is "down" or "up") read from the event block.
+(** A mouse button event (action is "down" or "up") read from the event block. *)
 ButtonEvent(action, event) = Mouse(action, c.Get("f32", 28, event), c.Get("f32", 32, event), c.Get("u8", 24, event), 0.0)
--- A mouse move event read from the event block.
+(** A mouse move event read from the event block. *)
 MoveEvent(event) = Mouse("move", c.Get("f32", 28, event), c.Get("f32", 32, event), 0, 0.0)
--- A mouse wheel event read from the event block; amount is the scroll.
+(** A mouse wheel event read from the event block; amount is the scroll. *)
 WheelEvent(event) = Mouse("wheel", c.Get("f32", 36, event), c.Get("f32", 40, event), 0, c.Get("f32", 28, event))
 
--- The event in the block, or missing if a program has no use for it. Any other event about the window gives {Kind: "window"},
--- which no program sees: run draws a frame for it.
 defn Decoded(event)
+  (** The event in the block, or missing if a program has no use for it. Any other event about the window gives {Kind: "window"},
+      which no program sees: run draws a frame for it. *)
   code = c.Get("u32", 0, event)
   match code
     0x100 -> {Kind: "quit"}
@@ -827,8 +817,8 @@ defn Decoded(event)
   end
 end
 
--- Reads the events that are waiting, adding them to found.
 defn Waiting(window, found)
+  (** Reads the events that are waiting, adding them to found. *)
   if not window.Sdl.Poll(window.Event)
     if sys.StopAsked() Append({Kind: "quit"}, found) else found end
   else
@@ -837,14 +827,13 @@ defn Waiting(window, found)
   end
 end
 
--- Is this event for the program, and not only for the frame?
+(** Is this event for the program, and not only for the frame? *)
 ForProgram(event) = event.Kind != "window"
 
--- The events waiting, without blocking.
-Events(window) = Filter(ForProgram, Waiting(window, []))
+Events(window) = Filter(ForProgram, Waiting(window, []))   (** The events waiting, without blocking. *)
 
--- One step of run: update on an event, unless an earlier event already stopped the program.
 defn Applied(update, progress, event)
+  (** One step of run: update on an event, unless an earlier event already stopped the program. *)
   if progress.Stopped
     progress
   else
@@ -853,12 +842,12 @@ defn Applied(update, progress, event)
   end
 end
 
--- Does the state ask for frames of its own? With no moving, it never does.
+(** Does the state ask for frames of its own? With no moving, it never does. *)
 StillMoving(moving, state) = if IsMissing(moving) false else moving(state) end
 
--- One pass of a state that moves: a tick of the time since the last pass, at most 0.05 s so that nothing jumps after a pause,
--- then a frame. Gives {State, Stopped, Window, Last}.
 defn Moved(progress, update, view, window, last)
+  (** One pass of a state that moves: a tick of the time since the last pass, at most 0.05 s so that nothing jumps after a pause,
+      then a frame. Gives {State, Stopped, Window, Last}. *)
   now = sys.Now()
   ticked = Applied(update, progress, {Kind: "tick", Seconds: Min(now - last, 0.05)})
   drawn = if ticked.Stopped window else Frame(view(ticked.State), window) end
@@ -866,10 +855,10 @@ defn Moved(progress, update, view, window, last)
   {State: ticked.State, Stopped: ticked.Stopped, Window: drawn, Last: now}
 end
 
--- The loop of run: reads the events, updates the state, draws when something happened or moves, and calls itself again.
--- An event about the window draws too, even if the program has no use for it. Under Wayland, the frame around a window applies
--- only with its next frame, and until then the shadow of that frame takes the mouse: a window waiting for input would never get it.
 defn Step(state, update, view, window, moving, last)
+  (** The loop of run: reads the events, updates the state, draws when something happened or moves, and calls itself again.
+      An event about the window draws too, even if the program has no use for it. Under Wayland, the frame around a window applies
+      only with its next frame, and until then the shadow of that frame takes the mouse: a window waiting for input would never get it. *)
   happened = Waiting(window, [])
   progress = Reduce((p, event) -> Applied(update, p, event), {State: state, Stopped: false}, Filter(ForProgram, happened))
   if progress.Stopped
@@ -884,14 +873,14 @@ defn Step(state, update, view, window, moving, last)
   end
 end
 
--- Calls Update(event, state) for each event, and view(state) when something happened, until update gives missing.
--- Gives the last state. Between events, other fibers run. While moving(state) is true, update also gets {Kind: "tick", Seconds}
--- before each frame, and a frame is drawn at every pass; a still program draws nothing. With vsync, a frame can hold other
--- fibers back for up to its own length.
+(** Calls Update(event, state) for each event, and view(state) when something happened, until update gives missing.
+    Gives the last state. Between events, other fibers run. While moving(state) is true, update also gets {Kind: "tick", Seconds}
+    before each frame, and a frame is drawn at every pass; a still program draws nothing. With vsync, a frame can hold other
+    fibers back for up to its own length. *)
 Run(state, update, view, window, moving = missing) = Step(state, update, view, Frame(view(state), window), moving, sys.Now())
 
--- Closes the window and frees everything it took.
 defn Close(window)
+  (** Closes the window and frees everything it took. *)
   c.Free(window.Rect)
   c.Free(window.OutWidth)
   c.Free(window.OutHeight)

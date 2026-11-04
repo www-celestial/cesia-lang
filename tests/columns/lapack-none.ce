@@ -1,4 +1,4 @@
--- Without a library, the same functions give the same answers, more slowly.
+(** Without a library, the same functions give the same answers, more slowly. *)
 use num
 
 n = 33

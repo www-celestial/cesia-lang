@@ -10,10 +10,12 @@ Print(8)
 (***)
 (** a documentation comment **)
 Print(9)
--- (* a line comment opens nothing
+(* a comment (* holds another *) and ends after it *)
 Print(10)
 Print("(* a text *)")
 (* a quote " in a comment *) Print(11)
 x = 1 + (* over
 two lines *) 2
 Print(x)
+Print("a -- b (* c *) d")
+Print(5 - -2)

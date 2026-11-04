@@ -1,4 +1,4 @@
--- Closing a window leaves the others working.
+(** Closing a window leaves the others working. *)
 use tests/sdl/probe
 use sdl
 

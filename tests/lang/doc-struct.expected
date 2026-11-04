@@ -4,6 +4,8 @@ A car, for the test of cesia doc on the block form of a struct.
 
   Car(1500).Speed --> 0.0
   Car(1500, Speed = 2.0).Moved(3.0) --> 6.0
+
+  Speed  metres per second
 (c Car) Moved(time Number)
 
 How far it goes in this time.

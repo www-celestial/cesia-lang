@@ -1,4 +1,4 @@
--- Every function under a permission, run the same way under the three cases of permissions_*.cmd.
+(** Every function under a permission, run the same way under the three cases of permissions_*.cmd. *)
 use net
 use sys
 

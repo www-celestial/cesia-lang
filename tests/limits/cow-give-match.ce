@@ -1,4 +1,4 @@
--- One arm gives the array back: it must stay owned.
+(** One arm gives the array back: it must stay owned. *)
 defn passOn(e, xs)
   match e
     0 -> xs

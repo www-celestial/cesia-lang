@@ -239,7 +239,7 @@ let plan w host (shape : shape) (i : Ast.iface) =
   let rec go k need =
     if k = Array.length i.imethods then need, -1
     else
-      let name, ps = i.imethods.(k) in
+      let name, ps, _ = i.imethods.(k) in
       let n = Array.length ps and f = Value.field_index shape name in
       if not (Lexer.is_public name || shape.sm = host) then need, k
       else if f >= 0 then go (k + 1) ((f, n, k) :: need)
@@ -257,7 +257,7 @@ let lacks fields (need, lack) = List.fold_left (fun first (f, n, k) -> if takes 
 let type_name (t : ptype) = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname
 
 (* A method as its interface writes it: Scaled(by Number). *)
-let method_text (name, ps) =
+let method_text (name, ps, _) =
   let param (p : param) =
     match p.ptype with Some t -> p.pname ^ " " ^ type_name t ^ (if t.topt then "?" else "") | None -> p.pname
   in
@@ -603,6 +603,37 @@ let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -
   in
   looped
 
+(* A version that keeps a value as an Int or a Float already knows whether it fits a number type. *)
+let known_number (t : ptype) ty =
+  (ty == TI || ty == TF) && t.tb = Unresolved && (t.tname = "Number" || t.tname = (if ty == TI then "Int" else "Float"))
+
+(* The return type at a way out of the function, as for a parameter: the version may already know the answer. Else the value
+   is checked there, and a wrong one stops the program. *)
+let result_check c pos known : (ctx -> t -> t) option =
+  match c.func.ret with
+  | Some t when not (known_number t known) ->
+    let ch = type_check c.w t and s = site c pos in
+    let wrong (ctx : ctx) x =
+      ctx.site <- s;
+      let want, found = ch.wrong x in
+      Runtime.fail ctx Type (Messages.wrong_result c.func.fname want found)
+    in
+    Some (fun ctx x -> let y = ch.accept x in if y == Undef then wrong ctx x else y)
+  | _ -> None
+
+(* The check of the last value of the body, at its last expression. A call to itself in tail position is no way out: it
+   jumps back. *)
+let tail_check c =
+  let f = c.func in
+  let last =
+    match f.body with
+    | [||] -> f.fpos
+    | b -> (match b.(Array.length b - 1) with { e = Return { rvalue = Some v; _ }; _ } -> v.pos | e -> e.pos)
+  in
+  match result_check c last c.ver.ret with
+  | Some check when f.has_self_tail -> Some (fun ctx x -> if ctx.again then x else check ctx x)
+  | found -> found
+
 let rec compile_version (ctx : ctx) (ver : version) =
   let w = ctx.w in
   Infer.run w ver;
@@ -643,18 +674,21 @@ let rec compile_version (ctx : ctx) (ver : version) =
   (match ver.ret with
    | TI ->
      let body = ci_block c f.body in
+     let body = match tail_check c with Some check -> fun ctx -> to_i ctx (check ctx (Int (body ctx))) | None -> body in
      let entry = wrap f ver.frame prologue to_i body in
      ver.ri <- entry;
      ver.rv <- (fun ctx -> Int (entry ctx));
      ver.rf <- (fun ctx -> float_of_int (entry ctx))
    | TF ->
      let body = cf_block c f.body in
+     let body = match tail_check c with Some check -> fun ctx -> to_f ctx (check ctx (Float (body ctx))) | None -> body in
      let entry = wrap f ver.frame prologue to_f body in
      ver.rf <- entry;
      ver.rv <- (fun ctx -> Float (entry ctx));
      ver.ri <- (fun ctx -> to_i ctx (Float (entry ctx)))
    | _ ->
      let body = ctail_block c f.body in
+     let body = match tail_check c with Some check -> fun ctx -> check ctx (body ctx) | None -> body in
      let entry = wrap f ver.frame prologue (fun _ v -> v) body in
      ver.rv <- entry;
      ver.ri <- (fun ctx -> to_i ctx (entry ctx));
@@ -665,8 +699,7 @@ let rec compile_version (ctx : ctx) (ver : version) =
 (* A typed parameter, after its default. Its version may already know the answer: an Int or a Float for a number. Else
    the value is checked, and a wrong one stops the program at the call. *)
 and param_check c k (t : ptype) : (ctx -> unit) option =
-  let number = t.tb = Unresolved && (t.tname = "Number" || t.tname = (if c.tv.(k) == TI then "Int" else "Float")) in
-  if (c.tv.(k) == TI || c.tv.(k) == TF) && number then None
+  if known_number t c.tv.(k) then None
   else begin
     let ch = type_check c.w t and slot = c.map.(k) in
     let wrong (ctx : ctx) x =
@@ -875,7 +908,11 @@ and ca c (e : expr) : ctx -> t =
   | Question a -> question c e a
   | Return { rvalue; tail } ->
     let v = match rvalue with Some v -> if tail then ctail c v else ce c v | None -> fun _ -> Missing in
-    if tail then v else fun ctx -> raise_notrace (Return_value (v ctx))
+    if tail then v
+    else (
+      match result_check c e.pos (match rvalue with Some v -> ty c v | None -> TA) with
+      | None -> fun ctx -> raise_notrace (Return_value (v ctx))
+      | Some check -> fun ctx -> raise_notrace (Return_value (check ctx (v ctx))))
   | Assign _ | While _ | For _ | Set _ | Break | Fn_def _ | Destructure _ | Use _ | Interface _ | Hook _ ->
     let u = cu c e in
     fun ctx -> u ctx; Missing

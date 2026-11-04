@@ -1,5 +1,4 @@
--- A prelude for the test of cesia doc on methods.
+(** A prelude for the test of cesia doc on methods. *)
 struct Rect { Width }
 
--- The area.
-(r Rect) Area() = r.Width
+(r Rect) Area() = r.Width   (** The area. *)

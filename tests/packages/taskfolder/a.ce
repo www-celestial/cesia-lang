@@ -1,2 +1,2 @@
--- A task can run a folder.
+(** A task can run a folder. *)
 Print("in the folder")

@@ -1,4 +1,4 @@
--- A method that two interfaces give to a value that meets both.
+(** A method that two interfaces give to a value that meets both. *)
 interface Shape { Area() }
 interface Sized { Area() }
 struct Rect { Side }

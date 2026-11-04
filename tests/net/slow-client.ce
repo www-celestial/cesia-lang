@@ -1,4 +1,4 @@
--- A client that sends half a request and waits: the server closes it at its deadline.
+(** A client that sends half a request and waits: the server closes it at its deadline. *)
 use http
 use net
 use sys

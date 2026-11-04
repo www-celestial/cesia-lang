@@ -1,4 +1,4 @@
--- An expression inside a struct in the block form.
+(** An expression inside a struct in the block form. *)
 struct Car
   Mass
   Print(Mass)

@@ -1,4 +1,4 @@
--- The server side of WebSocket, RFC 6455, on the connection http hands over.
+(** The server side of WebSocket, RFC 6455, on the connection http hands over. *)
 use encode
 use http
 
@@ -6,8 +6,8 @@ guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MaxFrame = 1048576
 DefaultIdle = 300
 
--- A frame from the server: never masked.
 defn Frame(opcode, payload)
+  (** A frame from the server: never masked. *)
   n = ByteLength(payload)
   head = if n < 126
     [128 + opcode, n]
@@ -19,8 +19,8 @@ defn Frame(opcode, payload)
   "$(FromBytes(head))$payload"
 end
 
--- The first frame of a buffer, missing if it isn't all there, or {Bad: true} for a frame to refuse.
 defn ParseFrame(buffer)
+  (** The first frame of a buffer, missing if it isn't all there, or {Bad: true} for a frame to refuse. *)
   size = ByteLength(buffer)
   if size < 2
     return missing
@@ -59,8 +59,8 @@ defn ParseFrame(buffer)
   {Bad: false, Opcode: BitAnd(first, 15), Payload: payload, Rest: rest}
 end
 
--- The deadline starts again at each message and ping: an idle client doesn't hold its fiber forever.
 defn loop(io, buffer, onMessage, idle)
+  (** The deadline starts again at each message and ping: an idle client doesn't hold its fiber forever. *)
   f = ParseFrame(buffer)
   if IsMissing(f)
     more = io.Read()
@@ -91,8 +91,8 @@ defn begin(io, rest, onMessage, idle)
   loop(io, rest, onMessage, idle)
 end
 
--- The response that upgrades a request, or a 400 if it isn't a WebSocket one.
 defn Accept(headers, onMessage, idle = DefaultIdle)
+  (** The response that upgrades a request, or a 400 if it isn't a WebSocket one. *)
   key = http.HeaderValue("sec-websocket-key", headers)
   asked = http.HeaderValue("upgrade", headers)
   if IsMissing(key) or IsMissing(asked) or Lower(asked) != "websocket"

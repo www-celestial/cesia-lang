@@ -104,7 +104,7 @@ let rec declared found (e : expr) =
    | Fn_def (n, f) ->
      Option.iter (fun (_, _, name) -> Hashtbl.replace found name ()) (Lexer.split_method n.text);
      declared_in found f
-   | Interface i -> Array.iter (fun (name, _) -> Hashtbl.replace found name ()) i.imethods
+   | Interface i -> Array.iter (fun (name, _, _) -> Hashtbl.replace found name ()) i.imethods
    | _ -> ());
   children (declared found) e
 
@@ -285,6 +285,7 @@ and func env parent kind celled (f : func) =
   let sc = { fn = f; kind; parent; vars = Hashtbl.create 8; names = []; caps = []; overlay = [] } in
   Array.iter (fun p -> ignore (new_var sc p.pname)) f.params;
   Array.iter (fun p -> Option.iter (type_ref env) p.ptype) f.params;
+  Option.iter (type_ref env) f.ret;
   Array.iter (assigned sc) f.body;
   Array.iter (fun p -> Option.iter (reads env sc celled) p.default) f.params;
   Array.iter (reads env sc celled) f.body;
@@ -522,7 +523,10 @@ let file ?(keep = [||]) ?(peers = []) ?(sees_private = false) ?(is_type = fun _ 
          Hashtbl.replace env.interfaces i.iname ()
        | _ -> ())
     fn.body;
-  let method_types (_, ps) = Array.iter (fun p -> Option.iter (type_ref env) p.ptype) ps in
+  let method_types (_, ps, ret) =
+    Array.iter (fun p -> Option.iter (type_ref env) p.ptype) ps;
+    Option.iter (type_ref env) ret
+  in
   List.iter (fun (_, i) -> Array.iter method_types i.imethods) !interfaces;
   let methods =
     List.rev_map

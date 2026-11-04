@@ -1,0 +1,5 @@
+return-wrong.ce:3:3: Half: the result must be a Float, found a Text.
+  3 |   Text(x / 2)
+    |   ^
+  in Half (return-wrong.ce:3)
+exit 1

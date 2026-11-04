@@ -1,4 +1,4 @@
--- Calls the function of every shape in the fixture, with every class of argument.
+(** Calls the function of every shape in the fixture, with every class of argument. *)
 use c
 
 pow2(k) = Reduce((acc, i) -> acc * 2, 1, 1:k)

@@ -1,4 +1,4 @@
--- Linear algebra above the size where a library takes over, when there is one. The answers hold with it or without it.
+(** Linear algebra above the size where a library takes over, when there is one. The answers hold with it or without it. *)
 use num
 
 defn sample(n)

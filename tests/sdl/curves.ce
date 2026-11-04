@@ -14,8 +14,8 @@ end
 one = [{X0: 10, Y0: 10, X1: 110, Y1: 60, Color: green}]
 other = [{X0: 10, Y0: 20, X1: 110, Y1: 70, Color: green}]
 
--- A number is equal to itself, unless it is nan.
 defn allFinite(block, vertices)
+  (** A number is equal to itself, unless it is nan. *)
   good = true
   for k in 0:(vertices - 1)
     x = c.Get("f32", k * 32, block)

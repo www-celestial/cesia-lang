@@ -1,4 +1,4 @@
--- An interface inside a function.
+(** An interface inside a function. *)
 defn f()
   interface Shape { Area() }
 end

@@ -1,0 +1,4 @@
+comment-dashes.ce:2:7: Comments are written (* ... *).
+  2 | y = x -- an old comment
+    |       ^
+exit 1

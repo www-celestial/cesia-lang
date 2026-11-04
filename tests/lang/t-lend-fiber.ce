@@ -1,4 +1,4 @@
--- A module variable can be reached by two fibers: a function that sleeps on it keeps the value it was given.
+(** A module variable can be reached by two fibers: a function that sleeps on it keeps the value it was given. *)
 use sys
 
 cell = [1, 2]

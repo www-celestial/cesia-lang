@@ -1,4 +1,4 @@
--- A field inside an interface.
+(** A field inside an interface. *)
 interface Shape
   Area()
   Sides Int

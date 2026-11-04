@@ -1,0 +1,17 @@
+(** A return with no value gives missing, which a type without ? refuses. *)
+defn Find(xs Array, x) Int?
+  for i in 1:Len(xs)
+    if xs[i] == x
+      return i
+    end
+  end
+end
+defn F(x) Int
+  if x > 0
+    return
+  end
+  x
+end
+Print(Find([1, 2], 3))
+Print(F(0))
+Print(F(1))

@@ -1,4 +1,4 @@
--- One client's garbage leaves the others alone, a silent TCP close is an error, and a client that says nothing is closed.
+(** One client's garbage leaves the others alone, a silent TCP close is an error, and a client that says nothing is closed. *)
 use tls
 use web
 use http

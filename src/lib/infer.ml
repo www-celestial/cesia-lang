@@ -106,6 +106,12 @@ let as_param (fn : func) k t =
   | TI, Some { tname = "Float"; tpkg = None; _ } -> TF
   | _ -> t
 
+(* And one that a function of type Float gives: its callers see a Float. Otherwise a return type changes no inference. *)
+let as_result (fn : func) t =
+  match t, fn.ret with
+  | TI, Some { tname = "Float"; tpkg = None; _ } -> TF
+  | _ -> t
+
 let rec run w (ver : version) =
   if ver.state = 0 then begin
     ver.state <- 1;
@@ -140,7 +146,7 @@ and analyze w ver fn =
            | None -> ())
       ver.sg;
     let last = block env fn.body in
-    let r = join (join env.rett last) ver.ret in
+    let r = join (as_result fn (join env.rett last)) ver.ret in
     if r != ver.ret then begin
       ver.ret <- r;
       env.changed <- true

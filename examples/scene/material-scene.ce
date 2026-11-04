@@ -1,5 +1,5 @@
--- The scene of a material editor: a sphere lit by Cesia, a graph of nodes, details, a palette and a code pane. examples/material.ce
--- runs it, and bench/ui-frame.ce measures it. c is used for one thing: the pixels of the sphere, which follow the mouse.
+(** The scene of a material editor: a sphere lit by Cesia, a graph of nodes, details, a palette and a code pane. examples/material.ce
+    runs it, and bench/ui-frame.ce measures it. c is used for one thing: the pixels of the sphere, which follow the mouse. *)
 use c
 use sdl
 use ui
@@ -43,8 +43,8 @@ clamp01(x) = Max(0.0, Min(1.0, x))
 smooth(t) = t * t * (3.0 - 2.0 * t)
 mix(a, b, t) = a + (b - a) * t
 
--- The sphere: a diffuse part, a highlight that tightens as roughness falls, and a sky that metal reflects.
 defn ShadeSphere(block, n, rough, metal, turn)
+  (** The sphere: a diffuse part, a highlight that tightens as roughness falls, and a sky that metal reflects. *)
   radius = n / 2.0 - 1.5
   center = n / 2.0
   lx = -0.46 * Cos(turn) + 0.634 * Sin(turn)
@@ -97,8 +97,8 @@ defn ShadeSphere(block, n, rough, metal, turn)
   end
 end
 
--- The panels follow the size of the window.
 defn layout(w, h)
+  (** The panels follow the size of the window. *)
   body = {X: 4, Y: 68, Width: Max(0, w - 8), Height: Max(0, h - 72)}
   columns = ui.Left(292, body)
   sides = ui.Right(236, columns.Rest)
@@ -111,7 +111,7 @@ end
 graphArea(rect) = {X: rect.X + 2, Y: rect.Y + 28, Width: Max(0, rect.Width - 4), Height: Max(0, rect.Height - 30)}
 paletteArea(rect) = {X: rect.X + 8, Y: rect.Y + 60, Width: Max(0, rect.Width - 16), Height: Max(0, rect.Height - 68)}
 
--- The slider k of the details: 0 for Metallic, 1 for Roughness.
+(** The slider k of the details: 0 for Metallic, 1 for Roughness. *)
 SliderRect(details, k) = {X: details.X + 130, Y: details.Y + 246 + k * 26, Width: Max(0, details.Width - 138), Height: 22}
 
 defn Start(window)
@@ -224,7 +224,7 @@ defn View(state)
     ui.Panel("Palette", r.Palette, look), ui.Field("Search nodes", {X: r.Palette.X + 8, Y: r.Palette.Y + 32, Width: Max(0, r.Palette.Width - 16), Height: 22}, look, hint = true), ui.List(palette, 4, state.Hover, listArea, look)])
 end
 
--- Something still eases, or the sharp sphere hasn't come back.
+(** Something still eases, or the sharp sphere hasn't come back. *)
 Moving(state) = state.Dragging == 1 or state.Dragging == 2 or not state.Rested or not ui.Rests(state.ShownRough, state.Rough) or not ui.Rests(state.ShownMetal, state.Metal) or not ui.Rests(state.ShownLight, state.Light) or not ui.Rests(state.Hover, state.Target)
 
 defn onPress(state, point)
@@ -269,8 +269,8 @@ defn onMove(state, point)
   s
 end
 
--- While a value moves, the small sphere keeps the frame rate. Once it rests, the sharp one comes back.
 defn relight(state)
+  (** While a value moves, the small sphere keeps the frame rate. Once it rests, the sharp one comes back. *)
   s = state
   changed = Abs(s.ShownRough - s.Lit.Rough) + Abs(s.ShownMetal - s.Lit.Metal) + Abs(s.ShownLight - s.Lit.Light)
   if changed > 0.004

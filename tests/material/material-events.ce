@@ -1,4 +1,4 @@
--- The interactions of the example, through its update function.
+(** The interactions of the example, through its update function. *)
 use sdl
 use examples/scene as scene
 

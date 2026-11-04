@@ -1,4 +1,4 @@
--- Text objects are kept by position: a frame with fewer texts must not show the old ones.
+(** Text objects are kept by position: a frame with fewer texts must not show the old ones. *)
 use tests/sdl/probe
 use sdl
 

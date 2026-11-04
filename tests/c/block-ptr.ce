@@ -1,4 +1,4 @@
--- A block given to C is a pointer, and its address can be stored in another block.
+(** A block given to C is a pointer, and its address can be stored in another block. *)
 use c
 
 lib = Unwrap(c.Open(Args[1]))

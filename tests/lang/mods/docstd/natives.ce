@@ -1,0 +1,4 @@
+(** NewNative(x, y)
+    A native documented by a block whose first line is its signature.
+
+      Len("abc") --> 3 *)

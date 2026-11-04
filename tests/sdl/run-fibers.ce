@@ -1,4 +1,4 @@
--- The window waits without stopping the other fibers: only one of them can end it.
+(** The window waits without stopping the other fibers: only one of them can end it. *)
 use tests/sdl/probe
 use sdl
 use sys

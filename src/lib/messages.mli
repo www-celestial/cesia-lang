@@ -7,6 +7,7 @@ val invalid_utf8 : t
 val unexpected_char : char -> t
 val text_not_closed : t
 val comment_not_closed : t
+val comment_dashes : t
 val number_too_big : string -> t
 val expected : string -> string -> t
 val too_nested : t
@@ -88,6 +89,9 @@ val method_two : string -> string -> string -> string -> t
 
 (** [wrong_type fname name want found]: a value of the wrong type for a parameter or a field. *)
 val wrong_type : string -> string -> string -> string -> t
+
+(** [wrong_result fname want found]: a value of the wrong type for the return type of a function. *)
+val wrong_result : string -> string -> string -> t
 
 (** The name with its article: [an Int], [a Point]. *)
 val article : string -> string

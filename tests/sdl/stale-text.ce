@@ -1,4 +1,4 @@
--- An older copy of the window remembers texts that its objects no longer hold.
+(** An older copy of the window remembers texts that its objects no longer hold. *)
 use tests/sdl/probe
 use sdl
 

@@ -1,0 +1,5 @@
+(** A result of the wrong type, at the end of the function. *)
+defn Half(x Float) Float
+  Text(x / 2)
+end
+Print(Half(1))

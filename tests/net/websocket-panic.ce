@@ -1,4 +1,4 @@
--- A panic in a WebSocket handler closes its connection, and an idle one reaches its deadline.
+(** A panic in a WebSocket handler closes its connection, and an idle one reaches its deadline. *)
 use web
 use net
 use sys
@@ -6,7 +6,7 @@ use sys
 crlf = "\r\n"
 a = web.Websocket("/boom", (m, send) -> Panic("boom"), web.App(), idle = 0.2)
 a = web.Websocket("/echo", (m, send) -> send(m), a, idle = 0.1)
--- The reaper passes every 0.5 s: idle closes by 0.6 s, the timeout alone never before 1 s.
+(** The reaper passes every 0.5 s: idle closes by 0.6 s, the timeout alone never before 1 s. *)
 Spawn(() -> web.Serve(a, port = 18207, timeout = 1))
 sys.Sleep(0.05)
 

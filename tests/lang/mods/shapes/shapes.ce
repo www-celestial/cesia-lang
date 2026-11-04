@@ -1,4 +1,4 @@
--- Structs with methods, for the tests of a use.
+(** Structs with methods, for the tests of a use. *)
 struct Circle { Radius }
 struct Rect { Side }
 struct piece { Size }
@@ -14,17 +14,17 @@ end
 Circle.built() = Circle(2)
 Circle.Reached() = Circle.built()
 
--- The area of a circle, with pi at 3.
---
---   Circle(2).Area() --> 12
---   Circle.Unit().Area() --> 3
---   Circle(1).hidden() --> 1
+(** The area of a circle, with pi at 3.
+
+      Circle(2).Area() --> 12
+      Circle.Unit().Area() --> 3
+      Circle(1).hidden() --> 1 *)
 (c Circle) Area() = 3 * c.Radius * c.Radius
 
--- Twice the radius.
---
---   Circle(2).Twice() --> 4
 defn (c Circle) Twice()
+  (** Twice the radius.
+
+        Circle(2).Twice() --> 4 *)
   2 * c.Radius
 end
 
@@ -38,13 +38,11 @@ Make(radius) = Circle.Of(radius)
 MakeRect(side) = Rect(side)
 MakePiece(size) = piece(size)
 
--- A square, in the block form of a struct.
 struct Square
+  (** A square, in the block form of a struct. *)
   Side = 1
 end
 
--- A square with twice the side.
-Square.Twice(s) = Square(2 * s.Side)
+Square.Twice(s) = Square(2 * s.Side)   (** A square with twice the side. *)
 
--- The area of a square.
-(s Square) Area() = s.Side * s.Side
+(s Square) Area() = s.Side * s.Side   (** The area of a square. *)

@@ -1,4 +1,4 @@
--- The small functions of the prelude, in the spirit of clojure.core.
+(** The small functions of the prelude, in the spirit of clojure.core. *)
 
 isIncDec() = Inc(1) == 2 and Dec(1) == 0 and Equal(Inc([1, 2]), [2, 3]) and Inc(1.5) == 2.5
 isAddSubMul() = Reduce(Add, 0, [1, 2, 3]) == 6 and Sub(5, 2) == 3 and Reduce(Mul, 1, [2, 3]) == 6

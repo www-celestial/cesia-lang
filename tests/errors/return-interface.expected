@@ -1,0 +1,5 @@
+return-interface.ce:3:10: There is no type "Nmber".
+  3 |   Area() Nmber
+    |          ^
+  A type is Int, Float, Number, Bool, Text, Array, Dict, Function, a struct or an interface.
+exit 1

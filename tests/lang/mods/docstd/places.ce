@@ -1,0 +1,50 @@
+(** Where the documentation of a definition goes, for the test of cesia doc in doc-places.cmd. *)
+
+defn Scaled(
+  r Number,   (** the number to grow *)
+  by Number   (** how many times larger *)
+) Number      (** the larger number *)
+  (** A number larger by some factor.
+
+        Scaled(2, 3) --> 6 *)
+  r * by
+end
+
+struct Rect
+  (** A rectangle, in metres. *)
+  Width Number    (** along x *)
+  Height Number   (** along y *)
+end
+
+interface Shape
+  (** Something with an area. *)
+  Area() Number   (** in square metres *)
+end
+
+Square(x Number) Number = x * x   (** The square of a number. *)
+
+(** The cube of a number.
+
+      Cube(2) --> 8 *)
+Cube(x Number) Number = x * x * x
+
+(** Above a block, this documents nothing. *)
+defn Above(x)
+  x
+end
+
+defn Later(x)
+  y = x
+  (** Later in a body, this documents nothing. *)
+  y
+end
+
+defn Noted(
+  a,   (* a note, shown nowhere *)
+  b
+)
+  (** Two notes that show nowhere. *)
+  a + b
+end
+
+defn Noop() end

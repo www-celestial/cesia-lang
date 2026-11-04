@@ -1,4 +1,4 @@
--- Failed handshakes give back their memory: this limit stops the server otherwise.
+(** Failed handshakes give back their memory: this limit stops the server otherwise. *)
 use tls
 use web
 use net

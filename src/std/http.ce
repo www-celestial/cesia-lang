@@ -1,4 +1,4 @@
--- A small HTTP/1.1 server and client, written on net and the text functions.
+(** A small HTTP/1.1 server and client, written on net and the text functions. *)
 use net
 use sys
 
@@ -8,8 +8,7 @@ MaxHead = 16384
 DefaultMaxBody = 1048576
 DefaultTimeout = 60
 
--- The standard reason text of a status code, or "Unknown".
-Reason(status) = match status
+Reason(status) = match status   (** The standard reason text of a status code, or "Unknown". *)
   200 -> "OK"
   101 -> "Switching Protocols"
   201 -> "Created"
@@ -35,8 +34,8 @@ end
 
 isDigits(s) = s != "" and All(Map(b -> b >= 48 and b <= 57, Bytes(s)))
 
--- A header line as {Name, Value}, or missing if it isn't one: net.IsHeader says what it refuses, and why.
 defn Header(line)
+  (** A header line as {Name, Value}, or missing if it isn't one: net.IsHeader says what it refuses, and why. *)
   at = net.Find(":", line)
   if IsMissing(at) or not net.IsHeader(at, line)
     missing
@@ -46,8 +45,8 @@ defn Header(line)
   end
 end
 
--- Loops, not filters: these run on every request, and a filter builds an array and a closure each time.
 defn HeaderValue(name, headers)
+  (** Loops, not filters: these run on every request, and a filter builds an array and a closure each time. *)
   for h in headers
     if h.Name == name
       return h.Value
@@ -66,8 +65,8 @@ defn named(name, headers)
   n
 end
 
--- The request line and headers, as a request without its body.
 defn ParseHead(head)
+  (** The request line and headers, as a request without its body. *)
   lines = Split(Crlf, head)
   words = Split(" ", lines[1])
   headers = [Header(lines[i]) for i in 2:Len(lines)]
@@ -82,14 +81,14 @@ defn ParseHead(head)
   end
 end
 
--- An HTTP/1.0 client waits for the end of the connection.
 defn Closes(head)
+  (** An HTTP/1.0 client waits for the end of the connection. *)
   asked = HeaderValue("connection", head.Headers)
   head.Version == "HTTP/1.0" or (IsText(asked) and Lower(asked) == "close")
 end
 
--- The body that follows a head, once it has all arrived.
 defn WithBody(head, after, limit, used)
+  (** The body that follows a head, once it has all arrived. *)
   sizeText = HeaderValue("content-length", head.Headers)
   size = if IsMissing(sizeText) 0 else if isDigits(sizeText) Number(sizeText) else -1 end
   if not IsMissing(HeaderValue("transfer-encoding", head.Headers))
@@ -109,9 +108,9 @@ defn WithBody(head, after, limit, used)
   end
 end
 
--- Ok of the first request and what follows it, Ok(missing) if the head isn't all there, Ok({Needs}) with the size of the
--- whole request if its body isn't, or Err of a status.
 defn ParseRequest(buffer, limit = DefaultMaxBody)
+  (** Ok of the first request and what follows it, Ok(missing) if the head isn't all there, Ok({Needs}) with the size of the
+      whole request if its body isn't, or Err of a status. *)
   at = net.Find(Blank, buffer)
   if IsMissing(at)
     if net.Size(buffer) > MaxHead Err(431) else Ok(missing) end
@@ -123,15 +122,15 @@ defn ParseRequest(buffer, limit = DefaultMaxBody)
   end
 end
 
--- A line end here would let data from a client write a response of its own.
 defn HeaderLine(h)
+  (** A line end here would let data from a client write a response of its own. *)
   line = "$(h.Name): $(h.Value)"
   Assert(not Contains("\r", line) and not Contains("\n", line), "This response header has a line end.")
   "$line$Crlf"
 end
 
--- The text of an HTTP/1.1 response from {Status, Body} and optional headers. With headOnly, the body is left out.
 defn Render(response, headOnly = false)
+  (** The text of an HTTP/1.1 response from {Status, Body} and optional headers. With headOnly, the body is left out. *)
   status = response.Status
   Assert(IsInt(status), "This response has a status that isn't an integer.")
   body = Text(response.Body)
@@ -145,11 +144,11 @@ defn Render(response, headOnly = false)
   "HTTP/1.1 $status $(Reason(status))$Crlf$lengthLine$custom$Crlf$shown"
 end
 
--- The text of a response with just a status and its reason.
+(** The text of a response with just a status and its reason. *)
 Failure(status) = Render({Status: status, Body: Reason(status)})
 
--- A response made ready to send: a struct with reply (its text) and upgrade (a function or missing).
 defn Ready(response, headOnly)
+  (** A response made ready to send: a struct with reply (its text) and upgrade (a function or missing). *)
   upgrade = match response
     {Upgrade: upgrade} -> upgrade
     else -> missing
@@ -157,14 +156,14 @@ defn Ready(response, headOnly)
   {Reply: Render(response, headOnly = headOnly), Upgrade: upgrade}
 end
 
--- A panic in the handler stops its own fiber only.
+(** A panic in the handler stops its own fiber only. *)
 Answer(handle, request) = match Wait(Spawn(() -> Ready(handle(request), request.Method == "HEAD")))
   Ok(done) -> done
   else -> {Reply: Failure(500), Upgrade: missing}
 end
 
--- How a connection reads, writes and closes, so that TLS can sit under HTTP.
 defn Plain(c)
+  (** How a connection reads, writes and closes, so that TLS can sit under HTTP. *)
   Ok({Read: () -> net.Read(c), Write: s -> net.Write(c, s), Close: () -> net.Close(c), Arm: s -> net.Arm(c, s)})
 end
 
@@ -173,9 +172,9 @@ waits(parsed) = match parsed
   else -> false
 end
 
--- Reads until the needed size, or to the end of the connection if it is missing, in one pass: a body sent a byte at a time
--- doesn't make each read parse it again. Ok holds what arrived, which an early end leaves short.
 defn Gather(io, first, needed)
+  (** Reads until the needed size, or to the end of the connection if it is missing, in one pass: a body sent a byte at a time
+      doesn't make each read parse it again. Ok holds what arrived, which an early end leaves short. *)
   pieces = {0: first}
   total = net.Size(first)
   while IsMissing(needed) or total < needed
@@ -189,8 +188,8 @@ defn Gather(io, first, needed)
   Ok(Join("", Values(pieces)))
 end
 
--- The deadline covers the head and the body of a request: a slow client can't hold a connection with a byte at a time.
 defn Connection(handle, io, buffer, options)
+  (** The deadline covers the head and the body of a request: a slow client can't hold a connection with a byte at a time. *)
   parsed = if buffer == "" Ok(missing) else ParseRequest(buffer, limit = options.MaxBody) end
   if IsErr(parsed)
     io.Write(Failure(parsed.Error))
@@ -225,8 +224,8 @@ defn Connection(handle, io, buffer, options)
   end
 end
 
--- The deadline starts before TLS: a client that connects and says nothing reaches it too.
 defn Start(handle, c, options)
+  (** The deadline starts before TLS: a client that connects and says nothing reaches it too. *)
   net.Arm(c, options.Timeout)
   made = options.Wrap(c)
   if IsErr(made)
@@ -236,8 +235,8 @@ defn Start(handle, c, options)
   end
 end
 
--- An accept that fails for lack of descriptors is tried again later, without spinning.
 defn AcceptLoop(handle, listener, options)
+  (** An accept that fails for lack of descriptors is tried again later, without spinning. *)
   while true
     next = net.Accept(listener)
     if IsOk(next)
@@ -250,26 +249,26 @@ defn AcceptLoop(handle, listener, options)
   end
 end
 
--- Closes what outlived its deadline, at each period, until the last socket is gone.
 defn Reaper(period)
+  (** Closes what outlived its deadline, at each period, until the last socket is gone. *)
   while net.OpenCount() > 0
     sys.Sleep(period)
     net.Reap()
   end
 end
 
--- Waits until no socket is open, or until the time in seconds since 1970 that deadline gives.
 defn WaitForConnections(deadline)
+  (** Waits until no socket is open, or until the time in seconds since 1970 that deadline gives. *)
   while net.OpenCount() > 0 and sys.Now() < deadline
     sys.Sleep(0.01)
   end
 end
 
--- Serves requests until a stop signal, then finishes those in progress for at most 5 seconds.
--- handle(request) receives {Method, Path, Query, Headers, Body} and returns {Status, Body}, with optional headers, and
--- optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
--- after the response. wrap sits under HTTP: see tls.
 defn Serve(handle, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = Plain)
+  (** Serves requests until a stop signal, then finishes those in progress for at most 5 seconds.
+      handle(request) receives {Method, Path, Query, Headers, Body} and returns {Status, Body}, with optional headers, and
+      optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
+      after the response. wrap sits under HTTP: see tls. *)
   listener = net.Listen(port, host = host)?
   Spawn(() -> Reaper(Max(0.01, Min(1.0, timeout / 2.0))))
   AcceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: wrap})?
@@ -278,11 +277,10 @@ defn Serve(handle, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, ma
   Ok(missing)
 end
 
--- An Err of the kind "http" with a message.
-Failed(message) = Err({Kind: "http", Message: message})
+Failed(message) = Err({Kind: "http", Message: message})   (** An Err of the kind "http" with a message. *)
 
--- {Host, Port, Path, Secure} of an http:// or https:// URL.
 defn ParseUrl(url)
+  (** {Host, Port, Path, Secure} of an http:// or https:// URL. *)
   secure = url then StartsWith("https://")
   scheme = if secure "https://" else "http://" end
   if not (url then StartsWith(scheme))
@@ -304,15 +302,15 @@ end
 
 responseHeaders(head) = Filter(not IsMissing(it), Map(Header, Split(Crlf, head)[2:end]))
 
--- The size of a response, from its head and the content-length: a server may keep the connection open. Missing if only
--- the end of the connection tells.
 defn fullSize(head)
+  (** The size of a response, from its head and the content-length: a server may keep the connection open. Missing if only
+      the end of the connection tells. *)
   size = HeaderValue("content-length", responseHeaders(head))
   if IsText(size) and IsInt(Number(size)) net.Size(head) + 4 + Number(size) else missing end
 end
 
--- The head comes first, and is read once: the rest of a large response doesn't parse it again.
 defn ReadResponse(io, buffer)
+  (** The head comes first, and is read once: the rest of a large response doesn't parse it again. *)
   at = net.Find(Blank, buffer)
   if IsMissing(at)
     more = io.Read()?
@@ -322,8 +320,8 @@ defn ReadResponse(io, buffer)
   end
 end
 
--- The value of hexadecimal digits, or missing. Fifteen digits always fit in an integer.
 defn Hex(digits)
+  (** The value of hexadecimal digits, or missing. Fifteen digits always fit in an integer. *)
   values = [net.Find(Slice(i, i, digits), "0123456789abcdef") for i in 1:Len(digits)]
   if Len(values) == 0 or Len(values) > 15 or missing in values
     missing
@@ -332,8 +330,8 @@ defn Hex(digits)
   end
 end
 
--- Joins the chunks of a chunked body, in one pass: from is where the next size line starts.
 defn Unchunk(data)
+  (** Joins the chunks of a chunked body, in one pass: from is where the next size line starts. *)
   pieces = Dict()
   from = 1
   while true
@@ -354,8 +352,8 @@ defn Unchunk(data)
   end
 end
 
--- Reads the text of a response: an Ok of {Status, Headers, Body} (a chunked body is joined), or an Err.
 defn ParseResponse(raw)
+  (** Reads the text of a response: an Ok of {Status, Headers, Body} (a chunked body is joined), or an Err. *)
   at = net.Find(Blank, raw)
   firstEnd = net.Find(Crlf, raw)
   words = Split(" ", if IsMissing(firstEnd) raw else net.SplitAt(firstEnd, raw)[1] end)
@@ -381,8 +379,8 @@ end
 
 clean(s) = not (Contains(" ", s) or Contains("\r", s) or Contains("\n", s))
 
--- Sends a request. The Ok holds {Status, Headers, Body}: a 404 is a response, not an error.
 defn Request(method, url, body = "", headers = [], secure = missing)
+  (** Sends a request. The Ok holds {Status, Headers, Body}: a 404 is a response, not an error. *)
   target = ParseUrl(url)?
   if not (clean(method) and clean(target.Host) and clean(target.Path))
     return Failed("This request has a space or a line end where it can't.")
@@ -406,7 +404,7 @@ defn Request(method, url, body = "", headers = [], secure = missing)
   ParseResponse(raw?)
 end
 
--- Sends a GET request: see request.
+(** Sends a GET request: see request. *)
 Get(url, headers = [], secure = missing) = Request("GET", url, headers = headers, secure = secure)
--- Sends a POST request with a body: see request.
+(** Sends a POST request with a body: see request. *)
 Post(url, body, headers = [], secure = missing) = Request("POST", url, body = body, headers = headers, secure = secure)

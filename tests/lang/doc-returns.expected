@@ -1,0 +1,32 @@
+Cube(x Number) Number
+
+A number cubed.
+
+  Cube(2) --> 8
+Half(x Float) Float
+
+Half of x.
+(r Rect) Area() Number
+
+The area.
+Rect.Square(side Number) Rect
+
+A square.
+Rect.Unit() Rect
+
+The unit square.
+(r Rect) Scaled(by Number) Rect
+
+Larger.
+
+  Rect(1, 2).Scaled(2).Width --> 2
+Named(x) Text?
+
+Its name, if it has one.
+Shape { Area() Number, Name() Text? }
+
+Something with an area.
+Sized { Size() Int }
+
+Something with a size.
+exit 0

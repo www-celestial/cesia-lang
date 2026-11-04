@@ -1,52 +1,75 @@
 open Types
 
-type entry = { name : string; signature : string; text : string }
+(* A documented name. Its lines are those of its documentation, numbered from 1, each as the words after -- would give them;
+   its parts document its fields, parameters and result. *)
+type entry = { name : string; signature : string; text : string; lines : (int * string) list; parts : (string * string) list }
 
-let comment_text line =
-  let t = String.trim line in
-  if String.starts_with ~prefix:"--" t then Some (String.sub t 2 (String.length t - 2)) else None
+(* A (** ... *): the line it starts on, whether code comes before it there, the line it ends on, and its lines, newest first. *)
+type doc = { first : int; after_code : bool; mutable last : int; mutable body : (int * string) list }
 
-(* How deep in comments a line ends, starting at this depth. A text or a -- in code hides what follows it. *)
-let depth_after depth line =
-  let n = String.length line in
-  let rec go i d in_text =
-    if i >= n then d
-    else if in_text then go (i + 1) d (line.[i] <> '"')
-    else if i + 1 < n && line.[i] = '(' && line.[i + 1] = '*' then go (i + 2) (d + 1) false
-    else if d > 0 && i + 1 < n && line.[i] = '*' && line.[i + 1] = ')' then go (i + 2) (d - 1) false
-    else if d = 0 && line.[i] = '"' then go (i + 1) d true
-    else if d = 0 && i + 1 < n && line.[i] = '-' && line.[i + 1] = '-' then d
-    else go (i + 1) d false
+let rtrim s =
+  let n = ref (String.length s) in
+  while !n > 0 && s.[!n - 1] = ' ' do decr n done;
+  String.sub s 0 !n
+
+let blank s = String.trim s = ""
+
+let piece s = if blank s then "" else " " ^ rtrim s
+
+(* A source read for its documentation: its lines, the code of each without its comments, whether a line starts outside
+   any comment, and the (** ... *) in their order. A text hides what looks like a comment.
+   The lines of a (** ... *) lose the indentation of its first words, and its end loses its closing stars. *)
+let scan src =
+  let lines = Array.of_list (String.split_on_char '\n' src) in
+  let codes = Array.make (Array.length lines) "" and outside = Array.make (Array.length lines) true in
+  let docs = ref [] and depth = ref 0 and current = ref None and column = ref 0 in
+  let add d k s =
+    d.body <- (k + 1, piece s) :: d.body;
+    d.last <- k + 1
   in
-  go 0 depth false
-
-(* The words of one line of a documentation comment, as the line after -- would give them. *)
-let block_text ~first line =
-  let t = if first then String.sub line 3 (String.length line - 3) else line in
-  let t = String.trim (if String.ends_with ~suffix:"**)" t then String.sub t 0 (String.length t - 3) else if String.ends_with ~suffix:"*)" t then String.sub t 0 (String.length t - 2) else t) in
-  let n = String.length line in
-  let rec spaces i = if i < n && line.[i] = ' ' then spaces (i + 1) else i in
-  let extra = if first then 0 else max 0 (spaces 0 - 4) in
-  "-- " ^ String.make extra ' ' ^ t
-
-(* The lines of a source with its comment blocks read: a (** ... *) at the start of a line becomes -- lines, and any other block
-   empty lines, so that its contents aren't taken for definitions. Lines keep their numbers. *)
-let lines src =
-  let depth = ref 0 and doc = ref false in
-  List.map
-    (fun line ->
-       let before = !depth in
-       depth := depth_after before line;
-       if before > 0 then (if !doc then block_text ~first:false line else "")
-       else if String.starts_with ~prefix:"(*" line then begin
-         doc := String.starts_with ~prefix:"(**" line && String.length line > 4;
-         if !doc then block_text ~first:true line else ""
-       end
-       else begin
-         doc := false;
-         line
-       end)
-    (String.split_on_char '\n' src)
+  Array.iteri
+    (fun k line ->
+       let n = String.length line and code = Buffer.create 80 in
+       let at i c = i < n && line.[i] = c in
+       outside.(k) <- !depth = 0;
+       let from = ref 0 in
+       if !current <> None then while !from < n && !from < !column && line.[!from] = ' ' do incr from done;
+       let i = ref 0 and quoted = ref false in
+       while !i < n do
+         let c = line.[!i] in
+         if !depth > 0 then begin
+           if c = '(' && at (!i + 1) '*' then (incr depth; i := !i + 2)
+           else if c = '*' && at (!i + 1) ')' then begin
+             decr depth;
+             (match !current with
+              | Some d when !depth = 0 ->
+                let upto = ref !i in
+                while !upto > !from && line.[!upto - 1] = '*' do decr upto done;
+                add d k (String.sub line !from (!upto - !from));
+                docs := d :: !docs;
+                current := None
+              | _ -> ());
+             i := !i + 2
+           end
+           else incr i
+         end
+         else if !quoted then (Buffer.add_char code c; quoted := c <> '"'; incr i)
+         else if c = '"' then (Buffer.add_char code c; quoted := true; incr i)
+         else if c = '(' && at (!i + 1) '*' then begin
+           depth := 1;
+           if at (!i + 2) '*' && not (at (!i + 3) ')' || at (!i + 3) '*') then begin
+             column := if at (!i + 3) ' ' then !i + 4 else !i + 3;
+             from := !column;
+             current := Some { first = k + 1; after_code = String.trim (Buffer.contents code) <> ""; last = k + 1; body = [] }
+           end;
+           i := !i + 2
+         end
+         else (Buffer.add_char code c; incr i)
+       done;
+       (match !current with Some d -> add d k (String.sub line !from (max 0 (n - !from))) | None -> ());
+       codes.(k) <- rtrim (Buffer.contents code))
+    lines;
+  lines, codes, outside, List.rev !docs
 
 let is_name_char c =
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c >= '\128'
@@ -55,9 +78,6 @@ let name_end line from =
   let i = ref from in
   while !i < String.length line && is_name_char line.[!i] do incr i done;
   !i
-
-let native_header line =
-  if String.starts_with ~prefix:"--- " line then Some (String.trim (String.sub line 4 (String.length line - 4))) else None
 
 (* Where the space after the (r Rect) of a line is, when the line starts with one. *)
 let receiver_end line =
@@ -70,25 +90,52 @@ let receiver_end line =
       let sname = name_end line (self + 1) in
       if sname > self + 1 && sname + 1 < n && line.[sname] = ')' && line.[sname + 1] = ' ' then Some (sname + 1) else None
 
-(* A line up to the parenthesis that closes its first one, after an object if it has one, which may be followed by = and a
-   body. *)
-let signature_of line =
+(* The return type at the start of what follows the parameters, with its space: Rect, geo.Rect or Text?, which the end of the
+   code or the = of a body follow. Else nothing. *)
+let return_type rest =
+  let n = String.length rest in
+  let rec spaces i = if i < n && rest.[i] = ' ' then spaces (i + 1) else i in
+  let a = spaces 0 in
+  let b = name_end rest a in
+  let b = if b > a && b < n && rest.[b] = '.' then name_end rest (b + 1) else b in
+  let b = if b > a && b < n && rest.[b] = '?' then b + 1 else b in
+  let after = String.trim (String.sub rest b (n - b)) in
+  let is prefix = String.starts_with ~prefix after in
+  let word = String.sub rest a (b - a) in
+  if b > a && word <> "end" && (after = "" || (is "=" && not (is "==")) || is "(*") then " " ^ word else ""
+
+(* Where the parenthesis that closes the first one of a line is, after an object if the line has one. *)
+let head_close line =
   match String.index_from_opt line (Option.value (receiver_end line) ~default:0) '(' with
-  | None -> line
+  | None -> None
   | Some start ->
     let n = String.length line in
     let rec go i depth quoted =
-      if i >= n then line
+      if i >= n then None
       else
         match line.[i] with
         | '"' -> go (i + 1) depth (not quoted)
         | _ when quoted -> go (i + 1) depth quoted
         | '(' -> go (i + 1) (depth + 1) quoted
-        | ')' when depth = 1 -> String.sub line 0 (i + 1)
+        | ')' when depth = 1 -> Some i
         | ')' -> go (i + 1) (depth - 1) quoted
         | _ -> go (i + 1) depth quoted
     in
     go start 0 false
+
+let after_head line i = String.sub line (i + 1) (String.length line - i - 1)
+
+(* A line up to the parenthesis that closes its first one, and its return type, which may be followed by = and a body. *)
+let signature_of line =
+  match head_close line with
+  | None -> line
+  | Some i -> String.sub line 0 (i + 1) ^ return_type (after_head line i)
+
+(* A defn whose head ends its line, return type and all: its body is on the lines below. *)
+let is_block_head r =
+  match head_close r with
+  | None -> false
+  | Some i -> let rest = after_head r i in String.trim rest = "" || (return_type rest <> "" && not (String.contains rest '='))
 
 (* (r Rect) IsEmpty() = ... or Rect.Unit() = ..., and not a call of a module at the start of a line: the name is after [i]. *)
 let is_short_method line i =
@@ -130,63 +177,123 @@ let text_of_block block =
   let unindent t = if String.starts_with ~prefix:" " t then String.sub t 1 (String.length t - 1) else t in
   String.trim (String.concat "\n" (List.rev_map unindent block))
 
-(* A line without its comment, a -- outside a text. *)
-let code_of line =
-  let n = String.length line in
-  let rec go i quoted =
-    if i + 1 >= n then line
-    else if line.[i] = '"' then go (i + 1) (not quoted)
-    else if (not quoted) && line.[i] = '-' && line.[i + 1] = '-' then String.sub line 0 i
-    else go (i + 1) quoted
-  in
-  String.trim (go 0 false)
-
 (* What follows struct: Car { Mass, Speed = 0.0 }, also for the block form, whose fields are the lines up to end. The same
    for the methods of an interface. *)
 let struct_signature r following =
   let rec fields = function
-    | l :: rest -> (match code_of l with "end" -> [] | "" -> fields rest | f -> f :: fields rest)
+    | l :: rest -> (match String.trim l with "end" -> [] | "" -> fields rest | f -> f :: fields rest)
     | [] -> []
   in
-  let r = code_of r in
+  let r = String.trim r in
   if String.contains r '{' then r else Printf.sprintf "%s { %s }" r (String.concat ", " (fields following))
 
+(* How many parentheses a line of code leaves open, outside its texts. *)
+let opened code =
+  let n = ref 0 and quoted = ref false in
+  String.iter (fun c -> if c = '"' then quoted := not !quoted else if not !quoted then (if c = '(' then incr n else if c = ')' then decr n)) code;
+  !n
+
+(* The lines of a definition's head joined, as if written on one: defn Scaled(r Rect, by Number) Rect. *)
+let joined codes k h =
+  if h = k then codes.(k)
+  else begin
+    let s = String.concat " " (List.map String.trim (Array.to_list (Array.sub codes k (h - k + 1)))) in
+    let b = Buffer.create (String.length s) and quoted = ref false in
+    let last () = if Buffer.length b = 0 then '(' else Buffer.nth b (Buffer.length b - 1) in
+    String.iter
+      (fun c ->
+         if c = '"' then quoted := not !quoted;
+         if !quoted || c = '"' then Buffer.add_char b c
+         else if c = ' ' && (last () = '(' || last () = ' ') then ()
+         else if c = ')' then begin
+           while last () = ' ' || last () = ',' do Buffer.truncate b (Buffer.length b - 1) done;
+           Buffer.add_char b c
+         end
+         else Buffer.add_char b c)
+      s;
+    Buffer.contents b
+  end
+
 let entries src =
-  let out = ref [] and block = ref [] and native = ref None in
-  let add signature = out := { name = name_of signature; signature; text = text_of_block !block } :: !out in
-  let close_native () =
-    Option.iter add !native;
-    native := None
+  let lines, codes, outside, docs = scan src in
+  let count = Array.length lines in
+  let starting k = List.find_opt (fun d -> d.first = k + 1) docs in
+  let numbered d = List.rev d.body in
+  let out = ref [] in
+  let add ?(parts = []) signature numbered =
+    let text = text_of_block (List.rev_map snd numbered) in
+    out := { name = name_of signature; signature; text; lines = numbered; parts } :: !out
   in
-  let rec go = function
-    | [] -> ()
-    | line :: following ->
-      let block_form = ref false in
-      (match native_header line, comment_text line with
-       | Some signature, _ ->
-         close_native ();
-         block := [];
-         native := Some signature
-       | None, Some text when String.length line > 0 && line.[0] = '-' -> block := text :: !block
-       | _ ->
-         close_native ();
-         if is_definition line then begin
-           let rest =
-             match drop_prefix "defn " line, drop_prefix "struct " line, drop_prefix "interface " line with
-             | Some r, _, _ -> signature_of r
-             | _, Some r, _ | _, _, Some r ->
-               block_form := not (String.contains r '{');
-               struct_signature r following
-             | None, None, None -> signature_of line
-           in
-           add rest
-         end;
-         block := []);
-      (* The lines of a block are no definitions of their own. *)
-      go (if !block_form then List.drop_while (fun l -> code_of l <> "end") following else following)
+  (* A one-line definition: the (** *) at the end of its line, else the one just above it. *)
+  let one_line k =
+    match starting k with
+    | Some d when d.after_code -> numbered d
+    | _ ->
+      (match List.find_opt (fun d -> d.last = k && not d.after_code) docs with
+       | Some d -> numbered d
+       | None -> [])
   in
-  go (lines src);
-  close_native ();
+  (* A block: the (** *) first in its body, after its head ends on line h. *)
+  let inside h =
+    let rec go j =
+      if j >= count then []
+      else match starting j with
+        | Some d when not d.after_code -> numbered d
+        | _ when blank codes.(j) -> go (j + 1)
+        | _ -> []
+    in
+    go (h + 1)
+  in
+  (* The (** *) at the end of these lines, each under the name its line starts with. *)
+  let parts_of name_on from upto =
+    List.filter_map
+      (fun j -> match starting j with Some d when d.after_code -> Some (name_on j, text_of_block (List.map snd d.body)) | _ -> None)
+      (List.init (max 0 (upto - from + 1)) (fun i -> from + i))
+  in
+  let first_name s = let s = String.trim s in String.sub s 0 (name_end s 0) in
+  let rec go k =
+    if k < count then
+      let code = codes.(k) in
+      if not (outside.(k) && is_definition code) then go (k + 1)
+      else
+        (match drop_prefix "defn " code, drop_prefix "struct " code, drop_prefix "interface " code with
+         | Some _, _, _ ->
+           let rec head j open_ = let o = open_ + opened codes.(j) in if o <= 0 || j + 1 >= count then j else head (j + 1) o in
+           let h = head k 0 in
+           let r = Option.get (drop_prefix "defn " (joined codes k h)) in
+           let signature = signature_of r in
+           if is_block_head r then begin
+             let name_on j = if String.starts_with ~prefix:")" (String.trim codes.(j)) || j = k then "result" else first_name codes.(j) in
+             add ~parts:(parts_of name_on k h) signature (inside h)
+           end
+           else add signature (one_line k);
+           go (k + 1)
+         | _, Some r, _ | _, _, Some r ->
+           if String.contains r '{' then begin
+             add (struct_signature r []) (one_line k);
+             go (k + 1)
+           end
+           else begin
+             let rec close j = if j >= count || String.trim codes.(j) = "end" then j else close (j + 1) in
+             let e = close (k + 1) in
+             add ~parts:(parts_of (fun j -> first_name codes.(j)) (k + 1) (e - 1))
+               (struct_signature r (Array.to_list (Array.sub codes (k + 1) (count - k - 1)))) (inside k);
+             go (e + 1)
+           end
+         | None, None, None ->
+           add (signature_of code) (one_line k);
+           go (k + 1))
+  in
+  (* A file of natives has no code but its uses: each of its (** *) starts with the signature of the native it documents. *)
+  if Array.for_all (fun c -> blank c || String.starts_with ~prefix:"use " c) codes then
+    List.iter
+      (fun d ->
+         match numbered d with
+         | (_, s) :: rest when (let s = String.trim s in let i = name_end s 0 in i > 0 && (i = String.length s || s.[i] = '(' || s.[i] = '.')) ->
+           add (String.trim s) rest
+         | _ -> ())
+      docs;
+  go 0;
   List.rev !out
 
 let public = Lexer.is_public
@@ -197,7 +304,15 @@ let public_name name =
   | Some (sname, _, m) -> public sname && public m
   | None -> public name
 
-let shown e = if e.text = "" then e.signature else e.signature ^ "\n\n" ^ e.text
+(* The signature, the text, then the parts: two spaces, the name padded to the longest one, two spaces and its words. *)
+let shown e =
+  let width = List.fold_left (fun w (n, _) -> max w (String.length n)) 0 e.parts in
+  let parts = String.concat "\n" (List.map (fun (n, t) -> Printf.sprintf "  %-*s  %s" width n t) e.parts) in
+  String.concat "\n\n" (List.filter (( <> ) "") [ e.signature; e.text; parts ])
+
+(* The lines of the documentation that are examples: indented, and run by cesia test. *)
+let examples src =
+  List.concat_map (fun e -> List.filter (fun (_, t) -> String.starts_with ~prefix:"  " t) e.lines) (entries src)
 
 (* Like [use], which reads the sources of CESIA_STD when it is set. *)
 let std name =
@@ -250,13 +365,12 @@ let module_source w m =
 
 let find name es = List.find_opt (fun e -> String.equal e.name name) es
 
-(* A comment at the top of a file says what the module is for. *)
+(* The first (** *) of a file, before any code, says what the module is for. *)
 let module_text src =
-  let rec go acc = function
-    | line :: rest when String.starts_with ~prefix:"--" line -> go (Option.get (comment_text line) :: acc) rest
-    | _ -> text_of_block acc
-  in
-  go [] (String.split_on_char '\n' src)
+  let _, codes, _, docs = scan src in
+  match docs with
+  | d :: _ when (not d.after_code) && Array.for_all blank (Array.sub codes 0 (d.first - 1)) -> text_of_block (List.map snd d.body)
+  | _ -> ""
 
 let short_name n = match String.rindex_opt n '.' with Some i -> String.sub n (i + 1) (String.length n - i - 1) | None -> n
 

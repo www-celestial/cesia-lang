@@ -1,4 +1,4 @@
--- Bytes could spell any address, so a pointer can't come from a block before a library is open.
+(** Bytes could spell any address, so a pointer can't come from a block before a library is open. *)
 use c
 
 defn message(f)

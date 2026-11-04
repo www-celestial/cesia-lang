@@ -1,4 +1,4 @@
--- Large columns go through several cores. The results don't depend on how many, to the last bit.
+(** Large columns go through several cores. The results don't depend on how many, to the last bit. *)
 use columns
 
 base = [Mod(k * 7919, 10007) for k in 1:10007]

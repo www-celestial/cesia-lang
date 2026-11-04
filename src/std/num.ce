@@ -1,14 +1,14 @@
--- Numerical computing, in the spirit of numpy. An array is a list or a matrix of floats, and the operators of the
--- language already work element by element: a + b, a * 2.0, a > 0.0, Matmul(a, b), Transpose(a), Sum(a), Mean(a).
+(** Numerical computing, in the spirit of numpy. An array is a list or a matrix of floats, and the operators of the
+    language already work element by element: a + b, a * 2.0, a > 0.0, Matmul(a, b), Transpose(a), Sum(a), Mean(a). *)
 use lapack
 
--- The library that does the large computations, or missing if the code of Cesia does them all.
+(** The library that does the large computations, or missing if the code of Cesia does them all. *)
 Backend() = lapack.Name()
 
--- n evenly spaced floats from a to b, both included.
---
---   Linspace(0, 1, 3) --> [0.0, 0.5, 1.0]
 defn Linspace(a, b, n)
+  (** n evenly spaced floats from a to b, both included.
+
+        Linspace(0, 1, 3) --> [0.0, 0.5, 1.0] *)
   if n == 1
     return [1.0 * a]
   end
@@ -16,10 +16,10 @@ defn Linspace(a, b, n)
   [a + k * step for k in 0:n - 1]
 end
 
--- The identity matrix of order n.
---
---   Sum(Eye(2)) --> 2.0
 defn Eye(n)
+  (** The identity matrix of order n.
+
+        Sum(Eye(2)) --> 2.0 *)
   m = Zeros(n, n)
   for k in 1:n
     m[k, k] = 1.0
@@ -27,10 +27,10 @@ defn Eye(n)
   m
 end
 
--- A square matrix with the elements on its diagonal and 0.0 elsewhere.
---
---   Sum(Diag([1, 2])) --> 3.0
 defn Diag(xs)
+  (** A square matrix with the elements on its diagonal and 0.0 elsewhere.
+
+        Sum(Diag([1, 2])) --> 3.0 *)
   n = Len(xs)
   m = Zeros(n, n)
   for k in 1:n
@@ -39,23 +39,23 @@ defn Diag(xs)
   m
 end
 
--- The variance of the elements: the mean of the squares of their distance from the mean.
---
---   Variance([1.0, 3.0]) --> 1.0
 defn Variance(xs)
+  (** The variance of the elements: the mean of the squares of their distance from the mean.
+
+        Variance([1.0, 3.0]) --> 1.0 *)
   d = xs - Mean(xs)
   Sum(d * d) / Len(xs)
 end
 
--- The standard deviation of the elements.
---
---   Std([1.0, 3.0]) --> 1.0
+(** The standard deviation of the elements.
+
+      Std([1.0, 3.0]) --> 1.0 *)
 Std(xs) = Sqrt(Variance(xs))
 
--- The value below which p percent of the elements fall, interpolating between the two nearest ones.
---
---   Percentile(50, [1.0, 2.0, 3.0]) --> 2.0
 defn Percentile(p, xs)
+  (** The value below which p percent of the elements fall, interpolating between the two nearest ones.
+
+        Percentile(50, [1.0, 2.0, 3.0]) --> 2.0 *)
   s = Sort(xs)
   at = p / 100.0 * (Len(s) - 1) + 1
   low = Floor(at)
@@ -63,15 +63,15 @@ defn Percentile(p, xs)
   s[low] + (s[high] - s[low]) * (at - low)
 end
 
--- The middle value of the elements.
---
---   Median([3.0, 1.0, 2.0]) --> 2.0
+(** The middle value of the elements.
+
+      Median([3.0, 1.0, 2.0]) --> 2.0 *)
 Median(xs) = Percentile(50, xs)
 
--- The running sum of the elements.
---
---   Cumsum([1.0, 2.0, 3.0]) --> [1.0, 3.0, 6.0]
 defn Cumsum(xs)
+  (** The running sum of the elements.
+
+        Cumsum([1.0, 2.0, 3.0]) --> [1.0, 3.0, 6.0] *)
   out = Zeros(1, Len(xs))
   total = 0.0
   for k in 1:Len(xs)
@@ -81,35 +81,35 @@ defn Cumsum(xs)
   out
 end
 
--- The differences between consecutive elements.
---
---   Diff([1, 4, 9]) --> [3, 5]
+(** The differences between consecutive elements.
+
+      Diff([1, 4, 9]) --> [3, 5] *)
 Diff(xs) = [xs[k + 1] - xs[k] for k in 1:Len(xs) - 1]
--- The dot product of two arrays.
---
---   Dot([1, 2], [3, 4]) --> 11
+(** The dot product of two arrays.
+
+      Dot([1, 2], [3, 4]) --> 11 *)
 Dot(a, b) = Sum(a * b)
--- The Euclidean length of an array.
---
---   Norm([3.0, 4.0]) --> 5.0
+(** The Euclidean length of an array.
+
+      Norm([3.0, 4.0]) --> 5.0 *)
 Norm(xs) = Sqrt(Dot(xs, xs))
 
--- The covariance of two arrays of the same length.
---
---   Abs(Covariance([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 4.0 / 3.0) < 1e-9 --> true
 defn Covariance(a, b)
+  (** The covariance of two arrays of the same length.
+
+        Abs(Covariance([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 4.0 / 3.0) < 1e-9 --> true *)
   Mean((a - Mean(a)) * (b - Mean(b)))
 end
 
--- The correlation of two arrays of the same length, from -1 to 1.
---
---   Abs(Correlation([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 1.0) < 1e-9 --> true
+(** The correlation of two arrays of the same length, from -1 to 1.
+
+      Abs(Correlation([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 1.0) < 1e-9 --> true *)
 Correlation(a, b) = Covariance(a, b) / (Std(a) * Std(b))
 
--- The elements counted in a number of equal bins, as a struct with counts and edges.
---
---   Histogram(2, [1, 2, 3, 4]).Counts --> [2, 2]
 defn Histogram(bins, xs)
+  (** The elements counted in a number of equal bins, as a struct with counts and edges.
+
+        Histogram(2, [1, 2, 3, 4]).Counts --> [2, 2] *)
   low = Min(xs)
   high = Max(xs)
   width = (high - low) / bins
@@ -121,15 +121,14 @@ defn Histogram(bins, xs)
   {Counts: counts, Edges: [low + k * width for k in 0:bins]}
 end
 
--- The sum of each row, and of each column.
-SumRows(m) = [Sum(m[i, :]) for i in 1:Size(m, 1)]
--- The sum of each column of a matrix.
---
---   SumCols(Eye(2)) --> [1.0, 1.0]
+SumRows(m) = [Sum(m[i, :]) for i in 1:Size(m, 1)]   (** The sum of each row, and of each column. *)
+(** The sum of each column of a matrix.
+
+      SumCols(Eye(2)) --> [1.0, 1.0] *)
 SumCols(m) = [Sum(m[:, j]) for j in 1:Size(m, 2)]
 
--- Gaussian elimination with partial pivoting: the triangle, the swaps and their sign.
 defn eliminate(m, b)
+  (** Gaussian elimination with partial pivoting: the triangle, the swaps and their sign. *)
   n = Size(m, 1)
   sign = 1.0
   for col in 1:n
@@ -170,10 +169,10 @@ defn eliminate(m, b)
   {Singular: false, M: m, B: b, Sign: sign}
 end
 
--- The determinant of a square matrix.
---
---   Abs(Det(Reshape([1.0, 3.0, 2.0, 4.0], 2, 2)) + 2.0) < 1e-9 --> true
 defn Det(m)
+  (** The determinant of a square matrix.
+
+        Abs(Det(Reshape([1.0, 3.0, 2.0, 4.0], 2, 2)) + 2.0) < 1e-9 --> true *)
   fast = lapack.Det(m)
   if not IsMissing(fast)
     return fast
@@ -206,8 +205,8 @@ end
 
 singular() = Err({Kind: "math", Message: "This matrix is singular."})
 
--- x of a x = b, with a library for a large a. b has as many rows as a.
 defn solved(m, b)
+  (** x of a x = b, with a library for a large a. b has as many rows as a. *)
   fast = lapack.Solve(m, b)
   if not IsMissing(fast)
     return if IsArray(fast) Ok(fast) else singular() end
@@ -216,21 +215,21 @@ defn solved(m, b)
   if t.Singular singular() else Ok(back(t)) end
 end
 
--- The x of m * x = b, in an Ok, or an Err of the kind "math" if the matrix is singular.
---
---   Solve(Eye(2), [1.0, 2.0]).Value --> [1.0, 2.0]
 defn Solve(m, b)
+  (** The x of m * x = b, in an Ok, or an Err of the kind "math" if the matrix is singular.
+
+        Solve(Eye(2), [1.0, 2.0]).Value --> [1.0, 2.0] *)
   n = Size(m, 1)
   MapOk(x -> Reshape(x, 1, n), solved(m, Reshape(b, n, 1)))
 end
 
--- The inverse of a square matrix, in an Ok, or an Err of the kind "math" if it is singular.
---
---   Sum(Inverse(Eye(2)).Value) --> 2.0
+(** The inverse of a square matrix, in an Ok, or an Err of the kind "math" if it is singular.
+
+      Sum(Inverse(Eye(2)).Value) --> 2.0 *)
 Inverse(m) = solved(m, Eye(Size(m, 1)))
 
--- Gram-Schmidt, twice for accuracy.
 defn Qr(m)
+  (** Gram-Schmidt, twice for accuracy. *)
   fast = lapack.Qr(m)
   if not IsMissing(fast)
     return fast
@@ -258,8 +257,8 @@ defn Qr(m)
   {Q: q, R: r}
 end
 
--- The eigenvalues and eigenvectors of a symmetric matrix, by Jacobi rotations.
 defn Eigen(a)
+  (** The eigenvalues and eigenvectors of a symmetric matrix, by Jacobi rotations. *)
   fast = lapack.Eigen(a)
   if not IsMissing(fast)
     return fast
@@ -309,14 +308,14 @@ defn Eigen(a)
   {Values: [a[k, k] for k in 1:n], Vectors: v}
 end
 
--- The x of the smallest |ax - b|, through the normal equations.
 defn LeastSquares(a, b)
+  (** The x of the smallest |ax - b|, through the normal equations. *)
   t = Transpose(a)
   Solve(Matmul(t, a), Matmul(t, Reshape(b, Len(b), 1)))
 end
 
--- The coefficients of a polynomial of a degree through points, the constant first.
 defn Polyfit(degree, xs, ys)
+  (** The coefficients of a polynomial of a degree through points, the constant first. *)
   a = Zeros(Len(xs), degree + 1)
   for i in 1:Len(xs)
     for j in 1:degree + 1
@@ -326,10 +325,10 @@ defn Polyfit(degree, xs, ys)
   Unwrap(LeastSquares(a, ys))
 end
 
--- The value of a polynomial at x, given its coefficients with the constant first.
---
---   Polyval([1, 2], 3) --> 7.0
 defn Polyval(coefficients, x)
+  (** The value of a polynomial at x, given its coefficients with the constant first.
+
+        Polyval([1, 2], 3) --> 7.0 *)
   total = 0.0
   for k in Range(Len(coefficients), 1, step = -1)
     total = total * x + coefficients[k]
@@ -337,10 +336,10 @@ defn Polyval(coefficients, x)
   total
 end
 
--- The area under the points (xs, ys), by the trapezoid rule.
---
---   Trapezoid([0, 1], [0, 2]) --> 1.0
 defn Trapezoid(xs, ys)
+  (** The area under the points (xs, ys), by the trapezoid rule.
+
+        Trapezoid([0, 1], [0, 2]) --> 1.0 *)
   total = 0.0
   for k in 1:Len(xs) - 1
     total += (xs[k + 1] - xs[k]) * (ys[k] + ys[k + 1]) / 2.0
@@ -348,10 +347,10 @@ defn Trapezoid(xs, ys)
   total
 end
 
--- The value at x of the line through the nearest points of (xs, ys), which are sorted by xs. Past the last point it gives the last y.
---
---   Interpolate(0.5, [0, 1], [0, 2]) --> 1.0
 defn Interpolate(x, xs, ys)
+  (** The value at x of the line through the nearest points of (xs, ys), which are sorted by xs. Past the last point it gives the last y.
+
+        Interpolate(0.5, [0, 1], [0, 2]) --> 1.0 *)
   for k in 1:Len(xs) - 1
     if x <= xs[k + 1]
       return ys[k] + (ys[k + 1] - ys[k]) * (x - xs[k]) / (xs[k + 1] - xs[k])
@@ -360,8 +359,8 @@ defn Interpolate(x, xs, ys)
   ys[Len(ys)]
 end
 
--- A discrete Fourier transform: radix 2 for powers of two, the plain sum otherwise. Parts are separate arrays.
 defn dft(re, im, direction)
+  (** A discrete Fourier transform: radix 2 for powers of two, the plain sum otherwise. Parts are separate arrays. *)
   n = Len(re)
   outRe = Zeros(1, n)
   outIm = Zeros(1, n)
@@ -407,19 +406,19 @@ defn transform(re, im, direction)
   if isPower(Len(re)) radix2(re, im, direction) else dft(re, im, direction) end
 end
 
--- The Fourier transform of an array, as a struct with re and im.
---
---   Fft([1.0, 0.0, 0.0, 0.0]).Re --> [1.0, 1.0, 1.0, 1.0]
+(** The Fourier transform of an array, as a struct with re and im.
+
+      Fft([1.0, 0.0, 0.0, 0.0]).Re --> [1.0, 1.0, 1.0, 1.0] *)
 Fft(xs) = transform(xs, Zeros(1, Len(xs)), -1.0)
 
--- The inverse of fft, from a struct with re and im.
 defn Ifft(f)
+  (** The inverse of fft, from a struct with re and im. *)
   r = transform(f.Re, f.Im, 1.0)
   n = 1.0 * Len(f.Re)
   {Re: r.Re / n, Im: r.Im / n}
 end
 
--- Random numbers that a seed repeats, for simulations: xorshift, never for secrets. A generator is a value.
+(** Random numbers that a seed repeats, for simulations: xorshift, never for secrets. A generator is a value. *)
 Seeded(seed) = {State: BitOr(BitXor(seed, 88172645463325252), 1)}
 
 defn next(state)
@@ -429,10 +428,10 @@ defn next(state)
   BitXor(x, BitShift(x, 17))
 end
 
--- n floats in [0, 1) from a generator, as a struct with values and the next generator. See seeded.
---
---   Len(Uniform(3, Seeded(1)).Values) --> 3
 defn Uniform(n, generator)
+  (** n floats in [0, 1) from a generator, as a struct with values and the next generator. See seeded.
+
+        Len(Uniform(3, Seeded(1)).Values) --> 3 *)
   values = Zeros(1, n)
   s = generator.State
   for k in 1:n
@@ -442,10 +441,10 @@ defn Uniform(n, generator)
   {Values: values, Next: {State: s}}
 end
 
--- n floats from the normal distribution (mean 0, deviation 1) from a generator, as a struct with values and the next generator.
---
---   Len(Normal(3, Seeded(1)).Values) --> 3
 defn Normal(n, generator)
+  (** n floats from the normal distribution (mean 0, deviation 1) from a generator, as a struct with values and the next generator.
+
+        Len(Normal(3, Seeded(1)).Values) --> 3 *)
   u = Uniform(2 * n, generator)
   values = Zeros(1, n)
   for k in 1:n

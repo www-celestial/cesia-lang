@@ -1,4 +1,4 @@
--- Used by the method errors: a struct with a private method.
+(** Used by the method errors: a struct with a private method. *)
 struct Far { X }
 (f Far) hidden() = f.X
 (f Far) Shown() = f.hidden()

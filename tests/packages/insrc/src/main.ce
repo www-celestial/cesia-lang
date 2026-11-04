@@ -1,4 +1,4 @@
--- A use of a package in src/, of a folder inside one, of a name in both places, and of a folder only at the root.
+(** A use of a package in src/, of a folder inside one, of a name in both places, and of a folder only at the root. *)
 use shapes
 use shapes/round
 use both

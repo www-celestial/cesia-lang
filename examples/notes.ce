@@ -1,7 +1,7 @@
--- A small web app: GET shows the notes, POST adds one.
---   cesia run --allow read=notes.txt,write=notes.txt,net=:8080 examples/notes.ce
---   curl -d "buy milk" localhost:8080
---   curl localhost:8080
+(** A small web app: GET shows the notes, POST adds one.
+      cesia run --allow read=notes.txt,write=notes.txt,net=:8080 examples/notes.ce
+      curl -d "buy milk" localhost:8080
+      curl localhost:8080 *)
 use http
 use sys
 

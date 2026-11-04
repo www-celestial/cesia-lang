@@ -1,4 +1,4 @@
--- Methods across files: a static call through a module, and a method that goes with its value.
+(** Methods across files: a static call through a module, and a method that goes with its value. *)
 use tests/lang/mods/shapes
 use tests/lang/mods/shapes as other
 

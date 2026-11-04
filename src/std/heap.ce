@@ -1,10 +1,9 @@
--- A persistent leftist heap: the smallest key comes out first.
+(** A persistent leftist heap: the smallest key comes out first. *)
 
--- A heap with nothing in it.
-Empty() = missing
--- Is this heap empty?
---
---   IsEmpty(Empty()) --> true
+Empty() = missing   (** A heap with nothing in it. *)
+(** Is this heap empty?
+
+      IsEmpty(Empty()) --> true *)
 IsEmpty(h) = IsMissing(h)
 rank(h) = if IsMissing(h) 0 else h.Rank end
 
@@ -16,8 +15,8 @@ defn node(key, value, a, b)
   end
 end
 
--- One heap from two.
 defn Merge(a, b)
+  (** One heap from two. *)
   if IsMissing(a)
     b
   else if IsMissing(b)
@@ -29,23 +28,23 @@ defn Merge(a, b)
   end
 end
 
--- A heap with a value added under a key; the smallest key comes out first.
---
---   Peek(Insert(1, "a", Empty())).Value --> "a"
+(** A heap with a value added under a key; the smallest key comes out first.
+
+      Peek(Insert(1, "a", Empty())).Value --> "a" *)
 Insert(key, value, h) = Merge(node(key, value, missing, missing), h)
--- The smallest key and its value, as a struct with key and value. The heap must not be empty.
---
---   Peek(Insert(2, "b", Insert(1, "a", Empty()))).Key --> 1
+(** The smallest key and its value, as a struct with key and value. The heap must not be empty.
+
+      Peek(Insert(2, "b", Insert(1, "a", Empty()))).Key --> 1 *)
 Peek(h) = {Key: h.Key, Value: h.Value}
--- The heap without its smallest key. The heap must not be empty.
---
---   Peek(Pop(Insert(2, "b", Insert(1, "a", Empty())))).Key --> 2
+(** The heap without its smallest key. The heap must not be empty.
+
+      Peek(Pop(Insert(2, "b", Insert(1, "a", Empty())))).Key --> 2 *)
 Pop(h) = Merge(h.Left, h.Right)
 
--- All the entries as structs with key and value, smallest key first.
---
---   Len(Items(Insert(1, "a", Empty()))) --> 1
 defn Items(h)
+  (** All the entries as structs with key and value, smallest key first.
+
+        Len(Items(Insert(1, "a", Empty()))) --> 1 *)
   out = Dict()
   while not IsMissing(h)
     out[Len(out) + 1] = Peek(h)

@@ -1,12 +1,12 @@
--- Interfaces: a value meets one when it has its methods, with their numbers of parameters, and nothing declares it.
+(** Interfaces: a value meets one when it has its methods, with their numbers of parameters, and nothing declares it. *)
 use tests/lang/mods/geo
 use tests/lang/mods/shapes
 
--- Something with an area and a perimeter.
 interface Shape
+  (** Something with an area and a perimeter. *)
   Area()
 
-  -- A comment and an empty line, inside the block.
+  (* A comment and an empty line, inside the block. *)
   Perimeter()
 end
 
@@ -40,8 +40,8 @@ struct Circle { Radius }
 (c Circle) Perimeter() = 6 * c.Radius
 (c Circle) Describe() = "a circle"
 
--- A frame holds a shape, and maybe another.
 struct Frame
+  (** A frame holds a shape, and maybe another. *)
   Inner Shape
   Outer Shape?
 end
@@ -57,8 +57,7 @@ end
 (s Sized) Kind() = "sized"
 (d Doubling) area() = "doubled"
 
--- What a call that stops says: its kind and its message.
-stop(f) = match Wait(Spawn(f))
+stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and its message. *)
   Err(e) -> "$(e.Kind): $(e.Message)"
   Ok(v) -> v
 end
@@ -92,8 +91,8 @@ defn writeFrame(s)
   f.Outer.Area()
 end
 
--- A write inside a field of an interface checks that field again, whether the write copies its value or not.
 defn writeInside(first)
+  (** A write inside a field of an interface checks that field again, whether the write copies its value or not. *)
   f = Frame({Area: () -> 1, Perimeter: () -> 1, B: 1})
   if first
     f.Inner.B = 2
@@ -105,8 +104,8 @@ end
 isWriteInsideAnInterface() = stop(() -> writeInside(false)) == "type: Frame: Inner must be a Shape, found a struct, which has no Area()." and stop(() -> writeInside(true)) == "type: Frame: Inner must be a Shape, found a struct, which has no Area()."
 isWriteOfAnInterface() = writeFrame(Circle(1)) == 3 and stop(() -> writeFrame(Square(1))) == "type: Frame: Outer must be a Shape or missing, found a Square, which has no Perimeter()."
 
--- Several shapes at one place: the answer kept for one doesn't hold for another.
 defn totals()
+  (** Several shapes at one place: the answer kept for one doesn't hold for another. *)
   out = []
   for s in [Rect(1, 2), Circle(1), {Area: () -> 1, Perimeter: () -> 1}, Rect(1, 2), Circle(1)]
     out = Append([total(s), s.Describe()], out)
@@ -133,10 +132,10 @@ isOnlyUsedPackages() = geo.Extra(Rect(1)) == "extra" and stop(() -> Rect(1).Extr
 isTwoInterfacesOfTwoPackages() = stop(() -> Rect(1).Label()) == "type: Both Sized and geo.Measured have a method \"Label\", and a Rect meets both."
 isSameNameInTwoPackages() = geoArea(geo.MakeRect(1, 2)) == 2 and stop(() -> geoArea(Rect(1))) == "type: geoArea: r must be a geo.Rect, found an interfaces.Rect."
 
--- One place, values of one shape: what the fields hold chooses the interface.
+(** One place, values of one shape: what the fields hold chooses the interface. *)
 isDispatchByValue() = kindOf({Area: () -> 1, Name: 0}) == "sized" and kindOf({Area: 0, Name: () -> "n"}) == "named" and stop(() -> kindOf({Area: () -> 1, Name: () -> "n"})) == "type: Both Named and Sized have a method \"Kind\", and a struct meets both." and stop(() -> kindOf({Area: 0, Name: 0})) == "field: This struct has no field \"Kind\"."
 isDispatchByValueOfAStruct() = kindOf(Pair(() -> 1, 0)) == "sized" and kindOf(Pair(0, () -> "n")) == "named" and kindOf(Pair(() -> 2, 1)) == "sized"
 
--- A small method of an interface is met only by a value of its package, and a small method of another package hides nothing.
+(** A small method of an interface is met only by a value of its package, and a small method of another package hides nothing. *)
 isPrivateMethodMeetsInItsPackage() = areaOf(Plot(3)) == 3 and stop(() -> areaOf(shapes.MakePiece(2))) == "type: areaOf: x must be a hasArea, found a piece, which has no area()."
 isPrivateMethodOfAnotherPackage() = shapes.MakePiece(2).area() == "doubled"

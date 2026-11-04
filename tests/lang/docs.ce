@@ -1,11 +1,11 @@
--- The square of a number.
---
---   square(3) --> 9
---   y = square(2)
---   y + 1 --> 5
---   textPlus() --> error
+(** The square of a number.
+
+      square(3) --> 9
+      y = square(2)
+      y + 1 --> 5
+      textPlus() --> error *)
 square(x) = x * x
 textPlus() = "a" + 1
 
 isSquareNegative() = square(-2) == 4
-isReady(x) = true                    -- has a parameter: not a test
+isReady(x) = true                    (* has a parameter: not a test *)

@@ -1,8 +1,6 @@
--- A second package with a Rect and a method Area.
+(** A second package with a Rect and a method Area. *)
 struct Rect { Side }
 
--- Not the Area of geometry.
-(r Rect) Area() = 100 * r.Side
+(r Rect) Area() = 100 * r.Side   (** Not the Area of geometry. *)
 
--- The documentation of a method of this package, from here.
-DocOfArea() = Doc("Rect.Area")
+DocOfArea() = Doc("Rect.Area")   (** The documentation of a method of this package, from here. *)

@@ -1,4 +1,4 @@
--- A write of the wrong type to a typed field, inside a path.
+(** A write of the wrong type to a typed field, inside a path. *)
 struct Point { X, Y }
 struct Line { From Point, To Point }
 struct Drawing { Lines }

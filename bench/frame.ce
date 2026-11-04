@@ -1,4 +1,4 @@
--- The worst case of a window: every line of a full screen changes at every frame. Run through tools/frame-bench.sh.
+(** The worst case of a window: every line of a full screen changes at every frame. Run through tools/frame-bench.sh. *)
 use sdl
 use sys
 
@@ -7,8 +7,8 @@ columns = 200
 frames = 300
 letters = Join("", Fill("abcdefghijklmnopqrstuvwxyz", 12))
 
--- A line taken from a long text, as an editor would, and different at each frame.
 defn line(row, n)
+  (** A line taken from a long text, as an editor would, and different at each frame. *)
   from = 1 + Mod(row * 3 + n, 26)
   {Kind: "text", X: 8, Y: 8 + (row - 1) * 19, Text: Slice(from, from + columns - 1, letters), Color: 0xE0E0E0}
 end

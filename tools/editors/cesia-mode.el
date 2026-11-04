@@ -2,13 +2,19 @@
 
 (defvar cesia-mode-syntax-table
   (let ((table (make-syntax-table)))
-    (modify-syntax-entry ?- ". 12" table)
+    (modify-syntax-entry ?- "." table)
     (modify-syntax-entry ?\( "()1nb" table)
     (modify-syntax-entry ?* ". 23nb" table)
     (modify-syntax-entry ?\) ")(4nb" table)
-    (modify-syntax-entry ?\n ">" table)
     (modify-syntax-entry ?_ "w" table)
     table))
+
+(defun cesia-syntactic-face (state)
+  "The face of a text, of a (** ... *) and of another comment."
+  (cond ((nth 3 state) font-lock-string-face)
+        ((and (eq (char-after (+ 1 (nth 8 state))) ?*) (eq (char-after (+ 2 (nth 8 state))) ?*)
+              (not (memq (char-after (+ 3 (nth 8 state))) '(?* ?\))))) font-lock-doc-face)
+        (t font-lock-comment-face)))
 
 (defvar cesia-font-lock
   `((,(regexp-opt '("if" "else" "end" "for" "in" "while" "break" "return" "defn" "match" "struct" "interface"
@@ -21,9 +27,9 @@
 ;;;###autoload
 (define-derived-mode cesia-mode prog-mode "Cesia"
   "Major mode for Cesia files."
-  (setq-local comment-start "-- ")
-  (setq-local comment-end "")
-  (setq-local font-lock-defaults '(cesia-font-lock)))
+  (setq-local comment-start "(* ")
+  (setq-local comment-end " *)")
+  (setq-local font-lock-defaults '(cesia-font-lock nil nil nil nil (font-lock-syntactic-face-function . cesia-syntactic-face))))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.ce\\'" . cesia-mode))

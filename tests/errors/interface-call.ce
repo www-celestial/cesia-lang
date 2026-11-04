@@ -1,3 +1,3 @@
--- An interface called as a function.
+(** An interface called as a function. *)
 interface Shape { Area() }
 Print(Shape(1))

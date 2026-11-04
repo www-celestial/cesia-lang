@@ -132,6 +132,9 @@ sed -i 's/^struct Box { V Number }$/struct Box\n  V Text\nend/' "$dir/app.ce"
 wait_for out "made type" 2000 || fail "types: a changed field type, at construction"
 if grep -qxF "held type" "$dir/out"; then fail "types: a value made before was checked again"; fi
 grep -qxF "held 1" "$dir/out" || fail "types: a value made before"
+wait_for out "result type" 2000 || fail "types: a result of the wrong type"
+sed -i 's/^answer() Int = 1.5$/answer() Number = 1.5/' "$dir/app.ce"
+wait_for out "result 1.5" 2000 || fail "types: a changed return type"
 no_internal "types"
 
 # A changed interface applies at the next call: a value that met it stops, and the other way round. So does a method on it,

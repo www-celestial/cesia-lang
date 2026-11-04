@@ -1,9 +1,8 @@
--- Methods on structs: the object of an instance method is written apart, and a dot calls both kinds.
+(** Methods on structs: the object of an instance method is written apart, and a dot calls both kinds. *)
 use date
 use sys
 
--- Before its struct, as a function can come before its call.
-(l Later) Value() = l.X
+(l Later) Value() = l.X   (** Before its struct, as a function can come before its call. *)
 
 struct Later { X }
 struct Rect { X, Y, Width, Height }
@@ -27,20 +26,20 @@ defn Rect.Count(n, acc = 0)
   Rect.Count(n - 1, acc + 1)
 end
 
--- The area of a rectangle.
---
---   Rect(0, 0, 2, 3).Area() --> 6
---   Rect.Square(3).Area() --> 9
---   r = Rect.Unit()
---   r.Area() --> 1
---   Rect(0, 0, "a", 3).Area() --> error
 defn (r Rect) Area()
+  (** The area of a rectangle.
+
+        Rect(0, 0, 2, 3).Area() --> 6
+        Rect.Square(3).Area() --> 9
+        r = Rect.Unit()
+        r.Area() --> 1
+        Rect(0, 0, "a", 3).Area() --> error *)
   r.Width * r.Height
 end
 
--- Is it flat?
---
---   Rect.Square(0).IsEmpty() --> true
+(** Is it flat?
+
+      Rect.Square(0).IsEmpty() --> true *)
 (r Rect) IsEmpty() = r.Width == 0 or r.Height == 0
 
 (r Rect) Moved(dx, dy) = Rect(r.X + dx, r.Y + dy, r.Width, r.Height)
@@ -201,7 +200,7 @@ defn (r Rect) Slept()
   r.Width
 end
 
--- A module variable is within reach of the file, while a fiber sleeps in a method on it.
+(* A module variable is within reach of the file, while a fiber sleeps in a method on it. *)
 current = Rect.Square(1)
 readCurrent() = current.Slept()
 task = Spawn(readCurrent)
@@ -351,19 +350,19 @@ isDocOfAStatic() = StartsWith("Rect.Square(side)", Doc("Rect.Square"))
 isDocOfNoMethod() = IsMissing(Doc("Rect.Nope"))
 isDocOfAStaticValue() = StartsWith("Rect.Square(side)", Doc(Rect.Square))
 
--- The object is written apart and is the first parameter of the function underneath.
 defn (r Rect) WithDefault(a, b = 2)
+  (** The object is written apart and is the first parameter of the function underneath. *)
   r.Width + a + b
 end
 
 isObjectThenDefault() = Rect.Square(1).WithDefault(1) == 4 and Rect.Square(1).WithDefault(1, b = 0) == 2
 
--- A dot reaches a static method as a value too: there is nothing left to tell apart from a range.
+(** A dot reaches a static method as a value too: there is nothing left to tell apart from a range. *)
 isStaticIsAValue() = Equal(Map(Rect.Square, [1, 2]).Width, [1, 2])
 isStaticPipedWithoutACall() = (3 then Rect.Square).Width == 3
 
--- A variable named like a struct is a variable: its fields, and a range that ends in a call.
 defn fieldOfAVariable(piece)
+  (** A variable named like a struct is a variable: its fields, and a range that ends in a call. *)
   piece.size
 end
 
@@ -374,7 +373,7 @@ end
 isVariableNamedLikeAStructHasItsFields() = fieldOfAVariable(piece(3)) == 3
 isVariableNamedLikeAStructStartsARange() = Equal(rangeFromAVariable(1, [1, 2]), [1, 2])
 
--- defn before a parenthesis stays a function with no name.
+(** defn before a parenthesis stays a function with no name. *)
 isAnonymousFunctionOneParameter() = (defn (x) x + 1 end)(1) == 2
 isAnonymousFunctionTwoParameters() = (defn (a, b) a + b end)(1, 2) == 3
 isAnonymousFunctionDefault() = (defn (a = 1) a end)() == 1

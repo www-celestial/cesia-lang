@@ -172,9 +172,7 @@ let rec scan st ~in_code : token array =
         new_line st;
         push NL pos;
         sp := true
-      | '-' when peek_at st 1 = '-' ->
-        while st.i < n && s.[st.i] <> '\n' do st.i <- st.i + 1 done;
-        sp := true
+      | '-' when peek_at st 1 = '-' -> error st (pos_at st st.i) Messages.comment_dashes
       | '(' when peek_at st 1 = '*' ->
         block_comment st;
         sp := true

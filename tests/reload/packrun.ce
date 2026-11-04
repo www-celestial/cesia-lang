@@ -1,4 +1,4 @@
--- Runs forever: tools/reload-test.sh edits the files of its package while it runs.
+(** Runs forever: tools/reload-test.sh edits the files of its package while it runs. *)
 use pack
 use sys
 

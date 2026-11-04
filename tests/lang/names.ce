@@ -1,4 +1,4 @@
--- The rules of names: a capital is public, a small first letter private, and fields follow the same rule.
+(** The rules of names: a capital is public, a small first letter private, and fields follow the same rule. *)
 struct piece { size, Label = "x" }
 
 hidden() = 1

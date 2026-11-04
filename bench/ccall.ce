@@ -1,4 +1,4 @@
--- The cost of a call to a trivial C function.
+(** The cost of a call to a trivial C function. *)
 use c
 use sys
 

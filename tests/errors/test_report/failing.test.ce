@@ -1,6 +1,6 @@
--- A wrong example.
---
---   double(2) --> 5
+(** A wrong example.
+
+      double(2) --> 5 *)
 double(x) = x * 2
 
 isFalse() = false
