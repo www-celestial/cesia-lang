@@ -40,3 +40,14 @@ val folder : string -> string -> string
 
 (** A path as a person reads it: from the working directory when it is under it. *)
 val shown : string -> string
+
+(** cesia.lock, next to cesia.toml. *)
+val lock_file : string
+
+(** The fingerprints that the cesia.lock of a root gives the files of its pkg/ and deps/, by absolute path; none without one.
+    Read once per root. *)
+val lock : string -> (string, string) Hashtbl.t
+
+(** [installed root path]: the folder of pkg/ or deps/ that holds a file, from the root ([pkg/rope],
+    [deps/www-celestial/cemacs], [deps/gitlab.com/x/y]), or [None] for a file of the project itself. *)
+val installed : string -> string -> string option

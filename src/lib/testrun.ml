@@ -2,7 +2,7 @@ open Types
 
 type stats = { mutable passed : int; mutable failed : int }
 
-(* [skip] is the pkg/ of the root: the copies of the libraries are tested by Cesia, unless named. *)
+(* [skip] is the root: its pkg/ and deps/ hold copies, which their own projects test, unless named. *)
 let rec source_files ~skip path =
   if Sys.is_directory path then begin
     let names = Sys.readdir path in
@@ -10,7 +10,7 @@ let rec source_files ~skip path =
     List.concat_map
       (fun n ->
          let sub = Filename.concat path n in
-         if n = "" || n.[0] = '.' || n = "_build" || (n = "pkg" && Package.absolute sub = skip) then []
+         if n = "" || n.[0] = '.' || n = "_build" || ((n = "pkg" || n = "deps") && Package.absolute path = skip) then []
          else source_files ~skip sub)
       (Array.to_list names)
   end
@@ -243,7 +243,7 @@ let run_paths ctx st path =
   let stands_alone p =
     in_tests_dir p || Filename.basename (Filename.dirname p) = "std" || not (whole || Package.is_test p)
   in
-  let skip = Filename.concat (Package.root_of path) "pkg" in
+  let skip = Package.root_of path in
   let alone, packaged = List.partition stands_alone (source_files ~skip path) in
   List.iter (run_file ctx st) alone;
   List.iter

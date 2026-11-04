@@ -1,0 +1,24 @@
+(** Writes the cesia.lock of the current folder for its pkg/ and deps/, made by hand in a test, as cesia pkg install would
+    write it. Run with --allow read,write. *)
+use sys
+use cesia
+
+defn walk(dir)
+  (** The files under a folder, at any depth. *)
+  listed = sys.List(dir)
+  found = []
+  if IsOk(listed)
+    for name in listed.Value
+      path = "$dir/$name"
+      found = if sys.Stat(path)?.IsDir Concat(found, walk(path)) else Append(path, found) end
+    end
+  end
+  found
+end
+
+q = Char(34)
+lines = ["[pkg]", "cesia = $q$(cesia.Version())$q", "files = ["]
+for f in Sort(Concat(walk("pkg"), walk("deps")))
+  lines = Append("  $q$f $(cesia.Fingerprint(Unwrap(sys.Read(f))))$q,", lines)
+end
+Unwrap(sys.Write("cesia.lock", Join("\n", Concat(lines, ["]", ""]))))

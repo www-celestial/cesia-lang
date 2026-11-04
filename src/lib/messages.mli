@@ -135,6 +135,11 @@ val cesia_needed : string -> string -> t
 
 (** What [cesia] in cesia.toml holds, for {!project_type}. *)
 val cesia_not_version : string
+
+(** [changed_by_hand path], [not_installed folder]: a file of pkg/ or deps/ against cesia.lock. *)
+val changed_by_hand : string -> t
+
+val not_installed : string -> t
 val no_name : string -> string -> t
 val denied : string -> t
 

@@ -98,3 +98,53 @@ let root_of path =
       if String.equal parent dir then start else up parent
   in
   up start
+
+let lock_file = "cesia.lock"
+
+(* The files of every table of a root's cesia.lock, read once: "pkg/rope/rope.ce blake2:...", the path from the root. A lock
+   that doesn't read holds nothing, so that each file says it isn't installed. *)
+let known_locks = Hashtbl.create 4
+
+let read_lock root =
+  let table = Hashtbl.create 64 in
+  let file = Filename.concat root lock_file in
+  let src = if Sys.file_exists file then In_channel.with_open_bin file In_channel.input_all else "" in
+  (match Toml.parse src with
+   | Error _ -> ()
+   | Ok tables ->
+     List.iter
+       (fun (t : Toml.table) ->
+          List.iter
+            (fun (e : Toml.entry) ->
+               match e.key, e.value with
+               | "files", Texts lines ->
+                 List.iter
+                   (fun line ->
+                      match String.rindex_opt line ' ' with
+                      | Some i ->
+                        let path = Runtime.normalize (Filename.concat root (String.sub line 0 i)) in
+                        Hashtbl.replace table path (String.sub line (i + 1) (String.length line - i - 1))
+                      | None -> ())
+                   lines
+               | _ -> ())
+            t.entries)
+       tables);
+  table
+
+let lock root =
+  match Hashtbl.find_opt known_locks root with
+  | Some table -> table
+  | None ->
+    let table = read_lock root in
+    Hashtbl.replace known_locks root table;
+    table
+
+let installed root path =
+  let path = absolute path in
+  let from = root ^ "/" in
+  if not (String.starts_with ~prefix:from path) then None
+  else
+    let parts = String.split_on_char '/' (String.sub path (String.length from) (String.length path - String.length from)) in
+    (* deps/OWNER/REPO, or deps/HOST/OWNER/REPO when the first part holds a dot. *)
+    let depth = match parts with "pkg" :: _ -> 2 | "deps" :: first :: _ when String.contains first '.' -> 4 | "deps" :: _ -> 3 | _ -> 0 in
+    if depth = 0 || List.length parts <= depth then None else Some (String.concat "/" (List.filteri (fun i _ -> i < depth) parts))

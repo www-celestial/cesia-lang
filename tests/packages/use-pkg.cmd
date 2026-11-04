@@ -7,6 +7,7 @@ printf '(** In src. *)\nName = "shapes, in src"\n' > "$top/src/shapes/shapes.ce"
 printf '(** In apps. *)\nName = "tools, in apps"\n' > "$top/apps/tools/tools.ce"
 printf 'use pkg/date\nuse pkg/algo\nuse shapes\nuse tools\nPrint(date.Today())\nPrint(algo.Gcd(12, 18))\nPrint(shapes.Name)\nPrint(tools.Name)\n' > "$top/src/main.ce"
 cd "$top"
+"$root/_build/default/src/bin/main.exe" run --allow read,write "$root/tests/packages/make-lock.ce"
 cesia run $no_spec src/main.ce
 cesia test $no_spec .
 cesia test $no_spec pkg/heap | tail -1

@@ -104,11 +104,29 @@ let own_library name = if name = "prelude" || name = "natives" then None else st
 
 let libraries () = List.filter_map (fun (name, _) -> Option.map (fun (_, src) -> name, src) (own_library name)) Embedded.files
 
-let reader ~from ~pos upath files () =
+(* A file of pkg/ or deps/ loads only as installed: its fingerprint in cesia.lock, on a text read anyway. *)
+let check_installed w ~from ~pos path src =
+  match Package.installed w.root path with
+  | None -> ()
+  | Some folder ->
+    let lock = Package.lock w.root in
+    let path = Package.absolute path in
+    let from_root p = String.sub p (String.length w.root + 1) (String.length p - String.length w.root - 1) in
+    match Hashtbl.find_opt lock path with
+    | Some print when String.equal print (Tooling.fingerprint src) -> ()
+    | Some _ -> use_error ~file:from ~pos ~kind:"name" (Messages.changed_by_hand (from_root path))
+    | None ->
+      let inside = Filename.concat w.root folder ^ "/" in
+      if Hashtbl.fold (fun p _ seen -> seen || String.starts_with ~prefix:inside p) lock false then
+        use_error ~file:from ~pos ~kind:"name" (Messages.changed_by_hand (from_root path))
+      else use_error ~file:from ~pos ~kind:"name" (Messages.not_installed folder)
+
+let reader w ~from ~pos upath files () =
   List.map
     (fun path ->
-       let path = Package.shown path in
-       path, read_module ~from ~pos upath path)
+       let src = read_module ~from ~pos upath path in
+       check_installed w ~from ~pos path src;
+       Package.shown path, src)
     files
 
 (* What a use names, without loading it: a library, the project's copy in pkg/ or else Cesia's own, or a folder of the project.
@@ -123,7 +141,7 @@ let locate w ~from ~pos upath =
   | Some name ->
     let dir = Filename.concat (Filename.concat w.root "pkg") name in
     (match Package.files dir with
-     | _ :: _ as files -> dir, reader ~from ~pos upath files, true
+     | _ :: _ as files -> dir, reader w ~from ~pos upath files, true
      | [] ->
        match own_library name with
        | Some ((path, _) as source) -> path, (fun () -> [ source ]), true
@@ -138,7 +156,7 @@ let locate w ~from ~pos upath =
         use_error ~file:from ~pos ~kind:"name" (Messages.use_library upath);
       missing dir
     end;
-    dir, reader ~from ~pos upath files, false
+    dir, reader w ~from ~pos upath files, false
 
 let native_module w name natives =
   let key = "native:" ^ name in
