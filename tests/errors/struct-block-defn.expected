@@ -1,4 +1,4 @@
-struct-block-defn.k:5:1: Only fields can be written inside a struct.
+struct-block-defn.ce:5:1: Only fields can be written inside a struct.
   5 | defn Drive(c)
     | ^
   One per line: a name, its type if it has one, and = with a default. The struct ends with end.

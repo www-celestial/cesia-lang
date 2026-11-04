@@ -1,4 +1,4 @@
-interface-nested.k:3:3: An interface can only be defined at the top of a file.
+interface-nested.ce:3:3: An interface can only be defined at the top of a file.
   3 |   interface Shape { Area() }
     |   ^
 exit 1

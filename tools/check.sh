@@ -10,7 +10,7 @@ lines=$(cat $(ls src/lib/*.ml src/lib/*.mli src/bin/*.ml src/sys/*.ml src/sys/*.
 [ "$lines" -le 15000 ] || fail "over budget: $lines lines of 15000"
 
 # File names are separated with -. OCaml can't: a file name is a module name there.
-if hits=$(find . \( -name '*_*.k' -o -name '*_*.kn' -o -name '*_*.sh' \) -not -path './_build/*' -not -path './docs/*' 2>/dev/null | grep .); then
+if hits=$(find . \( -name '*_*.ce' -o -name '*_*.cen' -o -name '*_*.sh' \) -not -path './_build/*' -not -path './docs/*' 2>/dev/null | grep .); then
   fail "a file name with _:
 $hits"
 fi

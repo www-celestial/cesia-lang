@@ -29,7 +29,7 @@ val frames : ctx -> int
 (** The caller's base, read from a frame link. *)
 val link_base : int -> int
 
-(** Raises a Kepler error at the current site. *)
+(** Raises a Cesia error at the current site. *)
 val fail : ctx -> kind -> Messages.t -> 'a
 
 (** The checkpoint: refills [fuel], flushes the output, looks at the memory, calls [on_checkpoint]. The second

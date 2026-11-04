@@ -1,7 +1,0 @@
-[project]
-name = "x"
-native = ["m"]
-
-[tasks.go]
-file = "open.k"
-limit = "memory=64M"

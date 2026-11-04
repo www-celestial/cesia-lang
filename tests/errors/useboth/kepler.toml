@@ -1,5 +1,0 @@
-[project]
-name = "useboth"
-
-[tasks.run]
-file = "main.k"

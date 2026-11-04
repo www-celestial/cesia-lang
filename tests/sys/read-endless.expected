@@ -1,2 +1,2 @@
-read-endless.k:2:10: Limit "memory" reached.
+read-endless.ce:2:10: Limit "memory" reached.
 exit 0

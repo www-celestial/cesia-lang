@@ -1,4 +1,4 @@
-method-on-record.k:2:1: There is no struct or interface "Point" in this package.
+method-on-record.ce:2:1: There is no struct or interface "Point" in this package.
   2 | (p Point) Area() = p.X
     | ^
   A method belongs to a struct or an interface declared in the same package.

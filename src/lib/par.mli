@@ -1,5 +1,5 @@
 (** Several cores for work on whole columns: small work stays on one, because starting a core has a cost. By default, half
-    of the logical cores: floating point work gains nothing from a core's second thread. [KEPLER_CORES] sets the number. The
+    of the logical cores: floating point work gains nothing from a core's second thread. [CESIA_CORES] sets the number. The
     work must not touch the state of the program, nor panic. *)
 
 val cores : unit -> int

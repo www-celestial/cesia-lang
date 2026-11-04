@@ -1,4 +1,4 @@
-interface-call.k:3:7: Shape is an interface: it can't be called.
+interface-call.ce:3:7: Shape is an interface: it can't be called.
   3 | Print(Shape(1))
     |       ^
   A value meets it by having its methods. To check one, write the interface after a parameter or a field: s Shape.

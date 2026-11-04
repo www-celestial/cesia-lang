@@ -1,7 +1,7 @@
-kepler doc Inc
+cesia doc Inc
 echo "exit $?"
-kepler doc NoSuchName
+cesia doc NoSuchName
 echo "exit $?"
-kepler doc a b 2>&1 | head -1
-kepler doc heap | head -2
-kepler doc | head -1 | cut -c1-7
+cesia doc a b 2>&1 | head -1
+cesia doc heap | head -2
+cesia doc | head -1 | cut -c1-7

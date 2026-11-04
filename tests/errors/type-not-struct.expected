@@ -1,4 +1,4 @@
-type-not-struct.k:3:9: There is no type "date.IsLeap".
+type-not-struct.ce:3:9: There is no type "date.IsLeap".
   3 | later(d date.IsLeap) = d
     |         ^
   A type is Int, Float, Number, Bool, Text, Array, Dict, Function, a struct or an interface.

@@ -1,1 +1,1 @@
-cd run_ignores && kepler run open.k
+cd run_ignores && cesia run open.ce

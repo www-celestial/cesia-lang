@@ -1,4 +1,4 @@
-method-both.k:3:1: Rect has an instance method and a static method named "Area".
+method-both.ce:3:1: Rect has an instance method and a static method named "Area".
   3 | Rect.Area() = 1
     | ^
   A struct has one method of a name.

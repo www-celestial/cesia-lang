@@ -7,7 +7,7 @@ if [ "${1:-}" = "--no-spec" ]; then no_spec="--no-spec"; shift; fi
 dune build --profile release 2>&1 | head -20
 tests=${*:-fib mandel structs matmul dyn}
 refs=${REFS:-python lua}
-kepler=_build/default/src/bin/main.exe
+cesia=_build/default/src/bin/main.exe
 runs=${RUNS:-3}
 status=0
 
@@ -44,7 +44,7 @@ measure() {
 }
 
 for t in $tests; do
-  measure "$t" kepler "$kepler" run $no_spec "bench/$t.k"
+  measure "$t" cesia "$cesia" run $no_spec "bench/$t.ce"
   for r in $refs; do
     case "$r" in
       python) measure "$t" python python3 "bench/$t.py" ;;

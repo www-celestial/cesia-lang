@@ -6,7 +6,7 @@
 #include <caml/signals.h>
 #include <stdio.h>
 
-_Static_assert(sizeof(void *) == 8, "Kepler needs 64 bits.");
+_Static_assert(sizeof(void *) == 8, "Cesia needs 64 bits.");
 
 #ifdef _WIN32
 #include <windows.h>
@@ -20,19 +20,19 @@ _Static_assert(sizeof(void *) == 8, "Kepler needs 64 bits.");
 #endif
 
 /* An address fits in an OCaml integer. 0 means that it failed. */
-value kepler_dlopen(value name) {
+value cesia_dlopen(value name) {
   return Val_long((intnat) open_library(String_val(name)));
 }
 
-value kepler_dlsym(value lib, value name) {
+value cesia_dlsym(value lib, value name) {
   return Val_long((intnat) find_symbol((void *) Long_val(lib), String_val(name)));
 }
 
-void *kepler_open(const char *name) { return open_library(name); }
-void *kepler_symbol(void *lib, const char *name) { return find_symbol(lib, name); }
+void *cesia_open(const char *name) { return open_library(name); }
+void *cesia_symbol(void *lib, const char *name) { return find_symbol(lib, name); }
 
 /* Why the last load failed. */
-value kepler_dlerror(value unit) {
+value cesia_dlerror(value unit) {
 #ifdef _WIN32
   char text[32];
   snprintf(text, sizeof text, "error %lu", GetLastError());
@@ -44,7 +44,7 @@ value kepler_dlerror(value unit) {
 }
 
 /* The RAM of the machine in bytes, or 0 if it can't be known. */
-value kepler_ram(value unit) {
+value cesia_ram(value unit) {
 #ifdef _WIN32
   MEMORYSTATUSEX status;
   status.dwLength = sizeof status;
@@ -55,11 +55,11 @@ value kepler_ram(value unit) {
 #endif
 }
 
-value kepler_block_address(value block) {
+value cesia_block_address(value block) {
   return Val_long((intnat) Caml_ba_data_val(block));
 }
 
-value kepler_cstring(value address) {
+value cesia_cstring(value address) {
   return caml_copy_string((const char *) Long_val(address));
 }
 
@@ -68,11 +68,11 @@ value kepler_cstring(value address) {
 
 #define MAX_EVENTS 1024
 
-value kepler_epoll_create(value unit) {
+value cesia_epoll_create(value unit) {
   return Val_int(epoll_create1(EPOLL_CLOEXEC));
 }
 
-value kepler_epoll_ctl(value ep, value add, value fd) {
+value cesia_epoll_ctl(value ep, value add, value fd) {
   struct epoll_event event;
   event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET;
   event.data.fd = Int_val(fd);
@@ -81,7 +81,7 @@ value kepler_epoll_ctl(value ep, value add, value fd) {
 }
 
 /* The descriptors go in [out], which holds at least MAX_EVENTS. Returns how many; 0 if a signal arrived. */
-value kepler_epoll_wait(value ep, value out, value milliseconds) {
+value cesia_epoll_wait(value ep, value out, value milliseconds) {
   CAMLparam1(out);
   struct epoll_event events[MAX_EVENTS];
   int epfd = Int_val(ep);

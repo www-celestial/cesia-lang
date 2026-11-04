@@ -1,5 +1,5 @@
-let project_file = "kepler.toml"
-let suffix = ".k"
+let project_file = "cesia.toml"
+let suffix = ".ce"
 let is_source path = Filename.check_suffix path suffix
 let is_test path = Filename.check_suffix path (".test" ^ suffix)
 

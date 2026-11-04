@@ -1,1 +1,1 @@
-KEPLER_STD=cycle kepler run bad-prelude.k
+CESIA_STD=cycle cesia run bad-prelude.ce

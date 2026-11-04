@@ -1,4 +1,4 @@
-memory-neg.k:2:5: Limit "memory" reached.
+memory-neg.ce:2:5: Limit "memory" reached.
   2 | b = -a
     |     ^
 exit 1

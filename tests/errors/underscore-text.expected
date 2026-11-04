@@ -1,4 +1,4 @@
-underscore-text.k:2:9: A name can't hold a _: "x_y".
+underscore-text.ce:2:9: A name can't hold a _: "x_y".
   2 | Print("$x_y")
     |         ^
   Join the words with capitals: xY, or XY when it is public.

@@ -1,4 +1,4 @@
-whole/a.k:3:7: Name "Later" doesn't exist.
+whole/a.ce:3:7: Name "Later" doesn't exist.
   3 | Print(Later())
     |       ^
 exit 1

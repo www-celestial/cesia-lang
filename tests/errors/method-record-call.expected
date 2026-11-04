@@ -1,4 +1,4 @@
-method-record-call.k:2:8: This struct has no field "Area".
+method-record-call.ce:2:8: This struct has no field "Area".
   2 | Print(x.Area())
     |        ^
 exit 1

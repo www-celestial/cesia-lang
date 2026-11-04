@@ -1,5 +1,0 @@
-[project]
-name = "x"
-
-[tasks.go]
-file = "open.k"

@@ -1,0 +1,7 @@
+[project]
+name = "x"
+native = ["m"]
+
+[tasks.go]
+file = "open.ce"
+limit = "memory=64M"

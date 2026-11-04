@@ -1,4 +1,4 @@
-method-twice-static.k:3:1: The function "Rect.Make" is defined twice.
+method-twice-static.ce:3:1: The function "Rect.Make" is defined twice.
   3 | Rect.Make() = 2
     | ^
 exit 1

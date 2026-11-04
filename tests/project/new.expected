@@ -1,20 +1,20 @@
-Created hello. Run it: cd hello && kepler do run
+Created hello. Run it: cd hello && cesia do run
 [project]
 name = "hello"
 
 [tasks.run]
-file = "src/main.k"
+file = "src/main.ce"
 Print("Hello from hello")
-> kepler run src/main.k
+> cesia run src/main.ce
 Hello from hello
 hello already exists.
 exit 1
 A project name holds letters, digits, - and _, not a/b.
 exit 2
-usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.k [args...]
-       kepler test [path] [--no-spec]
-       kepler do [task]
-       kepler new name
-       kepler doc [name]
-       kepler version
+usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.ce [args...]
+       cesia test [path] [--no-spec]
+       cesia do [task]
+       cesia new name
+       cesia doc [name]
+       cesia version
 exit 2

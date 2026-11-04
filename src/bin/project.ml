@@ -1,4 +1,4 @@
-open Kepler
+open Cesia
 
 type command =
   | Run of string list
@@ -10,7 +10,7 @@ type project = { title : string; native : string list; tasks : task list }
 
 exception Wrong of string
 
-let file_name = "kepler.toml"
+let file_name = "cesia.toml"
 let wrong text = raise (Wrong text)
 let wrong_at line text = wrong (Messages.at_line line text)
 
@@ -155,7 +155,7 @@ let is_plain = function
 let quote word = if word <> "" && String.for_all is_plain word then word else Printf.sprintf "%S" word
 let show words = String.concat " " (List.map quote words)
 
-(* The arguments of [kepler run] for a program. *)
+(* The arguments of [cesia run] for a program. *)
 let program_args project path allow limit watch =
   let grants = List.map (fun library -> "ffi=" ^ library) project.native @ allow in
   (if grants = [] then [] else [ "--allow"; String.concat "," grants ])
@@ -166,7 +166,7 @@ let program_args project path allow limit watch =
 let words project task =
   match task.command with
   | Run words -> words
-  | File { path; allow; limit; watch } -> "kepler" :: "run" :: program_args project path allow limit watch
+  | File { path; allow; limit; watch } -> "cesia" :: "run" :: program_args project path allow limit watch
   | Group -> []
 
 let list project =
@@ -256,6 +256,6 @@ let create name =
   let code = Filename.concat name "src" in
   Sys.mkdir code 0o755;
   write (Filename.concat name file_name)
-    (Printf.sprintf "[project]\nname = \"%s\"\n\n[tasks.run]\nfile = \"src/main.k\"\n" name);
-  write (Filename.concat code "main.k") (Printf.sprintf "Print(\"Hello from %s\")\n" name);
+    (Printf.sprintf "[project]\nname = \"%s\"\n\n[tasks.run]\nfile = \"src/main.ce\"\n" name);
+  write (Filename.concat code "main.ce") (Printf.sprintf "Print(\"Hello from %s\")\n" name);
   print_endline (Messages.project_created name)

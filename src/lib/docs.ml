@@ -199,9 +199,9 @@ let public_name name =
 
 let shown e = if e.text = "" then e.signature else e.signature ^ "\n\n" ^ e.text
 
-(* Like [use], which reads the sources of KEPLER_STD when it is set. *)
+(* Like [use], which reads the sources of CESIA_STD when it is set. *)
 let std name =
-  match Sys.getenv_opt "KEPLER_STD" with
+  match Sys.getenv_opt "CESIA_STD" with
   | Some dir ->
     let path = Filename.concat dir (name ^ Package.suffix) in
     if Sys.file_exists path then Some (In_channel.with_open_bin path In_channel.input_all) else None

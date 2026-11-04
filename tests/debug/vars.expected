@@ -1,12 +1,12 @@
-frame inner vars.k:2
+frame inner vars.ce:2
 n = 4
 x = 2.5
 a = [0.0, 1.5]
 t = text
-frame outer vars.k:7
+frame outer vars.ce:7
 k = 3
 r = [0.0, 1.5]
-frame <file> vars.k:10
+frame <file> vars.ce:10
 notYet = 0
 7.5
 exit 0

@@ -5,7 +5,7 @@ Python 3.14.7, Lua 5.5.1. Outputs checked to 6 decimals by `tools/bench.sh`.
 
 ## Benchmarks, 2026-11-01
 
-| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Target | Met |
+| Benchmark | Cesia | Python | Times Python | Lua | Times Lua | Target | Met |
 |---|---:|---:|---:|---:|---:|---|---|
 | fib | 445 ms | 1468 ms | 3.30 | 692 ms | 0.64 | at least 3 times Python, at most 1.3 times Lua | yes |
 | mandel | 463 ms | 2613 ms | 5.64 | 434 ms | 1.07 | same | yes |
@@ -18,7 +18,7 @@ Python 3.14.7, Lua 5.5.1. Outputs checked to 6 decimals by `tools/bench.sh`.
 | `print(1)`, measurement included | under 5 ms | 3.9 ms, of which 1.2 ms of measurement | yes |
 | Loading, resolution included | at least 500,000 lines/s | 505,530 lines/s | yes, 1% margin |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 3.5 s (`tools/check.sh`) | yes |
-| A Kepler function active in a running program | under 100 ms | 12 ms (`tools/reload-test.sh`) | yes |
+| A Cesia function active in a running program | under 100 ms | 12 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 137 + 3 + 8 tests, golden 102/102, on each path | yes |
 | `tools/check.sh` | passes | yes, 7,325 lines of 15,000 | yes |
 | 10-minute fuzz, seed 2026 | no internal error | 391,884 trials, 42,319 ran to the end, 0 failures | yes |
@@ -38,7 +38,7 @@ Same PC and build, best of 7. `Core` is the commit before this work, rebuilt and
 of 9, so that both met the same machine. That machine was slower than for the table above: the same Python and Lua
 programs took up to 9% longer.
 
-| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Core, in turn | Current, in turn | Drift |
+| Benchmark | Cesia | Python | Times Python | Lua | Times Lua | Core, in turn | Current, in turn | Drift |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | fib | 453 ms | 1473 ms | 3.25 | 695 ms | 0.65 | 441 ms | 453 ms | +2.6% |
 | mandel | 460 ms | 2652 ms | 5.77 | 435 ms | 1.06 | 455 ms | 463 ms | +1.7% |
@@ -58,7 +58,7 @@ programs took up to 9% longer.
 | The five benchmarks against the core | within 2% | `mandel` and `structs` yes, `fib` +2.6%, `matmul` +6.2%, `dyn` +7.5% | no |
 | Loading, resolution included | at least 500,000 lines/s | 451,341 to 470,589 lines/s; core commit in turn 463,769 | no |
 | `print(1)`, measurement included | under 5 ms | 3.6 ms, of which 0.5 ms of measurement | yes |
-| A Kepler function active in a running program | under 100 ms | 12 to 19 ms (`tools/reload-test.sh`) | yes |
+| A Cesia function active in a running program | under 100 ms | 12 to 19 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 199 + 3 + 22 tests, golden 162/162, on each path | yes |
 | No `try` | none | none in `std/` or the programs; `tests/errors/try-gone` checks it is rejected | yes |
 | Each function under a permission | denied, granted, out of scope | 11 functions, `tests/sys/permissions_*` | yes |
@@ -96,7 +96,7 @@ Not verified: `kqueue` and IOCP are not written. The `select` backend passed the
 Same PC and build, best of 7. `Previous` is the commit before this work, rebuilt outside the repository from `git archive
 HEAD` and run in turn with the current tree, best of 9. Everything here is Linux on x86-64.
 
-| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Previous, in turn | Current, in turn | Drift |
+| Benchmark | Cesia | Python | Times Python | Lua | Times Lua | Previous, in turn | Current, in turn | Drift |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | fib | 442 ms | 1449 ms | 3.28 | 682 ms | 0.65 | 448 ms | 441 ms | -1.6% |
 | mandel | 453 ms | 2579 ms | 5.69 | 427 ms | 1.06 | 454 ms | 454 ms | 0.0% |
@@ -106,14 +106,14 @@ HEAD` and run in turn with the current tree, best of 9. Everything here is Linux
 
 | Criterion | Target | Measured | Met |
 |---|---|---|---|
-| The speed gate, `bench/frame.k`, real window | at least 60 frames/s | 148, 144, 151; 146 with `--no-spec` | yes |
-| A call to a trivial C function, `bench/ccall.k` | at least 5 million/s | 12.9 million/s; 11.9 with `--no-spec` | yes |
+| The speed gate, `bench/frame.ce`, real window | at least 60 frames/s | 148, 144, 151; 146 with `--no-spec` | yes |
+| A call to a trivial C function, `bench/ccall.ce` | at least 5 million/s | 12.9 million/s; 11.9 with `--no-spec` | yes |
 | The five benchmarks against Python and Lua | the targets above | all met, `dyn` with a 4% margin | yes |
 | The five benchmarks against the previous commit | reported | -2.6% to 0.0% | reported |
 | Loading, resolution included | at least 500,000 lines/s | 505,530 lines/s; in turn, previous 509,555, current 507,133 | yes, 1% margin |
 | `print(1)`, measurement included | under 5 ms | 3.6 to 3.7 ms, of which 0.7 ms of measurement | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 3.9 s (`tools/check.sh`) | yes |
-| A Kepler function active in a running program | under 100 ms | 17 ms (`tools/reload-test.sh`) | yes |
+| A Cesia function active in a running program | under 100 ms | 17 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 199 + 3 + 22 tests, golden 197/197, on each path | yes |
 | Every call shape | 254 | 254 (`tests/c/shapes`) | yes |
 | The demo in a real window | typing shows text, closing exits with 0 | opened under Wayland, and a quit event from SIGTERM exits with 0 | typing and the close button unverified |
@@ -144,16 +144,16 @@ Wayland session ran the gate. Real typing and the close button need a person at 
 
 | Criterion | Target | Measured | Met |
 |---|---|---|---|
-| This repository's `kepler.toml` | `build`, `test`, `check`, `demo` work | all exit 0; `demo` in a real window, stopped through `kepler do` | yes |
+| This repository's `cesia.toml` | `build`, `test`, `check`, `demo` work | all exit 0; `demo` in a real window, stopped through `cesia do` | yes |
 | Tests on both paths | all | golden 217/217, `toml_test` ok | yes |
 | `tools/check.sh` | passes | yes, 9,451 lines of 15,000 | yes |
 | A `.ml` in `src/` rebuilt and tested | under 5 s | 4.2 to 4.7 s | yes, thin margin |
 | `print(1)`, measurement included | under 5 ms | 3.9 to 4.6 ms, of which 0.6 to 0.9 ms of measurement | yes |
-| `kepler do` listing this repository | under 10 ms | 3.9 to 4.2 ms | yes |
+| `cesia do` listing this repository | under 10 ms | 3.9 to 4.2 ms | yes |
 | The reader against Python's `tomllib` | the same values | 20,032 inputs, 2,651 accepted, 0 differences | yes |
 | 10-minute fuzz, seed 2026 | no failure | 184,345 trials, 7,465 toml accepted, 0 failures | yes |
 
-Not verified: `kepler do` on macOS and Windows.
+Not verified: `cesia do` on macOS and Windows.
 
 ## Standard library, interop, web and crypto, 2026-11-01
 
@@ -162,7 +162,7 @@ OpenSSL 3.6.5, SDL3 3.4.18, Python 3.14.9 and Node 26.13.0, so the references ar
 above all: 28,969 req/s at 10 connections before the upgrade, 45,590 after. `Previous` is the last commit, rebuilt outside
 the repository from `git archive HEAD` and run in turn with the current tree.
 
-| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Target | Met |
+| Benchmark | Cesia | Python | Times Python | Lua | Times Lua | Target | Met |
 |---|---:|---:|---:|---:|---:|---|---|
 | fib | 462 ms | 1493 ms | 3.23 | 700 ms | 0.66 | at least 3 times Python, at most 1.3 times Lua | yes |
 | mandel | 465 ms | 2653 ms | 5.71 | 436 ms | 1.07 | same | yes |
@@ -181,13 +181,13 @@ target.
 | `http.serve`, 10 active and 900 idle | at least Node | 58,962 req/s, Node 42,985 | yes |
 | 20,000 open connections | held | held, 33,725 req/s | yes |
 | Memory per parked fiber | under 8 KB | 3.43 KB | yes |
-| The speed gate, `bench/frame.k`, real window | at least 60 frames/s | 154, 154, 159; 167 with `--no-spec` | yes |
-| A call to a trivial C function, `bench/ccall.k` | at least 5 million/s | 12.7 million/s; 11.3 with `--no-spec` | yes |
+| The speed gate, `bench/frame.ce`, real window | at least 60 frames/s | 154, 154, 159; 167 with `--no-spec` | yes |
+| A call to a trivial C function, `bench/ccall.ce` | at least 5 million/s | 12.7 million/s; 11.3 with `--no-spec` | yes |
 | Loading, resolution included | at least 500,000 lines/s | 471,282 to 499,221 lines/s; previous commit in turn 483,623 | no |
 | `print(1)`, measurement included | under 5 ms | 4.36 ms on average, of which 0.49 ms of measurement | yes |
-| `kepler do` listing this repository | under 10 ms | 3.48 ms | yes |
+| `cesia do` listing this repository | under 10 ms | 3.48 ms | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.3 to 4.4 s (`tools/check.sh`) | yes, thin margin |
-| A Kepler function active in a running program | under 100 ms | 14 ms (`tools/reload-test.sh`) | yes |
+| A Cesia function active in a running program | under 100 ms | 14 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 499 + 3 + 22 tests, golden 245/245, and 219/219 with `--no-spec` | yes |
 | `tools/check.sh` | passes | yes, 11,187 lines of 15,000, 235 lines of C of 300 | yes |
 | 10-minute fuzz, seed 20261103 | no internal error | 190,695 trials, 11,649 ran to the end, 7,719 toml accepted, 0 failures | yes |
@@ -197,7 +197,7 @@ target.
 ### HTTP
 
 `http.serve` had lost 20% when this work ended: 51,377 req/s against 64,490 for the previous commit at 10 connections, in
-turn on one machine, and 28,624 against 34,846 at 1,000. The old `std/http.k` on the current binary gave 66,578, so the
+turn on one machine, and 28,624 against 34,846 at 1,000. The old `std/http.ce` on the current binary gave 66,578, so the
 loss was all in that file, not in the engine.
 
 | Taken out of the module, one at a time | µs per request |
@@ -208,7 +208,7 @@ loss was all in that file, not in the engine.
 | The `io` closures that let TLS sit under HTTP | 18.6 |
 | `net.arm` at each request, the reaper, named arguments | no change |
 
-The strict check called a Kepler closure per byte and built two arrays per header. `net.is_header` now does it in one pass,
+The strict check called a Cesia closure per byte and built two arrays per header. `net.is_header` now does it in one pass,
 with the same rules, and header lookups are loops without a closure. `parse_request` went from 4.4 to 2.9 µs, under the 3.4
 of the previous commit, and `tests/net/header-bytes` checks all 256 bytes against RFC 9110.
 
@@ -260,7 +260,7 @@ Not verified: macOS, Windows and arm64. `.github/workflows/ci.yml` is written an
 
 ## Heavy computing, 2026-11-01
 
-Same PC, `release` profile, on the final tree, one run of each. It has 4 cores and 8 threads, and Kepler uses 4 by default.
+Same PC, `release` profile, on the final tree, one run of each. It has 4 cores and 8 threads, and Cesia uses 4 by default.
 NumPy, pandas, Julia, R and OpenBLAS are not installed here, so nothing below is compared with them.
 
 | Work | Before | After |
@@ -281,10 +281,10 @@ NumPy, pandas, Julia, R and OpenBLAS are not installed here, so nothing below is
 | `sin`, 5 million floats | 88 ms | 29 ms |
 
 The reference BLAS gives `matmul` in 738 ms on one core, which is why only a fast BLAS gets it: OpenBLAS, Accelerate, or a
-library named in `KEPLER_BLAS`. Elementwise `+` and `*` gain nothing from more cores here: 5 million cells take 25 to 34 ms
+library named in `CESIA_BLAS`. Elementwise `+` and `*` gain nothing from more cores here: 5 million cells take 25 to 34 ms
 with 1, 4 or 8 cores, as the limit is the memory. 8 threads gain nothing over 4 on floats.
 
-| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Target | Met |
+| Benchmark | Cesia | Python | Times Python | Lua | Times Lua | Target | Met |
 |---|---:|---:|---:|---:|---:|---|---|
 | fib | 469 ms | 1490 ms | 3.18 | 698 ms | 0.67 | at least 3 times Python, at most 1.3 times Lua | yes |
 | mandel | 481 ms | 2659 ms | 5.53 | 437 ms | 1.10 | same | yes |
@@ -307,9 +307,9 @@ of code placement.
 | A call to a trivial C function | at least 5 million/s | 13.2 million/s; 12.0 with `--no-spec` | yes |
 | Loading, resolution included | at least 500,000 lines/s | 475,484 to 487,806 lines/s | no |
 | `print(1)`, measurement included | under 5 ms | 4.88 ms, of which 0.49 ms of measurement | yes, 2% margin |
-| `kepler do` listing this repository | under 10 ms | 3.53 ms | yes |
+| `cesia do` listing this repository | under 10 ms | 3.53 ms | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.9 s, and 5.006 s once on a hot machine | yes, at the limit |
-| A Kepler function active in a running program | under 100 ms | 13 ms (`tools/reload-test.sh`) | yes |
+| A Cesia function active in a running program | under 100 ms | 13 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 614 + 3 + 74 tests, golden 247/247, and 219/219 with `--no-spec` | yes |
 | Results don't depend on the cores | the same bits | `tests/columns/cores`, 1 and 3 cores | yes |
 | `tools/check.sh` | passes | yes, 11,913 lines of 15,000, 306 lines of C of 350 | yes |
@@ -340,16 +340,16 @@ The owner installed OpenBLAS 0.3.34 after the table above. In 1,000 by 1,000, on
 | Criterion | Target | Measured | Met |
 |---|---|---|---|
 | Every public name has a comment | all | 539 names, `is_everything_public_has_a_comment` | yes |
-| Examples that `kepler test` runs | pass | 330 in `std/`, 0 failed | yes |
+| Examples that `cesia test` runs | pass | 330 in `std/`, 0 failed | yes |
 | `doc` on all 539 names | fast enough for an editor | 2 ms in all | yes |
 | `print(1)`, measurement included | under 5 ms | 3.87 ms in this run, 4.84 ms in the previous one | yes |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.6 to 4.7 s (`tools/check.sh`) | yes |
-| A Kepler function active in a running program | under 100 ms | 12 ms (`tools/reload-test.sh`) | yes |
+| A Cesia function active in a running program | under 100 ms | 12 ms (`tools/reload-test.sh`) | yes |
 | Tests on both paths | all | 633 + 3 + 330 tests, golden 248/248, and 220/220 with `--no-spec` | yes |
 | `tools/check.sh` | passes | yes, 12,168 lines of 15,000 | yes |
 | 10-minute fuzz, seed 20261106 | no internal error | 136,389 trials, 9,751 ran to the end, 5,546 toml accepted, 0 failures | yes |
 
-| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Met |
+| Benchmark | Cesia | Python | Times Python | Lua | Times Lua | Met |
 |---|---:|---:|---:|---:|---:|---|
 | fib | 474 ms | 1501 ms | 3.17 | 696 ms | 0.68 | yes |
 | mandel | 471 ms | 2658 ms | 5.64 | 440 ms | 1.07 | yes |
@@ -372,7 +372,7 @@ array at each cell. The toy is a flat array of 3 columns, with the formula `=A*B
 | 200 edits of a 24 MB array, `a = f(a)` | 681 ms | 4.2 ms |
 | 200,000 edits in chunks of 1,024 | 1,622 ms | 301 ms |
 
-| Benchmark | Kepler | Python | Times Python | Lua | Times Lua | Met |
+| Benchmark | Cesia | Python | Times Python | Lua | Times Lua | Met |
 |---|---:|---:|---:|---:|---:|---|
 | fib | 457 ms | 1477 ms | 3.23 | 703 ms | 0.65 | yes |
 | mandel | 463 ms | 2656 ms | 5.74 | 444 ms | 1.04 | yes |
@@ -389,7 +389,7 @@ array at each cell. The toy is a flat array of 3 columns, with the formula `=A*B
 | The speed gate, real window | at least 60 frames/s | 172, 176, 190 | yes |
 | Loading, resolution included | at least 500,000 lines/s | 499,221 lines/s | no, by 0.2% |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.6 s, as the commit before on the same machine | yes |
-| A Kepler function active in a running program | under 100 ms | 12 to 13 ms | yes |
+| A Cesia function active in a running program | under 100 ms | 12 to 13 ms | yes |
 | Tests on both paths | all | 670 + 3 + 330 tests, golden 261/261, and 233/233 with `--no-spec` | yes |
 | `tools/check.sh` | passes | yes, 12,276 lines of 15,000 | yes |
 | Fuzz of 590 s, seed 20261107 | no internal error | 124,610 trials, 9,244 ran to the end, 5,122 toml accepted, 0 failures | yes |
@@ -428,7 +428,7 @@ A lookup that never answers doesn't hold a program back at its end: a domain lef
 
 | Criterion | Target | Measured | Met |
 |---|---|---|---|
-| The five benchmarks, Kepler alone | no loss | fib 458, mandel 469, structs 572, matmul 945, dyn 668 ms | yes |
+| The five benchmarks, Cesia alone | no loss | fib 458, mandel 469, structs 572, matmul 945, dyn 668 ms | yes |
 | The speed gate, real window | at least 60 frames/s | 186 | yes |
 | Loading, resolution included | at least 500,000 lines/s | 501,568 lines/s | yes, by 0.3% |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.6 to 4.8 s | yes |
@@ -441,8 +441,8 @@ texts and shorter waits, and those two folders run in `tools/check.sh`, past the
 
 ## Interface library, 2026-11-02
 
-`std/sdl.k` gained rounded surfaces, shadows, images, icons, curves, several fonts and motion, and `std/ui.k` builds them. Not a line of
-OCaml or C went into this. `examples/material.k` is the approved preview, rewritten on the library.
+`std/sdl.ce` gained rounded surfaces, shadows, images, icons, curves, several fonts and motion, and `std/ui.ce` builds them. Not a line of
+OCaml or C went into this. `examples/material.ce` is the approved preview, rewritten on the library.
 
 | Criterion, real window of 1280 by 720, Intel HD 4600 | Target | Measured | Met |
 |---|---|---|---|
@@ -458,7 +458,7 @@ preview window open on the same GPU. The gate only means something alone on the 
 
 | Criterion | Target | Measured | Met |
 |---|---|---|---|
-| The five benchmarks, Kepler alone | no loss | fib 456, mandel 468, structs 561, matmul 945, dyn 658 ms | yes |
+| The five benchmarks, Cesia alone | no loss | fib 456, mandel 468, structs 561, matmul 945, dyn 658 ms | yes |
 | Loading, resolution included | at least 500,000 lines/s | 494,591 lines/s, after the lexer learned block comments | no, by 1% |
 | A `.ml` in `src/` rebuilt and tested, `dev` profile | under 5 s | 4.9 s, four runs out of four | yes |
 | Tests on both paths | all | 710 + 3 + 341 tests, golden 287/287, and 232/232 with `--no-spec`; `tests/material` and the slow folders in `tools/check.sh` | yes |
@@ -480,12 +480,12 @@ mattered most was an old test, `project/stop_term`: a background `sleep 1` held 
 Not verified: macOS, Windows, arm64, other GPUs and pixel density above 1. A person hasn't confirmed the example's mouse and keys in a real
 window: they ran through `update`, with simulated events, in `tests/material`.
 
-Block comments came with this work, at the owner's request: `(* ... *)`, nested, and `(** ... *)` as documentation, read by `kepler doc`
-and `kepler test`.
+Block comments came with this work, at the owner's request: `(* ... *)`, nested, and `(** ... *)` as documentation, read by `cesia doc`
+and `cesia test`.
 
 ## Generic path only (`--no-spec`)
 
-| Benchmark | Kepler | Times Python |
+| Benchmark | Cesia | Times Python |
 |---|---:|---:|
 | fib | 758 ms | 1.94 |
 | mandel | 1206 ms | 2.17 |
@@ -521,13 +521,13 @@ heated it and the CPU throttles. One run of the suite failed during these measur
 not kept: no failure in more than 30 runs since, so its test is unknown. A later run failed on `tests/sdl/demo`, with exit 143 and no output:
 a SIGTERM killed it. It isn't reproduced: not with 15 runs under load, nor 240 on one busy core, and no test sends that signal to another.
 
-A person ran `kepler do material` in a real window: the mouse did nothing until the window was resized. Under Wayland, the frame that
+A person ran `cesia do material` in a real window: the mouse did nothing until the window was resized. Under Wayland, the frame that
 libdecor draws around a window is made of subsurfaces, which apply only with a commit of the window. Its shadow took the mouse, and
 `sdl.run` waited for input before drawing, so nothing ever changed. `sdl.run` now draws for every event about the window, and programs
 see nothing new. `WAYLAND_DEBUG=1` shows the pointer entering the surface of the window instead of the shadow.
 
 The first runs on macOS hung for 56 minutes in `tests/limits`. The default memory limit came from `/proc/meminfo`, which only Linux has, and an unknown size meant no limit: `zeros(1e12)` really tried, and
-the machine sank into its swap. The limit now comes from `kepler_ram` in `sys/stubs.c`, through `sysconf` or `GlobalMemoryStatusEx`. It gives the same 1,195,487,641 words as before on this PC.
+the machine sank into its swap. The limit now comes from `cesia_ram` in `sys/stubs.c`, through `sysconf` or `GlobalMemoryStatusEx`. It gives the same 1,195,487,641 words as before on this PC.
 
 `push` copied the whole list at each call, so a loop of pushes was quadratic: 20,000 of them took 9.07 s. A list now keeps free cells behind its last one, doubled when they run out: 0.002 s. A store can
 be longer than its array, so reads go through `rows * cols`, and code that takes a store as a whole calls `Value.trim`. Reading `x[k]` 40 million times didn't change: 1,161 ms against 1,155 for floats, and

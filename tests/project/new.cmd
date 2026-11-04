@@ -1,11 +1,11 @@
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 cd "$dir"
-kepler new hello
-cat hello/kepler.toml hello/src/main.k
-(cd hello && kepler do run)
-kepler new hello
+cesia new hello
+cat hello/cesia.toml hello/src/main.ce
+(cd hello && cesia do run)
+cesia new hello
 echo "exit $?"
-kepler new a/b
+cesia new a/b
 echo "exit $?"
-kepler new
+cesia new

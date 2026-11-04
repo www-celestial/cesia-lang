@@ -8,10 +8,10 @@ limit_kb=8
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 peak_kb() {  # number of fibers
-  sed "s/COUNT/$1/" bench/fibers.k > "$dir/fibers.k"
+  sed "s/COUNT/$1/" bench/fibers.ce > "$dir/fibers.ce"
   python3 -I -c 'import resource, subprocess, sys
 subprocess.run(sys.argv[1:], stdout=subprocess.DEVNULL)
-print(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)' _build/default/src/bin/main.exe run "$dir/fibers.k"
+print(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)' _build/default/src/bin/main.exe run "$dir/fibers.ce"
 }
 base=$(peak_kb 1)
 full=$(peak_kb "$count")

@@ -1,4 +1,4 @@
-use-private.k:2:2: Module "r" has no name "cache".
+use-private.ce:2:2: Module "r" has no name "cache".
   2 | r.cache()
     |  ^
 exit 1

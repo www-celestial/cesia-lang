@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Golden tests: for each name.k with name.expected, runs kepler from the test's folder
+# Golden tests: for each name.ce with name.expected, runs cesia from the test's folder
 # and compares stdout then stderr (2>&1), followed by an "exit N" line.
-# Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "kepler run").
+# Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "cesia run").
 # GOLDEN_TRACE=1 names each test as it starts: a test that hangs would otherwise leave no trace.
 set -u
 cd "$(dirname "$0")/.."
 root=$PWD
-kepler="$root/_build/default/src/bin/main.exe"
+cesia="$root/_build/default/src/bin/main.exe"
 no_spec=""
 if [ "${1:-}" = "--no-spec" ]; then no_spec="--no-spec"; shift; fi
 
@@ -27,13 +27,13 @@ run_one() {
   [ -f "$dir/$name.stdin" ] && input=$(realpath "$dir/$name.stdin")
   (
     cd "$dir" || exit 99
-    kepler() { "$root/_build/default/src/bin/main.exe" "$@"; }
+    cesia() { "$root/_build/default/src/bin/main.exe" "$@"; }
     if [ -f "$name.cmd" ]; then
       # shellcheck disable=SC1090
       source "./$name.cmd" < "$input"
     else
       # shellcheck disable=SC2086
-      "$kepler" run $no_spec $flags "$name.k" $args < "$input"
+      "$cesia" run $no_spec $flags "$name.ce" $args < "$input"
     fi
     echo "exit $?"
   ) > "$out" 2>&1

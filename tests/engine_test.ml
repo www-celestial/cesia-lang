@@ -1,5 +1,5 @@
 (* OCaml tests: the permission mechanism, with natives reserved for tests. *)
-open Kepler
+open Cesia
 open Types
 
 let failures = ref 0
@@ -32,7 +32,7 @@ let run ?(perms = []) ?(all = false) src =
           | _ -> ());
          Text "read"));
   Native.register w "WriteIt" (native "WriteIt" Write (fun _ _ -> Text "written"));
-  let path = Filename.temp_file "kepler" ".k" in
+  let path = Filename.temp_file "cesia" ".ce" in
   Out_channel.with_open_bin path (fun oc -> output_string oc src);
   let code = Loader.run w path [] in
   Sys.remove path;
@@ -41,9 +41,9 @@ let run ?(perms = []) ?(all = false) src =
 (* How many hooks a program compiled. *)
 let hooks ?debugger src =
   let write path text = Out_channel.with_open_bin path (fun oc -> output_string oc text) in
-  let path = Filename.temp_file "kepler" ".k" in
+  let path = Filename.temp_file "cesia" ".ce" in
   write path src;
-  let dbg = Filename.temp_file "kepler" ".k" in
+  let dbg = Filename.temp_file "cesia" ".ce" in
   write dbg "OnStop(stop) = \"continue\"\n";
   let o_debugger = Option.map (fun _ -> dbg) debugger in
   let w =
@@ -65,7 +65,7 @@ let has text s =
 
 (* A folder with these files, removed afterwards. A name ending in / is a folder. *)
 let with_tree names f =
-  let top = Filename.temp_dir "kepler" "tree" in
+  let top = Filename.temp_dir "cesia" "tree" in
   let path n = Filename.concat top n in
   List.iter
     (fun n ->
@@ -78,22 +78,22 @@ let with_tree names f =
   Sys.rmdir top
 
 let () =
-  with_tree [ "b.k"; "a.k"; "c.test.k"; ".#d.k"; "notes.txt"; "e.k/"; "sub/"; "sub/f.k" ] (fun top ->
-      check "a package is its .k files, in the order of their names"
-        (Package.files top = [ Filename.concat top "a.k"; Filename.concat top "b.k" ]);
-      check "a subfolder is another package" (Package.files (Filename.concat top "sub") = [ Filename.concat top "sub/f.k" ]));
-  with_tree [ "only.test.k" ] (fun top -> check "tests alone are no package" (Package.files top = []));
+  with_tree [ "b.ce"; "a.ce"; "c.test.ce"; ".#d.ce"; "notes.txt"; "e.ce/"; "sub/"; "sub/f.ce" ] (fun top ->
+      check "a package is its .ce files, in the order of their names"
+        (Package.files top = [ Filename.concat top "a.ce"; Filename.concat top "b.ce" ]);
+      check "a subfolder is another package" (Package.files (Filename.concat top "sub") = [ Filename.concat top "sub/f.ce" ]));
+  with_tree [ "only.test.ce" ] (fun top -> check "tests alone are no package" (Package.files top = []));
   check "a missing folder has no file" (Package.files "/no/such/folder" = []);
-  with_tree [ "kepler.toml"; "a/"; "a/b/"; "a/b/c.k" ] (fun top ->
+  with_tree [ "cesia.toml"; "a/"; "a/b/"; "a/b/c.ce" ] (fun top ->
       let top = Runtime.normalize top in
-      check "the root is the folder of kepler.toml, from a file" (Package.root_of (top ^ "/a/b/c.k") = top);
-      check "the root is the folder of kepler.toml, from a folder" (Package.root_of (top ^ "/a/b") = top));
-  with_tree [ "x.k" ] (fun top ->
+      check "the root is the folder of cesia.toml, from a file" (Package.root_of (top ^ "/a/b/c.ce") = top);
+      check "the root is the folder of cesia.toml, from a folder" (Package.root_of (top ^ "/a/b") = top));
+  with_tree [ "x.ce" ] (fun top ->
       let top = Runtime.normalize top in
-      check "without kepler.toml, the root is the folder of the file" (Package.root_of (top ^ "/x.k") = top));
+      check "without cesia.toml, the root is the folder of the file" (Package.root_of (top ^ "/x.ce") = top));
   let here = Sys.getcwd () in
-  check "a path under the working directory is shown from it" (Package.shown (here ^ "/a/b.k") = "a/b.k");
-  check "a path elsewhere stays whole" (Package.shown "/elsewhere/b.k" = "/elsewhere/b.k")
+  check "a path under the working directory is shown from it" (Package.shown (here ^ "/a/b.ce") = "a/b.ce");
+  check "a path elsewhere stays whole" (Package.shown "/elsewhere/b.ce" = "/elsewhere/b.ce")
 
 let () =
   let code, _, err = run "Print(ReadIt())\n" in

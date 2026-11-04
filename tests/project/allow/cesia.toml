@@ -1,0 +1,6 @@
+[project]
+name = "x"
+
+[tasks.go]
+file = "open.ce"
+allow = ["ffi=m"]

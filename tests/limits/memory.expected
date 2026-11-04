@@ -1,4 +1,4 @@
-memory.k:3:11: Limit "memory" reached.
+memory.ce:3:11: Limit "memory" reached.
   3 |   x = [x, Zeros(1000)]
     |           ^
 exit 1

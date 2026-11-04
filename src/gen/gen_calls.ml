@@ -33,7 +33,7 @@ let print_calls () =
   let table = List.map (Printf.sprintf "call_%d") (List.sort compare !ids) in
   Printf.printf "static void (*const calls[])(void *, int64_t *) = {\n  %s\n};\n\n" (String.concat ",\n  " table);
   print_string
-    "value kepler_call(value fn, value id, value slots, value texts, value mask) {\n\
+    "value cesia_call(value fn, value id, value slots, value texts, value mask) {\n\
     \  int64_t *s = (int64_t *) Bytes_val(slots);\n\
     \  for (int k = 0; k < 6; k++)\n\
     \    if (Long_val(mask) >> k & 1) s[k] = (int64_t) String_val(Field(texts, k));\n\
@@ -129,7 +129,7 @@ let print_fixture () =
   each_shape print_shape
 
 (* A library that exists, and that no loader can finish loading. *)
-let unloadable = "extern int kepler_nope(void);\nint calls_nope(void) { return kepler_nope(); }\n"
+let unloadable = "extern int cesia_nope(void);\nint calls_nope(void) { return cesia_nope(); }\n"
 
 let () =
   match Sys.argv with

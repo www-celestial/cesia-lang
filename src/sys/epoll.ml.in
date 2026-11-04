@@ -1,6 +1,6 @@
-external create_fd : unit -> int = "kepler_epoll_create"
-external ctl : int -> bool -> Unix.file_descr -> int = "kepler_epoll_ctl"
-external wait_fds : int -> Unix.file_descr array -> int -> int = "kepler_epoll_wait"
+external create_fd : unit -> int = "cesia_epoll_create"
+external ctl : int -> bool -> Unix.file_descr -> int = "cesia_epoll_ctl"
+external wait_fds : int -> Unix.file_descr array -> int -> int = "cesia_epoll_wait"
 
 type state = { ep : int; out : Unix.file_descr array }
 

@@ -4,9 +4,9 @@ One more, and one less. Both work on arrays, element by element.
 
   Inc(1) --> 2
 exit 0
-kepler: nothing is documented under NoSuchName
+cesia: nothing is documented under NoSuchName
 exit 1
-usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.k [args...]
+usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.ce [args...]
 A persistent leftist heap: the smallest key comes out first.
 
 prelude

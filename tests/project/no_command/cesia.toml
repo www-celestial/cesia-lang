@@ -1,0 +1,5 @@
+[project]
+name = "x"
+
+[tasks.a]
+run = ["cesia_no_such_command"]

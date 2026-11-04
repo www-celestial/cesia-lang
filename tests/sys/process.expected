@@ -8,5 +8,5 @@ Ok(Value = 2) Ok(Value = "late
 ")
 Err(Error = "This process has ended.")
 Ok(Value = missing)
-Err(Error = {Kind: "io", Message: "Can't run kepler_no_such_command: no such file or directory."})
+Err(Error = {Kind: "io", Message: "Can't run cesia_no_such_command: no such file or directory."})
 exit 0

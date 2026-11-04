@@ -1,3 +1,3 @@
-export KEPLER_STD=mods/docstd
-kepler doc car.Car
-kepler doc car.Car.Moved
+export CESIA_STD=mods/docstd
+cesia doc car.Car
+cesia doc car.Car.Moved

@@ -1,3 +1,3 @@
 (executable
  (name main)
- (libraries kepler kepler_sys unix))
+ (libraries cesia cesia_sys unix))

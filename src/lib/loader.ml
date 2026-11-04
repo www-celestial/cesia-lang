@@ -64,7 +64,7 @@ let in_module w m name =
 
 let in_package w m name = Array.find_map (fun k -> in_module w k name) w.modules.(m).package
 
-(* The prelude: module 1 written in Kepler, then module 0 of natives. A small first letter stays private: only the
+(* The prelude: module 1 written in Cesia, then module 0 of natives. A small first letter stays private: only the
    parser writes a # name, as the #dict of a dictionary literal. *)
 let lookup w name =
   if not (Lexer.is_public name || name.[0] = '#') then None
@@ -82,7 +82,7 @@ let message_of_error = function
   | _ -> None
 
 let std_source name =
-  match Sys.getenv_opt "KEPLER_STD" with
+  match Sys.getenv_opt "CESIA_STD" with
   | Some dir ->
     let path = Filename.concat dir (name ^ Package.suffix) in
     if Sys.file_exists path then Some (path, In_channel.with_open_bin path In_channel.input_all) else None
@@ -330,7 +330,7 @@ let load ctx path =
     let src = In_channel.with_open_bin path In_channel.input_all in
     run_prepared ctx (prepare ~hooks:w.hooks ctx ~path ~src ~lookup:(lookup w))
 
-(* The debugger loads before the program, with no hooks. A name without / or .k is looked up like use. *)
+(* The debugger loads before the program, with no hooks. A name without / or .ce is looked up like use. *)
 let load_debugger ctx name =
   let w = ctx.w in
   let pos = Pos.make 1 1 in
@@ -351,7 +351,7 @@ let load_debugger ctx name =
     w.on_hook <- Debug.hook
   | None -> use_error ~file:path ~pos ~kind:"name" Messages.no_on_stop
 
-(* Module 0 of natives, then the prelude in Kepler. *)
+(* Module 0 of natives, then the prelude in Cesia. *)
 let init w =
   w.native_modules <- ("debug", Debug.natives) :: ("json", Json.natives) :: ("regex", Regex.natives ()) :: ("columns", Columns.natives) :: w.native_modules;
   let natives = Native.prelude @ Lists.natives @ Fiber.natives @ Docs.natives in
@@ -365,7 +365,7 @@ let init w =
     let natives name = in_module w 0 name in
     run_prepared ctx (prepare ctx ~path ~src ~lookup:natives)
   | None ->
-    let dir = Option.value (Sys.getenv_opt "KEPLER_STD") ~default:"std" in
+    let dir = Option.value (Sys.getenv_opt "CESIA_STD") ~default:"std" in
     use_error ~file:dir ~pos:(Pos.make 1 1) ~kind:"name" Messages.no_prelude
 
 (* A use in a reloaded file: the module must already be there, since we are in the middle of the program. *)
@@ -465,7 +465,7 @@ let reload w path =
 (* The files to watch. Sources embedded in the binary don't change. *)
 let watched w =
   let is_embedded path =
-    Sys.getenv_opt "KEPLER_STD" = None
+    Sys.getenv_opt "CESIA_STD" = None
     && List.exists (fun (name, _) -> String.equal path ("std/" ^ name ^ Package.suffix)) Embedded.files
   in
   List.filter (fun p -> p <> "" && not (is_embedded p)) (List.map (fun md -> md.path) (Array.to_list w.modules))
@@ -477,7 +477,7 @@ let set_args w (args : string list) =
     w.modules.(0).cells.(k) <- Array { rows = 1; cols = Array.length items; store = V items; a_owned = false; a_tip = true }
   | None -> ()
 
-(* Runs [body] and prints any Kepler error. Returns the exit code. With [strict], an OCaml stack overflow or a memory
+(* Runs [body] and prints any Cesia error. Returns the exit code. With [strict], an OCaml stack overflow or a memory
    refusal from the system propagate: the fuzzer wants them, a normal program doesn't. *)
 let guarded ?(strict = false) w body =
   let ctx = Runtime.create_ctx w in
@@ -521,7 +521,7 @@ let guarded ?(strict = false) w body =
           w.err (format_error ~source:(source_of w file) ~path:file ~pos ~text ~hint ~trace:[]))
     | Value.Kerr { text; hint; at; _ } -> flushed (fun () -> report_at (current ()) ~text ~hint at)
     | Value.Limit { what; at } -> limit_reached what at
-    | Sys_error text -> flushed (fun () -> w.err ("kepler: " ^ text ^ "\n"))
+    | Sys_error text -> flushed (fun () -> w.err ("cesia: " ^ text ^ "\n"))
     (* The OCaml stack or the system said no: that is a limit, not a bug. *)
     | Stack_overflow when not strict -> limit_reached "depth" (current ()).site
     | Out_of_memory when not strict -> limit_reached "memory" (current ()).site

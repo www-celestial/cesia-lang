@@ -1,9 +1,9 @@
 top=$(mktemp -d)
 cp -r tested/. "$top"
 cd "$top"
-kepler test shape
-kepler test shape/rect.test.k
-kepler test .
+cesia test shape
+cesia test shape/rect.test.ce
+cesia test .
 code=$?
 cd /
 rm -rf "$top"

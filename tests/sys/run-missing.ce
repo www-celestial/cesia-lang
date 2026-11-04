@@ -1,0 +1,2 @@
+use sys
+Print(sys.Run("no-such-command-cesia") then MapErr(it.Kind))

@@ -1,4 +1,4 @@
 Err(Error = "c")
 Err(Error = true)
-Err(Error = "This library has no function kepler_no_such_function.")
+Err(Error = "This library has no function cesia_no_such_function.")
 exit 0

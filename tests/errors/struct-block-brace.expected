@@ -1,4 +1,4 @@
-struct-block-brace.k:3:1: Only fields can be written inside a struct.
+struct-block-brace.ce:3:1: Only fields can be written inside a struct.
   3 | { Mass }
     | ^
   One per line: a name, its type if it has one, and = with a default. The struct ends with end.

@@ -1,1 +1,1 @@
---allow ffi=kepler_no_such_library,ffi=m
+--allow ffi=cesia_no_such_library,ffi=m

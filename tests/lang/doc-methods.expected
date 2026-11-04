@@ -9,11 +9,11 @@ The next year.
 Date.Parse(text)
 
 A date from its text.
-kepler: nothing is documented under date.Date.hidden
-kepler: nothing is documented under date.piece.Size2
-A date, for the test of kepler doc on methods.
+cesia: nothing is documented under date.Date.hidden
+cesia: nothing is documented under date.piece.Size2
+A date, for the test of cesia doc on methods.
 
-date.Date        A date, for the test of kepler doc on methods.
+date.Date        A date, for the test of cesia doc on methods.
 date.Date.Next   The next year.
 date.Date.Parse  A date from its text.
 exit 0

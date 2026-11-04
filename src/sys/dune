@@ -1,6 +1,6 @@
 (library
- (name kepler_sys)
- (libraries kepler unix)
+ (name cesia_sys)
+ (libraries cesia unix)
  (foreign_stubs
   (language c)
   (names stubs ffi calls linalg))

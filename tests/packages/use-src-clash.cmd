@@ -1,2 +1,2 @@
 cd clash
-kepler run $no_spec main.k
+cesia run $no_spec main.ce

@@ -1,1 +1,1 @@
-timeout 0.15 "$root/_build/default/src/bin/main.exe" run $no_spec sleep-huge.k
+timeout 0.15 "$root/_build/default/src/bin/main.exe" run $no_spec sleep-huge.ce

@@ -1,4 +1,4 @@
-huge-overflow.k:1:1: Limit "memory" reached.
+huge-overflow.ce:1:1: Limit "memory" reached.
   1 | Zeros(4611686018427387903, 4)
     | ^
 exit 1

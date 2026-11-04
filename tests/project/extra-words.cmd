@@ -1,1 +1,1 @@
-cd diamond && kepler do a b
+cd diamond && cesia do a b

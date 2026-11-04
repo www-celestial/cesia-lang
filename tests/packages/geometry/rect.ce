@@ -1,0 +1,13 @@
+-- A rectangle: this file needs circle.ce, which comes after it, and circle.ce needs this file.
+struct Rect { Width, Height, tag = "rect" }
+
+-- The area, scaled by a small function of circle.ce.
+defn (r Rect) Area()
+  scale(r.Width * r.Height)
+end
+
+half(x) = x / 2
+
+-- Read through circle.ce while this file's statements run.
+seen = 5
+early = readSeen()

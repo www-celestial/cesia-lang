@@ -1,0 +1,21 @@
+# The tasks of this repository: cesia do lists them.
+[project]
+name = "cesia"
+native = ["SDL3", "SDL3_ttf"]
+
+[tasks.build]
+run = ["dune", "build", "--profile", "release"]
+
+[tasks.test]
+run = ["tools/test.sh"]
+
+[tasks.check]
+run = ["tools/check.sh"]
+
+[tasks.demo]
+needs = ["build"]
+file = "examples/window.ce"
+
+[tasks.material]
+needs = ["build"]
+file = "examples/material.ce"

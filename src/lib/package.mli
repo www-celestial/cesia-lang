@@ -3,17 +3,17 @@
 (** The name of the file that marks the root of a project. *)
 val project_file : string
 
-(** The end of the name of a Kepler source: [.k]. *)
+(** The end of the name of a Cesia source: [.ce]. *)
 val suffix : string
 
 val is_source : string -> bool
 
-(** A test ends in [.test.k], and is a source too. *)
+(** A test ends in [.test.ce], and is a source too. *)
 val is_test : string -> bool
 
 val is_dir : string -> bool
 
-(** The code of a package, in the order of the names: the [.k] files of the folder, without its subfolders, its [.test.k]
+(** The code of a package, in the order of the names: the [.ce] files of the folder, without its subfolders, its [.test.ce]
     files and its dot files. A folder that doesn't exist has none. *)
 val files : string -> string list
 

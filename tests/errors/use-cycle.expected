@@ -1,4 +1,4 @@
-cycle/b/b.k:1:5: This use creates a cycle between modules.
+cycle/b/b.ce:1:5: This use creates a cycle between modules.
   1 | use tests/errors/cycle/a
     |     ^
 exit 1

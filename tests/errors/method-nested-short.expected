@@ -1,4 +1,4 @@
-method-nested-short.k:3:3: A method can only be defined at the top of a file.
+method-nested-short.ce:3:3: A method can only be defined at the top of a file.
   3 |   (r Rect) Area() = 1
     |   ^
 exit 1

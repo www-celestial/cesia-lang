@@ -1,4 +1,4 @@
-sleep-negative.k:2:4: Sleep needs a finite duration of 0 or more, not the number -1.
+sleep-negative.ce:2:4: Sleep needs a finite duration of 0 or more, not the number -1.
   2 | sys.Sleep(-1)
     |    ^
 exit 1

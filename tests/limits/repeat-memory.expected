@@ -1,4 +1,4 @@
-repeat-memory.k:1:18: Limit "memory" reached.
+repeat-memory.ce:1:18: Limit "memory" reached.
   1 | Print(ByteLength(Repeat(150000000, "a")))
     |                  ^
 exit 1

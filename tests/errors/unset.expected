@@ -1,6 +1,6 @@
-unset.k:5:3: "v" has no value yet.
+unset.ce:5:3: "v" has no value yet.
   5 |   v
     |   ^
   Give it a value before reading it.
-  in f (unset.k:5)
+  in f (unset.ce:5)
 exit 1

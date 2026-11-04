@@ -1,4 +1,4 @@
-open Kepler
+open Cesia
 open Types
 
 type t = {
@@ -23,7 +23,7 @@ let stopping n = n.stopping
 
 (* The first stop signal asks accept to end; the second one doesn't wait. With a window open, no signal cuts the program
    short: it hears of them and decides, as it may have a question to ask, and two can come at once from timeout and
-   kepler do. *)
+   cesia do. *)
 let catch_stops n =
   if not n.handlers then begin
     n.handlers <- true;

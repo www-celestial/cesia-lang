@@ -1,6 +1,6 @@
-test_report/failing.test.k:3: double(2) --> 5, got 4
-test_report/failing.test.k:6: isFalse returned false
-test_report/failing.test.k:7: isOne returned 1
-test_report/failing.test.k:8: isError failed: Can't add the number 1 and the text "a".
+test_report/failing.test.ce:3: double(2) --> 5, got 4
+test_report/failing.test.ce:6: isFalse returned false
+test_report/failing.test.ce:7: isOne returned 1
+test_report/failing.test.ce:8: isError failed: Can't add the number 1 and the text "a".
 1 passed, 4 failed
 exit 1

@@ -1,4 +1,4 @@
-private-field.k:3:14: The field or method "key" is private to the package that declares it.
+private-field.ce:3:14: The field or method "key" is private to the package that declares it.
   3 | Print(f.New().key)
     |              ^
   A field or a method is public when its first letter is a capital.

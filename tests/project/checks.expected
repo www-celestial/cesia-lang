@@ -1,55 +1,55 @@
 == both
-kepler.toml:7: Task test has both run and file.
+cesia.toml:7: Task test has both run and file.
 exit 1
 == cycle
 Task a needs itself, through b.
 exit 1
 == empty_run
-kepler.toml:8: Task test: run needs at least one word.
+cesia.toml:8: Task test: run needs at least one word.
 exit 1
 == file_type
-kepler.toml:8: Task test: file needs a string.
+cesia.toml:8: Task test: file needs a string.
 exit 1
 == missing_need
-kepler.toml:8: Task test needs missing, which doesn't exist.
+cesia.toml:8: Task test needs missing, which doesn't exist.
 exit 1
 == no_name
-kepler.toml has no name in [project].
+cesia.toml has no name in [project].
 exit 1
 == no_task
-kepler.toml has no task.
+cesia.toml has no task.
 exit 1
 == project_field
-kepler.toml:3: Project has an unknown field nam.
+cesia.toml:3: Project has an unknown field nam.
 exit 1
 == project_type
-kepler.toml:3: Project: native needs an array of strings.
+cesia.toml:3: Project: native needs an array of strings.
 exit 1
 == self_cycle
 Task a needs itself.
 exit 1
 == syntax
-kepler.toml:2: Numbers and dates aren't supported in this file.
+cesia.toml:2: Numbers and dates aren't supported in this file.
 exit 1
 == tasks_alone
-kepler.toml:4: Unknown table [tasks].
+cesia.toml:4: Unknown table [tasks].
 exit 1
 == top_key
-kepler.toml:1: Unknown field x outside any table.
+cesia.toml:1: Unknown field x outside any table.
 exit 1
 == unknown_field
-kepler.toml:8: Task test has an unknown field alow.
+cesia.toml:8: Task test has an unknown field alow.
 exit 1
 == unknown_table
-kepler.toml:4: Unknown table [dependencies].
+cesia.toml:4: Unknown table [dependencies].
 exit 1
 == watch_type
-kepler.toml:8: Task test: watch needs true or false.
+cesia.toml:8: Task test: watch needs true or false.
 exit 1
 == without_file
-kepler.toml:7: Task test has limit without file.
+cesia.toml:7: Task test has limit without file.
 exit 1
 == wrong_type
-kepler.toml:8: Task test: run needs an array of strings.
+cesia.toml:8: Task test: run needs an array of strings.
 exit 1
 exit 0

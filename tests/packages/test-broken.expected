@@ -1,5 +1,5 @@
-shape/util.k:2: can't load: Expected an expression, found ).
+shape/util.ce:2: can't load: Expected an expression, found ).
 0 passed, 1 failed
-shape/util.k:3: can't load: Can't add the number 1 and the text "a".
+shape/util.ce:3: can't load: Can't add the number 1 and the text "a".
 0 passed, 1 failed
 exit 1

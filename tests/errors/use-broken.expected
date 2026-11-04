@@ -1,4 +1,4 @@
-usebroken/a.test.k: can't load: Expected an expression, found the end of the file.
-usebroken/b.test.k: can't load: Expected an expression, found the end of the file.
+usebroken/a.test.ce: can't load: Expected an expression, found the end of the file.
+usebroken/b.test.ce: can't load: Expected an expression, found the end of the file.
 0 passed, 2 failed
 exit 1

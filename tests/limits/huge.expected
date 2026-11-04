@@ -1,4 +1,4 @@
-huge.k:1:1: Limit "memory" reached.
+huge.ce:1:1: Limit "memory" reached.
   1 | Zeros(1e12)
     | ^
 exit 1

@@ -1,13 +1,13 @@
-open Kepler
+open Cesia
 open Types
 
-external dlopen : string -> int = "kepler_dlopen"
-external dlsym : int -> string -> int = "kepler_dlsym"
-external dgemm : int -> int array -> floatarray -> floatarray -> floatarray -> unit = "kepler_dgemm" [@@noalloc]
-external dgesv : int -> int -> int -> floatarray -> floatarray -> int = "kepler_dgesv" [@@noalloc]
-external dgetrf : int -> int -> floatarray -> floatarray -> int = "kepler_dgetrf" [@@noalloc]
-external qr_factors : int -> int -> int array -> floatarray -> floatarray -> int = "kepler_qr" [@@noalloc]
-external dsyev : int -> int -> floatarray -> floatarray -> int = "kepler_dsyev" [@@noalloc]
+external dlopen : string -> int = "cesia_dlopen"
+external dlsym : int -> string -> int = "cesia_dlsym"
+external dgemm : int -> int array -> floatarray -> floatarray -> floatarray -> unit = "cesia_dgemm" [@@noalloc]
+external dgesv : int -> int -> int -> floatarray -> floatarray -> int = "cesia_dgesv" [@@noalloc]
+external dgetrf : int -> int -> floatarray -> floatarray -> int = "cesia_dgetrf" [@@noalloc]
+external qr_factors : int -> int -> int array -> floatarray -> floatarray -> int = "cesia_qr" [@@noalloc]
+external dsyev : int -> int -> floatarray -> floatarray -> int = "cesia_dsyev" [@@noalloc]
 
 type library = { name : string; fast : bool; gemm : int; gesv : int; getrf : int; geqrf : int; orgqr : int; syev : int }
 
@@ -29,12 +29,12 @@ let open_library ?(chosen = false) name =
 
 let library =
   lazy
-    (match Sys.getenv_opt "KEPLER_BLAS" with
+    (match Sys.getenv_opt "CESIA_BLAS" with
      | Some "none" -> None
      | Some name -> open_library ~chosen:true name
      | None -> List.find_map open_library candidates)
 
-(* Below this order, the code of Kepler is fast enough and gives the same bits on every machine. *)
+(* Below this order, the code of Cesia is fast enough and gives the same bits on every machine. *)
 let min_order = 32
 
 (* The Fortran interface counts in 32 bits. *)
@@ -116,7 +116,7 @@ let det ctx (a : t array) =
            for k = 0 to n - 1 do acc := !acc *. Float.Array.get m ((k * n) + k) done;
            Float !acc))
 
-(* The diagonal of R stays positive, as in the code of Kepler. *)
+(* The diagonal of R stays positive, as in the code of Cesia. *)
 let qr ctx (a : t array) =
   with_library (fun lib ->
       match matrix ctx a.(0) with

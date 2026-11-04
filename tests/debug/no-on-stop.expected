@@ -1,4 +1,4 @@
-dbg-empty.k:1:1: The debugger has no function OnStop(stop).
+dbg-empty.ce:1:1: The debugger has no function OnStop(stop).
   1 | y = 2
     | ^
 exit 1

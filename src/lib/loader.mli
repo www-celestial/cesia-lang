@@ -8,7 +8,7 @@ val run_file : ?strict:bool -> world -> string -> string list -> int
     system stay exceptions: the fuzzer wants them, a normal program doesn't. *)
 val run : ?strict:bool -> world -> string -> string list -> int
 
-(** Runs a function, prints any Kepler error and returns the exit code. *)
+(** Runs a function, prints any Cesia error and returns the exit code. *)
 val guarded : ?strict:bool -> world -> (ctx -> int) -> int
 
 (** Creates the prelude module. *)
@@ -41,5 +41,5 @@ val reload : world -> string -> (unit, string) result
 (** The files to watch for this program. *)
 val watched : world -> string list
 
-(** The text of a Kepler error, or [None] for another exception. *)
+(** The text of a Cesia error, or [None] for another exception. *)
 val message_of_error : exn -> string option

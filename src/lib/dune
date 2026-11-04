@@ -1,5 +1,5 @@
 (library
- (name kepler)
+ (name cesia)
  (modules_without_implementation ast types))
 
 (rule
@@ -12,7 +12,7 @@
 (rule
  (targets embedded.ml)
  (deps
-  (glob_files ../std/*.k))
+  (glob_files ../std/*.ce))
  (action
   (with-stdout-to
    %{targets}

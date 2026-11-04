@@ -1,4 +1,4 @@
-dict-pairs.k:1:7: Dict needs structs with a Key and a Value, not the number 1.
+dict-pairs.ce:1:7: Dict needs structs with a Key and a Value, not the number 1.
   1 | Print(Dict([1]))
     |       ^
 exit 1

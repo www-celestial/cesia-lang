@@ -1,2 +1,2 @@
 cd insrc
-kepler test . $no_spec
+cesia test . $no_spec

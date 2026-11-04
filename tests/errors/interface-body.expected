@@ -1,4 +1,4 @@
-interface-body.k:3:10: A method of an interface has no body.
+interface-body.ce:3:10: A method of an interface has no body.
   3 |   Area() = 1
     |          ^
   A method written apart, as (s Shape) Describe() = ..., is a method of every value that meets the interface.

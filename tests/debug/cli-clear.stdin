@@ -1,6 +1,6 @@
-break cli-clear.k 2
+break cli-clear.ce 2
 continue
 next
 next
-clear cli-clear.k 2
+clear cli-clear.ce 2
 continue

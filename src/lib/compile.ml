@@ -214,7 +214,7 @@ type member = { ms : shape; mi : int; mg : t; mr : int }
 
 let no_shape = { sid = -1; names = [||]; sname = None; sm = -1; next = Hashtbl.create 1; checks = [||] }
 
-(* The name of a package, as a use names it: its folder, or its file without .k. *)
+(* The name of a package, as a use names it: its folder, or its file without .ce. *)
 let package_name (w : world) host =
   let folder key m found = if m = host && not (Package.is_source key) then Some key else found in
   match Hashtbl.fold folder w.loaded None with

@@ -1,4 +1,4 @@
-struct-unknown.k:3:2: P has no field "Y".
+struct-unknown.ce:3:2: P has no field "Y".
   3 | p.Y = 2
     |  ^
 exit 1

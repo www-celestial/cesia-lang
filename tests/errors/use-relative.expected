@@ -1,4 +1,4 @@
-use-relative.k:1:5: A use starts in src/ or at the root of the project, with no ./ and no ../.
+use-relative.ce:1:5: A use starts in src/ or at the root of the project, with no ./ and no ../.
   1 | use ./x
     |     ^
   Write the whole path: use geometry/shapes.

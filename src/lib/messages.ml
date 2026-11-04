@@ -186,12 +186,12 @@ let bad_answer a =
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
-  "usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.k [args...]\n\
-  \       kepler test [path] [--no-spec]\n\
-  \       kepler do [task]\n\
-  \       kepler new name\n\
-  \       kepler doc [name]\n\
-  \       kepler version"
+  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.ce [args...]\n\
+  \       cesia test [path] [--no-spec]\n\
+  \       cesia do [task]\n\
+  \       cesia new name\n\
+  \       cesia doc [name]\n\
+  \       cesia version"
 let cant_read path = "can't read " ^ path
 let unknown_permission name = "unknown permission: " ^ name
 let invalid_permission item = "invalid permission: " ^ item
@@ -208,10 +208,10 @@ let toml_string_open = "This string is not closed."
 let toml_array_open = "This array is not closed."
 let toml_escape c = Printf.sprintf "The escape \\%c isn't supported in this file." c
 let toml_twice name = name ^ " is defined twice."
-let at_line line text = Printf.sprintf "kepler.toml:%d: %s" line text
-let project_no_file = "No kepler.toml in this folder."
-let project_no_name = "kepler.toml has no name in [project]."
-let project_no_task = "kepler.toml has no task."
+let at_line line text = Printf.sprintf "cesia.toml:%d: %s" line text
+let project_no_file = "No cesia.toml in this folder."
+let project_no_name = "cesia.toml has no name in [project]."
+let project_no_task = "cesia.toml has no task."
 let project_table path = Printf.sprintf "Unknown table [%s]." path
 let project_outside key = Printf.sprintf "Unknown field %s outside any table." key
 let project_field subject key = Printf.sprintf "%s has an unknown field %s." subject key
@@ -229,14 +229,14 @@ let project_cycle name through =
 let project_listed_needs needs = Printf.sprintf "(needs %s)" (String.concat ", " needs)
 let project_bad_name name = Printf.sprintf "A project name holds letters, digits, - and _, not %s." name
 let project_exists name = name ^ " already exists."
-let project_created name = Printf.sprintf "Created %s. Run it: cd %s && kepler do run" name name
+let project_created name = Printf.sprintf "Created %s. Run it: cd %s && cesia do run" name name
 let project_no_such_task name = Printf.sprintf "No task named %s." name
 let project_cant_start program reason = Printf.sprintf "Can't start %s: %s." program reason
 let need_count name a = plain (Printf.sprintf "%s needs a count of 0 or more, not %s." name a)
 let cant_sort a b = plain (Printf.sprintf "Can't sort %s with %s." a b)
 let need_char name = plain (Printf.sprintf "%s needs a text with a character." name)
 let need_byte a = plain (Printf.sprintf "FromBytes needs integers from 0 to 255, not %s." a)
-let doc_missing name = "kepler: nothing is documented under " ^ name
+let doc_missing name = "cesia: nothing is documented under " ^ name
 let json_value a = plain (Printf.sprintf "JSON can't hold %s." a)
 let column_sizes a b = plain (Printf.sprintf "These columns have %d and %d rows." a b)
 let need_groups a = plain (Printf.sprintf "Split needs the result of Groups, not %s." a)
@@ -277,12 +277,12 @@ let use_quoted path =
   in
   hinted "A use takes no quotes: it names a package of the project." (Printf.sprintf "Write use %s." (from_root path))
 let use_relative = hinted "A use starts in src/ or at the root of the project, with no ./ and no ../." "Write the whole path: use geometry/shapes."
-let use_empty path = plain (Printf.sprintf "The folder \"%s\" holds no .k file." path)
+let use_empty path = plain (Printf.sprintf "The folder \"%s\" holds no .ce file." path)
 let use_same name other line =
   hinted (Printf.sprintf "\"%s\" already names %s, at line %d." name other line) "Give one of them another name with as."
 let use_both name folder = plain (Printf.sprintf "\"%s\" is both a module of the standard library and the folder %s." name folder)
 let use_unreadable path = plain (Printf.sprintf "Can't read the module \"%s\"." path)
-let no_prelude = plain "The folder of KEPLER_STD has no prelude.k."
+let no_prelude = plain "The folder of CESIA_STD has no prelude.ce."
 let reload_use = plain "A running program can't load a new module. Restart it to use this one."
 let use_missing path = plain (Printf.sprintf "Module \"%s\" doesn't exist." path)
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)

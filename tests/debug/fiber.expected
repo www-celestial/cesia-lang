@@ -1,5 +1,5 @@
-frame inner fiber.k:2
+frame inner fiber.ce:2
 n = 1
-frame <anonymous> fiber.k:5
+frame <anonymous> fiber.ce:5
 Ok(Value = 2)
 exit 0

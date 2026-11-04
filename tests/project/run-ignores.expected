@@ -1,5 +1,5 @@
-open.k:4:4: Permission "ffi" denied. Run again with --allow ffi.
+open.ce:4:4: Permission "ffi" denied. Run again with --allow ffi.
   4 |   c.Open("m", version = 6)?
     |    ^
-  in check (open.k:4)
+  in check (open.ce:4)
 exit 1

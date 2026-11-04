@@ -1,4 +1,4 @@
-underscore-field.k:1:16: A name can't hold a _: "some_field".
+underscore-field.ce:1:16: A name can't hold a _: "some_field".
   1 | Print(({A: 1}).some_field)
     |                ^
   Join the words with capitals: someField, or SomeField when it is public.

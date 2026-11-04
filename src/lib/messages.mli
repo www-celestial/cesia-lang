@@ -136,7 +136,7 @@ val invalid_limit : string -> string
 val unknown_limit : string -> string
 val internal : string -> string
 
-(** The texts of the reader of kepler.toml. *)
+(** The texts of the reader of cesia.toml. *)
 val toml_utf8 : string
 val toml_control : string
 val toml_unsupported : string -> string
@@ -147,7 +147,7 @@ val toml_array_open : string
 val toml_escape : char -> string
 val toml_twice : string -> string
 
-(** The texts of kepler do. *)
+(** The texts of cesia do. *)
 val at_line : int -> string -> string
 val project_no_file : string
 val project_no_name : string

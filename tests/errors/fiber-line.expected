@@ -1,6 +1,6 @@
-fiber-line.k:1:22: x
+fiber-line.ce:1:22: x
   1 | r = Wait(Spawn(() -> Panic("x")))
     |                      ^
-  in <anonymous> (fiber-line.k:1)
-fiber-line.k 1
+  in <anonymous> (fiber-line.ce:1)
+fiber-line.ce 1
 exit 0

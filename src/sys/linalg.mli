@@ -1,6 +1,6 @@
 (** BLAS and LAPACK, when the machine has them: loaded at the first large computation, so that a program that doesn't need
-    them pays nothing. [KEPLER_BLAS] names a library, or [none] to go without one. *)
-open Kepler
+    them pays nothing. [CESIA_BLAS] names a library, or [none] to go without one. *)
+open Cesia
 open Types
 
 (** Sends the [Matmul] of large arrays to BLAS. *)

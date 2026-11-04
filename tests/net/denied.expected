@@ -1,4 +1,4 @@
-denied.k:2:4: Permission "net" denied. Run again with --allow net.
+denied.ce:2:4: Permission "net" denied. Run again with --allow net.
   2 | net.Listen(18086)
     |    ^
 exit 1

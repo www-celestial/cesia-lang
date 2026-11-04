@@ -1,25 +1,25 @@
-open Kepler
+open Cesia
 open Types
 
-external call : int -> int -> Bytes.t -> string array -> int -> unit = "kepler_call" [@@noalloc]
-external dlopen : string -> int = "kepler_dlopen"
-external dlsym : int -> string -> int = "kepler_dlsym"
-external dlerror : unit -> string = "kepler_dlerror"
-external cstring : int -> string = "kepler_cstring"
+external call : int -> int -> Bytes.t -> string array -> int -> unit = "cesia_call" [@@noalloc]
+external dlopen : string -> int = "cesia_dlopen"
+external dlsym : int -> string -> int = "cesia_dlsym"
+external dlerror : unit -> string = "cesia_dlerror"
+external cstring : int -> string = "cesia_cstring"
 
 type memory = (char, Bigarray.int8_unsigned_elt, Bigarray.c_layout) Bigarray.Array1.t
 
-external block_address : memory -> int = "kepler_block_address"
-external ffi_load : unit -> int = "kepler_ffi_load"
-external ffi_type : int -> int -> int = "kepler_ffi_type"
-external ffi_struct : int array -> int = "kepler_ffi_struct"
-external ffi_cif : int -> int -> int array -> int -> int = "kepler_ffi_cif"
-external ffi_invoke : int -> int -> Bytes.t -> int -> int -> unit = "kepler_ffi_invoke"
-external ffi_closure : int -> (int -> int -> unit) -> int = "kepler_ffi_closure"
-external strdup : string -> int = "kepler_strdup"
-external free_text : int -> unit = "kepler_free"
-external peek : int -> int -> int64 = "kepler_peek"
-external poke : int -> int64 -> unit = "kepler_poke"
+external block_address : memory -> int = "cesia_block_address"
+external ffi_load : unit -> int = "cesia_ffi_load"
+external ffi_type : int -> int -> int = "cesia_ffi_type"
+external ffi_struct : int array -> int = "cesia_ffi_struct"
+external ffi_cif : int -> int -> int array -> int -> int = "cesia_ffi_cif"
+external ffi_invoke : int -> int -> Bytes.t -> int -> int -> unit = "cesia_ffi_invoke"
+external ffi_closure : int -> (int -> int -> unit) -> int = "cesia_ffi_closure"
+external strdup : string -> int = "cesia_strdup"
+external free_text : int -> unit = "cesia_free"
+external peek : int -> int -> int64 = "cesia_peek"
+external poke : int -> int64 -> unit = "cesia_poke"
 external get16 : memory -> int -> int = "%caml_bigstring_get16"
 external get32 : memory -> int -> int32 = "%caml_bigstring_get32"
 external get64 : memory -> int -> int64 = "%caml_bigstring_get64"

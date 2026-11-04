@@ -1,4 +1,4 @@
-"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=:18095 http-stop.k &
+"$root/_build/default/src/bin/main.exe" run $no_spec --allow net=:18095 http-stop.ce &
 pid=$!
 sleep 0.2
 exec 3<>/dev/tcp/127.0.0.1/18095

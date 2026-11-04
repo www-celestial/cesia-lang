@@ -1,11 +1,11 @@
-stopped at cli.k:6 (start)
-breakpoint cli.k:4
-stopped at cli.k:4 (break)
+stopped at cli.ce:6 (start)
+breakpoint cli.ce:4
+stopped at cli.ce:4 (break)
 x = 2
 No variable "nope".
-  f (cli.k:4)
-  <file> (cli.k:6)
+  f (cli.ce:4)
+  <file> (cli.ce:6)
 5
-stopped at cli.k:7 (step)
+stopped at cli.ce:7 (step)
 done
 exit 0

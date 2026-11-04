@@ -1,1 +1,1 @@
-cd diamond && kepler do nope
+cd diamond && cesia do nope

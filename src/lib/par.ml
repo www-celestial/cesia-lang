@@ -1,6 +1,6 @@
 let count =
   lazy
-    (match Option.bind (Sys.getenv_opt "KEPLER_CORES") int_of_string_opt with
+    (match Option.bind (Sys.getenv_opt "CESIA_CORES") int_of_string_opt with
      | Some n when n >= 1 -> min n 64
      | _ -> max 1 (min 16 (Domain.recommended_domain_count () / 2)))
 

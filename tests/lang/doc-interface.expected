@@ -11,7 +11,7 @@ Something with a name.
 What a shape is.
 
   Square(1).Describe() --> "area 1, perimeter 4"
-kepler: nothing is documented under shape.Perimeter
+cesia: nothing is documented under shape.Perimeter
 Interfaces and their methods, for the tests of a use.
 
 tests/lang/mods/geo.Extra            A method of an interface of far, which geo uses.

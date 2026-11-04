@@ -1,4 +1,4 @@
-open Kepler
+open Cesia
 
 let usage () =
   prerr_endline Messages.usage;
@@ -21,7 +21,7 @@ let perm_of_name = function
   | _ -> None
 
 let bad_option text =
-  prerr_endline ("kepler: " ^ text);
+  prerr_endline ("cesia: " ^ text);
   exit 2
 
 let parse_allow (grants : Types.grants) s =
@@ -80,7 +80,7 @@ let parse_limit (l : Types.limits) s =
 
 (* 80% of the RAM by default: without a limit, one large array can freeze the machine. *)
 let with_default_memory (o : Runtime.options) =
-  { o with o_limits = { o.o_limits with memory_words = Runtime.default_memory (Kepler_sys.Sys_modules.ram ()) } }
+  { o with o_limits = { o.o_limits with memory_words = Runtime.default_memory (Cesia_sys.Sys_modules.ram ()) } }
 
 (* What tells that a file has changed. *)
 let stamp path =
@@ -143,7 +143,7 @@ let rec watch (o : Runtime.options) file rest =
     | [] -> ()
     | paths -> failed := reload_all w (List.sort_uniq compare (paths @ !failed))
   in
-  let stopped = Kepler_sys.Sys_modules.register ~tick:(poll_period, reload_changed) ~watching:true w in
+  let stopped = Cesia_sys.Sys_modules.register ~tick:(poll_period, reload_changed) ~watching:true w in
   w.on_checkpoint <- (fun _ -> reload_changed ());
   let code = Loader.run_file w file rest in
   (* From here a signal does what it does to any program, so none is lost: one that came earlier is what stopped tells of. *)
@@ -181,7 +181,7 @@ let run args =
   if !watching then watch { o with o_period = watch_period } file rest
   else begin
     let w = Runtime.create_world o in
-    let (_ : unit -> bool) = Kepler_sys.Sys_modules.register w in
+    let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
     exit (Loader.run_file w file rest)
   end
 
@@ -191,7 +191,7 @@ let test args =
   let path = match paths with [] -> "." | [ p ] -> p | _ -> usage () in
   if List.exists (String.starts_with ~prefix:"--") paths || not (Sys.file_exists path) then usage ();
   let w = Runtime.create_world { (with_default_memory Runtime.default_options) with o_no_spec = no_spec } in
-  let (_ : unit -> bool) = Kepler_sys.Sys_modules.register w in
+  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
   exit (Testrun.run w ~path)
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)
@@ -199,7 +199,7 @@ let tune_gc () = Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 20 }
 
 let doc args =
   let w = Runtime.create_world Runtime.default_options in
-  let (_ : unit -> bool) = Kepler_sys.Sys_modules.register w in
+  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
   exit
     (Loader.guarded w (fun _ ->
          Loader.init w;

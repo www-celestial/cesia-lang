@@ -1,5 +1,5 @@
 (** The documentation of the language, read from the sources when it is asked for, so that it costs nothing at start. A
-    comment placed just above a definition documents it. Natives have no source: [std/natives.k] holds their comments, each
+    comment placed just above a definition documents it. Natives have no source: [std/natives.ce] holds their comments, each
     after a line [--- signature]. *)
 open Types
 
@@ -19,5 +19,5 @@ val native_header : string -> string option
 (** [Doc] and [DocNames]. *)
 val natives : (string * t) list
 
-(** [kepler doc]: the modules, the names of a module, or the documentation of a name. Gives the exit code. *)
+(** [cesia doc]: the modules, the names of a module, or the documentation of a name. Gives the exit code. *)
 val command : world -> string list -> int

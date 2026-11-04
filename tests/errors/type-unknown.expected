@@ -1,4 +1,4 @@
-type-unknown.k:3:12: There is no type "Pont".
+type-unknown.ce:3:12: There is no type "Pont".
   3 | defn Far(p Pont)
     |            ^
   A type is Int, Float, Number, Bool, Text, Array, Dict, Function, a struct or an interface.

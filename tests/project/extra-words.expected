@@ -1,7 +1,7 @@
-usage: kepler run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.k [args...]
-       kepler test [path] [--no-spec]
-       kepler do [task]
-       kepler new name
-       kepler doc [name]
-       kepler version
+usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.ce [args...]
+       cesia test [path] [--no-spec]
+       cesia do [task]
+       cesia new name
+       cesia doc [name]
+       cesia version
 exit 2

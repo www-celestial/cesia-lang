@@ -1,9 +1,0 @@
-[project]
-name = "x"
-
-[tasks.bad]
-file = "panic.k"
-
-[tasks.next]
-needs = ["bad"]
-run = ["sh", "-c", "echo next"]

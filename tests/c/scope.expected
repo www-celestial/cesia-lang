@@ -1,4 +1,4 @@
-scope.k:2:8: Permission "ffi" denied. Run again with --allow ffi.
+scope.ce:2:8: Permission "ffi" denied. Run again with --allow ffi.
   2 | Print(c.Open("m", version = 6))
     |        ^
 exit 1

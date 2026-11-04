@@ -1,6 +1,6 @@
-question-value.k:1:8: ? needs an Ok or an Err, not the number 1.
+question-value.ce:1:8: ? needs an Ok or an Err, not the number 1.
   1 | f() = 1?
     |        ^
   Return a result from the function you call.
-  in f (question-value.k:1)
+  in f (question-value.ce:1)
 exit 1

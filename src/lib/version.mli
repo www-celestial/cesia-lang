@@ -1,2 +1,2 @@
-(** The name and version shown by [kepler version]. *)
+(** The name and version shown by [cesia version]. *)
 val text : string

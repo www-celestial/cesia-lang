@@ -1,4 +1,4 @@
-method-dot-struct.k:3:11: "Area" needs a Rect.
+method-dot-struct.ce:3:11: "Area" needs a Rect.
   3 | Print(Rect.Area())
     |           ^
   Write x.Area(), with x a Rect.

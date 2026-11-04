@@ -6,9 +6,9 @@ false
 false
 false
 true
-header-bytes.k:15:27: IsHeader needs a number of bytes within the text, not the number 9.
+header-bytes.ce:15:27: IsHeader needs a number of bytes within the text, not the number 9.
   15 | Print(Wait(Spawn(() -> net.IsHeader(9, "a"))) then MapErr(it.Kind))
      |                           ^
-  in <anonymous> (header-bytes.k:15)
+  in <anonymous> (header-bytes.ce:15)
 Err(Error = "type")
 exit 0

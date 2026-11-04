@@ -1,19 +1,19 @@
 (test
  (name engine_test)
  (modules engine_test)
- (libraries kepler))
+ (libraries cesia))
 
 (test
  (name toml_test)
  (modules toml_test)
- (libraries kepler))
+ (libraries cesia))
 
 (test
  (name net_test)
  (modules net_test)
- (libraries kepler kepler_sys unix))
+ (libraries cesia cesia_sys unix))
 
 (executable
  (name fuzz)
  (modules fuzz)
- (libraries kepler kepler_sys unix))
+ (libraries cesia cesia_sys unix))

@@ -1,4 +1,4 @@
-underscore-name.k:1:1: A name can't hold a _: "byte_length".
+underscore-name.ce:1:1: A name can't hold a _: "byte_length".
   1 | byte_length = 1
     | ^
   Join the words with capitals: byteLength, or ByteLength when it is public.

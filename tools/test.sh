@@ -4,12 +4,12 @@ set -eu
 cd "$(dirname "$0")/.."
 dune build 2>&1 | head -60
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
-kepler=_build/default/src/bin/main.exe
+cesia=_build/default/src/bin/main.exe
 
 # The two paths side by side: one after the other, this was the longest part on a single core.
 each_folder() {
   for folder in tests/lang tests/celestial src/std; do
-    "$kepler" test "$folder" $1
+    "$cesia" test "$folder" $1
   done
 }
 each_folder "" &
@@ -28,5 +28,5 @@ command -v g++ > /dev/null || skip tests/cpp "no g++"
 pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
 pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 tools/golden.sh $dirs
-# kepler do has no --no-spec, and native code runs the same on both paths.
+# cesia do has no --no-spec, and native code runs the same on both paths.
 tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|columns|cpp|tls|sdl)/$')

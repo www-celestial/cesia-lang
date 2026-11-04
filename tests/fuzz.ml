@@ -1,12 +1,12 @@
-(* The fuzzer: random bytes and mutated valid programs, with strict limits. Only Kepler errors are allowed. The two
+(* The fuzzer: random bytes and mutated valid programs, with strict limits. Only Cesia errors are allowed. The two
    paths, typed and --no-spec, must also give the same result. Usage: fuzz.exe --seconds N --seed S, from the
    repository root. Failures go to _build/fuzz_fail/. *)
-open Kepler
+open Cesia
 
 exception Timeout
 
 let fail_dir = "_build/fuzz_fail"
-let current = Filename.concat fail_dir "current.k"
+let current = Filename.concat fail_dir "current.ce"
 let max_saved = 40
 let trial_alarm = 10
 
@@ -26,7 +26,7 @@ let run ~no_spec path =
       o_err = sink err }
   in
   let w = Runtime.create_world options in
-  let (_ : unit -> bool) = Kepler_sys.Sys_modules.register ~max_sleep:0.001 w in
+  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ~max_sleep:0.001 w in
   let code = Loader.run_file ~strict:true w path [] in
   { code; out = Buffer.contents out; err = Buffer.contents err }
 
@@ -96,7 +96,7 @@ let kp_files dir =
   if not (Sys.file_exists dir) then []
   else
     Sys.readdir dir |> Array.to_list |> List.sort compare
-    |> List.filter (fun f -> Filename.check_suffix f ".k")
+    |> List.filter (fun f -> Filename.check_suffix f ".ce")
     |> List.map (Filename.concat dir)
 
 let corpus () =
@@ -168,7 +168,7 @@ let rec toml_files dir =
     Sys.readdir dir |> Array.to_list |> List.sort compare
     |> List.concat_map (fun f ->
            let path = Filename.concat dir f in
-           if Sys.is_directory path then toml_files path else if f = "kepler.toml" then [ path ] else [])
+           if Sys.is_directory path then toml_files path else if f = "cesia.toml" then [ path ] else [])
 
 let toml_corpus () =
   let read f = In_channel.with_open_bin f In_channel.input_all in
@@ -239,7 +239,7 @@ let () =
     let trial_seed = Random.State.bits master in
     let src = generate (Random.State.make [| trial_seed |]) corpus in
     incr trials;
-    report trial_seed ".k" src (attempt src);
+    report trial_seed ".ce" src (attempt src);
     let toml = generate_toml (Random.State.make [| trial_seed |]) tomls in
     report trial_seed ".toml" toml (attempt_toml toml)
   done;

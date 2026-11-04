@@ -1,5 +1,0 @@
-[project]
-name = "tested"
-
-[tasks.test]
-run = ["kepler", "test"]

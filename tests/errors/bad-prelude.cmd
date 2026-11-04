@@ -1,1 +1,1 @@
-KEPLER_STD=bad_std kepler run bad-prelude.k
+CESIA_STD=bad_std cesia run bad-prelude.ce

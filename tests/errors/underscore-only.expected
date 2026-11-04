@@ -1,4 +1,4 @@
-underscore-only.k:1:1: A name can't hold a _: "__".
+underscore-only.ce:1:1: A name can't hold a _: "__".
   1 | __ = 1
     | ^
 exit 1

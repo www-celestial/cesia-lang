@@ -1,0 +1,2 @@
+use debug
+debug.SetBreak("no-perm.ce", 1)

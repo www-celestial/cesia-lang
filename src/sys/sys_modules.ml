@@ -1,6 +1,6 @@
-external ram : unit -> int = "kepler_ram"
+external ram : unit -> int = "cesia_ram"
 
-open Kepler
+open Cesia
 open Types
 
 let seconds ctx v =

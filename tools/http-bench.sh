@@ -3,7 +3,7 @@
 set -u
 cd "$(dirname "$0")/.."
 dune build --profile release 2>&1 | head -20
-kepler=_build/default/src/bin/main.exe
+cesia=_build/default/src/bin/main.exe
 client=_build/default/bench/http_load.exe
 ulimit -n 100000
 only=""
@@ -35,6 +35,6 @@ measure() {  # name, port, command...
   wait "$pid" 2>/dev/null
 }
 
-measure kepler 19100 "$kepler" run --allow net=:19100 bench/http.k
+measure cesia 19100 "$cesia" run --allow net=:19100 bench/http.ce
 [ -n "$only" ] || measure node 19101 node bench/http.js
 exit 0

@@ -1,4 +1,4 @@
-dict-key.k:1:7: A dictionary key is a number or a text, not an array.
+dict-key.ce:1:7: A dictionary key is a number or a text, not an array.
   1 | Print(Put([1], 2, Dict()))
     |       ^
 exit 1

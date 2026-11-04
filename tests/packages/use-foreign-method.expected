@@ -1,4 +1,4 @@
-foreignmethod/foreignmethod.k:3:1: There is no struct or interface "Rect" in this package.
+foreignmethod/foreignmethod.ce:3:1: There is no struct or interface "Rect" in this package.
   3 | (r Rect) Twice() = 2
     | ^
   A method belongs to a struct or an interface declared in the same package.

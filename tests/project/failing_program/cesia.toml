@@ -1,0 +1,9 @@
+[project]
+name = "x"
+
+[tasks.bad]
+file = "panic.ce"
+
+[tasks.next]
+needs = ["bad"]
+run = ["sh", "-c", "echo next"]

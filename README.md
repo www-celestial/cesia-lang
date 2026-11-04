@@ -1,4 +1,4 @@
-# Kepler
+# Cesia
 
 A small interpreted language, written in OCaml. Fast, safe by default, with fibers, files, processes, HTTP and C calls.
 
@@ -6,21 +6,24 @@ A small interpreted language, written in OCaml. Fast, safe by default, with fibe
 
 ```bash
 dune build --profile release
-ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/kepler
+ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/cesia
+ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/ce      # optional: the short name of the same binary
 ```
+
+`ce` and `cesia` are one program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
 
 ## Write and run a program
 
 ```bash
-kepler new hello       # creates hello/, with kepler.toml and src/main.k
+cesia new hello       # creates hello/, with cesia.toml and src/main.ce
 cd hello
-kepler do run
+cesia do run
 
-kepler run src/main.k           # or run any file directly
-kepler run --watch src/main.k   # reloads the code at each save
+cesia run src/main.ce           # or run any file directly
+cesia run --watch src/main.ce   # reloads the code at each save
 ```
 
-`examples/tour.k` shows the language in one file. `examples/notes.k` is a web app in 23 lines. `examples/stats.k` works on a table.
+`examples/tour.ce` shows the language in one file. `examples/notes.ce` is a web app in 23 lines. `examples/stats.ce` works on a table.
 
 ## Permissions
 
@@ -37,26 +40,26 @@ A program can touch nothing outside itself until the command line allows it.
 | `all` | everything |
 
 ```bash
-kepler run --allow read=./data,net=:8080 server.k
-kepler run --limit memory=512M,steps=1000000 program.k
+cesia run --allow read=./data,net=:8080 server.ce
+cesia run --limit memory=512M,steps=1000000 program.ce
 ```
 
 ## A project
 
-A `kepler.toml` next to the code declares what can be run, and which C libraries are used:
+A `cesia.toml` next to the code declares what can be run, and which C libraries are used:
 
 ```toml
 [project]
 name = "notes"
 
 [tasks.serve]
-file = "notes.k"
+file = "notes.ce"
 allow = ["read=notes.txt", "write=notes.txt", "net=:8080"]
 ```
 
 ```bash
-kepler do          # lists the tasks
-kepler do serve    # runs one, and shows the exact command
+cesia do          # lists the tasks
+cesia do serve    # runs one, and shows the exact command
 ```
 
 ## Names
@@ -66,7 +69,7 @@ A name says by its first letter whether it is public, as in Go.
 - A capital is public: `rope.LineCount`, `ui.Dark`, `Print`. So is a field: `date.Year`, `err.Kind`, `Ok(Value = 1)`.
 - A small first letter is private, and visible only in its package: `chunk`. So is a small field, and using one from another
   package is an error at load time.
-- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use rope`. A file name separates its words with `-`: `material-scene.k`.
+- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use rope`. A file name separates its words with `-`: `material-scene.ce`.
 - A name has no `_`: words join by capitals, `byteLength` or `ByteLength`. The lone `_` is the wildcard of a pattern.
 - A test is a private function with no parameter, `is` then a capital: `isGrows()`.
 - Dictionary keys and texts are data: `{"a": 1}`, `{Kind: "box"}`. `json.Text` writes the fields of a record as they are, with their
@@ -77,7 +80,7 @@ A name says by its first letter whether it is public, as in Go.
 A struct holds its fields on one line, or in a block with one field per line, until `end`, which leaves room for a comment on
 each. Both forms build the same values, with the same defaults, named arguments, patterns and methods.
 
-```kepler
+```cesia
 struct Point { X, Y = 0 }
 
 -- A car on the road.
@@ -90,7 +93,7 @@ end
 A struct can have methods. An instance method writes its object apart, as in Go, and a static method has the name of the struct
 before its own. A dot calls both.
 
-```kepler
+```cesia
 struct Rect { X, Y, Width, Height }
 
 defn Rect.Square(side)                 -- static: no object
@@ -129,7 +132,7 @@ with `Rect.Area` in one struct, and a method named like a field.
 
 A field or a parameter can have a type, written after its name. Code without types runs as before, and costs the same.
 
-```kepler
+```cesia
 struct Point { X Int, Y Int = 0 }
 struct Line { From Point, To Point = Point(0) }
 
@@ -166,7 +169,7 @@ end
 An interface lists methods, with no code. A value meets it when it has each of them with that number of parameters, written
 apart from the object: nothing declares it, as in Go.
 
-```kepler
+```cesia
 -- Something with an area and a perimeter.
 interface Shape
   Area()
@@ -211,19 +214,19 @@ A package is a folder, as in Go: there is no import by file, and no `package` li
 
 ```
 myproject/
-  kepler.toml
+  cesia.toml
   src/
-    main.k
+    main.ce
     geometry/
-      rect.k
-      circle.k
+      rect.ce
+      circle.ce
       shapes/
-        square.k
+        square.ce
   tests/
 ```
 
-```kepler
--- src/main.k
+```cesia
+-- src/main.ce
 use geometry
 use geometry/shapes
 
@@ -233,27 +236,27 @@ Print(r.Area(), shapes.Square(2))
 
 - The code of a project goes in `src/`. A `use` is absolute: it looks in the `src` folder of the root of the project, then at the root
   itself, so `use geometry` finds `src/geometry/` from any file, and `use tests/helpers` a folder out of `src/`. If both exist, `src/`
-  wins. The root is the folder of the nearest `kepler.toml` above the program or, without one, the folder of the file that runs. A
+  wins. The root is the folder of the nearest `cesia.toml` above the program or, without one, the folder of the file that runs. A
   `use` takes no `./`, no `../` and no quotes.
 - The name in the code is the last part of the path: `use geometry/shapes` gives `shapes.Square`, and `as` renames it. Two uses of
   a file can't give one name.
-- A package is all the `.k` files of its folder, in the order of their names. Its subfolders are other packages, and its `.test.k`
+- A package is all the `.ce` files of its folder, in the order of their names. Its subfolders are other packages, and its `.test.ce`
   files aren't part of it.
 - The files of a package need no `use` to see each other, and share their small names, fields and methods. Each file keeps its own
   `use`. Two files of a package can't define one name, but the variable of a loop stays in its file.
 - The standard library doesn't change: `use rope`. A folder of the project with the name of one of its modules is an error, once used.
-- `kepler run file.k` runs that file alone, and it can `use` packages. `kepler run .` runs all the files of a folder as one program,
-  and a task of `kepler.toml` can say `file = "."`.
-- `kepler test` sees a folder as a package: the examples of its files run together, and each `.test.k` sees its private names. In a
-  `tests` folder and in `std/` each file stands alone, and so does a file named on the command line, except a `.test.k`.
+- `cesia run file.ce` runs that file alone, and it can `use` packages. `cesia run .` runs all the files of a folder as one program,
+  and a task of `cesia.toml` can say `file = "."`.
+- `cesia test` sees a folder as a package: the examples of its files run together, and each `.test.ce` sees its private names. In a
+  `tests` folder and in `std/` each file stands alone, and so does a file named on the command line, except a `.test.ce`.
 - With `--watch`, a change in any file reloads its whole package. A new file needs a restart.
-- `kepler doc geometry` and `DocNames("geometry")` see a package as one module.
+- `cesia doc geometry` and `DocNames("geometry")` see a package as one module.
 
 ## Editors
 
 Neovim and Vim: copy `tools/editors/nvim/` into `~/.config/nvim/`.
 
-Emacs: add `(load "/path/to/kepler/tools/editors/kepler-mode.el")` to your `init.el`.
+Emacs: add `(load "/path/to/cesia/tools/editors/cesia-mode.el")` to your `init.el`.
 
 ## What's there
 
@@ -287,7 +290,7 @@ With `use`:
 
 ## A web server
 
-```kepler
+```cesia
 use web
 
 defn hello(request)
@@ -299,12 +302,12 @@ Print(web.Serve(app, port = 8080))
 ```
 
 ```bash
-kepler run --allow net=:8080 server.k
+cesia run --allow net=:8080 server.ce
 ```
 
 ## C and C++
 
-```kepler
+```cesia
 use c
 
 defn main()
@@ -317,7 +320,7 @@ end
 Print(main())
 ```
 
-C++ has no stable binary interface, so `cpp.Wrap` generates a small C layer and compiles it once: see `std/cpp.k`.
+C++ has no stable binary interface, so `cpp.Wrap` generates a small C layer and compiles it once: see `std/cpp.ce`.
 
 Calling C is total trust: it ignores every permission and limit, and a wrong signature can crash the program.
 
@@ -328,10 +331,10 @@ curves. `ui` builds them, with pure functions: dark and light themes, rectangles
 and graphs of nodes.
 
 ```bash
-kepler do material    # a material editor: drag a node, turn the light, move the sliders, press t
+cesia do material    # a material editor: drag a node, turn the light, move the sliders, press t
 ```
 
-```kepler
+```cesia
 use sdl
 use ui
 
@@ -348,23 +351,23 @@ nothing moving draws nothing. The interface font is Adwaita Sans, titles use Not
 Comments are `--` for a line and `(* ... *)` for several, which can hold one another. A `(** ... *)` above a definition documents it,
 like `--` lines:
 
-```kepler
+```cesia
 (** The next number.
       Next(1) --> 2 *)
 Next(x) = x + 1
 ```
 
 The documentation comes from the language. A comment just above a definition documents it, and the examples in it run under
-`kepler test`.
+`cesia test`.
 
-```kepler
+```cesia
 -- The square of a number.
 --
 --   Square(3) --> 9
 Square(x) = x * x
 ```
 
-`kepler doc` lists the modules, `kepler doc num` the names of a module, and `kepler doc num.Solve` shows one, as `kepler doc
+`cesia doc` lists the modules, `cesia doc num` the names of a module, and `cesia doc num.Solve` shows one, as `cesia doc
 date.Date.Year` shows a method. A program, or an editor, asks the same way: `Doc("num.Solve")` or `Doc(Sort)` give the text or
 `missing`, and `DocNames("num")` the names. An instance method has no value to pass, so `Doc("Rect.Area")` also finds those of the program.
 
@@ -373,13 +376,13 @@ date.Date.Year` shows a method. A program, or an editor, asks the same way: `Doc
 `frame` and `num` work on whole columns in OCaml. A column of integers or floats is stored without a box, and `GroupBy`,
 `SortBy`, `JoinOn`, `WhereMask` and `FromCsv` are native. As with pandas, the data stays in memory.
 
-Large work uses half of the logical cores, or the number in `KEPLER_CORES`. The results are the same to the last bit, whatever
+Large work uses half of the logical cores, or the number in `CESIA_CORES`. The results are the same to the last bit, whatever
 that number.
 
 `num.Solve`, `num.Inverse`, `num.Det`, `num.Qr` and `num.Eigen` go through LAPACK when the machine has it, and `Matmul` through
 a fast BLAS such as OpenBLAS. They are found at run time, and without them the same functions work, more slowly. Install
 OpenBLAS for speed.
-`num.Backend()` names the library in use, and `KEPLER_BLAS` chooses one, or `none`.
+`num.Backend()` names the library in use, and `CESIA_BLAS` chooses one, or `none`.
 
 ## Limits
 
@@ -388,7 +391,7 @@ OpenBLAS for speed.
 
 ## License
 
-Kepler is under the MIT License: see `LICENSE`.
+Cesia is under the MIT License: see `LICENSE`.
 
 The fonts in `examples/fonts/` keep their own license, the SIL Open Font License, with its text next to them: `AdwaitaSans-OFL.txt`,
 `NotoSans-OFL.txt`, and `OFL.txt` for JetBrains Mono.

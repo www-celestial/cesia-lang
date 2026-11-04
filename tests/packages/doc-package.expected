@@ -1,20 +1,20 @@
-A circle, and what it adds to the rectangle of rect.k.
+A circle, and what it adds to the rectangle of rect.ce.
 
-tests/packages/geometry.Circle          A circle, and what it adds to the rectangle of rect.k.
-tests/packages/geometry.Circle.Half     Half the radius, with a small function of rect.k.
-tests/packages/geometry.Early           What readSeen gave during the statements of rect.k.
-tests/packages/geometry.Rect            A rectangle: this file needs circle.k, which comes after it, and circle.k needs this file.
-tests/packages/geometry.Rect.Area       The area, scaled by a small function of circle.k.
+tests/packages/geometry.Circle          A circle, and what it adds to the rectangle of rect.ce.
+tests/packages/geometry.Circle.Half     Half the radius, with a small function of rect.ce.
+tests/packages/geometry.Early           What readSeen gave during the statements of rect.ce.
+tests/packages/geometry.Rect            A rectangle: this file needs circle.ce, which comes after it, and circle.ce needs this file.
+tests/packages/geometry.Rect.Area       The area, scaled by a small function of circle.ce.
 tests/packages/geometry.Rect.Doubled    A small method, called from this file.
 tests/packages/geometry.Rect.Perimeter  A method in another file than its struct.
 tests/packages/geometry.Rect.Square     A static method in another file than its struct.
-tests/packages/geometry.Rect.Tag        A small field declared in rect.k.
+tests/packages/geometry.Rect.Tag        A small field declared in rect.ce.
 (r Rect) Area()
 
-The area, scaled by a small function of circle.k.
+The area, scaled by a small function of circle.ce.
 Rect.Square(side)
 
 A static method in another file than its struct.
-kepler: nothing is documented under tests/packages/geometry.half
-kepler: nothing is documented under ../geometry
+cesia: nothing is documented under tests/packages/geometry.half
+cesia: nothing is documented under ../geometry
 exit 1

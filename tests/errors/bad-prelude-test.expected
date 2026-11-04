@@ -1,4 +1,4 @@
-bad_std/prelude.k:2:1: Expected an expression, found the end of the file.
+bad_std/prelude.ce:2:1: Expected an expression, found the end of the file.
   2 | 
     | ^
 exit 1

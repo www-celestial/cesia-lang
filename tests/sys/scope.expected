@@ -1,4 +1,4 @@
-scope.k:2:10: Permission "read" denied. Run again with --allow read.
+scope.ce:2:10: Permission "read" denied. Run again with --allow read.
   2 | Print(sys.Read("./data/../secret"))
     |          ^
 exit 1

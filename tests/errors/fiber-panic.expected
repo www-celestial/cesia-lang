@@ -1,6 +1,6 @@
-fiber-panic.k:1:17: boom
+fiber-panic.ce:1:17: boom
   1 | t = Spawn(() -> Panic("boom"))
     |                 ^
-  in <anonymous> (fiber-panic.k:1)
+  in <anonymous> (fiber-panic.ce:1)
 true
 exit 0

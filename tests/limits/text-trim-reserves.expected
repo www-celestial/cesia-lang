@@ -1,4 +1,4 @@
-text-trim-reserves.k:3:5: Limit "memory" reached.
+text-trim-reserves.ce:3:5: Limit "memory" reached.
   3 | y = Trim(x)
     |     ^
 exit 1

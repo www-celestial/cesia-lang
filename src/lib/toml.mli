@@ -1,4 +1,4 @@
-(** The reader of kepler.toml: a strict subset of TOML 1.0. A file it accepts means the same in any TOML reader, and
+(** The reader of cesia.toml: a strict subset of TOML 1.0. A file it accepts means the same in any TOML reader, and
     anything else is an error on its line, never a guess. *)
 
 type value = Text of string | Flag of bool | Texts of string list

@@ -3,7 +3,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 dune build --profile release 2>&1 | head -20
-corpus=$(mktemp --suffix=.k)
+corpus=$(mktemp --suffix=.ce)
 trap 'unlink "$corpus"' EXIT
 for i in $(seq 1 40000); do
   printf 'defn f%d(a, b)\n  x = a * 2 + b\n  if x > 10\n    x - 1\n  else\n    x + 1\n  end\nend\n' "$i"
