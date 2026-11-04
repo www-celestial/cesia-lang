@@ -745,7 +745,8 @@ use lapack
       net.IsHeader(4, "host: a") --> true *)
 
 (** c.Open(name, version = missing)
-    Loads a shared library by its short name ("m", "sodium"), trying the usual file names of each system: an Ok of the library, or an Err. Needs the ffi permission. *)
+    Loads a shared library by its short name ("m", "sodium"), trying the usual file names of each system, and on macOS the folders of Homebrew: an Ok of the
+    library, or an Err. With a version, only the names that hold it are tried. Needs the ffi permission. *)
 
 (** c.Fn(name, args, ret, lib, callsBack = false)
     Binds a function of a library: an Ok of a Cesia function. The types are given by name ("i32", "f64", "text", "ptr", "void", and so on) or by c.Struct. Set callsBack if the function calls back into Cesia. *)

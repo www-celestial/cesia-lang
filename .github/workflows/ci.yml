@@ -22,7 +22,7 @@ jobs:
       - name: Libraries on macOS
         if: runner.os == 'macOS'
         run: |
-          brew install libffi libsodium coreutils
+          brew install libffi libsodium openssl@3 coreutils
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - run: opam install -y dune
       - run: opam exec -- dune build

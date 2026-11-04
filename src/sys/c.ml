@@ -197,19 +197,22 @@ let c_function st name address args ret =
       call address id st.slots st.texts !mask;
       return_value ctx ret (Bytes.get_int64_ne st.slots result_offset))
 
+(* Where Homebrew puts libraries, which macOS doesn't search, and the folder of its OpenSSL, which it links nowhere else. *)
+let brew = [ "/opt/homebrew/lib"; "/opt/homebrew/opt/openssl@3/lib"; "/usr/local/lib"; "/usr/local/opt/openssl@3/lib" ]
+
 (* Every usual name of every OS: a name from another OS just fails to load. None may be relative with a slash, since
-   the loader would read that from the current folder, where anyone can plant a file. *)
+   the loader would read that from the current folder, where anyone can plant a file. A version asks for that ABI, so no
+   name without it is tried: on macOS, libssl.dylib and libcrypto.dylib with no version are stubs that abort the process. *)
 let candidates name version =
   if String.contains name '/' || String.contains name '\\' then [ name ]
   else begin
-    let versioned f = Option.to_list (Option.map f version) in
-    versioned (Printf.sprintf "lib%s.so.%s" name)
-    @ [ Printf.sprintf "lib%s.so" name ]
-    @ versioned (Printf.sprintf "lib%s.%s.dylib" name)
-    @ [ Printf.sprintf "lib%s.dylib" name;
-        Printf.sprintf "/Library/Frameworks/%s.framework/%s" name name;
-        name ^ ".dll";
-        Printf.sprintf "lib%s.dll" name ]
+    let so, dylib =
+      match version with
+      | Some v -> Printf.sprintf "lib%s.so.%s" name v, Printf.sprintf "lib%s.%s.dylib" name v
+      | None -> Printf.sprintf "lib%s.so" name, Printf.sprintf "lib%s.dylib" name
+    in
+    (so :: dylib :: List.map (fun dir -> Filename.concat dir dylib) brew)
+    @ [ Printf.sprintf "/Library/Frameworks/%s.framework/%s" name name; name ^ ".dll"; Printf.sprintf "lib%s.dll" name ]
   end
 
 let version_arg ctx (a : Types.t array) =

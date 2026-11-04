@@ -1,2 +1,4 @@
 use sys
-Print(sys.Run("true") then MapOk(it.Code))
+(* With SIGCHLD ignored, Linux reaps the child itself and its code is unknown, -1; macOS still gives it, 0. Either way, no hang
+   and no panic. *)
+Print(sys.Run("true") then MapOk(it.Code == -1 or it.Code == 0))
