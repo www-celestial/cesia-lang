@@ -37,6 +37,8 @@ NewNative(x, y)
 A native documented by a block whose first line is its signature.
 
   Len("abc") --> 3
+
+Built into Cesia.
 A module documented by the first block of its file, for the test of cesia doc in doc-places.cmd.
 
 tests/lang/mods/placed.Twice  Twice a number.

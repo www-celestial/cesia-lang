@@ -398,19 +398,22 @@ let without_module name =
   | Some i -> String.sub name 0 i, String.sub name (i + 1) (String.length name - i - 1)
   | None -> "", name
 
-let lookup w name =
+(* The documentation of a name, and whether it comes from src/std/natives.ce: a function of the binary, in OCaml. *)
+let found w name =
   let native = find name (natives_entries ()) in
   let m, short = without_module name in
-  let entry, short =
+  let entry, short, builtin =
     match find name (std_entries "prelude") with
-    | Some e -> Some e, name
-    | None when m = "" -> native, name
+    | Some e -> Some e, name, false
+    | None when m = "" -> native, name, true
     | None ->
       (match find short (module_entries w m) with
-       | Some e -> Some e, short
-       | None -> native, short)
+       | Some e -> Some e, short, false
+       | None -> native, short, true)
   in
-  if public_name short then Option.map shown entry else None
+  if public_name short then Option.map (fun e -> shown e, builtin) entry else None
+
+let lookup w name = Option.map fst (found w name)
 
 (* An instance method of the running program has no value to ask about: only its name leads to it. Two packages can each have
    a Rect.Area, so the file that asks comes first. *)
@@ -514,9 +517,11 @@ let command w args =
     table (List.map (fun n -> n, summary w n) (names w name));
     0
   | [ name ] ->
-    (match lookup w name with
-     | Some text ->
+    (match found w name with
+     | Some (text, builtin) ->
        print_endline text;
+       (* Its code is in the binary: no source of Cesia to read. *)
+       if builtin then print_endline "\nBuilt into Cesia.";
        0
      | None ->
        prerr_endline (Messages.doc_missing name);

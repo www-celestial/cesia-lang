@@ -5,12 +5,27 @@ A small interpreted language, written in OCaml. Fast, safe by default, with fibe
 ## Install
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh    # Linux and macOS
+irm https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.ps1 | iex         # Windows, in PowerShell
+cesia upgrade              # later: the newest release, after its notes and a question
+cesia upgrade --nightly    # the build of the last change, before any release
+```
+
+A release holds the binary and every C library its libraries use, in `~/.cesia/lib/`: OpenBLAS for BLAS and LAPACK (macOS has
+its own), libsodium, SDL3 and SDL3_ttf, and OpenSSL on macOS and Windows (Linux keeps the system's, for its security fixes).
+Nothing else is installed by hand. In `0.x` the middle number of a version rises when a change can break a program, the last one
+for a fix, and the notes of a release come from the messages of its commits.
+
+From the sources, with OCaml 5.5 and dune:
+
+```bash
 dune build --profile release
 ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/cesia
 ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/ce      # optional: the short name of the same binary
 ```
 
-`ce` and `cesia` are one program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
+Such a binary says `cesia 0.2.0+dev`: `git pull` and `dune build` update it, not `cesia upgrade`. `ce` and `cesia` are one
+program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
 
 ## Write and run a program
 
@@ -51,6 +66,7 @@ A `cesia.toml` next to the code declares what can be run, and which C libraries 
 ```toml
 [project]
 name = "notes"
+cesia = "0.2"     # the oldest Cesia it needs: an older one stops at once, and says to run cesia upgrade
 
 [tasks.serve]
 file = "notes.ce"
@@ -270,6 +286,43 @@ Print(r.Area(), shapes.Square(2))
 - With `--watch`, a change in any file reloads its whole package. A new file needs a restart.
 - `cesia doc geometry` and `DocNames("geometry")` see a package as one module.
 
+### Packages of other projects
+
+Any project with a `cesia.toml` gives its packages: there is no app or library, and no registry. A `[deps]` table names the
+repository, a tag, and the packages taken:
+
+```toml
+[deps.cemacs]
+from = "github.com/www-celestial/cemacs"
+version = "v0.3.0"
+take = ["folders"]
+```
+
+```cesia
+use deps/www-celestial/cemacs/folders    (* the name in the code: folders *)
+```
+
+- The path says where it comes from: the owner and the name of the repository, after its host unless it is `github.com`, as in
+  `use deps/gitlab.com/x/y/z`. Inside `deps/www-celestial/cemacs/`, a use of its own code reads its root and its source folders,
+  so it runs unchanged; `pkg/` and `deps/` are those of the project that runs.
+- Cesia follows the uses of what is taken, to the end: their own code comes with them, never their tests or other folders, and
+  a `use deps/...` of theirs brings that project at the version they ask for. One version per repository, the highest asked for.
+  Without `take`, every package of its source folders comes.
+- `deps/` is read only, as `pkg/`: `cesia.lock` keeps the commit of each tag and the fingerprint of each file, and the loader
+  checks each file it reads from them, once. A tag moved since the lock stops `cesia pkg install`. To change someone's package,
+  fork it, then `cesia pkg move`.
+- git fetches each tag once, into `~/.cache/cesia/`: another install, or another project, needs no network. `cesia run`, `cesia do`
+  and `cesia test` never use it.
+
+| Command | What it does |
+|---|---|
+| `cesia pkg` | each package, its version, and whether it is as installed |
+| `cesia pkg add github.com/x/y@v1.2.0 folders` | writes the `[deps.y]` table, then installs |
+| `cesia pkg install` | makes `pkg/` and `deps/` what `cesia.toml` and `cesia.lock` say: after a clone, or to undo a change by hand |
+| `cesia pkg update [label] [--to v1.3.0]` | to the newest tag, or that one, and `pkg/` to this Cesia |
+| `cesia pkg move www-celestial/cemacs someone/cemacs-fork` | takes a fork instead, and rewrites the uses of the project |
+| `cesia pkg --check` | the newer tags, through the network |
+
 ## Editors
 
 Neovim and Vim: copy `tools/editors/nvim/` into `~/.config/nvim/`.
@@ -411,6 +464,8 @@ end
 `cesia doc` lists the modules, `cesia doc pkg/num` the names of a module (from the project's copy when there is one), and
 `cesia doc num.Solve` shows one, written as in the code, as `cesia doc date.Date.Year` shows a method. A program, or an editor, asks the same way: `Doc("num.Solve")` or `Doc(Sort)` give the text or
 `missing`, and `DocNames("num")` the names. An instance method has no value to pass, so `Doc("Rect.Area")` also finds those of the program.
+A function written in OCaml, as `Sort` or `json.Parse`, has its text in the binary, and `cesia doc` ends it with `Built into
+Cesia.`: no source of Cesia is needed to read it.
 
 ## Large data
 
