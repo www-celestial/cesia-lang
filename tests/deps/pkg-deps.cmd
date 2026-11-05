@@ -54,6 +54,11 @@ cp cesia.lock "$top/lock-before"
 cesia pkg add "file://$top/repos/dan/plain@v1.0.0" 2>&1 | clean
 cesia pkg add "file://$top/repos/carol/ring@v1.0.0" nope 2>&1 | clean
 cesia pkg add "file://$top/repos/carol/ring@v9.9.9" 2>&1 | clean
+echo "== what could leave deps/ or give git an option is refused before git runs"
+cesia pkg add "github.com/alice/../../../outside@v1.0.0" 2>&1 | clean
+cesia pkg add "--upload-pack=touch $top/ran;://x/y@v1.0.0" 2>&1 | clean
+cesia pkg add "file://$top/repos/carol/ring@--help" 2>&1 | clean
+ls "$top/ran" "$top/outside" 2> /dev/null || echo "nothing ran, nothing written outside"
 cmp cesia.lock "$top/lock-before" && echo "lock unchanged"
 find deps -maxdepth 2 -type d | sort
 echo "== a ring of uses ends"

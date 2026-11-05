@@ -28,6 +28,11 @@ nothing to do: 0
 dan/plain has no cesia.toml at v1.0.0: it is not a Cesia project.
 carol/ring has no package "nope": it has a, b.
 Can't fetch carol/ring at v9.9.9: fatal: Remote branch v9.9.9 not found in upstream origin
+== what could leave deps/ or give git an option is refused before git runs
+"github.com/alice/../../../outside" is no repository cesia pkg takes: the folders of its place under deps/ are letters, digits and . _ - @, never first a . or a -.
+"--upload-pack=touch TOP/ran;://x/y" is no repository cesia pkg takes: the folders of its place under deps/ are letters, digits and . _ - @, never first a . or a -.
+"--help" is no tag cesia pkg takes: letters, digits and . _ - +, never first a . or a -.
+nothing ran, nothing written outside
 lock unchanged
 deps
 deps/alice

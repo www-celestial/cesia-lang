@@ -240,6 +240,28 @@ defn gitUrl(from)
   if Contains("://", from) or StartsWith("git@", from) from else "https://$from" end
 end
 
+nameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
+
+defn isPart(s, more)
+  (** A folder name or a tag that stays where it is put and that git can't read as an option: letters, digits, . _ - and the
+      characters of more, never first a . or a -. *)
+  s != "" and not StartsWith(".", s) and not StartsWith("-", s) and All(Map(c -> Contains(c, "$nameChars$more"), Chars(s)))
+end
+
+defn checkDep(path, from, version)
+  (** Ok, or an Err when a dependency, from a cesia.toml of the project or of a project it takes, could write outside deps/ or
+      the cache, or give git an option. *)
+  parts = Split("/", path)
+  printable = All(Map(b -> b > 32 and b != 127, Bytes(from)))
+  if StartsWith("-", from) or not printable or Len(parts) < 2 or not All(Map(p -> isPart(p, "@"), parts))
+    return Err("$quote$from$quote is no repository cesia pkg takes: the folders of its place under deps/ are letters, digits and . _ - @, never first a . or a -.")
+  end
+  if not isPart(version, "+")
+    return Err("$quote$version$quote is no tag cesia pkg takes: letters, digits and . _ - +, never first a . or a -.")
+  end
+  Ok(missing)
+end
+
 defn splitDep(u)
   (** {Path, Name} of a use of deps/: deps/www-celestial/cemacs/folders gives www-celestial/cemacs and folders; a first part
       with a dot is a host. *)
@@ -272,12 +294,13 @@ end
 
 defn fetch(path, from, version)
   (** A project at a tag, from the cache, cloned there the first time: {Path, From, Version, Dir, Commit, Src, Deps}. *)
+  checkDep(path, from, version)?
   dir = "$(cacheDir())/$path/$version"
   if not sys.Exists("$dir/.git")
     staging = "$dir.new"
     removeAll(staging)?
     sys.Mkdir(parent(dir))?
-    cloned = git(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", version, gitUrl(from), staging])
+    cloned = git(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", version, "--", gitUrl(from), staging])
     if IsErr(cloned)
       removeAll(staging)
       return Err("Can't fetch $path at $version: $(cloned.Error)")
@@ -502,7 +525,7 @@ defn installDeps(lock, resolved, fresh)
   end
   for d in lock.Deps
     path = depPath(d.From)
-    if not Has(path, resolved.Brought) and sys.Exists("deps/$path")
+    if not Has(path, resolved.Brought) and IsOk(checkDep(path, d.From, d.Version)) and sys.Exists("deps/$path")
       removeAll("deps/$path")?
       Print("deps/$path: removed.")
       owner = parent("deps/$path")
@@ -591,7 +614,8 @@ end
 
 defn newestTag(from)
   (** The highest tag of a repository that is a version, through git ls-remote. *)
-  out = git(["ls-remote", "--tags", "--refs", gitUrl(from)])
+  checkDep(depPath(from), from, "v0")?
+  out = git(["ls-remote", "--tags", "--refs", "--", gitUrl(from)])
   if IsErr(out)
     return Err("Can't read the tags of $(depPath(from)): $(out.Error)")
   end
