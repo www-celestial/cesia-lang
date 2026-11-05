@@ -1,0 +1,401 @@
+open Types
+open Ast
+
+(* Anything outside phase 1: the version stays interpreted. *)
+exception No
+
+type st = {
+  w : world;
+  ver : version;
+  f : func;
+  index : int;  (* this function's number in the unit *)
+  kinds : Ir.kind Dynarray.t;
+  blocks : Ir.block Dynarray.t;
+  mutable cur : int;
+  regs : int array;  (* the register of each variable kept in one, or -1 *)
+  arrays : int array;  (* the number of each variable that is a float array, or -1 *)
+  arr : (int * bool) Dynarray.t;
+  hidden : Ir.var Dynarray.t;
+  resumes : int Dynarray.t;
+  mutable loops : int list;  (* where a break goes *)
+  sites : Pos.t Dynarray.t;
+  unit : unit_;
+  mutable body : int;  (* the block after the step of the call, where a self tail call comes back *)
+}
+
+and unit_ = { versions : version Dynarray.t }
+
+let math = [ "Sqrt", "sqrt"; "Exp", "exp"; "Log", "log"; "Sin", "sin"; "Cos", "cos"; "Tan", "tan"; "Asin", "asin";
+             "Acos", "acos"; "Atan", "atan" ]
+
+let reg st k =
+  Dynarray.add_last st.kinds k;
+  Dynarray.length st.kinds - 1
+
+let block st =
+  Dynarray.add_last st.blocks { Ir.ins = []; term = Return (Int 0) };
+  Dynarray.length st.blocks - 1
+
+(* Instructions are kept in reverse while a block is built. *)
+let emit st i =
+  let b = Dynarray.get st.blocks st.cur in
+  b.ins <- i :: b.ins
+
+let close st t = (Dynarray.get st.blocks st.cur).term <- t
+
+let goto st l =
+  close st (Jump l);
+  st.cur <- l
+
+let site st pos =
+  Dynarray.add_last st.sites pos;
+  Dynarray.length st.sites - 1
+
+let point st l =
+  Dynarray.add_last st.resumes l;
+  Dynarray.length st.resumes - 1
+
+let tick st l =
+  emit st (Ir.Tick (point st l));
+  goto st l
+
+let kind_of = function TI -> Ir.Kint | TF -> Ir.Kfloat | _ -> raise No
+let ty st (e : expr) = st.ver.tn.(e.id)
+
+let plain st i =
+  (st.f.cell_of = [||] || st.f.cell_of.(i) < 0) && not st.f.maybe_undef.(i)
+
+let var st i =
+  if not (plain st i) || st.regs.(i) < 0 then raise No;
+  st.regs.(i)
+
+let array_of st (e : expr) =
+  match e.e with
+  | Var { b = Local i; _ } when st.arrays.(i) >= 0 -> st.arrays.(i)
+  | _ -> raise No
+
+let to_float st (v, k) =
+  match k, v with
+  | Ir.Kfloat, _ -> v
+  | Kint, Ir.Int n -> Float (float_of_int n)
+  | Kint, _ ->
+    let r = reg st Kfloat in
+    emit st (Float_of (r, v));
+    Reg r
+
+let fresh st k f =
+  let r = reg st k in
+  emit st (f r);
+  Ir.Reg r, k
+
+(* The function of the unit for a version, lowered later. *)
+let callee st (v : version) =
+  let vs = st.unit.versions in
+  let rec find i = if i = Dynarray.length vs then (Dynarray.add_last vs v; i) else if Dynarray.get vs i == v then i else find (i + 1) in
+  find 0
+
+let rec expr st (e : expr) : Ir.value * Ir.kind =
+  match e.e with
+  | Lint n -> Int n, Kint
+  | Lfloat x when Float.is_finite x -> Float x, Kfloat
+  | Var { b = Local i; _ } -> Reg (var st i), Dynarray.get st.kinds (var st i)
+  | Var { b = Cell { m; k; stable = true }; _ } ->
+    (match st.w.modules.(m).cells.(k) with
+     | Int n -> Int n, Kint
+     | Float x when Float.is_finite x -> Float x, Kfloat
+     | _ -> raise No)
+  | Bin (((Add | Sub | Mul) as op), a, b) ->
+    let x = expr st a and y = expr st b in
+    (match ty st e with
+     | TI ->
+       let op = match op with Add -> Ir.Add | Sub -> Sub | _ -> Mul in
+       fresh st Kint (fun r -> Op (op, r, fst x, fst y, site st e.pos))
+     | TF ->
+       let op = match op with Add -> Ir.Fadd | Sub -> Fsub | _ -> Fmul in
+       let x = to_float st x and y = to_float st y in
+       fresh st Kfloat (fun r -> Op (op, r, x, y, -1))
+     | _ -> raise No)
+  | Bin (((Div | Pow) as op), a, b) when ty st e == TF ->
+    let x = to_float st (expr st a) in
+    let y = to_float st (expr st b) in
+    fresh st Kfloat (fun r -> Op ((if op = Div then Fdiv else Fpow), r, x, y, -1))
+  | Neg a ->
+    (match expr st a with
+     | x, Kint -> fresh st Kint (fun r -> Neg (r, x, site st e.pos))
+     | x, Kfloat -> fresh st Kfloat (fun r -> Fneg (r, x)))
+  | If (c, yes, no) when ty st e == TI || ty st e == TF ->
+    let k = kind_of (ty st e) in
+    let r = reg st k and y = block st and n = block st and join = block st in
+    cond st c y n;
+    st.cur <- y;
+    emit st (Move (r, convert st k (value_block st yes)));
+    goto st join;
+    st.cur <- n;
+    emit st (Move (r, convert st k (value_block st no)));
+    goto st join;
+    Reg r, k
+  | Index (b, [| Ix i |], false) when ty st e == TF ->
+    let a = array_of st b in
+    (match expr st i with
+     | x, Kint -> fresh st Kfloat (fun r -> Elem (r, a, x, site st e.pos))
+     | _ -> raise No)
+  | Call call -> call_expr st e call
+  | _ -> raise No
+
+and convert st k (v, vk) = if k = vk then v else if k = Ir.Kfloat then to_float st (v, vk) else raise No
+
+and value_block st (b : block) =
+  let n = Array.length b in
+  if n = 0 then raise No;
+  for j = 0 to n - 2 do stmt st b.(j) done;
+  expr st b.(n - 1)
+
+and args_of (call : call) n =
+  if Array.length call.args <> n || Array.exists (fun (a : arg) -> a.aname <> None) call.args then raise No;
+  Array.map (fun (a : arg) -> a.value) call.args
+
+and call_expr st e (call : call) =
+  (* A self tail call loops in [tail]; anywhere else the interpreter keeps it. *)
+  if call.self_tail then raise No;
+  match call.callee.e with
+  | Var { b = Cell { m; k; stable = true }; _ } ->
+    (match st.w.modules.(m).cells.(k) with
+     | Native { nname = ("Div" | "Mod") as name; _ } ->
+       let a = args_of call 2 in
+       let x = expr st a.(0) and y = expr st a.(1) in
+       if snd x <> Kint || snd y <> Kint then raise No;
+       fresh st Kint (fun r -> Op ((if name = "Div" then Div else Mod), r, fst x, fst y, site st e.pos))
+     | Native { nname; f1 = Some _; _ } when List.mem_assoc nname math ->
+       let a = args_of call 1 in
+       let x = to_float st (expr st a.(0)) in
+       fresh st Kfloat (fun r -> Math (List.assoc nname math, r, x))
+     | Native { nname = "Abs"; _ } ->
+       let a = args_of call 1 in
+       (match expr st a.(0) with
+        | x, Kfloat -> fresh st Kfloat (fun r -> Math ("fabs", r, x))
+        | _ -> raise No)
+     | Native { nname = "Len"; _ } ->
+       let a = args_of call 1 in
+       let n = array_of st a.(0) in
+       fresh st Kint (fun r -> Len (r, n))
+     | Fun { proto; env = [||] } ->
+       let a = args_of call proto.arity in
+       if Array.exists (fun (p : param) -> p.default <> None) proto.func.params then raise No;
+       let sg = Array.map (ty st) a in
+       if Array.exists (fun t -> t != TI && t != TF) sg then raise No;
+       let v = Infer.version_for st.w proto sg in
+       if v.state = 0 then Infer.run st.w v;
+       if v.state <> 2 || (v.ret != TI && v.ret != TF) then raise No;
+       let args = Array.map (fun x -> fst (expr st x)) a in
+       let k = kind_of v.ret in
+       fresh st k (fun r -> Call (r, callee st v, args, site st e.pos))
+     | _ -> raise No)
+  | _ -> raise No
+
+(* A condition, as branches: no boolean value is ever made. *)
+and cond st (e : expr) yes no =
+  match e.e with
+  | Not a -> cond st a no yes
+  | And (a, b) ->
+    let mid = block st in
+    cond st a mid no;
+    st.cur <- mid;
+    cond st b yes no
+  | Or (a, b) ->
+    let mid = block st in
+    cond st a yes mid;
+    st.cur <- mid;
+    cond st b yes no
+  | Lbool true -> close st (Jump yes)
+  | Lbool false -> close st (Jump no)
+  | Bin (((Lt | Le | Gt | Ge | Eq | Ne) as op), a, b) ->
+    let op = match op with Lt -> Ir.Lt | Le -> Le | Gt -> Gt | Ge -> Ge | Eq -> Eq | _ -> Ne in
+    let x = expr st a and y = expr st b in
+    (match snd x, snd y with
+     | Kint, Kint -> close st (Branch (op, Kint, fst x, fst y, yes, no))
+     | _ ->
+       let x = to_float st x and y = to_float st y in
+       close st (Branch (op, Kfloat, x, y, yes, no)))
+  | _ -> raise No
+
+and stmt st (e : expr) =
+  match e.e with
+  | Assign ({ b = Local i; _ }, v) ->
+    let r = var st i in
+    let x = convert st (Dynarray.get st.kinds r) (expr st v) in
+    emit st (Move (r, x))
+  | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix ix |], false); _ } |]; value } when st.arrays.(i) >= 0 ->
+    let a = st.arrays.(i) in
+    let k = (match expr st ix with x, Kint -> x | _ -> raise No) in
+    let x = to_float st (expr st value) in
+    let slot, _ = Dynarray.get st.arr a in
+    Dynarray.set st.arr a (slot, true);
+    emit st (Set_elem (a, k, x, site st e.pos))
+  | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
+    let r = var st i in
+    if Dynarray.get st.kinds r <> Kint then raise No;
+    let lo = expr st a and hi = expr st b in
+    if snd lo <> Kint || snd hi <> Kint then raise No;
+    let c = hidden st and h = hidden st in
+    emit st (Move (c, fst lo));
+    emit st (Move (h, fst hi));
+    let body = block st and next = block st and inc = block st and exit = block st in
+    close st (Branch (Gt, Kint, Reg c, Reg h, exit, body));
+    st.cur <- body;
+    emit st (Move (r, Reg c));
+    loop st exit (fun () -> Array.iter (stmt st) fbody);
+    tick st next;
+    close st (Branch (Eq, Kint, Reg c, Reg h, exit, inc));
+    st.cur <- inc;
+    emit st (Incr c);
+    close st (Jump body);
+    st.cur <- exit
+  | While { cond = c; body; _ } ->
+    let head = block st and inside = block st and exit = block st in
+    goto st head;
+    cond st c inside exit;
+    st.cur <- inside;
+    loop st exit (fun () -> Array.iter (stmt st) body);
+    emit st (Ir.Tick (point st head));
+    close st (Jump head);
+    st.cur <- exit
+  | If (c, yes, no) ->
+    let y = block st and n = block st and join = block st in
+    cond st c y n;
+    st.cur <- y;
+    Array.iter (stmt st) yes;
+    goto st join;
+    st.cur <- n;
+    Array.iter (stmt st) no;
+    goto st join
+  | Break ->
+    (match st.loops with
+     | l :: _ ->
+       close st (Jump l);
+       st.cur <- block st
+     | [] -> raise No)
+  | Return { rvalue = Some v; _ } ->
+    let k = kind_of st.ver.ret in
+    close st (Return (convert st k (expr st v)));
+    st.cur <- block st
+  | Lint _ | Lfloat _ | Var _ -> ()
+  | Call _ | Bin _ | Neg _ | Index _ -> ignore (expr st e)
+  | _ -> raise No
+
+and loop st exit f =
+  st.loops <- exit :: st.loops;
+  f ();
+  st.loops <- List.tl st.loops
+
+and hidden st =
+  let r = reg st Kint in
+  Dynarray.add_last st.hidden { reg = r; kind = Kint; slot = st.ver.frame + Dynarray.length st.hidden };
+  r
+
+(* The last expression of the body: its value is the result, and a self tail call loops. *)
+let rec tail st (e : expr) =
+  let k = kind_of st.ver.ret in
+  match e.e with
+  | Return { rvalue = Some v; _ } -> tail st v
+  | If (c, yes, no) ->
+    let y = block st and n = block st in
+    cond st c y n;
+    st.cur <- y;
+    tail_block st yes;
+    st.cur <- n;
+    tail_block st no
+  | Call ({ self_tail = true; _ } as call) when Array.length call.args = Array.length st.f.params ->
+    let args = Array.map (fun (a : arg) -> if a.aname <> None then raise No else expr st a.value) call.args in
+    let ps = Array.mapi (fun j (_ : param) -> var st j) st.f.params in
+    (* The arguments first, then the parameters: an argument can read a parameter. *)
+    let tmp =
+      Array.mapi
+        (fun j (x, xk) ->
+           let k = Dynarray.get st.kinds ps.(j) in
+           if xk <> k then raise No;
+           let r = reg st k in
+           emit st (Move (r, x));
+           r)
+        args
+    in
+    Array.iteri (fun j r -> emit st (Move (ps.(j), Reg r))) tmp;
+    emit st (Ir.Tick (point st st.body));
+    close st (Jump st.body)
+  | _ -> close st (Return (convert st k (expr st e)))
+
+and tail_block st (b : block) =
+  let n = Array.length b in
+  if n = 0 then raise No;
+  for j = 0 to n - 2 do stmt st b.(j) done;
+  tail st b.(n - 1)
+
+let func st name =
+  let ver = st.ver and f = st.f in
+  let entry = block st in
+  st.cur <- entry;
+  let body = block st in
+  st.body <- body;
+  tick st body;
+  tail_block st f.body;
+  let var_of i = { Ir.reg = st.regs.(i); kind = Dynarray.get st.kinds st.regs.(i); slot = ver.map.(i) } in
+  (* The parameters in registers, in order: a float array comes from its value slot instead. *)
+  let params = List.filter_map (fun j -> if st.regs.(j) >= 0 then Some (var_of j) else None) (List.init (Array.length f.params) Fun.id) in
+  let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some (var_of i) else None) (List.init f.nvars Fun.id) in
+  let hidden = Dynarray.to_list st.hidden in
+  let blocks = Dynarray.to_array st.blocks in
+  Array.iter (fun (b : Ir.block) -> b.ins <- List.rev b.ins) blocks;
+  let n_hidden = List.length hidden in
+  ( { Ir.name; params = Array.of_list params; result = kind_of ver.ret; vars = Array.of_list (vars @ hidden);
+      arrays = Dynarray.to_array st.arr; kinds = Dynarray.to_array st.kinds; blocks; resumes = Dynarray.to_array st.resumes;
+      frame = ver.frame; size = ver.frame + n_hidden + 2; hidden = n_hidden;
+      sites = Array.make (Dynarray.length st.sites) (-1) },
+    Dynarray.to_array st.sites )
+
+let start (w : world) unit index (ver : version) =
+  let f = ver.owner.func in
+  if w.hooks || ver.state <> 2 || Array.length f.captures > 0 then raise No;
+  if ver.ret != TI && ver.ret != TF then raise No;
+  let kinds = Dynarray.create () in
+  let regs = Array.make f.nvars (-1) and arrays = Array.make f.nvars (-1) and arr = Dynarray.create () in
+  let np = Array.length f.params in
+  for i = 0 to f.nvars - 1 do
+    match ver.tv.(i) with
+    | TI | TF ->
+      Dynarray.add_last kinds (kind_of ver.tv.(i));
+      regs.(i) <- Dynarray.length kinds - 1
+    | TFA when i < np ->
+      Dynarray.add_last arr (ver.map.(i), false);
+      arrays.(i) <- Dynarray.length arr - 1
+    | _ -> ()
+  done;
+  { w; ver; f; index; kinds; blocks = Dynarray.create (); cur = 0; regs; arrays; arr; hidden = Dynarray.create ();
+    resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); unit; body = 0 }
+
+(* Registers the sites of a lowered function, now that the whole unit lowered. *)
+let register (w : world) (ver : version) (fn : Ir.func) (pos : Pos.t array) =
+  let s = w.sites in
+  Array.iteri
+    (fun j p ->
+       Dynarray.add_last s { sfile = ver.owner.file; spos = p; sfn = ver.owner.pname; sver = Some ver; soff = ver.frame;
+                             slive = Bytes.empty };
+       fn.sites.(j) <- Dynarray.length s - 1)
+    pos
+
+let unit (w : world) (ver : version) =
+  let u = { versions = Dynarray.create () } in
+  Dynarray.add_last u.versions ver;
+  let out = Dynarray.create () in
+  match
+    let i = ref 0 in
+    while !i < Dynarray.length u.versions do
+      let v = Dynarray.get u.versions !i in
+      let st = start w u !i v in
+      Dynarray.add_last out (func st (Printf.sprintf "f%d" !i));
+      incr i
+    done
+  with
+  | () ->
+    let fs = Dynarray.to_array out in
+    Array.iteri (fun j (fn, pos) -> register w (Dynarray.get u.versions j) fn pos) fs;
+    Some (Array.map fst fs)
+  | exception No -> None

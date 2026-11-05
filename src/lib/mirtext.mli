@@ -12,3 +12,6 @@ type backend = {
 
 (** The backend, or [None] where the binary has no JIT. *)
 val backend : backend option ref
+
+(** The MIR text of a unit, whose function 0 the others serve, and the name of its single entry. *)
+val emit : Ir.func array -> string * string

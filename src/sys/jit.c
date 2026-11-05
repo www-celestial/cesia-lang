@@ -4,6 +4,7 @@
 #include <caml/fail.h>
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
+#include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -84,6 +85,10 @@ value cesia_jit_load(value text, value names) {
     MIR_set_error_func(mir, failed);
     MIR_gen_init(mir);
     MIR_gen_set_optimize_level(mir, 2);
+    /* The functions of libm that the IR names, as OCaml calls them, so that results are the same to the bit. */
+    static const char *names[] = { "sqrt", "exp", "log", "sin", "cos", "tan", "asin", "acos", "atan", "fabs", "pow" };
+    void *fs[] = { sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs, pow };
+    for (int k = 0; k < 11; k++) MIR_load_external(mir, names[k], fs[k]);
   }
   MIR_scan_string(mir, String_val(text));
   MIR_module_t m = DLIST_TAIL(MIR_module_t, *MIR_get_module_list(mir));
