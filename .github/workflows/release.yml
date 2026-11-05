@@ -1,12 +1,13 @@
 name: release
 
-# A tag vX.Y.Z makes the release vX.Y.Z; each push to main replaces the pre-release nightly. Each holds, for each system, an
-# archive of bin/cesia and lib/ (the C libraries of tools/release-libs.sh) with its fingerprint in a .blake2 file, and the notes
-# of tools/notes.sh. cesia upgrade reads them.
+# A tag vX.Y.Z makes the release vX.Y.Z; Run workflow on main, by hand, replaces the pre-release nightly: three systems and
+# their C libraries cost too many minutes for each push. Each holds, for each system, an archive of bin/cesia and lib/ (the C
+# libraries of tools/release-libs.sh) with its fingerprint in a .blake2 file, and the notes of tools/notes.sh. cesia upgrade
+# reads them.
 on:
   push:
     tags: ["v*"]
-    branches: [main]
+  workflow_dispatch:
 
 # Only publish writes: the builds run the configure and make of downloaded sources.
 permissions:
@@ -115,6 +116,8 @@ jobs:
 
   publish:
     needs: build
+    # A nightly comes from main only, never from another branch run by hand.
+    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write

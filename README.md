@@ -8,7 +8,7 @@ A small interpreted language, written in OCaml. Fast, safe by default, with fibe
 curl -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh    # Linux and macOS
 irm https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.ps1 | iex         # Windows, in PowerShell
 cesia upgrade              # later: the newest release, after its notes and a question
-cesia upgrade --nightly    # the build of the last change, before any release
+cesia upgrade --nightly    # a build of main between releases, made by hand
 ```
 
 A release holds the binary and every C library its libraries use, in `~/.cesia/lib/`: OpenBLAS for BLAS and LAPACK (macOS has
