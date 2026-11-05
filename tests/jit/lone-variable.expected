@@ -1,0 +1,6 @@
+lone-variable.ce:5:5: "K" has no value yet.
+  5 |     K
+    |     ^
+  Give it a value before reading it.
+  in f (lone-variable.ce:5)
+exit 1

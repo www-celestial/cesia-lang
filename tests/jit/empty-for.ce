@@ -1,0 +1,16 @@
+(* An empty for keeps its variable as it was. *)
+defn g(n)
+  i = 77
+  s = 0
+  for i in 3:n
+    s = s + i
+  end
+  s * 1000 + i
+end
+Print(g(0))
+Print(g(5))
+t = 0
+for j in 1:2000
+  t = t + g(Mod(j, 3))
+end
+Print(t)

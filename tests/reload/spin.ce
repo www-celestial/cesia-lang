@@ -1,0 +1,14 @@
+(** Runs a loop until value() changes: tools/reload-test.sh edits it while the loop runs, natively once it is hot. *)
+value(x) = 1
+
+defn spin(n)
+  i = n
+  while value(i) == 1
+    i = Mod(i + 1, 5)
+  end
+  i
+end
+
+Print("spinning")
+k = spin(0)
+Print("changed")

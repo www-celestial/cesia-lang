@@ -1,0 +1,11 @@
+(* An empty for keeps its variable as it was, seen by a print. *)
+defn g(n)
+  i = 77
+  s = 0
+  for i in 3:n
+    s = s + i
+  end
+  Print("i=$(i) s=$(s)")
+end
+g(0)
+g(4)

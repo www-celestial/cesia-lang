@@ -410,5 +410,14 @@ alive "10: two files of a broken package"
 no_internal "10"
 stop
 
+# 11. A loop that runs natively, and calls a function inlined into it, sees that function change: native code hands the
+# loop over to the interpreter at a reload.
+start spin.ce "spinning"
+sleep 0.3
+sed -i 's/^value(x) = 1$/value(x) = 2/' "$dir/spin.ce"
+wait_for out "changed" 3000 || fail "11: a native loop kept the old code after a reload"
+no_internal "11"
+stop
+
 [ "$failed" -eq 0 ] && echo "reload: ok"
 exit "$failed"
