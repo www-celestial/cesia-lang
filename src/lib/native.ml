@@ -504,7 +504,9 @@ let prelude =
           Runtime.fail ctx User m
         | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v)));
     "merge", nat "merge" 2 2 (fun ctx a ->
-        let o = Dict.items ctx "merge" a.(1) and acc = ref a.(0) in
+        let o = Dict.items ctx "merge" a.(1) in
+        (* A new map: the values of the first one are in both. *)
+        let acc = ref (match a.(0) with Struct r -> Struct { r with fields = Array.map Value.share r.fields; r_owned = true } | x -> x) in
         for i = 0 to (Array.length o / 2) - 1 do
           let x = Value.share o.((2 * i) + 1) in
           acc := (match o.(2 * i) with Text name -> Dict.add_name ctx !acc name x | k -> Dict.put ctx "merge" k x !acc)

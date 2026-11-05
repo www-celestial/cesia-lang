@@ -254,6 +254,19 @@ let holds fields need = List.for_all (fun (f, n, _) -> takes n fields.(f)) need
 
 (* The place of the first method of the interface that a value lacks, or -1. *)
 let lacks fields (need, lack) = List.fold_left (fun first (f, n, k) -> if takes n fields.(f) then first else k) lack need
+
+(* The same for a map in a tree, which has no shape to plan by: its keys must hold the functions, so it meets an interface as
+   the same map with a shape does. *)
+let tree_lacks (i : Ast.iface) tree =
+  let rec go k =
+    if k = Array.length i.imethods then -1
+    else
+      let name, ps, _ = i.imethods.(k) in
+      match Value.lookup (Text name) tree with
+      | Some v when Lexer.is_public name && takes (Array.length ps) v -> go (k + 1)
+      | _ -> k
+  in
+  go 0
 let type_name (t : ptype) = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname
 
 (* A method as its interface writes it: Scaled(by Number). *)
@@ -292,11 +305,18 @@ let type_check (w : world) (t : ptype) =
             match plan_of r.shape with
             | need, -1 when holds r.fields need -> last := (r.shape, need, w.reloads); x
             | _ -> Undef)
+        | Dict d as x ->
+          (match Hashtbl.find_opt w.interfaces (host, name) with Some i when tree_lacks i d.tree < 0 -> x | _ -> Undef)
         | _ -> Undef),
       (function
         | Struct r as x ->
           (match Hashtbl.find_opt w.interfaces (host, name), lacks r.fields (plan_of r.shape) with
            | Some i, k when k >= 0 -> Messages.article shown, Value.type_of x ^ ", which has no " ^ method_text i.imethods.(k)
+           | _ -> Messages.article shown, Value.type_of x)
+        | Dict d as x ->
+          (match Hashtbl.find_opt w.interfaces (host, name) with
+           | Some i when tree_lacks i d.tree >= 0 ->
+             Messages.article shown, Value.type_of x ^ ", which has no " ^ method_text i.imethods.(tree_lacks i d.tree)
            | _ -> Messages.article shown, Value.type_of x)
         | x -> Messages.article shown, Value.type_of x)
     | name, Cell { m; _ } ->
@@ -389,6 +409,28 @@ let[@inline never] by_interface (ctx : ctx) pm (shape : shape) name ~hidden =
   in
   let v = { vs = shape; seen = w.reloads; can = List.sort (fun (a, _, _) (b, _, _) -> String.compare a b) can; hidden } in
   match can with [] -> lost ctx v name | _ -> v
+
+(* A key of a map in a tree, else the method of the interface it meets, as by_interface and choose give one to a map with a
+   shape. Looked up at each call: such maps come from data, which seldom calls methods. *)
+let[@inline never] tree_member (ctx : ctx) pm x tree name =
+  match Value.lookup (Text name) tree with
+  | Some v -> Value.share v
+  | None ->
+    let w = ctx.w and md = ctx.w.modules.(pm) in
+    let seen = md.host :: md.uses in
+    let can =
+      Hashtbl.fold
+        (fun (host, iname) i found ->
+           match Hashtbl.find_opt w.methods (host, iname, name) with
+           | Some (mg, false) when List.mem host seen && (Lexer.is_public name || host = md.host) && tree_lacks i tree < 0 ->
+             ((if host = md.host then iname else package_name w host ^ "." ^ iname), mg) :: found
+           | _ -> found)
+        w.interfaces []
+    in
+    (match List.sort (fun (a, _) (b, _) -> String.compare a b) can with
+     | [ (_, mg) ] -> Bound { g = mg; self = x }
+     | (a, _) :: (b, _) :: _ -> Runtime.fail ctx Type (Messages.method_two a b name (Value.describe x))
+     | [] -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe (Text name))))
 
 (* The method that a value gets from the interfaces of [v]: from the one it meets, as two are one too many. *)
 let[@inline never] choose ctx (v : via) fields name =
@@ -1293,6 +1335,9 @@ and member_read c e b name ~shared =
         let k = other ctx r.shape r.fields in
         if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       end
+    | Dict d as x ->
+      ctx.site <- s;
+      tree_member ctx pm x d.tree name
     | v ->
       ctx.site <- s;
       field_slow ctx pm v name

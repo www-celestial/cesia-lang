@@ -89,7 +89,8 @@ let of_items ctx (a : t array) =
 
 let of_struct (r : t array) (shape : shape) =
   let d = ref Leaf in
-  Array.iteri (fun i name -> d := insert (Text name) r.(i) i !d) shape.names;
+  (* The values are in both maps now: a write through one must copy them first. *)
+  Array.iteri (fun i name -> d := insert (Text name) (Value.share r.(i)) i !d) shape.names;
   tree !d (Array.length r)
 
 let not_map ctx name v =
@@ -119,7 +120,7 @@ let rec put ctx name k v m =
   | Struct { shape = { sname = None; _ } as shape; fields; _ } ->
     let i = (match k with Text s -> Value.field_index shape s | _ -> -1) in
     if i >= 0 then begin
-      let fields = Array.copy fields in
+      let fields = Array.map Value.share fields in
       fields.(i) <- v;
       Struct { shape; fields; r_owned = true }
     end else put ctx name k v (of_struct fields shape)

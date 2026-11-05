@@ -124,3 +124,32 @@ isFieldsRoundTrip() = Unwrap(User.From(Fields(User(1, "Ana", Age = 4)))) == User
 isFieldsNoMap() = stop(() -> Fields({A: 1})) == "type: Fields needs a struct, not a dictionary."
 isJsonOfStruct() = json.Text(User(1, "Ana")) == "{""Id"":1,""Name"":""Ana"",""Age"":0}" and json.Text(f.New()) == "{""Label"":""public""}"
 isMapFunctionsRefuseStructs() = stop(() -> Values(Ok(1))) == "type: Values needs a dictionary, not an Ok." and stop(() -> Put("A", 1, Ok(1))) == "type: Put needs a dictionary, not an Ok."
+
+(* A new map from another one holds the same values: a write through the old one must not show in the new one. *)
+defn isPutCopies()
+  m = {A: [1, 2], B: 1}
+  added = Put("C", 1, m)
+  kept = Put("B", 2, m)
+  dropped = Drop("B", m)
+  m.A[1] = 99
+  Equal(added.A, [1, 2]) and Equal(kept.A, [1, 2]) and Equal(dropped.A, [1, 2])
+end
+
+(* A map meets an interface whatever its storage: by a literal, by a variable key, past 16 keys, after Drop. *)
+interface Labelled { Label() }
+(x Labelled) Shout() = Upper(x.Label())
+labelOf(x Labelled) = x.Label()
+defn treeOf(n)
+  m = Dict()
+  k = "Label"
+  m[k] = () -> n
+  m
+end
+defn isTreeMeetsInterface()
+  big = treeOf("big")
+  for i in 1:20
+    big["k$(i)"] = i
+  end
+  labelOf(treeOf("t")) == "t" and treeOf("t").Shout() == "T" and labelOf(big) == "big" and labelOf(Drop("x", {Label: () -> "d", x: 1})) == "d"
+end
+isTreeLacksInterface() = stop(() -> labelOf(Put(1, 2, {Label: 3}))) == "type: labelOf: x must be a Labelled, found a Dict, which has no Label()."
