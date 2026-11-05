@@ -5,6 +5,10 @@
  (archive_name mir)
  (language c)
  (names mir mir-gen)
+ ; mir.c and mir-gen.c include the target files: a change to one must rebuild them.
+ (extra_deps
+  (glob_files *.c)
+  (glob_files *.h))
  (flags
   (:standard
    -O2

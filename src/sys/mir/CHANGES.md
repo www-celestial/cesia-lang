@@ -29,4 +29,6 @@ The core only: `mir.c`, `mir-gen.c` and what they include (the five targets, the
 
 ## Patches to MIR's C
 
-None yet.
+- `mir-gen-x86_64.c`, `target_change_to_direct_calls`: two reads of a 32-bit and a 64-bit word inside machine code, through
+  casts of unaligned pointers, are `memcpy` now. UBSan reported the first one ("load of misaligned address"); x86-64
+  tolerates it, C doesn't promise it.
