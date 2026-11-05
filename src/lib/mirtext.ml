@@ -222,8 +222,10 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Tick (p, can_leave) ->
       let back = label () in
       let leave = can_leave && not nested in
-      (* Another quantum, counted, within the limit of steps; when a full checkpoint is due, the flag asks the next tick
-         that can leave to do so. *)
+      (* Another quantum, counted, within the limit of steps. When a full checkpoint is due, a tick of the outermost frame
+         leaves there, so that fibers switch at the interpreter's step; in a nested frame, which can't, the flag asks the
+         next tick that can leave to do so. *)
+      let here = (not nested) && p >= 0 in
       let refill s =
         let over = label () and small = label () and due = label () and go_on = label () in
         Printf.bprintf s "  mov x0, %s\n  sub x0, x0, fuel\n  mov x1, %s\n  add x1, x1, x0\n  mov %s, x1\n"
@@ -232,8 +234,16 @@ let func b ~prefix ~nested (fn : Ir.func) =
           (cx Ir.io_budget) over quantum small small;
         Printf.bprintf s "  mov x3, %s\n  bge %s, x1, x3\n  sub x3, x3, x1\n  ble %s, x2, x3\n  mov x2, x3\n  jmp %s\n"
           (cx Ir.io_until) due go_on go_on;
-        Printf.bprintf s "%s:\n  mov %s, 1\n%s:\n  mov %s, x2\n  mov fuel, x2\n  jmp %s\n%s:\n  mov %s, b\n" due (cx Ir.io_leave)
-          go_on (cx Ir.io_quantum) back over (cx Ir.io_frame);
+        Printf.bprintf s "%s:\n" due;
+        if here then begin
+          (* What this quantum used is in spent already. *)
+          Printf.bprintf s "  mov %s, fuel\n" (cx Ir.io_quantum);
+          spill s;
+          Printf.bprintf s "  mov %s, %d\n" (cx Ir.io_point) p;
+          stop s Ir.fuel_out
+        end else Printf.bprintf s "  mov %s, 1\n" (cx Ir.io_leave);
+        Printf.bprintf s "%s:\n  mov %s, x2\n  mov fuel, x2\n  jmp %s\n%s:\n  mov %s, b\n" go_on (cx Ir.io_quantum) back over
+          (cx Ir.io_frame);
         stop s Ir.too_long
       in
       if leave then begin
