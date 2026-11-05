@@ -97,6 +97,8 @@ jobs:
           cp -R libraries/lib out/lib
           if [ "${{ runner.os }}" = Windows ]; then
             cp _build/default/src/bin/main.exe out/bin/cesia.exe
+            # Without the C debug info, mostly MIR's: OCaml's backtraces don't need it. The version below runs the result.
+            opam exec -- strip out/bin/cesia.exe
             # The DLLs the binary itself was linked with, from the toolchain of OCaml: not those of Windows.
             for dll in $(objdump -p out/bin/cesia.exe | awk '/DLL Name/ { print $3 }'); do
               found=$(opam exec -- which "$dll" 2> /dev/null || true)
@@ -106,6 +108,8 @@ jobs:
             (cd out && pwsh -Command "Compress-Archive -Path bin, lib -DestinationPath ../cesia-${{ matrix.system }}.zip")
           else
             cp _build/default/src/bin/main.exe out/bin/cesia
+            # Without the C debug info, mostly MIR's; on macOS the signature that stripping breaks is made again.
+            if [ "${{ runner.os }}" = macOS ]; then strip -x out/bin/cesia && codesign --force -s - out/bin/cesia; else strip out/bin/cesia; fi
             out/bin/cesia version | tee "version-${{ matrix.system }}.txt"
             tar -czf "cesia-${{ matrix.system }}.tar.gz" -C out bin lib
           fi
