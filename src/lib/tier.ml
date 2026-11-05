@@ -10,6 +10,8 @@ type code = {
   reloads : int;
   start : int;  (* a loop's resume point at its start *)
   loops : (int * int * int * int) array;  (* each loop inside: its node, its counter's and bound's slots or -1, its point *)
+  stride : int;  (* the interpreter's frames for the unit's calls, as [Ir.func]'s; -1 when unknown *)
+  need : int;
 }
 
 let off = 0
@@ -43,8 +45,10 @@ let make (w : world) (ver : version) fns start loops =
       | [| addr |] ->
         let fn = fns.(0) in
         let written = List.filter_map (fun (s, wr) -> if wr then Some s else None) (Array.to_list fn.arrays) in
+        let known = Array.for_all (fun (f : Ir.func) -> f.stride >= 0) fns in
+        let most g = if known then Array.fold_left (fun m f -> max m (g f)) 0 fns else -1 in
         Some { addr; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint); pure; calls; written = Array.of_list written;
-               reloads = w.reloads; start; loops }
+               reloads = w.reloads; start; loops; stride = most (fun f -> f.stride); need = most (fun f -> f.need) }
       | _ -> None
       | exception Failure m ->
         if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m);
@@ -66,7 +70,18 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   io.(Ir.io_status) <- Ir.ok;
   io.(Ir.io_cap2) <- ctx.cap - 2;
   io.(Ir.io_depth) <- depth;
-  io.(Ir.io_lim) <- min (ctx.cap - 2) depth;
+  (* Under a limit of memory, native frames ask for the stack the interpreter's would: its call puts a frame at most
+     [stride] above its caller's, which takes at most [need]; native frames, 2 apart from the first, stop where those would
+     pass the stack. *)
+  let mem =
+    if w.limits.memory_words = max_int || code.stride <= 0 || code.need <= 0 then max_int
+    else begin
+      let first = b + code.fn.frame + code.fn.hidden and room = ctx.cap - code.need - b - code.stride in
+      if room < 0 then first - 1 else first + (2 * (room / code.stride))
+    end
+  in
+  io.(Ir.io_mem) <- mem;
+  io.(Ir.io_lim) <- min (min (ctx.cap - 2) depth) mem;
   io.(Ir.io_budget) <- (if w.steps_left = max_int then 1 lsl 60 else w.steps_left - (ctx.refill - fuel0));
   io.(Ir.io_until) <- ctx.until - (ctx.refill - fuel0);
   io.(Ir.io_leave) <- (if leave then 1 else 0);
@@ -76,6 +91,17 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
     ctx.fuel <- fuel0;
     Runtime.grow ctx (max (ctx.cap + 1) (min (2 * ctx.cap) (depth + 2)));
+    run ~leave ctx code entry
+  end else if st = Ir.frames_out then begin
+    (* As the interpreter's call: the stacks grow, the frame entered, so that a limit reached names it; then the run starts
+       again, as nothing it wrote shows. *)
+    ctx.fuel <- fuel0;
+    let site = ctx.site in
+    ctx.b <- io.(Ir.io_frame);
+    ctx.site <- io.(Ir.io_point);
+    Runtime.grow ctx (ctx.cap + 1);
+    ctx.b <- b;
+    ctx.site <- site;
     run ~leave ctx code entry
   end else begin
     ctx.fuel <- fuel0 - (io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel));

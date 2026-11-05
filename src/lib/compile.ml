@@ -2854,6 +2854,7 @@ and prepare_call ?(target = -1) c (e : expr) (call : call) =
             let np = Array.length slots in
             let off = c.off in
             c.top <- max c.top (off + np + 2);
+            c.ver.call_off <- max c.ver.call_off off;
             c.off <- off + np + 2;
             let modes = passes c (Resolve.keeps proto.func) (fun _ i -> i = target) slots in
             let write = arg_writers c off ver modes slots in

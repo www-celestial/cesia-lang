@@ -101,6 +101,7 @@ and version = {
   mutable map : int array;  (** the slot of each variable in its stack *)
   mutable frame : int;  (** the entries taken by the variables and links *)
   mutable pk : int array;  (** each parameter: slot * 4 + stack (0 v, 1 i, 2 f) *)
+  mutable call_off : int;  (** the highest base of a direct call's frame, from this one's: native code counts with it *)
 }
 
 and slot = {

@@ -50,6 +50,8 @@ type func = {
   pure : bool;
   calls : bool;
   chains : (int * int * int) list array;
+  stride : int;
+  need : int;
 }
 
 let io_base = 3
@@ -70,7 +72,8 @@ let io_frame = 17
 let io_int = 18
 let io_until = 19
 let io_leave = 20
-let io_size = 21
+let io_mem = 21
+let io_size = 22
 let ok = 0
 let fuel_out = 1
 let error = 2
@@ -79,6 +82,7 @@ let stack_out = 4
 let too_deep = 5
 let too_long = 6
 let returned = 7
+let frames_out = 8
 let reloaded = 9
 let err_add = 1
 let err_sub = 2

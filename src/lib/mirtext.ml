@@ -124,18 +124,22 @@ let func b ~prefix ~nested (fn : Ir.func) =
     leave_used := true;
     Printf.sprintf "%s%s_L" prefix name
   in
-  (* A frame about to be entered at [at], above the limit: the stack is short, or the limit of depth is reached, at the
-     site, the frame entered as the interpreter's is when it stops. *)
+  (* A frame about to be entered at [at], above the limit: the stack is short, the interpreter's frames would want a longer
+     one under a limit of memory, or the limit of depth is reached; for the last two, the frame entered at the site, as the
+     interpreter's is when it stops. *)
   let deep_stub at caller site =
     stub (fun s ->
-        let deep = label () in
-        Printf.bprintf s "  mov x0, %s\n  ble %s, %s, x0\n" (cx Ir.io_cap2) deep at;
+        let frames = label () and deep = label () in
+        Printf.bprintf s "  mov x0, %s\n  ble %s, %s, x0\n" (cx Ir.io_cap2) frames at;
         stop s Ir.stack_out;
-        Printf.bprintf s "%s:\n" deep;
+        (* Under a limit of memory, where the interpreter's frames would want a longer stack: first, as its call grows the
+           stack before anything else. *)
+        Printf.bprintf s "%s:\n  mov x1, %d\n  mov x0, %s\n  ble %s, %s, x0\n  mov x1, %d\n%s:\n" frames Ir.too_deep
+          (cx Ir.io_mem) deep at Ir.frames_out deep;
         link s at caller site;
         links s site;
         Printf.bprintf s "  mov %s, %s\n  mov %s, %d\n" (cx Ir.io_frame) at (cx Ir.io_point) fn.sites.(site);
-        stop s Ir.too_deep)
+        Printf.bprintf s "  mov %s, fuel\n  mov %s, x1\n  ret %s, -1\n" (cx Ir.io_fuel) (cx Ir.io_status) zero)
   in
   let ins = function
     | Ir.Frame (r, base) -> pr "  add r%d, %s, %d\n" r (reg_of base) (if base < 0 && not nested then fn.frame + fn.hidden else 2)

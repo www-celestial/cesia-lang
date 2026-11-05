@@ -76,6 +76,10 @@ type func = {
   chains : (int * int * int) list array;
       (** for each site, the inlined frames it is in, the innermost first: the register of the frame's base, its caller's
           base (-1 for the function's own frame) and the site of the call. An error there writes their links. *)
+  stride : int;
+  need : int;
+      (** the interpreter's frames for its calls, inlined or not: the highest base of one from the frame making it, and the
+          largest such frame; [-1] when unknown. Under a limit of memory, native frames ask for the stack these would. *)
 }
 
 (** The frame of a call made from the outermost native frame starts [frame + hidden] above its base; a call from a nested
@@ -102,6 +106,10 @@ val io_frame : int  (** the base of the frame of the error *)
 val io_int : int  (** the result, when it is an integer *)
 val io_until : int  (** the steps left before a full checkpoint, counted from the fuel given *)
 val io_leave : int  (** set when a full checkpoint is due: the next tick that can leave does *)
+val io_mem : int
+(** the highest base a nested frame may take before the interpreter's frames, as [stride] and [need] count them, would
+    want a longer stack: under a limit of memory, native code then asks for it as the interpreter would *)
+
 val io_size : int
 
 (** Statuses. *)
@@ -114,6 +122,10 @@ val stack_out : int  (** a nested call needs a longer stack *)
 val too_deep : int  (** the limit of depth, at the site [io_point], for a frame at [io_frame] *)
 val too_long : int  (** the limit of steps *)
 val returned : int  (** a [return] inside a loop run natively: its value in [io_int], or in the float slot [frame] *)
+val frames_out : int
+(** under a limit of memory, the interpreter's frames would want a longer stack here: the frame at [io_frame], entered at
+    the site [io_point], its links written; nothing that shows was written, so the run can start again *)
+
 val reloaded : int  (** not native code's: a reload came at a checkpoint, and the run left at its loop's step *)
 
 (** Codes of errors: the interpreter redoes the operation with [io_a] and [io_b] to give its message. *)

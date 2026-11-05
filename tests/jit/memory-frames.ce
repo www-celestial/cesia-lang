@@ -1,0 +1,10 @@
+(* Native frames take the stack the interpreter's would: under a tight limit of memory, deep recursion stops at the same
+   call, with the same trace, on both tiers. *)
+defn down(n)
+  if n == 0
+    0
+  else
+    1 + down(n - 1)
+  end
+end
+Print(down(9000))

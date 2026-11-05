@@ -29,6 +29,9 @@ type st = {
       (* each loop: its node, the slots of its counter and bound or -1, its point after a step *)
   mutable fast : (int, int * int) Hashtbl.t;  (* in a loop's fast copy: each index proved inside, its array, its register *)
   mutable ncalls : int;  (* calls lowered so far *)
+  mem : int array;
+      (* shared with inlined bodies, the interpreter's view of the function's calls: the highest base of one from its frame,
+         and the largest frame called; -1 when a callee has no interpreter's code yet *)
 }
 
 and unit_ = { versions : version Dynarray.t }
@@ -202,6 +205,15 @@ and inlinable (v : version) =
 
 and blk_size size b = Array.fold_left (fun n x -> n + size x) 0 b
 
+(* A call to [v] from the code of [st.ver]: where the interpreter would put its frame, and how much that frame takes. A
+   version the interpreter hasn't compiled yet has no size: the limit of memory then counts native frames only. *)
+and note st (v : version) =
+  if v.size = 0 || st.mem.(0) < 0 then (st.mem.(0) <- -1; st.mem.(1) <- -1)
+  else begin
+    st.mem.(0) <- max st.mem.(0) st.ver.call_off;
+    st.mem.(1) <- max st.mem.(1) v.size
+  end
+
 and inline st (e : expr) (v : version) args =
   let callsite = site st e.pos in
   let base = match st.inl with [] -> -1 | (vb, _, _) :: _ -> vb in
@@ -280,6 +292,7 @@ and call_expr st e (call : call) =
        let vals = Array.map (expr st) a in
        let args = Array.map fst vals in
        let k = kind_of v.ret in
+       note st v;
        if st.inl = [] && inlinable v then inline st e v vals
        else begin
          st.ncalls <- st.ncalls + 1;
@@ -603,7 +616,8 @@ and finish st name ~params ~vars =
       resumes = Dynarray.to_array st.resumes; frame = ver.frame; size = ver.frame + n_hidden + 2; hidden = n_hidden;
       sites = Array.make (Dynarray.length st.sites) (-1);
       pure = not (has (function Ir.Set_elem _ | Set_at _ -> true | _ -> false));
-      calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Dynarray.to_array st.chains },
+      calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Dynarray.to_array st.chains;
+      stride = st.mem.(0); need = st.mem.(1) },
     Dynarray.to_array st.sites )
 
 let start ?(region = false) (w : world) unit index (ver : version) =
@@ -625,7 +639,7 @@ let start ?(region = false) (w : world) unit index (ver : version) =
   done;
   { w; ver; f; index; kinds; blocks = Dynarray.create (); cur = 0; regs; arrays; arr; hidden = Dynarray.create ();
     resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); unit; body = 0; region; infos = Dynarray.create ();
-    fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None }
+    fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None; mem = [| 0; 0 |] }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
 let register (w : world) (fn : Ir.func) (pos : (Pos.t * version) array) =
