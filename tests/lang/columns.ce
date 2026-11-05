@@ -109,17 +109,22 @@ isJoinTexts() = Equal(columns.Join(["a", "b"], ["b"], false).Left, [2])
 isJoinRefusesMissing() = fails(() -> columns.Join([missing], [1], false), "type")
 
 (* 16,384 texts of 14 blocks "Aa" or "BB", which a polynomial hash of factor 31 sends all to one value. *)
-colliding() = [Join("", [if BitAnd(BitShift(k, -b), 1) == 1 "Aa" else "BB" end for b in 0:13]) for k in 0:16383]
+defn collidingTexts()
+  xs = [""]
+  for b in 1:14
+    xs = Concat([Str(x, "Aa") for x in xs], [Str(x, "BB") for x in xs])
+  end
+  xs
+end
+
+colliding = collidingTexts()
 
 defn isGroupsOfCollidingTexts()
-  g = columns.Groups([colliding()])
+  g = columns.Groups([colliding])
   g.Count == 16384 and Equal(g.Ids, 1:16384)
 end
 
-defn isJoinOfCollidingTexts()
-  xs = colliding()
-  Equal(columns.Join(xs, xs, false).Left, 1:16384)
-end
+isJoinOfCollidingTexts() = Equal(columns.Join(colliding, colliding, false).Left, 1:16384)
 
 isGroupsTakeABigIntAndItsFloatAsOneKey() = columns.Groups([[9007199254740993, 9007199254740992.0]]).Count == 1
 isJoinMatchesABigIntAndItsFloat() = Equal(columns.Join([9007199254740993], [9007199254740992.0], false).Right, [1])
@@ -246,7 +251,10 @@ isIntOverflowOnTheLeft() = message(() -> 2 * [1, 4611686018427387903]) == overfl
 isIntOverflowOfTwoArrays() = message(() -> [-4611686018427387903, 2] - [10, 1]) == overflowOf("-4611686018427387903 - 10") and message(() -> [-4611686018427387903 - 1] * -1) == overflowOf("-4611686018427387904 * -1")
 isShapeMessage() = message(() -> (1:2) + (1:3)) == Err("Can't combine an array of 1 by 2 with an array of 1 by 3.") and message(() -> (1:2) < (1:3)) == Err("Can't combine an array of 1 by 2 with an array of 1 by 3.")
 isCompareTextMessage() = message(() -> (1:2) < "a") == Err("Can't compare the number 1 < the text \"a\".")
-isSumOfAMillion() = Sum(1:1000000) == 500000500000 and IsInt(Sum(1:1000000)) and Sum(1:0) == 0 and IsInt(Sum(1:0))
+defn isSumOfAMillion()
+  s = Sum(1:1000000)
+  s == 500000500000 and IsInt(s) and Sum(1:0) == 0 and IsInt(Sum(1:0))
+end
 isSumOverflowMessage() = message(() -> Sum([4611686018427387903, 1])) == overflowOf("4611686018427387903 + 1")
 
 defn isMasksOfLargeArrays()
