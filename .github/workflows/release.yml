@@ -60,6 +60,13 @@ jobs:
         run: |
           brew install libffi libsodium openssl@3 coreutils cmake
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+      - run: opam install -y dune
+      # The tests first, on the tree as it is, +dev: they check that form. tools/test.sh builds in the dev profile, so the
+      # release build comes after it, and is what the archive holds.
+      - name: Tests
+        if: runner.os != 'Windows'
+        timeout-minutes: 15
+        run: opam exec -- tools/test.sh
       - name: The version of this build
         run: |
           file=src/lib/version.ml
@@ -75,12 +82,7 @@ jobs:
           fi
           mv "$file.new" "$file"
           grep '^let text' "$file"
-      - run: opam install -y dune
       - run: opam exec -- dune build --profile release
-      - name: Tests
-        if: runner.os != 'Windows'
-        timeout-minutes: 15
-        run: opam exec -- tools/test.sh
       - uses: actions/cache@v4
         with:
           path: libraries
