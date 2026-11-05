@@ -26,6 +26,9 @@ jobs:
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - run: opam install -y dune
       - run: opam exec -- dune build
+      - name: JIT on Windows
+        if: runner.os == 'Windows'
+        run: opam exec -- dune exec tests/jit_test.exe
       - name: Tests
         if: runner.os != 'Windows'
         timeout-minutes: 10

@@ -22,3 +22,8 @@
  (name version_test)
  (modules version_test)
  (libraries cesia))
+
+(test
+ (name jit_test)
+ (modules jit_test)
+ (libraries cesia cesia_sys))

@@ -3,7 +3,9 @@
  (libraries cesia unix)
  (foreign_stubs
   (language c)
-  (names stubs ffi calls linalg))
+  (names stubs ffi calls linalg jit)
+  (include_dirs mir))
+ (foreign_archives mir/mir)
  (c_library_flags
   (:include c_flags.sexp)))
 

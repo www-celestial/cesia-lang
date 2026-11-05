@@ -1,0 +1,30 @@
+; MIR, Vladimir Makarov's JIT compiler, our copy: see VERSION and CHANGES.md. Third-party C, outside the budgets of
+; tools/check.sh; its own warnings are off here only.
+
+(foreign_library
+ (archive_name mir)
+ (language c)
+ (names mir mir-gen)
+ (flags
+  (:standard
+   -O2
+   -w
+   -Wno-psabi
+   -DMIR_NO_GEN_DEBUG=1
+   (:include hardening.sexp))))
+
+(rule
+ (enabled_if
+  (<> %{os_type} Win32))
+ (action
+  (with-stdout-to
+   hardening.sexp
+   (echo "(-fstack-protector-strong -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2)"))))
+
+(rule
+ (enabled_if
+  (= %{os_type} Win32))
+ (action
+  (with-stdout-to
+   hardening.sexp
+   (echo "()"))))

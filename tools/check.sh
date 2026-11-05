@@ -36,8 +36,9 @@ if hits=$(find . \( -name '*.c' -o -name '*.h' \) -not -path './src/sys/*' -not 
   fail "C file outside src/sys/:
 $hits"
 fi
-c_lines=$(cat src/sys/stubs.c src/sys/ffi.c src/sys/linalg.c | wc -l)
-[ "$c_lines" -le 350 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 350"
+# src/sys/mir/ is MIR, third-party: outside the budget, as generated files are.
+c_lines=$(cat src/sys/stubs.c src/sys/ffi.c src/sys/linalg.c src/sys/jit.c | wc -l)
+[ "$c_lines" -le 500 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 500"
 
 # Change loop: a touched .ml, rebuilt and tested in under 5 s, in the dev profile.
 budget_ms=5000
