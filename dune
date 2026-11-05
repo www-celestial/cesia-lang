@@ -1,4 +1,11 @@
 (env
  (release
   (ocamlopt_flags
-   (:standard -O3 -inline 200))))
+   (:standard -O3 -inline 200)))
+ ; dune build --profile sanitize --build-dir DIR tests/jit_test.exe: the C of src/sys/, MIR's included, under
+ ; AddressSanitizer and UBSan. Run with ASAN_OPTIONS=detect_leaks=0, as OCaml frees nothing at exit.
+ (sanitize
+  (c_flags
+   (:standard -O1 -g -fno-omit-frame-pointer -fsanitize=address,undefined -fno-sanitize-recover=undefined))
+  (link_flags
+   (:standard -ccopt -fsanitize=address,undefined))))
