@@ -1180,18 +1180,27 @@ and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 
 
 and comprehension c cbody cvar csrc cguard =
   let set = setter c cvar in
-  let v = ce c cbody in
-  let body : t Dynarray.t -> ctx -> unit =
+  let push : Arrays.builder -> ctx -> unit =
+    if ty c cbody == TF then
+      let v = cf c cbody in
+      fun out ctx -> Arrays.add_float ctx out (v ctx)
+    else if ty c cbody == TI then
+      let v = ci c cbody in
+      fun out ctx -> Arrays.add_int ctx out (v ctx)
+    else
+      let v = ce c cbody in
+      fun out ctx -> Arrays.add ctx out (v ctx)
+  in
+  let body =
     match Option.map (cb c) cguard with
-    | None -> fun out ctx -> Dynarray.add_last out (v ctx)
-    | Some g -> fun out ctx -> if g ctx then Dynarray.add_last out (v ctx)
+    | None -> push
+    | Some g -> fun out ctx -> if g ctx then push out ctx
   in
   let run = loop_over c csrc set body in
   fun ctx ->
-    let out = Dynarray.create () in
+    let out = Arrays.builder () in
     run out ctx;
-    let items = Dynarray.to_array out in
-    Arrays.of_vals 1 (Array.length items) items
+    Arrays.built out
 
 (* An index at run time. *)
 and index_arg c (ix : index) pos : ctx -> Arrays.ix =

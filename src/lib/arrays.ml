@@ -20,6 +20,71 @@ let of_vals rows cols (d : t array) =
 
 let list values = if Array.length values = 0 then of_vals 0 0 values else of_vals 1 (Array.length values) values
 
+(* A list built one value at a time, in the store that [of_vals] would give: F while every value is a float, I while every
+   one is an integer, V from the first other one, which boxes those before it. It doubles from 16 cells, memory reserved;
+   [n = 0] means no value yet. *)
+type builder = { mutable cells : store; mutable n : int }
+
+let builder () = { cells = V [||]; n = 0 }
+
+let room b = match b.cells with F d -> Float.Array.length d | I d -> Array.length d | V d -> Array.length d
+
+(* The first value, a full store, or one of another kind. *)
+let[@inline never] add_slow ctx b v =
+  let n = b.n in
+  let size = if n = 0 then 16 else if n = room b then 2 * n else room b in
+  (match b.cells, v with
+   | _, Float _ when n = 0 -> b.cells <- F (Runtime.alloc_float ctx size 0.)
+   | _, Int _ when n = 0 -> b.cells <- I (Runtime.alloc_ints ctx size 0)
+   | F d, Float _ ->
+     let e = Runtime.alloc_float ctx size 0. in
+     Float.Array.blit d 0 e 0 n;
+     b.cells <- F e
+   | I d, Int _ ->
+     let e = Runtime.alloc_ints ctx size 0 in
+     Array.blit d 0 e 0 n;
+     b.cells <- I e
+   | cells, _ ->
+     let e = Runtime.alloc_vals ctx size Missing in
+     for k = 0 to n - 1 do
+       e.(k) <- (match cells with F d -> Float (Float.Array.get d k) | I d -> Int d.(k) | V d -> d.(k))
+     done;
+     b.cells <- V e);
+  (match b.cells, v with
+   | F d, Float x -> Float.Array.set d n x
+   | I d, Int i -> d.(n) <- i
+   | V d, _ -> d.(n) <- v
+   | _ -> ());
+  b.n <- n + 1
+
+let[@inline] add ctx b v =
+  match b.cells, v with
+  | F d, Float x when b.n < Float.Array.length d -> Float.Array.set d b.n x; b.n <- b.n + 1
+  | I d, Int i when b.n < Array.length d -> d.(b.n) <- i; b.n <- b.n + 1
+  | V d, _ when b.n < Array.length d -> d.(b.n) <- v; b.n <- b.n + 1
+  | _ -> add_slow ctx b v
+
+let[@inline] add_float ctx b x =
+  match b.cells with
+  | F d when b.n < Float.Array.length d -> Float.Array.set d b.n x; b.n <- b.n + 1
+  | _ -> add_slow ctx b (Float x)
+
+let[@inline] add_int ctx b i =
+  match b.cells with
+  | I d when b.n < Array.length d -> d.(b.n) <- i; b.n <- b.n + 1
+  | _ -> add_slow ctx b (Int i)
+
+(* 1 x n, its store of exactly n cells. *)
+let built b =
+  let n = b.n in
+  let cells =
+    match b.cells with
+    | F d -> F (if Float.Array.length d = n then d else Float.Array.sub d 0 n)
+    | I d -> I (if Array.length d = n then d else Array.sub d 0 n)
+    | V d -> V (if Array.length d = n then d else Array.sub d 0 n)
+  in
+  Array { rows = 1; cols = n; store = cells; a_owned = true; a_tip = true }
+
 let int_range ctx lo hi =
   let span = hi - lo in
   if hi >= lo && (span < 0 || span = max_int) then Runtime.fail ctx Overflow Messages.range_too_long;
