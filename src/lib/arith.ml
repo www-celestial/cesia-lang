@@ -219,18 +219,19 @@ let compared test ctx a b =
     Some (Arrays.of_vals rows cols out)
   end
 
-let masked test cell ctx a b = match compared test ctx a b with Some m -> m | None -> broadcast ctx cell a b
+(* Two scalars go straight to the cell rule. [flip]: the mask compares b with a, so that [>] is [<] turned. *)
+let masked ?(flip = false) test cell ctx a b =
+  match a, b with
+  | Array _, _ | _, Array _ ->
+    (match if flip then compared test ctx b a else compared test ctx a b with
+     | Some m -> m
+     | None -> broadcast ctx cell a b)
+  | _ -> cell ctx a b
 
 let lt ctx a b = masked Lt (order (fun (x : int) y -> x < y) (fun (x : float) y -> x < y) "<") ctx a b
 let le ctx a b = masked Le (order (fun (x : int) y -> x <= y) (fun (x : float) y -> x <= y) "<=") ctx a b
-let gt ctx a b =
-  match compared Lt ctx b a with
-  | Some m -> m
-  | None -> broadcast ctx (order (fun (x : int) y -> x > y) (fun (x : float) y -> x > y) ">") a b
-let ge ctx a b =
-  match compared Le ctx b a with
-  | Some m -> m
-  | None -> broadcast ctx (order (fun (x : int) y -> x >= y) (fun (x : float) y -> x >= y) ">=") a b
+let gt ctx a b = masked ~flip:true Lt (order (fun (x : int) y -> x > y) (fun (x : float) y -> x > y) ">") ctx a b
+let ge ctx a b = masked ~flip:true Le (order (fun (x : int) y -> x >= y) (fun (x : float) y -> x >= y) ">=") ctx a b
 
 let same ctx a b =
   match a, b with
