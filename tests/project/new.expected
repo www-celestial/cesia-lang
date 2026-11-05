@@ -29,7 +29,7 @@ hello already exists.
 exit 1
 A project name holds letters, digits, - and _, not a/b.
 exit 2
-usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.ce [args...]
+usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] file.ce [args...]
        cesia test [path] [--no-spec]
        cesia do [task]
        cesia new name

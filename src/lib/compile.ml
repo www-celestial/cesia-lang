@@ -18,6 +18,7 @@ type c = {
   mutable top : int;  (* the frame size needed *)
   mutable ends : (int * int * int) list;  (* for [end]: slot of the indexed array, dimension, number of indexes *)
   mutable live : Bytes.t;  (* the last compiled hook: what is assigned at this statement *)
+  mutable loops : Tier.loop list;  (* the loops around the code being compiled, the nearest first *)
 }
 
 let ty c (e : expr) = c.tn.(e.id)
@@ -742,7 +743,7 @@ let rec compile_version (ctx : ctx) (ver : version) =
   let f = ver.owner.func in
   let c =
     { w; file = ver.owner.file; fn = ver.owner.pname; func = f; ver; tv = ver.tv; tn = ver.tn; map = ver.map;
-      off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty }
+      off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty; loops = [] }
   in
   let generic = match ver.owner.generic with Some g -> g == ver | None -> false in
   let defaults =
@@ -796,7 +797,8 @@ let rec compile_version (ctx : ctx) (ver : version) =
      ver.ri <- (fun ctx -> to_i ctx (entry ctx));
      ver.rf <- (fun ctx -> to_f ctx (entry ctx)));
   ver.size <- c.top;
-  if ctx.b + ver.size > ctx.cap then Runtime.grow ctx (ctx.b + ver.size)
+  if ctx.b + ver.size > ctx.cap then Runtime.grow ctx (ctx.b + ver.size);
+  Tier.watch w ver
 
 (* A typed parameter, after its default. Its version may already know the answer: an Int or a Float for a number. Else
    the value is checked, and a wrong one stops the program at the call. *)
@@ -2413,16 +2415,67 @@ and cu c (e : expr) : ctx -> unit =
     fun ctx -> bind ctx (v ctx)
   | For { var = { b = Local i; _ }; iter = { e = Range (a, b); pos; _ }; fbody; f_break }
     when c.tv.(i) == TI && cell_of c i < 0 ->
-    let l = bound c a pos and h = bound c b pos and body = cublock c fbody and k = c.map.(i) in
+    let l = bound c a pos and h = bound c b pos and k = c.map.(i) in
+    let st = Tier.loop e and outer = c.loops in
+    c.loops <- st :: outer;
+    let body = cublock c fbody in
+    c.loops <- outer;
     let off = c.off in
-    let run ctx =
-      let lo = l ctx in
-      let hi = h ctx in
-      for n = lo to hi do
-        ctx.i.(ctx.b + k) <- n;
-        body ctx;
-        tick ctx off
-      done
+    let run =
+      if not (Tier.on ()) then
+        fun ctx ->
+          let lo = l ctx in
+          let hi = h ctx in
+          for n = lo to hi do
+            ctx.i.(ctx.b + k) <- n;
+            body ctx;
+            tick ctx off
+          done
+      else begin
+        (* The same loop, which native code can take over: from its start once it has native code, or, hot, at a
+           checkpoint, after the step of an iteration. A region may hold the loops around it: leaving them, each puts its
+           counter and bound in its slot, and the outermost enters native code. *)
+        let ver = c.ver in
+        let entered ctx code entry =
+          match Tier.enter ctx st code entry with
+          | Tier.Ran -> true
+          | Tier.Returned v -> raise_notrace (Return_value v)
+          | Tier.Fell -> false
+        in
+        let interp ctx lo hi =
+          if lo <= hi then begin
+            let n = ref lo and going = ref true in
+            match
+              while !going do
+                ctx.i.(ctx.b + k) <- !n;
+                body ctx;
+                let f = ctx.fuel - 1 in
+                ctx.fuel <- f;
+                if f < 0 then begin
+                  Runtime.checkpoint ctx (ctx.b + off);
+                  match Tier.hot ctx st ver outer with
+                  | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
+                  | None -> ()
+                end;
+                if !n = hi then going := false else incr n
+              done
+            with
+            | () -> ()
+            | exception (Tier.Handoff (code, from) as x) ->
+              Tier.place ctx code st !n hi;
+              if not (Tier.is_root code st) then raise_notrace x
+              else if not (entered ctx code (Tier.after code from)) then failwith "jit: a region refused after its check"
+          end
+        in
+        fun ctx ->
+          let lo = l ctx in
+          let hi = h ctx in
+          match Tier.ready ctx st ver with
+          | Some code ->
+            Tier.place ctx code st lo hi;
+            if not (entered ctx code (Tier.start code)) then interp ctx lo hi
+          | None -> interp ctx lo hi
+      end
     in
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
   | For { var; iter; fbody; f_break } ->
@@ -2431,13 +2484,51 @@ and cu c (e : expr) : ctx -> unit =
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
   | Set { root; path; value } -> set_path c e root path value
   | While { cond; body; has_break } ->
-    let cond = cb c cond and body = cublock c body in
+    let st = Tier.loop e and outer = c.loops in
+    let cond = cb c cond in
+    c.loops <- st :: outer;
+    let body = cublock c body in
+    c.loops <- outer;
     let off = c.off in
-    let run ctx =
-      while cond ctx do
-        body ctx;
-        tick ctx off
-      done
+    let run =
+      if not (Tier.on ()) then
+        fun ctx ->
+          while cond ctx do
+            body ctx;
+            tick ctx off
+          done
+      else begin
+        let ver = c.ver in
+        let entered ctx code entry =
+          match Tier.enter ctx st code entry with
+          | Tier.Ran -> true
+          | Tier.Returned v -> raise_notrace (Return_value v)
+          | Tier.Fell -> false
+        in
+        let interp ctx =
+          match
+            while cond ctx do
+              body ctx;
+              let f = ctx.fuel - 1 in
+              ctx.fuel <- f;
+              if f < 0 then begin
+                Runtime.checkpoint ctx (ctx.b + off);
+                match Tier.hot ctx st ver outer with
+                | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
+                | None -> ()
+              end
+            done
+          with
+          | () -> ()
+          | exception (Tier.Handoff (code, from) as x) ->
+            if not (Tier.is_root code st) then raise_notrace x
+            else if not (entered ctx code (Tier.after code from)) then failwith "jit: a region refused after its check"
+        in
+        fun ctx ->
+          match Tier.ready ctx st ver with
+          | Some code -> if not (entered ctx code (Tier.start code)) then interp ctx
+          | None -> interp ctx
+      end
     in
     if has_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
   | Break -> fun _ -> raise_notrace Break_loop

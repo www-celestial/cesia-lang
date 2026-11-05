@@ -192,7 +192,7 @@ let bad_answer a =
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
-  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] file.ce [args...]\n\
+  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] file.ce [args...]\n\
   \       cesia test [path] [--no-spec]\n\
   \       cesia do [task]\n\
   \       cesia new name\n\

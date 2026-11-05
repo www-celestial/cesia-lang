@@ -14,10 +14,11 @@ let add2 =
   {|
 m_add2: module
         export add2
-add2:   func i64, p:ints, p:floats, p:vals, p:io
-        local i64:b, i64:x, i64:y, d:f
-        mov b, i64:0(io)
-        rsh b, b, 1
+add2:   func i64, p:cx
+        local i64:b, i64:x, i64:y, d:f, i64:ints, i64:floats
+        mov ints, i64:0(cx)
+        mov floats, i64:8(cx)
+        mov b, i64:24(cx)
         mov x, i64:0(ints, b, 8)
         mov y, i64:8(ints, b, 8)
         rsh x, x, 1
@@ -36,7 +37,8 @@ add2:   func i64, p:ints, p:floats, p:vals, p:io
 
 let () =
   let f = (Jit.load add2 [| "add2" |]).(0) in
-  let ints = [| 0; 3; 4; 0 |] and floats = Float.Array.of_list [ 0.; 1.5; 0. ] and io = [| 1 |] in
+  let ints = [| 0; 3; 4; 0 |] and floats = Float.Array.of_list [ 0.; 1.5; 0. ] and io = Array.make Cesia.Ir.io_size 0 in
+  io.(Cesia.Ir.io_base) <- 1;
   let status = Jit.call f ints floats [||] io in
   check "status" (status = 7);
   check "int sum" (ints.(3) = 7);
@@ -46,12 +48,12 @@ let () =
   let g = (Jit.load {|
 m_two:  module
         export two
-two:    func i64, p:ints, p:floats, p:vals, p:io
+two:    func i64, p:cx
         ret 2
         endfunc
         endmodule
 |} [| "two" |]).(0) in
-  check "second module" (Jit.call g [||] (Float.Array.create 0) [||] [| 0 |] = 2);
+  check "second module" (Jit.call g [||] (Float.Array.create 0) [||] (Array.make Cesia.Ir.io_size 0) = 2);
   check "first still runs" (Jit.call f ints floats [||] io = 7 && ints.(3) = 7);
   print_endline "jit: hand-written MIR ok"
 
@@ -204,7 +206,7 @@ let b = 10
 
 let stacks () = Array.make 4096 0, Float.Array.make 4096 0., Array.make 4096 Missing
 
-let run ?(fuel = max_int / 4) ?(entry = 0) (ver : version) f (ints, floats, vals) args =
+let run ?(fuel = max_int / 4) ?(until = max_int / 4) ?(entry = 0) (ver : version) f (ints, floats, vals) args =
   Array.iteri
     (fun k a ->
        let slot = ver.pk.(k) / 4 in
@@ -218,7 +220,12 @@ let run ?(fuel = max_int / 4) ?(entry = 0) (ver : version) f (ints, floats, vals
   io.(Ir.io_base) <- b;
   io.(Ir.io_entry) <- entry;
   io.(Ir.io_fuel) <- fuel;
-  io.(Ir.io_cap) <- Array.length ints;
+  io.(Ir.io_quantum) <- fuel;
+  io.(Ir.io_cap2) <- Array.length ints - 2;
+  io.(Ir.io_depth) <- max_int / 4;
+  io.(Ir.io_lim) <- Array.length ints - 2;
+  io.(Ir.io_budget) <- max_int / 4;
+  io.(Ir.io_until) <- until;
   let status = Jit.call f ints floats vals io in
   status, io
 
@@ -243,20 +250,21 @@ let () =
   let st, io = run ver f (stacks ()) [| Int 600; Int 400; Int 200 |] in
   check "mandel of the benchmark" (st = 0 && io.(Ir.io_int) = 13428156);
   (* Fuel out: leave, come back at the resume point, same result. *)
+  (* A full checkpoint due every 500 steps: the ticks outside inner loops leave, and the run comes back. *)
   let resumed ?(fuel = 1000) ver f args =
     let s = stacks () in
-    let st, io = run ~fuel ver f s args in
+    let st, io = run ~fuel ~until:500 ver f s args in
     let st = ref st and io = ref io and trips = ref 0 in
     while !st = Ir.fuel_out do
       incr trips;
-      let s2, io2 = run ~fuel ~entry:(!io.(Ir.io_point) + 1) ver f s [||] in
+      let s2, io2 = run ~fuel ~until:500 ~entry:(!io.(Ir.io_point) + 1) ver f s [||] in
       st := s2;
       io := io2
     done;
     !st, !io, !trips, s
   in
   let st, io, trips, _ = resumed ver f [| Int 40; Int 30; Int 60 |] in
-  check "mandel through fuel" (st = 0 && string_of_int io.(Ir.io_int) = line 1 && trips > 10);
+  check "mandel through fuel" (st = 0 && string_of_int io.(Ir.io_int) = line 1 && trips > 5);
   (* dot: float arrays read *)
   let xs = float_array [| 1.5; 3.0; 4.5; 6.0; 7.5 |] and ys = float_array [| 9.; 8.; 7.; 6.; 5. |] in
   let ver, fn, f = native "dot" [| TFA; TFA; TI |] in

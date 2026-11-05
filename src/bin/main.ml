@@ -160,6 +160,9 @@ let run args =
   let watching = ref false in
   let rec options (o : Runtime.options) = function
     | "--no-spec" :: rest -> options { o with o_no_spec = true } rest
+    | "--no-jit" :: rest ->
+      Tier.mode := Tier.off;
+      options o rest
     | "--watch" :: rest ->
       watching := true;
       options o rest
@@ -224,9 +227,17 @@ let create name =
   if code = 0 then print_endline (Messages.project_created name);
   exit code
 
+(* CESIA_JIT=off or always, for tests; native code otherwise comes to what gets hot. *)
+let jit_mode () =
+  match Sys.getenv_opt "CESIA_JIT" with
+  | Some "off" -> Tier.mode := Tier.off
+  | Some "always" -> Tier.mode := Tier.always
+  | _ -> ()
+
 let () =
   try
     tune_gc ();
+    jit_mode ();
     match Array.to_list Sys.argv with
     | _ :: "version" :: _ -> print_endline Version.text
     | _ :: "run" :: args -> run args

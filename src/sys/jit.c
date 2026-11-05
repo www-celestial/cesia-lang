@@ -107,12 +107,20 @@ value cesia_jit_load(value text, value names) {
   CAMLreturn(out);
 }
 
-/* The one entry: f(ints, floats, values, io) gives a status. ints and io are OCaml int arrays, so their cells hold
-   tagged integers, 2n + 1; floats is a float array, raw doubles; values an array of values. Nothing here allocates, so
-   no collection moves them while native code runs. */
-typedef intnat entry(value *, double *, value *, value *);
+/* The one entry: f(cx) gives a status. cx holds the stacks (ints and io are OCaml int arrays, whose cells hold 2n + 1;
+   floats raw doubles; values an array of values), then the cells of io as raw integers, copied back after. Nothing here
+   allocates, so no collection moves the stacks while native code runs. */
+typedef intnat entry(int64_t *);
 
 value cesia_jit_call(value f, value ints, value floats, value vals, value io) {
-  entry *e = (entry *) Nativeint_val(f);
-  return Val_long(e((value *) ints, (double *) floats, (value *) vals, (value *) io));
+  int64_t cx[32];
+  mlsize_t n = Wosize_val(io);
+  if (n > 32) n = 32;
+  cx[0] = (int64_t) ints;
+  cx[1] = (int64_t) floats;
+  cx[2] = (int64_t) vals;
+  for (mlsize_t k = 3; k < n; k++) cx[k] = Long_val(Field(io, k));
+  intnat status = ((entry *) Nativeint_val(f))(cx);
+  for (mlsize_t k = 3; k < n; k++) Field(io, k) = Val_long(cx[k]);
+  return Val_long(status);
 }
