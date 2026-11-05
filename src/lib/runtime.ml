@@ -333,5 +333,5 @@ let copy ctx v =
 
 let own ctx v =
   match v with
-  | Array { a_owned = true; _ } | Struct { r_owned = true; _ } | Dict { deep = Mine | Deep { downed = true; _ }; _ } -> v
+  | Array { a_owned = true; _ } | Struct { r_owned = true; _ } | Dict { d_owned = true; _ } -> v
   | _ -> copy ctx v

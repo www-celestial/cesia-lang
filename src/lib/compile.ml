@@ -211,7 +211,7 @@ type field_cache = { cs : shape; ci : int }
 type key_cache = { ck : keys; kc : int }
 
 (* Keys that no map holds: a deep map's are [Trie.no_keys]. *)
-let no_key = { ck = { ks = [| Undef |]; hs = [| -1 |]; used = 0 }; kc = 0 }
+let no_key = { ck = { ks = [| Undef |]; hs = [| -1 |]; used = 0; deep = Flat }; kc = 0 }
 
 (* What a call finds under a name: field [mi] of the value, or, if [mi] < 0, the method [mg]. *)
 (* [mi]: the place of a field, or -1 for a method of the struct, or -2 for a method of an interface, which holds until the
@@ -329,7 +329,7 @@ let type_check (w : world) (t : ptype) =
             match plan_of r.shape with
             | need, -1 when holds r.fields need -> last := (r.shape, need, w.reloads); x
             | _ -> Undef)
-        | Dict { keys; vals; deep = Mine | Shared; _ } as x ->
+        | Dict { keys = { deep = Flat; _ } as keys; vals; _ } as x ->
           let k, need, seen, n = !klast in
           if keys == k && n = Array.length vals && seen = w.reloads && holds vals need then x
           else (
@@ -503,7 +503,7 @@ let rec met (shape : shape) = function
 let rec field_slow ctx pm v name =
   match v with
   | Struct r -> r.fields.(field_slot ctx pm r.shape name)
-  | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) (Trie.hash (Text name)) (Text name) >= 0 ->
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) (Trie.hash (Text name)) (Text name) >= 0 ->
     (* As a field of a struct: an owned map lends it, and a write through it stays in place. *)
     vals.(Trie.index keys (Array.length vals) (Trie.hash (Text name)) (Text name))
   | Dict _ ->
@@ -528,12 +528,12 @@ let step_read ctx pm v st =
 (* A key written in an owned map, in place, or the map that takes its place; else a new map. Either is returned. *)
 let write_key ctx v k x =
   match v with
-  | Dict { keys; vals; deep = Mine } ->
+  | Dict { keys = { deep = Flat; _ } as keys; vals; d_owned = true } ->
     Dict.check ctx k;
     let h = Trie.hash k in
     let i = Trie.index keys (Array.length vals) h k in
     if i >= 0 then (vals.(i) <- x; v) else Trie.add_absent v h k (Value.share x)
-  | Dict { deep = Deep { downed = true; _ }; _ } ->
+  | Dict { keys = { deep = Deep _; _ }; d_owned = true; _ } ->
     Dict.check ctx k;
     Trie.put_owned v (Trie.hash k) k (Value.share x)
   | _ -> Dict.put ctx "" k (Value.share x) v
@@ -870,7 +870,7 @@ and store_var c i (e : expr) : ctx -> unit =
           (match x with
            | Array r -> r.a_owned <- false
            | Struct r -> r.r_owned <- false
-           | Dict _ -> ignore (Trie.share x)
+           | Dict r -> r.d_owned <- false
            | _ -> ());
           ctx.v.(ctx.b + k) <- x
       | Var _ | Index _ | Field _ ->
@@ -880,7 +880,7 @@ and store_var c i (e : expr) : ctx -> unit =
           (match x with
            | Array r -> r.a_owned <- false
            | Struct r -> r.r_owned <- false
-           | Dict _ -> ignore (Trie.share x)
+           | Dict r -> r.d_owned <- false
            | _ -> ());
           ctx.v.(ctx.b + k) <- x
       | Call
@@ -1050,7 +1050,7 @@ and ce c (e : expr) : ctx -> t =
       (match x with
        | Array r -> r.a_owned <- false
        | Struct r -> r.r_owned <- false
-       | Dict _ -> ignore (Trie.share x)
+       | Dict r -> r.d_owned <- false
        | _ -> ());
       x
   | Var _ | Index _ | Field _ ->
@@ -1236,7 +1236,7 @@ and index_read c e b ixs uses_end =
           let last = !cache in
           (match x with
            | Dict { keys; vals; _ } when keys == last.ck -> vals.(last.kc)
-           | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
+           | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
              let i = Trie.index keys (Array.length vals) h key in
              if Trie.is_whole keys then cache := { ck = keys; kc = i };
              vals.(i)
@@ -1328,21 +1328,21 @@ and struct_lit c sname fields =
       fun ctx ->
         let x = a ctx in
         let y = b ctx in
-        Dict { keys; vals = [| x; y |]; deep = Mine }
+        Dict { keys; vals = [| x; y |]; d_owned = true }
     | [| a; b; d |] ->
       fun ctx ->
         let x = a ctx in
         let y = b ctx in
         let z = d ctx in
-        Dict { keys; vals = [| x; y; z |]; deep = Mine }
+        Dict { keys; vals = [| x; y; z |]; d_owned = true }
     | [| a; b; d; e |] ->
       fun ctx ->
         let x = a ctx in
         let y = b ctx in
         let z = d ctx in
         let w = e ctx in
-        Dict { keys; vals = [| x; y; z; w |]; deep = Mine }
-    | vals -> fun ctx -> Dict { keys; vals = Array.map (fun v -> v ctx) vals; deep = Mine }
+        Dict { keys; vals = [| x; y; z; w |]; d_owned = true }
+    | vals -> fun ctx -> Dict { keys; vals = Array.map (fun v -> v ctx) vals; d_owned = true }
   end else
   let shape = Value.shape_of c.w ?sname ~m:c.w.modules.(c.ver.owner.pm).host names in
   match Array.map (fun (_, v) -> ce c v) fields with
@@ -1387,7 +1387,7 @@ and field_read c e b name =
         cache := { cs = r.shape; ci = i };
         r.fields.(i)
       end
-    | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
+    | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
       let i = Trie.index keys (Array.length vals) h key in
       if Trie.is_whole keys then kcache := { ck = keys; kc = i };
       vals.(i)
@@ -1439,7 +1439,7 @@ and member_read c e b name ~shared =
         if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       end
     | Dict { keys; vals; _ } when keys == !kcache.ck -> vals.(!kcache.kc)
-    | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
+    | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
       let i = Trie.index keys (Array.length vals) h key in
       if Trie.is_whole keys then kcache := { ck = keys; kc = i };
       vals.(i)
@@ -2548,12 +2548,12 @@ and set_name c root sp name value ~key =
     let y = v ctx in
     let x = read ctx in
     match x with
-    | Dict ({ deep = Mine; _ } as d) when d.keys == !here.ck -> d.vals.(!here.kc) <- y
-    | Dict ({ deep = Mine; _ } as d) when Trie.index d.keys (Array.length d.vals) h k >= 0 ->
+    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when d.keys == !here.ck -> d.vals.(!here.kc) <- y
+    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when Trie.index d.keys (Array.length d.vals) h k >= 0 ->
       let i = Trie.index d.keys (Array.length d.vals) h k in
       if Trie.is_whole d.keys then here := { ck = d.keys; kc = i };
       d.vals.(i) <- y
-    | Dict ({ deep = Mine; _ } as d) when Array.length d.vals < Trie.width ->
+    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when Array.length d.vals < Trie.width ->
       let n = Array.length d.vals in
       let before, m, after = !grown in
       let after =
@@ -2564,7 +2564,7 @@ and set_name c root sp name value ~key =
           after
         end
       in
-      set ctx (Dict { keys = after; vals = Trie.append d.vals y; deep = Mine })
+      set ctx (Dict { keys = after; vals = Trie.append d.vals y; d_owned = true })
     | _ ->
       ctx.site <- s;
       write_root ctx pm set x st y

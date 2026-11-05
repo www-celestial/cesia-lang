@@ -37,14 +37,14 @@ let run ?(perms = []) ?(all = false) src =
     (Native { nname = "Storage"; perm = None; params = [||]; min_args = 1; max_args = 1; ret_ty = (fun _ -> TA); f1 = None;
               i2 = None;
               run = (fun _ a ->
-                  Text (match a.(0) with Dict { deep = Mine | Shared; _ } -> "block" | Dict _ -> "deep" | _ -> "other")) });
+                  Text (match a.(0) with Dict { keys = { deep = Flat; _ }; _ } -> "block" | Dict _ -> "deep" | _ -> "other")) });
   (* Do two maps share their keys? *)
   Native.register w "SameKeys"
     (Native { nname = "SameKeys"; perm = None; params = [||]; min_args = 2; max_args = 2; ret_ty = (fun _ -> TA); f1 = None;
               i2 = None;
               run = (fun _ a ->
                   match a.(0), a.(1) with
-                  | Dict { keys = x; deep = Mine | Shared; _ }, Dict { keys = y; deep = Mine | Shared; _ } -> if x == y then True else False
+                  | Dict { keys = { deep = Flat; _ } as x; _ }, Dict { keys = { deep = Flat; _ } as y; _ } -> if x == y then True else False
                   | _ -> False) });
   let path = Filename.temp_file "cesia" ".ce" in
   Out_channel.with_open_bin path (fun oc -> output_string oc src);

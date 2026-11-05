@@ -19,26 +19,25 @@ type t =
   | Fun of { proto : proto; env : t array }
   | Native of native
   | Handle of { kind : string; id : int; task : task option }  (** a reference to something outside the values *)
-  | Dict of { keys : keys; vals : t array; mutable deep : deep }
-      (** a map. Up to 32 keys it is one block: [keys] and [vals] in the order of insertion, and [deep] is [Mine] or
-          [Shared]; the maps
-          made at one place of the code share [keys]. Past them, the keys are in the trie of [deep], and [keys] and [vals]
-          are empty. *)
+  | Dict of { keys : keys; vals : t array; mutable d_owned : bool }
+      (** a map. Up to 32 keys it is one block: [keys] and [vals] in the order of insertion, and the [deep] of [keys] is
+          [Flat]; the maps made at one place of the code share [keys]. Past them, the keys are in the trie of the [deep] of
+          [keys], whose arrays are empty, as [vals]. [d_owned]: nothing else holds the map, a write may change it in
+          place. *)
   | Bound of { g : t; self : t }  (** a method and its object, on their way to the call: never visible to the program *)
 
 (** Keys and their hashes. The arrays can be longer than a map that holds them, whose keys are as many as its values: a place,
     once written, never changes, and [used] is the most places written, so that a map of [used] keys alone may write the next
     one in place, as [Append] does for lists. Keys made whole, of a literal, a native or a JSON object, have [used] =
     [max_int]: they never grow in place, and every map that holds them has all of them, so a read can cache them. *)
-and keys = { ks : t array; hs : int array; mutable used : int }
+and keys = { ks : t array; hs : int array; mutable used : int; deep : deep }
 
 and deep =
-  | Mine  (** one block that nothing else holds: a write may change it in place *)
-  | Shared  (** one block held in two places: a write copies it first *)
-  | Deep of { mutable root : node; mutable size : int; mutable next : int; mutable order : t array; ded : int; mutable downed : bool }
+  | Flat  (** the keys of a block *)
+  | Deep of { mutable root : node; mutable size : int; mutable next : int; mutable order : t array; ded : int }
       (** [next]: the rank of the next key; [order]: the keys and values in the order of insertion, k1 v1 k2 v2..., or
           [Trie.no_order] until asked; [ded]: the mark of the nodes that this map made, which it may change in place while
-          it is owned, [downed] *)
+          it is owned *)
 
 (** A node of the trie, at a level: the keys under it agree on the first 5 bits of hash of each level above. The mark of the
     map that made it: no other map changes it in place. *)

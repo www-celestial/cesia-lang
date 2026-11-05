@@ -222,7 +222,7 @@ and equal_at ctx depth a b =
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env
   | Native x, Native y -> x == y
   | Handle x, Handle y -> x.id = y.id && String.equal x.kind y.kind
-  | Dict { keys = kx; vals = vx; deep = Mine | Shared; _ }, Dict { keys = ky; vals = vy; deep = Mine | Shared; _ } when kx == ky && Array.length vx = Array.length vy ->
+  | Dict { keys = { deep = Flat; _ } as kx; vals = vx; _ }, Dict { keys = { deep = Flat; _ } as ky; vals = vy; _ } when kx == ky && Array.length vx = Array.length vy ->
     let n = Array.length vx in
     pay ctx n;
     let rec go i = i >= n || (equal_at ctx (depth + 1) vx.(i) vy.(i) && go (i + 1)) in
