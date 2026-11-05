@@ -62,6 +62,12 @@ static void MIR_NO_RETURN failed(MIR_error_type_t type, const char *format, ...)
   longjmp(on_error, 1);
 }
 
+/* A failed check inside MIR, which would abort: back to the load too. */
+void cesia_mir_failed(const char *what) {
+  snprintf(error, sizeof error, "jit: a check of MIR failed: %s", what);
+  longjmp(on_error, 1);
+}
+
 static MIR_item_t exported(MIR_module_t m, const char *name) {
   for (MIR_item_t it = DLIST_HEAD(MIR_item_t, m->items); it != NULL; it = DLIST_NEXT(MIR_item_t, it))
     if (it->item_type == MIR_func_item && strcmp(it->u.func->name, name) == 0) return it;

@@ -34,7 +34,7 @@ let make (w : world) (ver : version) fns start loops =
     if calls && not pure then None
     else begin
       let text, entry = Mirtext.emit fns in
-      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_string text;
+      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);
       match be.load text [| entry |] with
       | [| addr |] ->
         let fn = fns.(0) in

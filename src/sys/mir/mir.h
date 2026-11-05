@@ -29,7 +29,9 @@ extern "C" {
 #ifdef NDEBUG
 static inline int mir_assert (int cond) { return 0 && cond; }
 #else
-#define mir_assert(cond) assert (cond)
+/* Cesia: a failed check goes back to the load, which turns the JIT off for the run, instead of aborting the process. */
+extern void cesia_mir_failed (const char *what);
+#define mir_assert(cond) ((cond) ? (void) 0 : cesia_mir_failed (#cond))
 #endif
 
 #define FALSE 0

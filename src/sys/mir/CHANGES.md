@@ -32,3 +32,9 @@ The core only: `mir.c`, `mir-gen.c` and what they include (the five targets, the
 - `mir-gen-x86_64.c`, `target_change_to_direct_calls`: two reads of a 32-bit and a 64-bit word inside machine code, through
   casts of unaligned pointers, are `memcpy` now. UBSan reported the first one ("load of misaligned address"); x86-64
   tolerates it, C doesn't promise it.
+- `mir-gen.c`, `change_reg`: the integer register for the address of a spilled value's stack slot is taken only when the
+  slot's offset doesn't fit the instruction (never on x86-64). Taken always, a spilled double stored through a base and an
+  index (`dmov d:-8(base, index, 4), r`, which MIR's ssa combine forms from our separate add) needed a third integer
+  reload register, and `get_reload_hreg`'s `gen_assert (rld_num <= 1)` aborted the process.
+- `mir-gen.c` `gen_assert` and `mir.h` `mir_assert`: a failed check calls `cesia_mir_failed` (in `src/sys/jit.c`), which goes
+  back to the load as MIR's errors do, and the JIT is off for the rest of the run: a check of MIR never kills Cesia.

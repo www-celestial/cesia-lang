@@ -61,13 +61,15 @@ let func b ~prefix ~nested (fn : Ir.func) =
   let params = Array.map (fun (v : Ir.var) -> v.reg) fn.params in
   let is_param r = Array.mem r params in
   (* Only the outermost frame keeps its variables in its slots, when it leaves to come back. *)
+  (* MIR has two reload registers of each class for an instruction: every memory operand here has one register for its
+     address, computed first, so that an instruction never needs more, whatever was spilled. *)
   let spill b =
-    Printf.bprintf b "  mov ip, %s\n  mov fp, %s\n" (cx 0) (cx 1);
+    Printf.bprintf b "  mov ip, %s\n  lsh xa, b, 3\n  add ip, ip, xa\n  mov fp, %s\n  add fp, fp, xa\n" (cx 0) (cx 1);
     Array.iter
       (fun (v : Ir.var) ->
          match v.kind with
-         | Kint -> Printf.bprintf b "  add x0, r%d, 1\n  mov i64:%d(ip, b, 8), x0\n" v.reg (8 * v.slot)
-         | Kfloat -> Printf.bprintf b "  dmov d:%d(fp, b, 8), r%d\n" (8 * v.slot) v.reg)
+         | Kint -> Printf.bprintf b "  add x0, r%d, 1\n  mov i64:%d(ip), x0\n" v.reg (8 * v.slot)
+         | Kfloat -> Printf.bprintf b "  dmov d:%d(fp), r%d\n" (8 * v.slot) v.reg)
       fn.vars
   in
   let stop b status =
@@ -79,8 +81,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
   let frame_of site = match fn.chains.(site) with [] -> "b" | (vb, _, _) :: _ -> reg_of vb in
   let callee_of site = match fn.chains.(site) with [] -> if nested then 2 else fn.frame + fn.hidden | _ -> 2 in
   let link s at caller csite =
-    Printf.bprintf s "  mov ip, %s\n  lsh x0, %s, 1\n  add x0, x0, 1\n  mov i64:0(ip, %s, 8), x0\n  mov i64:8(ip, %s, 8), %s\n" (cx 0)
-      caller at at (tagged fn.sites.(csite))
+    Printf.bprintf s "  mov ip, %s\n  lsh xa, %s, 3\n  add ip, ip, xa\n  lsh x0, %s, 1\n  add x0, x0, 1\n  mov i64:0(ip), x0\n" (cx 0) at caller;
+    Printf.bprintf s "  mov i64:8(ip), %s\n" (tagged fn.sites.(csite))
   in
   let links s site = List.iter (fun (vb, cb, cs) -> link s (reg_of vb) (reg_of cb) cs) fn.chains.(site) in
   (* An error: the interpreter remakes its message from the operands, at the site, from this frame. *)
@@ -107,8 +109,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
     match i with
     | Ir.Reg r ->
       let e = error code site i (Some raw_b) in
-      pr "  sub x0, r%d, 2\n  ubge %s, x0, %s\n" r e (len a);
-      Printf.sprintf "d:-8(%s, r%d, 4)" (arr a) r
+      pr "  sub x0, r%d, 2\n  ubge %s, x0, %s\n  lsh xa, r%d, 2\n  add xa, xa, %s\n" r e (len a) r (arr a);
+      "d:-8(xa)"
     | Int k ->
       let e = error code site i (Some raw_b) in
       pr "  mov x0, %s\n  ubge %s, x0, %s\n" (doubled (k - 1)) e (len a);
@@ -171,8 +173,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Len (r, a) -> pr "  mov r%d, %s\n" r (len a)
     | Elem (r, a, i, site) -> pr "  dmov r%d, %s\n" r (check_index a i site Ir.err_read)
     | Set_elem (a, i, v, site) ->
+      pr "  dmov y0, %s\n" (operand v);
       let m = check_index a i site Ir.err_write in
-      pr "  dmov %s, %s\n" m (operand v)
+      pr "  dmov %s, y0\n" m
     | Call (r, k, args, site) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
       pr "  add nb, %s, %d\n" (frame_of site) (callee_of site);
@@ -197,8 +200,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
           | Ir.Int n -> pr "  mulo r%d, %s, %d\n" r x' n
           | _ -> pr "  mov x1, %s\n  rsh x1, x1, 1\n  mulo r%d, %s, x1\n" (operand y) r x'));
       pr "  bo %s\n" (bl l)
-    | Elem_at (r, a, i) -> pr "  dmov r%d, d:-8(%s, r%d, 4)\n" r (arr a) i
-    | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
+    | Elem_at (r, a, i) -> pr "  lsh xa, r%d, 2\n  add xa, xa, %s\n  dmov r%d, d:-8(xa)\n" i (arr a) r
+    | Set_at (a, i, v) -> pr "  dmov y0, %s\n  lsh xa, r%d, 2\n  add xa, xa, %s\n  dmov d:-8(xa), y0\n" (operand v) i (arr a)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"
     | Tick (p, can_leave) ->
@@ -247,20 +250,20 @@ let func b ~prefix ~nested (fn : Ir.func) =
       pr "  ret 0, fuel\n"
     | Out v ->
       (match v with
-       | Ir.Float _ -> pr "  mov fp, %s\n  dmov d:%d(fp, b, 8), %s\n" (cx 1) (8 * fn.frame) (operand v)
-       | Reg r when fn.kinds.(r) = Kfloat -> pr "  mov fp, %s\n  dmov d:%d(fp, b, 8), r%d\n" (cx 1) (8 * fn.frame) r
+       | Ir.Float _ -> pr "  mov fp, %s\n  lsh xa, b, 3\n  add fp, fp, xa\n  dmov y0, %s\n  dmov d:%d(fp), y0\n" (cx 1) (operand v) (8 * fn.frame)
+       | Reg r when fn.kinds.(r) = Kfloat -> pr "  mov fp, %s\n  lsh xa, b, 3\n  add fp, fp, xa\n  dmov d:%d(fp), r%d\n" (cx 1) (8 * fn.frame) r
        | _ -> pr "  mov x0, %s\n  rsh x0, x0, 1\n  mov %s, x0\n" (operand v) (cx Ir.io_int));
       stop b Ir.returned
   in
   pr "%s%s: func %s, i64, %s\n" prefix name (ty fn.result) (args_of ~nested fn);
-  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, d:y0\n";
+  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, d:y0\n";
   Array.iteri (fun r k -> if not (is_param r) then pr "  local %s:r%d\n" (ty k) r) fn.kinds;
   Array.iteri (fun a _ -> pr "  local i64:%s, i64:%s\n" (arr a) (len a)) fn.arrays;
   let guards () =
-    if Array.length fn.arrays > 0 then pr "  mov vp, %s\n" (cx 2);
+    if Array.length fn.arrays > 0 then pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n" (cx 2);
     Array.iteri
       (fun a (slot, written) ->
-         pr "  mov x0, i64:%d(vp, b, 8)\n  and x1, x0, 1\n  bne %s, x1, 0\n" (8 * slot) lf;
+         pr "  mov x0, i64:%d(vp)\n  and x1, x0, 1\n  bne %s, x1, 0\n" (8 * slot) lf;
          pr "  mov x1, i64:-8(x0)\n  and x1, x1, 255\n  bne %s, x1, 3\n  mov x2, i64:0(x0)\n" lf;
          pr "  mov x1, i64:16(x2)\n  mov x3, i64:-8(x1)\n  and x3, x3, 255\n  bne %s, x3, 0\n" lf;
          if written then pr "  mov x3, i64:24(x2)\n  bne %s, x3, 3\n" lf;
@@ -275,12 +278,12 @@ let func b ~prefix ~nested (fn : Ir.func) =
     (* A slot of the int stack must hold an OCaml integer when the outermost frame writes it, whatever a register held. *)
     Array.iteri (fun r k -> if k = Ir.Kint && not (is_param r) then pr "  mov r%d, 0\n" r) fn.kinds;
     guards ();
-    pr "  jmp %s\n%s:\n  mov ip, %s\n  mov fp, %s\n" (bl 0) lr (cx 0) (cx 1);
+    pr "  jmp %s\n%s:\n  mov ip, %s\n  lsh xa, b, 3\n  add ip, ip, xa\n  mov fp, %s\n  add fp, fp, xa\n" (bl 0) lr (cx 0) (cx 1);
     Array.iter
       (fun (v : Ir.var) ->
          match v.kind with
-         | Kint -> pr "  mov r%d, i64:%d(ip, b, 8)\n  sub r%d, r%d, 1\n" v.reg (8 * v.slot) v.reg v.reg
-         | Kfloat -> pr "  dmov r%d, d:%d(fp, b, 8)\n" v.reg (8 * v.slot))
+         | Kint -> pr "  mov r%d, i64:%d(ip)\n  sub r%d, r%d, 1\n" v.reg (8 * v.slot) v.reg v.reg
+         | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot))
       fn.vars;
     guards ();
     if Array.length fn.resumes > 0 then
@@ -330,18 +333,18 @@ let emit (fns : Ir.func array) =
   let f0 = fns.(0) in
   pr "%se: func i64, p:cx\n  local i64:b, i64:entry, i64:fuel, i64:ip, i64:fp, i64:x0, %s:res%s\n" prefix (ty f0.result)
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) f0.params)));
-  pr "  mov b, %s\n  mov entry, %s\n  mov fuel, %s\n  mov ip, %s\n  mov fp, %s\n" (cx Ir.io_base) (cx Ir.io_entry)
-    (cx Ir.io_fuel) (cx 0) (cx 1);
+  pr "  mov b, %s\n  mov entry, %s\n  mov fuel, %s\n  mov ip, %s\n  lsh x0, b, 3\n  add ip, ip, x0\n  mov fp, %s\n  add fp, fp, x0\n"
+    (cx Ir.io_base) (cx Ir.io_entry) (cx Ir.io_fuel) (cx 0) (cx 1);
   Array.iter
     (fun (v : Ir.var) ->
        match v.kind with
-       | Kint -> pr "  mov r%d, i64:%d(ip, b, 8)\n  sub r%d, r%d, 1\n" v.reg (8 * v.slot) v.reg v.reg
-       | Kfloat -> pr "  dmov r%d, d:%d(fp, b, 8)\n" v.reg (8 * v.slot))
+       | Kint -> pr "  mov r%d, i64:%d(ip)\n  sub r%d, r%d, 1\n" v.reg (8 * v.slot) v.reg v.reg
+       | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot))
     f0.params;
   pr "  call P%s0, %sf0, res, fuel, cx, b, entry, fuel%s\n  blt %sX, fuel, 0\n" prefix prefix
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", r%d" v.reg) f0.params))) prefix;
   (match f0.result with
    | Kint -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
-   | Kfloat -> pr "  dmov d:%d(fp, b, 8), res\n" (8 * f0.frame));
+   | Kfloat -> pr "  dmov d:%d(fp), res\n" (8 * f0.frame));
   pr "  mov %s, fuel\n  ret 0\n%sX:\n  mov x0, %s\n  ret x0\n  endfunc\n  endmodule\n" (cx Ir.io_fuel) prefix (cx Ir.io_status);
   Buffer.contents b, prefix ^ "e"

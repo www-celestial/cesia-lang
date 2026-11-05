@@ -97,7 +97,10 @@
 #include "mir-code-alloc.h"
 #include "mir-alloc.h"
 
-#define gen_assert(cond) assert (cond)
+/* Cesia: a failed check of the generator goes back to the load, which turns the JIT off for the run, instead of aborting
+   the process. */
+extern void cesia_mir_failed (const char *what);
+#define gen_assert(cond) ((cond) ? (void) 0 : cesia_mir_failed (#cond))
 
 typedef struct gen_ctx *gen_ctx_t;
 
@@ -7903,9 +7906,13 @@ static MIR_reg_t change_reg (gen_ctx_t gen_ctx, MIR_op_t *mem_op, MIR_reg_t reg,
   if (loc <= MAX_HARD_REG) return loc;
   MIR_type_t type = MIR_reg_type (ctx, reg - MAX_HARD_REG, curr_func_item->u.func);
   MIR_reg_t reload_hreg = get_reload_hreg (gen_ctx, reg, type, out_p);
-  MIR_reg_t temp_addr_hreg
-    = (out_p || type != MIR_T_I64 ? get_reload_hreg (gen_ctx, MIR_NON_VAR, MIR_T_I64, out_p)
-                                  : reload_hreg);
+  /* Cesia: the register for the slot's address only when its offset needs one (never on x86-64): taken always, it was a
+     third integer reload register for a spilled float stored through base + index, and get_reload_hreg's check failed. */
+  MIR_reg_t temp_addr_hreg = reload_hreg;
+  if ((out_p || type != MIR_T_I64)
+      && !target_valid_mem_offset_p (gen_ctx, type,
+                                     target_get_stack_slot_offset (gen_ctx, type, loc - MAX_HARD_REG - 1)))
+    temp_addr_hreg = get_reload_hreg (gen_ctx, MIR_NON_VAR, MIR_T_I64, out_p);
   gen_assert (!MIR_addr_code_p (insn->code));
   return add_ld_st (gen_ctx, mem_op, loc, base_reg, data_mode, reload_hreg, out_p, temp_addr_hreg,
                     insn, out_p);
