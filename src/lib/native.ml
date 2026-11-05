@@ -527,6 +527,16 @@ let prelude =
     "Pairs", nat "Pairs" 1 1 (fun ctx a ->
         let shape = Value.shape_of ctx.w [| "Key"; "Value" |] in
         dict_items ctx "Pairs" a.(0) (fun k v -> Struct { shape; fields = [| k; Value.share v |]; r_owned = true }));
+    "Fields", nat "Fields" 1 1 (fun ctx a ->
+        match a.(0) with
+        | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
+          (* Inside the package of the struct, its small fields too. *)
+          let site = if ctx.site >= 0 && ctx.site < Dynarray.length ctx.w.sites then (Dynarray.get ctx.w.sites ctx.site).sver else None in
+          let inside = (match site with Some v -> ctx.w.modules.(v.owner.pm).host = shape.sm | None -> false) in
+          let keep = List.filter (fun i -> inside || Lexer.is_public shape.names.(i)) (List.init (Array.length fields) Fun.id) in
+          let names = Array.of_list (List.map (fun i -> shape.names.(i)) keep) in
+          Struct { shape = Value.shape_of ctx.w names; fields = Array.of_list (List.map (fun i -> Value.share fields.(i)) keep); r_owned = true }
+        | v -> Runtime.fail ctx Type (Messages.fields_of (Value.describe v)));
     is_ "IsDict" (function Dict _ | Struct { shape = { sname = None; _ }; _ } -> true | _ -> false);
     "Len", nat ~ret:(fun _ -> TI) "Len" 1 1 (fun _ a -> Int (length a.(0)));
     "Div", int_native "Div" Arith.int_div;

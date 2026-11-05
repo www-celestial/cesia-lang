@@ -1,0 +1,3 @@
+struct Point { X }
+Point.From(x) = Point(x)
+Print(1)

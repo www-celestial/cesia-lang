@@ -91,13 +91,14 @@ looks in these folders in order, then at the root.
 A name says by its first letter whether it is public, as in Go.
 
 - A capital is public: `rope.LineCount`, `ui.Dark`, `Print`. So is a field: `date.Year`, `err.Kind`, `Ok(Value = 1)`.
-- A small first letter is private, and visible only in its package: `chunk`. So is a small field, and using one from another
-  package is an error at load time.
+- A small first letter is private, and visible only in its package: `chunk`. So is a small field of a struct: reading or writing
+  one from another package stops the program, and a static method of another package, `geo.Rect.make()`, is an error at load
+  time.
 - Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use pkg/rope`. A file name separates its words with `-`: `material-scene.ce`.
 - A name has no `_`: words join by capitals, `byteLength` or `ByteLength`. The lone `_` is the wildcard of a pattern.
 - A test is a private function with no parameter, `is` then a capital: `isGrows()`.
-- Dictionary keys and texts are data: `{"a": 1}`, `{Kind: "box"}`. `json.Text` writes the fields of a record as they are, with their
-  capitals: a dictionary gives other keys.
+- Dictionary keys and texts are data, never private: `{"a": 1}`, `{Kind: "box"}`, `data.name`. `json.Text` writes the keys of a
+  dictionary as they are, and the public fields of a struct, so that a small field, a password hash, never leaks.
 
 ## Methods
 
@@ -140,7 +141,10 @@ Print(r then it.Area())
 ```
 
 - The parameters of a definition are those of the call: `defn (r Rect) Moved(dx, dy)` is called `r.Moved(1, 2)`.
-- A method belongs to a `struct` of the same package. Text, arrays and records have none.
+- A method belongs to a `struct` of the same package. Text, arrays and dictionaries have none.
+- Every struct has `User.From(d)`: an `Ok` of a `User` built from the keys of a dictionary, or an `Err` that names the key in
+  excess, the field missing or the wrong type. Outside its package, a small field is no key. `Fields(u)` gives the fields back
+  as a dictionary, its small ones only inside its package. A static method can't be named `From`.
 - Values don't change in place: `r` is a copy, and a method gives a new value, like a value receiver in Go.
 - `r.Area()` looks at a field first, then at the methods of the struct of `r`, so a field that holds a function still works:
   `look.Width("M", "code")`. A method goes with its value: `d.Year()` works on any value of that struct, made in any file.
@@ -230,11 +234,11 @@ Print(Total([Rect.Square(1), {Area: () -> 2, Perimeter: () -> 6}]))
 - Both forms, as for a struct: one method per line until `end`, or `{ Area(), Perimeter() }`. A method has no body. Its
   parameters may have types, `Scaled(by Number)`, and only their number counts to meet the interface. Its result may have one,
   `Area() Number`, which documents it: no result is known before a call.
-- A struct meets an interface through its methods, or through fields that hold functions; a record through fields that hold
+- A struct meets an interface through its methods, or through fields that hold functions; a dictionary through keys that hold
   functions. The answer is kept for each shape of value, and forgotten when a file reloads.
 - An interface is a type: `s Shape`, `Inner Shape?`, `s geo.Shape`. A value that doesn't meet it stops the program, and the
   message names what it lacks: `Measured: s must be a Shape, found a Circle, which has no Perimeter().`
-- A method on an interface, `(s Shape) Describe()`, is a method of every value that meets it, records too. A field or a method
+- A method on an interface, `(s Shape) Describe()`, is a method of every value that meets it, dictionaries too. A field or a method
   of the value itself wins over it. A call looks at the interfaces of its package and of the packages its file uses; when two of
   them give the method to a value that meets both, the call stops and names them.
 - A small interface or method is private to its package, as any name, and a public interface needs a comment.
@@ -335,7 +339,9 @@ In every program, with no `use`:
 
 - Functions: `Map`, `Filter`, `Reduce`, `Scan`, `Group`, `Top`, `Range`, `Count`, `FlatMap`, `Sort`, `SortBy`, `Order`, `Reverse`, `Unique`.
 - Lists: `Append`, `Concat`, `Take`, `Skip`, `IndexOf`, `Flatten`, `Zip`, `Len`.
-- Dictionaries: `{"a": 1}`, `d["a"]`, `d["a"] = 2`, `Get`, `GetOr`, `Has`, `Put`, `Drop`, `Keys`, `Values`, `Pairs`, `MapValues`.
+- Dictionaries: `{Name: "Ana"}` is `{"Name": "Ana"}`, `d.Name` is `d["Name"]`, `d.City = "Lyon"`, `Get`, `GetOr`, `Has`, `Put`,
+  `Drop`, `Keys`, `Values`, `Pairs`, `MapValues`, `Merge`. Keys keep the order of insertion; `==` ignores it. Keys written in the
+  code make a dictionary as fast as a struct; keys from data, a balanced tree that no choice of keys slows down.
 - Texts: `Split`, `Join`, `Replace`, `Slice`, `Trim`, `Lower`, `Upper`, `Contains`, `StartsWith`, `EndsWith`, `Find`, `Repeat`, `Chars`, `Lines`, `PadLeft`, `PadRight`, `Number`, `Text`, and for bytes `Bytes`, `FromBytes`, `Byte`, `ByteSlice`, `ByteFind`.
 - Numbers: arrays and matrices compute element by element, with `Sum`, `Mean`, `Min`, `Max`, `Matmul`, `Transpose`, `Sqrt`, `Exp`, `Log`, `Sin`, `Cos`, `BitAnd`, `BitOr`, `BitXor`.
 - Results: `Ok`, `Err`, `?`, `Unwrap`, `UnwrapOr`, `MapOk`, `AndThen`. Fibers: `Spawn`, `Wait`.

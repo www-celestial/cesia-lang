@@ -70,6 +70,10 @@ val matmul_shape : int -> int -> int -> int -> t
 val need_number : string -> string -> t
 val no_field : string -> t
 val named_field : string -> string -> t
+val from_missing : string -> string -> t
+val from_static : string -> t
+val fields_of : string -> t
+val from_private : string -> t
 val field_of : string -> string -> t
 val struct_nested : t
 val struct_not_field : t

@@ -1,0 +1,5 @@
+from-static.ce:2:7: Point.From is a static method of every struct: it can't be defined.
+  2 | Point.From(x) = Point(x)
+    |       ^
+  Another name, as FromRow, can build a struct its own way.
+exit 1

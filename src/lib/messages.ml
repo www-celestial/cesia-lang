@@ -90,6 +90,12 @@ let need_number name a =
 let it_assign = plain "\"it\" is a reserved name and can't be assigned."
 let no_field name = plain (Printf.sprintf "This struct has no field \"%s\"." name)
 let named_field sname name = plain (Printf.sprintf "%s has no field \"%s\"." sname name)
+let from_static sname =
+  hinted (Printf.sprintf "%s.From is a static method of every struct: it can't be defined." sname)
+    "Another name, as FromRow, can build a struct its own way."
+let from_private sname = plain (Printf.sprintf "%s needs a field that is private to its package." sname)
+let fields_of a = plain (Printf.sprintf "Fields needs a struct, not %s." a)
+let from_missing sname name = plain (Printf.sprintf "%s needs the field \"%s\"." sname name)
 let field_of a name = plain (Printf.sprintf "Can't read the field \"%s\" of %s." name a)
 let struct_nested = plain "A struct can only be defined at the top of a file."
 let struct_not_field =

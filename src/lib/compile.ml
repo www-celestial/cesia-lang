@@ -919,7 +919,7 @@ and ca c (e : expr) : ctx -> t =
   | Array_lit rows -> array_lit c e rows
   | Comp { cbody; cvar; csrc; cguard } -> comprehension c cbody cvar csrc cguard
   | Index (b, ixs, uses_end) -> index_read c e b ixs uses_end
-  | Field (b, name) -> field_read c e b name
+  | Field (b, name) -> (match struct_from c b name with Some v -> fun _ -> v | None -> field_read c e b name)
   | Match { subject; arms } -> match_expr c e subject arms (ce c)
   | Struct_lit { sname; sfields } -> struct_lit c sname sfields
   | End_index -> end_index c
@@ -1222,6 +1222,15 @@ and struct_lit c sname fields =
       let w = e ctx in
       Struct { shape; fields = [| x; y; z; w |]; r_owned = true }
   | vals -> fun ctx -> Struct { shape; fields = Array.map (fun v -> v ctx) vals; r_owned = true }
+
+(* User.From, which every struct has: made once, where the code names it. *)
+and struct_from c b name =
+  match name, b.e with
+  | "From", Var { b = Cell { m; k; stable = true }; _ } ->
+    (match c.w.modules.(m).cells.(k) with
+     | Fun { proto; _ } when Resolve.struct_fields proto.func <> None -> Some (from_native proto c.ver.owner.pm)
+     | _ -> None)
+  | _ -> None
 
 and field_read c e b name =
   let base = (match leaf c b with `L k -> (fun (ctx : ctx) -> ctx.v.(ctx.b + k)) | l -> leaf_value l) in
@@ -2765,6 +2774,7 @@ and call_dynamic c s (call : call) target =
   let args = call.args in
   let callee, target, room =
     match call.callee.e with
+    | Field (b, name) when struct_from c b name <> None -> (let v = Option.get (struct_from c b name) in fun _ -> v), target, 0
     | Field (b, name) ->
       (* The object is a parameter too: a variable given as an argument must not also be the object. *)
       let shared = reads_module b || Array.exists (fun (a : arg) -> writes a.value) args in
@@ -3083,6 +3093,58 @@ and dispatch_named ctx g off names s =
     dispatch_named ctx g off (Array.append [| None |] names) s
   | _ -> dispatch ctx g off n s
 
+and call_value (ctx : ctx) ~base g args =
+  ctx.w.compile_ver <- compile_version;
+  let n = Array.length args in
+  if ctx.b + base + n + 2 > ctx.cap then Runtime.grow ctx (ctx.b + base + n + 2);
+  Array.blit args 0 ctx.v (ctx.b + base) n;
+  dispatch ctx g base n ctx.site
+
+and call_back (ctx : ctx) g args =
+  let base =
+    match (Dynarray.get ctx.w.sites ctx.site).sver with
+    | Some v -> v.size
+    | None -> 0
+  in
+  call_value ctx ~base g args
+
+(* User.From(m): an Ok of a User built from the keys of a map, or an Err that names the key: the data comes from outside, so a
+   bad one is an error, not a bug. A small field is no key outside the package [pm] of the code, and its name is not told. *)
+and from_native (proto : proto) pm =
+  let ctor = Fun { proto; env = [||] } in
+  let run (ctx : ctx) (a : t array) =
+    let f = proto.func and sn = proto.pname in
+    let names = Array.map (fun (p : param) -> p.pname) f.params in
+    let shape = Value.shape_of ctx.w ~sname:sn ~m:ctx.w.modules.(proto.pm).host names in
+    let inside = ctx.w.modules.(pm).host = shape.sm in
+    let o = Dict.items ctx (sn ^ ".From") a.(0) and vals = Array.make (Array.length names) Undef in
+    let fail (m : Messages.t) = raise_notrace (Return_value (Value.failure ctx.w "field" m.text)) in
+    try
+      for j = 0 to (Array.length o / 2) - 1 do
+        let key = Value.text_of ctx o.(2 * j) in
+        let i = (match o.(2 * j) with Text s when Lexer.is_public s || inside -> Value.field_index shape s | _ -> -1) in
+        if i < 0 then fail (Messages.named_field sn key);
+        vals.(i) <- (if Array.length shape.checks = 0 then o.((2 * j) + 1) else
+          match shape.checks.(i) with
+          | None -> o.((2 * j) + 1)
+          | Some ch ->
+            let y = ch.accept o.((2 * j) + 1) in
+            if y == Undef then fail (Messages.wrong_type sn names.(i) (fst (ch.wrong o.((2 * j) + 1))) (snd (ch.wrong o.((2 * j) + 1))));
+            y)
+      done;
+      Array.iteri
+        (fun i (p : param) ->
+           if vals.(i) == Undef && p.default = None then
+             fail (if inside || Lexer.is_public p.pname then Messages.from_missing sn p.pname else Messages.from_private sn))
+        f.params;
+      let last = ref 0 in
+      Array.iteri (fun i v -> if v != Undef then last := i + 1) vals;
+      Value.ok ctx.w (call_back ctx ctor (Array.map Value.share (Array.sub vals 0 !last)))
+    with Return_value e -> e
+  in
+  Native { nname = proto.pname ^ ".From"; perm = None; params = [| "m" |]; min_args = 1; max_args = 1; ret_ty = (fun _ -> TA);
+           run; f1 = None; i2 = None }
+
 let run_main (ctx : ctx) ~file ~m (fn : func) =
   let proto = new_proto ~file ~m fn in
   let w = ctx.w in
@@ -3105,20 +3167,6 @@ let run_main (ctx : ctx) ~file ~m (fn : func) =
        end)
     fn.export_of
 
-let call_value (ctx : ctx) ~base g args =
-  ctx.w.compile_ver <- compile_version;
-  let n = Array.length args in
-  if ctx.b + base + n + 2 > ctx.cap then Runtime.grow ctx (ctx.b + base + n + 2);
-  Array.blit args 0 ctx.v (ctx.b + base) n;
-  dispatch ctx g base n ctx.site
-
-let call_back (ctx : ctx) g args =
-  let base =
-    match (Dynarray.get ctx.w.sites ctx.site).sver with
-    | Some v -> v.size
-    | None -> 0
-  in
-  call_value ctx ~base g args
 
 (* A version from before a reload. Already compiled code, sometimes still running, calls it: it keeps its frame
    layout, rereads its arguments and goes back through the dynamic call, hence to the new code. *)

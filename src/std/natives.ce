@@ -264,14 +264,20 @@ use cesia
       IsArray([1]) --> true *)
 
 (** IsDict(x)
-    Is this value a dictionary?
+    Is this value a dictionary, written {Name: 1} or {"name": 1}, or built by Dict or json.Parse?
 
-      IsDict(Dict()) --> true *)
+      IsDict({A: 1}) --> true *)
 
 (** IsStruct(x)
-    Is this value a struct?
+    Is this value a struct, declared by a struct? A dictionary is not.
 
       IsStruct(Ok(1)) --> true *)
+
+(** Fields(s)
+    The fields of a struct as a dictionary, in their order: its public fields, and inside its package its small ones too.
+    User.From takes it back.
+
+      Fields(Ok(1)) == {Value: 1} --> true *)
 
 (** IsFunction(x)
     Is this value a function, native ones included?
@@ -314,12 +320,12 @@ use cesia
       Has("a", Drop("a", {"a": 1})) --> false *)
 
 (** Keys(d)
-    The keys of a dictionary, as an array.
+    The keys of a dictionary, as an array, in the order of insertion: writing a key that is there keeps its place.
 
-      Keys({"a": 1}) --> ["a"] *)
+      Keys({"b": 1, "a": 2}) --> ["b", "a"] *)
 
 (** Values(d)
-    The values of a dictionary, as an array, in the order of keys.
+    The values of a dictionary, as an array, in the order of its keys.
 
       Values({"a": 1}) --> [1] *)
 

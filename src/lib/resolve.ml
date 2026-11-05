@@ -144,7 +144,7 @@ let struct_member env pos sname name =
     Hashtbl.mem env.hoisted text || env.lookup text <> None || List.exists (fun (_, look) -> look text <> None) env.spaces
   in
   if exists (sname ^ "." ^ name) then error env.path pos (Messages.needs_object sname name);
-  if Hashtbl.mem env.structs sname then error env.path pos (Messages.no_static sname name)
+  if Hashtbl.mem env.structs sname && name <> "From" then error env.path pos (Messages.no_static sname name)
 
 (* The static method that Rect.Square or date.Date.Parse name, if they name one. A variable called like the struct or the
    module hides it: piece.Size stays a field. *)

@@ -320,8 +320,10 @@ and definition_name p =
     let n = word "a name" in
     if (cur p).t = DOT then begin
       advance p;
+      let at = (cur p).pos in
       let m = word "a method name" in
       if (cur p).t = DOT then error p (cur p).pos Messages.method_foreign;
+      if m = "From" then error p at (Messages.from_static n);
       [||], n ^ ":" ^ m, n ^ "." ^ m
     end
     else [||], n, n

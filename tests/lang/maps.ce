@@ -102,3 +102,25 @@ stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and i
   Err(e) -> "$(e.Kind): $(e.Message)"
   Ok(v) -> v
 end
+
+(* Structs and maps: From, Fields, json.Text. *)
+struct User { Id Int, Name Text, secret Text = "s", Age Int = 0 }
+(u User) Greeting() = "Bonjour $(u.Name)"
+
+isFrom() = Unwrap(User.From({Id: 1, Name: "Ana"})) == User(1, "Ana") and Unwrap(User.From(parsed() then Put("Id", 2, it) then Drop("Age", it))).Name == "Ana"
+isFromJson() = Unwrap(User.From(Unwrap(json.Parse("{""Id"": 7, ""Name"": ""Bo""}")))).Greeting() == "Bonjour Bo"
+isFromDefaults() = Unwrap(User.From({Id: 1, Name: "Ana"})).Age == 0 and Unwrap(User.From({Id: 1, Name: "Ana", Age: 3})).Age == 3
+isFromExcess() = MapErr(it.Message, User.From({Id: 1, Name: "Ana", Admin: true})) == Err("User has no field ""Admin"".")
+isFromMissing() = MapErr(it.Message, User.From({Id: 1})) == Err("User needs the field ""Name"".")
+isFromWrongType() = MapErr(it.Message, User.From({Id: "1", Name: "Ana"})) == Err("User: Id must be an Int, found a Text.") and IsErr(User.From(Put(3, 4, {Id: 1, Name: "Ana"})))
+isFromKind() = MapErr(it.Kind, User.From({})) == Err("field")
+isFromSmallInside() = Unwrap(User.From({Id: 1, Name: "Ana", secret: "x"})).secret == "x"
+isFromSmallOutside() = MapErr(it.Message, f.Secret.From({key: "k", Label: "l"})) == Err("Secret has no field ""key"".") and MapErr(it.Message, f.Secret.From({Label: "l"})) == Err("Secret needs a field that is private to its package.")
+isFromAsValue() = Equal(Map(it.Value.Id, Map(User.From, [{Id: 1, Name: "a"}, {Id: 2, Name: "b"}])), [1, 2])
+isFromNoMap() = stop(() -> User.From(3)) == "type: User.From needs a dictionary, not the number 3."
+isFields() = Fields(User(1, "Ana")) == {Id: 1, Name: "Ana", secret: "s", Age: 0} and Equal(Keys(Fields(User(1, "Ana"))), ["Id", "Name", "secret", "Age"])
+isFieldsOutside() = Fields(f.New()) == {Label: "public"}
+isFieldsRoundTrip() = Unwrap(User.From(Fields(User(1, "Ana", Age = 4)))) == User(1, "Ana", Age = 4)
+isFieldsNoMap() = stop(() -> Fields({A: 1})) == "type: Fields needs a struct, not a dictionary."
+isJsonOfStruct() = json.Text(User(1, "Ana")) == "{""Id"":1,""Name"":""Ana"",""Age"":0}" and json.Text(f.New()) == "{""Label"":""public""}"
+isMapFunctionsRefuseStructs() = stop(() -> Values(Ok(1))) == "type: Values needs a dictionary, not an Ok." and stop(() -> Put("A", 1, Ok(1))) == "type: Put needs a dictionary, not an Ok."
