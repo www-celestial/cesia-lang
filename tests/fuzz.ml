@@ -90,7 +90,10 @@ let prelude_calls =
    Print(Scan((a, x) -> a + x, 0, [1, 2, 3]))\n\
    Print(Range(1, 10, step = 3))\n\
    Print(Group(x -> Mod(x, 2), [1, 2, 3, 4]))\n\
-   Print(Top(2, [5, 1, 9, 3]))\n"
+   Print(Top(2, [5, 1, 9, 3]))\n\
+   Print(Frequencies([1, 2.0, 1, \"a\"]))\n\
+   Print(Top(2, [{V: 1}, {V: 3}, {V: 2}], by = x -> x.V))\n\
+   Print(Group(x -> x, [\"a\", \"b\", \"a\"]))\n"
 
 let kp_files dir =
   if not (Sys.file_exists dir) then []

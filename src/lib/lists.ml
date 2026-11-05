@@ -96,6 +96,56 @@ let order ctx (a : t array) =
   let _, ks = sorted_positions ctx "Order" a.(0) in
   if Array.length ks = 0 then list [||] else Arrays.of_ints 1 (Array.length ks) (Array.map succ ks)
 
+(* The first m of the positions 0 to n - 1 in the order [cmp], equal ones by position: a heap of the m best so far, the
+   last of them at its root, then these m sorted. *)
+let first_positions n m cmp =
+  let later i j = match cmp i j with 0 -> i > j | c -> c > 0 in
+  let heap = Array.make m 0 and size = ref 0 in
+  let swap i j = let t = heap.(i) in heap.(i) <- heap.(j); heap.(j) <- t in
+  let rec up i = if i > 0 && later heap.(i) heap.((i - 1) / 2) then (swap i ((i - 1) / 2); up ((i - 1) / 2)) in
+  let rec down i =
+    let l = (2 * i) + 1 in
+    let c = if l + 1 < !size && later heap.(l + 1) heap.(l) then l + 1 else l in
+    if c < !size && later heap.(c) heap.(i) then (swap c i; down c)
+  in
+  for p = 0 to n - 1 do
+    if !size < m then (heap.(!size) <- p; incr size; up (!size - 1))
+    else if m > 0 && later heap.(0) p then (heap.(0) <- p; down 0)
+  done;
+  Array.stable_sort (fun i j -> if later i j then 1 else if later j i then -1 else 0) heap;
+  heap
+
+(* For the prelude's Top: the positions of keys, the largest first, equal keys in their order, at least the first n of
+   them; [missing] unless [>] orders them as a sort needs (no NaN, no integer past 2^53 among floats), and the prelude's
+   merge sort then compares them. *)
+let descending ctx (a : t array) =
+  match a.(0) with
+  | Array x ->
+    let x = Value.trim x in
+    let n = x.rows * x.cols in
+    let number = function Int i -> i < 1 lsl 53 && i > -(1 lsl 53) | Float f -> not (Float.is_nan f) | _ -> false in
+    let ordered =
+      match x.store with
+      | I _ -> true
+      | F d -> not (Float.Array.exists Float.is_nan d)
+      | V d -> Array.for_all (function Text _ -> true | _ -> false) d || Array.for_all number d
+    in
+    if not ordered then Missing
+    else begin
+      Runtime.build ctx n;
+      Runtime.charge ctx (n + 1);
+      let at =
+        match x.store with
+        | F d -> fun i j -> Float.compare (Float.Array.get d j) (Float.Array.get d i)
+        | I d -> fun i j -> Int.compare d.(j) d.(i)
+        | V d -> fun i j -> Dict.compare_keys d.(j) d.(i)
+      in
+      let m = match a.(1) with Int m -> max 0 (min m n) | _ -> n in
+      let ks = if m <= n / 8 then first_positions n m at else Kernels.sort_positions ~parallel:true n at in
+      if Array.length ks = 0 then list [||] else Arrays.of_ints 1 (Array.length ks) (Array.map succ ks)
+    end
+  | _ -> Missing
+
 let unique ctx (a : t array) =
   let seen = ref Leaf and others = ref [] and out = ref [] in
   Array.iter
@@ -294,4 +344,5 @@ let natives =
         else
           match Native.find_from s part (from - 1) with
           | -1 -> Missing
-          | at -> Int (at + 1)) ]
+          | at -> Int (at + 1));
+    "descending", nat "descending" 2 2 descending ]

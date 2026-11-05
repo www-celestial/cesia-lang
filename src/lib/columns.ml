@@ -204,8 +204,8 @@ let groups ctx (a : t array) =
   record ctx [| "Ids"; "Count"; "Firsts" |]
     [| int_list (Array.map succ ids); Int t.groups; int_list (Array.init t.groups (fun g -> t.firsts.(g) + 1)) |]
 
-(* Split(g, xs): the values of xs in each group, in order, without the missing ones. *)
-let split ctx (a : t array) =
+(* Split(g, xs): the values of xs in each group, in order, without the missing ones; with [all], with them. *)
+let split_parts ~all ctx (a : t array) =
   let field g name =
     match g with
     | Dict _ when Trie.find g (Trie.hash (Text name)) (Text name) != Undef -> Trie.find g (Trie.hash (Text name)) (Text name)
@@ -218,7 +218,7 @@ let split ctx (a : t array) =
   if count < 0 || count > n || Array.exists (fun id -> id < 1 || id > count) ids then
     Runtime.fail ctx Type (Messages.need_groups (Value.describe a.(0)));
   Runtime.build ctx (n + count);
-  let keep k = match x.store with V d -> not (is_missing d.(k)) | _ -> true in
+  let keep k = match x.store with V d -> all || not (is_missing d.(k)) | _ -> true in
   let sizes = Array.make count 0 in
   for k = 0 to n - 1 do
     if keep k then sizes.(ids.(k) - 1) <- sizes.(ids.(k) - 1) + 1
@@ -256,6 +256,81 @@ let split ctx (a : t array) =
       Array.map Arrays.list out
   in
   Arrays.list parts
+
+let split = split_parts ~all:false
+
+let small i = i < 1 lsl 53 && i > -(1 lsl 53)
+
+(* Do these keys all pass [simple]? Then the groups of a column. Integers alone are equal only when they are the same. *)
+let simple_groups ctx x small_float simple =
+  let x = Value.trim x in
+  if not (match x.store with I _ -> true | F d -> Float.Array.for_all small_float d | V d -> Array.for_all simple d)
+  then None
+  else begin
+    Runtime.build ctx (size x);
+    Some (x, match x.store with I d -> factorize_ints ctx false d | _ -> factorize ctx (size x) (hasher false x) (same x x))
+  end
+
+(* For the prelude's Group, {Ids, Count, Firsts} of its keys, as [Equal] groups them. Texts, booleans, missing and numbers
+   below 2^53, where [Equal] is an equivalence that the hash respects (1 and 1.0 one key, -0.0 and 0.0 one, NaN with
+   NaN), by the hash. Other keys as the prelude compared them: each with [Equal] to the first key of each group so far. *)
+let group_ids ctx (a : t array) =
+  let small_float x = Float.is_nan x || Float.abs x < 0x1p53 in
+  let simple = function Text _ | True | False | Missing -> true | Int i -> small i | Float f -> small_float f | _ -> false in
+  let x = array_arg ctx "groupIds" a.(0) in
+  let t, ids =
+    match simple_groups ctx x small_float simple with
+    | Some (_, groups) -> groups
+    | None ->
+      let t, ids = index ctx (size x) 0 in
+      t.firsts <- Array.make (size x) 0;
+      for k = 0 to size x - 1 do
+        let rec find g = if g = t.groups || Value.equal ctx (Value.elt x t.firsts.(g)) (Value.elt x k) then g else find (g + 1) in
+        let g = find 0 in
+        if g = t.groups then (t.firsts.(g) <- k; t.groups <- g + 1);
+        ids.(k) <- g
+      done;
+      t, ids
+  in
+  record ctx [| "Ids"; "Count"; "Firsts" |]
+    [| int_list (Array.map succ ids); Int t.groups; int_list (Array.init t.groups (fun g -> t.firsts.(g) + 1)) |]
+
+(* The key that [out[x] = ...] writes: a whole float as an integer, as an index. *)
+let index_key = function Float f when Float.is_integer f -> Int (int_of_float f) | v -> v
+
+(* For the prelude's Frequencies: what its loop gives, [GetOr(x, 0, out)] then [out[x] = ...]. Where a map's keys are an
+   equivalence (integers and whole floats below 2^53, texts, other floats but NaN), by groups: each group's first key, as
+   the index writes it, and its count, in order. Else the loop's steps one by one, for keys that both take. [missing]
+   for any other key: the prelude's loop then meets its error. *)
+let frequencies ctx (a : t array) =
+  let small_float f = (not (Float.is_nan f)) && ((not (Float.is_integer f)) || Float.abs f < 0x1p53) in
+  let simple = function Int i -> small i | Text _ -> true | Float f -> small_float f | _ -> false in
+  let key = function
+    | Int _ | Text _ -> true
+    | Float f -> (not (Float.is_nan f)) && ((not (Float.is_integer f)) || Float.abs f < 4e18)
+    | _ -> false
+  in
+  let put out k count = Trie.put_owned out (Trie.hash k) k (Int count) in
+  match a.(0) with
+  | Array x ->
+    (match simple_groups ctx x small_float simple with
+     | Some (x, (t, ids)) ->
+       let counts = Array.make t.groups 0 in
+       Array.iter (fun g -> counts.(g) <- counts.(g) + 1) ids;
+       let out = ref (Dict.empty ()) in
+       for g = 0 to t.groups - 1 do out := put !out (index_key (Value.elt x t.firsts.(g))) counts.(g) done;
+       !out
+     | None when (let rec all k = k >= size x || (key (Value.elt x k) && all (k + 1)) in all 0) ->
+       Runtime.pay ctx (size x);
+       let out = ref (Dict.empty ()) in
+       for k = 0 to size x - 1 do
+         let v = Value.elt x k in
+         let count = match Dict.get ctx "GetOr" v !out with Some (Int c) -> c | _ -> 0 in
+         out := put !out (index_key v) (count + 1)
+       done;
+       !out
+     | None -> Missing)
+  | _ -> Missing
 
 (* Pick(ks, xs): the values at these positions. Position 0 gives missing: an unmatched row of a left join. *)
 let pick ctx (a : t array) =
@@ -423,3 +498,8 @@ let natives =
     "Present", Native.nat "Present" 1 1 present;
     "Csv", Native.nat "Csv" 2 2 csv;
     "ReadCsv", Native.nat "ReadCsv" 2 2 read_csv ]
+
+let prelude =
+  [ "groupIds", Native.nat "groupIds" 1 1 group_ids;
+    "groupParts", Native.nat "groupParts" 2 2 (split_parts ~all:true);
+    "frequencies", Native.nat "frequencies" 1 1 frequencies ]

@@ -1,3 +1,5 @@
+use columns
+
 isMap() = Equal(Map(it * 2, [1, 2]), [2, 4])
 isMapColumn() = Equal(Map(it * 2, [1; 2]), [2; 4])
 isMapNative() = Equal(Map(Sqrt, [4.0]), [2.0])
@@ -16,3 +18,152 @@ isTop() = Equal(Top(2, [5, 1, 9, 3]), [9, 5])
 isTopBy() = Equal(Top(1, [{V: 1}, {V: 7}], by = it.V), [{V: 7}])
 isTopStable() = Equal(Top(2, [{V: 1, N: 1}, {V: 1, N: 2}], by = it.V), [{V: 1, N: 1}, {V: 1, N: 2}])
 isTopNan() = Len(Top(2, [Nan, 1.0, 2.0])) == 2
+
+(* Group, Top and Frequencies as the prelude wrote them in Cesia before natives took them: the oracles. *)
+defn oldRow(k, members, summary)
+  if IsMissing(summary)
+    {Key: k, Values: members}
+  else
+    s = summary(members)
+    if IsDict(s) Merge({Key: k}, s) else {Key: k, Value: s} end
+  end
+end
+
+defn oldGroup(key, xs, summary = missing)
+  n = Len(xs)
+  keys = Fill(missing, n)
+  ids = Fill(0, n)
+  count = 0
+  i = 0
+  for x in xs
+    i += 1
+    k = key(x)
+    g = 0
+    for j in 1:count
+      if Equal(keys[j], k)
+        g = j
+        break
+      end
+    end
+    if g == 0
+      count += 1
+      keys[count] = k
+      g = count
+    end
+    ids[i] = g
+  end
+  out = Fill(missing, count)
+  for g in 1:count
+    members = [xs[p] for p in 1:n if ids[p] == g]
+    out[g] = oldRow(keys[g], members, summary)
+  end
+  out
+end
+
+defn oldOrder(keys)
+  n = Len(keys)
+  idx = [k for k in 1:n]
+  tmp = Fill(0, n)
+  width = 1
+  while width < n
+    lo = 1
+    while lo <= n
+      mid = Min(lo + width, n + 1)
+      hi = Min(lo + 2 * width, n + 1)
+      i = lo
+      j = mid
+      k = lo
+      while k < hi
+        if i < mid and (j >= hi or not (keys[idx[j]] > keys[idx[i]]))
+          tmp[k] = idx[i]
+          i += 1
+        else
+          tmp[k] = idx[j]
+          j += 1
+        end
+        k += 1
+      end
+      lo = hi
+    end
+    t = idx
+    idx = tmp
+    tmp = t
+    width = 2 * width
+  end
+  idx
+end
+
+defn oldTop(n, xs, by = missing)
+  keys = if IsMissing(by) xs else [by(x) for x in xs] end
+  idx = oldOrder(keys)
+  m = Min(n, Len(xs))
+  [xs[idx[k]] for k in 1:m]
+end
+
+defn oldFrequencies(xs)
+  out = Dict()
+  for x in xs
+    out[x] = GetOr(x, 0, out) + 1
+  end
+  out
+end
+
+kindOf(x) = if IsInt(x) "int" else if IsFloat(x) "float" else if IsText(x) "text" else if IsBool(x) "bool" else if IsMissing(x) "missing" else "other" end
+signOf(x) = if IsFloat(x) and x == 0.0 1.0 / x else x end
+
+(* Equal, and the same keys in the same order, the same kind of key and of values, the same sign of a zero. *)
+defn sameRows(a, b)
+  ok = Len(a) == Len(b) and Equal(a, b) and columns.Kind(a) == columns.Kind(b)
+  for k in 1:Min(Len(a), Len(b))
+    ok = ok and Equal(Keys(a[k]), Keys(b[k])) and kindOf(a[k].Key) == kindOf(b[k].Key) and Equal(signOf(a[k].Key), signOf(b[k].Key))
+    ok = ok and (not Has("Values", a[k]) or columns.Kind(a[k].Values) == columns.Kind(b[k].Values))
+  end
+  ok
+end
+
+sameGroup(key, xs) = sameRows(Group(key, xs), oldGroup(key, xs))
+sameGroupWith(key, xs, f) = sameRows(Group(key, xs, summary = f), oldGroup(key, xs, summary = f))
+nan = 0.0 / 0.0
+isGroupOfInts() = sameGroup(Mod(it, 3), 1:20) and sameGroup(Mod(it, 7), [Mod(k * 7919, 1009) for k in 1:3000])
+isGroupOfFloats() = sameGroup(it * 0.5, [1.0, 2.0, 1.0, 3.5]) and sameGroup(Floor, [0.5, 1.5, 0.25, 2.5])
+isGroupOfOneAndOnePointZero() = sameGroup(Identity, [1, 1.0, 2.0, 2]) and IsInt(Group(Identity, [1, 1.0])[1].Key) and IsFloat(Group(Identity, [1.0, 1])[1].Key)
+isGroupOfZeros() = sameGroup(Identity, [-0.0, 0.0, 1]) and Len(Group(Identity, [-0.0, 0.0])) == 1 and 1.0 / Group(Identity, [-0.0, 0.0])[1].Key < 0.0
+isGroupOfNan() = sameGroup(Identity, [nan, 1.0, nan]) and Len(Group(Identity, [nan, nan, 2])) == 2
+isGroupOfMissingAndBooleans() = sameGroup(x -> if x > 3 missing else x > 1 end, 1:6) and sameGroup(Identity, [true, 1, false, missing, true, 1.0])
+isGroupOfTexts() = sameGroup(it.Name, [{Name: "a", V: 1}, {Name: "b", V: 2}, {Name: "a", V: 3}]) and sameGroup(Identity, ["x", "y", "x", "", ""])
+isGroupOfListsAndMaps() = sameGroup(x -> [Mod(x, 2)], 1:5) and sameGroup(x -> {P: Mod(x, 2)}, 1:5) and sameGroup(Identity, [[1], 1, [1.0], "1"])
+isGroupOfBigIntsAndFloats() = sameGroup(Identity, [9007199254740993, 9007199254740992.0, 9007199254740992]) and sameGroup(Identity, [9007199254740992, 9007199254740993, 9007199254740992.0, 1e300, 1e300])
+isGroupKeepsMissingMembers() = sameGroup(x -> 1, [missing, 2, missing]) and Equal(Group(x -> 1, [missing, 2])[1].Values, [missing, 2])
+isGroupKindsOfValues() = sameGroup(Mod(it, 2), 1:6) and sameGroup(x -> 1, [1.5, 2.5]) and sameGroup(x -> 1, [1, 2.5]) and sameGroup(x -> 1, Reshape(1:6, 2, 3))
+isGroupSummaries() = sameGroupWith(Mod(it, 2), 1:6, g -> {Total: Sum(g)}) and sameGroupWith(Mod(it, 2), 1:6, Sum) and sameGroupWith(Mod(it, 2), 1:6, g -> {Key: 99, N: Len(g)})
+isGroupEmpty() = sameGroup(Identity, []) and Len(Group(Identity, [])) == 0
+
+sameTop(n, xs) = Equal(Top(n, xs), oldTop(n, xs)) and Equal(Map(kindOf, Top(n, xs)), Map(kindOf, oldTop(n, xs)))
+sameTopBy(n, xs, f) = Equal(Top(n, xs, by = f), oldTop(n, xs, by = f))
+isTopTiesUnderBy() = sameTopBy(2, [{V: 1, N: 1}, {V: 2, N: 2}, {V: 1, N: 3}, {V: 2, N: 4}], it.V) and sameTopBy(3, [{V: 1, N: 1}, {V: 1, N: 2}, {V: 1, N: 3}], it.V)
+isTopWithNan() = sameTop(2, [nan, 1.0, 2.0]) and sameTop(3, [1.0, nan, 3.0, nan, 2.0])
+isTopOfTexts() = sameTop(2, ["b", "c", "a"]) and sameTopBy(2, ["bb", "a", "ccc"], Len)
+isTopCounts() = sameTop(0, [3, 1, 2]) and sameTop(-1, [3, 1, 2]) and sameTop(9, [3, 1, 2]) and sameTop(2, []) and Len(Top(0, [1])) == 0
+isTopOfNumbers() = sameTop(3, [1, 2.5, 2, 2.0]) and Equal(Map(signOf, Top(2, [0.0, -0.0, -1.0])), Map(signOf, oldTop(2, [0.0, -0.0, -1.0]))) and sameTop(10, [Mod(k * 7919, 1009) for k in 1:2000])
+isTopOfFloats() = sameTop(5, [0.5 * Mod(k * 31, 17) for k in 1:100]) and sameTop(3, [9007199254740993, 9007199254740992.0, 1.5])
+
+defn sameFrequencies(xs)
+  a = Frequencies(xs)
+  b = oldFrequencies(xs)
+  Equal(a, b) and Equal(Keys(a), Keys(b)) and Equal(Map(kindOf, Keys(a)), Map(kindOf, Keys(b)))
+end
+
+isFrequenciesWritesWholeFloatsAsInts() = sameFrequencies([1, 1.0, 2.0]) and Equal(Keys(Frequencies([1, 1.0, 2.0])), [1, 2]) and IsInt(Keys(Frequencies([2.0]))[1])
+isFrequenciesOfHalves() = sameFrequencies([0.5, 0.5]) and Frequencies([0.5, 0.5])[0.5] == 2
+isFrequenciesOfManyInts() = sameFrequencies([Mod(k * 7919, 101) for k in 1:10000]) and sameFrequencies(["a", "b", "a", "c"]) and sameFrequencies([])
+isFrequenciesOfBigInts() = sameFrequencies([9007199254740993, 9007199254740992.0, 9007199254740992]) and sameFrequencies(Reshape(1:6, 2, 3))
+
+message(f) = Wait(Spawn(f)) then MapErr(it.Message)
+isGroupMessage() = message(() -> Group(x -> x, 5)) == Err("Can't loop over the number 5.")
+isTopMessage() = message(() -> Top(2, [1, "a"])) == Err("Can't compare the text \"a\" > the number 1.")
+isFrequenciesMessages() = message(() -> Frequencies([[2]])) == Err("A dictionary key is a number or a text, not an array.") and message(() -> Frequencies([0.0 / 0.0])) == Err("A dictionary key is a number or a text, not the number nan.") and message(() -> Frequencies([1e19])) == Err("An index must be a whole number, not the number 1e19.")
+isTopSelectsWithTies() = sameTopBy(3, [{V: Mod(k, 4), N: k} for k in 1:100], it.V) and sameTop(0, 1:100) and sameTop(-5, 1:100) and sameTop(12, [Mod(k * 7, 5) * 1.5 for k in 1:100])
+isTopSelectsTexts() = sameTop(3, ["k$(Mod(k * 7, 13))" for k in 1:100]) and sameTopBy(4, [-0.0, 0.0, 1.0, -0.0, 0.0, 1.0, 0.0, -0.0, 2.0, 0.0, -0.0, 0.0, 0.0, -0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], signOf)
+isFrequenciesOfZerosAndHalves() = sameFrequencies([-0.0, 0.0, 0]) and sameFrequencies([0.5, 1.0, 1, 0.5, -2.5]) and IsInt(Keys(Frequencies([-0.0]))[1])
+isFrequenciesOfLargeWholeFloats() = sameFrequencies([1e18, 1e18, 1000000000000000000]) and sameFrequencies([9007199254740994.0, 9007199254740993, 9007199254740994])
+isGroupOfBigInts() = sameGroup(Identity, [9007199254740993, 9007199254740992, 9007199254740993, 4611686018427387903]) and sameFrequencies([9007199254740993, 9007199254740992, 9007199254740993])
