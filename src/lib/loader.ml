@@ -494,6 +494,7 @@ let reload w path =
           (fun k ->
              let path = w.modules.(k).path in
              let src = In_channel.with_open_bin path In_channel.input_all in
+             check_installed w ~from:path ~pos:(Pos.make 1 1) path src;
              let file, fn, spaces = parse w ~hooks:w.hooks ~path ~src ~use:(loaded_module w ~from:path) in
              path, file, fn, spaces)
           members
