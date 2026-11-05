@@ -29,8 +29,9 @@ let builder () = { cells = V [||]; n = 0 }
 
 let room b = match b.cells with F d -> Float.Array.length d | I d -> Array.length d | V d -> Array.length d
 
-(* The first value, a full store, or one of another kind. *)
-let[@inline never] add_slow ctx b v =
+(* The first value, a full store, or one of another kind: memory is reserved at site [s]. *)
+let[@inline never] add_slow ctx s b v =
+  ctx.site <- s;
   let n = b.n in
   let size = if n = 0 then 16 else if n = room b then 2 * n else room b in
   (match b.cells, v with
@@ -57,22 +58,22 @@ let[@inline never] add_slow ctx b v =
    | _ -> ());
   b.n <- n + 1
 
-let[@inline] add ctx b v =
+let[@inline] add ctx s b v =
   match b.cells, v with
   | F d, Float x when b.n < Float.Array.length d -> Float.Array.set d b.n x; b.n <- b.n + 1
   | I d, Int i when b.n < Array.length d -> d.(b.n) <- i; b.n <- b.n + 1
   | V d, _ when b.n < Array.length d -> d.(b.n) <- v; b.n <- b.n + 1
-  | _ -> add_slow ctx b v
+  | _ -> add_slow ctx s b v
 
-let[@inline] add_float ctx b x =
+let[@inline] add_float ctx s b x =
   match b.cells with
   | F d when b.n < Float.Array.length d -> Float.Array.set d b.n x; b.n <- b.n + 1
-  | _ -> add_slow ctx b (Float x)
+  | _ -> add_slow ctx s b (Float x)
 
-let[@inline] add_int ctx b i =
+let[@inline] add_int ctx s b i =
   match b.cells with
   | I d when b.n < Array.length d -> d.(b.n) <- i; b.n <- b.n + 1
-  | _ -> add_slow ctx b (Int i)
+  | _ -> add_slow ctx s b (Int i)
 
 (* 1 x n, its store of exactly n cells. *)
 let built b =

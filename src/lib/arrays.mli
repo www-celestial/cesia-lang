@@ -12,13 +12,14 @@ val of_ints : int -> int -> int array -> t
 (** A list. An empty one has the shape of [[]], so that the two are equal. *)
 val list : t array -> t
 
-(** A list built one value at a time, with the store that [of_vals] would give it: floats and integers without a box. *)
+(** A list built one value at a time, with the store that [of_vals] would give it: floats and integers without a box. The
+    [int] is the site of the list: when it grows, it reserves memory there. *)
 type builder
 
 val builder : unit -> builder
-val add : ctx -> builder -> t -> unit
-val add_float : ctx -> builder -> float -> unit
-val add_int : ctx -> builder -> int -> unit
+val add : ctx -> int -> builder -> t -> unit
+val add_float : ctx -> int -> builder -> float -> unit
+val add_int : ctx -> int -> builder -> int -> unit
 
 (** The values added, as a list of 1 x n. *)
 val built : builder -> t

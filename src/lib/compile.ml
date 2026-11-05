@@ -1022,7 +1022,7 @@ and ca c (e : expr) : ctx -> t =
       Arrays.int_range ctx lo hi
   | In_op (a, b) -> member c e a b
   | Array_lit rows -> array_lit c e rows
-  | Comp { cbody; cvar; csrc; cguard } -> comprehension c cbody cvar csrc cguard
+  | Comp { cbody; cvar; csrc; cguard } -> comprehension c e.pos cbody cvar csrc cguard
   | Index (b, ixs, uses_end) -> index_read c e b ixs uses_end
   | Field (b, name) -> (match struct_from c b name with Some v -> fun _ -> v | None -> field_read c e b name)
   | Match { subject; arms } -> match_expr c e subject arms (ce c)
@@ -1178,24 +1178,27 @@ and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 
         ctx.site <- s;
         Runtime.fail ctx Type (Messages.cant_loop (Value.describe v))
 
-and comprehension c cbody cvar csrc cguard =
+and comprehension c pos cbody cvar csrc cguard =
   let set = setter c cvar in
+  (* The site of the list: its growth reserves memory, and the body's calls left [ctx.site] in their own frames. *)
+  let s = ref (-1) in
   let push : Arrays.builder -> ctx -> unit =
     if ty c cbody == TF then
       let v = cf c cbody in
-      fun out ctx -> Arrays.add_float ctx out (v ctx)
+      fun out ctx -> Arrays.add_float ctx !s out (v ctx)
     else if ty c cbody == TI then
       let v = ci c cbody in
-      fun out ctx -> Arrays.add_int ctx out (v ctx)
+      fun out ctx -> Arrays.add_int ctx !s out (v ctx)
     else
       let v = ce c cbody in
-      fun out ctx -> Arrays.add ctx out (v ctx)
+      fun out ctx -> Arrays.add ctx !s out (v ctx)
   in
   let body =
     match Option.map (cb c) cguard with
     | None -> push
     | Some g -> fun out ctx -> if g ctx then push out ctx
   in
+  s := site c pos;
   let run = loop_over c csrc set body in
   fun ctx ->
     let out = Arrays.builder () in

@@ -1,0 +1,16 @@
+defn g(x)
+  Abs(x)
+end
+
+defn run(n)
+  a = [n, 1]
+  b = [n, 2]
+  c = [n, 3]
+  d = [n, 4]
+  e = [n, 5]
+  f = [n, 6]
+  xs = [g(k) for k in 1:n]
+  Print(a, b, c, d, e, f, Len(xs))
+end
+
+run(300000)
