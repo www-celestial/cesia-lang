@@ -35,6 +35,15 @@ defn boxed()
   b.V
 end
 
+(* Hot, so native: a reload must still give its new code. *)
+defn summed(n)
+  s = 0
+  for i in 1:n
+    s = s + i
+  end
+  s * 1
+end
+
 defn report(label, before, after)
   if not Equal(before, after)
     Print("$label $after")
@@ -66,6 +75,7 @@ defn mainLoop()
   o = 0
   q = 0
   r = 0
+  sm = 0
   tile = Tile(1)
   x = [1, 2]
   while true
@@ -86,6 +96,7 @@ defn mainLoop()
     o = report("twice", o, attempt(twice))
     q = report("loop", q, attempt(() -> tile.Twice()))
     r = report("result", r, attempt(answer))
+    sm = report("summed", sm, summed(3000))
   end
 end
 

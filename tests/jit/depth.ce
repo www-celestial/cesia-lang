@@ -1,0 +1,10 @@
+(* The limit of depth, reached in native calls: the same message and frames. *)
+defn down(n)
+  if n == 0
+    0
+  else
+    1 + down(n - 1)
+  end
+end
+Print(down(5000))
+Print(down(20000))

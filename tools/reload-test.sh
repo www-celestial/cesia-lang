@@ -59,6 +59,8 @@ ms=$((($(date +%s%N) - t0) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "1: $ms ms, budget $budget_ms ms"
 echo "reload: new code active in $ms ms"
 
+wait_for out "summed 4501500" 2000 || fail "jit: summed never ran"
+
 wait_for out "fiber 2" 2000 || fail "1: a fiber still runs the old loop on the new code"
 
 # 2. An invalid file leaves the program running, and the fixed file is picked up.
@@ -162,10 +164,15 @@ wait_for out "kept 7" 2000 || fail "readKept never changed"
 sleep 0.02
 if grep -qxF "owner 7" "$dir/out"; then fail "a function that writes changed its caller's array"; fi
 
+# A function that runs natively by now, as it is hot, gets its new code too.
+sed -i 's/^  s \* 1$/  s * 2/' "$dir/app.ce"
+wait_for out "summed 9003000" 2000 || fail "jit: native code kept the old code"
+
 # 5. File-level statements are not rerun.
 n=$(grep -cxF "start" "$dir/out")
 [ "$n" -eq 1 ] || fail "5: file-level statements ran $n times"
 stop
+
 
 # 6. A finished program restarts when a file changes.
 start done.ce "done 1"

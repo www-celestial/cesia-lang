@@ -42,7 +42,9 @@ let make (w : world) (ver : version) fns start loops =
         Some { addr; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint); pure; calls; written = Array.of_list written;
                reloads = w.reloads; start; loops }
       | _ -> None
-      | exception Failure _ -> None
+      | exception Failure m ->
+        if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m);
+        None
     end
 
 (* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,

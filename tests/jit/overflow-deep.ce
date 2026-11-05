@@ -1,0 +1,17 @@
+(* An overflow deep in native calls: the frames of the trace are the interpreter's. *)
+defn pow2(n)
+  if n == 0
+    1
+  else
+    2 * pow2(n - 1) + 0
+  end
+end
+
+defn many(k)
+  s = 0
+  for i in 1:k
+    s = s + pow2(Mod(i, 40))
+  end
+  s + pow2(70)
+end
+Print(many(20000))

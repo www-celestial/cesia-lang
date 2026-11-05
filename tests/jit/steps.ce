@@ -1,0 +1,20 @@
+(* The limit of steps, reached inside native loops and calls: at the same step as the interpreter. *)
+defn spin(n)
+  s = 0
+  for i in 1:n
+    for j in 1:100
+      s = s + 1
+    end
+  end
+  s
+end
+defn fib(n)
+  if n < 2
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+  end
+end
+Print(fib(20))
+Print(spin(1000))
+Print(spin(100000000))

@@ -1,0 +1,90 @@
+(* Versions and loops that get hot, run natively: the same results as the interpreter's. *)
+defn fib(n)
+  if n < 2
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+  end
+end
+
+defn mm(n)
+  a = Zeros(n * n)
+  b = Zeros(n * n)
+  c = Zeros(n * n)
+  for i in 0:n - 1
+    for j in 0:n - 1
+      a[i * n + j + 1] = (i + j) * 0.5
+      b[i * n + j + 1] = (i - j) * 0.25
+    end
+  end
+  for i in 0:n - 1
+    for j in 0:n - 1
+      s = 0.0
+      for k in 0:n - 1
+        s = s + a[i * n + k + 1] * b[k * n + j + 1]
+      end
+      c[i * n + j + 1] = s
+    end
+  end
+  c[n + 2] + c[n * n]
+end
+
+defn firstSquareOver(n)
+  k = 0
+  while true
+    if k * k > n
+      break
+    end
+    k = k + 1
+  end
+  k
+end
+
+defn findIn(xs, x)
+  for i in 1:Len(xs)
+    if xs[i] == x
+      return i
+    end
+  end
+  0
+end
+
+defn floors(n)
+  s = 0
+  for i in 1:n
+    s = s + Div(i * 7 - 50000, 13) + Mod(i - 30000, 11)
+  end
+  s
+end
+
+defn roots(n)
+  s = 0.0
+  for k in 1:n
+    s = s + Sqrt(k) / 3.0 + Abs(Sin(k * 1.0))
+  end
+  s
+end
+
+(* The loop variable written by its body: no fast copy, the same steps. *)
+defn skipping(n)
+  t = 0
+  for i in 1:n
+    if Mod(i, 3) == 0
+      i = i + 1
+    end
+    t = t + i
+  end
+  t
+end
+
+xs = Zeros(50000)
+for i in 1:50000
+  xs[i] = i * 0.5
+end
+Print(fib(24))
+Print(mm(60))
+Print(firstSquareOver(4000000000))
+Print(findIn(xs, 12345.0), findIn(xs, -1.0))
+Print(floors(200000))
+Print(roots(100000))
+Print(skipping(100000))
