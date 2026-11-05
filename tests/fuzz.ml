@@ -1,5 +1,6 @@
 (* The fuzzer: random bytes and mutated valid programs, with strict limits. Only Cesia errors are allowed. The two
-   paths, typed and --no-spec, must also give the same result. Usage: fuzz.exe --seconds N --seed S, from the
+   paths, typed and --no-spec, must also give the same result; with CESIA_JIT=always, the typed path runs natively all it
+   can. Usage: fuzz.exe --seconds N --seed S, from the
    repository root. Failures go to _build/fuzz_fail/. *)
 open Cesia
 
@@ -220,6 +221,11 @@ let args () =
 
 let () =
   let seconds, seed = args () in
+  (* CESIA_JIT=always: the typed path compiles what it can at once, so it is native code against the interpreter. *)
+  (match Sys.getenv_opt "CESIA_JIT" with
+   | Some "always" -> Tier.mode := Tier.always
+   | Some "off" -> Tier.mode := Tier.off
+   | _ -> ());
   (try Sys.mkdir fail_dir 0o755 with Sys_error _ -> ());
   Array.iter (fun f -> Sys.remove (Filename.concat fail_dir f)) (Sys.readdir fail_dir);
   Sys.set_signal Sys.sigalrm (Sys.Signal_handle (fun _ -> raise Timeout));
