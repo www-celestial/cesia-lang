@@ -402,7 +402,9 @@ and for_loop ?lo st (e : expr) i fbody =
      st.cur <- start;
      emit st (Move (c, l));
      close st (Jump decide)
-   | None -> ());
+   (* A region's loop, entered at its points: the block before still leads to the head, so that its loops are loops from
+      the function's entry, as MIR's allocator wants them. *)
+   | None -> close st (Jump head));
   st.cur <- head;
   close st (Branch (Gt, Kint, Reg c, Reg h, exit, decide));
   st.cur <- body;
