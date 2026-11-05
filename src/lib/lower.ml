@@ -332,10 +332,7 @@ and stmt st (e : expr) =
     let slot, _ = Dynarray.get st.arr a in
     Dynarray.set st.arr a (slot, true);
     (* At the step, as the interpreter names an index outside the array. *)
-    let after = block st in
-    let p = point st after in
-    emit st (Set_elem (a, k, x, site st sp, p));
-    goto st after
+    emit st (Set_elem (a, k, x, site st sp))
   | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
     let lo = expr st a in
     let hi = expr st b in
@@ -397,15 +394,16 @@ and for_loop ?lo st (e : expr) i fbody =
   let head = block st and decide = block st and body = block st and next = block st and inc = block st and exit = block st in
   (match lo with
    | Some (l, x) ->
-     (* An empty range leaves the variable as it was, as the interpreter's loop never writes it. *)
+     (* An empty range leaves the variable as it was, as the interpreter's loop never writes it: the counter, which may be
+        the variable, is set only once the range is known not to be empty; the head's test is then known too. *)
      emit st (Move (h, x));
      let start = block st in
-     let l = match l with Ir.Reg _ -> l | _ -> let t = reg st Kint in emit st (Move (t, l)); Ir.Reg t in
      close st (Branch (Gt, Kint, l, Reg h, exit, start));
      st.cur <- start;
-     emit st (Move (c, l))
+     emit st (Move (c, l));
+     close st (Jump decide)
    | None -> ());
-  goto st head;
+  st.cur <- head;
   close st (Branch (Gt, Kint, Reg c, Reg h, exit, decide));
   st.cur <- body;
   if not own then emit st (Move (r, Reg c));
@@ -461,15 +459,14 @@ and fast_copy st _e i c h fbody written ~slow ~exit =
     | _ -> None
   in
   (* The indexes of float arrays read or written with one index, in the whole body. *)
-  let found = ref [] and writes = ref [] in
+  let found = ref [] in
   let rec walk (e : expr) =
     let blk b = Array.iter walk b in
     let ixs a = Array.iter (function Ix x -> walk x | All -> ()) a in
     (match e.e with
      | Index ({ e = Var { b = Local v; _ }; _ }, [| Ix x |], false) when st.arrays.(v) >= 0 -> found := (e.id, v, x) :: !found
      | Set { root = { b = Local v; _ }; path = [| { sk = Sindex ([| Ix x |], false); _ } |]; _ } when st.arrays.(v) >= 0 ->
-       found := (e.id, v, x) :: !found;
-       writes := (e.id, v, x) :: !writes
+       found := (e.id, v, x) :: !found
      | _ -> ());
     match e.e with
     | Assign (_, v) | Neg v | Not v | Return { rvalue = Some v; _ } -> walk v
@@ -495,13 +492,6 @@ and fast_copy st _e i c h fbody written ~slow ~exit =
          let first = at ab (Reg c) and last = at ab (Reg h) and a = st.arrays.(v) in
          let len = reg st Kint in
          emit st (Len (len, a));
-         (* A write without a check: into an owned array only; else the checked copy, which copies at its first write. *)
-         if List.exists (fun (n, _, _) -> n = node) !writes then begin
-           let wl = reg st Kint and next = block st in
-           emit st (Wlen (wl, a));
-           close st (Branch (Ne, Kint, Reg wl, Reg len, slow, next));
-           st.cur <- next
-         end;
          let test cmp p q =
            let next = block st in
            close st (Branch (cmp, Kint, p, q, slow, next));

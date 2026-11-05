@@ -25,11 +25,7 @@ type ins =
   | Math of string * int * value  (** a function of C's libm: sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs *)
   | Len of int * int  (** the number of cells of an array, by its number in [arrays] *)
   | Elem of int * int * value * int  (** the destination, the array, the index from 1, the site *)
-  | Set_elem of int * value * value * int * int
-      (** the array, the index from 1, the value, the site, and the resume point after the write: into an array that is
-          not owned, the run leaves there, the interpreter copies the array and writes as its own write does, and the run
-          comes back after *)
-  | Wlen of int * int  (** an array's number of cells when it is owned, else 0 *)
+  | Set_elem of int * value * value * int  (** the array, the index from 1, the value, the site *)
   | Call of int * int * value array * int  (** the destination, the function of the unit, the arguments, the site *)
   | Tick of int * bool
       (** one step of fuel. When it runs out at a tick that can leave (outside any loop, or that of a loop in no other), the
@@ -118,9 +114,6 @@ val stack_out : int  (** a nested call needs a longer stack *)
 val too_deep : int  (** the limit of depth, at the site [io_point], for a frame at [io_frame] *)
 val too_long : int  (** the limit of steps *)
 val returned : int  (** a [return] inside a loop run natively: its value in [io_int], or in the float slot [frame] *)
-val copy : int
-(** a write into an array that is not owned, at [io_point]: [io_a] the index, [io_b] the array's slot, the value in the
-    float slot [frame]; every variable in its slot *)
 
 (** Codes of errors: the interpreter redoes the operation with [io_a] and [io_b] to give its message. *)
 

@@ -109,13 +109,20 @@ let func b ~prefix ~nested (fn : Ir.func) =
     match i with
     | Ir.Reg r ->
       let e = error code site i (Some raw_b) in
-      pr "  sub x0, r%d, 2\n  ubge %s, x0, %s\n  lsh xa, r%d, 2\n  add xa, xa, %s\n" r e (len a) r (arr a);
-      "d:-8(xa)"
+      pr "  sub x0, r%d, 2\n  ubge %s, x0, %s\n" r e (len a);
+      Printf.sprintf "d:-8(%s, r%d, 4)" (arr a) r
     | Int k ->
       let e = error code site i (Some raw_b) in
       pr "  mov x0, %s\n  ubge %s, x0, %s\n" (doubled (k - 1)) e (len a);
       Printf.sprintf "d:%d(%s)" (8 * (k - 1)) (arr a)
     | Float _ -> invalid_arg "index"
+  in
+  (* The one block that spills every variable and leaves at the point in xp: every tick that leaves goes there, so that
+     MIR's allocator meets the variables' uses in one place, out of the loops. *)
+  let leave_used = ref false in
+  let leave_block () =
+    leave_used := true;
+    Printf.sprintf "%s%s_L" prefix name
   in
   (* A frame about to be entered at [at], above the limit: the stack is short, or the limit of depth is reached, at the
      site, the frame entered as the interpreter's is when it stops. *)
@@ -172,25 +179,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Math (name, r, x) -> pr "  call pd1, %s, r%d, %s\n" name r (operand x)
     | Len (r, a) -> pr "  mov r%d, %s\n" r (len a)
     | Elem (r, a, i, site) -> pr "  dmov r%d, %s\n" r (check_index a i site Ir.err_read)
-    | Set_elem (a, i, v, site, p) ->
-      (* Against the length when owned, 0 when not: one test for both, and the cold path tells them apart. *)
-      pr "  dmov y0, %s\n" (operand v);
-      let err = error Ir.err_write site i (Some (Int (fst fn.arrays.(a)))) in
-      let cold =
-        stub (fun s ->
-            Printf.bprintf s "  ubge %s, x0, %s\n" err (len a);
-            spill s;
-            Printf.bprintf s "  dmov d:%d(fp), y0\n  rsh x1, %s, 1\n  mov %s, x1\n  mov %s, %d\n  mov %s, %d\n" (8 * fn.frame)
-              (operand i) (cx Ir.io_a) (cx Ir.io_b) (fst fn.arrays.(a)) (cx Ir.io_point) p;
-            stop s Ir.copy)
-      in
-      (match i with
-       | Ir.Reg r ->
-         pr "  sub x0, r%d, 2\n  ubge %s, x0, %sw\n  lsh xa, r%d, 2\n  add xa, xa, %s\n  dmov d:-8(xa), y0\n" r cold (arr a) r (arr a)
-       | Int k ->
-         pr "  mov x0, %s\n  ubge %s, x0, %sw\n  dmov d:%d(%s), y0\n" (doubled (k - 1)) cold (arr a) (8 * (k - 1)) (arr a)
-       | Float _ -> invalid_arg "index")
-    | Wlen (r, a) -> pr "  mov r%d, %sw\n" r (arr a)
+    | Set_elem (a, i, v, site) ->
+      let m = check_index a i site Ir.err_write in
+      pr "  dmov %s, %s\n" m (operand v)
     | Call (r, k, args, site) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
       pr "  add nb, %s, %d\n" (frame_of site) (callee_of site);
@@ -215,8 +206,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
           | Ir.Int n -> pr "  mulo r%d, %s, %d\n" r x' n
           | _ -> pr "  mov x1, %s\n  rsh x1, x1, 1\n  mulo r%d, %s, x1\n" (operand y) r x'));
       pr "  bo %s\n" (bl l)
-    | Elem_at (r, a, i) -> pr "  lsh xa, r%d, 2\n  add xa, xa, %s\n  dmov r%d, d:-8(xa)\n" i (arr a) r
-    | Set_at (a, i, v) -> pr "  dmov y0, %s\n  lsh xa, r%d, 2\n  add xa, xa, %s\n  dmov d:-8(xa), y0\n" (operand v) i (arr a)
+    | Elem_at (r, a, i) -> pr "  dmov r%d, d:-8(%s, r%d, 4)\n" r (arr a) i
+    | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"
     | Tick (p, can_leave) ->
@@ -236,23 +227,15 @@ let func b ~prefix ~nested (fn : Ir.func) =
           (cx Ir.io_until) due go_on go_on;
         Printf.bprintf s "%s:\n" due;
         if here then begin
-          (* What this quantum used is in spent already. *)
-          Printf.bprintf s "  mov %s, fuel\n" (cx Ir.io_quantum);
-          spill s;
-          Printf.bprintf s "  mov %s, %d\n" (cx Ir.io_point) p;
-          stop s Ir.fuel_out
+          (* What this quantum used is in spent already. One block of the function spills and leaves, for every tick. *)
+          Printf.bprintf s "  mov %s, fuel\n  mov xp, %d\n  jmp %s\n" (cx Ir.io_quantum) p (leave_block ())
         end else Printf.bprintf s "  mov %s, 1\n" (cx Ir.io_leave);
         Printf.bprintf s "%s:\n  mov %s, x2\n  mov fuel, x2\n  jmp %s\n%s:\n  mov %s, b\n" go_on (cx Ir.io_quantum) back over
           (cx Ir.io_frame);
         stop s Ir.too_long
       in
       if leave then begin
-        let out =
-          stub (fun s ->
-              spill s;
-              Printf.bprintf s "  mov %s, %d\n" (cx Ir.io_point) p;
-              stop s Ir.fuel_out)
-        in
+        let out = stub (fun s -> Printf.bprintf s "  mov xp, %d\n  jmp %s\n" p (leave_block ())) in
         pr "  sub fuel, fuel, 1\n  blt %s, fuel, 0\n  mov x0, %s\n  bne %s, x0, 0\n%s:\n" out (cx Ir.io_leave) out back
       end else begin
         let out = stub refill in
@@ -281,9 +264,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
       stop b Ir.returned
   in
   pr "%s%s: func %s, i64, %s\n" prefix name (ty fn.result) (args_of ~nested fn);
-  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, d:y0\n";
+  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:xp, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, d:y0\n";
   Array.iteri (fun r k -> if not (is_param r) then pr "  local %s:r%d\n" (ty k) r) fn.kinds;
-  Array.iteri (fun a (_, written) -> pr "  local i64:%s, i64:%s%s\n" (arr a) (len a) (if written then Printf.sprintf ", i64:%sw" (arr a) else "")) fn.arrays;
+  Array.iteri (fun a _ -> pr "  local i64:%s, i64:%s\n" (arr a) (len a)) fn.arrays;
   let guards () =
     if Array.length fn.arrays > 0 then pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n" (cx 2);
     Array.iteri
@@ -291,12 +274,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
          pr "  mov x0, i64:%d(vp)\n  and x1, x0, 1\n  bne %s, x1, 0\n" (8 * slot) lf;
          pr "  mov x1, i64:-8(x0)\n  and x1, x1, 255\n  bne %s, x1, 3\n  mov x2, i64:0(x0)\n" lf;
          pr "  mov x1, i64:16(x2)\n  mov x3, i64:-8(x1)\n  and x3, x3, 255\n  bne %s, x3, 0\n" lf;
+         if written then pr "  mov x3, i64:24(x2)\n  bne %s, x3, 3\n" lf;
          pr "  mov %s, i64:0(x1)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n  mov x4, i64:8(x2)\n  rsh x4, x4, 1\n" (arr a);
-         pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a);
-         if written then begin
-           let l = label () in
-           pr "  mov %sw, 0\n  mov x3, i64:24(x2)\n  bne %s, x3, 3\n  mov %sw, %s\n%s:\n" (arr a) l (arr a) (len a) l
-         end)
+         pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a))
       fn.arrays
   in
   let lr = Printf.sprintf "%s%s_R" prefix name in
@@ -326,6 +306,12 @@ let func b ~prefix ~nested (fn : Ir.func) =
        term bk.term)
     fn.blocks;
   Buffer.add_buffer b stubs;
+  if !leave_used then begin
+    pr "%s:\n" (leave_block ());
+    spill b;
+    pr "  mov %s, xp\n" (cx Ir.io_point);
+    stop b Ir.fuel_out
+  end;
   if not nested then begin
     pr "%s:\n" lf;
     stop b Ir.fallback

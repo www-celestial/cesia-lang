@@ -286,10 +286,10 @@ let () =
                         && (match a with Array { store = F d; _ } -> Float.Array.to_list d = [ 2.5; 5.; 7.5 ] | _ -> false));
   let shared = float_array [| 1.; 2. |] in
   (match shared with Array r -> r.a_owned <- false | _ -> ());
-  let st, io = run ver f (stacks ()) [| shared; Int 2; Float 2.0 |] in
-  check "a shared array leaves at its first write, untouched, for the interpreter to copy"
-    (st = Ir.copy && io.(Ir.io_a) = 1
-     && (match shared with Array { store = F d; _ } -> Float.Array.to_list d = [ 1.; 2. ] | _ -> false));
+  let st, _ = run ver f (stacks ()) [| shared; Int 2; Float 2.0 |] in
+  (* Written, it must be owned: the interpreter copies a shared one at its first write. *)
+  check "a shared array falls back, untouched"
+    (st = Ir.fallback && (match shared with Array { store = F d; _ } -> Float.Array.to_list d = [ 1.; 2. ] | _ -> false));
   (* sumto: a self tail call loops *)
   let ver, _, f = native "sumto" [| TI; TI |] in
   let st, io = run ver f (stacks ()) [| Int 1000; Int 0 |] in

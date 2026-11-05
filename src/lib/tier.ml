@@ -108,15 +108,6 @@ let go (ctx : ctx) code entry =
       Runtime.checkpoint ctx (ctx.b + code.fn.frame);
       again (p + 1) false
     end
-    else if st = Ir.copy then begin
-      (* A write into a shared array, as the interpreter's own: copied, written, and the variable holds the copy. *)
-      let p = io.(Ir.io_point) and k = io.(Ir.io_a) and slot = io.(Ir.io_b) and b = ctx.b in
-      let y = Float.Array.get ctx.f (b + code.fn.frame) in
-      let top = Runtime.own ctx ctx.v.(b + slot) in
-      Arrays.write ctx top [| Arrays.At k |] (Float y);
-      ctx.v.(b + slot) <- top;
-      again (p + 1) false
-    end
     else if st = Ir.error then fail ctx
     else if st = Ir.too_deep then begin
       ctx.b <- io.(Ir.io_frame);
@@ -202,10 +193,14 @@ let ready (ctx : ctx) l ver =
   end;
   live ctx l
 
-(* Native code takes arrays of floats only: checked before the interpreter leaves its loops, so that native code then
-   never falls back. *)
+(* Native code takes arrays of floats only, and writes only into owned ones: a shared one is copied at its first write,
+   which the interpreter does, at its step. Checked before the interpreter leaves its loops, so that native code then never
+   falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. *)
 let fits (ctx : ctx) code =
-  Array.for_all (fun (slot, _) -> match ctx.v.(ctx.b + slot) with Array { store = F _; _ } -> true | _ -> false) code.fn.arrays
+  Array.for_all
+    (fun (slot, written) ->
+       match ctx.v.(ctx.b + slot) with Array { store = F _; a_owned; _ } -> a_owned || not written | _ -> false)
+    code.fn.arrays
 
 (* At a checkpoint inside [l], hot: the outermost loop around it, [l] included, that lowers, as one region; [outer] the
    loops around [l], the nearest first. *)
@@ -217,7 +212,12 @@ let hot (ctx : ctx) l ver outer =
       | [] -> None
       | c :: rest ->
         compile ctx.w c ver;
-        (match live ctx c with Some code when fits ctx code -> Some code | _ -> pick rest)
+        (match live ctx c with
+         | Some code when fits ctx code -> Some code
+         | k ->
+           if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
+             prerr_endline (Printf.sprintf "jit: loop %d %s" c.expr.id (if k = None then "has no code" else "doesn't fit"));
+           pick rest)
     in
     pick (List.rev (l :: outer))
   end
@@ -249,9 +249,9 @@ let enter (ctx : ctx) l code entry =
   if st = Ir.ok then Ran
   else if st = Ir.returned then Returned (match code.ret with Kfloat -> Float (result_float ctx code) | Kint -> Int io.(Ir.io_int))
   else begin
-    (* Its arrays are not what native code takes: this loop stays interpreted. *)
-    l.code <- None;
-    l.failed <- true;
+    (* Its arrays are not what native code takes this time, or one it writes is shared: nothing ran, this run is the
+       interpreter's, which copies at its first write. *)
+    if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline (Printf.sprintf "jit: loop %d fell" l.expr.id);
     Fell
   end
 
