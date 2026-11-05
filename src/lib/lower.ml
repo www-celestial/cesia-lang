@@ -18,7 +18,10 @@ type st = {
   hidden : Ir.var Dynarray.t;
   resumes : int Dynarray.t;
   mutable loops : int list;  (* where a break goes *)
-  sites : Pos.t Dynarray.t;
+  sites : (Pos.t * version) Dynarray.t;  (* each site and the version whose code it is in *)
+  chains : (int * int * int) list Dynarray.t;  (* each site's inlined frames, as [Ir.func.chains] *)
+  mutable inl : (int * int * int) list;  (* the inlined frames around the code being lowered, the innermost first *)
+  mutable ret_to : (int * int) option;  (* in an inlined body: the register of its result and the block after it *)
   unit : unit_;
   mutable body : int;  (* the block after the step of the call, where a self tail call comes back *)
   region : bool;  (* a loop of the version, not the whole of it *)
@@ -74,7 +77,8 @@ let goto st l =
   st.cur <- l
 
 let site st pos =
-  Dynarray.add_last st.sites pos;
+  Dynarray.add_last st.sites (pos, st.ver);
+  Dynarray.add_last st.chains st.inl;
   Dynarray.length st.sites - 1
 
 let point st l =
@@ -177,6 +181,56 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   | Call call -> call_expr st e call
   | _ -> raise No
 
+(* A small callee without a loop is lowered in place, one level deep: its frame is virtual, written only when an error or
+   a limit unwinds through it, so traces and the limit of depth stay the interpreter's. *)
+and inlinable (v : version) =
+  let f = v.owner.func in
+  let rec size (e : expr) =
+    let blk b = Array.fold_left (fun n x -> n + size x) 0 b in
+    1
+    + (match e.e with
+       | For _ | While _ -> 1000
+       | If (c, y, n) -> size c + blk y + blk n
+       | Bin (_, x, y) | And (x, y) | Or (x, y) -> size x + size y
+       | Neg x | Not x | Assign (_, x) | Return { rvalue = Some x; _ } -> size x
+       | Call c -> Array.fold_left (fun n (a : arg) -> n + size a.value) (size c.callee) c.args
+       | Index (x, _, _) -> size x + 2
+       | _ -> 1)
+  in
+  (v.ret == TI || v.ret == TF) && v.state = 2 && Array.length f.captures = 0 && (not f.has_self_tail)
+  && blk_size size f.body <= 40
+
+and blk_size size b = Array.fold_left (fun n x -> n + size x) 0 b
+
+and inline st (e : expr) (v : version) args =
+  let callsite = site st e.pos in
+  let base = match st.inl with [] -> -1 | (vb, _, _) :: _ -> vb in
+  let vb = reg st Kint in
+  emit st (Frame (vb, base));
+  emit st (Enter (vb, base, callsite));
+  let f = v.owner.func in
+  let res = reg st (kind_of v.ret) and cont = block st in
+  let child =
+    { st with ver = v; f; regs = Array.make f.nvars (-1); arrays = Array.make f.nvars (-1); loops = [];
+              inl = (vb, base, callsite) :: st.inl; ret_to = Some (res, cont); body = 0; region = false;
+              fast = Hashtbl.create 1 }
+  in
+  for i = 0 to f.nvars - 1 do
+    match v.tv.(i) with TI | TF -> child.regs.(i) <- reg st (kind_of v.tv.(i)) | _ -> ()
+  done;
+  Array.iteri
+    (fun j x ->
+       let r = child.regs.(j) in
+       if r < 0 then raise No;
+       emit child (Move (r, convert child (Dynarray.get st.kinds r) x)))
+    args;
+  (* The callee's step, as its frame's entry counts one. *)
+  emit child (Ir.Tick (-1, false));
+  tail_block child f.body;
+  st.cur <- cont;
+  st.ncalls <- child.ncalls + 1;
+  Ir.Reg res, kind_of v.ret
+
 and convert st k (v, vk) = if k = vk then v else if k = Ir.Kfloat then to_float st (v, vk) else raise No
 
 and value_block st (b : block) =
@@ -223,10 +277,14 @@ and call_expr st e (call : call) =
        let v = Infer.version_for st.w proto sg in
        if v.state = 0 then Infer.run st.w v;
        if v.state <> 2 || (v.ret != TI && v.ret != TF) then raise No;
-       let args = Array.map (fun x -> fst (expr st x)) a in
+       let vals = Array.map (expr st) a in
+       let args = Array.map fst vals in
        let k = kind_of v.ret in
-       st.ncalls <- st.ncalls + 1;
-       fresh st k (fun r -> Call (r, callee st v, args, site st e.pos))
+       if st.inl = [] && inlinable v then inline st e v vals
+       else begin
+         st.ncalls <- st.ncalls + 1;
+         fresh st k (fun r -> Call (r, callee st v, args, site st e.pos))
+       end
      | _ -> raise No)
   | _ -> raise No
 
@@ -308,7 +366,7 @@ and stmt st (e : expr) =
   | Return { rvalue = Some v; _ } ->
     let k = kind_of st.ver.ret in
     let x = convert st k (expr st v) in
-    close st (if st.region then Out x else Return x);
+    if st.region && st.ret_to = None then close st (Out x) else give st x;
     st.cur <- block st
   | Lint _ | Lfloat _ | Var _ -> ()
   | Call _ | Bin _ | Neg _ | Index _ -> ignore (expr st e)
@@ -462,7 +520,7 @@ and hidden st =
   r
 
 (* The last expression of the body: its value is the result, and a self tail call loops. *)
-let rec tail st (e : expr) =
+and tail st (e : expr) =
   let k = kind_of st.ver.ret in
   match e.e with
   | Return { rvalue = Some v; _ } -> tail st v
@@ -490,7 +548,15 @@ let rec tail st (e : expr) =
     Array.iteri (fun j r -> emit st (Move (ps.(j), Reg r))) tmp;
     emit st (Ir.Tick (point st st.body, outer st));
     close st (Jump st.body)
-  | _ -> close st (Return (convert st k (expr st e)))
+  | _ -> give st (convert st k (expr st e))
+
+(* The end of a body: its result, or, inlined, the result in its register and on to the block after. *)
+and give st v =
+  match st.ret_to with
+  | Some (r, cont) ->
+    emit st (Move (r, v));
+    close st (Jump cont)
+  | None -> close st (Return v)
 
 and tail_block st (b : block) =
   let n = Array.length b in
@@ -523,8 +589,8 @@ and finish st name ~params ~vars =
       vars = Array.of_list (vars @ hidden); arrays = Dynarray.to_array st.arr; kinds = Dynarray.to_array st.kinds; blocks;
       resumes = Dynarray.to_array st.resumes; frame = ver.frame; size = ver.frame + n_hidden + 2; hidden = n_hidden;
       sites = Array.make (Dynarray.length st.sites) (-1);
-      pure = not (has (function Ir.Set_elem _ -> true | _ -> false));
-      calls = has (function Ir.Call _ -> true | _ -> false) },
+      pure = not (has (function Ir.Set_elem _ | Set_at _ -> true | _ -> false));
+      calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Dynarray.to_array st.chains },
     Dynarray.to_array st.sites )
 
 let start ?(region = false) (w : world) unit index (ver : version) =
@@ -546,13 +612,13 @@ let start ?(region = false) (w : world) unit index (ver : version) =
   done;
   { w; ver; f; index; kinds; blocks = Dynarray.create (); cur = 0; regs; arrays; arr; hidden = Dynarray.create ();
     resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); unit; body = 0; region; infos = Dynarray.create ();
-    fast = Hashtbl.create 1; ncalls = 0 }
+    fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
-let register (w : world) (ver : version) (fn : Ir.func) (pos : Pos.t array) =
+let register (w : world) (fn : Ir.func) (pos : (Pos.t * version) array) =
   let s = w.sites in
   Array.iteri
-    (fun j p ->
+    (fun j (p, (ver : version)) ->
        Dynarray.add_last s { sfile = ver.owner.file; spos = p; sfn = ver.owner.pname; sver = Some ver; soff = ver.frame;
                              slive = Bytes.empty };
        fn.sites.(j) <- Dynarray.length s - 1)
@@ -577,7 +643,7 @@ let lower_unit (w : world) (ver : version) first =
   with
   | () ->
     let fs = Dynarray.to_array out in
-    Array.iteri (fun j (fn, pos) -> register w (Dynarray.get u.versions j) fn pos) fs;
+    Array.iter (fun (fn, pos) -> register w fn pos) fs;
     Some (Array.map fst fs)
   | exception No -> None
 

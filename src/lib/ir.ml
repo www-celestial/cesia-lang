@@ -21,6 +21,8 @@ type ins =
   | Set_at of int * int * value
   | Bump of int * value
   | Burn
+  | Frame of int * int
+  | Enter of int * int * int
 
 type term =
   | Jump of int
@@ -47,6 +49,7 @@ type func = {
   sites : int array;
   pure : bool;
   calls : bool;
+  chains : (int * int * int) list array;
 }
 
 let io_base = 3

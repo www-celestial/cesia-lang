@@ -38,6 +38,12 @@ type ins =
   | Set_at of int * int * value  (** the array, a register of its index proved inside, the value *)
   | Bump of int * value  (** an integer register plus a value, unchecked: an index that a loop moves by its step *)
   | Burn  (** one step of fuel, unchecked: a loop that proved it has the fuel for all its steps *)
+  | Frame of int * int
+      (** [Frame (r, base)]: [r], a raw integer, the base a callee of the frame at [base] takes: a register of a raw base,
+          or -1 for the function's own frame *)
+  | Enter of int * int * int
+      (** [Enter (r, base, site)]: an inlined callee enters its frame at [r], called at [site] from the frame at [base]:
+          the depth and the stack are checked as for a call *)
 
 type term =
   | Jump of int
@@ -67,6 +73,9 @@ type func = {
   sites : int array;  (** the sites, numbered in the world, that [Op], [Elem], [Call]... name by their index here *)
   pure : bool;  (** writes no array: a run that stops for want of stack can start again *)
   calls : bool;
+  chains : (int * int * int) list array;
+      (** for each site, the inlined frames it is in, the innermost first: the register of the frame's base, its caller's
+          base (-1 for the function's own frame) and the site of the call. An error there writes their links. *)
 }
 
 (** The frame of a call made from the outermost native frame starts [frame + hidden] above its base; a call from a nested

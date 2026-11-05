@@ -73,14 +73,25 @@ let func b ~prefix ~nested (fn : Ir.func) =
   let stop b status =
     Printf.bprintf b "  mov %s, fuel\n  mov %s, %d\n  ret %s, -1\n" (cx Ir.io_fuel) (cx Ir.io_status) status zero
   in
+  (* The frames of inlined callees around a site: their bases, the innermost first, and the links an error writes so that
+     the trace holds them, as the interpreter's frames. *)
+  let reg_of base = if base < 0 then "b" else "r" ^ string_of_int base in
+  let frame_of site = match fn.chains.(site) with [] -> "b" | (vb, _, _) :: _ -> reg_of vb in
+  let callee_of site = match fn.chains.(site) with [] -> if nested then 2 else fn.frame + fn.hidden | _ -> 2 in
+  let link s at caller csite =
+    Printf.bprintf s "  mov ip, %s\n  lsh x0, %s, 1\n  add x0, x0, 1\n  mov i64:0(ip, %s, 8), x0\n  mov i64:8(ip, %s, 8), %s\n" (cx 0)
+      caller at at (tagged fn.sites.(csite))
+  in
+  let links s site = List.iter (fun (vb, cb, cs) -> link s (reg_of vb) (reg_of cb) cs) fn.chains.(site) in
   (* An error: the interpreter remakes its message from the operands, at the site, from this frame. *)
   let error code site a bv =
     stub (fun s ->
         let raw v = match v with Ir.Reg r -> Printf.bprintf s "  rsh x1, r%d, 1\n" r; "x1" | Int n -> string_of_int n | Float _ -> "0" in
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_a) (raw a);
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_b) (match bv with Some v -> raw v | None -> "0");
-        Printf.bprintf s "  mov %s, %d\n  mov %s, %d\n  mov %s, b\n" (cx Ir.io_point) fn.sites.(site) (cx Ir.io_code) code
-          (cx Ir.io_frame);
+        links s site;
+        Printf.bprintf s "  mov %s, %d\n  mov %s, %d\n  mov %s, %s\n" (cx Ir.io_point) fn.sites.(site) (cx Ir.io_code) code
+          (cx Ir.io_frame) (frame_of site);
         stop s Ir.error)
   in
   (* An operand in a register, for the places MIR wants one. *)
@@ -104,7 +115,24 @@ let func b ~prefix ~nested (fn : Ir.func) =
       Printf.sprintf "d:%d(%s)" (8 * (k - 1)) (arr a)
     | Float _ -> invalid_arg "index"
   in
+  (* A frame about to be entered at [at], above the limit: the stack is short, or the limit of depth is reached, at the
+     site, the frame entered as the interpreter's is when it stops. *)
+  let deep_stub at caller site =
+    stub (fun s ->
+        let deep = label () in
+        Printf.bprintf s "  mov x0, %s\n  ble %s, %s, x0\n" (cx Ir.io_cap2) deep at;
+        stop s Ir.stack_out;
+        Printf.bprintf s "%s:\n" deep;
+        link s at caller site;
+        links s site;
+        Printf.bprintf s "  mov %s, %s\n  mov %s, %d\n" (cx Ir.io_frame) at (cx Ir.io_point) fn.sites.(site);
+        stop s Ir.too_deep)
+  in
   let ins = function
+    | Ir.Frame (r, base) -> pr "  add r%d, %s, %d\n" r (reg_of base) (if base < 0 && not nested then fn.frame + fn.hidden else 2)
+    | Enter (r, base, site) ->
+      let slow = deep_stub ("r" ^ string_of_int r) (reg_of base) site in
+      pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) slow r
     | Ir.Move (r, v) -> pr "  %s r%d, %s\n" (if fn.kinds.(r) = Kint then "mov" else "dmov") r (operand v)
     | Incr r -> pr "  add r%d, r%d, 2\n" r r
     | Op (((Add | Sub) as op), r, x, y, site) ->
@@ -146,25 +174,14 @@ let func b ~prefix ~nested (fn : Ir.func) =
       let m = check_index a i site Ir.err_write in
       pr "  dmov %s, %s\n" m (operand v)
     | Call (r, k, args, site) ->
-      let call_site = fn.sites.(site) in
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
-      pr "  add nb, b, %d\n" (if nested then 2 else fn.frame + fn.hidden);
-      let slow =
-        stub (fun s ->
-            let deep = label () in
-            Printf.bprintf s "  mov x0, %s\n  ble %s, nb, x0\n" (cx Ir.io_cap2) deep;
-            stop s Ir.stack_out;
-            Printf.bprintf s "%s:\n" deep;
-            (* The frame of the limit, as the interpreter has entered it when it stops. *)
-            Printf.bprintf s "  mov ip, %s\n  lsh x0, b, 1\n  add x0, x0, 1\n  mov i64:0(ip, nb, 8), x0\n" (cx 0);
-            Printf.bprintf s "  mov i64:8(ip, nb, 8), %s\n  mov %s, nb\n  mov %s, %d\n" (tagged call_site) (cx Ir.io_frame)
-              (cx Ir.io_point) call_site;
-            stop s Ir.too_deep)
-      in
+      pr "  add nb, %s, %d\n" (frame_of site) (callee_of site);
+      let slow = deep_stub "nb" (frame_of site) site in
       let up =
         stub (fun s ->
-            Printf.bprintf s "  mov ip, %s\n  lsh x0, b, 1\n  add x0, x0, 1\n  mov i64:0(ip, nb, 8), x0\n" (cx 0);
-            Printf.bprintf s "  mov i64:8(ip, nb, 8), %s\n  ret %s, -1\n" (tagged call_site) zero)
+            link s "nb" (frame_of site) site;
+            links s site;
+            Printf.bprintf s "  ret %s, -1\n" zero)
       in
       pr "  mov x0, %s\n  bgt %s, nb, x0\n" (cx Ir.io_lim) slow;
       pr "  inline Q%s%d, %sg%d, r%d, fuel, cx, nb, fuel%s\n" prefix k prefix k r
