@@ -325,13 +325,14 @@ and stmt st (e : expr) =
     let a, ix = Hashtbl.find st.fast e.id in
     let x = to_float st (expr st value) in
     emit st (Set_at (a, ix, x))
-  | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix ix |], false); _ } |]; value } when st.arrays.(i) >= 0 ->
+  | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix ix |], false); sp } |]; value } when st.arrays.(i) >= 0 ->
     let a = st.arrays.(i) in
     let k = (match expr st ix with x, Kint -> x | _ -> raise No) in
     let x = to_float st (expr st value) in
     let slot, _ = Dynarray.get st.arr a in
     Dynarray.set st.arr a (slot, true);
-    emit st (Set_elem (a, k, x, site st e.pos))
+    (* At the step, as the interpreter names an index outside the array. *)
+    emit st (Set_elem (a, k, x, site st sp))
   | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
     let lo = expr st a in
     let hi = expr st b in
@@ -368,7 +369,10 @@ and stmt st (e : expr) =
     let x = convert st k (expr st v) in
     if st.region && st.ret_to = None then close st (Out x) else give st x;
     st.cur <- block st
-  | Lint _ | Lfloat _ | Var _ -> ()
+  | Lint _ | Lfloat _ -> ()
+  (* A variable alone reads it: one that may be unset, or of the module, stays with the interpreter, which says so. *)
+  | Var { b = Local i; _ } when plain st i && (st.regs.(i) >= 0 || st.arrays.(i) >= 0) -> ()
+  | Var _ -> raise No
   | Call _ | Bin _ | Neg _ | Index _ -> ignore (expr st e)
   | _ -> raise No
 
@@ -387,12 +391,17 @@ and for_loop ?lo st (e : expr) i fbody =
   let cslot = if own then st.ver.map.(i) else (Dynarray.get_last st.hidden).slot in
   let h = hidden st in
   let hslot = (Dynarray.get_last st.hidden).slot in
+  let head = block st and decide = block st and body = block st and next = block st and inc = block st and exit = block st in
   (match lo with
    | Some (l, x) ->
-     emit st (Move (c, l));
-     emit st (Move (h, x))
+     (* An empty range leaves the variable as it was, as the interpreter's loop never writes it. *)
+     emit st (Move (h, x));
+     let start = block st in
+     let l = match l with Ir.Reg _ -> l | _ -> let t = reg st Kint in emit st (Move (t, l)); Ir.Reg t in
+     close st (Branch (Gt, Kint, l, Reg h, exit, start));
+     st.cur <- start;
+     emit st (Move (c, l))
    | None -> ());
-  let head = block st and decide = block st and body = block st and next = block st and inc = block st and exit = block st in
   goto st head;
   close st (Branch (Gt, Kint, Reg c, Reg h, exit, decide));
   st.cur <- body;
@@ -431,7 +440,8 @@ and fast_copy st _e i c h fbody written ~slow ~exit =
   let rec affine (e : expr) =
     match e.e with
     | Lint n -> Some (Ir.Int n, Ir.Int 0)
-    | Var { b = Local j; _ } when j = i -> Some (Int 0, Int 1)
+    (* The loop's variable is its counter only when the body leaves it alone. *)
+    | Var { b = Local j; _ } when j = i -> if List.mem i written then None else Some (Int 0, Int 1)
     | Var { b = Local j; _ } when invariant j -> Some (Reg st.regs.(j), Int 0)
     | Var { b = Cell { m; k; stable = true }; _ } -> (match st.w.modules.(m).cells.(k) with Int n -> Some (Int n, Int 0) | _ -> None)
     | Bin (((Add | Sub) as op), x, y) ->

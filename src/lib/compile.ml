@@ -2471,10 +2471,11 @@ and cu c (e : expr) : ctx -> unit =
           let lo = l ctx in
           let hi = h ctx in
           match Tier.ready ctx st ver with
-          | Some code ->
+          (* An empty range runs nothing, and its variable keeps its value. *)
+          | Some code when lo <= hi ->
             Tier.place ctx code st lo hi;
             if not (entered ctx code (Tier.start code)) then interp ctx lo hi
-          | None -> interp ctx lo hi
+          | _ -> interp ctx lo hi
       end
     in
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run

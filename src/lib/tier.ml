@@ -216,6 +216,8 @@ let id l = l.expr.id
 
 (* A loop that the interpreter leaves: its counter and bound to their slots in the region. *)
 let place (ctx : ctx) code l n hi =
+  (* The hidden slots can be past the interpreter's frame. *)
+  if ctx.b + code.fn.size > ctx.cap then Runtime.grow ctx (ctx.b + code.fn.size);
   Array.iter
     (fun (node, cs, hs, _) ->
        if node = l.expr.id && cs >= 0 then begin
