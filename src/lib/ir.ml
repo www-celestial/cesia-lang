@@ -13,7 +13,8 @@ type ins =
   | Math of string * int * value
   | Len of int * int
   | Elem of int * int * value * int
-  | Set_elem of int * value * value * int
+  | Set_elem of int * value * value * int * int
+  | Wlen of int * int
   | Call of int * int * value array * int
   | Tick of int * bool
   | Try of op * int * value * value * int
@@ -79,6 +80,7 @@ let stack_out = 4
 let too_deep = 5
 let too_long = 6
 let returned = 7
+let copy = 8
 let err_add = 1
 let err_sub = 2
 let err_mul = 3

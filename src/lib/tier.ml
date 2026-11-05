@@ -52,9 +52,6 @@ let make (w : world) (ver : version) fns start loops =
 let rec run (ctx : ctx) code entry =
   let b = ctx.b and w = ctx.w in
   if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
-  Array.iter
-    (fun slot -> match ctx.v.(b + slot) with Array a as v when not a.a_owned -> ctx.v.(b + slot) <- Runtime.own ctx v | _ -> ())
-    code.written;
   let depth = if code.calls then b + code.fn.frame + code.fn.hidden + (2 * (ctx.max_depth - Runtime.frames ctx - 1)) else max_int in
   let fuel0 = ctx.fuel in
   io.(Ir.io_base) <- b;
@@ -94,7 +91,11 @@ let fail (ctx : ctx) =
   else if code = Ir.err_div then ignore (Arith.int_div ctx a b)
   else if code = Ir.err_mod then ignore (Arith.int_mod ctx a b)
   else if code = Ir.err_read then ignore (Arrays.read1 ctx ctx.v.(ctx.b + b) (Arrays.At a))
-  else if code = Ir.err_write then Arrays.write ctx ctx.v.(ctx.b + b) [| Arrays.At a |] (Float 0.);
+  else if code = Ir.err_write then begin
+    (* As the interpreter's write: the array owned, so copied when shared, then the write, which fails. *)
+    let top = Runtime.own ctx ctx.v.(ctx.b + b) in
+    Arrays.write ctx top [| Arrays.At a |] (Float 0.)
+  end;
   failwith "jit: an error that the interpreter doesn't see"
 
 (* Runs until native code ends: a checkpoint between quanta, as the interpreter's own, may let other fibers run, as no C
@@ -105,6 +106,15 @@ let go (ctx : ctx) code entry =
     if st = Ir.fuel_out then begin
       let p = io.(Ir.io_point) in
       Runtime.checkpoint ctx (ctx.b + code.fn.frame);
+      again (p + 1) false
+    end
+    else if st = Ir.copy then begin
+      (* A write into a shared array, as the interpreter's own: copied, written, and the variable holds the copy. *)
+      let p = io.(Ir.io_point) and k = io.(Ir.io_a) and slot = io.(Ir.io_b) and b = ctx.b in
+      let y = Float.Array.get ctx.f (b + code.fn.frame) in
+      let top = Runtime.own ctx ctx.v.(b + slot) in
+      Arrays.write ctx top [| Arrays.At k |] (Float y);
+      ctx.v.(b + slot) <- top;
       again (p + 1) false
     end
     else if st = Ir.error then fail ctx

@@ -172,10 +172,25 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Math (name, r, x) -> pr "  call pd1, %s, r%d, %s\n" name r (operand x)
     | Len (r, a) -> pr "  mov r%d, %s\n" r (len a)
     | Elem (r, a, i, site) -> pr "  dmov r%d, %s\n" r (check_index a i site Ir.err_read)
-    | Set_elem (a, i, v, site) ->
+    | Set_elem (a, i, v, site, p) ->
+      (* Against the length when owned, 0 when not: one test for both, and the cold path tells them apart. *)
       pr "  dmov y0, %s\n" (operand v);
-      let m = check_index a i site Ir.err_write in
-      pr "  dmov %s, y0\n" m
+      let err = error Ir.err_write site i (Some (Int (fst fn.arrays.(a)))) in
+      let cold =
+        stub (fun s ->
+            Printf.bprintf s "  ubge %s, x0, %s\n" err (len a);
+            spill s;
+            Printf.bprintf s "  dmov d:%d(fp), y0\n  rsh x1, %s, 1\n  mov %s, x1\n  mov %s, %d\n  mov %s, %d\n" (8 * fn.frame)
+              (operand i) (cx Ir.io_a) (cx Ir.io_b) (fst fn.arrays.(a)) (cx Ir.io_point) p;
+            stop s Ir.copy)
+      in
+      (match i with
+       | Ir.Reg r ->
+         pr "  sub x0, r%d, 2\n  ubge %s, x0, %sw\n  lsh xa, r%d, 2\n  add xa, xa, %s\n  dmov d:-8(xa), y0\n" r cold (arr a) r (arr a)
+       | Int k ->
+         pr "  mov x0, %s\n  ubge %s, x0, %sw\n  dmov d:%d(%s), y0\n" (doubled (k - 1)) cold (arr a) (8 * (k - 1)) (arr a)
+       | Float _ -> invalid_arg "index")
+    | Wlen (r, a) -> pr "  mov r%d, %sw\n" r (arr a)
     | Call (r, k, args, site) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
       pr "  add nb, %s, %d\n" (frame_of site) (callee_of site);
@@ -258,7 +273,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   pr "%s%s: func %s, i64, %s\n" prefix name (ty fn.result) (args_of ~nested fn);
   pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, d:y0\n";
   Array.iteri (fun r k -> if not (is_param r) then pr "  local %s:r%d\n" (ty k) r) fn.kinds;
-  Array.iteri (fun a _ -> pr "  local i64:%s, i64:%s\n" (arr a) (len a)) fn.arrays;
+  Array.iteri (fun a (_, written) -> pr "  local i64:%s, i64:%s%s\n" (arr a) (len a) (if written then Printf.sprintf ", i64:%sw" (arr a) else "")) fn.arrays;
   let guards () =
     if Array.length fn.arrays > 0 then pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n" (cx 2);
     Array.iteri
@@ -266,9 +281,12 @@ let func b ~prefix ~nested (fn : Ir.func) =
          pr "  mov x0, i64:%d(vp)\n  and x1, x0, 1\n  bne %s, x1, 0\n" (8 * slot) lf;
          pr "  mov x1, i64:-8(x0)\n  and x1, x1, 255\n  bne %s, x1, 3\n  mov x2, i64:0(x0)\n" lf;
          pr "  mov x1, i64:16(x2)\n  mov x3, i64:-8(x1)\n  and x3, x3, 255\n  bne %s, x3, 0\n" lf;
-         if written then pr "  mov x3, i64:24(x2)\n  bne %s, x3, 3\n" lf;
          pr "  mov %s, i64:0(x1)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n  mov x4, i64:8(x2)\n  rsh x4, x4, 1\n" (arr a);
-         pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a))
+         pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a);
+         if written then begin
+           let l = label () in
+           pr "  mov %sw, 0\n  mov x3, i64:24(x2)\n  bne %s, x3, 3\n  mov %sw, %s\n%s:\n" (arr a) l (arr a) (len a) l
+         end)
       fn.arrays
   in
   let lr = Printf.sprintf "%s%s_R" prefix name in
