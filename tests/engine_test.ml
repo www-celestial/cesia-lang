@@ -231,6 +231,35 @@ let () =
   in
   check "old maps keep their keys" (versions 0x3FFF_FFFF);
   check "old maps keep their keys, few bits of hash" (versions 0x7);
+  (* A map that adds and drops keys for long renumbers its ranks and keeps its order: with a limit of 100, every few dozen
+     writes, owned or not. *)
+  let renumbered () =
+    Trie.rank_limit := 100;
+    let rng = Random.State.make [| 33 |] in
+    let key i = Text ("r" ^ string_of_int i) in
+    let m = ref (Trie.empty ()) and l = ref [] and ok = ref true in
+    for i = 0 to 39 do
+      m := Trie.put_owned !m (Trie.hash (key i)) (key i) (Int i);
+      l := !l @ [ (key i, Int i) ]
+    done;
+    for step = 1 to 3_000 do
+      let k = key (Random.State.int rng 40) in
+      m := Trie.drop !m (Trie.hash k) k;
+      l := List.filter (fun (k', _) -> not (Trie.same k k')) !l;
+      m := (if step land 1 = 0 then Trie.put_owned else Trie.put) !m (Trie.hash k) k (Int step);
+      l := !l @ [ (k, Int step) ];
+      if Array.to_list (Trie.items !m) <> List.concat_map (fun (k, v) -> [ k; v ]) !l then ok := false;
+      (match !m with Dict { keys = { deep = Deep d; _ }; _ } when d.next < 100 -> () | _ -> ok := false)
+    done;
+    Trie.rank_limit := 1 lsl 32;
+    !ok
+  in
+  check "ranks renumbered keep the order" (renumbered ());
+  (* Keys that differ only in the 64th bit of each word of 8 bytes, which JSON lets through: they spread. *)
+  let crafted = Array.init 16_384 (fun k -> String.concat "" (List.init 14 (fun w -> "abcdefg" ^ String.make 1 (if k land (1 lsl w) <> 0 then '\xc1' else 'A')))) in
+  let seen = Hashtbl.create 16_384 in
+  Array.iter (fun s -> Hashtbl.replace seen (Trie.hash (Text s)) ()) crafted;
+  check "keys that differ in the top bit of their words spread" (Hashtbl.length seen > 16_300);
   check "the trie keeps keys, values and order" (model 0x3FFF_FFFF);
   check "the trie with few bits of hash" (model 0x1F);
   check "the trie with equal hashes" (model 0);

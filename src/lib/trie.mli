@@ -16,6 +16,9 @@ val hash : t -> int
 (** For tests only: [0] sends every key to one hash. *)
 val mask : int ref
 
+(** The rank at which a deep map renumbers its ranks in its order; 2^32, smaller in tests. *)
+val rank_limit : int ref
+
 (** The order of keys in a tree. *)
 val compare_keys : t -> t -> int
 

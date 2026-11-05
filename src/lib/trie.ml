@@ -9,8 +9,13 @@ let width = 32
 let deep_width = 8
 let levels = 6
 
-(* Drawn once per run, so that nobody outside can choose keys that fall together. *)
-let seed = Random.State.bits (Random.State.make_self_init ())
+(* Drawn once per run, 62 bits, so that nobody outside can choose keys that fall together. *)
+let seed, seed2 =
+  let st = Random.State.make_self_init () in
+  let draw () = (Random.State.bits st lsl 32) lxor (Random.State.bits st lsl 2) lxor Random.State.bits st in
+  let a = draw () in
+  a, draw ()
+
 let mask = ref 0x3FFF_FFFF
 
 let compare_keys a b =
@@ -26,30 +31,39 @@ let compare_keys a b =
 (* 1 and 1.0 are one key, so a number hashes by its value as a float, which an integer below 2^53 is exactly. *)
 let exact = 1 lsl 53
 
+(* An integer, mixed with the seed: two multiplies by odd numbers and shifts, a bijection, so no two integers share their
+   63 bits, and the 30 that place a key depend on the seed. *)
+let int_hash i =
+  let x = (i lxor seed) * 0x2545F4914F6CDD1D in
+  let x = (x lxor (x lsr 29)) * 0x3C79AC492BA7B653 in
+  x lxor (x lsr 32) lxor seed2
+
 let number_hash f =
-  if Float.is_integer f && Float.abs f <= 4.611686018427387904e18 then Hashtbl.seeded_hash seed (int_of_float f)
+  if Float.is_integer f && Float.abs f <= 4.611686018427387904e18 then int_hash (int_of_float f)
   else Hashtbl.seeded_hash seed f
 
-(* A text 8 bytes at a time, then its last bytes one by one, a multiply each, then mixed: about 4 ns for a name, and no
-   allocation. Its quality only spreads the keys; keys that collide on all 30 bits still go to the tree. *)
+(* A text 8 bytes at a time, then its last bytes one by one, a multiply each, then mixed with the seed again: about 4 ns for
+   a name, and no allocation. Every bit counts: the 64th of each word, which an OCaml integer can't hold, goes in by
+   itself, so no two texts fall together whatever the seed. Keys that collide on all 30 bits still go to the tree. *)
 let text_hash s =
   let n = String.length s in
   let h = ref (seed lxor n) and i = ref 0 in
   while !i + 8 <= n do
-    h := (!h lxor Int64.to_int (String.get_int64_le s !i)) * 0x100000001b3;
+    let w = String.get_int64_le s !i in
+    h := ((!h lxor Int64.to_int w) * 0x100000001b3) lxor Int64.to_int (Int64.shift_right_logical w 63);
     h := !h lxor (!h lsr 31);
     i := !i + 8
   done;
   for j = !i to n - 1 do
     h := (!h lxor Char.code s.[j]) * 0x100000001b3
   done;
-  let h = (!h lxor (!h lsr 32)) * 0x2545F4914F6CDD1D in
+  let h = (!h lxor (!h lsr 32) lxor seed2) * 0x2545F4914F6CDD1D in
   h lxor (h lsr 29)
 
 let hash k =
   (match k with
    | Text s -> text_hash s
-   | Int i when i < exact && i > -exact -> Hashtbl.seeded_hash seed i
+   | Int i when i < exact && i > -exact -> int_hash i
    | Int i -> number_hash (float_of_int i)
    | Float f -> number_hash f
    | _ -> 0)
@@ -260,12 +274,38 @@ let append_h (a : int array) x =
   | [| a0; a1; a2; a3; a4; a5; a6 |] -> [| a0; a1; a2; a3; a4; a5; a6; x |]
   | _ -> append a x
 
-let remove a i =
-  let n = Array.length a in
-  Array.init (n - 1) (fun j -> if j < i then a.(j) else a.(j + 1))
+(* The first [n] of an array without the [w] places from [i], without a closure: values by two copies in C, which move a
+   block at once; hashes by one copy and a loop, whose writes need no barrier. *)
+let cut (a : t array) n i w =
+  if n = w then [||]
+  else begin
+    let b = Array.sub a 0 (n - w) in
+    if i + w < n then Array.blit a (i + w) b i (n - w - i);
+    b
+  end
 
-let insert_at a s x =
-  Array.init (Array.length a + 1) (fun j -> if j < s then a.(j) else if j = s then x else a.(j - 1))
+let cut_kids (a : node array) i =
+  let n = Array.length a in
+  let b = Array.sub a 0 (n - 1) in
+  if i + 1 < n then Array.blit a (i + 1) b i (n - 1 - i);
+  b
+
+let cut_h (a : int array) n i =
+  if n = 1 then [||]
+  else begin
+    let b = Array.sub a 0 (n - 1) in
+    for j = i to n - 2 do
+      b.(j) <- a.(j + 1)
+    done;
+    b
+  end
+
+let insert_at (a : node array) s x =
+  let n = Array.length a in
+  let b = Array.make (n + 1) x in
+  Array.blit a 0 b 0 s;
+  Array.blit a s b (s + 1) (n - s);
+  b
 
 (* The marks of maps: a map changes in place only the nodes of its own mark, and a new mark copies a node once. *)
 let marks = ref 0
@@ -327,20 +367,40 @@ let rec build (hs : int array) ks vs rs (ix : int array) level count cap ed =
     Branch { bits = !bits; kids = Array.of_list !kids; ed }
   end
 
+(* A copy of the kids of a branch: a full one, the top of a big map, inline, without a call to C. *)
+let copy_kids (a : node array) = if Array.length a = 32 then [| a.(0); a.(1); a.(2); a.(3); a.(4); a.(5); a.(6); a.(7); a.(8); a.(9); a.(10); a.(11); a.(12); a.(13); a.(14); a.(15); a.(16); a.(17); a.(18); a.(19); a.(20); a.(21); a.(22); a.(23); a.(24); a.(25); a.(26); a.(27); a.(28); a.(29); a.(30); a.(31) |] else Array.copy a
+
+
+(* The first [n] pairs of a block of the trie, at most 8, inline. *)
+let sub_kv (kv : t array) n =
+  match n with
+  | 1 -> [| kv.(0); kv.(1) |]
+  | 2 -> [| kv.(0); kv.(1); kv.(2); kv.(3) |]
+  | 3 -> [| kv.(0); kv.(1); kv.(2); kv.(3); kv.(4); kv.(5) |]
+  | 4 -> [| kv.(0); kv.(1); kv.(2); kv.(3); kv.(4); kv.(5); kv.(6); kv.(7) |]
+  | 5 -> [| kv.(0); kv.(1); kv.(2); kv.(3); kv.(4); kv.(5); kv.(6); kv.(7); kv.(8); kv.(9) |]
+  | 6 -> [| kv.(0); kv.(1); kv.(2); kv.(3); kv.(4); kv.(5); kv.(6); kv.(7); kv.(8); kv.(9); kv.(10); kv.(11) |]
+  | 7 -> [| kv.(0); kv.(1); kv.(2); kv.(3); kv.(4); kv.(5); kv.(6); kv.(7); kv.(8); kv.(9); kv.(10); kv.(11); kv.(12); kv.(13) |]
+  | 8 -> [| kv.(0); kv.(1); kv.(2); kv.(3); kv.(4); kv.(5); kv.(6); kv.(7); kv.(8); kv.(9); kv.(10); kv.(11); kv.(12); kv.(13); kv.(14); kv.(15) |]
+  | _ -> Array.sub kv 0 (2 * n)
+
 let deep root size next ded =
   Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root; size; next; order = no_order; ded } }; vals = [||]; d_owned = true }
 
 (* A block of [n] keys and a new one: one more key, or past [width] a deep map. *)
-let add_new keys vals n h key v =
-  if n < width then Dict { keys = grow keys n key h; vals = append_v vals v; d_owned = true }
+let add_new ?(owned = true) keys vals n h key v =
+  if n < width then Dict { keys = grow keys n key h; vals = append_v vals v; d_owned = owned }
   else begin
     let all = Array.init (n + 1) Fun.id and ed = fresh () in
     deep (build (with_last keys.hs n h) (with_last keys.ks n key) (append vals v) all all 0 (ref 0) deep_width ed) (n + 1) (n + 1) ed
   end
 
 (* The node with [key] set to [v]: a node of the mark [ed] changes in place and is given back, another is copied with that
-   mark. [added]: set when the key is new. *)
-let rec put_node node h key v rk level ed added =
+   mark. [added]: set when the key is new; one flag for the module, as maps live on one domain (the parallel kernels
+   never touch them), and a write never waits. *)
+let added = ref false
+
+let rec put_node node h key v rk level ed =
   match node with
   | Block b ->
     let n = b.bn in
@@ -350,9 +410,10 @@ let rec put_node node h key v rk level ed added =
         b.kv.((2 * i) + 1) <- v;
         node
       end else begin
-        let kv = Array.sub b.kv 0 (2 * n) in
+        (* Hashes and ranks stay: the new block has no room in [kv], so it never writes in [hr]. *)
+        let kv = sub_kv b.kv n in
         kv.((2 * i) + 1) <- v;
-        Block { kv; hr = Array.sub b.hr 0 n; bed = ed; bn = n }
+        Block { kv; hr = b.hr; bed = ed; bn = n }
       end
     end else begin
       added := true;
@@ -364,7 +425,7 @@ let rec put_node node h key v rk level ed added =
         and rs = Array.init (n + 1) (fun j -> if at j >= 0 then b.hr.(j) lsr 30 else rk) in
         build hs ks vs rs (Array.init (n + 1) Fun.id) level (ref 0) deep_width ed
       end
-      else if b.bed = ed && n < Array.length b.hr then begin
+      else if b.bed = ed && 2 * n < Array.length b.kv then begin
         (* The owner's block, with room: in place. *)
         b.kv.(2 * n) <- key;
         b.kv.((2 * n) + 1) <- v;
@@ -391,12 +452,12 @@ let rec put_node node h key v rk level ed added =
       Branch { bits = b.bits lor bit; kids = insert_at b.kids s one; ed }
     end else begin
       let kid = b.kids.(s) in
-      let kid' = put_node kid h key v rk (level + 1) ed added in
+      let kid' = put_node kid h key v rk (level + 1) ed in
       if b.ed = ed then begin
         if kid' != kid then b.kids.(s) <- kid';
         node
       end else begin
-        let kids = Array.copy b.kids in
+        let kids = copy_kids b.kids in
         kids.(s) <- kid';
         Branch { b with kids; ed }
       end
@@ -405,119 +466,6 @@ let rec put_node node h key v rk level ed added =
     let u = tree_insert key v rk t in
     if tree_length u > tree_length t then added := true;
     Same u
-
-(* The map with [key] set to [v], a new one: a key that is there keeps its place, and the values of a copied block are in
-   both maps. [m] never changes: natives give new values. *)
-let put m h key v =
-  match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    let n = Array.length vals in
-    let i = index keys n h key in
-    if i >= 0 then begin
-      let vals = Array.map share vals in
-      vals.(i) <- v;
-      Dict { keys; vals; d_owned = true }
-    end else begin
-      Array.iter (fun x -> ignore (share x)) vals;
-      add_new keys vals n h key v
-    end
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
-    (* Both maps hold these nodes now: the old one must copy before it writes. *)
-    ignore (share m);
-    let added = ref false and ed = fresh () in
-    let root = put_node d.root h key v d.next 0 ed added in
-    if !added then deep root (d.size + 1) (d.next + 1) ed else deep root d.size d.next ed
-  | _ -> m
-
-(* The same for a map that nothing else holds, a write to a variable: it changes in place, or gives the map that takes its
-   place, and its values move without being marked as shared. *)
-let put_owned m h key v =
-  match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    let n = Array.length vals in
-    let i = index keys n h key in
-    if i >= 0 then begin
-      vals.(i) <- v;
-      m
-    end else add_new keys vals n h key v
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
-    let added = ref false in
-    d.root <- put_node d.root h key v d.next 0 d.ded added;
-    if !added then begin
-      d.size <- d.size + 1;
-      d.next <- d.next + 1
-    end;
-    d.order <- no_order;
-    m
-  | _ -> m
-
-(* [put_owned] for a key that a map of one block lacks. *)
-let add_absent m h key v =
-  match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> add_new keys vals (Array.length vals) h key v
-  | _ -> put_owned m h key v
-
-(* A copy of a map that someone else holds too: a deep map gets a new mark, so that its writes copy the nodes first. *)
-let own_copy m =
-  match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    Array.iter (fun x -> ignore (share x)) vals;
-    Dict { keys; vals = Array.copy vals; d_owned = true }
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
-    Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root = d.root; size = d.size; next = d.next; order = d.order; ded = fresh () } }; vals = [||]; d_owned = true }
-  | _ -> m
-
-let empty_block = Block { kv = [||]; hr = [||]; bed = 0; bn = 0 }
-let is_empty = function Block { bn = 0; _ } -> true | _ -> false
-
-let rec drop_node node h key level ed =
-  match node with
-  | Block b ->
-    let n = b.bn in
-    let i = block_index b.kv b.hr n h key in
-    if i < 0 then node
-    else
-      Block
-        { kv = Array.init (2 * (n - 1)) (fun j -> if j < 2 * i then b.kv.(j) else b.kv.(j + 2));
-          hr = Array.init (n - 1) (fun j -> if j < i then b.hr.(j) else b.hr.(j + 1)); bed = ed; bn = n - 1 }
-  | Branch b ->
-    let f = frag h level in
-    if b.bits land (1 lsl f) = 0 then node
-    else begin
-      let s = below b.bits f in
-      let kid = drop_node b.kids.(s) h key (level + 1) ed in
-      if kid == b.kids.(s) then node
-      else if is_empty kid then
-        (if b.bits = 1 lsl f then empty_block else Branch { bits = b.bits lxor (1 lsl f); kids = remove b.kids s; ed })
-      else if b.ed = ed then begin
-        b.kids.(s) <- kid;
-        node
-      end else begin
-        let kids = Array.copy b.kids in
-        kids.(s) <- kid;
-        Branch { b with kids; ed }
-      end
-    end
-  | Same t ->
-    let u = tree_delete key t in
-    if tree_length u = tree_length t then node else match u with Leaf -> empty_block | _ -> Same u
-
-let drop m h key =
-  match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    let n = Array.length vals in
-    let i = index keys n h key in
-    if i < 0 then m
-    else
-      Dict
-        { keys = { ks = remove (Array.sub keys.ks 0 n) i; hs = remove (Array.sub keys.hs 0 n) i; used = whole; deep = Flat };
-          vals = Array.map share (remove vals i); d_owned = true }
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
-    let ed = fresh () in
-    let root = drop_node d.root h key 0 ed in
-    if root != d.root then ignore (share m);
-    if root == d.root then m else deep root (d.size - 1) d.next ed
-  | _ -> m
 
 let rec iter_node f = function
   | Block b ->
@@ -552,6 +500,133 @@ let deep_items root size next =
     Array.sort (fun (a, _, _) (b, _, _) -> Int.compare a b) sorted;
     Array.init (2 * size) (fun j -> let _, k, x = sorted.(j / 2) in if j land 1 = 0 then k else x)
   end
+
+(* Ranks fit in 33 bits beside 30 of hash, and [next] only grows: a map that adds and drops keys for long, a cache of a
+   server, renumbers its ranks in its order when [next] reaches this, once in four billion keys. A ref, for tests. *)
+let rank_limit = ref (1 lsl 32)
+
+let renumber root size next ed =
+  let o = deep_items root size next in
+  let ks = Array.init size (fun i -> o.(2 * i)) and vs = Array.init size (fun i -> o.((2 * i) + 1)) in
+  let all = Array.init size Fun.id in
+  build (Array.map hash ks) ks vs all all 0 (ref 0) deep_width ed
+
+(* The map with [key] set to [v], a new one: a key that is there keeps its place, and the values of a copied block are in
+   both maps. [m] never changes: natives give new values. *)
+let put m h key v =
+  match m with
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
+    (* Both maps hold these values now: neither is owned, so a write to either copies it first and marks its values. *)
+    ignore (share m);
+    let n = Array.length vals in
+    let i = index keys n h key in
+    if i >= 0 then begin
+      let vals = Array.copy vals in
+      vals.(i) <- v;
+      Dict { keys; vals; d_owned = false }
+    end else add_new ~owned:false keys vals n h key v
+  | Dict { keys = { deep = Deep d; _ }; _ } ->
+    (* Both maps hold these nodes now: the old one must copy before it writes. *)
+    ignore (share m);
+    let ed = fresh () in
+    added := false;
+    let root = put_node d.root h key v d.next 0 ed in
+    if not !added then deep root d.size d.next ed
+    else if d.next + 1 >= !rank_limit then deep (renumber root (d.size + 1) (d.next + 1) ed) (d.size + 1) (d.size + 1) ed
+    else deep root (d.size + 1) (d.next + 1) ed
+  | _ -> m
+
+(* The same for a map that nothing else holds, a write to a variable: it changes in place, or gives the map that takes its
+   place, and its values move without being marked as shared. *)
+let put_owned m h key v =
+  match m with
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
+    let n = Array.length vals in
+    let i = index keys n h key in
+    if i >= 0 then begin
+      vals.(i) <- v;
+      m
+    end else add_new keys vals n h key v
+  | Dict { keys = { deep = Deep d; _ }; _ } ->
+    added := false;
+    d.root <- put_node d.root h key v d.next 0 d.ded;
+    if !added then begin
+      d.size <- d.size + 1;
+      d.next <- d.next + 1;
+      if d.next >= !rank_limit then begin
+        d.root <- renumber d.root d.size d.next d.ded;
+        d.next <- d.size
+      end
+    end;
+    d.order <- no_order;
+    m
+  | _ -> m
+
+(* [put_owned] for a key that a map of one block lacks. *)
+let add_absent m h key v =
+  match m with
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> add_new keys vals (Array.length vals) h key v
+  | _ -> put_owned m h key v
+
+(* A copy of a map that someone else holds too: a deep map gets a new mark, so that its writes copy the nodes first. *)
+let own_copy m =
+  match m with
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
+    Array.iter (fun x -> ignore (share x)) vals;
+    Dict { keys; vals = Array.copy vals; d_owned = true }
+  | Dict { keys = { deep = Deep d; _ }; _ } ->
+    Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root = d.root; size = d.size; next = d.next; order = d.order; ded = fresh () } }; vals = [||]; d_owned = true }
+  | _ -> m
+
+let empty_block = Block { kv = [||]; hr = [||]; bed = 0; bn = 0 }
+let is_empty = function Block { bn = 0; _ } -> true | _ -> false
+
+let rec drop_node node h key level ed =
+  match node with
+  | Block b ->
+    let n = b.bn in
+    let i = block_index b.kv b.hr n h key in
+    if i < 0 then node
+    else
+      Block { kv = cut b.kv (2 * n) (2 * i) 2; hr = cut_h b.hr n i; bed = ed; bn = n - 1 }
+  | Branch b ->
+    let f = frag h level in
+    if b.bits land (1 lsl f) = 0 then node
+    else begin
+      let s = below b.bits f in
+      let kid = drop_node b.kids.(s) h key (level + 1) ed in
+      if kid == b.kids.(s) then node
+      else if is_empty kid then
+        (if b.bits = 1 lsl f then empty_block else Branch { bits = b.bits lxor (1 lsl f); kids = cut_kids b.kids s; ed })
+      else if b.ed = ed then begin
+        b.kids.(s) <- kid;
+        node
+      end else begin
+        let kids = copy_kids b.kids in
+        kids.(s) <- kid;
+        Branch { b with kids; ed }
+      end
+    end
+  | Same t ->
+    let u = tree_delete key t in
+    if tree_length u = tree_length t then node else match u with Leaf -> empty_block | _ -> Same u
+
+let drop m h key =
+  match m with
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
+    let n = Array.length vals in
+    let i = index keys n h key in
+    if i < 0 then m
+    else begin
+      ignore (share m);
+      Dict { keys = { ks = cut keys.ks n i 1; hs = cut_h keys.hs n i; used = whole; deep = Flat }; vals = cut vals n i 1; d_owned = false }
+    end
+  | Dict { keys = { deep = Deep d; _ }; _ } ->
+    let ed = fresh () in
+    let root = drop_node d.root h key 0 ed in
+    if root != d.root then ignore (share m);
+    if root == d.root then m else deep root (d.size - 1) d.next ed
+  | _ -> m
 
 let items m =
   match m with
