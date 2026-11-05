@@ -79,15 +79,38 @@ let overflow ctx op a b n =
   let cell v k = match v with Array { store = I d; _ } -> d.(k) | Int i -> i | _ -> 0 in
   for k = 0 to n - 1 do ignore (int_op ctx (cell a k) (cell b k)) done
 
-(* The fast path on F and I storage: integers with their checks, floats, or integers made floats then as floats. Empty
-   arrays and any other operand take the cell by cell path, as before. *)
+(* Integers with their checks, floats, or integers made floats then as floats. Empty arrays and any other operand take
+   the cell by cell path, as before. *)
+let[@inline never] typed_fast ctx (op : Kernels.op) a b =
+  let rows, cols = typed a b in
+  let n = rows * cols in
+  if n = 0 then None
+  else begin
+    Runtime.build ctx n;
+    match op, int_cells a, int_cells b with
+    | (Add | Sub | Mul), Some x, Some y ->
+      (match Kernels.ints op x y n with
+       | Some d -> Some (Arrays.of_ints rows cols d)
+       | None ->
+         overflow ctx op a b n;
+         None)
+    | _ ->
+      Some
+        (Arrays.of_float rows cols
+           (match a, b with
+            | Array { store = I x; _ }, (Int _ | Float _) -> Kernels.right_ints op x (scalar b)
+            | (Int _ | Float _), Array { store = I y; _ } -> Kernels.left_ints op (scalar a) y
+            | _ -> Kernels.both op (fst (float_cells a)) (fst (float_cells b))))
+  end
+
+(* The fast path on F and I storage. *)
 let fast ctx op a b =
   let result rows cols kernel =
     Runtime.build ctx (rows * cols);
     Some (Arrays.of_float rows cols (kernel ()))
   in
-  trim a;
-  trim b;
+  (match a with Array x -> ignore (Value.trim x) | _ -> ());
+  (match b with Array y -> ignore (Value.trim y) | _ -> ());
   match a, b with
   | Array { rows; cols; store = F x; _ }, Array { rows = r; cols = c; store = F y; _ } when rows = r && cols = c ->
     result rows cols (fun () -> Kernels.both op x y)
@@ -97,27 +120,7 @@ let fast ctx op a b =
   | Float s, Array { rows; cols; store = F y; _ } -> result rows cols (fun () -> Kernels.left op s y)
   | Int s, Array { rows; cols; store = F y; _ } ->
     result rows cols (fun () -> Kernels.left op (float_of_int s) y)
-  | _ ->
-    let rows, cols = typed a b in
-    let n = rows * cols in
-    if n = 0 then None
-    else begin
-      Runtime.build ctx n;
-      match op, int_cells a, int_cells b with
-      | (Add | Sub | Mul), Some x, Some y ->
-        (match Kernels.ints op x y n with
-         | Some d -> Some (Arrays.of_ints rows cols d)
-         | None ->
-           overflow ctx op a b n;
-           None)
-      | _ ->
-        Some
-          (Arrays.of_float rows cols
-             (match a, b with
-              | Array { store = I x; _ }, (Int _ | Float _) -> Kernels.right_ints op x (scalar b)
-              | (Int _ | Float _), Array { store = I y; _ } -> Kernels.left_ints op (scalar a) y
-              | _ -> Kernels.both op (fst (float_cells a)) (fst (float_cells b))))
-    end
+  | _ -> typed_fast ctx op a b
 
 let numeric int_op float_op verb joiner flipped ctx a b =
   match as_num a, as_num b with
@@ -203,8 +206,8 @@ let order int_cmp float_cmp sym ctx a b =
   | _ -> Runtime.fail ctx Type (Messages.compare_op (Value.describe a) sym (Value.describe b))
 
 (* A comparison of typed stores, or of a typed store and a number, in one loop: a mask of booleans. [None] for anything
-   else, and for empty arrays, which go cell by cell as before. *)
-let compared test ctx a b =
+   else, which goes cell by cell as before. *)
+let[@inline never] compared test ctx a b =
   trim a;
   trim b;
   let rows, cols = typed a b in
@@ -219,27 +222,29 @@ let compared test ctx a b =
     Some (Arrays.of_vals rows cols out)
   end
 
-(* Two scalars go straight to the cell rule. [flip]: the mask compares b with a, so that [>] is [<] turned. *)
-let masked ?(flip = false) test cell ctx a b =
+let large = function Array x -> x.rows * x.cols >= 16 | _ -> false
+
+(* Scalars and arrays of fewer than 16 cells go cell by cell, as before: a mask of a few cells costs less so. [swap]:
+   the mask compares b with a, so that [>] is [<] turned. *)
+let[@inline] masked swap test cell ctx a b =
   match a, b with
   | Array _, _ | _, Array _ ->
-    (match if flip then compared test ctx b a else compared test ctx a b with
-     | Some m -> m
-     | None -> broadcast ctx cell a b)
+    let m = if large a || large b then compared test ctx (if swap then b else a) (if swap then a else b) else None in
+    (match m with Some m -> m | None -> broadcast ctx cell a b)
   | _ -> cell ctx a b
 
-let lt ctx a b = masked Lt (order (fun (x : int) y -> x < y) (fun (x : float) y -> x < y) "<") ctx a b
-let le ctx a b = masked Le (order (fun (x : int) y -> x <= y) (fun (x : float) y -> x <= y) "<=") ctx a b
-let gt ctx a b = masked ~flip:true Lt (order (fun (x : int) y -> x > y) (fun (x : float) y -> x > y) ">") ctx a b
-let ge ctx a b = masked ~flip:true Le (order (fun (x : int) y -> x >= y) (fun (x : float) y -> x >= y) ">=") ctx a b
+let lt ctx a b = masked false Lt (order (fun (x : int) y -> x < y) (fun (x : float) y -> x < y) "<") ctx a b
+let le ctx a b = masked false Le (order (fun (x : int) y -> x <= y) (fun (x : float) y -> x <= y) "<=") ctx a b
+let gt ctx a b = masked true Lt (order (fun (x : int) y -> x > y) (fun (x : float) y -> x > y) ">") ctx a b
+let ge ctx a b = masked true Le (order (fun (x : int) y -> x >= y) (fun (x : float) y -> x >= y) ">=") ctx a b
 
 let same ctx a b =
   match a, b with
   | Float x, Float y -> x = y
   | _ -> Value.equal ctx a b
 
-let eq ctx a b = masked Eq (fun ctx x y -> Value.of_bool (same ctx x y)) ctx a b
-let ne ctx a b = masked Ne (fun ctx x y -> Value.of_bool (not (same ctx x y))) ctx a b
+let eq ctx a b = masked false Eq (fun ctx x y -> Value.of_bool (same ctx x y)) ctx a b
+let ne ctx a b = masked false Ne (fun ctx x y -> Value.of_bool (not (same ctx x y))) ctx a b
 
 (* div and mod round down. *)
 let int_div ctx a b =

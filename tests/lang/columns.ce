@@ -248,3 +248,16 @@ isShapeMessage() = message(() -> (1:2) + (1:3)) == Err("Can't combine an array o
 isCompareTextMessage() = message(() -> (1:2) < "a") == Err("Can't compare the number 1 < the text \"a\".")
 isSumOfAMillion() = Sum(1:1000000) == 500000500000 and IsInt(Sum(1:1000000)) and Sum(1:0) == 0 and IsInt(Sum(1:0))
 isSumOverflowMessage() = message(() -> Sum([4611686018427387903, 1])) == overflowOf("4611686018427387903 + 1")
+
+defn isMasksOfLargeArrays()
+  nan = 0.0 / 0.0
+  xs = Concat([1.0, nan, -0.0, 0.0, 2.5, 9007199254740992.0], Fill(1.5, 14))
+  is = Concat([1, 0, 0, 3, 2, 9007199254740993], Fill(2, 14))
+  ok = columns.Kind(xs) == "float" and columns.Kind(is) == "int"
+  for k in 1:20
+    ok = ok and Equal((xs > 0.0)[k], xs[k] > 0.0) and Equal((xs == is)[k], xs[k] == is[k]) and Equal((xs != is)[k], xs[k] != is[k])
+    ok = ok and Equal((is < xs)[k], is[k] < xs[k]) and Equal((is >= 2)[k], is[k] >= 2) and Equal((2.0 <= xs)[k], 2.0 <= xs[k])
+    ok = ok and Equal((is == is)[k], true) and Equal((xs == xs)[k], xs[k] == xs[k]) and Equal((3 > is)[k], 3 > is[k]) and Equal((xs < 1)[k], xs[k] < 1)
+  end
+  ok and columns.Kind(xs > 0.0) == "value" and Equal(Size(Reshape(1:20, 4, 5) > 3), [4, 5]) and (Reshape(1:20, 4, 5) > 3)[4, 1]
+end

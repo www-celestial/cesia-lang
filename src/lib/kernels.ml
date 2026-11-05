@@ -114,13 +114,12 @@ let mask_ints test ((x : int array), sx) ((y : int array), sy) (out : Types.t ar
       | Ne -> for i = lo to hi - 1 do out.(i) <- truth (x.(i * sx) <> y.(i * sy)) done)
 
 let mask_floats test (x, sx) (y, sy) (out : Types.t array) =
-  let ( @ ) = Float.Array.get in
   Par.ranges (Array.length out) (fun lo hi ->
       match test with
-      | Lt -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) < y @ (i * sy)) done
-      | Le -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) <= y @ (i * sy)) done
-      | Eq -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) = y @ (i * sy)) done
-      | Ne -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) <> y @ (i * sy)) done)
+      | Lt -> for i = lo to hi - 1 do out.(i) <- truth (Float.Array.get x (i * sx) < Float.Array.get y (i * sy)) done
+      | Le -> for i = lo to hi - 1 do out.(i) <- truth (Float.Array.get x (i * sx) <= Float.Array.get y (i * sy)) done
+      | Eq -> for i = lo to hi - 1 do out.(i) <- truth (Float.Array.get x (i * sx) = Float.Array.get y (i * sy)) done
+      | Ne -> for i = lo to hi - 1 do out.(i) <- truth (Float.Array.get x (i * sx) <> Float.Array.get y (i * sy)) done)
 
 let map1 f x =
   let n = Float.Array.length x in
