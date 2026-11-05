@@ -1,0 +1,4 @@
+memory-int-kernel.ce:2:7: Limit "memory" reached.
+  2 | b = a * 2
+    |       ^
+exit 1

@@ -33,6 +33,95 @@ let left op s y =
       | Div -> for i = lo to hi - 1 do Float.Array.set out i (s /. Float.Array.get y i) done);
   out
 
+(* Loops over I storage, with the checks of [Arith.add_int], [sub_int] and [mul_int]: [None] when a cell overflows, so
+   that the caller finds it again and raises its error. An operand is a store and its step: a scalar is one cell read
+   with a step of 0. *)
+let small = 1 lsl 31
+
+let[@inline] mul_fits x y =
+  (abs x < small && abs y < small && x <> min_int && y <> min_int) || x = 0 || y = 0
+  || not ((x = -1 && y = min_int) || (y = -1 && x = min_int) || (x * y) / y <> x)
+
+let ints op ((x : int array), sx) ((y : int array), sy) n =
+  let out = Array.make n 0 and ok = Atomic.make true in
+  Par.ranges n (fun lo hi ->
+      let bad = ref 0 in
+      (match op with
+       | Add ->
+         for i = lo to hi - 1 do
+           let a = x.(i * sx) and b = y.(i * sy) in
+           let s = a + b in
+           out.(i) <- s;
+           bad := !bad lor ((a lxor s) land (b lxor s))
+         done
+       | Sub ->
+         for i = lo to hi - 1 do
+           let a = x.(i * sx) and b = y.(i * sy) in
+           let s = a - b in
+           out.(i) <- s;
+           bad := !bad lor ((a lxor b) land (a lxor s))
+         done
+       | Mul ->
+         for i = lo to hi - 1 do
+           let a = x.(i * sx) and b = y.(i * sy) in
+           if mul_fits a b then out.(i) <- a * b else bad := -1
+         done
+       | Div -> bad := -1);
+      if !bad < 0 then Atomic.set ok false);
+  if Atomic.get ok then Some out else None
+
+let of_ints d =
+  let n = Array.length d in
+  let out = Float.Array.create n in
+  Par.ranges n (fun lo hi -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int d.(i)) done);
+  out
+
+(* [right] and [left] on integers, each made a float on the way. *)
+let right_ints op (x : int array) s =
+  let n = Array.length x in
+  let out = Float.Array.create n in
+  Par.ranges n (fun lo hi ->
+      match op with
+      | Add -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) +. s) done
+      | Sub -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) -. s) done
+      | Mul -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) *. s) done
+      | Div -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) /. s) done);
+  out
+
+let left_ints op s (y : int array) =
+  let n = Array.length y in
+  let out = Float.Array.create n in
+  Par.ranges n (fun lo hi ->
+      match op with
+      | Add -> for i = lo to hi - 1 do Float.Array.set out i (s +. float_of_int y.(i)) done
+      | Sub -> for i = lo to hi - 1 do Float.Array.set out i (s -. float_of_int y.(i)) done
+      | Mul -> for i = lo to hi - 1 do Float.Array.set out i (s *. float_of_int y.(i)) done
+      | Div -> for i = lo to hi - 1 do Float.Array.set out i (s /. float_of_int y.(i)) done);
+  out
+
+(* Masks: [true] or [false] in [out] for each pair of cells; [x > y] is [y < x]. Comparisons of floats follow IEEE, so
+   NaN is equal to nothing. *)
+type test = Lt | Le | Eq | Ne
+
+let[@inline] truth b : Types.t = if b then True else False
+
+let mask_ints test ((x : int array), sx) ((y : int array), sy) (out : Types.t array) =
+  Par.ranges (Array.length out) (fun lo hi ->
+      match test with
+      | Lt -> for i = lo to hi - 1 do out.(i) <- truth (x.(i * sx) < y.(i * sy)) done
+      | Le -> for i = lo to hi - 1 do out.(i) <- truth (x.(i * sx) <= y.(i * sy)) done
+      | Eq -> for i = lo to hi - 1 do out.(i) <- truth (x.(i * sx) = y.(i * sy)) done
+      | Ne -> for i = lo to hi - 1 do out.(i) <- truth (x.(i * sx) <> y.(i * sy)) done)
+
+let mask_floats test (x, sx) (y, sy) (out : Types.t array) =
+  let ( @ ) = Float.Array.get in
+  Par.ranges (Array.length out) (fun lo hi ->
+      match test with
+      | Lt -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) < y @ (i * sy)) done
+      | Le -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) <= y @ (i * sy)) done
+      | Eq -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) = y @ (i * sy)) done
+      | Ne -> for i = lo to hi - 1 do out.(i) <- truth (x @ (i * sx) <> y @ (i * sy)) done)
+
 let map1 f x =
   let n = Float.Array.length x in
   let out = Float.Array.create n in

@@ -257,6 +257,11 @@ let sum ctx v =
   | Array ({ rows; cols; store = F _; _ } as x) ->
     Runtime.pay ctx (rows * cols);
     (match (Value.trim x).store with F d -> Float (Kernels.sum d) | _ -> v)
+  | Array { rows; cols; store = I d; _ } ->
+    Runtime.pay ctx (rows * cols);
+    let acc = ref 0 in
+    for k = 0 to (rows * cols) - 1 do acc := Arith.add_int ctx !acc d.(k) done;
+    Int !acc
   | Array x ->
     let n = x.rows * x.cols in
     Runtime.pay ctx n;

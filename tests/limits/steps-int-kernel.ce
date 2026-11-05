@@ -1,0 +1,5 @@
+a = Fill(1, 100000)
+for i in 1:1000
+  b = a * 2
+end
+Print(b[1])

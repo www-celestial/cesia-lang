@@ -52,14 +52,42 @@ let broadcast ctx scalar a b =
     Arrays.of_vals y.rows y.cols (Array.init (y.rows * y.cols) (fun k -> scalar ctx a (Value.elt y k)))
   | _ -> scalar ctx a b
 
-(* The fast path on F storage. *)
+let trim v = match v with Array x -> ignore (Value.trim x) | _ -> ()
+
+(* The shape of an operation between typed stores, or a typed store and a number; 0 by 0 for anything else, which goes
+   cell by cell as before. *)
+let typed a b =
+  match a, b with
+  | Array ({ store = I _ | F _; _ } as x), Array ({ store = I _ | F _; _ } as y) when x.rows = y.rows && x.cols = y.cols ->
+    x.rows, x.cols
+  | Array ({ store = I _ | F _; _ } as x), (Int _ | Float _) | (Int _ | Float _), Array ({ store = I _ | F _; _ } as x) ->
+    x.rows, x.cols
+  | _ -> 0, 0
+
+let int_cells = function Array { store = I d; _ } -> Some (d, 1) | Int i -> Some ([| i |], 0) | _ -> None
+
+let scalar = function Int i -> float_of_int i | Float x -> x | _ -> nan
+
+let float_cells = function
+  | Array { store = F d; _ } -> d, 1
+  | Array { store = I d; _ } -> Kernels.of_ints d, 1
+  | v -> Float.Array.make 1 (scalar v), 0
+
+(* A kernel saw an overflow: the cell by cell rule meets the first one and raises its error. *)
+let overflow ctx op a b n =
+  let int_op = match op with Kernels.Add -> add_int | Sub -> sub_int | _ -> mul_int in
+  let cell v k = match v with Array { store = I d; _ } -> d.(k) | Int i -> i | _ -> 0 in
+  for k = 0 to n - 1 do ignore (int_op ctx (cell a k) (cell b k)) done
+
+(* The fast path on F and I storage: integers with their checks, floats, or integers made floats then as floats. Empty
+   arrays and any other operand take the cell by cell path, as before. *)
 let fast ctx op a b =
   let result rows cols kernel =
     Runtime.build ctx (rows * cols);
     Some (Arrays.of_float rows cols (kernel ()))
   in
-  (match a with Array x -> ignore (Value.trim x) | _ -> ());
-  (match b with Array y -> ignore (Value.trim y) | _ -> ());
+  trim a;
+  trim b;
   match a, b with
   | Array { rows; cols; store = F x; _ }, Array { rows = r; cols = c; store = F y; _ } when rows = r && cols = c ->
     result rows cols (fun () -> Kernels.both op x y)
@@ -69,7 +97,27 @@ let fast ctx op a b =
   | Float s, Array { rows; cols; store = F y; _ } -> result rows cols (fun () -> Kernels.left op s y)
   | Int s, Array { rows; cols; store = F y; _ } ->
     result rows cols (fun () -> Kernels.left op (float_of_int s) y)
-  | _ -> None
+  | _ ->
+    let rows, cols = typed a b in
+    let n = rows * cols in
+    if n = 0 then None
+    else begin
+      Runtime.build ctx n;
+      match op, int_cells a, int_cells b with
+      | (Add | Sub | Mul), Some x, Some y ->
+        (match Kernels.ints op x y n with
+         | Some d -> Some (Arrays.of_ints rows cols d)
+         | None ->
+           overflow ctx op a b n;
+           None)
+      | _ ->
+        Some
+          (Arrays.of_float rows cols
+             (match a, b with
+              | Array { store = I x; _ }, (Int _ | Float _) -> Kernels.right_ints op x (scalar b)
+              | (Int _ | Float _), Array { store = I y; _ } -> Kernels.left_ints op (scalar a) y
+              | _ -> Kernels.both op (fst (float_cells a)) (fst (float_cells b))))
+    end
 
 let numeric int_op float_op verb joiner flipped ctx a b =
   match as_num a, as_num b with
@@ -154,18 +202,43 @@ let order int_cmp float_cmp sym ctx a b =
   | Missing, (Int _ | Float _ | Missing) | (Int _ | Float _), Missing -> Missing
   | _ -> Runtime.fail ctx Type (Messages.compare_op (Value.describe a) sym (Value.describe b))
 
-let lt ctx a b = broadcast ctx (order (fun (x : int) y -> x < y) (fun (x : float) y -> x < y) "<") a b
-let le ctx a b = broadcast ctx (order (fun (x : int) y -> x <= y) (fun (x : float) y -> x <= y) "<=") a b
-let gt ctx a b = broadcast ctx (order (fun (x : int) y -> x > y) (fun (x : float) y -> x > y) ">") a b
-let ge ctx a b = broadcast ctx (order (fun (x : int) y -> x >= y) (fun (x : float) y -> x >= y) ">=") a b
+(* A comparison of typed stores, or of a typed store and a number, in one loop: a mask of booleans. [None] for anything
+   else, and for empty arrays, which go cell by cell as before. *)
+let compared test ctx a b =
+  trim a;
+  trim b;
+  let rows, cols = typed a b in
+  let n = rows * cols in
+  if n = 0 then None
+  else begin
+    Runtime.build ctx n;
+    let out = Array.make n False in
+    (match int_cells a, int_cells b with
+     | Some x, Some y -> Kernels.mask_ints test x y out
+     | _ -> Kernels.mask_floats test (float_cells a) (float_cells b) out);
+    Some (Arrays.of_vals rows cols out)
+  end
+
+let masked test cell ctx a b = match compared test ctx a b with Some m -> m | None -> broadcast ctx cell a b
+
+let lt ctx a b = masked Lt (order (fun (x : int) y -> x < y) (fun (x : float) y -> x < y) "<") ctx a b
+let le ctx a b = masked Le (order (fun (x : int) y -> x <= y) (fun (x : float) y -> x <= y) "<=") ctx a b
+let gt ctx a b =
+  match compared Lt ctx b a with
+  | Some m -> m
+  | None -> broadcast ctx (order (fun (x : int) y -> x > y) (fun (x : float) y -> x > y) ">") a b
+let ge ctx a b =
+  match compared Le ctx b a with
+  | Some m -> m
+  | None -> broadcast ctx (order (fun (x : int) y -> x >= y) (fun (x : float) y -> x >= y) ">=") a b
 
 let same ctx a b =
   match a, b with
   | Float x, Float y -> x = y
   | _ -> Value.equal ctx a b
 
-let eq ctx a b = broadcast ctx (fun ctx x y -> Value.of_bool (same ctx x y)) a b
-let ne ctx a b = broadcast ctx (fun ctx x y -> Value.of_bool (not (same ctx x y))) a b
+let eq ctx a b = masked Eq (fun ctx x y -> Value.of_bool (same ctx x y)) ctx a b
+let ne ctx a b = masked Ne (fun ctx x y -> Value.of_bool (not (same ctx x y))) ctx a b
 
 (* div and mod round down. *)
 let int_div ctx a b =

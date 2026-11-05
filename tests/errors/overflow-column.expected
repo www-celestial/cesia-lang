@@ -1,0 +1,7 @@
+overflow-column.ce:2:6: The integer result of 4611686018427387902 * 2 doesn't fit in 63 bits.
+  2 |   xs * 2
+    |      ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in double (overflow-column.ce:2)
+  called from run (overflow-column.ce:7)
+exit 1
