@@ -260,6 +260,21 @@ let () =
   let seen = Hashtbl.create 16_384 in
   Array.iter (fun s -> Hashtbl.replace seen (Trie.hash (Text s)) ()) crafted;
   check "keys that differ in the top bit of their words spread" (Hashtbl.length seen > 16_300);
+  (* 14 blocks of "Aa" or "BB": one value under h * 31 + c, the hash the columns had; spread under the trie's. *)
+  let blocks = Array.init 16_384 (fun k -> String.concat "" (List.init 14 (fun b -> if k land (1 lsl b) <> 0 then "Aa" else "BB"))) in
+  let poly s = String.fold_left (fun h c -> (h * 31) + Char.code c) 0 s in
+  check "the blocks collide under a polynomial hash" (Array.for_all (fun s -> poly s = poly blocks.(0)) blocks);
+  let distinct f = let seen = Hashtbl.create 16_384 in Array.iter (fun s -> Hashtbl.replace seen (f s) ()) blocks; Hashtbl.length seen in
+  check "the blocks spread under the trie's hash"
+    (distinct Trie.hash_text > 16_300 && distinct (fun s -> Trie.hash_text s land 0x7FFF) > 12_000);
+  let ints = [ 0; -1; max_int; min_int; (1 lsl 53) - 1; 1 lsl 53; (1 lsl 53) + 1; -(1 lsl 53) - 1 ] in
+  check "hash_int is the hash of an Int" (List.for_all (fun i -> Trie.hash_int i = Trie.hash (Int i)) ints);
+  check "hash_float is the hash of a Float"
+    (List.for_all (fun f -> Trie.hash_float f = Trie.hash (Float f)) [ 1.0; -0.0; 0.5; Float.nan; 1e300; 9007199254740992.0 ]
+     && Trie.hash_float 1.0 = Trie.hash (Int 1) && Trie.hash_float (-0.0) = Trie.hash (Int 0)
+     && Trie.hash_float 9007199254740992.0 = Trie.hash (Int ((1 lsl 53) + 1)));
+  check "hash_text is the hash of a Text"
+    (List.for_all (fun s -> Trie.hash_text s = Trie.hash (Text s)) [ ""; "abcdefg"; "abcdefgh"; "abcdefghi" ]);
   check "the trie keeps keys, values and order" (model 0x3FFF_FFFF);
   check "the trie with few bits of hash" (model 0x1F);
   check "the trie with equal hashes" (model 0);

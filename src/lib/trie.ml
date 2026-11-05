@@ -69,6 +69,10 @@ let hash k =
    | _ -> 0)
   land !mask
 
+let[@inline] hash_int i = (if i < exact && i > -exact then int_hash i else number_hash (float_of_int i)) land !mask
+let hash_float f = number_hash f land !mask
+let hash_text s = text_hash s land !mask
+
 let same a b =
   match a, b with
   | Text x, Text y -> String.equal x y

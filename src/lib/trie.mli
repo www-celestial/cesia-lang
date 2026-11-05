@@ -13,6 +13,11 @@ val width : int
 (** The hash of a key. *)
 val hash : t -> int
 
+(** [hash (Int i)], [hash (Float f)] and [hash (Text s)], without the box. *)
+val hash_int : int -> int
+val hash_float : float -> int
+val hash_text : string -> int
+
 (** For tests only: [0] sends every key to one hash. *)
 val mask : int ref
 

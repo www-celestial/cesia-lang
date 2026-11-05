@@ -108,6 +108,25 @@ isJoinNumbers() = Equal(columns.Join([1, 2], [1.0, 2.5], false).Right, [1])
 isJoinTexts() = Equal(columns.Join(["a", "b"], ["b"], false).Left, [2])
 isJoinRefusesMissing() = fails(() -> columns.Join([missing], [1], false), "type")
 
+(* 16,384 texts of 14 blocks "Aa" or "BB", which a polynomial hash of factor 31 sends all to one value. *)
+colliding() = [Join("", [if BitAnd(BitShift(k, -b), 1) == 1 "Aa" else "BB" end for b in 0:13]) for k in 0:16383]
+
+defn isGroupsOfCollidingTexts()
+  g = columns.Groups([colliding()])
+  g.Count == 16384 and Equal(g.Ids, 1:16384)
+end
+
+defn isJoinOfCollidingTexts()
+  xs = colliding()
+  Equal(columns.Join(xs, xs, false).Left, 1:16384)
+end
+
+isGroupsTakeABigIntAndItsFloatAsOneKey() = columns.Groups([[9007199254740993, 9007199254740992.0]]).Count == 1
+isJoinMatchesABigIntAndItsFloat() = Equal(columns.Join([9007199254740993], [9007199254740992.0], false).Right, [1])
+isGroupsKeepBigIntsApart() = columns.Groups([[9007199254740993, 9007199254740992]]).Count == 2 and columns.Groups([[9007199254740993, 9007199254740992, "a"]]).Count == 3
+isGroupsOfIntsNearTheTop() = columns.Groups([[4611686018427383807 + k for k in 0:4095]]).Count == 4096 and columns.Groups([Concat([4611686018427383807 + Mod(k, 7) for k in 0:4095], ["a"])]).Count == 8
+isJoinOfBigInts() = Len(columns.Join([9007199254740993], [9007199254740992], false).Left) == 0 and Equal(columns.Join([9007199254740993, 1], [1, 9007199254740993], false).Right, [2, 1])
+
 defn isCsvColumnsAreTyped()
   df = frame.FromCsv("i,f,t,g\n1,1.5,a,1\n2,2.5,b,\n")
   columns.Kind(frame.Column("i", df)) == "int" and columns.Kind(frame.Column("f", df)) == "float" and Equal(frame.Column("t", df), ["a", "b"]) and IsMissing(frame.Column("g", df)[2])
