@@ -167,3 +167,14 @@ isTopSelectsTexts() = sameTop(3, ["k$(Mod(k * 7, 13))" for k in 1:100]) and same
 isFrequenciesOfZerosAndHalves() = sameFrequencies([-0.0, 0.0, 0]) and sameFrequencies([0.5, 1.0, 1, 0.5, -2.5]) and IsInt(Keys(Frequencies([-0.0]))[1])
 isFrequenciesOfLargeWholeFloats() = sameFrequencies([1e18, 1e18, 1000000000000000000]) and sameFrequencies([9007199254740994.0, 9007199254740993, 9007199254740994])
 isGroupOfBigInts() = sameGroup(Identity, [9007199254740993, 9007199254740992, 9007199254740993, 4611686018427387903]) and sameFrequencies([9007199254740993, 9007199254740992, 9007199254740993])
+
+(* Keys of every kind in one Group: each kind keeps its hash, and Equal decides inside one hash. *)
+struct Pt { A, B }
+isGroupOfIntsAndOneBigFloat() = sameGroup(Identity, Concat([Mod(k, 50) for k in 1:500], [1e300, 1e300, 1.0 / 0.0, 3.0]))
+isGroupOfTextsAndOneList() = sameGroup(Identity, Concat(["a", "b", "a"], [[1], [1.0], [2], "b", [1]]))
+isGroupOfPairs() = sameGroup(x -> [Mod(x, 3), Mod(x, 2) * 1.0], 1:30) and sameGroup(Identity, [[1, 2], [1.0, 2], [1, 2.0], [2, 1], [1, 2, 3]])
+isGroupOfMapsAndStructs() = sameGroup(x -> {A: Mod(x, 3), B: "x"}, 1:20) and sameGroup(Identity, [{A: 1, B: 2}, {B: 2, A: 1}, {A: 1.0, B: 2}, {A: 1}]) and sameGroup(x -> Pt(Mod(x, 2), Mod(x, 3)), 1:12) and sameGroup(Identity, [Pt(1, 2), Pt(1.0, 2), {A: 1, B: 2}, Pt(2, 1)])
+isGroupOfNestedNumbers() = sameGroup(Identity, [[nan], [nan], [-0.0], [0.0], [[1]], [[1.0]], [], [1][2:1], Reshape(1:4, 2, 2), [1, 2, 3, 4], Reshape([1.0, 2, 3, 4], 2, 2)])
+isGroupOfNestedBigInts() = sameGroup(Identity, [[9007199254740993], [9007199254740992.0], [9007199254740992], [9007199254740993], [1]]) and sameGroup(Identity, [[9007199254740993], [9007199254740995], [9007199254740993]])
+isGroupOfMapsWithBigKeys() = sameGroup(Identity, [Dict([{Key: 9007199254740993, Value: 1}, {Key: 9007199254740992, Value: 1}]), Dict([{Key: 9007199254740992.0, Value: 1}, {Key: "q", Value: 2}]), Dict([{Key: 9007199254740993, Value: 1}])])
+isGroupOfFunctions() = sameGroup(Identity, [Identity, Inc, Identity, Sqrt, Sqrt, x -> x]) and sameGroup(Identity, [true, missing, Identity, [true], missing])

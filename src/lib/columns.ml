@@ -271,28 +271,74 @@ let simple_groups ctx x small_float simple =
     Some (x, match x.store with I d -> factorize_ints ctx false d | _ -> factorize ctx (size x) (hasher false x) (same x x))
   end
 
-(* For the prelude's Group, {Ids, Count, Firsts} of its keys, as [Equal] groups them. Texts, booleans, missing and numbers
-   below 2^53, where [Equal] is an equivalence that the hash respects (1 and 1.0 one key, -0.0 and 0.0 one, NaN with
-   NaN), by the hash. Other keys as the prelude compared them: each with [Equal] to the first key of each group so far,
-   these comparisons paid in steps, as its loop was. *)
+let combine h x = Trie.hash_int ((h * 31) + x)
+
+(* A hash of any key that [Equal] respects, to the depth where [Equal] stops at its nesting limit. Ints past 2^53 hash as
+   their float with [wide], else by all their bits; [big] tells that a float past 2^53 was met. Arrays by their shape and
+   cells, structs and maps by the sum of their names or keys with their values. A map with a number key past 2^53, which
+   [Equal] can match to two keys of the other map, by its size alone. [nodes] counts the work. *)
+let rec deep_hash ctx wide big nodes depth v =
+  incr nodes;
+  let hash = deep_hash ctx wide big nodes (depth + 1) in
+  let float f = if Float.abs f >= 0x1p53 then big := true; Trie.hash_float f in
+  if depth > ctx.w.limits.nesting then 0
+  else
+    match v with
+    | Int i -> hash_int wide i
+    | Float f -> float f
+    | Text s -> Trie.hash_text s
+    | True -> 1
+    | False -> 2
+    | Missing -> 3
+    | Array a when a.rows * a.cols = 0 -> 4
+    | Array a ->
+      let h = ref (combine a.rows a.cols) and n = a.rows * a.cols in
+      nodes := !nodes + n;
+      (match a.store with
+       | I d -> for k = 0 to n - 1 do h := combine !h (hash_int wide d.(k)) done
+       | F d -> for k = 0 to n - 1 do h := combine !h (float (Float.Array.get d k)) done
+       | V d -> for k = 0 to n - 1 do h := combine !h (hash d.(k)) done);
+      !h
+    | Struct { shape; fields; _ } ->
+      let sum = ref 0 in
+      Array.iteri (fun i f -> sum := !sum + combine (Trie.hash_text shape.names.(i)) (hash f)) fields;
+      combine (match shape.sname with Some n -> Trie.hash_text n | None -> 5) (!sum land 0x3FFF_FFFF)
+    | Dict _ ->
+      let o = Trie.items v and sum = ref 0 in
+      let past = function Int i -> not (small i) | Float f -> Float.abs f >= 0x1p53 | _ -> false in
+      let n = Array.length o / 2 in
+      let coarse = Array.exists past (Array.init n (fun i -> o.(2 * i))) in
+      if not coarse then for i = 0 to n - 1 do sum := !sum + combine (Trie.hash o.(2 * i)) (hash o.((2 * i) + 1)) done;
+      combine (6 + n) (!sum land 0x3FFF_FFFF)
+    | Native { nname; _ } -> Trie.hash_text nname
+    | Fun { proto; _ } -> Trie.hash_text proto.pname
+    | Handle { id; _ } -> hash_int false id
+    | _ -> 7
+
+(* For the prelude's Group, {Ids, Count, Firsts} of its keys, as [Equal] groups them: each key in the first group whose
+   first key is [Equal] to it. Texts, booleans, missing and numbers below 2^53, where [Equal] is an equivalence, by the
+   hash of their kind. Any other keys by [deep_hash]: [Equal] compares only keys of one hash, in the order of their groups,
+   and these comparisons are paid in steps, as the prelude's loop was. *)
 let group_ids ctx (a : t array) =
   let small_float x = Float.is_nan x || Float.abs x < 0x1p53 in
   let simple = function Text _ | True | False | Missing -> true | Int i -> small i | Float f -> small_float f | _ -> false in
   let x = array_arg ctx "groupIds" a.(0) in
+  let n = size x in
   let t, ids =
     match simple_groups ctx x small_float simple with
     | Some (_, groups) -> groups
     | None ->
-      let t, ids = index ctx (size x) 0 in
-      t.firsts <- Array.make (size x) 0;
-      for k = 0 to size x - 1 do
-        let rec find g = if g = t.groups || Value.equal ctx (Value.elt x t.firsts.(g)) (Value.elt x k) then g else find (g + 1) in
-        let g = find 0 in
-        Runtime.pay ctx g;
-        if g = t.groups then (t.firsts.(g) <- k; t.groups <- g + 1);
-        ids.(k) <- g
-      done;
-      t, ids
+      Runtime.build ctx n;
+      let hashes wide =
+        let big = ref false and nodes = ref 0 in
+        let hs = Array.init n (fun k -> deep_hash ctx wide big nodes 0 (Value.elt x k)) in
+        Runtime.pay ctx !nodes;
+        hs, !big
+      in
+      let hs = match hashes false with hs, false -> hs | _ -> fst (hashes true) in
+      factorize ctx n (fun k -> hs.(k)) (fun i k ->
+          Runtime.charge ctx 1;
+          Value.equal ctx (Value.elt x i) (Value.elt x k))
   in
   record ctx [| "Ids"; "Count"; "Firsts" |]
     [| int_list (Array.map succ ids); Int t.groups; int_list (Array.init t.groups (fun g -> t.firsts.(g) + 1)) |]
