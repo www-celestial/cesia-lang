@@ -1,6 +1,9 @@
 == built from the sources
 This Cesia was built from its sources (cesia 0.2.0+dev): git pull and dune build bring it up to date, not cesia upgrade.
 exit 1
+== a lib/ that isn't Cesia's is never touched
+cesia upgrade replaces a Cesia that install.sh or install.ps1 put in place, with its bin/ and lib/ side by side, and TOP/other/bin/cesia isn't one: install the new one the way this one was. Nothing changed.
+keep.txt
 == n
 cesia 99.0.0
 

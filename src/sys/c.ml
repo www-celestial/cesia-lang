@@ -208,7 +208,8 @@ let stubs = [ "libssl.dylib"; "libcrypto.dylib" ]
    also in Homebrew's folders, then those without it, which may be another version: libm.dylib of macOS has none, and a
    system can hold libsodium.so.23 where 26 is asked. *)
 (* The lib/ of a release, beside the bin/ that holds the binary, found from the binary itself with its links followed, never
-   from the current folder. *)
+   from the current folder; only with its licenses/Cesia.txt, so that the /usr/local/lib of a binary copied by hand is no
+   release's. *)
 let beside =
   lazy
     (match Unix.realpath Sys.executable_name with
@@ -216,7 +217,7 @@ let beside =
      | exe ->
        let bin = Filename.dirname exe in
        let lib = Filename.concat (Filename.dirname bin) "lib" in
-       if Filename.basename bin = "bin" && Sys.file_exists lib && Sys.is_directory lib then Some lib else None)
+       if Filename.basename bin = "bin" && Sys.file_exists (Filename.concat lib "licenses/Cesia.txt") then Some lib else None)
 
 let in_release files =
   match Lazy.force beside with

@@ -55,10 +55,11 @@ defn release(nightly)
   json.Parse(text.Value)
 end
 
-defn system()
-  (** The name of this system in the names of the archives: linux-x86_64, macos-arm64, windows-x86_64. *)
+defn system(binary)
+  (** The name of this system in the names of the archives: linux-x86_64, macos-arm64, windows-x86_64. Windows is told by the
+      .exe of the binary: the uname of Git's shell would say mingw64_nt. *)
   said = sys.Run("uname", args = ["-s", "-m"])
-  if IsErr(said) or said.Value.Code != 0
+  if EndsWith(".exe", binary) or IsErr(said) or said.Value.Code != 0
     return "windows-x86_64"
   end
   words = Split(" ", Lower(Trim(said.Value.Out)))
@@ -140,10 +141,17 @@ defn upgrade(args)
   if cesia.Dev() and (IsMissing(mirror) or mirror == "")
     return Err("This Cesia was built from its sources ($current): git pull and dune build bring it up to date, not cesia upgrade.")
   end
+  bin = parent(binary)
+  home = parent(bin)
+  if Last(Split("/", bin)) != "bin" or not sys.Exists("$home/lib/licenses/Cesia.txt")
+    return Err("cesia upgrade replaces a Cesia that install.sh or install.ps1 put in place, with its bin/ and lib/ side by side, and $binary isn't one: install the new one the way this one was. Nothing changed.")
+  end
   rel = release(nightly)?
   tag = GetOr("tag_name", "", rel)
   title = GetOr("name", tag, rel)
-  newer = if nightly title != current else cesia.Compare(tag, cesia.Version()) > 0 end
+  later = cesia.Compare(tag, cesia.Version())
+  (* From a nightly, its own stable release is a way back to stable: it is offered too. *)
+  newer = if nightly title != current else later > 0 or (later == 0 and Contains("-nightly", current)) end
   if not newer
     Print("$current is the newest$(if nightly " nightly" else "" end): nothing to do.")
     return Ok(missing)
@@ -161,8 +169,8 @@ defn upgrade(args)
     Print("Nothing changed.")
     return Ok(missing)
   end
-  windows = system() == "windows-x86_64"
-  archive = "cesia-$(system()).$(if windows "zip" else "tar.gz" end)"
+  windows = system(binary) == "windows-x86_64"
+  archive = "cesia-$(system(binary)).$(if windows "zip" else "tar.gz" end)"
   url = asset(rel, archive)
   print = asset(rel, "$archive.blake2")
   if IsMissing(url) or IsMissing(print)
@@ -173,8 +181,6 @@ defn upgrade(args)
   if cesia.Fingerprint(bytes) != expected
     return Err("The download of $archive doesn't match its fingerprint: nothing changed.")
   end
-  bin = parent(binary)
-  home = if Last(Split("/", bin)) == "bin" parent(bin) else bin end
   fresh = "$home/.upgrade"
   removeAll(fresh)?
   sys.Mkdir(fresh)?
