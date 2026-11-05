@@ -1180,25 +1180,17 @@ and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 
 
 and comprehension c pos cbody cvar csrc cguard =
   let set = setter c cvar in
+  let v = if ty c cbody == TF then `F (cf c cbody) else if ty c cbody == TI then `I (ci c cbody) else `V (ce c cbody) in
+  let guard = Option.map (cb c) cguard in
   (* The site of the list: its growth reserves memory, and the body's calls left [ctx.site] in their own frames. *)
-  let s = ref (-1) in
+  let s = site c pos in
   let push : Arrays.builder -> ctx -> unit =
-    if ty c cbody == TF then
-      let v = cf c cbody in
-      fun out ctx -> Arrays.add_float ctx !s out (v ctx)
-    else if ty c cbody == TI then
-      let v = ci c cbody in
-      fun out ctx -> Arrays.add_int ctx !s out (v ctx)
-    else
-      let v = ce c cbody in
-      fun out ctx -> Arrays.add ctx !s out (v ctx)
+    match v with
+    | `F v -> fun out ctx -> Arrays.add_float ctx s out (v ctx)
+    | `I v -> fun out ctx -> Arrays.add_int ctx s out (v ctx)
+    | `V v -> fun out ctx -> Arrays.add ctx s out (v ctx)
   in
-  let body =
-    match Option.map (cb c) cguard with
-    | None -> push
-    | Some g -> fun out ctx -> if g ctx then push out ctx
-  in
-  s := site c pos;
+  let body = match guard with None -> push | Some g -> fun out ctx -> if g ctx then push out ctx in
   let run = loop_over c csrc set body in
   fun ctx ->
     let out = Arrays.builder () in
