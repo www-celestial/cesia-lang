@@ -114,6 +114,7 @@ val stack_out : int  (** a nested call needs a longer stack *)
 val too_deep : int  (** the limit of depth, at the site [io_point], for a frame at [io_frame] *)
 val too_long : int  (** the limit of steps *)
 val returned : int  (** a [return] inside a loop run natively: its value in [io_int], or in the float slot [frame] *)
+val reloaded : int  (** not native code's: a reload came at a checkpoint, and the run left at its loop's step *)
 
 (** Codes of errors: the interpreter redoes the operation with [io_a] and [io_b] to give its message. *)
 

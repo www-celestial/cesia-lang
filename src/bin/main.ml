@@ -181,7 +181,10 @@ let run args =
         && (try In_channel.with_open_bin file ignore; true with Sys_error _ -> false))
   in
   if not readable then bad_option (Messages.cant_read file);
-  if !watching then watch { o with o_period = watch_period } file rest
+  if !watching then begin
+    Tier.watching := true;
+    watch { o with o_period = watch_period } file rest
+  end
   else begin
     let w = Runtime.create_world o in
     let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in

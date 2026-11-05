@@ -2436,13 +2436,17 @@ and cu c (e : expr) : ctx -> unit =
            checkpoint, after the step of an iteration. A region may hold the loops around it: leaving them, each puts its
            counter and bound in its slot, and the outermost enters native code. *)
         let ver = c.ver in
-        let entered ctx code entry =
+        let rec entered ctx code entry hi =
           match Tier.enter ctx st code entry with
           | Tier.Ran -> true
           | Tier.Returned v -> raise_notrace (Return_value v)
           | Tier.Fell -> false
-        in
-        let interp ctx lo hi =
+          | Tier.Reloaded ->
+            (* After a reload, the next iterations are the interpreter's, with the new code. *)
+            let n = Tier.counter ctx code st in
+            if n < hi then interp ctx (n + 1) hi;
+            true
+        and interp ctx lo hi =
           if lo <= hi then begin
             let n = ref lo and going = ref true in
             match
@@ -2464,7 +2468,7 @@ and cu c (e : expr) : ctx -> unit =
             | exception (Tier.Handoff (code, from) as x) ->
               Tier.place ctx code st !n hi;
               if not (Tier.is_root code st) then raise_notrace x
-              else if not (entered ctx code (Tier.after code from)) then failwith "jit: a region refused after its check"
+              else if not (entered ctx code (Tier.after code from) hi) then failwith "jit: a region refused after its check"
           end
         in
         fun ctx ->
@@ -2474,7 +2478,7 @@ and cu c (e : expr) : ctx -> unit =
           (* An empty range runs nothing, and its variable keeps its value. *)
           | Some code when lo <= hi ->
             Tier.place ctx code st lo hi;
-            if not (entered ctx code (Tier.start code)) then interp ctx lo hi
+            if not (entered ctx code (Tier.start code) hi) then interp ctx lo hi
           | _ -> interp ctx lo hi
       end
     in
@@ -2500,13 +2504,15 @@ and cu c (e : expr) : ctx -> unit =
           done
       else begin
         let ver = c.ver in
-        let entered ctx code entry =
+        let rec entered ctx code entry =
           match Tier.enter ctx st code entry with
           | Tier.Ran -> true
           | Tier.Returned v -> raise_notrace (Return_value v)
           | Tier.Fell -> false
-        in
-        let interp ctx =
+          | Tier.Reloaded ->
+            interp ctx;
+            true
+        and interp ctx =
           match
             while cond ctx do
               body ctx;

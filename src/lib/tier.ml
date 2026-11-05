@@ -17,6 +17,10 @@ let hot = 1
 let always = 2
 let mode = ref hot
 
+(* Under --watch, where reloads come: a version with loops leaves them to regions, which hand over to the interpreter at a
+   reload; a version's native code as a whole would go on with the old code to its end. *)
+let watching = ref false
+
 (* A version runs natively after this many calls; a loop after this many checkpoints inside it. *)
 let calls_before = 1000
 let checkpoints_before = 2
@@ -49,7 +53,7 @@ let make (w : world) (ver : version) fns start loops =
 
 (* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,
    comes off [ctx.fuel], so the next checkpoint counts it. *)
-let rec run (ctx : ctx) code entry =
+let rec run ?(leave = false) (ctx : ctx) code entry =
   let b = ctx.b and w = ctx.w in
   if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
   let depth = if code.calls then b + code.fn.frame + code.fn.hidden + (2 * (ctx.max_depth - Runtime.frames ctx - 1)) else max_int in
@@ -65,14 +69,14 @@ let rec run (ctx : ctx) code entry =
   io.(Ir.io_lim) <- min (ctx.cap - 2) depth;
   io.(Ir.io_budget) <- (if w.steps_left = max_int then 1 lsl 60 else w.steps_left - (ctx.refill - fuel0));
   io.(Ir.io_until) <- ctx.until - (ctx.refill - fuel0);
-  io.(Ir.io_leave) <- 0;
+  io.(Ir.io_leave) <- (if leave then 1 else 0);
   let call = match !Mirtext.backend with Some be -> be.call | None -> assert false in
   let st = call code.addr ctx.i ctx.f ctx.v io in
   if st = Ir.stack_out then begin
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
     ctx.fuel <- fuel0;
     Runtime.grow ctx (max (ctx.cap + 1) (min (2 * ctx.cap) (depth + 2)));
-    run ctx code entry
+    run ~leave ctx code entry
   end else begin
     ctx.fuel <- fuel0 - (io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel));
     st
@@ -100,13 +104,23 @@ let fail (ctx : ctx) =
 
 (* Runs until native code ends: a checkpoint between quanta, as the interpreter's own, may let other fibers run, as no C
    frame is left. Gives ok, fallback (nothing ran) or returned. *)
+(* The point of a region's own loop after its step: where the interpreter can take the loop over. *)
+let root_point code = match code.loops with [||] -> -1 | a -> let _, _, _, p = a.(Array.length a - 1) in p
+
+(* Runs until native code ends: a checkpoint between quanta, as the interpreter's own, may let other fibers run, as no C
+   frame is left. Gives ok, fallback (nothing ran), returned, or reloaded: a reload came at a checkpoint, so native code,
+   made from the old code, stops at its loop's step and the interpreter goes on with the new. Elsewhere in the region,
+   native code goes on to that step first; a whole version's native code goes on to its end, and its next call is the
+   interpreter's. *)
 let go (ctx : ctx) code entry =
-  let rec again entry first =
-    let st = run ctx code entry in
+  let rec again ?(leave = false) entry first =
+    let st = run ~leave ctx code entry in
     if st = Ir.fuel_out then begin
       let p = io.(Ir.io_point) in
       Runtime.checkpoint ctx (ctx.b + code.fn.frame);
-      again (p + 1) false
+      if ctx.w.reloads = code.reloads then again (p + 1) false
+      else if p = root_point code then Ir.reloaded
+      else again ~leave:(root_point code >= 0) (p + 1) false
     end
     else if st = Ir.error then fail ctx
     else if st = Ir.too_deep then begin
@@ -145,6 +159,7 @@ let watch (w : world) (ver : version) =
       | None -> ()
       (* A body without a loop or a call is as fast interpreted as the way in and out of native code. *)
       | Some fns when not (fns.(0).calls || Array.length fns.(0).resumes > 1) -> ()
+      | Some fns when !watching && Array.length fns.(0).resumes > 1 -> ()
       | Some fns ->
         (match make w ver fns 0 [||] with
          | None -> ()
@@ -242,11 +257,12 @@ let after code from =
   let rec find k = if k = Array.length code.loops then invalid_arg "Tier.after" else let n, _, _, p = code.loops.(k) in if n = from then p + 1 else find (k + 1) in
   find 0
 
-type ran = Ran | Fell | Returned of t
+type ran = Ran | Fell | Returned of t | Reloaded
 
 let enter (ctx : ctx) l code entry =
   let st = go ctx code entry in
   if st = Ir.ok then Ran
+  else if st = Ir.reloaded then Reloaded
   else if st = Ir.returned then Returned (match code.ret with Kfloat -> Float (result_float ctx code) | Kint -> Int io.(Ir.io_int))
   else begin
     (* Its arrays are not what native code takes this time, or one it writes is shared: nothing ran, this run is the
@@ -256,3 +272,7 @@ let enter (ctx : ctx) l code entry =
   end
 
 let start c = c.start + 1
+
+let counter (ctx : ctx) code l =
+  let rec find k = if k = Array.length code.loops then invalid_arg "Tier.counter" else let n, cs, _, _ = code.loops.(k) in if n = l.expr.id then ctx.i.(ctx.b + cs) else find (k + 1) in
+  find 0

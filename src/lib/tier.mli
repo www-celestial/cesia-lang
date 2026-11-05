@@ -14,6 +14,11 @@ val hot : int
 val always : int
 val mode : int ref
 
+(** Set under [--watch]: a version with loops then runs them as regions, never as a whole, so that a reload hands each one
+    over to the interpreter after a step. A loop-free version (recursion) still runs natively as a whole: after a reload,
+    the call running natively ends with the old code, and the next call is the interpreter's. *)
+val watching : bool ref
+
 (** After [Compile] made a version's entries: counts its calls, then gives it native entries when it lowers. Does nothing
     for a version that can't be a candidate. *)
 val watch : world -> version -> unit
@@ -45,12 +50,17 @@ val place : ctx -> code -> loop -> int -> int -> unit
 val is_root : code -> loop -> bool
 val after : code -> int -> int
 
-(** [Ran]: the loop ran to its end natively, every variable back in its slot; [Fell]: nothing ran, the loop stays
-    interpreted from now on; [Returned]: a [return] inside, with its value. *)
-type ran = Ran | Fell | Returned of t
+(** [Ran]: the loop ran to its end natively, every variable back in its slot; [Fell]: nothing ran, this run is the
+    interpreter's; [Returned]: a [return] inside, with its value; [Reloaded]: a reload came, native code stopped after a
+    step of this loop, every variable in its slot, and the interpreter goes on with the new code ([counter] tells a [for]
+    where). *)
+type ran = Ran | Fell | Returned of t | Reloaded
 
 (** Runs the loop natively from [start code], its counter and bound put in their slots ([place]), or from
     [after code node]. *)
 val enter : ctx -> loop -> code -> int -> ran
 
 val start : code -> int
+
+(** The counter of a [for] that native code ran, from its slot. *)
+val counter : ctx -> code -> loop -> int

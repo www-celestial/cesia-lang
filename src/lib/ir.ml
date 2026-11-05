@@ -79,6 +79,7 @@ let stack_out = 4
 let too_deep = 5
 let too_long = 6
 let returned = 7
+let reloaded = 9
 let err_add = 1
 let err_sub = 2
 let err_mul = 3
