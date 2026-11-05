@@ -749,7 +749,7 @@ defn listing(lock)
       name = Split("/", f.Path)[2]
       byLibrary[name] = Append(f, GetOr(name, [], byLibrary))
     end
-    for name in Keys(byLibrary)
+    for name in Sort(Keys(byLibrary))
       rows = Append(["pkg/$name", "cesia $(lock.Pkg.Cesia)", stateOf("pkg/$name", byLibrary[name])], rows)
     end
   else if sys.Exists("pkg")

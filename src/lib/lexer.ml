@@ -41,6 +41,7 @@ let is_name_start c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_
 let is_name c = is_name_start c || is_digit c
 
 let is_public name = name <> "" && name.[0] >= 'A' && name.[0] <= 'Z'
+let is_plain_name s = s <> "" && is_name_start s.[0] && String.for_all (fun c -> is_name c && c <> '_') s && keyword s = None
 
 (* Inside the core, the name of a method says its kind: Rect.Area, or Rect:Square when static. Gives the struct, whether it is
    static, and the method. A program only ever sees a dot: a static method's function is named Rect.Square. *)

@@ -1,0 +1,104 @@
+use json
+use tests/errors/priv/fields as f
+
+(* One map, whatever way it is built: a literal, Dict, json, grown by names or by a variable, past 16 keys. *)
+literal() = {Name: "Ana", Age: 30}
+texts() = {"Name": "Ana", "Age": 30}
+pairs() = Dict([{Key: "Name", Value: "Ana"}, {Key: "Age", Value: 30}])
+parsed() = Unwrap(json.Parse("{""Name"": ""Ana"", ""Age"": 30}"))
+
+defn grown()
+  m = {}
+  m.Name = "Ana"
+  m["Age"] = 30
+  m
+end
+
+defn byVariable()
+  m = Dict()
+  for k in ["Name", "Age"]
+    m[k] = if k == "Name" "Ana" else 30 end
+  end
+  m
+end
+
+all() = [literal(), texts(), pairs(), parsed(), grown(), byVariable()]
+same(f) = All([Equal(f(m), f(literal())) for m in all()])
+
+isOneKind() = All([m == literal() and IsDict(m) and not IsStruct(m) for m in all()])
+isSameKeys() = same(Keys) and Equal(Keys(literal()), ["Name", "Age"])
+isSameValues() = same(Values) and Equal(Values(literal()), ["Ana", 30])
+isSameText() = same(Text) and Text(literal()) == "{Name: ""Ana"", Age: 30}"
+isSameJson() = same(json.Text) and json.Text(literal()) == "{""Name"":""Ana"",""Age"":30}"
+isDotIsIndex() = All([m.Name == m["Name"] and m.Age == 30 for m in all()])
+isGetHas() = All([Get("Age", m) == 30 and Has("Name", m) and not Has("City", m) and IsMissing(Get("City", m)) for m in all()])
+isLen() = All([Len(m) == 2 for m in all()])
+isIn() = All(["Name" in m and not ("City" in m) for m in all()])
+isPattern() = All([(match m
+  {Name: n} -> n
+  else -> "no"
+end) == "Ana" for m in all()])
+
+defn isDestructure()
+  {Age: a} = parsed()
+  a == 30
+end
+
+(* Keys keep the order of insertion. *)
+isLiteralOrder() = Equal(Keys({B: 1, A: 2, C: 3}), ["B", "A", "C"]) and Equal(Keys({"b": 1, 2: 2, "a": 3}), ["b", 2, "a"])
+isPutOrder() = Equal(Keys(Put("A", 1, Put("Z", 1, Dict()))), ["Z", "A"]) and Equal(Keys(Put("C", 3, {B: 1, A: 2})), ["B", "A", "C"])
+isJsonOrder() = Equal(Keys(Unwrap(json.Parse("{""z"": 1, ""a"": 2, ""m"": 3}"))), ["z", "a", "m"])
+isRewriteKeepsPlace() = Equal(Keys(Put("B", 9, {B: 1, A: 2})), ["B", "A"]) and Equal(Keys(Put("Z", 9, Put("A", 1, Put("Z", 1, Dict())))), ["Z", "A"])
+isDropThenPutGoesLast() = Equal(Keys(Put("B", 1, Drop("B", {B: 1, A: 2}))), ["A", "B"])
+isEqualWithoutOrder() = {A: 1, B: 2} == {B: 2, A: 1} and Put("A", 1, Put("B", 2, Dict())) == {A: 1, B: 2} and {A: 1} != {A: 1, B: 2}
+
+defn isOrderAfterSwitch()
+  m = {B: 1, A: 2}
+  k = "C"
+  m[k] = 3
+  Equal(Keys(m), ["B", "A", "C"]) and Equal(Values(m), [1, 2, 3])
+end
+
+defn isManyKeys()
+  m = {}
+  for i in 1:40
+    m["k$(i)"] = i
+  end
+  Len(m) == 40 and Keys(m)[1] == "k1" and Keys(m)[40] == "k40" and m.k17 == 17
+end
+
+defn isGrowPastSixteen()
+  m = {A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, J: 10, K: 11, L: 12, M: 13, N: 14, O: 15, P: 16}
+  m.Q = 17
+  m.R = 18
+  Len(m) == 18 and m.Q == 17 and Keys(m)[17] == "Q" and Keys(m)[1] == "A"
+end
+
+isBigLiteral() = Keys({A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, J: 10, K: 11, L: 12, M: 13, N: 14, O: 15, P: 16, Q: 17})[17] == "Q"
+
+defn isDropMany()
+  m = Dict()
+  for i in 1:20
+    m[i] = i
+  end
+  for i in 1:15
+    m = Drop(i, m)
+  end
+  Equal(Keys(m), [16, 17, 18, 19, 20]) and Equal(Keys(Put(1, 0, m)), [16, 17, 18, 19, 20, 1])
+end
+
+(* Keys are data: any first letter, from any package. *)
+isSmallKeys() = parsed().Name == "Ana" and Unwrap(json.Parse("{""name"": 1}")).name == 1 and f.Record().size == 1
+isProtoIsAKey() = Equal(Keys({"__proto__": 1, "constructor": 2}), ["__proto__", "constructor"])
+isStructNoMap() = IsStruct(Ok(1)) and not IsDict(Ok(1))
+isMapOfStructFails() = stop(() -> Keys(Ok(1))) == "type: Keys needs a dictionary, not an Ok."
+isMissingKey() = stop(() -> literal().City) == "index: This dictionary has no key: the text ""City""." and stop(() -> parsed().City) == "index: This dictionary has no key: the text ""City""."
+
+defn isMerge()
+  Equal(Keys(Merge({A: 1, B: 2}, {C: 3, A: 4})), ["A", "B", "C"]) and Merge({A: 1, B: 2}, {C: 3, A: 4}).A == 4
+end
+
+stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and its message. *)
+  Err(e) -> "$(e.Kind): $(e.Message)"
+  Ok(v) -> v
+end

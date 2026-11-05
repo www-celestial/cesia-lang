@@ -1,5 +1,5 @@
-private-field-pattern.ce:2:11: The field "size" is private to the package that declares it.
-  2 | {size: n} = f.Record()
-    |           ^
-  A field is public when its first letter is a capital.
+private-field-pattern.ce:2:10: The field or method "key" is private to the package that declares it.
+  2 | {key: k} = f.New()
+    |          ^
+  A field or a method is public when its first letter is a capital.
 exit 1

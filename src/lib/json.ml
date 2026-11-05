@@ -142,23 +142,23 @@ let parse_text ctx s =
     spaces ();
     if peek () = '}' then begin
       incr i;
-      Dict Leaf
+      Dict.empty
     end else begin
-      let rec go d =
+      let rec go items =
         spaces ();
         if peek () <> '"' then bad Messages.json_key;
         let key = text () in
         spaces ();
         if peek () <> ':' then bad Messages.json_colon;
         incr i;
-        let d = Dict.add ctx (Text key) (value (depth + 1)) d in
+        let items = value (depth + 1) :: Text key :: items in
         spaces ();
         match peek () with
-        | ',' -> incr i; go d
-        | '}' -> incr i; d
+        | ',' -> incr i; go items
+        | '}' -> incr i; items
         | _ -> bad Messages.json_no_comma_object
       in
-      Dict (go Leaf)
+      Dict.of_items ctx (Array.of_list (List.rev (go [])))
     end
   in
   let v = value 0 in
@@ -226,21 +226,22 @@ let write ctx ~pretty v =
     | Array a ->
       Runtime.pay ctx (a.rows * a.cols);
       group '[' ']' depth (List.init (a.rows * a.cols) (Value.elt a)) (go (depth + 1))
-    | Struct r ->
-      Runtime.charge ctx (Array.length r.fields + 1);
-      group '{' '}' depth
-        (List.init (Array.length r.fields) (fun k -> r.shape.names.(k), r.fields.(k)))
-        (member depth)
-    | Dict d ->
-      Runtime.charge ctx (Dict.length d + 1);
-      group '{' '}' depth (pairs d) (member depth)
+    | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
+      (* Public fields only: a small one, a password hash, never leaks into a response. *)
+      Runtime.charge ctx (Array.length fields + 1);
+      let public = List.filter (fun k -> Lexer.is_public shape.names.(k)) (List.init (Array.length fields) Fun.id) in
+      group '{' '}' depth (List.map (fun k -> shape.names.(k), fields.(k)) public) (member depth)
+    | Struct _ | Dict _ ->
+      let o = Value.items x in
+      Runtime.charge ctx ((Array.length o / 2) + 1);
+      group '{' '}' depth (List.init (Array.length o / 2) (fun k -> Value.text_of ctx o.(2 * k), o.((2 * k) + 1))) (member depth)
     | _ -> bad x
   and member depth (k, v) =
     add_text b k;
     Buffer.add_char b ':';
     if pretty then Buffer.add_char b ' ';
     go (depth + 1) v
-  and pairs d = Value.dict_fold (fun k v rest -> (Value.text_of ctx k, v) :: rest) d [] in
+  in
   go 0 v;
   Text (Buffer.contents b)
 

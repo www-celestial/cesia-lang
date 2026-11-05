@@ -78,8 +78,8 @@ isNotMeets() = stop(() -> total(Square(1))) == "type: total: s must be a Shape, 
 isNumberOfParameters() = scaled(Rect(1, 2)) == 8 and stop(() -> scaled(Square(1))) == "type: scaled: s must be a Scalable, found a Square, which has no Scaled(by Number)."
 isKindNeverMeets() = stop(() -> total(3)) == "type: total: s must be a Shape, found an Int." and stop(() -> total([Rect(1)])) == "type: total: s must be a Shape, found an Array."
 isRecordMeets() = total({Area: () -> 2, Perimeter: () -> 6}) == 8 and named({Name: () -> "r"}) == "r"
-isRecordFieldNotAFunction() = total({Area: () -> 1, Perimeter: () -> 1}) == 2 and stop(() -> total({Area: () -> 1, Perimeter: 1})) == "type: total: s must be a Shape, found a struct, which has no Perimeter()."
-isRecordFieldParameters() = stop(() -> named({Name: x -> x})) == "type: named: n must be a Named, found a struct, which has no Name()."
+isRecordFieldNotAFunction() = total({Area: () -> 1, Perimeter: () -> 1}) == 2 and stop(() -> total({Area: () -> 1, Perimeter: 1})) == "type: total: s must be a Shape, found a Dict, which has no Perimeter()."
+isRecordFieldParameters() = stop(() -> named({Name: x -> x})) == "type: named: n must be a Named, found a Dict, which has no Name()."
 isStructFieldFunction() = named(Tag("a")) == "label" and stop(() -> named(Tag("a", Name = 1))) == "type: named: n must be a Named, found a Tag, which has no Name()."
 isOptionalInterface() = maybe(missing) == 0 and maybe(Rect(2)) == 2 and stop(() -> maybe(Square(1))) == "type: maybe: s must be a Shape or missing, found a Square, which has no Perimeter()."
 isFieldOfAnInterface() = Frame(Rect(1)).Inner.Area() == 1 and IsMissing(Frame(Rect(1)).Outer) and stop(() -> Frame(Square(1))) == "type: Frame: Inner must be a Shape, found a Square, which has no Perimeter()."
@@ -101,7 +101,7 @@ defn writeInside(first)
   f
 end
 
-isWriteInsideAnInterface() = stop(() -> writeInside(false)) == "type: Frame: Inner must be a Shape, found a struct, which has no Area()." and stop(() -> writeInside(true)) == "type: Frame: Inner must be a Shape, found a struct, which has no Area()."
+isWriteInsideAnInterface() = stop(() -> writeInside(false)) == "type: Frame: Inner must be a Shape, found a Dict, which has no Area()." and stop(() -> writeInside(true)) == "type: Frame: Inner must be a Shape, found a Dict, which has no Area()."
 isWriteOfAnInterface() = writeFrame(Circle(1)) == 3 and stop(() -> writeFrame(Square(1))) == "type: Frame: Outer must be a Shape or missing, found a Square, which has no Perimeter()."
 
 defn totals()

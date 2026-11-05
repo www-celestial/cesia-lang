@@ -276,7 +276,7 @@ let type_check (w : world) (t : ptype) =
     | "Bool", Unresolved -> plain (function (True | False) as x -> x | _ -> Undef)
     | "Text", Unresolved -> plain (function Text _ as x -> x | _ -> Undef)
     | "Array", Unresolved -> plain (function Array _ as x -> x | _ -> Undef)
-    | "Dict", Unresolved -> plain (function Dict _ as x -> x | _ -> Undef)
+    | "Dict", Unresolved -> plain (function (Dict _ | Struct { shape = { sname = None; _ }; _ }) as x -> x | _ -> Undef)
     | "Function", Unresolved -> plain (function (Fun _ | Native _) as x -> x | _ -> Undef)
     | name, Cell { m; _ } when Hashtbl.mem w.interfaces (w.modules.(m).host, name) ->
       let host = w.modules.(m).host and last = ref (no_shape, [], -1) in
@@ -338,13 +338,20 @@ let[@inline never] checked ctx (shape : shape) i x =
     end;
     y
 
-let field_slot (ctx : ctx) (shape : shape) name =
+(* A small field of a struct belongs to its package; the keys of a map are data, never private. *)
+let reach (ctx : ctx) pm (shape : shape) name =
+  if shape.sm >= 0 && shape.sname <> None && (not (Lexer.is_public name)) && ctx.w.modules.(pm).host <> shape.sm then
+    Runtime.fail ctx Field (Messages.private_member name)
+
+let field_slot (ctx : ctx) pm (shape : shape) name =
   let i = Value.field_index shape name in
   if i < 0 then
-    Runtime.fail ctx Field
+    Runtime.fail ctx (if shape.sname = None then Index else Field)
       (match shape.sname, method_of ctx.w shape name with
        | Some sn, Some _ -> Messages.method_uncalled sn name
+       | None, _ -> Messages.dict_absent (Value.describe (Text name))
        | _ -> Messages.no_field name);
+  reach ctx pm shape name;
   i
 
 (* The interfaces that give a method to the values of a shape, when their fields hold the functions they need: for each, its
@@ -401,7 +408,7 @@ let[@inline never] choose ctx (v : via) fields name =
    package of the struct: the site says which file it is in, [pm], and this runs the first times it meets a shape. *)
 let member_of (ctx : ctx) pm (shape : shape) name =
   let i = Value.field_index shape name in
-  if i >= 0 then Ok { ms = shape; mi = i; mg = Undef; mr = 0 }
+  if i >= 0 then (reach ctx pm shape name; Ok { ms = shape; mi = i; mg = Undef; mr = 0 })
   else
     let sn = Option.value shape.sname ~default:"" in
     match method_of ctx.w shape name with
@@ -417,48 +424,59 @@ let rec met (shape : shape) = function
   | k :: rest -> if k.ms == shape then Some k else met shape rest
 
 (* The field of an array of structs is the array of that field. *)
-let rec field_slow ctx v name =
+let rec field_slow ctx pm v name =
   match v with
-  | Struct r -> r.fields.(field_slot ctx r.shape name)
+  | Struct r -> r.fields.(field_slot ctx pm r.shape name)
+  | Dict d ->
+    (match Value.lookup (Text name) d.tree with
+     | Some x -> Value.share x
+     | None -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe (Text name))))
   | Array a ->
     Runtime.build ctx (a.rows * a.cols);
     Arrays.of_vals a.rows a.cols
-      (Array.init (a.rows * a.cols) (fun k -> Value.share (field_slow ctx (Value.elt a k) name)))
+      (Array.init (a.rows * a.cols) (fun k -> Value.share (field_slow ctx pm (Value.elt a k) name)))
   | _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name)
 
-type resolved_step = Rfield of string | Rindex of Arrays.ix array
+(* [Rkey]: an index by a text written in the code, m["City"], which keeps a map flat as m.City does. *)
+type resolved_step = Rfield of string | Rindex of Arrays.ix array | Rkey of string
 
-let step_read ctx v st =
+let step_read ctx pm v st =
   match st with
-  | Rfield name -> field_slow ctx v name
+  | Rfield name -> field_slow ctx pm v name
   | Rindex ixs -> Arrays.read ctx v ixs
+  | Rkey k -> Arrays.read1 ctx v (Arrays.Key (Text k))
 
-(* Writes to an owned container. Adding a field creates a new struct, which is returned. *)
-let step_write ctx v st x =
-  match st with
-  | Rindex ixs ->
-    (match v with
-     | Dict d -> Dict (Dict.add ctx (Arrays.key_of ctx ixs) (Value.share x) d)
-     | _ ->
-       Arrays.write ctx v ixs x;
-       v)
-  | Rfield name ->
-    (match v with
-     | Struct r ->
-       let i = Value.field_index r.shape name in
-       if i >= 0 then begin
-         r.fields.(i) <- (if Array.length r.shape.checks = 0 then x else checked ctx r.shape i x);
-         v
-       end else (
-         match r.shape.sname with
-         | Some sn -> Runtime.fail ctx Field (Messages.named_field sn name)
-         | None -> Value.add_field ctx.w r.shape r.fields name x)
-     | _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name))
+(* Writes to an owned container. A new key can give a new map, which is returned: a key written in the code keeps a map flat
+   while it has few, a key from a variable makes it a tree. *)
+let step_write ctx pm v st x =
+  match st, v with
+  | (Rfield name | Rkey name), Struct ({ shape = { sname = None; _ }; _ } as r) ->
+    let i = Value.field_index r.shape name in
+    if i >= 0 then (r.fields.(i) <- x; v) else Dict.add_name ctx v name x
+  | Rindex ixs, Struct ({ shape = { sname = None; _ }; _ } as r) ->
+    (match Arrays.key_of ctx ixs with
+     | Text name when Value.field_index r.shape name >= 0 -> r.fields.(Value.field_index r.shape name) <- x; v
+     | k -> Dict.put ctx "" k (Value.share x) v)
+  | Rindex ixs, Dict _ -> Dict.put ctx "" (Arrays.key_of ctx ixs) (Value.share x) v
+  | (Rfield k | Rkey k), Dict _ -> Dict.put ctx "" (Text k) (Value.share x) v
+  | Rindex ixs, _ ->
+    Arrays.write ctx v ixs x;
+    v
+  | Rkey k, _ ->
+    Arrays.write ctx v [| Arrays.Key (Text k) |] x;
+    v
+  | Rfield name, Struct r ->
+    let i = Value.field_index r.shape name in
+    if i < 0 then Runtime.fail ctx Field (Messages.named_field (Option.value r.shape.sname ~default:"") name);
+    reach ctx pm r.shape name;
+    r.fields.(i) <- (if Array.length r.shape.checks = 0 then x else checked ctx r.shape i x);
+    v
+  | Rfield name, _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name)
 
 (* The slow path of a write to a variable: owns its value, writes, and stores it again if the write gave a new one. *)
-let write_root ctx set x st y =
+let write_root ctx pm set x st y =
   let top = Runtime.own ctx x in
-  let after = step_write ctx top st y in
+  let after = step_write ctx pm top st y in
   if after != x then set ctx after
 
 let new_proto ~file ~m (f : func) =
@@ -1103,6 +1121,21 @@ and index_read c e b ixs uses_end =
         if slot < 0 then fun _ _ -> () else fun ctx x -> ctx.v.(ctx.b + slot) <- x
       in
       match ixs, args with
+      | [| Ix { e = Ltext k; _ } |], _ when not uses_end ->
+        (* m["Name"] on a map with a shape costs what m.Name costs. *)
+        let cache = ref { cs = no_shape; ci = 0 } in
+        fun ctx ->
+          let x = base ctx in
+          let last = !cache in
+          (match x with
+           | Struct r when r.shape == last.cs -> r.fields.(last.ci)
+           | Struct ({ shape = { sname = None; _ }; _ } as r) when Value.field_index r.shape k >= 0 ->
+             let i = Value.field_index r.shape k in
+             cache := { cs = r.shape; ci = i };
+             r.fields.(i)
+           | _ ->
+             ctx.site <- s;
+             Arrays.read1 ctx x (Arrays.Key (Text k)))
       | [| Ix i |], _ when (not uses_end) && ty c i == TI ->
         let idx = ci c i in
         let read (ctx : ctx) x k =
@@ -1169,6 +1202,11 @@ and question c e a =
 
 and struct_lit c sname fields =
   let names = Array.map fst fields in
+  if sname = None && Array.length names > Dict.most then begin
+    let vals = Array.map (fun (_, v) -> ce c v) fields in
+    fun ctx -> Dict.of_items ctx (Array.init (2 * Array.length vals) (fun j ->
+        if j land 1 = 0 then Text names.(j / 2) else Value.share (vals.(j / 2) ctx)))
+  end else
   let shape = Value.shape_of c.w ?sname ~m:c.w.modules.(c.ver.owner.pm).host names in
   match Array.map (fun (_, v) -> ce c v) fields with
   | [| a; b |] ->
@@ -1187,7 +1225,7 @@ and struct_lit c sname fields =
 
 and field_read c e b name =
   let base = (match leaf c b with `L k -> (fun (ctx : ctx) -> ctx.v.(ctx.b + k)) | l -> leaf_value l) in
-  let s = site c e.pos in
+  let s = site c e.pos and pm = c.ver.owner.pm in
   (* A single immutable word, replaced at once: correct with several OCaml domains. *)
   let cache = ref { cs = no_shape; ci = 0 } in
   fun ctx ->
@@ -1197,13 +1235,13 @@ and field_read c e b name =
       if r.shape == k.cs then r.fields.(k.ci)
       else begin
         ctx.site <- s;
-        let i = field_slot ctx r.shape name in
+        let i = field_slot ctx pm r.shape name in
         cache := { cs = r.shape; ci = i };
         r.fields.(i)
       end
     | v ->
       ctx.site <- s;
-      field_slow ctx v name
+      field_slow ctx pm v name
 
 (* The function of a call x.name(...): what a field holds, or the method of the struct of x and its object. With [shared],
    the object can't be lent: an argument writes, or another fiber can reach it. *)
@@ -1248,7 +1286,7 @@ and member_read c e b name ~shared =
       end
     | v ->
       ctx.site <- s;
-      field_slow ctx v name
+      field_slow ctx pm v name
 
 and match_expr c e subject arms compile_body =
   let v = ce c subject and s = site c e.pos in
@@ -1264,6 +1302,7 @@ and match_expr c e subject arms compile_body =
   let n = Array.length arms in
   fun ctx ->
     let x = v ctx in
+    ctx.site <- s;
     let rec go k =
       if k >= n then begin
         ctx.site <- s;
@@ -1277,6 +1316,7 @@ and match_expr c e subject arms compile_body =
 
 (* A match pattern: binds its names and says whether it accepts the value. *)
 and pat_test c (pt : pat) : ctx -> t -> bool =
+  let pm = c.ver.owner.pm in
   match pt with
   | Pwild -> fun _ _ -> true
   | Pname n ->
@@ -1319,8 +1359,15 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
            || begin
              let name, test = tests.(k) in
              let i = Value.field_index r.shape name in
-             i >= 0 && test ctx r.fields.(i) && go (k + 1)
+             i >= 0 && (reach ctx pm r.shape name; test ctx r.fields.(i)) && go (k + 1)
            end
+         in
+         go 0
+       | Dict d ->
+         let rec go k =
+           k >= want
+           || (let name, test = tests.(k) in
+               match Value.lookup (Text name) d.tree with Some x -> test ctx x && go (k + 1) | None -> false)
          in
          go 0
        | _ -> false)
@@ -2260,6 +2307,7 @@ and set_path c e root path value =
 
 (* x[i] = f on an owned FA array: neither allocation nor conversion. *)
 and fa_write1 c root sp i value =
+  let pm = c.ver.owner.pm in
   let idx = ci c i and v = cf c value and s = site c sp in
   let k = (match root.b with Local r -> c.map.(r) | _ -> assert false) in
   let set = setter c root in
@@ -2271,9 +2319,10 @@ and fa_write1 c root sp i value =
       Float.Array.set d (p - 1) y
     | x ->
       ctx.site <- s;
-      write_root ctx set x (Rindex [| Arrays.At p |]) (Float y)
+      write_root ctx pm set x (Rindex [| Arrays.At p |]) (Float y)
 
 and fa_write2 c root sp i j value =
+  let pm = c.ver.owner.pm in
   let ix = ci c i and jx = ci c j and v = cf c value and s = site c sp in
   let k = (match root.b with Local r -> c.map.(r) | _ -> assert false) in
   let set = setter c root in
@@ -2286,10 +2335,11 @@ and fa_write2 c root sp i j value =
       Float.Array.set d (((q - 1) * rows) + p - 1) y
     | x ->
       ctx.site <- s;
-      write_root ctx set x (Rindex [| Arrays.At p; Arrays.At q |]) (Float y)
+      write_root ctx pm set x (Rindex [| Arrays.At p; Arrays.At q |]) (Float y)
 
 (* x[i] = y in an owned array: no index allocation. *)
 and set_elt c e root sp ix value =
+  let pm = c.ver.owner.pm in
   let read = var c { id = 0; pos = sp; e = Var root } root in
   let v = ce c value and s = site c sp in
   let set = setter c root in
@@ -2304,7 +2354,7 @@ and set_elt c e root sp ix value =
       | Array ({ a_owned = true; _ } as a) when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
       | _ ->
         ctx.site <- s;
-        write_root ctx set x (Rindex [| Arrays.At k |]) y
+        write_root ctx pm set x (Rindex [| Arrays.At k |]) y
   end else
   let idx = cv c ix in
   fun ctx ->
@@ -2315,9 +2365,10 @@ and set_elt c e root sp ix value =
     | Array ({ a_owned = true; _ } as a), Int k when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
     | _ ->
       ctx.site <- s;
-      write_root ctx set x (Rindex [| Arrays.ix_of ctx i |]) y
+      write_root ctx pm set x (Rindex [| Arrays.ix_of ctx i |]) y
 
 and set_general c _e root path value =
+  let pm = c.ver.owner.pm in
   let read = var c { id = 0; pos = path.(0).sp; e = Var root } root in
   let set = setter c root in
   let v = ce c value in
@@ -2328,6 +2379,7 @@ and set_general c _e root path value =
          let s = site c sp in
          match sk with
          | Sfield name -> s, `Field name
+         | Sindex ([| Ix { e = Ltext k; _ } |], false) -> s, `Key k
          | Sindex (ixs, uses_end) ->
            let slot, args =
              with_end c uses_end (fun slot ->
@@ -2355,13 +2407,14 @@ and set_general c _e root path value =
            let st =
              match step with
              | `Field name -> Rfield name
+             | `Key k -> Rkey k
              | `Index (slot, args) ->
                if slot >= 0 then ctx.v.(ctx.b + slot) <- !cur;
                Rindex (Array.map (fun a -> a ctx) args)
            in
            if k < n - 1 then begin
              ctx.site <- s;
-             cur := step_read ctx !cur st
+             cur := step_read ctx pm !cur st
            end;
            s, st)
         steps
@@ -2373,7 +2426,7 @@ and set_general c _e root path value =
     for k = 0 to n - 2 do
       let s, st = resolved.(k) in
       ctx.site <- s;
-      let child = step_read ctx !container st in
+      let child = step_read ctx pm !container st in
       chain := (!container, st, s, child) :: !chain;
       container := Runtime.own ctx child
     done;
@@ -2393,14 +2446,15 @@ and set_general c _e root path value =
           climb parent rest
         end else begin
           ctx.site <- s;
-          climb (step_write ctx parent st value) rest
+          climb (step_write ctx pm parent st value) rest
         end
     in
-    let top = climb (step_write ctx !container st y) !chain in
+    let top = climb (step_write ctx pm !container st y) !chain in
     if top != root_value then set ctx top
 
 (* Binds a destructuring pattern: a failure is an error. *)
 and cpat c (pt : pat) pos : ctx -> t -> unit =
+  let pm = c.ver.owner.pm in
   let s = site c pos in
   match pt with
   | Pwild | Plit _ -> fun _ _ -> ()
@@ -2432,13 +2486,9 @@ and cpat c (pt : pat) pos : ctx -> t -> unit =
     let binds = Array.map (fun (name, q) -> name, cpat c q pos) fs in
     fun ctx v ->
       (match v with
-       | Struct r ->
+       | Struct _ | Dict _ ->
          ctx.site <- s;
-         Array.iter
-           (fun (name, b) ->
-              let i = field_slot ctx r.shape name in
-              b ctx (Value.share r.fields.(i)))
-           binds
+         Array.iter (fun (name, b) -> b ctx (Value.share (field_slow ctx pm v name))) binds
        | _ ->
          ctx.site <- s;
          Runtime.fail ctx Type (Messages.destructure_struct (Value.describe v)))

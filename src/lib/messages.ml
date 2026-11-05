@@ -18,9 +18,6 @@ let underscore_name name small capital =
   let text = Printf.sprintf "A name can't hold a _: \"%s\"." name in
   if small = "" then plain text
   else hinted text (Printf.sprintf "Join the words with capitals: %s, or %s when it is public." small capital)
-let private_field name =
-  hinted (Printf.sprintf "The field \"%s\" is private to the package that declares it." name)
-    "A field is public when its first letter is a capital."
 let private_member name =
   hinted (Printf.sprintf "The field or method \"%s\" is private to the package that declares it." name)
     "A field or a method is public when its first letter is a capital."
@@ -271,6 +268,8 @@ let dict_absent k = plain (Printf.sprintf "This dictionary has no key: %s." k)
 let dict_index = plain "A dictionary takes one key between its brackets."
 let dict_pair a = plain (Printf.sprintf "Dict needs structs with a Key and a Value, not %s." a)
 let need_dict name a = plain (Printf.sprintf "%s needs a dictionary, not %s." name a)
+let map_of_struct name sn =
+  hinted (Printf.sprintf "%s needs a dictionary, not %s." name (article sn)) "Fields(x) gives the public fields of a struct as a dictionary."
 let no_match a = plain (Printf.sprintf "No branch of this match accepts %s." a)
 let assertion = plain "Assertion failed."
 let use_nested = plain "use can only be used at the top of a file."

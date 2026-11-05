@@ -19,10 +19,13 @@ type t =
   | Fun of { proto : proto; env : t array }
   | Native of native
   | Handle of { kind : string; id : int; task : task option }  (** a reference to something outside the values *)
-  | Dict of dict
+  | Dict of { tree : dict; next : int; mutable order : t array }
+      (** a map stored in a tree: [next] is the rank of the next key, [order] its keys and values in the order of insertion,
+          k1 v1 k2 v2..., or [Value.no_order] until asked. A map whose keys are names fixed by the code is a [Struct] whose
+          shape has no [sname]. *)
   | Bound of { g : t; self : t }  (** a method and its object, on their way to the call: never visible to the program *)
 
-and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; h : int; n : int }
+and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
 and task = { mutable result : t option; mutable waiters : (unit -> unit) list }
 
 (** A list that Append made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its

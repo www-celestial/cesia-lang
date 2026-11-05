@@ -10,6 +10,68 @@ let rec dict_fold f d acc =
   | Leaf -> acc
   | Node n -> dict_fold f n.l (f n.k n.v (dict_fold f n.r acc))
 
+let no_order = [| Undef |]
+let tree_length = function Leaf -> 0 | Node n -> n.n
+
+let compare_keys a b =
+  match a, b with
+  | Int x, Int y -> Int.compare x y
+  | Text x, Text y -> String.compare x y
+  | Float x, Float y -> Float.compare x y
+  | Int x, Float y -> Float.compare (float_of_int x) y
+  | Float x, Int y -> Float.compare x (float_of_int y)
+  | (Int _ | Float _), _ -> -1
+  | _ -> 1
+
+let rec lookup k = function
+  | Leaf -> None
+  | Node n ->
+    let c = compare_keys k n.k in
+    if c = 0 then Some n.v else lookup k (if c < 0 then n.l else n.r)
+
+(* A tree sorts its keys by rank once and keeps them with itself: it never changes. Ranks are unique, so when they are few
+   each key goes to its rank, and only the gaps left by dropped keys are closed. *)
+let items v =
+  match v with
+  | Struct r -> Array.init (2 * Array.length r.fields) (fun j -> if j land 1 = 0 then Text r.shape.names.(j / 2) else r.fields.(j / 2))
+  | Dict d when d.order != no_order -> d.order
+  | Dict d ->
+    let n = tree_length d.tree in
+    let o =
+      if d.next <= (2 * n) + 8 then begin
+        let at = Array.make (2 * d.next) Undef in
+        let rec fill = function
+          | Leaf -> ()
+          | Node x ->
+            fill x.l;
+            at.(2 * (x.hr lsr 6)) <- x.k;
+            at.((2 * (x.hr lsr 6)) + 1) <- x.v;
+            fill x.r
+        in
+        fill d.tree;
+        if d.next = n then at
+        else begin
+          let o = Array.make (2 * n) Undef and j = ref 0 in
+          for r = 0 to d.next - 1 do
+            if at.(2 * r) != Undef then begin
+              o.(!j) <- at.(2 * r);
+              o.(!j + 1) <- at.((2 * r) + 1);
+              j := !j + 2
+            end
+          done;
+          o
+        end
+      end else begin
+        let rec nodes acc = function Leaf -> acc | Node x -> nodes ((x.hr lsr 6, x.k, x.v) :: nodes acc x.r) x.l in
+        let sorted = Array.of_list (nodes [] d.tree) in
+        Array.sort (fun (a, _, _) (b, _, _) -> Int.compare a b) sorted;
+        Array.init (2 * n) (fun j -> let _, k, x = sorted.(j / 2) in if j land 1 = 0 then k else x)
+      end
+    in
+    d.order <- o;
+    o
+  | _ -> [||]
+
 let share v =
   (match v with
    | Array a -> a.a_owned <- false
@@ -134,29 +196,25 @@ and show_at ctx depth v =
   | Float x -> float_text x
   | Text s -> quote s
   | Array a -> show_array ctx depth a
+  | Struct { shape = { sname = None; _ }; _ } | Dict _ -> show_map ctx depth (items v)
   | Struct r -> show_struct ctx depth r.shape r.fields
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
   | Handle h -> Printf.sprintf "<%s %d>" h.kind h.id
-  | Dict d -> show_dict ctx depth d
 
-and show_dict ctx depth d =
-  let pairs = dict_fold (fun k v rest -> (k, v) :: rest) d [] in
-  pay ctx (List.length pairs);
-  match pairs with
-  | [] -> "dict()"
-  | _ ->
-    let item (k, v) = show_at ctx (depth + 1) k ^ ": " ^ show_at ctx (depth + 1) v in
-    "{" ^ String.concat ", " (List.map item pairs) ^ "}"
+(* One way for both storages: a key that is a name as the code writes it, {Name: 1}, another as a value, {"a-b": 1, 2: 3}. *)
+and show_map ctx depth o =
+  let n = Array.length o / 2 in
+  pay ctx n;
+  let key = function Text s when Lexer.is_plain_name s -> s | k -> show_at ctx (depth + 1) k in
+  "{" ^ String.concat ", " (List.init n (fun i -> key o.(2 * i) ^ ": " ^ show_at ctx (depth + 1) o.((2 * i) + 1))) ^ "}"
 
 and show_struct ctx depth (shape : shape) fields =
   let names = shape.names in
-  let field sep i = names.(i) ^ sep ^ show_at ctx (depth + 1) fields.(i) in
+  let field i = names.(i) ^ " = " ^ show_at ctx (depth + 1) fields.(i) in
   let n = Array.length names in
   pay ctx n;
-  match shape.sname with
-  | None -> "{" ^ String.concat ", " (List.init n (field ": ")) ^ "}"
-  | Some s -> s ^ "(" ^ String.concat ", " (List.init n (field " = ")) ^ ")"
+  Option.value shape.sname ~default:"" ^ "(" ^ String.concat ", " (List.init n field) ^ ")"
 
 and show_array ctx depth a =
   let cell k = show_at ctx (depth + 1) (elt a k) in
@@ -188,7 +246,7 @@ let describe v =
   | False -> "false"
   | Array _ -> "an array"
   | Struct { shape = { sname = Some n; _ }; _ } -> struct_name n
-  | Struct _ -> "a struct"
+  | Struct _ -> "a dictionary"
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
   | Handle h -> "a " ^ h.kind
@@ -202,7 +260,7 @@ let type_of v =
   | Text _ -> "a Text"
   | True | False -> "a Bool"
   | Array _ -> "an Array"
-  | Dict _ -> "a Dict"
+  | Dict _ | Struct { shape = { sname = None; _ }; _ } -> "a Dict"
   | Fun _ | Native _ -> "a Function"
   | _ -> describe v
 
@@ -242,7 +300,20 @@ and equal_at ctx depth a b =
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env
   | Native x, Native y -> x == y
   | Handle x, Handle y -> x.id = y.id && String.equal x.kind y.kind
-  | Dict x, Dict y ->
+  | Struct ({ shape = { sname = None; _ }; _ } as x), Dict y | Dict y, Struct ({ shape = { sname = None; _ }; _ } as x) ->
+    let n = Array.length x.fields in
+    n = tree_length y.tree
+    && begin
+      pay ctx n;
+      let rec go i =
+        i >= n
+        || (match lookup (Text x.shape.names.(i)) y.tree with
+            | Some v -> equal_at ctx (depth + 1) x.fields.(i) v && go (i + 1)
+            | None -> false)
+      in
+      go 0
+    end
+  | Dict { tree = x; _ }, Dict { tree = y; _ } ->
     let items d = dict_fold (fun k v rest -> (k, v) :: rest) d [] in
     let xs = items x and ys = items y in
     pay ctx (List.length xs);

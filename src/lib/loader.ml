@@ -259,11 +259,11 @@ let set_checks w (prepared : (int * Ast.layout) list) =
 
 (* Resolves the files of a package, the modules from [first] on. Each one sees what the others define, small names included,
    before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload. *)
-let resolve_files w ~sees_private ~lookup ~first ~old parsed =
+let resolve_files w ~lookup ~first ~old parsed =
   let is_type = is_type w in
   match parsed with
   | [ (path, _, fn, (spaces, _)) ] ->
-    [ Resolve.file ~keep:(old 0) ~sees_private ~is_type ~file:path ~m:first ~lookup ~spaces fn ]
+    [ Resolve.file ~keep:(old 0) ~is_type ~file:path ~m:first ~lookup ~spaces fn ]
   | _ ->
     Resolve.check_package (List.map (fun (path, _, fn, _) -> path, fn) parsed);
     let seen = Hashtbl.create 64 in
@@ -294,7 +294,7 @@ let resolve_files w ~sees_private ~lookup ~first ~old parsed =
     let peers = List.map (fun (_, _, fn, _) -> fn) parsed in
     List.mapi
       (fun i ((path, _, fn, (spaces, _)), keep) ->
-         Resolve.file ~keep ~peers ~sees_private ~is_type ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
+         Resolve.file ~keep ~peers ~is_type ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
       (List.combine parsed keeps)
 
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
@@ -310,7 +310,7 @@ let rec prepare_files ?(hooks = false) ?host ctx ~sources ~lookup =
   in
   let first = Array.length w.modules in
   let package = Array.init (List.length parsed) (fun i -> first + i) in
-  let layouts = resolve_files w ~sees_private:(host <> None) ~lookup ~first ~old:(fun _ -> [||]) parsed in
+  let layouts = resolve_files w ~lookup ~first ~old:(fun _ -> [||]) parsed in
   let host = match host with Some h -> w.modules.(h).host | None -> first in
   let prepared = List.map2
     (fun (path, file, fn, (_, uses)) (layout : Ast.layout) ->
@@ -500,7 +500,7 @@ let reload w path =
           members
       in
       let old i = Array.of_list (List.map fst w.modules.(first + i).mnames) in
-      List.combine parsed (resolve_files w ~sees_private:false ~lookup:look ~first ~old parsed)
+      List.combine parsed (resolve_files w ~lookup:look ~first ~old parsed)
     with
     | exception Pos.Load_error { file; pos; text; hint; _ } ->
       Error (format_error ~source:(source_of w file) ~path:file ~pos ~text ~hint ~trace:[])

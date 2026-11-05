@@ -143,7 +143,7 @@ isMethodParam() = Pt(1, 2).Plus(3) == Pt(4, 5) and stop(() -> Pt(1).Plus(1.5)) =
 isStaticParam() = Pt.Of(2) == Pt(2, 2) and stop(() -> Pt.Of("a")) == "type: Pt.Of: x must be an Int, found a Text."
 isFunctionParam() = apply(x -> x + 1, 1) == 2 and apply(Abs, -1) == 1 and stop(() -> apply(1, 1)) == "type: apply: f must be a Function, found an Int."
 isKinds() = kinds(true, "a", [1, 2], {"k": 1}) == "true a 2 1"
-isKindsWrong() = stop(() -> kinds(1, "a", [1], {"k": 1})) == "type: kinds: b must be a Bool, found an Int." and stop(() -> kinds(true, "a", [1], {K: 1})) == "type: kinds: d must be a Dict, found a struct."
+isKindsWrong() = stop(() -> kinds(1, "a", [1], {"k": 1})) == "type: kinds: b must be a Bool, found an Int." and stop(() -> kinds(true, "a", [1], Ok(1))) == "type: kinds: d must be a Dict, found an Ok."
 
 defn circleArea(c shapes.Circle)
   c.Area()

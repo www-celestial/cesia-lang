@@ -24,6 +24,9 @@ val tokens : file:string -> string -> token array
 (** A capital first letter makes a name public. *)
 val is_public : string -> bool
 
+(** A name the code can write, so a key that prints without quotes: no keyword, no [_]. *)
+val is_plain_name : string -> bool
+
 (** The name of a method inside the core. [Rect.Area] gives the struct, [false] and the method; [Rect:Square], which only the
     core writes, gives [true]; another name gives [None]. *)
 val split_method : string -> (string * bool * string) option

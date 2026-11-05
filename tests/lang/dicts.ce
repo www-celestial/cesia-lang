@@ -10,15 +10,15 @@ isHas() = Has("a", {"a": 1}) and not Has("b", {"a": 1})
 isIn() = "a" in {"a": 1} and not ("b" in {"a": 1})
 isEmpty() = Len(Dict()) == 0
 isLength() = Len({"a": 1, "b": 2}) == 2
-isKeysSorted() = Equal(Keys({"b": 1, "a": 2, 3: 3}), [3, "a", "b"])
-isValues() = Equal(Values({"b": 1, "a": 2}), [2, 1])
+isKeysInOrder() = Equal(Keys({"b": 1, "a": 2, 3: 3}), ["b", "a", 3])
+isValues() = Equal(Values({"b": 1, "a": 2}), [1, 2])
 isPairs() = Equal(Pairs({"a": 1}), [{Key: "a", Value: 1}])
 isFromPairs() = Equal(Dict([{Key: "a", Value: 1}]), {"a": 1})
 isRoundTrip() = Equal(Dict(Pairs({"a": 1, "b": 2})), {"a": 1, "b": 2})
 isEqualAnyOrder() = {"a": 1, "b": 2} == {"b": 2, "a": 1}
 isNotEqual() = {"a": 1} != {"a": 2} and {"a": 1} != {"b": 1}
-isTextForm() = Text({"b": 1, 2: "x"}) == "{2: ""x"", ""b"": 1}"
-isKind() = IsDict({"a": 1}) and not IsDict({A: 1})
+isTextForm() = Text({"b": 1, 2: "x"}) == "{b: 1, 2: ""x""}" and Text({"a-b": 1, "if": 2}) == "{""a-b"": 1, ""if"": 2}"
+isKind() = IsDict({"a": 1}) and IsDict({A: 1}) and not IsDict(Ok(1))
 isLaterWins() = {"a": 1, "a": 2}["a"] == 2
 
 defn isPutKeepsTheOriginal()

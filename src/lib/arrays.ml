@@ -57,7 +57,7 @@ let mem ctx v xs =
     Runtime.pay ctx n;
     let rec go k = k < n && (Value.equal ctx v (Value.elt a k) || go (k + 1)) in
     Value.of_bool (go 0)
-  | Dict d -> Value.of_bool (Option.is_some (Dict.find ctx v d))
+  | Dict _ | Struct { shape = { sname = None; _ }; _ } -> Value.of_bool (Option.is_some (Dict.get ctx "in" v xs))
   | _ -> Runtime.fail ctx Type (Messages.cant_in (Value.describe xs))
 
 let check1 ctx a i =
@@ -127,9 +127,9 @@ let key_of ctx ixs =
 
 let read1 ctx v ix =
   match v with
-  | Dict d ->
+  | Dict _ | Struct { shape = { sname = None; _ }; _ } ->
     let k = key_of ctx [| ix |] in
-    (match Dict.find ctx k d with
+    (match Dict.get ctx "" k v with
      | Some x -> Value.share x
      | None -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe k)))
   | Array a ->

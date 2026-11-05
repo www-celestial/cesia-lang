@@ -8,11 +8,10 @@ val check_package : (string * Ast.func) list -> unit
 
 (** Fills in the [binding]s of file [fn], for the module of index [m]. The names in [keep] keep their cell index: a
     reload moves nothing for already compiled code. [peers] are the files of its package: their structs, interfaces and
-    fields count as its own, and each name in [keep] lives in its cell. With [sees_private], a small field or method needs no
-    declaration here: that is for the examples of a file. [is_type] says whether a name of another package, or of the
+    fields count as its own, and each name in [keep] lives in its cell. [is_type] says whether a name of another package, or of the
     prelude, is a struct or an interface, which a type can name. *)
 val file :
-  ?keep:string array -> ?peers:Ast.func list -> ?sees_private:bool -> ?is_type:(Ast.binding -> bool) -> file:string -> m:int ->
+  ?keep:string array -> ?peers:Ast.func list -> ?is_type:(Ast.binding -> bool) -> file:string -> m:int ->
   lookup:(string -> Ast.binding option) ->
   spaces:(string * (string -> Ast.binding option)) list -> Ast.func -> Ast.layout
 

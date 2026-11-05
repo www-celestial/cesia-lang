@@ -62,7 +62,7 @@ defn row(k, members, summary)
     {Key: k, Values: members}
   else
     s = summary(members)
-    if IsStruct(s) merge({Key: k}, s) else {Key: k, Value: s} end
+    if IsDict(s) merge({Key: k}, s) else {Key: k, Value: s} end
   end
 end
 

@@ -4,7 +4,7 @@ sales = frame.Table(["city", "item", "amount"], [["Paris", "Lyon", "Paris", "Nic
 places = frame.Table(["city", "country"], [["Paris", "Lyon"], ["FR", "FR"]])
 
 isShape() = frame.Rows(sales) == 4 and Equal(frame.Columns(sales), ["city", "item", "amount"])
-isOf() = Equal(frame.Columns(frame.Of({"b": [1], "a": [2]})), ["a", "b"])
+isOf() = Equal(frame.Columns(frame.Of({"b": [1], "a": [2]})), ["b", "a"])
 isColumn() = Equal(frame.Column("item", sales), ["a", "b", "b", "a"])
 isRow() = frame.Row(2, sales)["city"] == "Lyon"
 isRecords() = Len(frame.Records(sales)) == 4

@@ -74,39 +74,36 @@ let str ctx args =
 
 let length v =
   match v with
-  | Dict d -> Dict.length d
+  | Dict d -> Dict.length d.tree
   | Text s -> code_points s
   | Array a -> a.rows * a.cols
   | Struct r -> Array.length r.fields
   | _ -> 1
 
-let as_dict ctx name v =
-  match v with
-  | Dict d -> d
-  | _ -> Runtime.fail ctx Type (Messages.need_dict name (Value.describe v))
-
-let dict_items ctx d f =
-  let items = Value.dict_fold (fun k v rest -> f k v :: rest) d [] in
-  Runtime.build ctx (Dict.length d);
-  Arrays.list (Array.of_list items)
+(* What f gives for each key and value of a map, in the order of insertion. *)
+let dict_items ctx name m f =
+  let o = Dict.items ctx name m in
+  let n = Array.length o / 2 in
+  Runtime.build ctx n;
+  Arrays.list (Array.init n (fun i -> f o.(2 * i) o.((2 * i) + 1)))
 
 let dict_of_pairs ctx (a : t array) =
-  let pair d p =
+  let pair p =
     match p with
     | Struct r when Value.field_index r.shape "Key" >= 0 && Value.field_index r.shape "Value" >= 0 ->
-      Dict.add ctx r.fields.(Value.field_index r.shape "Key") (Value.share r.fields.(Value.field_index r.shape "Value")) d
+      [ Value.share r.fields.(Value.field_index r.shape "Value"); r.fields.(Value.field_index r.shape "Key") ]
     | _ -> Runtime.fail ctx Type (Messages.dict_pair (Value.describe p))
   in
   match a with
-  | [||] -> Dict Leaf
-  | [| Array x |] -> Dict (Array.fold_left pair Leaf (Array.init (x.rows * x.cols) (Value.elt x)))
+  | [||] -> Dict.empty
+  | [| Array x |] ->
+    let rows = List.init (x.rows * x.cols) (fun k -> pair (Value.elt x k)) in
+    Dict.of_items ctx (Array.of_list (List.rev (List.concat (List.rev rows))))
   | _ -> Runtime.fail ctx Type (Messages.dict_pair (Value.describe a.(0)))
 
 let dict_literal ctx (a : t array) =
   if Array.length a mod 2 = 1 then Runtime.fail ctx Type (Messages.dict_pair (Value.describe a.(0)));
-  let d = ref Leaf in
-  Array.iteri (fun i k -> if i mod 2 = 0 then d := Dict.add ctx k (Value.share a.(i + 1)) !d) a;
-  Dict !d
+  Dict.of_items ctx (Array.map Value.share a)
 
 let dim ctx name v =
   match v with
@@ -507,36 +504,30 @@ let prelude =
           Runtime.fail ctx User m
         | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v)));
     "merge", nat "merge" 2 2 (fun ctx a ->
-        match a.(1) with
-        | Struct r ->
-          let acc = ref a.(0) in
-          Array.iteri
-            (fun i name ->
-               match !acc with
-               | Struct x -> acc := Value.add_field ctx.w x.shape x.fields name (Value.share r.fields.(i))
-               | _ -> ())
-            r.shape.names;
-          !acc
-        | v -> v);
+        let o = Dict.items ctx "merge" a.(1) and acc = ref a.(0) in
+        for i = 0 to (Array.length o / 2) - 1 do
+          let x = Value.share o.((2 * i) + 1) in
+          acc := (match o.(2 * i) with Text name -> Dict.add_name ctx !acc name x | k -> Dict.put ctx "merge" k x !acc)
+        done;
+        !acc);
     "Args", Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true };
     "Text", nat "Text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
     "Dict", nat "Dict" 0 1 dict_of_pairs;
     "#dict", nat "dict literal" 0 max_int dict_literal;
-    "Get", nat "Get" 2 2 (fun ctx a -> Option.fold ~none:Missing ~some:Value.share (Dict.find ctx a.(0) (as_dict ctx "Get" a.(1))));
+    "Get", nat "Get" 2 2 (fun ctx a -> Option.fold ~none:Missing ~some:Value.share (Dict.get ctx "Get" a.(0) a.(1)));
     "GetOr", nat "GetOr" 3 3 (fun ctx a ->
-        match Dict.find ctx a.(0) (as_dict ctx "GetOr" a.(2)) with
+        match Dict.get ctx "GetOr" a.(0) a.(2) with
         | Some x -> Value.share x
         | None -> a.(1));
-    "Has", nat "Has" 2 2 (fun ctx a -> Value.of_bool (Option.is_some (Dict.find ctx a.(0) (as_dict ctx "Has" a.(1)))));
-    "Put", nat "Put" 3 3 (fun ctx a -> Dict (Dict.add ctx a.(0) (Value.share a.(1)) (as_dict ctx "Put" a.(2))));
-    "Drop", nat "Drop" 2 2 (fun ctx a -> Dict (Dict.remove ctx a.(0) (as_dict ctx "Drop" a.(1))));
-    "Keys", nat "Keys" 1 1 (fun ctx a -> dict_items ctx (as_dict ctx "Keys" a.(0)) (fun k _ -> k));
-    "Values", nat "Values" 1 1 (fun ctx a -> dict_items ctx (as_dict ctx "Values" a.(0)) (fun _ v -> Value.share v));
+    "Has", nat "Has" 2 2 (fun ctx a -> Value.of_bool (Option.is_some (Dict.get ctx "Has" a.(0) a.(1))));
+    "Put", nat "Put" 3 3 (fun ctx a -> Dict.put ctx "Put" a.(0) (Value.share a.(1)) a.(2));
+    "Drop", nat "Drop" 2 2 (fun ctx a -> Dict.drop ctx "Drop" a.(0) a.(1));
+    "Keys", nat "Keys" 1 1 (fun ctx a -> dict_items ctx "Keys" a.(0) (fun k _ -> k));
+    "Values", nat "Values" 1 1 (fun ctx a -> dict_items ctx "Values" a.(0) (fun _ v -> Value.share v));
     "Pairs", nat "Pairs" 1 1 (fun ctx a ->
         let shape = Value.shape_of ctx.w [| "Key"; "Value" |] in
-        dict_items ctx (as_dict ctx "Pairs" a.(0)) (fun k v ->
-            Struct { shape; fields = [| k; Value.share v |]; r_owned = true }));
-    is_ "IsDict" (function Dict _ -> true | _ -> false);
+        dict_items ctx "Pairs" a.(0) (fun k v -> Struct { shape; fields = [| k; Value.share v |]; r_owned = true }));
+    is_ "IsDict" (function Dict _ | Struct { shape = { sname = None; _ }; _ } -> true | _ -> false);
     "Len", nat ~ret:(fun _ -> TI) "Len" 1 1 (fun _ a -> Int (length a.(0)));
     "Div", int_native "Div" Arith.int_div;
     "Mod", int_native "Mod" Arith.int_mod;
@@ -576,7 +567,7 @@ let prelude =
     is_ "IsBool" (function True | False -> true | _ -> false);
     is_ "IsText" (function Text _ -> true | _ -> false);
     is_ "IsArray" (function Array _ -> true | _ -> false);
-    is_ "IsStruct" (function Struct _ -> true | _ -> false);
+    is_ "IsStruct" (function Struct { shape = { sname = Some _; _ }; _ } -> true | _ -> false);
     is_ "IsFunction" (function Fun _ | Native _ -> true | _ -> false);
     is_ "IsMissing" (function Missing -> true | _ -> false);
     "Pi", Float (4. *. atan 1.);

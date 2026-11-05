@@ -14,7 +14,6 @@ val too_nested : t
 val cant_assign : t
 val break_outside : t
 val underscore_name : string -> string -> string -> t
-val private_field : string -> t
 val private_member : string -> t
 val undefined : string -> t
 val method_foreign : t
@@ -232,6 +231,7 @@ val dict_absent : string -> t
 val dict_index : t
 val dict_pair : string -> t
 val need_dict : string -> string -> t
+val map_of_struct : string -> string -> t
 
 val pattern_mismatch : string -> string -> t
 val question_file : t

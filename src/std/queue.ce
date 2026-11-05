@@ -50,6 +50,6 @@ end
 (** The elements from front to back.
 
       Items(Of([1, 2])) --> [1, 2] *)
-Items(q) = Values(q.Items)
+Items(q) = [q.Items[k] for k in q.First:q.Last]
 (** A queue holding the elements of an array, the first one at the front. *)
 Of(xs) = Reduce((q, x) -> Push(x, q), Empty(), xs)

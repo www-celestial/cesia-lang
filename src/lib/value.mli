@@ -54,5 +54,19 @@ val type_of : t -> string
 (** Equality of whole values: [equal nan nan] is true. *)
 val equal : ctx -> t -> t -> bool
 
-(** Folds a dictionary from its last key to its first. *)
+(** Folds a tree from its last key to its first. *)
 val dict_fold : (t -> t -> 'a -> 'a) -> dict -> 'a -> 'a
+
+(** The [order] of a tree that wasn't asked yet. *)
+val no_order : t array
+
+val tree_length : dict -> int
+
+(** The order of keys in a tree. *)
+val compare_keys : t -> t -> int
+
+(** The value of a key in a tree. *)
+val lookup : t -> dict -> t option
+
+(** The keys and values of a map, k1 v1 k2 v2..., in the order of insertion; [||] for another value. Read only. *)
+val items : t -> t array

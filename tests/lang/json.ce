@@ -28,7 +28,7 @@ isWriteScalars() = json.Text(1) == "1" and json.Text(1.5) == "1.5" and json.Text
 isWriteControl() = json.Text(Char(1)) == "\"\\u0001\""
 isWriteArray() = json.Text([1, "a", [true]]) == "[1,""a"",[true]]"
 isWriteStruct() = json.Text({A: 1, B: "x"}) == "{""A"":1,""B"":""x""}"
-isWriteDict() = json.Text({"z": 1, 2: 3}) == "{""2"":3,""z"":1}"
+isWriteDict() = json.Text({"z": 1, 2: 3}) == "{""z"":1,""2"":3}"
 isWriteWholeFloat() = json.Text(2.0) == "2.0"
 isWriteNan() = fails(() -> json.Text(0.0 / 0.0), "type")
 isWriteFunction() = fails(() -> json.Text(Print), "type")

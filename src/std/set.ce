@@ -20,7 +20,7 @@ Member(x, s) = Has(x, s)
 (** The elements of the set, in order.
 
       Items(Of([2, 1])) --> [1, 2] *)
-Items(s) = Keys(s)
+Items(s) = Sort(Keys(s))
 (** How many elements the set holds.
 
       Count(Of([1, 2])) --> 2 *)

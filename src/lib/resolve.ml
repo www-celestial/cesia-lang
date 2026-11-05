@@ -20,8 +20,6 @@ type env = {
   m : int;
   lookup : string -> binding option;
   spaces : (string * (string -> binding option)) list;  (* the names of use *)
-  fields : (string, unit) Hashtbl.t Lazy.t;  (* the fields and methods this file declares: few files read a small one *)
-  sees_private : bool;  (* the examples of a file see what the file declares *)
   hoisted : (string, int) Hashtbl.t;
   structs : (string, (string * expr) array) Hashtbl.t;  (* those of this file and of its package, with their fields *)
   interfaces : (string, unit) Hashtbl.t;  (* those of this file and of its package *)
@@ -95,36 +93,6 @@ let children (f : expr -> unit) (e : expr) =
       arms
   | Return _ | Lambda _ | Fn_def _ | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | End_index | Use _
   | Interface _ | Hook _ -> ()
-
-(* The fields of the structs and record literals of a file, nested functions included. *)
-let rec declared found (e : expr) =
-  (match e.e with
-   | Struct_lit { sfields; _ } -> Array.iter (fun (name, _) -> Hashtbl.replace found name ()) sfields
-   | Lambda f -> declared_in found f
-   | Fn_def (n, f) ->
-     Option.iter (fun (_, _, name) -> Hashtbl.replace found name ()) (Lexer.split_method n.text);
-     declared_in found f
-   | Interface i -> Array.iter (fun (name, _, _) -> Hashtbl.replace found name ()) i.imethods
-   | _ -> ());
-  children (declared found) e
-
-and declared_in found (f : func) =
-  Array.iter (declared found) f.body;
-  Array.iter (fun p -> Option.iter (declared found) p.default) f.params
-
-(* A small field or method can only be used by the file that declares it. *)
-let is_visible env name = Lexer.is_public name || env.sees_private || Hashtbl.mem (Lazy.force env.fields) name
-let check_field env pos name = if not (is_visible env name) then error env.path pos (Messages.private_field name)
-
-let rec pat_fields env pos = function
-  | Pname _ | Pwild | Plit _ -> ()
-  | Parray ps | Pcons (_, ps) -> Array.iter (pat_fields env pos) ps
-  | Pstruct fs ->
-    Array.iter
-      (fun (name, q) ->
-         check_field env pos name;
-         pat_fields env pos q)
-      fs
 
 (* The assigned names, without entering nested functions. *)
 let rec assigned sc (e : expr) =
@@ -236,7 +204,13 @@ let rec reads env sc celled (e : expr) =
     (match static env sc celled base name with
      | Some method_name -> e.e <- Var method_name
      | None ->
-       if not (is_visible env name) then error env.path e.pos (Messages.private_member name);
+       (* geo.Rect.small: a static method of another package; a field is checked when it is read. *)
+       (match base.e with
+        | Field ({ e = Var { text = alias; _ }; _ }, sname) when not (Lexer.is_public name) && find env sc celled alias = None ->
+          (match Option.bind (List.assoc_opt alias env.spaces) (fun look -> look sname) with
+           | Some b when env.is_type b -> error env.path e.pos (Messages.private_member name)
+           | _ -> ())
+        | _ -> ());
        children go e;
        (match base.e with
         | Var { b = Cell { stable = true; _ }; text } -> struct_member env e.pos text name
@@ -250,19 +224,13 @@ let rec reads env sc celled (e : expr) =
        | None -> error env.path e.pos (Messages.undefined n.text))
   | Assign (n, _) -> n.b <- Local (var sc n.text); children go e
   | Set { root; path; _ } ->
-    Array.iter (fun st -> match st.sk with Sfield name -> check_field env st.sp name | Sindex _ -> ()) path;
     root.b <- Local (var sc root.text);
     children go e
   | Destructure (pt, _) ->
-    pat_fields env e.pos pt;
     pat_names (fun n -> n.b <- Local (var sc n.text)) pt;
     children go e
   | Match { arms; _ } ->
-    Array.iter
-      (fun a ->
-         pat_fields env e.pos a.pt;
-         pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt)
-      arms;
+    Array.iter (fun a -> pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt) arms;
     children go e
   | For { var = v; _ } -> v.b <- Local (var sc v.text); children go e
   | Comp { cbody; cvar; csrc; cguard } ->
@@ -478,18 +446,12 @@ let check_package files =
   in
   List.iter (fun (path, fn) -> List.iter (check path) (definitions fn)) files
 
-let file ?(keep = [||]) ?(peers = []) ?(sees_private = false) ?(is_type = fun _ -> false) ~file:path ~m ~lookup ~spaces
+let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ~file:path ~m ~lookup ~spaces
     (fn : func) =
   let env =
-    { path; m; lookup; spaces; sees_private; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8;
+    { path; m; lookup; spaces; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8;
       interfaces = Hashtbl.create 4; is_type; cells = Hashtbl.create 16;
-      cell_list = [];
-      fields =
-        lazy
-          (let found = Hashtbl.create 16 in
-           declared_in found fn;
-           List.iter (declared_in found) peers;
-           found) }
+      cell_list = [] }
   in
   Array.iter (fun text -> ignore (cell env text)) keep;
   let sc = { fn; kind = File; parent = None; vars = Hashtbl.create 16; names = []; caps = []; overlay = [] } in
