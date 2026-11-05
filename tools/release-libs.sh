@@ -101,10 +101,12 @@ case "$system" in
     unzip -q ttf.zip -d ttf
     cp "ttf/SDL3_ttf-$ttf/x86_64-w64-mingw32/bin/SDL3_ttf.dll" "$lib/"
     cp "ttf/SDL3_ttf-$ttf/LICENSE.txt" "$lib/licenses/SDL3_ttf.txt"
-    # OpenSSL publishes no binaries: MSYS2's, which need only the DLLs of Windows itself. The runners of GitHub have MSYS2 in
-    # C:\msys64, apart from the /mingw64 of Git's own shell.
-    msys=/c/msys64
-    "$msys/usr/bin/pacman" --noconfirm -S --needed mingw-w64-x86_64-openssl > /dev/null
+    # OpenSSL publishes no binaries: MSYS2's, which need only the DLLs of Windows itself. MSYS2_ROOT is where the release job
+    # installed it, apart from the /mingw64 of Git's own shell; else C:\msys64.
+    msys=$(cygpath -u "${MSYS2_ROOT:-C:\\msys64}")
+    if [ ! -f "$msys/mingw64/bin/libssl-3-x64.dll" ]; then
+      "$msys/usr/bin/pacman" --noconfirm -S --needed mingw-w64-x86_64-openssl > /dev/null
+    fi
     cp "$msys/mingw64/bin/libssl-3-x64.dll" "$msys/mingw64/bin/libcrypto-3-x64.dll" "$lib/"
     cp "$msys"/mingw64/share/licenses/openssl/LICENSE* "$lib/licenses/OpenSSL.txt" 2> /dev/null || true
     ;;
