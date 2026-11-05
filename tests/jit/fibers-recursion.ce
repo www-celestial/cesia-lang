@@ -1,0 +1,23 @@
+(* A fiber around native recursion: the switch waits until the outermost compiled call returns, as the JIT's contract says;
+   the interpreter switches inside it. The results are the same, only the order of the lines differs. *)
+defn fib(n)
+  if n < 2
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+  end
+end
+defn noisy()
+  for r in 1:6
+    Print("b $(r)")
+    k = 0
+    for q in 1:400000
+      k = k + 1
+    end
+  end
+  0
+end
+x = fib(15)
+b = Spawn(noisy)
+Print("a $(fib(30))")
+Wait(b)

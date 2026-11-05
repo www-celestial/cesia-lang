@@ -1,0 +1,17 @@
+interpreted:
+b 1
+b 2
+b 3
+b 4
+b 5
+a 832040
+b 6
+native:
+b 1
+b 2
+b 3
+a 832040
+b 4
+b 5
+b 6
+exit 0

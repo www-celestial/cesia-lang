@@ -215,7 +215,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
       let leave = can_leave && not nested in
       (* Another quantum, counted, within the limit of steps. When a full checkpoint is due, a tick of the outermost frame
          leaves there, so that fibers switch at the interpreter's step; in a nested frame, which can't, the flag asks the
-         next tick that can leave to do so. *)
+         next tick that can leave to do so: a fiber switch then waits until the outermost compiled call returns or reaches
+         a tick that can leave (owner, 2026-11-06: « attendre la fin »). Results, errors and limits are the same; only the
+         interleaving of fibers' output can differ, around native recursion. *)
       let here = (not nested) && p >= 0 in
       let refill s =
         let over = label () and small = label () and due = label () and go_on = label () in
