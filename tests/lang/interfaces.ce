@@ -133,7 +133,7 @@ isTwoInterfacesOfTwoPackages() = stop(() -> Rect(1).Label()) == "type: Both Size
 isSameNameInTwoPackages() = geoArea(geo.MakeRect(1, 2)) == 2 and stop(() -> geoArea(Rect(1))) == "type: geoArea: r must be a geo.Rect, found an interfaces.Rect."
 
 (** One place, values of one shape: what the fields hold chooses the interface. *)
-isDispatchByValue() = kindOf({Area: () -> 1, Name: 0}) == "sized" and kindOf({Area: 0, Name: () -> "n"}) == "named" and stop(() -> kindOf({Area: () -> 1, Name: () -> "n"})) == "type: Both Named and Sized have a method \"Kind\", and a struct meets both." and stop(() -> kindOf({Area: 0, Name: 0})) == "field: This struct has no field \"Kind\"."
+isDispatchByValue() = kindOf({Area: () -> 1, Name: 0}) == "sized" and kindOf({Area: 0, Name: () -> "n"}) == "named" and stop(() -> kindOf({Area: () -> 1, Name: () -> "n"})) == "type: Both Named and Sized have a method \"Kind\", and a dictionary meets both." and stop(() -> kindOf({Area: 0, Name: 0})) == "index: This dictionary has no key: the text \"Kind\"."
 isDispatchByValueOfAStruct() = kindOf(Pair(() -> 1, 0)) == "sized" and kindOf(Pair(0, () -> "n")) == "named" and kindOf(Pair(() -> 2, 1)) == "sized"
 
 (** A small method of an interface is met only by a value of its package, and a small method of another package hides nothing. *)

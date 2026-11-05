@@ -19,11 +19,35 @@ type t =
   | Fun of { proto : proto; env : t array }
   | Native of native
   | Handle of { kind : string; id : int; task : task option }  (** a reference to something outside the values *)
-  | Dict of { tree : dict; next : int; mutable order : t array }
-      (** a map stored in a tree: [next] is the rank of the next key, [order] its keys and values in the order of insertion,
-          k1 v1 k2 v2..., or [Value.no_order] until asked. A map whose keys are names fixed by the code is a [Struct] whose
-          shape has no [sname]. *)
+  | Dict of { keys : keys; vals : t array; mutable deep : deep }
+      (** a map. Up to 32 keys it is one block: [keys] and [vals] in the order of insertion, and [deep] is [Mine] or
+          [Shared]; the maps
+          made at one place of the code share [keys]. Past them, the keys are in the trie of [deep], and [keys] and [vals]
+          are empty. *)
   | Bound of { g : t; self : t }  (** a method and its object, on their way to the call: never visible to the program *)
+
+(** Keys and their hashes. The arrays can be longer than a map that holds them, whose keys are as many as its values: a place,
+    once written, never changes, and [used] is the most places written, so that a map of [used] keys alone may write the next
+    one in place, as [Append] does for lists. Keys made whole, of a literal, a native or a JSON object, have [used] =
+    [max_int]: they never grow in place, and every map that holds them has all of them, so a read can cache them. *)
+and keys = { ks : t array; hs : int array; mutable used : int }
+
+and deep =
+  | Mine  (** one block that nothing else holds: a write may change it in place *)
+  | Shared  (** one block held in two places: a write copies it first *)
+  | Deep of { mutable root : node; mutable size : int; mutable next : int; mutable order : t array; ded : int; mutable downed : bool }
+      (** [next]: the rank of the next key; [order]: the keys and values in the order of insertion, k1 v1 k2 v2..., or
+          [Trie.no_order] until asked; [ded]: the mark of the nodes that this map made, which it may change in place while
+          it is owned, [downed] *)
+
+(** A node of the trie, at a level: the keys under it agree on the first 5 bits of hash of each level above. The mark of the
+    map that made it: no other map changes it in place. *)
+and node =
+  | Block of { mutable kv : t array; mutable hr : int array; bed : int; mutable bn : int }
+      (** [bn] keys: [kv] holds k1 v1 k2 v2..., [hr] each rank * 2^30 + hash; the arrays can be longer, room for the owner's
+          next keys *)
+  | Branch of { bits : int; kids : node array; ed : int }  (** a kid for each value of the next 5 bits of hash set in [bits] *)
+  | Same of dict  (** keys whose 30 bits of hash are all equal: a balanced tree, which no choice of keys slows down *)
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
 and task = { mutable result : t option; mutable waiters : (unit -> unit) list }

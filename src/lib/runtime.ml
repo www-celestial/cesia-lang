@@ -326,9 +326,12 @@ let copy ctx v =
     pay ctx (Array.length r.fields);
     Array.iter (fun x -> ignore (Value.share x)) r.fields;
     Struct { shape = r.shape; fields = Array.copy r.fields; r_owned = true }
+  | Dict { vals; _ } ->
+    pay ctx (Array.length vals);
+    Trie.own_copy v
   | _ -> v
 
 let own ctx v =
   match v with
-  | Array { a_owned = true; _ } | Struct { r_owned = true; _ } -> v
+  | Array { a_owned = true; _ } | Struct { r_owned = true; _ } | Dict { deep = Mine | Deep { downed = true; _ }; _ } -> v
   | _ -> copy ctx v

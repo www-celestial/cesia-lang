@@ -153,3 +153,54 @@ defn isTreeMeetsInterface()
   labelOf(treeOf("t")) == "t" and treeOf("t").Shout() == "T" and labelOf(big) == "big" and labelOf(Drop("x", {Label: () -> "d", x: 1})) == "d"
 end
 isTreeLacksInterface() = stop(() -> labelOf(Put(1, 2, {Label: 3}))) == "type: labelOf: x must be a Labelled, found a Dict, which has no Label()."
+
+(* One storage at every size: a map grows by one block, then by more of the same kind, and the program sees none of it. *)
+defn sized(n)
+  m = Dict()
+  for i in 1:n
+    m["k$(i)"] = i
+  end
+  m
+end
+
+defn sameAtSize(n)
+  m = sized(n)
+  p = Put("k1", 0, m)
+  d = Drop("k1", m)
+  back = Put("k1", 9, d)
+  full = n == 0 or (m["k1"] == 1 and m["k$(n)"] == n and Keys(m)[n] == "k$(n)" and Values(m)[1] == 1 and p["k1"] == 0 and Keys(p)[1] == "k1")
+  dropped = Len(d) == (if n == 0 0 else n - 1 end) and not Has("k1", d) and (n < 2 or Keys(d)[1] == "k2")
+  last = n == 0 or Keys(back)[n] == "k1"
+  Len(m) == n and full and dropped and last and m == sized(n) and Unwrap(json.Parse(json.Text(m))) == m
+end
+
+isEverySize() = All([sameAtSize(n) for n in [0, 1, 31, 32, 33, 1000, 100000]])
+
+(* m = Put(k, x, m) writes in place, but never through another name. *)
+defn isPutOnItself()
+  a = sized(40)
+  b = a
+  b = Put("k1", 0, b)
+  c = {A: 1}
+  d = c
+  d = Put("B", 2, d)
+  a["k1"] == 1 and b["k1"] == 0 and c == {A: 1} and d == {A: 1, B: 2}
+end
+
+defn isSharedDeepKept()
+  a = sized(100)
+  b = a
+  b["k5"] = 0
+  b["new"] = 1
+  a["k5"] == 5 and not Has("new", a) and b["k5"] == 0 and Len(b) == 101 and Keys(b)[101] == "new"
+end
+
+(* Keys from one place shared by maps of other sizes: each map sees its own keys only. *)
+defn isGrownApart()
+  a = {A: 1}
+  b = a
+  a.B = 2
+  b.C = 3
+  a.D = 4
+  Equal(Keys(a), ["A", "B", "D"]) and Equal(Keys(b), ["A", "C"]) and b.C == 3 and not Has("B", b) and a.D == 4
+end

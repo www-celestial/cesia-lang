@@ -65,14 +65,12 @@ let start w ctx body =
            | _ -> None) }
 
 (* What [Wait] gives for a panic: the same fields as an error shown to the user. *)
+let panic_keys = Trie.names [| "Message"; "Kind"; "File"; "Line" |]
+
 let panic_value w text kind at =
   let site = Dynarray.get w.sites at in
   let path, _ = Dynarray.get w.files site.sfile in
-  let shape = Value.shape_of w [| "Message"; "Kind"; "File"; "Line" |] in
-  Struct
-    { shape;
-      fields = [| Text text; Text (Value.kind_name kind); Text path; Int (Pos.line site.spos) |];
-      r_owned = true }
+  Trie.record panic_keys [| Text text; Text (Value.kind_name kind); Text path; Int (Pos.line site.spos) |]
 
 (* The stacks of a new fiber, in entries. They grow on demand, and a server has thousands of idle fibers. *)
 let fiber_stack = 64

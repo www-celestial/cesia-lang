@@ -1,0 +1,98 @@
+(** The storage of maps: one hash trie, as Clojure's. Up to 32 keys a map is one block, its keys in the order of insertion
+    beside their hashes and its values; past them the block splits by 5 bits of hash into a branch of blocks of the same
+    kind. Keys of equal hashes go to a balanced tree, which no choice of keys slows down. The hash takes a seed drawn once per
+    run. Keys are numbers or texts; [1] and [1.0] are one key. Nothing here checks the kind of a key: [Dict] does. *)
+open Types
+
+(** The [order] of a deep map that wasn't asked yet. *)
+val no_order : t array
+
+(** The most keys of a block. *)
+val width : int
+
+(** The hash of a key. *)
+val hash : t -> int
+
+(** For tests only: [0] sends every key to one hash. *)
+val mask : int ref
+
+(** The order of keys in a tree. *)
+val compare_keys : t -> t -> int
+
+(** Is it the same key? *)
+val same : t -> t -> bool
+
+(** Marks a value as held in two places: a write to it must copy it first. *)
+val share : t -> t
+
+(** No keys. *)
+val no_keys : keys
+
+(** These keys, with their hashes. *)
+val keys_of : t array -> keys
+
+(** These names as text keys, with their hashes. *)
+val names : string array -> keys
+
+(** An empty map. *)
+val empty : unit -> t
+
+(** A map of one block: at most [width] keys, each once, and their values. *)
+val record : keys -> t array -> t
+
+(** [index keys n h k]: the place of [k], of hash [h], among the first [n] keys, or -1. *)
+val index : keys -> int -> int -> t -> int
+
+(** [grow keys n k h]: the keys of a block of [n] and [k] after them: in place when [keys] allow it. *)
+val grow : keys -> int -> t -> int -> keys
+
+(** Keys made whole: every map that holds them has all of them, so a read can cache their places. *)
+val is_whole : keys -> bool
+
+(** [extend keys n k h]: whole keys, the first [n] of [keys] and [k]. *)
+val extend : keys -> int -> t -> int -> keys
+
+(** [find m h k]: the value of [k], of hash [h], or [Undef]. *)
+val find : t -> int -> t -> t
+
+(** A copy of the array with one more element at its end. *)
+val append : 'a array -> 'a -> 'a array
+
+(** The number of keys of a map. *)
+val length : t -> int
+
+(** [put m h k v]: a new map with [k] set to [v]; a key that is there keeps its place. [m] doesn't change. *)
+val put : t -> int -> t -> t -> t
+
+(** The same for a map that nothing else holds: it changes in place, or gives the map that takes its place. *)
+val put_owned : t -> int -> t -> t -> t
+
+(** [put_owned] for a key that a map of one block is known to lack. *)
+val add_absent : t -> int -> t -> t -> t
+
+(** A copy of a map that someone else holds too, owned: O(1) for a deep map, whose writes then copy the nodes they change. *)
+val own_copy : t -> t
+
+(** A new map without that key, or the same map. *)
+val drop : t -> int -> t -> t
+
+(** The keys and values, k1 v1 k2 v2..., in the order of insertion. Read only. *)
+val items : t -> t array
+
+(** Each key and its value, in no order. *)
+val iter : (t -> t -> unit) -> t -> unit
+
+(** A map of k1 v1 k2 v2...: a later key replaces the value and keeps the place. With the same keys as [like], in the same
+    order and written alike, the map shares them. *)
+val of_items : ?like:keys -> t array -> t
+
+(** The keys of a map of one block, or [no_keys]. *)
+val keys_of_map : t -> keys
+
+(** The tree, for sets: a key that is there keeps its rank. *)
+val tree_insert : t -> t -> int -> dict -> dict
+
+(** The value of a key in a tree, or [Undef]. *)
+val tree_find : t -> dict -> t
+
+val tree_length : dict -> int

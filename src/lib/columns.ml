@@ -7,7 +7,7 @@ let array_arg ctx name v =
 
 let size a = a.rows * a.cols
 let is_missing = function Missing -> true | _ -> false
-let record ctx names fields = Struct { shape = Value.shape_of ctx.w names; fields; r_owned = true }
+let record (_ : ctx) names fields = Trie.record (Trie.names names) fields
 
 (* A column of positions or counts. *)
 let ints ctx name v =
@@ -70,13 +70,13 @@ let same a b =
 let check_keys ctx a =
   match a.store with
   | I _ -> ()
-  | F d -> Float.Array.iter (fun x -> if Float.is_nan x then ignore (Dict.find ctx (Float x) Leaf)) d
-  | V d -> Array.iter (fun v -> ignore (Dict.find ctx v Leaf)) d
+  | F d -> Float.Array.iter (fun x -> if Float.is_nan x then Dict.check ctx (Float x)) d
+  | V d -> Array.iter (Dict.check ctx) d
 
 (* A cell of a key of several columns may also be missing or a boolean. Anything else has no useful hash. *)
 let check_cells ctx a =
   match a.store with
-  | V d -> Array.iter (function Missing | True | False -> () | v -> ignore (Dict.find ctx v Leaf)) d
+  | V d -> Array.iter (function Missing | True | False -> () | v -> Dict.check ctx v) d
   | _ -> ()
 
 (* Open addressing: a slot holds a group, or -1, and a group the first position of its key. *)
@@ -158,7 +158,7 @@ let groups ctx (a : t array) =
 let split ctx (a : t array) =
   let field g name =
     match g with
-    | Struct r when Value.field_index r.shape name >= 0 -> r.fields.(Value.field_index r.shape name)
+    | Dict _ when Trie.find g (Trie.hash (Text name)) (Text name) != Undef -> Trie.find g (Trie.hash (Text name)) (Text name)
     | v -> Runtime.fail ctx Type (Messages.need_groups (Value.describe v))
   in
   let ids = ints ctx "Split" (field a.(0) "Ids") and count = Arrays.whole_index ctx (field a.(0) "Count") in

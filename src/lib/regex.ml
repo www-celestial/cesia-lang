@@ -344,13 +344,14 @@ let group s (caps : int array) k =
   else Text (String.sub s caps.(2 * k) (caps.((2 * k) + 1) - caps.(2 * k)))
 
 (* [before] is the number of code points before the match. *)
-let result ctx s re caps before =
-  let shape = Value.shape_of ctx.w [| "Text"; "Start"; "Stop"; "Groups" |] in
+let match_keys = Trie.names [| "Text"; "Start"; "Stop"; "Groups" |]
+
+let result s re caps before =
   let names = Array.init re.groups (fun k -> group s caps (k + 1)) in
   let groups = Arrays.list names in
   let start = before + 1 in
   let stop = start + points s caps.(0) caps.(1) - 1 in
-  Struct { shape; fields = [| group s caps 0; Int start; Int stop; groups |]; r_owned = true }
+  Trie.record match_keys [| group s caps 0; Int start; Int stop; groups |]
 
 (* Every match from the start of the text, the empty ones included. *)
 let all_matches ctx re s =
@@ -415,7 +416,7 @@ let natives () =
     "Find", Native.nat "Find" 2 2 (fun ctx a ->
         let re, s = args ctx "Find" a 1 in
         match exec ctx re s 0 with
-        | Some caps -> result ctx s re caps (points s 0 caps.(0))
+        | Some caps -> result s re caps (points s 0 caps.(0))
         | None -> Missing);
     "FindAll", Native.nat "FindAll" 2 2 (fun ctx a ->
         let re, s = args ctx "FindAll" a 1 in
@@ -423,7 +424,7 @@ let natives () =
         let shown (caps : int array) =
           seen := !seen + points s !last caps.(0);
           last := caps.(0);
-          result ctx s re caps !seen
+          result s re caps !seen
         in
         Arrays.list (Array.of_list (List.map shown (all_matches ctx re s))));
     "Replace", Native.nat "Replace" 3 3 (fun ctx a ->

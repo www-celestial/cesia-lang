@@ -1,10 +1,10 @@
 open Types
 
-let frame_shape w = Value.shape_of w [| "Function"; "File"; "Line"; "Vars" |]
-let var_shape w = Value.shape_of w [| "Name"; "Value" |]
-let stop_shape w = Value.shape_of w [| "File"; "Line"; "Reason"; "Frames" |]
+let frame_keys = Trie.names [| "Function"; "File"; "Line"; "Vars" |]
+let var_keys = Trie.names [| "Name"; "Value" |]
+let stop_keys = Trie.names [| "File"; "Line"; "Reason"; "Frames" |]
 
-let record shape fields = Struct { shape; fields; r_owned = true }
+let record keys fields = Trie.record keys fields
 
 let row items =
   let a = Array.of_list items in
@@ -26,7 +26,6 @@ let vars ctx base (site : site) =
   match site.sver with
   | None -> []
   | Some ver ->
-    let w = ctx.w in
     let func = ver.owner.func in
     let known i = i < Bytes.length site.slive && Bytes.get site.slive i = '\001' in
     let visible i (s : slot) =
@@ -39,7 +38,7 @@ let vars ctx base (site : site) =
          else
            match read ctx base ver s with
            | Undef -> None
-           | v -> Some (record (var_shape w) [| Text s.vname; Value.share v |]))
+           | v -> Some (record var_keys [| Text s.vname; Value.share v |]))
       (List.init (Array.length ver.slots) Fun.id)
 
 let frame ctx base at =
@@ -47,7 +46,7 @@ let frame ctx base at =
   let site = Dynarray.get w.sites at in
   let path, _ = Dynarray.get w.files site.sfile in
   let name = if site.sfn = "" then "<file>" else site.sfn in
-  record (frame_shape w)
+  record frame_keys
     [| Text name; Text path; Int (Pos.line site.spos); row (vars ctx base site) |]
 
 (* From the current frame to the file, following the links. *)
@@ -61,7 +60,7 @@ let stop_value ctx s reason =
   in
   let site = Dynarray.get w.sites s in
   let path, _ = Dynarray.get w.files site.sfile in
-  record (stop_shape w) [| Text path; Int (Pos.line site.spos); Text reason; row (walk ctx.b s []) |]
+  record stop_keys [| Text path; Int (Pos.line site.spos); Text reason; row (walk ctx.b s []) |]
 
 (* The debugger runs on the same ctx, just above what is alive in the current frame. *)
 let stop ctx s reason =

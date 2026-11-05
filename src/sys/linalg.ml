@@ -86,8 +86,7 @@ let pay ctx n = Runtime.pay ctx (n * n * n)
 (* Calls [f] when the machine has a library and the arguments suit it. *)
 let with_library f = match Lazy.force library with None -> Missing | Some lib -> f lib
 
-let record w names values =
-  Struct { shape = Value.shape_of w names; fields = values; r_owned = true }
+let record (_ : world) names values = Trie.record (Trie.names names) values
 
 (* Solve(a, b), where b has one column or more: its x, false if a is singular. *)
 let solve ctx (a : t array) =

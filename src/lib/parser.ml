@@ -616,11 +616,11 @@ and dict_lit p pos saved_index =
   advance p;
   p.in_index <- saved_index;
   let args = Array.of_list (List.rev !items) in
-  (* Keys that are texts of the code, few and each once, make a map with a shape, as names do. *)
+  (* Keys that are texts of the code, few and each once, make their keys once, as names do. *)
   let keys = List.filteri (fun i _ -> i mod 2 = 0) (Array.to_list args) in
   let text (a : arg) = match a.value.e with Ltext s -> Some s | _ -> None in
   let names = List.filter_map text keys in
-  if List.length names = List.length keys && List.length names <= 16 && List.length (List.sort_uniq String.compare names) = List.length names
+  if List.length names = List.length keys && List.length names <= 32 && List.length (List.sort_uniq String.compare names) = List.length names
   then node p pos (Struct_lit { sname = None; sfields = Array.of_list (List.mapi (fun i n -> n, args.((2 * i) + 1).value) names) })
   else node p pos (Call { callee = node p pos (Var { text = "#dict"; b = Unresolved }); args; self_tail = false })
 

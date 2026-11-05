@@ -106,6 +106,8 @@ let parse_text ctx s =
       if Float.abs x = infinity then bad Messages.json_large;
       Float x
   in
+  (* Rows of one document often have the same keys: they share them, as the maps of one literal do. *)
+  let last = ref Trie.no_keys in
   let rec value depth =
     if depth > max_depth then bad Messages.json_deep;
     spaces ();
@@ -142,7 +144,7 @@ let parse_text ctx s =
     spaces ();
     if peek () = '}' then begin
       incr i;
-      Dict.empty
+      Dict.empty ()
     end else begin
       let rec go items =
         spaces ();
@@ -158,7 +160,9 @@ let parse_text ctx s =
         | '}' -> incr i; items
         | _ -> bad Messages.json_no_comma_object
       in
-      Dict.of_items ctx (Array.of_list (List.rev (go [])))
+      let m = Trie.of_items ~like:!last (Array.of_list (List.rev (go []))) in
+      (match Trie.keys_of_map m with k when k != Trie.no_keys -> last := k | _ -> ());
+      m
     end
   in
   let v = value 0 in
@@ -231,7 +235,7 @@ let write ctx ~pretty v =
       Runtime.charge ctx (Array.length fields + 1);
       let public = List.filter (fun k -> Lexer.is_public shape.names.(k)) (List.init (Array.length fields) Fun.id) in
       group '{' '}' depth (List.map (fun k -> shape.names.(k), fields.(k)) public) (member depth)
-    | Struct _ | Dict _ ->
+    | Dict _ ->
       let o = Value.items x in
       Runtime.charge ctx ((Array.length o / 2) + 1);
       group '{' '}' depth (List.init (Array.length o / 2) (fun k -> Value.text_of ctx o.(2 * k), o.((2 * k) + 1))) (member depth)

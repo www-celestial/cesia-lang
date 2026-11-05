@@ -2,6 +2,7 @@ open Cesia
 open Types
 
 let chunk_size = 65536
+let run_keys = Trie.names [| "Code"; "Out"; "Err" |]
 
 let text_list ctx name (v : t) =
   match v with
@@ -117,8 +118,7 @@ let run poll ctx (a : t array) =
        let stdin_pipe = open_pipe in_write and stdout_pipe = open_pipe out_read and stderr_pipe = open_pipe err_read in
        let out, err = exchange ctx poll stdin_pipe stdout_pipe stderr_pipe input in
        let code = exit_code ctx poll pid 0.0005 in
-       let shape = Value.shape_of w [| "Code"; "Out"; "Err" |] in
-       Value.ok w (Struct { shape; fields = [| Int code; Text out; Text err |]; r_owned = true }))
+       Value.ok w (Trie.record run_keys [| Int code; Text out; Text err |]))
   | _ -> assert false
 
 (* A process that lives on, for terminals and long builds. Its output and its errors arrive as one stream. *)

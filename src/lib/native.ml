@@ -74,7 +74,7 @@ let str ctx args =
 
 let length v =
   match v with
-  | Dict d -> Dict.length d.tree
+  | Dict _ -> Trie.length v
   | Text s -> code_points s
   | Array a -> a.rows * a.cols
   | Struct r -> Array.length r.fields
@@ -87,15 +87,19 @@ let dict_items ctx name m f =
   Runtime.build ctx n;
   Arrays.list (Array.init n (fun i -> f o.(2 * i) o.((2 * i) + 1)))
 
+let key_name = Text "Key" and value_name = Text "Value"
+let key_hash = Trie.hash key_name and value_hash = Trie.hash value_name
+let pair_keys = Trie.names [| "Key"; "Value" |]
+
 let dict_of_pairs ctx (a : t array) =
   let pair p =
     match p with
-    | Struct r when Value.field_index r.shape "Key" >= 0 && Value.field_index r.shape "Value" >= 0 ->
-      [ Value.share r.fields.(Value.field_index r.shape "Value"); r.fields.(Value.field_index r.shape "Key") ]
+    | Dict _ when Trie.find p key_hash key_name != Undef && Trie.find p value_hash value_name != Undef ->
+      [ Value.share (Trie.find p value_hash value_name); Trie.find p key_hash key_name ]
     | _ -> Runtime.fail ctx Type (Messages.dict_pair (Value.describe p))
   in
   match a with
-  | [||] -> Dict.empty
+  | [||] -> Dict.empty ()
   | [| Array x |] ->
     let rows = List.init (x.rows * x.cols) (fun k -> pair (Value.elt x k)) in
     Dict.of_items ctx (Array.of_list (List.rev (List.concat (List.rev rows))))
@@ -505,11 +509,10 @@ let prelude =
         | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v)));
     "merge", nat "merge" 2 2 (fun ctx a ->
         let o = Dict.items ctx "merge" a.(1) in
-        (* A new map: the values of the first one are in both. *)
-        let acc = ref (match a.(0) with Struct r -> Struct { r with fields = Array.map Value.share r.fields; r_owned = true } | x -> x) in
+        (* A new map: a change copies, so the first one stays as it was. *)
+        let acc = ref a.(0) in
         for i = 0 to (Array.length o / 2) - 1 do
-          let x = Value.share o.((2 * i) + 1) in
-          acc := (match o.(2 * i) with Text name -> Dict.add_name ctx !acc name x | k -> Dict.put ctx "merge" k x !acc)
+          acc := Dict.put ctx "merge" o.(2 * i) (Value.share o.((2 * i) + 1)) !acc
         done;
         !acc);
     "Args", Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true };
@@ -527,8 +530,7 @@ let prelude =
     "Keys", nat "Keys" 1 1 (fun ctx a -> dict_items ctx "Keys" a.(0) (fun k _ -> k));
     "Values", nat "Values" 1 1 (fun ctx a -> dict_items ctx "Values" a.(0) (fun _ v -> Value.share v));
     "Pairs", nat "Pairs" 1 1 (fun ctx a ->
-        let shape = Value.shape_of ctx.w [| "Key"; "Value" |] in
-        dict_items ctx "Pairs" a.(0) (fun k v -> Struct { shape; fields = [| k; Value.share v |]; r_owned = true }));
+        dict_items ctx "Pairs" a.(0) (fun k v -> Trie.record pair_keys [| k; Value.share v |]));
     "Fields", nat "Fields" 1 1 (fun ctx a ->
         match a.(0) with
         | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
@@ -536,10 +538,9 @@ let prelude =
           let site = if ctx.site >= 0 && ctx.site < Dynarray.length ctx.w.sites then (Dynarray.get ctx.w.sites ctx.site).sver else None in
           let inside = (match site with Some v -> ctx.w.modules.(v.owner.pm).host = shape.sm | None -> false) in
           let keep = List.filter (fun i -> inside || Lexer.is_public shape.names.(i)) (List.init (Array.length fields) Fun.id) in
-          let names = Array.of_list (List.map (fun i -> shape.names.(i)) keep) in
-          Struct { shape = Value.shape_of ctx.w names; fields = Array.of_list (List.map (fun i -> Value.share fields.(i)) keep); r_owned = true }
+          Dict.of_items ctx (Array.of_list (List.concat_map (fun i -> [ Text shape.names.(i); Value.share fields.(i) ]) keep))
         | v -> Runtime.fail ctx Type (Messages.fields_of (Value.describe v)));
-    is_ "IsDict" (function Dict _ | Struct { shape = { sname = None; _ }; _ } -> true | _ -> false);
+    is_ "IsDict" (function Dict _ -> true | _ -> false);
     "Len", nat ~ret:(fun _ -> TI) "Len" 1 1 (fun _ a -> Int (length a.(0)));
     "Div", int_native "Div" Arith.int_div;
     "Mod", int_native "Mod" Arith.int_mod;

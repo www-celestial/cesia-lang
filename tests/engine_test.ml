@@ -37,7 +37,15 @@ let run ?(perms = []) ?(all = false) src =
     (Native { nname = "Storage"; perm = None; params = [||]; min_args = 1; max_args = 1; ret_ty = (fun _ -> TA); f1 = None;
               i2 = None;
               run = (fun _ a ->
-                  Text (match a.(0) with Dict _ -> "tree" | Struct { shape = { sname = None; _ }; _ } -> "flat" | _ -> "other")) });
+                  Text (match a.(0) with Dict { deep = Mine | Shared; _ } -> "block" | Dict _ -> "deep" | _ -> "other")) });
+  (* Do two maps share their keys? *)
+  Native.register w "SameKeys"
+    (Native { nname = "SameKeys"; perm = None; params = [||]; min_args = 2; max_args = 2; ret_ty = (fun _ -> TA); f1 = None;
+              i2 = None;
+              run = (fun _ a ->
+                  match a.(0), a.(1) with
+                  | Dict { keys = x; deep = Mine | Shared; _ }, Dict { keys = y; deep = Mine | Shared; _ } -> if x == y then True else False
+                  | _ -> False) });
   let path = Filename.temp_file "cesia" ".ce" in
   Out_channel.with_open_bin path (fun oc -> output_string oc src);
   let code = Loader.run w path [] in
@@ -146,29 +154,95 @@ let () =
   check "default memory is 80% of the RAM"
     (Runtime.default_memory 1_024_000 = 102_400);
   check "unknown RAM means no limit" (Runtime.default_memory 0 = max_int);
+  (* One storage, which a program never sees: one block up to 32 keys, deeper past them, whatever the way a map is made. *)
+  let literal n = "{" ^ String.concat ", " (List.init n (fun i -> Printf.sprintf "K%d: %d" i i)) ^ "}" in
   let storage = [
-    "{A: 1}", "flat"; "{\"a-b\": 1}", "flat"; "{1: 2}", "tree"; "Dict()", "tree"; "{}", "flat";
-    "Dict([{Key: \"a\", Value: 1}])", "tree"; "Unwrap(json.Parse(\"{\\\"a\\\": 1}\"))", "tree";
-    "Put(\"A\", 2, {A: 1})", "flat"; "Put(\"B\", 2, {A: 1})", "tree"; "Drop(\"A\", {A: 1, B: 2})", "tree";
-    "Drop(\"Z\", {A: 1})", "flat"; "Fill(0, 2)", "other"; "Ok(1)", "other";
-    "{A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, J: 10, K: 11, L: 12, M: 13, N: 14, O: 15, P: 16}", "flat";
-    "{A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, J: 10, K: 11, L: 12, M: 13, N: 14, O: 15, P: 16, Q: 17}", "tree" ]
+    "{A: 1}", "block"; "{\"a-b\": 1}", "block"; "{1: 2}", "block"; "Dict()", "block"; "{}", "block";
+    "Dict([{Key: \"a\", Value: 1}])", "block"; "Unwrap(json.Parse(\"{\\\"a\\\": 1}\"))", "block";
+    "Put(\"A\", 2, {A: 1})", "block"; "Put(\"B\", 2, {A: 1})", "block"; "Drop(\"A\", {A: 1, B: 2})", "block";
+    "Fill(0, 2)", "other"; "Ok(1)", "other"; literal 32, "block"; literal 33, "deep"; "Put(\"Z\", 1, " ^ literal 32 ^ ")", "deep";
+    "Drop(\"K0\", " ^ literal 33 ^ ")", "deep" ]
   in
   List.iter
     (fun (e, want) ->
        let _, out, err = run ("use json\nPrint(Storage(" ^ e ^ "))\n") in
        check ("storage of " ^ e ^ ": " ^ out ^ err) (out = want ^ "\n"))
     storage;
-  let grown = "m = {A: 1}\nm.B = 2\nm[\"C\"] = 3\nPrint(Storage(m))\nk = \"D\"\nm[k] = 4\nPrint(Storage(m))\n" in
-  check "names of the code keep a map flat, a key from a variable makes a tree" (run grown = (0, "flat\ntree\n", ""));
-  let written = "m = {A: 1}\nk = \"A\"\nm[k] = 2\nPrint(Storage(m))\nm.A = 3\nPrint(Storage(m))\n" in
-  check "writing a key that is there keeps a map flat" (run written = (0, "flat\nflat\n", ""));
-  let names = List.init 16 (fun i -> Printf.sprintf "m.K%d = %d\n" i i) in
-  check "past 16 keys, a tree" (run ("m = {}\n" ^ String.concat "" names ^ "Print(Storage(m))\nm.Z = 1\nPrint(Storage(m))\n") = (0, "flat\ntree\n", ""));
-  (* 700 maps of 15 names of the code: past 10,000 shapes, a new name makes a tree, and a known one still a shape. *)
-  let many = List.init 700 (fun i -> "m = {}\n" ^ String.concat "" (List.init 15 (fun j -> Printf.sprintf "m.F%dx%d = 1\n" i j))) in
-  let capped = String.concat "" many ^ "n = {}\nn.Zed = 1\nPrint(Storage(n))\nn = {}\nn.F0x0 = 1\nPrint(Storage(n))\n" in
-  check "past 10,000 shapes, new maps are trees" (run capped = (0, "tree\nflat\n", ""));
+  let grown n = "m = {}\nfor i in 1:" ^ string_of_int n ^ "\n  k = \"k$(i)\"\n  m[k] = i\nend\nPrint(Storage(m), Len(m))\n" in
+  check "32 keys from a variable, a block" (run (grown 32) = (0, "block 32\n", ""));
+  check "33 keys from a variable, deeper" (run (grown 33) = (0, "deep 33\n", ""));
+  check "maps of one literal share their keys" (run "f(x) = {A: x, B: 2}\nPrint(SameKeys(f(1), f(2)))\n" = (0, "true\n", ""));
+  check "a name added at one place shares the keys it gives"
+    (run "defn f(x)\n  m = {A: x}\n  m.B = 2\n  m\nend\nPrint(SameKeys(f(1), f(2)), Equal(Keys(f(1)), [\"A\", \"B\"]))\n" = (0, "true true\n", ""));
+  check "rows of one JSON share their keys"
+    (run "use json\nd = Unwrap(json.Parse(\"[{\\\"a\\\": 1, \\\"b\\\": 2}, {\\\"a\\\": 3, \\\"b\\\": 4}]\"))\nPrint(SameKeys(d[1], d[2]), d[2].b)\n" = (0, "true 4\n", ""));
+  check "keys from data share nothing" (run "defn f()\n  m = {}\n  k = \"A\"\n  m[k] = 1\n  m\nend\nPrint(SameKeys(f(), f()))\n" = (0, "false\n", ""));
+  (* The trie against a list of keys in the order of insertion, for random puts and drops: with every bit of hash, with 5,
+     so that keys meet deep down, and with none, so that every key falls into the tree of equal hashes. *)
+  let model mask =
+    Trie.mask := mask;
+    let rng = Random.State.make [| 1107 |] in
+    let key i = if i land 1 = 0 then Int i else Text ("k" ^ string_of_int i) in
+    let m = ref (Trie.empty ()) and l = ref [] and ok = ref true in
+    for step = 1 to 6_000 do
+      let k = key (Random.State.int rng 300) in
+      if Random.State.int rng 4 = 0 then begin
+        m := Trie.drop !m (Trie.hash k) k;
+        l := List.filter (fun (k', _) -> not (Trie.same k k')) !l
+      end else begin
+        m := Trie.put !m (Trie.hash k) k (Int step);
+        l := if List.exists (fun (k', _) -> Trie.same k k') !l then List.map (fun (k', v) -> if Trie.same k k' then k', Int step else k', v) !l
+          else !l @ [ (k, Int step) ]
+      end;
+      if Trie.length !m <> List.length !l then ok := false;
+      if step mod 500 = 0 then begin
+        let o = Trie.items !m in
+        if Array.to_list o <> List.concat_map (fun (k, v) -> [ k; v ]) !l then ok := false;
+        List.iter (fun (k, v) -> if Trie.find !m (Trie.hash k) k <> v then ok := false) !l
+      end
+    done;
+    Trie.mask := 0x3FFF_FFFF;
+    !ok
+  in
+  (* Old maps stay as they were: puts and drops from any earlier version, keys that grew in place included. *)
+  let versions mask =
+    Trie.mask := mask;
+    let rng = Random.State.make [| 2026 |] in
+    let all = Array.make 2_000 (Trie.empty (), []) and n = ref 1 and ok = ref true in
+    for step = 1 to 1_999 do
+      let m, l = all.(Random.State.int rng !n) in
+      let k = Text ("k" ^ string_of_int (Random.State.int rng 60)) in
+      let v =
+        if Random.State.int rng 5 = 0 then Trie.drop m (Trie.hash k) k, List.filter (fun (k', _) -> not (Trie.same k k')) l
+        else if List.exists (fun (k', _) -> Trie.same k k') l then
+          Trie.put m (Trie.hash k) k (Int step), List.map (fun (k', x) -> if Trie.same k k' then k', Int step else k', x) l
+        else (if step land 1 = 0 then Trie.put_owned (Trie.own_copy m) else Trie.put m) (Trie.hash k) k (Int step), l @ [ (k, Int step) ]
+      in
+      all.(!n) <- v;
+      incr n
+    done;
+    Array.iter
+      (fun (m, l) ->
+         if Array.to_list (Trie.items m) <> List.concat_map (fun (k, v) -> [ k; v ]) l then ok := false;
+         List.iter (fun (k, v) -> if Trie.find m (Trie.hash k) k <> v then ok := false) l)
+      all;
+    Trie.mask := 0x3FFF_FFFF;
+    !ok
+  in
+  check "old maps keep their keys" (versions 0x3FFF_FFFF);
+  check "old maps keep their keys, few bits of hash" (versions 0x7);
+  check "the trie keeps keys, values and order" (model 0x3FFF_FFFF);
+  check "the trie with few bits of hash" (model 0x1F);
+  check "the trie with equal hashes" (model 0);
+  Trie.mask := 0;
+  let n = 10_000 and m = ref (Trie.empty ()) in
+  for i = 0 to n - 1 do m := Trie.put !m (Trie.hash (Int i)) (Int i) (Int (2 * i)) done;
+  let d = ref !m in
+  for i = 0 to (n / 2) - 1 do d := Trie.drop !d (Trie.hash (Int i)) (Int i) done;
+  check "10,000 keys of one hash"
+    (Trie.length !m = n && Trie.find !m 0 (Int 9_999) = Int 19_998 && (Trie.items !m).(2 * (n - 1)) = Int (n - 1)
+     && Trie.length !d = n / 2 && Trie.find !d 0 (Int 0) = Undef && (Trie.items !d).(0) = Int (n / 2));
+  Trie.mask := 0x3FFF_FFFF;
   let program = "f(x) = x + 1\nPrint(f(1))\n" in
   let code, count = hooks program in
   check "no hooks without --debugger" (code = 0 && count = 0);

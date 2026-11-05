@@ -207,6 +207,12 @@ let with_end c uses_end f =
 
 type field_cache = { cs : shape; ci : int }
 
+(* The same for a map: its keys last time, and the place of the name in them. *)
+type key_cache = { ck : keys; kc : int }
+
+(* Keys that no map holds: a deep map's are [Trie.no_keys]. *)
+let no_key = { ck = { ks = [| Undef |]; hs = [| -1 |]; used = 0 }; kc = 0 }
+
 (* What a call finds under a name: field [mi] of the value, or, if [mi] < 0, the method [mg]. *)
 (* [mi]: the place of a field, or -1 for a method of the struct, or -2 for a method of an interface, which holds until the
    reload [mr]. *)
@@ -257,16 +263,32 @@ let lacks fields (need, lack) = List.fold_left (fun first (f, n, k) -> if takes 
 
 (* The same for a map in a tree, which has no shape to plan by: its keys must hold the functions, so it meets an interface as
    the same map with a shape does. *)
-let tree_lacks (i : Ast.iface) tree =
+(* The keys of a map are data, so a small method is met by a key only inside the package of the interface, [inside], as by
+   the struct of a package. *)
+let map_lacks (i : Ast.iface) ~inside m =
   let rec go k =
     if k = Array.length i.imethods then -1
     else
       let name, ps, _ = i.imethods.(k) in
-      match Value.lookup (Text name) tree with
-      | Some v when Lexer.is_public name && takes (Array.length ps) v -> go (k + 1)
+      let key = Text name in
+      match Trie.find m (Trie.hash key) key with
+      | Undef -> k
+      | v when (inside || Lexer.is_public name) && takes (Array.length ps) v -> go (k + 1)
       | _ -> k
   in
   go 0
+
+(* What the maps of these keys need to meet the interface, as [plan] for a shape: every method a public key, whose value
+   must be a function of its number of parameters. *)
+let key_plan (i : Ast.iface) ~inside (keys : keys) n =
+  let rec go k need =
+    if k = Array.length i.imethods then need, -1
+    else
+      let name, ps, _ = i.imethods.(k) in
+      let f = Trie.index keys n (Trie.hash (Text name)) (Text name) in
+      if f >= 0 && (inside || Lexer.is_public name) then go (k + 1) ((f, Array.length ps, k) :: need) else need, k
+  in
+  go 0 []
 let type_name (t : ptype) = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname
 
 (* A method as its interface writes it: Scaled(by Number). *)
@@ -289,10 +311,12 @@ let type_check (w : world) (t : ptype) =
     | "Bool", Unresolved -> plain (function (True | False) as x -> x | _ -> Undef)
     | "Text", Unresolved -> plain (function Text _ as x -> x | _ -> Undef)
     | "Array", Unresolved -> plain (function Array _ as x -> x | _ -> Undef)
-    | "Dict", Unresolved -> plain (function (Dict _ | Struct { shape = { sname = None; _ }; _ }) as x -> x | _ -> Undef)
+    | "Dict", Unresolved -> plain (function Dict _ as x -> x | _ -> Undef)
     | "Function", Unresolved -> plain (function (Fun _ | Native _) as x -> x | _ -> Undef)
     | name, Cell { m; _ } when Hashtbl.mem w.interfaces (w.modules.(m).host, name) ->
-      let host = w.modules.(m).host and last = ref (no_shape, [], -1) in
+      let host = w.modules.(m).host and last = ref (no_shape, [], -1) and klast = ref (Trie.no_keys, [], -1, -1) in
+      (* Written without a package, the type is in the package of the interface. *)
+      let inside = t.tpkg = None in
       (* An interface gone at a reload is met by nothing. *)
       let plan_of shape =
         match Hashtbl.find_opt w.interfaces (host, name) with Some i -> plan w host shape i | None -> [], -2
@@ -305,18 +329,28 @@ let type_check (w : world) (t : ptype) =
             match plan_of r.shape with
             | need, -1 when holds r.fields need -> last := (r.shape, need, w.reloads); x
             | _ -> Undef)
-        | Dict d as x ->
-          (match Hashtbl.find_opt w.interfaces (host, name) with Some i when tree_lacks i d.tree < 0 -> x | _ -> Undef)
+        | Dict { keys; vals; deep = Mine | Shared; _ } as x ->
+          let k, need, seen, n = !klast in
+          if keys == k && n = Array.length vals && seen = w.reloads && holds vals need then x
+          else (
+            match Hashtbl.find_opt w.interfaces (host, name) with
+            | Some i ->
+              (match key_plan i ~inside keys (Array.length vals) with
+               | need, -1 when holds vals need -> klast := (keys, need, w.reloads, Array.length vals); x
+               | _ -> Undef)
+            | None -> Undef)
+        | Dict _ as x ->
+          (match Hashtbl.find_opt w.interfaces (host, name) with Some i when map_lacks i ~inside x < 0 -> x | _ -> Undef)
         | _ -> Undef),
       (function
         | Struct r as x ->
           (match Hashtbl.find_opt w.interfaces (host, name), lacks r.fields (plan_of r.shape) with
            | Some i, k when k >= 0 -> Messages.article shown, Value.type_of x ^ ", which has no " ^ method_text i.imethods.(k)
            | _ -> Messages.article shown, Value.type_of x)
-        | Dict d as x ->
+        | Dict _ as x ->
           (match Hashtbl.find_opt w.interfaces (host, name) with
-           | Some i when tree_lacks i d.tree >= 0 ->
-             Messages.article shown, Value.type_of x ^ ", which has no " ^ method_text i.imethods.(tree_lacks i d.tree)
+           | Some i when map_lacks i ~inside x >= 0 ->
+             Messages.article shown, Value.type_of x ^ ", which has no " ^ method_text i.imethods.(map_lacks i ~inside x)
            | _ -> Messages.article shown, Value.type_of x)
         | x -> Messages.article shown, Value.type_of x)
     | name, Cell { m; _ } ->
@@ -410,19 +444,18 @@ let[@inline never] by_interface (ctx : ctx) pm (shape : shape) name ~hidden =
   let v = { vs = shape; seen = w.reloads; can = List.sort (fun (a, _, _) (b, _, _) -> String.compare a b) can; hidden } in
   match can with [] -> lost ctx v name | _ -> v
 
-(* A key of a map in a tree, else the method of the interface it meets, as by_interface and choose give one to a map with a
-   shape. Looked up at each call: such maps come from data, which seldom calls methods. *)
-let[@inline never] tree_member (ctx : ctx) pm x tree name =
-  match Value.lookup (Text name) tree with
-  | Some v -> Value.share v
-  | None ->
+(* A key of a map, else the method of the interface it meets, as by_interface and choose give one to a struct. Looked up at
+   each call: a key is cached by the site, and maps seldom call methods of interfaces. *)
+let[@inline never] map_member (ctx : ctx) pm x name =
+  match Trie.find x (Trie.hash (Text name)) (Text name) with
+  | Undef ->
     let w = ctx.w and md = ctx.w.modules.(pm) in
     let seen = md.host :: md.uses in
     let can =
       Hashtbl.fold
         (fun (host, iname) i found ->
            match Hashtbl.find_opt w.methods (host, iname, name) with
-           | Some (mg, false) when List.mem host seen && (Lexer.is_public name || host = md.host) && tree_lacks i tree < 0 ->
+           | Some (mg, false) when List.mem host seen && (Lexer.is_public name || host = md.host) && map_lacks i ~inside:(host = md.host) x < 0 ->
              ((if host = md.host then iname else package_name w host ^ "." ^ iname), mg) :: found
            | _ -> found)
         w.interfaces []
@@ -431,6 +464,7 @@ let[@inline never] tree_member (ctx : ctx) pm x tree name =
      | [ (_, mg) ] -> Bound { g = mg; self = x }
      | (a, _) :: (b, _) :: _ -> Runtime.fail ctx Type (Messages.method_two a b name (Value.describe x))
      | [] -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe (Text name))))
+  | v -> Value.share v
 
 (* The method that a value gets from the interfaces of [v]: from the one it meets, as two are one too many. *)
 let[@inline never] choose ctx (v : via) fields name =
@@ -469,10 +503,13 @@ let rec met (shape : shape) = function
 let rec field_slow ctx pm v name =
   match v with
   | Struct r -> r.fields.(field_slot ctx pm r.shape name)
-  | Dict d ->
-    (match Value.lookup (Text name) d.tree with
-     | Some x -> Value.share x
-     | None -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe (Text name))))
+  | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) (Trie.hash (Text name)) (Text name) >= 0 ->
+    (* As a field of a struct: an owned map lends it, and a write through it stays in place. *)
+    vals.(Trie.index keys (Array.length vals) (Trie.hash (Text name)) (Text name))
+  | Dict _ ->
+    (match Trie.find v (Trie.hash (Text name)) (Text name) with
+     | Undef -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe (Text name)))
+     | x -> Value.share x)
   | Array a ->
     Runtime.build ctx (a.rows * a.cols);
     Arrays.of_vals a.rows a.cols
@@ -488,19 +525,24 @@ let step_read ctx pm v st =
   | Rindex ixs -> Arrays.read ctx v ixs
   | Rkey k -> Arrays.read1 ctx v (Arrays.Key (Text k))
 
-(* Writes to an owned container. A new key can give a new map, which is returned: a key written in the code keeps a map flat
-   while it has few, a key from a variable makes it a tree. *)
+(* A key written in an owned map, in place, or the map that takes its place; else a new map. Either is returned. *)
+let write_key ctx v k x =
+  match v with
+  | Dict { keys; vals; deep = Mine } ->
+    Dict.check ctx k;
+    let h = Trie.hash k in
+    let i = Trie.index keys (Array.length vals) h k in
+    if i >= 0 then (vals.(i) <- x; v) else Trie.add_absent v h k (Value.share x)
+  | Dict { deep = Deep { downed = true; _ }; _ } ->
+    Dict.check ctx k;
+    Trie.put_owned v (Trie.hash k) k (Value.share x)
+  | _ -> Dict.put ctx "" k (Value.share x) v
+
+(* Writes to an owned container. A new key gives a new map, which is returned. *)
 let step_write ctx pm v st x =
   match st, v with
-  | (Rfield name | Rkey name), Struct ({ shape = { sname = None; _ }; _ } as r) ->
-    let i = Value.field_index r.shape name in
-    if i >= 0 then (r.fields.(i) <- x; v) else Dict.add_name ctx v name x
-  | Rindex ixs, Struct ({ shape = { sname = None; _ }; _ } as r) ->
-    (match Arrays.key_of ctx ixs with
-     | Text name when Value.field_index r.shape name >= 0 -> r.fields.(Value.field_index r.shape name) <- x; v
-     | k -> Dict.put ctx "" k (Value.share x) v)
-  | Rindex ixs, Dict _ -> Dict.put ctx "" (Arrays.key_of ctx ixs) (Value.share x) v
-  | (Rfield k | Rkey k), Dict _ -> Dict.put ctx "" (Text k) (Value.share x) v
+  | Rindex ixs, Dict _ -> write_key ctx v (Arrays.key_of ctx ixs) x
+  | (Rfield k | Rkey k), Dict _ -> write_key ctx v (Text k) x
   | Rindex ixs, _ ->
     Arrays.write ctx v ixs x;
     v
@@ -828,6 +870,7 @@ and store_var c i (e : expr) : ctx -> unit =
           (match x with
            | Array r -> r.a_owned <- false
            | Struct r -> r.r_owned <- false
+           | Dict _ -> ignore (Trie.share x)
            | _ -> ());
           ctx.v.(ctx.b + k) <- x
       | Var _ | Index _ | Field _ ->
@@ -837,8 +880,28 @@ and store_var c i (e : expr) : ctx -> unit =
           (match x with
            | Array r -> r.a_owned <- false
            | Struct r -> r.r_owned <- false
+           | Dict _ -> ignore (Trie.share x)
            | _ -> ());
           ctx.v.(ctx.b + k) <- x
+      | Call
+          { callee = { e = Var { b = Cell { m; k = ck; stable = true }; _ }; _ };
+            args = [| { aname = None; value = key }; { aname = None; value }; { aname = None; value = { e = Var { b = Local j; _ }; _ } } |];
+            _ }
+        when j = i && plain_local c i && (not c.w.hooks) && (not (mentions i key)) && (not (mentions i value))
+             && (match c.w.modules.(m).cells.(ck) with Native { nname = "Put"; _ } -> true | _ -> false) ->
+        (* m = Put(k, x, m) is m[k] = x: the map is owned, and written in place unless something else holds it. *)
+        let put = c.w.modules.(m).cells.(ck) and s = site c e.pos and pm = c.ver.owner.pm in
+        let kf = ce c key and vf = ce c value in
+        fun ctx ->
+          let kx = kf ctx in
+          let y = vf ctx in
+          let x = ctx.v.(ctx.b + k) in
+          ctx.site <- s;
+          ctx.v.(ctx.b + k) <-
+            (match x, put with
+             | Dict _, _ -> step_write ctx pm (Runtime.own ctx x) (Rindex [| Arrays.Key kx |]) y
+             | _, Native n -> n.run ctx [| kx; y; x |]
+             | _ -> assert false)
       | Call call when plain_local c i && not c.w.hooks ->
         (* a = f(a): the variable ends with the call. A debugger still shows it to the callee's stops. *)
         let a = call_any ~target:i c e call in
@@ -987,6 +1050,7 @@ and ce c (e : expr) : ctx -> t =
       (match x with
        | Array r -> r.a_owned <- false
        | Struct r -> r.r_owned <- false
+       | Dict _ -> ignore (Trie.share x)
        | _ -> ());
       x
   | Var _ | Index _ | Field _ ->
@@ -1164,20 +1228,21 @@ and index_read c e b ixs uses_end =
       in
       match ixs, args with
       | [| Ix { e = Ltext k; _ } |], _ when not uses_end ->
-        (* m["Name"] on a map with a shape costs what m.Name costs. *)
-        let cache = ref { cs = no_shape; ci = 0 } in
+        (* m["Name"] costs what m.Name costs. *)
+        let cache = ref no_key and key = Text k in
+        let h = Trie.hash key in
         fun ctx ->
           let x = base ctx in
           let last = !cache in
           (match x with
-           | Struct r when r.shape == last.cs -> r.fields.(last.ci)
-           | Struct ({ shape = { sname = None; _ }; _ } as r) when Value.field_index r.shape k >= 0 ->
-             let i = Value.field_index r.shape k in
-             cache := { cs = r.shape; ci = i };
-             r.fields.(i)
+           | Dict { keys; vals; _ } when keys == last.ck -> vals.(last.kc)
+           | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
+             let i = Trie.index keys (Array.length vals) h key in
+             if Trie.is_whole keys then cache := { ck = keys; kc = i };
+             vals.(i)
            | _ ->
              ctx.site <- s;
-             Arrays.read1 ctx x (Arrays.Key (Text k)))
+             Arrays.read1 ctx x (Arrays.Key key))
       | [| Ix i |], _ when (not uses_end) && ty c i == TI ->
         let idx = ci c i in
         let read (ctx : ctx) x k =
@@ -1209,6 +1274,12 @@ and index_read c e b ixs uses_end =
               | F d -> Float (Float.Array.get d (k - 1))
               | I d -> Int d.(k - 1)
               | V d -> d.(k - 1))
+           | Dict _, (Text _ | Int _) ->
+             (match Trie.find x (Trie.hash i) i with
+              | Undef ->
+                ctx.site <- s;
+                Arrays.read1 ctx x (Arrays.ix_of ctx i)
+              | y -> Value.share y)
            | _ ->
              ctx.site <- s;
              Arrays.read1 ctx x (Arrays.ix_of ctx i))
@@ -1244,10 +1315,34 @@ and question c e a =
 
 and struct_lit c sname fields =
   let names = Array.map fst fields in
-  if sname = None && Array.length names > Dict.most then begin
+  let n = Array.length names in
+  if sname = None && (n > Trie.width || List.length (List.sort_uniq String.compare (Array.to_list names)) < n) then begin
     let vals = Array.map (fun (_, v) -> ce c v) fields in
-    fun ctx -> Dict.of_items ctx (Array.init (2 * Array.length vals) (fun j ->
+    fun ctx -> Dict.of_items ctx (Array.init (2 * n) (fun j ->
         if j land 1 = 0 then Text names.(j / 2) else Value.share (vals.(j / 2) ctx)))
+  end else if sname = None then begin
+    (* The maps of one literal share their keys. *)
+    let keys = Trie.names names in
+    match Array.map (fun (_, v) -> ce c v) fields with
+    | [| a; b |] ->
+      fun ctx ->
+        let x = a ctx in
+        let y = b ctx in
+        Dict { keys; vals = [| x; y |]; deep = Mine }
+    | [| a; b; d |] ->
+      fun ctx ->
+        let x = a ctx in
+        let y = b ctx in
+        let z = d ctx in
+        Dict { keys; vals = [| x; y; z |]; deep = Mine }
+    | [| a; b; d; e |] ->
+      fun ctx ->
+        let x = a ctx in
+        let y = b ctx in
+        let z = d ctx in
+        let w = e ctx in
+        Dict { keys; vals = [| x; y; z; w |]; deep = Mine }
+    | vals -> fun ctx -> Dict { keys; vals = Array.map (fun v -> v ctx) vals; deep = Mine }
   end else
   let shape = Value.shape_of c.w ?sname ~m:c.w.modules.(c.ver.owner.pm).host names in
   match Array.map (fun (_, v) -> ce c v) fields with
@@ -1278,9 +1373,11 @@ and field_read c e b name =
   let base = (match leaf c b with `L k -> (fun (ctx : ctx) -> ctx.v.(ctx.b + k)) | l -> leaf_value l) in
   let s = site c e.pos and pm = c.ver.owner.pm in
   (* A single immutable word, replaced at once: correct with several OCaml domains. *)
-  let cache = ref { cs = no_shape; ci = 0 } in
+  let cache = ref { cs = no_shape; ci = 0 } and kcache = ref no_key and key = Text name in
+  let h = Trie.hash key in
   fun ctx ->
     match base ctx with
+    | Dict { keys; vals; _ } when keys == !kcache.ck -> vals.(!kcache.kc)
     | Struct r ->
       let k = !cache in
       if r.shape == k.cs then r.fields.(k.ci)
@@ -1290,6 +1387,10 @@ and field_read c e b name =
         cache := { cs = r.shape; ci = i };
         r.fields.(i)
       end
+    | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
+      let i = Trie.index keys (Array.length vals) h key in
+      if Trie.is_whole keys then kcache := { ck = keys; kc = i };
+      vals.(i)
     | v ->
       ctx.site <- s;
       field_slow ctx pm v name
@@ -1300,6 +1401,8 @@ and member_read c e b name ~shared =
   let base = (match leaf c b with `L k -> (fun (ctx : ctx) -> ctx.v.(ctx.b + k)) | l -> leaf_value l) in
   let s = site c e.pos and pm = c.ver.owner.pm in
   let cache = ref { ms = no_shape; mi = 0; mg = Undef; mr = 0 } and others = ref [] and vias = ref [] in
+  let kcache = ref no_key and key = Text name in
+  let h = Trie.hash key in
   let keep k =
     if !cache.ms == no_shape || !cache.ms == k.ms then cache := k
     else
@@ -1335,9 +1438,14 @@ and member_read c e b name ~shared =
         let k = other ctx r.shape r.fields in
         if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       end
-    | Dict d as x ->
+    | Dict { keys; vals; _ } when keys == !kcache.ck -> vals.(!kcache.kc)
+    | Dict { keys; vals; deep = Mine | Shared; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
+      let i = Trie.index keys (Array.length vals) h key in
+      if Trie.is_whole keys then kcache := { ck = keys; kc = i };
+      vals.(i)
+    | Dict _ as x ->
       ctx.site <- s;
-      tree_member ctx pm x d.tree name
+      map_member ctx pm x name
     | v ->
       ctx.site <- s;
       field_slow ctx pm v name
@@ -1404,6 +1512,7 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
        | _ -> false)
   | Pstruct fs ->
     let tests = Array.map (fun (name, q) -> name, pat_test c q) fs in
+    let keyed = Array.map (fun (name, test) -> Text name, Trie.hash (Text name), test) tests in
     let want = Array.length fs in
     fun ctx v ->
       (match v with
@@ -1417,11 +1526,11 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
            end
          in
          go 0
-       | Dict d ->
+       | Dict _ ->
          let rec go k =
            k >= want
-           || (let name, test = tests.(k) in
-               match Value.lookup (Text name) d.tree with Some x -> test ctx x && go (k + 1) | None -> false)
+           || (let key, h, test = keyed.(k) in
+               match Trie.find v h key with Undef -> false | x -> test ctx x && go (k + 1))
          in
          go 0
        | _ -> false)
@@ -2357,6 +2466,8 @@ and set_path c e root path value =
   | [| { sp; sk = Sindex ([| Ix i; Ix j |], false) } |] when fa && ty c i == TI && ty c j == TI ->
     fa_write2 c root sp i j value
   | [| { sp; sk = Sindex ([| Ix ({ e = (Var _ | Lint _ | Bin _); _ } as ix) |], false) } |] -> set_elt c e root sp ix value
+  | [| { sp; sk = Sfield name } |] -> set_name c root sp name value ~key:false
+  | [| { sp; sk = Sindex ([| Ix { e = Ltext name; _ } |], false) } |] -> set_name c root sp name value ~key:true
   | _ -> set_general c e root path value
 
 (* x[i] = f on an owned FA array: neither allocation nor conversion. *)
@@ -2420,6 +2531,43 @@ and set_elt c e root sp ix value =
     | _ ->
       ctx.site <- s;
       write_root ctx pm set x (Rindex [| Arrays.ix_of ctx i |]) y
+
+(* m.Name = x and m["Name"] = x: an owned map of one block writes in place, and a new name gives keys that the site keeps, so
+   that the maps that go through it share them, and the reads after it keep their caches. Anything else goes the general way. *)
+and set_name c root sp name value ~key =
+  let pm = c.ver.owner.pm in
+  let read = var c { id = 0; pos = sp; e = Var root } root in
+  let set = setter c root in
+  let v = ce c value and s = site c sp in
+  let k = Text name in
+  let h = Trie.hash k in
+  let st = if key then Rkey name else Rfield name in
+  (* [grown]: the keys of [n] that came here last, and what the name made of them. *)
+  let here = ref no_key and grown = ref (no_key.ck, -1, no_key.ck) in
+  fun ctx ->
+    let y = v ctx in
+    let x = read ctx in
+    match x with
+    | Dict ({ deep = Mine; _ } as d) when d.keys == !here.ck -> d.vals.(!here.kc) <- y
+    | Dict ({ deep = Mine; _ } as d) when Trie.index d.keys (Array.length d.vals) h k >= 0 ->
+      let i = Trie.index d.keys (Array.length d.vals) h k in
+      if Trie.is_whole d.keys then here := { ck = d.keys; kc = i };
+      d.vals.(i) <- y
+    | Dict ({ deep = Mine; _ } as d) when Array.length d.vals < Trie.width ->
+      let n = Array.length d.vals in
+      let before, m, after = !grown in
+      let after =
+        if d.keys == before && m = n then after
+        else begin
+          let after = Trie.extend d.keys n k h in
+          grown := (d.keys, n, after);
+          after
+        end
+      in
+      set ctx (Dict { keys = after; vals = Trie.append d.vals y; deep = Mine })
+    | _ ->
+      ctx.site <- s;
+      write_root ctx pm set x st y
 
 and set_general c _e root path value =
   let pm = c.ver.owner.pm in

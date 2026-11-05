@@ -4,6 +4,7 @@ open Types
 let failure = Value.failure
 let io_error w text = failure w "io" text
 let reason e = String.uncapitalize_ascii (Unix.error_message e)
+let stat_keys = Trie.names [| "Size"; "Modified"; "IsDir"; "IsFile"; "IsLink" |]
 let failed ctx verb target e = io_error ctx.w (Messages.io_failure verb target (reason e)).text
 
 let retry = function
@@ -85,15 +86,11 @@ let natives =
         write_all path [ Unix.O_APPEND ] (Native.text_arg ctx "Append" a.(1)));
     on_path "List" Read "list" 1 (fun _ path _ -> list_dir path);
     on_path "Remove" Write "remove" 1 (fun _ path _ -> remove path);
-    on_path "Stat" Read "read" 1 (fun ctx path _ ->
+    on_path "Stat" Read "read" 1 (fun _ path _ ->
         let s = Unix.stat path in
-        let shape = Value.shape_of ctx.w [| "Size"; "Modified"; "IsDir"; "IsFile"; "IsLink" |] in
-        Struct
-          { shape;
-            fields =
-              [| Int s.st_size; Float s.st_mtime; Value.of_bool (s.st_kind = Unix.S_DIR);
-                 Value.of_bool (s.st_kind = Unix.S_REG); Value.of_bool ((Unix.lstat path).st_kind = Unix.S_LNK) |];
-            r_owned = true });
+        Trie.record stat_keys
+          [| Int s.st_size; Float s.st_mtime; Value.of_bool (s.st_kind = Unix.S_DIR);
+             Value.of_bool (s.st_kind = Unix.S_REG); Value.of_bool ((Unix.lstat path).st_kind = Unix.S_LNK) |]);
     on_path "Rename" Write "rename" 2 (fun ctx path a ->
         Unix.rename path (path_arg ctx "Rename" Write a.(1));
         Missing);
