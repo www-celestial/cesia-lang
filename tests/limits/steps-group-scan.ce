@@ -1,0 +1,3 @@
+xs = [1e300 * k for k in 1:30000]
+g = Group(Identity, xs)
+Print(Len(g))

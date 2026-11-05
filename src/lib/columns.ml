@@ -273,7 +273,8 @@ let simple_groups ctx x small_float simple =
 
 (* For the prelude's Group, {Ids, Count, Firsts} of its keys, as [Equal] groups them. Texts, booleans, missing and numbers
    below 2^53, where [Equal] is an equivalence that the hash respects (1 and 1.0 one key, -0.0 and 0.0 one, NaN with
-   NaN), by the hash. Other keys as the prelude compared them: each with [Equal] to the first key of each group so far. *)
+   NaN), by the hash. Other keys as the prelude compared them: each with [Equal] to the first key of each group so far,
+   these comparisons paid in steps, as its loop was. *)
 let group_ids ctx (a : t array) =
   let small_float x = Float.is_nan x || Float.abs x < 0x1p53 in
   let simple = function Text _ | True | False | Missing -> true | Int i -> small i | Float f -> small_float f | _ -> false in
@@ -287,6 +288,7 @@ let group_ids ctx (a : t array) =
       for k = 0 to size x - 1 do
         let rec find g = if g = t.groups || Value.equal ctx (Value.elt x t.firsts.(g)) (Value.elt x k) then g else find (g + 1) in
         let g = find 0 in
+        Runtime.pay ctx g;
         if g = t.groups then (t.firsts.(g) <- k; t.groups <- g + 1);
         ids.(k) <- g
       done;
