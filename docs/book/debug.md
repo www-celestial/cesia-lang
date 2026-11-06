@@ -209,9 +209,10 @@ with `--debugger`, and a program run without it pays nothing for it.
 
 ## Speed
 
-Under a debugger, the code runs in the interpreter where it could stop: on a line with a breakpoint, and everywhere while
-you step. Elsewhere, hot loops still become native code, and go back to the interpreter at each stop, so the results are
-the same as without the debugger. A loop that calls functions stays in the interpreter while a debugger is there, so that
-a stop shows the variables of every frame.
+A program under a debugger runs as fast as without one while nothing is asked of it: only a line with a breakpoint, and
+every line while you step, goes to the debugger. Hot code still becomes native code, calls included; a function whose code
+holds a breakpoint stays in the interpreter, and at each stop native code goes back to the interpreter and becomes native
+again once hot, so the results are the same as without the debugger. A stop on an error inside native code shows the
+variables of the frame that runs it, but not those of the calls native code made inside it.
 
 You can look inside a running program. The next chapter, [C and C++](c.md), calls the libraries of the system from Cesia.
