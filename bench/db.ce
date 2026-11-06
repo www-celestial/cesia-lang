@@ -1,7 +1,7 @@
-(** SQLite through pkg/sql, to set against Python's sqlite3 on the same work: 100,000 rows read as maps, typed, streamed,
+(** SQLite through std/sql, to set against Python's sqlite3 on the same work: 100,000 rows read as maps, typed, streamed,
     then 100,000 selects by key and 100,000 inserts in one transaction. Run as cesia run bench/db.ce, release profile. *)
-use sys
-use pkg/sql
+use std/sys
+use std/sql
 
 struct User { Id Int, Name Text, Score Float, CreatedAt Text }
 

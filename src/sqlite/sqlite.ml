@@ -266,7 +266,7 @@ let bind ctx lib stmt k (v : t) =
   | Text s -> texts.(2) <- s; set 3 (String.length s); set 4 (-1); run lib.bind_text 5 ~text:2 ()
   | _ -> -1
 
-(* Binds each value: an Err for a count that differs, or for a value SQL doesn't take, of Code "convert", which pkg/sql
+(* Binds each value: an Err for a count that differs, or for a value SQL doesn't take, of Code "convert", which std/sql
    converts and gives again. The statement goes back to the cache on an Err. *)
 let bind_all ctx lib c text p params =
   let wanted = c1 lib.count p.stmt in

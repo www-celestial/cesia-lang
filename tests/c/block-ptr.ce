@@ -1,5 +1,5 @@
 (** A block given to C is a pointer, and its address can be stored in another block. *)
-use c
+use std/c
 
 lib = Unwrap(c.Open(Args[1]))
 echo = Unwrap(c.Fn("echo_ptr", ["ptr"], "ptr", lib))

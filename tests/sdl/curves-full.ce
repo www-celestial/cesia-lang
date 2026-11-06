@@ -1,4 +1,4 @@
-use pkg/sdl
+use std/sdl
 
 defn check()
   w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?

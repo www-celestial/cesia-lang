@@ -1,4 +1,5 @@
+(* A folder at the root named like a library: the path tells them apart. *)
 use date
-use pkg/date as day
+use std/date as day
 Print(date.Today)
 Print(day.IsLeap(2024))

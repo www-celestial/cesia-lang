@@ -14,29 +14,29 @@ publish bob/units v1.0.0
 file bob/units/src/meters/meters.ce '(** Meters. *)\nName = "meters of units v1.2.0"\n'
 publish bob/units v1.2.0
 file alice/shapes/cesia.toml "[project]\nname = \"shapes\"\n\n[deps.units]\nfrom = \"file://$top/repos/bob/units\"\nversion = \"v1.0.0\"\n"
-file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse area\nDescribe() = Str("a square, ", area.Of(2))\n'
+file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse src/area\nDescribe() = Str("a square, ", area.Of(2))\n'
 file alice/shapes/src/geometry/geometry.test.ce 'isNothing() = true\n'
-file alice/shapes/src/area/area.ce '(** Area. *)\nuse deps/bob/units/meters\nOf(side) = Str(side * side, " ", meters.Name)\n'
+file alice/shapes/src/area/area.ce '(** Area. *)\nuse deps/bob/units/src/meters\nOf(side) = Str(side * side, " ", meters.Name)\n'
 file alice/shapes/src/unused/unused.ce '(** Not used. *)\nNothing = 1\n'
 file alice/shapes/tests/a.ce 'Print(1)\n'
 publish alice/shapes v1.0.0
-file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse area\nDescribe() = Str("a square of v1.1.0, ", area.Of(3))\n'
+file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse src/area\nDescribe() = Str("a square of v1.1.0, ", area.Of(3))\n'
 publish alice/shapes v1.1.0
 file erin/tools/cesia.toml "[project]\nname = \"tools\"\n\n[deps.units]\nfrom = \"file://$top/repos/bob/units\"\nversion = \"v1.2.0\"\n"
-file erin/tools/src/tool/tool.ce '(** Tool. *)\nuse deps/bob/units/meters\nName = Str("a tool on ", meters.Name)\n'
+file erin/tools/src/tool/tool.ce '(** Tool. *)\nuse deps/bob/units/src/meters\nName = Str("a tool on ", meters.Name)\n'
 publish erin/tools v1.0.0
 file carol/ring/cesia.toml '[project]\nname = "ring"\n'
-file carol/ring/src/a/a.ce '(** A. *)\nuse b\nA() = 1\n'
-file carol/ring/src/b/b.ce '(** B. *)\nuse a\nB() = 2\n'
+file carol/ring/src/a/a.ce '(** A. *)\nuse src/b\nA() = 1\n'
+file carol/ring/src/b/b.ce '(** B. *)\nuse src/a\nB() = 2\n'
 publish carol/ring v1.0.0
 file dan/plain/README.md 'no cesia.toml here\n'
 publish dan/plain v1.0.0
 
 mkdir -p "$top/proj/src" && cd "$top/proj"
 printf '[project]\nname = "proj"\n' > cesia.toml
-printf 'use deps/alice/shapes/geometry\nPrint(geometry.Describe())\n' > src/main.ce
+printf 'use deps/alice/shapes/src/geometry\nPrint(geometry.Describe())\n' > src/main.ce
 echo "== add: geometry, and what it uses"
-cesia pkg add "file://$top/repos/alice/shapes@v1.0.0" geometry | clean
+cesia pkg add "file://$top/repos/alice/shapes@v1.0.0" src/geometry | clean
 find deps -type f | sort
 tail -5 cesia.toml | clean
 cesia run $no_spec src/main.ce
@@ -52,7 +52,7 @@ echo "nothing to do: $?"
 echo "== what fails leaves deps/ and cesia.lock as they were"
 cp cesia.lock "$top/lock-before"
 cesia pkg add "file://$top/repos/dan/plain@v1.0.0" 2>&1 | clean
-cesia pkg add "file://$top/repos/carol/ring@v1.0.0" nope 2>&1 | clean
+cesia pkg add "file://$top/repos/carol/ring@v1.0.0" src/nope 2>&1 | clean
 cesia pkg add "file://$top/repos/carol/ring@v9.9.9" 2>&1 | clean
 echo "== what could leave deps/ or give git an option is refused before git runs"
 cesia pkg add "github.com/alice/../../../outside@v1.0.0" 2>&1 | clean
@@ -62,7 +62,7 @@ ls "$top/ran" "$top/outside" 2> /dev/null || echo "nothing ran, nothing written 
 cmp cesia.lock "$top/lock-before" && echo "lock unchanged"
 find deps -maxdepth 2 -type d | sort
 echo "== a ring of uses ends"
-cesia pkg add "file://$top/repos/carol/ring@v1.0.0" a | clean
+cesia pkg add "file://$top/repos/carol/ring@v1.0.0" src/a | clean
 cp cesia.lock "$top/lock-ring"
 echo "== a moved tag"
 file alice/shapes/src/unused/unused.ce '(** Changed. *)\nNothing = 2\n'
@@ -85,6 +85,6 @@ ls deps
 cesia run $no_spec src/main.ce
 cesia pkg | clean
 echo "== newer tags"
-file carol/ring/src/b/b.ce '(** B. *)\nuse a\nB() = 3\n'
+file carol/ring/src/b/b.ce '(** B. *)\nuse src/a\nB() = 3\n'
 publish carol/ring v1.1.0
 cesia pkg --check

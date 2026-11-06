@@ -1,4 +1,4 @@
-use net
+use std/net
 l = Unwrap(net.Listen(18085))
 net.Close(l)
 net.Close(l)

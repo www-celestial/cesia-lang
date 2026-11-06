@@ -97,14 +97,18 @@ let read_module ~from ~pos upath path =
   with Sys_error _ -> use_error ~file:from ~pos ~kind:"name" (Messages.use_unreadable upath)
 
 
-let library = Package.library
-
 (* A library of Cesia: a module of std/ that isn't the language itself. *)
 let own_library name = if List.mem name Docs.language then None else std_source name
 
+(* What comes with Cesia is used through std/: std/sys, a module of the binary, or std/rope, a library. Gives its name. *)
+let standard upath =
+  match String.split_on_char '/' upath with
+  | [ "std"; name ] when name <> "" -> Some name
+  | _ -> None
+
 let libraries () = List.filter_map (fun (name, _) -> Option.map (fun (_, src) -> name, src) (own_library name)) Embedded.files
 
-(* A file of pkg/ or deps/ loads only as installed: its fingerprint in cesia.lock, on a text read anyway. *)
+(* A file of std/ or deps/ loads only as installed: its fingerprint in cesia.lock, on a text read anyway. *)
 let check_installed w ~from ~pos path src =
   match Package.installed w.root path with
   | None -> ()
@@ -129,7 +133,7 @@ let reader w ~from ~pos upath files () =
        Package.shown path, src)
     files
 
-(* What a use names, without loading it: a library, the project's copy in pkg/ or else Cesia's own, or a folder of the project.
+(* What a use names, without loading it: a library, the project's copy in std/ or else Cesia's own, or a folder of the project.
    Gives its key in [w.loaded], how to read its files, and whether it is a library. *)
 let locate w ~from ~pos upath =
   let missing dir =
@@ -137,17 +141,20 @@ let locate w ~from ~pos upath =
   in
   (* A wrong cesia.toml stops the first use, before any library runs. *)
   ignore (Package.sources w.root);
-  match library upath with
+  (* The forms of before 0.3: pkg/rope, rope, sys. *)
+  let old = if String.starts_with ~prefix:"pkg/" upath then String.sub upath 4 (String.length upath - 4) else upath in
+  if (not (String.contains old '/')) && (own_library old <> None || List.mem_assoc old w.native_modules)
+     && Package.files (Filename.concat w.root upath) = [] then
+    use_error ~file:from ~pos ~kind:"name" (Messages.use_std old);
+  match standard upath with
   | Some name ->
-    let dir = Filename.concat (Filename.concat w.root "pkg") name in
+    let dir = Filename.concat (Filename.concat w.root "std") name in
     (match Package.files dir with
      | _ :: _ as files -> dir, reader w ~from ~pos upath files, true
      | [] ->
        match own_library name with
        | Some ((path, _) as source) -> path, (fun () -> [ source ]), true
-       | None ->
-         if List.mem_assoc name w.native_modules then use_error ~file:from ~pos ~kind:"name" (Messages.use_binary name);
-         missing dir)
+       | None -> missing dir)
   | None ->
     let root, path =
       match Package.dep upath with
@@ -163,11 +170,13 @@ let locate w ~from ~pos upath =
          | Some folder when String.starts_with ~prefix:"deps/" folder -> Filename.concat w.root folder, upath
          | _ -> w.root, upath)
     in
-    let dir = Package.folder root path in
+    (* A use is the path of a folder from the root: src/shapes. *)
+    let dir = Filename.concat root path in
     let files = Package.files dir in
     if files = [] then begin
-      if (not (String.contains upath '/')) && own_library upath <> None then
-        use_error ~file:from ~pos ~kind:"name" (Messages.use_library upath);
+      let found = Package.folder root path in
+      if (not (String.contains path '/')) && Package.files found <> [] then
+        use_error ~file:from ~pos ~kind:"name" (Messages.use_path path (Package.shown found));
       missing dir
     end;
     dir, reader w ~from ~pos upath files, false
@@ -185,14 +194,8 @@ let native_module w name natives =
     Hashtbl.replace w.loaded key m;
     m
 
-(* The modules written in OCaml, which use finds first: a folder of the project can't have their names. *)
-let find_native w ~from ~pos upath =
-  let natives = List.assoc_opt upath w.native_modules in
-  if natives <> None then begin
-    let dir = Package.folder w.root upath in
-    if Package.files dir <> [] then use_error ~file:from ~pos ~kind:"name" (Messages.use_both upath (Package.shown dir))
-  end;
-  natives
+(* The modules written in OCaml: std/sys. *)
+let find_native w ~from:_ ~pos:_ upath = Option.bind (standard upath) (fun name -> List.assoc_opt name w.native_modules)
 
 (* use a/util and use b/util: the name in the code is their last part, so the second one must not vanish in silence. *)
 let check_uses path (fn : Ast.func) =
@@ -391,14 +394,14 @@ let tool_path name = "tools/" ^ name ^ Package.suffix
 let load_debugger ctx name =
   let w = ctx.w in
   let pos = Pos.make 1 1 in
-  let is_file = (String.contains name '/' && library name = None) || Package.is_source name in
+  let is_file = (String.contains name '/' && standard name = None) || Package.is_source name in
   let path, src =
     if List.mem_assoc name Embedded.tools then tool_path name, List.assoc name Embedded.tools
     else if is_file then
       if Sys.file_exists name then name, read_module ~from:name ~pos name name
       else use_error ~file:name ~pos ~kind:"name" (Messages.use_missing name)
     else
-      let _, read, _ = locate w ~from:name ~pos (if library name = None then "pkg/" ^ name else name) in
+      let _, read, _ = locate w ~from:name ~pos name in
       List.hd (read ())
   in
   let ((_, m, _, _) as prepared) = prepare ctx ~path ~src ~lookup:(lookup w) in

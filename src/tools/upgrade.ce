@@ -3,12 +3,12 @@
     only then puts it in place of the old one, with its lib/: any failure before leaves the old one as it was.
     CESIA_RELEASES=file:///folder reads folder/latest.json or folder/nightly.json instead of GitHub: for tests and mirrors.
     Run by the binary. *)
-use sys
-use json
-use cesia
-use debug
-use pkg/http
-use pkg/tls
+use std/sys
+use std/json
+use std/cesia
+use std/debug
+use std/http
+use std/tls
 
 github = "https://api.github.com/repos/www-celestial/cesia-lang/releases"
 backslash = Char(92)

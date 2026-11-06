@@ -1,5 +1,5 @@
 (** A name is scanned for a zero byte, without any permission: a long one pays like any other long text. *)
-use c
+use std/c
 
 name = "abcdefghij"
 for i in 1..17

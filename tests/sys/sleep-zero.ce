@@ -1,4 +1,4 @@
-use sys
+use std/sys
 
 t = Spawn(() -> Print("fiber"))
 sys.Sleep(0)

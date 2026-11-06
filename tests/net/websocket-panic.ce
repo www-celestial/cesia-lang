@@ -1,7 +1,7 @@
 (** A panic in a WebSocket handler closes its connection, and an idle one reaches its deadline. *)
-use pkg/web
-use net
-use sys
+use std/web
+use std/net
+use std/sys
 
 crlf = "\r\n"
 a = web.Websocket("/boom", (m, send) -> Panic("boom"), web.App(), idle = 0.2)

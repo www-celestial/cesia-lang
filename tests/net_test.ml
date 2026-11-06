@@ -33,8 +33,8 @@ let () =
   Cesia_sys.Net.resolver := slow (fun _ -> Unix.inet_addr_loopback);
   check "a fiber runs during a slow resolution" "tick\ntick\ndone\n"
     (run
-       {|use sys
-use net
+       {|use std/sys
+use std/net
 defn ticks()
   sys.Sleep(0.005)
   Print("tick")
@@ -49,7 +49,7 @@ Wait(t)
   Cesia_sys.Net.resolver := slow (fun _ -> raise Not_found);
   check "an unknown name is an error" "unknown\n"
     (run
-       {|use net
+       {|use std/net
 Print(match net.Connect("nowhere.example", 1)
   Err(e) -> if Contains("unknown host", e.Message) "unknown" else e.Message end
   Ok(s) -> "connected"
@@ -58,14 +58,14 @@ end)
   Cesia_sys.Net.resolver := slow (fun _ -> Unix.inet_addr_loopback);
   check "several fibers wait at once" "2\n"
     (run
-       {|use net
+       {|use std/net
 tasks = Map(h -> Spawn(() -> net.Connect(h, 1)), ["a.example", "b.example"])
 Print(Len(Map(Wait, tasks)))
 |});
   Cesia_sys.Net.resolver := (fun _ -> failwith "no lookup for an address");
   check "an address needs no lookup" "done\n"
     (run
-       {|use net
+       {|use std/net
 r = net.Connect("127.0.0.1", 1)
 Print("done")
 |});
@@ -73,8 +73,8 @@ Print("done")
   Cesia_sys.Net.resolver := (fun _ -> Unix.sleepf 30.; Unix.inet_addr_loopback);
   check "a program doesn't wait for a lookup" "end\n"
     (run
-       {|use sys
-use net
+       {|use std/sys
+use std/net
 t = Spawn(() -> net.Connect("a.example", 1))
 sys.Sleep(0.005)
 Print("end")

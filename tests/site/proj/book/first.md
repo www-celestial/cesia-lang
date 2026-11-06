@@ -3,7 +3,7 @@
 Names and [Len]:
 
 ```cesia
-use greet
+use src/greet
 x = 2 + 3
 x -->
 x * 2 --> 10
@@ -26,7 +26,7 @@ Div(x, 0)
 Not run:
 
 ```cesia norun
-use pkg/http
+use std/http
 http.Get("https://example.com")
 ```
 

@@ -1,6 +1,6 @@
 (** Cryptography through libsodium: never written by hand here. Run with --allow ffi=sodium.
     Texts hold bytes: encode.Hex and encode.Base64 give them a printable form. *)
-use c
+use std/c
 
 SecretKeySize = 32    (** The size in bytes of a key of Seal and of a secret key of BoxPair. *)
 NonceSize = 24        (** The size in bytes of the nonce kept in front of a sealed or boxed message. *)

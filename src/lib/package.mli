@@ -31,9 +31,6 @@ val wrong_cesia : Toml.table list -> (int * Messages.t) option
     {!Pos.Load_error} at its line. *)
 val sources : string -> string list
 
-(** [use pkg/rope] names a library: [Some "rope"], the name after [pkg/] when nothing follows it. *)
-val library : string -> string option
-
 (** [use deps/www-celestial/cemacs/folders] names a package of another project: [Some ("deps/www-celestial/cemacs",
     "folders")]. A first part with a dot is a host: [deps/gitlab.com/x/y/z] gives [Some ("deps/gitlab.com/x/y", "z")]. *)
 val dep : string -> (string * string) option
@@ -48,10 +45,10 @@ val shown : string -> string
 (** cesia.lock, next to cesia.toml. *)
 val lock_file : string
 
-(** The fingerprints that the cesia.lock of a root gives the files of its pkg/ and deps/, by absolute path; none without one.
+(** The fingerprints that the cesia.lock of a root gives the files of its std/ and deps/, by absolute path; none without one.
     Read once per root. *)
 val lock : string -> (string, string) Hashtbl.t
 
-(** [installed root path]: the folder of pkg/ or deps/ that holds a file, from the root ([pkg/rope],
+(** [installed root path]: the folder of std/ or deps/ that holds a file, from the root ([std/rope],
     [deps/www-celestial/cemacs], [deps/gitlab.com/x/y]), or [None] for a file of the project itself. *)
 val installed : string -> string -> string option

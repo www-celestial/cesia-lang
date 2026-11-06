@@ -4,7 +4,7 @@
 set -eu
 want=$(sed -n 's/.*sqlite_version=\([0-9.]*\).*/\1/p' "$(dirname "$0")/release-libs.sh")
 dir=$(mktemp -d)
-printf 'use sqlite3\nuse pkg/sql\nPrint(Unwrap(sqlite3.Version()))\nPrint(Unwrap(sql.Open("sqlite::memory:") then AndThen(db -> sql.One("select 40 + 2 as x", [], db))).X)\n' > "$dir/v.ce"
+printf 'use std/sqlite3\nuse std/sql\nPrint(Unwrap(sqlite3.Version()))\nPrint(Unwrap(sql.Open("sqlite::memory:") then AndThen(db -> sql.One("select 40 + 2 as x", [], db))).X)\n' > "$dir/v.ce"
 have=$("$1" run "$dir/v.ce" | tr -d '\r')
 rm -rf "$dir"
 [ "$have" = "$want

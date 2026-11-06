@@ -1,7 +1,7 @@
 (** Runs forever: tools/reload-test.sh edits it and its packages while it runs. In sorted order it comes before commands, which
     comes before view: what calls reloads before what it calls. *)
 use commands
-use sys
+use std/sys
 
 shown() = commands.Value()
 

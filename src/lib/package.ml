@@ -72,12 +72,6 @@ let sources root =
     Hashtbl.replace known_sources root dirs;
     dirs
 
-let library upath =
-  let n = String.length upath in
-  if n > 4 && String.starts_with ~prefix:"pkg/" upath && not (String.contains_from upath 4 '/') then
-    Some (String.sub upath 4 (n - 4))
-  else None
-
 (* deps/OWNER/REPO, or deps/HOST/OWNER/REPO when the first part holds a dot: how many parts name the project. *)
 let dep_depth = function
   | "deps" :: first :: _ when String.contains first '.' -> 4
@@ -115,7 +109,7 @@ let root_of path =
 
 let lock_file = "cesia.lock"
 
-(* The files of every table of a root's cesia.lock, read once: "pkg/rope/rope.ce blake2:...", the path from the root. A lock
+(* The files of every table of a root's cesia.lock, read once: "std/rope/rope.ce blake2:...", the path from the root. A lock
    that doesn't read holds nothing, so that each file says it isn't installed. *)
 let known_locks = Hashtbl.create 4
 
@@ -159,5 +153,5 @@ let installed root path =
   if not (String.starts_with ~prefix:from path) then None
   else
     let parts = String.split_on_char '/' (String.sub path (String.length from) (String.length path - String.length from)) in
-    let depth = match parts with "pkg" :: _ -> 2 | _ -> dep_depth parts in
+    let depth = match parts with "std" :: _ -> 2 | _ -> dep_depth parts in
     if depth = 0 || List.length parts <= depth then None else Some (String.concat "/" (List.filteri (fun i _ -> i < depth) parts))

@@ -1,4 +1,4 @@
-use sys
+use std/sys
 (* dir is where the command runs; past timeout it is killed and its Code is -1, and this program goes on at once. *)
 Print(sys.Run("sh", args = ["-c", "pwd"], dir = "/") then MapOk(it.Out))
 Print(sys.Run("sh", args = ["-c", "true"], dir = "/no/such/folder") then MapErr(it.Message))

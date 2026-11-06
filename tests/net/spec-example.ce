@@ -1,6 +1,6 @@
-use pkg/http
-use net
-use sys
+use std/http
+use std/net
+use std/sys
 
 handle(request) = match sys.Read("page.html")
   Ok(text) -> {Status: 200, Body: text}

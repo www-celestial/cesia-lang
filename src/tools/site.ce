@@ -3,18 +3,18 @@
     the code. The book of the project, in book/, is the home: its pages run their cesia blocks at each build. Run by the binary
     as cesia doc --site [folder] [--open], which gives this tool the root of the project, the folder and the folder of the
     cache, all from the top of the file system. A build that finds a mistake writes it as file:line and fails. *)
-use sys
-use cesia
-use json
-use pkg/markdown
-use pkg/web
-use pkg/syntax
-use columns
+use std/sys
+use std/cesia
+use std/json
+use std/markdown
+use std/web
+use std/syntax
+use std/columns
 
 quote = Char(34)
 keywords = cesia.Keywords()
 
-(* The class of each role of pkg/syntax, in its order: keyword, name, text, number, comment, plain, field. *)
+(* The class of each role of std/syntax, in its order: keyword, name, text, number, comment, plain, field. *)
 classes = ["k", "n", "s", "m", "c", "", "f"]
 
 escape(t) = web.Escape(t)
@@ -23,7 +23,7 @@ up(path) = Repeat(Len(Split("/", path)) - 1, "../")   (** From a page to the roo
 parent(path) = Join("/", Butlast(Split("/", path)))
 
 defn rel(path, target)
-  (** The link from the page at path to the file at target, both from the root: "Sort.html" next to it, "../pkg/num.html". *)
+  (** The link from the page at path to the file at target, both from the root: "Sort.html" next to it, "../std/num.html". *)
   from = Butlast(Split("/", path))
   to = Split("/", target)
   k = 1
@@ -78,7 +78,7 @@ defn isNameLike(t)
 end
 
 defn hooksFor(site, path, where)
-  (** The hooks of pkg/markdown for a page: Cesia code in color, [Name] to its page, an id for each heading. A [Name] that
+  (** The hooks of std/markdown for a page: Cesia code in color, [Name] to its page, an id for each heading. A [Name] that
       leads nowhere is sent to the mistakes, with the place where it is written. *)
   defn link(target, line)
     found = Get(target, site.Targets)
@@ -561,7 +561,7 @@ defn stamp(root, config)
   (** What the runs of a page depend on beside its blocks: this Cesia, the sources of the project, and book/files. *)
   binary = sys.Stat(cesia.Binary()).Value
   parts = [cesia.Version(), Str(binary.Size, " ", binary.Modified)]
-  for dir in Concat(config.Src, ["pkg", "book/files"])
+  for dir in Concat(config.Src, ["std", "book/files"])
     for p in filesUnder("$root/$dir")
       parts = Append(Str(dir, "/", p, " ", cesia.Fingerprint(sys.Read("$root/$dir/$p").Value)), parts)
     end

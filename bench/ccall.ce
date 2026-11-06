@@ -1,6 +1,6 @@
 (** The cost of a call to a trivial C function. *)
-use c
-use sys
+use std/c
+use std/sys
 
 defn repeatCall(f, n)
   for i in 1..n

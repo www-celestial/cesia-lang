@@ -1,6 +1,6 @@
-use pkg/http
-use net
-use sys
+use std/http
+use std/net
+use std/sys
 
 defn reply(listener, text)
   c = net.Accept(listener)?

@@ -1,4 +1,4 @@
-use regex
+use std/regex
 
 defn fails(f, kind)
   (Wait(Spawn(f)) then MapErr(it.Kind)) == Err(kind)

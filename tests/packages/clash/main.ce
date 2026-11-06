@@ -1,3 +1,6 @@
-use json
+(* A package of src/ named like a module of Cesia: the path tells them apart. *)
+use std/json
+use src/json as mine
 
 Print(json.Text(1))
+Print(mine.Text(1))

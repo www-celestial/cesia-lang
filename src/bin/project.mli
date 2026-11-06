@@ -3,5 +3,5 @@
 (** Takes the words after [do], and ends the program. *)
 val run : string list -> unit
 
-(** cesia new: a folder with its cesia.toml, .gitignore, src/main.ce and an empty pkg/, which the pkg tool then fills. *)
+(** cesia new: a folder with its cesia.toml, .gitignore, src/main.ce and an empty std/, which the pkg tool then fills. *)
 val create : string -> unit

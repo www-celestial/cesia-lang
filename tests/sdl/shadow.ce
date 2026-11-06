@@ -1,5 +1,5 @@
 use tests/sdl/probe
-use pkg/sdl
+use std/sdl
 
 white = 0xFFFFFF
 

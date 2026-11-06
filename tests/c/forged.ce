@@ -1,5 +1,5 @@
 (** Bytes could spell any address, so a pointer can't come from a block before a library is open. *)
-use c
+use std/c
 
 defn message(f)
   match Wait(Spawn(f))

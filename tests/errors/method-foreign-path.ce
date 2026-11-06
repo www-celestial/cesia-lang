@@ -1,4 +1,4 @@
-use pkg/date
+use std/date
 defn date.Date.Twice(d)
   2
 end

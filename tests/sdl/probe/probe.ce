@@ -1,6 +1,6 @@
 (** For tests: reads what a window drew. SDL_ReadSurfacePixel has more arguments than c.Fn takes, so the pixels are blitted
     into a block. Read them after sdl.Draw, not sdl.Frame: nothing is defined after a present. *)
-use c
+use std/c
 
 argb8888 = 0x16362004
 

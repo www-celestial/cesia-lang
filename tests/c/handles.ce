@@ -1,5 +1,5 @@
 (** A block and a task can have the same id without being equal. *)
-use c
+use std/c
 
 f() = 1
 t = Spawn(f)

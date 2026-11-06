@@ -1,4 +1,4 @@
-use-library.ce:1:5: "rope" is a library: write use pkg/rope.
-  1 | use rope
+use-library.ce:2:5: What comes with Cesia is used through std/: write use std/rope.
+  2 | use pkg/rope
     |     ^
 exit 1

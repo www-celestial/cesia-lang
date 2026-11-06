@@ -1,4 +1,4 @@
-use pkg/cpp
+use std/cpp
 
 spec = {
   Name: "demo",

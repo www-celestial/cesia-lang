@@ -1,6 +1,6 @@
 (** A window you can type into. Run from the root of the repository:
     cesia run --allow ffi=SDL3,ffi=SDL3_ttf examples/window.ce *)
-use pkg/sdl
+use std/sdl
 
 defn update(event, state)
   match event

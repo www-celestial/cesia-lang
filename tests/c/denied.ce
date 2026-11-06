@@ -1,2 +1,2 @@
-use c
+use std/c
 Print(c.Open("m", version = 6))

@@ -4,4 +4,4 @@ cesia doc date.Date.Next
 cesia doc date.Date.Parse
 cesia doc date.Date.hidden
 cesia doc date.piece.Size2
-cesia doc date
+cesia doc std/date

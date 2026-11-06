@@ -1,2 +1,2 @@
-use sys
+use std/sys
 Print(sys.Run("no-such-command-cesia") then MapErr(it.Kind))

@@ -1,14 +1,14 @@
 (** The documentation of the natives, which have no source in Cesia: cesia doc reads it, and cesia test runs its examples.
     Each one has a block whose first line is its signature. Nothing here is code but the uses. *)
-use sys
-use json
-use regex
-use columns
-use debug
-use net
-use c
-use lapack
-use cesia
+use std/sys
+use std/json
+use std/regex
+use std/columns
+use std/debug
+use std/net
+use std/c
+use std/lapack
+use std/cesia
 
 (** sys
     Files, folders, processes, the environment and the clock: what a program touches outside itself. Each function says the
@@ -22,14 +22,14 @@ use cesia
     program. Positions count characters, from 1. *)
 
 (** columns
-    The work on whole columns behind pkg/frame and pkg/sql, in OCaml: CSV, groups, joins and rows that share their keys. A
+    The work on whole columns behind std/frame and std/sql, in OCaml: CSV, groups, joins and rows that share their keys. A
     column of integers or floats is stored without a box. *)
 
 (** debug
     The breakpoints and the input of a debugger given to cesia run --debugger: needs the debug permission. *)
 
 (** net
-    TCP: listen, accept, connect, read and write, each waiting in its fiber only. Needs --allow net, or net=:PORT. pkg/http
+    TCP: listen, accept, connect, read and write, each waiting in its fiber only. Needs --allow net, or net=:PORT. std/http
     builds on it. *)
 
 (** c
@@ -38,7 +38,7 @@ use cesia
     Needs --allow ffi=NAME. *)
 
 (** lapack
-    LAPACK, when the machine has it: solve, determinant, QR and eigenvalues of matrices. pkg/num uses it when it is there,
+    LAPACK, when the machine has it: solve, determinant, QR and eigenvalues of matrices. std/num uses it when it is there,
     and its own code when it isn't. *)
 
 (** cesia
@@ -46,7 +46,7 @@ use cesia
     the uses of a source, and the documentation as the docs site reads it. *)
 
 (** sqlite3
-    SQLite's natives, which pkg/sql builds on: pools of connections, statements, cursors and scripts. Loaded at the first
+    SQLite's natives, which std/sql builds on: pools of connections, statements, cursors and scripts. Loaded at the first
     call, so that a program that doesn't use it never pays for it. Needs read and write on the path of a database, and never
     ffi. *)
 
@@ -852,7 +852,7 @@ use cesia
     The text that a pointer from C points to, read up to its zero byte. *)
 
 (** sqlite3.Pool(path, size, wait)
-    An Ok of a pool of at most size connections to a SQLite database, created if absent, or to a fresh one in memory with ":memory:", opened when first needed, with WAL for a file and foreign keys. A call that finds them all busy waits at most wait seconds for one. Needs read and write on the path, and no ffi permission. Each connection opens with safe settings: no URI names, defensive, no trusted schema, no extension, nothing attached, texts of 100 MB at most. pkg/sql is the way to use it. *)
+    An Ok of a pool of at most size connections to a SQLite database, created if absent, or to a fresh one in memory with ":memory:", opened when first needed, with WAL for a file and foreign keys. A call that finds them all busy waits at most wait seconds for one. Needs read and write on the path, and no ffi permission. Each connection opens with safe settings: no URI names, defensive, no trusted schema, no extension, nothing attached, texts of 100 MB at most. std/sql is the way to use it. *)
 
 (** sqlite3.Take(pool)
     An Ok of a connection of the pool, waited for if none is free, or an Err with Code "pool" after the wait of the pool, or "closed". sqlite3.Give puts it back. *)
@@ -927,7 +927,7 @@ use cesia
       cesia.IsVersion("v0.3") --> true *)
 
 (** cesia.Libraries()
-    The libraries of this Cesia, as an array of structs with Name and Source: what a project's pkg/ holds. *)
+    The libraries of this Cesia, as an array of structs with Name and Source: what a project's std/ holds. *)
 
 (** cesia.Toml(text)
     The tables of a cesia.toml or cesia.lock, in an Ok: each a struct with Path (an array of texts), Line and Entries, an entry a
@@ -938,7 +938,7 @@ use cesia
 (** cesia.Uses(source)
     The paths of the use lines of a source, as the loader reads them, in an Ok, or an Err of {Line, Message}. Nothing runs.
 
-      cesia.Uses("use pkg/rope")? --> ["pkg/rope"] *)
+      cesia.Uses("use std/rope")? --> ["std/rope"] *)
 
 (** cesia.DocEntry(name)
     What the site of the docs shows of a name or a keyword, or missing: a struct with Name, Module (as DocNames lists it, empty

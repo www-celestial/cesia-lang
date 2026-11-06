@@ -78,10 +78,10 @@ cesia do          # lists the tasks
 cesia do serve    # runs one, and shows the exact command
 ```
 
-`cesia new notes` makes a project: its `cesia.toml`, `.gitignore`, `src/main.ce`, `pkg/`, which holds a copy of each library of
-Cesia (`pkg/rope/rope.ce`, `pkg/ui/ui.ce`...), and `cesia.lock`, which keeps the fingerprint of each of its files. `pkg/` is read
+`cesia new notes` makes a project: its `cesia.toml`, `.gitignore`, `src/main.ce`, `std/`, which holds a copy of each library of
+Cesia (`std/rope/rope.ce`, `std/ui/ui.ce`...), and `cesia.lock`, which keeps the fingerprint of each of its files. `std/` is read
 only: `cesia pkg` says whether each library is as installed, and `cesia pkg install` makes it again, after a clone (git keeps
-neither `pkg/` nor `deps/`) or a change by hand. `cesia test .` leaves `pkg/` out: `cesia test pkg/rope` runs its examples.
+neither `std/` nor `deps/`) or a change by hand. `cesia test .` leaves `std/` out: `cesia test std/rope` runs its examples.
 
 The code can live in more than `src/`: `src = ["src", "apps"]` under `[project]` makes `use emacs` find `apps/emacs/`. A use
 looks in these folders in order, then at the root.
@@ -94,7 +94,7 @@ A name says by its first letter whether it is public, as in Go.
 - A small first letter is private, and visible only in its package: `chunk`. So is a small field of a struct: reading or writing
   one from another package stops the program, and a static method of another package, `geo.Rect.make()`, is an error at load
   time.
-- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use pkg/rope`. A file name separates its words with `-`: `material-scene.ce`.
+- Local variables, parameters and named arguments are small: `sdl.Open("t", 1, 2, f, size = 13)`. So are modules and files: `use std/rope`. A file name separates its words with `-`: `material-scene.ce`.
 - A name has no `_`: words join by capitals, `byteLength` or `ByteLength`. The lone `_` is the wildcard of a pattern.
 - A test is a private function with no parameter, `is` then a capital: `isGrows()`.
 - Dictionary keys and texts are data, never private: `{"a": 1}`, `{Kind: "box"}`, `data.name`. `json.Text` writes the keys of a
@@ -263,32 +263,30 @@ myproject/
 
 ```cesia
 (* src/main.ce *)
-use geometry
-use geometry/shapes
+use src/geometry
+use src/geometry/shapes
 
 r = geometry.Rect(2, 3)
 Print(r.Area(), shapes.Square(2))
 ```
 
-- The code of a project goes in `src/`. A `use` is absolute: it looks in each source folder of the root of the project, in order,
-  then at the root itself, so `use geometry` finds `src/geometry/` from any file, and `use tests/helpers` a folder out of `src/`.
-  The first that holds it wins. The root is the folder of the nearest `cesia.toml` above the program or, without one, the folder of
-  the file that runs. A `use` takes no `./`, no `../` and no quotes.
+- A `use` says where its code comes from. `std/` is what comes with Cesia: `use std/rope`, a library, takes `std/rope/` of the
+  project when it is there, or else the one Cesia holds; `use std/sys` is a module of the binary. `deps/` is another project. Any
+  other path is a folder of this project, from its root: `use src/geometry` from any file, `use tests/helpers` a folder out of
+  `src/`. The root is the folder of the nearest `cesia.toml` above the program or, without one, the folder of the file that runs.
+  A `use` takes no `./`, no `../` and no quotes.
 - The name in the code is the last part of the path: `use geometry/shapes` gives `shapes.Square`, and `as` renames it. Two uses of
   a file can't give one name.
 - A package is all the `.ce` files of its folder, in the order of their names. Its subfolders are other packages, and its `.test.ce`
   files aren't part of it.
 - The files of a package need no `use` to see each other, and share their small names, fields and methods. Each file keeps its own
   `use`. Two files of a package can't define one name, but the variable of a loop stays in its file.
-- A library is written with `pkg/`: `use pkg/rope` takes `pkg/rope/` of the project when it is there, or else the one Cesia holds,
-  and the name in the code is `rope`. `use rope` alone is an error. The modules written in OCaml have no `pkg/`: `use sys`,
-  `use json`, `use net`, `use c`, `use regex`, `use columns`, `use debug`, `use lapack`; a folder of the project can't have their names.
 - `cesia run file.ce` runs that file alone, and it can `use` packages. `cesia run .` runs all the files of a folder as one program,
   and a task of `cesia.toml` can say `file = "."`.
 - `cesia test` sees a folder as a package: the examples of its files run together, and each `.test.ce` sees its private names. In a
   `tests` folder and in `std/` each file stands alone, and so does a file named on the command line, except a `.test.ce`.
 - With `--watch`, a change in any file reloads its whole package. A new file needs a restart.
-- `cesia doc geometry` and `DocNames("geometry")` see a package as one module.
+- `cesia doc src/geometry` and `DocNames("src/geometry")` see a package as one module.
 
 ### Packages of other projects
 
@@ -299,20 +297,20 @@ repository, a tag, and the packages taken:
 [deps.cemacs]
 from = "github.com/www-celestial/cemacs"
 version = "v0.3.0"
-take = ["folders"]
+take = ["src/folders"]
 ```
 
 ```cesia
-use deps/www-celestial/cemacs/folders    (* the name in the code: folders *)
+use deps/www-celestial/cemacs/src/folders    (* the name in the code: folders *)
 ```
 
 - The path says where it comes from: the owner and the name of the repository, after its host unless it is `github.com`, as in
-  `use deps/gitlab.com/x/y/z`. Inside `deps/www-celestial/cemacs/`, a use of its own code reads its root and its source folders,
-  so it runs unchanged; `pkg/` and `deps/` are those of the project that runs.
+  `use deps/gitlab.com/x/y/src/z`, then the path of a folder from its root. Inside `deps/www-celestial/cemacs/`, a use of its own
+  code reads from its root, so it runs unchanged; `std/` and `deps/` are those of the project that runs.
 - Cesia follows the uses of what is taken, to the end: their own code comes with them, never their tests or other folders, and
   a `use deps/...` of theirs brings that project at the version they ask for. One version per repository, the highest asked for.
   Without `take`, every package of its source folders comes.
-- `deps/` is read only, as `pkg/`: `cesia.lock` keeps the commit of each tag and the fingerprint of each file, and the loader
+- `deps/` is read only, as `std/`: `cesia.lock` keeps the commit of each tag and the fingerprint of each file, and the loader
   checks each file it reads from them, once. A tag moved since the lock stops `cesia pkg install`. To change someone's package,
   fork it, then `cesia pkg move`.
 - git fetches each tag once, into `~/.cache/cesia/`: another install, or another project, needs no network. `cesia run`, `cesia do`
@@ -321,9 +319,9 @@ use deps/www-celestial/cemacs/folders    (* the name in the code: folders *)
 | Command | What it does |
 |---|---|
 | `cesia pkg` | each package, its version, and whether it is as installed |
-| `cesia pkg add github.com/x/y@v1.2.0 folders` | writes the `[deps.y]` table, then installs |
-| `cesia pkg install` | makes `pkg/` and `deps/` what `cesia.toml` and `cesia.lock` say: after a clone, or to undo a change by hand |
-| `cesia pkg update [label] [--to v1.3.0]` | to the newest tag, or that one, and `pkg/` to this Cesia |
+| `cesia pkg add github.com/x/y@v1.2.0 src/folders` | writes the `[deps.y]` table, then installs |
+| `cesia pkg install` | makes `std/` and `deps/` what `cesia.toml` and `cesia.lock` say: after a clone, or to undo a change by hand |
+| `cesia pkg update [label] [--to v1.3.0]` | to the newest tag, or that one, and `std/` to this Cesia |
 | `cesia pkg move www-celestial/cemacs someone/cemacs-fork` | takes a fork instead, and rewrites the uses of the project |
 | `cesia pkg --check` | the newer tags, through the network |
 
@@ -370,7 +368,7 @@ With `use`:
 ## A web server
 
 ```cesia
-use pkg/web
+use std/web
 
 defn hello(request)
   web.SendJson({"hello": request.Params["name"]})
@@ -386,10 +384,10 @@ cesia run --allow net=:8080 server.ce
 
 ## Databases
 
-`pkg/sql` talks to SQLite through its library, `libsqlite3`, which Linux and macOS have and a release of Cesia brings.
+`std/sql` talks to SQLite through its library, `libsqlite3`, which Linux and macOS have and a release of Cesia brings.
 
 ```cesia
-use pkg/sql
+use std/sql
 
 struct Todo { Id Int, Title Text, Done Bool, CreatedAt Text }
 
@@ -418,7 +416,7 @@ allow = ["read=data", "write=data"]   # SQLite's -wal and -shm files sit beside 
 ```
 
 - `Exec` gives `{Changed, LastId}`; `Query` every row; `One` the first or missing; `Each` streams; `Table` gives columns,
-  `{Names, Columns}`, as `pkg/frame` holds them; `Script` runs a schema; `Transaction` commits an Ok, rolls back an Err or a
+  `{Names, Columns}`, as `std/frame` holds them; `Script` runs a schema; `Transaction` commits an Ok, rolls back an Err or a
   panic, and nests as savepoints. `as = User.From` types each row; the first Err says its `Row`.
 - Values: missing is NULL, a Bool 1 or 0, Int, Float and Text as they are, a `date.Date` its text, a list or a map its JSON.
   Back: NULL is missing, a BLOB a Text of its bytes, a column declared `boolean` a Bool. Dates stay texts: `date.Parse` reads
@@ -433,12 +431,12 @@ allow = ["read=data", "write=data"]   # SQLite's -wal and -shm files sit beside 
   `library`, `pool`, `closed`, `done`, `statements`, `params`, `names`. A message never holds a parameter.
 - A pool of `max = 8` connections; a call waits `wait = 5` seconds for one, and a busy database is waited for in the fiber, so
   the others run. `sqlite::memory:` keeps one connection. Calls into SQLite run on the main thread: right for short queries.
-- `pkg/sql` is the one way to SQLite: `c.Open` refuses its library.
+- `std/sql` is the one way to SQLite: `c.Open` refuses its library.
 
 ## C and C++
 
 ```cesia
-use c
+use std/c
 
 defn main()
   m = c.Open("m", version = 6)?
@@ -465,8 +463,8 @@ cesia do material    # a material editor: drag a node, turn the light, move the 
 ```
 
 ```cesia
-use pkg/sdl
-use pkg/ui
+use std/sdl
+use std/ui
 
 look = ui.Look(ui.Dark, sdl.Measure(window).Width, sdl.Measure(window).Height)
 frame = Flatten([ui.Panel("Details", area, look), ui.Slider(0.5, bar, look)])
@@ -520,7 +518,7 @@ defn Grown(
 end
 ```
 
-`cesia doc` lists the modules, `cesia doc pkg/num` the names of a module (from the project's copy when there is one), and
+`cesia doc` lists the modules, `cesia doc std/num` the names of a module (from the project's copy when there is one), and
 `cesia doc num.Solve` shows one, written as in the code, as `cesia doc date.Date.Year` shows a method. A program, or an editor, asks the same way: `Doc("num.Solve")` or `Doc(Sort)` give the text or
 `missing`, and `DocNames("num")` the names. An instance method has no value to pass, so `Doc("Rect.Area")` also finds those of the program.
 A function written in OCaml, as `Sort` or `json.Parse`, has its text in the binary, and `cesia doc` ends it with `Built into

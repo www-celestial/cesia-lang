@@ -1,5 +1,5 @@
 use tests/sdl/probe
-use pkg/sdl
+use std/sdl
 
 body = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 strong = "../../examples/fonts/NotoSans-Medium.ttf"

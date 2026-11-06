@@ -1,7 +1,7 @@
 (** Typed columns: integers without a box, and the native work on columns. *)
-use columns
-use pkg/frame
-use pkg/csv
+use std/columns
+use std/frame
+use std/csv
 
 defn fails(f, kind)
   (Wait(Spawn(f)) then MapErr(it.Kind)) == Err(kind)

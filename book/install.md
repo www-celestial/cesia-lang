@@ -94,8 +94,8 @@ cesia do run
 
 - `cesia.toml`, which names the project and its tasks;
 - `src/main.ce`, the program, which prints `Hello from hello`;
-- `pkg/`, a copy of the libraries of Cesia, and `cesia.lock`, which keeps the fingerprint of each of their files;
-- `.gitignore`, which leaves `pkg/` and `deps/` out of git: `cesia pkg install` makes them again after a clone.
+- `std/`, a copy of the libraries of Cesia, and `cesia.lock`, which keeps the fingerprint of each of their files;
+- `.gitignore`, which leaves `std/` and `deps/` out of git: `cesia pkg install` makes them again after a clone.
 
 The `cesia.toml` of a new project:
 

@@ -1,12 +1,12 @@
 as installed
 0 passed, 0 failed
-src/main.ce:1:5: pkg/rope/rope.ce was changed by hand: run cesia pkg install.
-  1 | use pkg/rope
+src/main.ce:1:5: std/rope/rope.ce was changed by hand: run cesia pkg install.
+  1 | use std/rope
     |     ^
-src/main.ce:1:5: pkg/rope/added.ce was changed by hand: run cesia pkg install.
-  1 | use pkg/rope
+src/main.ce:1:5: std/rope/added.ce was changed by hand: run cesia pkg install.
+  1 | use std/rope
     |     ^
-src/main.ce:1:5: pkg/rope isn't installed: run cesia pkg install.
-  1 | use pkg/rope
+src/main.ce:1:5: std/rope isn't installed: run cesia pkg install.
+  1 | use std/rope
     |     ^
 exit 1

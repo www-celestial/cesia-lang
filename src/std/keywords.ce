@@ -1,8 +1,8 @@
 (** The documentation of the keywords, which have no source: cesia doc reads it, and cesia test runs its examples. Each one has
     a block whose first line is the word. The first twenty are reserved, and no name can be one; the last four mean something
     in some places only. Nothing here is code but the uses. *)
-use pkg/set
-use pkg/queue as line
+use std/set
+use std/queue as line
 
 (** if
     A choice, and a value: if a condition, then the value of its branch, else that of the other one. Without else, a false
@@ -129,9 +129,10 @@ use pkg/queue as line
       5 then it + 1 --> 6 *)
 
 (** use
-    Makes a package or a module visible in a file, by the last part of its path: use pkg/set gives set. A library of Cesia is
-    written with pkg/, a module of the binary without: use sys, use json. A use is absolute, from the root of the project, and
-    the files of one package need none to see each other.
+    Makes a package or a module visible in a file, by the last part of its path: use std/set gives set. The path says where it
+    comes from: std/ is what comes with Cesia, its libraries and the modules of the binary (std/rope, std/sys); deps/ is another
+    project; any other path is a folder of this project, from its root (src/shapes). The files of one package need none to see
+    each other.
 
       set.Count(set.Of([1, 1, 2])) --> 2 *)
 
@@ -160,7 +161,7 @@ use pkg/queue as line
       Filter(it > 1, [1, 2, 3]) --> [2, 3] *)
 
 (** as
-    After a use, renames what the file sees: use pkg/queue as line gives line.Of.
+    After a use, renames what the file sees: use std/queue as line gives line.Of.
 
       line.Count(line.Of([1, 2])) --> 2 *)
 

@@ -149,7 +149,7 @@ Transpose(m) -->
 Matmul(m, m) -->
 ```
 
-For more, such as solving a system of equations, the library `pkg/num` has [num.Solve] and its friends; the chapter on data
+For more, such as solving a system of equations, the library `std/num` has [num.Solve] and its friends; the chapter on data
 comes back to it.
 
 ## Next

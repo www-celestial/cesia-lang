@@ -1,6 +1,6 @@
 use tests/sdl/probe
-use c
-use pkg/sdl
+use std/c
+use std/sdl
 
 black = 0x000000
 green = 0x00FF00

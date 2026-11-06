@@ -1,5 +1,5 @@
 use tests/sdl/probe
-use pkg/sdl
+use std/sdl
 
 background = 0x102030
 font = "../../examples/fonts/JetBrainsMono-Regular.ttf"

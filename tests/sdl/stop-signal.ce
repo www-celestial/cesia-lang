@@ -1,7 +1,7 @@
 (** Without --watch, a stop signal is a quit event, and it is one no longer once the window is closed. See stop-signal.cmd. *)
 use tests/sdl/probe
-use pkg/sdl
-use sys
+use std/sdl
+use std/sys
 
 defn update(event, state)
   if event.Kind == "quit" or event.Kind == "text"

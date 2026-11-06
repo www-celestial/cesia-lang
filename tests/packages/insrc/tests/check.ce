@@ -1,4 +1,4 @@
 (** A program out of src/ finds the same packages. *)
-use shapes
+use src/shapes
 
 Print(shapes.Where())

@@ -119,15 +119,13 @@ val use_empty : string -> t
 val use_same : string -> string -> int -> t
 
 (** [use_both name folder]: a package named like a module of the binary. *)
-val use_both : string -> string -> t
 
 val use_missing : string -> t
 
-(** [use_library name]: [use rope], for a library of Cesia. *)
-val use_library : string -> t
-
-(** [use_binary name]: [use pkg/json], for a module written in OCaml. *)
-val use_binary : string -> t
+(** [use_std name]: [use rope], [use pkg/rope] or [use sys], written before std/. [use_path name folder]: [use shapes] for a
+    folder of the project, whose use is its path from the root. *)
+val use_std : string -> t
+val use_path : string -> string -> t
 
 (** [source_missing dir], [source_outside dir]: a folder of [src] in cesia.toml. *)
 val source_missing : string -> t
@@ -140,7 +138,7 @@ val cesia_needed : string -> string -> t
 (** What [cesia] in cesia.toml holds, for {!project_type}. *)
 val cesia_not_version : string
 
-(** [changed_by_hand path], [not_installed folder]: a file of pkg/ or deps/ against cesia.lock. *)
+(** [changed_by_hand path], [not_installed folder]: a file of std/ or deps/ against cesia.lock. *)
 val changed_by_hand : string -> t
 
 val not_installed : string -> t

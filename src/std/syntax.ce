@@ -1,6 +1,6 @@
 (** The colors of Cesia code: a line is read in one pass, by states, and gives words with a role. Nothing here panics, whatever
     the line: unfinished texts and comments only carry their state to the next line. Cemacs and the docs site color with it. *)
-use cesia
+use std/cesia
 
 (** The role of a keyword: an index in the syntax colors of the theme. *)
 Keyword = 1

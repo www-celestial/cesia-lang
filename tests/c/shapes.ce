@@ -1,5 +1,5 @@
 (** Calls the function of every shape in the fixture, with every class of argument. *)
-use c
+use std/c
 
 pow2(k) = Reduce((acc, i) -> acc * 2, 1, 1..k)
 isFloat(mask, k) = Mod(Div(mask, pow2(k)), 2) == 1

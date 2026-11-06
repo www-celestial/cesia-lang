@@ -1,7 +1,7 @@
 (** The window waits without stopping the other fibers: only one of them can end it. *)
 use tests/sdl/probe
-use pkg/sdl
-use sys
+use std/sdl
+use std/sys
 
 update(event, state) = match event
   {Kind: "quit"} -> missing

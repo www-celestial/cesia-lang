@@ -1,6 +1,6 @@
-use pkg/web
-use pkg/http
-use sys
+use std/web
+use std/http
+use std/sys
 
 base = "http://127.0.0.1:18201"
 

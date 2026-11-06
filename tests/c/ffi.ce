@@ -1,5 +1,5 @@
 (** More than 6 arguments, structures by value, variadic functions and callbacks. *)
-use c
+use std/c
 
 path = Args[1]
 lib = Unwrap(c.Open(path))

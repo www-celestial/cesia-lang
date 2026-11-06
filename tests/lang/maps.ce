@@ -1,4 +1,4 @@
-use json
+use std/json
 use tests/errors/priv/fields as f
 
 (* One map, whatever way it is built: a literal, Dict, json, grown by names or by a variable, past 16 keys. *)

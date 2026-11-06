@@ -1,5 +1,5 @@
 (** CSV, as RFC 4180 writes it: quotes around a field, doubled inside. *)
-use columns
+use std/columns
 
 (** The rows of CSV text, each as a list of texts.
 

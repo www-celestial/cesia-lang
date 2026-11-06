@@ -1,7 +1,7 @@
 (** A window through SDL3 and SDL3_ttf, found at run time. Needs --allow ffi=SDL3,ffi=SDL3_ttf.
     The screen is a value: an array of commands, each one a struct. *)
-use c
-use sys
+use std/c
+use std/sys
 
 InitVideo = 0x20           (** SDL's flag that starts its video part. *)
 WindowResizable = 0x20     (** SDL's flag of a window that can change its size. *)

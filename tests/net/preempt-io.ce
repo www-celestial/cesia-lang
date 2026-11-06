@@ -1,5 +1,5 @@
-use net
-use sys
+use std/net
+use std/sys
 
 defn forever()
   while true end

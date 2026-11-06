@@ -252,7 +252,7 @@ let version_arg ctx (a : Types.t array) =
 
 let library address : Types.t = Handle { kind = "library"; id = address; task = None }
 
-(* SQLite has one way in, pkg/sql, which checks the files a database reaches: never through c. *)
+(* SQLite has one way in, std/sql, which checks the files a database reaches: never through c. *)
 let is_sqlite name =
   let base = String.lowercase_ascii (Filename.basename name) in
   String.starts_with ~prefix:"sqlite3" base || String.starts_with ~prefix:"libsqlite3" base

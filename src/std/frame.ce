@@ -1,7 +1,7 @@
 (** Tables of named columns, in the spirit of pandas. A frame is a value: every function gives a new one. The work on whole
     columns is native, and a column of integers or floats is stored without a box. *)
-use columns as col
-use pkg/csv
+use std/columns as col
+use std/csv
 
 defn Table(names, columns)
   (** A frame from the names of its columns and the columns, in the same order.

@@ -1,7 +1,7 @@
 (** A window under --watch: its state must survive a reload. See tools/reload-test.sh. *)
-use c
-use pkg/sdl
-use sys
+use std/c
+use std/sdl
+use std/sys
 
 version() = 1
 finished() = false

@@ -1,6 +1,6 @@
 (** The server side of WebSocket, RFC 6455, on the connection http hands over. *)
-use pkg/encode
-use pkg/http
+use std/encode
+use std/http
 
 guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MaxFrame = 1048576   (** The largest frame read, in bytes: a larger one is refused. *)

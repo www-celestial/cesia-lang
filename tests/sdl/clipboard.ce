@@ -1,4 +1,4 @@
-use pkg/sdl
+use std/sdl
 
 defn main()
   w = sdl.Open("t", 100, 100, "../../examples/fonts/JetBrainsMono-Regular.ttf")?

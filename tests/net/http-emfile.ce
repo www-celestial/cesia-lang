@@ -1,6 +1,6 @@
-use pkg/http
-use net
-use sys
+use std/http
+use std/net
+use std/sys
 
 crlf = "$(Char(13))$(Char(10))"
 handle(r) = {Status: 200, Body: "fine"}

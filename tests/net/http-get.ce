@@ -1,6 +1,6 @@
-use pkg/http
-use net
-use sys
+use std/http
+use std/net
+use std/sys
 
 crlf = "$(Char(13))$(Char(10))"
 sized = "HTTP/1.1 200 OK$(crlf)Content-Length: 5$(crlf)X-A: 1$(crlf)$(crlf)hello"

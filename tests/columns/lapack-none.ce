@@ -1,5 +1,5 @@
 (** Without a library, the same functions give the same answers, more slowly. *)
-use pkg/num
+use std/num
 
 n = 33
 m = Zeros(n, n)

@@ -1,6 +1,6 @@
 (** Every function under a permission, run the same way under the three cases of permissions_*.cmd. *)
-use net
-use sys
+use std/net
+use std/sys
 
 calls = [
   ["write", () -> sys.Write("perm_work/a", "x")],

@@ -8,7 +8,7 @@ tools, in apps
 src/nope.ce:1:5: Module "pkg/nope" doesn't exist.
   1 | use pkg/nope
     |     ^
-src/binary.ce:1:5: "json" is a module of the binary: write use json.
+src/binary.ce:1:5: What comes with Cesia is used through std/: write use std/json.
   1 | use pkg/json
     |     ^
 cesia.toml:3:1: The source folder "nope" doesn't exist.

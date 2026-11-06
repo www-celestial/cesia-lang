@@ -1,7 +1,7 @@
-use pkg/set
-use pkg/queue
-use pkg/heap
-use pkg/algo
+use std/set
+use std/queue
+use std/heap
+use std/algo
 
 isSetOf() = Equal(set.Items(set.Of([2, 1, 2])), [1, 2])
 isSetMember() = set.Member(1, set.Of([1])) and not set.Member(2, set.Of([1]))

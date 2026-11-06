@@ -1,9 +1,9 @@
-(** cesia pkg: the packages of a project. pkg/ holds Cesia's libraries, deps/ the packages of other projects; both are read
+(** cesia pkg: the packages of a project. std/ holds Cesia's libraries, deps/ the packages of other projects; both are read
     only, and cesia.lock keeps the fingerprint of each of their files, which the loader checks at each use.
     Run by the binary: cesia pkg [install | update | add | move | --check]. git fetches the other projects, once per tag, into
     a cache, so that a second install needs no network. *)
-use sys
-use cesia
+use std/sys
+use std/cesia
 
 usage = "usage: cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]"
 lockFile = "cesia.lock"
@@ -12,7 +12,7 @@ quote = Char(34)
 backslash = Char(92)
 
 defn parent(path)
-  (** The folder of a path: "pkg/rope/rope.ce" gives "pkg/rope", "a" gives "". *)
+  (** The folder of a path: "std/rope/rope.ce" gives "std/rope", "a" gives "". *)
   parts = Split("/", path)
   Join("/", parts[1..Len(parts) - 1])
 end
@@ -63,7 +63,7 @@ end
 
 defn lockText(lock)
   (** The text of cesia.lock: the dependencies by label, then the libraries of Cesia. *)
-  lines = ["# Written by cesia pkg, which the loader checks: run cesia pkg install to make pkg/ and deps/ match it.", ""]
+  lines = ["# Written by cesia pkg, which the loader checks: run cesia pkg install to make std/ and deps/ match it.", ""]
   for d in SortBy(it.Label, lock.Deps)
     head = ["[deps.$(d.Label)]", "from = $(quoted(d.From))", "version = $(quoted(d.Version))", "commit = $(quoted(d.Commit))",
       "asked = $(quoted(d.Asked))"]
@@ -73,8 +73,8 @@ defn lockText(lock)
     head = Append("packages = $(texts(d.Packages))", head)
     lines = Concat(Concat(lines, Concat(head, fileLines(d.Files))), [""])
   end
-  if not IsMissing(lock.Pkg)
-    lines = Concat(Concat(lines, Concat(["[pkg]", "cesia = $(quoted(lock.Pkg.Cesia))"], fileLines(lock.Pkg.Files))), [""])
+  if not IsMissing(lock.Std)
+    lines = Concat(Concat(lines, Concat(["[std]", "cesia = $(quoted(lock.Std.Cesia))"], fileLines(lock.Std.Files))), [""])
   end
   Join("\n", lines)
 end
@@ -104,16 +104,16 @@ defn fileOf(line)
 end
 
 defn readLock()
-  (** What cesia.lock says, as {Pkg, Deps}: no Pkg and no Deps without it. *)
-  lock = {Pkg: missing, Deps: []}
+  (** What cesia.lock says, as {Std, Deps}: no Std and no Deps without it. *)
+  lock = {Std: missing, Deps: []}
   if not sys.Exists(lockFile)
     return Ok(lock)
   end
   for t in readToml(lockFile)?
     f = fields(t)
     files = Map(fileOf, GetOr("files", [], f))
-    if Equal(t.Path, ["pkg"])
-      lock.Pkg = {Cesia: GetOr("cesia", "", f), Files: files}
+    if Equal(t.Path, ["std"])
+      lock.Std = {Cesia: GetOr("cesia", "", f), Files: files}
     else if Len(t.Path) == 2 and t.Path[1] == "deps"
       dep = {Label: t.Path[2], From: GetOr("from", "", f), Version: GetOr("version", "", f), Commit: GetOr("commit", "", f),
         Asked: GetOr("asked", "", f), Take: Get("take", f), Packages: GetOr("packages", [], f), Files: files}
@@ -331,16 +331,9 @@ defn fetch(path, from, version)
   Ok({Path: path, From: from, Version: version, Dir: dir, Commit: commit, Src: src, Deps: deps})
 end
 
-defn packageDir(p, name)
-  (** Where a package of a project is, from its root, as its own uses find it: in the first source folder that has it, or
-      else at the root; missing if it isn't there. *)
-  for s in p.Src
-    rel = if s == "." name else "$s/$name" end
-    if isDir("$(p.Dir)/$rel")
-      return rel
-    end
-  end
-  if isDir("$(p.Dir)/$name") name else missing end
+defn packageDir(p, path)
+  (** A package of a project, by its path from the root, as a use names it: src/folders; missing if it isn't there. *)
+  if isDir("$(p.Dir)/$path") path else missing end
 end
 
 defn packagesUnder(base, prefix)
@@ -363,8 +356,8 @@ defn packagesUnder(base, prefix)
 end
 
 defn allPackages(p)
-  (** Every package of the source folders of a project. *)
-  Unique(FlatMap(s -> packagesUnder("$(p.Dir)/$s", ""), p.Src))
+  (** Every package of the source folders of a project, by its path from the root: src/folders. *)
+  Unique(FlatMap(s -> [if s == "." n else "$s/$n" end for n in packagesUnder("$(p.Dir)/$s", "")], p.Src))
 end
 
 defn resolve(wanted)
@@ -390,7 +383,7 @@ defn resolve(wanted)
       p = fetch(path, d.From, versions[path].Version)?
       projects[path] = p
       brought[path] = []
-      names = if IsMissing(d.Take) allPackages(p) else Filter(not StartsWith("pkg/", it), d.Take) end
+      names = if IsMissing(d.Take) allPackages(p) else Filter(not StartsWith("std/", it), d.Take) end
       for n in names
         if IsMissing(packageDir(p, n))
           return Err("$path has no package $quote$n$quote: it has $(Join(", ", allPackages(p))).")
@@ -431,7 +424,7 @@ defn resolve(wanted)
                 end
                 queue = Append({Path: target.Path, Name: target.Name}, queue)
               end
-            else if not StartsWith("pkg/", u)
+            else if not StartsWith("std/", u)
               queue = Append({Path: item.Path, Name: u}, queue)
             end
           end
@@ -539,33 +532,33 @@ defn installDeps(lock, resolved, fresh)
 end
 
 defn libraryFiles()
-  (** The libraries of this Cesia as pkg/ holds them: pkg/rope/rope.ce. *)
-  [{Path: "pkg/$(l.Name)/$(l.Name).ce", Source: l.Source} for l in cesia.Libraries()]
+  (** The libraries of this Cesia as std/ holds them: std/rope/rope.ce. *)
+  [{Path: "std/$(l.Name)/$(l.Name).ce", Source: l.Source} for l in cesia.Libraries()]
 end
 
-defn installPkg(lock)
-  (** Makes pkg/ this Cesia's libraries, when the project has a pkg/: written only if it differs. Gives the lock with its
-      [pkg]. *)
-  if IsMissing(lock.Pkg) and not sys.Exists("pkg")
+defn installStd(lock)
+  (** Makes std/ this Cesia's libraries, when the project has a std/: written only if it differs. Gives the lock with its
+      [std]. *)
+  if IsMissing(lock.Std) and not sys.Exists("std")
     return Ok(lock)
   end
   wanted = libraryFiles()
-  if not sameFolder("pkg", wanted)
-    replaceFolder("pkg", wanted)?
-    Print("pkg/ holds the libraries of Cesia $(cesia.Version()).")
+  if not sameFolder("std", wanted)
+    replaceFolder("std", wanted)?
+    Print("std/ holds the libraries of Cesia $(cesia.Version()).")
   end
-  lock.Pkg = {Cesia: cesia.Version(), Files: fingerprints(wanted)}
+  lock.Std = {Cesia: cesia.Version(), Files: fingerprints(wanted)}
   Ok(lock)
 end
 
 defn installWith(lock, wanted, fresh)
-  (** Makes pkg/ and deps/ what these dependencies need, and gives the new lock, not yet written. Everything is fetched and
+  (** Makes std/ and deps/ what these dependencies need, and gives the new lock, not yet written. Everything is fetched and
       read before anything is written. *)
   if asInstalled(lock, wanted) and Len(fresh) == 0
-    return installPkg(lock)
+    return installStd(lock)
   end
   resolved = resolve(wanted)?
-  done = installPkg(lock)?
+  done = installStd(lock)?
   installDeps(done, resolved, fresh)
 end
 
@@ -663,13 +656,13 @@ defn update(lock, args)
 end
 
 defn sourceFiles(dir)
-  (** The .ce files of the project, outside pkg/, deps/, _build and dot folders. *)
+  (** The .ce files of the project, outside std/, deps/, _build and dot folders. *)
   found = []
   listed = sys.List(dir)
   if IsOk(listed)
     for name in listed.Value
       path = if dir == "." name else "$dir/$name" end
-      if StartsWith(".", name) or (dir == "." and (name == "pkg" or name == "deps" or name == "_build"))
+      if StartsWith(".", name) or (dir == "." and (name == "std" or name == "deps" or name == "_build"))
         found = found
       else if isDir(path)
         found = Concat(found, sourceFiles(path))
@@ -741,19 +734,19 @@ end
 defn listing(lock)
   (** cesia pkg: each package, who gives it, its version, and whether it is as installed. *)
   rows = []
-  if not IsMissing(lock.Pkg) and not sys.Exists("pkg")
-    rows = Append(["pkg", "cesia $(lock.Pkg.Cesia)", "not installed"], rows)
-  else if not IsMissing(lock.Pkg)
+  if not IsMissing(lock.Std) and not sys.Exists("std")
+    rows = Append(["std", "cesia $(lock.Std.Cesia)", "not installed"], rows)
+  else if not IsMissing(lock.Std)
     byLibrary = Dict()
-    for f in lock.Pkg.Files
+    for f in lock.Std.Files
       name = Split("/", f.Path)[2]
       byLibrary[name] = Append(f, GetOr(name, [], byLibrary))
     end
     for name in Sort(Keys(byLibrary))
-      rows = Append(["pkg/$name", "cesia $(lock.Pkg.Cesia)", stateOf("pkg/$name", byLibrary[name])], rows)
+      rows = Append(["std/$name", "cesia $(lock.Std.Cesia)", stateOf("std/$name", byLibrary[name])], rows)
     end
-  else if sys.Exists("pkg")
-    rows = Append(["pkg", "", "not installed"], rows)
+  else if sys.Exists("std")
+    rows = Append(["std", "", "not installed"], rows)
   end
   for d in readDeps(sys.Read(projectFile)?)?
     l = lockedAs(lock, d)

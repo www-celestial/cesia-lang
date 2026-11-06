@@ -1,6 +1,6 @@
 (** Runs forever: tools/reload-test.sh edits the files of its package while it runs. *)
 use pack
-use sys
+use std/sys
 
 defn watching(last)
   v = pack.Value()

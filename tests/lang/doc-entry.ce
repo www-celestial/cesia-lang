@@ -1,5 +1,5 @@
 (* cesia.DocEntry on a function with parts, a struct with fields, a method, a static method and a native of a fake std. *)
-use cesia
+use std/cesia
 
 defn show(name)
   e = cesia.DocEntry(name)

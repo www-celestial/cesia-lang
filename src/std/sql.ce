@@ -2,10 +2,10 @@
     and streams. Values only go through ?, never into the text: one statement per call, and sql.Script for a schema. URLs:
     sqlite:PATH and sqlite::memory:. A file needs read and write, and uses WAL and foreign keys; a busy database is waited
     for in the fiber, so the other fibers run meanwhile. *)
-use columns
-use json
-use sqlite3
-use pkg/date
+use std/columns
+use std/json
+use std/sqlite3
+use std/date
 
 batch = 1024
 dateFields = ["Year", "Month", "Day", "Hour", "Minute", "Second"]
@@ -257,7 +257,7 @@ end
 
 defn Table(text, params, db)
   (** An Ok of {Names, Columns}: Columns a map from each name, made a public name, to its column, a list. A column of
-      integers or of floats holds them without a box, as pkg/frame and the natives of columns want. *)
+      integers or of floats holds them without a box, as std/frame and the natives of columns want. *)
   b = held(conn -> tableCells(text, params, conn), db)?
   n = Len(b.Names)
   if n == 0

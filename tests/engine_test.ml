@@ -165,7 +165,7 @@ let () =
   in
   List.iter
     (fun (e, want) ->
-       let _, out, err = run ("use json\nPrint(Storage(" ^ e ^ "))\n") in
+       let _, out, err = run ("use std/json\nPrint(Storage(" ^ e ^ "))\n") in
        check ("storage of " ^ e ^ ": " ^ out ^ err) (out = want ^ "\n"))
     storage;
   let grown n = "m = {}\nfor i in 1.." ^ string_of_int n ^ "\n  k = \"k$(i)\"\n  m[k] = i\nend\nPrint(Storage(m), Len(m))\n" in
@@ -175,7 +175,7 @@ let () =
   check "a name added at one place shares the keys it gives"
     (run "defn f(x)\n  m = {A: x}\n  m.B = 2\n  m\nend\nPrint(SameKeys(f(1), f(2)), Equal(Keys(f(1)), [\"A\", \"B\"]))\n" = (0, "true true\n", ""));
   check "rows of one JSON share their keys"
-    (run "use json\nd = Unwrap(json.Parse(\"[{\\\"a\\\": 1, \\\"b\\\": 2}, {\\\"a\\\": 3, \\\"b\\\": 4}]\"))\nPrint(SameKeys(d[1], d[2]), d[2].b)\n" = (0, "true 4\n", ""));
+    (run "use std/json\nd = Unwrap(json.Parse(\"[{\\\"a\\\": 1, \\\"b\\\": 2}, {\\\"a\\\": 3, \\\"b\\\": 4}]\"))\nPrint(SameKeys(d[1], d[2]), d[2].b)\n" = (0, "true 4\n", ""));
   check "keys from data share nothing" (run "defn f()\n  m = {}\n  k = \"A\"\n  m[k] = 1\n  m\nend\nPrint(SameKeys(f(), f()))\n" = (0, "false\n", ""));
   (* The trie against a list of keys in the order of insertion, for random puts and drops: with every bit of hash, with 5,
      so that keys meet deep down, and with none, so that every key falls into the tree of equal hashes. *)

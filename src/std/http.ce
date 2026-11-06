@@ -1,6 +1,6 @@
 (** A small HTTP/1.1 server and client, written on net and the text functions. *)
-use net
-use sys
+use std/net
+use std/sys
 
 Crlf = "\r\n"              (** The line end of HTTP. *)
 Blank = "$Crlf$Crlf"       (** The empty line that ends the head of a request or a response. *)

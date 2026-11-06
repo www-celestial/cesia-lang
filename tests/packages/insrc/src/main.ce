@@ -1,7 +1,8 @@
-(** A use of a package in src/, of a folder inside one, of a name in both places, and of a folder only at the root. *)
-use shapes
-use shapes/round
-use both
+(** A use is the path of a folder from the root: a package in src/, a folder inside one, a name in both places, and a folder
+    at the root. *)
+use src/shapes
+use src/shapes/round
+use src/both
 use helper
 
 Print(shapes.Where())

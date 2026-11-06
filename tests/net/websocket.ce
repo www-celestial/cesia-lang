@@ -1,7 +1,7 @@
-use pkg/web
-use net
-use sys
-use pkg/encode
+use std/web
+use std/net
+use std/sys
+use std/encode
 
 crlf = "$(Char(13))$(Char(10))"
 a = web.App()

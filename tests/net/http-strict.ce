@@ -1,7 +1,7 @@
 (** Requests that a front proxy could read otherwise are refused, and HEAD has no body. *)
-use pkg/http
-use net
-use sys
+use std/http
+use std/net
+use std/sys
 
 crlf = "\r\n"
 Spawn(() -> http.Serve(r -> {Status: 200, Body: "hello"}, port = 18206))

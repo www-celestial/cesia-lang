@@ -1,5 +1,5 @@
-use pkg/http
-use sys
+use std/http
+use std/sys
 
 defn handle(r)
   sys.Sleep(0.2)

@@ -278,7 +278,7 @@ let create name =
   let needed = String.concat "." (List.filteri (fun i _ -> i < 2) (String.split_on_char '.' Version.number)) in
   write (Filename.concat name file_name)
     (Printf.sprintf "[project]\nname = \"%s\"\ncesia = \"%s\"\n\n[tasks.run]\nfile = \"src/main.ce\"\n" name needed);
-  write (Filename.concat name ".gitignore") "pkg/\ndeps/\n";
+  write (Filename.concat name ".gitignore") "std/\ndeps/\nsite/\n";
   write (Filename.concat code "main.ce") (Printf.sprintf "Print(\"Hello from %s\")\n" name);
-  (* An empty pkg/ asks cesia pkg install for Cesia's libraries. *)
-  Sys.mkdir (Filename.concat name "pkg") 0o755
+  (* An empty std/ asks cesia pkg install for Cesia's libraries. *)
+  Sys.mkdir (Filename.concat name "std") 0o755

@@ -1,7 +1,7 @@
 (** TLS through OpenSSL, with memory buffers: the sockets stay with net, so a fiber never blocks the others during a
     handshake. Run with --allow ffi=ssl,ffi=crypto. *)
-use c
-use net
+use std/c
+use std/net
 
 chunk = 65536
 

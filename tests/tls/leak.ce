@@ -1,8 +1,8 @@
 (** Failed handshakes give back their memory: this limit stops the server otherwise. *)
-use pkg/tls
-use pkg/web
-use net
-use sys
+use std/tls
+use std/web
+use std/net
+use std/sys
 
 defn garbage()
   c = net.Connect("127.0.0.1", 18210)?

@@ -1,7 +1,7 @@
 (** The documentation of the language, from the language: what an editor shows. *)
-use pkg/num
-use sys
-use cesia
+use std/num
+use std/sys
+use std/cesia
 
 (** Twice x, for the test of a function of this file.
 
@@ -43,11 +43,11 @@ isDocOfNothing() = IsMissing(Doc("NoSuchName")) and IsMissing(Doc("num.NoSuchNam
 isDocHidesPrivateNames() = IsMissing(Doc("runLength"))
 isDocOfALambda() = IsMissing(Doc(x -> x))
 
-isDocNamesOfTheModules() = "pkg/num" in DocNames() and not ("num" in DocNames()) and "sys" in DocNames() and "prelude" in DocNames() and not ("natives" in DocNames())
+isDocNamesOfTheModules() = "std/num" in DocNames() and not ("num" in DocNames()) and "std/sys" in DocNames() and "prelude" in DocNames() and not ("natives" in DocNames())
 isDocNamesOfThePrelude() = "Inc" in DocNames("prelude") and "Sort" in DocNames("prelude") and not ("runLength" in DocNames("prelude"))
-isDocNamesOfAModule() = "num.Solve" in DocNames("pkg/num") and "num.Solve" in DocNames("num") and "sys.Now" in DocNames("sys")
+isDocNamesOfAModule() = "num.Solve" in DocNames("std/num") and Equal(DocNames("pkg/num"), []) and "sys.Now" in DocNames("std/sys")
 isDocNamesOfNothing() = Equal(DocNames("no_such_module"), [])
-isDocNamesHasNoKeywords() = not ("keywords" in DocNames()) and not ("pkg/keywords" in DocNames())
+isDocNamesHasNoKeywords() = not ("keywords" in DocNames())
 
 isDocOfAKeyword() = StartsWith("match\n", Doc("match")) and Contains("patterns", Doc("match")) and StartsWith("?\n", Doc("?"))
 isEveryKeywordHasABlock() = Equal(Filter(k -> IsMissing(cesia.DocEntry(k)), cesia.Keywords()), [])
@@ -61,10 +61,10 @@ end
 
 defn isDocEntryOfAFunction()
   e = cesia.DocEntry("num.Solve")
-  e.Module == "pkg/num" and StartsWith("Solve(m, b)", e.Signature) and not e.Builtin and e.File == "std/num.ce" and e.Line > 1
+  e.Module == "std/num" and StartsWith("Solve(m, b)", e.Signature) and not e.Builtin and e.File == "std/num.ce" and e.Line > 1
 end
 
-isDocEntryOfAModuleNative() = cesia.DocEntry("sys.Read").Module == "sys" and cesia.DocEntry("sys.Read").Builtin
+isDocEntryOfAModuleNative() = cesia.DocEntry("sys.Read").Module == "std/sys" and cesia.DocEntry("sys.Read").Builtin
 isDocEntryOfAKeyword() = cesia.DocEntry("if").Module == "" and cesia.DocEntry("if").Builtin and Len(cesia.DocEntry("if").Examples) > 0
 isDocEntryOfNothing() = IsMissing(cesia.DocEntry("NoSuchName")) and IsMissing(cesia.DocEntry("runLength"))
 isAssetsOfTheSite() = IsText(cesia.Asset("site.css")) and IsText(cesia.Asset("site.js")) and IsMissing(cesia.Asset("site.ce"))

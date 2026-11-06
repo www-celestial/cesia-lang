@@ -1,6 +1,6 @@
 (** A chunked response cut anywhere is an Err of the client, never a panic. *)
-use pkg/http
-use net
+use std/http
+use std/net
 
 crlf = "\r\n"
 head = "HTTP/1.1 200 OK$(crlf)transfer-encoding: chunked$crlf$crlf"

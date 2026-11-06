@@ -1,4 +1,4 @@
-pkg/ holds the libraries of Cesia 0.2.0.
+std/ holds the libraries of Cesia 0.2.0.
 Created hello. Run it: cd hello && cesia do run
 [project]
 name = "hello"
@@ -6,20 +6,21 @@ cesia = "0.2"
 
 [tasks.run]
 file = "src/main.ce"
-pkg/
+std/
 deps/
+site/
 Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
 algo cpp crypto csv date encode frame heap history http markdown num queue rope sdl set sql syntax tls ui web websocket 
  22 1
 all as installed
-pkg/rope       cesia 0.2.0  changed by hand
-pkg/ holds the libraries of Cesia 0.2.0.
+std/rope       cesia 0.2.0  changed by hand
+std/ holds the libraries of Cesia 0.2.0.
 all as installed again
 nothing to install: 0
-pkg  cesia 0.2.0  not installed
-pkg/ holds the libraries of Cesia 0.2.0.
+std  cesia 0.2.0  not installed
+std/ holds the libraries of Cesia 0.2.0.
 0 passed, 0 failed
 usage: cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]
 exit 1

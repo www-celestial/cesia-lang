@@ -1,5 +1,5 @@
-use net
-use sys
+use std/net
+use std/sys
 
 big = Join("", Fill("0123456789abcdef", 655360))
 

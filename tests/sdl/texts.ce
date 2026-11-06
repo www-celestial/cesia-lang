@@ -1,4 +1,4 @@
-use pkg/sdl
+use std/sdl
 
 font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 line(words) = {Kind: "text", X: 10, Y: 10, Text: words, Color: 0xFFFFFF}

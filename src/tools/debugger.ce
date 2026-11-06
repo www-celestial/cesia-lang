@@ -1,6 +1,6 @@
 (** A command-line debugger, written on the debug API.
     Commands: break F L, clear F L, continue, step, next, out, print NAME, where. *)
-use debug
+use std/debug
 
 defn ShowVariable(frame, name)
   (** Prints the value of a variable of a frame, or says that there is none. *)

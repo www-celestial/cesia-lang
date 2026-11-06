@@ -1,5 +1,5 @@
 (** Linear algebra above the size where a library takes over, when there is one. The answers hold with it or without it. *)
-use pkg/num
+use std/num
 
 defn sample(n)
   m = Zeros(n, n)

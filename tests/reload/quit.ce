@@ -1,6 +1,6 @@
 (** A window under --watch that ends on a quit event, from a stop signal or from a closed window. See tools/reload-test.sh. *)
-use c
-use pkg/sdl
+use std/c
+use std/sdl
 
 run() = 1
 (** How many quit events end the program: an editor with unsaved text asks first, and goes on. *)

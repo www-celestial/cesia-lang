@@ -3,7 +3,7 @@
 ## Reading
 
 ```cesia allow=read
-use sys
+use std/sys
 Print(sys.Read("notes.txt").Value)
 ```
 

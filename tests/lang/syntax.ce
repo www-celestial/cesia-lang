@@ -1,6 +1,6 @@
-(** The colors of Cesia code, pkg/syntax: what Cemacs and the docs site show. *)
-use pkg/syntax
-use cesia
+(** The colors of Cesia code, std/syntax: what Cemacs and the docs site show. *)
+use std/syntax
+use std/cesia
 
 roles(line) = Map(t -> t[1], syntax.Tokens(line, syntax.FirstState).Tokens)
 joined(tokens) = Join("", Map(t -> t[2], tokens))

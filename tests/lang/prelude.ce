@@ -1,4 +1,4 @@
-use columns
+use std/columns
 
 isMap() = Equal(Map(it * 2, [1, 2]), [2, 4])
 isMapColumn() = Equal(Map(it * 2, [1; 2]), [2; 4])

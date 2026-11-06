@@ -1,2 +1,2 @@
-use net
+use std/net
 net.Listen(18086)

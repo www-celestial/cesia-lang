@@ -1,4 +1,4 @@
-use sys
+use std/sys
 
 dir = "./tmp_files/a/b"
 path = "$dir/note.txt"

@@ -1,3 +1,3 @@
 cd insrc
-cesia doc shapes
+cesia doc src/shapes
 cesia doc shapes.Where

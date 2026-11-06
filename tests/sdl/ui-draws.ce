@@ -1,6 +1,6 @@
 use tests/sdl/probe
-use pkg/sdl
-use pkg/ui
+use std/sdl
+use std/ui
 
 fonts = "../../examples/fonts/"
 near(a, b) = Abs(sdl.Red(a) - sdl.Red(b)) <= 8 and Abs(sdl.Green(a) - sdl.Green(b)) <= 8 and Abs(sdl.Blue(a) - sdl.Blue(b)) <= 8

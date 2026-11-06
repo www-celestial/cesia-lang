@@ -1,5 +1,5 @@
 (** Channels between fibers: order, senders, waiting receivers and timeouts. *)
-use sys
+use std/sys
 
 defn isChannelKeepsOrder()
   ch = Channel()

@@ -1,6 +1,6 @@
 (** sdl.Frame returns the window, but a program that keeps the old value must not lose text objects. *)
-use c
-use pkg/sdl
+use std/c
+use std/sdl
 
 line = {Kind: "text", X: 8, Y: 8, Text: "same", Color: 0xFFFFFF}
 

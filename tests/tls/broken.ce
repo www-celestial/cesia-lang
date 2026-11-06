@@ -1,9 +1,9 @@
 (** One client's garbage leaves the others alone, a silent TCP close is an error, and a client that says nothing is closed. *)
-use pkg/tls
-use pkg/web
-use pkg/http
-use net
-use sys
+use std/tls
+use std/web
+use std/http
+use std/net
+use std/sys
 
 crlf = "\r\n"
 

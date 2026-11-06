@@ -1,4 +1,4 @@
-use c
+use std/c
 
 defn check()
   m = c.Open("m", version = 6)?

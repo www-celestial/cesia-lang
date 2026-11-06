@@ -2,7 +2,7 @@ open Types
 
 type stats = { mutable passed : int; mutable failed : int }
 
-(* [skip] is the root: its pkg/ and deps/ hold copies, which their own projects test, unless named. *)
+(* [skip] is the root: its std/ and deps/ hold copies, which their own projects test, unless named. *)
 let rec source_files ~skip path =
   if Sys.is_directory path then begin
     let names = Sys.readdir path in
@@ -10,7 +10,7 @@ let rec source_files ~skip path =
     List.concat_map
       (fun n ->
          let sub = Filename.concat path n in
-         if n = "" || n.[0] = '.' || n = "_build" || ((n = "pkg" || n = "deps") && Package.absolute path = skip) then []
+         if n = "" || n.[0] = '.' || n = "_build" || ((n = "std" || n = "deps") && Package.absolute path = skip) then []
          else source_files ~skip sub)
       (Array.to_list names)
   end

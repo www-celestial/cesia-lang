@@ -1,7 +1,7 @@
 (** C++ has no stable binary interface, so Cesia reaches it through a small C layer, generated here, compiled once by
     the C++ compiler and loaded with c. A C++ exception becomes a panic. Templates work through their concrete types. *)
-use c
-use sys
+use std/c
+use std/sys
 
 cppTypes = {"i8": "int8_t", "u8": "uint8_t", "i16": "int16_t", "u16": "uint16_t", "i32": "int32_t", "u32": "uint32_t",
   "i64": "int64_t", "u64": "uint64_t", "f32": "float", "f64": "double", "bool": "bool", "ptr": "void *",

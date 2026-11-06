@@ -1,8 +1,8 @@
-(** Markdown to HTML, pkg/markdown: CommonMark and GitHub's tables, each case with the HTML that cmark-gfm, GitHub's own, gives
+(** Markdown to HTML, std/markdown: CommonMark and GitHub's tables, each case with the HTML that cmark-gfm, GitHub's own, gives
     for it. What differs on purpose has its own test: raw HTML and entities are text, a link leads only to http, https,
     mailto or a page, and a line indented by four spaces is no code. *)
-use pkg/markdown
-use cesia
+use std/markdown
+use std/cesia
 
 html(text) = markdown.Html(markdown.Parse(text), markdown.Plain)
 failing(cases) = Filter(c -> html(c[1]) != c[2], cases)

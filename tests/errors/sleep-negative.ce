@@ -1,2 +1,2 @@
-use sys
+use std/sys
 sys.Sleep(-1)

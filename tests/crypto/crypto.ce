@@ -1,5 +1,5 @@
-use pkg/crypto
-use pkg/encode
+use std/crypto
+use std/encode
 
 defn main()
   s = crypto.Open()?

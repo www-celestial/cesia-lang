@@ -245,7 +245,7 @@ let site args =
   in
   exit (tool ~grants "site" (root :: folder :: cache :: List.filter (( = ) "--open") args))
 
-(* The project, then its pkg/ through the tool that keeps it: one way to write pkg/ and cesia.lock. *)
+(* The project, then its std/ through the tool that keeps it: one way to write std/ and cesia.lock. *)
 let create name =
   Project.create name;
   Sys.chdir name;

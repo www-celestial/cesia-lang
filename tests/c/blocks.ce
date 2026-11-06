@@ -1,5 +1,5 @@
 (** Blocks need no permission: they are checked, and counted against the memory limit. *)
-use c
+use std/c
 
 b = c.Alloc(64)
 Print(c.Get("i64", 0, b), c.Get("u8", 63, b), c.Get("f64", 56, b), c.Get("bool", 0, b))

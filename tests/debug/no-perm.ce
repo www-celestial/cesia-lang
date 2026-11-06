@@ -1,2 +1,2 @@
-use debug
+use std/debug
 debug.SetBreak("no-perm.ce", 1)

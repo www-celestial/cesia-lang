@@ -1,4 +1,4 @@
-use pkg/frame
+use std/frame
 
 sales = frame.Table(["city", "item", "amount"], [["Paris", "Lyon", "Paris", "Nice"], ["a", "b", "b", "a"], [10, 20, 30, missing]])
 places = frame.Table(["city", "country"], [["Paris", "Lyon"], ["FR", "FR"]])

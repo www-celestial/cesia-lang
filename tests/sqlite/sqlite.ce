@@ -1,10 +1,10 @@
-(** pkg/sql on SQLite: run as "sqlite.ce memory", or with a folder, where each check has its own file. *)
-use c
-use columns
-use json
-use sys
-use pkg/sql
-use pkg/date
+(** std/sql on SQLite: run as "sqlite.ce memory", or with a folder, where each check has its own file. *)
+use std/c
+use std/columns
+use std/json
+use std/sys
+use std/sql
+use std/date
 
 struct User { Id Int, Name Text, Email Text? }
 

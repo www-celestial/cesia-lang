@@ -1,6 +1,6 @@
 (** Classic algorithms. Functions come first, the collection last. *)
-use pkg/heap
-use pkg/queue
+use std/heap
+use std/queue
 
 defn Gcd(a, b)
   (** The greatest common divisor of two integers.

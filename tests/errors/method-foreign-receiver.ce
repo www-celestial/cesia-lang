@@ -1,2 +1,2 @@
-use pkg/date
+use std/date
 (d date.Date) Twice() = 2

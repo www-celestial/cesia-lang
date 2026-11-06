@@ -292,13 +292,12 @@ let use_relative = hinted "A use starts in src/ or at the root of the project, w
 let use_empty path = plain (Printf.sprintf "The folder \"%s\" holds no .ce file." path)
 let use_same name other line =
   hinted (Printf.sprintf "\"%s\" already names %s, at line %d." name other line) "Give one of them another name with as."
-let use_both name folder = plain (Printf.sprintf "\"%s\" is both a module of the standard library and the folder %s." name folder)
 let use_unreadable path = plain (Printf.sprintf "Can't read the module \"%s\"." path)
 let no_prelude = plain "The folder of CESIA_STD has no prelude.ce."
 let reload_use = plain "A running program can't load a new module. Restart it to use this one."
 let use_missing path = plain (Printf.sprintf "Module \"%s\" doesn't exist." path)
-let use_library name = plain (Printf.sprintf "\"%s\" is a library: write use pkg/%s." name name)
-let use_binary name = plain (Printf.sprintf "\"%s\" is a module of the binary: write use %s." name name)
+let use_std name = plain (Printf.sprintf "What comes with Cesia is used through std/: write use std/%s." name)
+let use_path name folder = plain (Printf.sprintf "A use is the path of a folder from the root of the project: write use %s." (if folder = "" then name else folder))
 let source_missing dir = plain (Printf.sprintf "The source folder \"%s\" doesn't exist." dir)
 let source_outside dir = plain (Printf.sprintf "The source folder \"%s\" is outside the project." dir)
 
@@ -309,7 +308,7 @@ let cesia_not_version = "a version such as \"0.2\""
 let changed_by_hand path = plain (Printf.sprintf "%s was changed by hand: run cesia pkg install." path)
 let not_installed folder = plain (Printf.sprintf "%s isn't installed: run cesia pkg install." folder)
 let use_dep upath =
-  plain (Printf.sprintf "%s names no package: a use of deps/ is deps/OWNER/REPO/PACKAGE, as the [deps] of cesia.toml bring it." upath)
+  plain (Printf.sprintf "%s names no package: a use of deps/ is deps/OWNER/REPO then the path of a folder from its root, as the [deps] of cesia.toml bring it." upath)
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)
 let denied perm = plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)
 let rows_same_key a b key =
@@ -337,4 +336,4 @@ let sql_db_closed = plain "This database is closed."
 let sql_pool wait = plain (Printf.sprintf "No connection was free for %g seconds. Inside a transaction, use its tx, not db." wait)
 let sql_pool_size a = plain (Printf.sprintf "A pool holds 1 connection or more, not %s." a)
 let sql_uri path = plain (Printf.sprintf "%s is a URI: SQLite takes the path of a file here, or :memory:." path)
-let c_sqlite name = plain (Printf.sprintf "%s is SQLite, which programs reach through pkg/sql only." name)
+let c_sqlite name = plain (Printf.sprintf "%s is SQLite, which programs reach through std/sql only." name)

@@ -1,6 +1,6 @@
 (** sys.Stat tells a regular file from the rest: a device or a FIFO has the size of an empty file, and reading one never ends.
     sys.Remove of a link deletes the link, never what it points to. *)
-use sys
+use std/sys
 
 defn show(path)
   s = sys.Stat(path)?

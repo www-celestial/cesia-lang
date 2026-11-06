@@ -11,7 +11,7 @@ built: 0
 <main id="text">
 <h1 id="first-steps">First steps</h1>
 <p>Names and <a href="ref/prelude/Len.html">Len</a>:</p>
-<pre><code class="cesia"><span class="k">use</span> greet
+<pre><code class="cesia"><span class="k">use</span> src/greet
 x = <span class="m">2</span> + <span class="m">3</span>
 x --&gt; <span class="m">5</span>
 x * <span class="m">2</span> --&gt; <span class="m">10</span>
@@ -25,7 +25,7 @@ x * <span class="m">2</span> --&gt; <span class="m">10</span>
 <pre><code class="cesia"><span class="n">Div</span>(x, <span class="m">0</span>)</code></pre>
 <pre class="output"><code>Div: division by zero.</code></pre>
 <p>Not run:</p>
-<pre><code class="cesia"><span class="k">use</span> pkg/http
+<pre><code class="cesia"><span class="k">use</span> std/http
 http.<span class="f">Get</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
 <p>A table made by code:</p>
 <table>
@@ -59,7 +59,7 @@ name = &quot;x&quot;
 <main id="text">
 <h1 id="files">Files</h1>
 <h2 id="reading">Reading</h2>
-<pre><code class="cesia"><span class="k">use</span> sys
+<pre><code class="cesia"><span class="k">use</span> std/sys
 <span class="n">Print</span>(sys.<span class="f">Read</span>(<span class="s">&quot;notes.txt&quot;</span>).<span class="f">Value</span>)</code></pre>
 <pre class="output"><code>first line
 second line

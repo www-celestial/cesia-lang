@@ -384,18 +384,16 @@ let read_all w paths = List.map (fun path -> from_root w path, In_channel.with_o
 
 let package_sources w m = match folder_of w m with Some dir -> read_all w (Package.files dir) | None -> []
 
-(* The name in the code: rope for pkg/rope. *)
-let code_name m = Option.value (Package.library m) ~default:m
+(* std/num is the library num: its name in the code, and in std/ of Cesia. *)
+let bare m = Option.value (drop_prefix "std/" m) ~default:m
 
 (* The sources of a module that aren't Cesia's own, as use finds them: a folder of the project, or the copy of a library in
-   pkg/. A name of the code, rope, is the library when no folder of the project has it. *)
+   std/. A name of the code, num, is the library when no folder of the project has it. *)
 let own_sources w m =
   let copy name =
-    match Package.files (Filename.concat (Filename.concat (root w) "pkg") name) with
-    | [] -> None
-    | files -> Some (read_all w files)
+    match Package.files (Filename.concat (Filename.concat (root w) "std") name) with [] -> None | files -> Some (read_all w files)
   in
-  match Package.library m with
+  match drop_prefix "std/" m with
   | Some name -> copy name
   | None -> (match package_sources w m with [] -> copy m | srcs -> Some srcs)
 
@@ -403,13 +401,13 @@ let own_sources w m =
 let module_entries w m =
   match own_sources w m with
   | Some srcs -> List.concat_map (fun (file, src) -> entries ~file src) srcs
-  | None -> std_entries (code_name m)
+  | None -> std_entries (bare m)
 
 (* The source whose top comment says what a module is for. *)
 let module_source w m =
   match own_sources w m with
   | Some ((_, src) :: _) -> Some src
-  | _ -> std (code_name m)
+  | _ -> std (bare m)
 
 let find name es = List.find_opt (fun e -> String.equal e.name name) es
 
@@ -424,7 +422,7 @@ let module_text src =
 let module_about w m =
   match module_source w m with
   | Some src -> module_text src
-  | None -> (match find m (natives_entries ()) with Some e -> e.text | None -> "")
+  | None -> (match find (bare m) (natives_entries ()) with Some e -> e.text | None -> "")
 
 let short_name n = match String.rindex_opt n '.' with Some i -> String.sub n (i + 1) (String.length n - i - 1) | None -> n
 
@@ -433,6 +431,12 @@ let without_module name =
   match String.index_opt name '.' with
   | Some i -> String.sub name 0 i, String.sub name (i + 1) (String.length name - i - 1)
   | None -> "", name
+
+(* The module that a name in the code leads to, as DocNames lists it: shapes is src/shapes, num is std/num. *)
+let module_name w m =
+  match folder_of w m with
+  | Some dir when package_sources w m <> [] -> from_root w dir
+  | _ -> "std/" ^ m
 
 (* The documentation of a name or a keyword, its module as DocNames lists it (none for a keyword), and whether it is built
    into the binary: a keyword, or a native of src/std/natives.ce, in OCaml. *)
@@ -448,8 +452,8 @@ let found_entry w name =
       | None when m = "" -> native, name, lazy "prelude", true
       | None ->
         (match find short (module_entries w m) with
-         | Some e -> Some e, short, lazy (if package_sources w m <> [] then m else "pkg/" ^ m), false
-         | None -> native, short, lazy m, true)
+         | Some e -> Some e, short, lazy (module_name w m), false
+         | None -> native, short, lazy ("std/" ^ m), true)
     in
     if public_name short then Option.map (fun e -> e, md, builtin) entry else None
 
@@ -476,31 +480,38 @@ let project_modules w =
   let packages dir =
     let path = Filename.concat r dir in
     let names = if Package.is_dir path then List.sort String.compare (Array.to_list (Sys.readdir path)) else [] in
-    List.filter (fun name -> Package.files (Filename.concat path name) <> []) names
+    List.filter_map (fun name -> if Package.files (Filename.concat path name) <> [] then Some (dir ^ "/" ^ name) else None) names
   in
   if Sys.file_exists (Filename.concat r Package.project_file) then List.concat_map packages (Package.sources r) else []
 
 (* The modules of Cesia itself: its libraries and the modules of the binary. *)
 let own_modules w =
-  List.filter_map (fun (m, _) -> if List.mem m language then None else Some ("pkg/" ^ m)) Embedded.files
-  @ List.map fst w.native_modules
+  List.map (fun m -> "std/" ^ m)
+    (List.filter_map (fun (m, _) -> if List.mem m language then None else Some m) Embedded.files @ List.map fst w.native_modules)
 
 let modules w = "prelude" :: List.sort_uniq String.compare (own_modules w @ project_modules w)
 
-let is_library m = (not (List.mem m language)) && std m <> None
+let is_module w m = m = "prelude" || List.mem m (own_modules w) || package_sources w m <> [] || own_sources w m <> None
 
-let is_module w m =
-  m = "prelude" || List.mem m (own_modules w) || is_library (code_name m) || package_sources w m <> [] || own_sources w m <> None
+(* What a name of a module starts with: the name of the code, num.Solve or shapes.Unit, when it leads back to the module; else
+   its path, tests/mods/geo.Rect. *)
+let qualifier w m =
+  match drop_prefix "std/" m with
+  | Some name -> name
+  | None ->
+    let alias = Filename.basename m in
+    if folder_of w alias <> None && folder_of w alias = folder_of w m then alias else m
 
 let names w m =
-  let qualified n = if m = "prelude" then n else code_name m ^ "." ^ n in
+  let alias = qualifier w m in
+  let qualified n = if m = "prelude" then n else alias ^ "." ^ n in
   let native_names =
     if m = "prelude" then
       List.map fst w.modules.(0).mnames
       @ List.filter_map (fun e -> if String.contains e.name '.' then None else Some e.name) (natives_entries ())
     else
-      List.map (fun (n, _) -> m ^ "." ^ n) (Option.value (List.assoc_opt m w.native_modules) ~default:[])
-      @ List.filter_map (fun e -> Option.map (fun _ -> e.name) (drop_prefix (m ^ ".") e.name)) (natives_entries ())
+      List.map (fun (n, _) -> alias ^ "." ^ n) (Option.value (List.assoc_opt (bare m) w.native_modules) ~default:[])
+      @ List.filter_map (fun e -> Option.map (fun _ -> e.name) (drop_prefix (alias ^ ".") e.name)) (natives_entries ())
   in
   let written = List.filter_map (fun e -> if public_name e.name then Some (qualified e.name) else None) (module_entries w m) in
   List.sort_uniq String.compare (List.filter (fun n -> public (short_name n)) native_names @ written)

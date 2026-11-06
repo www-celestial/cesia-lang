@@ -1,6 +1,6 @@
 (** The worst case of a window: every line of a full screen changes at every frame. Run through tools/frame-bench.sh. *)
-use pkg/sdl
-use sys
+use std/sdl
+use std/sys
 
 lines = 55
 columns = 200

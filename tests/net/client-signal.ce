@@ -1,4 +1,4 @@
-use net
+use std/net
 c = net.Connect("127.0.0.1", 18088)
 Print("started")
 defn forever()

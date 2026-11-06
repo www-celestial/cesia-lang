@@ -1,6 +1,6 @@
 use tests/sdl/probe
-use pkg/sdl
-use sys
+use std/sdl
+use std/sys
 
 defn tick(event, state)
   if event.Seconds <= 0.0 or event.Seconds > 0.05

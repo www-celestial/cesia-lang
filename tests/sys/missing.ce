@@ -1,2 +1,2 @@
-use sys
+use std/sys
 Print(sys.Read("./nope.txt"))
