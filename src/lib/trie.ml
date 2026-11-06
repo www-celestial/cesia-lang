@@ -79,7 +79,7 @@ let same a b =
   | Int x, Int y -> x = y
   | _ -> compare_keys a b = 0
 
-let share v =
+let[@inline] share v =
   (match v with
    | Array a -> a.a_owned <- false
    | Struct r -> r.r_owned <- false

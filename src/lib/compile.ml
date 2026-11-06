@@ -1263,7 +1263,7 @@ and index_read c e b ixs uses_end =
              Arrays.read1 ctx x (Arrays.Key key))
       | [| Ix i |], _ when (not uses_end) && ty c i == TI ->
         let idx = ci c i in
-        let read (ctx : ctx) x k =
+        let[@inline] read (ctx : ctx) x k =
           match x with
           | Array { store = V d; rows; cols; _ } when k >= 1 && k <= rows * cols -> d.(k - 1)
           | Array { store = I d; rows; cols; _ } when k >= 1 && k <= rows * cols -> Int d.(k - 1)

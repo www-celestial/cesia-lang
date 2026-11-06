@@ -49,7 +49,7 @@ let quote s =
   Buffer.add_char b '"';
   Buffer.contents b
 
-let elt a k =
+let[@inline] elt a k =
   match a.store with
   | F d -> Float (Float.Array.get d k)
   | I d -> Int d.(k)

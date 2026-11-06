@@ -1,7 +1,9 @@
 (env
+ ; Each start-up pays for the frame tables of the code linked in: the runtime relocates and registers every call site. So no
+ ; -g, whose debug information nothing reads (no backtraces), and OCaml's default inlining, as tests are built: -inline 200
+ ; tripled the call sites for no speed the benches could measure; the hot functions are marked [@inline] instead.
  (release
-  (ocamlopt_flags
-   (:standard -O3 -inline 200)))
+  (ocamlopt_flags ()))
  ; dune build --profile sanitize --build-dir DIR tests/jit_test.exe: the C of src/sys/, MIR's included, under
  ; AddressSanitizer and UBSan. Run with ASAN_OPTIONS=detect_leaks=0, as OCaml frees nothing at exit.
  (sanitize
