@@ -1,7 +1,7 @@
 # C and C++
 
 In this chapter you call a library written in C: you open it, bind its functions by their types, and pass it numbers, texts,
-memory and callbacks. Cesia's own modules for cryptography, TLS and windows are built this way, on libsodium, OpenSSL and SDL.
+memory and callbacks. This is the [foreign function interface](glossary.md#foreign-function-interface) of Cesia. Cesia's own modules for cryptography, TLS and windows are built this way, on libsodium, OpenSSL and SDL.
 C++ goes through a small C layer that Cesia writes and compiles for you.
 
 ## Total trust
@@ -26,6 +26,11 @@ pow = Unwrap(c.Fn("pow", ["f64", "f64"], "f64", m))
 cos(0.0) -->
 pow(2.0, 10.0) -->
 ```
+
+`version = 6` is the major number in the name of the library's file: `libm.so.6` on Linux. The names with that number are
+tried first, then those without it.
+
+### Wrong arguments and names
 
 An `Int` where C wants a float becomes one, as for a typed parameter. A name the library doesn't have is an `Err`:
 
@@ -85,10 +90,11 @@ from another of its functions, says so when it is bound, with `callsBack = true`
 
 ## C++
 
-C++ has no stable binary form, so [std/cpp] describes what to reach, writes a small C layer for it, compiles it once with the
-C++ compiler, and loads it. [cpp.Wrap] gives a dictionary of functions, with `"Class.new"` and `"Class.method"` for a class:
+C++ has no stable binary form, no [ABI](glossary.md#abi), so [std/cpp] describes what to reach, writes a small C layer for it, compiles it once with the
+C++ compiler, and loads it. [cpp.Wrap] gives a dictionary of functions, with `"Class.new"`, `"Class.delete"` and `"Class.method"` for a class:
 
 ```cesia norun
+(* demo.ce *)
 use std/cpp
 
 spec = {
@@ -109,6 +115,23 @@ defn main()
   m["Numbers.delete"](xs)
   Ok(missing)
 end
+
+Print(main())
+```
+
+### Running it
+
+[cpp.Wrap] runs the compiler, writes the C layer and its library in `build`, reads them back, and loads the library. So the
+program needs `exec` for the compiler, `read` and `write` on `build`, and `ffi` for the library it made:
+
+```bash
+mkdir build
+cesia run --allow exec=g++,read=build,write=build,ffi=build/libdemo_cesia.so demo.ce
+```
+
+```text
+1 6
+Ok(Value = missing)
 ```
 
 It compiles again only what changed. A C++ exception becomes a panic with its message.

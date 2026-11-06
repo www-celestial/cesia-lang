@@ -7,7 +7,7 @@ Then you document your code, and build a site of it like this one.
 ## Examples in the documentation
 
 A comment that starts with `(**` documents what it belongs to. Inside a `defn`, it comes first. An example in it, indented,
-with `-->` and the value it should give, is a test:
+with `-->` and the value it should give, is a test, a [doctest](glossary.md#doctest):
 
 ```cesia
 defn WithTax(price Number) Number
@@ -21,6 +21,8 @@ end
 cents(x) = Round(x * 100) / 100
 WithTax(0.99) -->
 ```
+
+### When an example fails
 
 The example says to the reader what the function does, and `cesia test` checks that it still does. When the value is not the
 one written, `cesia test` names the file, the line, and what it got:
@@ -65,6 +67,8 @@ cesia test src/prices/tax.test.ce
 It prints each failure with its place, then how many passed and failed, and ends with the code 1 when one failed, so a script
 or a CI can stop on it. Each folder is one package, so its examples and its tests run together.
 
+### Without the versions by type
+
 `cesia test --no-spec` runs them again without the versions of each function that Cesia makes for the types it sees. The
 results must be the same: a difference is a bug of Cesia, worth reporting.
 
@@ -84,8 +88,11 @@ Total(items) = Sum([i.Units for i in items])   (** How many units an order holds
 Total([Item("bread", 2), Item("cake", 1)]) -->
 ```
 
-Every public name needs its text: a name with a capital is a promise to the code that uses it. `cesia doc` shows the texts
-from the command line, and so does [Doc] from a program:
+Every public name needs its text: a name with a capital is a promise to the code that uses it.
+
+### Reading the texts
+
+`cesia doc` shows the texts from the command line, and so does [Doc] from a program:
 
 ```bash
 cesia doc src/prices
@@ -104,6 +111,8 @@ With `--open`, it opens the site in the browser. Its pages are written in `site/
 ```bash
 cesia doc --site --open
 ```
+
+### Books
 
 A project can have books too, in `docs/`: each folder of Markdown pages there is a book, whose `index.md` links to its
 chapters in their order. `docs/book/` is the home of the site, and another folder, as `docs/guides/`, is a book beside it. A

@@ -5,7 +5,8 @@ names its fields, gives some of them defaults, and catches a field written wrong
 
 ## Declaring a struct
 
-[struct] names a shape and its fields. A field can have a default, used when the value leaves it out:
+[struct] names a shape and its fields, what other languages call a [record](glossary.md#struct). A field can have a
+default, used when the value leaves it out:
 
 ```cesia
 struct Point { X, Y = 0 }
@@ -13,6 +14,8 @@ Point(1, 2) -->
 Point(5) -->
 Point(Y = 4, X = 3) -->
 ```
+
+### The block form
 
 For more fields, or a comment on each, the block form has one field per line, up to `end`. Both forms make the same values:
 
@@ -38,6 +41,8 @@ p -->
 q -->
 ```
 
+### A wrong field
+
 A field that the struct doesn't have is an error, and so is a call with too many values. A dictionary would take any key
 quietly; a struct says what is wrong.
 
@@ -51,8 +56,9 @@ Point(1, 2, 3)
 
 ## Methods
 
-A method is a function attached to a struct. An instance method writes its value apart, before its name, as in Go. A
-static method has the name of the struct before its own, and makes values. A dot calls both:
+A method is a function attached to a struct. An instance method names its receiver, the value it is called on, in
+parentheses before the name: `(r Rect) Area()`, as in Go ([method and receiver](glossary.md#method-and-receiver)). A static
+method has the name of the struct before its own, `Rect.Square`, and makes values. A dot calls both:
 
 ```cesia
 struct Rect { Width, Height }
@@ -72,7 +78,19 @@ r.Area() -->
 r.Scaled(2).Area() -->
 ```
 
-A method gives a new value: `Scaled` leaves `r` as it was. A static method is a function like any other, so it can be passed
+### The short form
+
+A method of one line has the short form of a function: `(r Rect) Scaled(k) = Rect(r.Width * k, r.Height * k)` is
+`defn (r Rect) Scaled(k) Rect(r.Width * k, r.Height * k) end`. A method gives a new value: `Scaled` leaves `r` as it was.
+
+```cesia
+r.Scaled(2) --> Rect(6, 6)
+r -->
+```
+
+### Methods as values
+
+A static method is a function like any other, so it can be passed
 along. An instance method is called on a value; to pass one to [Map], write the call with `it`:
 
 ```cesia
@@ -107,6 +125,8 @@ User.From({Name: "Bo", Agee: 20}) -->
 User.From({Age: 3}) -->
 ```
 
+### Back to a dictionary
+
 [Fields] goes the other way, from a struct to a dictionary:
 
 ```cesia
@@ -120,7 +140,7 @@ The chapter [Errors](errors.md) shows how to use the `Ok` and the `Err` that `Fr
 | | Struct | Dictionary |
 |---|---|---|
 | Keys | declared once | any, at any time |
-| A wrong name | an error at once | `missing`, or an error with a dot |
+| A wrong name | an error at once | an error; [Get] gives `missing` |
 | Methods | yes | no |
 | For | data you design | data that comes from outside |
 

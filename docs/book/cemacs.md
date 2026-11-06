@@ -6,8 +6,19 @@ and it reloads while it runs.
 
 ## Starting it
 
-Cemacs needs Cesia and two libraries for its window: SDL3 and SDL3_ttf. From the folder of Cemacs, `bin/cemacs` opens the
-files it is given:
+### Getting Cemacs
+
+Cemacs has a repository of its own, `github.com/www-celestial/cemacs`: clone it beside Cesia. It needs Cesia on your `PATH`,
+and two libraries for its window, SDL3 and SDL3_ttf: install them with the package manager of your system.
+
+```bash
+git clone https://github.com/www-celestial/cemacs
+cd cemacs
+```
+
+### bin/cemacs
+
+From the folder of Cemacs, `bin/cemacs` opens the files it is given:
 
 ```bash
 bin/cemacs src/main.ce
@@ -56,11 +67,13 @@ So you can always find a key from its group, without knowing it: `C-c`, then loo
 ## Writing Cesia in it
 
 Cemacs colours Cesia's code with [std/syntax], the same colours as this book. To run your program while you write it, keep a
-terminal beside Cemacs with `--watch`: Cesia reloads the code each time you save, and runs it again.
+terminal beside Cemacs with `--watch`: Cesia reloads the code each time you save, and runs it again: a [hot reload](glossary.md#hot-reload).
 
 ```bash
 cesia run --watch src/main.ce
 ```
+
+### Running from Cemacs
 
 The keys of the group `c`, `C-c c r` to run the file and `C-c c o` for its output, are in place. For now they only say that
 running from Cemacs is not there yet: until it is, the terminal does that work.
@@ -76,6 +89,8 @@ any function from the state of the editor to a new state:
 FontSize() = 15
 HintDelay() = 0.5
 ```
+
+### Reloading Cemacs itself
 
 Start Cemacs with `cesia do dev` from its folder, and each save of one of its files reloads it, without closing the window.
 

@@ -15,9 +15,9 @@ Runs a program. The words after the file are its arguments, in [Args].
 | `--allow LIST` | the permissions, separated by commas: `read`, `write`, `net`, `exec`, `env`, `ffi`, `debug`, `all`, each with `=` and a scope if needed. See [Permissions](permissions.md). |
 | `--limit LIST` | the limits: `memory=512M`, `steps=N`, `depth=N`, `nesting=N`. See [Permissions](permissions.md). |
 | `--watch` | reloads the code at each save of one of its files, without stopping the program |
-| `--debugger FILE` | runs a debugger written in Cesia beside the program: it needs `--allow debug` |
+| `--debugger FILE` | runs a debugger written in Cesia beside the program, and gives it the `debug` permission by itself: no `--allow debug` |
 | `--no-spec` | runs without the versions of each function that Cesia makes for the types it sees: the results must be the same |
-| `--no-jit` | runs without native code, in the interpreter only |
+| `--no-jit` | runs without native code, in the [interpreter](glossary.md#interpreter-and-jit) only |
 
 `cesia run .` runs all the files of the current folder as one program.
 

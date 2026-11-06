@@ -1,8 +1,15 @@
 # Files
 
 In this chapter your program works with the machine: it reads and writes files, makes and lists folders, takes arguments from
-its command line, runs other programs, and reads the clock. All of it is in [std/sys], and each function says the permission
-it needs. The examples run in a folder that holds `todo.txt`, with `--allow read,write`.
+its command line, runs other programs, and reads the clock. All of it is in [std/sys]. Each of these is a [side effect](glossary.md#side-effect), a change outside the
+program, so each function says the permission it needs. The examples run with `--allow read,write`, in a folder that holds
+`todo.txt`:
+
+```text
+buy bread
+call Bo
+water the plants
+```
 
 ## Reading a file
 
@@ -13,6 +20,8 @@ use std/sys
 sys.Read("todo.txt") -->
 sys.Read("nothing.txt") -->
 ```
+
+### Inside a function
 
 A script at the top of its file can't use `?`, which leaves a function. Inside a function, `?` passes the error on, as the
 chapter [Errors](errors.md) showed:
@@ -57,6 +66,8 @@ sys.List("archive/2026") -->
 sys.Remove("archive/2026/done.txt") -->
 ```
 
+### Exists and Stat
+
 [sys.Exists] asks whether a path is there, and [sys.Stat] tells more: the size in bytes, the time of the last change, and
 whether it is a folder, a file or a link.
 
@@ -72,7 +83,7 @@ info.IsDir -->
 [Args] holds the words written after the file on the command line, as texts:
 
 ```bash
-cesia run count.ce todo.txt done.txt
+cesia run --allow read count.ce todo.txt done.txt
 ```
 
 ```cesia norun
@@ -87,8 +98,9 @@ end
 
 ## Standard input and the exit code
 
-[sys.ReadInput] gives all that the program receives on its standard input, so that it can sit in a pipe of the shell.
-[sys.Exit] ends the program at once with an exit code: 0 says that all went well, another number that something failed,
+[sys.ReadInput] gives all that the program receives on its
+[standard input](glossary.md#standard-input-and-output), so that it can sit in a pipe of the shell. [sys.Exit] ends the
+program at once with an [exit code](glossary.md#exit-code): 0 says that all went well, another number that something failed,
 for the shell or the script that ran it.
 
 ```bash
@@ -97,6 +109,8 @@ cat sales.csv | cesia run lines.ce
 
 ```cesia norun
 (* lines.ce: how many lines came in, and code 1 when none did *)
+use std/sys
+
 text = Unwrap(sys.ReadInput())
 n = Len(Lines(text))
 Print(n, "lines")
@@ -107,7 +121,7 @@ end
 
 ## The environment
 
-[sys.Env] reads an environment variable, or gives `missing`. It needs `--allow env`, or `env=HOME` for that one:
+[sys.Env] reads an environment variable, or gives `missing`. It needs `--allow env`, or `env=PORT` for that one:
 
 ```cesia norun
 given = sys.Env("PORT")
@@ -128,6 +142,8 @@ else
 end
 ```
 
+### Programs that keep running
+
 `input` gives the program a text to read, `dir` the folder it runs in, and `timeout` stops it after a number of seconds. For a
 program that keeps running, a server or a shell, [sys.Start] gives a process to write to and read from while it runs, with
 [sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit].
@@ -143,6 +159,8 @@ sys.Sleep(0.05)
 sys.Now() - start >= 0.05 -->
 ```
 
+### Dates
+
 For dates, [std/date] has a [date.Date] struct in UTC, and the functions that go with it:
 
 ```cesia
@@ -150,7 +168,7 @@ use std/date
 d = date.Date(2026, 11, 6, 14, 30)
 date.Format(d) -->
 date.Weekday(d) -->
-date.AddDays(30, d) then date.FormatDate(it) -->
+date.AddDays(30, d) then date.FormatDate() -->
 date.DaysBetween(d, date.Date(2026, 12, 25)) -->
 date.Parse("2026-12-25") -->
 ```

@@ -21,12 +21,16 @@ A number is an integer, such as `42`, or a float, with a dot: `1.5`. The usual o
 2 ^ 10 -->
 ```
 
+### Operators are functions
+
 Each operator is also a function, for the times you pass it to another function: `2 + 3` is [Add]`(2, 3)`.
 
 ```cesia
 Add(2, 3) --> 2 + 3
 Mul(4, 5) --> 4 * 5
 ```
+
+### Division
 
 `/` always gives a float, even when the division falls right. For the whole part of a division, [Div] rounds down, and [Mod]
 gives what is left:
@@ -38,7 +42,10 @@ Div(7, 2) -->
 Mod(7, 2) -->
 ```
 
-An integer and a float mix: the result is a float. And they compare by their value:
+### Integers and floats
+
+An integer and a float mix: the result is a float, a [type coercion](glossary.md#type-coercion). And they compare by
+their value:
 
 ```cesia
 1 + 0.5 -->
@@ -55,7 +62,8 @@ Floor(2.7) -->
 
 ## Texts
 
-A text sits between double quotes. A `$` puts a value inside it: a name after the `$`, or any expression in `$( )`.
+A text sits between double quotes. A `$` puts a value inside it, which is called
+[string interpolation](glossary.md#string-interpolation): a name after the `$`, or any expression in `$( )`.
 
 ```cesia
 name = "Ana"
@@ -63,7 +71,8 @@ name = "Ana"
 "Two and two make $(2 + 2)" -->
 ```
 
-A `$` is short for [Str], which joins the texts of its arguments:
+A `$` is short for [Str], which joins the texts of its arguments. Such a short form is called
+[syntax sugar](glossary.md#syntax-sugar), and this book shows each one beside its plain form:
 
 ```cesia
 "Hello, $name" --> Str("Hello, ", name)
@@ -74,6 +83,8 @@ A text never adds to a number with `+`: write the number inside the text, or joi
 ```cesia
 Str("Total: ", 3) -->
 ```
+
+### Escapes
 
 A `\` starts a character that a text can't hold as it is: `\"` is a quote, `\n` a line end, `\t` a tab, and `\\` the `\`
 itself. A `$` is written twice:
@@ -98,11 +109,12 @@ The chapter [Texts](texts.md) shows how to cut, search and join them.
 "apple" < "banana" -->
 ```
 
-`and` and `or` stop as soon as the answer is known: in `false and f()`, `f` is never called.
+`and` and `or` stop as soon as the answer is known, which is called
+[short-circuit evaluation](glossary.md#short-circuit-evaluation): in `false and f()`, `f` is never called.
 
 ## Missing
 
-`missing` means that there is no value: a key that isn't in a dictionary, a text that isn't a number. [IsMissing] asks, and
+`missing` means that there is no value, as [null](glossary.md#null) does in other languages: a key that isn't in a dictionary, a text that isn't a number. [IsMissing] asks, and
 [IsSome] asks the opposite:
 
 ```cesia
@@ -110,6 +122,8 @@ Number("12") -->
 Number("twelve") -->
 IsMissing(Number("twelve")) -->
 ```
+
+### Missing in arithmetic
 
 `missing` goes through arithmetic: a sum that has a missing part is missing. A total over data with a hole in it shows the hole,
 instead of a wrong number:
@@ -120,7 +134,7 @@ instead of a wrong number:
 
 ## Names
 
-`=` gives a name to a value. The same name can take another value later, of any kind. `+=`, `-=`, `*=` and `/=` change a number
+`=` gives a name to a value: a [binding](glossary.md#binding). The same name can take another value later, of any kind. `+=`, `-=`, `*=` and `/=` change a number
 with its own value:
 
 ```cesia
@@ -130,6 +144,8 @@ count *= 10
 count -->
 ```
 
+### Changing a name
+
 `count += 2` is short for `count = count + 2`:
 
 ```cesia
@@ -138,7 +154,9 @@ total = total + 2
 total --> 12
 ```
 
-A value never changes behind your back. When two names hold the same list and you change one, the other keeps what it had:
+### A value never changes
+
+A value never changes behind your back: Cesia has [value semantics](glossary.md#value-semantics). When two names hold the same list and you change one, the other keeps what it had:
 
 ```cesia
 a = [1, 2, 3]

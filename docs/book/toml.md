@@ -1,7 +1,8 @@
 # cesia.toml
 
 Every table and every key of `cesia.toml`, the file at the root of a project. A key that Cesia doesn't know stops `cesia do`
-with its line, so a typo can't go unseen.
+with its line, so a typo can't go unseen. The keys of `[site]` are the exception: `cesia doc --site` reads them, and it is
+the one that checks them.
 
 ## `[project]`
 

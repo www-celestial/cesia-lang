@@ -3,7 +3,8 @@
 In this chapter you take texts apart, search them, and build new ones: the daily work of a script that reads files and writes
 reports.
 
-A text is a value like a number: no function changes it, each one gives a new text. In every function of this chapter, the
+A text is a value like a number, [immutable](glossary.md#immutability): no function changes it, each one gives a new
+text. In every function of this chapter, the
 text you work on comes last. The part that says what to do comes first.
 
 ## Length and case
@@ -28,6 +29,8 @@ Split(",", "red,green,blue") -->
 Split(",", "a,,b") -->
 ```
 
+### Lines
+
 [Lines] gives the lines of a text, without their line ends. A last line end opens no empty line, and a Windows line end counts
 as one:
 
@@ -35,6 +38,8 @@ as one:
 Lines("first\nsecond\n") -->
 Lines("one\r\ntwo") -->
 ```
+
+### Characters
 
 [Slice] takes the characters from one position to another, both included, from 1. [Chars] gives each character as a text:
 
@@ -54,6 +59,8 @@ Repeat(3, "ab") -->
 Str("page ", 3, " of ", 10) -->
 ```
 
+### With $
+
 Most of the time, a text with `$` reads best:
 
 ```cesia
@@ -61,6 +68,8 @@ done = 3
 total = 10
 "page $done of $total" -->
 ```
+
+### Padding
 
 [PadLeft] and [PadRight] fill a text up to a width, for columns that line up:
 
@@ -82,6 +91,8 @@ Find("lo", "hello") -->
 Find("z", "hello") -->
 ```
 
+### Replacing
+
 [Replace] changes every occurrence of a part:
 
 ```cesia
@@ -100,6 +111,8 @@ Number("42") -->
 Number("3.5") -->
 Number("12 apples") -->
 ```
+
+### The text of a value
 
 [Text] goes the other way: the text of any value, as [Print] shows it.
 
@@ -125,7 +138,7 @@ piece: lists start at 1.
 
 ## Bytes
 
-Underneath, a text is a sequence of bytes in UTF-8, where `é` takes two. Most programs never see them: [Len], [Slice] and
+Underneath, a text is a sequence of bytes in [UTF-8](glossary.md#utf-8), where `é` takes two. Most programs never see them: [Len], [Slice] and
 [Find] count characters. For a file format or a network protocol, [ByteLength], [ByteSlice] and [Bytes] work byte by byte:
 
 ```cesia

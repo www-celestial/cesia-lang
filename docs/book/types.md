@@ -1,7 +1,8 @@
 # Types
 
 In this chapter you write down what kind of value a name holds: a mass that is a `Float`, a name that is a `Text` or
-`missing`, a parameter that must be a shape. Types are a plus in Cesia. You can leave them out everywhere, and code without
+`missing`, a parameter that must be a shape. Types are a plus in Cesia, which is called
+[optional typing](glossary.md#optional-typing). You can leave them out everywhere, and code without
 them runs just as fast. Where you write one, Cesia checks it each time a value comes in, and the type tells the reader what
 goes there.
 
@@ -51,6 +52,8 @@ end
 label(4)
 ```
 
+### A type that names nothing
+
 A type that names nothing is caught before the program starts:
 
 ```cesia fails
@@ -59,7 +62,8 @@ weigh(c Cr) = c.Mass
 
 ## An Int becomes a Float
 
-An `Int` where a `Float` is wanted becomes a `Float`, so `Car(1500)` needs no `.0`. `Number` keeps either:
+An `Int` where a `Float` is wanted becomes a `Float`, a [type coercion](glossary.md#type-coercion), so `Car(1500)` needs
+no `.0`. `Number` keeps either:
 
 ```cesia
 Car(1500).Mass -->
@@ -71,7 +75,7 @@ Twice(1.5) -->
 
 ## Maybe missing
 
-A `?` after a type also takes `missing`. A field of such a type, without a default, is `missing` when the value leaves it
+A `?` after a type also takes `missing`, the [null](glossary.md#null) of Cesia. A field of such a type, without a default, is `missing` when the value leaves it
 out:
 
 ```cesia
@@ -82,6 +86,8 @@ end
 Person("Ana") -->
 Person("Bo", "Bobby").Nickname -->
 ```
+
+### A result that may be missing
 
 A function that can end without a value gives `missing` there, so its result type needs the `?`:
 
@@ -109,7 +115,8 @@ Car.From({Mass: "heavy"}) -->
 
 ## Interfaces
 
-An interface lists methods, without code. A value meets it when it has each of these methods: nothing declares it, as in Go.
+An interface lists methods, without code. A value meets it when it has each of these methods: nothing declares it, as in Go. This is
+[structural typing](glossary.md#structural-typing).
 An interface is a type like the others:
 
 ```cesia
@@ -127,11 +134,15 @@ Measured(s Shape) = s.Area() + s.Perimeter()
 Measured(Rect(2, 3)) -->
 ```
 
+### A dictionary meets it too
+
 A dictionary whose keys hold functions meets an interface too, which suits a quick test value:
 
 ```cesia
 Measured({Area: () -> 2, Perimeter: () -> 6}) -->
 ```
+
+### A missing method
 
 A value that lacks a method stops the program, and the message names the method:
 
@@ -140,6 +151,8 @@ struct Circle { R Float }
 (c Circle) Area() = 3.14 * c.R * c.R
 Measured(Circle(1.0))
 ```
+
+### A method for every Shape
 
 A method written for an interface belongs to every value that meets it:
 

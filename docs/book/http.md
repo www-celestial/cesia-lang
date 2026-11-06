@@ -6,16 +6,18 @@ which also has the client.
 
 ## An application
 
-[web.App] starts an application with no route. Each route adds one: a method, a path, and a function of the request that
-gives the response. [web.Plain] makes a plain text response, and [web.SendJson] a JSON one:
+[web.App] starts an application with no route. Each [route](glossary.md#route) adds one: a method, a path, and a
+[handler](glossary.md#handler), the function of the request that gives the response. [web.Plain] makes a plain text response, and [web.SendJson] a JSON one:
 
 ```cesia
 use std/web
 app = web.App()
-  then web.GetRoute("/", r -> web.Plain("Welcome"), it)
-  then web.GetRoute("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"), it)
-  then web.GetRoute("/stock", r -> web.SendJson({bread: 40, cake: 6}), it)
+  then web.GetRoute("/", r -> web.Plain("Welcome"))
+  then web.GetRoute("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
+  then web.GetRoute("/stock", r -> web.SendJson({bread: 40, cake: 6}))
 ```
+
+### Words in the path
 
 A part of a path that starts with `:` takes any word, and the handler finds it in `r.Params`. The application is a value: each
 route gives a new one, and [then] chains them.
@@ -54,7 +56,7 @@ defn addPurchase(request)
   end
 end
 
-shop = app then web.PostRoute("/orders", addPurchase, it)
+shop = app then web.PostRoute("/orders", addPurchase)
 post(body) = web.Handler(shop)({Method: "POST", Path: "/orders", Query: "", Headers: [], Body: body})
 Print(post("{\"Product\": \"bread\", \"Units\": 4}").Body)
 Print(post("{\"Product\": \"bread\", \"Units\": \"four\"}").Body)
@@ -63,7 +65,7 @@ Print(post("not json").Body)
 
 ## Middleware
 
-A middleware sits in front of the routes: it sees each request, and the response that comes back. [web.Logger] prints one line
+A [middleware](glossary.md#middleware) sits in front of the routes: it sees each request, and the response that comes back. [web.Logger] prints one line
 per request. [web.Wrap] puts a middleware in front of an application:
 
 ```cesia
@@ -71,25 +73,42 @@ logged = web.Wrap(web.Logger, shop)
 web.Handler(logged)({Method: "GET", Path: "/stock", Query: "", Headers: [], Body: ""}).Status -->
 ```
 
-A middleware of your own is a function of `next` and the request, which calls `next(request)` to go on:
+### A middleware of your own
+
+A middleware of your own is a function of `next` and the request, which calls `next(request)` to go on. `servedBy` adds a
+header to each response, which says what served it:
 
 ```cesia
-defn timed(next, request)
+defn servedBy(next, request)
   response = next(request)
   web.WithHeader("x-served-by", "cesia", response)
 end
-web.Handler(web.Wrap(timed, shop))({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers -->
+web.Handler(web.Wrap(servedBy, shop))({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers -->
 ```
 
 ## Serving
 
-[web.Serve] serves an application until the program gets a stop signal, as Ctrl-C. It listens on `127.0.0.1`, this machine
-only, unless `host` says otherwise, and it needs the permission to listen on its port:
+[web.Serve] serves an application until the program gets a stop signal, as Ctrl-C. It listens on port 8080 unless `port`
+says otherwise, and on `127.0.0.1`, this machine only, unless `host` does. It needs the permission to listen on its port.
+Here is a small `shop.ce`:
+
+```cesia norun
+(* shop.ce: one route, served on port 8080 *)
+use std/web
+
+hello = web.App()
+  then web.GetRoute("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
+web.Serve(web.Wrap(web.Logger, hello))
+```
+
+Run it, and ask it from another terminal:
 
 ```bash
 cesia run --allow net=:8080 shop.ce
 curl localhost:8080/hello/Ana
 ```
+
+### Serving and asking in one program
 
 The block below serves the shop on a port and asks it with the client, in one program. [Spawn] runs the server beside the
 rest of the program, as the chapter [Fibers](fibers.md) explains, and [sys.Sleep] lets it start:
@@ -110,12 +129,14 @@ The program ends when its last line is done, and the server with it.
 
 ## The client
 
-[http.Fetch] and [http.Post] send a request, and give an `Ok` of `{Status, Headers, Body}`, or an `Err` when the server can't be
-reached. A `404` is a response, not an error: look at `Status`.
+[http.Fetch] and [http.Post] send a request, and give an `Ok` of the response, with its `Status`, its `Headers` and its
+`Body`, or an `Err` when the server can't be reached. A `404` is a response, not an error: look at `Status`.
 
 ```cesia allow=net
 http.Fetch("http://127.0.0.1:1/") -->
 ```
+
+### https
 
 For `https`, [std/tls] gives the client its encryption, through OpenSSL. It needs the permission to load it, and to reach the
 host:

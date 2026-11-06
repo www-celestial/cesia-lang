@@ -1,7 +1,7 @@
 # Functions
 
 In this chapter you write your own functions, short and long, and give them defaults and named arguments. Then you pass
-functions to other functions, which is how Cesia works on lists: [Map], [Filter] and [Reduce].
+functions to other functions, [higher-order functions](glossary.md#higher-order-function), which is how Cesia works on lists: [Map], [Filter] and [Reduce].
 
 ## The short form
 
@@ -30,6 +30,8 @@ end
 describe(7) -->
 ```
 
+### return
+
 [return] gives a value at once, and leaves the function. It suits a search that can stop early:
 
 ```cesia
@@ -45,12 +47,29 @@ firstLong(["a", "tree", "forest", "sea"]) -->
 firstLong(["a"]) -->
 ```
 
+### A function that calls itself
+
 A function can call itself:
 
 ```cesia
 factorial(n) = if n <= 1 1 else n * factorial(n - 1) end
 factorial(10) -->
 ```
+
+## Names inside a function
+
+A name given a value inside a function is its own: a name of the same spelling outside keeps its value. A function sees its
+parameters, its own names and the names of its file, the ones written around it: this is called
+[lexical scope](glossary.md#lexical-scope). An `if` or a `for` makes no scope of its own.
+
+```cesia
+kind = "none"
+describe(4) -->
+kind -->
+```
+
+A function that only computes from its arguments, as `double`, is a [pure function](glossary.md#pure-function): the same
+arguments always give the same value.
 
 ## Defaults and named arguments
 
@@ -67,7 +86,7 @@ greet(greeting = "Welcome", name = "Cyril") -->
 ## Functions as values
 
 A function is a value: you can name it, keep it in a list, and pass it to another function. `x -> x + 1` is a function without
-a name. Its parameters come before `->`, and its value after it:
+a name, an [anonymous function](glossary.md#anonymous-function). Its parameters come before `->`, and its value after it:
 
 ```cesia
 inc = x -> x + 1
@@ -76,7 +95,23 @@ add = (a, b) -> a + b
 add(2, 3) -->
 ```
 
-A function made inside another one keeps the names it saw there. Here `adder` makes functions that each remember their `n`:
+### Several lines
+
+A function without a name can hold several lines: `defn`, its parameters in parentheses, and its lines up to `end`. It is
+the long form of `->`, as `defn` is the long form of `=`:
+
+```cesia
+longInc = defn (x)
+  y = x + 1
+  y
+end
+longInc(4) --> inc(4)
+```
+
+### Closures
+
+A function made inside another one keeps the names it saw there, with the values they had: it is a
+[closure](glossary.md#closure). Here `adder` makes functions that each remember their `n`:
 
 ```cesia
 adder(n) = x -> x + n
@@ -96,6 +131,8 @@ Map(double, numbers) -->
 Filter(x -> x > 2, numbers) -->
 Reduce((total, x) -> total + x, 0, numbers) -->
 ```
+
+### More of them
 
 Many more work the same way: [SortBy], [Count], [FindFirst], [Group], [Every]. Each has its page in the reference.
 
@@ -118,17 +155,19 @@ Filter(it > 3, numbers) --> Filter(x -> x > 3, numbers)
 ## then
 
 [then] passes the value on its left to the call on its right. The value takes the place of an argument that is `it` alone;
-when there is none, it becomes the last argument. As the list comes last in these functions, a step only names what to do:
+when there is none, it becomes the last argument. As the list comes last in these functions, a step only names what to do,
+so `it` alone is needed only where the value doesn't go last:
 
 ```cesia
-numbers then Filter(IsOdd) then Map(it * 10) then Sum(it) -->
+numbers then Filter(IsOdd) then Map(it * 10) then Sum() -->
+100 then Div(it, 7) --> Div(100, 7)
 ```
 
 A chain of steps reads from left to right, in the order they happen. It is short for calls inside calls, which read from
 the inside out:
 
 ```cesia
-numbers then Filter(IsOdd) then Map(it * 10) then Sum(it) --> Sum(Map(x -> x * 10, Filter(IsOdd, numbers)))
+numbers then Filter(IsOdd) then Map(it * 10) then Sum() --> Sum(Map(x -> x * 10, Filter(IsOdd, numbers)))
 ```
 
 ## A small program
@@ -148,7 +187,8 @@ for p in Take(3, best)
 end
 ```
 
-`{Name: ..., Score: ...}` is a dictionary, and `p.Score` reads one of its keys: the next chapter is about them.
+The braces in `parse` make a dictionary with the keys `Name` and `Score`, and `p.Score` reads one of its keys: the next
+chapter is about them.
 
 ## Next
 

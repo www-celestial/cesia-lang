@@ -31,6 +31,8 @@ key = "Age"
 person[key] -->
 ```
 
+### A key that isn't there
+
 A key that isn't there stops the program: a typo shows at once.
 
 ```cesia fails
@@ -47,8 +49,8 @@ Has("Age", person) -->
 
 ## Changing
 
-A dot or brackets on the left of `=` set a key. As for a list, only this name sees the change: a dictionary is a value, and
-another name that held it keeps what it had.
+A dot or brackets on the left of `=` set a key. As for a list, only this name sees the change: a dictionary is a value, with
+[value semantics](glossary.md#value-semantics), and another name that held it keeps what it had.
 
 ```cesia
 other = person
@@ -57,8 +59,11 @@ other -->
 person -->
 ```
 
-Setting a key is short for [Put], which gives a new dictionary. [Drop] gives one without a key, and [Merge] joins two: for a key
-in both, the second wins.
+### Put, Drop and Merge
+
+Setting a key is short for [Put], which gives a new dictionary. The new one shares the rest of its memory with the old one,
+which stays as it was: a [persistent data structure](glossary.md#persistent-data-structure). [Drop] gives one without a key,
+and [Merge] joins two: for a key in both, the second wins.
 
 ```cesia
 Put("City", "Lyon", person) --> other
@@ -78,8 +83,8 @@ Keys(Put("A", 10, {A: 1, B: 2})) -->
 
 ## Walking through
 
-[Keys] gives the keys in their order, [Values] the values, and [Pairs] both, each as `{Key, Value}`. A `for` goes over one of
-them: a dictionary itself is no list.
+[Keys] gives the keys in their order, [Values] the values, and [Pairs] both: each pair is a struct with a `Key` and a
+`Value`. A `for` goes over one of them: a dictionary itself is no list.
 
 ```cesia
 for k in Keys(person)
@@ -92,6 +97,8 @@ for p in Pairs(person)
   Print(p.Key, "->", p.Value)
 end
 ```
+
+### Every value at once
 
 [MapValues] changes every value with a function, and keeps the keys:
 
@@ -110,6 +117,8 @@ for word in Split(" ", "the cat and the dog and the bird")
 end
 counts -->
 ```
+
+### Frequencies
 
 This is common enough to have its own function, [Frequencies]:
 
@@ -131,8 +140,8 @@ PutIn(["Log", "Level"], "info", config) -->
 
 ## From lists
 
-[Dict] builds a dictionary from `{Key, Value}` entries, the shape [Pairs] gives, and [Zipmap] from a list of keys and a list of
-values:
+[Dict] builds a dictionary from a list of entries, each with a `Key` and a `Value`, the shape [Pairs] gives. [Zipmap] builds
+one from a list of keys and a list of values:
 
 ```cesia
 Dict([{Key: "a", Value: 1}, {Key: "b", Value: 2}]) -->

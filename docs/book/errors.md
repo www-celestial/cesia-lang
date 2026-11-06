@@ -1,12 +1,14 @@
 # Errors
 
 In this chapter you handle what can go wrong: a file that isn't there, a text that isn't a number, input that `From` refuses.
-In Cesia an error is a value that a function gives back, as any other result. There is no `try`: you see in the code where
-each error goes.
+In Cesia an error is a value that a function gives back, as any other result: an
+[error value](glossary.md#error-value). There is no `try` and no [exception](glossary.md#exception): you see in the code
+where each error goes.
 
 ## Ok and Err
 
-A function that can fail gives a result: [Ok] around its value when all went well, or [Err] around what went wrong. `.Value`
+A function that can fail gives a result: [Ok] around its value when all went well, or [Err] around what went wrong. A
+result is always one of these two cases: a [sum type](glossary.md#sum-type). `.Value`
 reads the one, `.Error` the other:
 
 ```cesia
@@ -15,13 +17,19 @@ Ok(42).Value -->
 Err("no such user").Error -->
 ```
 
+### A file that isn't there
+
 [sys.Read], for instance, gives the text of a file in an `Ok`, or an `Err` that says why it couldn't. Its error is a dictionary
-with a `Kind` and a `Message`:
+with a `Kind` and a `Message`. The block's first line, `use std/sys`, brings in the module of the system, as the chapter
+[Packages](packages.md) shows. And the block runs with `--allow read`, since a program reads no file unless its command line
+allows it: the chapter [Permissions](permissions.md) explains why.
 
 ```cesia allow=read
 use std/sys
 sys.Read("nowhere.txt") -->
 ```
+
+### Your own results
 
 Your own functions do the same. Here [Number] gives `missing` for a text that isn't a number, and `age` turns that into an
 `Err` with a message for the user:
@@ -55,6 +63,8 @@ describe("31") -->
 describe("old") -->
 ```
 
+### IsOk and IsErr
+
 [IsOk] and [IsErr] only ask:
 
 ```cesia
@@ -73,7 +83,8 @@ UnwrapOr(0, age("old")) -->
 
 ## Passing an error on
 
-Most of the time, a function that meets an error can't do better than give it to its caller. `?` after a result does that: for
+Most of the time, a function that meets an error can't do better than give it to its caller: this is called
+[error propagation](glossary.md#error-propagation). `?` after a result does that: for
 an `Ok`, it gives the value, and the function goes on; for an `Err`, the function stops at once and gives that `Err`.
 
 ```cesia
@@ -84,6 +95,8 @@ end
 ageNextYear("31") -->
 ageNextYear("old") -->
 ```
+
+### What ? is short for
 
 `n = age(t)?` is short for these lines, which you can write yourself:
 
@@ -99,6 +112,8 @@ end
 ageNextYearLong("31") --> ageNextYear("31")
 ageNextYearLong("old") --> ageNextYear("old")
 ```
+
+### Only inside a function
 
 `?` works inside a function only, since it leaves one. Used on a value that is no result, it stops the program: the message
 says to give a result.
@@ -122,6 +137,8 @@ age("old") then MapOk(it * 12) -->
 age("old") then MapErr("age: $it") -->
 ```
 
+### AndThen
+
 [AndThen] chains a step that can fail too. It runs the function on the value of an `Ok`, and passes an `Err` along:
 
 ```cesia
@@ -135,6 +152,8 @@ age("31") then AndThen(adult) -->
 age("12") then AndThen(adult) -->
 age("old") then AndThen(adult) -->
 ```
+
+### Collect
 
 [Collect] turns a list of results into one: an `Ok` of all the values, or the first `Err`. Here a whole column of input is
 checked at once:
@@ -150,6 +169,8 @@ An `Err` is for what can happen while the program is right: the user typed a wor
 program itself is a bug, and a bug stops the program at once, with the line and the advice to fix it. You don't handle a bug:
 you fix the code.
 
+### Unwrap
+
 [Unwrap] takes the value of an `Ok`. Use it only where an `Err` would be a bug, as a file that comes with your program:
 
 ```cesia
@@ -159,6 +180,8 @@ Unwrap(age("31")) -->
 ```cesia fails
 Unwrap(age("old"))
 ```
+
+### Panic and Assert
 
 [Panic] stops the program with your message, and [Assert] stops it when a condition is false. Both are for what must never
 happen:

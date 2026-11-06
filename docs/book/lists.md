@@ -20,6 +20,8 @@ Len(names) -->
 Nth(1, names) --> names[1]
 ```
 
+### Outside the list
+
 A position outside the list is an error, which names the size of the list:
 
 ```cesia fails
@@ -45,13 +47,15 @@ Take(2, names) -->
 Skip(1, names) -->
 ```
 
-As with every value, the list you give is unchanged:
+As with every value, the list you give is unchanged, [immutable](glossary.md#immutability):
 
 ```cesia
 more = Append("Dee", names)
 Len(names) -->
 Len(more) -->
 ```
+
+### Building a list in a loop
 
 A list grows well one element at a time, so building one in a loop is the usual way:
 
@@ -62,6 +66,8 @@ for n in 1..5
 end
 squares -->
 ```
+
+### Changing one element
 
 To change one element, give its position. Only this name sees the change:
 
@@ -81,6 +87,8 @@ Range(1, 5) --> 1..5
 Range(0, 1, step = 0.25) -->
 Sum(1..100) -->
 ```
+
+### A part of a list
 
 In the brackets of a list, a range takes a part of it, and `end` is its last position. These are short for [Take] and
 [Skip]:
@@ -102,7 +110,11 @@ SortBy(Len, ["pear", "apple", "fig"]) -->
 Reverse([1, 2, 3]) -->
 ```
 
-Both keep equal elements in the order they had. [Unique] leaves out repeats, and [IndexOf] finds where a value is:
+Both keep equal elements in the order they had.
+
+### Unique and IndexOf
+
+[Unique] leaves out repeats, and [IndexOf] finds where a value is:
 
 ```cesia
 Unique([1, 2, 1, 3, 2]) -->
@@ -111,7 +123,8 @@ IndexOf("Bo", names) -->
 
 ## Whole arrays at once
 
-An array of numbers computes element by element: no loop to write. An operator between two arrays of the same size works on
+An array of numbers computes element by element, a [vectorized operation](glossary.md#vectorized-operation): no loop
+to write. An operator between two arrays of the same size works on
 each pair, and a number with an array works on each element:
 
 ```cesia
@@ -120,6 +133,8 @@ prices * 2 -->
 prices + [1, 2, 3] -->
 Sqrt([1, 4, 9]) -->
 ```
+
+### One number from an array
 
 [Sum], [Mean], [Min] and [Max] reduce an array to one number:
 

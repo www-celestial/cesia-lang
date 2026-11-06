@@ -6,7 +6,7 @@ it. Every chapter before this one is at work here.
 
 ## The project
 
-`cesia new` makes the folder, with `src/main.ce`, `cesia.toml`, and `std/`:
+`cesia new` makes the folder, with `src/main.ce`, `cesia.toml`, `std/` and `cesia.lock`:
 
 ```bash
 cesia new notes
@@ -28,7 +28,8 @@ notes/
       routes.test.ce    its tests
 ```
 
-`cesia.toml` gets a task to serve, with the permissions it needs: the folder of the database, and the port.
+Its `cesia.toml` becomes this one: the task `serve` replaces the `[tasks.run]` that `cesia new` wrote. It has the
+permissions the server needs: the folder of the database, and the port.
 
 ```toml
 [project]
@@ -108,13 +109,20 @@ The table refuses an empty note by itself: its `check` turns it into an `Err`.
 
 ## The routes
 
-`src/notes/routes.ce` turns requests into calls of the store, and results into responses. Each `Err` becomes a status: `400`
-for what the client sent, `404` for a note that isn't there, `500` for the rest. A file of a package keeps its own uses:
+`src/notes/routes.ce` turns requests into calls of the store, and results into responses. A [route](glossary.md#route)
+sends each request to its [handler](glossary.md#handler).
+
+### From an Err to a status
+
+Each `Err` becomes a status: `400` for what the client sent, a body that doesn't fit `NewNote` or a text that breaks the
+`check` of the table (the SQL code `23514`); `404` for a note that isn't there; and `500` for the rest, which is the
+server's fault. A file of a package keeps its own uses:
 
 ```cesia
 (* src/notes/routes.ce *)
 use std/web
 
+refused(e) = web.SendJson({Error: e.Message}, status = 400)
 failed(e) = web.SendJson({Error: e.Message}, status = 500)
 
 defn listed(db)
@@ -126,10 +134,10 @@ end
 
 defn added(request, db)
   match web.BodyJson(request) then AndThen(NewNote.From)
-    Err(e) -> web.SendJson({Error: e.Message}, status = 400)
+    Err(e) -> refused(e)
     Ok(n) -> match Save(n.Text, db)
       Ok(note) -> web.SendJson(note, status = 201)
-      Err(e) -> web.SendJson({Error: e.Message}, status = 400)
+      Err(e) -> if e.Code == "23514" refused(e) else failed(e) end
     end
   end
 end
@@ -137,7 +145,7 @@ end
 defn finished(request, db)
   id = Number(request.Params.id)
   if not IsInt(id)
-    return web.SendJson({Error: "The id is a whole number."}, status = 400)
+    return refused({Message: "The id is a whole number."})
   end
   match Finish(id, db)
     Ok(note) -> if IsMissing(note) web.SendJson({Error: "No note $id."}, status = 404) else web.SendJson(note) end
@@ -148,9 +156,9 @@ end
 defn App(db)
   (** The web service of the notes in a database: GET /notes, POST /notes, POST /notes/:id/done. *)
   web.App()
-    then web.GetRoute("/notes", r -> listed(db), it)
-    then web.PostRoute("/notes", r -> added(r, db), it)
-    then web.PostRoute("/notes/:id/done", r -> finished(r, db), it)
+    then web.GetRoute("/notes", r -> listed(db))
+    then web.PostRoute("/notes", r -> added(r, db))
+    then web.PostRoute("/notes/:id/done", r -> finished(r, db))
 end
 ```
 
@@ -161,6 +169,8 @@ memory:
 
 ```cesia
 (* src/notes/routes.test.ce *)
+use std/web
+
 defn ask(method, path, body = "")
   db = Unwrap(Open("sqlite::memory:"))
   handle = web.Handler(App(db))
@@ -171,8 +181,12 @@ isEmptyAtFirst() = ask("GET", "/notes").Body == "[]"
 isAdded() = ask("POST", "/notes", "{\"Text\": \"buy bread\"}").Status == 201
 isEmptyTextRefused() = ask("POST", "/notes", "{\"Text\": \"\"}").Status == 400
 isUnknownNote() = ask("POST", "/notes/7/done").Status == 404
+```
 
-[isEmptyAtFirst(), isAdded(), isEmptyTextRefused(), isUnknownNote()] -->
+Each test gives `true`:
+
+```cesia
+[isEmptyAtFirst(), isAdded(), isEmptyTextRefused(), isUnknownNote()] --> [true, true, true, true]
 ```
 
 `cesia test` runs them, with the examples of the documentation, and says `4 passed, 0 failed`. Run it after each change.
@@ -201,6 +215,8 @@ curl -d '{"Text": "buy bread"}' localhost:8080/notes
 curl -X POST localhost:8080/notes/1/done
 curl localhost:8080/notes
 ```
+
+### In one program
 
 The block below does the same in one program: it serves the routes on a port of this machine, and asks them with
 [http.Post] and [http.Fetch]:

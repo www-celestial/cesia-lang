@@ -16,6 +16,8 @@ else
 end
 ```
 
+### else if
+
 `else if` chains more conditions. The first one that holds wins:
 
 ```cesia
@@ -55,6 +57,8 @@ for fruit in ["apple", "pear", "fig"]
 end
 ```
 
+### Positions
+
 A range gives the positions, when you need them:
 
 ```cesia
@@ -74,7 +78,9 @@ end
 total -->
 ```
 
-In brackets, a `for` builds a list: each element is the value before the `for`. An `if` after it keeps only some of them:
+### Building a list with for
+
+In brackets, a `for` builds a list, a [comprehension](glossary.md#comprehension): each element is the value before the `for`. An `if` after it keeps only some of them:
 
 ```cesia
 [x * x for x in 1..5] -->
@@ -100,6 +106,8 @@ end
 n -->
 ```
 
+### break
+
 [break] leaves the loop at once, from `for` or `while`. Here the loop stops at the first number over 10:
 
 ```cesia
@@ -113,7 +121,8 @@ end
 
 ## match
 
-[match] compares a value with patterns, in order, and gives the value of the first one that fits. A pattern can be a value,
+[match] compares a value with patterns, in order, and gives the value of the first one that fits: this is
+[pattern matching](glossary.md#pattern-matching). A pattern can be a value,
 and `else` takes what no pattern took:
 
 ```cesia
@@ -126,7 +135,10 @@ day(7) -->
 day(3) -->
 ```
 
-A pattern can also be a shape. It takes the value apart and gives names to its pieces. `[a, b]` fits a list of two elements,
+### Shapes
+
+A pattern can also be a shape. It takes the value apart and gives names to its pieces, which is called
+[destructuring](glossary.md#destructuring). `[a, b]` fits a list of two elements,
 and `{Name: n}` a dictionary with that key:
 
 ```cesia
@@ -140,6 +152,8 @@ describe([1, 2]) -->
 describe({Name: "Ana"}) -->
 describe(42) -->
 ```
+
+### Conditions and _
 
 An `if` after a pattern adds a condition, and `_` fits anything without naming it:
 
@@ -155,6 +169,8 @@ sign(8) -->
 
 A name in a pattern always takes a new value: it never compares with a variable of the same name. To compare with a variable,
 use an `if`.
+
+### When nothing fits
 
 When no pattern fits and there is no `else`, the program stops, and names the value that nothing took. A forgotten case shows at
 once, instead of giving a wrong answer later:

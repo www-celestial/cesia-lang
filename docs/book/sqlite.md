@@ -29,15 +29,17 @@ sql.Script(schema, db) -->
 ## Adding rows
 
 [sql.Exec] runs one statement that changes rows. Each `?` in the text takes the next value of the list. It gives
-`{Changed, LastId}`: how many rows changed, and the id of the last row added.
+`Changed`, how many rows changed, and `LastId`, the id of the last row added.
 
 ```cesia
 sql.Exec("insert into notes (title) values (?)", ["buy bread"], db) -->
 sql.Exec("insert into notes (title) values (?)", ["call Bo"], db) -->
 ```
 
+### Broken rules
+
 A rule of the table that a row breaks is an `Err` with a code, the one SQL gives it: `23505` for a value that must be unique,
-`23502` for a missing one.
+`23502` for a missing one, `23514` for a `check` that fails.
 
 ```cesia
 sql.Exec("insert into notes (title) values (?)", ["buy bread"], db) -->
@@ -47,12 +49,15 @@ sql.Exec("insert into notes (title) values (?)", [missing], db) -->
 ## Values never go into the text
 
 Write each value as a `?`, never inside the text with `$`. A value put in the text is read as SQL, so a name typed by a user can
-change the query: an injection. Through `?`, a value is only ever a value:
+change the query: an injection. Through `?`, a value is only ever a value, in a
+[parameterized query](glossary.md#parameterized-query):
 
 ```cesia
 name = "x' or '1'='1"
 sql.Query("select * from notes where title = ?", [name], db) -->
 ```
+
+### One statement per call
 
 A call runs one statement, so a text that hides a second one is refused:
 
@@ -70,6 +75,8 @@ rows = Unwrap(sql.Query("select * from notes", [], db))
 rows -->
 rows[1].CreatedAt -->
 ```
+
+### One row
 
 [sql.One] gives the first row, or `missing` when there is none:
 
@@ -95,7 +102,8 @@ sql.Query("select * from notes where not done", [], db, as = Note.From) -->
 
 ## Transactions
 
-[sql.Transaction] runs a function with `tx`, which is used as `db` in every call. An `Ok` of the function keeps all its changes;
+A [transaction](glossary.md#transaction) makes several changes as one: all of them, or none. [sql.Transaction] runs a
+function with `tx`, which is used as `db` in every call. An `Ok` of the function keeps all its changes;
 an `Err`, or a panic, undoes them all:
 
 ```cesia
@@ -119,7 +127,10 @@ function gives an `Ok` to go on:
 sql.Each(r -> Ok(Print(r.Title)), "select title from notes order by id", [], db) -->
 ```
 
-[sql.Table] gives the result as columns, `{Names, Columns}`, the form [std/frame] works on:
+### As columns
+
+[sql.Table] gives the result as columns: the `Names` of the columns, and the `Columns` of values, the form [std/frame] works
+on:
 
 ```cesia
 sql.Table("select id, title from notes", [], db) -->
@@ -127,9 +138,12 @@ sql.Table("select id, title from notes", [], db) -->
 
 ## A database in a file
 
-A file keeps its data between runs. Here the program makes it, writes to it, and reads it back:
+A file keeps its data between runs. Here the program keeps it in the folder `data`, makes it, writes to it, and reads it
+back:
 
 ```cesia allow=read,write
+use std/sys
+
 defn count(path)
   db = sql.Open("sqlite:$path")?
   sql.Script("create table if not exists visits (at text)", db)?
@@ -138,16 +152,17 @@ defn count(path)
   sql.Close(db)
   Ok(n.Total)
 end
-count("visits.db") -->
-count("visits.db") -->
+sys.Mkdir("data")
+count("data/visits.db") -->
+count("data/visits.db") -->
 ```
 
 ```bash
 cesia run --allow read=data,write=data visits.ce
 ```
 
-SQLite writes two files beside the database while it runs, `-wal` and `-shm`: give the permissions on the folder, not on the
-file alone. A database in use by another fiber or program is waited for, in this fiber only, so the others go on.
+SQLite writes two more files beside the database while it runs, `visits.db-wal` and `visits.db-shm`. So the permissions
+are on the folder that holds them all, `data`, not on the file alone. A database in use by another fiber or program is waited for, in this fiber only, so the others go on.
 
 ## Next
 

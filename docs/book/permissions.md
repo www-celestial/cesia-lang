@@ -1,7 +1,7 @@
 # Permissions
 
 In this chapter you decide what a program may touch: files, the network, other programs. A Cesia program can touch nothing
-outside itself until its command line allows it. You also set limits on how long it runs and how much memory it takes, so that
+outside itself until its command line allows it: it runs in a [sandbox](glossary.md#sandbox). You also set limits on how long it runs and how much memory it takes, so that
 a program you don't trust, or a bug, can't harm the machine.
 
 ## Nothing by default
@@ -32,18 +32,23 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `read`, `read=./data` | reading files, all of them or those under a folder |
 | `write`, `write=./out` | writing, renaming and removing files, all of them or under a folder |
 | `net`, `net=:8080` | the network, or listening on one port |
+| `net=example.com`, `net=example.com:443` | connecting to one host, on any port or on one |
 | `exec`, `exec=git` | running other programs, all of them or one |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
-| `ffi=sqlite3` | loading a C library, by its name |
-| `debug` | the breakpoints of a debugger, for `cesia run --debugger` |
+| `ffi=m` | loading a C library, by its name |
+| `debug` | the breakpoints of [std/debug]; `cesia run --debugger` gives it by itself, with no `--allow` |
 | `all` | everything |
 
-A permission after `=` is as narrow as you can make it. Give that one: a program that reads its data from `./data` needs
+### As narrow as you can
+
+A permission after `=` is as narrow as you can make it. Give that one, by the
+[principle of least privilege](glossary.md#principle-of-least-privilege): a program that reads its data from `./data` needs
 `read=./data`, not `read`. Reading outside the folder is denied as if nothing had been given.
 
 ## ffi is total trust
 
-A C library runs outside Cesia's checks: it can read any file, open any connection, and break the memory of the program.
+A C library, called through the [foreign function interface](glossary.md#foreign-function-interface), runs outside
+Cesia's checks: it can read any file, open any connection, and break the memory of the program.
 `ffi=NAME` gives a program everything for that library, so give it only to libraries you trust, as the ones Cesia's own
 modules use.
 
@@ -75,6 +80,8 @@ cesia run --limit memory=512M,steps=10000000 program.ce
 | `steps=1000000` | it has run that many steps, as a loop that never ends |
 | `depth=10000` | calls inside calls go deeper than that: the default is 10,000 |
 | `nesting=600` | code, JSON or values are nested deeper than that: the default is 600 |
+
+### The defaults
 
 Without `--limit memory`, a program may take at most 80% of the machine's memory, so that one large array can't freeze it.
 A function that calls itself forever stops at the depth limit, with the line of the call:

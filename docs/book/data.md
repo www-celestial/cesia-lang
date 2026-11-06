@@ -21,7 +21,7 @@ Len(sales) -->
 
 ## Comprehensions
 
-A comprehension builds a list from another: the value for each element, then `for`, then, if you want, `if` and a condition.
+A [comprehension](glossary.md#comprehension) builds a list from another: the value for each element, then `for`, then, if you want, `if` and a condition.
 
 ```cesia
 [s.Units * s.Price for s in sales] -->
@@ -46,6 +46,8 @@ Unique([s.Product for s in sales]) -->
 Top(2, sales, by = it.Units) -->
 ```
 
+### MaxBy and Scan
+
 [MaxBy] gives the element with the largest value of a function, and [Scan] each step of a running total:
 
 ```cesia
@@ -55,17 +57,22 @@ Scan((total, s) -> total + s.Units, 0, sales) -->
 
 ## Groups
 
-[Group] puts together the elements with the same key, in the order the keys first appear. Each group is a `{Key, Values}`:
+[Group] puts together the elements with the same key, in the order the keys first appear. Each group has its `Key`, and the
+`Values` that have it:
 
 ```cesia
-Group(it.City, sales) then Map(g -> {City: g.Key, Rows: Len(g.Values)}, it) -->
+Group(it.City, sales) then Map(g -> {City: g.Key, Rows: Len(g.Values)}) -->
 ```
+
+### One value per group
 
 With a `summary`, each group becomes one value, so a total per city takes one line:
 
 ```cesia
 Group(it.City, sales, summary = rows -> Sum([s.Units for s in rows])) -->
 ```
+
+### Zip and Zipmap
 
 [Zip] pairs two lists, element by element, and [Zipmap] turns two of them into a dictionary:
 
@@ -76,9 +83,26 @@ Zipmap(["Lyon", "Paris"], [15, 35]) -->
 
 ## A table from a CSV file
 
-For more rows, [std/frame] keeps a table as columns: one list per column, and a column of numbers stored without boxes, so
+For more rows, [std/frame] keeps a table as columns, which is called [columnar data](glossary.md#columnar-data): one list
+per column, and a column of numbers stored without boxes, so
 that sums and filters run on whole columns at once. [frame.FromCsv] reads the text of a CSV file whose first row names the
-columns. An empty cell is `missing`, and a number is read as a number:
+columns. An empty cell is `missing`, and a number is read as a number. Here is `sales.csv`:
+
+```text
+day,city,product,units,price
+2026-10-01,Lyon,bread,12,1.25
+2026-10-01,Paris,bread,30,1.5
+2026-10-01,Lyon,cake,3,8.0
+2026-10-02,Paris,cake,5,9.0
+2026-10-02,Lille,bread,8,1.25
+2026-10-02,Lyon,bread,15,1.25
+2026-10-03,Paris,bread,22,1.5
+2026-10-03,Lille,cake,2,7.5
+2026-10-03,Lyon,cake,4,8.0
+2026-10-04,Paris,cake,6,9.0
+```
+
+It reads in one line:
 
 ```cesia allow=read
 use std/sys
@@ -102,6 +126,8 @@ lyon = frame.Where(r -> r.city == "Lyon", withTotal)
 Print(frame.Show(frame.Select(["day", "product", "total"], lyon)))
 ```
 
+### Groups of rows
+
 [frame.GroupBy] makes one row per value of its columns, and a column for each [frame.Agg]: a new name, the column it reads,
 and the function of its values. [frame.OrderBy] orders the rows:
 
@@ -110,7 +136,10 @@ byCity = frame.GroupBy(["city"], [frame.Agg("units", "units", Sum), frame.Agg("r
 Print(frame.Show(frame.OrderBy("units", byCity, descending = true)))
 ```
 
-A column is a list, and the operators of the language work on a whole list at once: `units * 2` doubles each element, and
+### Whole columns
+
+A column is a list, and the operators of the language work on a whole list at once, a
+[vectorized operation](glossary.md#vectorized-operation): `units * 2` doubles each element, and
 `units > 10` gives a list of `true` and `false` that [frame.WhereMask] uses to keep rows:
 
 ```cesia allow=read
@@ -119,6 +148,8 @@ units * 2 -->
 Mean(units) -->
 frame.Rows(frame.WhereMask(units > 10, df)) -->
 ```
+
+### Back to CSV
 
 [frame.ToCsv] writes a frame back as CSV text, for [sys.Write]:
 

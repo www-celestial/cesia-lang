@@ -5,13 +5,15 @@ You also meet `cesia.toml`, the file that describes a project: its name, its tas
 
 ## use
 
-[use] brings a package into a file. The name in the code is the last part of its path, followed by a dot:
+[use] brings a [package](glossary.md#package), a module of code, into a file. The name in the code is the last part of its path, followed by a dot:
 
 ```cesia
 use std/encode
 encode.Hex("hi") -->
 encode.Base64("hi") -->
 ```
+
+### as
 
 `as` gives the package another name, which helps when two would have the same one, or when a name is long:
 
@@ -21,6 +23,8 @@ s = sets.Of([3, 1, 3, 2])
 sets.Items(s) -->
 sets.Member(2, s) -->
 ```
+
+### Where the code comes from
 
 The first part of the path says where the code comes from:
 
@@ -66,12 +70,18 @@ WithTax(10.25) -->
 - A name with a capital, `WithTax`, is public: other packages reach it as `prices.WithTax`. A name with a small letter,
   `cents`, stays inside its folder.
 - A subfolder is another package: `src/prices/old/` is used as `use src/prices/old`, and named `old` in the code.
-- A name that every file sees, as [Count] or [Get], means that one in every file: a package can't define it, and the
-  message says so. Give your function a name of its own, as `set.With` adds to a set where [Put] adds to a dictionary.
+
+### Names every file sees
+
+A name that every file sees without a `use`, as [Count] or [Get], belongs to the [prelude](glossary.md#prelude). It means
+that one in every file: a package can't define it, and the message says so. Give your function a name of its own, as
+`set.With` adds to a set where [Put] adds to a dictionary.
 
 ```cesia fails
 Count(basket) = 3
 ```
+
+### Private names
 
 A private name is no name of the package from outside, and the message says so:
 
@@ -82,8 +92,8 @@ encode.hexDigit
 
 ## cesia.toml
 
-`cesia new shop` makes a project: a `cesia.toml`, `src/main.ce`, a `.gitignore`, and `std/`, a copy of Cesia's libraries for
-this project. `cesia.toml` says what the project is:
+`cesia new shop` makes a project: a `cesia.toml`, `src/main.ce`, a `.gitignore`, `std/`, a copy of Cesia's libraries for
+this project, and `cesia.lock`, which keeps their fingerprints. `cesia.toml` says what the project is:
 
 ```toml
 [project]
@@ -99,6 +109,8 @@ file = "src/server.ce"
 allow = ["read=data", "net=:8080"]
 ```
 
+### Tasks
+
 A task is a program with its permissions, which the chapter [Permissions](permissions.md) explains. `cesia do` lists the tasks,
 and `cesia do serve` runs one and shows the exact command, so you can type it yourself:
 
@@ -112,7 +124,8 @@ that runs.
 
 ## Code from other projects
 
-Any project with a `cesia.toml` can give its packages to others: there is no registry. A `[deps]` table names the repository,
+Any project with a `cesia.toml` can give its packages to others, as a [dependency](glossary.md#dependency) of theirs:
+there is no registry. A `[deps]` table names the repository,
 a tag, and the packages you take:
 
 ```toml
@@ -124,6 +137,8 @@ take = ["src/folders"]
 
 Its code then writes `use deps/www-celestial/cemacs/src/folders`, and names it `folders`.
 
+### cesia pkg
+
 `cesia pkg add` writes that table for you, and fetches the code. `cesia pkg install` makes `std/` and `deps/` what
 `cesia.toml` and `cesia.lock` say, for instance after a clone:
 
@@ -134,7 +149,7 @@ cesia pkg
 ```
 
 - git fetches each tag once, into a cache: another project that takes it needs no network.
-- `cesia.lock` keeps the commit of each tag and a fingerprint of each file. The code in `std/` and `deps/` is read only: Cesia
+- `cesia.lock`, the [lock file](glossary.md#lock-file), keeps the commit of each tag and a fingerprint of each file. The code in `std/` and `deps/` is read only: Cesia
   checks each file the first time it reads it, so a change by hand stops the program.
 - To change someone's package, fork it, then let `cesia pkg move` point the project at your fork.
 - `cesia run`, `cesia do` and `cesia test` never use the network.

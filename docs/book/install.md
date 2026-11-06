@@ -55,7 +55,8 @@ program.
 
 ## Run it again at each save
 
-`--watch` keeps the program running and loads your changes each time you save the file:
+`--watch` keeps the program running and loads your changes each time you save the file, a
+[hot reload](glossary.md#hot-reload):
 
 ```sh
 cesia run --watch hello.ce
@@ -74,7 +75,9 @@ Print("This line never runs")
 Pritn("Hello")
 ```
 
-Other mistakes show when their line runs. Here a text and a number are added, and the message says what to write instead:
+### Mistakes that show when their line runs
+
+Other mistakes show only when their line runs. Here a text and a number are added, and the message says what to write instead:
 
 ```cesia fails
 Print("Total: " + 3)
@@ -94,8 +97,11 @@ cesia do run
 
 - `cesia.toml`, which names the project and its tasks;
 - `src/main.ce`, the program, which prints `Hello from hello`;
-- `std/`, a copy of the libraries of Cesia, and `cesia.lock`, which keeps the fingerprint of each of their files;
+- `std/`, a copy of the libraries of Cesia, and `cesia.lock`, a [lock file](glossary.md#lock-file) that keeps the
+  fingerprint of each of their files;
 - `.gitignore`, which leaves `std/` and `deps/` out of git: `cesia pkg install` makes them again after a clone.
+
+### Its cesia.toml
 
 The `cesia.toml` of a new project:
 
