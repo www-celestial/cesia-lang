@@ -1,2 +1,4 @@
-Limit "steps" reached.
+fiber-short.ce:9:8: Limit "steps" reached.
+  9 |   Wait(Spawn(work))
+    |        ^
 exit 1

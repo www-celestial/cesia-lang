@@ -1,2 +1,4 @@
-Limit "steps" reached.
+find-net-pays.ce:5:6: Limit "steps" reached.
+  5 |   net.Find("b", s)
+    |      ^
 exit 1

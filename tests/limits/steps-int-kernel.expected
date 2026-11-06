@@ -1,2 +1,4 @@
-Limit "steps" reached.
+steps-int-kernel.ce:3:9: Limit "steps" reached.
+  3 |   b = a * 2
+    |         ^
 exit 1

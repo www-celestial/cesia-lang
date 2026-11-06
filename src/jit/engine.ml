@@ -144,7 +144,7 @@ let go (ctx : ctx) code entry =
     end
     else if st = Ir.too_long then begin
       ctx.b <- io.(Ir.io_frame);
-      Runtime.limit "steps" (-1)
+      Runtime.limit "steps" ctx.site
     end
     else if st = Ir.fallback && not first then failwith "jit: arrays changed under native code"
     else st

@@ -1,2 +1,4 @@
-Limit "steps" reached.
+steps-any.ce:3:7: Limit "steps" reached.
+  3 |   b = Any(m)
+    |       ^
 exit 1

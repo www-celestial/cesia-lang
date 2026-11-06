@@ -1,2 +1,4 @@
-Limit "steps" reached.
+steps-in.ce:3:11: Limit "steps" reached.
+  3 |   b = 0.5 in a
+    |           ^
 exit 1

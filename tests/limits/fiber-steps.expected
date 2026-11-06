@@ -1,2 +1,4 @@
-Limit "steps" reached.
+fiber-steps.ce:4:6: Limit "steps" reached.
+  4 | Wait(Spawn(forever))
+    |      ^
 exit 1

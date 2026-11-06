@@ -1,2 +1,4 @@
-Limit "steps" reached.
+show-shared.ce:5:1: Limit "steps" reached.
+  5 | Print(x)
+    | ^
 exit 1

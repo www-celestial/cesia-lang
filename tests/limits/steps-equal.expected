@@ -1,2 +1,4 @@
-Limit "steps" reached.
+steps-equal.ce:3:7: Limit "steps" reached.
+  3 |   b = Equal(a, a)
+    |       ^
 exit 1

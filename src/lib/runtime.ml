@@ -97,7 +97,7 @@ let[@inline never] checkpoint ctx top =
   let w = ctx.w in
   let spent = ctx.refill - ctx.fuel in
   if w.steps_left <> max_int then w.steps_left <- w.steps_left - spent;
-  if w.steps_left <= 0 then limit "steps" (-1);
+  if w.steps_left <= 0 then limit "steps" ctx.site;
   let d = frames ctx in
   if d > ctx.max_depth then limit "depth" ctx.i.(ctx.b + 1);
   ctx.until <- ctx.until - spent;
@@ -122,7 +122,7 @@ let settle ctx =
   let w = ctx.w in
   if w.steps_left <> max_int then begin
     w.steps_left <- w.steps_left - (ctx.refill - ctx.fuel);
-    if w.steps_left <= 0 then limit "steps" (-1)
+    if w.steps_left <= 0 then limit "steps" ctx.site
   end
 
 let create_world o =

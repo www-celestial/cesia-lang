@@ -1,2 +1,4 @@
-Limit "steps" reached.
+find-byte-pays.ce:4:3: Limit "steps" reached.
+  4 |   ByteFind("b", 1, s)
+    |   ^
 exit 1

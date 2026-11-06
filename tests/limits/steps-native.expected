@@ -1,2 +1,4 @@
-Limit "steps" reached.
+steps-native.ce:1:5: Limit "steps" reached.
+  1 | a = Zeros(500, 500)
+    |     ^
 exit 1
