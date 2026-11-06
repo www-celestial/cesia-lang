@@ -1,0 +1,29 @@
+use std/io
+use std/list
+
+(* A guard that fails after an assignment of the same statement: the way back puts the variable back, and the interpreter
+   does the whole statement again. *)
+defn walls(ps, n, w)
+  hits = 0
+  t = 0.0
+  for i in 1..n
+    p = ps[i]
+    vx = p.Vx
+    if p.X > w
+      vx = 0.0 - vx
+      hits = hits + p.Weight
+    end
+    t = t + vx
+  end
+  io.Print(hits, t)
+end
+
+ps = list.Fill(0, 300000)
+for i in 1..300000
+  ps[i] = {X: i * 1.0, Vx: 0.5, Weight: 1}
+end
+walls(ps, 300000, 100000.0)
+walls(ps, 300000, 100000.0)
+ps[250000] = {X: 250000.0, Vx: 0.5, Weight: 0.5}
+walls(ps, 300000, 100000.0)
+walls(ps, 300000, 100000.0)

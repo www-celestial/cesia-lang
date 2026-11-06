@@ -1,0 +1,5 @@
+steps-maps.ce:8:7: Limit "steps" reached.
+  8 |     ps[i] = {X: i * 1.0}
+    |       ^
+  in run (steps-maps.ce:8)
+exit 1

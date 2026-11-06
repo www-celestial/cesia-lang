@@ -1,0 +1,26 @@
+use std/io
+use std/list
+
+(* Structs read and made in a hot loop. *)
+struct Body { X, V }
+
+defn run(n, steps)
+  bs = list.Fill(0, n)
+  for i in 1..n
+    bs[i] = Body(i * 1.0, 0.5)
+  end
+  for s in 1..steps
+    for i in 1..n
+      b = bs[i]
+      bs[i] = Body(b.X + b.V * 0.01, b.V - b.X * 0.001)
+    end
+  end
+  t = 0.0
+  for i in 1..n
+    t = t + bs[i].X
+  end
+  io.Print(t)
+  io.Print(bs[1])
+end
+
+run(200, 6000)

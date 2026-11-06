@@ -1,0 +1,30 @@
+use std/io
+use std/list
+use std/value
+
+(* Guards that fail in a native loop: the interpreter goes on from the statement, with the same results. *)
+defn total(rows)
+  s = 0.0
+  n = 0
+  for i in 1..value.Len(rows)
+    r = rows[i]
+    s = s + r.Price * 2.0
+    n = n + r.Count
+  end
+  io.Print(s, n)
+end
+
+rows = list.Fill(0, 300000)
+for i in 1..300000
+  rows[i] = {Price: i * 0.5, Count: 1}
+end
+total(rows)
+(* A map whose keys are in another order. *)
+rows[150000] = {Count: 2, Price: 1.0}
+total(rows)
+(* An Int where a Float was. *)
+rows[200000] = {Price: 3, Count: 1}
+total(rows)
+(* A missing value: missing, as the interpreter gives. *)
+rows[250000] = {Price: missing, Count: 1}
+total(rows)

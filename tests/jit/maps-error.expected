@@ -1,0 +1,5 @@
+maps-error.ce:9:17: Index 400001 is outside this array of 400000 elements.
+  9 |     s = s + rows[i].W
+    |                 ^
+  in scan (maps-error.ce:9)
+exit 1

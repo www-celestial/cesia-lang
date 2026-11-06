@@ -1,0 +1,18 @@
+use std/io
+use std/list
+
+(* The limit of steps, reached in a native loop over maps: the same place as the interpreter's. *)
+defn run()
+  ps = list.Fill(0, 1000)
+  for i in 1..1000
+    ps[i] = {X: i * 1.0}
+  end
+  for s in 1..100000
+    for i in 1..1000
+      p = ps[i]
+      ps[i] = {X: p.X + 1.0}
+    end
+  end
+  ps[1]
+end
+io.Print(run())

@@ -1,0 +1,26 @@
+use std/io
+use std/list
+use std/fiber
+use std/math
+
+(* Two fibers, each in a native loop over maps: they share the processor as they do interpreted. *)
+defn work(name, n)
+  ps = list.Fill(0, 100)
+  for i in 1..100
+    ps[i] = {V: i * 1.0}
+  end
+  for s in 1..n
+    for i in 1..100
+      p = ps[i]
+      ps[i] = {V: p.V * 0.5 + 1.0}
+    end
+    if math.Mod(s, 10000) == 0
+      io.Print(name, s)
+    end
+  end
+  ps[100].V
+end
+
+a = fiber.Spawn(() -> work("a", 40000))
+b = fiber.Spawn(() -> work("b", 40000))
+io.Print(fiber.Wait(a), fiber.Wait(b))

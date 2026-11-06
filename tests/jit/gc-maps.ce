@@ -1,0 +1,25 @@
+use std/io
+use std/list
+
+(* Many maps made natively and kept: the young heap fills, collections run between steps, and nothing is lost. *)
+defn grow(n, rounds)
+  ms = list.Fill(0, n)
+  for i in 1..n
+    ms[i] = {A: i, B: i * 0.5, C: [i]}
+  end
+  for r in 1..rounds
+    for i in 1..n
+      m = ms[i]
+      ms[i] = {A: m.A + 1, B: m.B * 1.0001, C: m.C}
+    end
+  end
+  t = 0
+  u = 0.0
+  for i in 1..n
+    t = t + ms[i].A
+    u = u + ms[i].B
+  end
+  io.Print(t, u, ms[7].C, ms[n])
+end
+
+grow(50000, 60)

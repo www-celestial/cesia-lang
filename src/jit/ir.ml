@@ -28,8 +28,9 @@ type ins =
   | Unbox of int * value * unbox * int
   | Box of int * value
   | Share of value
-  | Key_get of int * value * int * int * bool * int
-  | Field_get of int * value * int * int * int
+  | Vals of int * value * int * int
+  | Fields of int * value * int * int
+  | Load of int * int * int * int
   | Get of int * int * value * int
   | Put of int * value * value * int
   | Record of int * int * int * value array
@@ -42,6 +43,7 @@ type term =
   | Done
   | Out of value
   | Fuel_ge of value * int * int
+  | Bail of int
 type block = { mutable ins : ins list; mutable term : term }
 type var = { reg : int; kind : kind; slot : int }
 
@@ -52,6 +54,7 @@ type func = {
   vars : var array;
   arrays : (int * bool * int) array;
   consts : Types.t array;
+  restores : (int * int) list array;
   kinds : kind array;
   blocks : block array;
   resumes : int array;
@@ -100,6 +103,7 @@ let reloaded = 9
 let bailed = 10
 let gc = 11
 let cx_young = 30
+let restored = 1 lsl 20
 let err_add = 1
 let err_sub = 2
 let err_mul = 3

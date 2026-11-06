@@ -43,9 +43,16 @@ type st = {
 
 and dyn = {
   mutable bail : int option;
-      (* the statement of the region's loop that a failed guard goes back to: only before anything of it shows *)
+      (* the statement of the region's loop that a failed guard goes back to: only before anything of it shows but its
+         assignments to variables, which the way back undoes *)
+  mutable dirty : bool;  (* the statement assigned a variable already *)
+  restores : (int * int) list Dynarray.t;  (* of each statement: its variables' registers and their copies at its start *)
   mutable need : int ref option;  (* the words of allocation since the last [Reserve] *)
   consts : t Dynarray.t;
+  mutable known : (int * int * int * int) list;
+      (* in the block being built: a register of a map or struct already checked, its constant or -1 - its shape, and the
+         register of its values *)
+  mutable nums : (int * int * Ir.unbox * int) list;  (* in the block being built: a value's register, how, its number's *)
 }
 
 and unit_ = { versions : version Dynarray.t }
@@ -94,6 +101,16 @@ let shows st = st.dyn.bail <- None
 let emit st i =
   (match i with
    | Ir.Tick _ | Call _ | Enter _ | Set_elem _ | Set_at _ | Put _ | Incr _ | Bump _ | Burn -> shows st
+   | Move (r, x) ->
+     let d = st.dyn in
+     d.known <- List.filter (fun (_, m, _, _) -> m <> r) d.known;
+     d.nums <- List.filter (fun (_, v, _, _) -> v <> r) d.nums;
+     (* What the source holds, the destination holds too. *)
+     (match x with
+      | Reg q ->
+        d.known <- List.concat_map (fun ((b, m, c, a) as e) -> if m = q then [ e; (b, r, c, a) ] else [ e ]) d.known;
+        d.nums <- List.concat_map (fun ((b, v, h, n) as e) -> if v = q then [ e; (b, r, h, n) ] else [ e ]) d.nums
+      | _ -> ())
    | _ -> ());
   let b = Dynarray.get st.blocks st.cur in
   b.ins <- i :: b.ins
@@ -139,8 +156,21 @@ let array_of st (e : expr) =
   | Var { b = Local i; _ } when st.arrays.(i) >= 0 -> st.arrays.(i)
   | _ -> raise No
 
-(* The statement a failed guard goes back to, or no lowering. *)
-let bail st = match st.dyn.bail with Some k -> k | None -> raise No
+(* The statement a failed guard goes back to, putting back the variables it assigned so far, or no lowering. *)
+let bail st = match st.dyn.bail with Some k -> if st.dyn.dirty then Ir.restored + k else k | None -> raise No
+
+(* The number in a value, checked once in a block. *)
+let unbox st v how =
+  let k = if how = Ir.Only_int then Ir.Kint else Kfloat in
+  match v with
+  | Ir.Reg q when List.exists (fun (b, x, h, _) -> b = st.cur && x = q && h = how) st.dyn.nums ->
+    let _, _, _, r = List.find (fun (b, x, h, _) -> b = st.cur && x = q && h = how) st.dyn.nums in
+    Ir.Reg r, k
+  | _ ->
+    let r = reg st k in
+    emit st (Unbox (r, v, how, bail st));
+    (match v with Reg q -> st.dyn.nums <- (st.cur, q, how, r) :: st.dyn.nums | _ -> ());
+    Reg r, k
 
 let to_float st (v, k) =
   match k, v with
@@ -150,10 +180,7 @@ let to_float st (v, k) =
     let r = reg st Kfloat in
     emit st (Float_of (r, v));
     Reg r
-  | Kval, _ ->
-    let r = reg st Kfloat in
-    emit st (Unbox (r, v, Number, bail st));
-    Reg r
+  | Kval, _ -> fst (unbox st v Number)
 
 let fresh st k f =
   let r = reg st k in
@@ -212,6 +239,11 @@ let box st (x, k) =
     alloc st (if k = Kint then 2 else 4);
     let r = reg st Kval in
     emit st (Box (r, x));
+    (* What it holds is known in this block. *)
+    (match x with
+     | Reg q when k = Kfloat -> st.dyn.nums <- (st.cur, r, Number, q) :: (st.cur, r, Only_float, q) :: st.dyn.nums
+     | Reg q -> st.dyn.nums <- (st.cur, r, Only_int, q) :: st.dyn.nums
+     | _ -> ());
     Reg r
 
 (* A value that arithmetic takes: guessed from what the frame holds, a Float or an Int, and checked. *)
@@ -219,14 +251,8 @@ let guess st (e : expr) (x, k) =
   match k with
   | Ir.Kval ->
     (match observe st e with
-     | Some (Float _) ->
-       let r = reg st Kfloat in
-       emit st (Unbox (r, x, Only_float, bail st));
-       Ir.Reg r, Ir.Kfloat
-     | Some (Int _) ->
-       let r = reg st Kint in
-       emit st (Unbox (r, x, Only_int, bail st));
-       Reg r, Kint
+     | Some (Float _) -> unbox st x Only_float
+     | Some (Int _) -> unbox st x Only_int
      | Some _ -> raise No
      | None -> raise Unseen)
   | _ -> x, k
@@ -314,13 +340,17 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
        let j = Trie.index keys (Array.length vals) (Trie.hash key) key in
        if j < 0 then raise Unseen;
        let c = const st (Dict { keys; vals = [||]; d_owned = false }) in
-       fresh st Kval (fun r -> Key_get (r, v, c, j, not (Trie.is_whole keys), bail st))
+       let a = checked st v c (fun r -> Ir.Vals (r, v, c, bail st)) in
+       (* Keys that grow in place can be held by a map of fewer values. *)
+       let k = if Trie.is_whole keys then -1 else bail st in
+       fresh st Kval (fun r -> Load (r, a, j, k))
      | Some (Struct { shape; _ }) ->
        let j = Value.field_index shape name in
        (* A small field of another package: the interpreter's error. *)
        if j < 0 || (shape.sm >= 0 && shape.sname <> None && (not (Lexer.is_public name))
                     && st.w.modules.(st.ver.owner.pm).host <> shape.sm) then raise No;
-       fresh st Kval (fun r -> Field_get (r, v, shape.sid, j, bail st))
+       let a = checked st v (-1 - shape.sid) (fun r -> Ir.Fields (r, v, shape.sid, bail st)) in
+       fresh st Kval (fun r -> Load (r, a, j, -1))
      | Some _ -> raise No
      | None -> raise Unseen)
   | Struct_lit { sname; sfields } ->
@@ -341,6 +371,18 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     fresh st Kval (fun r -> Record (r, (if sname = None then 8 else 4), c, vals))
   | Call call -> call_expr st e call
   | _ -> raise No
+
+(* The values of a map or the fields of a struct, checked once in a block. *)
+and checked st v c make =
+  match v with
+  | Ir.Reg m when List.exists (fun (b, x, y, _) -> b = st.cur && x = m && y = c) st.dyn.known ->
+    let _, _, _, a = List.find (fun (b, x, y, _) -> b = st.cur && x = m && y = c) st.dyn.known in
+    a
+  | _ ->
+    let a = reg st Kval in
+    emit st (make a);
+    (match v with Reg m -> st.dyn.known <- (st.cur, m, c, a) :: st.dyn.known | _ -> ());
+    a
 
 (* A value about to be stored elsewhere, as the interpreter's [ce] gives it: one read from a variable, a field or a cell is
    shared; a number is boxed. *)
@@ -510,6 +552,17 @@ and cond st (e : expr) yes no =
      | _ ->
        let x = to_float st x and y = to_float st y in
        close st (Branch (op, Kfloat, x, y, yes, no)))
+  (* A value as a condition: true or false, else the interpreter says what it is. *)
+  | Var _ | Field _ | Index _ ->
+    (match expr st e with
+     | x, Kval ->
+       let k = bail st and mid = block st and wrong = block st in
+       close st (Branch (Eq, Kint, x, Word 5, yes, mid));
+       st.cur <- mid;
+       close st (Branch (Eq, Kint, x, Word 7, no, wrong));
+       st.cur <- wrong;
+       close st (Bail k)
+     | _ -> raise No)
   | _ -> raise No
 
 and stmt st (e : expr) =
@@ -518,7 +571,7 @@ and stmt st (e : expr) =
     let r = var st i in
     let x = (match Dynarray.get st.kinds r with Kval -> stored st v | k -> convert st k (expr st v)) in
     emit st (Move (r, x));
-    shows st
+    st.dyn.dirty <- true
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix _ |], false); _ } |]; value }
     when st.arrays.(i) >= 0 && Hashtbl.mem st.fast e.id ->
     let a, ix = Hashtbl.find st.fast e.id in
@@ -555,16 +608,18 @@ and stmt st (e : expr) =
     let y = block st and n = block st and join = block st in
     cond st c y n;
     (* Either branch runs after the test alone: a guard in it may go back while nothing of the branch showed. *)
-    let before = st.dyn.bail in
+    let before = st.dyn.bail and clean = st.dyn.dirty in
     st.cur <- y;
     Array.iter (stmt st) yes;
     goto st join;
-    let after_yes = st.dyn.bail in
+    let after_yes = st.dyn.bail and dirty_yes = st.dyn.dirty in
     st.dyn.bail <- before;
+    st.dyn.dirty <- clean;
     st.cur <- n;
     Array.iter (stmt st) no;
     goto st join;
-    if after_yes = None then shows st
+    if after_yes = None then shows st;
+    st.dyn.dirty <- st.dyn.dirty || dirty_yes
   | Break ->
     (match st.loops with
      | l :: _ ->
@@ -628,7 +683,28 @@ and allocates st (b : block) =
 (* The statements of a loop's body; those of the region's own loop each say where a guard goes back to. *)
 and stmts st ~root (b : block) =
   if root then begin
-    Array.iteri (fun k x -> st.dyn.bail <- Some k; stmt st x) b;
+    Array.iteri
+      (fun k x ->
+         (* Copies of the variables the statement may assign, for the way back; unused, MIR drops them. *)
+         let vars = try List.sort_uniq compare (assigned ~sets:false [] x) with Unknown -> [] in
+         let saves =
+           List.filter_map
+             (fun i ->
+                let r = st.regs.(i) in
+                if r < 0 then None
+                else begin
+                  let c = reg st (Dynarray.get st.kinds r) in
+                  emit st (Move (c, Reg r));
+                  Some (r, c)
+                end)
+             vars
+         in
+         while Dynarray.length st.dyn.restores <= k do Dynarray.add_last st.dyn.restores [] done;
+         Dynarray.set st.dyn.restores k saves;
+         st.dyn.bail <- Some k;
+         st.dyn.dirty <- false;
+         stmt st x)
+      b;
     shows st
   end else Array.iter (stmt st) b
 
@@ -860,7 +936,7 @@ and finish st name ~params ~vars =
       vars = Array.of_list (vars @ hidden); arrays = Dynarray.to_array st.arr; kinds = Dynarray.to_array st.kinds; blocks;
       resumes = Dynarray.to_array st.resumes; frame = ver.frame;
       size = ver.frame + max n_hidden (Dynarray.length st.dyn.consts) + 2; hidden = n_hidden;
-      consts = Dynarray.to_array st.dyn.consts; sites = Array.make (Dynarray.length st.sites) (-1);
+      consts = Dynarray.to_array st.dyn.consts; restores = Dynarray.to_array st.dyn.restores; sites = Array.make (Dynarray.length st.sites) (-1);
       pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ -> true | _ -> false));
       calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Dynarray.to_array st.chains;
       spills = st.w.hooks;
@@ -924,9 +1000,10 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
     | _ -> ()
   done;
   { w; ver; f; index; kinds; blocks = Dynarray.create (); cur = 0; regs; arrays; arr; hidden = Dynarray.create ();
-    resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); live = Bytes.empty; unit; body = 0; region;
-    infos = Dynarray.create (); fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None;
-    mem = [| 0; 0 |]; ctx; dyn = { bail = None; need = None; consts = Dynarray.create () } }
+    resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); live = Bytes.empty; unit; body = 0; region; infos = Dynarray.create ();
+    fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx;
+    dyn = { bail = None; dirty = false; restores = Dynarray.create (); need = None; consts = Dynarray.create (); known = [];
+            nums = [] } }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
 let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool) array) =

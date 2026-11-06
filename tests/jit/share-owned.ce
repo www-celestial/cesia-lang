@@ -1,0 +1,26 @@
+use std/io
+use std/list
+
+(* What native code reads or stores is no longer owned: a later write copies, as the interpreter's. *)
+defn keep(ps, n)
+  q = 0
+  for i in 1..n
+    q = ps[i]
+  end
+  q
+end
+
+ps = list.Fill(0, 500000)
+for i in 1..500000
+  ps[i] = {X: i, Tags: [1, 2]}
+end
+q = keep(ps, 500000)
+q.X = -1
+io.Print(q.X, ps[500000].X)
+xs = [1.0, 2.0]
+ms = list.Fill(0, 400000)
+for i in 1..400000
+  ms[i] = {Xs: xs, N: i}
+end
+xs[1] = 9.0
+io.Print(ms[1].Xs, ms[400000].Xs, xs)

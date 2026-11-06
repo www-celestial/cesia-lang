@@ -138,7 +138,20 @@ let func b ~prefix ~nested (fn : Ir.func) =
     Printf.sprintf "%s%s_L" prefix name
   in
   (* A failed guard: back to the interpreter before that statement, through the block that spills and leaves. *)
-  let bail_to k = stub (fun s -> Printf.bprintf s "  mov xp, %d\n  mov xs, %d\n  jmp %s\n" k Ir.bailed (leave_block ())) in
+  let bail_to k =
+    stub (fun s ->
+        let k =
+          if k < Ir.restored then k
+          else begin
+            let k = k - Ir.restored in
+            List.iter
+              (fun (r, c) -> Printf.bprintf s "  %s r%d, r%d\n" (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r c)
+              fn.restores.(k);
+            k
+          end
+        in
+        Printf.bprintf s "  mov xp, %d\n  mov xs, %d\n  jmp %s\n" k Ir.bailed (leave_block ()))
+  in
   (* A value whose tag is [tag], else bail: the tag in x1. *)
   let block_of v tag k =
     let b = bail_to k in
@@ -259,17 +272,17 @@ let func b ~prefix ~nested (fn : Ir.func) =
         q d q a rr d;
       pr "%s:\n  mov i64:16(r%d), 1\n  jmp %s\n%s:\n  mov x2, i64:0(r%d)\n  mov i64:24(x2), 1\n%s:\n" rr q d a q d
     | Share _ -> ()
-    | Key_get (r, m, c, i, n, k) ->
+    | Vals (r, m, c, k) ->
       let m = in_reg Kval m in
       block_of m (Some 8) k;
-      pr "  mov x2, i64:0(%s)\n  bne %s, x2, c%d\n  mov x3, i64:8(%s)\n" m (bail_to k) c m;
-      if n then pr "  mov x4, i64:-8(x3)\n  ursh x4, x4, 10\n  ble %s, x4, %d\n" (bail_to k) i;
-      pr "  mov r%d, i64:%d(x3)\n" r (8 * i)
-    | Field_get (r, v, sid, i, k) ->
+      pr "  mov x2, i64:0(%s)\n  bne %s, x2, c%d\n  mov r%d, i64:8(%s)\n" m (bail_to k) c r m
+    | Fields (r, v, sid, k) ->
       let v = in_reg Kval v in
       block_of v (Some 4) k;
-      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov x3, i64:8(%s)\n  mov r%d, i64:%d(x3)\n" v (bail_to k)
-        (tagged sid) v r (8 * i)
+      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov r%d, i64:8(%s)\n" v (bail_to k) (tagged sid) r v
+    | Load (r, a, i, k) ->
+      if k >= 0 then pr "  mov x4, i64:-8(r%d)\n  ursh x4, x4, 10\n  ble %s, x4, %d\n" a (bail_to k) i;
+      pr "  mov r%d, i64:%d(r%d)\n" r (8 * i) a
     | Get (r, a, i, site) -> pr "  mov r%d, %s\n" r (check_index ~t:"i64" a i site Ir.err_read)
     | Put (a, i, v, site) ->
       ignore (check_index ~t:"i64" a i site Ir.err_write);
@@ -341,6 +354,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Return v ->
       let v = match fn.result, v with Kfloat, Int n -> Ir.Float (float_of_int n) | _ -> v in
       pr "  ret %s, fuel\n" (operand v)
+    | Bail k -> pr "  jmp %s\n" (bail_to k)
     | Fuel_ge (v, yes, no) ->
       pr "  mov x0, %s\n  rsh x0, x0, 1\n  bge %s, fuel, x0\n  jmp %s\n" (operand v) (bl yes) (bl no)
     | Done ->

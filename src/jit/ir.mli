@@ -57,11 +57,12 @@ type ins =
       (** [Unbox (r, v, how, k)]: the number in the value [v]; else the run bails before statement [k] of its loop *)
   | Box of int * value  (** a value made of an integer or a float operand: an Int or a Float, in reserved room *)
   | Share of value  (** a list, struct or map stored elsewhere: it is no longer owned, as [Value.share] *)
-  | Key_get of int * value * int * int * bool * int
-      (** [Key_get (r, m, c, i, n, k)]: the value at place [i] of the map [m] whose keys are those of the constant [c];
-          [n]: check that the map has that many values; else bails before statement [k] *)
-  | Field_get of int * value * int * int * int
-      (** [Field_get (r, s, sid, i, k)]: field [i] of the struct [s] whose shape has the number [sid]; else bails *)
+  | Vals of int * value * int * int
+      (** [Vals (r, m, c, k)]: the values of the map [m] whose keys are those of the constant [c]; else the run bails
+          before statement [k] *)
+  | Fields of int * value * int * int  (** [Fields (r, s, sid, k)]: the fields of the struct [s] of shape [sid]; else bails *)
+  | Load of int * int * int * int
+      (** [Load (r, a, i, k)]: cell [i] of those values or fields; with [k] >= 0, when there are that many, else bails *)
   | Get of int * int * value * int  (** a cell of an array of values: the destination, the array, the index, the site *)
   | Put of int * value * value * int  (** the array of values, the index, the value, the site, through the write barrier *)
   | Record of int * int * int * value array
@@ -78,6 +79,7 @@ type term =
   | Done  (** the end of a loop run natively: every variable back in its slot, and the interpreter goes on after the loop *)
   | Out of value  (** a [return] inside such a loop: the function ends with that value *)
   | Fuel_ge of value * int * int  (** to the first block if the fuel left is at least that integer, else the second *)
+  | Bail of int  (** the run bails before that statement *)
 
 type block = { mutable ins : ins list;  (** in order *) mutable term : term }
 
@@ -94,6 +96,9 @@ type func = {
   consts : Types.t array;
       (** values whose first field native code reads, the keys of a map or the shape of a struct: written by [Engine] to
           the value slots from [frame] before each run *)
+  restores : (int * int) list array;
+      (** for each statement of a region's loop, the registers of the variables it assigns and of their copies at its
+          start: a guard after such an assignment bails to [restored] + the statement, which puts them back first *)
   kinds : kind array;  (** of each register *)
   blocks : block array;  (** block 0 comes first *)
   resumes : int array;  (** the block of each resume point *)
@@ -121,6 +126,8 @@ type func = {
     [cx_young] and [cx_young + 1] of that context, the addresses of the young heap's pointer and limit. *)
 
 val cx_young : int
+
+val restored : int
 
 val io_base : int
 val io_entry : int  (** 0 to start, or 1 + a resume point *)

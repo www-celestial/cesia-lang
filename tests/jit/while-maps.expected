@@ -1,0 +1,7 @@
+400001 200000.0
+400001 200000.0
+while-maps.ce:8:28: A condition must be true or false, not the number 1.
+  8 |   while i <= n and cells[i].Open
+    |                            ^
+  in walk (while-maps.ce:8)
+exit 1

@@ -1,0 +1,18 @@
+use std/io
+use std/list
+use std/value
+
+(* An error inside a native loop over maps: the interpreter's message and place. *)
+defn scan(rows)
+  s = 0.0
+  for i in 1..value.Len(rows) + 1
+    s = s + rows[i].W
+  end
+  s
+end
+
+rows = list.Fill(0, 400000)
+for i in 1..400000
+  rows[i] = {W: 0.25}
+end
+io.Print(scan(rows))
