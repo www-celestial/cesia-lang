@@ -25,11 +25,17 @@ Runs a program. The words after the file are its arguments, in [sys.Args].
 ## cesia test
 
 ```bash
-cesia test [path] [--no-spec]
+cesia test [path | file.ce:isName] [--seed N] [--cases N] [--no-spec]
 ```
 
-Runs the examples of the documentation and the test functions of the project, or of a folder or a file. Ends with the code 1
-when a test fails. See [Tests](tests.md).
+Runs the examples of the documentation and the test functions of the project, or of a folder or a file, or one test function
+of a file. Ends with the code 1 when a test fails. See [Tests](tests.md).
+
+| Option | What it does |
+|---|---|
+| `--seed N` | the cases of [test.ForAll] of an earlier run again: the summary of a run that tried properties gives its seed |
+| `--cases N` | how many cases each [test.ForAll] tries, 100 by default |
+| `--no-spec` | runs without the versions of each function by type, as `cesia run --no-spec` |
 
 ## cesia check
 

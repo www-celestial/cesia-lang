@@ -196,14 +196,30 @@ let run args =
     exit (Loader.run_file w file rest)
   end
 
+(* file.ce:isName is one test of a file; the last : before a test name, so C:\ stays a path. *)
+let one_test arg =
+  match String.rindex_opt arg ':' with
+  | Some i when Verdict.is_test (String.sub arg (i + 1) (String.length arg - i - 1)) ->
+    String.sub arg 0 i, Some (String.sub arg (i + 1) (String.length arg - i - 1))
+  | _ -> arg, None
+
 let test args =
-  let no_spec = List.mem "--no-spec" args in
-  let paths = List.filter (fun a -> a <> "--no-spec") args in
-  let path = match paths with [] -> "." | [ p ] -> p | _ -> usage () in
-  if List.exists (String.starts_with ~prefix:"--") paths || not (Sys.file_exists path) then usage ();
-  let w = Runtime.create_world { (with_default_memory Runtime.default_options) with o_no_spec = no_spec } in
+  let rec options (o : Runtime.options) seed cases paths = function
+    | "--no-spec" :: rest -> options { o with o_no_spec = true } seed cases paths rest
+    | "--seed" :: v :: rest -> options o (Some (parse_count v)) cases paths rest
+    | "--cases" :: v :: rest -> options o seed (parse_count v) paths rest
+    | p :: rest when not (String.starts_with ~prefix:"--" p) -> options o seed cases (p :: paths) rest
+    | [] -> o, seed, cases, paths
+    | _ -> usage ()
+  in
+  let o, seed, cases, paths = options (with_default_memory Runtime.default_options) None 100 [] args in
+  let path, only = match paths with [] -> ".", None | [ p ] -> one_test p | _ -> usage () in
+  if not (Sys.file_exists path) then usage ();
+  (* A new seed each run, so that each run tries new cases; --seed gives the cases of a run again. *)
+  let seed = match seed with Some s -> s | None -> Random.self_init (); 1 + Random.int 99_999 in
+  let w = Runtime.create_world o in
   let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
-  exit (Testrun.run w ~path)
+  exit (Testrun.run w ~path ~seed ~cases ~only)
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)
 let tune_gc () = Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 20 }

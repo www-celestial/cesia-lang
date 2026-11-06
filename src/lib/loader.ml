@@ -650,6 +650,7 @@ let std_packages () =
         "cesia", Tooling.natives ~libraries @ Docs.natives @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
         "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
         "random", Rand.natives ]
+    @ Props.natives
   in
   List.fold_left
     (fun acc (name, natives) ->

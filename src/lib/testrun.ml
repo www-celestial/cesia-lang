@@ -139,9 +139,9 @@ let is_test_name = Verdict.is_test
 
 (* What the verdicts of the tests of the file being run noted: see Verdict. [got.(k)] is the value of note k in the last run of
    its test, with its rank among the notes of that run. *)
-type record = { mutable notes : Verdict.note array; mutable got : (t * int) option array; mutable rank : int }
+type record = { mutable notes : Verdict.note array; mutable got : (t * int) option array; mutable rank : int; mutable floor : int }
 
-let record = { notes = [||]; got = [||]; rank = 0 }
+let record = { notes = [||]; got = [||]; rank = 0; floor = 0 }
 
 let rewrite fn =
   record.notes <- Verdict.rewrite fn;
@@ -160,24 +160,52 @@ let note =
            end;
            a.(1)) }
 
+(* A property of test.ForAll failed: the case, the smallest value, the verdict of the property on it, and how to replay. *)
+let report_property ctx path line name (f : Props.failure) =
+  let where = if f.case = 0 then Messages.test_saved_case else Messages.test_case f.case f.cases in
+  print_endline (Printf.sprintf "%s:%d: %s failed %s" path line name (where ^ Messages.test_shrunk f.from f.until));
+  let param = Option.value (Verdict.property record.notes record.got ~test:name) ~default:"value" in
+  print_endline (Printf.sprintf "  %s = %s" param (Verdict.cut (Value.show ctx f.value)));
+  (match f.panic with Some m -> print_endline ("  | " ^ Messages.test_panic m) | None -> ());
+  (match Verdict.explain ctx record.notes record.got ~test:name ~prop:true ~floor:record.floor f.value with
+   | Some (_, lines) -> List.iter print_endline lines
+   | None -> ());
+  print_endline ("  " ^ Messages.test_replay path Props.st.seed)
+
 (* A failed test: its line, then what its verdict noted. *)
 let report ctx path line name v =
   Runtime.flush_out ctx.w;
   let returned () = print_endline (Printf.sprintf "%s:%d: %s returned %s" path line name (Value.show ctx v)) in
-  match Verdict.explain ctx record.notes record.got ~test:name ~prop:false v with
+  match Props.st.failed with
+  | Some f when v == False -> report_property ctx path line name f
+  | _ ->
+  match Verdict.explain ctx record.notes record.got ~test:name ~prop:false ~floor:0 v with
   | Some (header, (_ :: _ :: _ as lines)) ->
     if v == False || header <> "" then print_endline (Printf.sprintf "%s:%d: %s failed%s" path line name header) else returned ();
     List.iter print_endline lines
   | _ -> returned ()
 
+(* cesia test file.ce:isName runs that test alone. *)
+let only_test = ref None
+
+(* A path as the root sees it, the same from any folder: the name of a test's saved failures. *)
+let from_root w path =
+  let p = Package.absolute path in
+  let r = w.root ^ "/" in
+  if String.starts_with ~prefix:r p then String.sub p (String.length r) (String.length p - String.length r) else p
+
 let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
   Array.iter
     (fun (k, (f : Ast.func)) ->
-       if is_test_name f.fname && Array.length f.params = 0 && Lexer.split_method f.fname = None then begin
+       if is_test_name f.fname && Array.length f.params = 0 && Lexer.split_method f.fname = None
+          && (match !only_test with Some n -> String.equal n f.fname | None -> true) then begin
          let line = Pos.line f.fpos in
          ctx.b <- 0;
          ctx.site <- 0;
          Array.fill record.got 0 (Array.length record.got) None;
+         Props.st.root <- ctx.w.root;
+         Props.start_test ~file:(from_root ctx.w path) ~test:f.fname;
+         record.floor <- 0;
          match Compile.call_value ctx ~base:2 cells.(k) [||] with
          | True -> st.passed <- st.passed + 1
          | v ->
@@ -187,7 +215,15 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
            match Loader.message_of_error e with
            | Some msg ->
              st.failed <- st.failed + 1;
-             print_endline (Printf.sprintf "%s:%d: %s failed: %s" path line f.fname msg)
+             Runtime.flush_out ctx.w;
+             print_endline (Printf.sprintf "%s:%d: %s failed: %s" path line f.fname msg);
+             (* Where it stopped, when not on the line of the test itself. *)
+             (match e with
+              | Value.Kerr { at; _ } when at >= 0 && at < Dynarray.length ctx.w.sites ->
+                (match Runtime.backtrace ctx at with
+                 | [ t ] when String.ends_with ~suffix:(Printf.sprintf ":%d)" line) t -> ()
+                 | trace -> List.iter (fun t -> print_endline ("  " ^ t)) trace)
+              | _ -> ())
            | None -> raise e
        end)
     layout.hoisted
@@ -286,10 +322,15 @@ let run_paths ctx st path =
        run_folder ctx st ~examples:whole dir tests)
     (List.sort_uniq String.compare (List.map Filename.dirname packaged))
 
-let run w ~path =
+let run w ~path ~seed ~cases ~only =
   Loader.guarded w (fun ctx ->
       w.on_panic <- (fun _ _ -> ());
       Loader.init w;
+      Props.st.active <- true;
+      Props.st.seed <- seed;
+      Props.st.cases <- cases;
+      Props.st.on_case <- (fun () -> record.floor <- record.rank);
+      only_test := only;
       (* #note lives in module 0, beside #dict: only the rewritten verdicts name it. *)
       let core = w.modules.(0) in
       core.mnames <- core.mnames @ [ "#note", Array.length core.cells ];
@@ -298,5 +339,5 @@ let run w ~path =
       let st = { passed = 0; failed = 0 } in
       run_paths ctx st path;
       Runtime.flush_out w;
-      print_endline (Printf.sprintf "%d passed, %d failed" st.passed st.failed);
+      print_endline (Messages.test_summary st.passed st.failed (if Props.st.ran then Some seed else None));
       if st.failed > 0 then 1 else 0)

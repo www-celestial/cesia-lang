@@ -181,6 +181,24 @@ val no_name : string -> string -> t
 val exit_code : string -> t
 val denied : string -> string option -> t
 
+(** [need_struct name a]: a struct was wanted, as by gen.Of. *)
+val need_struct : string -> string -> t
+
+(** A name of std/test or std/gen outside cesia test. *)
+val test_only : t
+
+(** A failed property of test.ForAll: [test_case i n] the case that failed, or [test_saved_case] the saved one, then
+    [test_shrunk from until] the draws before and after shrinking; [test_panic] a panic in it; [test_replay path seed] how
+    to run the same cases again. *)
+val test_case : int -> int -> string
+val test_saved_case : string
+val test_shrunk : int -> int -> string
+val test_panic : string -> string
+val test_replay : string -> int -> string
+
+(** The last line of cesia test: how many passed and failed, and the seed when a property ran. *)
+val test_summary : int -> int -> int option -> string
+
 (** The end of the first line of a failed test: [test_part i n] names the part of its verdict that failed, [test_question line]
     the ? that gave its Err. *)
 val test_part : int -> int -> string

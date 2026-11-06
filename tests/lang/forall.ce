@@ -1,0 +1,52 @@
+use std/test
+use std/gen
+use std/list
+use std/value
+use std/text
+use std/dict
+use std/fiber
+use std/result
+
+struct Order
+  Item Text
+  Qty Int
+  Price Float
+  Note Text?
+end
+struct Line
+  Order Order
+  Paid Bool
+end
+struct Loose
+  Any
+end
+
+many(g) = [g() for i in 1..1000]
+within(lo, hi, xs) = list.All([x >= lo and x <= hi for x in xs])
+seen(x, xs) = value.IsInt(list.IndexOf(x, xs))
+
+isIntInBounds() = within(1, 6, many(gen.Int(1, 6))) and value.Len(list.Unique(many(gen.Int(1, 6)))) == 6
+isIntEdges() = seen(-5, many(gen.Int(-5, 5))) and seen(5, many(gen.Int(-5, 5))) and seen(0, many(gen.Int(-5, 5)))
+isIntOneSide() = within(3, 9, many(gen.Int(3, 9))) and within(-9, -3, many(gen.Int(-9, -3)))
+isFloatInBounds() = within(0.0, 1.0, many(gen.Float(0, 1))) and list.All([value.IsFloat(x) for x in many(gen.Float(0, 1))])
+isFloatSpecial() = list.Some(x -> x != x, many(gen.Float(special = true)))
+isFloatPlain() = not list.Some(x -> x != x, many(gen.Float()))
+isBool() = seen(true, many(gen.Bool())) and seen(false, many(gen.Bool()))
+isTextChars() = list.All([list.All([c == "a" or c == "b" for c in text.Chars(t)]) for t in many(gen.Text(max = 4, chars = "ab"))])
+isTextLength() = list.All([value.Len(text.Chars(t)) <= 4 for t in many(gen.Text(max = 4))]) and seen("", many(gen.Text()))
+isListLength() = list.All([value.Len(xs) >= 2 and value.Len(xs) <= 5 for xs in many(gen.List(gen.Int(), min = 2, max = 5))])
+isDict() = list.All([value.IsDict(d) and value.Len(d) <= 3 for d in many(gen.Dict(gen.Text(max = 2), gen.Int(), max = 3))])
+isPick() = within(1, 3, many(gen.Pick([1, 2, 3]))) and seen(3, many(gen.Pick([1, 2, 3])))
+isMap() = list.All([math2(x) for x in many(gen.Map(it * 2, gen.Int()))])
+math2(x) = x - (x / 2) * 2 == 0
+isThen() = list.All([p.I >= 1 and p.I <= value.Len(p.Xs) for p in many(gen.Then(xs -> gen.Map(i -> {Xs: xs, I: i}, gen.Int(1, value.Len(xs))), gen.List(gen.Int(), min = 1)))])
+isOfStruct() = list.All([value.IsText(o.Item) and value.IsInt(o.Qty) and value.IsFloat(o.Price) for o in many(gen.Of(Order))])
+isOfOptional() = seen(missing, [o.Note for o in many(gen.Of(Order))])
+isOfWith() = within(1, 9, [o.Qty for o in many(gen.Of(Order, with = {Qty: gen.Int(1, 9)}))])
+isOfNested() = list.All([value.IsInt(l.Order.Qty) and value.IsBool(l.Paid) for l in many(gen.Of(Line))])
+isOfMap() = list.All([value.IsInt(p.A) and value.IsBool(p.B) for p in many(gen.Of({A: gen.Int(), B: gen.Bool()}))])
+isOfArray() = list.All([value.Len(p) == 2 and value.IsText(p[2]) for p in many(gen.Of([gen.Int(), gen.Text()]))])
+isOfUntyped() = result.IsErr(fiber.Wait(fiber.Spawn(() -> gen.Of(Loose))))
+isSmallFirst() = test.ForAll(xs -> value.Len(xs) <= 30, gen.List(gen.Int()))
+isPropertyHolds() = test.ForAll(xs -> value.Equal(list.Sort(list.Sort(xs)), list.Sort(xs)), gen.List(gen.Int()), cases = 200)
+isPropertyOnStructs() = test.ForAll(o -> o.Qty * o.Price == o.Price * o.Qty, gen.Of(Order, with = {Qty: gen.Int(0, 99)}))

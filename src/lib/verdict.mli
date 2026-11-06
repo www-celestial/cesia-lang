@@ -16,6 +16,9 @@ type note = { test : string; prop : string; owner : int; text : string; kind : k
 (** isGrows: [is], then a capital. *)
 val is_test : string -> bool
 
+(** A value as shown under a failed test: 160 bytes at most. *)
+val cut : string -> string
+
 (** The code of an expression, as written. *)
 val show : Ast.expr -> string
 
@@ -24,6 +27,11 @@ val show : Ast.expr -> string
 val rewrite : Ast.func -> note array
 
 (** What a failed test shows: the end of its first line and the lines under it, from the value of each note in the last run
-    of the test, and when, or [None] when no verdict ran. [prop]: the verdict of a property of [test.ForAll]. *)
+    of the test, and when, or [None] when no verdict ran. [prop]: the verdict of a property of [test.ForAll]; [floor]: the
+    notes of a rank below it are from an earlier case of a property, as if they hadn't run. *)
 val explain :
-  Types.ctx -> note array -> (Types.t * int) option array -> test:string -> prop:bool -> Types.t -> (string * string list) option
+  Types.ctx -> note array -> (Types.t * int) option array -> test:string -> prop:bool -> floor:int -> Types.t ->
+  (string * string list) option
+
+(** The parameter of the property of test.ForAll whose verdict ran last in the test. *)
+val property : note array -> (Types.t * int) option array -> test:string -> string option

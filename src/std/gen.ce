@@ -1,0 +1,175 @@
+(** Generators of cases for test.ForAll. A generator is a function of no argument that makes a value from the draws of
+    its case, so that cesia test can replay a case and shrink a failing one: fewer and lower draws make a simpler value.
+    The first cases are small, and one number in ten is an edge: 0, -1, a bound. Under cesia test only:
+    test.ForAll(p -> p.A + p.B == p.B + p.A, gen.Of({A: gen.Int(), B: gen.Int(-5, 5)})).
+
+      Int(1, 6)() <= 6 --> true *)
+use std/value
+use std/math
+use std/list
+use std/text
+use std/dict
+use std/bug
+
+clamp(x, lo, hi) = list.Max(lo, list.Min(hi, x))
+orElse(x, d) = if value.IsMissing(x) d else x end
+
+defn edge(xs)
+  (** One of a list of values, by a draw: the first is the simplest. *)
+  xs[draw(value.Len(xs)) + 1]
+end
+
+(* Three draws make a number: an edge or not, a side of the origin, and a distance from it, so that lowering one draw keeps
+   the others' meaning: out of an edge, the same side and distance; a lower distance, nearer the origin on the same side.
+   [steps(side)] draws are on a side, and [at(side, d)] gives the number. *)
+defn number(edges, up, down, steps, at)
+  edgy = draw(10) == 9
+  side = if down == 0 0 else if up == 0 1 else draw(2) end
+  d = draw(steps(side))
+  if edgy edges[math.Mod(d, value.Len(edges)) + 1] else at(side, d) end
+end
+
+defn intIn(lo, hi)
+  origin = clamp(0, lo, hi)
+  up = hi - origin
+  down = origin - lo
+  edges = [x for x in [origin, lo, hi, -1, 1] if x >= lo and x <= hi]
+  number(edges, up, down, side -> if side == 0 up + 1 else down + 1 end, (side, d) -> if side == 0 origin + d else origin - d end)
+end
+
+defn Int(lo = missing, hi = missing)
+  (** Integers of lo..hi, both included. Without bounds they start near 0 and reach a thousand. 0, or the bound nearest to
+      it, is the simplest.
+
+        Int(1, 6)() >= 1 --> true *)
+  defn ()
+    s = 10 + size() * 10
+    intIn(orElse(lo, -s), orElse(hi, s))
+  end
+end
+
+defn floatIn(lo, hi, special)
+  origin = clamp(0.0, lo, hi)
+  edges = [x for x in [origin, lo, hi, 1e-300, -1e-300, 0.5, -0.5, 1.0, -1.0] if x >= lo and x <= hi]
+  more = if special list.Concat(edges, [math.Nan, 1 / 0.0, -1 / 0.0]) else edges end
+  up = hi - origin
+  down = origin - lo
+  x = number(more, up, down, _ -> 1048577, (side, d) -> if side == 0 origin + up * d / 1048576.0 else origin - down * d / 1048576.0 end)
+  rounded(x, draw(64), lo, hi)
+end
+
+defn rounded(x, digits, lo, hi)
+  (** A float to so many decimals when digits is under 16, so that a lower draw makes a rounder number: an integer at 0. *)
+  if digits >= 16 or x != x or x - x != 0.0
+    x
+  else
+    p = 10.0 ^ digits
+    clamp(math.Round(x * p) / p, lo, hi)
+  end
+end
+
+defn Float(lo = missing, hi = missing, special = false)
+  (** Floats of lo..hi. Without bounds they start near 0 and reach a thousand. With special, NaN and the infinities
+      come too.
+
+        Float(0, 1)() <= 1.0 --> true *)
+  defn ()
+    s = 1.0 + size() * 10.0
+    floatIn(orElse(lo, -s) * 1.0, orElse(hi, s) * 1.0, special)
+  end
+end
+
+Bool() = () -> draw(2) == 1   (** true or false; false is the simplest. *)
+
+(* The characters of a text when none are given: letters first, then digits, signs, accents and other scripts. *)
+letters = list.Concat(text.Chars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,-_'!?"), ["é", "ü", "ß", "日", "😀", text.Char(10), text.Char(9)])
+
+(* Another element? A draw of 0 says no, so that a shorter list is simpler. *)
+more(n, least, most) = n < least or (n < most and draw(2 + math.Div(size(), 5)) != 0)
+
+defn Text(max = 20, chars = missing)
+  (** Texts of at most max characters, taken from chars, a text, or else from letters, digits, signs, accents and
+      other scripts. The empty text is the simplest.
+
+        value.Len(text.Chars(Text(max = 3, chars = "ab")())) <= 3 --> true *)
+  pool = if value.IsMissing(chars) letters else text.Chars(chars) end
+  defn ()
+    out = []
+    while more(value.Len(out), 0, max)
+      out = list.Append(edge(pool), out)
+    end
+    text.Join("", out)
+  end
+end
+
+defn List(g, min = 0, max = 30)
+  (** Lists of min to max values of the generator g. The shortest is the simplest.
+
+        value.Len(List(Int(), max = 5)()) <= 5 --> true *)
+  defn ()
+    out = []
+    while more(value.Len(out), min, max)
+      out = list.Append(g(), out)
+    end
+    out
+  end
+end
+
+defn Dict(keys, values, max = 10)
+  (** Dictionaries of at most max keys from the generator keys, each with a value of the generator values.
+
+        value.IsDict(Dict(Text(max = 2), Int())()) --> true *)
+  defn ()
+    out = {}
+    while more(value.Len(out), 0, max)
+      out = dict.Put(keys(), values(), out)
+    end
+    out
+  end
+end
+
+Pick(xs) = () -> edge(xs)   (** One of the values of a list; the first is the simplest. *)
+
+Map(f, g) = () -> f(g())   (** f of each value of g: gen.Map(it * 2, gen.Int()) gives even numbers. *)
+
+Then(f, g) = () -> f(g())()   (** A value of the generator that f gives for a value of g: a list, then a position in it. *)
+
+defn typed(name, ty)
+  (** The generator that a type names. *)
+  match ty
+    "Int" -> Int()
+    "Float" -> Float()
+    "Number" -> Float()
+    "Text" -> Text()
+    "Bool" -> Bool()
+    t if value.IsFunction(t) -> Of(t)
+    else -> bug.Panic("gen.Of: the field $name has no type that says what to make: give its generator in with.")
+  end
+end
+
+defn field(f, with)
+  (** The generator of a field, from with or else from its type; with T?, missing one time in four. *)
+  g = if dict.Has(f.Name, with) dict.Get(f.Name, with) else typed(f.Name, f.Type) end
+  if f.Optional
+    () -> if draw(4) == 3 missing else g() end
+  else
+    g
+  end
+end
+
+defn Of(x, with = {})
+  (** Values of a struct from the types of its fields: Int, Float, Text, Bool, another struct, T? sometimes missing. with
+      gives the generator of a field by its name, as for a field with no type. A map or an array of generators makes maps or
+      arrays of their values.
+
+        Of({X: Int(), Y: Pick(["a"])})().Y --> "a" *)
+  if value.IsDict(x)
+    names = dict.Keys(x)
+    () -> dict.Dict([{Key: k, Value: dict.Get(k, x)()} for k in names])
+  else if value.IsArray(x)
+    () -> [g() for g in x]
+  else
+    gs = [field(f, with) for f in fields(x)]
+    () -> make(x, [g() for g in gs])
+  end
+end

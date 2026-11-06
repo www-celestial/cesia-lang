@@ -218,8 +218,8 @@ let texts a b =
   let rest s = let r = String.sub s !k (String.length s - !k) in Value.quote (if String.length r > 30 then String.sub r 0 30 ^ "..." else r) in
   Printf.sprintf "character %d: %s vs %s" !chars (rest a) (rest b)
 
-let explain ctx (notes : note array) (got : (Types.t * int) option array) ~test ~prop result =
-  let ran k = k >= 0 && got.(k) <> None in
+let explain ctx (notes : note array) (got : (Types.t * int) option array) ~test ~prop ~floor result =
+  let ran k = k >= 0 && match got.(k) with Some (_, r) -> r >= floor | None -> false in
   let value k = match got.(k) with Some (v, _) -> v | None -> Types.Undef in
   let stamp k = match got.(k) with Some (_, s) -> s | None -> -1 in
   let show v = cut (Value.show ctx v) in
@@ -306,3 +306,14 @@ let explain ctx (notes : note array) (got : (Types.t * int) option array) ~test 
     let extra = List.concat_map (fun f -> if value f == Types.False then hints f else []) focus @ bools in
     let room = max 1 (8 - List.length extra) in
     Some (header, List.filteri (fun i _ -> i < room) lines @ extra)
+
+let property (notes : note array) (got : (Types.t * int) option array) ~test =
+  let best = ref None in
+  Array.iteri
+    (fun k n ->
+       match got.(k), n.kind, !best with
+       | Some (_, r), (Site _ | Any _), _ when n.test = test && n.prop <> "" && (match !best with Some (_, b) -> r > b | None -> true) ->
+         best := Some (n.prop, r)
+       | _ -> ())
+    notes;
+  Option.map fst !best

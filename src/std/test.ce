@@ -1,0 +1,107 @@
+(** Tests that tell whether a problem is solved: a property tried on many generated cases, shrunk to the smallest that
+    fails. Under cesia test only, in the test functions of a .test.ce file or of a tests folder, with std/gen to make the
+    cases: isSorted() = test.ForAll(xs -> value.Equal(list.Sort(list.Sort(xs)), list.Sort(xs)), gen.List(gen.Int())). *)
+use std/value
+use std/list
+use std/sys
+use std/math
+
+(* The first cases are small: the size grows from 0 to 100 over the cases. *)
+sizeOf(i, n) = if n <= 1 100 else math.Div((i - 1) * 100, n - 1) end
+
+defn without(t, i, k)
+  (** The tape without its draws i to i + k - 1. *)
+  list.Concat(list.Take(i - 1, t), list.Skip(i + k - 1, t))
+end
+
+defn lowered(t, i, x)
+  (** The tape with draw i set to x. *)
+  out = t
+  out[i] = x
+  out
+end
+
+defn simpler(a, b)
+  (** Is tape a simpler than tape b: shorter, or as long and lower at its first difference? *)
+  if value.Len(a) != value.Len(b)
+    return value.Len(a) < value.Len(b)
+  end
+  for i in 1..value.Len(a)
+    if a[i] != b[i]
+      return a[i] < b[i]
+    end
+  end
+  false
+end
+
+defn shrink(g, prop, c)
+  (** The smallest failing case found from c, within 1,000 tries or 2 seconds: drop runs of draws, then lower each draw
+      to 0, to its half, or by one. A case that still fails, with a simpler tape, takes the place of the best one. *)
+  best = c
+  tries = 0
+  deadline = sys.Now() + 2.0
+  better = true
+  while better and tries < 1000 and sys.Now() < deadline
+    better = false
+    for k in [8, 4, 2, 1]
+      i = 1
+      while i + k - 1 <= value.Len(best.Tape) and tries < 1000 and sys.Now() < deadline
+        d = oneCase(g, prop, without(best.Tape, i, k), best.Size)
+        tries += 1
+        if d.Holds or not simpler(d.Tape, best.Tape)
+          i += 1
+        else
+          best = d
+          better = true
+        end
+      end
+    end
+    i = 1
+    while i <= value.Len(best.Tape) and tries < 1000 and sys.Now() < deadline
+      for y in [0, math.Div(best.Tape[i], 2), best.Tape[i] - 1]
+        if i <= value.Len(best.Tape) and y >= 0 and y < best.Tape[i] and tries < 1000
+          d = oneCase(g, prop, lowered(best.Tape, i, y), best.Size)
+          tries += 1
+          if not d.Holds and simpler(d.Tape, best.Tape)
+            best = d
+            better = true
+          end
+        end
+      end
+      i += 1
+    end
+  end
+  best
+end
+
+defn fail(g, prop, c, i, n)
+  (** Shrinks a failing case, saves it, and runs the smallest once more: cesia test shows that run. *)
+  small = shrink(g, prop, c)
+  save(small.Size, small.Tape)
+  last = oneCase(g, prop, small.Tape, small.Size)
+  failed({Case: i, Cases: n, From: value.Len(c.Tape), To: value.Len(last.Tape), Value: last.Value, Panic: last.Panic, Size: last.Size})
+  false
+end
+
+defn ForAll(prop, g, cases = missing)
+  (** Does prop hold for each value the generator g makes? It tries cases values, 100 unless cesia test --cases says
+      otherwise, small ones first, and the failure that an earlier run saved before them. A failure shrinks to the smallest
+      value that still fails, which cesia test shows with the parts of the verdict of prop, then saves for the next run;
+      once it passes, it is forgotten. A panic in prop is a failure too. *)
+  n = if value.IsMissing(cases) defaultCases() else cases end
+  saved = start()
+  if not value.IsMissing(saved)
+    c = oneCase(g, prop, saved.Tape, saved.Size)
+    if not c.Holds
+      return fail(g, prop, c, 0, n)
+    end
+  end
+  for i in 1..n
+    c = oneCase(g, prop, missing, sizeOf(i, n))
+    if not c.Holds
+      return fail(g, prop, c, i, n)
+    end
+  end
+  drop()
+  true
+end
