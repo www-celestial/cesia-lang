@@ -115,4 +115,4 @@ It compiles again only what changed. A C++ exception becomes a panic with its me
 
 ## Next
 
-Your programs can use the libraries of the system. The next chapter, Cemacs, is the editor written in Cesia, for Cesia.
+Your programs can use the libraries of the system. The next chapter, [Cemacs](cemacs.md), is the editor written in Cesia, for Cesia.
