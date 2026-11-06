@@ -1,0 +1,6 @@
+defn Double(x)
+  x * 2
+end
+count = 3
+io.Print("start $(Double(count))")
+use std/io

@@ -1,0 +1,15 @@
+stopped at error-fiber.ce:8 (start)
+stopped at error-fiber.ce:4 (error) in fiber 1
+  no parts for 10
+total = 10
+parts + 1 = 1
+> Divide (error-fiber.ce:4)
+  <anonymous> (error-fiber.ce:8)
+error-fiber.ce:4:8: no parts for 10
+  4 |     bug.Panic("no parts for $total")
+    |        ^
+  in Divide (error-fiber.ce:4)
+  called from <anonymous> (error-fiber.ce:8)
+no parts for 10
+main goes on
+exit 0

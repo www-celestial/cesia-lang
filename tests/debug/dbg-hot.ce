@@ -1,0 +1,14 @@
+use std/debug
+
+defn OnStop(stop)
+  (** A breakpoint on a hot loop, with a condition: native code leaves its line to the interpreter. *)
+  io.Print("$(stop.File):$(stop.Line) $(stop.Reason)")
+  if stop.Reason == "start"
+    debug.SetBreak("hot.ce", 10, "k == 150")
+  else
+    io.Print(debug.Eval("[k, h]", stop.Frames[1]))
+    debug.ClearBreak("hot.ce", 10)
+  end
+  "continue"
+end
+use std/io

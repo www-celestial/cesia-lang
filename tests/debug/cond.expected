@@ -1,0 +1,43 @@
+stopped at cond.ce:11 (start)
+breakpoint cond.ce:9 if i > 2
+stopped at cond.ce:9 (break)
+i * 10 = 30
+  Half (cond.ce:9)
+> Total (cond.ce:4)
+  <file> (cond.ce:11)
+sum = 1.5
+n = 4
+sum = 1.5
+i = 3
+  Half (cond.ce:9)
+  Total (cond.ce:4)
+> <file> (cond.ce:11)
+  Half (cond.ce:9)
+  Total (cond.ce:4)
+> <file> (cond.ce:11)
+  Half (cond.ce:9)
+> Total (cond.ce:4)
+  <file> (cond.ce:11)
+> Half (cond.ce:9)
+  Total (cond.ce:4)
+  <file> (cond.ce:11)
+> Half (cond.ce:9)
+  Total (cond.ce:4)
+  <file> (cond.ce:11)
+i + 1 = 4
+cond.ce:9 if i > 2
+stopped at cond.ce:9 (break)
+i + 1 = 5
+cleared cond.ce:9
+5.0
+stopped at cond.ce:13 (error)
+  Index 3 is outside this array of 2 elements.
+i + 1: Name "i" doesn't exist.
+xs = [1, 2]
+xs[1] + 1 = 2
+> <file> (cond.ce:13)
+Commands: break FILE LINE [if CONDITION], clear FILE LINE, breaks, print EXPRESSION, vars, watch EXPRESSION, unwatch EXPRESSION, where, up, down, continue, step, next, out.
+cond.ce:13:12: Index 3 is outside this array of 2 elements.
+  13 | io.Print(xs[3])
+     |            ^
+exit 1

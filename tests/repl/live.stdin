@@ -1,0 +1,4 @@
+defn Step(i)
+  i * 100
+end
+Step(1)

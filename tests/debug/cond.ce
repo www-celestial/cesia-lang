@@ -1,0 +1,14 @@
+defn Total(n)
+  sum = 0
+  for i in 1..n
+    sum = sum + Half(i)
+  end
+  sum
+end
+defn Half(i)
+  i / 2
+end
+io.Print(Total(4))
+xs = [1, 2]
+io.Print(xs[3])
+use std/io

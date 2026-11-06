@@ -2,8 +2,8 @@ stopped at cli.ce:6 (start)
 breakpoint cli.ce:4
 stopped at cli.ce:4 (break)
 x = 2
-No variable "nope".
-  f (cli.ce:4)
+nope: Name "nope" doesn't exist.
+> f (cli.ce:4)
   <file> (cli.ce:6)
 5
 stopped at cli.ce:7 (step)

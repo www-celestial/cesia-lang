@@ -1,0 +1,13 @@
+start 6
+8
+4
+40
+10
+big
+error: Name "list" doesn't exist.
+6
+error: Name "nope" doesn't exist.
+error: Name "result" doesn't exist.
+error: unwrap on an error: bad
+printed
+exit 0

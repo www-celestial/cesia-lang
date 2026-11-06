@@ -109,10 +109,12 @@ let hook ctx s =
   if not d.stopped then begin
     let site = Dynarray.get w.sites s in
     let line = Pos.line site.spos in
-    (* A line with several statements stops only once on its breakpoint. *)
-    let arrived = site.sfile <> d.last_file || line <> d.last_line in
+    (* A line with several statements stops only once on its breakpoint, but at each pass of a loop: its first statement
+       comes again, with a site made before the last one. *)
+    let arrived = site.sfile <> d.last_file || line <> d.last_line || s <= d.last_site in
     d.last_file <- site.sfile;
     d.last_line <- line;
+    d.last_site <- s;
     let path, _ = Dynarray.get w.files site.sfile in
     let on_break =
       arrived && List.exists (fun (f, l, c) -> l = line && same_file path f && (c = "" || d.test ctx s c)) d.breaks
@@ -152,6 +154,25 @@ let clear_break ctx (a : t array) =
   d.breaks <- List.filter (fun (f, l, _) -> f <> file || l <> line) d.breaks;
   Missing
 
+let break_keys = Trie.names [| "File"; "Line"; "Condition" |]
+
+let breaks ctx _ =
+  row
+    (List.rev_map
+       (fun (f, l, c) -> record break_keys [| Text f; Int l; (if c = "" then Missing else Text c) |])
+       ctx.w.debug.breaks)
+
+(* The watches live with the program, as the breakpoints: a debugger keeps nothing from one stop to the next. *)
+let watch ctx (a : t array) =
+  let d = ctx.w.debug and code = Native.text_arg ctx "Watch" a.(0) in
+  if not (List.mem code d.watches) then d.watches <- d.watches @ [ code ];
+  Missing
+
+let unwatch ctx (a : t array) =
+  let d = ctx.w.debug and code = Native.text_arg ctx "Unwatch" a.(0) in
+  d.watches <- List.filter (fun c -> c <> code) d.watches;
+  Missing
+
 (* A command line into words: the core has no text functions. A number becomes an integer. *)
 let words ctx (a : t array) =
   let word w = match int_of_string_opt w with Some i -> Int i | None -> Text w in
@@ -161,4 +182,8 @@ let words ctx (a : t array) =
 let natives =
   [ "SetBreak", Native.nat ~perm:Debug ~params:[| "file"; "line"; "condition" |] "SetBreak" 2 3 set_break;
     "ClearBreak", Native.nat ~perm:Debug "ClearBreak" 2 2 clear_break;
+    "Breaks", Native.nat ~perm:Debug "Breaks" 0 0 breaks;
+    "Watch", Native.nat ~perm:Debug "Watch" 1 1 watch;
+    "Unwatch", Native.nat ~perm:Debug "Unwatch" 1 1 unwatch;
+    "Watches", Native.nat ~perm:Debug "Watches" 0 0 (fun ctx _ -> row (List.map (fun c -> Text c) ctx.w.debug.watches));
     "Words", Native.nat "Words" 1 1 words ]

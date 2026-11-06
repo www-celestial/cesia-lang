@@ -1,0 +1,20 @@
+use std/debug
+
+defn OnStop(stop)
+  (** Fix and continue: at the breakpoint, the program's file changes on disk and reloads; the next call runs it. *)
+  io.Print("$(stop.File):$(stop.Line) $(stop.Reason)")
+  if stop.Reason == "start"
+    debug.SetBreak("app.ce", 5)
+  else
+    source = result.Unwrap(sys.Read("app.ce"))
+    result.Unwrap(sys.Write("app.ce", text.Replace("n * 2", "n * 100", source)))
+    io.Print(debug.Reload())
+    io.Print(debug.Reload())
+    debug.ClearBreak("app.ce", 5)
+  end
+  "continue"
+end
+use std/io
+use std/result
+use std/sys
+use std/text

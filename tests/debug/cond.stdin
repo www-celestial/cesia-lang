@@ -1,0 +1,22 @@
+break cond.ce 9 if i > 2
+continue
+print i * 10
+up
+print sum
+vars
+up
+up
+down
+down
+down
+watch i + 1
+breaks
+continue
+clear cond.ce 9
+breaks
+continue
+print xs
+print xs[1] + 1
+where
+help
+continue

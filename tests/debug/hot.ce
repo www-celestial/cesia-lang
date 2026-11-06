@@ -1,0 +1,14 @@
+defn Spin(n)
+  h = 7
+  for i in 1..n
+    h = math.Mod(h * 31 + i, 1000003)
+  end
+  h
+end
+h = 0
+for k in 1..200
+  h = h + Spin(5000)
+end
+io.Print(h)
+use std/io
+use std/math

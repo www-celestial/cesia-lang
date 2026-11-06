@@ -1,0 +1,6 @@
+use std/list
+list.Map(it * 2, [1, 2])
+defn Twice(f, x)
+  f(f(x))
+end
+Twice(it + 1, 5)

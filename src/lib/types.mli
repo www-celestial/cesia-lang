@@ -175,6 +175,8 @@ and debug = {
   mutable on_stop : t;
   mutable last_file : int;
   mutable last_line : int;
+  mutable last_site : int;
+  mutable watches : string list;  (** the expressions a debugger shows at each stop, in order *)
   mutable test : ctx -> int -> string -> bool;  (** is a condition true at a site: set by [Eval] *)
   mutable scope : int list;  (** the modules of the code run at the prompt, the last first *)
   mutable typed_uses : (string * string) list;  (** the uses written at the prompt: alias and path *)

@@ -139,8 +139,8 @@ let create_world o =
     debugger = o.o_debugger;
     repl = o.o_repl;
     debug =
-      { mode = Starting; stopped = false; breaks = []; on_stop = Missing; last_file = -1; last_line = 0;
-        test = (fun _ _ _ -> true); scope = []; typed_uses = []; main = "";
+      { mode = Starting; stopped = false; breaks = []; on_stop = Missing; last_file = -1; last_line = 0; last_site = -1;
+        watches = []; test = (fun _ _ _ -> true); scope = []; typed_uses = []; main = "";
         made = Hashtbl.create 8 };
     on_hook = (fun _ _ -> ());
     hook_count = 0;

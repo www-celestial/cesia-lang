@@ -1,0 +1,13 @@
+defn Divide(total, parts)
+  share = total / parts
+  if parts == 0
+    bug.Panic("no parts for $total")
+  end
+  share
+end
+t = fiber.Spawn(() -> Divide(10, 0))
+io.Print(fiber.Wait(t).Error.Message)
+io.Print("main goes on")
+use std/bug
+use std/fiber
+use std/io

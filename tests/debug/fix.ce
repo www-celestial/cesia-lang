@@ -1,0 +1,7 @@
+defn Price(n)
+  n * 2
+end
+for k in 1..3
+  io.Print(Price(k))
+end
+use std/io

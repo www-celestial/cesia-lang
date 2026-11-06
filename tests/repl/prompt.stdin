@@ -1,0 +1,25 @@
+Double(4)
+count + 1
+defn Double(x)
+  x * 10
+end
+Double(4)
+x = 5
+x * 2
+if x > 2
+  "big"
+else
+  "small"
+end
+nums = [1,
+  2, 3]
+list.Sum(nums)
+use std/list
+list.Sum(nums)
+nope + 1
+result.Unwrap(result.Err("bad"))
+use std/result
+result.Unwrap(result.Err("bad"))
+io.Print("printed")
+
+missing

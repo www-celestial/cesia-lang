@@ -1,24 +1,89 @@
-(** A command-line debugger, written on the debug API.
-    Commands: break F L, clear F L, continue, step, next, out, print NAME, where. *)
+(** A command-line debugger, written on the debug API: cesia run --debugger debugger app.ce. At each stop it shows where the
+    program is and the watches, then reads commands until one resumes the program. Before it resumes, the files changed
+    since they were loaded reload: fix the code, save, continue, and the next call runs the new code. *)
 use std/debug
 use std/io
-use std/list
+use std/result
+use std/text
 use std/value
 
-defn ShowVariable(frame, name)
-  (** Prints the value of a variable of a frame, or says that there is none. *)
-  found = list.Filter(it.Name == name, frame.Vars)
-  if value.Len(found) == 0
-    io.Print("No variable \"$name\".")
+help =
+  "Commands: break FILE LINE [if CONDITION], clear FILE LINE, breaks, print EXPRESSION, vars, watch EXPRESSION, unwatch EXPRESSION, where, up, down, continue, step, next, out."
+
+defn Rest(line, word)
+  (** What follows the first word of a command line. *)
+  t = text.Trim(line)
+  n = value.Len(word)
+  if value.Len(t) <= n
+    ""
   else
-    io.Print("$name = $(found[1].Value)")
+    text.Trim(text.Slice(n + 1, value.Len(t), t))
   end
 end
 
-defn ShowFrames(stop)
-  (** Prints the frames of a stop, from the innermost. *)
+defn Show(frame, code)
+  (** Prints the value of an expression in a frame, or the error it gives. *)
+  match debug.Eval(code, frame)
+    result.Ok(v) -> io.Print("$code = $v")
+    result.Err(e) -> io.Print("$code: $e")
+  end
+end
+
+defn ShowFrames(stop, current)
+  (** Prints the frames of a stop, from the innermost, the current one marked. *)
+  k = 0
   for f in stop.Frames
-    io.Print("  $(f.Function) ($(f.File):$(f.Line))")
+    k = k + 1
+    mark = if k == current "> " else "  " end
+    io.Print("$mark$(f.Function) ($(f.File):$(f.Line))")
+  end
+end
+
+defn ShowBreaks()
+  (** Prints the breakpoints, with their conditions. *)
+  for b in debug.Breaks()
+    io.Print(if value.IsMissing(b.Condition) "$(b.File):$(b.Line)" else "$(b.File):$(b.Line) if $(b.Condition)" end)
+  end
+end
+
+defn SetBreak(line, w)
+  (** break FILE LINE, or break FILE LINE if CONDITION. *)
+  at = text.Find(" if ", line)
+  if value.Len(w) == 3
+    debug.SetBreak(w[2], w[3])
+    io.Print("breakpoint $(w[2]):$(w[3])")
+  else if value.Len(w) > 4 and w[4] == "if" and not value.IsMissing(at)
+    condition = text.Trim(text.Slice(at + 4, value.Len(line), line))
+    debug.SetBreak(w[2], w[3], condition)
+    io.Print("breakpoint $(w[2]):$(w[3]) if $condition")
+  else
+    io.Print(help)
+  end
+end
+
+defn RunCommand(frame, line, w)
+  (** Runs one command (its line and its words) that doesn't resume the program nor move between frames. *)
+  n = value.Len(w)
+  if w[1] == "break" and n >= 3 and value.IsInt(w[3])
+    SetBreak(line, w)
+  else if n == 3 and w[1] == "clear"
+    debug.ClearBreak(w[2], w[3])
+    io.Print("cleared $(w[2]):$(w[3])")
+  else if n == 1 and w[1] == "breaks"
+    ShowBreaks()
+  else if n > 1 and w[1] == "print"
+    Show(frame, Rest(line, "print"))
+  else if n == 1 and w[1] == "vars"
+    for v in frame.Vars
+      io.Print("$(v.Name) = $(v.Value)")
+    end
+  else if n > 1 and w[1] == "watch"
+    debug.Watch(Rest(line, "watch"))
+    Show(frame, Rest(line, "watch"))
+  else if n > 1 and w[1] == "unwatch"
+    debug.Unwatch(Rest(line, "unwatch"))
+  else
+    io.Print(help)
   end
 end
 
@@ -27,38 +92,63 @@ defn IsResume(word)
   word == "continue" or word == "step" or word == "next" or word == "out"
 end
 
-defn RunCommand(stop, w)
-  (** Runs one command (a list of words) that doesn't resume the program. *)
-  n = value.Len(w)
-  if n == 3 and w[1] == "break"
-    debug.SetBreak(w[2], w[3])
-    io.Print("breakpoint $(w[2]):$(w[3])")
-  else if n == 3 and w[1] == "clear"
-    debug.ClearBreak(w[2], w[3])
-    io.Print("cleared $(w[2]):$(w[3])")
-  else if n == 2 and w[1] == "print"
-    ShowVariable(stop.Frames[1], w[2])
-  else if n == 1 and w[1] == "where"
-    ShowFrames(stop)
-  else
-    io.Print("Commands: break F L, clear F L, continue, step, next, out, print NAME, where.")
+defn Reloaded()
+  (** Reloads the files changed since they were loaded: false, after the errors, when one doesn't load. *)
+  match debug.Reload()
+    result.Ok(paths) -> ShowReloaded(paths)
+    result.Err(e) -> ShowError(e)
   end
 end
 
+defn ShowReloaded(paths)
+  (** Prints the files reloaded: true. *)
+  for p in paths
+    io.Print("reloaded $p")
+  end
+  true
+end
+
+defn ShowError(e)
+  (** Prints the errors of a reload: false. *)
+  io.Print(text.Trim(e))
+  false
+end
+
 defn OnStop(stop)
-  (** Reads and runs commands at a stop, until one resumes the program: gives its word. *)
-  io.Print("stopped at $(stop.File):$(stop.Line) ($(stop.Reason))")
+  (** Shows the stop and reads commands until one resumes the program: gives its word. *)
+  fiber = if stop.Fiber > 0 " in fiber $(stop.Fiber)" else "" end
+  io.Print("stopped at $(stop.File):$(stop.Line) ($(stop.Reason))$fiber")
+  if stop.Reason == "error"
+    io.Print("  $(stop.Error)")
+  end
+  for code in debug.Watches()
+    Show(stop.Frames[1], code)
+  end
+  current = 1
   while true
-    line = debug.ReadLine()
+    line = debug.ReadLine("(debug) ")
     if value.IsMissing(line)
       return "continue"
     end
     w = debug.Words(line)
-    if value.Len(w) > 0
-      if value.Len(w) == 1 and IsResume(w[1])
+    n = value.Len(w)
+    if n == 1 and IsResume(w[1])
+      if Reloaded()
         return w[1]
       end
-      RunCommand(stop, w)
+    else if n == 1 and (w[1] == "up" or w[1] == "down")
+      current = if w[1] == "up" current + 1 else current - 1 end
+      if current < 1
+        current = 1
+      end
+      if current > value.Len(stop.Frames)
+        current = value.Len(stop.Frames)
+      end
+      ShowFrames(stop, current)
+    else if n == 1 and w[1] == "where"
+      ShowFrames(stop, current)
+    else if n > 0
+      RunCommand(stop.Frames[current], line, w)
     end
   end
 end
