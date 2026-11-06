@@ -1,6 +1,7 @@
 (** cesia upgrade: Cesia itself, from its releases on GitHub, the newest one, or the nightly one with --nightly. It shows the
-    notes and asks, downloads the archive of this system (bin/ and lib/), checks its fingerprint, tries the new binary, and
-    only then puts it in place of the old one, with its lib/: any failure before leaves the old one as it was.
+    notes and asks, downloads the archive of this system (bin/, lib/ and book/), checks its fingerprint, tries the new
+    binary, and only then puts it in place of the old one, with its lib/ and book/: any failure before leaves the old one
+    as it was.
     CESIA_RELEASES=file:///folder reads folder/latest.json or folder/nightly.json instead of GitHub: for tests and mirrors.
     Run by the binary. *)
 use std/sys
@@ -113,6 +114,12 @@ defn replace(home, fresh, binary)
       sys.Rename("$home/lib", "$fresh/old-lib")?
     end
     sys.Rename("$fresh/lib", "$home/lib")?
+  end
+  if sys.Exists("$fresh/book")
+    if sys.Exists("$home/book")
+      sys.Rename("$home/book", "$fresh/old-book")?
+    end
+    sys.Rename("$fresh/book", "$home/book")?
   end
   sys.Remove(old)
   Ok(missing)

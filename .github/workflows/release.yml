@@ -1,9 +1,9 @@
 name: release
 
 # A tag vX.Y.Z makes the release vX.Y.Z; Run workflow on main, by hand, replaces the pre-release nightly: three systems and
-# their C libraries cost too many minutes for each push. Each holds, for each system, an archive of bin/cesia and lib/ (the C
-# libraries of tools/release-libs.sh) with its fingerprint in a .blake2 file, and the notes of tools/notes.sh. cesia upgrade
-# reads them.
+# their C libraries cost too many minutes for each push. Each holds, for each system, an archive of bin/cesia, lib/ (the C
+# libraries of tools/release-libs.sh) and book/, with its fingerprint in a .blake2 file, and the notes of tools/notes.sh.
+# cesia upgrade reads them.
 on:
   push:
     tags: ["v*"]
@@ -95,6 +95,8 @@ jobs:
         run: |
           mkdir -p out/bin
           cp -R libraries/lib out/lib
+          # The book: cesia doc --site outside a project builds it, with the reference of this binary.
+          cp -R book out/book
           # The plugins that the binary loads from lib/, the JIT at the first hot unit and SQLite's natives at their first
           # call; without the C debug info, as the binary.
           for plugin in jit/cesia_jit.cmxs sqlite/cesia_sqlite.cmxs; do
@@ -119,7 +121,7 @@ jobs:
             CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia.exe run bench/fib.ce 2> jit.txt
             grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
             tools/release-sqlite.sh out/bin/cesia.exe
-            (cd out && pwsh -Command "Compress-Archive -Path bin, lib -DestinationPath ../cesia-${{ matrix.system }}.zip")
+            (cd out && pwsh -Command "Compress-Archive -Path bin, lib, book -DestinationPath ../cesia-${{ matrix.system }}.zip")
           else
             cp _build/default/src/bin/main.exe out/bin/cesia
             # Without the C debug info, mostly MIR's; on macOS the signature that stripping breaks is made again.
@@ -129,7 +131,7 @@ jobs:
             CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia run bench/fib.ce 2> jit.txt
             grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
             tools/release-sqlite.sh out/bin/cesia
-            tar -czf "cesia-${{ matrix.system }}.tar.gz" -C out bin lib
+            tar -czf "cesia-${{ matrix.system }}.tar.gz" -C out bin lib book
           fi
       - uses: actions/upload-artifact@v4
         with:

@@ -231,6 +231,13 @@ let site args =
   let cache = match Sys.getenv_opt "XDG_CACHE_HOME" with Some d when d <> "" -> d | _ -> Filename.concat home ".cache" in
   let cache = Filename.concat cache "cesia/site" in
   let root = Package.root_of "." in
+  (* Outside a project, the book of this Cesia: a release holds book/ beside bin/ and lib/. *)
+  let exe = try Unix.realpath Sys.executable_name with Unix.Unix_error _ -> Sys.executable_name in
+  let home = Filename.dirname (Filename.dirname exe) in
+  let root =
+    if Sys.file_exists (Filename.concat root Package.project_file) || not (Sys.file_exists (Filename.concat home "book")) then root
+    else home
+  in
   let folder =
     match List.filter (( <> ) "--open") args with
     | [ f ] when f <> "" && f.[0] <> '-' -> Package.absolute f

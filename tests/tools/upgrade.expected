@@ -52,10 +52,14 @@ cesia 99.0.0 is in place.
 cesia 99.0.0
 .:
 bin
+book
 lib
 
 bin:
 cesia
+
+book:
+index.md
 
 lib:
 new.txt
