@@ -944,6 +944,7 @@ defn referencePages(site, modules, lists)
   pages = []
   search = []
   lists = Dict([{Key: m, Value: withEntries(lists[m])} for m in modules])
+  site.Columns = sideCache(site.Tree, Keys(site.Tree.Up))
   index = {Label: "Reference", Path: "ref/index.html"}
   moduleLinks = [{Label: m, Path: modulePath(m)} for m in modules]
   for k in 1..Len(modules)
@@ -1056,7 +1057,7 @@ defn build(root, folder, cache)
   before = if IsMissing(last) {} else GetOr("Pages", {}, last) end
   bookKeys = {}
   keptBook = []
-  site.Columns = sideCache(site.Tree, if IsSome(kept) [p.Path for p in book] else Keys(site.Tree.Up) end)
+  site.Columns = sideCache(site.Tree, [p.Path for p in book])
   pages = []
   search = []
   home = {Label: if Len(book) > 0 book[1].Title else "Reference" end, Path: "index.html"}
