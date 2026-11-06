@@ -209,14 +209,34 @@ defn settings(root)
 end
 
 defn written(folder, pages)
-  (** Writes each page {Path, Html} under the folder, the folders first. *)
+  (** Writes each page {Path, Html} under the folder, the folders first. .pages keeps the fingerprint of each, so that a page
+      that didn't change isn't written again, and one that is gone is removed. *)
+  manifest = "$folder/.pages"
+  before = {}
+  if sys.Exists(manifest)
+    for line in Lines(sys.Read(manifest)?)
+      parts = Split(" ", line)
+      before[parts[1]] = parts[2]
+    end
+  end
   for dir in Unique([parent(p.Path) for p in pages])
     sys.Mkdir(if dir == "" folder else "$folder/$dir" end)?
   end
+  now = {}
   for p in pages
-    sys.Write("$folder/$(p.Path)", p.Html)?
+    print = cesia.Fingerprint(p.Html)
+    now[p.Path] = print
+    file = "$folder/$(p.Path)"
+    if GetOr(p.Path, "", before) != print or not sys.Exists(file)
+      sys.Write(file, p.Html)?
+    end
   end
-  Ok(missing)
+  for path in Keys(before)
+    if not Has(path, now) and sys.Exists("$folder/$path")
+      sys.Remove("$folder/$path")?
+    end
+  end
+  sys.Write(manifest, Join("", ["$k $(now[k])\n" for k in Keys(now)]))
 end
 
 defn drained(channel)
