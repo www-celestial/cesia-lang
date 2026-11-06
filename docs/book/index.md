@@ -56,5 +56,6 @@ Appendices, to look things up:
 - [cesia.toml](toml.md): every table and key of a project's file.
 - [Environment variables](env.md): those that Cesia reads.
 - [Words](glossary.md): the names of the ideas of this book, as programmers say them, each with its chapter.
+- [Speed](speed.md): what becomes machine code as a program runs, and how to see it.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.

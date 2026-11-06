@@ -120,7 +120,8 @@ A value that never changes once it is made: each operation gives a new value. Ev
 ## Interpreter and JIT
 
 An interpreter runs a program step by step; a just-in-time compiler, a JIT, turns the parts that run often into machine
-code as the program runs. Cesia's JIT takes the functions and loops that get hot: see [Commands](commands.md#cesia-run).
+code as the program runs. Cesia's JIT takes the functions and loops that get hot, numbers, arrays, maps and structs: see
+[Speed](speed.md).
 
 ## Lexical scope
 
