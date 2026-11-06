@@ -21,8 +21,9 @@ cesia upgrade --nightly    # a build of main between releases, made by hand
 
 A release holds the binary and every C library its libraries use, in `~/.cesia/lib/`: OpenBLAS for BLAS and LAPACK (macOS has
 its own), libsodium, SQLite, and OpenSSL on macOS and Windows (Linux keeps the system's, for its security fixes).
-Nothing else is installed by hand. In `0.x` the middle number of a version rises when a change can break a program, the last one
-for a fix, and the notes of a release come from the messages of its commits.
+Nothing else is installed by hand. From 1.0, the first number of a version rises when a change can break a program, the
+middle one when something is added, and the last one for a fix. [`CHANGELOG.md`](CHANGELOG.md) says what each version brings,
+and the notes of a release come from the messages of its commits.
 
 From the sources, with OCaml 5.5 and dune:
 
