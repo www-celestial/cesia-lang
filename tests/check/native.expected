@@ -1,0 +1,6 @@
+{File: "buffer.ce", Line: 2, Column: 1, End: 8, Severity: "error", Message: "Module \"io\" has no name \"Prnt\".", Hint: missing, Source: "io.Prnt(1)"}
+native.ce:8:15: Permission "read" denied for clean.ce.
+  8 | io.Print(cesia.Check(["clean.ce"]))
+    |               ^
+  Run again with --allow read=clean.ce, or a folder that holds it.
+exit 1

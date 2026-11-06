@@ -1,0 +1,8 @@
+(* cesia.Check from a program: a text given needs no permission, a file read needs the read permission. *)
+use std/cesia
+use std/io
+
+for m in cesia.Check(["buffer.ce"], {"buffer.ce": "use std/io\nio.Prnt(1)\n"})
+  io.Print(m)
+end
+io.Print(cesia.Check(["clean.ce"]))

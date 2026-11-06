@@ -564,7 +564,10 @@ let check_native ctx (a : t array) =
       let s =
         match Option.bind given (fun d -> Option.bind (Hashtbl.find_opt asked key) (fun shown -> Dict.get ctx name (Text shown) d)) with
         | Some v -> Native.text_arg ctx name v
-        | None -> In_channel.with_open_bin p In_channel.input_all
+        | None ->
+          (* What a mark shows of a line is read from the file: as for sys.Read, the program needs to be allowed. *)
+          Runtime.check_perm ctx Read (Some p);
+          In_channel.with_open_bin p In_channel.input_all
       in
       Hashtbl.replace texts key s;
       s
