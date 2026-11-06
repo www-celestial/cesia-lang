@@ -1,0 +1,11 @@
+day,city,product,units,price
+2026-10-01,Lyon,bread,12,1.25
+2026-10-01,Paris,bread,30,1.5
+2026-10-01,Lyon,cake,3,8.0
+2026-10-02,Paris,cake,5,9.0
+2026-10-02,Lille,bread,8,1.25
+2026-10-02,Lyon,bread,15,1.25
+2026-10-03,Paris,bread,22,1.5
+2026-10-03,Lille,cake,2,7.5
+2026-10-03,Lyon,cake,4,8.0
+2026-10-04,Paris,cake,6,9.0

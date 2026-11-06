@@ -137,5 +137,5 @@ date.Parse("2026-12-25") -->
 
 ## Next
 
-Your programs read and write the machine's files. The next chapter, Data, works on many values at once: lists of records,
+Your programs read and write the machine's files. The next chapter, [Data](data.md), works on many values at once: lists of records,
 groups, counts, tables of columns.

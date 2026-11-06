@@ -38,5 +38,6 @@ language.
 11. [Packages](packages.md): `use`, folders as packages, `cesia.toml`, tasks, code from other projects.
 12. [Permissions](permissions.md): `--allow`, `--limit`, and the permissions of a task.
 13. [Files](files.md): reading, writing, folders, arguments, other programs and the clock.
+14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.
