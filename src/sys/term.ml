@@ -24,13 +24,16 @@ let waitable =
      | _ -> false
      | exception Unix.Unix_error _ -> false)
 
+(* The input that a fiber waited for goes back to blocking when the program ends: the shell shares it. *)
+let blocking_at_exit = lazy (at_exit (fun () -> try Unix.clear_nonblock Unix.stdin with Unix.Unix_error _ -> ()))
+
 (* The input watched, so that a fiber can wait for it while the others run; but at a stop of the debugger, which holds the
    program, or on a system that can't wait for it. *)
 let watch st ctx =
   if not (st.parked || ctx.w.debug.stopped || Sys.win32) && Lazy.force waitable then begin
     Poll.watch st.poll Unix.stdin;
     st.parked <- true;
-    at_exit (fun () -> try Unix.clear_nonblock Unix.stdin with Unix.Unix_error _ -> ())
+    Lazy.force blocking_at_exit
   end
 
 (* The next byte, or [None] at the end of the input. A read comes first, the wait after: the input says only when it
@@ -47,6 +50,12 @@ let rec byte st ctx =
     | n ->
       st.buf <- Bytes.sub_string chunk 0 n;
       st.at <- 0;
+      (* Read at a stop, while a fiber waits for the input: the input won't say again what is now in the buffer, so the
+         fiber wakes and looks there. *)
+      if ctx.w.debug.stopped && st.parked then begin
+        Poll.forget st.poll Unix.stdin;
+        st.parked <- false
+      end;
       byte st ctx
     | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
       if ctx.w.debug.stopped || not st.parked then ignore (Unix.select [ Unix.stdin ] [] [] (-1.))
