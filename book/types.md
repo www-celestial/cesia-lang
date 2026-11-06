@@ -156,5 +156,5 @@ Rect(1, 2).Describe() -->
 
 ## Next
 
-Your code says what it expects. The next chapter, Packages, splits a program into folders, uses code from other projects, and
+Your code says what it expects. The next chapter, [Packages](packages.md), splits a program into folders, uses code from other projects, and
 describes a project in `cesia.toml`.
