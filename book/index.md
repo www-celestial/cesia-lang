@@ -40,5 +40,7 @@ language.
 13. [Files](files.md): reading, writing, folders, arguments, other programs and the clock.
 14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file.
 15. [JSON and CSV](json.md): reading, writing, and checking what comes in.
+16. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
+17. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.

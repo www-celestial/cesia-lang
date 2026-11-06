@@ -126,4 +126,4 @@ Print(Unwrap(sys.Read("people.json")))
 
 ## Next
 
-You can read and write the data of other programs. The next chapter, HTTP, gets data from the web, and serves it.
+You can read and write the data of other programs. The next chapter, [HTTP](http.md), gets data from the web, and serves it.
