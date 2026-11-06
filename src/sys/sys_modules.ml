@@ -49,8 +49,9 @@ let local_clock ctx (a : t array) =
   let parts = [| t.tm_year + 1900; t.tm_mon + 1; t.tm_mday; t.tm_hour; t.tm_min; t.tm_sec |] in
   Array { rows = 1; cols = 6; store = I parts; a_owned = true; a_tip = true }
 
-(* std/debug's engine: the names here, the code in the plugin cesia_debug.cmxs, loaded at the first call of one of them or
-   at the first condition of a breakpoint, so that a program run without --repl or --debugger never pays for it. *)
+(* std/debug's engine, which runs code in the program: the names here, the code in the plugin cesia_debug.cmxs, loaded at
+   the first call of one of them or at the first condition of a breakpoint, so that a program run without --repl or
+   --debugger never pays for it. ReadLine reads in the binary, cesia upgrade asks with it; its editor is in the plugin. *)
 let debugger = ref None
 let debug_loader = ref (fun () -> Error "no plugin in this program")
 
@@ -62,33 +63,24 @@ let debug_plugin () =
     | Error reason -> Error reason
     | Ok () -> Option.to_result ~none:"nothing in the plugin" !debugger)
 
-let debug_natives poll =
-  let code = ref None in
-  let run name ctx a =
-    let natives =
-      match !code with
-      | Some l -> l
-      | None ->
-        (match debug_plugin () with
-         | Ok (make, _) ->
-           let l = make poll in
-           code := Some l;
-           l
-         | Error reason -> Runtime.fail ctx Type (Messages.debug_plugin reason))
-    in
-    match List.assoc_opt name natives with
-    | Some (Native n) -> n.run ctx a
-    | _ -> Runtime.fail ctx Type (Messages.debug_plugin ("no " ^ name))
+let debug_natives =
+  let code name ctx =
+    match debug_plugin () with
+    | Ok (natives, _, _) -> (match List.assoc_opt name natives with Some (Native n) -> n.run | _ -> Runtime.fail ctx Type (Messages.debug_plugin ("no " ^ name)))
+    | Error reason -> Runtime.fail ctx Type (Messages.debug_plugin reason)
   in
   List.map
-    (fun (name, params, min_args, max_args, perm) -> name, Native.nat ?perm ~params name min_args max_args (run name))
-    [ "ReadLine", [| "prompt" |], 0, 1, Some Debug; "Eval", [| "code"; "frame" |], 1, 2, Some Debug;
-      "Reload", [||], 0, 0, Some Debug; "Complete", [| "code" |], 1, 1, None ]
+    (fun (name, params, min_args, max_args, perm) ->
+       name, Native.nat ?perm ~params name min_args max_args (fun ctx a -> code name ctx ctx a))
+    [ "Eval", [| "code"; "frame" |], 1, 2, Some Debug; "Reload", [||], 0, 0, Some Debug; "Complete", [| "code" |], 1, 1, None ]
 
 let debug_test ctx s cond =
   match debug_plugin () with
-  | Ok (_, test) -> test ctx s cond
+  | Ok (_, test, _) -> test ctx s cond
   | Error reason -> Runtime.fail ctx Type (Messages.debug_plugin reason)
+
+(* Without the plugin, a terminal gives its lines as a pipe does, as the JIT's absence leaves the program interpreted. *)
+let debug_editor () = match debug_plugin () with Ok (_, _, line) -> Some line | Error _ -> None
 
 let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   let poll = Poll.create () in
@@ -119,6 +111,6 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   Linalg.install ();
   w.debug.test <- debug_test;
   w.native_modules <-
-    ("debug", debug_natives poll) :: ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
+    ("debug", Term.natives ~editor:debug_editor poll @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
     :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
   fun () -> Net.stopping net

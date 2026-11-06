@@ -1,4 +1,4 @@
-; The engine of the prompt and of the debugger, debug.Eval, debug.ReadLine and the others: a library whose plugin
+; The engine of the prompt and of the debugger, debug.Eval, debug.Reload and debug.Complete: a library whose plugin
 ; cesia_debug.cmxs the binary loads at the first call of one of them (src/bin/main.ml), so that a program run without
 ; --repl or --debugger never pays for its code. The binary keeps their names (src/sys/sys_modules.ml).
 
