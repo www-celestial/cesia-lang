@@ -151,4 +151,4 @@ file alone. A database in use by another fiber or program is waited for, in this
 
 ## Next
 
-Your programs keep their data. The next chapter, Tests, checks that they keep doing what they should.
+Your programs keep their data. The next chapter, [Tests](tests.md), checks that they keep doing what they should.
