@@ -63,6 +63,7 @@ name = &quot;x&quot;
 <h2 id="reading">Reading</h2>
 <pre><code class="cesia"><span class="k">use</span> std/sys
 <span class="n">Print</span>(sys.<span class="f">Read</span>(<span class="s">&quot;notes.txt&quot;</span>).<span class="f">Value</span>)</code></pre>
+<p class="allow">Runs with <code>--allow read</code></p>
 <pre class="output"><code>first line
 second line
 </code></pre>
@@ -78,6 +79,7 @@ app = web.<span class="f">App</span>() <span class="k">then</span> web.<span cla
 server = <span class="n">Spawn</span>(() -&gt; web.<span class="f">Serve</span>(app, port = <span class="m">18751</span>))
 sys.<span class="f">Sleep</span>(<span class="m">0.05</span>)
 http.<span class="f">Fetch</span>(<span class="s">&quot;http://127.0.0.1:18751/&quot;</span>).<span class="f">Value</span>.<span class="f">Body</span> --&gt; <span class="s">&quot;hello&quot;</span></code></pre>
+<p class="allow">Runs with <code>--allow net=127.0.0.1,net=:18751</code></p>
 <p>A --&gt; in a comment or a text is no check of the book:</p>
 <pre><code class="cesia"><span class="k">defn</span> <span class="n">twice</span>(x)
   <span class="c">(** Twice x.</span>

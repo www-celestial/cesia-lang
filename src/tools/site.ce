@@ -1012,7 +1012,10 @@ defn bookBlock(run, output, values, hooks)
   text = if EndsWith("\n", output) ByteSlice(1, ByteLength(output) - 1, output) else output end
   shown = if words.Md html(output, hooks) else "<pre class=\"output\"><code>$(escape(text))</code></pre>\n" end
   out = if output == "" or "output" in words.Hide "" else folded(shown, "Output", words) end
-  Str(code, out)
+  (* The permissions the block ran with, as cesia run takes them: a reader who types it needs them too. *)
+  asked = [if a == "net" "net=127.0.0.1" else a end for a in words.Allow]
+  allow = if Len(asked) == 0 "" else "<p class=\"allow\">Runs with <code>--allow $(escape(Join(",", asked)))</code></p>\n" end
+  Str(code, allow, out)
 end
 
 defn bookBody(site, page, results)
