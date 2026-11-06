@@ -431,7 +431,7 @@ blockWordList = "norun, fails, output=md, fold=code, fold=output, hide=code, hid
 
 (* net=:8080 lets a block listen on that port, as --allow does; a server of the book listens on 127.0.0.1, the default of
    http.Serve. *)
-isListen(a) = StartsWith("net=:", a) and ByteLength(a) > 5 and IsInt(Number(from(6, a)))
+isListen(a) = StartsWith("net=:", a) and IsInt(Number(from(6, a))) and Number(from(6, a)) >= 1 and Number(from(6, a)) <= 65535
 
 defn blockWords(info)
   (** What the words after cesia ask of a block: {Norun, Fails, Md, Fold, Hide, Allow}, or an Err of the word it doesn't know. *)
@@ -506,6 +506,17 @@ defn arrows(code)
   out
 end
 
+defn freshLines(code)
+  (** For each line of a block, does it start outside a comment and a text? Only such a line can be a use. *)
+  state = syntax.FirstState
+  out = []
+  for t in Lines(code)
+    out = Append(Equal(state, syntax.FirstState), out)
+    state = syntax.Tokens(t, state).State
+  end
+  out
+end
+
 defn helpers(mark)
   (** The functions the program calls to speak to the build: each prints a line that starts with the byte 1 and the mark. A
       value is shown as cesia test shows it, its line ends as the byte 2. *)
@@ -532,10 +543,11 @@ defn program(runs, chosen, mark)
     at[b.Line] = if b.Words.Norun "defn bookNotRun$k()" else "bookAt($k)" end
     lines = Lines(b.Text)
     cut = arrows(b.Text)
+    fresh = freshLines(b.Text)
     for i in 1..Len(lines)
       t = lines[i]
       a = cut[i]
-      if StartsWith("use ", Trim(t))
+      if fresh[i] and StartsWith("use ", Trim(t))
         (* A use already on top is written once: a fails block runs again the uses of the blocks before it. *)
         if IsMissing(IndexOf(Trim(t), uses))
           uses = Append(Trim(t), uses)
@@ -681,7 +693,18 @@ defn pageRun(job)
       else if f.Code == -1
         mistakes = Append("$(job.Source):$(runs[k].Line): this block ran more than 10 seconds, or a signal ended it.", mistakes)
       else
-        output[k] = Str(GetOr(k, "", heard(f.Out, job.Mark).Output), placed(f.Err, f, job.Source).Message, "\n")
+        (* What the block checked and showed before it stopped counts as in any block. *)
+        said = heard(f.Out, job.Mark)
+        first = runs[k].Line + 1
+        last = runs[k].Line + Len(Lines(runs[k].Text))
+        inside(n) = n >= first and n <= last
+        mistakes = Concat(mistakes, ["$(job.Source):$(w.Line): $(Trim(job.Lines[w.Line])), got $(w.Got)" for w in said.Wrong if inside(w.Line)])
+        for n in Keys(said.Values)
+          if inside(n)
+            got.Values[n] = said.Values[n]
+          end
+        end
+        output[k] = Str(GetOr(k, "", said.Output), placed(f.Err, f, job.Source).Message, "\n")
       end
     end
   end
