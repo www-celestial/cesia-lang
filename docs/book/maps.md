@@ -39,13 +39,15 @@ A key that isn't there stops the program: a typo shows at once.
 person.City
 ```
 
-When a key may be missing, [dict.Get] gives `missing` instead, [dict.GetOr] gives a default, and [dict.Has] asks:
+When a key may be missing, [dict.Get] gives `missing` instead, [dict.GetOr] gives a default, and [dict.Has] asks. `in`
+asks too: `"Age" in person` is short for `dict.Has("Age", person)`.
 
 ```cesia
 use std/dict
 dict.Get("City", person) -->
 dict.GetOr("City", "unknown", person) -->
 dict.Has("Age", person) -->
+"Age" in person --> dict.Has("Age", person)
 ```
 
 ## Changing

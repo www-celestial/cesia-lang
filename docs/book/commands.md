@@ -47,7 +47,7 @@ cesia check [--json] [--stdin file.ce] [path...]
 ```
 
 Reads the code and says what is wrong, without running any of it: syntax, names, the arguments of a known function, struct or
-native, values that surely don't fit a type, and [results](errors.md#cesia-check) left unhandled. A path is a file, or a
+native, values that surely don't fit a type, and [results](types.md#checking-without-running-cesia-check) left unhandled. A path is a file, or a
 folder with its subfolders; with none, the source folders of `cesia.toml`. A file of a source folder is read with the other
 files of its package, as `use` reads them, and a test with its package; any other file stands alone, as a program. It needs
 the read permission only, so checking a project from elsewhere is safe. Ends with the code 1 when there is an error; warnings

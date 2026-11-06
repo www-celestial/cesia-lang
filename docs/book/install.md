@@ -66,6 +66,20 @@ cesia run --watch hello.ce
 A program that has ended starts again when the file changes. One that is still running, such as a server or a window, keeps its
 state and takes the new code at once. Press `Ctrl-C` to stop.
 
+### Trying a line
+
+`cesia run --repl` opens a prompt: type an expression, and it shows its value. It suits trying a function before you write
+it in a file. Ctrl-D leaves it.
+
+```text
+$ cesia run --repl
+> use std/text
+> text.Upper("hello")
+HELLO
+```
+
+The chapter [The prompt and the debugger](debug.md) shows more of it.
+
 ## When something is wrong
 
 An error names the file, the line and the column, and shows the line. Cesia checks every name of a program before it runs its

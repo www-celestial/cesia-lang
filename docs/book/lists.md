@@ -116,11 +116,21 @@ Both keep equal elements in the order they had.
 
 ### Unique and IndexOf
 
-[list.Unique] leaves out repeats, and [list.IndexOf] finds where a value is:
+[list.Unique] leaves out repeats, and [list.IndexOf] finds where a value is, or gives `missing`:
 
 ```cesia
 list.Unique([1, 2, 1, 3, 2]) -->
 list.IndexOf("Bo", names) -->
+```
+
+### in
+
+`x in xs` asks whether a value is an element of a list. It is short for asking [list.IndexOf] for a position:
+
+```cesia
+"Bo" in names -->
+"Zoe" in names -->
+"Bo" in names --> value.IsSome(list.IndexOf("Bo", names))
 ```
 
 ## Whole arrays at once
@@ -135,6 +145,16 @@ prices = [10, 20, 30]
 prices * 2 -->
 prices + [1, 2, 3] -->
 math.Sqrt([1, 4, 9]) -->
+```
+
+### Comparing whole lists
+
+A comparison works on each pair too: `==` between two lists gives a list of `true` and `false`. To ask whether two lists
+are the same as a whole, [value.Equal] gives one answer:
+
+```cesia
+prices == [10, 25, 30] -->
+value.Equal(prices, [10, 20, 30]) -->
 ```
 
 ### One number from an array

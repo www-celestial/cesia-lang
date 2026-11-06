@@ -21,13 +21,15 @@ A number is an integer, such as `42`, or a float, with a dot: `1.5`. The usual o
 2 ^ 10 -->
 ```
 
-### Operators are functions
+### Operators as functions
 
-Each operator is also a function, for the times you pass it to another function: `2 + 3` is [math.Add]`(2, 3)`.
+`+`, `-` and `*` are also functions, for the times you pass one to another function: `2 + 3` is [math.Add]`(2, 3)`, and
+[math.Sub] and [math.Mul] are the two others.
 
 ```cesia
 use std/math
 math.Add(2, 3) --> 2 + 3
+math.Sub(5, 2) --> 5 - 2
 math.Mul(4, 5) --> 4 * 5
 ```
 

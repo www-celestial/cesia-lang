@@ -157,6 +157,26 @@ describe({Name: "Ana"}) -->
 describe(42) -->
 ```
 
+### Taking a value apart with =
+
+A pattern also works on the left of `=`: it gives names to the pieces of a value at once. It is short for reading each
+piece, and it also checks the shape:
+
+```cesia
+pair = [3, 4]
+[x, y] = pair
+x --> pair[1]
+y --> pair[2]
+{Name: who} = {Name: "Ana", Age: 31}
+who -->
+```
+
+A value that doesn't fit stops the program, and the message says why:
+
+```cesia fails
+[a, b] = [1, 2, 3]
+```
+
 ### Conditions and _
 
 An `if` after a pattern adds a condition, and `_` fits anything without naming it:

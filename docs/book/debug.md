@@ -215,4 +215,6 @@ holds a breakpoint stays in the interpreter, and at each stop native code goes b
 again once hot, so the results are the same as without the debugger. A stop on an error inside native code shows the
 variables of the frame that runs it, but not those of the calls native code made inside it.
 
+## Next
+
 You can look inside a running program. The next chapter, [C and C++](c.md), calls the libraries of the system from Cesia.
