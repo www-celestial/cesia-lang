@@ -52,7 +52,6 @@ val missing_arg : string -> string -> t
 val unknown_arg : string -> string -> t
 val duplicate_arg : string -> string -> t
 val duplicate : string -> t
-val prelude_name : string -> t
 val assign_function : string -> t
 val return_outside : t
 val range_bound : string -> t

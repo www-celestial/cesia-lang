@@ -100,12 +100,12 @@ end
 defn layout(w, h)
   (** The panels follow the size of the window. *)
   body = {X: 4, Y: 68, Width: Max(0, w - 8), Height: Max(0, h - 72)}
-  columns = ui.CutLeft(292, body)
-  sides = ui.CutRight(236, columns.Rest)
-  center = ui.CutLeft(4, ui.CutRight(4, sides.Rest).Rest).Rest
-  stack = ui.CutTop(250, columns.Part)
-  pane = ui.CutBottom(192, center)
-  {Menu: {X: 0, Y: 0, Width: w, Height: 24}, Tools: {X: 0, Y: 28, Width: w, Height: 32}, Viewport: stack.Part, Details: ui.CutTop(4, stack.Rest).Rest, Graph: ui.CutBottom(4, pane.Rest).Rest, Code: pane.Part, Palette: sides.Part}
+  columns = ui.Left(292, body)
+  sides = ui.Right(236, columns.Rest)
+  center = ui.Left(4, ui.Right(4, sides.Rest).Rest).Rest
+  stack = ui.Top(250, columns.Part)
+  pane = ui.Bottom(192, center)
+  {Menu: {X: 0, Y: 0, Width: w, Height: 24}, Tools: {X: 0, Y: 28, Width: w, Height: 32}, Viewport: stack.Part, Details: ui.Top(4, stack.Rest).Rest, Graph: ui.Bottom(4, pane.Rest).Rest, Code: pane.Part, Palette: sides.Part}
 end
 
 graphArea(rect) = {X: rect.X + 2, Y: rect.Y + 28, Width: Max(0, rect.Width - 4), Height: Max(0, rect.Height - 30)}
@@ -220,7 +220,7 @@ defn View(state)
   codeArea = {X: r.Code.X, Y: r.Code.Y + 28, Width: r.Code.Width, Height: Max(0, r.Code.Height - 28)}
   listArea = paletteArea(r.Palette)
   Flatten([[{Kind: "clear", Color: th.Ground}], ui.MenuBar(menus, "M_Surface", r.Menu, look), ui.ToolBar(tools(th), state.Mouse, r.Tools, look), [{Kind: "rect", X: 0, Y: 62, Width: state.Width, Height: 1, Color: th.Edge}],
-    viewport(state, look), details(state, look), graph(state, look), ui.Panel("Cesia", r.Code, look), [{Kind: "box", X: r.Code.X + 2, Y: r.Code.Y + 28, Width: Max(0, r.Code.Width - 4), Height: Max(0, r.Code.Height - 30), Color: th.Code, Radius: 4}], ui.CodeView(codeLines(state), markedLine(state), codeArea, look),
+    viewport(state, look), details(state, look), graph(state, look), ui.Panel("Cesia", r.Code, look), [{Kind: "box", X: r.Code.X + 2, Y: r.Code.Y + 28, Width: Max(0, r.Code.Width - 4), Height: Max(0, r.Code.Height - 30), Color: th.Code, Radius: 4}], ui.Code(codeLines(state), markedLine(state), codeArea, look),
     ui.Panel("Palette", r.Palette, look), ui.Field("Search nodes", {X: r.Palette.X + 8, Y: r.Palette.Y + 32, Width: Max(0, r.Palette.Width - 16), Height: 22}, look, hint = true), ui.List(palette, 4, state.Hover, listArea, look)])
 end
 
@@ -230,16 +230,16 @@ Moving(state) = state.Dragging == 1 or state.Dragging == 2 or not state.Rested o
 defn onPress(state, point)
   s = state
   r = s.Rects
-  if ui.Inside(point, SliderRect(r.Details, 0))
+  if ui.Contains(point, SliderRect(r.Details, 0))
     s.Dragging = 1
     s.Metal = ui.SliderValue(point, SliderRect(r.Details, 0))
-  else if ui.Inside(point, SliderRect(r.Details, 1))
+  else if ui.Contains(point, SliderRect(r.Details, 1))
     s.Dragging = 2
     s.Rough = ui.SliderValue(point, SliderRect(r.Details, 1))
-  else if ui.Inside(point, r.Viewport)
+  else if ui.Contains(point, r.Viewport)
     s.Dragging = 3
     s.LastX = point.X
-  else if ui.Inside(point, graphArea(r.Graph))
+  else if ui.Contains(point, graphArea(r.Graph))
     s.Picked = ui.NodeAt(point, s.Nodes)
     if s.Picked > 0
       s.Dragging = 4
@@ -263,7 +263,7 @@ defn onMove(state, point)
     s.Nodes = ui.MoveNode(s.Picked, point, s.Grab, graphArea(s.Rects.Graph), s.Nodes)
   end
   area = paletteArea(s.Rects.Palette)
-  if ui.Inside(point, area)
+  if ui.Contains(point, area)
     s.Target = ui.ListRow(ui.RowAt(point.Y, palette, area), palette, area) * 1.0
   end
   s
@@ -329,7 +329,7 @@ defn onKey(state, event)
   s
 end
 
-defn OnEvent(event, state)
+defn Update(event, state)
   match event.Kind
     "quit" -> missing
     "key" -> onKey(state, event)

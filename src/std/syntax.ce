@@ -9,7 +9,7 @@ Name = 2
 (** The role of a text, interpolations included. *)
 String = 3
 (** The role of a number. *)
-Numeral = 4
+Number = 4
 (** The role of a comment. *)
 Comment = 5
 (** The role of everything else. *)
@@ -147,7 +147,7 @@ defn Tokens(line, state)
         out = add(String, Join("", cs[start..i - 1]), out)
       else if isDigit(c)
         i = numberEnd(cs, i, n)
-        out = add(Numeral, Join("", cs[start..i - 1]), out)
+        out = add(Number, Join("", cs[start..i - 1]), out)
       else if isNameStart(c)
         i = nameEnd(cs, i, n)
         word = Join("", cs[start..i - 1])

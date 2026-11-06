@@ -37,18 +37,18 @@ end
 defn main()
   api = tls.Open()?
   wrap = tls.Server(Args[1], Args[2], api)?
-  a = web.GetRoute("/", req -> web.Plain("over tls"), web.App())
+  a = web.Get("/", req -> web.Plain("over tls"), web.App())
   Spawn(() -> web.Serve(a, port = 18208, wrap = wrap, timeout = 0.2))
   sys.Sleep(0.05)
   client = tls.Client(api, verify = false)
   for k in 1..20
     garbage()?
   end
-  Print(http.Fetch("https://127.0.0.1:18208/", secure = client) then MapOk(it.Body))
+  Print(http.Get("https://127.0.0.1:18208/", secure = client) then MapOk(it.Body))
   mute()?
   Spawn(() -> truncating(wrap))
   sys.Sleep(0.02)
-  Print(http.Fetch("https://127.0.0.1:18209/", secure = client) then MapErr(it.Message))
+  Print(http.Get("https://127.0.0.1:18209/", secure = client) then MapErr(it.Message))
   Ok(missing)
 end
 

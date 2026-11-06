@@ -134,7 +134,7 @@ use std/queue as line
     project; any other path is a folder of this project, from its root (src/shapes). The files of one package need none to see
     each other.
 
-      Len(set.Of([1, 1, 2])) --> 2 *)
+      set.Count(set.Of([1, 1, 2])) --> 2 *)
 
 (** true
     One of the two values of a condition.
@@ -163,7 +163,7 @@ use std/queue as line
 (** as
     After a use, renames what the file sees: use std/queue as line gives line.Of.
 
-      line.Length(line.Of([1, 2])) --> 2 *)
+      line.Count(line.Of([1, 2])) --> 2 *)
 
 (** _
     In a pattern, takes anything and names nothing. A name has no _: words join by capitals, byteLength or ByteLength.

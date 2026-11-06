@@ -1,9 +1,9 @@
 (** A result of the wrong type, given by a return before the end. *)
-defn Polarity(x) Int
+defn Sign(x) Int
   if x < 0
     return "negative"
   end
   1
 end
-Print(Polarity(2))
-Print(Polarity(-2))
+Print(Sign(2))
+Print(Sign(-2))

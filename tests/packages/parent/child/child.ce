@@ -1,2 +1,2 @@
 (** A subfolder doesn't see them. *)
-Peek() = secret(1)
+Get() = secret(1)

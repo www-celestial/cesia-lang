@@ -5,27 +5,27 @@ use std/algo
 
 isSetOf() = Equal(set.Items(set.Of([2, 1, 2])), [1, 2])
 isSetMember() = set.Member(1, set.Of([1])) and not set.Member(2, set.Of([1]))
-isSetAddRemove() = Len(set.Without(1, set.With(2, set.Of([1])))) == 1
+isSetAddRemove() = set.Count(set.Remove(1, set.Add(2, set.Of([1])))) == 1
 isSetUnion() = Equal(set.Items(set.Union(set.Of([1]), set.Of([2]))), [1, 2])
 isSetIntersection() = Equal(set.Items(set.Intersection(set.Of([1, 2]), set.Of([2, 3]))), [2])
 isSetDifference() = Equal(set.Items(set.Difference(set.Of([1, 2]), set.Of([2]))), [1])
 isSetSubset() = set.Subset(set.Of([1]), set.Of([1, 2])) and not set.Subset(set.Of([3]), set.Of([1, 2]))
 isQueueOrder() = Equal(queue.Items(queue.Pop(queue.Of([1, 2, 3]))), [2, 3])
-isQueueEnds() = queue.Front(queue.Of([1, 2])) == 1 and queue.Back(queue.Of([1, 2])) == 2
+isQueueEnds() = queue.First(queue.Of([1, 2])) == 1 and queue.Last(queue.Of([1, 2])) == 2
 isQueueFront() = Equal(queue.Items(queue.PushFront(0, queue.Of([1]))), [0, 1])
 isQueueBack() = Equal(queue.Items(queue.PopBack(queue.Of([1, 2]))), [1])
-isQueueEmpty() = not queue.HasItems(queue.Pop(queue.Of([1]))) and IsMissing(queue.Front(queue.Empty()))
-isQueueEmptyPop() = not queue.HasItems(queue.Pop(queue.Empty()))
+isQueueEmpty() = queue.IsEmpty(queue.Pop(queue.Of([1]))) and IsMissing(queue.First(queue.Empty()))
+isQueueEmptyPop() = queue.IsEmpty(queue.Pop(queue.Empty()))
 
 defn isQueueMany()
   q = queue.Empty()
   for i in 1..3000
     q = queue.Push(i, q)
   end
-  while queue.Length(q) > 1
+  while queue.Count(q) > 1
     q = queue.Pop(q)
   end
-  queue.Front(q) == 3000
+  queue.First(q) == 3000
 end
 
 defn isHeapSorts()
@@ -36,7 +36,7 @@ defn isHeapSorts()
   Equal(Map(it.Key, heap.Items(h)), [1, 2, 3, 4, 5]) and heap.Peek(h).Value == "v1"
 end
 
-isHeapEmpty() = not heap.HasItems(heap.Empty()) and Equal(heap.Items(heap.Empty()), [])
+isHeapEmpty() = heap.IsEmpty(heap.Empty()) and Equal(heap.Items(heap.Empty()), [])
 isGcd() = algo.Gcd(12, 18) == 6 and algo.Gcd(7, 0) == 7 and algo.Lcm(4, 6) == 12
 isPrimeTest() = algo.IsPrime(97) and not algo.IsPrime(1) and not algo.IsPrime(91)
 isPrimes() = Equal(algo.Primes(20), [2, 3, 5, 7, 11, 13, 17, 19]) and Equal(algo.Primes(1), [])

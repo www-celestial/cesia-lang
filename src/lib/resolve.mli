@@ -11,8 +11,7 @@ val check_package : (string * Ast.func) list -> unit
     fields count as its own, and each name in [keep] lives in its cell. [is_type] says whether a name of another package, or of the
     prelude, is a struct or an interface, which a type can name. *)
 val file :
-  ?keep:string array -> ?peers:Ast.func list -> ?is_type:(Ast.binding -> bool) -> ?prelude:(string -> bool) ->
-  file:string -> m:int ->
+  ?keep:string array -> ?peers:Ast.func list -> ?is_type:(Ast.binding -> bool) -> file:string -> m:int ->
   lookup:(string -> Ast.binding option) ->
   spaces:(string * (string -> Ast.binding option)) list -> Ast.func -> Ast.layout
 

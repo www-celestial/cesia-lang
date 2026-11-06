@@ -33,37 +33,37 @@ Inset(n, rect) = {X: rect.X + n, Y: rect.Y + n, Width: Max(0, rect.Width - 2 * n
 
 fitSize(wanted, whole) = Max(0, Min(wanted, whole))
 
-defn CutLeft(w, rect)
+defn Left(w, rect)
   (** Cuts a width off the left of a rectangle: {Part, Rest}. No size goes below zero.
-        CutLeft(3, {X: 0, Y: 0, Width: 10, Height: 2}).Rest.Width --> 7 *)
+        Left(3, {X: 0, Y: 0, Width: 10, Height: 2}).Rest.Width --> 7 *)
   size = fitSize(w, rect.Width)
   {Part: {X: rect.X, Y: rect.Y, Width: size, Height: rect.Height}, Rest: {X: rect.X + size, Y: rect.Y, Width: rect.Width - size, Height: rect.Height}}
 end
 
-defn CutRight(w, rect)
+defn Right(w, rect)
   (** Cuts a width off the right of a rectangle: {Part, Rest}. No size goes below zero.
-        CutRight(3, {X: 0, Y: 0, Width: 10, Height: 2}).Part.X --> 7 *)
+        Right(3, {X: 0, Y: 0, Width: 10, Height: 2}).Part.X --> 7 *)
   size = fitSize(w, rect.Width)
   {Part: {X: rect.X + rect.Width - size, Y: rect.Y, Width: size, Height: rect.Height}, Rest: {X: rect.X, Y: rect.Y, Width: rect.Width - size, Height: rect.Height}}
 end
 
-defn CutTop(h, rect)
+defn Top(h, rect)
   (** Cuts a height off the top of a rectangle: {Part, Rest}. No size goes below zero.
-        CutTop(3, {X: 0, Y: 0, Width: 2, Height: 10}).Rest.Y --> 3 *)
+        Top(3, {X: 0, Y: 0, Width: 2, Height: 10}).Rest.Y --> 3 *)
   size = fitSize(h, rect.Height)
   {Part: {X: rect.X, Y: rect.Y, Width: rect.Width, Height: size}, Rest: {X: rect.X, Y: rect.Y + size, Width: rect.Width, Height: rect.Height - size}}
 end
 
-defn CutBottom(h, rect)
+defn Bottom(h, rect)
   (** Cuts a height off the bottom of a rectangle: {Part, Rest}. No size goes below zero.
-        CutBottom(3, {X: 0, Y: 0, Width: 2, Height: 10}).Part.Y --> 7 *)
+        Bottom(3, {X: 0, Y: 0, Width: 2, Height: 10}).Part.Y --> 7 *)
   size = fitSize(h, rect.Height)
   {Part: {X: rect.X, Y: rect.Y + rect.Height - size, Width: rect.Width, Height: size}, Rest: {X: rect.X, Y: rect.Y, Width: rect.Width, Height: rect.Height - size}}
 end
 
 (** Is a point {X, Y} inside a rectangle? The right and bottom edges are outside it.
-      Inside({X: 1, Y: 1}, {X: 0, Y: 0, Width: 2, Height: 2}) --> true *)
-Inside(point, rect) = point.X >= rect.X and point.X < rect.X + rect.Width and point.Y >= rect.Y and point.Y < rect.Y + rect.Height
+      Contains({X: 1, Y: 1}, {X: 0, Y: 0, Width: 2, Height: 2}) --> true *)
+Contains(point, rect) = point.X >= rect.X and point.X < rect.X + rect.Width and point.Y >= rect.Y and point.Y < rect.Y + rect.Height
 
 (** The value of a slider at a point, from 0.0 to 1.0.
       SliderValue({X: 5, Y: 0}, {X: 0, Y: 0, Width: 10, Height: 2}) --> 0.5 *)
@@ -127,7 +127,7 @@ defn ToolBar(items, mouse, rect, look)
       x = x + 14
     else
       width = 23 + look.Width(item.Name, "body")
-      if Inside(mouse, {X: x - 7, Y: rect.Y, Width: width + 14, Height: rect.Height})
+      if Contains(mouse, {X: x - 7, Y: rect.Y, Width: width + 14, Height: rect.Height})
         out = Append(box(x - 7, rect.Y + 2, width + 14, 28, th.Hover, 6), out)
       end
       out = Append(icon(item.Shape, x, rect.Y + 8, item.Color), out)
@@ -199,7 +199,7 @@ end
 
 defn Swatch(color, words, rect, look)
   (** A square of color, and its value in a field. *)
-  rest = CutLeft(28, rect).Rest
+  rest = Left(28, rect).Rest
   Concat([box(rect.X, rect.Y, rect.Height, rect.Height, color, 4), edge(rect.X, rect.Y, rect.Height, rect.Height, look.Theme.Edge, 4)], Field(words, rest, look))
 end
 
@@ -242,7 +242,7 @@ end
 
 codeText(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color, Font: "code"}
 
-defn CodeView(lines, marked, rect, look)
+defn Code(lines, marked, rect, look)
   (** Numbered lines of tokens [role, text], role being an index in the theme's syntax, in the "code" font. marked is a line or 0. *)
   th = look.Theme
   cw = look.Width("M", "code")
@@ -327,7 +327,7 @@ defn NodeAt(point, nodeList)
   found = 0
   for k in 1..Len(nodeList)
     n = nodeList[k]
-    if Inside(point, {X: n.X, Y: n.Y, Width: n.Width, Height: NodeHeight(n)})
+    if Contains(point, {X: n.X, Y: n.Y, Width: n.Width, Height: NodeHeight(n)})
       found = k
     end
   end

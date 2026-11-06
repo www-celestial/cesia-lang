@@ -27,7 +27,7 @@ Not run:
 
 ```cesia norun
 use std/http
-http.Fetch("https://example.com")
+http.Get("https://example.com")
 ```
 
 A table made by code:

@@ -104,18 +104,18 @@ WhereMask(mask, df) = take(col.Positions(mask), df)
 
 Kinds(df) = [col.Kind(df.Columns[n]) for n in df.Names]   (** The storage of each column: "int", "float" or "value". *)
 
-defn OrderBy(name, df, descending = false)
+defn SortBy(name, df, descending = false)
   (** The rows ordered by a column, increasing, or decreasing with descending. Equal values keep their order.
 
-        Column("a", OrderBy("a", Of({"a": [1, 2, 3], "b": [4, 5, 6]}), descending = true)) --> [3, 2, 1] *)
+        Column("a", SortBy("a", Of({"a": [1, 2, 3], "b": [4, 5, 6]}), descending = true)) --> [3, 2, 1] *)
   ks = Order(df.Columns[name])
   take(if descending Reverse(ks) else ks end, df)
 end
 
 (** The rows of a followed by the rows of b, which has the same columns.
 
-      Rows(Stack(Of({"a": [1, 2, 3], "b": [4, 5, 6]}), Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> 6 *)
-Stack(a, b) = Table(a.Names, [Concat(a.Columns[n], b.Columns[n]) for n in a.Names])
+      Rows(Append(Of({"a": [1, 2, 3], "b": [4, 5, 6]}), Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> 6 *)
+Append(a, b) = Table(a.Names, [Concat(a.Columns[n], b.Columns[n]) for n in a.Names])
 (** The rows that have no missing value.
 
       Rows(DropMissing(Of({"a": [1, missing]}))) --> 1 *)
@@ -149,7 +149,7 @@ defn ValueCounts(name, df)
 
         Column("a", ValueCounts("a", Of({"a": ["x", "y", "x"]}))) --> ["x", "y"] *)
   g = GroupBy([name], [Agg("count", name, Len)], df)
-  OrderBy("count", g, descending = true)
+  SortBy("count", g, descending = true)
 end
 
 defn JoinOn(on, a, b, how = "inner")

@@ -3,7 +3,7 @@ struct Circle { Radius }
 struct Rect { Side }
 struct piece { Size }
 
-Start = 1
+First = 1
 
 Circle.Unit() = Circle(1)
 

@@ -27,7 +27,7 @@ defn download(url)
   secure = tls.Client(tls.Open()?)
   at = url
   for hop in 1..5
-    r = http.Fetch(at, headers = [{Name: "User-Agent", Value: "cesia-upgrade"}], secure = secure)?
+    r = http.Get(at, headers = [{Name: "User-Agent", Value: "cesia-upgrade"}], secure = secure)?
     location = http.HeaderValue("location", r.Headers)
     if r.Status >= 300 and r.Status < 400 and not IsMissing(location)
       at = location

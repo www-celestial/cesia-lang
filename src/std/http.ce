@@ -417,7 +417,7 @@ defn Request(method, url, body = "", headers = [], secure = missing)
   ParseResponse(raw?)
 end
 
-(** Sends a GET request: see Request. *)
-Fetch(url, headers = [], secure = missing) = Request("GET", url, headers = headers, secure = secure)
-(** Sends a POST request with a body: see Request. *)
+(** Sends a GET request: see request. *)
+Get(url, headers = [], secure = missing) = Request("GET", url, headers = headers, secure = secure)
+(** Sends a POST request with a body: see request. *)
 Post(url, body, headers = [], secure = missing) = Request("POST", url, body = body, headers = headers, secure = secure)
