@@ -25,4 +25,16 @@ sys.Sleep(0.05)
 http.Get("http://127.0.0.1:18751/").Value.Body -->
 ```
 
+A --> in a comment or a text is no check of the book:
+
+```cesia
+defn twice(x)
+  (** Twice x.
+
+        twice(2) --> 5 *)
+  x * 2
+end
+"a --> b" -->
+```
+
 Back to [the start](index.md).

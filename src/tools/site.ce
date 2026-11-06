@@ -450,10 +450,34 @@ defn codeBlocks(blocks)
   out
 end
 
-defn arrow(t)
-  (** A line of code cut at its -->, as cesia test cuts it: {At, Code, Want}, Want empty for a value to show; or missing. *)
-  k = ByteFind("-->", 1, t)
-  if IsMissing(k) missing else {At: k, Code: Trim(ByteSlice(1, k - 1, t)), Want: Trim(from(k + 3, t))} end
+defn arrows(code)
+  (** Each line of a block cut at its -->, as cesia test cuts it: {At, Code, Want}, Want empty for a value to show; or
+      missing. A --> in a comment or a text is no check of the book: the example of a (** *) is for cesia test. *)
+  state = syntax.FirstState
+  out = []
+  for t in Lines(code)
+    r = syntax.Tokens(t, state)
+    state = r.State
+    inCode = []
+    at = 1
+    for tok in r.Tokens
+      last = at + ByteLength(tok[2]) - 1
+      if tok[1] == syntax.Comment or tok[1] == syntax.String
+        (* not code *)
+      else if Len(inCode) > 0 and inCode[Len(inCode)].To + 1 == at
+        inCode[Len(inCode)].To = last
+      else
+        inCode = Append({From: at, To: last}, inCode)
+      end
+      at += ByteLength(tok[2])
+    end
+    k = ByteFind("-->", 1, t)
+    while IsSome(k) and not Some(s -> s.From <= k and k + 2 <= s.To, inCode)
+      k = ByteFind("-->", k + 1, t)
+    end
+    out = Append(if IsMissing(k) missing else {At: k, Code: Trim(ByteSlice(1, k - 1, t)), Want: Trim(from(k + 3, t))} end, out)
+  end
+  out
 end
 
 defn helpers(mark)
@@ -481,9 +505,10 @@ defn program(runs, chosen, mark)
     b = runs[k]
     at[b.Line] = if b.Words.Norun "defn bookNotRun$k()" else "bookAt($k)" end
     lines = Lines(b.Text)
+    cut = arrows(b.Text)
     for i in 1..Len(lines)
       t = lines[i]
-      a = arrow(t)
+      a = cut[i]
       if StartsWith("use ", Trim(t))
         (* A use already on top is written once: a fails block runs again the uses of the blocks before it. *)
         if IsMissing(IndexOf(Trim(t), uses))
@@ -778,9 +803,9 @@ defn bookOf(root, site)
       end
     end
     for r in runs
-      for i in 1..Len(Lines(r.Text))
-        a = arrow(Lines(r.Text)[i])
-        if IsSome(a) and a.Want == "error"
+      cut = arrows(r.Text)
+      for i in 1..Len(cut)
+        if IsSome(cut[i]) and cut[i].Want == "error"
           Send("book/$f:$(r.Line + i): --> error is for cesia test; here a block that stops is marked fails.", site.Mistakes)
           broken = true
         end
@@ -841,10 +866,11 @@ end
 defn shownCode(run, values)
   (** The code of a block as the page shows it: a line a --> gets the value that a had. *)
   lines = Lines(run.Text)
+  cut = arrows(run.Text)
   shown = []
   for i in 1..Len(lines)
     t = lines[i]
-    a = arrow(t)
+    a = cut[i]
     value = Get(run.Line + i, values)
     shown = Append(if IsSome(a) and a.Want == "" and IsSome(value) Str(ByteSlice(1, a.At + 2, t), " ", value) else t end, shown)
   end

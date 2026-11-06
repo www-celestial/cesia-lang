@@ -77,6 +77,14 @@ app = web.<span class="f">App</span>() <span class="k">then</span> web.<span cla
 server = <span class="n">Spawn</span>(() -&gt; web.<span class="f">Serve</span>(app, port = <span class="m">18751</span>))
 sys.<span class="f">Sleep</span>(<span class="m">0.05</span>)
 http.<span class="f">Get</span>(<span class="s">&quot;http://127.0.0.1:18751/&quot;</span>).<span class="f">Value</span>.<span class="f">Body</span> --&gt; <span class="s">&quot;hello&quot;</span></code></pre>
+<p>A --&gt; in a comment or a text is no check of the book:</p>
+<pre><code class="cesia"><span class="k">defn</span> <span class="n">twice</span>(x)
+  <span class="c">(** Twice x.</span>
+
+<span class="c">        twice(2) --&gt; 5 *)</span>
+  x * <span class="m">2</span>
+<span class="k">end</span>
+<span class="s">&quot;a --&gt; b&quot;</span> --&gt; <span class="s">&quot;a --&gt; b&quot;</span></code></pre>
 <p>Back to <a href="index.html">the start</a>.</p>
 <nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><span></span></nav>
 </main>
