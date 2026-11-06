@@ -92,10 +92,12 @@ defn run(args)
   roots = if value.Len(paths) == 0 and value.IsMissing(stdin) folders()? else paths end
   files = if value.IsMissing(stdin) [] else [stdin] end
   for root in roots
-    if not sys.Exists(root)
-      return result.Err("check: $root doesn't exist.")
+    if root != stdin
+      if not sys.Exists(root)
+        return result.Err("check: $root doesn't exist.")
+      end
+      files = list.Concat(files, sources(root)?)
     end
-    files = list.Concat(files, sources(root)?)
   end
   marks = cesia.Check(files, given)
   errors = value.Len(list.Filter(m -> m.Severity == "error", marks))
