@@ -41,7 +41,7 @@ end
 
 isDigits(s) = s != "" and All(Map(b -> b >= 48 and b <= 57, Bytes(s)))
 
-defn Header(line)
+defn header(line)
   (** A header line as {Name, Value}, or missing if it isn't one: net.IsHeader says what it refuses, and why. *)
   at = offset(":", line)
   if IsMissing(at) or not net.IsHeader(at, line)
@@ -72,11 +72,11 @@ defn named(name, headers)
   n
 end
 
-defn ParseHead(head)
+defn parseHead(head)
   (** The request line and headers, as a request without its body. *)
   lines = Split(Crlf, head)
   words = Split(" ", lines[1])
-  headers = [Header(lines[i]) for i in 2..Len(lines)]
+  headers = [header(lines[i]) for i in 2..Len(lines)]
   if Len(words) != 3 or not (words[3] == "HTTP/1.1" or words[3] == "HTTP/1.0")
     Err(400)
   else if missing in headers
@@ -88,14 +88,14 @@ defn ParseHead(head)
   end
 end
 
-defn Closes(head)
+defn closes(head)
   (** Does the connection end after this request: asked by its Connection header, or by an HTTP/1.0 client, which waits for the
       end of the connection. *)
   asked = HeaderValue("connection", head.Headers)
   head.Version == "HTTP/1.0" or (IsText(asked) and Lower(asked) == "close")
 end
 
-defn WithBody(head, after, limit, used)
+defn withBody(head, after, limit, used)
   (** The body that follows a head, once it has all arrived. *)
   sizeText = HeaderValue("content-length", head.Headers)
   size = if IsMissing(sizeText) 0 else if isDigits(sizeText) Number(sizeText) else -1 end
@@ -112,11 +112,11 @@ defn WithBody(head, after, limit, used)
   else
     parts = cutAt(size, after)
     request = {Method: head.Method, Path: head.Path, Query: head.Query, Headers: head.Headers, Body: parts[1]}
-    Ok({Request: request, Rest: parts[2], Close: Closes(head)})
+    Ok({Request: request, Rest: parts[2], Close: closes(head)})
   end
 end
 
-defn ParseRequest(buffer, limit = DefaultMaxBody)
+defn parseRequest(buffer, limit = DefaultMaxBody)
   (** Ok of the first request and what follows it, Ok(missing) if the head isn't all there, Ok({Needs}) with the size of the
       whole request if its body isn't, or Err of a status. *)
   at = offset(Blank, buffer)
@@ -126,11 +126,11 @@ defn ParseRequest(buffer, limit = DefaultMaxBody)
     Err(431)
   else
     cut = cutAt(at, buffer)
-    WithBody(ParseHead(cut[1])?, cutAt(4, cut[2])[2], limit, at + 4)
+    withBody(parseHead(cut[1])?, cutAt(4, cut[2])[2], limit, at + 4)
   end
 end
 
-defn HeaderLine(h)
+defn headerLine(h)
   (** The line of a header of a response, Name: Value. A line end in it is a bug, and stops the fiber: it would let data from a
       client write a response of its own. *)
   line = "$(h.Name): $(h.Value)"
@@ -147,16 +147,16 @@ defn Render(response, headOnly = false)
     {Headers: headers} -> headers
     else -> []
   end
-  custom = if Len(extra) == 0 "" else Join("", Map(HeaderLine, extra)) end
+  custom = if Len(extra) == 0 "" else Join("", Map(headerLine, extra)) end
   lengthLine = if status == 101 or status == 204 "" else "content-length: $(ByteLength(body))$Crlf" end
   shown = if headOnly "" else body end
   "HTTP/1.1 $status $(Reason(status))$Crlf$lengthLine$custom$Crlf$shown"
 end
 
 (** The text of a response with just a status and its reason. *)
-Failure(status) = Render({Status: status, Body: Reason(status)})
+failure(status) = Render({Status: status, Body: Reason(status)})
 
-defn Ready(response, headOnly)
+defn ready(response, headOnly)
   (** A response made ready to send: a struct with reply (its text) and upgrade (a function or missing). *)
   upgrade = match response
     {Upgrade: upgrade} -> upgrade
@@ -166,9 +166,9 @@ defn Ready(response, headOnly)
 end
 
 (** The response of a handler to a request, ready to send. A panic in the handler stops its own fiber only, and answers 500. *)
-Answer(handle, request) = match Wait(Spawn(() -> Ready(handle(request), request.Method == "HEAD")))
+answer(handle, request) = match Wait(Spawn(() -> ready(handle(request), request.Method == "HEAD")))
   Ok(done) -> done
-  else -> {Reply: Failure(500), Upgrade: missing}
+  else -> {Reply: failure(500), Upgrade: missing}
 end
 
 defn Plain(c)
@@ -181,7 +181,7 @@ waits(parsed) = match parsed
   else -> false
 end
 
-defn Gather(io, first, needed)
+defn gather(io, first, needed)
   (** Reads from a connection until the needed size, or to its end if the size is missing: an Ok of what arrived, which an
       early end leaves short. It reads in one pass, so a body sent a byte at a time isn't parsed again at each read. *)
   pieces = {0: first}
@@ -197,30 +197,30 @@ defn Gather(io, first, needed)
   Ok(Join("", Values(pieces)))
 end
 
-defn Connection(handle, io, buffer, options)
+defn connection(handle, io, buffer, options)
   (** Serves the requests of one connection, one after the other. The deadline covers the head and the body of a request: a
       slow client can't hold a connection with a byte at a time. *)
-  parsed = if buffer == "" Ok(missing) else ParseRequest(buffer, limit = options.MaxBody) end
+  parsed = if buffer == "" Ok(missing) else parseRequest(buffer, limit = options.MaxBody) end
   if IsErr(parsed)
-    io.Write(Failure(parsed.Error))
+    io.Write(failure(parsed.Error))
     io.Close()
   else if IsMissing(parsed.Value)
     more = io.Read()
     if IsErr(more) or ByteLength(more.Value) == 0
       io.Close()
     else
-      Connection(handle, io, "$buffer$(more.Value)", options)
+      connection(handle, io, "$buffer$(more.Value)", options)
     end
   else if waits(parsed.Value)
-    whole = Gather(io, buffer, parsed.Value.Needs)
+    whole = gather(io, buffer, parsed.Value.Needs)
     if IsErr(whole) or ByteLength(whole.Value) < parsed.Value.Needs
       io.Close()
     else
-      Connection(handle, io, whole.Value, options)
+      connection(handle, io, whole.Value, options)
     end
   else
     request = parsed.Value.Request
-    done = Answer(handle, request)
+    done = answer(handle, request)
     sent = io.Write(done.Reply)
     if IsErr(sent) or (parsed.Value.Close and IsMissing(done.Upgrade))
       io.Close()
@@ -229,12 +229,12 @@ defn Connection(handle, io, buffer, options)
       io.Close()
     else
       io.Arm(options.Timeout)
-      Connection(handle, io, parsed.Value.Rest, options)
+      connection(handle, io, parsed.Value.Rest, options)
     end
   end
 end
 
-defn Start(handle, c, options)
+defn start(handle, c, options)
   (** Serves a new connection: its deadline, then TLS if the options wrap it, then its requests. The deadline starts before
       TLS, so a client that connects and says nothing reaches it too. *)
   net.Arm(c, options.Timeout)
@@ -242,17 +242,17 @@ defn Start(handle, c, options)
   if IsErr(made)
     net.Close(c)
   else
-    Connection(handle, made.Value, "", options)
+    connection(handle, made.Value, "", options)
   end
 end
 
-defn AcceptLoop(handle, listener, options)
+defn acceptLoop(handle, listener, options)
   (** Accepts the connections of a listener and serves each in its fiber, until a stop signal. An accept that fails for lack of
       descriptors is tried again later, without spinning. *)
   while true
     next = net.Accept(listener)
     if IsOk(next)
-      Spawn(() -> Start(handle, next.Value, options))
+      Spawn(() -> start(handle, next.Value, options))
     else if next.Error.Kind == "stopped"
       return Ok(missing)
     else
@@ -261,7 +261,7 @@ defn AcceptLoop(handle, listener, options)
   end
 end
 
-defn Reaper(period)
+defn reaper(period)
   (** Closes what outlived its deadline, at each period, until the last socket is gone. *)
   while net.OpenCount() > 0
     sys.Sleep(period)
@@ -282,21 +282,21 @@ defn Serve(handle, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, ma
       optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
       after the response. wrap sits under HTTP: see tls. *)
   listener = net.Listen(port, host = host)?
-  Spawn(() -> Reaper(Max(0.01, Min(1.0, timeout / 2.0))))
-  AcceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: wrap})?
+  Spawn(() -> reaper(Max(0.01, Min(1.0, timeout / 2.0))))
+  acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: wrap})?
   net.Close(listener)
   WaitForConnections(sys.Now() + 5)
   Ok(missing)
 end
 
-Failed(message) = Err({Kind: "http", Message: message})   (** An Err of the kind "http" with a message. *)
+failed(message) = Err({Kind: "http", Message: message})   (** An Err of the kind "http" with a message. *)
 
 defn ParseUrl(url)
   (** {Host, Port, Path, Secure} of an http:// or https:// URL. *)
   secure = url then StartsWith("https://")
   scheme = if secure "https://" else "http://" end
   if not (url then StartsWith(scheme))
-    Failed("This URL doesn't start with http://.")
+    failed("This URL doesn't start with http://.")
   else
     rest = cutAt(ByteLength(scheme), url)[2]
     slash = offset("/", rest)
@@ -307,12 +307,12 @@ defn ParseUrl(url)
     else
       address = cutAt(colon, parts[1])
       port = Number(cutAt(1, address[2])[2])
-      if IsInt(port) Ok({Host: address[1], Port: port, Path: parts[2], Secure: secure}) else Failed("This URL has a bad port.") end
+      if IsInt(port) Ok({Host: address[1], Port: port, Path: parts[2], Secure: secure}) else failed("This URL has a bad port.") end
     end
   end
 end
 
-responseHeaders(head) = Filter(not IsMissing(it), Map(Header, Split(Crlf, head)[2..end]))
+responseHeaders(head) = Filter(not IsMissing(it), Map(header, Split(Crlf, head)[2..end]))
 
 defn fullSize(head)
   (** The size of a response, from its head and the content-length: a server may keep the connection open. Missing if only
@@ -329,11 +329,11 @@ defn ReadResponse(io, buffer)
     more = io.Read()?
     if ByteLength(more) == 0 Ok(buffer) else ReadResponse(io, "$buffer$more") end
   else
-    Gather(io, buffer, fullSize(cutAt(at, buffer)[1]))
+    gather(io, buffer, fullSize(cutAt(at, buffer)[1]))
   end
 end
 
-defn Hex(digits)
+defn hex(digits)
   (** The value of hexadecimal digits, or missing. Fifteen digits always fit in an integer. *)
   values = [offset(Slice(i, i, digits), "0123456789abcdef") for i in 1..Len(digits)]
   if Len(values) == 0 or Len(values) > 15 or missing in values
@@ -343,19 +343,19 @@ defn Hex(digits)
   end
 end
 
-defn Unchunk(data)
+defn unchunk(data)
   (** Joins the chunks of a chunked body, in one pass: from is where the next size line starts. *)
   pieces = Dict()
   from = 1
   while true
     at = ByteFind(Crlf, from, data)
     if IsMissing(at)
-      return Failed("This chunked body is cut short.")
+      return failed("This chunked body is cut short.")
     end
-    size = Hex(Lower(Split(";", if at == from "" else ByteSlice(from, at - 1, data) end)[1]))
+    size = hex(Lower(Split(";", if at == from "" else ByteSlice(from, at - 1, data) end)[1]))
     start = at + 2
     if IsMissing(size) or ByteLength(data) - start + 1 < size
-      return Failed("This chunked body is malformed.")
+      return failed("This chunked body is malformed.")
     end
     if size == 0
       return Ok(Join("", Values(pieces)))
@@ -372,7 +372,7 @@ defn ParseResponse(raw)
   words = Split(" ", if IsMissing(firstEnd) raw else cutAt(firstEnd, raw)[1] end)
   status = if Len(words) >= 2 Number(words[2]) else missing end
   if IsMissing(at) or not IsInt(status) or not (words[1] then StartsWith("HTTP/"))
-    Failed("This response isn't HTTP.")
+    failed("This response isn't HTTP.")
   else
     cut = cutAt(at, raw)
     headers = responseHeaders(cut[1])
@@ -380,9 +380,9 @@ defn ParseResponse(raw)
     size = HeaderValue("content-length", headers)
     count = if IsText(size) Number(size) else ByteLength(rest) end
     body = if HeaderValue("transfer-encoding", headers) == "chunked"
-      Unchunk(rest)
+      unchunk(rest)
     else if not IsInt(count) or count < 0 or count > ByteLength(rest)
-      Failed("This response is cut short.")
+      failed("This response is cut short.")
     else
       Ok(cutAt(count, rest)[1])
     end
@@ -396,10 +396,10 @@ defn Request(method, url, body = "", headers = [], secure = missing)
   (** Sends a request. The Ok holds {Status, Headers, Body}: a 404 is a response, not an error. *)
   target = ParseUrl(url)?
   if not (clean(method) and clean(target.Host) and clean(target.Path))
-    return Failed("This request has a space or a line end where it can't.")
+    return failed("This request has a space or a line end where it can't.")
   end
   if target.Secure and IsMissing(secure)
-    return Failed("https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.")
+    return failed("https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.")
   end
   c = net.Connect(target.Host, target.Port)?
   made = if target.Secure secure(c, target.Host) else Plain(c) end
@@ -408,7 +408,7 @@ defn Request(method, url, body = "", headers = [], secure = missing)
     return made
   end
   io = made.Value
-  custom = Join("", Map(HeaderLine, headers))
+  custom = Join("", Map(headerLine, headers))
   sized = if body == "" and method == "GET" "" else "Content-Length: $(ByteLength(body))$Crlf" end
   text = "$method $(target.Path) HTTP/1.1$(Crlf)Host: $(target.Host)$(Crlf)Connection: close$Crlf$sized$custom$Crlf$body"
   sent = io.Write(text)

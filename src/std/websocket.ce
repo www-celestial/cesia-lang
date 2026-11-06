@@ -6,7 +6,7 @@ guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MaxFrame = 1048576   (** The largest frame read, in bytes: a larger one is refused. *)
 DefaultIdle = 300    (** The seconds a connection may stay silent before it is closed, unless idle says otherwise. *)
 
-defn Frame(opcode, payload)
+defn frame(opcode, payload)
   (** A frame from the server: never masked. *)
   n = ByteLength(payload)
   head = if n < 126
@@ -19,7 +19,7 @@ defn Frame(opcode, payload)
   "$(FromBytes(head))$payload"
 end
 
-defn ParseFrame(buffer)
+defn parseFrame(buffer)
   (** The first frame of a buffer, missing if it isn't all there, or {Bad: true} for a frame to refuse. *)
   size = ByteLength(buffer)
   if size < 2
@@ -61,28 +61,28 @@ end
 
 defn loop(io, buffer, onMessage, idle)
   (** The deadline starts again at each message and ping: an idle client doesn't hold its fiber forever. *)
-  f = ParseFrame(buffer)
+  f = parseFrame(buffer)
   if IsMissing(f)
     more = io.Read()
     if IsOk(more) and ByteLength(more.Value) > 0
       loop(io, "$buffer$(more.Value)", onMessage, idle)
     end
   else if f.Bad or (f.Opcode >= 8 and ByteLength(f.Payload) > 125)
-    io.Write(Frame(8, FromBytes([3, 234])))
+    io.Write(frame(8, FromBytes([3, 234])))
   else if f.Opcode == 8
-    io.Write(Frame(8, f.Payload))
+    io.Write(frame(8, f.Payload))
   else if f.Opcode == 9
     io.Arm(idle)
-    io.Write(Frame(10, f.Payload))
+    io.Write(frame(10, f.Payload))
     loop(io, f.Rest, onMessage, idle)
   else if f.Opcode == 1 or f.Opcode == 2
     io.Arm(idle)
-    onMessage(f.Payload, s -> io.Write(Frame(1, s)))
+    onMessage(f.Payload, s -> io.Write(frame(1, s)))
     loop(io, f.Rest, onMessage, idle)
   else if f.Opcode == 10
     loop(io, f.Rest, onMessage, idle)
   else
-    io.Write(Frame(8, FromBytes([3, 234])))
+    io.Write(frame(8, FromBytes([3, 234])))
   end
 end
 
