@@ -37,7 +37,7 @@ let sqlite_natives =
       "Version", [||], 0, 0 ]
 
 (* The clock of this machine's time zone at an instant, for std/date: year, month, day, hour, minute, second. A time the
-   system can't place gives the clock of UTC. *)
+   zone can't place gives the clock of UTC, and one that no clock can a panic. *)
 let local_clock ctx (a : t array) =
   let seconds =
     match a.(0) with
@@ -45,7 +45,14 @@ let local_clock ctx (a : t array) =
     | Float x -> x
     | v -> Runtime.fail ctx Type (Messages.need_number "date.Local" (Value.describe v))
   in
-  let t = try Unix.localtime seconds with Unix.Unix_error _ -> Unix.gmtime seconds in
+  (* Out of what time_t and struct tm hold, the system has no answer: a year past 31 million, nan, an infinity. *)
+  if not (Float.is_finite seconds && Float.abs seconds < 1e15) then Runtime.fail ctx Math (Messages.date_outside seconds);
+  let t =
+    match Unix.localtime seconds with
+    | t -> t
+    | exception Unix.Unix_error _ ->
+      (match Unix.gmtime seconds with t -> t | exception Unix.Unix_error _ -> Runtime.fail ctx Math (Messages.date_outside seconds))
+  in
   let parts = [| t.tm_year + 1900; t.tm_mon + 1; t.tm_mday; t.tm_hour; t.tm_min; t.tm_sec |] in
   Array { rows = 1; cols = 6; store = I parts; a_owned = true; a_tip = true }
 

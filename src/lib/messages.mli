@@ -56,6 +56,9 @@ val not_function : string -> t
 val arg_count : string -> string -> int -> t
 val want_int : string -> string -> t
 
+(** [date_outside x]: date.Local of a time that no clock of the system can place. *)
+val date_outside : float -> t
+
 (** [random_range low high]: random.Int(low, high) with low above high, or a range wider than an Int. *)
 val random_range : int -> int -> t
 val limit : string -> t

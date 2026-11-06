@@ -65,6 +65,7 @@ let condition a = plain (Printf.sprintf "A condition must be true or false, not 
 let not_function a = plain (Printf.sprintf "Can't call %s: it is not a function." a)
 let arg_count name want got = plain (Printf.sprintf "%s takes %s, not %d." name want got)
 let want_int name a = plain (Printf.sprintf "%s needs a whole number, not %s." name a)
+let date_outside x = plain (Printf.sprintf "date.Local can't place %g seconds since 1970: it takes a time less than 10^15 seconds from 1970, about 31 million years." x)
 let random_range low high = plain (Printf.sprintf "random.Int needs a low that is at most its high, and a range that fits in 63 bits: %d to %d." low high)
 let limit what = plain (Printf.sprintf "Limit \"%s\" reached." what)
 let too_many fname want got = plain (Printf.sprintf "%s takes %d arguments, not %d." fname want got)

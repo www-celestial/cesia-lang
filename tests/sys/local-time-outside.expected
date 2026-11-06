@@ -1,0 +1,18 @@
+t.ce:4:14: date.Local can't place 1e+300 seconds since 1970: it takes a time less than 10^15 seconds from 1970, about 31 million years.
+  4 | io.Print(date.Local(1e300))
+    |              ^
+  in Local (std/date.ce:82)
+t.ce:4:14: date.Local can't place nan seconds since 1970: it takes a time less than 10^15 seconds from 1970, about 31 million years.
+  4 | io.Print(date.Local(math.Nan))
+    |              ^
+  in Local (std/date.ce:82)
+t.ce:4:14: date.Local can't place -1e+15 seconds since 1970: it takes a time less than 10^15 seconds from 1970, about 31 million years.
+  4 | io.Print(date.Local(0 - 1e15))
+    |              ^
+  in Local (std/date.ce:82)
+t.ce:4:14: date.Local can't place inf seconds since 1970: it takes a time less than 10^15 seconds from 1970, about 31 million years.
+  4 | io.Print(date.Local((1.0 / 0.0)))
+    |              ^
+  in Local (std/date.ce:82)
+31690708-07-05T01:46:39Z
+exit 0

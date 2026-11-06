@@ -65,8 +65,9 @@ let list_dir path =
 let walk path =
   let rec go dir acc =
     let d = Unix.opendir dir in
+    (* A failed close says nothing more: an exception of Fun.protect would escape as no Cesia error. *)
     let names =
-      Fun.protect ~finally:(fun () -> Unix.closedir d) (fun () ->
+      Fun.protect ~finally:(fun () -> try Unix.closedir d with Unix.Unix_error _ -> ()) (fun () ->
           let rec read acc =
             match Unix.readdir d with "." | ".." -> read acc | n -> read (n :: acc) | exception End_of_file -> acc
           in
