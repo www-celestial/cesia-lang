@@ -57,7 +57,7 @@ val grow : ctx -> int -> unit
     or [deps/] where it was raised. *)
 val user_site : ctx -> int -> int
 
-val backtrace : ctx -> int -> string list
+val backtrace : ?above:int -> ctx -> int -> string list
 
 (** Checks two dimensions and returns their product. *)
 val cells : ctx -> int -> int -> int

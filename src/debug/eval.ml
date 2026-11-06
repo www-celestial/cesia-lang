@@ -36,36 +36,67 @@ let source ~uses code =
   let extra = List.fold_left (fun acc (a, p) -> if List.mem_assoc a acc then acc else acc @ [ a, p ]) [] extra in
   String.concat "" (List.map use_line extra) ^ code, List.length extra
 
-(* The text of an error of the code: its line, counted in the code, when it has several. *)
-let error_text w ~shift ~lines e =
-  match Loader.message_of_error e with
-  | None -> raise e
-  | Some text ->
-    let line =
-      match e with
-      | Pos.Load_error { pos; _ } -> Pos.line pos
-      | Value.Kerr { at; _ } when at >= 0 && at < Dynarray.length w.sites ->
-        let site = Dynarray.get w.sites at in
-        if String.equal (fst (Dynarray.get w.files site.sfile)) prompt_path then Pos.line site.spos else 0
-      | _ -> 0
-    in
-    if lines > 1 && line > shift then Printf.sprintf "line %d: %s" (line - shift) text else text
+(* An error of the code, as text: in the code typed, its text, with its line when the code has several; elsewhere, in a
+   function of the program, as the program shows it, with its line of code and the calls that led there. Made before the
+   frames are left. *)
+exception Failed of string
+
+let contains s part =
+  let n = String.length part and m = String.length s in
+  let rec at i = i + n <= m && (String.sub s i n = part || at (i + 1)) in
+  at 0
+
+let error_text ?above ctx ~shift ~lines e =
+  let w = ctx.w in
+  let typed at = String.equal (fst (Dynarray.get w.files (Dynarray.get w.sites at).sfile)) prompt_path in
+  let line =
+    match e with
+    | Pos.Load_error { file; pos; _ } when String.equal file prompt_path -> Some (Pos.line pos)
+    | Value.Kerr { at; _ } when at >= 0 && at < Dynarray.length w.sites && typed (Runtime.user_site ctx at) ->
+      Some (Pos.line (Dynarray.get w.sites (Runtime.user_site ctx at)).spos)
+    | _ -> None
+  in
+  match e, line with
+  | Failed text, _ -> text
+  | _, Some n ->
+    let text = Option.value (Loader.message_of_error e) ~default:"" in
+    if lines > 1 && n > shift then Printf.sprintf "line %d: %s" (n - shift) text else text
+  | _, None -> (
+    (* The call from the code typed is no line of the program. *)
+    let ours l = contains l ("(" ^ prompt_path ^ ":") in
+    match Loader.error_report ?above ctx e with
+    | Some text -> String.trim (String.concat "\n" (List.filter (fun l -> not (ours l)) (String.split_on_char '\n' text)))
+    | None -> raise e)
+
+(* Runs f, which makes a frame at base [above], the frame base and the site given back after it, and an error made into its
+   text first, with the frames above that one as they were when it was raised. *)
+let framed ctx ~above ~shift ~lines f =
+  let b = ctx.b and s = ctx.site in
+  match f () with
+  | v ->
+    ctx.b <- b;
+    ctx.site <- s;
+    v
+  | exception e ->
+    let text = error_text ~above ctx ~shift ~lines e in
+    ctx.b <- b;
+    ctx.site <- s;
+    raise (Failed text)
+
+(* Where a call from the native that runs at the current site puts its frame, as [Compile.call_back] does. *)
+let call_base ctx = match (Dynarray.get ctx.w.sites ctx.site).sver with Some v -> v.size | None -> 0
 
 (* Runs a module made of the code above the frame of the native that runs it, as a call would: errors and traces see
    a frame there, and the caller's stays as it was. Gives the value of the last statement. *)
-let run_above ctx (file, m, fn, _) =
+let run_above ctx ~shift ~lines (file, m, fn, _) =
   let b = ctx.b and s = ctx.site in
-  let above = match (Dynarray.get ctx.w.sites s).sver with Some v -> Int.max v.size (v.frame + 2) | None -> 2 in
-  let nb = b + above in
-  if nb + 2 > ctx.cap then Runtime.grow ctx (nb + 2);
-  ctx.i.(nb) <- b;
-  ctx.i.(nb + 1) <- s;
-  ctx.b <- nb;
-  Fun.protect
-    ~finally:(fun () ->
-        ctx.b <- b;
-        ctx.site <- s)
-    (fun () -> Compile.run_main ctx ~file ~m fn)
+  let nb = b + Int.max (call_base ctx) 2 in
+  framed ctx ~above:nb ~shift ~lines (fun () ->
+      if nb + 2 > ctx.cap then Runtime.grow ctx (nb + 2);
+      ctx.i.(nb) <- b;
+      ctx.i.(nb + 1) <- s;
+      ctx.b <- nb;
+      Compile.run_main ctx ~file ~m fn)
 
 (* Code run at a stop or at the prompt is no part of the program: it never stops on its own errors or breakpoints. *)
 let quietly ctx f =
@@ -110,14 +141,14 @@ let at_prompt ctx code =
   in
   let lines = lines_of code in
   match Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup with
-  | exception e -> Value.err w (Text (error_text w ~shift ~lines e))
+  | exception e -> Value.err w (Text (error_text ctx ~shift ~lines e))
   | (file, m, _, layout) as prepared ->
     d.scope <- m :: d.scope;
     List.iter (fun (a, p) -> if not (List.mem_assoc a d.typed_uses) then d.typed_uses <- d.typed_uses @ [ a, p ]) (uses_in prompt_path code);
     if target >= 0 then replace_functions w ~target ~file layout;
-    match run_above ctx prepared with
+    match run_above ctx ~shift ~lines prepared with
     | v -> Value.ok w v
-    | exception e -> Value.err w (Text (error_text w ~shift ~lines e))
+    | exception Failed text -> Value.err w (Text text)
 
 (* The names and values of the variables of a frame of a stop. *)
 let frame_vars frame =
@@ -141,7 +172,7 @@ let as_function ctx ~path ~names code =
       source ~uses:(uses_of w target) ("(" ^ String.concat ", " names ^ ") -> (" ^ String.trim code ^ ")")
     in
     let lookup name = if target >= 0 then match Loader.in_package w target name with Some b -> Some b | None -> Loader.lookup w name else Loader.lookup w name in
-    let g = run_above ctx (Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup) in
+    let g = run_above ctx ~shift:0 ~lines:1 (Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup) in
     Hashtbl.replace w.debug.made key g;
     g
 
@@ -151,11 +182,12 @@ let in_frame ctx code frame =
   let path = match get frame "File" with Text p -> p | v -> Runtime.fail ctx Type (Messages.need_frame (Value.describe v)) in
   let vars = frame_vars frame in
   match
-    let g = as_function ctx ~path ~names:(List.map fst vars) code in
-    Compile.call_back ctx g (Array.of_list (List.map snd vars))
+    framed ctx ~above:(ctx.b + call_base ctx) ~shift:0 ~lines:1 (fun () ->
+        let g = as_function ctx ~path ~names:(List.map fst vars) code in
+        Compile.call_back ctx g (Array.of_list (List.map snd vars)))
   with
   | v -> Value.ok w v
-  | exception e -> Value.err w (Text (error_text w ~shift:0 ~lines:1 e))
+  | exception Failed text -> Value.err w (Text text)
 
 let eval ctx (a : t array) =
   let code = Native.text_arg ctx "Eval" a.(0) in

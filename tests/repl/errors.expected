@@ -1,0 +1,16 @@
+start
+errors.ce:3:5: Index 5 is outside this array of 2 elements.
+  3 |   xs[n]
+    |     ^
+  in Bad (errors.ce:3)
+1
+error: errors.ce:3:5: Index 9 is outside this array of 2 elements.
+  3 |   xs[n]
+    |     ^
+  in Bad (errors.ce:3)
+error: Name "result" doesn't exist.
+error: unwrap on an error: bad
+error: line 2: Index 3 is outside this array of 1 elements.
+error: Name "nope" doesn't exist.
+4
+exit 1

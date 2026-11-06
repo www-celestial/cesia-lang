@@ -61,6 +61,10 @@ val source_of : world -> string -> string option
 (** The files to watch for this program. *)
 val watched : world -> string list
 
+(** A Cesia error as the program shows it: its place, its line of code, its hint and the calls that led there, from the
+    frames of [ctx] as they were when it was raised, down to the frame of base [above]; [None] for another exception. *)
+val error_report : ?above:int -> ctx -> exn -> string option
+
 (** The text of a Cesia error, or [None] for another exception. *)
 val message_of_error : exn -> string option
 

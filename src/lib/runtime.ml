@@ -198,7 +198,7 @@ let[@inline never] grow ctx need =
   ctx.i <- i;
   ctx.cap <- cap
 
-let backtrace ctx at =
+let backtrace ?(above = 0) ctx at =
   let w = ctx.w in
   let place s =
     let path, _ = Dynarray.get w.files s.sfile in
@@ -210,7 +210,7 @@ let backtrace ctx at =
     if first.sfn <> "" then lines := [ "in " ^ place first ]
   end;
   let b = ref ctx.b in
-  while !b > 0 do
+  while !b > above do
     let s = Dynarray.get w.sites ctx.i.(!b + 1) in
     if s.sfn <> "" then lines := ("called from " ^ place s) :: !lines;
     b := link_base ctx.i.(!b)

@@ -1,0 +1,10 @@
+Bad(1)
+Bad(9)
+result.Unwrap(result.Err("bad"))
+use std/result
+result.Unwrap(result.Err("bad"))
+if true
+  [1][3]
+end
+nope
+2 + 2

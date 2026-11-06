@@ -1,0 +1,8 @@
+defn Bad(n)
+  xs = [1, 2]
+  xs[n]
+end
+io.Print("start")
+io.Print(Bad(5))
+io.Print("never")
+use std/io

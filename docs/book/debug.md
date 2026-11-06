@@ -50,6 +50,20 @@ A definition of a function of the program replaces it in the running program, wh
 40
 ```
 
+An error doesn't close the prompt. A bug in what you type shows its message, and its line when you typed several; a bug in a
+function of the program shows where, as the program would, and the prompt waits for the next line. A bug in the main file
+itself shows too, and the prompt opens on what ran before it, with the exit code 1 at the end:
+
+```text
+> Bad(9)
+error: shop.ce:3:5: Index 9 is outside this array of 2 elements.
+  3 |   xs[n]
+    |     ^
+  in Bad (shop.ce:3)
+> 2 + 2
+4
+```
+
 A block reads lines until its `end`, and a list or an expression cut in the middle reads the next line too: the prompt
 shows `.` while it waits for the rest. A `use` at the prompt works for the lines after it.
 

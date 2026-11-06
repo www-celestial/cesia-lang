@@ -794,6 +794,20 @@ let set_args w (args : string list) =
   let items = Array.of_list (List.map (fun a -> Text a) args) in
   set_args_value w (Array { rows = 1; cols = Array.length items; store = V items; a_owned = false; a_tip = true })
 
+(* A site keeps the source of its compilation: the file may have changed since. *)
+let report_site ?above ctx ~text ~hint at =
+  let w = ctx.w in
+  let site = Dynarray.get w.sites (Runtime.user_site ctx at) in
+  let path, src = Dynarray.get w.files site.sfile in
+  format_error ~source:(Some src) ~path ~pos:site.spos ~text ~hint ~trace:(Runtime.backtrace ?above ctx at)
+
+let error_report ?above ctx = function
+  | Value.Kerr { text; hint; at; _ } when at >= 0 && at < Dynarray.length ctx.w.sites ->
+    Some (report_site ?above ctx ~text ~hint at)
+  | Pos.Load_error { file; pos; text; hint; _ } ->
+    Some (format_error ~source:(source_of ctx.w file) ~path:file ~pos ~text ~hint ~trace:[])
+  | e -> message_of_error e
+
 (* Runs [body] and prints any Cesia error. Returns the exit code. With [strict], an OCaml stack overflow or a memory
    refusal from the system propagate: the fuzzer wants them, a normal program doesn't. *)
 let guarded ?(strict = false) w body =
@@ -801,12 +815,7 @@ let guarded ?(strict = false) w body =
   (* The fiber that was running: an error shows its stack. *)
   let current () = Option.value w.sched.current ~default:ctx in
   (* A site keeps the source of its compilation: the file may have changed since. *)
-  let report_at fiber ~text ~hint at =
-    let site = Dynarray.get w.sites (Runtime.user_site fiber at) in
-    let path, src = Dynarray.get w.files site.sfile in
-    w.err
-      (format_error ~source:(Some src) ~path ~pos:site.spos ~text ~hint ~trace:(Runtime.backtrace fiber at))
-  in
+  let report_at fiber ~text ~hint at = w.err (report_site fiber ~text ~hint at) in
   let flushed f =
     Runtime.flush_out w;
     flush stdout;
@@ -872,10 +881,25 @@ let program ctx path args =
   ignore (Package.sources w.root);
   Option.iter (load_debugger ctx) w.debugger;
   w.debug.main <- main_file path;
-  let prompt = if w.repl then Some (start_prompt ctx) else None in
-  if path <> "" then load ctx path;
-  Option.iter (fun task -> ignore (Fiber.wait ctx task)) prompt;
-  0
+  match if w.repl then Some (start_prompt ctx) else None with
+  | None ->
+    if path <> "" then load ctx path;
+    0
+  | Some prompt ->
+    (* With the prompt, an error of the main file is shown and the prompt stays, on what was loaded. *)
+    let code =
+      match if path <> "" then load ctx path with
+      | () -> 0
+      | exception ((Value.Kerr _ | Pos.Load_error _) as e) ->
+        Runtime.flush_out w;
+        flush stdout;
+        Option.iter w.err (error_report ctx e);
+        ctx.b <- 0;
+        w.sched.current <- Some ctx;
+        1
+    in
+    ignore (Fiber.wait ctx prompt);
+    code
 
 let run ?strict w path args = guarded ?strict w (fun ctx -> program ctx path args)
 

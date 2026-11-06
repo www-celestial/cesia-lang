@@ -7,3 +7,8 @@
  (flags
   (:standard -open Cesia -open Cesia_sys))
  (libraries cesia cesia_sys unix))
+
+; Loaded at its first use, not at start-up: its size costs no start-up, so its code inlines as much as it gains from.
+(env
+ (release
+  (ocamlopt_flags (-inline 200))))
