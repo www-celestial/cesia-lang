@@ -1,3 +1,5 @@
 (** An interface called as a function. *)
+use std/io
+
 interface Shape { Area() }
-Print(Shape(1))
+io.Print(Shape(1))

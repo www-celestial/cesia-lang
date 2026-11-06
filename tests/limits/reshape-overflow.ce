@@ -1,2 +1,5 @@
-x = Reshape([], 4294967296, 2147483648)
-Print(x[1, 1])
+use std/io
+use std/matrix
+
+x = matrix.Reshape([], 4294967296, 2147483648)
+io.Print(x[1, 1])

@@ -1,6 +1,9 @@
 (** A search pays for the text, not for what it looks for. *)
-s = Repeat(2000000, "a")
+use std/io
+use std/text
+
+s = text.Repeat(2000000, "a")
 for i in 1..100
-  ByteFind("b", 1, s)
+  text.ByteFind("b", 1, s)
 end
-Print("not stopped")
+io.Print("not stopped")

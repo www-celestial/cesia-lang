@@ -1,9 +1,14 @@
+use std/bug
+use std/fiber
+use std/result
+use std/value
+
 defn m(p)
   match p
     {Status: "ok", Amount: amount} if amount > 0 -> amount
     [a, b] -> a + b
     0 -> "zero"
-    x if IsText(x) -> x
+    x if value.IsText(x) -> x
     else -> "other"
   end
 end
@@ -19,18 +24,18 @@ defn ifExpr(x)
 end
 isIfChain() = ifExpr(-1) == "neg" and ifExpr(0) == "zero" and ifExpr(1) == "pos"
 
-isPanicKind() = (Wait(Spawn(() -> Panic("x"))) then MapErr(it.Kind)) == Err("user")
-isAssert() = (Wait(Spawn(() -> Assert(false))) then MapErr(it.Kind)) == Err("user")
+isPanicKind() = (fiber.Wait(fiber.Spawn(() -> bug.Panic("x"))) then result.MapErr(it.Kind)) == result.Err("user")
+isAssert() = (fiber.Wait(fiber.Spawn(() -> bug.Assert(false))) then result.MapErr(it.Kind)) == result.Err("user")
 
 defn deep(n)
   if n == 0
-    Panic("bottom")
+    bug.Panic("bottom")
   end
   deep(n - 1) + 1
 end
 defn repeatedPanics()
   for i in 1..20000
-    Wait(Spawn(() -> deep(3)))
+    fiber.Wait(fiber.Spawn(() -> deep(3)))
   end
   true
 end

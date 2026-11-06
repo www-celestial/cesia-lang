@@ -1,9 +1,11 @@
 (** A result of the wrong type, given by a return before the end. *)
+use std/io
+
 defn Sign(x) Int
   if x < 0
     return "negative"
   end
   1
 end
-Print(Sign(2))
-Print(Sign(-2))
+io.Print(Sign(2))
+io.Print(Sign(-2))

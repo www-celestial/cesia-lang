@@ -1,3 +1,4 @@
 use tests/errors/priv/fields as f
+use std/io
 {key: k} = f.New()
-Print(k)
+io.Print(k)

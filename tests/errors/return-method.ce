@@ -1,4 +1,6 @@
 (** A method whose result has the wrong type. *)
+use std/io
+
 struct Rect { Width, Height }
 (r Rect) Scaled(by Number) Rect = [r.Width * by, r.Height * by]
-Print(Rect(1, 2).Scaled(2).Width)
+io.Print(Rect(1, 2).Scaled(2).Width)

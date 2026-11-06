@@ -1,9 +1,13 @@
 (** The colors of Cesia code, std/syntax: what Cemacs and the docs site show. *)
 use std/syntax
 use std/cesia
+use std/bug
+use std/list
+use std/text
+use std/value
 
-roles(line) = Map(t -> t[1], syntax.Tokens(line, syntax.FirstState).Tokens)
-joined(tokens) = Join("", Map(t -> t[2], tokens))
+roles(line) = list.Map(t -> t[1], syntax.Tokens(line, syntax.FirstState).Tokens)
+joined(tokens) = text.Join("", list.Map(t -> t[2], tokens))
 lost(line) = joined(syntax.Tokens(line, syntax.FirstState).Tokens) == line
 
 defn commentFirst(n)
@@ -16,53 +20,53 @@ end
 
 knownToTen = syntax.ColoredTo(10, n -> "line", syntax.BlankColors())
 
-isKeyword() = Equal(syntax.Tokens("defn f(x)", syntax.FirstState).Tokens[1], [syntax.Keyword, "defn"])
-isNameBeforeParen() = Equal(syntax.Tokens("defn f(x)", syntax.FirstState).Tokens[3], [syntax.Name, "f"])
-isFieldAfterDot() = Equal(syntax.Tokens("p.x", syntax.FirstState).Tokens, [[syntax.Plain, "p."], [syntax.Field, "x"]])
-isFieldBeforeParen() = Equal(syntax.Tokens("a.f(1)", syntax.FirstState).Tokens[2], [syntax.Field, "f"])
-isPlainWord() = Equal(syntax.Tokens("count", syntax.FirstState).Tokens, [[syntax.Plain, "count"]])
-isKeywordInsideAName() = Equal(syntax.Tokens("ending", syntax.FirstState).Tokens, [[syntax.Plain, "ending"]])
-isNumber() = Equal(syntax.Tokens("x = 0x1F + 2.5", syntax.FirstState).Tokens[2], [syntax.Number, "0x1F"])
-isFloat() = Equal(syntax.Tokens("x = 2.5", syntax.FirstState).Tokens[2], [syntax.Number, "2.5"])
+isKeyword() = value.Equal(syntax.Tokens("defn f(x)", syntax.FirstState).Tokens[1], [syntax.Keyword, "defn"])
+isNameBeforeParen() = value.Equal(syntax.Tokens("defn f(x)", syntax.FirstState).Tokens[3], [syntax.Name, "f"])
+isFieldAfterDot() = value.Equal(syntax.Tokens("p.x", syntax.FirstState).Tokens, [[syntax.Plain, "p."], [syntax.Field, "x"]])
+isFieldBeforeParen() = value.Equal(syntax.Tokens("a.f(1)", syntax.FirstState).Tokens[2], [syntax.Field, "f"])
+isPlainWord() = value.Equal(syntax.Tokens("count", syntax.FirstState).Tokens, [[syntax.Plain, "count"]])
+isKeywordInsideAName() = value.Equal(syntax.Tokens("ending", syntax.FirstState).Tokens, [[syntax.Plain, "ending"]])
+isNumber() = value.Equal(syntax.Tokens("x = 0x1F + 2.5", syntax.FirstState).Tokens[2], [syntax.Number, "0x1F"])
+isFloat() = value.Equal(syntax.Tokens("x = 2.5", syntax.FirstState).Tokens[2], [syntax.Number, "2.5"])
 isText() = syntax.String in roles("x = \"a\"")
-isTextWhole() = Equal(syntax.Tokens("x = \"a\"", syntax.FirstState).Tokens[2], [syntax.String, "\"a\""])
-isTextWithEscape() = Equal(syntax.Tokens("\"a\\\"b\" c", syntax.FirstState).Tokens[1], [syntax.String, "\"a\\\"b\""])
-isInterpolationStaysString() = Equal(syntax.Tokens("\"a $$(b) c\"", syntax.FirstState).Tokens, [[syntax.String, "\"a $$(b) c\""]])
-isCommentLine() = Equal(syntax.Tokens("(* note *)", syntax.FirstState).Tokens, [[syntax.Comment, "(* note *)"]])
-isCommentAfterCode() = Equal(syntax.Tokens("x (* note *)", syntax.FirstState).Tokens, [[syntax.Plain, "x "], [syntax.Comment, "(* note *)"]])
-isDocIsAComment() = Equal(syntax.Tokens("(** doc *)", syntax.FirstState).Tokens, [[syntax.Comment, "(** doc *)"]])
+isTextWhole() = value.Equal(syntax.Tokens("x = \"a\"", syntax.FirstState).Tokens[2], [syntax.String, "\"a\""])
+isTextWithEscape() = value.Equal(syntax.Tokens("\"a\\\"b\" c", syntax.FirstState).Tokens[1], [syntax.String, "\"a\\\"b\""])
+isInterpolationStaysString() = value.Equal(syntax.Tokens("\"a $$(b) c\"", syntax.FirstState).Tokens, [[syntax.String, "\"a $$(b) c\""]])
+isCommentLine() = value.Equal(syntax.Tokens("(* note *)", syntax.FirstState).Tokens, [[syntax.Comment, "(* note *)"]])
+isCommentAfterCode() = value.Equal(syntax.Tokens("x (* note *)", syntax.FirstState).Tokens, [[syntax.Plain, "x "], [syntax.Comment, "(* note *)"]])
+isDocIsAComment() = value.Equal(syntax.Tokens("(** doc *)", syntax.FirstState).Tokens, [[syntax.Comment, "(** doc *)"]])
 isDashesAreNoComment() = not (syntax.Comment in roles("x -- note")) and lost("x -- note")
-isDashesInTextStay() = Equal(roles("\"a -- b\""), [syntax.String])
+isDashesInTextStay() = value.Equal(roles("\"a -- b\""), [syntax.String])
 isCommentCarries() = syntax.Tokens("(* a", syntax.FirstState).State.Comment == 1
 isCommentNests() = syntax.Tokens("(* (* a *)", syntax.FirstState).State.Comment == 1
 isCommentCloses() = syntax.Tokens("(* a *) x", syntax.FirstState).State.Comment == 0
-isCommentContinues() = Equal(syntax.Tokens("b *) if", {Comment: 1, Text: false}).Tokens, [[syntax.Comment, "b *)"], [syntax.Plain, " "], [syntax.Keyword, "if"]])
+isCommentContinues() = value.Equal(syntax.Tokens("b *) if", {Comment: 1, Text: false}).Tokens, [[syntax.Comment, "b *)"], [syntax.Plain, " "], [syntax.Keyword, "if"]])
 isTextCarries() = syntax.Tokens("x = \"one", syntax.FirstState).State.Text
-isTextContinues() = Equal(syntax.Tokens("two\" + y", {Comment: 0, Text: true}).Tokens[1], [syntax.String, "two\""])
+isTextContinues() = value.Equal(syntax.Tokens("two\" + y", {Comment: 0, Text: true}).Tokens[1], [syntax.String, "two\""])
 isTextEnds() = not syntax.Tokens("two\"", {Comment: 0, Text: true}).State.Text
-isEmptyLine() = Equal(syntax.Tokens("", syntax.FirstState).Tokens, []) and syntax.Tokens("", syntax.FirstState).State.Comment == 0
-isNothingLost() = All(Map(lost, ["defn f(x)", "  x = \"a\" -- b", "(* a *) if (* b", "é = 1.5e3 $$(", "\t.. ... ::", "\"\" \"\"\"\""]))
+isEmptyLine() = value.Equal(syntax.Tokens("", syntax.FirstState).Tokens, []) and syntax.Tokens("", syntax.FirstState).State.Comment == 0
+isNothingLost() = list.All(list.Map(lost, ["defn f(x)", "  x = \"a\" -- b", "(* a *) if (* b", "é = 1.5e3 $$(", "\t.. ... ::", "\"\" \"\"\"\""]))
 isBrokenCodeColors() = lost("x = (* \" $$(")
 isForgetLimits() = syntax.ForgetFrom(5, knownToTen).Known == 5
-isForgetKeepsStates() = Len(syntax.ForgetFrom(5, knownToTen).Starts) == 5
-isForgetAfterKnownChangesNothing() = Equal(syntax.ForgetFrom(20, knownToTen), knownToTen)
+isForgetKeepsStates() = value.Len(syntax.ForgetFrom(5, knownToTen).Starts) == 5
+isForgetAfterKnownChangesNothing() = value.Equal(syntax.ForgetFrom(20, knownToTen), knownToTen)
 isForgetKeepsFirst() = syntax.ForgetFrom(0, knownToTen).Known == 1
-isBlank() = Equal(syntax.BlankColors(), {Starts: [syntax.FirstState], Known: 1})
-isColoredToReaches() = knownToTen.Known == 10 and Len(knownToTen.Starts) == 10
-isColoredToKeepsKnown() = Equal(syntax.ColoredTo(3, n -> Panic("not read"), knownToTen), knownToTen)
+isBlank() = value.Equal(syntax.BlankColors(), {Starts: [syntax.FirstState], Known: 1})
+isColoredToReaches() = knownToTen.Known == 10 and value.Len(knownToTen.Starts) == 10
+isColoredToKeepsKnown() = value.Equal(syntax.ColoredTo(3, n -> bug.Panic("not read"), knownToTen), knownToTen)
 isColoredToFollowsComments() = syntax.ColoredTo(3, commentFirst, syntax.BlankColors()).Starts[3].Comment == 1
-isInterfaceIsAKeyword() = Equal(syntax.Tokens("interface Shape", syntax.FirstState).Tokens[1], [syntax.Keyword, "interface"])
-isItIsAKeyword() = Equal(syntax.Tokens("it", syntax.FirstState).Tokens, [[syntax.Keyword, "it"]])
+isInterfaceIsAKeyword() = value.Equal(syntax.Tokens("interface Shape", syntax.FirstState).Tokens[1], [syntax.Keyword, "interface"])
+isItIsAKeyword() = value.Equal(syntax.Tokens("it", syntax.FirstState).Tokens, [[syntax.Keyword, "it"]])
 
 defn lostIn(src)
   (** The lines of a source that lose a character when they are read in order, each from the state the line before left. *)
   state = syntax.FirstState
   bad = []
-  for line in Lines(src)
+  for line in text.Lines(src)
     r = syntax.Tokens(line, state)
     state = r.State
-    if Join("", Map(t -> t[2], r.Tokens)) != line
-      bad = Append(line, bad)
+    if text.Join("", list.Map(t -> t[2], r.Tokens)) != line
+      bad = list.Append(line, bad)
     end
   end
   bad
@@ -70,17 +74,17 @@ end
 
 defn statesDiffer(src)
   (** Do the states at the start of each line that ColoredTo gives differ from those of reading every line with Tokens? *)
-  allLines = Lines(src)
+  allLines = text.Lines(src)
   state = syntax.FirstState
   expected = [state]
   for line in allLines
     state = syntax.Tokens(line, state).State
-    expected = Append(state, expected)
+    expected = list.Append(state, expected)
   end
-  count = Len(allLines)
-  count > 0 and not Equal(syntax.ColoredTo(count, n -> allLines[n], syntax.BlankColors()).Starts, Take(count, expected))
+  count = value.Len(allLines)
+  count > 0 and not value.Equal(syntax.ColoredTo(count, n -> allLines[n], syntax.BlankColors()).Starts, list.Take(count, expected))
 end
 
 libraries = cesia.Libraries()
-isEveryLineOfStdKeepsItsCharacters() = Len(libraries) > 10 and Equal(FlatMap(l -> lostIn(l.Source), libraries), [])
-isEveryStateOfStdIsTheSame() = Equal(Filter(l -> statesDiffer(l.Source), libraries), [])
+isEveryLineOfStdKeepsItsCharacters() = value.Len(libraries) > 10 and value.Equal(list.FlatMap(l -> lostIn(l.Source), libraries), [])
+isEveryStateOfStdIsTheSame() = value.Equal(list.Filter(l -> statesDiffer(l.Source), libraries), [])

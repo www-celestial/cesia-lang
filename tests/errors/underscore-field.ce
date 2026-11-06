@@ -1,1 +1,2 @@
-Print(({A: 1}).some_field)
+io.Print(({A: 1}).some_field)
+use std/io

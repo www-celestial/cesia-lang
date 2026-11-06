@@ -4,7 +4,9 @@
 
 ```cesia allow=read
 use std/sys
-Print(sys.Read("notes.txt").Value)
+use std/fiber
+use std/io
+io.Print(sys.Read("notes.txt").Value)
 ```
 
 A block that stops can repeat a use of the page:
@@ -20,7 +22,7 @@ A server and its client, on this machine only:
 use std/web
 use std/http
 app = web.App() then web.Get("/", r -> web.Plain("hello"), it)
-server = Spawn(() -> web.Serve(app, port = 18751))
+server = fiber.Spawn(() -> web.Serve(app, port = 18751))
 sys.Sleep(0.05)
 http.Get("http://127.0.0.1:18751/").Value.Body -->
 ```

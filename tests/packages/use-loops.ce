@@ -1,2 +1,3 @@
 use tests/packages/loops
-Print(loops.Total, loops.Other)
+use std/io
+io.Print(loops.Total, loops.Other)

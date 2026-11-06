@@ -1,6 +1,9 @@
 use tests/sdl/probe
 use std/sdl
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 defn update(event, state)
   match event
@@ -11,7 +14,7 @@ defn update(event, state)
 end
 
 defn view(state)
-  Print("view")
+  io.Print("view")
   [{Kind: "clear", Color: 0x000000}]
 end
 
@@ -22,10 +25,10 @@ end
 
 defn check()
   w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
-  Spawn(later)
+  fiber.Spawn(later)
   last = sdl.Run({Ticks: 0}, update, view, w)
-  Print(last.Ticks)
-  Ok("ran")
+  io.Print(last.Ticks)
+  result.Ok("ran")
 end
 
-Print(check())
+io.Print(check())

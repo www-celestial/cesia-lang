@@ -1,6 +1,6 @@
-mir-reloads.ce:12:34: Index -2 is outside this array of 28 elements.
-  12 |               x = (a[l1 + l1] ^ b[l1 * -1 + 1])
+mir-reloads.ce:17:34: Index -2 is outside this array of 28 elements.
+  17 |               x = (a[l1 + l1] ^ b[l1 * -1 + 1])
      |                                  ^
-  in f0 (mir-reloads.ce:12)
-  called from batchf01 (mir-reloads.ce:44)
+  in f0 (mir-reloads.ce:17)
+  called from batchf01 (mir-reloads.ce:49)
 exit 1

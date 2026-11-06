@@ -1,5 +1,8 @@
 use std/sdl
+use std/io
+use std/result
+use std/value
 
-result = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")
-Print(result then MapErr(it.Kind))
-Print(result then MapErr(e -> Len(e.Message) > 0))
+opened = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")
+io.Print(opened then result.MapErr(it.Kind))
+io.Print(opened then result.MapErr(e -> value.Len(e.Message) > 0))

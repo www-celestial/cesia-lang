@@ -2,19 +2,22 @@ use std/set
 use std/queue
 use std/heap
 use std/algo
+use std/list
+use std/result
+use std/value
 
-isSetOf() = Equal(set.Items(set.Of([2, 1, 2])), [1, 2])
+isSetOf() = value.Equal(set.Items(set.Of([2, 1, 2])), [1, 2])
 isSetMember() = set.Member(1, set.Of([1])) and not set.Member(2, set.Of([1]))
 isSetAddRemove() = set.Count(set.Remove(1, set.Add(2, set.Of([1])))) == 1
-isSetUnion() = Equal(set.Items(set.Union(set.Of([1]), set.Of([2]))), [1, 2])
-isSetIntersection() = Equal(set.Items(set.Intersection(set.Of([1, 2]), set.Of([2, 3]))), [2])
-isSetDifference() = Equal(set.Items(set.Difference(set.Of([1, 2]), set.Of([2]))), [1])
+isSetUnion() = value.Equal(set.Items(set.Union(set.Of([1]), set.Of([2]))), [1, 2])
+isSetIntersection() = value.Equal(set.Items(set.Intersection(set.Of([1, 2]), set.Of([2, 3]))), [2])
+isSetDifference() = value.Equal(set.Items(set.Difference(set.Of([1, 2]), set.Of([2]))), [1])
 isSetSubset() = set.Subset(set.Of([1]), set.Of([1, 2])) and not set.Subset(set.Of([3]), set.Of([1, 2]))
-isQueueOrder() = Equal(queue.Items(queue.Pop(queue.Of([1, 2, 3]))), [2, 3])
+isQueueOrder() = value.Equal(queue.Items(queue.Pop(queue.Of([1, 2, 3]))), [2, 3])
 isQueueEnds() = queue.First(queue.Of([1, 2])) == 1 and queue.Last(queue.Of([1, 2])) == 2
-isQueueFront() = Equal(queue.Items(queue.PushFront(0, queue.Of([1]))), [0, 1])
-isQueueBack() = Equal(queue.Items(queue.PopBack(queue.Of([1, 2]))), [1])
-isQueueEmpty() = queue.IsEmpty(queue.Pop(queue.Of([1]))) and IsMissing(queue.First(queue.Empty()))
+isQueueFront() = value.Equal(queue.Items(queue.PushFront(0, queue.Of([1]))), [0, 1])
+isQueueBack() = value.Equal(queue.Items(queue.PopBack(queue.Of([1, 2]))), [1])
+isQueueEmpty() = queue.IsEmpty(queue.Pop(queue.Of([1]))) and value.IsMissing(queue.First(queue.Empty()))
 isQueueEmptyPop() = queue.IsEmpty(queue.Pop(queue.Empty()))
 
 defn isQueueMany()
@@ -33,29 +36,29 @@ defn isHeapSorts()
   for k in [5, 1, 4, 2, 3]
     h = heap.Insert(k, "v$k", h)
   end
-  Equal(Map(it.Key, heap.Items(h)), [1, 2, 3, 4, 5]) and heap.Peek(h).Value == "v1"
+  value.Equal(list.Map(it.Key, heap.Items(h)), [1, 2, 3, 4, 5]) and heap.Peek(h).Value == "v1"
 end
 
-isHeapEmpty() = heap.IsEmpty(heap.Empty()) and Equal(heap.Items(heap.Empty()), [])
+isHeapEmpty() = heap.IsEmpty(heap.Empty()) and value.Equal(heap.Items(heap.Empty()), [])
 isGcd() = algo.Gcd(12, 18) == 6 and algo.Gcd(7, 0) == 7 and algo.Lcm(4, 6) == 12
 isPrimeTest() = algo.IsPrime(97) and not algo.IsPrime(1) and not algo.IsPrime(91)
-isPrimes() = Equal(algo.Primes(20), [2, 3, 5, 7, 11, 13, 17, 19]) and Equal(algo.Primes(1), [])
-isSearch() = algo.BinarySearch(3, [1, 3, 5]) == 2 and IsMissing(algo.BinarySearch(2, [1, 3, 5]))
+isPrimes() = value.Equal(algo.Primes(20), [2, 3, 5, 7, 11, 13, 17, 19]) and value.Equal(algo.Primes(1), [])
+isSearch() = algo.BinarySearch(3, [1, 3, 5]) == 2 and value.IsMissing(algo.BinarySearch(2, [1, 3, 5]))
 isLowerBound() = algo.LowerBound(4, [1, 3, 5]) == 3 and algo.LowerBound(9, [1]) == 2
-isPartition() = Equal(algo.Partition(it > 1, [1, 2, 3]), {Yes: [2, 3], No: [1]})
-isChunk() = Equal(algo.Chunk(2, [1, 2, 3]), [[1, 2], [3]])
-isWindows() = Equal(algo.Windows(2, [1, 2, 3]), [[1, 2], [2, 3]])
-isPermutations() = Len(algo.Permutations([1, 2, 3])) == 6 and Equal(algo.Permutations([1, 2])[2], [2, 1])
-isCombinations() = Equal(algo.Combinations(2, [1, 2, 3]), [[1, 2], [1, 3], [2, 3]])
+isPartition() = value.Equal(algo.Partition(it > 1, [1, 2, 3]), {Yes: [2, 3], No: [1]})
+isChunk() = value.Equal(algo.Chunk(2, [1, 2, 3]), [[1, 2], [3]])
+isWindows() = value.Equal(algo.Windows(2, [1, 2, 3]), [[1, 2], [2, 3]])
+isPermutations() = value.Len(algo.Permutations([1, 2, 3])) == 6 and value.Equal(algo.Permutations([1, 2])[2], [2, 1])
+isCombinations() = value.Equal(algo.Combinations(2, [1, 2, 3]), [[1, 2], [1, 3], [2, 3]])
 isLevenshtein() = algo.Levenshtein("kitten", "sitting") == 3 and algo.Levenshtein("", "ab") == 2
 
 graph = {1: [2, 3], 2: [4], 3: [4], 4: [1]}
-isBfs() = Equal(algo.Bfs(1, n -> graph[n]), [1, 2, 3, 4])
-isDfs() = Equal(algo.Dfs(1, n -> graph[n]), [1, 2, 4, 3])
+isBfs() = value.Equal(algo.Bfs(1, n -> graph[n]), [1, 2, 3, 4])
+isDfs() = value.Equal(algo.Dfs(1, n -> graph[n]), [1, 2, 4, 3])
 
 weights = {"a": [{Node: "b", Weight: 7}, {Node: "c", Weight: 1}], "b": [], "c": [{Node: "b", Weight: 2}]}
-isDijkstra() = Equal(algo.Dijkstra("a", n -> weights[n]), {"a": 0, "b": 3, "c": 1})
+isDijkstra() = value.Equal(algo.Dijkstra("a", n -> weights[n]), {"a": 0, "b": 3, "c": 1})
 
 deps = {"app": ["lib", "log"], "lib": ["log"], "log": []}
-isTopological() = Equal(Unwrap(algo.TopologicalSort(["app"], n -> deps[n])), ["log", "lib", "app"])
-isTopologicalCycle() = IsErr(algo.TopologicalSort([1], n -> [1]))
+isTopological() = value.Equal(result.Unwrap(algo.TopologicalSort(["app"], n -> deps[n])), ["log", "lib", "app"])
+isTopologicalCycle() = result.IsErr(algo.TopologicalSort([1], n -> [1]))

@@ -1,4 +1,4 @@
-memory-store.ce:2:2: Limit "memory" reached.
-  2 | a[1] = "x"
+memory-store.ce:5:2: Limit "memory" reached.
+  5 | a[1] = "x"
     |  ^
 exit 1

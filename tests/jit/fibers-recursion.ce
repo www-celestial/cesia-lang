@@ -1,3 +1,6 @@
+use std/fiber
+use std/io
+
 (* A fiber around native recursion: the switch waits until the outermost compiled call returns, as the JIT's contract says;
    the interpreter switches inside it. The results are the same, only the order of the lines differs. *)
 defn fib(n)
@@ -9,7 +12,7 @@ defn fib(n)
 end
 defn noisy()
   for r in 1..6
-    Print("b $(r)")
+    io.Print("b $(r)")
     k = 0
     for q in 1..400000
       k = k + 1
@@ -18,6 +21,6 @@ defn noisy()
   0
 end
 x = fib(15)
-b = Spawn(noisy)
-Print("a $(fib(30))")
-Wait(b)
+b = fiber.Spawn(noisy)
+io.Print("a $(fib(30))")
+fiber.Wait(b)

@@ -9,48 +9,54 @@ use std/cesia
 use std/debug
 use std/http
 use std/tls
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
 
 github = "https://api.github.com/repos/www-celestial/cesia-lang/releases"
-backslash = Char(92)
+backslash = text.Char(92)
 
 defn parent(path)
   (** The folder of a path. *)
-  parts = Split("/", path)
-  Join("/", parts[1..Len(parts) - 1])
+  parts = text.Split("/", path)
+  text.Join("/", parts[1..value.Len(parts) - 1])
 end
 
 defn download(url)
   (** The bytes at a URL: a file:// one is read, an https:// one fetched, following its redirects. *)
-  if StartsWith("file://", url)
-    return sys.Read(Slice(8, Len(url), url))
+  if text.StartsWith("file://", url)
+    return sys.Read(text.Slice(8, value.Len(url), url))
   end
   secure = tls.Client(tls.Open()?)
   at = url
   for hop in 1..5
     r = http.Get(at, headers = [{Name: "User-Agent", Value: "cesia-upgrade"}], secure = secure)?
     location = http.HeaderValue("location", r.Headers)
-    if r.Status >= 300 and r.Status < 400 and not IsMissing(location)
+    if r.Status >= 300 and r.Status < 400 and not value.IsMissing(location)
       at = location
     else if r.Status != 200
-      return Err("$at answered $(r.Status).")
+      return result.Err("$at answered $(r.Status).")
     else
-      return Ok(r.Body)
+      return result.Ok(r.Body)
     end
   end
-  Err("$url redirects too many times.")
+  result.Err("$url redirects too many times.")
 end
 
 defn release(nightly)
   (** The release to install, as GitHub's API gives it: tag_name, name, body and assets. *)
   mirror = sys.Env("CESIA_RELEASES")
-  url = if not IsMissing(mirror) and mirror != ""
+  url = if not value.IsMissing(mirror) and mirror != ""
     "$mirror/$(if nightly "nightly" else "latest" end).json"
   else
     "$github/$(if nightly "tags/nightly" else "latest" end)"
   end
   text = download(url)
-  if IsErr(text)
-    return Err("Can't read the releases of Cesia: $(if IsText(text.Error) text.Error else text.Error.Message end)")
+  if result.IsErr(text)
+    return result.Err("Can't read the releases of Cesia: $(if value.IsText(text.Error) text.Error else text.Error.Message end)")
   end
   json.Parse(text.Value)
 end
@@ -59,19 +65,19 @@ defn system(binary)
   (** The name of this system in the names of the archives: linux-x86_64, macos-arm64, windows-x86_64. Windows is told by the
       .exe of the binary: the uname of Git's shell would say mingw64_nt. *)
   said = sys.Run("uname", args = ["-s", "-m"])
-  if EndsWith(".exe", binary) or IsErr(said) or said.Value.Code != 0
+  if text.EndsWith(".exe", binary) or result.IsErr(said) or said.Value.Code != 0
     return "windows-x86_64"
   end
-  words = Split(" ", Lower(Trim(said.Value.Out)))
+  words = text.Split(" ", text.Lower(text.Trim(said.Value.Out)))
   os = if words[1] == "darwin" "macos" else words[1] end
-  machine = Last(words)
+  machine = list.Last(words)
   arch = if machine == "amd64" "x86_64" else if machine == "aarch64" "arm64" else machine end
   "$os-$arch"
 end
 
 defn asset(rel, name)
   (** The download URL of an asset of a release, or missing. *)
-  for a in GetOr("assets", [], rel)
+  for a in dict.GetOr("assets", [], rel)
     if a["name"] == name
       return a["browser_download_url"]
     end
@@ -82,13 +88,13 @@ end
 defn versionOf(binary)
   (** What a binary of Cesia answers to version, or an Err. *)
   r = sys.Run(binary, args = ["version"])?
-  if r.Code == 0 Ok(Trim(r.Out)) else Err("$binary didn't run: $(Trim(r.Err))") end
+  if r.Code == 0 result.Ok(text.Trim(r.Out)) else result.Err("$binary didn't run: $(text.Trim(r.Err))") end
 end
 
 defn replace(home, fresh, binary)
   (** Puts the new cesia and lib/ in place of the old ones. A running binary can be renamed on every system, but not always
       replaced, so the old one is moved away first. On Windows ce.exe is a copy of cesia.exe, not a link: it gets one too. *)
-  ext = if EndsWith(".exe", binary) ".exe" else "" end
+  ext = if text.EndsWith(".exe", binary) ".exe" else "" end
   target = "$home/bin/cesia$ext"
   old = "$home/bin/.old-cesia$ext"
   if sys.Exists(old)
@@ -98,13 +104,13 @@ defn replace(home, fresh, binary)
     sys.Rename(target, old)?
   end
   moved = sys.Rename("$fresh/bin/cesia$ext", target)
-  if IsErr(moved)
+  if result.IsErr(moved)
     sys.Rename(old, target)
     return moved
   end
   short = "$home/bin/ce$ext"
   stat = sys.Stat(short)
-  if ext != "" and IsOk(stat) and not stat.Value.IsLink
+  if ext != "" and result.IsOk(stat) and not stat.Value.IsLink
     sys.Rename(short, "$home/bin/.old-ce$ext")?
     sys.Write(short, sys.Read(target)?)?
   end
@@ -115,71 +121,71 @@ defn replace(home, fresh, binary)
     sys.Rename("$fresh/lib", "$home/lib")?
   end
   sys.Remove(old)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn removeAll(path)
   (** Deletes a folder with all it holds; a link goes, never what it points to. *)
   stat = sys.Stat(path)
-  if IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
+  if result.IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
     for name in sys.List(path)?
       removeAll("$path/$name")?
     end
   end
-  if sys.Exists(path) or IsOk(sys.List(path)) sys.Remove(path) else Ok(missing) end
+  if sys.Exists(path) or result.IsOk(sys.List(path)) sys.Remove(path) else result.Ok(missing) end
 end
 
 defn upgrade(args)
   (** cesia upgrade [--nightly]. *)
-  if Len(args) > 1 or (Len(args) == 1 and args[1] != "--nightly")
-    return Err("usage: cesia upgrade [--nightly]")
+  if value.Len(args) > 1 or (value.Len(args) == 1 and args[1] != "--nightly")
+    return result.Err("usage: cesia upgrade [--nightly]")
   end
-  nightly = Len(args) == 1
-  binary = Replace(backslash, "/", cesia.Binary())
+  nightly = value.Len(args) == 1
+  binary = text.Replace(backslash, "/", cesia.Binary())
   current = versionOf(binary)?
   mirror = sys.Env("CESIA_RELEASES")
-  if cesia.Dev() and (IsMissing(mirror) or mirror == "")
-    return Err("This Cesia was built from its sources ($current): git pull and dune build bring it up to date, not cesia upgrade.")
+  if cesia.Dev() and (value.IsMissing(mirror) or mirror == "")
+    return result.Err("This Cesia was built from its sources ($current): git pull and dune build bring it up to date, not cesia upgrade.")
   end
   bin = parent(binary)
   home = parent(bin)
-  if Last(Split("/", bin)) != "bin" or not sys.Exists("$home/lib/licenses/Cesia.txt")
-    return Err("cesia upgrade replaces a Cesia that install.sh or install.ps1 put in place, with its bin/ and lib/ side by side, and $binary isn't one: install the new one the way this one was. Nothing changed.")
+  if list.Last(text.Split("/", bin)) != "bin" or not sys.Exists("$home/lib/licenses/Cesia.txt")
+    return result.Err("cesia upgrade replaces a Cesia that install.sh or install.ps1 put in place, with its bin/ and lib/ side by side, and $binary isn't one: install the new one the way this one was. Nothing changed.")
   end
   rel = release(nightly)?
-  tag = GetOr("tag_name", "", rel)
-  title = GetOr("name", tag, rel)
+  tag = dict.GetOr("tag_name", "", rel)
+  title = dict.GetOr("name", tag, rel)
   later = cesia.Compare(tag, cesia.Version())
   (* From a nightly, its own stable release is a way back to stable: it is offered too. *)
-  newer = if nightly title != current else later > 0 or (later == 0 and Contains("-nightly", current)) end
+  newer = if nightly title != current else later > 0 or (later == 0 and text.Contains("-nightly", current)) end
   if not newer
-    Print("$current is the newest$(if nightly " nightly" else "" end): nothing to do.")
-    return Ok(missing)
+    io.Print("$current is the newest$(if nightly " nightly" else "" end): nothing to do.")
+    return result.Ok(missing)
   end
-  Print("$title")
-  notes = Trim(GetOr("body", "", rel))
+  io.Print("$title")
+  notes = text.Trim(dict.GetOr("body", "", rel))
   if notes != ""
-    Print("")
-    Print(notes)
-    Print("")
+    io.Print("")
+    io.Print(notes)
+    io.Print("")
   end
-  Print("Replace $current by $title? [y/n]")
+  io.Print("Replace $current by $title? [y/n]")
   answer = debug.ReadLine()
-  if IsMissing(answer) or Lower(Trim(answer)) != "y"
-    Print("Nothing changed.")
-    return Ok(missing)
+  if value.IsMissing(answer) or text.Lower(text.Trim(answer)) != "y"
+    io.Print("Nothing changed.")
+    return result.Ok(missing)
   end
   windows = system(binary) == "windows-x86_64"
   archive = "cesia-$(system(binary)).$(if windows "zip" else "tar.gz" end)"
   url = asset(rel, archive)
   print = asset(rel, "$archive.blake2")
-  if IsMissing(url) or IsMissing(print)
-    return Err("This release has no $archive with its fingerprint: nothing changed.")
+  if value.IsMissing(url) or value.IsMissing(print)
+    return result.Err("This release has no $archive with its fingerprint: nothing changed.")
   end
   bytes = download(url)?
-  expected = Trim(download(print)?)
+  expected = text.Trim(download(print)?)
   if cesia.Fingerprint(bytes) != expected
-    return Err("The download of $archive doesn't match its fingerprint: nothing changed.")
+    return result.Err("The download of $archive doesn't match its fingerprint: nothing changed.")
   end
   fresh = "$home/.upgrade"
   removeAll(fresh)?
@@ -188,23 +194,23 @@ defn upgrade(args)
   unpacked = sys.Run("tar", args = [if windows "-xf" else "-xzf" end, "$fresh/$archive", "-C", fresh])?
   if unpacked.Code != 0
     removeAll(fresh)
-    return Err("Can't unpack $archive: $(Trim(unpacked.Err)). Nothing changed.")
+    return result.Err("Can't unpack $archive: $(text.Trim(unpacked.Err)). Nothing changed.")
   end
-  tried = versionOf("$fresh/bin/cesia$(if EndsWith(".exe", binary) ".exe" else "" end)")
-  if IsErr(tried) or not StartsWith("cesia ", tried.Value)
+  tried = versionOf("$fresh/bin/cesia$(if text.EndsWith(".exe", binary) ".exe" else "" end)")
+  if result.IsErr(tried) or not text.StartsWith("cesia ", tried.Value)
     removeAll(fresh)
-    return Err("The new binary doesn't answer as Cesia: nothing changed.")
+    return result.Err("The new binary doesn't answer as Cesia: nothing changed.")
   end
   replace(home, fresh, binary)?
   removeAll(fresh)
-  Print("$(tried.Value) is in place.")
-  Ok(missing)
+  io.Print("$(tried.Value) is in place.")
+  result.Ok(missing)
 end
 
 defn Main()
   (** Runs the command of Args; an error is a text, which the binary shows. *)
-  match upgrade(Args)
-    Err(e) -> Err(if IsText(e) e else e.Message end)
+  match upgrade(sys.Args)
+    result.Err(e) -> result.Err(if value.IsText(e) e else e.Message end)
     done -> done
   end
 end

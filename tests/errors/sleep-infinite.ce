@@ -1,5 +1,6 @@
 use std/sys
+use std/io
 x = 1.0
 y = 0.0
 sys.Sleep(x / y)
-Print("after")
+io.Print("after")

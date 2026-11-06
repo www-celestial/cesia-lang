@@ -2,23 +2,26 @@
     write it. Run with --allow read,write. *)
 use std/sys
 use std/cesia
+use std/list
+use std/result
+use std/text
 
 defn walk(dir)
   (** The files under a folder, at any depth. *)
   listed = sys.List(dir)
   found = []
-  if IsOk(listed)
+  if result.IsOk(listed)
     for name in listed.Value
       path = "$dir/$name"
-      found = if sys.Stat(path)?.IsDir Concat(found, walk(path)) else Append(path, found) end
+      found = if sys.Stat(path)?.IsDir list.Concat(found, walk(path)) else list.Append(path, found) end
     end
   end
   found
 end
 
-q = Char(34)
+q = text.Char(34)
 lines = ["[std]", "cesia = $q$(cesia.Version())$q", "files = ["]
-for f in Sort(Concat(walk("std"), walk("deps")))
-  lines = Append("  $q$f $(cesia.Fingerprint(Unwrap(sys.Read(f))))$q,", lines)
+for f in list.Sort(list.Concat(walk("std"), walk("deps")))
+  lines = list.Append("  $q$f $(cesia.Fingerprint(result.Unwrap(sys.Read(f))))$q,", lines)
 end
-Unwrap(sys.Write("cesia.lock", Join("\n", Concat(lines, ["]", ""]))))
+result.Unwrap(sys.Write("cesia.lock", text.Join("\n", list.Concat(lines, ["]", ""]))))

@@ -1,2 +1,4 @@
 (** A task can run a folder. *)
-Print("in the folder")
+use std/io
+
+io.Print("in the folder")

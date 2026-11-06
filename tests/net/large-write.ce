@@ -1,30 +1,36 @@
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
 
-big = Join("", Fill("0123456789abcdef", 655360))
+big = text.Join("", list.Fill("0123456789abcdef", 655360))
 
 defn serveBig(listener)
   c = net.Accept(listener)?
   net.Write(c, big)?
   net.Close(c)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn readAll(c, total)
   text = net.Read(c)?
   sys.Sleep(0)
-  if Len(text) == 0 Ok(total) else readAll(c, total + Len(text)) end
+  if value.Len(text) == 0 result.Ok(total) else readAll(c, total + value.Len(text)) end
 end
 
 defn client()
   c = net.Connect("127.0.0.1", 18087)?
   first = net.Read(c)?
-  Wait(Spawn(() -> Print("ticking")))
-  readAll(c, Len(first))
+  fiber.Wait(fiber.Spawn(() -> io.Print("ticking")))
+  readAll(c, value.Len(first))
 end
 
-listener = Unwrap(net.Listen(18087))
-server = Spawn(() -> serveBig(listener))
+listener = result.Unwrap(net.Listen(18087))
+server = fiber.Spawn(() -> serveBig(listener))
 sys.Sleep(0)
-Print(client())
-Print(Wait(server))
+io.Print(client())
+io.Print(fiber.Wait(server))

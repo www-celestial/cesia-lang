@@ -1,4 +1,4 @@
-memory-abs.ce:2:5: Limit "memory" reached.
-  2 | b = Abs(a)
-    |     ^
+memory-abs.ce:6:9: Limit "memory" reached.
+  6 | b = math.Abs(a)
+    |         ^
 exit 1

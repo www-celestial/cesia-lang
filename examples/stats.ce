@@ -1,6 +1,10 @@
 (** Sales by city, from a CSV text, with the table module: cesia run examples/stats.ce *)
 use std/frame
 use std/num
+use std/io
+use std/list
+use std/math
+use std/value
 
 sales = frame.FromCsv("city,item,amount
 Paris,tea,12.5
@@ -10,8 +14,8 @@ Nice,coffee,4.5
 Lyon,coffee,21
 ")
 
-totals = frame.GroupBy(["city"], [frame.Agg("total", "amount", Sum), frame.Agg("orders", "amount", Len)], sales)
-Print(frame.Show(frame.SortBy("total", totals, descending = true)))
-Print("")
+totals = frame.GroupBy(["city"], [frame.Agg("total", "amount", list.Sum), frame.Agg("orders", "amount", value.Len)], sales)
+io.Print(frame.Show(frame.SortBy("total", totals, descending = true)))
+io.Print("")
 amounts = frame.Column("amount", sales)
-Print("median", num.Median(amounts), "std", Round(num.Std(1.0 * amounts)))
+io.Print("median", num.Median(amounts), "std", math.Round(num.Std(1.0 * amounts)))

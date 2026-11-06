@@ -1,5 +1,5 @@
-method-dot-struct-arg.ce:4:11: "Area" needs a Rect.
-  4 | Print(Rect.Area(r))
-    |           ^
+method-dot-struct-arg.ce:6:14: "Area" needs a Rect.
+  6 | io.Print(Rect.Area(r))
+    |              ^
   Write x.Area(), with x a Rect.
 exit 1

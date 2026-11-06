@@ -1,6 +1,8 @@
 (** A window under --watch that ends on a quit event, from a stop signal or from a closed window. See tools/reload-test.sh. *)
 use std/c
 use std/sdl
+use std/io
+use std/result
 
 run() = 1
 (** How many quit events end the program: an editor with unsaved text asks first, and goes on. *)
@@ -12,7 +14,7 @@ defn update(event, state)
   if event.Kind != "quit"
     state
   else
-    Print("quit $(state.Quits + 1)")
+    io.Print("quit $(state.Quits + 1)")
     if state.Quits + 1 == needed() missing else {Quits: state.Quits + 1} end
   end
 end
@@ -33,11 +35,11 @@ defn main()
     send(0x210, push, event)
     send(0x100, push, event)
   end
-  Print("open $(run())")
+  io.Print("open $(run())")
   sdl.Run({Quits: 0}, update, view, window)
   sdl.Close(window)
-  Print("ended $(run())")
-  Ok(missing)
+  io.Print("ended $(run())")
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

@@ -1,5 +1,8 @@
-f() = Wait(b)
-g() = Wait(a)
-a = Spawn(f)
-b = Spawn(g)
-Print(Wait(a))
+use std/fiber
+use std/io
+
+f() = fiber.Wait(b)
+g() = fiber.Wait(a)
+a = fiber.Spawn(f)
+b = fiber.Spawn(g)
+io.Print(fiber.Wait(a))

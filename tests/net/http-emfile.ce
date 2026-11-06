@@ -1,8 +1,12 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = {Status: 200, Body: "fine"}
 
 defn openAll(n, opened)
@@ -10,7 +14,7 @@ defn openAll(n, opened)
     opened
   else
     match net.Connect("127.0.0.1", 18094)
-      Ok(c) -> openAll(n - 1, [c, opened])
+      result.Ok(c) -> openAll(n - 1, [c, opened])
       else -> opened
     end
   end
@@ -18,13 +22,13 @@ end
 
 defn ask(c)
   net.Write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
-  net.Read(c) then MapOk(reply -> Split(crlf, reply)[1])
+  net.Read(c) then result.MapOk(reply -> text.Split(crlf, reply)[1])
 end
 
-Spawn(() -> http.Serve(handle, port = 18094))
+fiber.Spawn(() -> http.Serve(handle, port = 18094))
 sys.Sleep(0)
-first = Unwrap(net.Connect("127.0.0.1", 18094))
-Print(ask(first))
+first = result.Unwrap(net.Connect("127.0.0.1", 18094))
+io.Print(ask(first))
 openAll(100, missing)
 sys.Sleep(0.4)
-Print(ask(first))
+io.Print(ask(first))

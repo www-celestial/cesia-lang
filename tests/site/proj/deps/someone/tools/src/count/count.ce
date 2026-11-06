@@ -1,3 +1,5 @@
 (** Counting words, from another project. *)
+use std/text
+use std/value
 
-Words(text) = Len(Split(" ", text))   (** How many words a text holds. *)
+Words(s) = value.Len(text.Split(" ", s))   (** How many words a text holds. *)

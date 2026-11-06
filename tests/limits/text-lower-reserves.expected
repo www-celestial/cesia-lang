@@ -1,4 +1,4 @@
-text-lower-reserves.ce:3:5: Limit "memory" reached.
-  3 | y = Lower(x)
-    |     ^
+text-lower-reserves.ce:7:9: Limit "memory" reached.
+  7 | y = text.Lower(x)
+    |         ^
 exit 1

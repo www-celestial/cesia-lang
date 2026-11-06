@@ -9,5 +9,5 @@ exit 1
 usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] file.ce [args...]
 A persistent leftist heap: the smallest key comes out first.
 
-prelude
+std/alg
 exit 0

@@ -1,3 +1,7 @@
-a = Fill(1, 1500000)
-b = Abs(a)
-Print(b[1])
+use std/io
+use std/list
+use std/math
+
+a = list.Fill(1, 1500000)
+b = math.Abs(a)
+io.Print(b[1])

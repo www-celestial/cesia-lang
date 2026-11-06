@@ -3,6 +3,10 @@
 use std/sdl
 use std/sys
 use examples/scene as scene
+use std/io
+use std/list
+use std/math
+use std/result
 
 frames = 300
 
@@ -15,7 +19,7 @@ end
 
 defn moved(state, n)
   s = state
-  s.Nodes[4].X = 560 + Mod(n, 40)
+  s.Nodes[4].X = 560 + math.Mod(n, 40)
   s
 end
 
@@ -28,20 +32,20 @@ defn measure(begun, sphere)
     start = sys.Now()
     state = moved(state, n)
     if sphere
-      state.Rough = 0.2 + Mod(n, 60) / 100.0
+      state.Rough = 0.2 + math.Mod(n, 60) / 100.0
       state.ShownRough = state.Rough
       state = scene.Update({Kind: "tick", Seconds: 0.016}, state)
     end
     window = sdl.Frame(scene.View(state), window)
-    times = Append((sys.Now() - start) * 1000.0, times)
+    times = list.Append((sys.Now() - start) * 1000.0, times)
   end
   times
 end
 
 defn report(name, times)
-  sorted = Sort(times)
-  total = Reduce((a, b) -> a + b, 0.0, times)
-  Print("$name: $(Floor(frames * 1000.0 / total)) frames/s, 99% under $(Floor(sorted[Div(frames * 99, 100)] * 10.0) / 10.0) ms, worst $(Floor(Last(sorted) * 10.0) / 10.0) ms")
+  sorted = list.Sort(times)
+  total = list.Reduce((a, b) -> a + b, 0.0, times)
+  io.Print("$name: $(math.Floor(frames * 1000.0 / total)) frames/s, 99% under $(math.Floor(sorted[math.Div(frames * 99, 100)] * 10.0) / 10.0) ms, worst $(math.Floor(list.Last(sorted) * 10.0) / 10.0) ms")
 end
 
 defn main()
@@ -50,9 +54,9 @@ defn main()
   report("scene and small sphere", measure(begun, true))
   start = sys.Now()
   scene.ShadeSphere(begun.State.Images.Sharp.Pixels, 208, 0.5, 0.5, 0.3)
-  Print("sharp sphere: $(Floor((sys.Now() - start) * 1000.0)) ms")
+  io.Print("sharp sphere: $(math.Floor((sys.Now() - start) * 1000.0)) ms")
   sdl.Close(begun.Window)
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

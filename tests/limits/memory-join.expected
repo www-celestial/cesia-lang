@@ -1,4 +1,4 @@
-memory-join.ce:2:5: Limit "memory" reached.
-  2 | b = Join("", xs)
-    |     ^
+memory-join.ce:7:9: Limit "memory" reached.
+  7 | b = text.Join("", xs)
+    |         ^
 exit 1

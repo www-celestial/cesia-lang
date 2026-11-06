@@ -1,3 +1,5 @@
 (** Runs second, and its functions are there from the start. *)
+use std/io
+
 Later() = "from b"
-Print("b")
+io.Print("b")

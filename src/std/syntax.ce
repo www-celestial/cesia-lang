@@ -1,6 +1,9 @@
 (** The colors of Cesia code: a line is read in one pass, by states, and gives words with a role. Nothing here panics, whatever
     the line: unfinished texts and comments only carry their state to the next line. Cemacs and the docs site color with it. *)
 use std/cesia
+use std/list
+use std/text
+use std/value
 
 (** The role of a keyword: an index in the syntax colors of the theme. *)
 Keyword = 1
@@ -23,7 +26,7 @@ FirstState = {Comment: 0, Text: false}
 keywords = cesia.Keywords()
 
 isDigit(c) = c >= "0" and c <= "9"
-isNameStart(c) = c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or ByteLength(c) > 1
+isNameStart(c) = c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or text.ByteLength(c) > 1
 isName(c) = isNameStart(c) or isDigit(c)
 isSpace(c) = c == " " or c == "\t" or c == "\r"
 
@@ -41,7 +44,7 @@ defn commentEnd(cs, from, n, depth)
       i += 1
     end
   end
-  {At: Min(i, n + 1), Depth: depth}
+  {At: list.Min(i, n + 1), Depth: depth}
 end
 
 defn textEnd(cs, from, n)
@@ -59,7 +62,7 @@ defn textEnd(cs, from, n)
       i += 1
     end
   end
-  {At: Min(i, n + 1), Open: not closed}
+  {At: list.Min(i, n + 1), Open: not closed}
 end
 
 defn numberEnd(cs, from, n)
@@ -102,11 +105,11 @@ end
 
 defn add(role, words, out)
   (** Adds a word to the tokens. Two plain words in a row make one. *)
-  last = Len(out)
+  last = value.Len(out)
   if role == Plain and last > 0 and out[last][1] == Plain
-    Concat(Take(last - 1, out), [[Plain, "$(out[last][2])$(words)"]])
+    list.Concat(list.Take(last - 1, out), [[Plain, "$(out[last][2])$(words)"]])
   else
-    Append([role, words], out)
+    list.Append([role, words], out)
   end
 end
 
@@ -115,8 +118,8 @@ defn Tokens(line, state)
 
         Tokens("defn f", FirstState).Tokens[1] --> [1, "defn"] *)
   (* cs holds an empty text before and two after the characters, so that looking around never leaves the list. *)
-  cs = Concat([""], Concat(Chars(line), ["", ""]))
-  n = Len(cs) - 2
+  cs = list.Concat([""], list.Concat(text.Chars(line), ["", ""]))
+  n = value.Len(cs) - 2
   out = []
   depth = state.Comment
   inText = state.Text
@@ -127,34 +130,34 @@ defn Tokens(line, state)
       r = commentEnd(cs, i, n, depth)
       depth = r.Depth
       i = r.At
-      out = add(Comment, Join("", cs[start..i - 1]), out)
+      out = add(Comment, text.Join("", cs[start..i - 1]), out)
     else if inText
       r = textEnd(cs, i, n)
       inText = r.Open
       i = r.At
-      out = add(String, Join("", cs[start..i - 1]), out)
+      out = add(String, text.Join("", cs[start..i - 1]), out)
     else
       c = cs[i]
       if c == "(" and cs[i + 1] == "*"
         r = commentEnd(cs, i + 2, n, 1)
         depth = r.Depth
         i = r.At
-        out = add(Comment, Join("", cs[start..i - 1]), out)
+        out = add(Comment, text.Join("", cs[start..i - 1]), out)
       else if c == "\""
         r = textEnd(cs, i + 1, n)
         inText = r.Open
         i = r.At
-        out = add(String, Join("", cs[start..i - 1]), out)
+        out = add(String, text.Join("", cs[start..i - 1]), out)
       else if isDigit(c)
         i = numberEnd(cs, i, n)
-        out = add(Number, Join("", cs[start..i - 1]), out)
+        out = add(Number, text.Join("", cs[start..i - 1]), out)
       else if isNameStart(c)
         i = nameEnd(cs, i, n)
-        word = Join("", cs[start..i - 1])
+        word = text.Join("", cs[start..i - 1])
         out = add(nameRole(word, cs[start - 1], cs[i]), word, out)
       else if isSpace(c)
         i = spaceEnd(cs, i, n)
-        out = add(Plain, Join("", cs[start..i - 1]), out)
+        out = add(Plain, text.Join("", cs[start..i - 1]), out)
       else
         i += 1
         out = add(Plain, c, out)
@@ -170,7 +173,7 @@ end
 BlankColors() = {Starts: [FirstState], Known: 1}
 
 (** Can this line change the state? Only a quote or a comment mark can open or close a text or a comment. *)
-mayChange(words) = Contains("\"", words) or Contains("(*", words) or Contains("*)", words)
+mayChange(words) = text.Contains("\"", words) or text.Contains("(*", words) or text.Contains("*)", words)
 
 (** The state at the end of a line, given the one at its start. A line with no quote and no comment mark leaves it as it is, so it is not read. *)
 stateAfter(words, state) = if mayChange(words) Tokens(words, state).State else state end
@@ -178,14 +181,14 @@ stateAfter(words, state) = if mayChange(words) Tokens(words, state).State else s
 defn ColoredTo(line, lineOf, colors)
   (** The state at the start of line number line, once the lines before it are known; line_of(n) gives the text of line n.
 
-        ColoredTo(2, n -> Join("", ["(", "* a"]), BlankColors()).Starts[2].Comment --> 1 *)
-  have = Len(colors.Starts)
+        ColoredTo(2, n -> text.Join("", ["(", "* a"]), BlankColors()).Starts[2].Comment --> 1 *)
+  have = value.Len(colors.Starts)
   if line <= have
     {Starts: colors.Starts, Known: have}
   else
     (* scan builds the whole array at once: pushing one state at a time copies the array each time, and a jump to line 19,000 takes seconds. *)
-    later = Scan((state, n) -> stateAfter(lineOf(n), state), colors.Starts[have], Range(have, line - 1))
-    {Starts: Concat(colors.Starts, later), Known: line}
+    later = list.Scan((state, n) -> stateAfter(lineOf(n), state), colors.Starts[have], list.Range(have, line - 1))
+    {Starts: list.Concat(colors.Starts, later), Known: line}
   end
 end
 
@@ -193,10 +196,10 @@ defn ForgetFrom(line, colors)
   (** The colors with only the lines before the given one still known, after an edit in it. The first line is always known.
 
         ForgetFrom(2, ColoredTo(5, n -> "x", BlankColors())).Known --> 2 *)
-  keep = Max(1, line)
+  keep = list.Max(1, line)
   if colors.Known <= keep
     colors
   else
-    {Starts: Take(keep, colors.Starts), Known: keep}
+    {Starts: list.Take(keep, colors.Starts), Known: keep}
   end
 end

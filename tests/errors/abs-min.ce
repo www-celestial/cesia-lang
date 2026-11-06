@@ -1,2 +1,5 @@
+use std/io
+use std/math
+
 x = -4611686018427387903 - 1
-Print(Abs(x))
+io.Print(math.Abs(x))

@@ -1,6 +1,9 @@
 defn inner(n)
   n + 1
 end
-big = Zeros(3)
-t = Spawn(() -> inner(1))
-Print(Wait(t))
+big = matrix.Zeros(3)
+t = fiber.Spawn(() -> inner(1))
+io.Print(fiber.Wait(t))
+use std/fiber
+use std/io
+use std/matrix

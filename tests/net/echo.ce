@@ -1,12 +1,15 @@
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 defn serveOnce(listener)
   c = net.Accept(listener)?
   text = net.Read(c)?
   net.Write(c, "echo: $text")?
   net.Close(c)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn client()
@@ -14,11 +17,11 @@ defn client()
   net.Write(c, "hello")?
   reply = net.Read(c)?
   net.Close(c)
-  Ok(reply)
+  result.Ok(reply)
 end
 
-listener = Unwrap(net.Listen(18081))
-server = Spawn(() -> serveOnce(listener))
+listener = result.Unwrap(net.Listen(18081))
+server = fiber.Spawn(() -> serveOnce(listener))
 sys.Sleep(0)
-Print(client())
-Print(Wait(server))
+io.Print(client())
+io.Print(fiber.Wait(server))

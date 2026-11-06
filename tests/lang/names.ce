@@ -1,4 +1,9 @@
 (** The rules of names: a capital is public, a small first letter private, and fields follow the same rule. *)
+use std/cesia
+use std/fiber
+use std/result
+use std/value
+
 struct piece { size, Label = "x" }
 
 hidden() = 1
@@ -31,11 +36,11 @@ isPrivateVariableInItsFile() = smallConstant == 2
 isSmallFieldRead() = readSmall() == 7
 isSmallFieldWritten() = writeSmall() == 5
 isSmallFieldInAPattern() = patternSmall() == 6 and matchSmall(piece(8)) == 8
-isSmallStructShowsItsName() = Text(piece(1)) == "piece(size = 1, Label = \"x\")"
+isSmallStructShowsItsName() = value.Text(piece(1)) == "piece(size = 1, Label = \"x\")"
 isLoneWildcard() = match [1, 2]
   [_, x] -> x == 2
 end
-isCapitalFieldNeedsNoDeclaration() = (Wait(Spawn(() -> Ok(1).Other)) then MapErr(it.Kind)) == Err("field")
+isCapitalFieldNeedsNoDeclaration() = (fiber.Wait(fiber.Spawn(() -> result.Ok(1).Other)) then result.MapErr(it.Kind)) == result.Err("field")
 isNumberKeepsItsSeparator() = 1_000 == 1000
-isPublicOnlyInDocs() = IsMissing(Doc("merge")) and "Merge" in DocNames("prelude") and not ("merge" in DocNames("prelude"))
-isIsIntIsNoTest() = IsInt(1)
+isPublicOnlyInDocs() = value.IsMissing(cesia.Doc("list.merge")) and "dict.Merge" in cesia.DocNames("std/dict") and not ("list.merge" in cesia.DocNames("std/list"))
+isIsIntIsNoTest() = value.IsInt(1)

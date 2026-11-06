@@ -1,2 +1,4 @@
 use std/sys
-Print(sys.Run("no-such-command-cesia") then MapErr(it.Kind))
+use std/io
+use std/result
+io.Print(sys.Run("no-such-command-cesia") then result.MapErr(it.Kind))

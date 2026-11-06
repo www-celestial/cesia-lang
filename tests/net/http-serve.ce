@@ -1,8 +1,13 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/text
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = {Status: 200, Body: "$(r.Method) $(r.Path) $(r.Query) $(r.Headers[2].Value)"}
 
 defn exchange(c, request)
@@ -16,9 +21,9 @@ defn client()
   first = exchange(c, request)?
   second = exchange(c, request)?
   net.Close(c)
-  Ok([first, second])
+  result.Ok([first, second])
 end
 
-Spawn(() -> http.Serve(handle, port = 18090))
+fiber.Spawn(() -> http.Serve(handle, port = 18090))
 sys.Sleep(0)
-Print(client() then MapOk(xs -> Map(t -> Replace(crlf, "|", t), xs)))
+io.Print(client() then result.MapOk(xs -> list.Map(t -> text.Replace(crlf, "|", t), xs)))

@@ -1,2 +1,6 @@
-r = Wait(Spawn(() -> Panic("x")))
-Print(r.Error.File, r.Error.Line)
+use std/bug
+use std/fiber
+use std/io
+
+r = fiber.Wait(fiber.Spawn(() -> bug.Panic("x")))
+io.Print(r.Error.File, r.Error.Line)

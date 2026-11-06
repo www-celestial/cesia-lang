@@ -1,5 +1,5 @@
-private-field-match.ce:2:7: The field or method "key" is private to the package that declares it.
-  2 | Print(match f.New()
-    |       ^
+private-field-match.ce:3:10: The field or method "key" is private to the package that declares it.
+  3 | io.Print(match f.New()
+    |          ^
   A field or a method is public when its first letter is a capital.
 exit 1

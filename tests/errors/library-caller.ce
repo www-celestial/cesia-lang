@@ -1,5 +1,7 @@
+use std/result
+
 (* An error raised inside a library of std shows the line of the program that called it; the trace keeps the library. *)
 defn first(r)
-  Unwrap(r)
+  result.Unwrap(r)
 end
-first(Err("no"))
+first(result.Err("no"))

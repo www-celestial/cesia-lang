@@ -1,7 +1,7 @@
 method-trace-static.ce:2:16: Can't add the number 1 and the text "a".
   2 | Rect.Bad() = 1 + "a"
     |                ^
-  To put a value in a text, write "...$x" or Text(x).
+  To put a value in a text, write "...$x" or value.Text(x).
   in Rect.Bad (method-trace-static.ce:2)
   called from run (method-trace-static.ce:4)
 exit 1

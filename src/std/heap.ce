@@ -1,11 +1,13 @@
 (** A persistent leftist heap: the smallest key comes out first. *)
+use std/dict
+use std/value
 
 Empty() = missing   (** A heap with nothing in it. *)
 (** Is this heap empty?
 
       IsEmpty(Empty()) --> true *)
-IsEmpty(h) = IsMissing(h)
-rank(h) = if IsMissing(h) 0 else h.Rank end
+IsEmpty(h) = value.IsMissing(h)
+rank(h) = if value.IsMissing(h) 0 else h.Rank end
 
 defn node(key, value, a, b)
   if rank(a) >= rank(b)
@@ -17,9 +19,9 @@ end
 
 defn Merge(a, b)
   (** One heap from two. *)
-  if IsMissing(a)
+  if value.IsMissing(a)
     b
-  else if IsMissing(b)
+  else if value.IsMissing(b)
     a
   else if a.Key <= b.Key
     node(a.Key, a.Value, a.Left, Merge(a.Right, b))
@@ -44,11 +46,11 @@ Pop(h) = Merge(h.Left, h.Right)
 defn Items(h)
   (** All the entries as structs with key and value, smallest key first.
 
-        Len(Items(Insert(1, "a", Empty()))) --> 1 *)
-  out = Dict()
-  while not IsMissing(h)
-    out[Len(out) + 1] = Peek(h)
+        value.Len(Items(Insert(1, "a", Empty()))) --> 1 *)
+  out = dict.Dict()
+  while not value.IsMissing(h)
+    out[value.Len(out) + 1] = Peek(h)
     h = Pop(h)
   end
-  Values(out)
+  dict.Values(out)
 end

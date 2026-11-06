@@ -1,3 +1,7 @@
+use std/list
+use std/matrix
+use std/value
+
 isAssignment() = assignment()
 isArgument() = argument()
 isField() = field()
@@ -5,7 +9,7 @@ isCapture() = capture()
 isNested() = nested()
 isPath() = nestedPath()
 isForCopies() = forCopies()
-isReturnKeeps() = Equal(build(3), [1.0, 1.0, 1.0])
+isReturnKeeps() = value.Equal(build(3), [1.0, 1.0, 1.0])
 isDestructure() = destructure() == 3
 
 defn assignment()
@@ -49,17 +53,17 @@ defn nestedPath()
 end
 defn forCopies()
   xs = [1, 2, 3]
-  seen = Zeros(3)
+  seen = matrix.Zeros(3)
   i = 1
   for v in xs
     xs[3] = 100
     seen[i] = v
     i += 1
   end
-  Equal(seen, [1.0, 2.0, 3.0])
+  value.Equal(seen, [1.0, 2.0, 3.0])
 end
 defn build(n)
-  x = Zeros(n)
+  x = matrix.Zeros(n)
   for i in 1..n
     x[i] = 1
   end
@@ -74,37 +78,37 @@ end
 defn returnsSum()
   (** A native returning one of its inputs: the result must stay a logical copy. *)
   s = {A: 1}
-  t = Sum(s)
+  t = list.Sum(s)
   t.A = 99
   s.A == 1 and t.A == 99
 end
 defn returnsMean()
   s = {A: 1}
-  t = Mean(s)
+  t = list.Mean(s)
   t.A = 99
   s.A == 1 and t.A == 99
 end
 defn returnsMin()
   s = {A: 1}
-  t = Min(s)
+  t = list.Min(s)
   t.A = 99
   s.A == 1 and t.A == 99
 end
 defn returnsMax()
   s = {A: 1}
-  t = Max(s)
+  t = list.Max(s)
   t.A = 99
   s.A == 1 and t.A == 99
 end
 defn returnsTranspose()
   s = {A: 1}
-  t = Transpose(s)
+  t = matrix.Transpose(s)
   t.A = 99
   s.A == 1 and t.A == 99
 end
 defn returnsElement()
   xs = [{A: 1}]
-  t = Sum(xs[1])
+  t = list.Sum(xs[1])
   t.A = 99
   xs[1].A == 1 and t.A == 99
 end
@@ -117,9 +121,9 @@ isNativeReturnsElement() = returnsElement()
 
 defn measureKeeps()
   (** Measuring a variable does not copy it: otherwise this loop would become quadratic. *)
-  x = Zeros(2000)
+  x = matrix.Zeros(2000)
   for i in 1..2000
-    x[i] = Len(x) + Sum(x[1..1])
+    x[i] = value.Len(x) + list.Sum(x[1..1])
   end
   x[2000] == 4000
 end

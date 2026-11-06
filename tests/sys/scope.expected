@@ -1,5 +1,5 @@
-scope.ce:2:10: Permission "read" denied for ./data/../secret.
-  2 | Print(sys.Read("./data/../secret"))
-    |          ^
+scope.ce:3:13: Permission "read" denied for ./data/../secret.
+  3 | io.Print(sys.Read("./data/../secret"))
+    |             ^
   Run again with --allow read=./data/../secret, or a folder that holds it.
 exit 1

@@ -2,32 +2,37 @@ use std/web
 use std/net
 use std/sys
 use std/encode
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/text
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 a = web.App()
 a = web.Websocket("/echo", (m, send) -> send("got $m"), a)
-Spawn(() -> web.Serve(a, port = 18202))
+fiber.Spawn(() -> web.Serve(a, port = 18202))
 sys.Sleep(0.05)
 
 defn masked(opcode, textValue)
   (** A frame from a client: always masked. *)
   key = "abcd"
-  "$(FromBytes([128 + opcode, 128 + ByteLength(textValue)]))$key$(XorBytes(key, textValue))"
+  "$(text.FromBytes([128 + opcode, 128 + text.ByteLength(textValue)]))$key$(text.XorBytes(key, textValue))"
 end
 
 defn main()
   c = net.Connect("127.0.0.1", 18202)?
   net.Write(c, "GET /echo HTTP/1.1$(crlf)Host: a$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==$(crlf)$crlf")?
   head = net.Read(c)?
-  Print(Split(crlf, head)[1])
-  Print(Filter(l -> StartsWith("sec-websocket-accept", l), Split(crlf, head)))
+  io.Print(text.Split(crlf, head)[1])
+  io.Print(list.Filter(l -> text.StartsWith("sec-websocket-accept", l), text.Split(crlf, head)))
   net.Write(c, masked(1, "hello"))?
-  Print(Bytes(net.Read(c)?))
+  io.Print(text.Bytes(net.Read(c)?))
   net.Write(c, masked(9, "ping"))?
-  Print(Bytes(net.Read(c)?))
+  io.Print(text.Bytes(net.Read(c)?))
   net.Write(c, masked(8, ""))?
-  Print(Bytes(net.Read(c)?))
-  Ok(missing)
+  io.Print(text.Bytes(net.Read(c)?))
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

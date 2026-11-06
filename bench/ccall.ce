@@ -1,6 +1,9 @@
 (** The cost of a call to a trivial C function. *)
 use std/c
 use std/sys
+use std/io
+use std/math
+use std/result
 
 defn repeatCall(f, n)
   for i in 1..n
@@ -8,9 +11,9 @@ defn repeatCall(f, n)
   end
 end
 
-lib = Unwrap(c.Open("c", version = 6))
-absValue = Unwrap(c.Fn("abs", ["i32"], "i32", lib))
+lib = result.Unwrap(c.Open("c", version = 6))
+absValue = result.Unwrap(c.Fn("abs", ["i32"], "i32", lib))
 n = 10000000
 start = sys.Now()
 repeatCall(absValue, n)
-Print("calls per second: $(Floor(n / (sys.Now() - start)))")
+io.Print("calls per second: $(math.Floor(n / (sys.Now() - start)))")

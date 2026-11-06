@@ -1,4 +1,5 @@
 (** A program out of src/ finds the same packages. *)
 use src/shapes
+use std/io
 
-Print(shapes.Where())
+io.Print(shapes.Where())

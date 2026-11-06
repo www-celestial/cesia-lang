@@ -1,5 +1,5 @@
 tab-accent.ce:2:8: Can't add the text "à" and the number 1.
   2 | 	y = é + 1
     | 	      ^
-  To put a value in a text, write "...$x" or Text(x).
+  To put a value in a text, write "...$x" or value.Text(x).
 exit 1

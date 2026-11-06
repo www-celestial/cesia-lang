@@ -1,4 +1,4 @@
-memory-transpose.ce:2:5: Limit "memory" reached.
-  2 | b = Transpose(a)
-    |     ^
+memory-transpose.ce:5:11: Limit "memory" reached.
+  5 | b = matrix.Transpose(a)
+    |           ^
 exit 1

@@ -1,16 +1,21 @@
 (** Without a library, the same functions give the same answers, more slowly. *)
 use std/num
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/result
 
 n = 33
-m = Zeros(n, n)
+m = matrix.Zeros(n, n)
 for i in 1..n
   for j in 1..n
     m[i, j] = 1.0 / (i + j) + if i == j 2.0 else 0.0 end
   end
 end
-Print(num.Backend())
-x = Unwrap(num.Solve(m, [1.0 for k in 1..n]))
-Print(Max(Abs(Matmul(m, Reshape(x, n, 1)) - 1.0)) < 1e-8)
+io.Print(num.Backend())
+x = result.Unwrap(num.Solve(m, [1.0 for k in 1..n]))
+io.Print(list.Max(math.Abs(matrix.Matmul(m, matrix.Reshape(x, n, 1)) - 1.0)) < 1e-8)
 f = num.Qr(m)
-Print(Max(Abs(Matmul(f.Q, f.R) - m)) < 1e-8)
-Print(num.Det(m) > 0.0)
+io.Print(list.Max(math.Abs(matrix.Matmul(f.Q, f.R) - m)) < 1e-8)
+io.Print(num.Det(m) > 0.0)

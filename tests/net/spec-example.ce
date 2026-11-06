@@ -1,20 +1,24 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
 
 handle(request) = match sys.Read("page.html")
-  Ok(text) -> {Status: 200, Body: text}
-  Err(e) -> {Status: 404, Body: e.Message}
+  result.Ok(text) -> {Status: 200, Body: text}
+  result.Err(e) -> {Status: 404, Body: e.Message}
 end
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 
 defn client()
   c = net.Connect("127.0.0.1", 18096)?
   net.Write(c, "GET / HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
-  net.Read(c) then MapOk(r -> Split(crlf, r))
+  net.Read(c) then result.MapOk(r -> text.Split(crlf, r))
 end
 
-Spawn(() -> http.Serve(handle, port = 18096))
+fiber.Spawn(() -> http.Serve(handle, port = 18096))
 sys.Sleep(0)
-Print(client())
+io.Print(client())

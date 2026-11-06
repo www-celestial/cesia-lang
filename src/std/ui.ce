@@ -1,5 +1,8 @@
 (** The surfaces of a professional tool, as commands for sdl: themes, rectangles, widgets and nodes. Everything here is pure, so
     it needs no window and no permission. Widgets take a look last and give arrays of commands, which a program joins with flatten. *)
+use std/list
+use std/math
+use std/value
 
 (** A dark theme: charcoal surfaces, for long hours. *)
 Dark = {Ground: 0x0E1013, Code: 0x1C1E22, Panel: 0x1C1E22, Header: 0x25282D, Tab: 0x2C3036, Well: 0x131518, Edge: 0x2B2E34, Line: 0x34383F,
@@ -17,21 +20,21 @@ Light = {Ground: 0xEBECF0, Panel: 0xF7F8FA, Header: 0xEBECF0, Tab: 0xFFFFFF, Wel
       Look(Dark, (words, font) -> 7, 16).Height --> 16 *)
 Look(theme, width, height) = {Theme: theme, Width: width, Height: height}
 
-clamp01(x) = Max(0.0, Min(1.0, x))
+clamp01(x) = list.Max(0.0, list.Min(1.0, x))
 
 (** Moves a value towards its goal, at a speed that doesn't depend on the frame rate.
       Ease(1.0, 2.0, 0.0) --> 1.0 *)
-Ease(value, goal, seconds, speed = 22.0) = value + (goal - value) * (1.0 - Exp(-speed * seconds))
+Ease(value, goal, seconds, speed = 22.0) = value + (goal - value) * (1.0 - math.Exp(-speed * seconds))
 
 (** Is a value close enough to its goal to stop moving?
       Rests(1.0, 1.001) --> true *)
-Rests(value, goal) = Abs(value - goal) <= 0.002
+Rests(value, goal) = math.Abs(value - goal) <= 0.002
 
 (** A rectangle made smaller on every side. No size goes below zero.
       Inset(2, {X: 0, Y: 0, Width: 10, Height: 10}).Width --> 6 *)
-Inset(n, rect) = {X: rect.X + n, Y: rect.Y + n, Width: Max(0, rect.Width - 2 * n), Height: Max(0, rect.Height - 2 * n)}
+Inset(n, rect) = {X: rect.X + n, Y: rect.Y + n, Width: list.Max(0, rect.Width - 2 * n), Height: list.Max(0, rect.Height - 2 * n)}
 
-fitSize(wanted, whole) = Max(0, Min(wanted, whole))
+fitSize(wanted, whole) = list.Max(0, list.Min(wanted, whole))
 
 defn Left(w, rect)
   (** Cuts a width off the left of a rectangle: {Part, Rest}. No size goes below zero.
@@ -74,11 +77,11 @@ PinRow = 24        (** The height of the row of each pin of a node, in pixels. *
 
 box(x, y, w, h, color, radius) = {Kind: "box", X: x, Y: y, Width: w, Height: h, Color: color, Radius: radius}
 edge(x, y, w, h, color, radius) = {Kind: "ring", X: x, Y: y, Width: w, Height: h, Color: color, Radius: radius}
-rule(x, y, w, h, color) = {Kind: "rect", X: x, Y: y, Width: Max(0, w), Height: Max(0, h), Color: color}
+rule(x, y, w, h, color) = {Kind: "rect", X: x, Y: y, Width: list.Max(0, w), Height: list.Max(0, h), Color: color}
 label(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color}
 strong(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: color, Font: "strong"}
 icon(shape, x, y, color) = {Kind: "icon", Shape: shape, X: x, Y: y, Color: color}
-middle(look, y, h) = y + Div(h - look.Height, 2)
+middle(look, y, h) = y + math.Div(h - look.Height, 2)
 
 (** The shapes of the tool bar, and the arrow of sections and dropdowns. *)
 Icons = {
@@ -100,7 +103,7 @@ defn Panel(title, rect, look, active = false)
   y = rect.Y
   titleWidth = look.Width(title, "strong")
   mark = if active [box(x + 10, y + 25, titleWidth + 8, 2, th.Accent, 1)] else [] end
-  Concat([box(x, y, rect.Width, rect.Height, th.Panel, 6), edge(x, y, rect.Width, rect.Height, th.Edge, 6), rule(x + 1, y + 26, rect.Width - 2, 1, th.Edge),
+  list.Concat([box(x, y, rect.Width, rect.Height, th.Panel, 6), edge(x, y, rect.Width, rect.Height, th.Edge, 6), rule(x + 1, y + 26, rect.Width - 2, 1, th.Edge),
     strong(x + 14, middle(look, y, 27), title, if active th.Bright else th.Ink end)], mark)
 end
 
@@ -110,7 +113,7 @@ defn MenuBar(items, title, rect, look)
   out = [box(rect.X + rect.Width - 156, rect.Y + 4, 150, 18, th.Header, 4), label(rect.X + rect.Width - 144, middle(look, rect.Y + 4, 18), title, th.Muted)]
   x = rect.X + 12
   for name in items
-    out = Append(label(x, middle(look, rect.Y, rect.Height), name, th.Ink), out)
+    out = list.Append(label(x, middle(look, rect.Y, rect.Height), name, th.Ink), out)
     x = x + look.Width(name, "body") + 22
   end
   out
@@ -122,16 +125,16 @@ defn ToolBar(items, mouse, rect, look)
   out = []
   x = rect.X + 12
   for item in items
-    if IsMissing(item)
-      out = Append(rule(x + 4, rect.Y + 5, 1, 20, th.Line), out)
+    if value.IsMissing(item)
+      out = list.Append(rule(x + 4, rect.Y + 5, 1, 20, th.Line), out)
       x = x + 14
     else
       width = 23 + look.Width(item.Name, "body")
       if Contains(mouse, {X: x - 7, Y: rect.Y, Width: width + 14, Height: rect.Height})
-        out = Append(box(x - 7, rect.Y + 2, width + 14, 28, th.Hover, 6), out)
+        out = list.Append(box(x - 7, rect.Y + 2, width + 14, 28, th.Hover, 6), out)
       end
-      out = Append(icon(item.Shape, x, rect.Y + 8, item.Color), out)
-      out = Append(label(x + 23, middle(look, rect.Y, rect.Height), item.Name, th.Ink), out)
+      out = list.Append(icon(item.Shape, x, rect.Y + 8, item.Color), out)
+      out = list.Append(label(x + 23, middle(look, rect.Y, rect.Height), item.Name, th.Ink), out)
       x = x + width + 22
     end
   end
@@ -150,16 +153,16 @@ Dropdown(words, rect, look) = [box(rect.X, rect.Y, rect.Width, rect.Height, look
 defn TwoDecimals(x)
   (** A number with two decimals.
         TwoDecimals(0.5) --> "0.50" *)
-  n = Div(Floor(x * 100.0 + 0.5), 1)
-  part = Mod(n, 100)
-  "$(Div(n, 100)).$(if part < 10 "0" else "" end)$part"
+  n = math.Div(math.Floor(x * 100.0 + 0.5), 1)
+  part = math.Mod(n, 100)
+  "$(math.Div(n, 100)).$(if part < 10 "0" else "" end)$part"
 end
 
 defn tickInset(distance, radius)
   (** How far a tick stays from the top and the bottom of a slider, at a distance from its end: nothing, except along the round
       corner of that radius. *)
   across = radius - distance
-  if across <= 0.0 0.0 else radius - Sqrt(radius * radius - across * across) end
+  if across <= 0.0 0.0 else radius - math.Sqrt(radius * radius - across * across) end
 end
 
 defn sliderFill(width, rect, th)
@@ -168,9 +171,9 @@ defn sliderFill(width, rect, th)
     return [box(rect.X, rect.Y, width, rect.Height, th.Fill, 4)]
   end
   out = []
-  for k in 0..(Ceil(width) - 1)
+  for k in 0..(math.Ceil(width) - 1)
     inset = tickInset(k * 1.0, 4.0)
-    out = Append(rule(rect.X + k, rect.Y + inset, Min(1.0, width - k), rect.Height - 2.0 * inset, th.Fill), out)
+    out = list.Append(rule(rect.X + k, rect.Y + inset, list.Min(1.0, width - k), rect.Height - 2.0 * inset, th.Fill), out)
   end
   out
 end
@@ -180,16 +183,16 @@ defn Slider(value, rect, look)
   th = look.Theme
   shown = TwoDecimals(value)
   fillWidth = rect.Width * clamp01(value)
-  tick = Max(0.0, Min(rect.Width - 2.0, fillWidth - 1.0))
-  inset = tickInset(Min(tick, rect.Width - 2.0 - tick), 4.0)
-  Flatten([[box(rect.X, rect.Y, rect.Width, rect.Height, th.Well, 4)], sliderFill(fillWidth, rect, th), [edge(rect.X, rect.Y, rect.Width, rect.Height, th.Edge, 4),
+  tick = list.Max(0.0, list.Min(rect.Width - 2.0, fillWidth - 1.0))
+  inset = tickInset(list.Min(tick, rect.Width - 2.0 - tick), 4.0)
+  list.Flatten([[box(rect.X, rect.Y, rect.Width, rect.Height, th.Well, 4)], sliderFill(fillWidth, rect, th), [edge(rect.X, rect.Y, rect.Width, rect.Height, th.Edge, 4),
     rule(rect.X + tick, rect.Y + inset, 2, rect.Height - 2.0 * inset, th.Accent), label(rect.X + rect.Width - 9 - look.Width(shown, "body"), middle(look, rect.Y, rect.Height), shown, th.Bright)]])
 end
 
 defn Checkbox(on, rect, look)
   (** A square, with its mark if on. *)
   th = look.Theme
-  y = rect.Y + Div(rect.Height - 16, 2)
+  y = rect.Y + math.Div(rect.Height - 16, 2)
   if on
     [box(rect.X, y, 16, 16, th.Accent, 4), icon(Icons.Apply, rect.X, y, 0xFFFFFF)]
   else
@@ -200,19 +203,19 @@ end
 defn Swatch(color, words, rect, look)
   (** A square of color, and its value in a field. *)
   rest = Left(28, rect).Rest
-  Concat([box(rect.X, rect.Y, rect.Height, rect.Height, color, 4), edge(rect.X, rect.Y, rect.Height, rect.Height, look.Theme.Edge, 4)], Field(words, rest, look))
+  list.Concat([box(rect.X, rect.Y, rect.Height, rect.Height, color, 4), edge(rect.X, rect.Y, rect.Height, rect.Height, look.Theme.Edge, 4)], Field(words, rest, look))
 end
 
-headersUpTo(k, items) = Len(Filter(it.Header, Take(k, items)))
+headersUpTo(k, items) = value.Len(list.Filter(it.Header, list.Take(k, items)))
 
 (** The y of row k of a list, with a gap above each header but the first. *)
-ListRow(k, items, rect) = rect.Y + (k - 1) * 22 + 7 * Max(0, headersUpTo(k, items) - 1)
+ListRow(k, items, rect) = rect.Y + (k - 1) * 22 + 7 * list.Max(0, headersUpTo(k, items) - 1)
 
 defn RowAt(y, items, rect)
   (** The row of a list nearest to a height, that isn't a header, or 0. *)
   best = 0
-  for k in 1..Len(items)
-    if not items[k].Header and (best == 0 or Abs(ListRow(k, items, rect) + 11 - y) < Abs(ListRow(best, items, rect) + 11 - y))
+  for k in 1..value.Len(items)
+    if not items[k].Header and (best == 0 or math.Abs(ListRow(k, items, rect) + 11 - y) < math.Abs(ListRow(best, items, rect) + 11 - y))
       best = k
     end
   end
@@ -223,18 +226,18 @@ defn List(items, picked, hover, rect, look)
   (** Rows and section headers, each {Name, Header}. picked is an index or 0. hover is a height or missing, so that it can ease. *)
   th = look.Theme
   out = []
-  if not IsMissing(hover) and Len(items) > 0
-    out = Append(box(rect.X + 2, hover, rect.Width - 4, 22, th.Hover, 4), out)
+  if not value.IsMissing(hover) and value.Len(items) > 0
+    out = list.Append(box(rect.X + 2, hover, rect.Width - 4, 22, th.Hover, 4), out)
   end
   if picked > 0
-    out = Append(box(rect.X + 2, ListRow(picked, items, rect), rect.Width - 4, 22, th.Picked, 4), out)
+    out = list.Append(box(rect.X + 2, ListRow(picked, items, rect), rect.Width - 4, 22, th.Picked, 4), out)
   end
-  for k in 1..Len(items)
+  for k in 1..value.Len(items)
     y = ListRow(k, items, rect)
     if items[k].Header
-      out = Concat(out, Section(items[k].Name, {X: rect.X, Y: y, Width: rect.Width, Height: 22}, look))
+      out = list.Concat(out, Section(items[k].Name, {X: rect.X, Y: y, Width: rect.Width, Height: 22}, look))
     else
-      out = Append(label(rect.X + 18, middle(look, y, 22), items[k].Name, th.Ink), out)
+      out = list.Append(label(rect.X + 18, middle(look, y, 22), items[k].Name, th.Ink), out)
     end
   end
   out
@@ -247,13 +250,13 @@ defn Code(lines, marked, rect, look)
   th = look.Theme
   cw = look.Width("M", "code")
   out = if marked > 0 [box(rect.X + 4, rect.Y + 3 + (marked - 1) * 19, rect.Width - 8, 19, th.Hover, 4)] else [] end
-  for k in 1..Len(lines)
+  for k in 1..value.Len(lines)
     y = rect.Y + 4 + (k - 1) * 19
-    out = Append(codeText(rect.X + 46 - Len("$k") * cw, y, "$k", th.Faint), out)
+    out = list.Append(codeText(rect.X + 46 - value.Len("$k") * cw, y, "$k", th.Faint), out)
     x = rect.X + 62
     for token in lines[k]
-      out = Append(codeText(x, y, token[2], th.Syntax[token[1]]), out)
-      x = x + Len(token[2]) * cw
+      out = list.Append(codeText(x, y, token[2], th.Syntax[token[1]]), out)
+      x = x + value.Len(token[2]) * cw
     end
   end
   out
@@ -263,25 +266,25 @@ defn Grid(rect, look)
   (** The lines of a graph, every 16 pixels, and stronger every 128. *)
   th = look.Theme
   out = []
-  for k in 0..Div(rect.Width, 16)
-    out = Append(rule(rect.X + k * 16, rect.Y, 1, rect.Height, if Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
+  for k in 0..math.Div(rect.Width, 16)
+    out = list.Append(rule(rect.X + k * 16, rect.Y, 1, rect.Height, if math.Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
   end
-  for k in 0..Div(rect.Height, 16)
-    out = Append(rule(rect.X, rect.Y + k * 16, rect.Width, 1, if Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
+  for k in 0..math.Div(rect.Height, 16)
+    out = list.Append(rule(rect.X, rect.Y + k * 16, rect.Width, 1, if math.Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
   end
   out
 end
 
 (** The height of a node {X, Y, Width, Title, Color, Inputs, Outputs, Body}. *)
-NodeHeight(n) = TitleHeight + Max(Max(Len(n.Inputs), Len(n.Outputs)) * PinRow + n.Body, TitleHeight) + 6
+NodeHeight(n) = TitleHeight + list.Max(list.Max(value.Len(n.Inputs), value.Len(n.Outputs)) * PinRow + n.Body, TitleHeight) + 6
 
 InputAt(n, k) = {X: n.X * 1.0, Y: n.Y + TitleHeight + (k - 0.5) * PinRow}   (** Where input pin k of a node sits. *)
 
 (** Where output pin k of a node sits, under its body. *)
 OutputAt(n, k) = {X: n.X + n.Width * 1.0, Y: n.Y + TitleHeight + n.Body + (k - 0.5) * PinRow}
 
-inputLinked(index, k, links) = Len(Filter(it.To == index and it.Input == k, links)) > 0
-outputLinked(index, k, links) = Len(Filter(it.From == index and it.Output == k, links)) > 0
+inputLinked(index, k, links) = value.Len(list.Filter(it.To == index and it.Input == k, links)) > 0
+outputLinked(index, k, links) = value.Len(list.Filter(it.From == index and it.Output == k, links)) > 0
 
 defn pin(place, color, linked)
   x = place.X - 5.0
@@ -296,22 +299,22 @@ defn node(index, n, picked, links, look)
   y = n.Y
   out = [{Kind: "shadow", X: x, Y: y, Width: n.Width, Height: h, Alpha: th.Shadow}, box(x, y, n.Width, h, th.Body, 6), {Kind: "fade", X: x, Y: y, Width: n.Width, Height: TitleHeight, Color: n.Color, Radius: 6}, strong(x + 12, middle(look, y, TitleHeight), n.Title, 0xFFFFFF)]
   outline = if index == picked [edge(x - 2, y - 2, n.Width + 4, h + 4, 0xF5A623, 6), edge(x - 1, y - 1, n.Width + 2, h + 2, 0xF5A623, 6)] else [edge(x, y, n.Width, h, th.Edge, 6)] end
-  out = Concat(out, outline)
-  for k in 1..Len(n.Inputs)
+  out = list.Concat(out, outline)
+  for k in 1..value.Len(n.Inputs)
     place = InputAt(n, k)
-    out = Append(pin(place, n.Inputs[k].Color, inputLinked(index, k, links)), out)
-    out = Append(label(x + 13, place.Y - Div(look.Height, 2), n.Inputs[k].Name, th.Ink), out)
+    out = list.Append(pin(place, n.Inputs[k].Color, inputLinked(index, k, links)), out)
+    out = list.Append(label(x + 13, place.Y - math.Div(look.Height, 2), n.Inputs[k].Name, th.Ink), out)
   end
-  for k in 1..Len(n.Outputs)
+  for k in 1..value.Len(n.Outputs)
     place = OutputAt(n, k)
-    out = Append(pin(place, n.Outputs[k].Color, outputLinked(index, k, links)), out)
-    out = Append(label(x + n.Width - 13 - look.Width(n.Outputs[k].Name, "body"), place.Y - Div(look.Height, 2), n.Outputs[k].Name, th.Ink), out)
+    out = list.Append(pin(place, n.Outputs[k].Color, outputLinked(index, k, links)), out)
+    out = list.Append(label(x + n.Width - 13 - look.Width(n.Outputs[k].Name, "body"), place.Y - math.Div(look.Height, 2), n.Outputs[k].Name, th.Ink), out)
   end
   out
 end
 
 (** Nodes with their title bars, pins, labels and shadows. A pin that no link reaches is hollow. picked is an index or 0. *)
-Nodes(items, picked, links, look) = Flatten([node(k, items[k], picked, links, look) for k in 1..Len(items)])
+Nodes(items, picked, links, look) = list.Flatten([node(k, items[k], picked, links, look) for k in 1..value.Len(items)])
 
 (** The curves between pins, for links {From, Output, To, Input, Color}. *)
 Links(items, nodeList, look) = [{Kind: "curves", Items: [curve(link, nodeList) for link in items]}]
@@ -325,7 +328,7 @@ end
 defn NodeAt(point, nodeList)
   (** The index of the top node under a point, or 0. *)
   found = 0
-  for k in 1..Len(nodeList)
+  for k in 1..value.Len(nodeList)
     n = nodeList[k]
     if Contains(point, {X: n.X, Y: n.Y, Width: n.Width, Height: NodeHeight(n)})
       found = k
@@ -338,7 +341,7 @@ defn MoveNode(k, point, grab, area, nodeList)
   (** The nodes with node k moved under a point, where it was held by grab, and kept inside an area. *)
   n = nodeList[k]
   next = nodeList
-  next[k].X = Max(area.X, Min(area.X + area.Width - n.Width, point.X - grab.X))
-  next[k].Y = Max(area.Y, Min(area.Y + area.Height - NodeHeight(n), point.Y - grab.Y))
+  next[k].X = list.Max(area.X, list.Min(area.X + area.Width - n.Width, point.X - grab.X))
+  next[k].Y = list.Max(area.Y, list.Min(area.Y + area.Height - NodeHeight(n), point.Y - grab.Y))
   next
 end

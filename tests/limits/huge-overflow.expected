@@ -1,4 +1,4 @@
-huge-overflow.ce:1:1: Limit "memory" reached.
-  1 | Zeros(4611686018427387903, 4)
-    | ^
+huge-overflow.ce:3:7: Limit "memory" reached.
+  3 | matrix.Zeros(4611686018427387903, 4)
+    |       ^
 exit 1

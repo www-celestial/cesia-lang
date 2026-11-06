@@ -1,5 +1,9 @@
+use std/io
+use std/list
+use std/value
+
 xs = []
 for k in 1..300000
-  xs = Append(k, xs)
+  xs = list.Append(k, xs)
 end
-Print(Len(xs), xs[300000])
+io.Print(value.Len(xs), xs[300000])

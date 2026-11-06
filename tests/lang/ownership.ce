@@ -1,5 +1,10 @@
 (** Calls lend values to functions that only read them, and hand over variables that end with the call. None of it may
     show: what a function does to its arguments stays invisible to the caller. *)
+use std/fiber
+use std/list
+use std/matrix
+use std/result
+use std/value
 
 same(x) = x
 head(s) = s.V
@@ -231,9 +236,9 @@ defn isReplacedDuringATraversal()
   seen = []
   for v in a
     a = touch(a)
-    seen = Concat(seen, [v])
+    seen = list.Concat(seen, [v])
   end
-  Equal(seen, [1, 2]) and a[1] == 9
+  value.Equal(seen, [1, 2]) and a[1] == 9
 end
 
 defn isReplacedInAStruct()
@@ -309,15 +314,15 @@ end
 
 defn isReadInAFiber()
   a = [1, 2]
-  t = Spawn(() -> same(a))
+  t = fiber.Spawn(() -> same(a))
   a[1] = 9
-  b = Unwrap(Wait(t))
+  b = result.Unwrap(fiber.Wait(t))
   b[1] == 1 and a[1] == 9
 end
 
 defn isKeptByReduce()
-  start = Zeros(1, 3)
-  r = Reduce((acc, i) -> touch(acc), start, 1..3)
+  start = matrix.Zeros(1, 3)
+  r = list.Reduce((acc, i) -> touch(acc), start, 1..3)
   start[1] == 0.0 and r[1] == 9.0
 end
 

@@ -3,4 +3,5 @@ defn f(x)
   y * 2
 end
 z = f(1)
-Print(z)
+io.Print(z)
+use std/io

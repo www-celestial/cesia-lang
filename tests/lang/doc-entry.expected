@@ -10,7 +10,7 @@ The next year.
 date.Date.Parse | std/date | Date.Parse(text) | false std/date.ce 5
 A date from its text.
 [] []
-NewNative | prelude | NewNative(x, y) | true std/natives.ce 1
+list.NewNative | std/list | list.NewNative(x, y) | true std/natives.ce 1
 A native documented by a block whose first line is its signature.
-[] ["Len(\"abc\") --> 3"]
+[] ["value.Len(\"abc\") --> 3"]
 exit 0

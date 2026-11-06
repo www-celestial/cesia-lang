@@ -1,5 +1,5 @@
 2
-type-param.ce:5:17: Rect.Scaled: by must be a Number, found a Text.
-  5 | Print(Rect(1, 2).Scaled("a"))
-    |                 ^
+type-param.ce:7:20: Rect.Scaled: by must be a Number, found a Text.
+  7 | io.Print(Rect(1, 2).Scaled("a"))
+    |                    ^
 exit 1

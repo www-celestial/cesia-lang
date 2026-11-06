@@ -1,1 +1,4 @@
-Print(Zeros(2, nope = 3))
+use std/io
+use std/matrix
+
+io.Print(matrix.Zeros(2, nope = 3))

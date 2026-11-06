@@ -1,31 +1,31 @@
 interpreted:
-memory-frames.ce:7:9: Limit "memory" reached.
-  7 |     1 + down(n - 1)
+memory-frames.ce:9:9: Limit "memory" reached.
+  9 |     1 + down(n - 1)
     |         ^
-  in down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
+  in down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
   ... and 2720 more
 native:
-memory-frames.ce:7:9: Limit "memory" reached.
-  7 |     1 + down(n - 1)
+memory-frames.ce:9:9: Limit "memory" reached.
+  9 |     1 + down(n - 1)
     |         ^
-  in down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
-  called from down (memory-frames.ce:7)
+  in down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
+  called from down (memory-frames.ce:9)
   ... and 2720 more
 exit 1

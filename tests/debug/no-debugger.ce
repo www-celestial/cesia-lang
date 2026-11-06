@@ -1,1 +1,2 @@
-Print(1)
+io.Print(1)
+use std/io

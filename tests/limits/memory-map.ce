@@ -1,3 +1,7 @@
-a = Zeros(1500000)
-b = Sqrt(a)
-Print(b[1])
+use std/io
+use std/math
+use std/matrix
+
+a = matrix.Zeros(1500000)
+b = math.Sqrt(a)
+io.Print(b[1])

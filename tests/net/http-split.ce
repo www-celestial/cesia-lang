@@ -1,16 +1,21 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
+use std/value
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 request = "GET /x HTTP/1.1$(crlf)Host: a$(crlf)$crlf"
 handle(r) = {Status: 200, Body: r.Path}
 
-count(text) = Len(Split("HTTP/1.1", text)) - 1
+count(s) = value.Len(text.Split("HTTP/1.1", s)) - 1
 
 defn readUntil(c, wanted, got)
   if count(got) >= wanted
-    Ok(got)
+    result.Ok(got)
   else
     more = net.Read(c)?
     readUntil(c, wanted, "$got$more")
@@ -21,13 +26,13 @@ defn client()
   c = net.Connect("127.0.0.1", 18091)?
   net.Write(c, "GET /x HT")?
   sys.Sleep(0.01)
-  net.Write(c, Slice(10, Len(request), request))?
+  net.Write(c, text.Slice(10, value.Len(request), request))?
   first = readUntil(c, 1, "")?
   net.Write(c, "$request$request")?
   both = readUntil(c, 2, "")?
-  Ok([count(first), count(both)])
+  result.Ok([count(first), count(both)])
 end
 
-Spawn(() -> http.Serve(handle, port = 18091))
+fiber.Spawn(() -> http.Serve(handle, port = 18091))
 sys.Sleep(0)
-Print(client())
+io.Print(client())

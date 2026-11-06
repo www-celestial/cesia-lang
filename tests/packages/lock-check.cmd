@@ -4,7 +4,7 @@ trap 'rm -rf "$top"' EXIT
 mkdir -p "$top/std/rope" "$top/src" "$top/deps/someone/other/src/bad"
 printf '[project]\nname = "p"\n' > "$top/cesia.toml"
 cp ../../src/std/rope.ce "$top/std/rope/rope.ce"
-printf 'use std/rope\nPrint(rope.Text(rope.Of("as installed")))\n' > "$top/src/main.ce"
+printf 'use std/rope\nuse std/io\nio.Print(rope.Text(rope.Of("as installed")))\n' > "$top/src/main.ce"
 # cesia test leaves deps/ out, as std/: this example would fail.
 printf '(** Bad. *)\nBad = 1   (** Bad.\n\n      Bad --> 2 *)\n' > "$top/deps/someone/other/src/bad/bad.ce"
 cd "$top"

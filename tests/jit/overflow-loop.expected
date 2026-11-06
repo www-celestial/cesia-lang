@@ -1,6 +1,6 @@
-overflow-loop.ce:5:11: The integer result of 4611682335360000001 + 9603840000000 doesn't fit in 63 bits.
-  5 |     x = x + i * 10000000
+overflow-loop.ce:7:11: The integer result of 4611682335360000001 + 9603840000000 doesn't fit in 63 bits.
+  7 |     x = x + i * 10000000
     |           ^
   Integers have 63 bits. To go further, use a float: 1.0 * x.
-  in grow (overflow-loop.ce:5)
+  in grow (overflow-loop.ce:7)
 exit 1

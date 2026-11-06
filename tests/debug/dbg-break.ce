@@ -1,9 +1,10 @@
 use std/debug
 
 defn OnStop(stop)
-  Print("$(stop.File):$(stop.Line) $(stop.Reason)")
+  io.Print("$(stop.File):$(stop.Line) $(stop.Reason)")
   if stop.Reason == "start"
     debug.SetBreak("break.ce", 4)
   end
   "continue"
 end
+use std/io

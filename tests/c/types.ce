@@ -1,7 +1,11 @@
 use std/c
+use std/io
+use std/result
+use std/sys
+use std/value
 
-lib = Unwrap(c.Open(Args[1]))
-bound(name, inputs, output) = Unwrap(c.Fn(name, inputs, output, lib))
+lib = result.Unwrap(c.Open(sys.Args[1]))
+bound(name, inputs, output) = result.Unwrap(c.Fn(name, inputs, output, lib))
 echo(type) = bound("echo_$type", [type], type)
 
 largest = 4611686018427387903
@@ -12,17 +16,17 @@ limits = [
 
 for limit in limits
   f = echo(limit[1])
-  Print(limit[1], f(limit[2]), f(limit[3]))
+  io.Print(limit[1], f(limit[2]), f(limit[3]))
 end
 
-Print(echo("i32")(-1))
-Print(echo("f32")(0.1))
-Print(echo("f32")(2))
-Print(echo("f64")(0.1))
-Print(bound("float_mix", ["f32", "f64", "f32", "i32", "f64", "f32"], "f32")(0.5, 0.25, 1.5, 2, 3.0, 0.25))
-Print(bound("text_constant", [], "text")())
-Print(IsMissing(bound("text_null", [], "text")()))
-Print(IsMissing(bound("ptr_null", [], "ptr")()))
-Print(IsMissing(bound("nothing", [], "void")()))
-Print(echo("bool")(true), echo("bool")(false))
-Print(IsMissing(echo("ptr")(missing)))
+io.Print(echo("i32")(-1))
+io.Print(echo("f32")(0.1))
+io.Print(echo("f32")(2))
+io.Print(echo("f64")(0.1))
+io.Print(bound("float_mix", ["f32", "f64", "f32", "i32", "f64", "f32"], "f32")(0.5, 0.25, 1.5, 2, 3.0, 0.25))
+io.Print(bound("text_constant", [], "text")())
+io.Print(value.IsMissing(bound("text_null", [], "text")()))
+io.Print(value.IsMissing(bound("ptr_null", [], "ptr")()))
+io.Print(value.IsMissing(bound("nothing", [], "void")()))
+io.Print(echo("bool")(true), echo("bool")(false))
+io.Print(value.IsMissing(echo("ptr")(missing)))

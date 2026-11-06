@@ -1,5 +1,5 @@
-question-file.ce:1:10: ? can only be used inside a function, which it leaves with the Err.
-  1 | x = Ok(1)?
-    |          ^
-  At the top of a file, write Unwrap(...) where an Err would be a bug, or match on the result.
+question-file.ce:3:17: ? can only be used inside a function, which it leaves with the Err.
+  3 | x = result.Ok(1)?
+    |                 ^
+  At the top of a file, write result.Unwrap(...) where an Err would be a bug, or match on the result.
 exit 1

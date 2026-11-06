@@ -1,6 +1,9 @@
 (** A chunked response cut anywhere is an Err of the client, never a panic. *)
 use std/http
 use std/net
+use std/fiber
+use std/io
+use std/result
 
 crlf = "\r\n"
 head = "HTTP/1.1 200 OK$(crlf)transfer-encoding: chunked$crlf$crlf"
@@ -10,21 +13,21 @@ defn serveOne(listener, reply)
   net.Read(c)?
   net.Write(c, reply)?
   net.Close(c)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn ask(reply)
   listener = net.Listen(18211)?
-  server = Spawn(() -> serveOne(listener, reply))
+  server = fiber.Spawn(() -> serveOne(listener, reply))
   got = http.Get("http://127.0.0.1:18211/")
-  Wait(server)
+  fiber.Wait(server)
   net.Close(listener)
   got
 end
 
-shown(r) = r then MapOk(it.Body) then MapErr(it.Message)
+shown(r) = r then result.MapOk(it.Body) then result.MapErr(it.Message)
 
-Print(shown(ask("$(head)5$(crlf)hello$(crlf)0$crlf$crlf")))
-Print(shown(ask("$(head)5$(crlf)hello")))
-Print(shown(ask("$(head)5$(crlf)hello$crlf")))
-Print(shown(ask(head)))
+io.Print(shown(ask("$(head)5$(crlf)hello$(crlf)0$crlf$crlf")))
+io.Print(shown(ask("$(head)5$(crlf)hello")))
+io.Print(shown(ask("$(head)5$(crlf)hello$crlf")))
+io.Print(shown(ask(head)))

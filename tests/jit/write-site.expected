@@ -1,6 +1,6 @@
-write-site.ce:4:6: Index 4 is outside this array of 3 elements.
-  4 |     a[i] = 1.0
+write-site.ce:7:6: Index 4 is outside this array of 3 elements.
+  7 |     a[i] = 1.0
     |      ^
-  in wr (write-site.ce:4)
-  called from go (write-site.ce:9)
+  in wr (write-site.ce:7)
+  called from go (write-site.ce:12)
 exit 1

@@ -1,4 +1,4 @@
-dict-key.ce:1:7: A dictionary key is a number or a text, not an array.
-  1 | Print(Put([1], 2, Dict()))
-    |       ^
+dict-key.ce:4:14: A dictionary key is a number or a text, not an array.
+  4 | io.Print(dict.Put([1], 2, dict.Dict()))
+    |              ^
 exit 1

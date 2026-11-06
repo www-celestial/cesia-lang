@@ -6,9 +6,9 @@ false
 false
 false
 true
-header-bytes.ce:15:27: IsHeader needs a number of bytes within the text, not the number 9.
-  15 | Print(Wait(Spawn(() -> net.IsHeader(9, "a"))) then MapErr(it.Kind))
-     |                           ^
-  in <anonymous> (header-bytes.ce:15)
+header-bytes.ce:21:42: IsHeader needs a number of bytes within the text, not the number 9.
+  21 | io.Print(fiber.Wait(fiber.Spawn(() -> net.IsHeader(9, "a"))) then result.MapErr(it.Kind))
+     |                                          ^
+  in <anonymous> (header-bytes.ce:21)
 Err(Error = "type")
 exit 0

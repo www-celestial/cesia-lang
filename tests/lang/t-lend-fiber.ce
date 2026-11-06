@@ -1,5 +1,8 @@
 (** A module variable can be reached by two fibers: a function that sleeps on it keeps the value it was given. *)
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 cell = [1, 2]
 
@@ -10,8 +13,8 @@ end
 
 readsCell() = hold(cell)
 
-t = Spawn(readsCell)
+t = fiber.Spawn(readsCell)
 sys.Sleep(0.005)
 cell[1] = 9
-Print(Unwrap(Wait(t)))
-Print(cell[1])
+io.Print(result.Unwrap(fiber.Wait(t)))
+io.Print(cell[1])

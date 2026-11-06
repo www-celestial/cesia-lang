@@ -1,21 +1,24 @@
 (** A command-line debugger, written on the debug API.
     Commands: break F L, clear F L, continue, step, next, out, print NAME, where. *)
 use std/debug
+use std/io
+use std/list
+use std/value
 
 defn ShowVariable(frame, name)
   (** Prints the value of a variable of a frame, or says that there is none. *)
-  found = Filter(it.Name == name, frame.Vars)
-  if Len(found) == 0
-    Print("No variable \"$name\".")
+  found = list.Filter(it.Name == name, frame.Vars)
+  if value.Len(found) == 0
+    io.Print("No variable \"$name\".")
   else
-    Print("$name = $(found[1].Value)")
+    io.Print("$name = $(found[1].Value)")
   end
 end
 
 defn ShowFrames(stop)
   (** Prints the frames of a stop, from the innermost. *)
   for f in stop.Frames
-    Print("  $(f.Function) ($(f.File):$(f.Line))")
+    io.Print("  $(f.Function) ($(f.File):$(f.Line))")
   end
 end
 
@@ -26,33 +29,33 @@ end
 
 defn RunCommand(stop, w)
   (** Runs one command (a list of words) that doesn't resume the program. *)
-  n = Len(w)
+  n = value.Len(w)
   if n == 3 and w[1] == "break"
     debug.SetBreak(w[2], w[3])
-    Print("breakpoint $(w[2]):$(w[3])")
+    io.Print("breakpoint $(w[2]):$(w[3])")
   else if n == 3 and w[1] == "clear"
     debug.ClearBreak(w[2], w[3])
-    Print("cleared $(w[2]):$(w[3])")
+    io.Print("cleared $(w[2]):$(w[3])")
   else if n == 2 and w[1] == "print"
     ShowVariable(stop.Frames[1], w[2])
   else if n == 1 and w[1] == "where"
     ShowFrames(stop)
   else
-    Print("Commands: break F L, clear F L, continue, step, next, out, print NAME, where.")
+    io.Print("Commands: break F L, clear F L, continue, step, next, out, print NAME, where.")
   end
 end
 
 defn OnStop(stop)
   (** Reads and runs commands at a stop, until one resumes the program: gives its word. *)
-  Print("stopped at $(stop.File):$(stop.Line) ($(stop.Reason))")
+  io.Print("stopped at $(stop.File):$(stop.Line) ($(stop.Reason))")
   while true
     line = debug.ReadLine()
-    if IsMissing(line)
+    if value.IsMissing(line)
       return "continue"
     end
     w = debug.Words(line)
-    if Len(w) > 0
-      if Len(w) == 1 and IsResume(w[1])
+    if value.Len(w) > 0
+      if value.Len(w) == 1 and IsResume(w[1])
         return w[1]
       end
       RunCommand(stop, w)

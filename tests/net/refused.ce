@@ -1,2 +1,4 @@
 use std/net
-Print(net.Connect("127.0.0.1", 18084) then MapErr(it.Kind))
+use std/io
+use std/result
+io.Print(net.Connect("127.0.0.1", 18084) then result.MapErr(it.Kind))

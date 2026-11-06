@@ -8,4 +8,5 @@ defn run()
   a = touch(a)
   a[1]
 end
-Print(run())
+io.Print(run())
+use std/io

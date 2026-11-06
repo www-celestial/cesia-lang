@@ -1,13 +1,19 @@
 use std/c
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text
 
-lib = Unwrap(c.Open(Args[1]))
-bound(name, inputs, output) = Unwrap(c.Fn(name, inputs, output, lib))
+lib = result.Unwrap(c.Open(sys.Args[1]))
+bound(name, inputs, output) = result.Unwrap(c.Fn(name, inputs, output, lib))
 echo(type) = bound("echo_$type", [type], type)
 
 defn message(f)
-  match Wait(Spawn(f))
-    Err(e) -> Print(e.Message)
-    Ok(v) -> Print("no panic: $v")
+  match fiber.Wait(fiber.Spawn(f))
+    result.Err(e) -> io.Print(e.Message)
+    result.Ok(v) -> io.Print("no panic: $v")
   end
 end
 
@@ -21,9 +27,9 @@ message(() -> echo("f64")("x"))
 message(() -> echo("bool")(1))
 message(() -> c.Fn("x", ["i33"], "i32", lib))
 message(() -> c.Fn("x", ["void"], "i32", lib))
-message(() -> c.Fn("x", Fill("i32", 61), "i32", lib))
+message(() -> c.Fn("x", list.Fill("i32", 61), "i32", lib))
 message(() -> c.Fn("x", [], "i32", 5))
-message(() -> lengthOf("a$(Char(0))b"))
+message(() -> lengthOf("a$(text.Char(0))b"))
 message(() -> lengthOf(5))
 message(() -> echo("ptr")(5))
 message(() -> bound("huge_u64", [], "u64")())

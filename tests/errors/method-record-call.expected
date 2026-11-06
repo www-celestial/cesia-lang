@@ -1,4 +1,4 @@
-method-record-call.ce:2:8: This dictionary has no key: the text "Area".
-  2 | Print(x.Area())
-    |        ^
+method-record-call.ce:4:11: This dictionary has no key: the text "Area".
+  4 | io.Print(x.Area())
+    |           ^
 exit 1

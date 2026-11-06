@@ -1,4 +1,4 @@
-steps-mask.ce:4:8: Limit "steps" reached.
-  4 |   b = a[m]
+steps-mask.ce:6:8: Limit "steps" reached.
+  6 |   b = a[m]
     |        ^
 exit 1

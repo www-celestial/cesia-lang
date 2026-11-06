@@ -1,3 +1,6 @@
-a = Zeros(1500000)
+use std/io
+use std/matrix
+
+a = matrix.Zeros(1500000)
 b = a[1..1500000]
-Print(b[1])
+io.Print(b[1])

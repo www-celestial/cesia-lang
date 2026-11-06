@@ -2,6 +2,9 @@
     handshake. Run with --allow ffi=ssl,ffi=crypto. *)
 use std/c
 use std/net
+use std/list
+use std/result
+use std/text
 
 chunk = 65536
 
@@ -9,7 +12,7 @@ defn Open()
   (** Loads OpenSSL: an Ok of the api that server and client take, or an Err. *)
   ssl = c.Open("ssl", version = 3)?
   lib = c.Open("crypto", version = 3)?
-  Ok({
+  result.Ok({
     ServerMethod: c.Fn("TLS_server_method", [], "ptr", ssl)?,
     ClientMethod: c.Fn("TLS_client_method", [], "ptr", ssl)?,
     CtxNew: c.Fn("SSL_CTX_new", ["ptr"], "ptr", ssl)?,
@@ -37,7 +40,7 @@ defn Open()
   })
 end
 
-failed(message) = Err({Kind: "tls", Message: message})
+failed(message) = result.Err({Kind: "tls", Message: message})
 
 defn link(api, ctx, socket)
   (** The state of one connection: its handles are C objects, so a copy of this value is the same connection. *)
@@ -55,19 +58,19 @@ defn flush(t)
     net.Write(t.Socket, c.Load(0, n, t.Block))?
     n = t.Api.BioRead(t.Outgoing, t.Block, chunk)
   end
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn feed(t)
   (** Gives OpenSSL what the other side sent. False at the end of the connection. *)
   got = net.Read(t.Socket)?
-  n = ByteLength(got)
+  n = text.ByteLength(got)
   if n == 0
-    return Ok(false)
+    return result.Ok(false)
   end
   c.Store(got, 0, t.Block)
   t.Api.BioWrite(t.Incoming, t.Block, n)
-  Ok(true)
+  result.Ok(true)
 end
 
 defn shake(t)
@@ -76,7 +79,7 @@ defn shake(t)
     r = t.Api.Handshake(t.Ssl)
     flush(t)?
     if r == 1
-      return Ok(missing)
+      return result.Ok(missing)
     end
     e = t.Api.GetError(t.Ssl, r)
     if e != 2
@@ -93,11 +96,11 @@ defn read(t)
     t.Api.ClearErrors()
     n = t.Api.SslRead(t.Ssl, t.Block, chunk)
     if n > 0
-      return Ok(c.Load(0, n, t.Block))
+      return result.Ok(c.Load(0, n, t.Block))
     end
     e = t.Api.GetError(t.Ssl, n)
     if e == 6
-      return Ok("")
+      return result.Ok("")
     end
     if e != 2
       return failed("A TLS read failed.")
@@ -110,20 +113,20 @@ defn read(t)
 end
 
 defn write(t, s)
-  size = ByteLength(s)
+  size = text.ByteLength(s)
   at = 0
   while at < size
-    piece = ByteSlice(at + 1, Min(at + chunk, size), s)
+    piece = text.ByteSlice(at + 1, list.Min(at + chunk, size), s)
     c.Store(piece, 0, t.Block)
     t.Api.ClearErrors()
-    n = t.Api.SslWrite(t.Ssl, t.Block, ByteLength(piece))
+    n = t.Api.SslWrite(t.Ssl, t.Block, text.ByteLength(piece))
     if n <= 0
       return failed("A TLS write failed.")
     end
     at += n
     flush(t)?
   end
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn release(t)
@@ -142,11 +145,11 @@ end
 defn shaken(t)
   (** The handshake, and what it took back if it fails: a client that talks nonsense leaves nothing behind. *)
   r = shake(t)
-  if IsErr(r)
+  if result.IsErr(r)
     release(t)
     r
   else
-    Ok(io(t))
+    result.Ok(io(t))
   end
 end
 
@@ -163,7 +166,7 @@ defn Server(certificate, key, api)
   if api.UseKey(ctx, key, 1) != 1
     return failed("Can't read the key $key.")
   end
-  Ok(socket -> accept(api, ctx, socket))
+  result.Ok(socket -> accept(api, ctx, socket))
 end
 
 defn accept(api, ctx, socket)

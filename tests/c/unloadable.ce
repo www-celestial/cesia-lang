@@ -1,4 +1,8 @@
 (** A library that is there but can't load says why, instead of being called absent. *)
 use std/c
+use std/io
+use std/result
+use std/sys
+use std/text
 
-Print(c.Open(Args[1]) then MapErr(e -> Contains("cesia_nope", e.Message)))
+io.Print(c.Open(sys.Args[1]) then result.MapErr(e -> text.Contains("cesia_nope", e.Message)))

@@ -1,9 +1,12 @@
 use std/sys
+use std/fiber
+use std/io
+use std/list
 
 defn nap(seconds, label)
   sys.Sleep(seconds)
-  Print(label)
+  io.Print(label)
 end
 start = sys.Now()
-[Spawn(() -> nap(0.03, "slow")), Spawn(() -> nap(0.01, "fast"))] then Map(Wait)
-Print(sys.Now() - start < 0.2)
+[fiber.Spawn(() -> nap(0.03, "slow")), fiber.Spawn(() -> nap(0.01, "fast"))] then list.Map(fiber.Wait)
+io.Print(sys.Now() - start < 0.2)

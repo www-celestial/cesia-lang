@@ -1,3 +1,5 @@
 use std/sys
-Print(sys.Run("true") then MapErr(it.Kind))
-Print(IsOk(sys.Read("run-no-fds.ce")))
+use std/io
+use std/result
+io.Print(sys.Run("true") then result.MapErr(it.Kind))
+io.Print(result.IsOk(sys.Read("run-no-fds.ce")))

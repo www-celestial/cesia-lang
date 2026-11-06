@@ -1,4 +1,5 @@
 use tests/errors/meth/far as f
+use std/io
 x = {hidden: 1}
-Print(x.hidden)
-Print(f.New().hidden())
+io.Print(x.hidden)
+io.Print(f.New().hidden())

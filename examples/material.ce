@@ -2,6 +2,8 @@
     Run from the root of the repository: cesia run --allow ffi=SDL3,ffi=SDL3_ttf examples/material.ce *)
 use std/sdl
 use examples/scene as scene
+use std/io
+use std/result
 
 defn opened()
   first = sdl.Open("Cesia", 1280, 720, "examples/fonts/AdwaitaSans-Regular.ttf", size = 13, light = true)?
@@ -14,7 +16,7 @@ defn main()
   begun = scene.Start(opened()?)?
   sdl.Run(begun.State, scene.Update, scene.View, begun.Window, moving = scene.Moving)
   sdl.Close(begun.Window)
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

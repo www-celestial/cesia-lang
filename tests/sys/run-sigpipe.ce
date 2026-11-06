@@ -1,2 +1,4 @@
 use std/sys
-Print(sys.Run("sh", args = ["-c", "yes | head -1"]) then MapOk(it.Err))
+use std/io
+use std/result
+io.Print(sys.Run("sh", args = ["-c", "yes | head -1"]) then result.MapOk(it.Err))

@@ -1,4 +1,4 @@
-struct-field.ce:2:8: This dictionary has no key: the text "B".
-  2 | Print(s.B)
-    |        ^
+struct-field.ce:4:11: This dictionary has no key: the text "B".
+  4 | io.Print(s.B)
+    |           ^
 exit 1

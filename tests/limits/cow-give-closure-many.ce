@@ -1,6 +1,9 @@
 (** Four arguments: past the small dynamic call. *)
+use std/io
+use std/matrix
+
 defn run(n, f)
-  x = Zeros(n)
+  x = matrix.Zeros(n)
   for i in 1..n
     x = f(x, i, 1, 2)
   end
@@ -11,4 +14,4 @@ defn writeOne(xs, i, a, b)
   xs[i] = 1.0
   xs
 end
-Print(run(100000, writeOne))
+io.Print(run(100000, writeOne))

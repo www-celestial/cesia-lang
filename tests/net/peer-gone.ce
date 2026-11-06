@@ -1,9 +1,12 @@
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 defn keepWriting(c, n)
   if n == 0
-    Ok("never failed")
+    result.Ok("never failed")
   else
     net.Write(c, "hello")?
     sys.Sleep(0.001)
@@ -11,9 +14,9 @@ defn keepWriting(c, n)
   end
 end
 
-listener = Unwrap(net.Listen(18082))
-server = Spawn(() -> net.Accept(listener) then AndThen(c -> keepWriting(c, 200)))
+listener = result.Unwrap(net.Listen(18082))
+server = fiber.Spawn(() -> net.Accept(listener) then result.AndThen(c -> keepWriting(c, 200)))
 sys.Sleep(0)
-net.Close(Unwrap(net.Connect("127.0.0.1", 18082)))
-Print(Unwrap(Wait(server)) then MapErr(it.Kind))
-Print("alive")
+net.Close(result.Unwrap(net.Connect("127.0.0.1", 18082)))
+io.Print(result.Unwrap(fiber.Wait(server)) then result.MapErr(it.Kind))
+io.Print("alive")

@@ -2,32 +2,40 @@
 use std/columns
 use std/frame
 use std/csv
+use std/dict
+use std/fiber
+use std/list
+use std/math
+use std/matrix
+use std/result
+use std/text
+use std/value
 
 defn fails(f, kind)
-  (Wait(Spawn(f)) then MapErr(it.Kind)) == Err(kind)
+  (fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Kind)) == result.Err(kind)
 end
 
 isIntsAreTyped() = columns.Kind([1, 2, 3]) == "int" and columns.Kind(1..3) == "int" and columns.Kind([k * 2 for k in 1..4]) == "int"
 isFloatsAreTyped() = columns.Kind([1.0, 2.0]) == "float"
 isMixedStaysGeneral() = columns.Kind([1, 2.5]) == "value" and columns.Kind([1, "a"]) == "value" and columns.Kind([]) == "value"
-isFillIsTyped() = columns.Kind(Fill(0, 3)) == "int" and Equal(Fill(7, 2), [7, 7])
-isASliceStaysTyped() = columns.Kind((1..5)[2..3]) == "int" and Equal((1..5)[2..3], [2, 3])
+isFillIsTyped() = columns.Kind(list.Fill(0, 3)) == "int" and value.Equal(list.Fill(7, 2), [7, 7])
+isASliceStaysTyped() = columns.Kind((1..5)[2..3]) == "int" and value.Equal((1..5)[2..3], [2, 3])
 
 defn isAMatrixOfInts()
-  m = Reshape(1..6, 2, 3)
-  columns.Kind(m) == "int" and m[2, 3] == 6 and Equal(m[:, 2], Reshape([3, 4], 2, 1)) and Transpose(m)[3, 2] == 6 and columns.Kind(Transpose(m)) == "int"
+  m = matrix.Reshape(1..6, 2, 3)
+  columns.Kind(m) == "int" and m[2, 3] == 6 and value.Equal(m[:, 2], matrix.Reshape([3, 4], 2, 1)) and matrix.Transpose(m)[3, 2] == 6 and columns.Kind(matrix.Transpose(m)) == "int"
 end
 
 defn isWriteAnInt()
   xs = [1, 2, 3]
   xs[2] = 9
-  Equal(xs, [1, 9, 3]) and columns.Kind(xs) == "int"
+  value.Equal(xs, [1, 9, 3]) and columns.Kind(xs) == "int"
 end
 
 defn isWriteAFloatInInts()
   xs = [1, 2, 3]
   xs[2] = 2.5
-  Equal(xs, [1, 2.5, 3]) and IsInt(xs[1]) and IsFloat(xs[2])
+  value.Equal(xs, [1, 2.5, 3]) and value.IsInt(xs[1]) and value.IsFloat(xs[2])
 end
 
 defn isWriteATextInInts()
@@ -43,42 +51,42 @@ defn isACopyIsAValue()
   xs[1] == 1 and ys[1] == 9
 end
 
-isEqualAcrossStorages() = Equal([1, 2], 1..2) and not Equal([1, 2], [1, 3]) and Equal([1, 2], [1.0, 2.0]) and Equal(Reshape(1..4, 2, 2), Reshape([1, 2, 3, 4], 2, 2))
-isShow() = "$([1, 2])" == "[1, 2]" and "$(Reshape(1..4, 2, 2))" == "[1 3; 2 4]"
+isEqualAcrossStorages() = value.Equal([1, 2], 1..2) and not value.Equal([1, 2], [1, 3]) and value.Equal([1, 2], [1.0, 2.0]) and value.Equal(matrix.Reshape(1..4, 2, 2), matrix.Reshape([1, 2, 3, 4], 2, 2))
+isShow() = "$([1, 2])" == "[1, 2]" and "$(matrix.Reshape(1..4, 2, 2))" == "[1 3; 2 4]"
 isIn() = 2 in [1, 2] and not (3 in [1, 2]) and 1.0 in [1, 2]
-isSumInts() = Sum(1..10) == 55 and IsInt(Sum(1..10))
-isSumOverflows() = fails(() -> Sum([4611686018427387903, 1]), "math")
-isMeanInts() = Mean([1, 2, 3]) == 2.0
-isArithmetic() = Equal([1, 2] + [3, 4], [4, 6]) and columns.Kind([1, 2] + 1) == "int" and Equal([1, 2] * 2.5, [2.5, 5.0])
-isLoop() = Reduce((a, x) -> a + x, 0, [x for x in 1..4]) == 10
-isPushKeepsValues() = Equal(Append(3, [1, 2]), [1, 2, 3]) and Equal(Concat([1], [2.5]), [1, 2.5]) and Equal(Reverse(1..3), [3, 2, 1])
+isSumInts() = list.Sum(1..10) == 55 and value.IsInt(list.Sum(1..10))
+isSumOverflows() = fails(() -> list.Sum([4611686018427387903, 1]), "math")
+isMeanInts() = list.Mean([1, 2, 3]) == 2.0
+isArithmetic() = value.Equal([1, 2] + [3, 4], [4, 6]) and columns.Kind([1, 2] + 1) == "int" and value.Equal([1, 2] * 2.5, [2.5, 5.0])
+isLoop() = list.Reduce((a, x) -> a + x, 0, [x for x in 1..4]) == 10
+isPushKeepsValues() = value.Equal(list.Append(3, [1, 2]), [1, 2, 3]) and value.Equal(list.Concat([1], [2.5]), [1, 2.5]) and value.Equal(list.Reverse(1..3), [3, 2, 1])
 
-isOrderInts() = Equal(Order([3, -1, 2]), [2, 3, 1])
-isOrderFloats() = Equal(Order([2.5, -1.0, 0.5]), [2, 3, 1])
-isOrderTexts() = Equal(Order(["b", "a", "c"]), [2, 1, 3])
-isOrderNumbers() = Equal(Order([2, 1.5, 3]), [2, 1, 3])
-isOrderIsStable() = Equal(Order([1, 0, 1, 0, 1]), [2, 4, 1, 3, 5])
-isOrderEmpty() = Equal(Order([]), []) and Equal(Sort([]), [])
-isOrderLarge() = Equal(Sort([Mod(k * 7919, 1009) for k in 1..1009]), 0..1008)
-isSortKeepsTheKind() = columns.Kind(Sort([3, 1, 2])) == "int" and columns.Kind(Sort([3.0, 1.0])) == "float"
-isSortPanicsOnMixed() = fails(() -> Sort([1, "a"]), "type")
+isOrderInts() = value.Equal(list.Order([3, -1, 2]), [2, 3, 1])
+isOrderFloats() = value.Equal(list.Order([2.5, -1.0, 0.5]), [2, 3, 1])
+isOrderTexts() = value.Equal(list.Order(["b", "a", "c"]), [2, 1, 3])
+isOrderNumbers() = value.Equal(list.Order([2, 1.5, 3]), [2, 1, 3])
+isOrderIsStable() = value.Equal(list.Order([1, 0, 1, 0, 1]), [2, 4, 1, 3, 5])
+isOrderEmpty() = value.Equal(list.Order([]), []) and value.Equal(list.Sort([]), [])
+isOrderLarge() = value.Equal(list.Sort([math.Mod(k * 7919, 1009) for k in 1..1009]), 0..1008)
+isSortKeepsTheKind() = columns.Kind(list.Sort([3, 1, 2])) == "int" and columns.Kind(list.Sort([3.0, 1.0])) == "float"
+isSortPanicsOnMixed() = fails(() -> list.Sort([1, "a"]), "type")
 
-isPick() = Equal(columns.Pick([3, 1], [10, 20, 30]), [30, 10]) and columns.Kind(columns.Pick([1], [1, 2])) == "int"
-isPickFloatsAndTexts() = Equal(columns.Pick([2], [1.5, 2.5]), [2.5]) and Equal(columns.Pick([2, 1], ["a", "b"]), ["b", "a"])
-isPickZeroIsMissing() = Equal(columns.Pick([0, 1], [5, 6]), [missing, 5]) and Equal(columns.Pick([0], [1.5]), [missing])
+isPick() = value.Equal(columns.Pick([3, 1], [10, 20, 30]), [30, 10]) and columns.Kind(columns.Pick([1], [1, 2])) == "int"
+isPickFloatsAndTexts() = value.Equal(columns.Pick([2], [1.5, 2.5]), [2.5]) and value.Equal(columns.Pick([2, 1], ["a", "b"]), ["b", "a"])
+isPickZeroIsMissing() = value.Equal(columns.Pick([0, 1], [5, 6]), [missing, 5]) and value.Equal(columns.Pick([0], [1.5]), [missing])
 isPickOutside() = fails(() -> columns.Pick([4], [1, 2]), "index")
-isPositions() = Equal(columns.Positions([true, false, true]), [1, 3]) and Equal(columns.Positions([1, 2] > 5), [])
+isPositions() = value.Equal(columns.Positions([true, false, true]), [1, 3]) and value.Equal(columns.Positions([1, 2] > 5), [])
 
 defn isGroups()
   g = columns.Groups([["b", "a", "b", "c"]])
-  Equal(g.Ids, [1, 2, 1, 3]) and g.Count == 3 and Equal(g.Firsts, [1, 2, 4])
+  value.Equal(g.Ids, [1, 2, 1, 3]) and g.Count == 3 and value.Equal(g.Firsts, [1, 2, 4])
 end
 
-isGroupsOfInts() = Equal(columns.Groups([[5, 5, 2]]).Ids, [1, 1, 2])
+isGroupsOfInts() = value.Equal(columns.Groups([[5, 5, 2]]).Ids, [1, 1, 2])
 isGroupsOfFloats() = columns.Groups([[0.5, 2.0, 0.5]]).Count == 2
 isGroupsOfNumbers() = columns.Groups([[1, 1.0, 2]]).Count == 2
-isGroupsOfMany() = columns.Groups([[Mod(k, 5000) for k in 1..20000]]).Count == 5000
-isGroupsOfTwoColumns() = Equal(columns.Groups([[1, 1, 2, 1], ["a", "b", "a", "a"]]).Ids, [1, 2, 3, 1])
+isGroupsOfMany() = columns.Groups([[math.Mod(k, 5000) for k in 1..20000]]).Count == 5000
+isGroupsOfTwoColumns() = value.Equal(columns.Groups([[1, 1, 2, 1], ["a", "b", "a", "a"]]).Ids, [1, 2, 3, 1])
 isGroupsPairIsNotText() = columns.Groups([["a\tb", "a"], ["c", "b\tc"]]).Count == 2
 isGroupsEmpty() = columns.Groups([[]]).Count == 0
 isGroupsRefuseMissing() = fails(() -> columns.Groups([[1, missing]]), "type")
@@ -86,33 +94,33 @@ isGroupsRefuseNan() = fails(() -> columns.Groups([[1.0, 0.0 / 0.0]]), "type")
 
 defn isSplit()
   g = columns.Groups([["a", "b", "a"]])
-  Equal(columns.Split(g, [1, 2, 3]), [[1, 3], [2]])
+  value.Equal(columns.Split(g, [1, 2, 3]), [[1, 3], [2]])
 end
 
 defn isSplitDropsMissing()
   g = columns.Groups([["a", "a"]])
-  Equal(columns.Split(g, [missing, 2.5]), [[2.5]]) and columns.Kind(columns.Split(g, [missing, 2.5])[1]) == "float"
+  value.Equal(columns.Split(g, [missing, 2.5]), [[2.5]]) and columns.Kind(columns.Split(g, [missing, 2.5])[1]) == "float"
 end
 
 defn isJoin()
   m = columns.Join([1, 2, 1], [1, 1, 3], false)
-  Equal(m.Left, [1, 1, 3, 3]) and Equal(m.Right, [1, 2, 1, 2])
+  value.Equal(m.Left, [1, 1, 3, 3]) and value.Equal(m.Right, [1, 2, 1, 2])
 end
 
 defn isJoinLeft()
   m = columns.Join([9, 3], [3], true)
-  Equal(m.Left, [1, 2]) and Equal(m.Right, [0, 1])
+  value.Equal(m.Left, [1, 2]) and value.Equal(m.Right, [0, 1])
 end
 
-isJoinNumbers() = Equal(columns.Join([1, 2], [1.0, 2.5], false).Right, [1])
-isJoinTexts() = Equal(columns.Join(["a", "b"], ["b"], false).Left, [2])
+isJoinNumbers() = value.Equal(columns.Join([1, 2], [1.0, 2.5], false).Right, [1])
+isJoinTexts() = value.Equal(columns.Join(["a", "b"], ["b"], false).Left, [2])
 isJoinRefusesMissing() = fails(() -> columns.Join([missing], [1], false), "type")
 
 (* 16,384 texts of 14 blocks "Aa" or "BB", which a polynomial hash of factor 31 sends all to one value. *)
 defn collidingTexts()
   xs = [""]
   for b in 1..14
-    xs = Concat([Str(x, "Aa") for x in xs], [Str(x, "BB") for x in xs])
+    xs = list.Concat([text.Str(x, "Aa") for x in xs], [text.Str(x, "BB") for x in xs])
   end
   xs
 end
@@ -121,33 +129,33 @@ colliding = collidingTexts()
 
 defn isGroupsOfCollidingTexts()
   g = columns.Groups([colliding])
-  g.Count == 16384 and Equal(g.Ids, 1..16384)
+  g.Count == 16384 and value.Equal(g.Ids, 1..16384)
 end
 
-isJoinOfCollidingTexts() = Equal(columns.Join(colliding, colliding, false).Left, 1..16384)
+isJoinOfCollidingTexts() = value.Equal(columns.Join(colliding, colliding, false).Left, 1..16384)
 
 isGroupsTakeABigIntAndItsFloatAsOneKey() = columns.Groups([[9007199254740993, 9007199254740992.0]]).Count == 1
-isJoinMatchesABigIntAndItsFloat() = Equal(columns.Join([9007199254740993], [9007199254740992.0], false).Right, [1])
+isJoinMatchesABigIntAndItsFloat() = value.Equal(columns.Join([9007199254740993], [9007199254740992.0], false).Right, [1])
 isGroupsKeepBigIntsApart() = columns.Groups([[9007199254740993, 9007199254740992]]).Count == 2 and columns.Groups([[9007199254740993, 9007199254740992, "a"]]).Count == 3
-isGroupsOfIntsNearTheTop() = columns.Groups([[4611686018427383807 + k for k in 0..4095]]).Count == 4096 and columns.Groups([Concat([4611686018427383807 + Mod(k, 7) for k in 0..4095], ["a"])]).Count == 8
-isJoinOfBigInts() = Len(columns.Join([9007199254740993], [9007199254740992], false).Left) == 0 and Equal(columns.Join([9007199254740993, 1], [1, 9007199254740993], false).Right, [2, 1])
+isGroupsOfIntsNearTheTop() = columns.Groups([[4611686018427383807 + k for k in 0..4095]]).Count == 4096 and columns.Groups([list.Concat([4611686018427383807 + math.Mod(k, 7) for k in 0..4095], ["a"])]).Count == 8
+isJoinOfBigInts() = value.Len(columns.Join([9007199254740993], [9007199254740992], false).Left) == 0 and value.Equal(columns.Join([9007199254740993, 1], [1, 9007199254740993], false).Right, [2, 1])
 
 defn isCsvColumnsAreTyped()
   df = frame.FromCsv("i,f,t,g\n1,1.5,a,1\n2,2.5,b,\n")
-  columns.Kind(frame.Column("i", df)) == "int" and columns.Kind(frame.Column("f", df)) == "float" and Equal(frame.Column("t", df), ["a", "b"]) and IsMissing(frame.Column("g", df)[2])
+  columns.Kind(frame.Column("i", df)) == "int" and columns.Kind(frame.Column("f", df)) == "float" and value.Equal(frame.Column("t", df), ["a", "b"]) and value.IsMissing(frame.Column("g", df)[2])
 end
 
-isCsvParse() = Equal(csv.Parse("a,\"b,c\"\r\n\"d\"\"e\",f"), [["a", "b,c"], ["d\"e", "f"]])
-isCsvParseEmpty() = Equal(csv.Parse(""), []) and Equal(csv.Parse("\n"), [[""]])
+isCsvParse() = value.Equal(csv.Parse("a,\"b,c\"\r\n\"d\"\"e\",f"), [["a", "b,c"], ["d\"e", "f"]])
+isCsvParseEmpty() = value.Equal(csv.Parse(""), []) and value.Equal(csv.Parse("\n"), [[""]])
 
 defn isGroupBy()
   df = frame.Of({"k": ["a", "b", "a"], "v": [1.0, 2.0, 4.0]})
-  g = frame.GroupBy(["k"], [frame.Agg("total", "v", Sum), frame.Agg("n", "v", Len)], df)
-  Equal(frame.Column("k", g), ["a", "b"]) and Equal(frame.Column("total", g), [5.0, 2.0]) and Equal(frame.Column("n", g), [2, 1])
+  g = frame.GroupBy(["k"], [frame.Agg("total", "v", list.Sum), frame.Agg("n", "v", value.Len)], df)
+  value.Equal(frame.Column("k", g), ["a", "b"]) and value.Equal(frame.Column("total", g), [5.0, 2.0]) and value.Equal(frame.Column("n", g), [2, 1])
 end
 
-isWhereMask() = Equal(frame.Column("v", frame.WhereMask([1, 2, 3] > 1, frame.Of({"v": [1, 2, 3]}))), [2, 3])
-isKinds() = Equal(frame.Kinds(frame.Of({"a": [1], "b": [1.5], "c": ["x"]})), ["int", "float", "value"])
+isWhereMask() = value.Equal(frame.Column("v", frame.WhereMask([1, 2, 3] > 1, frame.Of({"v": [1, 2, 3]}))), [2, 3])
+isKinds() = value.Equal(frame.Kinds(frame.Of({"a": [1], "b": [1.5], "c": ["x"]})), ["int", "float", "value"])
 
 isSplitRefusesForgedGroups() = fails(() -> columns.Split({Ids: [5], Count: 1, Firsts: [1]}, [1]), "type")
 isSplitRefusesANegativeCount() = fails(() -> columns.Split({Ids: [], Count: -1, Firsts: []}, []), "type")
@@ -155,38 +163,38 @@ isGroupsRefuseArraysAsKeys() = fails(() -> columns.Groups([[1, 2], [[1], [2]]]),
 isGroupsTakeMissingWithTwoColumns() = columns.Groups([[1, 1], [missing, missing]]).Count == 1
 
 (* What a comprehension builds: the store of its values, as a literal of them gives. *)
-isComprehensionOfFloats() = columns.Kind([1.0 * k for k in 1..3]) == "float" and Equal([1.0 * k for k in 1..3], [1.0, 2.0, 3.0])
-isComprehensionOfInts() = columns.Kind([k * 2 for k in 1..3]) == "int" and Equal([k * 2 for k in 1..3], [2, 4, 6])
+isComprehensionOfFloats() = columns.Kind([1.0 * k for k in 1..3]) == "float" and value.Equal([1.0 * k for k in 1..3], [1.0, 2.0, 3.0])
+isComprehensionOfInts() = columns.Kind([k * 2 for k in 1..3]) == "int" and value.Equal([k * 2 for k in 1..3], [2, 4, 6])
 
 defn isComprehensionIntsThenAFloat()
   r = [if k == 1 1 else 2.5 end for k in 1..2]
-  columns.Kind(r) == "value" and IsInt(r[1]) and IsFloat(r[2]) and Equal(r, [1, 2.5])
+  columns.Kind(r) == "value" and value.IsInt(r[1]) and value.IsFloat(r[2]) and value.Equal(r, [1, 2.5])
 end
 
 defn isComprehensionFloatsThenAnInt()
   r = [if k == 1 1.5 else 2 end for k in 1..2]
-  columns.Kind(r) == "value" and IsFloat(r[1]) and IsInt(r[2])
+  columns.Kind(r) == "value" and value.IsFloat(r[1]) and value.IsInt(r[2])
 end
 
 defn isComprehensionTextAfterFloats()
   r = [if k <= 10000 1.0 * k else "a" end for k in 1..10001]
-  columns.Kind(r) == "value" and r[10001] == "a" and IsFloat(r[10000]) and r[10000] == 10000.0 and Len(r) == 10001
+  columns.Kind(r) == "value" and r[10001] == "a" and value.IsFloat(r[10000]) and r[10000] == 10000.0 and value.Len(r) == 10001
 end
 
 defn isComprehensionOfMaps()
   r = [{A: k} for k in 1..3]
-  columns.Kind(r) == "value" and r[3].A == 3 and Len(r) == 3
+  columns.Kind(r) == "value" and r[3].A == 3 and value.Len(r) == 3
 end
 
 defn isComprehensionEmpty()
   a = [k for k in 1..0]
   b = [k for k in 1..5 if k > 9]
   c = [x for x in []]
-  columns.Kind(a) == "value" and Equal(Size(a), [1, 0]) and columns.Kind(b) == "value" and Equal(Size(b), [1, 0]) and Equal(Size(c), [1, 0])
+  columns.Kind(a) == "value" and value.Equal(value.Size(a), [1, 0]) and columns.Kind(b) == "value" and value.Equal(value.Size(b), [1, 0]) and value.Equal(value.Size(c), [1, 0])
 end
 
 defn built(n)
-  out = Fill(0.0, n)
+  out = list.Fill(0.0, n)
   for k in 1..n
     out[k] = 1.0 * k
   end
@@ -198,19 +206,19 @@ defn isComprehensionSizes()
   for n in [1, 15, 16, 17, 1023, 1024, 1025]
     fs = [1.0 * k for k in 1..n]
     is = [k for k in 1..n]
-    ok = ok and Equal(fs, built(n)) and Equal(is, 1..n) and Equal(Size(fs), [1, n]) and columns.Kind(fs) == "float" and columns.Kind(is) == "int" and Equal(Filter(it > 0, is), is)
+    ok = ok and value.Equal(fs, built(n)) and value.Equal(is, 1..n) and value.Equal(value.Size(fs), [1, n]) and columns.Kind(fs) == "float" and columns.Kind(is) == "int" and value.Equal(list.Filter(it > 0, is), is)
   end
   ok
 end
 
-isMapKeepsTheShape() = Equal(Size(Map(it * 2.0, Reshape(1.0 * (1..6), 2, 3))), [2, 3]) and columns.Kind(Map(it * 2.0, Reshape(1.0 * (1..6), 2, 3))) == "float"
-isMapIndexedAndRange() = Equal(MapIndexed((k, x) -> k * x, [5, 6]), [5, 12]) and columns.Kind(Range(1, 5)) == "int" and columns.Kind(Range(0, 1, step = 0.25)) == "float"
+isMapKeepsTheShape() = value.Equal(value.Size(list.Map(it * 2.0, matrix.Reshape(1.0 * (1..6), 2, 3))), [2, 3]) and columns.Kind(list.Map(it * 2.0, matrix.Reshape(1.0 * (1..6), 2, 3))) == "float"
+isMapIndexedAndRange() = value.Equal(list.MapIndexed((k, x) -> k * x, [5, 6]), [5, 12]) and columns.Kind(list.Range(1, 5)) == "int" and columns.Kind(list.Range(0, 1, step = 0.25)) == "float"
 
 defn isComprehensionResultIsAValue()
-  r = Filter(it > 1, [1, 2, 3])
-  s = Append(4, r)
-  t = Append(5, r)
-  Equal(r, [2, 3]) and Equal(s, [2, 3, 4]) and Equal(t, [2, 3, 5])
+  r = list.Filter(it > 1, [1, 2, 3])
+  s = list.Append(4, r)
+  t = list.Append(5, r)
+  value.Equal(r, [2, 3]) and value.Equal(s, [2, 3, 4]) and value.Equal(t, [2, 3, 5])
 end
 
 defn isTextInAFloatComprehension()
@@ -220,15 +228,15 @@ defn isTextInAFloatComprehension()
 end
 
 (* Whole-array arithmetic and comparisons on typed stores: the values, kinds and messages of the cell by cell rules. *)
-message(f) = Wait(Spawn(f)) then MapErr(it.Message)
-overflowOf(text) = Err("The integer result of $(text) doesn't fit in 63 bits.")
-isIntsTimesAnInt() = Equal((1..4) * 2, [2, 4, 6, 8]) and columns.Kind((1..4) * 2) == "int" and Equal(2 * (1..4), [2, 4, 6, 8]) and columns.Kind(2 * (1..4)) == "int"
-isIntsPlusInts() = Equal((1..4) + (1..4), [2, 4, 6, 8]) and columns.Kind((1..4) + (1..4)) == "int" and Equal((1..4) - 5, [-4, -3, -2, -1]) and Equal(5 - (1..4), [4, 3, 2, 1]) and columns.Kind(5 - (1..4)) == "int"
-isIntsWithFloats() = Equal((1..4) * 1.0, [1.0, 2.0, 3.0, 4.0]) and columns.Kind((1..4) * 1.0) == "float" and Equal([1, 2] * [1.5, 2.5], [1.5, 5.0]) and columns.Kind([1.5, 2.5] - [1, 2]) == "float" and Equal(0.5 + (1..2), [1.5, 2.5])
-isIntsDivided() = Equal((1..4) / 2, [0.5, 1.0, 1.5, 2.0]) and columns.Kind((1..4) / 2) == "float" and Equal((1..3) / (1..3), [1.0, 1.0, 1.0]) and Equal(1 / (1..2), [1.0, 0.5]) and ((0..1) / 0)[2] == 1.0 / 0.0 and ((0..1) / 0)[1] != ((0..1) / 0)[1]
-isBigIntTimesAFloat() = Equal([9007199254740993] * 1.0, [9007199254740992.0]) and ([9007199254740993] * 1.0)[1] == 9007199254740992.0
-isMatrixOfIntsTimesAnInt() = Equal(Size(Reshape(1..6, 2, 3) * 2), [2, 3]) and columns.Kind(Reshape(1..6, 2, 3) * 2) == "int" and (Reshape(1..6, 2, 3) * 2)[2, 3] == 12
-isEmptyArithmetic() = columns.Kind((1..0) * 2) == "value" and columns.Kind([1.5][2..1] * 2.0) == "float" and columns.Kind((1..0) * 1.0) == "value" and columns.Kind((1..0) > 1) == "value" and Equal(Size((1..0) + (1..0)), [1, 0])
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+overflowOf(text) = result.Err("The integer result of $(text) doesn't fit in 63 bits.")
+isIntsTimesAnInt() = value.Equal((1..4) * 2, [2, 4, 6, 8]) and columns.Kind((1..4) * 2) == "int" and value.Equal(2 * (1..4), [2, 4, 6, 8]) and columns.Kind(2 * (1..4)) == "int"
+isIntsPlusInts() = value.Equal((1..4) + (1..4), [2, 4, 6, 8]) and columns.Kind((1..4) + (1..4)) == "int" and value.Equal((1..4) - 5, [-4, -3, -2, -1]) and value.Equal(5 - (1..4), [4, 3, 2, 1]) and columns.Kind(5 - (1..4)) == "int"
+isIntsWithFloats() = value.Equal((1..4) * 1.0, [1.0, 2.0, 3.0, 4.0]) and columns.Kind((1..4) * 1.0) == "float" and value.Equal([1, 2] * [1.5, 2.5], [1.5, 5.0]) and columns.Kind([1.5, 2.5] - [1, 2]) == "float" and value.Equal(0.5 + (1..2), [1.5, 2.5])
+isIntsDivided() = value.Equal((1..4) / 2, [0.5, 1.0, 1.5, 2.0]) and columns.Kind((1..4) / 2) == "float" and value.Equal((1..3) / (1..3), [1.0, 1.0, 1.0]) and value.Equal(1 / (1..2), [1.0, 0.5]) and ((0..1) / 0)[2] == 1.0 / 0.0 and ((0..1) / 0)[1] != ((0..1) / 0)[1]
+isBigIntTimesAFloat() = value.Equal([9007199254740993] * 1.0, [9007199254740992.0]) and ([9007199254740993] * 1.0)[1] == 9007199254740992.0
+isMatrixOfIntsTimesAnInt() = value.Equal(value.Size(matrix.Reshape(1..6, 2, 3) * 2), [2, 3]) and columns.Kind(matrix.Reshape(1..6, 2, 3) * 2) == "int" and (matrix.Reshape(1..6, 2, 3) * 2)[2, 3] == 12
+isEmptyArithmetic() = columns.Kind((1..0) * 2) == "value" and columns.Kind([1.5][2..1] * 2.0) == "float" and columns.Kind((1..0) * 1.0) == "value" and columns.Kind((1..0) > 1) == "value" and value.Equal(value.Size((1..0) + (1..0)), [1, 0])
 
 defn isMasks()
   nan = 0.0 / 0.0
@@ -240,55 +248,55 @@ defn isMasks()
   f = (1..3) < [1.5, 1.5, 3.5]
   g = [2.5, 1.5] >= (1..2)
   h = 2 <= (1..3)
-  Equal(a, [true, false, false]) and Equal(b, [false, true]) and Equal(c, [true, false]) and Equal(d, [true]) and Equal(e, [true, false]) and Equal(f, [true, false, true]) and Equal(g, [true, false]) and Equal(h, [false, true, true]) and columns.Kind(a) == "value" and columns.Kind(h) == "value"
+  value.Equal(a, [true, false, false]) and value.Equal(b, [false, true]) and value.Equal(c, [true, false]) and value.Equal(d, [true]) and value.Equal(e, [true, false]) and value.Equal(f, [true, false, true]) and value.Equal(g, [true, false]) and value.Equal(h, [false, true, true]) and columns.Kind(a) == "value" and columns.Kind(h) == "value"
 end
 
-isMasksOfBigInts() = Equal([9007199254740993] > 9007199254740992, [true]) and Equal([9007199254740993] > 9007199254740992.0, [false]) and Equal([9007199254740993] == 9007199254740992.0, [true]) and Equal([9007199254740993] != [9007199254740992], [true])
-isMaskOfAMatrix() = Equal(Size(Reshape(1..6, 2, 3) > 3), [2, 3]) and (Reshape(1..6, 2, 3) > 3)[2, 2] and not (Reshape(1..6, 2, 3) > 3)[1, 2]
-isMaskWithMissing() = Equal([1.5, 2.5] > missing, [missing, missing]) and Equal((1..2) == "a", [false, false])
+isMasksOfBigInts() = value.Equal([9007199254740993] > 9007199254740992, [true]) and value.Equal([9007199254740993] > 9007199254740992.0, [false]) and value.Equal([9007199254740993] == 9007199254740992.0, [true]) and value.Equal([9007199254740993] != [9007199254740992], [true])
+isMaskOfAMatrix() = value.Equal(value.Size(matrix.Reshape(1..6, 2, 3) > 3), [2, 3]) and (matrix.Reshape(1..6, 2, 3) > 3)[2, 2] and not (matrix.Reshape(1..6, 2, 3) > 3)[1, 2]
+isMaskWithMissing() = value.Equal([1.5, 2.5] > missing, [missing, missing]) and value.Equal((1..2) == "a", [false, false])
 isIntOverflowNamesTheFirstCell() = message(() -> [4611686018427387903, 2] * 2) == overflowOf("4611686018427387903 * 2") and message(() -> [1, 4611686018427387903] + 1) == overflowOf("4611686018427387903 + 1")
 isIntOverflowOnTheLeft() = message(() -> 2 * [1, 4611686018427387903]) == overflowOf("2 * 4611686018427387903") and message(() -> 5 - [1, -4611686018427387903]) == overflowOf("5 - -4611686018427387903")
 isIntOverflowOfTwoArrays() = message(() -> [-4611686018427387903, 2] - [10, 1]) == overflowOf("-4611686018427387903 - 10") and message(() -> [-4611686018427387903 - 1] * -1) == overflowOf("-4611686018427387904 * -1")
-isShapeMessage() = message(() -> (1..2) + (1..3)) == Err("Can't combine an array of 1 by 2 with an array of 1 by 3.") and message(() -> (1..2) < (1..3)) == Err("Can't combine an array of 1 by 2 with an array of 1 by 3.")
-isCompareTextMessage() = message(() -> (1..2) < "a") == Err("Can't compare the number 1 < the text \"a\".")
+isShapeMessage() = message(() -> (1..2) + (1..3)) == result.Err("Can't combine an array of 1 by 2 with an array of 1 by 3.") and message(() -> (1..2) < (1..3)) == result.Err("Can't combine an array of 1 by 2 with an array of 1 by 3.")
+isCompareTextMessage() = message(() -> (1..2) < "a") == result.Err("Can't compare the number 1 < the text \"a\".")
 defn isSumOfAMillion()
-  s = Sum(1..1000000)
-  s == 500000500000 and IsInt(s) and Sum(1..0) == 0 and IsInt(Sum(1..0))
+  s = list.Sum(1..1000000)
+  s == 500000500000 and value.IsInt(s) and list.Sum(1..0) == 0 and value.IsInt(list.Sum(1..0))
 end
-isSumOverflowMessage() = message(() -> Sum([4611686018427387903, 1])) == overflowOf("4611686018427387903 + 1")
+isSumOverflowMessage() = message(() -> list.Sum([4611686018427387903, 1])) == overflowOf("4611686018427387903 + 1")
 
 defn isMasksOfLargeArrays()
   nan = 0.0 / 0.0
-  xs = Concat([1.0, nan, -0.0, 0.0, 2.5, 9007199254740992.0], Fill(1.5, 14))
-  is = Concat([1, 0, 0, 3, 2, 9007199254740993], Fill(2, 14))
+  xs = list.Concat([1.0, nan, -0.0, 0.0, 2.5, 9007199254740992.0], list.Fill(1.5, 14))
+  is = list.Concat([1, 0, 0, 3, 2, 9007199254740993], list.Fill(2, 14))
   ok = columns.Kind(xs) == "float" and columns.Kind(is) == "int"
   for k in 1..20
-    ok = ok and Equal((xs > 0.0)[k], xs[k] > 0.0) and Equal((xs == is)[k], xs[k] == is[k]) and Equal((xs != is)[k], xs[k] != is[k])
-    ok = ok and Equal((is < xs)[k], is[k] < xs[k]) and Equal((is >= 2)[k], is[k] >= 2) and Equal((2.0 <= xs)[k], 2.0 <= xs[k])
-    ok = ok and Equal((is == is)[k], true) and Equal((xs == xs)[k], xs[k] == xs[k]) and Equal((3 > is)[k], 3 > is[k]) and Equal((xs < 1)[k], xs[k] < 1)
+    ok = ok and value.Equal((xs > 0.0)[k], xs[k] > 0.0) and value.Equal((xs == is)[k], xs[k] == is[k]) and value.Equal((xs != is)[k], xs[k] != is[k])
+    ok = ok and value.Equal((is < xs)[k], is[k] < xs[k]) and value.Equal((is >= 2)[k], is[k] >= 2) and value.Equal((2.0 <= xs)[k], 2.0 <= xs[k])
+    ok = ok and value.Equal((is == is)[k], true) and value.Equal((xs == xs)[k], xs[k] == xs[k]) and value.Equal((3 > is)[k], 3 > is[k]) and value.Equal((xs < 1)[k], xs[k] < 1)
   end
-  ok and columns.Kind(xs > 0.0) == "value" and Equal(Size(Reshape(1..20, 4, 5) > 3), [4, 5]) and (Reshape(1..20, 4, 5) > 3)[4, 1]
+  ok and columns.Kind(xs > 0.0) == "value" and value.Equal(value.Size(matrix.Reshape(1..20, 4, 5) > 3), [4, 5]) and (matrix.Reshape(1..20, 4, 5) > 3)[4, 1]
 end
 
 (* Rows: maps from cells, which share their keys. *)
 defn isRowsReadFields()
   rows = columns.Rows(["id", "created_at", "Name"], [1, "2026-11-06", "Ana", 2, missing, "Bo"], public = true)?
-  Len(rows) == 2 and rows[1].Id == 1 and rows[1].CreatedAt == "2026-11-06" and rows[2].Name == "Bo" and rows[2].CreatedAt == missing and Has("CreatedAt", rows[2])
+  value.Len(rows) == 2 and rows[1].Id == 1 and rows[1].CreatedAt == "2026-11-06" and rows[2].Name == "Bo" and rows[2].CreatedAt == missing and dict.Has("CreatedAt", rows[2])
 end
-isRowsKeepNames() = Equal(Keys(columns.Rows(["a_b", "count(*)"], [1, 2])?[1]), ["a_b", "count(*)"]) and Equal(Keys(columns.Rows(["a_b", "count(*)"], [1, 2], public = true)?[1]), ["AB", "count(*)"])
+isRowsKeepNames() = value.Equal(dict.Keys(columns.Rows(["a_b", "count(*)"], [1, 2])?[1]), ["a_b", "count(*)"]) and value.Equal(dict.Keys(columns.Rows(["a_b", "count(*)"], [1, 2], public = true)?[1]), ["AB", "count(*)"])
 defn isRowsWide()
   for n in [33, 100]
     names = ["c_$(k)" for k in 1..n]
     rows = columns.Rows(names, [k for k in 1..(2 * n)], public = true)?
-    if not (Len(rows) == 2 and rows[1].C1 == 1 and rows[2]["C$(n)"] == 2 * n and Equal(Keys(rows[2]), ["C$(k)" for k in 1..n]))
+    if not (value.Len(rows) == 2 and rows[1].C1 == 1 and rows[2]["C$(n)"] == 2 * n and value.Equal(dict.Keys(rows[2]), ["C$(k)" for k in 1..n]))
       return false
     end
   end
   true
 end
-isRowsSameKey() = (columns.Rows(["user_id", "userId"], [1, 2], public = true) then MapErr(it.Kind)) == Err("names") and (columns.Rows(["a", "a"], [1, 2]) then MapErr(it.Kind)) == Err("names")
+isRowsSameKey() = (columns.Rows(["user_id", "userId"], [1, 2], public = true) then result.MapErr(it.Kind)) == result.Err("names") and (columns.Rows(["a", "a"], [1, 2]) then result.MapErr(it.Kind)) == result.Err("names")
 isRowsWholeRows() = fails(() -> columns.Rows(["a", "b"], [1, 2, 3]), "type") and fails(() -> columns.Rows([], []), "type")
-isRowsNone() = Equal(columns.Rows(["a"], [])?, [])
+isRowsNone() = value.Equal(columns.Rows(["a"], [])?, [])
 defn isRowsPastTheTable()
   for k in 1..1100
     if columns.Rows(["x$(k)"], [k])?[1]["x$(k)"] != k
@@ -304,7 +312,7 @@ defn isFromRowsOfShapesInTurn()
   a = columns.Rows(["X", "Y"], [1, 2, 3, 4.5])?
   b = columns.Rows(["Y", "X"], [1.5, 7])?
   c = columns.Rows(["X"], [9])?
-  ps = [Pt.From(r)? for r in Concat(a, Concat(b, Concat(a, c)))]
-  wrong = Pt.From(columns.Rows(["X", "Y"], [1, "a"])?[1]) then MapErr(it.Kind)
-  Equal(Map(it.X, ps), [1, 3, 7, 1, 3, 9]) and Equal(Map(it.Y, ps), [2.0, 4.5, 1.5, 2.0, 4.5, 0.0]) and wrong == Err("field") and IsFloat(ps[1].Y)
+  ps = [Pt.From(r)? for r in list.Concat(a, list.Concat(b, list.Concat(a, c)))]
+  wrong = Pt.From(columns.Rows(["X", "Y"], [1, "a"])?[1]) then result.MapErr(it.Kind)
+  value.Equal(list.Map(it.X, ps), [1, 3, 7, 1, 3, 9]) and value.Equal(list.Map(it.Y, ps), [2.0, 4.5, 1.5, 2.0, 4.5, 0.0]) and wrong == result.Err("field") and value.IsFloat(ps[1].Y)
 end

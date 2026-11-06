@@ -1,4 +1,4 @@
-memory-field.ce:2:6: Limit "memory" reached.
-  2 | b = s.A
+memory-field.ce:5:6: Limit "memory" reached.
+  5 | b = s.A
     |      ^
 exit 1

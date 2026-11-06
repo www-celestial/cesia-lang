@@ -1,4 +1,4 @@
-cesia doc Inc
+cesia doc math.Inc
 echo "exit $?"
 cesia doc NoSuchName
 echo "exit $?"

@@ -1,4 +1,4 @@
-method-colon.ce:3:11: A range is written with two dots, as in 1..n, which is Range(1, n), and a method is reached with one dot.
-  3 | Print(Rect:Square())
-    |           ^
+method-colon.ce:5:14: A range is written with two dots, as in 1..n, which is list.Range(1, n), and a method is reached with one dot.
+  5 | io.Print(Rect:Square())
+    |              ^
 exit 1

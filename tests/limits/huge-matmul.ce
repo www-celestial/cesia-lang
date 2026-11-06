@@ -1,3 +1,5 @@
-a = Zeros(2000000, 1)
-b = Zeros(1, 2000000)
-c = Matmul(a, b)
+use std/matrix
+
+a = matrix.Zeros(2000000, 1)
+b = matrix.Zeros(1, 2000000)
+c = matrix.Matmul(a, b)

@@ -1,2 +1,6 @@
-x = Matmul(Zeros(0, 0), Zeros(0, 100000000000))
-Print(Size(x))
+use std/io
+use std/matrix
+use std/value
+
+x = matrix.Matmul(matrix.Zeros(0, 0), matrix.Zeros(0, 100000000000))
+io.Print(value.Size(x))

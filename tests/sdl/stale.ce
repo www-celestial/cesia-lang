@@ -1,6 +1,8 @@
 (** sdl.Frame returns the window, but a program that keeps the old value must not lose text objects. *)
 use std/c
 use std/sdl
+use std/io
+use std/result
 
 line = {Kind: "text", X: 8, Y: 8, Text: "same", Color: 0xFFFFFF}
 
@@ -9,9 +11,9 @@ defn check()
   sdl.Frame([line], window)
   sdl.Frame([line], window)
   sdl.Frame([line, line], window)
-  Print(c.Get("i64", 0, window.Objects))
+  io.Print(c.Get("i64", 0, window.Objects))
   sdl.Close(window)
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(check())
+io.Print(check())

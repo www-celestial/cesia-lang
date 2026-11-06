@@ -279,6 +279,6 @@ let create name =
   write (Filename.concat name file_name)
     (Printf.sprintf "[project]\nname = \"%s\"\ncesia = \"%s\"\n\n[tasks.run]\nfile = \"src/main.ce\"\n" name needed);
   write (Filename.concat name ".gitignore") "std/\ndeps/\nsite/\n";
-  write (Filename.concat code "main.ce") (Printf.sprintf "Print(\"Hello from %s\")\n" name);
+  write (Filename.concat code "main.ce") (Printf.sprintf "use std/io\n\nio.Print(\"Hello from %s\")\n" name);
   (* An empty std/ asks cesia pkg install for Cesia's libraries. *)
   Sys.mkdir (Filename.concat name "std") 0o755

@@ -1,4 +1,4 @@
-shape-matmul.ce:1:7: Matmul can't multiply 1 by 2 with 1 by 2: the columns of the first must equal the rows of the second.
-  1 | Print(Matmul([1, 2], [1, 2]))
-    |       ^
+shape-matmul.ce:4:16: Matmul can't multiply 1 by 2 with 1 by 2: the columns of the first must equal the rows of the second.
+  4 | io.Print(matrix.Matmul([1, 2], [1, 2]))
+    |                ^
 exit 1

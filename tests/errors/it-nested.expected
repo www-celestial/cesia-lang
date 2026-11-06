@@ -1,5 +1,5 @@
-it-nested.ce:2:13: Abs needs numbers, not function <anonymous>.
-  2 | Print(apply(Abs(it.X) + 1, {X: -1}))
-    |             ^
+it-nested.ce:5:20: Abs needs numbers, not function <anonymous>.
+  5 | io.Print(apply(math.Abs(it.X) + 1, {X: -1}))
+    |                    ^
   "it" belongs to the nearest call. Write x -> ... to use it further out.
 exit 1

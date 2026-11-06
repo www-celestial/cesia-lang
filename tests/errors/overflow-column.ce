@@ -1,10 +1,13 @@
+use std/io
+use std/list
+
 defn double(xs)
   xs * 2
 end
 
 defn run()
   big = 4611686018427387903 - (1..3)
-  double(Concat([1, 2], big))
+  double(list.Concat([1, 2], big))
 end
 
-Print(run())
+io.Print(run())

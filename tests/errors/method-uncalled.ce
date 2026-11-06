@@ -1,3 +1,5 @@
+use std/io
+
 struct Rect { Width }
 (r Rect) Area() = r.Width
-Print(Rect(1).Area)
+io.Print(Rect(1).Area)

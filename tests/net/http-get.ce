@@ -1,8 +1,13 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
+use std/value
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 sized = "HTTP/1.1 200 OK$(crlf)Content-Length: 5$(crlf)X-A: 1$(crlf)$(crlf)hello"
 chunked = "HTTP/1.1 200 OK$(crlf)Transfer-Encoding: chunked$(crlf)$(crlf)5$(crlf)hello$(crlf)A;x=1$(crlf)0123456789$(crlf)0$(crlf)$crlf"
 closing = "HTTP/1.1 404 Not Found$(crlf)$(crlf)gone"
@@ -12,7 +17,7 @@ defn reply(listener, text, close)
   net.Read(c)?
   net.Write(c, text)?
   if close net.Close(c) end
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn rawServer(listener)
@@ -22,14 +27,14 @@ defn rawServer(listener)
   reply(listener, sized, false)
 end
 
-summary(r) = r then MapOk(x -> [x.Status, x.Body, Len(x.Headers)])
+summary(r) = r then result.MapOk(x -> [x.Status, x.Body, value.Len(x.Headers)])
 
-listener = Unwrap(net.Listen(18097))
-Spawn(() -> rawServer(listener))
-Spawn(() -> http.Serve(r -> {Status: 201, Body: "é"}, port = 18098))
+listener = result.Unwrap(net.Listen(18097))
+fiber.Spawn(() -> rawServer(listener))
+fiber.Spawn(() -> http.Serve(r -> {Status: 201, Body: "é"}, port = 18098))
 sys.Sleep(0)
-Print(http.Get("http://127.0.0.1:18097/a") then summary)
-Print(http.Get("http://127.0.0.1:18097/b?x=1") then summary)
-Print(http.Get("http://127.0.0.1:18097") then summary)
-Print(http.Get("http://127.0.0.1:18097/keep") then summary)
-Print(http.Get("http://127.0.0.1:18098/") then summary)
+io.Print(http.Get("http://127.0.0.1:18097/a") then summary)
+io.Print(http.Get("http://127.0.0.1:18097/b?x=1") then summary)
+io.Print(http.Get("http://127.0.0.1:18097") then summary)
+io.Print(http.Get("http://127.0.0.1:18097/keep") then summary)
+io.Print(http.Get("http://127.0.0.1:18098/") then summary)

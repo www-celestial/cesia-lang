@@ -1,6 +1,11 @@
 (** Cryptography through libsodium: never written by hand here. Run with --allow ffi=sodium.
     Texts hold bytes: encode.Hex and encode.Base64 give them a printable form. *)
 use std/c
+use std/bug
+use std/list
+use std/math
+use std/result
+use std/text
 
 SecretKeySize = 32    (** The size in bytes of a key of Seal and of a secret key of BoxPair. *)
 NonceSize = 24        (** The size in bytes of the nonce kept in front of a sealed or boxed message. *)
@@ -12,7 +17,7 @@ SignatureSize = 64    (** The size in bytes of a signature of Sign. *)
 PasswordSize = 128    (** The size in bytes of a result of HashPassword. *)
 
 defn block(s)
-  b = c.Alloc(Max(ByteLength(s), 1))
+  b = c.Alloc(list.Max(text.ByteLength(s), 1))
   c.Store(s, 0, b)
   b
 end
@@ -24,9 +29,9 @@ defn Open()
   lib = c.Open("sodium", version = 26)?
   init = c.Fn("sodium_init", [], "i32", lib)?
   if init() < 0
-    return Err({Kind: "crypto", Message: "libsodium couldn't start."})
+    return result.Err({Kind: "crypto", Message: "libsodium couldn't start."})
   end
-  Ok({
+  result.Ok({
     Random: c.Fn("randombytes_buf", ["ptr", "u64"], "void", lib)?,
     Sha256: c.Fn("crypto_hash_sha256", ints(), "i32", lib)?,
     Sha512: c.Fn("crypto_hash_sha512", ints(), "i32", lib)?,
@@ -51,16 +56,16 @@ defn Open()
   })
 end
 
-sized(value, size, name) = Assert(ByteLength(value) == size, "$name has $size bytes.")
+sized(value, size, name) = bug.Assert(text.ByteLength(value) == size, "$name has $size bytes.")
 
 defn out(size, inputs, f)
   (** Runs f on a fresh output block and the blocks of the inputs, then gives the output bytes. *)
-  out = c.Alloc(Max(size, 1))
-  blocks = Map(block, inputs)
+  out = c.Alloc(list.Max(size, 1))
+  blocks = list.Map(block, inputs)
   status = f(out, blocks)
   result = c.Load(0, size, out)
   c.Free(out)
-  Map(c.Free, blocks)
+  list.Map(c.Free, blocks)
   {Status: status, Bytes: result}
 end
 
@@ -71,42 +76,42 @@ end
 
 defn done(r)
   (** A status other than 0 is a bug here: the zeros of a failed call must never pass for a result. *)
-  Assert(r.Status == 0, "libsodium refused this call.")
+  bug.Assert(r.Status == 0, "libsodium refused this call.")
   r.Bytes
 end
 
 (** The SHA-256 hash of a text, as 32 bytes. *)
-Sha256(textValue, s) = done(out(32, [textValue], (out, b) -> s.Sha256(out, b[1], ByteLength(textValue))))
+Sha256(textValue, s) = done(out(32, [textValue], (out, b) -> s.Sha256(out, b[1], text.ByteLength(textValue))))
 (** The SHA-512 hash of a text, as 64 bytes. *)
-Sha512(textValue, s) = done(out(64, [textValue], (out, b) -> s.Sha512(out, b[1], ByteLength(textValue))))
+Sha512(textValue, s) = done(out(64, [textValue], (out, b) -> s.Sha512(out, b[1], text.ByteLength(textValue))))
 
 defn Blake2b(textValue, s, size = 32)
   (** The BLAKE2b hash of a text, as a number of bytes from 16 to 64 (32 by default). *)
-  Assert(size >= 16 and size <= 64, "blake2b needs a size from 16 to 64.")
-  done(out(size, [textValue], (out, b) -> s.Blake2b(out, size, b[1], ByteLength(textValue), missing, 0)))
+  bug.Assert(size >= 16 and size <= 64, "blake2b needs a size from 16 to 64.")
+  done(out(size, [textValue], (out, b) -> s.Blake2b(out, size, b[1], text.ByteLength(textValue), missing, 0)))
 end
 
 defn HmacSha256(key, textValue, s)
   (** The HMAC-SHA-256 of a text under a key, as 32 bytes. *)
   state = c.Alloc(s.HmacSize())
-  r = out(32, [key, textValue], (out, b) -> hmac(s, state, out, b, ByteLength(key), ByteLength(textValue)))
+  r = out(32, [key, textValue], (out, b) -> hmac(s, state, out, b, text.ByteLength(key), text.ByteLength(textValue)))
   c.Free(state)
   done(r)
 end
 
 defn hmac(s, state, out, b, keySize, size)
-  BitOr(BitOr(s.HmacInit(state, b[1], keySize), s.HmacUpdate(state, b[2], size)), s.HmacFinal(state, out))
+  math.BitOr(math.BitOr(s.HmacInit(state, b[1], keySize), s.HmacUpdate(state, b[2], size)), s.HmacFinal(state, out))
 end
 
 defn Same(a, b, s)
   (** Are two texts the same, in a time that doesn't tell where they differ: for secrets, as tags and hashes. *)
-  if ByteLength(a) != ByteLength(b)
+  if text.ByteLength(a) != text.ByteLength(b)
     return false
   end
-  out(0, [a, b], (out, blocks) -> s.Compare(blocks[1], blocks[2], ByteLength(a))).Status == 0
+  out(0, [a, b], (out, blocks) -> s.Compare(blocks[1], blocks[2], text.ByteLength(a))).Status == 0
 end
 
-refused() = Err({Kind: "crypto", Message: "This message was changed, or the key is wrong."})
+refused() = result.Err({Kind: "crypto", Message: "This message was changed, or the key is wrong."})
 
 (** A new random key for Seal and Unseal. A nonce is never used twice with a key: Seal takes a random one, kept in front. *)
 SecretKey(s) = Random(SecretKeySize, s)
@@ -114,21 +119,21 @@ SecretKey(s) = Random(SecretKeySize, s)
 defn sealed(message, keys, s, f)
   (** f(out, blocks, size) gets the message or the body, then the nonce, then the keys, in blocks. *)
   nonce = Random(NonceSize, s)
-  size = ByteLength(message)
-  r = out(size + MacSize, Concat([message, nonce], keys), (out, b) -> f(out, b, size))
+  size = text.ByteLength(message)
+  r = out(size + MacSize, list.Concat([message, nonce], keys), (out, b) -> f(out, b, size))
   "$nonce$(done(r))"
 end
 
 defn opened(sealed, keys, f)
-  total = ByteLength(sealed)
+  total = text.ByteLength(sealed)
   if total < NonceSize + MacSize
     return refused()
   end
-  nonce = ByteSlice(1, NonceSize, sealed)
-  body = ByteSlice(NonceSize + 1, total, sealed)
-  size = ByteLength(body)
-  r = out(size - MacSize, Concat([body, nonce], keys), (out, b) -> f(out, b, size))
-  if r.Status == 0 Ok(r.Bytes) else refused() end
+  nonce = text.ByteSlice(1, NonceSize, sealed)
+  body = text.ByteSlice(NonceSize + 1, total, sealed)
+  size = text.ByteLength(body)
+  r = out(size - MacSize, list.Concat([body, nonce], keys), (out, b) -> f(out, b, size))
+  if r.Status == 0 result.Ok(r.Bytes) else refused() end
 end
 
 defn Seal(message, key, s)
@@ -177,32 +182,32 @@ SignPair(s) = pair(SignPublicSize, SignSecretSize, s.SignPair)
 defn Sign(message, secret, s)
   (** The 64-byte signature of a message under a secret signing key. *)
   sized(secret, SignSecretSize, "A secret key")
-  size = ByteLength(message)
+  size = text.ByteLength(message)
   done(out(SignatureSize, [message, secret], (out, b) -> s.Sign(out, missing, b[1], size, b[2])))
 end
 
 defn Verify(signature, message, public, s)
   (** Is this signature the one of the message under the public signing key? *)
-  if ByteLength(signature) != SignatureSize or ByteLength(public) != SignPublicSize
+  if text.ByteLength(signature) != SignatureSize or text.ByteLength(public) != SignPublicSize
     return false
   end
-  size = ByteLength(message)
+  size = text.ByteLength(message)
   out(0, [signature, message, public], (out, b) -> s.Verify(b[1], b[2], size, b[3])).Status == 0
 end
 
 defn HashPassword(password, s)
   (** A hash of a password with Argon2, to store and to check with CheckPassword: the result holds its own salt and settings. *)
-  size = ByteLength(password)
+  size = text.ByteLength(password)
   r = done(out(PasswordSize, [password], (out, b) -> s.HashPassword(out, b[1], size, s.PasswordOps(), s.PasswordMemory())))
-  ByteSlice(1, ByteFind(Char(0), 1, r) - 1, r)
+  text.ByteSlice(1, text.ByteFind(text.Char(0), 1, r) - 1, r)
 end
 
 defn CheckPassword(password, stored, s)
   (** Does the password match a result of HashPassword? *)
-  if ByteLength(stored) >= PasswordSize
+  if text.ByteLength(stored) >= PasswordSize
     return false
   end
-  size = ByteLength(password)
-  padded = "$stored$(Repeat(PasswordSize - ByteLength(stored), Char(0)))"
+  size = text.ByteLength(password)
+  padded = "$stored$(text.Repeat(PasswordSize - text.ByteLength(stored), text.Char(0)))"
   out(0, [padded, password], (out, b) -> s.CheckPassword(b[1], b[2], size)).Status == 0
 end

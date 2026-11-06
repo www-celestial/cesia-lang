@@ -1,5 +1,7 @@
 use tests/sdl/probe
 use std/sdl
+use std/io
+use std/result
 
 background = 0x102030
 font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
@@ -12,13 +14,13 @@ defn check()
     {Kind: "text", X: 100, Y: 100, Text: "Bonjour é", Color: 0xFFFFFF}
   ], window)
   image = probe.Pixels(drawn, 320, 200)
-  Print(probe.Pixel(0, 0, image) == background)
-  Print(probe.Pixel(15, 15, image) == 0xFF0000)
-  Print(probe.Pixel(40, 40, image) == background)
-  Print(probe.Differing(100, 100, 120, 24, background, image) > 50)
+  io.Print(probe.Pixel(0, 0, image) == background)
+  io.Print(probe.Pixel(15, 15, image) == 0xFF0000)
+  io.Print(probe.Pixel(40, 40, image) == background)
+  io.Print(probe.Differing(100, 100, 120, 24, background, image) > 50)
   sdl.Frame([{Kind: "clear", Color: background}], drawn)
-  Print(sdl.Close(drawn))
-  Ok("closed")
+  io.Print(sdl.Close(drawn))
+  result.Ok("closed")
 end
 
-Print(check())
+io.Print(check())

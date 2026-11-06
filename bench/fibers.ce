@@ -1,3 +1,8 @@
+use std/fiber
+use std/io
+use std/list
+use std/value
+
 defn gateWork()
   s = 0
   for i in 1..3000000
@@ -5,6 +10,6 @@ defn gateWork()
   end
   s
 end
-gate = Spawn(gateWork)
-tasks = [Spawn(() -> Wait(gate)) for i in 1..COUNT]
-Print(Len(tasks then Map(Wait)))
+gate = fiber.Spawn(gateWork)
+tasks = [fiber.Spawn(() -> fiber.Wait(gate)) for i in 1..COUNT]
+io.Print(value.Len(tasks then list.Map(fiber.Wait)))

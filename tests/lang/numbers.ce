@@ -1,6 +1,10 @@
-isFloatDivision() = IsFloat(4 / 2)
-isFloor() = Floor(1.5) == 1 and IsFloat(Floor(1.5)) and IsInt(Floor(2))
-isRound() = Round(2.5) == 3 and Round(-2.5) == -3
-isAtan2() = Atan2(1, 1) == Pi / 4
-isKinds() = IsInt(1) and IsFloat(1.0) and IsNumber(1) and IsBool(true) and IsText("") and
-  IsArray([]) and IsStruct(Ok(1)) and not IsStruct({A: 1}) and IsFunction(Abs) and IsFunction(x -> x) and IsMissing(missing)
+use std/math
+use std/result
+use std/value
+
+isFloatDivision() = value.IsFloat(4 / 2)
+isFloor() = math.Floor(1.5) == 1 and value.IsFloat(math.Floor(1.5)) and value.IsInt(math.Floor(2))
+isRound() = math.Round(2.5) == 3 and math.Round(-2.5) == -3
+isAtan2() = math.Atan2(1, 1) == math.Pi / 4
+isKinds() = value.IsInt(1) and value.IsFloat(1.0) and value.IsNumber(1) and value.IsBool(true) and value.IsText("") and
+  value.IsArray([]) and value.IsStruct(result.Ok(1)) and not value.IsStruct({A: 1}) and value.IsFunction(math.Abs) and value.IsFunction(x -> x) and value.IsMissing(missing)

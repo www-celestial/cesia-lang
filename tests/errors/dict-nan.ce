@@ -1,2 +1,5 @@
+use std/dict
+use std/io
+
 x = 0.0 / 0.0
-Print(Put(x, 2, Dict()))
+io.Print(dict.Put(x, 2, dict.Dict()))

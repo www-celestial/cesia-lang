@@ -1,3 +1,6 @@
-a = Zeros(1500000)
-b = Transpose(a)
-Print(b[1])
+use std/io
+use std/matrix
+
+a = matrix.Zeros(1500000)
+b = matrix.Transpose(a)
+io.Print(b[1])

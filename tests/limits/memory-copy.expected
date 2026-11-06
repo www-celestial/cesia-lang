@@ -1,4 +1,4 @@
-memory-copy.ce:3:2: Limit "memory" reached.
-  3 | b[1] = 1.0
+memory-copy.ce:6:2: Limit "memory" reached.
+  6 | b[1] = 1.0
     |  ^
 exit 1

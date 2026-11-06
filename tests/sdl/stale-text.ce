@@ -1,6 +1,8 @@
 (** An older copy of the window remembers texts that its objects no longer hold. *)
 use tests/sdl/probe
 use std/sdl
+use std/io
+use std/result
 
 background = 0x000000
 clear = {Kind: "clear", Color: background}
@@ -12,10 +14,10 @@ defn check()
   old = sdl.Draw([clear, line("MMMMMMMM")], window)
   many = lit(old)
   newer = sdl.Draw([clear, line("........")], old)
-  Print(lit(newer) < many)
+  io.Print(lit(newer) < many)
   again = sdl.Draw([clear, line("MMMMMMMM")], old)
-  Print(lit(again) == many)
-  Ok(missing)
+  io.Print(lit(again) == many)
+  result.Ok(missing)
 end
 
-Print(check())
+io.Print(check())

@@ -1,4 +1,7 @@
-m = Zeros(100000) > 1.0
+use std/list
+use std/matrix
+
+m = matrix.Zeros(100000) > 1.0
 for i in 1..1000
-  b = Any(m)
+  b = list.Any(m)
 end

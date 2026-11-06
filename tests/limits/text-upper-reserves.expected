@@ -1,4 +1,4 @@
-text-upper-reserves.ce:3:5: Limit "memory" reached.
-  3 | y = Upper(x)
-    |     ^
+text-upper-reserves.ce:7:9: Limit "memory" reached.
+  7 | y = text.Upper(x)
+    |         ^
 exit 1

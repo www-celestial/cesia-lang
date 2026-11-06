@@ -4,15 +4,21 @@ use std/json
 use std/encode
 use std/sys
 use std/websocket as ws
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
 
 App() = {Routes: [], Middleware: []}   (** An application with no route and no middleware. *)
 
-segments(path) = Filter(s -> s != "", Split("/", path))
+segments(path) = list.Filter(s -> s != "", text.Split("/", path))
 
 defn Route(method, pattern, handler, a)
   (** An application with a route added. The pattern may hold :name parts, which the handler finds in its params, and a final * for the rest of the path. *)
   entry = {Method: method, Parts: segments(pattern), Handler: handler}
-  {Routes: Append(entry, a.Routes), Middleware: a.Middleware}
+  {Routes: list.Append(entry, a.Routes), Middleware: a.Middleware}
 end
 
 (** An application with a GET route added: Handler(request) gives a response. *)
@@ -24,7 +30,7 @@ Delete(pattern, handler, a) = Route("DELETE", pattern, handler, a)   (** An appl
 AnyMethod(pattern, handler, a) = Route("*", pattern, handler, a)
 
 (** A middleware is f(next, request), and calls next(request) to go on. *)
-Wrap(f, a) = {Routes: a.Routes, Middleware: Append(f, a.Middleware)}
+Wrap(f, a) = {Routes: a.Routes, Middleware: list.Append(f, a.Middleware)}
 
 (** A plain text response. *)
 Plain(s, status = 200) = {Status: status, Body: s, Headers: [type("text/plain; charset=utf-8")]}
@@ -44,7 +50,7 @@ defn WithHeader(name, value, response)
     else -> []
   end
   out = response
-  out.Headers = Append({Name: name, Value: value}, headers)
+  out.Headers = list.Append({Name: name, Value: value}, headers)
   out
 end
 
@@ -55,13 +61,13 @@ end
 
 defn cookies(headers)
   line = GetHeader("cookie", headers)
-  out = Dict()
-  if IsMissing(line)
+  out = dict.Dict()
+  if value.IsMissing(line)
     return out
   end
-  for part in Split(";", line)
-    pair = Split("=", Trim(part))
-    if Len(pair) == 2
+  for part in text.Split(";", line)
+    pair = text.Split("=", text.Trim(part))
+    if value.Len(pair) == 2
       out[pair[1]] = encode.UrlDecode(pair[2])
     end
   end
@@ -73,24 +79,24 @@ GetHeader(name, headers) = http.HeaderValue(name, headers)
 
 defn matchPath(parts, path)
   (** Binds :name parts, and a final * takes what remains. The parameters, or missing if the path doesn't match. *)
-  out = Dict()
-  n = Len(parts)
+  out = dict.Dict()
+  n = value.Len(parts)
   for k in 1..n
     part = parts[k]
     if part == "*"
-      out["*"] = Join("/", Skip(k - 1, path))
+      out["*"] = text.Join("/", list.Skip(k - 1, path))
       return out
     end
-    if k > Len(path)
+    if k > value.Len(path)
       return missing
     end
-    if StartsWith(":", part)
-      out[ByteSlice(2, ByteLength(part), part)] = encode.UrlDecode(path[k])
+    if text.StartsWith(":", part)
+      out[text.ByteSlice(2, text.ByteLength(part), part)] = encode.UrlDecode(path[k])
     else if part != path[k]
       return missing
     end
   end
-  if n == Len(path) out else missing end
+  if n == value.Len(path) out else missing end
 end
 
 defn enrich(request, params)
@@ -101,10 +107,10 @@ end
 Form(request) = encode.ParseQuery(request.Body)   (** The body of a form, or of JSON. *)
 BodyJson(request) = json.Parse(request.Body)   (** The body of a request read as JSON: an Ok of the value, or an Err. *)
 
-defn result(value)
+defn answer(value)
   match value
-    Ok(v) -> v
-    Err(e) -> Plain("Internal Server Error", status = 500)
+    result.Ok(v) -> v
+    result.Err(e) -> Plain("Internal Server Error", status = 500)
     else -> value
   end
 end
@@ -114,9 +120,9 @@ defn dispatch(a, request)
   allowed = false
   for r in a.Routes
     params = matchPath(r.Parts, path)
-    if not IsMissing(params)
+    if not value.IsMissing(params)
       if r.Method == "*" or r.Method == request.Method or (r.Method == "GET" and request.Method == "HEAD")
-        return result(r.Handler(enrich(request, params)))
+        return answer(r.Handler(enrich(request, params)))
       end
       allowed = true
     end
@@ -136,7 +142,7 @@ defn chain(a, k)
 end
 
 (** The function of a request that http.Serve takes: the routes behind the middleware. *)
-Handler(a) = chain(a, Len(a.Middleware))
+Handler(a) = chain(a, value.Len(a.Middleware))
 
 defn Serve(a, port = 8080, host = "127.0.0.1", timeout = http.DefaultTimeout, maxBody = http.DefaultMaxBody, wrap = http.Plain)
   (** Serves until a stop signal. Options go to http.Serve. *)
@@ -149,7 +155,7 @@ Websocket(pattern, onMessage, a, idle = ws.DefaultIdle) = Get(pattern, req -> ws
 defn Logger(next, request)
   (** A middleware that prints the method, the path and the status of each request. *)
   response = next(request)
-  Print("$(request.Method) $(request.Path) $(response.Status)")
+  io.Print("$(request.Method) $(request.Path) $(response.Status)")
   response
 end
 
@@ -164,10 +170,10 @@ types = {"html": "text/html; charset=utf-8", "css": "text/css", "js": "text/java
 
 defn FileResponse(path)
   (** The response with the content of a file, typed by its extension, or a 404 if it can't be read. *)
-  parts = Split(".", path)
-  kind = GetOr(Lower(parts[Len(parts)]), "application/octet-stream", types)
+  parts = text.Split(".", path)
+  kind = dict.GetOr(text.Lower(parts[value.Len(parts)]), "application/octet-stream", types)
   match sys.Read(path)
-    Ok(data) -> {Status: 200, Body: data, Headers: [type(kind)]}
+    result.Ok(data) -> {Status: 200, Body: data, Headers: [type(kind)]}
     else -> NotFound()
   end
 end
@@ -179,7 +185,7 @@ defn Static(prefix, folder, a)
 end
 
 defn static(folder, rest)
-  if ".." in Split("/", rest) or rest == ""
+  if ".." in text.Split("/", rest) or rest == ""
     NotFound()
   else
     FileResponse("$folder/$rest")
@@ -188,25 +194,25 @@ end
 
 (** A text, or any value as its text, with &, <, >, " and ' written as HTML writes them: for what comes from outside, in
     HTML. A template escapes its values the same way. *)
-Escape(s) = Replace("'", "&#39;", Replace("\"", "&quot;", Replace(">", "&gt;", Replace("<", "&lt;", Replace("&", "&amp;", Text(s))))))
+Escape(s) = text.Replace("'", "&#39;", text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", value.Text(s))))))
 
 defn Template(source, values)
   (** The source with each {{name}} replaced by the escaped value of that name. One pass: a value that holds {{name}} isn't
       read again. *)
-  parts = Split("{{", source)
-  out = Fill("", Len(parts))
+  parts = text.Split("{{", source)
+  out = list.Fill("", value.Len(parts))
   out[1] = parts[1]
-  for k in 2..Len(parts)
+  for k in 2..value.Len(parts)
     part = parts[k]
-    close = ByteFind("}}", 1, part)
-    name = if IsMissing(close) missing else Trim(if close == 1 "" else ByteSlice(1, close - 1, part) end) end
-    if IsMissing(name) or not Has(name, values)
+    close = text.ByteFind("}}", 1, part)
+    name = if value.IsMissing(close) missing else text.Trim(if close == 1 "" else text.ByteSlice(1, close - 1, part) end) end
+    if value.IsMissing(name) or not dict.Has(name, values)
       out[k] = "{{$part"
     else
       rest = close + 2
-      tail = if rest > ByteLength(part) "" else ByteSlice(rest, ByteLength(part), part) end
+      tail = if rest > text.ByteLength(part) "" else text.ByteSlice(rest, text.ByteLength(part), part) end
       out[k] = "$(Escape(values[name]))$tail"
     end
   end
-  Join("", out)
+  text.Join("", out)
 end

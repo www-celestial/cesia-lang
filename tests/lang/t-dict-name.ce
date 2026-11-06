@@ -1,5 +1,7 @@
 (** A dictionary literal doesn't depend on the names of the file. *)
+use std/io
+
 dict = 5
 d = {"a": 1}
-Print(Get("a", d))
-Print(dict)
+io.Print(d["a"])
+io.Print(dict)

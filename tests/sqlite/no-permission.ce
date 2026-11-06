@@ -1,7 +1,8 @@
 (** A database in memory reaches no file: it needs no permission. *)
 use std/sql
+use std/io
 defn main()
   db = sql.Open("sqlite::memory:")?
   sql.One("select 40 + 2 as x", [], db)
 end
-Print(main())
+io.Print(main())

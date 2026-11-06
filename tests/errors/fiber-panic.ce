@@ -1,2 +1,7 @@
-t = Spawn(() -> Panic("boom"))
-Print(IsErr(Wait(t)))
+use std/bug
+use std/fiber
+use std/io
+use std/result
+
+t = fiber.Spawn(() -> bug.Panic("boom"))
+io.Print(result.IsErr(fiber.Wait(t)))

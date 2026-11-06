@@ -1,15 +1,15 @@
-overflow-deep.ce:6:7: The integer result of 2 * 2305843009213693952 doesn't fit in 63 bits.
-  6 |     2 * pow2(n - 1) + 0
+overflow-deep.ce:9:7: The integer result of 2 * 2305843009213693952 doesn't fit in 63 bits.
+  9 |     2 * pow2(n - 1) + 0
     |       ^
   Integers have 63 bits. To go further, use a float: 1.0 * x.
-  in pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from pow2 (overflow-deep.ce:6)
-  called from many (overflow-deep.ce:15)
+  in pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from pow2 (overflow-deep.ce:9)
+  called from many (overflow-deep.ce:18)
 exit 1

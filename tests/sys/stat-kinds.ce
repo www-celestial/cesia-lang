@@ -1,11 +1,13 @@
 (** sys.Stat tells a regular file from the rest: a device or a FIFO has the size of an empty file, and reading one never ends.
     sys.Remove of a link deletes the link, never what it points to. *)
 use std/sys
+use std/io
+use std/result
 
 defn show(path)
   s = sys.Stat(path)?
-  Print(path, s.IsFile, s.IsDir, s.IsLink, if s.IsDir "folder" else s.Size end)
-  Ok(missing)
+  io.Print(path, s.IsFile, s.IsDir, s.IsLink, if s.IsDir "folder" else s.Size end)
+  result.Ok(missing)
 end
 
 defn main()
@@ -20,13 +22,13 @@ defn main()
   show("link-device")?
   show("pipe")?
   show("link-pipe")?
-  Print("broken link", IsErr(sys.Stat("link-broken")))
+  io.Print("broken link", result.IsErr(sys.Stat("link-broken")))
   sys.Write("folder/kept.txt", "kept")?
   sys.Remove("link-folder")?
-  Print("link removed", not sys.Exists("link-folder"), sys.Read("folder/kept.txt")?)
+  io.Print("link removed", not sys.Exists("link-folder"), sys.Read("folder/kept.txt")?)
   (* A real file of size 0 on Linux. Other systems have no such file, and nothing to check. *)
-  Print("proc", not sys.Exists("/proc/version") or sys.Stat("/proc/version")?.IsFile)
-  Ok(missing)
+  io.Print("proc", not sys.Exists("/proc/version") or sys.Stat("/proc/version")?.IsFile)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

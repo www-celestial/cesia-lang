@@ -2,10 +2,13 @@
 use tests/sdl/probe
 use std/sdl
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 defn update(event, state)
   if event.Kind == "quit" or event.Kind == "text"
-    Print(if event.Kind == "quit" "quit" else "no quit" end)
+    io.Print(if event.Kind == "quit" "quit" else "no quit" end)
     missing
   else
     state
@@ -22,14 +25,14 @@ end
 
 defn main()
   window = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
-  Spawn(giveUp)
-  Print("open")
+  fiber.Spawn(giveUp)
+  io.Print("open")
   sdl.Run(0, update, view, window)
   sdl.Close(window)
-  Print("closed")
+  io.Print("closed")
   sys.Sleep(3)
-  Print("not stopped")
-  Ok(missing)
+  io.Print("not stopped")
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

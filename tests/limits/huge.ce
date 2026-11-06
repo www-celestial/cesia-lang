@@ -1,1 +1,3 @@
-Zeros(1e12)
+use std/matrix
+
+matrix.Zeros(1e12)

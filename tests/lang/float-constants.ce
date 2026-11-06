@@ -1,5 +1,7 @@
+use std/io
+
 x = 1.5 * 2.0
 y = 1.5 + 2.5
 z = 3.0 - 1.0
 w = 1.0 / 2.0
-Print(x, y, z, w)
+io.Print(x, y, z, w)

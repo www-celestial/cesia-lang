@@ -1,2 +1,5 @@
-x = Zeros(100000000)
-Print(1)
+use std/io
+use std/matrix
+
+x = matrix.Zeros(100000000)
+io.Print(1)

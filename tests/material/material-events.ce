@@ -1,6 +1,10 @@
 (** The interactions of the example, through its update function. *)
 use std/sdl
 use examples/scene as scene
+use std/io
+use std/math
+use std/result
+use std/value
 
 fonts = "../../examples/fonts/"
 
@@ -16,40 +20,40 @@ mouse(action, x, y) = {Kind: "mouse", Action: action, X: x, Y: y, Button: 1, Amo
 defn check()
   begun = scene.Start(opened()?)?
   s = begun.State
-  Print(not scene.Moving(s))
+  io.Print(not scene.Moving(s))
   n = s.Nodes[4]
   s = scene.Update(mouse("down", n.X + 20, n.Y + 10), s)
-  Print(s.Picked == 4)
+  io.Print(s.Picked == 4)
   s = scene.Update(mouse("move", n.X + 60, n.Y - 30), s)
-  Print(s.Nodes[4].X == n.X + 40 and s.Nodes[4].Y == n.Y - 40)
+  io.Print(s.Nodes[4].X == n.X + 40 and s.Nodes[4].Y == n.Y - 40)
   s = scene.Update(mouse("up", n.X + 60, n.Y - 30), s)
   s = scene.Update(mouse("down", 1000, 500), s)
-  Print(s.Picked == 0)
+  io.Print(s.Picked == 0)
   s = scene.Update(mouse("up", 1000, 500), s)
   rough = scene.SliderRect(s.Rects.Details, 1)
   s = scene.Update(mouse("down", rough.X + rough.Width - 1, rough.Y + 5), s)
-  Print(s.Rough > 0.9 and s.Dragging == 2)
-  Print(scene.Moving(s))
+  io.Print(s.Rough > 0.9 and s.Dragging == 2)
+  io.Print(scene.Moving(s))
   s = scene.Update(mouse("up", 0, 0), s)
   s = scene.Update({Kind: "tick", Seconds: 0.05}, s)
-  Print(s.ShownRough > 0.32 and s.ShownRough < 1.0)
+  io.Print(s.ShownRough > 0.32 and s.ShownRough < 1.0)
   for k in 1..10
     s = scene.Update({Kind: "tick", Seconds: 0.05}, s)
   end
-  Print(not scene.Moving(s))
+  io.Print(not scene.Moving(s))
   s = scene.Update(mouse("down", 150, 200), s)
   s = scene.Update(mouse("move", 250, 200), s)
-  Print(Abs(s.Light - 1.4) < 0.001 and s.Dragging == 3)
+  io.Print(math.Abs(s.Light - 1.4) < 0.001 and s.Dragging == 3)
   s = scene.Update(mouse("up", 250, 200), s)
   s = scene.Update({Kind: "key", Key: "t"}, s)
-  Print(not s.Dark)
+  io.Print(not s.Dark)
   s = scene.Update({Kind: "resize", Width: 900, Height: 500}, s)
-  Print(s.Rects.Graph.Width < 736 and s.Width == 900)
+  io.Print(s.Rects.Graph.Width < 736 and s.Width == 900)
   s = scene.Update({Kind: "resize", Width: 40, Height: 30}, s)
-  Print(Len(scene.View(s)) > 10)
-  Print(IsMissing(scene.Update({Kind: "quit"}, s)))
-  Print(sdl.Close(begun.Window))
-  Ok("closed")
+  io.Print(value.Len(scene.View(s)) > 10)
+  io.Print(value.IsMissing(scene.Update({Kind: "quit"}, s)))
+  io.Print(sdl.Close(begun.Window))
+  result.Ok("closed")
 end
 
-Print(check())
+io.Print(check())

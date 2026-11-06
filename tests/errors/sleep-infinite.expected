@@ -1,4 +1,4 @@
-sleep-infinite.ce:4:4: Sleep needs a finite duration of 0 or more, not the number inf.
-  4 | sys.Sleep(x / y)
+sleep-infinite.ce:5:4: Sleep needs a finite duration of 0 or more, not the number inf.
+  5 | sys.Sleep(x / y)
     |    ^
 exit 1

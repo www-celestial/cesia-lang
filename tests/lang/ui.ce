@@ -1,4 +1,7 @@
 use std/ui
+use std/list
+use std/math
+use std/value
 
 r = {X: 10, Y: 20, Width: 100, Height: 40}
 
@@ -54,7 +57,7 @@ defn stepped(n, seconds)
   value
 end
 
-isEaseStaysTheSameInSteps() = Abs(stepped(10, 0.001) - stepped(1, 0.01)) < 0.0001
+isEaseStaysTheSameInSteps() = math.Abs(stepped(10, 0.001) - stepped(1, 0.01)) < 0.0001
 isEaseOfNoTime() = ui.Ease(1.0, 2.0, 0.0) == 1.0
 isEaseReachesItsGoal() = ui.Rests(stepped(200, 0.016), 1.0)
 isRests() = ui.Rests(1.0, 1.001) and not ui.Rests(1.0, 1.01)
@@ -67,15 +70,15 @@ isSliderOfNoWidth() = ui.SliderValue({X: 10, Y: 0}, {X: 10, Y: 0, Width: 0, Heig
 
 themeFields(t) = [t.Ground, t.Panel, t.Header, t.Tab, t.Well, t.Edge, t.Line, t.Code, t.Ink, t.Bright, t.Muted, t.Faint, t.Accent, t.Fill, t.Hover, t.Picked, t.Graph, t.Body, t.Big, t.Shadow, t.GridMinor, t.GridMajor]
 
-isThemesHaveTheSameFields() = Len(themeFields(ui.Dark)) == Len(themeFields(ui.Light)) and Len(ui.Dark.Syntax) == 7 and Len(ui.Light.Syntax) == 7
+isThemesHaveTheSameFields() = value.Len(themeFields(ui.Dark)) == value.Len(themeFields(ui.Light)) and value.Len(ui.Dark.Syntax) == 7 and value.Len(ui.Light.Syntax) == 7
 isLightPalette() = ui.Light.Ground == 0xEBECF0 and ui.Light.Panel == 0xF7F8FA and ui.Light.Graph == 0xFFFFFF and ui.Light.Code == 0xFFFFFF
 
 defn isLookHoldsItsParts()
-  look = ui.Look(ui.Dark, (words, font) -> Len(words) * 7, 16)
+  look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 7, 16)
   look.Height == 16 and look.Width("abc", "body") == 21 and look.Theme.Ground == ui.Dark.Ground
 end
 
-look = ui.Look(ui.Dark, (words, font) -> Len(words) * 7, 16)
+look = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 7, 16)
 area = {X: 10, Y: 10, Width: 300, Height: 200}
 nothing = {X: 10, Y: 10, Width: 0, Height: 0}
 arrow = ui.Icons.Arrow
@@ -87,7 +90,7 @@ two = [nodeA, nodeB]
 link = {From: 1, Output: 1, To: 2, Input: 1, Color: 0xE8C547}
 known = ["clear", "rect", "box", "ring", "fade", "shadow", "text", "image", "tile", "icon", "curves"]
 
-isKnown(commands) = All(Map(c -> c.Kind in known, commands))
+isKnown(commands) = list.All(list.Map(c -> c.Kind in known, commands))
 
 defn widgets(rect)
   tools = [{Shape: arrow, Name: "Save", Color: 0x8E8E8E}, missing, {Shape: arrow, Name: "Run", Color: 0x3FA34D}]
@@ -98,14 +101,14 @@ defn widgets(rect)
     ui.Checkbox(false, rect, look), ui.Swatch(0xD98F4E, "#D98F4E", rect, look), ui.List(items, 2, 40.0, rect, look), ui.Code(lines, 1, rect, look), ui.Grid(rect, look), ui.Nodes(two, 1, [link], look), ui.Links([link], two, look)]
 end
 
-isWidgetsGiveKnownKinds() = All(Map(isKnown, widgets(area)))
-isWidgetsOfAnEmptyRectangle() = All(Map(isKnown, widgets(nothing)))
-isWidgetsOfNothing() = Equal(ui.List([], 0, missing, area, look), []) and isKnown(ui.Nodes([], 0, [], look)) and isKnown(ui.Links([], [], look)) and isKnown(ui.Code([], 0, area, look)) and isKnown(ui.MenuBar([], "", area, look)) and isKnown(ui.ToolBar([], {X: 0, Y: 0}, area, look))
+isWidgetsGiveKnownKinds() = list.All(list.Map(isKnown, widgets(area)))
+isWidgetsOfAnEmptyRectangle() = list.All(list.Map(isKnown, widgets(nothing)))
+isWidgetsOfNothing() = value.Equal(ui.List([], 0, missing, area, look), []) and isKnown(ui.Nodes([], 0, [], look)) and isKnown(ui.Links([], [], look)) and isKnown(ui.Code([], 0, area, look)) and isKnown(ui.MenuBar([], "", area, look)) and isKnown(ui.ToolBar([], {X: 0, Y: 0}, area, look))
 
-accents(commands) = Len(Filter(c -> c.Kind == "box" and c.Color == ui.Dark.Accent, commands))
+accents(commands) = value.Len(list.Filter(c -> c.Kind == "box" and c.Color == ui.Dark.Accent, commands))
 isOnlyActivePanelHasAccent() = accents(ui.Panel("T", area, look, active = true)) == 1 and accents(ui.Panel("T", area, look)) == 0
 
-boxes(commands) = Len(Filter(it.Kind == "box", commands))
+boxes(commands) = value.Len(list.Filter(it.Kind == "box", commands))
 
 defn isToolAnswersTheMouse()
   tools = [{Shape: arrow, Name: "Save", Color: 0x8E8E8E}]
@@ -113,10 +116,10 @@ defn isToolAnswersTheMouse()
   boxes(ui.ToolBar(tools, {X: 15, Y: 15}, bar, look)) == 1 and boxes(ui.ToolBar(tools, {X: 250, Y: 15}, bar, look)) == 0
 end
 
-rings(commands) = Filter(c -> c.Kind == "ring" and c.Width == 10, commands)
+rings(commands) = list.Filter(c -> c.Kind == "ring" and c.Width == 10, commands)
 
 defn isPinHollowWhenUnlinked()
-  Len(rings(ui.Nodes(two, 0, [link], look))) == 1 and Len(rings(ui.Nodes(two, 0, [], look))) == 3
+  value.Len(rings(ui.Nodes(two, 0, [link], look))) == 1 and value.Len(rings(ui.Nodes(two, 0, [], look))) == 3
 end
 
 isNodeAtTakesTheTop() = ui.NodeAt({X: 70, Y: 50}, two) == 2 and ui.NodeAt({X: 25, Y: 25}, two) == 1 and ui.NodeAt({X: 250, Y: 150}, two) == 0
@@ -133,19 +136,19 @@ defn isMoveNodeLeavesNodesAlone()
 end
 
 defn isCodeCountsCodePoints()
-  texts = Filter(it.Kind == "text", ui.Code([[[6, "é"], [1, "x"]]], 0, area, look))
-  places = [c.X for c in Filter(it.Text != "1", texts)]
+  texts = list.Filter(it.Kind == "text", ui.Code([[[6, "é"], [1, "x"]]], 0, area, look))
+  places = [c.X for c in list.Filter(it.Text != "1", texts)]
   places[2] - places[1] == 7
 end
 
 defn isSliderValueMeasured()
-  wide = ui.Look(ui.Dark, (words, font) -> Len(words) * 7 + 3, 16)
-  texts = Filter(it.Kind == "text", ui.Slider(0.1, area, wide))
-  Last(texts).X + wide.Width(Last(texts).Text, "body") == area.X + area.Width - 9
+  wide = ui.Look(ui.Dark, (words, font) -> value.Len(words) * 7 + 3, 16)
+  texts = list.Filter(it.Kind == "text", ui.Slider(0.1, area, wide))
+  list.Last(texts).X + wide.Width(list.Last(texts).Text, "body") == area.X + area.Width - 9
 end
 
-isCodeFont() = All(Map(c -> c.Kind != "text" or c.Font == "code", ui.Code([[[6, "x"]]], 1, area, look)))
-isOnlyCodeUsesIt() = All(Map(c -> c.Kind != "text" or fontIsNotCode(c), Flatten(withoutCode(widgets(area)))))
+isCodeFont() = list.All(list.Map(c -> c.Kind != "text" or c.Font == "code", ui.Code([[[6, "x"]]], 1, area, look)))
+isOnlyCodeUsesIt() = list.All(list.Map(c -> c.Kind != "text" or fontIsNotCode(c), list.Flatten(withoutCode(widgets(area)))))
 
 defn fontIsNotCode(c)
   match c
@@ -154,7 +157,7 @@ defn fontIsNotCode(c)
   end
 end
 
-withoutCode(allWidgets) = [allWidgets[k] for k in 1..Len(allWidgets) if k != 14]
+withoutCode(allWidgets) = [allWidgets[k] for k in 1..value.Len(allWidgets) if k != 14]
 
 defn isOutputSitsUnderABody()
   withBody = {X: 0, Y: 0, Width: 100, Title: "T", Color: 0, Inputs: [], Outputs: [pin("O")], Body: 30}
@@ -163,12 +166,12 @@ end
 
 defn isLinksAreOneCommand()
   drawn = ui.Links([link], two, look)
-  Len(drawn) == 1 and Len(drawn[1].Items) == 1 and drawn[1].Items[1].X0 == 120.0
+  value.Len(drawn) == 1 and value.Len(drawn[1].Items) == 1 and drawn[1].Items[1].X0 == 120.0
 end
 
 defn isHintIsFaint()
-  hinted = Filter(it.Kind == "text", ui.Field("Search", area, look, hint = true))
-  plain = Filter(it.Kind == "text", ui.Field("Search", area, look))
+  hinted = list.Filter(it.Kind == "text", ui.Field("Search", area, look, hint = true))
+  plain = list.Filter(it.Kind == "text", ui.Field("Search", area, look))
   hinted[1].Color == ui.Dark.Faint and plain[1].Color == ui.Dark.Ink
 end
 
@@ -176,14 +179,14 @@ end
 zone = {X: 100, Y: 50, Width: 200, Height: 22}
 
 defn sliderInside(value)
-  shapes = Filter(it.Kind == "box" or it.Kind == "rect", ui.Slider(value, zone, look))
-  All(Map(c -> c.X >= zone.X and c.Y >= zone.Y and c.X + c.Width <= zone.X + zone.Width and c.Y + c.Height <= zone.Y + zone.Height, shapes))
+  shapes = list.Filter(it.Kind == "box" or it.Kind == "rect", ui.Slider(value, zone, look))
+  list.All(list.Map(c -> c.X >= zone.X and c.Y >= zone.Y and c.X + c.Width <= zone.X + zone.Width and c.Y + c.Height <= zone.Y + zone.Height, shapes))
 end
 
-tickOf(value) = Filter(it.Kind == "rect" and it.Color == ui.Dark.Accent, ui.Slider(value, zone, look))[1]
+tickOf(value) = list.Filter(it.Kind == "rect" and it.Color == ui.Dark.Accent, ui.Slider(value, zone, look))[1]
 
 (** The commands of the filled part, of any shape. *)
-fillOf(value) = Filter((it.Kind == "rect" or it.Kind == "box") and it.Color == ui.Dark.Fill, ui.Slider(value, zone, look))
+fillOf(value) = list.Filter((it.Kind == "rect" or it.Kind == "box") and it.Color == ui.Dark.Fill, ui.Slider(value, zone, look))
 
 isSliderInsideAtZero() = sliderInside(0.0)
 isSliderInsideAtOne() = sliderInside(1.0)
@@ -193,8 +196,8 @@ isTickReachesTheLeftEnd() = tickOf(0.0).X == zone.X
 isTickReachesTheRightEnd() = tickOf(1.0).X + tickOf(1.0).Width == zone.X + zone.Width
 isTickFollowsTheCorners() = tickOf(0.0).Y == zone.Y + 4 and tickOf(0.0).Height == zone.Height - 8
 isTickMoves() = tickOf(0.2).X < tickOf(0.8).X
-isNothingFilledAtZero() = Len(fillOf(0.0)) == 0
-isALittleFilledShows() = Len(fillOf(0.01)) > 0 and Len(fillOf(0.02)) > 0 and Len(fillOf(0.03)) > 0
+isNothingFilledAtZero() = value.Len(fillOf(0.0)) == 0
+isALittleFilledShows() = value.Len(fillOf(0.01)) > 0 and value.Len(fillOf(0.02)) > 0 and value.Len(fillOf(0.03)) > 0
 isSmallFillInside() = sliderInside(0.01) and sliderInside(0.02) and sliderInside(0.03)
 isSmallFillFollowsTheCorner() = fillOf(0.02)[1].Y > zone.Y
 isTickFullHeight() = tickOf(0.5).Y == zone.Y and tickOf(0.5).Height == zone.Height

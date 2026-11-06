@@ -1,4 +1,4 @@
-memory-mask.ce:2:7: Limit "memory" reached.
-  2 | m = a > 1.0
+memory-mask.ce:5:7: Limit "memory" reached.
+  5 | m = a > 1.0
     |       ^
 exit 1

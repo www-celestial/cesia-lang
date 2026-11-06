@@ -1,4 +1,9 @@
 (** The language in one file: cesia run examples/tour.ce *)
+use std/fiber
+use std/io
+use std/list
+use std/math
+use std/result
 
 double(x) = x * 2   (** Functions: the short form, and the long one, which gives its last value. *)
 
@@ -6,37 +11,37 @@ defn greet(name)
   "Hello, $name"
 end
 
-Print(greet("world"))
+io.Print(greet("world"))
 
 (* Arrays start at 1. *)
 numbers = [1, 2, 3, 4]
-Print(numbers[1])
+io.Print(numbers[1])
 
-Print(Map(double, numbers))   (** Functions come first, the collection last. *)
-Print(Filter(x -> x > 2, numbers))
-Print(Reduce((total, x) -> total + x, 0, numbers))
+io.Print(list.Map(double, numbers))   (** Functions come first, the collection last. *)
+io.Print(list.Filter(x -> x > 2, numbers))
+io.Print(list.Reduce((total, x) -> total + x, 0, numbers))
 
-Print(numbers then Filter(it > 1) then Map(it * 10))   (** A pipeline, where it is the current element. *)
+io.Print(numbers then list.Filter(it > 1) then list.Map(it * 10))   (** A pipeline, where it is the current element. *)
 
 (* Structs. *)
 point = {X: 1, Y: 2}
-Print(point.X + point.Y)
+io.Print(point.X + point.Y)
 
 (* Loops and conditions. *)
 for n in 1..3
   if n == 2
-    Print("two")
+    io.Print("two")
   else
-    Print(n)
+    io.Print(n)
   end
 end
 
 defn half(n)
   (** Errors are values: Ok or Err, and ? passes an Err on to the caller. *)
-  if Mod(n, 2) == 0
-    Ok(n / 2)
+  if math.Mod(n, 2) == 0
+    result.Ok(n / 2)
   else
-    Err({Kind: "odd", Message: "$n is odd"})
+    result.Err({Kind: "odd", Message: "$n is odd"})
   end
 end
 
@@ -45,16 +50,16 @@ defn quarter(n)
   half(once)
 end
 
-Print(quarter(8))
-Print(quarter(6))
+io.Print(quarter(8))
+io.Print(quarter(6))
 
-describe(result) = match result   (** match takes structures apart. *)
-  Ok(value) -> "got $value"
-  Err(e) -> "failed: $(e.Message)"
+describe(r) = match r   (** match takes structures apart. *)
+  result.Ok(value) -> "got $value"
+  result.Err(e) -> "failed: $(e.Message)"
 end
 
-Print(describe(quarter(6)))
+io.Print(describe(quarter(6)))
 
 (* Fibers run side by side. *)
-task = Spawn(() -> double(21))
-Print(Wait(task))
+task = fiber.Spawn(() -> double(21))
+io.Print(fiber.Wait(task))

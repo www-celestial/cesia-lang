@@ -1,4 +1,4 @@
-memory-slice.ce:2:6: Limit "memory" reached.
-  2 | b = a[1..1500000]
+memory-slice.ce:5:6: Limit "memory" reached.
+  5 | b = a[1..1500000]
     |      ^
 exit 1

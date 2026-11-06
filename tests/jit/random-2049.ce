@@ -1,6 +1,11 @@
+use std/io
+use std/math
+use std/matrix
+use std/value
+
 (* A random program of the three-way differential test. *)
 defn h0(p0, p1)
-  if ((if p1 >= -3 p0 else p1 end) >= p0 and 925 < Mod(p1, (Mod(p1, 4) + 1)))
+  if ((if p1 >= -3 p0 else p1 end) >= p0 and 925 < math.Mod(p1, (math.Mod(p1, 4) + 1)))
     (-7.97 * (if p1 < p0 (if p0 < p0 8.92 else 1e-300 end) else (9007199254740993.0 * 1.7976931348623157e308) end))
   else
     (((-(p0)) * 1.0 + (9.65 * -2.83)) + (if 3037000499 > p1 5e-324 else (-(8.39)) end))
@@ -23,9 +28,9 @@ end
 defn f0(n, m, x, a, b)
   t = m
   y = x
-  x = (a[Mod((-(9)), Len(a)) + 1] ^ x)
+  x = (a[math.Mod((-(9)), value.Len(a)) + 1] ^ x)
   y = (if (n > y or 7 <= t) y else y end)
-  if (-(Div(9, (Mod(1537228672809129301, 4) + 1)))) <= (Len(a) - (1099511627776 * t))
+  if (-(math.Div(9, (math.Mod(1537228672809129301, 4) + 1)))) <= (value.Len(a) - (1099511627776 * t))
     return x
   end
   t = (n - t)
@@ -35,29 +40,29 @@ defn f0(n, m, x, a, b)
     t = (-((if t >= l0 (-(t)) else (if l0 == m m else m end) end)))
     for l1 in 2..2
       n = ((m - l1) + t)
-      if Len(a) == (if y <= x t else (if 0 >= y n else m end) end)
-        for l2 in 1..Mod(0, 8) + 1
-          x = (if (l1 >= l1 or t > y) (-(Mod(t, 2))) else Mod(Div(l0, (Mod(l2, 4) + 1)), 7) end) * 1.0
+      if value.Len(a) == (if y <= x t else (if 0 >= y n else m end) end)
+        for l2 in 1..math.Mod(0, 8) + 1
+          x = (if (l1 >= l1 or t > y) (-(math.Mod(t, 2))) else math.Mod(math.Div(l0, (math.Mod(l2, 4) + 1)), 7) end) * 1.0
           m = -7
-          y = ((y / 2.5) / Sqrt((-(1e-300))))
+          y = ((y / 2.5) / math.Sqrt((-(1e-300))))
           if n >= 4
             break
           end
         end
-        m = (Len(a) + (if 0.1 > y Len(a) else l1 end))
-        b[2 * l0 - 1] = b[Len(b) - l1 + 1]
+        m = (value.Len(a) + (if 0.1 > y value.Len(a) else l1 end))
+        b[2 * l0 - 1] = b[value.Len(b) - l1 + 1]
       else
         if l0 != m
-          n = Len(b)
-          a[Mod((if n <= m Mod(-158, 7) else n end), Len(a)) + 1] = ((if l1 != n (if x != y x else y end) else Sqrt(1.98) end) * Abs((if m >= l1 y else x end)))
-          m = ((if l0 == 2 t else Div(n, -3) end) - t)
+          n = value.Len(b)
+          a[math.Mod((if n <= m math.Mod(-158, 7) else n end), value.Len(a)) + 1] = ((if l1 != n (if x != y x else y end) else math.Sqrt(1.98) end) * math.Abs((if m >= l1 y else x end)))
+          m = ((if l0 == 2 t else math.Div(n, -3) end) - t)
           if y < x
-            b[Len(b) - l0 + 1] = ((Mod(l0, -3) * 1.0 + (if n < m x else 7.12 end)) / x)
-            a[Mod(Len(b), Len(a)) + 1] = (x * (b[l0 + l1] ^ (4611686018427387904.0 * -2.24)))
+            b[value.Len(b) - l0 + 1] = ((math.Mod(l0, -3) * 1.0 + (if n < m x else 7.12 end)) / x)
+            a[math.Mod(value.Len(b), value.Len(a)) + 1] = (x * (b[l0 + l1] ^ (4611686018427387904.0 * -2.24)))
           end
         end
         b[l1 + l0] = ((if 82510 != y x else y end) - a[l0 + m])
-        if ((t * t) + (l0 * 6)) >= (m + Mod(l0, (l1 * 0 + 5)))
+        if ((t * t) + (l0 * 6)) >= (m + math.Mod(l0, (l1 * 0 + 5)))
           return -2.71
         end
       end
@@ -69,110 +74,110 @@ end
 defn f1(n, m, x, a, b)
   t = m
   y = x
-  x = Sqrt(h0((-(n)), (if -359 > -5 -8 else m end)))
+  x = math.Sqrt(h0((-(n)), (if -359 > -5 -8 else m end)))
   y = (x - y)
-  n = (if (-(m)) < t (Div(n, -3) - n) else (-(m)) end)
+  n = (if (-(m)) < t (math.Div(n, -3) - n) else (-(m)) end)
   t + n
 end
 defn batchf00(n0, m0, x0)
-  a = Zeros(28)
-  b = Zeros(33)
-  for i in 1..Len(a)
+  a = matrix.Zeros(28)
+  b = matrix.Zeros(33)
+  for i in 1..value.Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1..Len(b)
+  for i in 1..value.Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0.0
   for j in 1..1100
-    acc = acc + f0(n0 + Mod(j, 3), m0, x0, a, b)
+    acc = acc + f0(n0 + math.Mod(j, 3), m0, x0, a, b)
   end
-  Print(a[1], b[Len(b)], a[Len(a)])
+  io.Print(a[1], b[value.Len(b)], a[value.Len(a)])
   acc
 end
 defn batchf01(n0, m0, x0)
-  a = Zeros(30)
-  b = Zeros(37)
-  for i in 1..Len(a)
+  a = matrix.Zeros(30)
+  b = matrix.Zeros(37)
+  for i in 1..value.Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1..Len(b)
+  for i in 1..value.Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0.0
   for j in 1..1100
-    acc = acc + f0(n0 + Mod(j, 3), m0, x0, a, b)
+    acc = acc + f0(n0 + math.Mod(j, 3), m0, x0, a, b)
   end
-  Print(a[1], b[Len(b)], a[Len(a)])
+  io.Print(a[1], b[value.Len(b)], a[value.Len(a)])
   acc
 end
 defn batchf02(n0, m0, x0)
-  a = Zeros(33)
-  b = Zeros(28)
-  for i in 1..Len(a)
+  a = matrix.Zeros(33)
+  b = matrix.Zeros(28)
+  for i in 1..value.Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1..Len(b)
+  for i in 1..value.Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0.0
   for j in 1..1100
-    acc = acc + f0(n0 + Mod(j, 3), m0, x0, a, b)
+    acc = acc + f0(n0 + math.Mod(j, 3), m0, x0, a, b)
   end
-  Print(a[1], b[Len(b)], a[Len(a)])
+  io.Print(a[1], b[value.Len(b)], a[value.Len(a)])
   acc
 end
 defn batchf10(n0, m0, x0)
-  a = Zeros(32)
-  b = Zeros(29)
-  for i in 1..Len(a)
+  a = matrix.Zeros(32)
+  b = matrix.Zeros(29)
+  for i in 1..value.Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1..Len(b)
+  for i in 1..value.Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0
   for j in 1..1100
-    acc = Mod(acc * 31 + f1(n0 + Mod(j, 3), m0, x0, a, b), 1000000007)
+    acc = math.Mod(acc * 31 + f1(n0 + math.Mod(j, 3), m0, x0, a, b), 1000000007)
   end
-  Print(a[1], b[Len(b)], a[Len(a)])
+  io.Print(a[1], b[value.Len(b)], a[value.Len(a)])
   acc
 end
 defn batchf11(n0, m0, x0)
-  a = Zeros(23)
-  b = Zeros(36)
-  for i in 1..Len(a)
+  a = matrix.Zeros(23)
+  b = matrix.Zeros(36)
+  for i in 1..value.Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1..Len(b)
+  for i in 1..value.Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0
   for j in 1..3
-    acc = Mod(acc * 31 + f1(n0 + Mod(j, 3), m0, x0, a, b), 1000000007)
+    acc = math.Mod(acc * 31 + f1(n0 + math.Mod(j, 3), m0, x0, a, b), 1000000007)
   end
-  Print(a[1], b[Len(b)], a[Len(a)])
+  io.Print(a[1], b[value.Len(b)], a[value.Len(a)])
   acc
 end
 defn batchf12(n0, m0, x0)
-  a = Zeros(29)
-  b = Zeros(31)
-  for i in 1..Len(a)
+  a = matrix.Zeros(29)
+  b = matrix.Zeros(31)
+  for i in 1..value.Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1..Len(b)
+  for i in 1..value.Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0
   for j in 1..3
-    acc = Mod(acc * 31 + f1(n0 + Mod(j, 3), m0, x0, a, b), 1000000007)
+    acc = math.Mod(acc * 31 + f1(n0 + math.Mod(j, 3), m0, x0, a, b), 1000000007)
   end
-  Print(a[1], b[Len(b)], a[Len(a)])
+  io.Print(a[1], b[value.Len(b)], a[value.Len(a)])
   acc
 end
-Print(batchf00(3, -22, 5.61))
-Print(batchf01(1, -33, 1e-300))
-Print(batchf02(20, -15, 5e-324))
-Print(batchf10(1, -17, 2.5))
-Print(batchf11(-2, -20, 1e300))
-Print(batchf12(17, 22, -3.40))
+io.Print(batchf00(3, -22, 5.61))
+io.Print(batchf01(1, -33, 1e-300))
+io.Print(batchf02(20, -15, 5e-324))
+io.Print(batchf10(1, -17, 2.5))
+io.Print(batchf11(-2, -20, 1e300))
+io.Print(batchf12(17, 22, -3.40))

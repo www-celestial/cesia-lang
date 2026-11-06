@@ -1,4 +1,4 @@
-method-no-static.ce:2:11: Rect has no static method "Nope".
-  2 | Print(Rect.Nope())
-    |           ^
+method-no-static.ce:4:14: Rect has no static method "Nope".
+  4 | io.Print(Rect.Nope())
+    |              ^
 exit 1

@@ -1,75 +1,79 @@
 (** Channels between fibers: order, senders, waiting receivers and timeouts. *)
 use std/sys
+use std/fiber
+use std/list
+use std/result
+use std/value
 
 defn isChannelKeepsOrder()
-  ch = Channel()
+  ch = fiber.Channel()
   for k in 1..5
-    Send(k, ch)
+    fiber.Send(k, ch)
   end
-  Equal([Receive(ch)? for k in 1..5], [1, 2, 3, 4, 5])
+  value.Equal([fiber.Receive(ch)? for k in 1..5], [1, 2, 3, 4, 5])
 end
 
 defn isChannelManySenders()
-  ch = Channel()
-  tasks = [Spawn(() -> Send(k, ch)) for k in 1..20]
+  ch = fiber.Channel()
+  tasks = [fiber.Spawn(() -> fiber.Send(k, ch)) for k in 1..20]
   for t in tasks
-    Wait(t)
+    fiber.Wait(t)
   end
-  Equal(Sort([Receive(ch)? for k in 1..20]), [k for k in 1..20])
+  value.Equal(list.Sort([fiber.Receive(ch)? for k in 1..20]), [k for k in 1..20])
 end
 
 defn isChannelReceiveWaits()
-  ch = Channel()
-  reader = Spawn(() -> Receive(ch)? * 2)
+  ch = fiber.Channel()
+  reader = fiber.Spawn(() -> fiber.Receive(ch)? * 2)
   sys.Sleep(0.01)
-  Send(21, ch)
-  Wait(reader) == Ok(42)
+  fiber.Send(21, ch)
+  fiber.Wait(reader) == result.Ok(42)
 end
 
-isChannelTimeout() = (Receive(Channel(), timeout = 0.02) then MapErr(it.Kind)) == Err("timeout")
+isChannelTimeout() = (fiber.Receive(fiber.Channel(), timeout = 0.02) then result.MapErr(it.Kind)) == result.Err("timeout")
 
 defn isChannelTimeoutZeroNeverWaits()
-  ch = Channel()
-  first = Receive(ch, timeout = 0) then MapErr(it.Kind)
-  Send("a", ch)
-  first == Err("timeout") and Receive(ch, timeout = 0) == Ok("a")
+  ch = fiber.Channel()
+  first = fiber.Receive(ch, timeout = 0) then result.MapErr(it.Kind)
+  fiber.Send("a", ch)
+  first == result.Err("timeout") and fiber.Receive(ch, timeout = 0) == result.Ok("a")
 end
 
 defn later(x, ch)
   sys.Sleep(0.01)
-  Send(x, ch)
+  fiber.Send(x, ch)
 end
 
 defn isChannelValueBeforeTimeout()
-  ch = Channel()
-  Spawn(() -> later("late", ch))
-  Receive(ch, timeout = 0.5) == Ok("late")
+  ch = fiber.Channel()
+  fiber.Spawn(() -> later("late", ch))
+  fiber.Receive(ch, timeout = 0.5) == result.Ok("late")
 end
 
 defn isChannelTwoReceivers()
-  ch = Channel()
-  a = Spawn(() -> Receive(ch)?)
-  b = Spawn(() -> Receive(ch)?)
+  ch = fiber.Channel()
+  a = fiber.Spawn(() -> fiber.Receive(ch)?)
+  b = fiber.Spawn(() -> fiber.Receive(ch)?)
   sys.Sleep(0.01)
-  Send(1, ch)
-  Send(2, ch)
-  Equal(Sort([Wait(a)?, Wait(b)?]), [1, 2])
+  fiber.Send(1, ch)
+  fiber.Send(2, ch)
+  value.Equal(list.Sort([fiber.Wait(a)?, fiber.Wait(b)?]), [1, 2])
 end
 
 defn isChannelWokenReceiverKeepsItsPlace()
   (** A receiver woken whose value another took parks again first, before the one that came after it. *)
-  ch = Channel()
-  a = Spawn(() -> Receive(ch)?)
+  ch = fiber.Channel()
+  a = fiber.Spawn(() -> fiber.Receive(ch)?)
   sys.Sleep(0.001)
-  b = Spawn(() -> Receive(ch)?)
+  b = fiber.Spawn(() -> fiber.Receive(ch)?)
   sys.Sleep(0.001)
-  Send(1, ch)
-  stolen = Receive(ch, timeout = 0)
+  fiber.Send(1, ch)
+  stolen = fiber.Receive(ch, timeout = 0)
   sys.Sleep(0.001)
-  Send(2, ch)
+  fiber.Send(2, ch)
   sys.Sleep(0.001)
-  Send(3, ch)
-  stolen == Ok(1) and Wait(a) == Ok(2) and Wait(b) == Ok(3)
+  fiber.Send(3, ch)
+  stolen == result.Ok(1) and fiber.Wait(a) == result.Ok(2) and fiber.Wait(b) == result.Ok(3)
 end
 
-isWaitNeedsATask() = not IsOk(Wait(Spawn(() -> Wait(Channel()))))
+isWaitNeedsATask() = not result.IsOk(fiber.Wait(fiber.Spawn(() -> fiber.Wait(fiber.Channel()))))

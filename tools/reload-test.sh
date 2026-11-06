@@ -53,7 +53,7 @@ start app.ce "value 1"
 
 # 1. The new code is active in under 100 ms.
 t0=$(date +%s%N)
-sed -i 's/^value() = 1$/value() = 2/' "$dir/app.ce"
+sed -i 's/^current() = 1$/current() = 2/' "$dir/app.ce"
 wait_for out "value 2" 2000 || fail "1: new code never active"
 ms=$((($(date +%s%N) - t0) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "1: $ms ms, budget $budget_ms ms"
@@ -64,18 +64,18 @@ wait_for out "summed 4501500" 2000 || fail "jit: summed never ran"
 wait_for out "fiber 2" 2000 || fail "1: a fiber still runs the old loop on the new code"
 
 # 2. An invalid file leaves the program running, and the fixed file is picked up.
-sed -i 's/^value() = 2$/value() = (/' "$dir/app.ce"
+sed -i 's/^current() = 2$/current() = (/' "$dir/app.ce"
 until grep -q "app.ce:" "$dir/err" 2>/dev/null; do
   sleep 0.01
   alive "2: invalid file"
   [ $((($(date +%s%N) - t0) / 1000000)) -gt 3000 ] && { fail "2: no error on stderr"; break; }
 done
 alive "2: invalid file"
-sed -i 's/^value() = ($/value() = 3/' "$dir/app.ce"
+sed -i 's/^current() = ($/current() = 3/' "$dir/app.ce"
 wait_for out "value 3" 2000 || fail "2: fixed file not picked up"
 
 # 3. A file missing for a moment, then recreated, is picked up.
-sed 's/^value() = 3$/value() = 4/' "$dir/app.ce" > "$dir/copie"
+sed 's/^current() = 3$/current() = 4/' "$dir/app.ce" > "$dir/copie"
 rm "$dir/app.ce"
 sleep 0.05
 alive "3: missing file"
@@ -84,17 +84,17 @@ wait_for out "value 4" 2000 || fail "3: recreated file not picked up"
 
 # 4. A function that changes its return type keeps working for its callers.
 wait_for out "following 5" 2000 || fail "4: following before the change"
-sed -i 's/^value() = 4$/value() = "a"/' "$dir/app.ce"
+sed -i 's/^current() = 4$/current() = "a"/' "$dir/app.ce"
 wait_for out "value a" 2000 || fail "4: new return type"
 wait_for out "following type" 2000 || fail "4: recompiled caller"
 wait_for out "direct type" 2000 || fail "4: old code still running"
 no_internal "4"
-sed -i 's/^value() = "a"$/value() = 1.5/' "$dir/app.ce"
+sed -i 's/^current() = "a"$/current() = 1.5/' "$dir/app.ce"
 wait_for out "value 1.5" 2000 || fail "4: float return"
 wait_for out "direct 2.5" 2000 || fail "4: old code with a float"
 
 # A new function, a loaded module, a changed struct, a deleted function.
-sed -i 's/^value() = 1.5$/value() = added()\nadded() = 9/' "$dir/app.ce"
+sed -i 's/^current() = 1.5$/current() = added()\nadded() = 9/' "$dir/app.ce"
 wait_for out "value 9" 2000 || fail "new function"
 sed -i 's/^Constant() = 10$/Constant() = 11/' "$dir/lib/lib.ce"
 wait_for out "lib 11" 2000 || fail "loaded module"

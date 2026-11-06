@@ -1,10 +1,13 @@
 use tests/sdl/probe
 use std/sdl
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 defn tick(event, state)
   if event.Seconds <= 0.0 or event.Seconds > 0.05
-    Print("bad seconds $(event.Seconds)")
+    io.Print("bad seconds $(event.Seconds)")
   end
   if state.Left == 3
     sys.Sleep(0.07)
@@ -21,7 +24,7 @@ defn update(event, state)
 end
 
 defn view(state)
-  Print("view $(state.Left)")
+  io.Print("view $(state.Left)")
   [{Kind: "clear", Color: 0x000000}]
 end
 
@@ -32,10 +35,10 @@ end
 
 defn check()
   w = sdl.Open("test", 320, 200, "../../examples/fonts/JetBrainsMono-Regular.ttf")?
-  Spawn(later)
+  fiber.Spawn(later)
   last = sdl.Run({Left: 5}, update, view, w, moving = s -> s.Left > 0)
-  Print(last.Left)
-  Ok("ran")
+  io.Print(last.Left)
+  result.Ok("ran")
 end
 
-Print(check())
+io.Print(check())

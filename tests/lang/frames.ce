@@ -1,32 +1,35 @@
 use std/frame
+use std/list
+use std/text
+use std/value
 
 sales = frame.Table(["city", "item", "amount"], [["Paris", "Lyon", "Paris", "Nice"], ["a", "b", "b", "a"], [10, 20, 30, missing]])
 places = frame.Table(["city", "country"], [["Paris", "Lyon"], ["FR", "FR"]])
 
-isShape() = frame.Rows(sales) == 4 and Equal(frame.Columns(sales), ["city", "item", "amount"])
-isOf() = Equal(frame.Columns(frame.Of({"b": [1], "a": [2]})), ["b", "a"])
-isColumn() = Equal(frame.Column("item", sales), ["a", "b", "b", "a"])
+isShape() = frame.Rows(sales) == 4 and value.Equal(frame.Columns(sales), ["city", "item", "amount"])
+isOf() = value.Equal(frame.Columns(frame.Of({"b": [1], "a": [2]})), ["b", "a"])
+isColumn() = value.Equal(frame.Column("item", sales), ["a", "b", "b", "a"])
 isRow() = frame.Row(2, sales)["city"] == "Lyon"
-isRecords() = Len(frame.Records(sales)) == 4
-isFromRecords() = Equal(frame.Column("x", frame.FromRecords(["x"], [{"x": 1}, {"x": 2}])), [1, 2])
+isRecords() = value.Len(frame.Records(sales)) == 4
+isFromRecords() = value.Equal(frame.Column("x", frame.FromRecords(["x"], [{"x": 1}, {"x": 2}])), [1, 2])
 isHead() = frame.Rows(frame.Head(2, sales)) == 2 and frame.Rows(frame.Head(9, sales)) == 4
-isTail() = Equal(frame.Column("city", frame.Tail(1, sales)), ["Nice"])
-isSelect() = Equal(frame.Columns(frame.Select(["amount"], sales)), ["amount"])
-isDropColumn() = Equal(frame.Columns(frame.DropColumn("item", sales)), ["city", "amount"])
-isSetColumn() = Equal(frame.Column("n", frame.SetColumn("n", [1, 2, 3, 4], sales)), [1, 2, 3, 4])
-isWithColumn() = frame.Column("up", frame.WithColumn("up", r -> Upper(r["city"]), sales))[1] == "PARIS"
-isRename() = Equal(frame.Columns(frame.Rename("item", "kind", sales)), ["city", "kind", "amount"])
+isTail() = value.Equal(frame.Column("city", frame.Tail(1, sales)), ["Nice"])
+isSelect() = value.Equal(frame.Columns(frame.Select(["amount"], sales)), ["amount"])
+isDropColumn() = value.Equal(frame.Columns(frame.DropColumn("item", sales)), ["city", "amount"])
+isSetColumn() = value.Equal(frame.Column("n", frame.SetColumn("n", [1, 2, 3, 4], sales)), [1, 2, 3, 4])
+isWithColumn() = frame.Column("up", frame.WithColumn("up", r -> text.Upper(r["city"]), sales))[1] == "PARIS"
+isRename() = value.Equal(frame.Columns(frame.Rename("item", "kind", sales)), ["city", "kind", "amount"])
 isWhere() = frame.Rows(frame.Where(r -> r["city"] == "Paris", sales)) == 2
 isWhereColumn() = frame.Rows(frame.WhereColumn("item", it == "a", sales)) == 2
-isSort() = Equal(frame.Column("city", frame.SortBy("city", sales)), ["Lyon", "Nice", "Paris", "Paris"])
+isSort() = value.Equal(frame.Column("city", frame.SortBy("city", sales)), ["Lyon", "Nice", "Paris", "Paris"])
 isSortDescending() = frame.Column("city", frame.SortBy("city", sales, descending = true))[1] == "Paris"
 isAppend() = frame.Rows(frame.Append(sales, sales)) == 8
 isDropMissing() = frame.Rows(frame.DropMissing(sales)) == 3
 isFillMissing() = frame.Column("amount", frame.FillMissing(0, sales))[4] == 0
 
 defn isGroupBy()
-  g = frame.GroupBy(["city"], [frame.Agg("total", "amount", Sum), frame.Agg("n", "amount", Len)], sales)
-  Equal(frame.Column("city", g), ["Paris", "Lyon", "Nice"]) and Equal(frame.Column("total", g), [40, 20, 0]) and Equal(frame.Column("n", g), [2, 1, 0])
+  g = frame.GroupBy(["city"], [frame.Agg("total", "amount", list.Sum), frame.Agg("n", "amount", value.Len)], sales)
+  value.Equal(frame.Column("city", g), ["Paris", "Lyon", "Nice"]) and value.Equal(frame.Column("total", g), [40, 20, 0]) and value.Equal(frame.Column("n", g), [2, 1, 0])
 end
 
 defn isGroupTwoKeys()
@@ -35,26 +38,26 @@ end
 
 defn isValueCounts()
   v = frame.ValueCounts("item", sales)
-  Equal(frame.Column("count", v), [2, 2])
+  value.Equal(frame.Column("count", v), [2, 2])
 end
 
 defn isJoin()
   j = frame.JoinOn("city", sales, places)
-  frame.Rows(j) == 3 and Equal(frame.Column("country", j), ["FR", "FR", "FR"])
+  frame.Rows(j) == 3 and value.Equal(frame.Column("country", j), ["FR", "FR", "FR"])
 end
 
 defn isLeftJoin()
   j = frame.JoinOn("city", sales, places, how = "left")
-  frame.Rows(j) == 4 and IsMissing(frame.Column("country", j)[4])
+  frame.Rows(j) == 4 and value.IsMissing(frame.Column("country", j)[4])
 end
 
 defn isDescribe()
   d = frame.Describe(sales)
-  Equal(frame.Column("column", d), ["amount"]) and frame.Column("mean", d)[1] == 20.0 and frame.Column("count", d)[1] == 3
+  value.Equal(frame.Column("column", d), ["amount"]) and frame.Column("mean", d)[1] == 20.0 and frame.Column("count", d)[1] == 3
 end
 
 csvText = "name,age,score\nann,30,1.5\nbob,,2.5\n"
-isFromCsv() = Equal(frame.Column("age", frame.FromCsv(csvText)), [30, missing]) and frame.Column("score", frame.FromCsv(csvText))[2] == 2.5
+isFromCsv() = value.Equal(frame.Column("age", frame.FromCsv(csvText)), [30, missing]) and frame.Column("score", frame.FromCsv(csvText))[2] == 2.5
 isToCsv() = frame.ToCsv(frame.Table(["a", "b"], [[1], ["x,y"]])) == "a,b\n1,\"x,y\"\n"
-isCsvRoundTrip() = Equal(frame.Column("name", frame.FromCsv(frame.ToCsv(frame.FromCsv(csvText)))), ["ann", "bob"])
+isCsvRoundTrip() = value.Equal(frame.Column("name", frame.FromCsv(frame.ToCsv(frame.FromCsv(csvText)))), ["ann", "bob"])
 isShow() = frame.Show(frame.Table(["a", "bb"], [[1, 22], ["x", missing]])) == "a   bb\n1   x \n22    "

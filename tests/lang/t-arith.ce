@@ -1,21 +1,25 @@
-Print(1 + 2 * 3)            (* 7 *)
-Print(7 / 2)                (* 3.5 *)
-Print(2 ^ 10)               (* 1024 *)
-Print(2 ^ -1)               (* 0.5 *)
-Print(-2 ^ 2)               (* -4 *)
-Print(2 ^ 3 ^ 2)            (* 512 *)
-Print(Div(-7, 2))           (* -4 *)
-Print(Mod(-7, 2))           (* 1 *)
-Print(true + true)          (* 2 *)
-Print(missing + 1)          (* missing *)
-Print(missing < 1)          (* missing *)
-Print(1 == 1.0)             (* true *)
-Print(true == 1)            (* false *)
-Print(missing == missing)   (* true *)
-Print(Nan == Nan)           (* false *)
-Print(Equal(Nan, Nan))      (* true *)
-Print(1_000 + 0xff)         (* 1255 *)
-Print(1e3, 1e-3, 1.5e20)    (* 1000.0 0.001 1.5e20 *)
+use std/io
+use std/math
+use std/value
+
+io.Print(1 + 2 * 3)            (* 7 *)
+io.Print(7 / 2)                (* 3.5 *)
+io.Print(2 ^ 10)               (* 1024 *)
+io.Print(2 ^ -1)               (* 0.5 *)
+io.Print(-2 ^ 2)               (* -4 *)
+io.Print(2 ^ 3 ^ 2)            (* 512 *)
+io.Print(math.Div(-7, 2))           (* -4 *)
+io.Print(math.Mod(-7, 2))           (* 1 *)
+io.Print(true + true)          (* 2 *)
+io.Print(missing + 1)          (* missing *)
+io.Print(missing < 1)          (* missing *)
+io.Print(1 == 1.0)             (* true *)
+io.Print(true == 1)            (* false *)
+io.Print(missing == missing)   (* true *)
+io.Print(math.Nan == math.Nan)           (* false *)
+io.Print(value.Equal(math.Nan, math.Nan))      (* true *)
+io.Print(1_000 + 0xff)         (* 1255 *)
+io.Print(1e3, 1e-3, 1.5e20)    (* 1000.0 0.001 1.5e20 *)
 s = 0
 i = 1
 while i <= 10
@@ -23,4 +27,4 @@ while i <= 10
   i += 1
   if s > 20 break end
 end
-Print(s, i)                 (* 21 7 *)
+io.Print(s, i)                 (* 21 7 *)

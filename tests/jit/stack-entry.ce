@@ -1,3 +1,5 @@
+use std/io
+
 (* Entering native code deep in a recursion grows the stack before writing the hidden slots. *)
 defn r(n)
   if n > 0
@@ -23,7 +25,7 @@ defn r(n)
       end
     end
   end
-  Print("s $(s)")
+  io.Print("s $(s)")
   s
 end
 r(408)

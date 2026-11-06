@@ -1,1 +1,3 @@
-Print("done 1")
+use std/io
+
+io.Print("done 1")

@@ -1,3 +1,6 @@
+use std/io
+use std/matrix
+
 (* The same, out of the array: the error names the index the variable gives. *)
 defn g(a, n)
   s = 0.0
@@ -7,5 +10,5 @@ defn g(a, n)
   end
   s
 end
-a = Zeros(10)
-Print(g(a, 9))
+a = matrix.Zeros(10)
+io.Print(g(a, 9))

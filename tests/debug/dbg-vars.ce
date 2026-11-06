@@ -1,11 +1,12 @@
 defn OnStop(stop)
   if stop.Line == 2
     for f in stop.Frames
-      Print("frame $(f.Function) $(f.File):$(f.Line)")
+      io.Print("frame $(f.Function) $(f.File):$(f.Line)")
       for v in f.Vars
-        Print("$(v.Name) = $(v.Value)")
+        io.Print("$(v.Name) = $(v.Value)")
       end
     end
   end
   "step"
 end
+use std/io

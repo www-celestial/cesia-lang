@@ -1,2 +1,4 @@
+use std/io
+
 s = {A: 1}
-Print(s.B)
+io.Print(s.B)

@@ -1,4 +1,4 @@
-private-native.ce:1:7: Name "merge" doesn't exist.
-  1 | Print(merge({A: 1}, {B: 2}))
-    |       ^
+private-native.ce:3:10: Name "merge" doesn't exist.
+  3 | io.Print(merge({A: 1}, {B: 2}))
+    |          ^
 exit 1

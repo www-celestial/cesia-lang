@@ -1,5 +1,8 @@
+use std/io
+use std/list
+
 xs = []
 for k in 1..9
-  xs = Append(k, xs)
+  xs = list.Append(k, xs)
 end
-Print(xs[10])
+io.Print(xs[10])

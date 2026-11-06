@@ -1,15 +1,17 @@
 use std/sys
+use std/io
+use std/result
 
 defn main()
   sys.Write("stat_a.txt", "hello")?
   s = sys.Stat("stat_a.txt")?
-  Print(s.Size, s.IsDir, s.Modified > 1000000000)
+  io.Print(s.Size, s.IsDir, s.Modified > 1000000000)
   sys.Rename("stat_a.txt", "stat_b.txt")?
-  Print(sys.Exists("stat_a.txt"), sys.Read("stat_b.txt"))
-  Print(sys.Stat(".")?.IsDir)
-  Print(IsErr(sys.Stat("no_such_file")))
+  io.Print(sys.Exists("stat_a.txt"), sys.Read("stat_b.txt"))
+  io.Print(sys.Stat(".")?.IsDir)
+  io.Print(result.IsErr(sys.Stat("no_such_file")))
   sys.Remove("stat_b.txt")?
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

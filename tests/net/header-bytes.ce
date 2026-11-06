@@ -1,15 +1,21 @@
 (** Every byte of a header name against the list of RFC 9110, and a line end refused anywhere in the line. *)
 use std/net
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
 
-allowed = Bytes("!#$$%&'*+-.^_`|~abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-accepted(b) = net.IsHeader(1, "$(FromBytes([b])): value")
+allowed = text.Bytes("!#$$%&'*+-.^_`|~abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+accepted(b) = net.IsHeader(1, "$(text.FromBytes([b])): value")
 
-Print(Equal(Filter(accepted, [b for b in 0..255]), Sort(allowed)))
-Print(net.IsHeader(1, "a: b"))
-Print(net.IsHeader(0, ": b"))
-Print(net.IsHeader(2, "a : b"))
-Print(net.IsHeader(2, "a\nb: c"))
-Print(net.IsHeader(1, "a: b\nc"))
-Print(net.IsHeader(1, "a: b\rc"))
-Print(net.IsHeader(1, "a: tab	space é"))
-Print(Wait(Spawn(() -> net.IsHeader(9, "a"))) then MapErr(it.Kind))
+io.Print(value.Equal(list.Filter(accepted, [b for b in 0..255]), list.Sort(allowed)))
+io.Print(net.IsHeader(1, "a: b"))
+io.Print(net.IsHeader(0, ": b"))
+io.Print(net.IsHeader(2, "a : b"))
+io.Print(net.IsHeader(2, "a\nb: c"))
+io.Print(net.IsHeader(1, "a: b\nc"))
+io.Print(net.IsHeader(1, "a: b\rc"))
+io.Print(net.IsHeader(1, "a: tab	space é"))
+io.Print(fiber.Wait(fiber.Spawn(() -> net.IsHeader(9, "a"))) then result.MapErr(it.Kind))

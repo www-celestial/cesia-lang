@@ -1,3 +1,5 @@
-x = Zeros(2)
+x = matrix.Zeros(2)
 y = 1
-Print(x[1], y)
+io.Print(x[1], y)
+use std/io
+use std/matrix

@@ -1,10 +1,14 @@
 (** Bytes could spell any address, so a pointer can't come from a block before a library is open. *)
 use std/c
+use std/fiber
+use std/io
+use std/result
+use std/value
 
 defn message(f)
-  match Wait(Spawn(f))
-    Err(e) -> Print(e.Message)
-    Ok(v) -> Print("no panic: $v")
+  match fiber.Wait(fiber.Spawn(f))
+    result.Err(e) -> io.Print(e.Message)
+    result.Ok(v) -> io.Print("no panic: $v")
   end
 end
 
@@ -15,4 +19,4 @@ message(() -> c.Text(b))
 message(() -> c.Text(missing))
 message(() -> c.Set("ptr", 0, b, b))
 c.Open("m", version = 6)
-Print(IsMissing(c.Get("ptr", 0, b)))
+io.Print(value.IsMissing(c.Get("ptr", 0, b)))

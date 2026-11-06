@@ -1,14 +1,20 @@
 (** Text forms of bytes: hexadecimal, Base64 and URLs. *)
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/text
+use std/value
 
 hexDigits = "0123456789abcdef"
 base64Digits = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-digit(k, digits) = ByteSlice(k + 1, k + 1, digits)
+digit(k, digits) = text.ByteSlice(k + 1, k + 1, digits)
 
 defn Hex(s)
   (** The hexadecimal text of the bytes of a text, in lower case.
 
         Hex("hi") --> "6869" *)
-  Join("", ["$(digit(Div(b, 16), hexDigits))$(digit(Mod(b, 16), hexDigits))" for b in Bytes(s)])
+  text.Join("", ["$(digit(math.Div(b, 16), hexDigits))$(digit(math.Mod(b, 16), hexDigits))" for b in text.Bytes(s)])
 end
 
 defn hexValue(b)
@@ -23,50 +29,50 @@ defn hexValue(b)
   end
 end
 
-bad(what) = Err({Kind: "encoding", Message: "This isn't valid $what."})
+bad(what) = result.Err({Kind: "encoding", Message: "This isn't valid $what."})
 
 defn Unhex(s)
   (** The text of bytes written in hexadecimal, in an Ok, or an Err of the kind "encoding".
 
-        Unhex("6869") --> Ok("hi") *)
-  codes = Bytes(s)
-  n = Len(codes)
-  if Mod(n, 2) != 0
+        Unhex("6869") --> result.Ok("hi") *)
+  codes = text.Bytes(s)
+  n = value.Len(codes)
+  if math.Mod(n, 2) != 0
     return bad("hexadecimal")
   end
-  out = Fill(0, Div(n, 2))
-  for k in 1..Div(n, 2)
+  out = list.Fill(0, math.Div(n, 2))
+  for k in 1..math.Div(n, 2)
     high = hexValue(codes[2 * k - 1])
     low = hexValue(codes[2 * k])
-    if IsMissing(high) or IsMissing(low)
+    if value.IsMissing(high) or value.IsMissing(low)
       return bad("hexadecimal")
     end
     out[k] = 16 * high + low
   end
-  Ok(FromBytes(out))
+  result.Ok(text.FromBytes(out))
 end
 
 defn Base64(s)
   (** The Base64 text of the bytes of a text, with padding.
 
         Base64("hi") --> "aGk=" *)
-  codes = Bytes(s)
-  n = Len(codes)
-  parts = Fill("", Div(n + 2, 3))
+  codes = text.Bytes(s)
+  n = value.Len(codes)
+  parts = list.Fill("", math.Div(n + 2, 3))
   k = 1
   while k <= n
     a = codes[k]
     b = if k + 1 <= n codes[k + 1] else 0 end
     d = if k + 2 <= n codes[k + 2] else 0 end
     word = a * 65536 + b * 256 + d
-    one = digit(Div(word, 262144), base64Digits)
-    two = digit(Mod(Div(word, 4096), 64), base64Digits)
-    three = if k + 1 <= n digit(Mod(Div(word, 64), 64), base64Digits) else "=" end
-    four = if k + 2 <= n digit(Mod(word, 64), base64Digits) else "=" end
-    parts[Div(k + 2, 3)] = "$one$two$three$four"
+    one = digit(math.Div(word, 262144), base64Digits)
+    two = digit(math.Mod(math.Div(word, 4096), 64), base64Digits)
+    three = if k + 1 <= n digit(math.Mod(math.Div(word, 64), 64), base64Digits) else "=" end
+    four = if k + 2 <= n digit(math.Mod(word, 64), base64Digits) else "=" end
+    parts[math.Div(k + 2, 3)] = "$one$two$three$four"
     k += 3
   end
-  Join("", parts)
+  text.Join("", parts)
 end
 
 defn base64Value(b)
@@ -88,20 +94,20 @@ end
 defn Unbase64(s)
   (** Takes the standard alphabet and the one of URLs, with or without padding.
 
-        Unbase64("aGk=") --> Ok("hi") *)
-  clean = Replace("=", "", s)
-  codes = Bytes(clean)
-  n = Len(codes)
-  if Mod(n, 4) == 1
+        Unbase64("aGk=") --> result.Ok("hi") *)
+  clean = text.Replace("=", "", s)
+  codes = text.Bytes(clean)
+  n = value.Len(codes)
+  if math.Mod(n, 4) == 1
     return bad("Base64")
   end
-  out = Fill(0, Div(n * 3, 4))
+  out = list.Fill(0, math.Div(n * 3, 4))
   used = 0
   word = 0
   bits = 0
   for code in codes
     v = base64Value(code)
-    if IsMissing(v)
+    if value.IsMissing(v)
       return bad("Base64")
     end
     word = word * 64 + v
@@ -109,11 +115,11 @@ defn Unbase64(s)
     if bits >= 8
       bits -= 8
       used += 1
-      out[used] = Mod(Div(word, 2 ^ bits), 256)
-      word = Mod(word, 2 ^ bits)
+      out[used] = math.Mod(math.Div(word, 2 ^ bits), 256)
+      word = math.Mod(word, 2 ^ bits)
     end
   end
-  Ok(FromBytes(Take(used, out)))
+  result.Ok(text.FromBytes(list.Take(used, out)))
 end
 
 urlSafe(b) = (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b == 45 or b == 46 or b == 95 or b == 126
@@ -122,25 +128,25 @@ defn UrlEncode(s)
   (** A text with every byte percent-encoded except letters, digits and - . _ ~
 
         UrlEncode("a b") --> "a%20b" *)
-  Join("", [if urlSafe(b) Char(b) else "%$(Upper(Hex(FromBytes([b]))))" end for b in Bytes(s)])
+  text.Join("", [if urlSafe(b) text.Char(b) else "%$(text.Upper(Hex(text.FromBytes([b]))))" end for b in text.Bytes(s)])
 end
 
 defn UrlDecode(s)
   (** Decodes %41, and + as a space, as forms write it.
 
         UrlDecode("a%20b+c") --> "a b c" *)
-  if not Contains("%", s) and not Contains("+", s)
+  if not text.Contains("%", s) and not text.Contains("+", s)
     return s
   end
-  codes = Bytes(s)
-  n = Len(codes)
-  out = Fill(0, n)
+  codes = text.Bytes(s)
+  n = value.Len(codes)
+  out = list.Fill(0, n)
   used = 0
   k = 1
   while k <= n
     b = codes[k]
     used += 1
-    if b == 37 and k + 2 <= n and not IsMissing(hexValue(codes[k + 1])) and not IsMissing(hexValue(codes[k + 2]))
+    if b == 37 and k + 2 <= n and not value.IsMissing(hexValue(codes[k + 1])) and not value.IsMissing(hexValue(codes[k + 2]))
       out[used] = 16 * hexValue(codes[k + 1]) + hexValue(codes[k + 2])
       k += 3
     else if b == 43
@@ -151,22 +157,22 @@ defn UrlDecode(s)
       k += 1
     end
   end
-  FromBytes(Take(used, out))
+  text.FromBytes(list.Take(used, out))
 end
 
 defn ParseQuery(s)
   (** The fields of a query or a form: a=1&b=two
 
         ParseQuery("a=1&b=2")["b"] --> "2" *)
-  out = Dict()
+  out = dict.Dict()
   if s == ""
     return out
   end
-  for part in Split("&", s)
-    pair = Split("=", part)
+  for part in text.Split("&", s)
+    pair = text.Split("=", part)
     if pair[1] != ""
-      value = if Len(pair) >= 2 UrlDecode(Join("=", Skip(1, pair))) else "" end
-      out[UrlDecode(pair[1])] = value
+      v = if value.Len(pair) >= 2 UrlDecode(text.Join("=", list.Skip(1, pair))) else "" end
+      out[UrlDecode(pair[1])] = v
     end
   end
   out
@@ -177,22 +183,22 @@ defn Sha1(s)
       asks for it.
 
         Hex(Sha1("abc")) --> "a9993e364706816aba3e25717850c26c9cd0d89d" *)
-  m = Bytes(s)
-  n = Len(m)
-  padded = Concat(Concat(m, [128]), Fill(0, Mod(55 - n, 64)))
+  m = text.Bytes(s)
+  n = value.Len(m)
+  padded = list.Concat(list.Concat(m, [128]), list.Fill(0, math.Mod(55 - n, 64)))
   sizeBits = n * 8
-  padded = Concat(padded, [Mod(Div(sizeBits, 256 ^ (8 - k)), 256) for k in 1..8])
+  padded = list.Concat(padded, [math.Mod(math.Div(sizeBits, 256 ^ (8 - k)), 256) for k in 1..8])
   h = [1732584193, 4023233417, 2562383102, 271733878, 3285377520]
   mask = 4294967295
-  rotate(x, k) = BitAnd(BitOr(BitShift(x, k), BitShift(x, k - 32)), mask)
-  for start in Range(1, Len(padded), step = 64)
-    w = Fill(0, 80)
+  rotate(x, k) = math.BitAnd(math.BitOr(math.BitShift(x, k), math.BitShift(x, k - 32)), mask)
+  for start in list.Range(1, value.Len(padded), step = 64)
+    w = list.Fill(0, 80)
     for t in 1..16
       at = start + 4 * (t - 1)
       w[t] = padded[at] * 16777216 + padded[at + 1] * 65536 + padded[at + 2] * 256 + padded[at + 3]
     end
     for t in 17..80
-      w[t] = rotate(BitXor(BitXor(BitXor(w[t - 3], w[t - 8]), w[t - 14]), w[t - 16]), 1)
+      w[t] = rotate(math.BitXor(math.BitXor(math.BitXor(w[t - 3], w[t - 8]), w[t - 14]), w[t - 16]), 1)
     end
     a = h[1]
     b = h[2]
@@ -201,26 +207,26 @@ defn Sha1(s)
     f = h[5]
     for t in 1..80
       if t <= 20
-        mix = BitOr(BitAnd(b, d), BitAnd(BitAnd(BitNot(b), mask), e))
+        mix = math.BitOr(math.BitAnd(b, d), math.BitAnd(math.BitAnd(math.BitNot(b), mask), e))
         k = 1518500249
       else if t <= 40
-        mix = BitXor(BitXor(b, d), e)
+        mix = math.BitXor(math.BitXor(b, d), e)
         k = 1859775393
       else if t <= 60
-        mix = BitOr(BitOr(BitAnd(b, d), BitAnd(b, e)), BitAnd(d, e))
+        mix = math.BitOr(math.BitOr(math.BitAnd(b, d), math.BitAnd(b, e)), math.BitAnd(d, e))
         k = 2400959708
       else
-        mix = BitXor(BitXor(b, d), e)
+        mix = math.BitXor(math.BitXor(b, d), e)
         k = 3395469782
       end
-      next = BitAnd(rotate(a, 5) + mix + f + k + w[t], mask)
+      next = math.BitAnd(rotate(a, 5) + mix + f + k + w[t], mask)
       f = e
       e = d
       d = rotate(b, 30)
       b = a
       a = next
     end
-    h = [BitAnd(h[1] + a, mask), BitAnd(h[2] + b, mask), BitAnd(h[3] + d, mask), BitAnd(h[4] + e, mask), BitAnd(h[5] + f, mask)]
+    h = [math.BitAnd(h[1] + a, mask), math.BitAnd(h[2] + b, mask), math.BitAnd(h[3] + d, mask), math.BitAnd(h[4] + e, mask), math.BitAnd(h[5] + f, mask)]
   end
-  FromBytes(Flatten([[Div(x, 16777216), Mod(Div(x, 65536), 256), Mod(Div(x, 256), 256), Mod(x, 256)] for x in h]))
+  text.FromBytes(list.Flatten([[math.Div(x, 16777216), math.Mod(math.Div(x, 65536), 256), math.Mod(math.Div(x, 256), 256), math.Mod(x, 256)] for x in h]))
 end

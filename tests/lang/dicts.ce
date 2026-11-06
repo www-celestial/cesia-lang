@@ -1,44 +1,48 @@
+use std/dict
+use std/result
+use std/value
+
 isLiteral() = {"a": 1, "b": 2}["b"] == 2
 isNumberKeys() = {1: "x", 2: "y"}[2] == "y"
 isWholeFloatKey() = {1: "x"}[1.0] == "x"
 isFloatKey() = {1.5: "x"}[1.5] == "x"
 isComputedKey() = {(1 + 1): "x"}[2] == "x"
-isGet() = Get("a", {"a": 1}) == 1
-isGetAbsent() = IsMissing(Get("z", {"a": 1}))
-isGetOr() = GetOr("z", 5, {"a": 1}) == 5 and GetOr("a", 5, {"a": 1}) == 1
-isHas() = Has("a", {"a": 1}) and not Has("b", {"a": 1})
+isGet() = dict.Get("a", {"a": 1}) == 1
+isGetAbsent() = value.IsMissing(dict.Get("z", {"a": 1}))
+isGetOr() = dict.GetOr("z", 5, {"a": 1}) == 5 and dict.GetOr("a", 5, {"a": 1}) == 1
+isHas() = dict.Has("a", {"a": 1}) and not dict.Has("b", {"a": 1})
 isIn() = "a" in {"a": 1} and not ("b" in {"a": 1})
-isEmpty() = Len(Dict()) == 0
-isLength() = Len({"a": 1, "b": 2}) == 2
-isKeysInOrder() = Equal(Keys({"b": 1, "a": 2, 3: 3}), ["b", "a", 3])
-isValues() = Equal(Values({"b": 1, "a": 2}), [1, 2])
-isPairs() = Equal(Pairs({"a": 1}), [{Key: "a", Value: 1}])
-isFromPairs() = Equal(Dict([{Key: "a", Value: 1}]), {"a": 1})
-isRoundTrip() = Equal(Dict(Pairs({"a": 1, "b": 2})), {"a": 1, "b": 2})
+isEmpty() = value.Len(dict.Dict()) == 0
+isLength() = value.Len({"a": 1, "b": 2}) == 2
+isKeysInOrder() = value.Equal(dict.Keys({"b": 1, "a": 2, 3: 3}), ["b", "a", 3])
+isValues() = value.Equal(dict.Values({"b": 1, "a": 2}), [1, 2])
+isPairs() = value.Equal(dict.Pairs({"a": 1}), [{Key: "a", Value: 1}])
+isFromPairs() = value.Equal(dict.Dict([{Key: "a", Value: 1}]), {"a": 1})
+isRoundTrip() = value.Equal(dict.Dict(dict.Pairs({"a": 1, "b": 2})), {"a": 1, "b": 2})
 isEqualAnyOrder() = {"a": 1, "b": 2} == {"b": 2, "a": 1}
 isNotEqual() = {"a": 1} != {"a": 2} and {"a": 1} != {"b": 1}
-isTextForm() = Text({"b": 1, 2: "x"}) == "{b: 1, 2: \"x\"}" and Text({"a-b": 1, "if": 2}) == "{\"a-b\": 1, \"if\": 2}"
-isKind() = IsDict({"a": 1}) and IsDict({A: 1}) and not IsDict(Ok(1))
+isTextForm() = value.Text({"b": 1, 2: "x"}) == "{b: 1, 2: \"x\"}" and value.Text({"a-b": 1, "if": 2}) == "{\"a-b\": 1, \"if\": 2}"
+isKind() = value.IsDict({"a": 1}) and value.IsDict({A: 1}) and not value.IsDict(result.Ok(1))
 isLaterWins() = {"a": 1, "a": 2}["a"] == 2
 
 defn isPutKeepsTheOriginal()
   a = {"x": 1}
-  b = Put("x", 2, a)
+  b = dict.Put("x", 2, a)
   a["x"] == 1 and b["x"] == 2
 end
 
 defn isDrop()
   a = {"x": 1, "y": 2}
-  b = Drop("x", a)
-  Len(a) == 2 and Len(b) == 1 and not Has("x", b) and Equal(Drop("z", b), b)
+  b = dict.Drop("x", a)
+  value.Len(a) == 2 and value.Len(b) == 1 and not dict.Has("x", b) and value.Equal(dict.Drop("z", b), b)
 end
 
 defn isAssign()
-  d = Dict()
+  d = dict.Dict()
   d["a"] = 1
   d[2] = "two"
   d["a"] = 3
-  Len(d) == 2 and d["a"] == 3 and d[2] == "two"
+  value.Len(d) == 2 and d["a"] == 3 and d[2] == "two"
 end
 
 defn isAssignKeepsACopy()
@@ -83,7 +87,7 @@ defn isCompoundAssign()
 end
 
 defn isMany()
-  d = Dict()
+  d = dict.Dict()
   for i in 1..5000
     d[i * 7 - 3] = i
   end
@@ -92,9 +96,9 @@ defn isMany()
     total += d[i * 7 - 3]
   end
   for i in 1..2500
-    d = Drop(i * 7 - 3, d)
+    d = dict.Drop(i * 7 - 3, d)
   end
-  Len(d) == 2500 and total == 12502500 and Equal(Keys(d)[1], 2501 * 7 - 3)
+  value.Len(d) == 2500 and total == 12502500 and value.Equal(dict.Keys(d)[1], 2501 * 7 - 3)
 end
 
 defn isStructKeepsLiteral()

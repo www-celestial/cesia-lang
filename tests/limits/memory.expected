@@ -1,4 +1,4 @@
-memory.ce:3:11: Limit "memory" reached.
-  3 |   x = [x, Zeros(1000)]
-    |           ^
+memory.ce:5:17: Limit "memory" reached.
+  5 |   x = [x, matrix.Zeros(1000)]
+    |                 ^
 exit 1

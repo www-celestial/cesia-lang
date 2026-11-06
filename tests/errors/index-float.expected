@@ -1,5 +1,5 @@
-index-float.ce:1:13: An index must be a whole number, not the number 1.5.
-  1 | Print([1, 2][1.5])
-    |             ^
-  To get a whole number, use Floor(...), Ceil(...) or Round(...).
+index-float.ce:3:16: An index must be a whole number, not the number 1.5.
+  3 | io.Print([1, 2][1.5])
+    |                ^
+  To get a whole number, use math.Floor(...), math.Ceil(...) or math.Round(...).
 exit 1

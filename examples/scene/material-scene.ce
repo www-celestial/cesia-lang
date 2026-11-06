@@ -3,6 +3,9 @@
 use std/c
 use std/sdl
 use std/ui
+use std/list
+use std/math
+use std/result
 
 sharpSize = 208
 quickSize = 64
@@ -39,7 +42,7 @@ defn tools(th)
     tool(ui.Icons.Hierarchy, "Hierarchy"), missing, {Shape: ui.Icons.Live, Name: "Live Update", Color: 0x3B9BFF}, tool(ui.Icons.Stats, "Stats")]
 end
 
-clamp01(x) = Max(0.0, Min(1.0, x))
+clamp01(x) = list.Max(0.0, list.Min(1.0, x))
 smooth(t) = t * t * (3.0 - 2.0 * t)
 mix(a, b, t) = a + (b - a) * t
 
@@ -47,10 +50,10 @@ defn ShadeSphere(block, n, rough, metal, turn)
   (** The sphere: a diffuse part, a highlight that tightens as roughness falls, and a sky that metal reflects. *)
   radius = n / 2.0 - 1.5
   center = n / 2.0
-  lx = -0.46 * Cos(turn) + 0.634 * Sin(turn)
+  lx = -0.46 * math.Cos(turn) + 0.634 * math.Sin(turn)
   ly = 0.62
-  lz = 0.46 * Sin(turn) + 0.634 * Cos(turn)
-  size = Sqrt(lx * lx + ly * ly + (lz + 1.0) * (lz + 1.0))
+  lz = 0.46 * math.Sin(turn) + 0.634 * math.Cos(turn)
+  size = math.Sqrt(lx * lx + ly * ly + (lz + 1.0) * (lz + 1.0))
   hx = lx / size
   hy = ly / size
   hz = (lz + 1.0) / size
@@ -74,10 +77,10 @@ defn ShadeSphere(block, n, rough, metal, turn)
       if r2 >= 1.06
         c.Set("u32", (y * n + x) * 4, 0, block)
       else
-        nz = Sqrt(Max(0.0, 1.0 - r2))
-        coverage = clamp01((1.0 - Sqrt(r2)) * radius + 0.5)
-        diffuse = Max(0.0, nx * lx + ny * ly + nz * lz)
-        nh = Max(0.0, nx * hx + ny * hy + nz * hz)
+        nz = math.Sqrt(list.Max(0.0, 1.0 - r2))
+        coverage = clamp01((1.0 - math.Sqrt(r2)) * radius + 0.5)
+        diffuse = list.Max(0.0, nx * lx + ny * ly + nz * lz)
+        nh = list.Max(0.0, nx * hx + ny * hy + nz * hz)
         spec = strength * (nh ^ power)
         edge = 1.0 - nz
         rim = edge * edge * edge * edge * edge
@@ -88,9 +91,9 @@ defn ShadeSphere(block, n, rough, metal, turn)
         r = br * matte * light + fr * env + (fr + (1.0 - fr) * rim) * spec + rim * 0.08 * sheen
         g = bg * matte * light + fg * env + (fg + (1.0 - fg) * rim) * spec + rim * 0.08 * sheen
         b = bb * matte * light + fb * env + (fb + (1.0 - fb) * rim) * spec + rim * 0.09 * sheen
-        pr = sdl.WholeNumber(255.0 * Sqrt(1.0 - Exp(-1.5 * r)))
-        pg = sdl.WholeNumber(255.0 * Sqrt(1.0 - Exp(-1.5 * g)))
-        pb = sdl.WholeNumber(255.0 * Sqrt(1.0 - Exp(-1.5 * b)))
+        pr = sdl.WholeNumber(255.0 * math.Sqrt(1.0 - math.Exp(-1.5 * r)))
+        pg = sdl.WholeNumber(255.0 * math.Sqrt(1.0 - math.Exp(-1.5 * g)))
+        pb = sdl.WholeNumber(255.0 * math.Sqrt(1.0 - math.Exp(-1.5 * b)))
         c.Set("u32", (y * n + x) * 4, pr + pg * 256 + pb * 65536 + sdl.WholeNumber(coverage * 255.0) * 0x1000000, block)
       end
     end
@@ -99,7 +102,7 @@ end
 
 defn layout(w, h)
   (** The panels follow the size of the window. *)
-  body = {X: 4, Y: 68, Width: Max(0, w - 8), Height: Max(0, h - 72)}
+  body = {X: 4, Y: 68, Width: list.Max(0, w - 8), Height: list.Max(0, h - 72)}
   columns = ui.Left(292, body)
   sides = ui.Right(236, columns.Rest)
   center = ui.Left(4, ui.Right(4, sides.Rest).Rest).Rest
@@ -108,11 +111,11 @@ defn layout(w, h)
   {Menu: {X: 0, Y: 0, Width: w, Height: 24}, Tools: {X: 0, Y: 28, Width: w, Height: 32}, Viewport: stack.Part, Details: ui.Top(4, stack.Rest).Rest, Graph: ui.Bottom(4, pane.Rest).Rest, Code: pane.Part, Palette: sides.Part}
 end
 
-graphArea(rect) = {X: rect.X + 2, Y: rect.Y + 28, Width: Max(0, rect.Width - 4), Height: Max(0, rect.Height - 30)}
-paletteArea(rect) = {X: rect.X + 8, Y: rect.Y + 60, Width: Max(0, rect.Width - 16), Height: Max(0, rect.Height - 68)}
+graphArea(rect) = {X: rect.X + 2, Y: rect.Y + 28, Width: list.Max(0, rect.Width - 4), Height: list.Max(0, rect.Height - 30)}
+paletteArea(rect) = {X: rect.X + 8, Y: rect.Y + 60, Width: list.Max(0, rect.Width - 16), Height: list.Max(0, rect.Height - 68)}
 
 (** The slider k of the details: 0 for Metallic, 1 for Roughness. *)
-SliderRect(details, k) = {X: details.X + 130, Y: details.Y + 246 + k * 26, Width: Max(0, details.Width - 138), Height: 22}
+SliderRect(details, k) = {X: details.X + 130, Y: details.Y + 246 + k * 26, Width: list.Max(0, details.Width - 138), Height: 22}
 
 defn Start(window)
   sharp = sdl.Image(sharpSize, sharpSize, window)?
@@ -121,9 +124,9 @@ defn Start(window)
   sky = sdl.Image(2, 32, brushed.Window)?
   floorImage = sdl.Image(64, 16, sky.Window)?
   w = floorImage.Window
-  sdl.FillImage((x, y) -> sdl.Rgba(132 + Mod(y * 37 + Div(x, 19) * 13, 15) + Mod(y * 5, 6), 132 + Mod(y * 37 + Div(x, 19) * 13, 15) + Mod(y * 5, 6), 132 + Mod(y * 37 + Div(x, 19) * 13, 15) + Mod(y * 5, 6), 255), brushed.Image, w)
-  sdl.FillImage((x, y) -> sdl.Rgba(51 - y, 59 - y, 69 - Div(y * 16, 10), 255), sky.Image, w)
-  sdl.FillImage((x, y) -> sdl.Rgba(0, 0, 0, sdl.WholeNumber(200.0 * smooth(clamp01(1.0 - Sqrt(((x + 0.5 - 32.0) / 32.0) ^ 2 + ((y + 0.5 - 8.0) / 8.0) ^ 2))))), floorImage.Image, w)
+  sdl.FillImage((x, y) -> sdl.Rgba(132 + math.Mod(y * 37 + math.Div(x, 19) * 13, 15) + math.Mod(y * 5, 6), 132 + math.Mod(y * 37 + math.Div(x, 19) * 13, 15) + math.Mod(y * 5, 6), 132 + math.Mod(y * 37 + math.Div(x, 19) * 13, 15) + math.Mod(y * 5, 6), 255), brushed.Image, w)
+  sdl.FillImage((x, y) -> sdl.Rgba(51 - y, 59 - y, 69 - math.Div(y * 16, 10), 255), sky.Image, w)
+  sdl.FillImage((x, y) -> sdl.Rgba(0, 0, 0, sdl.WholeNumber(200.0 * smooth(clamp01(1.0 - math.Sqrt(((x + 0.5 - 32.0) / 32.0) ^ 2 + ((y + 0.5 - 8.0) / 8.0) ^ 2))))), floorImage.Image, w)
   ShadeSphere(sharp.Image.Pixels, sharpSize, 0.32, 0.9, 0.0)
   sdl.ShowImage(sharp.Image, w)
   ShadeSphere(quick.Image.Pixels, quickSize, 0.32, 0.9, 0.0)
@@ -131,7 +134,7 @@ defn Start(window)
   images = {Sharp: sharp.Image, Quick: quick.Image, Brushed: brushed.Image, Sky: sky.Image, Floor: floorImage.Image}
   hover = ui.ListRow(2, palette, paletteArea(layout(1280, 720).Palette)) * 1.0
   m = sdl.Measure(w)
-  Ok({Window: w, State: {Width: 1280, Height: 720, Rects: layout(1280, 720), WidthOf: m.Width, Line: m.Height, BigWidth: sdl.TextSize("MATERIAL", w, font = "large").Width, Window: w, Images: images, Nodes: nodes, Picked: 3,
+  result.Ok({Window: w, State: {Width: 1280, Height: 720, Rects: layout(1280, 720), WidthOf: m.Width, Line: m.Height, BigWidth: sdl.TextSize("MATERIAL", w, font = "large").Width, Window: w, Images: images, Nodes: nodes, Picked: 3,
     Dark: true, Rough: 0.32, ShownRough: 0.32, Metal: 0.9, ShownMetal: 0.9, Light: 0.0, ShownLight: 0.0, Lit: {Rough: 0.32, Metal: 0.9, Light: 0.0}, Sharp: true, Rested: true,
     Hover: hover, Target: hover, Dragging: 0, Grab: {X: 0, Y: 0}, LastX: 0, Mouse: {X: -1, Y: -1}, Fps: 0.0}})
 end
@@ -155,14 +158,14 @@ defn viewport(state, look)
   r = state.Rects.Viewport
   th = look.Theme
   size = 176
-  x = r.X + Div(r.Width - size, 2)
+  x = r.X + math.Div(r.Width - size, 2)
   y = r.Y + 42
   counter = if Moving(state) and state.Fps > 0.0 [label(r.X + r.Width - 56, r.Y + 226, "$(sdl.Whole(state.Fps)) fps", 0x8A8A8A)] else [] end
-  Flatten([ui.Panel("Viewport", r, look), [{Kind: "image", Image: state.Images.Sky, X: r.X + 4, Y: r.Y + 28, Width: Max(0, r.Width - 8), Height: Max(0, r.Height - 32)},
+  list.Flatten([ui.Panel("Viewport", r, look), [{Kind: "image", Image: state.Images.Sky, X: r.X + 4, Y: r.Y + 28, Width: list.Max(0, r.Width - 8), Height: list.Max(0, r.Height - 32)},
     {Kind: "image", Image: state.Images.Floor, X: x + 6, Y: y + 158, Width: size - 12, Height: 26},
     {Kind: "image", Image: if state.Sharp state.Images.Sharp else state.Images.Quick end, X: x, Y: y, Width: size, Height: size},
-    {Kind: "box", X: r.X + 10, Y: r.Y + 34, Width: 34, Height: 20, Color: 0x2B2F36, Radius: 4}, label(r.X + 18, r.Y + 34 + Div(20 - look.Height, 2), "Lit", 0xD0D0D0),
-    {Kind: "box", X: r.X + 48, Y: r.Y + 34, Width: 48, Height: 20, Color: 0x2B2F36, Radius: 4}, label(r.X + 56, r.Y + 34 + Div(20 - look.Height, 2), "Persp", 0xA8A8A8),
+    {Kind: "box", X: r.X + 10, Y: r.Y + 34, Width: 34, Height: 20, Color: 0x2B2F36, Radius: 4}, label(r.X + 18, r.Y + 34 + math.Div(20 - look.Height, 2), "Lit", 0xD0D0D0),
+    {Kind: "box", X: r.X + 48, Y: r.Y + 34, Width: 48, Height: 20, Color: 0x2B2F36, Radius: 4}, label(r.X + 56, r.Y + 34 + math.Div(20 - look.Height, 2), "Persp", 0xA8A8A8),
     label(r.X + 10, r.Y + 226, "Base pass: 184 instructions", 0x8A8A8A)], counter])
 end
 
@@ -170,12 +173,12 @@ defn details(state, look)
   r = state.Rects.Details
   th = look.Theme
   x = r.X + 8
-  w = Max(0, r.Width - 16)
+  w = list.Max(0, r.Width - 16)
   fieldX = r.X + 130
-  fieldW = Max(0, r.Width - 138)
+  fieldW = list.Max(0, r.Width - 138)
   rectAt = y -> {X: fieldX, Y: r.Y + y, Width: fieldW, Height: 22}
-  name = (y, words) -> label(x + 10, r.Y + y + Div(22 - look.Height, 2), words, th.Muted)
-  Flatten([ui.Panel("Details", r, look), ui.Field("Search details", {X: x, Y: r.Y + 32, Width: w, Height: 22}, look, hint = true),
+  name = (y, words) -> label(x + 10, r.Y + y + math.Div(22 - look.Height, 2), words, th.Muted)
+  list.Flatten([ui.Panel("Details", r, look), ui.Field("Search details", {X: x, Y: r.Y + 32, Width: w, Height: 22}, look, hint = true),
     ui.Section("Material", {X: x, Y: r.Y + 60, Width: w, Height: 22}, look),
     [name(86, "Material Domain")], ui.Dropdown("Surface", rectAt(86), look),
     [name(112, "Blend Mode")], ui.Dropdown("Opaque", rectAt(112), look),
@@ -202,7 +205,7 @@ defn graph(state, look)
   r = state.Rects.Graph
   th = look.Theme
   area = graphArea(r)
-  Flatten([ui.Panel("Material Graph", r, look, active = true), [{Kind: "box", X: area.X, Y: area.Y, Width: area.Width, Height: area.Height, Color: th.Graph, Radius: 4}], ui.Grid(area, look),
+  list.Flatten([ui.Panel("Material Graph", r, look, active = true), [{Kind: "box", X: area.X, Y: area.Y, Width: area.Width, Height: area.Height, Color: th.Graph, Radius: 4}], ui.Grid(area, look),
     [{Kind: "text", Font: "large", X: r.X + r.Width - 14 - state.BigWidth, Y: r.Y + r.Height - 56, Text: "MATERIAL", Color: th.Big}, label(r.X + 12, r.Y + 34, "M_Surface  >  Material Graph", th.Muted), label(r.X + r.Width - 62, r.Y + 34, "Zoom 1:1", th.Muted)],
     ui.Links(links, state.Nodes, look), ui.Nodes(state.Nodes, state.Picked, links, look), nodeInsides(state, look)])
 end
@@ -217,11 +220,11 @@ defn View(state)
   th = themeOf(state)
   look = ui.Look(th, state.WidthOf, state.Line)
   r = state.Rects
-  codeArea = {X: r.Code.X, Y: r.Code.Y + 28, Width: r.Code.Width, Height: Max(0, r.Code.Height - 28)}
+  codeArea = {X: r.Code.X, Y: r.Code.Y + 28, Width: r.Code.Width, Height: list.Max(0, r.Code.Height - 28)}
   listArea = paletteArea(r.Palette)
-  Flatten([[{Kind: "clear", Color: th.Ground}], ui.MenuBar(menus, "M_Surface", r.Menu, look), ui.ToolBar(tools(th), state.Mouse, r.Tools, look), [{Kind: "rect", X: 0, Y: 62, Width: state.Width, Height: 1, Color: th.Edge}],
-    viewport(state, look), details(state, look), graph(state, look), ui.Panel("Cesia", r.Code, look), [{Kind: "box", X: r.Code.X + 2, Y: r.Code.Y + 28, Width: Max(0, r.Code.Width - 4), Height: Max(0, r.Code.Height - 30), Color: th.Code, Radius: 4}], ui.Code(codeLines(state), markedLine(state), codeArea, look),
-    ui.Panel("Palette", r.Palette, look), ui.Field("Search nodes", {X: r.Palette.X + 8, Y: r.Palette.Y + 32, Width: Max(0, r.Palette.Width - 16), Height: 22}, look, hint = true), ui.List(palette, 4, state.Hover, listArea, look)])
+  list.Flatten([[{Kind: "clear", Color: th.Ground}], ui.MenuBar(menus, "M_Surface", r.Menu, look), ui.ToolBar(tools(th), state.Mouse, r.Tools, look), [{Kind: "rect", X: 0, Y: 62, Width: state.Width, Height: 1, Color: th.Edge}],
+    viewport(state, look), details(state, look), graph(state, look), ui.Panel("Cesia", r.Code, look), [{Kind: "box", X: r.Code.X + 2, Y: r.Code.Y + 28, Width: list.Max(0, r.Code.Width - 4), Height: list.Max(0, r.Code.Height - 30), Color: th.Code, Radius: 4}], ui.Code(codeLines(state), markedLine(state), codeArea, look),
+    ui.Panel("Palette", r.Palette, look), ui.Field("Search nodes", {X: r.Palette.X + 8, Y: r.Palette.Y + 32, Width: list.Max(0, r.Palette.Width - 16), Height: 22}, look, hint = true), ui.List(palette, 4, state.Hover, listArea, look)])
 end
 
 (** Something still eases, or the sharp sphere hasn't come back. *)
@@ -272,7 +275,7 @@ end
 defn relight(state)
   (** While a value moves, the small sphere keeps the frame rate. Once it rests, the sharp one comes back. *)
   s = state
-  changed = Abs(s.ShownRough - s.Lit.Rough) + Abs(s.ShownMetal - s.Lit.Metal) + Abs(s.ShownLight - s.Lit.Light)
+  changed = math.Abs(s.ShownRough - s.Lit.Rough) + math.Abs(s.ShownMetal - s.Lit.Metal) + math.Abs(s.ShownLight - s.Lit.Light)
   if changed > 0.004
     ShadeSphere(s.Images.Quick.Pixels, quickSize, s.ShownRough, s.ShownMetal, s.ShownLight)
     sdl.ShowImage(s.Images.Quick, s.Window)

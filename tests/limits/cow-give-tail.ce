@@ -1,3 +1,6 @@
+use std/io
+use std/matrix
+
 defn go(acc, i, n)
   if i > n
     acc
@@ -7,5 +10,5 @@ defn go(acc, i, n)
   end
 end
 
-result = go(Zeros(100000), 1, 100000)
-Print(result[100000])
+result = go(matrix.Zeros(100000), 1, 100000)
+io.Print(result[100000])

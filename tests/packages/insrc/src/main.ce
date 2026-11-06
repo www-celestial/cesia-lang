@@ -4,8 +4,9 @@ use src/shapes
 use src/shapes/round
 use src/both
 use helper
+use std/io
 
-Print(shapes.Where())
-Print(round.Where())
-Print(both.Where())
-Print(helper.Where())
+io.Print(shapes.Where())
+io.Print(round.Where())
+io.Print(both.Where())
+io.Print(helper.Where())

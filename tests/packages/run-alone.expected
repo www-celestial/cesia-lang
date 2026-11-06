@@ -1,4 +1,4 @@
-whole/a.ce:3:7: Name "Later" doesn't exist.
-  3 | Print(Later())
-    |       ^
+whole/a.ce:5:10: Name "Later" doesn't exist.
+  5 | io.Print(Later())
+    |          ^
 exit 1

@@ -1,5 +1,7 @@
 (** An expression inside a struct in the block form. *)
+use std/io
+
 struct Car
   Mass
-  Print(Mass)
+  io.Print(Mass)
 end

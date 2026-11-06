@@ -1,6 +1,8 @@
 use std/sys
+use std/fiber
+use std/io
 
-t = Spawn(() -> Print("fiber"))
+t = fiber.Spawn(() -> io.Print("fiber"))
 sys.Sleep(0)
-Print("main")
-Wait(t)
+io.Print("main")
+fiber.Wait(t)

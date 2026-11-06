@@ -1,4 +1,4 @@
-method-colon-definition.ce:2:5: A range is written with two dots, as in 1..n, which is Range(1, n), and a method is reached with one dot.
+method-colon-definition.ce:2:5: A range is written with two dots, as in 1..n, which is list.Range(1, n), and a method is reached with one dot.
   2 | Rect:Square() = Rect(1)
     |     ^
 exit 1

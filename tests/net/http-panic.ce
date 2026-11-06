@@ -1,19 +1,24 @@
 use std/http
 use std/net
 use std/sys
+use std/bug
+use std/fiber
+use std/io
+use std/result
+use std/text
 
-crlf = "$(Char(13))$(Char(10))"
-handle(r) = if r.Path == "/boom" Panic("broken") else {Status: 200, Body: "fine"} end
+crlf = "$(text.Char(13))$(text.Char(10))"
+handle(r) = if r.Path == "/boom" bug.Panic("broken") else {Status: 200, Body: "fine"} end
 
 defn get(path)
   c = net.Connect("127.0.0.1", 18093)?
   net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
   reply = net.Read(c)?
   net.Close(c)
-  Ok(Split(crlf, reply)[1])
+  result.Ok(text.Split(crlf, reply)[1])
 end
 
-Spawn(() -> http.Serve(handle, port = 18093))
+fiber.Spawn(() -> http.Serve(handle, port = 18093))
 sys.Sleep(0)
-Print(get("/boom"))
-Print(get("/next"))
+io.Print(get("/boom"))
+io.Print(get("/next"))

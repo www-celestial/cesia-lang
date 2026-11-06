@@ -1,1 +1,3 @@
-Panic("boom")
+use std/bug
+
+bug.Panic("boom")

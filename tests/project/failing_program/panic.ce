@@ -1,1 +1,3 @@
-Panic("stop")
+use std/bug
+
+bug.Panic("stop")

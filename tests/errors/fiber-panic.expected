@@ -1,6 +1,6 @@
-fiber-panic.ce:1:17: boom
-  1 | t = Spawn(() -> Panic("boom"))
-    |                 ^
-  in <anonymous> (fiber-panic.ce:1)
+fiber-panic.ce:6:26: boom
+  6 | t = fiber.Spawn(() -> bug.Panic("boom"))
+    |                          ^
+  in <anonymous> (fiber-panic.ce:6)
 true
 exit 0

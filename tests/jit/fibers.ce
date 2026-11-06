@@ -1,11 +1,15 @@
+use std/fiber
+use std/io
+use std/math
+
 (* A long native loop still lets another fiber run before it ends: "other ran" comes first, as with the interpreter. *)
 defn count(n)
   s = 0
   for i in 1..n
-    s = s + Mod(i, 7)
+    s = s + math.Mod(i, 7)
   end
   s
 end
-t = Spawn(() -> Print("other ran"))
-Print(count(3000000))
-Print(Wait(t))
+t = fiber.Spawn(() -> io.Print("other ran"))
+io.Print(count(3000000))
+io.Print(fiber.Wait(t))

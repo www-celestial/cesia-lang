@@ -1,4 +1,4 @@
-interface-wrong.ce:14:7: Describe: s must be a Shape, found a Rect, which has no Perimeter().
-  14 | Print(Describe(Rect(1, 2)))
-     |       ^
+interface-wrong.ce:16:10: Describe: s must be a Shape, found a Rect, which has no Perimeter().
+  16 | io.Print(Describe(Rect(1, 2)))
+     |          ^
 exit 1

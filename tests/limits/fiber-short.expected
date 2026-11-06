@@ -1,4 +1,4 @@
-fiber-short.ce:9:8: Limit "steps" reached.
-  9 |   Wait(Spawn(work))
-    |        ^
+fiber-short.ce:12:19: Limit "steps" reached.
+  12 |   fiber.Wait(fiber.Spawn(work))
+     |                   ^
 exit 1

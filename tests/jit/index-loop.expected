@@ -1,6 +1,6 @@
 0.0
-index-loop.ce:5:15: Index 100001 is outside this array of 100000 elements.
-  5 |     s = s + xs[i]
+index-loop.ce:8:15: Index 100001 is outside this array of 100000 elements.
+  8 |     s = s + xs[i]
     |               ^
-  in total (index-loop.ce:5)
+  in total (index-loop.ce:8)
 exit 1

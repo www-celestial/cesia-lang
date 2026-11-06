@@ -32,11 +32,11 @@ Noted(a, b)
 
 Two notes that show nowhere.
 Noop()
-NewNative(x, y)
+list.NewNative(x, y)
 
 A native documented by a block whose first line is its signature.
 
-  Len("abc") --> 3
+  value.Len("abc") --> 3
 
 Built into Cesia.
 A module documented by the first block of its file, for the test of cesia doc in doc-places.cmd.

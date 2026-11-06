@@ -1,6 +1,10 @@
 (** Interfaces: a value meets one when it has its methods, with their numbers of parameters, and nothing declares it. *)
 use tests/lang/mods/geo
 use tests/lang/mods/shapes
+use std/fiber
+use std/list
+use std/result
+use std/value
 
 interface Shape
   (** Something with an area and a perimeter. *)
@@ -57,15 +61,15 @@ end
 (s Sized) Kind() = "sized"
 (d Doubling) area() = "doubled"
 
-stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and its message. *)
-  Err(e) -> "$(e.Kind): $(e.Message)"
-  Ok(v) -> v
+stop(f) = match fiber.Wait(fiber.Spawn(f))   (** What a call that stops says: its kind and its message. *)
+  result.Err(e) -> "$(e.Kind): $(e.Message)"
+  result.Ok(v) -> v
 end
 
 total(s Shape) = s.Area() + s.Perimeter()
 named(n Named) = n.Name()
 scaled(s Scalable) = s.Scaled(2).Area()
-maybe(s Shape?) = if IsMissing(s) 0 else s.Area() end
+maybe(s Shape?) = if value.IsMissing(s) 0 else s.Area() end
 low(x lowered) = x.inner()
 sized(s Sized) = s.Area()
 twice(m geo.Measured) = m.Area() * 2
@@ -82,7 +86,7 @@ isRecordFieldNotAFunction() = total({Area: () -> 1, Perimeter: () -> 1}) == 2 an
 isRecordFieldParameters() = stop(() -> named({Name: x -> x})) == "type: named: n must be a Named, found a Dict, which has no Name()."
 isStructFieldFunction() = named(Tag("a")) == "label" and stop(() -> named(Tag("a", Name = 1))) == "type: named: n must be a Named, found a Tag, which has no Name()."
 isOptionalInterface() = maybe(missing) == 0 and maybe(Rect(2)) == 2 and stop(() -> maybe(Square(1))) == "type: maybe: s must be a Shape or missing, found a Square, which has no Perimeter()."
-isFieldOfAnInterface() = Frame(Rect(1)).Inner.Area() == 1 and IsMissing(Frame(Rect(1)).Outer) and stop(() -> Frame(Square(1))) == "type: Frame: Inner must be a Shape, found a Square, which has no Perimeter()."
+isFieldOfAnInterface() = Frame(Rect(1)).Inner.Area() == 1 and value.IsMissing(Frame(Rect(1)).Outer) and stop(() -> Frame(Square(1))) == "type: Frame: Inner must be a Shape, found a Square, which has no Perimeter()."
 isPrivateInterface() = low({inner: () -> 5}) == 5 and stop(() -> low(Rect(1))) == "type: low: x must be a lowered, found a Rect, which has no inner()."
 
 defn writeFrame(s)
@@ -108,12 +112,12 @@ defn totals()
   (** Several shapes at one place: the answer kept for one doesn't hold for another. *)
   out = []
   for s in [Rect(1, 2), Circle(1), {Area: () -> 1, Perimeter: () -> 1}, Rect(1, 2), Circle(1)]
-    out = Append([total(s), s.Describe()], out)
+    out = list.Append([total(s), s.Describe()], out)
   end
   out
 end
 
-isSeveralShapes() = Equal(totals(), [[8, "area 2, perimeter 6"], [9, "a circle"], [2, "area 1, perimeter 1"], [8, "area 2, perimeter 6"], [9, "a circle"]])
+isSeveralShapes() = value.Equal(totals(), [[8, "area 2, perimeter 6"], [9, "a circle"], [2, "area 1, perimeter 1"], [8, "area 2, perimeter 6"], [9, "a circle"]])
 
 isMethodOnAnInterface() = Rect(1, 2).Describe() == "area 2, perimeter 6" and Tag("a").Hello() == "hello label"
 isMethodOnAnInterfaceForARecord() = {Area: () -> 1, Perimeter: () -> 4}.Describe() == "area 1, perimeter 4"

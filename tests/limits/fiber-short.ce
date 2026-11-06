@@ -1,3 +1,6 @@
+use std/fiber
+use std/io
+
 defn work()
   s = 0
   for i in 1..500
@@ -6,6 +9,6 @@ defn work()
   s
 end
 for i in 1..100
-  Wait(Spawn(work))
+  fiber.Wait(fiber.Spawn(work))
 end
-Print("the limit should have stopped this")
+io.Print("the limit should have stopped this")

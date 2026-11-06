@@ -1,4 +1,4 @@
-steps-comprehension.ce:1:6: Limit "steps" reached.
-  1 | xs = [k for k in 1..10000000]
+steps-comprehension.ce:4:6: Limit "steps" reached.
+  4 | xs = [k for k in 1..10000000]
     |      ^
 exit 1

@@ -1,6 +1,10 @@
 (** Every function under a permission, run the same way under the three cases of permissions_*.cmd. *)
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/list
+use std/result
 
 calls = [
   ["write", () -> sys.Write("perm_work/a", "x")],
@@ -18,12 +22,12 @@ calls = [
 
 defn outcome(call)
   name = call[1]
-  result = match Wait(Spawn(call[2]))
-    Err(e) -> e.Kind
-    Ok(Err(e)) -> e.Kind
+  got = match fiber.Wait(fiber.Spawn(call[2]))
+    result.Err(e) -> e.Kind
+    result.Ok(result.Err(e)) -> e.Kind
     else -> "ran"
   end
-  Print("$name: $result")
+  io.Print("$name: $got")
 end
 
-Map(outcome, calls)
+list.Map(outcome, calls)

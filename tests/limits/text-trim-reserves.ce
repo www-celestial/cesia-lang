@@ -1,4 +1,8 @@
 (** A copy is reserved before it is built. *)
-x = Repeat(1500000, "a ")
-y = Trim(x)
-Print(Len(y))
+use std/io
+use std/text
+use std/value
+
+x = text.Repeat(1500000, "a ")
+y = text.Trim(x)
+io.Print(value.Len(y))

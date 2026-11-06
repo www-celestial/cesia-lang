@@ -1,2 +1,3 @@
 use std/c
-Print(c.Open("m", version = 6))
+use std/io
+io.Print(c.Open("m", version = 6))

@@ -11,13 +11,13 @@ try() {  # what goes wrong, then the command that puts it in a copy of the proje
   (cd "$t/proj" && eval "$2" && cesia doc --site; echo "exit $?") 2>&1 | sed "s#$t#TMP#g"
 }
 try "a wrong -->" 'add "" "${f}cesia" "1 + 1 --> 3" "$f"'
-try "a block that stops" 'add "" "${f}cesia" "Div(1, 0)" "$f"'
+try "a block that stops" 'add "" "${f}cesia" "math.Div(1, 0)" "$f"'
 try "a block marked fails that ends well" 'add "" "${f}cesia fails" "1 + 1" "$f"'
-try "a wrong --> in a block marked fails, before it stops" 'add "" "${f}cesia fails" "1 + 1 --> 3" "Div(1, 0)" "$f"'
-try "a --> at the end of a call written on several lines" 'add "" "${f}cesia" "Max(1," "  2) -->" "$f"'
+try "a wrong --> in a block marked fails, before it stops" 'add "" "${f}cesia fails" "1 + 1 --> 3" "math.Div(1, 0)" "$f"'
+try "a --> at the end of a call written on several lines" 'add "" "${f}cesia" "list.Max(1," "  2) -->" "$f"'
 try "a norun block with an unknown name" 'add "" "${f}cesia norun" "NoSuchName(1)" "$f"'
 try "a word cesia blocks don't have" 'add "" "${f}cesia quiet" "1" "$f"'
-try "--> error in a book" 'add "" "${f}cesia" "Div(1, 0) --> error" "$f"'
+try "--> error in a book" 'add "" "${f}cesia" "math.Div(1, 0) --> error" "$f"'
 try "a name in brackets that leads nowhere" 'add "" "See [NoSuchName]."'
 try "a toml block that doesn't parse" 'add "" "${f}toml" "[project" "$f"'
 try "a page that book/index.md doesn't link" 'echo "# Extra" > docs/book/extra.md'

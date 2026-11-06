@@ -1,12 +1,16 @@
 (** Runs forever: tools/reload-test.sh edits this file while it runs. *)
 use lib
+use std/fiber
+use std/io
+use std/result
+use std/value
 
-Print("start")
+io.Print("start")
 
 struct Point { X }
 
-value() = 1
-following() = value() + 1
+current() = 1
+following() = current() + 1
 point() = Point(1).X
 readKept(xs) = xs[1]
 (p Point) Value() = 1
@@ -45,20 +49,20 @@ defn summed(n)
 end
 
 defn report(label, before, after)
-  if not Equal(before, after)
-    Print("$label $after")
+  if not value.Equal(before, after)
+    io.Print("$label $after")
   end
   after
 end
 
-attempt(f) = match Wait(Spawn(f))
-  Ok(v) -> v
-  Err(e) -> e.Kind
+attempt(f) = match fiber.Wait(fiber.Spawn(f))
+  result.Ok(v) -> v
+  result.Err(e) -> e.Kind
 end
 
 defn mainLoop()
-  a = value()
-  Print("value $a")
+  a = current()
+  io.Print("value $a")
   b = 0
   c = 0
   d = 0
@@ -79,9 +83,9 @@ defn mainLoop()
   tile = Tile(1)
   x = [1, 2]
   while true
-    a = report("value", a, value())
+    a = report("value", a, current())
     b = report("following", b, attempt(following))
-    c = report("direct", c, attempt(() -> value() + 1))
+    c = report("direct", c, attempt(() -> current() + 1))
     d = report("lib", d, lib.Constant())
     e = report("point", e, point())
     f = report("kept", f, readKept(x))
@@ -101,12 +105,12 @@ defn mainLoop()
 end
 
 defn watcher(seen)
-  v = value()
-  if not Equal(v, seen)
-    Print("fiber $v")
+  v = current()
+  if not value.Equal(v, seen)
+    io.Print("fiber $v")
   end
   watcher(v)
 end
 
-background = Spawn(() -> watcher(0))
+background = fiber.Spawn(() -> watcher(0))
 mainLoop()

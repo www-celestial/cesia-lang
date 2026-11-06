@@ -1,1 +1,4 @@
-Print(Put([1], 2, Dict()))
+use std/dict
+use std/io
+
+io.Print(dict.Put([1], 2, dict.Dict()))

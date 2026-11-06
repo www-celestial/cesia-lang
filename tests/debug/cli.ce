@@ -3,5 +3,6 @@ defn f(a)
   y = x * 2
   y + 1
 end
-Print(f(1))
-Print("done")
+io.Print(f(1))
+io.Print("done")
+use std/io

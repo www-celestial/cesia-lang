@@ -1,1 +1,4 @@
-Print(Args)
+use std/io
+use std/sys
+
+io.Print(sys.Args)

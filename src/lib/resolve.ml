@@ -210,7 +210,7 @@ let type_ref env (t : ptype) =
     | Some b when (if here then is_here t.tname else env.is_type b) -> t.tb <- b
     | _ ->
       let shown = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname in
-      error env.path t.tpos (Messages.no_type shown)
+      error env.path t.tpos (match t.tpkg, env.home t.tname with None, Some p -> Messages.moved t.tname p | _ -> Messages.no_type shown)
   end
 
 let rec reads env sc celled (e : expr) =

@@ -1,7 +1,10 @@
-a = Spawn(() -> Print("a"))
-b = Spawn(() -> Print("b"))
-Print("main")
-Print(a)
-Wait(a)
-Wait(b)
-Print("end")
+use std/fiber
+use std/io
+
+a = fiber.Spawn(() -> io.Print("a"))
+b = fiber.Spawn(() -> io.Print("b"))
+io.Print("main")
+io.Print(a)
+fiber.Wait(a)
+fiber.Wait(b)
+io.Print("end")

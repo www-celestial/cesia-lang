@@ -13,7 +13,7 @@ let comment_dashes = plain "Comments are written (* ... *)."
 let number_too_big s = hinted (Printf.sprintf "The number %s doesn't fit in 63 bits." s) (Printf.sprintf "Write it as a float: %s.0." s)
 let expected what got = plain (Printf.sprintf "Expected %s, found %s." what got)
 let too_nested = plain "This code is nested too deeply."
-let colon_range = plain "A range is written with two dots, as in 1..n, which is Range(1, n), and a method is reached with one dot."
+let colon_range = plain "A range is written with two dots, as in 1..n, which is list.Range(1, n), and a method is reached with one dot."
 let cant_assign = plain "Only a variable can be assigned here."
 let break_outside = plain "break can only be used inside a loop."
 let underscore_name name small capital =
@@ -40,7 +40,7 @@ let method_both sname name =
 let method_field sname name = plain (Printf.sprintf "The method \"%s\" has the name of a field of %s." name sname)
 let method_uncalled sname name =
   hinted (Printf.sprintf "\"%s\" is a method of %s: it must be called." name sname)
-    (Printf.sprintf "Write x.%s(). On an array: Map(it.%s(), xs)." name name)
+    (Printf.sprintf "Write x.%s(). On an array: list.Map(it.%s(), xs)." name name)
 let static_on_value sname name =
   hinted (Printf.sprintf "\"%s\" is a static method of %s." name sname) (Printf.sprintf "Write %s.%s(...)." sname name)
 let needs_object sname name =
@@ -49,7 +49,7 @@ let no_static sname name = plain (Printf.sprintf "%s has no static method \"%s\"
 let no_member sname name = plain (Printf.sprintf "%s has no field or method \"%s\"." sname name)
 let unset name = hinted (Printf.sprintf "\"%s\" has no value yet." name) "Give it a value before reading it."
 
-let text_hint = "To put a value in a text, write \"...$x\" or Text(x)."
+let text_hint = "To put a value in a text, write \"...$x\" or value.Text(x)."
 
 let binary verb a joiner b is_text =
   let text = Printf.sprintf "Can't %s %s %s %s." verb a joiner b in
@@ -72,7 +72,7 @@ let duplicate_arg fname name = plain (Printf.sprintf "%s received the argument \
 let duplicate name = plain (Printf.sprintf "The function \"%s\" is defined twice." name)
 let assign_function name = plain (Printf.sprintf "\"%s\" is a function of this file and can't be assigned." name)
 let return_outside = plain "return can only be used inside a function."
-let whole_hint = "To get a whole number, use Floor(...), Ceil(...) or Round(...)."
+let whole_hint = "To get a whole number, use math.Floor(...), math.Ceil(...) or math.Round(...)."
 let range_bound a = hinted (Printf.sprintf "A range needs whole numbers, not %s." a) whole_hint
 let index_type a = hinted (Printf.sprintf "An index must be a whole number, not %s." a) whole_hint
 let index_outside i n = plain (Printf.sprintf "Index %d is outside this array of %d elements." i n)
@@ -136,7 +136,7 @@ let destructure_array want got = plain (Printf.sprintf "This pattern takes %d el
 let destructure_struct a = plain (Printf.sprintf "This pattern needs a struct, not %s." a)
 let destructure_value a = plain (Printf.sprintf "This pattern needs an array, not %s." a)
 let pattern_mismatch name a = plain (Printf.sprintf "This pattern needs %s, not %s." name a)
-let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write Unwrap(...) where an Err would be a bug, or match on the result."
+let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write result.Unwrap(...) where an Err would be a bug, or match on the result."
 let question_space = plain "? must follow its value, with no space."
 let question_value a =
   hinted (Printf.sprintf "? needs an Ok or an Err, not %s." a) "Return a result from the function you call."
@@ -283,7 +283,7 @@ let dict_index = plain "A dictionary takes one key between its brackets."
 let dict_pair a = plain (Printf.sprintf "Dict needs structs with a Key and a Value, not %s." a)
 let need_dict name a = plain (Printf.sprintf "%s needs a dictionary, not %s." name a)
 let map_of_struct name sn =
-  hinted (Printf.sprintf "%s needs a dictionary, not %s." name (article sn)) "Fields(x) gives the public fields of a struct as a dictionary."
+  hinted (Printf.sprintf "%s needs a dictionary, not %s." name (article sn)) "dict.Fields(x) gives the public fields of a struct as a dictionary."
 let no_match a = plain (Printf.sprintf "No branch of this match accepts %s." a)
 let assertion = plain "Assertion failed."
 let use_nested = plain "use can only be used at the top of a file."

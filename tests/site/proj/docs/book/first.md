@@ -1,14 +1,17 @@
 # First steps
 
-Names and [Len]:
+Names and [value.Len]:
 
 ```cesia
 use src/greet
+use std/io
+use std/math
+use std/value
 x = 2 + 3
 x -->
 x * 2 --> 10
-Print(greet.Hello("Ana"))
-Len("abc") -->
+io.Print(greet.Hello("Ana"))
+value.Len("abc") -->
 ```
 
 A value with a line end:
@@ -20,7 +23,7 @@ A value with a line end:
 This one stops:
 
 ```cesia fails
-Div(x, 0)
+math.Div(x, 0)
 ```
 
 Not run:
@@ -33,12 +36,12 @@ http.Get("https://example.com")
 A table made by code:
 
 ```cesia output=md hide=code
-Print("| a | b |\n|---|---|\n| 1 | 2 |")
+io.Print("| a | b |\n|---|---|\n| 1 | 2 |")
 ```
 
 ```cesia fold=output
 for k in 1..3
-  Print(k)
+  io.Print(k)
 end
 ```
 

@@ -1,4 +1,4 @@
-use-small-name.ce:2:15: Module "geometry" has no name "half".
-  2 | Print(geometry.half(2))
-    |               ^
+use-small-name.ce:3:18: Module "geometry" has no name "half".
+  3 | io.Print(geometry.half(2))
+    |                  ^
 exit 1

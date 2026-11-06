@@ -1,4 +1,4 @@
-show-shared.ce:5:1: Limit "steps" reached.
-  5 | Print(x)
-    | ^
+show-shared.ce:7:3: Limit "steps" reached.
+  7 | io.Print(x)
+    |   ^
 exit 1

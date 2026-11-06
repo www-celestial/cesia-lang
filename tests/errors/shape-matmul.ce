@@ -1,1 +1,4 @@
-Print(Matmul([1, 2], [1, 2]))
+use std/io
+use std/matrix
+
+io.Print(matrix.Matmul([1, 2], [1, 2]))

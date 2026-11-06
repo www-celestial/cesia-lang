@@ -1,8 +1,10 @@
 use std/c
+use std/io
+use std/result
 
 defn check()
   c.Open("m", version = 6)?
-  Ok("opened")
+  result.Ok("opened")
 end
 
-Print(Unwrap(check()))
+io.Print(result.Unwrap(check()))

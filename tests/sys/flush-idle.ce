@@ -1,5 +1,6 @@
 (** What a program printed shows up before it starts to wait, not after. *)
 use std/sys
-Print("first")
+use std/io
+io.Print("first")
 sys.Sleep(30)
-Print("second")
+io.Print("second")

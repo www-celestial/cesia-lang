@@ -9,11 +9,13 @@ file = "src/main.ce"
 std/
 deps/
 site/
-Print("Hello from hello")
+use std/io
+
+io.Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
-algo cpp crypto csv date encode frame heap history http markdown num queue rope sdl set sql syntax tls ui web websocket 
- 22 1
+algo cpp crypto csv date dict encode fiber fn frame heap history http list markdown math num queue result rope sdl set sql syntax tls ui value web websocket 
+ 29 1
 all as installed
 std/rope       cesia 0.2.0  changed by hand
 std/ holds the libraries of Cesia 0.2.0.

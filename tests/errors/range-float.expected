@@ -1,5 +1,5 @@
-range-float.ce:2:11: A range needs whole numbers, not the number 2.5.
-  2 | for i in 1..n / 2 Print(i) end
+range-float.ce:4:11: A range needs whole numbers, not the number 2.5.
+  4 | for i in 1..n / 2 io.Print(i) end
     |           ^
-  To get a whole number, use Floor(...), Ceil(...) or Round(...).
+  To get a whole number, use math.Floor(...), math.Ceil(...) or math.Round(...).
 exit 1

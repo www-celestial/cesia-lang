@@ -1,2 +1,3 @@
 use std/c
-Print(c.Alloc(2000000))
+use std/io
+io.Print(c.Alloc(2000000))

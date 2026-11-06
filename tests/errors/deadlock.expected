@@ -1,4 +1,4 @@
-deadlock.ce:5:7: All fibers are waiting and nothing can wake them.
-  5 | Print(Wait(a))
-    |       ^
+deadlock.ce:8:15: All fibers are waiting and nothing can wake them.
+  8 | io.Print(fiber.Wait(a))
+    |               ^
 exit 1

@@ -1,4 +1,6 @@
 (** A value that doesn't meet the interface of a parameter. *)
+use std/io
+
 interface Shape
   Area()
   Perimeter()
@@ -11,4 +13,4 @@ defn Describe(s Shape)
   "area $(s.Area()), perimeter $(s.Perimeter())"
 end
 
-Print(Describe(Rect(1, 2)))
+io.Print(Describe(Rect(1, 2)))

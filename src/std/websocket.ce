@@ -1,6 +1,11 @@
 (** The server side of WebSocket, RFC 6455, on the connection http hands over. *)
 use std/encode
 use std/http
+use std/list
+use std/math
+use std/result
+use std/text
+use std/value
 
 guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 MaxFrame = 1048576   (** The largest frame read, in bytes: a larger one is refused. *)
@@ -8,67 +13,67 @@ DefaultIdle = 300    (** The seconds a connection may stay silent before it is c
 
 defn frame(opcode, payload)
   (** A frame from the server: never masked. *)
-  n = ByteLength(payload)
+  n = text.ByteLength(payload)
   head = if n < 126
     [128 + opcode, n]
   else if n < 65536
-    [128 + opcode, 126, Div(n, 256), Mod(n, 256)]
+    [128 + opcode, 126, math.Div(n, 256), math.Mod(n, 256)]
   else
-    Concat([128 + opcode, 127], [Mod(Div(n, 256 ^ (8 - k)), 256) for k in 1..8])
+    list.Concat([128 + opcode, 127], [math.Mod(math.Div(n, 256 ^ (8 - k)), 256) for k in 1..8])
   end
-  "$(FromBytes(head))$payload"
+  "$(text.FromBytes(head))$payload"
 end
 
 defn parseFrame(buffer)
   (** The first frame of a buffer, missing if it isn't all there, or {Bad: true} for a frame to refuse. *)
-  size = ByteLength(buffer)
+  size = text.ByteLength(buffer)
   if size < 2
     return missing
   end
-  first = Byte(1, buffer)
-  second = Byte(2, buffer)
+  first = text.Byte(1, buffer)
+  second = text.Byte(2, buffer)
   masked = second >= 128
-  n = BitAnd(second, 127)
+  n = math.BitAnd(second, 127)
   at = 3
   if n == 126
     if size < 4
       return missing
     end
-    n = Byte(3, buffer) * 256 + Byte(4, buffer)
+    n = text.Byte(3, buffer) * 256 + text.Byte(4, buffer)
     at = 5
   else if n == 127
     if size < 10
       return missing
     end
-    if Byte(3, buffer) != 0
+    if text.Byte(3, buffer) != 0
       return {Bad: true}
     end
-    n = Reduce((total, k) -> total * 256 + Byte(k, buffer), 0, 3..10)
+    n = list.Reduce((total, k) -> total * 256 + text.Byte(k, buffer), 0, 3..10)
     at = 11
   end
-  if not masked or n > MaxFrame or BitAnd(first, 112) != 0 or BitAnd(first, 128) == 0
+  if not masked or n > MaxFrame or math.BitAnd(first, 112) != 0 or math.BitAnd(first, 128) == 0
     return {Bad: true}
   end
   if size < at + 3 + n
     return missing
   end
-  key = ByteSlice(at, at + 3, buffer)
+  key = text.ByteSlice(at, at + 3, buffer)
   stop = at + 3 + n
-  payload = if n == 0 "" else XorBytes(key, ByteSlice(at + 4, stop, buffer)) end
-  rest = if stop >= size "" else ByteSlice(stop + 1, size, buffer) end
-  {Bad: false, Opcode: BitAnd(first, 15), Payload: payload, Rest: rest}
+  payload = if n == 0 "" else text.XorBytes(key, text.ByteSlice(at + 4, stop, buffer)) end
+  rest = if stop >= size "" else text.ByteSlice(stop + 1, size, buffer) end
+  {Bad: false, Opcode: math.BitAnd(first, 15), Payload: payload, Rest: rest}
 end
 
 defn loop(io, buffer, onMessage, idle)
   (** The deadline starts again at each message and ping: an idle client doesn't hold its fiber forever. *)
   f = parseFrame(buffer)
-  if IsMissing(f)
+  if value.IsMissing(f)
     more = io.Read()
-    if IsOk(more) and ByteLength(more.Value) > 0
+    if result.IsOk(more) and text.ByteLength(more.Value) > 0
       loop(io, "$buffer$(more.Value)", onMessage, idle)
     end
-  else if f.Bad or (f.Opcode >= 8 and ByteLength(f.Payload) > 125)
-    io.Write(frame(8, FromBytes([3, 234])))
+  else if f.Bad or (f.Opcode >= 8 and text.ByteLength(f.Payload) > 125)
+    io.Write(frame(8, text.FromBytes([3, 234])))
   else if f.Opcode == 8
     io.Write(frame(8, f.Payload))
   else if f.Opcode == 9
@@ -82,7 +87,7 @@ defn loop(io, buffer, onMessage, idle)
   else if f.Opcode == 10
     loop(io, f.Rest, onMessage, idle)
   else
-    io.Write(frame(8, FromBytes([3, 234])))
+    io.Write(frame(8, text.FromBytes([3, 234])))
   end
 end
 
@@ -95,7 +100,7 @@ defn Accept(headers, onMessage, idle = DefaultIdle)
   (** The response that upgrades a request, or a 400 if it isn't a WebSocket one. *)
   key = http.HeaderValue("sec-websocket-key", headers)
   asked = http.HeaderValue("upgrade", headers)
-  if IsMissing(key) or IsMissing(asked) or Lower(asked) != "websocket"
+  if value.IsMissing(key) or value.IsMissing(asked) or text.Lower(asked) != "websocket"
     {Status: 400, Body: "This route takes WebSocket connections."}
   else
     answer = encode.Base64(encode.Sha1("$key$guid"))

@@ -1,5 +1,5 @@
-scope.ce:2:8: Permission "ffi" denied for m.
-  2 | Print(c.Open("m", version = 6))
-    |        ^
+scope.ce:3:11: Permission "ffi" denied for m.
+  3 | io.Print(c.Open("m", version = 6))
+    |           ^
   Run again with --allow ffi=m.
 exit 1

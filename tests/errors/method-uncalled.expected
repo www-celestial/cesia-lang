@@ -1,5 +1,5 @@
-method-uncalled.ce:3:14: "Area" is a method of Rect: it must be called.
-  3 | Print(Rect(1).Area)
-    |              ^
-  Write x.Area(). On an array: Map(it.Area(), xs).
+method-uncalled.ce:5:17: "Area" is a method of Rect: it must be called.
+  5 | io.Print(Rect(1).Area)
+    |                 ^
+  Write x.Area(). On an array: list.Map(it.Area(), xs).
 exit 1

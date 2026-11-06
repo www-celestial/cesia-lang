@@ -1,3 +1,5 @@
 (** Stops when no SQLite library can be loaded: tools/test.sh then skips this folder. *)
 use std/sqlite3
-Assert(IsOk(sqlite3.Version()), "No SQLite library.")
+use std/bug
+use std/result
+bug.Assert(result.IsOk(sqlite3.Version()), "No SQLite library.")

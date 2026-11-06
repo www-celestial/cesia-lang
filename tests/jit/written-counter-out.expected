@@ -1,5 +1,5 @@
-written-counter-out.ce:6:14: Index 101 is outside this array of 10 elements.
-  6 |     s = s + a[i]
+written-counter-out.ce:9:14: Index 101 is outside this array of 10 elements.
+  9 |     s = s + a[i]
     |              ^
-  in g (written-counter-out.ce:6)
+  in g (written-counter-out.ce:9)
 exit 1

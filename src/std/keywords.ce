@@ -3,6 +3,12 @@
     in some places only. Nothing here is code but the uses. *)
 use std/set
 use std/queue as line
+use std/bug
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/value
 
 (** if
     A choice, and a value: if a condition, then the value of its branch, else that of the other one. Without else, a false
@@ -32,14 +38,14 @@ use std/queue as line
       for x in [1, 2, 3] total += x end
       total --> 6
       [x * x for x in 1..4] --> [1, 4, 9, 16]
-      [x for x in 1..6 if IsEven(x)] --> [2, 4, 6] *)
+      [x for x in 1..6 if math.IsEven(x)] --> [2, 4, 6] *)
 
 (** in
     After for, what the loop runs over. Elsewhere, a question: is the value an element of an array, or a key of a dictionary?
 
       2 in [1, 2, 3] --> true
       "a" in {"a": 1} --> true
-      [k for k in Keys({"a": 1, "b": 2})] --> ["a", "b"] *)
+      [k for k in dict.Keys({"a": 1, "b": 2})] --> ["a", "b"] *)
 
 (** while
     Runs its body again and again, as long as the condition is true.
@@ -109,13 +115,13 @@ use std/queue as line
     condition.
 
       true and false --> false
-      false and Panic("never runs") --> false *)
+      false and bug.Panic("never runs") --> false *)
 
 (** or
     True if either side is true. The right side runs only when the left one is false.
 
       false or true --> true
-      true or Panic("never runs") --> true *)
+      true or bug.Panic("never runs") --> true *)
 
 (** not
     The opposite of a condition, which is true or false.
@@ -125,7 +131,7 @@ use std/queue as line
 (** then
     Passes the value on its left to the expression on its right, which reads it as it: a pipeline read from left to right.
 
-      [1, 2, 3] then Map(it * it, it) then Sum(it) --> 14
+      [1, 2, 3] then list.Map(it * it, it) then list.Sum(it) --> 14
       5 then it + 1 --> 6 *)
 
 (** use
@@ -144,21 +150,21 @@ use std/queue as line
 (** false
     The other value of a condition.
 
-      IsBool(false) --> true *)
+      value.IsBool(false) --> true *)
 
 (** missing
     The absence of a value: a function that ends with no value gives it, as does Get on a key that is absent. A field typed
     with ? has it as its default. JSON writes it null.
 
-      Get("a", {}) --> missing
-      IsMissing(missing) --> true *)
+      dict.Get("a", {}) --> missing
+      value.IsMissing(missing) --> true *)
 
 (** it
     The parameter of a short function: an argument that holds it is a function of it, so Map(it * 2, xs) is Map(x -> x * 2, xs).
     After then, it is the value on the left.
 
-      Map(it * 2, [1, 2]) --> [2, 4]
-      Filter(it > 1, [1, 2, 3]) --> [2, 3] *)
+      list.Map(it * 2, [1, 2]) --> [2, 4]
+      list.Filter(it > 1, [1, 2, 3]) --> [2, 3] *)
 
 (** as
     After a use, renames what the file sees: use std/queue as line gives line.Of.
@@ -175,15 +181,15 @@ use std/queue as line
     list, it takes a part of it, and end there is the last position.
 
       1..4 --> [1, 2, 3, 4]
-      Range(1, 4) --> [1, 2, 3, 4]
+      list.Range(1, 4) --> [1, 2, 3, 4]
       tens = [10, 20, 30, 40]
       tens[2..3] --> [20, 30]
-      tens[2..end] --> Skip(1, tens) *)
+      tens[2..end] --> list.Skip(1, tens) *)
 
 (** ?
     After a result, the value of an Ok, or else a way out of the function with the Err. After a type, the type allows missing:
     Text?.
 
-      defn doubled(r) Ok(r? * 2) end
-      doubled(Ok(4)) --> Ok(8)
-      doubled(Err("no")) --> Err("no") *)
+      defn doubled(r) result.Ok(r? * 2) end
+      doubled(result.Ok(4)) --> result.Ok(8)
+      doubled(result.Err("no")) --> result.Err("no") *)

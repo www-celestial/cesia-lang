@@ -1,2 +1,5 @@
+use std/io
+use std/value
+
 x = -4611686018427387903 - 1
-Print(Len(x..4611686018427387903))
+io.Print(value.Len(x..4611686018427387903))

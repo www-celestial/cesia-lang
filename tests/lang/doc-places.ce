@@ -1,3 +1,6 @@
+use std/cesia
+use std/text
+
 (* The places of the documentation, read by Doc: inside a block, at the end of a line, on parameters. *)
 
 defn Halved(x)
@@ -22,8 +25,8 @@ defn Above(x)
   x
 end
 
-isDocInsideABlock() = StartsWith("Halved(x)\n\nHalf of a number, documented inside its block.", Doc(Halved))
-isDocExampleInsideABlock() = Contains("  Halved(4) --> 2.0", Doc(Halved))
-isDocAtTheEndOfALine() = Doc(Tripled) == "Tripled(x)\n\nThree times a number."
-isDocListsTheParts() = EndsWith("\n\n  r       the number to grow\n  by      how many times larger\n  result  the larger number", Doc(Grown))
-isDocAboveABlockIsNone() = Doc(Above) == "Above(x)"
+isDocInsideABlock() = text.StartsWith("Halved(x)\n\nHalf of a number, documented inside its block.", cesia.Doc(Halved))
+isDocExampleInsideABlock() = text.Contains("  Halved(4) --> 2.0", cesia.Doc(Halved))
+isDocAtTheEndOfALine() = cesia.Doc(Tripled) == "Tripled(x)\n\nThree times a number."
+isDocListsTheParts() = text.EndsWith("\n\n  r       the number to grow\n  by      how many times larger\n  result  the larger number", cesia.Doc(Grown))
+isDocAboveABlockIsNone() = cesia.Doc(Above) == "Above(x)"

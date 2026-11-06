@@ -2,6 +2,10 @@
 use std/num
 use std/sys
 use std/cesia
+use std/list
+use std/math
+use std/text
+use std/value
 
 (** Twice x, for the test of a function of this file.
 
@@ -24,63 +28,63 @@ Short(x) = x
 hidden(x) = x *)
 Plain(x) = x
 
-isDocBlock() = StartsWith("Documented(x)", Doc(Documented)) and Contains("Two lines", Doc(Documented)) and Contains("of documentation.", Doc(Documented))
-isDocBlockOnOneLine() = Contains("On one line.", Doc(Short))
-isDocBlockKeepsNoMarks() = not Contains("(*", Doc(Documented)) and not Contains("*)", Doc(Documented)) and not Contains("*)", Doc(Short))
-isDocPlainCommentIsNoDoc() = not Contains("Not documentation", Doc(Plain))
+isDocBlock() = text.StartsWith("Documented(x)", cesia.Doc(Documented)) and text.Contains("Two lines", cesia.Doc(Documented)) and text.Contains("of documentation.", cesia.Doc(Documented))
+isDocBlockOnOneLine() = text.Contains("On one line.", cesia.Doc(Short))
+isDocBlockKeepsNoMarks() = not text.Contains("(*", cesia.Doc(Documented)) and not text.Contains("*)", cesia.Doc(Documented)) and not text.Contains("*)", cesia.Doc(Short))
+isDocPlainCommentIsNoDoc() = not text.Contains("Not documentation", cesia.Doc(Plain))
 
-isDocOfACesiaFunction() = Contains("One more", Doc("Inc")) and StartsWith("Inc(x)", Doc("Inc"))
-isDocKeepsTheExamples() = Contains("Inc(1) --> 2", Doc("Inc"))
-isDocOfADefn() = StartsWith("FindFirst(f, xs)", Doc("FindFirst"))
-isDocOfAModuleFunction() = StartsWith("Solve(m, b)", Doc("num.Solve"))
-isDocOfANative() = StartsWith("Sort(xs)", Doc("Sort"))
-isDocOfAModuleNative() = StartsWith("sys.Now()", Doc("sys.Now"))
-isDocOfAConstant() = StartsWith("Pi", Doc("Pi"))
-isDocOfAValue() = Doc(Inc) == Doc("Inc") and Doc(Sort) == Doc("Sort") and Doc(num.Solve) == Doc("num.Solve")
-isDocOfALocalFunction() = Contains("Twice x", Doc(Twice))
-isDocWithoutAComment() = StartsWith("Undocumented(a, b = 1)", Doc(Undocumented)) and not Contains("\n", Doc(Undocumented))
-isDocOfNothing() = IsMissing(Doc("NoSuchName")) and IsMissing(Doc("num.NoSuchName")) and IsMissing(Doc("no_such_module.X"))
-isDocHidesPrivateNames() = IsMissing(Doc("runLength"))
-isDocOfALambda() = IsMissing(Doc(x -> x))
+isDocOfACesiaFunction() = text.Contains("One more", cesia.Doc("math.Inc")) and text.StartsWith("Inc(x)", cesia.Doc("math.Inc"))
+isDocKeepsTheExamples() = text.Contains("Inc(1) --> 2", cesia.Doc("math.Inc"))
+isDocOfADefn() = text.StartsWith("FindFirst(f, xs)", cesia.Doc("list.FindFirst"))
+isDocOfAModuleFunction() = text.StartsWith("Solve(m, b)", cesia.Doc("num.Solve"))
+isDocOfANative() = text.StartsWith("list.Sort(xs)", cesia.Doc("list.Sort"))
+isDocOfAModuleNative() = text.StartsWith("sys.Now()", cesia.Doc("sys.Now"))
+isDocOfAConstant() = text.StartsWith("math.Pi", cesia.Doc("math.Pi"))
+isDocOfAValue() = cesia.Doc(math.Inc) == cesia.Doc("math.Inc") and cesia.Doc(list.Sort) == cesia.Doc("list.Sort") and cesia.Doc(num.Solve) == cesia.Doc("num.Solve")
+isDocOfALocalFunction() = text.Contains("Twice x", cesia.Doc(Twice))
+isDocWithoutAComment() = text.StartsWith("Undocumented(a, b = 1)", cesia.Doc(Undocumented)) and not text.Contains("\n", cesia.Doc(Undocumented))
+isDocOfNothing() = value.IsMissing(cesia.Doc("NoSuchName")) and value.IsMissing(cesia.Doc("num.NoSuchName")) and value.IsMissing(cesia.Doc("no_such_module.X"))
+isDocHidesPrivateNames() = value.IsMissing(cesia.Doc("list.runLength")) and value.IsMissing(cesia.Doc("Inc"))
+isDocOfALambda() = value.IsMissing(cesia.Doc(x -> x))
 
-isDocNamesOfTheModules() = "std/num" in DocNames() and not ("num" in DocNames()) and "std/sys" in DocNames() and "prelude" in DocNames() and not ("natives" in DocNames())
-isDocNamesOfThePrelude() = "Inc" in DocNames("prelude") and "Sort" in DocNames("prelude") and not ("runLength" in DocNames("prelude"))
-isDocNamesOfAModule() = "num.Solve" in DocNames("std/num") and Equal(DocNames("pkg/num"), []) and "sys.Now" in DocNames("std/sys")
-isDocNamesOfNothing() = Equal(DocNames("no_such_module"), [])
-isDocNamesHasNoKeywords() = not ("keywords" in DocNames())
+isDocNamesOfTheModules() = "std/num" in cesia.DocNames() and not ("num" in cesia.DocNames()) and "std/sys" in cesia.DocNames() and "std/io" in cesia.DocNames() and not ("natives" in cesia.DocNames()) and not ("prelude" in cesia.DocNames())
+isDocNamesOfNativesAndCesia() = "list.Map" in cesia.DocNames("std/list") and "list.Sort" in cesia.DocNames("std/list") and not ("list.runLength" in cesia.DocNames("std/list")) and "io.Print" in cesia.DocNames("std/io")
+isDocNamesOfAModule() = "num.Solve" in cesia.DocNames("std/num") and value.Equal(cesia.DocNames("pkg/num"), []) and "sys.Now" in cesia.DocNames("std/sys")
+isDocNamesOfNothing() = value.Equal(cesia.DocNames("no_such_module"), [])
+isDocNamesHasNoKeywords() = not ("keywords" in cesia.DocNames())
 
-isDocOfAKeyword() = StartsWith("match\n", Doc("match")) and Contains("patterns", Doc("match")) and StartsWith("?\n", Doc("?"))
-isEveryKeywordHasABlock() = Equal(Filter(k -> IsMissing(cesia.DocEntry(k)), cesia.Keywords()), [])
-isKeywordsHoldTheReservedWords() = Len(cesia.Keywords()) == 25 and "interface" in cesia.Keywords() and "it" in cesia.Keywords()
+isDocOfAKeyword() = text.StartsWith("match\n", cesia.Doc("match")) and text.Contains("patterns", cesia.Doc("match")) and text.StartsWith("?\n", cesia.Doc("?"))
+isEveryKeywordHasABlock() = value.Equal(list.Filter(k -> value.IsMissing(cesia.DocEntry(k)), cesia.Keywords()), [])
+isKeywordsHoldTheReservedWords() = value.Len(cesia.Keywords()) == 25 and "interface" in cesia.Keywords() and "it" in cesia.Keywords()
 
 defn isDocEntryOfANative()
-  e = cesia.DocEntry("Sort")
-  e.Name == "Sort" and e.Module == "prelude" and e.Signature == "Sort(xs)" and e.Builtin and e.File == "std/natives.ce" and
-    Equal(e.Examples, ["Sort([3, 1, 2]) --> [1, 2, 3]"]) and not Contains("-->", e.Text)
+  e = cesia.DocEntry("list.Sort")
+  e.Name == "list.Sort" and e.Module == "std/list" and e.Signature == "list.Sort(xs)" and e.Builtin and e.File == "std/natives.ce" and
+    value.Equal(e.Examples, ["list.Sort([3, 1, 2]) --> [1, 2, 3]"]) and not text.Contains("-->", e.Text)
 end
 
 defn isDocEntryOfAFunction()
   e = cesia.DocEntry("num.Solve")
-  e.Module == "std/num" and StartsWith("Solve(m, b)", e.Signature) and not e.Builtin and e.File == "std/num.ce" and e.Line > 1
+  e.Module == "std/num" and text.StartsWith("Solve(m, b)", e.Signature) and not e.Builtin and e.File == "std/num.ce" and e.Line > 1
 end
 
 isDocEntryOfAModuleNative() = cesia.DocEntry("sys.Read").Module == "std/sys" and cesia.DocEntry("sys.Read").Builtin
-isDocEntryOfAKeyword() = cesia.DocEntry("if").Module == "" and cesia.DocEntry("if").Builtin and Len(cesia.DocEntry("if").Examples) > 0
-isDocEntryOfNothing() = IsMissing(cesia.DocEntry("NoSuchName")) and IsMissing(cesia.DocEntry("runLength"))
-isAssetsOfTheSite() = IsText(cesia.Asset("site.css")) and IsText(cesia.Asset("site.js")) and IsMissing(cesia.Asset("site.ce"))
+isDocEntryOfAKeyword() = cesia.DocEntry("if").Module == "" and cesia.DocEntry("if").Builtin and value.Len(cesia.DocEntry("if").Examples) > 0
+isDocEntryOfNothing() = value.IsMissing(cesia.DocEntry("NoSuchName")) and value.IsMissing(cesia.DocEntry("runLength"))
+isAssetsOfTheSite() = value.IsText(cesia.Asset("site.css")) and value.IsText(cesia.Asset("site.js")) and value.IsMissing(cesia.Asset("site.ce"))
 
 defn undocumentedNames()
   (** A name without a comment shows only its signature, on one line. *)
   out = []
-  for m in DocNames()
-    for name in DocNames(m)
-      text = Doc(name)
-      if IsMissing(text) or not Contains("\n", text)
-        out = Append(name, out)
+  for m in cesia.DocNames()
+    for name in cesia.DocNames(m)
+      doc = cesia.Doc(name)
+      if value.IsMissing(doc) or not text.Contains("\n", doc)
+        out = list.Append(name, out)
       end
     end
   end
   out
 end
 
-isEverythingPublicHasAComment() = Equal(undocumentedNames(), [])
+isEverythingPublicHasAComment() = value.Equal(undocumentedNames(), [])

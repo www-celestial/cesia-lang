@@ -1,5 +1,5 @@
-overflow-mul.ce:1:18: The integer result of 3037000500 * 3037000500 doesn't fit in 63 bits.
-  1 | Print(3037000500 * 3037000500)
-    |                  ^
+overflow-mul.ce:3:21: The integer result of 3037000500 * 3037000500 doesn't fit in 63 bits.
+  3 | io.Print(3037000500 * 3037000500)
+    |                     ^
   Integers have 63 bits. To go further, use a float: 1.0 * x.
 exit 1

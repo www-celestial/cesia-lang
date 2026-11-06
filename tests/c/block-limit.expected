@@ -1,4 +1,4 @@
-block-limit.ce:2:8: Limit "memory" reached.
-  2 | Print(c.Alloc(2000000))
-    |        ^
+block-limit.ce:3:11: Limit "memory" reached.
+  3 | io.Print(c.Alloc(2000000))
+    |           ^
 exit 1

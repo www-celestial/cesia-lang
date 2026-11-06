@@ -1,4 +1,4 @@
-find-byte-pays.ce:4:3: Limit "steps" reached.
-  4 |   ByteFind("b", 1, s)
-    |   ^
+find-byte-pays.ce:7:7: Limit "steps" reached.
+  7 |   text.ByteFind("b", 1, s)
+    |       ^
 exit 1

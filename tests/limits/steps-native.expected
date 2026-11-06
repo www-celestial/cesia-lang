@@ -1,4 +1,4 @@
-steps-native.ce:1:5: Limit "steps" reached.
-  1 | a = Zeros(500, 500)
-    |     ^
+steps-native.ce:3:11: Limit "steps" reached.
+  3 | a = matrix.Zeros(500, 500)
+    |           ^
 exit 1

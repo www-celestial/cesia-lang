@@ -1,4 +1,4 @@
-steps-equal.ce:3:7: Limit "steps" reached.
-  3 |   b = Equal(a, a)
-    |       ^
+steps-equal.ce:6:12: Limit "steps" reached.
+  6 |   b = value.Equal(a, a)
+    |            ^
 exit 1

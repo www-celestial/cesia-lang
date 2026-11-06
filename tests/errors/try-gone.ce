@@ -1,2 +1,4 @@
+use std/io
+
 try = 1
-Print(try)
+io.Print(try)

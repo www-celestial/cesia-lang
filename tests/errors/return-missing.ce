@@ -1,6 +1,9 @@
 (** A return with no value gives missing, which a type without ? refuses. *)
+use std/io
+use std/value
+
 defn Find(xs Array, x) Int?
-  for i in 1..Len(xs)
+  for i in 1..value.Len(xs)
     if xs[i] == x
       return i
     end
@@ -12,6 +15,6 @@ defn F(x) Int
   end
   x
 end
-Print(Find([1, 2], 3))
-Print(F(0))
-Print(F(1))
+io.Print(Find([1, 2], 3))
+io.Print(F(0))
+io.Print(F(1))

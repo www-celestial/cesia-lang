@@ -1,3 +1,6 @@
+use std/list
+use std/value
+
 orders = [{Status: "paid", Region: "EMEA", Amount: 100},
           {Status: "paid", Region: "APAC", Amount: 300},
           {Status: "refunded", Region: "EMEA", Amount: 999},
@@ -7,8 +10,8 @@ orders = [{Status: "paid", Region: "EMEA", Amount: 100},
 
 defn isTopThree()
   top3 = orders
-    then Filter(it.Status == "paid")
-    then Group(it.Region, summary = g -> {Total: Sum(g.Amount)})
-    then Top(3, by = it.Total)
-  Equal(top3, [{Key: "EMEA", Total: 350}, {Key: "APAC", Total: 300}, {Key: "AMER", Total: 50}])
+    then list.Filter(it.Status == "paid")
+    then list.Group(it.Region, summary = g -> {Total: list.Sum(g.Amount)})
+    then list.Top(3, by = it.Total)
+  value.Equal(top3, [{Key: "EMEA", Total: 350}, {Key: "APAC", Total: 300}, {Key: "AMER", Total: 50}])
 end

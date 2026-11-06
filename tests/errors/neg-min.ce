@@ -1,2 +1,4 @@
+use std/io
+
 x = -4611686018427387903 - 1
-Print(-x)
+io.Print(-x)

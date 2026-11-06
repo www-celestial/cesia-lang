@@ -1,10 +1,15 @@
 (** sys.ReadInput gives the whole standard input, and sys.Exit ends with a code, also from a fiber. *)
 use std/sys
-text = Unwrap(sys.ReadInput())
-Print(Lines(text))
-Spawn(defn ()
-  Print("bye")
-  sys.Exit(Len(Lines(text)))
+use std/fiber
+use std/io
+use std/result
+use std/text
+use std/value
+input = result.Unwrap(sys.ReadInput())
+io.Print(text.Lines(input))
+fiber.Spawn(defn ()
+  io.Print("bye")
+  sys.Exit(value.Len(text.Lines(input)))
 end)
 sys.Sleep(5)
-Print("never")
+io.Print("never")

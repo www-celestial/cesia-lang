@@ -1,5 +1,9 @@
+use std/io
+use std/math
+use std/value
+
 defn g(x)
-  Abs(x)
+  math.Abs(x)
 end
 
 defn run(n)
@@ -10,7 +14,7 @@ defn run(n)
   e = [n, 5]
   f = [n, 6]
   xs = [g(k) for k in 1..n]
-  Print(a, b, c, d, e, f, Len(xs))
+  io.Print(a, b, c, d, e, f, value.Len(xs))
 end
 
 run(300000)

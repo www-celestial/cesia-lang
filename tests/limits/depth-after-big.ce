@@ -1,4 +1,6 @@
 (** Large frames first, small ones next: the limit stays exact. *)
+use std/io
+
 defn big(n)
   a = 1
   b = a + 1
@@ -18,5 +20,5 @@ defn big(n)
   if n == 0 0 else 1 + big(n - 1) end
 end
 small(n) = if n == 0 0 else 1 + small(n - 1) end
-Print("big", big(95))
-Print("small", small(1500))
+io.Print("big", big(95))
+io.Print("small", small(1500))

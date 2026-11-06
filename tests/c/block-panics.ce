@@ -1,12 +1,16 @@
 use std/c
+use std/fiber
+use std/io
+use std/result
+use std/sys
 
-lib = Unwrap(c.Open(Args[1]))
-echo = Unwrap(c.Fn("echo_ptr", ["ptr"], "ptr", lib))
+lib = result.Unwrap(c.Open(sys.Args[1]))
+echo = result.Unwrap(c.Fn("echo_ptr", ["ptr"], "ptr", lib))
 
 defn message(f)
-  match Wait(Spawn(f))
-    Err(e) -> Print(e.Message)
-    Ok(v) -> Print("no panic: $v")
+  match fiber.Wait(fiber.Spawn(f))
+    result.Err(e) -> io.Print(e.Message)
+    result.Ok(v) -> io.Print("no panic: $v")
   end
 end
 

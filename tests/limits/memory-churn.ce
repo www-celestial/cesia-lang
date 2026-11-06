@@ -1,4 +1,7 @@
+use std/io
+use std/matrix
+
 for i in 1..100
-  x = Zeros(100000)
+  x = matrix.Zeros(100000)
 end
-Print("done")
+io.Print("done")

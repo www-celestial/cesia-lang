@@ -1,2 +1,3 @@
 use tests/packages/geometry
-Print(geometry.Rect(2, 3).tag)
+use std/io
+io.Print(geometry.Rect(2, 3).tag)

@@ -1,4 +1,6 @@
+use std/io
+
 (* one
    two
    three *)
-Print(nope)
+io.Print(nope)

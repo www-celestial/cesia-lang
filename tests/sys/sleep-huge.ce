@@ -1,3 +1,4 @@
 use std/sys
+use std/io
 sys.Sleep(1e19)
-Print("after")
+io.Print("after")

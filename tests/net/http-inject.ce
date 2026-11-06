@@ -1,8 +1,12 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 forged = "1$(crlf)x-injected: yes"
 
 handle(r) = match r.Path
@@ -14,11 +18,11 @@ end
 defn get(path)
   c = net.Connect("127.0.0.1", 18100)?
   net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
-  net.Read(c) then MapOk(r -> [Split(crlf, r)[1], r then Contains("x-injected")])
+  net.Read(c) then result.MapOk(r -> [text.Split(crlf, r)[1], r then text.Contains("x-injected")])
 end
 
-Spawn(() -> http.Serve(handle, port = 18100))
+fiber.Spawn(() -> http.Serve(handle, port = 18100))
 sys.Sleep(0)
-Print(get("/value"))
-Print(get("/name"))
-Print(get("/status"))
+io.Print(get("/value"))
+io.Print(get("/name"))
+io.Print(get("/status"))

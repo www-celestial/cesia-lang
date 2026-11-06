@@ -1,4 +1,4 @@
-(** A prelude for the test of cesia doc on methods. *)
+(** Rectangles, for the test of cesia doc on methods. *)
 struct Rect { Width }
 
 (r Rect) Area() = r.Width   (** The area. *)

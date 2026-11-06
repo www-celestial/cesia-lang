@@ -1,4 +1,6 @@
+use std/matrix
+
 x = 0
 while true
-  x = [x, Zeros(1000)]
+  x = [x, matrix.Zeros(1000)]
 end

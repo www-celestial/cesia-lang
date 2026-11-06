@@ -1,4 +1,4 @@
-huge-matmul.ce:3:5: Limit "memory" reached.
-  3 | c = Matmul(a, b)
-    |     ^
+huge-matmul.ce:5:11: Limit "memory" reached.
+  5 | c = matrix.Matmul(a, b)
+    |           ^
 exit 1

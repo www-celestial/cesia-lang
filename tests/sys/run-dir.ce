@@ -1,7 +1,9 @@
 use std/sys
+use std/io
+use std/result
 (* dir is where the command runs; past timeout it is killed and its Code is -1, and this program goes on at once. *)
-Print(sys.Run("sh", args = ["-c", "pwd"], dir = "/") then MapOk(it.Out))
-Print(sys.Run("sh", args = ["-c", "true"], dir = "/no/such/folder") then MapErr(it.Message))
+io.Print(sys.Run("sh", args = ["-c", "pwd"], dir = "/") then result.MapOk(it.Out))
+io.Print(sys.Run("sh", args = ["-c", "true"], dir = "/no/such/folder") then result.MapErr(it.Message))
 start = sys.Now()
-Print(sys.Run("sh", args = ["-c", "sleep 5"], timeout = 0.2) then MapOk(it.Code), sys.Now() - start < 2)
-Print(sys.Run("sh", args = ["-c", "echo quick"], timeout = 5) then MapOk(it.Out))
+io.Print(sys.Run("sh", args = ["-c", "sleep 5"], timeout = 0.2) then result.MapOk(it.Code), sys.Now() - start < 2)
+io.Print(sys.Run("sh", args = ["-c", "echo quick"], timeout = 5) then result.MapOk(it.Out))

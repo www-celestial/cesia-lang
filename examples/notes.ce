@@ -4,20 +4,23 @@
       curl localhost:8080 *)
 use std/http
 use std/sys
+use std/io
+use std/result
+use std/text
 
 file = "notes.txt"
 
 defn handle(request)
   if request.Method == "POST"
-    sys.Append(file, "$(request.Body)$(Char(10))")?
+    sys.Append(file, "$(request.Body)$(text.Char(10))")?
   end
   notes = if sys.Exists(file) sys.Read(file)? else "" end
-  Ok({Status: 200, Body: notes})
+  result.Ok({Status: 200, Body: notes})
 end
 
 reply(request) = match handle(request)
-  Ok(response) -> response
-  Err(e) -> {Status: 500, Body: e.Message}
+  result.Ok(response) -> response
+  result.Err(e) -> {Status: 500, Body: e.Message}
 end
 
-Print(http.Serve(reply, port = 8080))
+io.Print(http.Serve(reply, port = 8080))

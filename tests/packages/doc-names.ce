@@ -1,9 +1,14 @@
 use tests/packages/geometry
+use std/cesia
+use std/io
+use std/list
+use std/text
+use std/value
 
-Print(Len(DocNames("geometry")))
-Print(Len(DocNames("tests/packages/geometry")))
-Print(First(Lines(Doc("geometry.Rect.Area"))))
-Print(First(Lines(Doc("geometry"))))
-Print(IsMissing(Doc("geometry.half")))
-Print(Len(DocNames("../packages/geometry")))
-Print(IsMissing(Doc("../packages/geometry")))
+io.Print(value.Len(cesia.DocNames("geometry")))
+io.Print(value.Len(cesia.DocNames("tests/packages/geometry")))
+io.Print(list.First(text.Lines(cesia.Doc("geometry.Rect.Area"))))
+io.Print(list.First(text.Lines(cesia.Doc("geometry"))))
+io.Print(value.IsMissing(cesia.Doc("geometry.half")))
+io.Print(value.Len(cesia.DocNames("../packages/geometry")))
+io.Print(value.IsMissing(cesia.Doc("../packages/geometry")))

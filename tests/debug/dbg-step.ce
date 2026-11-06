@@ -1,4 +1,5 @@
 defn OnStop(stop)
-  Print("$(stop.File):$(stop.Line) $(stop.Reason)")
+  io.Print("$(stop.File):$(stop.Line) $(stop.Reason)")
   "step"
 end
+use std/io

@@ -1,2 +1,5 @@
+use std/io
+use std/value
+
 xs = [k for k in 1..10000000]
-Print(Len(xs))
+io.Print(value.Len(xs))

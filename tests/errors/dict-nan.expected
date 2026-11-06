@@ -1,4 +1,4 @@
-dict-nan.ce:2:7: A dictionary key is a number or a text, not the number nan.
-  2 | Print(Put(x, 2, Dict()))
-    |       ^
+dict-nan.ce:5:14: A dictionary key is a number or a text, not the number nan.
+  5 | io.Print(dict.Put(x, 2, dict.Dict()))
+    |              ^
 exit 1

@@ -1,38 +1,46 @@
 use std/columns
+use std/dict
+use std/fiber
+use std/fn
+use std/list
+use std/math
+use std/matrix
+use std/result
+use std/value
 
-isMap() = Equal(Map(it * 2, [1, 2]), [2, 4])
-isMapColumn() = Equal(Map(it * 2, [1; 2]), [2; 4])
-isMapNative() = Equal(Map(Sqrt, [4.0]), [2.0])
-isFilter() = Equal(Filter(it > 1, [1, 2, 3]), [2, 3])
-isReduce() = Reduce((a, x) -> a + x, 0, [1, 2, 3]) == 6
-isScan() = Equal(Scan((a, x) -> a + x, 0, [1, 2, 3]), [1, 3, 6])
-isRangeStep() = Equal(Range(1, 10, step = 3), [1, 4, 7, 10])
-isRangeFloat() = Equal(Range(0, 1, step = 0.25), [0.0, 0.25, 0.5, 0.75, 1.0])
-isRangeRounding() = Len(Range(0, 8, step = 0.001)) == 8001
-isRangeDescending() = Equal(Range(3, 1, step = -1), [3, 2, 1])
-isGroup() = Equal(Group(Mod(it, 2), [1, 2, 3, 4]), [{Key: 1, Values: [1, 3]}, {Key: 0, Values: [2, 4]}])
-isGroupSummary() = Equal(Group(Mod(it, 2), [1, 2, 3, 4], summary = g -> {Total: Sum(g)}),
+isMap() = value.Equal(list.Map(it * 2, [1, 2]), [2, 4])
+isMapColumn() = value.Equal(list.Map(it * 2, [1; 2]), [2; 4])
+isMapNative() = value.Equal(list.Map(math.Sqrt, [4.0]), [2.0])
+isFilter() = value.Equal(list.Filter(it > 1, [1, 2, 3]), [2, 3])
+isReduce() = list.Reduce((a, x) -> a + x, 0, [1, 2, 3]) == 6
+isScan() = value.Equal(list.Scan((a, x) -> a + x, 0, [1, 2, 3]), [1, 3, 6])
+isRangeStep() = value.Equal(list.Range(1, 10, step = 3), [1, 4, 7, 10])
+isRangeFloat() = value.Equal(list.Range(0, 1, step = 0.25), [0.0, 0.25, 0.5, 0.75, 1.0])
+isRangeRounding() = value.Len(list.Range(0, 8, step = 0.001)) == 8001
+isRangeDescending() = value.Equal(list.Range(3, 1, step = -1), [3, 2, 1])
+isGroup() = value.Equal(list.Group(math.Mod(it, 2), [1, 2, 3, 4]), [{Key: 1, Values: [1, 3]}, {Key: 0, Values: [2, 4]}])
+isGroupSummary() = value.Equal(list.Group(math.Mod(it, 2), [1, 2, 3, 4], summary = g -> {Total: list.Sum(g)}),
                           [{Key: 1, Total: 4}, {Key: 0, Total: 6}])
-isGroupValue() = Equal(Group(Mod(it, 2), [1, 2], summary = Sum), [{Key: 1, Value: 1}, {Key: 0, Value: 2}])
-isTop() = Equal(Top(2, [5, 1, 9, 3]), [9, 5])
-isTopBy() = Equal(Top(1, [{V: 1}, {V: 7}], by = it.V), [{V: 7}])
-isTopStable() = Equal(Top(2, [{V: 1, N: 1}, {V: 1, N: 2}], by = it.V), [{V: 1, N: 1}, {V: 1, N: 2}])
-isTopNan() = Len(Top(2, [Nan, 1.0, 2.0])) == 2
+isGroupValue() = value.Equal(list.Group(math.Mod(it, 2), [1, 2], summary = list.Sum), [{Key: 1, Value: 1}, {Key: 0, Value: 2}])
+isTop() = value.Equal(list.Top(2, [5, 1, 9, 3]), [9, 5])
+isTopBy() = value.Equal(list.Top(1, [{V: 1}, {V: 7}], by = it.V), [{V: 7}])
+isTopStable() = value.Equal(list.Top(2, [{V: 1, N: 1}, {V: 1, N: 2}], by = it.V), [{V: 1, N: 1}, {V: 1, N: 2}])
+isTopNan() = value.Len(list.Top(2, [math.Nan, 1.0, 2.0])) == 2
 
 (* Group, Top and Frequencies as the prelude wrote them in Cesia before natives took them: the oracles. *)
 defn oldRow(k, members, summary)
-  if IsMissing(summary)
+  if value.IsMissing(summary)
     {Key: k, Values: members}
   else
     s = summary(members)
-    if IsDict(s) Merge({Key: k}, s) else {Key: k, Value: s} end
+    if value.IsDict(s) dict.Merge({Key: k}, s) else {Key: k, Value: s} end
   end
 end
 
 defn oldGroup(key, xs, summary = missing)
-  n = Len(xs)
-  keys = Fill(missing, n)
-  ids = Fill(0, n)
+  n = value.Len(xs)
+  keys = list.Fill(missing, n)
+  ids = list.Fill(0, n)
   count = 0
   i = 0
   for x in xs
@@ -40,7 +48,7 @@ defn oldGroup(key, xs, summary = missing)
     k = key(x)
     g = 0
     for j in 1..count
-      if Equal(keys[j], k)
+      if value.Equal(keys[j], k)
         g = j
         break
       end
@@ -52,7 +60,7 @@ defn oldGroup(key, xs, summary = missing)
     end
     ids[i] = g
   end
-  out = Fill(missing, count)
+  out = list.Fill(missing, count)
   for g in 1..count
     members = [xs[p] for p in 1..n if ids[p] == g]
     out[g] = oldRow(keys[g], members, summary)
@@ -61,15 +69,15 @@ defn oldGroup(key, xs, summary = missing)
 end
 
 defn oldOrder(keys)
-  n = Len(keys)
+  n = value.Len(keys)
   idx = [k for k in 1..n]
-  tmp = Fill(0, n)
+  tmp = list.Fill(0, n)
   width = 1
   while width < n
     lo = 1
     while lo <= n
-      mid = Min(lo + width, n + 1)
-      hi = Min(lo + 2 * width, n + 1)
+      mid = list.Min(lo + width, n + 1)
+      hi = list.Min(lo + 2 * width, n + 1)
       i = lo
       j = mid
       k = lo
@@ -94,87 +102,87 @@ defn oldOrder(keys)
 end
 
 defn oldTop(n, xs, by = missing)
-  keys = if IsMissing(by) xs else [by(x) for x in xs] end
+  keys = if value.IsMissing(by) xs else [by(x) for x in xs] end
   idx = oldOrder(keys)
-  m = Min(n, Len(xs))
+  m = list.Min(n, value.Len(xs))
   [xs[idx[k]] for k in 1..m]
 end
 
 defn oldFrequencies(xs)
-  out = Dict()
+  out = dict.Dict()
   for x in xs
-    out[x] = GetOr(x, 0, out) + 1
+    out[x] = dict.GetOr(x, 0, out) + 1
   end
   out
 end
 
-kindOf(x) = if IsInt(x) "int" else if IsFloat(x) "float" else if IsText(x) "text" else if IsBool(x) "bool" else if IsMissing(x) "missing" else "other" end
-signOf(x) = if IsFloat(x) and x == 0.0 1.0 / x else x end
+kindOf(x) = if value.IsInt(x) "int" else if value.IsFloat(x) "float" else if value.IsText(x) "text" else if value.IsBool(x) "bool" else if value.IsMissing(x) "missing" else "other" end
+signOf(x) = if value.IsFloat(x) and x == 0.0 1.0 / x else x end
 
 (* Equal, and the same keys in the same order, the same kind of key and of values, the same sign of a zero. *)
 defn sameRows(a, b)
-  ok = Len(a) == Len(b) and Equal(a, b) and columns.Kind(a) == columns.Kind(b)
-  for k in 1..Min(Len(a), Len(b))
-    ok = ok and Equal(Keys(a[k]), Keys(b[k])) and kindOf(a[k].Key) == kindOf(b[k].Key) and Equal(signOf(a[k].Key), signOf(b[k].Key))
-    ok = ok and (not Has("Values", a[k]) or columns.Kind(a[k].Values) == columns.Kind(b[k].Values))
+  ok = value.Len(a) == value.Len(b) and value.Equal(a, b) and columns.Kind(a) == columns.Kind(b)
+  for k in 1..list.Min(value.Len(a), value.Len(b))
+    ok = ok and value.Equal(dict.Keys(a[k]), dict.Keys(b[k])) and kindOf(a[k].Key) == kindOf(b[k].Key) and value.Equal(signOf(a[k].Key), signOf(b[k].Key))
+    ok = ok and (not dict.Has("Values", a[k]) or columns.Kind(a[k].Values) == columns.Kind(b[k].Values))
   end
   ok
 end
 
-sameGroup(key, xs) = sameRows(Group(key, xs), oldGroup(key, xs))
-sameGroupWith(key, xs, f) = sameRows(Group(key, xs, summary = f), oldGroup(key, xs, summary = f))
+sameGroup(key, xs) = sameRows(list.Group(key, xs), oldGroup(key, xs))
+sameGroupWith(key, xs, f) = sameRows(list.Group(key, xs, summary = f), oldGroup(key, xs, summary = f))
 nan = 0.0 / 0.0
-isGroupOfInts() = sameGroup(Mod(it, 3), 1..20) and sameGroup(Mod(it, 7), [Mod(k * 7919, 1009) for k in 1..3000])
-isGroupOfFloats() = sameGroup(it * 0.5, [1.0, 2.0, 1.0, 3.5]) and sameGroup(Floor, [0.5, 1.5, 0.25, 2.5])
-isGroupOfOneAndOnePointZero() = sameGroup(Identity, [1, 1.0, 2.0, 2]) and IsInt(Group(Identity, [1, 1.0])[1].Key) and IsFloat(Group(Identity, [1.0, 1])[1].Key)
-isGroupOfZeros() = sameGroup(Identity, [-0.0, 0.0, 1]) and Len(Group(Identity, [-0.0, 0.0])) == 1 and 1.0 / Group(Identity, [-0.0, 0.0])[1].Key < 0.0
-isGroupOfNan() = sameGroup(Identity, [nan, 1.0, nan]) and Len(Group(Identity, [nan, nan, 2])) == 2
-isGroupOfMissingAndBooleans() = sameGroup(x -> if x > 3 missing else x > 1 end, 1..6) and sameGroup(Identity, [true, 1, false, missing, true, 1.0])
-isGroupOfTexts() = sameGroup(it.Name, [{Name: "a", V: 1}, {Name: "b", V: 2}, {Name: "a", V: 3}]) and sameGroup(Identity, ["x", "y", "x", "", ""])
-isGroupOfListsAndMaps() = sameGroup(x -> [Mod(x, 2)], 1..5) and sameGroup(x -> {P: Mod(x, 2)}, 1..5) and sameGroup(Identity, [[1], 1, [1.0], "1"])
-isGroupOfBigIntsAndFloats() = sameGroup(Identity, [9007199254740993, 9007199254740992.0, 9007199254740992]) and sameGroup(Identity, [9007199254740992, 9007199254740993, 9007199254740992.0, 1e300, 1e300])
-isGroupKeepsMissingMembers() = sameGroup(x -> 1, [missing, 2, missing]) and Equal(Group(x -> 1, [missing, 2])[1].Values, [missing, 2])
-isGroupKindsOfValues() = sameGroup(Mod(it, 2), 1..6) and sameGroup(x -> 1, [1.5, 2.5]) and sameGroup(x -> 1, [1, 2.5]) and sameGroup(x -> 1, Reshape(1..6, 2, 3))
-isGroupSummaries() = sameGroupWith(Mod(it, 2), 1..6, g -> {Total: Sum(g)}) and sameGroupWith(Mod(it, 2), 1..6, Sum) and sameGroupWith(Mod(it, 2), 1..6, g -> {Key: 99, N: Len(g)})
-isGroupEmpty() = sameGroup(Identity, []) and Len(Group(Identity, [])) == 0
+isGroupOfInts() = sameGroup(math.Mod(it, 3), 1..20) and sameGroup(math.Mod(it, 7), [math.Mod(k * 7919, 1009) for k in 1..3000])
+isGroupOfFloats() = sameGroup(it * 0.5, [1.0, 2.0, 1.0, 3.5]) and sameGroup(math.Floor, [0.5, 1.5, 0.25, 2.5])
+isGroupOfOneAndOnePointZero() = sameGroup(fn.Identity, [1, 1.0, 2.0, 2]) and value.IsInt(list.Group(fn.Identity, [1, 1.0])[1].Key) and value.IsFloat(list.Group(fn.Identity, [1.0, 1])[1].Key)
+isGroupOfZeros() = sameGroup(fn.Identity, [-0.0, 0.0, 1]) and value.Len(list.Group(fn.Identity, [-0.0, 0.0])) == 1 and 1.0 / list.Group(fn.Identity, [-0.0, 0.0])[1].Key < 0.0
+isGroupOfNan() = sameGroup(fn.Identity, [nan, 1.0, nan]) and value.Len(list.Group(fn.Identity, [nan, nan, 2])) == 2
+isGroupOfMissingAndBooleans() = sameGroup(x -> if x > 3 missing else x > 1 end, 1..6) and sameGroup(fn.Identity, [true, 1, false, missing, true, 1.0])
+isGroupOfTexts() = sameGroup(it.Name, [{Name: "a", V: 1}, {Name: "b", V: 2}, {Name: "a", V: 3}]) and sameGroup(fn.Identity, ["x", "y", "x", "", ""])
+isGroupOfListsAndMaps() = sameGroup(x -> [math.Mod(x, 2)], 1..5) and sameGroup(x -> {P: math.Mod(x, 2)}, 1..5) and sameGroup(fn.Identity, [[1], 1, [1.0], "1"])
+isGroupOfBigIntsAndFloats() = sameGroup(fn.Identity, [9007199254740993, 9007199254740992.0, 9007199254740992]) and sameGroup(fn.Identity, [9007199254740992, 9007199254740993, 9007199254740992.0, 1e300, 1e300])
+isGroupKeepsMissingMembers() = sameGroup(x -> 1, [missing, 2, missing]) and value.Equal(list.Group(x -> 1, [missing, 2])[1].Values, [missing, 2])
+isGroupKindsOfValues() = sameGroup(math.Mod(it, 2), 1..6) and sameGroup(x -> 1, [1.5, 2.5]) and sameGroup(x -> 1, [1, 2.5]) and sameGroup(x -> 1, matrix.Reshape(1..6, 2, 3))
+isGroupSummaries() = sameGroupWith(math.Mod(it, 2), 1..6, g -> {Total: list.Sum(g)}) and sameGroupWith(math.Mod(it, 2), 1..6, list.Sum) and sameGroupWith(math.Mod(it, 2), 1..6, g -> {Key: 99, N: value.Len(g)})
+isGroupEmpty() = sameGroup(fn.Identity, []) and value.Len(list.Group(fn.Identity, [])) == 0
 
-sameTop(n, xs) = Equal(Top(n, xs), oldTop(n, xs)) and Equal(Map(kindOf, Top(n, xs)), Map(kindOf, oldTop(n, xs)))
-sameTopBy(n, xs, f) = Equal(Top(n, xs, by = f), oldTop(n, xs, by = f))
+sameTop(n, xs) = value.Equal(list.Top(n, xs), oldTop(n, xs)) and value.Equal(list.Map(kindOf, list.Top(n, xs)), list.Map(kindOf, oldTop(n, xs)))
+sameTopBy(n, xs, f) = value.Equal(list.Top(n, xs, by = f), oldTop(n, xs, by = f))
 isTopTiesUnderBy() = sameTopBy(2, [{V: 1, N: 1}, {V: 2, N: 2}, {V: 1, N: 3}, {V: 2, N: 4}], it.V) and sameTopBy(3, [{V: 1, N: 1}, {V: 1, N: 2}, {V: 1, N: 3}], it.V)
 isTopWithNan() = sameTop(2, [nan, 1.0, 2.0]) and sameTop(3, [1.0, nan, 3.0, nan, 2.0])
-isTopOfTexts() = sameTop(2, ["b", "c", "a"]) and sameTopBy(2, ["bb", "a", "ccc"], Len)
-isTopCounts() = sameTop(0, [3, 1, 2]) and sameTop(-1, [3, 1, 2]) and sameTop(9, [3, 1, 2]) and sameTop(2, []) and Len(Top(0, [1])) == 0
-isTopOfNumbers() = sameTop(3, [1, 2.5, 2, 2.0]) and Equal(Map(signOf, Top(2, [0.0, -0.0, -1.0])), Map(signOf, oldTop(2, [0.0, -0.0, -1.0]))) and sameTop(10, [Mod(k * 7919, 1009) for k in 1..2000])
-isTopOfFloats() = sameTop(5, [0.5 * Mod(k * 31, 17) for k in 1..100]) and sameTop(3, [9007199254740993, 9007199254740992.0, 1.5])
+isTopOfTexts() = sameTop(2, ["b", "c", "a"]) and sameTopBy(2, ["bb", "a", "ccc"], value.Len)
+isTopCounts() = sameTop(0, [3, 1, 2]) and sameTop(-1, [3, 1, 2]) and sameTop(9, [3, 1, 2]) and sameTop(2, []) and value.Len(list.Top(0, [1])) == 0
+isTopOfNumbers() = sameTop(3, [1, 2.5, 2, 2.0]) and value.Equal(list.Map(signOf, list.Top(2, [0.0, -0.0, -1.0])), list.Map(signOf, oldTop(2, [0.0, -0.0, -1.0]))) and sameTop(10, [math.Mod(k * 7919, 1009) for k in 1..2000])
+isTopOfFloats() = sameTop(5, [0.5 * math.Mod(k * 31, 17) for k in 1..100]) and sameTop(3, [9007199254740993, 9007199254740992.0, 1.5])
 
 defn sameFrequencies(xs)
-  a = Frequencies(xs)
+  a = list.Frequencies(xs)
   b = oldFrequencies(xs)
-  Equal(a, b) and Equal(Keys(a), Keys(b)) and Equal(Map(kindOf, Keys(a)), Map(kindOf, Keys(b)))
+  value.Equal(a, b) and value.Equal(dict.Keys(a), dict.Keys(b)) and value.Equal(list.Map(kindOf, dict.Keys(a)), list.Map(kindOf, dict.Keys(b)))
 end
 
-isFrequenciesWritesWholeFloatsAsInts() = sameFrequencies([1, 1.0, 2.0]) and Equal(Keys(Frequencies([1, 1.0, 2.0])), [1, 2]) and IsInt(Keys(Frequencies([2.0]))[1])
-isFrequenciesOfHalves() = sameFrequencies([0.5, 0.5]) and Frequencies([0.5, 0.5])[0.5] == 2
-isFrequenciesOfManyInts() = sameFrequencies([Mod(k * 7919, 101) for k in 1..10000]) and sameFrequencies(["a", "b", "a", "c"]) and sameFrequencies([])
-isFrequenciesOfBigInts() = sameFrequencies([9007199254740993, 9007199254740992.0, 9007199254740992]) and sameFrequencies(Reshape(1..6, 2, 3))
+isFrequenciesWritesWholeFloatsAsInts() = sameFrequencies([1, 1.0, 2.0]) and value.Equal(dict.Keys(list.Frequencies([1, 1.0, 2.0])), [1, 2]) and value.IsInt(dict.Keys(list.Frequencies([2.0]))[1])
+isFrequenciesOfHalves() = sameFrequencies([0.5, 0.5]) and list.Frequencies([0.5, 0.5])[0.5] == 2
+isFrequenciesOfManyInts() = sameFrequencies([math.Mod(k * 7919, 101) for k in 1..10000]) and sameFrequencies(["a", "b", "a", "c"]) and sameFrequencies([])
+isFrequenciesOfBigInts() = sameFrequencies([9007199254740993, 9007199254740992.0, 9007199254740992]) and sameFrequencies(matrix.Reshape(1..6, 2, 3))
 
-message(f) = Wait(Spawn(f)) then MapErr(it.Message)
-isGroupMessage() = message(() -> Group(x -> x, 5)) == Err("Can't loop over the number 5.")
-isTopMessage() = message(() -> Top(2, [1, "a"])) == Err("Can't compare the text \"a\" > the number 1.")
-isFrequenciesMessages() = message(() -> Frequencies([[2]])) == Err("A dictionary key is a number or a text, not an array.") and message(() -> Frequencies([0.0 / 0.0])) == Err("A dictionary key is a number or a text, not the number nan.") and message(() -> Frequencies([1e19])) == Err("An index must be a whole number, not the number 1e19.")
-isTopSelectsWithTies() = sameTopBy(3, [{V: Mod(k, 4), N: k} for k in 1..100], it.V) and sameTop(0, 1..100) and sameTop(-5, 1..100) and sameTop(12, [Mod(k * 7, 5) * 1.5 for k in 1..100])
-isTopSelectsTexts() = sameTop(3, ["k$(Mod(k * 7, 13))" for k in 1..100]) and sameTopBy(4, [-0.0, 0.0, 1.0, -0.0, 0.0, 1.0, 0.0, -0.0, 2.0, 0.0, -0.0, 0.0, 0.0, -0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], signOf)
-isFrequenciesOfZerosAndHalves() = sameFrequencies([-0.0, 0.0, 0]) and sameFrequencies([0.5, 1.0, 1, 0.5, -2.5]) and IsInt(Keys(Frequencies([-0.0]))[1])
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+isGroupMessage() = message(() -> list.Group(x -> x, 5)) == result.Err("Can't loop over the number 5.")
+isTopMessage() = message(() -> list.Top(2, [1, "a"])) == result.Err("Can't compare the text \"a\" > the number 1.")
+isFrequenciesMessages() = message(() -> list.Frequencies([[2]])) == result.Err("A dictionary key is a number or a text, not an array.") and message(() -> list.Frequencies([0.0 / 0.0])) == result.Err("A dictionary key is a number or a text, not the number nan.") and message(() -> list.Frequencies([1e19])) == result.Err("An index must be a whole number, not the number 1e19.")
+isTopSelectsWithTies() = sameTopBy(3, [{V: math.Mod(k, 4), N: k} for k in 1..100], it.V) and sameTop(0, 1..100) and sameTop(-5, 1..100) and sameTop(12, [math.Mod(k * 7, 5) * 1.5 for k in 1..100])
+isTopSelectsTexts() = sameTop(3, ["k$(math.Mod(k * 7, 13))" for k in 1..100]) and sameTopBy(4, [-0.0, 0.0, 1.0, -0.0, 0.0, 1.0, 0.0, -0.0, 2.0, 0.0, -0.0, 0.0, 0.0, -0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], signOf)
+isFrequenciesOfZerosAndHalves() = sameFrequencies([-0.0, 0.0, 0]) and sameFrequencies([0.5, 1.0, 1, 0.5, -2.5]) and value.IsInt(dict.Keys(list.Frequencies([-0.0]))[1])
 isFrequenciesOfLargeWholeFloats() = sameFrequencies([1e18, 1e18, 1000000000000000000]) and sameFrequencies([9007199254740994.0, 9007199254740993, 9007199254740994])
-isGroupOfBigInts() = sameGroup(Identity, [9007199254740993, 9007199254740992, 9007199254740993, 4611686018427387903]) and sameFrequencies([9007199254740993, 9007199254740992, 9007199254740993])
+isGroupOfBigInts() = sameGroup(fn.Identity, [9007199254740993, 9007199254740992, 9007199254740993, 4611686018427387903]) and sameFrequencies([9007199254740993, 9007199254740992, 9007199254740993])
 
 (* Keys of every kind in one Group: each kind keeps its hash, and Equal decides inside one hash. *)
 struct Pt { A, B }
-isGroupOfIntsAndOneBigFloat() = sameGroup(Identity, Concat([Mod(k, 50) for k in 1..500], [1e300, 1e300, 1.0 / 0.0, 3.0]))
-isGroupOfTextsAndOneList() = sameGroup(Identity, Concat(["a", "b", "a"], [[1], [1.0], [2], "b", [1]]))
-isGroupOfPairs() = sameGroup(x -> [Mod(x, 3), Mod(x, 2) * 1.0], 1..30) and sameGroup(Identity, [[1, 2], [1.0, 2], [1, 2.0], [2, 1], [1, 2, 3]])
-isGroupOfMapsAndStructs() = sameGroup(x -> {A: Mod(x, 3), B: "x"}, 1..20) and sameGroup(Identity, [{A: 1, B: 2}, {B: 2, A: 1}, {A: 1.0, B: 2}, {A: 1}]) and sameGroup(x -> Pt(Mod(x, 2), Mod(x, 3)), 1..12) and sameGroup(Identity, [Pt(1, 2), Pt(1.0, 2), {A: 1, B: 2}, Pt(2, 1)])
-isGroupOfNestedNumbers() = sameGroup(Identity, [[nan], [nan], [-0.0], [0.0], [[1]], [[1.0]], [], [1][2..1], Reshape(1..4, 2, 2), [1, 2, 3, 4], Reshape([1.0, 2, 3, 4], 2, 2)])
-isGroupOfNestedBigInts() = sameGroup(Identity, [[9007199254740993], [9007199254740992.0], [9007199254740992], [9007199254740993], [1]]) and sameGroup(Identity, [[9007199254740993], [9007199254740995], [9007199254740993]])
-isGroupOfMapsWithBigKeys() = sameGroup(Identity, [Dict([{Key: 9007199254740993, Value: 1}, {Key: 9007199254740992, Value: 1}]), Dict([{Key: 9007199254740992.0, Value: 1}, {Key: "q", Value: 2}]), Dict([{Key: 9007199254740993, Value: 1}])])
-isGroupOfFunctions() = sameGroup(Identity, [Identity, Inc, Identity, Sqrt, Sqrt, x -> x]) and sameGroup(Identity, [true, missing, Identity, [true], missing])
+isGroupOfIntsAndOneBigFloat() = sameGroup(fn.Identity, list.Concat([math.Mod(k, 50) for k in 1..500], [1e300, 1e300, 1.0 / 0.0, 3.0]))
+isGroupOfTextsAndOneList() = sameGroup(fn.Identity, list.Concat(["a", "b", "a"], [[1], [1.0], [2], "b", [1]]))
+isGroupOfPairs() = sameGroup(x -> [math.Mod(x, 3), math.Mod(x, 2) * 1.0], 1..30) and sameGroup(fn.Identity, [[1, 2], [1.0, 2], [1, 2.0], [2, 1], [1, 2, 3]])
+isGroupOfMapsAndStructs() = sameGroup(x -> {A: math.Mod(x, 3), B: "x"}, 1..20) and sameGroup(fn.Identity, [{A: 1, B: 2}, {B: 2, A: 1}, {A: 1.0, B: 2}, {A: 1}]) and sameGroup(x -> Pt(math.Mod(x, 2), math.Mod(x, 3)), 1..12) and sameGroup(fn.Identity, [Pt(1, 2), Pt(1.0, 2), {A: 1, B: 2}, Pt(2, 1)])
+isGroupOfNestedNumbers() = sameGroup(fn.Identity, [[nan], [nan], [-0.0], [0.0], [[1]], [[1.0]], [], [1][2..1], matrix.Reshape(1..4, 2, 2), [1, 2, 3, 4], matrix.Reshape([1.0, 2, 3, 4], 2, 2)])
+isGroupOfNestedBigInts() = sameGroup(fn.Identity, [[9007199254740993], [9007199254740992.0], [9007199254740992], [9007199254740993], [1]]) and sameGroup(fn.Identity, [[9007199254740993], [9007199254740995], [9007199254740993]])
+isGroupOfMapsWithBigKeys() = sameGroup(fn.Identity, [dict.Dict([{Key: 9007199254740993, Value: 1}, {Key: 9007199254740992, Value: 1}]), dict.Dict([{Key: 9007199254740992.0, Value: 1}, {Key: "q", Value: 2}]), dict.Dict([{Key: 9007199254740993, Value: 1}])])
+isGroupOfFunctions() = sameGroup(fn.Identity, [fn.Identity, math.Inc, fn.Identity, math.Sqrt, math.Sqrt, x -> x]) and sameGroup(fn.Identity, [true, missing, fn.Identity, [true], missing])

@@ -1,7 +1,7 @@
 stack.ce:2:5: Can't add the number 1 and the text "x".
   2 |   a + "x"
     |     ^
-  To put a value in a text, write "...$x" or Text(x).
+  To put a value in a text, write "...$x" or value.Text(x).
   in total (stack.ce:2)
   called from main (stack.ce:5)
 exit 1

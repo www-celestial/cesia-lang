@@ -1,5 +1,5 @@
-div-loop.ce:5:13: Div: division by zero.
-  5 |     s = s + Div(1000000, n - i)
-    |             ^
-  in f (div-loop.ce:5)
+div-loop.ce:8:17: Div: division by zero.
+  8 |     s = s + math.Div(1000000, n - i)
+    |                 ^
+  in f (div-loop.ce:8)
 exit 1

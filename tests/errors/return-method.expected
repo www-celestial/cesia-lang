@@ -1,5 +1,5 @@
-return-method.ce:3:35: Rect.Scaled: the result must be a Rect, found an Array.
-  3 | (r Rect) Scaled(by Number) Rect = [r.Width * by, r.Height * by]
+return-method.ce:5:35: Rect.Scaled: the result must be a Rect, found an Array.
+  5 | (r Rect) Scaled(by Number) Rect = [r.Width * by, r.Height * by]
     |                                   ^
-  in Rect.Scaled (return-method.ce:3)
+  in Rect.Scaled (return-method.ce:5)
 exit 1

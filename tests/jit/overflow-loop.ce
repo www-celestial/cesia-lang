@@ -1,3 +1,5 @@
+use std/io
+
 (* An overflow after the loop got hot: the interpreter's message and trace. *)
 defn grow(n)
   x = 1
@@ -6,4 +8,4 @@ defn grow(n)
   end
   x
 end
-Print(grow(100000000))
+io.Print(grow(100000000))

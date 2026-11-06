@@ -1,1 +1,4 @@
-Print(ByteLength(Repeat(150000000, "a")))
+use std/io
+use std/text
+
+io.Print(text.ByteLength(text.Repeat(150000000, "a")))

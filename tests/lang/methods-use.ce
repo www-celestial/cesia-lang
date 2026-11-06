@@ -1,13 +1,16 @@
 (** Methods across files: a static call through a module, and a method that goes with its value. *)
 use tests/lang/mods/shapes
 use tests/lang/mods/shapes as other
+use std/cesia
+use std/text
+use std/value
 
 struct Rect { Width }
 
 Rect.Square(side) = Rect(side)
 (r Rect) Area() = r.Width * r.Width
 
-isRangeOfAModuleConstant() = Equal(shapes.First..Len([1, 2]), [1, 2])
+isRangeOfAModuleConstant() = value.Equal(shapes.First..value.Len([1, 2]), [1, 2])
 isModuleStatic() = shapes.Circle.Unit().Radius == 1 and shapes.Circle.Of(2).Radius == 2
 isModuleStaticAlias() = other.Circle.Of(3).Radius == 3
 isModuleStaticInAnExpression() = 1 + shapes.Circle.Of(2).Area() * 2 == 25
@@ -18,5 +21,5 @@ isPublicMethodCallsPrivate() = shapes.Make(2).Shown() == 3
 isSameNameTwoFiles() = shapes.MakeRect(3).Area() == 9 and Rect.Square(2).Area() == 4
 isPrivateStructPublicMethod() = shapes.MakePiece(2).Double() == 4
 isModuleStaticInThen() = (2 then shapes.Circle.Of()).Radius == 2
-isDocOfAModuleMethod() = Contains("with pi at 3", Doc("shapes.Circle.Area"))
+isDocOfAModuleMethod() = text.Contains("with pi at 3", cesia.Doc("shapes.Circle.Area"))
 isBlockStructOfAModule() = shapes.Square(3).Area() == 9 and shapes.Square().Side == 1 and other.Square.Twice(shapes.Square(2)).Area() == 16

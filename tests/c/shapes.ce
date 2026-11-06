@@ -1,11 +1,16 @@
 (** Calls the function of every shape in the fixture, with every class of argument. *)
 use std/c
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
 
-pow2(k) = Reduce((acc, i) -> acc * 2, 1, 1..k)
-isFloat(mask, k) = Mod(Div(mask, pow2(k)), 2) == 1
+pow2(k) = list.Reduce((acc, i) -> acc * 2, 1, 1..k)
+isFloat(mask, k) = math.Mod(math.Div(mask, pow2(k)), 2) == 1
 valueAt(mask, k) = if isFloat(mask, k) k + 0.5 else k + 10 end
 signature(n, mask) = [if isFloat(mask, k) "f64" else "i64" end for k in 0..n - 1]
-sumOf(n, mask) = Reduce((acc, k) -> acc + (k + 1) * valueAt(mask, k), 0.0, 0..n - 1)
+sumOf(n, mask) = list.Reduce((acc, k) -> acc + (k + 1) * valueAt(mask, k), 0.0, 0..n - 1)
 
 defn apply(f, n, a)
   match n
@@ -19,25 +24,25 @@ defn apply(f, n, a)
   end
 end
 
-defn check(lib, result, n, mask)
-  name = "shape_$(result)_$(n)_$mask"
-  f = c.Fn(name, signature(n, mask), if result == "d" "f64" else "i64" end, lib)?
+defn check(lib, kind, n, mask)
+  name = "shape_$(kind)_$(n)_$mask"
+  f = c.Fn(name, signature(n, mask), if kind == "d" "f64" else "i64" end, lib)?
   got = apply(f, n, [valueAt(mask, k) for k in 0..n - 1])
-  want = if result == "d" sumOf(n, mask) else 2.0 * sumOf(n, mask) end
-  if 1.0 * got == want Ok(1) else Err("$name gave $got, not $want") end
+  want = if kind == "d" sumOf(n, mask) else 2.0 * sumOf(n, mask) end
+  if 1.0 * got == want result.Ok(1) else result.Err("$name gave $got, not $want") end
 end
 
 defn allShapes(lib)
   count = 0
   for n in 0..6
     for mask in 0..pow2(n) - 1
-      for result in ["i", "d"]
-        check(lib, result, n, mask)?
+      for kind in ["i", "d"]
+        check(lib, kind, n, mask)?
         count += 1
       end
     end
   end
-  Ok("$count shapes")
+  result.Ok("$count shapes")
 end
 
-Print(c.Open(Args[1]) then AndThen(allShapes))
+io.Print(c.Open(sys.Args[1]) then result.AndThen(allShapes))

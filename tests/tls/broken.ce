@@ -4,6 +4,10 @@ use std/web
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
 
 crlf = "\r\n"
 
@@ -12,15 +16,15 @@ defn garbage()
   net.Write(c, "this is not TLS at all")?
   net.Read(c)
   net.Close(c)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn mute()
   c = net.Connect("127.0.0.1", 18208)?
   got = net.Read(c)
   net.Close(c)
-  Print("mute client closed", IsOk(got) and ByteLength(got.Value) == 0)
-  Ok(missing)
+  io.Print("mute client closed", result.IsOk(got) and text.ByteLength(got.Value) == 0)
+  result.Ok(missing)
 end
 
 defn truncating(wrap)
@@ -31,25 +35,25 @@ defn truncating(wrap)
   io.Write("HTTP/1.1 200 OK$crlf$(crlf)partial")?
   net.Close(c)
   net.Close(listener)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn main()
   api = tls.Open()?
-  wrap = tls.Server(Args[1], Args[2], api)?
+  wrap = tls.Server(sys.Args[1], sys.Args[2], api)?
   a = web.Get("/", req -> web.Plain("over tls"), web.App())
-  Spawn(() -> web.Serve(a, port = 18208, wrap = wrap, timeout = 0.2))
+  fiber.Spawn(() -> web.Serve(a, port = 18208, wrap = wrap, timeout = 0.2))
   sys.Sleep(0.05)
   client = tls.Client(api, verify = false)
   for k in 1..20
     garbage()?
   end
-  Print(http.Get("https://127.0.0.1:18208/", secure = client) then MapOk(it.Body))
+  io.Print(http.Get("https://127.0.0.1:18208/", secure = client) then result.MapOk(it.Body))
   mute()?
-  Spawn(() -> truncating(wrap))
+  fiber.Spawn(() -> truncating(wrap))
   sys.Sleep(0.02)
-  Print(http.Get("https://127.0.0.1:18209/", secure = client) then MapErr(it.Message))
-  Ok(missing)
+  io.Print(http.Get("https://127.0.0.1:18209/", secure = client) then result.MapErr(it.Message))
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

@@ -1,4 +1,4 @@
-equal-shared.ce:7:7: Limit "steps" reached.
-  7 | Print(Equal(x, y))
-    |       ^
+equal-shared.ce:10:15: Limit "steps" reached.
+  10 | io.Print(value.Equal(x, y))
+     |               ^
 exit 1

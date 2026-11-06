@@ -1,10 +1,13 @@
+use std/io
+use std/matrix
+
 reader(xs, i) = xs[i] + 1.0
 
 defn run(n)
-  x = Zeros(n)
+  x = matrix.Zeros(n)
   for i in 1..n
     x[i] = reader(x, i)
   end
   x[n]
 end
-Print(run(100000))
+io.Print(run(100000))

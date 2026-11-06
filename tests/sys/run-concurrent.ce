@@ -1,6 +1,9 @@
 use std/sys
+use std/fiber
+use std/io
+use std/result
 start = sys.Now()
-t = Spawn(() -> sys.Run("sh", args = ["-c", "sleep 0.2"]))
-other = Spawn(() -> sys.Now() - start)
-Print(Unwrap(Wait(other)) < 0.1)
-Wait(t)
+t = fiber.Spawn(() -> sys.Run("sh", args = ["-c", "sleep 0.2"]))
+other = fiber.Spawn(() -> sys.Now() - start)
+io.Print(result.Unwrap(fiber.Wait(other)) < 0.1)
+fiber.Wait(t)

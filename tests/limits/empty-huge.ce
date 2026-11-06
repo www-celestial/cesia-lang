@@ -1,2 +1,6 @@
-x = Zeros(0, 4000000000000000000)
-Print(Size(x))
+use std/io
+use std/matrix
+use std/value
+
+x = matrix.Zeros(0, 4000000000000000000)
+io.Print(value.Size(x))

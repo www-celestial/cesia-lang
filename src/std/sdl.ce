@@ -2,6 +2,13 @@
     The screen is a value: an array of commands, each one a struct. *)
 use std/c
 use std/sys
+use std/bug
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/text
+use std/value
 
 InitVideo = 0x20           (** SDL's flag that starts its video part. *)
 WindowResizable = 0x20     (** SDL's flag of a window that can change its size. *)
@@ -52,7 +59,7 @@ defn bindSdl(lib)
   renderTexture = f("SDL_RenderTexture", ["ptr", "ptr", "ptr", "ptr"], "bool")?
   renderTiled = f("SDL_RenderTextureTiled", ["ptr", "ptr", "ptr", "f32", "ptr"], "bool")?
   geometry = f("SDL_RenderGeometry", ["ptr", "ptr", "ptr", "i32", "ptr", "i32"], "bool")?
-  Ok({Geometry: geometry, RenderTexture: renderTexture, RenderTiled: renderTiled, CreateTexture: createTexture, UpdateTexture: updateTexture, Nine: nine, ColorMod: colorMod, AlphaMod: alphaMod,
+  result.Ok({Geometry: geometry, RenderTexture: renderTexture, RenderTiled: renderTiled, CreateTexture: createTexture, UpdateTexture: updateTexture, Nine: nine, ColorMod: colorMod, AlphaMod: alphaMod,
     TextureBlend: textureBlend, DrawBlend: drawBlend, SetClipboard: setClipboard, GetClipboard: getClipboard, Free: free, SetTitle: setTitle, Poll: poll, StartText: startText, Version: version, Init: init, Error: error, CreateWindow: createWindow, CreateRenderer: createRenderer,
     Vsync: vsync, Color: color, Clear: clear, FillRect: fillRect, Present: present,
     DestroyRenderer: destroyRenderer, DestroyWindow: destroyWindow, Quit: quit})
@@ -75,24 +82,24 @@ defn bindTtf(lib)
   quit = f("TTF_Quit", [], "void")?
   setFont = f("TTF_SetTextFont", ["ptr", "ptr"], "bool")?
   hinting = f("TTF_SetFontHinting", ["ptr", "i32"], "void")?
-  Ok({SetFont: setFont, Hinting: hinting, Init: init, CreateEngine: createEngine, OpenFont: openFont, CreateText: createText, SetText: setText,
+  result.Ok({SetFont: setFont, Hinting: hinting, Init: init, CreateEngine: createEngine, OpenFont: openFont, CreateText: createText, SetText: setText,
     Color: color, DrawText: drawText, StringSize: stringSize, DestroyText: destroyText, CloseFont: closeFont,
     DestroyEngine: destroyEngine, Quit: quit})
 end
 
 (** An Err of the kind "sdl" with the last reason that SDL gave. *)
-failure(sdlApi) = Err({Kind: "sdl", Message: sdlApi.Error()})
+failure(sdlApi) = result.Err({Kind: "sdl", Message: sdlApi.Error()})
 
 (* A pointer from SDL, or SDL's own reason for giving none. *)
-some(pointer, sdlApi) = if IsMissing(pointer) failure(sdlApi) else Ok(pointer) end
+some(pointer, sdlApi) = if value.IsMissing(pointer) failure(sdlApi) else result.Ok(pointer) end
 (** Ok(missing) if an SDL call succeeded, else the Err that failure gives. *)
-done(succeeded, sdlApi) = if succeeded Ok(missing) else failure(sdlApi) end
+done(succeeded, sdlApi) = if succeeded result.Ok(missing) else failure(sdlApi) end
 
 defn checked(succeeded, window)
   (** The window, after a drawing call that succeeded. A drawing call can't fail on a good window, so a failure is a bug,
       and stops the fiber with SDL's reason. *)
   if not succeeded
-    Panic(window.Sdl.Error())
+    bug.Panic(window.Sdl.Error())
   end
 end
 
@@ -102,11 +109,11 @@ defn Open(title, width, height, font, size = 15, vsync = true, light = false)
   sdlApi = bindSdl(c.Open("SDL3", version = 0)?)?
   ttfApi = bindTtf(c.Open("SDL3_ttf", version = 0)?)?
   if not VersionOk(sdlApi.Version())
-    Err({Kind: "sdl", Message: "This program needs SDL 3.2 or later."})
+    result.Err({Kind: "sdl", Message: "This program needs SDL 3.2 or later."})
   else
     sys.TakeStops(true)
     made = started(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
-    if IsErr(made)
+    if result.IsErr(made)
       sys.TakeStops(false)
     end
     made
@@ -119,7 +126,7 @@ defn started(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
   done(sdlApi.Init(InitVideo), sdlApi)?
   done(ttfApi.Init(), sdlApi)?
   made = opened(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
-  if IsErr(made)
+  if result.IsErr(made)
     ttfApi.Quit()
     sdlApi.Quit(InitVideo)
   end
@@ -132,7 +139,7 @@ defn opened(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
   loaded = some(ttfApi.OpenFont(font, size), sdlApi)?
   hint(loaded, light, ttfApi)
   made = onScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
-  if IsErr(made)
+  if result.IsErr(made)
     ttfApi.CloseFont(loaded)
   end
   made
@@ -149,7 +156,7 @@ defn onScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
   (** Opens the window, the renderer and the text engine, and undoes what it did if one fails. *)
   created = some(sdlApi.CreateWindow(title, width, height, WindowResizable), sdlApi)?
   made = drawing(sdlApi, ttfApi, loaded, created, vsync)
-  if IsErr(made)
+  if result.IsErr(made)
     sdlApi.DestroyWindow(created)
   end
   made
@@ -161,7 +168,7 @@ defn drawing(sdlApi, ttfApi, loaded, created, vsync)
   sdlApi.Vsync(renderer, if vsync 1 else 0 end)
   sdlApi.DrawBlend(renderer, BlendAlpha)
   made = textEngine(sdlApi, ttfApi, loaded, created, renderer)
-  if IsErr(made)
+  if result.IsErr(made)
     sdlApi.DestroyRenderer(renderer)
   end
   made
@@ -171,13 +178,13 @@ defn textEngine(sdlApi, ttfApi, loaded, created, renderer)
   (** Opens the text engine and gives the window value, with the blocks of memory it uses. *)
   engine = some(ttfApi.CreateEngine(renderer), sdlApi)?
   started = done(sdlApi.StartText(created), sdlApi)
-  if IsErr(started)
+  if result.IsErr(started)
     ttfApi.DestroyEngine(engine)
     return started
   end
-  Ok({Sdl: sdlApi, Ttf: ttfApi, Window: created, Renderer: renderer, Engine: engine, Font: loaded, Fonts: Dict([{Key: "body", Value: loaded}]), ShownFonts: [],
+  result.Ok({Sdl: sdlApi, Ttf: ttfApi, Window: created, Renderer: renderer, Engine: engine, Font: loaded, Fonts: dict.Dict([{Key: "body", Value: loaded}]), ShownFonts: [],
       Rect: c.Alloc(16), OutWidth: c.Alloc(4), OutHeight: c.Alloc(4), Event: c.Alloc(128),
-      Objects: c.Alloc(16 + MaxTexts * 8), Images: c.Alloc(8 + MaxImages * 8), Masks: Dict(), ImageBlocks: [], CurveBlocks: [], CurvesRetired: [], CurveUsed: 0, MaskTable: c.Alloc(8 + MaxSharedMasks * MaskEntry), CurveWrites: 0, Drawn: 0, Shown: [], Used: 0})
+      Objects: c.Alloc(16 + MaxTexts * 8), Images: c.Alloc(8 + MaxImages * 8), Masks: dict.Dict(), ImageBlocks: [], CurveBlocks: [], CurvesRetired: [], CurveUsed: 0, MaskTable: c.Alloc(8 + MaxSharedMasks * MaskEntry), CurveWrites: 0, Drawn: 0, Shown: [], Used: 0})
 end
 
 defn AddFont(name, path, size, window, light = false)
@@ -185,15 +192,15 @@ defn AddFont(name, path, size, window, light = false)
   loaded = some(window.Ttf.OpenFont(path, size), window.Sdl)?
   hint(loaded, light, window.Ttf)
   next = window
-  next.Fonts = Put(name, loaded, window.Fonts)
-  Ok(next)
+  next.Fonts = dict.Put(name, loaded, window.Fonts)
+  result.Ok(next)
 end
 
 defn fontNamed(name, window)
   (** The font of this name, which a window must have. *)
-  found = Get(name, window.Fonts)
-  if IsMissing(found)
-    Panic("This window has no font \"$name\".")
+  found = dict.Get(name, window.Fonts)
+  if value.IsMissing(found)
+    bug.Panic("This window has no font \"$name\".")
   end
   found
 end
@@ -207,7 +214,7 @@ end
 defn Paste(window)
   (** The text of the clipboard, or an empty text. *)
   p = window.Sdl.GetClipboard()
-  if IsMissing(p)
+  if value.IsMissing(p)
     return ""
   end
   words = c.Text(p)
@@ -217,9 +224,9 @@ end
 
 SetTitle(title, window) = window.Sdl.SetTitle(window.Window, title)   (** Changes the title of the window. *)
 
-Red(color) = Div(color, 65536)   (** The red part, from 0 to 255, of a color written as 0xRRGGBB. *)
-Green(color) = Mod(Div(color, 256), 256)   (** The green part, from 0 to 255, of a color written as 0xRRGGBB. *)
-Blue(color) = Mod(color, 256)   (** The blue part, from 0 to 255, of a color written as 0xRRGGBB. *)
+Red(color) = math.Div(color, 65536)   (** The red part, from 0 to 255, of a color written as 0xRRGGBB. *)
+Green(color) = math.Mod(math.Div(color, 256), 256)   (** The green part, from 0 to 255, of a color written as 0xRRGGBB. *)
+Blue(color) = math.Mod(color, 256)   (** The blue part, from 0 to 255, of a color written as 0xRRGGBB. *)
 
 defn SetColor(color, window)
   (** Sets the color of the next drawing, written as 0xRRGGBB. *)
@@ -248,14 +255,14 @@ defn objectAt(position, window)
   (** The text object at a position of the window, made when first needed. Text objects are costly to create, so they stay,
       in a block shared by every copy of the window: their count, the number of the last draw, then their pointers. *)
   if position > MaxTexts
-    Panic("A frame can't have more than $MaxTexts texts.")
+    bug.Panic("A frame can't have more than $MaxTexts texts.")
   end
   if position <= c.Get("i64", 0, window.Objects)
     c.Get("ptr", 8 + position * 8, window.Objects)
   else
     made = some(window.Ttf.CreateText(window.Engine, window.Font, "", 0), window.Sdl)
-    if IsErr(made)
-      Panic(made.Error.Message)
+    if result.IsErr(made)
+      bug.Panic(made.Error.Message)
     end
     c.Set("ptr", 8 + position * 8, made.Value, window.Objects)
     c.Set("i64", 0, position, window.Objects)
@@ -263,7 +270,7 @@ defn objectAt(position, window)
   end
 end
 
-WholeNumber(x) = Div(Floor(x + 0.5), 1)   (** A number rounded to an integer, for the arguments that take one. *)
+WholeNumber(x) = math.Div(math.Floor(x + 0.5), 1)   (** A number rounded to an integer, for the arguments that take one. *)
 
 fontOf(one) = match one   (** The font of a text command, which may not name one. *)
   {Font: font} -> font
@@ -279,9 +286,9 @@ defn DrawText(one, window)
   (** Draws a text: a command {Kind: "text", Text, X, Y, Color}, with a font and an alpha if it wants. *)
   position = window.Used + 1
   object = objectAt(position, window)
-  if position > Len(window.Shown)
-    window.Shown = Append("", window.Shown)
-    window.ShownFonts = Append("", window.ShownFonts)
+  if position > value.Len(window.Shown)
+    window.Shown = list.Append("", window.Shown)
+    window.ShownFonts = list.Append("", window.ShownFonts)
   end
   name = fontOf(one)
   if window.ShownFonts[position] != name
@@ -303,7 +310,7 @@ defn remember(texture, window)
   (** Counts a texture, in a block shared by every copy of the window. SDL frees textures with the renderer. *)
   count = c.Get("i64", 0, window.Images)
   if count >= MaxImages
-    Panic("A window can't hold more than $MaxImages images.")
+    bug.Panic("A window can't hold more than $MaxImages images.")
   end
   c.Set("ptr", 8 + count * 8, texture, window.Images)
   c.Set("i64", 0, count + 1, window.Images)
@@ -320,8 +327,8 @@ defn shaded(width, height, shade, window)
     end
   end
   texture = window.Sdl.CreateTexture(window.Renderer, PixelsRgba, 0, width, height)
-  if IsMissing(texture)
-    Panic(window.Sdl.Error())
+  if value.IsMissing(texture)
+    bug.Panic(window.Sdl.Error())
   end
   checked(window.Sdl.UpdateTexture(texture, missing, pixels, width * 4), window)
   checked(window.Sdl.TextureBlend(texture, BlendAlpha), window)
@@ -333,7 +340,7 @@ end
 defn sharedMask(key, window)
   (** The mask of a key in the table that every copy of the window shares, or missing. *)
   table = window.MaskTable
-  size = ByteLength(key)
+  size = text.ByteLength(key)
   for k in 0..(c.Get("i64", 0, table) - 1)
     at = 8 + k * MaskEntry
     if c.Get("u16", at + 24, table) == size and c.Load(at + 26, size, table) == key
@@ -347,14 +354,14 @@ defn shareMask(key, made, window)
   (** Records a mask in the shared table, if it has room. Gives the mask. *)
   table = window.MaskTable
   count = c.Get("i64", 0, table)
-  if count < MaxSharedMasks and ByteLength(key) <= MaskKey
+  if count < MaxSharedMasks and text.ByteLength(key) <= MaskKey
     at = 8 + count * MaskEntry
     c.Set("ptr", at, made.Texture, table)
     c.Set("i32", at + 8, made.Left, table)
     c.Set("i32", at + 12, made.Right, table)
     c.Set("i32", at + 16, made.Top, table)
     c.Set("i32", at + 20, made.Bottom, table)
-    c.Set("u16", at + 24, ByteLength(key), table)
+    c.Set("u16", at + 24, text.ByteLength(key), table)
     c.Store(key, at + 26, table)
     c.Set("i64", 0, count + 1, table)
   end
@@ -363,14 +370,14 @@ end
 
 defn mask(key, width, height, left, right, top, bottom, shade, window)
   (** A mask made once per key, whatever the copy of the window: {mask: {Texture, Left, Right, Top, Bottom}, window}. *)
-  found = Get(key, window.Masks)
-  if not IsMissing(found)
+  found = dict.Get(key, window.Masks)
+  if not value.IsMissing(found)
     return {Mask: found, Window: window}
   end
   shared = sharedMask(key, window)
-  made = if IsMissing(shared) shareMask(key, {Texture: shaded(width, height, shade, window), Left: left, Right: right, Top: top, Bottom: bottom}, window) else shared end
+  made = if value.IsMissing(shared) shareMask(key, {Texture: shaded(width, height, shade, window), Left: left, Right: right, Top: top, Bottom: bottom}, window) else shared end
   next = window
-  next.Masks = Put(key, made, window.Masks)
+  next.Masks = dict.Put(key, made, window.Masks)
   {Mask: made, Window: next}
 end
 
@@ -387,25 +394,25 @@ defn stamp(made, scale, x, y, width, height, color, alpha, window)
   window
 end
 
-clamp01(x) = Max(0.0, Min(1.0, x))
+clamp01(x) = list.Max(0.0, list.Min(1.0, x))
 smooth(t) = t * t * (3.0 - 2.0 * t)
 (** How much of a pixel at distance d from a center lies inside a radius. *)
 inside(radius, d) = clamp01(radius + 0.5 - d)
 
 defn middleDistance(x, y, width, height)
   (** The distance from a pixel to the 2-pixel middle of a shape of this size. *)
-  dx = Max(0.0, Abs(x + 0.5 - width / 2.0) - 1.0)
-  dy = Max(0.0, Abs(y + 0.5 - height / 2.0) - 1.0)
-  Sqrt(dx * dx + dy * dy)
+  dx = list.Max(0.0, math.Abs(x + 0.5 - width / 2.0) - 1.0)
+  dy = list.Max(0.0, math.Abs(y + 0.5 - height / 2.0) - 1.0)
+  math.Sqrt(dx * dx + dy * dy)
 end
 
 defn radiusOf(one)
   (** The largest radius that a rectangle can take, so that a 9-grid doesn't overlap itself. *)
   radius = one.Radius
   if radius < 0 or radius > 24
-    Panic("A radius goes from 0 to 24, not $radius.")
+    bug.Panic("A radius goes from 0 to 24, not $radius.")
   end
-  Max(0, Min(radius, Div(Div(Floor(Min(one.Width, one.Height)), 1), 2)))
+  list.Max(0, list.Min(radius, math.Div(math.Div(math.Floor(list.Min(one.Width, one.Height)), 1), 2)))
 end
 
 roundMask(r, window) = mask("box$r", 2 * r + 2, 2 * r + 2, r, r, r, r, (x, y) -> {Gray: 255, Alpha: inside(r * 1.0, middleDistance(x, y, 2 * r + 2, 2 * r + 2))}, window)
@@ -445,7 +452,7 @@ end
 
 defn DrawRing(one, window)
   (** Draws a 1-pixel edge: a command {Kind: "ring", X, Y, Width, Height, Color, Radius}, with an alpha if it wants. *)
-  r = Max(1, radiusOf(one))
+  r = list.Max(1, radiusOf(one))
   if empty(one)
     window
   else
@@ -456,14 +463,14 @@ end
 
 defn fadePixel(r, x, y)
   (** The mask of a title bar: round on top, darkening to the right. *)
-  dx = Max(0.0, Abs(x + 0.5 - 32.0) - (32.0 - r))
-  dy = Max(0.0, r - y - 0.5)
-  {Gray: WholeNumber(255.0 - 150.0 * clamp01((x - r * 1.0) / (64.0 - 2.0 * r))), Alpha: inside(r * 1.0, Sqrt(dx * dx + dy * dy))}
+  dx = list.Max(0.0, math.Abs(x + 0.5 - 32.0) - (32.0 - r))
+  dy = list.Max(0.0, r - y - 0.5)
+  {Gray: WholeNumber(255.0 - 150.0 * clamp01((x - r * 1.0) / (64.0 - 2.0 * r))), Alpha: inside(r * 1.0, math.Sqrt(dx * dx + dy * dy))}
 end
 
 defn DrawFade(one, window)
   (** A title bar: a command {Kind: "fade", X, Y, Width, Height, Color, Radius}, with an alpha if it wants. *)
-  r = Max(1, radiusOf(one))
+  r = list.Max(1, radiusOf(one))
   if empty(one)
     window
   else
@@ -481,7 +488,7 @@ defn DrawShadow(one, window)
     got = mask("shadow", 90, 90, 44, 44, 44, 44, (x, y) -> {Gray: 255, Alpha: smooth(clamp01((44.0 - middleDistance(x, y, 90, 90)) / 44.0))}, window)
     width = one.Width + 44.0
     height = one.Height + 42.0
-    stamp(got.Mask, Min(1.0, Min(width, height) / 88.0), one.X - 22.0, one.Y - 14.0, width, height, 0x000000, alphaOf(one), got.Window)
+    stamp(got.Mask, list.Min(1.0, list.Min(width, height) / 88.0), one.X - 22.0, one.Y - 14.0, width, height, 0x000000, alphaOf(one), got.Window)
   end
 end
 
@@ -496,8 +503,8 @@ defn Image(width, height, window)
   remember(texture, window)
   pixels = c.Alloc(width * height * 4)
   next = window
-  next.ImageBlocks = Append(pixels, window.ImageBlocks)
-  Ok({Image: {Width: width, Height: height, Pixels: pixels, Texture: texture}, Window: next})
+  next.ImageBlocks = list.Append(pixels, window.ImageBlocks)
+  result.Ok({Image: {Width: width, Height: height, Pixels: pixels, Texture: texture}, Window: next})
 end
 
 (** Sends the pixels of an image to the screen's memory. *)
@@ -553,21 +560,21 @@ defn segmentDistance(px, py, ax, ay, bx, by)
   t = if length2 == 0.0 0.0 else clamp01(((px - ax) * dx + (py - ay) * dy) / length2) end
   ex = px - ax - t * dx
   ey = py - ay - t * dy
-  Sqrt(ex * ex + ey * ey)
+  math.Sqrt(ex * ex + ey * ey)
 end
 
 defn shapeDistance(px, py, shape)
   (** The distance from a point of the 16-pixel square to the nearest line or ring of a shape. *)
   best = 99.0
   for path in shape.Paths
-    for k in 1..Max(1, Div(Len(path), 2) - 1)
-      best = Min(best, segmentDistance(px, py, path[2 * k - 1], path[2 * k], path[2 * k + 1], path[2 * k + 2]))
+    for k in 1..list.Max(1, math.Div(value.Len(path), 2) - 1)
+      best = list.Min(best, segmentDistance(px, py, path[2 * k - 1], path[2 * k], path[2 * k + 1], path[2 * k + 2]))
     end
   end
   for ring in shape.Rings
     dx = px - ring[1]
     dy = py - ring[2]
-    best = Min(best, Abs(Sqrt(dx * dx + dy * dy) - ring[3]))
+    best = list.Min(best, math.Abs(math.Sqrt(dx * dx + dy * dy) - ring[3]))
   end
   best
 end
@@ -622,7 +629,7 @@ defn writeCurve(item, start, block)
   y0 = item.Y0 * 1.0
   x3 = item.X1 * 1.0
   y3 = item.Y1 * 1.0
-  dx = Max(30.0, Abs(x3 - x0) * 0.5)
+  dx = list.Max(30.0, math.Abs(x3 - x0) * 0.5)
   nx = 0.0
   ny = 1.0
   at = start
@@ -633,7 +640,7 @@ defn writeCurve(item, start, block)
     py = v * v * v * y0 + 3.0 * v * v * u * y0 + 3.0 * v * u * u * y3 + u * u * u * y3
     tx = 3.0 * v * v * dx + 6.0 * v * u * (x3 - x0 - 2.0 * dx) + 3.0 * u * u * dx
     ty = 6.0 * v * u * (y3 - y0)
-    size = Sqrt(tx * tx + ty * ty)
+    size = math.Sqrt(tx * tx + ty * ty)
     if size >= 0.000001
       nx = -ty / size
       ny = tx / size
@@ -655,9 +662,9 @@ defn DrawCurves(one, window)
   (** Draws curves with soft edges: a command {kind: "curves", items: [{X0, Y0, X1, Y1, Color}]}. The Nth command of a frame keeps
       its memory, and only writes it when its items change, so a still graph costs one call. *)
   items = one.Items
-  n = Len(items)
+  n = value.Len(items)
   if n > MaxCurves
-    Panic("A curves command holds at most $MaxCurves curves.")
+    bug.Panic("A curves command holds at most $MaxCurves curves.")
   end
   if n == 0
     return window
@@ -665,14 +672,14 @@ defn DrawCurves(one, window)
   next = window
   next.CurveUsed = window.CurveUsed + 1
   at = next.CurveUsed
-  if at > Len(next.CurveBlocks)
-    next.CurveBlocks = Append(curveBlock(Max(8, n)), next.CurveBlocks)
+  if at > value.Len(next.CurveBlocks)
+    next.CurveBlocks = list.Append(curveBlock(list.Max(8, n)), next.CurveBlocks)
   else if n > next.CurveBlocks[at].Capacity
-    next.CurvesRetired = Append(next.CurveBlocks[at], next.CurvesRetired)
-    next.CurveBlocks[at] = curveBlock(Max(n, 2 * next.CurveBlocks[at].Capacity))
+    next.CurvesRetired = list.Append(next.CurveBlocks[at], next.CurvesRetired)
+    next.CurveBlocks[at] = curveBlock(list.Max(n, 2 * next.CurveBlocks[at].Capacity))
   end
   block = next.CurveBlocks[at]
-  if not Equal(items, block.Items)
+  if not value.Equal(items, block.Items)
     offset = 0
     for item in items
       offset = writeCurve(item, offset, block.Verts)
@@ -709,7 +716,7 @@ defn command(window, one)
     "icon" -> DrawIcon(one, window)
     "curves" -> DrawCurves(one, window)
     "text" -> if one.Text == "" window else DrawText(one, window) end
-    else -> Panic("A frame has no command \"$(one.Kind)\".")
+    else -> bug.Panic("A frame has no command \"$(one.Kind)\".")
   end
 end
 
@@ -719,13 +726,13 @@ defn Draw(commands, window)
   if window.Drawn != last
     window.Shown = []  (* an older copy: what it remembers is no longer in the objects *)
     window.ShownFonts = []
-    window.CurveBlocks = Map(forgetItems, window.CurveBlocks)
+    window.CurveBlocks = list.Map(forgetItems, window.CurveBlocks)
   end
   window.Drawn = last + 1
   c.Set("i64", 8, last + 1, window.Objects)
   window.Used = 0
   window.CurveUsed = 0
-  Reduce(command, window, commands)
+  list.Reduce(command, window, commands)
 end
 
 defn Frame(commands, window)
@@ -769,7 +776,7 @@ end
 defn otherKeyName(code)
   (** The name of a key that has no special name: its character, or f1 to f12, or missing. *)
   if (code >= 0x21 and code <= 0x7E) or (code >= 0xA0 and code < 0x40000000)
-    Char(code)
+    text.Char(code)
   else if code >= 0x4000003A and code <= 0x40000045
     "f$(code - 0x4000003A + 1)"
   else
@@ -778,13 +785,13 @@ defn otherKeyName(code)
 end
 
 (** Is a modifier key down? The mods bits of an event have one bit for each of the left and right keys. *)
-Held(mods, left, right) = Mod(Div(mods, left), 2) == 1 or Mod(Div(mods, right), 2) == 1
+Held(mods, left, right) = math.Mod(math.Div(mods, left), 2) == 1 or math.Mod(math.Div(mods, right), 2) == 1
 
 defn keyEvent(event)
   (** The key event in the event block as {Kind: "key", Key, Ctrl, Alt, Shift, Super}, or missing for a key with no name. *)
   name = KeyName(c.Get("u32", 28, event))
   mods = c.Get("u16", 32, event)
-  if IsMissing(name)
+  if value.IsMissing(name)
     missing
   else
     {Kind: "key", Key: name, Ctrl: Held(mods, 0x40, 0x80), Alt: Held(mods, 0x100, 0x200), Shift: Held(mods, 0x1, 0x2),
@@ -792,7 +799,7 @@ defn keyEvent(event)
   end
 end
 
-Whole(x) = Div(Floor(x), 1)   (** A coordinate rounded down to an integer. *)
+Whole(x) = math.Div(math.Floor(x), 1)   (** A coordinate rounded down to an integer. *)
 (** A mouse event as {Kind: "mouse", Action, X, Y, Button, Amount}. *)
 mouse(action, x, y, button, amount) = {Kind: "mouse", Action: action, X: Whole(x), Y: Whole(y), Button: button, Amount: amount}
 (** A mouse button event (action is "down" or "up") read from the event block. *)
@@ -822,17 +829,17 @@ end
 defn waiting(window, found)
   (** Reads the events that are waiting, adding them to found. *)
   if not window.Sdl.Poll(window.Event)
-    if sys.StopAsked() Append({Kind: "quit"}, found) else found end
+    if sys.StopAsked() list.Append({Kind: "quit"}, found) else found end
   else
     one = decoded(window.Event)
-    waiting(window, if IsMissing(one) found else Append(one, found) end)
+    waiting(window, if value.IsMissing(one) found else list.Append(one, found) end)
   end
 end
 
 (** Is this event for the program, and not only for the frame? *)
 forProgram(event) = event.Kind != "window"
 
-Events(window) = Filter(forProgram, waiting(window, []))   (** The events waiting, without blocking. *)
+Events(window) = list.Filter(forProgram, waiting(window, []))   (** The events waiting, without blocking. *)
 
 defn applied(update, progress, event)
   (** One step of run: update on an event, unless an earlier event already stopped the program. *)
@@ -840,18 +847,18 @@ defn applied(update, progress, event)
     progress
   else
     next = update(event, progress.State)
-    if IsMissing(next) {State: progress.State, Stopped: true} else {State: next, Stopped: false} end
+    if value.IsMissing(next) {State: progress.State, Stopped: true} else {State: next, Stopped: false} end
   end
 end
 
 (** Does the state ask for frames of its own? With no moving, it never does. *)
-stillMoving(moving, state) = if IsMissing(moving) false else moving(state) end
+stillMoving(moving, state) = if value.IsMissing(moving) false else moving(state) end
 
 defn moved(progress, update, view, window, last)
   (** One pass of a state that moves: a tick of the time since the last pass, at most 0.05 s so that nothing jumps after a pause,
       then a frame. Gives {State, Stopped, Window, Last}. *)
   now = sys.Now()
-  ticked = applied(update, progress, {Kind: "tick", Seconds: Min(now - last, 0.05)})
+  ticked = applied(update, progress, {Kind: "tick", Seconds: list.Min(now - last, 0.05)})
   drawn = if ticked.Stopped window else Frame(view(ticked.State), window) end
   sys.Sleep(0)
   {State: ticked.State, Stopped: ticked.Stopped, Window: drawn, Last: now}
@@ -862,14 +869,14 @@ defn step(state, update, view, window, moving, last)
       An event about the window draws too, even if the program has no use for it. Under Wayland, the frame around a window applies
       only with its next frame, and until then the shadow of that frame takes the mouse: a window waiting for input would never get it. *)
   happened = waiting(window, [])
-  progress = Reduce((p, event) -> applied(update, p, event), {State: state, Stopped: false}, Filter(forProgram, happened))
+  progress = list.Reduce((p, event) -> applied(update, p, event), {State: state, Stopped: false}, list.Filter(forProgram, happened))
   if progress.Stopped
     progress.State
   else if stillMoving(moving, progress.State)
     pass = moved(progress, update, view, window, last)
     if pass.Stopped pass.State else step(pass.State, update, view, pass.Window, moving, pass.Last) end
   else
-    drawn = if Len(happened) > 0 Frame(view(progress.State), window) else window end
+    drawn = if value.Len(happened) > 0 Frame(view(progress.State), window) else window end
     sys.Sleep(0.005)
     step(progress.State, update, view, drawn, moving, sys.Now())
   end
@@ -892,7 +899,7 @@ defn Close(window)
   end
   c.Free(window.Objects)
   c.Free(window.Images)
-  for block in Concat(window.CurveBlocks, window.CurvesRetired)
+  for block in list.Concat(window.CurveBlocks, window.CurvesRetired)
     freeCurves(block)
   end
   c.Free(window.MaskTable)
@@ -902,7 +909,7 @@ defn Close(window)
   window.Ttf.DestroyEngine(window.Engine)
   window.Sdl.DestroyRenderer(window.Renderer)
   window.Sdl.DestroyWindow(window.Window)
-  for font in Values(window.Fonts)
+  for font in dict.Values(window.Fonts)
     window.Ttf.CloseFont(font)
   end
   window.Ttf.Quit()

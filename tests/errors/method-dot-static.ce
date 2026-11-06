@@ -1,4 +1,6 @@
+use std/io
+
 struct Rect { Width }
 Rect.AreaOf(w, h) = w * h
 r = Rect(1)
-Print(r.AreaOf(2, 3))
+io.Print(r.AreaOf(2, 3))

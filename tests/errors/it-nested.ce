@@ -1,2 +1,5 @@
+use std/io
+use std/math
+
 apply(f, x) = f(x)
-Print(apply(Abs(it.X) + 1, {X: -1}))
+io.Print(apply(math.Abs(it.X) + 1, {X: -1}))

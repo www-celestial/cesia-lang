@@ -2,7 +2,7 @@ dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 mkdir "$dir/src"
 cd "$dir"
-printf 'Print("runs")\n' > src/main.ce
+printf 'use std/io\nio.Print("runs")\n' > src/main.ce
 project() {
   printf '[project]\nname = "p"\ncesia = %s\n\n[tasks.run]\nfile = "src/main.ce"\n' "$1" > cesia.toml
 }

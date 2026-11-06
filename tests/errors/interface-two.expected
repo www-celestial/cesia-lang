@@ -1,5 +1,5 @@
-interface-two.ce:8:14: Both Shape and Sized have a method "Info", and a Rect meets both.
-  8 | Print(Rect(1).Info())
-    |              ^
+interface-two.ce:10:17: Both Shape and Sized have a method "Info", and a Rect meets both.
+  10 | io.Print(Rect(1).Info())
+     |                 ^
   A field or a method of the value itself would win over theirs.
 exit 1

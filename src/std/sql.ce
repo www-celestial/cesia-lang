@@ -6,113 +6,121 @@ use std/columns
 use std/json
 use std/sqlite3
 use std/date
+use std/bug
+use std/dict
+use std/fiber
+use std/list
+use std/matrix
+use std/result
+use std/text
+use std/value
 
 batch = 1024
 dateFields = ["Year", "Month", "Day", "Hour", "Minute", "Second"]
 
 fault(code, message) = {Kind: "sql", Code: code, Message: message}
-failure(code, message) = Err(fault(code, message))
+failure(code, message) = result.Err(fault(code, message))
 doneError() = failure("done", "This transaction has ended: use it only inside its function.")
 failed(r) = match r
-  Err(_) -> true
+  result.Err(_) -> true
   else -> false
 end
 errorOf(r) = match r
-  Err(e) -> e
+  result.Err(e) -> e
   else -> missing
 end
-codeOf(r) = if failed(r) and IsDict(errorOf(r)) Get("Code", errorOf(r)) else missing end
-isPanic(x) = IsDict(x) and Has("Panic", x)
-rethrow(out) = if isPanic(out) Panic(out.Panic) else out end
+codeOf(r) = if failed(r) and value.IsDict(errorOf(r)) dict.Get("Code", errorOf(r)) else missing end
+isPanic(x) = value.IsDict(x) and dict.Has("Panic", x)
+rethrow(out) = if isPanic(out) bug.Panic(out.Panic) else out end
 panicOf(r) = errorOf(r) then {Panic: "$(it.Message) ($(it.File):$(it.Line))"}
 
 defn Open(url, max = 8, wait = 5)
   (** An Ok of a database: a pool of at most max connections, each opened when first needed. A call that finds them all
       busy waits at most wait seconds, then gives an Err with Code "pool". sqlite::memory: keeps one connection, since each
       would hold its own database. Another URL is an Err with Code "url". *)
-  if not StartsWith("sqlite:", url)
+  if not text.StartsWith("sqlite:", url)
     return failure("url", "No database for $url: use sqlite:PATH or sqlite::memory:.")
   end
   size = if url == "sqlite::memory:" 1 else max end
-  if not (IsInt(size) and size >= 1)
+  if not (value.IsInt(size) and size >= 1)
     return failure("pool", "max is a number of connections, 1 or more.")
   end
-  pool = sqlite3.Pool(Slice(8, Len(url), url), size, wait)?
-  Ok({Pool: pool, Wait: wait, Tx: false})
+  pool = sqlite3.Pool(text.Slice(8, value.Len(url), url), size, wait)?
+  result.Ok({Pool: pool, Wait: wait, Tx: false})
 end
 
 defn isSet(ch)
   (** Does this one-value channel hold its value? It keeps it. *)
-  got = Receive(ch, timeout = 0)
+  got = fiber.Receive(ch, timeout = 0)
   if failed(got)
     return false
   end
-  Send(got?, ch)
+  fiber.Send(got?, ch)
   true
 end
 
-defn value(v)
+defn sqlValue(v)
   (** A value as SQL takes it: a date.Date as its text, a list or a map as its JSON. *)
-  if IsMissing(v) or IsBool(v) or IsNumber(v) or IsText(v)
-    return Ok(v)
+  if value.IsMissing(v) or value.IsBool(v) or value.IsNumber(v) or value.IsText(v)
+    return result.Ok(v)
   end
-  if IsStruct(v) and Equal(Keys(Fields(v)), dateFields)
-    return Ok(Replace("T", " ", Replace("Z", "", date.Format(v))))
+  if value.IsStruct(v) and value.Equal(dict.Keys(dict.Fields(v)), dateFields)
+    return result.Ok(text.Replace("T", " ", text.Replace("Z", "", date.Format(v))))
   end
-  if IsStruct(v)
+  if value.IsStruct(v)
     return failure("params", "A struct can't be a value of SQL: give its fields, as Fields(u).Name.")
   end
-  if IsArray(v) or IsDict(v)
-    return Ok(json.Text(v))
+  if value.IsArray(v) or value.IsDict(v)
+    return result.Ok(json.Text(v))
   end
   failure("params", "A function can't be a value of SQL.")
 end
 
 defn bound(ps)
   (** The values of a list of parameters: the list itself when SQL takes them all as they are. *)
-  if not IsArray(ps)
+  if not value.IsArray(ps)
     return failure("params", "The parameters are a list of values, one for each ?: [] for none.")
   end
   for p in ps
-    if not (IsText(p) or IsNumber(p) or IsMissing(p) or IsBool(p))
+    if not (value.IsText(p) or value.IsNumber(p) or value.IsMissing(p) or value.IsBool(p))
       return converted(ps)
     end
   end
-  Ok(ps)
+  result.Ok(ps)
 end
 
 defn converted(ps)
   out = []
   for p in ps
-    out = Append(value(p)?, out)
+    out = list.Append(sqlValue(p)?, out)
   end
-  Ok(out)
+  result.Ok(out)
 end
 
 defn rowsOf(b)
   (** The maps of a batch, their keys made public names. *)
-  if Len(b.Cells) == 0
-    return Ok([])
+  if value.Len(b.Cells) == 0
+    return result.Ok([])
   end
   rows = columns.Rows(b.Names, b.Cells, public = true)
-  if failed(rows) fault("names", errorOf(rows).Message) then Err(it) else rows end
+  if failed(rows) fault("names", errorOf(rows).Message) then result.Err(it) else rows end
 end
 
 defn typed(as, rows)
   (** as(row) for each row: an Ok of the values, or the first Err with the number of its row. *)
-  if IsMissing(as)
-    return Ok(rows)
+  if value.IsMissing(as)
+    return result.Ok(rows)
   end
   out = []
-  for k in 1..Len(rows)
+  for k in 1..value.Len(rows)
     v = as(rows[k])
     if failed(v)
       e = errorOf(v)
-      return Err(if IsDict(e) Put("Row", k, e) else Put("Row", k, fault("as", Text(e))) end)
+      return result.Err(if value.IsDict(e) dict.Put("Row", k, e) else dict.Put("Row", k, fault("as", value.Text(e))) end)
     end
-    out = Append(if IsOk(v) v? else v end, out)
+    out = list.Append(if result.IsOk(v) v? else v end, out)
   end
-  Ok(out)
+  result.Ok(out)
 end
 
 at(db) = if db.Tx db.Conn else db.Pool end
@@ -121,7 +129,7 @@ ended(db) = db.Tx and db.Depth > 0 and isSet(db.Done)
 defn settle(r, f, text, params, db)
   (** What a native call of sqlite3 gave: as it is, or again with the values converted, or the Err of a transaction that
       ended, whose connection the pool took back. *)
-  if IsOk(r)
+  if result.IsOk(r)
     return r
   end
   code = codeOf(r)
@@ -145,10 +153,10 @@ defn held(f, db)
     return if codeOf(r) == "closed" doneError() else r end
   end
   conn = sqlite3.Take(db.Pool)?
-  r = Wait(Spawn(() -> f(conn)))
+  r = fiber.Wait(fiber.Spawn(() -> f(conn)))
   sqlite3.Give(conn, db.Pool)
   if failed(r)
-    Panic(panicOf(r).Panic)
+    bug.Panic(panicOf(r).Panic)
   end
   r?
 end
@@ -160,7 +168,7 @@ defn Exec(text, params, db)
     return doneError()
   end
   r = sqlite3.Exec(text, params, at(db))
-  if IsOk(r) r else settle(r, sqlite3.Exec, text, params, db) end
+  if result.IsOk(r) r else settle(r, sqlite3.Exec, text, params, db) end
 end
 
 defn Query(text, params, db, as = missing)
@@ -170,7 +178,7 @@ defn Query(text, params, db, as = missing)
     return doneError()
   end
   r = sqlite3.Query(text, params, at(db))
-  if IsOk(r) and IsMissing(as) r else typed(as, settle(r, sqlite3.Query, text, params, db)?) end
+  if result.IsOk(r) and value.IsMissing(as) r else typed(as, settle(r, sqlite3.Query, text, params, db)?) end
 end
 
 defn One(text, params, db, as = missing)
@@ -179,11 +187,11 @@ defn One(text, params, db, as = missing)
     return doneError()
   end
   r = sqlite3.One(text, params, at(db))
-  if IsOk(r) and IsMissing(as)
+  if result.IsOk(r) and value.IsMissing(as)
     return r
   end
   row = settle(r, sqlite3.One, text, params, db)?
-  if IsMissing(row) Ok(missing) else typed(as, [row]) then MapOk(it[1]) end
+  if value.IsMissing(row) result.Ok(missing) else typed(as, [row]) then result.MapOk(it[1]) end
 end
 
 defn cursorOn(text, ps, conn)
@@ -209,7 +217,7 @@ defn eachBatch(f, as, rows)
       return out
     end
   end
-  Ok(Len(rows))
+  result.Ok(value.Len(rows))
 end
 
 defn each(f, text, ps, as, conn)
@@ -220,16 +228,16 @@ defn each(f, text, ps, as, conn)
     b = sqlite3.Next(batch, cursor)?
     rows = rowsAt(b, cursor)?
     done = b.Done
-    r = Wait(Spawn(() -> eachBatch(f, as, rows)))
+    r = fiber.Wait(fiber.Spawn(() -> eachBatch(f, as, rows)))
     if failed(r) or failed(r?)
       if not done
         sqlite3.Close(cursor)
       end
-      return if failed(r) Err(panicOf(r)) else r? end
+      return if failed(r) result.Err(panicOf(r)) else r? end
     end
     count = count + r??
   end
-  Ok(count)
+  result.Ok(count)
 end
 
 defn Each(f, text, params, db, as = missing)
@@ -237,7 +245,7 @@ defn Each(f, text, params, db, as = missing)
       and is given back; a panic in f gives the connection back, then panics again. *)
   r = held(conn -> each(f, text, params, as, conn), db)
   if failed(r) and isPanic(errorOf(r))
-    Panic(errorOf(r).Panic)
+    bug.Panic(errorOf(r).Panic)
   end
   r
 end
@@ -250,27 +258,27 @@ defn tableCells(text, ps, conn)
   parts = [b.Cells]
   while not b.Done
     b = sqlite3.Next(batch, cursor)?
-    parts = Append(b.Cells, parts)
+    parts = list.Append(b.Cells, parts)
   end
-  Ok({Names: names, Cells: Flatten(parts)})
+  result.Ok({Names: names, Cells: list.Flatten(parts)})
 end
 
 defn Table(text, params, db)
   (** An Ok of {Names, Columns}: Columns a map from each name, made a public name, to its column, a list. A column of
       integers or of floats holds them without a box, as std/frame and the natives of columns want. *)
   b = held(conn -> tableCells(text, params, conn), db)?
-  n = Len(b.Names)
+  n = value.Len(b.Names)
   if n == 0
-    return Ok({Names: [], Columns: Dict()})
+    return result.Ok({Names: [], Columns: dict.Dict()})
   end
-  names = Keys(rowsOf({Names: b.Names, Cells: [missing for k in 1..n]})?[1])
-  rows = Len(b.Cells) / n
-  m = Reshape(b.Cells, n, rows)
-  cols = Dict()
+  names = dict.Keys(rowsOf({Names: b.Names, Cells: [missing for k in 1..n]})?[1])
+  rows = value.Len(b.Cells) / n
+  m = matrix.Reshape(b.Cells, n, rows)
+  cols = dict.Dict()
   for k in 1..n
-    cols = Put(names[k], if rows == 0 [] else [x for x in m[k, :]] end, cols)
+    cols = dict.Put(names[k], if rows == 0 [] else [x for x in m[k, :]] end, cols)
   end
-  Ok({Names: names, Columns: cols})
+  result.Ok({Names: names, Columns: cols})
 end
 
 defn Script(text, db)
@@ -300,7 +308,7 @@ defn keep(texts, rollback, tx, v)
       return undo(rollback, tx, c)
     end
   end
-  Ok(v)
+  result.Ok(v)
 end
 
 defn finish(r, commit, rollback, tx)
@@ -312,7 +320,7 @@ defn finish(r, commit, rollback, tx)
   if failed(v)
     return undo(rollback, tx, v)
   end
-  keep(commit, rollback, tx, if IsOk(v) v? else v end)
+  keep(commit, rollback, tx, if result.IsOk(v) v? else v end)
 end
 
 defn Transaction(f, db, read = false)
@@ -324,14 +332,14 @@ defn Transaction(f, db, read = false)
     return savepoint(f, db)
   end
   conn = sqlite3.Take(db.Pool)?
-  tx = {Pool: db.Pool, Conn: conn, Tx: true, Done: Channel(), Depth: 0}
+  tx = {Pool: db.Pool, Conn: conn, Tx: true, Done: fiber.Channel(), Depth: 0}
   begun = txExec(if read "begin" else "begin immediate" end, tx)
   if failed(begun)
     sqlite3.Give(conn, db.Pool)
     return begun
   end
-  r = Wait(Spawn(() -> f(tx)))
-  Send(true, tx.Done)
+  r = fiber.Wait(fiber.Spawn(() -> f(tx)))
+  fiber.Send(true, tx.Done)
   out = finish(r, ["commit"], ["rollback"], tx)
   sqlite3.Give(conn, db.Pool)
   rethrow(out)
@@ -342,10 +350,10 @@ defn savepoint(f, tx)
     return doneError()
   end
   name = "s$(tx.Depth + 1)"
-  inner = {Pool: tx.Pool, Conn: tx.Conn, Tx: true, Done: Channel(), Depth: tx.Depth + 1}
+  inner = {Pool: tx.Pool, Conn: tx.Conn, Tx: true, Done: fiber.Channel(), Depth: tx.Depth + 1}
   txExec("savepoint $name", tx)?
-  r = Wait(Spawn(() -> f(inner)))
-  Send(true, inner.Done)
+  r = fiber.Wait(fiber.Spawn(() -> f(inner)))
+  fiber.Send(true, inner.Done)
   rethrow(finish(r, ["release $name"], ["rollback to $name", "release $name"], tx))
 end
 

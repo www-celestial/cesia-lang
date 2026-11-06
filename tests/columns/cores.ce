@@ -1,19 +1,24 @@
 (** Large columns go through several cores. The results don't depend on how many, to the last bit. *)
 use std/columns
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/value
 
-base = [Mod(k * 7919, 10007) for k in 1..10007]
-ks = Flatten([base for copy in 1..30])
-n = Len(ks)
+base = [math.Mod(k * 7919, 10007) for k in 1..10007]
+ks = list.Flatten([base for copy in 1..30])
+n = value.Len(ks)
 xs = ks / 3.0
-Print(columns.Cores())
-Print(Sum(xs))
-Print(Sum((xs + 1.5) * xs - xs / 3.0))
-Print(Sum(Sin(xs)))
-Print(Sum(Transpose(Reshape(xs, 3, Div(n, 3)))))
-m = Matmul(Reshape(xs[1..40000], 200, 200), Reshape(xs[1..40000], 200, 200))
-Print(Sum(m))
-o = Order(xs)
-Print(o[1], o[n], Sum(Abs(columns.Pick(o, xs) - Sort(xs))) == 0.0)
-Print(Sum(Abs(Order(ks) - o)) == 0)
-Print(Sum(Abs(columns.Pick(1..n, ks) - ks)) == 0)
-Print(columns.Join(ks, 0..10006, false).Right[n])
+io.Print(columns.Cores())
+io.Print(list.Sum(xs))
+io.Print(list.Sum((xs + 1.5) * xs - xs / 3.0))
+io.Print(list.Sum(math.Sin(xs)))
+io.Print(list.Sum(matrix.Transpose(matrix.Reshape(xs, 3, math.Div(n, 3)))))
+m = matrix.Matmul(matrix.Reshape(xs[1..40000], 200, 200), matrix.Reshape(xs[1..40000], 200, 200))
+io.Print(list.Sum(m))
+o = list.Order(xs)
+io.Print(o[1], o[n], list.Sum(math.Abs(columns.Pick(o, xs) - list.Sort(xs))) == 0.0)
+io.Print(list.Sum(math.Abs(list.Order(ks) - o)) == 0)
+io.Print(list.Sum(math.Abs(columns.Pick(1..n, ks) - ks)) == 0)
+io.Print(columns.Join(ks, 0..10006, false).Right[n])

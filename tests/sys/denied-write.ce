@@ -1,2 +1,3 @@
 use std/sys
-Print(sys.Write("./x", "a"))
+use std/io
+io.Print(sys.Write("./x", "a"))

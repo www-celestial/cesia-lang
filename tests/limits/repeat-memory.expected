@@ -1,4 +1,4 @@
-repeat-memory.ce:1:18: Limit "memory" reached.
-  1 | Print(ByteLength(Repeat(150000000, "a")))
-    |                  ^
+repeat-memory.ce:4:30: Limit "memory" reached.
+  4 | io.Print(text.ByteLength(text.Repeat(150000000, "a")))
+    |                              ^
 exit 1

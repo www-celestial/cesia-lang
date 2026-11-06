@@ -1,3 +1,4 @@
 use tests/errors/meth/far as f
-Print(f.Far.Make().X)
-Print(f.Far.built())
+use std/io
+io.Print(f.Far.Make().X)
+io.Print(f.Far.built())

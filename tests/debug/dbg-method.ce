@@ -1,4 +1,5 @@
 defn OnStop(stop)
-  Print("$(stop.Line) $(stop.Frames.Function) $(stop.Frames[1].Vars.Name)")
+  io.Print("$(stop.Line) $(stop.Frames.Function) $(stop.Frames[1].Vars.Name)")
   "step"
 end
+use std/io

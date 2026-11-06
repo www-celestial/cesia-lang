@@ -4,28 +4,34 @@
     a cache, so that a second install needs no network. *)
 use std/sys
 use std/cesia
+use std/dict
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
 
 usage = "usage: cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]"
 lockFile = "cesia.lock"
 projectFile = "cesia.toml"
-quote = Char(34)
-backslash = Char(92)
+quote = text.Char(34)
+backslash = text.Char(92)
 
 defn parent(path)
   (** The folder of a path: "std/rope/rope.ce" gives "std/rope", "a" gives "". *)
-  parts = Split("/", path)
-  Join("/", parts[1..Len(parts) - 1])
+  parts = text.Split("/", path)
+  text.Join("/", parts[1..value.Len(parts) - 1])
 end
 
 defn walk(dir)
   (** The files under a folder, at any depth, without following a link to a folder; none if it isn't there. *)
   listed = sys.List(dir)
   found = []
-  if IsOk(listed)
+  if result.IsOk(listed)
     for name in listed.Value
       path = "$dir/$name"
       stat = sys.Stat(path)
-      found = if IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink Concat(found, walk(path)) else Append(path, found) end
+      found = if result.IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink list.Concat(found, walk(path)) else list.Append(path, found) end
     end
   end
   found
@@ -35,10 +41,10 @@ defn removeAll(path)
   (** Deletes a file or a folder with all it holds. A link goes, never what it points to. *)
   stat = sys.Stat(path)
   link = sys.List(path)
-  if IsErr(stat) and IsErr(link) and not sys.Exists(path)
-    return Ok(missing)
+  if result.IsErr(stat) and result.IsErr(link) and not sys.Exists(path)
+    return result.Ok(missing)
   end
-  if IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
+  if result.IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
     for name in link?
       removeAll("$path/$name")?
     end
@@ -48,49 +54,49 @@ end
 
 defn quoted(s)
   (** A text as cesia.toml writes it, between quotes. *)
-  "$quote$(Replace(quote, "$backslash$quote", Replace(backslash, "$backslash$backslash", s)))$quote"
+  "$quote$(text.Replace(quote, "$backslash$quote", text.Replace(backslash, "$backslash$backslash", s)))$quote"
 end
 
 defn texts(xs)
   (** An array of texts as cesia.toml writes it, on one line. *)
-  "[$(Join(", ", Map(quoted, xs)))]"
+  "[$(text.Join(", ", list.Map(quoted, xs)))]"
 end
 
 defn fileLines(files)
   (** The files of a part of the lock, a line each: its path and its fingerprint. *)
-  Concat(Concat(["files = ["], ["  $(quoted("$(f.Path) $(f.Fingerprint)"))," for f in files]), ["]"])
+  list.Concat(list.Concat(["files = ["], ["  $(quoted("$(f.Path) $(f.Fingerprint)"))," for f in files]), ["]"])
 end
 
 defn lockText(lock)
   (** The text of cesia.lock: the dependencies by label, then the libraries of Cesia. *)
   lines = ["# Written by cesia pkg, which the loader checks: run cesia pkg install to make std/ and deps/ match it.", ""]
-  for d in SortBy(it.Label, lock.Deps)
+  for d in list.SortBy(it.Label, lock.Deps)
     head = ["[deps.$(d.Label)]", "from = $(quoted(d.From))", "version = $(quoted(d.Version))", "commit = $(quoted(d.Commit))",
       "asked = $(quoted(d.Asked))"]
-    if not IsMissing(d.Take)
-      head = Append("take = $(texts(d.Take))", head)
+    if not value.IsMissing(d.Take)
+      head = list.Append("take = $(texts(d.Take))", head)
     end
-    head = Append("packages = $(texts(d.Packages))", head)
-    lines = Concat(Concat(lines, Concat(head, fileLines(d.Files))), [""])
+    head = list.Append("packages = $(texts(d.Packages))", head)
+    lines = list.Concat(list.Concat(lines, list.Concat(head, fileLines(d.Files))), [""])
   end
-  if not IsMissing(lock.Std)
-    lines = Concat(Concat(lines, Concat(["[std]", "cesia = $(quoted(lock.Std.Cesia))"], fileLines(lock.Std.Files))), [""])
+  if not value.IsMissing(lock.Std)
+    lines = list.Concat(list.Concat(lines, list.Concat(["[std]", "cesia = $(quoted(lock.Std.Cesia))"], fileLines(lock.Std.Files))), [""])
   end
-  Join("\n", lines)
+  text.Join("\n", lines)
 end
 
 defn readToml(file)
   (** The tables of a file of the project, or an Err naming its line. *)
   text = sys.Read(file)?
   match cesia.Toml(text)
-    Ok(tables) -> Ok(tables)
-    Err(e) -> Err("$file:$(e.Line): $(e.Message)")
+    result.Ok(tables) -> result.Ok(tables)
+    result.Err(e) -> result.Err("$file:$(e.Line): $(e.Message)")
   end
 end
 
 defn fields(table)
   (** The entries of a table, by key. *)
-  found = Dict()
+  found = dict.Dict()
   for e in table.Entries
     found[e.Key] = e.Value
   end
@@ -99,35 +105,35 @@ end
 
 defn fileOf(line)
   (** {Path, Fingerprint} from a line of the lock: the fingerprint comes after the last space. *)
-  parts = Split(" ", line)
-  {Path: Join(" ", parts[1..Len(parts) - 1]), Fingerprint: Last(parts)}
+  parts = text.Split(" ", line)
+  {Path: text.Join(" ", parts[1..value.Len(parts) - 1]), Fingerprint: list.Last(parts)}
 end
 
 defn readLock()
   (** What cesia.lock says, as {Std, Deps}: no Std and no Deps without it. *)
   lock = {Std: missing, Deps: []}
   if not sys.Exists(lockFile)
-    return Ok(lock)
+    return result.Ok(lock)
   end
   for t in readToml(lockFile)?
     f = fields(t)
-    files = Map(fileOf, GetOr("files", [], f))
-    if Equal(t.Path, ["std"])
-      lock.Std = {Cesia: GetOr("cesia", "", f), Files: files}
-    else if Len(t.Path) == 2 and t.Path[1] == "deps"
-      dep = {Label: t.Path[2], From: GetOr("from", "", f), Version: GetOr("version", "", f), Commit: GetOr("commit", "", f),
-        Asked: GetOr("asked", "", f), Take: Get("take", f), Packages: GetOr("packages", [], f), Files: files}
-      lock.Deps = Append(dep, lock.Deps)
+    files = list.Map(fileOf, dict.GetOr("files", [], f))
+    if value.Equal(t.Path, ["std"])
+      lock.Std = {Cesia: dict.GetOr("cesia", "", f), Files: files}
+    else if value.Len(t.Path) == 2 and t.Path[1] == "deps"
+      dep = {Label: t.Path[2], From: dict.GetOr("from", "", f), Version: dict.GetOr("version", "", f), Commit: dict.GetOr("commit", "", f),
+        Asked: dict.GetOr("asked", "", f), Take: dict.Get("take", f), Packages: dict.GetOr("packages", [], f), Files: files}
+      lock.Deps = list.Append(dep, lock.Deps)
     end
   end
-  Ok(lock)
+  result.Ok(lock)
 end
 
 defn writeLock(lock)
   (** Writes cesia.lock whole, through a new file renamed over the old one: a failure leaves the old one. *)
   text = lockText(lock)
-  if UnwrapOr("", sys.Read(lockFile)) == text
-    return Ok(missing)
+  if result.UnwrapOr("", sys.Read(lockFile)) == text
+    return result.Ok(missing)
   end
   sys.Write("$lockFile.new", text)?
   sys.Rename("$lockFile.new", lockFile)
@@ -135,46 +141,46 @@ end
 
 defn stateOf(dir, files)
   (** "as installed", "changed by hand" or "not installed": the files of a folder against what the lock says of them. *)
-  onDisk = Sort(walk(dir))
-  if Len(onDisk) == 0
+  onDisk = list.Sort(walk(dir))
+  if value.Len(onDisk) == 0
     return "not installed"
   end
-  same = Equal(onDisk, Sort(Map(it.Path, files)))
+  same = value.Equal(onDisk, list.Sort(list.Map(it.Path, files)))
   for f in files
     read = sys.Read(f.Path)
-    same = same and IsOk(read) and cesia.Fingerprint(read.Value) == f.Fingerprint
+    same = same and result.IsOk(read) and cesia.Fingerprint(read.Value) == f.Fingerprint
   end
   if same "as installed" else "changed by hand" end
 end
 
 defn show(rows)
   (** Prints rows of words in columns. *)
-  widths = [Reduce((w, r) -> Max([w, Len(r[i])]), 0, rows) for i in 1..3]
+  widths = [list.Reduce((w, r) -> list.Max([w, value.Len(r[i])]), 0, rows) for i in 1..3]
   for r in rows
-    Print(Trim(Join("  ", [PadRight(widths[i], " ", r[i]) for i in 1..3])))
+    io.Print(text.Trim(text.Join("  ", [text.PadRight(widths[i], " ", r[i]) for i in 1..3])))
   end
 end
 
 defn isDir(path)
   (** Is it a folder, and not a link to one? *)
   stat = sys.Stat(path)
-  IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
+  result.IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
 end
 
 defn codeFiles(dir)
   (** The names of the code of a package: its .ce files, without its tests, its dot files and its folders. *)
   listed = sys.List(dir)
-  if IsErr(listed)
+  if result.IsErr(listed)
     return []
   end
-  [n for n in listed.Value if EndsWith(".ce", n) and not EndsWith(".test.ce", n) and not StartsWith(".", n) and not isDir("$dir/$n")]
+  [n for n in listed.Value if text.EndsWith(".ce", n) and not text.EndsWith(".test.ce", n) and not text.StartsWith(".", n) and not isDir("$dir/$n")]
 end
 
 defn sameFolder(target, wanted)
   (** Does a folder hold exactly these files, {Path, Source}, and nothing else? *)
-  same = Equal(Sort(walk(target)), Sort(Map(it.Path, wanted)))
+  same = value.Equal(list.Sort(walk(target)), list.Sort(list.Map(it.Path, wanted)))
   for f in wanted
-    same = same and UnwrapOr("", sys.Read(f.Path)) == f.Source
+    same = same and result.UnwrapOr("", sys.Read(f.Path)) == f.Source
   end
   same
 end
@@ -184,12 +190,12 @@ defn replaceFolder(target, wanted)
       one whole. *)
   folder = parent(target)
   at = if folder == "" "" else "$folder/" end
-  base = Last(Split("/", target))
+  base = list.Last(text.Split("/", target))
   staging = "$(at).new-$base"
   old = "$(at).old-$base"
   removeAll(staging)?
   for f in wanted
-    path = "$staging$(Slice(Len(target) + 1, Len(f.Path), f.Path))"
+    path = "$staging$(text.Slice(value.Len(target) + 1, value.Len(f.Path), f.Path))"
     sys.Mkdir(parent(path))?
     sys.Write(path, f.Source)?
   end
@@ -213,31 +219,31 @@ defn depPath(from)
   (** Where a repository goes under deps/: its owner and name, after its host unless that is github.com, so two authors never
       mix; for a file:// URL, its last two folders. "github.com/www-celestial/cemacs" gives "www-celestial/cemacs". *)
   s = from
-  local = StartsWith("file://", s)
+  local = text.StartsWith("file://", s)
   for scheme in ["https://", "http://", "ssh://", "git://", "file://"]
-    if StartsWith(scheme, s) and Len(s) > Len(scheme)
-      s = Slice(Len(scheme) + 1, Len(s), s)
+    if text.StartsWith(scheme, s) and value.Len(s) > value.Len(scheme)
+      s = text.Slice(value.Len(scheme) + 1, value.Len(s), s)
     end
   end
-  if StartsWith("git@", s) and Len(s) > 4
-    s = Replace(":", "/", Slice(5, Len(s), s))
+  if text.StartsWith("git@", s) and value.Len(s) > 4
+    s = text.Replace(":", "/", text.Slice(5, value.Len(s), s))
   end
-  if EndsWith(".git", s) and Len(s) > 4
-    s = Slice(1, Len(s) - 4, s)
+  if text.EndsWith(".git", s) and value.Len(s) > 4
+    s = text.Slice(1, value.Len(s) - 4, s)
   end
-  parts = Filter(it != "", Split("/", s))
-  if local or Len(parts) < 3
-    Join("/", TakeLast(2, parts))
+  parts = list.Filter(it != "", text.Split("/", s))
+  if local or value.Len(parts) < 3
+    text.Join("/", list.TakeLast(2, parts))
   else if parts[1] == "github.com"
-    Join("/", parts[2..end])
+    text.Join("/", parts[2..end])
   else
-    Join("/", parts)
+    text.Join("/", parts)
   end
 end
 
 defn gitUrl(from)
   (** What git fetches: the URL as written, or https:// before a host. *)
-  if Contains("://", from) or StartsWith("git@", from) from else "https://$from" end
+  if text.Contains("://", from) or text.StartsWith("git@", from) from else "https://$from" end
 end
 
 nameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
@@ -245,48 +251,48 @@ nameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 defn isPart(s, more)
   (** A folder name or a tag that stays where it is put and that git can't read as an option: letters, digits, . _ - and the
       characters of more, never first a . or a -. *)
-  s != "" and not StartsWith(".", s) and not StartsWith("-", s) and All(Map(c -> Contains(c, "$nameChars$more"), Chars(s)))
+  s != "" and not text.StartsWith(".", s) and not text.StartsWith("-", s) and list.All(list.Map(c -> text.Contains(c, "$nameChars$more"), text.Chars(s)))
 end
 
 defn checkDep(path, from, version)
   (** Ok, or an Err when a dependency, from a cesia.toml of the project or of a project it takes, could write outside deps/ or
       the cache, or give git an option. *)
-  parts = Split("/", path)
-  printable = All(Map(b -> b > 32 and b != 127, Bytes(from)))
-  if StartsWith("-", from) or not printable or Len(parts) < 2 or not All(Map(p -> isPart(p, "@"), parts))
-    return Err("$quote$from$quote is no repository cesia pkg takes: the folders of its place under deps/ are letters, digits and . _ - @, never first a . or a -.")
+  parts = text.Split("/", path)
+  printable = list.All(list.Map(b -> b > 32 and b != 127, text.Bytes(from)))
+  if text.StartsWith("-", from) or not printable or value.Len(parts) < 2 or not list.All(list.Map(p -> isPart(p, "@"), parts))
+    return result.Err("$quote$from$quote is no repository cesia pkg takes: the folders of its place under deps/ are letters, digits and . _ - @, never first a . or a -.")
   end
   if not isPart(version, "+")
-    return Err("$quote$version$quote is no tag cesia pkg takes: letters, digits and . _ - +, never first a . or a -.")
+    return result.Err("$quote$version$quote is no tag cesia pkg takes: letters, digits and . _ - +, never first a . or a -.")
   end
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn splitDep(u)
   (** {Path, Name} of a use of deps/: deps/www-celestial/cemacs/folders gives www-celestial/cemacs and folders; a first part
       with a dot is a host. *)
-  parts = Split("/", u)
-  depth = if Len(parts) > 1 and Contains(".", parts[2]) 4 else 3 end
-  if Len(parts) <= depth
+  parts = text.Split("/", u)
+  depth = if value.Len(parts) > 1 and text.Contains(".", parts[2]) 4 else 3 end
+  if value.Len(parts) <= depth
     return missing
   end
-  {Path: Join("/", parts[2..depth]), Name: Join("/", parts[depth + 1..end])}
+  {Path: text.Join("/", parts[2..depth]), Name: text.Join("/", parts[depth + 1..end])}
 end
 
 defn git(args)
   (** Runs git: an Ok of its output, or an Err of the last line of its errors. *)
   r = sys.Run("git", args = args)?
   if r.Code == 0
-    return Ok(r.Out)
+    return result.Ok(r.Out)
   end
-  said = Lines(Trim(r.Err))
-  Err(if Len(said) == 0 "git ended with $(r.Code)" else Last(said) end)
+  said = text.Lines(text.Trim(r.Err))
+  result.Err(if value.Len(said) == 0 "git ended with $(r.Code)" else list.Last(said) end)
 end
 
 defn cacheDir()
   (** Where the clones are kept: $XDG_CACHE_HOME/cesia/git, or ~/.cache/cesia/git. *)
   base = sys.Env("XDG_CACHE_HOME")
-  if IsMissing(base) or base == ""
+  if value.IsMissing(base) or base == ""
     base = "$(sys.Env("HOME"))/.cache"
   end
   "$base/cesia/git"
@@ -301,34 +307,34 @@ defn fetch(path, from, version)
     removeAll(staging)?
     sys.Mkdir(parent(dir))?
     cloned = git(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", version, "--", gitUrl(from), staging])
-    if IsErr(cloned)
+    if result.IsErr(cloned)
       removeAll(staging)
-      return Err("Can't fetch $path at $version: $(cloned.Error)")
+      return result.Err("Can't fetch $path at $version: $(cloned.Error)")
     end
     removeAll(dir)?
     sys.Rename(staging, dir)?
   end
-  commit = Trim(git(["-C", dir, "rev-parse", "HEAD"])?)
+  commit = text.Trim(git(["-C", dir, "rev-parse", "HEAD"])?)
   if not sys.Exists("$dir/$projectFile")
-    return Err("$path has no cesia.toml at $version: it is not a Cesia project.")
+    return result.Err("$path has no cesia.toml at $version: it is not a Cesia project.")
   end
   src = ["src"]
   deps = []
   needed = missing
   for t in readToml("$dir/$projectFile")?
     f = fields(t)
-    if Equal(t.Path, ["project"])
-      src = GetOr("src", ["src"], f)
-      needed = Get("cesia", f)
-    else if Len(t.Path) == 2 and t.Path[1] == "deps"
-      theirs = GetOr("from", "", f)
-      deps = Append({Label: t.Path[2], From: theirs, Version: GetOr("version", "", f), Path: depPath(theirs)}, deps)
+    if value.Equal(t.Path, ["project"])
+      src = dict.GetOr("src", ["src"], f)
+      needed = dict.Get("cesia", f)
+    else if value.Len(t.Path) == 2 and t.Path[1] == "deps"
+      theirs = dict.GetOr("from", "", f)
+      deps = list.Append({Label: t.Path[2], From: theirs, Version: dict.GetOr("version", "", f), Path: depPath(theirs)}, deps)
     end
   end
-  if IsText(needed) and cesia.Compare(cesia.Version(), needed) < 0
-    return Err("$path $version needs Cesia $needed or later, and this is $(cesia.Version()): run cesia upgrade.")
+  if value.IsText(needed) and cesia.Compare(cesia.Version(), needed) < 0
+    return result.Err("$path $version needs Cesia $needed or later, and this is $(cesia.Version()): run cesia upgrade.")
   end
-  Ok({Path: path, From: from, Version: version, Dir: dir, Commit: commit, Src: src, Deps: deps})
+  result.Ok({Path: path, From: from, Version: version, Dir: dir, Commit: commit, Src: src, Deps: deps})
 end
 
 defn packageDir(p, path)
@@ -341,14 +347,14 @@ defn packagesUnder(base, prefix)
   here = if prefix == "" base else "$base/$prefix" end
   listed = sys.List(here)
   found = []
-  if IsOk(listed)
+  if result.IsOk(listed)
     for name in listed.Value
       rel = if prefix == "" name else "$prefix/$name" end
-      if not StartsWith(".", name) and name != "_build" and isDir("$here/$name")
-        if Len(codeFiles("$base/$rel")) > 0
-          found = Append(rel, found)
+      if not text.StartsWith(".", name) and name != "_build" and isDir("$here/$name")
+        if value.Len(codeFiles("$base/$rel")) > 0
+          found = list.Append(rel, found)
         end
-        found = Concat(found, packagesUnder(base, rel))
+        found = list.Concat(found, packagesUnder(base, rel))
       end
     end
   end
@@ -357,7 +363,7 @@ end
 
 defn allPackages(p)
   (** Every package of the source folders of a project, by its path from the root: src/folders. *)
-  Unique(FlatMap(s -> [if s == "." n else "$s/$n" end for n in packagesUnder("$(p.Dir)/$s", "")], p.Src))
+  list.Unique(list.FlatMap(s -> [if s == "." n else "$s/$n" end for n in packagesUnder("$(p.Dir)/$s", "")], p.Src))
 end
 
 defn resolve(wanted)
@@ -365,74 +371,74 @@ defn resolve(wanted)
       need, to the end, each package once; a use of deps/ brings that project at the version its own cesia.toml asks, flat, one
       version per repository, the highest asked for. Gives {Projects, Brought, Asks}: by path, the project, its package folders,
       and who asked for it. *)
-  versions = Dict()
+  versions = dict.Dict()
   for d in wanted
     path = depPath(d.From)
-    if Has(path, versions)
-      return Err("cesia.toml takes $path twice: as $(versions[path].Label) and as $(d.Label).")
+    if dict.Has(path, versions)
+      return result.Err("cesia.toml takes $path twice: as $(versions[path].Label) and as $(d.Label).")
     end
     versions[path] = {Version: d.Version, From: d.From, Label: d.Label, Asked: projectFile, Take: d.Take}
   end
   while true
     raised = false
-    projects = Dict()
-    brought = Dict()
+    projects = dict.Dict()
+    brought = dict.Dict()
     queue = []
     for d in wanted
       path = depPath(d.From)
       p = fetch(path, d.From, versions[path].Version)?
       projects[path] = p
       brought[path] = []
-      names = if IsMissing(d.Take) allPackages(p) else Filter(not StartsWith("std/", it), d.Take) end
+      names = if value.IsMissing(d.Take) allPackages(p) else list.Filter(not text.StartsWith("std/", it), d.Take) end
       for n in names
-        if IsMissing(packageDir(p, n))
-          return Err("$path has no package $quote$n$quote: it has $(Join(", ", allPackages(p))).")
+        if value.IsMissing(packageDir(p, n))
+          return result.Err("$path has no package $quote$n$quote: it has $(text.Join(", ", allPackages(p))).")
         end
-        queue = Append({Path: path, Name: n}, queue)
+        queue = list.Append({Path: path, Name: n}, queue)
       end
     end
-    while Len(queue) > 0 and not raised
-      item = First(queue)
-      queue = Rest(queue)
+    while value.Len(queue) > 0 and not raised
+      item = list.First(queue)
+      queue = list.Rest(queue)
       p = projects[item.Path]
       dir = packageDir(p, item.Name)
-      have = GetOr(item.Path, [], brought)
-      if not IsMissing(dir) and not (dir in have)
-        brought[item.Path] = Append(dir, have)
+      have = dict.GetOr(item.Path, [], brought)
+      if not value.IsMissing(dir) and not (dir in have)
+        brought[item.Path] = list.Append(dir, have)
         for name in codeFiles("$(p.Dir)/$dir")
           uses = cesia.Uses(sys.Read("$(p.Dir)/$dir/$name")?)
-          if IsErr(uses)
-            return Err("$(item.Path)/$dir/$name:$(uses.Error.Line): $(uses.Error.Message)")
+          if result.IsErr(uses)
+            return result.Err("$(item.Path)/$dir/$name:$(uses.Error.Line): $(uses.Error.Message)")
           end
           for u in uses.Value
-            target = if StartsWith("deps/", u) splitDep(u) else missing end
-            if StartsWith("deps/", u) and IsMissing(target)
-              return Err("$(item.Path)/$dir/$name uses $u, which names no package.")
-            else if not IsMissing(target)
-              asked = Filter(it.Path == target.Path, p.Deps)
-              if Len(asked) == 0
-                return Err("$(item.Path)/$dir/$name uses $u, and the cesia.toml of $(item.Path) has no [deps] for $(target.Path).")
+            target = if text.StartsWith("deps/", u) splitDep(u) else missing end
+            if text.StartsWith("deps/", u) and value.IsMissing(target)
+              return result.Err("$(item.Path)/$dir/$name uses $u, which names no package.")
+            else if not value.IsMissing(target)
+              asked = list.Filter(it.Path == target.Path, p.Deps)
+              if value.Len(asked) == 0
+                return result.Err("$(item.Path)/$dir/$name uses $u, and the cesia.toml of $(item.Path) has no [deps] for $(target.Path).")
               end
-              known = Get(target.Path, versions)
-              if IsMissing(known) or cesia.Compare(asked[1].Version, known.Version) > 0
+              known = dict.Get(target.Path, versions)
+              if value.IsMissing(known) or cesia.Compare(asked[1].Version, known.Version) > 0
                 versions[target.Path] = {Version: asked[1].Version, From: asked[1].From, Label: asked[1].Label, Asked: item.Path,
                   Take: missing}
                 raised = true
               else
-                if not Has(target.Path, projects)
+                if not dict.Has(target.Path, projects)
                   projects[target.Path] = fetch(target.Path, known.From, known.Version)?
                 end
-                queue = Append({Path: target.Path, Name: target.Name}, queue)
+                queue = list.Append({Path: target.Path, Name: target.Name}, queue)
               end
-            else if not StartsWith("std/", u)
-              queue = Append({Path: item.Path, Name: u}, queue)
+            else if not text.StartsWith("std/", u)
+              queue = list.Append({Path: item.Path, Name: u}, queue)
             end
           end
         end
       end
     end
     if not raised
-      return Ok({Projects: projects, Brought: brought, Asks: versions})
+      return result.Ok({Projects: projects, Brought: brought, Asks: versions})
     end
   end
 end
@@ -441,94 +447,94 @@ defn readDeps(text)
   (** The [deps] tables of cesia.toml: {Label, From, Version, Take, Lines}, Take missing without take, Lines the line of each
       key. *)
   tables = cesia.Toml(text)
-  if IsErr(tables)
-    return Err("cesia.toml:$(tables.Error.Line): $(tables.Error.Message)")
+  if result.IsErr(tables)
+    return result.Err("cesia.toml:$(tables.Error.Line): $(tables.Error.Message)")
   end
   deps = []
   for t in tables.Value
-    if Len(t.Path) == 2 and t.Path[1] == "deps"
+    if value.Len(t.Path) == 2 and t.Path[1] == "deps"
       f = fields(t)
-      if not (IsText(Get("from", f)) and IsText(Get("version", f)))
-        return Err("cesia.toml:$(t.Line): [deps.$(t.Path[2])] needs from and version.")
+      if not (value.IsText(dict.Get("from", f)) and value.IsText(dict.Get("version", f)))
+        return result.Err("cesia.toml:$(t.Line): [deps.$(t.Path[2])] needs from and version.")
       end
-      lines = Dict()
+      lines = dict.Dict()
       for e in t.Entries
         lines[e.Key] = e.Line
       end
-      deps = Append({Label: t.Path[2], From: f["from"], Version: f["version"], Take: Get("take", f), Lines: lines, Line: t.Line}, deps)
+      deps = list.Append({Label: t.Path[2], From: f["from"], Version: f["version"], Take: dict.Get("take", f), Lines: lines, Line: t.Line}, deps)
     end
   end
-  Ok(deps)
+  result.Ok(deps)
 end
 
-defn setLine(text, n, line)
+defn setLine(s, n, line)
   (** A text with its line n replaced. *)
-  lines = Split("\n", text)
+  lines = text.Split("\n", s)
   lines[n] = line
-  Join("\n", lines)
+  text.Join("\n", lines)
 end
 
 defn lockedAs(lock, d)
   (** The entry of the lock for a dependency of cesia.toml, at the same repository and version, or missing. *)
-  found = Filter(l -> depPath(l.From) == depPath(d.From) and l.Version == d.Version, lock.Deps)
-  if Len(found) == 0 missing else found[1] end
+  found = list.Filter(l -> depPath(l.From) == depPath(d.From) and l.Version == d.Version, lock.Deps)
+  if value.Len(found) == 0 missing else found[1] end
 end
 
 defn asInstalled(lock, wanted)
   (** Is deps/ already what cesia.toml and the lock say? Then install needs neither git nor the network. *)
-  if Len(wanted) != Len(Filter(it.Asked == projectFile, lock.Deps))
+  if value.Len(wanted) != value.Len(list.Filter(it.Asked == projectFile, lock.Deps))
     return false
   end
   for d in wanted
     l = lockedAs(lock, d)
-    if IsMissing(l) or l.Asked != projectFile or not Equal(l.Take, d.Take)
+    if value.IsMissing(l) or l.Asked != projectFile or not value.Equal(l.Take, d.Take)
       return false
     end
   end
-  All([stateOf("deps/$(depPath(l.From))", l.Files) == "as installed" for l in lock.Deps])
+  list.All([stateOf("deps/$(depPath(l.From))", l.Files) == "as installed" for l in lock.Deps])
 end
 
 defn installDeps(lock, resolved, fresh)
   (** Writes deps/ for what resolve found, and gives the lock with its [deps]. A tag that moved since the lock stops it, unless
       its label is fresh (add, update, move). *)
   entries = []
-  used = Dict()
-  for path in Sort(Keys(resolved.Brought))
+  used = dict.Dict()
+  for path in list.Sort(dict.Keys(resolved.Brought))
     p = resolved.Projects[path]
     ask = resolved.Asks[path]
     label = ask.Label
-    if Has(label, used)
-      label = Replace(".", "-", Replace("/", "-", path))
+    if dict.Has(label, used)
+      label = text.Replace(".", "-", text.Replace("/", "-", path))
     end
     used[label] = true
-    before = Filter(l -> depPath(l.From) == path and l.Version == p.Version, lock.Deps)
-    if Len(before) > 0 and before[1].Commit != "" and before[1].Commit != p.Commit and not (label in fresh)
-      return Err("$path moved its tag $(p.Version): cesia.lock says $(Slice(1, 12, before[1].Commit)), and it is $(Slice(1, 12, p.Commit)) now. If that is right: cesia pkg update $label --to $(p.Version).")
+    before = list.Filter(l -> depPath(l.From) == path and l.Version == p.Version, lock.Deps)
+    if value.Len(before) > 0 and before[1].Commit != "" and before[1].Commit != p.Commit and not (label in fresh)
+      return result.Err("$path moved its tag $(p.Version): cesia.lock says $(text.Slice(1, 12, before[1].Commit)), and it is $(text.Slice(1, 12, p.Commit)) now. If that is right: cesia pkg update $label --to $(p.Version).")
     end
-    packages = Sort(resolved.Brought[path])
-    files = Concat([projectFile], FlatMap(dir -> ["$dir/$n" for n in codeFiles("$(p.Dir)/$dir")], packages))
+    packages = list.Sort(resolved.Brought[path])
+    files = list.Concat([projectFile], list.FlatMap(dir -> ["$dir/$n" for n in codeFiles("$(p.Dir)/$dir")], packages))
     target = "deps/$path"
     wanted = [{Path: "$target/$rel", Source: sys.Read("$(p.Dir)/$rel")?} for rel in files]
     if not sameFolder(target, wanted)
       replaceFolder(target, wanted)?
-      Print("deps/$path: $(p.Version), $(Join(", ", packages)).")
+      io.Print("deps/$path: $(p.Version), $(text.Join(", ", packages)).")
     end
-    entries = Append({Label: label, From: p.From, Version: p.Version, Commit: p.Commit, Asked: ask.Asked, Take: ask.Take, Packages: packages,
+    entries = list.Append({Label: label, From: p.From, Version: p.Version, Commit: p.Commit, Asked: ask.Asked, Take: ask.Take, Packages: packages,
       Files: fingerprints(wanted)}, entries)
   end
   for d in lock.Deps
     path = depPath(d.From)
-    if not Has(path, resolved.Brought) and IsOk(checkDep(path, d.From, d.Version)) and sys.Exists("deps/$path")
+    if not dict.Has(path, resolved.Brought) and result.IsOk(checkDep(path, d.From, d.Version)) and sys.Exists("deps/$path")
       removeAll("deps/$path")?
-      Print("deps/$path: removed.")
+      io.Print("deps/$path: removed.")
       owner = parent("deps/$path")
-      if owner != "deps" and Len(UnwrapOr(["?"], sys.List(owner))) == 0
+      if owner != "deps" and value.Len(result.UnwrapOr(["?"], sys.List(owner))) == 0
         sys.Remove(owner)?
       end
     end
   end
   lock.Deps = entries
-  Ok(lock)
+  result.Ok(lock)
 end
 
 defn libraryFiles()
@@ -539,22 +545,22 @@ end
 defn installStd(lock)
   (** Makes std/ this Cesia's libraries, when the project has a std/: written only if it differs. Gives the lock with its
       [std]. *)
-  if IsMissing(lock.Std) and not sys.Exists("std")
-    return Ok(lock)
+  if value.IsMissing(lock.Std) and not sys.Exists("std")
+    return result.Ok(lock)
   end
   wanted = libraryFiles()
   if not sameFolder("std", wanted)
     replaceFolder("std", wanted)?
-    Print("std/ holds the libraries of Cesia $(cesia.Version()).")
+    io.Print("std/ holds the libraries of Cesia $(cesia.Version()).")
   end
   lock.Std = {Cesia: cesia.Version(), Files: fingerprints(wanted)}
-  Ok(lock)
+  result.Ok(lock)
 end
 
 defn installWith(lock, wanted, fresh)
   (** Makes std/ and deps/ what these dependencies need, and gives the new lock, not yet written. Everything is fetched and
       read before anything is written. *)
-  if asInstalled(lock, wanted) and Len(fresh) == 0
+  if asInstalled(lock, wanted) and value.Len(fresh) == 0
     return installStd(lock)
   end
   resolved = resolve(wanted)?
@@ -570,38 +576,38 @@ end
 
 defn label(from)
   (** The name of a new [deps] table: the name of the repository, with - for what a bare key can't hold. *)
-  name = Last(Split("/", depPath(from)))
-  Join("", [if Contains(c, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") c else "-" end for c in Chars(name)])
+  name = list.Last(text.Split("/", depPath(from)))
+  text.Join("", [if text.Contains(c, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") c else "-" end for c in text.Chars(name)])
 end
 
 defn add(lock, args)
   (** cesia pkg add URL@TAG [package...]: a new [deps] table at the end of cesia.toml, then the install. *)
-  parts = Split("@", args[2])
-  if Len(parts) < 2 or Last(parts) == ""
-    return Err("cesia pkg add needs a tag: cesia pkg add github.com/x/y@v1.2.0.")
+  parts = text.Split("@", args[2])
+  if value.Len(parts) < 2 or list.Last(parts) == ""
+    return result.Err("cesia pkg add needs a tag: cesia pkg add github.com/x/y@v1.2.0.")
   end
-  from = Join("@", parts[1..Len(parts) - 1])
-  version = Last(parts)
+  from = text.Join("@", parts[1..value.Len(parts) - 1])
+  version = list.Last(parts)
   take = args[3..end]
   name = label(from)
-  text = sys.Read(projectFile)?
-  wanted = readDeps(text)?
+  toml = sys.Read(projectFile)?
+  wanted = readDeps(toml)?
   for d in wanted
     if d.Label == name
-      return Err("cesia.toml has [deps.$name] already: cesia pkg update $name --to $version changes its version.")
+      return result.Err("cesia.toml has [deps.$name] already: cesia pkg update $name --to $version changes its version.")
     end
     if depPath(d.From) == depPath(from)
-      return Err("cesia.toml takes $(depPath(from)) already, as $(d.Label).")
+      return result.Err("cesia.toml takes $(depPath(from)) already, as $(d.Label).")
     end
   end
   table = ["[deps.$name]", "from = $(quoted(from))", "version = $(quoted(version))"]
-  if Len(take) > 0
-    table = Append("take = $(texts(take))", table)
+  if value.Len(take) > 0
+    table = list.Append("take = $(texts(take))", table)
   end
-  wanted = Append({Label: name, From: from, Version: version, Take: if Len(take) == 0 missing else take end}, wanted)
+  wanted = list.Append({Label: name, From: from, Version: version, Take: if value.Len(take) == 0 missing else take end}, wanted)
   done = installWith(lock, wanted, [name])?
-  start = if text == "" or EndsWith("\n", text) text else "$text\n" end
-  sys.Write(projectFile, "$start$(if start == "" "" else "\n" end)$(Join("\n", table))\n")?
+  start = if toml == "" or text.EndsWith("\n", toml) toml else "$toml\n" end
+  sys.Write(projectFile, "$start$(if start == "" "" else "\n" end)$(text.Join("\n", table))\n")?
   writeLock(done)
 end
 
@@ -609,49 +615,49 @@ defn newestTag(from)
   (** The highest tag of a repository that is a version, through git ls-remote. *)
   checkDep(depPath(from), from, "v0")?
   out = git(["ls-remote", "--tags", "--refs", "--", gitUrl(from)])
-  if IsErr(out)
-    return Err("Can't read the tags of $(depPath(from)): $(out.Error)")
+  if result.IsErr(out)
+    return result.Err("Can't read the tags of $(depPath(from)): $(out.Error)")
   end
-  tags = [Replace("refs/tags/", "", Last(Split(Char(9), line))) for line in Lines(out.Value)]
-  versions = Filter(cesia.IsVersion, tags)
-  if Len(versions) == 0
-    return Err("$(depPath(from)) has no tag that is a version.")
+  tags = [text.Replace("refs/tags/", "", list.Last(text.Split(text.Char(9), line))) for line in text.Lines(out.Value)]
+  versions = list.Filter(cesia.IsVersion, tags)
+  if value.Len(versions) == 0
+    return result.Err("$(depPath(from)) has no tag that is a version.")
   end
-  Ok(Reduce((best, v) -> if cesia.Compare(v, best) > 0 v else best end, versions[1], versions))
+  result.Ok(list.Reduce((best, v) -> if cesia.Compare(v, best) > 0 v else best end, versions[1], versions))
 end
 
 defn update(lock, args)
   (** cesia pkg update [label] [--to tag]: to the newest tag, or that one, and pkg/ to this Cesia. *)
   rest = args[2..end]
   to = missing
-  if Len(rest) >= 2 and rest[Len(rest) - 1] == "--to"
-    to = Last(rest)
-    rest = rest[1..Len(rest) - 2]
+  if value.Len(rest) >= 2 and rest[value.Len(rest) - 1] == "--to"
+    to = list.Last(rest)
+    rest = rest[1..value.Len(rest) - 2]
   end
-  if Len(rest) > 1 or (Len(rest) == 0 and not IsMissing(to))
-    return Err(if Len(rest) > 1 usage else "--to needs a label: cesia pkg update cemacs --to v0.4.0." end)
+  if value.Len(rest) > 1 or (value.Len(rest) == 0 and not value.IsMissing(to))
+    return result.Err(if value.Len(rest) > 1 usage else "--to needs a label: cesia pkg update cemacs --to v0.4.0." end)
   end
-  text = sys.Read(projectFile)?
-  wanted = readDeps(text)?
-  names = Map(it.Label, wanted)
-  chosen = if Len(rest) == 0 names else rest end
-  if Len(rest) == 1 and not (rest[1] in names)
-    return Err("cesia.toml has no [deps.$(rest[1])]: it has $(if Len(names) == 0 "none" else Join(", ", names) end).")
+  toml = sys.Read(projectFile)?
+  wanted = readDeps(toml)?
+  names = list.Map(it.Label, wanted)
+  chosen = if value.Len(rest) == 0 names else rest end
+  if value.Len(rest) == 1 and not (rest[1] in names)
+    return result.Err("cesia.toml has no [deps.$(rest[1])]: it has $(if value.Len(names) == 0 "none" else text.Join(", ", names) end).")
   end
   moved = []
   for d in wanted
     if d.Label in chosen
-      newest = if IsMissing(to) newestTag(d.From)? else to end
+      newest = if value.IsMissing(to) newestTag(d.From)? else to end
       if newest != d.Version
-        text = setLine(text, d.Lines["version"], "version = $(quoted(newest))")
-        Print("$(d.Label): $(d.Version) to $newest")
+        toml = setLine(toml, d.Lines["version"], "version = $(quoted(newest))")
+        io.Print("$(d.Label): $(d.Version) to $newest")
       end
       d.Version = newest
     end
-    moved = Append(d, moved)
+    moved = list.Append(d, moved)
   end
   done = installWith(lock, moved, chosen)?
-  sys.Write(projectFile, text)?
+  sys.Write(projectFile, toml)?
   writeLock(done)
 end
 
@@ -659,15 +665,15 @@ defn sourceFiles(dir)
   (** The .ce files of the project, outside std/, deps/, _build and dot folders. *)
   found = []
   listed = sys.List(dir)
-  if IsOk(listed)
+  if result.IsOk(listed)
     for name in listed.Value
       path = if dir == "." name else "$dir/$name" end
-      if StartsWith(".", name) or (dir == "." and (name == "std" or name == "deps" or name == "_build"))
+      if text.StartsWith(".", name) or (dir == "." and (name == "std" or name == "deps" or name == "_build"))
         found = found
       else if isDir(path)
-        found = Concat(found, sourceFiles(path))
-      else if EndsWith(".ce", name)
-        found = Append(path, found)
+        found = list.Concat(found, sourceFiles(path))
+      else if text.EndsWith(".ce", name)
+        found = list.Append(path, found)
       end
     end
   end
@@ -678,36 +684,36 @@ defn move(lock, args)
   (** cesia pkg move OLD NEW: the dependency at deps/OLD comes from NEW, a fork; every use deps/OLD/ of the project says NEW. *)
   old = args[2]
   new = args[3]
-  text = sys.Read(projectFile)?
-  wanted = readDeps(text)?
-  found = Filter(w -> depPath(w.From) == old, wanted)
-  if Len(found) == 0
-    return Err("cesia.toml takes nothing from $old: it takes $(Join(", ", Map(d -> depPath(d.From), wanted))).")
+  toml = sys.Read(projectFile)?
+  wanted = readDeps(toml)?
+  found = list.Filter(w -> depPath(w.From) == old, wanted)
+  if value.Len(found) == 0
+    return result.Err("cesia.toml takes nothing from $old: it takes $(text.Join(", ", list.Map(d -> depPath(d.From), wanted))).")
   end
   d = found[1]
-  from = if EndsWith("$old.git", d.From)
-    "$(Slice(1, Len(d.From) - Len(old) - 4, d.From))$new.git"
-  else if EndsWith(old, d.From)
-    "$(Slice(1, Len(d.From) - Len(old), d.From))$new"
+  from = if text.EndsWith("$old.git", d.From)
+    "$(text.Slice(1, value.Len(d.From) - value.Len(old) - 4, d.From))$new.git"
+  else if text.EndsWith(old, d.From)
+    "$(text.Slice(1, value.Len(d.From) - value.Len(old), d.From))$new"
   else
     new
   end
-  text = setLine(text, d.Lines["from"], "from = $(quoted(from))")
-  moved = Map(x -> if x.Label == d.Label {Label: x.Label, From: from, Version: x.Version, Take: x.Take, Lines: x.Lines, Line: x.Line} else x end, wanted)
+  toml = setLine(toml, d.Lines["from"], "from = $(quoted(from))")
+  moved = list.Map(x -> if x.Label == d.Label {Label: x.Label, From: from, Version: x.Version, Take: x.Take, Lines: x.Lines, Line: x.Line} else x end, wanted)
   done = installWith(lock, moved, [d.Label])?
-  sys.Write(projectFile, text)?
+  sys.Write(projectFile, toml)?
   for file in sourceFiles(".")
     source = sys.Read(file)?
-    lines = Split("\n", source)
-    for i in 1..Len(lines)
-      if StartsWith("use deps/$old/", Trim(lines[i]))
-        lines[i] = Replace("deps/$old/", "deps/$new/", lines[i])
+    lines = text.Split("\n", source)
+    for i in 1..value.Len(lines)
+      if text.StartsWith("use deps/$old/", text.Trim(lines[i]))
+        lines[i] = text.Replace("deps/$old/", "deps/$new/", lines[i])
       end
     end
-    changed = Join("\n", lines)
+    changed = text.Join("\n", lines)
     if changed != source
       sys.Write(file, changed)?
-      Print("$file: use deps/$new/")
+      io.Print("$file: use deps/$new/")
     end
   end
   writeLock(done)
@@ -718,58 +724,58 @@ defn check()
   rows = []
   for d in readDeps(sys.Read(projectFile)?)?
     newest = newestTag(d.From)
-    state = if IsErr(newest)
+    state = if result.IsErr(newest)
       newest.Error
     else if cesia.Compare(newest.Value, d.Version) > 0
       "$(newest.Value) is out: cesia pkg update $(d.Label)"
     else
       "the newest"
     end
-    rows = Append([d.Label, d.Version, state], rows)
+    rows = list.Append([d.Label, d.Version, state], rows)
   end
   show(rows)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn listing(lock)
   (** cesia pkg: each package, who gives it, its version, and whether it is as installed. *)
   rows = []
-  if not IsMissing(lock.Std) and not sys.Exists("std")
-    rows = Append(["std", "cesia $(lock.Std.Cesia)", "not installed"], rows)
-  else if not IsMissing(lock.Std)
-    byLibrary = Dict()
+  if not value.IsMissing(lock.Std) and not sys.Exists("std")
+    rows = list.Append(["std", "cesia $(lock.Std.Cesia)", "not installed"], rows)
+  else if not value.IsMissing(lock.Std)
+    byLibrary = dict.Dict()
     for f in lock.Std.Files
-      name = Split("/", f.Path)[2]
-      byLibrary[name] = Append(f, GetOr(name, [], byLibrary))
+      name = text.Split("/", f.Path)[2]
+      byLibrary[name] = list.Append(f, dict.GetOr(name, [], byLibrary))
     end
-    for name in Sort(Keys(byLibrary))
-      rows = Append(["std/$name", "cesia $(lock.Std.Cesia)", stateOf("std/$name", byLibrary[name])], rows)
+    for name in list.Sort(dict.Keys(byLibrary))
+      rows = list.Append(["std/$name", "cesia $(lock.Std.Cesia)", stateOf("std/$name", byLibrary[name])], rows)
     end
   else if sys.Exists("std")
-    rows = Append(["std", "", "not installed"], rows)
+    rows = list.Append(["std", "", "not installed"], rows)
   end
   for d in readDeps(sys.Read(projectFile)?)?
     l = lockedAs(lock, d)
     path = "deps/$(depPath(d.From))"
-    rows = Append([path, d.Version, if IsMissing(l) "not installed" else stateOf(path, l.Files) end], rows)
+    rows = list.Append([path, d.Version, if value.IsMissing(l) "not installed" else stateOf(path, l.Files) end], rows)
   end
   for l in lock.Deps
     if l.Asked != projectFile
       path = "deps/$(depPath(l.From))"
-      rows = Append([path, l.Version, "$(stateOf(path, l.Files)), for $(l.Asked)"], rows)
+      rows = list.Append([path, l.Version, "$(stateOf(path, l.Files)), for $(l.Asked)"], rows)
     end
   end
   show(rows)
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn run(args)
   (** A command of cesia pkg. *)
   if not sys.Exists(projectFile)
-    return Err("No cesia.toml in this folder.")
+    return result.Err("No cesia.toml in this folder.")
   end
   lock = readLock()?
-  n = Len(args)
+  n = value.Len(args)
   word = if n == 0 "" else args[1] end
   if n == 0
     listing(lock)
@@ -784,14 +790,14 @@ defn run(args)
   else if n == 1 and word == "--check"
     check()
   else
-    Err(usage)
+    result.Err(usage)
   end
 end
 
 defn Main()
   (** Runs the command of Args; an error is a text, which the binary shows. *)
-  match run(Args)
-    Err(e) -> Err(if IsText(e) e else e.Message end)
+  match run(sys.Args)
+    result.Err(e) -> result.Err(if value.IsText(e) e else e.Message end)
     done -> done
   end
 end

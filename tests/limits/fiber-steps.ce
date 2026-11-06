@@ -1,4 +1,6 @@
+use std/fiber
+
 defn forever()
   while true end
 end
-Wait(Spawn(forever))
+fiber.Wait(fiber.Spawn(forever))

@@ -1,3 +1,5 @@
+use std/io
+
 struct Rect { Width }
 Rect.Square() = Rect(1)
-Print(Rect:Square())
+io.Print(Rect:Square())

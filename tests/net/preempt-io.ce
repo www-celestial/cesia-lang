@@ -1,5 +1,8 @@
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 defn forever()
   while true end
@@ -8,12 +11,12 @@ end
 defn answer(listener)
   c = net.Accept(listener)?
   net.Write(c, "pong")?
-  Ok(missing)
+  result.Ok(missing)
 end
 
-listener = Unwrap(net.Listen(18083))
-server = Spawn(() -> answer(listener))
-spinner = Spawn(forever)
+listener = result.Unwrap(net.Listen(18083))
+server = fiber.Spawn(() -> answer(listener))
+spinner = fiber.Spawn(forever)
 sys.Sleep(0)
-c = Unwrap(net.Connect("127.0.0.1", 18083))
-Print(net.Read(c))
+c = result.Unwrap(net.Connect("127.0.0.1", 18083))
+io.Print(net.Read(c))

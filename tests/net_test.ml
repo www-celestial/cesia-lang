@@ -1,10 +1,17 @@
 (* Name resolution blocks in libc: a slow answer must stop only the fiber that asked. *)
 open Cesia
 
+(* A program, with the uses of the packages that these name at its end, so that its lines stay as written. *)
 let run source =
   let path = Filename.temp_file "net_test" ".ce" in
   let file = open_out path in
-  output_string file source;
+  let has text =
+    let n = String.length source and m = String.length text in
+    let rec go i = i + m <= n && (String.sub source i m = text || go (i + 1)) in
+    go 0
+  in
+  let packages = [ "io"; "fiber"; "net"; "list"; "text"; "result"; "sys"; "value" ] in
+  output_string file (source ^ String.concat "" (List.map (fun p -> if has ("use std/" ^ p) then "" else "\nuse std/" ^ p) packages) ^ "\n");
   close_out file;
   let out = Buffer.create 64 in
   let options =
@@ -37,37 +44,37 @@ let () =
 use std/net
 defn ticks()
   sys.Sleep(0.005)
-  Print("tick")
+  io.Print("tick")
   sys.Sleep(0.005)
-  Print("tick")
+  io.Print("tick")
 end
-t = Spawn(ticks)
+t = fiber.Spawn(ticks)
 r = net.Connect("slow.example", 1)
-Print("done")
-Wait(t)
+io.Print("done")
+fiber.Wait(t)
 |});
   Cesia_sys.Net.resolver := slow (fun _ -> raise Not_found);
   check "an unknown name is an error" "unknown\n"
     (run
        {|use std/net
-Print(match net.Connect("nowhere.example", 1)
-  Err(e) -> if Contains("unknown host", e.Message) "unknown" else e.Message end
-  Ok(s) -> "connected"
+io.Print(match net.Connect("nowhere.example", 1)
+  result.Err(e) -> if text.Contains("unknown host", e.Message) "unknown" else e.Message end
+  result.Ok(s) -> "connected"
 end)
 |});
   Cesia_sys.Net.resolver := slow (fun _ -> Unix.inet_addr_loopback);
   check "several fibers wait at once" "2\n"
     (run
        {|use std/net
-tasks = Map(h -> Spawn(() -> net.Connect(h, 1)), ["a.example", "b.example"])
-Print(Len(Map(Wait, tasks)))
+tasks = list.Map(h -> fiber.Spawn(() -> net.Connect(h, 1)), ["a.example", "b.example"])
+io.Print(value.Len(list.Map(fiber.Wait, tasks)))
 |});
   Cesia_sys.Net.resolver := (fun _ -> failwith "no lookup for an address");
   check "an address needs no lookup" "done\n"
     (run
        {|use std/net
 r = net.Connect("127.0.0.1", 1)
-Print("done")
+io.Print("done")
 |});
   (* The domain still sleeps when the program ends: the test only finishes if nothing waits for it. *)
   Cesia_sys.Net.resolver := (fun _ -> Unix.sleepf 30.; Unix.inet_addr_loopback);
@@ -75,9 +82,9 @@ Print("done")
     (run
        {|use std/sys
 use std/net
-t = Spawn(() -> net.Connect("a.example", 1))
+t = fiber.Spawn(() -> net.Connect("a.example", 1))
 sys.Sleep(0.005)
-Print("end")
+io.Print("end")
 |});
   if Cesia_sys.Sys_modules.ram () < 1_000_000 then failwith "the RAM of the machine isn't known";
   print_endline "net_test: ok"

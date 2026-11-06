@@ -1,5 +1,5 @@
 > cesia run panic.ce
-panic.ce:1:1: stop
-  1 | Panic("stop")
-    | ^
+panic.ce:3:4: stop
+  3 | bug.Panic("stop")
+    |    ^
 exit 1

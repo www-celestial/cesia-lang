@@ -1,4 +1,4 @@
-comment-lines.ce:4:7: Name "nope" doesn't exist.
-  4 | Print(nope)
-    |       ^
+comment-lines.ce:6:10: Name "nope" doesn't exist.
+  6 | io.Print(nope)
+    |          ^
 exit 1

@@ -1,2 +1,3 @@
 use tests/errors/meth/far as f
-Print(f.Far.Shown())
+use std/io
+io.Print(f.Far.Shown())

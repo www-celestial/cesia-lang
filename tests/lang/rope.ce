@@ -1,8 +1,12 @@
 use std/rope
 use std/history
 use std/num
+use std/list
+use std/math
+use std/text
+use std/value
 
-big = Join("\n", ["line $k" for k in 1..2000])
+big = text.Join("\n", ["line $k" for k in 1..2000])
 
 isOf() = rope.Text(rope.Of("abc")) == "abc" and rope.Size(rope.Of("abc")) == 3
 isBig() = rope.Text(rope.Of(big)) == big and rope.LineCount(rope.Of(big)) == 2000
@@ -30,31 +34,31 @@ defn isAgainstAModel()
   model = big
   dice = num.Uniform(3000, num.Seeded(5)).Values
   for k in 1..1000
-    n = ByteLength(model)
-    at = Floor(dice[3 * k - 2] * n)
+    n = text.ByteLength(model)
+    at = math.Floor(dice[3 * k - 2] * n)
     if dice[3 * k - 1] < 0.6
-      piece = if Mod(k, 7) == 0 "new\nline" else "ab" end
+      piece = if math.Mod(k, 7) == 0 "new\nline" else "ab" end
       r = rope.Insert(at, piece, r)
-      before = if at == 0 "" else ByteSlice(1, at, model) end
-      after = if at == n "" else ByteSlice(at + 1, n, model) end
+      before = if at == 0 "" else text.ByteSlice(1, at, model) end
+      after = if at == n "" else text.ByteSlice(at + 1, n, model) end
       model = "$before$piece$after"
     else
-      to = Min(at + Floor(dice[3 * k] * 40), n)
+      to = list.Min(at + math.Floor(dice[3 * k] * 40), n)
       r = rope.Delete(at, to, r)
-      before = if at == 0 "" else ByteSlice(1, at, model) end
-      after = if to == n "" else ByteSlice(to + 1, n, model) end
+      before = if at == 0 "" else text.ByteSlice(1, at, model) end
+      after = if to == n "" else text.ByteSlice(to + 1, n, model) end
       model = "$before$after"
     end
     (* The count of lines only moves by steps, so a drift stays visible at the next check. *)
-    if r.Size != ByteLength(model) or (Mod(k, 50) == 0 and r.Lines != Len(Split("\n", model)) - 1)
+    if r.Size != text.ByteLength(model) or (math.Mod(k, 50) == 0 and r.Lines != value.Len(text.Split("\n", model)) - 1)
       return false
     end
   end
-  rope.Text(r) == model and rope.Line(rope.LineCount(r), r) == Split("\n", model)[rope.LineCount(r)]
+  rope.Text(r) == model and rope.Line(rope.LineCount(r), r) == text.Split("\n", model)[rope.LineCount(r)]
 end
 
 isHistory() = history.Current(history.Undo(history.Record(2, history.Of(1)))) == 1
 isRedo() = history.Current(history.Redo(history.Undo(history.Record(2, history.Of(1))))) == 2
 isRecordClearsRedo() = not history.CanRedo(history.Record(3, history.Undo(history.Record(2, history.Of(1)))))
 isUndoAtStart() = history.Current(history.Undo(history.Of(1))) == 1 and history.Current(history.Redo(history.Of(1))) == 1
-isLimit() = Len(Reduce((h, x) -> history.Record(x, h), history.Of(0, limit = 3), [1, 2, 3, 4, 5]).Past) == 3
+isLimit() = value.Len(list.Reduce((h, x) -> history.Record(x, h), history.Of(0, limit = 3), [1, 2, 3, 4, 5]).Past) == 3

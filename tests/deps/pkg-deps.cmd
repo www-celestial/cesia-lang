@@ -14,16 +14,16 @@ publish bob/units v1.0.0
 file bob/units/src/meters/meters.ce '(** Meters. *)\nName = "meters of units v1.2.0"\n'
 publish bob/units v1.2.0
 file alice/shapes/cesia.toml "[project]\nname = \"shapes\"\n\n[deps.units]\nfrom = \"file://$top/repos/bob/units\"\nversion = \"v1.0.0\"\n"
-file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse src/area\nDescribe() = Str("a square, ", area.Of(2))\n'
+file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse src/area\nuse std/text\nDescribe() = text.Str("a square, ", area.Of(2))\n'
 file alice/shapes/src/geometry/geometry.test.ce 'isNothing() = true\n'
-file alice/shapes/src/area/area.ce '(** Area. *)\nuse deps/bob/units/src/meters\nOf(side) = Str(side * side, " ", meters.Name)\n'
+file alice/shapes/src/area/area.ce '(** Area. *)\nuse deps/bob/units/src/meters\nuse std/text\nOf(side) = text.Str(side * side, " ", meters.Name)\n'
 file alice/shapes/src/unused/unused.ce '(** Not used. *)\nNothing = 1\n'
-file alice/shapes/tests/a.ce 'Print(1)\n'
+file alice/shapes/tests/a.ce 'use std/io\nio.Print(1)\n'
 publish alice/shapes v1.0.0
-file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse src/area\nDescribe() = Str("a square of v1.1.0, ", area.Of(3))\n'
+file alice/shapes/src/geometry/geometry.ce '(** Geometry. *)\nuse src/area\nuse std/text\nDescribe() = text.Str("a square of v1.1.0, ", area.Of(3))\n'
 publish alice/shapes v1.1.0
 file erin/tools/cesia.toml "[project]\nname = \"tools\"\n\n[deps.units]\nfrom = \"file://$top/repos/bob/units\"\nversion = \"v1.2.0\"\n"
-file erin/tools/src/tool/tool.ce '(** Tool. *)\nuse deps/bob/units/src/meters\nName = Str("a tool on ", meters.Name)\n'
+file erin/tools/src/tool/tool.ce '(** Tool. *)\nuse deps/bob/units/src/meters\nuse std/text\nName = text.Str("a tool on ", meters.Name)\n'
 publish erin/tools v1.0.0
 file carol/ring/cesia.toml '[project]\nname = "ring"\n'
 file carol/ring/src/a/a.ce '(** A. *)\nuse src/b\nA() = 1\n'
@@ -34,7 +34,7 @@ publish dan/plain v1.0.0
 
 mkdir -p "$top/proj/src" && cd "$top/proj"
 printf '[project]\nname = "proj"\n' > cesia.toml
-printf 'use deps/alice/shapes/src/geometry\nPrint(geometry.Describe())\n' > src/main.ce
+printf 'use deps/alice/shapes/src/geometry\nuse std/io\nio.Print(geometry.Describe())\n' > src/main.ce
 echo "== add: geometry, and what it uses"
 cesia pkg add "file://$top/repos/alice/shapes@v1.0.0" src/geometry | clean
 find deps -type f | sort

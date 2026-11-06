@@ -1,3 +1,6 @@
-s = Fill({A: 1}, 1500000)
+use std/io
+use std/list
+
+s = list.Fill({A: 1}, 1500000)
 b = s.A
-Print(b[1])
+io.Print(b[1])

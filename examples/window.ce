@@ -1,6 +1,8 @@
 (** A window you can type into. Run from the root of the repository:
     cesia run --allow ffi=SDL3,ffi=SDL3_ttf examples/window.ce *)
 use std/sdl
+use std/io
+use std/result
 
 defn update(event, state)
   match event
@@ -19,7 +21,7 @@ defn main()
   window = sdl.Open("Cesia", 1280, 800, "examples/fonts/JetBrainsMono-Regular.ttf")?
   sdl.Run({Typed: ""}, update, view, window)
   sdl.Close(window)
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

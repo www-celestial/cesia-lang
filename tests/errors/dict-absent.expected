@@ -1,4 +1,4 @@
-dict-absent.ce:2:8: This dictionary has no key: the text "z".
-  2 | Print(d["z"])
-    |        ^
+dict-absent.ce:4:11: This dictionary has no key: the text "z".
+  4 | io.Print(d["z"])
+    |           ^
 exit 1

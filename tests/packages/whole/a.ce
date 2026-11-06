@@ -1,3 +1,5 @@
 (** Runs first: its name comes first. *)
-Print("a")
-Print(Later())
+use std/io
+
+io.Print("a")
+io.Print(Later())

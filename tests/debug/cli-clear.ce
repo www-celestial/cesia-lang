@@ -2,5 +2,6 @@ defn f(a)
   x = a + 1
   x * 2
 end
-Print(f(1))
-Print(f(2))
+io.Print(f(1))
+io.Print(f(2))
+use std/io

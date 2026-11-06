@@ -1,5 +1,8 @@
 (** A result of the wrong type, at the end of the function. *)
+use std/io
+use std/value
+
 defn Half(x Float) Float
-  Text(x / 2)
+  value.Text(x / 2)
 end
-Print(Half(1))
+io.Print(Half(1))

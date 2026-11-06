@@ -1,2 +1,3 @@
 use tests/packages/geometry
-Print(geometry.half(2))
+use std/io
+io.Print(geometry.half(2))

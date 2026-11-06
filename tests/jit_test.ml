@@ -64,6 +64,10 @@ open Types
 
 let program =
   {|
+use std/io
+use std/math
+use std/matrix
+use std/test
 defn fib(n)
   if n < 2
     n
@@ -124,14 +128,14 @@ defn add(a, b)
 end
 
 defn floors(a, b)
-  Div(a, b) * 1000 + Mod(a, b)
+  math.Div(a, b) * 1000 + math.Mod(a, b)
 end
 
 defn roots(n)
   s = 0.0
   k = 1
   while k <= n
-    s = s + Sqrt(k) / 3.0
+    s = s + math.Sqrt(k) / 3.0
     k = k + 1
   end
   s
@@ -148,22 +152,22 @@ defn early(n)
   k
 end
 
-xs = Zeros(5)
-ys = Zeros(5)
+xs = matrix.Zeros(5)
+ys = matrix.Zeros(5)
 for k in 1..5
   xs[k] = k * 1.5
   ys[k] = 10.0 - k
 end
-Grab(fib, mandel, dot, scale, sumto, add, floors, roots, early)
-Print(fib(15))
-Print(mandel(40, 30, 60))
-Print(dot(xs, ys, 5))
-Print(scale(xs, 5, 2.0))
-Print(sumto(1000, 0))
-Print(add(1, 2))
-Print(floors(-7, 2))
-Print(roots(50))
-Print(early(1000))
+test.Grab(fib, mandel, dot, scale, sumto, add, floors, roots, early)
+io.Print(fib(15))
+io.Print(mandel(40, 30, 60))
+io.Print(dot(xs, ys, 5))
+io.Print(scale(xs, 5, 2.0))
+io.Print(sumto(1000, 0))
+io.Print(add(1, 2))
+io.Print(floors(-7, 2))
+io.Print(roots(50))
+io.Print(early(1000))
 |}
 
 let protos : (string, proto) Hashtbl.t = Hashtbl.create 8
@@ -172,12 +176,12 @@ let world, printed =
   let out = Buffer.create 64 in
   let w = Runtime.create_world { Runtime.default_options with o_sink = Buffer.add_string out; o_err = prerr_string } in
   Loader.init w;
-  Native.register w "Grab"
-    (Native { nname = "Grab"; perm = None; params = [||]; min_args = 0; max_args = 20; ret_ty = (fun _ -> TA); f1 = None;
+  w.native_modules <- ("test", [ "Grab",
+    Native { nname = "Grab"; perm = None; params = [||]; min_args = 0; max_args = 20; ret_ty = (fun _ -> TA); f1 = None;
               i2 = None;
               run = (fun _ a ->
                   Array.iter (function Fun { proto; _ } -> Hashtbl.replace protos proto.pname proto | _ -> ()) a;
-                  Missing) });
+                  Missing) } ]) :: w.native_modules;
   let path = Filename.temp_file "jit" ".ce" in
   Out_channel.with_open_bin path (fun oc -> output_string oc program);
   let code = Loader.run w path [] in

@@ -1,9 +1,16 @@
+use std/fiber
+use std/list
+use std/math
+use std/matrix
+use std/result
+use std/value
+
 defn floatTimes(x)
   y = 1.5
   y * x
 end
-isFMissing() = IsMissing(floatTimes(missing))
-isFArray() = Equal(floatTimes([2.0, 4.0]), [3.0, 6.0])
+isFMissing() = value.IsMissing(floatTimes(missing))
+isFArray() = value.Equal(floatTimes([2.0, 4.0]), [3.0, 6.0])
 isFInt() = floatTimes(2) == 3.0
 
 defn mixed(c)
@@ -13,10 +20,10 @@ defn mixed(c)
   end
   x
 end
-isJoin() = IsInt(mixed(false)) and IsFloat(mixed(true))
+isJoin() = value.IsInt(mixed(false)) and value.IsFloat(mixed(true))
 
 defn faBecomesA()
-  x = Zeros(2)
+  x = matrix.Zeros(2)
   x[1] = "a"
   x[1]
 end
@@ -85,15 +92,15 @@ struct Car
   Name Text? = missing
 end
 
-stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and its message. *)
-  Err(e) -> "$(e.Kind): $(e.Message)"
-  Ok(v) -> v
+stop(f) = match fiber.Wait(fiber.Spawn(f))   (** What a call that stops says: its kind and its message. *)
+  result.Err(e) -> "$(e.Kind): $(e.Message)"
+  result.Ok(v) -> v
 end
 
 isTypedField() = Pt(1, 2).Y == 2 and Pt(1).Y == 0
-isIntBecomesFloat() = IsFloat(Car(1500).Mass) and Car(1500).Mass == 1500.0 and Text(Car(2).Mass) == "2.0"
-isDefaultBecomesFloat() = IsFloat(Car(1).Speed) and Text(Car(1).Speed) == "0.0"
-isOptionalField() = IsMissing(Car(1).Name) and Car(1, Name = "a").Name == "a"
+isIntBecomesFloat() = value.IsFloat(Car(1500).Mass) and Car(1500).Mass == 1500.0 and value.Text(Car(2).Mass) == "2.0"
+isDefaultBecomesFloat() = value.IsFloat(Car(1).Speed) and value.Text(Car(1).Speed) == "0.0"
+isOptionalField() = value.IsMissing(Car(1).Name) and Car(1, Name = "a").Name == "a"
 isStructField() = Seg(Pt(1)).To == Pt(0) and Seg(Pt(1), Pt(2)).To.X == 2
 isFieldWrong() = stop(() -> Car("heavy")) == "type: Car: Mass must be a Float, found a Text."
 isFieldStructWrong() = stop(() -> Seg(3)) == "type: Seg: From must be a Pt, found an Int."
@@ -107,7 +114,7 @@ struct Pet
   Name Text?
 end
 
-isOptionalFieldDefault() = IsMissing(Pet("cat").Name) and Pet("cat", "Tom").Name == "Tom" and IsMissing(Pet(Kind = "dog").Name)
+isOptionalFieldDefault() = value.IsMissing(Pet("cat").Name) and Pet("cat", "Tom").Name == "Tom" and value.IsMissing(Pet(Kind = "dog").Name)
 
 scaled(x Number, by Number = 2) = x * by
 asFloat(x Float) = x
@@ -116,7 +123,7 @@ norm(p Pt) = p.X + p.Y
 wrongDefault(n Int = "a") = n
 callWith(f, x) = f(x)
 down(n Int) = if n == 0 0 else down(n - 1) end
-unwrap(r Ok) = r.Value
+unwrap(r result.Ok) = r.Value
 (p Pt) Plus(d Int) = Pt(p.X + d, p.Y + d)
 Pt.Of(x Int) = Pt(x, x)
 
@@ -125,25 +132,25 @@ defn apply(f Function, x)
 end
 
 defn kinds(b Bool, t Text, a Array, d Dict)
-  "$b $t $(Len(a)) $(Len(d))"
+  "$b $t $(value.Len(a)) $(value.Len(d))"
 end
 
-isNumberKeeps() = IsInt(scaled(3)) and scaled(3) == 6 and IsFloat(scaled(1.5)) and scaled(by = 3, x = 2) == 6
-isParamFloat() = IsFloat(asFloat(3)) and Text(asFloat(3)) == "3.0" and asFloat(2.5) == 2.5
-isParamFloatDynamic() = Text(callWith(asFloat, 3)) == "3.0"
-isParamOptional() = IsMissing(maybe(missing)) and maybe("a") == "a" and stop(() -> maybe()) == "type: maybe needs the argument \"t\"."
+isNumberKeeps() = value.IsInt(scaled(3)) and scaled(3) == 6 and value.IsFloat(scaled(1.5)) and scaled(by = 3, x = 2) == 6
+isParamFloat() = value.IsFloat(asFloat(3)) and value.Text(asFloat(3)) == "3.0" and asFloat(2.5) == 2.5
+isParamFloatDynamic() = value.Text(callWith(asFloat, 3)) == "3.0"
+isParamOptional() = value.IsMissing(maybe(missing)) and maybe("a") == "a" and stop(() -> maybe()) == "type: maybe needs the argument \"t\"."
 isParamStruct() = norm(Pt(3, 4)) == 7
 isParamWrong() = stop(() -> scaled("a")) == "type: scaled: x must be a Number, found a Text."
 isParamWrongNamed() = stop(() -> scaled(by = "a", x = 1)) == "type: scaled: by must be a Number, found a Text."
 isParamWrongDynamic() = stop(() -> callWith(scaled, [1])) == "type: scaled: x must be a Number, found an Array."
 isParamDefaultChecked() = stop(() -> wrongDefault()) == "type: wrongDefault: n must be an Int, found a Text."
 isParamTail() = down(100000) == 0 and stop(() -> down(2.5)) == "type: down: n must be an Int, found a Float."
-isParamOk() = unwrap(Ok(3)) == 3 and stop(() -> unwrap(Err(1))) == "type: unwrap: r must be an Ok, found an Err."
+isParamOk() = unwrap(result.Ok(3)) == 3 and stop(() -> unwrap(result.Err(1))) == "type: unwrap: r must be a result.Ok, found an Err."
 isMethodParam() = Pt(1, 2).Plus(3) == Pt(4, 5) and stop(() -> Pt(1).Plus(1.5)) == "type: Pt.Plus: d must be an Int, found a Float."
 isStaticParam() = Pt.Of(2) == Pt(2, 2) and stop(() -> Pt.Of("a")) == "type: Pt.Of: x must be an Int, found a Text."
-isFunctionParam() = apply(x -> x + 1, 1) == 2 and apply(Abs, -1) == 1 and stop(() -> apply(1, 1)) == "type: apply: f must be a Function, found an Int."
+isFunctionParam() = apply(x -> x + 1, 1) == 2 and apply(math.Abs, -1) == 1 and stop(() -> apply(1, 1)) == "type: apply: f must be a Function, found an Int."
 isKinds() = kinds(true, "a", [1, 2], {"k": 1}) == "true a 2 1"
-isKindsWrong() = stop(() -> kinds(1, "a", [1], {"k": 1})) == "type: kinds: b must be a Bool, found an Int." and stop(() -> kinds(true, "a", [1], Ok(1))) == "type: kinds: d must be a Dict, found an Ok."
+isKindsWrong() = stop(() -> kinds(1, "a", [1], {"k": 1})) == "type: kinds: b must be a Bool, found an Int." and stop(() -> kinds(true, "a", [1], result.Ok(1))) == "type: kinds: d must be a Dict, found an Ok."
 
 defn circleArea(c shapes.Circle)
   c.Area()
@@ -164,12 +171,12 @@ defn anonymous()
 end
 defn oneLine()
   (** On one line, a body that starts with a call. *)
-  f = defn (p Pt) Text(p.X) end
+  f = defn (p Pt) value.Text(p.X) end
   g = defn (p Pt, q Pt) norm(p) + norm(q) end
-  [f(Pt(1)), g(Pt(1), Pt(2, 3)), Map(defn (p Pt) norm(p) end, [Pt(4)])]
+  [f(Pt(1)), g(Pt(1), Pt(2, 3)), list.Map(defn (p Pt) norm(p) end, [Pt(4)])]
 end
 
-isOneLineAnonymousTyped() = Equal(oneLine(), ["1", 6, [4]])
+isOneLineAnonymousTyped() = value.Equal(oneLine(), ["1", 6, [4]])
 isAnonymousTyped() = anonymous() == 7 and stop(() -> (defn (p Pt) p.X end)(1)) == "type: <anonymous>: p must be a Pt, found an Int."
 
 defn writeConverts()
@@ -206,7 +213,7 @@ defn writeRecord()
   r.Mass
 end
 
-isWriteConverts() = Text(writeConverts()) == "[2.0, 1.0]"
+isWriteConverts() = value.Text(writeConverts()) == "[2.0, 1.0]"
 isWriteWrong() = stop(writeWrong) == "type: Car: Mass must be a Float, found a Text."
 isWritePath() = writePath() == 7
 isWriteDeep() = stop(writeDeep) == "type: Seg: From must be a Pt, found an Int."

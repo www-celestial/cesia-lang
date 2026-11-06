@@ -1,3 +1,4 @@
 x = 1
 y = x -- an old comment
-Print(y)
+io.Print(y)
+use std/io

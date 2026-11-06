@@ -1,2 +1,4 @@
-a = Zeros(500, 500)
-b = Matmul(a, a)
+use std/matrix
+
+a = matrix.Zeros(500, 500)
+b = matrix.Matmul(a, a)

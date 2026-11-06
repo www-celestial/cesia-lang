@@ -1,3 +1,5 @@
+use std/io
+
 (* A variable alone as a statement is still read: unset, it is an error. *)
 defn f(n)
   s = 0
@@ -7,6 +9,6 @@ defn f(n)
   end
   s
 end
-Print(f(3))
+io.Print(f(3))
 K = 1
-Print(f(3))
+io.Print(f(3))

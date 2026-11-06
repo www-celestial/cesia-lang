@@ -1,0 +1,9 @@
+(* A package of std/ that doesn't parse stops the program at its use, and cesia test too. *)
+use std/io
+use std/list
+
+(** One element, doubled.
+
+      Doubled() --> [2] *)
+Doubled() = list.Map(it * 2, [1])
+io.Print(Doubled())

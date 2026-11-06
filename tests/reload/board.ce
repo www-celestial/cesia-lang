@@ -2,13 +2,15 @@
     comes before view: what calls reloads before what it calls. *)
 use commands
 use std/sys
+use std/io
+use std/value
 
 shown() = commands.Value()
 
 defn watching(last)
   v = shown()
-  if not Equal(v, last)
-    Print("board $v")
+  if not value.Equal(v, last)
+    io.Print("board $v")
   end
   sys.Sleep(0.001)
   watching(v)

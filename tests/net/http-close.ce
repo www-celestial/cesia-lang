@@ -1,22 +1,26 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
 
-crlf = "$(Char(13))$(Char(10))"
+crlf = "$(text.Char(13))$(text.Char(10))"
 handle(r) = {Status: 200, Body: "x"}
 
 defn readToEnd(c, got)
   more = net.Read(c)?
-  if ByteLength(more) == 0 Ok(got) else readToEnd(c, "$got$more") end
+  if text.ByteLength(more) == 0 result.Ok(got) else readToEnd(c, "$got$more") end
 end
 
 defn closes(request)
   c = net.Connect("127.0.0.1", 18101)?
   net.Write(c, request)?
-  readToEnd(c, "") then MapOk(reply -> Split(crlf, reply)[1])
+  readToEnd(c, "") then result.MapOk(reply -> text.Split(crlf, reply)[1])
 end
 
-Spawn(() -> http.Serve(handle, port = 18101))
+fiber.Spawn(() -> http.Serve(handle, port = 18101))
 sys.Sleep(0)
-Print(closes("GET / HTTP/1.0$(crlf)$crlf"))
-Print(closes("GET / HTTP/1.1$(crlf)Connection: Close$(crlf)$crlf"))
+io.Print(closes("GET / HTTP/1.0$(crlf)$crlf"))
+io.Print(closes("GET / HTTP/1.1$(crlf)Connection: Close$(crlf)$crlf"))

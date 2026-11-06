@@ -1,5 +1,7 @@
+use std/io
+
 x = [1]
 for i in 1..60
   x = [x, x]
 end
-Print(x)
+io.Print(x)

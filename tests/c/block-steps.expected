@@ -1,4 +1,4 @@
-block-steps.ce:5:11: Limit "steps" reached.
-  5 |   c.Free(c.Alloc(100000))
+block-steps.ce:6:11: Limit "steps" reached.
+  6 |   c.Free(c.Alloc(100000))
     |           ^
 exit 1

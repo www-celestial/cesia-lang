@@ -1,4 +1,4 @@
-native-named.ce:1:7: Zeros has no argument named "nope".
-  1 | Print(Zeros(2, nope = 3))
-    |       ^
+native-named.ce:4:16: Zeros has no argument named "nope".
+  4 | io.Print(matrix.Zeros(2, nope = 3))
+    |                ^
 exit 1

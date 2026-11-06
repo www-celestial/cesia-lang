@@ -1,5 +1,7 @@
 use std/sys
-Print(sys.Run("sh", args = ["-c", "echo out; echo err >&2; exit 3"]))
-Print(sys.Run("sh", args = ["-c", "cat"], input = "typed"))
-Print(sys.Run("sh", args = ["-c", "echo \"$1\"", "--", "a; rm -rf b"]) then MapOk(it.Out))
-Print(sys.Run("sh", input = "x", args = ["-c", "cat"]) then MapOk(it.Out))
+use std/io
+use std/result
+io.Print(sys.Run("sh", args = ["-c", "echo out; echo err >&2; exit 3"]))
+io.Print(sys.Run("sh", args = ["-c", "cat"], input = "typed"))
+io.Print(sys.Run("sh", args = ["-c", "echo \"$1\"", "--", "a; rm -rf b"]) then result.MapOk(it.Out))
+io.Print(sys.Run("sh", input = "x", args = ["-c", "cat"]) then result.MapOk(it.Out))

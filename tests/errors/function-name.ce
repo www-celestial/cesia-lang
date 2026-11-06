@@ -1,2 +1,4 @@
+use std/io
+
 function = 1
-Print(function)
+io.Print(function)

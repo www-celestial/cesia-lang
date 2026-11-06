@@ -1,4 +1,9 @@
 use std/cpp
+use std/fiber
+use std/io
+use std/result
+use std/sys
+use std/text
 
 spec = {
   Name: "demo",
@@ -15,17 +20,17 @@ spec = {
 }
 
 defn main()
-  m = cpp.Wrap(spec, folder = Args[1], compiler = "g++")?
+  m = cpp.Wrap(spec, folder = sys.Args[1], compiler = "g++")?
   xs = m["Numbers.new"]()
   m["Numbers.push"](xs, 5)
   m["Numbers.push"](xs, 7)
-  Print(m["Numbers.count"](xs), m["Numbers.get"](xs, 1))
+  io.Print(m["Numbers.count"](xs), m["Numbers.get"](xs, 1))
   (* The message of the C++ exception, whatever the library: libstdc++ says vector::_M_range_check and more, libc++ says vector. *)
-  Print(Wait(Spawn(() -> m["Numbers.get"](xs, 9))) then MapErr(e -> StartsWith("C++: vector", e.Message)))
+  io.Print(fiber.Wait(fiber.Spawn(() -> m["Numbers.get"](xs, 9))) then result.MapErr(e -> text.StartsWith("C++: vector", e.Message)))
   m["Numbers.delete"](xs)
-  Print(m["gcd"](12, 18))
-  Print(m["upper"]("hello"))
-  Ok(missing)
+  io.Print(m["gcd"](12, 18))
+  io.Print(m["upper"]("hello"))
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

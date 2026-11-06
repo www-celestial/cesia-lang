@@ -2,8 +2,12 @@
 use std/http
 use std/net
 use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
 
-Spawn(() -> http.Serve(r -> {Status: 200, Body: "ok"}, port = 18203, timeout = 0.1))
+fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "ok"}, port = 18203, timeout = 0.1))
 sys.Sleep(0.05)
 
 defn main()
@@ -11,8 +15,8 @@ defn main()
   net.Write(c, "GET / HT")?
   start = sys.Now()
   got = net.Read(c)?
-  Print(ByteLength(got), sys.Now() - start < 1.0)
-  Ok(missing)
+  io.Print(text.ByteLength(got), sys.Now() - start < 1.0)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

@@ -10,4 +10,5 @@ defn Rect.Unit()
 end
 
 r = Rect.Unit()
-Print(r.Area())
+io.Print(r.Area())
+use std/io

@@ -2,6 +2,11 @@
     then 100,000 selects by key and 100,000 inserts in one transaction. Run as cesia run bench/db.ce, release profile. *)
 use std/sys
 use std/sql
+use std/io
+use std/list
+use std/math
+use std/result
+use std/text
 
 struct User { Id Int, Name Text, Score Float, CreatedAt Text }
 
@@ -12,9 +17,9 @@ defn best(f)
   for k in 1..5
     start = sys.Now()
     f()
-    times = Append(sys.Now() - start, times)
+    times = list.Append(sys.Now() - start, times)
   end
-  Min(times)
+  list.Min(times)
 end
 
 defn byKey(db)
@@ -27,7 +32,7 @@ defn inserts(tx)
   for i in 1..100000
     sql.Exec("insert into t (name) values (?)", ["x$i"], tx)?
   end
-  Ok(missing)
+  result.Ok(missing)
 end
 
 defn fresh()
@@ -43,9 +48,9 @@ defn main()
   cases = [["maps", () -> sql.Query(q, [], db)], ["as User.From", () -> sql.Query(q, [], db, as = User.From)], ["Each", () -> sql.Each(r -> r.Id, q, [], db)], ["Table", () -> sql.Table(q, [], db)], ["100k selects by key", () -> byKey(db)], ["100k inserts", fresh]]
   for c in cases
     t = best(c[2])
-    Print("$(PadRight(22, " ", c[1])) $(Round(t * 10000) / 10) ms")
+    io.Print("$(text.PadRight(22, " ", c[1])) $(math.Round(t * 10000) / 10) ms")
   end
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())

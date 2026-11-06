@@ -1,5 +1,5 @@
 3
-type-write.ce:8:11: Line: From must be a Point, found an Int.
-  8 | d.Lines[2].From = 3
-    |           ^
+type-write.ce:10:11: Line: From must be a Point, found an Int.
+  10 | d.Lines[2].From = 3
+     |           ^
 exit 1

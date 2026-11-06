@@ -1,4 +1,4 @@
-regex-memory.ce:2:23: Limit "memory" reached.
-  2 | Print(ByteLength(regex.Replace("", Repeat(500, "x"), Repeat(35000, "a"))))
-    |                       ^
+regex-memory.ce:4:31: Limit "memory" reached.
+  4 | io.Print(text.ByteLength(regex.Replace("", text.Repeat(500, "x"), text.Repeat(35000, "a"))))
+    |                               ^
 exit 1

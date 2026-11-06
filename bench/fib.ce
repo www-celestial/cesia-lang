@@ -1,3 +1,5 @@
+use std/io
+
 defn fib(n)
   if n < 2
     n
@@ -5,4 +7,4 @@ defn fib(n)
     fib(n - 1) + fib(n - 2)
   end
 end
-Print(fib(35))
+io.Print(fib(35))

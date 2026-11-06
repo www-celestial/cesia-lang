@@ -1,5 +1,10 @@
 use std/sys
-input = Join("", Fill("0123456789abcdef", 65536))
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
+input = text.Join("", list.Fill("0123456789abcdef", 65536))
 script = "head -c 1048576 /dev/zero; head -c 1048576 /dev/zero >&2; cat > /dev/null"
 r = sys.Run("sh", args = ["-c", script], input = input)
-Print(r then MapOk(x -> [Len(x.Out), Len(x.Err)]))
+io.Print(r then result.MapOk(x -> [value.Len(x.Out), value.Len(x.Err)]))

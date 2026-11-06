@@ -1,4 +1,7 @@
-a = Zeros(100000)
+use std/matrix
+use std/value
+
+a = matrix.Zeros(100000)
 for i in 1..1000
-  b = Equal(a, a)
+  b = value.Equal(a, a)
 end

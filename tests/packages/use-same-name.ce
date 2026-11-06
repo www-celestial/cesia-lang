@@ -1,3 +1,4 @@
 use tests/packages/other
 use tests/packages/dup/other
-Print(other.Which())
+use std/io
+io.Print(other.Which())

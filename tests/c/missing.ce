@@ -1,10 +1,13 @@
 use std/c
+use std/io
+use std/result
+use std/text
 
 defn check()
   lib = c.Open("m", version = 6)?
   c.Fn("cesia_no_such_function", [], "void", lib)
 end
 
-Print(c.Open("cesia_no_such_library") then MapErr(it.Kind))
-Print(c.Open("cesia_no_such_library") then MapErr(e -> e.Message then StartsWith("Can't load cesia_no_such_library: ")))
-Print(check() then MapErr(it.Message))
+io.Print(c.Open("cesia_no_such_library") then result.MapErr(it.Kind))
+io.Print(c.Open("cesia_no_such_library") then result.MapErr(e -> e.Message then text.StartsWith("Can't load cesia_no_such_library: ")))
+io.Print(check() then result.MapErr(it.Message))

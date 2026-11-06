@@ -1,10 +1,11 @@
 use std/http
 use std/sys
+use std/io
 
 defn handle(r)
   sys.Sleep(0.2)
   {Status: 200, Body: "slow"}
 end
 
-Print(http.Serve(handle, port = 18095))
-Print("stopped")
+io.Print(http.Serve(handle, port = 18095))
+io.Print("stopped")

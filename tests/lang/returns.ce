@@ -1,12 +1,16 @@
 (** Return types: written after the parameters, checked at each way out of the function. *)
 use tests/lang/mods/shapes
+use std/fiber
+use std/list
+use std/result
+use std/value
 
 struct Rect { Width, Height }
 struct Pt { X, Y = 0 }
 
-stop(f) = match Wait(Spawn(f))   (** What a call that stops says: its kind and its message. *)
-  Err(e) -> "$(e.Kind): $(e.Message)"
-  Ok(v) -> v
+stop(f) = match fiber.Wait(fiber.Spawn(f))   (** What a call that stops says: its kind and its message. *)
+  result.Err(e) -> "$(e.Kind): $(e.Message)"
+  result.Ok(v) -> v
 end
 
 callWith(f, x) = f(x)
@@ -29,7 +33,7 @@ end
 
 Rect.Unit() Rect = Rect(1, 1)
 
-isTypedResult() = Cube(2) == 8 and IsInt(Cube(2)) and Cube(0.5) == 0.125
+isTypedResult() = Cube(2) == 8 and value.IsInt(Cube(2)) and Cube(0.5) == 0.125
 isBlockResult() = Half(3) == 1.5 and Half(1.0) == 0.5 and callWith(Half, 5) == 2.5
 isMethodResult() = Rect.Square(2).Area() == 4 and Rect(1, 2).Scaled(3).Area() == 18 and Rect.Unit().Area() == 1
 
@@ -47,7 +51,7 @@ defn twiceEarly(x) Float
   0.5
 end
 
-isIntResultBecomesFloat() = IsFloat(Half2(3)) and IsFloat(twice(2)) and Text(twice(2)) == "4.0" and IsFloat(twice(2) + 1) and IsFloat(callWith(twice, 2)) and IsFloat(maybeTwice(1)) and IsFloat(twiceEarly(2)) and Text(twiceEarly(2)) == "4.0"
+isIntResultBecomesFloat() = value.IsFloat(Half2(3)) and value.IsFloat(twice(2)) and value.Text(twice(2)) == "4.0" and value.IsFloat(twice(2) + 1) and value.IsFloat(callWith(twice, 2)) and value.IsFloat(maybeTwice(1)) and value.IsFloat(twiceEarly(2)) and value.Text(twiceEarly(2)) == "4.0"
 
 (** With ?, a function can give missing: also by its end, or by a return with no value. *)
 maybeName(x) Text? = if x > 0 "a" else missing end
@@ -73,7 +77,7 @@ defn noValue(x) Int
   end
 end
 
-isOptionalResult() = IsMissing(maybeName(0)) and maybeName(1) == "a" and firstBig([1, 20]) == 20 and IsMissing(firstBig([1])) and IsMissing(quiet(1)) and quiet(0) == "loud"
+isOptionalResult() = value.IsMissing(maybeName(0)) and maybeName(1) == "a" and firstBig([1, 20]) == 20 and value.IsMissing(firstBig([1])) and value.IsMissing(quiet(1)) and quiet(0) == "loud"
 isMissingResultRefused() = stop(() -> noValue(1)) == "type: noValue: the result must be an Int, found missing." and stop(() -> noValue(0)) == "type: noValue: the result must be an Int, found missing."
 
 defn early(x) Int
@@ -88,14 +92,14 @@ isWrongResult() = stop(() -> Half2([1])) == "type: Half2: the result must be a F
 
 defn count(xs) Int
   (** A return inside a lambda belongs to the lambda. *)
-  names = Map(x -> "a", xs)
+  names = list.Map(x -> "a", xs)
   label = defn (x)
     if x > 1
       return "big"
     end
     "small"
   end
-  Len(names) + Len(Map(label, xs))
+  value.Len(names) + value.Len(list.Map(label, xs))
 end
 
 isLambdaReturnNotChecked() = count([1, 2]) == 4
@@ -111,7 +115,7 @@ defn local()
   [stop(() -> f(1)), stop(() -> inner(1)), inner("b")]
 end
 
-isAnonymousResult() = Equal(local(), ["type: <anonymous>: the result must be an Int, found a Text.", "type: inner: the result must be a Text, found an Int.", "b"])
+isAnonymousResult() = value.Equal(local(), ["type: <anonymous>: the result must be an Int, found a Text.", "type: inner: the result must be a Text, found an Int.", "b"])
 
 defn countdown(n) Text
   (** A function that calls itself in tail position checks only its last result. *)
@@ -132,14 +136,14 @@ mixedUp() Rect = shapes.MakeRect(2)
 isQualifiedResult() = outside().Side == 2 and stop(mixedUp) == "type: mixedUp: the result must be a returns.Rect, found a shapes.Rect."
 
 (** An Err that ? passes on leaves the function whatever its type. *)
-positive(x) = if x > 0 Ok(x) else Err("negative") end
+positive(x) = if x > 0 result.Ok(x) else result.Err("negative") end
 
 defn checked(x) Int
   y = positive(x)?
   y
 end
 
-isQuestionPassesTheErr() = checked(2) == 2 and Equal(checked(-1), Err("negative"))
+isQuestionPassesTheErr() = checked(2) == 2 and value.Equal(checked(-1), result.Err("negative"))
 
 interface Shape
   (** In an interface, a return type documents the method: meeting it counts only the methods and their parameters. *)
@@ -159,9 +163,9 @@ isInterfaceReturn() = measured(Square(3)) == 9 and sized(Square(2)) == 4 and mea
 
 defn oneLine()
   (** On one line, a body that starts with a call stays a body. *)
-  f = defn (p Pt) Text(p.X) end
+  f = defn (p Pt) value.Text(p.X) end
   g = defn (p Pt) Cube(p.X) end
   [f(Pt(1)), g(Pt(2))]
 end
 
-isOneLineBodyStays() = Equal(oneLine(), ["1", 8])
+isOneLineBodyStays() = value.Equal(oneLine(), ["1", 8])

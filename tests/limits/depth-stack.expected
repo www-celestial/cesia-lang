@@ -1,2 +1,2 @@
-depth-stack.ce:1:12: Limit "depth" reached.
+depth-stack.ce:3:12: Limit "depth" reached.
 exit 1

@@ -1,16 +1,16 @@
 5000
-depth.ce:6:9: Limit "depth" reached.
-  6 |     1 + down(n - 1)
+depth.ce:8:9: Limit "depth" reached.
+  8 |     1 + down(n - 1)
     |         ^
-  in down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
-  called from down (depth.ce:6)
+  in down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
+  called from down (depth.ce:8)
   ... and 9991 more
 exit 1

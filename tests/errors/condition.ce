@@ -1,1 +1,3 @@
-if 1 Print(2) end
+use std/io
+
+if 1 io.Print(2) end

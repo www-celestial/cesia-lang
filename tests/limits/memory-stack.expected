@@ -1,2 +1,2 @@
-memory-stack.ce:1:12: Limit "memory" reached.
+memory-stack.ce:3:12: Limit "memory" reached.
 exit 1

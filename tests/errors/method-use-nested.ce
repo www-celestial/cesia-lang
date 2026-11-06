@@ -1,4 +1,6 @@
+use std/io
+
 if true
   use tests/errors/meth/far as far
 end
-Print(far.Far.Make())
+io.Print(far.Far.Make())

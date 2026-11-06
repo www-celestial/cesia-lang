@@ -1,5 +1,8 @@
 use std/date
 use std/csv
+use std/list
+use std/result
+use std/value
 
 isEpoch() = date.Format(date.FromUnix(0)) == "1970-01-01T00:00:00Z"
 isKnown() = date.Format(date.FromUnix(1793534400)) == "2026-11-01T12:00:00Z"
@@ -11,18 +14,18 @@ isDaysInMonth() = date.DaysInMonth(2024, 2) == 29 and date.DaysInMonth(2026, 4) 
 isWeekday() = date.Weekday(date.Date(2026, 11, 1)) == 7 and date.Weekday(date.Date(1970, 1, 1)) == 4
 isAddDays() = date.FormatDate(date.AddDays(31, date.Date(2026, 12, 15))) == "2027-01-15"
 isBetween() = date.DaysBetween(date.Date(2026, 1, 1), date.Date(2026, 12, 31)) == 364
-isParse() = date.ToUnix(Unwrap(date.Parse("1970-01-02T00:00:01Z"))) == 86401
-isParseDay() = Unwrap(date.Parse("2026-11-01")).Month == 11
-isParseBad() = All(Map(IsErr, Map(date.Parse, ["", "2026", "2026-13-01", "2026-02-30", "a-b-c", "2026-01-01T25:00:00Z"])))
+isParse() = date.ToUnix(result.Unwrap(date.Parse("1970-01-02T00:00:01Z"))) == 86401
+isParseDay() = result.Unwrap(date.Parse("2026-11-01")).Month == 11
+isParseBad() = list.All(list.Map(result.IsErr, list.Map(date.Parse, ["", "2026", "2026-13-01", "2026-02-30", "a-b-c", "2026-01-01T25:00:00Z"])))
 
-isCsvPlain() = Equal(csv.Parse("a,b\n1,2\n"), [["a", "b"], ["1", "2"]])
-isCsvNoLastNewline() = Equal(csv.Parse("a,b"), [["a", "b"]])
-isCsvCrlf() = Equal(csv.Parse("a\r\nb\r\n"), [["a"], ["b"]])
-isCsvQuotes() = Equal(csv.Parse("\"a,b\",\"c\"\"d\"\n"), [["a,b", "c\"d"]])
-isCsvNewlineInQuotes() = Equal(csv.Parse("\"a\nb\",c\n"), [["a\nb", "c"]])
-isCsvEmptyFields() = Equal(csv.Parse(",\n"), [["", ""]])
-isCsvEmpty() = Equal(csv.Parse(""), [])
-isCsvSeparator() = Equal(csv.Parse("a;b\n", separator = ";"), [["a", "b"]])
+isCsvPlain() = value.Equal(csv.Parse("a,b\n1,2\n"), [["a", "b"], ["1", "2"]])
+isCsvNoLastNewline() = value.Equal(csv.Parse("a,b"), [["a", "b"]])
+isCsvCrlf() = value.Equal(csv.Parse("a\r\nb\r\n"), [["a"], ["b"]])
+isCsvQuotes() = value.Equal(csv.Parse("\"a,b\",\"c\"\"d\"\n"), [["a,b", "c\"d"]])
+isCsvNewlineInQuotes() = value.Equal(csv.Parse("\"a\nb\",c\n"), [["a\nb", "c"]])
+isCsvEmptyFields() = value.Equal(csv.Parse(",\n"), [["", ""]])
+isCsvEmpty() = value.Equal(csv.Parse(""), [])
+isCsvSeparator() = value.Equal(csv.Parse("a;b\n", separator = ";"), [["a", "b"]])
 isCsvRecords() = csv.Records("name,age\nann,30\n")[1]["age"] == "30"
 isCsvWrite() = csv.Write([["a", "b,c"], [1, "d\"e"]]) == "a,\"b,c\"\n1,\"d\"\"e\"\n"
-isCsvRoundTrip() = Equal(csv.Parse(csv.Write([["a,b", "c\nd", "e\"f"]])), [["a,b", "c\nd", "e\"f"]])
+isCsvRoundTrip() = value.Equal(csv.Parse(csv.Write([["a,b", "c\nd", "e\"f"]])), [["a,b", "c\nd", "e\"f"]])

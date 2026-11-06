@@ -1,8 +1,11 @@
+use std/io
+use std/value
+
 x = 3
-Print("v=$x, square=$(x * x), $$5")   (* v=3, square=9, $5 *)
-Print("a\"b $ c")                    (* a"b $ c *)
-Print(Len("été"))                 (* 3 *)
-Print(Text(1.5), Text(true))         (* 1.5 true *)
-Print(0.1 + 0.2)                     (* 0.30000000000000004 *)
-Print(1.0, 1e20, 1 / 0, -1 / 0)      (* 1.0 1e20 inf -inf *)
-Print(0 / 0)                         (* nan *)
+io.Print("v=$x, square=$(x * x), $$5")   (* v=3, square=9, $5 *)
+io.Print("a\"b $ c")                    (* a"b $ c *)
+io.Print(value.Len("été"))                 (* 3 *)
+io.Print(value.Text(1.5), value.Text(true))         (* 1.5 true *)
+io.Print(0.1 + 0.2)                     (* 0.30000000000000004 *)
+io.Print(1.0, 1e20, 1 / 0, -1 / 0)      (* 1.0 1e20 inf -inf *)
+io.Print(0 / 0)                         (* nan *)

@@ -1,5 +1,5 @@
-method-module-struct.ce:2:12: "Shown" needs a Far.
-  2 | Print(f.Far.Shown())
-    |            ^
+method-module-struct.ce:3:15: "Shown" needs a Far.
+  3 | io.Print(f.Far.Shown())
+    |               ^
   Write x.Shown(), with x a Far.
 exit 1

@@ -1,51 +1,57 @@
 (** The small functions of the prelude, in the spirit of clojure.core. *)
+use std/dict
+use std/fn
+use std/list
+use std/math
+use std/text
+use std/value
 
-isIncDec() = Inc(1) == 2 and Dec(1) == 0 and Equal(Inc([1, 2]), [2, 3]) and Inc(1.5) == 2.5
-isAddSubMul() = Reduce(Add, 0, [1, 2, 3]) == 6 and Sub(5, 2) == 3 and Reduce(Mul, 1, [2, 3]) == 6
-isSigns() = IsZero(0) and IsPos(1) and IsNeg(-1) and not IsZero(1) and not IsPos(0) and not IsNeg(0)
-isParity() = IsEven(2) and IsOdd(3) and not IsEven(3) and IsEven(0) and IsOdd(-1)
-isSomeValue() = IsSome(0) and not IsSome(missing)
+isIncDec() = math.Inc(1) == 2 and math.Dec(1) == 0 and value.Equal(math.Inc([1, 2]), [2, 3]) and math.Inc(1.5) == 2.5
+isAddSubMul() = list.Reduce(math.Add, 0, [1, 2, 3]) == 6 and math.Sub(5, 2) == 3 and list.Reduce(math.Mul, 1, [2, 3]) == 6
+isSigns() = math.IsZero(0) and math.IsPos(1) and math.IsNeg(-1) and not math.IsZero(1) and not math.IsPos(0) and not math.IsNeg(0)
+isParity() = math.IsEven(2) and math.IsOdd(3) and not math.IsEven(3) and math.IsEven(0) and math.IsOdd(-1)
+isSomeValue() = value.IsSome(0) and not value.IsSome(missing)
 
-isIdentity() = Identity(3) == 3
-isConstantly() = Constantly(7)(1) == 7
-isComp() = Comp(Inc, it * 2)(3) == 7 and Comp(Inc, Inc, Inc)(0) == 3
-isPartial() = Partial(Add, 2)(3) == 5 and Equal(Partial(Map, Inc)([1, 2]), [2, 3])
-isComplement() = Complement(IsEven)(3) and not Complement(IsEven)(2)
-isJuxt() = Equal(Juxt(Inc, Dec)(1), [2, 0]) and Equal(Juxt(Inc, Dec, Identity)(1), [2, 0, 1])
-isPipe() = Pipe(1, Inc) == 2 and Pipe(1, Inc, it * 3) == 6 and Pipe(1, Inc, Inc, Inc, Inc) == 5
+isIdentity() = fn.Identity(3) == 3
+isConstantly() = fn.Constantly(7)(1) == 7
+isComp() = fn.Comp(math.Inc, it * 2)(3) == 7 and fn.Comp(math.Inc, math.Inc, math.Inc)(0) == 3
+isPartial() = fn.Partial(math.Add, 2)(3) == 5 and value.Equal(fn.Partial(list.Map, math.Inc)([1, 2]), [2, 3])
+isComplement() = fn.Complement(math.IsEven)(3) and not fn.Complement(math.IsEven)(2)
+isJuxt() = value.Equal(fn.Juxt(math.Inc, math.Dec)(1), [2, 0]) and value.Equal(fn.Juxt(math.Inc, math.Dec, fn.Identity)(1), [2, 0, 1])
+isPipe() = fn.Pipe(1, math.Inc) == 2 and fn.Pipe(1, math.Inc, it * 3) == 6 and fn.Pipe(1, math.Inc, math.Inc, math.Inc, math.Inc) == 5
 
-isFirstSecondLast() = First([1, 2, 3]) == 1 and Second([1, 2, 3]) == 2 and Last([1, 2, 3]) == 3
-isFirstOfNothing() = IsMissing(First([])) and IsMissing(Second([1])) and IsMissing(Last([]))
-isRest() = Equal(Rest([1, 2, 3]), [2, 3]) and Equal(Rest([1]), []) and Equal(Rest([]), [])
-isButlast() = Equal(Butlast([1, 2, 3]), [1, 2]) and Equal(Butlast([]), [])
-isNth() = Nth(2, [5, 6]) == 6
-isIsEmpty() = IsEmpty([]) and not IsEmpty([1]) and IsEmpty("") and IsEmpty(Dict())
-isPrepend() = Equal(Prepend(1, [2]), [1, 2]) and Equal(Prepend(1, []), [1])
-isTakeLast() = Equal(TakeLast(2, [1, 2, 3]), [2, 3]) and Equal(TakeLast(5, [1]), [1]) and Equal(TakeLast(0, [1]), [])
-isDropLast() = Equal(DropLast(2, [1, 2, 3]), [1]) and Equal(DropLast(5, [1]), [])
-isTakeWhile() = Equal(TakeWhile(IsOdd, [1, 3, 4, 5]), [1, 3]) and Equal(TakeWhile(IsOdd, []), []) and Equal(TakeWhile(IsOdd, [2]), [])
-isDropWhile() = Equal(DropWhile(IsOdd, [1, 3, 4, 5]), [4, 5]) and Equal(DropWhile(IsOdd, [1]), [])
-isFindFirst() = FindFirst(IsEven, [1, 2, 4]) == 2 and IsMissing(FindFirst(IsEven, [1]))
-isRemove() = Equal(Remove(IsEven, [1, 2, 3]), [1, 3])
-isKeep() = Equal(Keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3]), [4, 6])
-isMapIndexed() = Equal(MapIndexed((k, x) -> k * x, [5, 6]), [5, 12])
-isInterleave() = Equal(Interleave([1, 2, 3], ["a", "b"]), [1, "a", 2, "b"])
-isInterpose() = Equal(Interpose(0, [1, 2, 3]), [1, 0, 2, 0, 3]) and Equal(Interpose(0, [1]), [1]) and Equal(Interpose(0, []), [])
-isEvery() = Every(IsOdd, [1, 3]) and not Every(IsOdd, [1, 2]) and Every(IsOdd, [])
-isSomeOf() = Some(IsOdd, [2, 3]) and not Some(IsOdd, [2]) and not Some(IsOdd, [])
-isIterate() = Equal(Iterate(Inc, 1, 3), [1, 2, 3]) and Equal(Iterate(Inc, 1, 0), [])
-isRepeatedly() = Equal(Repeatedly(() -> 5, 2), [5, 5]) and Equal(Repeatedly(() -> 5, 0), [])
-isFrequencies() = Equal(Frequencies(["a", "b", "a"]), {"a": 2, "b": 1})
-isMinByMaxBy() = MinBy(Abs, [-3, 1, 2]) == 1 and MaxBy(Abs, [-3, 1, 2]) == -3 and IsMissing(MinBy(Abs, []))
+isFirstSecondLast() = list.First([1, 2, 3]) == 1 and list.Second([1, 2, 3]) == 2 and list.Last([1, 2, 3]) == 3
+isFirstOfNothing() = value.IsMissing(list.First([])) and value.IsMissing(list.Second([1])) and value.IsMissing(list.Last([]))
+isRest() = value.Equal(list.Rest([1, 2, 3]), [2, 3]) and value.Equal(list.Rest([1]), []) and value.Equal(list.Rest([]), [])
+isButlast() = value.Equal(list.Butlast([1, 2, 3]), [1, 2]) and value.Equal(list.Butlast([]), [])
+isNth() = list.Nth(2, [5, 6]) == 6
+isIsEmpty() = value.IsEmpty([]) and not value.IsEmpty([1]) and value.IsEmpty("") and value.IsEmpty(dict.Dict())
+isPrepend() = value.Equal(list.Prepend(1, [2]), [1, 2]) and value.Equal(list.Prepend(1, []), [1])
+isTakeLast() = value.Equal(list.TakeLast(2, [1, 2, 3]), [2, 3]) and value.Equal(list.TakeLast(5, [1]), [1]) and value.Equal(list.TakeLast(0, [1]), [])
+isDropLast() = value.Equal(list.DropLast(2, [1, 2, 3]), [1]) and value.Equal(list.DropLast(5, [1]), [])
+isTakeWhile() = value.Equal(list.TakeWhile(math.IsOdd, [1, 3, 4, 5]), [1, 3]) and value.Equal(list.TakeWhile(math.IsOdd, []), []) and value.Equal(list.TakeWhile(math.IsOdd, [2]), [])
+isDropWhile() = value.Equal(list.DropWhile(math.IsOdd, [1, 3, 4, 5]), [4, 5]) and value.Equal(list.DropWhile(math.IsOdd, [1]), [])
+isFindFirst() = list.FindFirst(math.IsEven, [1, 2, 4]) == 2 and value.IsMissing(list.FindFirst(math.IsEven, [1]))
+isRemove() = value.Equal(list.Remove(math.IsEven, [1, 2, 3]), [1, 3])
+isKeep() = value.Equal(list.Keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3]), [4, 6])
+isMapIndexed() = value.Equal(list.MapIndexed((k, x) -> k * x, [5, 6]), [5, 12])
+isInterleave() = value.Equal(list.Interleave([1, 2, 3], ["a", "b"]), [1, "a", 2, "b"])
+isInterpose() = value.Equal(list.Interpose(0, [1, 2, 3]), [1, 0, 2, 0, 3]) and value.Equal(list.Interpose(0, [1]), [1]) and value.Equal(list.Interpose(0, []), [])
+isEvery() = list.Every(math.IsOdd, [1, 3]) and not list.Every(math.IsOdd, [1, 2]) and list.Every(math.IsOdd, [])
+isSomeOf() = list.Some(math.IsOdd, [2, 3]) and not list.Some(math.IsOdd, [2]) and not list.Some(math.IsOdd, [])
+isIterate() = value.Equal(list.Iterate(math.Inc, 1, 3), [1, 2, 3]) and value.Equal(list.Iterate(math.Inc, 1, 0), [])
+isRepeatedly() = value.Equal(list.Repeatedly(() -> 5, 2), [5, 5]) and value.Equal(list.Repeatedly(() -> 5, 0), [])
+isFrequencies() = value.Equal(list.Frequencies(["a", "b", "a"]), {"a": 2, "b": 1})
+isMinByMaxBy() = list.MinBy(math.Abs, [-3, 1, 2]) == 1 and list.MaxBy(math.Abs, [-3, 1, 2]) == -3 and value.IsMissing(list.MinBy(math.Abs, []))
 
-isUpdate() = Equal(Update("a", Inc, {"a": 1}), {"a": 2}) and Equal(Update("b", IsMissing, {"a": 1}), {"a": 1, "b": true})
-isMerge() = Equal(Merge({"a": 1, "b": 2}, {"b": 3}), {"a": 1, "b": 3})
-isMergeWith() = Equal(MergeWith(Add, {"a": 1, "b": 2}, {"b": 3}), {"a": 1, "b": 5})
-isSelectKeys() = Equal(SelectKeys(["a", "z"], {"a": 1, "b": 2}), {"a": 1})
-isZipmap() = Equal(Zipmap(["a", "b"], [1, 2]), {"a": 1, "b": 2})
-isInvert() = Equal(Invert({"a": 1}), {1: "a"})
-isGetIn() = GetIn(["a", "b"], {"a": {"b": 2}}) == 2 and IsMissing(GetIn(["a", "z"], {"a": {"b": 2}})) and IsMissing(GetIn(["a", "b"], {"a": 1}))
-isPutIn() = Equal(PutIn(["a", "b"], 3, {"a": {"b": 2}}), {"a": {"b": 3}}) and Equal(PutIn(["x", "y"], 1, Dict()), {"x": {"y": 1}})
-isUpdateIn() = Equal(UpdateIn(["a", "b"], Inc, {"a": {"b": 2}}), {"a": {"b": 3}})
+isUpdate() = value.Equal(dict.Update("a", math.Inc, {"a": 1}), {"a": 2}) and value.Equal(dict.Update("b", value.IsMissing, {"a": 1}), {"a": 1, "b": true})
+isMerge() = value.Equal(dict.Merge({"a": 1, "b": 2}, {"b": 3}), {"a": 1, "b": 3})
+isMergeWith() = value.Equal(dict.MergeWith(math.Add, {"a": 1, "b": 2}, {"b": 3}), {"a": 1, "b": 5})
+isSelectKeys() = value.Equal(dict.SelectKeys(["a", "z"], {"a": 1, "b": 2}), {"a": 1})
+isZipmap() = value.Equal(dict.Zipmap(["a", "b"], [1, 2]), {"a": 1, "b": 2})
+isInvert() = value.Equal(dict.Invert({"a": 1}), {1: "a"})
+isGetIn() = dict.GetIn(["a", "b"], {"a": {"b": 2}}) == 2 and value.IsMissing(dict.GetIn(["a", "z"], {"a": {"b": 2}})) and value.IsMissing(dict.GetIn(["a", "b"], {"a": 1}))
+isPutIn() = value.Equal(dict.PutIn(["a", "b"], 3, {"a": {"b": 2}}), {"a": {"b": 3}}) and value.Equal(dict.PutIn(["x", "y"], 1, dict.Dict()), {"x": {"y": 1}})
+isUpdateIn() = value.Equal(dict.UpdateIn(["a", "b"], math.Inc, {"a": {"b": 2}}), {"a": {"b": 3}})
 
-isStr() = Str() == "" and Str("a", 1, 2.5, [1]) == "a12.5[1]" and Str(missing) == "missing"
+isStr() = text.Str() == "" and text.Str("a", 1, 2.5, [1]) == "a12.5[1]" and text.Str(missing) == "missing"

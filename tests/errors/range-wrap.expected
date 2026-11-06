@@ -1,4 +1,4 @@
-range-wrap.ce:2:12: This range has too many elements.
-  2 | Print(Len(x..4611686018427387903))
-    |            ^
+range-wrap.ce:5:21: This range has too many elements.
+  5 | io.Print(value.Len(x..4611686018427387903))
+    |                     ^
 exit 1

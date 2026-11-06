@@ -1,2 +1,4 @@
+use std/io
+
 (* A range written as before 0.3 says how to write it now. *)
-Print(1:5)
+io.Print(1:5)

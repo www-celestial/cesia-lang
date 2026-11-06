@@ -1,2 +1,3 @@
 use std/sys
-Print(sys.Read("./data/../secret"))
+use std/io
+io.Print(sys.Read("./data/../secret"))

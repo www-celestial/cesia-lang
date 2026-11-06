@@ -1,4 +1,8 @@
 (** A copy is reserved before it is built. *)
-x = Repeat(3000000, "a")
-y = Upper(x)
-Print(Len(y))
+use std/io
+use std/text
+use std/value
+
+x = text.Repeat(3000000, "a")
+y = text.Upper(x)
+io.Print(value.Len(y))

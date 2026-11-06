@@ -1,4 +1,4 @@
-memory-map.ce:2:5: Limit "memory" reached.
-  2 | b = Sqrt(a)
-    |     ^
+memory-map.ce:6:9: Limit "memory" reached.
+  6 | b = math.Sqrt(a)
+    |         ^
 exit 1

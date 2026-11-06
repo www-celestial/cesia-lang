@@ -1,3 +1,6 @@
+use std/io
+use std/math
+
 (* An empty for keeps its variable as it was. *)
 defn g(n)
   i = 77
@@ -7,10 +10,10 @@ defn g(n)
   end
   s * 1000 + i
 end
-Print(g(0))
-Print(g(5))
+io.Print(g(0))
+io.Print(g(5))
 t = 0
 for j in 1..2000
-  t = t + g(Mod(j, 3))
+  t = t + g(math.Mod(j, 3))
 end
-Print(t)
+io.Print(t)

@@ -1,11 +1,13 @@
 (** Runs forever: tools/reload-test.sh edits the files of its package while it runs. *)
 use pack
 use std/sys
+use std/io
+use std/value
 
 defn watching(last)
   v = pack.Value()
-  if not Equal(v, last)
-    Print("pack $v")
+  if not value.Equal(v, last)
+    io.Print("pack $v")
   end
   sys.Sleep(0.001)
   watching(v)

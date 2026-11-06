@@ -1,3 +1,6 @@
+use std/io
+use std/math
+
 (* An overflow deep in native calls: the frames of the trace are the interpreter's. *)
 defn pow2(n)
   if n == 0
@@ -10,8 +13,8 @@ end
 defn many(k)
   s = 0
   for i in 1..k
-    s = s + pow2(Mod(i, 40))
+    s = s + pow2(math.Mod(i, 40))
   end
   s + pow2(70)
 end
-Print(many(20000))
+io.Print(many(20000))

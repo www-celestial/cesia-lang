@@ -1,3 +1,6 @@
+use std/io
+use std/matrix
+
 (* A shared array that the loop never writes is not copied. *)
 defn f(a, n, flag)
   s = 0.0
@@ -9,9 +12,9 @@ defn f(a, n, flag)
   end
   s
 end
-a = Zeros(1600000)
+a = matrix.Zeros(1600000)
 t = 0.0
 for k in 1..30
   t = t + f(a, 1, 0)
 end
-Print(t)
+io.Print(t)

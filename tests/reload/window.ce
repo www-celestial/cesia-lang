@@ -2,6 +2,9 @@
 use std/c
 use std/sdl
 use std/sys
+use std/fiber
+use std/io
+use std/result
 
 version() = 1
 finished() = false
@@ -14,7 +17,7 @@ defn update(event, state)
 end
 
 defn view(state)
-  Print("version $(version()) $(state.Count)")
+  io.Print("version $(version()) $(state.Count)")
   [{Kind: "clear", Color: 0x000000}]
 end
 
@@ -30,11 +33,11 @@ defn main()
   window = sdl.Open("test", 320, 200, "font.ttf")?
   event = c.Alloc(128)
   c.Set("u32", 0, 0x206, event)
-  Spawn(() -> feed(send, event))
+  fiber.Spawn(() -> feed(send, event))
   last = sdl.Run({Count: 0}, update, view, window, moving = s -> true)
   sdl.Close(window)
-  Print("ended $(last.Count)")
-  Ok(missing)
+  io.Print("ended $(last.Count)")
+  result.Ok(missing)
 end
 
 main()

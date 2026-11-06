@@ -1,2 +1,4 @@
+use std/io
+
 x = {X: 1}
-Print(x.Area())
+io.Print(x.Area())

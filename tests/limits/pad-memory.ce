@@ -1,1 +1,4 @@
-Print(ByteLength(PadLeft(10000, Repeat(100000, "x"), "")))
+use std/io
+use std/text
+
+io.Print(text.ByteLength(text.PadLeft(10000, text.Repeat(100000, "x"), "")))

@@ -1,3 +1,8 @@
-xs = Fill("abcdefghijklmnopqrstuvwxyz0123456789", 1000000)
-b = Join("", xs)
-Print(Len(b))
+use std/io
+use std/list
+use std/text
+use std/value
+
+xs = list.Fill("abcdefghijklmnopqrstuvwxyz0123456789", 1000000)
+b = text.Join("", xs)
+io.Print(value.Len(b))

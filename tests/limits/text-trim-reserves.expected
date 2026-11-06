@@ -1,4 +1,4 @@
-text-trim-reserves.ce:3:5: Limit "memory" reached.
-  3 | y = Trim(x)
-    |     ^
+text-trim-reserves.ce:7:9: Limit "memory" reached.
+  7 | y = text.Trim(x)
+    |         ^
 exit 1

@@ -1,4 +1,6 @@
 use tests/packages/geometry
 use tests/packages/other
+use std/io
+use std/text
 
-Print(Lines(other.DocOfArea())[3])
+io.Print(text.Lines(other.DocOfArea())[3])

@@ -1,5 +1,5 @@
-denied-read.ce:2:10: Permission "read" denied for ./x.
-  2 | Print(sys.Read("./x"))
-    |          ^
+denied-read.ce:3:13: Permission "read" denied for ./x.
+  3 | io.Print(sys.Read("./x"))
+    |             ^
   Run again with --allow read=./x, or a folder that holds it.
 exit 1

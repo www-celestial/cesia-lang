@@ -80,21 +80,30 @@ let test_calls src =
       else if String.starts_with ~prefix:"defn " line && is_test 5 then name_of 5
       else None
     in
-    Option.map (fun n -> Printf.sprintf "Print(Wait(Spawn(%s)))\n" n) found
+    Option.map (fun n -> Printf.sprintf "io.Print(fiber.Wait(fiber.Spawn(%s)))\n" n) found
   in
   String.concat "" (List.filter_map call (String.split_on_char '\n' src))
 
-let prelude_calls =
-  "Print(Map(x -> x + 1, [1, 2]))\n\
-   Print(Filter(x -> x > 1, [1, 2, 3]))\n\
-   Print(Reduce((a, x) -> a + x, 0, [1, 2, 3]))\n\
-   Print(Scan((a, x) -> a + x, 0, [1, 2, 3]))\n\
-   Print(Range(1, 10, step = 3))\n\
-   Print(Group(x -> Mod(x, 2), [1, 2, 3, 4]))\n\
-   Print(Top(2, [5, 1, 9, 3]))\n\
-   Print(Frequencies([1, 2.0, 1, \"a\"]))\n\
-   Print(Top(2, [{V: 1}, {V: 3}, {V: 2}], by = x -> x.V))\n\
-   Print(Group(x -> x, [\"a\", \"b\", \"a\"]))\n"
+let std_calls =
+  "io.Print(list.Map(x -> x + 1, [1, 2]))\n\
+   io.Print(list.Filter(x -> x > 1, [1, 2, 3]))\n\
+   io.Print(list.Reduce((a, x) -> a + x, 0, [1, 2, 3]))\n\
+   io.Print(list.Scan((a, x) -> a + x, 0, [1, 2, 3]))\n\
+   io.Print(list.Range(1, 10, step = 3))\n\
+   io.Print(list.Group(x -> math.Mod(x, 2), [1, 2, 3, 4]))\n\
+   io.Print(list.Top(2, [5, 1, 9, 3]))\n\
+   io.Print(list.Frequencies([1, 2.0, 1, \"a\"]))\n\
+   io.Print(list.Top(2, [{V: 1}, {V: 3}, {V: 2}], by = x -> x.V))\n\
+   io.Print(list.Group(x -> x, [\"a\", \"b\", \"a\"]))\n"
+
+(* The uses of the packages that the calls above name, at the end of a program, unless it has them. *)
+let with_uses src =
+  let has text =
+    let n = String.length src and m = String.length text in
+    let rec go i = i + m <= n && (String.sub src i m = text || go (i + 1)) in
+    go 0
+  in
+  src ^ String.concat "" (List.map (fun p -> if has ("use std/" ^ p) then "" else "\nuse std/" ^ p) [ "io"; "fiber"; "list"; "math" ]) ^ "\n"
 
 let kp_files dir =
   if not (Sys.file_exists dir) then []
@@ -106,8 +115,8 @@ let kp_files dir =
 let corpus () =
   let read f = In_channel.with_open_bin f In_channel.input_all in
   let programs = kp_files "tests/lang" @ kp_files "tests/net" @ kp_files "tests/c" in
-  let tests = List.map (fun f -> let s = read f in s ^ "\n" ^ test_calls s) programs in
-  let std = List.map (fun f -> read f ^ "\n" ^ prelude_calls) (kp_files "src/std") in
+  let tests = List.map (fun f -> let s = read f in with_uses (s ^ "\n" ^ test_calls s)) programs in
+  let std = List.map (fun f -> with_uses (read f ^ "\n" ^ std_calls)) (kp_files "src/std") in
   Array.of_list (tests @ std)
 
 (* Splits into words, spaces and signs: gluing the pieces gives back the original text. *)
@@ -127,7 +136,7 @@ let tokens s =
   Array.of_list (List.rev !out)
 
 let is_number t = t <> "" && t.[0] >= '0' && t.[0] <= '9'
-let hostile = [| "0"; "-1"; "4611686018427387903"; "nan"; "1e19"; "1.5"; "(1.0 / 0.0)"; "Spawn"; "Wait"; "missing" |]
+let hostile = [| "0"; "-1"; "4611686018427387903"; "nan"; "1e19"; "1.5"; "(1.0 / 0.0)"; "fiber.Spawn"; "fiber.Wait"; "missing" |]
 
 let pick st a = a.(Random.State.int st (Array.length a))
 

@@ -4,7 +4,9 @@ defn OnStop(stop)
   if stop.Reason == "start"
     debug.SetBreak("given.ce", 3)
   else
-    Print(Filter(it.Name == "a", stop.Frames[2].Vars)[1].Value)
+    io.Print(list.Filter(it.Name == "a", stop.Frames[2].Vars)[1].Value)
   end
   "continue"
 end
+use std/io
+use std/list

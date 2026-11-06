@@ -1,6 +1,6 @@
-fiber-line.ce:1:22: x
-  1 | r = Wait(Spawn(() -> Panic("x")))
-    |                      ^
-  in <anonymous> (fiber-line.ce:1)
-fiber-line.ce 1
+fiber-line.ce:5:37: x
+  5 | r = fiber.Wait(fiber.Spawn(() -> bug.Panic("x")))
+    |                                     ^
+  in <anonymous> (fiber-line.ce:5)
+fiber-line.ce 5
 exit 0

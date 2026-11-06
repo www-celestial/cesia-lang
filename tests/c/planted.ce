@@ -1,4 +1,6 @@
 (** A grant by name must not load a file planted in the current folder. *)
 use std/c
+use std/io
+use std/result
 
-Print(c.Open("planted") then MapErr(it.Kind))
+io.Print(c.Open("planted") then result.MapErr(it.Kind))

@@ -1,6 +1,6 @@
-library-caller.ce:3:3: unwrap on an error: no
-  3 |   Unwrap(r)
-    |   ^
-  in Unwrap (std/prelude.ce:211)
-  called from first (library-caller.ce:3)
+library-caller.ce:5:9: unwrap on an error: no
+  5 |   result.Unwrap(r)
+    |         ^
+  in Unwrap (std/result.ce:60)
+  called from first (library-caller.ce:5)
 exit 1

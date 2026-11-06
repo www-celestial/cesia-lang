@@ -1,2 +1,4 @@
+use std/io
+
 d = {"a": 1}
-Print(d["z"])
+io.Print(d["z"])

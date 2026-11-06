@@ -1,8 +1,10 @@
 (** A block and a task can have the same id without being equal. *)
 use std/c
+use std/fiber
+use std/io
 
 f() = 1
-t = Spawn(f)
+t = fiber.Spawn(f)
 b = c.Alloc(8)
-Wait(t)
-Print(b == t, b == b, b == c.Alloc(8))
+fiber.Wait(t)
+io.Print(b == t, b == b, b == c.Alloc(8))

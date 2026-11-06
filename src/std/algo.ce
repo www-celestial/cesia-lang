@@ -1,22 +1,28 @@
 (** Classic algorithms. Functions come first, the collection last. *)
 use std/heap
 use std/queue
+use std/dict
+use std/list
+use std/math
+use std/result
+use std/text
+use std/value
 
 defn Gcd(a, b)
   (** The greatest common divisor of two integers.
         Gcd(12, 18) --> 6 *)
   while b != 0
-    t = Mod(a, b)
+    t = math.Mod(a, b)
     a = b
     b = t
   end
-  Abs(a)
+  math.Abs(a)
 end
 
 (** The least common multiple of two integers, which is 0 if one is 0.
 
       Lcm(4, 6) --> 12 *)
-Lcm(a, b) = if a == 0 or b == 0 0 else Abs(Div(a, Gcd(a, b)) * b) end
+Lcm(a, b) = if a == 0 or b == 0 0 else math.Abs(math.Div(a, Gcd(a, b)) * b) end
 
 defn IsPrime(n)
   (** Is this integer a prime number? Tried by division, so it suits numbers that aren't huge.
@@ -27,7 +33,7 @@ defn IsPrime(n)
   end
   d = 2
   while d * d <= n
-    if Mod(n, d) == 0
+    if math.Mod(n, d) == 0
       return false
     end
     d += 1
@@ -42,7 +48,7 @@ defn Primes(n)
   if n < 2
     return []
   end
-  sieve = Fill(true, n)
+  sieve = list.Fill(true, n)
   sieve[1] = false
   d = 2
   while d * d <= n
@@ -63,9 +69,9 @@ defn LowerBound(x, xs)
 
         LowerBound(3, [1, 3, 5]) --> 2 *)
   lo = 1
-  hi = Len(xs) + 1
+  hi = value.Len(xs) + 1
   while lo < hi
-    mid = Div(lo + hi, 2)
+    mid = math.Div(lo + hi, 2)
     if xs[mid] < x
       lo = mid + 1
     else
@@ -80,39 +86,39 @@ defn BinarySearch(x, xs)
 
         BinarySearch(3, [1, 3, 5]) --> 2 *)
   at = LowerBound(x, xs)
-  if at <= Len(xs) and xs[at] == x at else missing end
+  if at <= value.Len(xs) and xs[at] == x at else missing end
 end
 
 defn Partition(f, xs)
   (** The elements split in a struct with yes (those f accepts) and no (the others).
 
-        Partition(IsEven, [1, 2, 3]).Yes --> [2] *)
-  {Yes: Filter(f, xs), No: Filter(x -> not f(x), xs)}
+        Partition(math.IsEven, [1, 2, 3]).Yes --> [2] *)
+  {Yes: list.Filter(f, xs), No: list.Filter(x -> not f(x), xs)}
 end
 
 defn Chunk(n, xs)
   (** The elements cut in pieces of n, the last one shorter if needed.
 
         Chunk(2, [1, 2, 3]) --> [[1, 2], [3]] *)
-  count = Len(xs)
-  [[xs[k] for k in i..Min(i + n - 1, count)] for i in Range(1, count, step = n)]
+  count = value.Len(xs)
+  [[xs[k] for k in i..list.Min(i + n - 1, count)] for i in list.Range(1, count, step = n)]
 end
 
 defn Windows(n, xs)
   (** Every run of n consecutive elements, sliding by one.
 
         Windows(2, [1, 2, 3]) --> [[1, 2], [2, 3]] *)
-  [[xs[k] for k in i..i + n - 1] for i in 1..Len(xs) - n + 1]
+  [[xs[k] for k in i..i + n - 1] for i in 1..value.Len(xs) - n + 1]
 end
 
 defn Permutations(xs)
   (** Every ordering of the elements.
 
         Permutations([1, 2]) --> [[1, 2], [2, 1]] *)
-  if Len(xs) <= 1
+  if value.Len(xs) <= 1
     return [xs]
   end
-  Flatten([[Concat([xs[i]], p) for p in Permutations(Concat(Take(i - 1, xs), Skip(i, xs)))] for i in 1..Len(xs)])
+  list.Flatten([[list.Concat([xs[i]], p) for p in Permutations(list.Concat(list.Take(i - 1, xs), list.Skip(i, xs)))] for i in 1..value.Len(xs)])
 end
 
 defn Combinations(k, xs)
@@ -122,85 +128,85 @@ defn Combinations(k, xs)
   if k == 0
     return [[]]
   end
-  if Len(xs) < k
+  if value.Len(xs) < k
     return []
   end
-  rest = Skip(1, xs)
-  withFirst = [Concat([xs[1]], c) for c in Combinations(k - 1, rest)]
-  Concat(withFirst, Combinations(k, rest))
+  rest = list.Skip(1, xs)
+  withFirst = [list.Concat([xs[1]], c) for c in Combinations(k - 1, rest)]
+  list.Concat(withFirst, Combinations(k, rest))
 end
 
 defn Levenshtein(a, b)
   (** The edit distance between two texts: the fewest insertions, deletions and replacements of a character.
 
         Levenshtein("kitten", "sitting") --> 3 *)
-  xs = Chars(a)
-  ys = Chars(b)
-  row = [k for k in 0..Len(ys)]
-  for i in 1..Len(xs)
-    next = Fill(i, Len(ys) + 1)
-    for j in 1..Len(ys)
+  xs = text.Chars(a)
+  ys = text.Chars(b)
+  row = [k for k in 0..value.Len(ys)]
+  for i in 1..value.Len(xs)
+    next = list.Fill(i, value.Len(ys) + 1)
+    for j in 1..value.Len(ys)
       cost = if xs[i] == ys[j] 0 else 1 end
-      next[j + 1] = Min(Min(next[j] + 1, row[j + 1] + 1), row[j] + cost)
+      next[j + 1] = list.Min(list.Min(next[j] + 1, row[j + 1] + 1), row[j] + cost)
     end
     row = next
   end
-  row[Len(ys) + 1]
+  row[value.Len(ys) + 1]
 end
 
 defn Bfs(start, neighbors)
   (** The nodes reached from start, breadth first: neighbors(node) gives the nodes next to one, and nodes are numbers or
       texts. *)
   seen = {(start): true}
-  visited = Dict()
+  visited = dict.Dict()
   todo = queue.Of([start])
   while not queue.IsEmpty(todo)
     node = queue.First(todo)
     todo = queue.Pop(todo)
-    visited[Len(visited) + 1] = node
+    visited[value.Len(visited) + 1] = node
     for next in neighbors(node)
-      if not Has(next, seen)
+      if not dict.Has(next, seen)
         seen[next] = true
         todo = queue.Push(next, todo)
       end
     end
   end
-  Values(visited)
+  dict.Values(visited)
 end
 
 defn Dfs(start, neighbors)
   (** The nodes reached from start, depth first, as bfs does breadth first.
 
         Dfs(1, n -> if n == 1 [2, 3] else [] end) --> [1, 2, 3] *)
-  seen = Dict()
-  visited = Dict()
+  seen = dict.Dict()
+  visited = dict.Dict()
   stack = {1: start}
-  while Len(stack) > 0
-    top = Len(stack)
+  while value.Len(stack) > 0
+    top = value.Len(stack)
     node = stack[top]
-    stack = Drop(top, stack)
-    if not Has(node, seen)
+    stack = dict.Drop(top, stack)
+    if not dict.Has(node, seen)
       seen[node] = true
-      visited[Len(visited) + 1] = node
-      for next in Reverse(neighbors(node))
-        stack[Len(stack) + 1] = next
+      visited[value.Len(visited) + 1] = node
+      for next in list.Reverse(neighbors(node))
+        stack[value.Len(stack) + 1] = next
       end
     end
   end
-  Values(visited)
+  dict.Values(visited)
 end
 
 defn Dijkstra(start, edges)
   (** edges(node) gives {Node, Weight} structs. The result gives the distance of each node reached. *)
-  best = Dict()
+  best = dict.Dict()
   todo = heap.Insert(0, start, heap.Empty())
   while not heap.IsEmpty(todo)
     top = heap.Peek(todo)
     todo = heap.Pop(todo)
-    if not Has(top.Value, best)
+    if not dict.Has(top.Value, best)
       best[top.Value] = top.Key
       for e in edges(top.Value)
-        if not Has(e.Node, best)
+        if not dict.Has(e.Node, best)
           todo = heap.Insert(top.Key + e.Weight, e.Node, todo)
         end
       end
@@ -211,29 +217,29 @@ end
 
 defn visit(node, needs, walk)
   (** needs(node) gives the nodes that come before it. An Err names a cycle. *)
-  mark = Get(node, walk.State)
+  mark = dict.Get(node, walk.State)
   if mark == "done"
-    return Ok(walk)
+    return result.Ok(walk)
   end
   if mark == "active"
-    return Err({Kind: "cycle", Message: "A cycle goes through $node."})
+    return result.Err({Kind: "cycle", Message: "A cycle goes through $node."})
   end
   walk.State[node] = "active"
   for before in needs(node)
     walk = visit(before, needs, walk)?
   end
   walk.State[node] = "done"
-  walk.Order[Len(walk.Order) + 1] = node
-  Ok(walk)
+  walk.Order[value.Len(walk.Order) + 1] = node
+  result.Ok(walk)
 end
 
 defn TopologicalSort(nodes, needs)
   (** The nodes ordered so that each comes after the ones it needs, in an Ok, or an Err of the kind "cycle".
 
-        TopologicalSort([1, 2], n -> if n == 2 [1] else [] end) --> Ok([1, 2]) *)
-  walk = {State: Dict(), Order: Dict()}
+        TopologicalSort([1, 2], n -> if n == 2 [1] else [] end) --> result.Ok([1, 2]) *)
+  walk = {State: dict.Dict(), Order: dict.Dict()}
   for node in nodes
     walk = visit(node, needs, walk)?
   end
-  Ok(Values(walk.Order))
+  result.Ok(dict.Values(walk.Order))
 end

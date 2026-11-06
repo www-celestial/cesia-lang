@@ -10,7 +10,7 @@ cp "$root/_build/default/src/bin/main.exe" "$top/plain/bin/cesia"
 cp "$root/_build/default/tests/c/libfixture.so" "$top/plain/lib/libbeside.so"
 cp "$root/_build/default/tests/c/libfixture.so" "$top/here/lib/libhere.so"
 ln -s "$top/release/bin/cesia" "$top/links/cesia"
-printf 'use std/c\nPrint(Args[1], IsOk(c.Open(Args[1])))\n' > "$top/open.ce"
+printf 'use std/c\nuse std/io\nuse std/sys\nuse std/result\nio.Print(sys.Args[1], result.IsOk(c.Open(sys.Args[1])))\n' > "$top/open.ce"
 cd "$top/here"
 "$top/release/bin/cesia" run $no_spec --allow ffi=beside ../open.ce beside
 "$top/links/cesia" run $no_spec --allow ffi=beside ../open.ce beside

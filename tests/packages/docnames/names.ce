@@ -1,7 +1,10 @@
 (* The packages of the project are modules of the docs, and DocEntry says where their names are. *)
 use std/cesia
+use std/io
+use std/list
+use std/text
 
-Print(Filter(m -> not StartsWith("std/", m), DocNames()))
-Print(DocNames("shapes"), DocNames("notes"))
+io.Print(list.Filter(m -> not text.StartsWith("std/", m), cesia.DocNames()))
+io.Print(cesia.DocNames("shapes"), cesia.DocNames("notes"))
 e = cesia.DocEntry("shapes.Unit")
-Print(e.Module, e.Signature, e.Text, e.File, e.Line, e.Builtin)
+io.Print(e.Module, e.Signature, e.Text, e.File, e.Line, e.Builtin)

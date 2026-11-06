@@ -1,3 +1,6 @@
-s = Repeat(1000000, "a")
-p = "$(Repeat(500000, "a"))b"
-Print(Find(p, s), Contains(p, s), ByteFind(p, 1, s))
+use std/io
+use std/text
+
+s = text.Repeat(1000000, "a")
+p = "$(text.Repeat(500000, "a"))b"
+io.Print(text.Find(p, s), text.Contains(p, s), text.ByteFind(p, 1, s))

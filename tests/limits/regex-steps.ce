@@ -1,2 +1,5 @@
 use std/regex
-Print(Len(regex.FindAll(".", Repeat(25000, "a"))))
+use std/io
+use std/text
+use std/value
+io.Print(value.Len(regex.FindAll(".", text.Repeat(25000, "a"))))

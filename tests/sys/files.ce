@@ -1,4 +1,6 @@
 use std/sys
+use std/io
+use std/result
 
 dir = "./tmp_files/a/b"
 path = "$dir/note.txt"
@@ -14,6 +16,6 @@ defn roundTrip()
   sys.Remove(dir)?
   sys.Remove("./tmp_files/a")?
   sys.Remove("./tmp_files")?
-  Ok([text, names, sys.Exists(path)])
+  result.Ok([text, names, sys.Exists(path)])
 end
-Print(roundTrip())
+io.Print(roundTrip())

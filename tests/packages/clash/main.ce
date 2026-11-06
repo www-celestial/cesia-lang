@@ -1,6 +1,7 @@
 (* A package of src/ named like a module of Cesia: the path tells them apart. *)
 use std/json
 use src/json as mine
+use std/io
 
-Print(json.Text(1))
-Print(mine.Text(1))
+io.Print(json.Text(1))
+io.Print(mine.Text(1))

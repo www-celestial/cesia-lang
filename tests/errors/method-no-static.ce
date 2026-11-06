@@ -1,2 +1,4 @@
+use std/io
+
 struct Rect { Width }
-Print(Rect.Nope())
+io.Print(Rect.Nope())

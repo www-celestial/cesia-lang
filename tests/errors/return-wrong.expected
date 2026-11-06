@@ -1,5 +1,5 @@
-return-wrong.ce:3:3: Half: the result must be a Float, found a Text.
-  3 |   Text(x / 2)
-    |   ^
-  in Half (return-wrong.ce:3)
+return-wrong.ce:6:8: Half: the result must be a Float, found a Text.
+  6 |   value.Text(x / 2)
+    |        ^
+  in Half (return-wrong.ce:6)
 exit 1

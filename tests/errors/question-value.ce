@@ -1,2 +1,4 @@
+use std/io
+
 f() = 1?
-Print(f())
+io.Print(f())

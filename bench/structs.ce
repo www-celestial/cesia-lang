@@ -1,5 +1,8 @@
+use std/io
+use std/list
+
 defn simulate(n, steps)
-  ps = Fill(0, n)
+  ps = list.Fill(0, n)
   for i in 1..n
     ps[i] = {X: i * 1.0, Y: 0.0, Vx: 1.0, Vy: i * 0.5}
   end
@@ -18,4 +21,4 @@ defn simulate(n, steps)
   end
   e
 end
-Print(simulate(1000, 5000))
+io.Print(simulate(1000, 5000))
