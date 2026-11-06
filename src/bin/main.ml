@@ -101,23 +101,12 @@ let changed stamps paths =
          before <> None)
     (List.sort_uniq compare paths)
 
-(* A package can use another, so a failure may only mean that what it needs comes later in the list: what failed is tried
-   again as long as something else loads. Only then are the errors shown, each one once, since the files of a package give the
-   same one. Returns the paths that still fail. *)
-let rec reload_all (w : Types.world) paths =
-  let failed =
-    List.filter_map
-      (fun path ->
-         match Loader.reload w path with
-         | Ok () -> None
-         | Error text -> Some (path, text))
-      paths
-  in
-  if failed <> [] && List.compare_lengths failed paths < 0 then reload_all w (List.map fst failed)
-  else begin
-    List.iter w.err (List.sort_uniq compare (List.map snd failed));
-    List.map fst failed
-  end
+(* The errors are shown each one once, since the files of a package give the same one. Returns the paths that still
+   fail. *)
+let reload_all (w : Types.world) paths =
+  let failed = Loader.reload_all w paths in
+  List.iter w.err (List.sort_uniq compare (List.map snd failed));
+  List.map fst failed
 
 (* Gives a signal its default action back. One that was ignored from the start stays ignored, as for a background job of
    a script. *)
@@ -176,12 +165,19 @@ let run args =
     | "--debugger" :: name :: rest ->
       let g = o.o_grants in
       options { o with o_debugger = Some name; o_grants = { g with perms = (Types.Debug, None) :: g.perms } } rest
+    | "--repl" :: rest ->
+      (* The prompt runs beside the program and may replace its functions, as a reload does. *)
+      Tier.watching := true;
+      let g = o.o_grants in
+      options { o with o_repl = true; o_grants = { g with perms = (Types.Debug, None) :: g.perms } } rest
     | file :: rest when not (String.starts_with ~prefix:"--" file) -> o, file, rest
+    | [] when o.o_repl -> o, "", []
     | _ -> usage ()
   in
   let o, file, rest = options (with_default_memory Runtime.default_options) args in
   let readable =
-    Package.files file <> []
+    file = ""
+    || Package.files file <> []
     || (Sys.file_exists file && (not (Sys.is_directory file))
         && (try In_channel.with_open_bin file ignore; true with Sys_error _ -> false))
   in

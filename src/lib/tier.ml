@@ -52,8 +52,11 @@ let the () = match !jit with Some j -> j | None -> invalid_arg "Tier: no JIT"
 
 let on () = !mode <> off && !available
 
+(* Native code runs no hook: with a debugger, it runs only while the program runs without steps. *)
+let free (w : world) = (not w.hooks) || (w.debug.mode == Running && not w.debug.stopped)
+
 let watch (w : world) (ver : version) =
-  if on () && (ver.ret == TI || ver.ret == TF) && not w.hooks then begin
+  if on () && (ver.ret == TI || ver.ret == TF) then begin
     let ri = ver.ri and rf = ver.rf and rv = ver.rv in
     let promote () =
       ver.ri <- ri;
@@ -64,7 +67,7 @@ let watch (w : world) (ver : version) =
     let calls = ref 0 in
     let due () =
       incr calls;
-      if !calls >= (if !mode = always then 1 else calls_before) then (promote (); true) else false
+      if !calls >= (if !mode = always then 1 else calls_before) && free w then (promote (); true) else false
     in
     ver.ri <- (fun ctx -> if due () then ver.ri ctx else ri ctx);
     ver.rf <- (fun ctx -> if due () then ver.rf ctx else rf ctx);
@@ -74,7 +77,7 @@ let watch (w : world) (ver : version) =
 let live (ctx : ctx) l = match l.code with Some _ as c when l.reloads = ctx.w.reloads -> c | _ -> None
 
 let ready (ctx : ctx) l ver =
-  if !mode = always && l.seen = 0 then begin
+  if !mode = always && l.seen = 0 && free ctx.w then begin
     l.seen <- 1;
     match loaded () with Some j -> j.compile ctx.w l ver | None -> ()
   end;
@@ -82,7 +85,7 @@ let ready (ctx : ctx) l ver =
 
 let hot (ctx : ctx) l ver outer =
   l.seen <- l.seen + 1;
-  if l.seen < checkpoints_before then None
+  if l.seen < checkpoints_before || not (free ctx.w) then None
   else match loaded () with Some j -> j.pick ctx l ver outer | None -> None
 
 let id l = l.expr.id

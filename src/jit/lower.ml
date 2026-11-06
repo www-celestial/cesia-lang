@@ -18,7 +18,8 @@ type st = {
   hidden : Ir.var Dynarray.t;
   resumes : int Dynarray.t;
   mutable loops : int list;  (* where a break goes *)
-  sites : (Pos.t * version) Dynarray.t;  (* each site and the version whose code it is in *)
+  sites : (Pos.t * version * Bytes.t) Dynarray.t;  (* each site, the version whose code it is in, what is assigned there *)
+  mutable live : Bytes.t;  (* with a debugger: what the last hook saw assigned, for the variables of a stop *)
   chains : (int * int * int) list Dynarray.t;  (* each site's inlined frames, as [Ir.func.chains] *)
   mutable inl : (int * int * int) list;  (* the inlined frames around the code being lowered, the innermost first *)
   mutable ret_to : (int * int) option;  (* in an inlined body: the register of its result and the block after it *)
@@ -43,7 +44,7 @@ let rec assigned acc (e : expr) =
   let blk acc b = Array.fold_left assigned acc b in
   let ixs acc a = Array.fold_left (fun acc -> function Ix x -> assigned acc x | All -> acc) acc a in
   match e.e with
-  | Lint _ | Lfloat _ | Lbool _ | Var _ | Break -> acc
+  | Lint _ | Lfloat _ | Lbool _ | Var _ | Break | Hook _ -> acc
   | Assign ({ b = Local j; _ }, v) -> assigned (j :: acc) v
   | For { var = { b = Local j; _ }; iter; fbody; _ } -> blk (assigned (j :: acc) iter) fbody
   | While { cond; body; _ } -> blk (assigned acc cond) body
@@ -80,7 +81,7 @@ let goto st l =
   st.cur <- l
 
 let site st pos =
-  Dynarray.add_last st.sites (pos, st.ver);
+  Dynarray.add_last st.sites (pos, st.ver, st.live);
   Dynarray.add_last st.chains st.inl;
   Dynarray.length st.sites - 1
 
@@ -292,6 +293,9 @@ and call_expr st e (call : call) =
        let vals = Array.map (expr st) a in
        let args = Array.map fst vals in
        let k = kind_of v.ret in
+       (* With a debugger, a stop shows the variables of every frame: only the interpreter's frames and a unit without
+          calls, whose one frame writes its variables back on an error, have them in their slots. *)
+       if st.w.hooks then raise No;
        note st v;
        if st.inl = [] && inlinable v then inline st e v vals
        else begin
@@ -383,6 +387,8 @@ and stmt st (e : expr) =
     if st.region && st.ret_to = None then close st (Out x) else give st x;
     st.cur <- block st
   | Lint _ | Lfloat _ -> ()
+  (* Native code runs no hook: a line with a breakpoint stays with the interpreter. *)
+  | Hook h -> if Debug.armed st.w st.ver.owner.file (Pos.line e.pos) then raise No else st.live <- h.live
   (* A variable alone reads it: one that may be unset, or of the module, stays with the interpreter, which says so. *)
   | Var { b = Local i; _ } when plain st i && (st.regs.(i) >= 0 || st.arrays.(i) >= 0) -> ()
   | Var _ -> raise No
@@ -617,12 +623,13 @@ and finish st name ~params ~vars =
       sites = Array.make (Dynarray.length st.sites) (-1);
       pure = not (has (function Ir.Set_elem _ | Set_at _ -> true | _ -> false));
       calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Dynarray.to_array st.chains;
+      spills = st.w.hooks;
       stride = st.mem.(0); need = st.mem.(1) },
     Dynarray.to_array st.sites )
 
 let start ?(region = false) (w : world) unit index (ver : version) =
   let f = ver.owner.func in
-  if w.hooks || ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
+  if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
   if (not region) && ver.ret != TI && ver.ret != TF then raise No;
   let kinds = Dynarray.create () in
   let regs = Array.make f.nvars (-1) and arrays = Array.make f.nvars (-1) and arr = Dynarray.create () in
@@ -638,16 +645,16 @@ let start ?(region = false) (w : world) unit index (ver : version) =
     | _ -> ()
   done;
   { w; ver; f; index; kinds; blocks = Dynarray.create (); cur = 0; regs; arrays; arr; hidden = Dynarray.create ();
-    resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); unit; body = 0; region; infos = Dynarray.create ();
+    resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); live = Bytes.empty; unit; body = 0; region; infos = Dynarray.create ();
     fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None; mem = [| 0; 0 |] }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
-let register (w : world) (fn : Ir.func) (pos : (Pos.t * version) array) =
+let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t) array) =
   let s = w.sites in
   Array.iteri
-    (fun j (p, (ver : version)) ->
+    (fun j (p, (ver : version), live) ->
        Dynarray.add_last s { sfile = ver.owner.file; spos = p; sfn = ver.owner.pname; sver = Some ver; soff = ver.frame;
-                             slive = Bytes.empty };
+                             slive = live };
        fn.sites.(j) <- Dynarray.length s - 1)
     pos
 

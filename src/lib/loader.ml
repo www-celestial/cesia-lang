@@ -452,7 +452,7 @@ and run_package ctx ~hooks ?natives ~key read =
     Hashtbl.remove w.loaded key;
     raise e
 
-and run_prepared ctx (file, m, fn, _) = Compile.run_main ctx ~file ~m fn
+and run_prepared ctx (file, m, fn, _) = ignore (Compile.run_main ctx ~file ~m fn)
 
 let folder ctx dir =
   let key = Package.absolute dir in
@@ -503,7 +503,8 @@ let load_debugger ctx name =
   match List.assoc_opt "OnStop" w.modules.(m).mnames with
   | Some k ->
     w.debug.on_stop <- w.modules.(m).cells.(k);
-    w.on_hook <- Debug.hook
+    w.on_hook <- Debug.hook;
+    w.on_error <- Debug.on_error
   | None -> use_error ~file:path ~pos ~kind:"name" Messages.no_on_stop
 
 (* Module 0: what only the compiler names. *)
@@ -666,9 +667,12 @@ let set_args_value w value =
   let sys = Option.value (List.assoc_opt "sys" w.native_modules) ~default:[] in
   w.native_modules <- ("sys", ("Args", value) :: List.remove_assoc "Args" sys) :: List.remove_assoc "sys" w.native_modules
 
-(* Module 0 holds what only the compiler names; the packages of std/ load at their first use. *)
+(* Module 0 holds what only the compiler names; the packages of std/ load at their first use. A package that the system
+   adds to, as std/debug, gets both parts. *)
 let init w =
-  w.native_modules <- std_packages () @ w.native_modules;
+  let added = w.native_modules in
+  let joined = List.map (fun (name, ns) -> name, ns @ Option.value (List.assoc_opt name added) ~default:[]) (std_packages ()) in
+  w.native_modules <- joined @ List.filter (fun (name, _) -> not (List.mem_assoc name joined)) added;
   if not (List.mem_assoc "Args" (Option.value (List.assoc_opt "sys" w.native_modules) ~default:[])) then set_args_value w no_args;
   w.modules <- [| core_module () |]
 
@@ -768,6 +772,14 @@ let reload w path =
       Compile.retire_all w;
       Ok ()
 
+(* A package can use another, so a failure may only mean that what it needs comes later in the list: what failed is tried
+   again as long as something else loads. Gives what still fails, with its error. *)
+let rec reload_all w paths =
+  let failed =
+    List.filter_map (fun path -> match reload w path with Ok () -> None | Error text -> Some (path, text)) paths
+  in
+  if failed <> [] && List.compare_lengths failed paths < 0 then reload_all w (List.map fst failed) else failed
+
 (* The files to watch. Sources embedded in the binary don't change. *)
 let watched w =
   let is_embedded path =
@@ -838,13 +850,30 @@ let guarded ?(strict = false) w body =
   flush stdout;
   code
 
+(* The prompt of cesia run --repl: its tool's Main runs as a fiber beside the program, which ends when it does. *)
+let start_prompt ctx =
+  let w = ctx.w in
+  let path = tool_path "repl" in
+  let ((_, m, _, _) as prepared) = prepare ctx ~path ~src:(List.assoc "repl" Embedded.tools) ~lookup:(lookup w) in
+  run_prepared ctx prepared;
+  Fiber.spawn ctx w.modules.(m).cells.(List.assoc "Main" w.modules.(m).mnames)
+
+(* The main file, or the first file of the main folder: where the prompt runs. *)
+let main_file path =
+  if path = "" || not (Package.is_dir path) then path
+  else match Package.files (Package.absolute path) with f :: _ -> Package.shown f | [] -> path
+
 let program ctx path args =
-  set_args ctx.w args;
-  ctx.w.root <- Package.root_of path;
+  let w = ctx.w in
+  set_args w args;
+  w.root <- Package.root_of (if path = "" then "." else path);
   (* A cesia.toml that asks for a newer Cesia stops the program before it starts, uses or not. *)
-  ignore (Package.sources ctx.w.root);
-  Option.iter (load_debugger ctx) ctx.w.debugger;
-  load ctx path;
+  ignore (Package.sources w.root);
+  Option.iter (load_debugger ctx) w.debugger;
+  w.debug.main <- main_file path;
+  let prompt = if w.repl then Some (start_prompt ctx) else None in
+  if path <> "" then load ctx path;
+  Option.iter (fun task -> ignore (Fiber.wait ctx task)) prompt;
   0
 
 let run ?strict w path args = guarded ?strict w (fun ctx -> program ctx path args)

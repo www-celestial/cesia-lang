@@ -81,6 +81,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   (* An error: the interpreter remakes its message from the operands, at the site, from this frame. *)
   let error code site a bv =
     stub (fun s ->
+        if fn.spills && not nested then spill s;
         let raw v = match v with Ir.Reg r -> Printf.bprintf s "  rsh x1, r%d, 1\n" r; "x1" | Int n -> string_of_int n | Float _ -> "0" in
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_a) (raw a);
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_b) (match bv with Some v -> raw v | None -> "0");

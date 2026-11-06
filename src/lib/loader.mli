@@ -48,6 +48,16 @@ val folder : ctx -> string -> int
     error returns its text, and the old code stays in place. *)
 val reload : world -> string -> (unit, string) result
 
+(** Reloads these files, trying again what failed as long as something else loads: a package may need one that comes
+    later. Gives what still fails, with its error. *)
+val reload_all : world -> string list -> (string * string) list
+
+(** The last module loaded from this path, or -1. *)
+val module_of : world -> string -> int
+
+(** The source last loaded from this path. *)
+val source_of : world -> string -> string option
+
 (** The files to watch for this program. *)
 val watched : world -> string list
 

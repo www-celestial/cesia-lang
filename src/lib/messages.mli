@@ -238,6 +238,7 @@ val range_too_long : t
 val no_on_stop : t
 val no_main : t
 val bad_answer : string -> t
+val need_frame : string -> t
 val need_text : string -> string -> t
 val empty_array : string -> t
 

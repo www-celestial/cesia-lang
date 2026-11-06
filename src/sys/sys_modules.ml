@@ -76,7 +76,8 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
         "StopAsked", Native.nat "StopAsked" 0 0 (fun _ _ -> Value.of_bool (Net.stop_asked net)) ]
   in
   Linalg.install ();
+  Eval.install w;
   w.native_modules <-
-    ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
+    ("debug", Term.natives poll @ Eval.natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
     :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
   fun () -> Net.stopping net

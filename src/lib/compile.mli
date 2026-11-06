@@ -6,8 +6,8 @@ val new_proto : file:int -> m:int -> Ast.func -> proto
 (** Gives the shape of a struct, declared in module [m], the types of its fields, which a write checks. *)
 val set_checks : world -> int -> Ast.func -> unit
 
-(** Compiles and runs the file level of a module. *)
-val run_main : ctx -> file:int -> m:int -> Ast.func -> unit
+(** Compiles and runs the file level of a module, at [ctx.b]: gives the value of its last statement. *)
+val run_main : ctx -> file:int -> m:int -> Ast.func -> t
 
 (** Calls a value, the called frame starting at [ctx.b + base]. *)
 val call_value : ctx -> base:int -> t -> t array -> t

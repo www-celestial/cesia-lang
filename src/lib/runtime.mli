@@ -6,6 +6,7 @@ type options = {
   o_grants : grants;
   o_no_spec : bool;
   o_debugger : string option;
+  o_repl : bool;  (** cesia run --repl *)
   o_period : int;
   o_sink : string -> unit;
   o_err : string -> unit;
@@ -18,7 +19,7 @@ val default_memory : int -> int
 val default_options : options
 val create_world : options -> world
 (** A new context, with stacks of [stack] entries that grow on demand. *)
-val create_ctx : ?stack:int -> ?fiber:bool -> world -> ctx
+val create_ctx : ?stack:int -> ?fiber:bool -> ?id:int -> world -> ctx
 
 (** Flushes the output buffer to [world.sink]. *)
 val flush_out : world -> unit

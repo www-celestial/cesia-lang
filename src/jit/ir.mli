@@ -73,6 +73,7 @@ type func = {
   sites : int array;  (** the sites, numbered in the world, that [Op], [Elem], [Call]... name by their index here *)
   pure : bool;  (** writes no array: a run that stops for want of stack can start again *)
   calls : bool;
+  spills : bool;  (** with a debugger: an error writes the variables back to their slots, for the stop *)
   chains : (int * int * int) list array;
       (** for each site, the inlined frames it is in, the innermost first: the register of the frame's base, its caller's
           base (-1 for the function's own frame) and the site of the call. An error there writes their links. *)

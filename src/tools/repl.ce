@@ -1,0 +1,30 @@
+(** The prompt of cesia run --repl, beside the running program: an expression shows its value, a definition replaces the
+    function in the program, which goes on with it. A block reads lines until its end. *)
+use std/debug
+use std/io
+use std/value
+
+defn Main()
+  (** Reads code and runs it in the program, until the end of the input. *)
+  while true
+    code = debug.ReadLine("> ")
+    if value.IsMissing(code)
+      return missing
+    end
+    while not debug.Complete(code)
+      more = debug.ReadLine(". ")
+      if value.IsMissing(more)
+        return missing
+      end
+      code = "$code\n$more"
+    end
+    match debug.Eval(code)
+      result.Ok(v) ->
+        if not value.IsMissing(v)
+          io.Print(v)
+        end
+      result.Err(e) -> io.Print("error: $e")
+    end
+  end
+end
+use std/result

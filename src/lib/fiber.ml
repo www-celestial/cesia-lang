@@ -88,7 +88,7 @@ let spawn (ctx : ctx) g =
   let id = s.next_id in
   s.next_id <- id + 1;
   let task = { result = None; waiters = []; items = Queue.create () } in
-  let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true w in
+  let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true ~id w in
   fiber.site <- ctx.site;
   let finish r =
     Runtime.settle fiber;

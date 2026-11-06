@@ -10,3 +10,9 @@ val yield : ctx -> unit
 
 (** The natives of std/fiber: [Spawn], [Wait] and the channels. *)
 val natives : (string * t) list
+
+(** Starts a function in a new fiber: gives its task, which [wait] waits for. *)
+val spawn : ctx -> t -> t
+
+(** Waits for a task to end: gives its result, an Ok of its value or an Err of its panic. *)
+val wait : ctx -> t -> t

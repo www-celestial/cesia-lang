@@ -49,6 +49,7 @@ type func = {
   sites : int array;
   pure : bool;
   calls : bool;
+  spills : bool;  (* with a debugger: an error writes the variables back to their slots, for the stop *)
   chains : (int * int * int) list array;
   stride : int;
   need : int;

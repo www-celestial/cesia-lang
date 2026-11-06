@@ -138,6 +138,7 @@ and ctx = {
   mutable again : bool;  (** tail recursion: the function must loop again *)
   max_depth : int;
   fiber : bool;  (** a spawned fiber, as opposed to the main program *)
+  id : int;  (** the number of the fiber, 0 for the main program *)
   w : world;
 }
 
@@ -170,10 +171,15 @@ and stop_mode =
 and debug = {
   mutable mode : stop_mode;
   mutable stopped : bool;  (** a stop doesn't trigger another one *)
-  mutable breaks : (string * int) list;
+  mutable breaks : (string * int * string) list;  (** file, line and condition, empty for none *)
   mutable on_stop : t;
   mutable last_file : int;
   mutable last_line : int;
+  mutable test : ctx -> int -> string -> bool;  (** is a condition true at a site: set by [Eval] *)
+  mutable scope : int list;  (** the modules of the code run at the prompt, the last first *)
+  mutable typed_uses : (string * string) list;  (** the uses written at the prompt: alias and path *)
+  mutable main : string;  (** the path of the main file *)
+  made : (string, t) Hashtbl.t;  (** code run in frames, made once as a function of their variables *)
 }
 
 and limits = { steps : int; memory_words : int; max_depth : int; nesting : int }
@@ -196,6 +202,7 @@ and world = {
   no_spec : bool;
   hooks : bool;  (** a debugger is present: the program's files have hooks *)
   debugger : string option;
+  repl : bool;  (** cesia run --repl: a prompt runs beside the program *)
   debug : debug;
   mutable on_hook : ctx -> int -> unit;  (** set by [Loader], so that [Compile] doesn't know [Debug] *)
   mutable hook_count : int;  (** the compiled hooks *)
@@ -206,6 +213,7 @@ and world = {
   mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
   mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)
   mutable on_panic : ctx -> exn -> unit;  (** set by [Loader]: reports the panic of a fiber *)
+  mutable on_error : ctx -> string -> unit;  (** with a debugger: a panic stops there, before it leaves *)
   out : Buffer.t;
   sink : string -> unit;
   err : string -> unit;

@@ -13,13 +13,14 @@ type options = {
   o_grants : grants;
   o_no_spec : bool;
   o_debugger : string option;
+  o_repl : bool;
   o_period : int;
   o_sink : string -> unit;
   o_err : string -> unit;
 }
 
 let default_options =
-  { o_limits = default_limits; o_grants = { all = false; perms = [] }; o_no_spec = false; o_debugger = None;
+  { o_limits = default_limits; o_grants = { all = false; perms = [] }; o_no_spec = false; o_debugger = None; o_repl = false;
     o_period = default_period;
     o_sink = (fun s -> print_string s; flush stdout);
     o_err = (fun s -> prerr_string s; flush stderr) }
@@ -31,6 +32,7 @@ let flush_out w =
   end
 
 let[@inline never] fail ctx kind (m : Messages.t) =
+  ctx.w.on_error ctx m.text;
   raise (Value.Kerr { kind; text = m.text; hint = m.hint; at = ctx.site })
 
 (* The link to the caller holds its base and, above it, the depth of the frame once counted. A new frame writes a link
@@ -135,7 +137,11 @@ let create_world o =
     no_spec = o.o_no_spec;
     hooks = o.o_debugger <> None;
     debugger = o.o_debugger;
-    debug = { mode = Starting; stopped = false; breaks = []; on_stop = Missing; last_file = -1; last_line = 0 };
+    repl = o.o_repl;
+    debug =
+      { mode = Starting; stopped = false; breaks = []; on_stop = Missing; last_file = -1; last_line = 0;
+        test = (fun _ _ _ -> true); scope = []; typed_uses = []; main = "";
+        made = Hashtbl.create 8 };
     on_hook = (fun _ _ -> ());
     hook_count = 0;
     sched = { ready = Queue.create (); next_id = 1; jobs = 0; current = None };
@@ -144,6 +150,7 @@ let create_world o =
     native_modules = [];
     yield = (fun _ -> ());
     on_panic = (fun _ _ -> ());
+    on_error = (fun _ _ -> ());
     out = Buffer.create 4096;
     sink = o.o_sink;
     err = o.o_err;
@@ -161,7 +168,7 @@ let create_world o =
 
 let first_refill w = min (min w.period w.limits.steps) w.limits.max_depth
 
-let create_ctx ?(stack = initial_stack) ?(fiber = false) w =
+let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
   { v = Array.make stack Undef;
     f = Float.Array.make stack 0.;
     i = Array.make stack 0;
@@ -174,6 +181,7 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) w =
     again = false;
     max_depth = w.limits.max_depth;
     fiber;
+    id;
     w }
 
 (* Three stacks of [cap] entries. *)

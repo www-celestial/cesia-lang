@@ -3509,7 +3509,8 @@ let run_main (ctx : ctx) ~file ~m (fn : func) =
   let ver = Infer.version_for w proto [||] in
   let ver = if ver.sg = [||] && not w.no_spec then (let v = Infer.make_version proto [||] in proto.versions <- [ v ]; v) else ver in
   compile_version ctx ver;
-  ignore (ver.rv ctx);
+  if ctx.b + ver.size > ctx.cap then Runtime.grow ctx (ctx.b + ver.size);
+  let value = ver.rv ctx in
   (* Variables that stayed local are copied to their cells, for export. *)
   let md = w.modules.(m) in
   Array.iteri
@@ -3522,7 +3523,8 @@ let run_main (ctx : ctx) ~file ~m (fn : func) =
             | TF -> Float (Float.Array.get ctx.f p)
             | _ -> Value.share ctx.v.(p))
        end)
-    fn.export_of
+    fn.export_of;
+  value
 
 
 (* A version from before a reload. Already compiled code, sometimes still running, calls it: it keeps its frame

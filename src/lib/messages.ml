@@ -202,12 +202,13 @@ let index_count = plain "An array has 2 dimensions: use one or two indexes."
 let range_too_long = plain "This range has too many elements."
 let no_on_stop = plain "The debugger has no function OnStop(stop)."
 let no_main = plain "This tool has no function Main()."
+let need_frame a = plain (Printf.sprintf "Eval needs a frame of a stop, as stop.Frames[1], not %s." a)
 let bad_answer a =
   plain (Printf.sprintf "OnStop must return \"continue\", \"step\", \"next\" or \"out\", not %s." a)
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
-  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
+  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
   \       cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]\n\
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia do [task]\n\

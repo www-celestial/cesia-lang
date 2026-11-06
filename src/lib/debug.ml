@@ -2,7 +2,7 @@ open Types
 
 let frame_keys = Trie.names [| "Function"; "File"; "Line"; "Vars" |]
 let var_keys = Trie.names [| "Name"; "Value" |]
-let stop_keys = Trie.names [| "File"; "Line"; "Reason"; "Frames" |]
+let stop_keys = Trie.names [| "File"; "Line"; "Reason"; "Frames"; "Fiber"; "Error" |]
 
 let record keys fields = Trie.record keys fields
 
@@ -50,7 +50,7 @@ let frame ctx base at =
     [| Text name; Text path; Int (Pos.line site.spos); row (vars ctx base site) |]
 
 (* From the current frame to the file, following the links. *)
-let stop_value ctx s reason =
+let stop_value ctx s reason error =
   let w = ctx.w in
   (* The first frame of a fiber links back to the site of its spawn, which lives on another stack. *)
   let rec walk base at acc =
@@ -58,39 +58,50 @@ let stop_value ctx s reason =
     let caller = Runtime.link_base ctx.i.(base) in
     if base = 0 || (ctx.fiber && caller = 0) then List.rev acc else walk caller ctx.i.(base + 1) acc
   in
-  let site = Dynarray.get w.sites s in
+  (* An error inside a library stops at the line of the program that called it: the line to change. *)
+  let site = Dynarray.get w.sites (Runtime.user_site ctx s) in
   let path, _ = Dynarray.get w.files site.sfile in
-  record stop_keys [| Text path; Int (Pos.line site.spos); Text reason; row (walk ctx.b s []) |]
+  let error = match error with Some text -> Text text | None -> Missing in
+  record stop_keys [| Text path; Int (Pos.line site.spos); Text reason; row (walk ctx.b s []); Int ctx.id; error |]
+
+(* Native code runs no hook: after a stop, which may have set a breakpoint or asked for steps, it all goes back to the
+   interpreter, as after a reload, and becomes native again once hot, if the debugger lets it run (Tier). *)
+let back_to_interpreter w =
+  if Option.is_some !Tier.jit then begin
+    w.reloads <- w.reloads + 1;
+    Compile.retire_all w
+  end
 
 (* The debugger runs on the same ctx, just above what is alive in the current frame. *)
-let stop ctx s reason =
+let stop ?error ctx s reason =
   let w = ctx.w in
   let d = w.debug in
-  let value = stop_value ctx s reason in
+  let value = stop_value ctx s reason error in
   let base = (Dynarray.get w.sites s).soff in
   d.stopped <- true;
   ctx.site <- s;
-  let answer =
-    match Compile.call_value ctx ~base d.on_stop [| value |] with
-    | v ->
-      d.stopped <- false;
-      v
-    | exception e ->
-      d.stopped <- false;
-      raise e
-  in
-  ctx.site <- s;
-  d.mode <-
-    (match answer with
-     | Text "continue" -> Running
-     | Text "step" -> Stepping
-     | Text "next" -> Until (Runtime.frames ctx)
-     | Text "out" -> Until (Runtime.frames ctx - 1)
-     | v -> Runtime.fail ctx Type (Messages.bad_answer (Value.describe v)))
+  (* A wrong answer is an error of the debugger, which doesn't stop again. *)
+  Fun.protect
+    ~finally:(fun () -> d.stopped <- false)
+    (fun () ->
+       let answer = Compile.call_value ctx ~base d.on_stop [| value |] in
+       ctx.site <- s;
+       back_to_interpreter w;
+       d.mode <-
+         (match answer with
+          | Text "continue" -> Running
+          | Text "step" -> Stepping
+          | Text "next" -> Until (Runtime.frames ctx)
+          | Text "out" -> Until (Runtime.frames ctx - 1)
+          | v -> Runtime.fail ctx Type (Messages.bad_answer (Value.describe v))))
 
 let same_file path file =
   String.equal (Runtime.normalize path) (Runtime.normalize file)
   || ((not (String.contains file '/')) && String.equal (Filename.basename path) file)
+
+let armed w file line =
+  let path, _ = Dynarray.get w.files file in
+  List.exists (fun (f, l, _) -> l = line && same_file path f) w.debug.breaks
 
 let hook ctx s =
   let w = ctx.w in
@@ -103,7 +114,9 @@ let hook ctx s =
     d.last_file <- site.sfile;
     d.last_line <- line;
     let path, _ = Dynarray.get w.files site.sfile in
-    let on_break = arrived && List.exists (fun (f, l) -> l = line && same_file path f) d.breaks in
+    let on_break =
+      arrived && List.exists (fun (f, l, c) -> l = line && same_file path f && (c = "" || d.test ctx s c)) d.breaks
+    in
     if on_break then stop ctx s "break"
     else
       match d.mode with
@@ -113,6 +126,11 @@ let hook ctx s =
       | Running -> ()
   end
 
+(* A panic stops where it happens, with every variable, before it leaves: but in the debugger itself. *)
+let on_error ctx text =
+  let w = ctx.w in
+  if (not w.debug.stopped) && ctx.site >= 0 && ctx.site < Dynarray.length w.sites then stop ~error:text ctx ctx.site "error"
+
 let hooks_compiled w = w.hook_count
 
 let line_arg ctx name v =
@@ -120,23 +138,19 @@ let line_arg ctx name v =
   | Int i -> i
   | _ -> Runtime.fail ctx Type (Messages.want_int name (Value.describe v))
 
+(* One breakpoint per line: a new condition replaces the one before. *)
 let set_break ctx (a : t array) =
   let d = ctx.w.debug in
-  let place = Native.text_arg ctx "SetBreak" a.(0), line_arg ctx "SetBreak" a.(1) in
-  if not (List.mem place d.breaks) then d.breaks <- place :: d.breaks;
+  let file = Native.text_arg ctx "SetBreak" a.(0) and line = line_arg ctx "SetBreak" a.(1) in
+  let cond = if Array.length a > 2 then Native.text_arg ctx "SetBreak" a.(2) else "" in
+  d.breaks <- (file, line, cond) :: List.filter (fun (f, l, _) -> f <> file || l <> line) d.breaks;
   Missing
 
 let clear_break ctx (a : t array) =
   let d = ctx.w.debug in
-  let place = Native.text_arg ctx "ClearBreak" a.(0), line_arg ctx "ClearBreak" a.(1) in
-  d.breaks <- List.filter (fun b -> b <> place) d.breaks;
+  let file = Native.text_arg ctx "ClearBreak" a.(0) and line = line_arg ctx "ClearBreak" a.(1) in
+  d.breaks <- List.filter (fun (f, l, _) -> f <> file || l <> line) d.breaks;
   Missing
-
-let read_line ctx _ =
-  Runtime.flush_out ctx.w;
-  match In_channel.input_line stdin with
-  | Some l -> Text l
-  | None -> Missing
 
 (* A command line into words: the core has no text functions. A number becomes an integer. *)
 let words ctx (a : t array) =
@@ -145,7 +159,6 @@ let words ctx (a : t array) =
   row (List.map word (List.filter (fun w -> w <> "") (String.split_on_char ' ' spaced)))
 
 let natives =
-  [ "SetBreak", Native.nat ~perm:Debug "SetBreak" 2 2 set_break;
+  [ "SetBreak", Native.nat ~perm:Debug ~params:[| "file"; "line"; "condition" |] "SetBreak" 2 3 set_break;
     "ClearBreak", Native.nat ~perm:Debug "ClearBreak" 2 2 clear_break;
-    "ReadLine", Native.nat ~perm:Debug "ReadLine" 0 0 read_line;
     "Words", Native.nat "Words" 1 1 words ]
