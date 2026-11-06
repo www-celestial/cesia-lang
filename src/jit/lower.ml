@@ -1064,7 +1064,7 @@ let lower_unit ?ctx ?scope (w : world) (ver : version) first =
     let fs = Dynarray.to_array out in
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
     Some (Array.map fst fs)
-  | exception No -> (if Sys.getenv_opt "CESIA_JIT_WHY" <> None then prerr_endline (Printexc.get_backtrace ())); None
+  | exception No -> None
 
 let unit (w : world) (ver : version) = lower_unit w ver None
 

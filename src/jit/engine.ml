@@ -216,7 +216,6 @@ let compile (ctx : ctx) (l : Tier.loop) ver =
        | None -> l.failed <- true)
     | None -> l.failed <- true
     | exception Lower.Unseen ->
-      if Sys.getenv_opt "CESIA_JIT_WHY" <> None then prerr_endline ("unseen: " ^ Printexc.get_backtrace ());
       l.tries <- l.tries + 1;
       if l.tries >= max_tries then l.failed <- true
   end

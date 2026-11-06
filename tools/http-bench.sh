@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Requests per second of http.serve against Node, one process at a time. --connections N measures only that load.
+# PROGRAM=bench/real/http.ce measures that server instead, alone: a small JSON API, for the JIT.
 set -u
 cd "$(dirname "$0")/.."
 dune build --profile release 2>&1 | head -20
@@ -35,6 +36,7 @@ measure() {  # name, port, command...
   wait "$pid" 2>/dev/null
 }
 
-measure cesia 19100 "$cesia" run --allow net=:19100 bench/http.ce
-[ -n "$only" ] || measure node 19101 node bench/http.js
+program=${PROGRAM:-bench/http.ce}
+measure cesia 19100 "$cesia" run --allow net=:19100 "$program"
+[ -n "$only" ] || [ "$program" != bench/http.ce ] || measure node 19101 node bench/http.js
 exit 0
