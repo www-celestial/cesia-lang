@@ -308,7 +308,7 @@ defn fetch(path, from, version)
     sys.Mkdir(parent(dir))?
     cloned = git(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", version, "--", gitUrl(from), staging])
     if result.IsErr(cloned)
-      removeAll(staging)
+      _ = removeAll(staging)
       return result.Err("Can't fetch $path at $version: $(cloned.Error)")
     end
     removeAll(dir)?

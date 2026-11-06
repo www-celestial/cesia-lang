@@ -137,7 +137,7 @@ end
 defn close(t)
   t.Api.ClearErrors()
   t.Api.Shutdown(t.Ssl)
-  flush(t)
+  _ = flush(t)
   release(t)
   net.Close(t.Socket)
 end

@@ -232,7 +232,7 @@ defn connection(handle, io, buffer, options)
     if result.IsErr(sent) or (parsed.Value.Close and value.IsMissing(done.Upgrade))
       io.Close()
     else if not value.IsMissing(done.Upgrade)
-      fiber.Wait(fiber.Spawn(() -> done.Upgrade(io, parsed.Value.Rest)))
+      _ = fiber.Wait(fiber.Spawn(() -> done.Upgrade(io, parsed.Value.Rest)))
       io.Close()
     else
       io.Arm(options.Timeout)

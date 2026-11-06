@@ -6,12 +6,12 @@ results.ce:20:17: warning: Load gives a result, used here as a plain value.
   20 |   n = value.Len(Load(path))
      |                 ^^^^
   An Err would pass for a value: add ?, match it, or Unwrap it.
-results.ce:25:15: warning: json.Parse gives a result, used here as a plain value.
-  25 |   io.Print("$(json.Parse(text))", sys.Read(path).Value)
+results.ce:26:15: warning: json.Parse gives a result, used here as a plain value.
+  26 |   io.Print("$(json.Parse(text))", sys.Read(path).Value)
      |               ^^^^^^^^^^
   An Err would pass for a value: add ?, match it, or Unwrap it.
-results.ce:26:15: warning: sys.Read gives a result, used here as a plain value.
-  26 |   for line in sys.Read(path)
+results.ce:27:15: warning: sys.Read gives a result, used here as a plain value.
+  27 |   for line in sys.Read(path)
      |               ^^^^^^^^
   An Err would pass for a value: add ?, match it, or Unwrap it.
 check: 0 errors, 4 warnings, in 1 file.

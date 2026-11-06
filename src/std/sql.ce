@@ -295,7 +295,7 @@ txExec(sql, tx) = sqlite3.Exec(sql, [], tx.Conn)
 defn undo(texts, tx, out)
   (** Rolls back, and gives out. *)
   for t in texts
-    txExec(t, tx)
+    _ = txExec(t, tx)
   end
   out
 end

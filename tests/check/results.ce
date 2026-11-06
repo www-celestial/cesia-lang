@@ -18,6 +18,7 @@ defn Keep(path)
     return r
   end
   n = value.Len(Load(path))
+  same = sys.Read(path) == result.Ok(text)
   m = match json.Parse(text)
     result.Ok(v) -> v
     result.Err(e) -> missing

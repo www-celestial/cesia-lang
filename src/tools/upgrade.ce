@@ -98,14 +98,14 @@ defn replace(home, fresh, binary)
   target = "$home/bin/cesia$ext"
   old = "$home/bin/.old-cesia$ext"
   if sys.Exists(old)
-    sys.Remove(old)
+    _ = sys.Remove(old)
   end
   if sys.Exists(target)
     sys.Rename(target, old)?
   end
   moved = sys.Rename("$fresh/bin/cesia$ext", target)
   if result.IsErr(moved)
-    sys.Rename(old, target)
+    _ = sys.Rename(old, target)
     return moved
   end
   short = "$home/bin/ce$ext"
@@ -120,7 +120,7 @@ defn replace(home, fresh, binary)
     end
     sys.Rename("$fresh/lib", "$home/lib")?
   end
-  sys.Remove(old)
+  _ = sys.Remove(old)
   result.Ok(missing)
 end
 
@@ -193,16 +193,16 @@ defn upgrade(args)
   sys.Write("$fresh/$archive", bytes)?
   unpacked = sys.Run("tar", args = [if windows "-xf" else "-xzf" end, "$fresh/$archive", "-C", fresh])?
   if unpacked.Code != 0
-    removeAll(fresh)
+    _ = removeAll(fresh)
     return result.Err("Can't unpack $archive: $(text.Trim(unpacked.Err)). Nothing changed.")
   end
   tried = versionOf("$fresh/bin/cesia$(if text.EndsWith(".exe", binary) ".exe" else "" end)")
   if result.IsErr(tried) or not text.StartsWith("cesia ", tried.Value)
-    removeAll(fresh)
+    _ = removeAll(fresh)
     return result.Err("The new binary doesn't answer as Cesia: nothing changed.")
   end
   replace(home, fresh, binary)?
-  removeAll(fresh)
+  _ = removeAll(fresh)
   io.Print("$(tried.Value) is in place.")
   result.Ok(missing)
 end

@@ -185,6 +185,8 @@ let rec walk w add known host (u : use) (e : expr) =
     (* A native wants a plain value, but io.Print, which shows an Ok or an Err as well. *)
     let native = match target w c.callee with Some (_, _, Native n) -> n.nname <> "Print" | _ -> false in
     Array.iter (fun (a : arg) -> go (if native then Plain else Kept) a.value) c.args
+  (* == and != compare whole values: a result to an expected one is no mistake. *)
+  | Bin ((Eq | Ne), a, b) -> go Kept a; go Kept b
   | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> go Plain a; go Plain b
   | Neg a | Not a -> go Plain a
   | Field (a, ("Value" | "Error")) -> go Kept a

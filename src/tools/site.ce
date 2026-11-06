@@ -791,7 +791,7 @@ defn allRun(jobs)
   done = fiber.Channel()
   fibers = [fiber.Spawn(() -> worker(queue, done)) for i in 1..list.Min(columns.Cores(), value.Len(jobs))]
   for f in fibers
-    fiber.Wait(f)
+    _ = fiber.Wait(f)
   end
   dict.Dict([{Key: d.Name, Value: d.Result} for d in drained(done)])
 end
@@ -985,13 +985,13 @@ defn bookRuns(pages, site, root, config)
         end
       else
         out[j.Path] = r.Value
-        sys.Write(j.Key, json.Text(r.Value))
+        _ = sys.Write(j.Key, json.Text(r.Value))
       end
     end
   end
   for f in if sys.Exists(kept) sys.List(kept).Value else [] end
     if not (f in used)
-      sys.Remove("$kept/$f")
+      _ = sys.Remove("$kept/$f")
     end
   end
   out
