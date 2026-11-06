@@ -31,5 +31,9 @@ language.
 4. [Lists and arrays](lists.md): from 1, ranges, sorting, sums and matrices.
 5. [Choices and loops](choices.md): `if`, `for`, `while` and `match`.
 6. [Functions](functions.md): your own functions, and those that take functions.
+7. [Maps](maps.md): values under names, counting, nested dictionaries.
+8. [Structs](structs.md): shapes declared once, defaults, methods, `From` and `Fields`.
+9. [Errors](errors.md): `Ok` and `Err`, `?`, steps on results, and bugs.
+10. [Types](types.md): types on fields, parameters and results, `?` for missing, interfaces.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.

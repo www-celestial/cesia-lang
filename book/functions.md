@@ -152,4 +152,4 @@ end
 
 ## Next
 
-You can write functions and pass them around. The next chapter, Maps, holds values under names: `{Name: "Ana", Age: 31}`.
+You can write functions and pass them around. The next chapter, [Maps](maps.md), holds values under names: `{Name: "Ana", Age: 31}`.
