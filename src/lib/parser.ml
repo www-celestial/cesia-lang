@@ -19,6 +19,8 @@ type p = {
   mutable saw_end : bool;
   mutable stmt_at : int;  (* where the current statement starts *)
   mutable bound : (string * Pos.t) list;  (* each name the file gives a value to, and where, reversed *)
+  mutable first : expr option;  (* an operand already read, which the next [unary] gives *)
+  mutable its : int;  (* the [it] read so far: arguments that read none need no search for one *)
 }
 
 let error p pos (m : Messages.t) =
@@ -26,13 +28,13 @@ let error p pos (m : Messages.t) =
 
 let cur p =
   if p.mode = Ignore then
-    while p.toks.(p.i).t = NL do p.i <- p.i + 1 done;
+    while p.toks.(p.i).t == NL do p.i <- p.i + 1 done;
   p.toks.(p.i)
 
 let advance p = p.i <- p.i + 1
 
 let skip_nl p =
-  while p.toks.(p.i).t = NL do p.i <- p.i + 1 done
+  while p.toks.(p.i).t == NL do p.i <- p.i + 1 done
 
 let tok_text = function
   | INT i -> string_of_int i
@@ -54,7 +56,7 @@ let unexpected p what =
   error p t.pos (Messages.expected what (tok_text t.t))
 
 let expect p tok what =
-  if (cur p).t = tok then advance p else unexpected p what
+  if (cur p).t == tok then advance p else unexpected p what
 
 let node p pos e =
   let id = p.next_id in
@@ -88,7 +90,7 @@ let hooked p pos (e : expr) = if p.hooks then [| hook p pos; e |] else [| e |]
 (* Where the token after the [)] matching the current [(] is. *)
 let paren_end p =
   let k = ref (p.i + 1) and depth = ref 1 in
-  while !depth > 0 && p.toks.(!k).t <> EOF do
+  while !depth > 0 && p.toks.(!k).t != EOF do
     (match p.toks.(!k).t with
      | LP -> incr depth
      | RP -> decr depth
@@ -96,7 +98,7 @@ let paren_end p =
     incr k
   done;
   if p.mode = Ignore then
-    while p.toks.(!k).t = NL do incr k done;
+    while p.toks.(!k).t == NL do incr k done;
   !k
 
 let after_paren p = p.toks.(paren_end p).t
@@ -108,13 +110,13 @@ let is_receiver p =
   (match p.toks.(p.i + 1).t, p.toks.(p.i + 2).t with NAME _, NAME _ -> true | _ -> false)
   &&
   let k = paren_end p in
-  (match p.toks.(k).t with NAME _ -> true | _ -> false) && p.toks.(k + 1).t = LP
+  (match p.toks.(k).t with NAME _ -> true | _ -> false) && p.toks.(k + 1).t == LP
 
 (* Where a type written at token k ends, Point or geo.Point, either with ?: k itself if there is none. *)
 let type_end p k =
-  let opt j = if p.toks.(j).t = QUESTION then j + 1 else j in
+  let opt j = if p.toks.(j).t == QUESTION then j + 1 else j in
   match p.toks.(k).t with
-  | NAME _ when p.toks.(k + 1).t = DOT -> (match p.toks.(k + 2).t with NAME _ -> opt (k + 3) | _ -> k)
+  | NAME _ when p.toks.(k + 1).t == DOT -> (match p.toks.(k + 2).t with NAME _ -> opt (k + 3) | _ -> k)
   | NAME _ -> opt (k + 1)
   | _ -> k
 
@@ -124,38 +126,44 @@ let ends_header p k = match p.toks.(type_end p k).t with NL | EOF -> true | _ ->
 let next_tok p =
   let k = ref (p.i + 1) in
   if p.mode = Ignore then
-    while p.toks.(!k).t = NL do incr k done;
+    while p.toks.(!k).t == NL do incr k done;
   p.toks.(!k).t
 
+(* Every expression passes here, so no closure: an error ends the parse, and nothing needs the depth back then. *)
 let rec expr p =
-  deeper p (fun () ->
-      let t = cur p in
-      match t.t with
-      | NAME _ when next_tok p = ARROW -> lambda p
-      | LP when after_paren p = ARROW -> lambda p
-      | _ -> then_expr p)
+  p.depth <- p.depth + 1;
+  if p.depth > p.nesting then error p (cur p).pos Messages.too_nested;
+  let t = cur p in
+  let e =
+    match t.t with
+    | NAME _ when next_tok p == ARROW -> lambda p
+    | LP when after_paren p == ARROW -> lambda p
+    | _ -> then_expr p
+  in
+  p.depth <- p.depth - 1;
+  e
 
 (* x then f(a): the value becomes the last positional argument, or takes the place of a lone [it]. *)
 and then_expr p =
-  let l = ref (or_expr p) in
-  let rec go () =
-    if p.mode = Lines && (cur p).t = NL && following p = THEN then skip_nl p;
+  let l = ref (operators p) in
+  let more = ref true in
+  while !more do
+    if p.mode = Lines && (cur p).t == NL && following p == THEN then skip_nl p;
     let t = cur p in
-    if t.t = THEN then begin
+    if t.t == THEN then begin
       advance p;
       skip_nl p;
       let rhs = or_expr p in
-      l := apply_then p t.pos !l rhs;
-      go ()
+      l := apply_then p t.pos !l rhs
     end
-  in
-  go ();
+    else more := false
+  done;
   !l
 
 (* The first token after the newlines. *)
 and following p =
   let k = ref p.i in
-  while p.toks.(!k).t = NL do incr k done;
+  while p.toks.(!k).t == NL do incr k done;
   p.toks.(!k).t
 
 and apply_then p pos value (rhs : expr) =
@@ -226,7 +234,7 @@ and param p what =
     advance p;
     let ptype = match (cur p).t with NAME _ -> Some (type_ref p) | _ -> None in
     let default =
-      if (cur p).t = ASSIGN then begin
+      if (cur p).t == ASSIGN then begin
         advance p;
         Some (expr p)
       end else None
@@ -239,8 +247,8 @@ and type_ref p =
   let tpos = (cur p).pos in
   let word () = match (cur p).t with NAME n -> advance p; n | _ -> unexpected p "a type" in
   let first = word () in
-  let tpkg, tname = if (cur p).t = DOT then (advance p; Some first, word ()) else None, first in
-  let topt = (cur p).t = QUESTION in
+  let tpkg, tname = if (cur p).t == DOT then (advance p; Some first, word ()) else None, first in
+  let topt = (cur p).t == QUESTION in
   if topt then advance p;
   { tpos; tpkg; tname; topt; tb = Unresolved }
 
@@ -249,13 +257,13 @@ and listed ?(binds = false) p opening close what =
   with_mode p Ignore (fun () ->
       expect p opening (Printf.sprintf "\"%s\"" (tok_text opening));
       let out = ref [] in
-      while (cur p).t <> close do
+      while (cur p).t != close do
         let at = (cur p).pos in
         let q = param p what in
         if binds then bind p q.pname at;
         out := q :: !out;
-        if (cur p).t = COMMA then advance p
-        else if (cur p).t <> close then unexpected p (Printf.sprintf "\",\" or \"%s\"" (tok_text close))
+        if (cur p).t == COMMA then advance p
+        else if (cur p).t != close then unexpected p (Printf.sprintf "\",\" or \"%s\"" (tok_text close))
       done;
       advance p;
       Array.of_list (List.rev !out))
@@ -300,7 +308,7 @@ and function_expr p pos =
         in_func p fname pos (fun () ->
             let ps = Array.append self (params p) in
             let ret = match (cur p).t with NAME _ when ends_header p p.i -> Some (type_ref p) | _ -> None in
-            let body = block p (fun t -> t = END) in
+            let body = block p (fun t -> t == END) in
             expect p END "end";
             ps, ret, body)
       in
@@ -314,13 +322,13 @@ and definition_name p =
     | NAME n -> advance p; n
     | _ -> unexpected p what
   in
-  if (cur p).t = LP then begin
+  if (cur p).t == LP then begin
     advance p;
     let at = (cur p).pos in
     let pname = word "a parameter name" in
     bind p pname at;
     let sname = word "the name of a struct" in
-    if (cur p).t = DOT then error p (cur p).pos Messages.method_foreign;
+    if (cur p).t == DOT then error p (cur p).pos Messages.method_foreign;
     expect p RP "\")\"";
     let shown = sname ^ "." ^ word "a method name" in
     [| { pname; default = None; ptype = None } |], shown, shown
@@ -328,11 +336,11 @@ and definition_name p =
   else begin
     let at = (cur p).pos in
     let n = word "a name" in
-    if (cur p).t = DOT then begin
+    if (cur p).t == DOT then begin
       advance p;
       let at = (cur p).pos in
       let m = word "a method name" in
-      if (cur p).t = DOT then error p (cur p).pos Messages.method_foreign;
+      if (cur p).t == DOT then error p (cur p).pos Messages.method_foreign;
       if m = "From" then error p at (Messages.from_static n);
       [||], n ^ ":" ^ m, n ^ "." ^ m
     end
@@ -355,7 +363,7 @@ and short_def p pos (self, key, fname) =
 
 and or_expr p =
   let l = ref (and_expr p) in
-  while (cur p).t = OR do
+  while (cur p).t == OR do
     let pos = (cur p).pos in
     advance p;
     skip_nl p;
@@ -365,7 +373,7 @@ and or_expr p =
 
 and and_expr p =
   let l = ref (not_expr p) in
-  while (cur p).t = AND do
+  while (cur p).t == AND do
     let pos = (cur p).pos in
     advance p;
     skip_nl p;
@@ -373,8 +381,21 @@ and and_expr p =
   done;
   !l
 
+(* Most expressions are a lone operand, as a name or a call: read it, and climb the levels of the operators only when one
+   follows. *)
+and operators p =
+  if (cur p).t == NOT then or_expr p
+  else begin
+    let u = unary p in
+    match (cur p).t with
+    | OR | AND | EQEQ | NE | LT | LE | GT | GE | IN | DOTDOT | COLON | PLUS | MINUS | STAR | SLASH ->
+      p.first <- Some u;
+      or_expr p
+    | _ -> u
+  end
+
 and not_expr p =
-  if (cur p).t = NOT then begin
+  if p.first == None && (cur p).t == NOT then begin
     let pos = (cur p).pos in
     advance p;
     node p pos (Not (deeper p (fun () -> not_expr p)))
@@ -389,7 +410,7 @@ and compare p =
   in
   match op with
   | None ->
-    if (cur p).t = IN then begin
+    if (cur p).t == IN then begin
       let pos = (cur p).pos in
       advance p;
       skip_nl p;
@@ -417,45 +438,41 @@ and range p =
 and starts_value p =
   p.mode = Row
   && (let t = cur p in
-      t.sp && (t.t = MINUS || t.t = PLUS) && not p.toks.(p.i + 1).sp)
+      t.sp && (t.t == MINUS || t.t == PLUS) && not p.toks.(p.i + 1).sp)
 
 and additive p =
   let l = ref (multiplicative p) in
-  let rec go () =
-    match (cur p).t with
-    | (PLUS | MINUS) when starts_value p -> ()
-    | PLUS -> step Add
-    | MINUS -> step Sub
-    | _ -> ()
-  and step op =
-    let pos = (cur p).pos in
-    advance p;
-    skip_nl p;
-    l := node p pos (Bin (op, !l, multiplicative p));
-    go ()
-  in
-  go ();
+  let more = ref true in
+  while !more do
+    let t = cur p in
+    match t.t with
+    | (PLUS | MINUS) when not (starts_value p) ->
+      advance p;
+      skip_nl p;
+      l := node p t.pos (Bin ((if t.t == PLUS then Add else Sub), !l, multiplicative p))
+    | _ -> more := false
+  done;
   !l
 
 and multiplicative p =
   let l = ref (unary p) in
-  let rec go () =
-    match (cur p).t with
-    | STAR -> step Mul
-    | SLASH -> step Div
-    | _ -> ()
-  and step op =
-    let pos = (cur p).pos in
-    advance p;
-    skip_nl p;
-    l := node p pos (Bin (op, !l, unary p));
-    go ()
-  in
-  go ();
+  let more = ref true in
+  while !more do
+    let t = cur p in
+    match t.t with
+    | STAR | SLASH ->
+      advance p;
+      skip_nl p;
+      l := node p t.pos (Bin ((if t.t == STAR then Mul else Div), !l, unary p))
+    | _ -> more := false
+  done;
   !l
 
 and unary p =
-  if (cur p).t = MINUS then begin
+  match p.first with
+  | Some u -> p.first <- None; u
+  | None ->
+  if (cur p).t == MINUS then begin
     let pos = (cur p).pos in
     advance p;
     let a = deeper p (fun () -> unary p) in
@@ -467,7 +484,7 @@ and unary p =
 
 and power p =
   let base = postfix p in
-  if (cur p).t = CARET then begin
+  if (cur p).t == CARET then begin
     let pos = (cur p).pos in
     advance p;
     skip_nl p;
@@ -481,7 +498,9 @@ and postfix p =
     match t.t with
     | LP when not t.sp ->
       advance p;
-      let args = it_sugar p (call_args p) in
+      let before = p.its in
+      let args = call_args p in
+      let args = if p.its = before then args else it_sugar p args in
       e := node p (!e).pos (Call { callee = !e; args; self_tail = false });
       go ()
     | LB when not t.sp ->
@@ -511,15 +530,15 @@ and postfix p =
 and call_args p =
   with_mode p Ignore (fun () ->
       let args = ref [] in
-      while (cur p).t <> RP do
+      while (cur p).t != RP do
         (match (cur p).t with
-         | NAME n when next_tok p = ASSIGN ->
+         | NAME n when next_tok p == ASSIGN ->
            advance p;
            advance p;
            args := { aname = Some n; value = expr p } :: !args
          | _ -> args := { aname = None; value = expr p } :: !args);
-        if (cur p).t = COMMA then advance p
-        else if (cur p).t <> RP then unexpected p "\",\" or \")\""
+        if (cur p).t == COMMA then advance p
+        else if (cur p).t != RP then unexpected p "\",\" or \")\""
       done;
       advance p;
       Array.of_list (List.rev !args))
@@ -530,13 +549,13 @@ and index_args p =
       p.saw_end <- false;
       p.in_index <- p.in_index + 1;
       let out = ref [] in
-      while (cur p).t <> RB do
-        if (cur p).t = COLON && (next_tok p = COMMA || next_tok p = RB) then begin
+      while (cur p).t != RB do
+        if (cur p).t == COLON && (next_tok p == COMMA || next_tok p == RB) then begin
           advance p;
           out := All :: !out
         end else out := Ix (expr p) :: !out;
-        if (cur p).t = COMMA then advance p
-        else if (cur p).t <> RB then unexpected p "\",\" or \"]\""
+        if (cur p).t == COMMA then advance p
+        else if (cur p).t != RB then unexpected p "\",\" or \"]\""
       done;
       advance p;
       p.in_index <- p.in_index - 1;
@@ -549,8 +568,8 @@ and pattern p =
   let t = cur p in
   match t.t with
   | NAME "_" -> advance p; Pwild
-  | NAME n when p.toks.(p.i + 1).t = LP && not p.toks.(p.i + 1).sp -> advance p; constructor p None n t.pos
-  | NAME a when p.toks.(p.i + 1).t = DOT && p.toks.(p.i + 3).t = LP && not p.toks.(p.i + 3).sp ->
+  | NAME n when p.toks.(p.i + 1).t == LP && not p.toks.(p.i + 1).sp -> advance p; constructor p None n t.pos
+  | NAME a when p.toks.(p.i + 1).t == DOT && p.toks.(p.i + 3).t == LP && not p.toks.(p.i + 3).sp ->
     (match p.toks.(p.i + 2).t with
      | NAME n -> advance p; advance p; advance p; constructor p (Some a) n t.pos
      | _ -> unexpected p "a pattern")
@@ -559,10 +578,10 @@ and pattern p =
     advance p;
     with_mode p Ignore (fun () ->
         let out = ref [] in
-        while (cur p).t <> RB do
+        while (cur p).t != RB do
           out := pattern p :: !out;
-          if (cur p).t = COMMA then advance p
-          else if (cur p).t <> RB then unexpected p "\",\" or \"]\""
+          if (cur p).t == COMMA then advance p
+          else if (cur p).t != RB then unexpected p "\",\" or \"]\""
         done;
         advance p;
         Parray (Array.of_list (List.rev !out)))
@@ -570,18 +589,18 @@ and pattern p =
     advance p;
     with_mode p Ignore (fun () ->
         let out = ref [] in
-        while (cur p).t <> RC do
+        while (cur p).t != RC do
           (match (cur p).t with
            | NAME n ->
              let at = (cur p).pos in
              advance p;
-             if (cur p).t = COLON then begin
+             if (cur p).t == COLON then begin
                advance p;
                out := (n, pattern p) :: !out
              end else (bind p n at; out := (n, Pname (name n)) :: !out)
            | _ -> unexpected p "a field name");
-          if (cur p).t = COMMA then advance p
-          else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
+          if (cur p).t == COMMA then advance p
+          else if (cur p).t != RC then unexpected p "\",\" or \"}\""
         done;
         advance p;
         Pstruct (Array.of_list (List.rev !out)))
@@ -593,10 +612,10 @@ and constructor p cpkg cname cpos =
   advance p;
   with_mode p Ignore (fun () ->
       let out = ref [] in
-      while (cur p).t <> RP do
+      while (cur p).t != RP do
         out := pattern p :: !out;
-        if (cur p).t = COMMA then advance p
-        else if (cur p).t <> RP then unexpected p "\",\" or \")\""
+        if (cur p).t == COMMA then advance p
+        else if (cur p).t != RP then unexpected p "\",\" or \")\""
       done;
       advance p;
       Pcons { cpkg; cname; cargs = Array.of_list (List.rev !out); cpos })
@@ -604,7 +623,7 @@ and constructor p cpkg cname cpos =
 (* The token after the ] or } matching the current token. *)
 and after_close p =
   let k = ref (p.i + 1) and depth = ref 1 in
-  while !depth > 0 && p.toks.(!k).t <> EOF do
+  while !depth > 0 && p.toks.(!k).t != EOF do
     (match p.toks.(!k).t with
      | LB | LC | LP -> incr depth
      | RB | RC | RP -> decr depth
@@ -625,13 +644,13 @@ and struct_lit p pos =
 (* {"a": 1, 2: "b", (key): 3}: a key is a literal, or an expression in parentheses. *)
 and dict_lit p pos saved_index =
   let items = ref [] in
-  while (cur p).t <> RC do
+  while (cur p).t != RC do
     let key = primary p in
     expect p COLON "\":\"";
     let value = expr p in
     items := { aname = None; value } :: { aname = None; value = key } :: !items;
-    if (cur p).t = COMMA then advance p
-    else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
+    if (cur p).t == COMMA then advance p
+    else if (cur p).t != RC then unexpected p "\",\" or \"}\""
   done;
   advance p;
   p.in_index <- saved_index;
@@ -646,15 +665,15 @@ and dict_lit p pos saved_index =
 
 and fields_lit p pos saved_index =
       let out = ref [] in
-      while (cur p).t <> RC do
+      while (cur p).t != RC do
         (match (cur p).t with
          | NAME n ->
            advance p;
            expect p COLON "\":\"";
            out := (n, expr p) :: !out
          | _ -> unexpected p "a field name");
-        if (cur p).t = COMMA then advance p
-        else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
+        if (cur p).t == COMMA then advance p
+        else if (cur p).t != RC then unexpected p "\",\" or \"}\""
       done;
       advance p;
       p.in_index <- saved_index;
@@ -672,7 +691,7 @@ and struct_def p pos =
   in
   let f =
     in_func p sname pos (fun () ->
-        let ps = if p.toks.(p.i).t = NL then field_lines p else listed p LC RC "a field name" in
+        let ps = if p.toks.(p.i).t == NL then field_lines p else listed p LC RC "a field name" in
         (* A field that takes missing has it as its default. *)
         let optional q =
           match q.ptype with
@@ -691,8 +710,8 @@ and field_lines p =
   with_mode p Lines (fun () ->
       let out = ref [] in
       skip_nl p;
-      while (cur p).t <> END do
-        if (cur p).t = EOF then unexpected p "end";
+      while (cur p).t != END do
+        if (cur p).t == EOF then unexpected p "end";
         (match (cur p).t, p.toks.(p.i + 1).t with
          | NAME _, (NL | ASSIGN | COMMA | NAME _ | END) -> out := param p "a field name" :: !out
          | _ -> error p (cur p).pos Messages.struct_not_field);
@@ -714,13 +733,13 @@ and interface_def p pos =
     | _ -> unexpected p "an interface name"
   in
   let imethods =
-    if p.toks.(p.i).t <> NL then
+    if p.toks.(p.i).t != NL then
       with_mode p Ignore (fun () ->
           expect p LC "\"{\"";
           let out = ref [] in
-          while (cur p).t <> RC do
+          while (cur p).t != RC do
             out := iface_method p :: !out;
-            if (cur p).t = COMMA then advance p else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
+            if (cur p).t == COMMA then advance p else if (cur p).t != RC then unexpected p "\",\" or \"}\""
           done;
           advance p;
           !out)
@@ -728,8 +747,8 @@ and interface_def p pos =
       with_mode p Lines (fun () ->
           let out = ref [] in
           skip_nl p;
-          while (cur p).t <> END do
-            if (cur p).t = EOF then unexpected p "end";
+          while (cur p).t != END do
+            if (cur p).t == EOF then unexpected p "end";
             out := iface_method p :: !out;
             (match (cur p).t with
              | NL -> skip_nl p
@@ -749,7 +768,7 @@ and iface_method p =
     let ps = listed p LP RP "a parameter name" in
     Array.iter (fun q -> Option.iter (fun (d : expr) -> error p d.pos Messages.interface_default) q.default) ps;
     let ret = match (cur p).t, next_tok p with NAME _, LP -> None | NAME _, _ -> Some (type_ref p) | _ -> None in
-    if (cur p).t = ASSIGN then error p (cur p).pos Messages.interface_body;
+    if (cur p).t == ASSIGN then error p (cur p).pos Messages.interface_body;
     n, ps, ret
   | _ -> error p (cur p).pos Messages.interface_not_method
 
@@ -784,7 +803,7 @@ and array_lit p pos =
           expect p IN "in";
           let csrc = expr p in
           let cguard =
-            if (cur p).t = IF then begin
+            if (cur p).t == IF then begin
               advance p;
               Some (expr p)
             end else None
@@ -807,7 +826,9 @@ and primary p =
   | FALSE -> lit (Lbool false)
   | MISSING -> lit Lmissing
   | TEXT parts -> advance p; text p t.pos parts
-  | NAME n -> lit (Var (name n))
+  | NAME n ->
+    if String.equal n "it" then p.its <- p.its + 1;
+    lit (Var (name n))
   | LP ->
     advance p;
     let e = with_mode p Ignore (fun () -> expr p) in
@@ -834,24 +855,25 @@ and text p pos parts =
       | Code toks ->
         let sub = { p with toks; i = 0; mode = Ignore } in
         let e = expr sub in
-        if (cur sub).t <> EOF then unexpected sub "the end of the code";
+        if (cur sub).t != EOF then unexpected sub "the end of the code";
         p.next_id <- sub.next_id;
+        p.its <- sub.its;
         Hole e
     in
     node p pos (Interp (Array.of_list (List.map part parts)))
 
 and if_expr p pos =
   let cond = expr p in
-  let yes = block p (fun t -> t = ELSE || t = END) in
+  let yes = block p (fun t -> t == ELSE || t == END) in
   let no =
-    if (cur p).t = ELSE then begin
+    if (cur p).t == ELSE then begin
       let else_pos = (cur p).pos in
       advance p;
-      if (cur p).t = IF then begin
+      if (cur p).t == IF then begin
         advance p;
         [| if_expr p else_pos |]
       end else begin
-        let b = block p (fun t -> t = END) in
+        let b = block p (fun t -> t == END) in
         expect p END "end";
         b
       end
@@ -867,7 +889,7 @@ and while_expr p pos =
   let saved = p.loop in
   let flag = ref false in
   p.loop <- Some flag;
-  let body = block p (fun t -> t = END) in
+  let body = block p (fun t -> t == END) in
   p.loop <- saved;
   expect p END "end";
   node p pos (While { cond; body; has_break = !flag })
@@ -878,8 +900,8 @@ and match_expr p pos =
   let subject = expr p in
   let arms = ref [] in
   skip_nl p;
-  while (cur p).t <> END do
-    if (cur p).t = ELSE then begin
+  while (cur p).t != END do
+    if (cur p).t == ELSE then begin
       advance p;
       expect p ARROW "\"->\"";
       skip_nl p;
@@ -887,7 +909,7 @@ and match_expr p pos =
     end else begin
       let pt = pattern p in
       let guard =
-        if (cur p).t = IF then begin
+        if (cur p).t == IF then begin
           advance p;
           Some (then_expr p)
         end else None
@@ -913,7 +935,7 @@ and for_expr p pos =
   let saved = p.loop in
   let flag = ref false in
   p.loop <- Some flag;
-  let fbody = block p (fun t -> t = END) in
+  let fbody = block p (fun t -> t == END) in
   p.loop <- saved;
   expect p END "end";
   node p pos (For { var; iter; fbody; f_break = !flag })
@@ -926,7 +948,7 @@ and block p stop =
           let items = ref [] in
           skip_nl p;
           while not (stop (cur p).t) do
-            if (cur p).t = EOF then unexpected p "end";
+            if (cur p).t == EOF then unexpected p "end";
             let pos = (cur p).pos in
             let s = stmt p in
             (* A file-level definition and a use run nothing: no stop on them. *)
@@ -946,14 +968,14 @@ and after_call_is_def p k =
   p.i <- k;
   let j = paren_end p in
   p.i <- saved;
-  p.toks.(type_end p j).t = ASSIGN
+  p.toks.(type_end p j).t == ASSIGN
 
 (* Rect.Unit() = ... *)
 and short_method p =
   (not p.in_function)
-  && next_tok p = DOT
+  && next_tok p == DOT
   && (match p.toks.(p.i + 2).t with NAME _ -> true | _ -> false)
-  && (let t = p.toks.(p.i + 3) in t.t = LP && not t.sp)
+  && (let t = p.toks.(p.i + 3) in t.t == LP && not t.sp)
   && after_call_is_def p (p.i + 3)
 
 and stmt p =
@@ -980,7 +1002,7 @@ and stmt p =
       | (MINUS | DOT), NAME m when (not t.sp) && not after.sp ->
         advance p;
         advance p;
-        glued (n ^ (if t.t = MINUS then "-" else ".") ^ m)
+        glued (n ^ (if t.t == MINUS then "-" else ".") ^ m)
       | _ -> n
     in
     let rec path_from acc =
@@ -989,7 +1011,7 @@ and stmt p =
         advance p;
         let start = p.i in
         let n' = glued n in
-        if (cur p).t = SLASH then begin
+        if (cur p).t == SLASH then begin
           advance p;
           path_from (acc ^ n' ^ "/")
         end
@@ -1013,7 +1035,7 @@ and stmt p =
       | _ -> default
     in
     node p start (Use { upath; ualias })
-  | (LB | LC) when after_close p = ASSIGN ->
+  | (LB | LC) when after_close p == ASSIGN ->
     let pt = pattern p in
     let pos = (cur p).pos in
     advance p;
@@ -1023,9 +1045,9 @@ and stmt p =
     if not p.in_function then error p t.pos Messages.return_outside;
     advance p;
     let next = (cur p).t in
-    let rvalue = if next = NL || next = END || next = ELSE || next = EOF then None else Some (expr p) in
+    let rvalue = if next == NL || next == END || next == ELSE || next == EOF then None else Some (expr p) in
     node p t.pos (Return { rvalue; tail = false })
-  | NAME _ when next_tok p = LP && not p.toks.(p.i + 1).sp && after_call_is_def p (p.i + 1) ->
+  | NAME _ when next_tok p == LP && not p.toks.(p.i + 1).sp && after_call_is_def p (p.i + 1) ->
     short_def p t.pos (definition_name p)
   | NAME _ when short_method p -> short_def p t.pos (definition_name p)
   | LP when is_receiver p -> short_def p t.pos (definition_name p)
@@ -1085,8 +1107,8 @@ let hides p (body : block) =
 
 let program ?(hooks = false) ~file ~nesting toks =
   let p = { toks; file; nesting; hooks; i = 0; depth = 0; mode = Lines; next_id = 0; loop = None; in_function = false;
-            in_index = 0; saw_end = false; stmt_at = 0; bound = [] } in
-  let body = block p (fun t -> t = EOF) in
+            in_index = 0; saw_end = false; stmt_at = 0; bound = []; first = None; its = 0 } in
+  let body = block p (fun t -> t == EOF) in
   hides p body;
   { fname = ""; params = [||]; ret = None; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
     captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||];

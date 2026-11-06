@@ -140,7 +140,10 @@ let number st start_pos sp =
   let s = st.src and n = String.length st.src in
   let start = st.i in
   let digits () = while st.i < n && (is_digit s.[st.i] || s.[st.i] = '_') do st.i <- st.i + 1 done in
-  let clean () = String.concat "" (String.split_on_char '_' (String.sub s start (st.i - start))) in
+  let clean () =
+    let text = String.sub s start (st.i - start) in
+    if String.contains text '_' then String.concat "" (String.split_on_char '_' text) else text
+  in
   if s.[st.i] = '0' && (peek_at st 1 = 'x' || peek_at st 1 = 'X') then begin
     st.i <- st.i + 2;
     while st.i < n && (is_digit s.[st.i] || (Char.lowercase_ascii s.[st.i] >= 'a' && Char.lowercase_ascii s.[st.i] <= 'f') || s.[st.i] = '_') do
@@ -167,6 +170,13 @@ let number st start_pos sp =
         digits ()
       end
     end;
+    (* A short whole number, as most are: its value as it is read, with no text to convert. *)
+    let v = ref 0 and plain = ref ((not !is_float) && st.i - start <= 18) in
+    for k = start to st.i - 1 do
+      if !plain then if is_digit s.[k] then v := (!v * 10) + Char.code s.[k] - 48 else plain := false
+    done;
+    if !plain then { t = INT !v; pos = start_pos; sp }
+    else
     let text = clean () in
     if !is_float then { t = FLOAT (float_of_string text); pos = start_pos; sp }
     else
