@@ -3,7 +3,7 @@ defn Step(i)
 end
 for i in 1..3
   io.Print(Step(i))
-  sys.Sleep(0.01)
+  sys.Sleep(0)
 end
 use std/io
 use std/sys

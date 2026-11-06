@@ -7,7 +7,7 @@ defn Spin(n)
 end
 h = 0
 for k in 1..200
-  h = h + Spin(5000)
+  h = h + Spin(1000)
 end
 io.Print(h)
 use std/io
