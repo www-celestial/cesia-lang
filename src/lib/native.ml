@@ -152,7 +152,7 @@ let is_ name test = name, nat name 1 1 (fun _ a -> Value.of_bool (test a.(0)))
 
 let rec abs_value ctx v =
   match v with
-  | Int i when i = min_int -> Runtime.fail ctx Overflow (Messages.overflow_neg (string_of_int i))
+  | Int i when i = min_int -> Runtime.fail ctx Math (Messages.overflow_neg (string_of_int i))
   | Int i -> Int (abs i)
   | Float x -> Float (Float.abs x)
   | True -> Int 1

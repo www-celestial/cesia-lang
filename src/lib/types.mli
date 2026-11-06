@@ -1,6 +1,6 @@
 (** The types of the engine. They form one recursive knot, so they live together. *)
 
-type kind = Syntax | Name | Type | Index | Field | Overflow | Permission | User
+type kind = Syntax | Name | Type | Index | Field | Math | Permission | User
 type perm = Read | Write | Net | Exec | Env | Ffi | Debug
 
 (** Bottom, integer, float, float array, anything. *)

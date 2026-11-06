@@ -9,17 +9,17 @@ let bad ctx verb joiner flipped a b =
 let[@inline] add_int ctx x y =
   let s = x + y in
   if (x lxor s) land (y lxor s) < 0
-  then Runtime.fail ctx Overflow (Messages.overflow (string_of_int x) "+" (string_of_int y))
+  then Runtime.fail ctx Math (Messages.overflow (string_of_int x) "+" (string_of_int y))
   else s
 
 let[@inline] sub_int ctx x y =
   let s = x - y in
   if (x lxor y) land (x lxor s) < 0
-  then Runtime.fail ctx Overflow (Messages.overflow (string_of_int x) "-" (string_of_int y))
+  then Runtime.fail ctx Math (Messages.overflow (string_of_int x) "-" (string_of_int y))
   else s
 
 let mul_overflow ctx x y =
-  Runtime.fail ctx Overflow (Messages.overflow (string_of_int x) "*" (string_of_int y))
+  Runtime.fail ctx Math (Messages.overflow (string_of_int x) "*" (string_of_int y))
 
 let small = 1 lsl 31
 
@@ -189,7 +189,7 @@ let rec neg ctx a =
   | Array x ->
     Runtime.build ctx (x.rows * x.cols);
     Arrays.of_vals x.rows x.cols (Array.init (x.rows * x.cols) (fun k -> neg ctx (Value.elt x k)))
-  | Int x when x = min_int -> Runtime.fail ctx Overflow (Messages.overflow_neg (string_of_int x))
+  | Int x when x = min_int -> Runtime.fail ctx Math (Messages.overflow_neg (string_of_int x))
   | Int x -> Int (-x)
   | Float x -> Float (-.x)
   | Missing -> Missing
@@ -248,15 +248,15 @@ let ne ctx a b = masked false Ne (fun ctx x y -> Value.of_bool (not (same ctx x 
 
 (* div and mod round down. *)
 let int_div ctx a b =
-  if b = 0 then Runtime.fail ctx Overflow (Messages.div_zero "Div")
-  else if a = min_int && b = -1 then Runtime.fail ctx Overflow (Messages.overflow (string_of_int a) "/" "-1")
+  if b = 0 then Runtime.fail ctx Math (Messages.div_zero "Div")
+  else if a = min_int && b = -1 then Runtime.fail ctx Math (Messages.overflow (string_of_int a) "/" "-1")
   else begin
     let q = a / b in
     if a mod b <> 0 && a < 0 <> (b < 0) then q - 1 else q
   end
 
 let int_mod ctx a b =
-  if b = 0 then Runtime.fail ctx Overflow (Messages.div_zero "Mod")
+  if b = 0 then Runtime.fail ctx Math (Messages.div_zero "Mod")
   else begin
     let r = a mod b in
     if r <> 0 && r < 0 <> (b < 0) then r + b else r

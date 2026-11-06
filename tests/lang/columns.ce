@@ -47,7 +47,7 @@ isEqualAcrossStorages() = Equal([1, 2], 1..2) and not Equal([1, 2], [1, 3]) and 
 isShow() = "$([1, 2])" == "[1, 2]" and "$(Reshape(1..4, 2, 2))" == "[1 3; 2 4]"
 isIn() = 2 in [1, 2] and not (3 in [1, 2]) and 1.0 in [1, 2]
 isSumInts() = Sum(1..10) == 55 and IsInt(Sum(1..10))
-isSumOverflows() = fails(() -> Sum([4611686018427387903, 1]), "overflow")
+isSumOverflows() = fails(() -> Sum([4611686018427387903, 1]), "math")
 isMeanInts() = Mean([1, 2, 3]) == 2.0
 isArithmetic() = Equal([1, 2] + [3, 4], [4, 6]) and columns.Kind([1, 2] + 1) == "int" and Equal([1, 2] * 2.5, [2.5, 5.0])
 isLoop() = Reduce((a, x) -> a + x, 0, [x for x in 1..4]) == 10

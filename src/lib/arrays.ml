@@ -88,7 +88,7 @@ let built b =
 
 let int_range ctx lo hi =
   let span = hi - lo in
-  if hi >= lo && (span < 0 || span = max_int) then Runtime.fail ctx Overflow Messages.range_too_long;
+  if hi >= lo && (span < 0 || span = max_int) then Runtime.fail ctx Math Messages.range_too_long;
   let n = if hi < lo then 0 else span + 1 in
   Runtime.pay ctx n;
   let d = Runtime.alloc_ints ctx n 0 in

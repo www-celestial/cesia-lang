@@ -19,7 +19,7 @@ let kind_name = function
   | Type -> "type"
   | Index -> "index"
   | Field -> "field"
-  | Overflow -> "overflow"
+  | Math -> "math"
   | Permission -> "permission"
   | User -> "user"
 
