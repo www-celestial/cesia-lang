@@ -128,7 +128,7 @@ defn page(site, path, title, body)
     "<header><a class=\"home\" href=\"", back, "index.html\">", escape(site.Title), "</a>",
     "<a class=\"ref\" href=\"", back, "ref/index.html\">Reference</a>",
     "<input class=\"search\" type=\"search\" placeholder=\"Search  /\" aria-label=\"Search the docs\" autocomplete=\"off\"></header>\n",
-    "<div class=\"page\">\n<nav class=\"side\" aria-label=\"Contents\">\n", sideColumns(site.Tree, path, way), "</nav>\n",
+    "<div class=\"page\">\n<nav class=\"side\" aria-label=\"Contents\">\n", sideColumns(site.Tree, path, way, site.Columns), "</nav>\n",
     "<main id=\"text\">\n", trail(site.Tree, path, way), body, "</main>\n</div>\n",
     "<script src=\"", back, "site.js\"></script>\n</body>\n</html>\n")
 end
@@ -220,23 +220,51 @@ defn wayTo(tree, path)
   way
 end
 
-defn sideColumns(tree, path, way)
+defn sideItem(tree, path, c, open, here)
+  (** One link of a column of the side, seen from the page at path. *)
+  marks = Concat(if c.Path == open and c.Path != here ["open"] else [] end, if Has(c.Path, tree.Kids) and Len(tree.Kids[c.Path]) > 0 ["more"] else [] end)
+  kind = if Len(marks) == 0 "" else " class=\"$(Join(" ", marks))\"" end
+  current = if c.Path == here " aria-current=\"page\"" else "" end
+  "<a href=\"$(rel(path, c.Path))\"$kind$current>$(escape(c.Label))</a>\n"
+end
+
+columnKey(path, node) = Str(parent(path), "|", node)   (** A column looks the same from every page of a folder. *)
+
+shown(below, node) = Len(below) > 0 and not (node == "" and Len(below) == 1)   (** Does a node with these children get a column? *)
+
+defn sideCache(tree)
+  (** The links of each column as the pages of each folder show them, none marked: a page then makes only its two marked
+      links, the open one and its own, instead of every link of every column. *)
+  out = {}
+  for path in Keys(tree.Up)
+    for node in wayTo(tree, path)
+      key = columnKey(path, node)
+      below = GetOr(node, [], tree.Kids)
+      if shown(below, node) and not Has(key, out)
+        out[key] = [sideItem(tree, path, c, "", "") for c in below]
+      end
+    end
+  end
+  out
+end
+
+defn sideColumns(tree, path, way, cache = {})
   (** The columns of the side: one for each node on the way that has children, the open one marked in each. A root with one
       child shows no column. *)
   here = Last(way)
-  defn item(c, open)
-    marks = Concat(if c.Path == open and c.Path != here ["open"] else [] end, if Has(c.Path, tree.Kids) and Len(tree.Kids[c.Path]) > 0 ["more"] else [] end)
-    kind = if Len(marks) == 0 "" else " class=\"$(Join(" ", marks))\"" end
-    current = if c.Path == here " aria-current=\"page\"" else "" end
-    "<a href=\"$(rel(path, c.Path))\"$kind$current>$(escape(c.Label))</a>\n"
-  end
   out = []
   for k in 1..Len(way)
     below = GetOr(way[k], [], tree.Kids)
-    if Len(below) > 0 and not (way[k] == "" and Len(below) == 1)
+    if shown(below, way[k])
       open = if k < Len(way) way[k + 1] else "" end
       kind = if way[k] == "" " root" else if StartsWith("ref/", way[k]) or StartsWith("key/", way[k]) " code" else "" end
-      out = Append(Str("<div class=\"col", kind, "\">\n", Join("", [item(c, open) for c in below]), "</div>\n"), out)
+      plain = Get(columnKey(path, way[k]), cache)
+      links = if IsMissing(plain)
+        [sideItem(tree, path, c, open, here) for c in below]
+      else
+        [if below[i].Path == open or below[i].Path == here sideItem(tree, path, below[i], open, here) else plain[i] end for i in 1..Len(below)]
+      end
+      out = Append(Str("<div class=\"col", kind, "\">\n", Join("", links), "</div>\n"), out)
     end
   end
   Join("", out)
@@ -929,10 +957,11 @@ defn build(root, folder, cache)
       targets[n.Name] = n.Path
     end
   end
-  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run", Tree: {}}
+  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run", Tree: {}, Columns: {}}
   book = bookOf(root, site)
   site.Book = book
   site.Tree = treeOf(book, modules, lists)
+  site.Columns = sideCache(site.Tree)
   site.BookPaths = Dict([{Key: p.File, Value: p.Path} for p in book])
   results = bookRuns(book, site, root, config)
   pages = []
