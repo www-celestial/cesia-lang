@@ -401,7 +401,11 @@ end
 (* The book: book/index.md is the home, and its links to the other pages of book/ give their order. A page is a program:
    its cesia blocks run at each build, and what they print is written under them. *)
 
-blockWordList = "norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net or ffi=m"
+blockWordList = "norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT or ffi=m"
+
+(* net=:8080 lets a block listen on that port, as --allow does; a server of the book listens on 127.0.0.1, the default of
+   http.Serve. *)
+isListen(a) = StartsWith("net=:", a) and ByteLength(a) > 5 and IsInt(Number(from(6, a)))
 
 defn blockWords(info)
   (** What the words after cesia ask of a block: {Norun, Fails, Md, Fold, Hide, Allow}, or an Err of the word it doesn't know. *)
@@ -417,7 +421,7 @@ defn blockWords(info)
       out.Fold = Append(from(6, w), out.Fold)
     else if w == "hide=code" or w == "hide=output"
       out.Hide = Append(from(6, w), out.Hide)
-    else if StartsWith("allow=", w) and All([a in ["read", "write", "net", "ffi=m"] for a in Split(",", from(7, w))])
+    else if StartsWith("allow=", w) and All([a in ["read", "write", "net", "ffi=m"] or isListen(a) for a in Split(",", from(7, w))])
       out.Allow = Concat(out.Allow, Split(",", from(7, w)))
     else
       return Err("$w is no word of a cesia block: they are $blockWordList.")

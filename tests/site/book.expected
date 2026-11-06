@@ -70,6 +70,13 @@ second line
 <pre><code class="cesia"><span class="k">use</span> std/sys
 sys.<span class="f">Write</span>(<span class="s">&quot;notes.txt&quot;</span>, <span class="s">&quot;no&quot;</span>)</code></pre>
 <pre class="output"><code>Permission &quot;write&quot; denied. Run again with --allow write.</code></pre>
+<p>A server and its client, on this machine only:</p>
+<pre><code class="cesia"><span class="k">use</span> std/web
+<span class="k">use</span> std/http
+app = web.<span class="f">App</span>() <span class="k">then</span> web.<span class="f">Get</span>(<span class="s">&quot;/&quot;</span>, r -&gt; web.<span class="f">Plain</span>(<span class="s">&quot;hello&quot;</span>), <span class="k">it</span>)
+server = <span class="n">Spawn</span>(() -&gt; web.<span class="f">Serve</span>(app, port = <span class="m">18751</span>))
+sys.<span class="f">Sleep</span>(<span class="m">0.05</span>)
+http.<span class="f">Get</span>(<span class="s">&quot;http://127.0.0.1:18751/&quot;</span>).<span class="f">Value</span>.<span class="f">Body</span> --&gt; <span class="s">&quot;hello&quot;</span></code></pre>
 <p>Back to <a href="index.html">the start</a>.</p>
 <nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><span></span></nav>
 </main>
