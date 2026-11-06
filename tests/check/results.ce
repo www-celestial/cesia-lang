@@ -1,4 +1,5 @@
 (* Results used as plain values or dropped, and those handled. *)
+use std/fiber
 use std/io
 use std/json
 use std/result
@@ -24,6 +25,7 @@ defn Keep(path)
     result.Err(e) -> missing
   end
   io.Print("$(json.Parse(text))", sys.Read(path).Value)
+  fiber.Send(sys.Read(path), fiber.Channel())
   for line in sys.Read(path)
     io.Print(line)
   end

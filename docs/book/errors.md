@@ -218,7 +218,8 @@ An error is what would surely stop the program; a warning is what may be a mista
 warnings are about results:
 
 - a result used as a plain value, as above: `value.Len` of an `Err` counts its fields, so a missing file has a length of 1.
-  `?`, `match`, [result.Unwrap] or keeping it in a variable raise no warning, and neither does [io.Print], which shows it;
+  `?`, `match`, [result.Unwrap] or keeping it in a variable raise no warning, and neither do [io.Print], which shows it, and
+  [fiber.Send], which passes it on;
 - a result dropped: `sys.Write(path, text)` alone loses its `Err`. `_ = sys.Write(path, text)` drops it on purpose;
 - a typed function that can give an `Err` without `!`: `defn size(path) Int` that holds a `?` gets the advice to write `Int!`.
 

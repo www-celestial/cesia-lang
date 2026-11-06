@@ -182,8 +182,8 @@ let rec walk w add known host (u : use) (e : expr) =
     if u <> Kept && built_result w c = None && gives w known c then
       add e.pos true ((if u = Plain then Messages.result_plain else Messages.result_dropped) (label w host c));
     go Kept c.callee;
-    (* A native wants a plain value, but io.Print, which shows an Ok or an Err as well. *)
-    let native = match target w c.callee with Some (_, _, Native n) -> n.nname <> "Print" | _ -> false in
+    (* A native wants a plain value, but io.Print, which shows an Ok or an Err as well, and fiber.Send, which passes it on. *)
+    let native = match target w c.callee with Some (_, _, Native n) -> n.nname <> "Print" && n.nname <> "Send" | _ -> false in
     Array.iter (fun (a : arg) -> go (if native then Plain else Kept) a.value) c.args
   (* == and != compare whole values: a result to an expected one is no mistake. *)
   | Bin ((Eq | Ne), a, b) -> go Kept a; go Kept b
