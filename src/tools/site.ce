@@ -506,6 +506,24 @@ defn arrows(code)
   out
 end
 
+defn whole(code)
+  (** Does a piece of code close every bracket it opens, outside its texts and comments? *)
+  depth = {"(": 0, "[": 0, "{": 0}
+  closer = {")": "(", "]": "[", "}": "{"}
+  for tok in syntax.Tokens(code, syntax.FirstState).Tokens
+    if tok[1] != syntax.Comment and tok[1] != syntax.String
+      for c in Chars(tok[2])
+        if Has(c, depth)
+          depth[c] += 1
+        else if Has(c, closer)
+          depth[closer[c]] -= 1
+        end
+      end
+    end
+  end
+  All([d == 0 for d in Values(depth)])
+end
+
 defn freshLines(code)
   (** For each line of a block, does it start outside a comment and a text? Only such a line can be a use. *)
   state = syntax.FirstState
@@ -853,9 +871,13 @@ defn bookOf(root, site)
     end
     for r in runs
       cut = arrows(r.Text)
+      fresh = freshLines(r.Text)
       for i in 1..Len(cut)
         if IsSome(cut[i]) and cut[i].Want == "error"
           Send("book/$f:$(r.Line + i): --> error is for cesia test; here a block that stops is marked fails.", site.Mistakes)
+          broken = true
+        else if IsSome(cut[i]) and not (fresh[i] and whole(cut[i].Code) and whole(cut[i].Want))
+          Send("book/$f:$(r.Line + i): a --> checks the expression of its own line, and this one goes on from the lines before: name the value there, then check the name.", site.Mistakes)
           broken = true
         end
       end
