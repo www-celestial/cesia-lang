@@ -126,8 +126,9 @@ chapter of their own later.
 
 ## Editors
 
-Cemacs is the editor made for Cesia, written in Cesia: it runs your program with a key, and shows its output beside the code.
-It has a chapter at the end of this book. Any other editor works too: a program is a text file.
+Cemacs is the editor made for Cesia, written in Cesia, with the keys of Emacs and the colours of Cesia's code: the chapter
+[Cemacs](cemacs.md) shows it. Any other editor works too, since a program is a text file: the sources of Cesia hold a mode for
+Emacs and one for Neovim and Vim, in `tools/editors/`.
 
 ## Next
 
