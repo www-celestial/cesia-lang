@@ -1,3 +1,7 @@
 (** Says hello. *)
 
 Hello(name) = "Hello, $name!"   (** A greeting for a name. *)
+
+struct Greeter { Name }   (** Someone who greets. *)
+
+(g Greeter) Say() = "Hi from $(g.Name)"   (** What a greeter says. *)

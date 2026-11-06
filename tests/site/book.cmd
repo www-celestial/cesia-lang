@@ -9,6 +9,9 @@ for page in index first files; do
   echo "== $page.html"
   sed -n '/<main/,/<\/main>/p' "site/$page.html"
 done
+echo "== the columns of a method: its module, then its struct, then itself"
+sed -n '/<nav class="side"/,/<\/nav>/p' site/ref/src/greet/Greeter.Say.html | grep -E 'greet|Greeter|Say|Hello'
+grep -o '<nav class="trail".*</nav>' site/ref/src/greet/Greeter.Say.html
 rm -r site/.run
 cesia doc --site > /dev/null
 if [ -e site/.run ]; then echo "a page ran again"; else echo "nothing ran again"; fi

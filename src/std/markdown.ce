@@ -851,7 +851,7 @@ end
 defn Html(blocks, hooks)
   (** The HTML of blocks from Parse. hooks has Code(info, text, line), the HTML of a block of code or missing for a plain
       pre; Link(target, line), the URL of a [target] or missing to leave it as text; Url(url, line), the address a link
-      written [text](url) leads to; and Anchor(level, text, line), the id of a heading or missing. Plain gives none of them.
+      written `[text](url)` leads to; and Anchor(level, text, line), the id of a heading or missing. Plain gives none of them.
 
         Html(Parse("Some *words*."), Plain) --> "<p>Some <em>words</em>.</p>\n"
         Html(Parse("<script>"), Plain) --> "<p>&lt;script&gt;</p>\n" *)

@@ -115,9 +115,10 @@ defn summary(text)
   if IsMissing(k) line else ByteSlice(1, k, line) end
 end
 
-defn page(site, path, title, side, body)
+defn page(site, path, title, body)
   (** The HTML of a page: the text comes first, and the script at the end. *)
   back = up(path)
+  way = wayTo(site.Tree, path)
   Str("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
     "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\">\n",
@@ -127,20 +128,128 @@ defn page(site, path, title, side, body)
     "<header><a class=\"home\" href=\"", back, "index.html\">", escape(site.Title), "</a>",
     "<a class=\"ref\" href=\"", back, "ref/index.html\">Reference</a>",
     "<input class=\"search\" type=\"search\" placeholder=\"Search  /\" aria-label=\"Search the docs\" autocomplete=\"off\"></header>\n",
-    "<div class=\"page\">\n<nav class=\"side\" aria-label=\"Contents\">\n", side, "</nav>\n",
-    "<main id=\"text\">\n", body, "</main>\n</div>\n",
+    "<div class=\"page\">\n<nav class=\"side\" aria-label=\"Contents\">\n", sideColumns(site.Tree, path, way), "</nav>\n",
+    "<main id=\"text\">\n", trail(site.Tree, path, way), body, "</main>\n</div>\n",
     "<script src=\"", back, "site.js\"></script>\n</body>\n</html>\n")
 end
 
-sideItem(label, href, current) = "<a href=\"$href\"$(if current " aria-current=\"page\"" else "" end)>$(escape(label))</a>\n"
+(* The side shows the site as the Finder shows folders, in columns: the first holds the book and the reference, each one
+   opens the next, and the page's own children come last. *)
 
-defn side(site, path, names)
-  (** The side contents: the modules, then the names of the module of this page. *)
-  modules = Join("", [sideItem(m, rel(path, modulePath(m)), path == modulePath(m)) for m in site.Modules])
-  (* The names of a module are pages of one folder, that of this page. *)
-  own = Join("", [sideItem(n.Short, Last(Split("/", n.Path)), path == n.Path) for n in names])
-  Str("<p class=\"head\">Modules</p>\n<div class=\"list\">\n", modules, "</div>\n",
-    if own == "" "" else Str("<p class=\"head\">In this module</p>\n<div class=\"list\">\n", own, "</div>\n") end)
+defn treeOf(book, modules, lists)
+  (** The nodes of the side, by path: {Kids: path -> [{Label, Path}], Up: path -> the path above, Label: path -> label}. The
+      root is "". A chapter's children are its sections; a module's are its names, and a name whose part before a dot is
+      another name of the module goes under it: Date.Next under Date. *)
+  kids = {}
+  ups = {}
+  top = []
+  if Len(book) > 0
+    top = [{Label: "Book", Path: "index.html"}]
+    ups["index.html"] = ""
+    kids["index.html"] = [{Label: p.Title, Path: p.Path} for p in Skip(1, book)]
+    for p in Skip(1, book)
+      ups[p.Path] = "index.html"
+      kids[p.Path] = [{Label: Replace("`", "", b.Text), Path: "$(p.Path)#$(slug(b.Text))"} for b in p.Blocks if b.Kind == "heading" and b.Level == 2]
+    end
+  end
+  top = Append({Label: "Reference", Path: "ref/index.html"}, top)
+  ups["ref/index.html"] = ""
+  (* A module of a folder, std/date, goes under the folder's page, as its use writes it. *)
+  kids["ref/index.html"] = Concat([{Label: m, Path: modulePath(m)} for m in modules if not Contains("/", m)],
+    Append({Label: "Keywords", Path: "key/index.html"}, [{Label: g, Path: groupPath(g)} for g in groupsOf(modules)]))
+  for g in groupsOf(modules)
+    ups[groupPath(g)] = "ref/index.html"
+    kids[groupPath(g)] = [{Label: from(ByteLength(g) + 2, m), Path: modulePath(m)} for m in modules if StartsWith("$g/", m)]
+  end
+  for m in modules
+    ups[modulePath(m)] = if Contains("/", m) groupPath(groupOf(m)) else "ref/index.html" end
+    known = Dict([{Key: n.Short, Value: n.Path} for n in lists[m]])
+    for n in lists[m]
+      parts = Split(".", n.Short)
+      above = modulePath(m)
+      label = n.Short
+      k = Len(parts) - 1
+      while k >= 1
+        head = Join(".", Take(k, parts))
+        if Has(head, known)
+          above = known[head]
+          label = Join(".", Skip(k, parts))
+          break
+        end
+        k -= 1
+      end
+      kids[above] = Append({Label: label, Path: n.Path}, GetOr(above, [], kids))
+      ups[n.Path] = above
+    end
+  end
+  ups["key/index.html"] = "ref/index.html"
+  kids["key/index.html"] = [{Label: w, Path: keyPath(w)} for w in keywords]
+  for w in keywords
+    ups[keyPath(w)] = "key/index.html"
+  end
+  kids[""] = top
+  labels = {}
+  for parentPath in Keys(kids)
+    for c in kids[parentPath]
+      labels[c.Path] = c.Label
+    end
+  end
+  {Kids: kids, Up: ups, Label: labels}
+end
+
+groupOf(m) = Split("/", m)[1]   (** The folder of a module: std for std/date. *)
+groupsOf(modules) = Unique([groupOf(m) for m in modules if Contains("/", m)])
+groupPath(g) = "ref/$g.html"
+
+defn groupBody(site, g, modules)
+  (** The page of a folder of modules: what it holds, and each module with what it is for. *)
+  path = groupPath(g)
+  hooks = hooksFor(site, path, line -> "the folder $g")
+  rows = Join("", [Str("<dt><a href=\"", rel(path, modulePath(m)), "\">", escape(m), "</a></dt><dd>", inlineHtml(summary(Doc(m)), hooks), "</dd>\n") for m in modules if StartsWith("$g/", m)])
+  said = if g == "std" "What comes with Cesia: its libraries, written in Cesia, and the modules of its binary. A use writes std/ and the name: use std/date." else "The packages of the project in its folder $g/. A use writes their path from the root: use $g/name." end
+  Str("<h1>", escape(g), "</h1>\n<p>", escape(said), "</p>\n<dl class=\"names\">\n", rows, "</dl>\n")
+end
+
+defn wayTo(tree, path)
+  (** The paths from the root to the page, the root first. The home of a site without a book is the index of the reference. *)
+  node = if Has(path, tree.Up) path else "ref/index.html" end
+  way = [node]
+  while Has(way[1], tree.Up)
+    way = Prepend(tree.Up[way[1]], way)
+  end
+  way
+end
+
+defn sideColumns(tree, path, way)
+  (** The columns of the side: one for each node on the way that has children, the open one marked in each. A root with one
+      child shows no column. *)
+  here = Last(way)
+  defn item(c, open)
+    marks = Concat(if c.Path == open and c.Path != here ["open"] else [] end, if Has(c.Path, tree.Kids) and Len(tree.Kids[c.Path]) > 0 ["more"] else [] end)
+    kind = if Len(marks) == 0 "" else " class=\"$(Join(" ", marks))\"" end
+    current = if c.Path == here " aria-current=\"page\"" else "" end
+    "<a href=\"$(rel(path, c.Path))\"$kind$current>$(escape(c.Label))</a>\n"
+  end
+  out = []
+  for k in 1..Len(way)
+    below = GetOr(way[k], [], tree.Kids)
+    if Len(below) > 0 and not (way[k] == "" and Len(below) == 1)
+      open = if k < Len(way) way[k + 1] else "" end
+      kind = if way[k] == "" " root" else if StartsWith("ref/", way[k]) or StartsWith("key/", way[k]) " code" else "" end
+      out = Append(Str("<div class=\"col", kind, "\">\n", Join("", [item(c, open) for c in below]), "</div>\n"), out)
+    end
+  end
+  Join("", out)
+end
+
+defn trail(tree, path, way)
+  (** The way to the page above its text: Reference › std/date › Date › Next, each part a link but the last. *)
+  steps = Skip(1, way)
+  if Len(steps) < 2
+    return ""
+  end
+  links = [Str("<a href=\"", rel(path, s), "\">", escape(tree.Label[s]), "</a>") for s in Butlast(steps)]
+  Str("<nav class=\"trail\" aria-label=\"Where\">", Join(" <span aria-hidden=\"true\">›</span> ", Append(Str("<span>", escape(tree.Label[Last(steps)]), "</span>"), links)), "</nav>\n")
 end
 
 defn entryBody(site, path, e)
@@ -150,8 +259,7 @@ defn entryBody(site, path, e)
   parts = if Len(e.Parts) == 0 "" else Str("<table class=\"parts\">\n<tbody>\n", Join("", ["<tr><th><code>$(escape(p.Name))</code></th><td>$(inlineHtml(p.Text, hooks))</td></tr>\n" for p in e.Parts]), "</tbody>\n</table>\n") end
   examples = if Len(e.Examples) == 0 "" else Str("<h2>Examples</h2>\n", codeBlock(Join("\n", e.Examples))) end
   from = if e.Builtin "Built into Cesia." else if site.Source == "" escape(where(0)) else "<a href=\"$(escape(site.Source))$(escape(e.File))#L$(e.Line)\">$(escape(e.File)):$(e.Line)</a>" end
-  module = if e.Module == "" "" else "<p class=\"module\"><a href=\"$(rel(path, modulePath(e.Module)))\">$(escape(e.Module))</a></p>\n" end
-  Str(module, "<h1>", escape(e.Name), "</h1>\n<pre class=\"signature\"><code class=\"cesia\">", colored(e.Signature), "</code></pre>\n",
+  Str("<h1>", escape(e.Name), "</h1>\n<pre class=\"signature\"><code class=\"cesia\">", colored(e.Signature), "</code></pre>\n",
     html(e.Text, hooks), parts, examples, "<p class=\"from\">", from, "</p>\n")
 end
 
@@ -195,6 +303,13 @@ defn indexBody(site, path)
   rows = Join("", ["<dt><a href=\"$(rel(path, modulePath(m)))\">$(escape(m))</a></dt><dd>$(inlineHtml(summary(Doc(m)), hooks))</dd>\n" for m in site.Modules])
   words = Join(" ", ["<a href=\"$(rel(path, keyPath(w)))\"><code>$(escape(w))</code></a>" for w in keywords])
   Str("<h1>Reference</h1>\n<dl class=\"names\">\n", rows, "</dl>\n<h2>Keywords</h2>\n<p class=\"words\">", words, "</p>\n")
+end
+
+defn wordsBody(site, path)
+  (** The main part of the index of the keywords: each one and what it does. *)
+  hooks = hooksFor(site, path, line -> "the keywords")
+  rows = Join("", [Str("<dt><a href=\"", rel(path, keyPath(w)), "\">", escape(w), "</a></dt><dd>", inlineHtml(about(cesia.DocEntry(w)), hooks), "</dd>\n") for w in keywords if IsSome(cesia.DocEntry(w))])
+  Str("<h1>Keywords</h1>\n<p>The words of the language itself. Each one has its page, with examples.</p>\n<dl class=\"names\">\n", rows, "</dl>\n")
 end
 
 defn settings(root)
@@ -744,13 +859,6 @@ defn bookBlock(run, output, values, hooks)
   Str(code, out)
 end
 
-defn bookSide(site, path)
-  (** The side contents of a page of the book: its pages, then the way to the reference. *)
-  pages = Join("", [sideItem(p.Title, rel(path, p.Path), path == p.Path) for p in site.Book])
-  Str("<p class=\"head\">Book</p>\n<div class=\"list book\">\n", pages, "</div>\n<p class=\"head\">Reference</p>\n<div class=\"list book\">\n",
-    sideItem("Modules and keywords", rel(path, "ref/index.html"), false), "</div>\n")
-end
-
 defn bookBody(site, page, results)
   (** The main part of a page of the book, each cesia block with what it printed. *)
   hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line")
@@ -788,9 +896,10 @@ defn build(root, folder, cache)
       targets[n.Name] = n.Path
     end
   end
-  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run"}
+  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run", Tree: {}}
   book = bookOf(root, site)
   site.Book = book
+  site.Tree = treeOf(book, modules, lists)
   site.BookPaths = Dict([{Key: p.File, Value: p.Path} for p in book])
   results = bookRuns(book, site, root, config)
   pages = []
@@ -801,7 +910,7 @@ defn build(root, folder, cache)
     p = book[k]
     around = near(bookLinks, k)
     body = Str(bookBody(site, p, results), pager(p.Path, around.Prev, around.Next, if k == 1 missing else home end))
-    pages = Append({Path: p.Path, Html: page(site, p.Path, p.Title, bookSide(site, p.Path), body)}, pages)
+    pages = Append({Path: p.Path, Html: page(site, p.Path, p.Title, body)}, pages)
     search = Concat(search, bookSearch(p))
   end
   index = {Label: "Reference", Path: "ref/index.html"}
@@ -810,19 +919,19 @@ defn build(root, folder, cache)
     m = modules[k]
     path = modulePath(m)
     around = near(moduleLinks, k)
-    body = Str(moduleBody(site, m, lists[m]), pager(path, around.Prev, around.Next, index))
-    pages = Append({Path: path, Html: page(site, path, m, side(site, path, []), body)}, pages)
+    above = if Contains("/", m) {Label: groupOf(m), Path: groupPath(groupOf(m))} else index end
+    body = Str(moduleBody(site, m, lists[m]), pager(path, around.Prev, around.Next, above))
+    pages = Append({Path: path, Html: page(site, path, m, body)}, pages)
     search = Append(["module", path, m, summary(Doc(m)), ""], search)
     nameLinks = [{Label: n.Short, Path: n.Path} for n in lists[m]]
     for j in 1..Len(lists[m])
       n = lists[m][j]
       around = near(nameLinks, j)
       body = Str(entryBody(site, n.Path, n.Entry), pager(n.Path, around.Prev, around.Next, moduleLinks[k]))
-      pages = Append({Path: n.Path, Html: page(site, n.Path, n.Name, side(site, n.Path, lists[m]), body)}, pages)
+      pages = Append({Path: n.Path, Html: page(site, n.Path, n.Name, body)}, pages)
       search = Append(["name", n.Path, n.Name, about(n.Entry), n.Entry.Signature], search)
     end
   end
-  wordList = [{Name: w, Short: w, Path: keyPath(w)} for w in keywords]
   wordLinks = [{Label: w, Path: keyPath(w)} for w in keywords]
   for k in 1..Len(keywords)
     w = keywords[k]
@@ -832,13 +941,17 @@ defn build(root, folder, cache)
     if IsMissing(e)
       Send("src/std/keywords.ce: the keyword $w has no block.", site.Mistakes)
     else
-      body = Str(entryBody(site, path, e), pager(path, around.Prev, around.Next, index))
-      pages = Append({Path: path, Html: page(site, path, w, side(site, path, wordList), body)}, pages)
+      body = Str(entryBody(site, path, e), pager(path, around.Prev, around.Next, {Label: "Keywords", Path: "key/index.html"}))
+      pages = Append({Path: path, Html: page(site, path, w, body)}, pages)
       search = Append(["keyword", path, w, about(e), ""], search)
     end
   end
   for path in if Len(book) > 0 ["ref/index.html"] else ["ref/index.html", "index.html"] end
-    pages = Append({Path: path, Html: page(site, path, "Reference", side(site, path, []), indexBody(site, path))}, pages)
+    pages = Append({Path: path, Html: page(site, path, "Reference", indexBody(site, path))}, pages)
+  end
+  pages = Append({Path: "key/index.html", Html: page(site, "key/index.html", "Keywords", wordsBody(site, "key/index.html"))}, pages)
+  for g in groupsOf(modules)
+    pages = Append({Path: groupPath(g), Html: page(site, groupPath(g), g, Str(groupBody(site, g, modules), pager(groupPath(g), missing, missing, index)))}, pages)
   end
   mistakes = Concat(drained(site.Mistakes), sameButCase([p.Path for p in pages]))
   if Len(mistakes) > 0

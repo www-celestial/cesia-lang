@@ -94,6 +94,45 @@
     draw();
   });
 
+  // The side: each column shows its open item, the last columns are in sight, and the arrows move as in the Finder: up and
+  // down in a column, right into the column that the open item shows (or opens an item that has one), left back.
+  var side = document.querySelector("nav.side"), cols = side ? [].slice.call(side.querySelectorAll(".col")) : [];
+  cols.forEach(function (c) {
+    var mark = c.querySelector("a[aria-current], a.open");
+    if (mark) c.scrollTop = mark.offsetTop - c.offsetTop - c.clientHeight / 3;
+  });
+  // As many whole columns as the room holds, the last ones: none is cut at the left.
+  function fit() {
+    if (!side || innerWidth <= 760) { if (side) side.style.width = ""; return; }
+    var room = Math.min(innerWidth * 0.52, 860), width = 0;
+    for (var k = cols.length - 1; k >= 0; k--) {
+      var w = cols[k].getBoundingClientRect().width;
+      if (width > 0 && width + w > room) break;
+      width += w;
+    }
+    side.style.width = Math.ceil(width) + 1 + "px";
+    side.scrollLeft = side.scrollWidth;
+  }
+  if (side) {
+    fit();
+    addEventListener("resize", fit);
+    side.addEventListener("keydown", function (ev) {
+      var a = ev.target;
+      if (a.tagName !== "A" || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+      var k = cols.indexOf(a.parentNode), links = [].slice.call(a.parentNode.querySelectorAll("a")), i = links.indexOf(a), to = null;
+      var mark = function (c) { return c && (c.querySelector("a.open, a[aria-current]") || c.querySelector("a")); };
+      if (ev.key === "ArrowDown") to = links[i + 1];
+      else if (ev.key === "ArrowUp") to = links[i - 1];
+      else if (ev.key === "ArrowLeft") to = mark(cols[k - 1]);
+      else if (ev.key === "ArrowRight") {
+        if (a.classList.contains("open") || (a.hasAttribute("aria-current") && cols[k + 1])) to = mark(cols[k + 1]);
+        else if (a.classList.contains("more")) { ev.preventDefault(); location.href = a.href; return; }
+      } else return;
+      ev.preventDefault();
+      if (to) { to.focus(); to.scrollIntoView({ block: "nearest", inline: "nearest" }); }
+    });
+  }
+
   var keys = document.createElement("dl");
   keys.className = "keys"; keys.hidden = true; keys.setAttribute("aria-label", "Keys");
   [["/ s", "search"], ["n", "the next page"], ["p", "the previous page"], ["u", "the page above"], ["t", "the home page"],

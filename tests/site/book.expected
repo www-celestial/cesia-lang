@@ -9,6 +9,7 @@ built: 0
 </main>
 == first.html
 <main id="text">
+<nav class="trail" aria-label="Where"><a href="index.html">Book</a> <span aria-hidden="true">›</span> <span>First steps</span></nav>
 <h1 id="first-steps">First steps</h1>
 <p>Names and <a href="ref/prelude/Len.html">Len</a>:</p>
 <pre><code class="cesia"><span class="k">use</span> src/greet
@@ -57,6 +58,7 @@ name = &quot;x&quot;
 </main>
 == files.html
 <main id="text">
+<nav class="trail" aria-label="Where"><a href="index.html">Book</a> <span aria-hidden="true">›</span> <span>Files</span></nav>
 <h1 id="files">Files</h1>
 <h2 id="reading">Reading</h2>
 <pre><code class="cesia"><span class="k">use</span> std/sys
@@ -67,5 +69,11 @@ second line
 <p>Back to <a href="index.html">the start</a>.</p>
 <nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><span></span></nav>
 </main>
+== the columns of a method: its module, then its struct, then itself
+<a href="../greet.html" class="open more">greet</a>
+<a href="Greeter.html" class="open more">Greeter</a>
+<a href="Hello.html">Hello</a>
+<a href="Greeter.Say.html" aria-current="page">Say</a>
+<nav class="trail" aria-label="Where"><a href="../../index.html">Reference</a> <span aria-hidden="true">›</span> <a href="../../src.html">src</a> <span aria-hidden="true">›</span> <a href="../greet.html">greet</a> <span aria-hidden="true">›</span> <a href="Greeter.html">Greeter</a> <span aria-hidden="true">›</span> <span>Say</span></nav>
 nothing ran again
 exit 0
