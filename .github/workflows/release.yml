@@ -114,6 +114,7 @@ jobs:
             out/bin/cesia.exe version
             CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia.exe run bench/fib.ce 2> jit.txt
             grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
+            tools/release-sqlite.sh out/bin/cesia.exe
             (cd out && pwsh -Command "Compress-Archive -Path bin, lib -DestinationPath ../cesia-${{ matrix.system }}.zip")
           else
             cp _build/default/src/bin/main.exe out/bin/cesia
@@ -123,6 +124,7 @@ jobs:
             # The stripped binary still loads its plugin.
             CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia run bench/fib.ce 2> jit.txt
             grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
+            tools/release-sqlite.sh out/bin/cesia
             tar -czf "cesia-${{ matrix.system }}.tar.gz" -C out bin lib
           fi
       - uses: actions/upload-artifact@v4
