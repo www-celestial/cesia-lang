@@ -26,6 +26,13 @@ jobs:
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - run: opam install -y dune
       - run: opam exec -- dune build
+      # The JIT is a plugin (natdynlink: flexdll on Windows): the binary must load it, and run fib natively.
+      - name: JIT plugin
+        shell: bash
+        run: |
+          CESIA_JIT=always CESIA_JIT_SHOW=1 _build/default/src/bin/main.exe run bench/fib.ce > out.txt 2> jit.txt
+          grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
+          grep -qx 9227465 out.txt
       - name: JIT on Windows
         if: runner.os == 'Windows'
         run: opam exec -- dune exec tests/jit_test.exe

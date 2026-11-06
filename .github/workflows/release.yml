@@ -95,6 +95,13 @@ jobs:
         run: |
           mkdir -p out/bin
           cp -R libraries/lib out/lib
+          # The JIT, a plugin that the binary loads from lib/ at the first hot unit; without the C debug info, as the binary.
+          cp _build/default/src/jit/cesia_jit.cmxs out/lib/
+          if [ "${{ runner.os }}" = macOS ]; then
+            strip -x out/lib/cesia_jit.cmxs && codesign --force -s - out/lib/cesia_jit.cmxs
+          else
+            opam exec -- strip --strip-debug out/lib/cesia_jit.cmxs
+          fi
           if [ "${{ runner.os }}" = Windows ]; then
             cp _build/default/src/bin/main.exe out/bin/cesia.exe
             # Without the C debug info, mostly MIR's: OCaml's backtraces don't need it. The version below runs the result.
@@ -105,12 +112,17 @@ jobs:
               case "$found" in "" | /c/Windows/* | /c/WINDOWS/*) ;; *) cp "$found" out/bin/ ;; esac
             done
             out/bin/cesia.exe version
+            CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia.exe run bench/fib.ce 2> jit.txt
+            grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
             (cd out && pwsh -Command "Compress-Archive -Path bin, lib -DestinationPath ../cesia-${{ matrix.system }}.zip")
           else
             cp _build/default/src/bin/main.exe out/bin/cesia
             # Without the C debug info, mostly MIR's; on macOS the signature that stripping breaks is made again.
             if [ "${{ runner.os }}" = macOS ]; then strip -x out/bin/cesia && codesign --force -s - out/bin/cesia; else strip out/bin/cesia; fi
             out/bin/cesia version | tee "version-${{ matrix.system }}.txt"
+            # The stripped binary still loads its plugin.
+            CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia run bench/fib.ce 2> jit.txt
+            grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
             tar -czf "cesia-${{ matrix.system }}.tar.gz" -C out bin lib
           fi
       - uses: actions/upload-artifact@v4
