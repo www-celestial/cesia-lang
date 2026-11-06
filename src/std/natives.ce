@@ -584,6 +584,11 @@ use cesia
 
       columns.Kind([1.5]) --> "float" *)
 
+(** columns.Rows(names, cells, public = false)
+    An Ok of a list of maps, one per Len(names) cells given row after row; every row of one list of names shares its keys, so a row costs its values only. With public, a SQL name becomes a public Cesia name: created_at gives CreatedAt, id Id; a name that is no identifier, as max(score), stays. Two names that give one key are an Err of kind "names".
+
+      columns.Rows(["id", "name"], [1, "Ana", 2, "Bo"], public = true)?[2].Name --> "Bo" *)
+
 (** columns.Cores()
     The number of processor cores that heavy computations may use. *)
 

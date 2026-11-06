@@ -310,3 +310,6 @@ let use_dep upath =
   plain (Printf.sprintf "%s names no package: a use of deps/ is deps/OWNER/REPO/PACKAGE, as the [deps] of cesia.toml bring it." upath)
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)
 let denied perm = plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)
+let rows_same_key a b key =
+  plain (Printf.sprintf "The columns %s and %s both give the key %s: rename one with as." a b key)
+let rows_cells cells names = plain (Printf.sprintf "%d cells don't make whole rows of %d names." cells names)

@@ -269,3 +269,31 @@ defn isMasksOfLargeArrays()
   end
   ok and columns.Kind(xs > 0.0) == "value" and Equal(Size(Reshape(1:20, 4, 5) > 3), [4, 5]) and (Reshape(1:20, 4, 5) > 3)[4, 1]
 end
+
+(* Rows: maps from cells, which share their keys. *)
+defn isRowsReadFields()
+  rows = columns.Rows(["id", "created_at", "Name"], [1, "2026-11-06", "Ana", 2, missing, "Bo"], public = true)?
+  Len(rows) == 2 and rows[1].Id == 1 and rows[1].CreatedAt == "2026-11-06" and rows[2].Name == "Bo" and rows[2].CreatedAt == missing and Has("CreatedAt", rows[2])
+end
+isRowsKeepNames() = Equal(Keys(columns.Rows(["a_b", "count(*)"], [1, 2])?[1]), ["a_b", "count(*)"]) and Equal(Keys(columns.Rows(["a_b", "count(*)"], [1, 2], public = true)?[1]), ["AB", "count(*)"])
+defn isRowsWide()
+  for n in [33, 100]
+    names = ["c_$(k)" for k in 1:n]
+    rows = columns.Rows(names, [k for k in 1:(2 * n)], public = true)?
+    if not (Len(rows) == 2 and rows[1].C1 == 1 and rows[2]["C$(n)"] == 2 * n and Equal(Keys(rows[2]), ["C$(k)" for k in 1:n]))
+      return false
+    end
+  end
+  true
+end
+isRowsSameKey() = (columns.Rows(["user_id", "userId"], [1, 2], public = true) then MapErr(it.Kind)) == Err("names") and (columns.Rows(["a", "a"], [1, 2]) then MapErr(it.Kind)) == Err("names")
+isRowsWholeRows() = fails(() -> columns.Rows(["a", "b"], [1, 2, 3]), "type") and fails(() -> columns.Rows([], []), "type")
+isRowsNone() = Equal(columns.Rows(["a"], [])?, [])
+defn isRowsPastTheTable()
+  for k in 1:1100
+    if columns.Rows(["x$(k)"], [k])?[1]["x$(k)"] != k
+      return false
+    end
+  end
+  true
+end

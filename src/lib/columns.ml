@@ -535,8 +535,70 @@ let kind (a : t array) =
   | Array { store = F _; _ } -> Text "float"
   | _ -> Text "value"
 
+(* A SQL name as a public Cesia name: created_at gives CreatedAt, id Id. A name that is no identifier, as max(score), stays. *)
+let public_name s =
+  let letter = function 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false in
+  if s = "" || not (letter s.[0] && String.for_all (function '0' .. '9' -> true | c -> letter c) s) then s
+  else
+    match String.concat "" (List.map String.capitalize_ascii (String.split_on_char '_' s)) with
+    | "" -> s
+    | name -> name
+
+(* The keys of rows by list of names, which every row of that list shares; 1,024 lists at most, then each call makes its
+   own. Two names that give one key are an error. *)
+let row_keys : (bool * string array, (keys, string) result) Hashtbl.t = Hashtbl.create 16
+
+let keys_for public names =
+  let make () =
+    let keys = if public then Array.map public_name names else names in
+    let seen = Hashtbl.create (Array.length keys) and twice = ref None in
+    Array.iteri
+      (fun k key ->
+         match Hashtbl.find_opt seen key with
+         | Some j -> if !twice = None then twice := Some (Messages.rows_same_key names.(j) names.(k) key)
+         | None -> Hashtbl.add seen key k)
+      keys;
+    match !twice with
+    | Some m -> Error m.text
+    | None -> Ok (Trie.names keys)
+  in
+  match Hashtbl.find_opt row_keys (public, names) with
+  | Some found -> found
+  | None ->
+    let found = make () in
+    if Hashtbl.length row_keys < 1024 then Hashtbl.add row_keys (public, names) found;
+    found
+
+let values ctx name v =
+  let a = array_arg ctx name v in
+  Array.init (size a) (Value.elt a)
+
+(* [Rows(names, cells, public)]: a map per row from cells given row after row. *)
+let rows ctx (a : t array) =
+  let names = Array.map (Native.text_arg ctx "columns.Rows") (values ctx "columns.Rows" a.(0)) in
+  let cells = values ctx "columns.Rows" a.(1) and n = Array.length names in
+  let public =
+    match if Array.length a > 2 then a.(2) else Undef with
+    | True -> true
+    | Undef | Missing | False -> false
+    | v -> Runtime.fail ctx Type (Messages.c_need_bool (Value.describe v))
+  in
+  if n = 0 || Array.length cells mod n <> 0 then Runtime.fail ctx Type (Messages.rows_cells (Array.length cells) n);
+  match keys_for public names with
+  | Error text -> Value.failure ctx.w "names" text
+  | Ok keys ->
+    let count = Array.length cells / n in
+    Runtime.build ctx (count * (n + 4));
+    let cell r k = Value.share cells.((r * n) + k) in
+    let row r =
+      if n <= Trie.width then Trie.record keys (Array.init n (cell r))
+      else Trie.of_items (Array.init (2 * n) (fun k -> if k land 1 = 0 then keys.ks.(k / 2) else cell r (k / 2)))
+    in
+    Value.ok ctx.w (Arrays.list (Array.init count row))
+
 let natives =
   [ "Kind", Native.nat "Kind" 1 1 (fun _ a -> kind a);
+    "Rows", Native.nat ~params:[| "names"; "cells"; "public" |] "Rows" 2 3 rows;
     "Cores", Native.nat "Cores" 0 0 (fun _ _ -> Int (Par.cores ()));
     "Groups", Native.nat "Groups" 1 1 groups;
     "Split", Native.nat "Split" 2 2 split;

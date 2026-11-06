@@ -289,3 +289,5 @@ val server_stopped : t
 val bad_char : string -> t
 val need_size : string -> string -> t
 val deadlock : t
+val rows_same_key : string -> string -> string -> t
+val rows_cells : int -> int -> t
