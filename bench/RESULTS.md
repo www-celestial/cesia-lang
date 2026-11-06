@@ -545,10 +545,10 @@ Two fuzz runs of 60 s, seeds 20261102 and 20261103: 12,069 and 12,827 trials, 0 
 
 ## Start-up, 2026-11-07
 
-`use std/io` and `io.Print(1)` took 3.75 ms (minimum of 300 runs, median 4.10 ms), and `cesia version` alone 3.50 ms: the
+`use std/io` and `io.Print(1)` took 3.80 ms (minimum of 300 runs, median 4.20 ms), and `cesia version` alone 3.50 ms: the
 program itself is 0.3 ms of it. The rest is what every OCaml program pays for its code before its first line runs. The
-binary is a position-independent executable, so the loader relocates every address its data holds: 62,209 of them, on 445
-pages of `.data`, each page then copied. 48,986 of these addresses are the frame descriptors of the call sites of the code
+binary is a position-independent executable, so the loader relocates every address its data holds: 64,194 of them, on 454
+pages of `.data`, each page then copied. 50,671 of these addresses are the frame descriptors of the call sites of the code
 linked in, and the runtime then hashes all of them into a table of 1 MB. These two steps were 2.2 ms, against 0.8 ms for
 an OCaml program that does nothing.
 
@@ -557,20 +557,21 @@ reads it: no backtrace is ever printed. `-inline 200` copies the body of every f
 caller, with its call sites: it tripled the descriptors, mostly in the natives (`Native`, `Lists`, `sys/C`, `Columns`, each
 6 to 9 times more than with the default). Without both, with OCaml's default inlining as the `dev` profile has, and
 `[@inline]` on the 12 small functions a profile showed hot (`Value.elt`, `Trie.share`, an array read of `Compile`, and the
-helpers of the lexer, the parser and the resolver), the binary holds 17,975 descriptors, 27,747 relocations on 238 pages, 1.3 MB of
-`.data` instead of 3.0, and 4.0 MB stripped instead of 7.3. The plugins of the JIT and of SQLite keep `-inline 200`: they
+helpers of the lexer, the parser and the resolver), the binary holds 18,455 descriptors, 28,458 relocations on 240 pages, 1.3 MB of
+`.data` instead of 3.1, and 4.0 MB stripped instead of 7.4. The plugins of the JIT and of SQLite keep `-inline 200`: they
 load at their first use, so their size costs no start-up, and `bench/db.ce` needed it to stay at the same instructions.
 
 Both binaries alternated run by run, while other builds ran on the machine (load 3 to 8), so the timings are noisy:
 
 | Program | Before, min | Before, median | After, min | After, median |
 |---|---:|---:|---:|---:|
-| `io.Print(1)` | 3.75 ms | 4.06 ms | 2.48 ms | 2.73 ms |
-| `list.Map` on 3 numbers | 4.64 ms | 4.98 ms | 3.21 ms | 3.53 ms |
+| `io.Print(1)` | 3.80 ms | 4.20 ms | 2.50 ms | 2.81 ms |
+| `io.Print(1)`, again | 3.81 ms | 4.16 ms | 2.45 ms | 2.80 ms |
+| `list.Map` on 3 numbers | 4.43 ms | 4.69 ms | 3.15 ms | 3.44 ms |
 
-The benchmarks, best of 7 alternated, JIT on then off: fib 79 / 443 ms before, 77 / 446 after; mandel 64 / 456, 62 / 452;
-structs 566 / 568, 564 / 564; matmul 52 / 955, 50 / 937; dyn 669 / 672, 670 / 669. The instructions they execute are
-within 0.5% of before. Loading the 320,000 lines of `bench/load.sh`: 654 ms before, 662 ms after, 1.5% more instructions,
+The benchmarks, best of 7 alternated, JIT on then off: fib 78 / 444 ms before, 77 / 441 after; mandel 64 / 459, 62 / 458;
+structs 569 / 574, 557 / 560; matmul 51 / 965, 50 / 946; dyn 692 / 679, 674 / 675. The instructions they execute are
+within 0.5% of before. Loading the 320,000 lines of `bench/load.sh`: 627 ms before, 631 ms after, 1.7% more instructions,
 in the parser's loops.
 
 What is left: 1.2 ms before the runtime starts (0.5 ms for `/bin/true`), mostly the copied pages, and 0.4 ms of runtime
