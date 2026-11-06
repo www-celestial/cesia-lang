@@ -17,7 +17,7 @@ exit 1
 docs/book/first.md:54:1: Name "NoSuchName" doesn't exist.
 exit 1
 == a word cesia blocks don't have
-docs/book/first.md:53: quiet is no word of a cesia block: they are norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT or ffi=m.
+docs/book/first.md:53: quiet is no word of a cesia block: they are norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT, net=own or ffi=m.
 exit 1
 == --> error in a book
 docs/book/first.md:54: --> error is for cesia test; here a block that stops is marked fails.
