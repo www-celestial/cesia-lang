@@ -1,0 +1,2 @@
+(* A type of std/ is written with its package too. *)
+unwrap(r Ok) = r.Value

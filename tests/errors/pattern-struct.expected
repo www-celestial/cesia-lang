@@ -1,0 +1,5 @@
+pattern-struct.ce:5:3: There is no struct "Point" here.
+  5 |   Point(x, y) -> x
+    |   ^
+  A pattern names a struct of this package, as Point(x, y), or of a package in use, as geo.Point(x, y).
+exit 1

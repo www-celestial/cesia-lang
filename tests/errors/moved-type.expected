@@ -1,0 +1,4 @@
+moved-type.ce:2:10: Ok is in std/result: write use std/result and result.Ok.
+  2 | unwrap(r Ok) = r.Value
+    |          ^
+exit 1

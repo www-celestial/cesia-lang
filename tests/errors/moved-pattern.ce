@@ -1,0 +1,8 @@
+(* A pattern names a struct as code does: Ok is result.Ok. *)
+use std/io
+use std/sys
+
+io.Print(match sys.Read("nowhere.txt")
+  Ok(t) -> t
+  else -> "none"
+end)

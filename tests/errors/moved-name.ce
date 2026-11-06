@@ -1,0 +1,2 @@
+(* A name of std/ written without its package says which use to write. *)
+Print(1)

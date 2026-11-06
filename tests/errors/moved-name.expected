@@ -1,0 +1,4 @@
+moved-name.ce:2:1: Print is in std/io: write use std/io and io.Print.
+  2 | Print(1)
+    | ^
+exit 1

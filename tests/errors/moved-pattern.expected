@@ -1,0 +1,4 @@
+moved-pattern.ce:6:3: Ok is in std/result: write use std/result and result.Ok.
+  6 |   Ok(t) -> t
+    |   ^
+exit 1
