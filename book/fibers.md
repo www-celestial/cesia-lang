@@ -55,8 +55,8 @@ Pmap(name -> slow(name, 0.1), ["bread", "cake", "tart"]) -->
 sys.Now() - start < 0.3 -->
 ```
 
-Three waits of `0.1` seconds take about `0.1` seconds together, not `0.3`. The results come in the order of the list, whatever the order in
-which the fibers end.
+Three waits of `0.1` seconds take about `0.1` seconds together, not `0.3`. The results come in the order of the list,
+whatever the order in which the fibers end.
 
 ## A panic in a fiber
 
@@ -105,4 +105,4 @@ one, and the other fiber keeps what it had. A channel is the way to pass the new
 
 ## Next
 
-Your programs do many things at once. The next chapter, SQLite, keeps their data in a database.
+Your programs do many things at once. The next chapter, [SQLite](sqlite.md), keeps their data in a database.

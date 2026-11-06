@@ -42,5 +42,6 @@ language.
 15. [JSON and CSV](json.md): reading, writing, and checking what comes in.
 16. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
 17. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
+18. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.
