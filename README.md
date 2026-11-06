@@ -44,6 +44,13 @@ it again.
 The chapters are plain Markdown, in [`docs/book/`](docs/book/index.md). From a clone, `cesia doc --site --open` builds the same site in
 `site/` and opens it, and `cesia doc list.Sort` or `cesia doc num.Solve` prints one page in the terminal.
 
+## Check without running
+
+`cesia check` reads the source folders of a project and says what is wrong, without running a line of it: names that don't
+exist, calls with the wrong arguments, values that can't fit a type, and results whose `Err` would go unseen. It needs the read
+permission only. `cesia check --json --stdin file.ce` takes an unsaved buffer from the input and writes one object per line,
+for an editor to show each error on its line.
+
 ## Editors
 
 Neovim and Vim: copy `tools/editors/nvim/` into `~/.config/nvim/`.
