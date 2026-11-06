@@ -66,10 +66,10 @@ WithTax(10.25) -->
 - A name with a capital, `WithTax`, is public: other packages reach it as `prices.WithTax`. A name with a small letter,
   `cents`, stays inside its folder.
 - A subfolder is another package: `src/prices/old/` is used as `use src/prices/old`, and named `old` in the code.
-- Inside a package, its own names come before those that every file sees, as [Count] or [Get]. A package that defines
-  `Count` calls its own `Count` everywhere in its files, and other packages still write `prices.Count` for it and `Count`
-  for the other. Give a function of your own a name of its own, unless it does the same thing for your kind of value, as
-  `set.Count` does for a set.
+- A package may name a function as one that every file sees, as [Count]. Then, in the files of that package, `Count` is
+  its own; everywhere else, `Count` is the one of every file, and the package's is `prices.Count`. So inside such a
+  package, the other `Count` can't be called: give your function a name of its own, unless it does the same thing for your
+  kind of value, as `set.Count` counts the elements of a set.
 
 A private name is no name of the package from outside, and the message says so:
 
