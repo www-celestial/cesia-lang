@@ -57,6 +57,13 @@ let print ctx args =
   if Buffer.length w.out > 65536 then Runtime.flush_out w;
   Missing
 
+(* The standard output goes first, so that the two keep their order on a terminal. *)
+let print_error ctx args =
+  let w = ctx.w in
+  Runtime.flush_out w;
+  w.err (String.concat " " (Array.to_list (Array.map (Value.text_of ctx) args)) ^ "\n");
+  Missing
+
 let points_between s a b =
   let n = ref 0 in
   for k = a to b - 1 do
@@ -469,6 +476,35 @@ let trim ctx (a : t array) =
   if s <> "" && (space s.[0] || space s.[String.length s - 1]) then Runtime.reserve ctx ((String.length s / 8) + 1);
   Text (String.trim s)
 
+(* An integer is written from its digits, which a float would round past 2^53. *)
+let decimals ctx (a : t array) =
+  let n =
+    match a.(0) with
+    | Int n when n >= 0 && n <= 20 -> n
+    | v -> Runtime.fail ctx Type (Messages.decimals_count (Value.describe v))
+  in
+  match a.(1) with
+  | Int i -> Text (if n = 0 then string_of_int i else string_of_int i ^ "." ^ String.make n '0')
+  | Float x ->
+    (* printf rounds the exact value of the float, and a half to even: a true half goes away from zero here, as
+       math.Round does. It is one when x times 10^n, exact (fma says so), ends in .5. What rounds to zero has no sign. *)
+    let unsigned t =
+      let rest = String.sub t 1 (String.length t - 1) in
+      if t.[0] = '-' && String.for_all (fun c -> c = '0' || c = '.') rest then rest else t
+    in
+    let p = float_of_string ("1e" ^ string_of_int n) in
+    let y = x *. p in
+    if Float.abs (y -. Float.trunc y) = 0.5 && Float.fma x p (-.y) = 0. then begin
+      let r = Float.round y in
+      let digits = Printf.sprintf "%.0f" (Float.abs r) in
+      let digits = String.make (max 0 (n + 1 - String.length digits)) '0' ^ digits in
+      let k = String.length digits - n in
+      let sign = if r < 0. then "-" else "" in
+      Text (if n = 0 then sign ^ digits else sign ^ String.sub digits 0 k ^ "." ^ String.sub digits k n)
+    end
+    else Text (unsigned (Printf.sprintf "%.*f" n x))
+  | v -> Runtime.fail ctx Type (Messages.need_number "text.Decimals" (Value.describe v))
+
 let text_natives =
   let pay ctx s = Runtime.pay_bytes ctx (String.length s) in
   let on_text name f =
@@ -484,6 +520,7 @@ let text_natives =
         Value.of_bool (f p s))
   in
   [ "Split", nat "Split" 2 2 split;
+    "Decimals", nat ~params:[| "n"; "x" |] "Decimals" 2 2 decimals;
     "Join", nat "Join" 2 2 join;
     "Slice", nat "Slice" 3 3 slice;
     "Replace", nat "Replace" 3 3 replace;
@@ -502,7 +539,7 @@ let text_natives =
 let core = [ "#dict", nat "dict literal" 0 max_int dict_literal ]
 
 let packages =
-  [ "io", [ "Print", nat "Print" 0 max_int print ];
+  [ "io", [ "Print", nat "Print" 0 max_int print; "PrintError", nat "PrintError" 0 max_int print_error ];
     "bug",
     [ "Panic", nat "Panic" 1 1 (fun ctx a -> Runtime.fail ctx User (Messages.plain (Value.text_of ctx a.(0))));
       "Assert", nat "Assert" 1 2 (fun ctx a ->

@@ -47,3 +47,10 @@ isEscapeQuote() = "\"" == "\""
 isOtherBackslashStays() = text.ByteLength("\d") == 2
 isEmptyArraysEqual() = value.Equal(list.Filter(it > 9, [1]), [])
 isTextOrder() = "a" < "b" and "b" > "a" and "a" <= "a" and "a" >= "a" and not ("b" < "a")
+
+isDecimals() = text.Decimals(2, 3.14159) == "3.14" and text.Decimals(3, 2) == "2.000" and text.Decimals(0, 7) == "7"
+isDecimalsHalves() = text.Decimals(0, 0.5) == "1" and text.Decimals(0, -2.5) == "-3" and text.Decimals(2, 0.125) == "0.13"
+isDecimalsBinary() = text.Decimals(2, 2.675) == "2.67" and text.Decimals(1, 0.05) == "0.1" and text.Decimals(2, 1.005) == "1.00"
+isDecimalsZero() = text.Decimals(2, -0.001) == "0.00" and text.Decimals(0, -0.4) == "0" and text.Decimals(1, -0.0) == "0.0"
+isDecimalsLarge() = text.Decimals(1, 1e20) == "100000000000000000000.0" and text.Decimals(2, 9007199254740993) == "9007199254740993.00"
+isDecimalsNoFloat() = text.Decimals(2, 123456.789) == "123456.79" and text.Decimals(4, 1.0 / 3) == "0.3333"

@@ -91,6 +91,7 @@ let size_dim a = plain (Printf.sprintf "Size's dimension must be 1 or 2, not %s.
 let shape a b c d = plain (Printf.sprintf "Can't combine an array of %d by %d with an array of %d by %d." a b c d)
 let matmul_shape a b c d =
   plain (Printf.sprintf "Matmul can't multiply %d by %d with %d by %d: the columns of the first must equal the rows of the second." a b c d)
+let decimals_count a = plain (Printf.sprintf "text.Decimals needs a count of decimals from 0 to 20, not %s." a)
 let need_number name a =
   let text = Printf.sprintf "%s needs numbers, not %s." name a in
   if a = "function <anonymous>" then hinted text "\"it\" belongs to the nearest call. Write x -> ... to use it further out."

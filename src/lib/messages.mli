@@ -82,6 +82,9 @@ val size_dim : string -> t
 val shape : int -> int -> int -> int -> t
 val matmul_shape : int -> int -> int -> int -> t
 val need_number : string -> string -> t
+
+(** [decimals_count v]: text.Decimals(n, x) with an n that isn't a whole number from 0 to 20. *)
+val decimals_count : string -> t
 val no_field : string -> t
 val named_field : string -> string -> t
 val from_missing : string -> string -> t

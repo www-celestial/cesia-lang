@@ -1,0 +1,7 @@
+(* io.PrintError writes on the standard error, after what io.Print wrote before it. *)
+use std/io
+use std/text
+
+io.Print("out", 1)
+io.PrintError("error:", [1, 2], text.Decimals(1, 0.25))
+io.Print("out", 2)
