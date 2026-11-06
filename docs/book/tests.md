@@ -105,9 +105,21 @@ With `--open`, it opens the site in the browser. Its pages are written in `site/
 cesia doc --site --open
 ```
 
-A project can have a book too: a `book/` folder of Markdown pages, with `book/index.md` as the home page, whose links give the
-order of the chapters. Every `cesia` block of a page runs when the site is built, and what it prints is written under it.
-This book is built that way, so its examples can't drift from the language: a block that gives another value stops the build.
+A project can have books too, in `docs/`: each folder of Markdown pages there is a book, whose `index.md` links to its
+chapters in their order. `docs/book/` is the home of the site, and another folder, as `docs/guides/`, is a book beside it. A
+`files/` folder in a book holds the files its examples read. Every `cesia` block of a page runs when the site is built, and
+what it prints is written under it. This book is built that way, so its examples can't drift from the language: a block
+that gives another value stops the build.
+
+```text
+docs/
+  book/
+    index.md
+    first-steps.md
+    files/
+  guides/
+    index.md
+```
 
 ## Next
 
