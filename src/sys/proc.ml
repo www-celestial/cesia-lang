@@ -85,12 +85,25 @@ let rec pipes count =
       raise e
   end
 
-(* SIGPIPE is ignored here, so that a command that stops reading is an EPIPE. The command itself gets the default. *)
-let start cmd argv child_in child_out child_err =
+let seconds ctx name v =
+  match v with
+  | Int i when i >= 0 -> float_of_int i
+  | Float x when x >= 0. && x < infinity -> x
+  | _ -> Runtime.fail ctx Type (Messages.bad_duration name (Value.describe v))
+
+(* SIGPIPE is ignored here, so that a command that stops reading is an EPIPE. The command itself gets the default. A
+   command starts where its parent is, so the parent goes into [dir] for that moment: fibers take turns, and no other domain
+   reads a relative path. *)
+let start ?(dir = "") cmd argv child_in child_out child_err =
   Sys.set_signal Sys.sigpipe Sys.Signal_default;
+  let here = if dir = "" then "" else Unix.getcwd () in
   Fun.protect
-    ~finally:(fun () -> Sys.set_signal Sys.sigpipe Sys.Signal_ignore)
-    (fun () -> Unix.create_process cmd argv child_in child_out child_err)
+    ~finally:(fun () ->
+        Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
+        if here <> "" then Unix.chdir here)
+    (fun () ->
+       if dir <> "" then Unix.chdir dir;
+       Unix.create_process cmd argv child_in child_out child_err)
 
 let run poll ctx (a : t array) =
   let w = ctx.w in
@@ -99,12 +112,14 @@ let run poll ctx (a : t array) =
   let arg k = if Array.length a > k then a.(k) else Undef in
   let args = text_list ctx "Run" (arg 1) in
   let input = match arg 2 with Undef -> "" | v -> Native.text_arg ctx "Run" v in
-  let failed e = Fs.failed ctx "run" cmd e in
+  let dir = match arg 3 with Undef -> "" | v -> Native.text_arg ctx "Run" v in
+  let timeout = match arg 4 with Undef -> 0. | v -> seconds ctx "Run" v in
+  let failed e = if dir <> "" && not (Sys.file_exists dir) then Fs.failed ctx "run in" dir e else Fs.failed ctx "run" cmd e in
   match pipes 3 with
   | exception Unix.Unix_error (e, _, _) -> failed e
   | [ (in_read, in_write); (out_read, out_write); (err_read, err_write) ] ->
     let close_child () = List.iter Unix.close [ in_read; out_write; err_write ] in
-    (match start cmd (Array.append [| cmd |] args) in_read out_write err_write with
+    (match start ~dir cmd (Array.append [| cmd |] args) in_read out_write err_write with
      | exception Unix.Unix_error (e, _, _) ->
        close_child ();
        List.iter Unix.close [ in_write; out_read; err_read ];
@@ -116,8 +131,13 @@ let run poll ctx (a : t array) =
          { fd; live = true }
        in
        let stdin_pipe = open_pipe in_write and stdout_pipe = open_pipe out_read and stderr_pipe = open_pipe err_read in
+       (* Past its time the command is killed; once it is waited for, its number may go to another. *)
+       let ended = ref false in
+       if timeout > 0. then
+         Poll.timer poll timeout (fun () -> if not !ended then try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ());
        let out, err = exchange ctx poll stdin_pipe stdout_pipe stderr_pipe input in
        let code = exit_code ctx poll pid 0.0005 in
+       ended := true;
        Value.ok w (Trie.record run_keys [| Int code; Text out; Text err |]))
   | _ -> assert false
 
@@ -211,7 +231,7 @@ let stop_process procs ctx (a : t array) : t =
 
 let natives poll =
   let procs = Hashtbl.create 8 in
-  [ "Run", Native.nat ~params:[| "cmd"; "args"; "input" |] "Run" 1 3 (run poll);
+  [ "Run", Native.nat ~params:[| "cmd"; "args"; "input"; "dir"; "timeout" |] "Run" 1 5 (run poll);
     "Start", Native.nat ~params:[| "cmd"; "args" |] "Start" 1 2 (start_process poll procs);
     "ReadOutput", Native.nat "ReadOutput" 1 1 (read_output poll procs);
     "WriteInput", Native.nat "WriteInput" 2 2 (write_input poll procs);

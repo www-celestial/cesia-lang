@@ -738,8 +738,10 @@ use cesia
 (** sys.Sleep(seconds)
     Waits for a number of seconds, letting the other fibers run. *)
 
-(** sys.Run(cmd, args = [], input = "")
-    Runs a program to its end, giving it the input text, and gives an Ok of a struct with Code, Out and Err, or an Err if it can't start. Needs the exec permission. *)
+(** sys.Run(cmd, args = [], input = "", dir = "", timeout = 0)
+    Runs a program to its end, giving it the input text, and gives an Ok of a struct with Code, Out and Err, or an Err if it
+    can't start. It runs in the folder dir, or in this program's folder if dir is empty. After timeout seconds, if timeout is
+    more than 0, it is killed and its Code is -1, as for a program that a signal ended. Needs the exec permission. *)
 
 (** sys.Start(cmd, args = [])
     Starts a program that keeps running and gives an Ok of its process. Its output and its errors come as one stream. Needs the exec permission. *)

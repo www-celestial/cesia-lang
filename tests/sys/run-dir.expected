@@ -1,0 +1,7 @@
+Ok(Value = "/
+")
+Err(Error = "Can't run in /no/such/folder: no such file or directory.")
+Ok(Value = -1) true
+Ok(Value = "quick
+")
+exit 0

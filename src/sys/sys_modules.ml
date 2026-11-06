@@ -34,13 +34,6 @@ let sqlite_natives =
       "Next", [| "n"; "cursor" |], 2, 2; "Script", [| "text"; "conn" |], 2, 2; "Close", [| "x" |], 1, 1;
       "Version", [||], 0, 0 ]
 
-let seconds ctx v =
-  let bad () = Runtime.fail ctx Type (Messages.bad_sleep (Value.describe v)) in
-  match v with
-  | Int i when i >= 0 -> float_of_int i
-  | Float x when x >= 0. && x < infinity -> x
-  | _ -> bad ()
-
 let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
@@ -52,7 +45,7 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
     @ [ "Now", Native.nat "Now" 0 0 (fun _ _ -> Float (Unix.gettimeofday ()));
         "Sleep",
         Native.nat "Sleep" 1 1 (fun ctx a ->
-            Poll.sleep poll ctx (Float.min max_sleep (seconds ctx a.(0)));
+            Poll.sleep poll ctx (Float.min max_sleep (Proc.seconds ctx "Sleep" a.(0)));
             Missing);
         "TakeStops",
         Native.nat "TakeStops" 1 1 (fun ctx a ->

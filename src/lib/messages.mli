@@ -279,7 +279,7 @@ val c_need_pointer : string -> t
 val c_freed : t
 val c_no_open_library : t
 val c_zero_byte : t
-val bad_sleep : string -> t
+val bad_duration : string -> string -> t
 val io_failure : string -> string -> string -> t
 val need_socket : string -> string -> t
 val need_port : string -> t
