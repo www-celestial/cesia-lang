@@ -1,0 +1,859 @@
+(** Markdown to HTML: the part of CommonMark that GitHub shows the same way, and its tables. ATX and setext headings,
+    paragraphs, emphasis, code spans, fenced code, nested and ordered lists, quotes, tables, links [text](url) and [Name],
+    rules and hard breaks; no indented code, no raw HTML, no reference definitions. Raw HTML is text: everything a page shows
+    is escaped, so a text from anyone is safe in it, and a link leads only to http, https, mailto or a page of the site.
+    Parse gives the blocks with their lines; Html writes them, and asks its hooks for the colors of code, the target of a
+    [Name] and the anchor of a heading. *)
+
+(** Hooks that add nothing: code in a plain pre, a [Name] left as text, headings without an anchor.
+
+      Html(Parse("[Sort]"), Plain) --> "<p>[Sort]</p>\n" *)
+Plain = {Code: (info, text, line) -> missing, Link: (target, line) -> missing, Anchor: (level, text, line) -> missing}
+
+(** The text with &, <, > and " written as HTML writes them, so that it shows as it is.
+
+      Escape("a < b & ""c""") --> "a &lt; b &amp; &quot;c&quot;" *)
+Escape(text) = Replace("\"", "&quot;", Replace(">", "&gt;", Replace("<", "&lt;", Replace("&", "&amp;", text))))
+
+(* The bytes that may start something inline: \ ` * _ [ ] < and the line end. Any other byte is text. *)
+specials = [b == 92 or b == 96 or b == 42 or b == 95 or b == 91 or b == 93 or b == 60 or b == 10 for b in 0:255]
+
+isPunct(b) = (b >= 33 and b <= 47) or (b >= 58 and b <= 64) or (b >= 91 and b <= 96) or (b >= 123 and b <= 126)
+
+from(k, t) = ByteSlice(k, ByteLength(t), t)   (** The text from byte k. *)
+
+defn indentOf(t)
+  (** The spaces at the start of a line. *)
+  n = ByteLength(t)
+  i = 1
+  while i <= n and Byte(i, t) == 32
+    i += 1
+  end
+  i - 1
+end
+
+isBlank(t) = indentOf(t) == ByteLength(t)
+dropSpaces(n, t) = from(Min(n, indentOf(t)) + 1, t)   (** The line without at most n spaces at its start. *)
+
+(* The blocks. A line is {T, N}: its text, tabs as four spaces, and its number in the file. *)
+
+defn heading(t)
+  (** An ATX heading, {Level, Text}, or missing. A closing run of # goes when a space or nothing is before it. *)
+  i = indentOf(t)
+  n = ByteLength(t)
+  if i > 3
+    return missing
+  end
+  j = i + 1
+  while j <= n and Byte(j, t) == 35
+    j += 1
+  end
+  level = j - i - 1
+  if level < 1 or level > 6 or (j <= n and Byte(j, t) != 32)
+    return missing
+  end
+  words = Trim(from(j, t))
+  k = ByteLength(words)
+  while k >= 1 and Byte(k, words) == 35
+    k -= 1
+  end
+  if k < ByteLength(words) and (k == 0 or Byte(k, words) == 32)
+    words = Trim(ByteSlice(1, k, words))
+  end
+  {Level: level, Text: words}
+end
+
+defn isRule(t)
+  (** Is this line a thematic break: three or more -, * or _, alone with spaces? *)
+  i = indentOf(t)
+  n = ByteLength(t)
+  if i > 3 or i >= n
+    return false
+  end
+  c = Byte(i + 1, t)
+  if c != 45 and c != 42 and c != 95
+    return false
+  end
+  count = 0
+  for j in (i + 1):n
+    b = Byte(j, t)
+    if b == c
+      count += 1
+    else if b != 32
+      return false
+    end
+  end
+  count >= 3
+end
+
+defn setextLevel(t)
+  (** 1 for a line of =, 2 for a line of -, which make the paragraph above them a heading; 0 for another line. *)
+  i = indentOf(t)
+  if i > 3 or i >= ByteLength(t)
+    return 0
+  end
+  c = Byte(i + 1, t)
+  if c != 61 and c != 45
+    return 0
+  end
+  if Replace(Char(c), "", Trim(t)) != ""
+    return 0
+  end
+  if c == 61 1 else 2 end
+end
+
+defn fenceOf(t)
+  (** An opening fence, {Char, Size, Indent, Info}, or missing. *)
+  i = indentOf(t)
+  n = ByteLength(t)
+  if i > 3 or i >= n
+    return missing
+  end
+  c = Byte(i + 1, t)
+  if c != 96 and c != 126
+    return missing
+  end
+  j = i + 1
+  while j <= n and Byte(j, t) == c
+    j += 1
+  end
+  info = Trim(from(j, t))
+  if j - i - 1 < 3 or (c == 96 and Contains("`", info))
+    return missing
+  end
+  {Char: c, Size: j - i - 1, Indent: i, Info: info}
+end
+
+defn closesFence(t, f)
+  (** Does this line close the fence f: as many of its character or more, alone with spaces? *)
+  i = indentOf(t)
+  n = ByteLength(t)
+  if i > 3
+    return false
+  end
+  j = i + 1
+  while j <= n and Byte(j, t) == f.Char
+    j += 1
+  end
+  j - i - 1 >= f.Size and isBlank(from(j, t))
+end
+
+defn quoted(t)
+  (** The line inside a quote, without its > and the space after it, or missing. *)
+  i = indentOf(t)
+  n = ByteLength(t)
+  if i > 3 or i >= n or Byte(i + 1, t) != 62
+    return missing
+  end
+  if i + 2 <= n and Byte(i + 2, t) == 32 from(i + 3, t) else from(i + 2, t) end
+end
+
+defn markerOf(t)
+  (** A list marker, {Ordered, Char, Start, Content, Empty}, or missing: Content is the column where the text of the item
+      starts, and Empty says that nothing follows the marker. *)
+  i = indentOf(t)
+  n = ByteLength(t)
+  if i > 3 or i >= n
+    return missing
+  end
+  c = Byte(i + 1, t)
+  j = i + 2
+  ordered = false
+  start = 1
+  if c >= 48 and c <= 57
+    j = i + 1
+    while j <= n and j - i <= 10 and Byte(j, t) >= 48 and Byte(j, t) <= 57
+      j += 1
+    end
+    if j > n or j - i - 1 > 9 or (Byte(j, t) != 46 and Byte(j, t) != 41)
+      return missing
+    end
+    start = Number(ByteSlice(i + 1, j - 1, t))
+    c = Byte(j, t)
+    ordered = true
+    j += 1
+  else if c != 45 and c != 43 and c != 42
+    return missing
+  end
+  if j <= n and Byte(j, t) != 32
+    return missing
+  end
+  rest = from(j, t)
+  spaces = indentOf(rest)
+  empty = isBlank(rest)
+  content = if empty or spaces > 4 j else j - 1 + spaces end
+  {Ordered: ordered, Char: c, Start: start, Content: content, Empty: empty}
+end
+
+defn interrupts(t)
+  (** Does this line start a block that ends a paragraph? A list does only when its first item has text, and an ordered one
+      only from 1. *)
+  m = markerOf(t)
+  isRule(t) or IsSome(heading(t)) or IsSome(fenceOf(t)) or IsSome(quoted(t)) or
+    (IsSome(m) and not m.Empty and (not m.Ordered or m.Start == 1))
+end
+
+defn cells(t)
+  (** The cells of a row of a table: the parts between its |, without those at its ends, trimmed. A \| stays in its cell. *)
+  s = Trim(t)
+  if StartsWith("|", s)
+    s = from(2, s)
+  end
+  if EndsWith("|", s) and not EndsWith("\\|", s)
+    s = ByteSlice(1, ByteLength(s) - 1, s)
+  end
+  out = []
+  cell = 1
+  i = 1
+  n = ByteLength(s)
+  while i <= n
+    b = Byte(i, s)
+    if b == 92
+      i += 2
+    else if b == 124
+      out = Append(Replace("\\|", "|", Trim(ByteSlice(cell, i - 1, s))), out)
+      cell = i + 1
+      i += 1
+    else
+      i += 1
+    end
+  end
+  Append(Replace("\\|", "|", Trim(ByteSlice(cell, n, s))), out)
+end
+
+defn alignments(t)
+  (** The alignment of each cell of a delimiter row, "", "left", "center" or "right", or missing for a line that is none. *)
+  if not Contains("-", t)
+    return missing
+  end
+  out = []
+  for c in cells(t)
+    n = ByteLength(c)
+    left = n > 0 and Byte(1, c) == 58
+    right = n > 1 and Byte(n, c) == 58
+    inner = ByteSlice(if left 2 else 1 end, if right n - 1 else n end, c)
+    if inner == "" or Replace("-", "", inner) != ""
+      return missing
+    end
+    out = Append(if left and right "center" else if right "right" else if left "left" else "" end, out)
+  end
+  out
+end
+
+defn tableAt(ls, i)
+  (** Do lines i and i + 1 start a table: a row with a |, then a delimiter row of as many cells? *)
+  if i >= Len(ls) or not Contains("|", ls[i].T) or indentOf(ls[i].T) > 3
+    return false
+  end
+  a = alignments(ls[i + 1].T)
+  IsSome(a) and Len(a) == Len(cells(ls[i].T))
+end
+
+defn tableFrom(ls, i, gap)
+  (** The table that starts at line i, and the line after it. *)
+  align = alignments(ls[i + 1].T)
+  width = Len(align)
+  rows = []
+  j = i + 2
+  while j <= Len(ls) and not isBlank(ls[j].T) and not interrupts(ls[j].T)
+    row = cells(ls[j].T)
+    rows = Append([if k <= Len(row) row[k] else "" end for k in 1:width], rows)
+    j += 1
+  end
+  {Block: {Kind: "table", Align: align, Head: cells(ls[i].T), Rows: rows, Line: ls[i].N, Gap: gap}, Next: j}
+end
+
+defn fenced(ls, i, f)
+  (** The text of the code that a fence opens at line i, up to its closing fence or the end, and the line after it. *)
+  body = []
+  j = i + 1
+  n = Len(ls)
+  while j <= n and not closesFence(ls[j].T, f)
+    body = Append(dropSpaces(f.Indent, ls[j].T), body)
+    j += 1
+  end
+  {Text: if Len(body) == 0 "" else Str(Join("\n", body), "\n") end, Next: Min(j, n) + 1}
+end
+
+defn mayGoOn(t)
+  (** Can a line that follows this one go on its paragraph, as the lazy lines of CommonMark do? *)
+  not isBlank(t) and IsMissing(fenceOf(t)) and IsMissing(heading(t)) and not isRule(t)
+end
+
+defn quoteAt(ls, i)
+  (** The lines of the quote that starts at line i, without their >, and the line after it. A line without > goes on a
+      paragraph that the quote ends with. *)
+  inner = []
+  j = i
+  lazy = false
+  while j <= Len(ls)
+    q = quoted(ls[j].T)
+    if IsSome(q)
+      inner = Append({T: q, N: ls[j].N}, inner)
+      lazy = mayGoOn(q)
+    else if lazy and not isBlank(ls[j].T) and not interrupts(ls[j].T)
+      inner = Append(ls[j], inner)
+    else
+      break
+    end
+    j += 1
+  end
+  {Lines: inner, Next: j}
+end
+
+defn itemAt(ls, i, m)
+  (** The lines of the list item that starts at line i, without the indent of its content; the line after it; and whether
+      blank lines end it, which belong to the list. *)
+  t = ls[i].T
+  lines = [{T: if m.Empty "" else from(m.Content + 1, t) end, N: ls[i].N}]
+  lazy = not m.Empty and mayGoOn(lines[1].T)
+  ended = false
+  j = i + 1
+  while j <= Len(ls)
+    t = ls[j].T
+    if isBlank(t)
+      (* An item can start with one blank line only: an empty one ends there. *)
+      ended = ended or (m.Empty and j == i + 1)
+      lines = Append({T: "", N: ls[j].N}, lines)
+      lazy = false
+    else if ended
+      break
+    else if indentOf(t) >= m.Content
+      lines = Append({T: from(m.Content + 1, t), N: ls[j].N}, lines)
+      lazy = mayGoOn(lines[Len(lines)].T)
+    else if lazy and not interrupts(t) and IsMissing(markerOf(t))
+      lines = Append(ls[j], lines)
+    else
+      break
+    end
+    j += 1
+  end
+  k = Len(lines)
+  while k > 1 and lines[k].T == ""
+    k -= 1
+  end
+  {Lines: Take(k, lines), Next: j, Trailing: k < Len(lines)}
+end
+
+defn listAt(ls, i, m, gap)
+  (** The list that starts at line i: its items while their markers are of its kind. It is loose when a blank line is between
+      two items, or between two blocks of one item. *)
+  items = []
+  loose = false
+  trailing = false
+  j = i
+  while j <= Len(ls)
+    k = markerOf(ls[j].T)
+    if IsMissing(k) or isRule(ls[j].T) or k.Ordered != m.Ordered or k.Char != m.Char
+      break
+    end
+    loose = loose or trailing
+    r = itemAt(ls, j, k)
+    blocks = blocksOf(r.Lines)
+    loose = loose or Any([b.Gap for b in blocks])
+    items = Append(blocks, items)
+    trailing = r.Trailing
+    j = r.Next
+  end
+  block = {Kind: "list", Ordered: m.Ordered, Start: m.Start, Tight: not loose, Items: items, Line: ls[i].N, Gap: gap}
+  {Block: block, Next: j, Trailing: trailing}
+end
+
+paragraph(para, gap) = {Kind: "paragraph", Text: Trim(Join("\n", [dropSpaces(ByteLength(l.T), l.T) for l in para])), Line: para[1].N, Gap: gap}
+
+defn blocksOf(ls)
+  (** The blocks of lines {T, N}. Gap says that a blank line is before a block that isn't the first. *)
+  out = []
+  para = []
+  paraGap = false
+  blank = false
+  i = 1
+  n = Len(ls)
+  while i <= n
+    t = ls[i].T
+    if isBlank(t)
+      if Len(para) > 0
+        out = Append(paragraph(para, paraGap), out)
+        para = []
+      end
+      blank = true
+      i += 1
+    else if Len(para) > 0 and setextLevel(t) > 0
+      out = Append({Kind: "heading", Level: setextLevel(t), Text: paragraph(para, false).Text, Line: para[1].N, Gap: paraGap}, out)
+      para = []
+      i += 1
+    else if Len(para) > 0 and not interrupts(t) and not tableAt(ls, i)
+      para = Append(ls[i], para)
+      i += 1
+    else
+      if Len(para) > 0
+        out = Append(paragraph(para, paraGap), out)
+        para = []
+      end
+      gap = blank and Len(out) > 0
+      blank = false
+      f = fenceOf(t)
+      h = heading(t)
+      m = markerOf(t)
+      if IsSome(f)
+        r = fenced(ls, i, f)
+        out = Append({Kind: "code", Info: unescaped(f.Info), Text: r.Text, Line: ls[i].N, Gap: gap}, out)
+        i = r.Next
+      else if IsSome(h)
+        out = Append({Kind: "heading", Level: h.Level, Text: h.Text, Line: ls[i].N, Gap: gap}, out)
+        i += 1
+      else if isRule(t)
+        out = Append({Kind: "rule", Line: ls[i].N, Gap: gap}, out)
+        i += 1
+      else if IsSome(quoted(t))
+        r = quoteAt(ls, i)
+        out = Append({Kind: "quote", Blocks: blocksOf(r.Lines), Line: ls[i].N, Gap: gap}, out)
+        i = r.Next
+      else if IsSome(m)
+        r = listAt(ls, i, m, gap)
+        out = Append(r.Block, out)
+        blank = r.Trailing
+        i = r.Next
+      else if tableAt(ls, i)
+        r = tableFrom(ls, i, gap)
+        out = Append(r.Block, out)
+        i = r.Next
+      else
+        para = [ls[i]]
+        paraGap = gap
+        i += 1
+      end
+    end
+  end
+  if Len(para) > 0 Append(paragraph(para, paraGap), out) else out end
+end
+
+defn detabbed(line)
+  (** A line whose tabs at its start are spaces, up to the next multiple of four: the others stay. *)
+  if not Contains("\t", line)
+    return line
+  end
+  i = 1
+  width = 0
+  while i <= ByteLength(line) and (Byte(i, line) == 32 or Byte(i, line) == 9)
+    width = if Byte(i, line) == 9 width + 4 - Mod(width, 4) else width + 1 end
+    i += 1
+  end
+  Str(Repeat(width, " "), from(i, line))
+end
+
+defn Parse(text)
+  (** The blocks of a Markdown text, each a dictionary with its Kind and the Line it starts on: "heading" {Level, Text},
+      "paragraph" {Text}, "code" {Info, Text}, "quote" {Blocks}, "list" {Ordered, Start, Tight, Items, each an array of
+      blocks}, "table" {Align, Head, Rows} and "rule". The texts are as written: Html reads what is inside them.
+
+        Parse("# Title")[1].Level --> 1
+        Parse("a\n\n```cesia\nx\n```")[2].Info --> "cesia"
+        Parse("a\n\n- b")[2].Line --> 3 *)
+  ls = Lines(text)
+  blocksOf([{T: detabbed(ls[k]), N: k} for k in 1:Len(ls)])
+end
+
+(* Inline: the text of a paragraph, a heading or a cell becomes nodes, {K: 0, H} for HTML, {K: 1, C, N, O, X, Orig} for a run
+   of * or _ that may open or close emphasis, {K: 2, At, Active} for a [, and {K: 3, H, Inner} for a strong emphasis, whose
+   tags go when it is right inside another one, as GitHub writes it; then emphasis pairs the runs. *)
+
+nodeHtml(x) = if x.K == 0 or x.K == 3 x.H else if x.K == 1 Repeat(x.N, Char(x.C)) else "[" end
+textNode(t) = {K: 0, H: Escape(t)}
+ruleOfThree(o, c) = (o.X or c.O) and Mod(o.Orig + c.Orig, 3) == 0 and not (Mod(o.Orig, 3) == 0 and Mod(c.Orig, 3) == 0)
+
+defn emphasized(nodes)
+  (** The HTML of inline nodes, once their runs of * and _ are paired as CommonMark pairs them. *)
+  xs = nodes
+  c = 1
+  while c <= Len(xs)
+    closer = xs[c]
+    if closer.K == 1 and closer.X and closer.N > 0
+      found = 0
+      o = c - 1
+      while o >= 1 and found == 0
+        d = xs[o]
+        if d.K == 1 and d.C == closer.C and d.O and d.N > 0 and not ruleOfThree(d, closer)
+          found = o
+        end
+        o -= 1
+      end
+      if found == 0
+        if not closer.O
+          xs[c] = {K: 0, H: nodeHtml(closer)}
+        end
+        c += 1
+      else
+        d = xs[found]
+        taken = if d.N >= 2 and closer.N >= 2 2 else 1 end
+        inner = Join("", [if taken == 2 and xs[k].K == 3 xs[k].Inner else nodeHtml(xs[k]) end for k in (found + 1):(c - 1)])
+        made = if taken == 2 {K: 3, H: "<strong>$inner</strong>", Inner: inner} else {K: 0, H: "<em>$inner</em>"} end
+        opener = {K: 1, C: d.C, N: d.N - taken, O: d.O, X: d.X, Orig: d.Orig}
+        rest = {K: 1, C: closer.C, N: closer.N - taken, O: closer.O, X: closer.X, Orig: closer.Orig}
+        xs = Concat(Take(found - 1, xs), Concat([opener, made, rest], Skip(c, xs)))
+        c = found + 2
+      end
+    else
+      c += 1
+    end
+  end
+  Join("", Map(nodeHtml, xs))
+end
+
+defn unescaped(t)
+  (** A text without the \ before its punctuation. *)
+  if not Contains("\\", t)
+    return t
+  end
+  out = []
+  i = 1
+  n = ByteLength(t)
+  while i <= n
+    if Byte(i, t) == 92 and i < n and isPunct(Byte(i + 1, t))
+      i += 1
+    end
+    out = Append(ByteSlice(i, i, t), out)
+    i += 1
+  end
+  Join("", out)
+end
+
+defn isSafe(url)
+  (** Can a link lead there: a page of the site, or a URL of http, https or mailto? Any other scheme, javascript: first, is
+      refused. *)
+  colon = ByteFind(":", 1, url)
+  if IsMissing(colon)
+    return true
+  end
+  scheme = Lower(ByteSlice(1, colon - 1, url))
+  isScheme = scheme != "" and All([(b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b == 43 or b == 45 or b == 46 for b in Bytes(scheme)])
+  not isScheme or scheme == "http" or scheme == "https" or scheme == "mailto"
+end
+
+defn skipSpaces(t, j)
+  i = j
+  while i <= ByteLength(t) and (Byte(i, t) == 32 or Byte(i, t) == 10)
+    i += 1
+  end
+  i
+end
+
+defn linkTail(t, i)
+  (** After the ] of a link, its (destination "title"): {Dest, Title, Next}, or missing if none is there. *)
+  n = ByteLength(t)
+  if i > n or Byte(i, t) != 40
+    return missing
+  end
+  j = skipSpaces(t, i + 1)
+  dest = ""
+  if j <= n and Byte(j, t) == 60
+    close = ByteFind(">", j + 1, t)
+    if IsMissing(close)
+      return missing
+    end
+    dest = ByteSlice(j + 1, close - 1, t)
+    if Contains("\n", dest) or Contains("<", dest)
+      return missing
+    end
+    j = close + 1
+  else
+    start = j
+    depth = 0
+    while j <= n and Byte(j, t) > 32 and not (Byte(j, t) == 41 and depth == 0)
+      b = Byte(j, t)
+      if b == 92 and j < n
+        j += 2
+      else
+        if b == 40
+          depth += 1
+        else if b == 41
+          depth -= 1
+        end
+        j += 1
+      end
+    end
+    dest = ByteSlice(start, j - 1, t)
+  end
+  spaced = j <= n and (Byte(j, t) == 32 or Byte(j, t) == 10)
+  j = skipSpaces(t, j)
+  title = missing
+  if j <= n and spaced and (Byte(j, t) == 34 or Byte(j, t) == 39 or Byte(j, t) == 40)
+    close = if Byte(j, t) == 40 41 else Byte(j, t) end
+    k = j + 1
+    while k <= n and Byte(k, t) != close
+      k += if Byte(k, t) == 92 2 else 1 end
+    end
+    if k > n
+      return missing
+    end
+    title = unescaped(ByteSlice(j + 1, k - 1, t))
+    j = skipSpaces(t, k + 1)
+  end
+  if j > n or Byte(j, t) != 41
+    return missing
+  end
+  {Dest: unescaped(dest), Title: title, Next: j + 1}
+end
+
+(* The bytes a URL keeps as they are; any other is written %XX, as CommonMark does. *)
+urlBytes = [(b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or Contains(Char(b), "-_.+!*'(),%#@?=;:/&$~") for b in 0:127]
+
+defn hrefOf(url)
+  (** A URL as an href holds it: percent-encoded where it must be, and escaped. *)
+  out = []
+  for b in Bytes(url)
+    out = Append(if b < 128 and urlBytes[b + 1] Char(b) else Str("%", encodeHex(b)) end, out)
+  end
+  Escape(Join("", out))
+end
+
+encodeHex(b) = Str(ByteSlice(Div(b, 16) + 1, Div(b, 16) + 1, "0123456789ABCDEF"), ByteSlice(Mod(b, 16) + 1, Mod(b, 16) + 1, "0123456789ABCDEF"))
+
+defn anchor(url, title, inner)
+  (** The HTML of a link. *)
+  more = if IsMissing(title) "" else " title=\"$(Escape(title))\"" end
+  "<a href=\"$(hrefOf(url))\"$more>$inner</a>"
+end
+
+defn codeSpan(t, i)
+  (** The code span whose run of backticks starts at byte i: {Html, Next}, or missing if no run of that length closes it. *)
+  n = ByteLength(t)
+  j = i
+  while j <= n and Byte(j, t) == 96
+    j += 1
+  end
+  size = j - i
+  while j <= n
+    p = ByteFind("`", j, t)
+    if IsMissing(p)
+      return missing
+    end
+    q = p
+    while q <= n and Byte(q, t) == 96
+      q += 1
+    end
+    if q - p == size
+      code = Replace("\n", " ", ByteSlice(i + size, p - 1, t))
+      m = ByteLength(code)
+      if m >= 2 and Byte(1, code) == 32 and Byte(m, code) == 32 and Trim(code) != ""
+        code = ByteSlice(2, m - 1, code)
+      end
+      return {Html: "<code>$(Escape(code))</code>", Next: q}
+    end
+    j = q
+  end
+  missing
+end
+
+defn autolink(t, i)
+  (** The link of <http://...>, <https://...> or <mailto:...> at byte i: {Html, Next}, or missing. *)
+  close = ByteFind(">", i + 1, t)
+  if IsMissing(close)
+    return missing
+  end
+  url = ByteSlice(i + 1, close - 1, t)
+  if url == "" or Contains(" ", url) or Contains("<", url) or Contains("\n", url)
+    return missing
+  end
+  colon = ByteFind(":", 1, url)
+  lower = Lower(url)
+  if IsMissing(colon) and Len(Split("@", url)) == 2 and not StartsWith("@", url) and not EndsWith("@", url)
+    return {Html: anchor(Str("mailto:", url), missing, Escape(url)), Next: close + 1}
+  end
+  if not (StartsWith("http://", lower) or StartsWith("https://", lower) or StartsWith("mailto:", lower))
+    return missing
+  end
+  {Html: anchor(url, missing, Escape(url)), Next: close + 1}
+end
+
+defn lastBracket(nodes)
+  (** The position of the last [ among the nodes, or 0. *)
+  k = Len(nodes)
+  while k >= 1 and nodes[k].K != 2
+    k -= 1
+  end
+  k
+end
+
+defn inline(t, hooks, line)
+  (** The HTML of the text of a paragraph, a heading or a cell. *)
+  nodes = []
+  n = ByteLength(t)
+  i = 1
+  plain = 1
+  while i <= n
+    b = Byte(i, t)
+    if not specials[b + 1]
+      i += 1
+    else
+      upto = i - 1
+      if b == 10
+        while upto >= plain and Byte(upto, t) == 32
+          upto -= 1
+        end
+      end
+      if upto >= plain
+        nodes = Append(textNode(ByteSlice(plain, upto, t)), nodes)
+      end
+      if b == 10
+        nodes = Append({K: 0, H: if i - 1 - upto >= 2 "<br />\n" else "\n" end}, nodes)
+        i = i + 1
+        while i <= n and Byte(i, t) == 32
+          i += 1
+        end
+      else if b == 92
+        if i < n and Byte(i + 1, t) == 10
+          nodes = Append({K: 0, H: "<br />\n"}, nodes)
+          i += 2
+          while i <= n and Byte(i, t) == 32
+            i += 1
+          end
+        else if i < n and isPunct(Byte(i + 1, t))
+          nodes = Append(textNode(ByteSlice(i + 1, i + 1, t)), nodes)
+          i += 2
+        else
+          nodes = Append(textNode("\\"), nodes)
+          i += 1
+        end
+      else if b == 96
+        span = codeSpan(t, i)
+        if IsSome(span)
+          nodes = Append({K: 0, H: span.Html}, nodes)
+          i = span.Next
+        else
+          j = i
+          while j <= n and Byte(j, t) == 96
+            j += 1
+          end
+          nodes = Append({K: 0, H: ByteSlice(i, j - 1, t)}, nodes)
+          i = j
+        end
+      else if b == 42 or b == 95
+        j = i
+        while j <= n and Byte(j, t) == b
+          j += 1
+        end
+        before = if i > 1 Byte(i - 1, t) else 32 end
+        after = if j <= n Byte(j, t) else 32 end
+        spaceBefore = before == 32 or before == 10
+        spaceAfter = after == 32 or after == 10
+        left = not spaceAfter and (not isPunct(after) or spaceBefore or isPunct(before))
+        right = not spaceBefore and (not isPunct(before) or spaceAfter or isPunct(after))
+        opens = if b == 42 left else left and (not right or isPunct(before)) end
+        closes = if b == 42 right else right and (not left or isPunct(after)) end
+        nodes = Append({K: 1, C: b, N: j - i, O: opens, X: closes, Orig: j - i}, nodes)
+        i = j
+      else if b == 91
+        nodes = Append({K: 2, At: i + 1, Active: true}, nodes)
+        i += 1
+      else if b == 93
+        k = lastBracket(nodes)
+        tail = if k > 0 and nodes[k].Active linkTail(t, i + 1) else missing end
+        target = if k > 0 and nodes[k].Active and IsMissing(tail) hooks.Link(ByteSlice(nodes[k].At, i - 1, t), line) else missing end
+        if IsSome(tail) and isSafe(tail.Dest)
+          inner = emphasized(Skip(k, nodes))
+          nodes = Append({K: 0, H: anchor(tail.Dest, tail.Title, inner)}, Take(k - 1, nodes))
+          nodes = [if x.K == 2 {K: 2, At: x.At, Active: false} else x end for x in nodes]
+          i = tail.Next
+        else if IsSome(target)
+          inner = emphasized(Skip(k, nodes))
+          nodes = Append({K: 0, H: anchor(target, missing, inner)}, Take(k - 1, nodes))
+          nodes = [if x.K == 2 {K: 2, At: x.At, Active: false} else x end for x in nodes]
+          i += 1
+        else
+          if k > 0
+            nodes[k] = {K: 0, H: "["}
+          end
+          nodes = Append({K: 0, H: "]"}, nodes)
+          i += 1
+        end
+      else
+        link = autolink(t, i)
+        if IsSome(link)
+          nodes = Append({K: 0, H: link.Html}, nodes)
+          i = link.Next
+        else
+          nodes = Append({K: 0, H: "&lt;"}, nodes)
+          i += 1
+        end
+      end
+      plain = i
+    end
+  end
+  if plain <= n
+    nodes = Append(textNode(ByteSlice(plain, n, t)), nodes)
+  end
+  emphasized(nodes)
+end
+
+(* The writer adds a line end before a block when the last text written doesn't end with one, as CommonMark's does. *)
+
+defn cr(out)
+  last = Len(out)
+  if last > 0 and not EndsWith("\n", out[last])
+    Append("\n", out)
+  else
+    out
+  end
+end
+
+defn written(b, hooks, tight, out)
+  (** The HTML of block b added to out. In a tight list, a paragraph has no <p>. *)
+  kind = b.Kind
+  if kind == "paragraph"
+    if tight
+      Append(inline(b.Text, hooks, b.Line), out)
+    else
+      Append(Str("<p>", inline(b.Text, hooks, b.Line), "</p>\n"), cr(out))
+    end
+  else if kind == "heading"
+    id = hooks.Anchor(b.Level, b.Text, b.Line)
+    attribute = if IsMissing(id) "" else " id=\"$(Escape(id))\"" end
+    Append(Str("<h", b.Level, attribute, ">", inline(b.Text, hooks, b.Line), "</h", b.Level, ">\n"), cr(out))
+  else if kind == "code"
+    colored = hooks.Code(b.Info, b.Text, b.Line)
+    language = if b.Info == "" "" else " class=\"language-$(Escape(Split(" ", b.Info)[1]))\"" end
+    html = if IsMissing(colored) "<pre><code$language>$(Escape(b.Text))</code></pre>\n" else colored end
+    Append(html, cr(out))
+  else if kind == "rule"
+    Append("<hr />\n", cr(out))
+  else if kind == "quote"
+    inner = Reduce((o, x) -> written(x, hooks, false, o), Append("<blockquote>\n", cr(out)), b.Blocks)
+    Append("</blockquote>\n", cr(inner))
+  else if kind == "list"
+    open = if not b.Ordered "<ul>\n" else if b.Start == 1 "<ol>\n" else "<ol start=\"$(b.Start)\">\n" end
+    o = Append(open, cr(out))
+    for item in b.Items
+      o = Append("<li>", cr(o))
+      for x in item
+        o = written(x, hooks, b.Tight, if b.Tight and x.Kind == "paragraph" o else cr(o) end)
+      end
+      if not b.Tight and Len(item) > 0
+        o = cr(o)
+      end
+      o = Append("</li>\n", o)
+    end
+    Append(if b.Ordered "</ol>\n" else "</ul>\n" end, o)
+  else
+    Append(table(b, hooks), cr(out))
+  end
+end
+
+defn table(b, hooks)
+  (** The HTML of a table. *)
+  attribute(k) = if b.Align[k] == "" "" else " align=\"$(b.Align[k])\"" end
+  row(cs, tag) = Str("<tr>\n", Join("", ["<$tag$(attribute(k))>$(inline(cs[k], hooks, b.Line))</$tag>\n" for k in 1:Len(cs)]), "</tr>\n")
+  head = Str("<table>\n<thead>\n", row(b.Head, "th"), "</thead>\n")
+  body = if Len(b.Rows) == 0 "" else Str("<tbody>\n", Join("", [row(r, "td") for r in b.Rows]), "</tbody>\n") end
+  Str(head, body, "</table>\n")
+end
+
+defn Html(blocks, hooks)
+  (** The HTML of blocks from Parse. hooks has Code(info, text, line), the HTML of a block of code or missing for a plain
+      pre; Link(target, line), the URL of a [target] or missing to leave it as text; and Anchor(level, text, line), the id of a
+      heading or missing. Plain gives none of them.
+
+        Html(Parse("Some *words*."), Plain) --> "<p>Some <em>words</em>.</p>\n"
+        Html(Parse("<script>"), Plain) --> "<p>&lt;script&gt;</p>\n" *)
+  Join("", Reduce((out, b) -> written(b, hooks, false, out), [], blocks))
+end
