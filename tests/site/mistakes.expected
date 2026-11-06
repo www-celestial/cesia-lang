@@ -1,43 +1,44 @@
 == a wrong -->
-book/first.md:51: 1 + 1 --> 3, got 2
+docs/book/first.md:51: 1 + 1 --> 3, got 2
 exit 1
 == a block that stops
-book/first.md:51:1: Div: division by zero.
+docs/book/first.md:51:1: Div: division by zero.
 exit 1
 == a block marked fails that ends well
-book/first.md:50: this block is marked fails, but it ran to its end.
+docs/book/first.md:50: this block is marked fails, but it ran to its end.
 exit 1
 == a wrong --> in a block marked fails, before it stops
-book/first.md:51: 1 + 1 --> 3, got 2
+docs/book/first.md:51: 1 + 1 --> 3, got 2
 exit 1
 == a --> at the end of a call written on several lines
-book/first.md:52: a --> checks the expression of its own line, and this one goes on from the lines before: name the value there, then check the name.
+docs/book/first.md:52: a --> checks the expression of its own line, and this one goes on from the lines before: name the value there, then check the name.
 exit 1
 == a norun block with an unknown name
-book/first.md:51:1: Name "NoSuchName" doesn't exist.
+docs/book/first.md:51:1: Name "NoSuchName" doesn't exist.
 exit 1
 == a word cesia blocks don't have
-book/first.md:50: quiet is no word of a cesia block: they are norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT or ffi=m.
+docs/book/first.md:50: quiet is no word of a cesia block: they are norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT or ffi=m.
 exit 1
 == --> error in a book
-book/first.md:51: --> error is for cesia test; here a block that stops is marked fails.
+docs/book/first.md:51: --> error is for cesia test; here a block that stops is marked fails.
 exit 1
 == a name in brackets that leads nowhere
-book/first.md:50: [NoSuchName] names nothing documented.
+docs/book/first.md:50: [NoSuchName] names nothing documented.
 exit 1
 == a toml block that doesn't parse
-book/first.md:51: Expected ].
+docs/book/first.md:51: Expected ].
 exit 1
 == a page that book/index.md doesn't link
-book/extra.md: no link of book/index.md leads to this page.
+docs/book/extra.md: no link of docs/book/index.md leads to this page.
 exit 1
 == a link to a page that isn't there
-book/index.md:8: gone.md is no page of book/.
+docs/book/index.md:8: gone.md is no page of docs/book/.
 exit 1
 == two pages whose names differ only in case
 files.html and Files.html differ only in case.
 exit 1
 == a book without its index.md
-book/index.md: a book starts at its index.md, which links to its other pages in their order.
+docs/book/index.md: a book starts at its index.md, which links to its other pages in their order.
+docs/guides/index.md:3: ../book/first.md is no page of docs/guides/.
 exit 1
 exit 0

@@ -41,7 +41,7 @@ The book teaches Cesia from the start, in 22 short chapters, and the reference h
 that ran when the site was built: **https://www-celestial.github.io/cesia-lang/**. It follows `main`, and each push publishes
 it again.
 
-The chapters are plain Markdown, in [`book/`](book/index.md). From a clone, `cesia doc --site --open` builds the same site in
+The chapters are plain Markdown, in [`docs/book/`](docs/book/index.md). From a clone, `cesia doc --site --open` builds the same site in
 `site/` and opens it, and `cesia doc Sort` or `cesia doc num.Solve` prints one page in the terminal.
 
 Windows and interfaces have their reference in `std/sdl` and `std/ui`, and an example in `cesia do material`; their chapter
