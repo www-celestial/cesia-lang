@@ -274,4 +274,4 @@ docs/
 
 ## Next
 
-You can test and document your code. The next chapter, [C and C++](c.md), calls the libraries of the system from Cesia.
+You can test and document your code. The next chapter, [The prompt and the debugger](debug.md), looks inside a program while it runs.

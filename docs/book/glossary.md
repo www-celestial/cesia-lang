@@ -19,6 +19,12 @@ A function without a name, written where it is used; also called a lambda. In Ce
 The link between a name and a value. In Cesia `=` binds a name, and binding it again gives it another value: see
 [Values and names](values.md#names).
 
+## Breakpoint
+
+A place in the code where a debugger stops the program, to look at its variables before it goes on. In Cesia, `break FILE
+LINE` in the debugger, with `if` and a condition to stop only when it holds: see
+[The prompt and the debugger](debug.md#the-debugger).
+
 ## Closure
 
 A function together with the names it saw where it was made, which it can still use after that place has ended. A Cesia
@@ -189,6 +195,12 @@ than `net`: see [Permissions](permissions.md#allow).
 A function whose result depends on its arguments only, and that does nothing else: no print, no file, no clock. A Cesia
 function can't change the values it is given: it is pure when it leaves the outside world alone. See
 [Functions](functions.md).
+
+## REPL
+
+Read, eval, print loop: a prompt that runs each expression typed and shows its value. Cesia's runs beside the running
+program, `cesia run --repl app.ce`, inside the package of its main file: see
+[The prompt and the debugger](debug.md#the-prompt).
 
 ## Route
 

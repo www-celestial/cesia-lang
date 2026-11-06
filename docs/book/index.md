@@ -45,9 +45,10 @@ language.
 17. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
 18. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
 19. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site for your project.
-20. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
-21. [Cemacs](cemacs.md): the editor written in Cesia, its keys, its band of hints, and how to change it.
-22. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+20. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
+21. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
+22. [Cemacs](cemacs.md): the editor written in Cesia, its keys, its band of hints, and how to change it.
+23. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
 
 Appendices, to look things up:
 

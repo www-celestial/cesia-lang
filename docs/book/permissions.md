@@ -38,7 +38,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `exec`, `exec=git` | running other programs, all of them or one |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
 | `ffi=m` | loading a C library, by its name |
-| `debug` | the breakpoints of [std/debug]; `cesia run --debugger` gives it by itself, with no `--allow` |
+| `debug` | the breakpoints and the code run by [std/debug]; `cesia run --debugger` and `cesia run --repl` give it by themselves, with no `--allow` |
 | `all` | everything |
 
 ### This machine or the network
