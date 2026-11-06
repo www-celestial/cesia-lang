@@ -65,7 +65,8 @@ from = "file://TOP/repos/frank/shapes"
 from = "file://TOP/repos/erin/tools"
 from = "file://TOP/repos/carol/ring"
 use deps/frank/shapes/src/geometry
-Print(geometry.Describe())
+use std/io
+io.Print(geometry.Describe())
 bob
 carol
 erin

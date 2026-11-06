@@ -182,7 +182,7 @@ alive "6: finished program"
 kill -INT "$pid"
 sleep 0.05
 alive "6: an INT that was ignored from the start"
-sed -i 's/^Print("done 1")$/Print("done 2")/' "$dir/done.ce"
+sed -i 's/^io.Print("done 1")$/io.Print("done 2")/' "$dir/done.ce"
 wait_for out "done 2" 2000 || fail "6: program not restarted"
 stop
 
