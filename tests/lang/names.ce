@@ -31,7 +31,7 @@ isPrivateVariableInItsFile() = smallConstant == 2
 isSmallFieldRead() = readSmall() == 7
 isSmallFieldWritten() = writeSmall() == 5
 isSmallFieldInAPattern() = patternSmall() == 6 and matchSmall(piece(8)) == 8
-isSmallStructShowsItsName() = Text(piece(1)) == "piece(size = 1, Label = ""x"")"
+isSmallStructShowsItsName() = Text(piece(1)) == "piece(size = 1, Label = \"x\")"
 isLoneWildcard() = match [1, 2]
   [_, x] -> x == 2
 end

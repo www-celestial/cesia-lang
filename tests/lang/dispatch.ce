@@ -33,7 +33,7 @@ withOne(h) = h(1)
 noArgument(h) = h()
 defn cacheByArity()
   withOne(plusOne)
-  (Wait(Spawn(() -> noArgument(plusOne))) then MapErr(it.Message)) == Err("plusOne needs the argument ""x"".")
+  (Wait(Spawn(() -> noArgument(plusOne))) then MapErr(it.Message)) == Err("plusOne needs the argument \"x\".")
 end
 isCacheByArity() = cacheByArity()
 

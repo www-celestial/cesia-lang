@@ -7,6 +7,7 @@ let fits = "Integers have 63 bits. To go further, use a float: 1.0 * x."
 let invalid_utf8 = plain "This file is not valid UTF-8."
 let unexpected_char c = plain (Printf.sprintf "Unexpected character %C." c)
 let text_not_closed = plain "This text is not closed: a closing \" is missing."
+let text_doubled_quote = hinted "Two quotes in a row end a text and start another." "A quote inside a text is written \\\": \"say \\\"hi\\\"\"."
 let comment_not_closed = plain "This comment is not closed: a closing *) is missing."
 let comment_dashes = plain "Comments are written (* ... *)."
 let number_too_big s = hinted (Printf.sprintf "The number %s doesn't fit in 63 bits." s) (Printf.sprintf "Write it as a float: %s.0." s)

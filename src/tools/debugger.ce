@@ -6,7 +6,7 @@ defn ShowVariable(frame, name)
   (** Prints the value of a variable of a frame, or says that there is none. *)
   found = Filter(it.Name == name, frame.Vars)
   if Len(found) == 0
-    Print("No variable ""$name"".")
+    Print("No variable \"$name\".")
   else
     Print("$name = $(found[1].Value)")
   end

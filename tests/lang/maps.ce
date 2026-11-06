@@ -5,7 +5,7 @@ use tests/errors/priv/fields as f
 literal() = {Name: "Ana", Age: 30}
 texts() = {"Name": "Ana", "Age": 30}
 pairs() = Dict([{Key: "Name", Value: "Ana"}, {Key: "Age", Value: 30}])
-parsed() = Unwrap(json.Parse("{""Name"": ""Ana"", ""Age"": 30}"))
+parsed() = Unwrap(json.Parse("{\"Name\": \"Ana\", \"Age\": 30}"))
 
 defn grown()
   m = {}
@@ -28,8 +28,8 @@ same(f) = All([Equal(f(m), f(literal())) for m in all()])
 isOneKind() = All([m == literal() and IsDict(m) and not IsStruct(m) for m in all()])
 isSameKeys() = same(Keys) and Equal(Keys(literal()), ["Name", "Age"])
 isSameValues() = same(Values) and Equal(Values(literal()), ["Ana", 30])
-isSameText() = same(Text) and Text(literal()) == "{Name: ""Ana"", Age: 30}"
-isSameJson() = same(json.Text) and json.Text(literal()) == "{""Name"":""Ana"",""Age"":30}"
+isSameText() = same(Text) and Text(literal()) == "{Name: \"Ana\", Age: 30}"
+isSameJson() = same(json.Text) and json.Text(literal()) == "{\"Name\":\"Ana\",\"Age\":30}"
 isDotIsIndex() = All([m.Name == m["Name"] and m.Age == 30 for m in all()])
 isGetHas() = All([Get("Age", m) == 30 and Has("Name", m) and not Has("City", m) and IsMissing(Get("City", m)) for m in all()])
 isLen() = All([Len(m) == 2 for m in all()])
@@ -47,7 +47,7 @@ end
 (* Keys keep the order of insertion. *)
 isLiteralOrder() = Equal(Keys({B: 1, A: 2, C: 3}), ["B", "A", "C"]) and Equal(Keys({"b": 1, 2: 2, "a": 3}), ["b", 2, "a"])
 isPutOrder() = Equal(Keys(Put("A", 1, Put("Z", 1, Dict()))), ["Z", "A"]) and Equal(Keys(Put("C", 3, {B: 1, A: 2})), ["B", "A", "C"])
-isJsonOrder() = Equal(Keys(Unwrap(json.Parse("{""z"": 1, ""a"": 2, ""m"": 3}"))), ["z", "a", "m"])
+isJsonOrder() = Equal(Keys(Unwrap(json.Parse("{\"z\": 1, \"a\": 2, \"m\": 3}"))), ["z", "a", "m"])
 isRewriteKeepsPlace() = Equal(Keys(Put("B", 9, {B: 1, A: 2})), ["B", "A"]) and Equal(Keys(Put("Z", 9, Put("A", 1, Put("Z", 1, Dict())))), ["Z", "A"])
 isDropThenPutGoesLast() = Equal(Keys(Put("B", 1, Drop("B", {B: 1, A: 2}))), ["A", "B"])
 isEqualWithoutOrder() = {A: 1, B: 2} == {B: 2, A: 1} and Put("A", 1, Put("B", 2, Dict())) == {A: 1, B: 2} and {A: 1} != {A: 1, B: 2}
@@ -88,11 +88,11 @@ defn isDropMany()
 end
 
 (* Keys are data: any first letter, from any package. *)
-isSmallKeys() = parsed().Name == "Ana" and Unwrap(json.Parse("{""name"": 1}")).name == 1 and f.Record().size == 1
+isSmallKeys() = parsed().Name == "Ana" and Unwrap(json.Parse("{\"name\": 1}")).name == 1 and f.Record().size == 1
 isProtoIsAKey() = Equal(Keys({"__proto__": 1, "constructor": 2}), ["__proto__", "constructor"])
 isStructNoMap() = IsStruct(Ok(1)) and not IsDict(Ok(1))
 isMapOfStructFails() = stop(() -> Keys(Ok(1))) == "type: Keys needs a dictionary, not an Ok."
-isMissingKey() = stop(() -> literal().City) == "index: This dictionary has no key: the text ""City""." and stop(() -> parsed().City) == "index: This dictionary has no key: the text ""City""."
+isMissingKey() = stop(() -> literal().City) == "index: This dictionary has no key: the text \"City\"." and stop(() -> parsed().City) == "index: This dictionary has no key: the text \"City\"."
 
 defn isMerge()
   Equal(Keys(Merge({A: 1, B: 2}, {C: 3, A: 4})), ["A", "B", "C"]) and Merge({A: 1, B: 2}, {C: 3, A: 4}).A == 4
@@ -108,21 +108,21 @@ struct User { Id Int, Name Text, secret Text = "s", Age Int = 0 }
 (u User) Greeting() = "Bonjour $(u.Name)"
 
 isFrom() = Unwrap(User.From({Id: 1, Name: "Ana"})) == User(1, "Ana") and Unwrap(User.From(parsed() then Put("Id", 2, it) then Drop("Age", it))).Name == "Ana"
-isFromJson() = Unwrap(User.From(Unwrap(json.Parse("{""Id"": 7, ""Name"": ""Bo""}")))).Greeting() == "Bonjour Bo"
+isFromJson() = Unwrap(User.From(Unwrap(json.Parse("{\"Id\": 7, \"Name\": \"Bo\"}")))).Greeting() == "Bonjour Bo"
 isFromDefaults() = Unwrap(User.From({Id: 1, Name: "Ana"})).Age == 0 and Unwrap(User.From({Id: 1, Name: "Ana", Age: 3})).Age == 3
-isFromExcess() = MapErr(it.Message, User.From({Id: 1, Name: "Ana", Admin: true})) == Err("User has no field ""Admin"".")
-isFromMissing() = MapErr(it.Message, User.From({Id: 1})) == Err("User needs the field ""Name"".")
+isFromExcess() = MapErr(it.Message, User.From({Id: 1, Name: "Ana", Admin: true})) == Err("User has no field \"Admin\".")
+isFromMissing() = MapErr(it.Message, User.From({Id: 1})) == Err("User needs the field \"Name\".")
 isFromWrongType() = MapErr(it.Message, User.From({Id: "1", Name: "Ana"})) == Err("User: Id must be an Int, found a Text.") and IsErr(User.From(Put(3, 4, {Id: 1, Name: "Ana"})))
 isFromKind() = MapErr(it.Kind, User.From({})) == Err("field")
 isFromSmallInside() = Unwrap(User.From({Id: 1, Name: "Ana", secret: "x"})).secret == "x"
-isFromSmallOutside() = MapErr(it.Message, f.Secret.From({key: "k", Label: "l"})) == Err("Secret has no field ""key"".") and MapErr(it.Message, f.Secret.From({Label: "l"})) == Err("Secret needs a field that is private to its package.")
+isFromSmallOutside() = MapErr(it.Message, f.Secret.From({key: "k", Label: "l"})) == Err("Secret has no field \"key\".") and MapErr(it.Message, f.Secret.From({Label: "l"})) == Err("Secret needs a field that is private to its package.")
 isFromAsValue() = Equal(Map(it.Value.Id, Map(User.From, [{Id: 1, Name: "a"}, {Id: 2, Name: "b"}])), [1, 2])
 isFromNoMap() = stop(() -> User.From(3)) == "type: User.From needs a dictionary, not the number 3."
 isFields() = Fields(User(1, "Ana")) == {Id: 1, Name: "Ana", secret: "s", Age: 0} and Equal(Keys(Fields(User(1, "Ana"))), ["Id", "Name", "secret", "Age"])
 isFieldsOutside() = Fields(f.New()) == {Label: "public"}
 isFieldsRoundTrip() = Unwrap(User.From(Fields(User(1, "Ana", Age = 4)))) == User(1, "Ana", Age = 4)
 isFieldsNoMap() = stop(() -> Fields({A: 1})) == "type: Fields needs a struct, not a dictionary."
-isJsonOfStruct() = json.Text(User(1, "Ana")) == "{""Id"":1,""Name"":""Ana"",""Age"":0}" and json.Text(f.New()) == "{""Label"":""public""}"
+isJsonOfStruct() = json.Text(User(1, "Ana")) == "{\"Id\":1,\"Name\":\"Ana\",\"Age\":0}" and json.Text(f.New()) == "{\"Label\":\"public\"}"
 isMapFunctionsRefuseStructs() = stop(() -> Values(Ok(1))) == "type: Values needs a dictionary, not an Ok." and stop(() -> Put("A", 1, Ok(1))) == "type: Put needs a dictionary, not an Ok."
 
 (* A new map from another one holds the same values: a write through the old one must not show in the new one. *)

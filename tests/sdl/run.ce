@@ -11,7 +11,7 @@ defn update(event, state)
 end
 
 defn view(state)
-  Print("view ""$(state.Typed)""")
+  Print("view \"$(state.Typed)\"")
   [{Kind: "clear", Color: 0x000000}, {Kind: "text", X: 8, Y: 8, Text: state.Typed, Color: 0xFFFFFF}]
 end
 

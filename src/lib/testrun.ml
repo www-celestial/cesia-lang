@@ -45,7 +45,8 @@ let quote s =
   Buffer.add_char b '"';
   String.iter
     (function
-      | '"' -> Buffer.add_string b "\"\""
+      | '"' -> Buffer.add_string b "\\\""
+      | '\\' -> Buffer.add_string b "\\\\"
       | '$' -> Buffer.add_string b "$$"
       | c -> Buffer.add_char b c)
     s;

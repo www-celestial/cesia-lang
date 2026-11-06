@@ -12,5 +12,5 @@ A date from its text.
 [] []
 NewNative | prelude | NewNative(x, y) | true std/natives.ce 1
 A native documented by a block whose first line is its signature.
-[] ["Len(""abc"") --> 3"]
+[] ["Len(\"abc\") --> 3"]
 exit 0

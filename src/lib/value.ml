@@ -44,7 +44,7 @@ let float_text x =
 let quote s =
   let b = Buffer.create (String.length s + 2) in
   Buffer.add_char b '"';
-  String.iter (fun c -> if c = '"' then Buffer.add_string b "\"\"" else Buffer.add_char b c) s;
+  String.iter (function '"' -> Buffer.add_string b "\\\"" | '\\' -> Buffer.add_string b "\\\\" | c -> Buffer.add_char b c) s;
   Buffer.add_char b '"';
   Buffer.contents b
 

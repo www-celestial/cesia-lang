@@ -333,11 +333,11 @@ failure(f) = match Wait(Spawn(f))
   Err(e) -> e
 end
 
-isRecordHasNoMethods() = failure(() -> {X: 1}.Area()).Message == "This dictionary has no key: the text ""Area""."
+isRecordHasNoMethods() = failure(() -> {X: 1}.Area()).Message == "This dictionary has no key: the text \"Area\"."
 isRecordKeepsItsKind() = failure(() -> {X: 1}.Area()).Kind == "index"
 isTextHasNoMethods() = failure(() -> "a".Area()).Kind == "type"
 isArrayHasNoMethods() = failure(() -> [Rect.Unit()].Area()).Kind == "field"
-isUnknownMethod() = failure(() -> Rect.Unit().Nope()).Message == "Rect has no field or method ""Nope""."
+isUnknownMethod() = failure(() -> Rect.Unit().Nope()).Message == "Rect has no field or method \"Nope\"."
 isStaticOnAValue() = failure(() -> Rect.Unit().AreaOf(2, 3)).Kind == "field"
 isMethodNotCalled() = failure(() -> Rect.Unit().Area).Kind == "field"
 isTooManyArguments() = failure(() -> Rect.Unit().Area(1)).Kind == "type"

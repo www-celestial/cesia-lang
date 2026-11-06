@@ -193,7 +193,7 @@ defn FontNamed(name, window)
   (** The font of this name, which a window must have. *)
   found = Get(name, window.Fonts)
   if IsMissing(found)
-    Panic("This window has no font ""$name"".")
+    Panic("This window has no font \"$name\".")
   end
   found
 end
@@ -709,7 +709,7 @@ defn Command(window, one)
     "icon" -> DrawIcon(one, window)
     "curves" -> DrawCurves(one, window)
     "text" -> if one.Text == "" window else DrawText(one, window) end
-    else -> Panic("A frame has no command ""$(one.Kind)"".")
+    else -> Panic("A frame has no command \"$(one.Kind)\".")
   end
 end
 

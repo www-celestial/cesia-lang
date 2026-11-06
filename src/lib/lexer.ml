@@ -275,7 +275,8 @@ and text st start_pos =
     | '\\', 'n' -> two '\n'
     | '\\', 't' -> two '\t'
     | '\\', 'r' -> two '\r'
-    | '\\', (('\\' | '"') as c) | '"', ('"' as c) | '$', ('$' as c) -> two c
+    | '\\', (('\\' | '"') as c) | '$', ('$' as c) -> two c
+    | '"', '"' -> error st (pos_at st st.i) Messages.text_doubled_quote
     | '"', _ ->
       st.i <- st.i + 1;
       fin := true

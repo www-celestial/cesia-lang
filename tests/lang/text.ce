@@ -37,7 +37,7 @@ isEscapeNewline() = ByteLength("a\nb") == 3 and Byte(2, "a\nb") == 10
 isEscapeTab() = Byte(1, "\t") == 9
 isEscapeReturn() = Byte(1, "\r") == 13
 isEscapeBackslash() = ByteLength("\\") == 1
-isEscapeQuote() = "\"" == """"
+isEscapeQuote() = "\"" == "\""
 isOtherBackslashStays() = ByteLength("\d") == 2
 isEmptyArraysEqual() = Equal(Filter(it > 9, [1]), [])
 isTextOrder() = "a" < "b" and "b" > "a" and "a" <= "a" and "a" >= "a" and not ("b" < "a")

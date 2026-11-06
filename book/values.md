@@ -75,11 +75,14 @@ A text never adds to a number with `+`: write the number inside the text, or joi
 Str("Total: ", 3) -->
 ```
 
-To write a `$` or a `"` in a text, write it twice:
+A `\` starts a character that a text can't hold as it is: `\"` is a quote, `\n` a line end, `\t` a tab, and `\\` the `\`
+itself. A `$` is written twice:
 
 ```cesia
+Print("She said \"yes\"")
+Print("one\ttwo\nthree")
 Print("It costs 5 $$")
-Print("She said ""yes""")
+Len("\"") -->
 ```
 
 The chapter [Texts](texts.md) shows how to cut, search and join them.
