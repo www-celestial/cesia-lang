@@ -2,7 +2,8 @@
     functions, types that can't fit, and results left unhandled. cesia check [--json] [--stdin FILE] [path...]: a path is a
     file, or a folder and its subfolders; with none, the source folders of the cesia.toml here. --stdin FILE takes the text of
     FILE from the input, as an editor sends a buffer not yet saved. --json writes one object per line and nothing else.
-    The exit code is 1 when there is an error; warnings alone give 0. Run by the binary, with the read permission only. *)
+    A summary goes to the standard error. The exit code is 1 when there is an error; warnings alone give 0. Run by the binary,
+    with the read permission only. *)
 use std/cesia
 use std/io
 use std/json
@@ -110,7 +111,7 @@ defn run(args)
     end)
   end
   if value.Len(marks) > 0 and not asJson
-    io.Print("check: $(plural(errors, "error")), $(plural(value.Len(marks) - errors, "warning")), in $(plural(value.Len(files), "file")).")
+    io.PrintError("check: $(plural(errors, "error")), $(plural(value.Len(marks) - errors, "warning")), in $(plural(value.Len(files), "file")).")
   end
   result.Ok(if errors > 0 1 else 0 end)
 end
