@@ -1,0 +1,33 @@
+use std/csv
+use std/dict
+use std/io
+use std/list
+use std/math
+use std/text
+use std/value
+
+(* A CSV aggregation: sales by region from a CSV text made here, as a report reads an export. *)
+defn export(n)
+  regions = ["north", "south", "east", "west", "center"]
+  lines = list.Fill("", n + 1)
+  lines[1] = "id,region,price,qty"
+  for i in 1..n
+    lines[i + 1] = "$(i),$(regions[math.Mod(i, 5) + 1]),$(i * 0.25),$(math.Mod(i, 7) + 1)"
+  end
+  text.Join("\n", lines)
+end
+
+defn report(s)
+  rows = csv.Parse(s)
+  totals = {}
+  count = 0
+  for i in 2..value.Len(rows)
+    row = rows[i]
+    sale = text.Number(row[3]) * text.Number(row[4])
+    totals = dict.Put(row[2], dict.GetOr(row[2], 0.0, totals) + sale, totals)
+    count = count + 1
+  end
+  io.Print(count, totals)
+end
+
+report(export(200000))

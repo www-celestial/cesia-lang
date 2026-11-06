@@ -21,10 +21,14 @@ type loop = {
   mutable reloads : int;
   mutable failed : bool;
   mutable tries : int;
+  mutable runs : int;
   expr : Ast.expr;
 }
 
-let loop (e : Ast.expr) = { seen = 0; code = None; reloads = 0; failed = false; tries = 0; expr = e }
+let loop (e : Ast.expr) = { seen = 0; code = None; reloads = 0; failed = false; tries = 0; runs = 0; expr = e }
+
+(* The steps a loop runs over its runs before it gets native code at the end of a first step. *)
+let runs_before = 100_000
 
 exception Handoff of code * int
 
@@ -95,6 +99,16 @@ let hot (ctx : ctx) l ver outer =
   l.seen <- l.seen + 1;
   if l.seen < checkpoints_before || not (free ctx.w) then None
   else match loaded () with Some j -> j.pick ctx l ver outer | None -> None
+
+let warm l n =
+  if l.code <> None || l.failed || not (on ()) then false
+  else if !mode = always then true
+  else begin
+    l.runs <- l.runs + n;
+    l.runs >= runs_before
+  end
+
+let warmed (ctx : ctx) l ver = match loaded () with Some j -> j.pick ctx l ver [] | None -> None
 
 let id l = l.expr.id
 let place ctx code l n hi = (the ()).place ctx code l n hi

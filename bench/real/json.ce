@@ -1,0 +1,31 @@
+use std/io
+use std/json
+use std/list
+use std/result
+use std/value
+
+(* A JSON transformation: orders read from JSON text, each made a summary, written back as JSON. *)
+defn orders(n)
+  xs = list.Fill(0, n)
+  for i in 1..n
+    xs[i] = {Id: i, Customer: "c$(i)", Price: i * 0.5, Qty: i - (i / 3) * 3 + 1, Paid: i > n / 2}
+  end
+  json.Text(xs)
+end
+
+defn summarize(s)
+  xs = result.Unwrap(json.Parse(s))
+  n = value.Len(xs)
+  out = list.Fill(0, n)
+  total = 0.0
+  for i in 1..n
+    o = xs[i]
+    t = o.Price * o.Qty
+    total = total + t
+    out[i] = {Id: o.Id, Total: t, Paid: o.Paid}
+  end
+  io.Print(total)
+  value.Len(json.Text(out))
+end
+
+io.Print(summarize(orders(100000)))

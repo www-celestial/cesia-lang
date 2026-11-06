@@ -1,0 +1,40 @@
+use std/io
+use std/list
+
+(* A particle simulation on structs: gravity, walls and a floor that takes some speed, then the energy left. *)
+struct Particle { X, Y, Vx, Vy, M }
+
+defn simulate(n, steps)
+  ps = list.Fill(0, n)
+  for i in 1..n
+    ps[i] = Particle(i * 0.05, 50.0 + i * 0.01, 1.0 + i * 0.001, 0.0, 1.0 + i * 0.0001)
+  end
+  dt = 0.01
+  w = 100.0
+  for s in 1..steps
+    for i in 1..n
+      p = ps[i]
+      vx = p.Vx
+      vy = p.Vy - 9.81 * dt
+      x = p.X + vx * dt
+      y = p.Y + vy * dt
+      if x < 0.0 or x > w
+        vx = 0.0 - vx
+        x = p.X
+      end
+      if y < 0.0
+        vy = 0.0 - vy * 0.9
+        y = 0.0
+      end
+      ps[i] = Particle(x, y, vx, vy, p.M)
+    end
+  end
+  e = 0.0
+  for i in 1..n
+    p = ps[i]
+    e = e + 0.5 * p.M * (p.Vx * p.Vx + p.Vy * p.Vy) + p.M * 9.81 * p.Y
+  end
+  e
+end
+
+io.Print(simulate(2000, 1500))

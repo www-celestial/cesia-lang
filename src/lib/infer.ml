@@ -28,8 +28,27 @@ let generic_version (p : proto) =
 
 let max_versions = 8
 
+(* Does a function hold a loop of its own, outside the functions it makes. *)
+let rec loops (e : expr) =
+  let blk b = Array.exists loops b in
+  match e.e with
+  | For _ | While _ -> true
+  | If (c, y, n) -> loops c || blk y || blk n
+  | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> loops a || loops b
+  | Neg a | Not a | Question a | Field (a, _) | Assign (_, a) | Destructure (_, a) | Return { rvalue = Some a; _ } -> loops a
+  | Call c -> loops c.callee || Array.exists (fun (a : arg) -> loops a.value) c.args
+  | Index (a, ixs, _) -> loops a || Array.exists (function Ix x -> loops x | All -> false) ixs
+  | Set { value; _ } -> loops value
+  | Match { subject; arms } -> loops subject || Array.exists (fun (a : arm) -> loops a.abody) arms
+  | Struct_lit { sfields; _ } -> Array.exists (fun (_, v) -> loops v) sfields
+  | _ -> false
+
+let blk_loops b = Array.exists loops b
+
+(* Arguments of no known type give the generic version, where everything is A, unless the function has a loop: its own
+   version then infers its variables, so that its loops can run typed, and native. *)
 let version_for w (p : proto) sg =
-  if w.no_spec || Array.for_all (fun t -> t == TA) sg then generic_version p
+  if w.no_spec || (Array.for_all (fun t -> t == TA) sg && not (blk_loops p.func.body)) then generic_version p
   else
     match List.find_opt (fun v -> v.sg = sg) p.versions with
     | Some v -> v

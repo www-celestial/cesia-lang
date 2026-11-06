@@ -36,6 +36,7 @@ type loop = {
   mutable reloads : int;
   mutable failed : bool;
   mutable tries : int;
+  mutable runs : int;
   expr : Ast.expr;
 }
 
@@ -86,6 +87,14 @@ val ready : ctx -> loop -> version -> code option
     node, and each loop around it, on its way out, puts its counter in its slot ([place]); the one whose code it is
     ([is_root]) enters native code [after] the step of that loop. *)
 val hot : ctx -> loop -> version -> loop list -> code option
+
+(** At the start of a run of [n] steps of a loop without native code: true when it is hot by its runs, as a loop in a
+    function called often, whose runs are too short to meet a checkpoint (each run of a [while] counts as 16 steps). The
+    interpreter then runs a first step, and asks [warmed] for native code for the next ones. *)
+val warm : loop -> int -> bool
+
+(** The native code of the loop alone, made now, from what its first step left in the frame, when it lowers and fits. *)
+val warmed : ctx -> loop -> version -> code option
 
 val id : loop -> int
 

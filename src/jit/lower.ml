@@ -117,6 +117,19 @@ let emit st i =
 
 let close st t = (Dynarray.get st.blocks st.cur).term <- t
 
+(* What is known in block [b]: then known in block [l] too, which [b] dominates. *)
+let facts st b = List.filter (fun (x, _, _, _) -> x = b) st.dyn.known, List.filter (fun (x, _, _, _) -> x = b) st.dyn.nums
+
+let carry st (k, n) l =
+  st.dyn.known <- List.map (fun (_, m, c, a) -> (l, m, c, a)) k @ st.dyn.known;
+  st.dyn.nums <- List.map (fun (_, v, h, r) -> (l, v, h, r)) n @ st.dyn.nums
+
+(* After both branches of an [if], at [join]: what each knew at its end. *)
+let meet st (k1, n1) (k2, n2) join =
+  let k = List.filter (fun (_, m, c, a) -> List.exists (fun (_, m', c', a') -> m = m' && c = c' && a = a') k2) k1 in
+  let n = List.filter (fun (_, v, h, r) -> List.exists (fun (_, v', h', r') -> v = v' && h = h' && r = r') n2) n1 in
+  carry st (k, n) join
+
 let goto st l =
   close st (Jump l);
   st.cur <- l
@@ -313,13 +326,20 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   | If (c, yes, no) when ty st e == TI || ty st e == TF ->
     let k = kind_of (ty st e) in
     let r = reg st k and y = block st and n = block st and join = block st in
+    let b0 = st.cur in
     cond st c y n;
+    let base = facts st b0 in
+    carry st base y;
     st.cur <- y;
     emit st (Move (r, convert st k (value_block st yes)));
+    let end_yes = facts st st.cur in
     goto st join;
+    carry st base n;
     st.cur <- n;
     emit st (Move (r, convert st k (value_block st no)));
+    let end_no = facts st st.cur in
     goto st join;
+    meet st end_yes end_no join;
     Reg r, k
   | Index (b, [| Ix _ |], false) when Hashtbl.mem st.fast e.id ->
     let a, ix = Hashtbl.find st.fast e.id in
@@ -606,18 +626,26 @@ and stmt st (e : expr) =
         st.cur <- exit)
   | If (c, yes, no) ->
     let y = block st and n = block st and join = block st in
+    let b0 = st.cur in
     cond st c y n;
+    (* What the block of the test knew holds in both branches, and what both knew at their end holds after them. *)
+    let base = facts st b0 in
     (* Either branch runs after the test alone: a guard in it may go back while nothing of the branch showed. *)
     let before = st.dyn.bail and clean = st.dyn.dirty in
+    carry st base y;
     st.cur <- y;
     Array.iter (stmt st) yes;
+    let end_yes = facts st st.cur in
     goto st join;
     let after_yes = st.dyn.bail and dirty_yes = st.dyn.dirty in
     st.dyn.bail <- before;
     st.dyn.dirty <- clean;
+    carry st base n;
     st.cur <- n;
     Array.iter (stmt st) no;
+    let end_no = facts st st.cur in
     goto st join;
+    meet st end_yes end_no join;
     if after_yes = None then shows st;
     st.dyn.dirty <- st.dyn.dirty || dirty_yes
   | Break ->

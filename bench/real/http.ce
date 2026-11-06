@@ -1,0 +1,23 @@
+use std/http
+use std/json
+use std/list
+
+(* A small HTTP server under load: each request prices a cart of items held in memory and answers in JSON. *)
+items = list.Fill(0, 200)
+for i in 1..200
+  items[i] = {Id: i, Price: i * 0.75, Stock: i * 3}
+end
+
+defn price(cart, n)
+  total = 0.0
+  stock = 0
+  for i in 1..n
+    item = cart[i]
+    total = total + item.Price * 1.2
+    stock = stock + item.Stock
+  end
+  {Total: total, Stock: stock}
+end
+
+handle(request) = {Status: 200, Body: json.Text(price(items, 200))}
+http.Serve(handle, port = 19140)

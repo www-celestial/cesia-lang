@@ -2498,10 +2498,21 @@ and cu c (e : expr) : ctx -> unit =
               | _ -> interp ctx (n + 1) hi
             end;
             true
-        and interp ctx lo hi =
+        and interp ?(warm = false) ctx lo hi =
           if lo <= hi then begin
             let n = ref lo and going = ref true in
             match
+              (* Hot by its runs, as a loop of a function called often: its first step interpreted, so that its
+                 variables hold values to guess from, then native code from the next. *)
+              if warm then begin
+                ctx.i.(ctx.b + k) <- lo;
+                body ctx;
+                tick ctx off;
+                (match Tier.warmed ctx st ver with
+                 | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
+                 | None -> ());
+                incr n
+              end;
               while !going do
                 ctx.i.(ctx.b + k) <- !n;
                 body ctx;
@@ -2531,7 +2542,7 @@ and cu c (e : expr) : ctx -> unit =
           | Some code when lo <= hi ->
             Tier.place ctx code st lo hi;
             if not (entered ctx code (Tier.start code) hi) then interp ctx lo hi
-          | _ -> interp ctx lo hi
+          | _ -> interp ~warm:(lo < hi && Tier.warm st (hi - lo + 1)) ctx lo hi
       end
     in
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
@@ -2576,8 +2587,15 @@ and cu c (e : expr) : ctx -> unit =
                if not (entered ctx code (Tier.after code (Tier.id st))) then interp ctx
              | _ -> interp ctx);
             true
-        and interp ctx =
+        and interp ?(warm = false) ctx =
           match
+            if warm && cond ctx then begin
+              body ctx;
+              tick ctx off;
+              match Tier.warmed ctx st ver with
+              | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
+              | None -> ()
+            end;
             while cond ctx do
               body ctx;
               let f = ctx.fuel - 1 in
@@ -2598,7 +2616,7 @@ and cu c (e : expr) : ctx -> unit =
         fun ctx ->
           match Tier.ready ctx st ver with
           | Some code -> if not (entered ctx code (Tier.start code)) then interp ctx
-          | None -> interp ctx
+          | None -> interp ~warm:(Tier.warm st 16) ctx
       end
     in
     if has_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
