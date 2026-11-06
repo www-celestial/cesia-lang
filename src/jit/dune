@@ -10,3 +10,8 @@
  (foreign_archives ../sys/jitglue ../sys/mir/mir)
  (c_library_flags
   (:include ../sys/c_flags.sexp)))
+
+; Loaded at its first use, not at start-up: its size costs no start-up, so its code inlines as much as it gains from.
+(env
+ (release
+  (ocamlopt_flags (-inline 200))))
