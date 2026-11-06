@@ -95,4 +95,7 @@ http.<span class="f">Get</span>(<span class="s">&quot;http://127.0.0.1:18751/&qu
 <a href="Greeter.Say.html" aria-current="page">Say</a>
 <nav class="trail" aria-label="Where"><a href="../../index.html">Reference</a> <span aria-hidden="true">›</span> <a href="../../src.html">src</a> <span aria-hidden="true">›</span> <a href="../greet.html">greet</a> <span aria-hidden="true">›</span> <a href="Greeter.html">Greeter</a> <span aria-hidden="true">›</span> <span>Say</span></nav>
 nothing ran again
+== a build keeps the pages whose sources didn't change, and makes again the others
+A warm greeting for a name
+files.html">Files and folders
 exit 0

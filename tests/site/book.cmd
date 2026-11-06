@@ -15,4 +15,10 @@ grep -o '<nav class="trail".*</nav>' site/ref/src/greet/Greeter.Say.html
 rm -r site/.run
 cesia doc --site > /dev/null
 if [ -e site/.run ]; then echo "a page ran again"; else echo "nothing ran again"; fi
+echo "== a build keeps the pages whose sources didn't change, and makes again the others"
+sed -i.bak 's/A greeting for a name/A warm greeting for a name/' src/greet/greet.ce
+sed -i.bak 's/^# Files$/# Files and folders/' book/files.md
+cesia doc --site > /dev/null
+grep -o 'A warm greeting for a name' site/ref/src/greet/Hello.html
+grep -o 'files.html">Files and folders' site/first.html
 rm -rf "$t"
