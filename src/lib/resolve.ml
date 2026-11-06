@@ -179,7 +179,8 @@ let rec constructors env sc celled = function
     (match cpkg with
      | Some alias when List.mem_assoc alias env.spaces && find env sc celled alias = None ->
        (match if Lexer.is_public cname then (List.assoc alias env.spaces) cname else None with
-        | Some b when env.is_type b -> ()
+        (* Unresolved: a package that a check couldn't read, whose error is at its use. *)
+        | Some b when b = Unresolved || env.is_type b -> ()
         | Some _ -> fail env cpos (Messages.pattern_struct (alias ^ "." ^ cname))
         | None -> fail env cpos (Messages.no_name alias cname))
      | Some alias -> fail env cpos (Messages.undefined alias)
@@ -209,6 +210,7 @@ let type_ref env (t : ptype) =
     let is_here name = Hashtbl.mem env.structs name || Hashtbl.mem env.interfaces name in
     let here = t.tpkg = None && (Hashtbl.mem env.hoisted t.tname || is_here t.tname) in
     match found with
+    | Some Unresolved when t.tpkg <> None -> ()
     | Some b when (if here then is_here t.tname else env.is_type b) -> t.tb <- b
     | _ ->
       let shown = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname in

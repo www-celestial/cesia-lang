@@ -1,0 +1,5 @@
+cesia.toml:3:1: Numbers and dates aren't supported in this file.
+  3 | src = 3
+    | ^^^
+check: 1 error, 0 warnings, in 1 file.
+exit 1

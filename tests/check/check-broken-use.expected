@@ -1,0 +1,5 @@
+broken-use.ce:2:5: Module "src/nowhere" doesn't exist.
+  2 | use src/nowhere
+    |     ^^^
+check: 1 error, 0 warnings, in 1 file.
+exit 1

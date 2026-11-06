@@ -591,15 +591,15 @@ let check_native ctx (a : t array) =
     List.iter (fun (_, m, fn, _) -> Check.file cw ~host:cw.modules.(m).host fn (add cw.modules.(m).path)) prepared
   in
   let sources files = List.map (fun p -> p, text p) files in
-  let in_sources p =
-    let root = Package.root_of p and dir = Package.absolute (Filename.dirname p) in
-    List.exists
-      (fun s -> let s = Filename.concat root s in String.equal dir s || String.starts_with ~prefix:(s ^ "/") dir)
-      (Package.sources root)
-  in
   let alone p =
-    List.mem "tests" (String.split_on_char '/' (Filename.dirname p)) || Filename.basename (Filename.dirname p) = "std"
-    || not (in_sources p)
+    let root = Package.root_of p and dir = Package.absolute (Filename.dirname p) in
+    let below = if String.starts_with ~prefix:(root ^ "/") dir then String.sub dir (String.length root + 1) (String.length dir - String.length root - 1) else "" in
+    let in_source s = let s = Runtime.normalize (Filename.concat root s) in String.equal dir s || String.starts_with ~prefix:(s ^ "/") dir in
+    List.mem "tests" (String.split_on_char '/' below) || Filename.basename dir = "std"
+    (* A cesia.toml that doesn't read is one error at its line, and the file stands alone. *)
+    || match Package.sources root with
+    | sources -> not (List.exists in_source sources)
+    | exception Pos.Load_error { file; pos; text; hint; _ } -> marks := (file, pos, false, { Messages.text; hint }) :: !marks; true
   in
   let single, packaged = List.partition alone paths in
   checking := true;
@@ -624,10 +624,11 @@ let check_native ctx (a : t array) =
                packaged)
         (List.sort_uniq String.compare (List.map Filename.dirname packaged)));
   let order = List.mapi (fun i p -> p, i) paths in
+  let rank f = Option.value (List.assoc_opt f order) ~default:(-1) in
   let sorted =
     List.sort_uniq
       (fun (f1, p1, w1, (m1 : Messages.t)) (f2, p2, w2, (m2 : Messages.t)) ->
-         compare (List.assoc f1 order, p1, w1, m1.text) (List.assoc f2 order, p2, w2, m2.text))
+         compare (rank f1, p1, w1, m1.text) (rank f2, p2, w2, m2.text))
       !marks
   in
   let record (file, pos, warning, (m : Messages.t)) =

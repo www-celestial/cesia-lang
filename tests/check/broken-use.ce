@@ -1,0 +1,9 @@
+(* A use that doesn't load is one error: its types and patterns raise no other. *)
+use src/nowhere
+
+defn Area(r nowhere.Rect) Int
+  match r
+    nowhere.Rect(w, h) -> w * h
+    else -> 0
+  end
+end
