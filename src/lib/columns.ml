@@ -574,6 +574,19 @@ let values ctx name v =
   Array.init (size a) (Value.elt a)
 
 (* [Rows(names, cells, public)]: a map per row from cells given row after row. *)
+let row_keys = keys_for
+
+let make_rows ctx (keys : keys) cells =
+  let n = Array.length keys.ks in
+  let count = Array.length cells / n in
+  Runtime.build ctx (count * (n + 4));
+  let cell r k = Value.share cells.((r * n) + k) in
+  let row r =
+    if n <= Trie.width then Trie.record keys (Array.init n (cell r))
+    else Trie.of_items (Array.init (2 * n) (fun k -> if k land 1 = 0 then keys.ks.(k / 2) else cell r (k / 2)))
+  in
+  Arrays.list (Array.init count row)
+
 (* The list of names met last and its keys: a driver gives the same list for each batch of a statement. *)
 let last_names = ref (Undef, false, Error "")
 
@@ -596,15 +609,7 @@ let rows ctx (a : t array) =
   if n = 0 || Array.length cells mod n <> 0 then Runtime.fail ctx Type (Messages.rows_cells (Array.length cells) n);
   match found with
   | Error text -> Value.failure ctx.w "names" text
-  | Ok keys ->
-    let count = Array.length cells / n in
-    Runtime.build ctx (count * (n + 4));
-    let cell r k = Value.share cells.((r * n) + k) in
-    let row r =
-      if n <= Trie.width then Trie.record keys (Array.init n (cell r))
-      else Trie.of_items (Array.init (2 * n) (fun k -> if k land 1 = 0 then keys.ks.(k / 2) else cell r (k / 2)))
-    in
-    Value.ok ctx.w (Arrays.list (Array.init count row))
+  | Ok keys -> Value.ok ctx.w (make_rows ctx keys cells)
 
 let natives =
   [ "Kind", Native.nat "Kind" 1 1 (fun _ a -> kind a);

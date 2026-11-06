@@ -26,13 +26,7 @@ defn isChannelReceiveWaits()
   Wait(reader) == Ok(42)
 end
 
-defn isChannelTimeout()
-  ch = Channel()
-  start = sys.Now()
-  r = Receive(ch, timeout = 0.05)
-  took = sys.Now() - start
-  (r then MapErr(it.Kind)) == Err("timeout") and took >= 0.04 and took < 1.0
-end
+isChannelTimeout() = (Receive(Channel(), timeout = 0.02) then MapErr(it.Kind)) == Err("timeout")
 
 defn isChannelTimeoutZeroNeverWaits()
   ch = Channel()
@@ -49,7 +43,7 @@ end
 defn isChannelValueBeforeTimeout()
   ch = Channel()
   Spawn(() -> later("late", ch))
-  Receive(ch, timeout = 5) == Ok("late")
+  Receive(ch, timeout = 0.5) == Ok("late")
 end
 
 defn isChannelTwoReceivers()

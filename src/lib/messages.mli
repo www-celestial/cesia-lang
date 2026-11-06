@@ -303,3 +303,6 @@ val sql_int_past : string -> t
 val need_channel : string -> string -> t
 val bad_timeout : string -> t
 val receive_timeout : t
+val sql_db_closed : t
+val sql_pool : float -> t
+val sql_pool_size : string -> t

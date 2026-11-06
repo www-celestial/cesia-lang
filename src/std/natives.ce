@@ -811,6 +811,24 @@ use cesia
 (** sqlite3.Open(path)
     Opens a SQLite database, created if absent, or a fresh one in memory with ":memory:": an Ok of a connection, or an Err. Needs the ffi permission for sqlite3, and read and write on the path. It opens with safe settings: no URI names, defensive, no trusted schema, no extension, nothing attached, texts of 100 MB at most. pkg/sql is the way to use it. *)
 
+(** sqlite3.Pool(path, size, wait)
+    An Ok of a pool of at most size connections to a database, opened when first needed, with WAL for a file and foreign keys. A call that finds them all busy waits at most wait seconds for one. Needs what sqlite3.Open needs. *)
+
+(** sqlite3.Take(pool)
+    An Ok of a connection of the pool, waited for if none is free, or an Err with Code "pool" after the wait of the pool, or "closed". sqlite3.Give puts it back. *)
+
+(** sqlite3.Give(conn, pool)
+    Puts a connection back in its pool, closed if it is broken or if the pool is. *)
+
+(** sqlite3.Query(text, params, db, limit = missing)
+    Runs one statement on a connection, or on one of a pool for this call: an Ok of every row, or of the first limit, as maps whose keys are the column names made public names. A busy database, outside a transaction, is waited for in the fiber. A value SQL doesn't take is an Err with Code "convert". *)
+
+(** sqlite3.One(text, params, db)
+    The first row of a statement, as sqlite3.Query reads it: an Ok of a map, or of missing. *)
+
+(** sqlite3.Exec(text, params, db)
+    Runs one statement to its end, as sqlite3.Query does: an Ok of {Changed, LastId}. *)
+
 (** sqlite3.Run(text, params, conn)
     Prepares one statement, from a cache of 128 by text, and binds a value to each ?: missing, a Bool, an Int, a Float or a Text. An Ok of a cursor, or an Err; text after the statement that holds another is an Err. *)
 
@@ -821,7 +839,7 @@ use cesia
     Runs several statements, without parameters: an Ok of missing, or the first Err. *)
 
 (** sqlite3.Close(x)
-    Closes a cursor before its end, or a connection with its statements. Twice is nothing. *)
+    Closes a cursor before its end, a connection with its statements, or a pool: its free connections now, the others when they come back. Twice is nothing. *)
 
 (** sqlite3.Broken(conn)
     Is the connection closed, or left unusable by an I/O error or a damaged file? *)

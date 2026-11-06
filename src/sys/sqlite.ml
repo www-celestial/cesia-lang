@@ -22,12 +22,23 @@ type lib = {
 }
 
 (* A statement and what it says of its columns, read once. *)
-type prepared = { stmt : int; names : t; bools : bool array  (** the columns declared BOOLEAN *) }
+type prepared = {
+  stmt : int;
+  ptext : string;
+  extra : bool;  (** made while the cached one of its text was in use: finalized when it comes back *)
+  mutable inuse : bool;
+  names : t;
+  texts : string array;
+  bools : bool array;  (** the columns declared BOOLEAN *)
+  mutable keys : (keys, string) result option;  (** of its rows, the names made public names *)
+}
 
 type conn = {
+  id : int;
   db : int;
-  cache : (string, prepared list) Hashtbl.t;  (** free statements by text: one in use is never handed out twice *)
-  mutable cached : int;
+  mutable wait : float;  (** how long a busy database is waited for, in the calls that run a whole statement *)
+  cache : (string, prepared) Hashtbl.t;  (** a statement by text: one in use is never handed out twice *)
+  mutable last : prepared option;  (** the last one handed out, found again by the text itself, without a hash *)
   mutable broken : bool;
   mutable closed : bool;
   live : (int, unit) Hashtbl.t;  (** its cursors *)
@@ -35,7 +46,19 @@ type conn = {
 
 type cursor = { p : prepared; text : string; owner : conn; mutable rows : int }
 
+(* Connections opened when needed, at most [size], and the fibers waiting for one. *)
+type pool = {
+  path : string;
+  size : int;
+  pool_wait : float;
+  mutable free : conn list;
+  mutable opened : int;
+  mutable shut : bool;
+  mutable waiters : (unit -> unit) list;
+}
+
 let library = ref None
+let pools : (int, pool) Hashtbl.t = Hashtbl.create 4
 let conns : (int, conn) Hashtbl.t = Hashtbl.create 4
 let cursors : (int, cursor) Hashtbl.t = Hashtbl.create 16
 let next_id = ref 1
@@ -114,54 +137,61 @@ let zero_free ctx what s = if String.contains s '\000' then Runtime.fail ctx Typ
 (* Read-write, created if absent, no URI names, extended codes; then defensive, no trusted schema, no extension, no
    double-quoted texts, texts and BLOBs of 100 MB at most, nothing attached, and no busy wait: pkg/sqlite retries, so the
    other fibers run meanwhile. *)
-let open_db ctx (a : t array) =
-  let path = Native.text_arg ctx "sqlite3.Open" a.(0) in
+let path_arg ctx name v =
+  let path = Native.text_arg ctx name v in
   zero_free ctx "a path" path;
   if path <> ":memory:" then begin
     Runtime.check_perm ctx Read (Some path);
     Runtime.check_perm ctx Write (Some path)
   end;
+  path
+
+let open_conn ctx lib path =
+  let out = Lazy.force scratch in
+  texts.(0) <- path;
+  set 1 out; set 2 (0x2 lor 0x4 lor 0x8000 lor 0x02000000); set 3 0;
+  let rc = run lib.open_v2 4 ~text:0 () and db = Int64.to_int (peek out 8) in
+  let c =
+    { id = new_id (); db; wait = 5.; cache = Hashtbl.create 16; last = None; broken = false; closed = false;
+      live = Hashtbl.create 4 }
+  in
+  if rc <> 0 then begin
+    let e = if db = 0 then failure ctx (sqlite_code rc) "out of memory" else last_error ctx lib c in
+    if db <> 0 then ignore (c1 lib.close_v2 db);
+    Error e
+  end
+  else begin
+    List.iter (fun (op, on) -> ignore (db_config lib.config db op on)) [ 1010, 1; 1017, 0; 1005, 0; 1013, 0; 1014, 0 ];
+    ignore (c3 lib.limit db 0 100_000_000);
+    ignore (c3 lib.limit db 7 0);
+    Hashtbl.replace conns c.id c;
+    Ok c
+  end
+
+let open_db ctx (a : t array) =
+  let path = path_arg ctx "sqlite3.Open" a.(0) in
   with_lib ctx (fun lib ->
-      let out = Lazy.force scratch in
-      texts.(0) <- path;
-      set 1 out; set 2 (0x2 lor 0x4 lor 0x8000 lor 0x02000000); set 3 0;
-      let rc = run lib.open_v2 4 ~text:0 () and db = Int64.to_int (peek out 8) in
-      let c = { db; cache = Hashtbl.create 16; cached = 0; broken = false; closed = false; live = Hashtbl.create 4 } in
-      if rc <> 0 then begin
-        let e = if db = 0 then failure ctx (sqlite_code rc) "out of memory" else last_error ctx lib c in
-        if db <> 0 then ignore (c1 lib.close_v2 db);
-        e
-      end
-      else begin
-        List.iter (fun (op, on) -> ignore (db_config lib.config db op on)) [ 1010, 1; 1017, 0; 1005, 0; 1013, 0; 1014, 0 ];
-        ignore (c3 lib.limit db 0 100_000_000);
-        ignore (c3 lib.limit db 7 0);
-        let id = new_id () in
-        Hashtbl.replace conns id c;
-        Value.ok ctx.w (handle "connection" id)
-      end)
+      match open_conn ctx lib path with
+      | Ok c -> Value.ok ctx.w (handle "connection" c.id)
+      | Error e -> e)
 
 let conn_arg ctx name (v : t) =
   match v with
-  | Handle { kind = "connection"; id; _ } -> Hashtbl.find_opt conns id
+  | Handle { kind = "connection"; id; _ } -> (match Hashtbl.find_opt conns id with Some c when not c.closed -> Some c | _ -> None)
   | _ -> Runtime.fail ctx Type (Messages.sql_need_handle name "connection" (Value.describe v))
 
 let closed ctx = failure ctx "closed" (Messages.sql_closed).text
 let finalize lib stmt = ignore (c1 lib.finalize stmt)
 
-(* A statement back in the cache, reset; past 128, the cache is emptied first. *)
-let give_back lib c text p =
-  ignore (c1 lib.reset p.stmt);
-  ignore (c1 lib.clear p.stmt);
-  if c.closed || c.broken then finalize lib p.stmt
-  else begin
-    if c.cached >= 128 then begin
-      Hashtbl.iter (fun _ l -> List.iter (fun p -> finalize lib p.stmt) l) c.cache;
-      Hashtbl.reset c.cache;
-      c.cached <- 0
-    end;
-    Hashtbl.replace c.cache text (p :: Option.value ~default:[] (Hashtbl.find_opt c.cache text));
-    c.cached <- c.cached + 1
+(* A statement given back, reset: free again in the cache. A closed connection has finalized those of its cache, and a
+   broken one finalizes it. Its bindings stay until the next call binds every value again. *)
+let give_back lib c (_ : string) p =
+  if not c.closed then ignore (c1 lib.reset p.stmt);
+  p.inuse <- false;
+  if p.extra || (c.broken && not c.closed) then begin
+    if not c.closed || p.extra then finalize lib p.stmt;
+    if not p.extra then Hashtbl.remove c.cache p.ptext;
+    match c.last with Some q when q == p -> c.last <- None | _ -> ()
   end
 
 (* [prepare lib c text]: a statement and the text that follows it. *)
@@ -180,12 +210,13 @@ let decltypes lib stmt n =
 
 (* One statement: text after it that holds another is an error, so none rides in on a value glued by hand. *)
 let statement ctx lib c text =
-  match Hashtbl.find_opt c.cache text with
-  | Some (p :: rest) ->
-    Hashtbl.replace c.cache text rest;
-    c.cached <- c.cached - 1;
-    Ok p
+  let hand p = p.inuse <- true; Ok p in
+  match c.last with
+  | Some p when p.ptext == text && not p.inuse -> hand p
   | _ ->
+  match Hashtbl.find_opt c.cache text with
+  | Some p when not p.inuse -> c.last <- Some p; hand p
+  | found ->
     zero_free ctx "a statement" text;
     let rc, stmt, rest = prepare lib c text in
     if rc <> 0 then Error (last_error ctx lib c)
@@ -194,8 +225,22 @@ let statement ctx lib c text =
       match prepare lib c rest with
       | 0, 0, _ ->
         let n = c1 lib.columns stmt in
-        let names = Arrays.list (Array.init n (fun k -> Text (cstring (c2 lib.name stmt k)))) in
-        Ok { stmt; names; bools = decltypes lib stmt n }
+        let texts = Array.init n (fun k -> cstring (c2 lib.name stmt k)) in
+        let extra = found <> None in
+        let p =
+          { stmt; ptext = text; extra; inuse = true; names = Arrays.list (Array.map (fun s -> Text s) texts); texts;
+            bools = decltypes lib stmt n; keys = None }
+        in
+        if not extra then begin
+          (* Past 128 texts, the free ones go first. *)
+          if Hashtbl.length c.cache >= 128 then begin
+            Hashtbl.filter_map_inplace (fun _ q -> if q.inuse then Some q else (finalize lib q.stmt; None)) c.cache;
+            c.last <- None
+          end;
+          Hashtbl.replace c.cache text p;
+          c.last <- Some p
+        end;
+        Ok p
       | _, more, _ ->
         if more <> 0 then finalize lib more;
         finalize lib stmt;
@@ -212,7 +257,29 @@ let bind ctx lib stmt k (v : t) =
     call lib.bind_float 22 slots texts 0;
     Int64.to_int (result ())
   | Text s -> texts.(2) <- s; set 3 (String.length s); set 4 (-1); run lib.bind_text 5 ~text:2 ()
-  | v -> Runtime.fail ctx Type (Messages.sql_bad_param k (Value.describe v))
+  | _ -> -1
+
+(* Binds each value: an Err for a count that differs, or for a value SQL doesn't take, of Code "convert", which pkg/sql
+   converts and gives again. The statement goes back to the cache on an Err. *)
+let bind_all ctx lib c text p params =
+  let wanted = c1 lib.count p.stmt in
+  if wanted <> Array.length params then begin
+    give_back lib c text p;
+    Error (failure ctx "07001" (Messages.sql_param_count wanted (Array.length params)).text)
+  end
+  else begin
+    let bad = ref 0 and at = ref 0 in
+    Array.iteri (fun k v -> if !bad = 0 then (bad := bind ctx lib p.stmt (k + 1) v; at := k)) params;
+    if !bad = 0 then Ok ()
+    else begin
+      let e =
+        if !bad < 0 then failure ctx "convert" (Messages.sql_bad_param (!at + 1) (Value.describe params.(!at))).text
+        else last_error ctx lib c
+      in
+      give_back lib c text p;
+      Error e
+    end
+  end
 
 let list_values ctx name (v : t) =
   match v with
@@ -229,26 +296,13 @@ let run_statement ctx (a : t array) =
         match statement ctx lib c text with
         | Error e -> e
         | Ok p ->
-          let stmt = p.stmt in
-          let wanted = c1 lib.count stmt in
-          if wanted <> Array.length params then begin
-            give_back lib c text p;
-            failure ctx "07001" (Messages.sql_param_count wanted (Array.length params)).text
-          end
-          else
-            let bad = ref 0 in
-            Array.iteri (fun k v -> if !bad = 0 then bad := bind ctx lib stmt (k + 1) v) params;
-            if !bad <> 0 then begin
-              let e = last_error ctx lib c in
-              give_back lib c text p;
-              e
-            end
-            else begin
-              let id = new_id () in
-              Hashtbl.replace cursors id { p; text; owner = c; rows = 0 };
-              Hashtbl.replace c.live id ();
-              Value.ok ctx.w (handle "cursor" id)
-            end)
+          match bind_all ctx lib c text p params with
+          | Error e -> e
+          | Ok () ->
+            let id = new_id () in
+            Hashtbl.replace cursors id { p; text; owner = c; rows = 0 };
+            Hashtbl.replace c.live id ();
+            Value.ok ctx.w (handle "cursor" id))
 
 let end_cursor lib id cur =
   Hashtbl.remove cursors id;
@@ -278,6 +332,28 @@ let cell ctx lib stmt bools k : t =
     Text (if n = 0 then "" else bytes p n)
   | _ -> Missing
 
+(* [read ctx lib p n cells]: up to n rows into cells, how many, and how it ended: 100 more to come, 101 done, -k-1 the
+   integer of column k past 63 bits, else SQLite's code. *)
+let read ctx lib p n add =
+  let stmt = p.stmt and bools = p.bools in
+  let width = Array.length bools and rows = ref 0 and outcome = ref 100 in
+  (try
+     while !outcome = 100 && !rows < n do
+       outcome := c1 lib.step stmt;
+       if !outcome = 100 then begin
+         Runtime.build ctx (width + 1);
+         for k = 0 to width - 1 do
+           add (cell ctx lib stmt bools k)
+         done;
+         incr rows
+       end
+     done
+   with Too_big k -> outcome := -k - 1);
+  !rows, !outcome
+
+(* Busy, outside a transaction: nothing was written, so the statement can run again. *)
+let busy lib c rc = rc land 0xFF = 5 && c1 lib.autocommit c.db <> 0
+
 (* [Next(n, cursor)]: up to n rows, their cells row after row. A busy database before the first row, outside a transaction,
    leaves the cursor as it was, so that its caller can wait and call again. *)
 let next ctx (a : t array) =
@@ -291,36 +367,24 @@ let next ctx (a : t array) =
   | None -> closed ctx
   | Some cur ->
     with_lib ctx (fun lib ->
-        let c = cur.owner and stmt = cur.p.stmt and bools = cur.p.bools in
-        let width = Array.length bools in
-        let cells = Arrays.builder () and rows = ref 0 and outcome = ref 100 in
-        (try
-           while !outcome = 100 && !rows < n do
-             outcome := c1 lib.step stmt;
-             if !outcome = 100 then begin
-               Runtime.build ctx (width + 1);
-               for k = 0 to width - 1 do
-                 Arrays.add ctx ctx.site cells (cell ctx lib stmt bools k)
-               done;
-               incr rows
-             end
-           done
-         with Too_big k -> outcome := -k - 1);
-        cur.rows <- cur.rows + !rows;
+        let c = cur.owner and stmt = cur.p.stmt in
+        let cells = Arrays.builder () in
+        let rows, outcome = read ctx lib cur.p n (Arrays.add ctx ctx.site cells) in
+        cur.rows <- cur.rows + rows;
         let reply finished =
           Value.ok ctx.w
             (Trie.record batch_keys
                [| cur.p.names; Arrays.built cells; Value.of_bool finished; Int (c1 lib.changes c.db);
                   Int (c1 lib.last_id c.db) |])
         in
-        match !outcome with
+        match outcome with
         | 100 -> reply false
         | 101 -> end_cursor lib id cur; reply true
         | rc when rc < 0 ->
           end_cursor lib id cur;
           let name = cstring (c2 lib.name stmt (-rc - 1)) in
           failure ctx "22003" (Messages.sql_int_past name).text
-        | rc when rc land 0xFF = 5 && cur.rows = 0 && c1 lib.autocommit c.db <> 0 ->
+        | rc when busy lib c rc && cur.rows = 0 ->
           ignore (c1 lib.reset stmt);
           last_error ctx lib ~retry:true c
         | _ ->
@@ -339,25 +403,252 @@ let script ctx (a : t array) =
         set 0 c.db; texts.(1) <- text; set 2 0; set 3 0; set 4 0;
         if run lib.exec 5 ~text:1 () = 0 then Value.ok ctx.w Missing else last_error ctx lib c)
 
+(* A connection and every statement of it. Twice is nothing. *)
+let close_conn lib c =
+  if not c.closed then begin
+    c.closed <- true;
+    Hashtbl.iter
+      (fun k () ->
+         Option.iter (fun cur -> Hashtbl.remove cursors k; if cur.p.extra then finalize lib cur.p.stmt) (Hashtbl.find_opt cursors k))
+      c.live;
+    Hashtbl.iter (fun _ p -> finalize lib p.stmt) c.cache;
+    Hashtbl.reset c.cache;
+    c.last <- None;
+    ignore (c1 lib.close_v2 c.db);
+    Hashtbl.remove conns c.id
+  end
+
+(* Parks the fiber for this many seconds: the other fibers run meanwhile. *)
+let sleep ctx seconds = Fiber.suspend ctx (fun resume -> ctx.w.timer seconds resume)
+
+(* f () again while SQLite says busy, outside a transaction, at most the wait of the connection: 1 ms, then twice as long,
+   up to 50 ms. *)
+let retrying ctx c ~give_up f =
+  let deadline = Unix.gettimeofday () +. c.wait and pause = ref 0.001 in
+  let rec go () =
+    match f () with
+    | `Busy when Unix.gettimeofday () < deadline ->
+      sleep ctx !pause;
+      pause := Float.min (!pause *. 2.) 0.05;
+      (* Closed while this fiber slept: its statements are finalized. *)
+      if c.closed then give_up () else go ()
+    | `Busy -> give_up ()
+    | `Done r -> r
+  in
+  go ()
+
+(* A connection of the pool: a free one, a new one while fewer than its size are open, else the first to come back,
+   waited for until [deadline]. *)
+let rec take ctx lib p deadline =
+  if p.shut then Error (failure ctx "closed" (Messages.sql_db_closed).text)
+  else
+    match p.free with
+    | c :: rest ->
+      p.free <- rest;
+      if c.broken || c.closed then begin
+        close_conn lib c;
+        p.opened <- p.opened - 1;
+        take ctx lib p deadline
+      end
+      else Ok c
+    | [] when p.opened < p.size ->
+      p.opened <- p.opened + 1;
+      (match open_conn ctx lib p.path with
+       | Error e -> p.opened <- p.opened - 1; Error e
+       | Ok c ->
+         c.wait <- p.pool_wait;
+         let pragmas = (if p.path = ":memory:" then "" else "pragma journal_mode = wal; ") ^ "pragma foreign_keys = on" in
+         let set_up () =
+           set 0 c.db; texts.(1) <- pragmas; set 2 0; set 3 0; set 4 0;
+           match run lib.exec 5 ~text:1 () with
+           | 0 -> `Done (Ok c)
+           | rc when rc land 0xFF = 5 -> `Busy
+           | _ -> `Done (Error (last_error ctx lib c))
+         in
+         match retrying ctx c ~give_up:(fun () -> Error (if c.closed then closed ctx else last_error ctx lib c)) set_up with
+         | Ok c -> Ok c
+         | Error e -> close_conn lib c; p.opened <- p.opened - 1; Error e)
+    | [] ->
+      let left = deadline -. Unix.gettimeofday () in
+      if left <= 0. then Error (failure ctx "pool" (Messages.sql_pool p.pool_wait).text)
+      else begin
+        Fiber.suspend ctx (fun resume ->
+            let parked = ref true in
+            let wake () = if !parked then (parked := false; resume ()) in
+            p.waiters <- p.waiters @ [ wake ];
+            ctx.w.timer left (fun () ->
+                if !parked then begin
+                  p.waiters <- List.filter (fun w -> w != wake) p.waiters;
+                  wake ()
+                end));
+        take ctx lib p deadline
+      end
+
+(* A connection back in its pool, or closed if the pool is, or if it is broken; the first fiber waiting is woken. *)
+let give lib p c =
+  if p.shut || c.broken || c.closed then begin
+    close_conn lib c;
+    p.opened <- p.opened - 1
+  end
+  else p.free <- c :: p.free;
+  match p.waiters with
+  | wake :: rest -> p.waiters <- rest; wake ()
+  | [] -> ()
+
+let seconds_arg ctx (v : t) =
+  match v with
+  | Int i when i >= 0 -> float_of_int i
+  | Float x when x >= 0. -> x
+  | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
+
+(* [Pool(path, size, wait)]: connections opened when needed, with WAL for a file and foreign keys. *)
+let new_pool ctx (a : t array) =
+  let path = path_arg ctx "sqlite3.Pool" a.(0) in
+  let size = match a.(1) with Int n when n >= 1 -> n | v -> Runtime.fail ctx Type (Messages.sql_pool_size (Value.describe v)) in
+  let wait = seconds_arg ctx a.(2) in
+  with_lib ctx (fun _ ->
+      let id = new_id () in
+      Hashtbl.replace pools id { path; size; pool_wait = wait; free = []; opened = 0; shut = false; waiters = [] };
+      Value.ok ctx.w (handle "pool" id))
+
+let pool_arg ctx name (v : t) =
+  match v with
+  | Handle { kind = "pool"; id; _ } -> Hashtbl.find_opt pools id
+  | v -> Runtime.fail ctx Type (Messages.sql_need_handle name "pool" (Value.describe v))
+
+(* f on a connection: the one given, or one of the pool given, which goes back after f, a panic too. *)
+let using ctx lib name (v : t) f =
+  match v with
+  | Handle { kind = "connection"; _ } -> (match conn_arg ctx name v with Some c -> f c | None -> closed ctx)
+  | Handle { kind = "pool"; id; _ } ->
+    (match Hashtbl.find_opt pools id with
+     | None -> closed ctx
+     | Some p ->
+       match take ctx lib p (Unix.gettimeofday () +. p.pool_wait) with
+       | Error e -> e
+       | Ok c ->
+         match f c with
+         | r -> give lib p c; r
+         | exception e -> give lib p c; raise e)
+  | v -> Runtime.fail ctx Type (Messages.sql_need_handle name "pool or connection" (Value.describe v))
+
+(* Runs one statement to its end, or to [limit] rows, each cell given to [add]: its prepared statement, or an Err. *)
+let whole ctx lib c text (params : t) limit add =
+  match params with
+  | Array a ->
+    let a = Value.trim a in
+    let params = Array.init (a.rows * a.cols) (Value.elt a) in
+    (match statement ctx lib c text with
+     | Error e -> Error e
+     | Ok p ->
+       match bind_all ctx lib c text p params with
+       | Error e -> Error e
+       | Ok () ->
+         let attempt () =
+           match read ctx lib p limit add with
+           | 0, rc when busy lib c rc -> ignore (c1 lib.reset p.stmt); `Busy
+           | _, (100 | 101) -> give_back lib c text p; `Done (Ok p)
+           | _, rc when rc < 0 ->
+             give_back lib c text p;
+             `Done (Error (failure ctx "22003" (Messages.sql_int_past p.texts.(-rc - 1)).text))
+           | _ ->
+             let e = last_error ctx lib c in
+             give_back lib c text p;
+             `Done (Error e)
+         in
+         let give_up () =
+           let e = if c.closed then closed ctx else last_error ctx lib c in
+           give_back lib c text p;
+           Error e
+         in
+         retrying ctx c ~give_up attempt)
+  | v -> Error (failure ctx "convert" (Messages.need_array "sqlite3.Query" (Value.describe v)).text)
+
+(* [Query(text, params, db, limit)]: every row, or the first limit, as maps whose keys are the names made public names;
+   with [one], the first row or missing. *)
+let query ~one ctx (a : t array) =
+  let text = Native.text_arg ctx "sqlite3.Query" a.(0) in
+  let limit =
+    match if one then Int 1 else if Array.length a > 3 then a.(3) else Undef with
+    | Undef | Missing -> max_int
+    | Int n when n > 0 -> n
+    | v -> Runtime.fail ctx Type (Messages.sql_batch (Value.describe v))
+  in
+  with_lib ctx (fun lib ->
+      using ctx lib "sqlite3.Query" a.(2) (fun c ->
+          let cells = Dynarray.create () in
+          match whole ctx lib c text a.(1) limit (Dynarray.add_last cells) with
+          | Error e -> e
+          | Ok p ->
+            if Array.length p.texts = 0 || (one && Dynarray.length cells = 0) then
+              Value.ok ctx.w (if one then Missing else Arrays.list [||])
+            else begin
+              let keys = match p.keys with Some k -> k | None -> let k = Columns.row_keys true p.texts in p.keys <- Some k; k in
+              match keys with
+              | Error m -> failure ctx "names" m
+              | Ok keys when one -> Value.ok ctx.w (Trie.record keys (Array.map Value.share (Dynarray.to_array cells)))
+              | Ok keys -> Value.ok ctx.w (Columns.make_rows ctx keys (Dynarray.to_array cells))
+            end))
+
+let changed_keys = Trie.names [| "Changed"; "LastId" |]
+
+(* [Exec(text, params, db)]: runs a statement to its end: an Ok of {Changed, LastId}. *)
+let exec ctx (a : t array) =
+  let text = Native.text_arg ctx "sqlite3.Exec" a.(0) in
+  with_lib ctx (fun lib ->
+      using ctx lib "sqlite3.Exec" a.(2) (fun c ->
+          match whole ctx lib c text a.(1) max_int ignore with
+          | Error e -> e
+          | Ok _ -> Value.ok ctx.w (Trie.record changed_keys [| Int (c1 lib.changes c.db); Int (c1 lib.last_id c.db) |])))
+
 (* [Close(x)]: a cursor before its end, or a connection and every statement of it. Twice is nothing. *)
 let close ctx (a : t array) =
   (match !library, a.(0) with
    | Some lib, Handle { kind = "cursor"; id; _ } -> Option.iter (end_cursor lib id) (Hashtbl.find_opt cursors id)
-   | Some lib, Handle { kind = "connection"; id; _ } ->
+   | Some lib, Handle { kind = "connection"; id; _ } -> Option.iter (close_conn lib) (Hashtbl.find_opt conns id)
+   | Some lib, Handle { kind = "pool"; id; _ } ->
      Option.iter
-       (fun c ->
-          c.closed <- true;
-          Hashtbl.iter (fun k () -> Option.iter (fun cur -> Hashtbl.remove cursors k; finalize lib cur.p.stmt) (Hashtbl.find_opt cursors k)) c.live;
-          Hashtbl.iter (fun _ l -> List.iter (fun p -> finalize lib p.stmt) l) c.cache;
-          ignore (c1 lib.close_v2 c.db);
-          Hashtbl.remove conns id)
-       (Hashtbl.find_opt conns id)
-   | _, (Handle { kind = "cursor" | "connection"; _ }) -> ()
-   | _, v -> Runtime.fail ctx Type (Messages.sql_need_handle "sqlite3.Close" "connection or cursor" (Value.describe v)));
+       (fun p ->
+          p.shut <- true;
+          List.iter (close_conn lib) p.free;
+          p.opened <- p.opened - List.length p.free;
+          p.free <- [];
+          let waiting = p.waiters in
+          p.waiters <- [];
+          List.iter (fun wake -> wake ()) waiting)
+       (Hashtbl.find_opt pools id)
+   | _, (Handle { kind = "cursor" | "connection" | "pool"; _ }) -> ()
+   | _, v -> Runtime.fail ctx Type (Messages.sql_need_handle "sqlite3.Close" "pool, connection or cursor" (Value.describe v)));
   Missing
 
 let natives =
   [ "Open", Native.nat ~params:[| "path" |] "Open" 1 1 open_db;
+    "Pool", Native.nat ~params:[| "path"; "size"; "wait" |] "Pool" 3 3 new_pool;
+    "Take",
+    Native.nat ~params:[| "pool" |] "Take" 1 1 (fun ctx a ->
+        match pool_arg ctx "sqlite3.Take" a.(0) with
+        | None -> closed ctx
+        | Some p ->
+          with_lib ctx (fun lib ->
+              match take ctx lib p (Unix.gettimeofday () +. p.pool_wait) with
+              | Ok c ->
+                (* A handle of its own, which Give forgets: kept past its end, it finds nothing. *)
+                let lease = new_id () in
+                Hashtbl.replace conns lease c;
+                Value.ok ctx.w (handle "connection" lease)
+              | Error e -> e));
+    "Give",
+    Native.nat ~params:[| "conn"; "pool" |] "Give" 2 2 (fun ctx a ->
+        (match a.(0), pool_arg ctx "sqlite3.Give" a.(1), !library with
+         | Handle { kind = "connection"; id; _ }, Some p, Some lib when id <> 0 ->
+           Option.iter
+             (fun c -> if c.id <> id then begin Hashtbl.remove conns id; give lib p c end)
+             (Hashtbl.find_opt conns id)
+         | _ -> ());
+        Missing);
+    "Query", Native.nat ~params:[| "text"; "params"; "db"; "limit" |] "Query" 3 4 (query ~one:false);
+    "One", Native.nat ~params:[| "text"; "params"; "db" |] "One" 3 3 (query ~one:true);
+    "Exec", Native.nat ~params:[| "text"; "params"; "db" |] "Exec" 3 3 exec;
     "Run", Native.nat ~params:[| "text"; "params"; "conn" |] "Run" 3 3 run_statement;
     "Next", Native.nat ~params:[| "n"; "cursor" |] "Next" 2 2 next;
     "Script", Native.nat ~params:[| "text"; "conn" |] "Script" 2 2 script;

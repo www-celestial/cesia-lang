@@ -4,6 +4,7 @@
 use columns
 use json
 use sys
+use sqlite3
 use pkg/date
 use pkg/sqlite
 
@@ -45,8 +46,12 @@ defn Open(url, max = 8, wait = 5, driver = missing)
   for k in 1:size
     Send(missing, slots)
   end
-  d = if IsMissing(driver) sqlite.Driver else driver end
-  Ok({Driver: d, Url: url, Slots: slots, Wait: wait, Closed: Channel(), Tx: false})
+  if IsMissing(driver)
+    (* SQLite: its pool, and each call of one statement, are natives of sqlite3. *)
+    pool = sqlite3.Pool(Slice(8, Len(url), url), size, wait)?
+    return Ok({Driver: sqlite.Driver, Url: url, Pool: pool, Fast: true, Wait: wait, Tx: false})
+  end
+  Ok({Driver: driver, Url: url, Slots: slots, Wait: wait, Closed: Channel(), Fast: false, Tx: false})
 end
 
 defn isSet(ch)
@@ -62,6 +67,15 @@ end
 closedMark = "closed"
 
 defn take(db)
+  (** A connection of the pool: on SQLite, a connection handle in a map as its driver takes it. *)
+  if db.Fast
+    h = sqlite3.Take(db.Pool)?
+    return Ok({H: h, Wait: db.Wait})
+  end
+  slow(db)
+end
+
+defn slow(db)
   (** A connection of the pool: a free one, or a new one in an empty slot. Close leaves closedMark in every slot. *)
   got = Receive(db.Slots, timeout = db.Wait)
   if failed(got)
@@ -84,7 +98,9 @@ end
 
 defn giveBack(conn, db)
   (** A connection back in the pool; a broken one, or one of a closed database, is closed and its slot left empty. *)
-  if isSet(db.Closed)
+  if db.Fast
+    sqlite3.Give(conn.H, db.Pool)
+  else if isSet(db.Closed)
     db.Driver.Close(conn)
     Send(closedMark, db.Slots)
   else if db.Driver.Broken(conn)
@@ -217,21 +233,65 @@ defn exec(text, ps, d, conn)
   Ok({Changed: b.Changed, LastId: b.LastId})
 end
 
+at(db) = if db.Tx db.Conn.H else db.Pool end
+ended(db) = db.Tx and db.Depth > 0 and isSet(db.Done)
+
+defn settle(r, f, text, params, db)
+  (** What a native call of sqlite3 gave: as it is, or again with the values converted, or the Err of a transaction that
+      ended, whose connection the pool took back. *)
+  if IsOk(r)
+    return r
+  end
+  code = errorOf(r).Code
+  if code == "convert"
+    return f(text, bound(params)?, at(db))
+  end
+  if code == "closed" and db.Tx
+    return doneError()
+  end
+  r
+end
+
 defn Exec(text, params, db)
   (** Runs one statement that changes rows: an Ok of {Changed, LastId}, the rows it changed and the id of the last row
       inserted. *)
+  if db.Fast
+    r = sqlite3.Exec(text, params, if db.Tx db.Conn.H else db.Pool end)
+    if IsOk(r) and not ended(db)
+      return r
+    end
+    return if ended(db) doneError() else settle(r, sqlite3.Exec, text, params, db) end
+  end
   withConn(conn -> exec(text, params, db.Driver, conn), db)
 end
 
 defn Query(text, params, db, as = missing)
   (** An Ok of every row, each a map from its column names made public names: created_at is read r.CreatedAt. NULL is
       missing. With as, as(row) for each, as User.From: an Ok of the values, or the first Err with Row, its number. *)
+  if db.Fast and not ended(db)
+    r = sqlite3.Query(text, params, if db.Tx db.Conn.H else db.Pool end)
+    return if IsOk(r) and IsMissing(as) r else typed(as, settle(r, sqlite3.Query, text, params, db)?) end
+  end
+  if db.Fast
+    return doneError()
+  end
   rows = withConn(conn -> readAll(text, params, missing, db.Driver, conn), db)?
   typed(as, rows)
 end
 
 defn One(text, params, db, as = missing)
   (** An Ok of the first row, or of missing if there is none; with as, of as(row). *)
+  if db.Fast and not ended(db)
+    r = sqlite3.One(text, params, if db.Tx db.Conn.H else db.Pool end)
+    if IsOk(r) and IsMissing(as)
+      return r
+    end
+    row = settle(r, sqlite3.One, text, params, db)?
+    return if IsMissing(row) Ok(missing) else typed(as, [row]) then MapOk(it[1]) end
+  end
+  if db.Fast
+    return doneError()
+  end
   rows = withConn(conn -> first(text, params, db.Driver, conn), db)?
   if Len(rows) == 0
     return Ok(missing)
@@ -318,10 +378,12 @@ defn Script(text, db)
   withConn(conn -> db.Driver.Script(text, conn), db)
 end
 
+txExec(text, tx) = if tx.Fast sqlite3.Exec(text, [], tx.Conn.H) else exec(text, [], tx.Driver, tx.Conn) end
+
 defn undo(texts, tx, out)
   (** Rolls back, and gives out. *)
   for t in texts
-    exec(t, [], tx.Driver, tx.Conn)
+    txExec(t, tx)
   end
   out
 end
@@ -329,7 +391,7 @@ end
 defn keep(texts, rollback, tx, v)
   (** Commits: an Ok of v, or the Err of the commit, rolled back. *)
   for t in texts
-    c = exec(t, [], tx.Driver, tx.Conn)
+    c = txExec(t, tx)
     if failed(c)
       return undo(rollback, tx, c)
     end
@@ -359,8 +421,8 @@ defn Transaction(f, db, read = false)
     return savepoint(f, db)
   end
   conn = take(db)?
-  tx = {Driver: db.Driver, Conn: conn, Tx: true, Done: Channel(), Depth: 0}
-  begun = exec(if read "begin" else "begin immediate" end, [], db.Driver, conn)
+  tx = {Driver: db.Driver, Conn: conn, Tx: true, Fast: db.Fast, Done: Channel(), Depth: 0}
+  begun = txExec(if read "begin" else "begin immediate" end, tx)
   if failed(begun)
     giveBack(conn, db)
     return begun
@@ -377,8 +439,8 @@ defn savepoint(f, tx)
     return doneError()
   end
   name = "s$(tx.Depth + 1)"
-  inner = {Driver: tx.Driver, Conn: tx.Conn, Tx: true, Done: Channel(), Depth: tx.Depth + 1}
-  exec("savepoint $name", [], tx.Driver, tx.Conn)?
+  inner = {Driver: tx.Driver, Conn: tx.Conn, Tx: true, Fast: tx.Fast, Done: Channel(), Depth: tx.Depth + 1}
+  txExec("savepoint $name", tx)?
   r = Wait(Spawn(() -> f(inner)))
   Send(true, inner.Done)
   rethrow(finish(r, ["release $name"], ["rollback to $name", "release $name"], tx))
@@ -386,6 +448,9 @@ end
 
 defn Close(db)
   (** Closes the free connections now, the others when they come back: a call after it is an Err with Code "closed". *)
+  if db.Fast
+    return sqlite3.Close(db.Pool)
+  end
   if isSet(db.Closed)
     return missing
   end

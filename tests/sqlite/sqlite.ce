@@ -3,12 +3,17 @@ use columns
 use json
 use sys
 use pkg/sql
+use pkg/sqlite
 use pkg/date
 
 struct User { Id Int, Name Text, Email Text? }
 
 folder = Args[1]
 onFile = folder != "memory"
+generic = Len(Args) > 1 and Args[2] == "generic"
+
+(* The generic path of pkg/sql, the one other drivers take, runs on SQLite's driver map when asked. *)
+open(u, max = 8, wait = 5) = if generic sql.Open(u, max = max, wait = wait, driver = sqlite.Driver) else sql.Open(u, max = max, wait = wait) end
 
 url(name) = if onFile "sqlite:$folder/$name.db" else "sqlite::memory:" end
 code(r) = r then MapErr(it.Code)
@@ -23,13 +28,13 @@ end
 count(table, db) = sql.One("select count(*) as n from $table", [], db) then MapOk(it.N)
 
 defn users(name)
-  db = sql.Open(url(name))?
+  db = open(url(name))?
   sql.Script("create table users (id integer primary key, name text not null unique, email text, created_at text)", db)?
   Ok(db)
 end
 
 defn isValuesBothWays()
-  db = sql.Open(url("values"))?
+  db = open(url("values"))?
   sql.Script("create table v (i integer, f real, t text, b blob, ok boolean, n integer)", db)?
   sql.Exec("insert into v values (?, ?, ?, ?, ?, ?)", [(-4611686018427387903 - 1), 2.5, "x\0y", "\xff\xfe\0", true, missing], db)?
   r = sql.One("select * from v", [], db)?
@@ -44,7 +49,7 @@ defn isNamesArePublic()
 end
 
 defn isWideRows()
-  db = sql.Open(url("wide"))?
+  db = open(url("wide"))?
   for n in [33, 100]
     cols = Join(", ", ["$k as c_$k" for k in 1:n])
     r = sql.One("select $cols", [], db)?
@@ -57,7 +62,7 @@ defn isWideRows()
 end
 
 defn isSameKey()
-  db = sql.Open(url("same"))?
+  db = open(url("same"))?
   code(sql.Query("select 1 as a, 2 as a", [], db)) == Err("names")
 end
 
@@ -72,7 +77,7 @@ defn isTypedRows()
 end
 
 defn isWrongTypeAtRow3()
-  db = sql.Open(url("row3"))?
+  db = open(url("row3"))?
   sql.Script("create table t (id integer, name); insert into t values (1, 'a'), (2, 'b'), (3, 4)", db)?
   e = sql.Query("select id, name, null as email from t order by id", [], db, as = User.From) then MapErr(it.Row)
   e == Err(3)
@@ -118,7 +123,7 @@ defn isDangerRefused()
 end
 
 defn isParams()
-  db = sql.Open(url("params"))?
+  db = open(url("params"))?
   d = sql.One("select ? as d, ? as l, ? as m", [date.Date(2026, 11, 6, 9, 5, 1), [1, "a"], {A: 1}], db)?
   st = code(sql.One("select ?", [User(1, "a")], db))
   fn = code(sql.One("select ?", [x -> x], db))
@@ -129,7 +134,7 @@ end
 isDateParsesBack() = date.Parse("2026-11-06 09:05:01") == Ok(date.Date(2026, 11, 6, 9, 5, 1))
 
 defn isErrorCodes()
-  db = sql.Open(url("codes"))?
+  db = open(url("codes"))?
   sql.Script("create table p (id integer primary key); create table c (id integer primary key, p integer references p (id), n text not null, k integer check (k > 0)); insert into p values (1)", db)?
   unique = code(sql.Exec("insert into p values (?)", [1], db))
   fk = code(sql.Exec("insert into c (p, n, k) values (?, ?, ?)", [2, "a", 1], db))
@@ -216,13 +221,13 @@ defn isOwnDatabaseInsideTransaction()
   if onFile
     return true
   end
-  db = sql.Open("sqlite::memory:", wait = 0.1)?
+  db = open("sqlite::memory:", wait = 0.1)?
   r = sql.Transaction(tx -> sql.Query("select 1", [], db), db)
   Contains("tx", errorText(r then MapErr(it.Message))) and code(r) == Err("pool")
 end
 
 defn isEachStreams()
-  db = sql.Open(url("each"))?
+  db = open(url("each"))?
   sql.Script("create table n (k integer)", db)?
   sql.Exec("with recursive s(k) as (select 1 union all select k + 1 from s where k < 30000) insert into n select k from s", [], db)?
   all = sql.Each(r -> missing, "select k from n", [], db)?
@@ -231,7 +236,7 @@ defn isEachStreams()
 end
 
 defn isEachPanicGivesTheConnectionBack()
-  db = sql.Open(url("eachpanic"), max = 1, wait = 0.5)?
+  db = open(url("eachpanic"), max = 1, wait = 0.5)?
   sql.Script("create table n (k integer); insert into n values (1), (2)", db)?
   r = Wait(Spawn(() -> sql.Each(r -> Panic("in f"), "select k from n", [], db)))
   failed(r) and count("n", db)? == 2
@@ -240,13 +245,13 @@ end
 sameTx(tx) = sql.Each(r -> sql.One("select k from n where k > ?", [r.K], tx), "select k from n where k > ?", [0], tx)
 
 defn isEachInsideTransaction()
-  db = sql.Open(url("eachtx"))?
+  db = open(url("eachtx"))?
   sql.Script("create table n (k integer); insert into n values (1), (2)", db)?
   sql.Transaction(sameTx, db) == Ok(2)
 end
 
 defn isTable()
-  db = sql.Open(url("table"))?
+  db = open(url("table"))?
   sql.Script("create table r (id integer, score real, name text, maybe integer); insert into r values (1, 1.5, 'a', 1), (2, 2.5, 'b', null)", db)?
   t = sql.Table("select * from r order by id", [], db)?
   none = sql.Table("select * from r where id > 5", [], db)?
@@ -255,7 +260,7 @@ defn isTable()
 end
 
 defn isScript()
-  db = sql.Open(url("script"))?
+  db = open(url("script"))?
   sql.Script("create table a (x); create table b (x); insert into a values (1); insert into b values (2); create index ia on a (x)", db)?
   half = failed(sql.Script("insert into a values (3); insert into nowhere values (4); insert into a values (5)", db))
   half and count("a", db)? == 2
@@ -273,7 +278,7 @@ defn isPoolWaits()
   if not onFile
     return true
   end
-  db = sql.Open(url("pool"), max = 2, wait = 0.05)?
+  db = open(url("pool"), max = 2, wait = 0.05)?
   a = Spawn(() -> holder(db, 0.15))
   b = Spawn(() -> holder(db, 0.15))
   sys.Sleep(0.01)
