@@ -208,7 +208,7 @@ let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
   "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
-  \       cesia test [path | file.ce:isName] [--seed N] [--cases N] [--no-spec]\n\
+  \       cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]\n\
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia do [task]\n\
   \       cesia new name\n\
@@ -346,6 +346,8 @@ let test_panic m = "it stopped: " ^ m
 let test_replay path seed = Printf.sprintf "saved, tried first next time; these cases again: cesia test %s --seed %d" path seed
 let test_summary passed failed seed =
   Printf.sprintf "%d passed, %d failed%s" passed failed (match seed with Some s -> Printf.sprintf ", seed %d" s | None -> "")
+let snapshot_new k = Printf.sprintf "new snapshot %d: review it, then cesia test --update" k
+let snapshot_changed k = Printf.sprintf "snapshot %d changed: cesia test --update keeps the new text" k
 let test_part i n = Printf.sprintf ", part %d of %d" i n
 let test_question line = Printf.sprintf " at the ? of line %d" line
 let test_last_bits a b = Printf.sprintf "the same float but for its last bits: math.Near(%s, %s)?" a b

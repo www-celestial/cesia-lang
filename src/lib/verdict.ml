@@ -72,6 +72,8 @@ let rewrite (fn : func) =
     | _ -> false
   in
   let for_all (e : expr) = match e.e with Call { callee; _ } -> names "std/test" "ForAll" callee | _ -> false in
+  (* A snapshot shows its own text when it fails. *)
+  let snapshot (e : expr) = match e.e with Call { callee; _ } -> names "std/test" "Snapshot" callee | _ -> false in
   let notes = Dynarray.create () in
   let next = ref 0 in
   let fresh pos e = let id = !next in incr next; { id; pos; e } in
@@ -137,7 +139,7 @@ let rewrite (fn : func) =
       let tol n = match Array.find_opt (fun (x : arg) -> x.aname = Some n) args with Some x -> noted test prop owner Hidden x.value | None -> -1 in
       let kr = tol "rel" in
       note.sides <- Some (Near (ka, kb, kr, tol "abs"))
-    | _ when for_all e -> ()
+    | _ when for_all e || snapshot e -> ()
     | Var _ -> ()
     | Field _ | Call _ -> under test prop owner e
     | _ -> inside test prop owner e
@@ -201,6 +203,7 @@ let rewrite (fn : func) =
   Dynarray.to_array notes
 
 let cut s =
+  let s = if String.contains s '\n' then String.concat "\\n" (String.split_on_char '\n' s) else s in
   if String.length s <= 160 then s
   else
     let k = ref 157 in

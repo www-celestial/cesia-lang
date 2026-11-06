@@ -230,6 +230,7 @@ let test_grants root dir (config : Project.test) allow =
 let in_workers ~root ~seed ~cases ~no_spec ~allow ~timeout ~serial units =
   let flags =
     [ "--seed"; string_of_int seed; "--cases"; string_of_int cases ] @ (if no_spec then [ "--no-spec" ] else [])
+    @ (if Props.st.update then [ "--update" ] else [])
     @ List.concat_map (fun a -> [ "--allow"; a ]) allow
   in
   let alone u =
@@ -249,6 +250,9 @@ let test args =
       worker := true;
       options o seed cases allow paths rest
     | "--no-spec" :: rest -> options { o with o_no_spec = true } seed cases allow paths rest
+    | "--update" :: rest ->
+      Props.st.update <- true;
+      options o seed cases allow paths rest
     | "--seed" :: v :: rest -> options o (Some (parse_count v)) cases allow paths rest
     | "--cases" :: v :: rest -> options o seed (parse_count v) allow paths rest
     | "--allow" :: v :: rest -> options o seed cases (allow @ [ v ]) paths rest

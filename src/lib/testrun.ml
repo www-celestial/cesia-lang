@@ -172,18 +172,25 @@ let report_property ctx path line name (f : Props.failure) =
    | None -> ());
   print_endline ("  " ^ Messages.test_replay path Props.st.seed)
 
-(* A failed test: its line, then what its verdict noted. *)
-let report ctx path line name v =
+(* A failed test: its line, then what its verdict noted, then its snapshot. *)
+let rec report ctx path line name v =
   Runtime.flush_out ctx.w;
+  verdict ctx path line name v;
+  match Props.st.snap_failure with
+  | first :: lines -> print_endline ("  " ^ first); List.iter (fun l -> print_endline ("  | " ^ l)) lines
+  | [] -> ()
+
+and verdict ctx path line name v =
   let returned () = print_endline (Printf.sprintf "%s:%d: %s returned %s" path line name (Value.show ctx v)) in
   match Props.st.failed with
   | Some f when v == False -> report_property ctx path line name f
   | _ ->
+  let failed header = print_endline (Printf.sprintf "%s:%d: %s failed%s" path line name header) in
   match Verdict.explain ctx record.notes record.got ~test:name ~prop:false ~floor:0 v with
-  | Some (header, (_ :: _ :: _ as lines)) ->
-    if v == False || header <> "" then print_endline (Printf.sprintf "%s:%d: %s failed%s" path line name header) else returned ();
+  | Some (header, lines) when header <> "" || List.length lines > 1 ->
+    if v == False || header <> "" then failed header else returned ();
     List.iter print_endline lines
-  | _ -> returned ()
+  | _ -> if Props.st.snap_failure <> [] && v == False then failed "" else returned ()
 
 (* cesia test file.ce:isName runs that test alone. *)
 let only_test = ref None
@@ -215,6 +222,7 @@ let from_root w path =
   if String.starts_with ~prefix:r p then String.sub p (String.length r) (String.length p - String.length r) else p
 
 let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
+  let ran = ref [] in
   Array.iter
     (fun (k, (f : Ast.func)) ->
        if is_test_name f.fname && Array.length f.params = 0 && Lexer.split_method f.fname = None
@@ -230,7 +238,8 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
            flush stdout
          end;
          Props.st.root <- ctx.w.root;
-         Props.start_test ~file:(from_root ctx.w path) ~test:f.fname;
+         Props.start_test ~path ~file:(from_root ctx.w path) ~test:f.fname;
+         ran := f.fname :: !ran;
          record.floor <- 0;
          let finish passed =
            (match Props.st.temp with
@@ -264,7 +273,9 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
              finish false
            | None -> raise e
        end)
-    layout.hoisted
+    layout.hoisted;
+  let tests = List.filter_map (fun (_, (f : Ast.func)) -> if is_test_name f.fname then Some f.fname else None) (Array.to_list layout.hoisted) in
+  Props.write_snaps path ~ran:!ran ~tests
 
 (* Anything to run in this file? *)
 let has_tests path src =

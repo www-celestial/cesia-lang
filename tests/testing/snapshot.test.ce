@@ -1,0 +1,7 @@
+(* Snapshots: copied to a folder of its own by snapshot.cmd, which changes it between runs. *)
+use std/test
+use std/list
+page(name) = "<h1>$name</h1>\n<p>Total: 3</p>\n"
+isPage() = test.Snapshot(page("Ana"))
+isTwo() = test.Snapshot([1, 2]) and test.Snapshot(list.Range(1, 30))
+isOdd() = test.Snapshot("a\n== isPage 1 (1 lines)\nc")

@@ -28,20 +28,30 @@ type state = {
   mutable deadline : float;
   mutable timeout : float;
   mutable clock : unit -> float;
+  mutable path : string;  (* the file of the test running, as given *)
+  mutable update : bool;  (* cesia test --update: snapshots are written, not compared *)
+  mutable snaps : int;  (* the snapshots of the test so far *)
+  mutable store : (string * (string * int, string) Hashtbl.t) option;  (* the .snap of the file, read at its first snapshot *)
+  taken : (string * int, string) Hashtbl.t;  (* the snapshots this run took, for --update *)
+  mutable snap_failure : string list;  (* what the failed snapshot of the test shows *)
 }
 
 let st =
   { active = false; seed = 0; cases = 100; root = "."; file = ""; test = ""; rank = 0; rng = 0L; tape = None; pos = 0;
     drawn = Dynarray.create (); size = 0; ran = false; failed = None; on_case = ignore; dir = ""; temp = None; count = 0;
-    deadline = infinity; timeout = 10.; clock = (fun () -> 0.) }
+    deadline = infinity; timeout = 10.; clock = (fun () -> 0.); path = ""; update = false; snaps = 0; store = None;
+    taken = Hashtbl.create 8; snap_failure = [] }
 
 (* A test starts: its ForAlls count from 1 again. *)
-let start_test ~file ~test =
+let start_test ~path ~file ~test =
+  st.path <- path;
   st.file <- file;
   st.test <- test;
   st.rank <- 0;
   st.failed <- None;
   st.temp <- None;
+  st.snaps <- 0;
+  st.snap_failure <- [];
   st.count <- st.count + 1;
   st.deadline <- st.clock () +. st.timeout
 
@@ -99,6 +109,86 @@ let temp ctx _ =
      with Sys_error m -> Runtime.fail ctx User (Messages.plain m));
     st.temp <- Some d;
     Text d
+
+(* A .snap file: blocks of "== isName N (L lines)" and the L lines of the text, ", no line end" when it has none. *)
+let snap_path path = Filename.remove_extension path ^ ".snap"
+
+let lines_of text =
+  let ls = String.split_on_char '\n' text in
+  if String.ends_with ~suffix:"\n" text then List.rev (List.tl (List.rev ls)) else ls
+
+let read_snaps path =
+  let table = Hashtbl.create 8 in
+  (match In_channel.with_open_bin (snap_path path) In_channel.input_all with
+   | exception Sys_error _ -> ()
+   | src ->
+     let rec go = function
+       | head :: rest when String.starts_with ~prefix:"== " head ->
+         (match Scanf.sscanf_opt head "== %s %d (%d lines%s@)" (fun n k l e -> n, k, l, e) with
+          | Some (name, k, l, ending) when l >= 0 && List.length rest >= l ->
+            let body = List.filteri (fun i _ -> i < l) rest in
+            Hashtbl.replace table (name, k) (String.concat "\n" body ^ if ending = "" then "\n" else "");
+            go (List.filteri (fun i _ -> i >= l) rest)
+          | _ -> go rest)
+       | _ :: rest -> go rest
+       | [] -> ()
+     in
+     go (String.split_on_char '\n' src));
+  table
+
+let block (name, k) text =
+  let ls = lines_of text in
+  Printf.sprintf "== %s %d (%d lines%s)\n%s" name k (List.length ls) (if String.ends_with ~suffix:"\n" text then "" else ", no line end")
+    (String.concat "" (List.map (fun l -> l ^ "\n") ls))
+
+(* The lines that changed, the common head and tail cut, 20 at most. *)
+let changed old now =
+  let a = Array.of_list (lines_of old) and b = Array.of_list (lines_of now) in
+  let head = ref 0 in
+  while !head < Array.length a && !head < Array.length b && a.(!head) = b.(!head) do incr head done;
+  let tail = ref 0 in
+  while !tail < Array.length a - !head && !tail < Array.length b - !head && a.(Array.length a - 1 - !tail) = b.(Array.length b - 1 - !tail) do incr tail done;
+  let part x sign = List.init (Array.length x - !head - !tail) (fun i -> sign ^ x.(!head + i)) in
+  let lines = part a "- " @ part b "+ " in
+  Printf.sprintf "@@ from line %d" (!head + 1) :: List.filteri (fun i _ -> i < 20) lines
+
+(* snapshot(text): is it the text kept for this snapshot of the test? With --update it is kept, and is. *)
+let snapshot ctx (a : t array) =
+  only_in_tests ctx;
+  let text = match a.(0) with Text t -> t | v -> Value.text_of ctx v in
+  st.snaps <- st.snaps + 1;
+  let key = st.test, st.snaps in
+  Hashtbl.replace st.taken key text;
+  let store =
+    match st.store with
+    | Some (p, t) when String.equal p st.path -> t
+    | _ -> let t = read_snaps st.path in st.store <- Some (st.path, t); t
+  in
+  if st.update then True
+  else
+    match Hashtbl.find_opt store key with
+    | Some kept when String.equal kept text -> True
+    | Some kept -> st.snap_failure <- Messages.snapshot_changed st.snaps :: changed kept text; False
+    | None -> st.snap_failure <- Messages.snapshot_new st.snaps :: List.filteri (fun i _ -> i < 20) (lines_of text); False
+
+(** With --update, writes the .snap of a file: the snapshots of the tests that ran, the others' kept unless their test is gone. *)
+let write_snaps path ~ran ~tests =
+  if st.update then begin
+    let kept = read_snaps path in
+    let all = Hashtbl.create 16 in
+    Hashtbl.iter (fun (n, k) t -> if List.mem n tests && not (List.mem n ran) then Hashtbl.replace all (n, k) t) kept;
+    Hashtbl.iter (fun key t -> Hashtbl.replace all key t) st.taken;
+    let keys = List.sort compare (Hashtbl.fold (fun key _ acc -> key :: acc) all []) in
+    let target = snap_path path in
+    if keys = [] then (try Sys.remove target with Sys_error _ -> ())
+    else begin
+      let tmp = target ^ ".new" in
+      Out_channel.with_open_bin tmp (fun oc -> List.iter (fun key -> output_string oc (block key (Hashtbl.find all key))) keys);
+      Sys.rename tmp target
+    end
+  end;
+  Hashtbl.reset st.taken;
+  st.store <- None
 
 let case_keys = Trie.names [| "Value"; "Tape"; "Size"; "Holds"; "Panic" |]
 
@@ -211,6 +301,7 @@ let natives =
   [ "test",
     [ "start", nat "start" 0 0 start; "oneCase", nat "oneCase" 4 4 one_case; "save", nat "save" 2 2 save;
       "drop", nat "drop" 0 0 drop; "failed", nat "failed" 1 1 failed; "temp", nat "temp" 0 0 temp;
+      "snapshot", nat "snapshot" 1 1 snapshot;
       "defaultCases", nat "defaultCases" 0 0 (fun ctx _ -> only_in_tests ctx; Int st.cases) ];
     "gen",
     [ "draw", nat "draw" 1 1 draw; "size", nat "size" 0 0 (fun _ _ -> Int st.size); "fields", nat "fields" 1 1 fields;

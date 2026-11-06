@@ -199,6 +199,10 @@ val test_replay : string -> int -> string
 (** The last line of cesia test: how many passed and failed, and the seed when a property ran. *)
 val test_summary : int -> int -> int option -> string
 
+(** Under a failed test: its snapshot [k] is new, or changed. *)
+val snapshot_new : int -> string
+val snapshot_changed : int -> string
+
 (** The end of the first line of a failed test: [test_part i n] names the part of its verdict that failed, [test_question line]
     the ? that gave its Err. *)
 val test_part : int -> int -> string

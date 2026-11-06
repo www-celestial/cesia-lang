@@ -25,7 +25,7 @@ Runs a program. The words after the file are its arguments, in [sys.Args].
 ## cesia test
 
 ```bash
-cesia test [path | file.ce:isName] [--seed N] [--cases N] [--no-spec]
+cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]
 ```
 
 Runs the examples of the documentation and the test functions of the project, or of a folder or a file, or one test function
@@ -35,6 +35,8 @@ of a file. Ends with the code 1 when a test fails. See [Tests](tests.md).
 |---|---|
 | `--seed N` | the cases of [test.ForAll] of an earlier run again: the summary of a run that tried properties gives its seed |
 | `--cases N` | how many cases each [test.ForAll] tries, 100 by default |
+| `--update` | accepts the new and the changed [test.Snapshot]s of the tests that run |
+| `--allow LIST` | more permissions for the tests, as for `cesia run`, beyond those a test has by default |
 | `--no-spec` | runs without the versions of each function by type, as `cesia run --no-spec` |
 
 ## cesia check

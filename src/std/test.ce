@@ -5,6 +5,8 @@ use std/value
 use std/list
 use std/sys
 use std/math
+use std/text
+use std/dict
 
 (* The first cases are small: the size grows from 0 to 100 over the cases. *)
 sizeOf(i, n) = if n <= 1 100 else math.Div((i - 1) * 100, n - 1) end
@@ -107,3 +109,24 @@ defn ForAll(prop, g, cases = missing)
 end
 
 Temp() = temp()   (** A folder of the test's own, made at the first call, the same for each call of one test: removed when the test passes, kept when it fails. The test may write in it. *)
+
+defn shown(v)
+  (** A value as a snapshot keeps it: a text as it is, else as printed, one element per line when that is past 100 columns. *)
+  t = value.Text(v)
+  if value.IsText(v) or text.ByteLength(t) <= 100
+    t
+  else if value.IsDict(v)
+    text.Join("", ["  $(k): $(value.Text(dict.Get(k, v)))\n" for k in dict.Keys(v)]) then text.Str("{\n", it, "}")
+  else if value.IsArray(v)
+    text.Join("", ["  $(value.Text(x))\n" for x in v]) then text.Str("[\n", it, "]")
+  else
+    t
+  end
+end
+
+defn Snapshot(v)
+  (** Is v as it was when the snapshot was accepted? A text compares as it is, another value as printed. The snapshots live
+      in a file beside the test, x.test.snap for x.test.ce, one block per call: a new one fails, showing its text, until
+      cesia test --update accepts it, and a changed one shows its changed lines. git keeps them. *)
+  snapshot(shown(v))
+end
