@@ -104,7 +104,7 @@ this project, and `cesia.lock`, which keeps their fingerprints. `cesia.toml` say
 ```toml
 [project]
 name = "shop"
-cesia = "0.2"     # the oldest Cesia it needs
+cesia = "1.0"     # the oldest Cesia it needs
 src = ["src"]     # the folders of its code: the default
 
 [tasks.run]
@@ -135,13 +135,13 @@ there is no registry. A `[deps]` table names the repository,
 a tag, and the packages you take:
 
 ```toml
-[deps.cemacs]
-from = "github.com/www-celestial/cemacs"
-version = "v0.3.0"
-take = ["src/folders"]
+[deps.geometry]
+from = "github.com/someone/geometry"
+version = "v1.2.0"
+take = ["src/shapes"]
 ```
 
-Its code then writes `use deps/www-celestial/cemacs/src/folders`, and names it `folders`.
+Its code then writes `use deps/someone/geometry/src/shapes`, and names it `shapes`.
 
 ### cesia pkg
 
@@ -149,7 +149,7 @@ Its code then writes `use deps/www-celestial/cemacs/src/folders`, and names it `
 `cesia.toml` and `cesia.lock` say, for instance after a clone:
 
 ```bash
-cesia pkg add github.com/www-celestial/cemacs@v0.3.0 src/folders
+cesia pkg add github.com/someone/geometry@v1.2.0 src/shapes
 cesia pkg install
 cesia pkg
 ```

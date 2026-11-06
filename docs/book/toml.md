@@ -9,7 +9,7 @@ the one that checks them.
 ```toml
 [project]
 name = "shop"
-cesia = "0.2"
+cesia = "1.0"
 src = ["src"]
 native = ["sodium"]
 ```
@@ -54,10 +54,10 @@ needs = ["test", "serve"]
 A project whose packages this one takes. `cesia pkg add` writes the table.
 
 ```toml
-[deps.cemacs]
-from = "github.com/www-celestial/cemacs"
-version = "v0.3.0"
-take = ["src/folders"]
+[deps.geometry]
+from = "github.com/someone/geometry"
+version = "v1.2.0"
+take = ["src/shapes"]
 ```
 
 | Key | What it says |

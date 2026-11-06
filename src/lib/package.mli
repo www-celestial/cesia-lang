@@ -31,8 +31,8 @@ val wrong_cesia : Toml.table list -> (int * Messages.t) option
     {!Pos.Load_error} at its line. *)
 val sources : string -> string list
 
-(** [use deps/www-celestial/cemacs/folders] names a package of another project: [Some ("deps/www-celestial/cemacs",
-    "folders")]. A first part with a dot is a host: [deps/gitlab.com/x/y/z] gives [Some ("deps/gitlab.com/x/y", "z")]. *)
+(** [use deps/someone/geometry/shapes] names a package of another project: [Some ("deps/someone/geometry",
+    "shapes")]. A first part with a dot is a host: [deps/gitlab.com/x/y/z] gives [Some ("deps/gitlab.com/x/y", "z")]. *)
 val dep : string -> (string * string) option
 
 (** The folder a use names in a project: in the first source folder of the root that holds it, or else from the root, where
@@ -50,5 +50,5 @@ val lock_file : string
 val lock : string -> (string, string) Hashtbl.t
 
 (** [installed root path]: the folder of std/ or deps/ that holds a file, from the root ([std/csv],
-    [deps/www-celestial/cemacs], [deps/gitlab.com/x/y]), or [None] for a file of the project itself. *)
+    [deps/someone/geometry], [deps/gitlab.com/x/y]), or [None] for a file of the project itself. *)
 val installed : string -> string -> string option

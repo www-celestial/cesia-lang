@@ -217,7 +217,7 @@ end
 
 defn depPath(from)
   (** Where a repository goes under deps/: its owner and name, after its host unless that is github.com, so two authors never
-      mix; for a file:// URL, its last two folders. "github.com/www-celestial/cemacs" gives "www-celestial/cemacs". *)
+      mix; for a file:// URL, its last two folders. "github.com/someone/geometry" gives "someone/geometry". *)
   s = from
   local = text.StartsWith("file://", s)
   for scheme in ["https://", "http://", "ssh://", "git://", "file://"]
@@ -269,7 +269,7 @@ defn checkDep(path, from, version)
 end
 
 defn splitDep(u)
-  (** {Path, Name} of a use of deps/: deps/www-celestial/cemacs/folders gives www-celestial/cemacs and folders; a first part
+  (** {Path, Name} of a use of deps/: deps/someone/geometry/shapes gives someone/geometry and shapes; a first part
       with a dot is a host. *)
   parts = text.Split("/", u)
   depth = if value.Len(parts) > 1 and text.Contains(".", parts[2]) 4 else 3 end
@@ -635,7 +635,7 @@ defn update(lock, args)
     rest = rest[1..value.Len(rest) - 2]
   end
   if value.Len(rest) > 1 or (value.Len(rest) == 0 and not value.IsMissing(to))
-    return result.Err(if value.Len(rest) > 1 usage else "--to needs a label: cesia pkg update cemacs --to v0.4.0." end)
+    return result.Err(if value.Len(rest) > 1 usage else "--to needs a label: cesia pkg update geometry --to v1.3.0." end)
   end
   toml = sys.Read(projectFile)?
   wanted = readDeps(toml)?

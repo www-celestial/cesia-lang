@@ -34,7 +34,7 @@ permissions the server needs: the folder of the database, and the port.
 ```toml
 [project]
 name = "notes"
-cesia = "0.2"
+cesia = "1.0"
 
 [tasks.serve]
 file = "src/main.ce"
@@ -242,6 +242,8 @@ io.Print(http.Get(base).Value.Body)
 ## Where to go from here
 
 - Add a route: `DELETE /notes/:id` with [web.Delete], a `delete` in the store, and its test first.
-- Write it in [Cemacs](cemacs.md), with `cesia run --watch` in a terminal beside it.
+- Add `watch = true` to the task `serve`: each save then gives the running server its new code, a
+  [hot reload](glossary.md#hot-reload).
+- Keep `cesia test` green and `cesia check` quiet as the code grows.
 - Read the reference: every name of Cesia has its page, with its examples, under [Reference](ref/index.html). Press `/` to
   search it.

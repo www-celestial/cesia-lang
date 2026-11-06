@@ -1,4 +1,4 @@
-/* The look of cesia doc --site: the system's fonts, Cemacs's colors for code, dark or light as the system says unless the
+/* The look of cesia doc --site: the system's fonts, the colors of std/syntax for code, dark or light as the system says unless the
    reader chose, and no motion. */
 :root {
   --page: #ffffff; --side: #f7f8fa; --code: #f7f8fa; --ink: #1e1f22; --muted: #6c707e; --link: #2b5fd9; --edge: #dfe1e5;

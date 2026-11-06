@@ -1,5 +1,5 @@
 (** The colors of Cesia code: a line is read in one pass, by states, and gives words with a role. Nothing here panics, whatever
-    the line: unfinished texts and comments only carry their state to the next line. Cemacs and the docs site color with it. *)
+    the line: unfinished texts and comments only carry their state to the next line. Editors and the docs site color with it. *)
 use std/cesia
 use std/list
 use std/text

@@ -1,4 +1,4 @@
-(** The colors of Cesia code, std/syntax: what Cemacs and the docs site show. *)
+(** The colors of Cesia code, std/syntax: what editors and the docs site show. *)
 use std/syntax
 use std/cesia
 use std/bug

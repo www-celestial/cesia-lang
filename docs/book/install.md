@@ -25,7 +25,7 @@ A release holds every C library that Cesia's libraries need: nothing else is ins
 cesia version
 ```
 
-It prints the version, such as `cesia 0.2.0`. Later, `cesia upgrade` shows the notes of the newest release and asks before it
+It prints the version, such as `cesia 1.0.0`. Later, `cesia upgrade` shows the notes of the newest release and asks before it
 installs it.
 
 ## A first program
@@ -109,13 +109,13 @@ The `cesia.toml` of a new project:
 ```toml
 [project]
 name = "hello"
-cesia = "0.2"
+cesia = "1.0"
 
 [tasks.run]
 file = "src/main.ce"
 ```
 
-`cesia = "0.2"` is the oldest Cesia the project needs. An older one stops at once, and says to run `cesia upgrade`.
+`cesia = "1.0"` is the oldest Cesia the project needs. An older one stops at once, and says to run `cesia upgrade`.
 
 ## Tasks
 
@@ -133,9 +133,10 @@ chapter of their own later.
 
 ## Editors
 
-Cemacs is the editor made for Cesia, written in Cesia, with the keys of Emacs and the colours of Cesia's code: the chapter
-[Cemacs](cemacs.md) shows it. Any other editor works too, since a program is a text file: the sources of Cesia hold a mode for
-Emacs and one for Neovim and Vim, in `tools/editors/`.
+Any editor works, since a program is a text file. The sources of Cesia hold a mode for Emacs and one for Neovim and Vim, in
+`tools/editors/`, which colour the code. Keep a terminal beside your editor with `cesia run --watch`, and each save shows
+its result at once. An editor can also show the errors of a file in its lines, before it runs, with
+[cesia check](commands.md#cesia-check).
 
 ## Next
 

@@ -109,8 +109,8 @@ gives one: see [Functions](functions.md#map-filter-and-reduce).
 
 ## Hot reload
 
-New code loaded into a program while it runs, so that it keeps its state. `cesia run --watch` does it at each save, and
-Cemacs reloads itself the same way: see [Install and first run](install.md#run-it-again-at-each-save).
+New code loaded into a program while it runs, so that it keeps its state. `cesia run --watch` does it at each save: see
+[Install and first run](install.md#run-it-again-at-each-save).
 
 ## Immutability
 
