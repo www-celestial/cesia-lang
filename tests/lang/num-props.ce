@@ -1,0 +1,60 @@
+(* num.Solve against a slow sure Gaussian elimination, on generated systems kept away from singular ones. *)
+use std/test
+use std/gen
+use std/num
+use std/math
+use std/matrix
+use std/result
+use std/value
+
+defn eliminate(m, b)
+  (** Gaussian elimination with partial pivoting, in plain Cesia: slow, but sure. *)
+  n = value.Len(b)
+  a = m
+  x = b
+  for k in 1..n
+    p = k
+    for i in k + 1..n
+      if math.Abs(a[i, k]) > math.Abs(a[p, k])
+        p = i
+      end
+    end
+    for j in 1..n
+      t = a[k, j]
+      a[k, j] = a[p, j]
+      a[p, j] = t
+    end
+    t = x[k]
+    x[k] = x[p]
+    x[p] = t
+    for i in k + 1..n
+      f = a[i, k] / a[k, k]
+      for j in k..n
+        a[i, j] = a[i, j] - f * a[k, j]
+      end
+      x[i] = x[i] - f * x[k]
+    end
+  end
+  for k in 1..n
+    i = n - k + 1
+    s = x[i]
+    for j in i + 1..n
+      s = s - a[i, j] * x[j]
+    end
+    x[i] = s / a[i, i]
+  end
+  x
+end
+
+(* A system whose diagonal outweighs the rest of its row: never singular. *)
+defn system(cells)
+  m = matrix.Reshape(cells.M, 3, 3)
+  for i in 1..3
+    m[i, i] = m[i, i] + 40.0
+  end
+  {M: m, B: cells.B}
+end
+cells = gen.Map(system, gen.Of({M: gen.List(gen.Float(-10, 10), min = 9, max = 9), B: gen.List(gen.Float(-10, 10), min = 3, max = 3)}))
+
+isSolveAsElimination() = test.ForAll(s -> math.Near(result.Unwrap(num.Solve(s.M, s.B)), eliminate(s.M, s.B), rel = 1e-9, abs = 1e-12), cells)
+isSolveSolves() = test.ForAll(s -> math.Near(matrix.Matmul(s.M, matrix.Reshape(result.Unwrap(num.Solve(s.M, s.B)), 3, 1)), matrix.Reshape(s.B, 3, 1), abs = 1e-9), cells)
