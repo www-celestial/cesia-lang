@@ -315,6 +315,8 @@ let use_dep upath =
   plain (Printf.sprintf "%s names no package: a use of deps/ is deps/OWNER/REPO then the path of a folder from its root, as the [deps] of cesia.toml bring it." upath)
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)
 (* The narrowest permission that would do: the file, the port, the host, the command, the variable or the library asked for. *)
+let exit_code a = plain (Printf.sprintf "sys.Exit takes a code from 0 to 255, not %s." a)
+
 let denied perm target =
   match target with
   | None | Some "" -> plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)

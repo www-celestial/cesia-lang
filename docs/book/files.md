@@ -85,6 +85,26 @@ for path in Args
 end
 ```
 
+## Standard input and the exit code
+
+[sys.ReadInput] gives all that the program receives on its standard input, so that it can sit in a pipe of the shell.
+[sys.Exit] ends the program at once with an exit code: 0 says that all went well, another number that something failed,
+for the shell or the script that ran it.
+
+```bash
+cat sales.csv | cesia run lines.ce
+```
+
+```cesia norun
+(* lines.ce: how many lines came in, and code 1 when none did *)
+text = Unwrap(sys.ReadInput())
+n = Len(Lines(text))
+Print(n, "lines")
+if n == 0
+  sys.Exit(1)
+end
+```
+
 ## The environment
 
 [sys.Env] reads an environment variable, or gives `missing`. It needs `--allow env`, or `env=HOME` for that one:

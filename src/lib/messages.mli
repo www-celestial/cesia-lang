@@ -149,6 +149,7 @@ val not_installed : string -> t
 (** [use_dep upath]: [use deps/x/y], with no package. *)
 val use_dep : string -> t
 val no_name : string -> string -> t
+val exit_code : string -> t
 val denied : string -> string option -> t
 
 val reload_use : t

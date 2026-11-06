@@ -1,0 +1,10 @@
+(** sys.ReadInput gives the whole standard input, and sys.Exit ends with a code, also from a fiber. *)
+use std/sys
+text = Unwrap(sys.ReadInput())
+Print(Lines(text))
+Spawn(defn ()
+  Print("bye")
+  sys.Exit(Len(Lines(text)))
+end)
+sys.Sleep(5)
+Print("never")

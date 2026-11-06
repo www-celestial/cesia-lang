@@ -6,6 +6,9 @@ exception Kerr of { kind : kind; text : string; hint : string option; at : int }
 (** A limit reached. Nothing in the language catches it. *)
 exception Limit of { what : string; at : int }
 
+(** sys.Exit: the program ends here, with this code. *)
+exception Quit of int
+
 val of_bool : bool -> t
 
 (** The array, with its store cut to its cells. See [arr]. *)

@@ -2,6 +2,7 @@ open Types
 
 exception Kerr of { kind : kind; text : string; hint : string option; at : int }
 exception Limit of { what : string; at : int }
+exception Quit of int
 
 let of_bool b = if b then True else False
 

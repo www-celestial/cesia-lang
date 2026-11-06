@@ -60,6 +60,14 @@ use std/cesia
 
       Sort([3, 1, 2]) --> [1, 2, 3] *)
 
+(** sys.ReadInput()
+    All that the standard input holds, up to its end, in an Ok, or an Err: cat data.csv | cesia run clean.ce. The program
+    waits while it reads, its other fibers too. It needs no permission: the input is the program's own. *)
+
+(** sys.Exit(code)
+    Ends the program at once, with an exit code from 0 to 255: 0 says that all went well, another number that something
+    failed, for the shell or the program that ran it. What was printed is written out first. *)
+
 (** sys.Now()
     The time in seconds since 1970, as a float.
 

@@ -584,6 +584,10 @@ let guarded ?(strict = false) w body =
       flushed (fun () ->
           w.err (format_error ~source:(source_of w file) ~path:file ~pos ~text ~hint ~trace:[]))
     | Value.Kerr { text; hint; at; _ } -> flushed (fun () -> report_at (current ()) ~text ~hint at)
+    | Value.Quit code ->
+      Runtime.flush_out w;
+      flush stdout;
+      code
     | Value.Limit { what; at } -> limit_reached what at
     | Sys_error text -> flushed (fun () -> w.err ("cesia: " ^ text ^ "\n"))
     (* The OCaml stack or the system said no: that is a limit, not a bug. *)
