@@ -65,6 +65,7 @@ let condition a = plain (Printf.sprintf "A condition must be true or false, not 
 let not_function a = plain (Printf.sprintf "Can't call %s: it is not a function." a)
 let arg_count name want got = plain (Printf.sprintf "%s takes %s, not %d." name want got)
 let want_int name a = plain (Printf.sprintf "%s needs a whole number, not %s." name a)
+let random_range low high = plain (Printf.sprintf "random.Int needs a low that is at most its high, and a range that fits in 63 bits: %d to %d." low high)
 let limit what = plain (Printf.sprintf "Limit \"%s\" reached." what)
 let too_many fname want got = plain (Printf.sprintf "%s takes %d arguments, not %d." fname want got)
 let missing_arg fname param = plain (Printf.sprintf "%s needs the argument \"%s\"." fname param)
@@ -200,7 +201,7 @@ let bad_answer a =
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
-  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] file.ce [args...]\n\
+  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
   \       cesia test [path] [--no-spec]\n\
   \       cesia do [task]\n\
   \       cesia new name\n\
@@ -214,6 +215,7 @@ let unknown_permission name = "unknown permission: " ^ name
 let invalid_permission item = "invalid permission: " ^ item
 let invalid_size s = "invalid size: " ^ s
 let invalid_limit s = "invalid limit: " ^ s
+let invalid_seed s = "invalid seed: " ^ s ^ ", a whole number"
 let unknown_limit name = "unknown limit: " ^ name
 let internal e = "Internal error: " ^ e
 let toml_utf8 = "This line is not valid UTF-8."

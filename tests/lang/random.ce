@@ -1,0 +1,34 @@
+use std/random
+use std/list
+use std/math
+use std/value
+
+defn isIntInRange()
+  draws = [random.Int(1, 6) for k in 1..2000]
+  list.All([d >= 1 and d <= 6 and value.IsInt(d) for d in draws]) and value.Len(list.Unique(draws)) == 6
+end
+
+isIntOne() = random.Int(5, 5) == 5
+isIntNegative() = list.All([random.Int(-3, -1) in [-3, -2, -1] for k in 1..200])
+isIntWideRange() = list.All([value.IsInt(random.Int(-2000000000000000000, 2000000000000000000)) for k in 1..50])
+isIntFloatBounds() = random.Int(2.0, 2.0) == 2
+
+defn isIntEven()
+  (** Each face of a die comes about a sixth of the time. *)
+  counts = list.Frequencies([random.Int(1, 6) for k in 1..60000])
+  list.All([math.Abs(counts[f] - 10000) < 600 for f in 1..6])
+end
+
+defn isFloatInRange()
+  xs = [random.Float() for k in 1..2000]
+  list.All([value.IsFloat(x) and x >= 0 and x < 1 for x in xs])
+end
+
+isFloatMean() = math.Abs(list.Mean([random.Float() for k in 1..20000]) - 0.5) < 0.02
+isShufflePermutation() = value.Equal(list.Sort(random.Shuffle(1..100)), 1..100)
+isShuffleMoves() = not value.Equal(random.Shuffle(1..100), 1..100)
+isShuffleKeepsInput() = value.Equal(list.Sort(random.Shuffle(["b", "a"])), ["a", "b"])
+isShuffleEmpty() = value.Equal(random.Shuffle([]), [])
+isShuffleOne() = value.Equal(random.Shuffle([7]), [7])
+isPickMember() = list.All([random.Pick([1, 2, 3]) in [1, 2, 3] for k in 1..100])
+isSeedSame() = random.Seed() == random.Seed() and value.IsInt(random.Seed())

@@ -168,6 +168,11 @@ let run args =
       options o rest
     | "--allow" :: v :: rest -> options { o with o_grants = parse_allow o.o_grants v } rest
     | "--limit" :: v :: rest -> options { o with o_limits = parse_limit o.o_limits v } rest
+    | "--seed" :: v :: rest ->
+      (match int_of_string_opt v with
+       | Some n -> Rand.set_seed n
+       | None -> bad_option (Messages.invalid_seed v));
+      options o rest
     | "--debugger" :: name :: rest ->
       let g = o.o_grants in
       options { o with o_debugger = Some name; o_grants = { g with perms = (Types.Debug, None) :: g.perms } } rest

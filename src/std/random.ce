@@ -1,0 +1,32 @@
+(** Random numbers for games, samples and simulations: never for secrets, which std/crypto gives. A run takes its seed from the
+    system, random.Seed tells it, and cesia run --seed N runs again with the same numbers. *)
+use std/bug
+use std/list
+use std/value
+
+defn Pick(xs)
+  (** One element of a list that isn't empty, each as likely as another.
+
+        Pick([7]) --> 7
+        Pick(["a", "b"]) in ["a", "b"] --> true *)
+  n = value.Len(xs)
+  if n == 0
+    bug.Panic("random.Pick: the list is empty.")
+  end
+  xs[Int(1, n)]
+end
+
+defn Shuffle(xs)
+  (** The elements of a list in a random order, each order as likely as another.
+
+        list.Sort(Shuffle([3, 1, 2])) --> [1, 2, 3]
+        Shuffle([]) --> [] *)
+  out = xs
+  for k in list.Range(value.Len(out), 2, step = -1)
+    j = Int(1, k)
+    x = out[k]
+    out[k] = out[j]
+    out[j] = x
+  end
+  out
+end

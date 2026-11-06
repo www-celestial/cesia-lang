@@ -3,6 +3,7 @@
 use std/sys
 use std/json
 use std/regex
+use std/random
 use std/columns
 use std/debug
 use std/net
@@ -656,6 +657,23 @@ use std/value
     The pieces of a text between the matches of the pattern.
 
       regex.Split(",\\s*", "a, b,c") --> ["a", "b", "c"] *)
+
+(** random.Int(low, high)
+    A whole number from low to high, both included, each as likely as another.
+
+      random.Int(4, 4) --> 4
+      random.Int(1, 6) in 1..6 --> true *)
+
+(** random.Float()
+    A float from 0 included to 1 excluded, each as likely as another: random.Float() * 10 is one from 0 to 10.
+
+      random.Float() < 1 --> true *)
+
+(** random.Seed()
+    The seed of this run: the one cesia run --seed N gave, or else the one taken from the system at the first draw. The same seed
+    gives the same numbers, on every version of Cesia and every system.
+
+      value.IsInt(random.Seed()) --> true *)
 
 (** columns.Kind(xs)
     How an array is stored: "int", "float" or "value".

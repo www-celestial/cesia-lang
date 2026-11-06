@@ -55,6 +55,9 @@ val condition : string -> t
 val not_function : string -> t
 val arg_count : string -> string -> int -> t
 val want_int : string -> string -> t
+
+(** [random_range low high]: random.Int(low, high) with low above high, or a range wider than an Int. *)
+val random_range : int -> int -> t
 val limit : string -> t
 val too_many : string -> int -> int -> t
 val missing_arg : string -> string -> t
@@ -176,6 +179,7 @@ val unknown_permission : string -> string
 val invalid_permission : string -> string
 val invalid_size : string -> string
 val invalid_limit : string -> string
+val invalid_seed : string -> string
 val unknown_limit : string -> string
 val internal : string -> string
 

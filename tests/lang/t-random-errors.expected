@@ -1,0 +1,10 @@
+range.ce:2:7: random.Int needs a low that is at most its high, and a range that fits in 63 bits: 3 to 1.
+  2 | random.Int(3, 1)
+    |       ^
+empty.ce:2:7: random.Pick: the list is empty.
+  2 | random.Pick([])
+    |       ^
+  in Pick (std/random.ce:14)
+-12
+cesia: invalid seed: twelve, a whole number
+exit 2

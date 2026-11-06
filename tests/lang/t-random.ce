@@ -1,0 +1,10 @@
+(* A seed gives the same numbers on every version and every system: these are pinned. *)
+use std/random
+use std/io
+
+io.Print(random.Seed())
+io.Print([random.Int(1, 6) for k in 1..12])
+io.Print(random.Float())
+io.Print(random.Shuffle(1..8))
+io.Print(random.Pick(["a", "b", "c", "d"]))
+io.Print(random.Int(-1000000, 1000000))

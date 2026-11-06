@@ -487,7 +487,8 @@ let std_packages () =
   let groups =
     Native.packages @ Lists.packages
     @ [ "list", Columns.list; "fiber", Fiber.natives; "cesia", Tooling.natives ~libraries @ Docs.natives;
-        "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives ]
+        "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
+        "random", Rand.natives ]
   in
   List.fold_left
     (fun acc (name, natives) ->
