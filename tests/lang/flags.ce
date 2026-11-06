@@ -1,0 +1,29 @@
+use std/flags
+use std/result
+use std/value
+
+defaults = {v: false, n: false, max: 0, scale: 1.0, out: "out.txt", tag: missing, dryRun: false}
+parsed(args) = result.Unwrap(flags.Parse(defaults, args))
+message(args) = match flags.Parse(defaults, args)
+  result.Err(e) -> e.Message
+  result.Ok(x) -> "parsed"
+end
+
+isNone() = value.Equal(parsed([]).Flags, defaults) and value.Equal(parsed([]).Words, [])
+isSwitches() = parsed(["-v", "-n"]).Flags.v and parsed(["-n"]).Flags.n and not parsed(["-n"]).Flags.v
+isValues() = parsed(["--max", "5"]).Flags.max == 5 and parsed(["--max=7"]).Flags.max == 7 and parsed(["--out", "a.csv"]).Flags.out == "a.csv"
+isFloat() = parsed(["--scale", "2"]).Flags.scale == 2.0 and value.IsFloat(parsed(["--scale", "2"]).Flags.scale)
+isMissingDefault() = value.IsMissing(parsed([]).Flags.tag) and parsed(["--tag", "x"]).Flags.tag == "x"
+isDashes() = parsed(["--dry-run"]).Flags.dryRun
+isWordsKeepOrder() = value.Equal(parsed(["a", "-v", "b", "--max", "1", "c"]).Words, ["a", "b", "c"])
+isDoubleDash() = value.Equal(parsed(["a", "--", "-v", "--max"]).Words, ["a", "-v", "--max"]) and not parsed(["--", "-v"]).Flags.v
+isLoneDash() = value.Equal(parsed(["-"]).Words, ["-"])
+isLastWins() = parsed(["--max", "1", "--max", "2"]).Flags.max == 2
+isNegativeValue() = parsed(["--max", "-3"]).Flags.max == -3
+isEqualsInValue() = parsed(["--out=a=b"]).Flags.out == "a=b" and parsed(["--out="]).Flags.out == ""
+isUnknown() = message(["--nope"]) == "Unknown flag --nope: the flags are -v, -n, --max, --scale, --out, --tag, --dry-run."
+isNeedsValue() = message(["--max"]) == "--max needs a value."
+isWholeNumber() = message(["--max", "1.5"]) == "--max takes a whole number, not 1.5."
+isNumber() = message(["--scale", "x"]) == "--scale takes a number, not x."
+isSwitchValue() = message(["-v=1"]) == "-v is a switch: it takes no value."
+isNames() = flags.Name("v") == "-v" and flags.Name("maxCount") == "--max-count" and flags.Name("Out") == "--out"

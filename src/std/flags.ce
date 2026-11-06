@@ -1,0 +1,99 @@
+(** The flags of a command line, as -v or --max 5, read from the words that sys.Args holds, by the defaults they take. *)
+use std/dict
+use std/list
+use std/result
+use std/text
+use std/value
+
+defn Name(key)
+  (** How a key of the defaults is written on the command line: one letter after -, a longer name after --, its capitals
+      becoming dashes.
+
+        Name("v") --> "-v"
+        Name("maxCount") --> "--max-count"
+        Name("Verbose") --> "--verbose" *)
+  out = ""
+  for c in text.Chars(key)
+    if c >= "A" and c <= "Z"
+      out = if out == "" text.Lower(c) else "$out-$(text.Lower(c))" end
+    else
+      out = "$out$c"
+    end
+  end
+  if value.Len(out) == 1 "-$out" else "--$out" end
+end
+
+failure(message) = result.Err({Kind: "flags", Message: message})
+
+defn read(name, default, given)
+  (** The value given to a flag, of the kind of its default. *)
+  if value.IsInt(default)
+    n = text.Number(given)
+    if not value.IsInt(n)
+      return failure("$name takes a whole number, not $given.")
+    end
+    return result.Ok(n)
+  end
+  if value.IsFloat(default)
+    n = text.Number(given)
+    if not value.IsNumber(n)
+      return failure("$name takes a number, not $given.")
+    end
+    return result.Ok(n * 1.0)
+  end
+  result.Ok(given)
+end
+
+defn Parse(defaults, args)
+  (** The flags and the other words of a command line, in an Ok of {Flags, Words}, or an Err that says what is wrong.
+      defaults holds each flag with its value when the flag is left out, which also says what it takes: false is a switch,
+      -v; a whole number, a float or a text takes a value, --max 5 or --max=5; missing takes a text, and stays missing when
+      the flag is left out. Name says how a key is written. The words keep their order, and after -- every word is one.
+
+        Parse({v: false, max: 10}, ["-v", "a.txt", "--max", "3"])?.Flags --> {v: true, max: 3}
+        Parse({v: false, max: 10}, ["a.txt", "--", "-v"])?.Words --> ["a.txt", "-v"]
+        Parse({out: missing}, ["--out=x.csv"])?.Flags.out --> "x.csv"
+        Parse({v: false}, ["-x"]) --> result.Err({Kind: "flags", Message: "Unknown flag -x: the flags are -v."})
+        Parse({max: 10}, ["--max", "ten"]) then result.IsErr() --> true *)
+  names = dict.Dict([{Key: Name(key), Value: key} for key in dict.Keys(defaults)])
+  flags = defaults
+  words = []
+  k = 1
+  n = value.Len(args)
+  while k <= n
+    a = args[k]
+    if a == "--"
+      words = list.Concat(words, list.Skip(k, args))
+      break
+    end
+    if a == "-" or not text.StartsWith("-", a)
+      words = list.Append(a, words)
+    else
+      eq = text.Find("=", a)
+      name = if value.IsMissing(eq) a else text.Slice(1, eq - 1, a) end
+      key = dict.Get(name, names)
+      if value.IsMissing(key)
+        return failure("Unknown flag $name: the flags are $(text.Join(", ", dict.Keys(names))).")
+      end
+      if value.IsBool(defaults[key])
+        if not value.IsMissing(eq)
+          return failure("$name is a switch: it takes no value.")
+        end
+        flags[key] = true
+      else
+        given = missing
+        if not value.IsMissing(eq)
+          given = text.Slice(eq + 1, value.Len(a), a)
+        else if k < n
+          k = k + 1
+          given = args[k]
+        else
+          return failure("$name needs a value.")
+        end
+        flags[key] = read(name, defaults[key], given)?
+      end
+    end
+    k = k + 1
+  end
+  result.Ok({Flags: flags, Words: words})
+end
