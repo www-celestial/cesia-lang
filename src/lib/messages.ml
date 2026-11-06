@@ -25,6 +25,7 @@ let private_member name =
     "A field or a method is public when its first letter is a capital."
 let undefined name = plain (Printf.sprintf "Name \"%s\" doesn't exist." name)
 let moved name p = plain (Printf.sprintf "%s is in std/%s: write use std/%s and %s.%s." name p p p name)
+let hides_package name = plain (Printf.sprintf "%s is a package this file uses: choose another name here." name)
 let pattern_struct name =
   hinted (Printf.sprintf "There is no struct \"%s\" here." name)
     "A pattern names a struct of this package, as Point(x, y), or of a package in use, as geo.Point(x, y)."

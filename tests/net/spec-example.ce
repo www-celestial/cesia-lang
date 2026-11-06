@@ -7,7 +7,7 @@ use std/result
 use std/text
 
 handle(request) = match sys.Read("page.html")
-  result.Ok(text) -> {Status: 200, Body: text}
+  result.Ok(page) -> {Status: 200, Body: page}
   result.Err(e) -> {Status: 404, Body: e.Message}
 end
 

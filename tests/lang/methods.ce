@@ -93,7 +93,7 @@ end
 
 hi(x) = x + 1
 Hi(x) = x + 2
-measure(text, font) = value.Len(text) + value.Len(font)
+measure(s, font) = value.Len(s) + value.Len(font)
 
 isInstanceMethod() = Rect(0, 0, 2, 3).Area() == 6
 isMethodBeforeItsStruct() = Later(2).Value() == 2

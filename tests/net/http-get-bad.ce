@@ -6,10 +6,10 @@ use std/io
 use std/result
 use std/text
 
-defn reply(listener, text)
+defn reply(listener, answer)
   c = net.Accept(listener)?
   net.Read(c)?
-  net.Write(c, text)?
+  net.Write(c, answer)?
   net.Close(c)
   result.Ok(missing)
 end

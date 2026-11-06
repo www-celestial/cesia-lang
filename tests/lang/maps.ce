@@ -29,7 +29,7 @@ defn byVariable()
 end
 
 all() = [literal(), texts(), pairs(), parsed(), grown(), byVariable()]
-same(f) = list.All([value.Equal(f(m), f(literal())) for m in all()])
+same(g) = list.All([value.Equal(g(m), g(literal())) for m in all()])
 
 isOneKind() = list.All([m == literal() and value.IsDict(m) and not value.IsStruct(m) for m in all()])
 isSameKeys() = same(dict.Keys) and value.Equal(dict.Keys(literal()), ["Name", "Age"])
@@ -104,7 +104,7 @@ defn isMerge()
   value.Equal(dict.Keys(dict.Merge({A: 1, B: 2}, {C: 3, A: 4})), ["A", "B", "C"]) and dict.Merge({A: 1, B: 2}, {C: 3, A: 4}).A == 4
 end
 
-stop(f) = match fiber.Wait(fiber.Spawn(f))   (** What a call that stops says: its kind and its message. *)
+stop(g) = match fiber.Wait(fiber.Spawn(g))   (** What a call that stops says: its kind and its message. *)
   result.Err(e) -> "$(e.Kind): $(e.Message)"
   result.Ok(v) -> v
 end

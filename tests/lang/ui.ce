@@ -50,11 +50,11 @@ defn isContainsEdges()
 end
 
 defn stepped(n, seconds)
-  value = 0.0
+  at = 0.0
   for k in 1..n
-    value = ui.Ease(value, 1.0, seconds)
+    at = ui.Ease(at, 1.0, seconds)
   end
-  value
+  at
 end
 
 isEaseStaysTheSameInSteps() = math.Abs(stepped(10, 0.001) - stepped(1, 0.01)) < 0.0001
@@ -178,15 +178,15 @@ end
 (* A slider stays inside its rectangle, whatever its value: its tick goes to both ends and follows the round corners. *)
 zone = {X: 100, Y: 50, Width: 200, Height: 22}
 
-defn sliderInside(value)
-  shapes = list.Filter(it.Kind == "box" or it.Kind == "rect", ui.Slider(value, zone, look))
+defn sliderInside(fraction)
+  shapes = list.Filter(it.Kind == "box" or it.Kind == "rect", ui.Slider(fraction, zone, look))
   list.All(list.Map(c -> c.X >= zone.X and c.Y >= zone.Y and c.X + c.Width <= zone.X + zone.Width and c.Y + c.Height <= zone.Y + zone.Height, shapes))
 end
 
-tickOf(value) = list.Filter(it.Kind == "rect" and it.Color == ui.Dark.Accent, ui.Slider(value, zone, look))[1]
+tickOf(fraction) = list.Filter(it.Kind == "rect" and it.Color == ui.Dark.Accent, ui.Slider(fraction, zone, look))[1]
 
 (** The commands of the filled part, of any shape. *)
-fillOf(value) = list.Filter((it.Kind == "rect" or it.Kind == "box") and it.Color == ui.Dark.Fill, ui.Slider(value, zone, look))
+fillOf(fraction) = list.Filter((it.Kind == "rect" or it.Kind == "box") and it.Color == ui.Dark.Fill, ui.Slider(fraction, zone, look))
 
 isSliderInsideAtZero() = sliderInside(0.0)
 isSliderInsideAtOne() = sliderInside(1.0)

@@ -1,0 +1,4 @@
+hides-function.ce:5:6: math is a package this file uses: choose another name here.
+  5 | defn math()
+    |      ^
+exit 1

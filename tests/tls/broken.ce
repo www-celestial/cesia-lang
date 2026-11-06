@@ -30,9 +30,9 @@ end
 defn truncating(wrap)
   listener = net.Listen(18209)?
   c = net.Accept(listener)?
-  io = wrap(c)?
-  io.Read()?
-  io.Write("HTTP/1.1 200 OK$crlf$(crlf)partial")?
+  conn = wrap(c)?
+  conn.Read()?
+  conn.Write("HTTP/1.1 200 OK$crlf$(crlf)partial")?
   net.Close(c)
   net.Close(listener)
   result.Ok(missing)

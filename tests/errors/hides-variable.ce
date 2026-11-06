@@ -1,0 +1,6 @@
+(* A variable can't take the name of a package the file uses: text.Upper would no longer reach it. *)
+use std/io
+use std/text
+
+text = "hi"
+io.Print(text)

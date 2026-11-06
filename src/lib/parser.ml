@@ -18,6 +18,7 @@ type p = {
   mutable in_index : int;  (* > 0: [end] means the end of the indexed array *)
   mutable saw_end : bool;
   mutable stmt_at : int;  (* where the current statement starts *)
+  mutable bound : (string * Pos.t) list;  (* each name the file gives a value to, and where, reversed *)
 }
 
 let error p pos (m : Messages.t) =
@@ -75,6 +76,9 @@ let deeper p f =
   r
 
 let name text = { text; b = Unresolved }
+
+(* A name given a value: a variable, a parameter, a function, a struct, an interface, a loop variable or a pattern name. *)
+let bind p text pos = p.bound <- (text, pos) :: p.bound
 
 let hook p pos = node p pos (Hook { live = Bytes.empty })
 
@@ -241,19 +245,22 @@ and type_ref p =
   { tpos; tpkg; tname; topt; tb = Unresolved }
 
 (* (params) or { fields }. *)
-and listed p opening close what =
+and listed ?(binds = false) p opening close what =
   with_mode p Ignore (fun () ->
       expect p opening (Printf.sprintf "\"%s\"" (tok_text opening));
       let out = ref [] in
       while (cur p).t <> close do
-        out := param p what :: !out;
+        let at = (cur p).pos in
+        let q = param p what in
+        if binds then bind p q.pname at;
+        out := q :: !out;
         if (cur p).t = COMMA then advance p
         else if (cur p).t <> close then unexpected p (Printf.sprintf "\",\" or \"%s\"" (tok_text close))
       done;
       advance p;
       Array.of_list (List.rev !out))
 
-and params p = listed p LP RP "a parameter name"
+and params p = listed ~binds:true p LP RP "a parameter name"
 
 and lambda p =
   let pos = (cur p).pos in
@@ -261,7 +268,7 @@ and lambda p =
     in_func p "<anonymous>" pos (fun () ->
         let ps =
           match (cur p).t with
-          | NAME pname -> advance p; [| { pname; default = None; ptype = None } |]
+          | NAME pname -> bind p pname (cur p).pos; advance p; [| { pname; default = None; ptype = None } |]
           | _ -> params p
         in
         Array.iter (fun q -> Option.iter (fun t -> error p t.tpos Messages.lambda_type) q.ptype) ps;
@@ -309,7 +316,9 @@ and definition_name p =
   in
   if (cur p).t = LP then begin
     advance p;
+    let at = (cur p).pos in
     let pname = word "a parameter name" in
+    bind p pname at;
     let sname = word "the name of a struct" in
     if (cur p).t = DOT then error p (cur p).pos Messages.method_foreign;
     expect p RP "\")\"";
@@ -317,6 +326,7 @@ and definition_name p =
     [| { pname; default = None; ptype = None } |], shown, shown
   end
   else begin
+    let at = (cur p).pos in
     let n = word "a name" in
     if (cur p).t = DOT then begin
       advance p;
@@ -326,7 +336,7 @@ and definition_name p =
       if m = "From" then error p at (Messages.from_static n);
       [||], n ^ ":" ^ m, n ^ "." ^ m
     end
-    else [||], n, n
+    else (bind p n at; [||], n, n)
   end
 
 (* (params) = expression, or (params) Type = expression, after what [definition_name] gives. *)
@@ -544,7 +554,7 @@ and pattern p =
     (match p.toks.(p.i + 2).t with
      | NAME n -> advance p; advance p; advance p; constructor p (Some a) n t.pos
      | _ -> unexpected p "a pattern")
-  | NAME n -> advance p; Pname (name n)
+  | NAME n -> bind p n t.pos; advance p; Pname (name n)
   | LB ->
     advance p;
     with_mode p Ignore (fun () ->
@@ -563,11 +573,12 @@ and pattern p =
         while (cur p).t <> RC do
           (match (cur p).t with
            | NAME n ->
+             let at = (cur p).pos in
              advance p;
              if (cur p).t = COLON then begin
                advance p;
                out := (n, pattern p) :: !out
-             end else out := (n, Pname (name n)) :: !out
+             end else (bind p n at; out := (n, Pname (name n)) :: !out)
            | _ -> unexpected p "a field name");
           if (cur p).t = COMMA then advance p
           else if (cur p).t <> RC then unexpected p "\",\" or \"}\""
@@ -656,7 +667,7 @@ and struct_def p pos =
   advance p;
   let sname =
     match (cur p).t with
-    | NAME n -> advance p; n
+    | NAME n -> bind p n (cur p).pos; advance p; n
     | _ -> unexpected p "a struct name"
   in
   let f =
@@ -699,7 +710,7 @@ and interface_def p pos =
   advance p;
   let iname =
     match (cur p).t with
-    | NAME n -> advance p; n
+    | NAME n -> bind p n (cur p).pos; advance p; n
     | _ -> unexpected p "an interface name"
   in
   let imethods =
@@ -735,7 +746,7 @@ and iface_method p =
   match (cur p).t, next_tok p with
   | NAME n, LP ->
     advance p;
-    let ps = params p in
+    let ps = listed p LP RP "a parameter name" in
     Array.iter (fun q -> Option.iter (fun (d : expr) -> error p d.pos Messages.interface_default) q.default) ps;
     let ret = match (cur p).t, next_tok p with NAME _, LP -> None | NAME _, _ -> Some (type_ref p) | _ -> None in
     if (cur p).t = ASSIGN then error p (cur p).pos Messages.interface_body;
@@ -767,7 +778,7 @@ and array_lit p pos =
         | FOR when !rows = [] && List.length !row = 1 ->
           advance p;
           let cvar = match (cur p).t with
-            | NAME n -> advance p; name n
+            | NAME n -> bind p n (cur p).pos; advance p; name n
             | _ -> unexpected p "a variable"
           in
           expect p IN "in";
@@ -894,7 +905,7 @@ and match_expr p pos =
 and for_expr p pos =
   let var =
     match (cur p).t with
-    | NAME n -> advance p; name n
+    | NAME n -> bind p n (cur p).pos; advance p; name n
     | _ -> unexpected p "a variable"
   in
   expect p IN "in";
@@ -1024,15 +1035,16 @@ and stmt p =
     let rec path (e : expr) acc =
       match e.e with
       | Var { text = "it"; _ } -> error p e.pos Messages.it_assign
-      | Var n -> n, acc
+      | Var n -> (n, e.pos), acc
       | Index (b, ixs, u) -> path b ({ sp = e.pos; sk = Sindex (ixs, u) } :: acc)
       | Field (b, n) -> path b ({ sp = e.pos; sk = Sfield n } :: acc)
       | _ -> error p (cur p).pos Messages.cant_assign
     in
     let assign_to pos rhs =
-      match path e [] with
-      | n, [] -> node p pos (Assign (name n.text, rhs))
-      | n, steps -> node p pos (Set { root = name n.text; path = Array.of_list steps; value = rhs })
+      let (n, at), steps = path e [] in
+      bind p n.text at;
+      if steps = [] then node p pos (Assign (name n.text, rhs))
+      else node p pos (Set { root = name n.text; path = Array.of_list steps; value = rhs })
     in
     let update op =
       ignore (path e []);
@@ -1061,10 +1073,21 @@ and stmt p =
     | SLASHEQ -> update Div
     | _ -> e
 
+(* A name the file gives a value to can't be a package it uses: text = "hi" would hide text.Upper. The first one tells. *)
+let hides p (body : block) =
+  let aliases = Array.fold_left (fun acc (e : expr) -> match e.e with Use { ualias; _ } -> ualias :: acc | _ -> acc) [] body in
+  if aliases <> [] then
+    match List.fold_left (fun first (text, pos) -> if List.mem text aliases then Some (text, pos) else first) None p.bound with
+    | Some (text, pos) ->
+      let m = Messages.hides_package text in
+      raise (Pos.Load_error { file = p.file; pos; kind = "name"; text = m.text; hint = m.hint })
+    | None -> ()
+
 let program ?(hooks = false) ~file ~nesting toks =
   let p = { toks; file; nesting; hooks; i = 0; depth = 0; mode = Lines; next_id = 0; loop = None; in_function = false;
-            in_index = 0; saw_end = false; stmt_at = 0 } in
+            in_index = 0; saw_end = false; stmt_at = 0; bound = [] } in
   let body = block p (fun t -> t = EOF) in
+  hides p body;
   { fname = ""; params = [||]; ret = None; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
     captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||];
     export_of = [||] }

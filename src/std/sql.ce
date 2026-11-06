@@ -126,7 +126,7 @@ end
 at(db) = if db.Tx db.Conn else db.Pool end
 ended(db) = db.Tx and db.Depth > 0 and isSet(db.Done)
 
-defn settle(r, f, text, params, db)
+defn settle(r, f, sql, params, db)
   (** What a native call of sqlite3 gave: as it is, or again with the values converted, or the Err of a transaction that
       ended, whose connection the pool took back. *)
   if result.IsOk(r)
@@ -134,7 +134,7 @@ defn settle(r, f, text, params, db)
   end
   code = codeOf(r)
   if code == "convert"
-    return f(text, bound(params)?, at(db)) then if codeOf(it) == "closed" and db.Tx doneError() else it end
+    return f(sql, bound(params)?, at(db)) then if codeOf(it) == "closed" and db.Tx doneError() else it end
   end
   if code == "closed" and db.Tx
     return doneError()
@@ -161,43 +161,43 @@ defn held(f, db)
   r?
 end
 
-defn Exec(text, params, db)
+defn Exec(sql, params, db)
   (** Runs one statement that changes rows: an Ok of {Changed, LastId}, the rows it changed and the id of the last row
       inserted. *)
   if ended(db)
     return doneError()
   end
-  r = sqlite3.Exec(text, params, at(db))
-  if result.IsOk(r) r else settle(r, sqlite3.Exec, text, params, db) end
+  r = sqlite3.Exec(sql, params, at(db))
+  if result.IsOk(r) r else settle(r, sqlite3.Exec, sql, params, db) end
 end
 
-defn Query(text, params, db, as = missing)
+defn Query(sql, params, db, as = missing)
   (** An Ok of every row, each a map from its column names made public names: created_at is read r.CreatedAt. NULL is
       missing. With as, as(row) for each, as User.From: an Ok of the values, or the first Err with Row, its number. *)
   if ended(db)
     return doneError()
   end
-  r = sqlite3.Query(text, params, at(db))
-  if result.IsOk(r) and value.IsMissing(as) r else typed(as, settle(r, sqlite3.Query, text, params, db)?) end
+  r = sqlite3.Query(sql, params, at(db))
+  if result.IsOk(r) and value.IsMissing(as) r else typed(as, settle(r, sqlite3.Query, sql, params, db)?) end
 end
 
-defn One(text, params, db, as = missing)
+defn One(sql, params, db, as = missing)
   (** An Ok of the first row, or of missing if there is none; with as, of as(row). *)
   if ended(db)
     return doneError()
   end
-  r = sqlite3.One(text, params, at(db))
+  r = sqlite3.One(sql, params, at(db))
   if result.IsOk(r) and value.IsMissing(as)
     return r
   end
-  row = settle(r, sqlite3.One, text, params, db)?
+  row = settle(r, sqlite3.One, sql, params, db)?
   if value.IsMissing(row) result.Ok(missing) else typed(as, [row]) then result.MapOk(it[1]) end
 end
 
-defn cursorOn(text, ps, conn)
+defn cursorOn(sql, ps, conn)
   (** A cursor on one statement, its values converted if SQL doesn't take them as they are. *)
-  c = sqlite3.Run(text, ps, conn)
-  if codeOf(c) == "convert" sqlite3.Run(text, bound(ps)?, conn) else c end
+  c = sqlite3.Run(sql, ps, conn)
+  if codeOf(c) == "convert" sqlite3.Run(sql, bound(ps)?, conn) else c end
 end
 
 defn rowsAt(b, cursor)
@@ -220,8 +220,8 @@ defn eachBatch(f, as, rows)
   result.Ok(value.Len(rows))
 end
 
-defn each(f, text, ps, as, conn)
-  cursor = cursorOn(text, ps, conn)?
+defn each(f, sql, ps, as, conn)
+  cursor = cursorOn(sql, ps, conn)?
   count = 0
   done = false
   while not done
@@ -240,19 +240,19 @@ defn each(f, text, ps, as, conn)
   result.Ok(count)
 end
 
-defn Each(f, text, params, db, as = missing)
+defn Each(f, sql, params, db, as = missing)
   (** Calls f on each row, one batch of rows in memory at a time, whatever the size: an Ok of the count. An Err of f stops
       and is given back; a panic in f gives the connection back, then panics again. *)
-  r = held(conn -> each(f, text, params, as, conn), db)
+  r = held(conn -> each(f, sql, params, as, conn), db)
   if failed(r) and isPanic(errorOf(r))
     bug.Panic(errorOf(r).Panic)
   end
   r
 end
 
-defn tableCells(text, ps, conn)
+defn tableCells(sql, ps, conn)
   (** The names and every cell of a statement. *)
-  cursor = cursorOn(text, ps, conn)?
+  cursor = cursorOn(sql, ps, conn)?
   b = sqlite3.Next(batch, cursor)?
   names = b.Names
   parts = [b.Cells]
@@ -263,10 +263,10 @@ defn tableCells(text, ps, conn)
   result.Ok({Names: names, Cells: list.Flatten(parts)})
 end
 
-defn Table(text, params, db)
+defn Table(sql, params, db)
   (** An Ok of {Names, Columns}: Columns a map from each name, made a public name, to its column, a list. A column of
       integers or of floats holds them without a box, as std/frame and the natives of columns want. *)
-  b = held(conn -> tableCells(text, params, conn), db)?
+  b = held(conn -> tableCells(sql, params, conn), db)?
   n = value.Len(b.Names)
   if n == 0
     return result.Ok({Names: [], Columns: dict.Dict()})
@@ -281,16 +281,16 @@ defn Table(text, params, db)
   result.Ok({Names: names, Columns: cols})
 end
 
-defn Script(text, db)
+defn Script(sql, db)
   (** Runs several statements, never with parameters: a schema, a migration. An Ok of missing, or the first Err. *)
   if ended(db)
     return doneError()
   end
-  r = sqlite3.Script(text, at(db))
+  r = sqlite3.Script(sql, at(db))
   if codeOf(r) == "closed" and db.Tx doneError() else r end
 end
 
-txExec(text, tx) = sqlite3.Exec(text, [], tx.Conn)
+txExec(sql, tx) = sqlite3.Exec(sql, [], tx.Conn)
 
 defn undo(texts, tx, out)
   (** Rolls back, and gives out. *)

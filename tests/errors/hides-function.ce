@@ -1,0 +1,9 @@
+(* A function can't take the name of a package the file uses. *)
+use std/io
+use std/math
+
+defn math()
+  1
+end
+
+io.Print(math())

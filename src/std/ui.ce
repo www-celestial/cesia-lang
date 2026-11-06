@@ -24,11 +24,11 @@ clamp01(x) = list.Max(0.0, list.Min(1.0, x))
 
 (** Moves a value towards its goal, at a speed that doesn't depend on the frame rate.
       Ease(1.0, 2.0, 0.0) --> 1.0 *)
-Ease(value, goal, seconds, speed = 22.0) = value + (goal - value) * (1.0 - math.Exp(-speed * seconds))
+Ease(current, goal, seconds, speed = 22.0) = current + (goal - current) * (1.0 - math.Exp(-speed * seconds))
 
 (** Is a value close enough to its goal to stop moving?
       Rests(1.0, 1.001) --> true *)
-Rests(value, goal) = math.Abs(value - goal) <= 0.002
+Rests(current, goal) = math.Abs(current - goal) <= 0.002
 
 (** A rectangle made smaller on every side. No size goes below zero.
       Inset(2, {X: 0, Y: 0, Width: 10, Height: 10}).Width --> 6 *)
@@ -178,11 +178,11 @@ defn sliderFill(width, rect, th)
   out
 end
 
-defn Slider(value, rect, look)
-  (** A bar filled to a value from 0.0 to 1.0, with a tick at its end and the value at the right. *)
+defn Slider(fraction, rect, look)
+  (** A bar filled to a fraction from 0.0 to 1.0, with a tick at its end and the fraction at the right. *)
   th = look.Theme
-  shown = TwoDecimals(value)
-  fillWidth = rect.Width * clamp01(value)
+  shown = TwoDecimals(fraction)
+  fillWidth = rect.Width * clamp01(fraction)
   tick = list.Max(0.0, list.Min(rect.Width - 2.0, fillWidth - 1.0))
   inset = tickInset(list.Min(tick, rect.Width - 2.0 - tick), 4.0)
   list.Flatten([[box(rect.X, rect.Y, rect.Width, rect.Height, th.Well, 4)], sliderFill(fillWidth, rect, th), [edge(rect.X, rect.Y, rect.Width, rect.Height, th.Edge, 4),

@@ -1,0 +1,9 @@
+(* A name in a pattern can't take the name of a package the file uses. *)
+use std/io
+use std/result
+use std/text
+
+io.Print(match result.Ok("hi")
+  result.Ok(text) -> text
+  else -> "none"
+end)

@@ -1,0 +1,4 @@
+hides-parameter.ce:5:7: text is a package this file uses: choose another name here.
+  5 | Shout(text) = text.Upper(text)
+    |       ^
+exit 1

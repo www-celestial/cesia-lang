@@ -22,6 +22,9 @@ val undefined : string -> t
 (** [moved name p]: a name of std/p written without its package, as Print for io.Print. *)
 val moved : string -> string -> t
 
+(** [hides_package name]: a variable, a parameter, a function or a pattern of a file is named as a package it uses. *)
+val hides_package : string -> t
+
 (** A pattern that names no struct the file sees. *)
 val pattern_struct : string -> t
 val method_foreign : t

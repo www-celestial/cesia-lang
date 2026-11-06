@@ -54,11 +54,11 @@ defn release(nightly)
   else
     "$github/$(if nightly "tags/nightly" else "latest" end)"
   end
-  text = download(url)
-  if result.IsErr(text)
-    return result.Err("Can't read the releases of Cesia: $(if value.IsText(text.Error) text.Error else text.Error.Message end)")
+  got = download(url)
+  if result.IsErr(got)
+    return result.Err("Can't read the releases of Cesia: $(if value.IsText(got.Error) got.Error else got.Error.Message end)")
   end
-  json.Parse(text.Value)
+  json.Parse(got.Value)
 end
 
 defn system(binary)

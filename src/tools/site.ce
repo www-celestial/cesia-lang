@@ -134,10 +134,10 @@ defn hooksFor(site, path, where, book = missing)
     text.Str(rel(path, target), from(text.ByteLength(text.Split("#", u)[1]) + 1, u))
   end
   code(info, s, line) = if text.Split(" ", info)[1] == "cesia" codeBlock(s) else missing end
-  {Code: code, Link: link, Url: url, Anchor: (level, text, line) -> slug(text)}
+  {Code: code, Link: link, Url: url, Anchor: (level, title, line) -> slug(title)}
 end
 
-html(text, hooks) = markdown.Html(markdown.Parse(text), hooks)
+html(source, hooks) = markdown.Html(markdown.Parse(source), hooks)
 
 defn summary(s)
   (** The first sentence of a text, on one line. *)
@@ -338,22 +338,22 @@ defn pager(path, prev, next, above)
   text.Str("<nav class=\"pager\" aria-label=\"Pages\">", link(prev, "prev", "← ", ""), link(above, "up", "", ""), link(next, "next", "", " →"), "</nav>\n")
 end
 
-near(list, k) = {Prev: if k > 1 list[k - 1] else missing end, Next: if k < value.Len(list) list[k + 1] else missing end}
+near(items, k) = {Prev: if k > 1 items[k - 1] else missing end, Next: if k < value.Len(items) items[k + 1] else missing end}
 
 names(m) = [{Name: n, Short: shortOf(n, m), Path: namePath(m, n)} for n in cesia.DocNames(m)]   (** The documented names of a module, each {Name, Short, Path}. *)
 
-withEntries(list) = [{Name: n.Name, Short: n.Short, Path: n.Path, Entry: cesia.DocEntry(n.Name)} for n in list]   (** The names with their docs, {Name, Short, Path, Entry}: only for the pages of the reference, which a kept build doesn't make. *)
+withEntries(items) = [{Name: n.Name, Short: n.Short, Path: n.Path, Entry: cesia.DocEntry(n.Name)} for n in items]   (** The names with their docs, {Name, Short, Path, Entry}: only for the pages of the reference, which a kept build doesn't make. *)
 
 defn about(e)
   (** What a list shows of a name: the first sentence of its text, else its first example. *)
   if text.Trim(e.Text) != "" summary(e.Text) else if value.Len(e.Examples) > 0 e.Examples[1] else "" end
 end
 
-defn moduleBody(site, m, list)
+defn moduleBody(site, m, entries)
   (** The main part of the page of a module: what it is for, then its names. *)
   path = modulePath(m)
   hooks = hooksFor(site, path, line -> m)
-  rows = text.Join("", ["<dt><a href=\"$(rel(path, n.Path))\">$(escape(n.Name))</a></dt><dd>$(inlineHtml(about(n.Entry), hooks))</dd>\n" for n in list])
+  rows = text.Join("", ["<dt><a href=\"$(rel(path, n.Path))\">$(escape(n.Name))</a></dt><dd>$(inlineHtml(about(n.Entry), hooks))</dd>\n" for n in entries])
   text.Str("<h1>", escape(m), "</h1>\n", html(cesia.Doc(m), hooks), "<dl class=\"names\">\n", rows, "</dl>\n")
 end
 

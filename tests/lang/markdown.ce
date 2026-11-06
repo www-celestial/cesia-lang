@@ -7,7 +7,7 @@ use std/list
 use std/text
 use std/value
 
-html(text) = markdown.Html(markdown.Parse(text), markdown.Plain)
+html(source) = markdown.Html(markdown.Parse(source), markdown.Plain)
 failing(cases) = list.Filter(c -> html(c[1]) != c[2], cases)
 
 headings = [
@@ -513,7 +513,7 @@ isQuoteInATitleIsEscaped() = html("[a](x \"\\\"onclick=y\")") == "<p><a href=\"x
 isIndentedLineIsAParagraph() = html("    code") == "<p>code</p>\n"
 
 hooks = {Code: (info, s, line) -> "<pre class=\"$info\">$line</pre>\n", Link: (target, line) -> if target == "Sort" "ref/Sort.html" else missing end, Url: (url, line) -> text.Replace(".md", ".html", url), Anchor: (level, s, line) -> text.Lower(s)}
-withHooks(text) = markdown.Html(markdown.Parse(text), hooks)
+withHooks(source) = markdown.Html(markdown.Parse(source), hooks)
 isLinkHookMakesALink() = withHooks("See [Sort].") == "<p>See <a href=\"ref/Sort.html\">Sort</a>.</p>\n"
 isLinkHookLeavesText() = withHooks("[x] and [Nope]") == "<p>[x] and [Nope]</p>\n"
 isCodeHookColors() = withHooks("a\n\n```cesia\nx\n```") == "<p>a</p>\n<pre class=\"cesia\">3</pre>\n"

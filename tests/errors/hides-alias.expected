@@ -1,0 +1,4 @@
+hides-alias.ce:5:12: t is a package this file uses: choose another name here.
+  5 | defn Shout(t)
+    |            ^
+exit 1

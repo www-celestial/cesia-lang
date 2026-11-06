@@ -1,0 +1,9 @@
+(* The name a use gives is the one to keep free: here t, not text. *)
+use std/io
+use std/text as t
+
+defn Shout(t)
+  t
+end
+
+io.Print(Shout("hi"))

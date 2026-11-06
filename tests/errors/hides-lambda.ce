@@ -1,0 +1,5 @@
+(* The parameter of a lambda can't take the name of a package the file uses. *)
+use std/io
+use std/list
+
+io.Print(list.Map(list -> list + 1, [1, 2]))

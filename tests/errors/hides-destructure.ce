@@ -1,0 +1,6 @@
+(* A name given by a destructuring can't take the name of a package the file uses. *)
+use std/io
+use std/text
+
+{Name: text, Age: n} = {Name: "Ada", Age: 36}
+io.Print(text, n)

@@ -83,8 +83,9 @@ Print(1)
 ```
 
 So a package may name a function as another package does: `set.Count` counts the elements of a set, and [list.Count] the
-elements of a list that a function accepts. In a file, a variable named as a package it uses hides that package where the
-variable is seen, as `text = "hi"` hides `std/text`: give the variable another name, as `s` or `line`.
+elements of a list that a function accepts. In a file, no variable, parameter, function or pattern takes the name of a
+package the file uses: with `use std/text`, `text = "hi"` would hide `std/text`, so it is refused when the file loads. Give
+the variable another name, as `s` or `line`.
 
 ### Private names
 

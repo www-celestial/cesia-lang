@@ -17,9 +17,9 @@ defn serveBig(listener)
 end
 
 defn readAll(c, total)
-  text = net.Read(c)?
+  got = net.Read(c)?
   sys.Sleep(0)
-  if value.Len(text) == 0 result.Ok(total) else readAll(c, total + value.Len(text)) end
+  if value.Len(got) == 0 result.Ok(total) else readAll(c, total + value.Len(got)) end
 end
 
 defn client()

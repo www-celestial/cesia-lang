@@ -1,0 +1,5 @@
+(* The variable of a comprehension can't take the name of a package the file uses. *)
+use std/io
+use std/list
+
+io.Print([list * 2 for list in [1, 2]])

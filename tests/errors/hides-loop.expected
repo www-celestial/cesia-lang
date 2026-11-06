@@ -1,0 +1,4 @@
+hides-loop.ce:5:5: list is a package this file uses: choose another name here.
+  5 | for list in [1, 2]
+    |     ^
+exit 1

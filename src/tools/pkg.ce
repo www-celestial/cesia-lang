@@ -87,8 +87,8 @@ end
 
 defn readToml(file)
   (** The tables of a file of the project, or an Err naming its line. *)
-  text = sys.Read(file)?
-  match cesia.Toml(text)
+  source = sys.Read(file)?
+  match cesia.Toml(source)
     result.Ok(tables) -> result.Ok(tables)
     result.Err(e) -> result.Err("$file:$(e.Line): $(e.Message)")
   end
@@ -131,11 +131,11 @@ end
 
 defn writeLock(lock)
   (** Writes cesia.lock whole, through a new file renamed over the old one: a failure leaves the old one. *)
-  text = lockText(lock)
-  if result.UnwrapOr("", sys.Read(lockFile)) == text
+  source = lockText(lock)
+  if result.UnwrapOr("", sys.Read(lockFile)) == source
     return result.Ok(missing)
   end
-  sys.Write("$lockFile.new", text)?
+  sys.Write("$lockFile.new", source)?
   sys.Rename("$lockFile.new", lockFile)
 end
 
@@ -443,10 +443,10 @@ defn resolve(wanted)
   end
 end
 
-defn readDeps(text)
+defn readDeps(source)
   (** The [deps] tables of cesia.toml: {Label, From, Version, Take, Lines}, Take missing without take, Lines the line of each
       key. *)
-  tables = cesia.Toml(text)
+  tables = cesia.Toml(source)
   if result.IsErr(tables)
     return result.Err("cesia.toml:$(tables.Error.Line): $(tables.Error.Message)")
   end

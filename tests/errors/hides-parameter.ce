@@ -1,0 +1,6 @@
+(* A parameter can't take the name of a package the file uses. *)
+use std/io
+use std/text
+
+Shout(text) = text.Upper(text)
+io.Print(Shout("hi"))

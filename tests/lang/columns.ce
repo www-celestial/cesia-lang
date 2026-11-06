@@ -229,7 +229,7 @@ end
 
 (* Whole-array arithmetic and comparisons on typed stores: the values, kinds and messages of the cell by cell rules. *)
 message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
-overflowOf(text) = result.Err("The integer result of $(text) doesn't fit in 63 bits.")
+overflowOf(op) = result.Err("The integer result of $(op) doesn't fit in 63 bits.")
 isIntsTimesAnInt() = value.Equal((1..4) * 2, [2, 4, 6, 8]) and columns.Kind((1..4) * 2) == "int" and value.Equal(2 * (1..4), [2, 4, 6, 8]) and columns.Kind(2 * (1..4)) == "int"
 isIntsPlusInts() = value.Equal((1..4) + (1..4), [2, 4, 6, 8]) and columns.Kind((1..4) + (1..4)) == "int" and value.Equal((1..4) - 5, [-4, -3, -2, -1]) and value.Equal(5 - (1..4), [4, 3, 2, 1]) and columns.Kind(5 - (1..4)) == "int"
 isIntsWithFloats() = value.Equal((1..4) * 1.0, [1.0, 2.0, 3.0, 4.0]) and columns.Kind((1..4) * 1.0) == "float" and value.Equal([1, 2] * [1.5, 2.5], [1.5, 5.0]) and columns.Kind([1.5, 2.5] - [1, 2]) == "float" and value.Equal(0.5 + (1..2), [1.5, 2.5])

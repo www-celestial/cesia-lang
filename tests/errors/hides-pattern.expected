@@ -1,0 +1,4 @@
+hides-pattern.ce:7:13: text is a package this file uses: choose another name here.
+  7 |   result.Ok(text) -> text
+    |             ^
+exit 1

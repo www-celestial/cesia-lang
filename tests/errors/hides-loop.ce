@@ -1,0 +1,7 @@
+(* The variable of a loop can't take the name of a package the file uses. *)
+use std/io
+use std/list
+
+for list in [1, 2]
+  io.Print(list)
+end

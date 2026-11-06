@@ -63,10 +63,10 @@ defn out(size, inputs, f)
   out = c.Alloc(list.Max(size, 1))
   blocks = list.Map(block, inputs)
   status = f(out, blocks)
-  result = c.Load(0, size, out)
+  bytes = c.Load(0, size, out)
   c.Free(out)
   list.Map(c.Free, blocks)
-  {Status: status, Bytes: result}
+  {Status: status, Bytes: bytes}
 end
 
 defn Random(n, s)

@@ -9,11 +9,11 @@ Empty() = missing   (** A heap with nothing in it. *)
 IsEmpty(h) = value.IsMissing(h)
 rank(h) = if value.IsMissing(h) 0 else h.Rank end
 
-defn node(key, value, a, b)
+defn node(key, item, a, b)
   if rank(a) >= rank(b)
-    {Key: key, Value: value, Left: a, Right: b, Rank: rank(b) + 1}
+    {Key: key, Value: item, Left: a, Right: b, Rank: rank(b) + 1}
   else
-    {Key: key, Value: value, Left: b, Right: a, Rank: rank(a) + 1}
+    {Key: key, Value: item, Left: b, Right: a, Rank: rank(a) + 1}
   end
 end
 
@@ -33,7 +33,7 @@ end
 (** A heap with a value added under a key; the smallest key comes out first.
 
       Peek(Insert(1, "a", Empty())).Value --> "a" *)
-Insert(key, value, h) = Merge(node(key, value, missing, missing), h)
+Insert(key, item, h) = Merge(node(key, item, missing, missing), h)
 (** The smallest key and its value, as a struct with key and value. The heap must not be empty.
 
       Peek(Insert(2, "b", Insert(1, "a", Empty()))).Key --> 1 *)

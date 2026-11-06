@@ -37,26 +37,26 @@ Plain(s, status = 200) = {Status: status, Body: s, Headers: [type("text/plain; c
 (** An HTML response. *)
 Html(s, status = 200) = {Status: status, Body: s, Headers: [type("text/html; charset=utf-8")]}
 (** A response with the JSON text of a value. *)
-SendJson(value, status = 200) = {Status: status, Body: json.Text(value), Headers: [type("application/json")]}
+SendJson(data, status = 200) = {Status: status, Body: json.Text(data), Headers: [type("application/json")]}
 (** A response that sends the client to another URL. *)
 Redirect(url, status = 302) = {Status: status, Body: "", Headers: [{Name: "location", Value: url}]}
 NotFound() = Plain("Not Found", status = 404)   (** A 404 response. *)
-type(value) = {Name: "content-type", Value: value}
+type(kind) = {Name: "content-type", Value: kind}
 
-defn WithHeader(name, value, response)
+defn WithHeader(name, content, response)
   (** A response with one more header. *)
   headers = match response
     {Headers: headers} -> headers
     else -> []
   end
   out = response
-  out.Headers = list.Append({Name: name, Value: value}, headers)
+  out.Headers = list.Append({Name: name, Value: content}, headers)
   out
 end
 
-defn SetCookie(name, value, response, options = "Path=/; HttpOnly; SameSite=Lax")
-  (** A response with a cookie set. The value is URL-encoded. *)
-  WithHeader("set-cookie", "$name=$(encode.UrlEncode(value)); $options", response)
+defn SetCookie(name, content, response, options = "Path=/; HttpOnly; SameSite=Lax")
+  (** A response with a cookie set. Its content is URL-encoded. *)
+  WithHeader("set-cookie", "$name=$(encode.UrlEncode(content)); $options", response)
 end
 
 defn cookies(headers)
@@ -107,11 +107,11 @@ end
 Form(request) = encode.ParseQuery(request.Body)   (** The body of a form, or of JSON. *)
 BodyJson(request) = json.Parse(request.Body)   (** The body of a request read as JSON: an Ok of the value, or an Err. *)
 
-defn answer(value)
-  match value
+defn answer(reply)
+  match reply
     result.Ok(v) -> v
     result.Err(e) -> Plain("Internal Server Error", status = 500)
-    else -> value
+    else -> reply
   end
 end
 

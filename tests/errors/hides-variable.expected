@@ -1,0 +1,4 @@
+hides-variable.ce:5:1: text is a package this file uses: choose another name here.
+  5 | text = "hi"
+    | ^
+exit 1

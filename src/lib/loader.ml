@@ -239,7 +239,7 @@ let check_uses path (fn : Ast.func) =
     fn.body
 
 (* The names that a file reads from the package it uses as [alias]: geo.Area, geo.Rect.Square, geo.Point(x, y) in a pattern,
-   geo.Rect as a type. A local variable of that name counts too: at worst a source loads for nothing. *)
+   geo.Rect as a type. No variable of the file has that name: the parser refuses it. *)
 let used_names alias (fn : Ast.func) =
   let out = ref [] in
   let add name = out := name :: !out in

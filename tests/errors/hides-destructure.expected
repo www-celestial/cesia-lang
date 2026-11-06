@@ -1,0 +1,4 @@
+hides-destructure.ce:5:8: text is a package this file uses: choose another name here.
+  5 | {Name: text, Age: n} = {Name: "Ada", Age: 36}
+    |        ^
+exit 1

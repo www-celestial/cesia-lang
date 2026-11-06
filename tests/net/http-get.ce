@@ -12,10 +12,10 @@ sized = "HTTP/1.1 200 OK$(crlf)Content-Length: 5$(crlf)X-A: 1$(crlf)$(crlf)hello
 chunked = "HTTP/1.1 200 OK$(crlf)Transfer-Encoding: chunked$(crlf)$(crlf)5$(crlf)hello$(crlf)A;x=1$(crlf)0123456789$(crlf)0$(crlf)$crlf"
 closing = "HTTP/1.1 404 Not Found$(crlf)$(crlf)gone"
 
-defn reply(listener, text, close)
+defn reply(listener, answer, close)
   c = net.Accept(listener)?
   net.Read(c)?
-  net.Write(c, text)?
+  net.Write(c, answer)?
   if close net.Close(c) end
   result.Ok(missing)
 end

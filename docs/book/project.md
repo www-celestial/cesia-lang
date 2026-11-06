@@ -77,10 +77,10 @@ defn Open(url)
   result.Ok(db)
 end
 
-defn Save(text, db)
+defn Save(words, db)
   (** Adds a note, and gives it. *)
-  added = sql.Exec("insert into notes (text) values (?)", [text], db)?
-  result.Ok(Note(added.LastId, text, false))
+  added = sql.Exec("insert into notes (text) values (?)", [words], db)?
+  result.Ok(Note(added.LastId, words, false))
 end
 
 List(db) = sql.Query("select id, text, done from notes order by id", [], db, as = Note.From)   (** Every note, the oldest first. *)

@@ -1,0 +1,4 @@
+hides-comprehension.ce:5:24: list is a package this file uses: choose another name here.
+  5 | io.Print([list * 2 for list in [1, 2]])
+    |                        ^
+exit 1

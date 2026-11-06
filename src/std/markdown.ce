@@ -13,7 +13,7 @@ use std/value
     headings without an anchor.
 
       Html(Parse("[Sort]"), Plain) --> "<p>[Sort]</p>\n" *)
-Plain = {Code: (info, text, line) -> missing, Link: (target, line) -> missing, Url: (url, line) -> url, Anchor: (level, text, line) -> missing}
+Plain = {Code: (info, code, line) -> missing, Link: (target, line) -> missing, Url: (url, line) -> url, Anchor: (level, title, line) -> missing}
 
 (* The text with &, <, > and " written as HTML writes them, as CommonMark writes them: web.Escape is the one for programs. *)
 escape(s) = text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s))))
@@ -853,9 +853,9 @@ defn table(b, hooks)
 end
 
 defn Html(blocks, hooks)
-  (** The HTML of blocks from Parse. hooks has Code(info, text, line), the HTML of a block of code or missing for a plain
+  (** The HTML of blocks from Parse. hooks has Code(info, code, line), the HTML of a block of code or missing for a plain
       pre; Link(target, line), the URL of a [target] or missing to leave it as text; Url(url, line), the address a link
-      written `[text](url)` leads to; and Anchor(level, text, line), the id of a heading or missing. Plain gives none of them.
+      written `[text](url)` leads to; and Anchor(level, title, line), the id of a heading or missing. Plain gives none of them.
 
         Html(Parse("Some *words*."), Plain) --> "<p>Some <em>words</em>.</p>\n"
         Html(Parse("<script>"), Plain) --> "<p>&lt;script&gt;</p>\n" *)
