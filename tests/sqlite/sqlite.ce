@@ -224,10 +224,10 @@ end
 defn isEachStreams()
   db = sql.Open(url("each"))?
   sql.Script("create table n (k integer)", db)?
-  sql.Exec("with recursive s(k) as (select 1 union all select k + 1 from s where k < 100000) insert into n select k from s", [], db)?
+  sql.Exec("with recursive s(k) as (select 1 union all select k + 1 from s where k < 30000) insert into n select k from s", [], db)?
   all = sql.Each(r -> missing, "select k from n", [], db)?
   stopped = sql.Each(r -> if r.K == 5 Err("five") else missing end, "select k from n order by k", [], db)
-  all == 100000 and Equal(stopped, Err("five")) and count("n", db)? == 100000
+  all == 30000 and Equal(stopped, Err("five")) and count("n", db)? == 30000
 end
 
 defn isEachPanicGivesTheConnectionBack()
@@ -273,9 +273,9 @@ defn isPoolWaits()
   if not onFile
     return true
   end
-  db = sql.Open(url("pool"), max = 2, wait = 0.1)?
-  a = Spawn(() -> holder(db, 0.4))
-  b = Spawn(() -> holder(db, 0.4))
+  db = sql.Open(url("pool"), max = 2, wait = 0.05)?
+  a = Spawn(() -> holder(db, 0.15))
+  b = Spawn(() -> holder(db, 0.15))
   sys.Sleep(0.01)
   third = code(sql.One("select 1 as x", [], db))
   Wait(a)

@@ -1,1 +1,1 @@
-d=$(mktemp -d); cesia run $no_spec --allow ffi=sqlite3 --allow read=. sqlite.ce memory 2>/dev/null; cesia run $no_spec --allow ffi=sqlite3 --allow "read=.,read=$d,write=$d" sqlite.ce "$d" 2>/dev/null; s=$?; rm -rf "$d"; (exit $s)
+d=$(mktemp -d); cesia run $no_spec --allow ffi=sqlite3 --allow read=. sqlite.ce memory 2>/dev/null & cesia run $no_spec --allow ffi=sqlite3 --allow "read=.,read=$d,write=$d" sqlite.ce "$d" 2>/dev/null; s=$?; wait; rm -rf "$d"; (exit $s)
