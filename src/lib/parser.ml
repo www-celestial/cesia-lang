@@ -26,14 +26,14 @@ type p = {
 let error p pos (m : Messages.t) =
   raise (Pos.Load_error { file = p.file; pos; kind = "syntax"; text = m.text; hint = m.hint })
 
-let cur p =
+let[@inline] cur p =
   if p.mode = Ignore then
     while p.toks.(p.i).t == NL do p.i <- p.i + 1 done;
   p.toks.(p.i)
 
 let advance p = p.i <- p.i + 1
 
-let skip_nl p =
+let[@inline] skip_nl p =
   while p.toks.(p.i).t == NL do p.i <- p.i + 1 done
 
 let tok_text = function
@@ -70,7 +70,7 @@ let with_mode p mode f =
   p.mode <- saved;
   r
 
-let deeper p f =
+let[@inline] deeper p f =
   p.depth <- p.depth + 1;
   if p.depth > p.nesting then error p (cur p).pos Messages.too_nested;
   let r = f () in

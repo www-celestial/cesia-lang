@@ -50,8 +50,8 @@ type st = {
 }
 
 let is_digit c = c >= '0' && c <= '9'
-let is_name_start c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c >= '\128'
-let is_name c = is_name_start c || is_digit c
+let[@inline] is_name_start c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c = '_' || c >= '\128'
+let[@inline] is_name c = is_name_start c || is_digit c
 
 let is_public name = name <> "" && name.[0] >= 'A' && name.[0] <= 'Z'
 let is_plain_name s = s <> "" && is_name_start s.[0] && String.for_all (fun c -> is_name c && c <> '_') s && keyword s = None
@@ -86,7 +86,7 @@ let joined ~public name =
   if public then cap else String.uncapitalize_ascii cap
 
 (* The column in code points: a UTF-8 continuation byte doesn't count. *)
-let pos_at st i =
+let[@inline] pos_at st i =
   if st.seen_i < st.line_start then begin
     st.seen_i <- st.line_start;
     st.seen_col <- 1
@@ -106,7 +106,7 @@ let word_token st pos word =
     error st pos (Messages.underscore_name word (joined ~public:false word) (joined ~public:true word));
   match keyword word with Some k -> k | None -> NAME word
 
-let peek_at st k = if st.i + k < String.length st.src then st.src.[st.i + k] else '\000'
+let[@inline] peek_at st k = if st.i + k < String.length st.src then st.src.[st.i + k] else '\000'
 
 let new_line st =
   st.line <- st.line + 1;
@@ -201,7 +201,7 @@ let rec scan st ~in_code : token array =
   let sp = ref true in
   let depth = ref 0 in
   let fin = ref false in
-  let push t pos = add { t; pos; sp = !sp }; sp := false in
+  let[@inline] push t pos = add { t; pos; sp = !sp }; sp := false in
   while not !fin do
     if st.i >= n then begin
       if in_code then error st (pos_at st st.i) Messages.text_not_closed;

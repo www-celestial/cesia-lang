@@ -428,7 +428,7 @@ and nested (e : expr) =
   | _ -> children nested e
 
 (* The fields of a constructor, which is how a struct looks once parsed. *)
-let struct_fields (f : func) =
+let[@inline] struct_fields (f : func) =
   match f.body with
   | [| { e = Return { rvalue = Some { e = Struct_lit { sname = Some _; sfields }; _ }; _ }; _ } |] -> Some sfields
   | _ -> None
