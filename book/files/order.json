@@ -1,0 +1,9 @@
+{
+  "id": 17,
+  "customer": "Ana",
+  "items": [
+    {"product": "bread", "units": 2, "price": 1.25},
+    {"product": "cake", "units": 1, "price": 8.0}
+  ],
+  "note": null
+}

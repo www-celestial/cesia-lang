@@ -39,5 +39,6 @@ language.
 12. [Permissions](permissions.md): `--allow`, `--limit`, and the permissions of a task.
 13. [Files](files.md): reading, writing, folders, arguments, other programs and the clock.
 14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file.
+15. [JSON and CSV](json.md): reading, writing, and checking what comes in.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.

@@ -140,5 +140,5 @@ num.Polyfit(1, [1.0, 2.0, 3.0], [3.0, 5.0, 7.0]) -->
 
 ## Next
 
-You can ask questions of your data. The next chapter, JSON and CSV, reads data from other programs and writes it for them,
+You can ask questions of your data. The next chapter, [JSON and CSV](json.md), reads data from other programs and writes it for them,
 and checks what comes in.
