@@ -1,0 +1,12 @@
+stopped at native-error.ce:10 (start)
+stopped at native-error.ce:6 (error)
+  Index 6 is outside this array of 5 elements.
+n = 9
+a = [1.5, 2.5, 3.5, 4.5, 5.5]
+s = 6.5
+i = 6
+native-error.ce:6:6: Index 6 is outside this array of 5 elements.
+  6 |     a[i] = s
+    |      ^
+  in Fill (native-error.ce:6)
+exit 1

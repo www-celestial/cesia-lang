@@ -1,0 +1,12 @@
+stopped at overflow.ce:10 (start)
+stopped at overflow.ce:5 (error)
+  The integer result of 1000000000000000000 * 1000 doesn't fit in 63 bits.
+n = 10
+x = 1000000000000000000
+k = 6
+overflow.ce:5:11: The integer result of 1000000000000000000 * 1000 doesn't fit in 63 bits.
+  5 |     x = x * 1000
+    |           ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in Grow (overflow.ce:5)
+exit 1

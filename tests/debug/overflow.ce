@@ -1,0 +1,11 @@
+defn Grow(n)
+  x = 1
+  k = 0
+  while k < n
+    x = x * 1000
+    k = k + 1
+  end
+  x
+end
+io.Print(Grow(10))
+use std/io
