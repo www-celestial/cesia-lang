@@ -205,6 +205,6 @@ let complete ctx (a : t array) =
 let natives =
   [ "Eval", Native.nat ~perm:Debug ~params:[| "code"; "frame" |] "Eval" 1 2 eval;
     "Reload", Native.nat ~perm:Debug "Reload" 0 0 reload;
-    "Complete", Native.nat "Complete" 1 1 complete ]
+    "Complete", Native.nat ~params:[| "code" |] "Complete" 1 1 complete ]
 
 let install w = w.debug.test <- test

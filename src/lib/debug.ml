@@ -183,7 +183,7 @@ let natives =
   [ "SetBreak", Native.nat ~perm:Debug ~params:[| "file"; "line"; "condition" |] "SetBreak" 2 3 set_break;
     "ClearBreak", Native.nat ~perm:Debug "ClearBreak" 2 2 clear_break;
     "Breaks", Native.nat ~perm:Debug "Breaks" 0 0 breaks;
-    "Watch", Native.nat ~perm:Debug "Watch" 1 1 watch;
-    "Unwatch", Native.nat ~perm:Debug "Unwatch" 1 1 unwatch;
+    "Watch", Native.nat ~perm:Debug ~params:[| "code" |] "Watch" 1 1 watch;
+    "Unwatch", Native.nat ~perm:Debug ~params:[| "code" |] "Unwatch" 1 1 unwatch;
     "Watches", Native.nat ~perm:Debug "Watches" 0 0 (fun ctx _ -> row (List.map (fun c -> Text c) ctx.w.debug.watches));
     "Words", Native.nat "Words" 1 1 words ]

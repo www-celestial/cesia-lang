@@ -754,14 +754,48 @@ use std/value
 
       columns.ReadCsv("a\n1\n", ",").Columns --> [[1]] *)
 
-(** debug.SetBreak(file, line)
-    Sets a breakpoint at a line of a file, which stops the program there. Needs the debug permission. *)
+(** debug.SetBreak(file, line, condition = missing)
+    Sets a breakpoint at a line of a file, which stops the program there; with a condition, an expression of the
+    variables there as text, only when it is true. One breakpoint per line: a new one replaces it. Needs the debug
+    permission. *)
 
 (** debug.ClearBreak(file, line)
     Removes the breakpoint at a line of a file. Needs the debug permission. *)
 
-(** debug.ReadLine()
-    A line read from the standard input without its line end, or missing at the end of the input. Needs the debug permission. *)
+(** debug.Breaks()
+    The breakpoints, each with File, Line and Condition, missing when it has none. Needs the debug permission. *)
+
+(** debug.Watch(code)
+    Adds an expression to the watches, which a debugger shows at each stop. Needs the debug permission. *)
+
+(** debug.Unwatch(code)
+    Removes an expression from the watches. Needs the debug permission. *)
+
+(** debug.Watches()
+    The expressions watched, in the order they were added. Needs the debug permission. *)
+
+(** debug.Eval(code, frame = missing)
+    Runs code in the running program and gives the value of its last statement in an Ok, or its error in an Err. With a
+    frame of a stop, as stop.Frames[1], the code is an expression of the variables of that frame, of its package and of
+    the packages its file uses. Without, it runs at the file level of the main file's package, as at the prompt of cesia
+    run --repl: it sees what the code before it defined, and a function it defines again replaces the program's own,
+    which goes on with it. Needs the debug permission. *)
+
+(** debug.Reload()
+    Reloads the files of the program changed since they were loaded, as cesia run --watch does: their paths in an Ok, or
+    the errors in an Err, and the code of those stays as it was. The code running in a frame goes on as it was; the next
+    call runs the new code. Needs the debug permission. *)
+
+(** debug.Complete(code)
+    Is the code whole? False when it stops inside a block, a list or an expression, so that a prompt reads another line.
+
+      debug.Complete("if x > 1") --> false *)
+
+(** debug.ReadLine(prompt = "")
+    A line read from the standard input without its line end, or missing at its end. On a terminal, the prompt shows
+    first and the keys edit the line: arrows, Home, End, Ctrl-A, Ctrl-E, Ctrl-K, Ctrl-U, Ctrl-W, and up and down walk the
+    lines read before. The other fibers of the program run while it waits, but at a stop of the debugger. Needs the debug
+    permission. *)
 
 (** debug.Words(s)
     The words of a command line, split on spaces; a word that is a whole number becomes an integer.
