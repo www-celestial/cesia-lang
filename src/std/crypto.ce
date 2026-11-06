@@ -99,7 +99,7 @@ defn hmac(s, state, out, b, keySize, size)
 end
 
 defn Same(a, b, s)
-  (** The same inputs can't tell where they differ by the time they take. *)
+  (** Are two texts the same, in a time that doesn't tell where they differ: for secrets, as tags and hashes. *)
   if ByteLength(a) != ByteLength(b)
     return false
   end
@@ -108,7 +108,7 @@ end
 
 refused() = Err({Kind: "crypto", Message: "This message was changed, or the key is wrong."})
 
-(** Symmetric encryption. A nonce is never used twice with a key: the default takes a random one, kept in front. *)
+(** A new random key for Seal and Unseal. A nonce is never used twice with a key: Seal takes a random one, kept in front. *)
 SecretKey(s) = Random(SecretKeySize, s)
 
 defn sealed(message, keys, s, f)
@@ -191,7 +191,7 @@ defn Verify(signature, message, public, s)
 end
 
 defn HashPassword(password, s)
-  (** Passwords: the result holds its own salt and settings, and is safe to store. *)
+  (** A hash of a password with Argon2, to store and to check with CheckPassword: the result holds its own salt and settings. *)
   size = ByteLength(password)
   r = done(out(PasswordSize, [password], (out, b) -> s.HashPassword(out, b[1], size, s.PasswordOps(), s.PasswordMemory())))
   ByteSlice(1, ByteFind(Char(0), 1, r) - 1, r)

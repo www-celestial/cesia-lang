@@ -26,7 +26,7 @@ AnyMethod(pattern, handler, a) = Route("*", pattern, handler, a)
 (** A middleware is f(next, request), and calls next(request) to go on. *)
 Wrap(f, a) = {Routes: a.Routes, Middleware: Append(f, a.Middleware)}
 
-(** A plain text response. The functions below build the other responses. *)
+(** A plain text response. *)
 Plain(s, status = 200) = {Status: status, Body: s, Headers: [type("text/plain; charset=utf-8")]}
 (** An HTML response. *)
 Html(s, status = 200) = {Status: status, Body: s, Headers: [type("text/html; charset=utf-8")]}
@@ -147,7 +147,7 @@ end
 Websocket(pattern, onMessage, a, idle = ws.DefaultIdle) = Get(pattern, req -> ws.Accept(req.Headers, onMessage, idle = idle), a)
 
 defn Logger(next, request)
-  (** Middleware. *)
+  (** A middleware that prints the method, the path and the status of each request. *)
   response = next(request)
   Print("$(request.Method) $(request.Path) $(response.Status)")
   response
@@ -186,11 +186,13 @@ defn static(folder, rest)
   end
 end
 
-(** HTML: Escape() for what comes from outside, and {{name}} in a template, escaped. *)
+(** A text, or any value as its text, with &, <, >, " and ' written as HTML writes them: for what comes from outside, in
+    HTML. A template escapes its values the same way. *)
 Escape(s) = Replace("'", "&#39;", Replace("\"", "&quot;", Replace(">", "&gt;", Replace("<", "&lt;", Replace("&", "&amp;", Text(s))))))
 
 defn Template(source, values)
-  (** One pass: a value that holds {{name}} isn't read again. *)
+  (** The source with each {{name}} replaced by the escaped value of that name. One pass: a value that holds {{name}} isn't
+      read again. *)
   parts = Split("{{", source)
   out = Fill("", Len(parts))
   out[1] = parts[1]

@@ -18,7 +18,7 @@ CurveAcross = 4            (** How many points draw a curve across, for its soft
 BlendAlpha = 1             (** SDL's blend mode that mixes by alpha. *)
 PixelsRgba = 0x16762004    (** SDL's format of the pixels of an image: a byte each of red, green, blue and alpha. *)
 
-VersionOk(version) = version >= 3002000   (** The event offsets read below are those of the ABI of SDL 3.2. *)
+VersionOk(version) = version >= 3002000   (** Is this version of SDL 3.2 or later, whose events this module reads? *)
 
 defn BindSdl(lib)
   (** The SDL3 functions that the window uses, found in a loaded library: an Ok of a struct of functions, or an Err. *)
@@ -89,15 +89,16 @@ Some(pointer, sdlApi) = if IsMissing(pointer) Failure(sdlApi) else Ok(pointer) e
 Done(succeeded, sdlApi) = if succeeded Ok(missing) else Failure(sdlApi) end
 
 defn Checked(succeeded, window)
-  (** A drawing call can't fail on a good window, so a failure is a bug. *)
+  (** The window, after a drawing call that succeeded. A drawing call can't fail on a good window, so a failure is a bug,
+      and stops the fiber with SDL's reason. *)
   if not succeeded
     Panic(window.Sdl.Error())
   end
 end
 
 defn Open(title, width, height, font, size = 15, vsync = true, light = false)
-  (** The font comes before the window: a missing font should open nothing on screen.
-      A proportional font spaces its letters better with light = true. *)
+  (** Opens a window with a title, a size and a font: an Ok of the window, or an Err. The font is read first, so a missing font
+      opens nothing on screen. A proportional font spaces its letters better with light = true. *)
   sdlApi = BindSdl(c.Open("SDL3", version = 0)?)?
   ttfApi = BindTtf(c.Open("SDL3_ttf", version = 0)?)?
   if not VersionOk(sdlApi.Version())
@@ -126,7 +127,8 @@ defn started(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
 end
 
 defn Opened(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
-  (** Each step undoes the ones before it if it fails: the program gets an Err and can go on. *)
+  (** The steps of Open once the libraries are bound: the font, the window, the renderer and the text engine. Each step undoes
+      the ones before it if it fails: the program gets an Err and can go on. *)
   loaded = Some(ttfApi.OpenFont(font, size), sdlApi)?
   Hint(loaded, light, ttfApi)
   made = OnScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
@@ -243,8 +245,8 @@ defn DrawRect(one, window)
 end
 
 defn ObjectAt(position, window)
-  (** Text objects are costly to create, so they stay, in a block shared by every copy of the window: their count, the
-      number of the last draw, then their pointers. *)
+  (** The text object at a position of the window, made when first needed. Text objects are costly to create, so they stay,
+      in a block shared by every copy of the window: their count, the number of the last draw, then their pointers. *)
   if position > MaxTexts
     Panic("A frame can't have more than $MaxTexts texts.")
   end

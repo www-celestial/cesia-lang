@@ -149,7 +149,8 @@ defn Levenshtein(a, b)
 end
 
 defn Bfs(start, neighbors)
-  (** Graphs: neighbors(node) gives the nodes next to one, and nodes are numbers or texts. *)
+  (** The nodes reached from start, breadth first: neighbors(node) gives the nodes next to one, and nodes are numbers or
+      texts. *)
   seen = {(start): true}
   visited = Dict()
   todo = queue.Of([start])

@@ -121,7 +121,7 @@ defn Histogram(bins, xs)
   {Counts: counts, Edges: [low + k * width for k in 0:bins]}
 end
 
-SumRows(m) = [Sum(m[i, :]) for i in 1:Size(m, 1)]   (** The sum of each row, and of each column. *)
+SumRows(m) = [Sum(m[i, :]) for i in 1:Size(m, 1)]   (** The sum of each row of a matrix. *)
 (** The sum of each column of a matrix.
 
       SumCols(Eye(2)) --> [1.0, 1.0] *)
@@ -229,7 +229,8 @@ end
 Inverse(m) = solved(m, Eye(Size(m, 1)))
 
 defn Qr(m)
-  (** Gram-Schmidt, twice for accuracy. *)
+  (** The QR factorization of a matrix with at least as many rows as columns, as a struct with Q and R: through LAPACK when
+      the machine has it, else by Gram-Schmidt, twice for accuracy. *)
   fast = lapack.Qr(m)
   if not IsMissing(fast)
     return fast

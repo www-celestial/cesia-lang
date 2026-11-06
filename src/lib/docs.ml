@@ -420,6 +420,12 @@ let module_text src =
   | d :: _ when (not d.after_code) && Array.for_all blank (Array.sub codes 0 (d.first - 1)) -> text_of_block (List.map snd d.body)
   | _ -> ""
 
+(* What a module is for: the top of its source, or for a module of the binary the block of std/natives.ce named after it. *)
+let module_about w m =
+  match module_source w m with
+  | Some src -> module_text src
+  | None -> (match find m (natives_entries ()) with Some e -> e.text | None -> "")
+
 let short_name n = match String.rindex_opt n '.' with Some i -> String.sub n (i + 1) (String.length n - i - 1) | None -> n
 
 (* Without its module: num.Solve, date.Date.Year, date.Date.Parse. *)
@@ -519,7 +525,7 @@ let doc ctx (a : t array) =
     | Text name ->
       (match lookup ctx.w name with
        | Some text -> Some text
-       | None when is_module ctx.w name -> Option.map module_text (module_source ctx.w name)
+       | None when is_module ctx.w name -> Some (module_about ctx.w name)
        | None -> program_method ctx name)
     | v -> of_function ctx.w v
   in
@@ -575,10 +581,10 @@ let command w args =
   in
   match args with
   | [] ->
-    table (List.map (fun m -> m, first_line (module_text (Option.value (module_source w m) ~default:""))) (modules w));
+    table (List.map (fun m -> m, first_line (module_about w m)) (modules w));
     0
   | [ name ] when is_module w name ->
-    let head = module_text (Option.value (module_source w name) ~default:"") in
+    let head = module_about w name in
     if head <> "" && name <> "prelude" then print_endline (head ^ "\n");
     table (List.map (fun n -> n, summary w n) (names w name));
     0

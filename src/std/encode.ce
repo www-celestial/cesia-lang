@@ -173,7 +173,8 @@ defn ParseQuery(s)
 end
 
 defn Sha1(s)
-  (** SHA-1 is broken for signatures. It stays here because the WebSocket handshake asks for it.
+  (** The SHA-1 hash of a text, as 20 bytes. SHA-1 is broken for signatures: it is here for the WebSocket handshake, which
+      asks for it.
 
         Hex(Sha1("abc")) --> "a9993e364706816aba3e25717850c26c9cd0d89d" *)
   m = Bytes(s)

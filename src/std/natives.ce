@@ -10,6 +10,46 @@ use c
 use lapack
 use cesia
 
+(** sys
+    Files, folders, processes, the environment and the clock: what a program touches outside itself. Each function says the
+    permission it needs: --allow read, write, exec or env, or a path or a name after =. *)
+
+(** json
+    JSON text to values and back: objects become dictionaries, arrays lists, and null missing. *)
+
+(** regex
+    Regular expressions that stay linear whatever the pattern and the text: no backtracking, so no pattern can hang a
+    program. Positions count characters, from 1. *)
+
+(** columns
+    The work on whole columns behind pkg/frame and pkg/sql, in OCaml: CSV, groups, joins and rows that share their keys. A
+    column of integers or floats is stored without a box. *)
+
+(** debug
+    The breakpoints and the input of a debugger given to cesia run --debugger: needs the debug permission. *)
+
+(** net
+    TCP: listen, accept, connect, read and write, each waiting in its fiber only. Needs --allow net, or net=:PORT. pkg/http
+    builds on it. *)
+
+(** c
+    C libraries, called from Cesia: open a library, bind its functions by their types, and pass memory, structures and
+    callbacks. Calling C is total trust: it ignores every permission and limit, and a wrong signature can crash the program.
+    Needs --allow ffi=NAME. *)
+
+(** lapack
+    LAPACK, when the machine has it: solve, determinant, QR and eigenvalues of matrices. pkg/num uses it when it is there,
+    and its own code when it isn't. *)
+
+(** cesia
+    Cesia about itself: its version, its binary, its libraries, the fingerprints of cesia.lock, cesia.toml read as tables,
+    the uses of a source, and the documentation as the docs site reads it. *)
+
+(** sqlite3
+    SQLite's natives, which pkg/sql builds on: pools of connections, statements, cursors and scripts. Loaded at the first
+    call, so that a program that doesn't use it never pays for it. Needs read and write on the path of a database, and never
+    ffi. *)
+
 (** Pi
     The ratio of a circle to its diameter.
 
@@ -676,7 +716,8 @@ use cesia
     and reading one can use all the memory or hang. Needs the read permission. *)
 
 (** sys.TakeStops(taken)
-    For sdl.Open and sdl.Close, in pairs, and only for what --watch needs. With true, TERM and INT no longer end the program, and
+    Takes the TERM and INT signals from the program, or gives them back: for sdl.Open and sdl.Close, in pairs, and only for
+    what --watch needs. With true, TERM and INT no longer end the program, and
     sys.StopAsked tells of them; with false, a window leaves them. Without --watch it does nothing. *)
 
 (** sys.StopAsked()
