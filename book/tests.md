@@ -111,4 +111,4 @@ This book is built that way, so its examples can't drift from the language: a bl
 
 ## Next
 
-You can test and document your code. The next chapter, C and C++, calls the libraries of the system from Cesia.
+You can test and document your code. The next chapter, [C and C++](c.md), calls the libraries of the system from Cesia.

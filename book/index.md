@@ -44,5 +44,6 @@ language.
 17. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
 18. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
 19. [Tests](tests.md): examples in the documentation, test functions, `cesia test`, and a site for your project.
+20. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.
