@@ -504,6 +504,7 @@ let load_debugger ctx name =
   | Some k ->
     w.debug.on_stop <- w.modules.(m).cells.(k);
     w.on_hook <- Debug.hook;
+    w.debug.marked <- Debug.marked;
     w.on_error <- Debug.on_error
   | None -> use_error ~file:path ~pos ~kind:"name" Messages.no_on_stop
 

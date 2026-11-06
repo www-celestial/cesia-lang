@@ -18,6 +18,7 @@ type c = {
   mutable top : int;  (* the frame size needed *)
   mutable ends : (int * int * int) list;  (* for [end]: slot of the indexed array, dimension, number of indexes *)
   mutable live : Bytes.t;  (* the last compiled hook: what is assigned at this statement *)
+  mutable hook_line : int;  (* the line of the last compiled hook *)
   mutable loops : Tier.loop list;  (* the loops around the code being compiled, the nearest first *)
 }
 
@@ -53,7 +54,7 @@ let[@inline] iget (ctx : ctx) k = ctx.i.(ctx.b + k)
 
 let site c pos =
   let s = c.w.sites in
-  Dynarray.add_last s { sfile = c.file; spos = pos; sfn = c.fn; sver = Some c.ver; soff = c.off; slive = c.live };
+  Dynarray.add_last s { sfile = c.file; spos = pos; sfn = c.fn; sver = Some c.ver; soff = c.off; slive = c.live; shidden = false };
   Dynarray.length s - 1
 
 (* One step. [off]: beyond b + off, the v stack is dead. *)
@@ -755,7 +756,7 @@ let rec compile_version (ctx : ctx) (ver : version) =
   let f = ver.owner.func in
   let c =
     { w; file = ver.owner.file; fn = ver.owner.pname; func = f; ver; tv = ver.tv; tn = ver.tn; map = ver.map;
-      off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty; loops = [] }
+      off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty; hook_line = 0; loops = [] }
   in
   let generic = match ver.owner.generic with Some g -> g == ver | None -> false in
   let defaults =
@@ -901,7 +902,7 @@ and store_var c i (e : expr) : ctx -> unit =
           { callee = { e = Var { b = Cell { m; k = ck; stable = true }; _ }; _ };
             args = [| { aname = None; value = key }; { aname = None; value }; { aname = None; value = { e = Var { b = Local j; _ }; _ } } |];
             _ }
-        when j = i && plain_local c i && (not c.w.hooks) && (not (mentions i key)) && (not (mentions i value))
+        when j = i && plain_local c i && (not (mentions i key)) && (not (mentions i value))
              && (match c.w.modules.(m).cells.(ck) with Native { nname = "Put"; _ } -> true | _ -> false) ->
         (* m = Put(k, x, m) is m[k] = x: the map is owned, and written in place unless something else holds it. *)
         let put = c.w.modules.(m).cells.(ck) and s = site c e.pos and pm = c.ver.owner.pm in
@@ -2406,7 +2407,19 @@ and cu c (e : expr) : ctx -> unit =
     c.live <- h.live;
     c.w.hook_count <- c.w.hook_count + 1;
     let s = site c e.pos in
-    fun ctx -> ctx.w.on_hook ctx s
+    let first = Pos.line e.pos <> c.hook_line in
+    c.hook_line <- Pos.line e.pos;
+    (* Only the first statement of a line with a breakpoint, or a step, goes to the debugger: the others cost a test.
+       Whether this line has one is looked up again only after the breakpoints changed. *)
+    let stamp = ref (-1) and here = ref false in
+    fun ctx ->
+      let w = ctx.w in
+      let d = w.debug in
+      if d.stamp <> !stamp then begin
+        stamp := d.stamp;
+        here := first && d.marked w s
+      end;
+      if !here || not (d.mode == Running) then w.on_hook ctx s first
   | Assign ({ b = Local i; _ }, v) -> store_var c i v
   | If ({ e = Bin (Gt, ({ e = Var { b = Local i; _ }; _ } as a), { e = Lfloat k; _ }); pos; _ }, yes, [||])
     when plain_local c i && ty c a != TFA ->

@@ -18,7 +18,8 @@ type st = {
   hidden : Ir.var Dynarray.t;
   resumes : int Dynarray.t;
   mutable loops : int list;  (* where a break goes *)
-  sites : (Pos.t * version * Bytes.t) Dynarray.t;  (* each site, the version whose code it is in, what is assigned there *)
+  sites : (Pos.t * version * Bytes.t * bool) Dynarray.t;
+      (* each site, the version whose code it is in, what is assigned there, and whether its frame keeps its variables in registers *)
   mutable live : Bytes.t;  (* with a debugger: what the last hook saw assigned, for the variables of a stop *)
   chains : (int * int * int) list Dynarray.t;  (* each site's inlined frames, as [Ir.func.chains] *)
   mutable inl : (int * int * int) list;  (* the inlined frames around the code being lowered, the innermost first *)
@@ -80,8 +81,10 @@ let goto st l =
   close st (Jump l);
   st.cur <- l
 
+(* With a debugger, the outermost frame of a unit writes its variables back on an error; an inlined or called one keeps
+   them in registers, and a stop shows none of its own. *)
 let site st pos =
-  Dynarray.add_last st.sites (pos, st.ver, st.live);
+  Dynarray.add_last st.sites (pos, st.ver, (if st.inl = [] && st.index = 0 then st.live else Bytes.empty), st.inl <> [] || st.index > 0);
   Dynarray.add_last st.chains st.inl;
   Dynarray.length st.sites - 1
 
@@ -293,9 +296,6 @@ and call_expr st e (call : call) =
        let vals = Array.map (expr st) a in
        let args = Array.map fst vals in
        let k = kind_of v.ret in
-       (* With a debugger, a stop shows the variables of every frame: only the interpreter's frames and a unit without
-          calls, whose one frame writes its variables back on an error, have them in their slots. *)
-       if st.w.hooks then raise No;
        note st v;
        if st.inl = [] && inlinable v then inline st e v vals
        else begin
@@ -649,12 +649,12 @@ let start ?(region = false) (w : world) unit index (ver : version) =
     fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None; mem = [| 0; 0 |] }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
-let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t) array) =
+let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool) array) =
   let s = w.sites in
   Array.iteri
-    (fun j (p, (ver : version), live) ->
+    (fun j (p, (ver : version), live, hidden) ->
        Dynarray.add_last s { sfile = ver.owner.file; spos = p; sfn = ver.owner.pname; sver = Some ver; soff = ver.frame;
-                             slive = live };
+                             slive = live; shidden = hidden };
        fn.sites.(j) <- Dynarray.length s - 1)
     pos
 

@@ -29,7 +29,8 @@ let vars ctx base (site : site) =
     let func = ver.owner.func in
     let known i = i < Bytes.length site.slive && Bytes.get site.slive i = '\001' in
     let visible i (s : slot) =
-      (not (String.contains s.vname '#')) && (known i || s.cell >= 0 || func.maybe_undef.(i))
+      (not (String.contains s.vname '#'))
+      && (s.cell >= 0 || ((not site.shidden) && (known i || func.maybe_undef.(i))))
     in
     List.filter_map
       (fun i ->
@@ -103,21 +104,20 @@ let armed w file line =
   let path, _ = Dynarray.get w.files file in
   List.exists (fun (f, l, _) -> l = line && same_file path f) w.debug.breaks
 
-let hook ctx s =
+let marked w s =
+  let site = Dynarray.get w.sites s in
+  armed w site.sfile (Pos.line site.spos)
+
+let hook ctx s first =
   let w = ctx.w in
   let d = w.debug in
   if not d.stopped then begin
     let site = Dynarray.get w.sites s in
     let line = Pos.line site.spos in
-    (* A line with several statements stops only once on its breakpoint, but at each pass of a loop: its first statement
-       comes again, with a site made before the last one. *)
-    let arrived = site.sfile <> d.last_file || line <> d.last_line || s <= d.last_site in
-    d.last_file <- site.sfile;
-    d.last_line <- line;
-    d.last_site <- s;
     let path, _ = Dynarray.get w.files site.sfile in
+    (* A line with several statements stops once on its breakpoint, at its first one. *)
     let on_break =
-      arrived && List.exists (fun (f, l, c) -> l = line && same_file path f && (c = "" || d.test ctx s c)) d.breaks
+      first && List.exists (fun (f, l, c) -> l = line && same_file path f && (c = "" || d.test ctx s c)) d.breaks
     in
     if on_break then stop ctx s "break"
     else
@@ -146,6 +146,7 @@ let set_break ctx (a : t array) =
   let file = Native.text_arg ctx "SetBreak" a.(0) and line = line_arg ctx "SetBreak" a.(1) in
   let cond = if Array.length a > 2 then Native.text_arg ctx "SetBreak" a.(2) else "" in
   d.breaks <- (file, line, cond) :: List.filter (fun (f, l, _) -> f <> file || l <> line) d.breaks;
+  d.stamp <- d.stamp + 1;
   (* Set from the prompt while the program runs, native code may hold that line. *)
   back_to_interpreter ctx.w;
   Missing
@@ -154,6 +155,7 @@ let clear_break ctx (a : t array) =
   let d = ctx.w.debug in
   let file = Native.text_arg ctx "ClearBreak" a.(0) and line = line_arg ctx "ClearBreak" a.(1) in
   d.breaks <- List.filter (fun (f, l, _) -> f <> file || l <> line) d.breaks;
+  d.stamp <- d.stamp + 1;
   Missing
 
 let break_keys = Trie.names [| "File"; "Line"; "Condition" |]

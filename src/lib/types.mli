@@ -149,6 +149,7 @@ and site = {
   sver : version option;
   soff : int;  (** at this site, the v stack is dead beyond b + soff *)
   slive : Bytes.t;  (** with --debugger: the variables surely assigned before this statement *)
+  shidden : bool;  (** native code keeps the variables of this frame in registers: a stop shows none of them *)
 }
 
 and modul = {
@@ -173,9 +174,8 @@ and debug = {
   mutable stopped : bool;  (** a stop doesn't trigger another one *)
   mutable breaks : (string * int * string) list;  (** file, line and condition, empty for none *)
   mutable on_stop : t;
-  mutable last_file : int;
-  mutable last_line : int;
-  mutable last_site : int;
+  mutable stamp : int;  (** the breakpoints changed this many times: a hook knows when to look at them again *)
+  mutable marked : world -> int -> bool;  (** is there a breakpoint on the line of this site: set by [Loader] *)
   mutable watches : string list;  (** the expressions a debugger shows at each stop, in order *)
   mutable test : ctx -> int -> string -> bool;  (** is a condition true at a site: set by [Eval] *)
   mutable scope : int list;  (** the modules of the code run at the prompt, the last first *)
@@ -206,7 +206,8 @@ and world = {
   debugger : string option;
   repl : bool;  (** cesia run --repl: a prompt runs beside the program *)
   debug : debug;
-  mutable on_hook : ctx -> int -> unit;  (** set by [Loader], so that [Compile] doesn't know [Debug] *)
+  mutable on_hook : ctx -> int -> bool -> unit;
+      (** set by [Loader], so that [Compile] doesn't know [Debug]: a site, and whether it is the first statement of its line *)
   mutable hook_count : int;  (** the compiled hooks *)
   sched : sched;
   mutable idle : bool -> bool;
