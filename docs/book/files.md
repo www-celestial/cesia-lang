@@ -29,8 +29,8 @@ chapter [Errors](errors.md) showed:
 ```cesia allow=read
 use std/result
 use std/text
-defn tasks(path)
-  body = sys.Read(path)?
+defn tasks(file)
+  body = sys.Read(file)?
   result.Ok(text.Lines(body))
 end
 tasks("todo.txt") -->
@@ -140,9 +140,9 @@ use std/result
 use std/text
 use std/value
 
-for path in sys.Args
-  n = value.Len(text.Lines(result.Unwrap(sys.Read(path))))
-  io.Print(path, n)
+for file in sys.Args
+  n = value.Len(text.Lines(result.Unwrap(sys.Read(file))))
+  io.Print(file, n)
 end
 ```
 
