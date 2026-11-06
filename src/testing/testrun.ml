@@ -389,12 +389,20 @@ let unit_paths path =
       | `Folder (dir, tests) -> if tests <> [] || List.exists (fun p -> has_tests p (read p)) (Package.files dir) then Some dir else None)
     (units path)
 
-let run w ~path ~cases ~only ~worker =
+let run w (c : Testing.config) =
+  let path = c.path and only = c.only and worker = c.worker in
+  Props.st.cases <- c.cases;
+  Props.st.update <- c.update;
+  Props.st.dir <- c.dir;
+  Props.st.timeout <- c.timeout;
+  Props.st.clock <- c.clock;
+  remove := c.remove;
   Loader.guarded w (fun ctx ->
       w.on_panic <- (fun _ _ -> ());
       Loader.init w;
+      (* std/test and std/gen have their natives here. *)
+      w.native_modules <- Props.natives @ w.native_modules;
       Props.st.active <- true;
-      Props.st.cases <- cases;
       Props.st.on_case <- (fun () -> record.floor <- record.rank);
       w.on_checkpoint <- past;
       only_test := only;

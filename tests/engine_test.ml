@@ -311,7 +311,7 @@ let () =
      defn isB()\n  x = f(2)?\n  if x > 1\n    return f(x)[1] == x\n  end\n  test.ForAll(y -> f(y) + it.K == y, list.Map(it + 1, [1]))\nend\n"
   in
   let fn = Parser.program ~file:"a.test.ce" ~nesting:100 (Lexer.tokens ~file:"a.test.ce" src) in
-  let notes = Verdict.rewrite fn in
+  let notes = Cesia_testing.Verdict.rewrite fn in
   let ok = ref true in
   let rec func (f : Ast.func) =
     let seen = Hashtbl.create 64 in

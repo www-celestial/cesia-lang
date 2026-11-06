@@ -1,0 +1,8 @@
+; cesia test: a library whose plugin cesia_testing.cmxs the binary loads for cesia test only (src/bin/main.ml), so that the
+; start-up of a program never pays for its code. The binary keeps the hooks (src/lib/testing.ml).
+
+(library
+ (name cesia_testing)
+ (flags
+  (:standard -open Cesia))
+ (libraries cesia))

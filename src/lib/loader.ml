@@ -423,6 +423,9 @@ and checked_use ctx report ~from ~pos ~names upath =
 
 and use_module ctx ~hooks ~from ~pos ~names upath =
   let w = ctx.w in
+  (* Their natives come with cesia test. *)
+  if (upath = "std/test" || upath = "std/gen") && find_native w upath = None then
+    use_error ~file:from ~pos ~kind:"name" Messages.test_only;
   match natives_only w upath names with
   | Some natives -> native_module w upath natives
   | None ->
@@ -650,7 +653,6 @@ let std_packages () =
         "cesia", Tooling.natives ~libraries @ Docs.natives @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
         "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
         "random", Rand.natives ]
-    @ Props.natives
   in
   List.fold_left
     (fun acc (name, natives) ->

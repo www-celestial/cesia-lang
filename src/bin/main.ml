@@ -196,10 +196,29 @@ let run args =
     exit (Loader.run_file w file rest)
   end
 
+(* A plugin beside the binary, found from the binary itself with its links followed: in the lib/ of a release (with its
+   licenses/Cesia.txt, as the C libraries), or in src/DIR/ of a build. [Error] says why it didn't load. *)
+let load_plugin dir plugin =
+  let found =
+    match Unix.realpath Sys.executable_name with
+    | exception Unix.Unix_error _ -> None
+    | exe ->
+      let bin = Filename.dirname exe in
+      let up = Filename.dirname bin in
+      let lib = Filename.concat up "lib" and build = Filename.concat (Filename.concat up dir) plugin in
+      if Filename.basename bin <> "bin" then None
+      else if Sys.file_exists (Filename.concat lib "licenses/Cesia.txt") then Some (Filename.concat lib plugin)
+      else if Sys.file_exists build then Some build
+      else None
+  in
+  match found with
+  | None -> Error ("no " ^ plugin ^ " beside the binary")
+  | Some path -> Result.map_error (fun m -> path ^ ": " ^ m) (Cesia_sys.Plugin.load path)
+
 (* file.ce:isName is one test of a file; the last : before a test name, so C:\ stays a path. *)
 let one_test arg =
   match String.rindex_opt arg ':' with
-  | Some i when Verdict.is_test (String.sub arg (i + 1) (String.length arg - i - 1)) ->
+  | Some i when Testing.is_test (String.sub arg (i + 1) (String.length arg - i - 1)) ->
     String.sub arg 0 i, Some (String.sub arg (i + 1) (String.length arg - i - 1))
   | _ -> arg, None
 
@@ -217,6 +236,7 @@ let tool ?(grants = "") name args =
   Loader.run_tool w name args
 
 let worker = ref false
+let update = ref false
 
 (* A test may read the project, write in its Temp folder, listen on this machine and connect to its own listeners; [test]
    of cesia.toml and --allow give more. Each grant stays whole: a path can hold a comma. *)
@@ -230,7 +250,7 @@ let test_grants root dir (config : Project.test) allow =
 let in_workers ~root ~seed ~cases ~no_spec ~allow ~timeout ~serial units =
   let flags =
     [ "--seed"; string_of_int seed; "--cases"; string_of_int cases ] @ (if no_spec then [ "--no-spec" ] else [])
-    @ (if Props.st.update then [ "--update" ] else [])
+    @ (if !update then [ "--update" ] else [])
     @ List.concat_map (fun a -> [ "--allow"; a ]) allow
   in
   let alone u =
@@ -251,7 +271,7 @@ let test args =
       options o seed cases allow paths rest
     | "--no-spec" :: rest -> options { o with o_no_spec = true } seed cases allow paths rest
     | "--update" :: rest ->
-      Props.st.update <- true;
+      update := true;
       options o seed cases allow paths rest
     | "--seed" :: v :: rest ->
       (match int_of_string_opt v with
@@ -274,18 +294,24 @@ let test args =
   (* The run's folder, made by the first Temp: random, so that no other program has it ready, and 0700. *)
   Random.self_init ();
   let dir = Filename.concat (Filename.get_temp_dir_name ()) (Printf.sprintf "cesia-test-%d-%06x" (Unix.getpid ()) (Random.bits () land 0xFFFFFF)) in
-  Props.st.dir <- dir;
-  Props.st.timeout <- config.timeout;
-  Props.st.clock <- Unix.gettimeofday;
-  Testrun.remove := Cesia_sys.Fs.remove_tree;
-  let units = if !worker || only <> None then [] else Testrun.unit_paths path in
+  (* The runner is a plugin beside the binary: programs never pay for its code. *)
+  let t =
+    match load_plugin "testing" "cesia_testing.cmxs", !Testing.runner with
+    | Ok (), Some t -> t
+    | Error m, _ -> bad_option (Messages.no_test_plugin m)
+    | Ok (), None -> bad_option (Messages.no_test_plugin "it gave no runner")
+  in
+  let units = if !worker || only <> None then [] else t.units path in
   if List.length units > 1 then
     exit (in_workers ~root ~seed ~cases ~no_spec:o.o_no_spec ~allow ~timeout:config.timeout ~serial:config.serial units);
   (* A worker shares the memory with the others. *)
   let o = if !worker then { o with o_limits = { o.o_limits with memory_words = o.o_limits.memory_words / Par.cores () } } else o in
   let w = Runtime.create_world { o with o_grants = test_grants root dir config allow } in
-  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ~tick:(poll_period, Testrun.tick) ~reset:Testrun.reset w in
-  exit (Testrun.run w ~path ~cases ~only ~worker:!worker)
+  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ~tick:(poll_period, t.tick) ~reset:t.reset w in
+  exit
+    (t.run w
+       { path; cases; only; worker = !worker; update = !update; dir; timeout = config.timeout; clock = Unix.gettimeofday;
+         remove = Cesia_sys.Fs.remove_tree })
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)
 let tune_gc () = Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 20 }
@@ -329,24 +355,6 @@ let create name =
   if code = 0 then print_endline (Messages.project_created name);
   exit code
 
-(* A plugin beside the binary, found from the binary itself with its links followed: in the lib/ of a release (with its
-   licenses/Cesia.txt, as the C libraries), or in src/DIR/ of a build. [Error] says why it didn't load. *)
-let load_plugin dir plugin =
-  let found =
-    match Unix.realpath Sys.executable_name with
-    | exception Unix.Unix_error _ -> None
-    | exe ->
-      let bin = Filename.dirname exe in
-      let up = Filename.dirname bin in
-      let lib = Filename.concat up "lib" and build = Filename.concat (Filename.concat up dir) plugin in
-      if Filename.basename bin <> "bin" then None
-      else if Sys.file_exists (Filename.concat lib "licenses/Cesia.txt") then Some (Filename.concat lib plugin)
-      else if Sys.file_exists build then Some build
-      else None
-  in
-  match found with
-  | None -> Error ("no " ^ plugin ^ " beside the binary")
-  | Some path -> Result.map_error (fun m -> path ^ ": " ^ m) (Cesia_sys.Plugin.load path)
 
 (* The JIT, loaded at the first unit that gets hot, never at start-up; missing or refused, programs run interpreted, and
    CESIA_JIT_SHOW says why. *)

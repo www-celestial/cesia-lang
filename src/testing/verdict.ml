@@ -59,8 +59,7 @@ let rec is_literal (e : expr) =
   | Neg a -> is_literal a
   | _ -> false
 
-(* isGrows: is, then a capital. *)
-let is_test name = String.length name > 2 && name.[0] = 'i' && name.[1] = 's' && name.[2] >= 'A' && name.[2] <= 'Z'
+let is_test = Testing.is_test
 
 let rewrite (fn : func) =
   let aliases = Array.to_list fn.body |> List.filter_map (fun (e : expr) -> match e.e with Use { upath; ualias } -> Some (ualias, upath) | _ -> None) in

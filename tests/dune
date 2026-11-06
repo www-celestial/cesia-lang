@@ -1,7 +1,7 @@
 (test
  (name engine_test)
  (modules engine_test)
- (libraries cesia))
+ (libraries cesia cesia_testing))
 
 (test
  (name toml_test)

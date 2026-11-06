@@ -203,6 +203,9 @@ val test_summary : int -> int -> int option -> string
 val snapshot_new : int -> string
 val snapshot_changed : int -> string
 
+(** cesia test without its plugin, and why. *)
+val no_test_plugin : string -> string
+
 (** The end of the first line of a failed test: [test_part i n] names the part of its verdict that failed, [test_question line]
     the ? that gave its Err. *)
 val test_part : int -> int -> string

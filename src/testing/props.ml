@@ -118,11 +118,15 @@ let read_snaps path =
    | src ->
      let rec go = function
        | head :: rest when String.starts_with ~prefix:"== " head ->
-         (match Scanf.sscanf_opt head "== %s %d (%d lines%s@)" (fun n k l e -> n, k, l, e) with
-          | Some (name, k, l, ending) when l >= 0 && List.length rest >= l ->
+         (match String.split_on_char ' ' head with
+          | "==" :: name :: k :: l :: more when String.starts_with ~prefix:"(" l && List.length more >= 1 ->
+            let ending = if List.mem "end)" more then "no line end" else "" in
+            (match int_of_string_opt k, int_of_string_opt (String.sub l 1 (String.length l - 1)) with
+             | Some k, Some l when l >= 0 && List.length rest >= l ->
             let body = List.filteri (fun i _ -> i < l) rest in
             Hashtbl.replace table (name, k) (String.concat "\n" body ^ if ending = "" then "\n" else "");
             go (List.filteri (fun i _ -> i >= l) rest)
+             | _ -> go rest)
           | _ -> go rest)
        | _ :: rest -> go rest
        | [] -> ()

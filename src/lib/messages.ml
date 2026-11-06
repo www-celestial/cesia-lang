@@ -348,6 +348,7 @@ let test_summary passed failed seed =
   Printf.sprintf "%d passed, %d failed%s" passed failed (match seed with Some s -> Printf.sprintf ", seed %d" s | None -> "")
 let snapshot_new k = Printf.sprintf "new snapshot %d: review it, then cesia test --update" k
 let snapshot_changed k = Printf.sprintf "snapshot %d changed: cesia test --update keeps the new text" k
+let no_test_plugin reason = "cesia test needs its plugin, cesia_testing.cmxs, beside the binary: " ^ reason
 let test_part i n = Printf.sprintf ", part %d of %d" i n
 let test_question line = Printf.sprintf " at the ? of line %d" line
 let test_last_bits a b = Printf.sprintf "the same float but for its last bits: math.Near(%s, %s)?" a b

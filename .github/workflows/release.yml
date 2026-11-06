@@ -93,9 +93,9 @@ jobs:
         run: |
           mkdir -p out/bin
           cp -R libraries/lib out/lib
-          # The plugins that the binary loads from lib/, the JIT at the first hot unit and SQLite's natives at their first
-          # call; without the C debug info, as the binary.
-          for plugin in jit/cesia_jit.cmxs sqlite/cesia_sqlite.cmxs; do
+          # The plugins that the binary loads from lib/, the JIT at the first hot unit, SQLite's natives at their first
+          # call and the runner of cesia test; without the C debug info, as the binary.
+          for plugin in jit/cesia_jit.cmxs sqlite/cesia_sqlite.cmxs testing/cesia_testing.cmxs; do
             cp "_build/default/src/$plugin" out/lib/
             file="out/lib/$(basename "$plugin")"
             if [ "${{ runner.os }}" = macOS ]; then
