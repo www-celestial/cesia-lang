@@ -1,6 +1,7 @@
 > cesia run open.ce
-open.ce:4:4: Permission "ffi" denied. Run again with --allow ffi.
+open.ce:4:4: Permission "ffi" denied for m.
   4 |   c.Open("m", version = 6)?
     |    ^
+  Run again with --allow ffi=m.
   in check (open.ce:4)
 exit 1

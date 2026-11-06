@@ -1,2 +1,2 @@
-Permission "write" denied. Run again with --allow write.
+Permission "write" denied for shop.db.
 exit 0

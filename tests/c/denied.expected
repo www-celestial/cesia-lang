@@ -1,4 +1,5 @@
-denied.ce:2:8: Permission "ffi" denied. Run again with --allow ffi.
+denied.ce:2:8: Permission "ffi" denied for m.
   2 | Print(c.Open("m", version = 6))
     |        ^
+  Run again with --allow ffi=m.
 exit 1

@@ -314,7 +314,15 @@ let not_installed folder = plain (Printf.sprintf "%s isn't installed: run cesia 
 let use_dep upath =
   plain (Printf.sprintf "%s names no package: a use of deps/ is deps/OWNER/REPO then the path of a folder from its root, as the [deps] of cesia.toml bring it." upath)
 let no_name alias name = plain (Printf.sprintf "Module \"%s\" has no name \"%s\"." alias name)
-let denied perm = plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)
+(* The narrowest permission that would do: the file, the port, the host, the command, the variable or the library asked for. *)
+let denied perm target =
+  match target with
+  | None | Some "" -> plain (Printf.sprintf "Permission \"%s\" denied. Run again with --allow %s." perm perm)
+  | Some t ->
+    let what = if perm = "net" && t.[0] = ':' then "port " ^ String.sub t 1 (String.length t - 1) else t in
+    let folder = if perm = "read" || perm = "write" then ", or a folder that holds it" else "" in
+    hinted (Printf.sprintf "Permission \"%s\" denied for %s." perm what)
+      (Printf.sprintf "Run again with --allow %s=%s%s." perm t folder)
 let rows_same_key a b key =
   plain (Printf.sprintf "The columns %s and %s both give the key %s: rename one with as." a b key)
 let rows_cells cells names = plain (Printf.sprintf "%d cells don't make whole rows of %d names." cells names)

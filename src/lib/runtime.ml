@@ -326,7 +326,7 @@ let granted w perm path =
        w.grants.perms
 
 let check_perm ctx perm path =
-  if not (granted ctx.w perm path) then fail ctx Permission (Messages.denied (perm_name perm))
+  if not (granted ctx.w perm path) then fail ctx Permission (Messages.denied (perm_name perm) path)
 
 let copy ctx v =
   match v with

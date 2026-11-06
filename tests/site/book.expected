@@ -69,7 +69,8 @@ second line
 <p>A block that stops can repeat a use of the page:</p>
 <pre><code class="cesia"><span class="k">use</span> std/sys
 sys.<span class="f">Write</span>(<span class="s">&quot;notes.txt&quot;</span>, <span class="s">&quot;no&quot;</span>)</code></pre>
-<pre class="output"><code>Permission &quot;write&quot; denied. Run again with --allow write.</code></pre>
+<pre class="output"><code>Permission &quot;write&quot; denied for notes.txt.
+Run again with --allow write=notes.txt, or a folder that holds it.</code></pre>
 <p>A server and its client, on this machine only:</p>
 <pre><code class="cesia"><span class="k">use</span> std/web
 <span class="k">use</span> std/http

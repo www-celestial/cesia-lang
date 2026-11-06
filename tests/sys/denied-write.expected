@@ -1,4 +1,5 @@
-denied-write.ce:2:10: Permission "write" denied. Run again with --allow write.
+denied-write.ce:2:10: Permission "write" denied for ./x.
   2 | Print(sys.Write("./x", "a"))
     |          ^
+  Run again with --allow write=./x, or a folder that holds it.
 exit 1

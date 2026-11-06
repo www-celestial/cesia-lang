@@ -1,4 +1,5 @@
-run-denied.ce:2:4: Permission "exec" denied. Run again with --allow exec.
+run-denied.ce:2:4: Permission "exec" denied for sh.
   2 | sys.Run("sh")
     |    ^
+  Run again with --allow exec=sh.
 exit 1

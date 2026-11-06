@@ -1,4 +1,5 @@
-denied.ce:2:4: Permission "net" denied. Run again with --allow net.
+denied.ce:2:4: Permission "net" denied for port 18086.
   2 | net.Listen(18086)
     |    ^
+  Run again with --allow net=:18086.
 exit 1
