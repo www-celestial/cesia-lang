@@ -29,3 +29,14 @@ isCsvSeparator() = value.Equal(csv.Parse("a;b\n", separator = ";"), [["a", "b"]]
 isCsvRecords() = csv.Records("name,age\nann,30\n")[1]["age"] == "30"
 isCsvWrite() = csv.Write([["a", "b,c"], [1, "d\"e"]]) == "a,\"b,c\"\n1,\"d\"\"e\"\n"
 isCsvRoundTrip() = value.Equal(csv.Parse(csv.Write([["a,b", "c\nd", "e\"f"]])), [["a,b", "c\nd", "e\"f"]])
+
+isOffsetToUnix() = date.ToUnix(date.Date(2026, 11, 1, 15, Offset = 10800)) == date.ToUnix(date.Date(2026, 11, 1, 12))
+isOffsetFormat() = date.Format(date.Date(2026, 1, 2, 3, 4, 5, Offset = -19800)) == "2026-01-02T03:04:05-05:30"
+isOffsetParse() = result.Unwrap(date.Parse("2026-01-02T03:04:05-05:30")).Offset == -19800
+isOffsetRoundTrip() = date.Format(result.Unwrap(date.Parse("2026-11-01T15:30:05+05:45"))) == "2026-11-01T15:30:05+05:45"
+isOffsetParseBad() = list.All(list.Map(result.IsErr, list.Map(date.Parse, ["2026-01-01T00:00:00+3:00", "2026-01-01T00:00:00+24:00", "2026-01-01T00:00:00+03:60", "2026-01-01T00:00:00+0300", "2026-01-01T00:00:00+"])))
+isUtc() = value.Equal(date.Utc(date.Date(2026, 11, 1, 1, Offset = 7200)), date.Date(2026, 10, 31, 23))
+isAddKeepsOffset() = date.Format(date.AddDays(1, date.Date(2026, 3, 28, 12, Offset = 3600))) == "2026-03-29T12:00:00+01:00"
+isLocalSameInstant() = list.All([date.ToUnix(date.Local(t)) == t for t in [0, 1793534400, 1774746000, -86400]])
+isLocalFraction() = date.ToUnix(date.Local(1793534400.75)) == 1793534400
+isParseSqlForm() = value.Equal(result.Unwrap(date.Parse("2026-11-01 12:30:05")), date.Date(2026, 11, 1, 12, 30, 5))

@@ -138,6 +138,13 @@ end
 
 isDateParsesBack() = date.Parse("2026-11-06 09:05:01") == result.Ok(date.Date(2026, 11, 6, 9, 5, 1))
 
+defn isLocalDateStoredInUtc()
+  (** A Date on another clock goes in as the same instant in UTC, so that the texts of a column compare as times. *)
+  db = sql.Open(url("utc"))?
+  d = sql.One("select ? as d", [date.Date(2026, 11, 6, 12, 5, 1, Offset = 10800)], db)?
+  d.D == "2026-11-06 09:05:01"
+end
+
 defn isErrorCodes()
   db = sql.Open(url("codes"))?
   sql.Script("create table p (id integer primary key); create table c (id integer primary key, p integer references p (id), n text not null, k integer check (k > 0)); insert into p values (1)", db)?
@@ -352,7 +359,7 @@ defn isUriAndDirectoryRefused()
 end
 
 defn main()
-  checks = [isValuesBothWays, isNamesArePublic, isWideRows, isSameKey, isTypedRows, isWrongTypeAtRow3, isOneOfNothing, isInjectionStaysText, isOneStatementPerCall, isParameterCount, isDangerRefused, isParams, isDateParsesBack, isErrorCodes, isTransactionCommits, isTransactionRollsBack, isPanicRollsBack, isSavepoint, isUseAfterTheEnd, isTransactionsNeverMix, isOwnDatabaseInsideTransaction, isEachStreams, isEachPanicGivesTheConnectionBack, isEachInsideTransaction, isTable, isScript, isPoolWaits, isBusyIsRetried, isCloseWithAConnectionOut, isSqliteOnlyThroughSql, isSchemaChangeRereadsNames, isScriptLeavesNoTransaction, isCloseDuringARead, isUriAndDirectoryRefused]
+  checks = [isValuesBothWays, isNamesArePublic, isWideRows, isSameKey, isTypedRows, isWrongTypeAtRow3, isOneOfNothing, isInjectionStaysText, isOneStatementPerCall, isParameterCount, isDangerRefused, isParams, isDateParsesBack, isLocalDateStoredInUtc, isErrorCodes, isTransactionCommits, isTransactionRollsBack, isPanicRollsBack, isSavepoint, isUseAfterTheEnd, isTransactionsNeverMix, isOwnDatabaseInsideTransaction, isEachStreams, isEachPanicGivesTheConnectionBack, isEachInsideTransaction, isTable, isScript, isPoolWaits, isBusyIsRetried, isCloseWithAConnectionOut, isSqliteOnlyThroughSql, isSchemaChangeRereadsNames, isScriptLeavesNoTransaction, isCloseDuringARead, isUriAndDirectoryRefused]
   bad = 0
   for check in checks
     r = fiber.Wait(fiber.Spawn(check))

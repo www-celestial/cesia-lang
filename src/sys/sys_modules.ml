@@ -34,6 +34,19 @@ let sqlite_natives =
       "Next", [| "n"; "cursor" |], 2, 2; "Script", [| "text"; "conn" |], 2, 2; "Close", [| "x" |], 1, 1;
       "Version", [||], 0, 0 ]
 
+(* The clock of this machine's time zone at an instant, for std/date: year, month, day, hour, minute, second. A time the
+   system can't place gives the clock of UTC. *)
+let local_clock ctx (a : t array) =
+  let seconds =
+    match a.(0) with
+    | Int i -> float_of_int i
+    | Float x -> x
+    | v -> Runtime.fail ctx Type (Messages.need_number "date.Local" (Value.describe v))
+  in
+  let t = try Unix.localtime seconds with Unix.Unix_error _ -> Unix.gmtime seconds in
+  let parts = [| t.tm_year + 1900; t.tm_mon + 1; t.tm_mday; t.tm_hour; t.tm_min; t.tm_sec |] in
+  Array { rows = 1; cols = 6; store = I parts; a_owned = true; a_tip = true }
+
 let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
@@ -61,5 +74,6 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
   in
   Linalg.install ();
   w.native_modules <-
-    ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives) :: w.native_modules;
+    ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
+    :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
   fun () -> Net.stopping net

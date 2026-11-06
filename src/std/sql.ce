@@ -16,7 +16,7 @@ use std/text
 use std/value
 
 batch = 1024
-dateFields = ["Year", "Month", "Day", "Hour", "Minute", "Second"]
+dateFields = ["Year", "Month", "Day", "Hour", "Minute", "Second", "Offset"]
 
 fault(code, message) = {Kind: "sql", Code: code, Message: message}
 failure(code, message) = result.Err(fault(code, message))
@@ -60,12 +60,12 @@ defn isSet(ch)
 end
 
 defn sqlValue(v)
-  (** A value as SQL takes it: a date.Date as its text, a list or a map as its JSON. *)
+  (** A value as SQL takes it: a date.Date as its text in UTC, a list or a map as its JSON. *)
   if value.IsMissing(v) or value.IsBool(v) or value.IsNumber(v) or value.IsText(v)
     return result.Ok(v)
   end
   if value.IsStruct(v) and value.Equal(dict.Keys(dict.Fields(v)), dateFields)
-    return result.Ok(text.Replace("T", " ", text.Replace("Z", "", date.Format(v))))
+    return result.Ok(text.Replace("T", " ", text.Replace("Z", "", date.Format(date.Utc(v)))))
   end
   if value.IsStruct(v)
     return failure("params", "A struct can't be a value of SQL: give its fields, as dict.Fields(u).Name.")

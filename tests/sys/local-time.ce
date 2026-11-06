@@ -1,0 +1,8 @@
+(* date.Local follows the time zone of the machine, summer time included. See local-time.cmd. *)
+use std/date
+use std/io
+
+for t in [1793534400, 1774745999, 1774746000, 1792803600]
+  io.Print(date.Format(date.Local(t)), date.Weekday(date.Local(t)))
+end
+io.Print(date.Local(0).Offset)

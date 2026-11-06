@@ -1,12 +1,14 @@
-(** Dates and times in UTC, from the seconds since 1970. The calendar is the proleptic Gregorian one. *)
+(** Dates and times, from the seconds since 1970: in UTC, or on the clock of this machine with date.Local. The calendar is
+    the proleptic Gregorian one. *)
 use std/list
 use std/math
 use std/result
 use std/text
 use std/value
 
-(** A date and a time in UTC. The clock fields start at 0, so Date(2026, 11, 1) is midnight. *)
-struct Date { Year, Month, Day, Hour = 0, Minute = 0, Second = 0 }
+(** A date and a time on a clock that is Offset seconds ahead of UTC: 0 for UTC, 10800 at +03:00. The clock fields start at 0,
+    so Date(2026, 11, 1) is midnight in UTC. *)
+struct Date { Year, Month, Day, Hour = 0, Minute = 0, Second = 0, Offset = 0 }
 
 (** Is this year a leap year?
 
@@ -52,31 +54,50 @@ defn civil(z)
   {Year: y, Month: m, Day: d}
 end
 
-defn FromUnix(seconds)
-  (** The Date of a number of seconds since 1970; a fraction is dropped.
-
-        FromUnix(86400) == Date(1970, 1, 2) --> true *)
-  whole = math.Floor(seconds)
+defn onClock(seconds, offset)
+  (** The Date of an instant on a clock offset seconds ahead of UTC. *)
+  whole = math.Floor(seconds) + offset
   days = math.Div(whole, 86400)
   rest = whole - days * 86400
   c = civil(days)
-  Date(c.Year, c.Month, c.Day, math.Div(rest, 3600), math.Div(math.Mod(rest, 3600), 60), math.Mod(rest, 60))
+  Date(c.Year, c.Month, c.Day, math.Div(rest, 3600), math.Div(math.Mod(rest, 3600), 60), math.Mod(rest, 60), Offset = offset)
 end
 
-(** The seconds since 1970 of a Date.
+(** The Date in UTC of a number of seconds since 1970; a fraction is dropped.
 
-      ToUnix(Date(1970, 1, 2)) --> 86400 *)
-ToUnix(d) = DaysFromCivil(d.Year, d.Month, d.Day) * 86400 + d.Hour * 3600 + d.Minute * 60 + d.Second
+      FromUnix(86400) == Date(1970, 1, 2) --> true *)
+FromUnix(seconds) = onClock(seconds, 0)
+
+(** The seconds since 1970 of a Date, whatever its clock.
+
+      ToUnix(Date(1970, 1, 2)) --> 86400
+      ToUnix(Date(1970, 1, 2, 3, Offset = 10800)) --> 86400 *)
+ToUnix(d) = DaysFromCivil(d.Year, d.Month, d.Day) * 86400 + d.Hour * 3600 + d.Minute * 60 + d.Second - d.Offset
+
+defn Local(seconds)
+  (** The Date of an instant on the clock of this machine, with the Offset of its time zone at that instant, summer time
+      included: date.Local(sys.Now()) is now, here. The TZ environment variable of the system sets the zone, as TZ=Asia/Tokyo.
+
+        ToUnix(Local(1793534400)) --> 1793534400 *)
+  c = localClock(seconds)
+  here = Date(c[1], c[2], c[3], c[4], c[5], c[6])
+  onClock(seconds, ToUnix(here) - math.Floor(seconds))
+end
+
+(** The same instant on the clock of UTC.
+
+      Utc(Date(2026, 11, 1, 3, Offset = 10800)) == Date(2026, 11, 1) --> true *)
+Utc(d) = FromUnix(ToUnix(d))
 
 (** 1 is Monday and 7 is Sunday.
 
       Weekday(Date(1970, 1, 1)) --> 4 *)
 Weekday(d) = math.Mod(DaysFromCivil(d.Year, d.Month, d.Day) + 3, 7) + 1
 
-(** The Date n seconds later, or earlier if n is negative.
+(** The Date n seconds later, or earlier if n is negative, on the same clock: its Offset stays, summer time or not.
 
       AddSeconds(60, Date(1970, 1, 1)).Minute --> 1 *)
-AddSeconds(n, d) = FromUnix(ToUnix(d) + n)
+AddSeconds(n, d) = onClock(ToUnix(d) + n, d.Offset)
 (** The Date n days later, or earlier if n is negative.
 
       AddDays(1, Date(2026, 11, 1)).Day --> 2 *)
@@ -91,25 +112,61 @@ two(n) = text.PadLeft(2, "0", value.Text(n))
 
       FormatDate(Date(2026, 11, 1)) --> "2026-11-01" *)
 FormatDate(d) = "$(text.PadLeft(4, "0", value.Text(d.Year)))-$(two(d.Month))-$(two(d.Day))"
-(** A Date as 2026-11-01T12:30:05Z, the form that parse reads.
+defn zone(offset)
+  (** Z for UTC, else the offset as +03:00 or -05:30. *)
+  if offset == 0
+    return "Z"
+  end
+  minutes = math.Div(math.Abs(offset), 60)
+  "$(if offset < 0 "-" else "+" end)$(two(math.Div(minutes, 60))):$(two(math.Mod(minutes, 60)))"
+end
 
-      Format(Date(2026, 11, 1, 12, 30, 5)) --> "2026-11-01T12:30:05Z" *)
-Format(d) = "$(FormatDate(d))T$(two(d.Hour)):$(two(d.Minute)):$(two(d.Second))Z"
+(** A Date as 2026-11-01T12:30:05Z in UTC, or 2026-11-01T15:30:05+03:00 on another clock: the form that Parse reads.
+
+      Format(Date(2026, 11, 1, 12, 30, 5)) --> "2026-11-01T12:30:05Z"
+      Format(Date(2026, 11, 1, 15, 30, 5, Offset = 10800)) --> "2026-11-01T15:30:05+03:00" *)
+Format(d) = "$(FormatDate(d))T$(two(d.Hour)):$(two(d.Minute)):$(two(d.Second))$(zone(d.Offset))"
 
 bad(s) = result.Err({Kind: "date", Message: "Not a date: $s."})
 
 whole(s) = if list.All([c >= "0" and c <= "9" for c in text.Chars(s)]) and s != "" text.Number(s) else missing end
 
-defn Parse(s)
-  (** 2026-11-01, or 2026-11-01T12:30:05Z, or 2026-11-01 12:30:05 as SQL writes it.
+defn offsetOf(z)
+  (** The seconds of an offset written +03:00 or -05:30, or missing. *)
+  if value.Len(z) != 6 or text.Slice(4, 4, z) != ":"
+    return missing
+  end
+  h = whole(text.Slice(2, 3, z))
+  m = whole(text.Slice(5, 6, z))
+  if value.IsMissing(h) or value.IsMissing(m) or h > 23 or m > 59
+    return missing
+  end
+  seconds = h * 3600 + m * 60
+  if text.StartsWith("-", z) 0 - seconds else seconds end
+end
 
-        Parse("2026-11-01") == result.Ok(Date(2026, 11, 1)) --> true *)
-  parts = text.Split("T", text.Replace(" ", "T", text.Replace("Z", "", s)))
+defn Parse(s)
+  (** 2026-11-01, or 2026-11-01T12:30:05 then Z, an offset as +03:00, or nothing for UTC, or 2026-11-01 12:30:05 as SQL
+      writes it.
+
+        Parse("2026-11-01") == result.Ok(Date(2026, 11, 1)) --> true
+        Parse("2026-11-01T15:30:00+03:00")?.Offset --> 10800 *)
+  parts = text.Split("T", text.Replace(" ", "T", if text.EndsWith("Z", s) text.Slice(1, value.Len(s) - 1, s) else s end))
   day = text.Split("-", parts[1])
   if value.Len(parts) > 2 or value.Len(day) != 3
     return bad(s)
   end
-  clock = if value.Len(parts) == 2 text.Split(":", parts[2]) else ["0", "0", "0"] end
+  offset = 0
+  clockText = if value.Len(parts) == 2 parts[2] else "0:0:0" end
+  sign = list.FindFirst(k -> text.Slice(k, k, clockText) == "+" or text.Slice(k, k, clockText) == "-", 1..value.Len(clockText))
+  if not value.IsMissing(sign)
+    offset = offsetOf(text.Slice(sign, value.Len(clockText), clockText))
+    if value.IsMissing(offset)
+      return bad(s)
+    end
+    clockText = text.Slice(1, sign - 1, clockText)
+  end
+  clock = text.Split(":", clockText)
   if value.Len(clock) != 3
     return bad(s)
   end
@@ -121,5 +178,5 @@ defn Parse(s)
   if not ok or n[3] > DaysInMonth(n[1], n[2])
     return bad(s)
   end
-  result.Ok(Date(n[1], n[2], n[3], n[4], n[5], n[6]))
+  result.Ok(Date(n[1], n[2], n[3], n[4], n[5], n[6], Offset = offset))
 end
