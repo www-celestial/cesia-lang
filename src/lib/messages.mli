@@ -9,6 +9,7 @@ val text_not_closed : t
 val text_doubled_quote : t
 val comment_not_closed : t
 val comment_dashes : t
+val arrow_outside : t
 val number_too_big : string -> t
 val expected : string -> string -> t
 val too_nested : t

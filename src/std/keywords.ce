@@ -130,9 +130,11 @@ use std/value
       not (1 > 2) --> true *)
 
 (** then
-    Passes the value on its left to the expression on its right, which reads it as it: a pipeline read from left to right.
+    Passes the value on its left to the call on its right: a pipeline, read from left to right. The value takes the place
+    of an argument that is it alone, or else comes last, where the functions of std/ take their collection.
 
-      [1, 2, 3] then list.Map(it * it, it) then list.Sum(it) --> 14
+      [1, 2, 3] then list.Map(it * it) then list.Sum() --> 14
+      2 then list.Take(it, [5, 6, 7]) --> [5, 6]
       5 then it + 1 --> 6 *)
 
 (** use

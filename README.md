@@ -6,7 +6,7 @@ drives other programs. It starts at once, it is safe by default, and when someth
 ```cesia
 use std/web
 
-app = web.App() then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"), it)
+app = web.App() then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
 web.Serve(app, port = 8080)
 ```
 

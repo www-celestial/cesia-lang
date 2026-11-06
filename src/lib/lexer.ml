@@ -220,7 +220,8 @@ let rec scan st ~in_code : token array =
         new_line st;
         push NL pos;
         sp := true
-      | '-' when peek_at st 1 = '-' -> error st (pos_at st st.i) Messages.comment_dashes
+      | '-' when peek_at st 1 = '-' ->
+        error st (pos_at st st.i) (if peek_at st 2 = '>' then Messages.arrow_outside else Messages.comment_dashes)
       | '(' when peek_at st 1 = '*' ->
         block_comment st;
         sp := true

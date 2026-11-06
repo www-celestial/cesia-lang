@@ -10,6 +10,9 @@ let text_not_closed = plain "This text is not closed: a closing \" is missing."
 let text_doubled_quote = hinted "Two quotes in a row end a text and start another." "A quote inside a text is written \\\": \"say \\\"hi\\\"\"."
 let comment_not_closed = plain "This comment is not closed: a closing *) is missing."
 let comment_dashes = plain "Comments are written (* ... *)."
+let arrow_outside =
+  hinted "--> shows a value only in an example: in a documentation comment (** *), or in a book."
+    "In a program, io.Print(x) prints it."
 let number_too_big s = hinted (Printf.sprintf "The number %s doesn't fit in 63 bits." s) (Printf.sprintf "Write it as a float: %s.0." s)
 let expected what got = plain (Printf.sprintf "Expected %s, found %s." what got)
 let too_nested = plain "This code is nested too deeply."

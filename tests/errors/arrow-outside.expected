@@ -1,0 +1,5 @@
+arrow-outside.ce:3:3: --> shows a value only in an example: in a documentation comment (** *), or in a book.
+  3 | x --> 2
+    |   ^
+  In a program, io.Print(x) prints it.
+exit 1

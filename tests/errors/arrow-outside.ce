@@ -1,0 +1,3 @@
+use std/io
+x = 2
+x --> 2
