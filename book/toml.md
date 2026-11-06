@@ -1,0 +1,81 @@
+# cesia.toml
+
+Every table and every key of `cesia.toml`, the file at the root of a project. A key that Cesia doesn't know stops `cesia do`
+with its line, so a typo can't go unseen.
+
+## `[project]`
+
+```toml
+[project]
+name = "shop"
+cesia = "0.2"
+src = ["src"]
+native = ["SDL3", "SDL3_ttf"]
+```
+
+| Key | What it says |
+|---|---|
+| `name` | the name of the project |
+| `cesia` | the oldest Cesia it needs: an older one stops at once, and says to run `cesia upgrade` |
+| `src` | the folders of its code, `["src"]` when it is left out: what another project takes without `take`, and what `cesia doc` and `--site` read |
+| `native` | the C libraries it loads: each task that runs a file gets `ffi=` for each of them |
+
+## `[tasks.NAME]`
+
+A task is a program to run with its permissions, a command, or a group of other tasks. `cesia do NAME` runs it.
+
+```toml
+[tasks.serve]
+file = "src/server.ce"
+allow = ["read=data", "write=data", "net=:8080"]
+limit = "memory=1G"
+watch = true
+needs = ["test"]
+
+[tasks.test]
+run = ["tests/run.sh"]
+
+[tasks.all]
+needs = ["test", "serve"]
+```
+
+| Key | What it says |
+|---|---|
+| `file` | the Cesia file to run, or `"."` for all the files of the root as one program |
+| `allow` | its permissions, as `--allow` takes them, one per text |
+| `limit` | its limits, as `--limit` takes them, in one text |
+| `watch` | `true` to reload at each save, as `--watch` |
+| `run` | a command and its arguments, run as they are, without a shell; a task has `file` or `run`, not both |
+| `needs` | the tasks to run first, in order; a task with only `needs` is a group |
+
+## `[deps.LABEL]`
+
+A project whose packages this one takes. `cesia pkg add` writes the table.
+
+```toml
+[deps.cemacs]
+from = "github.com/www-celestial/cemacs"
+version = "v0.3.0"
+take = ["src/folders"]
+```
+
+| Key | What it says |
+|---|---|
+| `from` | the repository, without `https://` |
+| `version` | a tag of it |
+| `take` | the packages taken, as paths from its root; without it, every package of its `src` |
+
+## `[site]`
+
+What `cesia doc --site` writes on each page.
+
+```toml
+[site]
+title = "Shop"
+source = "https://github.com/someone/shop/blob/main/"
+```
+
+| Key | What it says |
+|---|---|
+| `title` | the name at the top of each page |
+| `source` | the start of a link to the code: a name's page links to its file and line |

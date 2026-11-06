@@ -48,4 +48,10 @@ language.
 21. [Cemacs](cemacs.md): the editor written in Cesia, its keys, its band of hints, and how to change it.
 22. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
 
+Appendices, to look things up:
+
+- [Commands](commands.md): every command of `cesia` and every option.
+- [cesia.toml](toml.md): every table and key of a project's file.
+- [Environment variables](env.md): those that Cesia reads.
+
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.
