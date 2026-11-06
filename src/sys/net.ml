@@ -117,12 +117,26 @@ let address n ctx host = try Unix.inet_addr_of_string host with Failure _ -> loo
 
 let family addr = Unix.domain_of_sockaddr (Unix.ADDR_INET (addr, 0))
 
+(* Written as an address of this machine only, before any lookup. *)
+let is_loopback host = host = "localhost" || host = "::1" || String.starts_with ~prefix:"127." host
+
+(* net=:PORT listens on this machine only. Other machines reach any other address, so it needs its own grant: net=0.0.0.0:8080,
+   net=[::]:8080, or the address of one interface. *)
+let check_listen ctx host port =
+  let target = Printf.sprintf "%s:%d" (if String.contains host ':' then "[" ^ host ^ "]" else host) port in
+  let here = Printf.sprintf ":%d" port in
+  if is_loopback host then begin
+    if not (Runtime.granted ctx.w Net (Some here) || Runtime.granted ctx.w Net (Some target)) then
+      Runtime.check_perm ctx Net (Some here)
+  end
+  else if not (Runtime.granted ctx.w Net (Some target)) then Runtime.fail ctx Permission (Messages.listen_denied target port);
+  target
+
 let listen n ctx (a : Types.t array) =
   let port = port_arg ctx a.(0) in
   let host = if Array.length a > 1 && a.(1) != Undef then Native.text_arg ctx "Listen" a.(1) else "127.0.0.1" in
-  Runtime.check_perm ctx Net (Some (Printf.sprintf ":%d" port));
+  let target = check_listen ctx host port in
   install_handlers n;
-  let target = Printf.sprintf "%s:%d" host port in
   match
     let addr = address n ctx host in
     let fd = Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 in

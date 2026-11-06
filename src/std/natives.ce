@@ -51,8 +51,8 @@ use std/value
     The breakpoints and the input of a debugger given to cesia run --debugger: needs the debug permission. *)
 
 (** net
-    TCP: listen, accept, connect, read and write, each waiting in its fiber only. Needs --allow net, or net=:PORT. std/http
-    builds on it. *)
+    TCP: listen, accept, connect, read and write, each waiting in its fiber only. Needs --allow net, or net=:PORT to listen on
+    this machine only. std/http builds on it. *)
 
 (** c
     C libraries, called from Cesia: open a library, bind its functions by their types, and pass memory, structures and
@@ -830,7 +830,8 @@ use std/value
     Asks a process to end, with the TERM signal. *)
 
 (** net.Listen(port, host = "127.0.0.1")
-    Opens a listening socket: an Ok of the socket, or an Err. Needs the net permission. *)
+    Opens a listening socket: an Ok of the socket, or an Err. Needs the net permission: net=:PORT on this machine only (127.0.0.1,
+    ::1, localhost), net=0.0.0.0:PORT or the address itself for an address that other machines reach. *)
 
 (** net.Accept(listener)
     Waits for a connection and gives an Ok of its socket. An Err of the kind "stopped" means that the program was asked to stop. *)

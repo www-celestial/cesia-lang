@@ -31,13 +31,27 @@ cesia run --allow net=:8080,env=HOME server.ce
 |---|---|
 | `read`, `read=./data` | reading files, all of them or those under a folder |
 | `write`, `write=./out` | writing, renaming and removing files, all of them or under a folder |
-| `net`, `net=:8080` | the network, or listening on one port |
+| `net`, `net=:8080` | the network, or listening on one port of this machine only (127.0.0.1, ::1) |
+| `net=0.0.0.0:8080`, `net=[::]:8080` | listening on one port for other machines too, on every address or on one |
 | `net=example.com`, `net=example.com:443` | connecting to one host, on any port or on one |
 | `exec`, `exec=git` | running other programs, all of them or one |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
 | `ffi=m` | loading a C library, by its name |
 | `debug` | the breakpoints of [std/debug]; `cesia run --debugger` gives it by itself, with no `--allow` |
 | `all` | everything |
+
+### This machine or the network
+
+A server listens on 127.0.0.1 by default, which only programs of the same machine reach, and `net=:8080` allows that alone.
+To take connections from other machines, as from a phone on the same wifi, the server listens on `0.0.0.0` (every address
+of the machine), and the permission names that address too:
+
+```bash
+cesia run --allow net=0.0.0.0:8080 server.ce
+```
+
+where `server.ce` calls `web.Serve(app, host = "0.0.0.0")`. Under `net=:8080`, that listen is denied, and the message says
+which permission to write.
 
 ### As narrow as you can
 

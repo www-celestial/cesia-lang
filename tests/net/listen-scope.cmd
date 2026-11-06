@@ -1,0 +1,10 @@
+cesia run $no_spec --allow net=:18301 listen-scope.ce 127.0.0.1
+cesia run $no_spec --allow net=:18301 listen-scope.ce localhost
+cesia run $no_spec --allow net=:18301 listen-scope.ce ::1
+cesia run $no_spec --allow net=:18301 listen-scope.ce 0.0.0.0
+cesia run $no_spec --allow net=:18301 listen-scope.ce ::
+cesia run $no_spec --allow net=0.0.0.0:18301 listen-scope.ce 0.0.0.0
+cesia run $no_spec --allow net=[::]:18301 listen-scope.ce ::
+cesia run $no_spec --allow net=127.0.0.1:18301 listen-scope.ce 127.0.0.1
+cesia run $no_spec --allow net=127.0.0.1:18301 listen-scope.ce 0.0.0.0
+cesia run $no_spec --allow net listen-scope.ce 0.0.0.0

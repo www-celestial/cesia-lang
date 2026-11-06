@@ -1,0 +1,8 @@
+(* net=:PORT listens on this machine only; another address needs its own grant. *)
+use std/net
+use std/io
+use std/sys
+use std/result
+host = sys.Args[1]
+l = net.Listen(18301, host = host)
+io.Print(l then result.MapOk(_ -> "listening on $host", it))

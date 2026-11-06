@@ -337,6 +337,9 @@ let denied perm target =
     let folder = if perm = "read" || perm = "write" then ", or a folder that holds it" else "" in
     hinted (Printf.sprintf "Permission \"%s\" denied for %s." perm what)
       (Printf.sprintf "Run again with --allow %s=%s%s." perm t folder)
+let listen_denied target port =
+  hinted (Printf.sprintf "Permission \"net\" denied for listening on %s, which other machines can reach." target)
+    (Printf.sprintf "Run again with --allow net=%s; net=:%d listens on this machine only." target port)
 let rows_same_key a b key =
   plain (Printf.sprintf "The columns %s and %s both give the key %s: rename one with as." a b key)
 let rows_cells cells names = plain (Printf.sprintf "%d cells don't make whole rows of %d names." cells names)

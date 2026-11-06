@@ -1,0 +1,20 @@
+Ok(Value = "listening on 127.0.0.1")
+Ok(Value = "listening on localhost")
+Ok(Value = "listening on ::1")
+listen-scope.ce:7:8: Permission "net" denied for listening on 0.0.0.0:18301, which other machines can reach.
+  7 | l = net.Listen(18301, host = host)
+    |        ^
+  Run again with --allow net=0.0.0.0:18301; net=:18301 listens on this machine only.
+listen-scope.ce:7:8: Permission "net" denied for listening on [::]:18301, which other machines can reach.
+  7 | l = net.Listen(18301, host = host)
+    |        ^
+  Run again with --allow net=[::]:18301; net=:18301 listens on this machine only.
+Ok(Value = "listening on 0.0.0.0")
+Ok(Value = "listening on ::")
+Ok(Value = "listening on 127.0.0.1")
+listen-scope.ce:7:8: Permission "net" denied for listening on 0.0.0.0:18301, which other machines can reach.
+  7 | l = net.Listen(18301, host = host)
+    |        ^
+  Run again with --allow net=0.0.0.0:18301; net=:18301 listens on this machine only.
+Ok(Value = "listening on 0.0.0.0")
+exit 0

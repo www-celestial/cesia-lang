@@ -181,6 +181,9 @@ val no_name : string -> string -> t
 val exit_code : string -> t
 val denied : string -> string option -> t
 
+(** A listen on an address that other machines reach, under a grant for this machine only. *)
+val listen_denied : string -> int -> t
+
 val reload_use : t
 val use_unreadable : string -> t
 val range_too_long : t
