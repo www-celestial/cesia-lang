@@ -1,7 +1,7 @@
 (* An overflow after the loop got hot: the interpreter's message and trace. *)
 defn grow(n)
   x = 1
-  for i in 1:n
+  for i in 1..n
     x = x + i * 10000000
   end
   x

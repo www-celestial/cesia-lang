@@ -29,14 +29,14 @@ defn f0(n, m, x, a, b)
     return x
   end
   t = (n - t)
-  for l0 in 1:5
+  for l0 in 1..5
     l0 = l0 + 2
     b[2 * l0 - 1] = (if m > (-(m)) 0.82 else a[l0 + t] end)
     t = (-((if t >= l0 (-(t)) else (if l0 == m m else m end) end)))
-    for l1 in 2:2
+    for l1 in 2..2
       n = ((m - l1) + t)
       if Len(a) == (if y <= x t else (if 0 >= y n else m end) end)
-        for l2 in 1:Mod(0, 8) + 1
+        for l2 in 1..Mod(0, 8) + 1
           x = (if (l1 >= l1 or t > y) (-(Mod(t, 2))) else Mod(Div(l0, (Mod(l2, 4) + 1)), 7) end) * 1.0
           m = -7
           y = ((y / 2.5) / Sqrt((-(1e-300))))
@@ -77,14 +77,14 @@ end
 defn batchf00(n0, m0, x0)
   a = Zeros(28)
   b = Zeros(33)
-  for i in 1:Len(a)
+  for i in 1..Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1:Len(b)
+  for i in 1..Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0.0
-  for j in 1:1100
+  for j in 1..1100
     acc = acc + f0(n0 + Mod(j, 3), m0, x0, a, b)
   end
   Print(a[1], b[Len(b)], a[Len(a)])
@@ -93,14 +93,14 @@ end
 defn batchf01(n0, m0, x0)
   a = Zeros(30)
   b = Zeros(37)
-  for i in 1:Len(a)
+  for i in 1..Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1:Len(b)
+  for i in 1..Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0.0
-  for j in 1:1100
+  for j in 1..1100
     acc = acc + f0(n0 + Mod(j, 3), m0, x0, a, b)
   end
   Print(a[1], b[Len(b)], a[Len(a)])
@@ -109,14 +109,14 @@ end
 defn batchf02(n0, m0, x0)
   a = Zeros(33)
   b = Zeros(28)
-  for i in 1:Len(a)
+  for i in 1..Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1:Len(b)
+  for i in 1..Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0.0
-  for j in 1:1100
+  for j in 1..1100
     acc = acc + f0(n0 + Mod(j, 3), m0, x0, a, b)
   end
   Print(a[1], b[Len(b)], a[Len(a)])
@@ -125,14 +125,14 @@ end
 defn batchf10(n0, m0, x0)
   a = Zeros(32)
   b = Zeros(29)
-  for i in 1:Len(a)
+  for i in 1..Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1:Len(b)
+  for i in 1..Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0
-  for j in 1:1100
+  for j in 1..1100
     acc = Mod(acc * 31 + f1(n0 + Mod(j, 3), m0, x0, a, b), 1000000007)
   end
   Print(a[1], b[Len(b)], a[Len(a)])
@@ -141,14 +141,14 @@ end
 defn batchf11(n0, m0, x0)
   a = Zeros(23)
   b = Zeros(36)
-  for i in 1:Len(a)
+  for i in 1..Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1:Len(b)
+  for i in 1..Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0
-  for j in 1:3
+  for j in 1..3
     acc = Mod(acc * 31 + f1(n0 + Mod(j, 3), m0, x0, a, b), 1000000007)
   end
   Print(a[1], b[Len(b)], a[Len(a)])
@@ -157,14 +157,14 @@ end
 defn batchf12(n0, m0, x0)
   a = Zeros(29)
   b = Zeros(31)
-  for i in 1:Len(a)
+  for i in 1..Len(a)
     a[i] = i * 0.5 - 1.0
   end
-  for i in 1:Len(b)
+  for i in 1..Len(b)
     b[i] = 3.0 - i * 0.25
   end
   acc = 0
-  for j in 1:3
+  for j in 1..3
     acc = Mod(acc * 31 + f1(n0 + Mod(j, 3), m0, x0, a, b), 1000000007)
   end
   Print(a[1], b[Len(b)], a[Len(a)])

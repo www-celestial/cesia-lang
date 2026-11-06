@@ -46,7 +46,7 @@ let tok_text = function
   | FALSE -> "false" | MISSING -> "missing" | PLUS -> "+" | MINUS -> "-" | STAR -> "*" | SLASH -> "/"
   | CARET -> "^" | ASSIGN -> "=" | EQEQ -> "==" | NE -> "!=" | LT -> "<" | LE -> "<=" | GT -> ">" | GE -> ">="
   | PLUSEQ -> "+=" | MINUSEQ -> "-=" | STAREQ -> "*=" | SLASHEQ -> "/=" | ARROW -> "->" | COLON -> ":"
-  | SEMI -> ";" | COMMA -> "," | DOT -> "." | QUESTION -> "?" | LP -> "(" | RP -> ")" | LB -> "[" | RB -> "]" | LC -> "{" | RC -> "}"
+  | SEMI -> ";" | COMMA -> "," | DOT -> "." | DOTDOT -> ".." | QUESTION -> "?" | LP -> "(" | RP -> ")" | LB -> "[" | RB -> "]" | LC -> "{" | RC -> "}"
 
 let unexpected p what =
   let t = cur p in
@@ -391,14 +391,17 @@ and compare p =
     skip_nl p;
     node p pos (Bin (op, l, range p))
 
+(* a..b, both included. A key of a dictionary is read apart, so a : here is a range written as before 0.3. *)
 and range p =
   let l = additive p in
-  if (cur p).t = COLON then begin
+  match (cur p).t with
+  | DOTDOT ->
     let pos = (cur p).pos in
     advance p;
     skip_nl p;
     node p pos (Range (l, additive p))
-  end else l
+  | COLON -> error p (cur p).pos Messages.colon_range
+  | _ -> l
 
 (* Inside [ ], [a -b] makes two values: space before the sign, none after. *)
 and starts_value p =
@@ -977,7 +980,7 @@ and stmt p =
           p.i <- start;
           acc ^ n
         end
-      | DOT -> error p start Messages.use_relative
+      | DOT | DOTDOT -> error p start Messages.use_relative
       | TEXT [ Plain s ] -> error p start (Messages.use_quoted s)
       | _ -> unexpected p "a package name"
     in

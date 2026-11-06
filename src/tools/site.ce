@@ -59,7 +59,7 @@ defn slug(text)
   Join("-", Filter(w -> w != "", words))
 end
 
-wordFile(w) = if w == "?" "question" else w end   (** The file of a keyword: ? would start the query of a URL. *)
+wordFile(w) = if w == "?" "question" else if w == ".." "range" else w end   (** The file of a keyword: ? would start the query of a URL. *)
 
 defn shortOf(name, m)
   (** The name inside its module: Solve for num.Solve, Date.Parse for date.Date.Parse. *)
@@ -362,7 +362,7 @@ defn program(runs, chosen, mark)
     b = runs[k]
     at[b.Line] = if b.Words.Norun "defn bookNotRun$k()" else "bookAt($k)" end
     lines = Lines(b.Text)
-    for i in 1:Len(lines)
+    for i in 1..Len(lines)
       t = lines[i]
       a = arrow(t)
       if StartsWith("use ", Trim(t))
@@ -381,7 +381,7 @@ defn program(runs, chosen, mark)
       at[last] = "end"
     end
   end
-  {Text: Str(Join("\n", Concat(uses, [GetOr(n, "", at) for n in 1:last])), "\n", helpers(mark)), Uses: useLines}
+  {Text: Str(Join("\n", Concat(uses, [GetOr(n, "", at) for n in 1..last])), "\n", helpers(mark)), Uses: useLines}
 end
 
 defn heard(out, mark)
@@ -491,7 +491,7 @@ defn pageRun(job)
   (** The runs of a page: the blocks that don't fail as one program, then each block that fails after the blocks before it.
       Ok({Output: [text of each block], Values: [[line, text]]}), or an Err of the mistakes. *)
   runs = job.Runs
-  main = [k for k in 1:Len(runs) if not runs[k].Words.Fails]
+  main = [k for k in 1..Len(runs) if not runs[k].Words.Fails]
   r = ran(job, main, job.Name)?
   why = stopped(r, job.Source)
   if IsSome(why)
@@ -499,8 +499,8 @@ defn pageRun(job)
   end
   got = heard(r.Out, job.Mark)
   mistakes = ["$(job.Source):$(w.Line): $(Trim(job.Lines[w.Line])), got $(w.Got)" for w in got.Wrong]
-  output = [GetOr(k, "", got.Output) for k in 1:Len(runs)]
-  for k in 1:Len(runs)
+  output = [GetOr(k, "", got.Output) for k in 1..Len(runs)]
+  for k in 1..Len(runs)
     if runs[k].Words.Fails
       f = ran(job, Append(k, [j for j in main if j < k]), "$(job.Name)-$(runs[k].Line)")?
       if f.Code == 0
@@ -532,7 +532,7 @@ defn allRun(jobs)
     Send(j, queue)
   end
   done = Channel()
-  fibers = [Spawn(() -> worker(queue, done)) for i in 1:Min(columns.Cores(), Len(jobs))]
+  fibers = [Spawn(() -> worker(queue, done)) for i in 1..Min(columns.Cores(), Len(jobs))]
   for f in fibers
     Wait(f)
   end
@@ -656,7 +656,7 @@ defn bookOf(root, site)
       end
     end
     for r in runs
-      for i in 1:Len(Lines(r.Text))
+      for i in 1..Len(Lines(r.Text))
         a = arrow(Lines(r.Text)[i])
         if IsSome(a) and a.Want == "error"
           Send("book/$f:$(r.Line + i): --> error is for cesia test; here a block that stops is marked fails.", site.Mistakes)
@@ -720,7 +720,7 @@ defn shownCode(run, values)
   (** The code of a block as the page shows it: a line a --> gets the value that a had. *)
   lines = Lines(run.Text)
   shown = []
-  for i in 1:Len(lines)
+  for i in 1..Len(lines)
     t = lines[i]
     a = arrow(t)
     value = Get(run.Line + i, values)
@@ -797,7 +797,7 @@ defn build(root, folder, cache)
   search = []
   home = {Label: if Len(book) > 0 book[1].Title else "Reference" end, Path: "index.html"}
   bookLinks = [{Label: p.Title, Path: p.Path} for p in book]
-  for k in 1:Len(book)
+  for k in 1..Len(book)
     p = book[k]
     around = near(bookLinks, k)
     body = Str(bookBody(site, p, results), pager(p.Path, around.Prev, around.Next, if k == 1 missing else home end))
@@ -806,7 +806,7 @@ defn build(root, folder, cache)
   end
   index = {Label: "Reference", Path: "ref/index.html"}
   moduleLinks = [{Label: m, Path: modulePath(m)} for m in modules]
-  for k in 1:Len(modules)
+  for k in 1..Len(modules)
     m = modules[k]
     path = modulePath(m)
     around = near(moduleLinks, k)
@@ -814,7 +814,7 @@ defn build(root, folder, cache)
     pages = Append({Path: path, Html: page(site, path, m, side(site, path, []), body)}, pages)
     search = Append(["module", path, m, summary(Doc(m)), ""], search)
     nameLinks = [{Label: n.Short, Path: n.Path} for n in lists[m]]
-    for j in 1:Len(lists[m])
+    for j in 1..Len(lists[m])
       n = lists[m][j]
       around = near(nameLinks, j)
       body = Str(entryBody(site, n.Path, n.Entry), pager(n.Path, around.Prev, around.Next, moduleLinks[k]))
@@ -824,7 +824,7 @@ defn build(root, folder, cache)
   end
   wordList = [{Name: w, Short: w, Path: keyPath(w)} for w in keywords]
   wordLinks = [{Label: w, Path: keyPath(w)} for w in keywords]
-  for k in 1:Len(keywords)
+  for k in 1..Len(keywords)
     w = keywords[k]
     e = cesia.DocEntry(w)
     path = keyPath(w)

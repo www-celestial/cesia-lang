@@ -21,6 +21,13 @@ A number is an integer, such as `42`, or a float, with a dot: `1.5`. The usual o
 2 ^ 10 -->
 ```
 
+Each operator is also a function, for the times you pass it to another function: `2 + 3` is [Add]`(2, 3)`.
+
+```cesia
+Add(2, 3) --> 2 + 3
+Mul(4, 5) --> 4 * 5
+```
+
 `/` always gives a float, even when the division falls right. For the whole part of a division, [Div] rounds down, and [Mod]
 gives what is left:
 
@@ -54,6 +61,12 @@ A text sits between double quotes. A `$` puts a value inside it: a name after th
 name = "Ana"
 "Hello, $name" -->
 "Two and two make $(2 + 2)" -->
+```
+
+A `$` is short for [Str], which joins the texts of its arguments:
+
+```cesia
+"Hello, $name" --> Str("Hello, ", name)
 ```
 
 A text never adds to a number with `+`: write the number inside the text, or join the parts with [Str]:
@@ -112,6 +125,14 @@ count = 1
 count += 2
 count *= 10
 count -->
+```
+
+`count += 2` is short for `count = count + 2`:
+
+```cesia
+total = 10
+total = total + 2
+total --> 12
 ```
 
 A value never changes behind your back. When two names hold the same list and you change one, the other keeps what it had:

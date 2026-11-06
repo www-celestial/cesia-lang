@@ -13,7 +13,7 @@ defn line(row, n)
   {Kind: "text", X: 8, Y: 8 + (row - 1) * 19, Text: Slice(from, from + columns - 1, letters), Color: 0xE0E0E0}
 end
 
-view(n) = [if k == 0 {Kind: "clear", Color: 0x1E1E1E} else line(k, n) end for k in 0:lines]
+view(n) = [if k == 0 {Kind: "clear", Color: 0x1E1E1E} else line(k, n) end for k in 0..lines]
 
 defn run(window, n)
   if n > frames window else run(sdl.Frame(view(n), window), n + 1) end

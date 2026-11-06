@@ -1,6 +1,6 @@
 use c
 
-for i in 1:1000
+for i in 1..1000
   c.Alloc(100000)
 end
 Print("the limit should have stopped this")

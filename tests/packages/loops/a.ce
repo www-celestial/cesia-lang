@@ -1,5 +1,5 @@
 (** A loop at the top of a file keeps its variable. *)
 Total = 0
-for i in 1:2
+for i in 1..2
   Total = Total + i
 end

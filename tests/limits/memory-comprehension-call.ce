@@ -9,7 +9,7 @@ defn run(n)
   d = [n, 4]
   e = [n, 5]
   f = [n, 6]
-  xs = [g(k) for k in 1:n]
+  xs = [g(k) for k in 1..n]
   Print(a, b, c, d, e, f, Len(xs))
 end
 

@@ -1,9 +1,9 @@
 struct P { A, B }
 n = 20000
-mixed = Concat([k for k in 1:n], [1e300])
-texts = Concat([Text(k) for k in 1:n], [[1]])
-pairs = [[k, 0.5 * Mod(k, 7)] for k in 1:n]
-maps = [{A: k, B: "x"} for k in 1:n]
-structs = [P(k, Mod(k, 3)) for k in 1:n]
-bigs = Concat([9007199254740993 + 2 * k for k in 1:n], [9007199254740992.0])
+mixed = Concat([k for k in 1..n], [1e300])
+texts = Concat([Text(k) for k in 1..n], [[1]])
+pairs = [[k, 0.5 * Mod(k, 7)] for k in 1..n]
+maps = [{A: k, B: "x"} for k in 1..n]
+structs = [P(k, Mod(k, 3)) for k in 1..n]
+bigs = Concat([9007199254740993 + 2 * k for k in 1..n], [9007199254740992.0])
 Print(Len(Group(Identity, mixed)), Len(Group(Identity, texts)), Len(Group(Identity, pairs)), Len(Group(Identity, maps)), Len(Group(Identity, structs)), Len(Group(x -> [x], bigs)))

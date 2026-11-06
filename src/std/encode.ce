@@ -35,7 +35,7 @@ defn Unhex(s)
     return bad("hexadecimal")
   end
   out = Fill(0, Div(n, 2))
-  for k in 1:Div(n, 2)
+  for k in 1..Div(n, 2)
     high = hexValue(codes[2 * k - 1])
     low = hexValue(codes[2 * k])
     if IsMissing(high) or IsMissing(low)
@@ -181,17 +181,17 @@ defn Sha1(s)
   n = Len(m)
   padded = Concat(Concat(m, [128]), Fill(0, Mod(55 - n, 64)))
   sizeBits = n * 8
-  padded = Concat(padded, [Mod(Div(sizeBits, 256 ^ (8 - k)), 256) for k in 1:8])
+  padded = Concat(padded, [Mod(Div(sizeBits, 256 ^ (8 - k)), 256) for k in 1..8])
   h = [1732584193, 4023233417, 2562383102, 271733878, 3285377520]
   mask = 4294967295
   rotate(x, k) = BitAnd(BitOr(BitShift(x, k), BitShift(x, k - 32)), mask)
   for start in Range(1, Len(padded), step = 64)
     w = Fill(0, 80)
-    for t in 1:16
+    for t in 1..16
       at = start + 4 * (t - 1)
       w[t] = padded[at] * 16777216 + padded[at + 1] * 65536 + padded[at + 2] * 256 + padded[at + 3]
     end
-    for t in 17:80
+    for t in 17..80
       w[t] = rotate(BitXor(BitXor(BitXor(w[t - 3], w[t - 8]), w[t - 14]), w[t - 16]), 1)
     end
     a = h[1]
@@ -199,7 +199,7 @@ defn Sha1(s)
     d = h[3]
     e = h[4]
     f = h[5]
-    for t in 1:80
+    for t in 1..80
       if t <= 20
         mix = BitOr(BitAnd(b, d), BitAnd(BitAnd(BitNot(b), mask), e))
         k = 1518500249

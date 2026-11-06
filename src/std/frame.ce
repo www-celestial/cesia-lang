@@ -7,7 +7,7 @@ defn Table(names, columns)
   (** A frame from the names of its columns and the columns, in the same order.
 
         Columns(Table(["a"], [[1]])) --> ["a"] *)
-  {Names: names, Columns: Dict([{Key: names[k], Value: columns[k]} for k in 1:Len(names)])}
+  {Names: names, Columns: Dict([{Key: names[k], Value: columns[k]} for k in 1..Len(names)])}
 end
 
 (** A frame from a dictionary of columns.
@@ -37,7 +37,7 @@ Row(i, df) = Dict([{Key: n, Value: df.Columns[n][i]} for n in df.Names])
 (** All the rows, each as a dictionary.
 
       Len(Records(Of({"a": [1, 2]}))) --> 2 *)
-Records(df) = [Row(i, df) for i in 1:Rows(df)]
+Records(df) = [Row(i, df) for i in 1..Rows(df)]
 
 defn FromRecords(names, items)
   (** A frame from the dictionaries of the rows, taking the given columns. A missing key gives a missing value.
@@ -51,14 +51,14 @@ take(ks, df) = Table(df.Names, [col.Pick(ks, df.Columns[n]) for n in df.Names])
 (** The first n rows.
 
       Column("a", Head(2, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [1, 2] *)
-Head(n, df) = take(1:Min(n, Rows(df)), df)
+Head(n, df) = take(1..Min(n, Rows(df)), df)
 
 defn Tail(n, df)
   (** The last n rows.
 
         Column("a", Tail(2, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3] *)
   total = Rows(df)
-  take(Max(total - n, 0) + 1:total, df)
+  take(Max(total - n, 0) + 1..total, df)
 end
 
 (** A frame with only these columns, in this order.
@@ -79,7 +79,7 @@ defn SetColumn(name, values, df)
 end
 
 (** f takes a row as a dictionary, and gives the value of the new column. *)
-WithColumn(name, f, df) = SetColumn(name, [f(Row(i, df)) for i in 1:Rows(df)], df)
+WithColumn(name, f, df) = SetColumn(name, [f(Row(i, df)) for i in 1..Rows(df)], df)
 
 (** A frame with a column renamed.
 
@@ -89,14 +89,14 @@ Rename(old, new, df) = Table([if n == old new else n end for n in df.Names], [df
 (** The rows for which f accepts the row as a dictionary.
 
       Column("a", Where(r -> r["a"] > 1, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3] *)
-Where(f, df) = take([i for i in 1:Rows(df) if f(Row(i, df))], df)
+Where(f, df) = take([i for i in 1..Rows(df) if f(Row(i, df))], df)
 
 defn WhereColumn(name, f, df)
   (** The rows for which f accepts the value of a column.
 
         Column("a", WhereColumn("a", it > 1, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3] *)
   xs = df.Columns[name]
-  take([i for i in 1:Rows(df) if f(xs[i])], df)
+  take([i for i in 1..Rows(df) if f(xs[i])], df)
 end
 
 (** The rows where a mask of booleans is true: WhereMask(Column("v", df) > 2.0, df). *)
@@ -183,7 +183,7 @@ end
 (** The CSV text of a frame, with the names as its first row.
 
       ToCsv(Of({"a": [1]})) --> "a\n1\n" *)
-ToCsv(df, separator = ",") = csv.Write(Concat([df.Names], [[df.Columns[n][i] for n in df.Names] for i in 1:Rows(df)]), separator = separator)
+ToCsv(df, separator = ",") = csv.Write(Concat([df.Names], [[df.Columns[n][i] for n in df.Names] for i in 1..Rows(df)]), separator = separator)
 
 defn Show(df)
   (** The text of a frame as an aligned table, one line for each row.
@@ -191,8 +191,8 @@ defn Show(df)
         Show(Of({"a": [1]})) --> "a\n1" *)
   cell(x) = if IsMissing(x) "" else Text(x) end
   widths = [Max(Len(n), Max(Concat([0], [Len(cell(x)) for x in df.Columns[n]]))) for n in df.Names]
-  line(cells) = Join("  ", [PadRight(widths[k], " ", cells[k]) for k in 1:Len(cells)])
+  line(cells) = Join("  ", [PadRight(widths[k], " ", cells[k]) for k in 1..Len(cells)])
   headLine = line(df.Names)
-  body = [line([cell(df.Columns[n][i]) for n in df.Names]) for i in 1:Rows(df)]
+  body = [line([cell(df.Columns[n][i]) for n in df.Names]) for i in 1..Rows(df)]
   Join("\n", Concat([headLine], body))
 end

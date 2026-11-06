@@ -1,7 +1,7 @@
 (* Out of the array after the loop got hot. *)
 defn total(xs, n)
   s = 0.0
-  for i in 1:n
+  for i in 1..n
     s = s + xs[i]
   end
   s

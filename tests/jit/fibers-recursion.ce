@@ -8,10 +8,10 @@ defn fib(n)
   end
 end
 defn noisy()
-  for r in 1:6
+  for r in 1..6
     Print("b $(r)")
     k = 0
-    for q in 1:400000
+    for q in 1..400000
       k = k + 1
     end
   end

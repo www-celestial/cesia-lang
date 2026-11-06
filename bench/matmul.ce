@@ -2,16 +2,16 @@ defn mm(n)
   a = Zeros(n * n)
   b = Zeros(n * n)
   c = Zeros(n * n)
-  for i in 0:n - 1
-    for j in 0:n - 1
+  for i in 0..n - 1
+    for j in 0..n - 1
       a[i * n + j + 1] = (i + j) * 0.5
       b[i * n + j + 1] = (i - j) * 0.25
     end
   end
-  for i in 0:n - 1
-    for j in 0:n - 1
+  for i in 0..n - 1
+    for j in 0..n - 1
       s = 0.0
-      for k in 0:n - 1
+      for k in 0..n - 1
         s = s + a[i * n + k + 1] * b[k * n + j + 1]
       end
       c[i * n + j + 1] = s

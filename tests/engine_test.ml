@@ -168,7 +168,7 @@ let () =
        let _, out, err = run ("use json\nPrint(Storage(" ^ e ^ "))\n") in
        check ("storage of " ^ e ^ ": " ^ out ^ err) (out = want ^ "\n"))
     storage;
-  let grown n = "m = {}\nfor i in 1:" ^ string_of_int n ^ "\n  k = \"k$(i)\"\n  m[k] = i\nend\nPrint(Storage(m), Len(m))\n" in
+  let grown n = "m = {}\nfor i in 1.." ^ string_of_int n ^ "\n  k = \"k$(i)\"\n  m[k] = i\nend\nPrint(Storage(m), Len(m))\n" in
   check "32 keys from a variable, a block" (run (grown 32) = (0, "block 32\n", ""));
   check "33 keys from a variable, deeper" (run (grown 33) = (0, "deep 33\n", ""));
   check "maps of one literal share their keys" (run "f(x) = {A: x, B: 2}\nPrint(SameKeys(f(1), f(2)))\n" = (0, "true\n", ""));

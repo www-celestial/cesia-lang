@@ -104,7 +104,7 @@ defn typed(as, rows)
     return Ok(rows)
   end
   out = []
-  for k in 1:Len(rows)
+  for k in 1..Len(rows)
     v = as(rows[k])
     if failed(v)
       e = errorOf(v)
@@ -263,11 +263,11 @@ defn Table(text, params, db)
   if n == 0
     return Ok({Names: [], Columns: Dict()})
   end
-  names = Keys(rowsOf({Names: b.Names, Cells: [missing for k in 1:n]})?[1])
+  names = Keys(rowsOf({Names: b.Names, Cells: [missing for k in 1..n]})?[1])
   rows = Len(b.Cells) / n
   m = Reshape(b.Cells, n, rows)
   cols = Dict()
-  for k in 1:n
+  for k in 1..n
     cols = Put(names[k], if rows == 0 [] else [x for x in m[k, :]] end, cols)
   end
   Ok({Names: names, Columns: cols})

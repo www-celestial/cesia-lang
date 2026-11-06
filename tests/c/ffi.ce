@@ -65,11 +65,11 @@ Print(nothing(c.Callback(p -> Print("called with", IsMissing(p)), ["ptr"], "void
 
 sorter = ok(c.Fn("sort_ints", ["ptr", "i32", "callback"], "void", lib))
 items = c.Alloc(20)
-for k in 1:5
+for k in 1..5
   c.Set("i32", (k - 1) * 4, 10 - 3 * Mod(k * 2, 5), items)
 end
 sorter(items, 5, c.Callback((x, y) -> x - y, ["i32", "i32"], "i32"))
-Print([c.Get("i32", (k - 1) * 4, items) for k in 1:5])
+Print([c.Get("i32", (k - 1) * 4, items) for k in 1..5])
 
 (* A callback kept by C and called later, from a function that says so. *)
 keep = ok(c.Fn("keep_callback", ["callback"], "void", lib))
@@ -98,7 +98,7 @@ Print(fails(() -> twice(c.Callback(x -> Panic("deep"), ["i64"], "i64"), 1)))
 Print(twice(c.Callback(x -> x + 1, ["i64"], "i64"), 1))
 (* A callback that frees a block C is reading: it stays alive until the call ends. *)
 sorted = c.Alloc(20)
-for k in 1:5
+for k in 1..5
   c.Set("i32", (k - 1) * 4, 6 - k, sorted)
 end
 defn freeThenCompare(x, y)

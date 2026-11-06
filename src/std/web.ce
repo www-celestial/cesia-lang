@@ -75,7 +75,7 @@ defn matchPath(parts, path)
   (** Binds :name parts, and a final * takes what remains. The parameters, or missing if the path doesn't match. *)
   out = Dict()
   n = Len(parts)
-  for k in 1:n
+  for k in 1..n
     part = parts[k]
     if part == "*"
       out["*"] = Join("/", Skip(k - 1, path))
@@ -196,7 +196,7 @@ defn Template(source, values)
   parts = Split("{{", source)
   out = Fill("", Len(parts))
   out[1] = parts[1]
-  for k in 2:Len(parts)
+  for k in 2..Len(parts)
     part = parts[k]
     close = ByteFind("}}", 1, part)
     name = if IsMissing(close) missing else Trim(if close == 1 "" else ByteSlice(1, close - 1, part) end) end

@@ -4,7 +4,7 @@ use net
 allowed = Bytes("!#$$%&'*+-.^_`|~abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
 accepted(b) = net.IsHeader(1, "$(FromBytes([b])): value")
 
-Print(Equal(Filter(accepted, [b for b in 0:255]), Sort(allowed)))
+Print(Equal(Filter(accepted, [b for b in 0..255]), Sort(allowed)))
 Print(net.IsHeader(1, "a: b"))
 Print(net.IsHeader(0, ": b"))
 Print(net.IsHeader(2, "a : b"))

@@ -1,8 +1,8 @@
 (* The limit of steps, reached inside native loops and calls: at the same step as the interpreter. *)
 defn spin(n)
   s = 0
-  for i in 1:n
-    for j in 1:100
+  for i in 1..n
+    for j in 1..100
       s = s + 1
     end
   end

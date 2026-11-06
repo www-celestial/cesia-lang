@@ -1,2 +1,2 @@
-xs = [1.0 * k for k in 1:3000000]
+xs = [1.0 * k for k in 1..3000000]
 Print(xs[1])

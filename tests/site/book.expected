@@ -42,7 +42,7 @@ http.<span class="f">Get</span>(<span class="s">&quot;https://example.com&quot;<
 </tr>
 </tbody>
 </table>
-<pre><code class="cesia"><span class="k">for</span> k <span class="k">in</span> <span class="m">1</span>:<span class="m">3</span>
+<pre><code class="cesia"><span class="k">for</span> k <span class="k">in</span> <span class="m">1</span>..<span class="m">3</span>
   <span class="n">Print</span>(k)
 <span class="k">end</span></code></pre>
 <details><summary>Output</summary>

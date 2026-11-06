@@ -1,18 +1,18 @@
 (* Fibers switch inside an inner native loop at the interpreter's step. *)
 defn work(n)
   s = 0
-  for i in 1:1
-    for j in 1:n
+  for i in 1..1
+    for j in 1..n
       s = s + Mod(j, 3)
     end
   end
   s
 end
 defn noisy()
-  for r in 1:6
+  for r in 1..6
     Print("b $(r)")
     k = 0
-    for q in 1:300000
+    for q in 1..300000
       k = k + 1
     end
   end

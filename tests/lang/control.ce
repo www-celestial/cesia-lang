@@ -29,7 +29,7 @@ defn deep(n)
   deep(n - 1) + 1
 end
 defn repeatedPanics()
-  for i in 1:20000
+  for i in 1..20000
     Wait(Spawn(() -> deep(3)))
   end
   true

@@ -13,7 +13,7 @@ defn Linspace(a, b, n)
     return [1.0 * a]
   end
   step = (b - a) / (n - 1)
-  [a + k * step for k in 0:n - 1]
+  [a + k * step for k in 0..n - 1]
 end
 
 defn Eye(n)
@@ -21,7 +21,7 @@ defn Eye(n)
 
         Sum(Eye(2)) --> 2.0 *)
   m = Zeros(n, n)
-  for k in 1:n
+  for k in 1..n
     m[k, k] = 1.0
   end
   m
@@ -33,7 +33,7 @@ defn Diag(xs)
         Sum(Diag([1, 2])) --> 3.0 *)
   n = Len(xs)
   m = Zeros(n, n)
-  for k in 1:n
+  for k in 1..n
     m[k, k] = xs[k]
   end
   m
@@ -74,7 +74,7 @@ defn Cumsum(xs)
         Cumsum([1.0, 2.0, 3.0]) --> [1.0, 3.0, 6.0] *)
   out = Zeros(1, Len(xs))
   total = 0.0
-  for k in 1:Len(xs)
+  for k in 1..Len(xs)
     total += xs[k]
     out[k] = total
   end
@@ -84,7 +84,7 @@ end
 (** The differences between consecutive elements.
 
       Diff([1, 4, 9]) --> [3, 5] *)
-Diff(xs) = [xs[k + 1] - xs[k] for k in 1:Len(xs) - 1]
+Diff(xs) = [xs[k + 1] - xs[k] for k in 1..Len(xs) - 1]
 (** The dot product of two arrays.
 
       Dot([1, 2], [3, 4]) --> 11 *)
@@ -118,22 +118,22 @@ defn Histogram(bins, xs)
     k = if width == 0.0 1 else Min(Floor((x - low) / width) + 1, bins) end
     counts[k] += 1
   end
-  {Counts: counts, Edges: [low + k * width for k in 0:bins]}
+  {Counts: counts, Edges: [low + k * width for k in 0..bins]}
 end
 
-SumRows(m) = [Sum(m[i, :]) for i in 1:Size(m, 1)]   (** The sum of each row of a matrix. *)
+SumRows(m) = [Sum(m[i, :]) for i in 1..Size(m, 1)]   (** The sum of each row of a matrix. *)
 (** The sum of each column of a matrix.
 
       SumCols(Eye(2)) --> [1.0, 1.0] *)
-SumCols(m) = [Sum(m[:, j]) for j in 1:Size(m, 2)]
+SumCols(m) = [Sum(m[:, j]) for j in 1..Size(m, 2)]
 
 defn eliminate(m, b)
   (** Gaussian elimination with partial pivoting: the triangle, the swaps and their sign. *)
   n = Size(m, 1)
   sign = 1.0
-  for col in 1:n
+  for col in 1..n
     pivot = col
-    for r in col + 1:n
+    for r in col + 1..n
       if Abs(m[r, col]) > Abs(m[pivot, col])
         pivot = r
       end
@@ -143,24 +143,24 @@ defn eliminate(m, b)
     end
     if pivot != col
       sign = -sign
-      for c in 1:n
+      for c in 1..n
         t = m[col, c]
         m[col, c] = m[pivot, c]
         m[pivot, c] = t
       end
-      for c in 1:Size(b, 2)
+      for c in 1..Size(b, 2)
         t = b[col, c]
         b[col, c] = b[pivot, c]
         b[pivot, c] = t
       end
     end
-    for r in col + 1:n
+    for r in col + 1..n
       f = m[r, col] / m[col, col]
       if f != 0.0
-        for c in col:n
+        for c in col..n
           m[r, c] = m[r, c] - f * m[col, c]
         end
-        for c in 1:Size(b, 2)
+        for c in 1..Size(b, 2)
           b[r, c] = b[r, c] - f * b[col, c]
         end
       end
@@ -182,7 +182,7 @@ defn Det(m)
     return 0.0
   end
   d = t.Sign
-  for k in 1:Size(m, 1)
+  for k in 1..Size(m, 1)
     d = d * t.M[k, k]
   end
   d
@@ -191,10 +191,10 @@ end
 defn back(t)
   n = Size(t.M, 1)
   x = t.B
-  for c in 1:Size(x, 2)
+  for c in 1..Size(x, 2)
     for r in Range(n, 1, step = -1)
       s = x[r, c]
-      for k in r + 1:n
+      for k in r + 1..n
         s = s - t.M[r, k] * x[k, c]
       end
       x[r, c] = s / t.M[r, r]
@@ -239,10 +239,10 @@ defn Qr(m)
   cols = Size(m, 2)
   q = Zeros(rows, cols)
   r = Zeros(cols, cols)
-  for j in 1:cols
+  for j in 1..cols
     v = m[:, j]
-    for pass in 1:2
-      for i in 1:j - 1
+    for pass in 1..2
+      for i in 1..j - 1
         qi = q[:, i]
         c = Dot(qi, v)
         r[i, j] = r[i, j] + c
@@ -251,7 +251,7 @@ defn Qr(m)
     end
     sizeV = Norm(v)
     r[j, j] = sizeV
-    for i in 1:rows
+    for i in 1..rows
       q[i, j] = if sizeV == 0.0 0.0 else v[i] / sizeV end
     end
   end
@@ -266,37 +266,37 @@ defn Eigen(a)
   end
   n = Size(a, 1)
   v = Eye(n)
-  for sweep in 1:60
+  for sweep in 1..60
     off = 0.0
-    for p in 1:n
-      for q in p + 1:n
+    for p in 1..n
+      for q in p + 1..n
         off += a[p, q] * a[p, q]
       end
     end
     if off < 1e-22
       break
     end
-    for p in 1:n
-      for q in p + 1:n
+    for p in 1..n
+      for q in p + 1..n
         if Abs(a[p, q]) > 1e-300
           theta = (a[q, q] - a[p, p]) / (2.0 * a[p, q])
           t = Sign(theta) / (Abs(theta) + Sqrt(theta * theta + 1.0))
           t = if theta == 0.0 1.0 else t end
           c = 1.0 / Sqrt(t * t + 1.0)
           s = t * c
-          for k in 1:n
+          for k in 1..n
             akp = a[k, p]
             akq = a[k, q]
             a[k, p] = c * akp - s * akq
             a[k, q] = s * akp + c * akq
           end
-          for k in 1:n
+          for k in 1..n
             apk = a[p, k]
             aqk = a[q, k]
             a[p, k] = c * apk - s * aqk
             a[q, k] = s * apk + c * aqk
           end
-          for k in 1:n
+          for k in 1..n
             vkp = v[k, p]
             vkq = v[k, q]
             v[k, p] = c * vkp - s * vkq
@@ -306,7 +306,7 @@ defn Eigen(a)
       end
     end
   end
-  {Values: [a[k, k] for k in 1:n], Vectors: v}
+  {Values: [a[k, k] for k in 1..n], Vectors: v}
 end
 
 defn LeastSquares(a, b)
@@ -318,8 +318,8 @@ end
 defn Polyfit(degree, xs, ys)
   (** The coefficients of a polynomial of a degree through points, the constant first. *)
   a = Zeros(Len(xs), degree + 1)
-  for i in 1:Len(xs)
-    for j in 1:degree + 1
+  for i in 1..Len(xs)
+    for j in 1..degree + 1
       a[i, j] = 1.0 * xs[i] ^ (j - 1)
     end
   end
@@ -342,7 +342,7 @@ defn Trapezoid(xs, ys)
 
         Trapezoid([0, 1], [0, 2]) --> 1.0 *)
   total = 0.0
-  for k in 1:Len(xs) - 1
+  for k in 1..Len(xs) - 1
     total += (xs[k + 1] - xs[k]) * (ys[k] + ys[k + 1]) / 2.0
   end
   total
@@ -352,7 +352,7 @@ defn Interpolate(x, xs, ys)
   (** The value at x of the line through the nearest points of (xs, ys), which are sorted by xs. Past the last point it gives the last y.
 
         Interpolate(0.5, [0, 1], [0, 2]) --> 1.0 *)
-  for k in 1:Len(xs) - 1
+  for k in 1..Len(xs) - 1
     if x <= xs[k + 1]
       return ys[k] + (ys[k + 1] - ys[k]) * (x - xs[k]) / (xs[k + 1] - xs[k])
     end
@@ -365,8 +365,8 @@ defn dft(re, im, direction)
   n = Len(re)
   outRe = Zeros(1, n)
   outIm = Zeros(1, n)
-  for k in 1:n
-    for t in 1:n
+  for k in 1..n
+    for t in 1..n
       angle = direction * 2.0 * Pi * (k - 1) * (t - 1) / n
       c = Cos(angle)
       s = Sin(angle)
@@ -383,11 +383,11 @@ defn radix2(re, im, direction)
     return {Re: re, Im: im}
   end
   half = Div(n, 2)
-  even = radix2([re[2 * k - 1] for k in 1:half], [im[2 * k - 1] for k in 1:half], direction)
-  odd = radix2([re[2 * k] for k in 1:half], [im[2 * k] for k in 1:half], direction)
+  even = radix2([re[2 * k - 1] for k in 1..half], [im[2 * k - 1] for k in 1..half], direction)
+  odd = radix2([re[2 * k] for k in 1..half], [im[2 * k] for k in 1..half], direction)
   outRe = Zeros(1, n)
   outIm = Zeros(1, n)
-  for k in 1:half
+  for k in 1..half
     angle = direction * 2.0 * Pi * (k - 1) / n
     c = Cos(angle)
     s = Sin(angle)
@@ -435,7 +435,7 @@ defn Uniform(n, generator)
         Len(Uniform(3, Seeded(1)).Values) --> 3 *)
   values = Zeros(1, n)
   s = generator.State
-  for k in 1:n
+  for k in 1..n
     s = next(s)
     values[k] = BitAnd(s, 1099511627775) / 1099511627776.0
   end
@@ -448,7 +448,7 @@ defn Normal(n, generator)
         Len(Normal(3, Seeded(1)).Values) --> 3 *)
   u = Uniform(2 * n, generator)
   values = Zeros(1, n)
-  for k in 1:n
+  for k in 1..n
     a = 1.0 - u.Values[2 * k - 1]
     b = u.Values[2 * k]
     values[k] = Sqrt(-2.0 * Log(a)) * Cos(2.0 * Pi * b)

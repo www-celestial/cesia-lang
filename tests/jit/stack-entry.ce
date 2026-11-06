@@ -4,12 +4,12 @@ defn r(n)
     return r(n - 1) + 0
   end
   s = 0
-  for a in 1:2
-    for b in 1:2
-      for c in 1:2
-        for d in 1:2
-          for e in 1:2
-            for f in 1:40000
+  for a in 1..2
+    for b in 1..2
+      for c in 1..2
+        for d in 1..2
+          for e in 1..2
+            for f in 1..40000
               a = a + 0
               b = b + 0
               c = c + 0

@@ -1,6 +1,6 @@
 (** A return with no value gives missing, which a type without ? refuses. *)
 defn Find(xs Array, x) Int?
-  for i in 1:Len(xs)
+  for i in 1..Len(xs)
     if xs[i] == x
       return i
     end

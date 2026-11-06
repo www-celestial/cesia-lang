@@ -66,9 +66,9 @@ defn ShadeSphere(block, n, rough, metal, turn)
   fg = mix(0.04, bg, metal)
   fb = mix(0.04, bb, metal)
   matte = 1.0 - metal
-  for y in 0:(n - 1)
+  for y in 0..(n - 1)
     ny = (center - y - 0.5) / radius
-    for x in 0:(n - 1)
+    for x in 0..(n - 1)
       nx = (x + 0.5 - center) / radius
       r2 = nx * nx + ny * ny
       if r2 >= 1.06

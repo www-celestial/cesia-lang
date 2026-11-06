@@ -312,8 +312,8 @@ end
 defn shaded(width, height, shade, window)
   (** A white texture whose alpha, and gray for a shaded one, come from shade(x, y) as {Gray, Alpha}. *)
   pixels = c.Alloc(width * height * 4)
-  for y in 0:(height - 1)
-    for x in 0:(width - 1)
+  for y in 0..(height - 1)
+    for x in 0..(width - 1)
       p = shade(x, y)
       v = p.Gray
       c.Set("u32", (y * width + x) * 4, v + v * 256 + v * 65536 + WholeNumber(p.Alpha * 255.0) * 0x1000000, pixels)
@@ -334,7 +334,7 @@ defn sharedMask(key, window)
   (** The mask of a key in the table that every copy of the window shares, or missing. *)
   table = window.MaskTable
   size = ByteLength(key)
-  for k in 0:(c.Get("i64", 0, table) - 1)
+  for k in 0..(c.Get("i64", 0, table) - 1)
     at = 8 + k * MaskEntry
     if c.Get("u16", at + 24, table) == size and c.Load(at + 26, size, table) == key
       return {Texture: c.Get("ptr", at, table), Left: c.Get("i32", at + 8, table), Right: c.Get("i32", at + 12, table), Top: c.Get("i32", at + 16, table), Bottom: c.Get("i32", at + 20, table)}
@@ -505,8 +505,8 @@ ShowImage(picture, window) = Checked(window.Sdl.UpdateTexture(picture.Texture, m
 
 defn FillImage(f, picture, window)
   (** Writes f(x, y), a pixel from rgba, everywhere in an image, and shows it. *)
-  for y in 0:(picture.Height - 1)
-    for x in 0:(picture.Width - 1)
+  for y in 0..(picture.Height - 1)
+    for x in 0..(picture.Width - 1)
       c.Set("u32", (y * picture.Width + x) * 4, f(x, y), picture.Pixels)
     end
   end
@@ -560,7 +560,7 @@ defn shapeDistance(px, py, shape)
   (** The distance from a point of the 16-pixel square to the nearest line or ring of a shape. *)
   best = 99.0
   for path in shape.Paths
-    for k in 1:Max(1, Div(Len(path), 2) - 1)
+    for k in 1..Max(1, Div(Len(path), 2) - 1)
       best = Min(best, segmentDistance(px, py, path[2 * k - 1], path[2 * k], path[2 * k + 1], path[2 * k + 2]))
     end
   end
@@ -597,9 +597,9 @@ defn curveBlock(capacity)
       their links, so the indices are written once. *)
   indices = c.Alloc(capacity * (CurvePoints - 1) * (CurveAcross - 1) * 6 * 4)
   at = 0
-  for l in 0:(capacity - 1)
-    for s in 0:(CurvePoints - 2)
-      for j in 0:(CurveAcross - 2)
+  for l in 0..(capacity - 1)
+    for s in 0..(CurvePoints - 2)
+      for j in 0..(CurveAcross - 2)
         a = (l * CurvePoints + s) * CurveAcross + j
         for v in [a, a + 1, a + CurveAcross, a + 1, a + CurveAcross + 1, a + CurveAcross]
           c.Set("i32", at, v, indices)
@@ -626,7 +626,7 @@ defn writeCurve(item, start, block)
   nx = 0.0
   ny = 1.0
   at = start
-  for s in 0:(CurvePoints - 1)
+  for s in 0..(CurvePoints - 1)
     u = s / (CurvePoints - 1.0)
     v = 1.0 - u
     px = v * v * v * x0 + 3.0 * v * v * u * (x0 + dx) + 3.0 * v * u * u * (x3 - dx) + u * u * u * x3
@@ -638,7 +638,7 @@ defn writeCurve(item, start, block)
       nx = -ty / size
       ny = tx / size
     end
-    for j in 1:CurveAcross
+    for j in 1..CurveAcross
       c.Set("f32", at, px + nx * offsets[j], block)
       c.Set("f32", at + 4, py + ny * offsets[j], block)
       c.Set("f32", at + 8, r, block)
@@ -887,7 +887,7 @@ defn Close(window)
   c.Free(window.OutWidth)
   c.Free(window.OutHeight)
   c.Free(window.Event)
-  for k in 1:c.Get("i64", 0, window.Objects)
+  for k in 1..c.Get("i64", 0, window.Objects)
     window.Ttf.DestroyText(c.Get("ptr", 8 + k * 8, window.Objects))
   end
   c.Free(window.Objects)

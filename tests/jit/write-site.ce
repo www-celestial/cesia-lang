@@ -1,6 +1,6 @@
 (* A write out of the array is named at its step, as the interpreter names it. *)
 defn wr(a, n)
-  for i in 1:n
+  for i in 1..n
     a[i] = 1.0
   end
   0.0

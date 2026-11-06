@@ -16,7 +16,7 @@ backslash = Char(92)
 defn parent(path)
   (** The folder of a path. *)
   parts = Split("/", path)
-  Join("/", parts[1:Len(parts) - 1])
+  Join("/", parts[1..Len(parts) - 1])
 end
 
 defn download(url)
@@ -26,7 +26,7 @@ defn download(url)
   end
   secure = tls.Client(tls.Open()?)
   at = url
-  for hop in 1:5
+  for hop in 1..5
     r = http.Get(at, headers = [{Name: "User-Agent", Value: "cesia-upgrade"}], secure = secure)?
     location = http.HeaderValue("location", r.Headers)
     if r.Status >= 300 and r.Status < 400 and not IsMissing(location)

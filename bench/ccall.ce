@@ -3,7 +3,7 @@ use c
 use sys
 
 defn repeatCall(f, n)
-  for i in 1:n
+  for i in 1..n
     f(-5)
   end
 end

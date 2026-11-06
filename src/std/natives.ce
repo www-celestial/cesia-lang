@@ -951,7 +951,7 @@ use cesia
       IsMissing(cesia.DocEntry("NoSuchName")) --> true *)
 
 (** cesia.Keywords()
-    The reserved words of the language, then it, as, _ and ?, which mean something in some places only: what a highlighter
+    The reserved words of the language, then it, as, _, ? and .., which mean something in some places only: what a highlighter
     colors, and the words the docs explain.
 
       "defn" in cesia.Keywords() --> true *)

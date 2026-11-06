@@ -14,7 +14,7 @@ defn Frame(opcode, payload)
   else if n < 65536
     [128 + opcode, 126, Div(n, 256), Mod(n, 256)]
   else
-    Concat([128 + opcode, 127], [Mod(Div(n, 256 ^ (8 - k)), 256) for k in 1:8])
+    Concat([128 + opcode, 127], [Mod(Div(n, 256 ^ (8 - k)), 256) for k in 1..8])
   end
   "$(FromBytes(head))$payload"
 end
@@ -43,7 +43,7 @@ defn ParseFrame(buffer)
     if Byte(3, buffer) != 0
       return {Bad: true}
     end
-    n = Reduce((total, k) -> total * 256 + Byte(k, buffer), 0, 3:10)
+    n = Reduce((total, k) -> total * 256 + Byte(k, buffer), 0, 3..10)
     at = 11
   end
   if not masked or n > MaxFrame or BitAnd(first, 112) != 0 or BitAnd(first, 128) == 0

@@ -5,7 +5,7 @@ peak = 0.06422160859527065
 
 defn euler(car, u, dt, n)
   x = Zeros(2, n)
-  for i in 2:n
+  for i in 2..n
     t = (i - 1) * dt
     a = (-car.K * (x[1, i - 1] - u(t)) - car.C * x[2, i - 1]) / car.M
     x[1, i] = x[1, i - 1] + dt * x[2, i - 1]

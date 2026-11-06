@@ -1,0 +1,2 @@
+(* A range written as before 0.3 says how to write it now. *)
+Print(1:5)

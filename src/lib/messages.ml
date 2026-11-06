@@ -12,6 +12,7 @@ let comment_dashes = plain "Comments are written (* ... *)."
 let number_too_big s = hinted (Printf.sprintf "The number %s doesn't fit in 63 bits." s) (Printf.sprintf "Write it as a float: %s.0." s)
 let expected what got = plain (Printf.sprintf "Expected %s, found %s." what got)
 let too_nested = plain "This code is nested too deeply."
+let colon_range = plain "A range is written with two dots, as in 1..n, which is Range(1, n), and a method is reached with one dot."
 let cant_assign = plain "Only a variable can be assigned here."
 let break_outside = plain "break can only be used inside a loop."
 let underscore_name name small capital =

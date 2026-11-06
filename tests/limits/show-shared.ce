@@ -1,5 +1,5 @@
 x = [1]
-for i in 1:60
+for i in 1..60
   x = [x, x]
 end
 Print(x)

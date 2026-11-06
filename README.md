@@ -149,7 +149,7 @@ Print(r then it.Area())
 - `r.Area()` looks at a field first, then at the methods of the struct of `r`, so a field that holds a function still works:
   `look.Width("M", "code")`. A method goes with its value: `d.Year()` works on any value of that struct, made in any file.
 - A small method is private: it can only be called in the package of its struct. A capital one is public, and needs a comment.
-- Through a module: `date.Date.Parse("...")`. `:` is only a range, as in `1:n`, and has nothing to do with methods.
+- Through a module: `date.Date.Parse("...")`. A method is always reached with one dot; two dots make a range, as in `1..n`.
 - An instance method is called, and is not a value: `r.Area` alone is an error, and `Map(it.Area(), rects)` is how to pass one
   along. A static method is a function like any other: `Map(Rect.Square, sizes)`.
 

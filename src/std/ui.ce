@@ -168,7 +168,7 @@ defn sliderFill(width, rect, th)
     return [box(rect.X, rect.Y, width, rect.Height, th.Fill, 4)]
   end
   out = []
-  for k in 0:(Ceil(width) - 1)
+  for k in 0..(Ceil(width) - 1)
     inset = tickInset(k * 1.0, 4.0)
     out = Append(rule(rect.X + k, rect.Y + inset, Min(1.0, width - k), rect.Height - 2.0 * inset, th.Fill), out)
   end
@@ -211,7 +211,7 @@ ListRow(k, items, rect) = rect.Y + (k - 1) * 22 + 7 * Max(0, headersUpTo(k, item
 defn RowAt(y, items, rect)
   (** The row of a list nearest to a height, that isn't a header, or 0. *)
   best = 0
-  for k in 1:Len(items)
+  for k in 1..Len(items)
     if not items[k].Header and (best == 0 or Abs(ListRow(k, items, rect) + 11 - y) < Abs(ListRow(best, items, rect) + 11 - y))
       best = k
     end
@@ -229,7 +229,7 @@ defn List(items, picked, hover, rect, look)
   if picked > 0
     out = Append(box(rect.X + 2, ListRow(picked, items, rect), rect.Width - 4, 22, th.Picked, 4), out)
   end
-  for k in 1:Len(items)
+  for k in 1..Len(items)
     y = ListRow(k, items, rect)
     if items[k].Header
       out = Concat(out, Section(items[k].Name, {X: rect.X, Y: y, Width: rect.Width, Height: 22}, look))
@@ -247,7 +247,7 @@ defn Code(lines, marked, rect, look)
   th = look.Theme
   cw = look.Width("M", "code")
   out = if marked > 0 [box(rect.X + 4, rect.Y + 3 + (marked - 1) * 19, rect.Width - 8, 19, th.Hover, 4)] else [] end
-  for k in 1:Len(lines)
+  for k in 1..Len(lines)
     y = rect.Y + 4 + (k - 1) * 19
     out = Append(codeText(rect.X + 46 - Len("$k") * cw, y, "$k", th.Faint), out)
     x = rect.X + 62
@@ -263,10 +263,10 @@ defn Grid(rect, look)
   (** The lines of a graph, every 16 pixels, and stronger every 128. *)
   th = look.Theme
   out = []
-  for k in 0:Div(rect.Width, 16)
+  for k in 0..Div(rect.Width, 16)
     out = Append(rule(rect.X + k * 16, rect.Y, 1, rect.Height, if Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
   end
-  for k in 0:Div(rect.Height, 16)
+  for k in 0..Div(rect.Height, 16)
     out = Append(rule(rect.X, rect.Y + k * 16, rect.Width, 1, if Mod(k, 8) == 0 th.GridMajor else th.GridMinor end), out)
   end
   out
@@ -297,12 +297,12 @@ defn node(index, n, picked, links, look)
   out = [{Kind: "shadow", X: x, Y: y, Width: n.Width, Height: h, Alpha: th.Shadow}, box(x, y, n.Width, h, th.Body, 6), {Kind: "fade", X: x, Y: y, Width: n.Width, Height: TitleHeight, Color: n.Color, Radius: 6}, strong(x + 12, middle(look, y, TitleHeight), n.Title, 0xFFFFFF)]
   outline = if index == picked [edge(x - 2, y - 2, n.Width + 4, h + 4, 0xF5A623, 6), edge(x - 1, y - 1, n.Width + 2, h + 2, 0xF5A623, 6)] else [edge(x, y, n.Width, h, th.Edge, 6)] end
   out = Concat(out, outline)
-  for k in 1:Len(n.Inputs)
+  for k in 1..Len(n.Inputs)
     place = InputAt(n, k)
     out = Append(pin(place, n.Inputs[k].Color, inputLinked(index, k, links)), out)
     out = Append(label(x + 13, place.Y - Div(look.Height, 2), n.Inputs[k].Name, th.Ink), out)
   end
-  for k in 1:Len(n.Outputs)
+  for k in 1..Len(n.Outputs)
     place = OutputAt(n, k)
     out = Append(pin(place, n.Outputs[k].Color, outputLinked(index, k, links)), out)
     out = Append(label(x + n.Width - 13 - look.Width(n.Outputs[k].Name, "body"), place.Y - Div(look.Height, 2), n.Outputs[k].Name, th.Ink), out)
@@ -311,7 +311,7 @@ defn node(index, n, picked, links, look)
 end
 
 (** Nodes with their title bars, pins, labels and shadows. A pin that no link reaches is hollow. picked is an index or 0. *)
-Nodes(items, picked, links, look) = Flatten([node(k, items[k], picked, links, look) for k in 1:Len(items)])
+Nodes(items, picked, links, look) = Flatten([node(k, items[k], picked, links, look) for k in 1..Len(items)])
 
 (** The curves between pins, for links {From, Output, To, Input, Color}. *)
 Links(items, nodeList, look) = [{Kind: "curves", Items: [curve(link, nodeList) for link in items]}]
@@ -325,7 +325,7 @@ end
 defn NodeAt(point, nodeList)
   (** The index of the top node under a point, or 0. *)
   found = 0
-  for k in 1:Len(nodeList)
+  for k in 1..Len(nodeList)
     n = nodeList[k]
     if Contains(point, {X: n.X, Y: n.Y, Width: n.Width, Height: NodeHeight(n)})
       found = k

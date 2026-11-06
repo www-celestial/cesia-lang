@@ -14,7 +14,7 @@ backslash = Char(92)
 defn parent(path)
   (** The folder of a path: "pkg/rope/rope.ce" gives "pkg/rope", "a" gives "". *)
   parts = Split("/", path)
-  Join("/", parts[1:Len(parts) - 1])
+  Join("/", parts[1..Len(parts) - 1])
 end
 
 defn walk(dir)
@@ -100,7 +100,7 @@ end
 defn fileOf(line)
   (** {Path, Fingerprint} from a line of the lock: the fingerprint comes after the last space. *)
   parts = Split(" ", line)
-  {Path: Join(" ", parts[1:Len(parts) - 1]), Fingerprint: Last(parts)}
+  {Path: Join(" ", parts[1..Len(parts) - 1]), Fingerprint: Last(parts)}
 end
 
 defn readLock()
@@ -149,9 +149,9 @@ end
 
 defn show(rows)
   (** Prints rows of words in columns. *)
-  widths = [Reduce((w, r) -> Max([w, Len(r[i])]), 0, rows) for i in 1:3]
+  widths = [Reduce((w, r) -> Max([w, Len(r[i])]), 0, rows) for i in 1..3]
   for r in rows
-    Print(Trim(Join("  ", [PadRight(widths[i], " ", r[i]) for i in 1:3])))
+    Print(Trim(Join("  ", [PadRight(widths[i], " ", r[i]) for i in 1..3])))
   end
 end
 
@@ -229,7 +229,7 @@ defn depPath(from)
   if local or Len(parts) < 3
     Join("/", TakeLast(2, parts))
   else if parts[1] == "github.com"
-    Join("/", parts[2:end])
+    Join("/", parts[2..end])
   else
     Join("/", parts)
   end
@@ -270,7 +270,7 @@ defn splitDep(u)
   if Len(parts) <= depth
     return missing
   end
-  {Path: Join("/", parts[2:depth]), Name: Join("/", parts[depth + 1:end])}
+  {Path: Join("/", parts[2..depth]), Name: Join("/", parts[depth + 1..end])}
 end
 
 defn git(args)
@@ -587,9 +587,9 @@ defn add(lock, args)
   if Len(parts) < 2 or Last(parts) == ""
     return Err("cesia pkg add needs a tag: cesia pkg add github.com/x/y@v1.2.0.")
   end
-  from = Join("@", parts[1:Len(parts) - 1])
+  from = Join("@", parts[1..Len(parts) - 1])
   version = Last(parts)
-  take = args[3:end]
+  take = args[3..end]
   name = label(from)
   text = sys.Read(projectFile)?
   wanted = readDeps(text)?
@@ -629,11 +629,11 @@ end
 
 defn update(lock, args)
   (** cesia pkg update [label] [--to tag]: to the newest tag, or that one, and pkg/ to this Cesia. *)
-  rest = args[2:end]
+  rest = args[2..end]
   to = missing
   if Len(rest) >= 2 and rest[Len(rest) - 1] == "--to"
     to = Last(rest)
-    rest = rest[1:Len(rest) - 2]
+    rest = rest[1..Len(rest) - 2]
   end
   if Len(rest) > 1 or (Len(rest) == 0 and not IsMissing(to))
     return Err(if Len(rest) > 1 usage else "--to needs a label: cesia pkg update cemacs --to v0.4.0." end)
@@ -706,7 +706,7 @@ defn move(lock, args)
   for file in sourceFiles(".")
     source = sys.Read(file)?
     lines = Split("\n", source)
-    for i in 1:Len(lines)
+    for i in 1..Len(lines)
       if StartsWith("use deps/$old/", Trim(lines[i]))
         lines[i] = Replace("deps/$old/", "deps/$new/", lines[i])
       end

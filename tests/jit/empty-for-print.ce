@@ -2,7 +2,7 @@
 defn g(n)
   i = 77
   s = 0
-  for i in 3:n
+  for i in 3..n
     s = s + i
   end
   Print("i=$(i) s=$(s)")

@@ -15,7 +15,7 @@ defn Records(s, separator = ",")
     return []
   end
   names = rows[1]
-  [Dict([{Key: names[k], Value: row[k]} for k in 1:Min(Len(names), Len(row))]) for row in Skip(1, rows)]
+  [Dict([{Key: names[k], Value: row[k]} for k in 1..Min(Len(names), Len(row))]) for row in Skip(1, rows)]
 end
 
 defn field(x, separator)

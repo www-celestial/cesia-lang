@@ -59,7 +59,7 @@ A range gives the positions, when you need them:
 
 ```cesia
 names = ["Ana", "Bo"]
-for k in 1:Len(names)
+for k in 1..Len(names)
   Print(k, names[k])
 end
 ```
@@ -77,8 +77,15 @@ total -->
 In brackets, a `for` builds a list: each element is the value before the `for`. An `if` after it keeps only some of them:
 
 ```cesia
-[x * x for x in 1:5] -->
-[x for x in 1:10 if Mod(x, 3) == 0] -->
+[x * x for x in 1..5] -->
+[x for x in 1..10 if Mod(x, 3) == 0] -->
+```
+
+A list built this way is short for [Map], and with an `if`, for [Filter]. The chapter [Functions](functions.md) shows both:
+
+```cesia
+[x * x for x in 1..5] --> Map(x -> x * x, 1..5)
+[x for x in 1..10 if Mod(x, 3) == 0] --> Filter(x -> Mod(x, 3) == 0, 1..10)
 ```
 
 ## while and break

@@ -3,7 +3,7 @@ use pkg/num
 near(a, b) = Abs(a - b) < 1e-9
 
 defn allNear(xs, ys)
-  Size(xs, 1) == Size(ys, 1) and Size(xs, 2) == Size(ys, 2) and All([near(xs[k], ys[k]) for k in 1:Len(xs)])
+  Size(xs, 1) == Size(ys, 1) and Size(xs, 2) == Size(ys, 2) and All([near(xs[k], ys[k]) for k in 1..Len(xs)])
 end
 
 isLinspace() = allNear(num.Linspace(0.0, 1.0, 3), [0.0, 0.5, 1.0])

@@ -14,6 +14,12 @@ names[3] -->
 Len(names) -->
 ```
 
+`names[1]` is short for [Nth]`(1, names)`:
+
+```cesia
+Nth(1, names) --> names[1]
+```
+
 A position outside the list is an error, which names the size of the list:
 
 ```cesia fails
@@ -51,7 +57,7 @@ A list grows well one element at a time, so building one in a loop is the usual 
 
 ```cesia
 squares = []
-for n in 1:5
+for n in 1..5
   squares = Append(n * n, squares)
 end
 squares -->
@@ -67,12 +73,21 @@ scores -->
 
 ## Ranges
 
-`a:b` is the list of the integers from `a` to `b`, both included. [Range] takes a step:
+`a..b` is the list of the integers from `a` to `b`, both included. It is short for [Range]`(a, b)`, which also takes a step:
 
 ```cesia
-1:5 -->
-Range(0, 1, 0.25) -->
-Sum(1:100) -->
+1..5 -->
+Range(1, 5) --> 1..5
+Range(0, 1, step = 0.25) -->
+Sum(1..100) -->
+```
+
+In the brackets of a list, a range takes a part of it, and `end` is its last position. These are short for [Take] and
+[Skip]:
+
+```cesia
+names[1..2] --> Take(2, names)
+names[2..end] --> Skip(1, names)
 ```
 
 ## Sorting

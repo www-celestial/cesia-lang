@@ -37,7 +37,7 @@ Print("| a | b |\n|---|---|\n| 1 | 2 |")
 ```
 
 ```cesia fold=output
-for k in 1:3
+for k in 1..3
   Print(k)
 end
 ```

@@ -9,7 +9,7 @@ end
 
 defn many(k)
   s = 0
-  for i in 1:k
+  for i in 1..k
     s = s + pow2(Mod(i, 40))
   end
   s + pow2(70)

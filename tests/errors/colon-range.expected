@@ -1,0 +1,4 @@
+colon-range.ce:2:8: A range is written with two dots, as in 1..n, which is Range(1, n), and a method is reached with one dot.
+  2 | Print(1:5)
+    |        ^
+exit 1

@@ -5,13 +5,13 @@ defn f0(n, m, x, a, b)
   w0 = 0
   while w0 < 11 and m <= Len(a)
     if ((-2.84 <= y and t < n) or -2 <= n)
-      for l1 in 3:Mod(2, 8) + 3
+      for l1 in 3..Mod(2, 8) + 3
         if (m - -8) <= ((if m <= x 2.86 else y end) + y)
           if (if w0 < x (-(x)) else x end) != y
             if Exp(x) >= x
               x = (a[l1 + l1] ^ b[l1 * -1 + 1])
             end
-            for l2 in 2:Mod(n, 9)
+            for l2 in 2..Mod(n, 9)
               if y == a[Mod(1, Len(a)) + 1]
                 if Len(a) <= ((if y <= y 61162 else w0 end) - Div(-713, (t * 0 + 5)))
                 end
@@ -24,7 +24,7 @@ defn f0(n, m, x, a, b)
         end
       end
       if w0 < ((if y > x n else m end) - (n - w0))
-        for l3 in 3:8
+        for l3 in 3..8
         end
       end
     end
@@ -35,12 +35,12 @@ end
 defn batchf01(n0, m0, x0)
   a = Zeros(32)
   b = Zeros(28)
-  for i in 1:Len(a)
+  for i in 1..Len(a)
   end
-  for i in 1:Len(b)
+  for i in 1..Len(b)
   end
   acc = 0
-  for j in 1:1100
+  for j in 1..1100
     acc = Mod(acc * 31 + f0(n0 + Mod(j, 3), m0, x0, a, b), 1000000007)
   end
 end

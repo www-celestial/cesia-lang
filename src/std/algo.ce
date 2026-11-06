@@ -55,7 +55,7 @@ defn Primes(n)
     end
     d += 1
   end
-  [k for k in 1:n if sieve[k]]
+  [k for k in 1..n if sieve[k]]
 end
 
 defn LowerBound(x, xs)
@@ -95,14 +95,14 @@ defn Chunk(n, xs)
 
         Chunk(2, [1, 2, 3]) --> [[1, 2], [3]] *)
   count = Len(xs)
-  [[xs[k] for k in i:Min(i + n - 1, count)] for i in Range(1, count, step = n)]
+  [[xs[k] for k in i..Min(i + n - 1, count)] for i in Range(1, count, step = n)]
 end
 
 defn Windows(n, xs)
   (** Every run of n consecutive elements, sliding by one.
 
         Windows(2, [1, 2, 3]) --> [[1, 2], [2, 3]] *)
-  [[xs[k] for k in i:i + n - 1] for i in 1:Len(xs) - n + 1]
+  [[xs[k] for k in i..i + n - 1] for i in 1..Len(xs) - n + 1]
 end
 
 defn Permutations(xs)
@@ -112,7 +112,7 @@ defn Permutations(xs)
   if Len(xs) <= 1
     return [xs]
   end
-  Flatten([[Concat([xs[i]], p) for p in Permutations(Concat(Take(i - 1, xs), Skip(i, xs)))] for i in 1:Len(xs)])
+  Flatten([[Concat([xs[i]], p) for p in Permutations(Concat(Take(i - 1, xs), Skip(i, xs)))] for i in 1..Len(xs)])
 end
 
 defn Combinations(k, xs)
@@ -136,10 +136,10 @@ defn Levenshtein(a, b)
         Levenshtein("kitten", "sitting") --> 3 *)
   xs = Chars(a)
   ys = Chars(b)
-  row = [k for k in 0:Len(ys)]
-  for i in 1:Len(xs)
+  row = [k for k in 0..Len(ys)]
+  for i in 1..Len(xs)
     next = Fill(i, Len(ys) + 1)
-    for j in 1:Len(ys)
+    for j in 1..Len(ys)
       cost = if xs[i] == ys[j] 0 else 1 end
       next[j + 1] = Min(Min(next[j] + 1, row[j + 1] + 1), row[j] + cost)
     end

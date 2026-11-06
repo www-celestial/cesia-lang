@@ -10,7 +10,7 @@ type tok =
   | PLUS | MINUS | STAR | SLASH | CARET
   | ASSIGN | EQEQ | NE | LT | LE | GT | GE
   | PLUSEQ | MINUSEQ | STAREQ | SLASHEQ
-  | ARROW | COLON | SEMI | COMMA | DOT | QUESTION
+  | ARROW | COLON | SEMI | COMMA | DOT | DOTDOT | QUESTION
   | LP | RP | LB | RB | LC | RC
   | NL
   | EOF

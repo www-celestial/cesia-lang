@@ -5,7 +5,7 @@ font = "../../examples/fonts/JetBrainsMono-Regular.ttf"
 black = 0x000000
 green = 0x00FF00
 one = [{X0: 10, Y0: 10, X1: 110, Y1: 60, Color: green}]
-many = [{X0: 10, Y0: k * 10, X1: 110, Y1: k * 10, Color: green} for k in 1:12]
+many = [{X0: 10, Y0: k * 10, X1: 110, Y1: k * 10, Color: green} for k in 1..12]
 bright(x, y, image) = Div(Mod(probe.Pixel(x, y, image), 65536), 256) > 150
 
 defn check()

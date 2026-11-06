@@ -389,7 +389,7 @@ and stmt st (e : expr) =
   | Call _ | Bin _ | Neg _ | Index _ -> ignore (expr st e)
   | _ -> raise No
 
-(* A [for] over a:b. The counter is the loop's variable itself when the body leaves it alone, else a hidden slot; the
+(* A [for] over a..b. The counter is the loop's variable itself when the body leaves it alone, else a hidden slot; the
    bound is a hidden slot. With [lo] given, they start at it and at the bound; else they are in their slots (a region's
    loop). An innermost loop, with no loop and no call inside, also gets a fast copy, taken when, before it starts, the
    fuel covers all its steps and each index that is a + b·counter is proved inside its array at both ends, every part of

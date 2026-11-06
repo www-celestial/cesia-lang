@@ -38,7 +38,7 @@ end
 (* Hot, so native: a reload must still give its new code. *)
 defn summed(n)
   s = 0
-  for i in 1:n
+  for i in 1..n
     s = s + i
   end
   s * 1

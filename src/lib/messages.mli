@@ -11,6 +11,7 @@ val comment_dashes : t
 val number_too_big : string -> t
 val expected : string -> string -> t
 val too_nested : t
+val colon_range : t
 val cant_assign : t
 val break_outside : t
 val underscore_name : string -> string -> string -> t

@@ -10,7 +10,7 @@ type tok =
   | PLUS | MINUS | STAR | SLASH | CARET
   | ASSIGN | EQEQ | NE | LT | LE | GT | GE
   | PLUSEQ | MINUSEQ | STAREQ | SLASHEQ
-  | ARROW | COLON | SEMI | COMMA | DOT | QUESTION
+  | ARROW | COLON | SEMI | COMMA | DOT | DOTDOT | QUESTION
   | LP | RP | LB | RB | LC | RC
   | NL
   | EOF
@@ -37,7 +37,7 @@ let keyword s =
 
 (* And the words that mean something in some places only: it in a short function, as after a use, _ in a pattern and ? after
    a result. *)
-let words = List.map fst keywords @ [ "it"; "as"; "_"; "?" ]
+let words = List.map fst keywords @ [ "it"; "as"; "_"; "?"; ".." ]
 
 type st = {
   src : string;
@@ -227,6 +227,7 @@ let rec scan st ~in_code : token array =
         | '=', _ -> one ASSIGN
         | '<', _ -> one LT
         | '>', _ -> one GT
+        | '.', '.' -> two DOTDOT
         | ':', _ -> one COLON
         | ';', _ -> one SEMI
         | ',', _ -> one COMMA

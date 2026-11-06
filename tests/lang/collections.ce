@@ -19,7 +19,7 @@ isQueueEmptyPop() = queue.IsEmpty(queue.Pop(queue.Empty()))
 
 defn isQueueMany()
   q = queue.Empty()
-  for i in 1:3000
+  for i in 1..3000
     q = queue.Push(i, q)
   end
   while queue.Count(q) > 1

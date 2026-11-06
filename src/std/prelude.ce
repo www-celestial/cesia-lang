@@ -40,8 +40,10 @@ defn Scan(f, init, xs)
 end
 
 defn Range(a, b, step = 1)
-  (** From a to b, by step. Integers if all three are integers, else a + k * step.
+  (** From a to b, by step. Integers if all three are integers, else a + k * step. a..b is Range(a, b), as code mostly
+      writes it.
 
+        Range(1, 4) --> 1..4
         Range(1, 10, step = 3) --> [1, 4, 7, 10]
         Range(0, 1, step = 0.25) --> [0.0, 0.25, 0.5, 0.75, 1.0] *)
   if step == 0
@@ -49,11 +51,11 @@ defn Range(a, b, step = 1)
   end
   if Floor(a) == a and Floor(b) == b and Floor(step) == step
     n = Div(b - a, step) + 1
-    [a + k * step for k in 0:n - 1]
+    [a + k * step for k in 0..n - 1]
   else
     span = (b - a) / step
     n = if span < -1e-9 0 else Floor(span + 1e-9) + 1 end
-    [a + k * step for k in 0:n - 1]
+    [a + k * step for k in 0..n - 1]
   end
 end
 
@@ -75,7 +77,7 @@ defn Group(key, xs, summary = missing)
   g = groupIds(keys)
   parts = groupParts(g, xs)
   out = Fill(missing, g.Count)
-  for j in 1:g.Count
+  for j in 1..g.Count
     out[j] = row(keys[g.Firsts[j]], parts[j], summary)
   end
   out
@@ -84,7 +86,7 @@ end
 defn order(keys)
   (** The positions of keys, from the largest key to the smallest. Stable merge sort. *)
   n = Len(keys)
-  idx = [k for k in 1:n]
+  idx = [k for k in 1..n]
   tmp = Fill(0, n)
   width = 1
   while width < n
@@ -125,7 +127,7 @@ defn Top(n, xs, by = missing)
     idx = order(keys)
   end
   m = Min(n, Len(xs))
-  [xs[idx[k]] for k in 1:m]
+  [xs[idx[k]] for k in 1..m]
 end
 
 (** The elements ordered by f of each.
@@ -340,7 +342,7 @@ TakeLast(n, xs) = Skip(Max(Len(xs) - n, 0), xs)
 DropLast(n, xs) = Take(Max(Len(xs) - n, 0), xs)
 
 defn runLength(f, xs)
-  for k in 1:Len(xs)
+  for k in 1..Len(xs)
     if not f(xs[k])
       return k - 1
     end
@@ -375,13 +377,13 @@ Remove(f, xs) = Filter(x -> not f(x), xs)
 Keep(f, xs) = Filter(IsSome, Map(f, xs))
 
 (**   MapIndexed((k, x) -> k * x, [5, 6]) --> [5, 12] *)
-MapIndexed(f, xs) = [f(k, xs[k]) for k in 1:Len(xs)]
+MapIndexed(f, xs) = [f(k, xs[k]) for k in 1..Len(xs)]
 
 (**   Interleave([1, 2], ["a", "b"]) --> [1, "a", 2, "b"] *)
-Interleave(a, b) = Flatten([[a[k], b[k]] for k in 1:Min(Len(a), Len(b))])
+Interleave(a, b) = Flatten([[a[k], b[k]] for k in 1..Min(Len(a), Len(b))])
 
 (**   Interpose(0, [1, 2]) --> [1, 0, 2] *)
-Interpose(sep, xs) = Flatten([if k == 1 [xs[k]] else [sep, xs[k]] end for k in 1:Len(xs)])
+Interpose(sep, xs) = Flatten([if k == 1 [xs[k]] else [sep, xs[k]] end for k in 1..Len(xs)])
 
 defn Every(f, xs)
   (** Does f accept every element? It stops at the first refusal.
@@ -403,14 +405,14 @@ defn Iterate(f, x, n)
 
         Iterate(Inc, 1, 3) --> [1, 2, 3] *)
   out = Fill(x, n)
-  for k in 2:n
+  for k in 2..n
     out[k] = f(out[k - 1])
   end
   out
 end
 
 (**   Repeatedly(() -> 5, 2) --> [5, 5] *)
-Repeatedly(f, n) = [f() for k in 1:n]
+Repeatedly(f, n) = [f() for k in 1..n]
 
 defn Frequencies(xs)
   (** How many times each value appears, in a dictionary.
@@ -471,7 +473,7 @@ defn SelectKeys(ks, d)
 end
 
 (**   Zipmap(["a", "b"], [1, 2])["b"] --> 2 *)
-Zipmap(ks, vs) = Dict([{Key: ks[k], Value: vs[k]} for k in 1:Min(Len(ks), Len(vs))])
+Zipmap(ks, vs) = Dict([{Key: ks[k], Value: vs[k]} for k in 1..Min(Len(ks), Len(vs))])
 
 defn Invert(d)
   (**   Invert({"a": 1})[1] --> "a" *)

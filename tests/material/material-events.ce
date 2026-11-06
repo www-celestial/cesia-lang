@@ -33,7 +33,7 @@ defn check()
   s = scene.Update(mouse("up", 0, 0), s)
   s = scene.Update({Kind: "tick", Seconds: 0.05}, s)
   Print(s.ShownRough > 0.32 and s.ShownRough < 1.0)
-  for k in 1:10
+  for k in 1..10
     s = scene.Update({Kind: "tick", Seconds: 0.05}, s)
   end
   Print(not scene.Moving(s))

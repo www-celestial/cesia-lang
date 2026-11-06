@@ -69,7 +69,7 @@ defn ParseHead(head)
   (** The request line and headers, as a request without its body. *)
   lines = Split(Crlf, head)
   words = Split(" ", lines[1])
-  headers = [Header(lines[i]) for i in 2:Len(lines)]
+  headers = [Header(lines[i]) for i in 2..Len(lines)]
   if Len(words) != 3 or not (words[3] == "HTTP/1.1" or words[3] == "HTTP/1.0")
     Err(400)
   else if missing in headers
@@ -305,7 +305,7 @@ defn ParseUrl(url)
   end
 end
 
-responseHeaders(head) = Filter(not IsMissing(it), Map(Header, Split(Crlf, head)[2:end]))
+responseHeaders(head) = Filter(not IsMissing(it), Map(Header, Split(Crlf, head)[2..end]))
 
 defn fullSize(head)
   (** The size of a response, from its head and the content-length: a server may keep the connection open. Missing if only
@@ -328,7 +328,7 @@ end
 
 defn Hex(digits)
   (** The value of hexadecimal digits, or missing. Fifteen digits always fit in an integer. *)
-  values = [net.Find(Slice(i, i, digits), "0123456789abcdef") for i in 1:Len(digits)]
+  values = [net.Find(Slice(i, i, digits), "0123456789abcdef") for i in 1..Len(digits)]
   if Len(values) == 0 or Len(values) > 15 or missing in values
     missing
   else

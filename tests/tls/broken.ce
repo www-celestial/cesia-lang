@@ -41,7 +41,7 @@ defn main()
   Spawn(() -> web.Serve(a, port = 18208, wrap = wrap, timeout = 0.2))
   sys.Sleep(0.05)
   client = tls.Client(api, verify = false)
-  for k in 1:20
+  for k in 1..20
     garbage()?
   end
   Print(http.Get("https://127.0.0.1:18208/", secure = client) then MapOk(it.Body))

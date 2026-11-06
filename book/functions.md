@@ -19,7 +19,8 @@ is private to its file's package; a capital makes it public, as for any name.
 
 ## The long form
 
-[defn] starts a function of several lines, which ends at `end`. It gives the value of its last line:
+[defn] starts a function of several lines, which ends at `end`. It gives the value of its last line. The short form is the
+same thing on one line: `double(x) = x * 2` is `defn double(x) x * 2 end`.
 
 ```cesia
 defn describe(n)
@@ -106,11 +107,12 @@ FindFirst(x -> x > 2, numbers) -->
 ## it
 
 For a short function of one parameter, [it] saves writing it: an argument that holds `it` is a function of `it`.
-`Map(it * 2, numbers)` is `Map(x -> x * 2, numbers)`:
+`Map(it * 2, numbers)` is short for `Map(x -> x * 2, numbers)`:
 
 ```cesia
 Map(it * 2, numbers) -->
-Filter(it > 3, numbers) -->
+Map(it * 2, numbers) --> Map(x -> x * 2, numbers)
+Filter(it > 3, numbers) --> Filter(x -> x > 3, numbers)
 ```
 
 ## then
@@ -122,10 +124,11 @@ when there is none, it becomes the last argument. As the list comes last in thes
 numbers then Filter(IsOdd) then Map(it * 10) then Sum(it) -->
 ```
 
-A chain of steps reads from left to right, in the order they happen. The same, without `then`, reads from the inside out:
+A chain of steps reads from left to right, in the order they happen. It is short for calls inside calls, which read from
+the inside out:
 
 ```cesia
-Sum(Map(x -> x * 10, Filter(IsOdd, numbers))) -->
+numbers then Filter(IsOdd) then Map(it * 10) then Sum(it) --> Sum(Map(x -> x * 10, Filter(IsOdd, numbers)))
 ```
 
 ## A small program

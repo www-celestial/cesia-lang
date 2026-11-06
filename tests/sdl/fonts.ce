@@ -6,8 +6,8 @@ strong = "../../examples/fonts/NotoSans-Medium.ttf"
 
 defn differs(a, b)
   count = 0
-  for j in 0:40
-    for i in 0:120
+  for j in 0..40
+    for i in 0..120
       if probe.Pixel(i, j, a) != probe.Pixel(i, j, b)
         count += 1
       end
@@ -18,8 +18,8 @@ end
 
 defn brightest(image)
   best = 0
-  for j in 0:40
-    for i in 0:60
+  for j in 0..40
+    for i in 0..60
       best = Max(best, Mod(probe.Pixel(i, j, image), 256))
     end
   end

@@ -1,7 +1,7 @@
 (* A long native loop still lets another fiber run before it ends: "other ran" comes first, as with the interpreter. *)
 defn count(n)
   s = 0
-  for i in 1:n
+  for i in 1..n
     s = s + Mod(i, 7)
   end
   s

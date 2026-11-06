@@ -9,7 +9,7 @@ end
 
 defn run(n)
   x = Fill(0.75, n)
-  for i in 1:n
+  for i in 1..n
     x[i] = walk(2, x, i)
   end
   x[n]

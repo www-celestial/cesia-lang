@@ -15,7 +15,7 @@ Plain = {Code: (info, text, line) -> missing, Link: (target, line) -> missing, U
 escape(text) = Replace("\"", "&quot;", Replace(">", "&gt;", Replace("<", "&lt;", Replace("&", "&amp;", text))))
 
 (* The bytes that may start something inline: \ ` * _ [ ] < and the line end. Any other byte is text. *)
-specials = [b == 92 or b == 96 or b == 42 or b == 95 or b == 91 or b == 93 or b == 60 or b == 10 for b in 0:255]
+specials = [b == 92 or b == 96 or b == 42 or b == 95 or b == 91 or b == 93 or b == 60 or b == 10 for b in 0..255]
 
 isPunct(b) = (b >= 33 and b <= 47) or (b >= 58 and b <= 64) or (b >= 91 and b <= 96) or (b >= 123 and b <= 126)
 
@@ -74,7 +74,7 @@ defn isRule(t)
     return false
   end
   count = 0
-  for j in (i + 1):n
+  for j in (i + 1)..n
     b = Byte(j, t)
     if b == c
       count += 1
@@ -256,7 +256,7 @@ defn tableFrom(ls, i, gap)
   j = i + 2
   while j <= Len(ls) and not isBlank(ls[j].T) and not interrupts(ls[j].T)
     row = cells(ls[j].T)
-    rows = Append([if k <= Len(row) row[k] else "" end for k in 1:width], rows)
+    rows = Append([if k <= Len(row) row[k] else "" end for k in 1..width], rows)
     j += 1
   end
   {Block: {Kind: "table", Align: align, Head: cells(ls[i].T), Rows: rows, Line: ls[i].N, Gap: gap}, Next: j}
@@ -450,7 +450,7 @@ defn Parse(text)
         Parse("a\n\n```cesia\nx\n```")[2].Info --> "cesia"
         Parse("a\n\n- b")[2].Line --> 3 *)
   ls = Lines(text)
-  blocksOf([{T: detabbed(ls[k]), N: k} for k in 1:Len(ls)])
+  blocksOf([{T: detabbed(ls[k]), N: k} for k in 1..Len(ls)])
 end
 
 (* Inline: the text of a paragraph, a heading or a cell becomes nodes, {K: 0, H} for HTML, {K: 1, C, N, O, X, Orig} for a run
@@ -485,7 +485,7 @@ defn emphasized(nodes)
       else
         d = xs[found]
         taken = if d.N >= 2 and closer.N >= 2 2 else 1 end
-        inner = Join("", [if taken == 2 and xs[k].K == 3 xs[k].Inner else nodeHtml(xs[k]) end for k in (found + 1):(c - 1)])
+        inner = Join("", [if taken == 2 and xs[k].K == 3 xs[k].Inner else nodeHtml(xs[k]) end for k in (found + 1)..(c - 1)])
         made = if taken == 2 {K: 3, H: "<strong>$inner</strong>", Inner: inner} else {K: 0, H: "<em>$inner</em>"} end
         opener = {K: 1, C: d.C, N: d.N - taken, O: d.O, X: d.X, Orig: d.Orig}
         rest = {K: 1, C: closer.C, N: closer.N - taken, O: closer.O, X: closer.X, Orig: closer.Orig}
@@ -595,7 +595,7 @@ defn linkTail(t, i)
 end
 
 (* The bytes a URL keeps as they are; any other is written %XX, as CommonMark does. *)
-urlBytes = [(b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or Contains(Char(b), "-_.+!*'(),%#@?=;:/&$~") for b in 0:127]
+urlBytes = [(b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or Contains(Char(b), "-_.+!*'(),%#@?=;:/&$~") for b in 0..127]
 
 defn hrefOf(url)
   (** A URL as an href holds it: percent-encoded where it must be, and escaped. *)
@@ -842,7 +842,7 @@ end
 defn table(b, hooks)
   (** The HTML of a table. *)
   attribute(k) = if b.Align[k] == "" "" else " align=\"$(b.Align[k])\"" end
-  row(cs, tag) = Str("<tr>\n", Join("", ["<$tag$(attribute(k))>$(inline(cs[k], hooks, b.Line))</$tag>\n" for k in 1:Len(cs)]), "</tr>\n")
+  row(cs, tag) = Str("<tr>\n", Join("", ["<$tag$(attribute(k))>$(inline(cs[k], hooks, b.Line))</$tag>\n" for k in 1..Len(cs)]), "</tr>\n")
   head = Str("<table>\n<thead>\n", row(b.Head, "th"), "</thead>\n")
   body = if Len(b.Rows) == 0 "" else Str("<tbody>\n", Join("", [row(r, "td") for r in b.Rows]), "</tbody>\n") end
   Str(head, body, "</table>\n")

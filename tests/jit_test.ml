@@ -74,9 +74,9 @@ end
 
 defn mandel(w, h, maxit)
   total = 0
-  for py in 0:h - 1
+  for py in 0..h - 1
     y0 = 2.0 * py / h - 1.0
-    for px in 0:w - 1
+    for px in 0..w - 1
       x0 = 3.0 * px / w - 2.0
       x = 0.0
       y = 0.0
@@ -98,14 +98,14 @@ end
 
 defn dot(a, b, n)
   s = 0.0
-  for k in 1:n
+  for k in 1..n
     s = s + a[k] * b[k]
   end
   s
 end
 
 defn scale(a, n, f)
-  for k in 1:n
+  for k in 1..n
     a[k] = a[k] * f
   end
   n
@@ -150,7 +150,7 @@ end
 
 xs = Zeros(5)
 ys = Zeros(5)
-for k in 1:5
+for k in 1..5
   xs[k] = k * 1.5
   ys[k] = 10.0 - k
 end

@@ -1,11 +1,11 @@
 defn work()
   s = 0
-  for i in 1:500
+  for i in 1..500
     s = s + i
   end
   s
 end
-for i in 1:100
+for i in 1..100
   Wait(Spawn(work))
 end
 Print("the limit should have stopped this")

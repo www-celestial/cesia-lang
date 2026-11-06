@@ -1,7 +1,7 @@
 (* A variable alone as a statement is still read: unset, it is an error. *)
 defn f(n)
   s = 0
-  for i in 1:n
+  for i in 1..n
     K
     s = s + i
   end

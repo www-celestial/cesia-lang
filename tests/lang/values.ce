@@ -60,7 +60,7 @@ defn forCopies()
 end
 defn build(n)
   x = Zeros(n)
-  for i in 1:n
+  for i in 1..n
     x[i] = 1
   end
   x
@@ -118,8 +118,8 @@ isNativeReturnsElement() = returnsElement()
 defn measureKeeps()
   (** Measuring a variable does not copy it: otherwise this loop would become quadratic. *)
   x = Zeros(2000)
-  for i in 1:2000
-    x[i] = Len(x) + Sum(x[1:1])
+  for i in 1..2000
+    x[i] = Len(x) + Sum(x[1..1])
   end
   x[2000] == 4000
 end

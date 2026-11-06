@@ -2,7 +2,7 @@ use pkg/rope
 use pkg/history
 use pkg/num
 
-big = Join("\n", ["line $k" for k in 1:2000])
+big = Join("\n", ["line $k" for k in 1..2000])
 
 isOf() = rope.Text(rope.Of("abc")) == "abc" and rope.Size(rope.Of("abc")) == 3
 isBig() = rope.Text(rope.Of(big)) == big and rope.LineCount(rope.Of(big)) == 2000
@@ -29,7 +29,7 @@ defn isAgainstAModel()
   r = rope.Of(big)
   model = big
   dice = num.Uniform(3000, num.Seeded(5)).Values
-  for k in 1:1000
+  for k in 1..1000
     n = ByteLength(model)
     at = Floor(dice[3 * k - 2] * n)
     if dice[3 * k - 1] < 0.6

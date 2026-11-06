@@ -9,7 +9,7 @@ q = "select id, name, score, created_at from users"
 
 defn best(f)
   times = []
-  for k in 1:5
+  for k in 1..5
     start = sys.Now()
     f()
     times = Append(sys.Now() - start, times)
@@ -18,13 +18,13 @@ defn best(f)
 end
 
 defn byKey(db)
-  for i in 0:99999
+  for i in 0..99999
     sql.One("select id, name from users where id = ?", [i], db)
   end
 end
 
 defn inserts(tx)
-  for i in 1:100000
+  for i in 1..100000
     sql.Exec("insert into t (name) values (?)", ["x$i"], tx)?
   end
   Ok(missing)

@@ -24,7 +24,7 @@ defn measure(begun, sphere)
   state = begun.State
   window = begun.Window
   times = []
-  for n in 1:frames
+  for n in 1..frames
     start = sys.Now()
     state = moved(state, n)
     if sphere

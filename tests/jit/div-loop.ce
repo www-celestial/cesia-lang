@@ -1,7 +1,7 @@
 (* Div by zero after the loop got hot. *)
 defn f(n)
   s = 0
-  for i in 1:n
+  for i in 1..n
     s = s + Div(1000000, n - i)
   end
   s

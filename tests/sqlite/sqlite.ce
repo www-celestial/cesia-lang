@@ -47,9 +47,9 @@ end
 defn isWideRows()
   db = sql.Open(url("wide"))?
   for n in [33, 100]
-    cols = Join(", ", ["$k as c_$k" for k in 1:n])
+    cols = Join(", ", ["$k as c_$k" for k in 1..n])
     r = sql.One("select $cols", [], db)?
-    wanted = "{$(Join(",", ["\"C$k\":$k" for k in 1:n]))}"
+    wanted = "{$(Join(",", ["\"C$k\":$k" for k in 1..n]))}"
     if not (Len(r) == n and r.C1 == 1 and r["C$n"] == n and json.Text(r) == wanted)
       return false
     end
@@ -165,7 +165,7 @@ end
 
 defn isPanicRollsBack()
   db = users("panic")?
-  results = [Wait(Spawn(() -> sql.Transaction(boom, db))) for k in 1:20]
+  results = [Wait(Spawn(() -> sql.Transaction(boom, db))) for k in 1..20]
   first = errorText(results[1] then MapErr(it.Message))
   All([failed(r) for r in results]) and count("users", db)? == 0 and Contains("boom", first)
 end

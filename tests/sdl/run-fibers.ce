@@ -11,7 +11,7 @@ end
 view(state) = [{Kind: "clear", Color: 0x000000}]
 
 defn worker()
-  for i in 1:5
+  for i in 1..5
     sys.Sleep(0.002)
   end
   Print("the worker ran")

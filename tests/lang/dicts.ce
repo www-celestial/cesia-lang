@@ -84,14 +84,14 @@ end
 
 defn isMany()
   d = Dict()
-  for i in 1:5000
+  for i in 1..5000
     d[i * 7 - 3] = i
   end
   total = 0
-  for i in 1:5000
+  for i in 1..5000
     total += d[i * 7 - 3]
   end
-  for i in 1:2500
+  for i in 1..2500
     d = Drop(i * 7 - 3, d)
   end
   Len(d) == 2500 and total == 12502500 and Equal(Keys(d)[1], 2501 * 7 - 3)

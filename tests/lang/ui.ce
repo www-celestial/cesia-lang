@@ -48,7 +48,7 @@ end
 
 defn stepped(n, seconds)
   value = 0.0
-  for k in 1:n
+  for k in 1..n
     value = ui.Ease(value, 1.0, seconds)
   end
   value
@@ -154,7 +154,7 @@ defn fontIsNotCode(c)
   end
 end
 
-withoutCode(allWidgets) = [allWidgets[k] for k in 1:Len(allWidgets) if k != 14]
+withoutCode(allWidgets) = [allWidgets[k] for k in 1..Len(allWidgets) if k != 14]
 
 defn isOutputSitsUnderABody()
   withBody = {X: 0, Y: 0, Width: 100, Title: "T", Color: 0, Inputs: [], Outputs: [pin("O")], Body: 30}

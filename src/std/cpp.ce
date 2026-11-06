@@ -14,10 +14,10 @@ Method(name, args, ret, call = missing) = Fn(name, args, ret, call = call)
 (** A class to wrap: its name in Cesia, its C++ type, its methods and the argument types of its constructor. *)
 Class(name, type, methods, new = []) = {Name: name, Type: type, Methods: methods, New: new}
 
-arguments(types) = Join(", ", ["a$k" for k in 1:Len(types)])
+arguments(types) = Join(", ", ["a$k" for k in 1..Len(types)])
 
 defn params(types, first)
-  Join(", ", Concat(first, ["$(cppTypes[types[k]]) a$k" for k in 1:Len(types)]))
+  Join(", ", Concat(first, ["$(cppTypes[types[k]]) a$k" for k in 1..Len(types)]))
 end
 
 defn body(ret, call)

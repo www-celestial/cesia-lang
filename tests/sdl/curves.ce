@@ -17,7 +17,7 @@ other = [{X0: 10, Y0: 20, X1: 110, Y1: 70, Color: green}]
 defn allFinite(block, vertices)
   (** A number is equal to itself, unless it is nan. *)
   good = true
-  for k in 0:(vertices - 1)
+  for k in 0..(vertices - 1)
     x = c.Get("f32", k * 32, block)
     y = c.Get("f32", k * 32 + 4, block)
     good = good and x == x and y == y
@@ -50,7 +50,7 @@ defn check()
   sdl.Draw([{Kind: "clear", Color: black}, {Kind: "curves", Items: other}], older)
   stale = shot(flat, older)
   Print(bright(25, 49, stale.Image))
-  many = [{X0: 10, Y0: k * 10, X1: 110, Y1: k * 10, Color: green} for k in 1:12]
+  many = [{X0: 10, Y0: k * 10, X1: 110, Y1: k * 10, Color: green} for k in 1..12]
   g = shot(many, f.Window)
   Print(bright(60, 119, g.Image))
   sdl.Frame([{Kind: "clear", Color: black}], g.Window)

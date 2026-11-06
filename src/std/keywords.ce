@@ -31,8 +31,8 @@ use pkg/queue as line
       total = 0
       for x in [1, 2, 3] total += x end
       total --> 6
-      [x * x for x in 1:4] --> [1, 4, 9, 16]
-      [x for x in 1:6 if IsEven(x)] --> [2, 4, 6] *)
+      [x * x for x in 1..4] --> [1, 4, 9, 16]
+      [x for x in 1..6 if IsEven(x)] --> [2, 4, 6] *)
 
 (** in
     After for, what the loop runs over. Elsewhere, a question: is the value an element of an array, or a key of a dictionary?
@@ -52,7 +52,7 @@ use pkg/queue as line
     Leaves the loop it is in at once, for or while, and goes on after its end.
 
       seen = 0
-      for x in 1:10 if x > 3 break end seen += 1 end
+      for x in 1..10 if x > 3 break end seen += 1 end
       seen --> 3 *)
 
 (** return
@@ -168,6 +168,16 @@ use pkg/queue as line
     In a pattern, takes anything and names nothing. A name has no _: words join by capitals, byteLength or ByteLength.
 
       match 9 1 -> "one" _ -> "any" end --> "any" *)
+
+(** ..
+    The integers from the one on its left to the one on its right, both included: a..b is Range(a, b). In the brackets of a
+    list, it takes a part of it, and end there is the last position.
+
+      1..4 --> [1, 2, 3, 4]
+      Range(1, 4) --> [1, 2, 3, 4]
+      tens = [10, 20, 30, 40]
+      tens[2..3] --> [20, 30]
+      tens[2..end] --> Skip(1, tens) *)
 
 (** ?
     After a result, the value of an Ok, or else a way out of the function with the Err. After a type, the type allows missing:

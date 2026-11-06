@@ -61,7 +61,7 @@ end
 
 defn isManyKeys()
   m = {}
-  for i in 1:40
+  for i in 1..40
     m["k$(i)"] = i
   end
   Len(m) == 40 and Keys(m)[1] == "k1" and Keys(m)[40] == "k40" and m.k17 == 17
@@ -78,10 +78,10 @@ isBigLiteral() = Keys({A: 1, B: 2, C: 3, D: 4, E: 5, F: 6, G: 7, H: 8, I: 9, J: 
 
 defn isDropMany()
   m = Dict()
-  for i in 1:20
+  for i in 1..20
     m[i] = i
   end
-  for i in 1:15
+  for i in 1..15
     m = Drop(i, m)
   end
   Equal(Keys(m), [16, 17, 18, 19, 20]) and Equal(Keys(Put(1, 0, m)), [16, 17, 18, 19, 20, 1])
@@ -147,7 +147,7 @@ defn treeOf(n)
 end
 defn isTreeMeetsInterface()
   big = treeOf("big")
-  for i in 1:20
+  for i in 1..20
     big["k$(i)"] = i
   end
   labelOf(treeOf("t")) == "t" and treeOf("t").Shout() == "T" and labelOf(big) == "big" and labelOf(Drop("x", {Label: () -> "d", x: 1})) == "d"
@@ -157,7 +157,7 @@ isTreeLacksInterface() = stop(() -> labelOf(Put(1, 2, {Label: 3}))) == "type: la
 (* One storage at every size: a map grows by one block, then by more of the same kind, and the program sees none of it. *)
 defn sized(n)
   m = Dict()
-  for i in 1:n
+  for i in 1..n
     m["k$(i)"] = i
   end
   m

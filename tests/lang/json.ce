@@ -41,7 +41,7 @@ isHugeExponent() = bad("1e999")
 
 defn deep(n)
   x = 1
-  for k in 1:n
+  for k in 1..n
     x = {A: x}
   end
   x

@@ -1095,7 +1095,7 @@ and ctail_block c (b : block) : ctx -> t =
     fun ctx -> pre ctx; last ctx
   end
 
-(* A bound of a:b, evaluated once. A float with an integer value is accepted. *)
+(* A bound of a..b, evaluated once. A float with an integer value is accepted. *)
 and bound c (e : expr) pos : ctx -> int =
   if ty c e == TI then ci c e
   else begin
@@ -1148,7 +1148,7 @@ and array_lit c e rows =
       Arrays.of_vals r cols out
   end
 
-(* A loop over a:b or over an array. [st] is the state of one run of the loop. *)
+(* A loop over a..b or over an array. [st] is the state of one run of the loop. *)
 and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 'st -> ctx -> unit =
   fun c iter set body ->
   let off = c.off in
