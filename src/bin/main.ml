@@ -230,8 +230,35 @@ let create name =
   if code = 0 then print_endline (Messages.project_created name);
   exit code
 
+(* The JIT, a plugin beside the binary, found from the binary itself with its links followed: in the lib/ of a release
+   (with its licenses/Cesia.txt, as the C libraries), or in src/jit/ of a build. Loaded at the first unit that gets hot,
+   never at start-up; missing or refused, programs run interpreted, and CESIA_JIT_SHOW says why. *)
+let load_jit () =
+  let show m = if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m) in
+  let plugin = "cesia_jit.cmxs" in
+  let found =
+    match Unix.realpath Sys.executable_name with
+    | exception Unix.Unix_error _ -> None
+    | exe ->
+      let bin = Filename.dirname exe in
+      let up = Filename.dirname bin in
+      let lib = Filename.concat up "lib" and build = Filename.concat (Filename.concat up "jit") plugin in
+      if Filename.basename bin <> "bin" then None
+      else if Sys.file_exists (Filename.concat lib "licenses/Cesia.txt") then Some (Filename.concat lib plugin)
+      else if Sys.file_exists build then Some build
+      else None
+  in
+  match found with
+  | None -> show ("no " ^ plugin ^ " beside the binary")
+  | Some path ->
+    (match Cesia_sys.Plugin.load path with
+     | Ok () -> show ("loaded " ^ path)
+     | Error m -> show (path ^ ": " ^ m))
+
 (* CESIA_JIT=off or always, for tests; native code otherwise comes to what gets hot. *)
 let jit_mode () =
+  Tier.available := true;
+  Tier.loader := load_jit;
   match Sys.getenv_opt "CESIA_JIT" with
   | Some "off" -> Tier.mode := Tier.off
   | Some "always" -> Tier.mode := Tier.always

@@ -222,6 +222,9 @@ let args () =
 let () =
   let seconds, seed = args () in
   (* CESIA_JIT=always: the typed path compiles what it can at once, so it is native code against the interpreter. *)
+  (* The JIT linked here, given at the first hot unit as the binary's plugin is. *)
+  Tier.available := true;
+  Tier.loader := Cesia_jit.Engine.install;
   (match Sys.getenv_opt "CESIA_JIT" with
    | Some "always" -> Tier.mode := Tier.always
    | Some "off" -> Tier.mode := Tier.off

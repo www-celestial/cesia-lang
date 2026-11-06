@@ -1,12 +1,5 @@
 open Types
 
-type backend = {
-  load : string -> string array -> nativeint array;
-  call : nativeint -> int array -> floatarray -> t array -> int array -> int;
-}
-
-let backend : backend option ref = ref None
-
 (* Each unit gets its own names: MIR's exported names are global. *)
 let units = ref 0
 

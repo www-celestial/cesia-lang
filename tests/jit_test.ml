@@ -1,5 +1,5 @@
 (* The JIT: MIR text made into machine code and run through the single entry. *)
-open Cesia_sys
+open Cesia_jit
 
 let fails = ref 0
 
@@ -37,8 +37,8 @@ add2:   func i64, p:cx
 
 let () =
   let f = (Jit.load add2 [| "add2" |]).(0) in
-  let ints = [| 0; 3; 4; 0 |] and floats = Float.Array.of_list [ 0.; 1.5; 0. ] and io = Array.make Cesia.Ir.io_size 0 in
-  io.(Cesia.Ir.io_base) <- 1;
+  let ints = [| 0; 3; 4; 0 |] and floats = Float.Array.of_list [ 0.; 1.5; 0. ] and io = Array.make Cesia_jit.Ir.io_size 0 in
+  io.(Cesia_jit.Ir.io_base) <- 1;
   let status = Jit.call f ints floats [||] io in
   check "status" (status = 7);
   check "int sum" (ints.(3) = 7);
@@ -53,12 +53,13 @@ two:    func i64, p:cx
         endfunc
         endmodule
 |} [| "two" |]).(0) in
-  check "second module" (Jit.call g [||] (Float.Array.create 0) [||] (Array.make Cesia.Ir.io_size 0) = 2);
+  check "second module" (Jit.call g [||] (Float.Array.create 0) [||] (Array.make Cesia_jit.Ir.io_size 0) = 2);
   check "first still runs" (Jit.call f ints floats [||] io = 7 && ints.(3) = 7);
   print_endline "jit: hand-written MIR ok"
 
 (* Versions of a real program, lowered and run natively on the interpreter's stacks. *)
 open Cesia
+open Cesia_jit
 open Types
 
 let program =

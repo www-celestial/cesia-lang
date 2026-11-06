@@ -1,0 +1,12 @@
+; The JIT: a library, whose plugin cesia_jit.cmxs the binary loads at the first hot unit (src/bin/main.ml), so that its code,
+; MIR and its C glue included (their C stays in src/sys), costs nothing at start-up; the plugin's module Plugin gives the
+; interpreter the JIT. Tests and the fuzzer link the library, and call Engine.install.
+
+(library
+ (name cesia_jit)
+ (flags
+  (:standard -open Cesia))
+ (libraries cesia)
+ (foreign_archives ../sys/jitglue ../sys/mir/mir)
+ (c_library_flags
+  (:include ../sys/c_flags.sexp)))

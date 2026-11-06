@@ -11,7 +11,6 @@ let seconds ctx v =
   | _ -> bad ()
 
 let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
-  Jit.install ();
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
   Option.iter (fun (period, f) -> Poll.set_tick poll period f) tick;

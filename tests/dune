@@ -16,7 +16,7 @@
 (executable
  (name fuzz)
  (modules fuzz)
- (libraries cesia cesia_sys unix))
+ (libraries cesia cesia_sys cesia_jit unix))
 
 (test
  (name version_test)
@@ -26,4 +26,4 @@
 (test
  (name jit_test)
  (modules jit_test)
- (libraries cesia cesia_sys))
+ (libraries cesia cesia_sys cesia_jit))

@@ -3,11 +3,18 @@
  (libraries cesia unix)
  (foreign_stubs
   (language c)
-  (names stubs ffi calls linalg jit)
-  (include_dirs mir))
- (foreign_archives mir/mir)
+  (names stubs ffi calls linalg))
  (c_library_flags
   (:include c_flags.sexp)))
+
+; The JIT's glue to MIR, which only the JIT uses: linked with MIR into its plugin (src/jit), not into the binary, whose
+; start-up would pay for MIR's data.
+
+(foreign_library
+ (archive_name jitglue)
+ (language c)
+ (names jit)
+ (include_dirs mir))
 
 (rule
  (targets calls.c)
