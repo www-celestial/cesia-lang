@@ -238,40 +238,36 @@ let check_uses path (fn : Ast.func) =
        | _ -> ())
     fn.body
 
-(* The names that a file reads from the package it uses as [alias]: geo.Area, geo.Rect.Square, geo.Point(x, y) in a pattern,
-   geo.Rect as a type. No variable of the file has that name: the parser refuses it. *)
-let used_names alias (fn : Ast.func) =
-  let out = ref [] in
-  let add name = out := name :: !out in
-  let ty (t : Ast.ptype) = if t.tpkg = Some alias then add t.tname in
-  let rec pat = function
-    | Ast.Pcons { cpkg; cname; cargs; _ } -> if cpkg = Some alias then add cname; Array.iter pat cargs
-    | Parray ps -> Array.iter pat ps
-    | Pstruct fs -> Array.iter (fun (_, q) -> pat q) fs
-    | Pname _ | Pwild | Plit _ -> ()
+(* The names that a file reads from each package it uses, by alias, each once: geo.Area, geo.Rect.Square, geo.Point(x, y) in
+   a pattern, geo.Rect as a type, in the code of a text too. Its tokens tell, faster than its tree: no variable has the name
+   of an alias, the parser refuses it, so an alias that a dot follows, and no dot precedes, is always the package. *)
+let used_names (fn : Ast.func) toks =
+  let out = Hashtbl.create 16 in
+  Array.iter (fun (e : Ast.expr) -> match e.e with Use { ualias; _ } -> Hashtbl.replace out ualias (Hashtbl.create 16) | _ -> ())
+    fn.body;
+  let rec scan (toks : Lexer.token array) =
+    let n = Array.length toks in
+    let rec after j = if j < n && (match toks.(j).t with Lexer.NL -> true | _ -> false) then after (j + 1) else j in
+    let dot i = i < n && match toks.(i).t with Lexer.DOT -> true | _ -> false in
+    for i = 0 to n - 1 do
+      match toks.(i).t with
+      | Lexer.NAME alias when dot (i + 1) && not (i > 0 && dot (i - 1)) ->
+        (match Hashtbl.find_opt out alias with
+         | Some names ->
+           let j = after (i + 2) in
+           if j < n then (match toks.(j).t with Lexer.NAME name -> Hashtbl.replace names name () | _ -> ())
+         | None -> ())
+      | Lexer.TEXT parts -> List.iter (function Lexer.Code ts -> scan ts | Lexer.Plain _ -> ()) parts
+      | _ -> ()
+    done
   in
-  let rec expr (e : Ast.expr) =
-    (match e.e with
-     | Field ({ e = Var { text; _ }; _ }, name) when String.equal text alias -> add name
-     | Lambda f | Fn_def (_, f) -> func f
-     | Match { arms; _ } -> Array.iter (fun (a : Ast.arm) -> pat a.pt) arms
-     | Destructure (pt, _) -> pat pt
-     | Interface i -> Array.iter (fun (_, ps, ret) -> params ps; Option.iter ty ret) i.imethods
-     | _ -> ());
-    Resolve.children expr e
-  and params ps = Array.iter (fun (p : Ast.param) -> Option.iter ty p.ptype; Option.iter expr p.default) ps
-  and func (f : Ast.func) =
-    params f.params;
-    Option.iter ty f.ret;
-    Array.iter expr f.body
-  in
-  func fn;
-  !out
+  if Hashtbl.length out > 0 then scan toks;
+  fun alias -> Hashtbl.fold (fun name () acc -> name :: acc) (Hashtbl.find out alias) []
 
 (* A package of std/ with natives and a source in Cesia loads its source only for a file that names something of it. *)
 let natives_only w upath names =
   match find_native w upath with
-  | Some natives when not (has_source w upath && List.exists (fun n -> not (List.mem_assoc n natives)) names) -> Some natives
+  | Some natives when not (List.exists (fun n -> not (List.mem_assoc n natives)) names && has_source w upath) -> Some natives
   | _ -> None
 
 (* Lexes and parses a source. [use] returns the module of each use, given the names the file reads from it. Gives the names of
@@ -281,12 +277,13 @@ let parse w ~hooks ~path ~src ~use =
   let toks = Lexer.tokens ~file:path src in
   let fn = Parser.program ~hooks ~file:path ~nesting:w.limits.nesting toks in
   check_uses path fn;
+  let names = used_names fn toks in
   let uses =
     List.filter_map
       (fun (e : Ast.expr) ->
          match e.e with
          | Use { upath; ualias } ->
-           let m = use ~pos:e.pos ~names:(used_names ualias fn) upath in
+           let m = use ~pos:e.pos ~names:(names ualias) upath in
            Some ((ualias, in_package w m), w.modules.(m).host)
          | _ -> None)
       (Array.to_list fn.body)
