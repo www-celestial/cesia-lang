@@ -946,6 +946,11 @@ defn build(root, folder, cache)
     pages = Append({Path: p.Path, Html: page(site, p.Path, p.Title, body)}, pages)
     search = Concat(search, bookSearch(p))
   end
+  (* A book with mistakes stops here: the pages of the reference would take most of the time, for nothing. *)
+  early = Concat(drained(site.Mistakes), sameButCase([p.Path for p in pages]))
+  if Len(early) > 0
+    return Err(Join("\n", Unique(early)))
+  end
   index = {Label: "Reference", Path: "ref/index.html"}
   moduleLinks = [{Label: m, Path: modulePath(m)} for m in modules]
   for k in 1..Len(modules)
