@@ -106,12 +106,14 @@ defn compile(compiler, cppFile, library)
 end
 
 defn Wrap(spec, folder = ".", compiler = "c++")
-  (** Compiles what changed, loads it, and gives a dictionary of functions: "name", "Class.method", "Class.new". *)
+  (** Compiles what changed into folder, made if it isn't there, loads it, and gives a dictionary of functions: "name",
+      "Class.method", "Class.new". *)
   cppFile = "$folder/$(spec.Name)_cesia.cpp"
   library = "$folder/lib$(spec.Name)_cesia.so"
   source = Source(spec)
   same = sys.Exists(cppFile) and sys.Exists(library) and result.UnwrapOr("", sys.Read(cppFile)) == source
   if not same
+    sys.Mkdir(folder)?
     sys.Write(cppFile, source)?
     compile(compiler, cppFile, library)?
   end

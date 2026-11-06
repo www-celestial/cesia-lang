@@ -120,23 +120,24 @@ defn main()
   result.Ok(missing)
 end
 
-io.Print(main())
+result.Unwrap(main())
 ```
 
 ### Running it
 
-[cpp.Wrap] runs the compiler, writes the C layer and its library in `build`, reads them back, and loads the library. So the
-program needs `exec` for the compiler, `read` and `write` on `build`, and `ffi` for the library it made:
+[cpp.Wrap] makes the folder `build` if it isn't there, writes the C layer in it, runs the compiler, which writes the library
+beside it, and loads the library. So the program needs `exec` for the compiler, `read` and `write` on `build`, and `ffi` for
+the library it made, by its exact path, `lib` and the `Name` of the spec, then `_cesia.so`:
 
 ```bash
-mkdir build
 cesia run --allow exec=g++,read=build,write=build,ffi=build/libdemo_cesia.so demo.ce
 ```
 
 ```text
 1 6
-Ok(Value = missing)
 ```
+
+[result.Unwrap] at the end stops the program with the message of an `Err`, if the compiler or the library fails.
 
 It compiles again only what changed. A C++ exception becomes a panic with its message.
 

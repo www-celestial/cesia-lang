@@ -37,7 +37,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `net=own` | listening on this machine, and connecting only to the program's own listeners: what a test gets |
 | `exec`, `exec=git` | running other programs, all of them or one |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
-| `ffi=m` | loading a C library, by its name |
+| `ffi=m`, `ffi=build/libdemo.so` | loading a C library, by its name or by the exact path of its file |
 | `debug` | the breakpoints and the code run by [std/debug]; `cesia run --debugger` and `cesia run --repl` give it by themselves, with no `--allow` |
 | `all` | everything |
 
