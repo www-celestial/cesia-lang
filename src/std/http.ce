@@ -392,7 +392,7 @@ defn Request(method, url, body = "", headers = [], secure = missing)
     return Failed("This request has a space or a line end where it can't.")
   end
   if target.Secure and IsMissing(secure)
-    return Failed("https needs secure = tls.client(lib): see std/tls.ce.")
+    return Failed("https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.")
   end
   c = net.Connect(target.Host, target.Port)?
   made = if target.Secure secure(c, target.Host) else Plain(c) end

@@ -1,4 +1,4 @@
-Err(Error = "https needs secure = tls.client(lib): see std/tls.ce.")
+Err(Error = "https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.")
 Err(Error = "This URL doesn't start with http://.")
 Err(Error = "http")
 Err(Error = "http")
