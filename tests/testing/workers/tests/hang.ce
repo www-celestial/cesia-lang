@@ -1,0 +1,7 @@
+(* Reading the input blocks the whole worker, past any deadline it can keep: cesia test stops it. *)
+use std/sys
+isFirst() = true
+defn isBlocks()
+  sys.ReadInput()
+  true
+end

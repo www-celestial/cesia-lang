@@ -1,0 +1,8 @@
+tests/b.ce:2: isSum failed
+  list.Sum([1, 2]) == 4
+  | list.Sum([1, 2]) = 3
+tests/hang.ce:isBlocks stopped answering past its deadline, and its worker was stopped.
+tests/memory.ce:2: isHuge failed: Limit "memory" reached.
+tests/panic.ce: failed: at the top of the file
+5 passed, 4 failed, seed 1
+exit 1

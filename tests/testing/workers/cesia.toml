@@ -1,0 +1,10 @@
+[project]
+name = "workers"
+cesia = "0.2"
+
+[tasks.test]
+run = ["cesia", "test"]
+
+[test]
+timeout = "0.3"
+serial = ["tests/serial.ce"]

@@ -1,0 +1,2 @@
+use std/list
+isHuge() = list.Sum(list.Fill(1, 4000000000)) > 0

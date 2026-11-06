@@ -193,6 +193,9 @@ let only_test = ref None
 let remove = ref (fun (_ : string) -> ())
 let reset = ref ignore
 
+(* In a worker: each test is named as it starts. *)
+let marked = ref false
+
 (* Did a failed test keep its Temp folder, and with it the run's? *)
 let kept = ref false
 
@@ -220,6 +223,12 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
          ctx.b <- 0;
          ctx.site <- 0;
          Array.fill record.got 0 (Array.length record.got) None;
+         (* A worker names each test as it starts, so that cesia test can name the one that stopped answering. *)
+         if !marked then begin
+           Runtime.flush_out ctx.w;
+           print_endline ("\001" ^ path ^ ":" ^ f.fname);
+           flush stdout
+         end;
          Props.st.root <- ctx.w.root;
          Props.start_test ~file:(from_root ctx.w path) ~test:f.fname;
          record.floor <- 0;
@@ -337,21 +346,39 @@ let run_folder (ctx : ctx) st ~examples dir tests =
 
 (* A folder is a package, as for use. In a tests folder and in std/ each file stands alone, and so does a file given by name,
    except a test, which needs its package. *)
-let run_paths ctx st path =
+(* What cesia test runs, each as a whole: the files that stand alone with something to run, and the folders of packages,
+   each with its test files. A folder is a package, as for use; in a tests folder and in std/ each file stands alone, and so
+   does a file given by name, except a test, which needs its package. *)
+let units path =
   let whole = Package.is_dir path in
   let stands_alone p =
     in_tests_dir p || Filename.basename (Filename.dirname p) = "std" || not (whole || Package.is_test p)
   in
   let skip = Package.root_of path in
   let alone, packaged = List.partition stands_alone (source_files ~skip path) in
-  List.iter (run_file ctx st) alone;
-  List.iter
-    (fun dir ->
-       let tests = List.filter (fun p -> Package.is_test p && String.equal (Filename.dirname p) dir) packaged in
-       run_folder ctx st ~examples:whole dir tests)
-    (List.sort_uniq String.compare (List.map Filename.dirname packaged))
+  List.map (fun p -> `File p) alone
+  @ List.map
+      (fun dir -> `Folder (dir, List.filter (fun p -> Package.is_test p && String.equal (Filename.dirname p) dir) packaged))
+      (List.sort_uniq String.compare (List.map Filename.dirname packaged))
 
-let run w ~path ~seed ~cases ~only =
+let run_unit ctx st ~examples = function
+  | `File p -> run_file ctx st p
+  | `Folder (dir, tests) -> run_folder ctx st ~examples dir tests
+
+(* A worker runs one unit: a file, or a folder and the test files in it. *)
+let worker_unit path =
+  if Package.is_dir path then `Folder (path, List.filter Package.is_test (List.map (Filename.concat path) (Array.to_list (Sys.readdir path))))
+  else `File path
+
+(** The units of a path, as paths: one worker each. *)
+let unit_paths path =
+  List.filter_map
+    (function
+      | `File p -> if has_tests p (read p) then Some p else None
+      | `Folder (dir, tests) -> if tests <> [] || List.exists (fun p -> has_tests p (read p)) (Package.files dir) then Some dir else None)
+    (units path)
+
+let run w ~path ~seed ~cases ~only ~worker =
   Loader.guarded w (fun ctx ->
       w.on_panic <- (fun _ _ -> ());
       Loader.init w;
@@ -367,8 +394,13 @@ let run w ~path ~seed ~cases ~only =
       core.cells <- Array.append core.cells [| note |];
       core.stable <- Array.append core.stable [| true |];
       let st = { passed = 0; failed = 0 } in
-      run_paths ctx st path;
+      if worker then begin
+        marked := true;
+        run_unit ctx st ~examples:true (worker_unit path)
+      end
+      else List.iter (run_unit ctx st ~examples:(Package.is_dir path)) (units path);
       Runtime.flush_out w;
-      print_endline (Messages.test_summary st.passed st.failed (if Props.st.ran then Some seed else None));
+      if worker then print_endline (Printf.sprintf "\001= %d %d %b" st.passed st.failed Props.st.ran)
+      else print_endline (Messages.test_summary st.passed st.failed (if Props.st.ran then Some seed else None));
       if not !kept && Props.st.dir <> "" && Sys.file_exists Props.st.dir then !remove Props.st.dir;
       if st.failed > 0 then 1 else 0)

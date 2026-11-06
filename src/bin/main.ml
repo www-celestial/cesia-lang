@@ -203,6 +203,21 @@ let one_test arg =
     String.sub arg 0 i, Some (String.sub arg (i + 1) (String.length arg - i - 1))
   | _ -> arg, None
 
+(* What each tool may touch: see src/tools/. *)
+let tool_grants = function
+  | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
+  | "check" -> "read"
+  | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug"
+
+let tool ?(grants = "") name args =
+  let o = with_default_memory Runtime.default_options in
+  let grants = if grants = "" then tool_grants name else grants in
+  let w = Runtime.create_world { o with o_grants = parse_allow o.o_grants grants } in
+  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
+  Loader.run_tool w name args
+
+let worker = ref false
+
 (* A test may read the project, write in its Temp folder, listen on this machine and connect to its own listeners; [test]
    of cesia.toml and --allow give more. Each grant stays whole: a path can hold a comma. *)
 let test_grants root dir (config : Project.test) allow =
@@ -210,8 +225,29 @@ let test_grants root dir (config : Project.test) allow =
   let base = { Types.all = false; perms = Types.[ Read, Some root; Read, Some dir; Write, Some dir; Net, Some "own" ] @ here } in
   List.fold_left (fun g item -> parse_allow g item) base (config.allow @ allow)
 
+(* Several units go to workers, through src/tools/test.ce: each one a cesia test --worker of its own, as many at once as the
+   cores, the units of [test] serial alone after the others. *)
+let in_workers ~root ~seed ~cases ~no_spec ~allow ~timeout ~serial units =
+  let flags =
+    [ "--seed"; string_of_int seed; "--cases"; string_of_int cases ] @ (if no_spec then [ "--no-spec" ] else [])
+    @ List.concat_map (fun a -> [ "--allow"; a ]) allow
+  in
+  let alone u =
+    List.exists (fun s -> let s = Package.absolute (Filename.concat root s) and u = Package.absolute u in
+                  u = s || String.starts_with ~prefix:(s ^ "/") u) serial
+  in
+  let together, after = List.partition (fun u -> not (alone u)) units in
+  let args =
+    Sys.executable_name :: Printf.sprintf "%g" timeout :: string_of_int (Par.cores ()) :: flags
+    @ ("--" :: together) @ ("--serial" :: after)
+  in
+  tool ~grants:("exec=" ^ Sys.executable_name) "test" args
+
 let test args =
   let rec options (o : Runtime.options) seed cases allow paths = function
+    | "--worker" :: rest ->
+      worker := true;
+      options o seed cases allow paths rest
     | "--no-spec" :: rest -> options { o with o_no_spec = true } seed cases allow paths rest
     | "--seed" :: v :: rest -> options o (Some (parse_count v)) cases allow paths rest
     | "--cases" :: v :: rest -> options o seed (parse_count v) allow paths rest
@@ -234,9 +270,14 @@ let test args =
   Props.st.timeout <- config.timeout;
   Props.st.clock <- Unix.gettimeofday;
   Testrun.remove := Cesia_sys.Fs.remove_tree;
+  let units = if !worker || only <> None then [] else Testrun.unit_paths path in
+  if List.length units > 1 then
+    exit (in_workers ~root ~seed ~cases ~no_spec:o.o_no_spec ~allow ~timeout:config.timeout ~serial:config.serial units);
+  (* A worker shares the memory with the others. *)
+  let o = if !worker then { o with o_limits = { o.o_limits with memory_words = o.o_limits.memory_words / Par.cores () } } else o in
   let w = Runtime.create_world { o with o_grants = test_grants root dir config allow } in
   let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ~tick:(poll_period, Testrun.tick) ~reset:Testrun.reset w in
-  exit (Testrun.run w ~path ~seed ~cases ~only)
+  exit (Testrun.run w ~path ~seed ~cases ~only ~worker:!worker)
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)
 let tune_gc () = Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 20 }
@@ -249,18 +290,6 @@ let doc args =
          Loader.init w;
          Docs.command ~home:(Loader.home w) w args))
 
-(* What each tool may touch: see src/tools/. *)
-let tool_grants = function
-  | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
-  | "check" -> "read"
-  | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug"
-
-let tool ?(grants = "") name args =
-  let o = with_default_memory Runtime.default_options in
-  let grants = if grants = "" then tool_grants name else grants in
-  let w = Runtime.create_world { o with o_grants = parse_allow o.o_grants grants } in
-  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
-  Loader.run_tool w name args
 
 (* cesia doc --site [folder] [--open]: the site of the project here, in its site/, or else of Cesia, in the cache. The tool
    gets the root of the project and the folder, both from the top of the file system; it writes only the folder and the

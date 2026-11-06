@@ -1,0 +1,3 @@
+use std/test
+use std/gen
+isAddsUp() = test.ForAll(n -> n + 0 == n, gen.Int())

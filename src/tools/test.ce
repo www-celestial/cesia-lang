@@ -1,0 +1,126 @@
+(** cesia test over several units, each in a worker of its own: a cesia test --worker that runs one file or package. As many
+    run at once as the cores, those of [test] serial alone after the others. Each report comes whole, in the order of the
+    units, then the sums. A worker silent 2 seconds past the deadline of its test is stopped, and the test named; one that
+    ends without its counts, as after a crash, fails its unit, and the others go on.
+    Arguments: the binary, the timeout of a test, the workers at once, the flags of each worker, then -- and the units,
+    then --serial and the units that run alone. *)
+use std/sys
+use std/fiber
+use std/list
+use std/text
+use std/value
+use std/result
+use std/io
+
+mark = text.Char(1)
+
+defn reader(i, p, ch)
+  (** Sends each chunk that worker i writes, then its exit code. *)
+  chunk = sys.ReadOutput(p)
+  while result.IsOk(chunk) and chunk.Value != ""
+    fiber.Send({I: i, Text: chunk.Value, Code: missing}, ch)
+    chunk = sys.ReadOutput(p)
+  end
+  fiber.Send({I: i, Text: missing, Code: sys.WaitExit(p)}, ch)
+end
+
+defn report(unit, out, code, stopped)
+  (** What a worker wrote, without the names of its tests, and its counts: {Lines, Passed, Failed, Seeded}. *)
+  lines = [l for l in text.Lines(out) if not text.StartsWith(mark, l)]
+  counts = [l for l in text.Lines(out) if text.StartsWith("$(mark)= ", l)]
+  if not value.IsMissing(stopped)
+    {Lines: list.Append("$stopped stopped answering past its deadline, and its worker was stopped.", lines), Passed: 0, Failed: 1, Seeded: false}
+  else if value.Len(counts) == 0
+    {Lines: list.Append("$unit: the worker ended without its counts, with the code $code.", lines), Passed: 0, Failed: 1, Seeded: false}
+  else
+    parts = text.Split(" ", list.Last(counts))
+    {Lines: lines, Passed: text.Number(parts[2]), Failed: text.Number(parts[3]), Seeded: parts[4] == "true"}
+  end
+end
+
+defn Main()
+  (** Runs the units in workers and prints their reports in order, then the sums; the exit code is 1 when a test failed. *)
+  a = sys.Args
+  binary = a[1]
+  timeout = text.Number(a[2])
+  most = text.Number(a[3])
+  cut = list.IndexOf("--", a)
+  late = list.IndexOf("--serial", a)
+  flags = list.Take(cut - 4, list.Skip(3, a))
+  together = list.Skip(cut, list.Take(late - 1, a))
+  units = list.Concat(together, list.Skip(late, a))
+  alone = [k > value.Len(together) for k in 1..value.Len(units)]
+  n = value.Len(units)
+  outs = list.Fill("", n)
+  codes = list.Fill(missing, n)
+  procs = list.Fill(missing, n)
+  heard = list.Fill(0.0, n)
+  running = list.Fill(false, n)
+  stopped = list.Fill(missing, n)
+  ch = fiber.Channel()
+  next = 1
+  busy = 0
+  shown = 1
+  passed = 0
+  failed = 0
+  seeded = false
+  while shown <= n
+    while next <= n and busy < most and (not alone[next] or busy == 0)
+      p = sys.Start(binary, list.Concat(["test", "--worker", units[next]], flags))
+      if result.IsOk(p)
+        k = next
+        procs[k] = p.Value
+        heard[k] = sys.Now()
+        running[k] = true
+        busy += 1
+        fiber.Spawn(() -> reader(k, p.Value, ch))
+      else
+        outs[next] = "$(units[next]): $(p.Error.Message)\n"
+        codes[next] = -1
+      end
+      next += 1
+    end
+    m = fiber.Receive(ch, timeout = 0.2)
+    if result.IsOk(m)
+      i = m.Value.I
+      if value.IsMissing(m.Value.Text)
+        codes[i] = m.Value.Code
+        running[i] = false
+        busy -= 1
+      else
+        outs[i] = text.Str(outs[i], m.Value.Text)
+        if text.Contains(mark, m.Value.Text)
+          heard[i] = sys.Now()
+        end
+      end
+    end
+    for i in 1..n
+      if running[i] and value.IsMissing(stopped[i]) and sys.Now() - heard[i] > timeout + 2
+        names = [text.Slice(2, value.Len(text.Chars(l)), l) for l in text.Lines(outs[i]) if text.StartsWith(mark, l)]
+        stopped[i] = if value.Len(names) > 0 list.Last(names) else units[i] end
+        sys.Stop(procs[i])
+      end
+    end
+    while shown <= n and not value.IsMissing(codes[shown])
+      r = report(units[shown], outs[shown], codes[shown], stopped[shown])
+      for l in r.Lines
+        io.Print(l)
+      end
+      passed += r.Passed
+      failed += r.Failed
+      seeded = seeded or r.Seeded
+      shown += 1
+    end
+  end
+  io.Print(summary(passed, failed, seeded, flags))
+  if failed > 0
+    sys.Exit(1)
+  end
+  result.Ok(missing)
+end
+
+defn summary(passed, failed, seeded, flags)
+  (** The last line, as one cesia test prints it. *)
+  seed = flags[list.IndexOf("--seed", flags) + 1]
+  if seeded "$passed passed, $failed failed, seed $seed" else "$passed passed, $failed failed" end
+end
