@@ -548,7 +548,7 @@ let guarded ?(strict = false) w body =
   let current () = Option.value w.sched.current ~default:ctx in
   (* A site keeps the source of its compilation: the file may have changed since. *)
   let report_at fiber ~text ~hint at =
-    let site = Dynarray.get w.sites at in
+    let site = Dynarray.get w.sites (Runtime.user_site fiber at) in
     let path, src = Dynarray.get w.files site.sfile in
     w.err
       (format_error ~source:(Some src) ~path ~pos:site.spos ~text ~hint ~trace:(Runtime.backtrace fiber at))

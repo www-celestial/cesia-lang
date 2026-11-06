@@ -212,6 +212,25 @@ let backtrace ctx at =
   if n <= 20 then lines
   else List.filteri (fun i _ -> i < 10) lines @ [ Printf.sprintf "... and %d more" (n - 10) ]
 
+(* The site an error shows first: where it was raised, or, when that is in a library of std/ or deps/, the line of the
+   program that called into the library, since that is the line to change. The trace still names the library's line. *)
+let user_site ctx at =
+  let w = ctx.w in
+  let library k =
+    let path, _ = Dynarray.get w.files (Dynarray.get w.sites k).sfile in
+    String.starts_with ~prefix:"std/" path || String.starts_with ~prefix:"deps/" path
+  in
+  if at < 0 || not (library at) then at
+  else begin
+    let found = ref at and b = ref ctx.b in
+    while !b > 0 && !found = at do
+      let k = ctx.i.(!b + 1) in
+      if not (library k) then found := k;
+      b := link_base ctx.i.(!b)
+    done;
+    !found
+  end
+
 (* A larger dimension can't exist in memory, even if the other is 0. *)
 let max_dimension = 1 lsl 40
 

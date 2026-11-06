@@ -52,6 +52,10 @@ val pay_bytes : ctx -> int -> unit
 val grow : ctx -> int -> unit
 
 (** The stack lines of an error raised at site [at], most recent first. *)
+(** The site an error shows first: where it was raised, or the line of the program that called into a library of [std/]
+    or [deps/] where it was raised. *)
+val user_site : ctx -> int -> int
+
 val backtrace : ctx -> int -> string list
 
 (** Checks two dimensions and returns their product. *)
