@@ -7,7 +7,7 @@ struct Rect { Width }
 Rect.Square(side) = Rect(side)
 (r Rect) Area() = r.Width * r.Width
 
-isRangeOfAModuleConstant() = Equal(shapes.First..Len([1, 2]), [1, 2])
+isRangeOfAModuleConstant() = Equal(shapes.Start..Len([1, 2]), [1, 2])
 isModuleStatic() = shapes.Circle.Unit().Radius == 1 and shapes.Circle.Of(2).Radius == 2
 isModuleStaticAlias() = other.Circle.Of(3).Radius == 3
 isModuleStaticInAnExpression() = 1 + shapes.Circle.Of(2).Area() * 2 == 25

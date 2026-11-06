@@ -83,8 +83,8 @@ end
 (** An Err of the kind "sdl" with the last reason that SDL gave. *)
 Failure(sdlApi) = Err({Kind: "sdl", Message: sdlApi.Error()})
 
-(** A pointer from SDL, or SDL's own reason for giving none. *)
-Some(pointer, sdlApi) = if IsMissing(pointer) Failure(sdlApi) else Ok(pointer) end
+(* A pointer from SDL, or SDL's own reason for giving none. *)
+some(pointer, sdlApi) = if IsMissing(pointer) Failure(sdlApi) else Ok(pointer) end
 (** Ok(missing) if an SDL call succeeded, else the Err that failure gives. *)
 Done(succeeded, sdlApi) = if succeeded Ok(missing) else Failure(sdlApi) end
 
@@ -129,7 +129,7 @@ end
 defn Opened(sdlApi, ttfApi, title, width, height, font, size, vsync, light)
   (** The steps of Open once the libraries are bound: the font, the window, the renderer and the text engine. Each step undoes
       the ones before it if it fails: the program gets an Err and can go on. *)
-  loaded = Some(ttfApi.OpenFont(font, size), sdlApi)?
+  loaded = some(ttfApi.OpenFont(font, size), sdlApi)?
   Hint(loaded, light, ttfApi)
   made = OnScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
   if IsErr(made)
@@ -147,7 +147,7 @@ end
 
 defn OnScreen(sdlApi, ttfApi, loaded, title, width, height, vsync)
   (** Opens the window, the renderer and the text engine, and undoes what it did if one fails. *)
-  created = Some(sdlApi.CreateWindow(title, width, height, WindowResizable), sdlApi)?
+  created = some(sdlApi.CreateWindow(title, width, height, WindowResizable), sdlApi)?
   made = Drawing(sdlApi, ttfApi, loaded, created, vsync)
   if IsErr(made)
     sdlApi.DestroyWindow(created)
@@ -157,7 +157,7 @@ end
 
 defn Drawing(sdlApi, ttfApi, loaded, created, vsync)
   (** Opens the renderer and the text engine of a window. *)
-  renderer = Some(sdlApi.CreateRenderer(created, missing), sdlApi)?
+  renderer = some(sdlApi.CreateRenderer(created, missing), sdlApi)?
   sdlApi.Vsync(renderer, if vsync 1 else 0 end)
   sdlApi.DrawBlend(renderer, BlendAlpha)
   made = TextEngine(sdlApi, ttfApi, loaded, created, renderer)
@@ -169,7 +169,7 @@ end
 
 defn TextEngine(sdlApi, ttfApi, loaded, created, renderer)
   (** Opens the text engine and gives the window value, with the blocks of memory it uses. *)
-  engine = Some(ttfApi.CreateEngine(renderer), sdlApi)?
+  engine = some(ttfApi.CreateEngine(renderer), sdlApi)?
   started = Done(sdlApi.StartText(created), sdlApi)
   if IsErr(started)
     ttfApi.DestroyEngine(engine)
@@ -182,7 +182,7 @@ end
 
 defn AddFont(name, path, size, window, light = false)
   (** Adds a font under a name that text commands give as font: an Ok of the window, or an Err if it can't be read. *)
-  loaded = Some(window.Ttf.OpenFont(path, size), window.Sdl)?
+  loaded = some(window.Ttf.OpenFont(path, size), window.Sdl)?
   Hint(loaded, light, window.Ttf)
   next = window
   next.Fonts = Put(name, loaded, window.Fonts)
@@ -253,7 +253,7 @@ defn ObjectAt(position, window)
   if position <= c.Get("i64", 0, window.Objects)
     c.Get("ptr", 8 + position * 8, window.Objects)
   else
-    made = Some(window.Ttf.CreateText(window.Engine, window.Font, "", 0), window.Sdl)
+    made = some(window.Ttf.CreateText(window.Engine, window.Font, "", 0), window.Sdl)
     if IsErr(made)
       Panic(made.Error.Message)
     end
@@ -491,7 +491,7 @@ Rgba(r, g, b, a) = r + g * 256 + b * 65536 + a * 0x1000000
 defn Image(width, height, window)
   (** A new image, clear: an Ok of {image: {Width, Height, Pixels, Texture}, window}, or an Err. Write its pixels with FillImage,
       or with c.Set then ShowImage. sdl.Close frees it. *)
-  texture = Some(window.Sdl.CreateTexture(window.Renderer, PixelsRgba, 0, width, height), window.Sdl)?
+  texture = some(window.Sdl.CreateTexture(window.Renderer, PixelsRgba, 0, width, height), window.Sdl)?
   Done(window.Sdl.TextureBlend(texture, BlendAlpha), window.Sdl)?
   remember(texture, window)
   pixels = c.Alloc(width * height * 4)

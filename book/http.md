@@ -12,9 +12,9 @@ gives the response. [web.Plain] makes a plain text response, and [web.SendJson] 
 ```cesia
 use std/web
 app = web.App()
-  then web.Get("/", r -> web.Plain("Welcome"), it)
-  then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"), it)
-  then web.Get("/stock", r -> web.SendJson({bread: 40, cake: 6}), it)
+  then web.GetRoute("/", r -> web.Plain("Welcome"), it)
+  then web.GetRoute("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"), it)
+  then web.GetRoute("/stock", r -> web.SendJson({bread: 40, cake: 6}), it)
 ```
 
 A part of a path that starts with `:` takes any word, and the handler finds it in `r.Params`. The application is a value: each
@@ -42,19 +42,19 @@ A path that no route takes gets a `404`.
 gets a `400` that says what is wrong:
 
 ```cesia
-struct Order
+struct Purchase
   Product Text
   Units Int
 end
 
-defn addOrder(request)
-  match web.BodyJson(request) then AndThen(Order.From)
+defn addPurchase(request)
+  match web.BodyJson(request) then AndThen(Purchase.From)
     Ok(order) -> web.SendJson({Product: order.Product, Units: order.Units, Total: order.Units * 1.25}, status = 201)
     Err(e) -> web.SendJson({Error: e.Message}, status = 400)
   end
 end
 
-shop = app then web.Post("/orders", addOrder, it)
+shop = app then web.PostRoute("/orders", addPurchase, it)
 post(body) = web.Handler(shop)({Method: "POST", Path: "/orders", Query: "", Headers: [], Body: body})
 Print(post("{\"Product\": \"bread\", \"Units\": 4}").Body)
 Print(post("{\"Product\": \"bread\", \"Units\": \"four\"}").Body)
@@ -99,7 +99,7 @@ use std/sys
 use std/http
 Spawn(() -> web.Serve(logged, port = 18761))
 sys.Sleep(0)
-r = http.Get("http://127.0.0.1:18761/hello/Bo")
+r = http.Fetch("http://127.0.0.1:18761/hello/Bo")
 r.Value.Status -->
 r.Value.Body -->
 sent = http.Post("http://127.0.0.1:18761/orders", "{\"Product\": \"cake\", \"Units\": 2}")
@@ -110,11 +110,11 @@ The program ends when its last line is done, and the server with it.
 
 ## The client
 
-[http.Get] and [http.Post] send a request, and give an `Ok` of `{Status, Headers, Body}`, or an `Err` when the server can't be
+[http.Fetch] and [http.Post] send a request, and give an `Ok` of `{Status, Headers, Body}`, or an `Err` when the server can't be
 reached. A `404` is a response, not an error: look at `Status`.
 
 ```cesia allow=net
-http.Get("http://127.0.0.1:1/") -->
+http.Fetch("http://127.0.0.1:1/") -->
 ```
 
 For `https`, [std/tls] gives the client its encryption, through OpenSSL. It needs the permission to load it, and to reach the
@@ -123,7 +123,7 @@ host:
 ```cesia norun
 use std/tls
 api = Unwrap(tls.Open())
-page = http.Get("https://example.com/", secure = tls.Client(api))
+page = http.Fetch("https://example.com/", secure = tls.Client(api))
 ```
 
 ```bash

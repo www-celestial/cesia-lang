@@ -18,9 +18,9 @@ isWithColumn() = frame.Column("up", frame.WithColumn("up", r -> Upper(r["city"])
 isRename() = Equal(frame.Columns(frame.Rename("item", "kind", sales)), ["city", "kind", "amount"])
 isWhere() = frame.Rows(frame.Where(r -> r["city"] == "Paris", sales)) == 2
 isWhereColumn() = frame.Rows(frame.WhereColumn("item", it == "a", sales)) == 2
-isSort() = Equal(frame.Column("city", frame.SortBy("city", sales)), ["Lyon", "Nice", "Paris", "Paris"])
-isSortDescending() = frame.Column("city", frame.SortBy("city", sales, descending = true))[1] == "Paris"
-isAppend() = frame.Rows(frame.Append(sales, sales)) == 8
+isSort() = Equal(frame.Column("city", frame.OrderBy("city", sales)), ["Lyon", "Nice", "Paris", "Paris"])
+isSortDescending() = frame.Column("city", frame.OrderBy("city", sales, descending = true))[1] == "Paris"
+isAppend() = frame.Rows(frame.Stack(sales, sales)) == 8
 isDropMissing() = frame.Rows(frame.DropMissing(sales)) == 3
 isFillMissing() = frame.Column("amount", frame.FillMissing(0, sales))[4] == 0
 

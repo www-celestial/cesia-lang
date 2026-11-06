@@ -27,7 +27,7 @@ x * <span class="m">2</span> --&gt; <span class="m">10</span>
 <pre class="output"><code>Div: division by zero.</code></pre>
 <p>Not run:</p>
 <pre><code class="cesia"><span class="k">use</span> std/http
-http.<span class="f">Get</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
+http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
 <p>A table made by code:</p>
 <table>
 <thead>
@@ -73,10 +73,10 @@ sys.<span class="f">Write</span>(<span class="s">&quot;notes.txt&quot;</span>, <
 <p>A server and its client, on this machine only:</p>
 <pre><code class="cesia"><span class="k">use</span> std/web
 <span class="k">use</span> std/http
-app = web.<span class="f">App</span>() <span class="k">then</span> web.<span class="f">Get</span>(<span class="s">&quot;/&quot;</span>, r -&gt; web.<span class="f">Plain</span>(<span class="s">&quot;hello&quot;</span>), <span class="k">it</span>)
+app = web.<span class="f">App</span>() <span class="k">then</span> web.<span class="f">GetRoute</span>(<span class="s">&quot;/&quot;</span>, r -&gt; web.<span class="f">Plain</span>(<span class="s">&quot;hello&quot;</span>), <span class="k">it</span>)
 server = <span class="n">Spawn</span>(() -&gt; web.<span class="f">Serve</span>(app, port = <span class="m">18751</span>))
 sys.<span class="f">Sleep</span>(<span class="m">0.05</span>)
-http.<span class="f">Get</span>(<span class="s">&quot;http://127.0.0.1:18751/&quot;</span>).<span class="f">Value</span>.<span class="f">Body</span> --&gt; <span class="s">&quot;hello&quot;</span></code></pre>
+http.<span class="f">Fetch</span>(<span class="s">&quot;http://127.0.0.1:18751/&quot;</span>).<span class="f">Value</span>.<span class="f">Body</span> --&gt; <span class="s">&quot;hello&quot;</span></code></pre>
 <p>A --&gt; in a comment or a text is no check of the book:</p>
 <pre><code class="cesia"><span class="k">defn</span> <span class="n">twice</span>(x)
   <span class="c">(** Twice x.</span>

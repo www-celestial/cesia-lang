@@ -11,7 +11,7 @@ Lyon,coffee,21
 ")
 
 totals = frame.GroupBy(["city"], [frame.Agg("total", "amount", Sum), frame.Agg("orders", "amount", Len)], sales)
-Print(frame.Show(frame.SortBy("total", totals, descending = true)))
+Print(frame.Show(frame.OrderBy("total", totals, descending = true)))
 Print("")
 amounts = frame.Column("amount", sales)
 Print("median", num.Median(amounts), "std", Round(num.Std(1.0 * amounts)))

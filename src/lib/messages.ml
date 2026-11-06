@@ -66,6 +66,8 @@ let missing_arg fname param = plain (Printf.sprintf "%s needs the argument \"%s\
 let unknown_arg fname name = plain (Printf.sprintf "%s has no argument named \"%s\"." fname name)
 let duplicate_arg fname name = plain (Printf.sprintf "%s received the argument \"%s\" twice." fname name)
 let duplicate name = plain (Printf.sprintf "The function \"%s\" is defined twice." name)
+let prelude_name name =
+  hinted (Printf.sprintf "%s is a name of the prelude, which every file sees." name) "Give yours a name of its own: a name means one thing in every file."
 let assign_function name = plain (Printf.sprintf "\"%s\" is a function of this file and can't be assigned." name)
 let return_outside = plain "return can only be used inside a function."
 let whole_hint = "To get a whole number, use Floor(...), Ceil(...) or Round(...)."

@@ -16,10 +16,10 @@ defn Route(method, pattern, handler, a)
 end
 
 (** An application with a GET route added: Handler(request) gives a response. *)
-Get(pattern, handler, a) = Route("GET", pattern, handler, a)
-Post(pattern, handler, a) = Route("POST", pattern, handler, a)   (** An application with a POST route added. *)
+GetRoute(pattern, handler, a) = Route("GET", pattern, handler, a)
+PostRoute(pattern, handler, a) = Route("POST", pattern, handler, a)   (** An application with a POST route added. *)
 PutRoute(pattern, handler, a) = Route("PUT", pattern, handler, a)   (** An application with a PUT route added. *)
-Delete(pattern, handler, a) = Route("DELETE", pattern, handler, a)   (** An application with a DELETE route added. *)
+DeleteRoute(pattern, handler, a) = Route("DELETE", pattern, handler, a)   (** An application with a DELETE route added. *)
 (** An application with a route added that takes any method. *)
 AnyMethod(pattern, handler, a) = Route("*", pattern, handler, a)
 
@@ -144,7 +144,7 @@ defn Serve(a, port = 8080, host = "127.0.0.1", timeout = http.DefaultTimeout, ma
 end
 
 (** A WebSocket route: onMessage(text, send) runs for each message, and send(text) answers. *)
-Websocket(pattern, onMessage, a, idle = ws.DefaultIdle) = Get(pattern, req -> ws.Accept(req.Headers, onMessage, idle = idle), a)
+Websocket(pattern, onMessage, a, idle = ws.DefaultIdle) = GetRoute(pattern, req -> ws.Accept(req.Headers, onMessage, idle = idle), a)
 
 defn Logger(next, request)
   (** A middleware that prints the method, the path and the status of each request. *)
@@ -175,7 +175,7 @@ end
 defn Static(prefix, folder, a)
   (** An application with a route added that serves the files of a folder under a URL prefix. A path can't leave the folder. *)
   serveFile(request) = static(folder, request.Params["*"])
-  Get("$prefix/*", serveFile, a)
+  GetRoute("$prefix/*", serveFile, a)
 end
 
 defn static(folder, rest)

@@ -19,10 +19,10 @@ A server and its client, on this machine only:
 ```cesia allow=net,net=:18751
 use std/web
 use std/http
-app = web.App() then web.Get("/", r -> web.Plain("hello"), it)
+app = web.App() then web.GetRoute("/", r -> web.Plain("hello"), it)
 server = Spawn(() -> web.Serve(app, port = 18751))
 sys.Sleep(0.05)
-http.Get("http://127.0.0.1:18751/").Value.Body -->
+http.Fetch("http://127.0.0.1:18751/").Value.Body -->
 ```
 
 A --> in a comment or a text is no check of the book:

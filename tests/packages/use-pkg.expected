@@ -4,7 +4,7 @@ the copy of date
 shapes, in src
 tools, in apps
 0 passed, 0 failed
-5 passed, 0 failed
+6 passed, 0 failed
 src/nope.ce:1:5: Module "pkg/nope" doesn't exist.
   1 | use pkg/nope
     |     ^

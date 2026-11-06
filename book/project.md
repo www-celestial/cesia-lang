@@ -148,9 +148,9 @@ end
 defn App(db)
   (** The web service of the notes in a database: GET /notes, POST /notes, POST /notes/:id/done. *)
   web.App()
-    then web.Get("/notes", r -> listed(db), it)
-    then web.Post("/notes", r -> added(r, db), it)
-    then web.Post("/notes/:id/done", r -> finished(r, db), it)
+    then web.GetRoute("/notes", r -> listed(db), it)
+    then web.PostRoute("/notes", r -> added(r, db), it)
+    then web.PostRoute("/notes/:id/done", r -> finished(r, db), it)
 end
 ```
 
@@ -203,7 +203,7 @@ curl localhost:8080/notes
 ```
 
 The block below does the same in one program: it serves the routes on a port of this machine, and asks them with
-[http.Post] and [http.Get]:
+[http.Post] and [http.Fetch]:
 
 ```cesia allow=net,net=:18781
 use std/sys
@@ -215,12 +215,12 @@ base = "http://127.0.0.1:18781/notes"
 Print(http.Post(base, "{\"Text\": \"buy bread\"}").Value.Body)
 Print(http.Post(base, "{\"Txt\": \"typo\"}").Value.Body)
 Print(http.Post("$base/1/done", "").Value.Body)
-Print(http.Get(base).Value.Body)
+Print(http.Fetch(base).Value.Body)
 ```
 
 ## Where to go from here
 
-- Add a route: `DELETE /notes/:id` with [web.Delete], a `delete` in the store, and its test first.
+- Add a route: `DELETE /notes/:id` with [web.DeleteRoute], a `delete` in the store, and its test first.
 - Write it in [Cemacs](cemacs.md), with `cesia run --watch` in a terminal beside it.
 - Read the reference: every name of Cesia has its page, with its examples, under [Reference](ref/index.html). Press `/` to
   search it.

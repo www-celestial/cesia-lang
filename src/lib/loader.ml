@@ -262,11 +262,12 @@ let set_checks w (prepared : (int * Ast.layout) list) =
 
 (* Resolves the files of a package, the modules from [first] on. Each one sees what the others define, small names included,
    before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload. *)
-let resolve_files w ~lookup ~first ~old parsed =
-  let is_type = is_type w in
+let resolve_files w ~lookup:look_up ~first ~old parsed =
+  let is_type = is_type w and prelude name = lookup w name <> None in
+  let lookup = look_up in
   match parsed with
   | [ (path, _, fn, (spaces, _)) ] ->
-    [ Resolve.file ~keep:(old 0) ~is_type ~file:path ~m:first ~lookup ~spaces fn ]
+    [ Resolve.file ~keep:(old 0) ~is_type ~prelude ~file:path ~m:first ~lookup ~spaces fn ]
   | _ ->
     Resolve.check_package (List.map (fun (path, _, fn, _) -> path, fn) parsed);
     let seen = Hashtbl.create 64 in
@@ -297,7 +298,7 @@ let resolve_files w ~lookup ~first ~old parsed =
     let peers = List.map (fun (_, _, fn, _) -> fn) parsed in
     List.mapi
       (fun i ((path, _, fn, (spaces, _)), keep) ->
-         Resolve.file ~keep ~peers ~is_type ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
+         Resolve.file ~keep ~peers ~is_type ~prelude ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
       (List.combine parsed keeps)
 
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as

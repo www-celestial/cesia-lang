@@ -3,32 +3,32 @@ use std/ui
 r = {X: 10, Y: 20, Width: 100, Height: 40}
 
 defn isLeftAddsUp()
-  cut = ui.Left(30, r)
+  cut = ui.CutLeft(30, r)
   cut.Part.X == 10 and cut.Part.Width == 30 and cut.Rest.X == 40 and cut.Rest.Width == 70 and cut.Rest.Height == 40
 end
 
 defn isRightAddsUp()
-  cut = ui.Right(30, r)
+  cut = ui.CutRight(30, r)
   cut.Part.X == 80 and cut.Part.Width == 30 and cut.Rest.X == 10 and cut.Rest.Width == 70
 end
 
 defn isTopAddsUp()
-  cut = ui.Top(10, r)
+  cut = ui.CutTop(10, r)
   cut.Part.Y == 20 and cut.Part.Height == 10 and cut.Rest.Y == 30 and cut.Rest.Height == 30
 end
 
 defn isBottomAddsUp()
-  cut = ui.Bottom(10, r)
+  cut = ui.CutBottom(10, r)
   cut.Part.Y == 50 and cut.Part.Height == 10 and cut.Rest.Y == 20 and cut.Rest.Height == 30
 end
 
 defn isCutPastTheEnd()
-  cut = ui.Left(500, {X: 0, Y: 0, Width: 100, Height: 10})
+  cut = ui.CutLeft(500, {X: 0, Y: 0, Width: 100, Height: 10})
   cut.Part.Width == 100 and cut.Rest.Width == 0 and cut.Rest.X == 100
 end
 
 defn isCutOfANegativeSize()
-  cut = ui.Top(-5, r)
+  cut = ui.CutTop(-5, r)
   cut.Part.Height == 0 and cut.Rest.Height == 40
 end
 
@@ -43,7 +43,7 @@ defn isInsetPastTheMiddle()
 end
 
 defn isContainsEdges()
-  ui.Contains({X: 10, Y: 20}, r) and not ui.Contains({X: 110, Y: 20}, r) and not ui.Contains({X: 10, Y: 60}, r) and ui.Contains({X: 109, Y: 59}, r)
+  ui.Inside({X: 10, Y: 20}, r) and not ui.Inside({X: 110, Y: 20}, r) and not ui.Inside({X: 10, Y: 60}, r) and ui.Inside({X: 109, Y: 59}, r)
 end
 
 defn stepped(n, seconds)
@@ -95,12 +95,12 @@ defn widgets(rect)
   lines = [[[1, "defn "], [2, "f"]], [], [[6, "x"]]]
   [ui.Panel("Title", rect, look), ui.Panel("Title", rect, look, active = true), ui.MenuBar(["File", "Edit"], "Name", rect, look), ui.ToolBar(tools, {X: 0, Y: 0}, rect, look),
     ui.Section("Name", rect, look), ui.Field("Words", rect, look), ui.Dropdown("Words", rect, look), ui.Slider(0.5, rect, look), ui.Slider(0.0, rect, look), ui.Checkbox(true, rect, look),
-    ui.Checkbox(false, rect, look), ui.Swatch(0xD98F4E, "#D98F4E", rect, look), ui.List(items, 2, 40.0, rect, look), ui.Code(lines, 1, rect, look), ui.Grid(rect, look), ui.Nodes(two, 1, [link], look), ui.Links([link], two, look)]
+    ui.Checkbox(false, rect, look), ui.Swatch(0xD98F4E, "#D98F4E", rect, look), ui.List(items, 2, 40.0, rect, look), ui.CodeView(lines, 1, rect, look), ui.Grid(rect, look), ui.Nodes(two, 1, [link], look), ui.Links([link], two, look)]
 end
 
 isWidgetsGiveKnownKinds() = All(Map(isKnown, widgets(area)))
 isWidgetsOfAnEmptyRectangle() = All(Map(isKnown, widgets(nothing)))
-isWidgetsOfNothing() = Equal(ui.List([], 0, missing, area, look), []) and isKnown(ui.Nodes([], 0, [], look)) and isKnown(ui.Links([], [], look)) and isKnown(ui.Code([], 0, area, look)) and isKnown(ui.MenuBar([], "", area, look)) and isKnown(ui.ToolBar([], {X: 0, Y: 0}, area, look))
+isWidgetsOfNothing() = Equal(ui.List([], 0, missing, area, look), []) and isKnown(ui.Nodes([], 0, [], look)) and isKnown(ui.Links([], [], look)) and isKnown(ui.CodeView([], 0, area, look)) and isKnown(ui.MenuBar([], "", area, look)) and isKnown(ui.ToolBar([], {X: 0, Y: 0}, area, look))
 
 accents(commands) = Len(Filter(c -> c.Kind == "box" and c.Color == ui.Dark.Accent, commands))
 isOnlyActivePanelHasAccent() = accents(ui.Panel("T", area, look, active = true)) == 1 and accents(ui.Panel("T", area, look)) == 0
@@ -133,7 +133,7 @@ defn isMoveNodeLeavesNodesAlone()
 end
 
 defn isCodeCountsCodePoints()
-  texts = Filter(it.Kind == "text", ui.Code([[[6, "é"], [1, "x"]]], 0, area, look))
+  texts = Filter(it.Kind == "text", ui.CodeView([[[6, "é"], [1, "x"]]], 0, area, look))
   places = [c.X for c in Filter(it.Text != "1", texts)]
   places[2] - places[1] == 7
 end
@@ -144,7 +144,7 @@ defn isSliderValueMeasured()
   Last(texts).X + wide.Width(Last(texts).Text, "body") == area.X + area.Width - 9
 end
 
-isCodeFont() = All(Map(c -> c.Kind != "text" or c.Font == "code", ui.Code([[[6, "x"]]], 1, area, look)))
+isCodeFont() = All(Map(c -> c.Kind != "text" or c.Font == "code", ui.CodeView([[[6, "x"]]], 1, area, look)))
 isOnlyCodeUsesIt() = All(Map(c -> c.Kind != "text" or fontIsNotCode(c), Flatten(withoutCode(widgets(area)))))
 
 defn fontIsNotCode(c)

@@ -12,7 +12,7 @@ end
 
 defn main()
   begun = scene.Start(opened()?)?
-  sdl.Run(begun.State, scene.Update, scene.View, begun.Window, moving = scene.Moving)
+  sdl.Run(begun.State, scene.OnEvent, scene.View, begun.Window, moving = scene.Moving)
   sdl.Close(begun.Window)
   Ok(missing)
 end

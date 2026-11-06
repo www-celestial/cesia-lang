@@ -1,18 +1,18 @@
-(** Sets of numbers and texts: the keys of a dictionary, in order. *)
+(** Sets of numbers and texts: the keys of a dictionary, in order. Len gives how many elements a set holds. *)
 
 Empty() = Dict()   (** A set with nothing in it. *)
 (** A set of the elements of an array.
 
-      Count(Of([1, 2, 1])) --> 2 *)
+      Len(Of([1, 2, 1])) --> 2 *)
 Of(xs) = Reduce((s, x) -> Put(x, true, s), Dict(), xs)
 (** A set with x added.
 
-      Member(1, Add(1, Empty())) --> true *)
-Add(x, s) = Put(x, true, s)
+      Member(1, With(1, Empty())) --> true *)
+With(x, s) = Put(x, true, s)
 (** A set without x.
 
-      Count(Remove(1, Of([1, 2]))) --> 1 *)
-Remove(x, s) = Drop(x, s)
+      Len(Without(1, Of([1, 2]))) --> 1 *)
+Without(x, s) = Drop(x, s)
 (** Is x in the set?
 
       Member(1, Of([1])) --> true *)
@@ -21,10 +21,6 @@ Member(x, s) = Has(x, s)
 
       Items(Of([2, 1])) --> [1, 2] *)
 Items(s) = Sort(Keys(s))
-(** How many elements the set holds.
-
-      Count(Of([1, 2])) --> 2 *)
-Count(s) = Len(s)
 (** The elements of either set.
 
       Items(Union(Of([1]), Of([2]))) --> [1, 2] *)

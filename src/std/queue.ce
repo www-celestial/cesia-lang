@@ -3,12 +3,13 @@
 Empty() = {Items: Dict(), First: 1, Last: 0}   (** A queue with nothing in it. *)
 (** How many elements the queue holds.
 
-      Count(Of([1, 2])) --> 2 *)
-Count(q) = q.Last - q.First + 1
-(** Is this queue empty?
+      Length(Of([1, 2])) --> 2 *)
+Length(q) = q.Last - q.First + 1
+(** Does this queue hold anything?
 
-      IsEmpty(Empty()) --> true *)
-IsEmpty(q) = Count(q) == 0
+      HasItems(Empty()) --> false
+      HasItems(Of([1])) --> true *)
+HasItems(q) = Length(q) > 0
 
 defn Push(x, q)
   (** A queue with x added at the back.
@@ -26,25 +27,25 @@ end
 
 (** The element at the front, or missing.
 
-      First(Of([1, 2])) --> 1 *)
-First(q) = Get(q.First, q.Items)
+      Front(Of([1, 2])) --> 1 *)
+Front(q) = Get(q.First, q.Items)
 (** The element at the back, or missing.
 
-      Last(Of([1, 2])) --> 2 *)
-Last(q) = Get(q.Last, q.Items)
+      Back(Of([1, 2])) --> 2 *)
+Back(q) = Get(q.Last, q.Items)
 
 defn Pop(q)
   (** A queue without its front element.
 
         Items(Pop(Of([1, 2]))) --> [2] *)
-  if IsEmpty(q) q else {Items: Drop(q.First, q.Items), First: q.First + 1, Last: q.Last} end
+  if not HasItems(q) q else {Items: Drop(q.First, q.Items), First: q.First + 1, Last: q.Last} end
 end
 
 defn PopBack(q)
   (** A queue without its back element.
 
         Items(PopBack(Of([1, 2]))) --> [1] *)
-  if IsEmpty(q) q else {Items: Drop(q.Last, q.Items), First: q.First, Last: q.Last - 1} end
+  if not HasItems(q) q else {Items: Drop(q.Last, q.Items), First: q.First, Last: q.Last - 1} end
 end
 
 (** The elements from front to back.

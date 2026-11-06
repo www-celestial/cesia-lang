@@ -446,8 +446,14 @@ let check_package files =
   in
   List.iter (fun (path, fn) -> List.iter (check path) (definitions fn)) files
 
-let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ~file:path ~m ~lookup ~spaces
+let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(prelude = fun _ -> false) ~file:path ~m ~lookup ~spaces
     (fn : func) =
+  (* A name of the prelude means that one everywhere: a file of another module can't define it, or its package would lose
+     the prelude's without a word. Modules 0 and 1 are the prelude, and cesia test reads std/prelude.ce as a module. *)
+  if m > 1 && not (String.ends_with ~suffix:"std/prelude.ce" path) then
+    List.iter
+      (fun (text, shown, pos, _) -> if prelude text then error path pos (Messages.prelude_name shown))
+      (definitions fn);
   let env =
     { path; m; lookup; spaces; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8;
       interfaces = Hashtbl.create 4; is_type; cells = Hashtbl.create 16;

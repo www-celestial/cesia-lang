@@ -8,7 +8,7 @@ MacSize = 16          (** The size in bytes of the tag that authenticates a seal
 PublicKeySize = 32    (** The size in bytes of a public key of BoxPair. *)
 SignPublicSize = 32   (** The size in bytes of a public key of SignPair. *)
 SignSecretSize = 64   (** The size in bytes of a secret key of SignPair. *)
-SignatureSize = 64    (** The size in bytes of a signature of Sign. *)
+SignatureSize = 64    (** The size in bytes of a result of Signature. *)
 PasswordSize = 128    (** The size in bytes of a result of HashPassword. *)
 
 defn block(s)
@@ -171,10 +171,10 @@ defn BoxOpen(sealed, fromPublic, toSecret, s)
   opened(sealed, [fromPublic, toSecret], (out, b, size) -> s.BoxOpen(out, b[1], size, b[2], b[3], b[4]))
 end
 
-(** A new key pair for sign, as a struct with public and secret. *)
+(** A new key pair for Signature and Verify, as a struct with public and secret. *)
 SignPair(s) = pair(SignPublicSize, SignSecretSize, s.SignPair)
 
-defn Sign(message, secret, s)
+defn Signature(message, secret, s)
   (** The 64-byte signature of a message under a secret signing key. *)
   sized(secret, SignSecretSize, "A secret key")
   size = ByteLength(message)

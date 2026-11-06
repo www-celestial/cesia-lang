@@ -32,7 +32,7 @@ end
 defn JoinRopes(a, b)
   (** Both ropes, one after the other.
 
-        Text(JoinRopes(Of("ab"), Of("cd"))) --> "abcd" *)
+        Whole(JoinRopes(Of("ab"), Of("cd"))) --> "abcd" *)
   if a.Size == 0
     b
   else if b.Size == 0
@@ -51,7 +51,7 @@ end
 defn Of(s)
   (** A rope holding a text.
 
-        Text(Of("ab")) --> "ab" *)
+        Whole(Of("ab")) --> "ab" *)
   n = ByteLength(s)
   if n <= chunk
     return leaf(s)
@@ -79,8 +79,8 @@ end
 
 (** The size of the rope in bytes.
 
-      Size(Of("ab")) --> 2 *)
-Size(r) = r.Size
+      ByteCount(Of("ab")) --> 2 *)
+ByteCount(r) = r.Size
 (** The number of lines: one more than the line ends.
 
       LineCount(Of("a\nb")) --> 2 *)
@@ -89,7 +89,7 @@ LineCount(r) = r.Lines + 1
 defn Insert(at, s, r)
   (** A rope with a text inserted before the byte at a position.
 
-        Text(Insert(1, "X", Of("ab"))) --> "aXb" *)
+        Whole(Insert(1, "X", Of("ab"))) --> "aXb" *)
   parts = SplitAt(at, r)
   JoinRopes(JoinRopes(parts[1], Of(s)), parts[2])
 end
@@ -97,7 +97,7 @@ end
 defn Delete(from, to, r)
   (** A rope without the bytes from position from up to, but not including, position to.
 
-        Text(Delete(1, 2, Of("abc"))) --> "ac" *)
+        Whole(Delete(1, 2, Of("abc"))) --> "ac" *)
   parts = SplitAt(from, r)
   JoinRopes(parts[1], SplitAt(to - from, parts[2])[2])
 end
@@ -106,12 +106,12 @@ pieces(r) = if isLeaf(r) [r.Text] else Concat(pieces(r.Left), pieces(r.Right)) e
 
 (** The whole text of the rope.
 
-      Text(Of("hi")) --> "hi" *)
-Text(r) = Join("", pieces(r))
+      Whole(Of("hi")) --> "hi" *)
+Whole(r) = Join("", pieces(r))
 (** The text of the bytes from position from up to, but not including, position to.
 
-      Slice(1, 3, Of("hello")) --> "el" *)
-Slice(from, to, r) = Text(SplitAt(to - from, SplitAt(from, r)[2])[1])
+      Part(1, 3, Of("hello")) --> "el" *)
+Part(from, to, r) = Whole(SplitAt(to - from, SplitAt(from, r)[2])[1])
 
 defn afterNewline(n, r)
   (** The position of the first byte after the nth newline. *)
@@ -145,7 +145,7 @@ end
 (** The text of line n, without its line end.
 
       Line(2, Of("ab\ncd")) --> "cd" *)
-Line(n, r) = Slice(LineStart(n, r), LineEnd(n, r), r)
+Line(n, r) = Part(LineStart(n, r), LineEnd(n, r), r)
 
 defn LineOf(at, r)
   (** The line of a position. *)

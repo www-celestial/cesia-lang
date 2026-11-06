@@ -3,4 +3,4 @@ use std/json
 use src/json as mine
 
 Print(json.Text(1))
-Print(mine.Text(1))
+Print(mine.Show(1))
