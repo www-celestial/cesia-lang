@@ -7,7 +7,7 @@ handle(r) = {Status: 200, Body: "x"}
 
 defn readToEnd(c, got)
   more = net.Read(c)?
-  if net.Size(more) == 0 Ok(got) else readToEnd(c, "$got$more") end
+  if ByteLength(more) == 0 Ok(got) else readToEnd(c, "$got$more") end
 end
 
 defn closes(request)

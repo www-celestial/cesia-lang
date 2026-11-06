@@ -788,21 +788,6 @@ use std/cesia
 (** net.OpenCount()
     How many sockets are open. *)
 
-(** net.Size(s)
-    The size of a text in bytes.
-
-      net.Size("é") --> 2 *)
-
-(** net.Find(part, s)
-    The byte offset, from 0, where part first occurs in a text, or missing.
-
-      net.Find("lo", "hello") --> 3 *)
-
-(** net.SplitAt(k, s)
-    A text cut after its first k bytes, as [first, rest].
-
-      net.SplitAt(2, "hello") --> ["he", "llo"] *)
-
 (** net.IsHeader(colon, line)
     Is this a safe header line with its colon at this byte offset? A name with a space or a stray line end is refused, as request smuggling uses them.
 

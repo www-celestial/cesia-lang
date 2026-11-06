@@ -2,6 +2,13 @@
 use std/net
 use std/sys
 
+(* Byte offsets from 0, as HTTP counts them: where a part first occurs, or missing, and a text cut after its first k bytes. *)
+defn offset(part, s)
+  at = ByteFind(part, 1, s)
+  if IsMissing(at) missing else at - 1 end
+end
+cutAt(k, s) = [ByteSlice(1, k, s), ByteSlice(k + 1, ByteLength(s), s)]
+
 Crlf = "\r\n"              (** The line end of HTTP. *)
 Blank = "$Crlf$Crlf"       (** The empty line that ends the head of a request or a response. *)
 MaxHead = 16384            (** The largest head of a request, in bytes: a longer one is answered 431. *)
@@ -36,12 +43,12 @@ isDigits(s) = s != "" and All(Map(b -> b >= 48 and b <= 57, Bytes(s)))
 
 defn Header(line)
   (** A header line as {Name, Value}, or missing if it isn't one: net.IsHeader says what it refuses, and why. *)
-  at = net.Find(":", line)
+  at = offset(":", line)
   if IsMissing(at) or not net.IsHeader(at, line)
     missing
   else
-    parts = net.SplitAt(at, line)
-    {Name: Lower(parts[1]), Value: Trim(net.SplitAt(1, parts[2])[2])}
+    parts = cutAt(at, line)
+    {Name: Lower(parts[1]), Value: Trim(cutAt(1, parts[2])[2])}
   end
 end
 
@@ -75,9 +82,9 @@ defn ParseHead(head)
   else if missing in headers
     Err(400)
   else
-    at = net.Find("?", words[2])
-    parts = if IsMissing(at) [words[2], "?"] else net.SplitAt(at, words[2]) end
-    Ok({Method: words[1], Path: parts[1], Query: net.SplitAt(1, parts[2])[2], Headers: headers, Version: words[3]})
+    at = offset("?", words[2])
+    parts = if IsMissing(at) [words[2], "?"] else cutAt(at, words[2]) end
+    Ok({Method: words[1], Path: parts[1], Query: cutAt(1, parts[2])[2], Headers: headers, Version: words[3]})
   end
 end
 
@@ -100,10 +107,10 @@ defn WithBody(head, after, limit, used)
     Err(400)
   else if size > limit
     Err(413)
-  else if net.Size(after) < size
+  else if ByteLength(after) < size
     Ok({Needs: used + size})
   else
-    parts = net.SplitAt(size, after)
+    parts = cutAt(size, after)
     request = {Method: head.Method, Path: head.Path, Query: head.Query, Headers: head.Headers, Body: parts[1]}
     Ok({Request: request, Rest: parts[2], Close: Closes(head)})
   end
@@ -112,14 +119,14 @@ end
 defn ParseRequest(buffer, limit = DefaultMaxBody)
   (** Ok of the first request and what follows it, Ok(missing) if the head isn't all there, Ok({Needs}) with the size of the
       whole request if its body isn't, or Err of a status. *)
-  at = net.Find(Blank, buffer)
+  at = offset(Blank, buffer)
   if IsMissing(at)
-    if net.Size(buffer) > MaxHead Err(431) else Ok(missing) end
+    if ByteLength(buffer) > MaxHead Err(431) else Ok(missing) end
   else if at > MaxHead
     Err(431)
   else
-    cut = net.SplitAt(at, buffer)
-    WithBody(ParseHead(cut[1])?, net.SplitAt(4, cut[2])[2], limit, at + 4)
+    cut = cutAt(at, buffer)
+    WithBody(ParseHead(cut[1])?, cutAt(4, cut[2])[2], limit, at + 4)
   end
 end
 
@@ -141,7 +148,7 @@ defn Render(response, headOnly = false)
     else -> []
   end
   custom = if Len(extra) == 0 "" else Join("", Map(HeaderLine, extra)) end
-  lengthLine = if status == 101 or status == 204 "" else "content-length: $(net.Size(body))$Crlf" end
+  lengthLine = if status == 101 or status == 204 "" else "content-length: $(ByteLength(body))$Crlf" end
   shown = if headOnly "" else body end
   "HTTP/1.1 $status $(Reason(status))$Crlf$lengthLine$custom$Crlf$shown"
 end
@@ -178,14 +185,14 @@ defn Gather(io, first, needed)
   (** Reads from a connection until the needed size, or to its end if the size is missing: an Ok of what arrived, which an
       early end leaves short. It reads in one pass, so a body sent a byte at a time isn't parsed again at each read. *)
   pieces = {0: first}
-  total = net.Size(first)
+  total = ByteLength(first)
   while IsMissing(needed) or total < needed
     more = io.Read()?
-    if net.Size(more) == 0
+    if ByteLength(more) == 0
       break
     end
     pieces[Len(pieces)] = more
-    total += net.Size(more)
+    total += ByteLength(more)
   end
   Ok(Join("", Values(pieces)))
 end
@@ -199,14 +206,14 @@ defn Connection(handle, io, buffer, options)
     io.Close()
   else if IsMissing(parsed.Value)
     more = io.Read()
-    if IsErr(more) or net.Size(more.Value) == 0
+    if IsErr(more) or ByteLength(more.Value) == 0
       io.Close()
     else
       Connection(handle, io, "$buffer$(more.Value)", options)
     end
   else if waits(parsed.Value)
     whole = Gather(io, buffer, parsed.Value.Needs)
-    if IsErr(whole) or net.Size(whole.Value) < parsed.Value.Needs
+    if IsErr(whole) or ByteLength(whole.Value) < parsed.Value.Needs
       io.Close()
     else
       Connection(handle, io, whole.Value, options)
@@ -291,15 +298,15 @@ defn ParseUrl(url)
   if not (url then StartsWith(scheme))
     Failed("This URL doesn't start with http://.")
   else
-    rest = net.SplitAt(net.Size(scheme), url)[2]
-    slash = net.Find("/", rest)
-    parts = if IsMissing(slash) [rest, "/"] else net.SplitAt(slash, rest) end
-    colon = net.Find(":", parts[1])
+    rest = cutAt(ByteLength(scheme), url)[2]
+    slash = offset("/", rest)
+    parts = if IsMissing(slash) [rest, "/"] else cutAt(slash, rest) end
+    colon = offset(":", parts[1])
     if IsMissing(colon)
       Ok({Host: parts[1], Port: if secure 443 else 80 end, Path: parts[2], Secure: secure})
     else
-      address = net.SplitAt(colon, parts[1])
-      port = Number(net.SplitAt(1, address[2])[2])
+      address = cutAt(colon, parts[1])
+      port = Number(cutAt(1, address[2])[2])
       if IsInt(port) Ok({Host: address[1], Port: port, Path: parts[2], Secure: secure}) else Failed("This URL has a bad port.") end
     end
   end
@@ -311,24 +318,24 @@ defn fullSize(head)
   (** The size of a response, from its head and the content-length: a server may keep the connection open. Missing if only
       the end of the connection tells. *)
   size = HeaderValue("content-length", responseHeaders(head))
-  if IsText(size) and IsInt(Number(size)) net.Size(head) + 4 + Number(size) else missing end
+  if IsText(size) and IsInt(Number(size)) ByteLength(head) + 4 + Number(size) else missing end
 end
 
 defn ReadResponse(io, buffer)
   (** Reads a whole response from a connection: an Ok of {Status, Headers, Body}, or an Err. The head comes first, and is read
       once: the rest of a large response doesn't parse it again. *)
-  at = net.Find(Blank, buffer)
+  at = offset(Blank, buffer)
   if IsMissing(at)
     more = io.Read()?
-    if net.Size(more) == 0 Ok(buffer) else ReadResponse(io, "$buffer$more") end
+    if ByteLength(more) == 0 Ok(buffer) else ReadResponse(io, "$buffer$more") end
   else
-    Gather(io, buffer, fullSize(net.SplitAt(at, buffer)[1]))
+    Gather(io, buffer, fullSize(cutAt(at, buffer)[1]))
   end
 end
 
 defn Hex(digits)
   (** The value of hexadecimal digits, or missing. Fifteen digits always fit in an integer. *)
-  values = [net.Find(Slice(i, i, digits), "0123456789abcdef") for i in 1..Len(digits)]
+  values = [offset(Slice(i, i, digits), "0123456789abcdef") for i in 1..Len(digits)]
   if Len(values) == 0 or Len(values) > 15 or missing in values
     missing
   else
@@ -347,7 +354,7 @@ defn Unchunk(data)
     end
     size = Hex(Lower(Split(";", if at == from "" else ByteSlice(from, at - 1, data) end)[1]))
     start = at + 2
-    if IsMissing(size) or net.Size(data) - start + 1 < size
+    if IsMissing(size) or ByteLength(data) - start + 1 < size
       return Failed("This chunked body is malformed.")
     end
     if size == 0
@@ -360,24 +367,24 @@ end
 
 defn ParseResponse(raw)
   (** Reads the text of a response: an Ok of {Status, Headers, Body} (a chunked body is joined), or an Err. *)
-  at = net.Find(Blank, raw)
-  firstEnd = net.Find(Crlf, raw)
-  words = Split(" ", if IsMissing(firstEnd) raw else net.SplitAt(firstEnd, raw)[1] end)
+  at = offset(Blank, raw)
+  firstEnd = offset(Crlf, raw)
+  words = Split(" ", if IsMissing(firstEnd) raw else cutAt(firstEnd, raw)[1] end)
   status = if Len(words) >= 2 Number(words[2]) else missing end
   if IsMissing(at) or not IsInt(status) or not (words[1] then StartsWith("HTTP/"))
     Failed("This response isn't HTTP.")
   else
-    cut = net.SplitAt(at, raw)
+    cut = cutAt(at, raw)
     headers = responseHeaders(cut[1])
-    rest = net.SplitAt(4, cut[2])[2]
+    rest = cutAt(4, cut[2])[2]
     size = HeaderValue("content-length", headers)
-    count = if IsText(size) Number(size) else net.Size(rest) end
+    count = if IsText(size) Number(size) else ByteLength(rest) end
     body = if HeaderValue("transfer-encoding", headers) == "chunked"
       Unchunk(rest)
-    else if not IsInt(count) or count < 0 or count > net.Size(rest)
+    else if not IsInt(count) or count < 0 or count > ByteLength(rest)
       Failed("This response is cut short.")
     else
-      Ok(net.SplitAt(count, rest)[1])
+      Ok(cutAt(count, rest)[1])
     end
     MapOk(b -> {Status: status, Headers: headers, Body: b}, body)
   end
@@ -402,7 +409,7 @@ defn Request(method, url, body = "", headers = [], secure = missing)
   end
   io = made.Value
   custom = Join("", Map(HeaderLine, headers))
-  sized = if body == "" and method == "GET" "" else "Content-Length: $(net.Size(body))$Crlf" end
+  sized = if body == "" and method == "GET" "" else "Content-Length: $(ByteLength(body))$Crlf" end
   text = "$method $(target.Path) HTTP/1.1$(Crlf)Host: $(target.Host)$(Crlf)Connection: close$Crlf$sized$custom$Crlf$body"
   sent = io.Write(text)
   raw = if IsOk(sent) ReadResponse(io, "") else sent end

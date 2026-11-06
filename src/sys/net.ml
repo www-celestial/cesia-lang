@@ -255,23 +255,6 @@ let reap n _ _ : Types.t =
   List.iter (close_socket n) late;
   Int (List.length late)
 
-(* HTTP lengths count bytes, unlike length and slice, which count code points. *)
-let find ctx (a : Types.t array) =
-  let part = Native.text_arg ctx "Find" a.(0) and text = Native.text_arg ctx "Find" a.(1) in
-  Runtime.pay_bytes ctx (String.length text);
-  match if part = "" then 0 else Native.find_from text part 0 with
-  | -1 -> Missing
-  | at -> Int at
-
-let split_at ctx (a : Types.t array) =
-  let text = Native.text_arg ctx "SplitAt" a.(1) in
-  match a.(0) with
-  | Int k when k >= 0 && k <= String.length text ->
-    Runtime.build ctx ((String.length text / 8) + 1);
-    let items = [| Text (String.sub text 0 k); Text (String.sub text k (String.length text - k)) |] in
-    Array { rows = 1; cols = 2; store = V items; a_owned = true; a_tip = true }
-  | v -> Runtime.fail ctx Type (Messages.need_size "SplitAt" (Value.describe v))
-
 (* A header name, as RFC 9110 writes it. *)
 let is_token_byte = function
   | 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9'
@@ -303,8 +286,5 @@ let natives n =
     "Close", Native.nat "Close" 1 1 (close n);
     "Arm", Native.nat "Arm" 2 2 (arm n);
     "Reap", Native.nat "Reap" 0 0 (reap n);
-    "Find", Native.nat "Find" 2 2 find;
-    "SplitAt", Native.nat "SplitAt" 2 2 split_at;
     "IsHeader", Native.nat "IsHeader" 2 2 is_header;
-    "Size", Native.nat "Size" 1 1 (fun ctx a -> Int (String.length (Native.text_arg ctx "Size" a.(0))));
     "OpenCount", Native.nat "OpenCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]
