@@ -32,3 +32,6 @@ val runner : runner option ref
 
 (** isGrows: [is], then a capital: the name of a test. *)
 val is_test : string -> bool
+
+(** The natives of std/test and std/gen by name, which fail outside cesia test: the plugin gives the real ones. *)
+val natives : (string * (string * t) list) list
