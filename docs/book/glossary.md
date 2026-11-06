@@ -181,8 +181,8 @@ fibers after a number of steps, so a long computation doesn't hold up the others
 
 ## Prelude
 
-The names that every file sees without a `use`: [Print], [Map], [Count], [Get] and the others. A package can't define a name
-of the prelude: see [Packages](packages.md#a-package-is-a-folder).
+The names that every file sees without a `use`: [Print], [Map], [Count], [Get] and the others. A package may define one of these
+names for itself: see [Packages](packages.md#a-package-is-a-folder).
 
 ## Principle of least privilege
 
@@ -197,7 +197,7 @@ function can't change the values it is given: it is pure when it leaves the outs
 
 ## Route
 
-A rule that sends the requests of one method and one path to a handler. [web.GetRoute] and [web.PostRoute] add one, and
+A rule that sends the requests of one method and one path to a handler. [web.Get] and [web.Post] add one, and
 `:name` in a path takes any word: see [HTTP](http.md#an-application).
 
 ## Sandbox

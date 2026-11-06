@@ -129,11 +129,11 @@ Print(frame.Show(frame.Select(["day", "product", "total"], lyon)))
 ### Groups of rows
 
 [frame.GroupBy] makes one row per value of its columns, and a column for each [frame.Agg]: a new name, the column it reads,
-and the function of its values. [frame.OrderBy] orders the rows:
+and the function of its values. [frame.SortBy] orders the rows:
 
 ```cesia allow=read
 byCity = frame.GroupBy(["city"], [frame.Agg("units", "units", Sum), frame.Agg("rows", "day", Len)], df)
-Print(frame.Show(frame.OrderBy("units", byCity, descending = true)))
+Print(frame.Show(frame.SortBy("units", byCity, descending = true)))
 ```
 
 ### Whole columns

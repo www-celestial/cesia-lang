@@ -73,13 +73,11 @@ WithTax(10.25) -->
 
 ### Names every file sees
 
-A name that every file sees without a `use`, as [Count] or [Get], belongs to the [prelude](glossary.md#prelude). It means
-that one in every file: a package can't define it, and the message says so. Give your function a name of its own, as
-`set.With` adds to a set where [Put] adds to a dictionary.
-
-```cesia fails
-Count(basket) = 3
-```
+A name that every file sees without a `use`, as [Count] or [Get], belongs to the [prelude](glossary.md#prelude). A package
+may name a function as one of them. Then, in the files of that package, `Count` is its own; everywhere else, `Count` is the
+one of every file, and the package's is `prices.Count`. So inside such a package, the other `Count` can't be called: give
+your function a name of its own, unless it does the same thing for your kind of value, as `set.Count` counts the elements of
+a set.
 
 ### Private names
 

@@ -12,9 +12,9 @@ which also has the client.
 ```cesia
 use std/web
 app = web.App()
-  then web.GetRoute("/", r -> web.Plain("Welcome"))
-  then web.GetRoute("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
-  then web.GetRoute("/stock", r -> web.SendJson({bread: 40, cake: 6}))
+  then web.Get("/", r -> web.Plain("Welcome"))
+  then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
+  then web.Get("/stock", r -> web.SendJson({bread: 40, cake: 6}))
 ```
 
 ### Words in the path
@@ -56,7 +56,7 @@ defn addPurchase(request)
   end
 end
 
-shop = app then web.PostRoute("/orders", addPurchase)
+shop = app then web.Post("/orders", addPurchase)
 post(body) = web.Handler(shop)({Method: "POST", Path: "/orders", Query: "", Headers: [], Body: body})
 Print(post("{\"Product\": \"bread\", \"Units\": 4}").Body)
 Print(post("{\"Product\": \"bread\", \"Units\": \"four\"}").Body)
@@ -97,7 +97,7 @@ Here is a small `shop.ce`:
 use std/web
 
 hello = web.App()
-  then web.GetRoute("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
+  then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
 web.Serve(web.Wrap(web.Logger, hello))
 ```
 
@@ -118,7 +118,7 @@ use std/sys
 use std/http
 Spawn(() -> web.Serve(logged, port = 18761))
 sys.Sleep(0)
-r = http.Fetch("http://127.0.0.1:18761/hello/Bo")
+r = http.Get("http://127.0.0.1:18761/hello/Bo")
 r.Value.Status -->
 r.Value.Body -->
 sent = http.Post("http://127.0.0.1:18761/orders", "{\"Product\": \"cake\", \"Units\": 2}")
@@ -129,11 +129,11 @@ The program ends when its last line is done, and the server with it.
 
 ## The client
 
-[http.Fetch] and [http.Post] send a request, and give an `Ok` of the response, with its `Status`, its `Headers` and its
+[http.Get] and [http.Post] send a request, and give an `Ok` of the response, with its `Status`, its `Headers` and its
 `Body`, or an `Err` when the server can't be reached. A `404` is a response, not an error: look at `Status`.
 
 ```cesia allow=net
-http.Fetch("http://127.0.0.1:1/") -->
+http.Get("http://127.0.0.1:1/") -->
 ```
 
 ### https
@@ -144,7 +144,7 @@ host:
 ```cesia norun
 use std/tls
 api = Unwrap(tls.Open())
-page = http.Fetch("https://example.com/", secure = tls.Client(api))
+page = http.Get("https://example.com/", secure = tls.Client(api))
 ```
 
 ```bash
