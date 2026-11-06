@@ -175,10 +175,26 @@ let func b ~prefix ~nested (fn : Ir.func) =
         Printf.bprintf s "  mov %s, %s\n  mov %s, %d\n" (cx Ir.io_frame) at (cx Ir.io_point) fn.sites.(site);
         Printf.bprintf s "  mov %s, fuel\n  mov %s, x1\n  ret %s, -1\n" (cx Ir.io_fuel) (cx Ir.io_status) zero)
   in
+  (* A call that wants a longer stack, here or deeper, bails when it can: its statement's fuel back as at its start, the
+     interpreter makes the call and grows the stack. *)
+  let again back =
+    let f, sp, q = fn.keeps.(back) in
+    let b = bail_to back in
+    stub (fun s -> Printf.bprintf s "  mov fuel, r%d\n  mov %s, r%d\n  mov %s, r%d\n  jmp %s\n" f (cx Ir.io_spent) sp (cx Ir.io_quantum) q b)
+  in
+  (* A frame at [at] above the limit, for a call that can bail: past the stack, or where the interpreter's frames would want
+     a longer one, bail; else the limit of depth. *)
+  let short at caller site back =
+    let g = again back and deep = deep_stub at caller site in
+    stub (fun s ->
+        Printf.bprintf s "  mov x0, %s\n  bgt %s, %s, x0\n  mov x0, %s\n  bgt %s, %s, x0\n  jmp %s\n" (cx Ir.io_cap2) g at
+          (cx Ir.io_mem) g at deep)
+  in
   let ins = function
     | Ir.Frame (r, base) -> pr "  add r%d, %s, %d\n" r (reg_of base) (if base < 0 && not nested then fn.frame + fn.hidden else 2)
-    | Enter (r, base, site) ->
-      let slow = deep_stub ("r" ^ string_of_int r) (reg_of base) site in
+    | Enter (r, base, site, back) ->
+      let at = "r" ^ string_of_int r in
+      let slow = if back < 0 then deep_stub at (reg_of base) site else short at (reg_of base) site back in
       pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) slow r
     | Enter_or_bail (r, k) -> pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) (bail_to k) r
     | Ir.Move (r, v) -> pr "  %s r%d, %s\n" (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (operand v)
@@ -225,24 +241,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Call (r, k, args, site, back) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
       pr "  add nb, %s, %d\n" (frame_of site) (callee_of site);
-      (* A call that wants a longer stack, here or deeper, bails when it can: its statement's fuel back as at its start,
-         the interpreter makes the call and grows the stack. *)
-      let again () =
-        let f, sp, q = fn.keeps.(back) in
-        let b = bail_to back in
-        stub (fun s ->
-            Printf.bprintf s "  mov fuel, r%d\n  mov %s, r%d\n  mov %s, r%d\n  jmp %s\n" f (cx Ir.io_spent) sp (cx Ir.io_quantum) q b)
-      in
-      let slow =
-        if back < 0 then deep_stub "nb" (frame_of site) site
-        else begin
-          let g = again () and deep = deep_stub "nb" (frame_of site) site in
-          (* Past the stack, or where the interpreter's frames would want a longer one: bail; else the limit of depth. *)
-          stub (fun s ->
-              Printf.bprintf s "  mov x0, %s\n  bgt %s, nb, x0\n  mov x0, %s\n  bgt %s, nb, x0\n  jmp %s\n" (cx Ir.io_cap2) g
-                (cx Ir.io_mem) g deep)
-        end
-      in
+      let slow = if back < 0 then deep_stub "nb" (frame_of site) site else short "nb" (frame_of site) site back in
+      let again () = again back in
       let up =
         let unwind =
           stub (fun s ->

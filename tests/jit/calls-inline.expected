@@ -1,0 +1,5 @@
+calls-inline.ce:20:7: Limit "memory" reached.
+  20 |     xs[i] = sq(i * 1.0) + depth(d)
+     |       ^
+  in fill (calls-inline.ce:20)
+exit 1

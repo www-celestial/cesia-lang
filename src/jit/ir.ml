@@ -23,7 +23,7 @@ type ins =
   | Bump of int * value
   | Burn
   | Frame of int * int
-  | Enter of int * int * int
+  | Enter of int * int * int * int
   | Enter_or_bail of int * int
   | Unbox of int * value * unbox * int
   | Box of int * value

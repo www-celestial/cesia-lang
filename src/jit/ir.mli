@@ -49,9 +49,10 @@ type ins =
   | Frame of int * int
       (** [Frame (r, base)]: [r], a raw integer, the base a callee of the frame at [base] takes: a register of a raw base,
           or -1 for the function's own frame *)
-  | Enter of int * int * int
-      (** [Enter (r, base, site)]: an inlined callee enters its frame at [r], called at [site] from the frame at [base]:
-          the depth and the stack are checked as for a call *)
+  | Enter of int * int * int * int
+      (** [Enter (r, base, site, k)]: an inlined callee enters its frame at [r], called at [site] from the frame at
+          [base]: the depth and the stack are checked as for a call, and where the stack would be short, the run bails
+          to statement [k] as [Call] does, or stops at -1 *)
   | Enter_or_bail of int * int
       (** [Enter_or_bail (r, k)]: the same, for a struct's function; when it can't, the run bails before statement [k],
           and the interpreter makes the call *)
