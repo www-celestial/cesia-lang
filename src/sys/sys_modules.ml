@@ -36,5 +36,5 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
   in
   Linalg.install ();
   w.native_modules <-
-    ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("lapack", Linalg.natives) :: w.native_modules;
+    ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", Sqlite.natives) :: ("lapack", Linalg.natives) :: w.native_modules;
   fun () -> Net.stopping net

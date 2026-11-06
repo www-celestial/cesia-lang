@@ -313,3 +313,15 @@ let denied perm = plain (Printf.sprintf "Permission \"%s\" denied. Run again wit
 let rows_same_key a b key =
   plain (Printf.sprintf "The columns %s and %s both give the key %s: rename one with as." a b key)
 let rows_cells cells names = plain (Printf.sprintf "%d cells don't make whole rows of %d names." cells names)
+let sql_zero_byte what = plain (Printf.sprintf "SQLite can't take %s with a zero byte." what)
+let sql_need_handle name kind a = plain (Printf.sprintf "%s needs a %s, not %s." name kind a)
+let sql_closed = plain "This connection or cursor is closed."
+let sql_no_statement = plain "The text holds no statement."
+let sql_statements = plain "One statement per call: sql.Script runs several, without parameters."
+let sql_bad_param k a =
+  plain (Printf.sprintf "Parameter %d is %s: SQL takes missing, a Bool, an Int, a Float or a Text." k a)
+let sql_param_count wanted given =
+  plain (Printf.sprintf "The statement has %d placeholders, given %d values: one value for each ?." wanted given)
+let sql_batch a = plain (Printf.sprintf "A batch needs a count of rows above 0, not %s." a)
+let sql_int_past name =
+  plain (Printf.sprintf "The column %s holds an integer past 63 bits: read it with cast(%s as text)." name name)

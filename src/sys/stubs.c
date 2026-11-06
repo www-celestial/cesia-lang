@@ -59,6 +59,17 @@ value cesia_block_address(value block) {
   return Val_long((intnat) Caml_ba_data_val(block));
 }
 
+/* The n bytes at an address, zero bytes too: SQLite's texts and BLOBs. */
+value cesia_bytes(value address, value n) {
+  return caml_alloc_initialized_string(Long_val(n), (const char *) Long_val(address));
+}
+
+/* sqlite3_db_config takes a variable argument list, which only a C call passes right on every system. */
+value cesia_db_config(value fn, value db, value op, value on) {
+  int (*config)(void *, int, ...) = (int (*)(void *, int, ...)) Long_val(fn);
+  return Val_int(config((void *) Long_val(db), Int_val(op), Int_val(on), (int *) 0));
+}
+
 value cesia_cstring(value address) {
   return caml_copy_string((const char *) Long_val(address));
 }

@@ -291,3 +291,12 @@ val need_size : string -> string -> t
 val deadlock : t
 val rows_same_key : string -> string -> string -> t
 val rows_cells : int -> int -> t
+val sql_zero_byte : string -> t
+val sql_need_handle : string -> string -> string -> t
+val sql_closed : t
+val sql_no_statement : t
+val sql_statements : t
+val sql_bad_param : int -> string -> t
+val sql_param_count : int -> int -> t
+val sql_batch : string -> t
+val sql_int_past : string -> t
