@@ -30,6 +30,9 @@ val is_public : string -> bool
 (** A name the code can write, so a key that prints without quotes: no keyword, no [_]. *)
 val is_plain_name : string -> bool
 
+(** A name from outside as a public name: [created_at] gives [CreatedAt], [name] [Name]. A text that is no identifier stays. *)
+val public_name : string -> string
+
 (** The name of a method inside the core. [Rect.Area] gives the struct, [false] and the method; [Rect:Square], which only the
     core writes, gives [true]; another name gives [None]. *)
 val split_method : string -> (string * bool * string) option

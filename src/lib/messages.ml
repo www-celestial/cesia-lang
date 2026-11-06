@@ -98,6 +98,7 @@ let from_static sname =
 let from_private sname = plain (Printf.sprintf "%s needs a field that is private to its package." sname)
 let fields_of a = plain (Printf.sprintf "Fields needs a struct, not %s." a)
 let from_missing sname name = plain (Printf.sprintf "%s needs the field \"%s\"." sname name)
+let from_twice sname a b field = plain (Printf.sprintf "%s gets its field \"%s\" from two keys: \"%s\" and \"%s\"." sname field a b)
 let field_of a name = plain (Printf.sprintf "Can't read the field \"%s\" of %s." name a)
 let struct_nested = plain "A struct can only be defined at the top of a file."
 let struct_not_field =

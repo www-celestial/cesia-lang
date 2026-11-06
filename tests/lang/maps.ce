@@ -114,6 +114,10 @@ isFromExcess() = MapErr(it.Message, User.From({Id: 1, Name: "Ana", Admin: true})
 isFromMissing() = MapErr(it.Message, User.From({Id: 1})) == Err("User needs the field \"Name\".")
 isFromWrongType() = MapErr(it.Message, User.From({Id: "1", Name: "Ana"})) == Err("User: Id must be an Int, found a Text.") and IsErr(User.From(Put(3, 4, {Id: 1, Name: "Ana"})))
 isFromKind() = MapErr(it.Kind, User.From({})) == Err("field")
+(* Keys from outside, as JSON or SQL write them: name and created_at give Name and CreatedAt. *)
+struct Row { CreatedAt Text }
+isFromOutsideNames() = Unwrap(User.From({"id": 1, "name": "Ana", "age": 3})).Age == 3 and Unwrap(Row.From({"created_at": "x"})).CreatedAt == "x"
+isFromTwoKeys() = MapErr(it.Message, User.From({"Id": 1, "Name": "a", "name": "b"})) == Err("User gets its field \"Name\" from two keys: \"Name\" and \"name\".")
 isFromSmallInside() = Unwrap(User.From({Id: 1, Name: "Ana", secret: "x"})).secret == "x"
 isFromSmallOutside() = MapErr(it.Message, f.Secret.From({key: "k", Label: "l"})) == Err("Secret has no field \"key\".") and MapErr(it.Message, f.Secret.From({Label: "l"})) == Err("Secret needs a field that is private to its package.")
 isFromAsValue() = Equal(Map(it.Value.Id, Map(User.From, [{Id: 1, Name: "a"}, {Id: 2, Name: "b"}])), [1, 2])

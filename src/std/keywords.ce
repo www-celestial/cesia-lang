@@ -86,8 +86,8 @@ use std/queue as line
 
 (** struct
     Declares a value with named fields, on one line or as a block with one field per line up to end. A field may have a
-    default and a type. Every struct has From, which builds one from a dictionary, and a value never changes in place: a
-    method gives a new one.
+    default and a type. Every struct has From, which builds one from a dictionary whose keys are its fields, as written or
+    as JSON and SQL write them (created_at for CreatedAt), and a value never changes in place: a method gives a new one.
 
       struct Cup { Size, Full = false }
       Cup(2).Full --> false

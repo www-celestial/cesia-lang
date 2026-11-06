@@ -69,6 +69,16 @@ let split_method text =
   in
   go 0
 
+(* A name from outside as a public Cesia name, for a column of SQL and a key that From reads: created_at gives CreatedAt,
+   name Name. A text that is no identifier, as max(score), stays. *)
+let public_name s =
+  let letter = function 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false in
+  if s = "" || not (letter s.[0] && String.for_all (function '0' .. '9' -> true | c -> letter c) s) then s
+  else
+    match String.concat "" (List.map String.capitalize_ascii (String.split_on_char '_' s)) with
+    | "" -> s
+    | name -> name
+
 (* The words of a name with a _, joined by capitals, for the hint of its error. *)
 let joined ~public name =
   let words = List.filter (fun w -> w <> "") (String.split_on_char '_' name) in

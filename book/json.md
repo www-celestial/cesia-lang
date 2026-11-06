@@ -58,10 +58,13 @@ end
 Unwrap(sys.Read("user.json")) then json.Parse(it) then AndThen(User.From) -->
 json.Parse("{\"Name\": \"Bo\", \"Age\": \"twenty\"}") then AndThen(User.From) -->
 json.Parse("{\"name\": \"Bo\", \"age\": 20}") then AndThen(User.From) -->
+json.Parse("{\"Name\": \"Bo\", \"name\": \"Ana\", \"Age\": 20}") then AndThen(User.From) -->
+json.Parse("{\"Name\": \"Bo\", \"Agee\": 20}") then AndThen(User.From) -->
 ```
 
-The keys must be the names of the fields, capitals included: the last one is refused, and its message names the key. A field
-with a default, as `Admin`, may be left out.
+A key is the name of a field, or that name as JSON and SQL often write it: `name` gives `Name`, and `created_at` gives
+`CreatedAt`, the rule that the chapter [SQLite](sqlite.md) uses for columns. Two keys for one field are refused, and so is a
+key that names no field: each message names the key. A field with a default, as `Admin`, may be left out.
 
 ## Reading CSV
 

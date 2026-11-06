@@ -3447,10 +3447,21 @@ and from_native (proto : proto) pm =
        | m ->
          let o = Dict.items ctx (sn ^ ".From") m in
          let places = Array.make (Array.length o / 2) (-1) in
+         let given = Array.make (Array.length names) "" in
          for j = 0 to (Array.length o / 2) - 1 do
            let key = Value.text_of ctx o.(2 * j) in
-           let i = (match o.(2 * j) with Text s when Lexer.is_public s || inside -> Value.field_index shape s | _ -> -1) in
+           (* The key as it is, else as SQL names its columns: name and created_at give Name and CreatedAt. *)
+           let i =
+             match o.(2 * j) with
+             | Text s ->
+               let exact = if Lexer.is_public s || inside then Value.field_index shape s else -1 in
+               let p = Lexer.public_name s in
+               if exact >= 0 || p = s then exact else Value.field_index shape p
+             | _ -> -1
+           in
            if i < 0 then fail (Messages.named_field sn key);
+           if given.(i) <> "" then fail (Messages.from_twice sn given.(i) key names.(i));
+           given.(i) <- key;
            places.(j) <- i;
            put i o.((2 * j) + 1)
          done;

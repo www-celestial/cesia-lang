@@ -535,22 +535,13 @@ let kind (a : t array) =
   | Array { store = F _; _ } -> Text "float"
   | _ -> Text "value"
 
-(* A SQL name as a public Cesia name: created_at gives CreatedAt, id Id. A name that is no identifier, as max(score), stays. *)
-let public_name s =
-  let letter = function 'a' .. 'z' | 'A' .. 'Z' | '_' -> true | _ -> false in
-  if s = "" || not (letter s.[0] && String.for_all (function '0' .. '9' -> true | c -> letter c) s) then s
-  else
-    match String.concat "" (List.map String.capitalize_ascii (String.split_on_char '_' s)) with
-    | "" -> s
-    | name -> name
-
 (* The keys of rows by list of names, which every row of that list shares; 1,024 lists at most, then each call makes its
    own. Two names that give one key are an error. *)
 let row_keys : (bool * string array, (keys, string) result) Hashtbl.t = Hashtbl.create 16
 
 let keys_for public names =
   let make () =
-    let keys = if public then Array.map public_name names else names in
+    let keys = if public then Array.map Lexer.public_name names else names in
     let seen = Hashtbl.create (Array.length keys) and twice = ref None in
     Array.iteri
       (fun k key ->

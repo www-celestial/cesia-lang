@@ -73,6 +73,7 @@ val need_number : string -> string -> t
 val no_field : string -> t
 val named_field : string -> string -> t
 val from_missing : string -> string -> t
+val from_twice : string -> string -> string -> string -> t
 val from_static : string -> t
 val fields_of : string -> t
 val from_private : string -> t
