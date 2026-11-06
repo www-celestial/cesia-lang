@@ -1,0 +1,4 @@
+(** What another file of the package defines, which shapes.ce sees too. *)
+Square(side) = Rect(side, side)   (** A square. *)
+
+Doubled(r) = Area(r) * twice   (** Twice the area. *)

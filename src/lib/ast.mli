@@ -78,8 +78,9 @@ and param = { pname : string; default : expr option; ptype : ptype option }
 and iface = { iname : string; imethods : (string * param array * ptype option) array }
 
 (** A type written after a parameter, a field or the parameters of a function: a kind, as [Int], or a struct or an
-    interface, [Point] or [geo.Point], which [Resolve] binds. [topt]: it ends with [?] and also takes [missing]. *)
-and ptype = { tpos : pos; tpkg : string option; tname : string; topt : bool; mutable tb : binding }
+    interface, [Point] or [geo.Point], which [Resolve] binds. [topt]: it ends with [?] and also takes [missing]. [tbang]: a
+    result type that ends with [!], [Int!]: an [Ok] of an Int, or an [Err]. *)
+and ptype = { tpos : pos; tpkg : string option; tname : string; topt : bool; tbang : bool; mutable tb : binding }
 
 and func = {
   fname : string;

@@ -194,3 +194,11 @@ use std/value
       defn doubled(r) result.Ok(r? * 2) end
       doubled(result.Ok(4)) --> result.Ok(8)
       doubled(result.Err("no")) --> result.Err("no") *)
+
+(** !
+    After the result type of a function, the function gives an Ok of that type, or an Err: Int! is an Int, or an error. The
+    check at its way out looks inside the Ok, and cesia check warns about a typed function that can give an Err without it.
+
+      half(x) Float! = if x < 0 result.Err("negative") else result.Ok(x / 2) end
+      half(3) --> result.Ok(1.5)
+      half(-1) --> result.Err("negative") *)

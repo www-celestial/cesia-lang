@@ -2,12 +2,12 @@ open Types
 
 (* A direct call doesn't share its arguments, so that measuring a variable leaves it owned. A native returning one of
    its inputs therefore creates the second reference here. *)
-let nat ?perm ?(params = [||]) ?(ret = fun _ -> TA) nname min_args max_args run =
+let nat ?perm ?(params = [||]) ?(ret = fun _ -> TA) ?(result = false) nname min_args max_args run =
   let run ctx (a : t array) =
     let r = run ctx a in
     if Array.memq r a then Value.share r else r
   in
-  Native { nname; perm; params; min_args; max_args; ret_ty = ret; run; f1 = None; i2 = None }
+  Native { nname; perm; params; min_args; max_args; ret_ty = ret; run; f1 = None; i2 = None; gives_result = result }
 
 let int_native nname f =
   let whole ctx v =
@@ -20,7 +20,7 @@ let int_native nname f =
     { nname; perm = None; params = [||]; min_args = 2; max_args = 2;
       ret_ty = (function [| TI; TI |] -> TI | _ -> TA);
       run = (fun ctx a -> Int (f ctx (whole ctx a.(0)) (whole ctx a.(1))));
-      f1 = None; i2 = Some f }
+      f1 = None; i2 = Some f; gives_result = false }
 
 (* The return types inference can know. *)
 let same_number (a : ty array) =
@@ -192,7 +192,7 @@ let math1 name f =
   in
   name,
   Native { nname = name; perm = None; params = [||]; min_args = 1; max_args = 1; ret_ty = float_of_number;
-           run = (fun ctx a -> go ctx a.(0)); f1 = Some f; i2 = None }
+           run = (fun ctx a -> go ctx a.(0)); f1 = Some f; i2 = None; gives_result = false }
 
 (* floor, ceil, round: an integer stays an integer. *)
 let rounding name f =

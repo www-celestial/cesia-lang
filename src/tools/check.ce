@@ -1,0 +1,123 @@
+(** cesia check: says what is wrong in the code of a project without running any of it: syntax, names, the arguments of known
+    functions, types that can't fit, and results left unhandled. cesia check [--json] [--stdin FILE] [path...]: a path is a
+    file, or a folder and its subfolders; with none, the source folders of the cesia.toml here. --stdin FILE takes the text of
+    FILE from the input, as an editor sends a buffer not yet saved. --json writes one object per line and nothing else.
+    The exit code is 1 when there is an error; warnings alone give 0. Run by the binary, with the read permission only. *)
+use std/cesia
+use std/io
+use std/json
+use std/list
+use std/result
+use std/sys
+use std/text
+use std/value
+
+defn sources(path)
+  (** The files of Cesia under a path: itself, or those of a folder and its subfolders, without the dot files, _build, and
+      the std/ and deps/ that hold copies. *)
+  stat = sys.Stat(path)?
+  if not stat.IsDir
+    return result.Ok([path])
+  end
+  found = []
+  for name in sys.List(path)?
+    sub = if path == "." name else "$path/$name" end
+    skipped = text.StartsWith(".", name) or name == "_build" or ((name == "std" or name == "deps") and sys.Exists("$path/cesia.toml"))
+    if not skipped
+      if sys.Stat(sub)?.IsDir
+        found = list.Concat(found, sources(sub)?)
+      else if text.EndsWith(".ce", name)
+        found = list.Append(sub, found)
+      end
+    end
+  end
+  result.Ok(found)
+end
+
+defn folders()
+  (** The source folders of the cesia.toml here, [project] src, or src. *)
+  if not sys.Exists("cesia.toml")
+    return result.Err("check: no cesia.toml here; name the files or folders to check.")
+  end
+  for table in cesia.Toml(sys.Read("cesia.toml")?)?
+    if value.Equal(table.Path, ["project"])
+      for entry in table.Entries
+        if entry.Key == "src"
+          return result.Ok(entry.Value)
+        end
+      end
+    end
+  end
+  result.Ok(["src"])
+end
+
+defn shown(m)
+  (** A mark as cesia run shows an error: its place, its line, a ^ under its span, and its hint. *)
+  number = text.Str(m.Line)
+  pad = text.Join("", [if c == "\t" "\t" else " " end for c in text.Chars(text.Slice(1, m.Column - 1, m.Source))])
+  marks = text.Repeat(list.Max([1, m.End - m.Column]), "^")
+  lines = [
+    "$(m.File):$(m.Line):$(m.Column): $(if m.Severity == "warning" "warning: " else "" end)$(m.Message)",
+    "  $number | $(m.Source)",
+    "  $(text.Repeat(value.Len(number), " ")) | $pad$marks"]
+  text.Join("\n", if value.IsMissing(m.Hint) lines else list.Append("  $(m.Hint)", lines) end)
+end
+
+plural(n, word) = if n == 1 "1 $word" else "$n $(word)s" end   (** 1 error, 2 errors. *)
+
+defn run(args)
+  (** Checks what the arguments name, prints what it finds, and gives the exit code. *)
+  asJson = false
+  stdin = missing
+  paths = []
+  i = 1
+  while i <= value.Len(args)
+    a = args[i]
+    if a == "--json"
+      asJson = true
+    else if a == "--stdin" and i < value.Len(args)
+      i += 1
+      stdin = args[i]
+    else if text.StartsWith("--", a)
+      return result.Err("check: unknown option $a; cesia check [--json] [--stdin FILE] [path...]")
+    else
+      paths = list.Append(a, paths)
+    end
+    i += 1
+  end
+  given = {}
+  if not value.IsMissing(stdin)
+    given = {(stdin): sys.ReadInput()?}
+  end
+  roots = if value.Len(paths) == 0 and value.IsMissing(stdin) folders()? else paths end
+  files = if value.IsMissing(stdin) [] else [stdin] end
+  for root in roots
+    if not sys.Exists(root)
+      return result.Err("check: $root doesn't exist.")
+    end
+    files = list.Concat(files, sources(root)?)
+  end
+  marks = cesia.Check(files, given)
+  errors = value.Len(list.Filter(m -> m.Severity == "error", marks))
+  for m in marks
+    io.Print(if asJson
+      json.Text({"file": m.File, "line": m.Line, "column": m.Column, "end": m.End, "severity": m.Severity,
+                 "message": m.Message, "hint": m.Hint})
+    else
+      shown(m)
+    end)
+  end
+  if value.Len(marks) > 0 and not asJson
+    io.Print("check: $(plural(errors, "error")), $(plural(value.Len(marks) - errors, "warning")), in $(plural(value.Len(files), "file")).")
+  end
+  result.Ok(if errors > 0 1 else 0 end)
+end
+
+defn Main()
+  (** Runs the check of Args; an error that stops it is a text, which the binary shows. *)
+  code = run(sys.Args)?
+  if code > 0
+    sys.Exit(code)
+  end
+  result.Ok(missing)
+end

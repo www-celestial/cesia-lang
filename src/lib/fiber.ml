@@ -177,11 +177,11 @@ let receive ctx (a : Types.t array) =
 
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
-    "Wait", Native.nat "Wait" 1 1 (fun ctx a -> wait ctx a.(0));
+    "Wait", Native.nat ~result:true "Wait" 1 1 (fun ctx a -> wait ctx a.(0));
     "Channel",
     Native.nat "Channel" 0 0 (fun ctx _ ->
         let s = ctx.w.sched in
         s.next_id <- s.next_id + 1;
         Handle { kind = "channel"; id = s.next_id - 1; task = Some { result = None; waiters = []; items = Queue.create () } });
     "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
-    "Receive", Native.nat ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive ]
+    "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive ]

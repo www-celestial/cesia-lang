@@ -708,7 +708,7 @@ let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -
 
 (* A version that keeps a value as an Int or a Float already knows whether it fits a number type. *)
 let known_number (t : ptype) ty =
-  (ty == TI || ty == TF) && t.tb = Unresolved && (t.tname = "Number" || t.tname = (if ty == TI then "Int" else "Float"))
+  (ty == TI || ty == TF) && (not t.tbang) && t.tb = Unresolved && (t.tname = "Number" || t.tname = (if ty == TI then "Int" else "Float"))
 
 (* The return type at a way out of the function, as for a parameter: the version may already know the answer. Else the value
    is checked there, and a wrong one stops the program. *)
@@ -719,9 +719,21 @@ let result_check c pos known : (ctx -> t -> t) option =
     let wrong (ctx : ctx) x =
       ctx.site <- s;
       let want, found = ch.wrong x in
-      Runtime.fail ctx Type (Messages.wrong_result c.func.fname want found)
+      Runtime.fail ctx Type (Messages.wrong_result c.func.fname (if t.tbang then "an Ok of " ^ want ^ ", or an Err" else want) found)
     in
-    Some (fun ctx x -> let y = ch.accept x in if y == Undef then wrong ctx x else y)
+    if t.tbang then begin
+      (* Int!: an Err, or an Ok whose value is an Int. *)
+      let ok = Value.shape_of c.w ~sname:"Ok" [| "Value" |] and err = Value.shape_of c.w ~sname:"Err" [| "Error" |] in
+      Some (fun ctx x ->
+          match x with
+          | Struct r when r.shape == err -> x
+          | Struct r when r.shape == ok ->
+            let v = r.fields.(0) in
+            let y = ch.accept v in
+            if y == Undef then wrong ctx x else if y == v then x else Value.ok c.w y
+          | _ -> wrong ctx x)
+    end
+    else Some (fun ctx x -> let y = ch.accept x in if y == Undef then wrong ctx x else y)
   | _ -> None
 
 (* The check of the last value of the body, at its last expression. A call to itself in tail position is no way out: it
@@ -3488,7 +3500,7 @@ and from_native (proto : proto) pm =
     with Return_value e -> e
   in
   Native { nname = proto.pname ^ ".From"; perm = None; params = [| "m" |]; min_args = 1; max_args = 1; ret_ty = (fun _ -> TA);
-           run; f1 = None; i2 = None }
+           run; f1 = None; i2 = None; gives_result = false }
 
 let run_main (ctx : ctx) ~file ~m (fn : func) =
   let proto = new_proto ~file ~m fn in

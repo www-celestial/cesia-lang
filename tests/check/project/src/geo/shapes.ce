@@ -1,0 +1,4 @@
+(** Shapes. *)
+struct Rect { W, H }
+
+Area(r) = r.W * r.H   (** The area of a rectangle. *)

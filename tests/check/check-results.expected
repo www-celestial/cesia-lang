@@ -1,0 +1,18 @@
+results.ce:14:3: warning: sys.Write gives a result, which is dropped here.
+  14 |   sys.Write(path, text)
+     |   ^^^^^^^^^
+  Its Err would go unseen: add ?, match it, or write _ = before it to drop it on purpose.
+results.ce:20:17: warning: Load gives a result, used here as a plain value.
+  20 |   n = value.Len(Load(path))
+     |                 ^^^^
+  An Err would pass for a value: add ?, match it, or Unwrap it.
+results.ce:25:15: warning: json.Parse gives a result, used here as a plain value.
+  25 |   io.Print("$(json.Parse(text))", sys.Read(path).Value)
+     |               ^^^^^^^^^^
+  An Err would pass for a value: add ?, match it, or Unwrap it.
+results.ce:26:15: warning: sys.Read gives a result, used here as a plain value.
+  26 |   for line in sys.Read(path)
+     |               ^^^^^^^^
+  An Err would pass for a value: add ?, match it, or Unwrap it.
+check: 0 errors, 4 warnings, in 1 file.
+exit 0

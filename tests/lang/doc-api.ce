@@ -55,7 +55,7 @@ isDocNamesHasNoKeywords() = not ("keywords" in cesia.DocNames())
 
 isDocOfAKeyword() = text.StartsWith("match\n", cesia.Doc("match")) and text.Contains("patterns", cesia.Doc("match")) and text.StartsWith("?\n", cesia.Doc("?"))
 isEveryKeywordHasABlock() = value.Equal(list.Filter(k -> value.IsMissing(cesia.DocEntry(k)), cesia.Keywords()), [])
-isKeywordsHoldTheReservedWords() = value.Len(cesia.Keywords()) == 25 and "interface" in cesia.Keywords() and "it" in cesia.Keywords()
+isKeywordsHoldTheReservedWords() = value.Len(cesia.Keywords()) == 26 and "!" in cesia.Keywords() and "interface" in cesia.Keywords() and "it" in cesia.Keywords()
 
 defn isDocEntryOfANative()
   e = cesia.DocEntry("list.Sort")

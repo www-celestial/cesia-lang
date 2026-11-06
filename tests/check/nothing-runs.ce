@@ -1,0 +1,8 @@
+(* cesia check runs nothing: this file would print, write a file and loop for ever. *)
+use std/io
+use std/sys
+
+io.Print("this runs")
+_ = sys.Write("never-written.txt", "x")
+while true
+end

@@ -1,0 +1,17 @@
+names.ce:6:19: Name "Bang" doesn't exist.
+  6 |   text.Upper(s) + Bang
+    |                   ^^^^
+names.ce:9:1: Module "io" has no name "Prnt".
+  9 | io.Prnt(Shout("hi"))
+    | ^^^^^^^
+names.ce:10:10: Module "text" has no name "Uper".
+  10 | io.Print(text.Uper("a"))
+     |          ^^^^^^^^^
+names.ce:11:1: Print is in std/io: write use std/io and io.Print.
+  11 | Print(1)
+     | ^^^^^
+names.ce:12:10: Name "nope" doesn't exist.
+  12 | io.Print(nope.X)
+     |          ^^^^^^
+check: 5 errors, 0 warnings, in 1 file.
+exit 1

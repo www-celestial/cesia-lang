@@ -24,7 +24,9 @@ let sqlite_native (name, params, min_args, max_args) =
        | Error reason, _ ->
          Value.err ctx.w (Trie.record sqlite_keys [| Text "sql"; Text "library"; Text (Messages.sql_plugin reason).text |]))
   in
-  name, Native.nat ~params name min_args max_args run
+  (* Every one gives a result but Give and Close. *)
+  let result = not (List.mem name [ "Give"; "Close" ]) in
+  name, Native.nat ~params ~result name min_args max_args run
 
 let sqlite_natives =
   List.map sqlite_native

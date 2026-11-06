@@ -95,7 +95,7 @@ let rec make_dir path =
 
 let on_path name perm verb arity f =
   name,
-  Native.nat name arity arity (fun ctx a ->
+  Native.nat ~result:true name arity arity (fun ctx a ->
       let path = path_arg ctx name perm a.(0) in
       attempt ctx verb path (fun () -> f ctx path a))
 

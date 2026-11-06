@@ -1,0 +1,22 @@
+(* Int!: an Ok of an Int, or an Err. *)
+use std/io
+use std/result
+use std/value
+
+defn Size(s) Int!
+  if s == "" result.Err("empty") else result.Ok(value.Len(s)) end
+end
+
+Half(x) Float! = if x < 0 result.Err("negative") else result.Ok(x / 2) end
+Whole(x) Float! = result.Ok(x)
+Plain(x) Int! = x
+
+io.Print(Size("abc"), Size(""))
+io.Print(Half(3), Half(-1))
+io.Print(Whole(2))
+defn Twice(s) Int!
+  result.Ok(Size(s)? * 2)
+end
+
+io.Print(Twice("ab"), Twice(""))
+io.Print(Plain(1))

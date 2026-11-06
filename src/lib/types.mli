@@ -122,6 +122,7 @@ and native = {
   run : ctx -> t array -> t;
   f1 : (float -> float) option;
   i2 : (ctx -> int -> int -> int) option;  (** fast path of div and mod *)
+  gives_result : bool;  (** gives an Ok or an Err, which [cesia check] wants handled *)
 }
 
 and ctx = {

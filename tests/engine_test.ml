@@ -11,7 +11,7 @@ let check name ok =
   end
 
 let native nname perm run =
-  Native { nname; perm = Some perm; params = [||]; min_args = 0; max_args = 1; ret_ty = (fun _ -> TA); run; f1 = None; i2 = None }
+  Native { nname; perm = Some perm; params = [||]; min_args = 0; max_args = 1; ret_ty = (fun _ -> TA); run; f1 = None; i2 = None; gives_result = false }
 
 (* A program with the uses of the packages it names, at its end, so that its lines stay as written. *)
 let with_uses src =
@@ -47,13 +47,13 @@ let run ?(perms = []) ?(all = false) src =
   (* How a map is stored, which a program never sees. *)
   register "Storage"
     (Native { nname = "Storage"; perm = None; params = [||]; min_args = 1; max_args = 1; ret_ty = (fun _ -> TA); f1 = None;
-              i2 = None;
+              i2 = None; gives_result = false;
               run = (fun _ a ->
                   Text (match a.(0) with Dict { keys = { deep = Flat; _ }; _ } -> "block" | Dict _ -> "deep" | _ -> "other")) });
   (* Do two maps share their keys? *)
   register "SameKeys"
     (Native { nname = "SameKeys"; perm = None; params = [||]; min_args = 2; max_args = 2; ret_ty = (fun _ -> TA); f1 = None;
-              i2 = None;
+              i2 = None; gives_result = false;
               run = (fun _ a ->
                   match a.(0), a.(1) with
                   | Dict { keys = { deep = Flat; _ } as x; _ }, Dict { keys = { deep = Flat; _ } as y; _ } -> if x == y then True else False

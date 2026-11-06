@@ -1,7 +1,6 @@
 open Ast
 
-let error file pos (m : Messages.t) =
-  raise (Pos.Load_error { file; pos; kind = "name"; text = m.text; hint = m.hint })
+let load_error file pos (m : Messages.t) = Pos.Load_error { file; pos; kind = "name"; text = m.text; hint = m.hint }
 
 type kind = File | Named | Anon
 
@@ -27,7 +26,10 @@ type env = {
   home : string -> string option;  (* the package of std/ of a name that no file defines, for its message *)
   cells : (string, int) Hashtbl.t;
   mutable cell_list : string list;
+  report : exn -> unit;  (* raises when a program loads; a check records the error and goes on *)
 }
+
+let fail env pos m = env.report (load_error env.path pos m)
 
 let new_var sc text =
   let i = Hashtbl.length sc.vars in
@@ -144,8 +146,8 @@ let struct_member env pos sname name =
   let exists text =
     Hashtbl.mem env.hoisted text || env.lookup text <> None || List.exists (fun (_, look) -> look text <> None) env.spaces
   in
-  if exists (sname ^ "." ^ name) then error env.path pos (Messages.needs_object sname name);
-  if Hashtbl.mem env.structs sname && name <> "From" then error env.path pos (Messages.no_static sname name)
+  if exists (sname ^ "." ^ name) then fail env pos (Messages.needs_object sname name);
+  if Hashtbl.mem env.structs sname && name <> "From" then fail env pos (Messages.no_static sname name)
 
 (* The static method that Rect.Square or date.Date.Parse name, if they name one. A variable called like the struct or the
    module hides it: piece.Size stays a field. *)
@@ -178,13 +180,13 @@ let rec constructors env sc celled = function
      | Some alias when List.mem_assoc alias env.spaces && find env sc celled alias = None ->
        (match if Lexer.is_public cname then (List.assoc alias env.spaces) cname else None with
         | Some b when env.is_type b -> ()
-        | Some _ -> error env.path cpos (Messages.pattern_struct (alias ^ "." ^ cname))
-        | None -> error env.path cpos (Messages.no_name alias cname))
-     | Some alias -> error env.path cpos (Messages.undefined alias)
+        | Some _ -> fail env cpos (Messages.pattern_struct (alias ^ "." ^ cname))
+        | None -> fail env cpos (Messages.no_name alias cname))
+     | Some alias -> fail env cpos (Messages.undefined alias)
      | None ->
        let seen = match env.lookup cname with Some b -> env.is_type b | None -> false in
        if not (Hashtbl.mem env.structs cname || seen) then
-         error env.path cpos (match env.home cname with Some p -> Messages.moved cname p | None -> Messages.pattern_struct cname));
+         fail env cpos (match env.home cname with Some p -> Messages.moved cname p | None -> Messages.pattern_struct cname));
     Array.iter (constructors env sc celled) cargs
   | Parray ps -> Array.iter (constructors env sc celled) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> constructors env sc celled q) fs
@@ -210,7 +212,7 @@ let type_ref env (t : ptype) =
     | Some b when (if here then is_here t.tname else env.is_type b) -> t.tb <- b
     | _ ->
       let shown = match t.tpkg with Some alias -> alias ^ "." ^ t.tname | None -> t.tname in
-      error env.path t.tpos (match t.tpkg, env.home t.tname with None, Some p -> Messages.moved t.tname p | _ -> Messages.no_type shown)
+      fail env t.tpos (match t.tpkg, env.home t.tname with None, Some p -> Messages.moved t.tname p | _ -> Messages.no_type shown)
   end
 
 let rec reads env sc celled (e : expr) =
@@ -222,7 +224,7 @@ let rec reads env sc celled (e : expr) =
     let found = if Lexer.is_public name then (List.assoc text env.spaces) name else None in
     (match found with
      | Some b -> e.e <- Var { text = name; b }
-     | None -> error env.path e.pos (Messages.no_name text name))
+     | None -> fail env e.pos (Messages.no_name text name))
   | Field (base, name) ->
     (match static env sc celled base name with
      | Some method_name -> e.e <- Var method_name
@@ -231,7 +233,7 @@ let rec reads env sc celled (e : expr) =
        (match base.e with
         | Field ({ e = Var { text = alias; _ }; _ }, sname) when not (Lexer.is_public name) && find env sc celled alias = None ->
           (match Option.bind (List.assoc_opt alias env.spaces) (fun look -> look sname) with
-           | Some b when env.is_type b -> error env.path e.pos (Messages.private_member name)
+           | Some b when env.is_type b -> fail env e.pos (Messages.private_member name)
            | _ -> ())
         | _ -> ());
        children go e;
@@ -244,7 +246,7 @@ let rec reads env sc celled (e : expr) =
      | None ->
        match env.lookup n.text with
        | Some b -> n.b <- b
-       | None -> error env.path e.pos (undefined env n.text))
+       | None -> fail env e.pos (undefined env n.text))
   | Assign (n, _) -> n.b <- Local (var sc n.text); children go e
   | Set { root; path; _ } ->
     root.b <- Local (var sc root.text);
@@ -267,7 +269,7 @@ let rec reads env sc celled (e : expr) =
     Option.iter go cguard;
     sc.overlay <- saved
   | Fn_def (n, f) ->
-    if Lexer.split_method n.text <> None then error env.path e.pos Messages.method_nested;
+    if Lexer.split_method n.text <> None then fail env e.pos Messages.method_nested;
     n.b <- Local (var sc n.text);
     func env (Some sc) Anon celled f
   | Lambda f -> func env (Some sc) Anon celled f
@@ -432,12 +434,12 @@ let struct_fields (f : func) =
 let check_method env pos sname static name =
   match Hashtbl.find_opt env.structs sname with
   | None when Hashtbl.mem env.interfaces sname -> ()
-  | None -> error env.path pos (Messages.method_no_struct sname)
+  | None -> fail env pos (Messages.method_no_struct sname)
   | Some sfields ->
     if Array.exists (fun (field, _) -> String.equal field name) sfields then
-      error env.path pos (Messages.method_field sname name);
+      fail env pos (Messages.method_field sname name);
     if Hashtbl.mem env.hoisted (sname ^ (if static then "." else ":") ^ name) then
-      error env.path pos (Messages.method_both sname name)
+      fail env pos (Messages.method_both sname name)
 
 (* What a file defines for its package: the name inside the core, the name to show, where, and whether it is a function. The
    variable of a loop stays in its file. *)
@@ -455,27 +457,27 @@ let definitions (fn : func) =
     fn.body;
   List.rev !out
 
-let check_package files =
+let check_package ?(report = raise) files =
   let seen = Hashtbl.create 64 in
   let check path (text, shown, pos, _) =
     (match Hashtbl.find_opt seen text with
      | Some (other, at) when not (String.equal other path) ->
-       error path pos (Messages.package_twice shown other (Pos.line at))
+       report (load_error path pos (Messages.package_twice shown other (Pos.line at)))
      | _ -> ());
     (match Lexer.split_method text with
      | Some (sname, static, name) when Hashtbl.mem seen (sname ^ (if static then "." else ":") ^ name) ->
-       error path pos (Messages.method_both sname name)
+       report (load_error path pos (Messages.method_both sname name))
      | _ -> ());
     if not (Hashtbl.mem seen text) then Hashtbl.add seen text (path, pos)
   in
   List.iter (fun (path, fn) -> List.iter (check path) (definitions fn)) files
 
-let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _ -> None) ~file:path ~m ~lookup ~spaces
-    (fn : func) =
+let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _ -> None) ?(report = raise) ~file:path ~m
+    ~lookup ~spaces (fn : func) =
   let env =
     { path; m; lookup; spaces; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8;
       interfaces = Hashtbl.create 4; is_type; home; cells = Hashtbl.create 16;
-      cell_list = [] }
+      cell_list = []; report }
   in
   Array.iter (fun text -> ignore (cell env text)) keep;
   let sc = { fn; kind = File; parent = None; vars = Hashtbl.create 16; names = []; caps = []; overlay = [] } in
@@ -491,7 +493,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
          peer.body)
     peers;
   let hoist (e : expr) text shown =
-    if Hashtbl.mem env.hoisted text then error path e.pos (Messages.duplicate shown);
+    if Hashtbl.mem env.hoisted text then fail env e.pos (Messages.duplicate shown);
     let k = cell env text in
     Hashtbl.add env.hoisted text k;
     k
@@ -525,7 +527,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
   Array.iter (fun e -> if not (top_hoisted e) then assigned sc e) fn.body;
   Hashtbl.iter
     (fun text _ ->
-       if Hashtbl.mem env.hoisted text then error path fn.fpos (Messages.assign_function text))
+       if Hashtbl.mem env.hoisted text then fail env fn.fpos (Messages.assign_function text))
     sc.vars;
   (* Another file of the package can read a variable while this one runs. *)
   let celled = ref (if peers = [] then [] else Array.to_list keep) in

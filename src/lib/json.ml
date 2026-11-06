@@ -250,6 +250,6 @@ let write ctx ~pretty v =
   Text (Buffer.contents b)
 
 let natives =
-  [ "Parse", Native.nat "Parse" 1 1 parse;
+  [ "Parse", Native.nat ~result:true "Parse" 1 1 parse;
     "Text", Native.nat "Text" 1 1 (fun ctx a -> write ctx ~pretty:false a.(0));
     "Pretty", Native.nat "Pretty" 1 1 (fun ctx a -> write ctx ~pretty:true a.(0)) ]

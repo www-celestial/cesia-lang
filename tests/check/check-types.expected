@@ -1,0 +1,23 @@
+types.ce:16:15: Count: the result must be an Int, found a Text.
+  16 |   if xs == [] "none" else 1 end
+     |               ^^^^^^
+types.ce:21:15: Size: the result must be an Int, found an Ok.
+  21 | Size(x) Int = result.Ok(x)
+     |               ^^^^^^^^^
+types.ce:23:15: Half: x must be a Float, found a Text.
+  23 | io.Print(Half("two"))
+     |               ^^^^^
+types.ce:25:16: Point: X must be an Int, found a Text.
+  25 | io.Print(Point("a", 2))
+     |                ^^^
+types.ce:26:15: Name: p must be a Point, found a Rect.
+  26 | io.Print(Name(Rect(1.0, 2.0)))
+     |               ^^^^
+types.ce:27:15: Name: p must be a Point, found missing.
+  27 | io.Print(Name(missing))
+     |               ^^^^^^^
+types.ce:28:15: Half: x must be a Float, found a Text.
+  28 | io.Print(Half(Name(Point(1, 2))))
+     |               ^^^^
+check: 7 errors, 0 warnings, in 1 file.
+exit 1

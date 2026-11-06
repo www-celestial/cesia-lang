@@ -278,11 +278,11 @@ let is_header ctx (a : Types.t array) =
   | v -> Runtime.fail ctx Type (Messages.need_size "IsHeader" (Value.describe v))
 
 let natives n =
-  [ "Listen", Native.nat ~params:[| "port"; "host" |] "Listen" 1 2 (listen n);
-    "Accept", Native.nat "Accept" 1 1 (accept n);
-    "Connect", Native.nat "Connect" 2 2 (connect n);
-    "Read", Native.nat "Read" 1 1 (read n);
-    "Write", Native.nat "Write" 2 2 (write n);
+  [ "Listen", Native.nat ~result:true ~params:[| "port"; "host" |] "Listen" 1 2 (listen n);
+    "Accept", Native.nat ~result:true "Accept" 1 1 (accept n);
+    "Connect", Native.nat ~result:true "Connect" 2 2 (connect n);
+    "Read", Native.nat ~result:true "Read" 1 1 (read n);
+    "Write", Native.nat ~result:true "Write" 2 2 (write n);
     "Close", Native.nat "Close" 1 1 (close n);
     "Arm", Native.nat "Arm" 2 2 (arm n);
     "Reap", Native.nat "Reap" 0 0 (reap n);

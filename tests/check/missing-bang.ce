@@ -1,0 +1,25 @@
+(* A typed function that can give an Err says so with ! after its type. *)
+use std/result
+use std/sys
+
+defn Read(path) Text
+  sys.Read(path)?
+end
+
+defn Check(n) Int
+  if n < 0
+    return result.Err("negative")
+  end
+  n
+end
+
+Fail(n) Int = result.Err(n)
+
+defn Fine(path) Text!
+  result.Ok(sys.Read(path)?)
+end
+
+defn Inner() Int
+  f = p -> sys.Read(p)?
+  1
+end

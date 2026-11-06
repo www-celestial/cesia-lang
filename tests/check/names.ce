@@ -1,0 +1,12 @@
+(* Every wrong name of a file, not only the first. *)
+use std/io
+use std/text
+
+defn Shout(s)
+  text.Upper(s) + Bang
+end
+
+io.Prnt(Shout("hi"))
+io.Print(text.Uper("a"))
+Print(1)
+io.Print(nope.X)

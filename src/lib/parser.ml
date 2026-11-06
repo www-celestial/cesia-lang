@@ -49,7 +49,7 @@ let tok_text = function
   | FALSE -> "false" | MISSING -> "missing" | PLUS -> "+" | MINUS -> "-" | STAR -> "*" | SLASH -> "/"
   | CARET -> "^" | ASSIGN -> "=" | EQEQ -> "==" | NE -> "!=" | LT -> "<" | LE -> "<=" | GT -> ">" | GE -> ">="
   | PLUSEQ -> "+=" | MINUSEQ -> "-=" | STAREQ -> "*=" | SLASHEQ -> "/=" | ARROW -> "->" | COLON -> ":"
-  | SEMI -> ";" | COMMA -> "," | DOT -> "." | DOTDOT -> ".." | QUESTION -> "?" | LP -> "(" | RP -> ")" | LB -> "[" | RB -> "]" | LC -> "{" | RC -> "}"
+  | SEMI -> ";" | COMMA -> "," | DOT -> "." | DOTDOT -> ".." | QUESTION -> "?" | BANG -> "!" | LP -> "(" | RP -> ")" | LB -> "[" | RB -> "]" | LC -> "{" | RC -> "}"
 
 let unexpected p what =
   let t = cur p in
@@ -112,9 +112,10 @@ let is_receiver p =
   let k = paren_end p in
   (match p.toks.(k).t with NAME _ -> true | _ -> false) && p.toks.(k + 1).t == LP
 
-(* Where a type written at token k ends, Point or geo.Point, either with ?: k itself if there is none. *)
+(* Where a type written at token k ends, Point or geo.Point, either with ? and !: k itself if there is none. *)
 let type_end p k =
-  let opt j = if p.toks.(j).t == QUESTION then j + 1 else j in
+  let bang j = if p.toks.(j).t == BANG then j + 1 else j in
+  let opt j = bang (if p.toks.(j).t == QUESTION then j + 1 else j) in
   match p.toks.(k).t with
   | NAME _ when p.toks.(k + 1).t == DOT -> (match p.toks.(k + 2).t with NAME _ -> opt (k + 3) | _ -> k)
   | NAME _ -> opt (k + 1)
@@ -232,7 +233,7 @@ and param p what =
   match (cur p).t with
   | NAME pname ->
     advance p;
-    let ptype = match (cur p).t with NAME _ -> Some (type_ref p) | _ -> None in
+    let ptype = match (cur p).t with NAME _ -> Some (value_type p) | _ -> None in
     let default =
       if (cur p).t == ASSIGN then begin
         advance p;
@@ -250,7 +251,15 @@ and type_ref p =
   let tpkg, tname = if (cur p).t == DOT then (advance p; Some first, word ()) else None, first in
   let topt = (cur p).t == QUESTION in
   if topt then advance p;
-  { tpos; tpkg; tname; topt; tb = Unresolved }
+  let tbang = (cur p).t == BANG in
+  if tbang then advance p;
+  { tpos; tpkg; tname; topt; tbang; tb = Unresolved }
+
+(* The type of a parameter or a field, which gives no Err. *)
+and value_type p =
+  let t = type_ref p in
+  if t.tbang then error p t.tpos Messages.bang_value;
+  t
 
 (* (params) or { fields }. *)
 and listed ?(binds = false) p opening close what =

@@ -994,6 +994,14 @@ use std/value
 
       cesia.Uses("use std/csv")? --> ["std/csv"] *)
 
+(** cesia.Check(paths, given = {})
+    What cesia check finds in files, without running any of them: a list of structs with File, Line, Column, End (the column
+    after the span), Severity ("error" or "warning"), Message, Hint (or missing) and Source (the line). A file of a source
+    folder of its project is read with its package, a test with it, and any other file alone; given maps a path to its text
+    when the disk doesn't hold it. Needs the read permission.
+
+      cesia.Check([], {}) --> [] *)
+
 (** cesia.DocEntry(name)
     What the site of the docs shows of a name or a keyword, or missing: a struct with Name, Module (as DocNames lists it, empty
     for a keyword), Signature, Text (without its examples), Parts (each {Name, Text}: a field, a parameter or the result),

@@ -75,7 +75,7 @@ let example_source src ex =
   Buffer.contents b
 
 let native nname n run =
-  Native { nname; perm = None; params = [||]; min_args = n; max_args = n; ret_ty = (fun _ -> TA); run; f1 = None; i2 = None }
+  Native { nname; perm = None; params = [||]; min_args = n; max_args = n; ret_ty = (fun _ -> TA); run; f1 = None; i2 = None; gives_result = false }
 
 let text_arg = function Text s -> s | _ -> ""
 let int_arg = function Int i -> i | _ -> 0

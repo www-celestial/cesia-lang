@@ -178,7 +178,7 @@ let world, printed =
   Loader.init w;
   w.native_modules <- ("test", [ "Grab",
     Native { nname = "Grab"; perm = None; params = [||]; min_args = 0; max_args = 20; ret_ty = (fun _ -> TA); f1 = None;
-              i2 = None;
+              i2 = None; gives_result = false;
               run = (fun _ a ->
                   Array.iter (function Fun { proto; _ } -> Hashtbl.replace protos proto.pname proto | _ -> ()) a;
                   Missing) } ]) :: w.native_modules;

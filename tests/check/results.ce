@@ -1,0 +1,33 @@
+(* Results used as plain values or dropped, and those handled. *)
+use std/io
+use std/json
+use std/result
+use std/sys
+use std/value
+
+defn Load(path)
+  sys.Read(path)
+end
+
+defn Keep(path)
+  text = sys.Read(path)?
+  sys.Write(path, text)
+  _ = sys.Write(path, text)
+  r = sys.Write(path, text)
+  if result.IsErr(r)
+    return r
+  end
+  n = value.Len(Load(path))
+  m = match json.Parse(text)
+    result.Ok(v) -> v
+    result.Err(e) -> missing
+  end
+  io.Print("$(json.Parse(text))", sys.Read(path).Value)
+  for line in sys.Read(path)
+    io.Print(line)
+  end
+  sys.Write(path, text) then Report()
+  result.Ok(n)
+end
+
+Report(r) = io.Print(r)   (** Shows a result. *)

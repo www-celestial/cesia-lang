@@ -1,0 +1,27 @@
+src/app/app.ce:1:5: Package src/geo doesn't load: src/geo/more.ce:4:24.
+  1 | use src/geo
+    |     ^^^
+src/app/app.ce:2:5: Package src/broken doesn't load: src/broken/broken.ce:3:1.
+  2 | use src/broken
+    |     ^^^
+src/broken/broken.ce:3:1: Expected an expression, found the end of the file.
+  3 | 
+    | ^
+src/geo/geo.test.ce:3:20: Square needs the argument "side".
+  3 | isMissing() = Area(Square()) == 4
+    |                    ^^^^^^
+src/geo/more.ce:4:24: Name "twice" doesn't exist.
+  4 | Doubled(r) = Area(r) * twice   (** Twice the area. *)
+    |                        ^^^^^
+check: 5 errors, 0 warnings, in 5 files.
+exit 1
+examples/demo.ce:2:10: Name "Area" doesn't exist.
+  2 | io.Print(Area(1))
+    |          ^^^^
+check: 1 error, 0 warnings, in 1 file.
+exit 1
+src/geo/more.ce:4:24: Name "twice" doesn't exist.
+  4 | Doubled(r) = Area(r) * twice   (** Twice the area. *)
+    |                        ^^^^^
+check: 1 error, 0 warnings, in 1 file.
+exit 1

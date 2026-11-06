@@ -284,7 +284,8 @@ let parse w ~hooks ~path ~src ~use =
          match e.e with
          | Use { upath; ualias } ->
            let m = use ~pos:e.pos ~names:(names ualias) upath in
-           Some ((ualias, in_package w m), w.modules.(m).host)
+           (* A check goes on past a use that failed: every name of it passes, so that one error says it. *)
+           if m < 0 then Some ((ualias, fun _ -> Some Ast.Unresolved), 0) else Some ((ualias, in_package w m), w.modules.(m).host)
          | _ -> None)
       (Array.to_list fn.body)
   in
@@ -322,13 +323,13 @@ let set_checks w (prepared : (int * Ast.layout) list) =
 
 (* Resolves the files of a package, the modules from [first] on. Each one sees what the others define, small names included,
    before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload. *)
-let resolve_files w ~lookup ~first ~old parsed =
+let resolve_files ?report w ~lookup ~first ~old parsed =
   let is_type = is_type w and home = home w in
   match parsed with
   | [ (path, _, fn, (spaces, _)) ] ->
-    [ Resolve.file ~keep:(old 0) ~is_type ~home ~file:path ~m:first ~lookup ~spaces fn ]
+    [ Resolve.file ~keep:(old 0) ~is_type ~home ?report ~file:path ~m:first ~lookup ~spaces fn ]
   | _ ->
-    Resolve.check_package (List.map (fun (path, _, fn, _) -> path, fn) parsed);
+    Resolve.check_package ?report (List.map (fun (path, _, fn, _) -> path, fn) parsed);
     let seen = Hashtbl.create 64 in
     let keep_of i (_, _, fn, _) =
       let cells = Hashtbl.create 32 and names = ref (List.rev (Array.to_list (old i))) in
@@ -357,25 +358,34 @@ let resolve_files w ~lookup ~first ~old parsed =
     let peers = List.map (fun (_, _, fn, _) -> fn) parsed in
     List.mapi
       (fun i ((path, _, fn, (spaces, _)), keep) ->
-         Resolve.file ~keep ~peers ~is_type ~home ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
+         Resolve.file ~keep ~peers ~is_type ~home ?report ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
       (List.combine parsed keeps)
 
+(* cesia check reads packages as use does, but runs none. *)
+let checking = ref false
+
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
-   [host]. [natives] is the module of the natives of a package of std/ that has them, which its files see. *)
-let rec prepare_files ?(hooks = false) ?host ?natives ctx ~sources ~lookup =
+   [host]. [natives] is the module of the natives of a package of std/ that has them, which its files see. With [report],
+   a check: each error goes there and the loading goes on, but a file that doesn't parse leaves the package unread. *)
+let rec prepare_files ?(hooks = false) ?host ?natives ?report ctx ~sources ~lookup =
   let w = ctx.w in
+  let one (path, src) =
+    let use = match report with Some r -> checked_use ctx r ~from:path | None -> use_module ctx ~hooks ~from:path in
+    let file, fn, spaces = parse w ~hooks ~path ~src ~use in
+    path, file, fn, spaces
+  in
   let parsed =
-    List.map
-      (fun (path, src) ->
-         let file, fn, spaces = parse w ~hooks ~path ~src ~use:(use_module ctx ~hooks ~from:path) in
-         path, file, fn, spaces)
-      sources
+    match report with
+    | None -> List.map one sources
+    | Some r ->
+      let read = List.map (fun s -> match one s with p -> Some p | exception (Pos.Load_error _ as e) -> r e; None) sources in
+      if List.mem None read then [] else List.filter_map Fun.id read
   in
   let first = Array.length w.modules in
   let package = Array.append (Array.init (List.length parsed) (fun i -> first + i)) (Option.to_list natives |> Array.of_list) in
   Option.iter (fun n -> w.modules.(n).package <- package) natives;
   let lookup = match natives with Some n -> with_natives w [| n |] | None -> lookup in
-  let layouts = resolve_files w ~lookup ~first ~old:(fun _ -> [||]) parsed in
+  let layouts = if parsed = [] then [] else resolve_files ?report w ~lookup ~first ~old:(fun _ -> [||]) parsed in
   let host = match host with Some h -> w.modules.(h).host | None -> first in
   let prepared = List.map2
     (fun (path, file, fn, (_, uses)) (layout : Ast.layout) ->
@@ -394,8 +404,21 @@ let rec prepare_files ?(hooks = false) ?host ?natives ctx ~sources ~lookup =
        file, m, fn, layout)
     parsed layouts
   in
-  set_checks w (List.map (fun (_, m, _, layout) -> m, layout) prepared);
+  (* A check runs nothing, and a type it refused has no check to make. *)
+  if report = None then set_checks w (List.map (fun (_, m, _, layout) -> m, layout) prepared);
   prepared
+
+(* A use in a file being checked: an error of the package it names is one error at the use. *)
+and checked_use ctx report ~from ~pos ~names upath =
+  match use_module ctx ~hooks:false ~from ~pos ~names upath with
+  | m -> m
+  | exception (Pos.Load_error { file; pos = at; _ } as e) ->
+    report
+      (if String.equal file from then e
+       else
+         let m = Messages.use_broken upath (Printf.sprintf "%s:%d:%d" file (Pos.line at) (Pos.col at)) in
+         Pos.Load_error { file = from; pos; kind = "name"; text = m.text; hint = m.hint });
+    -1
 
 and use_module ctx ~hooks ~from ~pos ~names upath =
   let w = ctx.w in
@@ -416,7 +439,7 @@ and run_package ctx ~hooks ?natives ~key read =
   Hashtbl.replace w.loaded key (-1);
   match
     let prepared = prepare_files ~hooks ?natives ctx ~sources:(read ()) ~lookup:(lookup w) in
-    List.iter (run_prepared ctx) prepared;
+    if not !checking then List.iter (run_prepared ctx) prepared;
     prepared
   with
   | prepared ->
@@ -482,11 +505,142 @@ let load_debugger ctx name =
     w.on_hook <- Debug.hook
   | None -> use_error ~file:path ~pos ~kind:"name" Messages.no_on_stop
 
+(* Module 0: what only the compiler names. *)
+let core_module () =
+  let cells = Array.of_list (List.map snd Native.core) in
+  let mnames = List.mapi (fun i (n, _) -> n, i) Native.core in
+  { mname = "core"; path = ""; cells; mnames; stable = Array.make (Array.length cells) true; host = 0; package = [| 0 |]; uses = [] }
+
+(* The columns of the word at a position, which a mark underlines, the second one excluded: a name with its dots, a number,
+   a text; a dot takes the names around it, as sys.Read; else one character. *)
+let span src line col =
+  match line_text src line with
+  | None -> col, col + 1
+  | Some l ->
+    let n = String.length l in
+    let rec byte i c = if c >= col || i >= n then i else byte (skip (i + 1)) (c + 1)
+    and skip i = if i < n && Char.code l.[i] land 0xC0 = 0x80 then skip (i + 1) else i in
+    let i = byte 0 1 in
+    let name c = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c = '_' || c >= '\128' in
+    let rec over j = if j < n && (name l.[j] || (l.[j] = '.' && j + 1 < n && name l.[j + 1])) then over (j + 1) else j in
+    let rec quoted j = if j >= n then n else if l.[j] = '\\' then quoted (j + 2) else if l.[j] = '"' then j + 1 else quoted (j + 1) in
+    let rec back j = if j > 0 && (name l.[j - 1] || (l.[j - 1] = '.' && j > 1 && name l.[j - 2])) then back (j - 1) else j in
+    let start = if i < n && i > 0 && l.[i] = '.' && name l.[i - 1] then back i else i in
+    let stop =
+      if i >= n then i + 1
+      else match l.[i] with
+        | '"' -> quoted (i + 1)
+        | '.' when i + 1 < n && name l.[i + 1] -> over (i + 1)
+        | c when name c -> over i
+        | _ -> i + 1
+    in
+    let first = col - Native.points_between l start i in
+    first, col + Native.points_between l i (min stop n) + (if stop > n then 1 else 0)
+
+let mark_keys = Trie.names [| "File"; "Line"; "Column"; "End"; "Severity"; "Message"; "Hint"; "Source" |]
+
+(* cesia.Check(paths, given): the errors and warnings of these files, each a {File, Line, Column, End, Severity, Message,
+   Hint, Source}, Source being its line. [given] maps a path to its text when the disk doesn't hold it, as an editor's
+   buffer. A folder of the source folders of its project is a package, as for use: its files are read together, and a test
+   with them; any other file stands alone, as a program, a file of tests/ or of std/. Nothing of the code runs, in a world
+   of its own. *)
+let check_native ctx (a : t array) =
+  let w = ctx.w in
+  let name = "cesia.Check" in
+  let paths =
+    match a.(0) with
+    | Array x -> List.init (x.rows * x.cols) (fun k -> Native.text_arg ctx name (Value.elt x k))
+    | v -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
+  in
+  let given = if Array.length a > 1 && a.(1) != Undef then Some a.(1) else None in
+  let asked = Hashtbl.create 16 in
+  List.iter (fun p -> Hashtbl.replace asked (Package.absolute p) p) paths;
+  let texts = Hashtbl.create 16 in
+  let text p =
+    let key = Package.absolute p in
+    match Hashtbl.find_opt texts key with
+    | Some s -> s
+    | None ->
+      let s =
+        match Option.bind given (fun d -> Option.bind (Hashtbl.find_opt asked key) (fun shown -> Dict.get ctx name (Text shown) d)) with
+        | Some v -> Native.text_arg ctx name v
+        | None -> In_channel.with_open_bin p In_channel.input_all
+      in
+      Hashtbl.replace texts key s;
+      s
+  in
+  let marks = ref [] in
+  let add file pos warning (m : Messages.t) =
+    match Hashtbl.find_opt asked (Package.absolute file) with
+    | Some shown -> marks := (shown, pos, warning, m) :: !marks
+    | None -> ()
+  in
+  let report = function
+    | Pos.Load_error { file; pos; text; hint; _ } -> add file pos false { text; hint }
+    | e -> raise e
+  in
+  let cw = Runtime.create_world { Runtime.default_options with o_grants = w.grants } in
+  cw.modules <- [| core_module () |];
+  cw.native_modules <- w.native_modules;
+  let cctx = Runtime.create_ctx cw in
+  let passes prepared =
+    List.iter (fun (_, m, fn, _) -> Check.file cw ~host:cw.modules.(m).host fn (add cw.modules.(m).path)) prepared
+  in
+  let sources files = List.map (fun p -> p, text p) files in
+  let in_sources p =
+    let root = Package.root_of p and dir = Package.absolute (Filename.dirname p) in
+    List.exists
+      (fun s -> let s = Filename.concat root s in String.equal dir s || String.starts_with ~prefix:(s ^ "/") dir)
+      (Package.sources root)
+  in
+  let alone p =
+    List.mem "tests" (String.split_on_char '/' (Filename.dirname p)) || Filename.basename (Filename.dirname p) = "std"
+    || not (in_sources p)
+  in
+  let single, packaged = List.partition alone paths in
+  checking := true;
+  Fun.protect ~finally:(fun () -> checking := false) (fun () ->
+      List.iter
+        (fun p ->
+           cw.root <- Package.root_of p;
+           passes (prepare_files ?natives:(std_natives cw p) ~report cctx ~sources:(sources [ p ]) ~lookup:(lookup cw)))
+        single;
+      List.iter
+        (fun dir ->
+           cw.root <- Package.root_of dir;
+           let prepared = prepare_files ~report cctx ~sources:(sources (Package.files dir)) ~lookup:(lookup cw) in
+           passes prepared;
+           match prepared with
+           | [] -> ()
+           | (_, first, _, _) :: _ ->
+             let look name = match in_package cw first name with Some b -> Some b | None -> lookup cw name in
+             List.iter
+               (fun p -> if Package.is_test p && Filename.dirname p = dir then
+                   passes (prepare_files ~host:first ~report cctx ~sources:(sources [ p ]) ~lookup:look))
+               packaged)
+        (List.sort_uniq String.compare (List.map Filename.dirname packaged)));
+  let order = List.mapi (fun i p -> p, i) paths in
+  let sorted =
+    List.sort_uniq
+      (fun (f1, p1, _, _) (f2, p2, _, _) -> compare (List.assoc f1 order, p1) (List.assoc f2 order, p2))
+      !marks
+  in
+  let record (file, pos, warning, (m : Messages.t)) =
+    let line = Pos.line pos in
+    let src = text file in
+    let col, stop = span src line (Pos.col pos) in
+    Trie.record mark_keys
+      [| Text file; Int line; Int col; Int stop; Text (if warning then "warning" else "error"); Text m.text;
+         (match m.hint with Some h -> Text h | None -> Missing); Text (Option.value (line_text src line) ~default:"") |]
+  in
+  Arrays.list (Array.of_list (List.map record sorted))
+
 (* The natives of the packages of std/, joined by package: std/list has some of Native, Lists and Columns. *)
 let std_packages () =
   let groups =
     Native.packages @ Lists.packages
-    @ [ "list", Columns.list; "fiber", Fiber.natives; "cesia", Tooling.natives ~libraries @ Docs.natives;
+    @ [ "list", Columns.list; "fiber", Fiber.natives;
+        "cesia", Tooling.natives ~libraries @ Docs.natives @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
         "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
         "random", Rand.natives ]
   in
@@ -508,10 +662,7 @@ let set_args_value w value =
 let init w =
   w.native_modules <- std_packages () @ w.native_modules;
   if not (List.mem_assoc "Args" (Option.value (List.assoc_opt "sys" w.native_modules) ~default:[])) then set_args_value w no_args;
-  let cells = Array.of_list (List.map snd Native.core) in
-  let names = List.mapi (fun i (n, _) -> n, i) Native.core in
-  let stable = Array.make (Array.length cells) true in
-  w.modules <- [| { mname = "core"; path = ""; cells; mnames = names; stable; host = 0; package = [| 0 |]; uses = [] } |]
+  w.modules <- [| core_module () |]
 
 (* A use in a reloaded file: the module must already be there, since we are in the middle of the program. *)
 let loaded_module w ~from ~pos ~names upath =

@@ -1,0 +1,7 @@
+use src/geo
+use src/broken
+use std/io
+
+io.Print(geo.Area(geo.Square(3)))
+io.Print(geo.Cube(3))
+io.Print(broken.Broken())

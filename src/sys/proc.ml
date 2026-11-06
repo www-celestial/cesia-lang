@@ -248,12 +248,12 @@ let stop_process procs ctx (a : t array) : t =
 
 let natives poll =
   let procs = Hashtbl.create 8 in
-  [ "Run", Native.nat ~params:[| "cmd"; "args"; "input"; "dir"; "timeout" |] "Run" 1 5 (run poll);
-    "Start", Native.nat ~params:[| "cmd"; "args" |] "Start" 1 2 (start_process poll procs);
-    "ReadOutput", Native.nat "ReadOutput" 1 1 (read_output poll procs);
-    "ReadInput", Native.nat "ReadInput" 0 0 (fun ctx _ -> read_input ctx (Buffer.create 4096) (Bytes.create chunk_size));
+  [ "Run", Native.nat ~result:true ~params:[| "cmd"; "args"; "input"; "dir"; "timeout" |] "Run" 1 5 (run poll);
+    "Start", Native.nat ~result:true ~params:[| "cmd"; "args" |] "Start" 1 2 (start_process poll procs);
+    "ReadOutput", Native.nat ~result:true "ReadOutput" 1 1 (read_output poll procs);
+    "ReadInput", Native.nat ~result:true "ReadInput" 0 0 (fun ctx _ -> read_input ctx (Buffer.create 4096) (Bytes.create chunk_size));
     "Exit", Native.nat "Exit" 1 1 quit;
-    "WriteInput", Native.nat "WriteInput" 2 2 (write_input poll procs);
+    "WriteInput", Native.nat ~result:true "WriteInput" 2 2 (write_input poll procs);
     "CloseInput", Native.nat "CloseInput" 1 1 (close_input poll procs);
     "WaitExit", Native.nat "WaitExit" 1 1 (wait_exit poll procs);
     "Stop", Native.nat "Stop" 1 1 (stop_process procs) ]

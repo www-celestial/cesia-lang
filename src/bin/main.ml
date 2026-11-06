@@ -219,6 +219,7 @@ let doc args =
 (* What each tool may touch: see src/tools/. *)
 let tool_grants = function
   | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
+  | "check" -> "read"
   | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug"
 
 let tool ?(grants = "") name args =
@@ -303,7 +304,7 @@ let () =
     | _ :: "test" :: args -> test args
     | _ :: "do" :: args -> Project.run args
     | [ _; "new"; name ] -> create name
-    | _ :: (("pkg" | "upgrade") as name) :: args -> exit (tool name args)
+    | _ :: (("pkg" | "upgrade" | "check") as name) :: args -> exit (tool name args)
     | _ :: "doc" :: "--site" :: args -> site args
     | _ :: "doc" :: args -> doc args
     | _ -> usage ()

@@ -1,0 +1,6 @@
+check: unknown option --wrong; cesia check [--json] [--stdin FILE] [path...]
+exit 1
+check: nowhere.ce doesn't exist.
+exit 1
+check: no cesia.toml here; name the files or folders to check.
+exit 1

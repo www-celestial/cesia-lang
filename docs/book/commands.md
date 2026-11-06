@@ -31,6 +31,24 @@ cesia test [path] [--no-spec]
 Runs the examples of the documentation and the test functions of the project, or of a folder or a file. Ends with the code 1
 when a test fails. See [Tests](tests.md).
 
+## cesia check
+
+```bash
+cesia check [--json] [--stdin file.ce] [path...]
+```
+
+Reads the code and says what is wrong, without running any of it: syntax, names, the arguments of a known function, struct or
+native, values that surely don't fit a type, and [results](errors.md#cesia-check) left unhandled. A path is a file, or a
+folder with its subfolders; with none, the source folders of `cesia.toml`. A file of a source folder is read with the other
+files of its package, as `use` reads them, and a test with its package; any other file stands alone, as a program. It needs
+the read permission only, so checking a project from elsewhere is safe. Ends with the code 1 when there is an error; warnings
+alone give 0.
+
+| Option | What it does |
+|---|---|
+| `--json` | one JSON object per line, and nothing else: `file`, `line`, `column`, `end` (the column after the span), `severity` (`"error"` or `"warning"`), `message`, `hint` |
+| `--stdin file.ce` | the text of that file comes from the input instead of the disk, as an editor sends a buffer not yet saved |
+
 ## cesia do
 
 ```bash

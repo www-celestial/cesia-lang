@@ -1,0 +1,2 @@
+(** A package that doesn't parse. *)
+Broken() = (1 +

@@ -1,0 +1,11 @@
+(* Nothing to say: no output, and exit 0. *)
+use std/io
+use std/result
+use std/sys
+
+defn Lines(path)
+  text = sys.Read(path)?
+  result.Ok(text)
+end
+
+io.Print(result.IsOk(Lines("x")))

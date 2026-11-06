@@ -1,0 +1,23 @@
+args.ce:12:3: Area needs the argument "h".
+  12 |   Area(1)
+     |   ^^^^
+args.ce:13:3: Area takes 2 arguments, not 3.
+  13 |   Area(1, 2, 3)
+     |   ^^^^
+args.ce:14:3: Area has no argument named "d".
+  14 |   Area(w = 1, d = 2)
+     |   ^^^^
+args.ce:15:3: Area received the argument "w" twice.
+  15 |   Area(1, w = 2)
+     |   ^^^^
+args.ce:16:3: Point takes 2 arguments, not 3.
+  16 |   Point(1, 2, 3)
+     |   ^^^^^
+args.ce:17:3: Upper takes 1 arguments, not 2.
+  17 |   text.Upper("a", "b")
+     |   ^^^^^^^^^^
+args.ce:18:12: Split has no argument named "n".
+  18 |   io.Print(text.Split(sep = ",", s = "a,b", n = 2))
+     |            ^^^^^^^^^^
+check: 7 errors, 0 warnings, in 1 file.
+exit 1

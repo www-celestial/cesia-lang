@@ -604,7 +604,7 @@ let rows ctx (a : t array) =
 
 let natives =
   [ "Kind", Native.nat "Kind" 1 1 (fun _ a -> kind a);
-    "Rows", Native.nat ~params:[| "names"; "cells"; "public" |] "Rows" 2 3 rows;
+    "Rows", Native.nat ~result:true ~params:[| "names"; "cells"; "public" |] "Rows" 2 3 rows;
     "Cores", Native.nat "Cores" 0 0 (fun _ _ -> Int (Par.cores ()));
     "Groups", Native.nat "Groups" 1 1 groups;
     "Split", Native.nat "Split" 2 2 split;

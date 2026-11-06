@@ -1,0 +1,6 @@
+unsaved.ce:2:1: Module "io" has no name "Prnt".
+  2 | io.Prnt(1)
+    | ^^^^^^^
+check: 1 error, 0 warnings, in 1 file.
+exit 1
+exit 0

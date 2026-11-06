@@ -114,6 +114,21 @@ val wrong_type : string -> string -> string -> string -> t
 (** [wrong_result fname want found]: a value of the wrong type for the return type of a function. *)
 val wrong_result : string -> string -> string -> t
 
+(** [result_plain name]: cesia check, a call that gives an Ok or an Err used as a plain value. *)
+val result_plain : string -> t
+
+(** [result_dropped name]: cesia check, a call that gives an Ok or an Err as a statement, its value lost. *)
+val result_dropped : string -> t
+
+(** [missing_bang fname type]: cesia check, a typed function that can give an Err without a [!] after its type. *)
+val missing_bang : string -> string -> t
+
+(** [use_broken upath at]: cesia check, a used package with an error at [at]. *)
+val use_broken : string -> string -> t
+
+(** A [!] after the type of a parameter or a field: only a result can be one. *)
+val bang_value : t
+
 (** The name with its article: [an Int], [a Point]. *)
 val article : string -> string
 val destructure_array : int -> int -> t

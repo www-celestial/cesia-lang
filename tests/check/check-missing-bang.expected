@@ -1,0 +1,11 @@
+missing-bang.ce:5:17: warning: Read can give an Err, which Text doesn't say: write Text!.
+  5 | defn Read(path) Text
+    |                 ^^^^
+missing-bang.ce:9:15: warning: Check can give an Err, which Int doesn't say: write Int!.
+  9 | defn Check(n) Int
+    |               ^^^
+missing-bang.ce:16:9: warning: Fail can give an Err, which Int doesn't say: write Int!.
+  16 | Fail(n) Int = result.Err(n)
+     |         ^^^
+check: 0 errors, 3 warnings, in 1 file.
+exit 0

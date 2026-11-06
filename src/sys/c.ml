@@ -595,8 +595,8 @@ let text st ctx (a : Types.t array) : Types.t =
   | v -> fail ctx (Messages.c_need_pointer (Value.describe v))
 
 let natives st =
-  [ "Open", Native.nat ~params:[| "name"; "version" |] "Open" 1 2 (open_library st);
-    "Fn", Native.nat ~params:[| "name"; "args"; "ret"; "lib"; "callsBack" |] "Fn" 4 5 (bind st);
+  [ "Open", Native.nat ~result:true ~params:[| "name"; "version" |] "Open" 1 2 (open_library st);
+    "Fn", Native.nat ~result:true ~params:[| "name"; "args"; "ret"; "lib"; "callsBack" |] "Fn" 4 5 (bind st);
     "Variadic", Native.nat "Variadic" 5 5 (variadic st);
     "Callback", Native.nat "Callback" 3 3 (c_callback st);
     "Struct", Native.nat "Struct" 1 1 (c_struct st);

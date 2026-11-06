@@ -1,0 +1,5 @@
+syntax.ce:3:1: Expected "," or ")", found "Prnt".
+  3 | Prnt(2)
+    | ^^^^
+check: 1 error, 0 warnings, in 1 file.
+exit 1

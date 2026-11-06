@@ -3,17 +3,19 @@
 (** What a file defines for its package: the name inside the core, the name to show, where, and whether it is a function. *)
 val definitions : Ast.func -> (string * string * Pos.t * bool) list
 
-(** The files of a package, with their paths: two of them can't define one name. *)
-val check_package : (string * Ast.func) list -> unit
+(** The files of a package, with their paths: two of them can't define one name. [report] gets each error, which it raises by
+    default; a check records it and goes on. *)
+val check_package : ?report:(exn -> unit) -> (string * Ast.func) list -> unit
 
 (** Fills in the [binding]s of file [fn], for the module of index [m]. The names in [keep] keep their cell index: a
     reload moves nothing for already compiled code. [peers] are the files of its package: their structs, interfaces and
     fields count as its own, and each name in [keep] lives in its cell. [is_type] says whether a name of another package is a
     struct or an interface, which a type or a pattern can name. [home] gives the package of std/ of a name that no file
-    defines, which its message names. *)
+    defines, which its message names. [report] gets each error as a {!Pos.Load_error}: it raises by default, and a check
+    records it and goes on, a wrong name left unresolved. *)
 val file :
   ?keep:string array -> ?peers:Ast.func list -> ?is_type:(Ast.binding -> bool) -> ?home:(string -> string option) ->
-  file:string -> m:int ->
+  ?report:(exn -> unit) -> file:string -> m:int ->
   lookup:(string -> Ast.binding option) ->
   spaces:(string * (string -> Ast.binding option)) list -> Ast.func -> Ast.layout
 

@@ -23,7 +23,7 @@ val points_between : string -> int -> int -> int
 (** The text of an argument, or a [type] panic naming the function. *)
 val text_arg : ctx -> string -> t -> string
 
-(** A native: name, minimum and maximum argument count, code. *)
+(** A native: name, minimum and maximum argument count, code. [result]: it gives an Ok or an Err. *)
 val nat :
-  ?perm:perm -> ?params:string array -> ?ret:(ty array -> ty) -> string -> int -> int ->
+  ?perm:perm -> ?params:string array -> ?ret:(ty array -> ty) -> ?result:bool -> string -> int -> int ->
   (ctx -> t array -> t) -> t

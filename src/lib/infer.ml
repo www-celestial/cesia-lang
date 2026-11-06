@@ -109,7 +109,7 @@ let as_param (fn : func) k t =
 (* And one that a function of type Float gives: its callers see a Float. Otherwise a return type changes no inference. *)
 let as_result (fn : func) t =
   match t, fn.ret with
-  | TI, Some { tname = "Float"; tpkg = None; _ } -> TF
+  | TI, Some { tname = "Float"; tpkg = None; tbang = false; _ } -> TF
   | _ -> t
 
 let rec run w (ver : version) =

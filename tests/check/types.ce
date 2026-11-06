@@ -1,0 +1,28 @@
+(* Values that surely don't fit a typed parameter, field or result. *)
+use std/io
+
+struct Point { X Int, Y Int = 0 }
+struct Rect { W Float, H Float }
+
+defn Half(x Float) Float
+  x / 2
+end
+
+defn Name(p Point) Text
+  "point"
+end
+
+defn Count(xs Array) Int
+  if xs == [] "none" else 1 end
+end
+
+use std/result
+
+Size(x) Int = result.Ok(x)
+
+io.Print(Half("two"))
+io.Print(Half(3))
+io.Print(Point("a", 2))
+io.Print(Name(Rect(1.0, 2.0)))
+io.Print(Name(missing))
+io.Print(Half(Name(Point(1, 2))))

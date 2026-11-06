@@ -134,6 +134,11 @@ let method_two a b name found =
     "A field or a method of the value itself would win over theirs."
 let wrong_type fname name want found = plain (Printf.sprintf "%s: %s must be %s, found %s." fname name want found)
 let wrong_result fname = wrong_type fname "the result"
+let result_plain name = hinted (Printf.sprintf "%s gives a result, used here as a plain value." name) "An Err would pass for a value: add ?, match it, or Unwrap it."
+let result_dropped name = hinted (Printf.sprintf "%s gives a result, which is dropped here." name) "Its Err would go unseen: add ?, match it, or write _ = before it to drop it on purpose."
+let missing_bang fname t = plain (Printf.sprintf "%s can give an Err, which %s doesn't say: write %s!." fname t t)
+let use_broken upath at = plain (Printf.sprintf "Package %s doesn't load: %s." upath at)
+let bang_value = hinted "Only the result of a function can end with !." "Int! says that a function gives an Ok of an Int, or an Err: defn Size(path) Int!."
 let article name = (if name <> "" && String.contains "AEIOUaeiou" name.[0] then "an " else "a ") ^ name
 let destructure_array want got = plain (Printf.sprintf "This pattern takes %d elements, the value has %d." want got)
 let destructure_struct a = plain (Printf.sprintf "This pattern needs a struct, not %s." a)
@@ -204,6 +209,7 @@ let empty_array name = plain (name ^ " of an empty array.")
 let usage =
   "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
   \       cesia test [path] [--no-spec]\n\
+  \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia do [task]\n\
   \       cesia new name\n\
   \       cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]\n\

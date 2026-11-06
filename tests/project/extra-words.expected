@@ -1,5 +1,6 @@
 usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
        cesia test [path] [--no-spec]
+       cesia check [--json] [--stdin file.ce] [path...]
        cesia do [task]
        cesia new name
        cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]

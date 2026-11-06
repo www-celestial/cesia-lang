@@ -167,6 +167,61 @@ result.Collect(list.Map(age, ["31", "12", "40"])) -->
 result.Collect(list.Map(age, ["31", "old", "?"])) -->
 ```
 
+## A type that says it: Int!
+
+A function with a [result type](types.md) that can give an `Err` says so with `!` after its type: `Int!` reads as an `Int`, or
+an error. Such a function gives `result.Ok` of an `Int`, or a `result.Err`, as [sys.Read] does, and the check at its way out
+looks inside the `Ok`:
+
+```cesia
+defn half(x) Float!
+  if x < 0
+    return result.Err("negative")
+  end
+  result.Ok(x / 2)
+end
+half(3) -->
+half(-1) -->
+```
+
+Without the `!`, the same `Err` stops the program, since a `Float` was promised:
+
+```cesia fails
+defn third(x) Float
+  if x < 0
+    return result.Err("negative")
+  end
+  x / 3
+end
+third(-1)
+```
+
+## cesia check
+
+`cesia check` reads the code and says what is wrong, without running any of it: names that don't exist, calls with the wrong
+arguments, values that can't fit a type, and results left unhandled. With no path it reads the source folders of
+`cesia.toml`; it can also take files and folders. The [commands](commands.md#cesia-check) list its options.
+
+```bash
+cesia check
+```
+
+```text
+src/main.ce:7:22: warning: sys.Read gives a result, used here as a plain value.
+  7 |   io.Print(value.Len(sys.Read(path)))
+    |                      ^^^^^^^^
+  An Err would pass for a value: add ?, match it, or Unwrap it.
+check: 0 errors, 1 warning, in 3 files.
+```
+
+An error is what would surely stop the program; a warning is what may be a mistake, and doesn't change the exit code. The
+warnings are about results:
+
+- a result used as a plain value, as above: `value.Len` of an `Err` counts its fields, so a missing file has a length of 1.
+  `?`, `match`, [result.Unwrap] or keeping it in a variable raise no warning, and neither does [io.Print], which shows it;
+- a result dropped: `sys.Write(path, text)` alone loses its `Err`. `_ = sys.Write(path, text)` drops it on purpose;
+- a typed function that can give an `Err` without `!`: `defn size(path) Int` that holds a `?` gets the advice to write `Int!`.
+
 ## Errors and bugs
 
 An `Err` is for what can happen while the program is right: the user typed a word, the file was deleted. A mistake in the
