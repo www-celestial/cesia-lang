@@ -70,9 +70,10 @@ let debug_natives =
     | Error reason -> Runtime.fail ctx Type (Messages.debug_plugin reason)
   in
   List.map
-    (fun (name, params, min_args, max_args, perm) ->
-       name, Native.nat ?perm ~params name min_args max_args (fun ctx a -> code name ctx ctx a))
-    [ "Eval", [| "code"; "frame" |], 1, 2, Some Debug; "Reload", [||], 0, 0, Some Debug; "Complete", [| "code" |], 1, 1, None ]
+    (fun (name, params, min_args, max_args, perm, result) ->
+       name, Native.nat ?perm ~params ~result name min_args max_args (fun ctx a -> code name ctx ctx a))
+    [ "Eval", [| "code"; "frame" |], 1, 2, Some Debug, true; "Reload", [||], 0, 0, Some Debug, true;
+      "Complete", [| "code" |], 1, 1, None, false ]
 
 let debug_test ctx s cond =
   match debug_plugin () with

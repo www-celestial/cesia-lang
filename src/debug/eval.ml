@@ -207,6 +207,6 @@ let complete ctx (a : t array) =
 
 (* The binary holds these names and the permission each needs: see src/sys/sys_modules.ml. *)
 let natives =
-  [ "Eval", Native.nat ~perm:Debug ~params:[| "code"; "frame" |] "Eval" 1 2 eval;
-    "Reload", Native.nat ~perm:Debug "Reload" 0 0 reload;
+  [ "Eval", Native.nat ~perm:Debug ~params:[| "code"; "frame" |] ~result:true "Eval" 1 2 eval;
+    "Reload", Native.nat ~perm:Debug ~result:true "Reload" 0 0 reload;
     "Complete", Native.nat ~params:[| "code" |] "Complete" 1 1 complete ]
