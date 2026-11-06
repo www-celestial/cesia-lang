@@ -305,5 +305,25 @@ let () =
   check "no hooks without --debugger" (code = 0 && count = 0);
   let code, count = hooks ~debugger:() program in
   check "hooks with --debugger" (code = 0 && count > 0);
+  (* The verdicts of a test file, rewritten: in each function, each node has its own id, under its count. *)
+  let src =
+    "use std/list\nuse std/value\nuse std/test\nf(x) = x\nisA() = f(1) == 2 and list.All([f(2) > 1, not value.Equal(f([1]), [f(3)])])\n\
+     defn isB()\n  x = f(2)?\n  if x > 1\n    return f(x)[1] == x\n  end\n  test.ForAll(y -> f(y) + it.K == y, list.Map(it + 1, [1]))\nend\n"
+  in
+  let fn = Parser.program ~file:"a.test.ce" ~nesting:100 (Lexer.tokens ~file:"a.test.ce" src) in
+  let notes = Verdict.rewrite fn in
+  let ok = ref true in
+  let rec func (f : Ast.func) =
+    let seen = Hashtbl.create 64 in
+    let rec walk (e : Ast.expr) =
+      if e.id >= f.nnodes || Hashtbl.mem seen e.id then ok := false;
+      Hashtbl.replace seen e.id ();
+      (match e.e with Lambda g | Fn_def (_, g) -> func g | _ -> ());
+      Resolve.children walk e
+    in
+    Array.iter walk f.body
+  in
+  func fn;
+  check "a rewritten verdict keeps unique ids under nnodes" (!ok && Array.length notes > 10);
   if !failures > 0 then exit 1;
   print_endline "engine_test: ok"

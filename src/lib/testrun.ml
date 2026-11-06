@@ -135,9 +135,40 @@ let run_examples (ctx : ctx) st path m src =
          print_endline (Printf.sprintf "%s:%d: the examples failed: %s" path (List.hd ex).line msg)
        | None -> raise e)
 
-(* isGrows: is, then a capital. *)
-let is_test_name name =
-  String.length name > 2 && name.[0] = 'i' && name.[1] = 's' && name.[2] >= 'A' && name.[2] <= 'Z'
+let is_test_name = Verdict.is_test
+
+(* What the verdicts of the tests of the file being run noted: see Verdict. [got.(k)] is the value of note k in the last run of
+   its test, with its rank among the notes of that run. *)
+type record = { mutable notes : Verdict.note array; mutable got : (t * int) option array; mutable rank : int }
+
+let record = { notes = [||]; got = [||]; rank = 0 }
+
+let rewrite fn =
+  record.notes <- Verdict.rewrite fn;
+  record.got <- Array.make (Array.length record.notes) None
+
+let note =
+  Native
+    { nname = "#note"; perm = None; params = [||]; min_args = 2; max_args = 2;
+      ret_ty = (fun tys -> if Array.length tys > 1 then tys.(1) else TA); f1 = None; i2 = None;
+      run =
+        (fun _ a ->
+           let k = int_arg a.(0) in
+           if k >= 0 && k < Array.length record.got then begin
+             record.got.(k) <- Some (Value.share a.(1), record.rank);
+             record.rank <- record.rank + 1
+           end;
+           a.(1)) }
+
+(* A failed test: its line, then what its verdict noted. *)
+let report ctx path line name v =
+  Runtime.flush_out ctx.w;
+  let returned () = print_endline (Printf.sprintf "%s:%d: %s returned %s" path line name (Value.show ctx v)) in
+  match Verdict.explain ctx record.notes record.got ~test:name ~prop:false v with
+  | Some (header, (_ :: _ :: _ as lines)) ->
+    if v == False || header <> "" then print_endline (Printf.sprintf "%s:%d: %s failed%s" path line name header) else returned ();
+    List.iter print_endline lines
+  | _ -> returned ()
 
 let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
   Array.iter
@@ -146,11 +177,12 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
          let line = Pos.line f.fpos in
          ctx.b <- 0;
          ctx.site <- 0;
+         Array.fill record.got 0 (Array.length record.got) None;
          match Compile.call_value ctx ~base:2 cells.(k) [||] with
          | True -> st.passed <- st.passed + 1
          | v ->
            st.failed <- st.failed + 1;
-           print_endline (Printf.sprintf "%s:%d: %s returned %s" path line f.fname (Value.show ctx v))
+           report ctx path line f.fname v
          | exception e ->
            match Loader.message_of_error e with
            | Some msg ->
@@ -179,7 +211,9 @@ let cant_load st path e =
 (* Loads a source, then runs its examples and its tests. With [host], it sees that package, private names included. *)
 let run_source (ctx : ctx) st ?host ?natives ~lookup path src =
   let w = ctx.w in
-  match Loader.prepare ?host ?natives ctx ~path ~src ~lookup with
+  let tests = is_test_file path in
+  let rewrite = if tests then Some rewrite else None in
+  match Loader.prepare ?host ?natives ?rewrite ctx ~path ~src ~lookup with
   | exception e when Loader.message_of_error e <> None -> cant_load st path e
   | (_, m, _, layout) as prepared ->
     (try
@@ -256,6 +290,11 @@ let run w ~path =
   Loader.guarded w (fun ctx ->
       w.on_panic <- (fun _ _ -> ());
       Loader.init w;
+      (* #note lives in module 0, beside #dict: only the rewritten verdicts name it. *)
+      let core = w.modules.(0) in
+      core.mnames <- core.mnames @ [ "#note", Array.length core.cells ];
+      core.cells <- Array.append core.cells [| note |];
+      core.stable <- Array.append core.stable [| true |];
       let st = { passed = 0; failed = 0 } in
       run_paths ctx st path;
       Runtime.flush_out w;

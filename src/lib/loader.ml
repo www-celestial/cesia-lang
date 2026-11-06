@@ -272,10 +272,11 @@ let natives_only w upath names =
 
 (* Lexes and parses a source. [use] returns the module of each use, given the names the file reads from it. Gives the names of
    the uses, and the first module of each package they name. *)
-let parse w ~hooks ~path ~src ~use =
+let parse ?(rewrite = ignore) w ~hooks ~path ~src ~use =
   let file = register_file w path src in
   let toks = Lexer.tokens ~file:path src in
   let fn = Parser.program ~hooks ~file:path ~nesting:w.limits.nesting toks in
+  rewrite fn;
   check_uses path fn;
   let names = used_names fn toks in
   let uses =
@@ -367,11 +368,11 @@ let checking = ref false
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
    [host]. [natives] is the module of the natives of a package of std/ that has them, which its files see. With [report],
    a check: each error goes there and the loading goes on, but a file that doesn't parse leaves the package unread. *)
-let rec prepare_files ?(hooks = false) ?host ?natives ?report ctx ~sources ~lookup =
+let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ctx ~sources ~lookup =
   let w = ctx.w in
   let one (path, src) =
     let use = match report with Some r -> checked_use ctx r ~from:path | None -> use_module ctx ~hooks ~from:path in
-    let file, fn, spaces = parse w ~hooks ~path ~src ~use in
+    let file, fn, spaces = parse ?rewrite w ~hooks ~path ~src ~use in
     path, file, fn, spaces
   in
   let parsed =
@@ -464,8 +465,8 @@ let folder ctx dir =
     in
     run_package ctx ~hooks:ctx.w.hooks ~key (fun () -> List.map read (Package.files key))
 
-let prepare ?hooks ?host ?natives ctx ~path ~src ~lookup =
-  List.hd (prepare_files ?hooks ?host ?natives ctx ~sources:[ path, src ] ~lookup)
+let prepare ?hooks ?host ?natives ?rewrite ctx ~path ~src ~lookup =
+  List.hd (prepare_files ?hooks ?host ?natives ?rewrite ctx ~sources:[ path, src ] ~lookup)
 
 (* The natives of the package of std/ that a file of std/ belongs to, std/list.ce or src/std/list.ce, as a module. *)
 let std_natives w path =
@@ -645,7 +646,7 @@ let check_native ctx (a : t array) =
 let std_packages () =
   let groups =
     Native.packages @ Lists.packages
-    @ [ "list", Columns.list; "fiber", Fiber.natives;
+    @ [ "math", Near.natives; "list", Columns.list; "fiber", Fiber.natives;
         "cesia", Tooling.natives ~libraries @ Docs.natives @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
         "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
         "random", Rand.natives ]

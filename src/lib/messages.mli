@@ -181,6 +181,20 @@ val no_name : string -> string -> t
 val exit_code : string -> t
 val denied : string -> string option -> t
 
+(** The end of the first line of a failed test: [test_part i n] names the part of its verdict that failed, [test_question line]
+    the ? that gave its Err. *)
+val test_part : int -> int -> string
+val test_question : int -> string
+
+(** The hints under a failed test: two floats equal but for their last bits, a tolerance relative to 0, and an array of Bools
+    where one Bool was meant. *)
+val test_last_bits : string -> string -> string
+val test_rel_zero : string
+val test_bools : string
+
+(** [near_tolerance name v]: a tolerance of math.Near that is no number of 0 or more. *)
+val near_tolerance : string -> string -> t
+
 (** A listen on an address that other machines reach, under a grant for this machine only. *)
 val listen_denied : string -> int -> t
 

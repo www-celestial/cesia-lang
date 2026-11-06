@@ -1,0 +1,4 @@
+(* A file whose tests pass prints only its summary. *)
+use std/list
+isSum() = list.Sum([1, 2]) == 3
+isAll() = list.All([true, 1 < 2])

@@ -1,0 +1,68 @@
+(* Each failing test shows the parts of its verdict with their values: cesia test verdict.test.ce. *)
+use std/list
+use std/value
+use std/math
+use std/text
+use std/result
+use std/matrix
+use std/io
+
+struct Cart
+  Items
+  Discount Float
+end
+
+struct Rect
+  W Int
+  H Int
+end
+defn Rect.Square(n) Rect(n, n) end
+
+total(c) = list.Sum([i.Price * i.Qty for i in c.Items]) * (1 - c.Discount)
+cart = Cart([{Price: 10, Qty: 3}], 0.1)
+parse(s) = if s == "" result.Err("empty") else result.Ok(s) end
+
+isCall() = total(cart) == 30
+isOnce() = value.Len(cart.Items) + value.Len(cart.Items) == 3
+isIndex() = cart.Items[1].Qty * 2 > 10
+defn isAllPart()
+  r = {Lines: 1, Tax: 0.1 + 0.2, Last: "Total: 27"}
+  list.All([r.Lines == 1, r.Tax == 0.3, text.StartsWith("Total", r.Last)])
+end
+isAnd() = 1 + 1 == 2 and value.Len([1, 2]) > 2
+isOr() = value.Len([1]) == 2 or cart.Discount > 0.5
+isNot() = not (cart.Discount == 0.1)
+isStatic() = Rect.Square(2).W == 3
+defn isReturn()
+  x = 3
+  if x > 2
+    return x == 4
+  end
+  true
+end
+defn isQuestion()
+  a = parse("x")?
+  b = parse("")?
+  a == b
+end
+isFloat() = 0.1 * 3 == 0.3
+isBools() = [1, 2] == [1, 2]
+isList() = value.Equal(list.Map(it * 2, [1, 2, 3]), [2, 4, 7])
+isLength() = value.Equal([1, 2], [1, 2, 3])
+isMap() = value.Equal({A: 1, B: {C: 2}}, {A: 1, B: {C: 3}})
+isKey() = value.Equal({A: 1}, {A: 1, Tax: 2.7})
+isStruct() = value.Equal(Rect(2, 3), Rect.Square(2))
+isText() = "hello world" == text.Replace("o", "u", "hello world")
+isMatrix() = value.Equal(matrix.Zeros(2, 2), [0.0, 0.0; 0.0, 1.0])
+isNear() = math.Near([1.0, 2.0, 3.0], list.Map(it + 0.1, [0.9, 1.9, 2.8]), rel = 1e-6)
+isNearZero() = math.Near(0.1 + 0.2 - 0.3, 0)
+isLong() = value.Equal(list.Range(1, 100), list.Range(1, 99))
+isMany() = value.Len([1]) + value.Len([1, 2]) + value.Len([1, 2, 3]) + value.Len([4]) + value.Len([5]) + value.Len([6]) + value.Len([7]) == 0
+defn shout(x)
+  io.Print("shout($x)")
+  x
+end
+isEachPartRunsOnce() = shout(1) == 2
+isOne() = 1
+isMissing() = list.Max([1, 2]) == missing
+isPasses() = total(cart) == 27

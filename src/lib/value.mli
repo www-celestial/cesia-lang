@@ -42,6 +42,15 @@ val failure : world -> string -> string -> t
 (** The value written as code. *)
 val show : ctx -> t -> string
 
+(** A text as Cesia writes it: [quote "a\"b"] is the five characters "a\"b". *)
+val quote : string -> string
+
+(** Stops a walk that goes deeper than [--limit nesting]. *)
+val nested : ctx -> int -> unit
+
+(** Counts the steps of a walk over [n] values. *)
+val pay : ctx -> int -> unit
+
 (** Like [show], but a text stays raw: what [Print] and [Text] display. *)
 val text_of : ctx -> t -> string
 

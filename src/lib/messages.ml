@@ -337,6 +337,12 @@ let denied perm target =
     let folder = if perm = "read" || perm = "write" then ", or a folder that holds it" else "" in
     hinted (Printf.sprintf "Permission \"%s\" denied for %s." perm what)
       (Printf.sprintf "Run again with --allow %s=%s%s." perm t folder)
+let test_part i n = Printf.sprintf ", part %d of %d" i n
+let test_question line = Printf.sprintf " at the ? of line %d" line
+let test_last_bits a b = Printf.sprintf "the same float but for its last bits: math.Near(%s, %s)?" a b
+let test_rel_zero = "rel can't help at 0: give abs"
+let test_bools = "== compares element by element: value.Equal(a, b)?"
+let near_tolerance name v = plain (Printf.sprintf "Near needs %s to be a number of 0 or more, not %s." name v)
 let listen_denied target port =
   hinted (Printf.sprintf "Permission \"net\" denied for listening on %s, which other machines can reach." target)
     (Printf.sprintf "Run again with --allow net=%s; net=:%d listens on this machine only." target port)
