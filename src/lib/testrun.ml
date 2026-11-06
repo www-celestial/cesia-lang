@@ -170,7 +170,7 @@ let report_property ctx path line name (f : Props.failure) =
   (match Verdict.explain ctx record.notes record.got ~test:name ~prop:true ~floor:record.floor f.value with
    | Some (_, lines) -> List.iter print_endline lines
    | None -> ());
-  print_endline ("  " ^ Messages.test_replay path Props.st.seed)
+  print_endline ("  " ^ Messages.test_replay path (Rand.seed ()))
 
 (* A failed test: its line, then what its verdict noted, then its snapshot. *)
 let rec report ctx path line name v =
@@ -389,12 +389,11 @@ let unit_paths path =
       | `Folder (dir, tests) -> if tests <> [] || List.exists (fun p -> has_tests p (read p)) (Package.files dir) then Some dir else None)
     (units path)
 
-let run w ~path ~seed ~cases ~only ~worker =
+let run w ~path ~cases ~only ~worker =
   Loader.guarded w (fun ctx ->
       w.on_panic <- (fun _ _ -> ());
       Loader.init w;
       Props.st.active <- true;
-      Props.st.seed <- seed;
       Props.st.cases <- cases;
       Props.st.on_case <- (fun () -> record.floor <- record.rank);
       w.on_checkpoint <- past;
@@ -412,6 +411,6 @@ let run w ~path ~seed ~cases ~only ~worker =
       else List.iter (run_unit ctx st ~examples:(Package.is_dir path)) (units path);
       Runtime.flush_out w;
       if worker then print_endline (Printf.sprintf "\001= %d %d %b" st.passed st.failed Props.st.ran)
-      else print_endline (Messages.test_summary st.passed st.failed (if Props.st.ran then Some seed else None));
+      else print_endline (Messages.test_summary st.passed st.failed (if Props.st.ran then Some (Rand.seed ()) else None));
       if not !kept && Props.st.dir <> "" && Sys.file_exists Props.st.dir then !remove Props.st.dir;
       if st.failed > 0 then 1 else 0)

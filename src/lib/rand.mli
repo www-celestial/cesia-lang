@@ -7,5 +7,11 @@ val set_seed : int -> unit
 (** The seed of this run: the one given, or the one taken from the system. *)
 val seed : unit -> int
 
+(** Starts the numbers again from a state, keeping the seed of the run: cesia test gives each test its own. *)
+val restart : int -> unit
+
+(** From 0 to [n] - 1, for [n] > 0, without bias: what std/gen draws. *)
+val below : int -> int
+
 (** The natives of std/random: Int, Float and Seed. *)
 val natives : (string * t) list

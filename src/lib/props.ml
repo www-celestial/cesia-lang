@@ -1,20 +1,18 @@
 open Types
 
 (* The cases of test.ForAll. A case is the draws its generator made, its tape: replayed, it makes the same value, and a
-   shorter or lower tape makes a simpler one, which is how a failure shrinks. Fresh draws come from splitmix64, seeded from
-   the run's seed, the file, the test and the rank of the ForAll in it, so that a new test changes no other's cases. *)
+   shorter or lower tape makes a simpler one, which is how a failure shrinks. Fresh draws come from std/random's generator,
+   which each test starts from the seed of the run and its own name, so that a new test changes no other's cases. *)
 
 type failure = { case : int; cases : int; from : int; until : int; value : t; panic : string option; size : int }
 
 type state = {
   mutable active : bool;  (* under cesia test *)
-  mutable seed : int;
   mutable cases : int;
   mutable root : string;
   mutable file : string;  (* from the root *)
   mutable test : string;
   mutable rank : int;  (* the ForAlls of the test so far *)
-  mutable rng : int64;
   mutable tape : int array option;  (* the tape replayed, or fresh draws *)
   mutable pos : int;
   drawn : int Dynarray.t;
@@ -37,10 +35,15 @@ type state = {
 }
 
 let st =
-  { active = false; seed = 0; cases = 100; root = "."; file = ""; test = ""; rank = 0; rng = 0L; tape = None; pos = 0;
+  { active = false; cases = 100; root = "."; file = ""; test = ""; rank = 0; tape = None; pos = 0;
     drawn = Dynarray.create (); size = 0; ran = false; failed = None; on_case = ignore; dir = ""; temp = None; count = 0;
     deadline = infinity; timeout = 10.; clock = (fun () -> 0.); path = ""; update = false; snaps = 0; store = None;
     taken = Hashtbl.create 8; snap_failure = [] }
+
+let fnv s =
+  let h = ref 0xcbf29ce484222325L in
+  String.iter (fun c -> h := Int64.mul (Int64.logxor !h (Int64.of_int (Char.code c))) 0x100000001b3L) s;
+  !h
 
 (* A test starts: its ForAlls count from 1 again. *)
 let start_test ~path ~file ~test =
@@ -53,21 +56,12 @@ let start_test ~path ~file ~test =
   st.snaps <- 0;
   st.snap_failure <- [];
   st.count <- st.count + 1;
-  st.deadline <- st.clock () +. st.timeout
+  st.deadline <- st.clock () +. st.timeout;
+  (* The numbers of a test, std/random's and its cases', come from the seed of the run and its name alone. *)
+  Rand.restart (Int64.to_int (fnv (Printf.sprintf "%d\000%s\000%s" (Rand.seed ()) file test)))
 
 
 
-let fnv s =
-  let h = ref 0xcbf29ce484222325L in
-  String.iter (fun c -> h := Int64.mul (Int64.logxor !h (Int64.of_int (Char.code c))) 0x100000001b3L) s;
-  !h
-
-let next () =
-  st.rng <- Int64.add st.rng 0x9E3779B97F4A7C15L;
-  let z = st.rng in
-  let z = Int64.mul (Int64.logxor z (Int64.shift_right_logical z 30)) 0xBF58476D1CE4E5B9L in
-  let z = Int64.mul (Int64.logxor z (Int64.shift_right_logical z 27)) 0x94D049BB133111EBL in
-  Int64.logxor z (Int64.shift_right_logical z 31)
 
 (* Past this many draws a case draws 0, which ends any generator that stops at 0. *)
 let most_draws = 100_000
@@ -80,7 +74,7 @@ let draw ctx (a : t array) =
       else
         match st.tape with
         | Some t -> if st.pos < Array.length t then (let x = t.(st.pos) in if x < 0 then 0 else if x < n then x else x mod n) else 0
-        | None -> Int64.to_int (Int64.unsigned_rem (next ()) (Int64.of_int n))
+        | None -> Rand.below n
     in
     st.pos <- st.pos + 1;
     Dynarray.add_last st.drawn v;
@@ -233,7 +227,6 @@ let saved () =
 let start ctx _ =
   only_in_tests ctx;
   st.rank <- st.rank + 1;
-  st.rng <- fnv (Printf.sprintf "%d\000%s\000%s\000%d" st.seed st.file st.test st.rank);
   st.ran <- true;
   match saved () with
   | Some (size, draws) -> Trie.record (Trie.names [| "Size"; "Tape" |]) [| Int size; int_array draws |]

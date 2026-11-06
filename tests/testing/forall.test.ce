@@ -5,6 +5,7 @@ use std/list
 use std/value
 use std/text
 use std/math
+use std/random
 
 struct Order
   Item Text
@@ -27,3 +28,5 @@ isNoDash() = test.ForAll(t -> not text.Contains("-", t), gen.Text())
 isCheapOrders() = test.ForAll(o -> total(o) < 500, gen.Of(Order, with = {Qty: gen.Int(1, 20), Price: gen.Float(0, 100)}))
 isFirstIsSmallest() = test.ForAll(xs -> xs[1] == list.Min(xs), gen.List(gen.Int(), min = 1))
 isHolds() = test.ForAll(n -> n + 1 > n, gen.Int())
+(* std/random draws from the same seed: a test's numbers come again with --seed. *)
+isSeeded() = random.Int(1, 1000) < 0

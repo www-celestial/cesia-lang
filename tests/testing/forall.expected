@@ -1,38 +1,41 @@
-forall.test.ce:24: isSortAgrees failed at case 10 of 100, shrunk from 17 draws to 13:
-  xs = [-1, 1, 0]
+forall.test.ce:25: isSortAgrees failed at case 17 of 100, shrunk from 33 draws to 9:
+  xs = [-1, -2]
   value.Equal(badSort(xs), list.Sort(xs))
-  | badSort(xs) = [-1, 1, 0]
-  | xs = [-1, 1, 0]
-  | list.Sort(xs) = [-1, 0, 1]
-  | first difference: [2]: 1 vs 0
+  | badSort(xs) = [-1, -2]
+  | xs = [-1, -2]
+  | list.Sort(xs) = [-2, -1]
+  | first difference: [1]: -1 vs -2
   saved, tried first next time; these cases again: cesia test forall.test.ce --seed 1
-forall.test.ce:25: isSquareRoot failed at case 3 of 100, shrunk from 3 draws to 3:
-  x = 50.0
+forall.test.ce:26: isSquareRoot failed at case 5 of 100, shrunk from 3 draws to 3:
+  x = 8.0
   math.Sqrt(x) * math.Sqrt(x) == x
-  | math.Sqrt(x) * math.Sqrt(x) = 50.00000000000001
-  | math.Sqrt(x) = 7.0710678118654755
-  | x = 50.0
+  | math.Sqrt(x) * math.Sqrt(x) = 8.000000000000002
+  | math.Sqrt(x) = 2.8284271247461903
+  | x = 8.0
   | the same float but for its last bits: math.Near(math.Sqrt(x) * math.Sqrt(x), x)?
   saved, tried first next time; these cases again: cesia test forall.test.ce --seed 1
-forall.test.ce:26: isNoDash failed at case 11 of 100, shrunk from 9 draws to 3:
+forall.test.ce:27: isNoDash failed at case 7 of 100, shrunk from 9 draws to 3:
   t = "-"
   not text.Contains("-", t)
   | t = "-"
   saved, tried first next time; these cases again: cesia test forall.test.ce --seed 1
-forall.test.ce:27: isCheapOrders failed at case 1 of 100, shrunk from 6 draws to 6:
-  o = Order(Item = "", Qty = 9, Price = 62.0)
+forall.test.ce:28: isCheapOrders failed at case 3 of 100, shrunk from 6 draws to 6:
+  o = Order(Item = "", Qty = 6, Price = 99.0)
   total(o) < 500
-  | total(o) = 558.0
-  | o = Order(Item = "", Qty = 9, Price = 62.0)
+  | total(o) = 594.0
+  | o = Order(Item = "", Qty = 6, Price = 99.0)
   saved, tried first next time; these cases again: cesia test forall.test.ce --seed 1
-forall.test.ce:28: isFirstIsSmallest failed at case 2 of 100, shrunk from 8 draws to 8:
+forall.test.ce:29: isFirstIsSmallest failed at case 1 of 100, shrunk from 8 draws to 8:
   xs = [1, 0]
   xs[1] == list.Min(xs)
   | xs[1] = 1
   | xs = [1, 0]
   | list.Min(xs) = 0
   saved, tried first next time; these cases again: cesia test forall.test.ce --seed 1
-1 passed, 5 failed, seed 1
+forall.test.ce:32: isSeeded failed
+  random.Int(1, 1000) < 0
+  | random.Int(1, 1000) = 553
+1 passed, 6 failed, seed 1
 exit 1
 == the failures were saved, and come first
 tests-testing-forall.test.ce-isCheapOrders-1
@@ -40,13 +43,13 @@ tests-testing-forall.test.ce-isFirstIsSmallest-1
 tests-testing-forall.test.ce-isNoDash-1
 tests-testing-forall.test.ce-isSortAgrees-1
 tests-testing-forall.test.ce-isSquareRoot-1
-forall.test.ce:24: isSortAgrees failed on the case an earlier run saved, shrunk from 13 draws to 13:
-  xs = [-1, 1, 0]
+forall.test.ce:25: isSortAgrees failed on the case an earlier run saved, shrunk from 9 draws to 9:
+  xs = [-1, -2]
   value.Equal(badSort(xs), list.Sort(xs))
-  | badSort(xs) = [-1, 1, 0]
-  | xs = [-1, 1, 0]
-  | list.Sort(xs) = [-1, 0, 1]
-  | first difference: [2]: 1 vs 0
+  | badSort(xs) = [-1, -2]
+  | xs = [-1, -2]
+  | list.Sort(xs) = [-2, -1]
+  | first difference: [1]: -1 vs -2
   saved, tried first next time; these cases again: cesia test forall.test.ce --seed 2
 0 passed, 1 failed, seed 2
 exit 1

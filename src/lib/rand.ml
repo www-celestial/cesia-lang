@@ -23,6 +23,12 @@ let seed () =
   start ();
   Option.get !seed_given
 
+(* cesia test starts each test from a state of its own, made of the seed and the test's name, so that a new test changes no
+   other's numbers; the seed of the run stays. *)
+let restart n =
+  start ();
+  state := Int64.of_int n
+
 let next () =
   start ();
   state := Int64.add !state 0x9E3779B97F4A7C15L;

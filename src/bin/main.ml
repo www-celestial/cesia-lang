@@ -253,7 +253,10 @@ let test args =
     | "--update" :: rest ->
       Props.st.update <- true;
       options o seed cases allow paths rest
-    | "--seed" :: v :: rest -> options o (Some (parse_count v)) cases allow paths rest
+    | "--seed" :: v :: rest ->
+      (match int_of_string_opt v with
+       | Some n -> options o (Some n) cases allow paths rest
+       | None -> bad_option (Messages.invalid_seed v))
     | "--cases" :: v :: rest -> options o seed (parse_count v) allow paths rest
     | "--allow" :: v :: rest -> options o seed cases (allow @ [ v ]) paths rest
     | p :: rest when not (String.starts_with ~prefix:"--" p) -> options o seed cases allow (p :: paths) rest
@@ -263,8 +266,9 @@ let test args =
   let o, seed, cases, allow, paths = options (with_default_memory Runtime.default_options) None 100 [] [] args in
   let path, only = match paths with [] -> ".", None | [ p ] -> one_test p | _ -> usage () in
   if not (Sys.file_exists path) then usage ();
-  (* A new seed each run, so that each run tries new cases; --seed gives the cases of a run again. *)
-  let seed = match seed with Some s -> s | None -> Random.self_init (); 1 + Random.int 99_999 in
+  (* A new seed each run, std/random's, so that each run tries new cases; --seed gives the numbers of a run again. *)
+  Option.iter Rand.set_seed seed;
+  let seed = Rand.seed () in
   let root = Package.root_of path in
   let config = Project.test_config root in
   (* The run's folder, made by the first Temp: random, so that no other program has it ready, and 0700. *)
@@ -281,7 +285,7 @@ let test args =
   let o = if !worker then { o with o_limits = { o.o_limits with memory_words = o.o_limits.memory_words / Par.cores () } } else o in
   let w = Runtime.create_world { o with o_grants = test_grants root dir config allow } in
   let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ~tick:(poll_period, Testrun.tick) ~reset:Testrun.reset w in
-  exit (Testrun.run w ~path ~seed ~cases ~only ~worker:!worker)
+  exit (Testrun.run w ~path ~cases ~only ~worker:!worker)
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)
 let tune_gc () = Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 20 }
