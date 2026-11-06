@@ -1,0 +1,7 @@
+(* Two findings at one place, and a file named twice: each finding once. *)
+use std/sys
+
+defn Never()
+  sys.Read()
+  1
+end

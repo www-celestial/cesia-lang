@@ -554,7 +554,8 @@ let check_native ctx (a : t array) =
   in
   let given = if Array.length a > 1 && a.(1) != Undef then Some a.(1) else None in
   let asked = Hashtbl.create 16 in
-  List.iter (fun p -> Hashtbl.replace asked (Package.absolute p) p) paths;
+  (* A file named twice is read once, under its first name. *)
+  let paths = List.filter (fun p -> let key = Package.absolute p in not (Hashtbl.mem asked key) && (Hashtbl.add asked key p; true)) paths in
   let texts = Hashtbl.create 16 in
   let text p =
     let key = Package.absolute p in
@@ -625,7 +626,8 @@ let check_native ctx (a : t array) =
   let order = List.mapi (fun i p -> p, i) paths in
   let sorted =
     List.sort_uniq
-      (fun (f1, p1, _, _) (f2, p2, _, _) -> compare (List.assoc f1 order, p1) (List.assoc f2 order, p2))
+      (fun (f1, p1, w1, (m1 : Messages.t)) (f2, p2, w2, (m2 : Messages.t)) ->
+         compare (List.assoc f1 order, p1, w1, m1.text) (List.assoc f2 order, p2, w2, m2.text))
       !marks
   in
   let record (file, pos, warning, (m : Messages.t)) =

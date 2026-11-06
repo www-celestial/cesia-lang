@@ -1,0 +1,9 @@
+twice.ce:5:3: Read takes 1 arguments, not 0.
+  5 |   sys.Read()
+    |   ^^^^^^^^
+twice.ce:5:3: warning: sys.Read gives a result, which is dropped here.
+  5 |   sys.Read()
+    |   ^^^^^^^^
+  Its Err would go unseen: add ?, match it, or write _ = before it to drop it on purpose.
+check: 1 error, 1 warning, in 3 files.
+exit 1
