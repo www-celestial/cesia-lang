@@ -3,9 +3,10 @@
 # and compares stdout then stderr (2>&1), followed by an "exit N" line.
 # Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "cesia run").
 #   tools/golden.sh [--no-spec | --both] [--quick | --slow] FOLDER...
-# --no-spec runs the other path of the engine; --both runs each test on both, one after the other in the same job, so that a
-# test's ports never meet, except in a folder with a .one-path file, which says why. A name.slow file marks a test that is
-# slow by nature (a compiler, git, every core): --quick leaves those out, for the change loop, and --slow runs only them.
+# --no-spec runs the other path of the engine. --both runs each test on both, one after the other in the same job, so that
+# a test's ports never meet, but in a folder with a .one-path file, which says why, and for a .cmd that doesn't pass
+# $no_spec on. A name.slow file marks a test slow by nature (a compiler, git, every core): --quick leaves those out, for the
+# change loop, and --slow runs only them.
 # The tests run side by side, the slowest of the last run first, so that none starts last and keeps the others waiting.
 # GOLDEN_TRACE=1 names each test as it starts: a test that hangs would otherwise leave no trace.
 set -u
@@ -29,40 +30,70 @@ times="$root/_build/golden-times"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# One run of a test on one path: its output in $out, and $out.failed when it differs from the expected one.
+# The time in milliseconds into $ms, from bash itself when it can tell it, without a process.
+clock() {
+  if [ -n "${EPOCHREALTIME:-}" ]; then
+    local t=${EPOCHREALTIME/[.,]/}
+    ms=$((t / 1000))
+  else
+    ms=$(($(date +%s) * 1000))
+  fi
+}
+
+# One run of a test on one path: its output in $out, and $out.failed when it differs from the expected one. A test of a
+# .ce runs in this job's shell, a .cmd in a shell of its own, since it may change the shell.
 run_path() {
   local dir="$1" name="$2" out="$3" no_spec="$4"
-  local flags="" args="" input=/dev/null
-  [ -f "$dir/$name.flags" ] && flags=$(cat "$dir/$name.flags")
-  [ -f "$dir/$name.args" ] && args=$(cat "$dir/$name.args")
-  [ -f "$dir/$name.stdin" ] && input=$(realpath "$dir/$name.stdin")
-  (
-    cd "$dir" || exit 99
-    cesia() { "$root/_build/default/src/bin/main.exe" "$@"; }
-    if [ -f "$name.cmd" ]; then
+  local flags="" args="" input=/dev/null got="" want=""
+  [ -f "$dir/$name.flags" ] && read -r flags < "$dir/$name.flags"
+  [ -f "$dir/$name.args" ] && read -r args < "$dir/$name.args"
+  [ -f "$dir/$name.stdin" ] && input="$root/$dir/$name.stdin"
+  if [ -f "$dir/$name.cmd" ]; then
+    (
+      cd "$dir" || exit 99
+      cesia() { "$root/_build/default/src/bin/main.exe" "$@"; }
       # shellcheck disable=SC1090
       source "./$name.cmd" < "$input"
-    else
-      # shellcheck disable=SC2086
-      "$cesia" run $no_spec $flags "$name.ce" $args < "$input"
-    fi
-    echo "exit $?"
-  ) > "$out" 2>&1
-  diff -u "$dir/$name.expected" "$out" > "$out.diff" || echo "$dir/$name $no_spec" > "$out.failed"
+      echo "exit $?"
+    ) > "$out" 2>&1
+  else
+    cd "$root/$dir" || return
+    # shellcheck disable=SC2086
+    "$cesia" run $no_spec $flags "$name.ce" $args < "$input" > "$out" 2>&1
+    echo "exit $?" >> "$out"
+    cd "$root" || return
+  fi
+  # Read whole by bash: no process for a test that passes, and diff for one that doesn't.
+  IFS= read -r -d '' got < "$out" || true
+  IFS= read -r -d '' want < "$dir/$name.expected" || true
+  if [ "$got" != "$want" ]; then
+    diff -u "$dir/$name.expected" "$out" > "$out.diff"
+    echo "$dir/$name $no_spec" > "$out.failed"
+  fi
+}
+
+# Does this test run differently on the other path? A .cmd does only when it passes $no_spec on to cesia.
+second() {
+  local body=""
+  [ -f "$1.cmd" ] || return 0
+  IFS= read -r -d '' body < "$1.cmd" || true
+  [[ $body == *no_spec* ]]
 }
 
 run_one() {
-  local dir="$1" name="$2" out="$3" start
-  start=$(date +%s%N)
+  local dir="$1" name="$2" out="$3" start ms
+  clock
+  start=$ms
   case "$paths" in
     spec) run_path "$dir" "$name" "$out.a" "" ;;
     no-spec) run_path "$dir" "$name" "$out.b" "--no-spec" ;;
     both)
       run_path "$dir" "$name" "$out.a" ""
-      [ -f "$dir/.one-path" ] || run_path "$dir" "$name" "$out.b" "--no-spec"
+      if [ ! -f "$dir/.one-path" ] && second "$dir/$name"; then run_path "$dir" "$name" "$out.b" "--no-spec"; fi
       ;;
   esac
-  echo "$((($(date +%s%N) - start) / 1000000)) $dir/$name" > "$out.time"
+  clock
+  echo "$((ms - start)) $dir/$name" > "$out.time"
 }
 
 # Every test to run, the slowest of the last run first.
