@@ -15,17 +15,24 @@ let watching = ref false
 let calls_before = 1000
 let checkpoints_before = 2
 
-type loop = { mutable seen : int; mutable code : code option; mutable reloads : int; mutable failed : bool; expr : Ast.expr }
+type loop = {
+  mutable seen : int;
+  mutable code : code option;
+  mutable reloads : int;
+  mutable failed : bool;
+  mutable tries : int;
+  expr : Ast.expr;
+}
 
-let loop (e : Ast.expr) = { seen = 0; code = None; reloads = 0; failed = false; expr = e }
+let loop (e : Ast.expr) = { seen = 0; code = None; reloads = 0; failed = false; tries = 0; expr = e }
 
 exception Handoff of code * int
 
-type ran = Ran | Fell | Returned of t | Reloaded
+type ran = Ran | Fell | Returned of t | Reloaded | Bailed of int
 
 type jit = {
   promote : world -> version -> unit;
-  compile : world -> loop -> version -> unit;
+  compile : ctx -> loop -> version -> unit;
   pick : ctx -> loop -> version -> loop list -> code option;
   place : ctx -> code -> loop -> int -> int -> unit;
   after : code -> int -> int;
@@ -76,10 +83,11 @@ let watch (w : world) (ver : version) =
 
 let live (ctx : ctx) l = match l.code with Some _ as c when l.reloads = ctx.w.reloads -> c | _ -> None
 
+(* In mode [always], a loop is compiled at its first run, and again at its next runs while its guesses lack values. *)
 let ready (ctx : ctx) l ver =
-  if !mode = always && l.seen = 0 && free ctx.w then begin
-    l.seen <- 1;
-    match loaded () with Some j -> j.compile ctx.w l ver | None -> ()
+  if !mode = always && l.code = None && (not l.failed) && l.seen < 8 && free ctx.w then begin
+    l.seen <- l.seen + 1;
+    match loaded () with Some j -> j.compile ctx l ver | None -> ()
   end;
   live ctx l
 

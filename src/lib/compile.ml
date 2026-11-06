@@ -222,6 +222,18 @@ type member = { ms : shape; mi : int; mg : t; mr : int }
 
 let no_shape = { sid = -1; names = [||]; sname = None; sm = -1; next = Hashtbl.create 1; checks = [||] }
 
+(* The keys of map literals, one for each list of names: whole keys never change, so the maps of every literal of the same
+   names share them, and the caches of reads with them; native code makes its maps with the same. *)
+let literal_keys : (string array, keys) Hashtbl.t = Hashtbl.create 16
+
+let map_keys names =
+  match Hashtbl.find_opt literal_keys names with
+  | Some k -> k
+  | None ->
+    let k = Trie.names names in
+    Hashtbl.add literal_keys (Array.copy names) k;
+    k
+
 (* The name of a package, as a use names it: its folder, or its file without .ce. *)
 let package_name (w : world) host =
   let folder key m found = if m = host && not (Package.is_source key) then Some key else found in
@@ -1341,7 +1353,7 @@ and struct_lit c sname fields =
         if j land 1 = 0 then Text names.(j / 2) else Value.share (vals.(j / 2) ctx)))
   end else if sname = None then begin
     (* The maps of one literal share their keys. *)
-    let keys = Trie.names names in
+    let keys = map_keys names in
     match Array.map (fun (_, v) -> ce c v) fields with
     | [| a; b |] ->
       fun ctx ->
@@ -2443,7 +2455,8 @@ and cu c (e : expr) : ctx -> unit =
     let l = bound c a pos and h = bound c b pos and k = c.map.(i) in
     let st = Tier.loop e and outer = c.loops in
     c.loops <- st :: outer;
-    let body = cublock c fbody in
+    let stmts = Array.map (cu c) fbody in
+    let body = seq_u (Array.to_list stmts) in
     c.loops <- outer;
     let off = c.off in
     let run =
@@ -2470,6 +2483,20 @@ and cu c (e : expr) : ctx -> unit =
             (* After a reload, the next iterations are the interpreter's, with the new code. *)
             let n = Tier.counter ctx code st in
             if n < hi then interp ctx (n + 1) hi;
+            true
+          | Tier.Bailed k ->
+            (* A guard failed before statement k of iteration n: the interpreter does the rest of it and its step, then
+               native code takes the next ones again, while it still has code. *)
+            let n = Tier.counter ctx code st in
+            for j = k to Array.length stmts - 1 do stmts.(j) ctx done;
+            tick ctx off;
+            if n < hi then begin
+              match Tier.ready ctx st ver with
+              | Some c when c == code ->
+                Tier.place ctx code st n hi;
+                if not (entered ctx code (Tier.after code (Tier.id st)) hi) then interp ctx (n + 1) hi
+              | _ -> interp ctx (n + 1) hi
+            end;
             true
         and interp ctx lo hi =
           if lo <= hi then begin
@@ -2517,7 +2544,8 @@ and cu c (e : expr) : ctx -> unit =
     let st = Tier.loop e and outer = c.loops in
     let cond = cb c cond in
     c.loops <- st :: outer;
-    let body = cublock c body in
+    let stmts = Array.map (cu c) body in
+    let body = seq_u (Array.to_list stmts) in
     c.loops <- outer;
     let off = c.off in
     let run =
@@ -2536,6 +2564,17 @@ and cu c (e : expr) : ctx -> unit =
           | Tier.Fell -> false
           | Tier.Reloaded ->
             interp ctx;
+            true
+          | Tier.Bailed k ->
+            (* Before statement k of the body, or, at -1, before the test; then native code takes the loop again. *)
+            if k >= 0 then begin
+              for j = k to Array.length stmts - 1 do stmts.(j) ctx done;
+              tick ctx off
+            end;
+            (match Tier.ready ctx st ver with
+             | Some c when c == code && k >= 0 ->
+               if not (entered ctx code (Tier.after code (Tier.id st))) then interp ctx
+             | _ -> interp ctx);
             true
         and interp ctx =
           match

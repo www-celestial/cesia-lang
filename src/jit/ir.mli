@@ -2,12 +2,18 @@
 
     An int register holds 2n for the Cesia integer n, so that the processor's flag of 64-bit overflow tells exactly the
     63-bit overflow of OCaml's integers; a slot of the int stack holds 2n + 1, an OCaml integer. A float register holds a
-    double. *)
+    double. A value register holds an OCaml value, a word of [Types.t]: native code never holds one across anything that
+    can collect, as nothing collects inside a run (allocations take room reserved before, see [Reserve]). *)
 
-type kind = Kint | Kfloat
+type kind = Kint | Kfloat | Kval
 
-(** An operand: a register, or a constant (a Cesia integer, written 2n by [Mirtext], or a finite float). *)
-type value = Reg of int | Int of int | Float of float
+(** An operand: a register, or a constant (a Cesia integer, written 2n by [Mirtext], a finite float, or a word written as
+    it is, a value that is no block: [missing], [true], [false]). *)
+type value = Reg of int | Int of int | Float of float | Word of int
+
+(** What [Unbox] takes: [Number] an Int or a Float, as a float; [Only_float] a Float; [Only_int] an Int. Anything else
+    bails. *)
+type unbox = Number | Only_float | Only_int
 
 type cmp = Eq | Ne | Lt | Le | Gt | Ge
 
@@ -44,6 +50,26 @@ type ins =
   | Enter of int * int * int
       (** [Enter (r, base, site)]: an inlined callee enters its frame at [r], called at [site] from the frame at [base]:
           the depth and the stack are checked as for a call *)
+  | Enter_or_bail of int * int
+      (** [Enter_or_bail (r, k)]: the same, for a struct's function; when it can't, the run bails before statement [k],
+          and the interpreter makes the call *)
+  | Unbox of int * value * unbox * int
+      (** [Unbox (r, v, how, k)]: the number in the value [v]; else the run bails before statement [k] of its loop *)
+  | Box of int * value  (** a value made of an integer or a float operand: an Int or a Float, in reserved room *)
+  | Share of value  (** a list, struct or map stored elsewhere: it is no longer owned, as [Value.share] *)
+  | Key_get of int * value * int * int * bool * int
+      (** [Key_get (r, m, c, i, n, k)]: the value at place [i] of the map [m] whose keys are those of the constant [c];
+          [n]: check that the map has that many values; else bails before statement [k] *)
+  | Field_get of int * value * int * int * int
+      (** [Field_get (r, s, sid, i, k)]: field [i] of the struct [s] whose shape has the number [sid]; else bails *)
+  | Get of int * int * value * int  (** a cell of an array of values: the destination, the array, the index, the site *)
+  | Put of int * value * value * int  (** the array of values, the index, the value, the site, through the write barrier *)
+  | Record of int * int * int * value array
+      (** [Record (r, tag, c, vals)]: a new owned map ([tag] 8) or struct ([tag] 4), its keys or shape those of the
+          constant [c], in reserved room *)
+  | Reserve of int ref * int
+      (** room for so many words of allocation before the next [Reserve]; when the young heap lacks it, the run leaves
+          at the resume point, the interpreter's allocation collects, and the run comes back *)
 
 type term =
   | Jump of int
@@ -63,7 +89,11 @@ type func = {
   params : var array;
   result : kind;
   vars : var array;  (** every variable in a register, the parameters and the loop counters included *)
-  arrays : (int * bool) array;  (** each float array: its slot in the value stack, and whether the code writes it *)
+  arrays : (int * bool * int) array;
+      (** each array: its slot in the value stack, whether the code writes it, and its store, 0 floats or 1 values *)
+  consts : Types.t array;
+      (** values whose first field native code reads, the keys of a map or the shape of a struct: written by [Engine] to
+          the value slots from [frame] before each run *)
   kinds : kind array;  (** of each register *)
   blocks : block array;  (** block 0 comes first *)
   resumes : int array;  (** the block of each resume point *)
@@ -87,7 +117,10 @@ type func = {
     frame starts 2 above: a nested frame holds only its link to its caller and its site, written when an error unwinds. *)
 
 (** The cells of the [io] array of the JIT's single entry, all OCaml integers. The first three are the stacks, which the C
-    glue fills; the others are copied to a context of raw integers for native code, and back. *)
+    glue fills; the others are copied to a context of raw integers for native code, and back. The C glue also writes, at
+    [cx_young] and [cx_young + 1] of that context, the addresses of the young heap's pointer and limit. *)
+
+val cx_young : int
 
 val io_base : int
 val io_entry : int  (** 0 to start, or 1 + a resume point *)
@@ -128,6 +161,12 @@ val frames_out : int
     the site [io_point], its links written; nothing that shows was written, so the run can start again *)
 
 val reloaded : int  (** not native code's: a reload came at a checkpoint, and the run left at its loop's step *)
+
+val bailed : int
+(** a guard failed before statement [io_point] of the region's loop, before anything of it showed: every variable is in its
+    slot as at that statement, and the interpreter goes on from it *)
+
+val gc : int  (** at [io_point], all variables written to their slots: the young heap lacks [io_a] words *)
 
 (** Codes of errors: the interpreter redoes the operation with [io_a] and [io_b] to give its message. *)
 

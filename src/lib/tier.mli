@@ -28,8 +28,16 @@ val calls_before : int
 val checkpoints_before : int
 
 (** The native state of one loop of a version: [Compile] keeps one with each loop it compiles, with the loop's expression;
-    the JIT fills [code], made at [reloads], or sets [failed]. *)
-type loop = { mutable seen : int; mutable code : code option; mutable reloads : int; mutable failed : bool; expr : Ast.expr }
+    the JIT fills [code], made at [reloads], or sets [failed]; [tries] counts the times its code was dropped, or could not
+    be made yet. *)
+type loop = {
+  mutable seen : int;
+  mutable code : code option;
+  mutable reloads : int;
+  mutable failed : bool;
+  mutable tries : int;
+  expr : Ast.expr;
+}
 
 val loop : Ast.expr -> loop
 
@@ -38,14 +46,15 @@ exception Handoff of code * int
 (** [Ran]: the loop ran to its end natively, every variable back in its slot; [Fell]: nothing ran, this run is the
     interpreter's; [Returned]: a [return] inside, with its value; [Reloaded]: a reload came, native code stopped after a
     step of this loop, every variable in its slot, and the interpreter goes on with the new code ([counter] tells a [for]
-    where). *)
-type ran = Ran | Fell | Returned of t | Reloaded
+    where); [Bailed k]: a guard failed before statement [k] of the loop's body, or before a [while]'s test at -1, before
+    anything of it showed: every variable in its slot, the interpreter goes on from there. *)
+type ran = Ran | Fell | Returned of t | Reloaded | Bailed of int
 
 (** What the JIT does: [promote] gives a hot version its native entries when it lowers, [compile] makes a loop's code,
     [pick] chooses the region at a hot checkpoint; the others are below. *)
 type jit = {
   promote : world -> version -> unit;
-  compile : world -> loop -> version -> unit;
+  compile : ctx -> loop -> version -> unit;
   pick : ctx -> loop -> version -> loop list -> code option;
   place : ctx -> code -> loop -> int -> int -> unit;
   after : code -> int -> int;

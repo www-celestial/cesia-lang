@@ -13,6 +13,7 @@ type code = {
   loops : (int * int * int * int) array;  (* each loop inside: its node, its counter's and bound's slots or -1, its point *)
   stride : int;  (* the interpreter's frames for the unit's calls, as [Ir.func]'s; -1 when unknown *)
   need : int;
+  mutable bails : int;  (* the runs that a failed guard sent back to the interpreter *)
 }
 
 (* What the interpreter holds of it. *)
@@ -34,11 +35,11 @@ let make (w : world) (ver : version) fns start loops =
       match Jit.load text [| entry |] with
       | [| addr |] ->
         let fn = fns.(0) in
-        let written = List.filter_map (fun (s, wr) -> if wr then Some s else None) (Array.to_list fn.arrays) in
+        let written = List.filter_map (fun (s, wr, _) -> if wr then Some s else None) (Array.to_list fn.arrays) in
         let known = Array.for_all (fun (f : Ir.func) -> f.stride >= 0) fns in
         let most g = if known then Array.fold_left (fun m f -> max m (g f)) 0 fns else -1 in
         Some { addr; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint); pure; calls; written = Array.of_list written;
-               reloads = w.reloads; start; loops; stride = most (fun f -> f.stride); need = most (fun f -> f.need) }
+               reloads = w.reloads; start; loops; stride = most (fun f -> f.stride); need = most (fun f -> f.need); bails = 0 }
       | _ -> None
       | exception Failure m ->
         if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m);
@@ -75,6 +76,8 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   io.(Ir.io_budget) <- (if w.steps_left = max_int then 1 lsl 60 else w.steps_left - (ctx.refill - fuel0));
   io.(Ir.io_until) <- ctx.until - (ctx.refill - fuel0);
   io.(Ir.io_leave) <- (if leave then 1 else 0);
+  (* The constants whose first field native code reads, after the frame, where nothing else is while it runs. *)
+  Array.iteri (fun j c -> ctx.v.(b + code.fn.frame + j) <- c) code.fn.consts;
   let st = Jit.call code.addr ctx.i ctx.f ctx.v io in
   if st = Ir.stack_out then begin
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
@@ -95,6 +98,14 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   end else begin
     ctx.fuel <- fuel0 - (io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel));
     st
+  end
+
+(* At least [n] words of the young heap for native code: OCaml's own allocation collects when they are not there, and runs
+   what the runtime has pending. *)
+let rec room n =
+  if n > 0 then begin
+    ignore (Sys.opaque_identity (n, n, n, n, n, n, n));
+    room (n - 8)
   end
 
 (* An error of native code: the interpreter does the operation again, at the same site and on the same frames, so its
@@ -136,6 +147,10 @@ let go (ctx : ctx) code entry =
       if ctx.w.reloads = code.reloads then again (p + 1) false
       else if p = root_point code then Ir.reloaded
       else again ~leave:(root_point code >= 0) (p + 1) false
+    end
+    else if st = Ir.gc then begin
+      room io.(Ir.io_a);
+      again (io.(Ir.io_point) + 1) false
     end
     else if st = Ir.error then fail ctx
     else if st = Ir.too_deep then begin
@@ -186,9 +201,13 @@ let promote (w : world) (ver : version) =
          ver.rv <- (fun ctx -> Float (rf' ctx))
        end)
 
-let compile (w : world) (l : Tier.loop) ver =
+(* A loop whose guesses lack a value yet, or whose code was dropped, is tried again, a few times. *)
+let max_tries = 8
+
+let compile (ctx : ctx) (l : Tier.loop) ver =
+  let w = ctx.w in
   if (not l.failed) && l.code = None then begin
-    match Lower.region w ver l.expr with
+    match Lower.region ~ctx w ver l.expr with
     | Some (fns, start, loops) ->
       (match make w ver fns start loops with
        | Some c ->
@@ -196,6 +215,10 @@ let compile (w : world) (l : Tier.loop) ver =
          l.reloads <- c.reloads
        | None -> l.failed <- true)
     | None -> l.failed <- true
+    | exception Lower.Unseen ->
+      if Sys.getenv_opt "CESIA_JIT_WHY" <> None then prerr_endline ("unseen: " ^ Printexc.get_backtrace ());
+      l.tries <- l.tries + 1;
+      if l.tries >= max_tries then l.failed <- true
   end
 
 let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads = ctx.w.reloads -> Some c | _ -> None
@@ -205,8 +228,11 @@ let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads =
    falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. *)
 let fits (ctx : ctx) code =
   Array.for_all
-    (fun (slot, written) ->
-       match ctx.v.(ctx.b + slot) with Array { store = F _; a_owned; _ } -> a_owned || not written | _ -> false)
+    (fun (slot, written, store) ->
+       match ctx.v.(ctx.b + slot) with
+       | Array { store = F _; a_owned; _ } when store = 0 -> a_owned || not written
+       | Array { store = V _; a_owned; _ } when store = 1 -> a_owned || not written
+       | _ -> false)
     (native code).fn.arrays
 
 (* At a hot checkpoint inside [l]: the outermost loop around it, [l] included, that lowers, as one region; [outer] the
@@ -215,7 +241,7 @@ let pick (ctx : ctx) (l : Tier.loop) ver outer =
   let rec go = function
     | [] -> None
     | (c : Tier.loop) :: rest ->
-      compile ctx.w c ver;
+      compile ctx c ver;
       (match live ctx c with
        | Some code when fits ctx code -> Some code
        | k ->
@@ -248,7 +274,19 @@ let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
   let st = go ctx code entry in
   if st = Ir.ok then Ran
   else if st = Ir.reloaded then Reloaded
-  else if st = Ir.returned then Returned (match code.ret with Kfloat -> Float (result_float ctx code) | Kint -> Int io.(Ir.io_int))
+  else if st = Ir.returned then
+    Returned (match code.ret with Kfloat -> Float (result_float ctx code) | Kint | Kval -> Int io.(Ir.io_int))
+  else if st = Ir.bailed then begin
+    (* A guess that keeps failing: the code goes, and the loop is lowered again later with what the frame holds then. *)
+    code.bails <- code.bails + 1;
+    if code.bails > 16 then begin
+      l.code <- None;
+      l.tries <- l.tries + 1;
+      if l.tries >= max_tries then l.failed <- true;
+      l.seen <- 0
+    end;
+    Bailed io.(Ir.io_point)
+  end
   else begin
     (* Its arrays are not what native code takes this time, or one it writes is shared: nothing ran, this run is the
        interpreter's, which copies at its first write. *)

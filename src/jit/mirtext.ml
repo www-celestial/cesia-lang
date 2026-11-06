@@ -12,8 +12,16 @@ let float_lit x =
   let s = Printf.sprintf "%.17g" x in
   if String.exists (fun c -> c = '.' || c = 'e') s then s else s ^ ".0"
 
-let operand = function Ir.Reg r -> "r" ^ string_of_int r | Int n -> doubled n | Float x -> float_lit x
-let ty = function Ir.Kint -> "i64" | Kfloat -> "d"
+let operand = function
+  | Ir.Reg r -> "r" ^ string_of_int r
+  | Int n -> doubled n
+  | Float x -> float_lit x
+  | Word n -> string_of_int n
+
+let ty = function Ir.Kint | Kval -> "i64" | Kfloat -> "d"
+
+(* The header of a block of OCaml 5: its size in words from bit 10, its color 0 as the young heap's, its tag. *)
+let header words tag = string_of_int ((words lsl 10) lor tag)
 let cmp_name = function Ir.Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
 let flip = function Ir.Lt -> Ir.Gt | Le -> Ge | Gt -> Lt | Ge -> Le | c -> c
 
@@ -50,19 +58,21 @@ let func b ~prefix ~nested (fn : Ir.func) =
     f stubs;
     l
   in
-  let zero = match fn.result with Kint -> "0" | Kfloat -> "0.0" in
+  let zero = match fn.result with Kint | Kval -> "0" | Kfloat -> "0.0" in
   let params = Array.map (fun (v : Ir.var) -> v.reg) fn.params in
   let is_param r = Array.mem r params in
   (* Only the outermost frame keeps its variables in its slots, when it leaves to come back. *)
   (* MIR has two reload registers of each class for an instruction: every memory operand here has one register for its
      address, computed first, so that an instruction never needs more, whatever was spilled. *)
+  (* A value goes to its slot through OCaml's write barrier, as the value stack is in the major heap. *)
   let spill b =
     Printf.bprintf b "  mov ip, %s\n  lsh xa, b, 3\n  add ip, ip, xa\n  mov fp, %s\n  add fp, fp, xa\n" (cx 0) (cx 1);
     Array.iter
       (fun (v : Ir.var) ->
          match v.kind with
          | Kint -> Printf.bprintf b "  add x0, r%d, 1\n  mov i64:%d(ip), x0\n" v.reg (8 * v.slot)
-         | Kfloat -> Printf.bprintf b "  dmov d:%d(fp), r%d\n" (8 * v.slot) v.reg)
+         | Kfloat -> Printf.bprintf b "  dmov d:%d(fp), r%d\n" (8 * v.slot) v.reg
+         | Kval -> Printf.bprintf b "  add x0, vp, %d\n  call pmod, caml_modify, x0, r%d\n" (8 * v.slot) v.reg)
       fn.vars
   in
   let stop b status =
@@ -88,7 +98,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   (* An error: the interpreter remakes its message from the operands, at the site, from this frame. *)
   let error code site a bv =
     stub (fun s ->
-        let raw v = match v with Ir.Reg r -> Printf.bprintf s "  rsh x1, r%d, 1\n" r; "x1" | Int n -> string_of_int n | Float _ -> "0" in
+        let raw v = match v with Ir.Reg r -> Printf.bprintf s "  rsh x1, r%d, 1\n" r; "x1" | Int n -> string_of_int n | Float _ | Word _ -> "0" in
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_a) (raw a);
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_b) (match bv with Some v -> raw v | None -> "0");
         links s site;
@@ -101,28 +111,39 @@ let func b ~prefix ~nested (fn : Ir.func) =
     match v with
     | Ir.Reg r -> "r" ^ string_of_int r
     | _ ->
-      (match k with Ir.Kint -> pr "  mov x2, %s\n" (operand v); "x2" | Kfloat -> pr "  dmov y0, %s\n" (operand v); "y0")
+      (match k with Ir.Kint | Kval -> pr "  mov x2, %s\n" (operand v); "x2" | Kfloat -> pr "  dmov y0, %s\n" (operand v); "y0")
   in
   let arr a = Printf.sprintf "a%dd" a and len a = Printf.sprintf "a%dn" a in
-  let check_index a i site code =
-    let raw_b = Ir.Int (fst fn.arrays.(a)) in
+  let check_index ?(t = "d") a i site code =
+    let slot, _, _ = fn.arrays.(a) in
+    let raw_b = Ir.Int slot in
     match i with
     | Ir.Reg r ->
       let e = error code site i (Some raw_b) in
       pr "  sub x0, r%d, 2\n  ubge %s, x0, %s\n" r e (len a);
-      Printf.sprintf "d:-8(%s, r%d, 4)" (arr a) r
+      Printf.sprintf "%s:-8(%s, r%d, 4)" t (arr a) r
     | Int k ->
       let e = error code site i (Some raw_b) in
       pr "  mov x0, %s\n  ubge %s, x0, %s\n" (doubled (k - 1)) e (len a);
-      Printf.sprintf "d:%d(%s)" (8 * (k - 1)) (arr a)
-    | Float _ -> invalid_arg "index"
+      Printf.sprintf "%s:%d(%s)" t (8 * (k - 1)) (arr a)
+    | Float _ | Word _ -> invalid_arg "index"
   in
+  (* [n] words of the young heap, reserved before: the pointer moves down, the first of them in x5. *)
+  let take n = pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov i64:0(x6), x5\n" (cx Ir.cx_young) (8 * n) in
   (* The one block that spills every variable and leaves at the point in xp: every tick that leaves goes there, so that
      MIR's allocator meets the variables' uses in one place, out of the loops. *)
   let leave_used = ref false in
   let leave_block () =
     leave_used := true;
     Printf.sprintf "%s%s_L" prefix name
+  in
+  (* A failed guard: back to the interpreter before that statement, through the block that spills and leaves. *)
+  let bail_to k = stub (fun s -> Printf.bprintf s "  mov xp, %d\n  mov xs, %d\n  jmp %s\n" k Ir.bailed (leave_block ())) in
+  (* A value whose tag is [tag], else bail: the tag in x1. *)
+  let block_of v tag k =
+    let b = bail_to k in
+    pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(%s)\n  and x1, x1, 255\n" v b v;
+    match tag with Some t -> pr "  bne %s, x1, %d\n" b t | None -> ()
   in
   (* A frame about to be entered at [at], above the limit: the stack is short, the interpreter's frames would want a longer
      one under a limit of memory, or the limit of depth is reached; for the last two, the frame entered at the site, as the
@@ -146,7 +167,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Enter (r, base, site) ->
       let slow = deep_stub ("r" ^ string_of_int r) (reg_of base) site in
       pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) slow r
-    | Ir.Move (r, v) -> pr "  %s r%d, %s\n" (if fn.kinds.(r) = Kint then "mov" else "dmov") r (operand v)
+    | Enter_or_bail (r, k) -> pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) (bail_to k) r
+    | Ir.Move (r, v) -> pr "  %s r%d, %s\n" (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (operand v)
     | Incr r -> pr "  add r%d, r%d, 2\n" r r
     | Op (((Add | Sub) as op), r, x, y, site) ->
       let x' = in_reg Kint x in
@@ -210,6 +232,68 @@ let func b ~prefix ~nested (fn : Ir.func) =
           | Ir.Int n -> pr "  mulo r%d, %s, %d\n" r x' n
           | _ -> pr "  mov x1, %s\n  rsh x1, x1, 1\n  mulo r%d, %s, x1\n" (operand y) r x'));
       pr "  bo %s\n" (bl l)
+    | Unbox (r, v, how, k) ->
+      let v = in_reg Kval v in
+      (match how with
+       | Ir.Only_float -> block_of v (Some 1) k; pr "  mov x2, i64:0(%s)\n  dmov r%d, d:0(x2)\n" v r
+       | Only_int -> block_of v (Some 0) k; pr "  mov x2, i64:0(%s)\n  sub r%d, x2, 1\n" v r
+       | Number ->
+         block_of v None k;
+         let f = label () and d = label () in
+         pr "  beq %s, x1, 1\n  bne %s, x1, 0\n  mov x2, i64:0(%s)\n  rsh x2, x2, 1\n  i2d r%d, x2\n  jmp %s\n" f (bail_to k) v r d;
+         pr "%s:\n  mov x2, i64:0(%s)\n  dmov r%d, d:0(x2)\n%s:\n" f v r d)
+    | Box (r, x) ->
+      (match x with
+       | Ir.Float _ | Reg _ when (match x with Reg q -> fn.kinds.(q) = Kfloat | _ -> true) ->
+         let x = in_reg Kfloat x in
+         take 4;
+         pr "  mov i64:0(x5), %s\n  dmov d:8(x5), %s\n  mov i64:16(x5), %s\n  add x6, x5, 8\n  mov i64:24(x5), x6\n  add r%d, x5, 24\n"
+           (header 1 253) x (header 1 1) r
+       | _ ->
+         take 2;
+         (match x with Reg q -> pr "  add x6, r%d, 1\n" q | _ -> pr "  mov x6, %s\n" (match x with Int n -> tagged n | v -> operand v));
+         pr "  mov i64:0(x5), %s\n  mov i64:8(x5), x6\n  add r%d, x5, 8\n" (header 1 0) r)
+    | Share (Reg q) ->
+      let d = label () and a = label () and rr = label () in
+      pr "  and x0, r%d, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(r%d)\n  and x1, x1, 255\n  beq %s, x1, 3\n  beq %s, x1, 4\n  bne %s, x1, 8\n"
+        q d q a rr d;
+      pr "%s:\n  mov i64:16(r%d), 1\n  jmp %s\n%s:\n  mov x2, i64:0(r%d)\n  mov i64:24(x2), 1\n%s:\n" rr q d a q d
+    | Share _ -> ()
+    | Key_get (r, m, c, i, n, k) ->
+      let m = in_reg Kval m in
+      block_of m (Some 8) k;
+      pr "  mov x2, i64:0(%s)\n  bne %s, x2, c%d\n  mov x3, i64:8(%s)\n" m (bail_to k) c m;
+      if n then pr "  mov x4, i64:-8(x3)\n  ursh x4, x4, 10\n  ble %s, x4, %d\n" (bail_to k) i;
+      pr "  mov r%d, i64:%d(x3)\n" r (8 * i)
+    | Field_get (r, v, sid, i, k) ->
+      let v = in_reg Kval v in
+      block_of v (Some 4) k;
+      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov x3, i64:8(%s)\n  mov r%d, i64:%d(x3)\n" v (bail_to k)
+        (tagged sid) v r (8 * i)
+    | Get (r, a, i, site) -> pr "  mov r%d, %s\n" r (check_index ~t:"i64" a i site Ir.err_read)
+    | Put (a, i, v, site) ->
+      ignore (check_index ~t:"i64" a i site Ir.err_write);
+      (match i with
+       | Ir.Reg q -> pr "  lsh x0, r%d, 2\n  add x0, x0, %s\n  sub x0, x0, 8\n" q (arr a)
+       | Int k -> pr "  add x0, %s, %d\n" (arr a) (8 * (k - 1))
+       | _ -> invalid_arg "index");
+      pr "  call pmod, caml_modify, x0, %s\n" (in_reg Kval v)
+    | Record (r, tag, c, vals) ->
+      let n = Array.length vals in
+      take (n + 5);
+      pr "  mov i64:0(x5), %s\n" (header n 0);
+      Array.iteri (fun j v -> pr "  mov i64:%d(x5), %s\n" (8 * (j + 1)) (operand v)) vals;
+      let o = 8 * (n + 1) in
+      pr "  mov i64:%d(x5), %s\n  mov i64:%d(x5), c%d\n  add x6, x5, 8\n  mov i64:%d(x5), x6\n  mov i64:%d(x5), 3\n  add r%d, x5, %d\n"
+        o (header 3 tag) (o + 8) c (o + 16) (o + 24) r (o + 8)
+    | Reserve (need, p) when !need > 0 ->
+      let gc =
+        stub (fun s ->
+            Printf.bprintf s "  mov %s, %d\n  mov xp, %d\n  mov xs, %d\n  jmp %s\n" (cx Ir.io_a) !need p Ir.gc (leave_block ()))
+      in
+      pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov x6, %s\n  mov x6, i64:0(x6)\n  ublt %s, x5, x6\n"
+        (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) gc
+    | Reserve _ -> ()
     | Elem_at (r, a, i) -> pr "  dmov r%d, d:-8(%s, r%d, 4)\n" r (arr a) i
     | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
@@ -234,14 +318,14 @@ let func b ~prefix ~nested (fn : Ir.func) =
         Printf.bprintf s "%s:\n" due;
         if here then begin
           (* What this quantum used is in spent already. One block of the function spills and leaves, for every tick. *)
-          Printf.bprintf s "  mov %s, fuel\n  mov xp, %d\n  jmp %s\n" (cx Ir.io_quantum) p (leave_block ())
+          Printf.bprintf s "  mov %s, fuel\n  mov xp, %d\n  mov xs, %d\n  jmp %s\n" (cx Ir.io_quantum) p Ir.fuel_out (leave_block ())
         end else Printf.bprintf s "  mov %s, 1\n" (cx Ir.io_leave);
         Printf.bprintf s "%s:\n  mov %s, x2\n  mov fuel, x2\n  jmp %s\n%s:\n  mov %s, b\n" go_on (cx Ir.io_quantum) back over
           (cx Ir.io_frame);
         stop s Ir.too_long
       in
       if leave then begin
-        let out = stub (fun s -> Printf.bprintf s "  mov xp, %d\n  jmp %s\n" p (leave_block ())) in
+        let out = stub (fun s -> Printf.bprintf s "  mov xp, %d\n  mov xs, %d\n  jmp %s\n" p Ir.fuel_out (leave_block ())) in
         pr "  sub fuel, fuel, 1\n  blt %s, fuel, 0\n  mov x0, %s\n  bne %s, x0, 0\n%s:\n" out (cx Ir.io_leave) out back
       end else begin
         let out = stub refill in
@@ -270,16 +354,22 @@ let func b ~prefix ~nested (fn : Ir.func) =
       stop b Ir.returned
   in
   pr "%s%s: func %s, i64, %s\n" prefix name (ty fn.result) (args_of ~nested fn);
-  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:xp, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, d:y0\n";
+  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:xp, i64:xs, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, i64:x5, i64:x6, d:y0\n";
+  Array.iteri (fun j _ -> pr "  local i64:c%d\n" j) fn.consts;
   Array.iteri (fun r k -> if not (is_param r) then pr "  local %s:r%d\n" (ty k) r) fn.kinds;
   Array.iteri (fun a _ -> pr "  local i64:%s, i64:%s\n" (arr a) (len a)) fn.arrays;
+  (* The value stack at the frame, and the constants, once per entry: nothing moves them while native code runs. *)
+  let setup () =
+    if Array.length fn.arrays > 0 || Array.length fn.consts > 0 || Array.exists (fun (v : Ir.var) -> v.kind = Kval) fn.vars
+    then pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n" (cx 2);
+    Array.iteri (fun j _ -> pr "  mov x0, i64:%d(vp)\n  mov c%d, i64:0(x0)\n" (8 * (fn.frame + j)) j) fn.consts
+  in
   let guards () =
-    if Array.length fn.arrays > 0 then pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n" (cx 2);
     Array.iteri
-      (fun a (slot, written) ->
+      (fun a (slot, written, store) ->
          pr "  mov x0, i64:%d(vp)\n  and x1, x0, 1\n  bne %s, x1, 0\n" (8 * slot) lf;
          pr "  mov x1, i64:-8(x0)\n  and x1, x1, 255\n  bne %s, x1, 3\n  mov x2, i64:0(x0)\n" lf;
-         pr "  mov x1, i64:16(x2)\n  mov x3, i64:-8(x1)\n  and x3, x3, 255\n  bne %s, x3, 0\n" lf;
+         pr "  mov x1, i64:16(x2)\n  mov x3, i64:-8(x1)\n  and x3, x3, 255\n  bne %s, x3, %d\n" lf store;
          if written then pr "  mov x3, i64:24(x2)\n  bne %s, x3, 3\n" lf;
          pr "  mov %s, i64:0(x1)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n  mov x4, i64:8(x2)\n  rsh x4, x4, 1\n" (arr a);
          pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a))
@@ -291,13 +381,17 @@ let func b ~prefix ~nested (fn : Ir.func) =
     pr "  bgt %s, entry, 0\n" lr;
     (* A slot of the int stack must hold an OCaml integer when the outermost frame writes it, whatever a register held. *)
     Array.iteri (fun r k -> if k = Ir.Kint && not (is_param r) then pr "  mov r%d, 0\n" r) fn.kinds;
+    Array.iteri (fun r k -> if k = Ir.Kval then pr "  mov r%d, 1\n" r) fn.kinds;
+    setup ();
     guards ();
     pr "  jmp %s\n%s:\n  mov ip, %s\n  lsh xa, b, 3\n  add ip, ip, xa\n  mov fp, %s\n  add fp, fp, xa\n" (bl 0) lr (cx 0) (cx 1);
+    setup ();
     Array.iter
       (fun (v : Ir.var) ->
          match v.kind with
          | Kint -> pr "  mov r%d, i64:%d(ip)\n  sub r%d, r%d, 1\n" v.reg (8 * v.slot) v.reg v.reg
-         | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot))
+         | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot)
+         | Kval -> pr "  mov r%d, i64:%d(vp)\n" v.reg (8 * v.slot))
       fn.vars;
     guards ();
     if Array.length fn.resumes > 0 then
@@ -315,8 +409,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   if !leave_used then begin
     pr "%s:\n" (leave_block ());
     spill b;
-    pr "  mov %s, xp\n" (cx Ir.io_point);
-    stop b Ir.fuel_out
+    pr "  mov %s, xp\n  mov %s, fuel\n  mov %s, xs\n  ret %s, -1\n" (cx Ir.io_point) (cx Ir.io_fuel) (cx Ir.io_status) zero
   end;
   if !error_used then begin
     pr "%s:\n" (error_block ());
@@ -329,7 +422,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   end;
   pr "  endfunc\n"
 
-let used = [ "sqrt"; "exp"; "log"; "sin"; "cos"; "tan"; "asin"; "acos"; "atan"; "fabs"; "pow" ]
+let used = [ "sqrt"; "exp"; "log"; "sin"; "cos"; "tan"; "asin"; "acos"; "atan"; "fabs"; "pow"; "caml_modify" ]
 
 (* The unit as one module: each function, and the single entry [e] of the first one, which the C glue calls with the
    context and which gives the status. *)
@@ -339,7 +432,7 @@ let emit (fns : Ir.func array) =
   let b = Buffer.create 4096 in
   let pr fmt = Printf.bprintf b fmt in
   pr "m%s: module\n  export %se\n  import %s\n" prefix prefix (String.concat ", " used);
-  pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\n";
+  pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\npmod: proto i64:a, i64:b\n";
   Array.iteri
     (fun k (fn : Ir.func) ->
        pr "P%s%d: proto %s, i64, %s\n" prefix k (ty fn.result) (args_of ~nested:false fn);
@@ -364,12 +457,13 @@ let emit (fns : Ir.func array) =
     (fun (v : Ir.var) ->
        match v.kind with
        | Kint -> pr "  mov r%d, i64:%d(ip)\n  sub r%d, r%d, 1\n" v.reg (8 * v.slot) v.reg v.reg
-       | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot))
+       | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot)
+       | Kval -> invalid_arg "Mirtext: a value as a parameter")
     f0.params;
   pr "  call P%s0, %sf0, res, fuel, cx, b, entry, fuel%s\n  blt %sX, fuel, 0\n" prefix prefix
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", r%d" v.reg) f0.params))) prefix;
   (match f0.result with
-   | Kint -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
+   | Kint | Kval -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
    | Kfloat -> pr "  dmov d:%d(fp), res\n" (8 * f0.frame));
   pr "  mov %s, fuel\n  ret 0\n%sX:\n  mov x0, %s\n  ret x0\n  endfunc\n  endmodule\n" (cx Ir.io_fuel) prefix (cx Ir.io_status);
   Buffer.contents b, prefix ^ "e"

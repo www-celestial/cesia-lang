@@ -3,6 +3,9 @@ open Types
 
 val new_proto : file:int -> m:int -> Ast.func -> proto
 
+(** The keys of the maps that a literal of these names makes, the same for every such literal. *)
+val map_keys : string array -> keys
+
 (** Gives the shape of a struct, declared in module [m], the types of its fields, which a write checks. *)
 val set_checks : world -> int -> Ast.func -> unit
 

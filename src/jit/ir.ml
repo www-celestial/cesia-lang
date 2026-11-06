@@ -1,5 +1,6 @@
-type kind = Kint | Kfloat
-type value = Reg of int | Int of int | Float of float
+type kind = Kint | Kfloat | Kval
+type value = Reg of int | Int of int | Float of float | Word of int
+type unbox = Number | Only_float | Only_int
 type cmp = Eq | Ne | Lt | Le | Gt | Ge
 type op = Add | Sub | Mul | Div | Mod | Fadd | Fsub | Fmul | Fdiv | Fpow
 
@@ -23,6 +24,16 @@ type ins =
   | Burn
   | Frame of int * int
   | Enter of int * int * int
+  | Enter_or_bail of int * int
+  | Unbox of int * value * unbox * int
+  | Box of int * value
+  | Share of value
+  | Key_get of int * value * int * int * bool * int
+  | Field_get of int * value * int * int * int
+  | Get of int * int * value * int
+  | Put of int * value * value * int
+  | Record of int * int * int * value array
+  | Reserve of int ref * int
 
 type term =
   | Jump of int
@@ -39,7 +50,8 @@ type func = {
   params : var array;
   result : kind;
   vars : var array;
-  arrays : (int * bool) array;
+  arrays : (int * bool * int) array;
+  consts : Types.t array;
   kinds : kind array;
   blocks : block array;
   resumes : int array;
@@ -85,6 +97,9 @@ let too_long = 6
 let returned = 7
 let frames_out = 8
 let reloaded = 9
+let bailed = 10
+let gc = 11
+let cx_young = 30
 let err_add = 1
 let err_sub = 2
 let err_mul = 3

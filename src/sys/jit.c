@@ -95,6 +95,7 @@ value cesia_jit_load(value text, value names) {
     static const char *names[] = { "sqrt", "exp", "log", "sin", "cos", "tan", "asin", "acos", "atan", "fabs", "pow" };
     void *fs[] = { sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs, pow };
     for (int k = 0; k < 11; k++) MIR_load_external(mir, names[k], fs[k]);
+    MIR_load_external(mir, "caml_modify", caml_modify);
   }
   MIR_scan_string(mir, String_val(text));
   MIR_module_t m = DLIST_TAIL(MIR_module_t, *MIR_get_module_list(mir));
@@ -114,8 +115,9 @@ value cesia_jit_load(value text, value names) {
 }
 
 /* The one entry: f(cx) gives a status. cx holds the stacks (ints and io are OCaml int arrays, whose cells hold 2n + 1;
-   floats raw doubles; values an array of values), then the cells of io as raw integers, copied back after. Nothing here
-   allocates, so no collection moves the stacks while native code runs. */
+   floats raw doubles; values an array of values), then the cells of io as raw integers, copied back after, and at 30 and
+   31 the addresses of the young heap's pointer and limit, where native code allocates in room it checked first. Nothing
+   here collects, so nothing moves while native code runs. */
 typedef intnat entry(int64_t *);
 
 value cesia_jit_call(value f, value ints, value floats, value vals, value io) {
@@ -126,6 +128,8 @@ value cesia_jit_call(value f, value ints, value floats, value vals, value io) {
   cx[1] = (int64_t) floats;
   cx[2] = (int64_t) vals;
   for (mlsize_t k = 3; k < n; k++) cx[k] = Long_val(Field(io, k));
+  cx[30] = (int64_t) &Caml_state->young_ptr;
+  cx[31] = (int64_t) &Caml_state->young_limit;
   intnat status = ((entry *) Nativeint_val(f))(cx);
   for (mlsize_t k = 3; k < n; k++) Field(io, k) = Val_long(cx[k]);
   return Val_long(status);
