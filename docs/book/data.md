@@ -174,6 +174,52 @@ num.Std(units) -->
 num.Polyfit(1, [1.0, 2.0, 3.0], [3.0, 5.0, 7.0]) -->
 ```
 
+## Random samples
+
+[std/random] draws numbers for samples, games and simulations. [random.Int] gives a whole number between two, both included,
+[random.Float] a float from 0 up to 1, [random.Pick] an element of a list, and [random.Shuffle] the list in another order:
+
+```cesia
+use std/random
+roll = random.Int(1, 6)
+roll >= 1 and roll <= 6 -->
+random.Float() < 1 -->
+random.Pick(["tea", "coffee"]) in ["tea", "coffee"] -->
+list.Sort(random.Shuffle([3, 1, 2])) -->
+```
+
+### The same numbers again
+
+Each run takes a new [seed](glossary.md#seed) from the system, so it draws other numbers. [random.Seed] tells the seed of a
+run, and `cesia run --seed N` runs again with the seed N, so with the same numbers: a simulation that went wrong can be
+replayed. A seed gives the same numbers on every system and every version of Cesia.
+
+```cesia norun
+(* dice.ce: how many rolls of two dice until a double six *)
+use std/random
+use std/io
+use std/list
+use std/text
+
+defn rolls()
+  n = 1
+  while random.Int(1, 6) + random.Int(1, 6) != 12
+    n = n + 1
+  end
+  n
+end
+
+games = [rolls() for k in 1..10000]
+io.Print("seed $(random.Seed()): $(text.Decimals(2, list.Mean(games))) rolls on average")
+```
+
+```bash
+cesia run dice.ce             # seed 712762694: 35.57 rolls on average
+cesia run --seed 42 dice.ce   # the same numbers at each run
+```
+
+These numbers are for samples and games, never for secrets: a password or a key comes from [std/crypto].
+
 ## Next
 
 You can ask questions of your data. The next chapter, [JSON and CSV](json.md), reads data from other programs and writes it for them,

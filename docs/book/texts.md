@@ -123,6 +123,18 @@ value.Text(42) -->
 value.Text([1, 2]) -->
 ```
 
+### Decimals
+
+[text.Decimals] writes a number with so many digits after the point, rounded to the nearest, for a price or a measure. A
+half goes away from zero, as [math.Round] does:
+
+```cesia
+text.Decimals(2, 3.14159) -->
+text.Decimals(2, 42) -->
+text.Decimals(0, 2.5) -->
+"$(text.Decimals(1, 1155.25)) hours" -->
+```
+
 ## A small report
 
 Put together, these functions turn raw lines into something readable. Here, each line of a text holds a name and a score:

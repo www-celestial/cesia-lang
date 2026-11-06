@@ -1,7 +1,7 @@
 # Files
 
-In this chapter your program works with the machine: it reads and writes files, makes and lists folders, takes arguments from
-its command line, runs other programs, and reads the clock. All of it is in [std/sys]. Each of these is a [side effect](glossary.md#side-effect), a change outside the
+In this chapter your program works with the machine: it reads and writes files, makes and lists folders, takes apart their
+paths, takes arguments and flags from its command line, runs other programs, and reads the clock. Most of it is in [std/sys]. Each of these is a [side effect](glossary.md#side-effect), a change outside the
 program, so each function says the permission it needs. The examples run with `--allow read,write`, in a folder that holds
 `todo.txt`:
 
@@ -81,6 +81,49 @@ info.Size -->
 info.IsDir -->
 ```
 
+## Paths
+
+[std/path] takes a path apart without touching the disk: [path.Base] is its last part, [path.Dir] the folder that holds it,
+[path.Ext] the extension with its dot, [path.Stem] the last part without it. [path.Join] puts a name after a folder:
+
+```cesia
+use std/path
+path.Base("photos/2026/beach.JPG") -->
+path.Dir("photos/2026/beach.JPG") -->
+path.Ext("photos/2026/beach.JPG") -->
+path.Stem("photos/2026/beach.JPG") -->
+path.Join("photos/2026", "beach.jpg") -->
+```
+
+A path is written with `/`, on Windows too, which takes it as well as `\`.
+
+### Every file under a folder
+
+[sys.List] gives the names of one folder. [sys.Walk] goes down into the folders inside it, and gives the path of every file,
+in order. A symbolic link is listed, never followed, so a link can't make it loop:
+
+```cesia allow=read,write
+use std/list
+sys.Write("archive/2026/june.txt", "sold 3\n") -->
+sys.Walk("archive") -->
+list.Filter(p -> path.Ext(p) == ".txt", result.Unwrap(sys.Walk("."))) -->
+```
+
+Together they rename a whole tree. This one gives every photo of a folder the extension `.jpg`, in lower case:
+
+```cesia norun
+use std/path
+use std/sys
+use std/text
+use std/list
+defn renamePhotos(folder)
+  for p in list.Filter(p -> text.Lower(path.Ext(p)) == ".jpeg", sys.Walk(folder)?)
+    sys.Rename(p, path.Join(path.Dir(p), "$(path.Stem(p)).jpg"))?
+  end
+  result.Ok(missing)
+end
+```
+
 ## Arguments
 
 [sys.Args] holds the words written after the file on the command line, as texts:
@@ -102,6 +145,24 @@ for path in sys.Args
   io.Print(path, n)
 end
 ```
+
+### Flags
+
+The flags of a command line, `-v` or `--max 5`, are read by [flags.Parse]. It takes the defaults, which say what each flag
+takes, and the words; it gives the flags and the other words. `false` makes a switch, a number or a text takes a value, and
+a flag that the defaults don't name is an `Err` that says which flags there are:
+
+```cesia
+use std/flags
+args = ["-i", "--max", "2", "bread", "todo.txt"]
+a = result.Unwrap(flags.Parse({i: false, max: 0}, args))
+a.Flags -->
+a.Words -->
+flags.Parse({i: false, max: 0}, ["--min", "2"]) -->
+```
+
+A name of one letter is written with one dash, a longer one with two: `maxCount` is `--max-count`. In a program, the words
+are [sys.Args]: `flags.Parse({i: false, max: 0}, sys.Args)`.
 
 ## Standard input and the exit code
 
@@ -126,9 +187,14 @@ input = result.Unwrap(sys.ReadInput())
 n = value.Len(text.Lines(input))
 io.Print(n, "lines")
 if n == 0
+  io.PrintError("lines: nothing came in")
   sys.Exit(1)
 end
 ```
+
+[io.PrintError] writes as [io.Print] does, on the
+[standard error](glossary.md#standard-input-and-output): what went wrong reaches the screen even when the output goes to a
+file or a pipe, as in `cesia run lines.ce < sales.csv > count.txt`.
 
 ## The environment
 
@@ -176,7 +242,7 @@ sys.Now() - start >= 0.05 -->
 
 ### Dates
 
-For dates, [std/date] has a [date.Date] struct in UTC, and the functions that go with it:
+For dates, [std/date] has a [date.Date] struct, in UTC unless its `Offset` says otherwise, and the functions that go with it:
 
 ```cesia
 use std/date
@@ -187,6 +253,21 @@ date.AddDays(30, d) then date.FormatDate() -->
 date.DaysBetween(d, date.Date(2026, 12, 25)) -->
 date.Parse("2026-12-25") -->
 ```
+
+### Here and now
+
+[date.Local] gives the date of an instant on the clock of this machine, with the `Offset` of its time zone, in seconds ahead
+of UTC; [date.Format] writes it, and [date.Parse] reads it back. [date.Utc] gives the same instant in UTC, and [date.ToUnix] of
+both is the same:
+
+```cesia
+here = date.Local(sys.Now())
+date.Format(here) -->
+date.ToUnix(here) == date.ToUnix(date.Utc(here)) -->
+date.Parse("2026-11-06T14:30:00+03:00") then result.MapOk(date.Utc) then result.MapOk(date.Format) -->
+```
+
+The time zone is the system's: `TZ=Asia/Tokyo cesia run app.ce` runs a program on the clock of Tokyo.
 
 ## Next
 

@@ -38,8 +38,8 @@ language.
 10. [Types](types.md): types on fields, parameters and results, `?` for missing, interfaces.
 11. [Packages](packages.md): `use`, folders as packages, `cesia.toml`, tasks, code from other projects.
 12. [Permissions](permissions.md): `--allow`, `--limit`, and the permissions of a task.
-13. [Files](files.md): reading, writing, folders, arguments, other programs and the clock.
-14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file.
+13. [Files](files.md): reading, writing, folders and paths, arguments and flags, other programs, the clock and local time.
+14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file, random samples.
 15. [JSON and CSV](json.md): reading, writing, and checking what comes in.
 16. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
 17. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.

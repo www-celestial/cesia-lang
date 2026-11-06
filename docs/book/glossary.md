@@ -201,6 +201,12 @@ A place where a program runs with only the rights it was given. A Cesia program 
 a capability: the right to one kind of thing, within a scope. See
 [Permissions](permissions.md).
 
+## Seed
+
+The number a generator of random numbers starts from: the same seed gives the same numbers, so a run can be replayed. A Cesia
+run takes one from the system, [random.Seed] tells it, and `cesia run --seed N` gives it: see
+[Data](data.md#the-same-numbers-again).
+
 ## Short-circuit evaluation
 
 `and` and `or` stop as soon as the answer is known, so their right side may never run: `false and f()` never calls `f`. See
@@ -213,8 +219,9 @@ touches the machine needs a permission, so the command line says which a program
 
 ## Standard input and output
 
-The text a program reads, and the text it writes, in a terminal or a pipe of the shell. In Cesia [io.Print] writes to the
-standard output, and [sys.ReadInput] reads the whole standard input: see [Files](files.md#standard-input-and-the-exit-code).
+The text a program reads, and the text it writes, in a terminal or a pipe of the shell; the standard error is a second
+output, for what went wrong. In Cesia [io.Print] writes to the standard output, [io.PrintError] to the standard error, and
+[sys.ReadInput] reads the whole standard input: see [Files](files.md#standard-input-and-the-exit-code).
 
 ## String interpolation
 
