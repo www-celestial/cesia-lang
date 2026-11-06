@@ -29,7 +29,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libffi-dev libsodium-dev libsqlite3-0
       - run: opam install -y dune
       # The binary, and the plugins it loads from its build: the JIT, and SQLite's natives.
-      - run: opam exec -- dune build --profile release ./src/bin/main.exe ./src/jit/cesia_jit.cmxs ./src/sqlite/cesia_sqlite.cmxs
+      - run: opam exec -- dune build --profile release ./src/bin/main.exe ./src/jit/cesia_jit.cmxs ./src/sqlite/cesia_sqlite.cmxs ./src/debug/cesia_debug.cmxs
       - name: Site
         run: _build/default/src/bin/main.exe doc --site _site
       # What the build keeps for itself: the programs of the book's pages and their folders, and what lets the next build

@@ -202,6 +202,7 @@ let index_count = plain "An array has 2 dimensions: use one or two indexes."
 let range_too_long = plain "This range has too many elements."
 let no_on_stop = plain "The debugger has no function OnStop(stop)."
 let no_main = plain "This tool has no function Main()."
+let debug_plugin reason = plain ("The debugger's engine didn't load: " ^ reason ^ ".")
 let need_frame a = plain (Printf.sprintf "Eval needs a frame of a stop, as stop.Frames[1], not %s." a)
 let bad_answer a =
   plain (Printf.sprintf "OnStop must return \"continue\", \"step\", \"next\" or \"out\", not %s." a)

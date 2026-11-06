@@ -202,9 +202,8 @@ let complete ctx (a : t array) =
        | exception Pos.Load_error { pos; _ } ->
          Pos.line pos < Pos.line fin || (Pos.line pos = Pos.line fin && Pos.col pos < Pos.col fin))
 
+(* The binary holds these names and the permission each needs: see src/sys/sys_modules.ml. *)
 let natives =
   [ "Eval", Native.nat ~perm:Debug ~params:[| "code"; "frame" |] "Eval" 1 2 eval;
     "Reload", Native.nat ~perm:Debug "Reload" 0 0 reload;
     "Complete", Native.nat ~params:[| "code" |] "Complete" 1 1 complete ]
-
-let install w = w.debug.test <- test

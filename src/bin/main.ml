@@ -363,6 +363,7 @@ let jit_mode () =
   Tier.available := true;
   Tier.loader := load_jit;
   Cesia_sys.Sys_modules.sqlite_loader := (fun () -> load_plugin "sqlite" "cesia_sqlite.cmxs");
+  Cesia_sys.Sys_modules.debug_loader := (fun () -> load_plugin "debug" "cesia_debug.cmxs");
   match Sys.getenv_opt "CESIA_JIT" with
   | Some "off" -> Tier.mode := Tier.off
   | Some "always" -> Tier.mode := Tier.always

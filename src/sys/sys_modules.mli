@@ -18,3 +18,10 @@ val sqlite3 : (string * (ctx -> t array -> t)) list ref
 
 (** Loads that plugin, at the first call of sqlite3: [Error] says why it didn't. [bin/main.ml] sets it. *)
 val sqlite_loader : (unit -> (unit, string) result) ref
+
+(** The code of std/debug's engine, which its plugin cesia_debug.cmxs gives when it loads: its natives for a poll, and the
+    test of a condition of a breakpoint. *)
+val debugger : ((Poll.t -> (string * t) list) * (ctx -> int -> string -> bool)) option ref
+
+(** Loads that plugin, at the first call of one of its natives: [Error] says why it didn't. [bin/main.ml] sets it. *)
+val debug_loader : (unit -> (unit, string) result) ref
