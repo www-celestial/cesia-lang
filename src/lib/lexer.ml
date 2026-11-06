@@ -176,12 +176,22 @@ let number st start_pos sp =
   end
 
 let rec scan st ~in_code : token array =
-  let out = Dynarray.create () in
+  (* An array that doubles, faster than the dynamic array of the Stdlib: lexing is half of the start of a big program. *)
+  let out = ref (Array.make (if in_code then 8 else 1024) { t = EOF; pos = Pos.make 1 1; sp = false }) and count = ref 0 in
+  let add tok =
+    if !count = Array.length !out then begin
+      let bigger = Array.make (2 * !count) tok in
+      Array.blit !out 0 bigger 0 !count;
+      out := bigger
+    end;
+    !out.(!count) <- tok;
+    incr count
+  in
   let s = st.src and n = String.length st.src in
   let sp = ref true in
   let depth = ref 0 in
   let fin = ref false in
-  let push t pos = Dynarray.add_last out { t; pos; sp = !sp }; sp := false in
+  let push t pos = add { t; pos; sp = !sp }; sp := false in
   while not !fin do
     if st.i >= n then begin
       if in_code then error st (pos_at st st.i) Messages.text_not_closed;
@@ -189,7 +199,11 @@ let rec scan st ~in_code : token array =
     end else begin
       let c = s.[st.i] in
       match c with
-      | ' ' | '\t' | '\r' -> st.i <- st.i + 1; sp := true
+      | ' ' | '\t' | '\r' ->
+        let j = ref (st.i + 1) in
+        while !j < n && (match s.[!j] with ' ' | '\t' | '\r' -> true | _ -> false) do incr j done;
+        st.i <- !j;
+        sp := true
       | '\n' ->
         let pos = pos_at st st.i in
         st.i <- st.i + 1;
@@ -207,13 +221,15 @@ let rec scan st ~in_code : token array =
       | _ when is_digit c ->
         let pos = pos_at st st.i in
         let tok = number st pos !sp in
-        Dynarray.add_last out tok;
+        add tok;
         sp := false
       | _ when is_name_start c ->
         let start = st.i in
         let pos = pos_at st st.i in
-        while st.i < n && is_name s.[st.i] do st.i <- st.i + 1 done;
-        push (word_token st pos (String.sub s start (st.i - start))) pos
+        let j = ref (start + 1) in
+        while !j < n && is_name s.[!j] do incr j done;
+        st.i <- !j;
+        push (word_token st pos (String.sub s start (!j - start))) pos
       | _ ->
         let pos = pos_at st st.i in
         let c2 = peek_at st 1 in
@@ -261,7 +277,7 @@ let rec scan st ~in_code : token array =
   done;
   push NL (pos_at st st.i);
   push EOF (pos_at st st.i);
-  Dynarray.to_array out
+  Array.sub !out 0 !count
 
 and text st start_pos =
   let s = st.src and n = String.length st.src in
