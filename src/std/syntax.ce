@@ -1,0 +1,202 @@
+(** The colors of Cesia code: a line is read in one pass, by states, and gives words with a role. Nothing here panics, whatever
+    the line: unfinished texts and comments only carry their state to the next line. Cemacs and the docs site color with it. *)
+use cesia
+
+(** The role of a keyword: an index in the syntax colors of the theme. *)
+Keyword = 1
+(** The role of a name that is called. *)
+Name = 2
+(** The role of a text, interpolations included. *)
+String = 3
+(** The role of a number. *)
+Number = 4
+(** The role of a comment. *)
+Comment = 5
+(** The role of everything else. *)
+Plain = 6
+(** The role of a name after a dot. *)
+Field = 7
+
+(** The state at the start of a file: in no comment and in no text. *)
+FirstState = {Comment: 0, Text: false}
+
+keywords = cesia.Keywords()
+
+isDigit(c) = c >= "0" and c <= "9"
+isNameStart(c) = c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or ByteLength(c) > 1
+isName(c) = isNameStart(c) or isDigit(c)
+isSpace(c) = c == " " or c == "\t" or c == "\r"
+
+defn commentEnd(cs, from, n, depth)
+  (** Where a comment that holds depth openings ends: {At, Depth}, at being the first character after what was read. *)
+  i = from
+  while i <= n and depth > 0
+    if cs[i] == "(" and cs[i + 1] == "*"
+      depth += 1
+      i += 2
+    else if cs[i] == "*" and cs[i + 1] == ")"
+      depth -= 1
+      i += 2
+    else
+      i += 1
+    end
+  end
+  {At: Min(i, n + 1), Depth: depth}
+end
+
+defn textEnd(cs, from, n)
+  (** Where a text that is open ends: {At, Open}, at being the first character after what was read. Escapes take two characters. *)
+  i = from
+  closed = false
+  while i <= n and not closed
+    c = cs[i]
+    if c == "\\" or (c == "\"" and cs[i + 1] == "\"") or (c == "$" and cs[i + 1] == "$")
+      i += 2
+    else if c == "\""
+      closed = true
+      i += 1
+    else
+      i += 1
+    end
+  end
+  {At: Min(i, n + 1), Open: not closed}
+end
+
+defn numberEnd(cs, from, n)
+  (** The end of a number, which may hold letters, digits, underscores and dots followed by a digit. *)
+  i = from + 1
+  while i <= n and (isName(cs[i]) or (cs[i] == "." and isDigit(cs[i + 1])))
+    i += 1
+  end
+  i
+end
+
+defn nameEnd(cs, from, n)
+  i = from + 1
+  while i <= n and isName(cs[i])
+    i += 1
+  end
+  i
+end
+
+defn spaceEnd(cs, from, n)
+  i = from + 1
+  while i <= n and isSpace(cs[i])
+    i += 1
+  end
+  i
+end
+
+defn nameRole(word, before, after)
+  (** The role of a name, from the character before it and the one after it. *)
+  if before == "."
+    Field
+  else if word in keywords
+    Keyword
+  else if after == "("
+    Name
+  else
+    Plain
+  end
+end
+
+defn add(role, words, out)
+  (** Adds a word to the tokens. Two plain words in a row make one. *)
+  last = Len(out)
+  if role == Plain and last > 0 and out[last][1] == Plain
+    Concat(Take(last - 1, out), [[Plain, "$(out[last][2])$(words)"]])
+  else
+    Append([role, words], out)
+  end
+end
+
+defn Tokens(line, state)
+  (** Reads one line given the state at its start: the words with their roles, in order and with every character, and the state at its end.
+
+        Tokens("defn f", FirstState).Tokens[1] --> [1, "defn"] *)
+  (* cs holds an empty text before and two after the characters, so that looking around never leaves the list. *)
+  cs = Concat([""], Concat(Chars(line), ["", ""]))
+  n = Len(cs) - 2
+  out = []
+  depth = state.Comment
+  inText = state.Text
+  i = 2
+  while i <= n
+    start = i
+    if depth > 0
+      r = commentEnd(cs, i, n, depth)
+      depth = r.Depth
+      i = r.At
+      out = add(Comment, Join("", cs[start:i - 1]), out)
+    else if inText
+      r = textEnd(cs, i, n)
+      inText = r.Open
+      i = r.At
+      out = add(String, Join("", cs[start:i - 1]), out)
+    else
+      c = cs[i]
+      if c == "(" and cs[i + 1] == "*"
+        r = commentEnd(cs, i + 2, n, 1)
+        depth = r.Depth
+        i = r.At
+        out = add(Comment, Join("", cs[start:i - 1]), out)
+      else if c == "\""
+        r = textEnd(cs, i + 1, n)
+        inText = r.Open
+        i = r.At
+        out = add(String, Join("", cs[start:i - 1]), out)
+      else if isDigit(c)
+        i = numberEnd(cs, i, n)
+        out = add(Number, Join("", cs[start:i - 1]), out)
+      else if isNameStart(c)
+        i = nameEnd(cs, i, n)
+        word = Join("", cs[start:i - 1])
+        out = add(nameRole(word, cs[start - 1], cs[i]), word, out)
+      else if isSpace(c)
+        i = spaceEnd(cs, i, n)
+        out = add(Plain, Join("", cs[start:i - 1]), out)
+      else
+        i += 1
+        out = add(Plain, c, out)
+      end
+    end
+  end
+  {Tokens: out, State: {Comment: depth, Text: inText}}
+end
+
+(** Nothing is known yet but the state at the start of the first line.
+
+      BlankColors().Known --> 1 *)
+BlankColors() = {Starts: [FirstState], Known: 1}
+
+(** Can this line change the state? Only a quote or a comment mark can open or close a text or a comment. *)
+mayChange(words) = Contains("\"", words) or Contains("(*", words) or Contains("*)", words)
+
+(** The state at the end of a line, given the one at its start. A line with no quote and no comment mark leaves it as it is, so it is not read. *)
+stateAfter(words, state) = if mayChange(words) Tokens(words, state).State else state end
+
+defn ColoredTo(line, lineOf, colors)
+  (** The state at the start of line number line, once the lines before it are known; line_of(n) gives the text of line n.
+
+        ColoredTo(2, n -> Join("", ["(", "* a"]), BlankColors()).Starts[2].Comment --> 1 *)
+  have = Len(colors.Starts)
+  if line <= have
+    {Starts: colors.Starts, Known: have}
+  else
+    (* scan builds the whole array at once: pushing one state at a time copies the array each time, and a jump to line 19,000 takes seconds. *)
+    later = Scan((state, n) -> stateAfter(lineOf(n), state), colors.Starts[have], Range(have, line - 1))
+    {Starts: Concat(colors.Starts, later), Known: line}
+  end
+end
+
+defn ForgetFrom(line, colors)
+  (** The colors with only the lines before the given one still known, after an edit in it. The first line is always known.
+
+        ForgetFrom(2, ColoredTo(5, n -> "x", BlankColors())).Known --> 2 *)
+  keep = Max(1, line)
+  if colors.Known <= keep
+    colors
+  else
+    {Starts: Take(keep, colors.Starts), Known: keep}
+  end
+end
