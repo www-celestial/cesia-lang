@@ -1,0 +1,15 @@
+(* cesia.DocEntry on a function with parts, a struct with fields, a method, a static method and a native of a fake std. *)
+use cesia
+
+defn show(name)
+  e = cesia.DocEntry(name)
+  Print(name, "|", e.Module, "|", e.Signature, "|", e.Builtin, e.File, e.Line)
+  Print(e.Text)
+  Print(e.Parts, e.Examples)
+end
+
+show("places.Scaled")
+show("places.Rect")
+show("date.Date.Next")
+show("date.Date.Parse")
+show("NewNative")

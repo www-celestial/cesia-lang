@@ -1,0 +1,3 @@
+(** Notes, in a second source folder. *)
+
+Count() = 0   (** How many. *)

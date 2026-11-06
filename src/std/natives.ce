@@ -896,3 +896,22 @@ use cesia
     The paths of the use lines of a source, as the loader reads them, in an Ok, or an Err of {Line, Message}. Nothing runs.
 
       cesia.Uses("use pkg/rope")? --> ["pkg/rope"] *)
+
+(** cesia.DocEntry(name)
+    What the site of the docs shows of a name or a keyword, or missing: a struct with Name, Module (as DocNames lists it, empty
+    for a keyword), Signature, Text (without its examples), Parts (each {Name, Text}: a field, a parameter or the result),
+    Examples (the lines that cesia test runs), Builtin (a keyword, or a function written in OCaml), File and Line (where it is
+    defined).
+
+      cesia.DocEntry("Sort").Builtin --> true
+      cesia.DocEntry("match").Module --> ""
+      IsMissing(cesia.DocEntry("NoSuchName")) --> true *)
+
+(** cesia.Keywords()
+    The reserved words of the language, then it, as, _ and ?, which mean something in some places only: what a highlighter
+    colors, and the words the docs explain.
+
+      "defn" in cesia.Keywords() --> true *)
+
+(** cesia.Asset(name)
+    A file of the look of the docs site, held in the binary: "site.css" or "site.js". Missing for another name. *)

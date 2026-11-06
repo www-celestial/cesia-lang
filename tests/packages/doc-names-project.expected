@@ -1,0 +1,4 @@
+["prelude", "c", "cesia", "columns", "debug", "json", "lapack", "net", "notes", "regex", "shapes", "sqlite3", "sys"]
+["shapes.Unit"] ["notes.Count"]
+shapes Unit() The unit. code/shapes/shapes.ce 3 false
+exit 0

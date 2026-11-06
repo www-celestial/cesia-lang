@@ -211,14 +211,26 @@ let doc args =
          Loader.init w;
          Docs.command w args))
 
+(* cesia doc --site [folder] [--open]: the site of the project here, or of the book beside the binary. It writes only its
+   folder and its cache, runs only this Cesia, and opens the page with the browser of the system. *)
+let site_grants args =
+  let home = Option.value (Sys.getenv_opt "HOME") ~default:"." in
+  let cache = match Sys.getenv_opt "XDG_CACHE_HOME" with Some d when d <> "" -> d | _ -> Filename.concat home ".cache" in
+  let folder = match List.filter (( <> ) "--open") args with f :: _ -> f | [] -> Filename.concat (Package.root_of ".") "site" in
+  let opener = if Sys.win32 then "cmd" else if Sys.file_exists "/System/Library/CoreServices" then "open" else "xdg-open" in
+  String.concat ","
+    [ "read"; "write=" ^ folder; "write=" ^ Filename.concat cache "cesia/site"; "exec=" ^ Sys.executable_name; "exec=" ^ opener;
+      "env=HOME"; "env=XDG_CACHE_HOME"; "env=CESIA_CORES" ]
+
 (* What each tool may touch: see src/tools/. *)
-let tool_grants = function
+let tool_grants args = function
   | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
+  | "site" -> site_grants args
   | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug"
 
 let tool name args =
   let o = with_default_memory Runtime.default_options in
-  let w = Runtime.create_world { o with o_grants = parse_allow o.o_grants (tool_grants name) } in
+  let w = Runtime.create_world { o with o_grants = parse_allow o.o_grants (tool_grants args name) } in
   let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
   Loader.run_tool w name args
 
@@ -276,6 +288,7 @@ let () =
     | _ :: "do" :: args -> Project.run args
     | [ _; "new"; name ] -> create name
     | _ :: (("pkg" | "upgrade") as name) :: args -> exit (tool name args)
+    | _ :: "doc" :: "--site" :: args -> exit (tool "site" args)
     | _ :: "doc" :: args -> doc args
     | _ -> usage ()
   with

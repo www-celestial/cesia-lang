@@ -21,6 +21,9 @@ and part = Plain of string | Code of token array
 
 val tokens : file:string -> string -> token array
 
+(** The reserved words, then those that mean something in some places only: [it], [as], [_] and [?]. *)
+val words : string list
+
 (** A capital first letter makes a name public. *)
 val is_public : string -> bool
 

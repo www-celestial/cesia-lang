@@ -1,8 +1,16 @@
 open Types
 
 (* A documented name. Its lines are those of its documentation, numbered from 1, each as the words after -- would give them;
-   its parts document its fields, parameters and result. *)
-type entry = { name : string; signature : string; text : string; lines : (int * string) list; parts : (string * string) list }
+   its parts document its fields, parameters and result; its file and line are where it is defined. *)
+type entry = {
+  name : string;
+  signature : string;
+  text : string;
+  lines : (int * string) list;
+  parts : (string * string) list;
+  file : string;
+  line : int;
+}
 
 (* A (** ... *): the line it starts on, whether code comes before it there, the line it ends on, and its lines, newest first. *)
 type doc = { first : int; after_code : bool; mutable last : int; mutable body : (int * string) list }
@@ -162,7 +170,8 @@ let drop_prefix prefix s =
   if String.starts_with ~prefix s then Some (String.sub s (String.length prefix) (String.length s - String.length prefix))
   else None
 
-(* The name in a signature: a module's name comes with its dot, and a method's with its struct, static or not. *)
+(* The name in a signature: a module's name comes with its dot, and a method's with its struct, static or not. A keyword
+   that is no word, ?, is its own name. *)
 let name_of signature =
   match receiver_end signature with
   | Some i ->
@@ -170,7 +179,8 @@ let name_of signature =
     String.sub signature sname (i - 1 - sname) ^ "." ^ String.sub signature (i + 1) (name_end signature (i + 1) - i - 1)
   | None ->
     let i = name_end signature 0 in
-    if i < String.length signature && signature.[i] = '.' then String.sub signature 0 (name_end signature (i + 1))
+    if i = 0 then signature
+    else if i < String.length signature && signature.[i] = '.' then String.sub signature 0 (name_end signature (i + 1))
     else String.sub signature 0 i
 
 let text_of_block block =
@@ -214,15 +224,15 @@ let joined codes k h =
     Buffer.contents b
   end
 
-let entries src =
+let entries ?(file = "") src =
   let lines, codes, outside, docs = scan src in
   let count = Array.length lines in
   let starting k = List.find_opt (fun d -> d.first = k + 1) docs in
   let numbered d = List.rev d.body in
   let out = ref [] in
-  let add ?(parts = []) signature numbered =
+  let add ?(parts = []) k signature numbered =
     let text = text_of_block (List.rev_map snd numbered) in
-    out := { name = name_of signature; signature; text; lines = numbered; parts } :: !out
+    out := { name = name_of signature; signature; text; lines = numbered; parts; file; line = k + 1 } :: !out
   in
   (* A one-line definition: the (** *) at the end of its line, else the one just above it. *)
   let one_line k =
@@ -264,33 +274,37 @@ let entries src =
            let signature = signature_of r in
            if is_block_head r then begin
              let name_on j = if String.starts_with ~prefix:")" (String.trim codes.(j)) || j = k then "result" else first_name codes.(j) in
-             add ~parts:(parts_of name_on k h) signature (inside h)
+             add ~parts:(parts_of name_on k h) k signature (inside h)
            end
-           else add signature (one_line k);
+           else add k signature (one_line k);
            go (k + 1)
          | _, Some r, _ | _, _, Some r ->
            if String.contains r '{' then begin
-             add (struct_signature r []) (one_line k);
+             add k (struct_signature r []) (one_line k);
              go (k + 1)
            end
            else begin
              let rec close j = if j >= count || String.trim codes.(j) = "end" then j else close (j + 1) in
              let e = close (k + 1) in
              add ~parts:(parts_of (fun j -> first_name codes.(j)) (k + 1) (e - 1))
-               (struct_signature r (Array.to_list (Array.sub codes (k + 1) (count - k - 1)))) (inside k);
+               k (struct_signature r (Array.to_list (Array.sub codes (k + 1) (count - k - 1)))) (inside k);
              go (e + 1)
            end
          | None, None, None ->
-           add (signature_of code) (one_line k);
+           add k (signature_of code) (one_line k);
            go (k + 1))
   in
-  (* A file of natives has no code but its uses: each of its (** *) starts with the signature of the native it documents. *)
+  (* A file of natives has no code but its uses: each of its (** *) starts with the signature of the native it documents, or
+     with the one word it documents, as keywords.ce does. *)
   if Array.for_all (fun c -> blank c || String.starts_with ~prefix:"use " c) codes then
     List.iter
       (fun d ->
          match numbered d with
-         | (_, s) :: rest when (let s = String.trim s in let i = name_end s 0 in i > 0 && (i = String.length s || s.[i] = '(' || s.[i] = '.')) ->
-           add (String.trim s) rest
+         | (_, s) :: rest
+           when (let s = String.trim s in
+                 let i = name_end s 0 in
+                 s <> "" && ((not (String.contains s ' ')) || (i > 0 && (s.[i] = '(' || s.[i] = '.')))) ->
+           add (d.first - 1) (String.trim s) rest
          | _ -> ())
       docs;
   go 0;
@@ -322,7 +336,7 @@ let std name =
     if Sys.file_exists path then Some (In_channel.with_open_bin path In_channel.input_all) else None
   | None -> List.assoc_opt name Embedded.files
 
-let not_modules = [ "prelude"; "natives" ]
+let language = [ "prelude"; "natives"; "keywords" ]
 
 (* An editor asks often, so a file of std/ is read once. *)
 let read = Hashtbl.create 32
@@ -331,28 +345,37 @@ let std_entries name =
   match Hashtbl.find_opt read name with
   | Some es -> es
   | None ->
-    let es = entries (Option.value (std name) ~default:"") in
+    let file = "std/" ^ name ^ Package.suffix in
+    let es = entries ~file (Option.value (std name) ~default:"") in
     Hashtbl.add read name es;
     es
 
 let natives_entries () = std_entries "natives"
 
+(* The project whose documentation is asked for. A tool runs outside any, so that it never uses a project's copies, and
+   documents the one it runs in. *)
+let root w = if String.contains w.root '\000' then Package.root_of "." else w.root
+
+(* A file of the project, from its root. *)
+let from_root w path =
+  let prefix = root w ^ Filename.dir_sep in
+  Option.value (drop_prefix prefix path) ~default:path
+
 (* The folder of a module of the project: a path as in a use, or the last part of a folder in use. No name leads out of the
    root: reading it takes no permission. *)
 let folder_of w m =
-  let path = Package.folder w.root m in
+  let path = Package.folder (root w) m in
   if m = "" then None
-  else if Package.is_dir path then (if Runtime.inside w.root path then Some path else None)
+  else if Package.is_dir path then (if Runtime.inside (root w) path then Some path else None)
   else
     Hashtbl.fold
       (fun key _ found ->
          if found = None && Package.is_dir key && String.equal (Filename.basename key) m then Some key else found)
       w.loaded None
 
-let package_sources w m =
-  match folder_of w m with
-  | Some dir -> List.map (fun path -> In_channel.with_open_bin path In_channel.input_all) (Package.files dir)
-  | None -> []
+let read_all w paths = List.map (fun path -> from_root w path, In_channel.with_open_bin path In_channel.input_all) paths
+
+let package_sources w m = match folder_of w m with Some dir -> read_all w (Package.files dir) | None -> []
 
 (* The name in the code: rope for pkg/rope. *)
 let code_name m = Option.value (Package.library m) ~default:m
@@ -361,9 +384,9 @@ let code_name m = Option.value (Package.library m) ~default:m
    pkg/. A name of the code, rope, is the library when no folder of the project has it. *)
 let own_sources w m =
   let copy name =
-    match Package.files (Filename.concat (Filename.concat w.root "pkg") name) with
+    match Package.files (Filename.concat (Filename.concat (root w) "pkg") name) with
     | [] -> None
-    | files -> Some (List.map (fun path -> In_channel.with_open_bin path In_channel.input_all) files)
+    | files -> Some (read_all w files)
   in
   match Package.library m with
   | Some name -> copy name
@@ -372,13 +395,13 @@ let own_sources w m =
 (* A package is one module, whichever file holds a name. *)
 let module_entries w m =
   match own_sources w m with
-  | Some srcs -> List.concat_map entries srcs
+  | Some srcs -> List.concat_map (fun (file, src) -> entries ~file src) srcs
   | None -> std_entries (code_name m)
 
 (* The source whose top comment says what a module is for. *)
 let module_source w m =
   match own_sources w m with
-  | Some (src :: _) -> Some src
+  | Some ((_, src) :: _) -> Some src
   | _ -> std (code_name m)
 
 let find name es = List.find_opt (fun e -> String.equal e.name name) es
@@ -398,20 +421,26 @@ let without_module name =
   | Some i -> String.sub name 0 i, String.sub name (i + 1) (String.length name - i - 1)
   | None -> "", name
 
-(* The documentation of a name, and whether it comes from src/std/natives.ce: a function of the binary, in OCaml. *)
-let found w name =
+(* The documentation of a name or a keyword, its module as DocNames lists it (none for a keyword), and whether it is built
+   into the binary: a keyword, or a native of src/std/natives.ce, in OCaml. *)
+let found_entry w name =
   let native = find name (natives_entries ()) in
   let m, short = without_module name in
-  let entry, short, builtin =
-    match find name (std_entries "prelude") with
-    | Some e -> Some e, name, false
-    | None when m = "" -> native, name, true
-    | None ->
-      (match find short (module_entries w m) with
-       | Some e -> Some e, short, false
-       | None -> native, short, true)
-  in
-  if public_name short then Option.map (fun e -> shown e, builtin) entry else None
+  match if List.exists (String.equal name) Lexer.words then find name (std_entries "keywords") else None with
+  | Some e -> Some (e, lazy "", true)
+  | None ->
+    let entry, short, md, builtin =
+      match find name (std_entries "prelude") with
+      | Some e -> Some e, name, lazy "prelude", false
+      | None when m = "" -> native, name, lazy "prelude", true
+      | None ->
+        (match find short (module_entries w m) with
+         | Some e -> Some e, short, lazy (if package_sources w m <> [] then m else "pkg/" ^ m), false
+         | None -> native, short, lazy m, true)
+    in
+    if public_name short then Option.map (fun e -> e, md, builtin) entry else None
+
+let found w name = Option.map (fun (e, _, builtin) -> shown e, builtin) (found_entry w name)
 
 let lookup w name = Option.map fst (found w name)
 
@@ -428,14 +457,27 @@ let program_method (ctx : ctx) name =
   in
   Option.map shown (Seq.find_map in_file (Seq.append asking (Dynarray.to_seq w.files)))
 
-let modules w =
-  let libraries = List.filter_map (fun (m, _) -> if List.mem m not_modules then None else Some ("pkg/" ^ m)) Embedded.files in
-  "prelude" :: List.sort_uniq String.compare (libraries @ List.map fst w.native_modules)
+(* The packages of the project: the folders of its source folders that hold code. *)
+let project_modules w =
+  let r = root w in
+  let packages dir =
+    let path = Filename.concat r dir in
+    let names = if Package.is_dir path then List.sort String.compare (Array.to_list (Sys.readdir path)) else [] in
+    List.filter (fun name -> Package.files (Filename.concat path name) <> []) names
+  in
+  if Sys.file_exists (Filename.concat r Package.project_file) then List.concat_map packages (Package.sources r) else []
 
-let is_library m = (not (List.mem m not_modules)) && std m <> None
+(* The modules of Cesia itself: its libraries and the modules of the binary. *)
+let own_modules w =
+  List.filter_map (fun (m, _) -> if List.mem m language then None else Some ("pkg/" ^ m)) Embedded.files
+  @ List.map fst w.native_modules
+
+let modules w = "prelude" :: List.sort_uniq String.compare (own_modules w @ project_modules w)
+
+let is_library m = (not (List.mem m language)) && std m <> None
 
 let is_module w m =
-  List.mem m (modules w) || is_library (code_name m) || package_sources w m <> [] || own_sources w m <> None
+  m = "prelude" || List.mem m (own_modules w) || is_library (code_name m) || package_sources w m <> [] || own_sources w m <> None
 
 let names w m =
   let qualified n = if m = "prelude" then n else code_name m ^ "." ^ n in
@@ -485,6 +527,23 @@ let doc_names ctx (a : t array) =
       if is_module ctx.w m then names ctx.w m else []
   in
   Arrays.list (Array.of_list (List.map (fun s -> Text s) found))
+
+let entry_keys = Trie.names [| "Name"; "Module"; "Signature"; "Text"; "Parts"; "Examples"; "Builtin"; "File"; "Line" |]
+let part_keys = Trie.names [| "Name"; "Text" |]
+
+(* cesia.DocEntry: what the site shows of a name or a keyword, its examples apart from its text. *)
+let doc_entry ctx (a : t array) =
+  let name = Native.text_arg ctx "cesia.DocEntry" a.(0) in
+  match found_entry ctx.w name with
+  | None -> Missing
+  | Some (e, m, builtin) ->
+    let example (_, t) = String.starts_with ~prefix:"  " t in
+    let list f l = Arrays.list (Array.of_list (List.map f l)) in
+    let text = text_of_block (List.rev_map snd (List.filter (fun l -> not (example l)) e.lines)) in
+    let examples = list (fun (_, t) -> Text (String.trim t)) (List.filter example e.lines) in
+    let parts = list (fun (n, t) -> Trie.record part_keys [| Text n; Text t |]) e.parts in
+    Trie.record entry_keys
+      [| Text name; Text (Lazy.force m); Text e.signature; Text text; parts; examples; Value.of_bool builtin; Text e.file; Int e.line |]
 
 let natives =
   [ "Doc", Native.nat "Doc" 1 1 doc;

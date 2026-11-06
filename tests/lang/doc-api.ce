@@ -1,6 +1,7 @@
 (** The documentation of the language, from the language: what an editor shows. *)
 use pkg/num
 use sys
+use cesia
 
 (** Twice x, for the test of a function of this file.
 
@@ -46,6 +47,27 @@ isDocNamesOfTheModules() = "pkg/num" in DocNames() and not ("num" in DocNames())
 isDocNamesOfThePrelude() = "Inc" in DocNames("prelude") and "Sort" in DocNames("prelude") and not ("runLength" in DocNames("prelude"))
 isDocNamesOfAModule() = "num.Solve" in DocNames("pkg/num") and "num.Solve" in DocNames("num") and "sys.Now" in DocNames("sys")
 isDocNamesOfNothing() = Equal(DocNames("no_such_module"), [])
+isDocNamesHasNoKeywords() = not ("keywords" in DocNames()) and not ("pkg/keywords" in DocNames())
+
+isDocOfAKeyword() = StartsWith("match\n", Doc("match")) and Contains("patterns", Doc("match")) and StartsWith("?\n", Doc("?"))
+isEveryKeywordHasABlock() = Equal(Filter(k -> IsMissing(cesia.DocEntry(k)), cesia.Keywords()), [])
+isKeywordsHoldTheReservedWords() = Len(cesia.Keywords()) == 24 and "interface" in cesia.Keywords() and "it" in cesia.Keywords()
+
+defn isDocEntryOfANative()
+  e = cesia.DocEntry("Sort")
+  e.Name == "Sort" and e.Module == "prelude" and e.Signature == "Sort(xs)" and e.Builtin and e.File == "std/natives.ce" and
+    Equal(e.Examples, ["Sort([3, 1, 2]) --> [1, 2, 3]"]) and not Contains("-->", e.Text)
+end
+
+defn isDocEntryOfAFunction()
+  e = cesia.DocEntry("num.Solve")
+  e.Module == "pkg/num" and StartsWith("Solve(m, b)", e.Signature) and not e.Builtin and e.File == "std/num.ce" and e.Line > 1
+end
+
+isDocEntryOfAModuleNative() = cesia.DocEntry("sys.Read").Module == "sys" and cesia.DocEntry("sys.Read").Builtin
+isDocEntryOfAKeyword() = cesia.DocEntry("if").Module == "" and cesia.DocEntry("if").Builtin and Len(cesia.DocEntry("if").Examples) > 0
+isDocEntryOfNothing() = IsMissing(cesia.DocEntry("NoSuchName")) and IsMissing(cesia.DocEntry("runLength"))
+isAssetsOfTheSite() = IsText(cesia.Asset("site.css")) and IsText(cesia.Asset("site.js")) and IsMissing(cesia.Asset("site.ce"))
 
 defn undocumentedNames()
   (** A name without a comment shows only its signature, on one line. *)

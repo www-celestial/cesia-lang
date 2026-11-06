@@ -18,13 +18,26 @@ type tok =
 and token = { t : tok; pos : Pos.t; sp : bool }
 and part = Plain of string | Code of token array
 
-let keyword = function
-  | "if" -> Some IF | "else" -> Some ELSE | "end" -> Some END | "for" -> Some FOR | "in" -> Some IN
-  | "while" -> Some WHILE | "break" -> Some BREAK | "return" -> Some RETURN | "defn" -> Some DEFN
-  | "match" -> Some MATCH | "struct" -> Some STRUCT | "interface" -> Some INTERFACE | "and" -> Some AND | "or" -> Some OR
-  | "not" -> Some NOT | "then" -> Some THEN | "use" -> Some USE | "true" -> Some TRUE | "false" -> Some FALSE
-  | "missing" -> Some MISSING
-  | _ -> None
+(* The reserved words, in one list: the lexer reads it, and cesia.Keywords gives it, with the words below, to the highlighter
+   and the docs. *)
+let keywords =
+  [ "if", IF; "else", ELSE; "end", END; "for", FOR; "in", IN; "while", WHILE; "break", BREAK; "return", RETURN; "defn", DEFN;
+    "match", MATCH; "struct", STRUCT; "interface", INTERFACE; "and", AND; "or", OR; "not", NOT; "then", THEN; "use", USE;
+    "true", TRUE; "false", FALSE; "missing", MISSING ]
+
+(* By first letter, each word with its token ready: every name the lexer meets is looked up, the prelude's at each start. *)
+let by_first =
+  let t = Array.make 256 [] in
+  List.iter (fun (w, k) -> t.(Char.code w.[0]) <- (w, Some k) :: t.(Char.code w.[0])) keywords;
+  t
+
+let keyword s =
+  let rec find = function (w, k) :: rest -> if String.equal w s then k else find rest | [] -> None in
+  if String.length s = 0 then None else find by_first.(Char.code s.[0])
+
+(* And the words that mean something in some places only: it in a short function, as after a use, _ in a pattern and ? after
+   a result. *)
+let words = List.map fst keywords @ [ "it"; "as"; "_"; "?" ]
 
 type st = {
   src : string;

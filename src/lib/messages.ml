@@ -199,6 +199,7 @@ let usage =
   \       cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]\n\
   \       cesia upgrade [--nightly]\n\
   \       cesia doc [name]\n\
+  \       cesia doc --site [folder] [--open]\n\
   \       cesia version"
 let cant_read path = "can't read " ^ path
 let unknown_permission name = "unknown permission: " ^ name

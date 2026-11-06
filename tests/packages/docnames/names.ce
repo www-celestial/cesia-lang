@@ -1,0 +1,7 @@
+(* The packages of the project are modules of the docs, and DocEntry says where their names are. *)
+use cesia
+
+Print(Filter(m -> not StartsWith("pkg/", m), DocNames()))
+Print(DocNames("shapes"), DocNames("notes"))
+e = cesia.DocEntry("shapes.Unit")
+Print(e.Module, e.Signature, e.Text, e.File, e.Line, e.Builtin)

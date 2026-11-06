@@ -4,8 +4,16 @@
     [std/natives.ce] holds a [(** *)] for each, whose first line is its signature. *)
 open Types
 
+(** The files of std/ that are the language, not libraries: the prelude, and the documentation of the natives and of the
+    keywords. *)
+val language : string list
+
 (** The lines of a documentation that are examples, indented under its text, each with its line number. *)
 val examples : string -> (int * string) list
+
+(** [cesia.DocEntry(name)]: [{Name, Module, Signature, Text, Parts, Examples, Builtin, File, Line}] of a name or a keyword, or
+    missing. *)
+val doc_entry : ctx -> t array -> t
 
 (** [Doc] and [DocNames]. *)
 val natives : (string * t) list

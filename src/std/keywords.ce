@@ -1,0 +1,178 @@
+(** The documentation of the keywords, which have no source: cesia doc reads it, and cesia test runs its examples. Each one has
+    a block whose first line is the word. The first twenty are reserved, and no name can be one; the last four mean something
+    in some places only. Nothing here is code but the uses. *)
+use pkg/set
+use pkg/queue as line
+
+(** if
+    A choice, and a value: if a condition, then the value of its branch, else that of the other one. Without else, a false
+    condition gives missing. else if chains choices under one end, and a branch can hold many lines.
+
+      if 2 > 1 "yes" else "no" end --> "yes"
+      if false 1 end --> missing
+      if 0 > 1 "up" else if 0 < 1 "down" else "flat" end --> "down" *)
+
+(** else
+    The branch of an if taken when the condition is false, and the arm of a match taken when no pattern fits.
+
+      if false "a" else "b" end --> "b"
+      match 7 1 -> "one" else -> "other" end --> "other" *)
+
+(** end
+    Closes a block: if, for, while, match, a defn, and the block forms of struct and interface. One end closes an if with all
+    its else if.
+
+      if true 1 end --> 1 *)
+
+(** for
+    Runs its body once for each element of an array or a range, in order. In brackets, it builds a list: the comprehension,
+    which an if after it filters. A dictionary is no array: loop over Keys(d) or Pairs(d).
+
+      total = 0
+      for x in [1, 2, 3] total += x end
+      total --> 6
+      [x * x for x in 1:4] --> [1, 4, 9, 16]
+      [x for x in 1:6 if IsEven(x)] --> [2, 4, 6] *)
+
+(** in
+    After for, what the loop runs over. Elsewhere, a question: is the value an element of an array, or a key of a dictionary?
+
+      2 in [1, 2, 3] --> true
+      "a" in {"a": 1} --> true
+      [k for k in Keys({"a": 1, "b": 2})] --> ["a", "b"] *)
+
+(** while
+    Runs its body again and again, as long as the condition is true.
+
+      count = 1
+      while count < 100 count *= 2 end
+      count --> 128 *)
+
+(** break
+    Leaves the loop it is in at once, for or while, and goes on after its end.
+
+      seen = 0
+      for x in 1:10 if x > 3 break end seen += 1 end
+      seen --> 3 *)
+
+(** return
+    Leaves the function at once, with a value. A return alone gives missing. Without one, a function gives the value of its last
+    line.
+
+      defn sign(x) if x < 0 return "negative" end "not negative" end
+      sign(-2) --> "negative"
+      sign(5) --> "not negative" *)
+
+(** defn
+    Defines a function whose body is a block, up to end. A one-line function needs no defn: Twice(x) = 2 * x. A method writes its
+    object first, defn (r Rect) Area(), and a static method its struct before its name, defn Rect.Square(side). A capital first
+    letter makes it public, and a public one needs a comment.
+
+      defn twice(x) x * 2 end
+      twice(4) --> 8
+      thrice(x) = x * 3
+      thrice(4) --> 12 *)
+
+(** match
+    Compares a value with patterns, in order, and gives the value of the first arm that fits. A pattern is a value, a name that
+    takes the value, _ that takes anything, or a shape: [a, b], {Kind: "box", Width: w}, Ok(v), Point(x, y). A name in a pattern
+    always takes a new value: it never compares with a variable. An if after a pattern adds a condition, and else takes what no
+    arm took; with no else, a value that fits nothing stops the program.
+
+      match 3 1 -> "one" else -> "many" end --> "many"
+      match [1, 2] [a, b] -> a + b else -> 0 end --> 3
+      match {Kind: "box", Width: 4} {Kind: "box", Width: w} -> w else -> 0 end --> 4
+      match -5 n if n < 0 -> "negative" _ -> "other" end --> "negative" *)
+
+(** struct
+    Declares a value with named fields, on one line or as a block with one field per line up to end. A field may have a
+    default and a type. Every struct has From, which builds one from a dictionary, and a value never changes in place: a
+    method gives a new one.
+
+      struct Cup { Size, Full = false }
+      Cup(2).Full --> false
+      Cup(2, true).Full --> true
+      Cup(Size = 3).Size --> 3 *)
+
+(** interface
+    Lists methods with no code: a value meets it when it has each of them with that number of parameters, written apart from
+    the object. Nothing declares it, as in Go. An interface is a type, and a method on it is a method of every value that meets
+    it.
+
+      interface Holder { Volume() }
+      (c Cup) Volume() = c.Size * 10
+      measure(h Holder) = h.Volume()
+      measure(Cup(5)) --> 50 *)
+
+(** and
+    True if both sides are true. The right side runs only when the left one is true. Both are true or false: missing is no
+    condition.
+
+      true and false --> false
+      false and Panic("never runs") --> false *)
+
+(** or
+    True if either side is true. The right side runs only when the left one is false.
+
+      false or true --> true
+      true or Panic("never runs") --> true *)
+
+(** not
+    The opposite of a condition, which is true or false.
+
+      not (1 > 2) --> true *)
+
+(** then
+    Passes the value on its left to the expression on its right, which reads it as it: a pipeline read from left to right.
+
+      [1, 2, 3] then Map(it * it, it) then Sum(it) --> 14
+      5 then it + 1 --> 6 *)
+
+(** use
+    Makes a package or a module visible in a file, by the last part of its path: use pkg/set gives set. A library of Cesia is
+    written with pkg/, a module of the binary without: use sys, use json. A use is absolute, from the root of the project, and
+    the files of one package need none to see each other.
+
+      set.Count(set.Of([1, 1, 2])) --> 2 *)
+
+(** true
+    One of the two values of a condition.
+
+      1 < 2 --> true *)
+
+(** false
+    The other value of a condition.
+
+      IsBool(false) --> true *)
+
+(** missing
+    The absence of a value: a function that ends with no value gives it, as does Get on a key that is absent. A field typed
+    with ? has it as its default. JSON writes it null.
+
+      Get("a", {}) --> missing
+      IsMissing(missing) --> true *)
+
+(** it
+    The parameter of a short function: an argument that holds it is a function of it, so Map(it * 2, xs) is Map(x -> x * 2, xs).
+    After then, it is the value on the left.
+
+      Map(it * 2, [1, 2]) --> [2, 4]
+      Filter(it > 1, [1, 2, 3]) --> [2, 3] *)
+
+(** as
+    After a use, renames what the file sees: use pkg/queue as line gives line.Of.
+
+      line.Count(line.Of([1, 2])) --> 2 *)
+
+(** _
+    In a pattern, takes anything and names nothing. A name has no _: words join by capitals, byteLength or ByteLength.
+
+      match 9 1 -> "one" _ -> "any" end --> "any" *)
+
+(** ?
+    After a result, the value of an Ok, or else a way out of the function with the Err. After a type, the type allows missing:
+    Text?.
+
+      defn doubled(r) Ok(r? * 2) end
+      doubled(Ok(4)) --> Ok(8)
+      doubled(Err("no")) --> Err("no") *)

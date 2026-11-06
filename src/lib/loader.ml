@@ -100,7 +100,7 @@ let read_module ~from ~pos upath path =
 let library = Package.library
 
 (* A library of Cesia: a module of std/ that isn't the language itself. *)
-let own_library name = if name = "prelude" || name = "natives" then None else std_source name
+let own_library name = if List.mem name Docs.language then None else std_source name
 
 let libraries () = List.filter_map (fun (name, _) -> Option.map (fun (_, src) -> name, src) (own_library name)) Embedded.files
 

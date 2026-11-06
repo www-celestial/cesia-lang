@@ -1,6 +1,7 @@
 # The tasks of this repository: cesia do lists them.
 [project]
 name = "cesia"
+src = []          # its code is OCaml, and its libraries are std/: no package of its own
 native = ["SDL3", "SDL3_ttf"]
 
 [tasks.build]
