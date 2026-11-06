@@ -1,13 +1,15 @@
 (** cesia doc --site: the documentation of a project as static pages in a folder, read from there with no server and no
     request to anyone else. The reference has a page for each module, each public name and each keyword, from the (** *) of
-    the code. Run by the binary as cesia doc --site [folder] [--open], which gives this tool the root of the project and the
-    folder, both from the top of the file system. A build that finds a mistake writes it as file:line and fails. *)
+    the code. The book of the project, in book/, is the home: its pages run their cesia blocks at each build. Run by the binary
+    as cesia doc --site [folder] [--open], which gives this tool the root of the project, the folder and the folder of the
+    cache, all from the top of the file system. A build that finds a mistake writes it as file:line and fails. *)
 use sys
 use cesia
 use json
 use pkg/markdown
 use pkg/web
 use pkg/syntax
+use columns
 
 quote = Char(34)
 keywords = cesia.Keywords()
@@ -16,6 +18,7 @@ keywords = cesia.Keywords()
 classes = ["k", "n", "s", "m", "c", "", "f"]
 
 escape(t) = web.Escape(t)
+from(k, t) = ByteSlice(k, ByteLength(t), t)   (** The text from byte k. *)
 up(path) = Repeat(Len(Split("/", path)) - 1, "../")   (** From a page to the root of the site. *)
 parent(path) = Join("/", Butlast(Split("/", path)))
 
@@ -87,8 +90,20 @@ defn hooksFor(site, path, where)
     end
     missing
   end
+  defn url(u, line)
+    f = local(u)
+    if IsMissing(f) or not EndsWith(".md", f)
+      return u
+    end
+    target = Get(f, site.BookPaths)
+    if IsMissing(target)
+      Send("$(where(line)): $f is no page of book/.", site.Mistakes)
+      return u
+    end
+    Str(rel(path, target), from(ByteLength(Split("#", u)[1]) + 1, u))
+  end
   code(info, text, line) = if Split(" ", info)[1] == "cesia" codeBlock(text) else missing end
-  {Code: code, Link: link, Anchor: (level, text, line) -> slug(text)}
+  {Code: code, Link: link, Url: url, Anchor: (level, text, line) -> slug(text)}
 end
 
 html(text, hooks) = markdown.Html(markdown.Parse(text), hooks)
@@ -117,12 +132,13 @@ defn page(site, path, title, side, body)
     "<script src=\"", back, "site.js\"></script>\n</body>\n</html>\n")
 end
 
+sideItem(label, href, current) = "<a href=\"$href\"$(if current " aria-current=\"page\"" else "" end)>$(escape(label))</a>\n"
+
 defn side(site, path, names)
   (** The side contents: the modules, then the names of the module of this page. *)
-  item(label, href, current) = "<a href=\"$href\"$(if current " aria-current=\"page\"" else "" end)>$(escape(label))</a>\n"
-  modules = Join("", [item(m, rel(path, modulePath(m)), path == modulePath(m)) for m in site.Modules])
+  modules = Join("", [sideItem(m, rel(path, modulePath(m)), path == modulePath(m)) for m in site.Modules])
   (* The names of a module are pages of one folder, that of this page. *)
-  own = Join("", [item(n.Short, Last(Split("/", n.Path)), path == n.Path) for n in names])
+  own = Join("", [sideItem(n.Short, Last(Split("/", n.Path)), path == n.Path) for n in names])
   Str("<p class=\"head\">Modules</p>\n<div class=\"list\">\n", modules, "</div>\n",
     if own == "" "" else Str("<p class=\"head\">In this module</p>\n<div class=\"list\">\n", own, "</div>\n") end)
 end
@@ -182,8 +198,8 @@ defn indexBody(site, path)
 end
 
 defn settings(root)
-  (** The [site] table of the project and its name: {Name, Title, Source}. *)
-  out = {Name: "", Title: "Cesia", Source: ""}
+  (** The [site] table of the project, its name and its folders of sources: {Name, Src, Title, Source}. *)
+  out = {Name: "", Src: ["src"], Title: "Cesia", Source: ""}
   file = "$root/cesia.toml"
   if not sys.Exists(file)
     return Ok(out)
@@ -196,6 +212,8 @@ defn settings(root)
     for e in t.Entries
       if Equal(t.Path, ["project"]) and e.Key == "name"
         out.Name = e.Value
+      else if Equal(t.Path, ["project"]) and e.Key == "src"
+        out.Src = e.Value
       else if Equal(t.Path, ["site"]) and e.Key == "title"
         out.Title = e.Value
       else if Equal(t.Path, ["site"]) and e.Key == "source"
@@ -265,7 +283,494 @@ defn sameButCase(paths)
   out
 end
 
-defn build(root, folder)
+(* The book: book/index.md is the home, and its links to the other pages of book/ give their order. A page is a program:
+   its cesia blocks run at each build, and what they print is written under them. *)
+
+blockWordList = "norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net or ffi=m"
+
+defn blockWords(info)
+  (** What the words after cesia ask of a block: {Norun, Fails, Md, Fold, Hide, Allow}, or an Err of the word it doesn't know. *)
+  out = {Norun: false, Fails: false, Md: false, Fold: [], Hide: [], Allow: []}
+  for w in Filter(x -> x != "", Skip(1, Split(" ", info)))
+    if w == "norun"
+      out.Norun = true
+    else if w == "fails"
+      out.Fails = true
+    else if w == "output=md"
+      out.Md = true
+    else if w == "fold=code" or w == "fold=output"
+      out.Fold = Append(from(6, w), out.Fold)
+    else if w == "hide=code" or w == "hide=output"
+      out.Hide = Append(from(6, w), out.Hide)
+    else if StartsWith("allow=", w) and All([a in ["read", "write", "net", "ffi=m"] for a in Split(",", from(7, w))])
+      out.Allow = Concat(out.Allow, Split(",", from(7, w)))
+    else
+      return Err("$w is no word of a cesia block: they are $blockWordList.")
+    end
+  end
+  if out.Norun and out.Fails
+    return Err("a block is norun or fails, not both.")
+  end
+  Ok(out)
+end
+
+defn codeBlocks(blocks)
+  (** The blocks of code among blocks from markdown.Parse, those in quotes and lists too, in the order of the text. *)
+  out = []
+  for b in blocks
+    if b.Kind == "code"
+      out = Append(b, out)
+    else if b.Kind == "quote"
+      out = Concat(out, codeBlocks(b.Blocks))
+    else if b.Kind == "list"
+      for item in b.Items
+        out = Concat(out, codeBlocks(item))
+      end
+    end
+  end
+  out
+end
+
+defn arrow(t)
+  (** A line of code cut at its -->, as cesia test cuts it: {At, Code, Want}, Want empty for a value to show; or missing. *)
+  k = ByteFind("-->", 1, t)
+  if IsMissing(k) missing else {At: k, Code: Trim(ByteSlice(1, k - 1, t)), Want: Trim(from(k + 3, t))} end
+end
+
+defn helpers(mark)
+  (** The functions the program calls to speak to the build: each prints a line that starts with the byte 1 and the mark. A
+      value is shown as cesia test shows it, its line ends as the byte 2. *)
+  say = "Print(Str(Char(1), $quote$mark $quote, "
+  Join("\n", ["bookAt(k) = $(say)k))",
+    "bookShown(v) = Replace(Char(10), Char(2), ByteSlice(2, ByteLength(Text([v])) - 1, Text([v])))",
+    "bookShow(line, v) = $(say)$(quote)= $quote, line, $quote $quote, bookShown(v)))",
+    "defn bookCheck(line, got, want)",
+    "  if not Equal(got, want)",
+    "    $(say)$(quote)! $quote, line, $quote $quote, bookShown(want), Char(3), bookShown(got)))",
+    "  end",
+    "end", ""])
+end
+
+defn program(runs, chosen, mark)
+  (** The program of the blocks chosen among those of a page: its use lines first, then each line of code on the line of the
+      page where it is written, so that an error names that line. {Text, Uses}: Uses are the lines of the use lines. *)
+  uses = []
+  useLines = []
+  at = {}
+  last = 0
+  for k in chosen
+    b = runs[k]
+    at[b.Line] = if b.Words.Norun "defn bookNotRun$k()" else "bookAt($k)" end
+    lines = Lines(b.Text)
+    for i in 1:Len(lines)
+      t = lines[i]
+      a = arrow(t)
+      if StartsWith("use ", Trim(t))
+        uses = Append(Trim(t), uses)
+        useLines = Append(b.Line + i, useLines)
+      else if IsSome(a) and a.Want == ""
+        at[b.Line + i] = "bookShow($(b.Line + i), ($(a.Code)))"
+      else if IsSome(a)
+        at[b.Line + i] = "bookCheck($(b.Line + i), ($(a.Code)), ($(a.Want)))"
+      else
+        at[b.Line + i] = t
+      end
+    end
+    last = b.Line + Len(lines) + 1
+    if b.Words.Norun
+      at[last] = "end"
+    end
+  end
+  {Text: Str(Join("\n", Concat(uses, [GetOr(n, "", at) for n in 1:last])), "\n", helpers(mark)), Uses: useLines}
+end
+
+defn heard(out, mark)
+  (** What a run printed, cut at its marks: {Output: block -> text, Values: line -> text, Wrong: [{Line, Want, Got}]}. *)
+  output = {}
+  values = {}
+  wrong = []
+  block = 0
+  pieces = Split(Str(Char(1), mark, " "), out)
+  for p in Skip(1, pieces)
+    nl = ByteFind("\n", 1, p)
+    head = if IsMissing(nl) p else ByteSlice(1, nl - 1, p) end
+    rest = if IsMissing(nl) "" else from(nl + 1, p) end
+    said = Replace(Char(2), "\n", from(3, head))
+    space = ByteFind(" ", 1, said)
+    if StartsWith("= ", head)
+      values[Number(ByteSlice(1, space - 1, said))] = from(space + 1, said)
+    else if StartsWith("! ", head)
+      shown = Split(Char(3), from(space + 1, said))
+      wrong = Append({Line: Number(ByteSlice(1, space - 1, said)), Want: shown[1], Got: shown[2]}, wrong)
+    else
+      block = Number(head)
+    end
+    if rest != ""
+      output[block] = Str(GetOr(block, "", output), rest)
+    end
+  end
+  {Output: output, Values: values, Wrong: wrong}
+end
+
+defn placed(err, run, source)
+  (** The first line of the errors of a run, at the place of the page it names: {Where, Message}. *)
+  first = if err == "" "it stopped and said nothing." else Lines(err)[1] end
+  prefix = Str(run.Program, ":")
+  if not StartsWith(prefix, first)
+    return {Where: source, Message: first}
+  end
+  rest = from(ByteLength(prefix) + 1, first)
+  colon = ByteFind(":", 1, rest)
+  n = Number(ByteSlice(1, colon - 1, rest))
+  line = if n <= Len(run.Uses) run.Uses[n] else n - Len(run.Uses) end
+  after = from(colon + 1, rest)
+  space = ByteFind(": ", 1, after)
+  {Where: Str(source, ":", line, ":", ByteSlice(1, space - 1, after)), Message: from(space + 2, after)}
+end
+
+defn removed(path)
+  (** Deletes a file, or a folder with all it holds; a link goes, never what it leads to. *)
+  info = sys.Stat(path)
+  if IsErr(info)
+    return Ok(missing)
+  end
+  if info.Value.IsDir and not info.Value.IsLink
+    for n in sys.List(path)?
+      removed("$path/$n")?
+    end
+  end
+  sys.Remove(path)
+end
+
+defn copied(source, target)
+  (** A copy of the folder source, with all it holds, made at target. *)
+  sys.Mkdir(target)?
+  if sys.Exists(source)
+    for n in sys.List(source)?
+      if sys.Stat("$source/$n")?.IsDir
+        copied("$source/$n", "$target/$n")?
+      else
+        sys.Write("$target/$n", sys.Read("$source/$n")?)?
+      end
+    end
+  end
+  Ok(missing)
+end
+
+defn ran(job, chosen, name)
+  (** Runs the blocks chosen of a page as one program of .run, in a fresh copy of book/files, with the permissions its blocks
+      ask for there: {Code, Out, Err, Program, Uses}. *)
+  p = program(job.Runs, chosen, job.Mark)
+  file = "$(job.Run)/$name.ce"
+  work = "$(job.Run)/$name"
+  sys.Write(file, p.Text)?
+  removed(work)?
+  copied(job.Files, work)?
+  grants = [if a == "read" or a == "write" "$a=." else if a == "net" "net=127.0.0.1" else a end for a in Unique(FlatMap(k -> job.Runs[k].Words.Allow, chosen))]
+  allow = if Len(grants) == 0 [] else ["--allow", Join(",", grants)] end
+  r = sys.Run(cesia.Binary(), args = Concat(Concat(["run", "--limit", "memory=512M"], allow), [file]), dir = work, timeout = 10)?
+  Ok({Code: r.Code, Out: r.Out, Err: r.Err, Program: file, Uses: p.Uses})
+end
+
+defn stopped(r, source)
+  (** Why a run that should have ended well did not, or missing. *)
+  if r.Code == -1
+    "$source: the page ran more than 10 seconds, or a signal ended it."
+  else if r.Code != 0
+    e = placed(r.Err, r, source)
+    "$(e.Where): $(e.Message)"
+  else
+    missing
+  end
+end
+
+defn pageRun(job)
+  (** The runs of a page: the blocks that don't fail as one program, then each block that fails after the blocks before it.
+      Ok({Output: [text of each block], Values: [[line, text]]}), or an Err of the mistakes. *)
+  runs = job.Runs
+  main = [k for k in 1:Len(runs) if not runs[k].Words.Fails]
+  r = ran(job, main, job.Name)?
+  why = stopped(r, job.Source)
+  if IsSome(why)
+    return Err([why])
+  end
+  got = heard(r.Out, job.Mark)
+  mistakes = ["$(job.Source):$(w.Line): $(Trim(job.Lines[w.Line])), got $(w.Got)" for w in got.Wrong]
+  output = [GetOr(k, "", got.Output) for k in 1:Len(runs)]
+  for k in 1:Len(runs)
+    if runs[k].Words.Fails
+      f = ran(job, Append(k, [j for j in main if j < k]), "$(job.Name)-$(runs[k].Line)")?
+      if f.Code == 0
+        mistakes = Append("$(job.Source):$(runs[k].Line): this block is marked fails, but it ran to its end.", mistakes)
+      else if f.Code == -1
+        mistakes = Append("$(job.Source):$(runs[k].Line): this block ran more than 10 seconds, or a signal ended it.", mistakes)
+      else
+        output[k] = Str(GetOr(k, "", heard(f.Out, job.Mark).Output), placed(f.Err, f, job.Source).Message, "\n")
+      end
+    end
+  end
+  if Len(mistakes) > 0 Err(mistakes) else Ok({Output: output, Values: [[n, got.Values[n]] for n in Keys(got.Values)]}) end
+end
+
+defn worker(queue, done)
+  (** Runs the pages of the queue one after the other, and sends each result with the name of its page. *)
+  job = Receive(queue, timeout = 0)
+  while IsOk(job)
+    r = pageRun(job.Value)
+    Send({Name: job.Value.Name, Result: if IsErr(r) and IsText(r.Error) Err([r.Error]) else r end}, done)
+    job = Receive(queue, timeout = 0)
+  end
+end
+
+defn allRun(jobs)
+  (** The results of the pages to run, as many at once as the cores Cesia uses: name -> result. *)
+  queue = Channel()
+  for j in jobs
+    Send(j, queue)
+  end
+  done = Channel()
+  fibers = [Spawn(() -> worker(queue, done)) for i in 1:Min(columns.Cores(), Len(jobs))]
+  for f in fibers
+    Wait(f)
+  end
+  Dict([{Key: d.Name, Value: d.Result} for d in drained(done)])
+end
+
+defn filesUnder(dir)
+  (** The paths of the files under a folder, from it, sorted; none if it isn't there. Names that start with a dot are left out. *)
+  if not sys.Exists(dir)
+    return []
+  end
+  out = []
+  for n in sys.List(dir).Value
+    if not StartsWith(".", n)
+      if sys.Stat("$dir/$n").Value.IsDir
+        out = Concat(out, ["$n/$p" for p in filesUnder("$dir/$n")])
+      else
+        out = Append(n, out)
+      end
+    end
+  end
+  out
+end
+
+defn stamp(root, config)
+  (** What the runs of a page depend on beside its blocks: this Cesia, the sources of the project, and book/files. *)
+  binary = sys.Stat(cesia.Binary()).Value
+  parts = [cesia.Version(), Str(binary.Size, " ", binary.Modified)]
+  for dir in Concat(config.Src, ["pkg", "book/files"])
+    for p in filesUnder("$root/$dir")
+      parts = Append(Str(dir, "/", p, " ", cesia.Fingerprint(sys.Read("$root/$dir/$p").Value)), parts)
+    end
+  end
+  for f in ["cesia.toml", "cesia.lock"]
+    if sys.Exists("$root/$f")
+      parts = Append(Str(f, " ", cesia.Fingerprint(sys.Read("$root/$f").Value)), parts)
+    end
+  end
+  cesia.Fingerprint(Join("\n", parts))
+end
+
+defn local(u)
+  (** The file of a link to a page of the site, without its #part, or missing for a link elsewhere. *)
+  file = Split("#", u)[1]
+  if Contains(":", file) or StartsWith("/", file) or file == "" missing else file end
+end
+
+defn linked(text)
+  (** The pages of book/ that a text links to, in the order of their first link, and the line of each. *)
+  seen = Channel()
+  defn url(u, line)
+    f = local(u)
+    if IsSome(f) and EndsWith(".md", f)
+      Send({File: f, Line: line}, seen)
+    end
+    u
+  end
+  html(text, {Code: markdown.Plain.Code, Link: markdown.Plain.Link, Url: url, Anchor: markdown.Plain.Anchor})
+  out = []
+  for l in drained(seen)
+    if not (l.File in [o.File for o in out])
+      out = Append(l, out)
+    end
+  end
+  out
+end
+
+bookPath(file) = Str(ByteSlice(1, ByteLength(file) - 3, file), ".html")   (** The page of book/values.md: values.html. *)
+
+defn titleOf(blocks, file)
+  (** The text of the first heading of a page, without its marks of code, or its file. *)
+  for b in blocks
+    if b.Kind == "heading"
+      return Replace("`", "", b.Text)
+    end
+  end
+  file
+end
+
+defn bookOf(root, site)
+  (** The pages of the book of the project, home first, then in the order of the links of book/index.md, each {File, Source,
+      Path, Title, Text, Blocks, Runs, Lines, Broken}; an empty array without book/. Mistakes go to site.Mistakes, and a
+      page with one in its blocks is Broken: it doesn't run. *)
+  dir = "$root/book"
+  if not sys.Exists(dir)
+    return []
+  end
+  if not sys.Exists("$dir/index.md")
+    Send("book/index.md: a book starts at its index.md, which links to its other pages in their order.", site.Mistakes)
+    return []
+  end
+  order = linked(sys.Read("$dir/index.md").Value)
+  for l in order
+    if not sys.Exists("$dir/$(l.File)")
+      Send("book/index.md:$(l.Line): $(l.File) is no page of book/.", site.Mistakes)
+    end
+  end
+  files = Concat(["index.md"], [l.File for l in order if sys.Exists("$dir/$(l.File)")])
+  for f in filesUnder(dir)
+    if EndsWith(".md", f) and not StartsWith("files/", f) and not (f in files)
+      Send("book/$f: no link of book/index.md leads to this page.", site.Mistakes)
+    end
+  end
+  pages = []
+  for f in files
+    text = sys.Read("$dir/$f").Value
+    blocks = markdown.Parse(text)
+    runs = []
+    broken = false
+    for b in codeBlocks(blocks)
+      first = Split(" ", b.Info)[1]
+      words = blockWords(b.Info)
+      if first == "cesia" and IsErr(words)
+        Send("book/$f:$(b.Line): $(words.Error)", site.Mistakes)
+        broken = true
+      else if first == "cesia"
+        runs = Append({Line: b.Line, Info: b.Info, Text: b.Text, Words: words.Value}, runs)
+      else if first == "toml" and IsErr(cesia.Toml(b.Text))
+        e = cesia.Toml(b.Text).Error
+        Send("book/$f:$(b.Line + e.Line): $(e.Message)", site.Mistakes)
+      end
+    end
+    for r in runs
+      for i in 1:Len(Lines(r.Text))
+        a = arrow(Lines(r.Text)[i])
+        if IsSome(a) and a.Want == "error"
+          Send("book/$f:$(r.Line + i): --> error is for cesia test; here a block that stops is marked fails.", site.Mistakes)
+          broken = true
+        end
+      end
+    end
+    pages = Append({File: f, Source: "book/$f", Path: if f == "index.md" "index.html" else bookPath(f) end, Title: titleOf(blocks, f), Text: text, Blocks: blocks, Runs: runs, Lines: Lines(text), Broken: broken}, pages)
+  end
+  pages
+end
+
+defn bookRuns(pages, site, root, config)
+  (** What the blocks of each page printed, from the cache when nothing they depend on changed: path -> {Output, Values}.
+      The cache of a project keeps only what this build used. *)
+  print = stamp(root, config)
+  mark = from(8, cesia.Fingerprint(Str(sys.Now(), root)))
+  kept = "$(site.Cache)/runs/$(ByteSlice(8, 23, cesia.Fingerprint(root)))"
+  used = []
+  out = {}
+  jobs = []
+  for p in pages
+    if Len(p.Runs) > 0 and not p.Broken
+      key = from(8, cesia.Fingerprint(Join("\n", Concat([print, p.Source], [Str(r.Line, " ", r.Info, "\n", r.Text) for r in p.Runs]))))
+      file = "$kept/$key.json"
+      used = Append("$key.json", used)
+      before = if sys.Exists(file) json.Parse(sys.Read(file).Value) else missing end
+      if IsSome(before) and IsOk(before)
+        out[p.Path] = before.Value
+      else
+        name = ByteSlice(1, ByteLength(p.File) - 3, p.File)
+        jobs = Append({Name: name, Path: p.Path, Key: file, Source: p.Source, Runs: p.Runs, Lines: p.Lines, Mark: mark, Run: site.Run, Files: "$root/book/files"}, jobs)
+      end
+    end
+  end
+  if Len(jobs) > 0
+    sys.Mkdir(site.Run).Value
+    sys.Mkdir(kept).Value
+    results = allRun(jobs)
+    for j in jobs
+      r = results[j.Name]
+      if IsErr(r)
+        for m in r.Error
+          Send(m, site.Mistakes)
+        end
+      else
+        out[j.Path] = r.Value
+        sys.Write(j.Key, json.Text(r.Value))
+      end
+    end
+  end
+  for f in if sys.Exists(kept) sys.List(kept).Value else [] end
+    if not (f in used)
+      sys.Remove("$kept/$f")
+    end
+  end
+  out
+end
+
+defn shownCode(run, values)
+  (** The code of a block as the page shows it: a line a --> gets the value that a had. *)
+  lines = Lines(run.Text)
+  shown = []
+  for i in 1:Len(lines)
+    t = lines[i]
+    a = arrow(t)
+    value = Get(run.Line + i, values)
+    shown = Append(if IsSome(a) and a.Want == "" and IsSome(value) Str(ByteSlice(1, a.At + 2, t), " ", value) else t end, shown)
+  end
+  Join("\n", shown)
+end
+
+defn folded(part, label, words)
+  (** A part of a block, inside a details that opens on a click if the block folds it. *)
+  if Lower(label) in words.Fold "<details><summary>$label</summary>\n$part</details>\n" else part end
+end
+
+defn bookBlock(run, output, values, hooks)
+  (** The HTML of a cesia block of the book: its code, and under it what it printed. *)
+  words = run.Words
+  code = if "code" in words.Hide "" else folded(codeBlock(shownCode(run, values)), "Code", words) end
+  text = if EndsWith("\n", output) ByteSlice(1, ByteLength(output) - 1, output) else output end
+  shown = if words.Md html(output, hooks) else "<pre class=\"output\"><code>$(escape(text))</code></pre>\n" end
+  out = if output == "" or "output" in words.Hide "" else folded(shown, "Output", words) end
+  Str(code, out)
+end
+
+defn bookSide(site, path)
+  (** The side contents of a page of the book: its pages, then the way to the reference. *)
+  pages = Join("", [sideItem(p.Title, rel(path, p.Path), path == p.Path) for p in site.Book])
+  Str("<p class=\"head\">Book</p>\n<div class=\"list book\">\n", pages, "</div>\n<p class=\"head\">Reference</p>\n<div class=\"list book\">\n",
+    sideItem("Modules and keywords", rel(path, "ref/index.html"), false), "</div>\n")
+end
+
+defn bookBody(site, page, results)
+  (** The main part of a page of the book, each cesia block with what it printed. *)
+  hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line")
+  r = GetOr(page.Path, {Output: [], Values: []}, results)
+  values = Dict([{Key: v[1], Value: v[2]} for v in r.Values])
+  defn code(info, text, line)
+    k = IndexOf(line, [x.Line for x in page.Runs])
+    if Split(" ", info)[1] != "cesia" or IsMissing(k)
+      return hooks.Code(info, text, line)
+    end
+    bookBlock(page.Runs[k], if k <= Len(r.Output) r.Output[k] else "" end, values, hooks)
+  end
+  html(page.Text, {Code: code, Link: hooks.Link, Url: hooks.Url, Anchor: hooks.Anchor})
+end
+
+defn bookSearch(page)
+  (** What the search knows of a page of the book: the page, and each of its sections. *)
+  texts = [b.Text for b in page.Blocks if b.Kind == "paragraph"]
+  out = [["page", page.Path, page.Title, if Len(texts) == 0 "" else summary(texts[1]) end, ""]]
+  Concat(out, [["section", "$(page.Path)#$(slug(b.Text))", Replace("`", "", b.Text), page.Title, ""] for b in page.Blocks if b.Kind == "heading" and b.Level == 2])
+end
+
+defn build(root, folder, cache)
   (** The pages of the site, written into the folder; an Err lists the mistakes. *)
   config = settings(root)?
   modules = DocNames()
@@ -280,9 +785,22 @@ defn build(root, folder)
       targets[n.Name] = n.Path
     end
   end
-  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel()}
+  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run"}
+  book = bookOf(root, site)
+  site.Book = book
+  site.BookPaths = Dict([{Key: p.File, Value: p.Path} for p in book])
+  results = bookRuns(book, site, root, config)
   pages = []
   search = []
+  home = {Label: if Len(book) > 0 book[1].Title else "Reference" end, Path: "index.html"}
+  bookLinks = [{Label: p.Title, Path: p.Path} for p in book]
+  for k in 1:Len(book)
+    p = book[k]
+    around = near(bookLinks, k)
+    body = Str(bookBody(site, p, results), pager(p.Path, around.Prev, around.Next, if k == 1 missing else home end))
+    pages = Append({Path: p.Path, Html: page(site, p.Path, p.Title, bookSide(site, p.Path), body)}, pages)
+    search = Concat(search, bookSearch(p))
+  end
   index = {Label: "Reference", Path: "ref/index.html"}
   moduleLinks = [{Label: m, Path: modulePath(m)} for m in modules]
   for k in 1:Len(modules)
@@ -316,7 +834,7 @@ defn build(root, folder)
       search = Append(["keyword", path, w, about(e), ""], search)
     end
   end
-  for path in ["ref/index.html", "index.html"]
+  for path in if Len(book) > 0 ["ref/index.html"] else ["ref/index.html", "index.html"] end
     pages = Append({Path: path, Html: page(site, path, "Reference", side(site, path, []), indexBody(site, path))}, pages)
   end
   mistakes = Concat(drained(site.Mistakes), sameButCase([p.Path for p in pages]))
@@ -341,11 +859,11 @@ defn opened(file)
 end
 
 defn Main()
-  (** Builds the site of Args: the root of the project, the folder, and --open if it was asked. *)
-  if Len(Args) < 2
+  (** Builds the site of Args: the root of the project, the folder, the folder of the cache, and --open if it was asked. *)
+  if Len(Args) < 3
     return Err("usage: cesia doc --site [folder] [--open]")
   end
-  count = build(Args[1], Args[2])?
+  count = build(Args[1], Args[2], Args[3])?
   index = "$(Args[2])/index.html"
   Print("$count files: file://$index")
   if "--open" in Args

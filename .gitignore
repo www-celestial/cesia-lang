@@ -1,5 +1,5 @@
 _build/
-site/
+/site/
 _opam/
 *.install
 .merlin

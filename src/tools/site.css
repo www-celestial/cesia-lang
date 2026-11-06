@@ -55,6 +55,7 @@ button.theme {
 .side .head { margin: 16px 0 4px; font-weight: 600; color: var(--muted); font-size: 13px; text-transform: uppercase; }
 .side .head:first-child { margin-top: 0; }
 .side .list a { display: block; padding: 1px 6px; border-radius: 4px; text-decoration: none; color: var(--ink); overflow-wrap: anywhere; }
+.side .book a { font-family: inherit; }
 .side .list a:hover { background: var(--edge); }
 .side .list a[aria-current="page"] { background: var(--pick); }
 main { max-width: calc(72ch + 64px); padding: 16px 32px 64px; min-width: 0; }

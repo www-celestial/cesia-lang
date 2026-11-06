@@ -509,12 +509,14 @@ isDataLinkIsText() = html("[a](data:text/html,x)") == "<p>[a](data:text/html,x)<
 isQuoteInATitleIsEscaped() = html("[a](x \"\\\"onclick=y\")") == "<p><a href=\"x\" title=\"&quot;onclick=y\">a</a></p>\n"
 isIndentedLineIsAParagraph() = html("    code") == "<p>code</p>\n"
 
-hooks = {Code: (info, text, line) -> "<pre class=\"$info\">$line</pre>\n", Link: (target, line) -> if target == "Sort" "ref/Sort.html" else missing end, Anchor: (level, text, line) -> Lower(text)}
+hooks = {Code: (info, text, line) -> "<pre class=\"$info\">$line</pre>\n", Link: (target, line) -> if target == "Sort" "ref/Sort.html" else missing end, Url: (url, line) -> Replace(".md", ".html", url), Anchor: (level, text, line) -> Lower(text)}
 withHooks(text) = markdown.Html(markdown.Parse(text), hooks)
 isLinkHookMakesALink() = withHooks("See [Sort].") == "<p>See <a href=\"ref/Sort.html\">Sort</a>.</p>\n"
 isLinkHookLeavesText() = withHooks("[x] and [Nope]") == "<p>[x] and [Nope]</p>\n"
 isCodeHookColors() = withHooks("a\n\n```cesia\nx\n```") == "<p>a</p>\n<pre class=\"cesia\">3</pre>\n"
 isAnchorHook() = withHooks("## Hello") == "<h2 id=\"hello\">Hello</h2>\n"
+isUrlHook() = withHooks("[Values](values.md#texts)") == "<p><a href=\"values.html#texts\">Values</a></p>\n"
+isUrlHookStillSafe() = withHooks("[a](javascript:x.md)") == "<p>[a](javascript:x.md)</p>\n"
 isLinesOfBlocks() = Equal([b.Line for b in markdown.Parse("# a\n\ntext\nmore\n\n- x\n- y\n\n```\nc\n```")], [1, 3, 6, 9])
 isListItemsAreBlocks() = markdown.Parse("- a\n- b")[1].Items[2][1].Text == "b"
 

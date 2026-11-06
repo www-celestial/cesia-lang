@@ -5,10 +5,11 @@
     Parse gives the blocks with their lines; Html writes them, and asks its hooks for the colors of code, the target of a
     name in brackets and the anchor of a heading. *)
 
-(** Hooks that add nothing: code in a plain pre, a name in brackets left as text, headings without an anchor.
+(** Hooks that add nothing: code in a plain pre, a name in brackets left as text, a link to its address as written,
+    headings without an anchor.
 
       Html(Parse("[Sort]"), Plain) --> "<p>[Sort]</p>\n" *)
-Plain = {Code: (info, text, line) -> missing, Link: (target, line) -> missing, Anchor: (level, text, line) -> missing}
+Plain = {Code: (info, text, line) -> missing, Link: (target, line) -> missing, Url: (url, line) -> url, Anchor: (level, text, line) -> missing}
 
 (* The text with &, <, > and " written as HTML writes them, as CommonMark writes them: web.Escape is the one for programs. *)
 escape(text) = Replace("\"", "&quot;", Replace(">", "&gt;", Replace("<", "&lt;", Replace("&", "&amp;", text))))
@@ -748,9 +749,10 @@ defn inline(t, hooks, line)
         k = lastBracket(nodes)
         tail = if k > 0 and nodes[k].Active linkTail(t, i + 1) else missing end
         target = if k > 0 and nodes[k].Active and IsMissing(tail) hooks.Link(ByteSlice(nodes[k].At, i - 1, t), line) else missing end
-        if IsSome(tail) and isSafe(tail.Dest)
+        url = if IsSome(tail) hooks.Url(tail.Dest, line) else missing end
+        if IsSome(tail) and isSafe(url)
           inner = emphasized(Skip(k, nodes))
-          nodes = Append({K: 0, H: anchor(tail.Dest, tail.Title, inner)}, Take(k - 1, nodes))
+          nodes = Append({K: 0, H: anchor(url, tail.Title, inner)}, Take(k - 1, nodes))
           nodes = [if x.K == 2 {K: 2, At: x.At, Active: false} else x end for x in nodes]
           i = tail.Next
         else if IsSome(target)
@@ -848,8 +850,8 @@ end
 
 defn Html(blocks, hooks)
   (** The HTML of blocks from Parse. hooks has Code(info, text, line), the HTML of a block of code or missing for a plain
-      pre; Link(target, line), the URL of a [target] or missing to leave it as text; and Anchor(level, text, line), the id of a
-      heading or missing. Plain gives none of them.
+      pre; Link(target, line), the URL of a [target] or missing to leave it as text; Url(url, line), the address a link
+      written [text](url) leads to; and Anchor(level, text, line), the id of a heading or missing. Plain gives none of them.
 
         Html(Parse("Some *words*."), Plain) --> "<p>Some <em>words</em>.</p>\n"
         Html(Parse("<script>"), Plain) --> "<p>&lt;script&gt;</p>\n" *)

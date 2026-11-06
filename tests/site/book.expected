@@ -1,0 +1,71 @@
+built: 0
+== index.html
+<main id="text">
+<h1 id="proj">Proj</h1>
+<p>A tiny book. Start with <a href="first.html">the first steps</a>, then <a href="files.html#reading">files</a>.</p>
+<pre><code class="cesia"><span class="n">Print</span>(<span class="s">&quot;home&quot;</span>)</code></pre>
+<pre class="output"><code>home</code></pre>
+<nav class="pager" aria-label="Pages"><span></span><span></span><a rel="next" href="first.html">First steps →</a></nav>
+</main>
+== first.html
+<main id="text">
+<h1 id="first-steps">First steps</h1>
+<p>Names and <a href="ref/prelude/Len.html">Len</a>:</p>
+<pre><code class="cesia"><span class="k">use</span> greet
+x = <span class="m">2</span> + <span class="m">3</span>
+x --&gt; <span class="m">5</span>
+x * <span class="m">2</span> --&gt; <span class="m">10</span>
+<span class="n">Print</span>(greet.<span class="f">Hello</span>(<span class="s">&quot;Ana&quot;</span>))
+<span class="n">Len</span>(<span class="s">&quot;abc&quot;</span>) --&gt; <span class="m">3</span></code></pre>
+<pre class="output"><code>Hello, Ana!</code></pre>
+<p>A value with a line end:</p>
+<pre><code class="cesia"><span class="s">&quot;a\nb&quot;</span> --&gt; <span class="s">&quot;a</span>
+<span class="s">b&quot;</span></code></pre>
+<p>This one stops:</p>
+<pre><code class="cesia"><span class="n">Div</span>(x, <span class="m">0</span>)</code></pre>
+<pre class="output"><code>Div: division by zero.</code></pre>
+<p>Not run:</p>
+<pre><code class="cesia"><span class="k">use</span> pkg/http
+http.<span class="f">Get</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
+<p>A table made by code:</p>
+<table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="cesia"><span class="k">for</span> k <span class="k">in</span> <span class="m">1</span>:<span class="m">3</span>
+  <span class="n">Print</span>(k)
+<span class="k">end</span></code></pre>
+<details><summary>Output</summary>
+<pre class="output"><code>1
+2
+3</code></pre>
+</details>
+<pre><code class="language-toml">[project]
+name = &quot;x&quot;
+</code></pre>
+<nav class="pager" aria-label="Pages"><a rel="prev" href="index.html">← Proj</a><a rel="up" href="index.html">Proj</a><a rel="next" href="files.html">Files →</a></nav>
+</main>
+== files.html
+<main id="text">
+<h1 id="files">Files</h1>
+<h2 id="reading">Reading</h2>
+<pre><code class="cesia"><span class="k">use</span> sys
+<span class="n">Print</span>(sys.<span class="f">Read</span>(<span class="s">&quot;notes.txt&quot;</span>).<span class="f">Value</span>)</code></pre>
+<pre class="output"><code>first line
+second line
+</code></pre>
+<p>Back to <a href="index.html">the start</a>.</p>
+<nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><span></span></nav>
+</main>
+nothing ran again
+exit 0

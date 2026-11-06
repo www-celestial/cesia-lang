@@ -241,10 +241,9 @@ let site args =
   let opener = if Sys.win32 then "cmd" else if Sys.file_exists "/System/Library/CoreServices" then "open" else "xdg-open" in
   let grants =
     String.concat ","
-      [ "read"; "write=" ^ folder; "write=" ^ cache; "exec=" ^ Sys.executable_name; "exec=" ^ opener; "env=HOME";
-        "env=XDG_CACHE_HOME"; "env=CESIA_CORES" ]
+      [ "read"; "write=" ^ folder; "write=" ^ cache; "exec=" ^ Sys.executable_name; "exec=" ^ opener; "env=CESIA_CORES" ]
   in
-  exit (tool ~grants "site" (root :: folder :: List.filter (( = ) "--open") args))
+  exit (tool ~grants "site" (root :: folder :: cache :: List.filter (( = ) "--open") args))
 
 (* The project, then its pkg/ through the tool that keeps it: one way to write pkg/ and cesia.lock. *)
 let create name =
