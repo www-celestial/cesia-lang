@@ -10,7 +10,7 @@ text can't be read from a block.
 void can't be written to a block.
 300 doesn't fit in u8.
 c.Get needs a block, not the number 5.
-c.Get needs a block, not a pointer.
+no panic: 0
 This block was freed.
 This block was freed.
 This block was freed.
