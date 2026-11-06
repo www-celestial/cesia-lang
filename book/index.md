@@ -37,5 +37,6 @@ language.
 10. [Types](types.md): types on fields, parameters and results, `?` for missing, interfaces.
 11. [Packages](packages.md): `use`, folders as packages, `cesia.toml`, tasks, code from other projects.
 12. [Permissions](permissions.md): `--allow`, `--limit`, and the permissions of a task.
+13. [Files](files.md): reading, writing, folders, arguments, other programs and the clock.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.

@@ -94,5 +94,5 @@ Permissions and limits together make it safe to run a program you just downloade
 
 ## Next
 
-Your programs touch only what you allow. The next chapter, Files, reads and writes files, lists folders, runs other
+Your programs touch only what you allow. The next chapter, [Files](files.md), reads and writes files, lists folders, runs other
 programs, and reads the clock.
