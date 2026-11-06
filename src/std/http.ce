@@ -2,11 +2,11 @@
 use net
 use sys
 
-Crlf = "\r\n"
-Blank = "$Crlf$Crlf"
-MaxHead = 16384
-DefaultMaxBody = 1048576
-DefaultTimeout = 60
+Crlf = "\r\n"              (** The line end of HTTP. *)
+Blank = "$Crlf$Crlf"       (** The empty line that ends the head of a request or a response. *)
+MaxHead = 16384            (** The largest head of a request, in bytes: a longer one is answered 431. *)
+DefaultMaxBody = 1048576   (** The largest body of a request that Serve reads, in bytes, unless maxBody says otherwise. *)
+DefaultTimeout = 60        (** The seconds a connection has for each request, unless timeout says otherwise. *)
 
 Reason(status) = match status   (** The standard reason text of a status code, or "Unknown". *)
   200 -> "OK"

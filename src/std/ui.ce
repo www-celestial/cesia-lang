@@ -1,13 +1,13 @@
 (** The surfaces of a professional tool, as commands for sdl: themes, rectangles, widgets and nodes. Everything here is pure, so
     it needs no window and no permission. Widgets take a look last and give arrays of commands, which a program joins with flatten. *)
 
-(* A dark theme: charcoal surfaces, for long hours. *)
+(** A dark theme: charcoal surfaces, for long hours. *)
 Dark = {Ground: 0x0E1013, Code: 0x1C1E22, Panel: 0x1C1E22, Header: 0x25282D, Tab: 0x2C3036, Well: 0x131518, Edge: 0x2B2E34, Line: 0x34383F,
   Ink: 0xDADDE2, Bright: 0xFFFFFF, Muted: 0x8D929A, Faint: 0x5E636B, Accent: 0x3B82F6, Fill: 0x2C5EA8, Hover: 0x2A2D33, Picked: 0x25457C,
   Graph: 0x17191C, GridMinor: 0x1C1E22, GridMajor: 0x23262B, Body: 0x1F2125, Big: 0x2B2E34, Shadow: 140,
   Syntax: [0xCF8E6D, 0x56A8F5, 0x6AAB73, 0x2AACB8, 0x7A7E85, 0xBCBEC4, 0xC77DBB]}
 
-(* A light theme: a pale blue-gray ground, near-white panels, and white where one reads. *)
+(** A light theme: a pale blue-gray ground, near-white panels, and white where one reads. *)
 Light = {Ground: 0xEBECF0, Panel: 0xF7F8FA, Header: 0xEBECF0, Tab: 0xFFFFFF, Well: 0xFFFFFF, Edge: 0xDFE1E5, Line: 0xD3D5DB, Code: 0xFFFFFF,
   Ink: 0x1E1F22, Bright: 0x000000, Muted: 0x6C707E, Faint: 0xA8ADBD, Accent: 0x3574F0, Fill: 0xC2D6FC, Hover: 0xEBECF0, Picked: 0xD4E2FF,
   Graph: 0xFFFFFF, GridMinor: 0xF8F8F8, GridMajor: 0xF1F1F1, Body: 0xFFFFFF, Big: 0xEBECF0, Shadow: 40,
@@ -69,8 +69,8 @@ Contains(point, rect) = point.X >= rect.X and point.X < rect.X + rect.Width and 
       SliderValue({X: 5, Y: 0}, {X: 0, Y: 0, Width: 10, Height: 2}) --> 0.5 *)
 SliderValue(point, rect) = if rect.Width <= 0 0.0 else clamp01((point.X - rect.X) / (rect.Width * 1.0)) end
 
-TitleHeight = 26
-PinRow = 24
+TitleHeight = 26   (** The height of the title bar of a node, in pixels. *)
+PinRow = 24        (** The height of the row of each pin of a node, in pixels. *)
 
 box(x, y, w, h, color, radius) = {Kind: "box", X: x, Y: y, Width: w, Height: h, Color: color, Radius: radius}
 edge(x, y, w, h, color, radius) = {Kind: "ring", X: x, Y: y, Width: w, Height: h, Color: color, Radius: radius}
@@ -80,7 +80,7 @@ strong(x, y, words, color) = {Kind: "text", X: x, Y: y, Text: words, Color: colo
 icon(shape, x, y, color) = {Kind: "icon", Shape: shape, X: x, Y: y, Color: color}
 middle(look, y, h) = y + Div(h - look.Height, 2)
 
-(* The shapes of the tool bar, and the arrow of sections and dropdowns. *)
+(** The shapes of the tool bar, and the arrow of sections and dropdowns. *)
 Icons = {
   Save: {Name: "save", Paths: [[3.0, 3.0, 13.0, 3.0, 13.0, 13.0, 3.0, 13.0, 3.0, 3.0], [6.0, 3.0, 6.0, 6.0, 10.0, 6.0, 10.0, 3.0], [5.0, 13.0, 5.0, 9.0, 11.0, 9.0, 11.0, 13.0]], Rings: []},
   Browse: {Name: "browse", Paths: [[2.0, 13.0, 14.0, 13.0, 14.0, 5.0, 8.0, 5.0, 6.5, 3.0, 2.0, 3.0, 2.0, 13.0]], Rings: []},

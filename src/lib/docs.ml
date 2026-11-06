@@ -155,6 +155,11 @@ let is_short_method line i =
   let rest = String.trim (String.sub line n (String.length line - n)) in
   String.starts_with ~prefix:"=" rest && not (String.starts_with ~prefix:"==" rest)
 
+(* Keyword = 1: a value named at the top of a file, whose name is all its signature. *)
+let constant_end line =
+  let i = name_end line 0 in
+  if i > 0 && String.starts_with ~prefix:" = " (String.sub line i (String.length line - i)) then Some i else None
+
 let is_definition line =
   String.starts_with ~prefix:"defn " line
   || String.starts_with ~prefix:"struct " line
@@ -164,7 +169,8 @@ let is_definition line =
   | Some i -> is_short_method line i
   | None ->
     let i = name_end line 0 in
-    i > 0 && i < String.length line && (line.[i] = '(' || (line.[i] = '.' && is_short_method line i))
+    (i > 0 && i < String.length line && (line.[i] = '(' || (line.[i] = '.' && is_short_method line i)))
+    || constant_end line <> None
 
 let drop_prefix prefix s =
   if String.starts_with ~prefix s then Some (String.sub s (String.length prefix) (String.length s - String.length prefix))
@@ -291,7 +297,8 @@ let entries ?(file = "") src =
              go (e + 1)
            end
          | None, None, None ->
-           add k (signature_of code) (one_line k);
+           let signature = match constant_end code with Some i -> String.sub code 0 i | None -> signature_of code in
+           add k signature (one_line k);
            go (k + 1))
   in
   (* A file of natives has no code but its uses: each of its (** *) starts with the signature of the native it documents, or

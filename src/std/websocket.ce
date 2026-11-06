@@ -3,8 +3,8 @@ use pkg/encode
 use pkg/http
 
 guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-MaxFrame = 1048576
-DefaultIdle = 300
+MaxFrame = 1048576   (** The largest frame read, in bytes: a larger one is refused. *)
+DefaultIdle = 300    (** The seconds a connection may stay silent before it is closed, unless idle says otherwise. *)
 
 defn Frame(opcode, payload)
   (** A frame from the server: never masked. *)

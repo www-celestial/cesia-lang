@@ -3,20 +3,20 @@
 use c
 use sys
 
-InitVideo = 0x20
-WindowResizable = 0x20
-FirstWindowEvent = 0x202
-LastWindowEvent = 0x21A
-MaxTexts = 8192
-MaxImages = 4096
-MaxCurves = 1024
-MaxSharedMasks = 512
-MaskEntry = 96
-MaskKey = 70
-CurvePoints = 25
-CurveAcross = 4
-BlendAlpha = 1
-PixelsRgba = 0x16762004
+InitVideo = 0x20           (** SDL's flag that starts its video part. *)
+WindowResizable = 0x20     (** SDL's flag of a window that can change its size. *)
+FirstWindowEvent = 0x202   (** The code of the first event about the window, in SDL 3.2. *)
+LastWindowEvent = 0x21A    (** The code of the last event about the window, in SDL 3.2. *)
+MaxTexts = 8192            (** How many text objects a window keeps. *)
+MaxImages = 4096           (** How many images a window keeps. *)
+MaxCurves = 1024           (** How many curves one curves command can hold. *)
+MaxSharedMasks = 512       (** How many masks of soft edges a window keeps, shared by the commands that draw the same one. *)
+MaskEntry = 96             (** The size in bytes of the entry of one mask in the block that keeps them. *)
+MaskKey = 70               (** The longest key of a mask, in bytes. *)
+CurvePoints = 25           (** How many points draw a curve along its length. *)
+CurveAcross = 4            (** How many points draw a curve across, for its soft edges. *)
+BlendAlpha = 1             (** SDL's blend mode that mixes by alpha. *)
+PixelsRgba = 0x16762004    (** SDL's format of the pixels of an image: a byte each of red, green, blue and alpha. *)
 
 VersionOk(version) = version >= 3002000   (** The event offsets read below are those of the ABI of SDL 3.2. *)
 
