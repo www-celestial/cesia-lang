@@ -81,5 +81,5 @@ Start Cemacs with `cesia do dev` from its folder, and each save of one of its fi
 
 ## Next
 
-You know the tools. The last chapter, A real program, puts the chapters together: a small web service on SQLite, with its
-tests, from `cesia new` to a server that runs.
+You know the tools. The last chapter, [A real program](project.md), puts the chapters together: a small web service on
+SQLite, with its tests, from `cesia new` to a server that runs.
