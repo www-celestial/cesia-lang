@@ -225,7 +225,7 @@ curl localhost:8080/notes
 The block below does the same in one program: it serves the routes on a port of this machine, and asks them with
 [http.Post] and [http.Get]:
 
-```cesia allow=net,net=:18781
+```cesia allow=net=own
 use std/sys
 use std/http
 use std/fiber

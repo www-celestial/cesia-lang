@@ -113,9 +113,10 @@ curl localhost:8080/hello/Ana
 ### Serving and asking in one program
 
 The block below serves the shop on a port and asks it with the client, in one program. [fiber.Spawn] runs the server beside the
-rest of the program, as the chapter [Fibers](fibers.md) explains, and [sys.Sleep] lets it start:
+rest of the program, as the chapter [Fibers](fibers.md) explains, and [sys.Sleep] lets it start. `net=own` is the permission
+for that: the program listens on this machine, and connects only to its own listeners.
 
-```cesia allow=net,net=:18761
+```cesia allow=net=own
 use std/sys
 use std/http
 use std/fiber

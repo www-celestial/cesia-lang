@@ -466,7 +466,7 @@ end
 (* The books: each index.md links to the other pages of its folder, in their order; docs/book/ is the home. A page is a program:
    its cesia blocks run at each build, and what they print is written under them. *)
 
-blockWordList = "norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT or ffi=m"
+blockWordList = "norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT, net=own or ffi=m"
 
 (* net=:8080 lets a block listen on that port, as --allow does; a server of the book listens on 127.0.0.1, the default of
    http.Serve. *)
@@ -486,7 +486,7 @@ defn blockWords(info)
       out.Fold = list.Append(from(6, w), out.Fold)
     else if w == "hide=code" or w == "hide=output"
       out.Hide = list.Append(from(6, w), out.Hide)
-    else if text.StartsWith("allow=", w) and list.All([a in ["read", "write", "net", "ffi=m"] or isListen(a) for a in text.Split(",", from(7, w))])
+    else if text.StartsWith("allow=", w) and list.All([a in ["read", "write", "net", "net=own", "ffi=m"] or isListen(a) for a in text.Split(",", from(7, w))])
       out.Allow = list.Concat(out.Allow, text.Split(",", from(7, w)))
     else
       return result.Err("$w is no word of a cesia block: they are $blockWordList.")
