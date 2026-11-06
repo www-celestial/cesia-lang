@@ -1,0 +1,8 @@
+; SQLite's natives, the module sqlite3: a library whose plugin cesia_sqlite.cmxs the binary loads at the first call of one
+; of them (src/bin/main.ml), so that start-up never pays for its code. The binary keeps their names (src/sys/sys_modules.ml).
+
+(library
+ (name cesia_sqlite)
+ (flags
+  (:standard -open Cesia))
+ (libraries cesia cesia_sys unix))

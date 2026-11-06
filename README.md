@@ -357,7 +357,7 @@ With `use`:
 | `tls` | TLS through OpenSSL, server and client, for `http` and `web` |
 | `crypto` | SHA-256, SHA-512, BLAKE2b, HMAC, encryption, public keys, signatures, Argon2, through libsodium |
 | `encode` | hexadecimal, Base64, URLs, queries |
-| `sql`, `sqlite` | databases: a pool, rows as maps, typed rows, transactions, streams; SQLite through its library |
+| `sql` | databases: a pool, rows as maps, typed rows, transactions, streams; SQLite through its library |
 | `json`, `csv`, `regex`, `date` | parsing and writing; `regex` stays linear on any pattern |
 | `set`, `queue`, `heap`, `algo` | data structures, search, graphs, permutations, Levenshtein |
 | `num` | numpy-like: statistics, linear algebra, QR, eigenvalues, FFT, random numbers |
@@ -411,7 +411,6 @@ Print(main())
 ```toml
 [project]
 name = "todo"
-native = ["sqlite3"]   # grants ffi=sqlite3 to every task
 
 [tasks.run]
 file = "todo.ce"
@@ -427,13 +426,14 @@ allow = ["read=data", "write=data"]   # SQLite's -wal and -shm files sit beside 
 - Values only go through `?`, never into the text: `"... where name = '$name'"` is an injection. One statement per call, so
   `"1; drop table users"` is an Err; a table or column chosen at run time comes from a fixed map in the program:
   `{Newest: "created_at desc", Title: "title"}[choice]`. SQLite opens without URIs, extensions or attached databases, so
-  `attach`, `vacuum` and `load_extension` are refused, and its files need the `read` and `write` permissions of their folder.
+  `attach`, `vacuum`, `load_extension` and the pragmas `temp_store_directory` and `data_store_directory` are refused, and
+  its files need the `read` and `write` permissions of their folder, never `ffi`.
 - Errors are `Err({Kind: "sql", Code, Message})`: SQLSTATE codes where SQL has one (`23505` unique, `23503` foreign key,
-  `23502` not null, `23514` check, `22003` an integer past 63 bits, `07001` the count of `?`), else `sqlite-N`, or `pool`,
-  `closed`, `done`, `statements`, `params`, `names`. A message never holds a parameter.
+  `23502` not null, `23514` check, `22003` an integer past 63 bits, `07001` the count of `?`), else `sqlite-N`, or `url`,
+  `library`, `pool`, `closed`, `done`, `statements`, `params`, `names`. A message never holds a parameter.
 - A pool of `max = 8` connections; a call waits `wait = 5` seconds for one, and a busy database is waited for in the fiber, so
   the others run. `sqlite::memory:` keeps one connection. Calls into SQLite run on the main thread: right for short queries.
-- Another database brings its own driver, a map of six functions: `cesia doc sql.Open`.
+- `pkg/sql` is the one way to SQLite: `c.Open` refuses its library.
 
 ## C and C++
 

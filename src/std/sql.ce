@@ -1,19 +1,17 @@
-(** Databases through SQL: a pool of connections, rows as maps that share their keys, typed rows, transactions and
-    streams. Values only go through ?, never into the text: one statement per call, and sql.Script for a schema. URLs:
-    sqlite:PATH and sqlite::memory:, with pkg/sqlite; another database brings its own driver (see Open). *)
+(** Databases through SQL, on SQLite: a pool of connections, rows as maps that share their keys, typed rows, transactions
+    and streams. Values only go through ?, never into the text: one statement per call, and sql.Script for a schema. URLs:
+    sqlite:PATH and sqlite::memory:. A file needs read and write, and uses WAL and foreign keys; a busy database is waited
+    for in the fiber, so the other fibers run meanwhile. *)
 use columns
 use json
-use sys
 use sqlite3
 use pkg/date
-use pkg/sqlite
 
 batch = 1024
 dateFields = ["Year", "Month", "Day", "Hour", "Minute", "Second"]
 
 fault(code, message) = {Kind: "sql", Code: code, Message: message}
 failure(code, message) = Err(fault(code, message))
-closedError() = failure("closed", "This database is closed.")
 doneError() = failure("done", "This transaction has ended: use it only inside its function.")
 failed(r) = match r
   Err(_) -> true
@@ -23,35 +21,24 @@ errorOf(r) = match r
   Err(e) -> e
   else -> missing
 end
+codeOf(r) = if failed(r) and IsDict(errorOf(r)) Get("Code", errorOf(r)) else missing end
 isPanic(x) = IsDict(x) and Has("Panic", x)
 rethrow(out) = if isPanic(out) Panic(out.Panic) else out end
+panicOf(r) = errorOf(r) then {Panic: "$(it.Message) ($(it.File):$(it.Line))"}
 
-defn Open(url, max = 8, wait = 5, driver = missing)
+defn Open(url, max = 8, wait = 5)
   (** An Ok of a database: a pool of at most max connections, each opened when first needed. A call that finds them all
       busy waits at most wait seconds, then gives an Err with Code "pool". sqlite::memory: keeps one connection, since each
-      would hold its own database.
-
-      A driver is a map of functions, so another project can bring one: Connect(url, options) gives an Ok of a connection,
-      options holding Wait; Run(text, params, conn) an Ok of a cursor on one statement, prepared and bound; Next(n, cursor)
-      an Ok of {Names, Cells, Done, Changed, LastId}, up to n rows, their cells row after row; Script(text, conn) runs
-      several statements; Close(x) closes a cursor or a connection; Broken(conn) says that a connection can't be used again. *)
-  if IsMissing(driver) and not StartsWith("sqlite:", url)
-    return failure("url", "No driver for $url: use sqlite:PATH, or give one with driver =.")
+      would hold its own database. Another URL is an Err with Code "url". *)
+  if not StartsWith("sqlite:", url)
+    return failure("url", "No database for $url: use sqlite:PATH or sqlite::memory:.")
   end
   size = if url == "sqlite::memory:" 1 else max end
   if not (IsInt(size) and size >= 1)
     return failure("pool", "max is a number of connections, 1 or more.")
   end
-  slots = Channel()
-  for k in 1:size
-    Send(missing, slots)
-  end
-  if IsMissing(driver)
-    (* SQLite: its pool, and each call of one statement, are natives of sqlite3. *)
-    pool = sqlite3.Pool(Slice(8, Len(url), url), size, wait)?
-    return Ok({Driver: sqlite.Driver, Url: url, Pool: pool, Fast: true, Wait: wait, Tx: false})
-  end
-  Ok({Driver: driver, Url: url, Slots: slots, Wait: wait, Closed: Channel(), Fast: false, Tx: false})
+  pool = sqlite3.Pool(Slice(8, Len(url), url), size, wait)?
+  Ok({Pool: pool, Wait: wait, Tx: false})
 end
 
 defn isSet(ch)
@@ -62,67 +49,6 @@ defn isSet(ch)
   end
   Send(got?, ch)
   true
-end
-
-closedMark = "closed"
-
-defn take(db)
-  (** A connection of the pool: on SQLite, a connection handle in a map as its driver takes it. *)
-  if db.Fast
-    h = sqlite3.Take(db.Pool)?
-    return Ok({H: h, Wait: db.Wait})
-  end
-  slow(db)
-end
-
-defn slow(db)
-  (** A connection of the pool: a free one, or a new one in an empty slot. Close leaves closedMark in every slot. *)
-  got = Receive(db.Slots, timeout = db.Wait)
-  if failed(got)
-    return failure("pool", "No connection was free for $(db.Wait) seconds. Inside a transaction, use its tx, not db.")
-  end
-  slot = got?
-  if IsDict(slot)
-    return Ok(slot)
-  end
-  if slot == closedMark
-    Send(slot, db.Slots)
-    return closedError()
-  end
-  conn = db.Driver.Connect(db.Url, {Wait: db.Wait})
-  if failed(conn)
-    Send(missing, db.Slots)
-  end
-  conn
-end
-
-defn giveBack(conn, db)
-  (** A connection back in the pool; a broken one, or one of a closed database, is closed and its slot left empty. *)
-  if db.Fast
-    sqlite3.Give(conn.H, db.Pool)
-  else if isSet(db.Closed)
-    db.Driver.Close(conn)
-    Send(closedMark, db.Slots)
-  else if db.Driver.Broken(conn)
-    db.Driver.Close(conn)
-    Send(missing, db.Slots)
-  else
-    Send(conn, db.Slots)
-  end
-end
-
-defn withConn(f, db)
-  (** f(conn) on a connection of db, or of the transaction db is. f runs no code of the program. *)
-  if db.Tx
-    if isSet(db.Done)
-      return doneError()
-    end
-    return f(db.Conn)
-  end
-  conn = take(db)?
-  r = f(conn)
-  giveBack(conn, db)
-  r
 end
 
 defn value(v)
@@ -172,41 +98,6 @@ defn rowsOf(b)
   if failed(rows) fault("names", errorOf(rows).Message) then Err(it) else rows end
 end
 
-defn closing(d, cursor, out)
-  (** Closes a cursor before its end, and gives out. *)
-  d.Close(cursor)
-  out
-end
-
-defn readAll(text, ps, n, d, conn)
-  (** Every row, or the first n, as batches of maps joined once. *)
-  cursor = d.Run(text, bound(ps)?, conn)?
-  parts = []
-  count = 0
-  done = false
-  while not done and (IsMissing(n) or count < n)
-    b = d.Next(if IsMissing(n) batch else n - count end, cursor)?
-    rows = rowsOf(b)?
-    parts = Append(rows, parts)
-    count = count + Len(rows)
-    done = b.Done
-  end
-  if not done
-    d.Close(cursor)
-  end
-  Ok(Flatten(parts))
-end
-
-defn first(text, ps, d, conn)
-  (** The first row, in a list, or none. *)
-  cursor = d.Run(text, bound(ps)?, conn)?
-  b = d.Next(1, cursor)?
-  if not b.Done
-    d.Close(cursor)
-  end
-  rowsOf(b)
-end
-
 defn typed(as, rows)
   (** as(row) for each row: an Ok of the values, or the first Err with the number of its row. *)
   if IsMissing(as)
@@ -224,16 +115,7 @@ defn typed(as, rows)
   Ok(out)
 end
 
-defn exec(text, ps, d, conn)
-  cursor = d.Run(text, bound(ps)?, conn)?
-  b = d.Next(batch, cursor)?
-  while not b.Done
-    b = d.Next(batch, cursor)?
-  end
-  Ok({Changed: b.Changed, LastId: b.LastId})
-end
-
-at(db) = if db.Tx db.Conn.H else db.Pool end
+at(db) = if db.Tx db.Conn else db.Pool end
 ended(db) = db.Tx and db.Depth > 0 and isSet(db.Done)
 
 defn settle(r, f, text, params, db)
@@ -242,9 +124,9 @@ defn settle(r, f, text, params, db)
   if IsOk(r)
     return r
   end
-  code = errorOf(r).Code
+  code = codeOf(r)
   if code == "convert"
-    return f(text, bound(params)?, at(db))
+    return f(text, bound(params)?, at(db)) then if codeOf(it) == "closed" and db.Tx doneError() else it end
   end
   if code == "closed" and db.Tx
     return doneError()
@@ -252,52 +134,71 @@ defn settle(r, f, text, params, db)
   r
 end
 
+defn held(f, db)
+  (** f(conn) on a connection of db, or on the one of the transaction db is. Outside one, f runs in a fiber of its own, so
+      that a panic in it gives the connection back, then panics again. *)
+  if db.Tx
+    if ended(db)
+      return doneError()
+    end
+    r = f(db.Conn)
+    return if codeOf(r) == "closed" doneError() else r end
+  end
+  conn = sqlite3.Take(db.Pool)?
+  r = Wait(Spawn(() -> f(conn)))
+  sqlite3.Give(conn, db.Pool)
+  if failed(r)
+    Panic(panicOf(r).Panic)
+  end
+  r?
+end
+
 defn Exec(text, params, db)
   (** Runs one statement that changes rows: an Ok of {Changed, LastId}, the rows it changed and the id of the last row
       inserted. *)
-  if db.Fast
-    r = sqlite3.Exec(text, params, if db.Tx db.Conn.H else db.Pool end)
-    if IsOk(r) and not ended(db)
-      return r
-    end
-    return if ended(db) doneError() else settle(r, sqlite3.Exec, text, params, db) end
+  if ended(db)
+    return doneError()
   end
-  withConn(conn -> exec(text, params, db.Driver, conn), db)
+  r = sqlite3.Exec(text, params, at(db))
+  if IsOk(r) r else settle(r, sqlite3.Exec, text, params, db) end
 end
 
 defn Query(text, params, db, as = missing)
   (** An Ok of every row, each a map from its column names made public names: created_at is read r.CreatedAt. NULL is
       missing. With as, as(row) for each, as User.From: an Ok of the values, or the first Err with Row, its number. *)
-  if db.Fast and not ended(db)
-    r = sqlite3.Query(text, params, if db.Tx db.Conn.H else db.Pool end)
-    return if IsOk(r) and IsMissing(as) r else typed(as, settle(r, sqlite3.Query, text, params, db)?) end
-  end
-  if db.Fast
+  if ended(db)
     return doneError()
   end
-  rows = withConn(conn -> readAll(text, params, missing, db.Driver, conn), db)?
-  typed(as, rows)
+  r = sqlite3.Query(text, params, at(db))
+  if IsOk(r) and IsMissing(as) r else typed(as, settle(r, sqlite3.Query, text, params, db)?) end
 end
 
 defn One(text, params, db, as = missing)
   (** An Ok of the first row, or of missing if there is none; with as, of as(row). *)
-  if db.Fast and not ended(db)
-    r = sqlite3.One(text, params, if db.Tx db.Conn.H else db.Pool end)
-    if IsOk(r) and IsMissing(as)
-      return r
-    end
-    row = settle(r, sqlite3.One, text, params, db)?
-    return if IsMissing(row) Ok(missing) else typed(as, [row]) then MapOk(it[1]) end
-  end
-  if db.Fast
+  if ended(db)
     return doneError()
   end
-  rows = withConn(conn -> first(text, params, db.Driver, conn), db)?
-  if Len(rows) == 0
-    return Ok(missing)
+  r = sqlite3.One(text, params, at(db))
+  if IsOk(r) and IsMissing(as)
+    return r
   end
-  values = typed(as, rows)?
-  Ok(values[1])
+  row = settle(r, sqlite3.One, text, params, db)?
+  if IsMissing(row) Ok(missing) else typed(as, [row]) then MapOk(it[1]) end
+end
+
+defn cursorOn(text, ps, conn)
+  (** A cursor on one statement, its values converted if SQL doesn't take them as they are. *)
+  c = sqlite3.Run(text, ps, conn)
+  if codeOf(c) == "convert" sqlite3.Run(text, bound(ps)?, conn) else c end
+end
+
+defn rowsAt(b, cursor)
+  (** The maps of a batch; an Err closes the cursor, which may still have rows. *)
+  rows = rowsOf(b)
+  if failed(rows) and not b.Done
+    sqlite3.Close(cursor)
+  end
+  rows
 end
 
 defn eachBatch(f, as, rows)
@@ -311,21 +212,20 @@ defn eachBatch(f, as, rows)
   Ok(Len(rows))
 end
 
-defn each(f, text, ps, as, d, conn)
-  cursor = d.Run(text, bound(ps)?, conn)?
+defn each(f, text, ps, as, conn)
+  cursor = cursorOn(text, ps, conn)?
   count = 0
   done = false
   while not done
-    b = d.Next(batch, cursor)?
-    rows = rowsOf(b)?
+    b = sqlite3.Next(batch, cursor)?
+    rows = rowsAt(b, cursor)?
     done = b.Done
     r = Wait(Spawn(() -> eachBatch(f, as, rows)))
-    if failed(r)
-      p = errorOf(r)
-      return closing(d, cursor, Err({Panic: "$(p.Message) ($(p.File):$(p.Line))"}))
-    end
-    if failed(r?)
-      return closing(d, cursor, r?)
+    if failed(r) or failed(r?)
+      if not done
+        sqlite3.Close(cursor)
+      end
+      return if failed(r) Err(panicOf(r)) else r? end
     end
     count = count + r??
   end
@@ -335,21 +235,21 @@ end
 defn Each(f, text, params, db, as = missing)
   (** Calls f on each row, one batch of rows in memory at a time, whatever the size: an Ok of the count. An Err of f stops
       and is given back; a panic in f gives the connection back, then panics again. *)
-  r = withConn(conn -> each(f, text, params, as, db.Driver, conn), db)
+  r = held(conn -> each(f, text, params, as, conn), db)
   if failed(r) and isPanic(errorOf(r))
     Panic(errorOf(r).Panic)
   end
   r
 end
 
-defn tableCells(text, ps, d, conn)
+defn tableCells(text, ps, conn)
   (** The names and every cell of a statement. *)
-  cursor = d.Run(text, bound(ps)?, conn)?
-  b = d.Next(batch, cursor)?
+  cursor = cursorOn(text, ps, conn)?
+  b = sqlite3.Next(batch, cursor)?
   names = b.Names
   parts = [b.Cells]
   while not b.Done
-    b = d.Next(batch, cursor)?
+    b = sqlite3.Next(batch, cursor)?
     parts = Append(b.Cells, parts)
   end
   Ok({Names: names, Cells: Flatten(parts)})
@@ -358,7 +258,7 @@ end
 defn Table(text, params, db)
   (** An Ok of {Names, Columns}: Columns a map from each name, made a public name, to its column, a list. A column of
       integers or of floats holds them without a box, as pkg/frame and the natives of columns want. *)
-  b = withConn(conn -> tableCells(text, params, db.Driver, conn), db)?
+  b = held(conn -> tableCells(text, params, conn), db)?
   n = Len(b.Names)
   if n == 0
     return Ok({Names: [], Columns: Dict()})
@@ -375,10 +275,14 @@ end
 
 defn Script(text, db)
   (** Runs several statements, never with parameters: a schema, a migration. An Ok of missing, or the first Err. *)
-  withConn(conn -> db.Driver.Script(text, conn), db)
+  if ended(db)
+    return doneError()
+  end
+  r = sqlite3.Script(text, at(db))
+  if codeOf(r) == "closed" and db.Tx doneError() else r end
 end
 
-txExec(text, tx) = if tx.Fast sqlite3.Exec(text, [], tx.Conn.H) else exec(text, [], tx.Driver, tx.Conn) end
+txExec(text, tx) = sqlite3.Exec(text, [], tx.Conn)
 
 defn undo(texts, tx, out)
   (** Rolls back, and gives out. *)
@@ -402,8 +306,7 @@ end
 defn finish(r, commit, rollback, tx)
   (** What f gave, r from Wait: an Ok or a plain value commits, an Err or a panic rolls back. *)
   if failed(r)
-    p = errorOf(r)
-    return undo(rollback, tx, {Panic: "$(p.Message) ($(p.File):$(p.Line))"})
+    return undo(rollback, tx, panicOf(r))
   end
   v = r?
   if failed(v)
@@ -420,17 +323,17 @@ defn Transaction(f, db, read = false)
   if db.Tx
     return savepoint(f, db)
   end
-  conn = take(db)?
-  tx = {Driver: db.Driver, Conn: conn, Tx: true, Fast: db.Fast, Done: Channel(), Depth: 0}
+  conn = sqlite3.Take(db.Pool)?
+  tx = {Pool: db.Pool, Conn: conn, Tx: true, Done: Channel(), Depth: 0}
   begun = txExec(if read "begin" else "begin immediate" end, tx)
   if failed(begun)
-    giveBack(conn, db)
+    sqlite3.Give(conn, db.Pool)
     return begun
   end
   r = Wait(Spawn(() -> f(tx)))
   Send(true, tx.Done)
   out = finish(r, ["commit"], ["rollback"], tx)
-  giveBack(conn, db)
+  sqlite3.Give(conn, db.Pool)
   rethrow(out)
 end
 
@@ -439,7 +342,7 @@ defn savepoint(f, tx)
     return doneError()
   end
   name = "s$(tx.Depth + 1)"
-  inner = {Driver: tx.Driver, Conn: tx.Conn, Tx: true, Fast: tx.Fast, Done: Channel(), Depth: tx.Depth + 1}
+  inner = {Pool: tx.Pool, Conn: tx.Conn, Tx: true, Done: Channel(), Depth: tx.Depth + 1}
   txExec("savepoint $name", tx)?
   r = Wait(Spawn(() -> f(inner)))
   Send(true, inner.Done)
@@ -448,24 +351,5 @@ end
 
 defn Close(db)
   (** Closes the free connections now, the others when they come back: a call after it is an Err with Code "closed". *)
-  if db.Fast
-    return sqlite3.Close(db.Pool)
-  end
-  if isSet(db.Closed)
-    return missing
-  end
-  Send(true, db.Closed)
-  free = []
-  got = Receive(db.Slots, timeout = 0)
-  while not failed(got)
-    free = Append(got?, free)
-    got = Receive(db.Slots, timeout = 0)
-  end
-  for conn in free
-    if IsDict(conn)
-      db.Driver.Close(conn)
-    end
-    Send(closedMark, db.Slots)
-  end
-  missing
+  sqlite3.Close(db.Pool)
 end

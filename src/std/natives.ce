@@ -808,11 +808,8 @@ use cesia
 (** c.Text(pointer)
     The text that a pointer from C points to, read up to its zero byte. *)
 
-(** sqlite3.Open(path)
-    Opens a SQLite database, created if absent, or a fresh one in memory with ":memory:": an Ok of a connection, or an Err. Needs the ffi permission for sqlite3, and read and write on the path. It opens with safe settings: no URI names, defensive, no trusted schema, no extension, nothing attached, texts of 100 MB at most. pkg/sql is the way to use it. *)
-
 (** sqlite3.Pool(path, size, wait)
-    An Ok of a pool of at most size connections to a database, opened when first needed, with WAL for a file and foreign keys. A call that finds them all busy waits at most wait seconds for one. Needs what sqlite3.Open needs. *)
+    An Ok of a pool of at most size connections to a SQLite database, created if absent, or to a fresh one in memory with ":memory:", opened when first needed, with WAL for a file and foreign keys. A call that finds them all busy waits at most wait seconds for one. Needs read and write on the path, and no ffi permission. Each connection opens with safe settings: no URI names, defensive, no trusted schema, no extension, nothing attached, texts of 100 MB at most. pkg/sql is the way to use it. *)
 
 (** sqlite3.Take(pool)
     An Ok of a connection of the pool, waited for if none is free, or an Err with Code "pool" after the wait of the pool, or "closed". sqlite3.Give puts it back. *)
@@ -833,19 +830,16 @@ use cesia
     Prepares one statement, from a cache of 128 by text, and binds a value to each ?: missing, a Bool, an Int, a Float or a Text. An Ok of a cursor, or an Err; text after the statement that holds another is an Err. *)
 
 (** sqlite3.Next(n, cursor)
-    Runs the statement on to n rows: an Ok of {Names, Cells, Done, Changed, LastId}, the cells row after row. NULL is missing, a BLOB a Text of its bytes, a column declared BOOLEAN a Bool. A busy database before the first row, outside a transaction, is an Err with Retry: the cursor stays, to call again. *)
+    Runs the statement on to n rows: an Ok of {Names, Cells, Done, Changed, LastId}, the cells row after row. NULL is missing, a BLOB a Text of its bytes, a column declared BOOLEAN a Bool. A busy database before the first row, outside a transaction, is waited for in the fiber. *)
 
 (** sqlite3.Script(text, conn)
-    Runs several statements, without parameters: an Ok of missing, or the first Err. *)
+    Runs several statements, without parameters, on a connection or on one of a pool for this call: an Ok of missing, or the first Err. *)
 
 (** sqlite3.Close(x)
     Closes a cursor before its end, a connection with its statements, or a pool: its free connections now, the others when they come back. Twice is nothing. *)
 
-(** sqlite3.Broken(conn)
-    Is the connection closed, or left unusable by an I/O error or a damaged file? *)
-
 (** sqlite3.Version()
-    An Ok of the version of the SQLite library, or an Err if there is none. Needs the ffi permission for sqlite3. *)
+    An Ok of the version of the SQLite library, or an Err if there is none. *)
 
 (** lapack.Name()
     The name of the LAPACK library found on this machine, or missing if there is none. The functions below then give missing as well, and num falls back on its own code. *)

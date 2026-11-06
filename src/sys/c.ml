@@ -252,8 +252,14 @@ let version_arg ctx (a : Types.t array) =
 
 let library address : Types.t = Handle { kind = "library"; id = address; task = None }
 
+(* SQLite has one way in, pkg/sql, which checks the files a database reaches: never through c. *)
+let is_sqlite name =
+  let base = String.lowercase_ascii (Filename.basename name) in
+  String.starts_with ~prefix:"sqlite3" base || String.starts_with ~prefix:"libsqlite3" base
+
 let open_library st ctx (a : Types.t array) =
   let name = c_name ctx "Open" a.(0) in
+  if is_sqlite name then Fs.failure ctx.w "c" (Messages.c_sqlite name).text else begin
   Runtime.check_perm ctx Ffi (Some name);
   (* The first reason is the one for the most exact name. *)
   let load (found, reason) path =
@@ -268,6 +274,7 @@ let open_library st ctx (a : Types.t array) =
   | address, _ ->
     st.opened <- true;
     Value.ok ctx.w (library address)
+  end
 
 let types_of st ctx (v : Types.t) =
   match v with

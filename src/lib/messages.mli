@@ -294,6 +294,8 @@ val rows_cells : int -> int -> t
 val sql_zero_byte : string -> t
 val sql_need_handle : string -> string -> string -> t
 val sql_closed : t
+val sql_store_directory : t
+val sql_plugin : string -> t
 val sql_no_statement : t
 val sql_statements : t
 val sql_bad_param : int -> string -> t
@@ -306,3 +308,5 @@ val receive_timeout : t
 val sql_db_closed : t
 val sql_pool : float -> t
 val sql_pool_size : string -> t
+val sql_uri : string -> t
+val c_sqlite : string -> t

@@ -1,6 +1,0 @@
-use pkg/sql
-defn main()
-  db = sql.Open("sqlite::memory:")?
-  sql.Exec("select 1", [], db)
-end
-Print(main())

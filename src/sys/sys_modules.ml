@@ -3,6 +3,37 @@ external ram : unit -> int = "cesia_ram"
 open Cesia
 open Types
 
+(* sqlite3: the names and arities here, the code in the plugin cesia_sqlite.cmxs, loaded at the first call of one of them so
+   that start-up never pays for it. Each native finds its code once. *)
+let sqlite3 = ref []
+let sqlite_loader = ref (fun () -> Error "no plugin in this program")
+let sqlite_keys = Trie.names [| "Kind"; "Code"; "Message" |]
+
+let sqlite_native (name, params, min_args, max_args) =
+  let code = ref None in
+  let run ctx a =
+    match !code with
+    | Some f -> f ctx a
+    | None ->
+      let loaded = match !sqlite3 with [] -> !sqlite_loader () | _ -> Ok () in
+      (match loaded, List.assoc_opt name !sqlite3 with
+       | Ok (), Some f ->
+         code := Some f;
+         f ctx a
+       | Ok (), None -> Runtime.fail ctx Type (Messages.sql_plugin ("no " ^ name))
+       | Error reason, _ ->
+         Value.err ctx.w (Trie.record sqlite_keys [| Text "sql"; Text "library"; Text (Messages.sql_plugin reason).text |]))
+  in
+  name, Native.nat ~params name min_args max_args run
+
+let sqlite_natives =
+  List.map sqlite_native
+    [ "Pool", [| "path"; "size"; "wait" |], 3, 3; "Take", [| "pool" |], 1, 1; "Give", [| "conn"; "pool" |], 2, 2;
+      "Query", [| "text"; "params"; "db"; "limit" |], 3, 4; "One", [| "text"; "params"; "db" |], 3, 3;
+      "Exec", [| "text"; "params"; "db" |], 3, 3; "Run", [| "text"; "params"; "conn" |], 3, 3;
+      "Next", [| "n"; "cursor" |], 2, 2; "Script", [| "text"; "conn" |], 2, 2; "Close", [| "x" |], 1, 1;
+      "Version", [||], 0, 0 ]
+
 let seconds ctx v =
   let bad () = Runtime.fail ctx Type (Messages.bad_sleep (Value.describe v)) in
   match v with
@@ -37,5 +68,5 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
   in
   Linalg.install ();
   w.native_modules <-
-    ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", Sqlite.natives) :: ("lapack", Linalg.natives) :: w.native_modules;
+    ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives) :: w.native_modules;
   fun () -> Net.stopping net

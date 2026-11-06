@@ -316,6 +316,9 @@ let rows_cells cells names = plain (Printf.sprintf "%d cells don't make whole ro
 let sql_zero_byte what = plain (Printf.sprintf "SQLite can't take %s with a zero byte." what)
 let sql_need_handle name kind a = plain (Printf.sprintf "%s needs a %s, not %s." name kind a)
 let sql_closed = plain "This connection or cursor is closed."
+let sql_store_directory =
+  plain "SQLite's pragmas temp_store_directory and data_store_directory are refused: they would put its files where read= and write= don't reach."
+let sql_plugin reason = plain (Printf.sprintf "Can't load SQLite's plugin cesia_sqlite.cmxs: %s." reason)
 let sql_no_statement = plain "The text holds no statement."
 let sql_statements = plain "One statement per call: sql.Script runs several, without parameters."
 let sql_bad_param k a =
@@ -331,3 +334,5 @@ let receive_timeout = plain "Nothing came on the channel before the timeout."
 let sql_db_closed = plain "This database is closed."
 let sql_pool wait = plain (Printf.sprintf "No connection was free for %g seconds. Inside a transaction, use its tx, not db." wait)
 let sql_pool_size a = plain (Printf.sprintf "A pool holds 1 connection or more, not %s." a)
+let sql_uri path = plain (Printf.sprintf "%s is a URI: SQLite takes the path of a file here, or :memory:." path)
+let c_sqlite name = plain (Printf.sprintf "%s is SQLite, which programs reach through pkg/sql only." name)

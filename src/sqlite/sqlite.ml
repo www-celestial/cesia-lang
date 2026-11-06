@@ -18,7 +18,7 @@ type lib = {
   count : int; bind_null : int; bind_int : int; bind_float : int; bind_text : int; columns : int; name : int;
   decltype : int; kind : int; get_int : int; get_float : int; get_text : int; get_blob : int; size : int;
   changes : int; last_id : int; errmsg : int; errcode : int; config : int; limit : int; version : int;
-  autocommit : int; exec : int;
+  autocommit : int; exec : int; status : int;
 }
 
 (* A statement and what it says of its columns, read once. *)
@@ -27,9 +27,10 @@ type prepared = {
   ptext : string;
   extra : bool;  (** made while the cached one of its text was in use: finalized when it comes back *)
   mutable inuse : bool;
-  names : t;
-  texts : string array;
-  bools : bool array;  (** the columns declared BOOLEAN *)
+  mutable reprepared : int;  (** how many times SQLite prepared it again, after a change of the schema *)
+  mutable names : t;
+  mutable texts : string array;
+  mutable bools : bool array;  (** the columns declared BOOLEAN *)
   mutable keys : (keys, string) result option;  (** of its rows, the names made public names *)
 }
 
@@ -81,23 +82,20 @@ let c3 f a b c = set 0 a; set 1 b; set 2 c; run f 3 ()
 
 let codes = [ 1555, "23505"; 2067, "23505"; 787, "23503"; 1299, "23502"; 275, "23514" ]
 let error_keys = Trie.names [| "Kind"; "Code"; "Message" |]
-let busy_keys = Trie.names [| "Kind"; "Code"; "Message"; "Retry" |]
-
-let failure ctx ?(retry = false) code message =
-  let code = Text code and message = Text message and kind = Text "sql" in
-  Value.err ctx.w
-    (if retry then Trie.record busy_keys [| kind; code; message; True |] else Trie.record error_keys [| kind; code; message |])
+let failure ctx code message =
+  Value.err ctx.w (Trie.record error_keys [| Text "sql"; Text code; Text message |])
 
 let sqlite_code rc = match List.assoc_opt rc codes with Some c -> c | None -> Printf.sprintf "sqlite-%d" rc
 
 (* The error of the last call on [c]: an I/O error or a damaged file leave the connection broken. *)
-let last_error ctx lib ?retry c =
+let last_error ctx lib c =
   let rc = c1 lib.errcode c.db in
   if List.mem (rc land 0xFF) [ 10; 11; 14; 21; 26 ] then c.broken <- true;
-  failure ctx ?retry (sqlite_code rc) (cstring (c1 lib.errmsg c.db))
+  failure ctx (sqlite_code rc) (cstring (c1 lib.errmsg c.db))
 
 let load ctx =
-  Runtime.check_perm ctx Ffi (Some "sqlite3");
+  (* No ffi permission: this module reaches no file a read= and write= don't grant, and loads no extension; c.Open, which
+     would trust the library with everything, refuses SQLite's. *)
   match !library with
   | Some lib -> Ok lib
   | None ->
@@ -107,7 +105,7 @@ let load ctx =
         let h = dlopen path in
         h, if h = 0 && reason = "" then dlerror () else reason
     in
-    (match List.fold_left try_file (0, "") (C.candidates "sqlite3" (Some "0")) with
+    (match List.fold_left try_file (0, "") (Cesia_sys.C.candidates "sqlite3" (Some "0")) with
      | 0, reason -> Error (Messages.c_no_library "sqlite3" reason).text
      | h, _ ->
        let f name = dlsym h ("sqlite3_" ^ name) in
@@ -119,7 +117,8 @@ let load ctx =
            get_int = f "column_int64"; get_float = f "column_double"; get_text = f "column_text";
            get_blob = f "column_blob"; size = f "column_bytes"; changes = f "changes64"; last_id = f "last_insert_rowid";
            errmsg = f "errmsg"; errcode = f "extended_errcode"; config = f "db_config"; limit = f "limit";
-           version = f "libversion"; autocommit = f "get_autocommit"; exec = f "exec" }
+           version = f "libversion"; autocommit = f "get_autocommit"; exec = f "exec";
+           status = f "stmt_status" }
        in
        library := Some lib;
        Ok lib)
@@ -135,11 +134,14 @@ let new_id () =
 let zero_free ctx what s = if String.contains s '\000' then Runtime.fail ctx Type (Messages.sql_zero_byte what)
 
 (* Read-write, created if absent, no URI names, extended codes; then defensive, no trusted schema, no extension, no
-   double-quoted texts, texts and BLOBs of 100 MB at most, nothing attached, and no busy wait: pkg/sqlite retries, so the
-   other fibers run meanwhile. *)
+   double-quoted texts, texts and BLOBs of 100 MB at most, nothing attached, and no busy wait: this module waits in the
+   fiber, so the other fibers run meanwhile. *)
 let path_arg ctx name v =
   let path = Native.text_arg ctx name v in
   zero_free ctx "a path" path;
+  (* A SQLite built to read URIs would take file:/etc/x.db?vfs=... past the check of the path. *)
+  if String.length path >= 5 && String.lowercase_ascii (String.sub path 0 5) = "file:" then
+    Runtime.fail ctx Type (Messages.sql_uri path);
   if path <> ":memory:" then begin
     Runtime.check_perm ctx Read (Some path);
     Runtime.check_perm ctx Write (Some path)
@@ -167,13 +169,6 @@ let open_conn ctx lib path =
     Hashtbl.replace conns c.id c;
     Ok c
   end
-
-let open_db ctx (a : t array) =
-  let path = path_arg ctx "sqlite3.Open" a.(0) in
-  with_lib ctx (fun lib ->
-      match open_conn ctx lib path with
-      | Ok c -> Value.ok ctx.w (handle "connection" c.id)
-      | Error e -> e)
 
 let conn_arg ctx name (v : t) =
   match v with
@@ -208,6 +203,17 @@ let decltypes lib stmt n =
       let p = c2 lib.decltype stmt k in
       p <> 0 && String.uppercase_ascii (cstring p) = "BOOLEAN")
 
+(* Does [text] hold [word], whatever the case of its letters? [word] is in small letters. *)
+let mentions text word =
+  let n = String.length word and m = String.length text in
+  let rec same i k = k = n || (Char.lowercase_ascii text.[i + k] = word.[k] && same i (k + 1)) in
+  let rec at i = i + n <= m && (same i 0 || at (i + 1)) in
+  at 0
+
+(* A system's SQLite may keep the pragmas temp_store_directory and data_store_directory, which would move its files past
+   the check of the path. *)
+let no_directory ctx text = if mentions text "store_directory" then Runtime.fail ctx Type Messages.sql_store_directory
+
 (* One statement: text after it that holds another is an error, so none rides in on a value glued by hand. *)
 let statement ctx lib c text =
   let hand p = p.inuse <- true; Ok p in
@@ -217,9 +223,10 @@ let statement ctx lib c text =
   match Hashtbl.find_opt c.cache text with
   | Some p when not p.inuse -> c.last <- Some p; hand p
   | found ->
-    zero_free ctx "a statement" text;
-    let rc, stmt, rest = prepare lib c text in
-    if rc <> 0 then Error (last_error ctx lib c)
+    no_directory ctx text;
+    let rc, stmt, rest = if String.contains text '\000' then -1, 0, "" else prepare lib c text in
+    if rc < 0 then Error (failure ctx "statements" (Messages.sql_zero_byte "a statement").text)
+    else if rc <> 0 then Error (last_error ctx lib c)
     else if stmt = 0 then Error (failure ctx "statements" (Messages.sql_no_statement).text)
     else
       match prepare lib c rest with
@@ -228,8 +235,8 @@ let statement ctx lib c text =
         let texts = Array.init n (fun k -> cstring (c2 lib.name stmt k)) in
         let extra = found <> None in
         let p =
-          { stmt; ptext = text; extra; inuse = true; names = Arrays.list (Array.map (fun s -> Text s) texts); texts;
-            bools = decltypes lib stmt n; keys = None }
+          { stmt; ptext = text; extra; inuse = true; reprepared = 0; names = Arrays.list (Array.map (fun s -> Text s) texts);
+            texts; bools = decltypes lib stmt n; keys = None }
         in
         if not extra then begin
           (* Past 128 texts, the free ones go first. *)
@@ -288,10 +295,13 @@ let list_values ctx name (v : t) =
 
 (* [Run(text, params, conn)]: a cursor on the statement, bound. *)
 let run_statement ctx (a : t array) =
-  let text = Native.text_arg ctx "sqlite3.Run" a.(0) and params = list_values ctx "sqlite3.Run" a.(1) in
-  match conn_arg ctx "sqlite3.Run" a.(2) with
-  | None -> closed ctx
-  | Some c ->
+  let text = Native.text_arg ctx "sqlite3.Run" a.(0) in
+  match conn_arg ctx "sqlite3.Run" a.(2), a.(1) with
+  | None, _ -> closed ctx
+  | _, v when not (match v with Array _ -> true | _ -> false) ->
+    failure ctx "convert" (Messages.need_array "sqlite3.Run" (Value.describe v)).text
+  | Some c, _ ->
+    let params = list_values ctx "sqlite3.Run" a.(1) in
     with_lib ctx (fun lib ->
         match statement ctx lib c text with
         | Error e -> e
@@ -332,77 +342,6 @@ let cell ctx lib stmt bools k : t =
     Text (if n = 0 then "" else bytes p n)
   | _ -> Missing
 
-(* [read ctx lib p n cells]: up to n rows into cells, how many, and how it ended: 100 more to come, 101 done, -k-1 the
-   integer of column k past 63 bits, else SQLite's code. *)
-let read ctx lib p n add =
-  let stmt = p.stmt and bools = p.bools in
-  let width = Array.length bools and rows = ref 0 and outcome = ref 100 in
-  (try
-     while !outcome = 100 && !rows < n do
-       outcome := c1 lib.step stmt;
-       if !outcome = 100 then begin
-         Runtime.build ctx (width + 1);
-         for k = 0 to width - 1 do
-           add (cell ctx lib stmt bools k)
-         done;
-         incr rows
-       end
-     done
-   with Too_big k -> outcome := -k - 1);
-  !rows, !outcome
-
-(* Busy, outside a transaction: nothing was written, so the statement can run again. *)
-let busy lib c rc = rc land 0xFF = 5 && c1 lib.autocommit c.db <> 0
-
-(* [Next(n, cursor)]: up to n rows, their cells row after row. A busy database before the first row, outside a transaction,
-   leaves the cursor as it was, so that its caller can wait and call again. *)
-let next ctx (a : t array) =
-  let n = match a.(0) with Int n when n > 0 -> n | v -> Runtime.fail ctx Type (Messages.sql_batch (Value.describe v)) in
-  let id, cur =
-    match a.(1) with
-    | Handle { kind = "cursor"; id; _ } -> id, Hashtbl.find_opt cursors id
-    | v -> Runtime.fail ctx Type (Messages.sql_need_handle "sqlite3.Next" "cursor" (Value.describe v))
-  in
-  match cur with
-  | None -> closed ctx
-  | Some cur ->
-    with_lib ctx (fun lib ->
-        let c = cur.owner and stmt = cur.p.stmt in
-        let cells = Arrays.builder () in
-        let rows, outcome = read ctx lib cur.p n (Arrays.add ctx ctx.site cells) in
-        cur.rows <- cur.rows + rows;
-        let reply finished =
-          Value.ok ctx.w
-            (Trie.record batch_keys
-               [| cur.p.names; Arrays.built cells; Value.of_bool finished; Int (c1 lib.changes c.db);
-                  Int (c1 lib.last_id c.db) |])
-        in
-        match outcome with
-        | 100 -> reply false
-        | 101 -> end_cursor lib id cur; reply true
-        | rc when rc < 0 ->
-          end_cursor lib id cur;
-          let name = cstring (c2 lib.name stmt (-rc - 1)) in
-          failure ctx "22003" (Messages.sql_int_past name).text
-        | rc when busy lib c rc && cur.rows = 0 ->
-          ignore (c1 lib.reset stmt);
-          last_error ctx lib ~retry:true c
-        | _ ->
-          let e = last_error ctx lib c in
-          end_cursor lib id cur;
-          e)
-
-(* [Script(text, conn)]: several statements, no parameters. *)
-let script ctx (a : t array) =
-  let text = Native.text_arg ctx "sqlite3.Script" a.(0) in
-  zero_free ctx "a script" text;
-  match conn_arg ctx "sqlite3.Script" a.(1) with
-  | None -> closed ctx
-  | Some c ->
-    with_lib ctx (fun lib ->
-        set 0 c.db; texts.(1) <- text; set 2 0; set 3 0; set 4 0;
-        if run lib.exec 5 ~text:1 () = 0 then Value.ok ctx.w Missing else last_error ctx lib c)
-
 (* A connection and every statement of it. Twice is nothing. *)
 let close_conn lib c =
   if not c.closed then begin
@@ -436,6 +375,92 @@ let retrying ctx c ~give_up f =
     | `Done r -> r
   in
   go ()
+
+(* SQLite prepares a statement again at its first step when the schema changed: its columns are read again then. *)
+let refresh lib p =
+  let n = c3 lib.status p.stmt 5 0 in
+  if n <> p.reprepared then begin
+    p.reprepared <- n;
+    let width = c1 lib.columns p.stmt in
+    p.texts <- Array.init width (fun k -> cstring (c2 lib.name p.stmt k));
+    p.names <- Arrays.list (Array.map (fun s -> Text s) p.texts);
+    p.bools <- decltypes lib p.stmt width;
+    p.keys <- None
+  end
+
+(* [read ctx lib p n cells]: up to n rows into cells, how many, and how it ended: 100 more to come, 101 done, -k-1 the
+   integer of column k past 63 bits, else SQLite's code. *)
+let read ctx lib p n add =
+  let stmt = p.stmt and rows = ref 0 and outcome = ref 100 in
+  (try
+     while !outcome = 100 && !rows < n do
+       outcome := c1 lib.step stmt;
+       if !rows = 0 then refresh lib p;
+       if !outcome = 100 then begin
+         let bools = p.bools in
+         let width = Array.length bools in
+         (* Memory only: steps are paid after, since paying may let another fiber run, which could close the statement. *)
+         Runtime.reserve ctx (width + 1);
+         for k = 0 to width - 1 do
+           add (cell ctx lib stmt bools k)
+         done;
+         incr rows
+       end
+     done
+   with Too_big k -> outcome := -k - 1);
+  !rows, !outcome
+
+(* Busy, outside a transaction: nothing was written, so the statement can run again. *)
+let busy lib c rc = rc land 0xFF = 5 && c1 lib.autocommit c.db <> 0
+
+(* [Next(n, cursor)]: up to n rows, their cells row after row. A busy database before the first row, outside a transaction,
+   leaves the cursor as it was, so that its caller can wait and call again. *)
+let next ctx (a : t array) =
+  let n = match a.(0) with Int n when n > 0 -> n | v -> Runtime.fail ctx Type (Messages.sql_batch (Value.describe v)) in
+  let id, cur =
+    match a.(1) with
+    | Handle { kind = "cursor"; id; _ } -> id, Hashtbl.find_opt cursors id
+    | v -> Runtime.fail ctx Type (Messages.sql_need_handle "sqlite3.Next" "cursor" (Value.describe v))
+  in
+  match cur with
+  | None -> closed ctx
+  | Some cur ->
+    with_lib ctx (fun lib ->
+        let c = cur.owner and stmt = cur.p.stmt in
+        let cells = ref (Arrays.builder ()) in
+        (* A busy database before the first row, outside a transaction, is waited for: nothing was written. *)
+        let attempt () =
+          cells := Arrays.builder ();
+          match read ctx lib cur.p n (Arrays.add ctx ctx.site !cells) with
+          | 0, rc when cur.rows = 0 && busy lib c rc -> ignore (c1 lib.reset stmt); `Busy
+          | r -> `Done r
+        in
+        let rows, outcome = retrying ctx c ~give_up:(fun () -> 0, if c.closed then -1000 else 5) attempt in
+        let cells = !cells in
+        cur.rows <- cur.rows + rows;
+        let reply finished =
+          Value.ok ctx.w
+            (Trie.record batch_keys
+               [| cur.p.names; Arrays.built cells; Value.of_bool finished; Int (c1 lib.changes c.db);
+                  Int (c1 lib.last_id c.db) |])
+        in
+        let width = Array.length cur.p.bools in
+        let r =
+          match outcome with
+          | 100 -> reply false
+          | 101 -> end_cursor lib id cur; reply true
+          | -1000 -> Hashtbl.remove cursors id; closed ctx
+          | rc when rc < 0 ->
+            let name = cur.p.texts.(-rc - 1) in
+            end_cursor lib id cur;
+            failure ctx "22003" (Messages.sql_int_past name).text
+          | _ ->
+            let e = last_error ctx lib c in
+            end_cursor lib id cur;
+            e
+        in
+        Runtime.pay ctx (rows * (width + 1));
+        r)
 
 (* A connection of the pool: a free one, a new one while fewer than its size are open, else the first to come back,
    waited for until [deadline]. *)
@@ -486,6 +511,11 @@ let rec take ctx lib p deadline =
 
 (* A connection back in its pool, or closed if the pool is, or if it is broken; the first fiber waiting is woken. *)
 let give lib p c =
+  if not (p.shut || c.broken || c.closed) && c1 lib.autocommit c.db = 0 then begin
+    (* A transaction left open, as by a script stopped halfway, is rolled back: nothing written next is lost with it. *)
+    set 0 c.db; texts.(1) <- "rollback"; set 2 0; set 3 0; set 4 0;
+    ignore (run lib.exec 5 ~text:1 ())
+  end;
   if p.shut || c.broken || c.closed then begin
     close_conn lib c;
     p.opened <- p.opened - 1
@@ -544,8 +574,9 @@ let whole ctx lib c text (params : t) limit add =
        match bind_all ctx lib c text p params with
        | Error e -> Error e
        | Ok () ->
+         let read_rows = ref 0 in
          let attempt () =
-           match read ctx lib p limit add with
+           match (let (n, _) as r = read ctx lib p limit add in read_rows := !read_rows + n; r) with
            | 0, rc when busy lib c rc -> ignore (c1 lib.reset p.stmt); `Busy
            | _, (100 | 101) -> give_back lib c text p; `Done (Ok p)
            | _, rc when rc < 0 ->
@@ -561,7 +592,9 @@ let whole ctx lib c text (params : t) limit add =
            give_back lib c text p;
            Error e
          in
-         retrying ctx c ~give_up attempt)
+         let r = retrying ctx c ~give_up attempt in
+         Runtime.pay ctx (!read_rows * (Array.length p.bools + 1));
+         r)
   | v -> Error (failure ctx "convert" (Messages.need_array "sqlite3.Query" (Value.describe v)).text)
 
 (* [Query(text, params, db, limit)]: every row, or the first limit, as maps whose keys are the names made public names;
@@ -601,6 +634,36 @@ let exec ctx (a : t array) =
           | Error e -> e
           | Ok _ -> Value.ok ctx.w (Trie.record changed_keys [| Int (c1 lib.changes c.db); Int (c1 lib.last_id c.db) |])))
 
+(* [Script(text, db)]: several statements, no parameters, one after the other. Each waits for a busy database as one
+   statement does, before its first step, so that none runs twice. *)
+let script ctx (a : t array) =
+  let text = Native.text_arg ctx "sqlite3.Script" a.(0) in
+  with_lib ctx (fun lib ->
+      using ctx lib "sqlite3.Script" a.(1) (fun c ->
+          if String.contains text '\000' then failure ctx "statements" (Messages.sql_zero_byte "a script").text
+          else
+            let () = no_directory ctx text in
+            let rec go text =
+              match prepare lib c text with
+              | rc, _, _ when rc <> 0 -> last_error ctx lib c
+              | _, 0, _ -> Value.ok ctx.w Missing
+              | _, stmt, rest ->
+                let rec drain first =
+                  match c1 lib.step stmt with
+                  | 100 -> drain false
+                  | 101 -> `Done (Ok ())
+                  | rc when first && busy lib c rc -> ignore (c1 lib.reset stmt); `Busy
+                  | _ -> `Done (Error (last_error ctx lib c))
+                in
+                let give_up () = Error (if c.closed then closed ctx else last_error ctx lib c) in
+                let r = retrying ctx c ~give_up (fun () -> drain true) in
+                finalize lib stmt;
+                match r with
+                | Ok () -> go rest
+                | Error e -> e
+            in
+            go text))
+
 (* [Close(x)]: a cursor before its end, or a connection and every statement of it. Twice is nothing. *)
 let close ctx (a : t array) =
   (match !library, a.(0) with
@@ -621,40 +684,36 @@ let close ctx (a : t array) =
    | _, v -> Runtime.fail ctx Type (Messages.sql_need_handle "sqlite3.Close" "pool, connection or cursor" (Value.describe v)));
   Missing
 
+(* The code of each native, by name: the binary holds their names and arities (src/sys/sys_modules.ml). *)
 let natives =
-  [ "Open", Native.nat ~params:[| "path" |] "Open" 1 1 open_db;
-    "Pool", Native.nat ~params:[| "path"; "size"; "wait" |] "Pool" 3 3 new_pool;
+  [ "Pool", new_pool;
     "Take",
-    Native.nat ~params:[| "pool" |] "Take" 1 1 (fun ctx a ->
-        match pool_arg ctx "sqlite3.Take" a.(0) with
-        | None -> closed ctx
-        | Some p ->
-          with_lib ctx (fun lib ->
-              match take ctx lib p (Unix.gettimeofday () +. p.pool_wait) with
-              | Ok c ->
-                (* A handle of its own, which Give forgets: kept past its end, it finds nothing. *)
-                let lease = new_id () in
-                Hashtbl.replace conns lease c;
-                Value.ok ctx.w (handle "connection" lease)
-              | Error e -> e));
+    (fun ctx a ->
+       match pool_arg ctx "sqlite3.Take" a.(0) with
+       | None -> closed ctx
+       | Some p ->
+         with_lib ctx (fun lib ->
+             match take ctx lib p (Unix.gettimeofday () +. p.pool_wait) with
+             | Ok c ->
+               (* A handle of its own, which Give forgets: kept past its end, it finds nothing. *)
+               let lease = new_id () in
+               Hashtbl.replace conns lease c;
+               Value.ok ctx.w (handle "connection" lease)
+             | Error e -> e));
     "Give",
-    Native.nat ~params:[| "conn"; "pool" |] "Give" 2 2 (fun ctx a ->
-        (match a.(0), pool_arg ctx "sqlite3.Give" a.(1), !library with
-         | Handle { kind = "connection"; id; _ }, Some p, Some lib when id <> 0 ->
-           Option.iter
-             (fun c -> if c.id <> id then begin Hashtbl.remove conns id; give lib p c end)
-             (Hashtbl.find_opt conns id)
-         | _ -> ());
-        Missing);
-    "Query", Native.nat ~params:[| "text"; "params"; "db"; "limit" |] "Query" 3 4 (query ~one:false);
-    "One", Native.nat ~params:[| "text"; "params"; "db" |] "One" 3 3 (query ~one:true);
-    "Exec", Native.nat ~params:[| "text"; "params"; "db" |] "Exec" 3 3 exec;
-    "Run", Native.nat ~params:[| "text"; "params"; "conn" |] "Run" 3 3 run_statement;
-    "Next", Native.nat ~params:[| "n"; "cursor" |] "Next" 2 2 next;
-    "Script", Native.nat ~params:[| "text"; "conn" |] "Script" 2 2 script;
-    "Close", Native.nat ~params:[| "x" |] "Close" 1 1 close;
-    "Broken",
-    Native.nat ~params:[| "conn" |] "Broken" 1 1 (fun ctx a ->
-        Value.of_bool (match conn_arg ctx "sqlite3.Broken" a.(0) with Some c -> c.broken | None -> true));
-    "Version",
-    Native.nat "Version" 0 0 (fun ctx _ -> with_lib ctx (fun lib -> Value.ok ctx.w (Text (cstring (run lib.version 0 ()))))) ]
+    (fun ctx a ->
+       (match a.(0), pool_arg ctx "sqlite3.Give" a.(1), !library with
+        | Handle { kind = "connection"; id; _ }, Some p, Some lib when id <> 0 ->
+          Option.iter
+            (fun c -> if c.id <> id then begin Hashtbl.remove conns id; give lib p c end)
+            (Hashtbl.find_opt conns id)
+        | _ -> ());
+       Missing);
+    "Query", query ~one:false;
+    "One", query ~one:true;
+    "Exec", exec;
+    "Run", run_statement;
+    "Next", next;
+    "Script", script;
+    "Close", close;
+    "Version", (fun ctx _ -> with_lib ctx (fun lib -> Value.ok ctx.w (Text (cstring (run lib.version 0 ()))))) ]

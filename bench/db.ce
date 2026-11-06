@@ -1,5 +1,5 @@
-(** SQLite through pkg/sql against Python's sqlite3 (bench/db.py): 100,000 rows read as maps, typed, streamed, then 100,000
-    selects by key and 100,000 inserts in one transaction. Run by tools/db-bench.sh. *)
+(** SQLite through pkg/sql, to set against Python's sqlite3 on the same work: 100,000 rows read as maps, typed, streamed,
+    then 100,000 selects by key and 100,000 inserts in one transaction. Run as cesia run bench/db.ce, release profile. *)
 use sys
 use pkg/sql
 

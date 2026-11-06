@@ -95,13 +95,17 @@ jobs:
         run: |
           mkdir -p out/bin
           cp -R libraries/lib out/lib
-          # The JIT, a plugin that the binary loads from lib/ at the first hot unit; without the C debug info, as the binary.
-          cp _build/default/src/jit/cesia_jit.cmxs out/lib/
-          if [ "${{ runner.os }}" = macOS ]; then
-            strip -x out/lib/cesia_jit.cmxs && codesign --force -s - out/lib/cesia_jit.cmxs
-          else
-            opam exec -- strip --strip-debug out/lib/cesia_jit.cmxs
-          fi
+          # The plugins that the binary loads from lib/, the JIT at the first hot unit and SQLite's natives at their first
+          # call; without the C debug info, as the binary.
+          for plugin in jit/cesia_jit.cmxs sqlite/cesia_sqlite.cmxs; do
+            cp "_build/default/src/$plugin" out/lib/
+            file="out/lib/$(basename "$plugin")"
+            if [ "${{ runner.os }}" = macOS ]; then
+              strip -x "$file" && codesign --force -s - "$file"
+            else
+              opam exec -- strip --strip-debug "$file"
+            fi
+          done
           if [ "${{ runner.os }}" = Windows ]; then
             cp _build/default/src/bin/main.exe out/bin/cesia.exe
             # Without the C debug info, mostly MIR's: OCaml's backtraces don't need it. The version below runs the result.

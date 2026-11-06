@@ -10,3 +10,9 @@ val register : ?max_sleep:float -> ?tick:float * (unit -> unit) -> ?watching:boo
 
 (** The RAM of the machine in bytes, or 0 if it can't be known. *)
 val ram : unit -> int
+
+(** The code of sqlite3's natives by name, which its plugin cesia_sqlite.cmxs gives when it loads; empty before. *)
+val sqlite3 : (string * (ctx -> t array -> t)) list ref
+
+(** Loads that plugin, at the first call of sqlite3: [Error] says why it didn't. [bin/main.ml] sets it. *)
+val sqlite_loader : (unit -> (unit, string) result) ref
