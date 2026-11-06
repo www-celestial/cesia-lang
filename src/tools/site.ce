@@ -176,7 +176,7 @@ defn treeOf(book, modules, lists)
       kids[p.Path] = [{Label: c.Title, Path: c.Path} for c in book if c.Book == p.Book and c.File != "index.md"]
     else
       ups[p.Path] = p.Index
-      kids[p.Path] = [{Label: Replace("`", "", b.Text), Path: "$(p.Path)#$(slug(b.Text))"} for b in p.Blocks if b.Kind == "heading" and b.Level == 2]
+      kids[p.Path] = [{Label: Replace("`", "", b.Text), Path: "$(p.Path)#$(slug(b.Text))", Sub: b.Level == 3} for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)]
     end
   end
   top = Append({Label: "Reference", Path: "ref/index.html"}, top)
@@ -255,7 +255,7 @@ end
 
 defn sideItem(tree, path, c, open, here)
   (** One link of a column of the side, seen from the page at path. *)
-  marks = Concat(if c.Path == open and c.Path != here ["open"] else [] end, if Has(c.Path, tree.Kids) and Len(tree.Kids[c.Path]) > 0 ["more"] else [] end)
+  marks = Concat(Concat(if c.Path == open and c.Path != here ["open"] else [] end, if Has(c.Path, tree.Kids) and Len(tree.Kids[c.Path]) > 0 ["more"] else [] end), if GetOr("Sub", false, c) ["sub"] else [] end)
   kind = if Len(marks) == 0 "" else " class=\"$(Join(" ", marks))\"" end
   current = if c.Path == here " aria-current=\"page\"" else "" end
   "<a href=\"$(rel(path, c.Path))\"$kind$current>$(escape(c.Label))</a>\n"
@@ -1037,7 +1037,7 @@ defn bookSearch(page)
   (** What the search knows of a page of the book: the page, and each of its sections. *)
   texts = [b.Text for b in page.Blocks if b.Kind == "paragraph"]
   out = [["page", page.Path, page.Title, if Len(texts) == 0 "" else summary(texts[1]) end, ""]]
-  Concat(out, [["section", "$(page.Path)#$(slug(b.Text))", Replace("`", "", b.Text), page.Title, ""] for b in page.Blocks if b.Kind == "heading" and b.Level == 2])
+  Concat(out, [["section", "$(page.Path)#$(slug(b.Text))", Replace("`", "", b.Text), page.Title, ""] for b in page.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)])
 end
 
 defn referencePages(site, modules, lists)
@@ -1155,7 +1155,7 @@ defn build(root, folder, cache)
   kept = keptReference(folder, key, prints)
   (* A page of the book is made again only when what it is made from changed: the titles and sections of the book are in
      the side of each page, so they count for all. *)
-  shape = Join("\n", [Str(p.Path, " ", p.Title, " ", Join("|", [b.Text for b in p.Blocks if b.Kind == "heading" and b.Level == 2])) for p in book])
+  shape = Join("\n", [Str(p.Path, " ", p.Title, " ", Join("|", [b.Text for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)])) for p in book])
   last = saved(folder, ".book")
   before = if IsMissing(last) {} else GetOr("Pages", {}, last) end
   bookKeys = {}

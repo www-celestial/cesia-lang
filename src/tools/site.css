@@ -93,6 +93,7 @@ pre.signature { font-size: 15px; }
 .c { color: var(--c); font-style: italic; } .f { color: var(--f); }
 pre.output { border-left: 3px solid var(--edge); color: var(--ink); }
 p.allow { margin: -.4em 0 .4em; font-size: .85em; color: var(--muted); }
+.side .col a.sub { padding-left: 1.6em; font-size: .92em; }
 table { border-collapse: collapse; display: block; overflow-x: auto; }
 th, td { border: 1px solid var(--edge); padding: 4px 10px; text-align: left; vertical-align: top; }
 td > p { margin: 0; }
