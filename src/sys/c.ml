@@ -538,17 +538,25 @@ let check_word st ctx verb ty =
 (* The same conversions as a call: a word read here is what a C function would have returned. *)
 let get st ctx (a : Types.t array) =
   let ty = ty_of st ctx a.(0) in
-  let _, b = block_arg st ctx "Get" a.(2) in
-  check_word st ctx "read from" ty;
-  let o = offset_arg ctx ty b a.(1) in
-  let word =
-    match width ty with
-    | 1 -> Int64.of_int (Char.code b.data.{o})
-    | 2 -> Int64.of_int (get16 b.data o)
-    | 4 -> Int64.of_int32 (get32 b.data o)
-    | _ -> get64 b.data o
-  in
-  return_value ctx ty word
+  match a.(2) with
+  | Handle { kind = "pointer"; id; _ } ->
+    (* Memory that C gives, as the arguments of a comparison of qsort: its size is C's to know, as with ffi in all. *)
+    check_word st ctx "read from" ty;
+    (match a.(1) with
+     | Int o when o >= 0 -> return_value ctx ty (peek (id + o) (width ty))
+     | v -> fail ctx (Messages.c_need_offset (Value.describe v)))
+  | _ ->
+    let _, b = block_arg st ctx "Get" a.(2) in
+    check_word st ctx "read from" ty;
+    let o = offset_arg ctx ty b a.(1) in
+    let word =
+      match width ty with
+      | 1 -> Int64.of_int (Char.code b.data.{o})
+      | 2 -> Int64.of_int (get16 b.data o)
+      | 4 -> Int64.of_int32 (get32 b.data o)
+      | _ -> get64 b.data o
+    in
+    return_value ctx ty word
 
 let set st ctx (a : Types.t array) : Types.t =
   let ty = ty_of st ctx a.(0) in

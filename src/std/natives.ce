@@ -837,7 +837,8 @@ use std/cesia
     Releases a block. It can't be used after that. *)
 
 (** c.Get(type, offset, block)
-    The number of this type that a block holds at a byte offset. *)
+    The number of this type that a block holds at a byte offset, or that a pointer from C points to, as the arguments
+    that qsort gives its comparison: C knows the size of that memory, and nothing checks the offset. *)
 
 (** c.Set(type, offset, value, block)
     Writes a value of this type into a block at a byte offset. *)
