@@ -1,4 +1,5 @@
-(** Natives of the prelude for lists and texts: no parsing cost at start, unlike the prelude in Cesia. *)
+(** Natives of std/list, std/text and std/math for lists, texts and bits: no parsing cost, unlike a package in Cesia. *)
 open Types
 
-val natives : (string * t) list
+(** Each package with its natives: [descending] stays inside std/list. *)
+val packages : (string * (string * t) list) list

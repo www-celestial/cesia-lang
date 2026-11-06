@@ -539,18 +539,11 @@ and pattern p =
   let t = cur p in
   match t.t with
   | NAME "_" -> advance p; Pwild
-  | NAME n when p.toks.(p.i + 1).t = LP && not p.toks.(p.i + 1).sp ->
-    advance p;
-    advance p;
-    with_mode p Ignore (fun () ->
-        let out = ref [] in
-        while (cur p).t <> RP do
-          out := pattern p :: !out;
-          if (cur p).t = COMMA then advance p
-          else if (cur p).t <> RP then unexpected p "\",\" or \")\""
-        done;
-        advance p;
-        Pcons (n, Array.of_list (List.rev !out)))
+  | NAME n when p.toks.(p.i + 1).t = LP && not p.toks.(p.i + 1).sp -> advance p; constructor p None n t.pos
+  | NAME a when p.toks.(p.i + 1).t = DOT && p.toks.(p.i + 3).t = LP && not p.toks.(p.i + 3).sp ->
+    (match p.toks.(p.i + 2).t with
+     | NAME n -> advance p; advance p; advance p; constructor p (Some a) n t.pos
+     | _ -> unexpected p "a pattern")
   | NAME n -> advance p; Pname (name n)
   | LB ->
     advance p;
@@ -583,6 +576,19 @@ and pattern p =
         Pstruct (Array.of_list (List.rev !out)))
   | INT _ | FLOAT _ | TEXT _ | TRUE | FALSE | MISSING | MINUS -> Plit (unary p)
   | _ -> unexpected p "a pattern"
+
+(* After the name of a struct in a pattern, the current token being its parenthesis: its fields. *)
+and constructor p cpkg cname cpos =
+  advance p;
+  with_mode p Ignore (fun () ->
+      let out = ref [] in
+      while (cur p).t <> RP do
+        out := pattern p :: !out;
+        if (cur p).t = COMMA then advance p
+        else if (cur p).t <> RP then unexpected p "\",\" or \")\""
+      done;
+      advance p;
+      Pcons { cpkg; cname; cargs = Array.of_list (List.rev !out); cpos })
 
 (* The token after the ] or } matching the current token. *)
 and after_close p =

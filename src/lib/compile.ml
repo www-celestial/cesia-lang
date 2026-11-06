@@ -1507,7 +1507,7 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
          let rec go k = k >= want || (tests.(k) ctx (Value.elt a k) && go (k + 1)) in
          go 0
        | _ -> false)
-  | Pcons (name, ps) ->
+  | Pcons { cname = name; cargs = ps; _ } ->
     let tests = Array.map (pat_test c) ps in
     let want = Array.length ps and sname = Some name in
     fun ctx v ->
@@ -2776,7 +2776,7 @@ and cpat c (pt : pat) pos : ctx -> t -> unit =
        | _ ->
          ctx.site <- s;
          Runtime.fail ctx Type (Messages.destructure_value (Value.describe v)))
-  | Pcons (name, ps) ->
+  | Pcons { cname = name; cargs = ps; _ } ->
     let binds = Array.map (fun q -> cpat c q pos) ps in
     let want = Array.length ps and sname = Some name in
     fun ctx v ->

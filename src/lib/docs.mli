@@ -4,8 +4,7 @@
     [std/natives.ce] holds a [(** *)] for each, whose first line is its signature. *)
 open Types
 
-(** The files of std/ that are the language, not libraries: the prelude, and the documentation of the natives and of the
-    keywords. *)
+(** The files of std/ that are the language, not libraries: the documentation of the natives and of the keywords. *)
 val language : string list
 
 (** The lines of a documentation that are examples, indented under its text, each with its line number. *)

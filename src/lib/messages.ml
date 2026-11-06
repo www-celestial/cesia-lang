@@ -24,6 +24,10 @@ let private_member name =
   hinted (Printf.sprintf "The field or method \"%s\" is private to the package that declares it." name)
     "A field or a method is public when its first letter is a capital."
 let undefined name = plain (Printf.sprintf "Name \"%s\" doesn't exist." name)
+let moved name p = plain (Printf.sprintf "%s is in std/%s: write use std/%s and %s.%s." name p p p name)
+let pattern_struct name =
+  hinted (Printf.sprintf "There is no struct \"%s\" here." name)
+    "A pattern names a struct of this package, as Point(x, y), or of a package in use, as geo.Point(x, y)."
 let method_foreign =
   plain "A method belongs to a struct or an interface declared in the same package: this one can't be reached from here."
 let method_no_struct name =
@@ -295,7 +299,6 @@ let use_empty path = plain (Printf.sprintf "The folder \"%s\" holds no .ce file.
 let use_same name other line =
   hinted (Printf.sprintf "\"%s\" already names %s, at line %d." name other line) "Give one of them another name with as."
 let use_unreadable path = plain (Printf.sprintf "Can't read the module \"%s\"." path)
-let no_prelude = plain "The folder of CESIA_STD has no prelude.ce."
 let reload_use = plain "A running program can't load a new module. Restart it to use this one."
 let use_missing path = plain (Printf.sprintf "Module \"%s\" doesn't exist." path)
 let use_std name = plain (Printf.sprintf "What comes with Cesia is used through std/: write use std/%s." name)

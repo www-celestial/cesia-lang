@@ -64,14 +64,16 @@ let in_module w m name =
 
 let in_package w m name = Array.find_map (fun k -> in_module w k name) w.modules.(m).package
 
-(* The prelude: module 1 written in Cesia, then module 0 of natives. A small first letter stays private: only the
-   parser writes a # name, as the #dict of a dictionary literal. *)
-let lookup w name =
-  if not (Lexer.is_public name || name.[0] = '#') then None
-  else
-    match in_module w 1 name with
-    | Some b -> Some b
-    | None -> in_module w 0 name
+(* No name is global: a file sees its package and its uses. Only the parser writes a # name, as the #dict of a dictionary
+   literal, which module 0 holds. *)
+let lookup w name = if name <> "" && name.[0] = '#' then in_module w 0 name else None
+
+(* What the natives of a package and [lookup] give: the names a file of a package of std/ sees beyond its own files, small
+   ones too. *)
+let with_natives w natives name =
+  match Array.find_map (fun k -> if w.modules.(k).path = "" then in_module w k name else None) natives with
+  | Some b -> Some b
+  | None -> lookup w name
 
 let message_of_error = function
   | Pos.Load_error { text; _ } -> Some text
@@ -195,7 +197,32 @@ let native_module w name natives =
     m
 
 (* The modules written in OCaml: std/sys. *)
-let find_native w ~from:_ ~pos:_ upath = Option.bind (standard upath) (fun name -> List.assoc_opt name w.native_modules)
+let find_native w upath = Option.bind (standard upath) (fun name -> List.assoc_opt name w.native_modules)
+
+(* Does a package of std/ also have a source in Cesia, as std/list does beside its natives: the project's copy or Cesia's own. *)
+let has_source w upath =
+  match standard upath with
+  | Some name -> Package.files (Filename.concat (Filename.concat w.root "std") name) <> [] || own_library name <> None
+  | None -> false
+
+(* The packages of std/ that hold what every file saw before 0.4, when they had no use to write. *)
+let homes = [ "io"; "result"; "bug"; "list"; "matrix"; "text"; "dict"; "math"; "fn"; "value"; "fiber"; "cesia"; "sys" ]
+
+(* Does a source define this name? Read only for a message, so the cost is paid on an error. *)
+let defines path src name =
+  match Parser.program ~hooks:false ~file:path ~nesting:max_int (Lexer.tokens ~file:path src) with
+  | fn -> List.exists (fun (text, _, _, _) -> String.equal text name) (Resolve.definitions fn)
+  | exception Pos.Load_error _ -> false
+
+(* The package of std/ of a name that no file defines: Print is io.Print. *)
+let home w name =
+  if not (Lexer.is_public name) then None
+  else
+    List.find_opt
+      (fun p ->
+         (match List.assoc_opt p w.native_modules with Some ns -> List.mem_assoc name ns | None -> false)
+         || (match own_library p with Some (path, src) -> defines path src name | None -> false))
+      homes
 
 (* use a/util and use b/util: the name in the code is their last part, so the second one must not vanish in silence. *)
 let check_uses path (fn : Ast.func) =
@@ -211,8 +238,44 @@ let check_uses path (fn : Ast.func) =
        | _ -> ())
     fn.body
 
-(* Lexes and parses a source. [use] returns the module of each use. Gives the names of the uses, and the first module of each
-   package they name. *)
+(* The names that a file reads from the package it uses as [alias]: geo.Area, geo.Rect.Square, geo.Point(x, y) in a pattern,
+   geo.Rect as a type. A local variable of that name counts too: at worst a source loads for nothing. *)
+let used_names alias (fn : Ast.func) =
+  let out = ref [] in
+  let add name = out := name :: !out in
+  let ty (t : Ast.ptype) = if t.tpkg = Some alias then add t.tname in
+  let rec pat = function
+    | Ast.Pcons { cpkg; cname; cargs; _ } -> if cpkg = Some alias then add cname; Array.iter pat cargs
+    | Parray ps -> Array.iter pat ps
+    | Pstruct fs -> Array.iter (fun (_, q) -> pat q) fs
+    | Pname _ | Pwild | Plit _ -> ()
+  in
+  let rec expr (e : Ast.expr) =
+    (match e.e with
+     | Field ({ e = Var { text; _ }; _ }, name) when String.equal text alias -> add name
+     | Lambda f | Fn_def (_, f) -> func f
+     | Match { arms; _ } -> Array.iter (fun (a : Ast.arm) -> pat a.pt) arms
+     | Destructure (pt, _) -> pat pt
+     | Interface i -> Array.iter (fun (_, ps, ret) -> params ps; Option.iter ty ret) i.imethods
+     | _ -> ());
+    Resolve.children expr e
+  and params ps = Array.iter (fun (p : Ast.param) -> Option.iter ty p.ptype; Option.iter expr p.default) ps
+  and func (f : Ast.func) =
+    params f.params;
+    Option.iter ty f.ret;
+    Array.iter expr f.body
+  in
+  func fn;
+  !out
+
+(* A package of std/ with natives and a source in Cesia loads its source only for a file that names something of it. *)
+let natives_only w upath names =
+  match find_native w upath with
+  | Some natives when not (has_source w upath && List.exists (fun n -> not (List.mem_assoc n natives)) names) -> Some natives
+  | _ -> None
+
+(* Lexes and parses a source. [use] returns the module of each use, given the names the file reads from it. Gives the names of
+   the uses, and the first module of each package they name. *)
 let parse w ~hooks ~path ~src ~use =
   let file = register_file w path src in
   let toks = Lexer.tokens ~file:path src in
@@ -223,7 +286,7 @@ let parse w ~hooks ~path ~src ~use =
       (fun (e : Ast.expr) ->
          match e.e with
          | Use { upath; ualias } ->
-           let m = use ~pos:e.pos upath in
+           let m = use ~pos:e.pos ~names:(used_names ualias fn) upath in
            Some ((ualias, in_package w m), w.modules.(m).host)
          | _ -> None)
       (Array.to_list fn.body)
@@ -263,10 +326,10 @@ let set_checks w (prepared : (int * Ast.layout) list) =
 (* Resolves the files of a package, the modules from [first] on. Each one sees what the others define, small names included,
    before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload. *)
 let resolve_files w ~lookup ~first ~old parsed =
-  let is_type = is_type w in
+  let is_type = is_type w and home = home w in
   match parsed with
   | [ (path, _, fn, (spaces, _)) ] ->
-    [ Resolve.file ~keep:(old 0) ~is_type ~file:path ~m:first ~lookup ~spaces fn ]
+    [ Resolve.file ~keep:(old 0) ~is_type ~home ~file:path ~m:first ~lookup ~spaces fn ]
   | _ ->
     Resolve.check_package (List.map (fun (path, _, fn, _) -> path, fn) parsed);
     let seen = Hashtbl.create 64 in
@@ -297,12 +360,12 @@ let resolve_files w ~lookup ~first ~old parsed =
     let peers = List.map (fun (_, _, fn, _) -> fn) parsed in
     List.mapi
       (fun i ((path, _, fn, (spaces, _)), keep) ->
-         Resolve.file ~keep ~peers ~is_type ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
+         Resolve.file ~keep ~peers ~is_type ~home ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
       (List.combine parsed keeps)
 
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
-   [host]. *)
-let rec prepare_files ?(hooks = false) ?host ctx ~sources ~lookup =
+   [host]. [natives] is the module of the natives of a package of std/ that has them, which its files see. *)
+let rec prepare_files ?(hooks = false) ?host ?natives ctx ~sources ~lookup =
   let w = ctx.w in
   let parsed =
     List.map
@@ -312,7 +375,9 @@ let rec prepare_files ?(hooks = false) ?host ctx ~sources ~lookup =
       sources
   in
   let first = Array.length w.modules in
-  let package = Array.init (List.length parsed) (fun i -> first + i) in
+  let package = Array.append (Array.init (List.length parsed) (fun i -> first + i)) (Option.to_list natives |> Array.of_list) in
+  Option.iter (fun n -> w.modules.(n).package <- package) natives;
+  let lookup = match natives with Some n -> with_natives w [| n |] | None -> lookup in
   let layouts = resolve_files w ~lookup ~first ~old:(fun _ -> [||]) parsed in
   let host = match host with Some h -> w.modules.(h).host | None -> first in
   let prepared = List.map2
@@ -335,24 +400,25 @@ let rec prepare_files ?(hooks = false) ?host ctx ~sources ~lookup =
   set_checks w (List.map (fun (_, m, _, layout) -> m, layout) prepared);
   prepared
 
-and use_module ctx ~hooks ~from ~pos upath =
+and use_module ctx ~hooks ~from ~pos ~names upath =
   let w = ctx.w in
-  match find_native w ~from ~pos upath with
+  match natives_only w upath names with
   | Some natives -> native_module w upath natives
   | None ->
+    let natives = find_native w upath in
     let key, read, in_std = locate w ~from ~pos upath in
     match Hashtbl.find_opt w.loaded key with
     | Some m when m >= 0 -> m
     | Some _ -> use_error ~file:from ~pos ~kind:"name" Messages.use_cycle
     (* Don't stop in a library: it isn't the code being debugged, and it keeps its speed. *)
-    | None -> run_package ctx ~hooks:(hooks && not in_std) ~key read
+    | None -> run_package ctx ~hooks:(hooks && not in_std) ?natives:(Option.map (native_module w upath) natives) ~key read
 
 (* Runs the statements of a package, file by file, and gives its first module. *)
-and run_package ctx ~hooks ~key read =
+and run_package ctx ~hooks ?natives ~key read =
   let w = ctx.w in
   Hashtbl.replace w.loaded key (-1);
   match
-    let prepared = prepare_files ~hooks ctx ~sources:(read ()) ~lookup:(lookup w) in
+    let prepared = prepare_files ~hooks ?natives ctx ~sources:(read ()) ~lookup:(lookup w) in
     List.iter (run_prepared ctx) prepared;
     prepared
   with
@@ -378,7 +444,14 @@ let folder ctx dir =
     in
     run_package ctx ~hooks:ctx.w.hooks ~key (fun () -> List.map read (Package.files key))
 
-let prepare ?hooks ?host ctx ~path ~src ~lookup = List.hd (prepare_files ?hooks ?host ctx ~sources:[ path, src ] ~lookup)
+let prepare ?hooks ?host ?natives ctx ~path ~src ~lookup =
+  List.hd (prepare_files ?hooks ?host ?natives ctx ~sources:[ path, src ] ~lookup)
+
+(* The natives of the package of std/ that a file of std/ belongs to, std/list.ce or src/std/list.ce, as a module. *)
+let std_natives w path =
+  let name = Filename.remove_extension (Filename.basename path) in
+  if Filename.basename (Filename.dirname path) <> "std" || not (Package.is_source path) then None
+  else Option.map (native_module w ("std/" ^ name)) (List.assoc_opt name w.native_modules)
 
 let load ctx path =
   let w = ctx.w in
@@ -412,26 +485,39 @@ let load_debugger ctx name =
     w.on_hook <- Debug.hook
   | None -> use_error ~file:path ~pos ~kind:"name" Messages.no_on_stop
 
-(* Module 0 of natives, then the prelude in Cesia. *)
+(* The natives of the packages of std/, joined by package: std/list has some of Native, Lists and Columns. *)
+let std_packages () =
+  let groups =
+    Native.packages @ Lists.packages
+    @ [ "list", Columns.list; "fiber", Fiber.natives; "cesia", Tooling.natives ~libraries @ Docs.natives;
+        "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives ]
+  in
+  List.fold_left
+    (fun acc (name, natives) ->
+       match List.assoc_opt name acc with
+       | Some before -> List.map (fun (n, l) -> if String.equal n name then n, before @ natives else n, l) acc
+       | None -> acc @ [ name, natives ])
+    [] groups
+
+let no_args = Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true }
+
+(* The arguments of the program, sys.Args. *)
+let set_args_value w value =
+  let sys = Option.value (List.assoc_opt "sys" w.native_modules) ~default:[] in
+  w.native_modules <- ("sys", ("Args", value) :: List.remove_assoc "Args" sys) :: List.remove_assoc "sys" w.native_modules
+
+(* Module 0 holds what only the compiler names; the packages of std/ load at their first use. *)
 let init w =
-  w.native_modules <- ("cesia", Tooling.natives ~libraries) :: ("debug", Debug.natives) :: ("json", Json.natives) :: ("regex", Regex.natives ()) :: ("columns", Columns.natives) :: w.native_modules;
-  let natives = Native.prelude @ Lists.natives @ Fiber.natives @ Docs.natives @ Columns.prelude in
-  let names = List.mapi (fun i (n, _) -> n, i) natives in
-  let cells = Array.of_list (List.map snd natives) in
+  w.native_modules <- std_packages () @ w.native_modules;
+  if not (List.mem_assoc "Args" (Option.value (List.assoc_opt "sys" w.native_modules) ~default:[])) then set_args_value w no_args;
+  let cells = Array.of_list (List.map snd Native.core) in
+  let names = List.mapi (fun i (n, _) -> n, i) Native.core in
   let stable = Array.make (Array.length cells) true in
-  w.modules <- [| { mname = "natives"; path = ""; cells; mnames = names; stable; host = 0; package = [| 0 |]; uses = [] } |];
-  let ctx = Runtime.create_ctx w in
-  match std_source "prelude" with
-  | Some (path, src) ->
-    let natives name = in_module w 0 name in
-    run_prepared ctx (prepare ctx ~path ~src ~lookup:natives)
-  | None ->
-    let dir = Option.value (Sys.getenv_opt "CESIA_STD") ~default:"std" in
-    use_error ~file:dir ~pos:(Pos.make 1 1) ~kind:"name" Messages.no_prelude
+  w.modules <- [| { mname = "core"; path = ""; cells; mnames = names; stable; host = 0; package = [| 0 |]; uses = [] } |]
 
 (* A use in a reloaded file: the module must already be there, since we are in the middle of the program. *)
-let loaded_module w ~from ~pos upath =
-  match find_native w ~from ~pos upath with
+let loaded_module w ~from ~pos ~names upath =
+  match natives_only w upath names with
   | Some natives -> native_module w upath natives
   | None ->
     let key, _, _ = locate w ~from ~pos upath in
@@ -488,10 +574,11 @@ let reload w path =
   let m = module_of w path in
   if m < 0 then Ok ()
   else
-    let members = Array.to_list w.modules.(m).package in
+    let package = w.modules.(m).package in
+    let members = List.filter (fun k -> w.modules.(k).path <> "") (Array.to_list package) in
     let first = List.hd members in
     match
-      let look = if m = 1 then in_module w 0 else lookup w in
+      let look = with_natives w package in
       let parsed =
         List.map
           (fun k ->
@@ -534,11 +621,8 @@ let watched w =
   List.filter (fun p -> p <> "" && not (is_embedded p)) (List.map (fun md -> md.path) (Array.to_list w.modules))
 
 let set_args w (args : string list) =
-  match List.assoc_opt "Args" w.modules.(0).mnames with
-  | Some k ->
-    let items = Array.of_list (List.map (fun a -> Text a) args) in
-    w.modules.(0).cells.(k) <- Array { rows = 1; cols = Array.length items; store = V items; a_owned = false; a_tip = true }
-  | None -> ()
+  let items = Array.of_list (List.map (fun a -> Text a) args) in
+  set_args_value w (Array { rows = 1; cols = Array.length items; store = V items; a_owned = false; a_tip = true })
 
 (* Runs [body] and prints any Cesia error. Returns the exit code. With [strict], an OCaml stack overflow or a memory
    refusal from the system propagate: the fuzzer wants them, a normal program doesn't. *)

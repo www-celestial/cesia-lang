@@ -1,0 +1,90 @@
+(** Results: an Ok of a value, or an Err of an error, which a function returns rather than raising it. ? takes the value of an
+    Ok, or returns the Err. *)
+use std/value
+use std/bug
+
+(** A successful result.
+
+      Ok(1).Value --> 1 *)
+struct Ok { Value }
+
+(** A failed result: the error is a value, returned rather than raised.
+
+      Err("no").Error --> "no" *)
+struct Err { Error }
+
+(** The next step of a result: f(v) for an Ok, the Err unchanged otherwise.
+
+      Ok(2) then AndThen(x -> Ok(x + 1)) --> Ok(3)
+      Err("no") then AndThen(x -> Ok(x + 1)) --> Err("no") *)
+AndThen(f, r) = match r
+  Ok(v) -> f(v)
+  else -> r
+end
+
+(** Applies f to the value of an Ok.
+
+      Ok(2) then MapOk(it + 1) --> Ok(3) *)
+MapOk(f, r) = match r
+  Ok(v) -> Ok(f(v))
+  else -> r
+end
+
+(** Applies f to the error of an Err.
+
+      Err(2) then MapErr(it + 1) --> Err(3) *)
+MapErr(f, r) = match r
+  Err(e) -> Err(f(e))
+  else -> r
+end
+
+(** The value of an Ok, or the default.
+
+      Err("no") then UnwrapOr(0) --> 0 *)
+UnwrapOr(default, r) = match r
+  Ok(v) -> v
+  else -> default
+end
+
+errorText(e) = match e
+  {Message: message} -> message
+  else -> value.Text(e)
+end
+
+(** The value of an Ok. An Err is a bug here, and stops the fiber.
+
+      Unwrap(Ok(1)) --> 1
+      Unwrap(Err("no")) --> error *)
+Unwrap(r) = match r
+  Ok(v) -> v
+  Err(e) -> bug.Panic("unwrap on an error: $(errorText(e))")
+end
+
+(** Is this result an Ok?
+
+      IsOk(Ok(1)) --> true *)
+IsOk(r) = match r
+  Ok(v) -> true
+  else -> false
+end
+
+(** Is this result an Err?
+
+      IsErr(Err(1)) --> true *)
+IsErr(r) = match r
+  Err(e) -> true
+  else -> false
+end
+
+defn Collect(rs)
+  (** An array of results as one result: Ok of all the values, or the first Err.
+
+        Collect([Ok(1), Ok(2)]) --> Ok([1, 2])
+        Collect([Ok(1), Err("a")]) --> Err("a") *)
+  for r in rs
+    if IsErr(r)
+      return r
+    end
+  end
+  Ok([r.Value for r in rs])
+end

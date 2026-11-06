@@ -25,7 +25,7 @@ let keywords =
     "match", MATCH; "struct", STRUCT; "interface", INTERFACE; "and", AND; "or", OR; "not", NOT; "then", THEN; "use", USE;
     "true", TRUE; "false", FALSE; "missing", MISSING ]
 
-(* By first letter, each word with its token ready: every name the lexer meets is looked up, the prelude's at each start. *)
+(* By first letter, each word with its token ready: every name the lexer meets is looked up, those of std/ at each use. *)
 let by_first =
   let t = Array.make 256 [] in
   List.iter (fun (w, k) -> t.(Char.code w.[0]) <- (w, Some k) :: t.(Char.code w.[0])) keywords;

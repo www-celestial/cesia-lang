@@ -11,7 +11,8 @@ val run : ?strict:bool -> world -> string -> string list -> int
 (** Runs a function, prints any Cesia error and returns the exit code. *)
 val guarded : ?strict:bool -> world -> (ctx -> int) -> int
 
-(** Creates the prelude module. *)
+(** Prepares the world: module 0 of what only the compiler names, and the natives of the packages of std/, which load at
+    their first use. *)
 val init : world -> unit
 
 (** A name of module [m], if it exists. *)
@@ -20,13 +21,16 @@ val in_module : world -> int -> string -> Ast.binding option
 (** A name of any file of the package of module [m]. *)
 val in_package : world -> int -> string -> Ast.binding option
 
-(** A name of the prelude. *)
+(** What every file sees without a use: only the names that the parser writes, as [#dict]. *)
 val lookup : world -> string -> Ast.binding option
 
+(** The module of the natives of the package of std/ that a file of std/ is part of, as src/std/list.ce, if it has them. *)
+val std_natives : world -> string -> int option
+
 (** Loads a source as a new module, without running it. With [host], the source sees the private fields and methods of
-    that module. *)
+    that module; with [natives], the natives of its package of std/, as [std_natives] gives them. *)
 val prepare :
-  ?hooks:bool -> ?host:int -> ctx -> path:string -> src:string -> lookup:(string -> Ast.binding option) ->
+  ?hooks:bool -> ?host:int -> ?natives:int -> ctx -> path:string -> src:string -> lookup:(string -> Ast.binding option) ->
   int * int * Ast.func * Ast.layout
 
 val run_prepared : ctx -> int * int * Ast.func * Ast.layout -> unit

@@ -31,7 +31,7 @@ val shape_of : world -> ?sname:string -> ?m:int -> string array -> shape
 (** The position of a field, or -1. *)
 val field_index : shape -> string -> int
 
-(** The results of the prelude: [Ok(v)] and [Err(v)]. *)
+(** The results of std/result: [Ok(v)] and [Err(v)]. *)
 val ok : world -> t -> t
 
 val err : world -> t -> t

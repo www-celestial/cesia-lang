@@ -18,6 +18,12 @@ val break_outside : t
 val underscore_name : string -> string -> string -> t
 val private_member : string -> t
 val undefined : string -> t
+
+(** [moved name p]: a name of std/p written without its package, as Print for io.Print. *)
+val moved : string -> string -> t
+
+(** A pattern that names no struct the file sees. *)
+val pattern_struct : string -> t
 val method_foreign : t
 val method_no_struct : string -> t
 
@@ -153,7 +159,6 @@ val denied : string -> string option -> t
 
 val reload_use : t
 val use_unreadable : string -> t
-val no_prelude : t
 val range_too_long : t
 val no_on_stop : t
 val no_main : t

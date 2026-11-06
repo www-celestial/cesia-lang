@@ -1,0 +1,94 @@
+(** Dictionaries: keys and their values, read, put and dropped, each change giving a new dictionary. *)
+use std/value
+use std/list
+use std/math
+
+defn MapValues(f, d)
+  (** A dictionary with f applied to each value.
+
+        MapValues(math.Inc, {"a": 1})["a"] --> 2 *)
+  out = Dict()
+  for k in Keys(d)
+    out[k] = f(d[k])
+  end
+  out
+end
+
+(** A dictionary with f applied to the value of a key, which is missing if the key is absent.
+
+      Update("a", math.Inc, {"a": 1})["a"] --> 2 *)
+Update(k, f, d) = Put(k, f(Get(k, d)), d)
+
+defn Merge(a, b)
+  (** Both dictionaries. For a key in both, b wins.
+
+        Merge({"a": 1}, {"a": 2})["a"] --> 2 *)
+  out = a
+  for k in Keys(b)
+    out[k] = b[k]
+  end
+  out
+end
+
+defn MergeWith(f, a, b)
+  (** Both dictionaries. For a key in both, f combines the two values.
+
+        MergeWith(math.Add, {"a": 1}, {"a": 2})["a"] --> 3 *)
+  out = a
+  for k in Keys(b)
+    out[k] = if Has(k, out) f(out[k], b[k]) else b[k] end
+  end
+  out
+end
+
+defn SelectKeys(ks, d)
+  (**   value.Len(SelectKeys(["a", "z"], {"a": 1, "b": 2})) --> 1 *)
+  out = Dict()
+  for k in ks
+    if Has(k, d)
+      out[k] = d[k]
+    end
+  end
+  out
+end
+
+(**   Zipmap(["a", "b"], [1, 2])["b"] --> 2 *)
+Zipmap(ks, vs) = Dict([{Key: ks[k], Value: vs[k]} for k in 1..list.Min(value.Len(ks), value.Len(vs))])
+
+defn Invert(d)
+  (**   Invert({"a": 1})[1] --> "a" *)
+  out = Dict()
+  for k in Keys(d)
+    out[d[k]] = k
+  end
+  out
+end
+
+defn GetIn(path, d)
+  (** The value at the end of a path of keys, or missing.
+
+        GetIn(["a", "b"], {"a": {"b": 2}}) --> 2 *)
+  at = d
+  for k in path
+    if not value.IsDict(at)
+      return missing
+    end
+    at = Get(k, at)
+  end
+  at
+end
+
+defn PutIn(path, x, d)
+  (** A dictionary with x at the end of a path of keys. The dictionaries on the way are created if they are absent.
+
+        PutIn(["a", "b"], 3, Dict())["a"]["b"] --> 3 *)
+  k = path[1]
+  if value.Len(path) == 1
+    return Put(k, x, d)
+  end
+  inner = Get(k, d)
+  Put(k, PutIn(list.Skip(1, path), x, if value.IsDict(inner) inner else Dict() end), d)
+end
+
+(**   UpdateIn(["a"], math.Inc, {"a": 1})["a"] --> 2 *)
+UpdateIn(path, f, d) = PutIn(path, f(GetIn(path, d)), d)

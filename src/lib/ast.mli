@@ -60,7 +60,9 @@ and pat =
   | Plit of expr
   | Parray of pat array
   | Pstruct of (string * pat) array
-  | Pcons of string * pat array  (** a named struct: its name, then its fields in order *)
+  | Pcons of cons  (** a named struct: Point(x, y), or geo.Point(x, y) for one of another package *)
+
+and cons = { cpkg : string option; cname : string; cargs : pat array  (** its fields in order *); cpos : pos }
 
 and step = { sp : pos; sk : step_kind }
 and step_kind = Sindex of index array * bool | Sfield of string

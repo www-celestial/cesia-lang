@@ -343,7 +343,7 @@ let std name =
     if Sys.file_exists path then Some (In_channel.with_open_bin path In_channel.input_all) else None
   | None -> List.assoc_opt name Embedded.files
 
-let language = [ "prelude"; "natives"; "keywords" ]
+let language = [ "natives"; "keywords" ]
 
 (* An editor asks often, so a file of std/ is read once. *)
 let read = Hashtbl.create 32
@@ -447,13 +447,11 @@ let found_entry w name =
   | Some e -> Some (e, lazy "", true)
   | None ->
     let entry, short, md, builtin =
-      match find name (std_entries "prelude") with
-      | Some e -> Some e, name, lazy "prelude", false
-      | None when m = "" -> native, name, lazy "prelude", true
-      | None ->
-        (match find short (module_entries w m) with
-         | Some e -> Some e, short, lazy (module_name w m), false
-         | None -> native, short, lazy ("std/" ^ m), true)
+      if m = "" then None, name, lazy "", false
+      else
+        match find short (module_entries w m) with
+        | Some e -> Some e, short, lazy (module_name w m), false
+        | None -> native, short, lazy ("std/" ^ m), true
     in
     if public_name short then Option.map (fun e -> e, md, builtin) entry else None
 
@@ -502,9 +500,9 @@ let own_modules w =
   List.map (fun m -> "std/" ^ m)
     (List.filter_map (fun (m, _) -> if List.mem m language then None else Some m) Embedded.files @ List.map fst w.native_modules)
 
-let modules w = "prelude" :: List.sort_uniq String.compare (own_modules w @ project_modules w @ deps_modules w)
+let modules w = List.sort_uniq String.compare (own_modules w @ project_modules w @ deps_modules w)
 
-let is_module w m = m = "prelude" || List.mem m (own_modules w) || package_sources w m <> [] || own_sources w m <> None
+let is_module w m = List.mem m (own_modules w) || package_sources w m <> [] || own_sources w m <> None
 
 (* What a name of a module starts with: the name of the code, num.Solve or shapes.Unit, when it leads back to the module; else
    its path, tests/mods/geo.Rect. *)
@@ -517,16 +515,11 @@ let qualifier w m =
 
 let names w m =
   let alias = qualifier w m in
-  let qualified n = if m = "prelude" then n else alias ^ "." ^ n in
   let native_names =
-    if m = "prelude" then
-      List.map fst w.modules.(0).mnames
-      @ List.filter_map (fun e -> if String.contains e.name '.' then None else Some e.name) (natives_entries ())
-    else
-      List.map (fun (n, _) -> alias ^ "." ^ n) (Option.value (List.assoc_opt (bare m) w.native_modules) ~default:[])
-      @ List.filter_map (fun e -> Option.map (fun _ -> e.name) (drop_prefix (alias ^ ".") e.name)) (natives_entries ())
+    List.map (fun (n, _) -> alias ^ "." ^ n) (Option.value (List.assoc_opt (bare m) w.native_modules) ~default:[])
+    @ List.filter_map (fun e -> Option.map (fun _ -> e.name) (drop_prefix (alias ^ ".") e.name)) (natives_entries ())
   in
-  let written = List.filter_map (fun e -> if public_name e.name then Some (qualified e.name) else None) (module_entries w m) in
+  let written = List.filter_map (fun e -> if public_name e.name then Some (alias ^ "." ^ e.name) else None) (module_entries w m) in
   List.sort_uniq String.compare (List.filter (fun n -> public (short_name n)) native_names @ written)
 
 (* What a function value was defined as. A native knows only its short name. *)
@@ -536,11 +529,9 @@ let of_function w v =
     let _, src = Dynarray.get w.files proto.file in
     if public proto.pname then Option.map shown (find proto.pname (entries src)) else None
   | Native n ->
-    (match lookup w n.nname with
-     | Some text -> Some text
-     | None ->
-       let suffix = "." ^ n.nname in
-       Option.map shown (List.find_opt (fun e -> String.ends_with ~suffix e.name) (natives_entries ())))
+    (* The package whose natives hold this very value: list.Take, not sqlite3.Take. *)
+    let owner = List.find_map (fun (m, ns) -> if List.exists (fun (_, x) -> x == v) ns then Some m else None) w.native_modules in
+    Option.bind owner (fun m -> lookup w (m ^ "." ^ n.nname))
   | _ -> None
 
 let doc ctx (a : t array) =
@@ -609,7 +600,7 @@ let command w args =
     0
   | [ name ] when is_module w name ->
     let head = module_about w name in
-    if head <> "" && name <> "prelude" then print_endline (head ^ "\n");
+    if head <> "" then print_endline (head ^ "\n");
     table (List.map (fun n -> n, summary w n) (names w name));
     0
   | [ name ] ->

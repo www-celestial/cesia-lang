@@ -177,9 +177,9 @@ let cant_load st path e =
   print_endline (Printf.sprintf "%s: can't load: %s" path (Option.get (Loader.message_of_error e)))
 
 (* Loads a source, then runs its examples and its tests. With [host], it sees that package, private names included. *)
-let run_source (ctx : ctx) st ?host ~lookup path src =
+let run_source (ctx : ctx) st ?host ?natives ~lookup path src =
   let w = ctx.w in
-  match Loader.prepare ?host ctx ~path ~src ~lookup with
+  match Loader.prepare ?host ?natives ctx ~path ~src ~lookup with
   | exception e when Loader.message_of_error e <> None -> cant_load st path e
   | (_, m, _, layout) as prepared ->
     (try
@@ -198,9 +198,8 @@ let run_file (ctx : ctx) st path =
   if has_tests path src then begin
     ctx.b <- 0;
     w.root <- Package.root_of path;
-    (* The prelude sees the private natives, as when it loads. *)
-    let is_prelude = Filename.basename path = "prelude" ^ Package.suffix && Filename.basename (Filename.dirname path) = "std" in
-    run_source ctx st ~lookup:(if is_prelude then Loader.in_module w 0 else Loader.lookup w) path src
+    (* A file of std/ sees the natives of its package, small ones too, as when it loads. *)
+    run_source ctx st ?natives:(Loader.std_natives w path) ~lookup:(Loader.lookup w) path src
   end
 
 (* Which file of a package stopped, and on which line. *)

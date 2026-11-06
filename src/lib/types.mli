@@ -156,7 +156,7 @@ and modul = {
   mutable mnames : (string * int) list;
   mutable stable : bool array;  (** cell never reassigned: function or native *)
   host : int;  (** the first module of the package whose private names this one sees *)
-  package : int array;  (** the modules of its files, in the order of their names *)
+  mutable package : int array;  (** the modules of its files, in the order of their names, then those of its natives *)
   mutable uses : int list;  (** the first module of each package its file uses *)
 }
 

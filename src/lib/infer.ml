@@ -295,7 +295,7 @@ and element env (iter : expr) =
 and pattern env = function
   | Pname { b = Local i; _ } -> set_var env i TA
   | Pname _ | Pwild | Plit _ -> ()
-  | Parray ps | Pcons (_, ps) -> Array.iter (pattern env) ps
+  | Parray ps | Pcons { cargs = ps; _ } -> Array.iter (pattern env) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> pattern env q) fs
 
 and call_type env (call : call) =

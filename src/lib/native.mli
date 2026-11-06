@@ -1,10 +1,12 @@
-(** Native functions and the constants of the prelude. *)
+(** Native functions and constants, in the packages of std/ that they belong to. *)
 open Types
 
-val prelude : (string * t) list
+(** The dictionary literal, which only the parser writes, and so the only name the compiler finds without a use. *)
+val core : (string * t) list
 
-(** Adds a native to the prelude. Used by tests. *)
-val register : world -> string -> t -> unit
+(** Each package of std/ with its natives: a small first letter, as [merge], stays inside the package. *)
+val packages : (string * (string * t) list) list
+
 
 (** The byte where [part], which isn't empty, first appears in a text from a byte, or -1. *)
 val find_from : string -> string -> int -> int

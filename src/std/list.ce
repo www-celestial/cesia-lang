@@ -1,0 +1,255 @@
+(** Lists: make them, change each element, keep some, fold, order and search them. The list comes last. *)
+use std/value
+use std/math
+use std/matrix
+use std/bug
+use std/dict
+
+defn Map(f, xs)
+  (** Applies f to each element, keeping the shape.
+
+        Map(it * 2, [1, 2]) --> [2, 4] *)
+  r = [f(x) for x in xs]
+  if value.Size(xs, 1) == 1 r else matrix.Reshape(r, value.Size(xs, 1), value.Size(xs, 2)) end
+end
+
+(** The elements for which f is true.
+
+      Filter(it > 1, [1, 2, 3]) --> [2, 3] *)
+Filter(f, xs) = [x for x in xs if f(x)]
+
+defn Reduce(f, init, xs)
+  (** Folds xs with f, starting from init.
+
+        Reduce((a, x) -> a + x, 0, [1, 2, 3]) --> 6 *)
+  acc = init
+  for x in xs
+    acc = f(acc, x)
+  end
+  acc
+end
+
+defn Scan(f, init, xs)
+  (** The successive results of reduce: one per element, init excluded.
+
+        Scan((a, x) -> a + x, 0, [1, 2, 3]) --> [1, 3, 6] *)
+  out = Fill(missing, value.Len(xs))
+  acc = init
+  i = 0
+  for x in xs
+    acc = f(acc, x)
+    i += 1
+    out[i] = acc
+  end
+  out
+end
+
+defn Range(a, b, step = 1)
+  (** From a to b, by step. Integers if all three are integers, else a + k * step. a..b is Range(a, b), as code mostly
+      writes it.
+
+        Range(1, 4) --> 1..4
+        Range(1, 10, step = 3) --> [1, 4, 7, 10]
+        Range(0, 1, step = 0.25) --> [0.0, 0.25, 0.5, 0.75, 1.0] *)
+  if step == 0
+    bug.Panic("range: step can't be 0.")
+  end
+  if math.Floor(a) == a and math.Floor(b) == b and math.Floor(step) == step
+    n = math.Div(b - a, step) + 1
+    [a + k * step for k in 0..n - 1]
+  else
+    span = (b - a) / step
+    n = if span < -1e-9 0 else math.Floor(span + 1e-9) + 1 end
+    [a + k * step for k in 0..n - 1]
+  end
+end
+
+defn row(k, members, summary)
+  if value.IsMissing(summary)
+    {Key: k, Values: members}
+  else
+    s = summary(members)
+    if value.IsDict(s) merge({Key: k}, s) else {Key: k, Value: s} end
+  end
+end
+
+defn Group(key, xs, summary = missing)
+  (** The elements grouped by key, in order of first appearance of the keys.
+
+        Group(math.Mod(it, 2), [1, 2, 3]) --> [{Key: 1, Values: [1, 3]}, {Key: 0, Values: [2]}] *)
+  n = value.Len(xs)
+  keys = [key(x) for x in xs]
+  g = groupIds(keys)
+  parts = groupParts(g, xs)
+  out = Fill(missing, g.Count)
+  for j in 1..g.Count
+    out[j] = row(keys[g.Firsts[j]], parts[j], summary)
+  end
+  out
+end
+
+defn order(keys)
+  (** The positions of keys, from the largest key to the smallest. Stable merge sort. *)
+  n = value.Len(keys)
+  idx = [k for k in 1..n]
+  tmp = Fill(0, n)
+  width = 1
+  while width < n
+    lo = 1
+    while lo <= n
+      mid = Min(lo + width, n + 1)
+      hi = Min(lo + 2 * width, n + 1)
+      i = lo
+      j = mid
+      k = lo
+      while k < hi
+        if i < mid and (j >= hi or not (keys[idx[j]] > keys[idx[i]]))
+          tmp[k] = idx[i]
+          i += 1
+        else
+          tmp[k] = idx[j]
+          j += 1
+        end
+        k += 1
+      end
+      lo = hi
+    end
+    t = idx
+    idx = tmp
+    tmp = t
+    width = 2 * width
+  end
+  idx
+end
+
+defn Top(n, xs, by = missing)
+  (** The n largest elements, largest first, or those with the largest by.
+
+        Top(2, [5, 1, 9, 3]) --> [9, 5] *)
+  keys = if value.IsMissing(by) xs else [by(x) for x in xs] end
+  idx = descending(keys, n)
+  if value.IsMissing(idx)
+    idx = order(keys)
+  end
+  m = Min(n, value.Len(xs))
+  [xs[idx[k]] for k in 1..m]
+end
+
+(** The elements ordered by f of each.
+
+      SortBy(math.Abs, [-3, 1, 2]) --> [1, 2, -3] *)
+SortBy(f, xs) = [xs[i] for i in Order(Map(f, xs))]
+(** How many elements f accepts.
+
+      Count(math.IsOdd, [1, 2, 3]) --> 2 *)
+Count(f, xs) = value.Len(Filter(f, xs))
+(** The results of f, joined in one list.
+
+      FlatMap(x -> [x, x], [1, 2]) --> [1, 1, 2, 2] *)
+FlatMap(f, xs) = Flatten(Map(f, xs))
+
+(**   First([1, 2]) --> 1 *)
+First(xs) = if value.Len(xs) == 0 missing else xs[1] end
+(**   Second([1, 2]) --> 2 *)
+Second(xs) = if value.Len(xs) < 2 missing else xs[2] end
+(**   Last([1, 2]) --> 2 *)
+Last(xs) = if value.Len(xs) == 0 missing else xs[value.Len(xs)] end
+(**   Rest([1, 2, 3]) --> [2, 3] *)
+Rest(xs) = Skip(1, xs)
+(**   Butlast([1, 2, 3]) --> [1, 2] *)
+Butlast(xs) = Take(Max(value.Len(xs) - 1, 0), xs)
+(**   Nth(2, [5, 6]) --> 6 *)
+Nth(k, xs) = xs[k]
+(**   Prepend(1, [2]) --> [1, 2] *)
+Prepend(x, xs) = Concat([x], xs)
+(**   TakeLast(2, [1, 2, 3]) --> [2, 3] *)
+TakeLast(n, xs) = Skip(Max(value.Len(xs) - n, 0), xs)
+(**   DropLast(2, [1, 2, 3]) --> [1] *)
+DropLast(n, xs) = Take(Max(value.Len(xs) - n, 0), xs)
+
+defn runLength(f, xs)
+  for k in 1..value.Len(xs)
+    if not f(xs[k])
+      return k - 1
+    end
+  end
+  value.Len(xs)
+end
+
+(**   TakeWhile(math.IsOdd, [1, 3, 4, 5]) --> [1, 3] *)
+TakeWhile(f, xs) = Take(runLength(f, xs), xs)
+(**   DropWhile(math.IsOdd, [1, 3, 4, 5]) --> [4, 5] *)
+DropWhile(f, xs) = Skip(runLength(f, xs), xs)
+
+defn FindFirst(f, xs)
+  (** The first element that f accepts, or missing.
+
+        FindFirst(math.IsEven, [1, 2, 4]) --> 2 *)
+  for x in xs
+    if f(x)
+      return x
+    end
+  end
+  missing
+end
+
+(**   Remove(math.IsEven, [1, 2, 3]) --> [1, 3] *)
+Remove(f, xs) = Filter(x -> not f(x), xs)
+(** The results of f that aren't missing.
+
+      Keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3]) --> [4, 6] *)
+Keep(f, xs) = Filter(x -> not value.IsMissing(x), Map(f, xs))
+(**   MapIndexed((k, x) -> k * x, [5, 6]) --> [5, 12] *)
+MapIndexed(f, xs) = [f(k, xs[k]) for k in 1..value.Len(xs)]
+(**   Interleave([1, 2], ["a", "b"]) --> [1, "a", 2, "b"] *)
+Interleave(a, b) = Flatten([[a[k], b[k]] for k in 1..Min(value.Len(a), value.Len(b))])
+(**   Interpose(0, [1, 2]) --> [1, 0, 2] *)
+Interpose(sep, xs) = Flatten([if k == 1 [xs[k]] else [sep, xs[k]] end for k in 1..value.Len(xs)])
+
+defn Every(f, xs)
+  (** Does f accept every element? It stops at the first refusal.
+
+        Every(math.IsOdd, [1, 3]) --> true *)
+  for x in xs
+    if not f(x)
+      return false
+    end
+  end
+  true
+end
+
+(**   Some(math.IsOdd, [2, 3]) --> true *)
+Some(f, xs) = not Every(x -> not f(x), xs)
+
+defn Iterate(f, x, n)
+  (** n values: x, f(x), f(f(x)) and so on.
+
+        Iterate(math.Inc, 1, 3) --> [1, 2, 3] *)
+  out = Fill(x, n)
+  for k in 2..n
+    out[k] = f(out[k - 1])
+  end
+  out
+end
+
+(**   Repeatedly(() -> 5, 2) --> [5, 5] *)
+Repeatedly(f, n) = [f() for k in 1..n]
+
+defn Frequencies(xs)
+  (** How many times each value appears, in a dictionary.
+
+        Frequencies(["a", "b", "a"])["a"] --> 2 *)
+  out = frequencies(xs)
+  if value.IsMissing(out)
+    out = dict.Dict()
+    for x in xs
+      out[x] = dict.GetOr(x, 0, out) + 1
+    end
+  end
+  out
+end
+
+(**   MinBy(math.Abs, [-3, 1, 2]) --> 1 *)
+MinBy(f, xs) = if value.Len(xs) == 0 missing else xs[Order(Map(f, xs))[1]] end
+(**   MaxBy(math.Abs, [-3, 1, 2]) --> -3 *)
+MaxBy(f, xs) = if value.Len(xs) == 0 missing else xs[Order(Map(f, xs))[value.Len(xs)]] end

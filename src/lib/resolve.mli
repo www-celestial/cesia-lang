@@ -8,10 +8,12 @@ val check_package : (string * Ast.func) list -> unit
 
 (** Fills in the [binding]s of file [fn], for the module of index [m]. The names in [keep] keep their cell index: a
     reload moves nothing for already compiled code. [peers] are the files of its package: their structs, interfaces and
-    fields count as its own, and each name in [keep] lives in its cell. [is_type] says whether a name of another package, or of the
-    prelude, is a struct or an interface, which a type can name. *)
+    fields count as its own, and each name in [keep] lives in its cell. [is_type] says whether a name of another package is a
+    struct or an interface, which a type or a pattern can name. [home] gives the package of std/ of a name that no file
+    defines, which its message names. *)
 val file :
-  ?keep:string array -> ?peers:Ast.func list -> ?is_type:(Ast.binding -> bool) -> file:string -> m:int ->
+  ?keep:string array -> ?peers:Ast.func list -> ?is_type:(Ast.binding -> bool) -> ?home:(string -> string option) ->
+  file:string -> m:int ->
   lookup:(string -> Ast.binding option) ->
   spaces:(string * (string -> Ast.binding option)) list -> Ast.func -> Ast.layout
 

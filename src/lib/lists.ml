@@ -115,8 +115,8 @@ let first_positions n m cmp =
   Array.stable_sort (fun i j -> if later i j then 1 else if later j i then -1 else 0) heap;
   heap
 
-(* For the prelude's Top: the positions of keys, the largest first, equal keys in their order, at least the first n of
-   them; [missing] unless [>] orders them as a sort needs (no NaN, no integer past 2^53 among floats), and the prelude's
+(* For std/list's Top: the positions of keys, the largest first, equal keys in their order, at least the first n of
+   them; [missing] unless [>] orders them as a sort needs (no NaN, no integer past 2^53 among floats), and std/list's
    merge sort then compares them. *)
 let descending ctx (a : t array) =
   match a.(0) with
@@ -267,14 +267,15 @@ let xor_bytes ctx (a : t array) =
   Runtime.build ctx ((String.length s / 8) + 1);
   Text (String.mapi (fun i c -> Char.chr (Char.code c lxor Char.code key.[i mod String.length key])) s)
 
-let natives =
+let math_natives =
   [ bits "BitAnd" ( land );
-    "XorBytes", nat "XorBytes" 2 2 xor_bytes;
     bits "BitOr" ( lor );
     bits "BitXor" ( lxor );
     bits "BitShift" shift;
-    "BitNot", nat "BitNot" 1 1 (fun ctx a -> Int (lnot (Arrays.whole_index ctx a.(0))));
-    "Append", nat "Append" 2 2 (fun ctx a -> push ctx a.(0) (items ctx "Append" a.(1)));
+    "BitNot", nat "BitNot" 1 1 (fun ctx a -> Int (lnot (Arrays.whole_index ctx a.(0)))) ]
+
+let list_natives =
+  [ "Append", nat "Append" 2 2 (fun ctx a -> push ctx a.(0) (items ctx "Append" a.(1)));
     "Concat", nat "Concat" 2 2 (fun ctx a ->
         let ys, m = cells ctx "Concat" a.(1) in
         let xs, n = cells ctx "Concat" a.(0) in
@@ -295,6 +296,10 @@ let natives =
     "Unique", nat "Unique" 1 1 unique;
     "Flatten", nat "Flatten" 1 1 flatten;
     "Zip", nat "Zip" 2 2 zip;
+    "descending", nat "descending" 2 2 descending ]
+
+let text_natives =
+  [ "XorBytes", nat "XorBytes" 2 2 xor_bytes;
     "Upper", nat "Upper" 1 1 (fun ctx a ->
         let s = text_arg ctx "Upper" a.(0) in
         pay ctx s;
@@ -344,5 +349,6 @@ let natives =
         else
           match Native.find_from s part (from - 1) with
           | -1 -> Missing
-          | at -> Int (at + 1));
-    "descending", nat "descending" 2 2 descending ]
+          | at -> Int (at + 1)) ]
+
+let packages = [ "math", math_natives; "list", list_natives; "text", text_natives ]

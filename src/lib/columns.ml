@@ -315,10 +315,10 @@ let rec deep_hash ctx wide big nodes depth v =
     | Handle { id; _ } -> hash_int false id
     | _ -> 7
 
-(* For the prelude's Group, {Ids, Count, Firsts} of its keys, as [Equal] groups them: each key in the first group whose
+(* For std/list's Group, {Ids, Count, Firsts} of its keys, as [Equal] groups them: each key in the first group whose
    first key is [Equal] to it. Texts, booleans, missing and numbers below 2^53, where [Equal] is an equivalence, by the
    hash of their kind. Any other keys by [deep_hash]: [Equal] compares only keys of one hash, in the order of their groups,
-   and these comparisons are paid in steps, as the prelude's loop was. *)
+   and these comparisons are paid in steps, as a loop in Cesia was. *)
 let group_ids ctx (a : t array) =
   let small_float x = Float.is_nan x || Float.abs x < 0x1p53 in
   let simple = function Text _ | True | False | Missing -> true | Int i -> small i | Float f -> small_float f | _ -> false in
@@ -346,10 +346,10 @@ let group_ids ctx (a : t array) =
 (* The key that [out[x] = ...] writes: a whole float as an integer, as an index. *)
 let index_key = function Float f when Float.is_integer f -> Int (int_of_float f) | v -> v
 
-(* For the prelude's Frequencies: what its loop gives, [GetOr(x, 0, out)] then [out[x] = ...]. Where a map's keys are an
+(* For std/list's Frequencies: what its loop gives, [GetOr(x, 0, out)] then [out[x] = ...]. Where a map's keys are an
    equivalence (integers and whole floats below 2^53, texts, other floats but NaN), by groups: each group's first key, as
    the index writes it, and its count, in order. Else the loop's steps one by one, for keys that both take. [missing]
-   for any other key: the prelude's loop then meets its error. *)
+   for any other key: the loop in Cesia then meets its error. *)
 let frequencies ctx (a : t array) =
   let small_float f = (not (Float.is_nan f)) && ((not (Float.is_integer f)) || Float.abs f < 0x1p53) in
   let simple = function Int i -> small i | Text _ -> true | Float f -> small_float f | _ -> false in
@@ -615,7 +615,7 @@ let natives =
     "Csv", Native.nat "Csv" 2 2 csv;
     "ReadCsv", Native.nat "ReadCsv" 2 2 read_csv ]
 
-let prelude =
+let list =
   [ "groupIds", Native.nat "groupIds" 1 1 group_ids;
     "groupParts", Native.nat "groupParts" 2 2 (split_parts ~all:true);
     "frequencies", Native.nat "frequencies" 1 1 frequencies ]

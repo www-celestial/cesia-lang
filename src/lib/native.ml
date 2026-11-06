@@ -498,102 +498,101 @@ let text_natives =
     test2 "StartsWith" (fun prefix s -> String.starts_with ~prefix s);
     test2 "Contains" (fun part s -> part = "" || find_from s part 0 >= 0) ]
 
-let prelude =
-  text_natives
-  @ [ "Print", nat "Print" 0 max_int print;
-    "Str", nat "Str" 0 max_int str;
-    "Panic", nat "Panic" 1 1 (fun ctx a -> Runtime.fail ctx User (Messages.plain (Value.text_of ctx a.(0))));
-    "Assert", nat "Assert" 1 2 (fun ctx a ->
-        match a.(0) with
-        | True -> Missing
-        | False ->
-          let m =
-            if Array.length a > 1 then Messages.plain (Value.text_of ctx a.(1)) else Messages.assertion
-          in
-          Runtime.fail ctx User m
-        | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v)));
-    "merge", nat "merge" 2 2 (fun ctx a ->
-        let o = Dict.items ctx "merge" a.(1) in
-        (* A new map: a change copies, so the first one stays as it was. *)
-        let acc = ref a.(0) in
-        for i = 0 to (Array.length o / 2) - 1 do
-          acc := Dict.put ctx "merge" o.(2 * i) (Value.share o.((2 * i) + 1)) !acc
-        done;
-        !acc);
-    "Args", Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true };
-    "Text", nat "Text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
-    "Dict", nat "Dict" 0 1 dict_of_pairs;
-    "#dict", nat "dict literal" 0 max_int dict_literal;
-    "Get", nat "Get" 2 2 (fun ctx a -> Option.fold ~none:Missing ~some:Value.share (Dict.get ctx "Get" a.(0) a.(1)));
-    "GetOr", nat "GetOr" 3 3 (fun ctx a ->
-        match Dict.get ctx "GetOr" a.(0) a.(2) with
-        | Some x -> Value.share x
-        | None -> a.(1));
-    "Has", nat "Has" 2 2 (fun ctx a -> Value.of_bool (Option.is_some (Dict.get ctx "Has" a.(0) a.(1))));
-    "Put", nat "Put" 3 3 (fun ctx a -> Dict.put ctx "Put" a.(0) (Value.share a.(1)) a.(2));
-    "Drop", nat "Drop" 2 2 (fun ctx a -> Dict.drop ctx "Drop" a.(0) a.(1));
-    "Keys", nat "Keys" 1 1 (fun ctx a -> dict_items ctx "Keys" a.(0) (fun k _ -> k));
-    "Values", nat "Values" 1 1 (fun ctx a -> dict_items ctx "Values" a.(0) (fun _ v -> Value.share v));
-    "Pairs", nat "Pairs" 1 1 (fun ctx a ->
-        dict_items ctx "Pairs" a.(0) (fun k v -> Trie.record pair_keys [| k; Value.share v |]));
-    "Fields", nat "Fields" 1 1 (fun ctx a ->
-        match a.(0) with
-        | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
-          (* Inside the package of the struct, its small fields too. *)
-          let site = if ctx.site >= 0 && ctx.site < Dynarray.length ctx.w.sites then (Dynarray.get ctx.w.sites ctx.site).sver else None in
-          let inside = (match site with Some v -> ctx.w.modules.(v.owner.pm).host = shape.sm | None -> false) in
-          let keep = List.filter (fun i -> inside || Lexer.is_public shape.names.(i)) (List.init (Array.length fields) Fun.id) in
-          Dict.of_items ctx (Array.of_list (List.concat_map (fun i -> [ Text shape.names.(i); Value.share fields.(i) ]) keep))
-        | v -> Runtime.fail ctx Type (Messages.fields_of (Value.describe v)));
-    is_ "IsDict" (function Dict _ -> true | _ -> false);
-    "Len", nat ~ret:(fun _ -> TI) "Len" 1 1 (fun _ a -> Int (length a.(0)));
-    "Div", int_native "Div" Arith.int_div;
-    "Mod", int_native "Mod" Arith.int_mod;
-    "Equal", nat "Equal" 2 2 (fun ctx a -> Value.of_bool (Value.equal ctx a.(0) a.(1)));
-    "Zeros", nat ~ret:fa_size "Zeros" 1 2 (fun ctx a -> let r, c = dims ctx "Zeros" a 0 in filled ctx (Float 0.) r c);
-    "Ones", nat ~ret:fa_size "Ones" 1 2 (fun ctx a -> let r, c = dims ctx "Ones" a 0 in filled ctx (Float 1.) r c);
-    "Fill", nat "Fill" 2 3 (fun ctx a -> let r, c = dims ctx "Fill" a 1 in filled ctx a.(0) r c);
-    "Size", nat "Size" 1 2 size;
-    "Reshape", nat "Reshape" 3 3 reshape;
-    "Abs", nat ~ret:same_number "Abs" 1 1 (fun ctx a -> abs_value ctx a.(0));
-    math1 "Sqrt" sqrt; math1 "Exp" exp; math1 "Log" log; math1 "Sin" sin; math1 "Cos" cos; math1 "Tan" tan;
-    math1 "Asin" asin; math1 "Acos" acos; math1 "Atan" atan;
-    rounding "Floor" floor; rounding "Ceil" ceil; rounding "Round" Float.round;
-    "Sign", nat ~ret:same_number "Sign" 1 1 (fun ctx a -> sign ctx a.(0));
-    "Atan2", nat "Atan2" 2 2 (fun ctx a ->
-        Arith.broadcast ctx (fun ctx y x ->
-            match y, x with
-            | Missing, _ | _, Missing -> Missing
-            | _ ->
-              let num v = match v with
-                | Int i -> float_of_int i
-                | Float f -> f
-                | _ -> Runtime.fail ctx Type (Messages.need_number "Atan2" (Value.describe v))
-              in
-              Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
-    "Matmul", nat ~ret:fa_size "Matmul" 2 2 matmul;
-    "Transpose", nat ~ret:same_fa "Transpose" 1 1 transpose;
-    "Sum", nat ~ret:scalar_of_fa "Sum" 1 1 (fun ctx a -> sum ctx a.(0));
-    "Mean", nat ~ret:scalar_of_fa "Mean" 1 1 (fun ctx a -> mean ctx a.(0));
-    "Min", nat ~ret:scalar_of_fa "Min" 1 2 (best "Min" Arith.lt);
-    "Max", nat ~ret:scalar_of_fa "Max" 1 2 (best "Max" Arith.gt);
-    "Any", nat "Any" 1 1 (mask_all "Any" true);
-    "All", nat "All" 1 1 (mask_all "All" false);
-    is_ "IsInt" (function Int _ -> true | _ -> false);
-    is_ "IsFloat" (function Float _ -> true | _ -> false);
-    is_ "IsNumber" (function Int _ | Float _ -> true | _ -> false);
-    is_ "IsBool" (function True | False -> true | _ -> false);
-    is_ "IsText" (function Text _ -> true | _ -> false);
-    is_ "IsArray" (function Array _ -> true | _ -> false);
-    is_ "IsStruct" (function Struct { shape = { sname = Some _; _ }; _ } -> true | _ -> false);
-    is_ "IsFunction" (function Fun _ | Native _ -> true | _ -> false);
-    is_ "IsMissing" (function Missing -> true | _ -> false);
-    "Pi", Float (4. *. atan 1.);
-    "Nan", Float nan ]
+(* The dictionary literal, which only the parser writes: the one name the compiler finds without a use. *)
+let core = [ "#dict", nat "dict literal" 0 max_int dict_literal ]
 
-let register w name value =
-  let md = w.modules.(0) in
-  let k = Array.length md.cells in
-  md.cells <- Array.append md.cells [| value |];
-  md.stable <- Array.append md.stable [| true |];
-  md.mnames <- (name, k) :: md.mnames
+let packages =
+  [ "io", [ "Print", nat "Print" 0 max_int print ];
+    "bug",
+    [ "Panic", nat "Panic" 1 1 (fun ctx a -> Runtime.fail ctx User (Messages.plain (Value.text_of ctx a.(0))));
+      "Assert", nat "Assert" 1 2 (fun ctx a ->
+          match a.(0) with
+          | True -> Missing
+          | False ->
+            let m =
+              if Array.length a > 1 then Messages.plain (Value.text_of ctx a.(1)) else Messages.assertion
+            in
+            Runtime.fail ctx User m
+          | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v))) ];
+    "text", text_natives @ [ "Str", nat "Str" 0 max_int str ];
+    "dict",
+    [ "Dict", nat "Dict" 0 1 dict_of_pairs;
+      "Get", nat "Get" 2 2 (fun ctx a -> Option.fold ~none:Missing ~some:Value.share (Dict.get ctx "Get" a.(0) a.(1)));
+      "GetOr", nat "GetOr" 3 3 (fun ctx a ->
+          match Dict.get ctx "GetOr" a.(0) a.(2) with
+          | Some x -> Value.share x
+          | None -> a.(1));
+      "Has", nat "Has" 2 2 (fun ctx a -> Value.of_bool (Option.is_some (Dict.get ctx "Has" a.(0) a.(1))));
+      "Put", nat "Put" 3 3 (fun ctx a -> Dict.put ctx "Put" a.(0) (Value.share a.(1)) a.(2));
+      "Drop", nat "Drop" 2 2 (fun ctx a -> Dict.drop ctx "Drop" a.(0) a.(1));
+      "Keys", nat "Keys" 1 1 (fun ctx a -> dict_items ctx "Keys" a.(0) (fun k _ -> k));
+      "Values", nat "Values" 1 1 (fun ctx a -> dict_items ctx "Values" a.(0) (fun _ v -> Value.share v));
+      "Pairs", nat "Pairs" 1 1 (fun ctx a ->
+          dict_items ctx "Pairs" a.(0) (fun k v -> Trie.record pair_keys [| k; Value.share v |]));
+      "Fields", nat "Fields" 1 1 (fun ctx a ->
+          match a.(0) with
+          | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
+            (* Inside the package of the struct, its small fields too. *)
+            let site = if ctx.site >= 0 && ctx.site < Dynarray.length ctx.w.sites then (Dynarray.get ctx.w.sites ctx.site).sver else None in
+            let inside = (match site with Some v -> ctx.w.modules.(v.owner.pm).host = shape.sm | None -> false) in
+            let keep = List.filter (fun i -> inside || Lexer.is_public shape.names.(i)) (List.init (Array.length fields) Fun.id) in
+            Dict.of_items ctx (Array.of_list (List.concat_map (fun i -> [ Text shape.names.(i); Value.share fields.(i) ]) keep))
+          | v -> Runtime.fail ctx Type (Messages.fields_of (Value.describe v))) ];
+    "value",
+    [ "Text", nat "Text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
+      is_ "IsDict" (function Dict _ -> true | _ -> false);
+      "Len", nat ~ret:(fun _ -> TI) "Len" 1 1 (fun _ a -> Int (length a.(0)));
+      "Equal", nat "Equal" 2 2 (fun ctx a -> Value.of_bool (Value.equal ctx a.(0) a.(1)));
+      "Size", nat "Size" 1 2 size;
+      is_ "IsInt" (function Int _ -> true | _ -> false);
+      is_ "IsFloat" (function Float _ -> true | _ -> false);
+      is_ "IsNumber" (function Int _ | Float _ -> true | _ -> false);
+      is_ "IsBool" (function True | False -> true | _ -> false);
+      is_ "IsText" (function Text _ -> true | _ -> false);
+      is_ "IsArray" (function Array _ -> true | _ -> false);
+      is_ "IsStruct" (function Struct { shape = { sname = Some _; _ }; _ } -> true | _ -> false);
+      is_ "IsFunction" (function Fun _ | Native _ -> true | _ -> false);
+      is_ "IsMissing" (function Missing -> true | _ -> false) ];
+    "math",
+    [ "Div", int_native "Div" Arith.int_div;
+      "Mod", int_native "Mod" Arith.int_mod;
+      "Abs", nat ~ret:same_number "Abs" 1 1 (fun ctx a -> abs_value ctx a.(0));
+      math1 "Sqrt" sqrt; math1 "Exp" exp; math1 "Log" log; math1 "Sin" sin; math1 "Cos" cos; math1 "Tan" tan;
+      math1 "Asin" asin; math1 "Acos" acos; math1 "Atan" atan;
+      rounding "Floor" floor; rounding "Ceil" ceil; rounding "Round" Float.round;
+      "Sign", nat ~ret:same_number "Sign" 1 1 (fun ctx a -> sign ctx a.(0));
+      "Atan2", nat "Atan2" 2 2 (fun ctx a ->
+          Arith.broadcast ctx (fun ctx y x ->
+              match y, x with
+              | Missing, _ | _, Missing -> Missing
+              | _ ->
+                let num v = match v with
+                  | Int i -> float_of_int i
+                  | Float f -> f
+                  | _ -> Runtime.fail ctx Type (Messages.need_number "Atan2" (Value.describe v))
+                in
+                Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
+      "Pi", Float (4. *. atan 1.);
+      "Nan", Float nan ];
+    "matrix",
+    [ "Zeros", nat ~ret:fa_size "Zeros" 1 2 (fun ctx a -> let r, c = dims ctx "Zeros" a 0 in filled ctx (Float 0.) r c);
+      "Ones", nat ~ret:fa_size "Ones" 1 2 (fun ctx a -> let r, c = dims ctx "Ones" a 0 in filled ctx (Float 1.) r c);
+      "Reshape", nat "Reshape" 3 3 reshape;
+      "Matmul", nat ~ret:fa_size "Matmul" 2 2 matmul;
+      "Transpose", nat ~ret:same_fa "Transpose" 1 1 transpose ];
+    "list",
+    [ "merge", nat "merge" 2 2 (fun ctx a ->
+          let o = Dict.items ctx "merge" a.(1) in
+          (* A new map: a change copies, so the first one stays as it was. *)
+          let acc = ref a.(0) in
+          for i = 0 to (Array.length o / 2) - 1 do
+            acc := Dict.put ctx "merge" o.(2 * i) (Value.share o.((2 * i) + 1)) !acc
+          done;
+          !acc);
+      "Fill", nat "Fill" 2 3 (fun ctx a -> let r, c = dims ctx "Fill" a 1 in filled ctx a.(0) r c);
+      "Sum", nat ~ret:scalar_of_fa "Sum" 1 1 (fun ctx a -> sum ctx a.(0));
+      "Mean", nat ~ret:scalar_of_fa "Mean" 1 1 (fun ctx a -> mean ctx a.(0));
+      "Min", nat ~ret:scalar_of_fa "Min" 1 2 (best "Min" Arith.lt);
+      "Max", nat ~ret:scalar_of_fa "Max" 1 2 (best "Max" Arith.gt);
+      "Any", nat "Any" 1 1 (mask_all "Any" true);
+      "All", nat "All" 1 1 (mask_all "All" false) ] ]

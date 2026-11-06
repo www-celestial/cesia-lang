@@ -1,0 +1,27 @@
+(** Numbers: arithmetic, rounding, trigonometry, bits and the tests of a number. Each function of one number also works on an
+    array, element by element. *)
+
+(** One more, and one less. Both work on arrays, element by element.
+
+      Inc(1) --> 2 *)
+Inc(x) = x + 1
+(**   Dec(1) --> 0 *)
+Dec(x) = x - 1
+(** The operators as functions, to pass to list.Reduce or list.Map.
+
+      Add(1, 2) --> 3 *)
+Add(a, b) = a + b
+(**   Sub(5, 2) --> 3 *)
+Sub(a, b) = a - b
+(**   Mul(2, 3) --> 6 *)
+Mul(a, b) = a * b
+(**   IsZero(0) --> true *)
+IsZero(x) = x == 0
+(**   IsPos(1) --> true *)
+IsPos(x) = x > 0
+(**   IsNeg(1) --> false *)
+IsNeg(x) = x < 0
+(**   IsEven(2) --> true *)
+IsEven(x) = Mod(x, 2) == 0
+(**   IsOdd(2) --> false *)
+IsOdd(x) = Mod(x, 2) != 0

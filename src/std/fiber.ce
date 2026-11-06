@@ -1,0 +1,10 @@
+(** Fibers: tasks that wait without blocking the others, and channels between them. *)
+use std/result
+
+defn Pmap(f, xs)
+  (** Like list.Map, with one fiber per element: useful when f waits. A panic in f comes back as a panic here.
+
+        Pmap(it * 2, [1, 2]) --> [2, 4] *)
+  tasks = [Spawn(() -> f(x)) for x in xs]
+  [result.Unwrap(Wait(t)) for t in tasks]
+end

@@ -24,6 +24,7 @@ type env = {
   structs : (string, (string * expr) array) Hashtbl.t;  (* those of this file and of its package, with their fields *)
   interfaces : (string, unit) Hashtbl.t;  (* those of this file and of its package *)
   is_type : binding -> bool;  (* a struct or an interface of a package already loaded *)
+  home : string -> string option;  (* the package of std/ of a name that no file defines, for its message *)
   cells : (string, int) Hashtbl.t;
   mutable cell_list : string list;
 }
@@ -54,13 +55,13 @@ let cell env text =
 let rec pat_names f = function
   | Pname n -> f n
   | Pwild | Plit _ -> ()
-  | Parray ps | Pcons (_, ps) -> Array.iter (pat_names f) ps
+  | Parray ps | Pcons { cargs = ps; _ } -> Array.iter (pat_names f) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> pat_names f q) fs
 
 let rec pat_exprs f = function
   | Plit e -> f e
   | Pname _ | Pwild -> ()
-  | Parray ps | Pcons (_, ps) -> Array.iter (pat_exprs f) ps
+  | Parray ps | Pcons { cargs = ps; _ } -> Array.iter (pat_exprs f) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> pat_exprs f q) fs
 
 (* The subexpressions, without entering nested functions. *)
@@ -167,6 +168,28 @@ let static env sc celled (base : expr) name =
     Option.bind (List.assoc_opt alias env.spaces) (in_space sname)
   | _ -> None
 
+(* A name that no file defines: when a package of std/ has it, the message says which use to write. *)
+let undefined env name = match env.home name with Some p -> Messages.moved name p | None -> Messages.undefined name
+
+(* The struct that a pattern names is one the file sees, as any name: Point of its package, geo.Point of a package it uses. *)
+let rec constructors env sc celled = function
+  | Pcons { cpkg; cname; cargs; cpos } ->
+    (match cpkg with
+     | Some alias when List.mem_assoc alias env.spaces && find env sc celled alias = None ->
+       (match if Lexer.is_public cname then (List.assoc alias env.spaces) cname else None with
+        | Some b when env.is_type b -> ()
+        | Some _ -> error env.path cpos (Messages.pattern_struct (alias ^ "." ^ cname))
+        | None -> error env.path cpos (Messages.no_name alias cname))
+     | Some alias -> error env.path cpos (Messages.undefined alias)
+     | None ->
+       let seen = match env.lookup cname with Some b -> env.is_type b | None -> false in
+       if not (Hashtbl.mem env.structs cname || seen) then
+         error env.path cpos (match env.home cname with Some p -> Messages.moved cname p | None -> Messages.pattern_struct cname));
+    Array.iter (constructors env sc celled) cargs
+  | Parray ps -> Array.iter (constructors env sc celled) ps
+  | Pstruct fs -> Array.iter (fun (_, q) -> constructors env sc celled q) fs
+  | Pname _ | Pwild | Plit _ -> ()
+
 let kinds = [ "Int"; "Float"; "Number"; "Bool"; "Text"; "Array"; "Dict"; "Function" ]
 
 (* A type: a kind, or a struct or an interface of this package or of a package the file uses, found as other names are. *)
@@ -221,16 +244,17 @@ let rec reads env sc celled (e : expr) =
      | None ->
        match env.lookup n.text with
        | Some b -> n.b <- b
-       | None -> error env.path e.pos (Messages.undefined n.text))
+       | None -> error env.path e.pos (undefined env n.text))
   | Assign (n, _) -> n.b <- Local (var sc n.text); children go e
   | Set { root; path; _ } ->
     root.b <- Local (var sc root.text);
     children go e
   | Destructure (pt, _) ->
+    constructors env sc celled pt;
     pat_names (fun n -> n.b <- Local (var sc n.text)) pt;
     children go e
   | Match { arms; _ } ->
-    Array.iter (fun a -> pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt) arms;
+    Array.iter (fun a -> constructors env sc celled a.pt; pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt) arms;
     children go e
   | For { var = v; _ } -> v.b <- Local (var sc v.text); children go e
   | Comp { cbody; cvar; csrc; cguard } ->
@@ -446,11 +470,11 @@ let check_package files =
   in
   List.iter (fun (path, fn) -> List.iter (check path) (definitions fn)) files
 
-let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ~file:path ~m ~lookup ~spaces
+let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _ -> None) ~file:path ~m ~lookup ~spaces
     (fn : func) =
   let env =
     { path; m; lookup; spaces; hoisted = Hashtbl.create 16; structs = Hashtbl.create 8;
-      interfaces = Hashtbl.create 4; is_type; cells = Hashtbl.create 16;
+      interfaces = Hashtbl.create 4; is_type; home; cells = Hashtbl.create 16;
       cell_list = [] }
   in
   Array.iter (fun text -> ignore (cell env text)) keep;
