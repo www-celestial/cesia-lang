@@ -1,0 +1,3 @@
+(** Counting words, from another project. *)
+
+Words(text) = Len(Split(" ", text))   (** How many words a text holds. *)

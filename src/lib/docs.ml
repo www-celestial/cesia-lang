@@ -484,12 +484,25 @@ let project_modules w =
   in
   if Sys.file_exists (Filename.concat r Package.project_file) then List.concat_map packages (Package.sources r) else []
 
+(* The packages taken from other projects: each folder under deps/ that holds code, by its path, as a use writes it. *)
+let deps_modules w =
+  let r = root w in
+  let rec walk dir =
+    let path = Filename.concat r dir in
+    if not (Package.is_dir path) then []
+    else
+      let names = List.sort String.compare (Array.to_list (Sys.readdir path)) in
+      let inner = List.filter (fun n -> n <> "" && n.[0] <> '.' && Package.is_dir (Filename.concat path n)) names in
+      (if Package.files path <> [] then [ dir ] else []) @ List.concat_map (fun n -> walk (dir ^ "/" ^ n)) inner
+  in
+  if Sys.file_exists (Filename.concat r Package.project_file) then walk "deps" else []
+
 (* The modules of Cesia itself: its libraries and the modules of the binary. *)
 let own_modules w =
   List.map (fun m -> "std/" ^ m)
     (List.filter_map (fun (m, _) -> if List.mem m language then None else Some m) Embedded.files @ List.map fst w.native_modules)
 
-let modules w = "prelude" :: List.sort_uniq String.compare (own_modules w @ project_modules w)
+let modules w = "prelude" :: List.sort_uniq String.compare (own_modules w @ project_modules w @ deps_modules w)
 
 let is_module w m = m = "prelude" || List.mem m (own_modules w) || package_sources w m <> [] || own_sources w m <> None
 

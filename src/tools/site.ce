@@ -63,8 +63,14 @@ wordFile(w) = if w == "?" "question" else if w == ".." "range" else w end   (** 
 
 defn shortOf(name, m)
   (** The name inside its module: Solve for num.Solve, Date.Parse for date.Date.Parse. *)
-  prefix = Str(Last(Split("/", m)), ".")
-  if m != "prelude" and StartsWith(prefix, name) ByteSlice(ByteLength(prefix) + 1, ByteLength(name), name) else name end
+  (* A name is qualified by the code name of its module, num.Solve, or by its whole path when that name leads elsewhere:
+     deps/someone/tools/src/count.Words. *)
+  for prefix in [Str(m, "."), Str(Last(Split("/", m)), ".")]
+    if m != "prelude" and StartsWith(prefix, name)
+      return ByteSlice(ByteLength(prefix) + 1, ByteLength(name), name)
+    end
+  end
+  name
 end
 
 modulePath(m) = "ref/$m.html"
@@ -227,7 +233,13 @@ defn groupBody(site, g, modules)
   path = groupPath(g)
   hooks = hooksFor(site, path, line -> "the folder $g")
   rows = Join("", [Str("<dt><a href=\"", rel(path, modulePath(m)), "\">", escape(m), "</a></dt><dd>", inlineHtml(summary(Doc(m)), hooks), "</dd>\n") for m in modules if StartsWith("$g/", m)])
-  said = if g == "std" "What comes with Cesia: its libraries, written in Cesia, and the modules of its binary. A use writes std/ and the name: use std/date." else "The packages of the project in its folder $g/. A use writes their path from the root: use $g/name." end
+  said = if g == "std"
+    "What comes with Cesia: its libraries, written in Cesia, and the modules of its binary. A use writes std/ and the name: use std/date."
+  else if g == "deps"
+    "The packages taken from other projects, which cesia pkg puts in deps/. A use writes their whole path: use deps/owner/project/src/name."
+  else
+    "The packages of the project in its folder $g/. A use writes their path from the root: use $g/name."
+  end
   Str("<h1>", escape(g), "</h1>\n<p>", escape(said), "</p>\n<dl class=\"names\">\n", rows, "</dl>\n")
 end
 

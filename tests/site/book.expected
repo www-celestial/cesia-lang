@@ -101,6 +101,8 @@ href="deploy.html">deploying</a>
 href="../first.html">the first steps</a>
 2</span>
 0
+== the packages of deps/ have their pages, as those of src/ and std/
+How many words a text holds.
 == a build keeps the pages whose sources didn't change, and makes again the others
 A warm greeting for a name
 files.html">Files and folders

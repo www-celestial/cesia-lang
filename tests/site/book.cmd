@@ -20,6 +20,8 @@ grep -o '<a href="guides/index.html"[^>]*>Guides</a>' site/index.html
 grep -o 'href="deploy.html">deploying</a>\|href="../first.html">the first steps</a>' site/guides/index.html
 grep -o '2</span>' site/guides/deploy.html | head -1
 ls site | grep -c images
+echo "== the packages of deps/ have their pages, as those of src/ and std/"
+grep -o 'How many words a text holds\.' site/ref/deps/someone/tools/src/count/Words.html
 echo "== a build keeps the pages whose sources didn't change, and makes again the others"
 sed -i.bak 's/A greeting for a name/A warm greeting for a name/' src/greet/greet.ce
 sed -i.bak 's/^# Files$/# Files and folders/' docs/book/files.md
