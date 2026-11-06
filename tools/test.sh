@@ -1,27 +1,26 @@
 #!/usr/bin/env bash
-# The full suite, on both paths.
+# The full suite, on both paths, but the tests slow by nature (name.slow), which tools/check.sh runs past the change loop,
+# as it builds Cesia's own site. Its parts run side by side: the examples of each folder on each path, and the golden tests.
 set -eu
 cd "$(dirname "$0")/.."
 dune build 2>&1 | head -60
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 cesia=_build/default/src/bin/main.exe
+logs=$(mktemp -d)
+jobs=()
+# shellcheck disable=SC2016
+trap 'kill ${jobs[@]+"${jobs[@]}"} 2> /dev/null || true; rm -rf "$logs"' EXIT
 
-# Cesia's own site, beside the rest: a text of the docs with a [Name] that leads nowhere, or a block of the book that gives
-# another value, fails here. Its servers listen on ports that no test uses.
-site=$(mktemp -d)
-trap 'rm -rf "$site" "$site.log"' EXIT
-"$cesia" doc --site "$site" > "$site.log" 2>&1 &
-site_job=$!
-
-# The two paths side by side: one after the other, this was the longest part on a single core.
 each_folder() {
   for folder in tests/lang tests/celestial src/std; do
     "$cesia" test "$folder" $1
   done
 }
-each_folder "" &
-each_folder --no-spec
-wait $!
+each_folder "" > "$logs/spec.log" 2>&1 &
+jobs+=($!)
+each_folder --no-spec > "$logs/no-spec.log" 2>&1 &
+jobs+=($!)
+
 dune test 2>&1 | tail -5
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 dirs=$(ls -d tests/*/ 2>/dev/null || true)
@@ -35,7 +34,17 @@ command -v g++ > /dev/null || skip tests/cpp "no g++"
 pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
 pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 "$cesia" run tests/sqlite/has-sqlite.ce > /dev/null 2>&1 || skip tests/sqlite "no SQLite"
-tools/golden.sh $dirs
-# cesia do has no --no-spec, and native code runs the same on both paths.
-tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|columns|cpp|tls|sdl|site)/$')
-wait "$site_job" || { cat "$site.log"; exit 1; }
+golden=0
+tools/golden.sh --both --quick $dirs || golden=1
+
+failed=$golden
+for part in spec no-spec; do
+  if wait "${jobs[0]}"; then
+    cat "$logs/$part.log"
+  else
+    cat "$logs/$part.log"
+    failed=1
+  fi
+  jobs=("${jobs[@]:1}")
+done
+exit "$failed"

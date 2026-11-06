@@ -1,0 +1,1 @@
+The tests run cesia doc --site through .cmd files, which take no --no-spec.
