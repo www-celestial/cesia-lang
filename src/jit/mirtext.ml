@@ -78,17 +78,23 @@ let func b ~prefix ~nested (fn : Ir.func) =
     Printf.bprintf s "  mov i64:8(ip), %s\n" (tagged fn.sites.(csite))
   in
   let links s site = List.iter (fun (vb, cb, cs) -> link s (reg_of vb) (reg_of cb) cs) fn.chains.(site) in
+  (* With a debugger, the one block where every error writes the variables back for the stop, out of the loops, as the
+     ticks' below. *)
+  let error_used = ref false in
+  let error_block () =
+    error_used := true;
+    Printf.sprintf "%s%s_X" prefix name
+  in
   (* An error: the interpreter remakes its message from the operands, at the site, from this frame. *)
   let error code site a bv =
     stub (fun s ->
-        if fn.spills && not nested then spill s;
         let raw v = match v with Ir.Reg r -> Printf.bprintf s "  rsh x1, r%d, 1\n" r; "x1" | Int n -> string_of_int n | Float _ -> "0" in
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_a) (raw a);
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_b) (match bv with Some v -> raw v | None -> "0");
         links s site;
         Printf.bprintf s "  mov %s, %d\n  mov %s, %d\n  mov %s, %s\n" (cx Ir.io_point) fn.sites.(site) (cx Ir.io_code) code
           (cx Ir.io_frame) (frame_of site);
-        stop s Ir.error)
+        if fn.spills && not nested then Printf.bprintf s "  jmp %s\n" (error_block ()) else stop s Ir.error)
   in
   (* An operand in a register, for the places MIR wants one. *)
   let in_reg k v =
@@ -311,6 +317,11 @@ let func b ~prefix ~nested (fn : Ir.func) =
     spill b;
     pr "  mov %s, xp\n" (cx Ir.io_point);
     stop b Ir.fuel_out
+  end;
+  if !error_used then begin
+    pr "%s:\n" (error_block ());
+    spill b;
+    stop b Ir.error
   end;
   if not nested then begin
     pr "%s:\n" lf;
