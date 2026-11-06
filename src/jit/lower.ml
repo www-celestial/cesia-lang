@@ -238,6 +238,8 @@ let fresh st k f =
    guards then check. *)
 let rec observe st (e : expr) =
   match st.ctx, e.e with
+  | _, Lmissing -> Some Missing
+  | _, Lbool b -> Some (if b then True else False)
   | Some ctx, Var { b = Local i; _ } when st.inl = [] && st.ver.tv.(i) == TA ->
     (match ctx.v.(ctx.b + st.ver.map.(i)) with Undef -> None | v -> Some v)
   | Some _, Field (b, name) ->
@@ -261,6 +263,9 @@ let rec observe st (e : expr) =
      | Array x, Some n when n >= 1 && n <= x.rows * x.cols -> Some (Value.elt x (n - 1))
      | _ -> None)
   | _ -> None
+
+(* A guess without its value: later, when a frame may hold it; never, without one. *)
+let unseen st = if st.ctx = None then raise No else raise Unseen
 
 (* A constant whose first field native code reads, in a value slot after the frame: one per value of that field. *)
 let const st (v : t) =
@@ -301,7 +306,7 @@ let guess st (e : expr) (x, k) =
      | Some (Float _) -> unbox st x Only_float
      | Some (Int _) -> unbox st x Only_int
      | Some _ -> raise No
-     | None -> raise Unseen)
+     | None -> unseen st)
   | _ -> x, k
 
 (* The operands of arithmetic or a comparison: a value beside a float is a number made a float, as the interpreter's
@@ -392,7 +397,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
      | Some (Dict { keys = { deep = Flat; _ } as keys; vals; _ }) ->
        let key = Text name in
        let j = Trie.index keys (Array.length vals) (Trie.hash key) key in
-       if j < 0 then raise Unseen;
+       if j < 0 then unseen st;
        let c = const st (Dict { keys; vals = [||]; d_owned = false }) in
        let a = checked st v c (fun r -> Ir.Vals (r, v, c, bail st)) in
        (* Keys that grow in place can be held by a map of fewer values. *)
@@ -406,7 +411,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
        let a = checked st v (-1 - shape.sid) (fun r -> Ir.Fields (r, v, shape.sid, bail st)) in
        fresh st Kval (fun r -> Load (r, a, j, -1))
      | Some _ -> raise No
-     | None -> raise Unseen)
+     | None -> unseen st)
   | Struct_lit { sname; sfields } ->
     let names = Array.map fst sfields in
     let n = Array.length names in
@@ -1108,6 +1113,7 @@ let lower_unit ?ctx ?scope (w : world) (ver : version) first =
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
     Some (Array.map fst fs)
   | exception No -> None
+  | exception Unseen when ctx = None -> None
 
 let unit (w : world) (ver : version) = lower_unit w ver None
 

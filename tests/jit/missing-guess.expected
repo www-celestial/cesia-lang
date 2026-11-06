@@ -1,0 +1,5 @@
+missing-guess.ce:9:10: A condition must be true or false, not missing.
+  9 |     if i > missing
+    |          ^
+  in spin (missing-guess.ce:9)
+exit 1

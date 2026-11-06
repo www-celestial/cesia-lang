@@ -1,0 +1,17 @@
+use std/io
+
+(* A comparison with missing in a function made native as a whole: no guess to make, the interpreter's way. *)
+fact(k) = if k < missing 4611686018427387903 else k * fact(k - 1) end
+
+defn spin(n)
+  s = 0
+  for i in 1..n
+    if i > missing
+      s = s + 1
+    end
+  end
+  s
+end
+
+io.Print(spin(300000))
+io.Print(fact(5))
