@@ -47,6 +47,8 @@ and dyn = {
          assignments to variables, which the way back undoes *)
   mutable dirty : bool;  (* the statement assigned a variable already *)
   restores : (int * int) list Dynarray.t;  (* of each statement: its variables' registers and their copies at its start *)
+  keeps : (int * int * int) Dynarray.t;  (* of each statement: its fuel, as [Ir.Keep] *)
+  mutable loose : bool;  (* a call that can't bail when it wants a longer stack *)
   mutable need : int ref option;  (* the words of allocation since the last [Reserve] *)
   consts : t Dynarray.t;
   mutable known : (int * int * int * int) list;
@@ -541,7 +543,10 @@ and call_expr st e (call : call) =
        if st.inl = [] && inlinable v then inline st e v vals
        else begin
          st.ncalls <- st.ncalls + 1;
-         fresh st k (fun r -> Call (r, callee st v, args, site st e.pos))
+         (* While nothing of the statement showed, a call that wants a longer stack bails: the interpreter makes it. *)
+         let back = match st.dyn.bail with Some k when not st.dyn.dirty && st.inl = [] -> k | _ -> -1 in
+         if back < 0 then st.dyn.loose <- true;
+         fresh st k (fun r -> Call (r, callee st v, args, site st e.pos, back))
        end
      | _ -> raise No)
   | _ -> raise No
@@ -729,6 +734,10 @@ and stmts st ~root (b : block) =
          in
          while Dynarray.length st.dyn.restores <= k do Dynarray.add_last st.dyn.restores [] done;
          Dynarray.set st.dyn.restores k saves;
+         let f = reg st Kint and sp = reg st Kint and q = reg st Kint in
+         emit st (Keep (f, sp, q));
+         while Dynarray.length st.dyn.keeps <= k do Dynarray.add_last st.dyn.keeps (-1, -1, -1) done;
+         Dynarray.set st.dyn.keeps k (f, sp, q);
          st.dyn.bail <- Some k;
          st.dyn.dirty <- false;
          stmt st x)
@@ -964,7 +973,8 @@ and finish st name ~params ~vars =
       vars = Array.of_list (vars @ hidden); arrays = Dynarray.to_array st.arr; kinds = Dynarray.to_array st.kinds; blocks;
       resumes = Dynarray.to_array st.resumes; frame = ver.frame;
       size = ver.frame + max n_hidden (Dynarray.length st.dyn.consts) + 2; hidden = n_hidden;
-      consts = Dynarray.to_array st.dyn.consts; restores = Dynarray.to_array st.dyn.restores; sites = Array.make (Dynarray.length st.sites) (-1);
+      consts = Dynarray.to_array st.dyn.consts; restores = Dynarray.to_array st.dyn.restores;
+      keeps = Dynarray.to_array st.dyn.keeps; loose = st.dyn.loose; sites = Array.make (Dynarray.length st.sites) (-1);
       pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ -> true | _ -> false));
       calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Dynarray.to_array st.chains;
       spills = st.w.hooks;
@@ -1030,8 +1040,8 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
   { w; ver; f; index; kinds; blocks = Dynarray.create (); cur = 0; regs; arrays; arr; hidden = Dynarray.create ();
     resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); live = Bytes.empty; unit; body = 0; region; infos = Dynarray.create ();
     fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx;
-    dyn = { bail = None; dirty = false; restores = Dynarray.create (); need = None; consts = Dynarray.create (); known = [];
-            nums = [] } }
+    dyn = { bail = None; dirty = false; restores = Dynarray.create (); keeps = Dynarray.create (); loose = false; need = None;
+            consts = Dynarray.create (); known = []; nums = [] } }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
 let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool) array) =

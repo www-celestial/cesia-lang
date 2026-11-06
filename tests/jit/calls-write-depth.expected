@@ -1,0 +1,16 @@
+200003.0
+calls-write-depth.ce:9:11: Limit "depth" reached.
+  9 |     1.0 + depth(n - 1)
+    |           ^
+  in depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  called from depth (calls-write-depth.ce:9)
+  ... and 2991 more
+exit 1

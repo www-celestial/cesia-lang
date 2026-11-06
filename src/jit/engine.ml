@@ -27,8 +27,8 @@ let io = Array.make Ir.io_size 0
 
 let make (w : world) (ver : version) fns start loops =
   let pure = Array.for_all (fun (f : Ir.func) -> f.pure) fns and calls = Array.exists (fun (f : Ir.func) -> f.calls) fns in
-    (* A run that writes arrays can't start again when the stack runs out: such units would have to reserve it all. *)
-    if calls && not pure then None
+    (* A run that writes arrays can't start again when the stack runs out: its calls must bail then. *)
+    if calls && (not pure) && Array.exists (fun (f : Ir.func) -> f.loose) fns then None
     else begin
       let text, entry = Mirtext.emit fns in
       if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);

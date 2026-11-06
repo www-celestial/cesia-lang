@@ -221,15 +221,42 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Set_elem (a, i, v, site) ->
       let m = check_index a i site Ir.err_write in
       pr "  dmov %s, %s\n" m (operand v)
-    | Call (r, k, args, site) ->
+    | Keep (f, sp, q) -> pr "  mov r%d, fuel\n  mov r%d, %s\n  mov r%d, %s\n" f sp (cx Ir.io_spent) q (cx Ir.io_quantum)
+    | Call (r, k, args, site, back) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
       pr "  add nb, %s, %d\n" (frame_of site) (callee_of site);
-      let slow = deep_stub "nb" (frame_of site) site in
-      let up =
+      (* A call that wants a longer stack, here or deeper, bails when it can: its statement's fuel back as at its start,
+         the interpreter makes the call and grows the stack. *)
+      let again () =
+        let f, sp, q = fn.keeps.(back) in
+        let b = bail_to back in
         stub (fun s ->
-            link s "nb" (frame_of site) site;
-            links s site;
-            Printf.bprintf s "  ret %s, -1\n" zero)
+            Printf.bprintf s "  mov fuel, r%d\n  mov %s, r%d\n  mov %s, r%d\n  jmp %s\n" f (cx Ir.io_spent) sp (cx Ir.io_quantum) q b)
+      in
+      let slow =
+        if back < 0 then deep_stub "nb" (frame_of site) site
+        else begin
+          let g = again () and deep = deep_stub "nb" (frame_of site) site in
+          (* Past the stack, or where the interpreter's frames would want a longer one: bail; else the limit of depth. *)
+          stub (fun s ->
+              Printf.bprintf s "  mov x0, %s\n  bgt %s, nb, x0\n  mov x0, %s\n  bgt %s, nb, x0\n  jmp %s\n" (cx Ir.io_cap2) g
+                (cx Ir.io_mem) g deep)
+        end
+      in
+      let up =
+        let unwind =
+          stub (fun s ->
+              link s "nb" (frame_of site) site;
+              links s site;
+              Printf.bprintf s "  ret %s, -1\n" zero)
+        in
+        if back < 0 then unwind
+        else begin
+          let g = again () in
+          stub (fun s ->
+              Printf.bprintf s "  mov x0, %s\n  beq %s, x0, %d\n  beq %s, x0, %d\n  jmp %s\n" (cx Ir.io_status) g Ir.stack_out g
+                Ir.frames_out unwind)
+        end
       in
       pr "  mov x0, %s\n  bgt %s, nb, x0\n" (cx Ir.io_lim) slow;
       pr "  inline Q%s%d, %sg%d, r%d, fuel, cx, nb, fuel%s\n" prefix k prefix k r
@@ -456,7 +483,7 @@ let emit (fns : Ir.func array) =
   let called = Array.make (Array.length fns) false in
   Array.iter
     (fun (fn : Ir.func) ->
-       Array.iter (fun (bk : Ir.block) -> List.iter (function Ir.Call (_, k, _, _) -> called.(k) <- true | _ -> ()) bk.ins) fn.blocks)
+       Array.iter (fun (bk : Ir.block) -> List.iter (function Ir.Call (_, k, _, _, _) -> called.(k) <- true | _ -> ()) bk.ins) fn.blocks)
     fns;
   let nested = List.filter (fun k -> called.(k)) (List.init (Array.length fns) Fun.id) in
   if nested <> [] then pr "  forward %s\n" (String.concat ", " (List.map (fun k -> Printf.sprintf "%sg%d" prefix k) nested));

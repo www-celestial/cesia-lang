@@ -32,7 +32,9 @@ type ins =
   | Len of int * int  (** the number of cells of an array, by its number in [arrays] *)
   | Elem of int * int * value * int  (** the destination, the array, the index from 1, the site *)
   | Set_elem of int * value * value * int  (** the array, the index from 1, the value, the site *)
-  | Call of int * int * value array * int  (** the destination, the function of the unit, the arguments, the site *)
+  | Call of int * int * value array * int * int
+      (** the destination, the function of the unit, the arguments, the site, and the statement of a region's loop that
+          the run bails to, its fuel as at its start, when the call wants a longer stack, or -1: the run then stops *)
   | Tick of int * bool
       (** one step of fuel. When it runs out at a tick that can leave (outside any loop, or that of a loop in no other), the
           run leaves and comes back at the resume point; inside an inner loop, or in a nested frame, it takes another
@@ -68,6 +70,7 @@ type ins =
   | Record of int * int * int * value array
       (** [Record (r, tag, c, vals)]: a new owned map ([tag] 8) or struct ([tag] 4), its keys or shape those of the
           constant [c], in reserved room *)
+  | Keep of int * int * int  (** the fuel, and the steps spent and the quantum of nested frames, at a statement's start *)
   | Reserve of int ref * int
       (** room for so many words of allocation before the next [Reserve]; when the young heap lacks it, the run leaves
           at the resume point, the interpreter's allocation collects, and the run comes back *)
@@ -96,6 +99,9 @@ type func = {
   consts : Types.t array;
       (** values whose first field native code reads, the keys of a map or the shape of a struct: written by [Engine] to
           the value slots from [frame] before each run *)
+  keeps : (int * int * int) array;  (** for each statement of a region's loop, the registers of its [Keep] *)
+  loose : bool;
+      (** a call that wants a longer stack stops the run, which then has to start again: such a run may not write *)
   restores : (int * int) list array;
       (** for each statement of a region's loop, the registers of the variables it assigns and of their copies at its
           start: a guard after such an assignment bails to [restored] + the statement, which puts them back first *)

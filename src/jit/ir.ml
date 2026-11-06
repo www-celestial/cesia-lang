@@ -15,7 +15,7 @@ type ins =
   | Len of int * int
   | Elem of int * int * value * int
   | Set_elem of int * value * value * int
-  | Call of int * int * value array * int
+  | Call of int * int * value array * int * int
   | Tick of int * bool
   | Try of op * int * value * value * int
   | Elem_at of int * int * int
@@ -34,6 +34,7 @@ type ins =
   | Get of int * int * value * int
   | Put of int * value * value * int
   | Record of int * int * int * value array
+  | Keep of int * int * int
   | Reserve of int ref * int
 
 type term =
@@ -54,6 +55,8 @@ type func = {
   vars : var array;
   arrays : (int * bool * int) array;
   consts : Types.t array;
+  keeps : (int * int * int) array;
+  loose : bool;
   restores : (int * int) list array;
   kinds : kind array;
   blocks : block array;

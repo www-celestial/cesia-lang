@@ -1,0 +1,23 @@
+use std/io
+use std/matrix
+
+(* A loop that writes an array and calls: a call that wants a longer stack bails, and the interpreter makes it. *)
+defn depth(n)
+  if n == 0
+    0.0
+  else
+    1.0 + depth(n - 1)
+  end
+end
+
+defn fill(xs, n, d)
+  for i in 1..n
+    xs[i] = depth(d) + i
+  end
+  xs[n]
+end
+
+xs = matrix.Zeros(200000)
+io.Print(fill(xs, 200000, 3))
+io.Print(fill(xs, 1000, 5000))
+io.Print(fill(xs, 200000, 3))
