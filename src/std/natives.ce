@@ -68,6 +68,15 @@ use cesia
 
       Wait(Spawn(() -> 1)) --> Ok(1) *)
 
+(** Channel()
+    A new channel: a queue of values between fibers. *)
+
+(** Send(value, ch)
+    Puts a value at the end of a channel. It never waits, and wakes the first fiber waiting on it. *)
+
+(** Receive(ch, timeout = missing)
+    An Ok of the oldest value of a channel. With none, the fiber waits for one, at most timeout seconds when given: then an Err of kind "timeout". A timeout of 0 never waits. *)
+
 (** Len(x)
     The number of elements of an array, of characters of a text, of pairs of a dictionary, or of fields of a struct; 1 for any other value.
 

@@ -49,7 +49,8 @@ and node =
   | Same of dict  (** keys whose 30 bits of hash are all equal: a balanced tree, which no choice of keys slows down *)
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
-and task = { mutable result : t option; mutable waiters : (unit -> unit) list }
+and task = { mutable result : t option; mutable waiters : (unit -> unit) list; items : t Queue.t }
+(** A task, or a channel: its [items] in the order they were sent, and its [waiters] the receivers parked on it. *)
 
 (** A list that Append made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its
     cells through [rows] and [cols], and call [Value.trim] before reading a store as a whole. [a_tip]: no push went on from
@@ -199,6 +200,7 @@ and world = {
   mutable hook_count : int;  (** the compiled hooks *)
   sched : sched;
   mutable idle : bool -> bool;
+  mutable timer : float -> (unit -> unit) -> unit;  (** set by the system: calls a function after so many seconds *)
       (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
   mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
   mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)

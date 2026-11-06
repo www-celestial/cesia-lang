@@ -63,6 +63,10 @@ let sleep p ctx seconds =
         p.timers <- Timers.add (at, p.next_timer) resume p.timers)
   end
 
+let timer p seconds f =
+  p.next_timer <- p.next_timer + 1;
+  p.timers <- Timers.add (Unix.gettimeofday () +. seconds, p.next_timer) f p.timers
+
 let wake table fd =
   match Hashtbl.find_opt table fd with
   | None -> ()

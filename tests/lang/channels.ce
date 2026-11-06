@@ -1,0 +1,63 @@
+(** Channels between fibers: order, senders, waiting receivers and timeouts. *)
+use sys
+
+defn isChannelKeepsOrder()
+  ch = Channel()
+  for k in 1:5
+    Send(k, ch)
+  end
+  Equal([Receive(ch)? for k in 1:5], [1, 2, 3, 4, 5])
+end
+
+defn isChannelManySenders()
+  ch = Channel()
+  tasks = [Spawn(() -> Send(k, ch)) for k in 1:20]
+  for t in tasks
+    Wait(t)
+  end
+  Equal(Sort([Receive(ch)? for k in 1:20]), [k for k in 1:20])
+end
+
+defn isChannelReceiveWaits()
+  ch = Channel()
+  reader = Spawn(() -> Receive(ch)? * 2)
+  sys.Sleep(0.01)
+  Send(21, ch)
+  Wait(reader) == Ok(42)
+end
+
+defn isChannelTimeout()
+  ch = Channel()
+  start = sys.Now()
+  r = Receive(ch, timeout = 0.05)
+  took = sys.Now() - start
+  (r then MapErr(it.Kind)) == Err("timeout") and took >= 0.04 and took < 1.0
+end
+
+defn isChannelTimeoutZeroNeverWaits()
+  ch = Channel()
+  first = Receive(ch, timeout = 0) then MapErr(it.Kind)
+  Send("a", ch)
+  first == Err("timeout") and Receive(ch, timeout = 0) == Ok("a")
+end
+
+defn later(x, ch)
+  sys.Sleep(0.01)
+  Send(x, ch)
+end
+
+defn isChannelValueBeforeTimeout()
+  ch = Channel()
+  Spawn(() -> later("late", ch))
+  Receive(ch, timeout = 5) == Ok("late")
+end
+
+defn isChannelTwoReceivers()
+  ch = Channel()
+  a = Spawn(() -> Receive(ch)?)
+  b = Spawn(() -> Receive(ch)?)
+  sys.Sleep(0.01)
+  Send(1, ch)
+  Send(2, ch)
+  Equal(Sort([Wait(a)?, Wait(b)?]), [1, 2])
+end

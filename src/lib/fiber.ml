@@ -87,7 +87,7 @@ let spawn (ctx : ctx) g =
   let s = w.sched in
   let id = s.next_id in
   s.next_id <- id + 1;
-  let task = { result = None; waiters = [] } in
+  let task = { result = None; waiters = []; items = Queue.create () } in
   let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true w in
   fiber.site <- ctx.site;
   let finish r =
@@ -119,6 +119,62 @@ let wait (ctx : ctx) t =
      | None -> Runtime.fail ctx Type (Messages.need_task (Value.describe t)))
   | v -> Runtime.fail ctx Type (Messages.need_task (Value.describe v))
 
+(* Channels: a queue between fibers. Send never waits; Receive parks until a value comes, or until its timeout. *)
+let channel_arg ctx name (v : Types.t) =
+  match v with
+  | Handle { kind = "channel"; task = Some ch; _ } -> ch
+  | v -> Runtime.fail ctx Type (Messages.need_channel name (Value.describe v))
+
+let send ctx (a : Types.t array) =
+  let ch = channel_arg ctx "Send" a.(1) in
+  Queue.add (Value.share a.(0)) ch.items;
+  (match ch.waiters with
+   | wake :: rest -> ch.waiters <- rest; wake ()
+   | [] -> ());
+  Missing
+
+let timeout_keys = Trie.names [| "Kind"; "Message" |]
+
+let receive ctx (a : Types.t array) =
+  let ch = channel_arg ctx "Receive" a.(0) in
+  let limit =
+    match if Array.length a > 1 then a.(1) else Undef with
+    | Undef | Missing -> None
+    | Int i when i >= 0 -> Some (float_of_int i)
+    | Float x when x >= 0. -> Some x
+    | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
+  in
+  let timed_out = ref (limit = Some 0.) in
+  (* A receiver woken may find the value taken by one that never parked: it parks again, its timer still running. *)
+  let rec take () =
+    match Queue.take_opt ch.items with
+    | Some v -> Value.ok ctx.w v
+    | None when !timed_out -> Value.err ctx.w (Trie.record timeout_keys [| Text "timeout"; Text (Messages.receive_timeout.text) |])
+    | None ->
+      suspend ctx (fun resume ->
+          let parked = ref true in
+          let wake () = if !parked then (parked := false; resume ()) in
+          ch.waiters <- ch.waiters @ [ wake ];
+          Option.iter
+            (fun seconds ->
+               ctx.w.timer seconds (fun () ->
+                   if !parked then begin
+                     timed_out := true;
+                     ch.waiters <- List.filter (fun w -> w != wake) ch.waiters;
+                     wake ()
+                   end))
+            limit);
+      take ()
+  in
+  take ()
+
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
-    "Wait", Native.nat "Wait" 1 1 (fun ctx a -> wait ctx a.(0)) ]
+    "Wait", Native.nat "Wait" 1 1 (fun ctx a -> wait ctx a.(0));
+    "Channel",
+    Native.nat "Channel" 0 0 (fun ctx _ ->
+        let s = ctx.w.sched in
+        s.next_id <- s.next_id + 1;
+        Handle { kind = "channel"; id = s.next_id - 1; task = Some { result = None; waiters = []; items = Queue.create () } });
+    "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
+    "Receive", Native.nat ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive ]

@@ -325,3 +325,6 @@ let sql_param_count wanted given =
 let sql_batch a = plain (Printf.sprintf "A batch needs a count of rows above 0, not %s." a)
 let sql_int_past name =
   plain (Printf.sprintf "The column %s holds an integer past 63 bits: read it with cast(%s as text)." name name)
+let need_channel name a = plain (Printf.sprintf "%s needs a channel, not %s." name a)
+let bad_timeout a = plain (Printf.sprintf "A timeout is a number of seconds, 0 or more, not %s." a)
+let receive_timeout = plain "Nothing came on the channel before the timeout."

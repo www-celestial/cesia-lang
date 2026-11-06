@@ -23,6 +23,9 @@ val any_ready : t -> ctx -> read:Unix.file_descr list -> write:Unix.file_descr l
 (** Suspends the fiber for this many seconds. 0 lets every ready fiber run first. *)
 val sleep : t -> ctx -> float -> unit
 
+(** Calls a function after this many seconds, from the scheduler. *)
+val timer : t -> float -> (unit -> unit) -> unit
+
 (** Wakes the fibers whose descriptor or timer is ready, blocking until one is if asked: the value of [world.idle].
     Returns false when nothing is being waited for. *)
 val idle : t -> bool -> bool

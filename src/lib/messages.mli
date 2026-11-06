@@ -300,3 +300,6 @@ val sql_bad_param : int -> string -> t
 val sql_param_count : int -> int -> t
 val sql_batch : string -> t
 val sql_int_past : string -> t
+val need_channel : string -> string -> t
+val bad_timeout : string -> t
+val receive_timeout : t
