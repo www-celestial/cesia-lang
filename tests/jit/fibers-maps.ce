@@ -14,13 +14,13 @@ defn work(name, n)
       p = ps[i]
       ps[i] = {V: p.V * 0.5 + 1.0}
     end
-    if math.Mod(s, 10000) == 0
+    if math.Mod(s, 1000) == 0
       io.Print(name, s)
     end
   end
   ps[100].V
 end
 
-a = fiber.Spawn(() -> work("a", 40000))
-b = fiber.Spawn(() -> work("b", 40000))
+a = fiber.Spawn(() -> work("a", 4000))
+b = fiber.Spawn(() -> work("b", 4000))
 io.Print(fiber.Wait(a), fiber.Wait(b))

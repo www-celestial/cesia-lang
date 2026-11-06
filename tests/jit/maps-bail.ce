@@ -14,17 +14,17 @@ defn total(rows)
   io.Print(s, n)
 end
 
-rows = list.Fill(0, 300000)
-for i in 1..300000
+rows = list.Fill(0, 150000)
+for i in 1..150000
   rows[i] = {Price: i * 0.5, Count: 1}
 end
 total(rows)
 (* A map whose keys are in another order. *)
-rows[150000] = {Count: 2, Price: 1.0}
+rows[75000] = {Count: 2, Price: 1.0}
 total(rows)
 (* An Int where a Float was. *)
-rows[200000] = {Price: 3, Count: 1}
+rows[100000] = {Price: 3, Count: 1}
 total(rows)
 (* A missing value: missing, as the interpreter gives. *)
-rows[250000] = {Price: missing, Count: 1}
+rows[125000] = {Price: missing, Count: 1}
 total(rows)

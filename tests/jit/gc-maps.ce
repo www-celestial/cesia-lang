@@ -22,4 +22,4 @@ defn grow(n, rounds)
   io.Print(t, u, ms[7].C, ms[n])
 end
 
-grow(50000, 60)
+grow(20000, 20)

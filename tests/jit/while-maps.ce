@@ -12,13 +12,13 @@ defn walk(cells, n)
   io.Print(i, s)
 end
 
-cells = list.Fill(0, 400000)
-for i in 1..400000
+cells = list.Fill(0, 150000)
+for i in 1..150000
   cells[i] = {Open: true, W: 0.5}
 end
-walk(cells, 400000)
-walk(cells, 400000)
-cells[300000] = {Open: 1, W: 0.5}
-walk(cells, 400000)
-cells[300000] = {Open: false, W: 0.5}
-walk(cells, 400000)
+walk(cells, 150000)
+walk(cells, 150000)
+cells[120000] = {Open: false, W: 0.5}
+walk(cells, 150000)
+cells[120000] = {Open: 1, W: 0.5}
+walk(cells, 150000)

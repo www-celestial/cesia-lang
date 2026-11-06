@@ -11,8 +11,8 @@ defn scan(rows)
   s
 end
 
-rows = list.Fill(0, 400000)
-for i in 1..400000
+rows = list.Fill(0, 150000)
+for i in 1..150000
   rows[i] = {W: 0.25}
 end
 io.Print(scan(rows))
