@@ -1,6 +1,6 @@
-Reading a pointer needs an open library.
-Reading a pointer needs an open library.
-Reading a pointer needs an open library.
-Reading a pointer needs an open library.
+Nothing of C runs before a library is open: structures, pointers and calls wait for c.Open.
+Nothing of C runs before a library is open: structures, pointers and calls wait for c.Open.
+Nothing of C runs before a library is open: structures, pointers and calls wait for c.Open.
+Nothing of C runs before a library is open: structures, pointers and calls wait for c.Open.
 false
 exit 0

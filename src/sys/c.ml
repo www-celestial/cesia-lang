@@ -528,7 +528,7 @@ let offset_arg ctx ty (b : block) (v : Types.t) =
   | Int o -> fail ctx (Messages.c_offset o b.size (name_of ty))
   | _ -> fail ctx (Messages.c_need_offset (Value.describe v))
 
-(* A type that a block can hold. Reading a pointer needs an open library, like calling a function that gives one. *)
+(* A type that a block can hold. Reading a pointer waits for an open library, as calling a function that gives one does. *)
 let check_word st ctx verb ty =
   (match ty with
    | Text | Void | Callback | Aggregate _ -> fail ctx (Messages.c_block_type verb (name_of ty))
