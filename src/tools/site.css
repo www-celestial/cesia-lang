@@ -65,6 +65,7 @@ main { max-width: calc(72ch + 64px); padding: 16px 32px 64px; min-width: 0; }
   main { padding: 16px; }
 }
 
+h1, h2, h3 { scroll-margin-top: 64px; }
 h1 { font-size: 28px; line-height: 1.25; margin: 8px 0 16px; overflow-wrap: anywhere; }
 h2 { font-size: 21px; margin: 32px 0 8px; }
 h3 { font-size: 17px; margin: 24px 0 8px; }

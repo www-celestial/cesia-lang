@@ -413,11 +413,14 @@ defn heard(out, mark)
 end
 
 defn placed(err, run, source)
-  (** The first line of the errors of a run, at the place of the page it names: {Where, Message}. *)
-  first = if err == "" "it stopped and said nothing." else Lines(err)[1] end
+  (** The error of a run, at the place of the page it names: {Where, Message}. The message keeps the advice under the line it
+      shows, not that line, nor the calls that led there. *)
+  lines = Lines(err)
+  first = if Len(lines) == 0 "it stopped and said nothing." else lines[1] end
+  advice = [Trim(l) for l in Skip(1, lines) if not Contains(" | ", l) and not StartsWith("  in ", l) and not StartsWith("  called from ", l)]
   prefix = Str(run.Program, ":")
   if not StartsWith(prefix, first)
-    return {Where: source, Message: first}
+    return {Where: source, Message: Join("\n", Concat([first], advice))}
   end
   rest = from(ByteLength(prefix) + 1, first)
   colon = ByteFind(":", 1, rest)
@@ -425,7 +428,7 @@ defn placed(err, run, source)
   line = if n <= Len(run.Uses) run.Uses[n] else n - Len(run.Uses) end
   after = from(colon + 1, rest)
   space = ByteFind(": ", 1, after)
-  {Where: Str(source, ":", line, ":", ByteSlice(1, space - 1, after)), Message: from(space + 2, after)}
+  {Where: Str(source, ":", line, ":", ByteSlice(1, space - 1, after)), Message: Join("\n", Concat([from(space + 2, after)], advice))}
 end
 
 defn removed(path)
