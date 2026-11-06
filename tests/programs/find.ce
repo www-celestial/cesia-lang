@@ -1,0 +1,41 @@
+(** find: prints the lines of files that hold a word, as a user writes it.
+      cesia run --allow read find.ce [-i] [-n] [--max N] WORD FILE... *)
+use std/flags
+use std/sys
+use std/io
+use std/text
+use std/value
+use std/list
+use std/result
+
+usage = "usage: find [-i] [-n] [--max N] WORD FILE..."
+
+defn main()
+  a = flags.Parse({i: false, n: false, max: 0}, sys.Args)?
+  if value.Len(a.Words) < 2
+    return result.Err({Kind: "usage", Message: usage})
+  end
+  word = if a.Flags.i text.Lower(a.Words[1]) else a.Words[1] end
+  shown = 0
+  for path in list.Skip(1, a.Words)
+    lines = text.Lines(sys.Read(path)?)
+    for k in 1..value.Len(lines)
+      hay = if a.Flags.i text.Lower(lines[k]) else lines[k] end
+      if text.Contains(word, hay) and (a.Flags.max == 0 or shown < a.Flags.max)
+        shown = shown + 1
+        io.Print(if a.Flags.n "$path:$k: $(lines[k])" else "$path: $(lines[k])" end)
+      end
+    end
+  end
+  result.Ok(missing)
+end
+
+defn quit(e)
+  io.PrintError(e.Message)
+  sys.Exit(2)
+end
+
+match main()
+  result.Err(e) -> quit(e)
+  else -> missing
+end

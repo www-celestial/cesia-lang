@@ -1,0 +1,4 @@
+alpha line
+Beta line
+gamma
+ALPHA again

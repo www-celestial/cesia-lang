@@ -1,0 +1,8 @@
+sample.txt:1: alpha line
+sample.txt:4: ALPHA again
+sample.txt: alpha line
+Unknown flag -x: the flags are -i, -n, --max.
+exit 2
+exit 2
+Can't read nothing.txt: no such file or directory.
+exit 2

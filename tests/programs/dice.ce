@@ -1,0 +1,34 @@
+(** dice: a simulation, as a user writes one. How many rolls until two dice show a double six, and pi from random points in a square.
+      cesia run dice.ce [--games N] ; cesia run --seed 42 dice.ce gives the same numbers again *)
+use std/flags
+use std/random
+use std/sys
+use std/io
+use std/text
+use std/list
+use std/result
+use std/math
+
+defn rollsToDoubleSix()
+  n = 1
+  while random.Int(1, 6) + random.Int(1, 6) != 12
+    n = n + 1
+  end
+  n
+end
+
+defn main()
+  a = flags.Parse({games: 10000}, sys.Args)?
+  rolls = [rollsToDoubleSix() for k in 1..a.Flags.games]
+  io.Print("seed $(random.Seed()): $(a.Flags.games) games")
+  io.Print("rolls to a double six: mean $(text.Decimals(2, list.Mean(rolls))) (36 in theory), longest $(list.Max(rolls))")
+  points = 200000
+  inside = list.Count(k -> random.Float() ^ 2 + random.Float() ^ 2 < 1, 1..points)
+  io.Print("pi is about $(text.Decimals(4, 4.0 * inside / points))")
+  hands = [list.Take(5, random.Shuffle(1..52)) for k in 1..3]
+  io.Print("three hands of five cards: $hands")
+  io.Print("today's pick: $(random.Pick(["tea", "coffee", "cocoa"]))")
+  result.Ok(missing)
+end
+
+io.Print(main())

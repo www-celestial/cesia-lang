@@ -1,0 +1,26 @@
+(** rename: walks a folder and gives every photo a lower-case .jpg extension, as a user writes it.
+      cesia run --allow read,write rename.ce [--dry] FOLDER *)
+use std/flags
+use std/path
+use std/sys
+use std/io
+use std/text
+use std/list
+use std/result
+
+defn main()
+  a = flags.Parse({dry: false}, sys.Args)?
+  photos = list.Filter(p -> text.Lower(path.Ext(p)) in [".jpg", ".jpeg"], sys.Walk(a.Words[1])?)
+  for p in photos
+    target = path.Join(path.Dir(p), "$(path.Stem(p)).jpg")
+    if target != p
+      io.Print("$p -> $target")
+      if not a.Flags.dry
+        sys.Rename(p, target)?
+      end
+    end
+  end
+  result.Ok(missing)
+end
+
+io.Print(main())
