@@ -8,16 +8,18 @@ sort them, and compute with whole arrays at once.
 A list sits between square brackets. Its elements can be of any kind, and the first one is at position 1:
 
 ```cesia
+use std/value
 names = ["Ana", "Bo", "Cyril"]
 names[1] -->
 names[3] -->
-Len(names) -->
+value.Len(names) -->
 ```
 
-`names[1]` is short for [Nth]`(1, names)`:
+`names[1]` is short for [list.Nth]`(1, names)`:
 
 ```cesia
-Nth(1, names) --> names[1]
+use std/list
+list.Nth(1, names) --> names[1]
 ```
 
 ### Outside the list
@@ -28,31 +30,31 @@ A position outside the list is an error, which names the size of the list:
 names[5]
 ```
 
-[First] and [Last] read the ends, and give `missing` for an empty list instead of stopping.
+[list.First] and [list.Last] read the ends, and give `missing` for an empty list instead of stopping.
 
 ```cesia
-Last(names) -->
-First([]) -->
+list.Last(names) -->
+list.First([]) -->
 ```
 
 ## Adding and taking
 
-[Append] gives a new list with one more element at the end. [Concat] joins two lists, [Take] keeps the first elements and
-[Skip] leaves them out:
+[list.Append] gives a new list with one more element at the end. [list.Concat] joins two lists, [list.Take] keeps the first elements and
+[list.Skip] leaves them out:
 
 ```cesia
-Append("Dee", names) -->
-Concat([1, 2], [3, 4]) -->
-Take(2, names) -->
-Skip(1, names) -->
+list.Append("Dee", names) -->
+list.Concat([1, 2], [3, 4]) -->
+list.Take(2, names) -->
+list.Skip(1, names) -->
 ```
 
 As with every value, the list you give is unchanged, [immutable](glossary.md#immutability):
 
 ```cesia
-more = Append("Dee", names)
-Len(names) -->
-Len(more) -->
+more = list.Append("Dee", names)
+value.Len(names) -->
+value.Len(more) -->
 ```
 
 ### Building a list in a loop
@@ -62,7 +64,7 @@ A list grows well one element at a time, so building one in a loop is the usual 
 ```cesia
 squares = []
 for n in 1..5
-  squares = Append(n * n, squares)
+  squares = list.Append(n * n, squares)
 end
 squares -->
 ```
@@ -79,46 +81,46 @@ scores -->
 
 ## Ranges
 
-`a..b` is the list of the integers from `a` to `b`, both included. It is short for [Range]`(a, b)`, which also takes a step:
+`a..b` is the list of the integers from `a` to `b`, both included. It is short for [list.Range]`(a, b)`, which also takes a step:
 
 ```cesia
 1..5 -->
-Range(1, 5) --> 1..5
-Range(0, 1, step = 0.25) -->
-Sum(1..100) -->
+list.Range(1, 5) --> 1..5
+list.Range(0, 1, step = 0.25) -->
+list.Sum(1..100) -->
 ```
 
 ### A part of a list
 
-In the brackets of a list, a range takes a part of it, and `end` is its last position. These are short for [Take] and
-[Skip]:
+In the brackets of a list, a range takes a part of it, and `end` is its last position. These are short for [list.Take] and
+[list.Skip]:
 
 ```cesia
-names[1..2] --> Take(2, names)
-names[2..end] --> Skip(1, names)
+names[1..2] --> list.Take(2, names)
+names[2..end] --> list.Skip(1, names)
 ```
 
 ## Sorting
 
-[Sort] puts the elements in increasing order, numbers or texts. [SortBy] sorts by what a function gives for each element, here
-the length of each name. [Reverse] turns a list around:
+[list.Sort] puts the elements in increasing order, numbers or texts. [list.SortBy] sorts by what a function gives for each element, here
+the length of each name. [list.Reverse] turns a list around:
 
 ```cesia
-Sort([3, 1, 2]) -->
-Sort(["pear", "apple", "fig"]) -->
-SortBy(Len, ["pear", "apple", "fig"]) -->
-Reverse([1, 2, 3]) -->
+list.Sort([3, 1, 2]) -->
+list.Sort(["pear", "apple", "fig"]) -->
+list.SortBy(value.Len, ["pear", "apple", "fig"]) -->
+list.Reverse([1, 2, 3]) -->
 ```
 
 Both keep equal elements in the order they had.
 
 ### Unique and IndexOf
 
-[Unique] leaves out repeats, and [IndexOf] finds where a value is:
+[list.Unique] leaves out repeats, and [list.IndexOf] finds where a value is:
 
 ```cesia
-Unique([1, 2, 1, 3, 2]) -->
-IndexOf("Bo", names) -->
+list.Unique([1, 2, 1, 3, 2]) -->
+list.IndexOf("Bo", names) -->
 ```
 
 ## Whole arrays at once
@@ -128,40 +130,42 @@ to write. An operator between two arrays of the same size works on
 each pair, and a number with an array works on each element:
 
 ```cesia
+use std/math
 prices = [10, 20, 30]
 prices * 2 -->
 prices + [1, 2, 3] -->
-Sqrt([1, 4, 9]) -->
+math.Sqrt([1, 4, 9]) -->
 ```
 
 ### One number from an array
 
-[Sum], [Mean], [Min] and [Max] reduce an array to one number:
+[list.Sum], [list.Mean], [list.Min] and [list.Max] reduce an array to one number:
 
 ```cesia
-Sum(prices) -->
-Mean(prices) -->
-Max(prices) -->
+list.Sum(prices) -->
+list.Mean(prices) -->
+list.Max(prices) -->
 ```
 
 This is also the fast way: the work runs in a loop of the machine, not one step of the program per element.
 
 ## Matrices
 
-A matrix writes its rows separated by `;`. Two positions read one element: the row, then the column. [Size] gives the rows and
+A matrix writes its rows separated by `;`. Two positions read one element: the row, then the column. [value.Size] gives the rows and
 the columns:
 
 ```cesia
+use std/matrix
 m = [1, 2; 3, 4]
 m[2, 1] -->
-Size(m) -->
-Transpose(m) -->
+value.Size(m) -->
+matrix.Transpose(m) -->
 ```
 
-[Matmul] is the matrix product, in floats:
+[matrix.Matmul] is the matrix product, in floats:
 
 ```cesia
-Matmul(m, m) -->
+matrix.Matmul(m, m) -->
 ```
 
 For more, such as solving a system of equations, the library `std/num` has [num.Solve] and its friends; the chapter on data

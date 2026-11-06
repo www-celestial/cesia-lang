@@ -39,12 +39,13 @@ A key that isn't there stops the program: a typo shows at once.
 person.City
 ```
 
-When a key may be missing, [Get] gives `missing` instead, [GetOr] gives a default, and [Has] asks:
+When a key may be missing, [dict.Get] gives `missing` instead, [dict.GetOr] gives a default, and [dict.Has] asks:
 
 ```cesia
-Get("City", person) -->
-GetOr("City", "unknown", person) -->
-Has("Age", person) -->
+use std/dict
+dict.Get("City", person) -->
+dict.GetOr("City", "unknown", person) -->
+dict.Has("Age", person) -->
 ```
 
 ## Changing
@@ -61,14 +62,14 @@ person -->
 
 ### Put, Drop and Merge
 
-Setting a key is short for [Put], which gives a new dictionary. The new one shares the rest of its memory with the old one,
-which stays as it was: a [persistent data structure](glossary.md#persistent-data-structure). [Drop] gives one without a key,
-and [Merge] joins two: for a key in both, the second wins.
+Setting a key is short for [dict.Put], which gives a new dictionary. The new one shares the rest of its memory with the old one,
+which stays as it was: a [persistent data structure](glossary.md#persistent-data-structure). [dict.Drop] gives one without a key,
+and [dict.Merge] joins two: for a key in both, the second wins.
 
 ```cesia
-Put("City", "Lyon", person) --> other
-Drop("Age", person) -->
-Merge(person, {Age: 32, Job: "baker"}) -->
+dict.Put("City", "Lyon", person) --> other
+dict.Drop("Age", person) -->
+dict.Merge(person, {Age: 32, Job: "baker"}) -->
 ```
 
 ## Order
@@ -78,32 +79,34 @@ when they hold the same entries, whatever their order:
 
 ```cesia
 {A: 1, B: 2} == {B: 2, A: 1} -->
-Keys(Put("A", 10, {A: 1, B: 2})) -->
+dict.Keys(dict.Put("A", 10, {A: 1, B: 2})) -->
 ```
 
 ## Walking through
 
-[Keys] gives the keys in their order, [Values] the values, and [Pairs] both: each pair is a struct with a `Key` and a
+[dict.Keys] gives the keys in their order, [dict.Values] the values, and [dict.Pairs] both: each pair is a struct with a `Key` and a
 `Value`. A `for` goes over one of them: a dictionary itself is no list.
 
 ```cesia
-for k in Keys(person)
-  Print(k, "is", person[k])
+use std/io
+for k in dict.Keys(person)
+  io.Print(k, "is", person[k])
 end
 ```
 
 ```cesia
-for p in Pairs(person)
-  Print(p.Key, "->", p.Value)
+for p in dict.Pairs(person)
+  io.Print(p.Key, "->", p.Value)
 end
 ```
 
 ### Every value at once
 
-[MapValues] changes every value with a function, and keeps the keys:
+[dict.MapValues] changes every value with a function, and keeps the keys:
 
 ```cesia
-MapValues(v -> Text(v), person) -->
+use std/value
+dict.MapValues(v -> value.Text(v), person) -->
 ```
 
 ## Counting
@@ -111,41 +114,43 @@ MapValues(v -> Text(v), person) -->
 A dictionary is the tool for counting. Here, each word of a text gets its count. A word seen for the first time starts at 0:
 
 ```cesia
+use std/text
 counts = {}
-for word in Split(" ", "the cat and the dog and the bird")
-  counts[word] = GetOr(word, 0, counts) + 1
+for word in text.Split(" ", "the cat and the dog and the bird")
+  counts[word] = dict.GetOr(word, 0, counts) + 1
 end
 counts -->
 ```
 
 ### Frequencies
 
-This is common enough to have its own function, [Frequencies]:
+This is common enough to have its own function, [list.Frequencies]:
 
 ```cesia
-Frequencies(Split(" ", "the cat and the dog and the bird")) --> counts
+use std/list
+list.Frequencies(text.Split(" ", "the cat and the dog and the bird")) --> counts
 ```
 
 ## Nested
 
-A value can be a dictionary itself. [GetIn] reads at the end of a path of keys, and [PutIn] writes there, making the
+A value can be a dictionary itself. [dict.GetIn] reads at the end of a path of keys, and [dict.PutIn] writes there, making the
 dictionaries on the way:
 
 ```cesia
 config = {Server: {Port: 8080, Host: "127.0.0.1"}}
 config.Server.Port -->
-GetIn(["Server", "Port"], config) --> config.Server.Port
-PutIn(["Log", "Level"], "info", config) -->
+dict.GetIn(["Server", "Port"], config) --> config.Server.Port
+dict.PutIn(["Log", "Level"], "info", config) -->
 ```
 
 ## From lists
 
-[Dict] builds a dictionary from a list of entries, each with a `Key` and a `Value`, the shape [Pairs] gives. [Zipmap] builds
+[dict.Dict] builds a dictionary from a list of entries, each with a `Key` and a `Value`, the shape [dict.Pairs] gives. [dict.Zipmap] builds
 one from a list of keys and a list of values:
 
 ```cesia
-Dict([{Key: "a", Value: 1}, {Key: "b", Value: 2}]) -->
-Zipmap(["a", "b"], [1, 2]) -->
+dict.Dict([{Key: "a", Value: 1}, {Key: "b", Value: 2}]) -->
+dict.Zipmap(["a", "b"], [1, 2]) -->
 ```
 
 ## Next

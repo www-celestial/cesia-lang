@@ -1,5 +1,5 @@
 (** Numerical computing, in the spirit of numpy. An array is a list or a matrix of floats, and the operators of the
-    language already work element by element: a + b, a * 2.0, a > 0.0, Matmul(a, b), Transpose(a), Sum(a), Mean(a). *)
+    language already work element by element: a + b, a * 2.0, a > 0.0, matrix.Matmul(a, b), matrix.Transpose(a), list.Sum(a), list.Mean(a). *)
 use std/lapack
 use std/list
 use std/math

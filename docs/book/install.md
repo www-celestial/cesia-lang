@@ -33,7 +33,8 @@ installs it.
 A program is a text file whose name ends in `.ce`. Make a file `hello.ce` with one line:
 
 ```cesia
-Print("Hello, world!")
+use std/io
+io.Print("Hello, world!")
 ```
 
 Run it:
@@ -42,12 +43,12 @@ Run it:
 cesia run hello.ce
 ```
 
-[Print] writes its arguments on one line, with a space between them, and a line end after the last one. It takes any value,
+[io.Print] writes its arguments on one line, with a space between them, and a line end after the last one. It takes any value,
 not only texts:
 
 ```cesia
-Print("Two and two make", 2 + 2)
-Print([1, 2, 3])
+io.Print("Two and two make", 2 + 2)
+io.Print([1, 2, 3])
 ```
 
 A program runs from its first line to its last. There is no `main` to write: the lines at the top of the file are the
@@ -71,7 +72,7 @@ An error names the file, the line and the column, and shows the line. Cesia chec
 first line, so a typo stops it before anything happens: the first line here never prints.
 
 ```cesia fails
-Print("This line never runs")
+io.Print("This line never runs")
 Pritn("Hello")
 ```
 
@@ -80,7 +81,7 @@ Pritn("Hello")
 Other mistakes show only when their line runs. Here a text and a number are added, and the message says what to write instead:
 
 ```cesia fails
-Print("Total: " + 3)
+io.Print("Total: " + 3)
 ```
 
 ## A project

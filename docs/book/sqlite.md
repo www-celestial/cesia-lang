@@ -10,7 +10,8 @@ needs the `read` and `write` permissions of its folder; a database in memory nee
 
 ```cesia
 use std/sql
-db = Unwrap(sql.Open("sqlite::memory:"))
+use std/result
+db = result.Unwrap(sql.Open("sqlite::memory:"))
 ```
 
 [sql.Script] runs several statements, for a schema:
@@ -71,7 +72,7 @@ sql.Exec("select 1; drop table notes", [], db) -->
 `CreatedAt`. NULL is `missing`, and a column declared `boolean` is a Bool:
 
 ```cesia
-rows = Unwrap(sql.Query("select * from notes", [], db))
+rows = result.Unwrap(sql.Query("select * from notes", [], db))
 rows -->
 rows[1].CreatedAt -->
 ```
@@ -110,7 +111,7 @@ an `Err`, or a panic, undoes them all:
 sql.Transaction(tx -> sql.Exec("update notes set done = true where id = ?", [1], tx), db) -->
 defn clearAll(tx)
   sql.Exec("delete from notes", [], tx)?
-  Err("changed my mind")
+  result.Err("changed my mind")
 end
 sql.Transaction(clearAll, db) -->
 sql.Query("select id, done from notes", [], db) -->
@@ -124,7 +125,8 @@ The `delete` was undone: both notes are still there.
 function gives an `Ok` to go on:
 
 ```cesia
-sql.Each(r -> Ok(Print(r.Title)), "select title from notes order by id", [], db) -->
+use std/io
+sql.Each(r -> result.Ok(io.Print(r.Title)), "select title from notes order by id", [], db) -->
 ```
 
 ### As columns
@@ -150,7 +152,7 @@ defn count(path)
   sql.Exec("insert into visits values (?)", ["now"], db)?
   n = sql.One("select count(*) as total from visits", [], db)?
   sql.Close(db)
-  Ok(n.Total)
+  result.Ok(n.Total)
 end
 sys.Mkdir("data")
 count("data/visits.db") -->

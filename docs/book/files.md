@@ -27,17 +27,20 @@ A script at the top of its file can't use `?`, which leaves a function. Inside a
 chapter [Errors](errors.md) showed:
 
 ```cesia allow=read
+use std/result
+use std/text
 defn tasks(path)
-  text = sys.Read(path)?
-  Ok(Lines(text))
+  body = sys.Read(path)?
+  result.Ok(text.Lines(body))
 end
 tasks("todo.txt") -->
 ```
 
-For a file that comes with your program, where an `Err` would be a bug, [Unwrap] is enough:
+For a file that comes with your program, where an `Err` would be a bug, [result.Unwrap] is enough:
 
 ```cesia allow=read
-Len(Lines(Unwrap(sys.Read("todo.txt")))) -->
+use std/value
+value.Len(text.Lines(result.Unwrap(sys.Read("todo.txt")))) -->
 ```
 
 ## Writing
@@ -48,10 +51,10 @@ Len(Lines(Unwrap(sys.Read("todo.txt")))) -->
 ```cesia allow=read,write
 sys.Write("done.txt", "buy bread\n") -->
 sys.Append("done.txt", "call Bo\n") -->
-Lines(Unwrap(sys.Read("done.txt"))) -->
+text.Lines(result.Unwrap(sys.Read("done.txt"))) -->
 ```
 
-A text of several lines is written as it is: end each line with `\n`, or join them with [Join].
+A text of several lines is written as it is: end each line with `\n`, or join them with [text.Join].
 
 ## Folders
 
@@ -73,14 +76,14 @@ whether it is a folder, a file or a link.
 
 ```cesia allow=read
 sys.Exists("todo.txt") -->
-info = Unwrap(sys.Stat("todo.txt"))
+info = result.Unwrap(sys.Stat("todo.txt"))
 info.Size -->
 info.IsDir -->
 ```
 
 ## Arguments
 
-[Args] holds the words written after the file on the command line, as texts:
+[sys.Args] holds the words written after the file on the command line, as texts:
 
 ```bash
 cesia run --allow read count.ce todo.txt done.txt
@@ -89,10 +92,14 @@ cesia run --allow read count.ce todo.txt done.txt
 ```cesia norun
 (* count.ce *)
 use std/sys
+use std/io
+use std/result
+use std/text
+use std/value
 
-for path in Args
-  n = Len(Lines(Unwrap(sys.Read(path))))
-  Print(path, n)
+for path in sys.Args
+  n = value.Len(text.Lines(result.Unwrap(sys.Read(path))))
+  io.Print(path, n)
 end
 ```
 
@@ -110,10 +117,14 @@ cat sales.csv | cesia run lines.ce
 ```cesia norun
 (* lines.ce: how many lines came in, and code 1 when none did *)
 use std/sys
+use std/io
+use std/result
+use std/text
+use std/value
 
-text = Unwrap(sys.ReadInput())
-n = Len(Lines(text))
-Print(n, "lines")
+input = result.Unwrap(sys.ReadInput())
+n = value.Len(text.Lines(input))
+io.Print(n, "lines")
 if n == 0
   sys.Exit(1)
 end
@@ -124,8 +135,10 @@ end
 [sys.Env] reads an environment variable, or gives `missing`. It needs `--allow env`, or `env=PORT` for that one:
 
 ```cesia norun
+use std/text
+use std/value
 given = sys.Env("PORT")
-port = if IsMissing(given) 8080 else Number(given) end
+port = if value.IsMissing(given) 8080 else text.Number(given) end
 ```
 
 ## Other programs
@@ -134,11 +147,13 @@ port = if IsMissing(given) 8080 else Number(given) end
 `exec=git` for one program. The arguments are a list: no shell reads them, so a name with a space or a `;` stays one argument.
 
 ```cesia norun
-r = Unwrap(sys.Run("git", args = ["log", "--oneline", "-3"]))
+use std/io
+use std/result
+r = result.Unwrap(sys.Run("git", args = ["log", "--oneline", "-3"]))
 if r.Code == 0
-  Print(r.Out)
+  io.Print(r.Out)
 else
-  Print("git failed:", r.Err)
+  io.Print("git failed:", r.Err)
 end
 ```
 

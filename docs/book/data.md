@@ -9,6 +9,7 @@ over four days, in `sales.csv`.
 A list of dictionaries is the simplest table: one dictionary per row, the same keys in each.
 
 ```cesia
+use std/value
 sales = [
   {City: "Lyon", Product: "bread", Units: 12, Price: 1.25},
   {City: "Paris", Product: "bread", Units: 30, Price: 1.5},
@@ -16,7 +17,7 @@ sales = [
   {City: "Paris", Product: "cake", Units: 5, Price: 9.0},
   {City: "Lille", Product: "bread", Units: 8, Price: 1.25}
 ]
-Len(sales) -->
+value.Len(sales) -->
 ```
 
 ## Comprehensions
@@ -28,40 +29,41 @@ A [comprehension](glossary.md#comprehension) builds a list from another: the val
 [s.City for s in sales if s.Units > 6] -->
 ```
 
-A comprehension is short for [Map] and [Filter]:
+A comprehension is short for [list.Map] and [list.Filter]:
 
 ```cesia
-[s.City for s in sales if s.Units > 6] --> Map(s -> s.City, Filter(s -> s.Units > 6, sales))
+use std/list
+[s.City for s in sales if s.Units > 6] --> list.Map(s -> s.City, list.Filter(s -> s.Units > 6, sales))
 ```
 
 ## Sums, counts and ranks
 
-The functions of the chapter on lists work on the values a comprehension gives. [Frequencies] counts each value, [Unique]
-keeps the first of each, and [Top] gives the largest, here by a key:
+The functions of the chapter on lists work on the values a comprehension gives. [list.Frequencies] counts each value, [list.Unique]
+keeps the first of each, and [list.Top] gives the largest, here by a key:
 
 ```cesia
-Sum([s.Units for s in sales]) -->
-Frequencies([s.City for s in sales]) -->
-Unique([s.Product for s in sales]) -->
-Top(2, sales, by = it.Units) -->
+list.Sum([s.Units for s in sales]) -->
+list.Frequencies([s.City for s in sales]) -->
+list.Unique([s.Product for s in sales]) -->
+list.Top(2, sales, by = it.Units) -->
 ```
 
 ### MaxBy and Scan
 
-[MaxBy] gives the element with the largest value of a function, and [Scan] each step of a running total:
+[list.MaxBy] gives the element with the largest value of a function, and [list.Scan] each step of a running total:
 
 ```cesia
-MaxBy(s -> s.Units * s.Price, sales) -->
-Scan((total, s) -> total + s.Units, 0, sales) -->
+list.MaxBy(s -> s.Units * s.Price, sales) -->
+list.Scan((total, s) -> total + s.Units, 0, sales) -->
 ```
 
 ## Groups
 
-[Group] puts together the elements with the same key, in the order the keys first appear. Each group has its `Key`, and the
+[list.Group] puts together the elements with the same key, in the order the keys first appear. Each group has its `Key`, and the
 `Values` that have it:
 
 ```cesia
-Group(it.City, sales) then Map(g -> {City: g.Key, Rows: Len(g.Values)}) -->
+list.Group(it.City, sales) then list.Map(g -> {City: g.Key, Rows: value.Len(g.Values)}) -->
 ```
 
 ### One value per group
@@ -69,16 +71,17 @@ Group(it.City, sales) then Map(g -> {City: g.Key, Rows: Len(g.Values)}) -->
 With a `summary`, each group becomes one value, so a total per city takes one line:
 
 ```cesia
-Group(it.City, sales, summary = rows -> Sum([s.Units for s in rows])) -->
+list.Group(it.City, sales, summary = rows -> list.Sum([s.Units for s in rows])) -->
 ```
 
 ### Zip and Zipmap
 
-[Zip] pairs two lists, element by element, and [Zipmap] turns two of them into a dictionary:
+[list.Zip] pairs two lists, element by element, and [dict.Zipmap] turns two of them into a dictionary:
 
 ```cesia
-Zip(["Lyon", "Paris"], [15, 35]) -->
-Zipmap(["Lyon", "Paris"], [15, 35]) -->
+use std/dict
+list.Zip(["Lyon", "Paris"], [15, 35]) -->
+dict.Zipmap(["Lyon", "Paris"], [15, 35]) -->
 ```
 
 ## A table from a CSV file
@@ -107,10 +110,12 @@ It reads in one line:
 ```cesia allow=read
 use std/sys
 use std/frame
-df = frame.FromCsv(Unwrap(sys.Read("sales.csv")))
+use std/io
+use std/result
+df = frame.FromCsv(result.Unwrap(sys.Read("sales.csv")))
 frame.Rows(df) -->
 frame.Columns(df) -->
-Print(frame.Show(frame.Head(3, df)))
+io.Print(frame.Show(frame.Head(3, df)))
 ```
 
 A frame is a value, as everything in Cesia: each function gives a new one, and `df` stays as it was.
@@ -123,7 +128,7 @@ keeps some columns:
 ```cesia allow=read
 withTotal = frame.WithColumn("total", r -> r.units * r.price, df)
 lyon = frame.Where(r -> r.city == "Lyon", withTotal)
-Print(frame.Show(frame.Select(["day", "product", "total"], lyon)))
+io.Print(frame.Show(frame.Select(["day", "product", "total"], lyon)))
 ```
 
 ### Groups of rows
@@ -132,8 +137,8 @@ Print(frame.Show(frame.Select(["day", "product", "total"], lyon)))
 and the function of its values. [frame.SortBy] orders the rows:
 
 ```cesia allow=read
-byCity = frame.GroupBy(["city"], [frame.Agg("units", "units", Sum), frame.Agg("rows", "day", Len)], df)
-Print(frame.Show(frame.SortBy("units", byCity, descending = true)))
+byCity = frame.GroupBy(["city"], [frame.Agg("units", "units", list.Sum), frame.Agg("rows", "day", value.Len)], df)
+io.Print(frame.Show(frame.SortBy("units", byCity, descending = true)))
 ```
 
 ### Whole columns
@@ -145,7 +150,7 @@ A column is a list, and the operators of the language work on a whole list at on
 ```cesia allow=read
 units = frame.Column("units", df)
 units * 2 -->
-Mean(units) -->
+list.Mean(units) -->
 frame.Rows(frame.WhereMask(units > 10, df)) -->
 ```
 

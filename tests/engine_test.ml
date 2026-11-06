@@ -152,10 +152,10 @@ let () =
   check "read=/ covers every absolute path" (code = 0);
   let code, _, _ = run ~perms:[ Read, Some "/tmp" ] "io.Print(test.ReadPath(\"/tmp/../etc/passwd\"))\n" in
   check "read=/tmp denies escape through .." (code = 1);
-  let code, _, _ = run "f = ReadIt\nio.Print(f())\n" in
-  check "also denied through a dynamic call" (code = 1);
-  let code, _, _ = run "io.Print(list.Map(ReadIt, [1]))\n" in
-  check "also denied from the prelude" (code = 1);
+  let code, _, err = run "f = test.ReadIt\nio.Print(f())\n" in
+  check "also denied through a dynamic call" (code = 1 && has "Permission \"read\" denied" err);
+  let code, _, err = run "io.Print(list.Map(test.ReadIt, [1]))\n" in
+  check "also denied from std/list" (code = 1 && has "Permission \"read\" denied" err);
   check "exec is exact" (Runtime.scope_matches Exec "git" "git" && not (Runtime.scope_matches Exec "git" "git2"));
   check "env is exact" (Runtime.scope_matches Env "HOME" "HOME" && not (Runtime.scope_matches Env "HOME" "PATH"));
   check "net port" (Runtime.scope_matches Net ":8080" ":8080" && not (Runtime.scope_matches Net ":8080" ":8081"));

@@ -32,7 +32,7 @@ use std/value
 
 (** for
     Runs its body once for each element of an array or a range, in order. In brackets, it builds a list: the comprehension,
-    which an if after it filters. A dictionary is no array: loop over Keys(d) or Pairs(d).
+    which an if after it filters. A dictionary is no array: loop over dict.Keys(d) or dict.Pairs(d).
 
       total = 0
       for x in [1, 2, 3] total += x end
@@ -81,7 +81,8 @@ use std/value
 
 (** match
     Compares a value with patterns, in order, and gives the value of the first arm that fits. A pattern is a value, a name that
-    takes the value, _ that takes anything, or a shape: [a, b], {Kind: "box", Width: w}, Ok(v), Point(x, y). A name in a pattern
+    takes the value, _ that takes anything, or a shape: [a, b], {Kind: "box", Width: w}, result.Ok(v), Point(x, y) for a struct of
+    the package or geo.Point(x, y) for one of a package in use. A name in a pattern
     always takes a new value: it never compares with a variable. An if after a pattern adds a condition, and else takes what no
     arm took; with no else, a value that fits nothing stops the program.
 
@@ -160,7 +161,7 @@ use std/value
       value.IsMissing(missing) --> true *)
 
 (** it
-    The parameter of a short function: an argument that holds it is a function of it, so Map(it * 2, xs) is Map(x -> x * 2, xs).
+    The parameter of a short function: an argument that holds it is a function of it, so list.Map(it * 2, xs) is list.Map(x -> x * 2, xs).
     After then, it is the value on the left.
 
       list.Map(it * 2, [1, 2]) --> [2, 4]
@@ -177,7 +178,7 @@ use std/value
       match 9 1 -> "one" _ -> "any" end --> "any" *)
 
 (** ..
-    The integers from the one on its left to the one on its right, both included: a..b is Range(a, b). In the brackets of a
+    The integers from the one on its left to the one on its right, both included: a..b is list.Range(a, b). In the brackets of a
     list, it takes a part of it, and end there is the last position.
 
       1..4 --> [1, 2, 3, 4]

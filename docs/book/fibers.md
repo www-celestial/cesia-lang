@@ -7,21 +7,22 @@ not in parallel, and the wait of one is time for the others.
 
 ## Spawn and Wait
 
-[Spawn] starts a function in a new fiber, and gives a task at once. [Wait] waits for the task to end, and gives an `Ok` of
+[fiber.Spawn] starts a function in a new fiber, and gives a task at once. [fiber.Wait] waits for the task to end, and gives an `Ok` of
 what the function gave:
 
 ```cesia
 use std/sys
+use std/fiber
 defn slow(name, seconds)
   sys.Sleep(seconds)
   "$name is ready"
 end
 
 start = sys.Now()
-bread = Spawn(() -> slow("bread", 0.2))
-cake = Spawn(() -> slow("cake", 0.1))
-Wait(bread) -->
-Wait(cake) -->
+bread = fiber.Spawn(() -> slow("bread", 0.2))
+cake = fiber.Spawn(() -> slow("cake", 0.1))
+fiber.Wait(bread) -->
+fiber.Wait(cake) -->
 sys.Now() - start < 0.3 --> true
 ```
 
@@ -29,7 +30,7 @@ The two waits overlap: the whole takes the time of the longest, `0.2` seconds, n
 
 ## What waits
 
-A fiber that waits lets the others run: [sys.Sleep], a read from the network, a call to [Wait] or [Receive], a database that
+A fiber that waits lets the others run: [sys.Sleep], a read from the network, a call to [fiber.Wait] or [fiber.Receive], a database that
 is busy.
 
 ### A long computation
@@ -40,7 +41,7 @@ asks for a large report. The fiber here is a function without a name on several 
 [Functions](functions.md) showed:
 
 ```cesia
-busy = Spawn(defn ()
+busy = fiber.Spawn(defn ()
   n = 0
   for k in 1..2000000
     n += k
@@ -49,16 +50,16 @@ busy = Spawn(defn ()
 end)
 sys.Sleep(0.001)
 "the program still runs" -->
-Wait(busy) -->
+fiber.Wait(busy) -->
 ```
 
 ## Pmap
 
-[Pmap] is [Map] with one fiber per element. It suits a function that waits, as one that fetches a page for each address:
+[fiber.Pmap] is [list.Map] with one fiber per element. It suits a function that waits, as one that fetches a page for each address:
 
 ```cesia
 start = sys.Now()
-Pmap(name -> slow(name, 0.1), ["bread", "cake", "tart"]) -->
+fiber.Pmap(name -> slow(name, 0.1), ["bread", "cake", "tart"]) -->
 sys.Now() - start < 0.3 --> true
 ```
 
@@ -67,12 +68,13 @@ whatever the order in which the fibers end.
 
 ## A panic in a fiber
 
-A bug in a fiber stops that fiber only. Its message is printed, and [Wait] gives an `Err` with the message, so the program
+A bug in a fiber stops that fiber only. Its message is printed, and [fiber.Wait] gives an `Err` with the message, so the program
 can go on, log it, or stop:
 
 ```cesia
-broken = Spawn(() -> Div(1, 0))
-Wait(broken).Error.Message -->
+use std/math
+broken = fiber.Spawn(() -> math.Div(1, 0))
+fiber.Wait(broken).Error.Message -->
 ```
 
 A server works this way: a request whose handler has a bug gets a `500`, and the other requests go on.
@@ -80,23 +82,26 @@ A server works this way: a request whose handler has a bug gets a `500`, and the
 ## Channels
 
 A channel carries values from one fiber to another, in the order they were sent: this is
-[message passing](glossary.md#message-passing). [Channel] makes one, [Send] puts a value in
-it and never waits, and [Receive] takes the oldest, waiting for one if it is empty:
+[message passing](glossary.md#message-passing). [fiber.Channel] makes one, [fiber.Send] puts a value in
+it and never waits, and [fiber.Receive] takes the oldest, waiting for one if it is empty:
 
 ```cesia
-orders = Channel()
-baker = Spawn(defn ()
+use std/list
+use std/result
+use std/value
+orders = fiber.Channel()
+baker = fiber.Spawn(defn ()
   for product in ["bread", "cake", "tart"]
-    Send(product, orders)
+    fiber.Send(product, orders)
   end
-  Send(missing, orders)
+  fiber.Send(missing, orders)
 end)
 
 made = []
-next = Unwrap(Receive(orders))
-while IsSome(next)
-  made = Append(next, made)
-  next = Unwrap(Receive(orders))
+next = result.Unwrap(fiber.Receive(orders))
+while value.IsSome(next)
+  made = list.Append(next, made)
+  next = result.Unwrap(fiber.Receive(orders))
 end
 made -->
 ```
@@ -105,11 +110,11 @@ Here `missing` tells that nothing more will come.
 
 ### A time limit
 
-[Receive] can also wait for a time at most, and gives an `Err` of the kind
+[fiber.Receive] can also wait for a time at most, and gives an `Err` of the kind
 `"timeout"` then:
 
 ```cesia
-Receive(Channel(), timeout = 0.05) -->
+fiber.Receive(fiber.Channel(), timeout = 0.05) -->
 ```
 
 ### Shared values

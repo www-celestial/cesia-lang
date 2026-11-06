@@ -32,7 +32,7 @@ data frame, as in pandas, is such a table; Cesia's is [std/frame]: see [Data](da
 ## Comprehension
 
 A list built from another inside brackets: a value, a `for`, and a condition if needed, as in Python. In Cesia,
-`[x * x for x in xs if x > 0]` is short for [Map] and [Filter]: see [Data](data.md#comprehensions).
+`[x * x for x in xs if x > 0]` is short for [list.Map] and [list.Filter]: see [Data](data.md#comprehensions).
 
 ## Concurrency and parallelism
 
@@ -63,7 +63,7 @@ gives the value of an `Ok`, or returns the `Err` at once: see [Errors](errors.md
 ## Error value
 
 An error that a function gives back as its result, so that the code shows where it goes. Cesia's errors are values: an
-[Err] around what went wrong, beside the [Ok] of a success: see [Errors](errors.md).
+[result.Err] around what went wrong, beside the [result.Ok] of a success: see [Errors](errors.md).
 
 ## Exception
 
@@ -79,7 +79,7 @@ The number a program gives back to the one that started it: 0 when all went well
 ## Fiber
 
 A light thread run by the language rather than by the system, also called a green thread: thousands of them cost little.
-In Cesia [Spawn] starts one and [Wait] waits for its end: see [Fibers](fibers.md).
+In Cesia [fiber.Spawn] starts one and [fiber.Wait] waits for its end: see [Fibers](fibers.md).
 
 ## Foreign function interface
 
@@ -98,7 +98,7 @@ The function that answers one kind of request. In [std/web] it takes the request
 
 ## Higher-order function
 
-A function that takes a function, or gives one back. [Map], [Filter] and [Reduce] take one, and `adder(n) = x -> x + n`
+A function that takes a function, or gives one back. [list.Map], [list.Filter] and [list.Reduce] take one, and `adder(n) = x -> x + n`
 gives one: see [Functions](functions.md#map-filter-and-reduce).
 
 ## Hot reload
@@ -129,8 +129,8 @@ Cesia's is `cesia.lock`, which `cesia new` and `cesia pkg` write: see [Packages]
 
 ## Message passing
 
-Tasks that share data by sending it to each other, instead of changing the same memory. In Cesia a [Channel] carries values
-from one fiber to another, with [Send] and [Receive]: see [Fibers](fibers.md#channels).
+Tasks that share data by sending it to each other, instead of changing the same memory. In Cesia a [fiber.Channel] carries values
+from one fiber to another, with [fiber.Send] and [fiber.Receive]: see [Fibers](fibers.md#channels).
 
 ## Method and receiver
 
@@ -172,17 +172,12 @@ does it on values, lists, dictionaries, structs and results: see [Choices and lo
 ## Persistent data structure
 
 A structure that keeps its old version when it changes, and shares most of its memory with the new one. A dictionary of
-Cesia is a hash trie, as in Clojure: [Put] gives a new one that shares the rest with the old: see [Maps](maps.md).
+Cesia is a hash trie, as in Clojure: [dict.Put] gives a new one that shares the rest with the old: see [Maps](maps.md).
 
 ## Preemptive scheduling
 
 The scheduler moves from one task to another by itself, without waiting for the task to give way. Cesia moves between
 fibers after a number of steps, so a long computation doesn't hold up the others: see [Fibers](fibers.md#what-waits).
-
-## Prelude
-
-The names that every file sees without a `use`: [Print], [Map], [Count], [Get] and the others. A package may define one of these
-names for itself: see [Packages](packages.md#a-package-is-a-folder).
 
 ## Principle of least privilege
 
@@ -218,12 +213,12 @@ touches the machine needs a permission, so the command line says which a program
 
 ## Standard input and output
 
-The text a program reads, and the text it writes, in a terminal or a pipe of the shell. In Cesia [Print] writes to the
+The text a program reads, and the text it writes, in a terminal or a pipe of the shell. In Cesia [io.Print] writes to the
 standard output, and [sys.ReadInput] reads the whole standard input: see [Files](files.md#standard-input-and-the-exit-code).
 
 ## String interpolation
 
-Values written inside a text, where they go. In Cesia `"Hello, $name"` and `"$(2 + 2)"`, which are short for [Str]: see
+Values written inside a text, where they go. In Cesia `"Hello, $name"` and `"$(2 + 2)"`, which are short for [text.Str]: see
 [Values and names](values.md#texts).
 
 ## Struct
@@ -238,13 +233,13 @@ that has its methods, as in Go: see [Types](types.md#interfaces).
 
 ## Sum type
 
-A type whose values are one of a few cases, each with its own data. Cesia's is the result: either [Ok] of a value or [Err]
+A type whose values are one of a few cases, each with its own data. Cesia's is the result: either [result.Ok] of a value or [result.Err]
 of an error, and [match] takes it apart case by case: see [Errors](errors.md#looking-at-a-result).
 
 ## Syntax sugar
 
 A shorter way to write what the language can already say. This book shows each one beside its plain form, checked:
-`a..b` is [Range]`(a, b)`, and `d.Name` is `d["Name"]`: see [Lists and arrays](lists.md#ranges).
+`a..b` is [list.Range]`(a, b)`, and `d.Name` is `d["Name"]`: see [Lists and arrays](lists.md#ranges).
 
 ## Transaction
 
@@ -259,8 +254,8 @@ A value turned into another type by the language itself. Cesia does it in one ca
 
 ## UTF-8
 
-The usual way to write a text in bytes: `a` takes one, `é` two, an emoji four. A text of Cesia is UTF-8: [Len] and [Slice]
-count characters, [ByteLength] and [ByteSlice] bytes: see [Texts](texts.md#bytes).
+The usual way to write a text in bytes: `a` takes one, `é` two, an emoji four. A text of Cesia is UTF-8: [value.Len] and [text.Slice]
+count characters, [text.ByteLength] and [text.ByteSlice] bytes: see [Texts](texts.md#bytes).
 
 ## Value semantics
 

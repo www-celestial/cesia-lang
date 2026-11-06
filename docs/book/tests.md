@@ -10,6 +10,7 @@ A comment that starts with `(**` documents what it belongs to. Inside a `defn`, 
 with `-->` and the value it should give, is a test, a [doctest](glossary.md#doctest):
 
 ```cesia
+use std/math
 defn WithTax(price Number) Number
   (** The price with 20% of tax, to the cent.
 
@@ -18,7 +19,7 @@ defn WithTax(price Number) Number
   cents(price * 1.2)
 end
 
-cents(x) = Round(x * 100) / 100
+cents(x) = math.Round(x * 100) / 100
 WithTax(0.99) -->
 ```
 
@@ -41,16 +42,17 @@ so it stays in its package. Test functions sit in a file whose name ends with `.
 and `tax.test.ce`. Such a file sees the private names of its package, and is not part of the program.
 
 ```cesia
+use std/bug
 isZeroStaysZero() = WithTax(0) == 0
 defn isRoundsToCents()
-  Assert(WithTax(1.234) == 1.48, "1.234 rounds down")
+  bug.Assert(WithTax(1.234) == 1.48, "1.234 rounds down")
   WithTax(1.235) == 1.48
 end
 isZeroStaysZero() -->
 isRoundsToCents() -->
 ```
 
-A test that gives `false` fails, and so does one that stops: an [Assert] that is false, a bug. [Assert] with a message says
+A test that gives `false` fails, and so does one that stops: an [bug.Assert] that is false, a bug. [bug.Assert] with a message says
 which part of a long test went wrong.
 
 ## cesia test
@@ -78,13 +80,14 @@ The first `(** *)` of a file, before any code, says what its package is for. A s
 line, a field or a parameter too:
 
 ```cesia
+use std/list
 struct Item
   (** A line of an order. *)
   Product Text    (** what is sold *)
   Units Int       (** how many *)
 end
 
-Total(items) = Sum([i.Units for i in items])   (** How many units an order holds. *)
+Total(items) = list.Sum([i.Units for i in items])   (** How many units an order holds. *)
 Total([Item("bread", 2), Item("cake", 1)]) -->
 ```
 
@@ -92,7 +95,7 @@ Every public name needs its text: a name with a capital is a promise to the code
 
 ### Reading the texts
 
-`cesia doc` shows the texts from the command line, and so does [Doc] from a program:
+`cesia doc` shows the texts from the command line, and so does [cesia.Doc] from a program:
 
 ```bash
 cesia doc src/prices
@@ -100,7 +103,8 @@ cesia doc prices.WithTax
 ```
 
 ```cesia
-Doc(Total) -->
+use std/cesia
+cesia.Doc(Total) -->
 ```
 
 ## A site for your project

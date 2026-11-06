@@ -7,14 +7,15 @@ where each error goes.
 
 ## Ok and Err
 
-A function that can fail gives a result: [Ok] around its value when all went well, or [Err] around what went wrong. A
+A function that can fail gives a result: [result.Ok] around its value when all went well, or [result.Err] around what went wrong. A
 result is always one of these two cases: a [sum type](glossary.md#sum-type). `.Value`
 reads the one, `.Error` the other:
 
 ```cesia
-Ok(42) -->
-Ok(42).Value -->
-Err("no such user").Error -->
+use std/result
+result.Ok(42) -->
+result.Ok(42).Value -->
+result.Err("no such user").Error -->
 ```
 
 ### A file that isn't there
@@ -31,16 +32,18 @@ sys.Read("nowhere.txt") -->
 
 ### Your own results
 
-Your own functions do the same. Here [Number] gives `missing` for a text that isn't a number, and `age` turns that into an
+Your own functions do the same. Here [text.Number] gives `missing` for a text that isn't a number, and `age` turns that into an
 `Err` with a message for the user:
 
 ```cesia
+use std/text
+use std/value
 defn age(t)
-  n = Number(t)
-  if IsMissing(n)
-    return Err("not a number: $t")
+  n = text.Number(t)
+  if value.IsMissing(n)
+    return result.Err("not a number: $t")
   end
-  Ok(n)
+  result.Ok(n)
 end
 age("31") -->
 age("old") -->
@@ -50,13 +53,13 @@ age("old") -->
 
 ## Looking at a result
 
-[match] takes a result apart: `Ok(v)` gives the value its name, `Err(e)` the error.
+[match] takes a result apart: `result.Ok(v)` gives the value its name, `result.Err(e)` the error.
 
 ```cesia
 defn describe(t)
   match age(t)
-    Ok(n) -> "$n years"
-    Err(e) -> "refused: $e"
+    result.Ok(n) -> "$n years"
+    result.Err(e) -> "refused: $e"
   end
 end
 describe("31") -->
@@ -65,20 +68,20 @@ describe("old") -->
 
 ### IsOk and IsErr
 
-[IsOk] and [IsErr] only ask:
+[result.IsOk] and [result.IsErr] only ask:
 
 ```cesia
-IsOk(age("31")) -->
-IsErr(age("old")) -->
+result.IsOk(age("31")) -->
+result.IsErr(age("old")) -->
 ```
 
 ## A default
 
-[UnwrapOr] gives the value of an `Ok`, or a default for an `Err`. Use it when an error has an obvious answer:
+[result.UnwrapOr] gives the value of an `Ok`, or a default for an `Err`. Use it when an error has an obvious answer:
 
 ```cesia
-UnwrapOr(0, age("31")) -->
-UnwrapOr(0, age("old")) -->
+result.UnwrapOr(0, age("31")) -->
+result.UnwrapOr(0, age("old")) -->
 ```
 
 ## Passing an error on
@@ -90,7 +93,7 @@ an `Ok`, it gives the value, and the function goes on; for an `Err`, the functio
 ```cesia
 defn ageNextYear(t)
   n = age(t)?
-  Ok(n + 1)
+  result.Ok(n + 1)
 end
 ageNextYear("31") -->
 ageNextYear("old") -->
@@ -103,11 +106,11 @@ ageNextYear("old") -->
 ```cesia
 defn ageNextYearLong(t)
   r = age(t)
-  if IsErr(r)
+  if result.IsErr(r)
     return r
   end
   n = r.Value
-  Ok(n + 1)
+  result.Ok(n + 1)
 end
 ageNextYearLong("31") --> ageNextYear("31")
 ageNextYearLong("old") --> ageNextYear("old")
@@ -120,7 +123,7 @@ says to give a result.
 
 ```cesia fails
 defn wrong(t)
-  n = Number(t)?
+  n = text.Number(t)?
   n
 end
 wrong("3")
@@ -128,39 +131,40 @@ wrong("3")
 
 ## Steps on results
 
-A few functions work on a result without taking it apart, and chain with [then]. [MapOk] changes the value of an `Ok`, and
-[MapErr] the error of an `Err`. Each leaves the other kind as it is:
+A few functions work on a result without taking it apart, and chain with [then]. [result.MapOk] changes the value of an `Ok`, and
+[result.MapErr] the error of an `Err`. Each leaves the other kind as it is:
 
 ```cesia
-age("31") then MapOk(it * 12) -->
-age("old") then MapOk(it * 12) -->
-age("old") then MapErr("age: $it") -->
+age("31") then result.MapOk(it * 12) -->
+age("old") then result.MapOk(it * 12) -->
+age("old") then result.MapErr("age: $it") -->
 ```
 
 ### AndThen
 
-[AndThen] chains a step that can fail too. It runs the function on the value of an `Ok`, and passes an `Err` along:
+[result.AndThen] chains a step that can fail too. It runs the function on the value of an `Ok`, and passes an `Err` along:
 
 ```cesia
 defn adult(n)
   if n < 18
-    return Err("too young: $n")
+    return result.Err("too young: $n")
   end
-  Ok(n)
+  result.Ok(n)
 end
-age("31") then AndThen(adult) -->
-age("12") then AndThen(adult) -->
-age("old") then AndThen(adult) -->
+age("31") then result.AndThen(adult) -->
+age("12") then result.AndThen(adult) -->
+age("old") then result.AndThen(adult) -->
 ```
 
 ### Collect
 
-[Collect] turns a list of results into one: an `Ok` of all the values, or the first `Err`. Here a whole column of input is
+[result.Collect] turns a list of results into one: an `Ok` of all the values, or the first `Err`. Here a whole column of input is
 checked at once:
 
 ```cesia
-Collect(Map(age, ["31", "12", "40"])) -->
-Collect(Map(age, ["31", "old", "?"])) -->
+use std/list
+result.Collect(list.Map(age, ["31", "12", "40"])) -->
+result.Collect(list.Map(age, ["31", "old", "?"])) -->
 ```
 
 ## Errors and bugs
@@ -171,23 +175,24 @@ you fix the code.
 
 ### Unwrap
 
-[Unwrap] takes the value of an `Ok`. Use it only where an `Err` would be a bug, as a file that comes with your program:
+[result.Unwrap] takes the value of an `Ok`. Use it only where an `Err` would be a bug, as a file that comes with your program:
 
 ```cesia
-Unwrap(age("31")) -->
+result.Unwrap(age("31")) -->
 ```
 
 ```cesia fails
-Unwrap(age("old"))
+result.Unwrap(age("old"))
 ```
 
 ### Panic and Assert
 
-[Panic] stops the program with your message, and [Assert] stops it when a condition is false. Both are for what must never
+[bug.Panic] stops the program with your message, and [bug.Assert] stops it when a condition is false. Both are for what must never
 happen:
 
 ```cesia fails
-Assert(Len([1, 2]) == 3, "the list should have three elements")
+use std/bug
+bug.Assert(value.Len([1, 2]) == 3, "the list should have three elements")
 ```
 
 A reading of a dictionary key that isn't there, a field a struct doesn't have, a denied permission: each of these is a bug too,

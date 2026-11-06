@@ -60,7 +60,8 @@ of `round.ce`, without a `use`.
 WithTax(price) = cents(price * 1.2)
 
 (* src/prices/round.ce *)
-cents(x) = Round(x * 100) / 100
+use std/math
+cents(x) = math.Round(x * 100) / 100
 
 WithTax(10.25) -->
 ```
@@ -71,13 +72,19 @@ WithTax(10.25) -->
   `cents`, stays inside its folder.
 - A subfolder is another package: `src/prices/old/` is used as `use src/prices/old`, and named `old` in the code.
 
-### Names every file sees
+### No name without a use
 
-A name that every file sees without a `use`, as [Count] or [Get], belongs to the [prelude](glossary.md#prelude). A package
-may name a function as one of them. Then, in the files of that package, `Count` is its own; everywhere else, `Count` is the
-one of every file, and the package's is `prices.Count`. So inside such a package, the other `Count` can't be called: give
-your function a name of its own, unless it does the same thing for your kind of value, as `set.Count` counts the elements of
-a set.
+No name is seen by every file: a file sees the names of its package, the names of the packages it uses, and the words of
+the language. Printing is [io.Print], of `std/io`; [list.Map] is in `std/list`, [text.Split] in `std/text`, [result.Ok] in
+`std/result`. A name written without its package says which use it needs:
+
+```cesia fails
+Print(1)
+```
+
+So a package may name a function as another package does: `set.Count` counts the elements of a set, and [list.Count] the
+elements of a list that a function accepts. In a file, a variable named as a package it uses hides that package where the
+variable is seen, as `text = "hi"` hides `std/text`: give the variable another name, as `s` or `line`.
 
 ### Private names
 

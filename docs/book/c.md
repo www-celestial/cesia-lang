@@ -20,9 +20,10 @@ cesia run --allow ffi=m geometry.ce
 
 ```cesia allow=ffi=m
 use std/c
-m = Unwrap(c.Open("m", version = 6))
-cos = Unwrap(c.Fn("cos", ["f64"], "f64", m))
-pow = Unwrap(c.Fn("pow", ["f64", "f64"], "f64", m))
+use std/result
+m = result.Unwrap(c.Open("m", version = 6))
+cos = result.Unwrap(c.Fn("cos", ["f64"], "f64", m))
+pow = result.Unwrap(c.Fn("pow", ["f64", "f64"], "f64", m))
 cos(0.0) -->
 pow(2.0, 10.0) -->
 ```
@@ -79,8 +80,9 @@ Some C functions take a function to call: a comparison, a handler of events. [c.
 Cesia function and the types C will call it with:
 
 ```cesia norun
-lib = Unwrap(c.Open("mylib"))
-applyTwice = Unwrap(c.Fn("apply_twice", ["callback", "i64"], "i64", lib))
+use std/result
+lib = result.Unwrap(c.Open("mylib"))
+applyTwice = result.Unwrap(c.Fn("apply_twice", ["callback", "i64"], "i64", lib))
 triple = c.Callback(x -> x * 3, ["i64"], "i64")
 applyTwice(triple, 2)
 ```
@@ -96,6 +98,8 @@ C++ compiler, and loads it. [cpp.Wrap] gives a dictionary of functions, with `"C
 ```cesia norun
 (* demo.ce *)
 use std/cpp
+use std/io
+use std/result
 
 spec = {
   Name: "demo",
@@ -111,12 +115,12 @@ defn main()
   m = cpp.Wrap(spec, folder = "build", compiler = "g++")?
   xs = m["Numbers.new"]()
   m["Numbers.push"](xs, 5)
-  Print(m["Numbers.count"](xs), m["gcd"](12, 18))
+  io.Print(m["Numbers.count"](xs), m["gcd"](12, 18))
   m["Numbers.delete"](xs)
-  Ok(missing)
+  result.Ok(missing)
 end
 
-Print(main())
+io.Print(main())
 ```
 
 ### Running it

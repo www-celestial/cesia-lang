@@ -49,6 +49,7 @@ error of SQLite on to the caller:
 ```cesia
 (* src/notes/store.ce *)
 use std/sql
+use std/result
 
 struct Note
   (** A note, as the service gives it. *)
@@ -73,13 +74,13 @@ defn Open(url)
   (** The database at a URL, with its table made if needed. *)
   db = sql.Open(url)?
   sql.Script(schema, db)?
-  Ok(db)
+  result.Ok(db)
 end
 
 defn Save(text, db)
   (** Adds a note, and gives it. *)
   added = sql.Exec("insert into notes (text) values (?)", [text], db)?
-  Ok(Note(added.LastId, text, false))
+  result.Ok(Note(added.LastId, text, false))
 end
 
 List(db) = sql.Query("select id, text, done from notes order by id", [], db, as = Note.From)   (** Every note, the oldest first. *)
@@ -88,7 +89,7 @@ defn Finish(id, db)
   (** Marks a note done: missing if there is none with this id. *)
   changed = sql.Exec("update notes set done = true where id = ?", [id], db)?
   if changed.Changed == 0
-    return Ok(missing)
+    return result.Ok(missing)
   end
   sql.One("select id, text, done from notes where id = ?", [id], db, as = Note.From)
 end
@@ -97,7 +98,7 @@ end
 The store works on its own, before any web. A database in memory is enough to try it:
 
 ```cesia
-db = Unwrap(Open("sqlite::memory:"))
+db = result.Unwrap(Open("sqlite::memory:"))
 Save("buy bread", db) -->
 Save("", db) -->
 Finish(1, db) -->
@@ -121,35 +122,37 @@ server's fault. A file of a package keeps its own uses:
 ```cesia
 (* src/notes/routes.ce *)
 use std/web
+use std/text
+use std/value
 
 refused(e) = web.SendJson({Error: e.Message}, status = 400)
 failed(e) = web.SendJson({Error: e.Message}, status = 500)
 
 defn listed(db)
   match List(db)
-    Ok(notes) -> web.SendJson(notes)
-    Err(e) -> failed(e)
+    result.Ok(notes) -> web.SendJson(notes)
+    result.Err(e) -> failed(e)
   end
 end
 
 defn added(request, db)
-  match web.BodyJson(request) then AndThen(NewNote.From)
-    Err(e) -> refused(e)
-    Ok(n) -> match Save(n.Text, db)
-      Ok(note) -> web.SendJson(note, status = 201)
-      Err(e) -> if e.Code == "23514" refused(e) else failed(e) end
+  match web.BodyJson(request) then result.AndThen(NewNote.From)
+    result.Err(e) -> refused(e)
+    result.Ok(n) -> match Save(n.Text, db)
+      result.Ok(note) -> web.SendJson(note, status = 201)
+      result.Err(e) -> if e.Code == "23514" refused(e) else failed(e) end
     end
   end
 end
 
 defn finished(request, db)
-  id = Number(request.Params.id)
-  if not IsInt(id)
+  id = text.Number(request.Params.id)
+  if not value.IsInt(id)
     return refused({Message: "The id is a whole number."})
   end
   match Finish(id, db)
-    Ok(note) -> if IsMissing(note) web.SendJson({Error: "No note $id."}, status = 404) else web.SendJson(note) end
-    Err(e) -> failed(e)
+    result.Ok(note) -> if value.IsMissing(note) web.SendJson({Error: "No note $id."}, status = 404) else web.SendJson(note) end
+    result.Err(e) -> failed(e)
   end
 end
 
@@ -172,7 +175,7 @@ memory:
 use std/web
 
 defn ask(method, path, body = "")
-  db = Unwrap(Open("sqlite::memory:"))
+  db = result.Unwrap(Open("sqlite::memory:"))
   handle = web.Handler(App(db))
   handle({Method: method, Path: path, Query: "", Headers: [], Body: body})
 end
@@ -224,14 +227,16 @@ The block below does the same in one program: it serves the routes on a port of 
 ```cesia allow=net,net=:18781
 use std/sys
 use std/http
-served = Unwrap(Open("sqlite::memory:"))
-Spawn(() -> web.Serve(web.Wrap(web.Logger, App(served)), port = 18781))
+use std/fiber
+use std/io
+served = result.Unwrap(Open("sqlite::memory:"))
+fiber.Spawn(() -> web.Serve(web.Wrap(web.Logger, App(served)), port = 18781))
 sys.Sleep(0)
 base = "http://127.0.0.1:18781/notes"
-Print(http.Post(base, "{\"Text\": \"buy bread\"}").Value.Body)
-Print(http.Post(base, "{\"Txt\": \"typo\"}").Value.Body)
-Print(http.Post("$base/1/done", "").Value.Body)
-Print(http.Get(base).Value.Body)
+io.Print(http.Post(base, "{\"Text\": \"buy bread\"}").Value.Body)
+io.Print(http.Post(base, "{\"Txt\": \"typo\"}").Value.Body)
+io.Print(http.Post("$base/1/done", "").Value.Body)
+io.Print(http.Get(base).Value.Body)
 ```
 
 ## Where to go from here

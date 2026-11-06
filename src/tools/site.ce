@@ -73,7 +73,7 @@ defn shortOf(name, m)
   (* A name is qualified by the code name of its module, num.Solve, or by its whole path when that name leads elsewhere:
      deps/someone/tools/src/count.Words. *)
   for prefix in [text.Str(m, "."), text.Str(list.Last(text.Split("/", m)), ".")]
-    if m != "prelude" and text.StartsWith(prefix, name)
+    if text.StartsWith(prefix, name)
       return text.ByteSlice(text.ByteLength(prefix) + 1, text.ByteLength(name), name)
     end
   end

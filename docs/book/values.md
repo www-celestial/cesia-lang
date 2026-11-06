@@ -23,23 +23,24 @@ A number is an integer, such as `42`, or a float, with a dot: `1.5`. The usual o
 
 ### Operators are functions
 
-Each operator is also a function, for the times you pass it to another function: `2 + 3` is [Add]`(2, 3)`.
+Each operator is also a function, for the times you pass it to another function: `2 + 3` is [math.Add]`(2, 3)`.
 
 ```cesia
-Add(2, 3) --> 2 + 3
-Mul(4, 5) --> 4 * 5
+use std/math
+math.Add(2, 3) --> 2 + 3
+math.Mul(4, 5) --> 4 * 5
 ```
 
 ### Division
 
-`/` always gives a float, even when the division falls right. For the whole part of a division, [Div] rounds down, and [Mod]
+`/` always gives a float, even when the division falls right. For the whole part of a division, [math.Div] rounds down, and [math.Mod]
 gives what is left:
 
 ```cesia
 7 / 2 -->
 10 / 2 -->
-Div(7, 2) -->
-Mod(7, 2) -->
+math.Div(7, 2) -->
+math.Mod(7, 2) -->
 ```
 
 ### Integers and floats
@@ -52,12 +53,12 @@ their value:
 1 == 1.0 -->
 ```
 
-Floats are those of your processor, so a decimal fraction is close, not exact. [Round] and [Floor] give whole numbers back:
+Floats are those of your processor, so a decimal fraction is close, not exact. [math.Round] and [math.Floor] give whole numbers back:
 
 ```cesia
 0.1 + 0.2 -->
-Round(2.5) -->
-Floor(2.7) -->
+math.Round(2.5) -->
+math.Floor(2.7) -->
 ```
 
 ## Texts
@@ -71,17 +72,18 @@ name = "Ana"
 "Two and two make $(2 + 2)" -->
 ```
 
-A `$` is short for [Str], which joins the texts of its arguments. Such a short form is called
+A `$` is short for [text.Str], which joins the texts of its arguments. Such a short form is called
 [syntax sugar](glossary.md#syntax-sugar), and this book shows each one beside its plain form:
 
 ```cesia
-"Hello, $name" --> Str("Hello, ", name)
+use std/text
+"Hello, $name" --> text.Str("Hello, ", name)
 ```
 
-A text never adds to a number with `+`: write the number inside the text, or join the parts with [Str]:
+A text never adds to a number with `+`: write the number inside the text, or join the parts with [text.Str]:
 
 ```cesia
-Str("Total: ", 3) -->
+text.Str("Total: ", 3) -->
 ```
 
 ### Escapes
@@ -90,10 +92,12 @@ A `\` starts a character that a text can't hold as it is: `\"` is a quote, `\n` 
 itself. A `$` is written twice:
 
 ```cesia
-Print("She said \"yes\"")
-Print("one\ttwo\nthree")
-Print("It costs 5 $$")
-Len("\"") -->
+use std/io
+use std/value
+io.Print("She said \"yes\"")
+io.Print("one\ttwo\nthree")
+io.Print("It costs 5 $$")
+value.Len("\"") -->
 ```
 
 The chapter [Texts](texts.md) shows how to cut, search and join them.
@@ -114,13 +118,13 @@ The chapter [Texts](texts.md) shows how to cut, search and join them.
 
 ## Missing
 
-`missing` means that there is no value, as [null](glossary.md#null) does in other languages: a key that isn't in a dictionary, a text that isn't a number. [IsMissing] asks, and
-[IsSome] asks the opposite:
+`missing` means that there is no value, as [null](glossary.md#null) does in other languages: a key that isn't in a dictionary, a text that isn't a number. [value.IsMissing] asks, and
+[value.IsSome] asks the opposite:
 
 ```cesia
-Number("12") -->
-Number("twelve") -->
-IsMissing(Number("twelve")) -->
+text.Number("12") -->
+text.Number("twelve") -->
+value.IsMissing(text.Number("twelve")) -->
 ```
 
 ### Missing in arithmetic

@@ -8,11 +8,12 @@ a part runs many times. And `match` picks among shapes of data.
 [if] runs its body when its condition is true, and `else` runs otherwise. Each part ends at `end`:
 
 ```cesia
+use std/io
 temperature = 31
 if temperature > 30
-  Print("Hot")
+  io.Print("Hot")
 else
-  Print("Fine")
+  io.Print("Fine")
 end
 ```
 
@@ -23,11 +24,11 @@ end
 ```cesia
 grade = 72
 if grade >= 90
-  Print("A")
+  io.Print("A")
 else if grade >= 70
-  Print("B")
+  io.Print("B")
 else
-  Print("C")
+  io.Print("C")
 end
 ```
 
@@ -36,8 +37,9 @@ end
 An `if` is also a value: that of the part that ran. It fits on one line, which replaces the `? :` of other languages:
 
 ```cesia
+use std/math
 n = 4
-kind = if Mod(n, 2) == 0 "even" else "odd" end
+kind = if math.Mod(n, 2) == 0 "even" else "odd" end
 kind -->
 ```
 
@@ -53,7 +55,7 @@ if 1 > 2 "never" end -->
 
 ```cesia
 for fruit in ["apple", "pear", "fig"]
-  Print("I like", fruit)
+  io.Print("I like", fruit)
 end
 ```
 
@@ -62,9 +64,10 @@ end
 A range gives the positions, when you need them:
 
 ```cesia
+use std/value
 names = ["Ana", "Bo"]
-for k in 1..Len(names)
-  Print(k, names[k])
+for k in 1..value.Len(names)
+  io.Print(k, names[k])
 end
 ```
 
@@ -84,14 +87,15 @@ In brackets, a `for` builds a list, a [comprehension](glossary.md#comprehension)
 
 ```cesia
 [x * x for x in 1..5] -->
-[x for x in 1..10 if Mod(x, 3) == 0] -->
+[x for x in 1..10 if math.Mod(x, 3) == 0] -->
 ```
 
-A list built this way is short for [Map], and with an `if`, for [Filter]. The chapter [Functions](functions.md) shows both:
+A list built this way is short for [list.Map], and with an `if`, for [list.Filter]. The chapter [Functions](functions.md) shows both:
 
 ```cesia
-[x * x for x in 1..5] --> Map(x -> x * x, 1..5)
-[x for x in 1..10 if Mod(x, 3) == 0] --> Filter(x -> Mod(x, 3) == 0, 1..10)
+use std/list
+[x * x for x in 1..5] --> list.Map(x -> x * x, 1..5)
+[x for x in 1..10 if math.Mod(x, 3) == 0] --> list.Filter(x -> math.Mod(x, 3) == 0, 1..10)
 ```
 
 ## while and break
@@ -113,7 +117,7 @@ n -->
 ```cesia
 for x in [3, 8, 12, 5, 20]
   if x > 10
-    Print("First over 10:", x)
+    io.Print("First over 10:", x)
     break
   end
 end
@@ -182,7 +186,7 @@ match 7
 end
 ```
 
-`match` also takes the results of the chapter on errors apart: `Ok(value)` and `Err(e)` are patterns too.
+`match` also takes the results of the chapter on errors apart: `result.Ok(value)` and `result.Err(e)` are patterns too.
 
 ## Next
 

@@ -28,11 +28,12 @@ route gives a new one, and [then] chains them.
 dictionary, which is how you test a server:
 
 ```cesia
+use std/io
 handle = web.Handler(app)
 ask(path) = handle({Method: "GET", Path: path, Query: "", Headers: [], Body: ""})
 ask("/hello/Ana").Body -->
 ask("/stock").Status -->
-Print(ask("/stock").Body)
+io.Print(ask("/stock").Body)
 ask("/nowhere").Status -->
 ```
 
@@ -44,23 +45,24 @@ A path that no route takes gets a `404`.
 gets a `400` that says what is wrong:
 
 ```cesia
+use std/result
 struct Purchase
   Product Text
   Units Int
 end
 
 defn addPurchase(request)
-  match web.BodyJson(request) then AndThen(Purchase.From)
-    Ok(order) -> web.SendJson({Product: order.Product, Units: order.Units, Total: order.Units * 1.25}, status = 201)
-    Err(e) -> web.SendJson({Error: e.Message}, status = 400)
+  match web.BodyJson(request) then result.AndThen(Purchase.From)
+    result.Ok(order) -> web.SendJson({Product: order.Product, Units: order.Units, Total: order.Units * 1.25}, status = 201)
+    result.Err(e) -> web.SendJson({Error: e.Message}, status = 400)
   end
 end
 
 shop = app then web.Post("/orders", addPurchase)
 post(body) = web.Handler(shop)({Method: "POST", Path: "/orders", Query: "", Headers: [], Body: body})
-Print(post("{\"Product\": \"bread\", \"Units\": 4}").Body)
-Print(post("{\"Product\": \"bread\", \"Units\": \"four\"}").Body)
-Print(post("not json").Body)
+io.Print(post("{\"Product\": \"bread\", \"Units\": 4}").Body)
+io.Print(post("{\"Product\": \"bread\", \"Units\": \"four\"}").Body)
+io.Print(post("not json").Body)
 ```
 
 ## Middleware
@@ -110,19 +112,20 @@ curl localhost:8080/hello/Ana
 
 ### Serving and asking in one program
 
-The block below serves the shop on a port and asks it with the client, in one program. [Spawn] runs the server beside the
+The block below serves the shop on a port and asks it with the client, in one program. [fiber.Spawn] runs the server beside the
 rest of the program, as the chapter [Fibers](fibers.md) explains, and [sys.Sleep] lets it start:
 
 ```cesia allow=net,net=:18761
 use std/sys
 use std/http
-Spawn(() -> web.Serve(logged, port = 18761))
+use std/fiber
+fiber.Spawn(() -> web.Serve(logged, port = 18761))
 sys.Sleep(0)
 r = http.Get("http://127.0.0.1:18761/hello/Bo")
 r.Value.Status -->
 r.Value.Body -->
 sent = http.Post("http://127.0.0.1:18761/orders", "{\"Product\": \"cake\", \"Units\": 2}")
-Print(sent.Value.Body)
+io.Print(sent.Value.Body)
 ```
 
 The program ends when its last line is done, and the server with it.
@@ -143,7 +146,8 @@ host:
 
 ```cesia norun
 use std/tls
-api = Unwrap(tls.Open())
+use std/result
+api = result.Unwrap(tls.Open())
 page = http.Get("https://example.com/", secure = tls.Client(api))
 ```
 

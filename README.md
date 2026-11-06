@@ -42,7 +42,7 @@ that ran when the site was built: **https://www-celestial.github.io/cesia-lang/*
 it again.
 
 The chapters are plain Markdown, in [`docs/book/`](docs/book/index.md). From a clone, `cesia doc --site --open` builds the same site in
-`site/` and opens it, and `cesia doc Sort` or `cesia doc num.Solve` prints one page in the terminal.
+`site/` and opens it, and `cesia doc list.Sort` or `cesia doc num.Solve` prints one page in the terminal.
 
 Windows and interfaces have their reference in `std/sdl` and `std/ui`, and an example in `cesia do material`; their chapter
 comes later.

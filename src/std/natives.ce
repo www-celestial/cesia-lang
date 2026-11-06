@@ -197,12 +197,12 @@ use std/value
       list.Mean([1, 2, 3]) --> 2 *)
 
 (** list.Min(xs)
-    The smallest element of an array, or with two arguments Min(a, b), the smaller of each pair. A missing value gives missing.
+    The smallest element of an array, or with two arguments list.Min(a, b), the smaller of each pair. A missing value gives missing.
 
       list.Min([3, 1, 2]) --> 1 *)
 
 (** list.Max(xs)
-    The largest element of an array, or with two arguments Max(a, b), the larger of each pair. A missing value gives missing.
+    The largest element of an array, or with two arguments list.Max(a, b), the larger of each pair. A missing value gives missing.
 
       list.Max([3, 1, 2]) --> 3 *)
 
@@ -297,7 +297,7 @@ use std/value
       math.Div(-7, 2) --> -4 *)
 
 (** math.Mod(a, b)
-    The remainder of a by b, with the sign of b, so that a == Div(a, b) * b + Mod(a, b).
+    The remainder of a by b, with the sign of b, so that a == math.Div(a, b) * b + math.Mod(a, b).
 
       math.Mod(-7, 2) --> 1 *)
 
@@ -663,7 +663,7 @@ use std/value
       columns.Kind([1.5]) --> "float" *)
 
 (** columns.Rows(names, cells, public = false)
-    An Ok of a list of maps, one per Len(names) cells given row after row; every row of one list of names shares its keys, so a row costs its values only. With public, a SQL name becomes a public Cesia name: created_at gives CreatedAt, id Id; a name that is no identifier, as max(score), stays. Two names that give one key are an Err of kind "names".
+    An Ok of a list of maps, one per value.Len(names) cells given row after row; every row of one list of names shares its keys, so a row costs its values only. With public, a SQL name becomes a public Cesia name: created_at gives CreatedAt, id Id; a name that is no identifier, as max(score), stays. Two names that give one key are an Err of kind "names".
 
       columns.Rows(["id", "name"], [1, "Ana", 2, "Bo"], public = true)?[2].Name --> "Bo" *)
 

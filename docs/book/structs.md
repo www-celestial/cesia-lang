@@ -91,11 +91,12 @@ r -->
 ### Methods as values
 
 A static method is a function like any other, so it can be passed
-along. An instance method is called on a value; to pass one to [Map], write the call with `it`:
+along. An instance method is called on a value; to pass one to [list.Map], write the call with `it`:
 
 ```cesia
-Map(Rect.Square, [1, 2]) -->
-Map(it.Area(), [Rect(1, 2), Rect(3, 4)]) -->
+use std/list
+list.Map(Rect.Square, [1, 2]) -->
+list.Map(it.Area(), [Rect(1, 2), Rect(3, 4)]) -->
 ```
 
 A method whose name starts with a small letter is private to its package, as any name.
@@ -127,10 +128,11 @@ User.From({Age: 3}) -->
 
 ### Back to a dictionary
 
-[Fields] goes the other way, from a struct to a dictionary:
+[dict.Fields] goes the other way, from a struct to a dictionary:
 
 ```cesia
-Fields(User("Ana", 31)) -->
+use std/dict
+dict.Fields(User("Ana", 31)) -->
 ```
 
 The chapter [Errors](errors.md) shows how to use the `Ok` and the `Err` that `From` gives.
@@ -140,7 +142,7 @@ The chapter [Errors](errors.md) shows how to use the `Ok` and the `Err` that `Fr
 | | Struct | Dictionary |
 |---|---|---|
 | Keys | declared once | any, at any time |
-| A wrong name | an error at once | an error; [Get] gives `missing` |
+| A wrong name | an error at once | an error; [dict.Get] gives `missing` |
 | Methods | yes | no |
 | For | data you design | data that comes from outside |
 

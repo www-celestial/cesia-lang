@@ -8,7 +8,7 @@ Every command of `cesia`, and every option. `cesia` alone prints the short form 
 cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] file.ce [args...]
 ```
 
-Runs a program. The words after the file are its arguments, in [Args].
+Runs a program. The words after the file are its arguments, in [sys.Args].
 
 | Option | What it does |
 |---|---|

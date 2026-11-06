@@ -24,7 +24,8 @@ deep in your code. The examples read three files: `order.json`, `user.json` and 
 ```cesia allow=read
 use std/sys
 use std/json
-order = Unwrap(sys.Read("order.json")) then json.Parse() then Unwrap()
+use std/result
+order = result.Unwrap(sys.Read("order.json")) then json.Parse() then result.Unwrap()
 order.customer -->
 order.items[2].product -->
 order.note -->
@@ -34,7 +35,8 @@ json.Parse("{\"id\": ") -->
 From there, the data is plain values, and every chapter before this one applies:
 
 ```cesia allow=read
-Sum([i.units * i.price for i in order.items]) -->
+use std/list
+list.Sum([i.units * i.price for i in order.items]) -->
 [i.product for i in order.items if i.units > 1] -->
 ```
 
@@ -44,8 +46,9 @@ Sum([i.units * i.price for i in order.items]) -->
 as they are, `missing` becomes `null`, and a struct writes its public fields:
 
 ```cesia
-Print(json.Text({Name: "Ana", Tags: ["admin"], Phone: missing}))
-Print(json.Pretty({Name: "Ana", Tags: ["admin", "ops"]}))
+use std/io
+io.Print(json.Text({Name: "Ana", Tags: ["admin"], Phone: missing}))
+io.Print(json.Pretty({Name: "Ana", Tags: ["admin", "ops"]}))
 ```
 
 ### Private fields stay out
@@ -54,13 +57,13 @@ A small field of a struct is private, and never written. A password hash kept in
 
 ```cesia
 struct Account { Name, hash }
-Print(json.Text(Account("ana", "8f2c...")))
+io.Print(json.Text(Account("ana", "8f2c...")))
 ```
 
 ## Checking what comes in
 
 Data from outside can hold anything: a missing field, a number written as a text, a key with a typo. `From`, which every
-struct has, turns a dictionary into a struct, and checks it against the fields and their types. With [AndThen], reading and
+struct has, turns a dictionary into a struct, and checks it against the fields and their types. With [result.AndThen], reading and
 checking are one chain. `user.json` holds one line:
 
 ```text
@@ -73,11 +76,11 @@ struct User
   Age Int
   Admin Bool = false
 end
-Unwrap(sys.Read("user.json")) then json.Parse() then AndThen(User.From) -->
-json.Parse("{\"Name\": \"Bo\", \"Age\": \"twenty\"}") then AndThen(User.From) -->
-json.Parse("{\"name\": \"Bo\", \"age\": 20}") then AndThen(User.From) -->
-json.Parse("{\"Name\": \"Bo\", \"name\": \"Ana\", \"Age\": 20}") then AndThen(User.From) -->
-json.Parse("{\"Name\": \"Bo\", \"Agee\": 20}") then AndThen(User.From) -->
+result.Unwrap(sys.Read("user.json")) then json.Parse() then result.AndThen(User.From) -->
+json.Parse("{\"Name\": \"Bo\", \"Age\": \"twenty\"}") then result.AndThen(User.From) -->
+json.Parse("{\"name\": \"Bo\", \"age\": 20}") then result.AndThen(User.From) -->
+json.Parse("{\"Name\": \"Bo\", \"name\": \"Ana\", \"Age\": 20}") then result.AndThen(User.From) -->
+json.Parse("{\"Name\": \"Bo\", \"Agee\": 20}") then result.AndThen(User.From) -->
 ```
 
 ### Keys as JSON writes them
@@ -100,19 +103,20 @@ Cyril,,45
 
 ```cesia allow=read
 use std/csv
-text = Unwrap(sys.Read("people.csv"))
-csv.Parse(text) -->
-people = csv.Records(text)
+source = result.Unwrap(sys.Read("people.csv"))
+csv.Parse(source) -->
+people = csv.Records(source)
 people[1].city -->
 ```
 
 ### Every field is a text
 
-Every field of a CSV is a text, since the format says nothing more. [Number] turns one into a number, and an empty field is
+Every field of a CSV is a text, since the format says nothing more. [text.Number] turns one into a number, and an empty field is
 the empty text:
 
 ```cesia allow=read
-[Number(p.age) for p in people] -->
+use std/text
+[text.Number(p.age) for p in people] -->
 [p.name for p in people if p.city == ""] -->
 ```
 
@@ -124,7 +128,7 @@ For a table to compute on, [frame.FromCsv] of the chapter [Data](data.md) reads 
 [csv.Write] writes rows of values, and puts quotes where they are needed:
 
 ```cesia
-Print(csv.Write([["name", "note"], ["Ana", "says \"hi\""], ["Bo", "a,b"]]))
+io.Print(csv.Write([["name", "note"], ["Ana", "says \"hi\""], ["Bo", "a,b"]]))
 ```
 
 ## A small converter
@@ -133,6 +137,7 @@ The pieces fit in a few lines. This reads the CSV of people, checks each row, an
 program:
 
 ```cesia allow=read,write
+use std/value
 struct Person
   Name Text
   City Text?
@@ -140,20 +145,20 @@ struct Person
 end
 
 defn person(row)
-  age = Number(row.age)
-  if not IsInt(age)
-    return Err("$(row.name): the age must be a whole number")
+  age = text.Number(row.age)
+  if not value.IsInt(age)
+    return result.Err("$(row.name): the age must be a whole number")
   end
   city = if row.city == "" missing else row.city end
   Person.From({Name: row.name, City: city, Age: age})
 end
 
-checked = Collect(Map(person, people))
+checked = result.Collect(list.Map(person, people))
 match checked
-  Ok(list) -> sys.Write("people.json", json.Text(list))
-  Err(e) -> Print("refused:", e)
+  result.Ok(all) -> sys.Write("people.json", json.Text(all))
+  result.Err(e) -> io.Print("refused:", e)
 end
-Print(Unwrap(sys.Read("people.json")))
+io.Print(result.Unwrap(sys.Read("people.json")))
 ```
 
 ## Next

@@ -92,8 +92,9 @@ Person("Bo", "Bobby").Nickname -->
 A function that can end without a value gives `missing` there, so its result type needs the `?`:
 
 ```cesia
+use std/value
 defn position(x, xs Array) Int?
-  for k in 1..Len(xs)
+  for k in 1..value.Len(xs)
     if xs[k] == x
       return k
     end

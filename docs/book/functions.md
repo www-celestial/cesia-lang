@@ -1,7 +1,7 @@
 # Functions
 
 In this chapter you write your own functions, short and long, and give them defaults and named arguments. Then you pass
-functions to other functions, [higher-order functions](glossary.md#higher-order-function), which is how Cesia works on lists: [Map], [Filter] and [Reduce].
+functions to other functions, [higher-order functions](glossary.md#higher-order-function), which is how Cesia works on lists: [list.Map], [list.Filter] and [list.Reduce].
 
 ## The short form
 
@@ -23,8 +23,9 @@ is private to its file's package; a capital makes it public, as for any name.
 same thing on one line: `double(x) = x * 2` is `defn double(x) x * 2 end`.
 
 ```cesia
+use std/math
 defn describe(n)
-  kind = if Mod(n, 2) == 0 "even" else "odd" end
+  kind = if math.Mod(n, 2) == 0 "even" else "odd" end
   "$n is $kind"
 end
 describe(7) -->
@@ -35,9 +36,10 @@ describe(7) -->
 [return] gives a value at once, and leaves the function. It suits a search that can stop early:
 
 ```cesia
+use std/value
 defn firstLong(words)
   for w in words
-    if Len(w) > 4
+    if value.Len(w) > 4
       return w
     end
   end
@@ -122,34 +124,35 @@ adder(100)(1) -->
 
 ## Map, Filter and Reduce
 
-These three take a function first, and the list last. [Map] applies the function to each element, [Filter] keeps the elements
-for which it gives true, and [Reduce] folds the list into one value, from a start:
+These three take a function first, and the list last. [list.Map] applies the function to each element, [list.Filter] keeps the elements
+for which it gives true, and [list.Reduce] folds the list into one value, from a start:
 
 ```cesia
+use std/list
 numbers = [1, 2, 3, 4, 5]
-Map(double, numbers) -->
-Filter(x -> x > 2, numbers) -->
-Reduce((total, x) -> total + x, 0, numbers) -->
+list.Map(double, numbers) -->
+list.Filter(x -> x > 2, numbers) -->
+list.Reduce((total, x) -> total + x, 0, numbers) -->
 ```
 
 ### More of them
 
-Many more work the same way: [SortBy], [Count], [FindFirst], [Group], [Every]. Each has its page in the reference.
+Many more work the same way: [list.SortBy], [list.Count], [list.FindFirst], [list.Group], [list.Every]. Each has its page in the reference.
 
 ```cesia
-Count(x -> x > 2, numbers) -->
-FindFirst(x -> x > 2, numbers) -->
+list.Count(x -> x > 2, numbers) -->
+list.FindFirst(x -> x > 2, numbers) -->
 ```
 
 ## it
 
 For a short function of one parameter, [it] saves writing it: an argument that holds `it` is a function of `it`.
-`Map(it * 2, numbers)` is short for `Map(x -> x * 2, numbers)`:
+`list.Map(it * 2, numbers)` is short for `list.Map(x -> x * 2, numbers)`:
 
 ```cesia
-Map(it * 2, numbers) -->
-Map(it * 2, numbers) --> Map(x -> x * 2, numbers)
-Filter(it > 3, numbers) --> Filter(x -> x > 3, numbers)
+list.Map(it * 2, numbers) -->
+list.Map(it * 2, numbers) --> list.Map(x -> x * 2, numbers)
+list.Filter(it > 3, numbers) --> list.Filter(x -> x > 3, numbers)
 ```
 
 ## then
@@ -159,15 +162,15 @@ when there is none, it becomes the last argument. As the list comes last in thes
 so `it` alone is needed only where the value doesn't go last:
 
 ```cesia
-numbers then Filter(IsOdd) then Map(it * 10) then Sum() -->
-100 then Div(it, 7) --> Div(100, 7)
+numbers then list.Filter(math.IsOdd) then list.Map(it * 10) then list.Sum() -->
+100 then math.Div(it, 7) --> math.Div(100, 7)
 ```
 
 A chain of steps reads from left to right, in the order they happen. It is short for calls inside calls, which read from
 the inside out:
 
 ```cesia
-numbers then Filter(IsOdd) then Map(it * 10) then Sum() --> Sum(Map(x -> x * 10, Filter(IsOdd, numbers)))
+numbers then list.Filter(math.IsOdd) then list.Map(it * 10) then list.Sum() --> list.Sum(list.Map(x -> x * 10, list.Filter(math.IsOdd, numbers)))
 ```
 
 ## A small program
@@ -175,15 +178,17 @@ numbers then Filter(IsOdd) then Map(it * 10) then Sum() --> Sum(Map(x -> x * 10,
 Functions make a program out of small parts. Here, a few lines of scores become a ranking:
 
 ```cesia
+use std/io
+use std/text
 raw = "ana 12\nbo 7\ncyril 15\ndee 9"
 defn parse(line)
-  parts = Split(" ", line)
-  {Name: parts[1], Score: Number(parts[2])}
+  parts = text.Split(" ", line)
+  {Name: parts[1], Score: text.Number(parts[2])}
 end
-players = Map(parse, Lines(raw))
-best = SortBy(p -> -p.Score, players)
-for p in Take(3, best)
-  Print(PadRight(6, " ", p.Name), p.Score)
+players = list.Map(parse, text.Lines(raw))
+best = list.SortBy(p -> -p.Score, players)
+for p in list.Take(3, best)
+  io.Print(text.PadRight(6, " ", p.Name), p.Score)
 end
 ```
 

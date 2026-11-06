@@ -9,7 +9,8 @@ Cesia is a small language for solving real problems directly. Use it for:
 It starts at once and is safe by default, and when something goes wrong it says what to write.
 
 ```cesia
-Print("Hello from Cesia")
+use std/io
+io.Print("Hello from Cesia")
 ```
 
 This book teaches Cesia from the start. Every example on these pages ran when the site was built, and the text under it is what
@@ -20,7 +21,7 @@ language.
 
 - Read the chapters in order the first time: each one uses what the ones before it showed.
 - Type the examples yourself, in a file or in your editor. Change them and run them again: that is the fastest way to learn.
-- A name in the text leads to its page in the reference: [Print], for instance, or the keyword [match].
+- A name in the text leads to its page in the reference: [io.Print], for instance, or the keyword [match].
 - Press `/` to search, `n` and `p` to turn the pages, and `?` to see every key.
 
 ## Contents
