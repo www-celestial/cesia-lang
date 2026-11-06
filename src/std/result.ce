@@ -57,7 +57,7 @@ end
       Unwrap(Err("no")) --> error *)
 Unwrap(r) = match r
   Ok(v) -> v
-  Err(e) -> bug.Panic("unwrap on an error: $(errorText(e))")
+  Err(e) -> bug.Panic("result.Unwrap needs an Ok, not an Err: $(errorText(e))")
 end
 
 (** Is this result an Ok?

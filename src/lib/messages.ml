@@ -1,6 +1,8 @@
 type t = { text : string; hint : string option }
 
 let plain text = { text; hint = None }
+
+let at ~file ~line ~col text = Printf.sprintf "%s:%d:%d: %s" file line col text
 let hinted text hint = { text; hint = Some hint }
 
 let fits = "Integers have 63 bits. To go further, use a float: 1.0 * x."
@@ -27,6 +29,8 @@ let private_member name =
   hinted (Printf.sprintf "The field or method \"%s\" is private to the package that declares it." name)
     "A field or a method is public when its first letter is a capital."
 let undefined name = plain (Printf.sprintf "Name \"%s\" doesn't exist." name)
+let package_unused name =
+  hinted (Printf.sprintf "Name \"%s\" doesn't exist." name) (Printf.sprintf "%s is a package of std/: write use std/%s first." name name)
 let moved name p = plain (Printf.sprintf "%s is in std/%s: write use std/%s and %s.%s." name p p p name)
 let hides_package name = plain (Printf.sprintf "%s is a package this file uses: choose another name here." name)
 let pattern_struct name =

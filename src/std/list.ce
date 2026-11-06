@@ -52,7 +52,7 @@ defn Range(a, b, step = 1)
         Range(1, 10, step = 3) --> [1, 4, 7, 10]
         Range(0, 1, step = 0.25) --> [0.0, 0.25, 0.5, 0.75, 1.0] *)
   if step == 0
-    bug.Panic("range: step can't be 0.")
+    bug.Panic("list.Range needs a step that isn't 0.")
   end
   if math.Floor(a) == a and math.Floor(b) == b and math.Floor(step) == step
     n = math.Div(b - a, step) + 1

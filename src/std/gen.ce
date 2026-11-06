@@ -143,7 +143,7 @@ defn typed(name, ty)
     "Text" -> Text()
     "Bool" -> Bool()
     t if value.IsFunction(t) -> Of(t)
-    else -> bug.Panic("gen.Of: the field $name has no type that says what to make: give its generator in with.")
+    else -> bug.Panic("gen.Of needs a type for the field $name, or its generator in with.")
   end
 end
 

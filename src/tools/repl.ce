@@ -23,7 +23,7 @@ defn Main()
         if not value.IsMissing(v)
           io.Print(v)
         end
-      result.Err(e) -> io.Print("error: $e")
+      result.Err(e) -> io.Print(e)
     end
   end
 end

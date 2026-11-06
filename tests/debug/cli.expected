@@ -2,7 +2,9 @@ stopped at cli.ce:6 (start)
 breakpoint cli.ce:4
 stopped at cli.ce:4 (break)
 x = 2
-nope: Name "nope" doesn't exist.
+<prompt>:1:1: Name "nope" doesn't exist.
+  1 | nope
+    | ^
 > f (cli.ce:4)
   <file> (cli.ce:6)
 5

@@ -22,10 +22,10 @@ defn Rest(line, word)
 end
 
 defn Show(frame, code)
-  (** Prints the value of an expression in a frame, or the error it gives. *)
+  (** Prints the value of an expression in a frame, or the error it gives, which shows the code. *)
   match debug.Eval(code, frame)
     result.Ok(v) -> io.Print("$code = $v")
-    result.Err(e) -> io.Print("$code: $e")
+    result.Err(e) -> io.Print(e)
   end
 end
 

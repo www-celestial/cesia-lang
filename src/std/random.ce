@@ -11,7 +11,7 @@ defn Pick(xs)
         Pick(["a", "b"]) in ["a", "b"] --> true *)
   n = value.Len(xs)
   if n == 0
-    bug.Panic("random.Pick: the list is empty.")
+    bug.Panic("random.Pick needs a list that isn't empty.")
   end
   xs[Int(1, n)]
 end

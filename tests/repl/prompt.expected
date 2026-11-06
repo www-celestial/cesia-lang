@@ -4,10 +4,20 @@ start 6
 40
 10
 big
-error: Name "list" doesn't exist.
+<prompt>:1:1: Name "list" doesn't exist.
+  1 | list.Sum(nums)
+    | ^
+  list is a package of std/: write use std/list first.
 6
-error: Name "nope" doesn't exist.
-error: Name "result" doesn't exist.
-error: unwrap on an error: bad
+<prompt>:1:1: Name "nope" doesn't exist.
+  1 | nope + 1
+    | ^
+<prompt>:1:1: Name "result" doesn't exist.
+  1 | result.Unwrap(result.Err("bad"))
+    | ^
+  result is a package of std/: write use std/result first.
+<prompt>:1:7: result.Unwrap needs an Ok, not an Err: bad
+  1 | result.Unwrap(result.Err("bad"))
+    |       ^
 printed
 exit 0

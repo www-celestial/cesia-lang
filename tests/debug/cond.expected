@@ -32,7 +32,9 @@ cleared cond.ce:9
 5.0
 stopped at cond.ce:13 (error)
   Index 3 is outside this array of 2 elements.
-i + 1: Name "i" doesn't exist.
+<prompt>:1:1: Name "i" doesn't exist.
+  1 | i + 1
+    | ^
 xs = [1, 2]
 xs[1] + 1 = 2
 > <file> (cond.ce:13)

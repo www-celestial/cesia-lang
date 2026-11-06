@@ -38,7 +38,7 @@ let caret_prefix line col =
 let format_error ~source ~path ~pos ~text ~hint ~trace =
   let b = Buffer.create 256 in
   let line = Pos.line pos and col = Pos.col pos in
-  Buffer.add_string b (Printf.sprintf "%s:%d:%d: %s\n" path line col text);
+  Buffer.add_string b (Messages.at ~file:path ~line ~col text ^ "\n");
   (match source with
    | Some src when String.is_valid_utf_8 src ->
      (match line_text src line with
@@ -214,9 +214,11 @@ let defines path src name =
   | fn -> List.exists (fun (text, _, _, _) -> String.equal text name) (Resolve.definitions fn)
   | exception Pos.Load_error _ -> false
 
-(* The package of std/ of a name that no file defines: Print is io.Print. *)
+(* The package of std/ of a name that no file defines: Print is io.Print. A package of std/ written without its use, as
+   list in list.Sum, is its own home. *)
 let home w name =
-  if not (Lexer.is_public name) then None
+  if not (Lexer.is_public name) then
+    if List.mem_assoc name w.native_modules || own_library name <> None then Some name else None
   else
     List.find_opt
       (fun p ->

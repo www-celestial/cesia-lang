@@ -1,4 +1,4 @@
-library-caller.ce:5:9: unwrap on an error: no
+library-caller.ce:5:9: result.Unwrap needs an Ok, not an Err: no
   5 |   result.Unwrap(r)
     |         ^
   in Unwrap (std/result.ce:60)

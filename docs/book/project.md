@@ -203,10 +203,11 @@ cesia test
 `src/main.ce` opens the database in `data/`, and serves the routes behind [web.Logger]:
 
 ```text
+use std/result
 use std/web
 use src/notes
 
-db = Unwrap(notes.Open("sqlite:data/notes.db"))
+db = result.Unwrap(notes.Open("sqlite:data/notes.db"))
 web.Serve(web.Wrap(web.Logger, notes.App(db)), port = 8080)
 ```
 

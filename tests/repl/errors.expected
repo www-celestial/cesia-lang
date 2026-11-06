@@ -4,13 +4,22 @@ errors.ce:3:5: Index 5 is outside this array of 2 elements.
     |     ^
   in Bad (errors.ce:3)
 1
-error: errors.ce:3:5: Index 9 is outside this array of 2 elements.
+errors.ce:3:5: Index 9 is outside this array of 2 elements.
   3 |   xs[n]
     |     ^
   in Bad (errors.ce:3)
-error: Name "result" doesn't exist.
-error: unwrap on an error: bad
-error: line 2: Index 3 is outside this array of 1 elements.
-error: Name "nope" doesn't exist.
+<prompt>:1:1: Name "result" doesn't exist.
+  1 | result.Unwrap(result.Err("bad"))
+    | ^
+  result is a package of std/: write use std/result first.
+<prompt>:1:7: result.Unwrap needs an Ok, not an Err: bad
+  1 | result.Unwrap(result.Err("bad"))
+    |       ^
+<prompt>:2:6: Index 3 is outside this array of 1 elements.
+  2 |   [1][3]
+    |      ^
+<prompt>:1:1: Name "nope" doesn't exist.
+  1 | nope
+    | ^
 4
 exit 1

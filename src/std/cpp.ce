@@ -87,7 +87,7 @@ defn guard(f, n, t)
     3 -> (a, b, d) -> after(f(a, b, d), t)
     4 -> (a, b, d, e) -> after(f(a, b, d, e), t)
     5 -> (a, b, d, e, g) -> after(f(a, b, d, e, g), t)
-    else -> bug.Panic("cpp: a function takes at most 5 arguments.")
+    else -> bug.Panic("A function of cpp.Wrap takes at most 5 arguments.")
   end
 end
 

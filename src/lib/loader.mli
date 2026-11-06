@@ -61,6 +61,11 @@ val source_of : world -> string -> string option
 (** The files to watch for this program. *)
 val watched : world -> string list
 
+(** An error in the one form that Cesia shows: [Messages.at] its place and its text, then the line of [source] with a ^
+    under the column, the hint, and the lines of [trace]. Ends with a line end. *)
+val format_error :
+  source:string option -> path:string -> pos:Pos.t -> text:string -> hint:string option -> trace:string list -> string
+
 (** A Cesia error as the program shows it: its place, its line of code, its hint and the calls that led there, from the
     frames of [ctx] as they were when it was raised, down to the frame of base [above]; [None] for another exception. *)
 val error_report : ?above:int -> ctx -> exn -> string option

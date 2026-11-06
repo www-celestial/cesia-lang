@@ -50,19 +50,27 @@ A definition of a function of the program replaces it in the running program, wh
 40
 ```
 
-An error doesn't close the prompt. A bug in what you type shows its message, and its line when you typed several; a bug in a
-function of the program shows where, as the program would, and the prompt waits for the next line. A bug in the main file
-itself shows too, and the prompt opens on what ran before it, with the exit code 1 at the end:
+An error doesn't close the prompt, and it shows as any error of Cesia: its place, its message, and the line with a `^`
+under the spot. In what you type, the place is `<prompt>`, with the line and the column in what you typed; in a function
+of the program, it is the place in the file, as the program would show it, with the calls that led there. Then the prompt
+waits for the next line:
 
 ```text
-> Bad(9)
-error: shop.ce:3:5: Index 9 is outside this array of 2 elements.
-  3 |   xs[n]
+> stok + 1
+<prompt>:1:1: Name "stok" doesn't exist.
+  1 | stok + 1
+    | ^
+> Price("two")
+shop.ce:4:5: Can't multiply the text "two" by the number 2.
+  4 |   n * 2
     |     ^
-  in Bad (shop.ce:3)
+  To put a value in a text, write "...$x" or value.Text(x).
+  in Price (shop.ce:4)
 > 2 + 2
 4
 ```
+
+A bug in the main file itself shows too, and the prompt opens on what ran before it, with the exit code 1 at the end.
 
 A block reads lines until its `end`, and a list or an expression cut in the middle reads the next line too: the prompt
 shows `.` while it waits for the rest. A `use` at the prompt works for the lines after it.

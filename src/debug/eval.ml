@@ -36,31 +36,42 @@ let source ~uses code =
   let extra = List.fold_left (fun acc (a, p) -> if List.mem_assoc a acc then acc else acc @ [ a, p ]) [] extra in
   String.concat "" (List.map use_line extra) ^ code, List.length extra
 
-(* An error of the code, as text: in the code typed, its text, with its line when the code has several; elsewhere, in a
-   function of the program, as the program shows it, with its line of code and the calls that led there. Made before the
-   frames are left. *)
+(* An error of the code, as text, in the one form of every error of Cesia: its place, then its message. In the code
+   typed, the place is <prompt> with the line and the column in that code, and the line of code with a ^ follows; elsewhere,
+   in a function of the program, it is as the program shows it, with its line of code and the calls that led there. Made
+   before the frames are left. *)
 exception Failed of string
+
+(* The code typed, in the source that runs it: the lines of uses before it, and on its first line the columns of what
+   wraps it. *)
+type typed = { code : string; shift : int; indent : int }
 
 let contains s part =
   let n = String.length part and m = String.length s in
   let rec at i = i + n <= m && (String.sub s i n = part || at (i + 1)) in
   at 0
 
-let error_text ?above ctx ~shift ~lines e =
+let error_text ?above ctx ~(typed : typed Lazy.t) e =
   let w = ctx.w in
-  let typed at = String.equal (fst (Dynarray.get w.files (Dynarray.get w.sites at).sfile)) prompt_path in
-  let line =
+  let in_typed at = String.equal (fst (Dynarray.get w.files (Dynarray.get w.sites at).sfile)) prompt_path in
+  let place =
     match e with
-    | Pos.Load_error { file; pos; _ } when String.equal file prompt_path -> Some (Pos.line pos)
-    | Value.Kerr { at; _ } when at >= 0 && at < Dynarray.length w.sites && typed (Runtime.user_site ctx at) ->
-      Some (Pos.line (Dynarray.get w.sites (Runtime.user_site ctx at)).spos)
+    | Pos.Load_error { file; pos; hint; _ } when String.equal file prompt_path -> Some (pos, hint)
+    | Value.Kerr { at; hint; _ } when at >= 0 && at < Dynarray.length w.sites && in_typed (Runtime.user_site ctx at) ->
+      Some ((Dynarray.get w.sites (Runtime.user_site ctx at)).spos, hint)
     | _ -> None
   in
-  match e, line with
+  match e, place with
   | Failed text, _ -> text
-  | _, Some n ->
+  | _, Some (pos, hint) ->
     let text = Option.value (Loader.message_of_error e) ~default:"" in
-    if lines > 1 && n > shift then Printf.sprintf "line %d: %s" (n - shift) text else text
+    let t = Lazy.force typed in
+    let line = Pos.line pos - t.shift in
+    if line < 1 then text
+    else
+      let col = if line = 1 then Int.max 1 (Pos.col pos - t.indent) else Pos.col pos in
+      String.trim
+        (Loader.format_error ~source:(Some t.code) ~path:prompt_path ~pos:(Pos.make line col) ~text ~hint ~trace:[])
   | _, None -> (
     (* The call from the code typed is no line of the program. *)
     let ours l = contains l ("(" ^ prompt_path ^ ":") in
@@ -70,7 +81,7 @@ let error_text ?above ctx ~shift ~lines e =
 
 (* Runs f, which makes a frame at base [above], the frame base and the site given back after it, and an error made into its
    text first, with the frames above that one as they were when it was raised. *)
-let framed ctx ~above ~shift ~lines f =
+let framed ctx ~above ~typed f =
   let b = ctx.b and s = ctx.site in
   match f () with
   | v ->
@@ -78,7 +89,7 @@ let framed ctx ~above ~shift ~lines f =
     ctx.site <- s;
     v
   | exception e ->
-    let text = error_text ~above ctx ~shift ~lines e in
+    let text = error_text ~above ctx ~typed e in
     ctx.b <- b;
     ctx.site <- s;
     raise (Failed text)
@@ -88,10 +99,10 @@ let call_base ctx = match (Dynarray.get ctx.w.sites ctx.site).sver with Some v -
 
 (* Runs a module made of the code above the frame of the native that runs it, as a call would: errors and traces see
    a frame there, and the caller's stays as it was. Gives the value of the last statement. *)
-let run_above ctx ~shift ~lines (file, m, fn, _) =
+let run_above ctx ~typed (file, m, fn, _) =
   let b = ctx.b and s = ctx.site in
   let nb = b + Int.max (call_base ctx) 2 in
-  framed ctx ~above:nb ~shift ~lines (fun () ->
+  framed ctx ~above:nb ~typed (fun () ->
       if nb + 2 > ctx.cap then Runtime.grow ctx (nb + 2);
       ctx.i.(nb) <- b;
       ctx.i.(nb + 1) <- s;
@@ -126,8 +137,6 @@ let replace_functions w ~target ~file (layout : Ast.layout) =
     Compile.retire_all w
   end
 
-let lines_of code = List.length (String.split_on_char '\n' (String.trim code))
-
 (* At the prompt: the code sees the main file's package, its uses and what was run at the prompt before. *)
 let at_prompt ctx code =
   let w = ctx.w in
@@ -139,14 +148,14 @@ let at_prompt ctx code =
     | Some b -> Some b
     | None -> if target >= 0 then (match Loader.in_package w target name with Some b -> Some b | None -> Loader.lookup w name) else Loader.lookup w name
   in
-  let lines = lines_of code in
+  let typed = Lazy.from_val { code; shift; indent = 0 } in
   match Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup with
-  | exception e -> Value.err w (Text (error_text ctx ~shift ~lines e))
+  | exception e -> Value.err w (Text (error_text ctx ~typed e))
   | (file, m, _, layout) as prepared ->
     d.scope <- m :: d.scope;
     List.iter (fun (a, p) -> if not (List.mem_assoc a d.typed_uses) then d.typed_uses <- d.typed_uses @ [ a, p ]) (uses_in prompt_path code);
     if target >= 0 then replace_functions w ~target ~file layout;
-    match run_above ctx ~shift ~lines prepared with
+    match run_above ctx ~typed prepared with
     | v -> Value.ok w v
     | exception Failed text -> Value.err w (Text text)
 
@@ -159,6 +168,12 @@ let frame_vars frame =
       (Array.to_list (Array.sub vars 0 (rows * cols)))
   | _ -> []
 
+(* The code as a function of the frame's variables, the source that makes it, and where the code typed is in that source. *)
+let wrapped w ~target ~names code =
+  let head = "(" ^ String.concat ", " names ^ ") -> (" and body = String.trim code in
+  let src, shift = source ~uses:(uses_of w target) (head ^ body ^ ")") in
+  src, { code = body; shift; indent = String.length head }
+
 (* The code as a function of the frame's variables, made once for a frame's names and kept, so that a condition tested at
    each pass costs a call. *)
 let as_function ctx ~path ~names code =
@@ -168,11 +183,9 @@ let as_function ctx ~path ~names code =
   match Hashtbl.find_opt w.debug.made key with
   | Some g -> g
   | None ->
-    let src, _ =
-      source ~uses:(uses_of w target) ("(" ^ String.concat ", " names ^ ") -> (" ^ String.trim code ^ ")")
-    in
+    let src, t = wrapped w ~target ~names code in
     let lookup name = if target >= 0 then match Loader.in_package w target name with Some b -> Some b | None -> Loader.lookup w name else Loader.lookup w name in
-    let g = run_above ctx ~shift:0 ~lines:1 (Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup) in
+    let g = run_above ctx ~typed:(Lazy.from_val t) (Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup) in
     Hashtbl.replace w.debug.made key g;
     g
 
@@ -182,7 +195,9 @@ let in_frame ctx code frame =
   let path = match get frame "File" with Text p -> p | v -> Runtime.fail ctx Type (Messages.need_frame (Value.describe v)) in
   let vars = frame_vars frame in
   match
-    framed ctx ~above:(ctx.b + call_base ctx) ~shift:0 ~lines:1 (fun () ->
+    framed ctx ~above:(ctx.b + call_base ctx)
+      ~typed:(lazy (snd (wrapped w ~target:(Loader.module_of w path) ~names:(List.map fst vars) code)))
+      (fun () ->
         let g = as_function ctx ~path ~names:(List.map fst vars) code in
         Compile.call_back ctx g (Array.of_list (List.map snd vars)))
   with

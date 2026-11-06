@@ -3,6 +3,11 @@
 type t = { text : string; hint : string option }
 
 val plain : string -> t
+
+(** The head of every error that Cesia shows, by cesia run, cesia check, the prompt and the debugger alike: its place,
+    then its text. [at ~file:"app.ce" ~line:3 ~col:5 "Name \"x\" doesn't exist."] gives
+    [app.ce:3:5: Name "x" doesn't exist.]. Code typed at a prompt has the file [<prompt>]. *)
+val at : file:string -> line:int -> col:int -> string -> string
 val invalid_utf8 : t
 val unexpected_char : char -> t
 val text_not_closed : t
@@ -21,6 +26,7 @@ val private_member : string -> t
 val undefined : string -> t
 
 (** [moved name p]: a name of std/p written without its package, as Print for io.Print. *)
+val package_unused : string -> t
 val moved : string -> string -> t
 
 (** [hides_package name]: a variable, a parameter, a function or a pattern of a file is named as a package it uses. *)

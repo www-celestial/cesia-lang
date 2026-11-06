@@ -171,7 +171,11 @@ let static env sc celled (base : expr) name =
   | _ -> None
 
 (* A name that no file defines: when a package of std/ has it, the message says which use to write. *)
-let undefined env name = match env.home name with Some p -> Messages.moved name p | None -> Messages.undefined name
+let undefined env name =
+  match env.home name with
+  | Some p when String.equal p name -> Messages.package_unused name
+  | Some p -> Messages.moved name p
+  | None -> Messages.undefined name
 
 (* The struct that a pattern names is one the file sees, as any name: Point of its package, geo.Point of a package it uses. *)
 let rec constructors env sc celled = function
