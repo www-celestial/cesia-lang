@@ -116,7 +116,7 @@ case "$system" in
     ;;
 esac
 cp "$root/LICENSE" "$lib/licenses/Cesia.txt"
-# MIR is built into the binary: its licence goes with it.
+# MIR is in the JIT's plugin, lib/cesia_jit.cmxs: its licence goes with it.
 cp "$root/src/sys/mir/LICENSE" "$lib/licenses/MIR.txt"
 cd "$root"
 rm -rf "$work"
