@@ -1,8 +1,8 @@
-window
+shop
   build  dune build --profile release
   test   tools/test.sh (needs build)
-  demo   cesia run --allow ffi=SDL3,ffi=SDL3_ttf --limit memory=512M examples/window.ce (needs build)
-  dev    cesia run --allow ffi=SDL3,ffi=SDL3_ttf --watch examples/window.ce
+  demo   cesia run --allow ffi=sodium --limit memory=512M src/shop.ce (needs build)
+  dev    cesia run --allow ffi=sodium --watch src/shop.ce
   mark   touch ran.txt
   all    (needs test, demo)
 cesia.toml

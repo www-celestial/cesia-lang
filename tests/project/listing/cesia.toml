@@ -1,6 +1,6 @@
 [project]
-name = "window"
-native = ["SDL3", "SDL3_ttf"]
+name = "shop"
+native = ["sodium"]
 
 [tasks.build]
 run = ["dune", "build", "--profile", "release"]
@@ -11,11 +11,11 @@ run = ["tools/test.sh"]
 
 [tasks.demo]
 needs = ["build"]
-file = "examples/window.ce"
+file = "src/shop.ce"
 limit = "memory=512M"
 
 [tasks.dev]
-file = "examples/window.ce"
+file = "src/shop.ce"
 watch = true
 
 [tasks.mark]

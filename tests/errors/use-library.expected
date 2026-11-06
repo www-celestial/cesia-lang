@@ -1,4 +1,4 @@
-use-library.ce:2:5: What comes with Cesia is used through std/: write use std/rope.
-  2 | use pkg/rope
+use-library.ce:2:5: What comes with Cesia is used through std/: write use std/csv.
+  2 | use pkg/csv
     |     ^
 exit 1

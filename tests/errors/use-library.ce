@@ -1,2 +1,2 @@
 (* A library is used by its name, as a module of the binary is. *)
-use pkg/rope
+use pkg/csv

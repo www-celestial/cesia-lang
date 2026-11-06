@@ -49,6 +49,6 @@ val lock_file : string
     Read once per root. *)
 val lock : string -> (string, string) Hashtbl.t
 
-(** [installed root path]: the folder of std/ or deps/ that holds a file, from the root ([std/rope],
+(** [installed root path]: the folder of std/ or deps/ that holds a file, from the root ([std/csv],
     [deps/www-celestial/cemacs], [deps/gitlab.com/x/y]), or [None] for a file of the project itself. *)
 val installed : string -> string -> string option

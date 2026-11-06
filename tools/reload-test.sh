@@ -238,107 +238,80 @@ sleep 0.2
 wait "$load" || fail "server: a request failed during the reload: $(cat "$dir/load")"
 stop
 
-# 8. A window keeps its state through a reload, under SDL's dummy driver.
-if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
-  cp examples/fonts/JetBrainsMono-Regular.ttf "$dir/font.ttf"
-  (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$cesia" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf window.ce) \
-    > "$dir/out" 2> "$dir/err" &
+# 8. A stop signal ends the whole of --watch, once the program that took it has ended by itself.
+# Job control leaves INT as it is: a background job of a script ignores it otherwise.
+open_quit() {
+  set -m
+  # shellcheck disable=SC2086
+  (cd "$dir" && exec "$cesia" run --watch $flags quit.ce) > "$dir/out" 2> "$dir/err" &
   pid=$!
-  # Waits for a line that starts with this text, and prints the last one.
-  latest() {
-    local limit=$(($(date +%s%N) + $2 * 1000000))
-    until grep -q "^$1" "$dir/out" 2>/dev/null; do
-      [ "$(date +%s%N)" -gt "$limit" ] && return 1
-      sleep 0.002
-    done
-    grep "^$1" "$dir/out" | tail -1
-  }
-  latest "version 1 [1-9]" 2000 > /dev/null || fail "window: no frame after an event"
-  seen=$(grep '^version 1 ' "$dir/out" | tail -1 | cut -d' ' -f3)
-  sed -i 's/^version() = 1$/version() = 2/' "$dir/window.ce"
-  latest "version 2 " 200 > /dev/null || fail "window: a changed view never ran"
-  first=$(grep -m1 '^version 2 ' "$dir/out" | cut -d' ' -f3)
-  [ "${first:-0}" -ge "$seen" ] || fail "window: the state restarted, from $seen to $first"
-  sed -i 's/^finished() = false$/finished() = true/' "$dir/window.ce"
-  latest "ended " 500 > /dev/null || fail "window: a changed update never ran"
-  stop
-
-  # 9. A stop signal ends the whole of --watch, once the program has heard of it as a quit event.
-  # Job control leaves INT as it is: a background job of a script ignores it otherwise.
-  open_window() {
-    set -m
-    # shellcheck disable=SC2086
-    (cd "$dir" && SDL_VIDEODRIVER=dummy exec "$cesia" run --watch $flags --allow ffi=SDL3,ffi=SDL3_ttf quit.ce) \
-      > "$dir/out" 2> "$dir/err" &
-    pid=$!
-    set +m
-    wait_for out "open $1" 2000 || fail "$2: the window never opened"
-  }
-  # Waits for the process to end by itself. One that doesn't is killed: a test must not hang.
-  ends() {
-    local limit=$(($(date +%s%N) + 3000 * 1000000))
-    while kill -0 "$pid" 2> /dev/null; do
-      if [ "$(date +%s%N)" -gt "$limit" ]; then
-        fail "$1: still running"
-        kill -KILL "$pid"
-        break
-      fi
-      sleep 0.01
-    done
-    wait "$pid" 2> /dev/null
-    code=$?
-    pid=""
-  }
-  heard() {
-    grep -qxF "quit $2" "$dir/out" || fail "$1: no quit event"
-    grep -qxF "ended 1" "$dir/out" || fail "$1: the program didn't end by itself"
-    [ "$code" -eq 0 ] || fail "$1: exit $code"
-    [ "$(grep -c '^open ' "$dir/out")" -eq 1 ] || fail "$1: the program ran again"
-  }
-  for signal in TERM INT; do
-    open_window 1 "$signal"
-    kill -"$signal" "$pid"
-    ends "$signal"
-    heard "$signal" 1
+  set +m
+  wait_for out "open $1" 2000 || fail "$2: the program never started"
+}
+# Waits for the process to end by itself. One that doesn't is killed: a test must not hang.
+ends() {
+  local limit=$(($(date +%s%N) + 3000 * 1000000))
+  while kill -0 "$pid" 2> /dev/null; do
+    if [ "$(date +%s%N)" -gt "$limit" ]; then
+      fail "$1: still running"
+      kill -KILL "$pid"
+      break
+    fi
+    sleep 0.01
   done
+  wait "$pid" 2> /dev/null
+  code=$?
+  pid=""
+}
+heard() {
+  grep -qxF "quit $2" "$dir/out" || fail "$1: the signal wasn't heard"
+  grep -qxF "ended 1" "$dir/out" || fail "$1: the program didn't end by itself"
+  [ "$code" -eq 0 ] || fail "$1: exit $code"
+  [ "$(grep -c '^open ' "$dir/out")" -eq 1 ] || fail "$1: the program ran again"
+}
+for signal in TERM INT; do
+  open_quit 1 "$signal"
+  kill -"$signal" "$pid"
+  ends "$signal"
+  heard "$signal" 1
+done
 
-  # A program can answer with a question. Each signal is one quit event, and none ends it by force: two can also come in a
-  # row, from timeout and from cesia do, and the second one must not cut the program short.
-  sed -i 's/^needed() = 1$/needed() = 2/' "$dir/quit.ce"
-  open_window 1 "a question"
-  kill -TERM "$pid"
-  wait_for out "quit 1" 2000 || fail "a question: no quit event"
-  sleep 0.1
-  alive "a question"
-  if grep -qxF "quit 2" "$dir/out"; then fail "a question: one signal made two quit events"; fi
-  kill -TERM "$pid"
-  ends "a question"
-  heard "a question" 2
+# A program can answer with a question. Each signal is heard once, and none ends it by force: two can also come in a row,
+# from timeout and from cesia do, and the second one must not cut the program short.
+sed -i 's/^needed() = 1$/needed() = 2/' "$dir/quit.ce"
+open_quit 1 "a question"
+kill -TERM "$pid"
+wait_for out "quit 1" 2000 || fail "a question: the signal wasn't heard"
+sleep 0.1
+alive "a question"
+if grep -qxF "quit 2" "$dir/out"; then fail "a question: one signal was heard twice"; fi
+kill -TERM "$pid"
+ends "a question"
+heard "a question" 2
 
-  # A closed window is no stop signal: --watch waits, restarts the program, and a signal still stops that one.
-  sed -i 's/^needed() = 2$/needed() = 1/; s/^closing() = false$/closing() = true/' "$dir/quit.ce"
-  open_window 1 "closed window"
-  wait_for out "ended 1" 2000 || fail "closed window: the program didn't end"
-  sleep 0.1
-  alive "closed window"
-  sed -i 's/^closing() = true$/closing() = false/; s/^run() = 1$/run() = 2/' "$dir/quit.ce"
-  wait_for out "open 2" 2000 || fail "closed window: no restart"
-  kill -TERM "$pid"
-  ends "after a restart"
-  grep -qxF "ended 2" "$dir/out" || fail "after a restart: the program didn't end by itself"
-  [ "$code" -eq 0 ] || fail "after a restart: exit $code"
+# A program that ends by itself is no stop signal: --watch waits, restarts it, and a signal still stops that one.
+sed -i 's/^needed() = 2$/needed() = 1/; s/^closing() = false$/closing() = true/' "$dir/quit.ce"
+open_quit 1 "ended by itself"
+wait_for out "ended 1" 2000 || fail "ended by itself: the program didn't end"
+sleep 0.1
+alive "ended by itself"
+sed -i 's/^closing() = true$/closing() = false/; s/^run() = 1$/run() = 2/' "$dir/quit.ce"
+wait_for out "open 2" 2000 || fail "ended by itself: no restart"
+kill -TERM "$pid"
+ends "after a restart"
+grep -qxF "ended 2" "$dir/out" || fail "after a restart: the program didn't end by itself"
+[ "$code" -eq 0 ] || fail "after a restart: exit $code"
 
-  # While it waits for a change, a signal ends it at once, even if the program left its window open.
-  sed -i 's/^closing() = false$/closing() = true/; /^  sdl.Close(window)$/d' "$dir/quit.ce"
-  open_window 2 "waiting"
-  wait_for out "ended 2" 2000 || fail "waiting: the program didn't end"
-  sleep 0.1
-  alive "waiting"
-  kill -TERM "$pid"
-  ends "waiting"
-fi
+# While it waits for a change, a signal ends it at once, even if the program never gave the signals back.
+sed -i 's/^closing() = false$/closing() = true/; /^  sys.TakeStops(false)$/d' "$dir/quit.ce"
+open_quit 2 "waiting"
+wait_for out "ended 2" 2000 || fail "waiting: the program didn't end"
+sleep 0.1
+alive "waiting"
+kill -TERM "$pid"
+ends "waiting"
 
-# 10. A package that uses another: what failed because the other wasn't there yet loads as soon as it is.
+# 9. A package that uses another: what failed because the other wasn't there yet loads as soon as it is.
 # Each case starts from the files of tests/reload. It waits for the first pass, the one that notes the stamps of a package.
 fresh() {
   stop
@@ -364,7 +337,7 @@ kill -STOP "$pid"
 sed -i 's/^Value() = view.Label()$/Value() = view.Added()/' "$dir/commands/commands.ce"
 sed -i '$a Added() = "both"' "$dir/view/view.ce"
 kill -CONT "$pid"
-wait_for out "board both" 2000 || fail "10: saved at once"
+wait_for out "board both" 2000 || fail "9: saved at once"
 errors commands/commands.ce 0 "10: saved at once"
 
 # Saved in two steps, what calls first: its error is true for a while, and it is shown once.
@@ -372,7 +345,7 @@ fresh
 sed -i 's/^Value() = view.Label()$/Value() = view.Added()/' "$dir/commands/commands.ce"
 errors commands/commands.ce 1 "10: the caller saved first"
 sed -i '$a Added() = "steps"' "$dir/view/view.ce"
-wait_for out "board steps" 2000 || fail "10: saved in two steps"
+wait_for out "board steps" 2000 || fail "9: saved in two steps"
 errors commands/commands.ce 1 "10: saved in two steps"
 
 # A chain saved at once: the program needs commands, which needs view, so one more try isn't enough.
@@ -382,7 +355,7 @@ sed -i 's/^shown() = commands.Value()$/shown() = commands.Added()/' "$dir/board.
 sed -i '$a Added() = view.Added()' "$dir/commands/commands.ce"
 sed -i '$a Added() = "chain"' "$dir/view/view.ce"
 kill -CONT "$pid"
-wait_for out "board chain" 2000 || fail "10: a chain saved at once"
+wait_for out "board chain" 2000 || fail "9: a chain saved at once"
 errors board.ce 0 "10: a chain saved at once"
 errors commands/commands.ce 0 "10: a chain saved at once"
 
@@ -393,10 +366,10 @@ errors commands/commands.ce 1 "10: a broken caller"
 alive "10: a broken caller"
 # Another change is another attempt: the error shows once more, and the old code of the caller runs on the new view.
 sed -i 's/^Label() = "old"$/Label() = "kept"/' "$dir/view/view.ce"
-wait_for out "board kept" 2000 || fail "10: the old code of a broken caller"
+wait_for out "board kept" 2000 || fail "9: the old code of a broken caller"
 errors commands/commands.ce 2 "10: a broken caller, tried again"
 sed -i 's/^Value() = view.Never()$/Value() = "fixed"/' "$dir/commands/commands.ce"
-wait_for out "board fixed" 2000 || fail "10: a broken caller, fixed"
+wait_for out "board fixed" 2000 || fail "9: a broken caller, fixed"
 errors commands/commands.ce 2 "10: a broken caller, fixed"
 
 # Two files of a package make one reload, and one error.
@@ -410,12 +383,12 @@ alive "10: two files of a broken package"
 no_internal "10"
 stop
 
-# 11. A loop that runs natively, and calls a function inlined into it, sees that function change: native code hands the
+# 10. A loop that runs natively, and calls a function inlined into it, sees that function change: native code hands the
 # loop over to the interpreter at a reload.
 start spin.ce "spinning"
 sleep 0.3
 sed -i 's/^value(x) = 1$/value(x) = 2/' "$dir/spin.ce"
-wait_for out "changed" 3000 || fail "11: a native loop kept the old code after a reload"
+wait_for out "changed" 3000 || fail "10: a native loop kept the old code after a reload"
 no_internal "11"
 stop
 

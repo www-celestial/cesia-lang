@@ -52,12 +52,8 @@ tools/test.sh > /dev/null 2>&1 || fail "tools/test.sh fails"
 ms=$((($(date +%s%N) - s) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "change loop: $ms ms, budget $budget_ms ms"
 
-# Past the budget: C++ to compile, TLS to shake hands over, and windows to open, on the path tools/test.sh leaves out for them.
+# Past the budget: C++ to compile and TLS to shake hands over, on the path tools/test.sh leaves out for them.
 slow=""
-if pkg-config --exists sdl3 sdl3-ttf 2>/dev/null; then
-  tools/golden.sh tests/material > /dev/null 2>&1 || fail "tests/material fails"
-  slow="tests/material tests/sdl"
-fi
 command -v g++ > /dev/null && slow="$slow tests/cpp"
 pkg-config --exists openssl 2>/dev/null && slow="$slow tests/tls"
 if [ -n "$slow" ]; then

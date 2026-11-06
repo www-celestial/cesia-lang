@@ -20,7 +20,7 @@ cesia upgrade --nightly    # a build of main between releases, made by hand
 ```
 
 A release holds the binary and every C library its libraries use, in `~/.cesia/lib/`: OpenBLAS for BLAS and LAPACK (macOS has
-its own), libsodium, SDL3 and SDL3_ttf, and OpenSSL on macOS and Windows (Linux keeps the system's, for its security fixes).
+its own), libsodium, SQLite, and OpenSSL on macOS and Windows (Linux keeps the system's, for its security fixes).
 Nothing else is installed by hand. In `0.x` the middle number of a version rises when a change can break a program, the last one
 for a fix, and the notes of a release come from the messages of its commits.
 
@@ -44,9 +44,6 @@ it again.
 The chapters are plain Markdown, in [`docs/book/`](docs/book/index.md). From a clone, `cesia doc --site --open` builds the same site in
 `site/` and opens it, and `cesia doc list.Sort` or `cesia doc num.Solve` prints one page in the terminal.
 
-Windows and interfaces have their reference in `std/sdl` and `std/ui`, and an example in `cesia do material`; their chapter
-comes later.
-
 ## Editors
 
 Neovim and Vim: copy `tools/editors/nvim/` into `~/.config/nvim/`.
@@ -61,6 +58,3 @@ Emacs: add `(load "/path/to/cesia/tools/editors/cesia-mode.el")` to your `init.e
 ## License
 
 Cesia is under the MIT License: see `LICENSE`.
-
-The fonts in `examples/fonts/` keep their own license, the SIL Open Font License, with its text next to them: `AdwaitaSans-OFL.txt`,
-`NotoSans-OFL.txt`, and `OFL.txt` for JetBrains Mono.

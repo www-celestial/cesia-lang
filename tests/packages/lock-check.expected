@@ -1,12 +1,12 @@
 as installed
 0 passed, 0 failed
-src/main.ce:1:5: std/rope/rope.ce was changed by hand: run cesia pkg install.
-  1 | use std/rope
+src/main.ce:1:5: std/csv/csv.ce was changed by hand: run cesia pkg install.
+  1 | use std/csv
     |     ^
-src/main.ce:1:5: std/rope/added.ce was changed by hand: run cesia pkg install.
-  1 | use std/rope
+src/main.ce:1:5: std/csv/added.ce was changed by hand: run cesia pkg install.
+  1 | use std/csv
     |     ^
-src/main.ce:1:5: std/rope isn't installed: run cesia pkg install.
-  1 | use std/rope
+src/main.ce:1:5: std/csv isn't installed: run cesia pkg install.
+  1 | use std/csv
     |     ^
 exit 1

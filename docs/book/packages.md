@@ -30,7 +30,7 @@ The first part of the path says where the code comes from:
 
 | A use | Takes |
 |---|---|
-| `use std/rope` | what comes with Cesia: its libraries and the modules of the binary |
+| `use std/csv` | what comes with Cesia: its libraries and the modules of the binary |
 | `use src/geometry` | a folder of your project, from its root |
 | `use deps/someone/project/src/x` | a folder of another project, from that project's root |
 

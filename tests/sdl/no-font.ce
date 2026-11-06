@@ -1,5 +1,0 @@
-use std/sdl
-use std/io
-use std/result
-
-io.Print(sdl.Open("test", 320, 200, "no_such_font.ttf") then result.MapErr(it.Kind))

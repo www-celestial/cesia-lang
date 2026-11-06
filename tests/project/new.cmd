@@ -11,7 +11,7 @@ cd hello
 for f in $(find std -name '*.ce' | sort); do grep -c "\"$f blake2:[0-9a-f]\{64\}\"" cesia.lock; done | sort | uniq -c | tr -s ' '
 cesia pkg | grep -v "as installed$"
 echo "all as installed"
-printf '\n(** Mine. *)\nMine = 1\n' >> std/rope/rope.ce
+printf '\n(** Mine. *)\nMine = 1\n' >> std/csv/csv.ce
 cesia pkg | grep -v "as installed$"
 cesia pkg install
 cesia pkg | grep -v "as installed$"

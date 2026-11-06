@@ -102,7 +102,7 @@ let read_module ~from ~pos upath path =
 (* A library of Cesia: a module of std/ that isn't the language itself. *)
 let own_library name = if List.mem name Docs.language then None else std_source name
 
-(* What comes with Cesia is used through std/: std/sys, a module of the binary, or std/rope, a library. Gives its name. *)
+(* What comes with Cesia is used through std/: std/sys, a module of the binary, or std/csv, a library. Gives its name. *)
 let standard upath =
   match String.split_on_char '/' upath with
   | [ "std"; name ] when name <> "" -> Some name
@@ -143,7 +143,7 @@ let locate w ~from ~pos upath =
   in
   (* A wrong cesia.toml stops the first use, before any library runs. *)
   ignore (Package.sources w.root);
-  (* The forms of before 0.3: pkg/rope, rope, sys. *)
+  (* The forms of before 0.3: pkg/csv, csv, sys. *)
   let old = if String.starts_with ~prefix:"pkg/" upath then String.sub upath 4 (String.length upath - 4) else upath in
   if (not (String.contains old '/')) && (own_library old <> None || List.mem_assoc old w.native_modules)
      && Package.files (Filename.concat w.root upath) = [] then

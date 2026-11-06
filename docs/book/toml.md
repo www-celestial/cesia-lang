@@ -11,7 +11,7 @@ the one that checks them.
 name = "shop"
 cesia = "0.2"
 src = ["src"]
-native = ["SDL3", "SDL3_ttf"]
+native = ["sodium"]
 ```
 
 | Key | What it says |

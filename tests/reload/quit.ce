@@ -1,45 +1,27 @@
-(** A window under --watch that ends on a quit event, from a stop signal or from a closed window. See tools/reload-test.sh. *)
-use std/c
-use std/sdl
+(** A program under --watch that takes the stop signals and ends by itself once it has heard enough of them, as an editor with
+    unsaved text asks first. See tools/reload-test.sh. *)
+use std/sys
 use std/io
-use std/result
 
 run() = 1
-(** How many quit events end the program: an editor with unsaved text asks first, and goes on. *)
+(** How many stop signals end the program. *)
 needed() = 1
-(** Does the window close by itself, as a click on its cross does: a close request, then a quit event? *)
+(** Does the program end by itself, without a signal? *)
 closing() = false
 
-defn update(event, state)
-  if event.Kind != "quit"
-    state
-  else
-    io.Print("quit $(state.Quits + 1)")
-    if state.Quits + 1 == needed() missing else {Quits: state.Quits + 1} end
-  end
-end
-
-view(state) = [{Kind: "clear", Color: 0x000000}]
-
-defn send(code, push, event)
-  c.Set("u32", 0, code, event)
-  push(event)
-end
-
 defn main()
-  lib = c.Open("SDL3", version = 0)?
-  push = c.Fn("SDL_PushEvent", ["ptr"], "bool", lib)?
-  window = sdl.Open("test", 320, 200, "font.ttf")?
-  event = c.Alloc(128)
-  if closing()
-    send(0x210, push, event)
-    send(0x100, push, event)
-  end
+  sys.TakeStops(true)
   io.Print("open $(run())")
-  sdl.Run({Quits: 0}, update, view, window)
-  sdl.Close(window)
+  heard = 0
+  while heard < needed() and not closing()
+    if sys.StopAsked()
+      heard = heard + 1
+      io.Print("quit $heard")
+    end
+    sys.Sleep(0.005)
+  end
+  sys.TakeStops(false)
   io.Print("ended $(run())")
-  result.Ok(missing)
 end
 
-io.Print(main())
+main()

@@ -109,7 +109,7 @@ let root_of path =
 
 let lock_file = "cesia.lock"
 
-(* The files of every table of a root's cesia.lock, read once: "std/rope/rope.ce blake2:...", the path from the root. A lock
+(* The files of every table of a root's cesia.lock, read once: "std/csv/csv.ce blake2:...", the path from the root. A lock
    that doesn't read holds nothing, so that each file says it isn't installed. *)
 let known_locks = Hashtbl.create 4
 

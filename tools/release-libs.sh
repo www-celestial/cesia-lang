@@ -2,18 +2,17 @@
 # Builds the C libraries a release holds beside its binary, so that nothing has to be installed by hand:
 # tools/release-libs.sh SYSTEM FOLDER puts them in FOLDER/lib, their licenses in FOLDER/lib/licenses. Run from the root of the
 # repository by the release job of the CI, which keeps FOLDER in its cache: a version changed here builds them again.
-#   linux-x86_64     OpenBLAS (BLAS and LAPACK, the kernels of every processor, no Fortran), libsodium, SDL3, SDL3_ttf
-#                    (FreeType and HarfBuzz inside); OpenSSL stays the system's, which gets its security fixes.
-#   macos-arm64      libsodium, SDL3, SDL3_ttf, OpenSSL 3; BLAS and LAPACK are macOS's own, Accelerate.
-#   windows-x86_64   OpenBLAS, libsodium, SDL3 and SDL3_ttf as their projects publish them for Windows, and OpenSSL 3 as
-#                    MSYS2 builds it.
+#   linux-x86_64     OpenBLAS (BLAS and LAPACK, the kernels of every processor, no Fortran) and libsodium; OpenSSL stays
+#                    the system's, which gets its security fixes.
+#   macos-arm64      libsodium and OpenSSL 3; BLAS and LAPACK are macOS's own, Accelerate.
+#   windows-x86_64   OpenBLAS and libsodium as their projects publish them for Windows, and OpenSSL 3 as MSYS2 builds it.
 # All three hold SQLite: built from its amalgamation, the DLL that sqlite.org publishes on Windows.
 # The names are those c.Open and the BLAS search ask for: see src/sys/c.ml and src/sys/linalg.ml.
 set -eu
 system=$1
 root=$PWD
 out=$(mkdir -p "$2" && cd "$2" && pwd)
-openblas=0.3.28 sodium=1.0.20 sdl=3.2.24 ttf=3.2.2 openssl=3.5.4
+openblas=0.3.28 sodium=1.0.20 openssl=3.5.4
 # SQLite: its release, and the SHA3-256 of its files that sqlite.org publishes.
 sqlite=3540100 sqlite_year=2026 sqlite_version=3.54.1
 sqlite_sha3=92281c86e2957f9b9305890f9ac04204caa7b677cc868dc326d942689df28e30
@@ -57,23 +56,6 @@ build_sodium() {
   cp "libsodium-$sodium/LICENSE" "$lib/licenses/libsodium.txt"
 }
 
-build_sdl() {
-  get "https://github.com/libsdl-org/SDL/releases/download/release-$sdl/SDL3-$sdl.tar.gz" sdl.tgz
-  tar -xzf sdl.tgz
-  cmake -S "SDL3-$sdl" -B sdl-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$work/prefix" -DSDL_SHARED=ON \
-    -DSDL_STATIC=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF > /dev/null
-  cmake --build sdl-build -j"$jobs" > /dev/null
-  cmake --install sdl-build > /dev/null
-  cp "SDL3-$sdl/LICENSE.txt" "$lib/licenses/SDL3.txt"
-  # SDL3_ttf with its FreeType and HarfBuzz inside: the sources with their submodules.
-  git clone -q --depth 1 --recursive --branch "release-$ttf" https://github.com/libsdl-org/SDL_ttf.git ttf
-  cmake -S ttf -B ttf-build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$work/prefix" -DCMAKE_PREFIX_PATH="$work/prefix" \
-    -DSDLTTF_VENDORED=ON -DSDLTTF_SAMPLES=OFF > /dev/null
-  cmake --build ttf-build -j"$jobs" > /dev/null
-  cmake --install ttf-build > /dev/null
-  cp ttf/LICENSE.txt "$lib/licenses/SDL3_ttf.txt"
-}
-
 build_openssl() {
   get "https://github.com/openssl/openssl/releases/download/openssl-$openssl/openssl-$openssl.tar.gz" openssl.tgz
   tar -xzf openssl.tgz
@@ -86,18 +68,16 @@ case "$system" in
   linux-x86_64)
     build_openblas
     build_sodium
-    build_sdl
-    cp -L "$work/prefix/lib/libsodium.so.26" "$work/prefix/lib/libSDL3.so.0" "$work/prefix/lib/libSDL3_ttf.so.0" "$lib/"
+    cp -L "$work/prefix/lib/libsodium.so.26" "$lib/"
     build_sqlite libsqlite3.so.0 -Wl,-soname,libsqlite3.so.0
     # A library finds the others beside it.
     for f in "$lib"/*.so*; do patchelf --set-rpath '$ORIGIN' "$f"; done
     ;;
   macos-arm64)
     build_sodium
-    build_sdl
     build_openssl darwin64-arm64-cc
     build_sqlite libsqlite3.0.dylib -Wl,-install_name,@loader_path/libsqlite3.0.dylib
-    for name in libsodium.26.dylib libSDL3.0.dylib libSDL3_ttf.0.dylib libssl.3.dylib libcrypto.3.dylib; do
+    for name in libsodium.26.dylib libssl.3.dylib libcrypto.3.dylib; do
       cp -L "$work/prefix/lib/$name" "$lib/"
     done
     # Each one names itself, and the others it needs, as beside it: their build folder is gone on the user's machine.
@@ -118,14 +98,6 @@ case "$system" in
     get "https://download.libsodium.org/libsodium/releases/libsodium-$sodium-mingw.tar.gz" sodium.tgz
     tar -xzf sodium.tgz
     cp libsodium-win64/bin/libsodium-26.dll "$lib/libsodium.dll"
-    get "https://github.com/libsdl-org/SDL/releases/download/release-$sdl/SDL3-devel-$sdl-mingw.zip" sdl.zip
-    unzip -q sdl.zip -d sdl
-    cp "sdl/SDL3-$sdl/x86_64-w64-mingw32/bin/SDL3.dll" "$lib/"
-    cp "sdl/SDL3-$sdl/LICENSE.txt" "$lib/licenses/SDL3.txt"
-    get "https://github.com/libsdl-org/SDL_ttf/releases/download/release-$ttf/SDL3_ttf-devel-$ttf-mingw.zip" ttf.zip
-    unzip -q ttf.zip -d ttf
-    cp "ttf/SDL3_ttf-$ttf/x86_64-w64-mingw32/bin/SDL3_ttf.dll" "$lib/"
-    cp "ttf/SDL3_ttf-$ttf/LICENSE.txt" "$lib/licenses/SDL3_ttf.txt"
     # OpenSSL publishes no binaries: MSYS2's, which need only the DLLs of Windows itself. MSYS2_ROOT is where the release job
     # installed it, apart from the /mingw64 of Git's own shell; else C:\msys64.
     msys=$(cygpath -u "${MSYS2_ROOT:-C:\\msys64}")

@@ -18,7 +18,7 @@ quote = text.Char(34)
 backslash = text.Char(92)
 
 defn parent(path)
-  (** The folder of a path: "std/rope/rope.ce" gives "std/rope", "a" gives "". *)
+  (** The folder of a path: "std/csv/csv.ce" gives "std/csv", "a" gives "". *)
   parts = text.Split("/", path)
   text.Join("/", parts[1..value.Len(parts) - 1])
 end
@@ -538,7 +538,7 @@ defn installDeps(lock, resolved, fresh)
 end
 
 defn libraryFiles()
-  (** The libraries of this Cesia as std/ holds them: std/rope/rope.ce. *)
+  (** The libraries of this Cesia as std/ holds them: std/csv/csv.ce. *)
   [{Path: "std/$(l.Name)/$(l.Name).ce", Source: l.Source} for l in cesia.Libraries()]
 end
 

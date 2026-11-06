@@ -1,9 +1,9 @@
-the rope of the project
-folders, then commands, then a rope
+the csv of the project
+folders, then commands, then a csv
 z, from gitlab.com
 > cesia run src/main.ce
-the rope of the project
-folders, then commands, then a rope
+the csv of the project
+folders, then commands, then a csv
 z, from gitlab.com
 do: 0
 src/theirs.ce:1:5: Module "commands" doesn't exist.
@@ -12,7 +12,7 @@ src/theirs.ce:1:5: Module "commands" doesn't exist.
 src/short.ce:1:5: deps/www-celestial/cemacs names no package: a use of deps/ is deps/OWNER/REPO then the path of a folder from its root, as the [deps] of cesia.toml bring it.
   1 | use deps/www-celestial/cemacs
     |     ^
-the rope of the project
+the csv of the project
 src/main.ce:2:5: deps/gitlab.com/x/y isn't installed: run cesia pkg install.
   2 | use deps/gitlab.com/x/y/src/z
     |     ^

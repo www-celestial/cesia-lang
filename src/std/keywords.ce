@@ -137,7 +137,7 @@ use std/value
 
 (** use
     Makes a package or a module visible in a file, by the last part of its path: use std/set gives set. The path says where it
-    comes from: std/ is what comes with Cesia, its libraries and the modules of the binary (std/rope, std/sys); deps/ is another
+    comes from: std/ is what comes with Cesia, its libraries and the modules of the binary (std/csv, std/sys); deps/ is another
     project; any other path is a folder of this project, from its root (src/shapes). The files of one package need none to see
     each other.
 

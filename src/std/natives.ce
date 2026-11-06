@@ -745,9 +745,9 @@ use std/value
     and reading one can use all the memory or hang. Needs the read permission. *)
 
 (** sys.TakeStops(taken)
-    Takes the TERM and INT signals from the program, or gives them back: for sdl.Open and sdl.Close, in pairs, and only for
-    what --watch needs. With true, TERM and INT no longer end the program, and
-    sys.StopAsked tells of them; with false, a window leaves them. Without --watch it does nothing. *)
+    Takes the TERM and INT signals from the program, or gives them back, in pairs: for a program that must end by itself
+    under --watch, such as a window that saves its state first. With true, TERM and INT no longer end the program, and
+    sys.StopAsked tells of them; with false, the program leaves them. Without --watch it does nothing. *)
 
 (** sys.StopAsked()
     Has a TERM or an INT come since the last call? Only after sys.TakeStops(true). *)
@@ -953,7 +953,7 @@ use std/value
 (** cesia.Uses(source)
     The paths of the use lines of a source, as the loader reads them, in an Ok, or an Err of {Line, Message}. Nothing runs.
 
-      cesia.Uses("use std/rope")? --> ["std/rope"] *)
+      cesia.Uses("use std/csv")? --> ["std/csv"] *)
 
 (** cesia.DocEntry(name)
     What the site of the docs shows of a name or a keyword, or missing: a struct with Name, Module (as DocNames lists it, empty

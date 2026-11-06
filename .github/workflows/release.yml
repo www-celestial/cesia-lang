@@ -52,13 +52,11 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libffi-dev libsodium-dev patchelf cmake libx11-dev libxext-dev libxrandr-dev libxcursor-dev \
-            libxi-dev libxss-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl1-mesa-dev libgl1-mesa-dev libdrm-dev \
-            libgbm-dev libpulse-dev libasound2-dev
+          sudo apt-get install -y libffi-dev libsodium-dev patchelf
       - name: Tools on macOS
         if: runner.os == 'macOS'
         run: |
-          brew install libffi libsodium openssl@3 coreutils cmake
+          brew install libffi libsodium openssl@3 coreutils
           echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
       - run: opam install -y dune
       # The tests first, on the tree as it is, +dev: they check that form. tools/test.sh builds in the dev profile, so the

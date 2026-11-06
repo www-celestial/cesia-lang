@@ -1,4 +1,0 @@
-(** ui needs no permission and no window: it uses only the packages of std/ that touch nothing outside. *)
-use std/ui
-use std/io
-io.Print(ui.Ease(1.0, 2.0, 0.0))

@@ -1,10 +1,10 @@
 # A file of std/ loads only as cesia.lock says: changed, added or without a lock, it stops at the use.
 top=$(mktemp -d)
 trap 'rm -rf "$top"' EXIT
-mkdir -p "$top/std/rope" "$top/src" "$top/deps/someone/other/src/bad"
+mkdir -p "$top/std/csv" "$top/src" "$top/deps/someone/other/src/bad"
 printf '[project]\nname = "p"\n' > "$top/cesia.toml"
-cp ../../src/std/rope.ce "$top/std/rope/rope.ce"
-printf 'use std/rope\nuse std/io\nio.Print(rope.Text(rope.Of("as installed")))\n' > "$top/src/main.ce"
+cp ../../src/std/csv.ce "$top/std/csv/csv.ce"
+printf 'use std/csv\nuse std/io\nio.Print(csv.Parse("as installed")[1][1])\n' > "$top/src/main.ce"
 # cesia test leaves deps/ out, as std/: this example would fail.
 printf '(** Bad. *)\nBad = 1   (** Bad.\n\n      Bad --> 2 *)\n' > "$top/deps/someone/other/src/bad/bad.ce"
 cd "$top"
@@ -12,10 +12,10 @@ lock() { "$root/_build/default/src/bin/main.exe" run --allow read,write "$root/t
 lock
 cesia run $no_spec src/main.ce
 cesia test $no_spec .
-printf '\n' >> std/rope/rope.ce
+printf '\n' >> std/csv/csv.ce
 cesia run $no_spec src/main.ce
 lock
-printf '(** Added. *)\nAdded = 1\n' > std/rope/added.ce
+printf '(** Added. *)\nAdded = 1\n' > std/csv/added.ce
 cesia run $no_spec src/main.ce
-rm std/rope/added.ce cesia.lock
+rm std/csv/added.ce cesia.lock
 cesia run $no_spec src/main.ce

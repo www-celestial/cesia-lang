@@ -133,7 +133,7 @@ val use_same : string -> string -> int -> t
 
 val use_missing : string -> t
 
-(** [use_std name]: [use rope], [use pkg/rope] or [use sys], written before std/. [use_path name folder]: [use shapes] for a
+(** [use_std name]: [use csv], [use pkg/csv] or [use sys], written before std/. [use_path name folder]: [use shapes] for a
     folder of the project, whose use is its path from the root. *)
 val use_std : string -> t
 val use_path : string -> string -> t

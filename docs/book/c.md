@@ -1,7 +1,7 @@
 # C and C++
 
 In this chapter you call a library written in C: you open it, bind its functions by their types, and pass it numbers, texts,
-memory and callbacks. This is the [foreign function interface](glossary.md#foreign-function-interface) of Cesia. Cesia's own modules for cryptography, TLS and windows are built this way, on libsodium, OpenSSL and SDL.
+memory and callbacks. This is the [foreign function interface](glossary.md#foreign-function-interface) of Cesia. Cesia's own modules for cryptography and TLS are built this way, on libsodium and OpenSSL.
 C++ goes through a small C layer that Cesia writes and compiles for you.
 
 ## Total trust
