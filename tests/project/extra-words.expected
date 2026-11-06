@@ -1,4 +1,4 @@
-usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] file.ce [args...]
+usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
        cesia test [path] [--no-spec]
        cesia do [task]
        cesia new name

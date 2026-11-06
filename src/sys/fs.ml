@@ -60,6 +60,27 @@ let list_dir path =
       let names = Array.of_list (List.sort compare (go [])) in
       Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true; a_tip = true })
 
+(* Depth first, the names of each folder sorted: what isn't a folder is listed, a link too, never followed. The paths start
+   with the folder, but for ".": a.txt, not ./a.txt. *)
+let walk path =
+  let rec go dir acc =
+    let d = Unix.opendir dir in
+    let names =
+      Fun.protect ~finally:(fun () -> Unix.closedir d) (fun () ->
+          let rec read acc =
+            match Unix.readdir d with "." | ".." -> read acc | n -> read (n :: acc) | exception End_of_file -> acc
+          in
+          List.sort compare (read []))
+    in
+    List.fold_left
+      (fun acc name ->
+         let p = if dir = "." then name else if String.ends_with ~suffix:"/" dir then dir ^ name else dir ^ "/" ^ name in
+         if (Unix.lstat p).st_kind = Unix.S_DIR then go p acc else Text p :: acc)
+      acc names
+  in
+  let paths = Array.of_list (List.rev (go (if path = "./" then "." else path) [])) in
+  Array { rows = 1; cols = Array.length paths; store = V paths; a_owned = true; a_tip = true }
+
 (* A link goes, never what it points to. *)
 let remove path =
   (if (Unix.lstat path).st_kind = Unix.S_DIR then Unix.rmdir else Unix.unlink) path;
@@ -85,6 +106,7 @@ let natives =
     on_path "Append" Write "append to" 2 (fun ctx path a ->
         write_all path [ Unix.O_APPEND ] (Native.text_arg ctx "Append" a.(1)));
     on_path "List" Read "list" 1 (fun _ path _ -> list_dir path);
+
     on_path "Remove" Write "remove" 1 (fun _ path _ -> remove path);
     on_path "Stat" Read "read" 1 (fun _ path _ ->
         let s = Unix.stat path in
@@ -95,6 +117,13 @@ let natives =
         Unix.rename path (path_arg ctx "Rename" Write a.(1));
         Missing);
     on_path "Mkdir" Write "create" 1 (fun _ path _ -> make_dir path; Missing);
+    (* A folder deep inside that fails is the one named. *)
+    "Walk",
+    Native.nat "Walk" 1 1 (fun ctx a ->
+        let path = path_arg ctx "Walk" Read a.(0) in
+        match walk path with
+        | v -> Value.ok ctx.w v
+        | exception Unix.Unix_error (e, _, at) -> failed ctx "list" (if at = "" then path else at) e);
     "Exists",
     Native.nat "Exists" 1 1 (fun ctx a -> Value.of_bool (Sys.file_exists (path_arg ctx "Exists" Read a.(0))));
     "Env",

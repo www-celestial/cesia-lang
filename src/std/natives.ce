@@ -769,6 +769,12 @@ use std/value
 (** sys.List(path)
     The sorted names of the entries of a folder, in an Ok, or an Err. Needs the read permission. *)
 
+(** sys.Walk(path)
+    The paths of every file under a folder, at any depth, in an Ok, or an Err that names the folder that failed: depth first,
+    the names of each folder sorted, each path starting with the folder, as photos/2026/a.jpg, but for ".". A folder is
+    entered and not listed; a symbolic link is listed, never followed, so no loop can form. Needs the read permission.
+    list.Filter(p -> path.Ext(p) == ".jpg", sys.Walk("photos")?) keeps the photos. *)
+
 (** sys.Remove(path)
     Deletes a file or an empty folder: Ok(missing) or an Err. A symbolic link is deleted, never what it points to. Needs the write permission. *)
 

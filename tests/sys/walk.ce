@@ -1,0 +1,24 @@
+(* sys.Walk: every file under a folder, depth first and sorted, links listed and never followed. *)
+use std/sys
+use std/io
+use std/list
+use std/path
+use std/result
+use std/text
+
+defn main()
+  for p in ["tree/b/z.txt", "tree/b/c/y.JPG", "tree/a.jpg", "tree/b/c/d/x.txt"]
+    sys.Mkdir(path.Dir(p))?
+    sys.Write(p, path.Base(p))?
+  end
+  sys.Mkdir("tree/empty")?
+  io.Print(sys.Walk("tree")?)
+  io.Print(sys.Walk("tree/")?)
+  io.Print(list.Filter(p -> text.Lower(path.Ext(p)) == ".jpg", sys.Walk("tree")?))
+  io.Print(sys.Walk("tree/empty")?)
+  io.Print(sys.Walk("nowhere"))
+  io.Print(sys.Walk("tree/a.jpg"))
+  result.Ok(missing)
+end
+
+io.Print(main())

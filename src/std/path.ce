@@ -1,0 +1,99 @@
+(** Paths of files and folders, as texts: their parts, and one joined to another. Nothing here reads the disk. A path is
+    written with /, which Windows takes too; there a \ separates as well. *)
+use std/list
+use std/text
+use std/value
+
+(* On Windows a \ is a /. *)
+slashes(p) = if windows text.Replace("\\", "/", p) else p end
+
+defn trimmed(p)
+  (** The path without the / at its end, but for / itself. *)
+  out = slashes(p)
+  while value.Len(out) > 1 and text.EndsWith("/", out)
+    out = text.Slice(1, value.Len(out) - 1, out)
+  end
+  out
+end
+
+defn IsAbsolute(p)
+  (** Does the path start from the top, / or, on Windows, a drive as C: or \\server?
+
+        IsAbsolute("/tmp/a.txt") --> true
+        IsAbsolute("photos/a.jpg") --> false *)
+  s = slashes(p)
+  text.StartsWith("/", s) or (windows and value.Len(s) >= 2 and text.Slice(2, 2, s) == ":")
+end
+
+defn Join(a, b)
+  (** b after a, with one / between them. A b that is absolute stays as it is, and an empty part leaves the other.
+
+        Join("photos", "a.jpg") --> "photos/a.jpg"
+        Join("photos/", "2026/a.jpg") --> "photos/2026/a.jpg"
+        Join("photos", "/tmp/a.jpg") --> "/tmp/a.jpg"
+        Join("", "a.jpg") --> "a.jpg" *)
+  if a == "" or IsAbsolute(b)
+    b
+  else if b == ""
+    a
+  else if text.EndsWith("/", slashes(a))
+    "$a$b"
+  else
+    "$a/$b"
+  end
+end
+
+defn Base(p)
+  (** The last part of a path, the name of the file or of the folder; "." for an empty path.
+
+        Base("photos/2026/a.jpg") --> "a.jpg"
+        Base("photos/2026/") --> "2026"
+        Base("a.jpg") --> "a.jpg"
+        Base("/") --> "/" *)
+  s = trimmed(p)
+  if s == ""
+    "."
+  else if s == "/"
+    "/"
+  else
+    list.Last(text.Split("/", s))
+  end
+end
+
+defn Dir(p)
+  (** The path of the folder that holds the last part: "." when there is none.
+
+        Dir("photos/2026/a.jpg") --> "photos/2026"
+        Dir("a.jpg") --> "."
+        Dir("/a.jpg") --> "/" *)
+  parts = text.Split("/", trimmed(p))
+  if value.Len(parts) == 1
+    return if parts[1] == "/" "/" else "." end
+  end
+  head = trimmed(text.Join("/", list.Butlast(parts)))
+  if head == "" "/" else head end
+end
+
+defn Ext(p)
+  (** The extension of the last part, from its last dot: "" when it has none, for a name that only starts with a dot, and
+      for . and ..
+
+        Ext("photos/a.JPG") --> ".JPG"
+        Ext("backup.tar.gz") --> ".gz"
+        Ext("notes") --> ""
+        Ext(".bashrc") --> "" *)
+  b = Base(p)
+  parts = text.Split(".", b)
+  n = value.Len(parts)
+  if n < 2 or (n == 2 and parts[1] == "") or b == ".." "" else ".$(parts[n])" end
+end
+
+defn Stem(p)
+  (** The last part without its extension.
+
+        Stem("photos/a.jpg") --> "a"
+        Stem("backup.tar.gz") --> "backup.tar"
+        Stem(".bashrc") --> ".bashrc" *)
+  b = Base(p)
+  text.Slice(1, value.Len(b) - value.Len(Ext(b)), b)
+end

@@ -1,0 +1,16 @@
+use std/path
+
+isJoin() = path.Join("a", "b") == "a/b" and path.Join("a/", "b") == "a/b" and path.Join("a", "") == "a"
+isJoinAbsolute() = path.Join("a", "/b") == "/b" and path.Join("", "") == ""
+isJoinNested() = path.Join(path.Join("photos", "2026"), "a.jpg") == "photos/2026/a.jpg"
+isBase() = path.Base("a/b/c.txt") == "c.txt" and path.Base("c.txt") == "c.txt" and path.Base("a/b//") == "b"
+isBaseEdges() = path.Base("") == "." and path.Base("/") == "/" and path.Base("//") == "/" and path.Base("/a") == "a"
+isDir() = path.Dir("a/b/c.txt") == "a/b" and path.Dir("c.txt") == "." and path.Dir("/c.txt") == "/"
+isDirEdges() = path.Dir("") == "." and path.Dir("/") == "/" and path.Dir("a//b") == "a" and path.Dir("a/b/") == "a"
+isExt() = path.Ext("a.txt") == ".txt" and path.Ext("a/b.tar.gz") == ".gz" and path.Ext("a") == "" and path.Ext("a.") == "."
+isExtDots() = path.Ext(".bashrc") == "" and path.Ext("a.d/b") == "" and path.Ext("..") == "" and path.Ext(".a.b") == ".b"
+isStem() = path.Stem("a/b.txt") == "b" and path.Stem("b.tar.gz") == "b.tar" and path.Stem(".bashrc") == ".bashrc"
+isStemNoExt() = path.Stem("a/notes") == "notes" and path.Stem("a.") == "a"
+isAbsolute() = path.IsAbsolute("/a") and not path.IsAbsolute("a/b") and not path.IsAbsolute("")
+isUnicode() = path.Base("été/café.txt") == "café.txt" and path.Stem("été/café.txt") == "café" and path.Dir("été/café.txt") == "été"
+isRebuilt() = path.Join(path.Dir("x/y/z.JPG"), "$(path.Stem("x/y/z.JPG")).jpg") == "x/y/z.jpg"
