@@ -2508,7 +2508,7 @@ and cu c (e : expr) : ctx -> unit =
                 ctx.i.(ctx.b + k) <- lo;
                 body ctx;
                 tick ctx off;
-                (match Tier.warmed ctx st ver with
+                (match Tier.warmed ctx st ver outer with
                  | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
                  | None -> ());
                 incr n
@@ -2592,7 +2592,7 @@ and cu c (e : expr) : ctx -> unit =
             if warm && cond ctx then begin
               body ctx;
               tick ctx off;
-              match Tier.warmed ctx st ver with
+              match Tier.warmed ctx st ver outer with
               | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
               | None -> ()
             end;

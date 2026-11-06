@@ -93,8 +93,9 @@ val hot : ctx -> loop -> version -> loop list -> code option
     interpreter then runs a first step, and asks [warmed] for native code for the next ones. *)
 val warm : loop -> int -> bool
 
-(** The native code of the loop alone, made now, from what its first step left in the frame, when it lowers and fits. *)
-val warmed : ctx -> loop -> version -> code option
+(** As [hot], at once: the native code of the outermost of the loops around [loop], [loop] included, that lowers and fits,
+    made now from what the first step left in the frame. *)
+val warmed : ctx -> loop -> version -> loop list -> code option
 
 val id : loop -> int
 

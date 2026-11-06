@@ -108,7 +108,7 @@ let warm l n =
     l.runs >= runs_before
   end
 
-let warmed (ctx : ctx) l ver = match loaded () with Some j -> j.pick ctx l ver [] | None -> None
+let warmed (ctx : ctx) l ver outer = match loaded () with Some j -> j.pick ctx l ver outer | None -> None
 
 let id l = l.expr.id
 let place ctx code l n hi = (the ()).place ctx code l n hi
