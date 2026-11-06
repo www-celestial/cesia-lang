@@ -481,8 +481,11 @@ defn program(runs, chosen, mark)
       t = lines[i]
       a = arrow(t)
       if StartsWith("use ", Trim(t))
-        uses = Append(Trim(t), uses)
-        useLines = Append(b.Line + i, useLines)
+        (* A use already on top is written once: a fails block runs again the uses of the blocks before it. *)
+        if IsMissing(IndexOf(Trim(t), uses))
+          uses = Append(Trim(t), uses)
+          useLines = Append(b.Line + i, useLines)
+        end
       else if IsSome(a) and a.Want == ""
         at[b.Line + i] = "bookShow($(b.Line + i), ($(a.Code)))"
       else if IsSome(a)
