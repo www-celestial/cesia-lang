@@ -560,7 +560,6 @@ caller, with its call sites: it tripled the descriptors, mostly in the natives (
 helpers of the lexer, the parser and the resolver), the binary holds 17,975 descriptors, 27,747 relocations on 238 pages, 1.3 MB of
 `.data` instead of 3.0, and 4.0 MB stripped instead of 7.3. The plugins of the JIT and of SQLite keep `-inline 200`: they
 load at their first use, so their size costs no start-up, and `bench/db.ce` needed it to stay at the same instructions.
-The loader also walks a file once for the names of all its uses, instead of once per use.
 
 Both binaries alternated run by run, while other builds ran on the machine (load 3 to 8), so the timings are noisy:
 
