@@ -13,7 +13,7 @@ let seconds ctx v =
 let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
-  w.timer <- Poll.timer poll;
+  w.timer <- (fun seconds f -> Poll.timer poll (Float.min max_sleep seconds) f);
   Option.iter (fun (period, f) -> Poll.set_tick poll period f) tick;
   let net = Net.create poll in
   let sys =

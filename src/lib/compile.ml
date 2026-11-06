@@ -3416,12 +3416,14 @@ and from_native (proto : proto) pm =
     let f = proto.func and sn = proto.pname in
     let names, shape, inside =
       match !memo with
-      | Some (w, m) when w == ctx.w -> m
+      | Some (w, f', m) when w == ctx.w && f' == f -> m
       | _ ->
+        (* Found again in another world, or once a reload gave the struct other fields. *)
         let names = Array.map (fun (p : param) -> p.pname) f.params in
         let shape = Value.shape_of ctx.w ~sname:sn ~m:ctx.w.modules.(proto.pm).host names in
         let m = names, shape, ctx.w.modules.(pm).host = shape.sm in
-        memo := Some (ctx.w, m);
+        memo := Some (ctx.w, f, m);
+        seen := (Trie.no_keys, [||]);
         direct := false;
         m
     in

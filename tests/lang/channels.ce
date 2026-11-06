@@ -55,3 +55,21 @@ defn isChannelTwoReceivers()
   Send(2, ch)
   Equal(Sort([Wait(a)?, Wait(b)?]), [1, 2])
 end
+
+defn isChannelWokenReceiverKeepsItsPlace()
+  (** A receiver woken whose value another took parks again first, before the one that came after it. *)
+  ch = Channel()
+  a = Spawn(() -> Receive(ch)?)
+  sys.Sleep(0.001)
+  b = Spawn(() -> Receive(ch)?)
+  sys.Sleep(0.001)
+  Send(1, ch)
+  stolen = Receive(ch, timeout = 0)
+  sys.Sleep(0.001)
+  Send(2, ch)
+  sys.Sleep(0.001)
+  Send(3, ch)
+  stolen == Ok(1) and Wait(a) == Ok(2) and Wait(b) == Ok(3)
+end
+
+isWaitNeedsATask() = not IsOk(Wait(Spawn(() -> Wait(Channel()))))

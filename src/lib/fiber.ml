@@ -112,7 +112,7 @@ let spawn (ctx : ctx) g =
 
 let wait (ctx : ctx) t =
   match t with
-  | Handle { task = Some task; _ } ->
+  | Handle { kind = "task"; task = Some task; _ } ->
     if Option.is_none task.result then suspend ctx (fun resume -> task.waiters <- resume :: task.waiters);
     (match task.result with
      | Some r -> Value.share r
@@ -145,28 +145,35 @@ let receive ctx (a : Types.t array) =
     | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
   in
   let timed_out = ref (limit = Some 0.) in
-  (* A receiver woken may find the value taken by one that never parked: it parks again, its timer still running. *)
-  let rec take () =
+  (* One timer for the whole wait. A receiver woken may find the value taken by one that never parked: it parks again, at
+     the front, since it came first. *)
+  let parked_wake = ref None and timing = ref false in
+  let rec take again =
     match Queue.take_opt ch.items with
     | Some v -> Value.ok ctx.w v
     | None when !timed_out -> Value.err ctx.w (Trie.record timeout_keys [| Text "timeout"; Text (Messages.receive_timeout.text) |])
     | None ->
       suspend ctx (fun resume ->
           let parked = ref true in
-          let wake () = if !parked then (parked := false; resume ()) in
-          ch.waiters <- ch.waiters @ [ wake ];
-          Option.iter
-            (fun seconds ->
-               ctx.w.timer seconds (fun () ->
-                   if !parked then begin
+          let wake () = if !parked then (parked := false; parked_wake := None; resume ()) in
+          parked_wake := Some wake;
+          ch.waiters <- (if again then wake :: ch.waiters else ch.waiters @ [ wake ]);
+          if not !timing then begin
+            timing := true;
+            Option.iter
+              (fun seconds ->
+                 ctx.w.timer seconds (fun () ->
                      timed_out := true;
-                     ch.waiters <- List.filter (fun w -> w != wake) ch.waiters;
-                     wake ()
-                   end))
-            limit);
-      take ()
+                     Option.iter
+                       (fun wake ->
+                          ch.waiters <- List.filter (fun w -> w != wake) ch.waiters;
+                          wake ())
+                       !parked_wake))
+              limit
+          end);
+      take true
   in
-  take ()
+  take false
 
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
