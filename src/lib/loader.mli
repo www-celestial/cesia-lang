@@ -24,6 +24,10 @@ val in_package : world -> int -> string -> Ast.binding option
 (** What every file sees without a use: only the names that the parser writes, as [#dict]. *)
 val lookup : world -> string -> Ast.binding option
 
+(** The package of std/ of a name written without its package, as io for Print: the table of the messages that say which
+    use to write. *)
+val home : world -> string -> string option
+
 (** The module of the natives of the package of std/ that a file of std/ is part of, as src/std/list.ce, if it has them. *)
 val std_natives : world -> string -> int option
 

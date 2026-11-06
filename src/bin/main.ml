@@ -209,7 +209,7 @@ let doc args =
   exit
     (Loader.guarded w (fun _ ->
          Loader.init w;
-         Docs.command w args))
+         Docs.command ~home:(Loader.home w) w args))
 
 (* What each tool may touch: see src/tools/. *)
 let tool_grants = function

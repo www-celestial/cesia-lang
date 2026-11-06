@@ -6,6 +6,8 @@ One more, and one less. Both work on arrays, element by element.
 exit 0
 cesia: nothing is documented under NoSuchName
 exit 1
+cesia: Map is in std/list: cesia doc list.Map.
+exit 1
 usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--no-spec] [--no-jit] file.ce [args...]
 A persistent leftist heap: the smallest key comes out first.
 

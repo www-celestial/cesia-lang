@@ -588,7 +588,7 @@ let summary w name =
      | Some i -> first_line (String.trim (String.sub text i (String.length text - i)))
      | None -> "")
 
-let command w args =
+let command ~home w args =
   w.root <- Package.root_of ".";
   let table rows =
     let width = List.fold_left (fun n (a, _) -> max n (String.length a)) 0 rows in
@@ -611,7 +611,7 @@ let command w args =
        if builtin then print_endline "\nBuilt into Cesia.";
        0
      | None ->
-       prerr_endline (Messages.doc_missing name);
+       prerr_endline (match home name with Some p -> Messages.doc_moved name p | None -> Messages.doc_missing name);
        1)
   | _ ->
     prerr_endline Messages.usage;

@@ -17,5 +17,6 @@ val doc_entry : ctx -> t array -> t
 (** [Doc] and [DocNames]. *)
 val natives : (string * t) list
 
-(** [cesia doc]: the modules, the names of a module, or the documentation of a name. Gives the exit code. *)
-val command : world -> string list -> int
+(** [cesia doc]: the modules, the names of a module, or the documentation of a name. Gives the exit code. [home] gives the
+    package of std/ of a name written without it, as list for Map, which the message names. *)
+val command : home:(string -> string option) -> world -> string list -> int

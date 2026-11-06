@@ -254,6 +254,7 @@ let cant_sort a b = plain (Printf.sprintf "Can't sort %s with %s." a b)
 let need_char name = plain (Printf.sprintf "%s needs a text with a character." name)
 let need_byte a = plain (Printf.sprintf "FromBytes needs integers from 0 to 255, not %s." a)
 let doc_missing name = "cesia: nothing is documented under " ^ name
+let doc_moved name p = Printf.sprintf "cesia: %s is in std/%s: cesia doc %s.%s." name p p name
 let json_value a = plain (Printf.sprintf "JSON can't hold %s." a)
 let column_sizes a b = plain (Printf.sprintf "These columns have %d and %d rows." a b)
 let need_groups a = plain (Printf.sprintf "Split needs the result of Groups, not %s." a)

@@ -216,6 +216,9 @@ val cant_sort : string -> string -> t
 val need_char : string -> t
 val need_byte : string -> t
 val doc_missing : string -> string
+
+(** [doc_moved name p]: cesia doc of a name of std/p written without its package, as Map for list.Map. *)
+val doc_moved : string -> string -> string
 val json_value : string -> t
 val column_sizes : int -> int -> t
 val need_groups : string -> t
