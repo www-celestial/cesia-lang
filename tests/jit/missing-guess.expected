@@ -1,5 +1,5 @@
-missing-guess.ce:9:10: A condition must be true or false, not missing.
-  9 |     if i > missing
-    |          ^
-  in spin (missing-guess.ce:9)
+missing-guess.ce:4:16: A condition must be true or false, not missing.
+  4 | fact(k) = if k < missing 4611686018427387903 else k * fact(k - 1) end
+    |                ^
+  in fact (missing-guess.ce:4)
 exit 1
