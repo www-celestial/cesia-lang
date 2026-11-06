@@ -38,14 +38,11 @@ program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
 ## Read the book
 
 The book teaches Cesia from the start, in 22 short chapters, and the reference has a page for every name, each with examples
-that ran when the site was built. Build them and open them in your browser:
+that ran when the site was built: **https://www-celestial.github.io/cesia-lang/**. It follows `main`, and each push publishes
+it again.
 
-```bash
-cesia doc --site --open
-```
-
-The chapters are also plain Markdown, in [`book/`](book/index.md). For one name, `cesia doc Sort` or `cesia doc num.Solve`
-prints its page in the terminal.
+The chapters are plain Markdown, in [`book/`](book/index.md). From a clone, `cesia doc --site --open` builds the same site in
+`site/` and opens it, and `cesia doc Sort` or `cesia doc num.Solve` prints one page in the terminal.
 
 Windows and interfaces have their reference in `std/sdl` and `std/ui`, and an example in `cesia do material`; their chapter
 comes later.

@@ -126,6 +126,7 @@ defn page(site, path, title, body)
     "<link rel=\"stylesheet\" href=\"", back, "site.css\">\n</head>\n",
     "<body data-root=\"", back, "\">\n<a class=\"skip\" href=\"#text\">Skip to the text</a>\n",
     "<header><a class=\"home\" href=\"", back, "index.html\">", escape(site.Title), "</a>",
+    "<span class=\"version\">", escape(site.Version), "</span>",
     "<a class=\"ref\" href=\"", back, "ref/index.html\">Reference</a>",
     "<input class=\"search\" type=\"search\" placeholder=\"Search  /\" aria-label=\"Search the docs\" autocomplete=\"off\"></header>\n",
     "<div class=\"page\">\n<nav class=\"side\" aria-label=\"Contents\">\n", sideColumns(site.Tree, path, way, site.Columns), "</nav>\n",
@@ -1041,7 +1042,7 @@ defn build(root, folder, cache)
       targets[n.Name] = n.Path
     end
   end
-  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run", Tree: {}, Columns: {}}
+  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run", Tree: {}, Columns: {}, Version: cesia.Version()}
   book = bookOf(root, site)
   site.Book = book
   site.Tree = treeOf(book, modules, lists)

@@ -35,6 +35,7 @@ header {
 }
 header a { text-decoration: none; }
 header .home { font-weight: 600; color: var(--ink); }
+header .version { color: var(--muted); font-size: .85em; }
 header .search { margin-left: auto; width: min(320px, 50vw); }
 .search, .theme { display: none; }
 .js .search, .js .theme { display: block; }
