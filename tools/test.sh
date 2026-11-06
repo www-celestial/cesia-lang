@@ -31,3 +31,7 @@ pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 tools/golden.sh $dirs
 # cesia do has no --no-spec, and native code runs the same on both paths.
 tools/golden.sh --no-spec $(echo "$dirs" | grep -vE '^tests/(project|columns|cpp|tls|sdl)/$')
+# Cesia's own site: a text of the docs with a [Name] that leads nowhere fails here.
+site=$(mktemp -d)
+trap 'rm -rf "$site"' EXIT
+"$cesia" doc --site "$site" > /dev/null

@@ -1,0 +1,335 @@
+(** cesia doc --site: the documentation of a project as static pages in a folder, read from there with no server and no
+    request to anyone else. The reference has a page for each module, each public name and each keyword, from the (** *) of
+    the code. Run by the binary as cesia doc --site [folder] [--open], which gives this tool the root of the project and the
+    folder, both from the top of the file system. A build that finds a mistake writes it as file:line and fails. *)
+use sys
+use cesia
+use json
+use pkg/markdown
+use pkg/web
+use pkg/syntax
+
+quote = Char(34)
+keywords = cesia.Keywords()
+
+(* The class of each role of pkg/syntax, in its order: keyword, name, text, number, comment, plain, field. *)
+classes = ["k", "n", "s", "m", "c", "", "f"]
+
+escape(t) = web.Escape(t)
+up(path) = Repeat(Len(Split("/", path)) - 1, "../")   (** From a page to the root of the site. *)
+parent(path) = Join("/", Butlast(Split("/", path)))
+
+defn rel(path, target)
+  (** The link from the page at path to the file at target, both from the root: "Sort.html" next to it, "../pkg/num.html". *)
+  from = Butlast(Split("/", path))
+  to = Split("/", target)
+  k = 1
+  while k <= Len(from) and k < Len(to) and from[k] == to[k]
+    k += 1
+  end
+  Str(Repeat(Len(from) - k + 1, "../"), Join("/", Skip(k - 1, to)))
+end
+
+defn inlineHtml(text, hooks)
+  (** The HTML of a text of one paragraph, without its <p>, for a list or a table. *)
+  h = html(text, hooks)
+  if StartsWith("<p>", h) and EndsWith("</p>\n", h) and not Contains("<p>", ByteSlice(4, ByteLength(h), h)) ByteSlice(4, ByteLength(h) - 5, h) else h end
+end
+
+defn colored(code)
+  (** Cesia code as HTML, each word in a span of its role. *)
+  state = syntax.FirstState
+  out = []
+  for line in Lines(code)
+    r = syntax.Tokens(line, state)
+    state = r.State
+    out = Append(Join("", [if t[1] == syntax.Plain escape(t[2]) else "<span class=$quote$(classes[t[1]])$quote>$(escape(t[2]))</span>" end for t in r.Tokens]), out)
+  end
+  Join("\n", out)
+end
+
+codeBlock(code) = "<pre><code class=\"cesia\">$(colored(code))</code></pre>\n"
+
+defn slug(text)
+  (** The id of a heading: its letters and digits in lower case, words joined by -. *)
+  words = Split(" ", Trim(Lower(Join("", [if (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b >= 128 Char(b) else " " end for b in Bytes(Lower(text))]))))
+  Join("-", Filter(w -> w != "", words))
+end
+
+wordFile(w) = if w == "?" "question" else w end   (** The file of a keyword: ? would start the query of a URL. *)
+
+defn shortOf(name, m)
+  (** The name inside its module: Solve for num.Solve, Date.Parse for date.Date.Parse. *)
+  prefix = Str(Last(Split("/", m)), ".")
+  if m != "prelude" and StartsWith(prefix, name) ByteSlice(ByteLength(prefix) + 1, ByteLength(name), name) else name end
+end
+
+modulePath(m) = "ref/$m.html"
+namePath(m, name) = "ref/$m/$(shortOf(name, m)).html"
+keyPath(w) = "key/$(wordFile(w)).html"
+
+defn isNameLike(t)
+  (** Is a [t] meant as a link: a capital, a dot or a keyword in a word of the code? Else it stays text, as [x] does. *)
+  plain = t != "" and All([(b >= 65 and b <= 90) or (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b == 46 or b == 47 or b == 95 or b == 63 for b in Bytes(t)])
+  plain and (t != Lower(t) or Contains(".", t) or t in keywords)
+end
+
+defn hooksFor(site, path, where)
+  (** The hooks of pkg/markdown for a page: Cesia code in color, [Name] to its page, an id for each heading. A [Name] that
+      leads nowhere is sent to the mistakes, with the place where it is written. *)
+  defn link(target, line)
+    found = Get(target, site.Targets)
+    if IsSome(found)
+      return rel(path, found)
+    end
+    if isNameLike(target)
+      Send("$(where(line)): [$target] names nothing documented.", site.Mistakes)
+    end
+    missing
+  end
+  code(info, text, line) = if Split(" ", info)[1] == "cesia" codeBlock(text) else missing end
+  {Code: code, Link: link, Anchor: (level, text, line) -> slug(text)}
+end
+
+html(text, hooks) = markdown.Html(markdown.Parse(text), hooks)
+
+defn summary(text)
+  (** The first sentence of a text, on one line. *)
+  line = Replace("\n", " ", Split("\n\n", text)[1])
+  k = ByteFind(". ", 1, line)
+  if IsMissing(k) line else ByteSlice(1, k, line) end
+end
+
+defn page(site, path, title, side, body)
+  (** The HTML of a page: the text comes first, and the script at the end. *)
+  back = up(path)
+  Str("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
+    "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\">\n",
+    "<title>", escape(title), " - ", escape(site.Title), "</title>\n",
+    "<link rel=\"stylesheet\" href=\"", back, "site.css\">\n</head>\n",
+    "<body data-root=\"", back, "\">\n<a class=\"skip\" href=\"#text\">Skip to the text</a>\n",
+    "<header><a class=\"home\" href=\"", back, "index.html\">", escape(site.Title), "</a>",
+    "<a class=\"ref\" href=\"", back, "ref/index.html\">Reference</a>",
+    "<input class=\"search\" type=\"search\" placeholder=\"Search  /\" aria-label=\"Search the docs\" autocomplete=\"off\"></header>\n",
+    "<div class=\"page\">\n<nav class=\"side\" aria-label=\"Contents\">\n", side, "</nav>\n",
+    "<main id=\"text\">\n", body, "</main>\n</div>\n",
+    "<script src=\"", back, "site.js\"></script>\n</body>\n</html>\n")
+end
+
+defn side(site, path, names)
+  (** The side contents: the modules, then the names of the module of this page. *)
+  item(label, href, current) = "<a href=\"$href\"$(if current " aria-current=\"page\"" else "" end)>$(escape(label))</a>\n"
+  modules = Join("", [item(m, rel(path, modulePath(m)), path == modulePath(m)) for m in site.Modules])
+  (* The names of a module are pages of one folder, that of this page. *)
+  own = Join("", [item(n.Short, Last(Split("/", n.Path)), path == n.Path) for n in names])
+  Str("<p class=\"head\">Modules</p>\n<div class=\"list\">\n", modules, "</div>\n",
+    if own == "" "" else Str("<p class=\"head\">In this module</p>\n<div class=\"list\">\n", own, "</div>\n") end)
+end
+
+defn entryBody(site, path, e)
+  (** The main part of the page of a name or a keyword. *)
+  where(line) = "$(e.File):$(e.Line)"
+  hooks = hooksFor(site, path, where)
+  parts = if Len(e.Parts) == 0 "" else Str("<table class=\"parts\">\n<tbody>\n", Join("", ["<tr><th><code>$(escape(p.Name))</code></th><td>$(inlineHtml(p.Text, hooks))</td></tr>\n" for p in e.Parts]), "</tbody>\n</table>\n") end
+  examples = if Len(e.Examples) == 0 "" else Str("<h2>Examples</h2>\n", codeBlock(Join("\n", e.Examples))) end
+  from = if e.Builtin "Built into Cesia." else if site.Source == "" escape(where(0)) else "<a href=\"$(escape(site.Source))$(escape(e.File))#L$(e.Line)\">$(escape(e.File)):$(e.Line)</a>" end
+  module = if e.Module == "" "" else "<p class=\"module\"><a href=\"$(rel(path, modulePath(e.Module)))\">$(escape(e.Module))</a></p>\n" end
+  Str(module, "<h1>", escape(e.Name), "</h1>\n<pre class=\"signature\"><code class=\"cesia\">", colored(e.Signature), "</code></pre>\n",
+    html(e.Text, hooks), parts, examples, "<p class=\"from\">", from, "</p>\n")
+end
+
+defn pager(path, prev, next, above)
+  (** The links to the page before, the page after and the page above, each {Label, Path} or missing: the keys p, n and u
+      follow them. *)
+  link(to, kind, before, after) = if IsMissing(to) "<span></span>" else "<a rel=\"$kind\" href=\"$(rel(path, to.Path))\">$before$(escape(to.Label))$after</a>" end
+  Str("<nav class=\"pager\" aria-label=\"Pages\">", link(prev, "prev", "← ", ""), link(above, "up", "", ""), link(next, "next", "", " →"), "</nav>\n")
+end
+
+near(list, k) = {Prev: if k > 1 list[k - 1] else missing end, Next: if k < Len(list) list[k + 1] else missing end}
+
+defn names(m)
+  (** The documented names of a module, each {Name, Short, Path, Entry}. *)
+  out = []
+  for n in DocNames(m)
+    e = cesia.DocEntry(n)
+    if IsSome(e)
+      out = Append({Name: n, Short: shortOf(n, m), Path: namePath(m, n), Entry: e}, out)
+    end
+  end
+  out
+end
+
+defn about(e)
+  (** What a list shows of a name: the first sentence of its text, else its first example. *)
+  if Trim(e.Text) != "" summary(e.Text) else if Len(e.Examples) > 0 e.Examples[1] else "" end
+end
+
+defn moduleBody(site, m, list)
+  (** The main part of the page of a module: what it is for, then its names. *)
+  path = modulePath(m)
+  hooks = hooksFor(site, path, line -> m)
+  rows = Join("", ["<dt><a href=\"$(rel(path, n.Path))\">$(escape(n.Name))</a></dt><dd>$(inlineHtml(about(n.Entry), hooks))</dd>\n" for n in list])
+  Str("<h1>", escape(m), "</h1>\n", html(Doc(m), hooks), "<dl class=\"names\">\n", rows, "</dl>\n")
+end
+
+defn indexBody(site, path)
+  (** The main part of the index of the reference: the modules, what each is for, and the keywords. *)
+  hooks = hooksFor(site, path, line -> "the index")
+  rows = Join("", ["<dt><a href=\"$(rel(path, modulePath(m)))\">$(escape(m))</a></dt><dd>$(inlineHtml(summary(Doc(m)), hooks))</dd>\n" for m in site.Modules])
+  words = Join(" ", ["<a href=\"$(rel(path, keyPath(w)))\"><code>$(escape(w))</code></a>" for w in keywords])
+  Str("<h1>Reference</h1>\n<dl class=\"names\">\n", rows, "</dl>\n<h2>Keywords</h2>\n<p class=\"words\">", words, "</p>\n")
+end
+
+defn settings(root)
+  (** The [site] table of the project and its name: {Name, Title, Source}. *)
+  out = {Name: "", Title: "Cesia", Source: ""}
+  file = "$root/cesia.toml"
+  if not sys.Exists(file)
+    return Ok(out)
+  end
+  tables = cesia.Toml(sys.Read(file)?)
+  if IsErr(tables)
+    return Err("$file:$(tables.Error.Line): $(tables.Error.Message)")
+  end
+  for t in tables.Value
+    for e in t.Entries
+      if Equal(t.Path, ["project"]) and e.Key == "name"
+        out.Name = e.Value
+      else if Equal(t.Path, ["site"]) and e.Key == "title"
+        out.Title = e.Value
+      else if Equal(t.Path, ["site"]) and e.Key == "source"
+        out.Source = e.Value
+      else if Equal(t.Path, ["site"])
+        return Err("$file:$(e.Line): [site] has title and source, not $(e.Key).")
+      end
+    end
+  end
+  Ok(out)
+end
+
+defn written(folder, pages)
+  (** Writes each page {Path, Html} under the folder, the folders first. *)
+  for dir in Unique([parent(p.Path) for p in pages])
+    sys.Mkdir(if dir == "" folder else "$folder/$dir" end)?
+  end
+  for p in pages
+    sys.Write("$folder/$(p.Path)", p.Html)?
+  end
+  Ok(missing)
+end
+
+defn drained(channel)
+  (** Every value a channel holds now. *)
+  out = []
+  got = Receive(channel, timeout = 0)
+  while IsOk(got)
+    out = Append(got.Value, out)
+    got = Receive(channel, timeout = 0)
+  end
+  out
+end
+
+defn sameButCase(paths)
+  (** The paths that another one equals but for case: a system that ignores case would keep only one. *)
+  seen = {}
+  out = []
+  for p in paths
+    key = Lower(p)
+    if Has(key, seen)
+      out = Append("$(seen[key]) and $p differ only in case.", out)
+    else
+      seen[key] = p
+    end
+  end
+  out
+end
+
+defn build(root, folder)
+  (** The pages of the site, written into the folder; an Err lists the mistakes. *)
+  config = settings(root)?
+  modules = DocNames()
+  lists = Dict([{Key: m, Value: names(m)} for m in modules])
+  targets = {}
+  for w in keywords
+    targets[w] = keyPath(w)
+  end
+  for m in modules
+    targets[m] = modulePath(m)
+    for n in lists[m]
+      targets[n.Name] = n.Path
+    end
+  end
+  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: Channel()}
+  pages = []
+  search = []
+  index = {Label: "Reference", Path: "ref/index.html"}
+  moduleLinks = [{Label: m, Path: modulePath(m)} for m in modules]
+  for k in 1:Len(modules)
+    m = modules[k]
+    path = modulePath(m)
+    around = near(moduleLinks, k)
+    body = Str(moduleBody(site, m, lists[m]), pager(path, around.Prev, around.Next, index))
+    pages = Append({Path: path, Html: page(site, path, m, side(site, path, []), body)}, pages)
+    search = Append(["module", path, m, summary(Doc(m)), ""], search)
+    nameLinks = [{Label: n.Short, Path: n.Path} for n in lists[m]]
+    for j in 1:Len(lists[m])
+      n = lists[m][j]
+      around = near(nameLinks, j)
+      body = Str(entryBody(site, n.Path, n.Entry), pager(n.Path, around.Prev, around.Next, moduleLinks[k]))
+      pages = Append({Path: n.Path, Html: page(site, n.Path, n.Name, side(site, n.Path, lists[m]), body)}, pages)
+      search = Append(["name", n.Path, n.Name, about(n.Entry), n.Entry.Signature], search)
+    end
+  end
+  wordList = [{Name: w, Short: w, Path: keyPath(w)} for w in keywords]
+  wordLinks = [{Label: w, Path: keyPath(w)} for w in keywords]
+  for k in 1:Len(keywords)
+    w = keywords[k]
+    e = cesia.DocEntry(w)
+    path = keyPath(w)
+    around = near(wordLinks, k)
+    if IsMissing(e)
+      Send("src/std/keywords.ce: the keyword $w has no block.", site.Mistakes)
+    else
+      body = Str(entryBody(site, path, e), pager(path, around.Prev, around.Next, index))
+      pages = Append({Path: path, Html: page(site, path, w, side(site, path, wordList), body)}, pages)
+      search = Append(["keyword", path, w, about(e), ""], search)
+    end
+  end
+  for path in ["ref/index.html", "index.html"]
+    pages = Append({Path: path, Html: page(site, path, "Reference", side(site, path, []), indexBody(site, path))}, pages)
+  end
+  mistakes = Concat(drained(site.Mistakes), sameButCase([p.Path for p in pages]))
+  if Len(mistakes) > 0
+    return Err(Join("\n", Unique(mistakes)))
+  end
+  pages = Append({Path: "search.js", Html: "window.cesiaSearch = $(json.Text(search));\n"}, pages)
+  pages = Append({Path: "site.css", Html: cesia.Asset("site.css")}, Append({Path: "site.js", Html: cesia.Asset("site.js")}, pages))
+  written(folder, pages)?
+  Ok(Len(pages))
+end
+
+defn opened(file)
+  (** Opens a page with the browser of the system: xdg-open, open on macOS, start on Windows. *)
+  for tried in [["xdg-open", [file]], ["open", [file]], ["cmd", ["/c", "start", "", file]]]
+    r = sys.Run(tried[1], args = tried[2])
+    if IsOk(r) and r.Value.Code == 0
+      return Ok(missing)
+    end
+  end
+  Err("Can't open a browser: open $file by hand.")
+end
+
+defn Main()
+  (** Builds the site of Args: the root of the project, the folder, and --open if it was asked. *)
+  if Len(Args) < 2
+    return Err("usage: cesia doc --site [folder] [--open]")
+  end
+  count = build(Args[1], Args[2])?
+  index = "$(Args[2])/index.html"
+  Print("$count files: file://$index")
+  if "--open" in Args
+    opened(index)?
+  end
+  Ok(missing)
+end

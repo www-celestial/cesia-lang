@@ -135,6 +135,7 @@ let of_tables (tables : Toml.table list) =
        | [ "project" ], _ -> project := read_project table
        | [ "tasks"; name ], _ -> tasks := read_task table name :: !tasks
        | [ "deps"; _ ], _ -> read_dep table
+       | [ "site" ], _ -> () (* read by cesia doc --site, which says what it doesn't know *)
        | path, _ -> wrong_at table.start (Messages.project_table (String.concat "." path)))
     tables;
   let tasks = List.rev !tasks in

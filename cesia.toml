@@ -4,6 +4,11 @@ name = "cesia"
 src = []          # its code is OCaml, and its libraries are std/: no package of its own
 native = ["SDL3", "SDL3_ttf"]
 
+# cesia doc --site: its pages link each name to the line that defines it.
+[site]
+title = "Cesia"
+source = "https://github.com/www-celestial/cesia-lang/blob/main/src/"
+
 [tasks.build]
 run = ["dune", "build", "--profile", "release"]
 

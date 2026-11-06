@@ -1,19 +1,17 @@
 (** Markdown to HTML: the part of CommonMark that GitHub shows the same way, and its tables. ATX and setext headings,
-    paragraphs, emphasis, code spans, fenced code, nested and ordered lists, quotes, tables, links [text](url) and [Name],
-    rules and hard breaks; no indented code, no raw HTML, no reference definitions. Raw HTML is text: everything a page shows
+    paragraphs, emphasis, code spans, fenced code, nested and ordered lists, quotes, tables, links with their URL or a name
+    in brackets, rules and hard breaks; no indented code, no raw HTML, no reference definitions. Raw HTML is text: everything a page shows
     is escaped, so a text from anyone is safe in it, and a link leads only to http, https, mailto or a page of the site.
     Parse gives the blocks with their lines; Html writes them, and asks its hooks for the colors of code, the target of a
-    [Name] and the anchor of a heading. *)
+    name in brackets and the anchor of a heading. *)
 
-(** Hooks that add nothing: code in a plain pre, a [Name] left as text, headings without an anchor.
+(** Hooks that add nothing: code in a plain pre, a name in brackets left as text, headings without an anchor.
 
       Html(Parse("[Sort]"), Plain) --> "<p>[Sort]</p>\n" *)
 Plain = {Code: (info, text, line) -> missing, Link: (target, line) -> missing, Anchor: (level, text, line) -> missing}
 
-(** The text with &, <, > and " written as HTML writes them, so that it shows as it is.
-
-      Escape("a < b & ""c""") --> "a &lt; b &amp; &quot;c&quot;" *)
-Escape(text) = Replace("\"", "&quot;", Replace(">", "&gt;", Replace("<", "&lt;", Replace("&", "&amp;", text))))
+(* The text with &, <, > and " written as HTML writes them, as CommonMark writes them: web.Escape is the one for programs. *)
+escape(text) = Replace("\"", "&quot;", Replace(">", "&gt;", Replace("<", "&lt;", Replace("&", "&amp;", text))))
 
 (* The bytes that may start something inline: \ ` * _ [ ] < and the line end. Any other byte is text. *)
 specials = [b == 92 or b == 96 or b == 42 or b == 95 or b == 91 or b == 93 or b == 60 or b == 10 for b in 0:255]
@@ -459,7 +457,7 @@ end
    tags go when it is right inside another one, as GitHub writes it; then emphasis pairs the runs. *)
 
 nodeHtml(x) = if x.K == 0 or x.K == 3 x.H else if x.K == 1 Repeat(x.N, Char(x.C)) else "[" end
-textNode(t) = {K: 0, H: Escape(t)}
+textNode(t) = {K: 0, H: escape(t)}
 ruleOfThree(o, c) = (o.X or c.O) and Mod(o.Orig + c.Orig, 3) == 0 and not (Mod(o.Orig, 3) == 0 and Mod(c.Orig, 3) == 0)
 
 defn emphasized(nodes)
@@ -604,14 +602,14 @@ defn hrefOf(url)
   for b in Bytes(url)
     out = Append(if b < 128 and urlBytes[b + 1] Char(b) else Str("%", encodeHex(b)) end, out)
   end
-  Escape(Join("", out))
+  escape(Join("", out))
 end
 
 encodeHex(b) = Str(ByteSlice(Div(b, 16) + 1, Div(b, 16) + 1, "0123456789ABCDEF"), ByteSlice(Mod(b, 16) + 1, Mod(b, 16) + 1, "0123456789ABCDEF"))
 
 defn anchor(url, title, inner)
   (** The HTML of a link. *)
-  more = if IsMissing(title) "" else " title=\"$(Escape(title))\"" end
+  more = if IsMissing(title) "" else " title=\"$(escape(title))\"" end
   "<a href=\"$(hrefOf(url))\"$more>$inner</a>"
 end
 
@@ -638,7 +636,7 @@ defn codeSpan(t, i)
       if m >= 2 and Byte(1, code) == 32 and Byte(m, code) == 32 and Trim(code) != ""
         code = ByteSlice(2, m - 1, code)
       end
-      return {Html: "<code>$(Escape(code))</code>", Next: q}
+      return {Html: "<code>$(escape(code))</code>", Next: q}
     end
     j = q
   end
@@ -658,12 +656,12 @@ defn autolink(t, i)
   colon = ByteFind(":", 1, url)
   lower = Lower(url)
   if IsMissing(colon) and Len(Split("@", url)) == 2 and not StartsWith("@", url) and not EndsWith("@", url)
-    return {Html: anchor(Str("mailto:", url), missing, Escape(url)), Next: close + 1}
+    return {Html: anchor(Str("mailto:", url), missing, escape(url)), Next: close + 1}
   end
   if not (StartsWith("http://", lower) or StartsWith("https://", lower) or StartsWith("mailto:", lower))
     return missing
   end
-  {Html: anchor(url, missing, Escape(url)), Next: close + 1}
+  {Html: anchor(url, missing, escape(url)), Next: close + 1}
 end
 
 defn lastBracket(nodes)
@@ -808,12 +806,12 @@ defn written(b, hooks, tight, out)
     end
   else if kind == "heading"
     id = hooks.Anchor(b.Level, b.Text, b.Line)
-    attribute = if IsMissing(id) "" else " id=\"$(Escape(id))\"" end
+    attribute = if IsMissing(id) "" else " id=\"$(escape(id))\"" end
     Append(Str("<h", b.Level, attribute, ">", inline(b.Text, hooks, b.Line), "</h", b.Level, ">\n"), cr(out))
   else if kind == "code"
     colored = hooks.Code(b.Info, b.Text, b.Line)
-    language = if b.Info == "" "" else " class=\"language-$(Escape(Split(" ", b.Info)[1]))\"" end
-    html = if IsMissing(colored) "<pre><code$language>$(Escape(b.Text))</code></pre>\n" else colored end
+    language = if b.Info == "" "" else " class=\"language-$(escape(Split(" ", b.Info)[1]))\"" end
+    html = if IsMissing(colored) "<pre><code$language>$(escape(b.Text))</code></pre>\n" else colored end
     Append(html, cr(out))
   else if kind == "rule"
     Append("<hr />\n", cr(out))
