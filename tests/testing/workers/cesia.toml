@@ -1,6 +1,6 @@
 [project]
 name = "workers"
-cesia = "0.2"
+cesia = "0.3"
 
 [tasks.test]
 run = ["cesia", "test"]
