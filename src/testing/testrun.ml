@@ -150,7 +150,7 @@ let rewrite fn =
 let note =
   Native
     { nname = "#note"; perm = None; params = [||]; min_args = 2; max_args = 2;
-      ret_ty = (fun tys -> if Array.length tys > 1 then tys.(1) else TA); f1 = None; i2 = None;
+      ret_ty = (fun tys -> if Array.length tys > 1 then tys.(1) else TA); f1 = None; i2 = None; gives_result = false;
       run =
         (fun _ a ->
            let k = int_arg a.(0) in
