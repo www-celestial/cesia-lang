@@ -7,6 +7,9 @@ val set_seed : int -> unit
 (** The seed of this run: the one given, or the one taken from the system. *)
 val seed : unit -> int
 
+(** Starts the numbers of a run again from the seed, so that the same seed gives the same numbers whatever ran before. *)
+val reset : unit -> unit
+
 (** Starts the numbers again from a state, keeping the seed of the run: cesia test gives each test its own. *)
 val restart : int -> unit
 

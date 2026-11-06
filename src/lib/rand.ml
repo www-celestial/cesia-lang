@@ -1,7 +1,7 @@
 open Types
 
 (* SplitMix64, written here rather than taken from Stdlib.Random: a seed gives the same numbers on every version and every
-   system. One state for the process, seeded from the system at the first draw unless --seed gave it. *)
+   system. The seed is the process's, from the system at the first draw unless --seed gave it; each run starts from it. *)
 let seed_given = ref None
 let state = ref 0L
 let started = ref false
@@ -22,6 +22,10 @@ let start () =
 let seed () =
   start ();
   Option.get !seed_given
+
+(* A run starts from its seed, whatever ran before it in this process: the fuzzer and the workers of cesia test run several
+   programs in one. *)
+let reset () = Option.iter (fun n -> state := Int64.of_int n) !seed_given
 
 (* cesia test starts each test from a state of its own, made of the seed and the test's name, so that a new test changes no
    other's numbers; the seed of the run stays. *)

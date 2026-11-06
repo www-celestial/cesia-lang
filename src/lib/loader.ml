@@ -671,6 +671,7 @@ let set_args_value w value =
 (* Module 0 holds what only the compiler names; the packages of std/ load at their first use. A package that the system
    adds to, as std/debug, gets both parts. *)
 let init w =
+  Rand.reset ();
   let added = w.native_modules in
   let joined = List.map (fun (name, ns) -> name, ns @ Option.value (List.assoc_opt name added) ~default:[]) (std_packages ()) in
   w.native_modules <- joined @ List.filter (fun (name, _) -> not (List.mem_assoc name joined)) added;

@@ -325,5 +325,11 @@ let () =
   in
   func fn;
   check "a rewritten verdict keeps unique ids under nnodes" (!ok && Array.length notes > 10);
-  if !failures > 0 then exit 1;
+  (* Two runs in one process, as the fuzzer and the workers of cesia test make: each starts from the seed of the process. *)
+  let draws = "use std/random\nio.Print([random.Int(1, 1000) for k in 1..20], random.Float(), random.Shuffle(1..9))\n" in
+  let _, first, _ = run draws in
+  let _, between, _ = run draws in
+  let _, again, _ = run draws in
+  check "each run draws the same numbers from the seed" (first = again && between = first && String.length first > 40);
+    if !failures > 0 then exit 1;
   print_endline "engine_test: ok"
