@@ -1,9 +1,2 @@
-std/sqlite.ce:45:21: Permission "write" denied. Run again with --allow write.
-  45 |   conn = {H: sqlite3.Open(path)?, Wait: options.Wait}
-     |                     ^
-  in connect (std/sqlite.ce:45)
-  called from take (std/sql.ce:79)
-  called from withConn (std/sql.ce:104)
-  called from Exec (std/sql.ce:202)
-  called from main (denied-write.ce:4)
-exit 1
+Permission "write" denied. Run again with --allow write.
+exit 0

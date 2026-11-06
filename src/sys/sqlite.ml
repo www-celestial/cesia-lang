@@ -21,23 +21,19 @@ type lib = {
   autocommit : int; exec : int;
 }
 
+(* A statement and what it says of its columns, read once. *)
+type prepared = { stmt : int; names : t; bools : bool array  (** the columns declared BOOLEAN *) }
+
 type conn = {
   db : int;
-  cache : (string, int list) Hashtbl.t;  (** free statements by text: one in use is never handed out twice *)
+  cache : (string, prepared list) Hashtbl.t;  (** free statements by text: one in use is never handed out twice *)
   mutable cached : int;
   mutable broken : bool;
   mutable closed : bool;
   live : (int, unit) Hashtbl.t;  (** its cursors *)
 }
 
-type cursor = {
-  stmt : int;
-  text : string;
-  owner : conn;
-  names : t;
-  bools : bool array;  (** the columns declared BOOLEAN *)
-  mutable rows : int;
-}
+type cursor = { p : prepared; text : string; owner : conn; mutable rows : int }
 
 let library = ref None
 let conns : (int, conn) Hashtbl.t = Hashtbl.create 4
@@ -154,17 +150,17 @@ let closed ctx = failure ctx "closed" (Messages.sql_closed).text
 let finalize lib stmt = ignore (c1 lib.finalize stmt)
 
 (* A statement back in the cache, reset; past 128, the cache is emptied first. *)
-let give_back lib c text stmt =
-  ignore (c1 lib.reset stmt);
-  ignore (c1 lib.clear stmt);
-  if c.closed || c.broken then finalize lib stmt
+let give_back lib c text p =
+  ignore (c1 lib.reset p.stmt);
+  ignore (c1 lib.clear p.stmt);
+  if c.closed || c.broken then finalize lib p.stmt
   else begin
     if c.cached >= 128 then begin
-      Hashtbl.iter (fun _ l -> List.iter (finalize lib) l) c.cache;
+      Hashtbl.iter (fun _ l -> List.iter (fun p -> finalize lib p.stmt) l) c.cache;
       Hashtbl.reset c.cache;
       c.cached <- 0
     end;
-    Hashtbl.replace c.cache text (stmt :: Option.value ~default:[] (Hashtbl.find_opt c.cache text));
+    Hashtbl.replace c.cache text (p :: Option.value ~default:[] (Hashtbl.find_opt c.cache text));
     c.cached <- c.cached + 1
   end
 
@@ -177,13 +173,18 @@ let prepare lib c text =
   free z;
   rc, stmt, if rc = 0 then String.sub text tail (String.length text - tail) else ""
 
+let decltypes lib stmt n =
+  Array.init n (fun k ->
+      let p = c2 lib.decltype stmt k in
+      p <> 0 && String.uppercase_ascii (cstring p) = "BOOLEAN")
+
 (* One statement: text after it that holds another is an error, so none rides in on a value glued by hand. *)
 let statement ctx lib c text =
   match Hashtbl.find_opt c.cache text with
-  | Some (stmt :: rest) ->
+  | Some (p :: rest) ->
     Hashtbl.replace c.cache text rest;
     c.cached <- c.cached - 1;
-    Ok stmt
+    Ok p
   | _ ->
     zero_free ctx "a statement" text;
     let rc, stmt, rest = prepare lib c text in
@@ -191,7 +192,10 @@ let statement ctx lib c text =
     else if stmt = 0 then Error (failure ctx "statements" (Messages.sql_no_statement).text)
     else
       match prepare lib c rest with
-      | 0, 0, _ -> Ok stmt
+      | 0, 0, _ ->
+        let n = c1 lib.columns stmt in
+        let names = Arrays.list (Array.init n (fun k -> Text (cstring (c2 lib.name stmt k)))) in
+        Ok { stmt; names; bools = decltypes lib stmt n }
       | _, more, _ ->
         if more <> 0 then finalize lib more;
         finalize lib stmt;
@@ -210,11 +214,6 @@ let bind ctx lib stmt k (v : t) =
   | Text s -> texts.(2) <- s; set 3 (String.length s); set 4 (-1); run lib.bind_text 5 ~text:2 ()
   | v -> Runtime.fail ctx Type (Messages.sql_bad_param k (Value.describe v))
 
-let decltypes lib stmt n =
-  Array.init n (fun k ->
-      let p = c2 lib.decltype stmt k in
-      p <> 0 && String.uppercase_ascii (cstring p) = "BOOLEAN")
-
 let list_values ctx name (v : t) =
   match v with
   | Array a -> let a = Value.trim a in Array.init (a.rows * a.cols) (Value.elt a)
@@ -229,10 +228,11 @@ let run_statement ctx (a : t array) =
     with_lib ctx (fun lib ->
         match statement ctx lib c text with
         | Error e -> e
-        | Ok stmt ->
+        | Ok p ->
+          let stmt = p.stmt in
           let wanted = c1 lib.count stmt in
           if wanted <> Array.length params then begin
-            give_back lib c text stmt;
+            give_back lib c text p;
             failure ctx "07001" (Messages.sql_param_count wanted (Array.length params)).text
           end
           else
@@ -240,14 +240,12 @@ let run_statement ctx (a : t array) =
             Array.iteri (fun k v -> if !bad = 0 then bad := bind ctx lib stmt (k + 1) v) params;
             if !bad <> 0 then begin
               let e = last_error ctx lib c in
-              give_back lib c text stmt;
+              give_back lib c text p;
               e
             end
             else begin
-              let n = c1 lib.columns stmt in
-              let names = Arrays.list (Array.init n (fun k -> Text (cstring (c2 lib.name stmt k)))) in
               let id = new_id () in
-              Hashtbl.replace cursors id { stmt; text; owner = c; names; bools = decltypes lib stmt n; rows = 0 };
+              Hashtbl.replace cursors id { p; text; owner = c; rows = 0 };
               Hashtbl.replace c.live id ();
               Value.ok ctx.w (handle "cursor" id)
             end)
@@ -255,7 +253,7 @@ let run_statement ctx (a : t array) =
 let end_cursor lib id cur =
   Hashtbl.remove cursors id;
   Hashtbl.remove cur.owner.live id;
-  give_back lib cur.owner cur.text cur.stmt
+  give_back lib cur.owner cur.text cur.p
 
 let batch_keys = Trie.names [| "Names"; "Cells"; "Done"; "Changed"; "LastId" |]
 
@@ -293,8 +291,8 @@ let next ctx (a : t array) =
   | None -> closed ctx
   | Some cur ->
     with_lib ctx (fun lib ->
-        let c = cur.owner and stmt = cur.stmt in
-        let width = Array.length cur.bools in
+        let c = cur.owner and stmt = cur.p.stmt and bools = cur.p.bools in
+        let width = Array.length bools in
         let cells = Arrays.builder () and rows = ref 0 and outcome = ref 100 in
         (try
            while !outcome = 100 && !rows < n do
@@ -302,7 +300,7 @@ let next ctx (a : t array) =
              if !outcome = 100 then begin
                Runtime.build ctx (width + 1);
                for k = 0 to width - 1 do
-                 Arrays.add ctx ctx.site cells (cell ctx lib stmt cur.bools k)
+                 Arrays.add ctx ctx.site cells (cell ctx lib stmt bools k)
                done;
                incr rows
              end
@@ -312,7 +310,7 @@ let next ctx (a : t array) =
         let reply finished =
           Value.ok ctx.w
             (Trie.record batch_keys
-               [| cur.names; Arrays.built cells; Value.of_bool finished; Int (c1 lib.changes c.db);
+               [| cur.p.names; Arrays.built cells; Value.of_bool finished; Int (c1 lib.changes c.db);
                   Int (c1 lib.last_id c.db) |])
         in
         match !outcome with
@@ -349,8 +347,8 @@ let close ctx (a : t array) =
      Option.iter
        (fun c ->
           c.closed <- true;
-          Hashtbl.iter (fun k () -> Option.iter (fun cur -> Hashtbl.remove cursors k; finalize lib cur.stmt) (Hashtbl.find_opt cursors k)) c.live;
-          Hashtbl.iter (fun _ l -> List.iter (finalize lib) l) c.cache;
+          Hashtbl.iter (fun k () -> Option.iter (fun cur -> Hashtbl.remove cursors k; finalize lib cur.p.stmt) (Hashtbl.find_opt cursors k)) c.live;
+          Hashtbl.iter (fun _ l -> List.iter (fun p -> finalize lib p.stmt) l) c.cache;
           ignore (c1 lib.close_v2 c.db);
           Hashtbl.remove conns id)
        (Hashtbl.find_opt conns id)

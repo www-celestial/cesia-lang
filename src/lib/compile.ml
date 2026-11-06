@@ -3408,34 +3408,70 @@ and call_back (ctx : ctx) g args =
    bad one is an error, not a bug. A small field is no key outside the package [pm] of the code, and its name is not told. *)
 and from_native (proto : proto) pm =
   let ctor = Fun { proto; env = [||] } in
+  (* Its shape, found once per world; the keys of the last map of one block and the field of each, so that rows that
+     share their keys go straight to the checks; and whether a struct can be built here, as the constructor builds it,
+     once every field is given. *)
+  let memo = ref None and seen = ref (Trie.no_keys, [||]) and direct = ref false in
   let run (ctx : ctx) (a : t array) =
     let f = proto.func and sn = proto.pname in
-    let names = Array.map (fun (p : param) -> p.pname) f.params in
-    let shape = Value.shape_of ctx.w ~sname:sn ~m:ctx.w.modules.(proto.pm).host names in
-    let inside = ctx.w.modules.(pm).host = shape.sm in
-    let o = Dict.items ctx (sn ^ ".From") a.(0) and vals = Array.make (Array.length names) Undef in
+    let names, shape, inside =
+      match !memo with
+      | Some (w, m) when w == ctx.w -> m
+      | _ ->
+        let names = Array.map (fun (p : param) -> p.pname) f.params in
+        let shape = Value.shape_of ctx.w ~sname:sn ~m:ctx.w.modules.(proto.pm).host names in
+        let m = names, shape, ctx.w.modules.(pm).host = shape.sm in
+        memo := Some (ctx.w, m);
+        direct := false;
+        m
+    in
+    let vals = Array.make (Array.length names) Undef in
     let fail (m : Messages.t) = raise_notrace (Return_value (Value.failure ctx.w "field" m.text)) in
+    let put i v =
+      vals.(i) <-
+        (if Array.length shape.checks = 0 then v
+         else
+           match shape.checks.(i) with
+           | None -> v
+           | Some ch ->
+             let y = ch.accept v in
+             if y == Undef then fail (Messages.wrong_type sn names.(i) (fst (ch.wrong v)) (snd (ch.wrong v)));
+             y)
+    in
     try
-      for j = 0 to (Array.length o / 2) - 1 do
-        let key = Value.text_of ctx o.(2 * j) in
-        let i = (match o.(2 * j) with Text s when Lexer.is_public s || inside -> Value.field_index shape s | _ -> -1) in
-        if i < 0 then fail (Messages.named_field sn key);
-        vals.(i) <- (if Array.length shape.checks = 0 then o.((2 * j) + 1) else
-          match shape.checks.(i) with
-          | None -> o.((2 * j) + 1)
-          | Some ch ->
-            let y = ch.accept o.((2 * j) + 1) in
-            if y == Undef then fail (Messages.wrong_type sn names.(i) (fst (ch.wrong o.((2 * j) + 1))) (snd (ch.wrong o.((2 * j) + 1))));
-            y)
-      done;
+      (match a.(0) with
+       | Dict { keys; vals = vs; _ } when keys == fst !seen && Array.length vs = Array.length (snd !seen) ->
+         Array.iteri (fun j i -> put i vs.(j)) (snd !seen)
+       | m ->
+         let o = Dict.items ctx (sn ^ ".From") m in
+         let places = Array.make (Array.length o / 2) (-1) in
+         for j = 0 to (Array.length o / 2) - 1 do
+           let key = Value.text_of ctx o.(2 * j) in
+           let i = (match o.(2 * j) with Text s when Lexer.is_public s || inside -> Value.field_index shape s | _ -> -1) in
+           if i < 0 then fail (Messages.named_field sn key);
+           places.(j) <- i;
+           put i o.((2 * j) + 1)
+         done;
+         (match m with
+          | Dict { keys; vals = vs; _ } when keys.deep = Flat && Array.length vs = Array.length places -> seen := (keys, places)
+          | _ -> ()));
       Array.iteri
         (fun i (p : param) ->
            if vals.(i) == Undef && p.default = None then
              fail (if inside || Lexer.is_public p.pname then Messages.from_missing sn p.pname else Messages.from_private sn))
         f.params;
-      let last = ref 0 in
-      Array.iteri (fun i v -> if v != Undef then last := i + 1) vals;
-      Value.ok ctx.w (call_back ctx ctor (Array.map Value.share (Array.sub vals 0 !last)))
+      if !direct && Array.for_all (fun v -> v != Undef) vals then
+        Value.ok ctx.w (Struct { shape; fields = Array.map Value.share vals; r_owned = true })
+      else begin
+        let last = ref 0 in
+        Array.iteri (fun i v -> if v != Undef then last := i + 1) vals;
+        let made = call_back ctx ctor (Array.map Value.share (Array.sub vals 0 !last)) in
+        (match made with
+         | Struct { shape = s; fields; _ } when s == shape && !last = Array.length vals ->
+           direct := Array.for_all2 (fun x y -> x == y) fields vals || !direct
+         | _ -> ());
+        Value.ok ctx.w made
+      end
     with Return_value e -> e
   in
   Native { nname = proto.pname ^ ".From"; perm = None; params = [| "m" |]; min_args = 1; max_args = 1; ret_ty = (fun _ -> TA);

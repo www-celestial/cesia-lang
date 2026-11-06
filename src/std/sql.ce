@@ -59,22 +59,21 @@ defn isSet(ch)
   true
 end
 
+closedMark = "closed"
+
 defn take(db)
-  (** A connection of the pool: a free one, or a new one in an empty slot. *)
-  if isSet(db.Closed)
-    return closedError()
-  end
+  (** A connection of the pool: a free one, or a new one in an empty slot. Close leaves closedMark in every slot. *)
   got = Receive(db.Slots, timeout = db.Wait)
   if failed(got)
     return failure("pool", "No connection was free for $(db.Wait) seconds. Inside a transaction, use its tx, not db.")
   end
   slot = got?
-  if isSet(db.Closed)
-    giveBack(slot, db)
-    return closedError()
-  end
-  if not IsMissing(slot)
+  if IsDict(slot)
     return Ok(slot)
+  end
+  if slot == closedMark
+    Send(slot, db.Slots)
+    return closedError()
   end
   conn = db.Driver.Connect(db.Url, {Wait: db.Wait})
   if failed(conn)
@@ -85,7 +84,10 @@ end
 
 defn giveBack(conn, db)
   (** A connection back in the pool; a broken one, or one of a closed database, is closed and its slot left empty. *)
-  if not IsMissing(conn) and (db.Driver.Broken(conn) or isSet(db.Closed))
+  if isSet(db.Closed)
+    db.Driver.Close(conn)
+    Send(closedMark, db.Slots)
+  else if db.Driver.Broken(conn)
     db.Driver.Close(conn)
     Send(missing, db.Slots)
   else
@@ -125,10 +127,19 @@ defn value(v)
 end
 
 defn bound(ps)
-  (** The values of a list of parameters. *)
+  (** The values of a list of parameters: the list itself when SQL takes them all as they are. *)
   if not IsArray(ps)
     return failure("params", "The parameters are a list of values, one for each ?: [] for none.")
   end
+  for p in ps
+    if not (IsText(p) or IsNumber(p) or IsMissing(p) or IsBool(p))
+      return converted(ps)
+    end
+  end
+  Ok(ps)
+end
+
+defn converted(ps)
   out = []
   for p in ps
     out = Append(value(p)?, out)
@@ -168,6 +179,16 @@ defn readAll(text, ps, n, d, conn)
     d.Close(cursor)
   end
   Ok(Flatten(parts))
+end
+
+defn first(text, ps, d, conn)
+  (** The first row, in a list, or none. *)
+  cursor = d.Run(text, bound(ps)?, conn)?
+  b = d.Next(1, cursor)?
+  if not b.Done
+    d.Close(cursor)
+  end
+  rowsOf(b)
 end
 
 defn typed(as, rows)
@@ -211,7 +232,7 @@ end
 
 defn One(text, params, db, as = missing)
   (** An Ok of the first row, or of missing if there is none; with as, of as(row). *)
-  rows = withConn(conn -> readAll(text, params, 1, db.Driver, conn), db)?
+  rows = withConn(conn -> first(text, params, db.Driver, conn), db)?
   if Len(rows) == 0
     return Ok(missing)
   end
@@ -365,9 +386,10 @@ end
 
 defn Close(db)
   (** Closes the free connections now, the others when they come back: a call after it is an Err with Code "closed". *)
-  if not isSet(db.Closed)
-    Send(true, db.Closed)
+  if isSet(db.Closed)
+    return missing
   end
+  Send(true, db.Closed)
   free = []
   got = Receive(db.Slots, timeout = 0)
   while not failed(got)
@@ -375,10 +397,10 @@ defn Close(db)
     got = Receive(db.Slots, timeout = 0)
   end
   for conn in free
-    if not IsMissing(conn)
+    if IsDict(conn)
       db.Driver.Close(conn)
     end
-    Send(missing, db.Slots)
+    Send(closedMark, db.Slots)
   end
   missing
 end

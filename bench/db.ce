@@ -1,0 +1,51 @@
+(** SQLite through pkg/sql against Python's sqlite3 (bench/db.py): 100,000 rows read as maps, typed, streamed, then 100,000
+    selects by key and 100,000 inserts in one transaction. Run by tools/db-bench.sh. *)
+use sys
+use pkg/sql
+
+struct User { Id Int, Name Text, Score Float, CreatedAt Text }
+
+q = "select id, name, score, created_at from users"
+
+defn best(f)
+  times = []
+  for k in 1:5
+    start = sys.Now()
+    f()
+    times = Append(sys.Now() - start, times)
+  end
+  Min(times)
+end
+
+defn byKey(db)
+  for i in 0:99999
+    sql.One("select id, name from users where id = ?", [i], db)
+  end
+end
+
+defn inserts(tx)
+  for i in 1:100000
+    sql.Exec("insert into t (name) values (?)", ["x$i"], tx)?
+  end
+  Ok(missing)
+end
+
+defn fresh()
+  d = sql.Open("sqlite::memory:")?
+  sql.Script("create table t (id integer primary key, name text)", d)?
+  sql.Transaction(inserts, d)
+end
+
+defn main()
+  db = sql.Open("sqlite::memory:")?
+  sql.Script("create table users (id integer primary key, name text, score real, created_at text)", db)?
+  sql.Exec("with recursive s(i) as (select 0 union all select i + 1 from s where i < 99999) insert into users select i, 'user' || i, i * 0.5, '2026-11-05 12:00:00' from s", [], db)?
+  cases = [["maps", () -> sql.Query(q, [], db)], ["as User.From", () -> sql.Query(q, [], db, as = User.From)], ["Each", () -> sql.Each(r -> r.Id, q, [], db)], ["Table", () -> sql.Table(q, [], db)], ["100k selects by key", () -> byKey(db)], ["100k inserts", fresh]]
+  for c in cases
+    t = best(c[2])
+    Print("$(PadRight(22, " ", c[1])) $(Round(t * 10000) / 10) ms")
+  end
+  Ok(missing)
+end
+
+Print(main())

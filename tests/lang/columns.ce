@@ -297,3 +297,14 @@ defn isRowsPastTheTable()
   end
   true
 end
+
+struct Pt { X Int, Y Float = 0.0 }
+
+defn isFromRowsOfShapesInTurn()
+  a = columns.Rows(["X", "Y"], [1, 2, 3, 4.5])?
+  b = columns.Rows(["Y", "X"], [1.5, 7])?
+  c = columns.Rows(["X"], [9])?
+  ps = [Pt.From(r)? for r in Concat(a, Concat(b, Concat(a, c)))]
+  wrong = Pt.From(columns.Rows(["X", "Y"], [1, "a"])?[1]) then MapErr(it.Kind)
+  Equal(Map(it.X, ps), [1, 3, 7, 1, 3, 9]) and Equal(Map(it.Y, ps), [2.0, 4.5, 1.5, 2.0, 4.5, 0.0]) and wrong == Err("field") and IsFloat(ps[1].Y)
+end

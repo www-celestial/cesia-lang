@@ -24,6 +24,10 @@ end
 
 defn next(n, cursor)
   (** The next rows; a database still busy after the wait closes the cursor. *)
+  r = sqlite3.Next(n, cursor.C)
+  if not busy(r)
+    return r
+  end
   r = retry(() -> sqlite3.Next(n, cursor.C), cursor.Wait)
   if busy(r)
     sqlite3.Close(cursor.C)

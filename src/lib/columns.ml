@@ -574,17 +574,27 @@ let values ctx name v =
   Array.init (size a) (Value.elt a)
 
 (* [Rows(names, cells, public)]: a map per row from cells given row after row. *)
+(* The list of names met last and its keys: a driver gives the same list for each batch of a statement. *)
+let last_names = ref (Undef, false, Error "")
+
 let rows ctx (a : t array) =
-  let names = Array.map (Native.text_arg ctx "columns.Rows") (values ctx "columns.Rows" a.(0)) in
-  let cells = values ctx "columns.Rows" a.(1) and n = Array.length names in
   let public =
     match if Array.length a > 2 then a.(2) else Undef with
     | True -> true
     | Undef | Missing | False -> false
     | v -> Runtime.fail ctx Type (Messages.c_need_bool (Value.describe v))
   in
+  let found =
+    match !last_names with
+    | v, p, found when v == a.(0) && p = public -> found
+    | _ ->
+      let found = keys_for public (Array.map (Native.text_arg ctx "columns.Rows") (values ctx "columns.Rows" a.(0))) in
+      last_names := (a.(0), public, found);
+      found
+  in
+  let cells = values ctx "columns.Rows" a.(1) and n = match found with Ok k -> Array.length k.ks | Error _ -> 1 in
   if n = 0 || Array.length cells mod n <> 0 then Runtime.fail ctx Type (Messages.rows_cells (Array.length cells) n);
-  match keys_for public names with
+  match found with
   | Error text -> Value.failure ctx.w "names" text
   | Ok keys ->
     let count = Array.length cells / n in
