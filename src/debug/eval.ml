@@ -166,7 +166,10 @@ let eval ctx (a : t array) =
 
 (* A condition of a breakpoint, at a site, with the variables there: an error stops too, to be seen. *)
 let test ctx s cond =
-  match quietly ctx (fun () -> in_frame ctx cond (Debug.frame ctx ctx.b s)) with
+  (* The code runs above the frame of the site: the hook doesn't set it. *)
+  let before = ctx.site in
+  ctx.site <- s;
+  match Fun.protect ~finally:(fun () -> ctx.site <- before) (fun () -> quietly ctx (fun () -> in_frame ctx cond (Debug.frame ctx ctx.b s))) with
   | Struct { shape = { sname = Some "Ok"; _ }; fields = [| v |]; _ } -> v <> False && v <> Missing
   | _ -> true
 

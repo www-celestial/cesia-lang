@@ -146,6 +146,8 @@ let set_break ctx (a : t array) =
   let file = Native.text_arg ctx "SetBreak" a.(0) and line = line_arg ctx "SetBreak" a.(1) in
   let cond = if Array.length a > 2 then Native.text_arg ctx "SetBreak" a.(2) else "" in
   d.breaks <- (file, line, cond) :: List.filter (fun (f, l, _) -> f <> file || l <> line) d.breaks;
+  (* Set from the prompt while the program runs: native code may hold that line. A stop does it when it ends. *)
+  if not d.stopped then back_to_interpreter ctx.w;
   Missing
 
 let clear_break ctx (a : t array) =
