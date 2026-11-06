@@ -164,7 +164,8 @@ cesia run --allow read=data,write=data visits.ce
 ```
 
 SQLite writes two more files beside the database while it runs, `visits.db-wal` and `visits.db-shm`. So the permissions
-are on the folder that holds them all, `data`, not on the file alone. A database in use by another fiber or program is waited for, in this fiber only, so the others go on.
+are on the folder that holds them all, `data`: a permission on `data/visits.db` alone is denied, with the name of the file
+it lacks. A database in use by another fiber or program is waited for, in this fiber only, so the others go on.
 
 ## Next
 

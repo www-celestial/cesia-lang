@@ -142,10 +142,13 @@ let path_arg ctx name v =
   (* A SQLite built to read URIs would take file:/etc/x.db?vfs=... past the check of the path. *)
   if String.length path >= 5 && String.lowercase_ascii (String.sub path 0 5) = "file:" then
     Runtime.fail ctx Type (Messages.sql_uri path);
-  if path <> ":memory:" then begin
-    Runtime.check_perm ctx Read (Some path);
-    Runtime.check_perm ctx Write (Some path)
-  end;
+  (* SQLite writes beside the database too: its journal, or in WAL mode the files -wal and -shm. *)
+  if path <> ":memory:" then
+    List.iter
+      (fun p ->
+        Runtime.check_perm ctx Read (Some p);
+        Runtime.check_perm ctx Write (Some p))
+      [ path; path ^ "-wal"; path ^ "-shm"; path ^ "-journal" ];
   path
 
 let open_conn ctx lib path =

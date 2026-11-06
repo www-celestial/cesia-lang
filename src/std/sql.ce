@@ -1,7 +1,8 @@
 (** Databases through SQL, on SQLite: a pool of connections, rows as maps that share their keys, typed rows, transactions
     and streams. Values only go through ?, never into the text: one statement per call, and sql.Script for a schema. URLs:
-    sqlite:PATH and sqlite::memory:. A file needs read and write, and uses WAL and foreign keys; a busy database is waited
-    for in the fiber, so the other fibers run meanwhile. *)
+    sqlite:PATH and sqlite::memory:. A file needs read and write, for itself and for the files SQLite keeps beside it,
+    PATH-wal, PATH-shm and PATH-journal: grant its folder. It uses WAL and foreign keys; a busy database is waited for in
+    the fiber, so the other fibers run meanwhile. *)
 use std/columns
 use std/json
 use std/sqlite3

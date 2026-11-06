@@ -1,0 +1,7 @@
+use std/sql
+use std/io
+defn main()
+  db = sql.Open("sqlite:shop.db")?
+  sql.Exec("create table t (x)", [], db)
+end
+io.Print(main())
