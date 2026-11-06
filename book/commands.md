@@ -81,7 +81,7 @@ cesia doc --site [folder] [--open]
 
 `cesia doc` lists the modules; with a module, such as `std/num`, its names; with a name, such as `num.Solve` or `Sort`, its
 text and its examples. `--site` builds the site of the project in `site/`, or in the folder given, and `--open` opens it in
-the browser. Outside a project, it builds this book and the reference of this Cesia, in the cache. See [Tests](tests.md).
+the browser. See [Tests](tests.md).
 
 ## cesia version
 

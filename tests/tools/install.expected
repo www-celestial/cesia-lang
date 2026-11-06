@@ -4,14 +4,10 @@ Installed cesia 0.2.0+dev in TOP/home: cesia and ce are in TOP/links.
 cesia 0.2.0+dev
 .:
 bin
-book
 lib
 
 bin:
 cesia
-
-book:
-index.md
 
 lib:
 libsome.so

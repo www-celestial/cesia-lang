@@ -1,9 +1,9 @@
 #!/bin/sh
 # Installs Cesia on Linux and macOS, from its releases:
 #   curl -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh
-# The archive of this system (bin/cesia, lib/ with every C library it uses, and book/) goes into ~/.cesia once its
-# fingerprint is checked, and cesia and ce into ~/.local/bin. Then cesia upgrade keeps it up to date. Downloaded this way,
-# macOS doesn't hold the binary back, as it does for a file taken through a browser.
+# The archive of this system (bin/cesia and lib/, every C library it uses) goes into ~/.cesia once its fingerprint is checked,
+# and cesia and ce into ~/.local/bin. Then cesia upgrade keeps it up to date. Downloaded this way, macOS doesn't hold the
+# binary back, as it does for a file taken through a browser.
 # CESIA_HOME and CESIA_BIN change the two folders; CESIA_RELEASES=file:///folder reads a folder instead of GitHub.
 set -eu
 case "$(uname -s)" in
@@ -43,8 +43,7 @@ mkdir "$tmp/new"
 tar -xzf "$tmp/$archive" -C "$tmp/new"
 version=$("$tmp/new/bin/cesia" version)
 mkdir -p "$home" "$bin"
-for part in bin lib book; do
-  [ -e "$tmp/new/$part" ] || continue
+for part in bin lib; do
   rm -rf "$home/$part.old"
   if [ -e "$home/$part" ]; then mv "$home/$part" "$home/$part.old"; fi
   mv "$tmp/new/$part" "$home/$part"

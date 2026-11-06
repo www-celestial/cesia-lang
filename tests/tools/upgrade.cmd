@@ -5,7 +5,7 @@ trap 'rm -rf "$top"' EXIT
 case "$(uname -s)" in Darwin) os=macos ;; *) os=linux ;; esac
 case "$(uname -m)" in amd64 | x86_64) arch=x86_64 ;; aarch64 | arm64) arch=arm64 ;; *) arch=$(uname -m) ;; esac
 archive="cesia-$os-$arch.tar.gz"
-mkdir -p "$top/inst/bin" "$top/inst/lib" "$top/new/bin" "$top/new/lib" "$top/new/book"
+mkdir -p "$top/inst/bin" "$top/inst/lib" "$top/new/bin" "$top/new/lib"
 cp "$root/_build/default/src/bin/main.exe" "$top/inst/bin/cesia"
 printf 'the old lib\n' > "$top/inst/lib/old.txt"
 mkdir -p "$top/inst/lib/licenses" && printf 'Cesia\n' > "$top/inst/lib/licenses/Cesia.txt"
@@ -21,8 +21,7 @@ release() {
     "$3" "$4" "$6" "$top/$1/$archive" "$6" "$top/$1/$archive.blake2" > "$top/$1/$2.json"
 }
 mkdir -p "$top/rel"
-printf '# Cesia\n' > "$top/new/book/index.md"
-(cd "$top/new" && tar -czf "$top/rel/$archive" bin lib book)
+(cd "$top/new" && tar -czf "$top/rel/$archive" bin lib)
 good="blake2:$(b2sum -l 256 "$top/rel/$archive" | cut -d' ' -f1)"
 release rel latest v99.0.0 "cesia 99.0.0" "$good" "$archive"
 release rel nightly nightly "cesia 99.1.0-nightly+abc1234" "$good" "$archive"
@@ -57,4 +56,4 @@ same
 echo "== y"
 echo y | cesia_copy upgrade
 cesia_copy version
-cd "$top/inst" && ls -A . bin lib book
+cd "$top/inst" && ls -A . bin lib

@@ -1,6 +1,6 @@
 # Installs Cesia on Windows, from its releases:
 #   irm https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.ps1 | iex
-# The archive (bin\cesia.exe, lib\ with every C library it uses, and book\) goes into %USERPROFILE%\.cesia once its fingerprint is checked,
+# The archive (bin\cesia.exe and lib\, every C library it uses) goes into %USERPROFILE%\.cesia once its fingerprint is checked,
 # with ce.exe beside cesia.exe, and that folder goes on the Path of the user. Then cesia upgrade keeps it up to date.
 # CESIA_HOME changes the folder; CESIA_RELEASES=file:///folder reads a folder instead of GitHub.
 $ErrorActionPreference = "Stop"
@@ -23,8 +23,7 @@ try {
   Expand-Archive "$tmp\$archive" -DestinationPath "$tmp\new"
   $version = & "$tmp\new\bin\cesia.exe" version
   New-Item -ItemType Directory -Force -Path $target | Out-Null
-  foreach ($part in "bin", "lib", "book") {
-    if (-not (Test-Path (Join-Path "$tmp\new" $part))) { continue }
+  foreach ($part in "bin", "lib") {
     $old = Join-Path $target $part
     if (Test-Path $old) { Remove-Item -Recurse -Force $old }
     Move-Item (Join-Path "$tmp\new" $part) $old
