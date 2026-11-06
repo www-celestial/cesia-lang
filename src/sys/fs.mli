@@ -17,5 +17,8 @@ val failed : ctx -> string -> string -> Unix.error -> t
 (** Does this error mean that the operation can be tried again? *)
 val retry : Unix.error -> bool
 
+(** Removes a folder and all it holds, never following a link: a link goes, what it points to stays. *)
+val remove_tree : string -> unit
+
 (** The functions of the [sys] module that deal with files and the environment. *)
 val natives : (string * t) list

@@ -136,6 +136,7 @@ let of_tables (tables : Toml.table list) =
        | [ "tasks"; name ], _ -> tasks := read_task table name :: !tasks
        | [ "deps"; _ ], _ -> read_dep table
        | [ "site" ], _ -> () (* read by cesia doc --site, which says what it doesn't know *)
+       | [ "test" ], _ -> () (* read by cesia test *)
        | path, _ -> wrong_at table.start (Messages.project_table (String.concat "." path)))
     tables;
   let tasks = List.rev !tasks in
@@ -282,3 +283,32 @@ let create name =
   write (Filename.concat code "main.ce") (Printf.sprintf "use std/io\n\nio.Print(\"Hello from %s\")\n" name);
   (* An empty std/ asks cesia pkg install for Cesia's libraries. *)
   Sys.mkdir (Filename.concat name "std") 0o755
+
+type test = { allow : string list; timeout : float; serial : string list }
+
+let no_test = { allow = []; timeout = 10.; serial = [] }
+
+(* [test] of the cesia.toml at a root, if any: what cesia test allows beyond its defaults, the seconds a test may take, and
+   the folders and files that run alone. *)
+let test_config root =
+  let path = Filename.concat root file_name in
+  match In_channel.with_open_bin path In_channel.input_all with
+  | exception Sys_error _ -> no_test
+  | src ->
+    match Toml.parse src with
+    | Error (line, reason) -> stop 1 (path ^ ": " ^ Messages.at_line line reason)
+    | Ok tables ->
+      match List.find_opt (fun (t : Toml.table) -> t.path = [ "test" ]) tables with
+      | None -> no_test
+      | Some table ->
+        List.fold_left
+          (fun c (e : Toml.entry) ->
+             let wrong what = stop 1 (path ^ ": " ^ Messages.at_line e.line (Messages.project_type "[test]" e.key what)) in
+             match e.key, e.value with
+             | "allow", Texts l -> { c with allow = l }
+             | "serial", Texts l -> { c with serial = l }
+             | "timeout", Text t ->
+               (match float_of_string_opt t with Some f when f > 0. -> { c with timeout = f } | _ -> wrong "seconds, as \"10\"")
+             | ("allow" | "serial"), _ -> wrong "a list of texts"
+             | key, _ -> stop 1 (path ^ ": " ^ Messages.at_line e.line (Messages.project_field "[test]" key)))
+          no_test table.entries

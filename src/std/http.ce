@@ -283,12 +283,13 @@ defn WaitForConnections(deadline)
   end
 end
 
-defn Serve(handle, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = Plain)
+defn Serve(handle, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = Plain, listener = missing)
   (** Serves requests until a stop signal, then finishes those in progress for at most 5 seconds.
       handle(request) receives {Method, Path, Query, Headers, Body} and returns {Status, Body}, with optional headers, and
       optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
-      after the response. wrap sits under HTTP: see tls. *)
-  listener = net.Listen(port, host = host)?
+      after the response. wrap sits under HTTP: see tls. A listener already open, as a test opens on port 0 to learn
+      its port with net.Port, takes the place of port and host. *)
+  listener = if value.IsMissing(listener) net.Listen(port, host = host)? else listener end
   fiber.Spawn(() -> reaper(list.Max(0.01, list.Min(1.0, timeout / 2.0))))
   acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: wrap})?
   net.Close(listener)

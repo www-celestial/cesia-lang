@@ -1,0 +1,60 @@
+(* What a test may do by default, and what it may not. *)
+use std/test
+use std/sys
+use std/net
+use std/http
+use std/fiber
+use std/result
+use std/text
+
+kind(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Kind)
+denied(f) = kind(f) == result.Err("permission")
+
+isReadsTheProject() = sys.Read("data.txt") == result.Ok("hello\n")
+defn isWritesItsTemp()
+  d = test.Temp()
+  sys.Write("$d/a.txt", "x")?
+  test.Temp() == d and sys.Read("$d/a.txt") == result.Ok("x")
+end
+isCantWriteTheProject() = denied(() -> sys.Write("out.txt", "x"))
+isCantWriteOutOfTemp() = denied(() -> sys.Write("$(test.Temp())/../../escape.txt", "x"))
+isCantReadOutside() = denied(() -> sys.Read("/etc/hostname"))
+defn isListensHere()
+  l = net.Listen(0)?
+  net.Port(l) > 0
+end
+isCantListenOnTheNetwork() = denied(() -> net.Listen(0, host = "0.0.0.0"))
+isCantReachOtherPrograms() = denied(() -> net.Connect("127.0.0.1", 18304))
+isCantReachTheInternet() = denied(() -> net.Connect("example.com", 80))
+isCantRunAProgram() = denied(() -> sys.Run("ls"))
+isRunsWhatTestAllows() = sys.Run("true") then result.IsOk(it)
+isCantReadTheEnvironment() = denied(() -> sys.Env("HOME"))
+defn isServesAndAsks()
+  l = net.Listen(18303)?
+  fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "hi"}, listener = l))
+  reply = http.Get("http://localhost:$(net.Port(l))/")?
+  reply.Status == 200 and reply.Body == "hi"
+end
+(* The server of the test before is gone with it: its port is free again. *)
+isTheServerBeforeIsGone() = net.Listen(18303) then result.IsOk(it)
+defn isLinkGoesTargetStays()
+  d = test.Temp()
+  outside = sys.Read("where.txt")? then text.Trim(it)
+  sys.Run("ln", ["-s", "$outside/outside", "$d/link"])?
+  true
+end
+defn isFailsAndKeepsItsTemp()
+  sys.Write("$(test.Temp())/kept.txt", "x")?
+  false
+end
+defn isEndless()
+  n = 0
+  while true
+    n += 1
+  end
+  true
+end
+defn isWaitsForever()
+  net.Accept(net.Listen(0)?)?
+  true
+end

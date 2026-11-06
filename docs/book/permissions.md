@@ -34,6 +34,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `net`, `net=:8080` | the network, or listening on one port of this machine only (127.0.0.1, ::1) |
 | `net=0.0.0.0:8080`, `net=[::]:8080` | listening on one port for other machines too, on every address or on one |
 | `net=example.com`, `net=example.com:443` | connecting to one host, on any port or on one |
+| `net=own` | listening on this machine, and connecting only to the program's own listeners: what a test gets |
 | `exec`, `exec=git` | running other programs, all of them or one |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
 | `ffi=m` | loading a C library, by its name |

@@ -844,6 +844,9 @@ use std/value
     Opens a listening socket: an Ok of the socket, or an Err. Needs the net permission: net=:PORT on this machine only (127.0.0.1,
     ::1, localhost), net=0.0.0.0:PORT or the address itself for an address that other machines reach. *)
 
+(** net.Port(socket)
+    The port a socket is bound to: the one the system chose for net.Listen(0), which a test uses to take a free port. *)
+
 (** net.Accept(listener)
     Waits for a connection and gives an Ok of its socket. An Err of the kind "stopped" means that the program was asked to stop. *)
 

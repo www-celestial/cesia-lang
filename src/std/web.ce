@@ -144,9 +144,9 @@ end
 (** The function of a request that http.Serve takes: the routes behind the middleware. *)
 Handler(a) = chain(a, value.Len(a.Middleware))
 
-defn Serve(a, port = 8080, host = "127.0.0.1", timeout = http.DefaultTimeout, maxBody = http.DefaultMaxBody, wrap = http.Plain)
+defn Serve(a, port = 8080, host = "127.0.0.1", timeout = http.DefaultTimeout, maxBody = http.DefaultMaxBody, wrap = http.Plain, listener = missing)
   (** Serves until a stop signal. Options go to http.Serve. *)
-  http.Serve(Handler(a), port = port, host = host, timeout = timeout, maxBody = maxBody, wrap = wrap)
+  http.Serve(Handler(a), port = port, host = host, timeout = timeout, maxBody = maxBody, wrap = wrap, listener = listener)
 end
 
 (** A WebSocket route: onMessage(text, send) runs for each message, and send(text) answers. *)

@@ -49,12 +49,13 @@ let local_clock ctx (a : t array) =
   let parts = [| t.tm_year + 1900; t.tm_mon + 1; t.tm_mday; t.tm_hour; t.tm_min; t.tm_sec |] in
   Array { rows = 1; cols = 6; store = I parts; a_owned = true; a_tip = true }
 
-let register ?(max_sleep = infinity) ?tick ?(watching = false) w =
+let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
   w.timer <- (fun seconds f -> Poll.timer poll (Float.min max_sleep seconds) f);
   Option.iter (fun (period, f) -> Poll.set_tick poll period f) tick;
   let net = Net.create poll in
+  Option.iter (fun r -> r := (fun () -> Net.reset net; Poll.reset poll)) reset;
   let sys =
     Fs.natives @ Proc.natives poll
     @ [ "Now", Native.nat "Now" 0 0 (fun _ _ -> Float (Unix.gettimeofday ()));

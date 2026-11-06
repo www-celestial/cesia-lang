@@ -134,3 +134,8 @@ let idle p block =
     if block then Option.iter (fun (_, f) -> f ()) p.tick;
     true
   end
+
+let reset p =
+  Hashtbl.reset p.readers;
+  Hashtbl.reset p.writers;
+  p.timers <- Timers.empty

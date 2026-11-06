@@ -203,22 +203,39 @@ let one_test arg =
     String.sub arg 0 i, Some (String.sub arg (i + 1) (String.length arg - i - 1))
   | _ -> arg, None
 
+(* A test may read the project, write in its Temp folder, listen on this machine and connect to its own listeners; [test]
+   of cesia.toml and --allow give more. Each grant stays whole: a path can hold a comma. *)
+let test_grants root dir (config : Project.test) allow =
+  let here = if Runtime.inside root (Sys.getcwd ()) then [ Types.Read, Some "." ] else [] in
+  let base = { Types.all = false; perms = Types.[ Read, Some root; Read, Some dir; Write, Some dir; Net, Some "own" ] @ here } in
+  List.fold_left (fun g item -> parse_allow g item) base (config.allow @ allow)
+
 let test args =
-  let rec options (o : Runtime.options) seed cases paths = function
-    | "--no-spec" :: rest -> options { o with o_no_spec = true } seed cases paths rest
-    | "--seed" :: v :: rest -> options o (Some (parse_count v)) cases paths rest
-    | "--cases" :: v :: rest -> options o seed (parse_count v) paths rest
-    | p :: rest when not (String.starts_with ~prefix:"--" p) -> options o seed cases (p :: paths) rest
-    | [] -> o, seed, cases, paths
+  let rec options (o : Runtime.options) seed cases allow paths = function
+    | "--no-spec" :: rest -> options { o with o_no_spec = true } seed cases allow paths rest
+    | "--seed" :: v :: rest -> options o (Some (parse_count v)) cases allow paths rest
+    | "--cases" :: v :: rest -> options o seed (parse_count v) allow paths rest
+    | "--allow" :: v :: rest -> options o seed cases (allow @ [ v ]) paths rest
+    | p :: rest when not (String.starts_with ~prefix:"--" p) -> options o seed cases allow (p :: paths) rest
+    | [] -> o, seed, cases, allow, paths
     | _ -> usage ()
   in
-  let o, seed, cases, paths = options (with_default_memory Runtime.default_options) None 100 [] args in
+  let o, seed, cases, allow, paths = options (with_default_memory Runtime.default_options) None 100 [] [] args in
   let path, only = match paths with [] -> ".", None | [ p ] -> one_test p | _ -> usage () in
   if not (Sys.file_exists path) then usage ();
   (* A new seed each run, so that each run tries new cases; --seed gives the cases of a run again. *)
   let seed = match seed with Some s -> s | None -> Random.self_init (); 1 + Random.int 99_999 in
-  let w = Runtime.create_world o in
-  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
+  let root = Package.root_of path in
+  let config = Project.test_config root in
+  (* The run's folder, made by the first Temp: random, so that no other program has it ready, and 0700. *)
+  Random.self_init ();
+  let dir = Filename.concat (Filename.get_temp_dir_name ()) (Printf.sprintf "cesia-test-%d-%06x" (Unix.getpid ()) (Random.bits () land 0xFFFFFF)) in
+  Props.st.dir <- dir;
+  Props.st.timeout <- config.timeout;
+  Props.st.clock <- Unix.gettimeofday;
+  Testrun.remove := Cesia_sys.Fs.remove_tree;
+  let w = Runtime.create_world { o with o_grants = test_grants root dir config allow } in
+  let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ~tick:(poll_period, Testrun.tick) ~reset:Testrun.reset w in
   exit (Testrun.run w ~path ~seed ~cases ~only)
 
 (* An 8 MB minor heap: the boxed floats of the generic path nearly all die young. *)

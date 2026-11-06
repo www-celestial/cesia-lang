@@ -1,0 +1,10 @@
+[project]
+name = "isolation"
+cesia = "0.2"
+
+[tasks.test]
+run = ["cesia", "test"]
+
+[test]
+allow = ["exec=ln", "exec=true"]
+timeout = "0.3"

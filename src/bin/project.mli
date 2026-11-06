@@ -5,3 +5,10 @@ val run : string list -> unit
 
 (** cesia new: a folder with its cesia.toml, .gitignore, src/main.ce and an empty std/, which the pkg tool then fills. *)
 val create : string -> unit
+
+(** What [test] of cesia.toml says: the permissions a test gets beyond its defaults, the seconds it may take ("10" by
+    default, as a text), and the files and folders that share a resource, which run alone. *)
+type test = { allow : string list; timeout : float; serial : string list }
+
+(** [test] of the cesia.toml at a root, or its defaults without one; a wrong value stops the program. *)
+val test_config : string -> test

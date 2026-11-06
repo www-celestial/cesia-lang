@@ -351,6 +351,12 @@ let test_question line = Printf.sprintf " at the ? of line %d" line
 let test_last_bits a b = Printf.sprintf "the same float but for its last bits: math.Near(%s, %s)?" a b
 let test_rel_zero = "rel can't help at 0: give abs"
 let test_bools = "== compares element by element: value.Equal(a, b)?"
+let not_own target =
+  hinted (Printf.sprintf "Permission \"net\" denied for %s: a test connects only to the listeners it opened." target)
+    (Printf.sprintf "Add \"net=%s\" to allow of [test] in cesia.toml, or run cesia test --allow net=%s." target target)
+let test_timeout seconds =
+  hinted (Printf.sprintf "The test ran past its %g s." seconds) "timeout of [test] in cesia.toml gives a test more time."
+let test_temp path = "Its Temp folder is kept: " ^ path
 let near_tolerance name v = plain (Printf.sprintf "Near needs %s to be a number of 0 or more, not %s." name v)
 let listen_denied target port =
   hinted (Printf.sprintf "Permission \"net\" denied for listening on %s, which other machines can reach." target)

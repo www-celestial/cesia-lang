@@ -105,3 +105,5 @@ defn ForAll(prop, g, cases = missing)
   drop()
   true
 end
+
+Temp() = temp()   (** A folder of the test's own, made at the first call, the same for each call of one test: removed when the test passes, kept when it fails. The test may write in it. *)

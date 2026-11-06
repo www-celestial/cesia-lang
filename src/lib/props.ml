@@ -22,18 +22,30 @@ type state = {
   mutable ran : bool;  (* some property ran in this run *)
   mutable failed : failure option;  (* of the test running *)
   mutable on_case : unit -> unit;  (* a property starts: what its verdict noted before is gone *)
+  mutable dir : string;  (* the run's folder, which holds the Temp folder of each test *)
+  mutable temp : string option;  (* the Temp folder of the test running, once asked *)
+  mutable count : int;  (* the tests so far *)
+  mutable deadline : float;
+  mutable timeout : float;
+  mutable clock : unit -> float;
 }
 
 let st =
   { active = false; seed = 0; cases = 100; root = "."; file = ""; test = ""; rank = 0; rng = 0L; tape = None; pos = 0;
-    drawn = Dynarray.create (); size = 0; ran = false; failed = None; on_case = ignore }
+    drawn = Dynarray.create (); size = 0; ran = false; failed = None; on_case = ignore; dir = ""; temp = None; count = 0;
+    deadline = infinity; timeout = 10.; clock = (fun () -> 0.) }
 
 (* A test starts: its ForAlls count from 1 again. *)
 let start_test ~file ~test =
   st.file <- file;
   st.test <- test;
   st.rank <- 0;
-  st.failed <- None
+  st.failed <- None;
+  st.temp <- None;
+  st.count <- st.count + 1;
+  st.deadline <- st.clock () +. st.timeout
+
+
 
 let fnv s =
   let h = ref 0xcbf29ce484222325L in
@@ -73,6 +85,20 @@ let ints (v : t) =
 let int_array xs = Array { rows = 1; cols = Array.length xs; store = I xs; a_owned = false; a_tip = true }
 
 let only_in_tests ctx = if not st.active then Runtime.fail ctx User Messages.test_only
+
+(* temp(): the Temp folder of the test, made at its first call. *)
+let temp ctx _ =
+  only_in_tests ctx;
+  match st.temp with
+  | Some d -> Text d
+  | None ->
+    let d = Filename.concat st.dir (Printf.sprintf "%d-%s" st.count st.test) in
+    (try
+       if not (Sys.file_exists st.dir) then Sys.mkdir st.dir 0o700;
+       Sys.mkdir d 0o700
+     with Sys_error m -> Runtime.fail ctx User (Messages.plain m));
+    st.temp <- Some d;
+    Text d
 
 let case_keys = Trie.names [| "Value"; "Tape"; "Size"; "Holds"; "Panic" |]
 
@@ -184,7 +210,7 @@ let nat = Native.nat
 let natives =
   [ "test",
     [ "start", nat "start" 0 0 start; "oneCase", nat "oneCase" 4 4 one_case; "save", nat "save" 2 2 save;
-      "drop", nat "drop" 0 0 drop; "failed", nat "failed" 1 1 failed;
+      "drop", nat "drop" 0 0 drop; "failed", nat "failed" 1 1 failed; "temp", nat "temp" 0 0 temp;
       "defaultCases", nat "defaultCases" 0 0 (fun ctx _ -> only_in_tests ctx; Int st.cases) ];
     "gen",
     [ "draw", nat "draw" 1 1 draw; "size", nat "size" 0 0 (fun _ _ -> Int st.size); "fields", nat "fields" 1 1 fields;

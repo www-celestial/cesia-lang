@@ -10,6 +10,7 @@ type t = {
   mutable handlers : bool;
   mutable windows : int;  (* how many windows hear of the stop signals: see [take_stops] *)
   mutable unheard : bool;  (* a stop signal has come since a window last heard of one *)
+  own : (string * int, unit) Hashtbl.t;  (* the address and port of each listener of this program, which net=own reaches *)
 }
 
 let chunk_size = 65536
@@ -17,7 +18,7 @@ let exit_on_second_signal = 130
 
 let create poll =
   { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; buffer = Bytes.create chunk_size; stopping = false;
-    handlers = false; windows = 0; unheard = false }
+    handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8 }
 
 let stopping n = n.stopping
 
@@ -126,7 +127,7 @@ let check_listen ctx host port =
   let target = Printf.sprintf "%s:%d" (if String.contains host ':' then "[" ^ host ^ "]" else host) port in
   let here = Printf.sprintf ":%d" port in
   if is_loopback host then begin
-    if not (Runtime.granted ctx.w Net (Some here) || Runtime.granted ctx.w Net (Some target)) then
+    if not (Runtime.granted ctx.w Net (Some here) || Runtime.granted ctx.w Net (Some target) || Runtime.granted ctx.w Net (Some "own")) then
       Runtime.check_perm ctx Net (Some here)
   end
   else if not (Runtime.granted ctx.w Net (Some target)) then Runtime.fail ctx Permission (Messages.listen_denied target port);
@@ -144,6 +145,9 @@ let listen n ctx (a : Types.t array) =
        Unix.setsockopt fd Unix.SO_REUSEADDR true;
        Unix.bind fd (Unix.ADDR_INET (addr, port));
        Unix.listen fd 4096;
+       (match Unix.getsockname fd with
+        | Unix.ADDR_INET (a, p) -> Hashtbl.replace n.own (Unix.string_of_inet_addr a, p) ()
+        | _ -> ());
        fd
      with e ->
        Unix.close fd;
@@ -173,10 +177,15 @@ let accept n ctx (a : Types.t array) =
 let connect n ctx (a : Types.t array) =
   let host = Native.text_arg ctx "Connect" a.(0) and port = port_arg ctx a.(1) in
   let target = Printf.sprintf "%s:%d" host port in
-  Runtime.check_perm ctx Net (Some target);
+  (* net=own reaches the listeners of this program only, once the name is resolved: localhost works, another program on
+     this machine doesn't. *)
+  let own = is_loopback host && Runtime.granted ctx.w Net (Some "own") && not (Runtime.granted ctx.w Net (Some target)) in
+  if not own then Runtime.check_perm ctx Net (Some target);
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
   match address n ctx host with
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
+  | addr when own && not (Hashtbl.mem n.own (Unix.string_of_inet_addr addr, port)) ->
+    Runtime.fail ctx Permission (Messages.not_own target)
   | addr ->
     match Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 with
     | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "connect to" target e
@@ -291,8 +300,22 @@ let is_header ctx (a : Types.t array) =
     Value.of_bool (at > 0 && clean 0)
   | v -> Runtime.fail ctx Type (Messages.need_size "IsHeader" (Value.describe v))
 
+(* The port a socket is bound to: the one the system chose for a Listen on port 0. *)
+let port n ctx (a : Types.t array) =
+  with_socket n ctx "Port" a.(0) (fun fd ->
+      match Unix.getsockname fd with
+      | Unix.ADDR_INET (_, p) -> Int p
+      | _ -> Missing)
+
+let reset n =
+  Hashtbl.iter (fun _ fd -> Poll.forget n.poll fd; (try Unix.close fd with Unix.Unix_error _ -> ())) n.sockets;
+  Hashtbl.reset n.sockets;
+  Hashtbl.reset n.deadlines;
+  Hashtbl.reset n.own
+
 let natives n =
   [ "Listen", Native.nat ~result:true ~params:[| "port"; "host" |] "Listen" 1 2 (listen n);
+    "Port", Native.nat "Port" 1 1 (port n);
     "Accept", Native.nat ~result:true "Accept" 1 1 (accept n);
     "Connect", Native.nat ~result:true "Connect" 2 2 (connect n);
     "Read", Native.nat ~result:true "Read" 1 1 (read n);

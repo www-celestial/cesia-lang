@@ -210,6 +210,15 @@ val test_last_bits : string -> string -> string
 val test_rel_zero : string
 val test_bools : string
 
+(** A test connecting to an address that isn't one of its own listeners. *)
+val not_own : string -> t
+
+(** A test past its time, of so many seconds. *)
+val test_timeout : float -> t
+
+(** Under a failed test: the Temp folder it kept. *)
+val test_temp : string -> string
+
 (** [near_tolerance name v]: a tolerance of math.Near that is no number of 0 or more. *)
 val near_tolerance : string -> string -> t
 

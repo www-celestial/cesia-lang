@@ -18,5 +18,8 @@ val take_stops : t -> bool -> unit
 (** Did a stop signal arrive since this was last asked, with a window to hear of it? *)
 val stop_asked : t -> bool
 
+(** Closes every socket and forgets the listeners: a test ended. *)
+val reset : t -> unit
+
 (** The contents of the [net] module. *)
 val natives : t -> (string * Types.t) list

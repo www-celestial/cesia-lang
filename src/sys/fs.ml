@@ -81,6 +81,15 @@ let walk path =
   let paths = Array.of_list (List.rev (go (if path = "./" then "." else path) [])) in
   Array { rows = 1; cols = Array.length paths; store = V paths; a_owned = true; a_tip = true }
 
+(* A folder and all it holds; a link goes, never what it points to. Errors are ignored: what stays, stays. *)
+let rec remove_tree path =
+  match (Unix.lstat path).st_kind with
+  | Unix.S_DIR ->
+    (try Array.iter (fun n -> remove_tree (Filename.concat path n)) (Sys.readdir path) with Sys_error _ -> ());
+    (try Unix.rmdir path with Unix.Unix_error _ -> ())
+  | _ -> (try Unix.unlink path with Unix.Unix_error _ -> ())
+  | exception Unix.Unix_error _ -> ()
+
 (* A link goes, never what it points to. *)
 let remove path =
   (if (Unix.lstat path).st_kind = Unix.S_DIR then Unix.rmdir else Unix.unlink) path;

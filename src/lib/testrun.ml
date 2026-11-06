@@ -188,6 +188,23 @@ let report ctx path line name v =
 (* cesia test file.ce:isName runs that test alone. *)
 let only_test = ref None
 
+(* Set by the binary, which can reach the system: removes a folder without following links; closes the sockets and forgets
+   the waiting fibers. *)
+let remove = ref (fun (_ : string) -> ())
+let reset = ref ignore
+
+(* Did a failed test keep its Temp folder, and with it the run's? *)
+let kept = ref false
+
+(* A test past its deadline stops, at a checkpoint or while it waits. *)
+let past ctx = if Props.st.clock () > Props.st.deadline then Runtime.fail ctx User (Messages.test_timeout Props.st.timeout)
+
+let tick () =
+  if Props.st.clock () > Props.st.deadline then begin
+    let m = Messages.test_timeout Props.st.timeout in
+    raise (Value.Kerr { kind = User; text = m.text; hint = m.hint; at = -1 })
+  end
+
 (* A path as the root sees it, the same from any folder: the name of a test's saved failures. *)
 let from_root w path =
   let p = Package.absolute path in
@@ -206,11 +223,22 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
          Props.st.root <- ctx.w.root;
          Props.start_test ~file:(from_root ctx.w path) ~test:f.fname;
          record.floor <- 0;
+         let finish passed =
+           (match Props.st.temp with
+            | Some d when passed -> !remove d
+            | Some d -> print_endline ("  " ^ Messages.test_temp d); kept := true
+            | None -> ());
+           Props.st.deadline <- infinity;
+           (* No fiber, socket or timer of a test outlives it. *)
+           Queue.clear ctx.w.sched.ready;
+           !reset ()
+         in
          match Compile.call_value ctx ~base:2 cells.(k) [||] with
-         | True -> st.passed <- st.passed + 1
+         | True -> st.passed <- st.passed + 1; finish true
          | v ->
            st.failed <- st.failed + 1;
-           report ctx path line f.fname v
+           report ctx path line f.fname v;
+           finish false
          | exception e ->
            match Loader.message_of_error e with
            | Some msg ->
@@ -223,7 +251,8 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
                 (match Runtime.backtrace ctx at with
                  | [ t ] when String.ends_with ~suffix:(Printf.sprintf ":%d)" line) t -> ()
                  | trace -> List.iter (fun t -> print_endline ("  " ^ t)) trace)
-              | _ -> ())
+              | _ -> ());
+             finish false
            | None -> raise e
        end)
     layout.hoisted
@@ -330,6 +359,7 @@ let run w ~path ~seed ~cases ~only =
       Props.st.seed <- seed;
       Props.st.cases <- cases;
       Props.st.on_case <- (fun () -> record.floor <- record.rank);
+      w.on_checkpoint <- past;
       only_test := only;
       (* #note lives in module 0, beside #dict: only the rewritten verdicts name it. *)
       let core = w.modules.(0) in
@@ -340,4 +370,5 @@ let run w ~path ~seed ~cases ~only =
       run_paths ctx st path;
       Runtime.flush_out w;
       print_endline (Messages.test_summary st.passed st.failed (if Props.st.ran then Some seed else None));
+      if not !kept && Props.st.dir <> "" && Sys.file_exists Props.st.dir then !remove Props.st.dir;
       if st.failed > 0 then 1 else 0)
