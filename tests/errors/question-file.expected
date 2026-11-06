@@ -1,4 +1,5 @@
-question-file.ce:1:10: ? can only be used inside a function.
+question-file.ce:1:10: ? can only be used inside a function, which it leaves with the Err.
   1 | x = Ok(1)?
     |          ^
+  At the top of a file, write Unwrap(...) where an Err would be a bug, or match on the result.
 exit 1

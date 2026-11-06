@@ -132,7 +132,7 @@ let destructure_array want got = plain (Printf.sprintf "This pattern takes %d el
 let destructure_struct a = plain (Printf.sprintf "This pattern needs a struct, not %s." a)
 let destructure_value a = plain (Printf.sprintf "This pattern needs an array, not %s." a)
 let pattern_mismatch name a = plain (Printf.sprintf "This pattern needs %s, not %s." name a)
-let question_file = plain "? can only be used inside a function."
+let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write Unwrap(...) where an Err would be a bug, or match on the result."
 let question_space = plain "? must follow its value, with no space."
 let question_value a =
   hinted (Printf.sprintf "? needs an Ok or an Err, not %s." a) "Return a result from the function you call."
