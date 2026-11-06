@@ -344,7 +344,8 @@ In every program, with no `use`:
   code make a dictionary as fast as a struct; keys from data, a balanced tree that no choice of keys slows down.
 - Texts: `Split`, `Join`, `Replace`, `Slice`, `Trim`, `Lower`, `Upper`, `Contains`, `StartsWith`, `EndsWith`, `Find`, `Repeat`, `Chars`, `Lines`, `PadLeft`, `PadRight`, `Number`, `Text`, and for bytes `Bytes`, `FromBytes`, `Byte`, `ByteSlice`, `ByteFind`.
 - Numbers: arrays and matrices compute element by element, with `Sum`, `Mean`, `Min`, `Max`, `Matmul`, `Transpose`, `Sqrt`, `Exp`, `Log`, `Sin`, `Cos`, `BitAnd`, `BitOr`, `BitXor`.
-- Results: `Ok`, `Err`, `?`, `Unwrap`, `UnwrapOr`, `MapOk`, `AndThen`. Fibers: `Spawn`, `Wait`.
+- Results: `Ok`, `Err`, `?`, `Unwrap`, `UnwrapOr`, `MapOk`, `AndThen`. Fibers: `Spawn`, `Wait`, and channels between them:
+  `Channel`, `Send`, `Receive` with a timeout.
 
 With `use`:
 
@@ -356,6 +357,7 @@ With `use`:
 | `tls` | TLS through OpenSSL, server and client, for `http` and `web` |
 | `crypto` | SHA-256, SHA-512, BLAKE2b, HMAC, encryption, public keys, signatures, Argon2, through libsodium |
 | `encode` | hexadecimal, Base64, URLs, queries |
+| `sql`, `sqlite` | databases: a pool, rows as maps, typed rows, transactions, streams; SQLite through its library |
 | `json`, `csv`, `regex`, `date` | parsing and writing; `regex` stays linear on any pattern |
 | `set`, `queue`, `heap`, `algo` | data structures, search, graphs, permutations, Levenshtein |
 | `num` | numpy-like: statistics, linear algebra, QR, eigenvalues, FFT, random numbers |
@@ -381,6 +383,57 @@ Print(web.Serve(app, port = 8080))
 ```bash
 cesia run --allow net=:8080 server.ce
 ```
+
+## Databases
+
+`pkg/sql` talks to SQLite through its library, `libsqlite3`, which Linux and macOS have and a release of Cesia brings.
+
+```cesia
+use pkg/sql
+
+struct Todo { Id Int, Title Text, Done Bool, CreatedAt Text }
+
+defn main()
+  db = sql.Open("sqlite:data/todo.db")?
+  sql.Script("create table if not exists todos (id integer primary key, title text not null, done boolean not null default false, created_at text default current_timestamp)", db)?
+  added = sql.Exec("insert into todos (title) values (?)", ["Buy bread"], db)?
+  first = sql.One("select * from todos where id = ?", [added.LastId], db)?   (* a map, or missing *)
+  Print(first.Title, first.CreatedAt)                                        (* created_at is read CreatedAt *)
+  todos = sql.Query("select * from todos where not done", [], db, as = Todo.From)?
+  sql.Transaction(tx -> sql.Exec("update todos set done = true where id = ?", [todos[1].Id], tx), db)?
+  sql.Each(t -> Print(t.Title), "select title from todos order by id", [], db)?   (* any size, a batch in memory *)
+  Ok(missing)
+end
+
+Print(main())
+```
+
+```toml
+[project]
+name = "todo"
+native = ["sqlite3"]   # grants ffi=sqlite3 to every task
+
+[tasks.run]
+file = "todo.ce"
+allow = ["read=data", "write=data"]   # SQLite's -wal and -shm files sit beside the database
+```
+
+- `Exec` gives `{Changed, LastId}`; `Query` every row; `One` the first or missing; `Each` streams; `Table` gives columns,
+  `{Names, Columns}`, as `pkg/frame` holds them; `Script` runs a schema; `Transaction` commits an Ok, rolls back an Err or a
+  panic, and nests as savepoints. `as = User.From` types each row; the first Err says its `Row`.
+- Values: missing is NULL, a Bool 1 or 0, Int, Float and Text as they are, a `date.Date` its text, a list or a map its JSON.
+  Back: NULL is missing, a BLOB a Text of its bytes, a column declared `boolean` a Bool. Dates stay texts: `date.Parse` reads
+  them.
+- Values only go through `?`, never into the text: `"... where name = '$name'"` is an injection. One statement per call, so
+  `"1; drop table users"` is an Err; a table or column chosen at run time comes from a fixed map in the program:
+  `{Newest: "created_at desc", Title: "title"}[choice]`. SQLite opens without URIs, extensions or attached databases, so
+  `attach`, `vacuum` and `load_extension` are refused, and its files need the `read` and `write` permissions of their folder.
+- Errors are `Err({Kind: "sql", Code, Message})`: SQLSTATE codes where SQL has one (`23505` unique, `23503` foreign key,
+  `23502` not null, `23514` check, `22003` an integer past 63 bits, `07001` the count of `?`), else `sqlite-N`, or `pool`,
+  `closed`, `done`, `statements`, `params`, `names`. A message never holds a parameter.
+- A pool of `max = 8` connections; a call waits `wait = 5` seconds for one, and a busy database is waited for in the fiber, so
+  the others run. `sqlite::memory:` keeps one connection. Calls into SQLite run on the main thread: right for short queries.
+- Another database brings its own driver, a map of six functions: `cesia doc sql.Open`.
 
 ## C and C++
 
