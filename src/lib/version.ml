@@ -1,5 +1,5 @@
 (* The release job of the CI removes +dev, or makes it -nightly+SHORTSHA, before it builds. *)
-let text = "cesia 0.2.0+dev"
+let text = "cesia 0.3.0+dev"
 
 (* What follows a + or a - says how it was built, not which version it is. *)
 let bare v =
