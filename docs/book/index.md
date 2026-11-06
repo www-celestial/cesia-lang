@@ -46,8 +46,9 @@ language.
 18. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
 19. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site for your project.
 20. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
-21. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
-22. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+21. [Speed](speed.md): what becomes machine code as a program runs, maps and structs included, and how to see it.
+22. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
+23. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
 
 Appendices, to look things up:
 
@@ -55,6 +56,5 @@ Appendices, to look things up:
 - [cesia.toml](toml.md): every table and key of a project's file.
 - [Environment variables](env.md): those that Cesia reads.
 - [Words](glossary.md): the names of the ideas of this book, as programmers say them, each with its chapter.
-- [Speed](speed.md): what becomes machine code as a program runs, and how to see it.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.

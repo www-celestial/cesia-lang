@@ -38,7 +38,7 @@ program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
 
 ## Read the book
 
-The book teaches Cesia from the start, in 22 short chapters, and the reference has a page for every name, each with examples
+The book teaches Cesia from the start, in 23 short chapters, and the reference has a page for every name, each with examples
 that ran when the site was built: **https://www-celestial.github.io/cesia-lang/**. It follows `main`, and each push publishes
 it again.
 

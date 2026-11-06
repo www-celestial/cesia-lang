@@ -1,5 +1,7 @@
 # Speed
 
+In this chapter you see how Cesia makes a program fast without your help, what it makes fast, and how to see it.
+
 Cesia starts at once and runs a program in its [interpreter](glossary.md#interpreter-and-jit). As the program runs, the
 parts that run often, the hot functions and loops, become machine code: that is the JIT. You write nothing for it, and a
 [type](types.md) never makes code faster: the JIT finds the types itself, in what the program does. The results, the
@@ -43,7 +45,8 @@ same, a little later.
 
 - Calls to the functions of packages written in OCaml, as [text.Split] or [json.Parse]: they are machine code already.
 - Loops over the elements of a list, `for x in xs`, and functions passed as values.
-- A program under `--debugger`.
+- Under a debugger, a function whose code holds a breakpoint, and the code you step through: the rest stays machine code,
+  as the chapter [The prompt and the debugger](debug.md#speed) says.
 
 ## Seeing it
 
@@ -56,3 +59,8 @@ cesia run --no-jit particles.ce
 ```
 
 See [Environment variables](env.md) and [Commands](commands.md#cesia-run).
+
+## Next
+
+Your programs run fast with nothing to write. The next chapter, [C and C++](c.md), calls the libraries of the system from
+Cesia.

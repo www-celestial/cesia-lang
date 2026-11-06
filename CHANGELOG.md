@@ -42,6 +42,8 @@ added, and the last one for a fix. A program written for 1.0 runs on every 1.x.
   workers, each with a deadline and its own listeners.
 - `std/random` with `--seed`, `std/path`, `std/flags`, `sys.Walk`, `date.Local` and offsets, `text.Decimals`,
   `io.PrintError`, `sys.ReadInput` and `sys.Exit`.
+- The JIT: hot functions and loops become machine code, numbers, arrays, maps and structs included, with the same
+  results as the interpreter.
 - `std/sql` on SQLite, with a pool, typed rows and transactions; channels between fibers; one storage for every map;
   `From` and `Fields` between structs and dictionaries.
 - Every error shows in one form, its place and then its message, at the prompt and in the debugger too.

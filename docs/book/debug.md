@@ -225,4 +225,4 @@ variables of the frame that runs it, but not those of the calls native code made
 
 ## Next
 
-You can look inside a running program. The next chapter, [C and C++](c.md), calls the libraries of the system from Cesia.
+You can look inside a running program. The next chapter, [Speed](speed.md), says what becomes machine code as it runs.
