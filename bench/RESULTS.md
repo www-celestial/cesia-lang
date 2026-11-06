@@ -542,3 +542,42 @@ in `release`, alternated, best of 7: fib 473 to 463 ms, mandel 476 to 476, struc
 the last table, but Python and Lua were 1 to 10% slower that hour too, and the previous commit took 1,006 ms. The checks at load time first cost 6.5% of the load: the fields of a file were collected for every file, and `String.contains`
 raised an exception for each name. Now the fields are collected only for a file that reads a small one, and loading gives 477,236 lines/s against 483,101 for the previous commit, on the same warm CPU, with `Print(1)` at 4.60 ms against 4.51.
 Two fuzz runs of 60 s, seeds 20261102 and 20261103: 12,069 and 12,827 trials, 0 failures, 7.1% and 7.6% ran to the end, against 7.5% before.
+
+## Start-up, 2026-11-07
+
+`use std/io` and `io.Print(1)` took 3.75 ms (minimum of 300 runs, median 4.10 ms), and `cesia version` alone 3.50 ms: the
+program itself is 0.3 ms of it. The rest is what every OCaml program pays for its code before its first line runs. The
+binary is a position-independent executable, so the loader relocates every address its data holds: 62,209 of them, on 445
+pages of `.data`, each page then copied. 48,986 of these addresses are the frame descriptors of the call sites of the code
+linked in, and the runtime then hashes all of them into a table of 1 MB. These two steps were 2.2 ms, against 0.8 ms for
+an OCaml program that does nothing.
+
+The `release` profile built with `-g` and `-inline 200`. `-g` adds debug information to each descriptor, and nothing
+reads it: no backtrace is ever printed. `-inline 200` copies the body of every function shorter than 200 into each
+caller, with its call sites: it tripled the descriptors, mostly in the natives (`Native`, `Lists`, `sys/C`, `Columns`, each
+6 to 9 times more than with the default). Without both, with OCaml's default inlining as the `dev` profile has, and
+`[@inline]` on the 12 small functions a profile showed hot (`Value.elt`, `Trie.share`, an array read of `Compile`, and the
+helpers of the lexer, the parser and the resolver), the binary holds 17,975 descriptors, 27,747 relocations on 238 pages, 1.3 MB of
+`.data` instead of 3.0, and 4.0 MB stripped instead of 7.3. The plugins of the JIT and of SQLite keep `-inline 200`: they
+load at their first use, so their size costs no start-up, and `bench/db.ce` needed it to stay at the same instructions.
+The loader also walks a file once for the names of all its uses, instead of once per use.
+
+Both binaries alternated run by run, while other builds ran on the machine (load 3 to 8), so the timings are noisy:
+
+| Program | Before, min | Before, median | After, min | After, median |
+|---|---:|---:|---:|---:|
+| `io.Print(1)` | 3.75 ms | 4.06 ms | 2.48 ms | 2.73 ms |
+| `list.Map` on 3 numbers | 4.64 ms | 4.98 ms | 3.21 ms | 3.53 ms |
+
+The benchmarks, best of 7 alternated, JIT on then off: fib 79 / 443 ms before, 77 / 446 after; mandel 64 / 456, 62 / 452;
+structs 566 / 568, 564 / 564; matmul 52 / 955, 50 / 937; dyn 669 / 672, 670 / 669. The instructions they execute are
+within 0.5% of before. Loading the 320,000 lines of `bench/load.sh`: 654 ms before, 662 ms after, 1.5% more instructions,
+in the parser's loops.
+
+What is left: 1.2 ms before the runtime starts (0.5 ms for `/bin/true`), mostly the copied pages, and 0.4 ms of runtime
+start, mostly the table of descriptors. Linking without `-pie` on Linux would save 0.3 ms more, but the binary's own code
+would then sit at a fixed address for anyone exploiting a bug in C, and macOS on arm64 can't: not done. A program that uses
+the part of a package written in Cesia, as `list.Map`, pays about 0.8 ms more to parse and resolve it at each run, mostly
+in the lexer and the parser. Growing the minor heap to 8 MB costs 0.15 ms at start-up, but growing it later, at the first
+checkpoint, made `mandel` and `dyn` 4 to 6% slower without the JIT, with the same instructions and the same collections:
+it stays at start-up.
