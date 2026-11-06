@@ -1,0 +1,3 @@
+(** Stops when no SQLite library can be loaded: tools/test.sh then skips this folder. *)
+use sqlite3
+Assert(IsOk(sqlite3.Version()), "No SQLite library.")

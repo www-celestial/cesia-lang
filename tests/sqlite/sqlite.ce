@@ -1,0 +1,320 @@
+(** pkg/sql on SQLite: run as "sqlite.ce memory", or with a folder, where each check has its own file. *)
+use columns
+use json
+use sys
+use pkg/sql
+use pkg/date
+
+struct User { Id Int, Name Text, Email Text? }
+
+folder = Args[1]
+onFile = folder != "memory"
+
+url(name) = if onFile "sqlite:$folder/$name.db" else "sqlite::memory:" end
+code(r) = r then MapErr(it.Code)
+failed(r) = match r
+  Err(_) -> true
+  else -> false
+end
+errorText(r) = match r
+  Err(m) -> m
+  else -> ""
+end
+count(table, db) = sql.One("select count(*) as n from $table", [], db) then MapOk(it.N)
+
+defn users(name)
+  db = sql.Open(url(name))?
+  sql.Script("create table users (id integer primary key, name text not null unique, email text, created_at text)", db)?
+  Ok(db)
+end
+
+defn isValuesBothWays()
+  db = sql.Open(url("values"))?
+  sql.Script("create table v (i integer, f real, t text, b blob, ok boolean, n integer)", db)?
+  sql.Exec("insert into v values (?, ?, ?, ?, ?, ?)", [(-4611686018427387903 - 1), 2.5, "x\0y", "\xff\xfe\0", true, missing], db)?
+  r = sql.One("select * from v", [], db)?
+  r.I == (-4611686018427387903 - 1) and r.F == 2.5 and r.T == "x\0y" and r.B == "\xff\xfe\0" and r.Ok == true and IsMissing(r.N) and Has("N", r)
+end
+
+defn isNamesArePublic()
+  db = users("names")?
+  sql.Exec("insert into users (name, created_at) values (?, ?)", ["Ana", "2026-11-06 10:00:00"], db)?
+  r = sql.One("select id, name, created_at, count(*) from users", [], db)?
+  r.CreatedAt == "2026-11-06 10:00:00" and r.Id == 1 and r["count(*)"] == 1
+end
+
+defn isWideRows()
+  db = sql.Open(url("wide"))?
+  for n in [33, 100]
+    cols = Join(", ", ["$k as c_$k" for k in 1:n])
+    r = sql.One("select $cols", [], db)?
+    wanted = "{$(Join(",", ["\"C$k\":$k" for k in 1:n]))}"
+    if not (Len(r) == n and r.C1 == 1 and r["C$n"] == n and json.Text(r) == wanted)
+      return false
+    end
+  end
+  true
+end
+
+defn isSameKey()
+  db = sql.Open(url("same"))?
+  code(sql.Query("select 1 as a, 2 as a", [], db)) == Err("names")
+end
+
+defn isTypedRows()
+  db = users("typed")?
+  sql.Exec("insert into users (name) values (?)", ["Ana"], db)?
+  sql.Exec("insert into users (name, email) values (?, ?)", ["Bo", "bo@x"], db)?
+  us = sql.Query("select id, name, email from users order by id", [], db, as = User.From)?
+  excess = sql.Query("select id, name, email, created_at from users", [], db, as = User.From) then MapErr(it.Row)
+  names = sql.Query("select name from users order by id", [], db, as = r -> Ok(r.Name))?
+  us[1].Name == "Ana" and IsMissing(us[1].Email) and us[2].Email == "bo@x" and excess == Err(1) and Equal(names, ["Ana", "Bo"])
+end
+
+defn isWrongTypeAtRow3()
+  db = sql.Open(url("row3"))?
+  sql.Script("create table t (id integer, name); insert into t values (1, 'a'), (2, 'b'), (3, 4)", db)?
+  e = sql.Query("select id, name, null as email from t order by id", [], db, as = User.From) then MapErr(it.Row)
+  e == Err(3)
+end
+
+defn isOneOfNothing()
+  db = users("one")?
+  IsMissing(sql.One("select * from users where id = ?", [99], db)?)
+end
+
+defn isInjectionStaysText()
+  db = users("inject")?
+  for bad in ["x' or '1'='1", "Robert'); drop table users;--"]
+    sql.Exec("insert into users (name) values (?)", [bad], db)?
+  end
+  found = sql.Query("select name from users where name = ?", ["x' or '1'='1"], db)?
+  none = sql.Query("select name from users where name = ?", ["x"], db)?
+  Len(found) == 1 and Len(none) == 0 and count("users", db)? == 2
+end
+
+defn isOneStatementPerCall()
+  db = users("statements")?
+  glued = code(sql.Query("select 1; drop table users", [], db))
+  semicolon = sql.Query("select 1 as a;", [], db)?
+  comment = sql.Query("select 1 as a; -- the end", [], db)?
+  glued == Err("statements") and Len(semicolon) == 1 and Len(comment) == 1 and count("users", db)? == 0
+end
+
+defn isParameterCount()
+  db = users("count")?
+  few = code(sql.Exec("insert into users (name, email) values (?, ?)", ["a"], db))
+  many = code(sql.Exec("insert into users (name) values (?)", ["a", "b"], db))
+  few == Err("07001") and many == Err("07001")
+end
+
+defn isDangerRefused()
+  db = users("danger")?
+  attach = failed(sql.Exec("attach database 'other.db' as other", [], db))
+  vacuum = failed(sql.Exec("vacuum into 'copy.db'", [], db))
+  ext = failed(sql.Query("select load_extension('x')", [], db))
+  schema = failed(sql.Script("pragma writable_schema = on; update sqlite_schema set sql = 'x' where name = 'users'", db))
+  attach and vacuum and ext and schema and not sys.Exists("copy.db") and not sys.Exists("other.db")
+end
+
+defn isParams()
+  db = sql.Open(url("params"))?
+  d = sql.One("select ? as d, ? as l, ? as m", [date.Date(2026, 11, 6, 9, 5, 1), [1, "a"], {A: 1}], db)?
+  st = code(sql.One("select ?", [User(1, "a")], db))
+  fn = code(sql.One("select ?", [x -> x], db))
+  whole = code(sql.One("select ?", {A: 1}, db))
+  d.D == "2026-11-06 09:05:01" and d.L == "[1,\"a\"]" and d.M == "{\"A\":1}" and st == Err("params") and fn == Err("params") and whole == Err("params")
+end
+
+isDateParsesBack() = date.Parse("2026-11-06 09:05:01") == Ok(date.Date(2026, 11, 6, 9, 5, 1))
+
+defn isErrorCodes()
+  db = sql.Open(url("codes"))?
+  sql.Script("create table p (id integer primary key); create table c (id integer primary key, p integer references p (id), n text not null, k integer check (k > 0)); insert into p values (1)", db)?
+  unique = code(sql.Exec("insert into p values (?)", [1], db))
+  fk = code(sql.Exec("insert into c (p, n, k) values (?, ?, ?)", [2, "a", 1], db))
+  nn = code(sql.Exec("insert into c (p, n, k) values (?, ?, ?)", [1, missing, 1], db))
+  ck = code(sql.Exec("insert into c (p, n, k) values (?, ?, ?)", [1, "secret-value", 0], db))
+  big = code(sql.One("select 9223372036854775807 as x", [], db))
+  message = errorText(sql.Exec("insert into c (p, n, k) values (?, ?, ?)", [1, "secret-value", 0], db) then MapErr(it.Message))
+  unique == Err("23505") and fk == Err("23503") and nn == Err("23502") and ck == Err("23514") and big == Err("22003") and not Contains("secret", message)
+end
+
+defn isTransactionCommits()
+  db = users("commit")?
+  r = sql.Transaction(tx -> sql.Exec("insert into users (name) values (?)", ["Ana"], tx), db)?
+  r.Changed == 1 and count("users", db)? == 1
+end
+
+defn addThenFail(name, tx)
+  sql.Exec("insert into users (name) values (?)", [name], tx)?
+  Err("no")
+end
+
+defn isTransactionRollsBack()
+  db = users("rollback")?
+  r = sql.Transaction(tx -> addThenFail("Ana", tx), db)
+  Equal(r, Err("no")) and count("users", db)? == 0
+end
+
+defn boom(tx)
+  sql.Exec("insert into users (name) values (?)", ["Ana"], tx)?
+  Panic("boom")
+end
+
+defn isPanicRollsBack()
+  db = users("panic")?
+  results = [Wait(Spawn(() -> sql.Transaction(boom, db))) for k in 1:20]
+  first = errorText(results[1] then MapErr(it.Message))
+  All([failed(r) for r in results]) and count("users", db)? == 0 and Contains("boom", first)
+end
+
+defn inner(tx)
+  sql.Exec("insert into users (name) values (?)", ["Bo"], tx)?
+  Err("inner")
+end
+
+defn outer(tx)
+  sql.Exec("insert into users (name) values (?)", ["Ana"], tx)?
+  Ok(sql.Transaction(inner, tx))
+end
+
+defn isSavepoint()
+  db = users("savepoint")?
+  r = sql.Transaction(outer, db)?
+  names = sql.Query("select name from users", [], db, as = u -> Ok(u.Name))?
+  Equal(r, Err("inner")) and Equal(names, ["Ana"])
+end
+
+defn isUseAfterTheEnd()
+  db = users("after")?
+  kept = sql.Transaction(tx -> Ok(tx), db)?
+  code(sql.Query("select 1", [], kept)) == Err("done")
+end
+
+defn writeAfter(name, pause, tx)
+  sql.Exec("insert into users (name) values (?)", [name], tx)?
+  sys.Sleep(pause)
+  sql.Exec("insert into users (name) values (?)", ["$name 2"], tx)
+end
+
+slowWriter(name, pause, db) = sql.Transaction(tx -> writeAfter(name, pause, tx), db)
+
+defn isTransactionsNeverMix()
+  db = users("mix")?
+  a = Spawn(() -> slowWriter("A", 0.02, db))
+  sys.Sleep(0.005)
+  b = Spawn(() -> slowWriter("B", 0.0, db))
+  Wait(a)??
+  Wait(b)??
+  names = sql.Query("select name from users order by id", [], db, as = u -> Ok(u.Name))?
+  Equal(names, ["A", "A 2", "B", "B 2"])
+end
+
+defn isOwnDatabaseInsideTransaction()
+  (** On :memory: the one connection is the transaction's: db there waits, then says to use tx. *)
+  if onFile
+    return true
+  end
+  db = sql.Open("sqlite::memory:", wait = 0.1)?
+  r = sql.Transaction(tx -> sql.Query("select 1", [], db), db)
+  Contains("tx", errorText(r then MapErr(it.Message))) and code(r) == Err("pool")
+end
+
+defn isEachStreams()
+  db = sql.Open(url("each"))?
+  sql.Script("create table n (k integer)", db)?
+  sql.Exec("with recursive s(k) as (select 1 union all select k + 1 from s where k < 100000) insert into n select k from s", [], db)?
+  all = sql.Each(r -> missing, "select k from n", [], db)?
+  stopped = sql.Each(r -> if r.K == 5 Err("five") else missing end, "select k from n order by k", [], db)
+  all == 100000 and Equal(stopped, Err("five")) and count("n", db)? == 100000
+end
+
+defn isEachPanicGivesTheConnectionBack()
+  db = sql.Open(url("eachpanic"), max = 1, wait = 0.5)?
+  sql.Script("create table n (k integer); insert into n values (1), (2)", db)?
+  r = Wait(Spawn(() -> sql.Each(r -> Panic("in f"), "select k from n", [], db)))
+  failed(r) and count("n", db)? == 2
+end
+
+sameTx(tx) = sql.Each(r -> sql.One("select k from n where k > ?", [r.K], tx), "select k from n where k > ?", [0], tx)
+
+defn isEachInsideTransaction()
+  db = sql.Open(url("eachtx"))?
+  sql.Script("create table n (k integer); insert into n values (1), (2)", db)?
+  sql.Transaction(sameTx, db) == Ok(2)
+end
+
+defn isTable()
+  db = sql.Open(url("table"))?
+  sql.Script("create table r (id integer, score real, name text, maybe integer); insert into r values (1, 1.5, 'a', 1), (2, 2.5, 'b', null)", db)?
+  t = sql.Table("select * from r order by id", [], db)?
+  none = sql.Table("select * from r where id > 5", [], db)?
+  ok = Equal(t.Names, ["Id", "Score", "Name", "Maybe"]) and columns.Kind(t.Columns.Id) == "int" and columns.Kind(t.Columns.Score) == "float"
+  ok and Mean(t.Columns.Score) == 2.0 and IsMissing(t.Columns.Maybe[2]) and Len(none.Columns.Id) == 0
+end
+
+defn isScript()
+  db = sql.Open(url("script"))?
+  sql.Script("create table a (x); create table b (x); insert into a values (1); insert into b values (2); create index ia on a (x)", db)?
+  half = failed(sql.Script("insert into a values (3); insert into nowhere values (4); insert into a values (5)", db))
+  half and count("a", db)? == 2
+end
+
+defn sleeping(pause, tx)
+  sql.One("select 1 as x", [], tx)?
+  sys.Sleep(pause)
+  Ok(1)
+end
+
+holder(db, pause) = sql.Transaction(tx -> sleeping(pause, tx), db, read = true)
+
+defn isPoolWaits()
+  if not onFile
+    return true
+  end
+  db = sql.Open(url("pool"), max = 2, wait = 0.1)?
+  a = Spawn(() -> holder(db, 0.4))
+  b = Spawn(() -> holder(db, 0.4))
+  sys.Sleep(0.01)
+  third = code(sql.One("select 1 as x", [], db))
+  Wait(a)
+  Wait(b)
+  third == Err("pool") and sql.One("select 1 as x", [], db)?.X == 1
+end
+
+defn isBusyIsRetried()
+  if not onFile
+    return true
+  end
+  db = users("busy")?
+  a = Spawn(() -> slowWriter("A", 0.05, db))
+  sys.Sleep(0.01)
+  b = sql.Exec("insert into users (name) values (?)", ["B"], db)
+  Wait(a)??
+  b?
+  count("users", db)? == 3
+end
+
+defn isCloseWithAConnectionOut()
+  db = users("close")?
+  a = Spawn(() -> holder(db, 0.05))
+  sys.Sleep(0.01)
+  sql.Close(db)
+  Wait(a) == Ok(Ok(1)) and code(sql.Query("select 1", [], db)) == Err("closed")
+end
+
+defn main()
+  checks = [isValuesBothWays, isNamesArePublic, isWideRows, isSameKey, isTypedRows, isWrongTypeAtRow3, isOneOfNothing, isInjectionStaysText, isOneStatementPerCall, isParameterCount, isDangerRefused, isParams, isDateParsesBack, isErrorCodes, isTransactionCommits, isTransactionRollsBack, isPanicRollsBack, isSavepoint, isUseAfterTheEnd, isTransactionsNeverMix, isOwnDatabaseInsideTransaction, isEachStreams, isEachPanicGivesTheConnectionBack, isEachInsideTransaction, isTable, isScript, isPoolWaits, isBusyIsRetried, isCloseWithAConnectionOut]
+  bad = 0
+  for check in checks
+    r = Wait(Spawn(check))
+    if not (r == Ok(true))
+      Print("failed: $(Split("\n", Doc(check))[1]) $r")
+      bad = bad + 1
+    end
+  end
+  Print("$(Len(checks) - bad) of $(Len(checks)) passed")
+end
+
+main()

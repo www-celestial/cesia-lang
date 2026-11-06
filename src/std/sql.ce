@@ -1,0 +1,384 @@
+(** Databases through SQL: a pool of connections, rows as maps that share their keys, typed rows, transactions and
+    streams. Values only go through ?, never into the text: one statement per call, and sql.Script for a schema. URLs:
+    sqlite:PATH and sqlite::memory:, with pkg/sqlite; another database brings its own driver (see Open). *)
+use columns
+use json
+use sys
+use pkg/date
+use pkg/sqlite
+
+batch = 1024
+dateFields = ["Year", "Month", "Day", "Hour", "Minute", "Second"]
+
+fault(code, message) = {Kind: "sql", Code: code, Message: message}
+failure(code, message) = Err(fault(code, message))
+closedError() = failure("closed", "This database is closed.")
+doneError() = failure("done", "This transaction has ended: use it only inside its function.")
+failed(r) = match r
+  Err(_) -> true
+  else -> false
+end
+errorOf(r) = match r
+  Err(e) -> e
+  else -> missing
+end
+isPanic(x) = IsDict(x) and Has("Panic", x)
+rethrow(out) = if isPanic(out) Panic(out.Panic) else out end
+
+defn Open(url, max = 8, wait = 5, driver = missing)
+  (** An Ok of a database: a pool of at most max connections, each opened when first needed. A call that finds them all
+      busy waits at most wait seconds, then gives an Err with Code "pool". sqlite::memory: keeps one connection, since each
+      would hold its own database.
+
+      A driver is a map of functions, so another project can bring one: Connect(url, options) gives an Ok of a connection,
+      options holding Wait; Run(text, params, conn) an Ok of a cursor on one statement, prepared and bound; Next(n, cursor)
+      an Ok of {Names, Cells, Done, Changed, LastId}, up to n rows, their cells row after row; Script(text, conn) runs
+      several statements; Close(x) closes a cursor or a connection; Broken(conn) says that a connection can't be used again. *)
+  if IsMissing(driver) and not StartsWith("sqlite:", url)
+    return failure("url", "No driver for $url: use sqlite:PATH, or give one with driver =.")
+  end
+  size = if url == "sqlite::memory:" 1 else max end
+  if not (IsInt(size) and size >= 1)
+    return failure("pool", "max is a number of connections, 1 or more.")
+  end
+  slots = Channel()
+  for k in 1:size
+    Send(missing, slots)
+  end
+  d = if IsMissing(driver) sqlite.Driver else driver end
+  Ok({Driver: d, Url: url, Slots: slots, Wait: wait, Closed: Channel(), Tx: false})
+end
+
+defn isSet(ch)
+  (** Does this one-value channel hold its value? It keeps it. *)
+  got = Receive(ch, timeout = 0)
+  if failed(got)
+    return false
+  end
+  Send(got?, ch)
+  true
+end
+
+defn take(db)
+  (** A connection of the pool: a free one, or a new one in an empty slot. *)
+  if isSet(db.Closed)
+    return closedError()
+  end
+  got = Receive(db.Slots, timeout = db.Wait)
+  if failed(got)
+    return failure("pool", "No connection was free for $(db.Wait) seconds. Inside a transaction, use its tx, not db.")
+  end
+  slot = got?
+  if isSet(db.Closed)
+    giveBack(slot, db)
+    return closedError()
+  end
+  if not IsMissing(slot)
+    return Ok(slot)
+  end
+  conn = db.Driver.Connect(db.Url, {Wait: db.Wait})
+  if failed(conn)
+    Send(missing, db.Slots)
+  end
+  conn
+end
+
+defn giveBack(conn, db)
+  (** A connection back in the pool; a broken one, or one of a closed database, is closed and its slot left empty. *)
+  if not IsMissing(conn) and (db.Driver.Broken(conn) or isSet(db.Closed))
+    db.Driver.Close(conn)
+    Send(missing, db.Slots)
+  else
+    Send(conn, db.Slots)
+  end
+end
+
+defn withConn(f, db)
+  (** f(conn) on a connection of db, or of the transaction db is. f runs no code of the program. *)
+  if db.Tx
+    if isSet(db.Done)
+      return doneError()
+    end
+    return f(db.Conn)
+  end
+  conn = take(db)?
+  r = f(conn)
+  giveBack(conn, db)
+  r
+end
+
+defn value(v)
+  (** A value as SQL takes it: a date.Date as its text, a list or a map as its JSON. *)
+  if IsMissing(v) or IsBool(v) or IsNumber(v) or IsText(v)
+    return Ok(v)
+  end
+  if IsStruct(v) and Equal(Keys(Fields(v)), dateFields)
+    return Ok(Replace("T", " ", Replace("Z", "", date.Format(v))))
+  end
+  if IsStruct(v)
+    return failure("params", "A struct can't be a value of SQL: give its fields, as Fields(u).Name.")
+  end
+  if IsArray(v) or IsDict(v)
+    return Ok(json.Text(v))
+  end
+  failure("params", "A function can't be a value of SQL.")
+end
+
+defn bound(ps)
+  (** The values of a list of parameters. *)
+  if not IsArray(ps)
+    return failure("params", "The parameters are a list of values, one for each ?: [] for none.")
+  end
+  out = []
+  for p in ps
+    out = Append(value(p)?, out)
+  end
+  Ok(out)
+end
+
+defn rowsOf(b)
+  (** The maps of a batch, their keys made public names. *)
+  if Len(b.Cells) == 0
+    return Ok([])
+  end
+  rows = columns.Rows(b.Names, b.Cells, public = true)
+  if failed(rows) fault("names", errorOf(rows).Message) then Err(it) else rows end
+end
+
+defn closing(d, cursor, out)
+  (** Closes a cursor before its end, and gives out. *)
+  d.Close(cursor)
+  out
+end
+
+defn readAll(text, ps, n, d, conn)
+  (** Every row, or the first n, as batches of maps joined once. *)
+  cursor = d.Run(text, bound(ps)?, conn)?
+  parts = []
+  count = 0
+  done = false
+  while not done and (IsMissing(n) or count < n)
+    b = d.Next(if IsMissing(n) batch else n - count end, cursor)?
+    rows = rowsOf(b)?
+    parts = Append(rows, parts)
+    count = count + Len(rows)
+    done = b.Done
+  end
+  if not done
+    d.Close(cursor)
+  end
+  Ok(Flatten(parts))
+end
+
+defn typed(as, rows)
+  (** as(row) for each row: an Ok of the values, or the first Err with the number of its row. *)
+  if IsMissing(as)
+    return Ok(rows)
+  end
+  out = []
+  for k in 1:Len(rows)
+    v = as(rows[k])
+    if failed(v)
+      e = errorOf(v)
+      return Err(if IsDict(e) Put("Row", k, e) else Put("Row", k, fault("as", Text(e))) end)
+    end
+    out = Append(if IsOk(v) v? else v end, out)
+  end
+  Ok(out)
+end
+
+defn exec(text, ps, d, conn)
+  cursor = d.Run(text, bound(ps)?, conn)?
+  b = d.Next(batch, cursor)?
+  while not b.Done
+    b = d.Next(batch, cursor)?
+  end
+  Ok({Changed: b.Changed, LastId: b.LastId})
+end
+
+defn Exec(text, params, db)
+  (** Runs one statement that changes rows: an Ok of {Changed, LastId}, the rows it changed and the id of the last row
+      inserted. *)
+  withConn(conn -> exec(text, params, db.Driver, conn), db)
+end
+
+defn Query(text, params, db, as = missing)
+  (** An Ok of every row, each a map from its column names made public names: created_at is read r.CreatedAt. NULL is
+      missing. With as, as(row) for each, as User.From: an Ok of the values, or the first Err with Row, its number. *)
+  rows = withConn(conn -> readAll(text, params, missing, db.Driver, conn), db)?
+  typed(as, rows)
+end
+
+defn One(text, params, db, as = missing)
+  (** An Ok of the first row, or of missing if there is none; with as, of as(row). *)
+  rows = withConn(conn -> readAll(text, params, 1, db.Driver, conn), db)?
+  if Len(rows) == 0
+    return Ok(missing)
+  end
+  values = typed(as, rows)?
+  Ok(values[1])
+end
+
+defn eachBatch(f, as, rows)
+  (** f on each row of a batch, in the fiber of the batch: the first Err stops. *)
+  for r in typed(as, rows)?
+    out = f(r)
+    if failed(out)
+      return out
+    end
+  end
+  Ok(Len(rows))
+end
+
+defn each(f, text, ps, as, d, conn)
+  cursor = d.Run(text, bound(ps)?, conn)?
+  count = 0
+  done = false
+  while not done
+    b = d.Next(batch, cursor)?
+    rows = rowsOf(b)?
+    done = b.Done
+    r = Wait(Spawn(() -> eachBatch(f, as, rows)))
+    if failed(r)
+      p = errorOf(r)
+      return closing(d, cursor, Err({Panic: "$(p.Message) ($(p.File):$(p.Line))"}))
+    end
+    if failed(r?)
+      return closing(d, cursor, r?)
+    end
+    count = count + r??
+  end
+  Ok(count)
+end
+
+defn Each(f, text, params, db, as = missing)
+  (** Calls f on each row, one batch of rows in memory at a time, whatever the size: an Ok of the count. An Err of f stops
+      and is given back; a panic in f gives the connection back, then panics again. *)
+  r = withConn(conn -> each(f, text, params, as, db.Driver, conn), db)
+  if failed(r) and isPanic(errorOf(r))
+    Panic(errorOf(r).Panic)
+  end
+  r
+end
+
+defn tableCells(text, ps, d, conn)
+  (** The names and every cell of a statement. *)
+  cursor = d.Run(text, bound(ps)?, conn)?
+  b = d.Next(batch, cursor)?
+  names = b.Names
+  parts = [b.Cells]
+  while not b.Done
+    b = d.Next(batch, cursor)?
+    parts = Append(b.Cells, parts)
+  end
+  Ok({Names: names, Cells: Flatten(parts)})
+end
+
+defn Table(text, params, db)
+  (** An Ok of {Names, Columns}: Columns a map from each name, made a public name, to its column, a list. A column of
+      integers or of floats holds them without a box, as pkg/frame and the natives of columns want. *)
+  b = withConn(conn -> tableCells(text, params, db.Driver, conn), db)?
+  n = Len(b.Names)
+  if n == 0
+    return Ok({Names: [], Columns: Dict()})
+  end
+  names = Keys(rowsOf({Names: b.Names, Cells: [missing for k in 1:n]})?[1])
+  rows = Len(b.Cells) / n
+  m = Reshape(b.Cells, n, rows)
+  cols = Dict()
+  for k in 1:n
+    cols = Put(names[k], if rows == 0 [] else [x for x in m[k, :]] end, cols)
+  end
+  Ok({Names: names, Columns: cols})
+end
+
+defn Script(text, db)
+  (** Runs several statements, never with parameters: a schema, a migration. An Ok of missing, or the first Err. *)
+  withConn(conn -> db.Driver.Script(text, conn), db)
+end
+
+defn undo(texts, tx, out)
+  (** Rolls back, and gives out. *)
+  for t in texts
+    exec(t, [], tx.Driver, tx.Conn)
+  end
+  out
+end
+
+defn keep(texts, rollback, tx, v)
+  (** Commits: an Ok of v, or the Err of the commit, rolled back. *)
+  for t in texts
+    c = exec(t, [], tx.Driver, tx.Conn)
+    if failed(c)
+      return undo(rollback, tx, c)
+    end
+  end
+  Ok(v)
+end
+
+defn finish(r, commit, rollback, tx)
+  (** What f gave, r from Wait: an Ok or a plain value commits, an Err or a panic rolls back. *)
+  if failed(r)
+    p = errorOf(r)
+    return undo(rollback, tx, {Panic: "$(p.Message) ($(p.File):$(p.Line))"})
+  end
+  v = r?
+  if failed(v)
+    return undo(rollback, tx, v)
+  end
+  keep(commit, rollback, tx, if IsOk(v) v? else v end)
+end
+
+defn Transaction(f, db, read = false)
+  (** f(tx) inside a transaction, tx usable as db in every call: an Ok of f commits and gives its value, an Err rolls back
+      and gives it, a panic rolls back and panics again. Anything else commits, as an Ok. Inside one, a Transaction of tx
+      is a savepoint, rolled back alone. read opens a plain BEGIN, for reads only; else BEGIN IMMEDIATE takes the write
+      lock at once. *)
+  if db.Tx
+    return savepoint(f, db)
+  end
+  conn = take(db)?
+  tx = {Driver: db.Driver, Conn: conn, Tx: true, Done: Channel(), Depth: 0}
+  begun = exec(if read "begin" else "begin immediate" end, [], db.Driver, conn)
+  if failed(begun)
+    giveBack(conn, db)
+    return begun
+  end
+  r = Wait(Spawn(() -> f(tx)))
+  Send(true, tx.Done)
+  out = finish(r, ["commit"], ["rollback"], tx)
+  giveBack(conn, db)
+  rethrow(out)
+end
+
+defn savepoint(f, tx)
+  if isSet(tx.Done)
+    return doneError()
+  end
+  name = "s$(tx.Depth + 1)"
+  inner = {Driver: tx.Driver, Conn: tx.Conn, Tx: true, Done: Channel(), Depth: tx.Depth + 1}
+  exec("savepoint $name", [], tx.Driver, tx.Conn)?
+  r = Wait(Spawn(() -> f(inner)))
+  Send(true, inner.Done)
+  rethrow(finish(r, ["release $name"], ["rollback to $name", "release $name"], tx))
+end
+
+defn Close(db)
+  (** Closes the free connections now, the others when they come back: a call after it is an Err with Code "closed". *)
+  if not isSet(db.Closed)
+    Send(true, db.Closed)
+  end
+  free = []
+  got = Receive(db.Slots, timeout = 0)
+  while not failed(got)
+    free = Append(got?, free)
+    got = Receive(db.Slots, timeout = 0)
+  end
+  for conn in free
+    if not IsMissing(conn)
+      db.Driver.Close(conn)
+    end
+    Send(missing, db.Slots)
+  end
+  missing
+end

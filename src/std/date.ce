@@ -96,10 +96,10 @@ bad(s) = Err({Kind: "date", Message: "Not a date: $s."})
 whole(s) = if All([c >= "0" and c <= "9" for c in Chars(s)]) and s != "" Number(s) else missing end
 
 defn Parse(s)
-  (** 2026-11-01, or 2026-11-01T12:30:05Z.
+  (** 2026-11-01, or 2026-11-01T12:30:05Z, or 2026-11-01 12:30:05 as SQL writes it.
 
         Parse("2026-11-01") == Ok(Date(2026, 11, 1)) --> true *)
-  parts = Split("T", Replace("Z", "", s))
+  parts = Split("T", Replace(" ", "T", Replace("Z", "", s)))
   day = Split("-", parts[1])
   if Len(parts) > 2 or Len(day) != 3
     return bad(s)

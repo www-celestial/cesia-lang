@@ -1,0 +1,6 @@
+use pkg/sql
+defn main()
+  db = sql.Open("sqlite:shop.db")?
+  sql.Exec("create table t (x)", [], db)
+end
+Print(main())

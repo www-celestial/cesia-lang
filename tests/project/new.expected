@@ -11,8 +11,8 @@ deps/
 Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
-algo cpp crypto csv date encode frame heap history http num queue rope sdl set tls ui web websocket 
- 19 1
+algo cpp crypto csv date encode frame heap history http num queue rope sdl set sql sqlite tls ui web websocket 
+ 21 1
 all as installed
 pkg/rope       cesia 0.2.0  changed by hand
 pkg/ holds the libraries of Cesia 0.2.0.

@@ -1,0 +1,64 @@
+(** SQLite for pkg/sql: its driver, on the module sqlite3. A program opens a database with sql.Open("sqlite:shop.db") and
+    needs native = ["sqlite3"] in cesia.toml, or --allow ffi=sqlite3, with read and write on the file. A file uses WAL and
+    foreign keys. A busy database is waited for in the fiber, so the other fibers run meanwhile. *)
+use sqlite3
+use sys
+
+busy(r) = match r
+  Err(e) -> Get("Retry", e) == true
+  else -> false
+end
+
+defn retry(f, wait)
+  (** f() again while the database is busy, at most wait seconds, sleeping 1 ms then twice as long, up to 50 ms. *)
+  r = f()
+  pause = 0.001
+  until = sys.Now() + wait
+  while busy(r) and sys.Now() < until
+    sys.Sleep(pause)
+    pause = Min([pause * 2, 0.05])
+    r = f()
+  end
+  r
+end
+
+defn next(n, cursor)
+  (** The next rows; a database still busy after the wait closes the cursor. *)
+  r = retry(() -> sqlite3.Next(n, cursor.C), cursor.Wait)
+  if busy(r)
+    sqlite3.Close(cursor.C)
+    return match r
+      Err(e) -> Err(Drop("Retry", e))
+    end
+  end
+  r
+end
+
+defn pragma(text, conn)
+  c = sqlite3.Run(text, [], conn.H)?
+  next(16, {C: c, Wait: conn.Wait})
+end
+
+defn connect(url, options)
+  (** sqlite:PATH or sqlite::memory:. *)
+  path = Slice(8, Len(url), url)
+  conn = {H: sqlite3.Open(path)?, Wait: options.Wait}
+  for text in if path == ":memory:" ["pragma foreign_keys = on"] else ["pragma journal_mode = wal", "pragma foreign_keys = on"] end
+    r = pragma(text, conn)
+    if not IsOk(r)
+      sqlite3.Close(conn.H)
+      return r
+    end
+  end
+  Ok(conn)
+end
+
+defn run(text, params, conn)
+  c = sqlite3.Run(text, params, conn.H)?
+  Ok({C: c, Wait: conn.Wait})
+end
+
+close(x) = if Has("C", x) sqlite3.Close(x.C) else sqlite3.Close(x.H) end
+
+(** The driver that pkg/sql uses for sqlite: URLs, as sql.Open describes. *)
+Driver = {Connect: connect, Run: run, Next: next, Script: (text, conn) -> sqlite3.Script(text, conn.H), Close: close, Broken: conn -> sqlite3.Broken(conn.H)}
