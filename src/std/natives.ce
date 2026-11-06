@@ -711,7 +711,7 @@ use std/cesia
     Deletes a file or an empty folder: Ok(missing) or an Err. A symbolic link is deleted, never what it points to. Needs the write permission. *)
 
 (** sys.Stat(path)
-    A struct with Size (bytes), Modified (seconds since 1970), IsDir, IsFile and IsLink, in an Ok, or an Err. A symbolic link
+    A dictionary with Size (bytes), Modified (seconds since 1970), IsDir, IsFile and IsLink, in an Ok, or an Err. A symbolic link
     counts as what it points to, and IsLink says that it is one. IsFile is true for a regular file only, not for a folder, a device, a FIFO or a socket: their Size says nothing,
     and reading one can use all the memory or hang. Needs the read permission. *)
 
