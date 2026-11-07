@@ -31,10 +31,10 @@ cesia run --allow net=:8080,env=HOME server.ce
 |---|---|
 | `read`, `read=./data` | reading files, all of them or those under a folder |
 | `write`, `write=./out` | writing, renaming and removing files, all of them or under a folder |
-| `net`, `net=:8080` | the network, or listening on one port of this machine only (127.0.0.1, ::1) |
+| `net`, `net=:8080` | the network, or listening on one port of this machine only: the address, or the one a name resolves to, is 127.0.0.1 or ::1 |
 | `net=0.0.0.0:8080`, `net=[::]:8080` | listening on one port for other machines too, on every address or on one |
 | `net=example.com`, `net=example.com:443` | connecting to one host, on any port or on one |
-| `net=own` | listening on this machine, and connecting only to the program's own listeners: what a test gets |
+| `net=own` | listening on this machine, and connecting only to the program's own listeners while they are open, by address or `localhost`, with no name looked up: what a test gets |
 | `exec`, `exec=git` | running other programs, all of them or one |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
 | `ffi=m`, `ffi=build/libdemo.so` | loading a C library, by its name or by the exact path of its file |

@@ -366,8 +366,9 @@ let test_last_bits a b = Printf.sprintf "the same float but for its last bits: m
 let test_rel_zero = "rel can't help at 0: give abs"
 let test_bools = "== compares element by element: value.Equal(a, b)?"
 let not_own target =
-  hinted (Printf.sprintf "Permission \"net\" denied for %s: a test connects only to the listeners it opened." target)
-    (Printf.sprintf "Add \"net=%s\" to allow of [test] in cesia.toml, or run cesia test --allow net=%s." target target)
+  hinted
+    (Printf.sprintf "Permission \"net\" denied for %s: net=own reaches only the listeners this program has open, at an address of this machine written out or localhost." target)
+    (Printf.sprintf "Run again with --allow net=%s; for cesia test, \"net=%s\" in allow of [test] in cesia.toml does it too." target target)
 let test_timeout seconds =
   hinted (Printf.sprintf "The test ran past its %g s." seconds) "timeout of [test] in cesia.toml gives a test more time."
 let test_temp path = "Its Temp folder is kept: " ^ path

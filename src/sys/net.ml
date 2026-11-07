@@ -10,7 +10,7 @@ type t = {
   mutable handlers : bool;
   mutable windows : int;  (* how many windows hear of the stop signals: see [take_stops] *)
   mutable unheard : bool;  (* a stop signal has come since a window last heard of one *)
-  own : (string * int, unit) Hashtbl.t;  (* the address and port of each listener of this program, which net=own reaches *)
+  own : (int, Unix.inet_addr * int) Hashtbl.t;  (* the address and port of each open listener, by socket: what net=own reaches *)
 }
 
 let chunk_size = 65536
@@ -114,48 +114,69 @@ let looked_up n ctx host =
      | Some (Some addr) -> addr
      | _ -> raise Not_found)
 
-let address n ctx host = try Unix.inet_addr_of_string host with Failure _ -> looked_up n ctx host
+(* An address written out, or localhost: what needs no lookup. *)
+let literal host =
+  if host = "localhost" then Some Unix.inet_addr_loopback
+  else match Unix.inet_addr_of_string host with a -> Some a | exception Failure _ -> None
+
+let address n ctx host = match literal host with Some a -> a | None -> looked_up n ctx host
 
 let family addr = Unix.domain_of_sockaddr (Unix.ADDR_INET (addr, 0))
 
-(* Written as an address of this machine only, before any lookup. *)
-let is_loopback host = host = "localhost" || host = "::1" || String.starts_with ~prefix:"127." host
+(* An address of this machine only: 127.0.0.0/8 or ::1. *)
+let is_loopback addr =
+  if family addr = Unix.PF_INET6 then addr = Unix.inet6_addr_loopback
+  else String.starts_with ~prefix:"127." (Unix.string_of_inet_addr addr)
 
-(* net=:PORT listens on this machine only. Other machines reach any other address, so it needs its own grant: net=0.0.0.0:8080,
-   net=[::]:8080, or the address of one interface. *)
-let check_listen ctx host port =
-  let target = Printf.sprintf "%s:%d" (if String.contains host ':' then "[" ^ host ^ "]" else host) port in
-  let here = Printf.sprintf ":%d" port in
-  if is_loopback host then begin
-    if not (Runtime.granted ctx.w Net (Some here) || Runtime.granted ctx.w Net (Some target) || Runtime.granted ctx.w Net (Some "own")) then
-      Runtime.check_perm ctx Net (Some here)
-  end
-  else if not (Runtime.granted ctx.w Net (Some target)) then Runtime.fail ctx Permission (Messages.listen_denied target port);
-  target
+(* Is a listener of this program open at this loopback address and port? One on every address of its family counts too. *)
+let is_own n addr port =
+  let any = if family addr = Unix.PF_INET6 then Unix.inet6_addr_any else Unix.inet_addr_any in
+  Hashtbl.fold (fun _ (a, p) found -> found || (p = port && (a = addr || a = any))) n.own false
+
+(* The address to listen on, checked: the one bound is the one checked, with no second lookup. net=:PORT listens on this
+   machine only, on the address a name resolves to when it is of this machine; net=own looks up no name. Other machines
+   reach any other address, so it needs its own grant: net=0.0.0.0:8080, net=[::]:8080, or the address of one interface. *)
+let listen_address n ctx host port target =
+  if Runtime.granted ctx.w Net (Some target) then address n ctx host
+  else
+    let here = Printf.sprintf ":%d" port in
+    let addr =
+      if Runtime.granted ctx.w Net (Some here) then address n ctx host
+      else
+        match literal host with
+        | Some a when is_loopback a && Runtime.granted ctx.w Net (Some "own") -> a
+        | Some a when is_loopback a -> Runtime.check_perm ctx Net (Some here); a
+        | Some a -> a
+        | None -> Runtime.fail ctx Permission (Messages.denied "net" (Some target))
+    in
+    if is_loopback addr then addr else Runtime.fail ctx Permission (Messages.listen_denied target port)
 
 let listen n ctx (a : Types.t array) =
   let port = port_arg ctx a.(0) in
   let host = if Array.length a > 1 && a.(1) != Undef then Native.text_arg ctx "Listen" a.(1) else "127.0.0.1" in
-  let target = check_listen ctx host port in
-  install_handlers n;
-  match
-    let addr = address n ctx host in
-    let fd = Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 in
-    (try
-       Unix.setsockopt fd Unix.SO_REUSEADDR true;
-       Unix.bind fd (Unix.ADDR_INET (addr, port));
-       Unix.listen fd 4096;
-       (match Unix.getsockname fd with
-        | Unix.ADDR_INET (a, p) -> Hashtbl.replace n.own (Unix.string_of_inet_addr a, p) ()
-        | _ -> ());
-       fd
-     with e ->
-       Unix.close fd;
-       raise e)
-  with
-  | fd -> Value.ok ctx.w (handle n ctx fd)
-  | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "listen on" target e
+  let target = Printf.sprintf "%s:%d" (if String.contains host ':' then "[" ^ host ^ "]" else host) port in
+  match listen_address n ctx host port target with
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
+  | addr ->
+    install_handlers n;
+    match
+      let fd = Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 in
+      (try
+         Unix.setsockopt fd Unix.SO_REUSEADDR true;
+         Unix.bind fd (Unix.ADDR_INET (addr, port));
+         Unix.listen fd 4096;
+         fd
+       with e ->
+         Unix.close fd;
+         raise e)
+    with
+    | fd ->
+      let socket = handle n ctx fd in
+      (match socket, Unix.getsockname fd with
+       | Handle { id; _ }, Unix.ADDR_INET (a, p) -> Hashtbl.replace n.own id (a, p)
+       | _ -> ());
+      Value.ok ctx.w socket
+    | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "listen on" target e
 
 let accept n ctx (a : Types.t array) =
   with_socket n ctx "Accept" a.(0) (fun fd ->
@@ -177,15 +198,20 @@ let accept n ctx (a : Types.t array) =
 let connect n ctx (a : Types.t array) =
   let host = Native.text_arg ctx "Connect" a.(0) and port = port_arg ctx a.(1) in
   let target = Printf.sprintf "%s:%d" host port in
-  (* net=own reaches the listeners of this program only, once the name is resolved: localhost works, another program on
-     this machine doesn't. *)
-  let own = is_loopback host && Runtime.granted ctx.w Net (Some "own") && not (Runtime.granted ctx.w Net (Some target)) in
-  if not own then Runtime.check_perm ctx Net (Some target);
+  (* net=own reaches the listeners of this program only, while they are open, at an address written out or localhost: it
+     looks up no name, since a lookup would already say something to the outside. *)
+  let chosen =
+    if Runtime.granted ctx.w Net (Some target) then None
+    else if Runtime.granted ctx.w Net (Some "own") then begin
+      match literal host with
+      | Some addr when is_loopback addr && is_own n addr port -> Some addr
+      | _ -> Runtime.fail ctx Permission (Messages.not_own target)
+    end
+    else (Runtime.check_perm ctx Net (Some target); None)
+  in
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
-  match address n ctx host with
+  match (match chosen with Some addr -> addr | None -> address n ctx host) with
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
-  | addr when own && not (Hashtbl.mem n.own (Unix.string_of_inet_addr addr, port)) ->
-    Runtime.fail ctx Permission (Messages.not_own target)
   | addr ->
     match Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 with
     | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "connect to" target e
@@ -248,6 +274,7 @@ let write n ctx (a : Types.t array) =
 
 let close_socket n id =
   Hashtbl.remove n.deadlines id;
+  Hashtbl.remove n.own id;
   match Hashtbl.find_opt n.sockets id with
   | None -> ()
   | Some fd ->

@@ -314,13 +314,14 @@ let inside dir path =
   else if dir = "/" then is_absolute
   else path = dir || String.starts_with ~prefix:(dir ^ "/") path
 
-(* Does a scope of --allow cover this target? Paths nest, a network scope may name a host alone, the rest is exact. *)
+(* Does a scope of --allow cover this target? Paths nest, a network scope may name a host alone, the rest is exact. net=own
+   is no host: it doesn't let a program connect to a machine named own. *)
 let scope_matches perm scope target =
   match perm with
   | Read | Write -> inside scope target
   | Net ->
     String.equal scope target
-    || ((not (String.contains scope ':')) && String.starts_with ~prefix:(scope ^ ":") target)
+    || (scope <> "own" && (not (String.contains scope ':')) && String.starts_with ~prefix:(scope ^ ":") target)
   | Exec | Env | Ffi | Debug -> String.equal scope target
 
 let granted w perm path =

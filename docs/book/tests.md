@@ -171,6 +171,11 @@ defn isHello()
 end
 ```
 
+That is the permission `net=own`. A test reaches only the listeners it has open, and only while they are open: once it
+closes one, its port is out of reach, as another program may take it. It names them by an address of this machine written
+out, as `127.0.0.1` or `::1`, or by `localhost`, and it looks up no other name, since a lookup already sends the name out of
+the machine. A test that needs a server of the network gets it by name in `allow` of `[test]`, as `net=example.com:443`.
+
 A test has 10 seconds, and its fibers, sockets and servers end with it. `[test]` in `cesia.toml` changes that for the whole
 project:
 

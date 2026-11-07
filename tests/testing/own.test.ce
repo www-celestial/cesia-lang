@@ -1,0 +1,22 @@
+(* net=own, the network a test has by default: its own listeners only, while they are open, at an address of this machine
+   written out or localhost. It looks up no name, since a lookup already sends the name out. *)
+use std/net
+use std/fiber
+use std/result
+
+kind(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Kind)
+denied(f) = kind(f) == result.Err("permission")
+
+isNoLookupToConnect() = denied(() -> net.Connect("127.x.leak.example", 80))
+isNoLookupToListen() = denied(() -> net.Listen(0, host = "127.x.leak.example"))
+isOwnIsNoHost() = denied(() -> net.Connect("own", 80))
+defn isClosedIsGone()
+  l = net.Listen(0)?
+  p = net.Port(l)
+  net.Close(l)
+  denied(() -> net.Connect("127.0.0.1", p))
+end
+defn isReachesItsOwn()
+  l = net.Listen(0)?
+  result.IsOk(net.Connect("localhost", net.Port(l)))
+end
