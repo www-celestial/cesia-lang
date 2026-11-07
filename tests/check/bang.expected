@@ -1,7 +1,7 @@
-Ok(Value = 3) Err(Error = "empty")
-Ok(Value = 1.5) Err(Error = "negative")
-Ok(Value = 2.0)
-Ok(Value = 4) Err(Error = "empty")
+Ok(3) Err("empty")
+Ok(1.5) Err("negative")
+Ok(2.0)
+Ok(4) Err("empty")
 bang.ce:12:17: Plain: the result must be an Ok of an Int, or an Err, found an Int.
   12 | Plain(x) Int! = x
      |                 ^

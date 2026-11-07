@@ -1,6 +1,6 @@
-Ok(Value = [200, "hello", 2])
-Ok(Value = [200, "hello0123456789", 1])
-Ok(Value = [404, "gone", 0])
-Ok(Value = [200, "hello", 2])
-Ok(Value = [201, "é", 1])
+Ok([200, "hello", 2])
+Ok([200, "hello0123456789", 1])
+Ok([404, "gone", 0])
+Ok([200, "hello", 2])
+Ok([201, "é", 1])
 exit 0

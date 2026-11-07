@@ -132,12 +132,16 @@ and show_map ctx depth o =
   let key = function Text s when Lexer.is_plain_name s -> s | k -> show_at ctx (depth + 1) k in
   "{" ^ String.concat ", " (List.init n (fun i -> key o.(2 * i) ^ ": " ^ show_at ctx (depth + 1) o.((2 * i) + 1))) ^ "}"
 
+(* A struct with one field shows its value only, as the code builds it: Ok(42). More fields show their names. *)
 and show_struct ctx depth (shape : shape) fields =
   let names = shape.names in
-  let field i = names.(i) ^ " = " ^ show_at ctx (depth + 1) fields.(i) in
   let n = Array.length names in
   pay ctx n;
-  Option.value shape.sname ~default:"" ^ "(" ^ String.concat ", " (List.init n field) ^ ")"
+  match shape.sname with
+  | Some sname when n = 1 -> sname ^ "(" ^ show_at ctx (depth + 1) fields.(0) ^ ")"
+  | sname ->
+    let field i = names.(i) ^ " = " ^ show_at ctx (depth + 1) fields.(i) in
+    Option.value sname ~default:"" ^ "(" ^ String.concat ", " (List.init n field) ^ ")"
 
 and show_array ctx depth a =
   let cell k = show_at ctx (depth + 1) (elt a k) in

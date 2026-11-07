@@ -1,2 +1,2 @@
-Ok(Value = ["one two", ["note.txt"], false])
+Ok(["one two", ["note.txt"], false])
 exit 0

@@ -1,2 +1,2 @@
-Ok(Value = ["HTTP/1.1 200 OK|content-length: 12||GET /a x=1 2", "HTTP/1.1 200 OK|content-length: 12||GET /a x=1 2"])
+Ok(["HTTP/1.1 200 OK|content-length: 12||GET /a x=1 2", "HTTP/1.1 200 OK|content-length: 12||GET /a x=1 2"])
 exit 0

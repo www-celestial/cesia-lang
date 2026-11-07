@@ -1,7 +1,7 @@
-Ok(Value = "HTTP/1.1 400 Bad Request")
-Ok(Value = "HTTP/1.1 431 Request Header Fields Too Large")
-Ok(Value = "HTTP/1.1 413 Content Too Large")
-Ok(Value = "HTTP/1.1 501 Not Implemented")
-Ok(Value = "HTTP/1.1 400 Bad Request")
-Ok(Value = "HTTP/1.1 400 Bad Request")
+Ok("HTTP/1.1 400 Bad Request")
+Ok("HTTP/1.1 431 Request Header Fields Too Large")
+Ok("HTTP/1.1 413 Content Too Large")
+Ok("HTTP/1.1 501 Not Implemented")
+Ok("HTTP/1.1 400 Bad Request")
+Ok("HTTP/1.1 400 Bad Request")
 exit 0

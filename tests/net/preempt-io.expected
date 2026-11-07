@@ -1,2 +1,2 @@
-Ok(Value = "pong")
+Ok("pong")
 exit 0

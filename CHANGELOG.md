@@ -68,3 +68,6 @@ added, and the last one for a fix. A program written for 1.0 runs on every 1.x.
   `text.ByteLength`, `text.ByteFind` and `text.ByteSlice` do the same.
 - `sql.Open` on a file needs read and write for the files SQLite keeps beside it, `-wal`, `-shm` and `-journal`, as for
   the database itself: grant its folder, as `--allow read=data,write=data`.
+- A struct of one field shows its value alone, as the code builds it: `Ok(42)`, `Err("no")`, no longer
+  `Ok(Value = 42)`. A struct of more fields still shows their names. At the `--repl` prompt, a text shows with its quotes,
+  `"HELLO"`, as `-->` writes it.

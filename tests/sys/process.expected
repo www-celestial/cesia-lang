@@ -1,12 +1,12 @@
-Ok(Value = "hello
+Ok("hello
 ")
-Ok(Value = "err
+Ok("err
 ")
 3
 true
-Ok(Value = 2) Ok(Value = "late
+Ok(2) Ok("late
 ")
-Err(Error = "This process has ended.")
-Ok(Value = missing)
-Err(Error = {Kind: "io", Message: "Can't run cesia_no_such_command: no such file or directory."})
+Err("This process has ended.")
+Ok(missing)
+Err({Kind: "io", Message: "Can't run cesia_no_such_command: no such file or directory."})
 exit 0

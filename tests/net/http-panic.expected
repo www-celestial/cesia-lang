@@ -4,6 +4,6 @@ http-panic.ce:11:37: broken
   in handle (http-panic.ce:11)
   called from <anonymous> (std/http.ce:176)
   called from answer (std/http.ce:176)
-Ok(Value = "HTTP/1.1 500 Internal Server Error")
-Ok(Value = "HTTP/1.1 200 OK")
+Ok("HTTP/1.1 500 Internal Server Error")
+Ok("HTTP/1.1 200 OK")
 exit 0

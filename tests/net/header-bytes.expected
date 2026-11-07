@@ -10,5 +10,5 @@ header-bytes.ce:21:42: IsHeader needs a number of bytes within the text, not the
   21 | io.Print(fiber.Wait(fiber.Spawn(() -> net.IsHeader(9, "a"))) then result.MapErr(it.Kind))
      |                                          ^
   in <anonymous> (header-bytes.ce:21)
-Err(Error = "type")
+Err("type")
 exit 0

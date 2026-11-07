@@ -6,6 +6,6 @@ HTTP/1.1 400 Bad Request
 HTTP/1.1 400 Bad Request
 HTTP/1.1 200 OK
 true false true
-Err(Error = "This request has a space or a line end where it can't.")
-Err(Error = "This request has a space or a line end where it can't.")
+Err("This request has a space or a line end where it can't.")
+Err("This request has a space or a line end where it can't.")
 exit 0

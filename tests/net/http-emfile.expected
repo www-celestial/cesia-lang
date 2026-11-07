@@ -1,4 +1,4 @@
 calm
-Ok(Value = "HTTP/1.1 200 OK")
-Ok(Value = "HTTP/1.1 200 OK")
+Ok("HTTP/1.1 200 OK")
+Ok("HTTP/1.1 200 OK")
 exit 0

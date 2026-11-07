@@ -1,6 +1,6 @@
 2 7
-Err(Error = true)
+Err(true)
 6
 HELLO
-Ok(Value = missing)
+Ok(missing)
 exit 0

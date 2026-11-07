@@ -2,7 +2,11 @@
     function in the program, which goes on with it. A block reads lines until its end. *)
 use std/debug
 use std/io
+use std/text
 use std/value
+
+(* A value as --> writes it: a text with its quotes. *)
+shown(v) = if value.IsText(v) text.Str("\"", text.Replace("\"", "\\\"", text.Replace("\\", "\\\\", v)), "\"") else v end
 
 defn Main()
   (** Reads code and runs it in the program, until the end of the input. *)
@@ -21,7 +25,7 @@ defn Main()
     match debug.Eval(code)
       result.Ok(v) ->
         if not value.IsMissing(v)
-          io.Print(v)
+          io.Print(shown(v))
         end
       result.Err(e) -> io.Print(e)
     end

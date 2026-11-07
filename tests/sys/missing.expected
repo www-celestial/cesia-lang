@@ -1,2 +1,2 @@
-Err(Error = {Kind: "io", Message: "Can't read ./nope.txt: no such file or directory."})
+Err({Kind: "io", Message: "Can't read ./nope.txt: no such file or directory."})
 exit 0

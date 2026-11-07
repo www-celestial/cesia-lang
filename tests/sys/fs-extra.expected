@@ -1,6 +1,6 @@
 5 false true
-false Ok(Value = "hello")
+false Ok("hello")
 true
 true
-Ok(Value = missing)
+Ok(missing)
 exit 0

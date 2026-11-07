@@ -1,11 +1,11 @@
 photos/2025/IMG_002.JPG -> photos/2025/IMG_002.jpg
 photos/2026/IMG_003.jpeg -> photos/2026/IMG_003.jpg
 photos/IMG_001.JPG -> photos/IMG_001.jpg
-Ok(Value = missing)
+Ok(missing)
 photos/2025/IMG_002.JPG -> photos/2025/IMG_002.jpg
 photos/2026/IMG_003.jpeg -> photos/2026/IMG_003.jpg
 photos/IMG_001.JPG -> photos/IMG_001.jpg
-Ok(Value = missing)
+Ok(missing)
 photos/2025/IMG_002.jpg
 photos/2025/trip/Notes.TXT
 photos/2026/IMG_003.jpg

@@ -2,12 +2,12 @@
 ["tree/a.jpg", "tree/b/c/d/x.txt", "tree/b/c/y.JPG", "tree/b/z.txt"]
 ["tree/a.jpg", "tree/b/c/y.JPG"]
 []
-Err(Error = {Kind: "io", Message: "Can't list nowhere: no such file or directory."})
-Err(Error = {Kind: "io", Message: "Can't list tree/a.jpg: not a directory."})
-Ok(Value = missing)
-Ok(Value = ["tree/a.jpg", "tree/b/c/d/x.txt", "tree/b/c/y.JPG", "tree/b/z.txt", "tree/broken", "tree/link"])
-Ok(Value = ["a.jpg", "b/c/d/x.txt", "b/c/y.JPG", "b/z.txt", "broken", "link"])
-Err(Error = {Kind: "io", Message: "Can't list tree/b/c: permission denied."})
+Err({Kind: "io", Message: "Can't list nowhere: no such file or directory."})
+Err({Kind: "io", Message: "Can't list tree/a.jpg: not a directory."})
+Ok(missing)
+Ok(["tree/a.jpg", "tree/b/c/d/x.txt", "tree/b/c/y.JPG", "tree/b/z.txt", "tree/broken", "tree/link"])
+Ok(["a.jpg", "b/c/d/x.txt", "b/c/y.JPG", "b/z.txt", "broken", "link"])
+Err({Kind: "io", Message: "Can't list tree/b/c: permission denied."})
 links.ce:3:13: Permission "read" denied for tree.
   3 | io.Print(sys.Walk("tree"))
     |             ^

@@ -10,5 +10,5 @@ link-pipe false false true 0
 broken link true
 link removed true kept
 proc true
-Ok(Value = missing)
+Ok(missing)
 exit 0

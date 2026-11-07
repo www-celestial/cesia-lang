@@ -1,2 +1,2 @@
-Ok(Value = {X: 42})
+Ok({X: 42})
 exit 0

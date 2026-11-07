@@ -1,2 +1,2 @@
-Ok(Value = "254 shapes")
+Ok("254 shapes")
 exit 0

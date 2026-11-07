@@ -3,7 +3,7 @@ start 6
 4
 40
 10
-big
+"big"
 <prompt>:1:1: Name "list" doesn't exist.
   1 | list.Sum(nums)
     | ^

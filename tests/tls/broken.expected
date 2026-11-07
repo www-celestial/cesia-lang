@@ -1,5 +1,5 @@
-Ok(Value = "over tls")
+Ok("over tls")
 mute client closed true
-Err(Error = "The connection ended without a TLS close.")
-Ok(Value = missing)
+Err("The connection ended without a TLS close.")
+Ok(missing)
 exit 0
