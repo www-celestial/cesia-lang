@@ -1,0 +1,34 @@
+use std/io
+use std/matrix
+
+(* The work of bench/nd.ce on an array of two dimensions of as many cells, 1000 by 1000: six neighbours for each inner
+   cell, from one array to the other and back, read and written by index. *)
+defn relax(n, steps)
+  a = matrix.Zeros(n, n)
+  for j in 1..n
+    for i in 1..n
+      a[i, j] = (i + 2 * j) * 0.001
+    end
+  end
+  b = matrix.Zeros(n, n)
+  for s in 1..steps
+    for j in 2..n - 1
+      for i in 2..n - 1
+        b[i, j] = (a[i - 1, j] + a[i + 1, j] + a[i, j - 1] + a[i, j + 1] + a[i - 1, j - 1] + a[i + 1, j + 1]) / 6.0
+      end
+    end
+    for j in 2..n - 1
+      for i in 2..n - 1
+        a[i, j] = (b[i - 1, j] + b[i + 1, j] + b[i, j - 1] + b[i, j + 1] + b[i - 1, j - 1] + b[i + 1, j + 1]) / 6.0
+      end
+    end
+  end
+  t = 0.0
+  for j in 1..n
+    for i in 1..n
+      t = t + a[i, j] * i
+    end
+  end
+  t
+end
+io.Print(relax(1000, 10))

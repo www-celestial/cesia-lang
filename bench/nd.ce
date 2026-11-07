@@ -1,0 +1,42 @@
+use std/io
+use std/matrix
+
+(* A stencil on an array of three dimensions, 100 by 100 by 100: each inner cell becomes the mean of its six neighbours,
+   from one array to the other and back, read and written by index. bench/nd-2d.ce does the same work on 1000 by 1000. *)
+defn relax(n, steps)
+  a = matrix.Zeros(n, n, n)
+  for k in 1..n
+    for j in 1..n
+      for i in 1..n
+        a[i, j, k] = (i + 2 * j + 3 * k) * 0.001
+      end
+    end
+  end
+  b = matrix.Zeros(n, n, n)
+  for s in 1..steps
+    for k in 2..n - 1
+      for j in 2..n - 1
+        for i in 2..n - 1
+          b[i, j, k] = (a[i - 1, j, k] + a[i + 1, j, k] + a[i, j - 1, k] + a[i, j + 1, k] + a[i, j, k - 1] + a[i, j, k + 1]) / 6.0
+        end
+      end
+    end
+    for k in 2..n - 1
+      for j in 2..n - 1
+        for i in 2..n - 1
+          a[i, j, k] = (b[i - 1, j, k] + b[i + 1, j, k] + b[i, j - 1, k] + b[i, j + 1, k] + b[i, j, k - 1] + b[i, j, k + 1]) / 6.0
+        end
+      end
+    end
+  end
+  t = 0.0
+  for k in 1..n
+    for j in 1..n
+      for i in 1..n
+        t = t + a[i, j, k] * i
+      end
+    end
+  end
+  t
+end
+io.Print(relax(100, 10))
