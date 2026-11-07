@@ -1,4 +1,7 @@
-(* A test past its time shows where it was: the calls it made, and none before it. *)
+(* A test past its time shows where it was: the calls it made, and none before it. One that waits for the network, and so
+   never runs a step, is stopped at its time as well. *)
+use std/net
+
 defn spin(n)
   x = 0
   while true
@@ -15,5 +18,9 @@ defn isLoops()
   while true
     x = x + 1
   end
+  true
+end
+defn isWaitsForever()
+  net.Accept(net.Listen(0)?)?
   true
 end

@@ -1,5 +1,6 @@
-tests/hang.test.ce:9: isHang failed: The test ran past its 0.1 s.
-  called from isHang (tests/hang.test.ce:10)
-tests/hang.test.ce:13: isLoops failed: The test ran past its 0.1 s.
-0 passed, 2 failed
+tests/hang.test.ce:12: isHang failed: The test ran past its 0.1 s.
+  called from isHang (tests/hang.test.ce:13)
+tests/hang.test.ce:16: isLoops failed: The test ran past its 0.1 s.
+tests/hang.test.ce:23: isWaitsForever failed: The test ran past its 0.1 s.
+0 passed, 3 failed
 exit 1

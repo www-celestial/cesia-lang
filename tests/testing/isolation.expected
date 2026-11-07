@@ -1,8 +1,6 @@
 tests/isolation.ce:46: isFailsAndKeepsItsTemp returned false
   Its Temp folder is kept: TMP/16-isFailsAndKeepsItsTemp
-tests/isolation.ce:50: isEndless failed: The test ran past its 0.3 s.
-tests/isolation.ce:57: isWaitsForever failed: The test ran past its 0.3 s.
-15 passed, 3 failed
+15 passed, 1 failed
 exit 1
 keep me
 exit 0

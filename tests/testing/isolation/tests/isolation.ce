@@ -47,14 +47,3 @@ defn isFailsAndKeepsItsTemp()
   sys.Write("$(test.Temp())/kept.txt", "x")?
   false
 end
-defn isEndless()
-  n = 0
-  while true
-    n += 1
-  end
-  true
-end
-defn isWaitsForever()
-  net.Accept(net.Listen(0)?)?
-  true
-end
