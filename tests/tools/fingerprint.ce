@@ -1,0 +1,7 @@
+(** What the .blake2 file of a release holds for a file: blake2: and its BLAKE2b-256, for upgrade.cmd where b2sum, of
+    GNU's coreutils, isn't there, as on macOS. *)
+use std/cesia
+use std/io
+use std/sys
+
+io.Print(cesia.Fingerprint(sys.Read(sys.Args[1]).Value))

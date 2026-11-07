@@ -11,7 +11,7 @@ echo "check: $?"
 cesia fmt messy.ce clean.ce broken.ce crlf.ce
 echo "fmt: $?"
 cat messy.ce
-od -c crlf.ce | sed 's/  */ /g'
+cat -v crlf.ce
 cesia fmt --check messy.ce clean.ce crlf.ce
 echo "check again: $?"
 cesia run messy.ce

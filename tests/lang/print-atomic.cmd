@@ -1,1 +1,1 @@
-cesia run $no_spec print-atomic.ce | grep -vE '^(x \[.*\]|B)$' | wc -l
+cesia run $no_spec print-atomic.ce | grep -vE '^(x \[.*\]|B)$' | wc -l | tr -d ' '

@@ -1,1 +1,1 @@
-timeout 0.15 "$root/_build/default/src/bin/main.exe" run $no_spec flush-idle.ce | cat
+cesia run --allow exec "$root/tests/time-limit.ce" 0.15 run $no_spec flush-idle.ce

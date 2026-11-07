@@ -12,7 +12,8 @@ annotate() {  # title, text
 }
 for file in "$@"; do
   [ -s "$file" ] || continue
-  failures=$(grep -E 'FAILED|[1-9][0-9]* failed|rror|^[-+][^-+]' "$file" | head -c 3000)
+  # Without the names of tools/golden.sh's GOLDEN_TRACE: those of tests/errors/ would fill the annotation.
+  failures=$(grep -E 'FAILED|[1-9][0-9]* failed|rror|^[-+][^-+]' "$file" | grep -v '^golden: tests/' | head -c 3000)
   [ -n "$failures" ] && annotate "$file: failures" "$failures"
   annotate "$file: end" "$(tail -c 3000 "$file")"
 done

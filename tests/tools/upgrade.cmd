@@ -22,7 +22,7 @@ release() {
 }
 mkdir -p "$top/rel"
 (cd "$top/new" && tar -czf "$top/rel/$archive" bin lib)
-good="blake2:$(b2sum -l 256 "$top/rel/$archive" | cut -d' ' -f1)"
+good=$(cesia run --allow read fingerprint.ce "$top/rel/$archive")
 release rel latest v99.0.0 "cesia 99.0.0" "$good" "$archive"
 release rel nightly nightly "cesia 99.1.0-nightly+abc1234" "$good" "$archive"
 release old latest v0.1.0 "cesia 0.1.0" "$good" "$archive"

@@ -1,0 +1,21 @@
+(** For the tests whose program could keep waiting, in place of the timeout of GNU's coreutils, which macOS doesn't have:
+    cesia run --allow exec time-limit.ce SECONDS ARGS... runs cesia ARGS in this folder, writes what it wrote and then its
+    errors, and ends with its code, or with 124, as timeout does, if it still ran after that many seconds: then it is
+    killed, with every process it started. *)
+use std/cesia
+use std/io
+use std/sys
+use std/text
+use std/value
+
+seconds = text.Number(sys.Args[1])
+start = sys.Now()
+r = sys.Run(cesia.Binary(), args = sys.Args[2..value.Len(sys.Args)], timeout = seconds).Value
+cut(s) = if text.EndsWith("\n", s) text.ByteSlice(1, text.ByteLength(s) - 1, s) else s end
+if r.Out != ""
+  io.Print(cut(r.Out))
+end
+if r.Err != ""
+  io.PrintError(cut(r.Err))
+end
+sys.Exit(if r.Code >= 0 r.Code else if sys.Now() - start >= seconds 124 else 1 end)

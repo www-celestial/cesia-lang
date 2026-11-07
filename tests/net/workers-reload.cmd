@@ -19,12 +19,12 @@ kept=$!
 "$load" --port 18411 --connections 4 --seconds 2 --new > "$dir/new" &
 new=$!
 sleep 0.5
-sed -i 's/version = "first"/version = "second"/' "$dir/server.ce"
+sed -i.bak 's/version = "first"/version = "second"/' "$dir/server.ce"
 kill -HUP $pid
 wait $kept && echo "kept connections: no request failed" || echo "kept connections failed: $(cat "$dir/kept")"
 wait $new && echo "new connections: no request failed" || echo "new connections failed: $(cat "$dir/new")"
 echo "after: $(ask)"
-sed -i 's/version = "second"/version = (/' "$dir/server.ce"
+sed -i.bak 's/version = "second"/version = (/' "$dir/server.ce"
 kill -HUP $pid
 for _ in $(seq 1 500); do grep -q 'running workers stay' "$dir/out" && break; sleep 0.01; done
 grep -o 'the running workers stay' "$dir/out"

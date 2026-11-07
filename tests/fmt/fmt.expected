@@ -41,10 +41,10 @@ end
 help =
   "Commands"
 io.Print(twice(3), Point(1).Y, help)
-0000000 u s e s t d / i o \r \n x = 
-0000020 1 \r \n \r \n i o . P r i n t ( x )
-0000040 \r \n
-0000042
+use std/io^M
+x = 1^M
+^M
+io.Print(x)^M
 check again: 0
 big [2, 3]
 more 6

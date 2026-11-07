@@ -6,4 +6,4 @@ awk 'BEGIN {
   for (i = 0; i < 19999; i++) printf "[tasks.t%d]\nneeds = [\"t%d\"]\nrun = [\"true\"]\n", i, i + 1
   print "[tasks.t19999]\nrun = [\"true\"]"
 }' > cesia.toml
-cesia do | wc -l
+cesia do | wc -l | tr -d ' '

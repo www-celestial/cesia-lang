@@ -8,9 +8,11 @@ ask() {
   tail -1 <&3
   exec 3<&-
 }
+# The supervisor's children: pgrep -P lists them on Linux as on macOS, whose pgrep has no -c, and whose wc pads its count.
+workers() { pgrep -P $pid | wc -l | tr -d ' '; }
 for _ in $(seq 1 500); do (exec 3<>/dev/tcp/127.0.0.1/18410) 2> /dev/null && break; sleep 0.01; done
-for _ in $(seq 1 100); do [ "$(pgrep -c -P $pid)" = 2 ] && break; sleep 0.02; done
-echo "workers: $(pgrep -c -P $pid)"
+for _ in $(seq 1 100); do [ "$(workers)" = 2 ] && break; sleep 0.02; done
+echo "workers: $(workers)"
 first=$(ask)
 pgrep -P $pid | grep -qx "$first" && echo "a worker answered" || echo "who answered: $first"
 kill -KILL "$first"
@@ -27,6 +29,6 @@ grep -c 'ended with code' "$out"
 kill -TERM $pid
 wait $pid
 code=$?
-echo "workers left: $(pgrep -c -P $pid)"
+echo "workers left: $(workers)"
 rm -f "$out"
 (exit $code)
