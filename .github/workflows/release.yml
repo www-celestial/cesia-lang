@@ -101,6 +101,8 @@ jobs:
           for plugin in jit/cesia_jit.cmxs sqlite/cesia_sqlite.cmxs testing/cesia_testing.cmxs debug/cesia_debug.cmxs; do
             cp "_build/default/src/$plugin" out/lib/
             file="out/lib/$(basename "$plugin")"
+            # Dune's files are read-only, and so is their copy: strip writes it.
+            chmod u+w "$file"
             if [ "${{ runner.os }}" = macOS ]; then
               strip -x "$file" && codesign --force -s - "$file"
             else
@@ -109,6 +111,7 @@ jobs:
           done
           if [ "${{ runner.os }}" = Windows ]; then
             cp _build/default/src/bin/main.exe out/bin/cesia.exe
+            chmod u+w out/bin/cesia.exe
             # Without the C debug info, mostly MIR's: OCaml's backtraces don't need it. The version below runs the result.
             opam exec -- strip out/bin/cesia.exe
             # The DLLs the binary itself was linked with, from the toolchain of OCaml: not those of Windows.
@@ -123,6 +126,7 @@ jobs:
             (cd out && pwsh -Command "Compress-Archive -Path bin, lib -DestinationPath ../cesia-${{ matrix.system }}.zip")
           else
             cp _build/default/src/bin/main.exe out/bin/cesia
+            chmod u+w out/bin/cesia
             # Without the C debug info, mostly MIR's; on macOS the signature that stripping breaks is made again.
             if [ "${{ runner.os }}" = macOS ]; then strip -x out/bin/cesia && codesign --force -s - out/bin/cesia; else strip out/bin/cesia; fi
             out/bin/cesia version | tee "version-${{ matrix.system }}.txt"
