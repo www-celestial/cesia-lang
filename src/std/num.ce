@@ -8,7 +8,8 @@ use std/random
 use std/result
 use std/value
 
-(** The library that does the large computations, or missing if the code of Cesia does them all. *)
+(** The library that does the large computations, or missing if the code of Cesia does them all. It has no example, as
+    its answer depends on the machine. *)
 Backend() = lapack.Name()
 
 defn Linspace(a, b, n)

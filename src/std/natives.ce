@@ -16,6 +16,7 @@ use std/fiber
 use std/list
 use std/math
 use std/matrix
+use std/num
 use std/result
 use std/text
 use std/value
@@ -88,12 +89,20 @@ use std/test
 
 (** sys.ReadInput()
     All that the standard input holds, up to its end, in an Ok, or an Err: cat data.csv | cesia run clean.ce. The program
-    waits while it reads, its other fibers too. It needs no permission: the input is the program's own. *)
+    waits while it reads, its other fibers too. It needs no permission: the input is the program's own.
+
+      script = "$(test.Temp())/shout.ce"
+      sys.Write(script, "use std/sys\nuse std/io\nuse std/text\nio.Print(text.Upper(sys.ReadInput().Value))\n")
+      sys.Run("sh", args = ["-c", "'$(cesia.Binary())' run '$script'"], input = "hello")?.Out --> "HELLO\n" *)
 
 (** sys.Exit(code)
     Ends the program at once, with an exit code from 0 to 255: 0 says that all went well, another number that something
     failed, for the shell or the program that ran it. What was printed is written out first. The chapter
-    [Files](https://www-celestial.github.io/cesia-lang/files.html#standard-input-and-the-exit-code) uses it. *)
+    [Files](https://www-celestial.github.io/cesia-lang/files.html#standard-input-and-the-exit-code) uses it.
+
+      script = "$(test.Temp())/stop.ce"
+      sys.Write(script, "use std/sys\nuse std/io\nio.Print(\"bye\")\nsys.Exit(3)\nio.Print(\"never\")\n")
+      sys.Run("sh", args = ["-c", "'$(cesia.Binary())' run '$script'"]) --> result.Ok({Code: 3, Out: "bye\n", Err: ""}) *)
 
 (** sys.Now()
     The time in seconds since 1970, as a float.
@@ -867,7 +876,11 @@ use std/test
     A line read from the standard input without its line end, or missing at its end. On a terminal, the prompt shows
     first and the keys edit the line: arrows, Home, End, Ctrl-A, Ctrl-E, Ctrl-K, Ctrl-U, Ctrl-W, and up and down walk the
     lines read before. The other fibers of the program run while it waits, but at a stop of the debugger. Needs the debug
-    permission. *)
+    permission.
+
+      script = "$(test.Temp())/lines.ce"
+      sys.Write(script, "use std/debug\nuse std/io\nio.Print(debug.ReadLine())\nio.Print(debug.ReadLine())\n")
+      sys.Run("sh", args = ["-c", "'$(cesia.Binary())' run --allow debug '$script'"], input = "Ana\n")?.Out --> "Ana\nmissing\n" *)
 
 (** sys.Read(path)
     The text of a file, in an Ok, or an Err. Needs the read permission.
@@ -1259,19 +1272,39 @@ use std/test
       text.StartsWith("3.", sqlite3.Version()?) --> true *)
 
 (** lapack.Name()
-    The name of the LAPACK library found on this machine, or missing if there is none. The functions below then give missing as well, and num falls back on its own code. *)
+    The name of the LAPACK library found on this machine, or missing if there is none. The functions below then give
+    missing as well, and num falls back on its own code. It has no example, as its answer depends on the machine. *)
 
 (** lapack.Solve(a, b)
-    The x of a * x = b for a square a, or false if a is singular. Missing without a library. *)
+    The x of a * x = b for a square a and a b of one column or more, or false if a is singular. Missing without a library,
+    and for an order below 32, where the code of num is as fast and gives the same bits on every machine.
+
+      a = num.Eye(32) + matrix.Ones(32, 32)
+      x = lapack.Solve(a, matrix.Ones(32, 1))
+      value.IsMissing(x) or math.Abs(x[1] - 1 / 33) < 1e-12 --> true
+      lapack.Solve(matrix.Ones(32, 32), matrix.Ones(32, 1)) in [false, missing] --> true
+      lapack.Solve(num.Eye(2), matrix.Ones(2, 1)) --> missing *)
 
 (** lapack.Det(a)
-    The determinant of a square matrix. Missing without a library. *)
+    The determinant of a square matrix. Missing without a library, and for an order below 32.
+
+      d = lapack.Det(num.Eye(32) + matrix.Ones(32, 32))
+      value.IsMissing(d) or math.Abs(d - 33.0) < 1e-9 --> true *)
 
 (** lapack.Qr(a)
-    The QR factorization of a matrix with at least as many rows as columns, as a struct with Q and R. Missing without a library. *)
+    The QR factorization of a matrix with at least as many rows as columns, as a struct with Q and R. Missing without a
+    library, and below 32 columns.
+
+      a = num.Eye(32) + matrix.Ones(32, 32)
+      f = lapack.Qr(a)
+      value.IsMissing(f) or list.Max(math.Abs(matrix.Matmul(f.Q, f.R) - a)) < 1e-9 --> true *)
 
 (** lapack.Eigen(a)
-    The eigenvalues and eigenvectors of a symmetric matrix, as a struct with Values and Vectors. Missing without a library. *)
+    The eigenvalues and eigenvectors of a symmetric matrix, as a struct with Values, from the smallest, and Vectors.
+    Missing without a library, and for an order below 32.
+
+      e = lapack.Eigen(num.Eye(32) + matrix.Ones(32, 32))
+      value.IsMissing(e) or math.Round(e.Values[32]) == 33.0 --> true *)
 
 (** cesia.Version()
     The version of this Cesia, without what follows a + or a -.
@@ -1279,7 +1312,10 @@ use std/test
       cesia.IsVersion(cesia.Version()) --> true *)
 
 (** cesia.IsDev()
-    For tools: was this Cesia built from its sources, and not by a release? Then its version text ends in +dev. *)
+    For tools: was this Cesia built from its sources, and not by a release? Then its version text ends in +dev.
+
+      shown = sys.Run("sh", args = ["-c", "'$(cesia.Binary())' version"]).Value.Out
+      cesia.IsDev() == text.EndsWith("+dev\n", shown) --> true *)
 
 (** cesia.Binary()
     The path of the running binary of Cesia, from the top of the file system.

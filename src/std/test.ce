@@ -7,6 +7,9 @@ use std/sys
 use std/math
 use std/text
 use std/dict
+(* For the examples only: a package loads at its first use, so these cost a test nothing. *)
+use std/gen
+use std/cesia
 
 (* The first cases are small: the size grows from 0 to 100 over the cases. *)
 sizeOf(i, n) = if n <= 1 100 else math.Div((i - 1) * 100, n - 1) end
@@ -89,7 +92,9 @@ defn ForAll(prop, g, cases = missing)
   (** Does prop hold for each value the generator g makes? It tries cases values, 100 unless cesia test --cases says
       otherwise, small ones first, and the failure that an earlier run saved before them. A failure shrinks to the smallest
       value that still fails, which cesia test shows with the parts of the verdict of prop, then saves for the next run;
-      once it passes, it is forgotten. A panic in prop is a failure too. *)
+      once it passes, it is forgotten. A panic in prop is a failure too.
+
+        ForAll(xs -> value.Equal(list.Reverse(list.Reverse(xs)), xs), gen.List(gen.Int())) --> true *)
   n = if value.IsMissing(cases) defaultCases() else cases end
   saved = start()
   if not value.IsMissing(saved)
@@ -133,6 +138,15 @@ end
 defn Snapshot(v)
   (** Is v as it was when the snapshot was accepted? A text compares as it is, another value as printed. The snapshots live
       in a file beside the test, x.test.snap for x.test.ce, one block per call: a new one fails, showing its text, until
-      cesia test --update accepts it, and a changed one shows its changed lines. git keeps them. *)
+      cesia test --update accepts it, and a changed one shows its changed lines. git keeps them. Here a test file in a
+      folder of its own:
+
+        folder = Temp()
+        sys.Write("$folder/page.test.ce", "use std/test\nisPage() = test.Snapshot(\"<h1>Ana</h1>\")\n")
+        run(flag) = sys.Run("sh", args = ["-c", "'$(cesia.Binary())' test $flag '$folder'"]).Value.Code
+        run("") --> 1
+        run("--update") --> 0
+        sys.Read("$folder/page.test.snap")? --> "== isPage 1 (1 lines, no line end)\n<h1>Ana</h1>\n"
+        run("") --> 0 *)
   snapshot(shown(v))
 end

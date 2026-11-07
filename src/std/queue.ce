@@ -6,7 +6,12 @@ use std/dict
 use std/list
 use std/value
 
-(** A queue, made by Empty and Of: its fields are its own, the elements by their place from first to last. *)
+(** A queue, made by Empty and Of: its fields are its own, the elements by their place from first to last. A change gives
+    a new queue, and the old one stays as it was.
+
+      q = Of([1, 2])
+      Items(Push(3, q)) --> [1, 2, 3]
+      Items(q) --> [1, 2] *)
 struct Queue { items, first, last }
 
 (* What value.Len counts. *)

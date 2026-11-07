@@ -37,7 +37,6 @@ SignSecretSize = 64
 
       text.ByteLength(Sign("hi", SignPair(s).Secret, s)) --> 64 *)
 SignatureSize = 64
-PasswordSize = 128    (** The room in bytes that a result of HashPassword may take: the text it gives is shorter. *)
 
 defn block(s)
   b = c.Alloc(list.Max(text.ByteLength(s), 1))
@@ -289,3 +288,8 @@ defn CheckPassword(password, stored, s)
   padded = "$stored$(text.Repeat(PasswordSize - text.ByteLength(stored), text.Char(0)))"
   out(0, [padded, password], (out, b) -> s.CheckPassword(b[1], b[2], size)).Status == 0
 end
+
+(** The room in bytes that a result of HashPassword may take: the text it gives is shorter.
+
+      text.ByteLength(stored) < PasswordSize --> true *)
+PasswordSize = 128
