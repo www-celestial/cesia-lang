@@ -26,7 +26,7 @@ jobs:
         include:
           # The oldest Linux GitHub offers, so that the binary runs on older systems too.
           - { os: ubuntu-22.04, system: linux-x86_64, archive: tar.gz }
-          - { os: macos-14, system: macos-arm64, archive: tar.gz }
+          - { os: macos-15, system: macos-arm64, archive: tar.gz }
           - { os: windows-latest, system: windows-x86_64, archive: zip }
     runs-on: ${{ matrix.os }}
     defaults:
@@ -88,9 +88,12 @@ jobs:
       - name: The C libraries
         env:
           MSYS2_ROOT: ${{ steps.msys2.outputs.msys2-location }}
-        run: if [ ! -d libraries/lib ]; then tools/release-libs.sh ${{ matrix.system }} libraries; fi
+        run: if [ ! -d libraries/lib ]; then bash -x tools/release-libs.sh ${{ matrix.system }} libraries 2>&1 | tee libs.log; fi
       - name: The archive
         run: |
+          # Each command it runs, for the annotation of a failure.
+          exec > >(tee archive.log) 2>&1
+          set -x
           mkdir -p out/bin
           cp -R libraries/lib out/lib
           # The plugins that the binary loads from lib/, the JIT at the first hot unit, SQLite's natives and the
@@ -134,7 +137,7 @@ jobs:
       # The logs need an account to be read; an annotation doesn't, for a public repository.
       - name: Report a failure
         if: failure()
-        run: tools/ci-error.sh test.log jit.txt
+        run: tools/ci-error.sh test.log libs.log archive.log jit.txt
       - uses: actions/upload-artifact@v4
         with:
           name: cesia-${{ matrix.system }}
