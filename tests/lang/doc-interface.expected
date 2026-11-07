@@ -1,16 +1,16 @@
-Shape { Area(), Perimeter() }
+shape.Shape { Area(), Perimeter() }
 
 Something with an area and a perimeter.
 
-  total(Square(2)) --> 12
-Named { Name() }
+  total(shape.Square(2)) --> 12
+shape.Named { Name() }
 
 Something with a name.
 (s Shape) Describe()
 
 What a shape is.
 
-  Square(1).Describe() --> "area 1, perimeter 4"
+  shape.Square(1).Describe() --> "area 1, perimeter 4"
 cesia: nothing is documented under shape.Perimeter
 Interfaces and their methods, for the tests of a use.
 

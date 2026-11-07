@@ -33,10 +33,10 @@ isDocBlockOnOneLine() = text.Contains("On one line.", cesia.Doc(Short))
 isDocBlockKeepsNoMarks() = not text.Contains("(*", cesia.Doc(Documented)) and not text.Contains("*)", cesia.Doc(Documented)) and not text.Contains("*)", cesia.Doc(Short))
 isDocPlainCommentIsNoDoc() = not text.Contains("Not documentation", cesia.Doc(Plain))
 
-isDocOfACesiaFunction() = text.Contains("One more", cesia.Doc("math.Inc")) and text.StartsWith("Inc(x)", cesia.Doc("math.Inc"))
-isDocKeepsTheExamples() = text.Contains("Inc(1) --> 2", cesia.Doc("math.Inc"))
-isDocOfADefn() = text.StartsWith("FindFirst(f, xs)", cesia.Doc("list.FindFirst"))
-isDocOfAModuleFunction() = text.StartsWith("Solve(m, b)", cesia.Doc("num.Solve"))
+isDocOfACesiaFunction() = text.Contains("One more", cesia.Doc("math.Inc")) and text.StartsWith("math.Inc(x)", cesia.Doc("math.Inc"))
+isDocKeepsTheExamples() = text.Contains("\n  math.Inc(1) --> 2", cesia.Doc("math.Inc"))
+isDocOfADefn() = text.StartsWith("list.FindFirst(f, xs)", cesia.Doc("list.FindFirst"))
+isDocOfAModuleFunction() = text.StartsWith("num.Solve(m, b)", cesia.Doc("num.Solve"))
 isDocOfANative() = text.StartsWith("list.Sort(xs)", cesia.Doc("list.Sort"))
 isDocOfAModuleNative() = text.StartsWith("sys.Now()", cesia.Doc("sys.Now"))
 isDocOfAConstant() = text.StartsWith("math.Pi", cesia.Doc("math.Pi"))
@@ -65,8 +65,13 @@ end
 
 defn isDocEntryOfAFunction()
   e = cesia.DocEntry("num.Solve")
-  e.Module == "std/num" and text.StartsWith("Solve(m, b)", e.Signature) and not e.Builtin and e.File == "std/num.ce" and e.Line > 1
+  e.Module == "std/num" and e.Signature == "num.Solve(m, b)" and not e.Builtin and e.File == "std/num.ce" and e.Line > 1
 end
+
+(* A name shows as the code outside its package calls it: the package's own names take it, the others and .Day stay. *)
+isDocAsCalledOutside() = value.Equal(cesia.DocEntry("list.FindFirst").Examples, ["list.FindFirst(math.IsEven, [1, 2, 4]) --> 2"]) and
+  value.Equal(cesia.DocEntry("date.AddDays").Examples, ["date.AddDays(1, date.Date(2026, 11, 1)).Day --> 2"]) and
+  text.StartsWith("date.Date { Year", cesia.DocEntry("date.Date").Signature)
 
 isDocEntryOfAModuleNative() = cesia.DocEntry("sys.Read").Module == "std/sys" and cesia.DocEntry("sys.Read").Builtin
 isDocEntryOfAKeyword() = cesia.DocEntry("if").Module == "" and cesia.DocEntry("if").Builtin and value.Len(cesia.DocEntry("if").Examples) > 0

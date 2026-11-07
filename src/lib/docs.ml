@@ -438,6 +438,56 @@ let module_name w m =
   | Some dir when package_sources w m <> [] -> from_root w dir
   | _ -> "std/" ^ m
 
+(* The byte where column col of a line starts: the lexer counts characters. *)
+let byte_of_col s col =
+  let n = String.length s in
+  let rec go i c =
+    if i >= n then n else if Char.code s.[i] land 0xC0 = 0x80 then go (i + 1) c else if c = col then i else go (i + 1) (c + 1)
+  in
+  go 0 1
+
+(* A line of code as a reader writes it, outside its package: Map(it * 2, xs) gives list.Map(it * 2, xs). A name of own takes
+   the alias where it stands alone: not after a dot, nor as a key or a name being set, nor inside a text. *)
+let as_written alias own line =
+  match Lexer.tokens ~file:"" line with
+  | exception _ -> line
+  | toks ->
+    let last = Array.length toks - 1 in
+    let alone i =
+      (i = 0 || match toks.(i - 1).t with DOT -> false | _ -> true)
+      && (i = last || match toks.(i + 1).t with COLON | ASSIGN -> false | _ -> true)
+    in
+    let cols = ref [] in
+    Array.iteri
+      (fun i (tk : Lexer.token) -> match tk.t with NAME n when List.mem n own && alone i -> cols := Pos.col tk.pos :: !cols | _ -> ())
+      toks;
+    (* From the last, so that the columns before stay right. *)
+    List.fold_left
+      (fun s col ->
+         let k = byte_of_col s col in
+         String.concat "" [ String.sub s 0 k; alias; "."; String.sub s k (String.length s - k) ])
+      line !cols
+
+(* An entry of a module as the code outside it calls it, list.Map(f, xs), as a native shows: its signature and examples. *)
+let outside w m es e =
+  let alias = Filename.basename m in
+  let own =
+    List.filter_map (fun x -> if public x.name && not (String.contains x.name '.') then Some x.name else None) es
+    @ List.map fst (Option.value (List.assoc_opt m w.native_modules) ~default:[])
+  in
+  (* The lexer refuses the -->, so the code and what it gives are read apart. *)
+  let rec arrow t i = if i + 3 > String.length t then None else if String.sub t i 3 = "-->" then Some i else arrow t (i + 1) in
+  let example t =
+    match arrow t 0 with
+    | Some k ->
+      let gives = String.sub t (k + 3) (String.length t - k - 3) in
+      String.concat "" [ as_written alias own (String.sub t 0 k); "-->"; as_written alias own gives ]
+    | None -> as_written alias own t
+  in
+  let line ((n, t) as l) = if String.starts_with ~prefix:"  " t then n, example t else l in
+  let lines = List.map line e.lines in
+  { e with signature = as_written alias [ e.name ] e.signature; text = text_of_block (List.rev_map snd lines); lines }
+
 (* The documentation of a name or a keyword, its module as DocNames lists it (none for a keyword), and whether it is built
    into the binary: a keyword, or a native of src/std/natives.ce, in OCaml. *)
 let found_entry w name =
@@ -449,8 +499,9 @@ let found_entry w name =
     let entry, short, md, builtin =
       if m = "" then None, name, lazy "", false
       else
-        match find short (module_entries w m) with
-        | Some e -> Some e, short, lazy (module_name w m), false
+        let es = module_entries w m in
+        match find short es with
+        | Some e -> Some (outside w m es e), short, lazy (module_name w m), false
         | None -> native, short, lazy ("std/" ^ m), true
     in
     if public_name short then Option.map (fun e -> e, md, builtin) entry else None
@@ -527,7 +578,15 @@ let of_function w v =
   match v with
   | Fun { proto; _ } ->
     let _, src = Dynarray.get w.files proto.file in
-    if public proto.pname then Option.map shown (find proto.pname (entries src)) else None
+    (* The name the code gives the package that a use loaded, list or shapes; the program's own functions have none. *)
+    let host = w.modules.(proto.pm).host in
+    let alias =
+      Hashtbl.fold
+        (fun key k found -> if found = None && k = host then Some (Filename.remove_extension (Filename.basename key)) else found)
+        w.loaded None
+    in
+    let as_called e = match alias with Some m -> outside w m (module_entries w m) e | None -> e in
+    if public proto.pname then Option.map (fun e -> shown (as_called e)) (find proto.pname (entries src)) else None
   | Native n ->
     (* The package whose natives hold this very value: list.Take, not sqlite3.Take. *)
     let owner = List.find_map (fun (m, ns) -> if List.exists (fun (_, x) -> x == v) ns then Some m else None) w.native_modules in

@@ -1,4 +1,4 @@
 ["code/shapes", "lib/notes"]
 ["shapes.Unit"] ["notes.Count"]
-code/shapes Unit() The unit. code/shapes/shapes.ce 3 false
+code/shapes shapes.Unit() The unit. code/shapes/shapes.ce 3 false
 exit 0

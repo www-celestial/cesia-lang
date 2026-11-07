@@ -5,7 +5,7 @@ The area.
 
 The next year.
 
-  Date(1).Next().Year --> 2
+  date.Date(1).Next().Year --> 2
 Date.Parse(text)
 
 A date from its text.

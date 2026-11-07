@@ -1,9 +1,9 @@
-Cube(x Number) Number
+returns.Cube(x Number) Number
 
 A number cubed.
 
-  Cube(2) --> 8
-Half(x Float) Float
+  returns.Cube(2) --> 8
+returns.Half(x Float) Float
 
 Half of x.
 (r Rect) Area() Number
@@ -19,14 +19,14 @@ The unit square.
 
 Larger.
 
-  Rect(1, 2).Scaled(2).Width --> 2
-Named(x) Text?
+  returns.Rect(1, 2).Scaled(2).Width --> 2
+returns.Named(x) Text?
 
 Its name, if it has one.
-Shape { Area() Number, Name() Text? }
+returns.Shape { Area() Number, Name() Text? }
 
 Something with an area.
-Sized { Size() Int }
+returns.Sized { Size() Int }
 
 Something with a size.
 exit 0

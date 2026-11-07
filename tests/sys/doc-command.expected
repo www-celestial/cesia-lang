@@ -1,8 +1,8 @@
-Inc(x)
+math.Inc(x)
 
 One more, and one less. Both work on arrays, element by element.
 
-  Inc(1) --> 2
+  math.Inc(1) --> 2
 exit 0
 cesia: nothing is documented under NoSuchName
 exit 1

@@ -1,37 +1,37 @@
-Scaled(r Number, by Number) Number
+places.Scaled(r Number, by Number) Number
 
 A number larger by some factor.
 
-  Scaled(2, 3) --> 6
+  places.Scaled(2, 3) --> 6
 
   r       the number to grow
   by      how many times larger
   result  the larger number
-Rect { Width Number, Height Number }
+places.Rect { Width Number, Height Number }
 
 A rectangle, in metres.
 
   Width   along x
   Height  along y
-Shape { Area() Number }
+places.Shape { Area() Number }
 
 Something with an area.
 
   Area  in square metres
-Square(x Number) Number
+places.Square(x Number) Number
 
 The square of a number.
-Cube(x Number) Number
+places.Cube(x Number) Number
 
 The cube of a number.
 
-  Cube(2) --> 8
-Above(x)
-Later(x)
-Noted(a, b)
+  places.Cube(2) --> 8
+places.Above(x)
+places.Later(x)
+places.Noted(a, b)
 
 Two notes that show nowhere.
-Noop()
+places.Noop()
 list.NewNative(x, y)
 
 A native documented by a block whose first line is its signature.

@@ -1,12 +1,12 @@
-places.Scaled | std/places | Scaled(r Number, by Number) Number | false std/places.ce 3
+places.Scaled | std/places | places.Scaled(r Number, by Number) Number | false std/places.ce 3
 A number larger by some factor.
-[{Name: "r", Text: "the number to grow"}, {Name: "by", Text: "how many times larger"}, {Name: "result", Text: "the larger number"}] ["Scaled(2, 3) --> 6"]
-places.Rect | std/places | Rect { Width Number, Height Number } | false std/places.ce 13
+[{Name: "r", Text: "the number to grow"}, {Name: "by", Text: "how many times larger"}, {Name: "result", Text: "the larger number"}] ["places.Scaled(2, 3) --> 6"]
+places.Rect | std/places | places.Rect { Width Number, Height Number } | false std/places.ce 13
 A rectangle, in metres.
 [{Name: "Width", Text: "along x"}, {Name: "Height", Text: "along y"}] []
 date.Date.Next | std/date | (d Date) Next() | false std/date.ce 10
 The next year.
-[] ["Date(1).Next().Year --> 2"]
+[] ["date.Date(1).Next().Year --> 2"]
 date.Date.Parse | std/date | Date.Parse(text) | false std/date.ce 5
 A date from its text.
 [] []

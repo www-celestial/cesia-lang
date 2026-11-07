@@ -1,7 +1,7 @@
 Shapes, which a use finds in src/ without naming it.
 
 shapes.Where  Where this package is.
-Where()
+shapes.Where()
 
 Where this package is.
 exit 0
