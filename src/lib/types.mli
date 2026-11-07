@@ -215,7 +215,8 @@ and world = {
   mutable hook_count : int;  (** the compiled hooks *)
   sched : sched;
   mutable idle : bool -> bool;
-  mutable timer : float -> (unit -> unit) -> unit;  (** set by the system: calls a function after so many seconds *)
+  mutable timer : float -> (unit -> unit) -> unit -> unit;
+      (** set by the system: calls a function after so many seconds, and gives the function that cancels it *)
       (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
   mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
   mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)

@@ -117,6 +117,12 @@ Here `missing` tells that nothing more will come.
 fiber.Receive(fiber.Channel(), timeout = 0.05) -->
 ```
 
+[fiber.Wait] takes a `timeout` too: an `Err` of the same kind if the task hasn't ended by then, and the task runs on:
+
+```cesia
+fiber.Wait(fiber.Spawn(() -> slow("bread", 1)), timeout = 0.05) -->
+```
+
 ### Shared values
 
 Values in Cesia never change in place, they are [immutable](glossary.md#immutability), so two fibers can't break a value they share: a fiber that changes a list makes a new

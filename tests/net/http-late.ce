@@ -1,0 +1,32 @@
+(** A handler that takes longer than the deadline of its request: the client gets a 503 at the deadline, and the server
+    answers the next request at once, while that handler runs on. *)
+use std/http
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
+
+crlf = "$(text.Char(13))$(text.Char(10))"
+defn handle(r)
+  if r.Path == "/slow"
+    sys.Sleep(5)
+  end
+  {Status: 200, Body: "done"}
+end
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18402, timeout = 0.2))
+sys.Sleep(0)
+
+defn get(path)
+  c = net.Connect("127.0.0.1", 18402)?
+  net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
+  reply = net.Read(c)?
+  closed = net.Read(c)?
+  net.Close(c)
+  result.Ok([text.Split(crlf, reply)[1], text.ByteLength(closed)])
+end
+
+start = sys.Now()
+io.Print(get("/slow"), sys.Now() - start < 1)
+io.Print(get("/fast"))

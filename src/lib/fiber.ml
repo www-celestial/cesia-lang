@@ -102,20 +102,49 @@ let spawn (ctx : ctx) g =
     | exception (Value.Kerr { text; kind; at; _ } as e) ->
       w.on_panic fiber e;
       finish (Value.err w (panic_value w text kind at))
-    | exception (Value.Limit { what = "nesting"; _ } as e) ->
-      (* A value too deep to show is the problem of this fiber. The steps and the memory belong to the whole program. *)
+    | exception (Value.Limit { what = ("nesting" | "memory") as what; _ } as e) ->
+      (* A value too deep to show is the problem of this fiber, and so is the memory it was taking when the limit came:
+         a server's request that takes too much stops alone, and frees what it took. The steps belong to the whole
+         program. *)
       w.on_panic fiber e;
-      finish (Value.err w (panic_value w (Messages.limit "nesting").text Type fiber.site))
+      finish (Value.err w (panic_value w (Messages.limit what).text (if what = "memory" then Math else Type) fiber.site))
   in
   Queue.add (fun () -> start w fiber body) s.ready;
   Handle { kind = "task"; id; task = Some task }
 
-let wait (ctx : ctx) t =
+(* A timeout in seconds, or None for none. *)
+let seconds_arg ctx (v : Types.t) =
+  match v with
+  | Undef | Missing -> None
+  | Int i when i >= 0 -> Some (float_of_int i)
+  | Float x when x >= 0. -> Some x
+  | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
+
+let timeout_keys = Trie.names [| "Kind"; "Message" |]
+let timeout_err ctx message = Value.err ctx.w (Trie.record timeout_keys [| Text "timeout"; Text message.Messages.text |])
+
+(* Parks until the task ends, or until the timeout: the first of the two wakes the fiber, and cancels the other. *)
+let wait ?timeout (ctx : ctx) t =
   match t with
   | Handle { kind = "task"; task = Some task; _ } ->
-    if Option.is_none task.result then suspend ctx (fun resume -> task.waiters <- resume :: task.waiters);
+    (match task.result, timeout with
+     | Some _, _ | None, Some 0. -> ()
+     | None, None -> suspend ctx (fun resume -> task.waiters <- resume :: task.waiters)
+     | None, Some seconds ->
+       suspend ctx (fun resume ->
+           let parked = ref true and cancel = ref ignore in
+           let wake () = if !parked then (parked := false; !cancel (); resume ()) in
+           task.waiters <- wake :: task.waiters;
+           cancel :=
+             ctx.w.timer seconds (fun () ->
+                 if !parked then begin
+                   parked := false;
+                   task.waiters <- List.filter (fun w -> w != wake) task.waiters;
+                   resume ()
+                 end)));
     (match task.result with
      | Some r -> Value.share r
+     | None when timeout <> None -> timeout_err ctx Messages.wait_timeout
      | None -> Runtime.fail ctx Type (Messages.need_task (Value.describe t)))
   | v -> Runtime.fail ctx Type (Messages.need_task (Value.describe v))
 
@@ -133,25 +162,17 @@ let send ctx (a : Types.t array) =
    | [] -> ());
   Missing
 
-let timeout_keys = Trie.names [| "Kind"; "Message" |]
-
 let receive ctx (a : Types.t array) =
   let ch = channel_arg ctx "Receive" a.(0) in
-  let limit =
-    match if Array.length a > 1 then a.(1) else Undef with
-    | Undef | Missing -> None
-    | Int i when i >= 0 -> Some (float_of_int i)
-    | Float x when x >= 0. -> Some x
-    | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
-  in
+  let limit = seconds_arg ctx (if Array.length a > 1 then a.(1) else Undef) in
   let timed_out = ref (limit = Some 0.) in
   (* One timer for the whole wait. A receiver woken may find the value taken by one that never parked: it parks again, at
      the front, since it came first. *)
-  let parked_wake = ref None and timing = ref false in
+  let parked_wake = ref None and timing = ref false and cancel = ref ignore in
   let rec take again =
     match Queue.take_opt ch.items with
-    | Some v -> Value.ok ctx.w v
-    | None when !timed_out -> Value.err ctx.w (Trie.record timeout_keys [| Text "timeout"; Text (Messages.receive_timeout.text) |])
+    | Some v -> !cancel (); Value.ok ctx.w v
+    | None when !timed_out -> timeout_err ctx Messages.receive_timeout
     | None ->
       suspend ctx (fun resume ->
           let parked = ref true in
@@ -162,13 +183,14 @@ let receive ctx (a : Types.t array) =
             timing := true;
             Option.iter
               (fun seconds ->
-                 ctx.w.timer seconds (fun () ->
-                     timed_out := true;
-                     Option.iter
-                       (fun wake ->
-                          ch.waiters <- List.filter (fun w -> w != wake) ch.waiters;
-                          wake ())
-                       !parked_wake))
+                 cancel :=
+                   ctx.w.timer seconds (fun () ->
+                       timed_out := true;
+                       Option.iter
+                         (fun wake ->
+                            ch.waiters <- List.filter (fun w -> w != wake) ch.waiters;
+                            wake ())
+                         !parked_wake))
               limit
           end);
       take true
@@ -177,7 +199,9 @@ let receive ctx (a : Types.t array) =
 
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
-    "Wait", Native.nat ~result:true "Wait" 1 1 (fun ctx a -> wait ctx a.(0));
+    "Wait",
+    Native.nat ~result:true ~params:[| "task"; "timeout" |] "Wait" 1 2 (fun ctx a ->
+        wait ?timeout:(seconds_arg ctx (if Array.length a > 1 then a.(1) else Undef)) ctx a.(0));
     "Channel",
     Native.nat "Channel" 0 0 (fun ctx _ ->
         let s = ctx.w.sched in

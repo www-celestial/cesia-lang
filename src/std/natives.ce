@@ -166,10 +166,12 @@ use std/test
       task = fiber.Spawn(() -> 6 * 7)
       fiber.Wait(task) --> result.Ok(42) *)
 
-(** fiber.Wait(task)
-    The result of a task, once it is done: an Ok of its value, or an Err if the fiber panicked.
+(** fiber.Wait(task, timeout = missing)
+    The result of a task, once it is done: an Ok of its value, or an Err if the fiber panicked. With timeout, it waits at
+    most that many seconds: then an Err of kind "timeout", and the task runs on. A timeout of 0 never waits.
 
-      fiber.Wait(fiber.Spawn(() -> 1)) --> result.Ok(1) *)
+      fiber.Wait(fiber.Spawn(() -> 1)) --> result.Ok(1)
+      fiber.Wait(fiber.Spawn(() -> sys.Sleep(1)), timeout = 0.01).Error.Kind --> "timeout" *)
 
 (** fiber.Channel()
     A new channel: a queue of values between fibers.

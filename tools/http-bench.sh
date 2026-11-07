@@ -5,12 +5,13 @@
 # 10 active connections beside 10,000 idle ones, which gives the memory of an idle connection. The server runs on the
 # first core and the client on the second, so that neither takes the other's.
 #   tools/http-bench.sh [--only cesia] [--seconds N]
-# PROGRAM=bench/real/http.ce measures that server instead, alone: a small JSON API, for the JIT.
+# PROGRAM=bench/real/http.ce measures that server instead, alone: a small JSON API, for the JIT. CESIA=path/main.exe
+# measures another binary of Cesia, as an older one.
 set -u
 export LC_ALL=C
 cd "$(dirname "$0")/.."
 dune build --profile release 2>&1 | head -20
-cesia=$PWD/_build/default/src/bin/main.exe
+cesia=${CESIA:-$PWD/_build/default/src/bin/main.exe}
 client=$PWD/_build/default/bench/http_load.exe
 ulimit -n 100000
 only=""

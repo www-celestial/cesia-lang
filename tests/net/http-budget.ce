@@ -1,0 +1,33 @@
+(** The bodies being read at once take at most a quarter of the memory limit, 6 MB of the 24 MB here: past it, a request
+    with a body gets a 503 at once, and the server goes on with the others, instead of reaching the limit and stopping. *)
+use std/http
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/text
+use std/value
+
+crlf = "$(text.Char(13))$(text.Char(10))"
+size = 1000000
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "$(text.ByteLength(r.Body))"}), port = 18403))
+sys.Sleep(0)
+
+defn begin()
+  c = net.Connect("127.0.0.1", 18403)?
+  net.Write(c, "POST / HTTP/1.1$(crlf)Host: a$(crlf)Content-Length: $size$(crlf)$(crlf)0123456789")?
+  sys.Sleep(0.05)
+  result.Ok(c)
+end
+
+statusOf(reply) = text.Split(crlf, reply)[1]
+rest = text.Join("", list.Fill("x", size - 10))
+clients = [result.Unwrap(begin()) for i in 1..7]
+io.Print("7th:", net.Read(clients[7]) then result.MapOk(statusOf))
+for c in clients[1..6]
+  net.Write(c, rest)
+  reply = result.Unwrap(net.Read(c))
+  io.Print(statusOf(reply), text.Split(crlf, reply)[value.Len(text.Split(crlf, reply))])
+end

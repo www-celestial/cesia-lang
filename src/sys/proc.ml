@@ -150,12 +150,10 @@ let run poll ctx (a : t array) =
        in
        let stdin_pipe = open_pipe in_write and stdout_pipe = open_pipe out_read and stderr_pipe = open_pipe err_read in
        (* Past its time the command is killed; once it is waited for, its number may go to another. *)
-       let ended = ref false in
-       if timeout > 0. then
-         Poll.timer poll timeout (fun () -> if not !ended then stop ~group pid);
+       let cancel = if timeout > 0. then Poll.timer poll timeout (fun () -> stop ~group pid) else ignore in
        let out, err = exchange ctx poll stdin_pipe stdout_pipe stderr_pipe input in
        let code = exit_code ctx poll pid 0.0005 in
-       ended := true;
+       cancel ();
        Value.ok w (Trie.record run_keys [| Int code; Text out; Text err |]))
   | _ -> assert false
 

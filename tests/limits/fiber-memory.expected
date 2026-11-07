@@ -1,0 +1,20 @@
+fiber-memory.ce:8:13: Limit "memory" reached.
+  8 |   x = matrix.Zeros(4000000)
+    |             ^
+  in greedy (fiber-memory.ce:8)
+Limit "memory" reached.
+fiber-memory.ce:8:13: Limit "memory" reached.
+  8 |   x = matrix.Zeros(4000000)
+    |             ^
+  in greedy (fiber-memory.ce:8)
+Limit "memory" reached.
+fiber-memory.ce:8:13: Limit "memory" reached.
+  8 |   x = matrix.Zeros(4000000)
+    |             ^
+  in greedy (fiber-memory.ce:8)
+Limit "memory" reached.
+Ok(0.0)
+fiber-memory.ce:15:11: Limit "memory" reached.
+  15 | x = matrix.Zeros(4000000)
+     |           ^
+exit 1

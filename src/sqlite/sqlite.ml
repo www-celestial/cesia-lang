@@ -361,7 +361,7 @@ let close_conn lib c =
   end
 
 (* Parks the fiber for this many seconds: the other fibers run meanwhile. *)
-let sleep ctx seconds = Fiber.suspend ctx (fun resume -> ctx.w.timer seconds resume)
+let sleep ctx seconds = Fiber.suspend ctx (fun resume -> let (_ : unit -> unit) = ctx.w.timer seconds resume in ())
 
 (* f () again while SQLite says busy, outside a transaction, at most the wait of the connection: 1 ms, then twice as long,
    up to 50 ms. *)
@@ -504,11 +504,14 @@ let rec take ctx lib p deadline =
             let parked = ref true in
             let wake () = if !parked then (parked := false; resume ()) in
             p.waiters <- p.waiters @ [ wake ];
-            ctx.w.timer left (fun () ->
-                if !parked then begin
-                  p.waiters <- List.filter (fun w -> w != wake) p.waiters;
-                  wake ()
-                end));
+            let (_ : unit -> unit) =
+              ctx.w.timer left (fun () ->
+                  if !parked then begin
+                    p.waiters <- List.filter (fun w -> w != wake) p.waiters;
+                    wake ()
+                  end)
+            in
+            ());
         take ctx lib p deadline
       end
 

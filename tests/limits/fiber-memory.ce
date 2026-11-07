@@ -1,0 +1,16 @@
+(** A fiber that takes more memory than the limit stops alone: its Wait gives an Err, the memory it took is freed, and the
+    program goes on. The main program reaching it still stops the program. *)
+use std/io
+use std/fiber
+use std/matrix
+
+defn greedy()
+  x = matrix.Zeros(4000000)
+  x[1]
+end
+for i in 1..3
+  io.Print(fiber.Wait(fiber.Spawn(greedy)).Error.Message)
+end
+io.Print(fiber.Wait(fiber.Spawn(() -> matrix.Zeros(1000)[1])))
+x = matrix.Zeros(4000000)
+io.Print("never")

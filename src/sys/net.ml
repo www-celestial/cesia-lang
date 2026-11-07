@@ -5,6 +5,8 @@ type t = {
   poll : Poll.t;
   sockets : (int, Unix.file_descr) Hashtbl.t;
   deadlines : (int, float) Hashtbl.t;  (* arm of std/http: when a socket gets closed *)
+  held : (int, int) Hashtbl.t;  (* hold of std/http: the bytes of the bodies each socket is reading *)
+  mutable held_total : int;
   buffer : Bytes.t;  (* shared by reads: nothing suspends between a read and copying its bytes *)
   mutable stopping : bool;
   mutable handlers : bool;
@@ -17,7 +19,8 @@ let chunk_size = 65536
 let exit_on_second_signal = 130
 
 let create poll =
-  { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; buffer = Bytes.create chunk_size; stopping = false;
+  { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; held = Hashtbl.create 64; held_total = 0;
+    buffer = Bytes.create chunk_size; stopping = false;
     handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8 }
 
 let stopping n = n.stopping
@@ -272,7 +275,15 @@ let write n ctx (a : Types.t array) =
   in
   go 0
 
+let release n id =
+  match Hashtbl.find_opt n.held id with
+  | Some bytes ->
+    Hashtbl.remove n.held id;
+    n.held_total <- n.held_total - bytes
+  | None -> ()
+
 let close_socket n id =
+  release n id;
   Hashtbl.remove n.deadlines id;
   Hashtbl.remove n.own id;
   match Hashtbl.find_opt n.sockets id with
@@ -287,7 +298,8 @@ let close n ctx (a : Types.t array) =
   Missing
 
 (* A socket that outlives its deadline is closed by reap, which wakes whoever waits on it: a slow client can't hold a fiber
-   forever. 0 removes the deadline. *)
+   forever. 0 removes the deadline, while a handler runs. Another deadline starts the time of the next request: what the
+   last one held, by hold, is released. *)
 let arm n ctx (a : Types.t array) =
   let id = socket_arg ctx "arm" a.(0) in
   let seconds = match a.(1) with
@@ -296,8 +308,28 @@ let arm n ctx (a : Types.t array) =
     | v -> Runtime.fail ctx Type (Messages.need_number "arm" (Value.describe v))
   in
   if seconds <= 0. then Hashtbl.remove n.deadlines id
-  else if Hashtbl.mem n.sockets id then Hashtbl.replace n.deadlines id (Unix.gettimeofday () +. seconds);
+  else if Hashtbl.mem n.sockets id then begin
+    release n id;
+    Hashtbl.replace n.deadlines id (Unix.gettimeofday () +. seconds)
+  end;
   Missing
+
+(* The bodies that std/http reads at once take at most a quarter of the memory limit: past it, a request gets a 503 at
+   once, and the server lives on, where reading them all would reach the limit. A socket holds what it reads until it
+   holds 0 again, or closes. *)
+let hold n ctx (a : Types.t array) : Types.t =
+  let id = socket_arg ctx "hold" a.(0) in
+  let bytes = match a.(1) with Int b when b >= 0 -> b | v -> Runtime.fail ctx Type (Messages.need_count "hold" (Value.describe v)) in
+  release n id;
+  let most = ctx.w.limits.memory_words in
+  let budget = if most = max_int then max_int else most * 2 in
+  if bytes = 0 then True
+  else if bytes > budget - n.held_total then False
+  else begin
+    Hashtbl.replace n.held id bytes;
+    n.held_total <- n.held_total + bytes;
+    True
+  end
 
 let reap n _ _ : Types.t =
   let now = Unix.gettimeofday () in
@@ -314,18 +346,97 @@ let is_token_byte = function
 (* Is this a header line with its colon at this position? A name with a space, a folded line or a lone line end could be
    read otherwise by a proxy in front: that is how a second request gets smuggled in. In one pass, because every header
    of every request comes through here. *)
+let header_ok line at =
+  let rec clean i =
+    i >= String.length line
+    || (let c = line.[i] in
+        c <> '\r' && c <> '\n' && (i >= at || is_token_byte c) && clean (i + 1))
+  in
+  at > 0 && clean 0
+
 let is_header ctx (a : Types.t array) =
   let line = Native.text_arg ctx "isHeader" a.(1) in
   match a.(0) with
   | Int at when at >= 0 && at <= String.length line ->
     Runtime.pay_bytes ctx (String.length line);
-    let rec clean i =
-      i >= String.length line
-      || (let c = line.[i] in
-          c <> '\r' && c <> '\n' && (i >= at || is_token_byte c) && clean (i + 1))
-    in
-    Value.of_bool (at > 0 && clean 0)
+    Value.of_bool (header_ok line at)
   | v -> Runtime.fail ctx Type (Messages.need_size "isHeader" (Value.describe v))
+
+let header_keys = Trie.names [| "Name"; "Value" |]
+let request_keys = Trie.names [| "Method"; "Path"; "Query"; "Headers"; "Body" |]
+let parsed_keys = Trie.names [| "Request"; "Rest"; "Close" |]
+let needs_keys = Trie.names [| "Needs" |]
+
+(* Where part first starts in s between from and until, or -1. *)
+let find part s from until =
+  let m = String.length part in
+  let rec at i k = k = m || (s.[i + k] = part.[k] && at i (k + 1)) in
+  let rec go i = if i + m > until then -1 else if at i 0 then i else go (i + 1) in
+  go from
+
+let line_end s from until = find "\r\n" s from until
+
+(* The first request of a buffer, in one pass, since every request comes through here: Ok(missing) if its head isn't all
+   there, Ok({Needs}) with the size of the whole request if its body isn't, Ok({Request, Rest, Close}), or Err of the
+   status that refuses it. Its line holds three words between single spaces and no line end; each header line holds a
+   name, as is_header checks it, and its value, trimmed. A body comes with one content-length, of digits, no larger than
+   [limit]; transfer-encoding is not implemented. Close says that the connection ends after it, as asked by HTTP/1.0 or by
+   connection: close. *)
+let request ctx (a : Types.t array) : Types.t =
+  let s = Native.text_arg ctx "request" a.(0) in
+  let int k = match a.(k) with Int i -> i | v -> Runtime.fail ctx Type (Messages.need_count "request" (Value.describe v)) in
+  let limit = int 1 and most = int 2 in
+  let fail status = Value.err ctx.w (Int status) in
+  let at = find "\r\n\r\n" s 0 (String.length s) in
+  Runtime.pay_bytes ctx (if at < 0 then String.length s else at);
+  if at < 0 then if String.length s > most then fail 431 else Value.ok ctx.w Missing
+  else if at > most then fail 431
+  else
+    let first = match line_end s 0 at with -1 -> at | e -> e in
+    let line = String.sub s 0 first in
+    match String.split_on_char ' ' line with
+    | [ meth; target; version ]
+      when meth <> "" && target <> "" && (version = "HTTP/1.1" || version = "HTTP/1.0")
+           && not (String.contains line '\r' || String.contains line '\n') ->
+      let rec headers from acc =
+        if from >= at then Some (List.rev acc)
+        else
+          let stop = match line_end s from at with -1 -> at | e -> e in
+          let l = String.sub s from (stop - from) in
+          match String.index_opt l ':' with
+          | Some colon when header_ok l colon ->
+            let name = String.lowercase_ascii (String.sub l 0 colon) in
+            let v = String.trim (String.sub l (colon + 1) (String.length l - colon - 1)) in
+            headers (stop + 2) ((name, v) :: acc)
+          | _ -> None
+      in
+      (match headers (first + 2) [] with
+       | None -> fail 400
+       | Some hs ->
+         let named n = List.filter_map (fun (k, v) -> if k = n then Some v else None) hs in
+         let digits v = v <> "" && String.length v <= 18 && String.for_all (fun c -> c >= '0' && c <= '9') v in
+         let size = match named "content-length" with [] -> Some 0 | [ v ] when digits v -> Some (int_of_string v) | _ -> None in
+         let body_at = at + 4 in
+         if named "transfer-encoding" <> [] then fail 501
+         else
+           match size with
+           | None -> fail 400
+           | Some n when n > limit -> fail 413
+           | Some n when String.length s - body_at < n -> Value.ok ctx.w (Trie.record needs_keys [| Int (body_at + n) |])
+           | Some n ->
+             let path, query =
+               match String.index_opt target '?' with
+               | Some q -> String.sub target 0 q, String.sub target (q + 1) (String.length target - q - 1)
+               | None -> target, ""
+             in
+             let items = Array.of_list (List.map (fun (k, v) -> Trie.record header_keys [| Text k; Text v |]) hs) in
+             let list = Types.Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true; dims = [||] } in
+             Runtime.build ctx ((String.length s / 4) + (8 * Array.length items) + 32);
+             let body = String.sub s body_at n and rest = String.sub s (body_at + n) (String.length s - body_at - n) in
+             let close = version = "HTTP/1.0" || (match named "connection" with v :: _ -> String.lowercase_ascii v = "close" | [] -> false) in
+             let req = Trie.record request_keys [| Text meth; Text path; Text query; list; Text body |] in
+             Value.ok ctx.w (Trie.record parsed_keys [| req; Text rest; Value.of_bool close |]))
+    | _ -> fail 400
 
 (* The port a socket is bound to: the one the system chose for a Listen on port 0. *)
 let port n ctx (a : Types.t array) =
@@ -338,6 +449,8 @@ let reset n =
   Hashtbl.iter (fun _ fd -> Poll.forget n.poll fd; (try Unix.close fd with Unix.Unix_error _ -> ())) n.sockets;
   Hashtbl.reset n.sockets;
   Hashtbl.reset n.deadlines;
+  Hashtbl.reset n.held;
+  n.held_total <- 0;
   Hashtbl.reset n.own
 
 let natives n =
@@ -361,7 +474,9 @@ let segments ctx (a : Types.t array) =
 (* Small names: only the files of std/http see them, which keep the deadlines of the connections they serve. *)
 let http_natives n =
   [ "arm", Native.nat "arm" 2 2 (arm n);
+    "hold", Native.nat "hold" 2 2 (hold n);
     "reap", Native.nat "reap" 0 0 (reap n);
     "isHeader", Native.nat "isHeader" 2 2 is_header;
+    "request", Native.nat "request" 3 3 request;
     "segments", Native.nat "segments" 1 1 segments;
     "openCount", Native.nat "openCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]

@@ -65,7 +65,9 @@ let sleep p ctx seconds =
 
 let timer p seconds f =
   p.next_timer <- p.next_timer + 1;
-  p.timers <- Timers.add (Unix.gettimeofday () +. seconds, p.next_timer) f p.timers
+  let key = Unix.gettimeofday () +. seconds, p.next_timer in
+  p.timers <- Timers.add key f p.timers;
+  fun () -> p.timers <- Timers.remove key p.timers
 
 let wake table fd =
   match Hashtbl.find_opt table fd with

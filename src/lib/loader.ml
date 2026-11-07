@@ -862,6 +862,7 @@ let guarded ?(strict = false) w body =
          Runtime.flush_out w;
          flush stdout;
          report_at fiber ~text ~hint at
+       | Value.Limit { what = "memory"; at } -> ignore (limit_reached "memory" at)
        | _ -> ());
   let code =
     try

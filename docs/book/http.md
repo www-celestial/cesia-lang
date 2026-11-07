@@ -132,6 +132,18 @@ io.Print(sent.Value.Body)
 
 The program ends when its last line is done, and the server with it.
 
+### What a server holds
+
+A server faces clients that are slow, greedy or broken, and keeps serving the others:
+
+- Each request has `timeout` seconds, 60 unless [http.Serve] says otherwise, to arrive and to be answered. A client that
+  sends a byte at a time is closed at its deadline. A handler that takes longer gets a `503` for its client, and runs on
+  alone; [fiber.Wait] with a `timeout` is how the server waits for it.
+- A head of more than 16 KB gets a `431`, a body larger than `maxBody`, 1 MB unless [http.Serve] says otherwise, a `413`.
+- The bodies being read at once take at most a quarter of the memory limit, which `--limit memory=` sets and is 80% of
+  the RAM otherwise: past it, a request with a body gets a `503` at once, instead of the server reaching the limit.
+- A handler that panics gets a `500`, and so does one that takes more memory than the limit: only its request fails.
+
 ## The client
 
 [http.Fetch] sends a request, a `GET` unless `method` says otherwise, with a `body` and `headers` if you give them. It

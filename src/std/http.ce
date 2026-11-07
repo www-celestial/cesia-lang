@@ -60,10 +60,9 @@ Reason(status) = match status
   431 -> "Request Header Fields Too Large"
   500 -> "Internal Server Error"
   501 -> "Not Implemented"
+  503 -> "Service Unavailable"
   else -> "Unknown"
 end
-
-isDigits(s) = s != "" and list.All(list.Map(b -> b >= 48 and b <= 57, text.Bytes(s)))
 
 defn header(line)
   (** A header line as {Name, Value}, or missing if it isn't one: isHeader, a native of this package, refuses a name with a
@@ -90,72 +89,11 @@ defn HeaderValue(name, headers)
   missing
 end
 
-defn named(name, headers)
-  n = 0
-  for h in headers
-    if h.Name == name
-      n += 1
-    end
-  end
-  n
-end
-
-defn parseHead(head)
-  (** The request line and headers, as a request without its body. *)
-  lines = text.Split(crlf, head)
-  words = text.Split(" ", lines[1])
-  headers = [header(lines[i]) for i in 2..value.Len(lines)]
-  if value.Len(words) != 3 or not (words[3] == "HTTP/1.1" or words[3] == "HTTP/1.0")
-    result.Err(400)
-  else if missing in headers
-    result.Err(400)
-  else
-    at = offset("?", words[2])
-    parts = if value.IsMissing(at) [words[2], "?"] else cutAt(at, words[2]) end
-    result.Ok({Method: words[1], Path: parts[1], Query: cutAt(1, parts[2])[2], Headers: headers, Version: words[3]})
-  end
-end
-
-defn closes(head)
-  (** Does the connection end after this request: asked by its Connection header, or by an HTTP/1.0 client, which waits for the
-      end of the connection. *)
-  asked = HeaderValue("connection", head.Headers)
-  head.Version == "HTTP/1.0" or (value.IsText(asked) and text.Lower(asked) == "close")
-end
-
-defn withBody(head, after, limit, used)
-  (** The body that follows a head, once it has all arrived. *)
-  sizeText = HeaderValue("content-length", head.Headers)
-  size = if value.IsMissing(sizeText) 0 else if isDigits(sizeText) text.Number(sizeText) else -1 end
-  if not value.IsMissing(HeaderValue("transfer-encoding", head.Headers))
-    result.Err(501)
-  else if named("content-length", head.Headers) > 1
-    result.Err(400)
-  else if not value.IsInt(size) or size < 0
-    result.Err(400)
-  else if size > limit
-    result.Err(413)
-  else if text.ByteLength(after) < size
-    result.Ok({Needs: used + size})
-  else
-    parts = cutAt(size, after)
-    request = {Method: head.Method, Path: head.Path, Query: head.Query, Headers: head.Headers, Body: parts[1]}
-    result.Ok({Request: request, Rest: parts[2], Close: closes(head)})
-  end
-end
-
 defn parseRequest(buffer, limit = DefaultMaxBody)
   (** Ok of the first request and what follows it, Ok(missing) if the head isn't all there, Ok({Needs}) with the size of the
-      whole request if its body isn't, or Err of a status. *)
-  at = offset(blank, buffer)
-  if value.IsMissing(at)
-    if text.ByteLength(buffer) > maxHead result.Err(431) else result.Ok(missing) end
-  else if at > maxHead
-    result.Err(431)
-  else
-    cut = cutAt(at, buffer)
-    withBody(parseHead(cut[1])?, cutAt(4, cut[2])[2], limit, at + 4)
-  end
+      whole request if its body isn't, or Err of a status. request, a native of this package, reads it in one pass: every
+      request comes through here. *)
+  request(buffer, limit, maxHead)
 end
 
 defn headerLine(h)
@@ -166,8 +104,9 @@ defn headerLine(h)
   "$line$crlf"
 end
 
-defn render(response, headOnly = false)
-  (** The text of an HTTP/1.1 response from {Status, Body} and optional headers. With headOnly, the body is left out. *)
+defn render(response, headOnly = false, closing = false)
+  (** The text of an HTTP/1.1 response from {Status, Body} and optional headers. With headOnly, the body is left out; with
+      closing, a header tells the client that the server closes the connection after it. *)
   status = response.Status
   bug.Assert(value.IsInt(status), "This response has a status that isn't an integer.")
   body = value.Text(response.Body)
@@ -176,27 +115,32 @@ defn render(response, headOnly = false)
     else -> []
   end
   custom = if value.Len(extra) == 0 "" else text.Join("", list.Map(headerLine, extra)) end
+  ending = if closing "connection: close$crlf" else "" end
   lengthLine = if status == 101 or status == 204 "" else "content-length: $(text.ByteLength(body))$crlf" end
   shown = if headOnly "" else body end
-  "HTTP/1.1 $status $(Reason(status))$crlf$lengthLine$custom$crlf$shown"
+  "HTTP/1.1 $status $(Reason(status))$crlf$lengthLine$custom$ending$crlf$shown"
 end
 
-(** The text of a response with just a status and its reason. *)
-failure(status) = render({Status: status, Body: Reason(status)})
+(** The text of a response with just a status and its reason, after which the server closes the connection. *)
+failure(status) = render({Status: status, Body: Reason(status)}, closing = true)
 
 defn ready(response, headOnly)
-  (** A response made ready to send: a struct with reply (its text) and upgrade (a function or missing). *)
+  (** A response made ready to send: a struct with reply (its text), upgrade (a function or missing) and close, true when
+      the server closes the connection after it. *)
   upgrade = match response
     {Upgrade: upgrade} -> upgrade
     else -> missing
   end
-  {Reply: render(response, headOnly = headOnly), Upgrade: upgrade}
+  {Reply: render(response, headOnly = headOnly), Upgrade: upgrade, Close: false}
 end
 
-(** The response of a handler to a request, ready to send. A panic in the handler stops its own fiber only, and answers 500. *)
-answer(handle, request) = match fiber.Wait(fiber.Spawn(() -> ready(handle(request), request.Method == "HEAD")))
-  result.Ok(done) -> done
-  else -> {Reply: failure(500), Upgrade: missing}
+defn answer(handle, request, left)
+  (** The response of a handler to a request, ready to send, within left seconds. A panic in the handler stops its own
+      fiber only, and answers 500. A handler that takes longer gets a 503, and the connection closes while it runs on. *)
+  match fiber.Wait(fiber.Spawn(() -> ready(handle(request), request.Method == "HEAD")), timeout = list.Max(0, left))
+    result.Ok(done) -> done
+    result.Err(e) -> {Reply: failure(if e.Kind == "timeout" 503 else 500 end), Upgrade: missing, Close: true}
+  end
 end
 
 (** How a connection reads, writes and closes without TLS: the wrap of Serve when it is missing, and of Fetch for http://. *)
@@ -223,39 +167,72 @@ defn gather(conn, first, needed)
   result.Ok(text.Join("", dict.Values(pieces)))
 end
 
-defn connection(handle, conn, buffer, options)
-  (** Serves the requests of one connection, one after the other. The deadline covers the head and the body of a request: a
-      slow client can't hold a connection with a byte at a time. *)
+lastBytes(k, s) = if text.ByteLength(s) <= k s else text.ByteSlice(text.ByteLength(s) - k + 1, text.ByteLength(s), s) end
+
+defn readHead(conn, first)
+  (** Reads until the empty line that ends a head has come, or more than a head may hold: an Ok of all that came, or of
+      missing if the connection ended first. Each read is searched alone, after the last bytes before it: a head sent a
+      byte at a time isn't searched or copied again at each read. *)
+  pieces = {0: first}
+  total = text.ByteLength(first)
+  tail = lastBytes(3, first)
+  while total <= maxHead
+    more = conn.Read()?
+    if text.ByteLength(more) == 0
+      return result.Ok(missing)
+    end
+    pieces[value.Len(pieces)] = more
+    total += text.ByteLength(more)
+    seen = "$tail$more"
+    if not value.IsMissing(offset(blank, seen))
+      break
+    end
+    tail = lastBytes(3, seen)
+  end
+  result.Ok(text.Join("", dict.Values(pieces)))
+end
+
+defn connection(handle, conn, buffer, options, deadline)
+  (** Serves the requests of one connection, one after the other, each by its deadline, a time in seconds since 1970: its
+      head and its body must have come by then, and its handler must have answered, or the client gets a 503. A slow
+      client can't hold a connection with a byte at a time. A body that takes more than the bodies being read may take
+      together gets a 503 at once: see hold. *)
   parsed = if buffer == "" result.Ok(missing) else parseRequest(buffer, limit = options.MaxBody) end
   if result.IsErr(parsed)
     conn.Write(failure(parsed.Error))
     conn.Close()
   else if value.IsMissing(parsed.Value)
-    more = conn.Read()
-    if result.IsErr(more) or text.ByteLength(more.Value) == 0
+    (* Most heads come in one read. Those that don't are gathered in one pass. *)
+    more = if buffer == "" conn.Read() else readHead(conn, buffer) end
+    if result.IsErr(more) or value.IsMissing(more.Value) or more.Value == ""
       conn.Close()
     else
-      connection(handle, conn, "$buffer$(more.Value)", options)
+      connection(handle, conn, more.Value, options, deadline)
     end
   else if waits(parsed.Value)
-    whole = gather(conn, buffer, parsed.Value.Needs)
-    if result.IsErr(whole) or text.ByteLength(whole.Value) < parsed.Value.Needs
+    whole = if conn.Hold(parsed.Value.Needs) gather(conn, buffer, parsed.Value.Needs) else missing end
+    if value.IsMissing(whole)
+      conn.Write(failure(503))
+      conn.Close()
+    else if result.IsErr(whole) or text.ByteLength(whole.Value) < parsed.Value.Needs
       conn.Close()
     else
-      connection(handle, conn, whole.Value, options)
+      connection(handle, conn, whole.Value, options, deadline)
     end
   else
     request = parsed.Value.Request
-    done = answer(handle, request)
+    conn.Arm(0)
+    done = answer(handle, request, deadline - sys.Now())
+    conn.Arm(options.Timeout)
+    next = sys.Now() + options.Timeout
     sent = conn.Write(done.Reply)
-    if result.IsErr(sent) or (parsed.Value.Close and value.IsMissing(done.Upgrade))
+    if result.IsErr(sent) or done.Close or (parsed.Value.Close and value.IsMissing(done.Upgrade))
       conn.Close()
     else if not value.IsMissing(done.Upgrade)
       _ = fiber.Wait(fiber.Spawn(() -> done.Upgrade(conn, parsed.Value.Rest)))
       conn.Close()
     else
-      conn.Arm(options.Timeout)
-      connection(handle, conn, parsed.Value.Rest, options)
+      connection(handle, conn, parsed.Value.Rest, options, next)
     end
   end
 end
@@ -265,12 +242,14 @@ defn start(handle, c, options)
       TLS, so a client that connects and says nothing reaches it too. The connection gets Arm, which sets it again: the
       deadlines are this package's own. *)
   arm(c, options.Timeout)
+  deadline = sys.Now() + options.Timeout
   made = options.Wrap(c)
   if result.IsErr(made)
     net.Close(c)
   else
     w = made.Value
-    connection(handle, {Read: w.Read, Write: w.Write, Close: w.Close, Arm: s -> arm(c, s)}, "", options)
+    conn = {Read: w.Read, Write: w.Write, Close: w.Close, Arm: s -> arm(c, s), Hold: n -> hold(c, n)}
+    connection(handle, conn, "", options, deadline)
   end
 end
 
@@ -642,8 +621,10 @@ Handler(a) = chain(a, value.Len(a.Middleware))
 
 defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing)
   (** Serves an application until a stop signal, then finishes the requests in progress for at most 5 seconds. It listens
-      on port, on this machine only unless host says otherwise; timeout is the seconds a connection has for each request,
-      maxBody the largest body read, in bytes. wrap sits under HTTP, as TLS does: wrap = tls.Server(certificate, key,
+      on port, on this machine only unless host says otherwise. timeout is the seconds a connection has for each request,
+      to send it and to have it answered: a handler that takes longer gets a 503 and runs on alone. maxBody is the
+      largest body read, in bytes; the bodies read at once take at most a quarter of the memory limit, and past it a
+      request gets a 503 at once. wrap sits under HTTP, as TLS does: wrap = tls.Server(certificate, key,
       api)?; without it, HTTP goes on TCP alone. A listener already open, as a test opens on port 0 to learn its port with
       net.Port, takes the place of port and host.
 

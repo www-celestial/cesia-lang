@@ -1,0 +1,25 @@
+(** A handler that takes more memory than the limit: its request gets a 500, and the server lives on. *)
+use std/http
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/matrix
+use std/result
+use std/text
+
+crlf = "$(text.Char(13))$(text.Char(10))"
+handle(r) = {Status: 200, Body: if r.Path == "/big" "$(matrix.Zeros(4000000)[1])" else "small" end}
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18404))
+sys.Sleep(0)
+
+defn get(path)
+  c = net.Connect("127.0.0.1", 18404)?
+  net.Write(c, "GET $path HTTP/1.1$(crlf)Host: a$(crlf)$crlf")?
+  reply = net.Read(c)?
+  net.Close(c)
+  result.Ok(text.Split(crlf, reply)[1])
+end
+
+io.Print(get("/big"))
+io.Print(get("/small"))

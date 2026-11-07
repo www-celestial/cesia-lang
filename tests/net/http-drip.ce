@@ -1,0 +1,34 @@
+(** A head sent in pieces: cut at each byte of the empty line that ends it, and 12 KB sent a byte at a time, which the
+    server searches once, not again at each byte. *)
+use std/http
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/text
+
+crlf = "$(text.Char(13))$(text.Char(10))"
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: r.Path}), port = 18401))
+sys.Sleep(0)
+
+defn send(pieces)
+  c = net.Connect("127.0.0.1", 18401)?
+  for p in pieces
+    net.Write(c, p)?
+    sys.Sleep(0)
+  end
+  reply = net.Read(c)?
+  net.Close(c)
+  result.Ok(text.Split(crlf, reply)[1])
+end
+
+head = "GET /cut HTTP/1.1$(crlf)Host: a$(crlf)$crlf"
+for k in 1..4
+  at = text.ByteLength(head) - k
+  io.Print(k, send([text.ByteSlice(1, at, head), text.ByteSlice(at + 1, text.ByteLength(head), head)]))
+end
+padded = "GET /long HTTP/1.1$(crlf)X-Pad: $(text.Join("", list.Fill("a", 12000)))$(crlf)$crlf"
+start = sys.Now()
+io.Print(send([text.ByteSlice(i, i, padded) for i in 1..text.ByteLength(padded)]), sys.Now() - start < 3)

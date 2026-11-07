@@ -14,5 +14,6 @@ val natives : (string * t) list
 (** Starts a function in a new fiber: gives its task, which [wait] waits for. *)
 val spawn : ctx -> t -> t
 
-(** Waits for a task to end: gives its result, an Ok of its value or an Err of its panic. *)
-val wait : ctx -> t -> t
+(** Waits for a task to end: gives its result, an Ok of its value or an Err of its panic; with a timeout in seconds, an
+    Err of the kind "timeout" if it hasn't ended by then. *)
+val wait : ?timeout:float -> ctx -> t -> t
