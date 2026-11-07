@@ -139,6 +139,20 @@ that ends, and TERM or Ctrl-C stops them all, each as [Stopping](#stopping) says
 program that can't start, as one with an error, ends at once, with the code of its first worker. `--workers` needs
 Linux or macOS: on Windows, a program serves on one core.
 
+### A new version without a pause
+
+HUP replaces the workers of a server under `--workers`: new ones start from the files as they are now, and once each of
+them accepts, the old ones stop as on TERM, each after its requests in progress. The listener never closes, so no
+connection is refused or lost in between, and no request fails. A new version that can't start, as one with an error,
+leaves the running workers alone:
+
+```bash
+kill -HUP $(pgrep -o -f "cesia run --workers")
+```
+
+Under systemd, `ExecReload=/bin/kill -HUP $MAINPID` does it with `systemctl reload`. Without `--workers`, HUP stops the
+server, as TERM does.
+
 ### Serving and asking in one program
 
 The block below serves the shop on a port and asks it with the client, [http.Fetch], in one program. [fiber.Spawn] runs the server beside the

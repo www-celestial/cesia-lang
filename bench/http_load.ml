@@ -38,6 +38,7 @@ let response_size s =
   | None -> None
   | Some at ->
     let head = String.lowercase_ascii (String.sub s 0 at) in
+    let closing = find "\r\nconnection: close" head 0 <> None in
     let length =
       match find "content-length:" head 0 with
       | None -> 0
@@ -47,7 +48,7 @@ let response_size s =
           else n in
         digits (k + 15) 0
     in
-    Some (at + 4 + length)
+    Some (at + 4 + length, closing)
 
 let status s = match String.split_on_char ' ' s with _ :: code :: _ -> int_of_string_opt code | _ -> None
 
@@ -96,13 +97,14 @@ let worker ~port ~path ~fresh ~connections ~stop =
     drop c;
     opened c
   in
-  (* A whole response: counted, then the next request, on this connection or on a new one. *)
-  let answered c fd size =
+  (* A whole response: counted, then the next request, on this connection or on a new one: a server that stops says that it
+     closes the connection, which is no failure. *)
+  let answered c fd size closing =
     let s = Buffer.contents c.data in
     (match status s with Some 200 -> record tally (Unix.gettimeofday () -. c.sent) | _ -> tally.failed <- tally.failed + 1);
     Buffer.clear c.data;
     Buffer.add_string c.data (String.sub s size (String.length s - size));
-    if fresh then (drop c; opened c) else send c fd
+    if fresh || closing then (drop c; opened c) else send c fd
   in
   let rec drain c fd =
     match Unix.read fd chunk 0 (Bytes.length chunk) with
@@ -110,7 +112,7 @@ let worker ~port ~path ~fresh ~connections ~stop =
     | got ->
       Buffer.add_subbytes c.data chunk 0 got;
       (match response_size (Buffer.contents c.data) with
-       | Some size when Buffer.length c.data >= size -> answered c fd size
+       | Some (size, closing) when Buffer.length c.data >= size -> answered c fd size closing
        | _ -> drain c fd)
     | exception Unix.Unix_error ((Unix.EAGAIN | Unix.EWOULDBLOCK), _, _) -> ()
     | exception Unix.Unix_error _ -> fail c

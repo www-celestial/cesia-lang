@@ -1,0 +1,5 @@
+(** A server of cesia run --workers, which tools replace while it serves: its answer says which version runs. *)
+use std/http
+
+version = "first"
+http.Serve(http.App() then http.Get("/", r -> http.Plain(version)), port = 18411)

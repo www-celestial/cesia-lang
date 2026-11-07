@@ -2,10 +2,10 @@ http-memory.ce:12:62: Limit "memory" reached.
   12 | handle(r) = {Status: 200, Body: if r.Path == "/big" "$(matrix.Zeros(4000000)[1])" else "small" end}
      |                                                              ^
   in handle (http-memory.ce:12)
-  called from dispatch (std/http.ce:595)
-  called from <anonymous> (std/http.ce:606)
-  called from <anonymous> (std/http.ce:141)
-  called from answer (std/http.ce:141)
+  called from dispatch (std/http.ce:603)
+  called from <anonymous> (std/http.ce:614)
+  called from <anonymous> (std/http.ce:144)
+  called from answer (std/http.ce:144)
 Ok("HTTP/1.1 500 Internal Server Error")
 Ok("HTTP/1.1 200 OK")
 exit 0

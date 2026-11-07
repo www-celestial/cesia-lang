@@ -34,6 +34,9 @@ DefaultMaxBody = 1048576
 
       DefaultTimeout --> 60 *)
 DefaultTimeout = 60
+(* The seconds a kept connection has for one more request when the server stops between two of its requests: one may be on
+   its way, and it gets a response that says that the connection closes, where closing at once would lose it. *)
+lastCall = 1
 
 (** The standard reason text of a status code, or "Unknown".
 
@@ -205,7 +208,12 @@ defn connection(handle, conn, buffer, options, deadline)
   else if value.IsMissing(parsed.Value)
     (* Most heads come in one read. Those that don't are gathered in one pass. *)
     more = if buffer == "" conn.Read() else readHead(conn, buffer) end
-    if result.IsErr(more) or value.IsMissing(more.Value) or more.Value == ""
+    if result.IsErr(more) and more.Error.Kind == "stopped"
+      (* The server stops: a request on its way, or half come, still gets its response. *)
+      grace = list.Min(lastCall, options.Timeout)
+      if buffer == "" conn.Arm(grace) end
+      connection(handle, conn, buffer, options, if buffer == "" sys.Now() + grace else deadline end)
+    else if result.IsErr(more) or value.IsMissing(more.Value) or more.Value == ""
       conn.Close()
     else
       connection(handle, conn, more.Value, options, deadline)

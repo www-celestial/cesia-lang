@@ -1,0 +1,7 @@
+before: first
+kept connections: no request failed
+new connections: no request failed
+after: second
+the running workers stay
+after a broken version: second
+exit 0

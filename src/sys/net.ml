@@ -10,6 +10,7 @@ type t = {
   sockets : (int, Unix.file_descr) Hashtbl.t;
   deadlines : (int, float) Hashtbl.t;  (* arm of std/http: when a socket gets closed *)
   held : (int, int) Hashtbl.t;  (* hold of std/http: the bytes of the bodies each socket is reading *)
+  told : (int, unit) Hashtbl.t;  (* the sockets whose read has heard of the stop *)
   mutable held_total : int;
   buffer : Bytes.t;  (* shared by reads: nothing suspends between a read and copying its bytes *)
   mutable stopping : bool;
@@ -41,7 +42,7 @@ let taken_over () =
     | _ -> None
 
 let create poll =
-  { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; held = Hashtbl.create 64; held_total = 0;
+  { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; held = Hashtbl.create 64; held_total = 0; told = Hashtbl.create 8;
     buffer = Bytes.create chunk_size; stopping = false; serving = false;
     handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8; inherited = taken_over (); supervisor = None }
 
@@ -186,6 +187,11 @@ let listen_address n ctx host port target =
     in
     if is_loopback addr then addr else Runtime.fail ctx Permission (Messages.listen_denied target port)
 
+(* A read that would wait gives an Err of the kind "stopped" once the program has heard a stop signal, once for each
+   socket: a program that reads again wants what comes. *)
+let heard_stop n id =
+  n.stopping && not (Hashtbl.mem n.told id) && (Hashtbl.replace n.told id (); true)
+
 (* A worker says its number on a connection to the supervisor, once it can accept, and keeps the connection open: when it
    ends, the supervisor is gone, and the worker stops as on TERM. *)
 let told_supervisor n path =
@@ -322,7 +328,7 @@ let read n ctx (a : Types.t array) =
       (match Unix.read fd n.buffer 0 chunk_size with
        | got -> Value.ok ctx.w (Text (Bytes.sub_string n.buffer 0 got))
        | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
-         if n.stopping then stopped ctx
+         if heard_stop n id then stopped ctx
          else begin
            Poll.read_ready n.poll ctx fd;
            go ()
@@ -358,6 +364,7 @@ let release n id =
 
 let close_socket n id =
   release n id;
+  Hashtbl.remove n.told id;
   Hashtbl.remove n.deadlines id;
   Hashtbl.remove n.own id;
   match Hashtbl.find_opt n.sockets id with
@@ -524,6 +531,7 @@ let reset n =
   Hashtbl.reset n.sockets;
   Hashtbl.reset n.deadlines;
   Hashtbl.reset n.held;
+  Hashtbl.reset n.told;
   n.held_total <- 0;
   Hashtbl.reset n.own
 
