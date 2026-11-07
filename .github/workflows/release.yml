@@ -33,6 +33,11 @@ jobs:
       run:
         shell: bash
     steps:
+      # Git on Windows ends each line with CR LF by default: the sed of the version would find nothing. Every system builds
+      # the same files.
+      - name: Files as they are stored
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
