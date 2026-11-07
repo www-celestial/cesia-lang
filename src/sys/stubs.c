@@ -1,4 +1,5 @@
-/* What OCaml's unix library doesn't offer: the epoll system calls, loading C libraries, and the size of the RAM. */
+/* What OCaml's unix library doesn't offer: the epoll system calls, loading C libraries, the size of the RAM, and a command
+   started in a process group of its own. */
 #include <caml/alloc.h>
 #include <caml/bigarray.h>
 #include <caml/memory.h>
@@ -73,6 +74,34 @@ value cesia_db_config(value fn, value db, value op, value on) {
 value cesia_cstring(value address) {
   return caml_copy_string((const char *) Long_val(address));
 }
+
+/* posix_spawnp with the child as the leader of a process group, which a timeout kills whole: the command and what it
+   started. Its standard streams are fds[0..2]; Windows has no process groups and never calls it. */
+#ifndef _WIN32
+#include <caml/unixsupport.h>
+#include <spawn.h>
+extern char **environ;
+
+value cesia_spawn_group(value cmd, value args, value fds) {
+  int n = Wosize_val(args), pid = 0;
+  char **argv = caml_stat_alloc((n + 1) * sizeof(char *));
+  for (int i = 0; i < n; i++) argv[i] = (char *) String_val(Field(args, i));
+  argv[n] = NULL;
+  posix_spawn_file_actions_t actions;
+  posix_spawn_file_actions_init(&actions);
+  for (int i = 0; i < 3; i++) posix_spawn_file_actions_adddup2(&actions, Int_val(Field(fds, i)), i);
+  posix_spawnattr_t attr;
+  posix_spawnattr_init(&attr);
+  posix_spawnattr_setflags(&attr, POSIX_SPAWN_SETPGROUP);
+  posix_spawnattr_setpgroup(&attr, 0);
+  int failed = posix_spawnp(&pid, String_val(cmd), &actions, &attr, argv, environ);
+  posix_spawn_file_actions_destroy(&actions);
+  posix_spawnattr_destroy(&attr);
+  caml_stat_free(argv);
+  if (failed) caml_unix_error(failed, "create_process", cmd);
+  return Val_int(pid);
+}
+#endif
 
 #ifdef __linux__
 #include <sys/epoll.h>

@@ -225,7 +225,8 @@ end
 
 ### Programs that keep running
 
-`input` gives the program a text to read, `dir` the folder it runs in, and `timeout` stops it after a number of seconds. For a
+`input` gives the program a text to read, `dir` the folder it runs in, and `timeout` stops it after a number of seconds,
+with every program it started, as the commands of a shell. For a
 program that keeps running, a server or a shell, [sys.Start] gives a process to write to and read from while it runs, with
 [sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit].
 

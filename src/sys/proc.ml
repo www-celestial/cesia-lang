@@ -91,10 +91,12 @@ let seconds ctx name v =
   | Float x when x >= 0. && x < infinity -> x
   | _ -> Runtime.fail ctx Type (Messages.bad_duration name (Value.describe v))
 
+external spawn_group : string -> string array -> Unix.file_descr array -> int = "cesia_spawn_group"
+
 (* SIGPIPE is ignored here, so that a command that stops reading is an EPIPE. The command itself gets the default. A
    command starts where its parent is, so the parent goes into [dir] for that moment: fibers take turns, and no other domain
-   reads a relative path. *)
-let start ?(dir = "") cmd argv child_in child_out child_err =
+   reads a relative path. With [group], it leads a process group of its own, which [stop] kills whole, but on Windows. *)
+let start ?(dir = "") ?(group = false) cmd argv child_in child_out child_err =
   Sys.set_signal Sys.sigpipe Sys.Signal_default;
   let here = if dir = "" then "" else Unix.getcwd () in
   Fun.protect
@@ -103,7 +105,11 @@ let start ?(dir = "") cmd argv child_in child_out child_err =
         if here <> "" then Unix.chdir here)
     (fun () ->
        if dir <> "" then Unix.chdir dir;
-       Unix.create_process cmd argv child_in child_out child_err)
+       if group && not Sys.win32 then spawn_group cmd argv [| child_in; child_out; child_err |]
+       else Unix.create_process cmd argv child_in child_out child_err)
+
+(* Kills a command started by [start], and all its group started. *)
+let stop ~group pid = try Unix.kill (if group && not Sys.win32 then -pid else pid) Sys.sigkill with Unix.Unix_error _ -> ()
 
 let run poll ctx (a : t array) =
   let w = ctx.w in
@@ -119,7 +125,10 @@ let run poll ctx (a : t array) =
   | exception Unix.Unix_error (e, _, _) -> failed e
   | [ (in_read, in_write); (out_read, out_write); (err_read, err_write) ] ->
     let close_child () = List.iter Unix.close [ in_read; out_write; err_write ] in
-    (match start ~dir cmd (Array.append [| cmd |] args) in_read out_write err_write with
+    (* A command with a timeout leads a group: past its time, the children it started go with it, and with them the ends of
+       the pipes they hold. Without one, Ctrl-C reaches it as it reaches this program. *)
+    let group = timeout > 0. in
+    (match start ~dir ~group cmd (Array.append [| cmd |] args) in_read out_write err_write with
      | exception Unix.Unix_error (e, _, _) ->
        close_child ();
        List.iter Unix.close [ in_write; out_read; err_read ];
@@ -134,7 +143,7 @@ let run poll ctx (a : t array) =
        (* Past its time the command is killed; once it is waited for, its number may go to another. *)
        let ended = ref false in
        if timeout > 0. then
-         Poll.timer poll timeout (fun () -> if not !ended then try Unix.kill pid Sys.sigkill with Unix.Unix_error _ -> ());
+         Poll.timer poll timeout (fun () -> if not !ended then stop ~group pid);
        let out, err = exchange ctx poll stdin_pipe stdout_pipe stderr_pipe input in
        let code = exit_code ctx poll pid 0.0005 in
        ended := true;

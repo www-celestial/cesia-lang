@@ -1,0 +1,9 @@
+(* Past its timeout, the command stops with all it started: a shell's children don't hold the run, nor live on. *)
+use std/sys
+use std/io
+use std/result
+start = sys.Now()
+r = sys.Run("sh", args = ["-c", "sleep 7.31; echo late"], timeout = 0.3)
+io.Print(r then result.MapOk(it.Code), sys.Now() - start < 3)
+left = sys.Run("sh", args = ["-c", "pgrep -f 'slee[p] 7.31' > /dev/null && echo alive || echo gone"])
+io.Print(left then result.MapOk(it.Out))
