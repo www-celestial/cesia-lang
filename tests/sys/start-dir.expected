@@ -1,0 +1,4 @@
+Ok("/
+")
+Err("Can't run in /no/such/folder: no such file or directory.")
+exit 0

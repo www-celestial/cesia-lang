@@ -1,0 +1,6 @@
+use std/sys
+use std/io
+use std/result
+(* dir is where the process runs, as for sys.Run. *)
+io.Print(sys.Start("sh", args = ["-c", "pwd"], dir = "/") then result.AndThen(sys.ReadOutput, it))
+io.Print(sys.Start("sh", args = ["-c", "true"], dir = "/no/such/folder") then result.MapErr(it.Message))

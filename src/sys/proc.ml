@@ -108,6 +108,15 @@ let start ?(dir = "") ?(group = false) cmd argv child_in child_out child_err =
        if group && not Sys.win32 then spawn_group cmd argv [| child_in; child_out; child_err |]
        else Unix.create_process cmd argv child_in child_out child_err)
 
+(* A command named by its path is the one of this program's folder, which exec= names, whatever dir it runs in. *)
+let program cmd =
+  let named = String.contains cmd '/' || (Sys.win32 && String.contains cmd '\\') in
+  if named && Filename.is_relative cmd then Filename.concat (Sys.getcwd ()) cmd else cmd
+
+(* Why a command didn't start: the folder it was to run in, when there is none, else the command. *)
+let start_failed ctx cmd dir e =
+  if dir <> "" && not (Sys.file_exists dir) then Fs.failed ctx "run in" dir e else Fs.failed ctx "run" cmd e
+
 (* Kills a command started by [start], and all its group started. *)
 let stop ~group pid = try Unix.kill (if group && not Sys.win32 then -pid else pid) Sys.sigkill with Unix.Unix_error _ -> ()
 
@@ -120,7 +129,7 @@ let run poll ctx (a : t array) =
   let input = match arg 2 with Undef -> "" | v -> Native.text_arg ctx "Run" v in
   let dir = match arg 3 with Undef -> "" | v -> Native.text_arg ctx "Run" v in
   let timeout = match arg 4 with Undef -> 0. | v -> seconds ctx "Run" v in
-  let failed e = if dir <> "" && not (Sys.file_exists dir) then Fs.failed ctx "run in" dir e else Fs.failed ctx "run" cmd e in
+  let failed = start_failed ctx cmd dir in
   match pipes 3 with
   | exception Unix.Unix_error (e, _, _) -> failed e
   | [ (in_read, in_write); (out_read, out_write); (err_read, err_write) ] ->
@@ -128,10 +137,7 @@ let run poll ctx (a : t array) =
     (* A command with a timeout leads a group: past its time, the children it started go with it, and with them the ends of
        the pipes they hold. Without one, Ctrl-C reaches it as it reaches this program. *)
     let group = timeout > 0. in
-    (* A command named by its path is the one of this program's folder, which exec= names, whatever dir it runs in. *)
-    let named = String.contains cmd '/' || (Sys.win32 && String.contains cmd '\\') in
-    let program = if named && Filename.is_relative cmd then Filename.concat (Sys.getcwd ()) cmd else cmd in
-    (match start ~dir ~group program (Array.append [| cmd |] args) in_read out_write err_write with
+    (match start ~dir ~group (program cmd) (Array.append [| cmd |] args) in_read out_write err_write with
      | exception Unix.Unix_error (e, _, _) ->
        close_child ();
        List.iter Unix.close [ in_write; out_read; err_read ];
@@ -161,12 +167,13 @@ let start_process poll procs ctx (a : t array) : t =
   let cmd = Native.text_arg ctx "Start" a.(0) in
   Runtime.check_perm ctx Exec (Some cmd);
   let args = text_list ctx "Start" (if Array.length a > 1 then a.(1) else Undef) in
-  let failed e = Fs.failed ctx "run" cmd e in
+  let dir = match if Array.length a > 2 then a.(2) else Undef with Undef -> "" | v -> Native.text_arg ctx "Start" v in
+  let failed = start_failed ctx cmd dir in
   match pipes 2 with
   | exception Unix.Unix_error (e, _, _) -> failed e
   | [ (in_read, in_write); (out_read, out_write) ] ->
     let close_child () = List.iter Unix.close [ in_read; out_write ] in
-    (match start cmd (Array.append [| cmd |] args) in_read out_write out_write with
+    (match start ~dir (program cmd) (Array.append [| cmd |] args) in_read out_write out_write with
      | exception Unix.Unix_error (e, _, _) ->
        close_child ();
        List.iter Unix.close [ in_write; out_read ];
@@ -261,7 +268,7 @@ let stop_process procs ctx (a : t array) : t =
 let natives poll =
   let procs = Hashtbl.create 8 in
   [ "Run", Native.nat ~result:true ~params:[| "cmd"; "args"; "input"; "dir"; "timeout" |] "Run" 1 5 (run poll);
-    "Start", Native.nat ~result:true ~params:[| "cmd"; "args" |] "Start" 1 2 (start_process poll procs);
+    "Start", Native.nat ~result:true ~params:[| "cmd"; "args"; "dir" |] "Start" 1 3 (start_process poll procs);
     "ReadOutput", Native.nat ~result:true "ReadOutput" 1 1 (read_output poll procs);
     "ReadInput", Native.nat ~result:true "ReadInput" 0 0 (fun ctx _ -> read_input ctx (Buffer.create 4096) (Bytes.create chunk_size));
     "Exit", Native.nat "Exit" 1 1 quit;

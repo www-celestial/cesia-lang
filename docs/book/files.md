@@ -229,7 +229,7 @@ end
 with every program it started, as the commands of a shell. A program named by its path, as `./build.sh`, is the one of this
 program's folder, the one that `exec=./build.sh` allows, even when `dir` names another folder. For a
 program that keeps running, a server or a shell, [sys.Start] gives a process to write to and read from while it runs, with
-[sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit].
+[sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit]. Its `dir` is the folder it runs in, as for [sys.Run].
 
 ## The clock
 

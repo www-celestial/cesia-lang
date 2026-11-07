@@ -999,11 +999,16 @@ use std/test
       sys.Run("sh", args = ["-c", "exit 3"])?.Code --> 3
       sys.Run("sh", args = ["-c", "cat"], input = "data")?.Out --> "data" *)
 
-(** sys.Start(cmd, args = [])
-    Starts a program that keeps running and gives an Ok of its process. Its output and its errors come as one stream. Needs the exec permission.
+(** sys.Start(cmd, args = [], dir = "")
+    Starts a program that keeps running and gives an Ok of its process. Its output and its errors come as one stream. It runs
+    in the folder dir, or in this program's folder if dir is empty. Needs the exec permission.
 
       proc = sys.Start("sh", args = ["-c", "echo ready"]).Value
-      sys.ReadOutput(proc) --> result.Ok("ready\n") *)
+      sys.ReadOutput(proc) --> result.Ok("ready\n")
+      d = "$(test.Temp())/start"
+      sys.Mkdir(d)
+      sys.Write("$(d)/notes.txt", "hi")
+      sys.ReadOutput(sys.Start("sh", args = ["-c", "cat notes.txt"], dir = d)?) --> result.Ok("hi") *)
 
 (** sys.ReadOutput(process)
     The next chunk of what a process wrote, in an Ok. An empty text means that its output is closed.
