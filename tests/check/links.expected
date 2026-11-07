@@ -1,0 +1,10 @@
+src/a.ce:2:10: Name "y" doesn't exist.
+  2 | io.Print(y)
+    |          ^
+src/b.ce:2:10: Name "y" doesn't exist.
+  2 | io.Print(y)
+    |          ^
+check: 2 errors, 0 warnings, in 2 files.
+exit 1
+Can't list locked: permission denied.
+exit 1

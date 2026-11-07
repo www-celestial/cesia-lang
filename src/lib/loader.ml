@@ -962,6 +962,8 @@ let run_tool w name args =
          | Struct { shape = { sname = Some "Err"; _ }; fields = [| e |]; _ } ->
            Runtime.flush_out w;
            flush stdout;
-           w.err (Value.text_of ctx e ^ "\n");
+           (* An error of the system, as sys.List gives it, shows its message. *)
+           let shown = match e with Text _ -> e | _ -> Option.value (Dict.get ctx "Main" (Text "Message") e) ~default:e in
+           w.err (Value.text_of ctx shown ^ "\n");
            1
          | _ -> 0))

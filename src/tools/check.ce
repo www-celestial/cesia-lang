@@ -15,7 +15,8 @@ use std/value
 
 defn sources(path)
   (** The files of Cesia under a path: itself, or those of a folder and its subfolders, without the dot files, _build, and
-      the std/ and deps/ that hold copies. *)
+      the std/ and deps/ that hold copies. A link to a folder is never followed, so no loop forms, and a link that leads
+      nowhere is left out. *)
   stat = sys.Stat(path)?
   if not stat.IsDir
     return result.Ok([path])
@@ -25,10 +26,16 @@ defn sources(path)
     sub = if path == "." name else "$path/$name" end
     skipped = text.StartsWith(".", name) or name == "_build" or ((name == "std" or name == "deps") and sys.Exists("$path/cesia.toml"))
     if not skipped
-      if sys.Stat(sub)?.IsDir
-        found = list.Concat(found, sources(sub)?)
-      else if text.EndsWith(".ce", name)
-        found = list.Append(sub, found)
+      match sys.Stat(sub)
+        result.Ok(s) ->
+          if s.IsDir
+            if not s.IsLink
+              found = list.Concat(found, sources(sub)?)
+            end
+          else if text.EndsWith(".ce", name)
+            found = list.Append(sub, found)
+          end
+        result.Err(_) -> missing
       end
     end
   end
