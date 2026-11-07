@@ -185,12 +185,16 @@ let number st start_pos sp =
       | None -> error st start_pos (Messages.number_too_big text)
   end
 
+(* What fills the free places of a token array: made once, so old. Array.make with a young value, as a token just made, past
+   256 places, first empties the whole minor heap, and with it the tokens and trees of every file read before. *)
+let filler = { t = EOF; pos = Pos.make 1 1; sp = false }
+
 let rec scan st ~in_code : token array =
   (* An array that doubles, faster than the dynamic array of the Stdlib: lexing is half of the start of a big program. *)
-  let out = ref (Array.make (if in_code then 8 else 1024) { t = EOF; pos = Pos.make 1 1; sp = false }) and count = ref 0 in
+  let out = ref (Array.make (if in_code then 8 else 1024) filler) and count = ref 0 in
   let add tok =
     if !count = Array.length !out then begin
-      let bigger = Array.make (2 * !count) tok in
+      let bigger = Array.make (2 * !count) filler in
       Array.blit !out 0 bigger 0 !count;
       out := bigger
     end;

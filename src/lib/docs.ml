@@ -28,7 +28,10 @@ let piece s = if blank s then "" else " " ^ rtrim s
    any comment, and the (** ... *) in their order. A text hides what looks like a comment.
    The lines of a (** ... *) lose the indentation of its first words, and its end loses its closing stars. *)
 let scan src =
-  let lines = Array.of_list (String.split_on_char '\n' src) in
+  (* Not Array.of_list, which past 256 lines empties the minor heap first, as its lines are young. *)
+  let split = String.split_on_char '\n' src in
+  let lines = Array.make (List.length split) "" in
+  List.iteri (fun k line -> lines.(k) <- line) split;
   let codes = Array.make (Array.length lines) "" and outside = Array.make (Array.length lines) true in
   let docs = ref [] and depth = ref 0 and current = ref None and column = ref 0 in
   let add d k s =
