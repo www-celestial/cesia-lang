@@ -270,8 +270,10 @@ let explain ctx (notes : note array) (got : (Types.t * int) option array) ~test 
           match x, y, Near.first ctx x y with
           | Text p, Text q, Some ("", _, _) -> [ "  | first difference: " ^ texts p q ]
           | Array p, Array q, Some ("", _, _) ->
-            let size (a : Types.arr) = if a.rows = 1 then string_of_int a.cols else Printf.sprintf "%dx%d" a.rows a.cols in
-            [ Printf.sprintf "  | first difference: %s %s vs %s" (if p.rows = 1 && q.rows = 1 then "length" else "size") (size p) (size q) ]
+            let list (a : Types.arr) = a.rows = 1 && Array.length a.dims = 0 in
+            let size (a : Types.arr) =
+              if list a then string_of_int a.cols else String.concat "x" (Array.to_list (Array.map string_of_int (Arrays.sizes a))) in
+            [ Printf.sprintf "  | first difference: %s %s vs %s" (if list p && list q then "length" else "size") (size p) (size q) ]
           | _, _, Some (path, p, q) when path <> "" -> [ Printf.sprintf "  | first difference: %s: %s vs %s" path (show p) (show q) ]
           | _ -> []
         end

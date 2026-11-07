@@ -68,24 +68,29 @@ verdict.test.ce:55: isText failed
   | text.Replace("o", "u", "hello world") = "hellu wurld"
   | first difference: character 5: "o world" vs "u wurld"
 verdict.test.ce:56: isMatrix failed
-  value.Equal(matrix.Zeros(2, 2), [0.0, 0.0; 0.0, 1.0])
+  value.Equal(matrix.Zeros(2, 2), [0.0, 0.0; 1.0, 0.0])
   | matrix.Zeros(2, 2) = [0.0 0.0; 0.0 0.0]
-  | first difference: [2, 2]: 0.0 vs 1.0
-verdict.test.ce:57: isNear failed
+  | first difference: [2, 1]: 0.0 vs 1.0
+verdict.test.ce:57: isCube failed
+  value.Equal(matrix.Zeros(2, 3, 2), matrix.Reshape([2, 3, 2], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]))
+  | matrix.Zeros(2, 3, 2) = [0.0 0.0 0.0; 0.0 0.0 0.0;;; 0.0 0.0 0.0; 0.0 0.0 0.0]
+  | matrix.Reshape([2, 3, 2], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0]) = [0.0 0.0 0.0; 0.0 0.0 0.0;;; 0.0 0.0 0.0; 1.0 0.0 0.0]
+  | first difference: [2, 1, 2]: 0.0 vs 1.0
+verdict.test.ce:58: isNear failed
   math.Near([1.0, 2.0, 3.0], list.Map(it + 0.1, [0.9, 1.9, 2.8]), rel = 1e-6)
   | list.Map(it + 0.1, [0.9, 1.9, 2.8]) = [1.0, 2.0, 2.9]
   | first beyond tolerance: [3]: 3.0 vs 2.9, off by 0.10000000000000009, allowed 3e-6
-verdict.test.ce:58: isNearZero failed
+verdict.test.ce:59: isNearZero failed
   math.Near(0.1 + 0.2 - 0.3, 0)
   | 0.1 + 0.2 - 0.3 = 5.551115123125783e-17
   | first beyond tolerance: 5.551115123125783e-17 vs 0, off by 5.551115123125783e-17, allowed 5.551115123125783e-26
   | rel can't help at 0: give abs
-verdict.test.ce:59: isLong failed
+verdict.test.ce:60: isLong failed
   value.Equal(list.Range(1, 100), list.Range(1, 99))
   | list.Range(1, 100) = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 4...
   | list.Range(1, 99) = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 4...
   | first difference: length 100 vs 99
-verdict.test.ce:60: isMany failed
+verdict.test.ce:61: isMany failed
   value.Len([1]) + value.Len([1, 2]) + value.Len([1, 2, 3]) + value.Len([4]) + value.Len([5]) + value.Len([6]) + value.Len([7]) == 0
   | value.Len([1]) + value.Len([1, 2]) + value.Len([1, 2, 3]) + value.Len([4]) + value.Len([5]) + value.Len([6]) + value.Len([7]) = 10
   | value.Len([1]) = 1
@@ -95,12 +100,12 @@ verdict.test.ce:60: isMany failed
   | value.Len([5]) = 1
   | value.Len([6]) = 1
 shout(1)
-verdict.test.ce:65: isEachPartRunsOnce failed
+verdict.test.ce:66: isEachPartRunsOnce failed
   shout(1) == 2
   | shout(1) = 1
-verdict.test.ce:66: isOne returned 1
-verdict.test.ce:67: isMissing failed
+verdict.test.ce:67: isOne returned 1
+verdict.test.ce:68: isMissing failed
   list.Max([1, 2]) == missing
   | list.Max([1, 2]) = 2
-1 passed, 26 failed
+1 passed, 27 failed
 exit 1

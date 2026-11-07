@@ -117,3 +117,4 @@ isWriteCount() = message(() -> writeTwo(cube())) == result.Err("This array has 3
 
 isMatmulTwoDims() = message(() -> matrix.Matmul(cube(), cube())) == result.Err("Matmul works on arrays of 2 dimensions, not 3.") and message(() -> matrix.Transpose(cube())) == result.Err("Transpose works on arrays of 2 dimensions, not 3.")
 isFourDims() = matrix.Reshape([2, 2, 2, 2], 1..16)[2, 2, 2, 2] == 16 and matrix.Reshape([2, 2, 2, 2], 1..16)[1, 2, 1, 2] == 11 and value.Equal(value.Size(list.Sum(matrix.Reshape([2, 2, 2, 2], 1..16), dim = 4)), [2, 2, 2])
+isNear() = math.Near(cube() * 1.0, cube() + 1e-12) and not math.Near(matrix.Zeros(2, 3, 4), matrix.Zeros(2, 12))

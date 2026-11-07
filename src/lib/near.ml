@@ -12,7 +12,14 @@ let close t a b =
   || Float.is_finite a && Float.is_finite b
      && Float.abs (a -. b) <= Float.max (t.rel *. Float.max (Float.abs a) (Float.abs b)) t.abs
 
-let index (x : arr) k = if x.rows = 1 then Printf.sprintf "[%d]" (k + 1) else Printf.sprintf "[%d, %d]" ((k / x.cols) + 1) ((k mod x.cols) + 1)
+(* The position of cell [k], column by column: one for a list, one per dimension otherwise. *)
+let index (x : arr) k =
+  if x.rows = 1 && Array.length x.dims = 0 then Printf.sprintf "[%d]" (k + 1)
+  else begin
+    let rest = ref k in
+    let at n = let i = (!rest mod n) + 1 in rest := !rest / n; string_of_int i in
+    "[" ^ String.concat ", " (Array.to_list (Array.map at (Arrays.sizes x))) ^ "]"
+  end
 
 let key ctx = function
   | Text s when s <> "" && Lexer.is_public s && String.for_all (function 'a' .. 'z' | 'A' .. 'Z' | '0' .. '9' -> true | _ -> false) s -> "." ^ s
@@ -29,7 +36,7 @@ and walk ctx tol depth path a b =
   | (Int _ | Float _), (Int _ | Float _), Some t ->
     (match number a, number b with Some x, Some y when close t x y -> None | _ -> here ())
   | Array x, Array y, _ when x.rows * x.cols > 0 || y.rows * y.cols > 0 ->
-    if x.rows <> y.rows || x.cols <> y.cols then here ()
+    if not (Value.same_shape x y) then here ()
     else begin
       let n = x.rows * x.cols in
       Value.pay ctx n;

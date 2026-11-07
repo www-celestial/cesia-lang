@@ -57,7 +57,7 @@ let install () =
 (* A copy of a matrix of numbers with its shape, which LAPACK can overwrite. *)
 let matrix ctx v =
   match v with
-  | Array a when a.rows * a.cols > 0 ->
+  | Array a when a.rows * a.cols > 0 && Array.length a.dims = 0 ->
     Runtime.reserve ctx (a.rows * a.cols);
     Option.map
       (fun d -> a.rows, a.cols, d)
