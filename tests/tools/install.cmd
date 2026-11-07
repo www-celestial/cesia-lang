@@ -8,7 +8,8 @@ archive="cesia-$os-$arch.tar.gz"
 mkdir -p "$top/out/bin" "$top/out/lib" "$top/rel" "$top/bad"
 cp "$root/_build/default/src/bin/main.exe" "$top/out/bin/cesia"
 printf 'a library\n' > "$top/out/lib/libsome.so"
-tar -czf "$top/rel/$archive" -C "$top/out" bin lib
+# gzip -1: the fastest level, which install.sh reads as well as any other.
+tar -cf - -C "$top/out" bin lib | gzip -1 > "$top/rel/$archive"
 sum() { if command -v sha256sum > /dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 sum "$top/rel/$archive" > "$top/rel/$archive.sha256"
 cp "$top/rel/$archive" "$top/bad/"
