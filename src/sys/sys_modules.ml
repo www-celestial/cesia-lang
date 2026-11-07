@@ -91,6 +91,7 @@ let debug_test ctx s cond =
 let debug_editor () = match debug_plugin () with Ok (_, _, line) -> Some line | Error _ -> None
 
 let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
+  Runtime.real_path := Fs.real_path;
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
   w.timer <- (fun seconds f -> Poll.timer poll (Float.min max_sleep seconds) f);

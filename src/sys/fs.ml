@@ -17,6 +17,32 @@ let attempt ctx verb path f =
   | v -> Value.ok ctx.w v
   | exception Unix.Unix_error (e, _, _) -> failed ctx verb path e
 
+(* Where a path leads, for the checks of read= and write=: what exists, as realpath tells; what doesn't yet, the folder that
+   will hold it, then its name; a link that leads nowhere, where it leads, since writing it creates that. A path that is
+   there but can't be resolved fails to open too: its text stands. None past 40 links. Windows writes \, the checks /. *)
+let real_path path =
+  let slashes p = if Sys.win32 then String.map (function '\\' -> '/' | c -> c) p else p in
+  let rec go links p =
+    if links > 40 then None
+    else
+      match Unix.realpath p with
+      | r -> Some (slashes r)
+      | exception Unix.Unix_error _ ->
+        match Unix.lstat p with
+        | { st_kind = Unix.S_LNK; _ } ->
+          let target = Unix.readlink p in
+          go (links + 1) (if Filename.is_relative target then Filename.concat (Filename.dirname p) target else target)
+        | _ -> Some (slashes (Package.absolute p))
+        | exception Unix.Unix_error _ ->
+          let parent = Filename.dirname p in
+          if parent = p then Some (slashes p)
+          else
+            Option.map
+              (fun d -> match Filename.basename p with "." -> d | ".." -> Filename.dirname d | name -> Filename.concat d name)
+              (go links parent)
+  in
+  go 0 path
+
 let path_arg ctx name perm v =
   let path = Native.text_arg ctx name v in
   Runtime.check_perm ctx perm (Some path);

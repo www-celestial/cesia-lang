@@ -1,0 +1,25 @@
+(* read= and write= hold for where a path leads, links resolved: a link in the folder can't lead out of it. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(r) -> if result.IsErr(r) "err" else "ok" end
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+show("read in the folder", () -> sys.Read("data/in.txt"))
+show("read through a link that stays inside", () -> sys.Read("data/inner.txt"))
+show("read through a link to a file outside", () -> sys.Read("data/secret.txt"))
+show("read through a link to a folder outside", () -> sys.Read("data/out/secret.txt"))
+show("stat through a link to a file outside", () -> sys.Stat("data/secret.txt"))
+show("write through a link to a new file outside", () -> sys.Write("data/created.txt", "x"))
+show("write a new file in the folder", () -> sys.Write("data/new.txt", "x"))
+show("walk a link to a folder outside", () -> sys.Walk("data/out"))
+for p in result.Unwrap(sys.Walk("data"))
+  io.Print(p)
+end

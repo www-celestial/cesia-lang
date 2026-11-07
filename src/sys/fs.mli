@@ -25,5 +25,8 @@ val paths : ?skip:(string -> string -> bool) -> string -> string list
 (** Removes a folder and all it holds, never following a link: a link goes, what it points to stays. *)
 val remove_tree : string -> unit
 
+(** Where a path leads, links resolved, for [Runtime.real_path]; a path not there yet, through the folder that will hold it. *)
+val real_path : string -> string option
+
 (** The functions of the [sys] module that deal with files and the environment. *)
 val natives : (string * t) list

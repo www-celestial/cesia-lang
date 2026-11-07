@@ -84,6 +84,10 @@ val alloc_ints : ctx -> int -> int -> int array
 (** Checks a permission, with the path concerned if any. *)
 val check_perm : ctx -> perm -> string option -> unit
 
+(** Where a path leads, links resolved, or [None] when no place can be told: set by the system, which reads links. A
+    folder of read= or write= holds a path only when it holds where the path leads too. *)
+val real_path : (string -> string option) ref
+
 (** Is the permission granted, for this path if any? *)
 val granted : world -> perm -> string option -> bool
 

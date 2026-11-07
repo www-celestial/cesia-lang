@@ -324,15 +324,27 @@ let scope_matches perm scope target =
     || (scope <> "own" && (not (String.contains scope ':')) && String.starts_with ~prefix:(scope ^ ":") target)
   | Exec | Env | Ffi | Debug -> String.equal scope target
 
+(* Where a path leads, links resolved, or None when no place can be told. The system sets it, as it reads links; without
+   it a path is taken as written. *)
+let real_path = ref (fun (p : string) -> Some p)
+
+(* A folder of read= or write= holds what a path is written as and where it leads: a link in it can't lead out. *)
 let granted w perm path =
   w.grants.all
-  || List.exists
-       (fun (p, scope) ->
-          p = perm
-          && (match scope, path with
-              | None, _ | _, None -> true
-              | Some scope, Some target -> scope_matches perm scope target))
-       w.grants.perms
+  ||
+  let real = lazy (Option.bind path !real_path) in
+  List.exists
+    (fun (p, scope) ->
+       p = perm
+       && (match scope, path with
+           | None, _ | _, None -> true
+           | Some scope, Some target ->
+             scope_matches perm scope target
+             && (match perm with
+                 | Read | Write ->
+                   (match !real_path scope, Lazy.force real with Some s, Some t -> inside s t | _ -> false)
+                 | Net | Exec | Env | Ffi | Debug -> true)))
+    w.grants.perms
 
 let check_perm ctx perm path =
   if not (granted ctx.w perm path) then fail ctx Permission (Messages.denied (perm_name perm) path)

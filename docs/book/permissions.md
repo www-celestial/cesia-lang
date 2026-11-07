@@ -58,7 +58,8 @@ which permission to write.
 
 A permission after `=` is as narrow as you can make it. Give that one, by the
 [principle of least privilege](glossary.md#principle-of-least-privilege): a program that reads its data from `./data` needs
-`read=./data`, not `read`. Reading outside the folder is denied as if nothing had been given.
+`read=./data`, not `read`. Reading outside the folder is denied as if nothing had been given. A folder holds a path by where
+it leads, its links followed: a link in `./data` that points outside it is denied too, as is writing a new file through one.
 
 ## ffi is total trust
 

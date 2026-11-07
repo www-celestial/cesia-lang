@@ -1,0 +1,18 @@
+read in the folder: ok
+read through a link that stays inside: ok
+read through a link to a file outside: permission
+read through a link to a folder outside: permission
+stat through a link to a file outside: permission
+write through a link to a new file outside: permission
+write a new file in the folder: ok
+walk a link to a folder outside: permission
+data/created.txt
+data/in.txt
+data/inner.txt
+data/new.txt
+data/out
+data/secret.txt
+exit 0
+== outside holds
+secret.txt
+exit 0
