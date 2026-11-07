@@ -12,8 +12,8 @@ defn allNear(xs, ys)
 end
 
 isLinspace() = allNear(num.Linspace(0.0, 1.0, 3), [0.0, 0.5, 1.0])
-isEye() = allNear(num.Eye(2), matrix.Reshape(2, 2, [1.0, 0.0, 0.0, 1.0]))
-isDiag() = allNear(num.Diag([2.0, 3.0]), matrix.Reshape(2, 2, [2.0, 0.0, 0.0, 3.0]))
+isEye() = allNear(num.Eye(2), matrix.Reshape([2, 2], [1.0, 0.0, 0.0, 1.0]))
+isDiag() = allNear(num.Diag([2.0, 3.0]), matrix.Reshape([2, 2], [2.0, 0.0, 0.0, 3.0]))
 isVariance() = near(num.Variance([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]), 4.0)
 isStd() = near(num.Std([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]), 2.0)
 isMedian() = near(num.Median([3.0, 1.0, 2.0]), 2.0) and near(num.Median([4.0, 1.0, 2.0, 3.0]), 2.5)
@@ -24,30 +24,30 @@ isDot() = near(num.Dot([1.0, 2.0], [3.0, 4.0]), 11.0)
 isNorm() = near(num.Norm([3.0, 4.0]), 5.0)
 isCorrelation() = near(num.Correlation([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]), 1.0) and near(num.Correlation([1.0, 2.0, 3.0], [3.0, 2.0, 1.0]), -1.0)
 isHistogram() = value.Equal(num.Histogram(2, [0.0, 0.1, 0.9, 1.0]).Counts, [2, 2])
-isSumAxis() = allNear(num.SumRows(matrix.Reshape(2, 2, [1.0, 2.0, 3.0, 4.0])), [4.0, 6.0]) and allNear(num.SumCols(matrix.Reshape(2, 2, [1.0, 2.0, 3.0, 4.0])), [3.0, 7.0])
+isSumAxis() = allNear(list.Sum(matrix.Reshape([2, 2], [1.0, 2.0, 3.0, 4.0]), dim = 2), [4.0, 6.0]) and allNear(list.Sum(matrix.Reshape([2, 2], [1.0, 2.0, 3.0, 4.0]), dim = 1), [3.0, 7.0])
 
-a = matrix.Reshape(2, 2, [2.0, 1.0, 1.0, 3.0])
+a = matrix.Reshape([2, 2], [2.0, 1.0, 1.0, 3.0])
 isDet() = near(num.Det(a), 5.0)
-isDetSingular() = near(num.Det(matrix.Reshape(2, 2, [1.0, 2.0, 2.0, 4.0])), 0.0)
+isDetSingular() = near(num.Det(matrix.Reshape([2, 2], [1.0, 2.0, 2.0, 4.0])), 0.0)
 isSolve() = allNear(result.Unwrap(num.Solve(a, [3.0, 5.0])), [0.8, 1.4])
-isSolveSingular() = result.IsErr(num.Solve(matrix.Reshape(2, 2, [1.0, 2.0, 2.0, 4.0]), [1.0, 1.0]))
+isSolveSingular() = result.IsErr(num.Solve(matrix.Reshape([2, 2], [1.0, 2.0, 2.0, 4.0]), [1.0, 1.0]))
 isInverse() = allNear(matrix.Matmul(a, result.Unwrap(num.Inverse(a))), num.Eye(2))
 
 defn isQr()
-  m = matrix.Reshape(3, 2, [1.0, 3.0, 5.0, 2.0, 4.0, 7.0])
+  m = matrix.Reshape([3, 2], [1.0, 3.0, 5.0, 2.0, 4.0, 7.0])
   f = num.Qr(m)
   allNear(matrix.Matmul(f.Q, f.R), m) and allNear(matrix.Matmul(matrix.Transpose(f.Q), f.Q), num.Eye(2))
 end
 
 defn isEigen()
-  m = matrix.Reshape(2, 2, [2.0, 1.0, 1.0, 2.0])
+  m = matrix.Reshape([2, 2], [2.0, 1.0, 1.0, 2.0])
   e = num.Eigen(m)
   allNear(list.Sort(e.Values), [1.0, 3.0]) and allNear(matrix.Matmul(matrix.Matmul(e.Vectors, num.Diag(e.Values)), matrix.Transpose(e.Vectors)), m)
 end
 
 isPolyfit() = allNear(num.Polyfit(1, [0.0, 1.0, 2.0], [1.0, 3.0, 5.0]), [1.0, 2.0])
 isPolyval() = near(num.Polyval([1.0, 2.0, 3.0], 2.0), 17.0)
-isLeastSquares() = allNear(result.Unwrap(num.LeastSquares(matrix.Reshape(3, 2, [1.0, 1.0, 1.0, 1.0, 2.0, 3.0]), [2.0, 3.0, 4.0])), [1.0, 1.0])
+isLeastSquares() = allNear(result.Unwrap(num.LeastSquares(matrix.Reshape([3, 2], [1.0, 1.0, 1.0, 1.0, 2.0, 3.0]), [2.0, 3.0, 4.0])), [1.0, 1.0])
 isTrapezoid() = near(num.Trapezoid([0.0, 1.0, 2.0], [0.0, 1.0, 2.0]), 2.0)
 isInterpolate() = near(num.Interpolate(1.5, [1.0, 2.0], [10.0, 20.0]), 15.0)
 

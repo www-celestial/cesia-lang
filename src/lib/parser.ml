@@ -801,6 +801,7 @@ and array_lit p pos =
           advance p;
           end_row ();
           result := Some (node p pos (Array_lit (Array.of_list (List.rev !rows))))
+        | SEMI when next_tok p == SEMI -> error p t.pos Messages.semis_in_array
         | SEMI | NL -> advance p; end_row ()
         | COMMA -> advance p; skip_nl p
         | FOR when !rows = [] && List.length !row = 1 ->

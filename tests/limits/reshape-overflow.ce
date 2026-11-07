@@ -1,5 +1,5 @@
 use std/io
 use std/matrix
 
-x = matrix.Reshape(4294967296, 2147483648, [])
+x = matrix.Reshape([4294967296, 2147483648], [])
 io.Print(x[1, 1])

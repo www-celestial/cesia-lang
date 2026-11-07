@@ -2,21 +2,50 @@ open Types
 
 type ix = At of int | Slice of int * int | Every | Mask of arr | Key of t
 
-let of_float rows cols d = Array { rows; cols; store = F d; a_owned = true; a_tip = true }
+let flat : int array = [||]
 
-let of_ints rows cols d = Array { rows; cols; store = I d; a_owned = true; a_tip = true }
+let of_float rows cols d = Array { rows; cols; store = F d; a_owned = true; a_tip = true; dims = flat }
+
+let of_ints rows cols d = Array { rows; cols; store = I d; a_owned = true; a_tip = true; dims = flat }
 
 (* All floats or all integers take the typed storage. *)
-let of_vals rows cols (d : t array) =
+let store_of (d : t array) =
   if Array.length d > 0 && Array.for_all (function Float _ -> true | _ -> false) d then begin
-    let n = Array.length d in
-    let f = Float.Array.create n in
+    let f = Float.Array.create (Array.length d) in
     Array.iteri (fun i v -> match v with Float x -> Float.Array.set f i x | _ -> ()) d;
-    of_float rows cols f
+    F f
   end
   else if Array.length d > 0 && Array.for_all (function Int _ -> true | _ -> false) d then
-    of_ints rows cols (Array.map (function Int i -> i | _ -> 0) d)
-  else Array { rows; cols; store = V d; a_owned = true; a_tip = true }
+    I (Array.map (function Int i -> i | _ -> 0) d)
+  else V d
+
+let of_vals rows cols d = Array { rows; cols; store = store_of d; a_owned = true; a_tip = true; dims = flat }
+
+let like (x : arr) store = Array { rows = x.rows; cols = x.cols; store; a_owned = true; a_tip = true; dims = x.dims }
+let vals_like x d = like x (store_of d)
+
+let shaped (sizes : int array) store =
+  let a rows cols dims = Array { rows; cols; store; a_owned = true; a_tip = true; dims } in
+  match sizes with
+  | [| n |] -> a 1 n flat
+  | [| r; c |] -> a r c flat
+  | _ -> a sizes.(0) (Array.fold_left ( * ) 1 (Array.sub sizes 1 (Array.length sizes - 1))) (Array.copy sizes)
+
+let ndims a = if Array.length a.dims = 0 then 2 else Array.length a.dims
+let sizes a = if Array.length a.dims = 0 then [| a.rows; a.cols |] else a.dims
+let cells ctx sizes = Array.fold_left (Runtime.cells ctx) 1 sizes
+
+(* The cell of these indexes, from 0, in an array of three dimensions or more, as many as its dimensions. *)
+let offset ctx a (ks : int array) =
+  let off = ref 0 and stride = ref 1 in
+  Array.iteri
+    (fun d k ->
+       let n = a.dims.(d) in
+       if k < 1 || k > n then Runtime.fail ctx Index (Messages.index_outside_nd ks a.dims);
+       off := !off + ((k - 1) * !stride);
+       stride := !stride * n)
+    ks;
+  !off
 
 let list values = if Array.length values = 0 then of_vals 0 0 values else of_vals 1 (Array.length values) values
 
@@ -84,7 +113,7 @@ let built b =
     | I d -> I (if Array.length d = n then d else Array.sub d 0 n)
     | V d -> V (if Array.length d = n then d else Array.sub d 0 n)
   in
-  Array { rows = 1; cols = n; store = cells; a_owned = true; a_tip = true }
+  Array { rows = 1; cols = n; store = cells; a_owned = true; a_tip = true; dims = [||] }
 
 let int_range ctx lo hi =
   let span = hi - lo in
@@ -130,7 +159,10 @@ let check1 ctx a i =
   let n = a.rows * a.cols in
   if i < 1 || i > n then Runtime.fail ctx Index (Messages.index_outside i n)
 
+let count ctx a = Runtime.fail ctx Index (Messages.index_count (ndims a))
+
 let check2 ctx a i j =
+  if Array.length a.dims > 0 then count ctx a;
   if i < 1 || i > a.rows || j < 1 || j > a.cols then
     Runtime.fail ctx Index (Messages.index_outside2 i j a.rows a.cols)
 
@@ -180,7 +212,7 @@ let pick ctx a (ks : int array) rows cols =
     let out = Array.make (Array.length ks) 0 in
     Par.ranges (Array.length ks) (fun lo hi -> for i = lo to hi - 1 do out.(i) <- d.(ks.(i)) done);
     of_ints rows cols out
-  | V d -> Array { rows; cols; store = V (Array.map (fun k -> Value.share d.(k)) ks); a_owned = true; a_tip = true }
+  | V d -> Array { rows; cols; store = V (Array.map (fun k -> Value.share d.(k)) ks); a_owned = true; a_tip = true; dims = flat }
 
 let not_array ctx v = Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
@@ -206,7 +238,7 @@ let read1 ctx v ix =
      | _ ->
        let ks = positions ctx (a.rows * a.cols) ix in
        let k = Array.length ks in
-       if a.cols = 1 && a.rows <> 1 then pick ctx a ks k 1 else pick ctx a ks 1 k)
+       if a.cols = 1 && a.rows <> 1 && Array.length a.dims = 0 then pick ctx a ks k 1 else pick ctx a ks 1 k)
   | _ -> not_array ctx v
 
 let read2 ctx v ix jx =
@@ -217,6 +249,7 @@ let read2 ctx v ix jx =
        check2 ctx a i j;
        Value.elt a (((j - 1) * a.rows) + i - 1)
      | _ ->
+       if Array.length a.dims > 0 then count ctx a;
        let rows = positions ctx a.rows ix and cols = positions ctx a.cols jx in
        let r = Array.length rows and c = Array.length cols in
        let ks = Array.make (r * c) 0 in
@@ -242,20 +275,36 @@ let store_elt ctx s a k x =
     vals.(k) <- x;
     a.store <- V vals
 
+(* The whole numbers of the indexes of an array of three dimensions or more, as many as its dimensions. *)
+let whole ctx a (ixs : ix array) =
+  if Array.length ixs <> ndims a then count ctx a;
+  Array.map
+    (function
+      | At i -> i
+      | Key k -> Runtime.fail ctx Type (Messages.index_type (Value.describe k))
+      | _ -> Runtime.fail ctx Index (Messages.index_slice_nd (ndims a)))
+    ixs
+
 let write ctx v (ixs : ix array) x =
   match v, ixs with
   | Array a, [| At i |] ->
     check1 ctx a i;
     store_elt ctx ctx.site a (i - 1) x
+  | Array a, _ when Array.length a.dims > 0 && Array.length ixs > 1 ->
+    store_elt ctx ctx.site a (offset ctx a (whole ctx a ixs)) x
   | Array a, [| At i; At j |] ->
     check2 ctx a i j;
     store_elt ctx ctx.site a (((j - 1) * a.rows) + i - 1) x
   | Array _, [| Key k |] -> Runtime.fail ctx Type (Messages.index_type (Value.describe k))
+  | Array a, _ when Array.length ixs > 2 -> count ctx a
   | Array _, _ -> Runtime.fail ctx Index Messages.index_write
   | _ -> not_array ctx v
 
 let read ctx v (ixs : ix array) =
-  match ixs with
-  | [| i |] -> read1 ctx v i
-  | [| i; j |] -> read2 ctx v i j
-  | _ -> Runtime.fail ctx Index Messages.index_count
+  match ixs, v with
+  | [| i |], _ -> read1 ctx v i
+  | [| i; j |], _ -> read2 ctx v i j
+  | _, Array a when Array.length a.dims > 0 -> Value.elt a (offset ctx a (whole ctx a ixs))
+  | _, Array a -> count ctx a
+  | _, Dict _ -> Runtime.fail ctx Index Messages.dict_index
+  | _ -> not_array ctx v

@@ -122,36 +122,49 @@ let dim ctx name v =
   | Float x when Float.is_integer x && x >= 0. && x < 4e18 -> int_of_float x
   | _ -> Runtime.fail ctx Type (Messages.bad_size name (Value.describe v))
 
-(* n, or rows and columns, starting at argument [at]. *)
-let dims ctx name (a : t array) at =
-  if Array.length a > at + 1 then dim ctx name a.(at), dim ctx name a.(at + 1) else 1, dim ctx name a.(at)
+(* The sizes from argument [at] on: one is a list of n. *)
+let sizes_of ctx name (a : t array) at = Array.init (Array.length a - at) (fun k -> dim ctx name a.(at + k))
 
-let filled ctx value rows cols =
-  let n = Runtime.cells ctx rows cols in
+let max_dims = 32
+
+let filled ctx value sizes =
+  let n = Arrays.cells ctx sizes in
   Runtime.pay ctx n;
-  match value with
-  | Float x -> Arrays.of_float rows cols (Runtime.alloc_float ctx n x)
-  | Int i when n > 0 -> Arrays.of_ints rows cols (Runtime.alloc_ints ctx n i)
-  | v -> Array { rows; cols; store = V (Runtime.alloc_vals ctx n (Value.share v)); a_owned = true; a_tip = true }
+  Arrays.shaped sizes
+    (match value with
+     | Float x -> F (Runtime.alloc_float ctx n x)
+     | Int i when n > 0 -> I (Runtime.alloc_ints ctx n i)
+     | v -> V (Runtime.alloc_vals ctx n (Value.share v)))
+
+(* A dimension of [x], from 1, given to [name]. *)
+let dim_of ctx name x v =
+  let n = Arrays.ndims x in
+  match v with
+  | Int d when d >= 1 && d <= n -> d
+  | Float f when Float.is_integer f && f >= 1. && f <= float_of_int n -> int_of_float f
+  | _ -> Runtime.fail ctx Index (Messages.dim_outside name n (Value.describe v))
 
 let size ctx (a : t array) =
-  let rows, cols = match a.(0) with Array x -> x.rows, x.cols | _ -> 1, 1 in
-  if Array.length a = 1 then Array { rows = 1; cols = 2; store = V [| Int rows; Int cols |]; a_owned = true; a_tip = true }
-  else
-    match a.(1) with
-    | Int 1 -> Int rows
-    | Int 2 -> Int cols
-    | v -> Runtime.fail ctx Index (Messages.size_dim (Value.describe v))
+  let x = match a.(0) with Array x -> x | _ -> { rows = 1; cols = 1; store = V [||]; a_owned = false; a_tip = false; dims = Arrays.flat } in
+  let sizes = Arrays.sizes x in
+  if Array.length a = 1 || a.(1) == Missing then
+    Array { rows = 1; cols = Array.length sizes; store = V (Array.map (fun n -> Int n) sizes); a_owned = true; a_tip = true; dims = Arrays.flat }
+  else Int sizes.(dim_of ctx "Size" x a.(1) - 1)
 
 let reshape ctx (a : t array) =
-  let rows = dim ctx "Reshape" a.(0) and cols = dim ctx "Reshape" a.(1) in
-  match a.(2) with
+  let sizes =
+    match a.(0) with
+    | Array s when s.rows * s.cols >= 1 -> Array.init (s.rows * s.cols) (fun k -> dim ctx "Reshape" (Value.elt s k))
+    | v -> Runtime.fail ctx Type (Messages.reshape_shape (Value.describe v))
+  in
+  if Array.length sizes > max_dims then Runtime.fail ctx Type (Messages.too_many_dims (Array.length sizes));
+  match a.(1) with
   | Array x ->
     let n = x.rows * x.cols in
-    if Runtime.cells ctx rows cols <> n then Runtime.fail ctx Type (Messages.reshape_size n rows cols);
+    if Arrays.cells ctx sizes <> n then Runtime.fail ctx Type (Messages.reshape_size n sizes);
     Runtime.pay ctx n;
-    (match Runtime.copy ctx a.(2) with
-     | Array y -> Array { rows; cols; store = y.store; a_owned = true; a_tip = true }
+    (match Runtime.copy ctx a.(1) with
+     | Array y -> Arrays.shaped sizes y.store
      | v -> v)
   | v -> Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
@@ -172,7 +185,7 @@ and elementwise ctx _name scalar v =
   match v with
   | Array x ->
     Runtime.build ctx (x.rows * x.cols);
-    Arrays.of_vals x.rows x.cols (Array.init (x.rows * x.cols) (fun k -> scalar ctx (Value.elt x k)))
+    Arrays.vals_like x (Array.init (x.rows * x.cols) (fun k -> scalar ctx (Value.elt x k)))
   | _ -> scalar ctx v
 
 (* A math function: float to float, element by element. *)
@@ -186,7 +199,7 @@ let math1 name f =
     | Missing -> Missing
     | Array ({ rows; cols; store = F _; _ } as x) ->
       Runtime.build ctx (rows * cols);
-      (match (Value.trim x).store with F d -> Arrays.of_float rows cols (Kernels.map1 f d) | _ -> v)
+      (match (Value.trim x).store with F d -> Arrays.like x (F (Kernels.map1 f d)) | _ -> v)
     | Array _ -> elementwise ctx name go v
     | _ -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
   in
@@ -228,9 +241,12 @@ let floats ctx name v =
         | x -> Runtime.fail ctx Type (Messages.need_number name (Value.describe x)))
   | _ -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
 
+(* Matmul and Transpose take two dimensions. *)
+let two ctx name (a : arr) = if Array.length a.dims > 0 then Runtime.fail ctx Type (Messages.two_dims name (Arrays.ndims a))
+
 let shape_of ctx name v =
   match v with
-  | Array a -> a.rows, a.cols
+  | Array a -> two ctx name a; a.rows, a.cols
   | _ -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
 
 let matmul ctx (a : t array) =
@@ -244,6 +260,7 @@ let matmul ctx (a : t array) =
 let transpose ctx (a : t array) =
   match a.(0) with
   | Array x ->
+    two ctx "Transpose" x;
     let n = x.rows * x.cols in
     Runtime.build ctx n;
     let at k = let j = k / x.rows and i = k mod x.rows in (i * x.cols) + j in
@@ -256,7 +273,7 @@ let transpose ctx (a : t array) =
      | V d ->
        let out = Array.make n Missing in
        if n > 0 then Array.iteri (fun k v -> out.(at k) <- Value.share v) d;
-       Array { rows = x.cols; cols = x.rows; store = V out; a_owned = true; a_tip = true })
+       Array { rows = x.cols; cols = x.rows; store = V out; a_owned = true; a_tip = true; dims = [||] })
   | v -> v
 
 let sum ctx v =
@@ -284,6 +301,52 @@ let mean ctx v =
   | Array x when x.rows * x.cols = 0 -> Float nan
   | Array x -> Arith.div ctx (sum ctx v) (Int (x.rows * x.cols))
   | _ -> v
+
+(* Sums along dimension [d]: the result has the other dimensions. A cell of it adds [len] cells of [x], each [inner] after
+   the one before, in order, so that the rounding doesn't depend on the cores. *)
+let sum_along ctx name v d =
+  let x = (match v with Array x -> Value.trim x | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))) in
+  let sizes = Arrays.sizes x in
+  let k = dim_of ctx name x d - 1 in
+  let inner = Array.fold_left ( * ) 1 (Array.sub sizes 0 k) and len = sizes.(k) in
+  let outer = Array.fold_left ( * ) 1 (Array.sub sizes (k + 1) (Array.length sizes - k - 1)) in
+  let rest = Array.append (Array.sub sizes 0 k) (Array.sub sizes (k + 1) (Array.length sizes - k - 1)) in
+  let cells = inner * outer in
+  Runtime.pay ctx (x.rows * x.cols);
+  Runtime.build ctx cells;
+  let store =
+    match x.store with
+    | F d -> F (Kernels.sum_along ~inner ~len ~outer d)
+    | I d ->
+      (match Kernels.sum_along_ints ~inner ~len ~outer d with
+       | Some s -> I s
+       | None ->
+         (* An overflow: the cell by cell sum meets it and raises its error. *)
+         for o = 0 to cells - 1 do
+           let acc = ref 0 and at = (o mod inner) + (o / inner * inner * len) in
+           for b = 0 to len - 1 do acc := Arith.add_int ctx !acc d.(at + (b * inner)) done
+         done;
+         I [||])
+    | V _ ->
+      let out = Array.make cells (Int 0) in
+      for o = 0 to cells - 1 do
+        let at = (o mod inner) + (o / inner * inner * len) in
+        for b = 0 to len - 1 do out.(o) <- Arith.add ctx out.(o) (Value.elt x (at + (b * inner))) done
+      done;
+      Arrays.store_of out
+  in
+  Arrays.shaped rest store, len
+
+let sum_of ctx (a : t array) = if Array.length a = 1 || a.(1) == Missing then sum ctx a.(0) else fst (sum_along ctx "Sum" a.(0) a.(1))
+
+let mean_of ctx (a : t array) =
+  if Array.length a = 1 || a.(1) == Missing then mean ctx a.(0)
+  else
+    match sum_along ctx "Mean" a.(0) a.(1) with
+    | Array ({ store = F d; _ } as s), len -> Arrays.like s (F (Kernels.right Kernels.Div d (float_of_int len)))
+    | Array s, len ->
+      Arrays.vals_like s (Array.init (s.rows * s.cols) (fun k -> Arith.div ctx (Value.elt s k) (Int len)))
+    | v, _ -> v
 
 (* min and max: the whole array with one argument, element by element with two. *)
 let best name better ctx (a : t array) =
@@ -377,7 +440,7 @@ let split ctx (a : t array) =
   let sep = non_empty ctx "Split" (text_arg ctx "Split" a.(0)) and s = text_arg ctx "Split" a.(1) in
   Runtime.build ctx ((String.length s / 8) + 1);
   let items = Array.of_list (List.map (fun p -> Text p) (pieces s sep)) in
-  Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true }
+  Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true; dims = [||] }
 
 let join ctx (a : t array) =
   let sep = text_arg ctx "Join" a.(0) in
@@ -580,7 +643,7 @@ let packages =
     [ "Text", nat "Text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
       is_ "IsDict" (function Dict _ -> true | _ -> false);
       "Equal", nat "Equal" 2 2 (fun ctx a -> Value.of_bool (Value.equal ctx a.(0) a.(1)));
-      "Size", nat "Size" 1 2 size;
+      "Size", nat ~params:[| "x"; "dim" |] "Size" 1 2 size;
       is_ "IsInt" (function Int _ -> true | _ -> false);
       is_ "IsFloat" (function Float _ -> true | _ -> false);
       is_ "IsNumber" (function Int _ | Float _ -> true | _ -> false);
@@ -612,9 +675,9 @@ let packages =
       "Pi", Float (4. *. atan 1.);
       "Nan", Float nan ];
     "matrix",
-    [ "Zeros", nat ~ret:fa_size "Zeros" 1 2 (fun ctx a -> let r, c = dims ctx "Zeros" a 0 in filled ctx (Float 0.) r c);
-      "Ones", nat ~ret:fa_size "Ones" 1 2 (fun ctx a -> let r, c = dims ctx "Ones" a 0 in filled ctx (Float 1.) r c);
-      "Reshape", nat "Reshape" 3 3 reshape;
+    [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
+      "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));
+      "Reshape", nat "Reshape" 2 2 reshape;
       "Matmul", nat ~ret:fa_size "Matmul" 2 2 matmul;
       "Transpose", nat ~ret:same_fa "Transpose" 1 1 transpose ];
     "list",
@@ -626,9 +689,9 @@ let packages =
             acc := Dict.put ctx "merge" o.(2 * i) (Value.share o.((2 * i) + 1)) !acc
           done;
           !acc);
-      "Fill", nat "Fill" 2 3 (fun ctx a -> let r, c = dims ctx "Fill" a 1 in filled ctx a.(0) r c);
-      "Sum", nat ~ret:scalar_of_fa "Sum" 1 1 (fun ctx a -> sum ctx a.(0));
-      "Mean", nat ~ret:scalar_of_fa "Mean" 1 1 (fun ctx a -> mean ctx a.(0));
+      "Fill", nat "Fill" 2 (max_dims + 1) (fun ctx a -> filled ctx a.(0) (sizes_of ctx "Fill" a 1));
+      "Sum", nat ~params:[| "xs"; "dim" |] ~ret:scalar_of_fa "Sum" 1 2 sum_of;
+      "Mean", nat ~params:[| "xs"; "dim" |] ~ret:scalar_of_fa "Mean" 1 2 mean_of;
       "Min", nat ~ret:scalar_of_fa "Min" 1 2 (best "Min" Arith.lt);
       "Max", nat ~ret:scalar_of_fa "Max" 1 2 (best "Max" Arith.gt);
       "Any", nat "Any" 1 1 (mask_all "Any" true);

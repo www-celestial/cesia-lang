@@ -39,7 +39,7 @@ isMatmul() = near(matrix.Matmul(big, big), slowMatmul(big, big))
 defn isSolve()
   b = [1.0 * k for k in 1..40]
   x = result.Unwrap(num.Solve(big, b))
-  near(matrix.Matmul(big, matrix.Reshape(40, 1, x)), matrix.Reshape(40, 1, b))
+  near(matrix.Matmul(big, matrix.Reshape([40, 1], x)), matrix.Reshape([40, 1], b))
 end
 
 defn isSolveSingular()

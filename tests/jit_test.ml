@@ -254,7 +254,7 @@ let run ?(fuel = max_int / 4) ?(until = max_int / 4) ?(entry = 0) (ver : version
   let status = Jit.call f ints floats vals io in
   status, io
 
-let float_array xs = Array { rows = 1; cols = Array.length xs; store = F (Float.Array.of_list (Array.to_list xs)); a_owned = true; a_tip = true }
+let float_array xs = Array { rows = 1; cols = Array.length xs; store = F (Float.Array.of_list (Array.to_list xs)); a_owned = true; a_tip = true; dims = [||] }
 
 let () =
   check "Array is the block of tag 3, F of tag 0, as the native code reads them"
@@ -300,7 +300,7 @@ let () =
   let st, io = run ver f (stacks ()) [| xs; ys; Int 6 |] in
   check "dot outside the array" (st = Ir.error && io.(Ir.io_code) = Ir.err_read && io.(Ir.io_a) = 6 && io.(Ir.io_b) = ver.map.(0));
   check "the error's site is a site" (io.(Ir.io_point) >= 0 && io.(Ir.io_point) < Dynarray.length world.sites);
-  let ints_store = Array { rows = 1; cols = 2; store = I [| 1; 2 |]; a_owned = true; a_tip = true } in
+  let ints_store = Array { rows = 1; cols = 2; store = I [| 1; 2 |]; a_owned = true; a_tip = true; dims = [||] } in
   let st, _ = run ver f (stacks ()) [| ints_store; ys; Int 2 |] in
   check "an array of ints falls back" (st = Ir.fallback);
   (* scale: float arrays written, owned only *)

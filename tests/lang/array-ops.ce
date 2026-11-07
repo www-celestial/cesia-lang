@@ -10,7 +10,7 @@ isCountMask() = list.Sum([1, 2, 3] > 1) == 2
 isMaskMissing() = list.Any([missing, true]) and not list.All([missing, true])
 isMatmul() = value.Equal(matrix.Matmul([1 2; 3 4], [1; 1]), [3.0; 7.0])
 isTranspose() = value.Equal(matrix.Transpose([1, 2]), [1; 2])
-isReshape() = value.Equal(matrix.Reshape(2, 2, [1, 2, 3, 4]), [1 3; 2 4])
+isReshape() = value.Equal(matrix.Reshape([2, 2], [1, 2, 3, 4]), [1 3; 2 4])
 isSqrtArray() = value.Equal(math.Sqrt([4.0, 9.0]), [2.0, 3.0])
 isMinOne() = list.Min([3, 1, 2]) == 1
 isMaxTwo() = value.Equal(list.Max([1, 5], [4, 2]), [4, 5])

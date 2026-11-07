@@ -30,7 +30,7 @@ use std/value
     Texts: split, join, search, slice and change them, by characters or by bytes. Positions count from 1. *)
 
 (** matrix
-    Matrices of floats: build them, reshape them, transpose and multiply them. *)
+    Matrices and arrays of more dimensions, of floats: build them, reshape them, transpose and multiply matrices. *)
 
 (** sys
     Files, folders, processes, the environment and the clock: what a program touches outside itself. Each function says the
@@ -157,49 +157,60 @@ use std/value
       value.Len("héllo") --> 5 *)
 
 (** value.Size(x, dim = missing)
-    The rows and columns of an array as [rows, cols], or only the rows (1) or the columns (2). A list has one row.
+    The size of each dimension of an array, as a list: [rows, cols] for a list or a matrix, and one more size for each
+    dimension past two. With dim, the size of that dimension only. A list has one row.
 
-      value.Size([1, 2, 3], 2) --> 3 *)
+      value.Size([1, 2, 3], 2) --> 3
+      value.Size(matrix.Zeros(2, 3, 4)) --> [2, 3, 4] *)
 
-(** matrix.Reshape(rows, cols, xs)
-    The same elements, filled column by column into a new shape. The count must stay the same.
+(** matrix.Reshape(shape, xs)
+    The same elements, filled column by column into a new shape, a list of sizes: [rows, cols], or more for an array of
+    more dimensions. The count must stay the same.
 
-      value.Size(matrix.Reshape(2, 2, [1, 2, 3, 4])) --> [2, 2] *)
+      value.Size(matrix.Reshape([2, 2], [1, 2, 3, 4])) --> [2, 2]
+      value.Text(matrix.Reshape([2, 2, 2], 1..8)) --> "[1 3; 2 4;;; 5 7; 6 8]" *)
 
-(** matrix.Zeros(rows, cols = missing)
-    An array of 0.0: a list of n with one argument, rows by columns with two.
+(** matrix.Zeros(size, ...)
+    An array of 0.0: a list of n with one size, rows by columns with two, and one more dimension for each size past them.
 
-      matrix.Zeros(2) --> [0.0, 0.0] *)
+      matrix.Zeros(2) --> [0.0, 0.0]
+      value.Size(matrix.Zeros(2, 3, 4)) --> [2, 3, 4] *)
 
-(** matrix.Ones(rows, cols = missing)
-    An array of 1.0: a list of n with one argument, rows by columns with two.
+(** matrix.Ones(size, ...)
+    An array of 1.0: a list of n with one size, rows by columns with two, and one more dimension for each size past them.
 
       matrix.Ones(2) --> [1.0, 1.0] *)
 
-(** list.Fill(value, rows, cols = missing)
-    An array where every element is the value: a list of n with one size, rows by columns with two.
+(** list.Fill(value, size, ...)
+    An array where every element is the value: a list of n with one size, rows by columns with two, and one more dimension
+    for each size past them.
 
       list.Fill("a", 2) --> ["a", "a"] *)
 
 (** matrix.Matmul(a, b)
-    The matrix product of two arrays, as floats. The columns of a must match the rows of b.
+    The matrix product of two arrays of two dimensions, as floats. The columns of a must match the rows of b.
 
       matrix.Matmul(matrix.Ones(1, 2), matrix.Ones(2, 1))[1] --> 2.0 *)
 
 (** matrix.Transpose(m)
-    The array with rows and columns swapped.
+    The array of two dimensions with rows and columns swapped.
 
       value.Size(matrix.Transpose([1, 2, 3])) --> [3, 1] *)
 
-(** list.Sum(xs)
-    The sum of the elements of an array.
+(** list.Sum(xs, dim = missing)
+    The sum of the elements of an array. With dim, the sums along that dimension, which the result no longer has: a list
+    of the sum of each column of a matrix with dim = 1, of each row with dim = 2.
 
-      list.Sum([1, 2, 3]) --> 6 *)
+      list.Sum([1, 2, 3]) --> 6
+      list.Sum([1 2; 3 4], dim = 1) --> [4, 6]
+      list.Sum([1 2; 3 4], dim = 2) --> [3, 7] *)
 
-(** list.Mean(xs)
-    The mean of the elements of an array, which is nan if it is empty.
+(** list.Mean(xs, dim = missing)
+    The mean of the elements of an array, which is nan if it is empty. With dim, the means along that dimension, as
+    list.Sum gives the sums.
 
-      list.Mean([1, 2, 3]) --> 2 *)
+      list.Mean([1, 2, 3]) --> 2
+      list.Mean([1 2; 3 4], dim = 1) --> [2.0, 3.0] *)
 
 (** list.Min(xs)
     The smallest element of an array, or with two arguments list.Min(a, b), the smaller of each pair. A missing value gives missing.

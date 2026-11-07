@@ -28,9 +28,9 @@ let push ctx x a =
     Runtime.pay ctx 1;
     a.a_tip <- false;
     a.a_owned <- false;
-    Array { rows = 1; cols = n + 1; store = a.store; a_owned = false; a_tip = true }
+    Array { rows = 1; cols = n + 1; store = a.store; a_owned = false; a_tip = true; dims = [||] }
   in
-  let grown store = Array { rows = 1; cols = n + 1; store; a_owned = true; a_tip = true } in
+  let grown store = Array { rows = 1; cols = n + 1; store; a_owned = true; a_tip = true; dims = [||] } in
   let room = max 8 (2 * n) in
   match a.store, x with
   | _ when a.rows <> 1 ->

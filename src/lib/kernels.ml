@@ -142,6 +142,46 @@ let sum x =
       done);
   Float.Array.fold_left ( +. ) 0. totals
 
+(* For each cell of the result, from 0 to [inner * outer], the sum of the [len] cells of [x] at [inner] from each other,
+   in order: a sum along a dimension, with [inner] cells before it and [outer] after. *)
+let along ~inner ~len ~outer f =
+  Par.ranges ~grain:(max 1 ((1 lsl 17) / max 1 len)) (inner * outer) (fun lo hi ->
+      let c = ref (lo / inner) in
+      while !c * inner < hi do
+        let first = !c * inner in
+        f ~dst:first ~src:(first * len) ~lo:(max lo first - first) ~hi:(min hi (first + inner) - first);
+        incr c
+      done)
+
+let sum_along ~inner ~len ~outer x =
+  let out = Float.Array.make (inner * outer) 0. in
+  if inner > 0 then
+    along ~inner ~len ~outer (fun ~dst ~src ~lo ~hi ->
+        for b = 0 to len - 1 do
+          let at = src + (b * inner) in
+          for a = lo to hi - 1 do
+            Float.Array.set out (dst + a) (Float.Array.get out (dst + a) +. Float.Array.get x (at + a))
+          done
+        done);
+  out
+
+let sum_along_ints ~inner ~len ~outer (x : int array) =
+  let out = Array.make (inner * outer) 0 and ok = Atomic.make true in
+  if inner > 0 then
+    along ~inner ~len ~outer (fun ~dst ~src ~lo ~hi ->
+        let bad = ref 0 in
+        for b = 0 to len - 1 do
+          let at = src + (b * inner) in
+          for a = lo to hi - 1 do
+            let p = out.(dst + a) and q = x.(at + a) in
+            let s = p + q in
+            out.(dst + a) <- s;
+            bad := !bad lor ((p lxor s) land (q lxor s))
+          done
+        done;
+        if !bad < 0 then Atomic.set ok false);
+  if Atomic.get ok then Some out else None
+
 let fast_matmul = ref (fun ~rows:_ ~cols:_ ~inner:_ ~out:_ _ _ -> false)
 
 (* The grain of a loop over columns of this many cells each. *)

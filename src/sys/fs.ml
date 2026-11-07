@@ -84,7 +84,7 @@ let list_dir path =
         | exception End_of_file -> acc
       in
       let names = Array.of_list (List.sort compare (go [])) in
-      Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true; a_tip = true })
+      Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true; a_tip = true; dims = [||] })
 
 (* Depth first, the names of each folder sorted: what isn't a folder is listed, a link too, never followed, so that no walk
    loops. The paths start with the folder, but for ".": a.txt, not ./a.txt. *)
@@ -109,7 +109,7 @@ let paths ?(skip = fun _ _ -> false) path =
 
 let walk path =
   let paths = Array.of_list (List.map (fun p -> Text p) (paths path)) in
-  Array { rows = 1; cols = Array.length paths; store = V paths; a_owned = true; a_tip = true }
+  Array { rows = 1; cols = Array.length paths; store = V paths; a_owned = true; a_tip = true; dims = [||] }
 
 (* A folder and all it holds; a link goes, never what it points to. Errors are ignored: what stays, stays. *)
 let rec remove_tree path =

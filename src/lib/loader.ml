@@ -687,7 +687,7 @@ let std_packages () =
        | None -> acc @ [ name, natives ])
     [] groups
 
-let no_args = Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true }
+let no_args = Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true; dims = [||] }
 
 (* The arguments of the program, sys.Args. *)
 let set_args_value w value =
@@ -818,7 +818,7 @@ let watched w =
 
 let set_args w (args : string list) =
   let items = Array.of_list (List.map (fun a -> Text a) args) in
-  set_args_value w (Array { rows = 1; cols = Array.length items; store = V items; a_owned = false; a_tip = true })
+  set_args_value w (Array { rows = 1; cols = Array.length items; store = V items; a_owned = false; a_tip = true; dims = [||] })
 
 (* A site keeps the source of its compilation: the file may have changed since. *)
 let report_site ?above ctx ~text ~hint at =

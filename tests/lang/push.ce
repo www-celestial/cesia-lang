@@ -100,7 +100,7 @@ isFor() = list.Reduce((a, x) -> a + 1, 0, pushed(9, [])) == 9
 isTranspose() = value.Len(matrix.Transpose(floats(9))) == 10
 isTransposeTexts() = value.Len(matrix.Transpose(texts(9))) == 10
 isTransposeInts() = value.Len(matrix.Transpose(pushed(9, []))) == 9
-isReshape() = same(value.Size(matrix.Reshape(2, 5, floats(9))), [2, 5])
+isReshape() = same(value.Size(matrix.Reshape([2, 5], floats(9))), [2, 5])
 isSlice() = same(pushed(9, [])[2..3], [4, 6])
 isIn() = not (0 in pushed(9, []))
 isTextList() = text.Join(",", texts(1)) == "a,b"

@@ -86,7 +86,7 @@ let ints (v : t) =
   | Array a -> Some (Array.init (a.rows * a.cols) (fun k -> match Value.elt a k with Int i -> i | _ -> 0))
   | _ -> None
 
-let int_array xs = Array { rows = 1; cols = Array.length xs; store = I xs; a_owned = false; a_tip = true }
+let int_array xs = Array { rows = 1; cols = Array.length xs; store = I xs; a_owned = false; a_tip = true; dims = [||] }
 
 let only_in_tests ctx = if not st.active then Runtime.fail ctx User Messages.test_only
 
@@ -287,7 +287,7 @@ let fields ctx (a : t array) =
           Trie.record field_keys [| Text p.pname; ty p; Value.of_bool (match p.ptype with Some t -> t.topt | None -> false) |])
         proto.func.params
     in
-    Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true }
+    Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true; dims = [||] }
   | v -> Runtime.fail ctx Type (Messages.need_struct "gen.Of" (Value.describe v))
 
 let make ctx (a : t array) =

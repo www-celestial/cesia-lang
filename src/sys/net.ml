@@ -356,7 +356,7 @@ let segments ctx (a : Types.t array) =
   Runtime.build ctx ((String.length path / 8) + 1);
   let parts = List.filter (fun p -> p <> "") (String.split_on_char '/' path) in
   let items = Array.of_list (List.map (fun p -> Types.Text p) parts) in
-  Types.Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true }
+  Types.Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true; dims = [||] }
 
 (* Small names: only the files of std/http see them, which keep the deadlines of the connections they serve. *)
 let http_natives n =

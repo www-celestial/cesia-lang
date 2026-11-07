@@ -55,6 +55,9 @@ let[@inline] elt a k =
   | I d -> Int d.(k)
   | V d -> d.(k)
 
+(* The same sizes: a matrix of 2 by 12 isn't an array of 2 by 3 by 4. *)
+let same_shape x y = x.rows = y.rows && x.cols = y.cols && (x.dims == y.dims || x.dims = y.dims)
+
 (* The free cells behind a list stay behind: this is for code that reads a store as a whole. *)
 let trim a =
   let n = a.rows * a.cols in
@@ -147,15 +150,41 @@ and show_array ctx depth a =
   let cell k = show_at ctx (depth + 1) (elt a k) in
   let n = a.rows * a.cols in
   pay ctx n;
+  let numeric () = match (trim a).store with F _ | I _ -> true | V d -> Array.for_all is_number d in
   if n = 0 then "[]"
+  else if Array.length a.dims > 0 then show_slices cell a (if numeric () then " " else ", ")
   else if a.rows = 1 then "[" ^ String.concat ", " (List.init n cell) ^ "]"
   else if a.cols = 1 then "[" ^ String.concat "; " (List.init n cell) ^ "]"
   else begin
-    let numeric = match (trim a).store with F _ | I _ -> true | V d -> Array.for_all is_number d in
-    let sep = if numeric then " " else ", " in
+    let sep = if numeric () then " " else ", " in
     let row i = String.concat sep (List.init a.cols (fun j -> cell ((j * a.rows) + i))) in
     "[" ^ String.concat "; " (List.init a.rows row) ^ "]"
   end
+
+(* Three dimensions or more: each matrix of the first two, as a matrix shows, then ;;; before the next along the third,
+   ;;;; along the fourth, and so on, as Julia writes them: [1 3; 2 4;;; 5 7; 6 8] is 2 by 2 by 2. *)
+and show_slices cell a sep =
+  let r = a.dims.(0) and c = a.dims.(1) in
+  let slices = (a.rows * a.cols) / (r * c) in
+  let b = Buffer.create 64 in
+  Buffer.add_char b '[';
+  for s = 0 to slices - 1 do
+    if s > 0 then begin
+      (* One more ; for each dimension past the second that starts again here. *)
+      let rec semis d step = if d < Array.length a.dims - 1 && s mod (step * a.dims.(d)) = 0 then semis (d + 1) (step * a.dims.(d)) else d in
+      Buffer.add_string b (String.make (semis 2 1 + 1) ';');
+      Buffer.add_char b ' '
+    end;
+    for i = 0 to r - 1 do
+      if i > 0 then Buffer.add_string b "; ";
+      for j = 0 to c - 1 do
+        if j > 0 then Buffer.add_string b sep;
+        Buffer.add_string b (cell ((s * r * c) + (j * r) + i))
+      done
+    done
+  done;
+  Buffer.add_char b ']';
+  Buffer.contents b
 
 let text_of ctx v = match v with Text s -> s | _ -> show ctx v
 
@@ -198,7 +227,7 @@ and equal_at ctx depth a b =
   match a, b with
   | Array x, Array y ->
     (x.rows * x.cols = 0 && y.rows * y.cols = 0)
-    || x.rows = y.rows && x.cols = y.cols
+    || same_shape x y
     && begin
       let n = x.rows * x.cols in
       pay ctx n;

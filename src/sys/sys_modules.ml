@@ -54,7 +54,7 @@ let local_clock ctx (a : t array) =
       (match Unix.gmtime seconds with t -> t | exception Unix.Unix_error _ -> Runtime.fail ctx Math (Messages.date_outside seconds))
   in
   let parts = [| t.tm_year + 1900; t.tm_mon + 1; t.tm_mday; t.tm_hour; t.tm_min; t.tm_sec |] in
-  Array { rows = 1; cols = 6; store = I parts; a_owned = true; a_tip = true }
+  Array { rows = 1; cols = 6; store = I parts; a_owned = true; a_tip = true; dims = [||] }
 
 (* std/debug's engine, which runs code in the program: the names here, the code in the plugin cesia_debug.cmxs, loaded at
    the first call of one of them or at the first condition of a breakpoint, so that a program run without --repl or

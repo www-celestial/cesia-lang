@@ -54,8 +54,11 @@ and task = { mutable result : t option; mutable waiters : (unit -> unit) list; i
 
 (** A list that Append made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its
     cells through [rows] and [cols], and call [Value.trim] before reading a store as a whole. [a_tip]: no push went on from
-    this array yet, so the free cells are still free. *)
-and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool; mutable a_tip : bool }
+    this array yet, so the free cells are still free. [dims]: [||] for an array of one or two dimensions, whose sizes are
+    [rows] and [cols]; for three or more, the size of each, never changed, with [rows] the first and [cols] the product of
+    the others, so that [rows * cols] is always the count of cells. The cells are column by column: the first index moves
+    fastest. *)
+and arr = { rows : int; cols : int; mutable store : store; mutable a_owned : bool; mutable a_tip : bool; dims : int array }
 and store = F of floatarray | V of t array | I of int array
 
 and shape = {

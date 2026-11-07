@@ -526,8 +526,7 @@ let rec field_slow ctx pm v name =
      | x -> Value.share x)
   | Array a ->
     Runtime.build ctx (a.rows * a.cols);
-    Arrays.of_vals a.rows a.cols
-      (Array.init (a.rows * a.cols) (fun k -> Value.share (field_slow ctx pm (Value.elt a k) name)))
+    Arrays.vals_like a (Array.init (a.rows * a.cols) (fun k -> Value.share (field_slow ctx pm (Value.elt a k) name)))
   | _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name)
 
 (* [Rkey]: an index by a text written in the code, m["City"], which keeps a map flat as m.City does. *)
@@ -1329,7 +1328,52 @@ and index_read c e b ixs uses_end =
           let j = d ctx in
           ctx.site <- s;
           Arrays.read2 ctx x i j
-      | _ -> raise_at s Index Messages.index_count)
+      | _ when (not uses_end) && whole_indexes c ixs ->
+        let at = nd_cell c ixs in
+        fun ctx ->
+          let x = base ctx in
+          (match at ctx x with
+           | Ok k -> (match x with Array a -> Value.elt a k | _ -> Undef)
+           | Error ks ->
+             ctx.site <- s;
+             Arrays.read ctx x (Array.map (fun k -> Arrays.At k) ks))
+      | _ ->
+        fun ctx ->
+          let x = base ctx in
+          keep ctx x;
+          let ixs = Array.map (fun a -> a ctx) args in
+          ctx.site <- s;
+          Arrays.read ctx x ixs)
+
+(* Indexes that are all integers, at least three. *)
+and whole_indexes c ixs = Array.length ixs >= 3 && Array.for_all (function Ix i -> ty c i == TI | All -> false) ixs
+
+(* The cell, from 0, at these integer indexes in an array of as many dimensions, or the indexes when it isn't one or one
+   of them is outside: the slow path raises the error. Three indexes, the most common, allocate nothing. *)
+and nd_cell c ixs : ctx -> t -> (int, int array) result =
+  match Array.map (function Ix i -> ci c i | All -> assert false) ixs with
+  | [| fi; fj; fk |] ->
+    fun ctx x ->
+      let p = fi ctx in
+      let q = fj ctx in
+      let r = fk ctx in
+      (match x with
+       | Array { dims = [| n1; n2; n3 |]; _ } when p >= 1 && p <= n1 && q >= 1 && q <= n2 && r >= 1 && r <= n3 ->
+         Ok (((((r - 1) * n2) + q - 1) * n1) + p - 1)
+       | _ -> Error [| p; q; r |])
+  | fs ->
+    fun ctx x ->
+      let ks = Array.map (fun f -> f ctx) fs in
+      let n = Array.length ks in
+      (match x with
+       | Array { dims; _ } when Array.length dims = n ->
+         let rec go d off stride =
+           if d = n then Ok off
+           else if ks.(d) >= 1 && ks.(d) <= dims.(d) then go (d + 1) (off + ((ks.(d) - 1) * stride)) (stride * dims.(d))
+           else Error ks
+         in
+         go 0 0 1
+       | _ -> Error ks)
 
 (* e?: the value of an Ok, or an early return of the Err. *)
 and question c e a =
@@ -1572,7 +1616,8 @@ and end_index c =
   | (slot, d, n) :: _ ->
     fun ctx ->
       (match ctx.v.(ctx.b + slot) with
-       | Array a -> Int (if n = 1 then a.rows * a.cols else if d = 0 then a.rows else a.cols)
+       | Array a when n = 1 -> Int (a.rows * a.cols)
+       | Array a -> Int (let sizes = Arrays.sizes a in if d < Array.length sizes then sizes.(d) else 1)
        | _ -> Int 1)
 
 and unset_error ctx s text =
@@ -2270,6 +2315,15 @@ and cff c (e : expr) : ctx -> float =
   | Return { tail = true; rvalue = Some v } -> cf c v
   | Index (b, [| Ix i |], false) -> fa_read1 c e b i
   | Index (b, [| Ix i; Ix j |], false) -> fa_read2 c e b i j
+  | Index (b, ixs, false) when whole_indexes c ixs ->
+    let base = cv c b and at = nd_cell c ixs and s = site c e.pos in
+    fun ctx ->
+      let x = base ctx in
+      (match at ctx x with
+       | Ok k -> (match x with Array { store = F d; _ } -> Float.Array.get d k | Array a -> to_f ctx (Value.elt a k) | _ -> nan)
+       | Error ks ->
+         ctx.site <- s;
+         to_f ctx (Arrays.read ctx x (Array.map (fun k -> Arrays.At k) ks)))
   | Call ({ callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; args = [| a |]; _ })
     when (match c.w.modules.(m).cells.(k) with Native { f1 = Some _; _ } -> true | _ -> false) ->
     let f = (match c.w.modules.(m).cells.(k) with Native { f1 = Some f; _ } -> f | _ -> assert false) in
@@ -2351,7 +2405,7 @@ and fa_read2 c e b i j =
     let p = ix ctx in
     let q = jx ctx in
     match x with
-    | Array { store = F d; rows; cols; _ } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
+    | Array { store = F d; rows; cols; dims = [||]; _ } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
       Float.Array.get d (((q - 1) * rows) + p - 1)
     | _ ->
       ctx.site <- s;
@@ -2649,6 +2703,7 @@ and set_path c e root path value =
   | [| { sp; sk = Sindex ([| Ix i |], false) } |] when fa && ty c i == TI -> fa_write1 c root sp i value
   | [| { sp; sk = Sindex ([| Ix i; Ix j |], false) } |] when fa && ty c i == TI && ty c j == TI ->
     fa_write2 c root sp i j value
+  | [| { sp; sk = Sindex (ixs, false) } |] when fa && whole_indexes c ixs -> fa_writen c root sp ixs value
   | [| { sp; sk = Sindex ([| Ix ({ e = (Var _ | Lint _ | Bin _); _ } as ix) |], false) } |] -> set_elt c e root sp ix value
   | [| { sp; sk = Sfield name } |] -> set_name c root sp name value ~key:false
   | [| { sp; sk = Sindex ([| Ix { e = Ltext name; _ } |], false) } |] -> set_name c root sp name value ~key:true
@@ -2680,11 +2735,33 @@ and fa_write2 c root sp i j value =
     let q = jx ctx in
     let y = v ctx in
     match ctx.v.(ctx.b + k) with
-    | Array { store = F d; a_owned = true; rows; cols; _ } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
+    | Array { store = F d; a_owned = true; rows; cols; dims = [||]; _ } when p >= 1 && p <= rows && q >= 1 && q <= cols ->
       Float.Array.set d (((q - 1) * rows) + p - 1) y
     | x ->
       ctx.site <- s;
       write_root ctx pm set x (Rindex [| Arrays.At p; Arrays.At q |]) (Float y)
+
+(* x[i, j, k] = f on an owned FA array of as many dimensions. *)
+and fa_writen c root sp ixs value =
+  let pm = c.ver.owner.pm in
+  let at = nd_cell c ixs and v = cf c value and s = site c sp in
+  let k = (match root.b with Local r -> c.map.(r) | _ -> assert false) in
+  let set = setter c root in
+  fun ctx ->
+    let x = ctx.v.(ctx.b + k) in
+    let cell = at ctx x in
+    let y = v ctx in
+    match ctx.v.(ctx.b + k), cell with
+    | Array { store = F d; a_owned = true; _ }, Ok p -> Float.Array.set d p y
+    | x, _ ->
+      let ks = (match cell, x with Error ks, _ -> ks | Ok p, Array a -> cell_indexes a p | Ok _, _ -> [||]) in
+      ctx.site <- s;
+      write_root ctx pm set x (Rindex (Array.map (fun k -> Arrays.At k) ks)) (Float y)
+
+(* The indexes, from 1, of cell [p] of an array of three dimensions or more. *)
+and cell_indexes (a : arr) p =
+  let rest = ref p in
+  Array.map (fun n -> let i = (!rest mod n) + 1 in rest := !rest / n; i) a.dims
 
 (* x[i] = y in an owned array: no index allocation. *)
 and set_elt c e root sp ix value =

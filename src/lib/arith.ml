@@ -39,30 +39,28 @@ let broadcast ctx scalar a b =
   let size r c = Runtime.build ctx (r * c) in
   match a, b with
   | Array x, Array y ->
-    if x.rows <> y.rows || x.cols <> y.cols then
-      Runtime.fail ctx Type (Messages.shape x.rows x.cols y.rows y.cols);
+    if not (Value.same_shape x y) then Runtime.fail ctx Type (Messages.shape (Arrays.sizes x) (Arrays.sizes y));
     size x.rows x.cols;
-    Arrays.of_vals x.rows x.cols
-      (Array.init (x.rows * x.cols) (fun k -> scalar ctx (Value.elt x k) (Value.elt y k)))
+    Arrays.vals_like x (Array.init (x.rows * x.cols) (fun k -> scalar ctx (Value.elt x k) (Value.elt y k)))
   | Array x, _ ->
     size x.rows x.cols;
-    Arrays.of_vals x.rows x.cols (Array.init (x.rows * x.cols) (fun k -> scalar ctx (Value.elt x k) b))
+    Arrays.vals_like x (Array.init (x.rows * x.cols) (fun k -> scalar ctx (Value.elt x k) b))
   | _, Array y ->
     size y.rows y.cols;
-    Arrays.of_vals y.rows y.cols (Array.init (y.rows * y.cols) (fun k -> scalar ctx a (Value.elt y k)))
+    Arrays.vals_like y (Array.init (y.rows * y.cols) (fun k -> scalar ctx a (Value.elt y k)))
   | _ -> scalar ctx a b
 
 let trim v = match v with Array x -> ignore (Value.trim x) | _ -> ()
 
-(* The shape of an operation between typed stores, or a typed store and a number; 0 by 0 for anything else, which goes
-   cell by cell as before. *)
+let no_shape = { rows = 0; cols = 0; store = V [||]; a_owned = false; a_tip = false; dims = Arrays.flat }
+
+(* The array whose shape an operation between typed stores, or a typed store and a number, takes; one of 0 cells for
+   anything else, which goes cell by cell as before. *)
 let typed a b =
   match a, b with
-  | Array ({ store = I _ | F _; _ } as x), Array ({ store = I _ | F _; _ } as y) when x.rows = y.rows && x.cols = y.cols ->
-    x.rows, x.cols
-  | Array ({ store = I _ | F _; _ } as x), (Int _ | Float _) | (Int _ | Float _), Array ({ store = I _ | F _; _ } as x) ->
-    x.rows, x.cols
-  | _ -> 0, 0
+  | Array ({ store = I _ | F _; _ } as x), Array ({ store = I _ | F _; _ } as y) when Value.same_shape x y -> x
+  | Array ({ store = I _ | F _; _ } as x), (Int _ | Float _) | (Int _ | Float _), Array ({ store = I _ | F _; _ } as x) -> x
+  | _ -> no_shape
 
 let int_cells = function Array { store = I d; _ } -> Some (d, 1) | Int i -> Some ([| i |], 0) | _ -> None
 
@@ -82,44 +80,42 @@ let overflow ctx op a b n =
 (* Integers with their checks, floats, or integers made floats then as floats. Empty arrays and any other operand take
    the cell by cell path, as before. *)
 let[@inline never] typed_fast ctx (op : Kernels.op) a b =
-  let rows, cols = typed a b in
-  let n = rows * cols in
+  let sh = typed a b in
+  let n = sh.rows * sh.cols in
   if n = 0 then None
   else begin
     Runtime.build ctx n;
     match op, int_cells a, int_cells b with
     | (Add | Sub | Mul), Some x, Some y ->
       (match Kernels.ints op x y n with
-       | Some d -> Some (Arrays.of_ints rows cols d)
+       | Some d -> Some (Arrays.like sh (I d))
        | None ->
          overflow ctx op a b n;
          None)
     | _ ->
       Some
-        (Arrays.of_float rows cols
-           (match a, b with
-            | Array { store = I x; _ }, (Int _ | Float _) -> Kernels.right_ints op x (scalar b)
-            | (Int _ | Float _), Array { store = I y; _ } -> Kernels.left_ints op (scalar a) y
-            | _ -> Kernels.both op (fst (float_cells a)) (fst (float_cells b))))
+        (Arrays.like sh
+           (F (match a, b with
+               | Array { store = I x; _ }, (Int _ | Float _) -> Kernels.right_ints op x (scalar b)
+               | (Int _ | Float _), Array { store = I y; _ } -> Kernels.left_ints op (scalar a) y
+               | _ -> Kernels.both op (fst (float_cells a)) (fst (float_cells b)))))
   end
 
 (* The fast path on F and I storage. *)
 let fast ctx op a b =
-  let result rows cols kernel =
-    Runtime.build ctx (rows * cols);
-    Some (Arrays.of_float rows cols (kernel ()))
+  let result sh kernel =
+    Runtime.build ctx (sh.rows * sh.cols);
+    Some (Arrays.like sh (F (kernel ())))
   in
   (match a with Array x -> ignore (Value.trim x) | _ -> ());
   (match b with Array y -> ignore (Value.trim y) | _ -> ());
   match a, b with
-  | Array { rows; cols; store = F x; _ }, Array { rows = r; cols = c; store = F y; _ } when rows = r && cols = c ->
-    result rows cols (fun () -> Kernels.both op x y)
-  | Array { rows; cols; store = F x; _ }, Float s -> result rows cols (fun () -> Kernels.right op x s)
-  | Array { rows; cols; store = F x; _ }, Int s ->
-    result rows cols (fun () -> Kernels.right op x (float_of_int s))
-  | Float s, Array { rows; cols; store = F y; _ } -> result rows cols (fun () -> Kernels.left op s y)
-  | Int s, Array { rows; cols; store = F y; _ } ->
-    result rows cols (fun () -> Kernels.left op (float_of_int s) y)
+  | Array ({ store = F x; _ } as sh), Array ({ store = F y; _ } as sy) when Value.same_shape sh sy ->
+    result sh (fun () -> Kernels.both op x y)
+  | Array ({ store = F x; _ } as sh), Float s -> result sh (fun () -> Kernels.right op x s)
+  | Array ({ store = F x; _ } as sh), Int s -> result sh (fun () -> Kernels.right op x (float_of_int s))
+  | Float s, Array ({ store = F y; _ } as sh) -> result sh (fun () -> Kernels.left op s y)
+  | Int s, Array ({ store = F y; _ } as sh) -> result sh (fun () -> Kernels.left op (float_of_int s) y)
   | _ -> typed_fast ctx op a b
 
 let numeric int_op float_op verb joiner flipped ctx a b =
@@ -188,7 +184,7 @@ let rec neg ctx a =
   match as_num a with
   | Array x ->
     Runtime.build ctx (x.rows * x.cols);
-    Arrays.of_vals x.rows x.cols (Array.init (x.rows * x.cols) (fun k -> neg ctx (Value.elt x k)))
+    Arrays.vals_like x (Array.init (x.rows * x.cols) (fun k -> neg ctx (Value.elt x k)))
   | Int x when x = min_int -> Runtime.fail ctx Math (Messages.overflow_neg (string_of_int x))
   | Int x -> Int (-x)
   | Float x -> Float (-.x)
@@ -210,8 +206,8 @@ let order int_cmp float_cmp sym ctx a b =
 let[@inline never] compared test ctx a b =
   trim a;
   trim b;
-  let rows, cols = typed a b in
-  let n = rows * cols in
+  let sh = typed a b in
+  let n = sh.rows * sh.cols in
   if n = 0 then None
   else begin
     Runtime.build ctx n;
@@ -219,7 +215,7 @@ let[@inline never] compared test ctx a b =
     (match int_cells a, int_cells b with
      | Some x, Some y -> Kernels.mask_ints test x y out
      | _ -> Kernels.mask_floats test (float_cells a) (float_cells b) out);
-    Some (Arrays.of_vals rows cols out)
+    Some (Arrays.vals_like sh out)
   end
 
 let large = function Array x -> x.rows * x.cols >= 16 | _ -> false

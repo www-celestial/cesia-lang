@@ -227,6 +227,16 @@ let write ctx ~pretty v =
       if Float.is_nan f || Float.abs f = infinity then bad x;
       Buffer.add_string b (Value.float_text f)
     | Text s -> add_text b s
+    | Array a when Array.length a.dims > 0 ->
+      (* Lists in lists, the first index outermost, so that x[i][j][k] of the JSON is a[i, j, k]. *)
+      Runtime.pay ctx (a.rows * a.cols);
+      let rec nest depth d at stride =
+        let n = a.dims.(d) and below = stride * a.dims.(d) in
+        if d = Array.length a.dims - 1 then group '[' ']' depth (List.init n (fun i -> at + (i * stride))) (fun k -> go (depth + 1) (Value.elt a k))
+        else group '[' ']' depth (List.init n (fun i -> at + (i * stride))) (fun at -> nest (depth + 1) (d + 1) at below)
+      in
+      if depth + Array.length a.dims > max_depth then bad x;
+      nest depth 0 0 1
     | Array a ->
       Runtime.pay ctx (a.rows * a.cols);
       group '[' ']' depth (List.init (a.rows * a.cols) (Value.elt a)) (go (depth + 1))

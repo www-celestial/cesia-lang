@@ -8,7 +8,7 @@ let record keys fields = Trie.record keys fields
 
 let row items =
   let a = Array.of_list items in
-  Array { rows = 1; cols = Array.length a; store = V a; a_owned = true; a_tip = true }
+  Array { rows = 1; cols = Array.length a; store = V a; a_owned = true; a_tip = true; dims = [||] }
 
 let read ctx base (ver : version) (s : slot) =
   if s.cell >= 0 then ctx.w.modules.(ver.owner.pm).cells.(s.cell)

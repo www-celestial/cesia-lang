@@ -362,7 +362,7 @@ let copy ctx v =
         Array.iter (fun x -> ignore (Value.share x)) cells;
         V cells
     in
-    Array { rows = a.rows; cols = a.cols; store; a_owned = true; a_tip = true }
+    Array { rows = a.rows; cols = a.cols; store; a_owned = true; a_tip = true; dims = a.dims }
   | Struct r ->
     pay ctx (Array.length r.fields);
     Array.iter (fun x -> ignore (Value.share x)) r.fields;

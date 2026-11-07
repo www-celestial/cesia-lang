@@ -274,7 +274,7 @@ defn Table(sql, params, db)
   end
   names = dict.Keys(rowsOf({Names: b.Names, Cells: [missing for k in 1..n]})?[1])
   rows = value.Len(b.Cells) / n
-  m = matrix.Reshape(n, rows, b.Cells)
+  m = matrix.Reshape([n, rows], b.Cells)
   cols = dict.Dict()
   for k in 1..n
     cols = dict.Put(names[k], if rows == 0 [] else [x for x in m[k, :]] end, cols)

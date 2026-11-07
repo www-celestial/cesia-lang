@@ -87,17 +87,28 @@ let range_bound a = hinted (Printf.sprintf "A range needs whole numbers, not %s.
 let index_type a = hinted (Printf.sprintf "An index must be a whole number, not %s." a) whole_hint
 let index_outside i n = plain (Printf.sprintf "Index %d is outside this array of %d elements." i n)
 let index_outside2 i j r c = plain (Printf.sprintf "Index [%d, %d] is outside this array of %d rows and %d columns." i j r c)
+let sizes_text sizes = String.concat " by " (Array.to_list (Array.map string_of_int sizes))
+let index_outside_nd ixs sizes =
+  plain (Printf.sprintf "Index [%s] is outside this array of %s." (String.concat ", " (Array.to_list (Array.map string_of_int ixs))) (sizes_text sizes))
+let index_slice_nd n = plain (Printf.sprintf "An array of %d dimensions takes a whole number for each index, not a slice." n)
 let index_write = plain "Only one element can be written at a time."
 let index_value a = plain (Printf.sprintf "Can't index %s." a)
 let mask_size got want = plain (Printf.sprintf "This mask has %d elements, the array has %d." got want)
 let cant_loop a = plain (Printf.sprintf "Can't loop over %s." a)
 let cant_in a = plain (Printf.sprintf "Can't look inside %s with \"in\"." a)
 let rows_differ = plain "The rows of this array have different lengths."
+let semis_in_array =
+  hinted "Two ; in a row: an array written in the code has rows and columns only."
+    "An array of more dimensions comes from matrix.Reshape: [1 3; 2 4;;; 5 7; 6 8] is matrix.Reshape([2, 2, 2], 1..8)."
 let bad_size name a = plain (Printf.sprintf "%s needs a size, not %s." name a)
 let len_result sname a = plain (Printf.sprintf "The method len of %s must give an integer for value.Len, not %s." sname a)
-let reshape_size n r c = plain (Printf.sprintf "Can't reshape %d elements into %d rows and %d columns." n r c)
-let size_dim a = plain (Printf.sprintf "Size's dimension must be 1 or 2, not %s." a)
-let shape a b c d = plain (Printf.sprintf "Can't combine an array of %d by %d with an array of %d by %d." a b c d)
+let reshape_size n sizes = plain (Printf.sprintf "Can't reshape %d elements into %s." n (sizes_text sizes))
+let reshape_shape a = hinted (Printf.sprintf "Reshape needs its shape as a list of sizes, not %s." a) "Write the sizes in a list: matrix.Reshape([2, 3], xs)."
+let dim_outside name n a =
+  plain (Printf.sprintf "%s's dimension must be %s, not %s." name (if n = 2 then "1 or 2" else Printf.sprintf "from 1 to %d" n) a)
+let too_many_dims n = plain (Printf.sprintf "An array has at most 32 dimensions, not %d." n)
+let two_dims name n = plain (Printf.sprintf "%s works on arrays of 2 dimensions, not %d." name n)
+let shape a b = plain (Printf.sprintf "Can't combine an array of %s with an array of %s." (sizes_text a) (sizes_text b))
 let matmul_shape a b c d =
   plain (Printf.sprintf "Matmul can't multiply %d by %d with %d by %d: the columns of the first must equal the rows of the second." a b c d)
 let decimals_count a = plain (Printf.sprintf "text.Decimals needs a count of decimals from 0 to 20, not %s." a)
@@ -207,7 +218,7 @@ let server_stopped = plain "The server is stopping."
 let bad_char a = plain (Printf.sprintf "Char needs a code point, not %s." a)
 let need_size name a = plain (Printf.sprintf "%s needs a number of bytes within the text, not %s." name a)
 let deadlock = plain "All fibers are waiting and nothing can wake them."
-let index_count = plain "An array has 2 dimensions: use one or two indexes."
+let index_count n = plain (Printf.sprintf "This array has %d dimensions: use %d indexes, or one." n n)
 let range_too_long = plain "This range has too many elements."
 let no_on_stop = plain "The debugger has no function OnStop(stop)."
 let no_main = plain "This tool has no function Main()."

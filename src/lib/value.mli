@@ -14,6 +14,9 @@ val of_bool : bool -> t
 (** The array, with its store cut to its cells. See [arr]. *)
 val trim : arr -> arr
 
+(** The same sizes, in every dimension. *)
+val same_shape : arr -> arr -> bool
+
 (** Clears [owned] and returns the value: a second reference is about to lead to it. *)
 val share : t -> t
 

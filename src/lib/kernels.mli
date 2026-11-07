@@ -22,6 +22,13 @@ val mask_ints : test -> int array * int -> int array * int -> Types.t array -> u
 val mask_floats : test -> floatarray * int -> floatarray * int -> Types.t array -> unit
 val map1 : (float -> float) -> floatarray -> floatarray
 val sum : floatarray -> float
+
+(** [sum_along ~inner ~len ~outer x]: the sums along a dimension of [len] cells, with [inner] cells for the dimensions
+    before it and [outer] after: [inner * outer] sums, each of its cells in order. *)
+val sum_along : inner:int -> len:int -> outer:int -> floatarray -> floatarray
+
+(** The same on integers, or [None] if one overflows. *)
+val sum_along_ints : inner:int -> len:int -> outer:int -> int array -> int array option
 (** A faster [Matmul], from a library, for what it can take. It says whether it did the work. *)
 val fast_matmul : (rows:int -> cols:int -> inner:int -> out:floatarray -> floatarray -> floatarray -> bool) ref
 

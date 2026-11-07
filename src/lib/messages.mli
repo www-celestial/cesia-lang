@@ -80,6 +80,15 @@ val range_bound : string -> t
 val index_type : string -> t
 val index_outside : int -> int -> t
 val index_outside2 : int -> int -> int -> int -> t
+
+(** "2 by 3 by 4". *)
+val sizes_text : int array -> string
+
+(** The indexes and the sizes of an array of three dimensions or more. *)
+val index_outside_nd : int array -> int array -> t
+
+val index_slice_nd : int -> t
+val semis_in_array : t
 val index_write : t
 val index_value : string -> t
 val mask_size : int -> int -> t
@@ -87,9 +96,17 @@ val cant_loop : string -> t
 val cant_in : string -> t
 val rows_differ : t
 val bad_size : string -> string -> t
-val reshape_size : int -> int -> int -> t
-val size_dim : string -> t
-val shape : int -> int -> int -> int -> t
+val reshape_size : int -> int array -> t
+val reshape_shape : string -> t
+
+(** [dim_outside name n a]: the dimension [a] given to [name] isn't one of the [n] of the array. *)
+val dim_outside : string -> int -> string -> t
+
+val too_many_dims : int -> t
+val two_dims : string -> int -> t
+
+(** The sizes of the two arrays. *)
+val shape : int array -> int array -> t
 val matmul_shape : int -> int -> int -> int -> t
 val need_number : string -> string -> t
 
@@ -147,7 +164,8 @@ val article : string -> string
 val destructure_array : int -> int -> t
 val destructure_struct : string -> t
 val destructure_value : string -> t
-val index_count : t
+(** The array has that many dimensions. *)
+val index_count : int -> t
 val it_assign : t
 val no_match : string -> t
 val assertion : t
