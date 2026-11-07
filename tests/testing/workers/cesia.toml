@@ -7,4 +7,5 @@ run = ["cesia", "test"]
 
 [test]
 timeout = "0.3"
+allow = ["ffi=c"]
 serial = ["tests/serial.ce"]

@@ -39,12 +39,11 @@ let watch st ctx =
   end
 
 (* Whether the buffer holds a byte, read first when it is empty: false at the end of the input. A read comes first, the
-   wait after: the input says only when it changes. [alone]: the whole program waits, its other fibers too. Raises
-   [Unix.Unix_error] for a failed read. *)
-let rec more ?(alone = false) st ctx =
+   wait after: the input says only when it changes. Raises [Unix.Unix_error] for a failed read. *)
+let rec more st ctx =
   st.at < String.length st.buf
   || begin
-    if not alone then watch st ctx;
+    watch st ctx;
     let chunk = Lazy.force chunk in
     match Unix.read Unix.stdin chunk 0 chunk_size with
     | 0 -> false
@@ -59,9 +58,9 @@ let rec more ?(alone = false) st ctx =
       end;
       true
     | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
-      if alone || ctx.w.debug.stopped || not st.parked then ignore (Unix.select [ Unix.stdin ] [] [] (-1.))
+      if ctx.w.debug.stopped || not st.parked then ignore (Unix.select [ Unix.stdin ] [] [] (-1.))
       else Poll.read_ready st.poll ctx Unix.stdin;
-      more ~alone st ctx
+      more st ctx
   end
 
 (* The next byte, or [None] at the end of the input or after a failed read. *)
@@ -104,20 +103,19 @@ let read_line ~editor st ctx (a : Types.t array) =
 let natives ~editor st =
   [ "ReadLine", Native.nat ~perm:Debug ~params:[| "prompt" |] "ReadLine" 0 1 (read_line ~editor st) ]
 
-(* sys.ReadInput(count): the next count bytes of the input, fewer only at its end, while the other fibers run; without a
-   count, all of it up to its end, while the whole program waits, as a filter of the shell does. It needs no permission:
-   the input is the program's own. *)
+(* sys.ReadInput(count): the next count bytes of the input, fewer only at its end; without a count, all of it up to its
+   end. The fiber waits for it as for any input, and the other fibers run. It needs no permission: the input is the
+   program's own. *)
 let read_input st ctx (a : Types.t array) =
   let count =
     match if Array.length a > 0 then a.(0) else Missing with
-    | Missing | Undef -> None
-    | Int n when n >= 0 -> Some n
+    | Missing | Undef -> max_int
+    | Int n when n >= 0 -> n
     | v -> Runtime.fail ctx Type (Messages.need_count "ReadInput" (Value.describe v))
   in
-  let alone = count = None and count = Option.value count ~default:max_int in
   let b = Buffer.create (min count chunk_size) in
   let rec go () =
-    if Buffer.length b < count && more ~alone st ctx then begin
+    if Buffer.length b < count && more st ctx then begin
       let k = min (count - Buffer.length b) (String.length st.buf - st.at) in
       Runtime.build ctx ((k / 8) + 1);
       Buffer.add_substring b st.buf st.at k;

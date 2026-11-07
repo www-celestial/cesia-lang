@@ -1,7 +1,8 @@
-(* Reading the input blocks the whole worker, past any deadline it can keep: cesia test stops it. *)
-use std/sys
+(* A call into C that doesn't come back holds the whole worker, past any deadline it can keep: cesia test stops it. *)
+use std/c
 isFirst() = true
 defn isBlocks()
-  sys.ReadInput()
+  sleep = c.Fn("sleep", ["u32"], "u32", c.Open("c", version = 6).Value).Value
+  sleep(3600)
   true
 end
