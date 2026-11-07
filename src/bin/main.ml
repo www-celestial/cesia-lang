@@ -221,7 +221,7 @@ let one_test arg =
 (* What each tool may touch: see src/tools/. *)
 let tool_grants = function
   | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
-  | "check" -> "read"
+  | "check" | "lsp" -> "read"
   | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug"
 
 let tool ?(grants = "") name args =
@@ -387,6 +387,10 @@ let () =
     | _ :: "do" :: args -> Project.run args
     | [ _; "new"; name ] -> create name
     | _ :: (("pkg" | "upgrade" | "check") as name) :: args -> exit (tool name args)
+    | [ _; "lsp" ] ->
+      (* The protocol counts bytes: Windows must not turn a line end into two. *)
+      set_binary_mode_out stdout true;
+      exit (tool "lsp" [])
     | _ :: "doc" :: "--site" :: args -> site args
     | _ :: "doc" :: args -> doc args
     | _ -> usage ()

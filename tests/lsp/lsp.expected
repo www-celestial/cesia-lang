@@ -1,0 +1,24 @@
+initialize: {"positionEncoding":"utf-16","textDocumentSync":{"openClose":true,"change":1,"save":{"includeText":false}},"hoverProvider":true,"definitionProvider":true,"completionProvider":{"triggerCharacters":["."]}} cesia
+marks: []
+textDocument/hover: "list.Map(f, xs)" {"start":{"line":11,"character":16},"end":{"line":11,"character":24}}
+textDocument/hover: "Lists: make them, change each element, keep some, fold, order and search them. The list comes last." {"start":{"line":11,"character":16},"end":{"line":11,"character":20}}
+textDocument/hover: "geo.Area(r)" {"start":{"line":11,"character":33},"end":{"line":11,"character":41}}
+textDocument/hover: "defn twice(x)" {"start":{"line":11,"character":25},"end":{"line":11,"character":30}}
+textDocument/hover: "defn" {"start":{"line":6,"character":0},"end":{"line":6,"character":4}}
+textDocument/hover: "label = \"été 😀\"" {"start":{"line":11,"character":9},"end":{"line":11,"character":14}}
+textDocument/hover: "(r Rect) Half() = Rect(r.W / 2, r.H)" {"start":{"line":11,"character":74},"end":{"line":11,"character":78}}
+textDocument/hover: "geo.Rect { W, H }" {"start":{"line":11,"character":59},"end":{"line":11,"character":67}}
+textDocument/hover: "use" {"start":{"line":1,"character":0},"end":{"line":1,"character":3}}
+textDocument/definition: {"uri":"file://ROOT/src/geo/shapes.ce","range":{"start":{"line":4,"character":5},"end":{"line":4,"character":5}}}
+textDocument/definition: {"uri":"file://ROOT/src/app/app.ce","range":{"start":{"line":6,"character":5},"end":{"line":6,"character":5}}}
+textDocument/definition: {"uri":"file://ROOT/src/geo/shapes.ce","range":{"start":{"line":9,"character":9},"end":{"line":9,"character":9}}}
+textDocument/definition: null
+completion: ["Area", "Rect"] geo.Area(r)
+marks: [{"range":{"start":{"line":11,"character":17},"end":{"line":11,"character":21}},"severity":1,"source":"cesia","message":"Name \"nope\" doesn't exist."}]
+textDocument/hover: "label = \"été 😀\"" {"start":{"line":11,"character":23},"end":{"line":11,"character":28}}
+marks: []
+marks: true [{"range":{"start":{"line":2,"character":12},"end":{"line":2,"character":13}},"severity":1,"source":"cesia","message":"Name \"y\" doesn't exist."}]
+definition: true {"start":{"line":1,"character":0},"end":{"line":1,"character":0}}
+nothing/known: {"code":-32601,"message":"cesia lsp has no method nothing/known."}
+the server exits with 0
+exit 0

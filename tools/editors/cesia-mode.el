@@ -34,5 +34,9 @@
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.ce\\'" . cesia-mode))
 
+;; M-x eglot starts cesia lsp, the language server, in the folder of the project.
+(with-eval-after-load 'eglot
+  (add-to-list 'eglot-server-programs '(cesia-mode "cesia" "lsp")))
+
 (provide 'cesia-mode)
 ;;; cesia-mode.el ends here

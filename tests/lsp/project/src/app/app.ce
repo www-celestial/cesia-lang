@@ -1,0 +1,12 @@
+use std/io
+use std/list
+use src/geo
+
+label = "été 😀"   (** A text with accents and an emoji, so that characters and UTF-16 units differ. *)
+
+defn twice(x)
+  (** Two times x. *)
+  2 * x
+end
+
+io.Print(label, list.Map(twice, [geo.Area(geo.Rect(2, 3)), geo.Rect(4, 2).Half().W]))

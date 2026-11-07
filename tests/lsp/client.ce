@@ -1,0 +1,128 @@
+(** Speaks the Language Server Protocol to cesia lsp as an editor does, from the folder of a project, and prints what each
+    answer says: the marks of a file as it opens and changes, the documentation under the cursor, where a name is defined,
+    the names after a package's dot. Positions count UTF-16 code units, which an emoji makes differ from characters. *)
+use std/cesia
+use std/dict
+use std/io
+use std/json
+use std/list
+use std/regex
+use std/result
+use std/sys
+use std/text
+use std/value
+
+root = result.Unwrap(sys.Run("pwd")).Out then text.Trim()
+uri = "file://$root/src/app/app.ce"
+server = result.Unwrap(sys.Start(cesia.Binary(), args = ["lsp"]))
+
+defn send(m)
+  (** Writes a message to the server, after its header. *)
+  body = json.Text(dict.Put("jsonrpc", "2.0", m))
+  _ = sys.WriteInput(server, "Content-Length: $(text.ByteLength(body))\r\n\r\n$body")
+end
+
+defn next(buffer)
+  (** The next message of the server, {Message, Rest}, Rest what came after it: reads until a whole one has come. *)
+  while true
+    at = text.ByteFind("\r\n\r\n", 1, buffer)
+    if not value.IsMissing(at)
+      size = text.Number(regex.Find("Content-Length: ([0-9]+)", text.ByteSlice(1, at, buffer)).Groups[1])
+      total = text.ByteLength(buffer)
+      if total >= at + 3 + size
+        rest = if total > at + 3 + size text.ByteSlice(at + 4 + size, total, buffer) else "" end
+        return {Message: result.Unwrap(json.Parse(text.ByteSlice(at + 4, at + 3 + size, buffer))), Rest: rest}
+      end
+    end
+    chunk = result.Unwrap(sys.ReadOutput(server))
+    if chunk == ""
+      return {Message: missing, Rest: ""}
+    end
+    buffer = "$buffer$chunk"
+  end
+end
+
+defn short(v)
+  (** A value as JSON, the root of the project left out. *)
+  text.Replace(root, "ROOT", json.Text(v))
+end
+
+defn shown(m)
+  (** What an answer says: its error, or its result, of which a hover shows the first line of its text out of the fences of
+      code, and its range. *)
+  if dict.Has("error", m)
+    return short(m.error)
+  end
+  r = m.result
+  if value.IsDict(r) and dict.Has("contents", r)
+    first = [l for l in text.Lines(r.contents.value) if not text.StartsWith("```", l)][1]
+    return "$(json.Text(first)) $(short(r.range))"
+  end
+  short(r)
+end
+
+defn ask(buffer, id, method, params)
+  (** Sends a request, prints its answer, and gives what came after it. *)
+  send({id: id, method: method, params: params})
+  got = next(buffer)
+  io.Print("$method:", shown(got.Message))
+  got.Rest
+end
+
+defn marks(buffer)
+  (** Waits for the marks of a file, prints them, and gives what came after them. *)
+  got = next(buffer)
+  io.Print("marks:", short(got.Message.params.diagnostics))
+  got.Rest
+end
+
+at(line, character) = {textDocument: {uri: uri}, position: {line: line, character: character}}   (** A place in app.ce. *)
+
+source = result.Unwrap(sys.Read("src/app/app.ce"))
+send({id: 1, method: "initialize", params: {processId: missing, rootUri: "file://$root", capabilities: {}}})
+got = next("")
+buffer = got.Rest
+io.Print("initialize:", short(got.Message.result.capabilities), got.Message.result.serverInfo.name)
+send({method: "initialized", params: {}})
+send({method: "textDocument/didOpen", params: {textDocument: {uri: uri, languageId: "cesia", version: 1, text: source}}})
+buffer = marks(buffer)
+buffer = ask(buffer, 2, "textDocument/hover", at(11, 21))
+buffer = ask(buffer, 3, "textDocument/hover", at(11, 18))
+buffer = ask(buffer, 4, "textDocument/hover", at(11, 37))
+buffer = ask(buffer, 5, "textDocument/hover", at(11, 27))
+buffer = ask(buffer, 6, "textDocument/hover", at(6, 1))
+buffer = ask(buffer, 7, "textDocument/hover", at(11, 9))
+buffer = ask(buffer, 8, "textDocument/hover", at(11, 75))
+buffer = ask(buffer, 9, "textDocument/hover", at(11, 63))
+buffer = ask(buffer, 10, "textDocument/hover", at(1, 0))
+buffer = ask(buffer, 11, "textDocument/definition", at(11, 37))
+buffer = ask(buffer, 12, "textDocument/definition", at(11, 27))
+buffer = ask(buffer, 13, "textDocument/definition", at(11, 75))
+buffer = ask(buffer, 14, "textDocument/definition", at(11, 21))
+send({id: 15, method: "textDocument/completion", params: at(11, 37)})
+got = next(buffer)
+buffer = got.Rest
+io.Print("completion:", [i.label for i in got.Message.result], got.Message.result[1].detail)
+(* After two emoji, a name is 2 characters further in UTF-16 units than in characters. *)
+changed = text.Replace("io.Print(label", "io.Print(\"😀😀\", nope, label", source)
+send({method: "textDocument/didChange", params: {textDocument: {uri: uri, version: 2}, contentChanges: [{text: changed}]}})
+buffer = marks(buffer)
+(* At 27 UTF-16 units, past the two emoji, comes the last letter of label, the 26th character. *)
+buffer = ask(buffer, 16, "textDocument/hover", at(11, 27))
+send({method: "textDocument/didClose", params: {textDocument: {uri: uri}}})
+buffer = marks(buffer)
+(* A file not saved yet, whose name has a space and accents: its URI decoded to a path, and the path encoded back. *)
+other = "file://$root/caf%C3%A9%20d%C3%A9j%C3%A0.ce"
+send({method: "textDocument/didOpen", params: {textDocument: {uri: other, languageId: "cesia", version: 1, text: "use std/io\nx = 1\nio.Print(x, y)\n"}}})
+got = next(buffer)
+buffer = got.Rest
+io.Print("marks:", got.Message.params.uri == other, short(got.Message.params.diagnostics))
+send({id: 19, method: "textDocument/definition", params: {textDocument: {uri: other}, position: {line: 2, character: 9}}})
+got = next(buffer)
+buffer = got.Rest
+io.Print("definition:", got.Message.result.uri == other, short(got.Message.result.range))
+buffer = ask(buffer, 17, "nothing/known", {})
+send({id: 18, method: "shutdown"})
+buffer = next(buffer).Rest
+send({method: "exit"})
+io.Print("the server exits with", sys.WaitExit(server))

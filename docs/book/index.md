@@ -53,6 +53,7 @@ language.
 Appendices, to look things up:
 
 - [Commands](commands.md): every command of `cesia` and every option.
+- [Editors](editors.md): the errors, the documentation and the definitions in Neovim, Helix and Emacs, through `cesia lsp`.
 - [cesia.toml](toml.md): every table and key of a project's file.
 - [Environment variables](env.md): those that Cesia reads.
 - [Words](glossary.md): the names of the ideas of this book, as programmers say them, each with its chapter.

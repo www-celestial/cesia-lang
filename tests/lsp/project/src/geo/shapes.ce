@@ -1,0 +1,10 @@
+(** Rectangles and their areas. *)
+
+struct Rect { W, H }   (** A rectangle, its width and its height. *)
+
+defn Area(r)
+  (** The area of a rectangle. *)
+  r.W * r.H
+end
+
+(r Rect) Half() = Rect(r.W / 2, r.H)   (** The left half of a rectangle. *)

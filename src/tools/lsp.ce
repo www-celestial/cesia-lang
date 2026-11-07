@@ -1,0 +1,658 @@
+(** cesia lsp: a language server, for any editor that speaks the Language Server Protocol. Messages come on the standard
+    input and go on the standard output, each a Content-Length header, an empty line and JSON. The server shows what
+    cesia check finds in the lines of an open file, as it is typed; the documentation of the name under the cursor; where a
+    name is defined; and the names of a package after its dot. A position counts UTF-16 code units, as the protocol does.
+    Run by the binary, with the read permission only, in the folder of the project. *)
+use std/cesia
+use std/dict
+use std/encode
+use std/fiber
+use std/io
+use std/json
+use std/list
+use std/path
+use std/regex
+use std/result
+use std/sys
+use std/text
+use std/value
+
+quiet = 0.05   (** The seconds without a message after which the files that changed are checked: typing checks once. *)
+
+between = 0.001   (** The seconds between the checks of two files, for a message to come in and be answered first. *)
+
+(* What the server can do, as initialize answers it: the whole text at each change, and a save without its text. *)
+capabilities = {
+  positionEncoding: "utf-16",
+  textDocumentSync: {openClose: true, change: 1, save: {includeText: false}},
+  hoverProvider: true,
+  definitionProvider: true,
+  completionProvider: {triggerCharacters: ["."]}}
+
+defn readMessage()
+  (** The body of the next message of the input, or missing at its end. Its headers are lines up to an empty one, and
+      Content-Length gives the size of the body in bytes. *)
+  size = 0
+  headers = 0
+  line = ""
+  while true
+    c = sys.ReadInput(1)?
+    if c == ""
+      return result.Ok(missing)
+    else if c != "\n"
+      line = "$line$c"
+    else if text.Trim(line) != ""
+      headers += 1
+      found = regex.Find("^[Cc]ontent-[Ll]ength: *([0-9]+)", line)
+      if not value.IsMissing(found)
+        size = text.Number(found.Groups[1])
+      end
+      line = ""
+    else if headers > 0
+      break
+    end
+  end
+  sys.ReadInput(size)
+end
+
+defn reader(inbox)
+  (** Puts the body of each message of the input in the inbox as it comes, then missing at the end of the input. *)
+  while true
+    got = readMessage()
+    body = if result.IsOk(got) got.Value else missing end
+    fiber.Send(body, inbox)
+    if value.IsMissing(body)
+      return missing
+    end
+  end
+end
+
+defn send(message)
+  (** Writes a message on the output. io.Print ends it with a line end, which its size counts: JSON allows one after a value. *)
+  body = json.Text(dict.Put("jsonrpc", "2.0", message))
+  io.Print("Content-Length: $(text.ByteLength(body) + 1)\r\n\r\n$body")
+end
+
+answer(m, got) = send({id: m.id, result: got})   (** The answer to a request. *)
+
+refuse(m, code, message) = send({id: m.id, error: {code: code, message: message}})   (** The error that answers a request. *)
+
+after(k, s) = if k > value.Len(s) "" else text.Slice(k, value.Len(s), s) end   (** The characters of a text from the k-th. *)
+
+upto(k, s) = if k < 1 "" else text.Slice(1, list.Min([k, value.Len(s)]), s) end   (** The first k characters of a text. *)
+
+defn pathOf(uri)
+  (** The path of a file:// URI, its %XX decoded: file:///c%3A/x is c:/x on Windows. Another URI stands for itself. *)
+  if not text.StartsWith("file://", uri)
+    return uri
+  end
+  p = encode.UrlDecode(text.Replace("+", "%2B", after(8, uri)))
+  if regex.Test("^/[A-Za-z]:", p) after(2, p) else p end
+end
+
+defn uriOf(p)
+  (** The file:// URI of a path, each part of it %XX encoded. *)
+  slashed = text.Replace(text.Char(92), "/", p)
+  parts = text.Join("/", [encode.UrlEncode(part) for part in text.Split("/", slashed)])
+  if text.StartsWith("/", slashed) "file://$parts" else "file:///$parts" end
+end
+
+defn linesOf(s)
+  (** The lines of a text as the protocol numbers them, from 0: a last line end opens an empty line. *)
+  [if text.EndsWith("\r", l) upto(value.Len(l) - 1, l) else l end for l in text.Split("\n", s)]
+end
+
+width(c) = if text.Code(c) >= 65536 2 else 1 end   (** The UTF-16 code units of a character. *)
+
+defn units(line, column)
+  (** The UTF-16 code units of the characters of a line before a column, from 1: the character of the protocol. *)
+  if text.ByteLength(line) == value.Len(line)
+    return list.Max([0, list.Min([column - 1, value.Len(line)])])
+  end
+  n = 0
+  k = 1
+  for c in text.Chars(line)
+    if k >= column
+      return n
+    end
+    n += width(c)
+    k += 1
+  end
+  n
+end
+
+defn columnOf(line, character)
+  (** The column, from 1, of the character that a count of UTF-16 code units from the start of a line reaches. *)
+  if text.ByteLength(line) == value.Len(line)
+    return list.Min([character, value.Len(line)]) + 1
+  end
+  n = 0
+  k = 1
+  for c in text.Chars(line)
+    if n >= character
+      return k
+    end
+    n += width(c)
+    k += 1
+  end
+  k
+end
+
+(** A range of the protocol on one line, from 0, between two counts of UTF-16 code units. end is a word of Cesia, so the keys
+    are texts. *)
+span(line, first, stop) = {"start": {line: line, character: first}, "end": {line: line, character: stop}}
+
+defn diagnostic(m)
+  (** A mark of cesia.Check as the protocol shows it: the span of its line, its severity, its message and its hint. *)
+  line = list.Max([m.Line - 1, 0])
+  stop = list.Max([m.End, m.Column + 1])
+  {range: span(line, units(m.Source, m.Column), units(m.Source, stop)),
+   severity: if m.Severity == "error" 1 else 2 end,
+   source: "cesia",
+   message: if value.IsMissing(m.Hint) m.Message else "$(m.Message)\n$(m.Hint)" end}
+end
+
+defn publish(doc)
+  (** Checks an open file, with the files of its package as the disk holds them, and sends what is wrong in it. *)
+  marks = cesia.Check([doc.Path], {(doc.Path): doc.Text})
+  send({method: "textDocument/publishDiagnostics",
+        params: {uri: doc.Uri, version: doc.Version, diagnostics: [diagnostic(m) for m in marks if m.File == doc.Path]}})
+end
+
+defn rootOf(p)
+  (** The folder of the project of a file: the nearest one above it that holds a cesia.toml, else the file's own folder. *)
+  dir = path.Dir(p)
+  at = dir
+  while at != "" and at != "/" and at != "."
+    if sys.Exists("$at/cesia.toml")
+      return at
+    end
+    up = path.Dir(at)
+    if up == at
+      return dir
+    end
+    at = up
+  end
+  dir
+end
+
+defn sourceFolders(root)
+  (** The source folders of a project, [project] src of its cesia.toml, or src. *)
+  read = sys.Read("$root/cesia.toml")
+  tables = if result.IsOk(read) cesia.Toml(read.Value) else result.Err("none") end
+  if result.IsOk(tables)
+    for table in tables.Value
+      if value.Equal(table.Path, ["project"])
+        for entry in table.Entries
+          if entry.Key == "src"
+            return entry.Value
+          end
+        end
+      end
+    end
+  end
+  ["src"]
+end
+
+defn folderFiles(dir)
+  (** The files of the package in a folder, without its tests, in order; none if it can't be read. *)
+  names = sys.List(dir)
+  if result.IsErr(names)
+    return []
+  end
+  list.Sort(["$dir/$n" for n in names.Value if text.EndsWith(".ce", n) and not text.EndsWith(".test.ce", n)])
+end
+
+defn packageFiles(p)
+  (** The files whose names a file sees without a use, itself first: those of its folder when it is in a source folder of
+      its project, a package; else itself alone, a program. *)
+  root = rootOf(p)
+  dir = path.Dir(p)
+  inside = list.Any([dir == "$root/$s" or text.StartsWith("$root/$s/", dir) for s in sourceFolders(root)])
+  if not inside
+    return [p]
+  end
+  list.Prepend(p, [f for f in folderFiles(dir) if f != p])
+end
+
+defn uses(lines)
+  (** The packages that the lines of a source use, under the name the code gives each: {list: "std/list", sets: "std/set"}. *)
+  found = {}
+  for line in lines
+    if text.StartsWith("use ", line)
+      m = regex.Find("^use +([^ ]+)( +as +([^ ]+))?", line)
+      if not value.IsMissing(m)
+        alias = if value.IsMissing(m.Groups[3]) path.Base(m.Groups[1]) else m.Groups[3] end
+        found[alias] = m.Groups[1]
+      end
+    end
+  end
+  found
+end
+
+nameChar(c) = text.Code(c) >= 128 or regex.Test("^[A-Za-z0-9_]$", c)   (** Can the character be part of a name? *)
+
+defn wordAt(line, column)
+  (** The dotted name under a column of a line, up to the end of the part under it, {Word, First, Stop, Dotted}: in
+      list.Map(f), Map gives list.Map and list gives list. First is its first column, Stop the one after it, and Dotted
+      tells a name after the dot of a value, as Half in Rect(2, 1).Half(). Missing off a name. *)
+  chars = text.Chars(line)
+  n = value.Len(chars)
+  at = column
+  if at > n or not nameChar(chars[at])
+    at -= 1
+  end
+  if at < 1 or at > n or not nameChar(chars[at])
+    return missing
+  end
+  first = at
+  while first > 1 and (nameChar(chars[first - 1]) or chars[first - 1] == ".")
+    first -= 1
+  end
+  stop = at
+  while stop < n and nameChar(chars[stop + 1])
+    stop += 1
+  end
+  dotted = chars[first] == "."
+  while chars[first] == "."
+    first += 1
+  end
+  {Word: text.Join("", chars[first..stop]), First: first, Stop: stop + 1, Dotted: dotted}
+end
+
+defn docOf(lines, k)
+  (** The (** *) of the definition on line k, from 1, of a source: at the end of its line, under it, or above it. *)
+  line = lines[k]
+  start = text.Find("(**", line)
+  from = k
+  if value.IsMissing(start)
+    below = k < value.Len(lines) and text.StartsWith("(**", text.Trim(lines[k + 1]))
+    above = k > 1 and text.EndsWith("*)", text.Trim(lines[k - 1]))
+    if below
+      from = k + 1
+    else if above
+      from = k - 1
+      while from > 1 and not text.StartsWith("(**", text.Trim(lines[from]))
+        from -= 1
+      end
+    else
+      return ""
+    end
+    start = text.Find("(**", lines[from])
+    if value.IsMissing(start)
+      return ""
+    end
+  end
+  taken = []
+  j = from
+  rest = after(start + 3, lines[from])
+  while true
+    stop = text.Find("*)", rest)
+    taken = list.Append(text.Trim(if value.IsMissing(stop) rest else upto(stop - 1, rest) end), taken)
+    if not value.IsMissing(stop) or j >= value.Len(lines)
+      break
+    end
+    j += 1
+    rest = lines[j]
+  end
+  text.Trim(text.Join("\n", taken))
+end
+
+(* What a line can define at the top of a source: the pattern of each form, and its groups of the name and of the struct of a
+   method, 0 for none. *)
+definers = [
+  {Pattern: "^defn +[(][a-z][A-Za-z0-9]* +([A-Za-z0-9.]+)[)] +([A-Za-z0-9]+)", Owner: 1, Name: 2},
+  {Pattern: "^[(][a-z][A-Za-z0-9]* +([A-Za-z0-9.]+)[)] +([A-Za-z0-9]+)[(]", Owner: 1, Name: 2},
+  {Pattern: "^defn +([A-Za-z0-9]+)[.]([A-Za-z0-9]+)", Owner: 1, Name: 2},
+  {Pattern: "^([A-Z][A-Za-z0-9]*)[.]([A-Za-z0-9]+)[(][^)]*[)][^=]*= ", Owner: 1, Name: 2},
+  {Pattern: "^defn +([A-Za-z0-9]+)", Owner: 0, Name: 1},
+  {Pattern: "^(?:struct|interface) +([A-Za-z0-9]+)", Owner: 0, Name: 1},
+  {Pattern: "^([A-Za-z][A-Za-z0-9]*)[(][^)]*[)][^=]*= ", Owner: 0, Name: 1},
+  {Pattern: "^([A-Za-z][A-Za-z0-9]*) *(?::[^=]*)?= ", Owner: 0, Name: 1}]
+
+defn findFrom(part, k, s)
+  (** The column, from 1, where part first occurs in a text at or after column k, or missing. *)
+  found = text.Find(part, after(k, s))
+  if value.IsMissing(found) missing else found + k - 1 end
+end
+
+defn defined(line)
+  (** What a line defines at the top of a source: {Name, Owner, Column}, Owner the struct of a method or missing, Column
+      where the name starts; or missing. *)
+  first = upto(1, line)
+  if line == "" or first == " " or first == "\t" or text.StartsWith("(*", line) or text.StartsWith("use ", line)
+    return missing
+  end
+  for d in definers
+    m = regex.Find(d.Pattern, line)
+    if not value.IsMissing(m)
+      name = m.Groups[d.Name]
+      owner = if d.Owner == 0 missing else m.Groups[d.Owner] end
+      start = if not value.IsMissing(owner)
+        text.Find(owner, line) + value.Len(owner)
+      else if regex.Test("^(defn|struct|interface) ", line)
+        text.Find(" ", line)
+      else
+        1
+      end
+      return {Name: name, Owner: owner, Column: findFrom(name, start, line)}
+    end
+  end
+  missing
+end
+
+defn sourceOf(state, p)
+  (** The lines of a file: those of its open buffer, else of the disk; none if it can't be read. *)
+  for doc in dict.Values(state.Docs)
+    if doc.Path == p
+      return doc.Lines
+    end
+  end
+  read = sys.Read(p)
+  if result.IsOk(read) linesOf(read.Value) else [] end
+end
+
+defn definitionOf(state, doc, w, packages)
+  (** Where a name that no use leads to is defined: a name of the file's own package, Area or Rect.Square; or a method,
+      after the dot of a value, that this package or a package of the project that the file uses defines, the first of its
+      name. {File, Line, Column, Lines} or missing. *)
+  parts = text.Split(".", w.Word)
+  name = list.Last(parts)
+  owner = if value.Len(parts) > 1 parts[value.Len(parts) - 1] else if w.Dotted "" else missing end
+  files = packageFiles(doc.Path)
+  if not value.IsMissing(owner)
+    root = rootOf(doc.Path)
+    for used in dict.Values(packages)
+      if not text.StartsWith("std/", used)
+        files = list.Concat(files, folderFiles("$root/$used"))
+      end
+    end
+  end
+  method = missing
+  for f in files
+    lines = sourceOf(state, f)
+    k = 0
+    for line in lines
+      k += 1
+      if text.Contains(name, line)
+        d = defined(line)
+        if not value.IsMissing(d) and d.Name == name and value.IsMissing(d.Owner) == value.IsMissing(owner)
+          here = {File: f, Line: k, Column: d.Column, Lines: lines}
+          if value.IsMissing(owner) or d.Owner == owner
+            return here
+          else if value.IsMissing(method)
+            method = here
+          end
+        end
+      end
+    end
+  end
+  method
+end
+
+(** The name that cesia doc gives a package that a use names: std/set is set, the natives of std/text are text's, and a
+    package of the project keeps its path. *)
+docName(used) = if text.StartsWith("std/", used) path.Base(used) else used end
+
+defn target(state, doc, pos)
+  (** What the name under a position of an open file leads to: {Word, Range, Entry} for a name that cesia doc knows,
+      {Word, Range, Module} for the name of a package, {Word, Range, Local} for one of the file's own package, or missing. *)
+  if pos.line >= value.Len(doc.Lines)
+    return missing
+  end
+  line = doc.Lines[pos.line + 1]
+  w = wordAt(line, columnOf(line, pos.character))
+  if value.IsMissing(w)
+    return missing
+  end
+  found = {Word: w.Word,
+           Range: span(pos.line, units(line, w.First), units(line, w.Stop))}
+  parts = text.Split(".", w.Word)
+  packages = uses(doc.Lines)
+  if not w.Dotted and dict.Has(parts[1], packages)
+    used = packages[parts[1]]
+    if value.Len(parts) == 1
+      found.Module = used
+      return found
+    end
+    entry = cesia.DocEntry("$(docName(used)).$(text.Join(".", parts[2..value.Len(parts)]))")
+    if value.IsMissing(entry)
+      return missing
+    end
+    found.Entry = entry
+    return found
+  end
+  if not w.Dotted and value.Len(parts) == 1 and w.Word in cesia.Keywords()
+    found.Entry = cesia.DocEntry(w.Word)
+    return if value.IsMissing(found.Entry) missing else found end
+  end
+  local = definitionOf(state, doc, w, packages)
+  if value.IsMissing(local)
+    return missing
+  end
+  found.Local = local
+  found
+end
+
+defn entryText(e)
+  (** The documentation of a name, in Markdown: its signature and its examples as code, its text between. *)
+  parts = ["```cesia\n$(e.Signature)\n```"]
+  if e.Text != ""
+    parts = list.Append(e.Text, parts)
+  end
+  if value.Len(e.Examples) > 0
+    parts = list.Append("```cesia\n$(text.Join("\n", e.Examples))\n```", parts)
+  end
+  text.Join("\n\n", parts)
+end
+
+defn localText(local)
+  (** The documentation of a name of the file's own package, in Markdown: its line, without its comment, and its comment. *)
+  line = local.Lines[local.Line]
+  cut = text.Find("(**", line)
+  head = text.Trim(if value.IsMissing(cut) line else upto(cut - 1, line) end)
+  doc = docOf(local.Lines, local.Line)
+  if doc == "" "```cesia\n$head\n```" else "```cesia\n$head\n```\n\n$doc" end
+end
+
+defn hover(state, p)
+  (** The documentation of the name under the cursor, or missing. *)
+  doc = dict.Get(p.textDocument.uri, state.Docs)
+  t = if value.IsMissing(doc) missing else target(state, doc, p.position) end
+  if value.IsMissing(t)
+    return missing
+  end
+  shown = if dict.Has("Entry", t)
+    entryText(t.Entry)
+  else if dict.Has("Module", t)
+    cesia.Doc(t.Module)
+  else
+    localText(t.Local)
+  end
+  if value.IsMissing(shown) or shown == ""
+    return missing
+  end
+  {contents: {kind: "markdown", value: shown}, range: t.Range}
+end
+
+place(p, line, column) = {uri: uriOf(p), range: span(line, column, column)}   (** A place of a file, for the protocol. *)
+
+defn definition(state, p)
+  (** Where the name under the cursor is defined, or missing: a name of Cesia's own std/ that no copy in the project holds
+      has no file. *)
+  doc = dict.Get(p.textDocument.uri, state.Docs)
+  t = if value.IsMissing(doc) missing else target(state, doc, p.position) end
+  if value.IsMissing(t)
+    return missing
+  end
+  if dict.Has("Local", t)
+    l = t.Local
+    return place(l.File, l.Line - 1, units(l.Lines[l.Line], l.Column))
+  end
+  root = rootOf(doc.Path)
+  if dict.Has("Module", t)
+    files = folderFiles("$root/$(t.Module)")
+    return if value.Len(files) == 0 missing else place(files[1], 0, 0) end
+  end
+  e = t.Entry
+  file = "$root/$(e.File)"
+  lines = if e.Builtin missing else sourceOf(state, file) end
+  if value.IsMissing(lines) or value.Len(lines) < e.Line
+    return missing
+  end
+  d = defined(lines[e.Line])
+  place(file, e.Line - 1, if value.IsMissing(d) or value.IsMissing(d.Column) 0 else units(lines[e.Line], d.Column) end)
+end
+
+defn shortName(n)
+  (** A documented name without its package: list.Map gives Map, geo.Rect.Area gives Rect.Area. *)
+  slash = list.Last(text.Split("/", n))
+  dot = text.Find(".", slash)
+  if value.IsMissing(dot) n else text.Slice(dot + 1, value.Len(slash), slash) end
+end
+
+defn completion(state, p)
+  (** The names of a package after its name and a dot, each with its signature and documentation. *)
+  doc = dict.Get(p.textDocument.uri, state.Docs)
+  if value.IsMissing(doc) or p.position.line >= value.Len(doc.Lines)
+    return []
+  end
+  line = doc.Lines[p.position.line + 1]
+  column = columnOf(line, p.position.character)
+  before = upto(column - 1, line)
+  m = regex.Find("([A-Za-z][A-Za-z0-9]*)[.][A-Za-z0-9]*$", before)
+  packages = uses(doc.Lines)
+  if value.IsMissing(m) or not dict.Has(m.Groups[1], packages)
+    return []
+  end
+  items = []
+  for n in cesia.DocNames(packages[m.Groups[1]])
+    short = shortName(n)
+    if not text.Contains(".", short)
+      e = cesia.DocEntry(n)
+      kind = if value.IsMissing(e) 21 else if text.Contains("(", e.Signature) 3 else if text.Contains("{", e.Signature) 22 else 21 end
+      item = {label: short, kind: kind}
+      if not value.IsMissing(e)
+        item.detail = e.Signature
+        item.documentation = {kind: "markdown", value: entryText(e)}
+      end
+      items = list.Append(item, items)
+    end
+  end
+  items
+end
+
+defn opened(state, d, version, body)
+  (** The state with a file open, or changed, and marked to be checked. *)
+  p = pathOf(d.uri)
+  state.Docs[d.uri] = {Uri: d.uri, Path: p, Version: version, Text: body, Lines: linesOf(body)}
+  state.Dirty[d.uri] = true
+  state
+end
+
+defn saved(state, uri)
+  (** The state after a save: every open file of the folder of the saved one is checked again, as the other files of a
+      package see what it defines. *)
+  doc = dict.Get(uri, state.Docs)
+  if not value.IsMissing(doc)
+    for other in dict.Values(state.Docs)
+      if path.Dir(other.Path) == path.Dir(doc.Path)
+        state.Dirty[other.Uri] = true
+      end
+    end
+  end
+  state
+end
+
+defn closed(state, uri)
+  (** The state without a file, whose marks the editor forgets. *)
+  send({method: "textDocument/publishDiagnostics", params: {uri: uri, diagnostics: []}})
+  state.Docs = dict.Drop(uri, state.Docs)
+  state.Dirty = dict.Drop(uri, state.Dirty)
+  state
+end
+
+defn handle(state, m)
+  (** Answers a message of the editor, and gives the state after it. *)
+  method = dict.GetOr("method", "", m)
+  p = dict.GetOr("params", {}, m)
+  request = dict.Has("id", m)
+  if method == "initialize"
+    answer(m, {capabilities: capabilities, serverInfo: {name: "cesia", version: cesia.Version()}})
+  else if method == "shutdown"
+    state.Down = true
+    answer(m, missing)
+  else if method == "exit"
+    sys.Exit(if state.Down 0 else 1 end)
+  else if method == "textDocument/didOpen"
+    state = opened(state, p.textDocument, p.textDocument.version, p.textDocument.text)
+  else if method == "textDocument/didChange"
+    state = opened(state, p.textDocument, p.textDocument.version, list.Last(p.contentChanges).text)
+  else if method == "textDocument/didSave"
+    state = saved(state, p.textDocument.uri)
+  else if method == "textDocument/didClose"
+    state = closed(state, p.textDocument.uri)
+  else if method == "textDocument/hover"
+    answer(m, hover(state, p))
+  else if method == "textDocument/definition"
+    answer(m, definition(state, p))
+  else if method == "textDocument/completion"
+    answer(m, completion(state, p))
+  else if request
+    refuse(m, -32601, "cesia lsp has no method $method.")
+  end
+  state
+end
+
+defn step(state, body)
+  (** Reads a message and answers it in a fiber of its own: a bug in the server answers an error, and the state stays as it
+      was. *)
+  parsed = json.Parse(body)
+  if result.IsErr(parsed) or not value.IsDict(parsed.Value)
+    send({id: missing, error: {code: -32700, message: "cesia lsp can't read this message."}})
+    return state
+  end
+  m = parsed.Value
+  done = fiber.Wait(fiber.Spawn(() -> handle(state, m)))
+  if result.IsOk(done)
+    return done.Value
+  end
+  if dict.Has("id", m)
+    refuse(m, -32603, "cesia lsp failed: $(done.Error.Message)")
+  end
+  state
+end
+
+defn checkOne(state)
+  (** Checks one of the open files that changed, and gives the state without it to check. *)
+  uri = dict.Keys(state.Dirty)[1]
+  doc = dict.Get(uri, state.Docs)
+  if not value.IsMissing(doc)
+    _ = fiber.Wait(fiber.Spawn(() -> publish(doc)))
+  end
+  state.Dirty = dict.Drop(uri, state.Dirty)
+  state
+end
+
+defn Main()
+  (** Serves the editor until it says exit, or until the end of the input. The files that changed are checked once the
+      editor is quiet, one at a time, and a message that comes between two of them is answered first: a request never waits
+      for more than the check of one file. *)
+  inbox = fiber.Channel()
+  fiber.Spawn(() -> reader(inbox))
+  state = {Docs: {}, Dirty: {}, Down: false}
+  pause = quiet
+  while true
+    got = if value.Len(state.Dirty) == 0 fiber.Receive(inbox) else fiber.Receive(inbox, timeout = pause) end
+    if result.IsErr(got)
+      state = checkOne(state)
+      pause = between
+    else if value.IsMissing(got.Value)
+      sys.Exit(if state.Down 0 else 1 end)
+    else
+      state = step(state, got.Value)
+      pause = quiet
+    end
+  end
+  result.Ok(missing)
+end

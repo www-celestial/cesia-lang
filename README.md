@@ -54,9 +54,15 @@ for an editor to show each error on its line.
 
 ## Editors
 
-Neovim and Vim: copy `tools/editors/nvim/` into `~/.config/nvim/`.
+`cesia lsp` is a language server: an editor that speaks the Language Server Protocol shows the errors of `cesia check` as you
+type, the documentation under the cursor, the definition of a name and the names after a package's dot.
 
-Emacs: add `(load "/path/to/cesia/tools/editors/cesia-mode.el")` to your `init.el`.
+Neovim and Vim: copy `tools/editors/nvim/` into `~/.config/nvim/`; from Neovim 0.11, `vim.lsp.enable('cesia')` in `init.lua`
+starts the server.
+
+Emacs: add `(load "/path/to/cesia/tools/editors/cesia-mode.el")` to your `init.el`; `M-x eglot` starts the server.
+
+Helix, and why not yet Zed and VS Code: [Editors](docs/book/editors.md).
 
 ## Limits
 

@@ -58,6 +58,17 @@ alone give 0.
 | `--json` | one JSON object per line, and nothing else: `file`, `line`, `column`, `end` (the column after the span), `severity` (`"error"` or `"warning"`), `message`, `hint` |
 | `--stdin file.ce` | the text of that file comes from the input instead of the disk, as an editor sends a buffer not yet saved |
 
+## cesia lsp
+
+```bash
+cesia lsp
+```
+
+A language server, for the editors that speak the Language Server Protocol: it reads their messages on its input and answers
+on its output. It shows what `cesia check` finds in an open file as it is typed, the documentation of the name under the
+cursor, where a name is defined, and the names of a package after its dot. The editor starts it in the folder of the
+project, as [Editors](editors.md) shows for each one. It needs the read permission only.
+
 ## cesia do
 
 ```bash

@@ -149,8 +149,9 @@ chapter of their own later.
 
 Any editor works, since a program is a text file. The sources of Cesia hold a mode for Emacs and one for Neovim and Vim, in
 `tools/editors/`, which colour the code. Keep a terminal beside your editor with `cesia run --watch`, and each save shows
-its result at once. An editor can also show the errors of a file in its lines, before it runs, with
-[cesia check](commands.md#cesia-check).
+its result at once. An editor that speaks the Language Server Protocol also shows the errors of a file in its lines as you
+type, and the documentation of a name under the cursor, with [cesia lsp](commands.md#cesia-lsp): [Editors](editors.md) gives
+the few lines each one needs.
 
 ## Next
 
