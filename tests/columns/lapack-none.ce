@@ -15,7 +15,7 @@ for i in 1..n
 end
 io.Print(num.Backend())
 x = result.Unwrap(num.Solve(m, [1.0 for k in 1..n]))
-io.Print(list.Max(math.Abs(matrix.Matmul(m, matrix.Reshape(x, n, 1)) - 1.0)) < 1e-8)
+io.Print(list.Max(math.Abs(matrix.Matmul(m, matrix.Reshape(n, 1, x)) - 1.0)) < 1e-8)
 f = num.Qr(m)
 io.Print(list.Max(math.Abs(matrix.Matmul(f.Q, f.R) - m)) < 1e-8)
 io.Print(num.Det(m) > 0.0)

@@ -94,6 +94,7 @@ let cant_loop a = plain (Printf.sprintf "Can't loop over %s." a)
 let cant_in a = plain (Printf.sprintf "Can't look inside %s with \"in\"." a)
 let rows_differ = plain "The rows of this array have different lengths."
 let bad_size name a = plain (Printf.sprintf "%s needs a size, not %s." name a)
+let len_result sname a = plain (Printf.sprintf "The method len of %s must give an integer for value.Len, not %s." sname a)
 let reshape_size n r c = plain (Printf.sprintf "Can't reshape %d elements into %d rows and %d columns." n r c)
 let size_dim a = plain (Printf.sprintf "Size's dimension must be 1 or 2, not %s." a)
 let shape a b c d = plain (Printf.sprintf "Can't combine an array of %d by %d with an array of %d by %d." a b c d)

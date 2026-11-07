@@ -8,6 +8,10 @@ val core : (string * t) list
 val packages : (string * (string * t) list) list
 
 
+(** What value.Len counts, but for a struct that says it: the elements of an array, the code points of a text, the keys of a
+    map, the fields of a struct; 1 for anything else. *)
+val length : t -> int
+
 (** The byte where [part], which isn't empty, first appears in a text from a byte, or -1. *)
 val find_from : string -> string -> int -> int
 

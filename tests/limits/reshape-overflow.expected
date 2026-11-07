@@ -1,4 +1,4 @@
 reshape-overflow.ce:4:11: Limit "memory" reached.
-  4 | x = matrix.Reshape([], 4294967296, 2147483648)
+  4 | x = matrix.Reshape(4294967296, 2147483648, [])
     |           ^
 exit 1

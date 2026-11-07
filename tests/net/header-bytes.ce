@@ -1,5 +1,8 @@
-(** Every byte of a header name against the list of RFC 9110, and a line end refused anywhere in the line. *)
+(** Every byte of a header name against the list of RFC 9110, and a line end refused anywhere in the line: the server answers
+    400 to what a proxy in front could read otherwise. *)
+use std/http
 use std/net
+use std/sys
 use std/fiber
 use std/io
 use std/list
@@ -7,15 +10,27 @@ use std/result
 use std/text
 use std/value
 
+crlf = "\r\n"
+fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "ok"}, port = 18212))
+sys.Sleep(0.05)
+
+defn status(line)
+  (** The status of the answer to a request with this header line. *)
+  c = net.Connect("127.0.0.1", 18212)?
+  net.Write(c, "GET / HTTP/1.1$(crlf)connection: close$crlf$line$crlf$crlf")?
+  got = net.Read(c)?
+  net.Close(c)
+  result.Ok(text.Split(" ", got)[2])
+end
+
 allowed = text.Bytes("!#$$%&'*+-.^_`|~abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-accepted(b) = net.IsHeader(1, "$(text.FromBytes([b])): value")
+accepted(b) = result.Unwrap(status("$(text.FromBytes([b])): value")) == "200"
 
 io.Print(value.Equal(list.Filter(accepted, [b for b in 0..255]), list.Sort(allowed)))
-io.Print(net.IsHeader(1, "a: b"))
-io.Print(net.IsHeader(0, ": b"))
-io.Print(net.IsHeader(2, "a : b"))
-io.Print(net.IsHeader(2, "a\nb: c"))
-io.Print(net.IsHeader(1, "a: b\nc"))
-io.Print(net.IsHeader(1, "a: b\rc"))
-io.Print(net.IsHeader(1, "a: tab	space é"))
-io.Print(fiber.Wait(fiber.Spawn(() -> net.IsHeader(9, "a"))) then result.MapErr(it.Kind))
+io.Print(status("a: b"))
+io.Print(status(": b"))
+io.Print(status("a : b"))
+io.Print(status("a\nb: c"))
+io.Print(status("a: b\nc"))
+io.Print(status("a: b\rc"))
+io.Print(status("a: tab	space é"))

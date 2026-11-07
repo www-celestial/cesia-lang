@@ -10,7 +10,7 @@ defn Map(f, xs)
 
         Map(it * 2, [1, 2]) --> [2, 4] *)
   r = [f(x) for x in xs]
-  if value.Size(xs, 1) == 1 r else matrix.Reshape(r, value.Size(xs, 1), value.Size(xs, 2)) end
+  if value.Size(xs, 1) == 1 r else matrix.Reshape(value.Size(xs, 1), value.Size(xs, 2), r) end
 end
 
 (** The elements for which f is true.

@@ -161,10 +161,10 @@ use std/value
 
       value.Size([1, 2, 3], 2) --> 3 *)
 
-(** matrix.Reshape(xs, rows, cols)
+(** matrix.Reshape(rows, cols, xs)
     The same elements, filled column by column into a new shape. The count must stay the same.
 
-      value.Size(matrix.Reshape([1, 2, 3, 4], 2, 2)) --> [2, 2] *)
+      value.Size(matrix.Reshape(2, 2, [1, 2, 3, 4])) --> [2, 2] *)
 
 (** matrix.Zeros(rows, cols = missing)
     An array of 0.0: a list of n with one argument, rows by columns with two.
@@ -614,11 +614,6 @@ use std/value
 
       text.ByteFind("b", 1, "abc") --> 2 *)
 
-(** text.XorBytes(key, s)
-    Each byte of a text xor-ed with the bytes of the key, which repeats. Applying it twice gives the text back.
-
-      text.XorBytes("k", text.XorBytes("k", "hi")) --> "hi" *)
-
 (** math.BitAnd(a, b)
     The bits that are set in both integers.
 
@@ -786,21 +781,16 @@ use std/value
     the errors in an Err, and the code of those stays as it was. The code running in a frame goes on as it was; the next
     call runs the new code. Needs the debug permission. *)
 
-(** debug.Complete(code)
+(** debug.IsComplete(code)
     Is the code whole? False when it stops inside a block, a list or an expression, so that a prompt reads another line.
 
-      debug.Complete("if x > 1") --> false *)
+      debug.IsComplete("if x > 1") --> false *)
 
 (** debug.ReadLine(prompt = "")
     A line read from the standard input without its line end, or missing at its end. On a terminal, the prompt shows
     first and the keys edit the line: arrows, Home, End, Ctrl-A, Ctrl-E, Ctrl-K, Ctrl-U, Ctrl-W, and up and down walk the
     lines read before. The other fibers of the program run while it waits, but at a stop of the debugger. Needs the debug
     permission. *)
-
-(** debug.Words(s)
-    The words of a command line, split on spaces; a word that is a whole number becomes an integer.
-
-      debug.Words("break 12") --> ["break", 12] *)
 
 (** sys.Read(path)
     The text of a file, in an Ok, or an Err. Needs the read permission. *)
@@ -895,20 +885,6 @@ use std/value
 
 (** net.Close(socket)
     Closes a socket, which does nothing if it is already closed. *)
-
-(** net.Arm(socket, seconds)
-    Gives a socket a deadline, after which net.Reap closes it. Zero removes the deadline. *)
-
-(** net.Reap()
-    Closes the sockets that passed their deadline and gives how many. *)
-
-(** net.OpenCount()
-    How many sockets are open. *)
-
-(** net.IsHeader(colon, line)
-    Is this a safe header line with its colon at this byte offset? A name with a space or a stray line end is refused, as request smuggling uses them.
-
-      net.IsHeader(4, "host: a") --> true *)
 
 (** c.Open(name, version = missing)
     Loads a shared library by its short name ("m", "sodium"), trying the usual file names of each system, and on macOS the folders of Homebrew: an Ok of the
@@ -1007,7 +983,7 @@ use std/value
 
       cesia.IsVersion(cesia.Version()) --> true *)
 
-(** cesia.Dev()
+(** cesia.IsDev()
     Was this Cesia built from its sources, and not by a release? Then its version text ends in +dev. *)
 
 (** cesia.Binary()

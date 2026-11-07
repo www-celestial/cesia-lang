@@ -646,6 +646,19 @@ let check_native ctx (a : t array) =
   in
   Arrays.list (Array.of_list (List.map record sorted))
 
+(* value.Len. A struct whose package gives it a private method len counts what that method says, as a queue does: only the
+   struct pays for the look, and the method stays the package's own, so value.Len is the one way to count it. *)
+let len ctx (a : t array) =
+  match a.(0) with
+  | Struct { shape = { sname = Some s; sm; _ }; _ } as v when sm >= 0 ->
+    (match Hashtbl.find_opt ctx.w.methods (sm, s, "len") with
+     | Some (f, false) ->
+       (match Compile.call_back ctx f [| v |] with
+        | Int _ as n -> n
+        | r -> Runtime.fail ctx Type (Messages.len_result s (Value.describe r)))
+     | _ -> Int (Native.length v))
+  | v -> Int (Native.length v)
+
 (* The natives of the packages of std/, joined by package: std/list has some of Native, Lists and Columns. *)
 let std_packages () =
   let groups =
@@ -653,7 +666,7 @@ let std_packages () =
     @ [ "math", Near.natives; "list", Columns.list; "fiber", Fiber.natives;
         "cesia", Tooling.natives ~libraries @ Docs.natives @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
         "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
-        "random", Rand.natives ]
+        "random", Rand.natives; "value", [ "Len", Native.nat ~ret:(fun _ -> TI) "Len" 1 1 len ] ]
     @ Testing.natives
   in
   List.fold_left

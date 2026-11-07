@@ -23,3 +23,7 @@ val reset : t -> unit
 
 (** The contents of the [net] module. *)
 val natives : t -> (string * Types.t) list
+
+(** The natives that only the files of std/http see: the deadlines of the sockets it serves, and its check of a header
+    line. *)
+val http_natives : t -> (string * Types.t) list

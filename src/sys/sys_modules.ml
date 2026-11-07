@@ -80,7 +80,7 @@ let debug_natives =
     (fun (name, params, min_args, max_args, perm, result) ->
        name, Native.nat ?perm ~params ~result name min_args max_args (fun ctx a -> code name ctx ctx a))
     [ "Eval", [| "code"; "frame" |], 1, 2, Some Debug, true; "Reload", [||], 0, 0, Some Debug, true;
-      "Complete", [| "code" |], 1, 1, None, false ]
+      "IsComplete", [| "code" |], 1, 1, None, false ]
 
 let debug_test ctx s cond =
   match debug_plugin () with
@@ -119,6 +119,6 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   Linalg.install ();
   w.debug.test <- debug_test;
   w.native_modules <-
-    ("debug", Term.natives ~editor:debug_editor poll @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
+    ("debug", Term.natives ~editor:debug_editor poll @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("http", Net.http_natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
     :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
   fun () -> Net.stopping net

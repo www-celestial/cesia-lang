@@ -15,7 +15,7 @@ defn Main()
     if value.IsMissing(code)
       return missing
     end
-    while not debug.Complete(code)
+    while not debug.IsComplete(code)
       more = debug.ReadLine(". ")
       if value.IsMissing(more)
         return missing

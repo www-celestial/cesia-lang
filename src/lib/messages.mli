@@ -93,6 +93,9 @@ val shape : int -> int -> int -> int -> t
 val matmul_shape : int -> int -> int -> int -> t
 val need_number : string -> string -> t
 
+(** The private method len of a struct, which value.Len calls, gave something else than an integer. *)
+val len_result : string -> string -> t
+
 (** [decimals_count v]: text.Decimals(n, x) with an n that isn't a whole number from 0 to 20. *)
 val decimals_count : string -> t
 val no_field : string -> t

@@ -7,12 +7,12 @@ use std/result
 use std/value
 
 isSetOf() = value.Equal(set.Items(set.Of([2, 1, 2])), [1, 2])
-isSetMember() = set.Member(1, set.Of([1])) and not set.Member(2, set.Of([1]))
-isSetAddRemove() = set.Count(set.Remove(1, set.Add(2, set.Of([1])))) == 1
+isSetHas() = set.Has(1, set.Of([1])) and not set.Has(2, set.Of([1]))
+isSetAddRemove() = value.Len(set.Remove(1, set.Add(2, set.Of([1])))) == 1
 isSetUnion() = value.Equal(set.Items(set.Union(set.Of([1]), set.Of([2]))), [1, 2])
 isSetIntersection() = value.Equal(set.Items(set.Intersection(set.Of([1, 2]), set.Of([2, 3]))), [2])
 isSetDifference() = value.Equal(set.Items(set.Difference(set.Of([1, 2]), set.Of([2]))), [1])
-isSetSubset() = set.Subset(set.Of([1]), set.Of([1, 2])) and not set.Subset(set.Of([3]), set.Of([1, 2]))
+isSetSubset() = set.IsSubset(set.Of([1]), set.Of([1, 2])) and not set.IsSubset(set.Of([3]), set.Of([1, 2]))
 isQueueOrder() = value.Equal(queue.Items(queue.Pop(queue.Of([1, 2, 3]))), [2, 3])
 isQueueEnds() = queue.First(queue.Of([1, 2])) == 1 and queue.Last(queue.Of([1, 2])) == 2
 isQueueFront() = value.Equal(queue.Items(queue.PushFront(0, queue.Of([1]))), [0, 1])
@@ -25,7 +25,7 @@ defn isQueueMany()
   for i in 1..3000
     q = queue.Push(i, q)
   end
-  while queue.Count(q) > 1
+  while value.Len(q) > 1
     q = queue.Pop(q)
   end
   queue.First(q) == 3000
@@ -53,12 +53,12 @@ isCombinations() = value.Equal(algo.Combinations(2, [1, 2, 3]), [[1, 2], [1, 3],
 isLevenshtein() = algo.Levenshtein("kitten", "sitting") == 3 and algo.Levenshtein("", "ab") == 2
 
 graph = {1: [2, 3], 2: [4], 3: [4], 4: [1]}
-isBfs() = value.Equal(algo.Bfs(1, n -> graph[n]), [1, 2, 3, 4])
-isDfs() = value.Equal(algo.Dfs(1, n -> graph[n]), [1, 2, 4, 3])
+isBfs() = value.Equal(algo.Bfs(n -> graph[n], 1), [1, 2, 3, 4])
+isDfs() = value.Equal(algo.Dfs(n -> graph[n], 1), [1, 2, 4, 3])
 
 weights = {"a": [{Node: "b", Weight: 7}, {Node: "c", Weight: 1}], "b": [], "c": [{Node: "b", Weight: 2}]}
-isDijkstra() = value.Equal(algo.Dijkstra("a", n -> weights[n]), {"a": 0, "b": 3, "c": 1})
+isDijkstra() = value.Equal(algo.Dijkstra(n -> weights[n], "a"), {"a": 0, "b": 3, "c": 1})
 
 deps = {"app": ["lib", "log"], "lib": ["log"], "log": []}
-isTopological() = value.Equal(result.Unwrap(algo.TopologicalSort(["app"], n -> deps[n])), ["log", "lib", "app"])
-isTopologicalCycle() = result.IsErr(algo.TopologicalSort([1], n -> [1]))
+isTopological() = value.Equal(result.Unwrap(algo.TopologicalSort(n -> deps[n], ["app"])), ["log", "lib", "app"])
+isTopologicalCycle() = result.IsErr(algo.TopologicalSort(n -> [1], [1]))

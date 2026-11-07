@@ -1,4 +1,6 @@
-(** Sets of numbers and texts: the keys of a dictionary, in order. *)
+(** Sets of numbers and texts: the keys of a dictionary, in order. value.Len counts the elements of a set.
+
+      value.Len(Of([1, 2, 1])) --> 2 *)
 use std/dict
 use std/list
 use std/value
@@ -6,28 +8,24 @@ use std/value
 Empty() = dict.Dict()   (** A set with nothing in it. *)
 (** A set of the elements of an array.
 
-      Count(Of([1, 2, 1])) --> 2 *)
+      Items(Of([2, 1, 2])) --> [1, 2] *)
 Of(xs) = list.Reduce((s, x) -> dict.Put(x, true, s), dict.Dict(), xs)
 (** A set with x added.
 
-      Member(1, Add(1, Empty())) --> true *)
+      Has(1, Add(1, Empty())) --> true *)
 Add(x, s) = dict.Put(x, true, s)
 (** A set without x.
 
-      Count(Remove(1, Of([1, 2]))) --> 1 *)
+      Items(Remove(1, Of([1, 2]))) --> [2] *)
 Remove(x, s) = dict.Drop(x, s)
 (** Is x in the set?
 
-      Member(1, Of([1])) --> true *)
-Member(x, s) = dict.Has(x, s)
+      Has(1, Of([1])) --> true *)
+Has(x, s) = dict.Has(x, s)
 (** The elements of the set, in order.
 
       Items(Of([2, 1])) --> [1, 2] *)
 Items(s) = list.Sort(dict.Keys(s))
-(** How many elements the set holds.
-
-      Count(Of([1, 2])) --> 2 *)
-Count(s) = value.Len(s)
 (** The elements of either set.
 
       Items(Union(Of([1]), Of([2]))) --> [1, 2] *)
@@ -42,5 +40,5 @@ Intersection(a, b) = Of([x for x in dict.Keys(a) if dict.Has(x, b)])
 Difference(a, b) = Of([x for x in dict.Keys(a) if not dict.Has(x, b)])
 (** Are all the elements of the first set in the second?
 
-      Subset(Of([1]), Of([1, 2])) --> true *)
-Subset(a, b) = list.All([dict.Has(x, b) for x in dict.Keys(a)])
+      IsSubset(Of([1]), Of([1, 2])) --> true *)
+IsSubset(a, b) = list.All([dict.Has(x, b) for x in dict.Keys(a)])

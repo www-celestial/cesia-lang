@@ -144,7 +144,7 @@ defn upgrade(args)
   binary = text.Replace(backslash, "/", cesia.Binary())
   current = versionOf(binary)?
   mirror = sys.Env("CESIA_RELEASES")
-  if cesia.Dev() and (value.IsMissing(mirror) or mirror == "")
+  if cesia.IsDev() and (value.IsMissing(mirror) or mirror == "")
     return result.Err("This Cesia was built from its sources ($current): git pull and dune build bring it up to date, not cesia upgrade.")
   end
   bin = parent(binary)

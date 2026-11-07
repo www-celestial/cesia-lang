@@ -21,7 +21,7 @@ encode.Base64("hi") -->
 use std/set as sets
 s = sets.Of([3, 1, 3, 2])
 sets.Items(s) -->
-sets.Member(2, s) -->
+sets.Has(2, s) -->
 ```
 
 ### Where the code comes from
@@ -82,8 +82,8 @@ the language. Printing is [io.Print], of `std/io`; [list.Map] is in `std/list`, 
 Print(1)
 ```
 
-So a package may name a function as another package does: `set.Count` counts the elements of a set, and [list.Count] the
-elements of a list that a function accepts. In a file, no variable, parameter, function or pattern takes the name of a
+So a package may name a function as another package does: [set.Has] asks whether a set holds an element, and [dict.Has]
+whether a dictionary holds a key. In a file, no variable, parameter, function or pattern takes the name of a
 package the file uses: with `use std/text`, `text = "hi"` would hide `std/text`, so it is refused when the file loads. Give
 the variable another name, as `s` or `line`.
 

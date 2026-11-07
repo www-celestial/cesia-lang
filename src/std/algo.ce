@@ -154,7 +154,7 @@ defn Levenshtein(a, b)
   row[value.Len(ys) + 1]
 end
 
-defn Bfs(start, neighbors)
+defn Bfs(neighbors, start)
   (** The nodes reached from start, breadth first: neighbors(node) gives the nodes next to one, and nodes are numbers or
       texts. *)
   seen = {(start): true}
@@ -174,10 +174,10 @@ defn Bfs(start, neighbors)
   dict.Values(visited)
 end
 
-defn Dfs(start, neighbors)
+defn Dfs(neighbors, start)
   (** The nodes reached from start, depth first, as bfs does breadth first.
 
-        Dfs(1, n -> if n == 1 [2, 3] else [] end) --> [1, 2, 3] *)
+        Dfs(n -> if n == 1 [2, 3] else [] end, 1) --> [1, 2, 3] *)
   seen = dict.Dict()
   visited = dict.Dict()
   stack = {1: start}
@@ -196,7 +196,7 @@ defn Dfs(start, neighbors)
   dict.Values(visited)
 end
 
-defn Dijkstra(start, edges)
+defn Dijkstra(edges, start)
   (** edges(node) gives {Node, Weight} structs. The result gives the distance of each node reached. *)
   best = dict.Dict()
   todo = heap.Insert(0, start, heap.Empty())
@@ -233,10 +233,10 @@ defn visit(node, needs, walk)
   result.Ok(walk)
 end
 
-defn TopologicalSort(nodes, needs)
+defn TopologicalSort(needs, nodes)
   (** The nodes ordered so that each comes after the ones it needs, in an Ok, or an Err of the kind "cycle".
 
-        TopologicalSort([1, 2], n -> if n == 2 [1] else [] end) --> result.Ok([1, 2]) *)
+        TopologicalSort(n -> if n == 2 [1] else [] end, [1, 2]) --> result.Ok([1, 2]) *)
   walk = {State: dict.Dict(), Order: dict.Dict()}
   for node in nodes
     walk = visit(node, needs, walk)?

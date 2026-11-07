@@ -177,7 +177,7 @@ end
 defn Det(m)
   (** The determinant of a square matrix.
 
-        math.Abs(Det(matrix.Reshape([1.0, 3.0, 2.0, 4.0], 2, 2)) + 2.0) < 1e-9 --> true *)
+        math.Abs(Det(matrix.Reshape(2, 2, [1.0, 3.0, 2.0, 4.0])) + 2.0) < 1e-9 --> true *)
   fast = lapack.Det(m)
   if not value.IsMissing(fast)
     return fast
@@ -225,7 +225,7 @@ defn Solve(m, b)
 
         Solve(Eye(2), [1.0, 2.0]).Value --> [1.0, 2.0] *)
   n = value.Size(m, 1)
-  result.MapOk(x -> matrix.Reshape(x, 1, n), solved(m, matrix.Reshape(b, n, 1)))
+  result.MapOk(x -> matrix.Reshape(1, n, x), solved(m, matrix.Reshape(n, 1, b)))
 end
 
 (** The inverse of a square matrix, in an Ok, or an Err of the kind "math" if it is singular.
@@ -317,7 +317,7 @@ end
 defn LeastSquares(a, b)
   (** The x of the smallest |ax - b|, through the normal equations. *)
   t = matrix.Transpose(a)
-  Solve(matrix.Matmul(t, a), matrix.Matmul(t, matrix.Reshape(b, value.Len(b), 1)))
+  Solve(matrix.Matmul(t, a), matrix.Matmul(t, matrix.Reshape(value.Len(b), 1, b)))
 end
 
 defn Polyfit(degree, xs, ys)

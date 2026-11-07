@@ -28,10 +28,10 @@ defn DaysInMonth(y, m)
   end
 end
 
-defn DaysFromCivil(y, m, d)
+defn daysFromCivil(y, m, d)
   (** The days since 1970-01-01.
 
-        DaysFromCivil(1970, 1, 2) --> 1 *)
+        daysFromCivil(1970, 1, 2) --> 1 *)
   y = if m <= 2 y - 1 else y end
   era = math.Div(y, 400)
   yoe = y - era * 400
@@ -72,7 +72,7 @@ FromUnix(seconds) = onClock(seconds, 0)
 
       ToUnix(Date(1970, 1, 2)) --> 86400
       ToUnix(Date(1970, 1, 2, 3, Offset = 10800)) --> 86400 *)
-ToUnix(d) = DaysFromCivil(d.Year, d.Month, d.Day) * 86400 + d.Hour * 3600 + d.Minute * 60 + d.Second - d.Offset
+ToUnix(d) = daysFromCivil(d.Year, d.Month, d.Day) * 86400 + d.Hour * 3600 + d.Minute * 60 + d.Second - d.Offset
 
 defn Local(seconds)
   (** The Date of an instant on the clock of this machine, with the Offset of its time zone at that instant, summer time
@@ -92,7 +92,7 @@ Utc(d) = FromUnix(ToUnix(d))
 (** 1 is Monday and 7 is Sunday.
 
       Weekday(Date(1970, 1, 1)) --> 4 *)
-Weekday(d) = math.Mod(DaysFromCivil(d.Year, d.Month, d.Day) + 3, 7) + 1
+Weekday(d) = math.Mod(daysFromCivil(d.Year, d.Month, d.Day) + 3, 7) + 1
 
 (** The Date n seconds later, or earlier if n is negative, on the same clock: its Offset stays, summer time or not.
 
@@ -105,7 +105,7 @@ AddDays(n, d) = AddSeconds(n * 86400, d)
 (** The days from the day of a to the day of b, whatever the hours: negative if b comes first.
 
       DaysBetween(Date(2026, 11, 1), Date(2026, 11, 5)) --> 4 *)
-DaysBetween(a, b) = DaysFromCivil(b.Year, b.Month, b.Day) - DaysFromCivil(a.Year, a.Month, a.Day)
+DaysBetween(a, b) = daysFromCivil(b.Year, b.Month, b.Day) - daysFromCivil(a.Year, a.Month, a.Day)
 
 two(n) = text.PadLeft(2, "0", value.Text(n))
 (** The day of a Date as 2026-11-01.

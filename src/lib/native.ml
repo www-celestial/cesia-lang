@@ -144,13 +144,13 @@ let size ctx (a : t array) =
     | v -> Runtime.fail ctx Index (Messages.size_dim (Value.describe v))
 
 let reshape ctx (a : t array) =
-  let rows = dim ctx "Reshape" a.(1) and cols = dim ctx "Reshape" a.(2) in
-  match a.(0) with
+  let rows = dim ctx "Reshape" a.(0) and cols = dim ctx "Reshape" a.(1) in
+  match a.(2) with
   | Array x ->
     let n = x.rows * x.cols in
     if Runtime.cells ctx rows cols <> n then Runtime.fail ctx Type (Messages.reshape_size n rows cols);
     Runtime.pay ctx n;
-    (match Runtime.copy ctx a.(0) with
+    (match Runtime.copy ctx a.(2) with
      | Array y -> Array { rows; cols; store = y.store; a_owned = true; a_tip = true }
      | v -> v)
   | v -> Runtime.fail ctx Type (Messages.index_value (Value.describe v))
@@ -579,7 +579,6 @@ let packages =
     "value",
     [ "Text", nat "Text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
       is_ "IsDict" (function Dict _ -> true | _ -> false);
-      "Len", nat ~ret:(fun _ -> TI) "Len" 1 1 (fun _ a -> Int (length a.(0)));
       "Equal", nat "Equal" 2 2 (fun ctx a -> Value.of_bool (Value.equal ctx a.(0) a.(1)));
       "Size", nat "Size" 1 2 size;
       is_ "IsInt" (function Int _ -> true | _ -> false);

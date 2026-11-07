@@ -10,6 +10,9 @@ use std/value
 help =
   "Commands: break FILE LINE [if CONDITION], clear FILE LINE, breaks, print EXPRESSION, vars, watch EXPRESSION, unwatch EXPRESSION, where, up, down, continue, step, next, out."
 
+(* A command line into words, split at spaces and tabs: a number becomes an integer. *)
+words(line) = [if value.IsInt(text.Number(w)) text.Number(w) else w end for w in text.Split(" ", text.Replace("\t", " ", text.Replace("\r", " ", line))) if w != ""]
+
 defn Rest(line, word)
   (** What follows the first word of a command line. *)
   t = text.Trim(line)
@@ -130,7 +133,7 @@ defn OnStop(stop)
     if value.IsMissing(line)
       return "continue"
     end
-    w = debug.Words(line)
+    w = words(line)
     n = value.Len(w)
     if n == 1 and IsResume(w[1])
       if Reloaded()

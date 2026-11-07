@@ -103,7 +103,7 @@ defn hmac(s, state, out, b, keySize, size)
   math.BitOr(math.BitOr(s.HmacInit(state, b[1], keySize), s.HmacUpdate(state, b[2], size)), s.HmacFinal(state, out))
 end
 
-defn Same(a, b, s)
+defn IsSame(a, b, s)
   (** Are two texts the same, in a time that doesn't tell where they differ: for secrets, as tags and hashes. *)
   if text.ByteLength(a) != text.ByteLength(b)
     return false

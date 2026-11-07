@@ -262,8 +262,8 @@ let shift x n =
   if n >= Sys.int_size || n <= -Sys.int_size then 0 else if n >= 0 then x lsl n else x lsr -n
 
 let xor_bytes ctx (a : t array) =
-  let key = text_arg ctx "XorBytes" a.(0) and s = text_arg ctx "XorBytes" a.(1) in
-  if key = "" then Runtime.fail ctx Type (Messages.need_char "XorBytes");
+  let key = text_arg ctx "xorBytes" a.(0) and s = text_arg ctx "xorBytes" a.(1) in
+  if key = "" then Runtime.fail ctx Type (Messages.need_char "xorBytes");
   Runtime.build ctx ((String.length s / 8) + 1);
   Text (String.mapi (fun i c -> Char.chr (Char.code c lxor Char.code key.[i mod String.length key])) s)
 
@@ -299,8 +299,7 @@ let list_natives =
     "descending", nat "descending" 2 2 descending ]
 
 let text_natives =
-  [ "XorBytes", nat "XorBytes" 2 2 xor_bytes;
-    "Upper", nat "Upper" 1 1 (fun ctx a ->
+  [ "Upper", nat "Upper" 1 1 (fun ctx a ->
         let s = text_arg ctx "Upper" a.(0) in
         pay ctx s;
         Runtime.reserve ctx ((String.length s / 8) + 1);
@@ -351,4 +350,6 @@ let text_natives =
           | -1 -> Missing
           | at -> Int (at + 1)) ]
 
-let packages = [ "math", math_natives; "list", list_natives; "text", text_natives ]
+(* The masking of a WebSocket frame, a small name that only std/websocket sees. *)
+let packages =
+  [ "math", math_natives; "list", list_natives; "text", text_natives; "websocket", [ "xorBytes", nat "xorBytes" 2 2 xor_bytes ] ]

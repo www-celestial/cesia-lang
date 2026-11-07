@@ -13,7 +13,7 @@ defn main()
   io.Print(encode.Hex(crypto.HmacSha256("key", "The quick brown fox jumps over the lazy dog", s)))
   io.Print(encode.Hex(crypto.Blake2b("abc", s, size = 64)))
   io.Print(text.ByteLength(crypto.Random(16, s)), crypto.Random(16, s) != crypto.Random(16, s))
-  io.Print(crypto.Same("abc", "abc", s), crypto.Same("abc", "abd", s), crypto.Same("a", "ab", s))
+  io.Print(crypto.IsSame("abc", "abc", s), crypto.IsSame("abc", "abd", s), crypto.IsSame("a", "ab", s))
 
   key = crypto.SecretKey(s)
   box = crypto.Seal("zero$(text.Char(0))byte", key, s)

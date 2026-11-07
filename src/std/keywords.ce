@@ -143,7 +143,7 @@ use std/value
     project; any other path is a folder of this project, from its root (src/shapes). The files of one package need none to see
     each other.
 
-      set.Count(set.Of([1, 1, 2])) --> 2 *)
+      set.Items(set.Of([2, 1, 2])) --> [1, 2] *)
 
 (** true
     One of the two values of a condition.
@@ -172,7 +172,7 @@ use std/value
 (** as
     After a use, renames what the file sees: use std/queue as line gives line.Of.
 
-      line.Count(line.Of([1, 2])) --> 2 *)
+      line.First(line.Of([1, 2])) --> 1 *)
 
 (** _
     In a pattern, takes anything and names nothing. A name has no _: words join by capitals, byteLength or ByteLength.

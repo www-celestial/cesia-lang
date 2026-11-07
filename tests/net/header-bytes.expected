@@ -1,14 +1,9 @@
 true
-true
-false
-false
-false
-false
-false
-true
-header-bytes.ce:21:42: IsHeader needs a number of bytes within the text, not the number 9.
-  21 | io.Print(fiber.Wait(fiber.Spawn(() -> net.IsHeader(9, "a"))) then result.MapErr(it.Kind))
-     |                                          ^
-  in <anonymous> (header-bytes.ce:21)
-Err("type")
+Ok("200")
+Ok("400")
+Ok("400")
+Ok("400")
+Ok("400")
+Ok("400")
+Ok("200")
 exit 0

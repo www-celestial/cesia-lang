@@ -4,7 +4,7 @@ open Types
 type t = {
   poll : Poll.t;
   sockets : (int, Unix.file_descr) Hashtbl.t;
-  deadlines : (int, float) Hashtbl.t;  (* net.Arm: when a socket gets closed *)
+  deadlines : (int, float) Hashtbl.t;  (* arm of std/http: when a socket gets closed *)
   buffer : Bytes.t;  (* shared by reads: nothing suspends between a read and copying its bytes *)
   mutable stopping : bool;
   mutable handlers : bool;
@@ -259,14 +259,14 @@ let close n ctx (a : Types.t array) =
   close_socket n (socket_arg ctx "Close" a.(0));
   Missing
 
-(* A socket that outlives its deadline is closed by net.Reap, which wakes whoever waits on it: a slow client can't hold
-   a fiber forever. 0 removes the deadline. *)
+(* A socket that outlives its deadline is closed by reap, which wakes whoever waits on it: a slow client can't hold a fiber
+   forever. 0 removes the deadline. *)
 let arm n ctx (a : Types.t array) =
-  let id = socket_arg ctx "Arm" a.(0) in
+  let id = socket_arg ctx "arm" a.(0) in
   let seconds = match a.(1) with
     | Int i -> float_of_int i
     | Float x -> x
-    | v -> Runtime.fail ctx Type (Messages.need_number "Arm" (Value.describe v))
+    | v -> Runtime.fail ctx Type (Messages.need_number "arm" (Value.describe v))
   in
   if seconds <= 0. then Hashtbl.remove n.deadlines id
   else if Hashtbl.mem n.sockets id then Hashtbl.replace n.deadlines id (Unix.gettimeofday () +. seconds);
@@ -288,7 +288,7 @@ let is_token_byte = function
    read otherwise by a proxy in front: that is how a second request gets smuggled in. In one pass, because every header
    of every request comes through here. *)
 let is_header ctx (a : Types.t array) =
-  let line = Native.text_arg ctx "IsHeader" a.(1) in
+  let line = Native.text_arg ctx "isHeader" a.(1) in
   match a.(0) with
   | Int at when at >= 0 && at <= String.length line ->
     Runtime.pay_bytes ctx (String.length line);
@@ -298,7 +298,7 @@ let is_header ctx (a : Types.t array) =
           c <> '\r' && c <> '\n' && (i >= at || is_token_byte c) && clean (i + 1))
     in
     Value.of_bool (at > 0 && clean 0)
-  | v -> Runtime.fail ctx Type (Messages.need_size "IsHeader" (Value.describe v))
+  | v -> Runtime.fail ctx Type (Messages.need_size "isHeader" (Value.describe v))
 
 (* The port a socket is bound to: the one the system chose for a Listen on port 0. *)
 let port n ctx (a : Types.t array) =
@@ -320,8 +320,11 @@ let natives n =
     "Connect", Native.nat ~result:true "Connect" 2 2 (connect n);
     "Read", Native.nat ~result:true "Read" 1 1 (read n);
     "Write", Native.nat ~result:true "Write" 2 2 (write n);
-    "Close", Native.nat "Close" 1 1 (close n);
-    "Arm", Native.nat "Arm" 2 2 (arm n);
-    "Reap", Native.nat "Reap" 0 0 (reap n);
-    "IsHeader", Native.nat "IsHeader" 2 2 is_header;
-    "OpenCount", Native.nat "OpenCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]
+    "Close", Native.nat "Close" 1 1 (close n) ]
+
+(* Small names: only the files of std/http see them, which keep the deadlines of the connections they serve. *)
+let http_natives n =
+  [ "arm", Native.nat "arm" 2 2 (arm n);
+    "reap", Native.nat "reap" 0 0 (reap n);
+    "isHeader", Native.nat "isHeader" 2 2 is_header;
+    "openCount", Native.nat "openCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]

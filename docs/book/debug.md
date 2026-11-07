@@ -209,7 +209,7 @@ A stop holds:
 The functions of [std/debug] do the rest: [debug.SetBreak], [debug.ClearBreak] and [debug.Breaks] for breakpoints,
 [debug.Watch], [debug.Unwatch] and [debug.Watches] for the watches, which live with the program from one stop to the next;
 [debug.Eval] runs code in a frame or at the file level of the main package, the engine of the prompt too; [debug.Reload]
-reloads what changed; [debug.ReadLine] reads a line, edited on a terminal, and [debug.Complete] says whether code is whole.
+reloads what changed; [debug.ReadLine] reads a line, edited on a terminal, and [debug.IsComplete] says whether code is whole.
 They need the `debug` permission, which `--debugger` and `--repl` give by themselves.
 
 The debugger runs inside the program, before it, and its own code never stops. A debugger is no library: it loads only

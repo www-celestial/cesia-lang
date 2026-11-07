@@ -35,7 +35,7 @@ let uses ctx a =
 let natives ~libraries =
   let text name f = name, Native.nat ("cesia." ^ name) 1 1 (fun ctx a -> f ctx (Native.text_arg ctx ("cesia." ^ name) a.(0))) in
   [ "Version", Native.nat "cesia.Version" 0 0 (fun _ _ -> Text Version.number);
-    "Dev", Native.nat "cesia.Dev" 0 0 (fun _ _ -> Value.of_bool Version.dev);
+    "IsDev", Native.nat "cesia.IsDev" 0 0 (fun _ _ -> Value.of_bool Version.dev);
     "Binary", Native.nat "cesia.Binary" 0 0 (fun _ _ -> Text Sys.executable_name);
     text "Fingerprint" (fun _ src -> Text (fingerprint src));
     "Compare",

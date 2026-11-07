@@ -6,9 +6,14 @@ use std/fiber
 use std/io
 use std/list
 use std/result
+use std/math
 use std/text
 
 crlf = "$(text.Char(13))$(text.Char(10))"
+
+(** Masks a client's payload: each byte xor the byte of the key at its place, the key repeated. *)
+mask(key, s) = text.FromBytes([math.BitXor(text.Byte(k, s), text.Byte(math.Mod(k - 1, 4) + 1, key)) for k in 1..text.ByteLength(s)])
+
 a = web.App()
 a = web.Websocket("/echo", (m, send) -> send("got $m"), a)
 fiber.Spawn(() -> web.Serve(a, port = 18202))
@@ -17,7 +22,7 @@ sys.Sleep(0.05)
 defn masked(opcode, textValue)
   (** A frame from a client: always masked. *)
   key = "abcd"
-  "$(text.FromBytes([128 + opcode, 128 + text.ByteLength(textValue)]))$key$(text.XorBytes(key, textValue))"
+  "$(text.FromBytes([128 + opcode, 128 + text.ByteLength(textValue)]))$key$(mask(key, textValue))"
 end
 
 defn main()

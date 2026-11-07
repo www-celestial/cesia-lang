@@ -142,7 +142,7 @@ isGroupOfTexts() = sameGroup(it.Name, [{Name: "a", V: 1}, {Name: "b", V: 2}, {Na
 isGroupOfListsAndMaps() = sameGroup(x -> [math.Mod(x, 2)], 1..5) and sameGroup(x -> {P: math.Mod(x, 2)}, 1..5) and sameGroup(fn.Identity, [[1], 1, [1.0], "1"])
 isGroupOfBigIntsAndFloats() = sameGroup(fn.Identity, [9007199254740993, 9007199254740992.0, 9007199254740992]) and sameGroup(fn.Identity, [9007199254740992, 9007199254740993, 9007199254740992.0, 1e300, 1e300])
 isGroupKeepsMissingMembers() = sameGroup(x -> 1, [missing, 2, missing]) and value.Equal(list.Group(x -> 1, [missing, 2])[1].Values, [missing, 2])
-isGroupKindsOfValues() = sameGroup(math.Mod(it, 2), 1..6) and sameGroup(x -> 1, [1.5, 2.5]) and sameGroup(x -> 1, [1, 2.5]) and sameGroup(x -> 1, matrix.Reshape(1..6, 2, 3))
+isGroupKindsOfValues() = sameGroup(math.Mod(it, 2), 1..6) and sameGroup(x -> 1, [1.5, 2.5]) and sameGroup(x -> 1, [1, 2.5]) and sameGroup(x -> 1, matrix.Reshape(2, 3, 1..6))
 isGroupSummaries() = sameGroupWith(math.Mod(it, 2), 1..6, g -> {Total: list.Sum(g)}) and sameGroupWith(math.Mod(it, 2), 1..6, list.Sum) and sameGroupWith(math.Mod(it, 2), 1..6, g -> {Key: 99, N: value.Len(g)})
 isGroupEmpty() = sameGroup(fn.Identity, []) and value.Len(list.Group(fn.Identity, [])) == 0
 
@@ -164,7 +164,7 @@ end
 isFrequenciesWritesWholeFloatsAsInts() = sameFrequencies([1, 1.0, 2.0]) and value.Equal(dict.Keys(list.Frequencies([1, 1.0, 2.0])), [1, 2]) and value.IsInt(dict.Keys(list.Frequencies([2.0]))[1])
 isFrequenciesOfHalves() = sameFrequencies([0.5, 0.5]) and list.Frequencies([0.5, 0.5])[0.5] == 2
 isFrequenciesOfManyInts() = sameFrequencies([math.Mod(k * 7919, 101) for k in 1..10000]) and sameFrequencies(["a", "b", "a", "c"]) and sameFrequencies([])
-isFrequenciesOfBigInts() = sameFrequencies([9007199254740993, 9007199254740992.0, 9007199254740992]) and sameFrequencies(matrix.Reshape(1..6, 2, 3))
+isFrequenciesOfBigInts() = sameFrequencies([9007199254740993, 9007199254740992.0, 9007199254740992]) and sameFrequencies(matrix.Reshape(2, 3, 1..6))
 
 message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
 isGroupMessage() = message(() -> list.Group(x -> x, 5)) == result.Err("Can't loop over the number 5.")
@@ -182,7 +182,7 @@ isGroupOfIntsAndOneBigFloat() = sameGroup(fn.Identity, list.Concat([math.Mod(k, 
 isGroupOfTextsAndOneList() = sameGroup(fn.Identity, list.Concat(["a", "b", "a"], [[1], [1.0], [2], "b", [1]]))
 isGroupOfPairs() = sameGroup(x -> [math.Mod(x, 3), math.Mod(x, 2) * 1.0], 1..30) and sameGroup(fn.Identity, [[1, 2], [1.0, 2], [1, 2.0], [2, 1], [1, 2, 3]])
 isGroupOfMapsAndStructs() = sameGroup(x -> {A: math.Mod(x, 3), B: "x"}, 1..20) and sameGroup(fn.Identity, [{A: 1, B: 2}, {B: 2, A: 1}, {A: 1.0, B: 2}, {A: 1}]) and sameGroup(x -> Pt(math.Mod(x, 2), math.Mod(x, 3)), 1..12) and sameGroup(fn.Identity, [Pt(1, 2), Pt(1.0, 2), {A: 1, B: 2}, Pt(2, 1)])
-isGroupOfNestedNumbers() = sameGroup(fn.Identity, [[nan], [nan], [-0.0], [0.0], [[1]], [[1.0]], [], [1][2..1], matrix.Reshape(1..4, 2, 2), [1, 2, 3, 4], matrix.Reshape([1.0, 2, 3, 4], 2, 2)])
+isGroupOfNestedNumbers() = sameGroup(fn.Identity, [[nan], [nan], [-0.0], [0.0], [[1]], [[1.0]], [], [1][2..1], matrix.Reshape(2, 2, 1..4), [1, 2, 3, 4], matrix.Reshape(2, 2, [1.0, 2, 3, 4])])
 isGroupOfNestedBigInts() = sameGroup(fn.Identity, [[9007199254740993], [9007199254740992.0], [9007199254740992], [9007199254740993], [1]]) and sameGroup(fn.Identity, [[9007199254740993], [9007199254740995], [9007199254740993]])
 isGroupOfMapsWithBigKeys() = sameGroup(fn.Identity, [dict.Dict([{Key: 9007199254740993, Value: 1}, {Key: 9007199254740992, Value: 1}]), dict.Dict([{Key: 9007199254740992.0, Value: 1}, {Key: "q", Value: 2}]), dict.Dict([{Key: 9007199254740993, Value: 1}])])
 isGroupOfFunctions() = sameGroup(fn.Identity, [fn.Identity, math.Inc, fn.Identity, math.Sqrt, math.Sqrt, x -> x]) and sameGroup(fn.Identity, [true, missing, fn.Identity, [true], missing])

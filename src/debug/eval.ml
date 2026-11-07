@@ -241,7 +241,7 @@ let reload ctx _ =
 (* Is the code whole, or does it stop in the middle of a block, of a list or of an expression: the prompt then reads
    another line. *)
 let complete ctx (a : t array) =
-  let code = Native.text_arg ctx "Complete" a.(0) in
+  let code = Native.text_arg ctx "IsComplete" a.(0) in
   Value.of_bool
     (match Lexer.tokens ~file:prompt_path code with
      | exception Pos.Load_error _ -> true
@@ -256,4 +256,4 @@ let complete ctx (a : t array) =
 let natives =
   [ "Eval", Native.nat ~perm:Debug ~params:[| "code"; "frame" |] ~result:true "Eval" 1 2 eval;
     "Reload", Native.nat ~perm:Debug ~result:true "Reload" 0 0 reload;
-    "Complete", Native.nat ~params:[| "code" |] "Complete" 1 1 complete ]
+    "IsComplete", Native.nat ~params:[| "code" |] "IsComplete" 1 1 complete ]

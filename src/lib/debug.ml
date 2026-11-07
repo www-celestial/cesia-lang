@@ -177,17 +177,10 @@ let unwatch ctx (a : t array) =
   d.watches <- List.filter (fun c -> c <> code) d.watches;
   Missing
 
-(* A command line into words: the core has no text functions. A number becomes an integer. *)
-let words ctx (a : t array) =
-  let word w = match int_of_string_opt w with Some i -> Int i | None -> Text w in
-  let spaced = String.map (fun c -> if c = '\t' || c = '\r' then ' ' else c) (Native.text_arg ctx "Words" a.(0)) in
-  row (List.map word (List.filter (fun w -> w <> "") (String.split_on_char ' ' spaced)))
-
 let natives =
   [ "SetBreak", Native.nat ~perm:Debug ~params:[| "file"; "line"; "condition" |] "SetBreak" 2 3 set_break;
     "ClearBreak", Native.nat ~perm:Debug "ClearBreak" 2 2 clear_break;
     "Breaks", Native.nat ~perm:Debug "Breaks" 0 0 breaks;
     "Watch", Native.nat ~perm:Debug ~params:[| "code" |] "Watch" 1 1 watch;
     "Unwatch", Native.nat ~perm:Debug ~params:[| "code" |] "Unwatch" 1 1 unwatch;
-    "Watches", Native.nat ~perm:Debug "Watches" 0 0 (fun ctx _ -> row (List.map (fun c -> Text c) ctx.w.debug.watches));
-    "Words", Native.nat "Words" 1 1 words ]
+    "Watches", Native.nat ~perm:Debug "Watches" 0 0 (fun ctx _ -> row (List.map (fun c -> Text c) ctx.w.debug.watches)) ]

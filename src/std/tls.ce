@@ -154,7 +154,7 @@ defn shaken(t)
 end
 
 defn io(t)
-  {Read: () -> read(t), Write: s -> write(t, s), Close: () -> close(t), Arm: s -> net.Arm(t.Socket, s)}
+  {Read: () -> read(t), Write: s -> write(t, s), Close: () -> close(t)}
 end
 
 defn Server(certificate, key, api)

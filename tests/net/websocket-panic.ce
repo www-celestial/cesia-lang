@@ -6,9 +6,14 @@ use std/bug
 use std/fiber
 use std/io
 use std/result
+use std/math
 use std/text
 
 crlf = "\r\n"
+
+(** Masks a client's payload: each byte xor the byte of the key at its place, the key repeated. *)
+mask(key, s) = text.FromBytes([math.BitXor(text.Byte(k, s), text.Byte(math.Mod(k - 1, 4) + 1, key)) for k in 1..text.ByteLength(s)])
+
 a = web.Websocket("/boom", (m, send) -> bug.Panic("boom"), web.App(), idle = 0.2)
 a = web.Websocket("/echo", (m, send) -> send(m), a, idle = 0.1)
 (** The reaper passes every 0.5 s: idle closes by 0.6 s, the timeout alone never before 1 s. *)
@@ -25,15 +30,13 @@ end
 defn main()
   c = opened("/boom")?
   key = "abcd"
-  net.Write(c, "$(text.FromBytes([129, 129]))$key$(text.XorBytes(key, "x"))")?
+  net.Write(c, "$(text.FromBytes([129, 129]))$key$(mask(key, "x"))")?
   io.Print(text.ByteLength(net.Read(c)?))
   net.Close(c)
   idle = opened("/echo")?
   start = sys.Now()
   io.Print(text.ByteLength(net.Read(idle)?), sys.Now() - start < 0.9)
   net.Close(idle)
-  sys.Sleep(0.05)
-  io.Print(net.OpenCount())
   result.Ok(missing)
 end
 

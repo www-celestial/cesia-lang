@@ -50,6 +50,5 @@ defn kept()
 end
 isBits() = math.BitAnd(12, 10) == 8 and math.BitOr(12, 10) == 14 and math.BitXor(12, 10) == 6 and math.BitNot(0) == -1
 isShift() = math.BitShift(1, 4) == 16 and math.BitShift(16, -4) == 1 and math.BitShift(1, 70) == 0 and math.BitShift(-1, -1) > 0
-isXorBytes() = text.XorBytes("a", text.XorBytes("a", "hello")) == "hello" and text.Byte(1, text.XorBytes("ab", "a")) == 0
 isRepeatEmpty() = text.Repeat(1000000000000, "") == ""
 isPadEmptyFiller() = text.PadLeft(5, "", "a") == "a"

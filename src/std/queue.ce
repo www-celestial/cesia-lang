@@ -1,57 +1,63 @@
-(** A persistent queue open at both ends. Every operation is logarithmic, and a change gives a new queue. *)
+(** A persistent queue open at both ends. Every operation is logarithmic, and a change gives a new queue. value.Len counts
+    its elements.
+
+      value.Len(Of([1, 2])) --> 2 *)
 use std/dict
 use std/list
+use std/value
 
-Empty() = {Items: dict.Dict(), First: 1, Last: 0}   (** A queue with nothing in it. *)
-(** How many elements the queue holds.
+(** A queue, made by Empty and Of: its fields are its own, the elements by their place from first to last. *)
+struct Queue { items, first, last }
 
-      Count(Of([1, 2])) --> 2 *)
-Count(q) = q.Last - q.First + 1
+(* What value.Len counts. *)
+(q Queue) len() = q.last - q.first + 1
+
+Empty() = Queue(dict.Dict(), 1, 0)   (** A queue with nothing in it. *)
 (** Is this queue empty?
 
       IsEmpty(Empty()) --> true *)
-IsEmpty(q) = Count(q) == 0
+IsEmpty(q) = q.last < q.first
 
 defn Push(x, q)
   (** A queue with x added at the back.
 
         Items(Push(2, Of([1]))) --> [1, 2] *)
-  {Items: dict.Put(q.Last + 1, x, q.Items), First: q.First, Last: q.Last + 1}
+  Queue(dict.Put(q.last + 1, x, q.items), q.first, q.last + 1)
 end
 
 defn PushFront(x, q)
   (** A queue with x added at the front.
 
         Items(PushFront(0, Of([1]))) --> [0, 1] *)
-  {Items: dict.Put(q.First - 1, x, q.Items), First: q.First - 1, Last: q.Last}
+  Queue(dict.Put(q.first - 1, x, q.items), q.first - 1, q.last)
 end
 
 (** The element at the front, or missing.
 
       First(Of([1, 2])) --> 1 *)
-First(q) = dict.Get(q.First, q.Items)
+First(q) = dict.Get(q.first, q.items)
 (** The element at the back, or missing.
 
       Last(Of([1, 2])) --> 2 *)
-Last(q) = dict.Get(q.Last, q.Items)
+Last(q) = dict.Get(q.last, q.items)
 
 defn Pop(q)
   (** A queue without its front element.
 
         Items(Pop(Of([1, 2]))) --> [2] *)
-  if IsEmpty(q) q else {Items: dict.Drop(q.First, q.Items), First: q.First + 1, Last: q.Last} end
+  if IsEmpty(q) q else Queue(dict.Drop(q.first, q.items), q.first + 1, q.last) end
 end
 
 defn PopBack(q)
   (** A queue without its back element.
 
         Items(PopBack(Of([1, 2]))) --> [1] *)
-  if IsEmpty(q) q else {Items: dict.Drop(q.Last, q.Items), First: q.First, Last: q.Last - 1} end
+  if IsEmpty(q) q else Queue(dict.Drop(q.last, q.items), q.first, q.last - 1) end
 end
 
 (** The elements from front to back.
 
       Items(Of([1, 2])) --> [1, 2] *)
-Items(q) = [q.Items[k] for k in q.First..q.Last]
+Items(q) = [q.items[k] for k in q.first..q.last]
 (** A queue holding the elements of an array, the first one at the front. *)
 Of(xs) = list.Reduce((q, x) -> Push(x, q), Empty(), xs)
