@@ -28,9 +28,11 @@ start 6
 8
 > stock + 1
 4
+> "stock: $stock"
+"stock: 3"
 ```
 
-An expression shows its value. The prompt sees what the main file sees: its functions, its variables, its structs and the
+An expression shows its value as `-->` writes it, a text with its quotes. The prompt sees what the main file sees: its functions, its variables, its structs and the
 packages it uses, here `io`. What you define at the prompt stays for the next lines:
 
 ```text
