@@ -71,7 +71,7 @@ let supervise ~count ~argv ~listener ~host ~port : 'a =
   let workers : (int, worker) Hashtbl.t = Hashtbl.create 16 in
   let unknown = ref [] in  (* connections that haven't said which worker they are *)
   let current = ref 0 and next = ref None and asked = ref 0 and reload = ref false in
-  let pause = ref 0.5 and later = ref [] and failed = ref 0 and first_ready = ref false in
+  let pause = ref 0.1 and later = ref [] and failed = ref 0 and first_ready = ref false in
   let cleanup () =
     (try Unix.unlink path with Unix.Unix_error _ -> ());
     try Unix.rmdir dir with Unix.Unix_error _ -> ()
@@ -126,7 +126,7 @@ let supervise ~count ~argv ~listener ~host ~port : 'a =
             pause := Float.min longest_pause (!pause *. 2.)
           end
           else begin
-            pause := 0.5;
+            pause := 0.1;
             start w.generation
           end
         end

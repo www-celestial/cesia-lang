@@ -130,6 +130,7 @@ stop at once, and ends its work itself, as the requests of a server do; [fiber.C
 same way:
 
 ```cesia norun
+use std/io
 stops = sys.Stops()
 defn worker(jobs)
   while true

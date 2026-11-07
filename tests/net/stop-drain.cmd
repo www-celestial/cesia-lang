@@ -12,6 +12,8 @@ kill -TERM $pid
 sleep 0.1
 (exec 5<>/dev/tcp/127.0.0.1/18405) 2> /dev/null && echo "a new connection was accepted" || echo "no new connection"
 tr -d '\r' <&3 | grep -E '^(HTTP|connection|done)'
+# The kept connection gets one more request, as the server stops, and its response says that the connection closes.
+printf 'GET /last HTTP/1.1\r\nHost: a\r\n\r\n' >&4
 tr -d '\r' <&4 | grep -E '^(HTTP|connection|done)'
 exec 3<&- 4<&-
 wait $pid
