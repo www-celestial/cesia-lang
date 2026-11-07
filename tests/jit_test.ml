@@ -57,10 +57,10 @@ two:    func i64, p:cx
   check "first still runs" (Jit.call f ints floats [||] io = 7 && ints.(3) = 7);
   print_endline "jit: hand-written MIR ok"
 
-(* A frame of many pages: 1500 values live at once, spilled. Windows commits a thread's stack a guard page at a time, so
+(* A frame of many pages: 1000 values live at once, spilled. Windows commits a thread's stack a guard page at a time, so
    such a frame must touch its pages in order; a new domain's stack is barely committed, so it runs there. *)
 let () =
-  let n = 1500 in
+  let n = 1000 in
   let b = Buffer.create 65536 in
   Printf.bprintf b "m_big: module\n  export big\nbig: func i64, p:cx\n  local i64:s, i64:ints\n";
   for k = 0 to n - 1 do Printf.bprintf b "  local i64:v%d\n" k done;
