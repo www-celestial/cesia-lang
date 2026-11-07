@@ -5358,7 +5358,9 @@ static int loop_invariant_p (gen_ctx_t gen_ctx, loop_node_t loop, bb_insn_t bb_i
       /* possible exception insns: */
       || insn->code == MIR_DIV || insn->code == MIR_DIVS || insn->code == MIR_UDIV
       || insn->code == MIR_UDIVS || insn->code == MIR_MOD || insn->code == MIR_MODS
-      || insn->code == MIR_UMOD || insn->code == MIR_UMODS)
+      || insn->code == MIR_UMOD || insn->code == MIR_UMODS
+      /* Cesia: an insn that sets the overflow flag stays beside the BO/BNO that reads it. */
+      || MIR_overflow_insn_code_p (insn->code))
     return FALSE;
   for (size_t i = 0; i < insn->nops; i++) {
     if (insn->ops[i].mode == MIR_OP_VAR_MEM) return FALSE;

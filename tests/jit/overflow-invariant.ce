@@ -1,0 +1,12 @@
+use std/io
+use std/matrix
+
+(* An overflow of an operation on a value fixed in the inner loop, the outer loop's counter here, is the interpreter's
+   error: native code keeps the operation and its check together. *)
+a = matrix.Zeros(1)
+for k in 1..3
+  for j in 1..1
+    a[1] = k * 4611686018427387903
+  end
+end
+io.Print(a)

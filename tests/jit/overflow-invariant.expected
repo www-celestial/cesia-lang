@@ -1,0 +1,5 @@
+overflow-invariant.ce:9:14: The integer result of 2 * 4611686018427387903 doesn't fit in 63 bits.
+  9 |     a[1] = k * 4611686018427387903
+    |              ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+exit 1

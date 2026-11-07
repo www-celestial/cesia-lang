@@ -41,5 +41,8 @@ The core only: `mir.c`, `mir-gen.c` and what they include (the five targets, the
   stack pointer past it at once, so the first access of a frame over a page could fault there. Done on every system, so
   that the tests of each one run the same code; no frame of the suite or the benches is that large (`tests/jit_test.ml`
   makes one, of 8 KB).
+- `mir-gen.c`, `loop_invariant_p`: an instruction that sets the overflow flag (`addo`, `subo`, `mulo` and their kin) is
+  never moved out of a loop. Moved alone, it left its `bo` in the loop reading the flags of another instruction: an
+  overflow of an operation on a value fixed in the inner loop, as `k * c` with `k` an outer counter, went unseen.
 - `mir-gen.c` `gen_assert` and `mir.h` `mir_assert`: a failed check calls `cesia_mir_failed` (in `src/sys/jit.c`), which goes
   back to the load as MIR's errors do, and the JIT is off for the rest of the run: a check of MIR never kills Cesia.
