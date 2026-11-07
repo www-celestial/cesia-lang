@@ -30,15 +30,24 @@ jobs:
       - name: JIT plugin
         shell: bash
         run: |
-          CESIA_JIT=always CESIA_JIT_SHOW=1 _build/default/src/bin/main.exe run bench/fib.ce > out.txt 2> jit.txt
+          status=0
+          CESIA_JIT=always CESIA_JIT_SHOW=1 _build/default/src/bin/main.exe run bench/fib.ce > out.txt 2> jit.txt || status=$?
+          echo "exit $status" >> jit.txt
           grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
           grep -qx 9227465 out.txt
       - name: JIT on Windows
         if: runner.os == 'Windows'
-        run: opam exec -- dune exec tests/jit_test.exe
+        shell: bash
+        run: opam exec -- dune exec tests/jit_test.exe 2>&1 | tee jit-test.log
       - name: Tests
         if: runner.os != 'Windows'
         timeout-minutes: 10
+        shell: bash
         env:
           GOLDEN_TRACE: 1
-        run: opam exec -- tools/test.sh
+        run: opam exec -- tools/test.sh 2>&1 | tee test.log
+      # The logs need an account to be read; an annotation doesn't, for a public repository.
+      - name: Report a failure
+        if: failure()
+        shell: bash
+        run: tools/ci-error.sh out.txt jit.txt jit-test.log test.log
