@@ -57,6 +57,26 @@ two:    func i64, p:cx
   check "first still runs" (Jit.call f ints floats [||] io = 7 && ints.(3) = 7);
   print_endline "jit: hand-written MIR ok"
 
+(* A frame of many pages: 1500 values live at once, spilled. Windows commits a thread's stack a guard page at a time, so
+   such a frame must touch its pages in order; a new domain's stack is barely committed, so it runs there. *)
+let () =
+  let n = 1500 in
+  let b = Buffer.create 65536 in
+  Printf.bprintf b "m_big: module\n  export big\nbig: func i64, p:cx\n  local i64:s, i64:ints\n";
+  for k = 0 to n - 1 do Printf.bprintf b "  local i64:v%d\n" k done;
+  Printf.bprintf b "  mov ints, i64:0(cx)\n";
+  for k = 0 to n - 1 do Printf.bprintf b "  mov v%d, i64:%d(ints)\n" k (8 * k) done;
+  Printf.bprintf b "  mov s, 0\n";
+  for k = n - 1 downto 0 do Printf.bprintf b "  add s, s, v%d\n" k done;
+  Printf.bprintf b "  ret s\n  endfunc\n  endmodule\n";
+  let f = (Jit.load (Buffer.contents b) [| "big" |]).(0) in
+  let ints = Array.init n Fun.id in
+  let run () = Jit.call f ints (Float.Array.create 0) [||] (Array.make Cesia_jit.Ir.io_size 0) in
+  (* The cells of an OCaml int array hold 2k + 1. *)
+  let want = (n * (n - 1)) + n in
+  check "a frame of many pages" (Domain.join (Domain.spawn run) = want && run () = want);
+  print_endline "jit: a frame of many pages ok"
+
 (* Versions of a real program, lowered and run natively on the interpreter's stacks. *)
 open Cesia
 open Cesia_jit

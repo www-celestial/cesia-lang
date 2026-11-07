@@ -36,5 +36,10 @@ The core only: `mir.c`, `mir-gen.c` and what they include (the five targets, the
   slot's offset doesn't fit the instruction (never on x86-64). Taken always, a spilled double stored through a base and an
   index (`dmov d:-8(base, index, 4), r`, which MIR's ssa combine forms from our separate add) needed a third integer
   reload register, and `get_reload_hreg`'s `gen_assert (rld_num <= 1)` aborted the process.
+- `mir-gen-x86_64.c`, `target_make_prolog_epilog`: a frame of more than 2 KB touches its pages from the top down, then its
+  bottom, as `__chkstk` does. Windows commits a thread's stack one guard page at a time, and MIR's prologue moved the
+  stack pointer past it at once, so the first access of a frame over a page could fault there. Done on every system, so
+  that the tests of each one run the same code; no frame of the suite or the benches is that large (`tests/jit_test.ml`
+  makes one).
 - `mir-gen.c` `gen_assert` and `mir.h` `mir_assert`: a failed check calls `cesia_mir_failed` (in `src/sys/jit.c`), which goes
   back to the load as MIR's errors do, and the JIT is off for the rest of the run: a check of MIR never kills Cesia.

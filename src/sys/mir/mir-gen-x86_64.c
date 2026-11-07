@@ -1223,6 +1223,19 @@ static void target_make_prolog_epilog (gen_ctx_t gen_ctx, bitmap_t used_hard_reg
   new_insn = MIR_new_insn (ctx, MIR_SUB, sp_reg_op, sp_reg_op,
                            MIR_new_int_op (ctx, block_size + service_area_size));
   gen_add_insn_before (gen_ctx, anchor, new_insn); /* sp -= block size + service_area_size */
+  /* Cesia: a frame of more than half a page touches its pages from the top down, then its bottom, as __chkstk does:
+     Windows commits a thread's stack one guard page at a time, and an access past that page faults. A smaller frame and a
+     call's arguments on the stack (under 2 KB) stay within a page of what the caller touched. Harmless elsewhere, so on
+     every system, through R11, which MIR never allocates. */
+  if (block_size + service_area_size > 2048) {
+    for (size_t probe = 4096; probe < block_size + service_area_size; probe += 4096)
+      gen_mov (gen_ctx, anchor, MIR_MOV,
+               _MIR_new_var_mem_op (ctx, MIR_T_I64, (MIR_disp_t) (block_size + service_area_size - probe),
+                                    SP_HARD_REG, MIR_NON_VAR, 1),
+               _MIR_new_var_op (ctx, TEMP_INT_HARD_REG2));
+    gen_mov (gen_ctx, anchor, MIR_MOV, _MIR_new_var_mem_op (ctx, MIR_T_I64, 0, SP_HARD_REG, MIR_NON_VAR, 1),
+             _MIR_new_var_op (ctx, TEMP_INT_HARD_REG2));
+  }
   bp_saved_reg_offset = block_size;
 #ifdef MIR_NO_RED_ZONE_ABI
   if (keep_fp_p) {
