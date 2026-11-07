@@ -79,7 +79,10 @@ defn Float(lo = missing, hi = missing, special = false)
   end
 end
 
-Bool() = () -> draw(2) == 1   (** true or false; false is the simplest. *)
+(** true or false; false is the simplest.
+
+      value.IsBool(Bool()()) --> true *)
+Bool() = () -> draw(2) == 1
 
 (* The characters of a text when none are given: letters first, then digits, signs, accents and other scripts. *)
 letters = list.Concat(text.Chars("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 .,-_'!?"), ["é", "ü", "ß", "日", "😀", text.Char(10), text.Char(9)])
@@ -128,11 +131,21 @@ defn Dict(keys, values, max = 10)
   end
 end
 
-Pick(xs) = () -> edge(xs)   (** One of the values of a list; the first is the simplest. *)
+(** One of the values of a list; the first is the simplest.
 
-Map(f, g) = () -> f(g())   (** f of each value of g: gen.Map(it * 2, gen.Int()) gives even numbers. *)
+      Pick(["red", "green", "blue"])() in ["red", "green", "blue"] --> true *)
+Pick(xs) = () -> edge(xs)
 
-Then(f, g) = () -> f(g())()   (** A value of the generator that f gives for a value of g: a list, then a position in it. *)
+(** f of each value of g: gen.Map(it * 2, gen.Int()) gives even numbers.
+
+      math.IsEven(Map(it * 2, Int())()) --> true *)
+Map(f, g) = () -> f(g())
+
+(** A value of the generator that f gives for a value of g: a list, then a position in it.
+
+      p = Then(xs -> Of({Xs: () -> xs, At: Int(1, value.Len(xs))}), List(Int(), min = 1))()
+      p.At <= value.Len(p.Xs) --> true *)
+Then(f, g) = () -> f(g())()
 
 defn typed(name, ty)
   (** The generator that a type names. *)

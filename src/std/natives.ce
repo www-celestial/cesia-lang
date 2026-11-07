@@ -19,6 +19,10 @@ use std/matrix
 use std/result
 use std/text
 use std/value
+use std/io
+use std/path
+use std/sqlite3
+use std/test
 
 (** io
     Writing out: Print shows values on the standard output. *)
@@ -88,7 +92,8 @@ use std/value
 
 (** sys.Exit(code)
     Ends the program at once, with an exit code from 0 to 255: 0 says that all went well, another number that something
-    failed, for the shell or the program that ran it. What was printed is written out first. *)
+    failed, for the shell or the program that ran it. What was printed is written out first. The chapter
+    [Files](https://www-celestial.github.io/cesia-lang/files.html#standard-input-and-the-exit-code) uses it. *)
 
 (** sys.Now()
     The time in seconds since 1970, as a float.
@@ -96,11 +101,15 @@ use std/value
       sys.Now() > 0.0 --> true *)
 
 (** io.Print(...)
-    Writes the texts of its arguments on one line, separated by spaces. *)
+    Writes the texts of its arguments on one line, separated by spaces.
+
+      io.Print("total:", 3) *)
 
 (** io.PrintError(...)
     Writes as io.Print does, on the standard error: for what went wrong, which a pipe or a file that takes the output leaves
-    out, as in cesia run tool.ce > out.txt. *)
+    out, as in cesia run tool.ce > out.txt.
+
+      io.PrintError("warning:", "no data") *)
 
 (** text.Str(...)
     The texts of its arguments, joined with nothing between.
@@ -113,7 +122,11 @@ use std/value
       value.Text(12) --> "12" *)
 
 (** bug.Panic(message)
-    Stops the fiber with a user error: a bug, not a value to handle. *)
+    Stops the fiber with a user error: a bug, not a value to handle.
+
+      size(n) = if n >= 0 n else bug.Panic("negative size") end
+      size(3) --> 3
+      size(-1) --> error *)
 
 (** bug.Assert(condition, message = missing)
     Does nothing if the condition is true. Otherwise it panics, with the message if there is one.
@@ -121,7 +134,9 @@ use std/value
       bug.Assert(1 < 2) --> missing *)
 
 (** sys.Args
-    The command-line arguments after the script, as an array of texts. *)
+    The command-line arguments after the script, as an array of texts.
+
+      name = if value.Len(sys.Args) > 0 sys.Args[1] else "world" end *)
 
 (** cesia.Doc(name)
     The signature and the comment of a name given as text ("sort", "num.Solve", "date.Date.Year") or of a function, or missing if
@@ -135,7 +150,10 @@ use std/value
       "math.Inc" in cesia.DocNames("std/math") --> true *)
 
 (** fiber.Spawn(f)
-    Starts f() in a new fiber and gives a task to wait for. *)
+    Starts f() in a new fiber and gives a task to wait for.
+
+      task = fiber.Spawn(() -> 6 * 7)
+      fiber.Wait(task) --> result.Ok(42) *)
 
 (** fiber.Wait(task)
     The result of a task, once it is done: an Ok of its value, or an Err if the fiber panicked.
@@ -143,13 +161,27 @@ use std/value
       fiber.Wait(fiber.Spawn(() -> 1)) --> result.Ok(1) *)
 
 (** fiber.Channel()
-    A new channel: a queue of values between fibers. *)
+    A new channel: a queue of values between fibers.
+
+      ch = fiber.Channel()
+      fiber.Spawn(() -> fiber.Send("done", ch))
+      fiber.Receive(ch) --> result.Ok("done") *)
 
 (** fiber.Send(value, ch)
-    Puts a value at the end of a channel. It never waits, and wakes the first fiber waiting on it. *)
+    Puts a value at the end of a channel. It never waits, and wakes the first fiber waiting on it.
+
+      ch = fiber.Channel()
+      fiber.Send(1, ch)
+      fiber.Send(2, ch)
+      fiber.Receive(ch) --> result.Ok(1) *)
 
 (** fiber.Receive(ch, timeout = missing)
-    An Ok of the oldest value of a channel. With none, the fiber waits for one, at most timeout seconds when given: then an Err of kind "timeout". A timeout of 0 never waits. *)
+    An Ok of the oldest value of a channel. With none, the fiber waits for one, at most timeout seconds when given: then an Err of kind "timeout". A timeout of 0 never waits.
+
+      ch = fiber.Channel()
+      fiber.Send("a", ch)
+      fiber.Receive(ch) --> result.Ok("a")
+      fiber.Receive(ch, timeout = 0).Error.Kind --> "timeout" *)
 
 (** value.Len(x)
     The number of elements of an array, of characters of a text, of pairs of a dictionary, or of fields of a struct; 1 for any other value.
@@ -718,7 +750,9 @@ use std/value
       columns.Rows(["id", "name"], [1, "Ana", 2, "Bo"], public = true)?[2].Name --> "Bo" *)
 
 (** columns.Cores()
-    The number of processor cores that heavy computations may use. *)
+    The number of processor cores that heavy computations may use.
+
+      columns.Cores() >= 1 --> true *)
 
 (** columns.Groups(cols)
     Groups the rows that share the same values in a list of key columns: a struct with Ids (the group of each row, from 1), Count and Firsts (the first row of each group).
@@ -763,34 +797,66 @@ use std/value
 (** debug.SetBreak(file, line, condition = missing)
     Sets a breakpoint at a line of a file, which stops the program there; with a condition, an expression of the
     variables there as text, only when it is true. One breakpoint per line: a new one replaces it. Needs the debug
-    permission. *)
+    permission.
+
+      debug.SetBreak("app.ce", 20, condition = "total > 100")
+      debug.Breaks() --> [{File: "app.ce", Line: 20, Condition: "total > 100"}]
+      debug.ClearBreak("app.ce", 20) *)
 
 (** debug.ClearBreak(file, line)
-    Removes the breakpoint at a line of a file. Needs the debug permission. *)
+    Removes the breakpoint at a line of a file. Needs the debug permission.
+
+      debug.SetBreak("app.ce", 12)
+      debug.ClearBreak("app.ce", 12)
+      debug.Breaks() --> [] *)
 
 (** debug.Breaks()
-    The breakpoints, each with File, Line and Condition, missing when it has none. Needs the debug permission. *)
+    The breakpoints, each with File, Line and Condition, missing when it has none. Needs the debug permission.
+
+      debug.SetBreak("app.ce", 12)
+      debug.Breaks() --> [{File: "app.ce", Line: 12, Condition: missing}]
+      debug.ClearBreak("app.ce", 12) *)
 
 (** debug.Watch(code)
-    Adds an expression to the watches, which a debugger shows at each stop. Needs the debug permission. *)
+    Adds an expression to the watches, which a debugger shows at each stop. Needs the debug permission.
+
+      debug.Watch("total")
+      debug.Watches() --> ["total"]
+      debug.Unwatch("total") *)
 
 (** debug.Unwatch(code)
-    Removes an expression from the watches. Needs the debug permission. *)
+    Removes an expression from the watches. Needs the debug permission.
+
+      debug.Watch("total")
+      debug.Unwatch("total")
+      debug.Watches() --> [] *)
 
 (** debug.Watches()
-    The expressions watched, in the order they were added. Needs the debug permission. *)
+    The expressions watched, in the order they were added. Needs the debug permission.
+
+      debug.Watch("total")
+      debug.Watch("count")
+      debug.Watches() --> ["total", "count"]
+      debug.Unwatch("total")
+      debug.Unwatch("count") *)
 
 (** debug.Eval(code, frame = missing)
     Runs code in the running program and gives the value of its last statement in an Ok, or its error in an Err. With a
     frame of a stop, as stop.Frames[1], the code is an expression of the variables of that frame, of its package and of
     the packages its file uses. Without, it runs at the file level of the main file's package, as at the prompt of cesia
     run --repl: it sees what the code before it defined, and a function it defines again replaces the program's own,
-    which goes on with it. Needs the debug permission. *)
+    which goes on with it. Needs the debug permission.
+
+      debug.Eval("price = 5")
+      debug.Eval("price * 2") --> result.Ok(10)
+      result.IsErr(debug.Eval("price +")) --> true *)
 
 (** debug.Reload()
     Reloads the files of the program changed since they were loaded, as cesia run --watch does: their paths in an Ok, or
     the errors in an Err, and the code of those stays as it was. The code running in a frame goes on as it was; the next
-    call runs the new code. Needs the debug permission. *)
+    call runs the new code. Needs the debug permission.
+
+      debug.Reload() --> result.Ok([]) *)
 
 (** debug.IsComplete(code)
     Is the code whole? False when it stops inside a block, a list or an expression, so that a prompt reads another line.
@@ -804,175 +870,393 @@ use std/value
     permission. *)
 
 (** sys.Read(path)
-    The text of a file, in an Ok, or an Err. Needs the read permission. *)
+    The text of a file, in an Ok, or an Err. Needs the read permission.
+
+      file = "$(test.Temp())/read.txt"
+      sys.Write(file, "hello")
+      sys.Read(file) --> result.Ok("hello")
+      result.IsErr(sys.Read("$(test.Temp())/none.txt")) --> true *)
 
 (** sys.Write(path, text)
-    Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission. *)
+    Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission.
+
+      file = "$(test.Temp())/write.txt"
+      sys.Write(file, "one") --> result.Ok(missing)
+      sys.Write(file, "two")
+      sys.Read(file) --> result.Ok("two") *)
 
 (** sys.Append(path, text)
-    Adds a text at the end of a file, creating it if needed: Ok(missing) or an Err. Needs the write permission. *)
+    Adds a text at the end of a file, creating it if needed: Ok(missing) or an Err. Needs the write permission.
+
+      file = "$(test.Temp())/log.txt"
+      sys.Append(file, "a\n") --> result.Ok(missing)
+      sys.Append(file, "b\n")
+      sys.Read(file) --> result.Ok("a\nb\n") *)
 
 (** sys.List(path)
-    The sorted names of the entries of a folder, in an Ok, or an Err. Needs the read permission. *)
+    The sorted names of the entries of a folder, in an Ok, or an Err. Needs the read permission.
+
+      d = "$(test.Temp())/list"
+      sys.Mkdir("$(d)/photos")
+      sys.Write("$(d)/notes.txt", "")
+      sys.List(d) --> result.Ok(["notes.txt", "photos"]) *)
 
 (** sys.Walk(path)
     The paths of every file under a folder, at any depth, in an Ok, or an Err that names the folder that failed: depth first,
     the names of each folder sorted, each path starting with the folder, as photos/2026/a.jpg, but for ".". A folder is
     entered and not listed; a symbolic link is listed, never followed, so no loop can form. Needs the read permission.
-    list.Filter(p -> path.Ext(p) == ".jpg", sys.Walk("photos")?) keeps the photos. *)
+    list.Filter(p -> path.Ext(p) == ".jpg", sys.Walk("photos")?) keeps the photos.
+
+      d = "$(test.Temp())/walk"
+      sys.Mkdir("$(d)/2026")
+      sys.Write("$(d)/2026/a.jpg", "")
+      sys.Walk(d) --> result.Ok(["$(d)/2026/a.jpg"]) *)
 
 (** sys.Remove(path)
-    Deletes a file or an empty folder: Ok(missing) or an Err. A symbolic link is deleted, never what it points to. Needs the write permission. *)
+    Deletes a file or an empty folder: Ok(missing) or an Err. A symbolic link is deleted, never what it points to. Needs the write permission.
+
+      file = "$(test.Temp())/old.txt"
+      sys.Write(file, "")
+      sys.Remove(file) --> result.Ok(missing)
+      sys.Exists(file) --> false *)
 
 (** sys.Stat(path)
     A dictionary with Size (bytes), Modified (seconds since 1970), IsDir, IsFile and IsLink, in an Ok, or an Err. A symbolic link
     counts as what it points to, and IsLink says that it is one. IsFile is true for a regular file only, not for a folder, a device, a FIFO or a socket: their Size says nothing,
-    and reading one can use all the memory or hang. Needs the read permission. *)
+    and reading one can use all the memory or hang. Needs the read permission.
+
+      file = "$(test.Temp())/stat.txt"
+      sys.Write(file, "hello")
+      sys.Stat(file)?.Size --> 5
+      sys.Stat(test.Temp())?.IsDir --> true *)
 
 (** sys.TakeStops(taken)
     Takes the TERM and INT signals from the program, or gives them back, in pairs: for a program that must end by itself
     under --watch, such as a window that saves its state first. With true, TERM and INT no longer end the program, and
-    sys.StopAsked tells of them; with false, the program leaves them. Without --watch it does nothing. *)
+    sys.StopAsked tells of them; with false, the program leaves them. Without --watch it does nothing.
+
+      sys.TakeStops(true)
+      sys.StopAsked() --> false
+      sys.TakeStops(false) *)
 
 (** sys.StopAsked()
-    Has a TERM or an INT come since the last call? Only after sys.TakeStops(true). *)
+    Has a TERM or an INT come since the last call? Only after sys.TakeStops(true).
+
+      sys.StopAsked() --> false *)
 
 (** sys.Rename(from, to)
-    Moves a file or a folder: Ok(missing) or an Err. Needs the write permission on both paths. *)
+    Moves a file or a folder: Ok(missing) or an Err. Needs the write permission on both paths.
+
+      d = test.Temp()
+      sys.Write("$(d)/draft.txt", "text")
+      sys.Rename("$(d)/draft.txt", "$(d)/final.txt") --> result.Ok(missing)
+      sys.Read("$(d)/final.txt") --> result.Ok("text") *)
 
 (** sys.Mkdir(path)
-    Creates a folder and the missing folders above it, like mkdir -p: Ok(missing) or an Err. Needs the write permission. *)
+    Creates a folder and the missing folders above it, like mkdir -p: Ok(missing) or an Err. Needs the write permission.
+
+      d = test.Temp()
+      sys.Mkdir("$(d)/photos/2026") --> result.Ok(missing)
+      sys.Stat("$(d)/photos/2026")?.IsDir --> true *)
 
 (** sys.Exists(path)
-    Does this file or folder exist? Needs the read permission. *)
+    Does this file or folder exist? Needs the read permission.
+
+      sys.Exists(test.Temp()) --> true
+      sys.Exists("$(test.Temp())/none.txt") --> false *)
 
 (** sys.Env(name)
-    The value of an environment variable, or missing. Needs the env permission. *)
+    The value of an environment variable, or missing. Needs the env permission.
+
+      value.IsText(sys.Env("HOME")) --> true *)
 
 (** sys.Sleep(seconds)
-    Waits for a number of seconds, letting the other fibers run. *)
+    Waits for a number of seconds, letting the other fibers run.
+
+      start = sys.Now()
+      sys.Sleep(0.01)
+      sys.Now() - start >= 0.01 --> true *)
 
 (** sys.Run(cmd, args = [], input = "", dir = "", timeout = 0)
     Runs a program to its end, giving it the input text, and gives an Ok of a struct with Code, Out and Err, or an Err if it
     can't start. It runs in the folder dir, or in this program's folder if dir is empty. After timeout seconds, if timeout is
-    more than 0, it is killed and its Code is -1, as for a program that a signal ended. Needs the exec permission. *)
+    more than 0, it is killed and its Code is -1, as for a program that a signal ended. Needs the exec permission.
+
+      sys.Run("sh", args = ["-c", "echo hi"]) --> result.Ok({Code: 0, Out: "hi\n", Err: ""})
+      sys.Run("sh", args = ["-c", "exit 3"])?.Code --> 3
+      sys.Run("sh", args = ["-c", "cat"], input = "data")?.Out --> "data" *)
 
 (** sys.Start(cmd, args = [])
-    Starts a program that keeps running and gives an Ok of its process. Its output and its errors come as one stream. Needs the exec permission. *)
+    Starts a program that keeps running and gives an Ok of its process. Its output and its errors come as one stream. Needs the exec permission.
+
+      proc = sys.Start("sh", args = ["-c", "echo ready"]).Value
+      sys.ReadOutput(proc) --> result.Ok("ready\n") *)
 
 (** sys.ReadOutput(process)
-    The next chunk of what a process wrote, in an Ok. An empty text means that its output is closed. *)
+    The next chunk of what a process wrote, in an Ok. An empty text means that its output is closed.
+
+      proc = sys.Start("sh", args = ["-c", "echo hi"]).Value
+      sys.ReadOutput(proc) --> result.Ok("hi\n")
+      sys.ReadOutput(sys.Start("sh", args = ["-c", "exit 0"])?) --> result.Ok("") *)
 
 (** sys.WriteInput(process, text)
-    Sends a text to the input of a process: Ok(missing) or an Err, for instance if the input is closed. *)
+    Sends a text to the input of a process: Ok(missing) or an Err, for instance if the input is closed.
+
+      proc = sys.Start("sh", args = ["-c", "cat"]).Value
+      sys.WriteInput(proc, "hello\n")
+      sys.ReadOutput(proc) --> result.Ok("hello\n") *)
 
 (** sys.CloseInput(process)
-    Closes the input of a process, so that it sees the end of its input. *)
+    Closes the input of a process, so that it sees the end of its input.
+
+      proc = sys.Start("sh", args = ["-c", "cat"]).Value
+      sys.CloseInput(proc)
+      sys.WaitExit(proc) --> 0 *)
 
 (** sys.WaitExit(process)
-    Waits for a process to end and gives its exit code. The process is finished with after that. *)
+    Waits for a process to end and gives its exit code. The process is finished with after that.
+
+      proc = sys.Start("sh", args = ["-c", "exit 3"]).Value
+      sys.WaitExit(proc) --> 3 *)
 
 (** sys.Stop(process)
-    Asks a process to end, with the TERM signal. *)
+    Asks a process to end, with the TERM signal.
+
+      proc = sys.Start("sh", args = ["-c", "read line"]).Value
+      sys.Stop(proc)
+      sys.WaitExit(proc) --> -1 *)
 
 (** net.Listen(port, host = "127.0.0.1")
     Opens a listening socket: an Ok of the socket, or an Err. Needs the net permission: net=:PORT on this machine only (127.0.0.1,
-    ::1, localhost), net=0.0.0.0:PORT or the address itself for an address that other machines reach. *)
+    ::1, localhost), net=0.0.0.0:PORT or the address itself for an address that other machines reach.
+
+      server = net.Listen(0).Value
+      client = net.Connect("127.0.0.1", net.Port(server)).Value
+      result.IsOk(net.Accept(server)) --> true *)
 
 (** net.Port(socket)
-    The port a socket is bound to: the one the system chose for net.Listen(0), which a test uses to take a free port. *)
+    The port a socket is bound to: the one the system chose for net.Listen(0), which a test uses to take a free port.
+
+      net.Port(net.Listen(0).Value) > 0 --> true *)
 
 (** net.Accept(listener)
-    Waits for a connection and gives an Ok of its socket. An Err of the kind "stopped" means that the program was asked to stop. *)
+    Waits for a connection and gives an Ok of its socket. An Err of the kind "stopped" means that the program was asked to stop.
+
+      server = net.Listen(0).Value
+      client = net.Connect("127.0.0.1", net.Port(server)).Value
+      peer = net.Accept(server).Value
+      net.Write(peer, "welcome")
+      net.Read(client) --> result.Ok("welcome") *)
 
 (** net.Connect(host, port)
-    Opens a connection to a host: an Ok of the socket, or an Err. Needs the net permission. *)
+    Opens a connection to a host: an Ok of the socket, or an Err. Needs the net permission.
+
+      server = net.Listen(0).Value
+      result.IsOk(net.Connect("127.0.0.1", net.Port(server))) --> true *)
 
 (** net.Read(socket)
-    Waits for bytes and gives an Ok of the text received. An empty text means that the other side closed. *)
+    Waits for bytes and gives an Ok of the text received. An empty text means that the other side closed.
+
+      server = net.Listen(0).Value
+      client = net.Connect("127.0.0.1", net.Port(server)).Value
+      net.Write(client, "ping")
+      net.Read(net.Accept(server)?) --> result.Ok("ping") *)
 
 (** net.Write(socket, text)
-    Sends a whole text: Ok(missing) or an Err. *)
+    Sends a whole text: Ok(missing) or an Err.
+
+      server = net.Listen(0).Value
+      client = net.Connect("127.0.0.1", net.Port(server)).Value
+      net.Write(client, "ping") --> result.Ok(missing) *)
 
 (** net.Close(socket)
-    Closes a socket, which does nothing if it is already closed. *)
+    Closes a socket, which does nothing if it is already closed.
+
+      server = net.Listen(0).Value
+      client = net.Connect("127.0.0.1", net.Port(server)).Value
+      peer = net.Accept(server).Value
+      net.Close(client)
+      net.Read(peer) --> result.Ok("") *)
 
 (** c.Open(name, version = missing)
     Loads a shared library by its short name ("m", "sodium"), trying the usual file names of each system, and on macOS the folders of Homebrew: an Ok of the
-    library, or an Err. The names with the version come first, then those without it. Needs the ffi permission. *)
+    library, or an Err. The names with the version come first, then those without it. Needs the ffi permission.
+
+      m = c.Open("m", version = 6).Value
+      cos = c.Fn("cos", ["f64"], "f64", m).Value
+      cos(0.0) --> 1.0 *)
 
 (** c.Fn(name, args, ret, lib, callsBack = false)
-    Binds a function of a library: an Ok of a Cesia function. The types are given by name ("i32", "f64", "text", "ptr", "void", and so on) or by c.Struct. Set callsBack if the function calls back into Cesia. *)
+    Binds a function of a library: an Ok of a Cesia function. The types are given by name ("i32", "f64", "text", "ptr", "void", and so on) or by c.Struct. Set callsBack if the function calls back into Cesia.
+
+      m = c.Open("m", version = 6).Value
+      pow = c.Fn("pow", ["f64", "f64"], "f64", m).Value
+      pow(2.0, 10.0) --> 1024.0
+      result.IsErr(c.Fn("cosine", ["f64"], "f64", m)) --> true *)
 
 (** c.Variadic(name, fixed, rest, ret, lib)
-    Binds a function with a variable argument list, like printf: the types of the fixed arguments, then those of the ones used. An Ok of a Cesia function. *)
+    Binds a function with a variable argument list, like printf: the types of the fixed arguments, then those of the ones used. An Ok of a Cesia function.
+
+      libc = c.Open("c", version = 6).Value
+      snprintf = c.Variadic("snprintf", ["ptr", "u64", "text"], ["i32"], "i32", libc).Value
+      b = c.Alloc(16)
+      snprintf(b, 16, "n=%d", 42) --> 4
+      c.Load(0, 4, b) --> "n=42" *)
 
 (** c.Callback(f, args, ret)
-    Makes a C function pointer from a Cesia function, to pass where C expects a callback. *)
+    Makes a C function pointer from a Cesia function, to pass where C expects a callback.
+
+      libc = c.Open("c", version = 6).Value
+      qsort = c.Fn("qsort", ["ptr", "u64", "u64", "callback"], "void", libc).Value
+      b = c.Alloc(3)
+      c.Store("cab", 0, b)
+      qsort(b, 3, 1, c.Callback((x, y) -> c.Get("u8", 0, x) - c.Get("u8", 0, y), ["ptr", "ptr"], "i32"))
+      c.Load(0, 3, b) --> "abc" *)
 
 (** c.Struct(fields)
-    A C structure type from the types of its fields, laid out as C does. *)
+    A C structure type from the types of its fields, laid out as C does.
+
+      c.Size(c.Struct(["i8", "f64"])) --> 16 *)
 
 (** c.Size(type)
-    The size in bytes of a structure type from c.Struct. *)
+    The size in bytes of a structure type from c.Struct.
+
+      point = c.Struct(["f64", "f64", "i32"])
+      c.Size(point) --> 24 *)
 
 (** c.Offset(k, type)
-    The offset in bytes of the field k, from 1, of a structure type from c.Struct. *)
+    The offset in bytes of the field k, from 1, of a structure type from c.Struct.
+
+      point = c.Struct(["f64", "f64", "i32"])
+      c.Offset(3, point) --> 16 *)
 
 (** c.Alloc(size)
-    A block of memory of this many bytes, set to zero, outside the Cesia heap. Free it with c.Free. *)
+    A block of memory of this many bytes, set to zero, outside the Cesia heap. Free it with c.Free.
+
+      b = c.Alloc(8)
+      c.Get("i64", 0, b) --> 0
+      c.Free(b) *)
 
 (** c.Free(block)
-    Releases a block. It can't be used after that. *)
+    Releases a block. It can't be used after that.
+
+      b = c.Alloc(8)
+      c.Free(b)
+      c.Get("i64", 0, b) --> error *)
 
 (** c.Get(type, offset, block)
     The number of this type that a block holds at a byte offset, or that a pointer from C points to, as the arguments
-    that qsort gives its comparison: C knows the size of that memory, and nothing checks the offset. *)
+    that qsort gives its comparison: C knows the size of that memory, and nothing checks the offset.
+
+      b = c.Alloc(8)
+      c.Set("i32", 4, -7, b)
+      c.Get("i32", 4, b) --> -7 *)
 
 (** c.Set(type, offset, value, block)
-    Writes a value of this type into a block at a byte offset. *)
+    Writes a value of this type into a block at a byte offset.
+
+      b = c.Alloc(8)
+      c.Set("f64", 0, 2.5, b)
+      c.Get("f64", 0, b) --> 2.5 *)
 
 (** c.Store(text, offset, block)
-    Copies the bytes of a text into a block at a byte offset. *)
+    Copies the bytes of a text into a block at a byte offset.
+
+      b = c.Alloc(8)
+      c.Store("hi", 0, b)
+      c.Get("u8", 1, b) --> 105 *)
 
 (** c.Load(offset, size, block)
-    A text of the given number of bytes read from a block at a byte offset. *)
+    A text of the given number of bytes read from a block at a byte offset.
+
+      b = c.Alloc(8)
+      c.Store("hello", 0, b)
+      c.Load(1, 3, b) --> "ell" *)
 
 (** c.Text(pointer)
-    The text that a pointer from C points to, read up to its zero byte. *)
+    The text that a pointer from C points to, read up to its zero byte.
+
+      libc = c.Open("c", version = 6).Value
+      strerror = c.Fn("strerror", ["i32"], "ptr", libc).Value
+      c.Text(strerror(2)) --> "No such file or directory" *)
 
 (** sqlite3.Pool(path, size, wait)
-    An Ok of a pool of at most size connections to a SQLite database, created if absent, or to a fresh one in memory with ":memory:", opened when first needed, with WAL for a file and foreign keys. A call that finds them all busy waits at most wait seconds for one. Needs read and write on the path, and no ffi permission. Each connection opens with safe settings: no URI names, defensive, no trusted schema, no extension, nothing attached, texts of 100 MB at most. std/sql is the way to use it. *)
+    An Ok of a pool of at most size connections to a SQLite database, created if absent, or to a fresh one in memory with ":memory:", opened when first needed, with WAL for a file and foreign keys. A call that finds them all busy waits at most wait seconds for one. Needs read and write on the path, and no ffi permission. Each connection opens with safe settings: no URI names, defensive, no trusted schema, no extension, nothing attached, texts of 100 MB at most. std/sql is the way to use it.
+
+      db = sqlite3.Pool("$(test.Temp())/app.db", 4, 1.0).Value
+      sqlite3.Script("create table notes(body)", db) --> result.Ok(missing)
+      sys.Exists("$(test.Temp())/app.db") --> true *)
 
 (** sqlite3.Take(pool)
-    An Ok of a connection of the pool, waited for if none is free, or an Err with Code "pool" after the wait of the pool, or "closed". sqlite3.Give puts it back. *)
+    An Ok of a connection of the pool, waited for if none is free, or an Err with Code "pool" after the wait of the pool, or "closed". sqlite3.Give puts it back.
+
+      db = sqlite3.Pool(":memory:", 1, 0.01).Value
+      conn = sqlite3.Take(db).Value
+      sqlite3.Take(db).Error.Code --> "pool" *)
 
 (** sqlite3.Give(conn, pool)
-    Puts a connection back in its pool, closed if it is broken or if the pool is. *)
+    Puts a connection back in its pool, closed if it is broken or if the pool is.
+
+      db = sqlite3.Pool(":memory:", 1, 0.01).Value
+      conn = sqlite3.Take(db).Value
+      sqlite3.Give(conn, db)
+      result.IsOk(sqlite3.Take(db)) --> true *)
 
 (** sqlite3.Query(text, params, db, limit = missing)
-    Runs one statement on a connection, or on one of a pool for this call: an Ok of every row, or of the first limit, as maps whose keys are the column names made public names. A busy database, outside a transaction, is waited for in the fiber. A value SQL doesn't take is an Err with Code "convert". *)
+    Runs one statement on a connection, or on one of a pool for this call: an Ok of every row, or of the first limit, as maps whose keys are the column names made public names. A busy database, outside a transaction, is waited for in the fiber. A value SQL doesn't take is an Err with Code "convert".
+
+      db = sqlite3.Pool(":memory:", 1, 1.0).Value
+      sqlite3.Script("create table people(name, age); insert into people values ('Ana', 31), ('Bo', 25)", db)
+      sqlite3.Query("select name from people where age > ?", [30], db) --> result.Ok([{Name: "Ana"}])
+      sqlite3.Query("select age from people order by age", [], db, limit = 1) --> result.Ok([{Age: 25}]) *)
 
 (** sqlite3.One(text, params, db)
-    The first row of a statement, as sqlite3.Query reads it: an Ok of a map, or of missing. *)
+    The first row of a statement, as sqlite3.Query reads it: an Ok of a map, or of missing.
+
+      db = sqlite3.Pool(":memory:", 1, 1.0).Value
+      sqlite3.One("select 6 * 7 as answer", [], db) --> result.Ok({Answer: 42})
+      sqlite3.One("select 1 where 0", [], db) --> result.Ok(missing) *)
 
 (** sqlite3.Exec(text, params, db)
-    Runs one statement to its end, as sqlite3.Query does: an Ok of {Changed, LastId}. *)
+    Runs one statement to its end, as sqlite3.Query does: an Ok of {Changed, LastId}.
+
+      db = sqlite3.Pool(":memory:", 1, 1.0).Value
+      sqlite3.Script("create table notes(body)", db)
+      sqlite3.Exec("insert into notes values (?)", ["buy bread"], db) --> result.Ok({Changed: 1, LastId: 1}) *)
 
 (** sqlite3.Run(text, params, conn)
-    Prepares one statement, from a cache of 128 by text, and binds a value to each ?: missing, a Bool, an Int, a Float or a Text. An Ok of a cursor, or an Err; text after the statement that holds another is an Err. *)
+    Prepares one statement, from a cache of 128 by text, and binds a value to each ?: missing, a Bool, an Int, a Float or a Text. An Ok of a cursor, or an Err; text after the statement that holds another is an Err.
+
+      conn = sqlite3.Take(sqlite3.Pool(":memory:", 1, 1.0).Value).Value
+      cursor = sqlite3.Run("select ? + 1 as n", [41], conn).Value
+      sqlite3.Next(10, cursor)?.Cells --> [42] *)
 
 (** sqlite3.Next(n, cursor)
-    Runs the statement on to n rows: an Ok of {Names, Cells, Done, Changed, LastId}, the cells row after row. NULL is missing, a BLOB a Text of its bytes, a column declared BOOLEAN a Bool. A busy database before the first row, outside a transaction, is waited for in the fiber. *)
+    Runs the statement on to n rows: an Ok of {Names, Cells, Done, Changed, LastId}, the cells row after row. NULL is missing, a BLOB a Text of its bytes, a column declared BOOLEAN a Bool. A busy database before the first row, outside a transaction, is waited for in the fiber.
+
+      conn = sqlite3.Take(sqlite3.Pool(":memory:", 1, 1.0).Value).Value
+      cursor = sqlite3.Run("select 1 as a, 2 as b union all select 3, 4", [], conn).Value
+      sqlite3.Next(1, cursor)?.Cells --> [1, 2]
+      sqlite3.Next(10, cursor)?.Cells --> [3, 4] *)
 
 (** sqlite3.Script(text, conn)
-    Runs several statements, without parameters, on a connection or on one of a pool for this call: an Ok of missing, or the first Err. *)
+    Runs several statements, without parameters, on a connection or on one of a pool for this call: an Ok of missing, or the first Err.
+
+      db = sqlite3.Pool(":memory:", 1, 1.0).Value
+      sqlite3.Script("create table t(x); insert into t values (1), (2)", db) --> result.Ok(missing)
+      sqlite3.Query("select x from t", [], db) --> result.Ok([{X: 1}, {X: 2}]) *)
 
 (** sqlite3.Close(x)
-    Closes a cursor before its end, a connection with its statements, or a pool: its free connections now, the others when they come back. Twice is nothing. *)
+    Closes a cursor before its end, a connection with its statements, or a pool: its free connections now, the others when they come back. Twice is nothing.
+
+      db = sqlite3.Pool(":memory:", 1, 1.0).Value
+      sqlite3.Close(db)
+      sqlite3.Take(db).Error.Code --> "closed" *)
 
 (** sqlite3.Version()
-    An Ok of the version of the SQLite library, or an Err if there is none. *)
+    An Ok of the version of the SQLite library, or an Err if there is none.
+
+      text.StartsWith("3.", sqlite3.Version()?) --> true *)
 
 (** lapack.Name()
     The name of the LAPACK library found on this machine, or missing if there is none. The functions below then give missing as well, and num falls back on its own code. *)
@@ -998,7 +1282,9 @@ use std/value
     For tools: was this Cesia built from its sources, and not by a release? Then its version text ends in +dev. *)
 
 (** cesia.Binary()
-    The path of the running binary of Cesia, from the top of the file system. *)
+    The path of the running binary of Cesia, from the top of the file system.
+
+      path.IsAbsolute(cesia.Binary()) --> true *)
 
 (** cesia.Fingerprint(text)
     For tools: blake2: and the 64 hexadecimal digits of the BLAKE2b-256 of a text, as cesia.lock keeps them.
@@ -1017,7 +1303,9 @@ use std/value
       cesia.IsVersion("v0.3") --> true *)
 
 (** cesia.Libraries()
-    The libraries of this Cesia, as an array of structs with Name and Source: what a project's std/ holds. *)
+    The libraries of this Cesia, as an array of structs with Name and Source: what a project's std/ holds.
+
+      "path" in [l.Name for l in cesia.Libraries()] --> true *)
 
 (** cesia.Toml(text)
     For tools: the tables of a cesia.toml or cesia.lock, in an Ok: each a struct with Path (an array of texts), Line and
@@ -1058,4 +1346,7 @@ use std/value
 
 (** cesia.Asset(name)
     For tools: a file of the look of the docs site, held in the binary: "site.css" or "site.js". Missing for another
-    name. *)
+    name.
+
+      value.IsText(cesia.Asset("site.css")) --> true
+      cesia.Asset("logo.png") --> missing *)

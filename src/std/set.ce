@@ -5,7 +5,10 @@ use std/dict
 use std/list
 use std/value
 
-Empty() = dict.Dict()   (** A set with nothing in it. *)
+(** A set with nothing in it.
+
+      Items(Empty()) --> [] *)
+Empty() = dict.Dict()
 (** A set of the elements of an array.
 
       Items(Of([2, 1, 2])) --> [1, 2] *)

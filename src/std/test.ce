@@ -108,7 +108,13 @@ defn ForAll(prop, g, cases = missing)
   true
 end
 
-Temp() = temp()   (** A folder of the test's own, made at the first call, the same for each call of one test: removed when the test passes, kept when it fails. The test may write in it. *)
+(** A folder of the test's own, made at the first call, the same for each call of one test: removed when the test passes,
+    kept when it fails. The test may write in it.
+
+      folder = Temp()
+      sys.Write("$folder/notes.txt", "hi")
+      sys.Read("$folder/notes.txt")? --> "hi" *)
+Temp() = temp()
 
 defn shown(v)
   (** A value as a snapshot keeps it: a text as it is, else as printed, one element per line when that is past 100 columns. *)

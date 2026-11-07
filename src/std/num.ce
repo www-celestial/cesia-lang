@@ -230,7 +230,11 @@ Inverse(m) = solved(m, Eye(value.Size(m, 1)))
 
 defn Qr(m)
   (** The QR factorization of a matrix with at least as many rows as columns, as a struct with Q and R: through LAPACK when
-      the machine has it, else by Gram-Schmidt, twice for accuracy. *)
+      the machine has it, else by Gram-Schmidt, twice for accuracy.
+
+        m = matrix.Reshape([2, 2], [3.0, 4.0, 0.0, 5.0])
+        value.Text(math.Round(Qr(m).R)) --> "[5.0 4.0; 0.0 3.0]"
+        value.Text(math.Round(Qr(m).Q * 10) / 10) --> "[0.6 -0.8; 0.8 0.6]" *)
   fast = lapack.Qr(m)
   if not value.IsMissing(fast)
     return fast
@@ -259,7 +263,9 @@ defn Qr(m)
 end
 
 defn Eigen(a)
-  (** The eigenvalues and eigenvectors of a symmetric matrix, by Jacobi rotations. *)
+  (** The eigenvalues and eigenvectors of a symmetric matrix, by Jacobi rotations.
+
+        math.Round(Eigen(matrix.Reshape([2, 2], [2.0, 1.0, 1.0, 2.0])).Values) --> [1.0, 3.0] *)
   fast = lapack.Eigen(a)
   if not value.IsMissing(fast)
     return fast
@@ -310,13 +316,18 @@ defn Eigen(a)
 end
 
 defn LeastSquares(a, b)
-  (** The x of the smallest |ax - b|, through the normal equations. *)
+  (** The x of the smallest |ax - b|, through the normal equations.
+
+        a = matrix.Reshape([4, 2], [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 2.0, 3.0])
+        math.Round(LeastSquares(a, [0.0, 1.0, 1.0, 2.0]).Value * 100) / 100 --> [0.1, 0.6] *)
   t = matrix.Transpose(a)
   Solve(matrix.Matmul(t, a), matrix.Matmul(t, matrix.Reshape([value.Len(b), 1], b)))
 end
 
 defn Polyfit(degree, xs, ys)
-  (** The coefficients of a polynomial of a degree through points, the constant first. *)
+  (** The coefficients of a polynomial of a degree through points, the constant first.
+
+        math.Round(Polyfit(2, [0, 1, 2, 3], [1, 6, 17, 34])) --> [1.0, 2.0, 3.0] *)
   a = matrix.Zeros(value.Len(xs), degree + 1)
   for i in 1..value.Len(xs)
     for j in 1..degree + 1
@@ -413,7 +424,9 @@ end
 Fft(xs) = transform(xs, matrix.Zeros(1, value.Len(xs)), -1.0)
 
 defn Ifft(f)
-  (** The inverse of fft, from a struct with re and im. *)
+  (** The inverse of fft, from a struct with re and im.
+
+        math.Round(Ifft(Fft([1.0, 2.0, 3.0, 4.0])).Re) --> [1.0, 2.0, 3.0, 4.0] *)
   r = transform(f.Re, f.Im, 1.0)
   n = 1.0 * value.Len(f.Re)
   {Re: r.Re / n, Im: r.Im / n}

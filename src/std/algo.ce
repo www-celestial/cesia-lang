@@ -156,7 +156,10 @@ end
 
 defn Bfs(neighbors, start)
   (** The nodes reached from start, breadth first: neighbors(node) gives the nodes next to one, and nodes are numbers or
-      texts. *)
+      texts.
+
+        graph = {1: [2, 3], 2: [4], 3: [4], 4: []}
+        Bfs(n -> graph[n], 1) --> [1, 2, 3, 4] *)
   seen = {(start): true}
   visited = dict.Dict()
   todo = queue.Of([start])
@@ -197,7 +200,10 @@ defn Dfs(neighbors, start)
 end
 
 defn Dijkstra(edges, start)
-  (** edges(node) gives {Node, Weight} structs. The result gives the distance of each node reached. *)
+  (** edges(node) gives {Node, Weight} structs. The result gives the distance of each node reached.
+
+        roads = {"a": [{Node: "b", Weight: 4}, {Node: "c", Weight: 1}], "c": [{Node: "b", Weight: 2}], "b": []}
+        Dijkstra(n -> roads[n], "a") --> {"a": 0, "c": 1, "b": 3} *)
   best = dict.Dict()
   todo = heap.Insert(0, start, heap.Empty())
   while not heap.IsEmpty(todo)

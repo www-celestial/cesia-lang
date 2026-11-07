@@ -38,7 +38,10 @@ panicOf(r) = errorOf(r) then {Panic: "$(it.Message) ($(it.File):$(it.Line))"}
 defn Open(url, max = 8, wait = 5)
   (** An Ok of a database: a pool of at most max connections, each opened when first needed. A call that finds them all
       busy waits at most wait seconds, then gives an Err with Code "pool". sqlite::memory: keeps one connection, since each
-      would hold its own database. Another URL is an Err with Code "url". *)
+      would hold its own database. Another URL is an Err with Code "url".
+
+        db = result.Unwrap(Open("sqlite::memory:"))
+        Open("postgres://localhost/shop") then result.MapErr(it.Code) --> result.Err("url") *)
   if not text.StartsWith("sqlite:", url)
     return failure("url", "No database for $url: use sqlite:PATH or sqlite::memory:.")
   end
@@ -164,7 +167,12 @@ end
 
 defn Exec(sql, params, db)
   (** Runs one statement that changes rows: an Ok of {Changed, LastId}, the rows it changed and the id of the last row
-      inserted. *)
+      inserted.
+
+        Script("create table notes (id integer primary key, title text not null)", db)
+        Exec("insert into notes (title) values (?)", ["buy bread"], db) --> result.Ok({Changed: 1, LastId: 1})
+        Exec("insert into notes (title) values (?)", ["call Bo"], db) --> result.Ok({Changed: 1, LastId: 2})
+        Exec("insert into notes (title) values (?)", [missing], db) then result.MapErr(it.Code) --> result.Err("23502") *)
   if ended(db)
     return doneError()
   end
@@ -174,7 +182,11 @@ end
 
 defn Query(sql, params, db, as = missing)
   (** An Ok of every row, each a map from its column names made public names: created_at is read r.CreatedAt. NULL is
-      missing. With as, as(row) for each, as User.From: an Ok of the values, or the first Err with Row, its number. *)
+      missing. With as, as(row) for each, as User.From: an Ok of the values, or the first Err with Row, its number.
+
+        Query("select id, title from notes order by id", [], db) --> result.Ok([{Id: 1, Title: "buy bread"}, {Id: 2, Title: "call Bo"}])
+        Query("select id as note_id from notes where title = ?", ["call Bo"], db) --> result.Ok([{NoteId: 2}])
+        Query("select title from notes where id > ?", [1], db, as = r -> result.Ok(r.Title)) --> result.Ok(["call Bo"]) *)
   if ended(db)
     return doneError()
   end
@@ -183,7 +195,10 @@ defn Query(sql, params, db, as = missing)
 end
 
 defn One(sql, params, db, as = missing)
-  (** An Ok of the first row, or of missing if there is none; with as, of as(row). *)
+  (** An Ok of the first row, or of missing if there is none; with as, of as(row).
+
+        One("select title from notes where id = ?", [2], db) --> result.Ok({Title: "call Bo"})
+        One("select title from notes where id = ?", [9], db) --> result.Ok(missing) *)
   if ended(db)
     return doneError()
   end
@@ -243,7 +258,10 @@ end
 
 defn Each(f, sql, params, db, as = missing)
   (** Calls f on each row, one batch of rows in memory at a time, whatever the size: an Ok of the count. An Err of f stops
-      and is given back; a panic in f gives the connection back, then panics again. *)
+      and is given back; a panic in f gives the connection back, then panics again.
+
+        Each(r -> result.Ok(r.Title), "select title from notes", [], db) --> result.Ok(2)
+        Each(r -> result.Err(r.Title), "select title from notes order by id", [], db) --> result.Err("buy bread") *)
   r = held(conn -> each(f, sql, params, as, conn), db)
   if failed(r) and isPanic(errorOf(r))
     bug.Panic(errorOf(r).Panic)
@@ -266,7 +284,9 @@ end
 
 defn Table(sql, params, db)
   (** An Ok of {Names, Columns}: Columns a map from each name, made a public name, to its column, a list. A column of
-      integers or of floats holds them without a box, as std/frame and the natives of columns want. *)
+      integers or of floats holds them without a box, as std/frame and the natives of columns want.
+
+        Table("select id, title from notes order by id", [], db) --> result.Ok({Names: ["Id", "Title"], Columns: {Id: [1, 2], Title: ["buy bread", "call Bo"]}}) *)
   b = held(conn -> tableCells(sql, params, conn), db)?
   n = value.Len(b.Names)
   if n == 0
@@ -283,7 +303,10 @@ defn Table(sql, params, db)
 end
 
 defn Script(sql, db)
-  (** Runs several statements, never with parameters: a schema, a migration. An Ok of missing, or the first Err. *)
+  (** Runs several statements, never with parameters: a schema, a migration. An Ok of missing, or the first Err.
+
+        Script("alter table notes add done boolean not null default false; create index by_done on notes (done)", db) --> result.Ok(missing)
+        One("select done from notes where id = ?", [1], db) --> result.Ok({Done: false}) *)
   if ended(db)
     return doneError()
   end
@@ -328,7 +351,12 @@ defn Transaction(f, db, read = false)
   (** f(tx) inside a transaction, tx usable as db in every call: an Ok of f commits and gives its value, an Err rolls back
       and gives it, a panic rolls back and panics again. Anything else commits, as an Ok. Inside one, a Transaction of tx
       is a savepoint, rolled back alone. read opens a plain BEGIN, for reads only; else BEGIN IMMEDIATE takes the write
-      lock at once. *)
+      lock at once.
+
+        add(titles, tx) = [Exec("insert into notes (title) values (?)", [t], tx)?.LastId for t in titles]
+        Transaction(tx -> add(["pay rent", "feed cat"], tx), db) --> result.Ok([3, 4])
+        Transaction(tx -> add(["water plants", missing], tx), db) then result.MapErr(it.Code) --> result.Err("23502")
+        One("select id from notes where title = ?", ["water plants"], db) --> result.Ok(missing) *)
   if db.Tx
     return savepoint(f, db)
   end
@@ -359,6 +387,9 @@ defn savepoint(f, tx)
 end
 
 defn Close(db)
-  (** Closes the free connections now, the others when they come back: a call after it is an Err with Code "closed". *)
+  (** Closes the free connections now, the others when they come back: a call after it is an Err with Code "closed".
+
+        Close(db)
+        Query("select title from notes", [], db) then result.MapErr(it.Code) --> result.Err("closed") *)
   sqlite3.Close(db.Pool)
 end

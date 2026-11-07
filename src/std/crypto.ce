@@ -7,14 +7,37 @@ use std/math
 use std/result
 use std/text
 
-SecretKeySize = 32    (** The size in bytes of a key of Seal and of a secret key of BoxPair. *)
-NonceSize = 24        (** The size in bytes of the nonce kept in front of a sealed or boxed message. *)
-MacSize = 16          (** The size in bytes of the tag that authenticates a sealed or boxed message. *)
-PublicKeySize = 32    (** The size in bytes of a public key of BoxPair. *)
-SignPublicSize = 32   (** The size in bytes of a public key of SignPair. *)
-SignSecretSize = 64   (** The size in bytes of a secret key of SignPair. *)
-SignatureSize = 64    (** The size in bytes of a signature of Sign. *)
-PasswordSize = 128    (** The size in bytes of a result of HashPassword. *)
+(** The size in bytes of a key of Seal and of a secret key of BoxPair.
+
+      s = result.Unwrap(Open())
+      text.ByteLength(SecretKey(s)) --> 32 *)
+SecretKeySize = 32
+(** The size in bytes of the nonce kept in front of a sealed or boxed message.
+
+      key = SecretKey(s)
+      text.ByteLength(Seal("hi", key, s)) --> NonceSize + 2 + MacSize *)
+NonceSize = 24
+(** The size in bytes of the tag that authenticates a sealed or boxed message.
+
+      text.ByteLength(Seal("", key, s)) - NonceSize --> 16 *)
+MacSize = 16
+(** The size in bytes of a public key of BoxPair.
+
+      text.ByteLength(BoxPair(s).Public) --> 32 *)
+PublicKeySize = 32
+(** The size in bytes of a public key of SignPair.
+
+      text.ByteLength(SignPair(s).Public) --> 32 *)
+SignPublicSize = 32
+(** The size in bytes of a secret key of SignPair.
+
+      text.ByteLength(SignPair(s).Secret) --> 64 *)
+SignSecretSize = 64
+(** The size in bytes of a signature of Sign.
+
+      text.ByteLength(Sign("hi", SignPair(s).Secret, s)) --> 64 *)
+SignatureSize = 64
+PasswordSize = 128    (** The room in bytes that a result of HashPassword may take: the text it gives is shorter. *)
 
 defn block(s)
   b = c.Alloc(list.Max(text.ByteLength(s), 1))
@@ -25,7 +48,10 @@ end
 ints() = ["ptr", "ptr", "u64"]
 
 defn Open()
-  (** Loads libsodium: an Ok of the api that the other functions take as their last argument s, or an Err. *)
+  (** Loads libsodium: an Ok of the api that the other functions take as their last argument s, or an Err.
+
+        s = result.Unwrap(Open())
+        text.ByteLength(Random(8, s)) --> 8 *)
   lib = c.Open("sodium", version = 26)?
   init = c.Fn("sodium_init", [], "i32", lib)?
   if init() < 0
@@ -70,7 +96,10 @@ defn out(size, inputs, f)
 end
 
 defn Random(n, s)
-  (** n random bytes from the system, as a text. *)
+  (** n random bytes from the system, as a text.
+
+        text.ByteLength(Random(16, s)) --> 16
+        Random(16, s) == Random(16, s) --> false *)
   out(n, [], (out, blocks) -> s.Random(out, n)).Bytes
 end
 
@@ -80,19 +109,29 @@ defn done(r)
   r.Bytes
 end
 
-(** The SHA-256 hash of a text, as 32 bytes. *)
+(** The SHA-256 hash of a text, as 32 bytes.
+
+      text.ByteLength(Sha256("abc", s)) --> 32 *)
 Sha256(textValue, s) = done(out(32, [textValue], (out, b) -> s.Sha256(out, b[1], text.ByteLength(textValue))))
-(** The SHA-512 hash of a text, as 64 bytes. *)
+(** The SHA-512 hash of a text, as 64 bytes.
+
+      text.ByteLength(Sha512("abc", s)) --> 64 *)
 Sha512(textValue, s) = done(out(64, [textValue], (out, b) -> s.Sha512(out, b[1], text.ByteLength(textValue))))
 
 defn Blake2b(textValue, s, size = 32)
-  (** The BLAKE2b hash of a text, as a number of bytes from 16 to 64 (32 by default). *)
+  (** The BLAKE2b hash of a text, as a number of bytes from 16 to 64 (32 by default).
+
+        text.ByteLength(Blake2b("abc", s)) --> 32
+        text.ByteLength(Blake2b("abc", s, size = 64)) --> 64 *)
   bug.Assert(size >= 16 and size <= 64, "blake2b needs a size from 16 to 64.")
   done(out(size, [textValue], (out, b) -> s.Blake2b(out, size, b[1], text.ByteLength(textValue), missing, 0)))
 end
 
 defn HmacSha256(key, textValue, s)
-  (** The HMAC-SHA-256 of a text under a key, as 32 bytes. *)
+  (** The HMAC-SHA-256 of a text under a key, as 32 bytes.
+
+        text.ByteLength(HmacSha256("key", "pay 10", s)) --> 32
+        HmacSha256("key", "pay 10", s) == HmacSha256("other key", "pay 10", s) --> false *)
   state = c.Alloc(s.HmacSize())
   r = out(32, [key, textValue], (out, b) -> hmac(s, state, out, b, text.ByteLength(key), text.ByteLength(textValue)))
   c.Free(state)
@@ -104,7 +143,11 @@ defn hmac(s, state, out, b, keySize, size)
 end
 
 defn IsSame(a, b, s)
-  (** Are two texts the same, in a time that doesn't tell where they differ: for secrets, as tags and hashes. *)
+  (** Are two texts the same, in a time that doesn't tell where they differ: for secrets, as tags and hashes.
+
+        tag = HmacSha256("key", "pay 10", s)
+        IsSame(tag, HmacSha256("key", "pay 10", s), s) --> true
+        IsSame(tag, HmacSha256("key", "pay 99", s), s) --> false *)
   if text.ByteLength(a) != text.ByteLength(b)
     return false
   end
@@ -113,7 +156,10 @@ end
 
 refused() = result.Err({Kind: "crypto", Message: "This message was changed, or the key is wrong."})
 
-(** A new random key for Seal and Unseal. A nonce is never used twice with a key: Seal takes a random one, kept in front. *)
+(** A new random key for Seal and Unseal. A nonce is never used twice with a key: Seal takes a random one, kept in front.
+
+      key = SecretKey(s)
+      Unseal(Seal("hi", key, s), key, s) --> result.Ok("hi") *)
 SecretKey(s) = Random(SecretKeySize, s)
 
 defn sealed(message, keys, s, f)
@@ -137,13 +183,20 @@ defn opened(sealed, keys, f)
 end
 
 defn Seal(message, key, s)
-  (** A message encrypted and authenticated under a 32-byte key. The random nonce is kept in front of the result. *)
+  (** A message encrypted and authenticated under a 32-byte key. The random nonce is kept in front of the result.
+
+        locked = Seal("meet at noon", key, s)
+        text.ByteLength(locked) --> NonceSize + 12 + MacSize
+        Seal("meet at noon", key, s) == locked --> false *)
   sized(key, SecretKeySize, "A key")
   sealed(message, [key], s, (out, b, size) -> s.SecretSeal(out, b[1], size, b[2], b[3]))
 end
 
 defn Unseal(sealed, key, s)
-  (** The message of a result of seal, in an Ok, or an Err if it was changed or the key is wrong. *)
+  (** The message of a result of seal, in an Ok, or an Err if it was changed or the key is wrong.
+
+        Unseal(locked, key, s) --> result.Ok("meet at noon")
+        Unseal(locked, SecretKey(s), s) then result.MapErr(it.Kind) --> result.Err("crypto") *)
   sized(key, SecretKeySize, "A key")
   opened(sealed, [key], (out, b, size) -> s.SecretOpen(out, b[1], size, b[2], b[3]))
 end
@@ -159,35 +212,54 @@ defn pair(publicSize, secretSize, f)
   out
 end
 
-(** A new key pair for BoxSeal, as a struct with public and secret. *)
+(** A new key pair for BoxSeal, as a struct with public and secret.
+
+      alice = BoxPair(s)
+      bob = BoxPair(s)
+      [text.ByteLength(alice.Public), text.ByteLength(alice.Secret)] --> [32, 32] *)
 BoxPair(s) = pair(PublicKeySize, SecretKeySize, s.BoxPair)
 
 defn BoxSeal(message, toPublic, fromSecret, s)
-  (** A message encrypted for the owner of a public key, and authenticated by the sender's secret key. The nonce is kept in front. *)
+  (** A message encrypted for the owner of a public key, and authenticated by the sender's secret key. The nonce is kept in front.
+
+        letter = BoxSeal("hi bob", bob.Public, alice.Secret, s)
+        text.ByteLength(letter) --> NonceSize + 6 + MacSize *)
   sized(toPublic, PublicKeySize, "A public key")
   sized(fromSecret, SecretKeySize, "A secret key")
   sealed(message, [toPublic, fromSecret], s, (out, b, size) -> s.BoxSeal(out, b[1], size, b[2], b[3], b[4]))
 end
 
 defn BoxOpen(sealed, fromPublic, toSecret, s)
-  (** The message of a result of BoxSeal, in an Ok, or an Err if it was changed or the keys are wrong. *)
+  (** The message of a result of BoxSeal, in an Ok, or an Err if it was changed or the keys are wrong.
+
+        BoxOpen(letter, alice.Public, bob.Secret, s) --> result.Ok("hi bob")
+        BoxOpen(letter, bob.Public, bob.Secret, s) then result.MapErr(it.Kind) --> result.Err("crypto") *)
   sized(fromPublic, PublicKeySize, "A public key")
   sized(toSecret, SecretKeySize, "A secret key")
   opened(sealed, [fromPublic, toSecret], (out, b, size) -> s.BoxOpen(out, b[1], size, b[2], b[3], b[4]))
 end
 
-(** A new key pair for sign, as a struct with public and secret. *)
+(** A new key pair for sign, as a struct with public and secret.
+
+      signer = SignPair(s)
+      [text.ByteLength(signer.Public), text.ByteLength(signer.Secret)] --> [32, 64] *)
 SignPair(s) = pair(SignPublicSize, SignSecretSize, s.SignPair)
 
 defn Sign(message, secret, s)
-  (** The 64-byte signature of a message under a secret signing key. *)
+  (** The 64-byte signature of a message under a secret signing key.
+
+        signature = Sign("release 1.0", signer.Secret, s)
+        text.ByteLength(signature) --> 64 *)
   sized(secret, SignSecretSize, "A secret key")
   size = text.ByteLength(message)
   done(out(SignatureSize, [message, secret], (out, b) -> s.Sign(out, missing, b[1], size, b[2])))
 end
 
 defn Verify(signature, message, public, s)
-  (** Is this signature the one of the message under the public signing key? *)
+  (** Is this signature the one of the message under the public signing key?
+
+        Verify(signature, "release 1.0", signer.Public, s) --> true
+        Verify(signature, "release 1.1", signer.Public, s) --> false *)
   if text.ByteLength(signature) != SignatureSize or text.ByteLength(public) != SignPublicSize
     return false
   end
@@ -196,14 +268,20 @@ defn Verify(signature, message, public, s)
 end
 
 defn HashPassword(password, s)
-  (** A hash of a password with Argon2, to store and to check with CheckPassword: the result holds its own salt and settings. *)
+  (** A hash of a password with Argon2, to store and to check with CheckPassword: the result holds its own salt and settings.
+
+        stored = HashPassword("correct horse", s)
+        text.StartsWith("$$argon2id$$", stored) --> true *)
   size = text.ByteLength(password)
   r = done(out(PasswordSize, [password], (out, b) -> s.HashPassword(out, b[1], size, s.PasswordOps(), s.PasswordMemory())))
   text.ByteSlice(1, text.ByteFind(text.Char(0), 1, r) - 1, r)
 end
 
 defn CheckPassword(password, stored, s)
-  (** Does the password match a result of HashPassword? *)
+  (** Does the password match a result of HashPassword?
+
+        CheckPassword("correct horse", stored, s) --> true
+        CheckPassword("wrong horse", stored, s) --> false *)
   if text.ByteLength(stored) >= PasswordSize
     return false
   end

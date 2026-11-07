@@ -7,7 +7,10 @@ use std/text
 use std/value
 
 (** A date and a time on a clock that is Offset seconds ahead of UTC: 0 for UTC, 10800 at +03:00. The clock fields start at 0,
-    so Date(2026, 11, 1) is midnight in UTC. *)
+    so Date(2026, 11, 1) is midnight in UTC.
+
+      Date(2026, 11, 1) --> Date(Year = 2026, Month = 11, Day = 1, Hour = 0, Minute = 0, Second = 0, Offset = 0)
+      Utc(Date(2026, 11, 1, 15, 30, Offset = 10800)).Hour --> 12 *)
 struct Date { Year, Month, Day, Hour = 0, Minute = 0, Second = 0, Offset = 0 }
 
 (** Is this year a leap year?

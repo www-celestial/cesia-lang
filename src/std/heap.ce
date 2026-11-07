@@ -2,7 +2,10 @@
 use std/dict
 use std/value
 
-Empty() = missing   (** A heap with nothing in it. *)
+(** A heap with nothing in it.
+
+      Items(Empty()) --> [] *)
+Empty() = missing
 (** Is this heap empty?
 
       IsEmpty(Empty()) --> true *)
@@ -18,7 +21,9 @@ defn node(key, item, a, b)
 end
 
 defn Merge(a, b)
-  (** One heap from two. *)
+  (** One heap from two.
+
+        Items(Merge(Insert(2, "b", Empty()), Insert(1, "a", Empty()))) --> [{Key: 1, Value: "a"}, {Key: 2, Value: "b"}] *)
   if value.IsMissing(a)
     b
   else if value.IsMissing(b)

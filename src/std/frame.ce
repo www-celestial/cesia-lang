@@ -82,7 +82,9 @@ defn SetColumn(name, values, df)
   {Names: names, Columns: dict.Put(name, values, df.Columns)}
 end
 
-(** f takes a row as a dictionary, and gives the value of the new column. *)
+(** f takes a row as a dictionary, and gives the value of the new column.
+
+      Column("c", WithColumn("c", r -> r["a"] + r["b"], Of({"a": [1, 2], "b": [3, 4]}))) --> [4, 6] *)
 WithColumn(name, f, df) = SetColumn(name, [f(Row(i, df)) for i in 1..RowCount(df)], df)
 
 (** A frame with a column renamed.
@@ -103,10 +105,15 @@ defn WhereColumn(name, f, df)
   take([i for i in 1..RowCount(df) if f(xs[i])], df)
 end
 
-(** The rows where a mask of booleans is true: WhereMask(Column("v", df) > 2.0, df). *)
+(** The rows where a mask of booleans is true: WhereMask(Column("v", df) > 2.0, df).
+
+      Column("a", WhereMask([false, true, true], Of({"a": [1, 2, 3]}))) --> [2, 3] *)
 WhereMask(mask, df) = take(col.Positions(mask), df)
 
-Kinds(df) = [col.Kind(df.Columns[n]) for n in df.Names]   (** The storage of each column: "int", "float" or "value". *)
+(** The storage of each column: "int", "float" or "value".
+
+      Kinds(Of({"a": [1, 2], "b": [0.5, 1.5], "c": ["x", "y"]})) --> ["int", "float", "value"] *)
+Kinds(df) = [col.Kind(df.Columns[n]) for n in df.Names]
 
 defn SortBy(name, df, descending = false)
   (** The rows ordered by a column, increasing, or decreasing with descending. Equal values keep their order.
@@ -133,7 +140,9 @@ FillMissing(fill, df) = Table(df.Names, [[if value.IsMissing(x) fill else x end 
       Present([1, missing, 2]) --> [1, 2] *)
 Present(xs) = col.Present(xs)
 
-(** One aggregation: a new column, a source column, and a function of its values. *)
+(** One aggregation: a new column, a source column, and a function of its values.
+
+      Column("total", GroupBy(["k"], [Agg("total", "v", list.Sum)], Of({"k": ["x", "y", "x"], "v": [1, 2, 3]}))) --> [4, 2] *)
 Agg(name, source, f) = {Name: name, Source: source, F: f}
 
 defn GroupBy(by, aggregations, df)
@@ -157,7 +166,12 @@ defn ValueCounts(name, df)
 end
 
 defn JoinOn(on, a, b, how = "inner")
-  (** An inner join on one column, or all the rows of a with how = "left". *)
+  (** An inner join on one column, or all the rows of a with how = "left".
+
+        people = Of({"id": [1, 2, 3], "name": ["Ana", "Bo", "Cy"]})
+        ages = Of({"id": [2, 1], "age": [20, 31]})
+        Column("age", JoinOn("id", people, ages)) --> [31, 20]
+        Column("age", JoinOn("id", people, ages, how = "left")) --> [31, 20, missing] *)
   m = col.Join(a.Columns[on], b.Columns[on], how == "left")
   out = take(m.Left, a)
   for n in list.Filter(n -> n != on, b.Names)
@@ -169,7 +183,9 @@ end
 statsOf(xs) = {Count: value.Len(xs), Mean: list.Mean(xs), Min: list.Min(xs), Max: list.Max(xs)}
 
 defn Describe(df)
-  (** The count, mean, minimum and maximum of each numeric column, as a frame. *)
+  (** The count, mean, minimum and maximum of each numeric column, as a frame.
+
+        Records(Describe(Of({"a": [1, 3], "b": ["x", "y"]}))) --> [{"column": "a", "count": 2, "mean": 2.0, "min": 1.0, "max": 3.0}] *)
   numeric = list.Filter(n -> value.Len(Present(df.Columns[n])) > 0 and list.All(list.Map(value.IsNumber, Present(df.Columns[n]))), df.Names)
   stats = [statsOf(1.0 * Present(df.Columns[n])) for n in numeric]
   Table(["column", "count", "mean", "min", "max"],

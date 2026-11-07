@@ -26,10 +26,20 @@ cutAt(k, s) = [text.ByteSlice(1, k, s), text.ByteSlice(k + 1, text.ByteLength(s)
 crlf = "\r\n"              (* The line end of HTTP. *)
 blank = "$crlf$crlf"       (* The empty line that ends the head of a request or a response. *)
 maxHead = 16384            (* The largest head of a request, in bytes: a longer one is answered 431. *)
-DefaultMaxBody = 1048576   (** The largest body of a request that Serve reads, in bytes, unless maxBody says otherwise. *)
-DefaultTimeout = 60        (** The seconds a connection has for each request, unless timeout says otherwise. *)
+(** The largest body of a request that Serve reads, in bytes, unless maxBody says otherwise.
 
-Reason(status) = match status   (** The standard reason text of a status code, or "Unknown". *)
+      DefaultMaxBody --> 1048576 *)
+DefaultMaxBody = 1048576
+(** The seconds a connection has for each request, unless timeout says otherwise.
+
+      DefaultTimeout --> 60 *)
+DefaultTimeout = 60
+
+(** The standard reason text of a status code, or "Unknown".
+
+      Reason(404) --> "Not Found"
+      Reason(599) --> "Unknown" *)
+Reason(status) = match status
   200 -> "OK"
   101 -> "Switching Protocols"
   201 -> "Created"
@@ -68,7 +78,10 @@ defn header(line)
 end
 
 defn HeaderValue(name, headers)
-  (** The value of the first header of this name, in lower case, or missing. *)
+  (** The value of the first header of this name, in lower case, or missing.
+
+        HeaderValue("host", [{Name: "host", Value: "localhost:8080"}]) --> "localhost:8080"
+        HeaderValue("cookie", []) --> missing *)
   for h in headers
     if h.Name == name
       return h.Value
@@ -307,7 +320,11 @@ end
 failed(message) = result.Err({Kind: "http", Message: message})   (** An Err of the kind "http" with a message. *)
 
 defn ParseUrl(url)
-  (** {Host, Port, Path, Secure} of an http:// or https:// URL. *)
+  (** {Host, Port, Path, Secure} of an http:// or https:// URL.
+
+        ParseUrl("http://localhost:8080/a?b=1") --> result.Ok({Host: "localhost", Port: 8080, Path: "/a?b=1", Secure: false})
+        ParseUrl("https://example.com") --> result.Ok({Host: "example.com", Port: 443, Path: "/", Secure: true})
+        ParseUrl("localhost:8080") then result.MapErr(it.Kind) --> result.Err("http") *)
   secure = url then text.StartsWith("https://")
   scheme = if secure "https://" else "http://" end
   if not (url then text.StartsWith(scheme))
@@ -435,38 +452,82 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing)
   parseResponse(raw?)
 end
 
-App() = {Routes: [], Middleware: []}   (** An application with no route and no middleware. *)
+(** An application with no route and no middleware: it answers each request with a 404.
+
+      Handler(App())({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Status --> 404 *)
+App() = {Routes: [], Middleware: []}
 
 defn Route(method, pattern, handler, a)
-  (** An application with a route added. The pattern may hold :name parts, which the handler finds in its params, and a final * for the rest of the path. *)
+  (** An application with a route added. The pattern may hold :name parts, which the handler finds in its params, and a final * for the rest of the path.
+
+        files = App() then Route("PATCH", "/files/*", r -> Plain(r.Params["*"]))
+        Handler(files)({Method: "PATCH", Path: "/files/a/b.txt", Query: "", Headers: [], Body: ""}).Body --> "a/b.txt" *)
   entry = {Method: method, Parts: segments(pattern), Handler: handler}
   {Routes: list.Append(entry, a.Routes), Middleware: a.Middleware}
 end
 
-(** An application with a GET route added: Handler(request) gives a response. *)
+(** An application with a GET route added: Handler(request) gives a response.
+
+      hello = App() then Get("/hello/:name", r -> Plain("Hello, $(r.Params.name)!"))
+      Handler(hello)({Method: "GET", Path: "/hello/Ana", Query: "", Headers: [], Body: ""}).Body --> "Hello, Ana!" *)
 Get(pattern, handler, a) = Route("GET", pattern, handler, a)
-Post(pattern, handler, a) = Route("POST", pattern, handler, a)   (** An application with a POST route added. *)
-Put(pattern, handler, a) = Route("PUT", pattern, handler, a)   (** An application with a PUT route added. *)
-Delete(pattern, handler, a) = Route("DELETE", pattern, handler, a)   (** An application with a DELETE route added. *)
-(** An application with a route added that takes any method. *)
+(** An application with a POST route added. Another method on its path gets a 405.
+
+      echo = App() then Post("/echo", r -> Plain(r.Body))
+      Handler(echo)({Method: "POST", Path: "/echo", Query: "", Headers: [], Body: "hi"}).Body --> "hi"
+      Handler(echo)({Method: "GET", Path: "/echo", Query: "", Headers: [], Body: ""}).Status --> 405 *)
+Post(pattern, handler, a) = Route("POST", pattern, handler, a)
+(** An application with a PUT route added.
+
+      notes = App() then Put("/notes/:id", r -> Plain("Note $(r.Params.id): $(r.Body)"))
+      Handler(notes)({Method: "PUT", Path: "/notes/7", Query: "", Headers: [], Body: "milk"}).Body --> "Note 7: milk" *)
+Put(pattern, handler, a) = Route("PUT", pattern, handler, a)
+(** An application with a DELETE route added.
+
+      erase = App() then Delete("/notes/:id", r -> {Status: 204, Body: ""})
+      Handler(erase)({Method: "DELETE", Path: "/notes/7", Query: "", Headers: [], Body: ""}).Status --> 204 *)
+Delete(pattern, handler, a) = Route("DELETE", pattern, handler, a)
+(** An application with a route added that takes any method.
+
+      ping = App() then AnyMethod("/ping", r -> Plain(r.Method))
+      Handler(ping)({Method: "OPTIONS", Path: "/ping", Query: "", Headers: [], Body: ""}).Body --> "OPTIONS" *)
 AnyMethod(pattern, handler, a) = Route("*", pattern, handler, a)
 
-(** A middleware is f(next, request), and calls next(request) to go on. *)
+(** A middleware is f(next, request), and calls next(request) to go on.
+
+      tag(next, r) = WithHeader("x-served-by", "cesia", next(r))
+      served = Handler(App() then Get("/", r -> Plain("hi")) then Wrap(tag))
+      HeaderValue("x-served-by", served({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers) --> "cesia" *)
 Wrap(f, a) = {Routes: a.Routes, Middleware: list.Append(f, a.Middleware)}
 
-(** A plain text response. *)
+(** A plain text response.
+
+      Plain("hi") --> {Status: 200, Body: "hi", Headers: [{Name: "content-type", Value: "text/plain; charset=utf-8"}]}
+      Plain("Gone", status = 410).Status --> 410 *)
 Plain(s, status = 200) = {Status: status, Body: s, Headers: [type("text/plain; charset=utf-8")]}
-(** An HTML response. *)
+(** An HTML response.
+
+      Html("<b>hi</b>").Headers --> [{Name: "content-type", Value: "text/html; charset=utf-8"}] *)
 Html(s, status = 200) = {Status: status, Body: s, Headers: [type("text/html; charset=utf-8")]}
-(** A response with the JSON text of a value. *)
+(** A response with the JSON text of a value.
+
+      Json({Units: 4}).Body --> "{\"Units\":4}"
+      Json({Units: 4}).Headers --> [{Name: "content-type", Value: "application/json"}] *)
 Json(data, status = 200) = {Status: status, Body: json.Text(data), Headers: [type("application/json")]}
-(** A response that sends the client to another URL. *)
+(** A response that sends the client to another URL.
+
+      Redirect("/login") --> {Status: 302, Body: "", Headers: [{Name: "location", Value: "/login"}]} *)
 Redirect(url, status = 302) = {Status: status, Body: "", Headers: [{Name: "location", Value: url}]}
-NotFound() = Plain("Not Found", status = 404)   (** A 404 response. *)
+(** A 404 response.
+
+      NotFound() --> Plain("Not Found", status = 404) *)
+NotFound() = Plain("Not Found", status = 404)
 type(kind) = {Name: "content-type", Value: kind}
 
 defn WithHeader(name, content, response)
-  (** A response with one more header. *)
+  (** A response with one more header.
+
+        WithHeader("cache-control", "no-store", Plain("hi")).Headers[2] --> {Name: "cache-control", Value: "no-store"} *)
   headers = match response
     {Headers: headers} -> headers
     else -> []
@@ -477,7 +538,9 @@ defn WithHeader(name, content, response)
 end
 
 defn SetCookie(name, content, response, options = "Path=/; HttpOnly; SameSite=Lax")
-  (** A response with a cookie set. Its content is URL-encoded. *)
+  (** A response with a cookie set. Its content is URL-encoded.
+
+        SetCookie("sid", "a b", Plain("hi")).Headers[2] --> {Name: "set-cookie", Value: "sid=a%20b; Path=/; HttpOnly; SameSite=Lax"} *)
   WithHeader("set-cookie", "$name=$(encode.UrlEncode(content)); $options", response)
 end
 
@@ -523,8 +586,15 @@ defn enrich(request, params)
    Headers: request.Headers, Body: request.Body, Cookies: cookies(request.Headers)}
 end
 
-Form(request) = encode.ParseQuery(request.Body)   (** The body of a form, or of JSON. *)
-BodyJson(request) = json.Parse(request.Body)   (** The body of a request read as JSON: an Ok of the value, or an Err. *)
+(** The body of a form, or of JSON.
+
+      Form({Body: "name=Ana+Lee&units=4"}) --> {name: "Ana Lee", units: "4"} *)
+Form(request) = encode.ParseQuery(request.Body)
+(** The body of a request read as JSON: an Ok of the value, or an Err.
+
+      BodyJson({Body: "{\"Units\": 4}"}) --> result.Ok({Units: 4})
+      BodyJson({Body: "not json"}) then result.MapErr(it.Kind) --> result.Err("json") *)
+BodyJson(request) = json.Parse(request.Body)
 
 defn settled(reply)
   (** The response of a handler that may give a result: the value of an Ok, a 500 for an Err. *)
@@ -562,7 +632,12 @@ defn chain(a, k)
 end
 
 (** The function of a request that an application is: the routes behind the middleware. Serve calls it for each request,
-    and a test can call it without the network. *)
+    and a test can call it without the network. A handler that gives an Err answers 500.
+
+      search = Handler(App() then Get("/search", r -> Plain(r.Query["q"])))
+      search({Method: "GET", Path: "/search", Query: "q=cake", Headers: [], Body: ""}).Body --> "cake"
+      broken = Handler(App() then Get("/", r -> result.Err("down")))
+      broken({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Status --> 500 *)
 Handler(a) = chain(a, value.Len(a.Middleware))
 
 defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing)
@@ -570,12 +645,21 @@ defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody
       on port, on this machine only unless host says otherwise; timeout is the seconds a connection has for each request,
       maxBody the largest body read, in bytes. wrap sits under HTTP, as TLS does: wrap = tls.Server(certificate, key,
       api)?; without it, HTTP goes on TCP alone. A listener already open, as a test opens on port 0 to learn its port with
-      net.Port, takes the place of port and host. *)
+      net.Port, takes the place of port and host.
+
+        l = result.Unwrap(net.Listen(0))
+        fiber.Spawn(() -> Serve(App() then Get("/", r -> Plain("hi")), listener = l))
+        Fetch("http://localhost:$(net.Port(l))/").Value.Body --> "hi" *)
   serve(Handler(a), port, host, timeout, maxBody, wrap, listener)
 end
 
 (** An application with a WebSocket route added: onMessage(text, send) runs for each message, and send(text) answers. A
-    request that isn't a WebSocket one gets a 400. *)
+    request that isn't a WebSocket one gets a 400.
+
+      chat = Handler(App() then Websocket("/chat", (m, send) -> send(m)))
+      handshake = [{Name: "upgrade", Value: "websocket"}, {Name: "sec-websocket-key", Value: "dGhlIHNhbXBsZSBub25jZQ=="}]
+      chat({Method: "GET", Path: "/chat", Query: "", Headers: handshake, Body: ""}).Status --> 101
+      chat({Method: "GET", Path: "/chat", Query: "", Headers: [], Body: ""}).Status --> 400 *)
 Websocket(pattern, onMessage, a, idle = ws.DefaultIdle) = Get(pattern, req -> upgrade(req.Headers, onMessage, idle), a)
 
 defn upgrade(headers, onMessage, idle)
@@ -590,14 +674,21 @@ defn upgrade(headers, onMessage, idle)
 end
 
 defn Logger(next, request)
-  (** A middleware that prints the method, the path and the status of each request. *)
+  (** A middleware that prints the method, the path and the status of each request.
+
+        logged = Handler(App() then Get("/", r -> Plain("hi")) then Wrap(Logger))
+        logged({Method: "GET", Path: "/nowhere", Query: "", Headers: [], Body: ""}).Status --> 404 *)
   response = next(request)
   io.Print("$(request.Method) $(request.Path) $(response.Status)")
   response
 end
 
 defn Cors(origin)
-  (** A middleware that lets a given origin read the responses. *)
+  (** A middleware that lets a given origin read the responses.
+
+        shared = Handler(App() then Get("/", r -> Plain("hi")) then Wrap(Cors("https://shop.example")))
+        reply = shared({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""})
+        HeaderValue("access-control-allow-origin", reply.Headers) --> "https://shop.example" *)
   (next, request) -> WithHeader("access-control-allow-origin", origin, next(request))
 end
 
@@ -606,7 +697,10 @@ types = {"html": "text/html; charset=utf-8", "css": "text/css", "js": "text/java
   "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8"}
 
 defn FileResponse(path)
-  (** The response with the content of a file, typed by its extension, or a 404 if it can't be read. *)
+  (** The response with the content of a file, typed by its extension, or a 404 if it can't be read.
+
+        FileResponse("src/tools/site.css").Headers --> [{Name: "content-type", Value: "text/css"}]
+        FileResponse("src/tools/nowhere.css").Status --> 404 *)
   parts = text.Split(".", path)
   kind = dict.GetOr(text.Lower(parts[value.Len(parts)]), "application/octet-stream", types)
   match sys.Read(path)
@@ -616,7 +710,11 @@ defn FileResponse(path)
 end
 
 defn Static(prefix, folder, a)
-  (** An application with a route added that serves the files of a folder under a URL prefix. A path can't leave the folder. *)
+  (** An application with a route added that serves the files of a folder under a URL prefix. A path can't leave the folder.
+
+        assets = Handler(App() then Static("/assets", "src/tools"))
+        assets({Method: "GET", Path: "/assets/site.css", Query: "", Headers: [], Body: ""}).Status --> 200
+        assets({Method: "GET", Path: "/assets/../tools/site.css", Query: "", Headers: [], Body: ""}).Status --> 404 *)
   serveFile(request) = static(folder, request.Params["*"])
   Get("$prefix/*", serveFile, a)
 end
@@ -630,12 +728,16 @@ defn static(folder, rest)
 end
 
 (** A text, or any value as its text, with &, <, >, " and ' written as HTML writes them: for what comes from outside, in
-    HTML. A template escapes its values the same way. *)
+    HTML. A template escapes its values the same way.
+
+      Escape("<a href='x'>Tom & Jerry</a>") --> "&lt;a href=&#39;x&#39;&gt;Tom &amp; Jerry&lt;/a&gt;" *)
 Escape(s) = text.Replace("'", "&#39;", text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", value.Text(s))))))
 
 defn Template(source, values)
   (** The source with each {{name}} replaced by the escaped value of that name. One pass: a value that holds {{name}} isn't
-      read again. *)
+      read again.
+
+        Template("<p>Hello, {{name}}!</p>", {name: "<Ana>"}) --> "<p>Hello, &lt;Ana&gt;!</p>" *)
   parts = text.Split("{{", source)
   out = list.Fill("", value.Len(parts))
   out[1] = parts[1]

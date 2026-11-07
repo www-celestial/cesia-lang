@@ -5,22 +5,38 @@ use std/list
 use std/text
 use std/value
 
-(** The role of a keyword: an index in the syntax colors of the theme. *)
+(** The role of a keyword: an index in the syntax colors of the theme.
+
+      Tokens("end", FirstState).Tokens --> [[Keyword, "end"]] *)
 Keyword = 1
-(** The role of a name that is called. *)
+(** The role of a name that is called.
+
+      Tokens("f(x)", FirstState).Tokens --> [[Name, "f"], [Plain, "(x)"]] *)
 Name = 2
-(** The role of a text, interpolations included. *)
+(** The role of a text, interpolations included.
+
+      Tokens("x = \"hi\"", FirstState).Tokens --> [[Plain, "x = "], [Text, "\"hi\""]] *)
 Text = 3
-(** The role of a number. *)
+(** The role of a number.
+
+      Tokens("x + 12", FirstState).Tokens --> [[Plain, "x + "], [Number, "12"]] *)
 Number = 4
-(** The role of a comment. *)
+(** The role of a comment.
+
+      Tokens("x (* note *)", FirstState).Tokens --> [[Plain, "x "], [Comment, "(* note *)"]] *)
 Comment = 5
-(** The role of everything else. *)
+(** The role of everything else.
+
+      Tokens("x + y", FirstState).Tokens --> [[Plain, "x + y"]] *)
 Plain = 6
-(** The role of a name after a dot. *)
+(** The role of a name after a dot.
+
+      Tokens("p.X", FirstState).Tokens --> [[Plain, "p."], [Field, "X"]] *)
 Field = 7
 
-(** The state at the start of a file: in no comment and in no text. *)
+(** The state at the start of a file: in no comment and in no text.
+
+      Tokens("say \"hi", FirstState).State --> {Comment: 0, Text: true} *)
 FirstState = {Comment: 0, Text: false}
 
 keywords = cesia.Keywords()

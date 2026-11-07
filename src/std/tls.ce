@@ -9,7 +9,8 @@ use std/text
 chunk = 65536
 
 defn Open()
-  (** Loads OpenSSL: an Ok of the api that server and client take, or an Err. *)
+  (** Loads OpenSSL: an Ok of the api that server and client take, or an Err. It needs OpenSSL and a certificate, so it has
+      no example here: the chapter [HTTP](https://www-celestial.github.io/cesia-lang/http.html#https) uses it. *)
   ssl = c.Open("ssl", version = 3)?
   lib = c.Open("crypto", version = 3)?
   result.Ok({
@@ -158,7 +159,8 @@ defn io(t)
 end
 
 defn Server(certificate, key, api)
-  (** For http.Serve: wrap = tls.Server(certificate, key, api)? *)
+  (** For http.Serve: wrap = tls.Server(certificate, key, api)? The chapter
+      [HTTP](https://www-celestial.github.io/cesia-lang/http.html#https) uses tls. *)
   ctx = api.CtxNew(api.ServerMethod())
   if api.UseChain(ctx, certificate) != 1
     return failed("Can't read the certificate $certificate.")
@@ -176,7 +178,8 @@ defn accept(api, ctx, socket)
 end
 
 defn Client(api, verify = true)
-  (** For http.Fetch: secure = tls.Client(api). With verify = false, any certificate passes: only for tests. *)
+  (** For http.Fetch: secure = tls.Client(api). With verify = false, any certificate passes: only for tests. The chapter
+      [HTTP](https://www-celestial.github.io/cesia-lang/http.html#https) uses it. *)
   ctx = api.CtxNew(api.ClientMethod())
   if verify
     api.DefaultPaths(ctx)

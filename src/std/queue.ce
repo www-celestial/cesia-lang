@@ -12,7 +12,10 @@ struct Queue { items, first, last }
 (* What value.Len counts. *)
 (q Queue) len() = q.last - q.first + 1
 
-Empty() = Queue(dict.Dict(), 1, 0)   (** A queue with nothing in it. *)
+(** A queue with nothing in it.
+
+      Items(Empty()) --> [] *)
+Empty() = Queue(dict.Dict(), 1, 0)
 (** Is this queue empty?
 
       IsEmpty(Empty()) --> true *)
@@ -59,5 +62,7 @@ end
 
       Items(Of([1, 2])) --> [1, 2] *)
 Items(q) = [q.items[k] for k in q.first..q.last]
-(** A queue holding the elements of an array, the first one at the front. *)
+(** A queue holding the elements of an array, the first one at the front.
+
+      First(Of([1, 2, 3])) --> 1 *)
 Of(xs) = list.Reduce((q, x) -> Push(x, q), Empty(), xs)
