@@ -3,6 +3,11 @@
 name = "cesia"
 src = []          # its code is OCaml, and its libraries are std/: no package of its own
 
+# The examples of std/sys, std/debug, std/c and std/crypto run a program, read a variable, watch a name, and call the C
+# maths library and libsodium, as their readers will.
+[test]
+allow = ["exec=sh", "env=HOME", "debug", "ffi=m", "ffi=c", "ffi=sodium"]
+
 # cesia doc --site: its pages link each name to the line that defines it.
 [site]
 title = "Cesia"
