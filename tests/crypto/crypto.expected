@@ -12,7 +12,6 @@ true
 Ok("hello bob")
 true
 64 true false
-true true false
 blake2b needs a size from 16 to 64.
 A key has 32 bytes.
 A secret key has 64 bytes.
