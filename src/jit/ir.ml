@@ -13,6 +13,7 @@ type ins =
   | Float_of of int * value
   | Math of string * int * value
   | Len of int * int
+  | Dim of int * int * int
   | Elem of int * int * value * int
   | Set_elem of int * value * value * int
   | Call of int * int * value array * int * int

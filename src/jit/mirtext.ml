@@ -240,6 +240,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Float_of (r, x) -> pr "  mov x0, %s\n  rsh x0, x0, 1\n  i2d r%d, x0\n" (operand x) r
     | Math (name, r, x) -> pr "  call pd1, %s, r%d, %s\n" name r (operand x)
     | Len (r, a) -> pr "  mov r%d, %s\n" r (len a)
+    | Dim (r, a, d) -> pr "  mov r%d, %s\n" r (dim a d)
     | Elem (r, a, i, site) -> pr "  dmov r%d, %s\n" r (check_index a i site Ir.err_read)
     | Set_elem (a, i, v, site) ->
       let m = check_index a i site Ir.err_write in

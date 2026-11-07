@@ -30,6 +30,7 @@ type ins =
   | Float_of of int * value
   | Math of string * int * value  (** a function of C's libm: sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs *)
   | Len of int * int  (** the number of cells of an array, by its number in [arrays] *)
+  | Dim of int * int * int  (** [Dim (r, a, d)]: the size of dimension [d], from 0, of an array that takes an index per dimension *)
   | Elem of int * int * value * int  (** the destination, the array, the index from 1, the site *)
   | Set_elem of int * value * value * int  (** the array, the index from 1, the value, the site *)
   | Call of int * int * value array * int * int
