@@ -1,0 +1,6 @@
+(* A command named by its path runs from this program's folder, the one exec= names, whatever dir it runs in. *)
+use std/sys
+use std/io
+use std/result
+io.Print(sys.Run("./build.sh") then result.MapOk(it.Out))
+io.Print(sys.Run("./build.sh", dir = "../b") then result.MapOk(it.Out))

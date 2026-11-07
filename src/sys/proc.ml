@@ -128,7 +128,10 @@ let run poll ctx (a : t array) =
     (* A command with a timeout leads a group: past its time, the children it started go with it, and with them the ends of
        the pipes they hold. Without one, Ctrl-C reaches it as it reaches this program. *)
     let group = timeout > 0. in
-    (match start ~dir ~group cmd (Array.append [| cmd |] args) in_read out_write err_write with
+    (* A command named by its path is the one of this program's folder, which exec= names, whatever dir it runs in. *)
+    let named = String.contains cmd '/' || (Sys.win32 && String.contains cmd '\\') in
+    let program = if named && Filename.is_relative cmd then Filename.concat (Sys.getcwd ()) cmd else cmd in
+    (match start ~dir ~group program (Array.append [| cmd |] args) in_read out_write err_write with
      | exception Unix.Unix_error (e, _, _) ->
        close_child ();
        List.iter Unix.close [ in_write; out_read; err_read ];

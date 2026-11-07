@@ -226,7 +226,8 @@ end
 ### Programs that keep running
 
 `input` gives the program a text to read, `dir` the folder it runs in, and `timeout` stops it after a number of seconds,
-with every program it started, as the commands of a shell. For a
+with every program it started, as the commands of a shell. A program named by its path, as `./build.sh`, is the one of this
+program's folder, the one that `exec=./build.sh` allows, even when `dir` names another folder. For a
 program that keeps running, a server or a shell, [sys.Start] gives a process to write to and read from while it runs, with
 [sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit].
 
