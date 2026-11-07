@@ -43,5 +43,8 @@ val set_tick : t -> float -> (unit -> unit) -> unit
 (** Says that a stop signal arrived. Safe in a signal handler: every reader wakes at the next pass. *)
 val interrupt : t -> unit
 
+(** What the scheduler does once after [interrupt], before the readers wake. *)
+val on_interrupt : t -> (unit -> unit) -> unit
+
 (** Forgets every fiber parked on a descriptor or a timer: a test ended, and its fibers with it. *)
 val reset : t -> unit

@@ -22,6 +22,9 @@ val take_stops : t -> bool -> unit
 (** Did a stop signal arrive since this was last asked, with a window to hear of it? *)
 val stop_asked : t -> bool
 
+(** The channel of sys.Stops, which the first stop signal closes. *)
+val stops : t -> Types.ctx -> Types.t
+
 (** Is this program a worker of cesia run --workers? *)
 val worker : t -> bool
 

@@ -122,7 +122,8 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w
             in
             if watching then Net.take_stops net taken;
             Missing);
-        "StopAsked", Native.nat "StopAsked" 0 0 (fun _ _ -> Value.of_bool (Net.stop_asked net)) ]
+        "StopAsked", Native.nat "StopAsked" 0 0 (fun _ _ -> Value.of_bool (Net.stop_asked net));
+        "Stops", Native.nat "Stops" 0 0 (fun ctx _ -> Net.stops net ctx) ]
   in
   Linalg.install ();
   w.debug.test <- debug_test;

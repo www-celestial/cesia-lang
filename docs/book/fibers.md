@@ -123,6 +123,27 @@ fiber.Receive(fiber.Channel(), timeout = 0.05) -->
 fiber.Wait(fiber.Spawn(() -> slow("bread", 1)), timeout = 0.05) -->
 ```
 
+### The stop signal
+
+[sys.Stops] gives a channel that the first stop signal closes: TERM, INT or HUP. A fiber that waits on it hears of the
+stop at once, and ends its work itself, as the requests of a server do; [fiber.Close] closes a channel of your own the
+same way:
+
+```cesia norun
+stops = sys.Stops()
+defn worker(jobs)
+  while true
+    if fiber.Receive(stops, timeout = 0).Error.Kind == "closed"
+      return "stopped"
+    end
+    match fiber.Receive(jobs, timeout = 1)
+      result.Ok(job) -> io.Print("done", job)
+      else -> missing
+    end
+  end
+end
+```
+
 ### Shared values
 
 Values in Cesia never change in place, they are [immutable](glossary.md#immutability), so two fibers can't break a value they share: a fiber that changes a list makes a new

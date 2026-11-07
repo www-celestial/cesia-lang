@@ -446,6 +446,9 @@ val need_channel : string -> string -> t
 val bad_timeout : string -> t
 val receive_timeout : t
 val wait_timeout : t
+val send_closed : t
+val closed_twice : t
+val channel_closed : t
 val sql_db_closed : t
 val sql_pool : float -> t
 val sql_pool_size : string -> t

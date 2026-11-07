@@ -21,6 +21,7 @@ type t = {
   own : (int, Unix.inet_addr * int) Hashtbl.t;  (* the address and port of each open listener, by socket: what net=own reaches *)
   inherited : inherited option;
   mutable supervisor : (Unix.file_descr -> string -> int -> unit) option;  (* cesia run --workers: see Workers *)
+  mutable stops : (Types.t * (unit -> unit)) option;  (* sys.Stops: its channel, and what closes it *)
 }
 
 let chunk_size = 65536
@@ -44,9 +45,10 @@ let taken_over () =
 let create poll =
   { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; held = Hashtbl.create 64; held_total = 0; told = Hashtbl.create 8;
     buffer = Bytes.create chunk_size; stopping = false; serving = false;
-    handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8; inherited = taken_over (); supervisor = None }
+    handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8; inherited = taken_over (); supervisor = None; stops = None }
 
 let supervise_with n f = n.supervisor <- Some f
+
 let worker n = n.inherited <> None
 
 let stopping n = n.stopping
@@ -84,6 +86,23 @@ let follow n = catch n ~serving:false
 let take_stops n taken =
   if taken then catch n ~serving:true;
   n.windows <- max 0 (n.windows + if taken then 1 else -1)
+
+(* sys.Stops: one channel for the whole program, made at the first call, which fiber.Close closes at the first stop
+   signal, from the scheduler. A program that asks for it takes the stops on itself, as one that serves: the first
+   signal closes the channel, the second ends the program. *)
+let stops n ctx =
+  match n.stops with
+  | Some (ch, _) -> ch
+  | None ->
+    let call name args = match List.assoc name Fiber.natives with Native f -> f.run ctx args | _ -> Missing in
+    let ch = call "Channel" [||] in
+    let closed = ref false in
+    let close () = if not !closed then (closed := true; ignore (call "Close" [| ch |])) in
+    n.stops <- Some (ch, close);
+    catch n ~serving:true;
+    Poll.on_interrupt n.poll (fun () -> if n.stopping then close ());
+    if n.stopping then close ();
+    ch
 
 let stop_asked n =
   let asked = n.windows > 0 && n.unheard in

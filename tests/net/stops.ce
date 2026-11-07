@@ -1,0 +1,25 @@
+(** sys.Stops: workers that wait for jobs hear of the stop signal on one channel, which it closes, and end their work
+    themselves; the program then ends with 0. *)
+use std/fiber
+use std/io
+use std/result
+use std/sys
+
+stops = sys.Stops()
+defn worker(name)
+  done = 0
+  while true
+    (* No job comes here: each wait is a turn of work, until the stop. *)
+    got = fiber.Receive(stops, timeout = 0.02)
+    if result.IsErr(got) and got.Error.Kind == "closed"
+      return "$name stops"
+    end
+    done += 1
+  end
+end
+tasks = [fiber.Spawn(() -> worker(name)) for name in ["first", "second"]]
+io.Print("ready")
+for t in tasks
+  io.Print(result.Unwrap(fiber.Wait(t)))
+end
+io.Print(fiber.Receive(stops).Error.Kind)

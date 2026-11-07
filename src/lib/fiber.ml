@@ -154,8 +154,12 @@ let channel_arg ctx name (v : Types.t) =
   | Handle { kind = "channel"; task = Some ch; _ } -> ch
   | v -> Runtime.fail ctx Type (Messages.need_channel name (Value.describe v))
 
+(* A channel never has a result: Close sets it, to say that nothing more comes. *)
+let closed (ch : task) = ch.result <> None
+
 let send ctx (a : Types.t array) =
   let ch = channel_arg ctx "Send" a.(1) in
+  if closed ch then Runtime.fail ctx User Messages.send_closed;
   Queue.add (Value.share a.(0)) ch.items;
   (match ch.waiters with
    | wake :: rest -> ch.waiters <- rest; wake ()
@@ -172,6 +176,7 @@ let receive ctx (a : Types.t array) =
   let rec take again =
     match Queue.take_opt ch.items with
     | Some v -> !cancel (); Value.ok ctx.w v
+    | None when closed ch -> !cancel (); Value.failure ctx.w "closed" Messages.channel_closed.text
     | None when !timed_out -> timeout_err ctx Messages.receive_timeout
     | None ->
       suspend ctx (fun resume ->
@@ -197,6 +202,16 @@ let receive ctx (a : Types.t array) =
   in
   take false
 
+(* Nothing more comes: the receivers parked wake to what is left, then to its end. *)
+let close ctx (a : Types.t array) =
+  let ch = channel_arg ctx "Close" a.(0) in
+  if closed ch then Runtime.fail ctx User Messages.closed_twice;
+  ch.result <- Some Missing;
+  let waiting = ch.waiters in
+  ch.waiters <- [];
+  List.iter (fun wake -> wake ()) waiting;
+  Missing
+
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
     "Wait",
@@ -208,4 +223,5 @@ let natives =
         s.next_id <- s.next_id + 1;
         Handle { kind = "channel"; id = s.next_id - 1; task = Some { result = None; waiters = []; items = Queue.create () } });
     "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
-    "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive ]
+    "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive;
+    "Close", Native.nat ~params:[| "ch" |] "Close" 1 1 close ]

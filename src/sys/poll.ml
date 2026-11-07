@@ -14,6 +14,7 @@ type t = {
   mutable next_timer : int;
   mutable interrupted : bool;
   mutable tick : (float * (unit -> unit)) option;  (* called at least this often while blocked *)
+  mutable on_interrupt : unit -> unit;  (* what a stop signal does from the scheduler, not from its handler *)
 }
 
 (* The longest single wait: system calls refuse or overflow far beyond it, and a longer sleep just waits again. *)
@@ -21,7 +22,7 @@ let max_wait = 86400.
 
 let create () =
   { backend = None; readers = Hashtbl.create 64; writers = Hashtbl.create 64; timers = Timers.empty; next_timer = 0;
-    interrupted = false; tick = None }
+    interrupted = false; tick = None; on_interrupt = ignore }
 
 let backend p =
   match p.backend with
@@ -87,6 +88,7 @@ let forget p fd =
   wake p.writers fd
 
 let interrupt p = p.interrupted <- true
+let on_interrupt p f = p.on_interrupt <- f
 let set_tick p period f = p.tick <- Some (period, f)
 
 let fire_timers p =
@@ -135,6 +137,7 @@ let idle p block =
      | _ -> ());
     if p.interrupted then begin
       p.interrupted <- false;
+      p.on_interrupt ();
       List.iter (wake p.readers) (Hashtbl.fold (fun fd _ acc -> fd :: acc) p.readers [])
     end;
     if next <> None then fire_timers p;

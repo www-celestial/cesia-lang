@@ -192,11 +192,22 @@ use std/test
 
 (** fiber.Receive(ch, timeout = missing)
     An Ok of the oldest value of a channel. With none, the fiber waits for one, at most timeout seconds when given: then an Err of kind "timeout". A timeout of 0 never waits.
+    A channel closed with nothing left in it gives an Err of kind "closed" at once.
 
       ch = fiber.Channel()
       fiber.Send("a", ch)
       fiber.Receive(ch) --> result.Ok("a")
       fiber.Receive(ch, timeout = 0).Error.Kind --> "timeout" *)
+
+(** fiber.Close(ch)
+    Says that nothing more will be sent on a channel. The values already in it still come; then Receive gives an Err of
+    kind "closed" at once. Sending on it then, or closing it again, is a bug.
+
+      ch = fiber.Channel()
+      fiber.Send(1, ch)
+      fiber.Close(ch)
+      fiber.Receive(ch) --> result.Ok(1)
+      fiber.Receive(ch).Error.Kind --> "closed" *)
 
 (** value.Len(x)
     The number of elements of an array, of characters of a text, of pairs of a dictionary, or of fields of a struct; 1 for any other value.
@@ -962,6 +973,14 @@ use std/test
     Has a TERM or an INT come since the last call? Only after sys.TakeStops(true).
 
       sys.StopAsked() --> false *)
+
+(** sys.Stops()
+    A channel that the first stop signal, TERM, INT or HUP, closes: each fiber that waits on it, with fiber.Receive,
+    hears of the stop at once, and ends its work itself, as a server's requests do. The same channel for the whole
+    program. A program that asks for it takes the stop signals on itself: the first closes the channel, the second ends
+    the program.
+
+      fiber.Receive(sys.Stops(), timeout = 0).Error.Kind --> "timeout" *)
 
 (** sys.Rename(from, to)
     Moves a file or a folder: Ok(missing) or an Err. Needs the write permission on both paths.
