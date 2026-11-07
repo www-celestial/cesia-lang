@@ -287,8 +287,26 @@ let rec scan st ~in_code : token array =
         | _ -> error st pos (Messages.unexpected_char c)
     end
   done;
-  push NL (pos_at st st.i);
-  push EOF (pos_at st st.i);
+  (* The end of a file is placed right after its last word, where a statement cut short would go on, and not on the empty
+     line after it. *)
+  let fin =
+    let j = ref (n - 1) and lines = ref 0 in
+    while (not in_code) && !j >= 0 && (match s.[!j] with ' ' | '\t' | '\r' | '\n' -> true | _ -> false) do
+      if s.[!j] = '\n' then incr lines;
+      decr j
+    done;
+    if in_code || !j < 0 || !j = n - 1 then pos_at st st.i
+    else begin
+      let start = match String.rindex_from_opt s !j '\n' with Some k -> k + 1 | None -> 0 in
+      let col = ref 1 in
+      for k = start to !j do
+        if Char.code s.[k] land 0xC0 <> 0x80 then incr col
+      done;
+      Pos.make (st.line - !lines) !col
+    end
+  in
+  push NL fin;
+  push EOF fin;
   Array.sub !out 0 !count
 
 and text st start_pos =

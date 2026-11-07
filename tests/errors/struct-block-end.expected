@@ -1,4 +1,4 @@
-struct-block-end.ce:5:1: Expected end, found the end of the file.
-  5 | 
-    | ^
+struct-block-end.ce:4:14: Expected end, found the end of the file.
+  4 |   Speed = 0.0
+    |              ^
 exit 1

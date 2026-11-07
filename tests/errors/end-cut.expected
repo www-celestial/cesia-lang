@@ -1,0 +1,4 @@
+end-cut.ce:3:4: Expected an expression, found the end of the file.
+  3 | x = 
+    |    ^
+exit 1

@@ -1,4 +1,4 @@
-bad_std/list.ce:2:1: Expected an expression, found the end of the file.
-  2 | 
-    | ^
+bad_std/list.ce:1:6: Expected an expression, found the end of the file.
+  1 | x = (
+    |      ^
 exit 1

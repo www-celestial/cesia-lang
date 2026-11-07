@@ -1,0 +1,4 @@
+(* A statement cut by the end of the file is shown on its own line, after its last word. *)
+use std/io
+x = 
+

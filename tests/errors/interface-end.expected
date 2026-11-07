@@ -1,4 +1,4 @@
-interface-end.ce:4:1: Expected end, found the end of the file.
-  4 | 
-    | ^
+interface-end.ce:3:9: Expected end, found the end of the file.
+  3 |   Area()
+    |         ^
 exit 1

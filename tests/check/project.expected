@@ -1,12 +1,12 @@
 src/app/app.ce:1:5: Package src/geo doesn't load: src/geo/more.ce:4:24.
   1 | use src/geo
     |     ^^^
-src/app/app.ce:2:5: Package src/broken doesn't load: src/broken/broken.ce:3:1.
+src/app/app.ce:2:5: Package src/broken doesn't load: src/broken/broken.ce:2:16.
   2 | use src/broken
     |     ^^^
-src/broken/broken.ce:3:1: Expected an expression, found the end of the file.
-  3 | 
-    | ^
+src/broken/broken.ce:2:16: Expected an expression, found the end of the file.
+  2 | Broken() = (1 +
+    |                ^
 src/geo/geo.test.ce:3:20: Square needs the argument "side".
   3 | isMissing() = Area(Square()) == 4
     |                    ^^^^^^
