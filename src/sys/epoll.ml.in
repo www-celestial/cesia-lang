@@ -7,7 +7,8 @@ type state = { ep : int; out : Unix.file_descr array }
 let capacity = max_int
 let create () = { ep = create_fd (); out = Array.make 1024 Unix.stdin }
 let add s fd = ignore (ctl s.ep 1 fd)
-let add_listener s fd = ignore (ctl s.ep 2 fd)
+(* A kernel before 4.5 has no EPOLLEXCLUSIVE: every worker wakes, as with select. *)
+let add_listener s fd = if ctl s.ep 2 fd <> 0 then add s fd
 let remove s fd = ignore (ctl s.ep 0 fd)
 
 let wait s timeout _ =

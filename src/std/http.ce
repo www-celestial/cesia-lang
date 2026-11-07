@@ -157,13 +157,20 @@ waits(parsed) = match parsed
   else -> false
 end
 
+defn readOn(conn)
+  (** The next read of a connection, as conn.Read gives it, but when the server stops in the middle of a head or a body:
+      that request is in progress, and still gets its response. A read hears of the stop once. *)
+  got = conn.Read()
+  if result.IsErr(got) and got.Error.Kind == "stopped" conn.Read() else got end
+end
+
 defn gather(conn, first, needed)
   (** Reads from a connection until the needed size, or to its end if the size is missing: an Ok of what arrived, which an
       early end leaves short. It reads in one pass, so a body sent a byte at a time isn't parsed again at each read. *)
   pieces = {0: first}
   total = text.ByteLength(first)
   while value.IsMissing(needed) or total < needed
-    more = conn.Read()?
+    more = readOn(conn)?
     if text.ByteLength(more) == 0
       break
     end
@@ -183,7 +190,7 @@ defn readHead(conn, first)
   total = text.ByteLength(first)
   tail = lastBytes(3, first)
   while total <= maxHead
-    more = conn.Read()?
+    more = readOn(conn)?
     if text.ByteLength(more) == 0
       return result.Ok(missing)
     end
@@ -211,10 +218,10 @@ defn connection(handle, conn, buffer, options, deadline)
     (* Most heads come in one read. Those that don't are gathered in one pass. *)
     more = if buffer == "" conn.Read() else readHead(conn, buffer) end
     if result.IsErr(more) and more.Error.Kind == "stopped"
-      (* The server stops: a request on its way, or half come, still gets its response. *)
+      (* The server stops between two requests of this connection: one may be on its way, and still gets its response. *)
       grace = list.Min(lastCall, options.Timeout)
-      if buffer == "" conn.Arm(grace) end
-      connection(handle, conn, buffer, options, if buffer == "" sys.Now() + grace else deadline end)
+      conn.Arm(grace)
+      connection(handle, conn, buffer, options, sys.Now() + grace)
     else if result.IsErr(more) or value.IsMissing(more.Value) or more.Value == ""
       conn.Close()
     else
