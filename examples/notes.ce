@@ -10,17 +10,16 @@ use std/text
 
 file = "notes.txt"
 
-defn handle(request)
-  if request.Method == "POST"
-    sys.Append(file, "$(request.Body)$(text.Char(10))")?
-  end
-  notes = if sys.Exists(file) sys.Read(file)? else "" end
-  result.Ok({Status: 200, Body: notes})
+defn listed()
+  (** The notes, or an Err that the server answers with a 500. *)
+  result.Ok(http.Plain(if sys.Exists(file) sys.Read(file)? else "" end))
 end
 
-reply(request) = match handle(request)
-  result.Ok(response) -> response
-  result.Err(e) -> {Status: 500, Body: e.Message}
+defn added(request)
+  (** The notes, after the body of the request is added to them. *)
+  sys.Append(file, "$(request.Body)$(text.Char(10))")?
+  listed()
 end
 
-io.Print(http.Serve(http.App() then http.AnyMethod("*", reply), port = 8080))
+app = http.App() then http.Get("/", r -> listed()) then http.Post("/", added)
+io.Print(http.Serve(app, port = 8080))
