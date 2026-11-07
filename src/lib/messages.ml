@@ -232,6 +232,7 @@ let usage =
   "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
   \       cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]\n\
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
+  \       cesia fmt [--check] [path...]\n\
   \       cesia lsp\n\
   \       cesia do [task]\n\
   \       cesia new name\n\

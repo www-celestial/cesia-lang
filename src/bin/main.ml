@@ -222,6 +222,7 @@ let one_test arg =
 let tool_grants = function
   | "pkg" -> "read,write,exec=git,env=HOME,env=XDG_CACHE_HOME"
   | "check" | "lsp" -> "read"
+  | "fmt" -> "read,write"
   | _ -> "read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug"
 
 let tool ?(grants = "") name args =
@@ -386,7 +387,7 @@ let () =
     | _ :: "test" :: args -> test args
     | _ :: "do" :: args -> Project.run args
     | [ _; "new"; name ] -> create name
-    | _ :: (("pkg" | "upgrade" | "check") as name) :: args -> exit (tool name args)
+    | _ :: (("pkg" | "upgrade" | "check" | "fmt") as name) :: args -> exit (tool name args)
     | [ _; "lsp" ] ->
       (* The protocol counts bytes: Windows must not turn a line end into two. *)
       set_binary_mode_out stdout true;

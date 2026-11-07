@@ -1,0 +1,2 @@
+use std/io
+io.Print(1 +

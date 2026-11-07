@@ -1,0 +1,9 @@
+(** A file in the style, which fmt leaves as it is. *)
+use std/io
+
+defn half(x)
+  (** Half of x. *)
+  x / 2
+end
+
+io.Print(half(4))

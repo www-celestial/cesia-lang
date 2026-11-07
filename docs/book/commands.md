@@ -58,6 +58,24 @@ alone give 0.
 | `--json` | one JSON object per line, and nothing else: `file`, `line`, `column`, `end` (the column after the span), `severity` (`"error"` or `"warning"`), `message`, `hint` |
 | `--stdin file.ce` | the text of that file comes from the input instead of the disk, as an editor sends a buffer not yet saved |
 
+## cesia fmt
+
+```bash
+cesia fmt [--check] [path...]
+```
+
+Writes files in the style that the code of Cesia shares, and names each one it changes. A line that starts a statement is
+indented two spaces for each block it is in, `defn`, `if`, `for`, `while`, `match` or `struct`, and a line that goes on with
+a statement, inside brackets or after a comma, moves with the line it continues; no line ends with spaces; no two blank
+lines follow each other, and none starts or ends the file. Nothing else changes: not a word, not a comment, not a text, not
+a `\r\n`. Before it writes a file, it checks that the code reads as the same program; a file that doesn't read stays as it
+is, and is named with its error. A path is a file, or a folder with its subfolders; with none, the project here, without
+its `std/` and `deps/`. It needs the read and write permissions. Ends with the code 1 when a file stays as it is.
+
+| Option | What it does |
+|---|---|
+| `--check` | writes nothing: names each file out of the style, and ends with the code 1 if there is one |
+
 ## cesia lsp
 
 ```bash

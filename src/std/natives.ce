@@ -1363,6 +1363,14 @@ use std/test
 
       cesia.Uses("use std/csv")? --> ["std/csv"] *)
 
+(** cesia.SameTree(a, b)
+    For tools: do two sources read as the same program, whatever their spaces, line ends and comments? An Ok of a boolean,
+    or an Err of {Line, Message} for a source that doesn't read. Nothing runs: cesia fmt asks it before it writes a file.
+
+      cesia.SameTree("x = 1 + 2", "x  =  1 + 2   (* three *)")? --> true
+      cesia.SameTree("x = 1 + 2", "x = 1 + 3")? --> false
+      cesia.SameTree("x = (", "x = 1").Error.Line --> 1 *)
+
 (** cesia.Check(paths, given = {})
     For tools: what cesia check finds in files, without running any of them: a list of structs with File, Line, Column,
     End (the column after the span), Severity ("error" or "warning"), Message, Hint (or missing) and Source (the line).

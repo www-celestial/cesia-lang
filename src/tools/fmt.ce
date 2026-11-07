@@ -1,0 +1,356 @@
+(** cesia fmt: writes the files of a project in the one style its code shares. A line that starts a statement is indented
+    two spaces for each block it is in, and a line that goes on with a statement moves with the line it continues; no line
+    ends with spaces; no two blank lines follow each other, and none starts or ends the file. Nothing else changes: not a
+    word, not a comment, not a text. Before it writes a file, fmt checks that the code keeps its tree and that only spaces
+    and line ends moved. cesia fmt [--check] [path...]: a path is a file, or a folder and its subfolders; with none, the
+    project here. --check writes nothing, names the files that aren't in the style, and ends with the code 1 if there is
+    one. Run by the binary, with the read and write permissions. *)
+use std/cesia
+use std/io
+use std/list
+use std/regex
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(* The bytes that matter to fmt. *)
+quote = 34
+backslash = 92
+dollar = 36
+newline = 10
+
+(* The words that open a block that end closes, when they stand out of brackets. *)
+openers = ["defn", "for", "while", "match", "if", "struct", "interface"]
+
+(* The last tokens of a line after which the statement goes on, on the next line. *)
+going = [",", ".", "+", "-", "*", "/", "^", "==", "!=", "<", ">", "<=", ">=", "and", "or", "not", "in", "..", "then"]
+
+(* The two-byte operators, read as one token. *)
+pairs = ["==", "!=", "<=", ">=", "->", "..", "+=", "-=", "*=", "/="]
+
+nameByte(b) = (b >= 97 and b <= 122) or (b >= 65 and b <= 90) or (b >= 48 and b <= 57) or b == 95 or b >= 128   (** A byte of a name. *)
+
+defn scan(src)
+  (** The lines of a source, each {Text, In, Out, Open, Close, Tokens}: In and Out are where the line starts and where its
+      line end is, "code", "text" or "comment"; Open and Close how many brackets are open at its start and at its end;
+      Tokens the tokens of the line out of any bracket, text or comment, in order, among them the brackets that open and
+      close at that level, and a text as one ". *)
+  b = text.Bytes(src)
+  n = value.Len(b)
+  lines = []
+  stack = []      (* 0 for a text, k > 0 for the code of a $( ) in a text, with k - 1 parentheses open in it *)
+  comment = 0
+  brackets = 0
+  start = 1
+  where = "code"
+  open = 0
+  tokens = []
+  i = 1
+  while i <= n + 1
+    c = if i <= n b[i] else newline end
+    if c == newline
+      line = if i > start text.ByteSlice(start, i - 1, src) else "" end
+      after = if comment > 0 "comment" else if value.Len(stack) > 0 "text" else "code" end
+      lines = list.Append({Text: line, In: where, Out: after, Open: open, Close: brackets, Tokens: tokens}, lines)
+      start = i + 1
+      where = after
+      open = brackets
+      tokens = []
+      i += 1
+    else if comment > 0
+      if c == 40 and i < n and b[i + 1] == 42
+        comment += 1
+        i += 2
+      else if c == 42 and i < n and b[i + 1] == 41
+        comment -= 1
+        i += 2
+      else
+        i += 1
+      end
+    else if value.Len(stack) > 0 and list.Last(stack) == 0
+      (* In a text. *)
+      if c == backslash or (c == dollar and i < n and b[i + 1] == dollar)
+        i += 2
+      else if c == dollar and i < n and b[i + 1] == 40
+        stack = list.Append(1, stack)
+        i += 2
+      else
+        if c == quote
+          stack = list.DropLast(1, stack)
+        end
+        i += 1
+      end
+    else if c == 40 and i < n and b[i + 1] == 42
+      comment = 1
+      i += 2
+    else if c == quote
+      if value.Len(stack) == 0 and brackets == 0
+        tokens = list.Append("\"", tokens)
+      end
+      stack = list.Append(0, stack)
+      i += 1
+    else if value.Len(stack) > 0
+      (* In the code of a $( ) in a text. *)
+      top = list.Last(stack)
+      if c == 40
+        stack[value.Len(stack)] = top + 1
+      else if c == 41 and top == 1
+        stack = list.DropLast(1, stack)
+      else if c == 41
+        stack[value.Len(stack)] = top - 1
+      end
+      i += 1
+    else if c == 32 or c == 9 or c == 13
+      i += 1
+    else if nameByte(c)
+      j = i
+      while j < n and nameByte(b[j + 1])
+        j += 1
+      end
+      if brackets == 0
+        tokens = list.Append(text.ByteSlice(i, j, src), tokens)
+      end
+      i = j + 1
+    else
+      size = if i < n and text.ByteSlice(i, i + 1, src) in pairs 2 else 1 end
+      if (c == 41 or c == 93 or c == 125) and brackets > 0
+        brackets -= 1
+      end
+      if brackets == 0
+        tokens = list.Append(text.ByteSlice(i, i + size - 1, src), tokens)
+      end
+      if c == 40 or c == 91 or c == 123
+        brackets += 1
+      end
+      i += size
+    end
+  end
+  lines
+end
+
+defn indentOf(line)
+  (** The spaces at the start of a line, or missing when a tab is among them. *)
+  k = 0
+  for c in text.Bytes(line)
+    if c == 9
+      return missing
+    else if c != 32
+      return k
+    end
+    k += 1
+  end
+  k
+end
+
+defn opening(t, k, tokens)
+  (** Does the k-th token of a line open a block that end closes? An if after else or before the -> of a match arm opens
+      none, nor a struct or an interface written on one line. *)
+  n = value.Len(tokens)
+  rest = if k < n tokens[(k + 1)..n] else [] end
+  if t == "if"
+    not ((k > 1 and tokens[k - 1] == "else") or "->" in rest)
+  else if t == "struct" or t == "interface"
+    not ("{" in rest)
+  else
+    t in openers
+  end
+end
+
+defn blocksAfter(blocks, tokens)
+  (** The blocks open after the tokens of a line, in their order: an opener adds one, an end closes the innermost one
+      that end closes, with the bodies above it. *)
+  out = blocks
+  for k in 1..value.Len(tokens)
+    t = tokens[k]
+    if t == "end"
+      j = value.Len(out)
+      while j > 0 and out[j] != "k"
+        j -= 1
+      end
+      out = if j == 0 [] else list.Take(j - 1, out) end
+    else if opening(t, k, tokens)
+      out = list.Append("k", out)
+    end
+  end
+  out
+end
+
+defn done(blocks)
+  (** The blocks after a statement that ended: the bodies of -> and = it was the statement of are over. *)
+  out = blocks
+  while value.Len(out) > 0 and list.Last(out) == "v1"
+    out = list.DropLast(1, out)
+  end
+  out
+end
+
+trimEnd(s) = regex.Replace("[ \t\r]+$", "", s)   (** A text without the spaces at its end. *)
+
+defn shaped(src)
+  (** The lines of a source in the style, each {Text, Blank}, Blank for a blank line that may go: out of a text, a comment
+      and brackets. *)
+  out = []
+  blocks = []     (* each open block: "k" for one that end closes, "v0" and "v1" for the body of a -> or = at the end of a line, before and after its first line *)
+  shift = 0
+  continued = false
+  for line in scan(src)
+    (* A line keeps its own line end, \r\n or \n. *)
+    cr = if text.EndsWith("\r", line.Text) and line.Out != "text" "\r" else "" end
+    tokens = line.Tokens
+    first = if value.Len(tokens) > 0 tokens[1] else missing end
+    last = if value.Len(tokens) > 0 list.Last(tokens) else missing end
+    at = indentOf(line.Text)
+    body = text.Trim(line.Text)
+    statement = line.In == "code" and line.Open == 0 and not continued and first != "then"
+    rest = if line.Out == "text" line.Text else "$(trimEnd(line.Text))$cr" end
+    if line.In == "text"
+      (* A line that starts in a text keeps all it holds. *)
+      out = list.Append({Text: line.Text, Blank: false}, out)
+    else if body == ""
+      out = list.Append({Text: cr, Blank: line.In == "code" and line.Open == 0}, out)
+    else if statement
+      if not value.IsMissing(first)
+        blocks = [if k == "v0" "v1" else k end for k in blocks]
+      end
+      dedent = (first == "end" or first == "else") and not (value.Len(tokens) > 1 and tokens[2] == "->")
+      level = list.Max([value.Len(blocks) - (if dedent 1 else 0 end), 0])
+      shift = if value.IsMissing(at) 0 else 2 * level - at end
+      out = list.Append({Text: "$(text.Repeat(2 * level, " "))$(text.Trim(rest))$cr", Blank: false}, out)
+    else
+      moved = if value.IsMissing(at) or shift == 0 rest else "$(text.Repeat(list.Max([0, at + shift]), " "))$(text.Trim(rest))$cr" end
+      out = list.Append({Text: moved, Blank: false}, out)
+    end
+    if body != ""
+      blocks = blocksAfter(blocks, tokens)
+      (* A statement ends at a line end out of brackets, texts and comments, after a token that doesn't ask for more. A
+         line of comment only, with no token, ends none. *)
+      ends = line.Close == 0 and line.Out == "code" and (not value.IsMissing(last) or line.Open > 0 or line.In != "code")
+      if ends and (last == "->" or last == "=")
+        blocks = list.Append("v0", blocks)
+      else if ends and not (last in going)
+        blocks = done(blocks)
+      end
+      continued = line.Close > 0 or line.Out != "code" or (not value.IsMissing(last) and last in going)
+    end
+  end
+  out
+end
+
+defn formatted(src)
+  (** A source in the style: its lines, at most one blank line in a row and none at its start or end, and a line end at
+      its end. *)
+  kept = []
+  blank = true
+  for line in shaped(src)
+    if not (line.Blank and blank)
+      kept = list.Append(line, kept)
+    end
+    blank = line.Blank
+  end
+  while value.Len(kept) > 0 and list.Last(kept).Blank
+    kept = list.DropLast(1, kept)
+  end
+  if value.Len(kept) == 0 "" else "$(text.Join("\n", [l.Text for l in kept]))\n" end
+end
+
+visible(s) = regex.Replace("[ \t\r\n]+", "", s)   (** A text without its spaces and line ends. *)
+
+defn checked(file, src)
+  (** The text of a file in the style, in an Ok, once it is sure to mean what the file means: the same tree, the same
+      words and comments. An Err says why the file stays as it is. *)
+  out = formatted(src)
+  if out == src
+    return result.Ok(out)
+  end
+  same = cesia.SameTree(src, out)
+  if result.IsErr(same)
+    return result.Err("$file:$(same.Error.Line): $(same.Error.Message) fmt leaves the file as it is.")
+  end
+  if not same.Value or visible(src) != visible(out)
+    return result.Err("$file: fmt would change what this file means, so it leaves it as it is. This is a bug of fmt.")
+  end
+  result.Ok(out)
+end
+
+defn sources(p)
+  (** The files of Cesia under a path: itself, or those of a folder and its subfolders, without the dot files, _build, and
+      the std/ and deps/ that hold copies. A link to a folder is never followed. *)
+  stat = sys.Stat(p)?
+  if not stat.IsDir
+    return result.Ok([p])
+  end
+  found = []
+  for name in list.Sort(sys.List(p)?)
+    sub = if p == "." name else "$p/$name" end
+    skipped = text.StartsWith(".", name) or name == "_build" or ((name == "std" or name == "deps") and sys.Exists("$p/cesia.toml"))
+    if not skipped
+      match sys.Stat(sub)
+        result.Ok(st) ->
+          if st.IsDir
+            if not st.IsLink
+              found = list.Concat(found, sources(sub)?)
+            end
+          else if text.EndsWith(".ce", name)
+            found = list.Append(sub, found)
+          end
+        result.Err(_) -> missing
+      end
+    end
+  end
+  result.Ok(found)
+end
+
+defn run(args)
+  (** Formats or checks what the arguments name, and gives the exit code. *)
+  checking = false
+  paths = []
+  for a in args
+    if a == "--check"
+      checking = true
+    else if text.StartsWith("--", a)
+      return result.Err("fmt: unknown option $a; cesia fmt [--check] [path...]")
+    else
+      paths = list.Append(a, paths)
+    end
+  end
+  if value.Len(paths) == 0
+    if not sys.Exists("cesia.toml")
+      return result.Err("fmt: no cesia.toml here; name the files or folders to format.")
+    end
+    paths = ["."]
+  end
+  files = []
+  for p in paths
+    if not sys.Exists(p)
+      return result.Err("fmt: $p doesn't exist.")
+    end
+    files = list.Concat(files, sources(p)?)
+  end
+  code = 0
+  for f in files
+    src = sys.Read(f)?
+    got = checked(f, src)
+    if result.IsErr(got)
+      io.PrintError(got.Error)
+      code = 1
+    else if got.Value != src
+      io.Print(f)
+      if checking
+        code = 1
+      else
+        sys.Write(f, got.Value)?
+      end
+    end
+  end
+  result.Ok(code)
+end
+
+defn Main()
+  (** Formats the files of Args; an error that stops it is a text, which the binary shows. *)
+  code = run(sys.Args)?
+  if code > 0
+    sys.Exit(code)
+  end
+  result.Ok(missing)
+end
