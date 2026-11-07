@@ -73,6 +73,11 @@ isDocAsCalledOutside() = value.Equal(cesia.DocEntry("list.FindFirst").Examples, 
   value.Equal(cesia.DocEntry("date.AddDays").Examples, ["date.AddDays(1, date.Date(2026, 11, 1)).Day --> 2"]) and
   text.StartsWith("date.Date { Year", cesia.DocEntry("date.Date").Signature)
 
+(* Inside the code of a text too, and $Name becomes $(written.Name): $written.Name would put ".Name" in the text. *)
+isDocAsCalledOutsideInText() =
+  value.Equal(cesia.DocEntry("tests/lang/mods/written.Folder").Examples,
+              ["\"$$(written.Folder())/notes.txt\" --> \"notes/notes.txt\"", "\"$$(written.Name).txt\" --> \"notes.txt\""])
+
 isDocEntryOfAModuleNative() = cesia.DocEntry("sys.Read").Module == "std/sys" and cesia.DocEntry("sys.Read").Builtin
 isDocEntryOfAKeyword() = cesia.DocEntry("if").Module == "" and cesia.DocEntry("if").Builtin and value.Len(cesia.DocEntry("if").Examples) > 0
 isDocEntryOfNothing() = value.IsMissing(cesia.DocEntry("NoSuchName")) and value.IsMissing(cesia.DocEntry("runLength"))

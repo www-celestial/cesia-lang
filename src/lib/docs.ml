@@ -457,26 +457,42 @@ let byte_of_col s col =
   go 0 1
 
 (* A line of code as a reader writes it, outside its package: Map(it * 2, xs) gives list.Map(it * 2, xs). A name of own takes
-   the alias where it stands alone: not after a dot, nor as a key or a name being set, nor inside a text. *)
+   the alias where it stands alone: not after a dot, nor as a key or a name being set. Inside a text too: "$(Temp())/a"
+   gives "$(test.Temp())/a", and "$Name" gives "$(test.Name)", since "$test.Name" would put ".Name" in the text. *)
 let as_written alias own line =
   match Lexer.tokens ~file:"" line with
   | exception _ -> line
   | toks ->
-    let last = Array.length toks - 1 in
-    let alone i =
-      (i = 0 || match toks.(i - 1).t with DOT -> false | _ -> true)
-      && (i = last || match toks.(i + 1).t with COLON | ASSIGN -> false | _ -> true)
+    (* What to insert, at bytes of the line. *)
+    let inserts = ref [] in
+    let rec code (toks : Lexer.token array) =
+      let last = Array.length toks - 1 in
+      let alone i =
+        (i = 0 || match toks.(i - 1).t with DOT -> false | _ -> true)
+        && (i = last || match toks.(i + 1).t with COLON | ASSIGN -> false | _ -> true)
+      in
+      Array.iteri
+        (fun i (tk : Lexer.token) ->
+           match tk.t with
+           | NAME n when List.mem n own && alone i -> inserts := (byte_of_col line (Pos.col tk.pos), alias ^ ".") :: !inserts
+           | TEXT parts -> List.iter (function Lexer.Code c -> in_text c | Plain _ -> ()) parts
+           | _ -> ())
+        toks
+    and in_text (toks : Lexer.token array) =
+      match toks with
+      | [| { t = NAME n; pos; _ }; _; _ |] when (let k = byte_of_col line (Pos.col pos) in k > 0 && line.[k - 1] = '$') ->
+        if List.mem n own then begin
+          let k = byte_of_col line (Pos.col pos) in
+          inserts := (k + String.length n, ")") :: (k, "(" ^ alias ^ ".") :: !inserts
+        end
+      | _ -> code toks
     in
-    let cols = ref [] in
-    Array.iteri
-      (fun i (tk : Lexer.token) -> match tk.t with NAME n when List.mem n own && alone i -> cols := Pos.col tk.pos :: !cols | _ -> ())
-      toks;
-    (* From the last, so that the columns before stay right. *)
+    code toks;
+    (* From the last, so that the bytes before stay right. *)
     List.fold_left
-      (fun s col ->
-         let k = byte_of_col s col in
-         String.concat "" [ String.sub s 0 k; alias; "."; String.sub s k (String.length s - k) ])
-      line !cols
+      (fun s (k, text) -> String.concat "" [ String.sub s 0 k; text; String.sub s k (String.length s - k) ])
+      line
+      (List.sort (fun (a, _) (b, _) -> compare b a) !inserts)
 
 (* An entry of a module as the code outside it calls it, list.Map(f, xs), as a native shows: its signature and examples. *)
 let outside w m es e =

@@ -1,0 +1,9 @@
+(** Names whose examples call them inside texts, for the test in doc-api.ce of how the code outside the package writes them. *)
+
+(** The folder of the notes.
+
+      "$(Folder())/notes.txt" --> "notes/notes.txt"
+      "$Name.txt" --> "notes.txt" *)
+Folder() = "notes"
+
+Name = "notes"   (** The name of the notes. *)
