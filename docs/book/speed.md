@@ -63,6 +63,25 @@ cesia run --no-jit particles.ce
 
 See [Environment variables](env.md) and [Commands](commands.md#cesia-run).
 
+## A server under load
+
+A server of [std/http] answers about 60,000 small requests per second on one core of a 2015 laptop, 45,000 in JSON, and
+22,000 on a new connection each, with a 99th percentile of 4 ms at 100 connections; an idle connection takes 2.3 KB.
+On the same core, Node answers 40,000 to 50,000, and 12,000 on new connections. `--workers 2` doubles it, as
+[Every core](http.md#every-core) says. These numbers come from the repository of Cesia, which measures them so:
+
+```bash
+tools/http-bench.sh    # each load against Node, and Go if it is there
+tools/http-gate.sh     # the gate that a change to the server must pass
+```
+
+`tools/http-bench.sh` runs a tiny route, a JSON one and new connections, at 10, 100 and 1,000 connections, and 10 beside
+10,000 idle ones, and prints the requests per second, the median and the 99th percentile of the latency, the failed
+requests and the memory. `tools/http-gate.sh` runs the main loads and fails if one request fails, if Cesia answers
+fewer requests than Node or than its floors, if its 99th percentile passes 10 ms, if an idle connection takes more than
+4 KB, or if two workers don't give one and a half times one process. `HTTP_GATE_SCALE=0.5` halves the floors on a slower
+machine.
+
 ## Next
 
 Your programs run fast with nothing to write. The next chapter, [C and C++](c.md), calls the libraries of the system from
