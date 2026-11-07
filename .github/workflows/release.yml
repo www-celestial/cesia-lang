@@ -38,7 +38,7 @@ jobs:
       - name: Files as they are stored
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: ocaml/setup-ocaml@v3
@@ -86,7 +86,7 @@ jobs:
           mv "$file.new" "$file"
           grep '^let text' "$file"
       - run: opam exec -- dune build --profile release
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: libraries
           key: libraries-${{ matrix.system }}-${{ hashFiles('tools/release-libs.sh') }}
@@ -151,7 +151,7 @@ jobs:
       - name: Report a failure
         if: failure()
         run: tools/ci-error.sh test.log libs.log archive.log jit.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: cesia-${{ matrix.system }}
           path: |
@@ -166,10 +166,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: assets
           merge-multiple: true
