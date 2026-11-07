@@ -30,8 +30,8 @@ The two waits overlap: the whole takes the time of the longest, `0.2` seconds, n
 
 ## What waits
 
-A fiber that waits lets the others run: [sys.Sleep], a read from the network, a call to [fiber.Wait] or [fiber.Receive], a database that
-is busy.
+A fiber that waits lets the others run: [sys.Sleep], a read from the network, a call to [fiber.Wait], [fiber.Receive] or
+[fiber.Select], a [fiber.Send] on a full channel, a database that is busy.
 
 ### A long computation
 
