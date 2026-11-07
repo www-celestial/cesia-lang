@@ -1,4 +1,8 @@
 use std/http
 
-handle(request) = {Status: 200, Body: "Cesia"}
-http.Serve(http.App() then http.AnyMethod("*", handle), port = 19100)
+(* The server of tools/http-bench.sh: a tiny route and a JSON one. *)
+product = {Id: 7, Name: "bread", Price: 1.25, Tags: ["fresh", "warm"]}
+app = http.App()
+  then http.Get("/", r -> {Status: 200, Body: "Cesia"})
+  then http.Get("/json", r -> http.Json(product))
+http.Serve(app, port = 19100)
