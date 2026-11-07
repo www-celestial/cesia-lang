@@ -94,16 +94,22 @@ let std_calls =
    io.Print(list.Top(2, [5, 1, 9, 3]))\n\
    io.Print(list.Frequencies([1, 2.0, 1, \"a\"]))\n\
    io.Print(list.Top(2, [{V: 1}, {V: 3}, {V: 2}], by = x -> x.V))\n\
-   io.Print(list.Group(x -> x, [\"a\", \"b\", \"a\"]))\n"
+   io.Print(list.Group(x -> x, [\"a\", \"b\", \"a\"]))\n\
+   fuzzCube = matrix.Reshape([2, 3, 4], 1..24)\n\
+   io.Print(fuzzCube[2, 3, 4], fuzzCube[1, 2, 3] + fuzzCube[7], value.Size(fuzzCube))\n\
+   io.Print(list.Sum(fuzzCube, dim = 3), list.Mean(fuzzCube * 1.5, dim = 1))\n\
+   fuzzField = matrix.Zeros(3, 3, 3)\n\
+   for k in 1..3\n  for j in 1..3\n    for i in 1..3\n      fuzzField[i, j, k] = i * j - k * 0.5\n    end\n  end\nend\n\
+   io.Print(fuzzField + 1.0, fuzzField * fuzzField > 1.0, list.Fill(\"a\", 1, 2, 2))\n"
 
 (* The uses of the packages that the calls above name, at the end of a program, unless it has them. *)
-let with_uses src =
+let with_uses ?(extra = []) src =
   let has text =
     let n = String.length src and m = String.length text in
     let rec go i = i + m <= n && (String.sub src i m = text || go (i + 1)) in
     go 0
   in
-  src ^ String.concat "" (List.map (fun p -> if has ("use std/" ^ p) then "" else "\nuse std/" ^ p) [ "io"; "fiber"; "list"; "math" ]) ^ "\n"
+  src ^ String.concat "" (List.map (fun p -> if has ("use std/" ^ p) then "" else "\nuse std/" ^ p) ([ "io"; "fiber"; "list"; "math" ] @ extra)) ^ "\n"
 
 let kp_files dir =
   if not (Sys.file_exists dir) then []
@@ -116,7 +122,7 @@ let corpus () =
   let read f = In_channel.with_open_bin f In_channel.input_all in
   let programs = kp_files "tests/lang" @ kp_files "tests/net" @ kp_files "tests/c" in
   let tests = List.map (fun f -> let s = read f in with_uses (s ^ "\n" ^ test_calls s)) programs in
-  let std = List.map (fun f -> with_uses (read f ^ "\n" ^ std_calls)) (kp_files "src/std") in
+  let std = List.map (fun f -> with_uses ~extra:[ "matrix"; "value" ] (read f ^ "\n" ^ std_calls)) (kp_files "src/std") in
   Array.of_list (tests @ std)
 
 (* Splits into words, spaces and signs: gluing the pieces gives back the original text. *)
