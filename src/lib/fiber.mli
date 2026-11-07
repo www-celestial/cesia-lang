@@ -12,7 +12,7 @@ val yield : ctx -> unit
 (** The next value of a channel, waiting for it, or None once it is closed and empty: [world.next_in]. *)
 val next_in : ctx -> t -> t option
 
-(** The natives of std/fiber: [Spawn], [Wait] and the channels. *)
+(** The natives of std/fiber: [Spawn], [Wait], [Cancel] and the channels: [Channel], [Send], [Receive], [Select], [Close]. *)
 val natives : (string * t) list
 
 (** Starts a function in a new fiber: gives its task, which [wait] waits for. *)
