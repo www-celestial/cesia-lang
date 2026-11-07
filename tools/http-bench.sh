@@ -6,7 +6,10 @@
 # first core and the client on the second, so that neither takes the other's.
 #   tools/http-bench.sh [--only cesia] [--seconds N]
 # PROGRAM=bench/real/http.ce measures that server instead, alone: a small JSON API, for the JIT. CESIA=path/main.exe
-# measures another binary of Cesia, as an older one.
+# measures another binary of Cesia, as an older one. On several cores: WORKERS=N runs Cesia with --workers N, GO_CORES=N
+# gives Go N cores, SERVER_CPUS and CLIENT_CPUS the cores of each, as taskset names them, and CLIENT_THREADS the threads
+# of the client:
+#   WORKERS=4 GO_CORES=4 SERVER_CPUS=0,1,4,5 CLIENT_CPUS=2,3,6,7 CLIENT_THREADS=4 tools/http-bench.sh
 set -u
 export LC_ALL=C
 cd "$(dirname "$0")/.."
@@ -51,7 +54,7 @@ rss_kb() {
 row() {  # server, pid, port, label, client arguments...
   local name=$1 pid=$2 port=$3 label=$4 got
   shift 4
-  got=$(pin "$client_cpu" "$client" --port "$port" --seconds "$seconds" "$@" || true)
+  got=$(pin "$client_cpu" "$client" --port "$port" --seconds "$seconds" --threads "${CLIENT_THREADS:-1}" "$@" || true)
   read -r rps p50 p99 failed <<< "$got"
   printf '%-6s %-28s %8s %8s %8s %7s %8.1f\n' "$name" "$label" "$rps" "$p50" "$p99" "$failed" "$(awk -v k="$(rss_kb "$pid")" 'BEGIN { print k / 1024 }')"
 }
@@ -88,14 +91,14 @@ measure() {  # name, port, command...
 
 printf '%-6s %-28s %8s %8s %8s %7s %8s\n' server load req/s "p50 ms" "p99 ms" failed "RSS MB"
 program=${PROGRAM:-bench/http.ce}
-[ -z "$only" ] || [ "$only" = cesia ] && measure cesia 19100 "$cesia" run --allow net=:19100 "$program"
+[ -z "$only" ] || [ "$only" = cesia ] && measure cesia 19100 "$cesia" run ${WORKERS:+--workers "$WORKERS"} --allow net=:19100 "$program"
 [ "$program" = bench/http.ce ] || exit 0
 if [ -z "$only" ] || [ "$only" = node ]; then
   command -v node > /dev/null && measure node 19101 node bench/http.js
 fi
 if [ -z "$only" ] || [ "$only" = go ]; then
   if command -v go > /dev/null; then
-    go build -o _build/http-go bench/http.go && GOMAXPROCS=1 measure go 19102 _build/http-go
+    go build -o _build/http-go bench/http.go && GOMAXPROCS=${GO_CORES:-1} measure go 19102 _build/http-go
   fi
 fi
 exit 0

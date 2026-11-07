@@ -1,0 +1,8 @@
+(** A server of cesia run --workers: each request says which process answered it. *)
+use std/http
+use std/sys
+use std/text
+
+d = text.Char(36)
+pid = text.Trim(sys.Run("sh", args = ["-c", "echo $(d)PPID"]).Value.Out)
+http.Serve(http.App() then http.Get("/", r -> http.Plain(pid)), port = 18410)

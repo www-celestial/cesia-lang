@@ -3,6 +3,7 @@ type state = unit
 let capacity = 1000
 let create () = ()
 let add () _ = ()
+let add_listener () _ = ()
 let remove () _ = ()
 
 let wait () timeout waiting =

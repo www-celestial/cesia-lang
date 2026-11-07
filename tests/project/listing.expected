@@ -3,6 +3,7 @@ shop
   test   tools/test.sh (needs build)
   demo   cesia run --allow ffi=sodium --limit memory=512M src/shop.ce (needs build)
   dev    cesia run --allow ffi=sodium --watch src/shop.ce
+  serve  cesia run --allow ffi=sodium --workers cores src/shop.ce
   mark   touch ran.txt
   all    (needs test, demo)
 cesia.toml

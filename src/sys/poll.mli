@@ -9,6 +9,9 @@ val create : unit -> t
 (** Starts watching a descriptor, in non-blocking mode. *)
 val watch : t -> Unix.file_descr -> unit
 
+(** Starts watching a listening socket that other processes may share: see [Backend.add_listener]. *)
+val watch_listener : t -> Unix.file_descr -> unit
+
 (** Stops watching it, before it is closed, and wakes the fibers waiting on it. *)
 val forget : t -> Unix.file_descr -> unit
 
@@ -16,6 +19,9 @@ val forget : t -> Unix.file_descr -> unit
 val read_ready : t -> ctx -> Unix.file_descr -> unit
 
 val write_ready : t -> ctx -> Unix.file_descr -> unit
+
+(** Calls a function, from the scheduler, once the descriptor may be ready to read: no fiber waits for it. *)
+val notify : t -> Unix.file_descr -> (unit -> unit) -> unit
 
 (** Suspends the fiber until any of these may be ready. *)
 val any_ready : t -> ctx -> read:Unix.file_descr list -> write:Unix.file_descr list -> unit

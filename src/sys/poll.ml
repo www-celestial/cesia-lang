@@ -35,11 +35,16 @@ let watch p fd =
   Unix.set_nonblock fd;
   Backend.add (backend p) fd
 
+let watch_listener p fd =
+  Unix.set_nonblock fd;
+  Backend.add_listener (backend p) fd
+
 let park table fd resume =
   let waiting = Option.value (Hashtbl.find_opt table fd) ~default:[] in
   Hashtbl.replace table fd (resume :: waiting)
 
 let read_ready p ctx fd = Fiber.suspend ctx (park p.readers fd)
+let notify p fd f = park p.readers fd f
 let write_ready p ctx fd = Fiber.suspend ctx (park p.writers fd)
 
 let any_ready p ctx ~read ~write =

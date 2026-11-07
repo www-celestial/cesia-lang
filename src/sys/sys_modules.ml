@@ -90,7 +90,7 @@ let debug_test ctx s cond =
 (* Without the plugin, a terminal gives its lines as a pipe does, as the JIT's absence leaves the program interpreted. *)
 let debug_editor () = match debug_plugin () with Ok (_, _, line) -> Some line | Error _ -> None
 
-let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
+let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w =
   Runtime.real_path := Fs.real_path;
   let poll = Poll.create () in
   w.idle <- Poll.idle poll;
@@ -98,6 +98,10 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   Option.iter (fun (period, f) -> Poll.set_tick poll period f) tick;
   let net = Net.create poll in
   Proc.on_start := (fun () -> Net.follow net);
+  Option.iter
+    (fun (count, argv) ->
+       Net.supervise_with net (fun listener host port -> Workers.supervise ~count ~argv ~listener ~host ~port))
+    workers;
   Option.iter (fun r -> r := (fun () -> Net.reset net; Poll.reset poll)) reset;
   let input = Term.create poll in
   let sys =

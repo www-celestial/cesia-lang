@@ -122,6 +122,23 @@ otherwise. A second signal doesn't wait: the program ends at once, with 128 and 
 and 130 for INT, as a shell gives them. The programs it started with [sys.Start] or [sys.Run] hear of the first signal
 too, as the chapter [Files](files.md#programs-that-keep-running) says.
 
+### Every core
+
+A server runs on one core. `--workers` runs several, which serve the same port together, as many as `N`, or one per core
+with `cores`:
+
+```bash
+cesia run --workers cores --allow net=0.0.0.0:8080 shop.ce
+```
+
+The first process runs the program up to its listener, opens it, and becomes the supervisor: it starts the workers and
+serves nothing itself. Each worker runs the program from its start, and takes its connections from that one listener,
+which the supervisor keeps open. The workers share nothing but the port: each has its memory, its fibers and its
+values, as programs of their own, and what they must share goes to a database. The supervisor starts again a worker
+that ends, and TERM or Ctrl-C stops them all, each as [Stopping](#stopping) says; it ends with 0 when they all did. A
+program that can't start, as one with an error, ends at once, with the code of its first worker. `--workers` needs
+Linux or macOS: on Windows, a program serves on one core.
+
 ### Serving and asking in one program
 
 The block below serves the shop on a port and asks it with the client, [http.Fetch], in one program. [fiber.Spawn] runs the server beside the

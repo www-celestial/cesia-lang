@@ -2,7 +2,7 @@ open Cesia
 
 type command =
   | Run of string list
-  | File of { path : string; allow : string list; limit : string option; watch : bool }
+  | File of { path : string; allow : string list; limit : string option; watch : bool; workers : string option }
   | Group
 
 type task = { name : string; needs : string list; needs_line : int; command : command }
@@ -59,7 +59,7 @@ let read_task (table : Toml.table) name =
     (fun (e : Toml.entry) ->
        match e.key with
        | "needs" | "run" | "allow" -> ignore (texts_field subject e)
-       | "file" | "limit" -> ignore (text_field subject e)
+       | "file" | "limit" | "workers" -> ignore (text_field subject e)
        | "watch" -> ignore (flag_field subject e)
        | key -> wrong_at e.line (Messages.project_field subject key))
     table.entries;
@@ -77,7 +77,8 @@ let read_task (table : Toml.table) name =
         { path = text_field subject e;
           allow = texts "allow";
           limit = Option.map (text_field subject) (find "limit");
-          watch = Option.fold ~none:false ~some:(flag_field subject) (find "watch") }
+          watch = Option.fold ~none:false ~some:(flag_field subject) (find "watch");
+          workers = Option.map (text_field subject) (find "workers") }
     | None, None -> Group
   in
   (match command with
@@ -86,7 +87,7 @@ let read_task (table : Toml.table) name =
      List.iter
        (fun key ->
           if Option.is_some (find key) then wrong_at table.start (Messages.project_without_file name key))
-       [ "allow"; "limit"; "watch" ]);
+       [ "allow"; "limit"; "watch"; "workers" ]);
   let needs_line = Option.fold ~none:table.start ~some:(fun (e : Toml.entry) -> e.line) (find "needs") in
   { name; needs = texts "needs"; needs_line; command }
 
@@ -175,17 +176,18 @@ let quote word = if word <> "" && String.for_all is_plain word then word else Pr
 let show words = String.concat " " (List.map quote words)
 
 (* The arguments of [cesia run] for a program. *)
-let program_args project path allow limit watch =
+let program_args project path allow limit watch workers =
   let grants = List.map (fun library -> "ffi=" ^ library) project.native @ allow in
   (if grants = [] then [] else [ "--allow"; String.concat "," grants ])
   @ (match limit with None -> [] | Some value -> [ "--limit"; value ])
   @ (if watch then [ "--watch" ] else [])
+  @ (match workers with None -> [] | Some value -> [ "--workers"; value ])
   @ [ path ]
 
 let words project task =
   match task.command with
   | Run words -> words
-  | File { path; allow; limit; watch } -> "cesia" :: "run" :: program_args project path allow limit watch
+  | File { path; allow; limit; watch; workers } -> "cesia" :: "run" :: program_args project path allow limit watch workers
   | Group -> []
 
 let list project =
@@ -236,8 +238,8 @@ let execute project task =
     match task.command with
     | Group | Run [] -> 0
     | Run (program :: arguments) -> spawn program arguments (show (program :: arguments))
-    | File { path; allow; limit; watch } ->
-      spawn Sys.executable_name ("run" :: program_args project path allow limit watch) (show (words project task))
+    | File { path; allow; limit; watch; workers } ->
+      spawn Sys.executable_name ("run" :: program_args project path allow limit watch workers) (show (words project task))
   in
   if code <> 0 then exit code;
   (* What came after didn't run, so this isn't a success, even if the child ended with 0. *)

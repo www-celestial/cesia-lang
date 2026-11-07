@@ -5,7 +5,7 @@ Every command of `cesia`, and every option. `cesia` alone prints the short form 
 ## cesia run
 
 ```bash
-cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
+cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
 ```
 
 Runs a program. The words after the file are its arguments, in [sys.Args].
@@ -15,6 +15,7 @@ Runs a program. The words after the file are its arguments, in [sys.Args].
 | `--allow LIST` | the permissions, separated by commas: `read`, `write`, `net`, `exec`, `env`, `ffi`, `debug`, `all`, each with `=` and a scope if needed. See [Permissions](permissions.md). |
 | `--limit LIST` | the limits: `memory=512M`, `steps=N`, `depth=N`, `nesting=N`. See [Permissions](permissions.md). |
 | `--watch` | reloads the code at each save of one of its files, without stopping the program |
+| `--workers N` | serves on N processes, or one per core with `cores`, under a supervisor that starts again a worker that ends and replaces them all on HUP. See [Every core](http.md#every-core). Not with `--watch`, and not on Windows. |
 | `--debugger FILE` | runs a debugger written in Cesia beside the program, and gives it the `debug` permission by itself: no `--allow debug`. `--debugger debugger` is the one that comes with Cesia. See [The prompt and the debugger](debug.md). |
 | `--repl` | opens a prompt beside the program, in the package of its main file: an expression shows its value, a function defined again replaces the program's own. Without a file, a prompt on an empty program. See [The prompt and the debugger](debug.md). |
 | `--no-spec` | runs without the versions of each function that Cesia makes for the types it sees: the results must be the same |

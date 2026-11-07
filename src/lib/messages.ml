@@ -215,6 +215,15 @@ let need_port a = plain (Printf.sprintf "A port is a number from 0 to 65535, not
 let socket_closed = plain "This socket is closed."
 let too_many_sockets = plain "This system can't watch more sockets."
 let server_stopped = plain "The server is stopping."
+let workers_ended pid code = plain (Printf.sprintf "Worker %d ended with code %d: another starts." pid code)
+let workers_cant_start code =
+  plain (Printf.sprintf "A worker ended with code %d before it could accept: the program can't start, the workers stop." code)
+let workers_new_ended code =
+  plain (Printf.sprintf "A new worker ended with code %d before it could accept: the running workers stay." code)
+let workers_new_late = plain "The new workers didn't accept in time: the running workers stay."
+let invalid_workers s = "invalid number of workers: " ^ s ^ ", a whole number from 1, or cores"
+let workers_watch = "--workers and --watch don't go together: --watch reloads one process"
+let workers_windows = "--workers needs Linux or macOS: on Windows, a program serves on one core"
 let bad_char a = plain (Printf.sprintf "Char needs a code point, not %s." a)
 let need_size name a = plain (Printf.sprintf "%s needs a number of bytes within the text, not %s." name a)
 let deadlock = plain "All fibers are waiting and nothing can wake them."
@@ -229,7 +238,7 @@ let bad_answer a =
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
-  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
+  "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\
   \       cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]\n\
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia fmt [--check] [path...]\n\

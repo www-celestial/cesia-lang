@@ -411,6 +411,16 @@ val need_port : string -> t
 val socket_closed : t
 val too_many_sockets : t
 val server_stopped : t
+
+(** What the supervisor of cesia run --workers says when a worker ends: its number and code; one that ends before any
+    could accept, which stops them all; a new one of a HUP that ends or is late, which keeps the running ones. *)
+val workers_ended : int -> int -> t
+val workers_cant_start : int -> t
+val workers_new_ended : int -> t
+val workers_new_late : t
+val invalid_workers : string -> string
+val workers_watch : string
+val workers_windows : string
 val bad_char : string -> t
 val need_size : string -> string -> t
 val deadlock : t

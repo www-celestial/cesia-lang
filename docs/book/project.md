@@ -245,6 +245,8 @@ io.Print(http.Fetch(base).Value.Body)
 - Add a route: `DELETE /notes/:id` with [http.Delete], a `delete` in the store, and its test first.
 - Add `watch = true` to the task `serve`: each save then gives the running server its new code, a
   [hot reload](glossary.md#hot-reload).
+- In production, add `workers = "cores"` to the task `serve` in place of `watch`: the server then runs on every core,
+  and `kill -HUP` gives it a new version without a pause, as [Every core](http.md#every-core) says.
 - Keep `cesia test` green and `cesia check` quiet as the code grows.
 - Read the reference: every name of Cesia has its page, with its examples, under [Reference](ref/index.html). Press `/` to
   search it.

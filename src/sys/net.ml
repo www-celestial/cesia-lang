@@ -1,6 +1,10 @@
 open Cesia
 open Types
 
+(* The listener that a worker of cesia run --workers takes from its supervisor, as its standard input: the host and port
+   that its program listens on, and the path of the supervisor's socket. *)
+type inherited = { listener : Unix.file_descr; at : string * int; path : string; mutable taken : bool }
+
 type t = {
   poll : Poll.t;
   sockets : (int, Unix.file_descr) Hashtbl.t;
@@ -14,14 +18,34 @@ type t = {
   mutable windows : int;  (* how many windows hear of the stop signals: see [take_stops] *)
   mutable unheard : bool;  (* a stop signal has come since a window last heard of one *)
   own : (int, Unix.inet_addr * int) Hashtbl.t;  (* the address and port of each open listener, by socket: what net=own reaches *)
+  inherited : inherited option;
+  mutable supervisor : (Unix.file_descr -> string -> int -> unit) option;  (* cesia run --workers: see Workers *)
 }
 
 let chunk_size = 65536
 
+(* A worker's listener, taken at once: its standard input becomes /dev/null, and the variable is emptied, so that the
+   processes it starts are no workers. *)
+let taken_over () =
+  match Sys.getenv_opt Workers.variable with
+  | None | Some "" -> None
+  | Some line ->
+    Unix.putenv Workers.variable "";
+    match String.split_on_char ' ' line with
+    | [ path; port; host ] when int_of_string_opt port <> None ->
+      let listener = Unix.dup ~cloexec:true Unix.stdin in
+      let null = Unix.openfile "/dev/null" [ Unix.O_RDONLY ] 0 in
+      Unix.dup2 null Unix.stdin;
+      Unix.close null;
+      Some { listener; at = host, int_of_string port; path; taken = false }
+    | _ -> None
+
 let create poll =
   { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; held = Hashtbl.create 64; held_total = 0;
     buffer = Bytes.create chunk_size; stopping = false; serving = false;
-    handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8 }
+    handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8; inherited = taken_over (); supervisor = None }
+
+let supervise_with n f = n.supervisor <- Some f
 
 let stopping n = n.stopping
 
@@ -64,12 +88,12 @@ let stop_asked n =
   if asked then n.unheard <- false;
   asked
 
-let handle n (ctx : ctx) fd =
+let handle ?(listener = false) n (ctx : ctx) fd =
   let s = ctx.w.sched in
   let id = s.next_id in
   s.next_id <- id + 1;
   Hashtbl.replace n.sockets id fd;
-  Poll.watch n.poll fd;
+  if listener then Poll.watch_listener n.poll fd else Poll.watch n.poll fd;
   Handle { kind = "socket"; id; task = None }
 
 let socket_arg ctx name (v : Types.t) =
@@ -162,14 +186,54 @@ let listen_address n ctx host port target =
     in
     if is_loopback addr then addr else Runtime.fail ctx Permission (Messages.listen_denied target port)
 
+(* A worker says its number on a connection to the supervisor, once it can accept, and keeps the connection open: when it
+   ends, the supervisor is gone, and the worker stops as on TERM. *)
+let told_supervisor n path =
+  let c = Unix.socket ~cloexec:true Unix.PF_UNIX Unix.SOCK_STREAM 0 in
+  match
+    Unix.connect c (Unix.ADDR_UNIX path);
+    let line = string_of_int (Unix.getpid ()) ^ "\n" in
+    ignore (Unix.write_substring c line 0 (String.length line))
+  with
+  | () ->
+    Poll.watch n.poll c;
+    let byte = Bytes.create 1 in
+    let rec watch () =
+      Poll.notify n.poll c (fun () ->
+          match Unix.read c byte 0 1 with
+          | exception Unix.Unix_error ((Unix.EAGAIN | Unix.EWOULDBLOCK | Unix.EINTR), _, _) -> watch ()
+          | _ when n.stopping -> ()
+          | _ ->
+            Proc.pass_on Sys.sigterm;
+            n.stopping <- true;
+            n.unheard <- true;
+            Poll.interrupt n.poll)
+    in
+    watch ()
+  | exception Unix.Unix_error _ -> Unix.close c
+
 let listen n ctx (a : Types.t array) =
   let port = port_arg ctx a.(0) in
   let host = if Array.length a > 1 && a.(1) != Undef then Native.text_arg ctx "Listen" a.(1) else "127.0.0.1" in
   let target = Printf.sprintf "%s:%d" (if String.contains host ':' then "[" ^ host ^ "]" else host) port in
+  let opened fd =
+    let socket = handle ~listener:true n ctx fd in
+    (match socket, Unix.getsockname fd with
+     | Handle { id; _ }, Unix.ADDR_INET (a, p) -> Hashtbl.replace n.own id (a, p)
+     | _ -> ());
+    Value.ok ctx.w socket
+  in
   match listen_address n ctx host port target with
   | exception Not_found -> Fs.io_error ctx.w (Messages.io_failure "find" host "unknown host").text
-  | addr ->
+  | _ when (match n.inherited with Some i -> (not i.taken) && i.at = (host, port) | None -> false) ->
+    let i = Option.get n.inherited in
+    i.taken <- true;
     install_handlers n;
+    let socket = opened i.listener in
+    told_supervisor n i.path;
+    socket
+  | addr ->
+    if n.supervisor = None then install_handlers n;
     match
       let fd = Unix.socket ~cloexec:true (family addr) Unix.SOCK_STREAM 0 in
       (try
@@ -182,11 +246,13 @@ let listen n ctx (a : Types.t array) =
          raise e)
     with
     | fd ->
-      let socket = handle n ctx fd in
-      (match socket, Unix.getsockname fd with
-       | Handle { id; _ }, Unix.ADDR_INET (a, p) -> Hashtbl.replace n.own id (a, p)
-       | _ -> ());
-      Value.ok ctx.w socket
+      (match n.supervisor with
+       | Some supervise ->
+         Runtime.flush_out ctx.w;
+         flush stdout;
+         supervise fd host port
+       | None -> ());
+      opened fd
     | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "listen on" target e
 
 let accept n ctx (a : Types.t array) =

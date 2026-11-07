@@ -6,9 +6,17 @@ open Types
     timeout of [Receive]: the fuzzer would hang on a huge duration otherwise. [tick] is a period and a function called at least that often while the program is blocked.
     [watching] is for [cesia run --watch], which must know of a stop signal even if a window hears of it: only then does
     [sys.TakeStops] do anything. [reset] receives a function that closes every socket and forgets every waiting fiber, for
-    the end of a test. The function returned says whether a stop signal arrived. *)
+    the end of a test. [workers] is the number of workers and their command line, for [cesia run --workers]: see
+    Workers. The function returned says whether a stop signal arrived. *)
 val register :
-  ?max_sleep:float -> ?tick:float * (unit -> unit) -> ?watching:bool -> ?reset:(unit -> unit) ref -> world -> unit -> bool
+  ?max_sleep:float ->
+  ?tick:float * (unit -> unit) ->
+  ?watching:bool ->
+  ?reset:(unit -> unit) ref ->
+  ?workers:int * string array ->
+  world ->
+  unit ->
+  bool
 
 (** The RAM of the machine in bytes, or 0 if it can't be known. *)
 val ram : unit -> int

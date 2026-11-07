@@ -115,11 +115,12 @@ value cesia_epoll_create(value unit) {
   return Val_int(epoll_create1(EPOLL_CLOEXEC));
 }
 
-value cesia_epoll_ctl(value ep, value add, value fd) {
+/* how: 0 removes, 1 adds, 2 adds a listener, which wakes one of the processes that wait on it: the workers of a server. */
+value cesia_epoll_ctl(value ep, value how, value fd) {
   struct epoll_event event;
-  event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET;
+  event.events = Int_val(how) == 2 ? EPOLLIN | EPOLLET | EPOLLEXCLUSIVE : EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET;
   event.data.fd = Int_val(fd);
-  int op = Bool_val(add) ? EPOLL_CTL_ADD : EPOLL_CTL_DEL;
+  int op = Int_val(how) ? EPOLL_CTL_ADD : EPOLL_CTL_DEL;
   return Val_int(epoll_ctl(Int_val(ep), op, Int_val(fd), &event));
 }
 

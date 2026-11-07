@@ -18,6 +18,10 @@ limit = "memory=512M"
 file = "src/shop.ce"
 watch = true
 
+[tasks.serve]
+file = "src/shop.ce"
+workers = "cores"
+
 [tasks.mark]
 run = ["touch", "ran.txt"]
 

@@ -1,0 +1,6 @@
+cesia: invalid number of workers: 0, a whole number from 1, or cores
+exit 2
+cesia: invalid number of workers: lots, a whole number from 1, or cores
+exit 2
+cesia: --workers and --watch don't go together: --watch reloads one process
+exit 2

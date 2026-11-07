@@ -1,0 +1,7 @@
+workers: 2
+a worker answered
+another took the place of the worker that died: yes
+20 answers from live workers: yes
+1
+workers left: 0
+exit 0

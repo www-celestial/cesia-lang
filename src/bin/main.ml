@@ -146,8 +146,22 @@ let rec watch (o : Runtime.options) file rest =
   done;
   watch o file rest
 
+(* --workers N, or cores for one per logical core: the number of workers of a server. *)
+let parse_workers v =
+  match v, int_of_string_opt v with
+  | "cores", _ -> Domain.recommended_domain_count ()
+  | _, Some n when n >= 1 && n <= 1024 -> n
+  | _ -> bad_option (Messages.invalid_workers v)
+
+(* The command line of a worker: this one without its --workers. What follows the file is the program's own. *)
+let rec without_workers = function
+  | "--workers" :: _ :: rest -> without_workers rest
+  | (("--allow" | "--limit" | "--seed" | "--debugger") as flag) :: v :: rest -> flag :: v :: without_workers rest
+  | flag :: rest when String.starts_with ~prefix:"--" flag -> flag :: without_workers rest
+  | rest -> rest
+
 let run args =
-  let watching = ref false in
+  let watching = ref false and workers = ref None in
   let rec options (o : Runtime.options) = function
     | "--no-spec" :: rest -> options { o with o_no_spec = true } rest
     | "--no-jit" :: rest ->
@@ -155,6 +169,9 @@ let run args =
       options o rest
     | "--watch" :: rest ->
       watching := true;
+      options o rest
+    | "--workers" :: v :: rest ->
+      workers := Some (parse_workers v);
       options o rest
     | "--allow" :: v :: rest -> options { o with o_grants = parse_allow o.o_grants v } rest
     | "--limit" :: v :: rest -> options { o with o_limits = parse_limit o.o_limits v } rest
@@ -183,13 +200,16 @@ let run args =
         && (try In_channel.with_open_bin file ignore; true with Sys_error _ -> false))
   in
   if not readable then bad_option (Messages.cant_read file);
+  if !workers <> None && !watching then bad_option Messages.workers_watch;
+  if !workers <> None && Sys.win32 then bad_option Messages.workers_windows;
   if !watching then begin
     Tier.watching := true;
     watch { o with o_period = watch_period } file rest
   end
   else begin
     let w = Runtime.create_world o in
-    let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
+    let argv = Array.of_list (Sys.executable_name :: "run" :: without_workers args) in
+    let (_ : unit -> bool) = Cesia_sys.Sys_modules.register ?workers:(Option.map (fun n -> n, argv) !workers) w in
     exit (Loader.run_file w file rest)
   end
 
