@@ -3563,13 +3563,18 @@ and call_value (ctx : ctx) ~base g args =
   Array.blit args 0 ctx.v (ctx.b + base) n;
   dispatch ctx g base n ctx.site
 
+(* A native calls back above the frame of its caller, which the site of the call names. A return leaves the last site of the
+   callee, so it is put back: a native that calls back again, or fails, still names its call. *)
 and call_back (ctx : ctx) g args =
+  let site = ctx.site in
   let base =
-    match (Dynarray.get ctx.w.sites ctx.site).sver with
+    match (Dynarray.get ctx.w.sites site).sver with
     | Some v -> v.size
     | None -> 0
   in
-  call_value ctx ~base g args
+  let r = call_value ctx ~base g args in
+  ctx.site <- site;
+  r
 
 (* User.From(m): an Ok of a User built from the keys of a map, or an Err that names the key: the data comes from outside, so a
    bad one is an error, not a bug. A small field is no key outside the package [pm] of the code, and its name is not told. *)

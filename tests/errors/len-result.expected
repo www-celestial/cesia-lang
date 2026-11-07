@@ -1,0 +1,4 @@
+len-result.ce:9:10: The method len of Box must give an integer for value.Len, not the text "A".
+  9 | n = value.Len(Box("a"))
+    |          ^
+exit 1

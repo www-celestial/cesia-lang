@@ -15,7 +15,7 @@ val run_main : ctx -> file:int -> m:int -> Ast.func -> t
 (** Calls a value, the called frame starting at [ctx.b + base]. *)
 val call_value : ctx -> base:int -> t -> t array -> t
 
-(** Calls a value from a native, above the frame of its call site. *)
+(** Calls a value from a native, above the frame of its call site, and leaves [ctx.site] at that site. *)
 val call_back : ctx -> t -> t array -> t
 
 (** Gives a function a new definition. *)

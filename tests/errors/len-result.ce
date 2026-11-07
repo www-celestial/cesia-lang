@@ -1,0 +1,9 @@
+use std/text
+use std/value
+
+struct Box { x }
+
+(* The method calls a native: the error still names the line of value.Len, which called the method back. *)
+(b Box) len() = text.Upper(b.x)
+
+n = value.Len(Box("a"))

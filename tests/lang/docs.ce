@@ -1,3 +1,5 @@
+use std/text
+
 (** The square of a number.
 
       square(3) --> 9
@@ -6,6 +8,21 @@
       textPlus() --> error *)
 square(x) = x * x
 textPlus() = "a" + 1
+
+(** Three texts joined. A check that calls a native, then a function, leaves the variables before it as they were.
+
+      a = text.Lower("A")
+      b = text.Lower("B")
+      c = text.Lower("C")
+      d = text.Lower("D")
+      e = text.Lower("E")
+      f = text.Lower("F")
+      g = text.Lower("G")
+      h = text.Lower("H")
+      i = text.Lower("I")
+      text.Upper(a) --> joined("A", "", "")
+      [joined(a, b, c), joined(d, e, f), joined(g, h, i)] --> ["abc", "def", "ghi"] *)
+joined(x, y, z) = "$x$y$z"
 
 isSquareNegative() = square(-2) == 4
 isReady(x) = true                    (* has a parameter: not a test *)

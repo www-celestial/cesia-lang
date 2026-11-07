@@ -198,10 +198,7 @@ let one_case ctx (a : t array) =
   st.size <- (match a.(3) with Int s -> s | _ -> 100);
   st.pos <- 0;
   Dynarray.clear st.drawn;
-  (* Each call goes above the frame of the caller of oneCase: the site of that call places it, so it is set again. *)
-  let site = ctx.site in
   let call f args =
-    ctx.site <- site;
     match Loader.call_caught ctx f args with
     | Ok v -> Ok v
     | Error (Value.Kerr { text; _ }) -> Error text
@@ -215,7 +212,6 @@ let one_case ctx (a : t array) =
       st.on_case ();
       (match call a.(1) [| x |] with Ok True -> x, true, None | Ok _ -> x, false, None | Error m -> x, false, Some m)
   in
-  ctx.site <- site;
   let tape = int_array (Dynarray.to_array st.drawn) in
   Trie.record case_keys [| Value.share value; tape; Int st.size; Value.of_bool holds; (match panic with Some m -> Text m | None -> Missing) |]
 
