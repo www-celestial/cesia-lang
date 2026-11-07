@@ -1,33 +1,50 @@
 name: pages
 
-# The site of Cesia, its book and its reference, as cesia doc --site makes them from this commit: built for each pull
-# request, and published on GitHub Pages from main. A block of the book that gives another value, or a [Name] that leads
+# The site of Cesia, its book and its reference, as cesia doc --site makes them: built for each push to main and each
+# pull request, as a check, and published on GitHub Pages once the release of a tag vX.Y.Z is out, from that tag, so that
+# the site is the documentation of the version people install, with its number. It runs then from main, the one branch
+# GitHub lets publish Pages unless told otherwise. A block of the book that gives another value, or a [Name] that leads
 # nowhere, stops the build, and the site in place stays as it was.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_run:
+    workflows: [release]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: pages-${{ github.ref }}
+  group: pages-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
+    # After a release: only one made by a tag, which succeeded; the nightly, run by hand, publishes no site.
+    if: >-
+      github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push' && startsWith(github.event.workflow_run.head_branch, 'v'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: ocaml/setup-ocaml@v3
         with:
           ocaml-compiler: "5.5"
       # SQLite for the chapters on it, and the libraries the reference's own examples load.
       - run: sudo apt-get update && sudo apt-get install -y libffi-dev libsodium-dev libsqlite3-0
       - run: opam install -y dune
+      # The site shows the version that built it: a release's own number, without +dev.
+      - name: The version of this build
+        if: github.event_name == 'workflow_run'
+        run: |
+          sed -e 's/+dev"$/"/' src/lib/version.ml > version.ml.new && mv version.ml.new src/lib/version.ml
+          grep '^let text' src/lib/version.ml
       # The binary, and the plugins it loads from its build: the JIT, and SQLite's natives.
       - run: opam exec -- dune build --profile release ./src/bin/main.exe ./src/jit/cesia_jit.cmxs ./src/sqlite/cesia_sqlite.cmxs ./src/debug/cesia_debug.cmxs
       - name: Site
@@ -41,7 +58,7 @@ jobs:
           path: _site
 
   deploy:
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_run'
     needs: build
     runs-on: ubuntu-latest
     permissions:
