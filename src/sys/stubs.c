@@ -76,7 +76,7 @@ value cesia_cstring(value address) {
 }
 
 /* posix_spawnp with the child as the leader of a process group, which a timeout kills whole: the command and what it
-   started. Its standard streams are fds[0..2]; Windows has no process groups and never calls it. */
+   started. Its standard streams are fds[0..2]. Windows has no process groups: proc.ml never calls it there. */
 #ifndef _WIN32
 #include <caml/unixsupport.h>
 #include <spawn.h>
@@ -101,6 +101,9 @@ value cesia_spawn_group(value cmd, value args, value fds) {
   if (failed) caml_unix_error(failed, "create_process", cmd);
   return Val_int(pid);
 }
+#else
+#include <caml/fail.h>
+value cesia_spawn_group(value cmd, value args, value fds) { caml_failwith("no process groups on Windows"); }
 #endif
 
 #ifdef __linux__
