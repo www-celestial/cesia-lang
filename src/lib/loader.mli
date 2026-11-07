@@ -74,7 +74,8 @@ val error_report : ?above:int -> ctx -> exn -> string option
 val message_of_error : exn -> string option
 
 (** Calls a Cesia function from a native that goes on after an error of the call: [Error] of the error, a Cesia error as
-    [message_of_error] tells, with the frame base and the site put back as a return leaves them. *)
+    [message_of_error] tells or the [Value.Quit] of sys.Exit, with the frame base and the site put back as a return
+    leaves them. *)
 val call_caught : ctx -> t -> t array -> (t, exn) result
 
 (** The libraries of this Cesia, as [use std/x] finds them without a copy: each name and its source. *)

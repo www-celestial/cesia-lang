@@ -205,6 +205,7 @@ let one_case ctx (a : t array) =
     match Loader.call_caught ctx f args with
     | Ok v -> Ok v
     | Error (Value.Kerr { text; _ }) -> Error text
+    | Error (Value.Quit code) -> Error (Messages.test_exit code)
     | Error e -> raise e
   in
   let value, holds, panic =

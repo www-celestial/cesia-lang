@@ -354,6 +354,7 @@ let test_case i n = Printf.sprintf "at case %d of %d" i n
 let test_saved_case = "on the case an earlier run saved"
 let test_shrunk a b = Printf.sprintf ", shrunk from %d draws to %d:" a b
 let test_panic m = "it stopped: " ^ m
+let test_exit code = Printf.sprintf "it called sys.Exit(%d), which would end the whole run." code
 let test_replay path seed = Printf.sprintf "saved, tried first next time; these cases again: cesia test %s --seed %d" path seed
 let test_summary passed failed seed =
   Printf.sprintf "%d passed, %d failed%s" passed failed (match seed with Some s -> Printf.sprintf ", seed %d" s | None -> "")

@@ -1,0 +1,11 @@
+(* An example that calls sys.Exit fails, and the examples after it run. *)
+use std/sys
+defn Code(n)
+  (** The exit code of a run.
+
+        Code(2) --> 2
+        sys.Exit(Code(4)) --> 4
+        sys.Exit(1) --> error
+        Code(3) --> 3 *)
+  n
+end

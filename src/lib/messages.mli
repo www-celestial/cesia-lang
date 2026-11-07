@@ -209,6 +209,9 @@ val test_shrunk : int -> int -> string
 val test_panic : string -> string
 val test_replay : string -> int -> string
 
+(** A test, an example or the load of a file under test called sys.Exit with this code. *)
+val test_exit : int -> string
+
 (** The last line of cesia test: how many passed and failed, and the seed when a property ran. *)
 val test_summary : int -> int -> int option -> string
 
@@ -230,7 +233,7 @@ val test_last_bits : string -> string -> string
 val test_rel_zero : string
 val test_bools : string
 
-(** A test connecting to an address that isn't one of its own listeners. *)
+(** Under net=own, a connection to what isn't an open listener of the program, or to a name. *)
 val not_own : string -> t
 
 (** A test past its time, of so many seconds. *)

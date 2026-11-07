@@ -202,7 +202,8 @@ cesia test src/prices/tax.test.ce:isRoundsToCents
 ```
 
 It prints each failure with its place, then how many passed and failed, and ends with the code 1 when one failed, so a script
-or a CI can stop on it. Each folder is one package, so its examples and its tests run together. Files and packages run side
+or a CI can stop on it. A test that calls [sys.Exit], through the code it tests, fails with its own message, and the run goes
+on: a test tells its verdict by its value, and only the run ends the program. Each folder is one package, so its examples and its tests run together. Files and packages run side
 by side, each in a process of its own: a crash or a test that hangs stops only its own, and is named.
 
 | Option | What it does |

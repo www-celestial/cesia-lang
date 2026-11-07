@@ -1,0 +1,17 @@
+exit.test.ce:5: isB returned false
+exit.test.ce:6: isZ failed: it called sys.Exit(0), which would end the whole run.
+exit.test.ce:8: isProperty failed at case 1 of 100, shrunk from 2 draws to 2:
+  value = 0
+  | it stopped: it called sys.Exit(0), which would end the whole run.
+  saved, tried first next time; these cases again: cesia test exit.test.ce --seed 1
+1 passed, 3 failed, seed 1
+exit 1
+== one test
+exit.test.ce:6: isZ failed: it called sys.Exit(0), which would end the whole run.
+0 passed, 1 failed
+exit 1
+== examples
+exit-examples.ce:7: sys.Exit(Code(4)) --> error: it called sys.Exit(4), which would end the whole run.
+exit-examples.ce:8: sys.Exit(1) --> error: it called sys.Exit(1), which would end the whole run.
+2 passed, 2 failed
+exit 1

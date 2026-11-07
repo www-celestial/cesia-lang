@@ -1,0 +1,8 @@
+(* A test that calls sys.Exit fails with its own message, and the run goes on to its summary. *)
+use std/sys
+use std/test
+use std/gen
+isB() = false
+isZ() = sys.Exit(0)
+isAfter() = true
+isProperty() = test.ForAll(x -> sys.Exit(x), gen.Int(0, 3))

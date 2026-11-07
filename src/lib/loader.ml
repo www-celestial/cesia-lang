@@ -89,7 +89,7 @@ let call_caught (ctx : ctx) f args =
   let b = ctx.b and site = ctx.site in
   match Compile.call_back ctx f args with
   | v -> Ok v
-  | exception e when message_of_error e <> None ->
+  | exception e when message_of_error e <> None || (match e with Value.Quit _ -> true | _ -> false) ->
     ctx.b <- b;
     ctx.site <- site;
     Error e

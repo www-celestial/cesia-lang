@@ -80,6 +80,11 @@ let native nname n run =
 let text_arg = function Text s -> s | _ -> ""
 let int_arg = function Int i -> i | _ -> 0
 
+(* The text of what stopped a test, an example or the load of a file: a Cesia error, or sys.Exit, which ends no test run. *)
+let failure = function
+  | Value.Quit code -> Some (Messages.test_exit code)
+  | e -> Loader.message_of_error e
+
 let run_examples (ctx : ctx) st path m src =
   let w = ctx.w in
   match examples src with
@@ -91,7 +96,7 @@ let run_examples (ctx : ctx) st path m src =
     in
     let check_eq c a =
       let line = int_arg a.(0) and code = text_arg a.(1) in
-      let error e = fail line code ("error: " ^ Option.get (Loader.message_of_error e)) in
+      let error e = fail line code ("error: " ^ Option.get (failure e)) in
       (match Loader.call_caught c a.(2) [||] with
        | Error e -> error e
        | Ok got ->
@@ -107,6 +112,7 @@ let run_examples (ctx : ctx) st path m src =
       (match Loader.call_caught c a.(2) [||] with
        | Ok v -> fail line code ("error, got " ^ Value.show c v)
        | Error (Value.Kerr _) -> st.passed <- st.passed + 1
+       | Error (Value.Quit _ as e) -> fail line code ("error: " ^ Option.get (failure e))
        | Error e -> raise e);
       Missing
     in
@@ -130,7 +136,7 @@ let run_examples (ctx : ctx) st path m src =
        ctx.b <- 0;
        Loader.run_prepared ctx prepared
      with e ->
-       match Loader.message_of_error e with
+       match failure e with
        | Some msg ->
          st.failed <- st.failed + 1;
          print_endline (Printf.sprintf "%s:%d: the examples failed: %s" path (List.hd ex).line msg)
@@ -259,7 +265,7 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
            report ctx path line f.fname v;
            finish false
          | exception e ->
-           match Loader.message_of_error e with
+           match failure e with
            | Some msg ->
              st.failed <- st.failed + 1;
              Runtime.flush_out ctx.w;
@@ -292,7 +298,7 @@ let read path = In_channel.with_open_bin path In_channel.input_all
 
 let cant_load st path e =
   st.failed <- st.failed + 1;
-  print_endline (Printf.sprintf "%s: can't load: %s" path (Option.get (Loader.message_of_error e)))
+  print_endline (Printf.sprintf "%s: can't load: %s" path (Option.get (failure e)))
 
 (* Loads a source, then runs its examples and its tests. With [host], it sees that package, private names included. *)
 let run_source (ctx : ctx) st ?host ?natives ~lookup path src =
@@ -300,16 +306,16 @@ let run_source (ctx : ctx) st ?host ?natives ~lookup path src =
   let tests = is_test_file path in
   let rewrite = if tests then Some rewrite else None in
   match Loader.prepare ?host ?natives ?rewrite ctx ~path ~src ~lookup with
-  | exception e when Loader.message_of_error e <> None -> cant_load st path e
+  | exception e when failure e <> None -> cant_load st path e
   | (_, m, _, layout) as prepared ->
     (try
        Loader.run_prepared ctx prepared;
        Runtime.flush_out w;
        run_examples ctx st path m src;
        if is_test_file path then run_tests ctx st path layout w.modules.(m).cells
-     with e when Loader.message_of_error e <> None ->
+     with e when failure e <> None ->
        st.failed <- st.failed + 1;
-       print_endline (Printf.sprintf "%s: failed: %s" path (Option.get (Loader.message_of_error e))));
+       print_endline (Printf.sprintf "%s: failed: %s" path (Option.get (failure e))));
     Runtime.flush_out w
 
 let run_file (ctx : ctx) st path =
@@ -339,7 +345,7 @@ let run_folder (ctx : ctx) st ~examples dir tests =
     ctx.b <- 0;
     w.root <- Package.root_of dir;
     match Loader.folder ctx dir with
-    | exception e when Loader.message_of_error e <> None -> cant_load st (place w dir e) e
+    | exception e when failure e <> None -> cant_load st (place w dir e) e
     | first ->
       Runtime.flush_out w;
       if examples then
