@@ -1,0 +1,3 @@
+(* debug.Eval with a frame that is no frame of a stop names what it was given. *)
+use std/io
+io.Print("start")

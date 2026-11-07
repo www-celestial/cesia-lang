@@ -1,0 +1,8 @@
+start
+<prompt>:1:6: Eval needs a frame of a stop, as stop.Frames[1], not the number 5.
+  1 | debug.Eval("1", 5)
+    |      ^
+<prompt>:1:6: Eval needs a frame of a stop, as stop.Frames[1], not a dictionary.
+  1 | debug.Eval("1", {File: 3})
+    |      ^
+exit 0

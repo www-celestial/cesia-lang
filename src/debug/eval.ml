@@ -192,7 +192,7 @@ let as_function ctx ~path ~names code =
 (* In a frame: an expression of its variables, of its package and of the packages its file uses. *)
 let in_frame ctx code frame =
   let w = ctx.w in
-  let path = match get frame "File" with Text p -> p | v -> Runtime.fail ctx Type (Messages.need_frame (Value.describe v)) in
+  let path = match get frame "File" with Text p -> p | _ -> Runtime.fail ctx Type (Messages.need_frame (Value.describe frame)) in
   let vars = frame_vars frame in
   match
     framed ctx ~above:(ctx.b + call_base ctx)
