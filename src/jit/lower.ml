@@ -394,7 +394,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     goto st join;
     meet st end_yes end_no join;
     Reg r, k
-  | Index (b, [| Ix _ |], false) when Hashtbl.mem st.fast e.id ->
+  | Index (b, _, false) when Hashtbl.mem st.fast e.id ->
     let a, ix = Hashtbl.find st.fast e.id in
     ignore (array_of st b);
     fresh st Kfloat (fun r -> Elem_at (r, a, ix))
@@ -681,7 +681,7 @@ and stmt st (e : expr) =
     emit st (Move (r, x));
     (* An inlined callee's variables are its own: the way back has nothing of them to put back. *)
     if st.inl = [] then st.dyn.dirty <- true
-  | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix _ |], false); _ } |]; value }
+  | Set { root = { b = Local i; _ }; path = [| { sk = Sindex (_, false); _ } |]; value }
     when st.arrays.(i) >= 0 && Hashtbl.mem st.fast e.id ->
     let a, ix = Hashtbl.find st.fast e.id in
     let x = to_float st (expr st value) in
@@ -875,6 +875,9 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   head
 
 and fast_copy st _e i c h fbody written ~root ~slow ~exit =
+  (* The checks before the loop run one after the other, each block after the one before: an operation, a size or a test
+     made once serves every index after it. *)
+  let made = Hashtbl.create 16 and sizes = Hashtbl.create 8 and tested = Hashtbl.create 16 in
   let t op x y =
     match op, x, y with
     | (Ir.Add | Sub), _, Ir.Int 0 -> x
@@ -882,10 +885,16 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
     | Mul, _, Ir.Int 0 | Mul, Ir.Int 0, _ -> Int 0
     | Mul, _, Ir.Int 1 -> x
     | Mul, Ir.Int 1, _ -> y
+    | (Add | Sub | Mul), Ir.Int p, Ir.Int q when abs p < 1 lsl 30 && abs q < 1 lsl 30 ->
+      Int (match op with Add -> p + q | Sub -> p - q | _ -> p * q)
     | _ ->
-      let r = reg st Kint in
-      emit st (Try (op, r, x, y, slow));
-      Ir.Reg r
+      (match Hashtbl.find_opt made (op, x, y) with
+       | Some v -> v
+       | None ->
+         let r = reg st Kint in
+         emit st (Try (op, r, x, y, slow));
+         Hashtbl.replace made (op, x, y) (Ir.Reg r);
+         Ir.Reg r)
   in
   let at (a, b) k = match b with Ir.Int 0 -> a | _ -> t Add a (t Mul k b) in
   let checked ab = ignore (at ab (Reg c)); ignore (at ab (Reg h)); Some ab in
@@ -910,16 +919,20 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
     | Neg x -> (match affine x with Some (a, b) -> checked (t Sub (Int 0) a, t Sub (Int 0) b) | None -> None)
     | _ -> None
   in
-  (* The indexes of float arrays read or written with one index, in the whole body. *)
+  (* The indexes of float arrays read or written with one index, or one per dimension, in the whole body. *)
   let found = ref [] in
-  let floats v = st.arrays.(v) >= 0 && (let _, _, store, _ = Dynarray.get st.arr st.arrays.(v) in store = 0) in
+  let floats v n =
+    st.arrays.(v) >= 0 && (let _, _, store, nd = Dynarray.get st.arr st.arrays.(v) in store = 0 && (n = 1 || nd = n)) in
+  let plain a = Array.for_all (function Ix _ -> true | All -> false) a in
+  let exprs a = Array.map (function Ix x -> x | All -> assert false) a in
   let rec walk (e : expr) =
     let blk b = Array.iter walk b in
     let ixs a = Array.iter (function Ix x -> walk x | All -> ()) a in
     (match e.e with
-     | Index ({ e = Var { b = Local v; _ }; _ }, [| Ix x |], false) when floats v -> found := (e.id, v, x) :: !found
-     | Set { root = { b = Local v; _ }; path = [| { sk = Sindex ([| Ix x |], false); _ } |]; _ } when floats v ->
-       found := (e.id, v, x) :: !found
+     | Index ({ e = Var { b = Local v; _ }; _ }, a, false) when plain a && floats v (Array.length a) ->
+       found := (e.id, v, exprs a) :: !found
+     | Set { root = { b = Local v; _ }; path = [| { sk = Sindex (a, false); _ } |]; _ } when plain a && floats v (Array.length a) ->
+       found := (e.id, v, exprs a) :: !found
      | _ -> ());
     match e.e with
     | Assign (_, v) | Neg v | Not v | Return { rvalue = Some v; _ } -> walk v
@@ -937,27 +950,60 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
   close st (Fuel_ge (n, ok, slow));
   st.cur <- ok;
   let table = Hashtbl.create 8 and steps = ref [] in
+  let test cmp p q =
+    if not (Hashtbl.mem tested (cmp, p, q)) then begin
+      Hashtbl.replace tested (cmp, p, q) ();
+      let next = block st in
+      close st (Branch (cmp, Kint, p, q, slow, next));
+      st.cur <- next
+    end
+  in
+  (* An index inside [1, size] at both ends. *)
+  let inside ab size =
+    let first = at ab (Reg c) and last = at ab (Reg h) in
+    test Lt first (Int 1);
+    test Lt last (Int 1);
+    test Gt first size;
+    test Gt last size;
+    first
+  in
+  (* The size of dimension [d] of array [a], or its cells for [d] = -1. *)
+  let size a d =
+    match Hashtbl.find_opt sizes (a, d) with
+    | Some r -> Ir.Reg r
+    | None ->
+      let r = reg st Kint in
+      emit st (if d < 0 then Len (r, a) else Dim (r, a, d));
+      Hashtbl.replace sizes (a, d) r;
+      Ir.Reg r
+  in
   List.iter
-    (fun (node, v, x) ->
-       match affine x with
-       | None -> ()
-       | Some ab ->
-         let first = at ab (Reg c) and last = at ab (Reg h) and a = st.arrays.(v) in
-         let len = reg st Kint in
-         emit st (Len (len, a));
-         let test cmp p q =
-           let next = block st in
-           close st (Branch (cmp, Kint, p, q, slow, next));
-           st.cur <- next
-         in
-         test Lt first (Int 1);
-         test Lt last (Int 1);
-         test Gt first (Reg len);
-         test Gt last (Reg len);
+    (fun (node, v, xs) ->
+       let a = st.arrays.(v) in
+       match Array.map affine xs with
+       | [| Some ab |] ->
+         let first = inside ab (size a (-1)) in
          let ix = reg st Kint in
          emit st (Move (ix, first));
          Hashtbl.replace table node (a, ix);
-         steps := (ix, snd ab) :: !steps)
+         steps := (ix, snd ab) :: !steps
+       | abs when Array.for_all Option.is_some abs ->
+         (* Each index inside its dimension at both ends: the cell, 1 + the sum of (index - 1) * stride, moves by the sum
+            of each step times its stride. *)
+         let cell = ref (Ir.Int 1, Ir.Int 0) and stride = ref (Ir.Int 1) in
+         Array.iteri
+           (fun d ab ->
+              let ab = Option.get ab and n = size a d in
+              ignore (inside ab n);
+              let (a0, b0) = !cell in
+              cell := (t Add a0 (t Mul (t Sub (fst ab) (Int 1)) !stride), t Add b0 (t Mul (snd ab) !stride));
+              stride := t Mul !stride n)
+           abs;
+         let ix = reg st Kint in
+         emit st (Move (ix, at !cell (Reg c)));
+         Hashtbl.replace table node (a, ix);
+         steps := (ix, snd !cell) :: !steps
+       | _ -> ())
     !found;
   let fbody_b = block st and finc = block st in
   goto st fbody_b;
