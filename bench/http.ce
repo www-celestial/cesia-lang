@@ -1,8 +1,7 @@
 use std/http
 
-(* The server of tools/http-bench.sh: a tiny route and a JSON one. *)
-product = {Id: 7, Name: "bread", Price: 1.25, Tags: ["fresh", "warm"]}
-app = http.App()
-  then http.Get("/", r -> {Status: 200, Body: "Cesia"})
-  then http.Get("/json", r -> http.Json(product))
-http.Serve(app, port = 19100)
+(* The server of tools/http-bench.sh: a tiny route and a JSON one. Named functions, which tools/reload-test.sh changes
+   while it serves. *)
+hello(request) = {Status: 200, Body: "Cesia"}
+product(request) = http.Json({Id: 7, Name: "bread", Price: 1.25, Tags: ["fresh", "warm"]})
+http.Serve(http.App() then http.Get("/", hello) then http.Get("/json", product), port = 19100)
