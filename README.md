@@ -4,10 +4,10 @@ A small language for solving real problems directly: a script that cleans a CSV,
 drives other programs. It starts at once, it is safe by default, and when something goes wrong it says what to write.
 
 ```cesia
-use std/web
+use std/http
 
-app = web.App() then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
-web.Serve(app, port = 8080)
+app = http.App() then http.Get("/hello/:name", r -> http.Plain("Hello, $(r.Params.name)!"))
+http.Serve(app, port = 8080)
 ```
 
 ## Install

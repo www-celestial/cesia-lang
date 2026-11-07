@@ -23,4 +23,4 @@ reply(request) = match handle(request)
   result.Err(e) -> {Status: 500, Body: e.Message}
 end
 
-io.Print(http.Serve(reply, port = 8080))
+io.Print(http.Serve(http.App() then http.AnyMethod("*", reply), port = 8080))

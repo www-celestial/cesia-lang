@@ -1,4 +1,4 @@
 use std/http
 
 handle(request) = {Status: 200, Body: "Cesia"}
-http.Serve(handle, port = 19100)
+http.Serve(http.App() then http.AnyMethod("*", handle), port = 19100)

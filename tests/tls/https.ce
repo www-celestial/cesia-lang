@@ -1,5 +1,4 @@
 use std/tls
-use std/web
 use std/http
 use std/sys
 use std/fiber
@@ -9,16 +8,16 @@ use std/text
 
 defn main()
   api = tls.Open()?
-  a = web.Post("/echo", req -> web.Plain("secure: $(req.Body)"), web.Get("/", req -> web.Plain("over tls"), web.App()))
+  a = http.Post("/echo", req -> http.Plain("secure: $(req.Body)"), http.Get("/", req -> http.Plain("over tls"), http.App()))
   wrap = tls.Server(sys.Args[1], sys.Args[2], api)?
-  fiber.Spawn(() -> web.Serve(a, port = 18204, wrap = wrap))
+  fiber.Spawn(() -> http.Serve(a, port = 18204, wrap = wrap))
   sys.Sleep(0.05)
   insecure = tls.Client(api, verify = false)
-  r = http.Get("https://127.0.0.1:18204/", secure = insecure)?
+  r = http.Fetch("https://127.0.0.1:18204/", secure = insecure)?
   io.Print(r.Status, r.Body)
-  r = http.Post("https://127.0.0.1:18204/echo", text.Repeat(100000, "x"), secure = insecure)?
+  r = http.Fetch("https://127.0.0.1:18204/echo", method = "POST", body = text.Repeat(100000, "x"), secure = insecure)?
   io.Print(r.Status, text.ByteLength(r.Body))
-  io.Print(http.Get("https://127.0.0.1:18204/", secure = tls.Client(api)) then result.MapErr(it.Message))
+  io.Print(http.Fetch("https://127.0.0.1:18204/", secure = tls.Client(api)) then result.MapErr(it.Message))
   io.Print(tls.Server("nothing.pem", sys.Args[2], api) then result.MapErr(it.Kind))
   result.Ok(missing)
 end

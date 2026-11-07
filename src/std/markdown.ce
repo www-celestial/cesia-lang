@@ -15,7 +15,7 @@ use std/value
       Html(Parse("[Sort]"), Plain) --> "<p>[Sort]</p>\n" *)
 Plain = {Code: (info, code, line) -> missing, Link: (target, line) -> missing, Url: (url, line) -> url, Anchor: (level, title, line) -> missing}
 
-(* The text with &, <, > and " written as HTML writes them, as CommonMark writes them: web.Escape is the one for programs. *)
+(* The text with &, <, > and " written as HTML writes them, as CommonMark writes them: http.Escape is the one for programs. *)
 escape(s) = text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s))))
 
 (* The bytes that may start something inline: \ ` * _ [ ] < and the line end. Any other byte is text. *)

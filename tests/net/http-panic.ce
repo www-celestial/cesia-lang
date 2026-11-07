@@ -18,7 +18,7 @@ defn get(path)
   result.Ok(text.Split(crlf, reply)[1])
 end
 
-fiber.Spawn(() -> http.Serve(handle, port = 18093))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18093))
 sys.Sleep(0)
 io.Print(get("/boom"))
 io.Print(get("/next"))

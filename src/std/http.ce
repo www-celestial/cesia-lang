@@ -1,13 +1,20 @@
-(** A small HTTP/1.1 server and client, written on net and the text functions. *)
+(** The web: an application of routes, middleware and responses, served over HTTP/1.1, and Fetch, which asks a server. All
+    of it is written in Cesia, on std/net.
+
+      Handler(App() then Get("/", r -> Plain("hi")))({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Body --> "hi" *)
 use std/net
 use std/sys
 use std/bug
 use std/dict
+use std/encode
 use std/fiber
+use std/io
+use std/json
 use std/list
 use std/result
 use std/text
 use std/value
+use std/websocket as ws
 
 (* Byte offsets from 0, as HTTP counts them: where a part first occurs, or missing, and a text cut after its first k bytes. *)
 defn offset(part, s)
@@ -187,13 +194,13 @@ waits(parsed) = match parsed
   else -> false
 end
 
-defn gather(io, first, needed)
+defn gather(conn, first, needed)
   (** Reads from a connection until the needed size, or to its end if the size is missing: an Ok of what arrived, which an
       early end leaves short. It reads in one pass, so a body sent a byte at a time isn't parsed again at each read. *)
   pieces = {0: first}
   total = text.ByteLength(first)
   while value.IsMissing(needed) or total < needed
-    more = io.Read()?
+    more = conn.Read()?
     if text.ByteLength(more) == 0
       break
     end
@@ -203,39 +210,39 @@ defn gather(io, first, needed)
   result.Ok(text.Join("", dict.Values(pieces)))
 end
 
-defn connection(handle, io, buffer, options)
+defn connection(handle, conn, buffer, options)
   (** Serves the requests of one connection, one after the other. The deadline covers the head and the body of a request: a
       slow client can't hold a connection with a byte at a time. *)
   parsed = if buffer == "" result.Ok(missing) else parseRequest(buffer, limit = options.MaxBody) end
   if result.IsErr(parsed)
-    io.Write(failure(parsed.Error))
-    io.Close()
+    conn.Write(failure(parsed.Error))
+    conn.Close()
   else if value.IsMissing(parsed.Value)
-    more = io.Read()
+    more = conn.Read()
     if result.IsErr(more) or text.ByteLength(more.Value) == 0
-      io.Close()
+      conn.Close()
     else
-      connection(handle, io, "$buffer$(more.Value)", options)
+      connection(handle, conn, "$buffer$(more.Value)", options)
     end
   else if waits(parsed.Value)
-    whole = gather(io, buffer, parsed.Value.Needs)
+    whole = gather(conn, buffer, parsed.Value.Needs)
     if result.IsErr(whole) or text.ByteLength(whole.Value) < parsed.Value.Needs
-      io.Close()
+      conn.Close()
     else
-      connection(handle, io, whole.Value, options)
+      connection(handle, conn, whole.Value, options)
     end
   else
     request = parsed.Value.Request
     done = answer(handle, request)
-    sent = io.Write(done.Reply)
+    sent = conn.Write(done.Reply)
     if result.IsErr(sent) or (parsed.Value.Close and value.IsMissing(done.Upgrade))
-      io.Close()
+      conn.Close()
     else if not value.IsMissing(done.Upgrade)
-      _ = fiber.Wait(fiber.Spawn(() -> done.Upgrade(io, parsed.Value.Rest)))
-      io.Close()
+      _ = fiber.Wait(fiber.Spawn(() -> done.Upgrade(conn, parsed.Value.Rest)))
+      conn.Close()
     else
-      io.Arm(options.Timeout)
-      connection(handle, io, parsed.Value.Rest, options)
+      conn.Arm(options.Timeout)
+      connection(handle, conn, parsed.Value.Rest, options)
     end
   end
 end
@@ -284,12 +291,11 @@ defn waitForConnections(deadline)
   end
 end
 
-defn Serve(handle, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing)
-  (** Serves requests until a stop signal, then finishes those in progress for at most 5 seconds.
+defn serve(handle, port, host, timeout, maxBody, wrap, listener)
+  (** Serves the requests to handle until a stop signal, then finishes those in progress for at most 5 seconds.
       handle(request) receives {Method, Path, Query, Headers, Body} and returns {Status, Body}, with optional headers, and
       optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
-      after the response. wrap sits under HTTP, as TLS does (see tls); without it, HTTP goes on TCP alone. A listener
-      already open, as a test opens on port 0 to learn its port with net.Port, takes the place of port and host. *)
+      after the response. *)
   listener = if value.IsMissing(listener) net.Listen(port, host = host)? else listener end
   fiber.Spawn(() -> reaper(list.Max(0.01, list.Min(1.0, timeout / 2.0))))
   acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end})?
@@ -330,15 +336,15 @@ defn fullSize(head)
   if value.IsText(size) and value.IsInt(text.Number(size)) text.ByteLength(head) + 4 + text.Number(size) else missing end
 end
 
-defn readResponse(io, buffer)
+defn readResponse(conn, buffer)
   (** Reads a whole response from a connection: an Ok of {Status, Headers, Body}, or an Err. The head comes first, and is read
       once: the rest of a large response doesn't parse it again. *)
   at = offset(blank, buffer)
   if value.IsMissing(at)
-    more = io.Read()?
-    if text.ByteLength(more) == 0 result.Ok(buffer) else readResponse(io, "$buffer$more") end
+    more = conn.Read()?
+    if text.ByteLength(more) == 0 result.Ok(buffer) else readResponse(conn, "$buffer$more") end
   else
-    gather(io, buffer, fullSize(cutAt(at, buffer)[1]))
+    gather(conn, buffer, fullSize(cutAt(at, buffer)[1]))
   end
 end
 
@@ -401,8 +407,11 @@ end
 
 clean(s) = not (text.Contains(" ", s) or text.Contains("\r", s) or text.Contains("\n", s))
 
-defn Request(method, url, body = "", headers = [], secure = missing)
-  (** Sends a request. The Ok holds {Status, Headers, Body}: a 404 is a response, not an error. *)
+defn Fetch(url, method = "GET", body = "", headers = [], secure = missing)
+  (** Asks a server: an Ok of {Status, Headers, Body}, as the server answered, or an Err when it can't be reached or its
+      answer isn't HTTP. A 404 is a response, not an error: look at Status. For https, secure = tls.Client(api).
+
+        Fetch("ftp://example.com/") then result.MapErr(it.Kind) --> result.Err("http") *)
   target = ParseUrl(url)?
   if not (clean(method) and clean(target.Host) and clean(target.Path))
     return failed("This request has a space or a line end where it can't.")
@@ -416,17 +425,233 @@ defn Request(method, url, body = "", headers = [], secure = missing)
     net.Close(c)
     return made
   end
-  io = made.Value
+  conn = made.Value
   custom = text.Join("", list.Map(headerLine, headers))
   sized = if body == "" and method == "GET" "" else "Content-Length: $(text.ByteLength(body))$crlf" end
   message = "$method $(target.Path) HTTP/1.1$(crlf)Host: $(target.Host)$(crlf)Connection: close$crlf$sized$custom$crlf$body"
-  sent = io.Write(message)
-  raw = if result.IsOk(sent) readResponse(io, "") else sent end
-  io.Close()
+  sent = conn.Write(message)
+  raw = if result.IsOk(sent) readResponse(conn, "") else sent end
+  conn.Close()
   parseResponse(raw?)
 end
 
-(** Sends a GET request: see request. *)
-Get(url, headers = [], secure = missing) = Request("GET", url, headers = headers, secure = secure)
-(** Sends a POST request with a body: see request. *)
-Post(url, body, headers = [], secure = missing) = Request("POST", url, body = body, headers = headers, secure = secure)
+App() = {Routes: [], Middleware: []}   (** An application with no route and no middleware. *)
+
+segments(path) = list.Filter(s -> s != "", text.Split("/", path))
+
+defn Route(method, pattern, handler, a)
+  (** An application with a route added. The pattern may hold :name parts, which the handler finds in its params, and a final * for the rest of the path. *)
+  entry = {Method: method, Parts: segments(pattern), Handler: handler}
+  {Routes: list.Append(entry, a.Routes), Middleware: a.Middleware}
+end
+
+(** An application with a GET route added: Handler(request) gives a response. *)
+Get(pattern, handler, a) = Route("GET", pattern, handler, a)
+Post(pattern, handler, a) = Route("POST", pattern, handler, a)   (** An application with a POST route added. *)
+Put(pattern, handler, a) = Route("PUT", pattern, handler, a)   (** An application with a PUT route added. *)
+Delete(pattern, handler, a) = Route("DELETE", pattern, handler, a)   (** An application with a DELETE route added. *)
+(** An application with a route added that takes any method. *)
+AnyMethod(pattern, handler, a) = Route("*", pattern, handler, a)
+
+(** A middleware is f(next, request), and calls next(request) to go on. *)
+Wrap(f, a) = {Routes: a.Routes, Middleware: list.Append(f, a.Middleware)}
+
+(** A plain text response. *)
+Plain(s, status = 200) = {Status: status, Body: s, Headers: [type("text/plain; charset=utf-8")]}
+(** An HTML response. *)
+Html(s, status = 200) = {Status: status, Body: s, Headers: [type("text/html; charset=utf-8")]}
+(** A response with the JSON text of a value. *)
+Json(data, status = 200) = {Status: status, Body: json.Text(data), Headers: [type("application/json")]}
+(** A response that sends the client to another URL. *)
+Redirect(url, status = 302) = {Status: status, Body: "", Headers: [{Name: "location", Value: url}]}
+NotFound() = Plain("Not Found", status = 404)   (** A 404 response. *)
+type(kind) = {Name: "content-type", Value: kind}
+
+defn WithHeader(name, content, response)
+  (** A response with one more header. *)
+  headers = match response
+    {Headers: headers} -> headers
+    else -> []
+  end
+  out = response
+  out.Headers = list.Append({Name: name, Value: content}, headers)
+  out
+end
+
+defn SetCookie(name, content, response, options = "Path=/; HttpOnly; SameSite=Lax")
+  (** A response with a cookie set. Its content is URL-encoded. *)
+  WithHeader("set-cookie", "$name=$(encode.UrlEncode(content)); $options", response)
+end
+
+defn cookies(headers)
+  line = HeaderValue("cookie", headers)
+  out = dict.Dict()
+  if value.IsMissing(line)
+    return out
+  end
+  for part in text.Split(";", line)
+    pair = text.Split("=", text.Trim(part))
+    if value.Len(pair) == 2
+      out[pair[1]] = encode.UrlDecode(pair[2])
+    end
+  end
+  out
+end
+
+defn matchPath(parts, path)
+  (** Binds :name parts, and a final * takes what remains. The parameters, or missing if the path doesn't match. *)
+  out = dict.Dict()
+  n = value.Len(parts)
+  for k in 1..n
+    part = parts[k]
+    if part == "*"
+      out["*"] = text.Join("/", list.Skip(k - 1, path))
+      return out
+    end
+    if k > value.Len(path)
+      return missing
+    end
+    if text.StartsWith(":", part)
+      out[text.ByteSlice(2, text.ByteLength(part), part)] = encode.UrlDecode(path[k])
+    else if part != path[k]
+      return missing
+    end
+  end
+  if n == value.Len(path) out else missing end
+end
+
+defn enrich(request, params)
+  {Method: request.Method, Path: request.Path, Query: encode.ParseQuery(request.Query), Params: params,
+   Headers: request.Headers, Body: request.Body, Cookies: cookies(request.Headers)}
+end
+
+Form(request) = encode.ParseQuery(request.Body)   (** The body of a form, or of JSON. *)
+BodyJson(request) = json.Parse(request.Body)   (** The body of a request read as JSON: an Ok of the value, or an Err. *)
+
+defn settled(reply)
+  (** The response of a handler that may give a result: the value of an Ok, a 500 for an Err. *)
+  match reply
+    result.Ok(v) -> v
+    result.Err(e) -> Plain("Internal Server Error", status = 500)
+    else -> reply
+  end
+end
+
+defn dispatch(a, request)
+  path = segments(request.Path)
+  allowed = false
+  for r in a.Routes
+    params = matchPath(r.Parts, path)
+    if not value.IsMissing(params)
+      if r.Method == "*" or r.Method == request.Method or (r.Method == "GET" and request.Method == "HEAD")
+        return settled(r.Handler(enrich(request, params)))
+      end
+      allowed = true
+    end
+  end
+  if allowed Plain("Method Not Allowed", status = 405) else NotFound() end
+end
+
+defn chain(a, k)
+  (** Built once: a request only goes through it. *)
+  if k == 0
+    r -> dispatch(a, r)
+  else
+    next = chain(a, k - 1)
+    f = a.Middleware[k]
+    r -> f(next, r)
+  end
+end
+
+(** The function of a request that an application is: the routes behind the middleware. Serve calls it for each request,
+    and a test can call it without the network. *)
+Handler(a) = chain(a, value.Len(a.Middleware))
+
+defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing)
+  (** Serves an application until a stop signal, then finishes the requests in progress for at most 5 seconds. It listens
+      on port, on this machine only unless host says otherwise; timeout is the seconds a connection has for each request,
+      maxBody the largest body read, in bytes. wrap sits under HTTP, as TLS does: wrap = tls.Server(certificate, key,
+      api)?; without it, HTTP goes on TCP alone. A listener already open, as a test opens on port 0 to learn its port with
+      net.Port, takes the place of port and host. *)
+  serve(Handler(a), port, host, timeout, maxBody, wrap, listener)
+end
+
+(** An application with a WebSocket route added: onMessage(text, send) runs for each message, and send(text) answers. A
+    request that isn't a WebSocket one gets a 400. *)
+Websocket(pattern, onMessage, a, idle = ws.DefaultIdle) = Get(pattern, req -> upgrade(req.Headers, onMessage, idle), a)
+
+defn upgrade(headers, onMessage, idle)
+  (** The response that hands a WebSocket request over to std/websocket, or a 400 if it isn't one. *)
+  key = HeaderValue("sec-websocket-key", headers)
+  asked = HeaderValue("upgrade", headers)
+  if value.IsMissing(key) or value.IsMissing(asked) or text.Lower(asked) != "websocket"
+    {Status: 400, Body: "This route takes WebSocket connections."}
+  else
+    ws.Accept(key, onMessage, idle = idle)
+  end
+end
+
+defn Logger(next, request)
+  (** A middleware that prints the method, the path and the status of each request. *)
+  response = next(request)
+  io.Print("$(request.Method) $(request.Path) $(response.Status)")
+  response
+end
+
+defn Cors(origin)
+  (** A middleware that lets a given origin read the responses. *)
+  (next, request) -> WithHeader("access-control-allow-origin", origin, next(request))
+end
+
+(* Static files under a folder. A path can't leave it. *)
+types = {"html": "text/html; charset=utf-8", "css": "text/css", "js": "text/javascript", "json": "application/json",
+  "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8"}
+
+defn FileResponse(path)
+  (** The response with the content of a file, typed by its extension, or a 404 if it can't be read. *)
+  parts = text.Split(".", path)
+  kind = dict.GetOr(text.Lower(parts[value.Len(parts)]), "application/octet-stream", types)
+  match sys.Read(path)
+    result.Ok(data) -> {Status: 200, Body: data, Headers: [type(kind)]}
+    else -> NotFound()
+  end
+end
+
+defn Static(prefix, folder, a)
+  (** An application with a route added that serves the files of a folder under a URL prefix. A path can't leave the folder. *)
+  serveFile(request) = static(folder, request.Params["*"])
+  Get("$prefix/*", serveFile, a)
+end
+
+defn static(folder, rest)
+  if ".." in text.Split("/", rest) or rest == ""
+    NotFound()
+  else
+    FileResponse("$folder/$rest")
+  end
+end
+
+(** A text, or any value as its text, with &, <, >, " and ' written as HTML writes them: for what comes from outside, in
+    HTML. A template escapes its values the same way. *)
+Escape(s) = text.Replace("'", "&#39;", text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", value.Text(s))))))
+
+defn Template(source, values)
+  (** The source with each {{name}} replaced by the escaped value of that name. One pass: a value that holds {{name}} isn't
+      read again. *)
+  parts = text.Split("{{", source)
+  out = list.Fill("", value.Len(parts))
+  out[1] = parts[1]
+  for k in 2..value.Len(parts)
+    part = parts[k]
+    close = text.ByteFind("}}", 1, part)
+    name = if value.IsMissing(close) missing else text.Trim(if close == 1 "" else text.ByteSlice(1, close - 1, part) end) end
+    if value.IsMissing(name) or not dict.Has(name, values)
+      out[k] = "{{$part"
+    else
+      rest = close + 2
+      tail = if rest > text.ByteLength(part) "" else text.ByteSlice(rest, text.ByteLength(part), part) end
+      out[k] = "$(Escape(values[name]))$tail"
+    end
+  end
+  text.Join("", out)
+end

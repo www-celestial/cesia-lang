@@ -1,5 +1,5 @@
 (** A panic in a WebSocket handler closes its connection, and an idle one reaches its deadline. *)
-use std/web
+use std/http
 use std/net
 use std/sys
 use std/bug
@@ -14,10 +14,10 @@ crlf = "\r\n"
 (** Masks a client's payload: each byte xor the byte of the key at its place, the key repeated. *)
 mask(key, s) = text.FromBytes([math.BitXor(text.Byte(k, s), text.Byte(math.Mod(k - 1, 4) + 1, key)) for k in 1..text.ByteLength(s)])
 
-a = web.Websocket("/boom", (m, send) -> bug.Panic("boom"), web.App(), idle = 0.2)
-a = web.Websocket("/echo", (m, send) -> send(m), a, idle = 0.1)
+a = http.Websocket("/boom", (m, send) -> bug.Panic("boom"), http.App(), idle = 0.2)
+a = http.Websocket("/echo", (m, send) -> send(m), a, idle = 0.1)
 (** The reaper passes every 0.5 s: idle closes by 0.6 s, the timeout alone never before 1 s. *)
-fiber.Spawn(() -> web.Serve(a, port = 18207, timeout = 1))
+fiber.Spawn(() -> http.Serve(a, port = 18207, timeout = 1))
 sys.Sleep(0.05)
 
 defn opened(path)

@@ -11,7 +11,7 @@ use std/text
 use std/value
 
 crlf = "\r\n"
-fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "ok"}, port = 18212))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "ok"}), port = 18212))
 sys.Sleep(0.05)
 
 defn status(line)

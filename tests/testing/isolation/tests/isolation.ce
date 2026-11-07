@@ -31,8 +31,8 @@ isRunsWhatTestAllows() = sys.Run("true") then result.IsOk(it)
 isCantReadTheEnvironment() = denied(() -> sys.Env("HOME"))
 defn isServesAndAsks()
   l = net.Listen(18303)?
-  fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "hi"}, listener = l))
-  reply = http.Get("http://localhost:$(net.Port(l))/")?
+  fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "hi"}), listener = l))
+  reply = http.Fetch("http://localhost:$(net.Port(l))/")?
   reply.Status == 200 and reply.Body == "hi"
 end
 (* The server of the test before is gone with it: its port is free again. *)

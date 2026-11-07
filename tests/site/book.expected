@@ -31,7 +31,7 @@ value.<span class="f">Len</span>(<span class="s">&quot;abc&quot;</span>) --&gt; 
 <pre class="output"><code>Div: division by zero.</code></pre>
 <p>Not run:</p>
 <pre><code class="cesia"><span class="k">use</span> std/http
-http.<span class="f">Get</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
+http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
 <p>A table made by code:</p>
 <table>
 <thead>
@@ -79,12 +79,11 @@ sys.<span class="f">Write</span>(<span class="s">&quot;notes.txt&quot;</span>, <
 <pre class="output"><code>Permission &quot;write&quot; denied for notes.txt.
 Run again with --allow write=notes.txt, or a folder that holds it.</code></pre>
 <p>A server and its client, on this machine only:</p>
-<pre><code class="cesia"><span class="k">use</span> std/web
-<span class="k">use</span> std/http
-app = web.<span class="f">App</span>() <span class="k">then</span> web.<span class="f">Get</span>(<span class="s">&quot;/&quot;</span>, r -&gt; web.<span class="f">Plain</span>(<span class="s">&quot;hello&quot;</span>), <span class="k">it</span>)
-server = fiber.<span class="f">Spawn</span>(() -&gt; web.<span class="f">Serve</span>(app, port = <span class="m">18751</span>))
+<pre><code class="cesia"><span class="k">use</span> std/http
+app = http.<span class="f">App</span>() <span class="k">then</span> http.<span class="f">Get</span>(<span class="s">&quot;/&quot;</span>, r -&gt; http.<span class="f">Plain</span>(<span class="s">&quot;hello&quot;</span>), <span class="k">it</span>)
+server = fiber.<span class="f">Spawn</span>(() -&gt; http.<span class="f">Serve</span>(app, port = <span class="m">18751</span>))
 sys.<span class="f">Sleep</span>(<span class="m">0.05</span>)
-http.<span class="f">Get</span>(<span class="s">&quot;http://127.0.0.1:18751/&quot;</span>).<span class="f">Value</span>.<span class="f">Body</span> --&gt; <span class="s">&quot;hello&quot;</span></code></pre>
+http.<span class="f">Fetch</span>(<span class="s">&quot;http://127.0.0.1:18751/&quot;</span>).<span class="f">Value</span>.<span class="f">Body</span> --&gt; <span class="s">&quot;hello&quot;</span></code></pre>
 <p class="allow">Runs with <code>--allow net=127.0.0.1,net=:18751</code></p>
 <p>A --&gt; in a comment or a text is no check of the book:</p>
 <pre><code class="cesia"><span class="k">defn</span> <span class="n">twice</span>(x)

@@ -7,5 +7,5 @@ defn handle(r)
   {Status: 200, Body: "slow"}
 end
 
-io.Print(http.Serve(handle, port = 18095))
+io.Print(http.Serve(http.App() then http.AnyMethod("*", handle), port = 18095))
 io.Print("stopped")

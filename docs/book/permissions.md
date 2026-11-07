@@ -51,7 +51,7 @@ of the machine), and the permission names that address too:
 cesia run --allow net=0.0.0.0:8080 server.ce
 ```
 
-where `server.ce` calls `web.Serve(app, host = "0.0.0.0")`. Under `net=:8080`, that listen is denied, and the message says
+where `server.ce` calls `http.Serve(app, host = "0.0.0.0")`. Under `net=:8080`, that listen is denied, and the message says
 which permission to write.
 
 ### As narrow as you can

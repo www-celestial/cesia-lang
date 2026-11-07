@@ -7,7 +7,7 @@ use std/io
 use std/result
 use std/text
 
-fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "ok"}, port = 18203, timeout = 0.1))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "ok"}), port = 18203, timeout = 0.1))
 sys.Sleep(0.05)
 
 defn main()

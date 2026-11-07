@@ -121,25 +121,25 @@ server's fault. A file of a package keeps its own uses:
 
 ```cesia
 (* src/notes/routes.ce *)
-use std/web
+use std/http
 use std/text
 use std/value
 
-refused(e) = web.Json({Error: e.Message}, status = 400)
-failed(e) = web.Json({Error: e.Message}, status = 500)
+refused(e) = http.Json({Error: e.Message}, status = 400)
+failed(e) = http.Json({Error: e.Message}, status = 500)
 
 defn listed(db)
   match List(db)
-    result.Ok(notes) -> web.Json(notes)
+    result.Ok(notes) -> http.Json(notes)
     result.Err(e) -> failed(e)
   end
 end
 
 defn added(request, db)
-  match web.BodyJson(request) then result.AndThen(NewNote.From)
+  match http.BodyJson(request) then result.AndThen(NewNote.From)
     result.Err(e) -> refused(e)
     result.Ok(n) -> match Save(n.Text, db)
-      result.Ok(note) -> web.Json(note, status = 201)
+      result.Ok(note) -> http.Json(note, status = 201)
       result.Err(e) -> if e.Code == "23514" refused(e) else failed(e) end
     end
   end
@@ -151,32 +151,32 @@ defn finished(request, db)
     return refused({Message: "The id is a whole number."})
   end
   match Finish(id, db)
-    result.Ok(note) -> if value.IsMissing(note) web.Json({Error: "No note $id."}, status = 404) else web.Json(note) end
+    result.Ok(note) -> if value.IsMissing(note) http.Json({Error: "No note $id."}, status = 404) else http.Json(note) end
     result.Err(e) -> failed(e)
   end
 end
 
 defn App(db)
   (** The web service of the notes in a database: GET /notes, POST /notes, POST /notes/:id/done. *)
-  web.App()
-    then web.Get("/notes", r -> listed(db))
-    then web.Post("/notes", r -> added(r, db))
-    then web.Post("/notes/:id/done", r -> finished(r, db))
+  http.App()
+    then http.Get("/notes", r -> listed(db))
+    then http.Post("/notes", r -> added(r, db))
+    then http.Post("/notes/:id/done", r -> finished(r, db))
 end
 ```
 
 ## The tests
 
-`src/notes/routes.test.ce` asks the service without the network, through [web.Handler], each test on a fresh database in
+`src/notes/routes.test.ce` asks the service without the network, through [http.Handler], each test on a fresh database in
 memory:
 
 ```cesia
 (* src/notes/routes.test.ce *)
-use std/web
+use std/http
 
 defn ask(method, path, body = "")
   db = result.Unwrap(Open("sqlite::memory:"))
-  handle = web.Handler(App(db))
+  handle = http.Handler(App(db))
   handle({Method: method, Path: path, Query: "", Headers: [], Body: body})
 end
 
@@ -200,15 +200,15 @@ cesia test
 
 ## Serving
 
-`src/main.ce` opens the database in `data/`, and serves the routes behind [web.Logger]:
+`src/main.ce` opens the database in `data/`, and serves the routes behind [http.Logger]:
 
 ```text
 use std/result
-use std/web
+use std/http
 use src/notes
 
 db = result.Unwrap(notes.Open("sqlite:data/notes.db"))
-web.Serve(web.Wrap(web.Logger, notes.App(db)), port = 8080)
+http.Serve(http.Wrap(http.Logger, notes.App(db)), port = 8080)
 ```
 
 `cesia do serve` runs it with the permissions of its task, and a client can talk to it:
@@ -223,7 +223,7 @@ curl localhost:8080/notes
 ### In one program
 
 The block below does the same in one program: it serves the routes on a port of this machine, and asks them with
-[http.Post] and [http.Get]:
+[http.Fetch]:
 
 ```cesia allow=net=own
 use std/sys
@@ -231,18 +231,18 @@ use std/http
 use std/fiber
 use std/io
 served = result.Unwrap(Open("sqlite::memory:"))
-fiber.Spawn(() -> web.Serve(web.Wrap(web.Logger, App(served)), port = 18781))
+fiber.Spawn(() -> http.Serve(http.Wrap(http.Logger, App(served)), port = 18781))
 sys.Sleep(0)
 base = "http://127.0.0.1:18781/notes"
-io.Print(http.Post(base, "{\"Text\": \"buy bread\"}").Value.Body)
-io.Print(http.Post(base, "{\"Txt\": \"typo\"}").Value.Body)
-io.Print(http.Post("$base/1/done", "").Value.Body)
-io.Print(http.Get(base).Value.Body)
+io.Print(http.Fetch(base, method = "POST", body = "{\"Text\": \"buy bread\"}").Value.Body)
+io.Print(http.Fetch(base, method = "POST", body = "{\"Txt\": \"typo\"}").Value.Body)
+io.Print(http.Fetch("$base/1/done", method = "POST", body = "").Value.Body)
+io.Print(http.Fetch(base).Value.Body)
 ```
 
 ## Where to go from here
 
-- Add a route: `DELETE /notes/:id` with [web.Delete], a `delete` in the store, and its test first.
+- Add a route: `DELETE /notes/:id` with [http.Delete], a `delete` in the store, and its test first.
 - Add `watch = true` to the task `serve`: each save then gives the running server its new code, a
   [hot reload](glossary.md#hot-reload).
 - Keep `cesia test` green and `cesia check` quiet as the code grows.

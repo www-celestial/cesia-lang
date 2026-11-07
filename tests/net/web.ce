@@ -1,4 +1,3 @@
-use std/web
 use std/http
 use std/sys
 use std/bug
@@ -10,36 +9,36 @@ use std/result
 base = "http://127.0.0.1:18201"
 
 defn hello(req)
-  web.Plain("hello $(req.Params["name"]) $(dict.GetOr("q", "none", req.Query))")
+  http.Plain("hello $(req.Params["name"]) $(dict.GetOr("q", "none", req.Query))")
 end
 
 defn add(req)
-  input = web.BodyJson(req)?
-  result.Ok(web.Json({"sum": input["a"] + input["b"]}, status = 201))
+  input = http.BodyJson(req)?
+  result.Ok(http.Json({"sum": input["a"] + input["b"]}, status = 201))
 end
 
 defn notes(req)
-  web.Plain(web.Form(req)["text"])
+  http.Plain(http.Form(req)["text"])
 end
 
 defn tag(next, req)
-  web.WithHeader("x-tag", "seen", next(req))
+  http.WithHeader("x-tag", "seen", next(req))
 end
 
-a = web.App()
-a = web.Get("/", req -> web.Html("<h1>home</h1>"), a)
-a = web.Get("/hello/:name", hello, a)
-a = web.Post("/add", add, a)
-a = web.Post("/notes", notes, a)
-a = web.Get("/boom", req -> bug.Panic("boom"), a)
-a = web.Get("/err", req -> result.Err("no"), a)
-a = web.Get("/cookie", req -> web.SetCookie("id", "a b", web.Plain("set")), a)
-a = web.Get("/seen", req -> web.Plain(dict.GetOr("id", "none", req.Cookies)), a)
-a = web.Get("/go", req -> web.Redirect("/"), a)
-a = web.Get("/tpl", req -> web.Html(web.Template("<b>{{name}}</b>", {"name": req.Query["n"]})), a)
-a = web.Static("/files", ".", a)
-a = web.Wrap(tag, a)
-a = web.Wrap(web.Cors("*"), a)
+a = http.App()
+a = http.Get("/", req -> http.Html("<h1>home</h1>"), a)
+a = http.Get("/hello/:name", hello, a)
+a = http.Post("/add", add, a)
+a = http.Post("/notes", notes, a)
+a = http.Get("/boom", req -> bug.Panic("boom"), a)
+a = http.Get("/err", req -> result.Err("no"), a)
+a = http.Get("/cookie", req -> http.SetCookie("id", "a b", http.Plain("set")), a)
+a = http.Get("/seen", req -> http.Plain(dict.GetOr("id", "none", req.Cookies)), a)
+a = http.Get("/go", req -> http.Redirect("/"), a)
+a = http.Get("/tpl", req -> http.Html(http.Template("<b>{{name}}</b>", {"name": req.Query["n"]})), a)
+a = http.Static("/files", ".", a)
+a = http.Wrap(tag, a)
+a = http.Wrap(http.Cors("*"), a)
 
 defn show(r)
   match r
@@ -52,30 +51,30 @@ defn hdr(name, r)
   io.Print(name, http.HeaderValue(name, r.Value.Headers))
 end
 
-fiber.Spawn(() -> web.Serve(a, port = 18201))
+fiber.Spawn(() -> http.Serve(a, port = 18201))
 sys.Sleep(0.05)
-show(http.Get("$base/"))
-show(http.Get("$base/hello/ann?q=x%20y"))
-show(http.Get("$base/hello/a%20b"))
-show(http.Get("$base/nothing"))
-show(http.Get("$base/hello"))
-show(http.Request("DELETE", "$base/"))
-show(http.Post("$base/add", "{\"a\": 2, \"b\": 3}"))
-show(http.Post("$base/add", "not json"))
-show(http.Post("$base/notes", "text=a+b%21"))
-show(http.Get("$base/boom"))
-show(http.Get("$base/err"))
-r = http.Get("$base/cookie")
+show(http.Fetch("$base/"))
+show(http.Fetch("$base/hello/ann?q=x%20y"))
+show(http.Fetch("$base/hello/a%20b"))
+show(http.Fetch("$base/nothing"))
+show(http.Fetch("$base/hello"))
+show(http.Fetch("$base/", method = "DELETE"))
+show(http.Fetch("$base/add", method = "POST", body = "{\"a\": 2, \"b\": 3}"))
+show(http.Fetch("$base/add", method = "POST", body = "not json"))
+show(http.Fetch("$base/notes", method = "POST", body = "text=a+b%21"))
+show(http.Fetch("$base/boom"))
+show(http.Fetch("$base/err"))
+r = http.Fetch("$base/cookie")
 hdr("set-cookie", r)
 hdr("x-tag", r)
 hdr("access-control-allow-origin", r)
-show(http.Get("$base/seen", headers = [{Name: "cookie", Value: "id=a%20b; z=1"}]))
-r2 = http.Get("$base/go")
+show(http.Fetch("$base/seen", headers = [{Name: "cookie", Value: "id=a%20b; z=1"}]))
+r2 = http.Fetch("$base/go")
 io.Print(r2.Value.Status)
 hdr("location", r2)
-show(http.Get("$base/tpl?n=%3Cscript%3E"))
-show(http.Get("$base/files/web.txt"))
-hdr("content-type", http.Get("$base/files/web.txt"))
-show(http.Get("$base/files/../web.ce"))
-show(http.Get("$base/files/missing.txt"))
-io.Print(web.Escape("<a href=\"x\">&'"))
+show(http.Fetch("$base/tpl?n=%3Cscript%3E"))
+show(http.Fetch("$base/files/web.txt"))
+hdr("content-type", http.Fetch("$base/files/web.txt"))
+show(http.Fetch("$base/files/../web.ce"))
+show(http.Fetch("$base/files/missing.txt"))
+io.Print(http.Escape("<a href=\"x\">&'"))

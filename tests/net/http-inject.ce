@@ -21,7 +21,7 @@ defn get(path)
   net.Read(c) then result.MapOk(r -> [text.Split(crlf, r)[1], r then text.Contains("x-injected")])
 end
 
-fiber.Spawn(() -> http.Serve(handle, port = 18100))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18100))
 sys.Sleep(0)
 io.Print(get("/value"))
 io.Print(get("/name"))

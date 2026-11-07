@@ -1,20 +1,22 @@
 # HTTP
 
-In this chapter you write a web server: routes, parameters in the path, JSON in and out, and a log of each request. You test
-it without the network, then serve it and ask it from the same program. [std/web] builds the application, on [std/http],
-which also has the client.
+In this chapter you make a site, then call one. You write a web server, with routes, parameters in the path, JSON in and out,
+and a log of each request; you test it without the network; you serve it; and you ask it with the client, from the same
+program. All of it is in [std/http].
 
 ## An application
 
-[web.App] starts an application with no route. Each [route](glossary.md#route) adds one: a method, a path, and a
-[handler](glossary.md#handler), the function of the request that gives the response. [web.Plain] makes a plain text response, and [web.Json] a JSON one:
+[http.App] starts an application with no route. Each [route](glossary.md#route) adds one: a method, a path, and a
+[handler](glossary.md#handler), the function of the request that gives the response. [http.Get] adds a route for `GET`,
+[http.Post] one for `POST`, as [http.Put] and [http.Delete] do for theirs. [http.Plain] makes a plain text response, and
+[http.Json] a JSON one:
 
 ```cesia
-use std/web
-app = web.App()
-  then web.Get("/", r -> web.Plain("Welcome"))
-  then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
-  then web.Get("/stock", r -> web.Json({bread: 40, cake: 6}))
+use std/http
+app = http.App()
+  then http.Get("/", r -> http.Plain("Welcome"))
+  then http.Get("/hello/:name", r -> http.Plain("Hello, $(r.Params.name)!"))
+  then http.Get("/stock", r -> http.Json({bread: 40, cake: 6}))
 ```
 
 ### Words in the path
@@ -24,12 +26,12 @@ route gives a new one, and [then] chains them.
 
 ## Trying it without the network
 
-[web.Handler] gives the function that the server calls for each request. You can call it yourself, with a request as a
+[http.Handler] gives the function that the server calls for each request. You can call it yourself, with a request as a
 dictionary, which is how you test a server:
 
 ```cesia
 use std/io
-handle = web.Handler(app)
+handle = http.Handler(app)
 ask(path) = handle({Method: "GET", Path: path, Query: "", Headers: [], Body: ""})
 ask("/hello/Ana").Body -->
 ask("/stock").Status -->
@@ -41,7 +43,7 @@ A path that no route takes gets a `404`.
 
 ## JSON in
 
-[web.BodyJson] reads the body of a request as JSON. With `From`, the body is checked before your code uses it, and a wrong one
+[http.BodyJson] reads the body of a request as JSON. With `From`, the body is checked before your code uses it, and a wrong one
 gets a `400` that says what is wrong:
 
 ```cesia
@@ -52,14 +54,14 @@ struct Purchase
 end
 
 defn addPurchase(request)
-  match web.BodyJson(request) then result.AndThen(Purchase.From)
-    result.Ok(order) -> web.Json({Product: order.Product, Units: order.Units, Total: order.Units * 1.25}, status = 201)
-    result.Err(e) -> web.Json({Error: e.Message}, status = 400)
+  match http.BodyJson(request) then result.AndThen(Purchase.From)
+    result.Ok(order) -> http.Json({Product: order.Product, Units: order.Units, Total: order.Units * 1.25}, status = 201)
+    result.Err(e) -> http.Json({Error: e.Message}, status = 400)
   end
 end
 
-shop = app then web.Post("/orders", addPurchase)
-post(body) = web.Handler(shop)({Method: "POST", Path: "/orders", Query: "", Headers: [], Body: body})
+shop = app then http.Post("/orders", addPurchase)
+post(body) = http.Handler(shop)({Method: "POST", Path: "/orders", Query: "", Headers: [], Body: body})
 io.Print(post("{\"Product\": \"bread\", \"Units\": 4}").Body)
 io.Print(post("{\"Product\": \"bread\", \"Units\": \"four\"}").Body)
 io.Print(post("not json").Body)
@@ -67,12 +69,12 @@ io.Print(post("not json").Body)
 
 ## Middleware
 
-A [middleware](glossary.md#middleware) sits in front of the routes: it sees each request, and the response that comes back. [web.Logger] prints one line
-per request. [web.Wrap] puts a middleware in front of an application:
+A [middleware](glossary.md#middleware) sits in front of the routes: it sees each request, and the response that comes back. [http.Logger] prints one line
+per request. [http.Wrap] puts a middleware in front of an application:
 
 ```cesia
-logged = web.Wrap(web.Logger, shop)
-web.Handler(logged)({Method: "GET", Path: "/stock", Query: "", Headers: [], Body: ""}).Status -->
+logged = http.Wrap(http.Logger, shop)
+http.Handler(logged)({Method: "GET", Path: "/stock", Query: "", Headers: [], Body: ""}).Status -->
 ```
 
 ### A middleware of your own
@@ -83,24 +85,24 @@ header to each response, which says what served it:
 ```cesia
 defn servedBy(next, request)
   response = next(request)
-  web.WithHeader("x-served-by", "cesia", response)
+  http.WithHeader("x-served-by", "cesia", response)
 end
-web.Handler(web.Wrap(servedBy, shop))({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers -->
+http.Handler(http.Wrap(servedBy, shop))({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers -->
 ```
 
 ## Serving
 
-[web.Serve] serves an application until the program gets a stop signal, as Ctrl-C. It listens on port 8080 unless `port`
+[http.Serve] serves an application until the program gets a stop signal, as Ctrl-C. It listens on port 8080 unless `port`
 says otherwise, and on `127.0.0.1`, this machine only, unless `host` does. It needs the permission to listen on its port.
 Here is a small `shop.ce`:
 
 ```cesia norun
 (* shop.ce: one route, served on port 8080 *)
-use std/web
+use std/http
 
-hello = web.App()
-  then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
-web.Serve(web.Wrap(web.Logger, hello))
+hello = http.App()
+  then http.Get("/hello/:name", r -> http.Plain("Hello, $(r.Params.name)!"))
+http.Serve(http.Wrap(http.Logger, hello))
 ```
 
 Run it, and ask it from another terminal:
@@ -112,20 +114,19 @@ curl localhost:8080/hello/Ana
 
 ### Serving and asking in one program
 
-The block below serves the shop on a port and asks it with the client, in one program. [fiber.Spawn] runs the server beside the
+The block below serves the shop on a port and asks it with the client, [http.Fetch], in one program. [fiber.Spawn] runs the server beside the
 rest of the program, as the chapter [Fibers](fibers.md) explains, and [sys.Sleep] lets it start. `net=own` is the permission
 for that: the program listens on this machine, and connects only to its own listeners.
 
 ```cesia allow=net=own
 use std/sys
-use std/http
 use std/fiber
-fiber.Spawn(() -> web.Serve(logged, port = 18761))
+fiber.Spawn(() -> http.Serve(logged, port = 18761))
 sys.Sleep(0)
-r = http.Get("http://127.0.0.1:18761/hello/Bo")
+r = http.Fetch("http://127.0.0.1:18761/hello/Bo")
 r.Value.Status -->
 r.Value.Body -->
-sent = http.Post("http://127.0.0.1:18761/orders", "{\"Product\": \"cake\", \"Units\": 2}")
+sent = http.Fetch("http://127.0.0.1:18761/orders", method = "POST", body = "{\"Product\": \"cake\", \"Units\": 2}")
 io.Print(sent.Value.Body)
 ```
 
@@ -133,11 +134,12 @@ The program ends when its last line is done, and the server with it.
 
 ## The client
 
-[http.Get] and [http.Post] send a request, and give an `Ok` of the response, with its `Status`, its `Headers` and its
-`Body`, or an `Err` when the server can't be reached. A `404` is a response, not an error: look at `Status`.
+[http.Fetch] sends a request, a `GET` unless `method` says otherwise, with a `body` and `headers` if you give them. It
+gives an `Ok` of the response, with its `Status`, its `Headers` and its `Body`, or an `Err` when the server can't be
+reached. A `404` is a response, not an error: look at `Status`.
 
 ```cesia allow=net
-http.Get("http://127.0.0.1:1/") -->
+http.Fetch("http://127.0.0.1:1/") -->
 ```
 
 ### https
@@ -149,7 +151,7 @@ host:
 use std/tls
 use std/result
 api = result.Unwrap(tls.Open())
-page = http.Get("https://example.com/", secure = tls.Client(api))
+page = http.Fetch("https://example.com/", secure = tls.Client(api))
 ```
 
 ```bash

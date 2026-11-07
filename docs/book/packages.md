@@ -35,7 +35,7 @@ The first part of the path says where the code comes from:
 | `use deps/someone/project/src/x` | a folder of another project, from that project's root |
 
 A use takes no `./`, no `../` and no quotes. The reference lists everything under `std/`: [std/sys], [std/json],
-[std/web], [std/sql] and the others.
+[std/http], [std/sql] and the others.
 
 ## A package is a folder
 

@@ -165,8 +165,8 @@ use std/http
 use std/fiber
 defn isHello()
   l = net.Listen(0)?
-  fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "hi"}, listener = l))
-  reply = http.Get("http://localhost:$(net.Port(l))/")?
+  fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "hi"}), listener = l))
+  reply = http.Fetch("http://localhost:$(net.Port(l))/")?
   reply.Status == 200 and reply.Body == "hi"
 end
 ```

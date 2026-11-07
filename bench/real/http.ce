@@ -20,4 +20,4 @@ defn price(cart, n)
 end
 
 handle(request) = {Status: 200, Body: json.Text(price(items, 200))}
-http.Serve(handle, port = 19100)
+http.Serve(http.App() then http.AnyMethod("*", handle), port = 19100)

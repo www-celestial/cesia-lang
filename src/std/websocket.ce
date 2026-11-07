@@ -1,6 +1,5 @@
-(** The server side of WebSocket, RFC 6455, on the connection http hands over. *)
+(** The server side of WebSocket, RFC 6455, on the connection http hands over: http.Websocket adds a route of it. *)
 use std/encode
-use std/http
 use std/list
 use std/math
 use std/result
@@ -97,15 +96,12 @@ defn begin(io, rest, onMessage, idle)
   loop(io, rest, onMessage, idle)
 end
 
-defn Accept(headers, onMessage, idle = DefaultIdle)
-  (** The response that upgrades a request, or a 400 if it isn't a WebSocket one. *)
-  key = http.HeaderValue("sec-websocket-key", headers)
-  asked = http.HeaderValue("upgrade", headers)
-  if value.IsMissing(key) or value.IsMissing(asked) or text.Lower(asked) != "websocket"
-    {Status: 400, Body: "This route takes WebSocket connections."}
-  else
-    answer = encode.Base64(encode.Sha1("$key$guid"))
-    {Status: 101, Body: "", Headers: [{Name: "upgrade", Value: "websocket"}, {Name: "connection", Value: "Upgrade"},
-      {Name: "sec-websocket-accept", Value: answer}], Upgrade: (io, rest) -> begin(io, rest, onMessage, idle)}
-  end
+defn Accept(key, onMessage, idle = DefaultIdle)
+  (** The response that upgrades a WebSocket request, given the key of its sec-websocket-key header: the connection is then
+      this package's, and onMessage(text, send) runs for each message. http.Websocket checks the request and calls it.
+
+        Accept("dGhlIHNhbXBsZSBub25jZQ==", (m, send) -> send(m)).Status --> 101 *)
+  answer = encode.Base64(encode.Sha1("$key$guid"))
+  {Status: 101, Body: "", Headers: [{Name: "upgrade", Value: "websocket"}, {Name: "connection", Value: "Upgrade"},
+    {Name: "sec-websocket-accept", Value: answer}], Upgrade: (io, rest) -> begin(io, rest, onMessage, idle)}
 end

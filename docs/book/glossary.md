@@ -99,7 +99,7 @@ language this way. A project tests values instead, with doctests and test functi
 
 ## Handler
 
-The function that answers one kind of request. In [std/web] it takes the request, a dictionary, and gives the response: see
+The function that answers one kind of request. In [std/http] it takes the request, a dictionary, and gives the response: see
 [HTTP](http.md#an-application).
 
 ## Higher-order function
@@ -146,7 +146,7 @@ receiver `r` in parentheses before the name, and `r.Area()` calls it: see [Struc
 
 ## Middleware
 
-Code between a server and its handlers, which sees each request and each response: a log, a header, a check. [web.Wrap]
+Code between a server and its handlers, which sees each request and each response: a log, a header, a check. [http.Wrap]
 puts one in front of an application: see [HTTP](http.md#middleware).
 
 ## Null
@@ -205,7 +205,7 @@ program, `cesia run --repl app.ce`, inside the package of its main file: see
 
 ## Route
 
-A rule that sends the requests of one method and one path to a handler. [web.Get] and [web.Post] add one, and
+A rule that sends the requests of one method and one path to a handler. [http.Get] and [http.Post] add one, and
 `:name` in a path takes any word: see [HTTP](http.md#an-application).
 
 ## Sandbox

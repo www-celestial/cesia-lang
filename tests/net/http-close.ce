@@ -20,7 +20,7 @@ defn closes(request)
   readToEnd(c, "") then result.MapOk(reply -> text.Split(crlf, reply)[1])
 end
 
-fiber.Spawn(() -> http.Serve(handle, port = 18101))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18101))
 sys.Sleep(0)
 io.Print(closes("GET / HTTP/1.0$(crlf)$crlf"))
 io.Print(closes("GET / HTTP/1.1$(crlf)Connection: Close$(crlf)$crlf"))

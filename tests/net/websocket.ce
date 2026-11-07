@@ -1,4 +1,4 @@
-use std/web
+use std/http
 use std/net
 use std/sys
 use std/encode
@@ -14,9 +14,9 @@ crlf = "$(text.Char(13))$(text.Char(10))"
 (** Masks a client's payload: each byte xor the byte of the key at its place, the key repeated. *)
 mask(key, s) = text.FromBytes([math.BitXor(text.Byte(k, s), text.Byte(math.Mod(k - 1, 4) + 1, key)) for k in 1..text.ByteLength(s)])
 
-a = web.App()
-a = web.Websocket("/echo", (m, send) -> send("got $m"), a)
-fiber.Spawn(() -> web.Serve(a, port = 18202))
+a = http.App()
+a = http.Websocket("/echo", (m, send) -> send("got $m"), a)
+fiber.Spawn(() -> http.Serve(a, port = 18202))
 sys.Sleep(0.05)
 
 defn masked(opcode, textValue)

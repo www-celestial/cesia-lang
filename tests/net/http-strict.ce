@@ -8,7 +8,7 @@ use std/result
 use std/text
 
 crlf = "\r\n"
-fiber.Spawn(() -> http.Serve(r -> {Status: 200, Body: "hello"}, port = 18206))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "hello"}), port = 18206))
 sys.Sleep(0.05)
 
 defn exchange(raw)
@@ -31,5 +31,5 @@ io.Print(first(exchange(h(["GET / HTTP/1.1", "Content-Length: +2"]))))
 io.Print(first(exchange(h(["GET / HTTP/1.1"]))))
 head = result.Unwrap(exchange(h(["HEAD / HTTP/1.1", "Connection: close"])))
 io.Print(text.EndsWith(crlf, head), text.Contains("hello", head), text.Contains("content-length: 5", head))
-io.Print(http.Get("http://127.0.0.1:18206/a\r\nX: 1") then result.MapErr(it.Message))
-io.Print(http.Request("GET X", "http://127.0.0.1:18206/") then result.MapErr(it.Message))
+io.Print(http.Fetch("http://127.0.0.1:18206/a\r\nX: 1") then result.MapErr(it.Message))
+io.Print(http.Fetch("http://127.0.0.1:18206/", method = "GET X") then result.MapErr(it.Message))

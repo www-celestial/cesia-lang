@@ -25,7 +25,7 @@ defn ask(c)
   net.Read(c) then result.MapOk(reply -> text.Split(crlf, reply)[1])
 end
 
-fiber.Spawn(() -> http.Serve(handle, port = 18094))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18094))
 sys.Sleep(0)
 first = result.Unwrap(net.Connect("127.0.0.1", 18094))
 io.Print(ask(first))

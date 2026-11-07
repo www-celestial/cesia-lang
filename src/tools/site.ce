@@ -7,7 +7,7 @@ use std/sys
 use std/cesia
 use std/json
 use std/markdown
-use std/web
+use std/http
 use std/syntax
 use std/columns
 use std/dict
@@ -24,7 +24,7 @@ keywords = cesia.Keywords()
 (* The class of each role of std/syntax, in its order: keyword, name, text, number, comment, plain, field. *)
 classes = ["k", "n", "s", "m", "c", "", "f"]
 
-escape(t) = web.Escape(t)
+escape(t) = http.Escape(t)
 from(k, t) = text.ByteSlice(k, text.ByteLength(t), t)   (** The text from byte k. *)
 up(path) = text.Repeat(value.Len(text.Split("/", path)) - 1, "../")   (** From a page to the root of the site. *)
 parent(path) = text.Join("/", list.DropLast(1, text.Split("/", path)))

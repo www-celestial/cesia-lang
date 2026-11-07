@@ -8,7 +8,7 @@ use std/result
 use std/text
 
 crlf = "$(text.Char(13))$(text.Char(10))"
-handle(r) = {Status: 200, Body: "$(r.Method) $(r.Path) $(r.Query) $(r.Headers[2].Value)"}
+handle(r) = {Status: 200, Body: "$(r.Method) $(r.Path) $(r.Query["x"]) $(r.Headers[2].Value)"}
 
 defn exchange(c, request)
   net.Write(c, request)?
@@ -24,6 +24,6 @@ defn client()
   result.Ok([first, second])
 end
 
-fiber.Spawn(() -> http.Serve(handle, port = 18090))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18090))
 sys.Sleep(0)
 io.Print(client() then result.MapOk(xs -> list.Map(t -> text.Replace(crlf, "|", t), xs)))

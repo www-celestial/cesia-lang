@@ -19,7 +19,7 @@ end
 defn ask(reply)
   listener = net.Listen(18211)?
   server = fiber.Spawn(() -> serveOne(listener, reply))
-  got = http.Get("http://127.0.0.1:18211/")
+  got = http.Fetch("http://127.0.0.1:18211/")
   fiber.Wait(server)
   net.Close(listener)
   got

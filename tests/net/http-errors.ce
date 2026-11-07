@@ -25,7 +25,7 @@ badHeader = "GET / HTTP/1.1$(crlf)no colon here$(crlf)$crlf"
 
 twoSizes = "POST / HTTP/1.1$(crlf)Content-Length: 3$(crlf)Content-Length: 1$(crlf)$(crlf)abc"
 
-fiber.Spawn(() -> http.Serve(handle, port = 18092))
+fiber.Spawn(() -> http.Serve(http.App() then http.AnyMethod("*", handle), port = 18092))
 sys.Sleep(0)
 io.Print(statusOf("garbage$crlf$crlf"))
 io.Print(statusOf(bigHeader))
