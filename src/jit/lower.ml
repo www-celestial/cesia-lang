@@ -1128,7 +1128,8 @@ let rec locals acc (e : expr) =
   | _ -> acc
 
 (* A region's variables of any type that its loop names are values in registers; one it never assigns that holds an
-   array of floats or of values now is an array, checked at each entry. *)
+   array of floats or of values now is an array, checked at each entry. A float array is one only where its loop names
+   it: one the function makes after the loop has no value yet, and would fail the check of every entry. *)
 let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
   let f = ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
@@ -1144,7 +1145,7 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
     | TI | TF ->
       Dynarray.add_last kinds (kind_of ver.tv.(i));
       regs.(i) <- Dynarray.length kinds - 1
-    | TFA when (i < np || region) && plain i ->
+    | TFA when (if region then List.mem i named else i < np) && plain i ->
       Dynarray.add_last arr (ver.map.(i), false, 0, 0);
       arrays.(i) <- Dynarray.length arr - 1
     | TA when region && plain i && List.mem i named ->
