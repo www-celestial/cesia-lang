@@ -1,0 +1,10 @@
+(** The examples at the top of a file run too, before those of its names.
+
+      Doubled(2) --> 4
+      Doubled(3) --> 5 *)
+use std/list
+
+(** Twice a number.
+
+      Doubled(1) --> 2 *)
+Doubled(x) = list.Sum([x, x])

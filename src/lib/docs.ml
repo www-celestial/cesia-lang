@@ -331,9 +331,26 @@ let shown e =
   let parts = String.concat "\n" (List.map (fun (n, t) -> Printf.sprintf "  %-*s  %s" width n t) e.parts) in
   String.concat "\n\n" (List.filter (( <> ) "") [ e.signature; e.text; parts ])
 
-(* The lines of the documentation that are examples: indented, and run by cesia test. *)
+(* The first (** *) of a file, before any code, says what the module is for. *)
+let module_doc src =
+  let _, codes, _, docs = scan src in
+  match docs with
+  | d :: _ when (not d.after_code) && Array.for_all blank (Array.sub codes 0 (d.first - 1)) -> Some d
+  | _ -> None
+
+let module_text src = match module_doc src with Some d -> text_of_block (List.map snd d.body) | None -> ""
+
+(* The lines of the documentation that are examples: indented, and run by cesia test. Those of the top of the file come
+   first, unless the name defined under it owns them. *)
 let examples src =
-  List.concat_map (fun e -> List.filter (fun (_, t) -> String.starts_with ~prefix:"  " t) e.lines) (entries src)
+  let example (_, t) = String.starts_with ~prefix:"  " t in
+  let es = entries src in
+  let head =
+    match module_doc src with
+    | Some d when not (List.exists (fun e -> List.mem_assoc d.first e.lines) es) -> List.filter example (List.rev d.body)
+    | _ -> []
+  in
+  head @ List.concat_map (fun e -> List.filter example e.lines) es
 
 (* Like [use], which reads the sources of CESIA_STD when it is set. *)
 let std name =
@@ -410,13 +427,6 @@ let module_source w m =
   | _ -> std (bare m)
 
 let find name es = List.find_opt (fun e -> String.equal e.name name) es
-
-(* The first (** *) of a file, before any code, says what the module is for. *)
-let module_text src =
-  let _, codes, _, docs = scan src in
-  match docs with
-  | d :: _ when (not d.after_code) && Array.for_all blank (Array.sub codes 0 (d.first - 1)) -> text_of_block (List.map snd d.body)
-  | _ -> ""
 
 (* What a module is for: the top of its source, or for a module of the binary the block of std/natives.ce named after it. *)
 let module_about w m =

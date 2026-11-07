@@ -7,7 +7,8 @@ open Types
 (** The files of std/ that are the language, not libraries: the documentation of the natives and of the keywords. *)
 val language : string list
 
-(** The lines of a documentation that are examples, indented under its text, each with its line number. *)
+(** The lines of a documentation that are examples, indented under its text, each with its line number: those of the
+    [(** *)] at the top of the file first, then those of its names. *)
 val examples : string -> (int * string) list
 
 (** [cesia.DocEntry(name)]: [{Name, Module, Signature, Text, Parts, Examples, Builtin, File, Line}] of a name or a keyword, or
