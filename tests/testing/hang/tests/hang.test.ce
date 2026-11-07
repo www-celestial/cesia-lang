@@ -1,0 +1,19 @@
+(* A test past its time shows where it was: the calls it made, and none before it. *)
+defn spin(n)
+  x = 0
+  while true
+    x = x + n
+  end
+  x
+end
+defn isHang()
+  spin(1)
+  true
+end
+defn isLoops()
+  x = 0
+  while true
+    x = x + 1
+  end
+  true
+end

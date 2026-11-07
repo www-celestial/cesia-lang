@@ -225,15 +225,22 @@ let from_root w path =
   let r = w.root ^ "/" in
   if String.starts_with ~prefix:r p then String.sub p (String.length r) (String.length p - String.length r) else p
 
+(* The site a test starts from: no line of the program, which a trace leaves out. A test that stops in a loop before any
+   call or native shows no place it doesn't know, and its first frame isn't called from a line. *)
+let no_place w =
+  Dynarray.add_last w.sites { sfile = 0; spos = Pos.make 1 1; sfn = ""; sver = None; soff = 0; slive = Bytes.empty; shidden = false };
+  Dynarray.length w.sites - 1
+
 let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
   let ran = ref [] in
+  let start = no_place ctx.w in
   let runnable (f : Ast.func) = is_test_name f.fname && Array.length f.params = 0 && Lexer.split_method f.fname = None in
   Array.iter
     (fun (k, (f : Ast.func)) ->
        if runnable f && (match !only_test with Some n -> String.equal n f.fname | None -> true) then begin
          let line = Pos.line f.fpos in
          ctx.b <- 0;
-         ctx.site <- 0;
+         ctx.site <- start;
          Array.fill record.got 0 (Array.length record.got) None;
          (* A worker names each test as it starts, so that cesia test can name the one that stopped answering. *)
          if !marked then begin
