@@ -5,7 +5,10 @@ set -eu
 want=$(sed -n 's/.*sqlite_version=\([0-9.]*\).*/\1/p' "$(dirname "$0")/release-libs.sh")
 dir=$(mktemp -d)
 printf 'use std/sqlite3\nuse std/sql\nuse std/io\nuse std/result\nio.Print(result.Unwrap(sqlite3.Version()))\nio.Print(result.Unwrap(sql.Open("sqlite::memory:") then result.AndThen(db -> sql.One("select 40 + 2 as x", [], db))).X)\n' > "$dir/v.ce"
-have=$("$1" run "$dir/v.ce" | tr -d '\r')
+# On Windows the binary reads Windows paths, not those of the shell it runs in.
+file="$dir/v.ce"
+command -v cygpath > /dev/null && file=$(cygpath -w "$file")
+have=$("$1" run "$file" | tr -d '\r')
 rm -rf "$dir"
 [ "$have" = "$want
 42" ] || { echo "SQLite of the release: $have, wanted $want" >&2; exit 1; }

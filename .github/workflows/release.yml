@@ -115,10 +115,14 @@ jobs:
             # Without the C debug info, mostly MIR's: OCaml's backtraces don't need it. The version below runs the result.
             opam exec -- strip out/bin/cesia.exe
             # The DLLs the binary itself was linked with, from the toolchain of OCaml: not those of Windows.
+            # Windows's own DLLs and its API sets never go in: whatever shell finds them, in any case of letters.
+            shopt -s nocasematch
             for dll in $(objdump -p out/bin/cesia.exe | awk '/DLL Name/ { print $3 }'); do
+              case "$dll" in api-ms-win-* | ext-ms-win-*) continue ;; esac
               found=$(opam exec -- which "$dll" 2> /dev/null || true)
-              case "$found" in "" | /c/Windows/* | /c/WINDOWS/*) ;; *) cp "$found" out/bin/ ;; esac
+              case "$found" in "" | */windows/*) ;; *) cp "$found" out/bin/ ;; esac
             done
+            shopt -u nocasematch
             out/bin/cesia.exe version
             CESIA_JIT=always CESIA_JIT_SHOW=1 out/bin/cesia.exe run bench/fib.ce 2> jit.txt
             grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
