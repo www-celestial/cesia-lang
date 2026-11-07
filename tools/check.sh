@@ -52,10 +52,12 @@ tools/test.sh > /dev/null 2>&1 || fail "tools/test.sh fails"
 ms=$((($(date +%s%N) - s) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "change loop: $ms ms, budget $budget_ms ms"
 
-# Past the budget: C++ to compile and TLS to shake hands over, on the path tools/test.sh leaves out for them.
+# Past the budget: C++ to compile, TLS to shake hands over and the loops the JIT makes native, on the path tools/test.sh
+# leaves out for them.
 slow=""
 command -v g++ > /dev/null && slow="$slow tests/cpp"
 pkg-config --exists openssl 2>/dev/null && slow="$slow tests/tls"
+CESIA_JIT_SHOW=1 "$PWD/_build/default/src/bin/main.exe" version 2>&1 | grep -q '^jit: off' || slow="$slow tests/jit"
 if [ -n "$slow" ]; then
   # shellcheck disable=SC2086
   tools/golden.sh --no-spec $slow > /dev/null 2>&1 || fail "--no-spec fails on $slow"
