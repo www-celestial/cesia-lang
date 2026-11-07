@@ -33,8 +33,9 @@ jobs:
           status=0
           CESIA_JIT=always CESIA_JIT_SHOW=1 _build/default/src/bin/main.exe run bench/fib.ce > out.txt 2> jit.txt || status=$?
           echo "exit $status" >> jit.txt
-          grep -q '^jit: loaded' jit.txt || { cat jit.txt; exit 1; }
-          grep -qx 9227465 out.txt
+          # Windows ends a line with CR LF.
+          grep -q '^jit: loaded' jit.txt || { echo "no line jit: loaded" | tee -a jit.txt; exit 1; }
+          tr -d '\r' < out.txt | grep -qx 9227465 || { echo "out.txt isn't 9227465" | tee -a jit.txt; exit 1; }
       - name: JIT on Windows
         if: runner.os == 'Windows'
         shell: bash

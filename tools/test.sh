@@ -21,8 +21,9 @@ jobs+=($!)
 each_folder --no-spec > "$logs/no-spec.log" 2>&1 &
 jobs+=($!)
 
-dune test 2>&1 | tail -5
-[ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
+# The OCaml tests: their end when they pass, all they said when one fails.
+dune test > "$logs/dune.log" 2>&1 || { cat "$logs/dune.log"; exit 1; }
+tail -5 "$logs/dune.log"
 dirs=$(ls -d tests/*/ 2>/dev/null || true)
 skip() {  # folder, reason
   echo "$1 skipped: $2"
