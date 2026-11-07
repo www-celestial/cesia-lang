@@ -113,7 +113,7 @@ let[@inline never] checkpoint ctx top =
 (* The top of the v stack at the current site, written just before every native and slow path. *)
 let site_top ctx =
   let w = ctx.w in
-  if ctx.site < Dynarray.length w.sites then ctx.b + (Dynarray.get w.sites ctx.site).soff else ctx.cap
+  if ctx.site < Vec.length w.sites then ctx.b + (Vec.get w.sites ctx.site).soff else ctx.cap
 
 let charge ctx n =
   ctx.fuel <- ctx.fuel - n;
@@ -129,8 +129,8 @@ let settle ctx =
 
 let create_world o =
   { modules = [||];
-    files = Dynarray.create ();
-    sites = Dynarray.create ();
+    files = Vec.create ();
+    sites = Vec.create ();
     shapes = Hashtbl.create 16;
     limits = o.o_limits;
     grants = o.o_grants;
@@ -205,17 +205,17 @@ let[@inline never] grow ctx need =
 let backtrace ?(above = 0) ctx at =
   let w = ctx.w in
   let place s =
-    let path, _ = Dynarray.get w.files s.sfile in
+    let path, _ = Vec.get w.files s.sfile in
     Printf.sprintf "%s (%s:%d)" s.sfn path (Pos.line s.spos)
   in
   let lines = ref [] in
   if at >= 0 then begin
-    let first = Dynarray.get w.sites at in
+    let first = Vec.get w.sites at in
     if first.sfn <> "" then lines := [ "in " ^ place first ]
   end;
   let b = ref ctx.b in
   while !b > above do
-    let s = Dynarray.get w.sites ctx.i.(!b + 1) in
+    let s = Vec.get w.sites ctx.i.(!b + 1) in
     if s.sfn <> "" then lines := ("called from " ^ place s) :: !lines;
     b := link_base ctx.i.(!b)
   done;
@@ -229,7 +229,7 @@ let backtrace ?(above = 0) ctx at =
 let user_site ctx at =
   let w = ctx.w in
   let library k =
-    let path, _ = Dynarray.get w.files (Dynarray.get w.sites k).sfile in
+    let path, _ = Vec.get w.files (Vec.get w.sites k).sfile in
     String.starts_with ~prefix:"std/" path || String.starts_with ~prefix:"deps/" path
   in
   if at < 0 || not (library at) then at

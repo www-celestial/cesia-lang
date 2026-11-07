@@ -54,8 +54,8 @@ let[@inline] iget (ctx : ctx) k = ctx.i.(ctx.b + k)
 
 let site c pos =
   let s = c.w.sites in
-  Dynarray.add_last s { sfile = c.file; spos = pos; sfn = c.fn; sver = Some c.ver; soff = c.off; slive = c.live; shidden = false };
-  Dynarray.length s - 1
+  Vec.add_last s { sfile = c.file; spos = pos; sfn = c.fn; sver = Some c.ver; soff = c.off; slive = c.live; shidden = false };
+  Vec.length s - 1
 
 (* One step. [off]: beyond b + off, the v stack is dead. *)
 let[@inline] tick ctx off =
@@ -3581,7 +3581,7 @@ and call_value (ctx : ctx) ~base g args =
 and call_back (ctx : ctx) g args =
   let site = ctx.site in
   let base =
-    match (Dynarray.get ctx.w.sites site).sver with
+    match (Vec.get ctx.w.sites site).sver with
     | Some v -> v.size
     | None -> 0
   in

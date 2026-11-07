@@ -546,11 +546,11 @@ let program_method (ctx : ctx) name =
   let wanted = Lexer.split_method name <> None && public_name name in
   let in_file (_, src) = if wanted then find name (entries src) else None in
   let asking =
-    if ctx.site >= 0 && ctx.site < Dynarray.length w.sites then
-      Seq.return (Dynarray.get w.files (Dynarray.get w.sites ctx.site).sfile)
+    if ctx.site >= 0 && ctx.site < Vec.length w.sites then
+      Seq.return (Vec.get w.files (Vec.get w.sites ctx.site).sfile)
     else Seq.empty
   in
-  Option.map shown (Seq.find_map in_file (Seq.append asking (Dynarray.to_seq w.files)))
+  Option.map shown (Seq.find_map in_file (Seq.append asking (List.to_seq (Vec.to_list w.files))))
 
 (* The packages of the project: the folders of its source folders that hold code. *)
 let project_modules w =
@@ -606,7 +606,7 @@ let names w m =
 let of_function w v =
   match v with
   | Fun { proto; _ } ->
-    let _, src = Dynarray.get w.files proto.file in
+    let _, src = Vec.get w.files proto.file in
     (* The name the code gives the package that a use loaded, list or shapes; the program's own functions have none. *)
     let host = w.modules.(proto.pm).host in
     let alias =

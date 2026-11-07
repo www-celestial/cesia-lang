@@ -47,11 +47,11 @@ let consistent ~strict units =
   in
   let impl (name, crc) =
     match crc, Hashtbl.find_opt ours name, Hashtbl.find_opt program name with
-    | None, None, None when strict -> Error ("its engine needs " ^ name ^ ", which this Cesia doesn't hold")
+    | None, None, None when strict -> Error (Cesia.Messages.engine_lacks name).text
     | None, _, _ -> Ok ()
     | Some c, Some c', _ -> if c = c' then Ok () else Error ("implementation of " ^ name ^ " differs")
     | Some c, None, Some { crc_impl = Some c'; _ } -> if c = c' then Ok () else Error ("implementation of " ^ name ^ " differs")
-    | Some _, None, _ -> Error ("its engine needs " ^ name ^ ", which this Cesia doesn't hold")
+    | Some _, None, _ -> Error (Cesia.Messages.engine_lacks name).text
   in
   let rec all f = function [] -> Ok () | x :: rest -> (match f x with Ok () -> all f rest | e -> e) in
   all

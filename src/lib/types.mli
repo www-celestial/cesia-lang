@@ -225,8 +225,8 @@ and sched = {
 
 and world = {
   mutable modules : modul array;
-  files : (string * string) Dynarray.t;  (** displayed path, source *)
-  sites : site Dynarray.t;
+  files : (string * string) Vec.t;  (** displayed path, source *)
+  sites : site Vec.t;
   shapes : (string array, shape) Hashtbl.t;
   limits : limits;
   grants : grants;

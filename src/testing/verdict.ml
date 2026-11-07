@@ -73,12 +73,12 @@ let rewrite (fn : func) =
   let for_all (e : expr) = match e.e with Call { callee; _ } -> names "std/test" "ForAll" callee | _ -> false in
   (* A snapshot shows its own text when it fails. *)
   let snapshot (e : expr) = match e.e with Call { callee; _ } -> names "std/test" "Snapshot" callee | _ -> false in
-  let notes = Dynarray.create () in
+  let notes = Vec.create () in
   let next = ref 0 in
   let fresh pos e = let id = !next in incr next; { id; pos; e } in
   let add test prop owner e kind =
-    Dynarray.add_last notes { test; prop; owner; text = show e; kind; sides = None };
-    Dynarray.length notes - 1
+    Vec.add_last notes { test; prop; owner; text = show e; kind; sides = None };
+    Vec.length notes - 1
   in
   (* e becomes #note(k, e), in place. Gives the node that now holds what e held. *)
   let wrap k (e : expr) =
@@ -119,7 +119,7 @@ let rewrite (fn : func) =
       k
     end
   and part test prop owner (e : expr) =
-    let note = Dynarray.get notes owner in
+    let note = Vec.get notes owner in
     let two (args : arg array) = match List.filter (fun (a : arg) -> a.aname = None) (Array.to_list args) with [ a; b ] -> Some (a.value, b.value) | _ -> None in
     match e.e with
     | Bin ((Eq | Ne | Lt | Le | Gt | Ge) as op, a, b) ->
@@ -199,7 +199,7 @@ let rewrite (fn : func) =
          e.e <- Fn_def (n, { f with nnodes = !next })
        | _ -> ())
     fn.body;
-  Dynarray.to_array notes
+  Vec.to_array notes
 
 let cut s =
   let s = if String.contains s '\n' then String.concat "\\n" (String.split_on_char '\n' s) else s in

@@ -34,6 +34,22 @@ let guarded package (name, fewest, most, f) =
   in
   name, run
 
+(* The system's loader refuses an engine that needs a module the binary lacks before its units can be checked: its error
+   names the symbol after the file, caml then the module, as camlStdlib__Format.sprintf. *)
+let lacking reason =
+  let n = String.length reason in
+  let word c = match c with 'A' .. 'Z' | 'a' .. 'z' | '0' .. '9' | '_' -> true | _ -> false in
+  let rec find i =
+    if i + 5 > n then reason
+    else if String.sub reason i 4 = "caml" && reason.[i + 4] >= 'A' && reason.[i + 4] <= 'Z' then begin
+      let j = ref (i + 4) in
+      while !j < n && word reason.[!j] do incr j done;
+      (Messages.engine_lacks (String.sub reason (i + 4) (!j - i - 4))).text
+    end
+    else find (i + 1)
+  in
+  find (Option.value (String.rindex_opt reason '/') ~default:0)
+
 let names (natives : native list) = List.sort_uniq String.compare (List.map (fun (n, _, _, _) -> n) natives)
 let without b a = List.filter (fun n -> not (List.mem n b)) a
 
@@ -65,7 +81,7 @@ let link ctx ~label ~folder ~path (p : Package.native) =
       let loaded = Fun.protect ~finally:(fun () -> loading := false) (fun () -> Cesia_sys.Plugin.load ~strict:true path) in
       let r =
         match loaded, !registered with
-        | Error reason, _ -> Error (Messages.engine_refused shown reason)
+        | Error reason, _ -> Error (Messages.engine_refused shown (lacking reason))
         | Ok (), Some natives when names natives = List.sort_uniq String.compare p.natives -> Ok (List.map (guarded p.name) natives)
         | Ok (), natives ->
           let got = names (Option.value natives ~default:[]) in

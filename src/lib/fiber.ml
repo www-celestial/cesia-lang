@@ -94,8 +94,8 @@ let start w (job : job) ctx body =
 let panic_keys = Trie.names [| "Message"; "Kind"; "File"; "Line" |]
 
 let ended_value w text kind at =
-  let site = Dynarray.get w.sites at in
-  let path, _ = Dynarray.get w.files site.sfile in
+  let site = Vec.get w.sites at in
+  let path, _ = Vec.get w.files site.sfile in
   Trie.record panic_keys [| Text text; Text kind; Text path; Int (Pos.line site.spos) |]
 
 let panic_value w text kind at = ended_value w text (Value.kind_name kind) at

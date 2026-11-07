@@ -1,12 +1,12 @@
 open Types
 
 let register_file w path src =
-  Dynarray.add_last w.files (path, src);
-  Dynarray.length w.files - 1
+  Vec.add_last w.files (path, src);
+  Vec.length w.files - 1
 
 let source_of w path =
   let found = ref None in
-  Dynarray.iter (fun (p, s) -> if String.equal p path then found := Some s) w.files;
+  Vec.iter (fun (p, s) -> if String.equal p path then found := Some s) w.files;
   !found
 
 (* Line [n], without line ending or BOM. *)
@@ -815,12 +815,12 @@ let set_args w (args : string list) =
 (* A site keeps the source of its compilation: the file may have changed since. *)
 let report_site ?above ctx ~text ~hint at =
   let w = ctx.w in
-  let site = Dynarray.get w.sites (Runtime.user_site ctx at) in
-  let path, src = Dynarray.get w.files site.sfile in
+  let site = Vec.get w.sites (Runtime.user_site ctx at) in
+  let path, src = Vec.get w.files site.sfile in
   format_error ~source:(Some src) ~path ~pos:site.spos ~text ~hint ~trace:(Runtime.backtrace ?above ctx at)
 
 let error_report ?above ctx = function
-  | Value.Kerr { text; hint; at; _ } when at >= 0 && at < Dynarray.length ctx.w.sites ->
+  | Value.Kerr { text; hint; at; _ } when at >= 0 && at < Vec.length ctx.w.sites ->
     Some (report_site ?above ctx ~text ~hint at)
   | Pos.Load_error { file; pos; text; hint; _ } ->
     Some (format_error ~source:(source_of ctx.w file) ~path:file ~pos ~text ~hint ~trace:[])
@@ -843,7 +843,7 @@ let guarded ?(strict = false) w body =
   let limit_reached what at =
     flushed (fun () ->
         let m = Messages.limit what in
-        if at < 0 || at >= Dynarray.length w.sites then w.err (m.text ^ "\n")
+        if at < 0 || at >= Vec.length w.sites then w.err (m.text ^ "\n")
         else report_at (current ()) ~text:m.text ~hint:m.hint at)
   in
   w.yield <- Fiber.yield;

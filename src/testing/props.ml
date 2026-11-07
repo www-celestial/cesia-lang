@@ -15,7 +15,7 @@ type state = {
   mutable rank : int;  (* the ForAlls of the test so far *)
   mutable tape : int array option;  (* the tape replayed, or fresh draws *)
   mutable pos : int;
-  drawn : int Dynarray.t;
+  drawn : int Vec.t;
   mutable size : int;
   mutable ran : bool;  (* some property ran in this run *)
   mutable failed : failure option;  (* of the test running *)
@@ -36,7 +36,7 @@ type state = {
 
 let st =
   { active = false; cases = 100; root = "."; file = ""; test = ""; rank = 0; tape = None; pos = 0;
-    drawn = Dynarray.create (); size = 0; ran = false; failed = None; on_case = ignore; dir = ""; temp = None; count = 0;
+    drawn = Vec.create (); size = 0; ran = false; failed = None; on_case = ignore; dir = ""; temp = None; count = 0;
     deadline = infinity; timeout = 10.; clock = (fun () -> 0.); path = ""; update = false; snaps = 0; store = None;
     taken = Hashtbl.create 8; snap_failure = [] }
 
@@ -70,14 +70,14 @@ let draw ctx (a : t array) =
   match a.(0) with
   | Int n when n > 0 ->
     let v =
-      if Dynarray.length st.drawn >= most_draws then 0
+      if Vec.length st.drawn >= most_draws then 0
       else
         match st.tape with
         | Some t -> if st.pos < Array.length t then (let x = t.(st.pos) in if x < 0 then 0 else if x < n then x else x mod n) else 0
         | None -> Rand.below n
     in
     st.pos <- st.pos + 1;
-    Dynarray.add_last st.drawn v;
+    Vec.add_last st.drawn v;
     Int v
   | v -> Runtime.fail ctx Type (Messages.need_count "draw" (Value.describe v))
 
@@ -197,7 +197,7 @@ let one_case ctx (a : t array) =
   st.tape <- ints a.(2);
   st.size <- (match a.(3) with Int s -> s | _ -> 100);
   st.pos <- 0;
-  Dynarray.clear st.drawn;
+  Vec.clear st.drawn;
   let call f args =
     match Loader.call_caught ctx f args with
     | Ok v -> Ok v
@@ -212,7 +212,7 @@ let one_case ctx (a : t array) =
       st.on_case ();
       (match call a.(1) [| x |] with Ok True -> x, true, None | Ok _ -> x, false, None | Error m -> x, false, Some m)
   in
-  let tape = int_array (Dynarray.to_array st.drawn) in
+  let tape = int_array (Vec.to_array st.drawn) in
   Trie.record case_keys [| Value.share value; tape; Int st.size; Value.of_bool holds; (match panic with Some m -> Text m | None -> Missing) |]
 
 (* The failure saved for the ForAll running, as a file of .cesia/failures/ at the root: its size, then its draws. *)

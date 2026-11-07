@@ -627,18 +627,18 @@ let query ~one ctx (a : t array) =
   in
   with_lib ctx (fun lib ->
       using ctx lib "sqlite3.Query" a.(2) (fun c ->
-          let cells = Dynarray.create () in
-          match whole ctx lib c text a.(1) limit (Dynarray.add_last cells) with
+          let cells = Vec.create () in
+          match whole ctx lib c text a.(1) limit (Vec.add_last cells) with
           | Error e -> e
           | Ok p ->
-            if Array.length p.texts = 0 || (one && Dynarray.length cells = 0) then
+            if Array.length p.texts = 0 || (one && Vec.length cells = 0) then
               Value.ok ctx.w (if one then Missing else Arrays.list [||])
             else begin
               let keys = match p.keys with Some k -> k | None -> let k = Columns.row_keys true p.texts in p.keys <- Some k; k in
               match keys with
               | Error m -> failure ctx "names" m
-              | Ok keys when one -> Value.ok ctx.w (Trie.record keys (Array.map Value.share (Dynarray.to_array cells)))
-              | Ok keys -> Value.ok ctx.w (Columns.make_rows ctx keys (Dynarray.to_array cells))
+              | Ok keys when one -> Value.ok ctx.w (Trie.record keys (Array.map Value.share (Vec.to_array cells)))
+              | Ok keys -> Value.ok ctx.w (Columns.make_rows ctx keys (Vec.to_array cells))
             end))
 
 let changed_keys = Trie.names [| "Changed"; "LastId" |]

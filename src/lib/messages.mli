@@ -441,6 +441,7 @@ val native_public : string -> t
 (** [engine_missing folder wanted found]: the folder of deps/ that holds no engine of this tag, or "" for the project's
     own; the tags of the engines it holds. *)
 val engine_missing : string -> string -> string list -> t
+val engine_lacks : string -> t
 val engine_changed : string -> t
 val engine_refused : string -> string -> t
 

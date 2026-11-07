@@ -634,7 +634,7 @@ let packages =
           match a.(0) with
           | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
             (* Inside the package of the struct, its small fields too. *)
-            let site = if ctx.site >= 0 && ctx.site < Dynarray.length ctx.w.sites then (Dynarray.get ctx.w.sites ctx.site).sver else None in
+            let site = if ctx.site >= 0 && ctx.site < Vec.length ctx.w.sites then (Vec.get ctx.w.sites ctx.site).sver else None in
             let inside = (match site with Some v -> ctx.w.modules.(v.owner.pm).host = shape.sm | None -> false) in
             let keep = List.filter (fun i -> inside || Lexer.is_public shape.names.(i)) (List.init (Array.length fields) Fun.id) in
             Dict.of_items ctx (Array.of_list (List.concat_map (fun i -> [ Text shape.names.(i); Value.share fields.(i) ]) keep))

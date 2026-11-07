@@ -17,6 +17,8 @@ cat "$built/inside.cmxs" > "native/echo-$tag.cmxs"
 run
 cat "$built/taken.cmxs" > "native/echo-$tag.cmxs"
 run
+cat "$built/lacks.cmxs" > "native/echo-$tag.cmxs"
+run
 cat "$built/echo.cmxs" > "native/echo-$tag.cmxs"
 toml() { printf '[project]\nname = "echo"\nsrc = ["cesia", "src"]\n\n[native]\npackage = "cesia/echo"\n%s\n' "$1" > cesia.toml; }
 toml 'natives = ["echo4", "kindOf", "reverse", "fields", "field", "thing", "number", "boom", "refuse", "read", "later", "soon"]'

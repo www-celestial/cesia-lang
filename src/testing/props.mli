@@ -21,7 +21,7 @@ type state = {
   mutable rank : int;
   mutable tape : int array option;
   mutable pos : int;
-  drawn : int Dynarray.t;
+  drawn : int Vec.t;
   mutable size : int;
   mutable ran : bool;
   mutable failed : failure option;

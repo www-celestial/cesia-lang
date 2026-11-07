@@ -457,15 +457,15 @@ let csv_rows ctx s separator =
   let n = String.length s in
   let sep = if String.length separator = 1 then Char.code separator.[0] else -1 in
   let special c = c = '"' || c = '\n' || c = '\r' || Char.code c = sep in
-  let rows = Dynarray.create () and row = Dynarray.create () and field = Buffer.create 64 in
+  let rows = Vec.create () and row = Vec.create () and field = Buffer.create 64 in
   let end_field () =
-    Dynarray.add_last row (Buffer.contents field);
+    Vec.add_last row (Buffer.contents field);
     Buffer.clear field
   in
   let end_row () =
     end_field ();
-    Dynarray.add_last rows (Dynarray.to_array row);
-    Dynarray.clear row
+    Vec.add_last rows (Vec.to_array row);
+    Vec.clear row
   in
   let quoted = ref false and i = ref 0 in
   while !i < n do
@@ -504,8 +504,8 @@ let csv_rows ctx s separator =
       Buffer.add_substring field s start (!i - start)
     end
   done;
-  if Buffer.length field > 0 || Dynarray.length row > 0 then end_row ();
-  Dynarray.to_array rows
+  if Buffer.length field > 0 || Vec.length row > 0 then end_row ();
+  Vec.to_array rows
 
 let texts row = Arrays.list (Array.map (fun s -> Text s) row)
 

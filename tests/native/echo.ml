@@ -8,12 +8,11 @@ module M = Map.Make (String)
 
 let _held =
   ( (Array.length, Atomic.make, Bigarray.Array1.dim, Buffer.create, Bytes.create, Callback.register, Char.code),
-    (Condition.create, Digest.string, Domain.self, Dynarray.create, Effect.perform, Filename.concat, Float.abs, Fun.id),
+    (Condition.create, Digest.string, Domain.self, Effect.perform, Filename.concat, Float.abs, Fun.id),
     (Gc.minor, Hashtbl.hash, In_channel.input_all, Int.abs, Lazy.force, List.length, M.empty, Mutex.create, Nativeint.add),
     (Obj.repr, Option.is_some, Out_channel.flush, Printexc.to_string, Printf.sprintf, Queue.create, Random.int),
     (Result.is_ok, Seq.empty, String.length, Sys.time, Uchar.of_int, Unix.sleepf, UnixLabels.sleepf, Stdlib.print_string),
-    (CamlinternalFormat.make_printf, CamlinternalFormatBasics.concat_fmt, CamlinternalLazy.force_lazy_block),
-    CamlinternalOO.create_table )
+    (CamlinternalFormat.make_printf, CamlinternalFormatBasics.concat_fmt, CamlinternalLazy.force_lazy_block) )
 
 let four = C.keys [| "Int"; "Float"; "Text"; "Bool" |]
 

@@ -1,6 +1,6 @@
 ; The engines of the tests of native packages, built as the author of a package builds one: against cesia_v1.cmi alone,
-; copied here as a release of Cesia gives it in lib/native/. inside.cmxs reaches inside Cesia, and taken.cmxs brings a module
-; the binary holds already: both are refused.
+; copied here as a release of Cesia gives it in lib/native/. inside.cmxs reaches inside Cesia, taken.cmxs brings a module the
+; binary holds already, and lacks.cmxs needs one that it doesn't hold: all are refused.
 
 (rule
  (action
@@ -25,3 +25,9 @@
  (deps unix.ml)
  (action
   (run %{ocamlopt} -shared -o taken.cmxs unix.ml)))
+
+(rule
+ (targets lacks.cmxs lacks.cmx lacks.cmi lacks.o)
+ (deps lacks.ml)
+ (action
+  (run %{ocamlopt} -shared -o lacks.cmxs lacks.ml)))

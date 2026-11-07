@@ -228,8 +228,8 @@ let from_root w path =
 (* The site a test starts from: no line of the program, which a trace leaves out. A test that stops in a loop before any
    call or native shows no place it doesn't know, and its first frame isn't called from a line. *)
 let no_place w =
-  Dynarray.add_last w.sites { sfile = 0; spos = Pos.make 1 1; sfn = ""; sver = None; soff = 0; slive = Bytes.empty; shidden = false };
-  Dynarray.length w.sites - 1
+  Vec.add_last w.sites { sfile = 0; spos = Pos.make 1 1; sfn = ""; sver = None; soff = 0; slive = Bytes.empty; shidden = false };
+  Vec.length w.sites - 1
 
 let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
   let ran = ref [] in
@@ -276,7 +276,7 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
              print_endline (Printf.sprintf "%s:%d: %s failed: %s" path line f.fname msg);
              (* Where it stopped, when not on the line of the test itself. *)
              (match e with
-              | Value.Kerr { at; _ } when at >= 0 && at < Dynarray.length ctx.w.sites ->
+              | Value.Kerr { at; _ } when at >= 0 && at < Vec.length ctx.w.sites ->
                 (match Runtime.backtrace ctx at with
                  | [ t ] when String.ends_with ~suffix:(Printf.sprintf ":%d)" line) t -> ()
                  | trace -> List.iter (fun t -> print_endline ("  " ^ t)) trace)
@@ -345,9 +345,9 @@ let run_file (ctx : ctx) st path =
 (* Which file of a package stopped, and on which line. *)
 let place w dir = function
   | Pos.Load_error { file; pos; _ } -> Printf.sprintf "%s:%d" file (Pos.line pos)
-  | Value.Kerr { at; _ } when at >= 0 && at < Dynarray.length w.sites ->
-    let site = Dynarray.get w.sites at in
-    Printf.sprintf "%s:%d" (fst (Dynarray.get w.files site.sfile)) (Pos.line site.spos)
+  | Value.Kerr { at; _ } when at >= 0 && at < Vec.length w.sites ->
+    let site = Vec.get w.sites at in
+    Printf.sprintf "%s:%d" (fst (Vec.get w.files site.sfile)) (Pos.line site.spos)
   | _ -> Package.shown (Package.absolute dir)
 
 (* A folder as a package: its files load together, the examples of each run with [examples], and each of [tests] sees them. *)

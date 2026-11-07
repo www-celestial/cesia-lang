@@ -53,12 +53,12 @@ let contains s part =
 
 let error_text ?above ctx ~(typed : typed Lazy.t) e =
   let w = ctx.w in
-  let in_typed at = String.equal (fst (Dynarray.get w.files (Dynarray.get w.sites at).sfile)) prompt_path in
+  let in_typed at = String.equal (fst (Vec.get w.files (Vec.get w.sites at).sfile)) prompt_path in
   let place =
     match e with
     | Pos.Load_error { file; pos; hint; _ } when String.equal file prompt_path -> Some (pos, hint)
-    | Value.Kerr { at; hint; _ } when at >= 0 && at < Dynarray.length w.sites && in_typed (Runtime.user_site ctx at) ->
-      Some ((Dynarray.get w.sites (Runtime.user_site ctx at)).spos, hint)
+    | Value.Kerr { at; hint; _ } when at >= 0 && at < Vec.length w.sites && in_typed (Runtime.user_site ctx at) ->
+      Some ((Vec.get w.sites (Runtime.user_site ctx at)).spos, hint)
     | _ -> None
   in
   match e, place with
@@ -95,7 +95,7 @@ let framed ctx ~above ~typed f =
     raise (Failed text)
 
 (* Where a call from the native that runs at the current site puts its frame, as [Compile.call_back] does. *)
-let call_base ctx = match (Dynarray.get ctx.w.sites ctx.site).sver with Some v -> v.size | None -> 0
+let call_base ctx = match (Vec.get ctx.w.sites ctx.site).sver with Some v -> v.size | None -> 0
 
 (* Runs a module made of the code above the frame of the native that runs it, as a call would: errors and traces see
    a frame there, and the caller's stays as it was. Gives the value of the last statement. *)

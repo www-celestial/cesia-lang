@@ -299,7 +299,7 @@ let () =
   check "dot as the interpreter" (st = 0 && Value.float_text r = line 2);
   let st, io = run ver f (stacks ()) [| xs; ys; Int 6 |] in
   check "dot outside the array" (st = Ir.error && io.(Ir.io_code) = Ir.err_read && io.(Ir.io_a) = 6 && io.(Ir.io_b) = ver.map.(0));
-  check "the error's site is a site" (io.(Ir.io_point) >= 0 && io.(Ir.io_point) < Dynarray.length world.sites);
+  check "the error's site is a site" (io.(Ir.io_point) >= 0 && io.(Ir.io_point) < Cesia.Vec.length world.sites);
   let ints_store = Array { rows = 1; cols = 2; store = I [| 1; 2 |]; a_owned = true; a_tip = true; dims = [||] } in
   let st, _ = run ver f (stacks ()) [| ints_store; ys; Int 2 |] in
   check "an array of ints falls back" (st = Ir.fallback);

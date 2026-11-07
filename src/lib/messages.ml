@@ -423,6 +423,7 @@ let engine_missing folder wanted found =
   let has = if found = [] then "" else Printf.sprintf " (it has %s)" (String.concat ", " found) in
   if folder = "" then plain (Printf.sprintf "native/ has no engine for %s%s: build the engine of this project." wanted has)
   else plain (Printf.sprintf "%s has no engine for %s%s: run cesia pkg install." folder wanted has)
+let engine_lacks name = plain (Printf.sprintf "it needs %s, which this Cesia doesn't hold" name)
 let engine_changed path = plain (Printf.sprintf "%s changed since this Cesia loaded it: run the program again." path)
 let engine_refused path reason = plain (Printf.sprintf "The engine %s didn't load: %s." path reason)
 let engine_names path missing extra =

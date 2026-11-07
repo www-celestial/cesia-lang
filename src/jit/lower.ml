@@ -12,26 +12,26 @@ type st = {
   ver : version;
   f : func;
   index : int;  (* this function's number in the unit *)
-  kinds : Ir.kind Dynarray.t;
-  blocks : Ir.block Dynarray.t;
+  kinds : Ir.kind Vec.t;
+  blocks : Ir.block Vec.t;
   mutable cur : int;
   regs : int array;  (* the register of each variable kept in one, or -1 *)
   arrays : int array;  (* the number of each variable that is a float array, or -1 *)
-  arr : (int * bool * int * int) Dynarray.t;
+  arr : (int * bool * int * int) Vec.t;
       (* each array: its slot, whether written, its store: 0 floats, 1 values, and the indexes it takes past one *)
-  hidden : Ir.var Dynarray.t;
-  resumes : int Dynarray.t;
+  hidden : Ir.var Vec.t;
+  resumes : int Vec.t;
   mutable loops : int list;  (* where a break goes *)
-  sites : (Pos.t * version * Bytes.t * bool) Dynarray.t;
+  sites : (Pos.t * version * Bytes.t * bool) Vec.t;
       (* each site, the version whose code it is in, what is assigned there, and whether its frame keeps its variables in registers *)
   mutable live : Bytes.t;  (* with a debugger: what the last hook saw assigned, for the variables of a stop *)
-  chains : (int * int * int) list Dynarray.t;  (* each site's inlined frames, as [Ir.func.chains] *)
+  chains : (int * int * int) list Vec.t;  (* each site's inlined frames, as [Ir.func.chains] *)
   mutable inl : (int * int * int) list;  (* the inlined frames around the code being lowered, the innermost first *)
   mutable ret_to : (int * int) option;  (* in an inlined body: the register of its result and the block after it *)
   unit : unit_;
   mutable body : int;  (* the block after the step of the call, where a self tail call comes back *)
   region : bool;  (* a loop of the version, not the whole of it *)
-  infos : (int * int * int * int) Dynarray.t;
+  infos : (int * int * int * int) Vec.t;
       (* each loop: its node, the slots of its counter and bound or -1, its point after a step *)
   mutable fast : (int, int * int) Hashtbl.t;  (* in a loop's fast copy: each index proved inside, its array, its register *)
   mutable ncalls : int;  (* calls lowered so far *)
@@ -50,21 +50,21 @@ and dyn = {
   mutable callable : int option;
       (* the statement a call that wants a longer stack goes back to, its fuel as at its start: while nothing of it
          showed but steps *)
-  restores : (int * int) list Dynarray.t;  (* of each statement: its variables' registers and their copies at its start *)
-  keeps : (int * int * int) Dynarray.t;  (* of each statement: its fuel, as [Ir.Keep] *)
+  restores : (int * int) list Vec.t;  (* of each statement: its variables' registers and their copies at its start *)
+  keeps : (int * int * int) Vec.t;  (* of each statement: its fuel, as [Ir.Keep] *)
   mutable loose : bool;  (* a call that can't bail when it wants a longer stack *)
   mutable start : int * int;
       (* where the statement starts: its block and the instructions before it there, where its copies go when needed *)
   mutable vars : int list;  (* the registers of the variables the statement may assign *)
   mutable need : int ref option;  (* the words of allocation since the last [Reserve] *)
-  consts : t Dynarray.t;
+  consts : t Vec.t;
   mutable known : (int * int * int * int) list;
       (* in the block being built: a register of a map or struct already checked, its constant or -1 - its shape, and the
          register of its values *)
   mutable nums : (int * int * Ir.unbox * int) list;  (* in the block being built: a value's register, how, its number's *)
 }
 
-and unit_ = { versions : version Dynarray.t }
+and unit_ = { versions : version Vec.t }
 
 (* What a block may assign, or [Unknown] for a construct the walk doesn't follow: then nothing is taken as invariant. *)
 exception Unknown
@@ -96,12 +96,12 @@ let math = [ "Sqrt", "sqrt"; "Exp", "exp"; "Log", "log"; "Sin", "sin"; "Cos", "c
              "Acos", "acos"; "Atan", "atan" ]
 
 let reg st k =
-  Dynarray.add_last st.kinds k;
-  Dynarray.length st.kinds - 1
+  Vec.add_last st.kinds k;
+  Vec.length st.kinds - 1
 
 let block st =
-  Dynarray.add_last st.blocks { Ir.ins = []; term = Return (Int 0) };
-  Dynarray.length st.blocks - 1
+  Vec.add_last st.blocks { Ir.ins = []; term = Return (Int 0) };
+  Vec.length st.blocks - 1
 
 (* Something of the current statement shows: a guard can't send it back to the interpreter any more. *)
 let shows st =
@@ -125,10 +125,10 @@ let emit st i =
         d.nums <- List.concat_map (fun ((b, v, h, n) as e) -> if v = q then [ e; (b, r, h, n) ] else [ e ]) d.nums
       | _ -> ())
    | _ -> ());
-  let b = Dynarray.get st.blocks st.cur in
+  let b = Vec.get st.blocks st.cur in
   b.ins <- i :: b.ins
 
-let close st t = (Dynarray.get st.blocks st.cur).term <- t
+let close st t = (Vec.get st.blocks st.cur).term <- t
 
 (* What is known in block [b]: then known in block [l] too, which [b] dominates. *)
 let facts st b = List.filter (fun (x, _, _, _) -> x = b) st.dyn.known, List.filter (fun (x, _, _, _) -> x = b) st.dyn.nums
@@ -150,13 +150,13 @@ let goto st l =
 (* With a debugger, the outermost frame of a unit writes its variables back on an error; an inlined or called one keeps
    them in registers, and a stop shows none of its own. *)
 let site st pos =
-  Dynarray.add_last st.sites (pos, st.ver, (if st.inl = [] && st.index = 0 then st.live else Bytes.empty), st.inl <> [] || st.index > 0);
-  Dynarray.add_last st.chains st.inl;
-  Dynarray.length st.sites - 1
+  Vec.add_last st.sites (pos, st.ver, (if st.inl = [] && st.index = 0 then st.live else Bytes.empty), st.inl <> [] || st.index > 0);
+  Vec.add_last st.chains st.inl;
+  Vec.length st.sites - 1
 
 let point st l =
-  Dynarray.add_last st.resumes l;
-  Dynarray.length st.resumes - 1
+  Vec.add_last st.resumes l;
+  Vec.length st.resumes - 1
 
 (* A tick can leave the run only in no loop of the function, or as the tick of a loop in no other. *)
 let outer st = st.loops = []
@@ -185,7 +185,7 @@ let array_of st (e : expr) =
 (* An instruction at the start of the current statement, put there once it is known to be needed. *)
 let at_start st i =
   let b, n = st.dyn.start in
-  let blk = Dynarray.get st.blocks b in
+  let blk = Vec.get st.blocks b in
   let rec split k l = if k = 0 then [], l else match l with x :: r -> let a, c = split (k - 1) r in x :: a, c | [] -> [], [] in
   let later, earlier = split (List.length blk.ins - n) blk.ins in
   blk.ins <- later @ (i :: earlier)
@@ -195,11 +195,11 @@ let at_start st i =
 let bail st =
   match st.dyn.bail with
   | Some k when st.dyn.dirty ->
-    if Dynarray.get st.dyn.restores k = [] && st.dyn.vars <> [] then
-      Dynarray.set st.dyn.restores k
+    if Vec.get st.dyn.restores k = [] && st.dyn.vars <> [] then
+      Vec.set st.dyn.restores k
         (List.map
            (fun r ->
-              let c = reg st (Dynarray.get st.kinds r) in
+              let c = reg st (Vec.get st.kinds r) in
               at_start st (Ir.Move (c, Reg r));
               r, c)
            st.dyn.vars);
@@ -286,7 +286,7 @@ let const st (v : t) =
   let first = function Dict { keys; _ } -> Some (`K keys) | Struct { shape; _ } -> Some (`S shape) | _ -> None in
   let same a b = match first a, first b with Some (`K x), Some (`K y) -> x == y | Some (`S x), Some (`S y) -> x == y | _ -> false in
   let cs = st.dyn.consts in
-  let rec find j = if j = Dynarray.length cs then (Dynarray.add_last cs v; j) else if same (Dynarray.get cs j) v then j else find (j + 1) in
+  let rec find j = if j = Vec.length cs then (Vec.add_last cs v; j) else if same (Vec.get cs j) v then j else find (j + 1) in
   find 0
 
 (* Room for an allocation, in the words reserved at the last [Reserve]. *)
@@ -337,7 +337,7 @@ let numbers st a b x y =
 (* The function of the unit for a version, lowered later. *)
 let callee st (v : version) =
   let vs = st.unit.versions in
-  let rec find i = if i = Dynarray.length vs then (Dynarray.add_last vs v; i) else if Dynarray.get vs i == v then i else find (i + 1) in
+  let rec find i = if i = Vec.length vs then (Vec.add_last vs v; i) else if Vec.get vs i == v then i else find (i + 1) in
   find 0
 
 let rec expr st (e : expr) : Ir.value * Ir.kind =
@@ -347,7 +347,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   (* Words of [Types.t] that are no block. *)
   | Lmissing -> Word 1, Kval
   | Lbool b -> Word (if b then 5 else 7), Kval
-  | Var { b = Local i; _ } -> Reg (var st i), Dynarray.get st.kinds (var st i)
+  | Var { b = Local i; _ } -> Reg (var st i), Vec.get st.kinds (var st i)
   | Var { b = Cell { m; k; stable = true }; _ } ->
     (match st.w.modules.(m).cells.(k) with
      | Int n -> Int n, Kint
@@ -400,7 +400,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     fresh st Kfloat (fun r -> Elem_at (r, a, ix))
   | Index (b, [| Ix i |], false) ->
     let a = array_of st b in
-    let _, _, store, _ = Dynarray.get st.arr a in
+    let _, _, store, _ = Vec.get st.arr a in
     (match guess st i (expr st i) with
      | x, Kint when store = 0 -> fresh st Kfloat (fun r -> Elem (r, a, x, site st e.pos))
      | x, Kint -> fresh st Kval (fun r -> Get (r, a, x, site st e.pos))
@@ -408,7 +408,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   | Index (b, ixs, false) when Array.length ixs >= 2 ->
     let a = array_of st b in
     let q = cell st a (indexes st a ixs) e.pos false in
-    let _, _, store, _ = Dynarray.get st.arr a in
+    let _, _, store, _ = Vec.get st.arr a in
     if store = 0 then fresh st Kfloat (fun r -> Elem_at (r, a, q)) else fresh st Kval (fun r -> Get (r, a, Reg q, site st e.pos))
   | Field (b, name) ->
     let v = (match expr st b with v, Kval -> v | _ -> raise No) in
@@ -476,10 +476,10 @@ and stored st (e : expr) =
 and back st =
   match st.dyn.callable with
   | Some k when not st.dyn.dirty ->
-    if Dynarray.get st.dyn.keeps k = (-1, -1, -1) then begin
+    if Vec.get st.dyn.keeps k = (-1, -1, -1) then begin
       let f = reg st Kint and sp = reg st Kint and q = reg st Kint in
       at_start st (Keep (f, sp, q));
-      Dynarray.set st.dyn.keeps k (f, sp, q)
+      Vec.set st.dyn.keeps k (f, sp, q)
     end;
     k
   | _ ->
@@ -536,7 +536,7 @@ and inline st (e : expr) (v : version) args =
     (fun j x ->
        let r = child.regs.(j) in
        if r < 0 then raise No;
-       emit child (Move (r, convert child (Dynarray.get st.kinds r) x)))
+       emit child (Move (r, convert child (Vec.get st.kinds r) x)))
     args;
   (* The callee's step, as its frame's entry counts one. *)
   emit child (Ir.Tick (-1, false));
@@ -547,10 +547,10 @@ and inline st (e : expr) (v : version) args =
 
 (* Integer indexes, one per dimension of array [a], which then takes that many: its sizes are read at each entry. *)
 and indexes st a (ixs : index array) =
-  let slot, written, store, nd = Dynarray.get st.arr a in
+  let slot, written, store, nd = Vec.get st.arr a in
   let n = Array.length ixs in
   if n > Ir.max_ixs || (nd <> 0 && nd <> n) then raise No;
-  Dynarray.set st.arr a (slot, written, store, n);
+  Vec.set st.arr a (slot, written, store, n);
   Array.map (function Ix i -> (match guess st i (expr st i) with x, Kint -> x | _ -> raise No) | All -> raise No) ixs
 
 (* The register of the cell at those indexes, checked inside, from 1 and doubled as [Elem_at] takes it. *)
@@ -677,7 +677,7 @@ and stmt st (e : expr) =
   match e.e with
   | Assign ({ b = Local i; _ }, v) ->
     let r = var st i in
-    let x = (match Dynarray.get st.kinds r with Kval -> stored st v | k -> convert st k (expr st v)) in
+    let x = (match Vec.get st.kinds r with Kval -> stored st v | k -> convert st k (expr st v)) in
     emit st (Move (r, x));
     (* An inlined callee's variables are its own: the way back has nothing of them to put back. *)
     if st.inl = [] then st.dyn.dirty <- true
@@ -689,19 +689,19 @@ and stmt st (e : expr) =
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix ix |], false); sp } |]; value } when st.arrays.(i) >= 0 ->
     let a = st.arrays.(i) in
     let k = (match guess st ix (expr st ix) with x, Kint -> x | _ -> raise No) in
-    let slot, _, store, nd = Dynarray.get st.arr a in
+    let slot, _, store, nd = Vec.get st.arr a in
     (* As the interpreter's write: the index, then the value, then the array, which an F store takes only as a number. *)
     let x = if store = 0 then to_float st (expr st value) else stored st value in
-    Dynarray.set st.arr a (slot, true, store, nd);
+    Vec.set st.arr a (slot, true, store, nd);
     (* At the step, as the interpreter names an index outside the array. *)
     emit st (if store = 0 then Set_elem (a, k, x, site st sp) else Put (a, k, x, site st sp))
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex (ixs, false); sp } |]; value }
     when st.arrays.(i) >= 0 && Array.length ixs >= 2 ->
     let a = st.arrays.(i) in
     let xs = indexes st a ixs in
-    let x = (let _, _, store, _ = Dynarray.get st.arr a in if store = 0 then to_float st (expr st value) else stored st value) in
-    let slot, _, store, nd = Dynarray.get st.arr a in
-    Dynarray.set st.arr a (slot, true, store, nd);
+    let x = (let _, _, store, _ = Vec.get st.arr a in if store = 0 then to_float st (expr st value) else stored st value) in
+    let slot, _, store, nd = Vec.get st.arr a in
+    Vec.set st.arr a (slot, true, store, nd);
     let q = cell st a xs sp true in
     emit st (if store = 0 then Set_at (a, q, x) else Put (a, Reg q, x, site st sp))
   | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
@@ -719,7 +719,7 @@ and stmt st (e : expr) =
         loop_in st exit (fun () -> Array.iter (stmt st) body);
         let p = point st head in
         emit st (Ir.Tick (p, outer st));
-        Dynarray.add_last st.infos (e.id, -1, -1, p);
+        Vec.add_last st.infos (e.id, -1, -1, p);
         close st (Jump head);
         st.cur <- exit)
   | If (c, yes, no) ->
@@ -799,9 +799,9 @@ and allocates st (b : block) =
          (match st.w.modules.(m).cells.(k) with Fun { proto; _ } -> Resolve.struct_fields proto.func <> None | _ -> false)
        | _ -> false)
       || Array.exists (fun (a : arg) -> made a.value) c.args
-    | Assign ({ b = Local i; _ }, v) -> (st.regs.(i) >= 0 && Dynarray.get st.kinds st.regs.(i) = Ir.Kval) || made v
+    | Assign ({ b = Local i; _ }, v) -> (st.regs.(i) >= 0 && Vec.get st.kinds st.regs.(i) = Ir.Kval) || made v
     | Set { root = { b = Local i; _ }; value; _ } ->
-      (st.arrays.(i) >= 0 && (let _, _, store, _ = Dynarray.get st.arr st.arrays.(i) in store = 1)) || made value
+      (st.arrays.(i) >= 0 && (let _, _, store, _ = Vec.get st.arr st.arrays.(i) in store = 1)) || made value
     | _ -> false
   in
   Array.exists made b
@@ -814,9 +814,9 @@ and stmts st ~root (b : block) =
          (* The variables the statement may assign, whose copies the way back may need, made at its start. *)
          let vars = try List.sort_uniq compare (assigned ~sets:false [] x) with Unknown -> [] in
          st.dyn.vars <- List.filter (fun r -> r >= 0) (List.map (fun i -> st.regs.(i)) vars);
-         st.dyn.start <- (st.cur, List.length (Dynarray.get st.blocks st.cur).ins);
-         while Dynarray.length st.dyn.restores <= k do Dynarray.add_last st.dyn.restores [] done;
-         while Dynarray.length st.dyn.keeps <= k do Dynarray.add_last st.dyn.keeps (-1, -1, -1) done;
+         st.dyn.start <- (st.cur, List.length (Vec.get st.blocks st.cur).ins);
+         while Vec.length st.dyn.restores <= k do Vec.add_last st.dyn.restores [] done;
+         while Vec.length st.dyn.keeps <= k do Vec.add_last st.dyn.keeps (-1, -1, -1) done;
          st.dyn.bail <- Some k;
          st.dyn.callable <- Some k;
          st.dyn.dirty <- false;
@@ -833,13 +833,13 @@ and stmts st ~root (b : block) =
    otherwise, and is where the loop comes back after leaving. Gives the block that tests the counter. *)
 and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   let r = var st i in
-  if Dynarray.get st.kinds r <> Kint then raise No;
+  if Vec.get st.kinds r <> Kint then raise No;
   let written = try Some (Array.fold_left assigned [] fbody) with Unknown -> None in
   let own = match written with Some l -> not (List.mem i l) | None -> false in
   let c = if own then r else hidden st in
-  let cslot = if own then st.ver.map.(i) else (Dynarray.get_last st.hidden).slot in
+  let cslot = if own then st.ver.map.(i) else (Vec.get_last st.hidden).slot in
   let h = hidden st in
-  let hslot = (Dynarray.get_last st.hidden).slot in
+  let hslot = (Vec.get_last st.hidden).slot in
   let head = block st and decide = block st and body = block st and next = block st and inc = block st and exit = block st in
   (match lo with
    | Some (l, x) ->
@@ -857,12 +857,12 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   st.cur <- head;
   close st (Branch (Gt, Kint, Reg c, Reg h, exit, decide));
   st.cur <- body;
-  let points = Dynarray.length st.resumes and calls = st.ncalls in
+  let points = Vec.length st.resumes and calls = st.ncalls in
   if allocates st fbody then reserve st;
   if not own then emit st (Move (r, Reg c));
   loop_in st exit (fun () -> stmts st ~root fbody);
-  let inner = Dynarray.length st.resumes = points && st.ncalls = calls in
-  Dynarray.add_last st.infos (e.id, cslot, hslot, tick st next);
+  let inner = Vec.length st.resumes = points && st.ncalls = calls in
+  Vec.add_last st.infos (e.id, cslot, hslot, tick st next);
   close st (Branch (Eq, Kint, Reg c, Reg h, exit, inc));
   st.cur <- inc;
   emit st (Incr c);
@@ -922,7 +922,7 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
   (* The indexes of float arrays read or written with one index, or one per dimension, in the whole body. *)
   let found = ref [] in
   let floats v n =
-    st.arrays.(v) >= 0 && (let _, _, store, nd = Dynarray.get st.arr st.arrays.(v) in store = 0 && (n = 1 || nd = n)) in
+    st.arrays.(v) >= 0 && (let _, _, store, nd = Vec.get st.arr st.arrays.(v) in store = 0 && (n = 1 || nd = n)) in
   let plain a = Array.for_all (function Ix _ -> true | All -> false) a in
   let exprs a = Array.map (function Ix x -> x | All -> assert false) a in
   let rec walk (e : expr) =
@@ -1026,7 +1026,7 @@ and loop_in st exit f =
 
 and hidden st =
   let r = reg st Kint in
-  Dynarray.add_last st.hidden { reg = r; kind = Kint; slot = st.ver.frame + Dynarray.length st.hidden };
+  Vec.add_last st.hidden { reg = r; kind = Kint; slot = st.ver.frame + Vec.length st.hidden };
   r
 
 (* The last expression of the body: its value is the result, and a self tail call loops. *)
@@ -1048,7 +1048,7 @@ and tail st (e : expr) =
     let tmp =
       Array.mapi
         (fun j (x, xk) ->
-           let k = Dynarray.get st.kinds ps.(j) in
+           let k = Vec.get st.kinds ps.(j) in
            if xk <> k then raise No;
            let r = reg st k in
            emit st (Move (r, x));
@@ -1082,7 +1082,7 @@ let rec func st name =
   st.body <- body;
   ignore (tick st body);
   tail_block st f.body;
-  let var_of i = { Ir.reg = st.regs.(i); kind = Dynarray.get st.kinds st.regs.(i); slot = ver.map.(i) } in
+  let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)
   let params = List.filter_map (fun j -> if st.regs.(j) >= 0 then Some (var_of j) else None) (List.init (Array.length f.params) Fun.id) in
   let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some (var_of i) else None) (List.init f.nvars Fun.id) in
@@ -1090,22 +1090,22 @@ let rec func st name =
 
 and finish st name ~params ~vars =
   let ver = st.ver in
-  let hidden = Dynarray.to_list st.hidden in
-  let blocks = Dynarray.to_array st.blocks in
+  let hidden = Vec.to_list st.hidden in
+  let blocks = Vec.to_array st.blocks in
   Array.iter (fun (b : Ir.block) -> b.ins <- List.rev b.ins) blocks;
   let has p = Array.exists (fun (b : Ir.block) -> List.exists p b.ins) blocks in
   let n_hidden = List.length hidden in
   ( { Ir.name; params = Array.of_list params; result = (if st.region then Kint else kind_of ver.ret);
-      vars = Array.of_list (vars @ hidden); arrays = Dynarray.to_array st.arr; kinds = Dynarray.to_array st.kinds; blocks;
-      resumes = Dynarray.to_array st.resumes; frame = ver.frame;
-      size = ver.frame + max n_hidden (Dynarray.length st.dyn.consts) + 2; hidden = n_hidden;
-      consts = Dynarray.to_array st.dyn.consts; restores = Dynarray.to_array st.dyn.restores;
-      keeps = Dynarray.to_array st.dyn.keeps; loose = st.dyn.loose; sites = Array.make (Dynarray.length st.sites) (-1);
+      vars = Array.of_list (vars @ hidden); arrays = Vec.to_array st.arr; kinds = Vec.to_array st.kinds; blocks;
+      resumes = Vec.to_array st.resumes; frame = ver.frame;
+      size = ver.frame + max n_hidden (Vec.length st.dyn.consts) + 2; hidden = n_hidden;
+      consts = Vec.to_array st.dyn.consts; restores = Vec.to_array st.dyn.restores;
+      keeps = Vec.to_array st.dyn.keeps; loose = st.dyn.loose; sites = Array.make (Vec.length st.sites) (-1);
       pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ -> true | _ -> false));
-      calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Dynarray.to_array st.chains;
+      calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Vec.to_array st.chains;
       spills = st.w.hooks;
       stride = st.mem.(0); need = st.mem.(1) },
-    Dynarray.to_array st.sites )
+    Vec.to_array st.sites )
 
 (* The local variables a loop names. *)
 let rec locals acc (e : expr) =
@@ -1134,8 +1134,8 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
   let f = ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
   if (not region) && ver.ret != TI && ver.ret != TF then raise No;
-  let kinds = Dynarray.create () in
-  let regs = Array.make f.nvars (-1) and arrays = Array.make f.nvars (-1) and arr = Dynarray.create () in
+  let kinds = Vec.create () in
+  let regs = Array.make f.nvars (-1) and arrays = Array.make f.nvars (-1) and arr = Vec.create () in
   let np = Array.length f.params in
   let named = match scope with Some e -> locals [] e | None -> [] in
   let written = match scope with Some e -> (try Some (assigned ~sets:false [] e) with Unknown -> None) | None -> None in
@@ -1143,11 +1143,11 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
   for i = 0 to f.nvars - 1 do
     match ver.tv.(i) with
     | TI | TF ->
-      Dynarray.add_last kinds (kind_of ver.tv.(i));
-      regs.(i) <- Dynarray.length kinds - 1
+      Vec.add_last kinds (kind_of ver.tv.(i));
+      regs.(i) <- Vec.length kinds - 1
     | TFA when (if region then List.mem i named else i < np) && plain i ->
-      Dynarray.add_last arr (ver.map.(i), false, 0, 0);
-      arrays.(i) <- Dynarray.length arr - 1
+      Vec.add_last arr (ver.map.(i), false, 0, 0);
+      arrays.(i) <- Vec.length arr - 1
     | TA when region && plain i && List.mem i named ->
       let store =
         match ctx, written with
@@ -1156,49 +1156,49 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
         | _ -> -1
       in
       if store >= 0 then begin
-        Dynarray.add_last arr (ver.map.(i), false, store, 0);
-        arrays.(i) <- Dynarray.length arr - 1
+        Vec.add_last arr (ver.map.(i), false, store, 0);
+        arrays.(i) <- Vec.length arr - 1
       end else begin
-        Dynarray.add_last kinds Ir.Kval;
-        regs.(i) <- Dynarray.length kinds - 1
+        Vec.add_last kinds Ir.Kval;
+        regs.(i) <- Vec.length kinds - 1
       end
     | _ -> ()
   done;
-  { w; ver; f; index; kinds; blocks = Dynarray.create (); cur = 0; regs; arrays; arr; hidden = Dynarray.create ();
-    resumes = Dynarray.create (); loops = []; sites = Dynarray.create (); live = Bytes.empty; unit; body = 0; region; infos = Dynarray.create ();
-    fast = Hashtbl.create 1; ncalls = 0; chains = Dynarray.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx;
-    dyn = { bail = None; dirty = false; callable = None; restores = Dynarray.create (); keeps = Dynarray.create (); loose = false; start = (0, 0);
-            vars = []; need = None; consts = Dynarray.create (); known = []; nums = [] } }
+  { w; ver; f; index; kinds; blocks = Vec.create (); cur = 0; regs; arrays; arr; hidden = Vec.create ();
+    resumes = Vec.create (); loops = []; sites = Vec.create (); live = Bytes.empty; unit; body = 0; region; infos = Vec.create ();
+    fast = Hashtbl.create 1; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx;
+    dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
+            vars = []; need = None; consts = Vec.create (); known = []; nums = [] } }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
 let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool) array) =
   let s = w.sites in
   Array.iteri
     (fun j (p, (ver : version), live, hidden) ->
-       Dynarray.add_last s { sfile = ver.owner.file; spos = p; sfn = ver.owner.pname; sver = Some ver; soff = ver.frame;
+       Vec.add_last s { sfile = ver.owner.file; spos = p; sfn = ver.owner.pname; sver = Some ver; soff = ver.frame;
                              slive = live; shidden = hidden };
-       fn.sites.(j) <- Dynarray.length s - 1)
+       fn.sites.(j) <- Vec.length s - 1)
     pos
 
 (* The unit whose first function [first] makes: then each version it calls, as whole functions. *)
 let lower_unit ?ctx ?scope (w : world) (ver : version) first =
-  let u = { versions = Dynarray.create () } in
-  Dynarray.add_last u.versions ver;
-  let out = Dynarray.create () in
+  let u = { versions = Vec.create () } in
+  Vec.add_last u.versions ver;
+  let out = Vec.create () in
   match
     let st0 = start ~region:(first <> None) ?ctx ?scope w u 0 ver in
-    let extra = match first with Some f -> f st0 | None -> Dynarray.add_last out (func st0 "f0"); None in
-    (match extra with Some fn -> Dynarray.add_last out fn | None -> ());
+    let extra = match first with Some f -> f st0 | None -> Vec.add_last out (func st0 "f0"); None in
+    (match extra with Some fn -> Vec.add_last out fn | None -> ());
     let i = ref 1 in
-    while !i < Dynarray.length u.versions do
-      let v = Dynarray.get u.versions !i in
+    while !i < Vec.length u.versions do
+      let v = Vec.get u.versions !i in
       let st = start w u !i v in
-      Dynarray.add_last out (func st (Printf.sprintf "f%d" !i));
+      Vec.add_last out (func st (Printf.sprintf "f%d" !i));
       incr i
     done
   with
   | () ->
-    let fs = Dynarray.to_array out in
+    let fs = Vec.to_array out in
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
     Some (Array.map fst fs)
   | exception No -> None
@@ -1232,15 +1232,15 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
        loop_in st exit (fun () -> stmts st ~root:true body);
        let p = point st head in
        emit st (Ir.Tick (p, true));
-       Dynarray.add_last st.infos (loop.id, -1, -1, p);
+       Vec.add_last st.infos (loop.id, -1, -1, p);
        close st (Jump head);
        st.cur <- exit;
        close st Done;
        points := (p, p)
      | _ -> raise No);
-    let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some { Ir.reg = st.regs.(i); kind = Dynarray.get st.kinds st.regs.(i); slot = ver.map.(i) } else None)
+    let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } else None)
         (List.init st.f.nvars Fun.id) in
-    infos := Dynarray.to_array st.infos;
+    infos := Vec.to_array st.infos;
     Some (finish st "f0" ~params:[] ~vars)
   in
   match lower_unit ?ctx ~scope:loop w ver (Some make) with

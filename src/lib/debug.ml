@@ -44,8 +44,8 @@ let vars ctx base (site : site) =
 
 let frame ctx base at =
   let w = ctx.w in
-  let site = Dynarray.get w.sites at in
-  let path, _ = Dynarray.get w.files site.sfile in
+  let site = Vec.get w.sites at in
+  let path, _ = Vec.get w.files site.sfile in
   let name = if site.sfn = "" then "<file>" else site.sfn in
   record frame_keys
     [| Text name; Text path; Int (Pos.line site.spos); row (vars ctx base site) |]
@@ -60,8 +60,8 @@ let stop_value ctx s reason error =
     if base = 0 || (ctx.fiber && caller = 0) then List.rev acc else walk caller ctx.i.(base + 1) acc
   in
   (* An error inside a library stops at the line of the program that called it: the line to change. *)
-  let site = Dynarray.get w.sites (Runtime.user_site ctx s) in
-  let path, _ = Dynarray.get w.files site.sfile in
+  let site = Vec.get w.sites (Runtime.user_site ctx s) in
+  let path, _ = Vec.get w.files site.sfile in
   let error = match error with Some text -> Text text | None -> Missing in
   record stop_keys [| Text path; Int (Pos.line site.spos); Text reason; row (walk ctx.b s []); Int ctx.id; error |]
 
@@ -78,7 +78,7 @@ let stop ?error ctx s reason =
   let w = ctx.w in
   let d = w.debug in
   let value = stop_value ctx s reason error in
-  let base = (Dynarray.get w.sites s).soff in
+  let base = (Vec.get w.sites s).soff in
   d.stopped <- true;
   ctx.site <- s;
   (* A wrong answer is an error of the debugger, which doesn't stop again. *)
@@ -101,20 +101,20 @@ let same_file path file =
   || ((not (String.contains file '/')) && String.equal (Filename.basename path) file)
 
 let armed w file line =
-  let path, _ = Dynarray.get w.files file in
+  let path, _ = Vec.get w.files file in
   List.exists (fun (f, l, _) -> l = line && same_file path f) w.debug.breaks
 
 let marked w s =
-  let site = Dynarray.get w.sites s in
+  let site = Vec.get w.sites s in
   armed w site.sfile (Pos.line site.spos)
 
 let hook ctx s first =
   let w = ctx.w in
   let d = w.debug in
   if not d.stopped then begin
-    let site = Dynarray.get w.sites s in
+    let site = Vec.get w.sites s in
     let line = Pos.line site.spos in
-    let path, _ = Dynarray.get w.files site.sfile in
+    let path, _ = Vec.get w.files site.sfile in
     (* A line with several statements stops once on its breakpoint, at its first one. A condition that gives an error
        stops too, with it, to be seen. *)
     let on_break =
@@ -139,7 +139,7 @@ let hook ctx s first =
 (* A panic stops where it happens, with every variable, before it leaves: but in the debugger itself. *)
 let on_error ctx text =
   let w = ctx.w in
-  if (not w.debug.stopped) && ctx.site >= 0 && ctx.site < Dynarray.length w.sites then stop ~error:text ctx ctx.site "error"
+  if (not w.debug.stopped) && ctx.site >= 0 && ctx.site < Vec.length w.sites then stop ~error:text ctx ctx.site "error"
 
 let hooks_compiled w = w.hook_count
 
