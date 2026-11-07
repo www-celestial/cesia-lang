@@ -5,6 +5,11 @@ let is_test path = Filename.check_suffix path (".test" ^ suffix)
 
 let is_dir path = Sys.file_exists path && Sys.is_directory path
 
+(* A file of Cesia's std/ that the binary holds: it never changes while a program runs, but when CESIA_STD names a folder
+   of its sources. *)
+let embedded_std path =
+  Sys.getenv_opt "CESIA_STD" = None && List.exists (fun (name, _) -> String.equal path ("std/" ^ name ^ suffix)) Embedded.files
+
 (* A test, a dot file as an editor leaves, or a folder named like a file isn't code of the package. *)
 let is_code dir name =
   let path = Filename.concat dir name in

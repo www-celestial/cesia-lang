@@ -812,8 +812,7 @@ let rec reload_all w paths =
 let watched w =
   let is_embedded path =
     List.exists (fun (name, _) -> String.equal path (tool_path name)) Embedded.tools
-    || Sys.getenv_opt "CESIA_STD" = None
-       && List.exists (fun (name, _) -> String.equal path ("std/" ^ name ^ Package.suffix)) Embedded.files
+    || Package.embedded_std path
   in
   List.filter (fun p -> p <> "" && not (is_embedded p)) (List.map (fun md -> md.path) (Array.to_list w.modules))
 

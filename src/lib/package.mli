@@ -13,6 +13,9 @@ val is_test : string -> bool
 
 val is_dir : string -> bool
 
+(** A file of Cesia's std/ that the binary holds, as [std/list.ce]: no reload changes it, unless CESIA_STD is set. *)
+val embedded_std : string -> bool
+
 (** The code of a package, in the order of the names: the [.ce] files of the folder, without its subfolders, its [.test.ce]
     files and its dot files. A folder that doesn't exist has none. *)
 val files : string -> string list

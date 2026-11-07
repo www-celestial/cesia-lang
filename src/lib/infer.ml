@@ -332,6 +332,9 @@ and call_type env (call : call) =
     if Array.exists (fun t -> t == TBot) arg_types then TBot else n.ret_ty arg_types
   | Some (Fun { proto; env = [||] }) ->
     if Array.exists (fun t -> t == TBot) arg_types then TBot
+    (* Where a function can be defined again while a call to it runs, at the prompt, under --watch or a debugger, its
+       result may come back of another type: the caller takes it as any value, as without the versions by type. *)
+    else if (!Tier.watching || w.hooks) && not (Package.embedded_std w.modules.(proto.pm).path) then TA
     else (
       match bind_args proto.func call.args with
       | Error _ -> TA

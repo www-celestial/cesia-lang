@@ -219,8 +219,10 @@ with `--debugger`, and a program run without it pays nothing for it.
 
 ## Speed
 
-A program under a debugger runs as fast as without one while nothing is asked of it: only a line with a breakpoint, and
-every line while you step, goes to the debugger. Hot code still becomes native code, calls included; a function whose code
+A program under a debugger runs nearly as fast as without one while nothing is asked of it: only a line with a breakpoint,
+and every line while you step, goes to the debugger. As at the prompt and under `--watch`, a function of the program can be
+defined again while a call to it runs, with results of another type, so the code that uses its results stays in the
+interpreter, which takes a value of any type. Hot code still becomes native code, calls included; a function whose code
 holds a breakpoint stays in the interpreter, and at each stop native code goes back to the interpreter and becomes native
 again once hot, so the results are the same as without the debugger. A stop on an error inside native code shows the
 variables of the frame that runs it, but not those of the calls native code made inside it.

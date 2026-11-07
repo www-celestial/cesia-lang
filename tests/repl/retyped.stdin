@@ -1,0 +1,3 @@
+defn F(x)
+  x * 0.5
+end

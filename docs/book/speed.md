@@ -47,6 +47,8 @@ same, a little later.
 - Loops over the elements of a list, `for x in xs`, and functions passed as values.
 - Under a debugger, a function whose code holds a breakpoint, and the code you step through: the rest stays machine code,
   as the chapter [The prompt and the debugger](debug.md#speed) says.
+- At the prompt, under `--watch` and under a debugger, the code that uses what the program's own functions give: such a
+  function can be defined again while a call to it runs, with results of another type, and that code takes them at once.
 
 ## Seeing it
 
