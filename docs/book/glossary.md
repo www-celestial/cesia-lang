@@ -155,6 +155,12 @@ receiver `r` in parentheses before the name, and `r.Area()` calls it: see [Struc
 Code between a server and its handlers, which sees each request and each response: a log, a header, a check. [http.Wrap]
 puts one in front of an application: see [HTTP](http.md#middleware).
 
+## Native package
+
+A package whose heart is compiled code that the language loads as a program runs: an extension module in Python, an
+addon in Node, a NIF in Erlang. Cesia's is a package whose engine is OCaml, compiled once against `Cesia_v1`, which a
+program runs with the `native` permission: see [Native packages](native.md).
+
 ## Null
 
 A value that means "no value": `null`, `nil` or `None` in other languages. Cesia's is `missing`, and a type takes it only

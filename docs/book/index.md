@@ -48,7 +48,8 @@ language.
 20. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
 21. [Speed](speed.md): what becomes machine code as a program runs, maps and structs included, and how to see it.
 22. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
-23. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+23. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
+24. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
 
 Appendices, to look things up:
 

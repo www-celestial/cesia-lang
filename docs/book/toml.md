@@ -21,6 +21,21 @@ native = ["sodium"]
 | `src` | the folders of its code, `["src"]` when it is left out: what another project takes without `take`, and what `cesia doc` and `--site` read |
 | `native` | the C libraries it loads: each task that runs a file gets `ffi=` for each of them |
 
+## `[native]`
+
+The engine of a [native package](native.md): OCaml compiled once, which runs the natives of one of the project's packages.
+
+```toml
+[native]
+package = "cesia/echo"
+natives = ["reverse", "later"]
+```
+
+| Key | What it says |
+|---|---|
+| `package` | the package whose files see the natives, as a path from the root |
+| `natives` | their names, each a private name: the engine `native/NAME-TAG.cmxs` must register exactly these |
+
 ## `[tasks.NAME]`
 
 A task is a program to run with its permissions, a command, or a group of other tasks. `cesia do NAME` runs it.
