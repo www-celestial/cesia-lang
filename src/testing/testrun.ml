@@ -199,8 +199,9 @@ and verdict ctx path line name v =
     List.iter print_endline lines
   | _ -> if Props.st.snap_failure <> [] && v == False then failed "" else returned ()
 
-(* cesia test file.ce:isName runs that test alone. *)
+(* cesia test file.ce:isName runs that test alone; [only_looked] says that its file was looked through, or failed. *)
 let only_test = ref None
+let only_looked = ref false
 
 (* Set by the binary, which can reach the system: removes a folder without following links; closes the sockets and forgets
    the waiting fibers. *)
@@ -230,10 +231,10 @@ let from_root w path =
 
 let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
   let ran = ref [] in
+  let runnable (f : Ast.func) = is_test_name f.fname && Array.length f.params = 0 && Lexer.split_method f.fname = None in
   Array.iter
     (fun (k, (f : Ast.func)) ->
-       if is_test_name f.fname && Array.length f.params = 0 && Lexer.split_method f.fname = None
-          && (match !only_test with Some n -> String.equal n f.fname | None -> true) then begin
+       if runnable f && (match !only_test with Some n -> String.equal n f.fname | None -> true) then begin
          let line = Pos.line f.fpos in
          ctx.b <- 0;
          ctx.site <- 0;
@@ -282,6 +283,14 @@ let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
        end)
     layout.hoisted;
   let tests = List.filter_map (fun (_, (f : Ast.func)) -> if is_test_name f.fname then Some f.fname else None) (Array.to_list layout.hoisted) in
+  (* file.ce:isName with a name that no test of the file has: a typo would otherwise pass with no test run. *)
+  only_looked := true;
+  (match !only_test with
+   | Some name when !ran = [] ->
+     st.failed <- st.failed + 1;
+     let names = List.filter_map (fun (_, f) -> if runnable f then Some f.Ast.fname else None) (Array.to_list layout.hoisted) in
+     print_endline (Messages.test_unknown path name names)
+   | _ -> ());
   Props.write_snaps path ~ran:!ran ~tests
 
 (* Anything to run in this file? *)
@@ -297,6 +306,7 @@ let has_tests path src =
 let read path = In_channel.with_open_bin path In_channel.input_all
 
 let cant_load st path e =
+  only_looked := true;
   st.failed <- st.failed + 1;
   print_endline (Printf.sprintf "%s: can't load: %s" path (Option.get (failure e)))
 
@@ -314,6 +324,7 @@ let run_source (ctx : ctx) st ?host ?natives ~lookup path src =
        run_examples ctx st path m src;
        if is_test_file path then run_tests ctx st path layout w.modules.(m).cells
      with e when failure e <> None ->
+       only_looked := true;
        st.failed <- st.failed + 1;
        print_endline (Printf.sprintf "%s: failed: %s" path (Option.get (failure e))));
     Runtime.flush_out w
@@ -424,6 +435,11 @@ let run w (c : Testing.config) =
         run_unit ctx st ~examples:true (worker_unit path)
       end
       else List.iter (run_unit ctx st ~examples:(Package.is_dir path)) (units path);
+      (match only with
+       | Some name when not !only_looked ->
+         st.failed <- st.failed + 1;
+         print_endline (Messages.test_unknown path name [])
+       | _ -> ());
       Runtime.flush_out w;
       if worker then print_endline (Printf.sprintf "\001= %d %d %b" st.passed st.failed Props.st.ran)
       else print_endline (Messages.test_summary st.passed st.failed (if Props.st.ran then Some (Rand.seed ()) else None));

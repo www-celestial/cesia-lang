@@ -1,0 +1,2 @@
+(* file.ce:isName names one test of the file; a name of none is an error. *)
+isTwice(x) = x * 2 == x + x

@@ -1,0 +1,10 @@
+passing.test.ce: no test is named isSun; its tests are isSum, isAll.
+0 passed, 1 failed
+exit 1
+== a function that is no test
+only.test.ce: no test is named isTwice; the file has none.
+0 passed, 1 failed
+exit 1
+== the test that is there
+1 passed, 0 failed
+exit 0

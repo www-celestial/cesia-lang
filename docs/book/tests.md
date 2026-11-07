@@ -192,7 +192,8 @@ that share something, as a database, and run alone, after the others.
 ## cesia test
 
 `cesia test` runs every example and every test function of the project, and leaves out `std/` and `deps/`. With a path, it
-runs those of a folder or of a file, and `file.ce:isName` runs one test:
+runs those of a folder or of a file, and `file.ce:isName` runs one test, where a name that no test of the file has is a
+failure, so that a typo can't pass:
 
 ```bash
 cesia test

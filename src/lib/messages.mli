@@ -209,6 +209,9 @@ val test_shrunk : int -> int -> string
 val test_panic : string -> string
 val test_replay : string -> int -> string
 
+(** cesia test file.ce:isName names no test of the file, which has these. *)
+val test_unknown : string -> string -> string list -> string
+
 (** A test, an example or the load of a file under test called sys.Exit with this code. *)
 val test_exit : int -> string
 
