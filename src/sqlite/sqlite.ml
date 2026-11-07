@@ -500,18 +500,30 @@ let rec take ctx lib p deadline =
       let left = deadline -. Unix.gettimeofday () in
       if left <= 0. then Error (failure ctx "pool" (Messages.sql_pool p.pool_wait).text)
       else begin
-        Fiber.suspend ctx (fun resume ->
-            let parked = ref true in
-            let wake () = if !parked then (parked := false; resume ()) in
-            p.waiters <- p.waiters @ [ wake ];
-            let (_ : unit -> unit) =
-              ctx.w.timer left (fun () ->
-                  if !parked then begin
-                    p.waiters <- List.filter (fun w -> w != wake) p.waiters;
-                    wake ()
-                  end)
-            in
-            ());
+        let mine = ref ignore in
+        (match
+           Fiber.suspend ctx (fun resume ->
+               let parked = ref true in
+               let wake () = if !parked then (parked := false; resume ()) in
+               mine := wake;
+               p.waiters <- p.waiters @ [ wake ];
+               let (_ : unit -> unit) =
+                 ctx.w.timer left (fun () ->
+                     if !parked then begin
+                       p.waiters <- List.filter (fun w -> w != wake) p.waiters;
+                       wake ()
+                     end)
+               in
+               ())
+         with
+         | () -> ()
+         | exception e ->
+           (* Stopped by fiber.Cancel, perhaps woken for a connection it will never take: the next one takes it. *)
+           p.waiters <- List.filter (fun w -> w != !mine) p.waiters;
+           (match p.free, p.waiters with
+            | _ :: _, wake :: rest -> p.waiters <- rest; wake ()
+            | _ -> ());
+           raise e);
         take ctx lib p deadline
       end
 

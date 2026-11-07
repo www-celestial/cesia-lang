@@ -49,8 +49,31 @@ and node =
   | Same of dict  (** keys whose 30 bits of hash are all equal: a balanced tree, which no choice of keys slows down *)
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
-and task = { mutable result : t option; mutable waiters : (unit -> unit) list; items : t Queue.t }
-(** A task, or a channel: its [items] in the order they were sent, and its [waiters] the receivers parked on it. *)
+(** What a handle of std/fiber points to. *)
+and task = Job of job | Chan of chan
+
+(** A task: its [result] once it ended, the fibers that wait for it, and while it runs, its fiber and the wake of the
+    fiber's wait, which fiber.Cancel calls. A task that ended holds neither, so its fiber's stacks are freed. *)
+and job = {
+  mutable result : t option;
+  mutable waiters : (unit -> unit) list;
+  mutable cx : ctx option;
+  mutable wake : unit -> bool;
+}
+
+(** A channel: its [items] in the order they were sent, at most [size] of them ([max_int]: no limit), the [receivers]
+    parked on it, oldest first, and the [senders] parked while it is full. A parked fiber's wake gives false when the
+    fiber had already gone, woken by something else. Once [closed], nothing more is sent. *)
+and chan = {
+  items : t Queue.t;
+  size : int;
+  mutable receivers : (unit -> bool) list;
+  senders : sender Queue.t;
+  mutable closed : bool;
+}
+
+(** A value that waits to go in a full channel, and the fiber that sent it: [taken] once a receiver has it. *)
+and sender = { sent : t; mutable taken : bool; wake : unit -> bool }
 
 (** A list that Append made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its
     cells through [rows] and [cols], and call [Value.trim] before reading a store as a whole. [a_tip]: no push went on from
@@ -142,6 +165,8 @@ and ctx = {
   max_depth : int;
   fiber : bool;  (** a spawned fiber, as opposed to the main program *)
   id : int;  (** the number of the fiber, 0 for the main program *)
+  mutable parks : int;  (** odd while parked: counts its waits and wakes, so a wake meant for an earlier wait does nothing *)
+  mutable cancelled : bool;  (** fiber.Cancel asked it to stop: it does at its next wait, or now if it is waiting *)
   w : world;
 }
 
@@ -220,6 +245,9 @@ and world = {
       (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
   mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
   mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)
+  mutable next_in : ctx -> t -> t option;
+      (** set by [Loader]: the next value of a channel, waiting for it, or None once it is closed and empty: what a for
+          loop over a channel takes *)
   mutable on_panic : ctx -> exn -> unit;  (** set by [Loader]: reports the panic of a fiber *)
   mutable on_error : ctx -> string -> unit;  (** with a debugger: a panic stops there, before it leaves *)
   out : Buffer.t;

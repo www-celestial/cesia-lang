@@ -96,8 +96,20 @@ let field_index shape name =
 let result w sname field v =
   Struct { shape = shape_of w ~sname [| field |]; fields = [| share v |]; r_owned = true }
 
-let ok w v = result w "Ok" "Value" v
-let err w v = result w "Err" "Error" v
+(* The natives give an Ok or an Err at each call: their shapes are looked up once, for the last world that asked. *)
+let ok_shape = ref None
+let err_shape = ref None
+
+let cached cache w sname field =
+  match !cache with
+  | Some (w', s) when w' == w -> s
+  | _ ->
+    let s = shape_of w ~sname [| field |] in
+    cache := Some (w, s);
+    s
+
+let ok w v = Struct { shape = cached ok_shape w "Ok" "Value"; fields = [| share v |]; r_owned = true }
+let err w v = Struct { shape = cached err_shape w "Err" "Error"; fields = [| share v |]; r_owned = true }
 
 let failure_keys = Trie.names [| "Kind"; "Message" |]
 let failure w kind text = err w (Trie.record failure_keys [| Text kind; Text text |])

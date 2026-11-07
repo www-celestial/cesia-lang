@@ -228,6 +228,19 @@ defn isTransactionsNeverMix()
   value.Equal(names, ["A", "A 2", "B", "B 2"])
 end
 
+defn isCancelLeavesNoTransaction()
+  (** A caller stopped inside a transaction: the transaction ends as f says, and gives its connection back. *)
+  db = sql.Open(url("cancel"), max = 1, wait = 1)?
+  sql.Script("create table users (id integer primary key, name text)", db)?
+  caller = fiber.Spawn(() -> slowWriter("A", 0.02, db))
+  sys.Sleep(0.005)
+  fiber.Cancel(caller)
+  stopped = fiber.Wait(caller).Error.Kind
+  after = sql.Transaction(tx -> sql.Exec("insert into users (name) values (?)", ["B"], tx), db)
+  names = sql.Query("select name from users order by id", [], db, as = u -> result.Ok(u.Name))?
+  stopped == "cancelled" and result.IsOk(after) and value.Equal(names, ["A", "A 2", "B"])
+end
+
 defn isOwnDatabaseInsideTransaction()
   (** On :memory: the one connection is the transaction's: db there waits, then says to use tx. *)
   if onFile
@@ -359,7 +372,7 @@ defn isUriAndDirectoryRefused()
 end
 
 defn main()
-  checks = [isValuesBothWays, isNamesArePublic, isWideRows, isSameKey, isTypedRows, isWrongTypeAtRow3, isOneOfNothing, isInjectionStaysText, isOneStatementPerCall, isParameterCount, isDangerRefused, isParams, isDateParsesBack, isLocalDateStoredInUtc, isErrorCodes, isTransactionCommits, isTransactionRollsBack, isPanicRollsBack, isSavepoint, isUseAfterTheEnd, isTransactionsNeverMix, isOwnDatabaseInsideTransaction, isEachStreams, isEachPanicGivesTheConnectionBack, isEachInsideTransaction, isTable, isScript, isPoolWaits, isBusyIsRetried, isCloseWithAConnectionOut, isSqliteOnlyThroughSql, isSchemaChangeRereadsNames, isScriptLeavesNoTransaction, isCloseDuringARead, isUriAndDirectoryRefused]
+  checks = [isValuesBothWays, isNamesArePublic, isWideRows, isSameKey, isTypedRows, isWrongTypeAtRow3, isOneOfNothing, isInjectionStaysText, isOneStatementPerCall, isParameterCount, isDangerRefused, isParams, isDateParsesBack, isLocalDateStoredInUtc, isErrorCodes, isTransactionCommits, isTransactionRollsBack, isPanicRollsBack, isSavepoint, isUseAfterTheEnd, isTransactionsNeverMix, isCancelLeavesNoTransaction, isOwnDatabaseInsideTransaction, isEachStreams, isEachPanicGivesTheConnectionBack, isEachInsideTransaction, isTable, isScript, isPoolWaits, isBusyIsRetried, isCloseWithAConnectionOut, isSqliteOnlyThroughSql, isSchemaChangeRereadsNames, isScriptLeavesNoTransaction, isCloseDuringARead, isUriAndDirectoryRefused]
   bad = 0
   for check in checks
     r = fiber.Wait(fiber.Spawn(check))

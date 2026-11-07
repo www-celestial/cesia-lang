@@ -2,13 +2,17 @@
     scheduler whenever it waits, and the other fibers are dropped when it ends. *)
 open Types
 
-(** Parks the current fiber and calls [register resume]. Calling [resume] once puts it back in the queue. *)
+(** Parks the current fiber and calls [register resume]. Calling [resume] once puts it back in the queue; later calls do
+    nothing. *)
 val suspend : ctx -> ((unit -> unit) -> unit) -> unit
 
 (** Lets the other fibers run, if there are any. *)
 val yield : ctx -> unit
 
-(** The natives of std/fiber: [Spawn], [Wait] and the channels. *)
+(** The next value of a channel, waiting for it, or None once it is closed and empty: [world.next_in]. *)
+val next_in : ctx -> t -> t option
+
+(** The natives of std/fiber: [Spawn], [Wait], [Cancel] and the channels: [Channel], [Send], [Receive], [Select], [Close]. *)
 val natives : (string * t) list
 
 (** Starts a function in a new fiber: gives its task, which [wait] waits for. *)

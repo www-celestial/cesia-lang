@@ -149,6 +149,7 @@ let create_world o =
     timer = (fun _ _ -> ignore);
     native_modules = [];
     yield = (fun _ -> ());
+    next_in = (fun _ _ -> None);
     on_panic = (fun _ _ -> ());
     on_error = (fun _ _ -> ());
     out = Buffer.create 4096;
@@ -182,6 +183,8 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
     max_depth = w.limits.max_depth;
     fiber;
     id;
+    parks = 0;
+    cancelled = false;
     w }
 
 (* Three stacks of [cap] entries. *)

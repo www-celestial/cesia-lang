@@ -1,7 +1,9 @@
 use std/bug
 use std/fiber
+use std/list
 use std/math
 use std/result
+use std/sys
 use std/value
 
 add(a, b) = a + b
@@ -32,3 +34,242 @@ isPmapCollect() = value.Equal([2, 4] then fiber.Pmap(half) then result.Collect, 
 isPmapPanics() = result.IsErr(fiber.Wait(fiber.Spawn(() -> fiber.Pmap(x -> bug.Panic("x"), [1]))))
 isManyFibers() = value.Len(fiber.Pmap(it + 1, 1..10000)) == 10000
 isDeepInFiber() = fiber.Wait(fiber.Spawn(() -> countDown(5000))) == result.Ok(0)
+
+defn drained(ch)
+  n = 0
+  while result.IsOk(fiber.Receive(ch, timeout = 0))
+    n += 1
+  end
+  n
+end
+defn boundedOrder()
+  ch = fiber.Channel(size = 2)
+  for s in 1..3
+    fiber.Spawn(defn ()
+      for k in 1..4
+        fiber.Send(s * 10 + k, ch)
+      end
+    end)
+  end
+  got = [result.Unwrap(fiber.Receive(ch)) for k in 1..12]
+  [x for x in got if x < 20]
+end
+defn backpressure()
+  ch = fiber.Channel(size = 2)
+  sent = fiber.Channel()
+  fiber.Spawn(defn ()
+    for k in 1..5
+      fiber.Send(k, ch)
+      fiber.Send(k, sent)
+    end
+  end)
+  sys.Sleep(0)
+  before = drained(sent)
+  first = fiber.Receive(ch)
+  sys.Sleep(0)
+  [before, first.Value, drained(sent)]
+end
+defn rendezvous()
+  ch = fiber.Channel(size = 0)
+  log = fiber.Channel()
+  fiber.Spawn(defn ()
+    fiber.Send("a", ch)
+    fiber.Send("sent", log)
+  end)
+  sys.Sleep(0)
+  before = drained(log)
+  got = fiber.Receive(ch)
+  sys.Sleep(0)
+  [before, got.Value, drained(log)]
+end
+isBoundedOrder() = value.Equal(boundedOrder(), [11, 12, 13, 14])
+isBackpressure() = value.Equal(backpressure(), [2, 1, 1])
+isRendezvous() = value.Equal(rendezvous(), [0, "a", 1])
+isSizeZeroTimeout() = fiber.Receive(fiber.Channel(size = 0), timeout = 0).Error.Kind == "timeout"
+isBadSize() = result.IsErr(fiber.Wait(fiber.Spawn(() -> fiber.Channel(size = -1))))
+
+defn counted(n, ch)
+  for k in 1..n
+    fiber.Send(k, ch)
+  end
+  fiber.Close(ch)
+end
+defn closedLoop()
+  ch = fiber.Channel()
+  fiber.Spawn(() -> counted(3, ch))
+  got = []
+  for v in ch
+    got = list.Append(v, got)
+  end
+  got
+end
+defn closedComprehension()
+  ch = fiber.Channel(size = 2)
+  fiber.Spawn(() -> counted(5, ch))
+  [v * 2 for v in ch]
+end
+defn keepsValues()
+  ch = fiber.Channel()
+  fiber.Send(1, ch)
+  fiber.Close(ch)
+  [fiber.Receive(ch).Value, fiber.Receive(ch).Error.Kind, fiber.Receive(ch, timeout = 1).Error.Kind]
+end
+defn wakesReceivers()
+  ch = fiber.Channel()
+  waiting = [fiber.Spawn(() -> fiber.Receive(ch).Error.Kind) for k in 1..3]
+  sys.Sleep(0)
+  fiber.Close(ch)
+  [result.Unwrap(fiber.Wait(t)) for t in waiting]
+end
+defn misused(f)
+  ch = fiber.Channel(size = 0)
+  fiber.Close(ch)
+  fiber.Wait(fiber.Spawn(() -> f(ch))).Error.Kind
+end
+defn parkedSender()
+  ch = fiber.Channel(size = 0)
+  s = fiber.Spawn(() -> fiber.Send(1, ch))
+  sys.Sleep(0)
+  fiber.Close(ch)
+  fiber.Wait(s).Error.Kind
+end
+isForOverChannel() = value.Equal(closedLoop(), [1, 2, 3])
+isComprehensionOverChannel() = value.Equal(closedComprehension(), [2, 4, 6, 8, 10])
+isCloseKeepsValues() = value.Equal(keepsValues(), [1, "closed", "closed"])
+isCloseWakesAll() = value.Equal(wakesReceivers(), ["closed", "closed", "closed"])
+isSendAfterClose() = misused(ch -> fiber.Send(1, ch)) == "user"
+isCloseTwice() = misused(fiber.Close) == "user"
+isCloseStopsSender() = parkedSender() == "user"
+isForNotChannel() = result.IsErr(fiber.Wait(fiber.Spawn(() -> [x for x in fiber.Spawn(() -> 1)])))
+
+defn priority()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  fiber.Send(2, b)
+  fiber.Send(1, a)
+  [fiber.Select([a, b]).Value.Value, fiber.Select([a, b]).Value.Value]
+end
+defn selectWaits()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  fiber.Spawn(defn ()
+    sys.Sleep(0.01)
+    fiber.Send("late", b)
+  end)
+  got = fiber.Select([a, b])
+  [got.Value.Value, got.Value.Channel == b]
+end
+defn selectClosed()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  fiber.Spawn(() -> fiber.Close(b))
+  got = fiber.Select([a, b])
+  [got.Error.Kind, got.Error.Channel == b]
+end
+defn passedOn()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  first = fiber.Spawn(() -> fiber.Select([a, b]).Value.Value)
+  sys.Sleep(0)
+  second = fiber.Spawn(() -> fiber.Receive(b).Value)
+  sys.Sleep(0)
+  fiber.Send("b", b)
+  fiber.Send("a", a)
+  [result.Unwrap(fiber.Wait(first)), result.Unwrap(fiber.Wait(second))]
+end
+defn selectSender()
+  a = fiber.Channel(size = 0)
+  fiber.Spawn(() -> fiber.Send("met", a))
+  fiber.Select([fiber.Channel(), a]).Value.Value
+end
+isSelectOrder() = value.Equal(priority(), [1, 2])
+isSelectWaits() = value.Equal(selectWaits(), ["late", true])
+isSelectClosed() = value.Equal(selectClosed(), ["closed", true])
+isSelectTimeout() = fiber.Select([fiber.Channel()], timeout = 0.01).Error.Kind == "timeout"
+isSelectNoWait() = fiber.Select([fiber.Channel(), fiber.Channel()], timeout = 0).Error.Kind == "timeout"
+isSelectPassesOn() = value.Equal(passedOn(), ["a", "b"])
+isSelectSizeZero() = selectSender() == "met"
+isSelectNotList() = result.IsErr(fiber.Wait(fiber.Spawn(() -> fiber.Select(fiber.Channel()))))
+
+defn forever()
+  n = 0
+  while true
+    n += 1
+  end
+end
+defn waitTimeout()
+  t = fiber.Spawn(() -> sys.Sleep(0.05))
+  early = fiber.Wait(t, timeout = 0.001).Error.Kind
+  now = fiber.Wait(t, timeout = 0).Error.Kind
+  [early, now, fiber.Wait(t, timeout = 5), fiber.Wait(t, timeout = 0)]
+end
+defn cancelLoop()
+  t = fiber.Spawn(forever)
+  late = fiber.Wait(t, timeout = 0.01).Error.Kind
+  fiber.Cancel(t)
+  [late, fiber.Wait(t).Error.Kind]
+end
+defn cancelBeforeStart()
+  ran = fiber.Channel()
+  t = fiber.Spawn(() -> fiber.Send(true, ran))
+  fiber.Cancel(t)
+  [fiber.Wait(t).Error.Kind, fiber.Receive(ran, timeout = 0).Error.Kind]
+end
+defn cancelSelf()
+  inbox = fiber.Channel()
+  after = fiber.Channel()
+  t = fiber.Spawn(defn ()
+    fiber.Cancel(result.Unwrap(fiber.Receive(inbox)))
+    fiber.Send(true, after)
+  end)
+  fiber.Send(t, inbox)
+  [fiber.Wait(t).Error.Kind, fiber.Receive(after, timeout = 0).Error.Kind]
+end
+defn cancelDone()
+  t = fiber.Spawn(() -> 1)
+  fiber.Wait(t)
+  fiber.Cancel(t)
+  fiber.Wait(t)
+end
+defn cancelPassesOn(receive)
+  ch = fiber.Channel()
+  first = fiber.Spawn(() -> receive(ch))
+  second = fiber.Spawn(() -> receive(ch))
+  sys.Sleep(0)
+  fiber.Send("x", ch)
+  fiber.Cancel(first)
+  [fiber.Wait(first).Error.Kind, result.Unwrap(fiber.Wait(second, timeout = 1))]
+end
+defn cancelSender()
+  ch = fiber.Channel(size = 1)
+  fiber.Send("a", ch)
+  s = fiber.Spawn(() -> fiber.Send("b", ch))
+  sys.Sleep(0)
+  fiber.Cancel(s)
+  [fiber.Wait(s).Error.Kind, fiber.Receive(ch).Value, fiber.Receive(ch, timeout = 0).Error.Kind]
+end
+defn cancelWaiting()
+  inner = fiber.Spawn(() -> sys.Sleep(0.01))
+  outer = fiber.Spawn(() -> fiber.Wait(inner))
+  sys.Sleep(0)
+  fiber.Cancel(outer)
+  [fiber.Wait(outer).Error.Kind, fiber.Wait(inner)]
+end
+defn cancelledAt()
+  t = fiber.Spawn(() -> sys.Sleep(1))
+  sys.Sleep(0)
+  fiber.Cancel(t)
+  e = fiber.Wait(t).Error
+  [e.Message, value.IsText(e.File), e.Line > 0]
+end
+isWaitTimeout() = value.Equal(waitTimeout(), ["timeout", "timeout", result.Ok(missing), result.Ok(missing)])
+isCancelLoop() = value.Equal(cancelLoop(), ["timeout", "cancelled"])
+isCancelBeforeStart() = value.Equal(cancelBeforeStart(), ["cancelled", "timeout"])
+isCancelSelf() = value.Equal(cancelSelf(), ["cancelled", "timeout"])
+isCancelDone() = cancelDone() == result.Ok(1)
+isCancelPassesOnReceive() = value.Equal(cancelPassesOn(ch -> fiber.Receive(ch).Value), ["cancelled", "x"])
+isCancelPassesOnSelect() = value.Equal(cancelPassesOn(ch -> fiber.Select([ch]).Value.Value), ["cancelled", "x"])
+isCancelSender() = value.Equal(cancelSender(), ["cancelled", "a", "timeout"])
+isCancelWaiting() = value.Equal(cancelWaiting(), ["cancelled", result.Ok(missing)])
+isCancelledAt() = value.Equal(cancelledAt(), ["The fiber was cancelled here.", true, true])
+isCancelNotTask() = result.IsErr(fiber.Wait(fiber.Spawn(() -> fiber.Cancel(fiber.Channel()))))

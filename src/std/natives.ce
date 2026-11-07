@@ -171,19 +171,39 @@ use std/test
 (** fiber.Wait(task, timeout = missing)
     The result of a task, once it is done: an Ok of its value, or an Err if the fiber panicked. With timeout, it waits at
     most that many seconds: then an Err of kind "timeout", and the task runs on. A timeout of 0 never waits.
+    A task stopped by fiber.Cancel gives an Err of kind "cancelled".
 
       fiber.Wait(fiber.Spawn(() -> 1)) --> result.Ok(1)
       fiber.Wait(fiber.Spawn(() -> sys.Sleep(1)), timeout = 0.01).Error.Kind --> "timeout" *)
 
-(** fiber.Channel()
-    A new channel: a queue of values between fibers.
+(** fiber.Cancel(task)
+    Asks the fiber of a task to stop, and doesn't wait for it. It stops at its next wait (sys.Sleep, Receive, Select, a
+    Send on a full channel, the network, the database, Wait) or at the next checkpoint of a long computation, where it
+    lets the others run; a fiber that cancels itself stops at once. Wait then gives an Err of kind "cancelled", whose File
+    and Line tell where it was. A task that has ended stays as it was. What the fiber had to do after its wait, it doesn't
+    do: code that must end, as a transaction, runs in a fiber of its own.
+
+      task = fiber.Spawn(() -> sys.Sleep(10))
+      fiber.Cancel(task)
+      fiber.Wait(task).Error.Kind --> "cancelled" *)
+
+(** fiber.Channel(size = missing)
+    A new channel: a queue of values between fibers. With a size, it holds that many values at most, and Send waits while
+    it is full: a fast sender goes at the pace of its receiver. A size of 0 holds none: Send waits for a receiver to take
+    its value.
 
       ch = fiber.Channel()
       fiber.Spawn(() -> fiber.Send("done", ch))
-      fiber.Receive(ch) --> result.Ok("done") *)
+      fiber.Receive(ch) --> result.Ok("done")
+      small = fiber.Channel(size = 1)
+      fiber.Send(1, small)
+      fiber.Spawn(() -> fiber.Send(2, small))
+      fiber.Receive(small) --> result.Ok(1)
+      fiber.Receive(small) --> result.Ok(2) *)
 
 (** fiber.Send(value, ch)
-    Puts a value at the end of a channel. It never waits, and wakes the first fiber waiting on it.
+    Puts a value at the end of a channel, and wakes the first fiber waiting on it. On a channel full to its size, it waits
+    for room first; else it never waits.
 
       ch = fiber.Channel()
       fiber.Send(1, ch)
@@ -199,14 +219,30 @@ use std/test
       fiber.Receive(ch) --> result.Ok("a")
       fiber.Receive(ch, timeout = 0).Error.Kind --> "timeout" *)
 
+(** fiber.Select(chs, timeout = missing)
+    Receives from the first channel of a list that has a value: an Ok of {Channel, Value}. The channels are tried in the
+    order of the list, so an earlier one goes first. With none, the fiber waits for one, at most timeout seconds when
+    given: then an Err of kind "timeout"; a timeout of 0 never waits. A channel closed and empty, met before any value,
+    gives an Err of kind "closed" with its Channel. For a single channel, fiber.Receive.
+
+      jobs = fiber.Channel()
+      stop = fiber.Channel()
+      fiber.Send("job 1", jobs)
+      fiber.Select([stop, jobs]).Value.Value --> "job 1"
+      fiber.Close(stop)
+      fiber.Select([stop, jobs]).Error.Kind --> "closed"
+      fiber.Select([jobs], timeout = 0).Error.Kind --> "timeout" *)
+
 (** fiber.Close(ch)
     Says that nothing more will be sent on a channel. The values already in it still come; then Receive gives an Err of
-    kind "closed" at once. Sending on it then, or closing it again, is a bug.
+    kind "closed" at once, and a for loop over the channel ends. Sending on it then, or closing it again, is a bug, as is
+    a Send that was waiting for room.
 
       ch = fiber.Channel()
       fiber.Send(1, ch)
+      fiber.Send(2, ch)
       fiber.Close(ch)
-      fiber.Receive(ch) --> result.Ok(1)
+      [v * 10 for v in ch] --> [10, 20]
       fiber.Receive(ch).Error.Kind --> "closed" *)
 
 (** value.Len(x)
