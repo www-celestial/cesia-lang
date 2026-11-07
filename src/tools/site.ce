@@ -721,8 +721,8 @@ defn copied(source, target)
 end
 
 defn ran(job, chosen, name)
-  (** Runs the blocks chosen of a page as one program of .run, in a fresh copy of the files/ of its book, with the permissions its blocks
-      ask for there: {Code, Out, Err, Program, Uses}. *)
+  (** Runs the blocks chosen of a page as one program in the folder of runs, in a fresh copy of the files/ of its book, with
+      the permissions its blocks ask for there: {Code, Out, Err, Program, Uses}. *)
   p = program(job.Runs, chosen, job.Mark)
   file = "$(job.Run)/$name.ce"
   work = "$(job.Run)/$name"
@@ -1152,8 +1152,9 @@ defn pageKey(key, shape, page, results)
   cesia.Fingerprint(text.Str(key, "\n", shape, "\n", page.Path, "\n", page.Text, "\n", value.Text([dict.GetOr(page.Path, missing, results)])))
 end
 
-defn build(root, folder, cache)
-  (** The pages of the site, written into the folder; an Err lists the mistakes. *)
+defn build(root, folder, cache, runs)
+  (** The pages of the site, written into the folder; the programs of its pages run in the folder runs. An Err lists the
+      mistakes. *)
   config = settings(root)?
   modules = cesia.DocNames()
   lists = dict.Dict([{Key: m, Value: names(m)} for m in modules])
@@ -1167,7 +1168,7 @@ defn build(root, folder, cache)
       targets[n.Name] = n.Path
     end
   end
-  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache, Run: "$folder/.run", Tree: {}, Columns: {}, Version: cesia.Version(), Home: "book"}
+  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache, Run: runs, Tree: {}, Columns: {}, Version: cesia.Version(), Home: "book"}
   books = booksOf(root, site)
   book = books.Pages
   site.Home = books.Home
@@ -1240,11 +1241,12 @@ defn opened(file)
 end
 
 defn Main()
-  (** Builds the site of Args: the root of the project, the folder, the folder of the cache, and --open if it was asked. *)
-  if value.Len(sys.Args) < 3
+  (** Builds the site of Args: the root of the project, the folder, the folder of the cache, the folder where the pages run,
+      and --open if it was asked. *)
+  if value.Len(sys.Args) < 4
     return result.Err("usage: cesia doc --site [folder] [--open]")
   end
-  count = build(sys.Args[1], sys.Args[2], sys.Args[3])?
+  count = build(sys.Args[1], sys.Args[2], sys.Args[3], sys.Args[4])?
   index = "$(sys.Args[2])/index.html"
   io.Print("$count files: file://$index")
   if "--open" in sys.Args

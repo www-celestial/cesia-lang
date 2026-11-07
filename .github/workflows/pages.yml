@@ -55,10 +55,9 @@ jobs:
       - run: opam exec -- dune build --profile release ./src/bin/main.exe ./src/jit/cesia_jit.cmxs ./src/sqlite/cesia_sqlite.cmxs ./src/debug/cesia_debug.cmxs
       - name: Site
         run: _build/default/src/bin/main.exe doc --site _site
-      # What the build keeps for itself: the programs of the book's pages and their folders, and what lets the next build
-      # skip a page that didn't change.
+      # What the build keeps for itself: what lets the next build skip a page that didn't change.
       - name: Only the pages
-        run: rm -rf _site/.run _site/.pages _site/.reference _site/.book
+        run: rm -rf _site/.pages _site/.reference _site/.book
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site

@@ -114,4 +114,7 @@ How many words a text holds.
 == a build keeps the pages whose sources didn't change, and makes again the others
 A warm greeting for a name
 files.html">Files and folders
+== a site outside the project, with nothing in the cache: its pages still run as files of the project
+built: 0
+<code>Hello, Ana!</code>
 exit 0

@@ -322,26 +322,31 @@ let doc args =
 
 
 (* cesia doc --site [folder] [--open]: the site of the project here, in its site/, or else of Cesia, in the cache. The tool
-   gets the root of the project and the folder, both from the top of the file system; it writes only the folder and the
-   cache, runs only this Cesia, and opens the page with the browser of the system. *)
+   gets the root of the project, the folder, the cache and the folder where the programs of the pages run, all from the top
+   of the file system. Those programs run in the project's .cesia/site, as files of the project wherever the folder is, so
+   that their uses find its src/ and deps/; out of any project, in the folder. The tool writes only there, runs only this
+   Cesia, and opens the page with the browser of the system. *)
 let site args =
   let home = Option.value (Sys.getenv_opt "HOME") ~default:"." in
   let cache = match Sys.getenv_opt "XDG_CACHE_HOME" with Some d when d <> "" -> d | _ -> Filename.concat home ".cache" in
   let cache = Filename.concat cache "cesia/site" in
   let root = Package.root_of "." in
+  let project = Sys.file_exists (Filename.concat root Package.project_file) in
   let folder =
     match List.filter (( <> ) "--open") args with
     | [ f ] when f <> "" && f.[0] <> '-' -> Package.absolute f
-    | [] when Sys.file_exists (Filename.concat root Package.project_file) -> Filename.concat root "site"
+    | [] when project -> Filename.concat root "site"
     | [] -> Filename.concat cache Version.number
     | _ -> usage ()
   in
+  let runs = if project then Filename.concat (Filename.concat root ".cesia") "site" else Filename.concat folder ".run" in
   let opener = if Sys.win32 then "cmd" else if Sys.file_exists "/System/Library/CoreServices" then "open" else "xdg-open" in
   let grants =
     String.concat ","
-      [ "read"; "write=" ^ folder; "write=" ^ cache; "exec=" ^ Sys.executable_name; "exec=" ^ opener; "env=CESIA_CORES" ]
+      [ "read"; "write=" ^ folder; "write=" ^ cache; "write=" ^ runs; "exec=" ^ Sys.executable_name; "exec=" ^ opener;
+        "env=CESIA_CORES" ]
   in
-  exit (tool ~grants "site" (root :: folder :: cache :: List.filter (( = ) "--open") args))
+  exit (tool ~grants "site" (root :: folder :: cache :: runs :: List.filter (( = ) "--open") args))
 
 (* The project, then its std/ through the tool that keeps it: one way to write std/ and cesia.lock. *)
 let create name =

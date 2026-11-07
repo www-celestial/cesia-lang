@@ -12,9 +12,9 @@ done
 echo "== the columns of a method: its module, then its struct, then itself"
 sed -n '/<nav class="side"/,/<\/nav>/p' site/ref/src/greet/Greeter.Say.html | grep -E 'greet|Greeter|Say|Hello'
 grep -o '<nav class="trail".*</nav>' site/ref/src/greet/Greeter.Say.html
-rm -r site/.run
+rm -r .cesia/site
 cesia doc --site > /dev/null
-if [ -e site/.run ]; then echo "a page ran again"; else echo "nothing ran again"; fi
+if [ -e .cesia/site ]; then echo "a page ran again"; else echo "nothing ran again"; fi
 echo "== a second book, under its own name, and a folder of docs/ without pages, which is none"
 grep -o '<a href="guides/index.html"[^>]*>Guides</a>' site/index.html
 grep -o 'href="deploy.html">deploying</a>\|href="../first.html">the first steps</a>' site/guides/index.html
@@ -28,4 +28,8 @@ sed -i.bak 's/^# Files$/# Files and folders/' docs/book/files.md
 cesia doc --site > /dev/null
 grep -o 'A warm greeting for a name' site/ref/src/greet/Hello.html
 grep -o 'files.html">Files and folders' site/first.html
+echo "== a site outside the project, with nothing in the cache: its pages still run as files of the project"
+XDG_CACHE_HOME="$t/fresh" cesia doc --site "$t/outside" > /dev/null
+echo "built: $?"
+grep -o '<code>Hello, Ana!</code>' "$t/outside/first.html"
 rm -rf "$t"

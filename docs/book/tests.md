@@ -267,7 +267,8 @@ A project can have books too, in `docs/`: each folder of Markdown pages there is
 chapters in their order. `docs/book/` is the home of the site, and another folder, as `docs/guides/`, is a book beside it. A
 `files/` folder in a book holds the files its examples read. Every `cesia` block of a page runs when the site is built, and
 what it prints is written under it. This book is built that way, so its examples can't drift from the language: a block
-that gives another value stops the build.
+that gives another value stops the build. Each page runs as a program of the project, from `.cesia/site/`, which `cesia new`
+keeps out of git: its blocks can use the packages of `src/` and `deps/`, wherever the site is written.
 
 ```text
 docs/
