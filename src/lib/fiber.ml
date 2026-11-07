@@ -2,7 +2,8 @@ open Types
 open Effect
 open Effect.Deep
 
-type _ Effect.t += Suspend : ((unit -> unit) -> unit) -> unit Effect.t
+(* A fiber parks through an effect: [register] gets the function that wakes it. *)
+type _ Effect.t += Suspend : ((unit -> bool) -> unit) -> unit Effect.t
 
 (* How often the scheduler looks at I/O while fibers are ready, in jobs. *)
 let poll_period = 256
@@ -18,15 +19,26 @@ let step w =
     Runtime.flush_out w;
     w.idle true
 
-(* A spawned fiber suspends through an effect. The main program isn't a fiber, which keeps its stack and its speed:
+(* A wait takes a number, odd while it lasts: its wake queues the fiber the first time only, and says whether it did. A
+   fiber parked in several places, or on a timer too, is woken once, and a channel that finds a fiber gone passes its
+   value on to the next one. *)
+let parked (ctx : ctx) =
+  let n = ctx.parks + 1 in
+  ctx.parks <- n;
+  n
+
+let[@inline] woken (ctx : ctx) n = ctx.parks = n && (ctx.parks <- n + 1; true)
+
+(* A spawned fiber parks through an effect. The main program isn't a fiber, which keeps its stack and its speed:
    it runs the scheduler itself until it is woken, in FIFO order with the others. *)
-let suspend (ctx : ctx) register =
+let park (ctx : ctx) register =
   if ctx.fiber then perform (Suspend register)
   else begin
     let w = ctx.w in
-    let woken = ref false in
-    register (fun () -> Queue.add (fun () -> woken := true) w.sched.ready);
-    while not !woken do
+    let woke = ref false in
+    let n = parked ctx in
+    register (fun () -> woken ctx n && (Queue.add (fun () -> woke := true) w.sched.ready; true));
+    while not !woke do
       if not (step w) then begin
         w.sched.current <- Some ctx;
         Runtime.fail ctx User Messages.deadlock
@@ -35,15 +47,17 @@ let suspend (ctx : ctx) register =
     w.sched.current <- Some ctx
   end
 
+let suspend ctx register = park ctx (fun wake -> register (fun () -> ignore (wake ())))
+
 (* A long computation lets the others run at each full checkpoint, except while the debugger holds the program. *)
 let yield (ctx : ctx) =
   let w = ctx.w in
   if not w.debug.stopped then begin
     ignore (w.idle false);
-    if not (Queue.is_empty w.sched.ready) then suspend ctx (fun resume -> resume ())
+    if not (Queue.is_empty w.sched.ready) then park ctx (fun wake -> ignore (wake ()))
   end
 
-(* Runs a fiber until it ends or suspends. A panic is handled by the body, so what leaves here stops the program. *)
+(* Runs a fiber until it ends or parks. A panic is handled by the body, so what leaves here stops the program. *)
 let start w ctx body =
   let s = w.sched in
   s.current <- Some ctx;
@@ -56,12 +70,17 @@ let start w ctx body =
            | Suspend register ->
              Some
                (fun (k : (a, unit) continuation) ->
+                  let n = parked ctx in
                   register (fun () ->
-                      Queue.add
-                        (fun () ->
-                           s.current <- Some ctx;
-                           continue k ())
-                        s.ready))
+                      woken ctx n
+                      && begin
+                        Queue.add
+                          (fun () ->
+                             s.current <- Some ctx;
+                             continue k ())
+                          s.ready;
+                        true
+                      end))
            | _ -> None) }
 
 (* What [Wait] gives for a panic: the same fields as an error shown to the user. *)
@@ -87,7 +106,7 @@ let spawn (ctx : ctx) g =
   let s = w.sched in
   let id = s.next_id in
   s.next_id <- id + 1;
-  let task = { result = None; waiters = []; items = Queue.create () } in
+  let task = { result = None; waiters = [] } in
   let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true ~id w in
   fiber.site <- ctx.site;
   let finish r =
@@ -108,29 +127,63 @@ let spawn (ctx : ctx) g =
       finish (Value.err w (panic_value w (Messages.limit "nesting").text Type fiber.site))
   in
   Queue.add (fun () -> start w fiber body) s.ready;
-  Handle { kind = "task"; id; task = Some task }
+  Handle { kind = "task"; id; task = Some (Job task) }
 
 let wait (ctx : ctx) t =
   match t with
-  | Handle { kind = "task"; task = Some task; _ } ->
+  | Handle { kind = "task"; task = Some (Job task); _ } ->
     if Option.is_none task.result then suspend ctx (fun resume -> task.waiters <- resume :: task.waiters);
     (match task.result with
      | Some r -> Value.share r
      | None -> Runtime.fail ctx Type (Messages.need_task (Value.describe t)))
   | v -> Runtime.fail ctx Type (Messages.need_task (Value.describe v))
 
-(* Channels: a queue between fibers. Send never waits; Receive parks until a value comes, or until its timeout. *)
+(* Channels: a queue between fibers. Send waits only while a bounded channel is full; Receive parks until a value comes,
+   or until its timeout. *)
 let channel_arg ctx name (v : Types.t) =
   match v with
-  | Handle { kind = "channel"; task = Some ch; _ } -> ch
+  | Handle { kind = "channel"; task = Some (Chan ch); _ } -> ch
   | v -> Runtime.fail ctx Type (Messages.need_channel name (Value.describe v))
+
+(* Wakes the oldest receiver still parked. *)
+let rec wake_receiver ch =
+  match ch.receivers with
+  | [] -> ()
+  | wake :: rest ->
+    ch.receivers <- rest;
+    if not (wake ()) then wake_receiver ch
+
+(* The value of the oldest sender still parked, which goes on its way. *)
+let rec from_sender ch =
+  match Queue.take_opt ch.senders with
+  | None -> None
+  | Some s ->
+    if s.wake () then begin
+      s.taken <- true;
+      Some s.sent
+    end
+    else from_sender ch
+
+(* The oldest value of a channel, if it has one. A full channel takes in the value of its oldest parked sender. *)
+let next ch =
+  match Queue.take_opt ch.items with
+  | Some v ->
+    if not (Queue.is_empty ch.senders) then Option.iter (fun s -> Queue.add s ch.items) (from_sender ch);
+    Some v
+  | None -> from_sender ch
 
 let send ctx (a : Types.t array) =
   let ch = channel_arg ctx "Send" a.(1) in
-  Queue.add (Value.share a.(0)) ch.items;
-  (match ch.waiters with
-   | wake :: rest -> ch.waiters <- rest; wake ()
-   | [] -> ());
+  let v = Value.share a.(0) in
+  if Queue.length ch.items < ch.size then begin
+    Queue.add v ch.items;
+    wake_receiver ch
+  end
+  else
+    (* Full: the value waits with its fiber, which a receiver wakes as it takes it. Of size 0, it waits for one. *)
+    park ctx (fun wake ->
+        Queue.add { sent = v; taken = false; wake } ch.senders;
+        wake_receiver ch);
   Missing
 
 let timeout_keys = Trie.names [| "Kind"; "Message" |]
@@ -147,17 +200,15 @@ let receive ctx (a : Types.t array) =
   let timed_out = ref (limit = Some 0.) in
   (* One timer for the whole wait. A receiver woken may find the value taken by one that never parked: it parks again, at
      the front, since it came first. *)
-  let parked_wake = ref None and timing = ref false in
+  let parked = ref None and timing = ref false in
   let rec take again =
-    match Queue.take_opt ch.items with
+    match next ch with
     | Some v -> Value.ok ctx.w v
     | None when !timed_out -> Value.err ctx.w (Trie.record timeout_keys [| Text "timeout"; Text (Messages.receive_timeout.text) |])
     | None ->
-      suspend ctx (fun resume ->
-          let parked = ref true in
-          let wake () = if !parked then (parked := false; parked_wake := None; resume ()) in
-          parked_wake := Some wake;
-          ch.waiters <- (if again then wake :: ch.waiters else ch.waiters @ [ wake ]);
+      park ctx (fun wake ->
+          parked := Some wake;
+          ch.receivers <- (if again then wake :: ch.receivers else ch.receivers @ [ wake ]);
           if not !timing then begin
             timing := true;
             Option.iter
@@ -166,22 +217,31 @@ let receive ctx (a : Types.t array) =
                      timed_out := true;
                      Option.iter
                        (fun wake ->
-                          ch.waiters <- List.filter (fun w -> w != wake) ch.waiters;
-                          wake ())
-                       !parked_wake))
+                          ch.receivers <- List.filter (fun w -> w != wake) ch.receivers;
+                          ignore (wake ()))
+                       !parked))
               limit
           end);
       take true
   in
   take false
 
+let channel ctx (a : Types.t array) =
+  let size =
+    match if Array.length a > 0 then a.(0) else Undef with
+    | Undef | Missing -> max_int
+    | Int n when n >= 0 -> n
+    | v -> Runtime.fail ctx Type (Messages.channel_size (Value.describe v))
+  in
+  let s = ctx.w.sched in
+  s.next_id <- s.next_id + 1;
+  Handle
+    { kind = "channel"; id = s.next_id - 1;
+      task = Some (Chan { items = Queue.create (); size; receivers = []; senders = Queue.create () }) }
+
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
     "Wait", Native.nat ~result:true "Wait" 1 1 (fun ctx a -> wait ctx a.(0));
-    "Channel",
-    Native.nat "Channel" 0 0 (fun ctx _ ->
-        let s = ctx.w.sched in
-        s.next_id <- s.next_id + 1;
-        Handle { kind = "channel"; id = s.next_id - 1; task = Some { result = None; waiters = []; items = Queue.create () } });
+    "Channel", Native.nat ~params:[| "size" |] "Channel" 0 1 channel;
     "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
     "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive ]

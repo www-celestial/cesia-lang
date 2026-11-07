@@ -49,8 +49,24 @@ and node =
   | Same of dict  (** keys whose 30 bits of hash are all equal: a balanced tree, which no choice of keys slows down *)
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
-and task = { mutable result : t option; mutable waiters : (unit -> unit) list; items : t Queue.t }
-(** A task, or a channel: its [items] in the order they were sent, and its [waiters] the receivers parked on it. *)
+(** What a handle of std/fiber points to. *)
+and task = Job of job | Chan of chan
+
+(** A task: its [result] once it ended, and the fibers that wait for it. *)
+and job = { mutable result : t option; mutable waiters : (unit -> unit) list }
+
+(** A channel: its [items] in the order they were sent, at most [size] of them ([max_int]: no limit), the [receivers]
+    parked on it, oldest first, and the [senders] parked while it is full. A parked fiber's wake gives false when the
+    fiber had already gone, woken by something else. *)
+and chan = {
+  items : t Queue.t;
+  size : int;
+  mutable receivers : (unit -> bool) list;
+  senders : sender Queue.t;
+}
+
+(** A value that waits to go in a full channel, and the fiber that sent it: [taken] once a receiver has it. *)
+and sender = { sent : t; mutable taken : bool; wake : unit -> bool }
 
 (** A list that Append made can have free cells behind its last one, so a store can be longer than [rows * cols]. Read its
     cells through [rows] and [cols], and call [Value.trim] before reading a store as a whole. [a_tip]: no push went on from
@@ -142,6 +158,7 @@ and ctx = {
   max_depth : int;
   fiber : bool;  (** a spawned fiber, as opposed to the main program *)
   id : int;  (** the number of the fiber, 0 for the main program *)
+  mutable parks : int;  (** odd while parked: counts its waits and wakes, so a wake meant for an earlier wait does nothing *)
   w : world;
 }
 

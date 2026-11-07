@@ -14,6 +14,12 @@ call it. C has a stable one on each system and C++ has none, so Cesia reaches C+
 A function without a name, written where it is used; also called a lambda. In Cesia, `x -> x + 1` on one line, or
 `defn (x)` up to `end` for several: see [Functions](functions.md#functions-as-values).
 
+## Backpressure
+
+A slow receiver slowing down its sender, so that the values waiting between them stay few and the memory bounded. In Cesia
+a channel made with a size, `fiber.Channel(size = 100)`, makes [fiber.Send] wait while it is full: see
+[Fibers](fibers.md#a-channel-of-a-size).
+
 ## Binding
 
 The link between a name and a value. In Cesia `=` binds a name, and binding it again gives it another value: see

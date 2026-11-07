@@ -182,6 +182,7 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
     max_depth = w.limits.max_depth;
     fiber;
     id;
+    parks = 0;
     w }
 
 (* Three stacks of [cap] entries. *)

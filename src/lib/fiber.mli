@@ -2,7 +2,8 @@
     scheduler whenever it waits, and the other fibers are dropped when it ends. *)
 open Types
 
-(** Parks the current fiber and calls [register resume]. Calling [resume] once puts it back in the queue. *)
+(** Parks the current fiber and calls [register resume]. Calling [resume] once puts it back in the queue; later calls do
+    nothing. *)
 val suspend : ctx -> ((unit -> unit) -> unit) -> unit
 
 (** Lets the other fibers run, if there are any. *)

@@ -171,15 +171,23 @@ use std/test
 
       fiber.Wait(fiber.Spawn(() -> 1)) --> result.Ok(1) *)
 
-(** fiber.Channel()
-    A new channel: a queue of values between fibers.
+(** fiber.Channel(size = missing)
+    A new channel: a queue of values between fibers. With a size, it holds that many values at most, and Send waits while
+    it is full: a fast sender goes at the pace of its receiver. A size of 0 holds none: Send waits for a receiver to take
+    its value.
 
       ch = fiber.Channel()
       fiber.Spawn(() -> fiber.Send("done", ch))
-      fiber.Receive(ch) --> result.Ok("done") *)
+      fiber.Receive(ch) --> result.Ok("done")
+      small = fiber.Channel(size = 1)
+      fiber.Send(1, small)
+      fiber.Spawn(() -> fiber.Send(2, small))
+      fiber.Receive(small) --> result.Ok(1)
+      fiber.Receive(small) --> result.Ok(2) *)
 
 (** fiber.Send(value, ch)
-    Puts a value at the end of a channel. It never waits, and wakes the first fiber waiting on it.
+    Puts a value at the end of a channel, and wakes the first fiber waiting on it. On a channel full to its size, it waits
+    for room first; else it never waits.
 
       ch = fiber.Channel()
       fiber.Send(1, ch)

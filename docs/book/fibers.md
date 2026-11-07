@@ -117,6 +117,30 @@ Here `missing` tells that nothing more will come.
 fiber.Receive(fiber.Channel(), timeout = 0.05) -->
 ```
 
+### A channel of a size
+
+A channel holds as many values as are sent to it, and a fast sender can fill the memory before a slow receiver catches
+up. With a size, [fiber.Channel] holds that many values at most, and [fiber.Send] waits while it is full: the sender goes at
+the pace of its receiver. This is called [backpressure](glossary.md#backpressure):
+
+```cesia
+tray = fiber.Channel(size = 1)
+start = sys.Now()
+fiber.Spawn(defn ()
+  for k in 1..3
+    sys.Sleep(0.1)
+    result.Unwrap(fiber.Receive(tray))
+  end
+end)
+for k in 1..3
+  fiber.Send(k, tray)
+end
+sys.Now() - start > 0.15 --> true
+```
+
+The first value fits; the second waits until the receiver takes the first, after `0.1` seconds, and the third until it
+takes the second. A size of `0` holds none: [fiber.Send] waits for a receiver to take its value, so the two fibers meet.
+
 ### Shared values
 
 Values in Cesia never change in place, they are [immutable](glossary.md#immutability), so two fibers can't break a value they share: a fiber that changes a list makes a new
