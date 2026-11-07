@@ -166,10 +166,24 @@ use std/test
       task = fiber.Spawn(() -> 6 * 7)
       fiber.Wait(task) --> result.Ok(42) *)
 
-(** fiber.Wait(task)
-    The result of a task, once it is done: an Ok of its value, or an Err if the fiber panicked.
+(** fiber.Wait(task, timeout = missing)
+    The result of a task, once it is done: an Ok of its value, or an Err if the fiber panicked. With timeout, it waits at
+    most that many seconds: then an Err of kind "timeout", and the task runs on. A timeout of 0 never waits.
+    A task stopped by fiber.Cancel gives an Err of kind "cancelled".
 
-      fiber.Wait(fiber.Spawn(() -> 1)) --> result.Ok(1) *)
+      fiber.Wait(fiber.Spawn(() -> 1)) --> result.Ok(1)
+      fiber.Wait(fiber.Spawn(() -> sys.Sleep(1)), timeout = 0.01).Error.Kind --> "timeout" *)
+
+(** fiber.Cancel(task)
+    Asks the fiber of a task to stop, and doesn't wait for it. It stops at its next wait (sys.Sleep, Receive, Select, a
+    Send on a full channel, the network, the database, Wait) or at the next checkpoint of a long computation, where it
+    lets the others run; a fiber that cancels itself stops at once. Wait then gives an Err of kind "cancelled", whose File
+    and Line tell where it was. A task that has ended stays as it was. What the fiber had to do after its wait, it doesn't
+    do: code that must end, as a transaction, runs in a fiber of its own.
+
+      task = fiber.Spawn(() -> sys.Sleep(10))
+      fiber.Cancel(task)
+      fiber.Wait(task).Error.Kind --> "cancelled" *)
 
 (** fiber.Channel(size = missing)
     A new channel: a queue of values between fibers. With a size, it holds that many values at most, and Send waits while

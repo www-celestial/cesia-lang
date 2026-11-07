@@ -351,15 +351,17 @@ defn Transaction(f, db, read = false)
   (** f(tx) inside a transaction, tx usable as db in every call: an Ok of f commits and gives its value, an Err rolls back
       and gives it, a panic rolls back and panics again. Anything else commits, as an Ok. Inside one, a Transaction of tx
       is a savepoint, rolled back alone. read opens a plain BEGIN, for reads only; else BEGIN IMMEDIATE takes the write
-      lock at once.
+      lock at once. It runs in a fiber of its own: a caller stopped by fiber.Cancel leaves it to end as f says, so that no
+      transaction stays open, holding the write lock and its connection.
 
         add(titles, tx) = [Exec("insert into notes (title) values (?)", [t], tx)?.LastId for t in titles]
         Transaction(tx -> add(["pay rent", "feed cat"], tx), db) --> result.Ok([3, 4])
         Transaction(tx -> add(["water plants", missing], tx), db) then result.MapErr(it.Code) --> result.Err("23502")
         One("select id from notes where title = ?", ["water plants"], db) --> result.Ok(missing) *)
-  if db.Tx
-    return savepoint(f, db)
-  end
+  rethrow(result.Unwrap(fiber.Wait(fiber.Spawn(() -> if db.Tx savepoint(f, db) else whole(f, db, read) end))))
+end
+
+defn whole(f, db, read)
   conn = sqlite3.Take(db.Pool)?
   tx = {Pool: db.Pool, Conn: conn, Tx: true, Done: fiber.Channel(), Depth: 0}
   begun = txExec(if read "begin" else "begin immediate" end, tx)
@@ -371,7 +373,7 @@ defn Transaction(f, db, read = false)
   fiber.Send(true, tx.Done)
   out = finish(r, ["commit"], ["rollback"], tx)
   sqlite3.Give(conn, db.Pool)
-  rethrow(out)
+  out
 end
 
 defn savepoint(f, tx)
@@ -383,7 +385,7 @@ defn savepoint(f, tx)
   txExec("savepoint $name", tx)?
   r = fiber.Wait(fiber.Spawn(() -> f(inner)))
   fiber.Send(true, inner.Done)
-  rethrow(finish(r, ["release $name"], ["rollback to $name", "release $name"], tx))
+  finish(r, ["release $name"], ["rollback to $name", "release $name"], tx)
 end
 
 defn Close(db)

@@ -52,8 +52,14 @@ and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int 
 (** What a handle of std/fiber points to. *)
 and task = Job of job | Chan of chan
 
-(** A task: its [result] once it ended, and the fibers that wait for it. *)
-and job = { mutable result : t option; mutable waiters : (unit -> unit) list }
+(** A task: its [result] once it ended, the fibers that wait for it, and while it runs, its fiber and the wake of the
+    fiber's wait, which fiber.Cancel calls. A task that ended holds neither, so its fiber's stacks are freed. *)
+and job = {
+  mutable result : t option;
+  mutable waiters : (unit -> unit) list;
+  mutable cx : ctx option;
+  mutable wake : unit -> bool;
+}
 
 (** A channel: its [items] in the order they were sent, at most [size] of them ([max_int]: no limit), the [receivers]
     parked on it, oldest first, and the [senders] parked while it is full. A parked fiber's wake gives false when the
@@ -160,6 +166,7 @@ and ctx = {
   fiber : bool;  (** a spawned fiber, as opposed to the main program *)
   id : int;  (** the number of the fiber, 0 for the main program *)
   mutable parks : int;  (** odd while parked: counts its waits and wakes, so a wake meant for an earlier wait does nothing *)
+  mutable cancelled : bool;  (** fiber.Cancel asked it to stop: it does at its next wait, or now if it is waiting *)
   w : world;
 }
 
@@ -233,7 +240,8 @@ and world = {
   mutable hook_count : int;  (** the compiled hooks *)
   sched : sched;
   mutable idle : bool -> bool;
-  mutable timer : float -> (unit -> unit) -> unit;  (** set by the system: calls a function after so many seconds *)
+  mutable timer : float -> (unit -> unit) -> unit -> unit;
+      (** set by the system: calls a function after so many seconds, and gives the function that cancels it *)
       (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
   mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
   mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)

@@ -168,7 +168,7 @@ let question_file = hinted "? can only be used inside a function, which it leave
 let question_space = plain "? must follow its value, with no space."
 let question_value a =
   hinted (Printf.sprintf "? needs an Ok or an Err, not %s." a) "Return a result from the function you call."
-let need_task a = plain (Printf.sprintf "Wait needs a task, not %s." a)
+let need_task name a = plain (Printf.sprintf "%s needs a task, not %s." name a)
 let empty_text name = plain (Printf.sprintf "%s needs a text that isn't empty." name)
 let need_array name a = plain (Printf.sprintf "%s needs an array, not %s." name a)
 let c_no_library name reason = plain (Printf.sprintf "Can't load %s: %s." name reason)
@@ -414,6 +414,8 @@ let sql_int_past name =
 let need_channel name a = plain (Printf.sprintf "%s needs a channel, not %s." name a)
 let bad_timeout a = plain (Printf.sprintf "A timeout is a number of seconds, 0 or more, not %s." a)
 let receive_timeout = plain "Nothing came on the channel before the timeout."
+let wait_timeout = plain "The task didn't end before the timeout."
+let cancelled = plain "The fiber was cancelled here."
 let send_closed = plain "Send to a closed channel: Close said that nothing more comes."
 let closed_twice = plain "This channel is closed already."
 let channel_closed = plain "The channel is closed, and nothing is left in it."

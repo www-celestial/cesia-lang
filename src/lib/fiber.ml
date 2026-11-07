@@ -5,6 +5,9 @@ open Effect.Deep
 (* A fiber parks through an effect: [register] gets the function that wakes it. *)
 type _ Effect.t += Suspend : ((unit -> bool) -> unit) -> unit Effect.t
 
+(* Raised where a fiber that fiber.Cancel stopped was waiting: it unwinds the fiber, as a panic does, but quietly. *)
+exception Cancelled
+
 (* How often the scheduler looks at I/O while fibers are ready, in jobs. *)
 let poll_period = 256
 
@@ -54,11 +57,12 @@ let yield (ctx : ctx) =
   let w = ctx.w in
   if not w.debug.stopped then begin
     ignore (w.idle false);
-    if not (Queue.is_empty w.sched.ready) then park ctx (fun wake -> ignore (wake ()))
+    if ctx.cancelled || not (Queue.is_empty w.sched.ready) then park ctx (fun wake -> ignore (wake ()))
   end
 
-(* Runs a fiber until it ends or parks. A panic is handled by the body, so what leaves here stops the program. *)
-let start w ctx body =
+(* Runs a fiber until it ends or parks. A panic is handled by the body, so what leaves here stops the program. The wake of
+   its wait goes in its task, so that Cancel can wake it; it resumes with Cancelled if it was asked to stop. *)
+let start w (job : job) ctx body =
   let s = w.sched in
   s.current <- Some ctx;
   match_with body ()
@@ -71,25 +75,32 @@ let start w ctx body =
              Some
                (fun (k : (a, unit) continuation) ->
                   let n = parked ctx in
-                  register (fun () ->
-                      woken ctx n
-                      && begin
-                        Queue.add
-                          (fun () ->
-                             s.current <- Some ctx;
-                             continue k ())
-                          s.ready;
-                        true
-                      end))
+                  let wake () =
+                    woken ctx n
+                    && begin
+                      Queue.add
+                        (fun () ->
+                           s.current <- Some ctx;
+                           if ctx.cancelled then discontinue k Cancelled else continue k ())
+                        s.ready;
+                      true
+                    end
+                  in
+                  job.wake <- wake;
+                  register wake)
            | _ -> None) }
 
 (* What [Wait] gives for a panic: the same fields as an error shown to the user. *)
 let panic_keys = Trie.names [| "Message"; "Kind"; "File"; "Line" |]
 
-let panic_value w text kind at =
+let ended_value w text kind at =
   let site = Dynarray.get w.sites at in
   let path, _ = Dynarray.get w.files site.sfile in
-  Trie.record panic_keys [| Text text; Text (Value.kind_name kind); Text path; Int (Pos.line site.spos) |]
+  Trie.record panic_keys [| Text text; Text kind; Text path; Int (Pos.line site.spos) |]
+
+let panic_value w text kind at = ended_value w text (Value.kind_name kind) at
+
+let not_parked () = false
 
 (* The stacks of a new fiber, in entries. They grow on demand, and a server has thousands of idle fibers. *)
 let fiber_stack = 64
@@ -106,18 +117,21 @@ let spawn (ctx : ctx) g =
   let s = w.sched in
   let id = s.next_id in
   s.next_id <- id + 1;
-  let task = { result = None; waiters = [] } in
   let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true ~id w in
   fiber.site <- ctx.site;
+  let task = { result = None; waiters = []; cx = Some fiber; wake = not_parked } in
   let finish r =
     Runtime.settle fiber;
     task.result <- Some r;
+    task.cx <- None;
+    task.wake <- not_parked;
     List.iter (fun wake -> wake ()) (List.rev task.waiters);
     task.waiters <- []
   in
   let body () =
-    match Compile.call_value fiber ~base:2 g [||] with
+    match if fiber.cancelled then raise Cancelled else Compile.call_value fiber ~base:2 g [||] with
     | v -> finish (Value.ok w v)
+    | exception Cancelled -> finish (Value.err w (ended_value w Messages.cancelled.text "cancelled" fiber.site))
     | exception (Value.Kerr { text; kind; at; _ } as e) ->
       w.on_panic fiber e;
       finish (Value.err w (panic_value w text kind at))
@@ -126,17 +140,54 @@ let spawn (ctx : ctx) g =
       w.on_panic fiber e;
       finish (Value.err w (panic_value w (Messages.limit "nesting").text Type fiber.site))
   in
-  Queue.add (fun () -> start w fiber body) s.ready;
+  Queue.add (fun () -> start w task fiber body) s.ready;
   Handle { kind = "task"; id; task = Some (Job task) }
 
-let wait (ctx : ctx) t =
-  match t with
-  | Handle { kind = "task"; task = Some (Job task); _ } ->
-    if Option.is_none task.result then suspend ctx (fun resume -> task.waiters <- resume :: task.waiters);
-    (match task.result with
-     | Some r -> Value.share r
-     | None -> Runtime.fail ctx Type (Messages.need_task (Value.describe t)))
-  | v -> Runtime.fail ctx Type (Messages.need_task (Value.describe v))
+(* A timeout in seconds, or None for none. *)
+let seconds_arg ctx (v : Types.t) =
+  match v with
+  | Undef | Missing -> None
+  | Int i when i >= 0 -> Some (float_of_int i)
+  | Float x when x >= 0. -> Some x
+  | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
+
+let job_arg ctx name (v : Types.t) =
+  match v with
+  | Handle { kind = "task"; task = Some (Job job); _ } -> job
+  | v -> Runtime.fail ctx Type (Messages.need_task name (Value.describe v))
+
+(* Parks until the task ends, or until the timeout: the first of the two wakes the fiber, and takes the other away. *)
+let wait ?timeout (ctx : ctx) t =
+  let job = job_arg ctx "Wait" t in
+  (match job.result, timeout with
+   | Some _, _ | None, Some 0. -> ()
+   | None, None -> suspend ctx (fun wake -> job.waiters <- wake :: job.waiters)
+   | None, Some seconds ->
+     let stop_timer = ref ignore and mine = ref ignore in
+     let leave () =
+       !stop_timer ();
+       job.waiters <- List.filter (fun w -> w != !mine) job.waiters
+     in
+     match
+       suspend ctx (fun wake ->
+           (mine := fun () -> !stop_timer (); wake ());
+           job.waiters <- !mine :: job.waiters;
+           stop_timer := ctx.w.timer seconds (fun () -> leave (); wake ()))
+     with
+     | () -> ()
+     | exception e -> leave (); raise e);
+  match job.result with
+  | Some r -> Value.share r
+  | None -> Value.failure ctx.w "timeout" Messages.wait_timeout.text
+
+(* A fiber that asks itself to stop does at once; another one, at its wait, or at its start if it hasn't begun. *)
+let cancel ctx (a : Types.t array) =
+  (match (job_arg ctx "Cancel" a.(0)) with
+   | { cx = Some cx; wake; _ } when not cx.cancelled ->
+     cx.cancelled <- true;
+     if cx == ctx then raise Cancelled else ignore (wake ())
+   | _ -> ());
+  Missing
 
 (* Channels: a queue between fibers. Send waits only while a bounded channel is full; Receive parks until a value comes,
    or until its timeout. *)
@@ -172,6 +223,17 @@ let next ch =
     Some v
   | None -> from_sender ch
 
+(* Does a channel have a value for a receiver? *)
+let has_value ch = not (Queue.is_empty ch.items && Queue.is_empty ch.senders)
+
+(* A receiver that leaves by a cancel, perhaps woken for a value it never took, passes the wake on to the next one. *)
+let leave chs wake =
+  List.iter
+    (fun ch ->
+       ch.receivers <- List.filter (fun w -> w != wake) ch.receivers;
+       if has_value ch then wake_receiver ch)
+    chs
+
 let send ctx (a : Types.t array) =
   let ch = channel_arg ctx "Send" a.(1) in
   if ch.closed then Runtime.fail ctx User Messages.send_closed;
@@ -194,30 +256,24 @@ let send ctx (a : Types.t array) =
   end;
   Missing
 
-(* A timeout in seconds, or None for none. *)
-let seconds_arg ctx (v : Types.t) =
-  match v with
-  | Undef | Missing -> None
-  | Int i when i >= 0 -> Some (float_of_int i)
-  | Float x when x >= 0. -> Some x
-  | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
-
 type taken = Came of Types.t | Closed | Late
 
 (* Parks until a value comes, the channel is closed, or [limit] seconds pass, with one timer for the whole wait. A receiver
    woken may find the value taken by one that never parked: it parks again, at the front, since it came first. *)
 let await ctx ch limit =
   let timed_out = ref false and parked = ref None in
-  Option.iter
-    (fun seconds ->
-       ctx.w.timer seconds (fun () ->
-           timed_out := true;
-           Option.iter
-             (fun wake ->
-                ch.receivers <- List.filter (fun w -> w != wake) ch.receivers;
-                ignore (wake ()))
-             !parked))
-    limit;
+  let stop_timer =
+    match limit with
+    | None -> ignore
+    | Some seconds ->
+      ctx.w.timer seconds (fun () ->
+          timed_out := true;
+          Option.iter
+            (fun wake ->
+               ch.receivers <- List.filter (fun w -> w != wake) ch.receivers;
+               ignore (wake ()))
+            !parked)
+  in
   let rec go again =
     park ctx (fun wake ->
         parked := Some wake;
@@ -228,7 +284,12 @@ let await ctx ch limit =
     | None when !timed_out -> Late
     | None -> go true
   in
-  go false
+  match go false with
+  | got -> stop_timer (); got
+  | exception e ->
+    stop_timer ();
+    Option.iter (leave [ ch ]) !parked;
+    raise e
 
 (* The oldest value of a channel, waiting at most [limit] seconds for one. *)
 let take ctx ch limit =
@@ -246,9 +307,6 @@ let receive ctx (a : Types.t array) =
   | Late -> Value.failure ctx.w "timeout" Messages.receive_timeout.text
 
 let next_in ctx v = match take ctx (channel_arg ctx "for" v) None with Came v -> Some v | Closed | Late -> None
-
-(* Does a channel have a value for a receiver? *)
-let has_value ch = not (Queue.is_empty ch.items && Queue.is_empty ch.senders)
 
 let select_keys = Trie.names [| "Channel"; "Value" |]
 let closed_keys = Trie.names [| "Kind"; "Message"; "Channel" |]
@@ -275,7 +333,7 @@ let select ctx (a : Types.t array) =
        | None when ch.closed -> Some (h, ch, Closed)
        | None -> first rest)
   in
-  let timed_out = ref (limit = Some 0.) and parked = ref None and timing = ref false in
+  let timed_out = ref (limit = Some 0.) and parked = ref None and stop_timer = ref None in
   let rec go again =
     match first chs with
     | Some (h, taken, got) ->
@@ -285,15 +343,15 @@ let select ctx (a : Types.t array) =
        | Closed | Late -> Value.err ctx.w (Trie.record closed_keys [| Text "closed"; Text Messages.channel_closed.text; h |]))
     | None when !timed_out -> Value.failure ctx.w "timeout" Messages.select_timeout.text
     | None ->
-      if not !timing then begin
-        timing := true;
-        Option.iter
-          (fun seconds ->
-             ctx.w.timer seconds (fun () ->
-                 timed_out := true;
-                 Option.iter (fun wake -> ignore (wake ())) !parked))
-          limit
-      end;
+      if Option.is_none !stop_timer then
+        stop_timer :=
+          Some
+            (match limit with
+             | None -> ignore
+             | Some seconds ->
+               ctx.w.timer seconds (fun () ->
+                   timed_out := true;
+                   Option.iter (fun wake -> ignore (wake ())) !parked));
       park ctx (fun wake ->
           parked := Some wake;
           List.iter
@@ -304,7 +362,13 @@ let select ctx (a : Types.t array) =
         !parked;
       go true
   in
-  go false
+  let stop () = Option.iter (fun f -> f ()) !stop_timer in
+  match go false with
+  | got -> stop (); got
+  | exception e ->
+    stop ();
+    Option.iter (leave (List.map snd chs)) !parked;
+    raise e
 
 (* Nothing more comes: the receivers parked wake to what is left, then to its end; the senders parked find it closed. *)
 let close ctx (a : Types.t array) =
@@ -333,7 +397,10 @@ let channel ctx (a : Types.t array) =
 
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
-    "Wait", Native.nat ~result:true "Wait" 1 1 (fun ctx a -> wait ctx a.(0));
+    "Wait",
+    Native.nat ~result:true ~params:[| "task"; "timeout" |] "Wait" 1 2 (fun ctx a ->
+        wait ?timeout:(seconds_arg ctx (if Array.length a > 1 then a.(1) else Undef)) ctx a.(0));
+    "Cancel", Native.nat ~params:[| "task" |] "Cancel" 1 1 cancel;
     "Channel", Native.nat ~params:[| "size" |] "Channel" 0 1 channel;
     "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
     "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive;

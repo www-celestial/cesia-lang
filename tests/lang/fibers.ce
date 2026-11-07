@@ -190,3 +190,86 @@ isSelectNoWait() = fiber.Select([fiber.Channel(), fiber.Channel()], timeout = 0)
 isSelectPassesOn() = value.Equal(passedOn(), ["a", "b"])
 isSelectSizeZero() = selectSender() == "met"
 isSelectNotList() = result.IsErr(fiber.Wait(fiber.Spawn(() -> fiber.Select(fiber.Channel()))))
+
+defn forever()
+  n = 0
+  while true
+    n += 1
+  end
+end
+defn waitTimeout()
+  t = fiber.Spawn(() -> sys.Sleep(0.05))
+  early = fiber.Wait(t, timeout = 0.001).Error.Kind
+  now = fiber.Wait(t, timeout = 0).Error.Kind
+  [early, now, fiber.Wait(t, timeout = 5), fiber.Wait(t, timeout = 0)]
+end
+defn cancelLoop()
+  t = fiber.Spawn(forever)
+  late = fiber.Wait(t, timeout = 0.01).Error.Kind
+  fiber.Cancel(t)
+  [late, fiber.Wait(t).Error.Kind]
+end
+defn cancelBeforeStart()
+  ran = fiber.Channel()
+  t = fiber.Spawn(() -> fiber.Send(true, ran))
+  fiber.Cancel(t)
+  [fiber.Wait(t).Error.Kind, fiber.Receive(ran, timeout = 0).Error.Kind]
+end
+defn cancelSelf()
+  inbox = fiber.Channel()
+  after = fiber.Channel()
+  t = fiber.Spawn(defn ()
+    fiber.Cancel(result.Unwrap(fiber.Receive(inbox)))
+    fiber.Send(true, after)
+  end)
+  fiber.Send(t, inbox)
+  [fiber.Wait(t).Error.Kind, fiber.Receive(after, timeout = 0).Error.Kind]
+end
+defn cancelDone()
+  t = fiber.Spawn(() -> 1)
+  fiber.Wait(t)
+  fiber.Cancel(t)
+  fiber.Wait(t)
+end
+defn cancelPassesOn(receive)
+  ch = fiber.Channel()
+  first = fiber.Spawn(() -> receive(ch))
+  second = fiber.Spawn(() -> receive(ch))
+  sys.Sleep(0)
+  fiber.Send("x", ch)
+  fiber.Cancel(first)
+  [fiber.Wait(first).Error.Kind, result.Unwrap(fiber.Wait(second, timeout = 1))]
+end
+defn cancelSender()
+  ch = fiber.Channel(size = 1)
+  fiber.Send("a", ch)
+  s = fiber.Spawn(() -> fiber.Send("b", ch))
+  sys.Sleep(0)
+  fiber.Cancel(s)
+  [fiber.Wait(s).Error.Kind, fiber.Receive(ch).Value, fiber.Receive(ch, timeout = 0).Error.Kind]
+end
+defn cancelWaiting()
+  inner = fiber.Spawn(() -> sys.Sleep(0.01))
+  outer = fiber.Spawn(() -> fiber.Wait(inner))
+  sys.Sleep(0)
+  fiber.Cancel(outer)
+  [fiber.Wait(outer).Error.Kind, fiber.Wait(inner)]
+end
+defn cancelledAt()
+  t = fiber.Spawn(() -> sys.Sleep(1))
+  sys.Sleep(0)
+  fiber.Cancel(t)
+  e = fiber.Wait(t).Error
+  [e.Message, value.IsText(e.File), e.Line > 0]
+end
+isWaitTimeout() = value.Equal(waitTimeout(), ["timeout", "timeout", result.Ok(missing), result.Ok(missing)])
+isCancelLoop() = value.Equal(cancelLoop(), ["timeout", "cancelled"])
+isCancelBeforeStart() = value.Equal(cancelBeforeStart(), ["cancelled", "timeout"])
+isCancelSelf() = value.Equal(cancelSelf(), ["cancelled", "timeout"])
+isCancelDone() = cancelDone() == result.Ok(1)
+isCancelPassesOnReceive() = value.Equal(cancelPassesOn(ch -> fiber.Receive(ch).Value), ["cancelled", "x"])
+isCancelPassesOnSelect() = value.Equal(cancelPassesOn(ch -> fiber.Select([ch]).Value.Value), ["cancelled", "x"])
+isCancelSender() = value.Equal(cancelSender(), ["cancelled", "a", "timeout"])
+isCancelWaiting() = value.Equal(cancelWaiting(), ["cancelled", result.Ok(missing)])
+isCancelledAt() = value.Equal(cancelledAt(), ["The fiber was cancelled here.", true, true])
+isCancelNotTask() = result.IsErr(fiber.Wait(fiber.Spawn(() -> fiber.Cancel(fiber.Channel()))))

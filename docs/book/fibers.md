@@ -53,6 +53,29 @@ sys.Sleep(0.001)
 fiber.Wait(busy) -->
 ```
 
+## Waiting at most, and stopping a fiber
+
+[fiber.Wait] can wait for a time at most: past it, it gives an `Err` of kind `"timeout"`, and the task runs on.
+[fiber.Cancel] stops it: the fiber stops at its next wait, as a [sys.Sleep], a [fiber.Receive] or a call to the network, or
+at the next checkpoint of a long computation, where it lets the others run. Then [fiber.Wait] gives an `Err` of kind
+`"cancelled"`, which tells the file and the line where the fiber was. A server gives each request a time this way:
+
+```cesia
+stuck = fiber.Spawn(defn ()
+  n = 0
+  while true
+    n += 1
+  end
+end)
+fiber.Wait(stuck, timeout = 0.05).Error.Kind --> "timeout"
+fiber.Cancel(stuck)
+fiber.Wait(stuck).Error.Kind --> "cancelled"
+```
+
+The loop never waits, and it stops all the same. What the fiber had to do after its wait, it doesn't do, so code that
+must finish runs in a fiber of its own, which nothing else can stop: a transaction of [sql.Transaction] does, and ends
+as its function says even when the fiber that began it is stopped.
+
 ## Pmap
 
 [fiber.Pmap] is [list.Map] with one fiber per element. It suits a function that waits, as one that fetches a page for each address:

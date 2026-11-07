@@ -146,7 +146,7 @@ let create_world o =
     hook_count = 0;
     sched = { ready = Queue.create (); next_id = 1; jobs = 0; current = None };
     idle = (fun block -> not block);
-    timer = (fun _ _ -> ());
+    timer = (fun _ _ -> ignore);
     native_modules = [];
     yield = (fun _ -> ());
     next_in = (fun _ _ -> None);
@@ -184,6 +184,7 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
     fiber;
     id;
     parks = 0;
+    cancelled = false;
     w }
 
 (* Three stacks of [cap] entries. *)
