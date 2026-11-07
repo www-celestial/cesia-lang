@@ -1,0 +1,1 @@
+Slow by nature: 14 builds of a site in a row, each running the blocks of its book. tools/check.sh runs it, past the change loop, beside the build of Cesia's own site.
