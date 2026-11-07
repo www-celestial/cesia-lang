@@ -37,6 +37,7 @@ let fields ctx a =
 let field ctx a = C.field a.(0) (C.to_text ctx "echo.Field" a.(1))
 let thing ctx a = C.handle "echo.thing" (C.to_int ctx "echo.Thing" a.(0))
 let number ctx a = C.int (C.handle_id ctx "echo.Number" "echo.thing" a.(0))
+let same _ a = a.(0)
 let boom _ _ = raise Not_found
 let refuse ctx a = C.panic ctx ("echo.Refuse: " ^ C.to_text ctx "echo.Refuse" a.(0))
 let read ctx a = C.need_read ctx (C.to_text ctx "echo.Read" a.(0)); C.ok ctx C.missing
@@ -51,4 +52,4 @@ let () =
   C.register
     [ "echo4", 4, 4, echo4; "kindOf", 1, 1, kind_of; "reverse", 1, 1, reverse; "fields", 1, 1, fields;
       "field", 2, 2, field; "thing", 1, 1, thing; "number", 1, 1, number; "boom", 0, 0, boom; "refuse", 1, 1, refuse;
-      "read", 1, 1, read; "later", 2, 2, later ]
+      "read", 1, 1, read; "later", 2, 2, later; "same", 4, 4, same ]

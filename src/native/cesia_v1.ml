@@ -12,7 +12,7 @@ let float x = Types.Float x
 let text s = Types.Text s
 
 (* The values a package gives may be ones it was given, which the caller still holds: a later write must copy them. *)
-let shared a = Array.iteri (fun i v -> a.(i) <- Value.share v) a
+let shared a = for i = 0 to Array.length a - 1 do ignore (Value.share a.(i)) done
 
 let list ctx a =
   Runtime.build ctx (Array.length a);

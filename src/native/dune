@@ -1,11 +1,12 @@
 ; Cesia_v1, the interface of native packages, and Cesia_link, which loads an engine: a plugin that the binary loads at the
 ; first call of a native of a package, its code open to the engines. An engine is compiled against cesia_v1.cmi alone, whose
 ; fingerprint never changes once released: so no alias module (wrapped false), whose fingerprint would follow every module
-; added, and -opaque, so that an engine records none of the code behind it.
+; added, and its interface compiled -opaque (by ocamlc, which makes the .cmi), so that an engine records none of the code
+; behind it, while that code is compiled knowing Cesia's.
 
 (library
  (name cesia_native)
  (wrapped false)
- (flags
+ (ocamlc_flags
   (:standard -opaque))
  (libraries cesia cesia_sys))
