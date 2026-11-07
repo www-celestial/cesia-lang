@@ -39,12 +39,18 @@ jobs:
       # SQLite for the chapters on it, and the libraries the reference's own examples load.
       - run: sudo apt-get update && sudo apt-get install -y libffi-dev libsodium-dev libsqlite3-0
       - run: opam install -y dune
-      # The site shows the version that built it: a release's own number, without +dev.
+      # The site shows the version that built it: a release's own number, without +dev. Its links to the sources lead to that
+      # tag, whose lines are the ones the pages name: main moves on.
       - name: The version of this build
         if: github.event_name == 'workflow_run'
+        env:
+          TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "$TAG is no tag of a release."; exit 1; }
           sed -e 's/+dev"$/"/' src/lib/version.ml > version.ml.new && mv version.ml.new src/lib/version.ml
           grep '^let text' src/lib/version.ml
+          sed -e "s#/blob/main/#/blob/$TAG/#" cesia.toml > cesia.toml.new && mv cesia.toml.new cesia.toml
+          grep '^source' cesia.toml
       # The binary, and the plugins it loads from its build: the JIT, and SQLite's natives.
       - run: opam exec -- dune build --profile release ./src/bin/main.exe ./src/jit/cesia_jit.cmxs ./src/sqlite/cesia_sqlite.cmxs ./src/debug/cesia_debug.cmxs
       - name: Site
