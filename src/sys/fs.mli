@@ -17,6 +17,11 @@ val failed : ctx -> string -> string -> Unix.error -> t
 (** Does this error mean that the operation can be tried again? *)
 val retry : Unix.error -> bool
 
+(** The paths under a folder, depth first, the names of each folder sorted, the folders left out: a link is listed, never
+    followed, so that no walk loops. [skip dir name] leaves out a name and all it holds. Raises [Unix.Unix_error] for a
+    folder that can't be listed, with its path. *)
+val paths : ?skip:(string -> string -> bool) -> string -> string list
+
 (** Removes a folder and all it holds, never following a link: a link goes, what it points to stays. *)
 val remove_tree : string -> unit
 

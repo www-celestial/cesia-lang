@@ -297,7 +297,7 @@ let test args =
     | Error m, _ -> bad_option (Messages.no_test_plugin m)
     | Ok (), None -> bad_option (Messages.no_test_plugin "it gave no runner")
   in
-  let units = if !worker || only <> None then [] else t.units path in
+  let units = if !worker || only <> None then [] else try t.units path with Sys_error m -> bad_option m in
   if List.length units > 1 then
     exit (in_workers ~root ~seed ~cases ~no_spec:o.o_no_spec ~allow ~timeout:config.timeout ~serial:config.serial units);
   (* A worker shares the memory with the others. *)

@@ -2,18 +2,14 @@ open Types
 
 type stats = { mutable passed : int; mutable failed : int }
 
-(* [skip] is the root: its std/ and deps/ hold copies, which their own projects test, unless named. *)
-let rec source_files ~skip path =
-  if Sys.is_directory path then begin
-    let names = Sys.readdir path in
-    Array.sort compare names;
-    List.concat_map
-      (fun n ->
-         let sub = Filename.concat path n in
-         if n = "" || n.[0] = '.' || n = "_build" || ((n = "std" || n = "deps") && Package.absolute path = skip) then []
-         else source_files ~skip sub)
-      (Array.to_list names)
-  end
+(* [skip] is the root: its std/ and deps/ hold copies, which their own projects test, unless named. A link to a folder is
+   never followed: it could lead out of the project, or back up into a loop. A folder that can't be listed is a Sys_error. *)
+let source_files ~skip path =
+  if Sys.is_directory path then
+    let left_out dir n = n = "" || n.[0] = '.' || n = "_build" || ((n = "std" || n = "deps") && Package.absolute dir = skip) in
+    match Cesia_sys.Fs.paths ~skip:left_out path with
+    | paths -> List.filter (fun p -> Package.is_source p && Sys.file_exists p && not (Sys.is_directory p)) paths
+    | exception Unix.Unix_error (e, _, at) -> raise (Sys_error (Messages.io_failure "list" at (Cesia_sys.Fs.reason e)).text)
   else if Package.is_source path then [ path ]
   else []
 

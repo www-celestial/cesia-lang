@@ -1,0 +1,2 @@
+(* A link to a folder is never followed by cesia test: tests/up leads back to the root, tests/out to a test that fails. *)
+isOk() = true

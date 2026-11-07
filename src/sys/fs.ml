@@ -60,9 +60,9 @@ let list_dir path =
       let names = Array.of_list (List.sort compare (go [])) in
       Array { rows = 1; cols = Array.length names; store = V (Array.map (fun n -> Text n) names); a_owned = true; a_tip = true })
 
-(* Depth first, the names of each folder sorted: what isn't a folder is listed, a link too, never followed. The paths start
-   with the folder, but for ".": a.txt, not ./a.txt. *)
-let walk path =
+(* Depth first, the names of each folder sorted: what isn't a folder is listed, a link too, never followed, so that no walk
+   loops. The paths start with the folder, but for ".": a.txt, not ./a.txt. *)
+let paths ?(skip = fun _ _ -> false) path =
   let rec go dir acc =
     let d = Unix.opendir dir in
     (* A failed close says nothing more: an exception of Fun.protect would escape as no Cesia error. *)
@@ -76,10 +76,13 @@ let walk path =
     List.fold_left
       (fun acc name ->
          let p = if dir = "." then name else if String.ends_with ~suffix:"/" dir then dir ^ name else dir ^ "/" ^ name in
-         if (Unix.lstat p).st_kind = Unix.S_DIR then go p acc else Text p :: acc)
+         if skip dir name then acc else if (Unix.lstat p).st_kind = Unix.S_DIR then go p acc else p :: acc)
       acc names
   in
-  let paths = Array.of_list (List.rev (go (if path = "./" then "." else path) [])) in
+  List.rev (go (if path = "./" then "." else path) [])
+
+let walk path =
+  let paths = Array.of_list (List.map (fun p -> Text p) (paths path)) in
   Array { rows = 1; cols = Array.length paths; store = V paths; a_owned = true; a_tip = true }
 
 (* A folder and all it holds; a link goes, never what it points to. Errors are ignored: what stays, stays. *)

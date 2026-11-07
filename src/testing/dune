@@ -5,4 +5,4 @@
  (name cesia_testing)
  (flags
   (:standard -open Cesia))
- (libraries cesia))
+ (libraries cesia cesia_sys unix))
