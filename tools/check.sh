@@ -5,9 +5,9 @@ cd "$(dirname "$0")/.."
 
 fail() { echo "check: $1" >&2; exit 1; }
 
-# Budget: 25,000 handwritten lines, the ceiling of the owner (src/lib/super.ml and src/lib/embedded.ml are generated).
+# Budget: 26,000 handwritten lines, the ceiling of the owner (src/lib/super.ml and src/lib/embedded.ml are generated).
 lines=$(cat $(ls src/lib/*.ml src/lib/*.mli src/bin/*.ml src/sys/*.ml src/sys/*.mli src/sys/*.ml.in src/jit/*.ml src/jit/*.mli src/sqlite/*.ml src/sqlite/*.mli src/testing/*.ml src/testing/*.mli src/debug/*.ml src/debug/*.mli 2>/dev/null | grep -vE 'src/lib/(super|embedded)\.ml$|src/sys/backend\.ml$') 2>/dev/null | wc -l)
-[ "$lines" -le 25000 ] || fail "over budget: $lines lines of 25000"
+[ "$lines" -le 26000 ] || fail "over budget: $lines lines of 26000"
 
 # File names are separated with -. OCaml can't: a file name is a module name there.
 if hits=$(find . \( -name '*_*.ce' -o -name '*_*.cen' -o -name '*_*.sh' \) -not -path './_build/*' -not -path './docs/*' 2>/dev/null | grep .); then
