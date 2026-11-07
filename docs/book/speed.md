@@ -5,7 +5,8 @@ In this chapter you see how Cesia makes a program fast without your help, what i
 Cesia starts at once and runs a program in its [interpreter](glossary.md#interpreter-and-jit). As the program runs, the
 parts that run often, the hot functions and loops, become machine code: that is the JIT. You write nothing for it, and a
 [type](types.md) never makes code faster: the JIT finds the types itself, in what the program does. The results, the
-errors and the limits are the same as the interpreter's, to the last digit.
+errors and the limits are the same as the interpreter's, to the last digit. The JIT runs on x86-64, on Linux, macOS and
+Windows; on arm64, as Apple's chips, it is off for now, and programs run in the interpreter, with the same results.
 
 ## What becomes machine code
 

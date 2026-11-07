@@ -1,3 +1,10 @@
 (executable
  (name main)
  (libraries cesia cesia_sys unix))
+
+; The machine the binary is built for: the JIT stays off on arm64 until it is tested there.
+
+(rule
+ (with-stdout-to
+  arch.ml
+  (echo "let name = \"%{architecture}\"\n")))

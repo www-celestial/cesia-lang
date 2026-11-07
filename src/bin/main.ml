@@ -358,9 +358,11 @@ let load_jit () =
   let show m = if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m) in
   match load_plugin "jit" "cesia_jit.cmxs" with Ok () -> show "loaded" | Error m -> show m
 
-(* CESIA_JIT=off or always, for tests; native code otherwise comes to what gets hot. *)
+(* CESIA_JIT=off or always, for tests; native code otherwise comes to what gets hot. On arm64 the JIT stays off until it
+   is tested there: programs run interpreted, with the same results. *)
 let jit_mode () =
-  Tier.available := true;
+  Tier.available := Arch.name <> "arm64";
+  if (not !Tier.available) && Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline "jit: off on arm64 for now";
   Tier.loader := load_jit;
   Cesia_sys.Sys_modules.sqlite_loader := (fun () -> load_plugin "sqlite" "cesia_sqlite.cmxs");
   Cesia_sys.Sys_modules.debug_loader := (fun () -> load_plugin "debug" "cesia_debug.cmxs");
