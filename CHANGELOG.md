@@ -65,9 +65,49 @@ added, and the last one for a fix. A program written for 1.0 runs on every 1.x.
   hold SDL3: a program that opens it gets it from the system.
 - A quote inside a text is written `\"` only: two quotes in a row are an error that says what to write.
 - The inner parts of `std/http` and `std/websocket` are private. `net.Size`, `net.Find` and `net.SplitAt` are gone:
-  `text.ByteLength`, `text.ByteFind` and `text.ByteSlice` do the same.
+  `text.ByteLength`, `text.ByteFind` and `text.ByteSlice` do the same. The names renamed or removed before 1.0 are listed
+  below.
 - `sql.Open` on a file needs read and write for the files SQLite keeps beside it, `-wal`, `-shm` and `-journal`, as for
   the database itself: grant its folder, as `--allow read=data,write=data`.
 - A struct of one field shows its value alone, as the code builds it: `Ok(42)`, `Err("no")`, no longer
   `Ok(Value = 42)`. A struct of more fields still shows their names. At the `--repl` prompt, a text shows with its quotes,
   `"HELLO"`, as `-->` writes it.
+
+### Renamed and removed before 1.0, old -> new
+
+One way for each thing: none of the old names stays beside the new one, and a program that uses one stops at its load
+with the usual message.
+
+- std/web is merged into std/http; http.Get, http.Post and http.Request become http.Fetch:
+  - `use std/web` -> `use std/http`, and `web.X` -> `http.X` for `App`, `Route`, `Get`, `Post`, `Delete`, `AnyMethod`,
+    `Wrap`, `Plain`, `Html`, `Redirect`, `NotFound`, `WithHeader`, `SetCookie`, `Form`, `BodyJson`, `Handler`,
+    `Websocket`, `Logger`, `Cors`, `FileResponse`, `Static`, `Escape`, `Template`
+  - `web.PutRoute` -> `http.Put`; `web.SendJson` -> `http.Json`; `web.Serve(app)` -> `http.Serve(app)`
+  - `http.Get(url)` -> `http.Fetch(url)`; `http.Post(url, body)` -> `http.Fetch(url, method = "POST", body = body)`;
+    `http.Request(method, url)` -> `http.Fetch(url, method = method)`
+  - `http.Serve(handler)` -> `http.Serve(app)`: a bare handler becomes `http.App() then http.AnyMethod("*", handler)`
+  - `web.GetHeader` -> `http.HeaderValue`
+  - `websocket.Accept(headers, onMessage)` -> `websocket.Accept(key, onMessage)`, the key of the request;
+    `http.Websocket` checks the request and calls it
+- Private now, with no public name: `http.Blank`, `http.Crlf`, `http.MaxHead`, `http.Render`, `http.ReadResponse`,
+  `http.ParseResponse`, `http.WaitForConnections`, `http.Plain` (the wrap without TLS: `wrap` left out of `http.Serve`
+  means plain TCP); `net.Arm`, `net.Reap`, `net.OpenCount`, `net.IsHeader` (inside std/http); `debug.Words` (inside
+  the debugger); `date.DaysFromCivil`; `text.XorBytes` (inside std/websocket). The connection a `wrap` gives has
+  `Read`, `Write` and `Close`: std/http sets the deadlines itself.
+- Arguments, the function or the sizes first and the data last:
+  - `matrix.Reshape(xs, rows, cols)` -> `matrix.Reshape(rows, cols, xs)`
+  - `algo.Bfs(start, neighbors)` -> `algo.Bfs(neighbors, start)`; `algo.Dfs` the same
+  - `algo.Dijkstra(start, edges)` -> `algo.Dijkstra(edges, start)`
+  - `algo.TopologicalSort(nodes, needs)` -> `algo.TopologicalSort(needs, nodes)`
+- A question starts with Is or Has: `set.Member` -> `set.Has`; `set.Subset` -> `set.IsSubset`; `cesia.Dev` ->
+  `cesia.IsDev`; `debug.Complete` -> `debug.IsComplete`; `crypto.Same` -> `crypto.IsSame`
+- Removed, with what does the same:
+  - `list.Every(f, xs)` -> `list.All([f(x) for x in xs])`; `list.Some(f, xs)` -> `list.Any([f(x) for x in xs])`
+  - `list.Butlast(xs)` -> `list.DropLast(1, xs)`; `list.Rest(xs)` -> `list.Skip(1, xs)`
+  - `fn.Pipe(x, f, g)` -> `x then f() then g()`; `fn.Partial(f, a)` -> `x -> f(a, x)`, or `f(a, it)` in an
+    argument, as `list.Map(math.Add(2, it), xs)`
+  - `set.Count(s)` and `queue.Count(q)` -> `value.Len(s)` and `value.Len(q)`
+  - `num.Seeded(seed)` -> `cesia run --seed N`: `num.Uniform(n)` and `num.Normal(n)` take no generator and give a
+    list, drawn by std/random as `random.Float` is
+- Renamed: `csv.Write` -> `csv.Text`; `frame.Rows` -> `frame.RowCount`; `fn.Comp` -> `fn.Compose`; `syntax.String` ->
+  `syntax.Text`
