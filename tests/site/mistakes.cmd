@@ -7,7 +7,8 @@ try() {  # what goes wrong, then the command that puts it in a copy of the proje
   echo "== $1"
   rm -rf "$t/proj"
   cp -r proj "$t/"
-  sed -i 's/18751/18752/g' "$t/proj/docs/book/files.md"  # book.cmd serves on 18751 at the same time
+  # book.cmd serves on 18751 at the same time. Not sed -i, which macOS reads otherwise.
+  sed 's/18751/18752/g' "$t/proj/docs/book/files.md" > "$t/files.md" && mv "$t/files.md" "$t/proj/docs/book/files.md"
   (cd "$t/proj" && eval "$2" && cesia doc --site; echo "exit $?") 2>&1 | sed "s#$t#TMP#g"
 }
 try "a wrong -->" 'add "" "${f}cesia" "1 + 1 --> 3" "$f"'
