@@ -1,0 +1,5 @@
+(** Prints the tag of the engines that this Cesia loads, as the files of a native package's engines are named. *)
+use std/cesia
+use std/io
+
+io.Print(cesia.Native())

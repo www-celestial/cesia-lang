@@ -35,6 +35,9 @@ pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
 pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 "$cesia" run tests/sqlite/has-sqlite.ce > /dev/null 2>&1 || skip tests/sqlite "no SQLite"
 CESIA_JIT_SHOW=1 "$cesia" version 2>&1 | grep -q '^jit: off' && skip tests/jit "no JIT on this machine"
+# An engine that an earlier build made for this machine, kept in git: another system or compiler has none for its tag.
+tag=$("$cesia" run tests/native/tag.ce)
+if [ -f "tests/native/older/echo-$tag.cmxs" ]; then dirs="$dirs tests/native/older/"; else echo "tests/native/older skipped: no older engine for $tag"; fi
 golden=0
 tools/golden.sh --both --quick $dirs || golden=1
 

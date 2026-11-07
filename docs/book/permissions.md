@@ -38,6 +38,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `exec`, `exec=git` | running other programs, all of them or one |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
 | `ffi=m`, `ffi=build/libdemo.so` | loading a C library, by its name or by the exact path of its file |
+| `native=cepheus` | running the engine of a [native package](native.md), by the label of its `[deps]` in `cesia.toml`: total trust, as `ffi=` |
 | `debug` | the breakpoints and the code run by [std/debug]; `cesia run --debugger` and `cesia run --repl` give it by themselves, with no `--allow` |
 | `all` | everything |
 
@@ -66,7 +67,7 @@ it leads, its links followed: a link in `./data` that points outside it is denie
 A C library, called through the [foreign function interface](glossary.md#foreign-function-interface), runs outside
 Cesia's checks: it can read any file, open any connection, and break the memory of the program.
 `ffi=NAME` gives a program everything for that library, so give it only to libraries you trust, as the ones Cesia's own
-modules use.
+modules use. `native=LABEL` is the same trust, for the OCaml engine of a [native package](native.md).
 
 ## A task keeps its permissions
 

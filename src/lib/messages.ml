@@ -416,6 +416,23 @@ let sql_need_handle name kind a = plain (Printf.sprintf "%s needs a %s, not %s."
 let sql_closed = plain "This connection or cursor is closed."
 let sql_store_directory =
   plain "SQLite's pragmas temp_store_directory and data_store_directory are refused: they would put its files where read= and write= don't reach."
+let native_field key = plain (Printf.sprintf "[native] has an unknown field %s." key)
+let native_no_name = plain "[native] needs the name of [project]: its engines are named after it."
+let native_public name =
+  plain (Printf.sprintf "[native] natives: %s isn't a private name, as a native of a package is: a small first letter, no _." name)
+let engine_missing folder wanted found =
+  let has = if found = [] then "" else Printf.sprintf " (it has %s)" (String.concat ", " found) in
+  if folder = "" then plain (Printf.sprintf "native/ has no engine for %s%s: build the engine of this project." wanted has)
+  else plain (Printf.sprintf "%s has no engine for %s%s: run cesia pkg install." folder wanted has)
+let engine_changed path = plain (Printf.sprintf "%s changed since this Cesia loaded it: run the program again." path)
+let engine_refused path reason = plain (Printf.sprintf "The engine %s didn't load: %s." path reason)
+let engine_names path missing extra =
+  let part what = function [] -> [] | names -> [ what ^ " " ^ String.concat ", " names ] in
+  plain (Printf.sprintf "The engine %s doesn't give the natives of its cesia.toml: %s." path
+           (String.concat "; " (part "it lacks" missing @ part "it adds" extra)))
+let engine_misuse what = plain (Printf.sprintf "Cesia_v1.%s, by a native package." what)
+let native_raised name e = plain (Printf.sprintf "%s raised %s: a bug of its native package." name e)
+let native_needs name want got = plain (Printf.sprintf "%s needs %s, not %s." name want got)
 let sql_plugin reason = plain (Printf.sprintf "Can't load SQLite's plugin cesia_sqlite.cmxs: %s." reason)
 let sql_no_statement = plain "The text holds no statement."
 let sql_statements = plain "One statement per call: sql.Script runs several, without parameters."

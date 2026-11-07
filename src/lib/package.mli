@@ -34,6 +34,12 @@ val wrong_cesia : Toml.table list -> (int * Messages.t) option
     {!Pos.Load_error} at its line. *)
 val sources : string -> string list
 
+(** The [native] of a project: its [project] name, the folder of the package whose files see the natives of its engine,
+    from the top of the file system, and their names. Read with [sources]. *)
+type native = { name : string; package : string; natives : string list }
+
+val native : string -> native option
+
 (** [use deps/someone/geometry/shapes] names a package of another project: [Some ("deps/someone/geometry",
     "shapes")]. A first part with a dot is a host: [deps/gitlab.com/x/y/z] gives [Some ("deps/gitlab.com/x/y", "z")]. *)
 val dep : string -> (string * string) option
@@ -48,9 +54,20 @@ val shown : string -> string
 (** cesia.lock, next to cesia.toml. *)
 val lock_file : string
 
+(** [blake2:] and the 64 hexadecimal digits of the BLAKE2b-256 of a text: what cesia.lock keeps of a file. *)
+val fingerprint : string -> string
+
 (** The fingerprints that the cesia.lock of a root gives the files of its std/ and deps/, by absolute path; none without one.
     Read once per root. *)
 val lock : string -> (string, string) Hashtbl.t
+
+(** The label of the [deps] table of a root's cesia.lock whose files are in this folder of deps/: [label root
+    "deps/someone/geometry"]. *)
+val label : string -> string -> string option
+
+(** Why a file of std/ or deps/ isn't as installed, from its text: changed by hand, or not installed; [None] when it is, or
+    when it is a file of the project itself. *)
+val unchanged : string -> string -> string -> Messages.t option
 
 (** [installed root path]: the folder of std/ or deps/ that holds a file, from the root ([std/csv],
     [deps/someone/geometry], [deps/gitlab.com/x/y]), or [None] for a file of the project itself. *)

@@ -1,0 +1,24 @@
+(** Writes the cesia.lock of the current folder for its deps/, under the label echoes, as cesia pkg install would write it.
+    Run with --allow read,write. *)
+use std/sys
+use std/cesia
+use std/list
+use std/result
+use std/text
+
+defn walk(dir)
+  (** The files under a folder, at any depth. *)
+  found = []
+  for name in result.Unwrap(sys.List(dir))
+    path = "$dir/$name"
+    found = if sys.Stat(path)?.IsDir list.Concat(found, walk(path)) else list.Append(path, found) end
+  end
+  found
+end
+
+q = text.Char(34)
+lines = ["[deps.echoes]", "from = $(q)github.com/someone/echo$q", "version = $(q)v0.1.0$q", "files = ["]
+for f in list.Sort(walk("deps"))
+  lines = list.Append("  $q$f $(cesia.Fingerprint(result.Unwrap(sys.Read(f))))$q,", lines)
+end
+result.Unwrap(sys.Write("cesia.lock", text.Join("\n", list.Concat(lines, ["]", ""]))))

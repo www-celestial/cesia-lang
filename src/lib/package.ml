@@ -43,20 +43,58 @@ let wrong_cesia (tables : Toml.table list) =
   in
   List.find_map (fun (t : Toml.table) -> if t.path = [ "project" ] then List.find_map check t.entries else None) tables
 
-(* The source folders of a root, from [project] src of its cesia.toml, read once: every use asks. *)
+type native = { name : string; package : string; natives : string list }
+
+let wrong_at file line (m : Messages.t) =
+  raise (Pos.Load_error { file = shown file; pos = Pos.make line 1; kind = "name"; text = m.text; hint = m.hint })
+
+(* [native] of a cesia.toml: the package whose files see the natives of the engine, and their names, all private. *)
+let read_native root file (tables : Toml.table list) project =
+  let wrong line m = wrong_at file line m in
+  match List.find_opt (fun (t : Toml.table) -> t.path = [ "native" ]) tables with
+  | None -> None
+  | Some t ->
+    let field key what =
+      match List.find_opt (fun (e : Toml.entry) -> String.equal e.key key) t.entries with
+      | Some e -> what e
+      | None -> wrong t.start (Messages.plain (Messages.project_type "Native" key "a value"))
+    in
+    List.iter (fun (e : Toml.entry) -> if e.key <> "package" && e.key <> "natives" then wrong e.line (Messages.native_field e.key)) t.entries;
+    let name =
+      match List.find_opt (fun (e : Toml.entry) -> String.equal e.key "name") project with
+      | Some { value = Text n; _ } -> n
+      | _ -> wrong t.start Messages.native_no_name
+    in
+    let package =
+      field "package" (function
+        | { value = Text p; line; _ } ->
+          let dir = Runtime.normalize (Filename.concat root p) in
+          if Runtime.inside root dir && is_dir dir then dir else wrong line (Messages.source_missing p)
+        | { line; _ } -> wrong line (Messages.plain (Messages.project_type "Native" "package" "a string")))
+    in
+    let natives =
+      field "natives" (function
+        | { value = Texts names; line; _ } ->
+          List.iter (fun n -> if not (Lexer.is_plain_name n && not (Lexer.is_public n)) then wrong line (Messages.native_public n)) names;
+          names
+        | { line; _ } -> wrong line (Messages.plain (Messages.project_type "Native" "natives" "an array of strings")))
+    in
+    Some { name; package; natives }
+
+(* The source folders of a root, from [project] src of its cesia.toml, and its [native], read once: every use asks. *)
 let known_sources = Hashtbl.create 4
 
 let read_sources root =
   let file = Filename.concat root project_file in
-  let wrong line (m : Messages.t) =
-    raise (Pos.Load_error { file = shown file; pos = Pos.make line 1; kind = "name"; text = m.text; hint = m.hint })
-  in
+  let wrong line m = wrong_at file line m in
   let src = if Sys.file_exists file then In_channel.with_open_bin file In_channel.input_all else "" in
   match Toml.parse src with
   | Error (line, reason) -> wrong line (Messages.plain reason)
   | Ok tables ->
     Option.iter (fun (line, m) -> wrong line m) (wrong_cesia tables);
     let project = List.concat_map (fun (t : Toml.table) -> if t.path = [ "project" ] then t.entries else []) tables in
+    let native = read_native root file tables project in
+    native,
     match List.find_opt (fun (e : Toml.entry) -> String.equal e.key "src") project with
     | None -> [ "src" ]
     | Some { value = Texts dirs; line; _ } ->
@@ -69,13 +107,16 @@ let read_sources root =
       dirs
     | Some { line; _ } -> wrong line (Messages.plain (Messages.project_type "Project" "src" "an array of strings"))
 
-let sources root =
+let project root =
   match Hashtbl.find_opt known_sources root with
-  | Some dirs -> dirs
+  | Some read -> read
   | None ->
-    let dirs = read_sources root in
-    Hashtbl.replace known_sources root dirs;
-    dirs
+    let read = read_sources root in
+    Hashtbl.replace known_sources root read;
+    read
+
+let sources root = snd (project root)
+let native root = fst (project root)
 
 (* deps/OWNER/REPO, or deps/HOST/OWNER/REPO when the first part holds a dot: how many parts name the project. *)
 let dep_depth = function
@@ -112,14 +153,26 @@ let root_of path =
   in
   up start
 
+let folder_of root path =
+  let path = absolute path in
+  let from = root ^ "/" in
+  if not (String.starts_with ~prefix:from path) then None
+  else
+    let parts = String.split_on_char '/' (String.sub path (String.length from) (String.length path - String.length from)) in
+    let depth = match parts with "std" :: _ -> 2 | _ -> dep_depth parts in
+    if depth = 0 || List.length parts <= depth then None else Some (String.concat "/" (List.filteri (fun i _ -> i < depth) parts))
+
+let installed = folder_of
+
 let lock_file = "cesia.lock"
+let fingerprint src = "blake2:" ^ Digest.BLAKE256.to_hex (Digest.BLAKE256.string src)
 
 (* The files of every table of a root's cesia.lock, read once: "std/csv/csv.ce blake2:...", the path from the root. A lock
    that doesn't read holds nothing, so that each file says it isn't installed. *)
 let known_locks = Hashtbl.create 4
 
 let read_lock root =
-  let table = Hashtbl.create 64 in
+  let table = Hashtbl.create 64 and labels = Hashtbl.create 8 in
   let file = Filename.concat root lock_file in
   let src = if Sys.file_exists file then In_channel.with_open_bin file In_channel.input_all else "" in
   (match Toml.parse src with
@@ -136,27 +189,40 @@ let read_lock root =
                       match String.rindex_opt line ' ' with
                       | Some i ->
                         let path = Runtime.normalize (Filename.concat root (String.sub line 0 i)) in
-                        Hashtbl.replace table path (String.sub line (i + 1) (String.length line - i - 1))
+                        Hashtbl.replace table path (String.sub line (i + 1) (String.length line - i - 1));
+                        (match t.path, folder_of root path with
+                         | [ "deps"; label ], Some f -> Hashtbl.replace labels f label
+                         | _ -> ())
                       | None -> ())
                    lines
                | _ -> ())
             t.entries)
        tables);
-  table
+  table, labels
 
-let lock root =
+let read_once root =
   match Hashtbl.find_opt known_locks root with
-  | Some table -> table
+  | Some read -> read
   | None ->
-    let table = read_lock root in
-    Hashtbl.replace known_locks root table;
-    table
+    let read = read_lock root in
+    Hashtbl.replace known_locks root read;
+    read
 
-let installed root path =
-  let path = absolute path in
-  let from = root ^ "/" in
-  if not (String.starts_with ~prefix:from path) then None
-  else
-    let parts = String.split_on_char '/' (String.sub path (String.length from) (String.length path - String.length from)) in
-    let depth = match parts with "std" :: _ -> 2 | _ -> dep_depth parts in
-    if depth = 0 || List.length parts <= depth then None else Some (String.concat "/" (List.filteri (fun i _ -> i < depth) parts))
+let lock root = fst (read_once root)
+let label root folder = Hashtbl.find_opt (snd (read_once root)) folder
+
+let unchanged root path src =
+  match installed root path with
+  | None -> None
+  | Some folder ->
+    let lock = lock root in
+    let path = absolute path in
+    let from_root p = String.sub p (String.length root + 1) (String.length p - String.length root - 1) in
+    match Hashtbl.find_opt lock path with
+    | Some print when String.equal print (fingerprint src) -> None
+    | Some _ -> Some (Messages.changed_by_hand (from_root path))
+    | None ->
+      let inside = Filename.concat root folder ^ "/" in
+      if Hashtbl.fold (fun p _ seen -> seen || String.starts_with ~prefix:inside p) lock false then
+        Some (Messages.changed_by_hand (from_root path))
+      else Some (Messages.not_installed folder)

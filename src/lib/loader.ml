@@ -123,20 +123,7 @@ let libraries () = List.filter_map (fun (name, _) -> Option.map (fun (_, src) ->
 
 (* A file of std/ or deps/ loads only as installed: its fingerprint in cesia.lock, on a text read anyway. *)
 let check_installed w ~from ~pos path src =
-  match Package.installed w.root path with
-  | None -> ()
-  | Some folder ->
-    let lock = Package.lock w.root in
-    let path = Package.absolute path in
-    let from_root p = String.sub p (String.length w.root + 1) (String.length p - String.length w.root - 1) in
-    match Hashtbl.find_opt lock path with
-    | Some print when String.equal print (Tooling.fingerprint src) -> ()
-    | Some _ -> use_error ~file:from ~pos ~kind:"name" (Messages.changed_by_hand (from_root path))
-    | None ->
-      let inside = Filename.concat w.root folder ^ "/" in
-      if Hashtbl.fold (fun p _ seen -> seen || String.starts_with ~prefix:inside p) lock false then
-        use_error ~file:from ~pos ~kind:"name" (Messages.changed_by_hand (from_root path))
-      else use_error ~file:from ~pos ~kind:"name" (Messages.not_installed folder)
+  Option.iter (use_error ~file:from ~pos ~kind:"name") (Package.unchanged w.root path src)
 
 let reader w ~from ~pos upath files () =
   List.map
@@ -206,6 +193,9 @@ let native_module w name natives =
     let m = add_module w { mname = name; path = ""; cells; mnames; stable; host; package = [| host |]; uses = [] } in
     Hashtbl.replace w.loaded key m;
     m
+
+(* The stubs of the natives of the package of a folder, which a [native] of cesia.toml names, as the module its files see. *)
+let engine_natives w key = Option.map (native_module w key) (Engines.natives w key)
 
 (* The modules written in OCaml: std/sys. *)
 let find_native w upath = Option.bind (standard upath) (fun name -> List.assoc_opt name w.native_modules)
@@ -439,13 +429,14 @@ and use_module ctx ~hooks ~from ~pos ~names upath =
   match natives_only w upath names with
   | Some natives -> native_module w upath natives
   | None ->
-    let natives = find_native w upath in
     let key, read, in_std = locate w ~from ~pos upath in
     match Hashtbl.find_opt w.loaded key with
     | Some m when m >= 0 -> m
     | Some _ -> use_error ~file:from ~pos ~kind:"name" Messages.use_cycle
     (* Don't stop in a library: it isn't the code being debugged, and it keeps its speed. *)
-    | None -> run_package ctx ~hooks:(hooks && not in_std) ?natives:(Option.map (native_module w upath) natives) ~key read
+    | None ->
+      let natives = if in_std then Option.map (native_module w upath) (find_native w upath) else engine_natives w key in
+      run_package ctx ~hooks:(hooks && not in_std) ?natives ~key read
 
 (* Runs the statements of a package, file by file, and gives its first module. *)
 and run_package ctx ~hooks ?natives ~key read =
@@ -476,7 +467,7 @@ let folder ctx dir =
       let path = Package.shown path in
       path, In_channel.with_open_bin path In_channel.input_all
     in
-    run_package ctx ~hooks:ctx.w.hooks ~key (fun () -> List.map read (Package.files key))
+    run_package ctx ~hooks:ctx.w.hooks ?natives:(engine_natives ctx.w key) ~key (fun () -> List.map read (Package.files key))
 
 let prepare ?hooks ?host ?natives ?rewrite ctx ~path ~src ~lookup =
   List.hd (prepare_files ?hooks ?host ?natives ?rewrite ctx ~sources:[ path, src ] ~lookup)
@@ -628,7 +619,8 @@ let check_native ctx (a : t array) =
       List.iter
         (fun dir ->
            cw.root <- Package.root_of dir;
-           let prepared = prepare_files ~report cctx ~sources:(sources (Package.files dir)) ~lookup:(lookup cw) in
+           let natives = engine_natives cw (Package.absolute dir) in
+           let prepared = prepare_files ?natives ~report cctx ~sources:(sources (Package.files dir)) ~lookup:(lookup cw) in
            passes prepared;
            match prepared with
            | [] -> ()
@@ -675,7 +667,7 @@ let std_packages () =
   let groups =
     Native.packages @ Lists.packages
     @ [ "math", Near.natives; "list", Columns.list; "fiber", Fiber.natives;
-        "cesia", Tooling.natives ~libraries @ Docs.natives @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
+        "cesia", Tooling.natives ~libraries @ Docs.natives @ Engines.cesia @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
         "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
         "random", Rand.natives; "value", [ "Len", Native.nat ~ret:(fun _ -> TI) "Len" 1 1 len ] ]
     @ Testing.natives

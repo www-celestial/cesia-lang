@@ -1,7 +1,7 @@
 (** The types of the engine. They form one recursive knot, so they live together. *)
 
 type kind = Syntax | Name | Type | Index | Field | Math | Permission | User
-type perm = Read | Write | Net | Exec | Env | Ffi | Debug
+type perm = Read | Write | Net | Exec | Env | Ffi | Native | Debug
 
 (** Bottom, integer, float, float array, anything. *)
 type ty = TBot | TI | TF | TFA | TA
@@ -240,9 +240,11 @@ and world = {
   mutable hook_count : int;  (** the compiled hooks *)
   sched : sched;
   mutable idle : bool -> bool;
+      (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
   mutable timer : float -> (unit -> unit) -> unit -> unit;
       (** set by the system: calls a function after so many seconds, and gives the function that cancels it *)
-      (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
+  mutable remote : (unit -> unit) -> unit -> unit;
+      (** set by the system: of a wake, the function that any domain may call, once, to have the scheduler call it *)
   mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
   mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)
   mutable next_in : ctx -> t -> t option;

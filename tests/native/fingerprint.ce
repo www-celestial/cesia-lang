@@ -1,0 +1,7 @@
+(** Prints the fingerprint of a file, as cesia.lock keeps it. Run with --allow read. *)
+use std/cesia
+use std/io
+use std/result
+use std/sys
+
+io.Print(cesia.Fingerprint(result.Unwrap(sys.Read(sys.Args[1]))))

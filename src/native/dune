@@ -1,0 +1,11 @@
+; Cesia_v1, the interface of native packages: a plugin that the binary loads, its code open to the engines, before the first
+; engine. An engine is compiled against cesia_v1.cmi alone, whose fingerprint never changes once released: so no alias module
+; (wrapped false), whose fingerprint would follow every module added, and -opaque, so that an engine records none of the code
+; behind it.
+
+(library
+ (name cesia_native)
+ (wrapped false)
+ (flags
+  (:standard -opaque))
+ (libraries cesia))

@@ -1,0 +1,16 @@
+src/main.ce:3:14: Permission "native" denied for echoes.
+  3 | io.Print(echo.Echo4(1, 2.5, "from deps", false))
+    |              ^
+  Run again with --allow native=echoes.
+  in Echo4 (deps/someone/echo/cesia/echo/echo.ce:3)
+{Int: 1, Float: 2.5, Text: "from deps", Bool: false}
+[2, 1]
+src/main.ce:3:14: deps/someone/echo/native/echo-TAG.cmxs was changed by hand: run cesia pkg install.
+  3 | io.Print(echo.Echo4(1, 2.5, "from deps", false))
+    |              ^
+  in Echo4 (deps/someone/echo/cesia/echo/echo.ce:3)
+src/main.ce:3:14: deps/someone/echo has no engine for TAG: run cesia pkg install.
+  3 | io.Print(echo.Echo4(1, 2.5, "from deps", false))
+    |              ^
+  in Echo4 (deps/someone/echo/cesia/echo/echo.ce:3)
+exit 0

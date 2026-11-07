@@ -435,6 +435,23 @@ val sql_zero_byte : string -> t
 val sql_need_handle : string -> string -> string -> t
 val sql_closed : t
 val sql_store_directory : t
+val native_field : string -> t
+val native_no_name : t
+val native_public : string -> t
+
+(** [engine_missing folder wanted found]: the folder of deps/ that holds no engine of this tag, or "" for the project's
+    own; the tags of the engines it holds. *)
+val engine_missing : string -> string -> string list -> t
+val engine_changed : string -> t
+val engine_refused : string -> string -> t
+
+(** [engine_names path missing extra]: the natives of cesia.toml that an engine doesn't register, and those it adds. *)
+val engine_names : string -> string list -> string list -> t
+
+(** A function of Cesia_v1 called where it can't be: what was wrong. *)
+val engine_misuse : string -> t
+val native_raised : string -> string -> t
+val native_needs : string -> string -> string -> t
 val sql_plugin : string -> t
 val sql_no_statement : t
 val sql_statements : t

@@ -1,0 +1,4 @@
+{Int: 1, Float: 2.0, Text: "older", Bool: true}
+[3, 2, 1]
+Ok("woken from a domain")
+exit 0

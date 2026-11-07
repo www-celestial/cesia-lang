@@ -1429,6 +1429,13 @@ use std/test
 
       path.IsAbsolute(cesia.Binary()) --> true *)
 
+(** cesia.Native()
+    The tag of the engines of native packages that this Cesia loads, as their files are named: the version of the native
+    interface, the OCaml that built this Cesia and its options, the system. A package's engine for it is
+    native/NAME-TAG.cmxs.
+
+      text.StartsWith("1-ocaml", cesia.Native()) --> true *)
+
 (** cesia.Fingerprint(text)
     For tools: blake2: and the 64 hexadecimal digits of the BLAKE2b-256 of a text, as cesia.lock keeps them.
 

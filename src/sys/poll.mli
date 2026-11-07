@@ -46,5 +46,9 @@ val interrupt : t -> unit
 (** What the scheduler does once after [interrupt], before the readers wake. *)
 val on_interrupt : t -> (unit -> unit) -> unit
 
+(** Of a wake, a function that any domain may call, once, to have the scheduler call the wake; later calls do nothing. The
+    scheduler waits for it as for a descriptor: [world.remote]. *)
+val remote : t -> (unit -> unit) -> unit -> unit
+
 (** Forgets every fiber parked on a descriptor or a timer: a test ended, and its fibers with it. *)
 val reset : t -> unit

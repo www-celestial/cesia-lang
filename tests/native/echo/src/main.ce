@@ -1,0 +1,37 @@
+use cesia/echo
+use std/fiber
+use std/io
+use std/result
+
+struct Pt { X Int, Y Float = 0.0 }
+
+defn message(f)
+  match fiber.Wait(fiber.Spawn(f))
+    result.Err(e) -> io.Print(e.Message)
+    result.Ok(v) -> io.Print(v)
+  end
+end
+
+io.Print(echo.Echo4(1, 2, "a", true))
+io.Print([echo.KindOf(missing), echo.KindOf(false), echo.KindOf(1.5), echo.KindOf("a"), echo.KindOf([1, 2])])
+io.Print([echo.KindOf({A: 1}), echo.KindOf(Pt(X = 1)), echo.KindOf(io.Print), echo.KindOf(echo.Thing(1))])
+io.Print(echo.Reverse([1, "b", 3.0]))
+io.Print(echo.Fields({A: 1, B: [2]}))
+io.Print(echo.Fields(Pt(X = 1)))
+io.Print([echo.Field({A: 1}, "A"), echo.Field(Pt(X = 2), "X"), echo.Field({A: 1}, "Z")])
+io.Print(echo.Number(echo.Thing(7)))
+io.Print(echo.Read("cesia.toml"))
+message(() -> echo.Read("/"))
+message(() -> echo.Echo4(1, 2, 3, true))
+message(() -> echo.Number(1))
+message(() -> echo.Boom())
+message(() -> echo.Refuse("no"))
+(* The other fibers run while the engine waits on a domain of its own, which wakes this one. *)
+t = fiber.Spawn(() -> echo.Later(0.05, "from a domain"))
+io.Print("meanwhile")
+io.Print(fiber.Wait(t))
+io.Print(echo.Later(0.01, "the main program waits too"))
+(* A fiber cancelled while it waits stops at once: the engine's late wake does nothing. *)
+slow = fiber.Spawn(() -> echo.Later(0.5, "too late"))
+fiber.Cancel(slow)
+io.Print(fiber.Wait(slow))

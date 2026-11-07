@@ -1,0 +1,13 @@
+(** Echo, the native package of the tests: what its engine reads, makes and gives back. *)
+
+Echo4(i, x, s, b) = echo4(i, x, s, b)  (** A map of four values, each read and made again by the engine. *)
+KindOf(v) = kindOf(v)  (** What the engine sees of a value. *)
+Reverse(items) = reverse(items)  (** A list, the other way round. *)
+Fields(m) = fields(m)  (** A map of the fields of a map or a struct, and Count, the number of them. *)
+Field(m, name) = field(m, name)  (** A field of a map or a struct, or missing. *)
+Thing(n) = thing(n)  (** A handle of the kind echo.thing. *)
+Number(h) = number(h)  (** The number of a handle of the kind echo.thing. *)
+Boom() = boom()  (** Raises Not_found in the engine. *)
+Refuse(why) = refuse(why)  (** A panic of the engine. *)
+Read(path) = read(path)  (** Ok if the program may read this path. *)
+Later(seconds, v) = later(seconds, v)  (** An Ok of v, after so many seconds that a domain of the engine waits. *)

@@ -1,0 +1,6 @@
+use cesia/echo
+use std/io
+
+io.Print(echo.Echo4(1, 2, "older", true))
+io.Print(echo.Reverse([1, 2, 3]))
+io.Print(echo.Later(0.01, "woken from a domain"))

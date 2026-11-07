@@ -2,9 +2,11 @@
  (name main)
  (libraries cesia cesia_sys unix))
 
-; The machine the binary is built for: the JIT stays off on arm64 until it is tested there.
+; The machine the binary is built for: the JIT stays off on arm64 until it is tested there. Its compiler names the engines
+; of native packages that it loads.
 
 (rule
  (with-stdout-to
   arch.ml
-  (echo "let name = \"%{architecture}\"\n")))
+  (echo
+   "let name = \"%{architecture}\"\nlet system = \"%{ocaml-config:system}\"\nlet ocaml = \"%{ocaml_version}\"\nlet fp = %{ocaml-config:with_frame_pointers}\nlet flambda = %{ocaml-config:flambda}\n")))

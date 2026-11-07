@@ -147,6 +147,7 @@ let create_world o =
     sched = { ready = Queue.create (); next_id = 1; jobs = 0; current = None };
     idle = (fun block -> not block);
     timer = (fun _ _ -> ignore);
+    remote = (fun wake () -> wake ());
     native_modules = [];
     yield = (fun _ -> ());
     next_in = (fun _ _ -> None);
@@ -291,6 +292,7 @@ let perm_name = function
   | Exec -> "exec"
   | Env -> "env"
   | Ffi -> "ffi"
+  | Native -> "native"
   | Debug -> "debug"
 
 (* a/./b/../c becomes a/c. *)
@@ -325,7 +327,7 @@ let scope_matches perm scope target =
   | Net ->
     String.equal scope target
     || (scope <> "own" && (not (String.contains scope ':')) && String.starts_with ~prefix:(scope ^ ":") target)
-  | Exec | Env | Ffi | Debug -> String.equal scope target
+  | Exec | Env | Ffi | Native | Debug -> String.equal scope target
 
 (* Where a path leads, links resolved, or None when no place can be told. The system sets it, as it reads links; without
    it a path is taken as written. *)
@@ -346,7 +348,7 @@ let granted w perm path =
              && (match perm with
                  | Read | Write ->
                    (match !real_path scope, Lazy.force real with Some s, Some t -> inside s t | _ -> false)
-                 | Net | Exec | Env | Ffi | Debug -> true)))
+                 | Net | Exec | Env | Ffi | Native | Debug -> true)))
     w.grants.perms
 
 let check_perm ctx perm path =

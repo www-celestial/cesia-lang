@@ -17,6 +17,7 @@ let perm_of_name = function
   | "exec" -> Some Types.Exec
   | "env" -> Some Types.Env
   | "ffi" -> Some Types.Ffi
+  | "native" -> Some Types.Native
   | "debug" -> Some Types.Debug
   | _ -> None
 
@@ -215,7 +216,7 @@ let run args =
 
 (* A plugin beside the binary, found from the binary itself with its links followed: in the lib/ of a release (with its
    licenses/Cesia.txt, as the C libraries), or in src/DIR/ of a build. [Error] says why it didn't load. *)
-let load_plugin dir plugin =
+let load_plugin ?global dir plugin =
   let found =
     match Unix.realpath Sys.executable_name with
     | exception Unix.Unix_error _ -> None
@@ -230,7 +231,7 @@ let load_plugin dir plugin =
   in
   match found with
   | None -> Error ("no " ^ plugin ^ " beside the binary")
-  | Some path -> Result.map_error (fun m -> path ^ ": " ^ m) (Cesia_sys.Plugin.load path)
+  | Some path -> Result.map_error (fun m -> path ^ ": " ^ m) (Cesia_sys.Plugin.load ?global path)
 
 (* file.ce:isName is one test of a file; the last : before a test name, so C:\ stays a path. *)
 let one_test arg =
@@ -386,6 +387,16 @@ let load_jit () =
   let show m = if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m) in
   match load_plugin "jit" "cesia_jit.cmxs" with Ok () -> show "loaded" | Error m -> show m
 
+(* The tag of the engines of native packages that this build loads, from its compiler: 1-ocaml5.5.0+fp-linux-x86_64. *)
+let engine_suffix () =
+  let system = if Sys.win32 then "windows" else if Arch.system = "macosx" then "macos" else Arch.system in
+  let fp = if Arch.fp then "+fp" else "" and flambda = if Arch.flambda then "+flambda" else "" in
+  Printf.sprintf "1-ocaml%s%s%s-%s-%s" Arch.ocaml fp flambda system (if Arch.name = "amd64" then "x86_64" else Arch.name)
+
+(* The plugin of Cesia_v1 once, its code open to the engines, then an engine, strictly checked. *)
+let interface = lazy (load_plugin ~global:true "native" "cesia_native.cmxs")
+let load_engine path = match Lazy.force interface with Error _ as e -> e | Ok () -> Cesia_sys.Plugin.load ~strict:true path
+
 (* CESIA_JIT=off or always, for tests; native code otherwise comes to what gets hot. On arm64 the JIT stays off until it
    is tested there: programs run interpreted, with the same results. *)
 let jit_mode () =
@@ -394,6 +405,8 @@ let jit_mode () =
   Tier.loader := load_jit;
   Cesia_sys.Sys_modules.sqlite_loader := (fun () -> load_plugin "sqlite" "cesia_sqlite.cmxs");
   Cesia_sys.Sys_modules.debug_loader := (fun () -> load_plugin "debug" "cesia_debug.cmxs");
+  Engines.suffix := engine_suffix;
+  Engines.loader := load_engine;
   match Sys.getenv_opt "CESIA_JIT" with
   | Some "off" -> Tier.mode := Tier.off
   | Some "always" -> Tier.mode := Tier.always

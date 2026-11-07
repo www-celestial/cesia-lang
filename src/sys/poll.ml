@@ -6,8 +6,18 @@ module Timers = Map.Make (struct
     let compare = compare
   end)
 
+(* The wakes that other domains ask for: a domain pushes its wake on [asked], then writes a byte in the pipe, which the
+   scheduler watches while [awaited] wakes may still come. *)
+type remote = {
+  pipe : Unix.file_descr * Unix.file_descr;
+  asked : (unit -> unit) list Atomic.t;
+  mutable awaited : int;
+  mutable armed : bool;
+}
+
 type t = {
   mutable backend : Backend.state option;  (* created at first use: most programs never need one *)
+  mutable remote : remote option;  (* created at first use too *)
   readers : (Unix.file_descr, (unit -> unit) list) Hashtbl.t;
   writers : (Unix.file_descr, (unit -> unit) list) Hashtbl.t;
   mutable timers : (unit -> unit) Timers.t;
@@ -21,7 +31,7 @@ type t = {
 let max_wait = 86400.
 
 let create () =
-  { backend = None; readers = Hashtbl.create 64; writers = Hashtbl.create 64; timers = Timers.empty; next_timer = 0;
+  { backend = None; remote = None; readers = Hashtbl.create 64; writers = Hashtbl.create 64; timers = Timers.empty; next_timer = 0;
     interrupted = false; tick = None; on_interrupt = ignore }
 
 let backend p =
@@ -145,7 +155,50 @@ let idle p block =
     true
   end
 
+(* The pipe stays open: a domain may still write in it. A wake asked for before a reset goes on the list of its own record,
+   which nothing reads any more. *)
+let rec arm p r =
+  if r.awaited > 0 && not r.armed then begin
+    r.armed <- true;
+    notify p (fst r.pipe) (fun () ->
+        r.armed <- false;
+        let bytes = Bytes.create 64 in
+        let rec drain () = match Unix.read (fst r.pipe) bytes 0 64 with 64 -> drain () | _ -> () | exception Unix.Unix_error _ -> () in
+        drain ();
+        List.iter (fun wake -> r.awaited <- r.awaited - 1; wake ()) (List.rev (Atomic.exchange r.asked []));
+        arm p r)
+  end
+
+let remote p wake =
+  let r =
+    match p.remote with
+    | Some r -> r
+    | None ->
+      let (input, output) as pipe = Unix.pipe ~cloexec:true () in
+      watch p input;
+      Unix.set_nonblock output;
+      let r = { pipe; asked = Atomic.make []; awaited = 0; armed = false } in
+      p.remote <- Some r;
+      r
+  in
+  r.awaited <- r.awaited + 1;
+  arm p r;
+  let fired = Atomic.make false in
+  fun () ->
+    if not (Atomic.exchange fired true) then
+      if Domain.is_main_domain () then begin
+        r.awaited <- r.awaited - 1;
+        if r.awaited = 0 && r.armed then (Hashtbl.remove p.readers (fst r.pipe); r.armed <- false);
+        wake ()
+      end
+      else begin
+        let rec push () = let l = Atomic.get r.asked in if not (Atomic.compare_and_set r.asked l (wake :: l)) then push () in
+        push ();
+        try ignore (Unix.single_write_substring (snd r.pipe) "w" 0 1) with Unix.Unix_error _ -> ()
+      end
+
 let reset p =
+  Option.iter (fun r -> p.remote <- Some { r with asked = Atomic.make []; awaited = 0; armed = false }) p.remote;
   Hashtbl.reset p.readers;
   Hashtbl.reset p.writers;
   p.timers <- Timers.empty

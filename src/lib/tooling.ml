@@ -1,6 +1,6 @@
 open Types
 
-let fingerprint src = "blake2:" ^ Digest.BLAKE256.to_hex (Digest.BLAKE256.string src)
+let fingerprint = Package.fingerprint
 let texts items = Arrays.list (Array.of_list (List.map (fun s -> Text s) items))
 let record (_ : world) names fields = Trie.record (Trie.names names) fields
 let records w names rows = Arrays.list (Array.of_list (List.map (record w names) rows))

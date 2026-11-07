@@ -1,0 +1,56 @@
+check: 0
+cesia/echo/echo.ce:3:21: Permission "native" denied for echo.
+  3 | Echo4(i, x, s, b) = echo4(i, x, s, b)  (** A map of four values, each read and made again by the engine. *)
+    |                     ^
+  Run again with --allow native=echo.
+  in Echo4 (cesia/echo/echo.ce:3)
+{Int: 1, Float: 2.0, Text: "a", Bool: true}
+["missing", "bool", "float", "text", "list"]
+["map", "struct", "function", "handle"]
+[3.0, "b", 1]
+{A: 1, B: [2], Count: 2}
+{X: 1, Y: 0.0, Count: 2}
+[1, 2, missing]
+7
+Ok(missing)
+cesia/echo/echo.ce:12:14: Permission "read" denied for /.
+  12 | Read(path) = read(path)  (** Ok if the program may read this path. *)
+     |              ^
+  Run again with --allow read=/, or a folder that holds it.
+  in Read (cesia/echo/echo.ce:12)
+  called from <anonymous> (src/main.ce:24)
+  called from message (src/main.ce:9)
+Permission "read" denied for /.
+cesia/echo/echo.ce:3:21: echo.Echo4 needs a Text, not the number 3.
+  3 | Echo4(i, x, s, b) = echo4(i, x, s, b)  (** A map of four values, each read and made again by the engine. *)
+    |                     ^
+  in Echo4 (cesia/echo/echo.ce:3)
+  called from <anonymous> (src/main.ce:25)
+  called from message (src/main.ce:9)
+echo.Echo4 needs a Text, not the number 3.
+cesia/echo/echo.ce:9:13: echo.Number needs a handle echo.thing, not the number 1.
+  9 | Number(h) = number(h)  (** The number of a handle of the kind echo.thing. *)
+    |             ^
+  in Number (cesia/echo/echo.ce:9)
+  called from <anonymous> (src/main.ce:26)
+  called from message (src/main.ce:9)
+echo.Number needs a handle echo.thing, not the number 1.
+cesia/echo/echo.ce:10:10: echo.boom raised Not_found: a bug of its native package.
+  10 | Boom() = boom()  (** Raises Not_found in the engine. *)
+     |          ^
+  in Boom (cesia/echo/echo.ce:10)
+  called from <anonymous> (src/main.ce:27)
+  called from message (src/main.ce:9)
+echo.boom raised Not_found: a bug of its native package.
+cesia/echo/echo.ce:11:15: echo.Refuse: no
+  11 | Refuse(why) = refuse(why)  (** A panic of the engine. *)
+     |               ^
+  in Refuse (cesia/echo/echo.ce:11)
+  called from <anonymous> (src/main.ce:28)
+  called from message (src/main.ce:9)
+echo.Refuse: no
+meanwhile
+Ok(Ok("from a domain"))
+Ok("the main program waits too")
+Err({Message: "The fiber was cancelled here.", Kind: "cancelled", File: "src/main.ce", Line: 35})
+exit 0
