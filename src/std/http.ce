@@ -186,7 +186,7 @@ answer(handle, request) = match fiber.Wait(fiber.Spawn(() -> ready(handle(reques
   else -> {Reply: failure(500), Upgrade: missing}
 end
 
-(** How a connection reads, writes and closes without TLS: the wrap of Serve when it is missing, and of Request for http://. *)
+(** How a connection reads, writes and closes without TLS: the wrap of Serve when it is missing, and of Fetch for http://. *)
 tcp(c) = result.Ok({Read: () -> net.Read(c), Write: s -> net.Write(c, s), Close: () -> net.Close(c)})
 
 waits(parsed) = match parsed
