@@ -109,4 +109,4 @@ let reserve = Runtime.reserve
 
 let register natives =
   if not (Domain.is_main_domain ()) then invalid_arg (Messages.engine_misuse "register: on Cesia's domain only").text;
-  Engines.register natives
+  Cesia_link.register natives

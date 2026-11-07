@@ -435,8 +435,7 @@ val sql_zero_byte : string -> t
 val sql_need_handle : string -> string -> string -> t
 val sql_closed : t
 val sql_store_directory : t
-val native_field : string -> t
-val native_no_name : t
+val native_table : t
 val native_public : string -> t
 
 (** [engine_missing folder wanted found]: the folder of deps/ that holds no engine of this tag, or "" for the project's

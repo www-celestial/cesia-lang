@@ -393,9 +393,9 @@ let engine_suffix () =
   let fp = if Arch.fp then "+fp" else "" and flambda = if Arch.flambda then "+flambda" else "" in
   Printf.sprintf "1-ocaml%s%s%s-%s-%s" Arch.ocaml fp flambda system (if Arch.name = "amd64" then "x86_64" else Arch.name)
 
-(* The plugin of Cesia_v1 once, its code open to the engines, then an engine, strictly checked. *)
+(* The plugin of Cesia_v1, once, its code open to the engines: it loads them. *)
 let interface = lazy (load_plugin ~global:true "native" "cesia_native.cmxs")
-let load_engine path = match Lazy.force interface with Error _ as e -> e | Ok () -> Cesia_sys.Plugin.load ~strict:true path
+let load_interface () = Lazy.force interface
 
 (* CESIA_JIT=off or always, for tests; native code otherwise comes to what gets hot. On arm64 the JIT stays off until it
    is tested there: programs run interpreted, with the same results. *)
@@ -406,7 +406,7 @@ let jit_mode () =
   Cesia_sys.Sys_modules.sqlite_loader := (fun () -> load_plugin "sqlite" "cesia_sqlite.cmxs");
   Cesia_sys.Sys_modules.debug_loader := (fun () -> load_plugin "debug" "cesia_debug.cmxs");
   Engines.suffix := engine_suffix;
-  Engines.loader := load_engine;
+  Engines.interface := load_interface;
   match Sys.getenv_opt "CESIA_JIT" with
   | Some "off" -> Tier.mode := Tier.off
   | Some "always" -> Tier.mode := Tier.always

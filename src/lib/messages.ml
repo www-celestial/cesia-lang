@@ -416,8 +416,7 @@ let sql_need_handle name kind a = plain (Printf.sprintf "%s needs a %s, not %s."
 let sql_closed = plain "This connection or cursor is closed."
 let sql_store_directory =
   plain "SQLite's pragmas temp_store_directory and data_store_directory are refused: they would put its files where read= and write= don't reach."
-let native_field key = plain (Printf.sprintf "[native] has an unknown field %s." key)
-let native_no_name = plain "[native] needs the name of [project]: its engines are named after it."
+let native_table = plain "[native] needs package, the folder of a package of the project, and natives, an array of the names of its natives."
 let native_public name =
   plain (Printf.sprintf "[native] natives: %s isn't a private name, as a native of a package is: a small first letter, no _." name)
 let engine_missing folder wanted found =

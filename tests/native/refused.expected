@@ -5,4 +5,6 @@ cesia/echo/echo.ce:3:21: The engine native/echo-TAG.cmxs didn't load: Unix is in
 cesia/echo/echo.ce:3:21: The engine native/echo-TAG.cmxs doesn't give the natives of its cesia.toml: it lacks soon.
 cesia.toml:7:1: [native] natives: Len isn't a private name, as a native of a package is: a small first letter, no _.
 cesia.toml:8:1: [native] has an unknown field engine.
+cesia.toml:7:1: [native] needs package, the folder of a package of the project, and natives, an array of the names of its natives.
+cesia.toml:5:1: [native] needs package, the folder of a package of the project, and natives, an array of the names of its natives.
 exit 0

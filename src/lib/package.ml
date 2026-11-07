@@ -54,32 +54,22 @@ let read_native root file (tables : Toml.table list) project =
   match List.find_opt (fun (t : Toml.table) -> t.path = [ "native" ]) tables with
   | None -> None
   | Some t ->
-    let field key what =
-      match List.find_opt (fun (e : Toml.entry) -> String.equal e.key key) t.entries with
-      | Some e -> what e
-      | None -> wrong t.start (Messages.plain (Messages.project_type "Native" key "a value"))
+    let read (package, natives) (e : Toml.entry) =
+      match e.key, e.value with
+      | "package", Text p ->
+        let dir = Runtime.normalize (Filename.concat root p) in
+        if not (Runtime.inside root dir && is_dir dir) then wrong e.line (Messages.source_missing p);
+        dir, natives
+      | "natives", Texts names ->
+        List.iter (fun n -> if Lexer.is_public n || not (Lexer.is_plain_name n) then wrong e.line (Messages.native_public n)) names;
+        package, names
+      | ("package" | "natives"), _ -> wrong e.line Messages.native_table
+      | key, _ -> wrong e.line (Messages.plain (Messages.project_field "[native]" key))
     in
-    List.iter (fun (e : Toml.entry) -> if e.key <> "package" && e.key <> "natives" then wrong e.line (Messages.native_field e.key)) t.entries;
-    let name =
-      match List.find_opt (fun (e : Toml.entry) -> String.equal e.key "name") project with
-      | Some { value = Text n; _ } -> n
-      | _ -> wrong t.start Messages.native_no_name
-    in
-    let package =
-      field "package" (function
-        | { value = Text p; line; _ } ->
-          let dir = Runtime.normalize (Filename.concat root p) in
-          if Runtime.inside root dir && is_dir dir then dir else wrong line (Messages.source_missing p)
-        | { line; _ } -> wrong line (Messages.plain (Messages.project_type "Native" "package" "a string")))
-    in
-    let natives =
-      field "natives" (function
-        | { value = Texts names; line; _ } ->
-          List.iter (fun n -> if not (Lexer.is_plain_name n && not (Lexer.is_public n)) then wrong line (Messages.native_public n)) names;
-          names
-        | { line; _ } -> wrong line (Messages.plain (Messages.project_type "Native" "natives" "an array of strings")))
-    in
-    Some { name; package; natives }
+    match List.fold_left read ("", []) t.entries, List.find_opt (fun (e : Toml.entry) -> e.key = "name") project with
+    | ("", _ | _, []), _ -> wrong t.start Messages.native_table
+    | (package, natives), Some { value = Text name; _ } -> Some { name; package; natives }
+    | _ -> wrong t.start (Messages.plain Messages.project_no_name)
 
 (* The source folders of a root, from [project] src of its cesia.toml, and its [native], read once: every use asks. *)
 let known_sources = Hashtbl.create 4

@@ -26,3 +26,7 @@ run
 toml 'natives = ["echo4"]
 engine = "echo.cmxs"'
 run
+toml 'natives = "echo4"'
+run
+toml ''
+run
