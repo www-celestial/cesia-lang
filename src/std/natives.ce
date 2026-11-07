@@ -203,6 +203,20 @@ use std/test
       fiber.Receive(ch) --> result.Ok("a")
       fiber.Receive(ch, timeout = 0).Error.Kind --> "timeout" *)
 
+(** fiber.Select(chs, timeout = missing)
+    Receives from the first channel of a list that has a value: an Ok of {Channel, Value}. The channels are tried in the
+    order of the list, so an earlier one goes first. With none, the fiber waits for one, at most timeout seconds when
+    given: then an Err of kind "timeout"; a timeout of 0 never waits. A channel closed and empty, met before any value,
+    gives an Err of kind "closed" with its Channel. For a single channel, fiber.Receive.
+
+      jobs = fiber.Channel()
+      stop = fiber.Channel()
+      fiber.Send("job 1", jobs)
+      fiber.Select([stop, jobs]).Value.Value --> "job 1"
+      fiber.Close(stop)
+      fiber.Select([stop, jobs]).Error.Kind --> "closed"
+      fiber.Select([jobs], timeout = 0).Error.Kind --> "timeout" *)
+
 (** fiber.Close(ch)
     Says that nothing more will be sent on a channel. The values already in it still come; then Receive gives an Err of
     kind "closed" at once, and a for loop over the channel ends. Sending on it then, or closing it again, is a bug, as is

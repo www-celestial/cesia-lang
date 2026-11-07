@@ -247,6 +247,65 @@ let receive ctx (a : Types.t array) =
 
 let next_in ctx v = match take ctx (channel_arg ctx "for" v) None with Came v -> Some v | Closed | Late -> None
 
+(* Does a channel have a value for a receiver? *)
+let has_value ch = not (Queue.is_empty ch.items && Queue.is_empty ch.senders)
+
+let select_keys = Trie.names [| "Channel"; "Value" |]
+let closed_keys = Trie.names [| "Kind"; "Message"; "Channel" |]
+
+(* The first channel of the list with a value, or closed and empty, in the order of the list; else it parks on all of
+   them, with one timer for the whole wait, and looks again when woken. A fiber woken by one channel may take from an
+   earlier one: the others with a value then wake their next receiver, so that none is left waiting for nothing. *)
+let select ctx (a : Types.t array) =
+  let chs =
+    match a.(0) with
+    | Array l ->
+      let l = Value.trim l in
+      List.init (l.rows * l.cols) (fun k ->
+          let h = Value.elt l k in
+          h, channel_arg ctx "Select" h)
+    | v -> Runtime.fail ctx Type (Messages.need_channels (Value.describe v))
+  in
+  let limit = seconds_arg ctx (if Array.length a > 1 then a.(1) else Undef) in
+  let rec first = function
+    | [] -> None
+    | (h, ch) :: rest ->
+      (match next ch with
+       | Some v -> Some (h, ch, Came v)
+       | None when ch.closed -> Some (h, ch, Closed)
+       | None -> first rest)
+  in
+  let timed_out = ref (limit = Some 0.) and parked = ref None and timing = ref false in
+  let rec go again =
+    match first chs with
+    | Some (h, taken, got) ->
+      List.iter (fun (_, ch) -> if ch != taken && has_value ch then wake_receiver ch) chs;
+      (match got with
+       | Came v -> Value.ok ctx.w (Trie.record select_keys [| h; v |])
+       | Closed | Late -> Value.err ctx.w (Trie.record closed_keys [| Text "closed"; Text Messages.channel_closed.text; h |]))
+    | None when !timed_out -> Value.failure ctx.w "timeout" Messages.select_timeout.text
+    | None ->
+      if not !timing then begin
+        timing := true;
+        Option.iter
+          (fun seconds ->
+             ctx.w.timer seconds (fun () ->
+                 timed_out := true;
+                 Option.iter (fun wake -> ignore (wake ())) !parked))
+          limit
+      end;
+      park ctx (fun wake ->
+          parked := Some wake;
+          List.iter
+            (fun (_, ch) -> ch.receivers <- (if again then wake :: ch.receivers else ch.receivers @ [ wake ]))
+            chs);
+      Option.iter
+        (fun wake -> List.iter (fun (_, ch) -> ch.receivers <- List.filter (fun w -> w != wake) ch.receivers) chs)
+        !parked;
+      go true
+  in
+  go false
+
 (* Nothing more comes: the receivers parked wake to what is left, then to its end; the senders parked find it closed. *)
 let close ctx (a : Types.t array) =
   let ch = channel_arg ctx "Close" a.(0) in
@@ -278,4 +337,5 @@ let natives =
     "Channel", Native.nat ~params:[| "size" |] "Channel" 0 1 channel;
     "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
     "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive;
-    "Close", Native.nat ~params:[| "ch" |] "Close" 1 1 close ]
+    "Close", Native.nat ~params:[| "ch" |] "Close" 1 1 close;
+    "Select", Native.nat ~result:true ~params:[| "chs"; "timeout" |] "Select" 1 2 select ]

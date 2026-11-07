@@ -141,3 +141,52 @@ isSendAfterClose() = misused(ch -> fiber.Send(1, ch)) == "user"
 isCloseTwice() = misused(fiber.Close) == "user"
 isCloseStopsSender() = parkedSender() == "user"
 isForNotChannel() = result.IsErr(fiber.Wait(fiber.Spawn(() -> [x for x in fiber.Spawn(() -> 1)])))
+
+defn priority()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  fiber.Send(2, b)
+  fiber.Send(1, a)
+  [fiber.Select([a, b]).Value.Value, fiber.Select([a, b]).Value.Value]
+end
+defn selectWaits()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  fiber.Spawn(defn ()
+    sys.Sleep(0.01)
+    fiber.Send("late", b)
+  end)
+  got = fiber.Select([a, b])
+  [got.Value.Value, got.Value.Channel == b]
+end
+defn selectClosed()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  fiber.Spawn(() -> fiber.Close(b))
+  got = fiber.Select([a, b])
+  [got.Error.Kind, got.Error.Channel == b]
+end
+defn passedOn()
+  a = fiber.Channel()
+  b = fiber.Channel()
+  first = fiber.Spawn(() -> fiber.Select([a, b]).Value.Value)
+  sys.Sleep(0)
+  second = fiber.Spawn(() -> fiber.Receive(b).Value)
+  sys.Sleep(0)
+  fiber.Send("b", b)
+  fiber.Send("a", a)
+  [result.Unwrap(fiber.Wait(first)), result.Unwrap(fiber.Wait(second))]
+end
+defn selectSender()
+  a = fiber.Channel(size = 0)
+  fiber.Spawn(() -> fiber.Send("met", a))
+  fiber.Select([fiber.Channel(), a]).Value.Value
+end
+isSelectOrder() = value.Equal(priority(), [1, 2])
+isSelectWaits() = value.Equal(selectWaits(), ["late", true])
+isSelectClosed() = value.Equal(selectClosed(), ["closed", true])
+isSelectTimeout() = fiber.Select([fiber.Channel()], timeout = 0.01).Error.Kind == "timeout"
+isSelectNoWait() = fiber.Select([fiber.Channel(), fiber.Channel()], timeout = 0).Error.Kind == "timeout"
+isSelectPassesOn() = value.Equal(passedOn(), ["a", "b"])
+isSelectSizeZero() = selectSender() == "met"
+isSelectNotList() = result.IsErr(fiber.Wait(fiber.Spawn(() -> fiber.Select(fiber.Channel()))))

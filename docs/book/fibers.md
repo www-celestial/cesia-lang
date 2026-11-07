@@ -134,6 +134,34 @@ got.Error.Kind --> "closed"
 fiber.Receive(fiber.Channel(), timeout = 0.05) -->
 ```
 
+### Several channels at once
+
+[fiber.Select] waits on a list of channels and receives from the first one that has a value, as Go's `select`. It gives
+an `Ok` of the `Channel` and the `Value`, an `Err` of kind `"closed"` for a channel closed and empty, or of kind
+`"timeout"`. The channels are tried in the order of the list, so a worker can let a stop go before its work:
+
+```cesia
+jobs = fiber.Channel()
+stop = fiber.Channel()
+worker = fiber.Spawn(defn ()
+  done = []
+  got = fiber.Select([stop, jobs], timeout = 1)
+  while result.IsOk(got)
+    done = list.Append(got.Value.Value, done)
+    got = fiber.Select([stop, jobs], timeout = 1)
+  end
+  done
+end)
+fiber.Send("wash", jobs)
+fiber.Send("dry", jobs)
+sys.Sleep(0)
+fiber.Close(stop)
+fiber.Wait(worker) -->
+```
+
+The worker took the two jobs as they came, then stopped when `stop` was closed: a closed channel has no value, so
+[fiber.Select] gives its `Err` at once.
+
 ### A channel of a size
 
 A channel holds as many values as are sent to it, and a fast sender can fill the memory before a slow receiver catches
