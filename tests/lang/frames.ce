@@ -6,25 +6,25 @@ use std/value
 sales = frame.Table(["city", "item", "amount"], [["Paris", "Lyon", "Paris", "Nice"], ["a", "b", "b", "a"], [10, 20, 30, missing]])
 places = frame.Table(["city", "country"], [["Paris", "Lyon"], ["FR", "FR"]])
 
-isShape() = frame.Rows(sales) == 4 and value.Equal(frame.Columns(sales), ["city", "item", "amount"])
+isShape() = frame.RowCount(sales) == 4 and value.Equal(frame.Columns(sales), ["city", "item", "amount"])
 isOf() = value.Equal(frame.Columns(frame.Of({"b": [1], "a": [2]})), ["b", "a"])
 isColumn() = value.Equal(frame.Column("item", sales), ["a", "b", "b", "a"])
 isRow() = frame.Row(2, sales)["city"] == "Lyon"
 isRecords() = value.Len(frame.Records(sales)) == 4
 isFromRecords() = value.Equal(frame.Column("x", frame.FromRecords(["x"], [{"x": 1}, {"x": 2}])), [1, 2])
-isHead() = frame.Rows(frame.Head(2, sales)) == 2 and frame.Rows(frame.Head(9, sales)) == 4
+isHead() = frame.RowCount(frame.Head(2, sales)) == 2 and frame.RowCount(frame.Head(9, sales)) == 4
 isTail() = value.Equal(frame.Column("city", frame.Tail(1, sales)), ["Nice"])
 isSelect() = value.Equal(frame.Columns(frame.Select(["amount"], sales)), ["amount"])
 isDropColumn() = value.Equal(frame.Columns(frame.DropColumn("item", sales)), ["city", "amount"])
 isSetColumn() = value.Equal(frame.Column("n", frame.SetColumn("n", [1, 2, 3, 4], sales)), [1, 2, 3, 4])
 isWithColumn() = frame.Column("up", frame.WithColumn("up", r -> text.Upper(r["city"]), sales))[1] == "PARIS"
 isRename() = value.Equal(frame.Columns(frame.Rename("item", "kind", sales)), ["city", "kind", "amount"])
-isWhere() = frame.Rows(frame.Where(r -> r["city"] == "Paris", sales)) == 2
-isWhereColumn() = frame.Rows(frame.WhereColumn("item", it == "a", sales)) == 2
+isWhere() = frame.RowCount(frame.Where(r -> r["city"] == "Paris", sales)) == 2
+isWhereColumn() = frame.RowCount(frame.WhereColumn("item", it == "a", sales)) == 2
 isSort() = value.Equal(frame.Column("city", frame.SortBy("city", sales)), ["Lyon", "Nice", "Paris", "Paris"])
 isSortDescending() = frame.Column("city", frame.SortBy("city", sales, descending = true))[1] == "Paris"
-isAppend() = frame.Rows(frame.Append(sales, sales)) == 8
-isDropMissing() = frame.Rows(frame.DropMissing(sales)) == 3
+isAppend() = frame.RowCount(frame.Append(sales, sales)) == 8
+isDropMissing() = frame.RowCount(frame.DropMissing(sales)) == 3
 isFillMissing() = frame.Column("amount", frame.FillMissing(0, sales))[4] == 0
 
 defn isGroupBy()
@@ -33,7 +33,7 @@ defn isGroupBy()
 end
 
 defn isGroupTwoKeys()
-  frame.Rows(frame.GroupBy(["city", "item"], [], sales)) == 4
+  frame.RowCount(frame.GroupBy(["city", "item"], [], sales)) == 4
 end
 
 defn isValueCounts()
@@ -43,12 +43,12 @@ end
 
 defn isJoin()
   j = frame.JoinOn("city", sales, places)
-  frame.Rows(j) == 3 and value.Equal(frame.Column("country", j), ["FR", "FR", "FR"])
+  frame.RowCount(j) == 3 and value.Equal(frame.Column("country", j), ["FR", "FR", "FR"])
 end
 
 defn isLeftJoin()
   j = frame.JoinOn("city", sales, places, how = "left")
-  frame.Rows(j) == 4 and value.IsMissing(frame.Column("country", j)[4])
+  frame.RowCount(j) == 4 and value.IsMissing(frame.Column("country", j)[4])
 end
 
 defn isDescribe()

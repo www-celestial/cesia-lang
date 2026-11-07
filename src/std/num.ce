@@ -4,6 +4,7 @@ use std/lapack
 use std/list
 use std/math
 use std/matrix
+use std/random
 use std/result
 use std/value
 
@@ -424,39 +425,28 @@ defn Ifft(f)
   {Re: r.Re / n, Im: r.Im / n}
 end
 
-(** Random numbers that a seed repeats, for simulations: xorshift, never for secrets. A generator is a value. *)
-Seeded(seed) = {State: math.BitOr(math.BitXor(seed, 88172645463325252), 1)}
+defn Uniform(n)
+  (** n floats from 0 included to 1 excluded, drawn by std/random: one generator for the whole program, so that cesia run
+      --seed N gives the same ones again. Never for secrets.
 
-defn next(state)
-  x = state
-  x = math.BitXor(x, math.BitShift(x, 13))
-  x = math.BitXor(x, math.BitShift(x, -7))
-  math.BitXor(x, math.BitShift(x, 17))
-end
-
-defn Uniform(n, generator)
-  (** n floats in [0, 1) from a generator, as a struct with values and the next generator. See seeded.
-
-        value.Len(Uniform(3, Seeded(1)).Values) --> 3 *)
+        value.Len(Uniform(3)) --> 3 *)
   values = matrix.Zeros(1, n)
-  s = generator.State
   for k in 1..n
-    s = next(s)
-    values[k] = math.BitAnd(s, 1099511627775) / 1099511627776.0
+    values[k] = random.Float()
   end
-  {Values: values, Next: {State: s}}
+  values
 end
 
-defn Normal(n, generator)
-  (** n floats from the normal distribution (mean 0, deviation 1) from a generator, as a struct with values and the next generator.
+defn Normal(n)
+  (** n floats from the normal distribution, of mean 0 and deviation 1, drawn by std/random as Uniform's are.
 
-        value.Len(Normal(3, Seeded(1)).Values) --> 3 *)
-  u = Uniform(2 * n, generator)
+        value.Len(Normal(3)) --> 3 *)
+  u = Uniform(2 * n)
   values = matrix.Zeros(1, n)
   for k in 1..n
-    a = 1.0 - u.Values[2 * k - 1]
-    b = u.Values[2 * k]
+    a = 1.0 - u[2 * k - 1]
+    b = u[2 * k]
     values[k] = math.Sqrt(-2.0 * math.Log(a)) * math.Cos(2.0 * math.Pi * b)
   end
-  {Values: values, Next: u.Next}
+  values
 end

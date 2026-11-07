@@ -399,7 +399,7 @@ defn resolve(wanted)
     end
     while value.Len(queue) > 0 and not raised
       item = list.First(queue)
-      queue = list.Rest(queue)
+      queue = list.Skip(1, queue)
       p = projects[item.Path]
       dir = packageDir(p, item.Name)
       have = dict.GetOr(item.Path, [], brought)

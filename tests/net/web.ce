@@ -15,7 +15,7 @@ end
 
 defn add(req)
   input = web.BodyJson(req)?
-  result.Ok(web.SendJson({"sum": input["a"] + input["b"]}, status = 201))
+  result.Ok(web.Json({"sum": input["a"] + input["b"]}, status = 201))
 end
 
 defn notes(req)
@@ -49,7 +49,7 @@ defn show(r)
 end
 
 defn hdr(name, r)
-  io.Print(name, web.GetHeader(name, r.Value.Headers))
+  io.Print(name, http.HeaderValue(name, r.Value.Headers))
 end
 
 fiber.Spawn(() -> web.Serve(a, port = 18201))

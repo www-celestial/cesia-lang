@@ -125,12 +125,12 @@ use std/web
 use std/text
 use std/value
 
-refused(e) = web.SendJson({Error: e.Message}, status = 400)
-failed(e) = web.SendJson({Error: e.Message}, status = 500)
+refused(e) = web.Json({Error: e.Message}, status = 400)
+failed(e) = web.Json({Error: e.Message}, status = 500)
 
 defn listed(db)
   match List(db)
-    result.Ok(notes) -> web.SendJson(notes)
+    result.Ok(notes) -> web.Json(notes)
     result.Err(e) -> failed(e)
   end
 end
@@ -139,7 +139,7 @@ defn added(request, db)
   match web.BodyJson(request) then result.AndThen(NewNote.From)
     result.Err(e) -> refused(e)
     result.Ok(n) -> match Save(n.Text, db)
-      result.Ok(note) -> web.SendJson(note, status = 201)
+      result.Ok(note) -> web.Json(note, status = 201)
       result.Err(e) -> if e.Code == "23514" refused(e) else failed(e) end
     end
   end
@@ -151,7 +151,7 @@ defn finished(request, db)
     return refused({Message: "The id is a whole number."})
   end
   match Finish(id, db)
-    result.Ok(note) -> if value.IsMissing(note) web.SendJson({Error: "No note $id."}, status = 404) else web.SendJson(note) end
+    result.Ok(note) -> if value.IsMissing(note) web.Json({Error: "No note $id."}, status = 404) else web.Json(note) end
     result.Err(e) -> failed(e)
   end
 end

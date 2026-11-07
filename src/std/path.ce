@@ -70,7 +70,7 @@ defn Dir(p)
   if value.Len(parts) == 1
     return if parts[1] == "/" "/" else "." end
   end
-  head = trimmed(text.Join("/", list.Butlast(parts)))
+  head = trimmed(text.Join("/", list.DropLast(1, parts)))
   if head == "" "/" else head end
 end
 

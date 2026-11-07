@@ -154,10 +154,6 @@ First(xs) = if value.Len(xs) == 0 missing else xs[1] end
 Second(xs) = if value.Len(xs) < 2 missing else xs[2] end
 (**   Last([1, 2]) --> 2 *)
 Last(xs) = if value.Len(xs) == 0 missing else xs[value.Len(xs)] end
-(**   Rest([1, 2, 3]) --> [2, 3] *)
-Rest(xs) = Skip(1, xs)
-(**   Butlast([1, 2, 3]) --> [1, 2] *)
-Butlast(xs) = Take(Max(value.Len(xs) - 1, 0), xs)
 (**   Nth(2, [5, 6]) --> 6 *)
 Nth(k, xs) = xs[k]
 (**   Prepend(1, [2]) --> [1, 2] *)
@@ -205,21 +201,6 @@ MapIndexed(f, xs) = [f(k, xs[k]) for k in 1..value.Len(xs)]
 Interleave(a, b) = Flatten([[a[k], b[k]] for k in 1..Min(value.Len(a), value.Len(b))])
 (**   Interpose(0, [1, 2]) --> [1, 0, 2] *)
 Interpose(sep, xs) = Flatten([if k == 1 [xs[k]] else [sep, xs[k]] end for k in 1..value.Len(xs)])
-
-defn Every(f, xs)
-  (** Does f accept every element? It stops at the first refusal.
-
-        Every(math.IsOdd, [1, 3]) --> true *)
-  for x in xs
-    if not f(x)
-      return false
-    end
-  end
-  true
-end
-
-(**   Some(math.IsOdd, [2, 3]) --> true *)
-Some(f, xs) = not Every(x -> not f(x), xs)
 
 defn Iterate(f, x, n)
   (** n values: x, f(x), f(f(x)) and so on.

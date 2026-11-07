@@ -137,7 +137,7 @@ list.Reduce((total, x) -> total + x, 0, numbers) -->
 
 ### More of them
 
-Many more work the same way: [list.SortBy], [list.Count], [list.FindFirst], [list.Group], [list.Every]. Each has its page in the reference.
+Many more work the same way: [list.SortBy], [list.Count], [list.FindFirst], [list.Group], [list.TakeWhile]. Each has its page in the reference.
 
 ```cesia
 list.Count(x -> x > 2, numbers) -->

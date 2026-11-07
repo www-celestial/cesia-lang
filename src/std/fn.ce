@@ -1,4 +1,5 @@
-(** Functions made of functions: compose them, fix an argument, or run several on one value. *)
+(** Functions made of functions: compose them, or run several on one value. To fix an argument, write it, as
+    list.Map(it + 2, xs); to pass a value through steps, then. *)
 use std/value
 use std/math
 
@@ -10,12 +11,8 @@ Identity(x) = x
 Constantly(x) = y -> x
 (** f after g, after h if there is one.
 
-      Comp(math.Inc, it * 2)(3) --> 7 *)
-Comp(f, g, h = Identity) = x -> f(g(h(x)))
-(** f with its first argument given. As the collection comes last, this names a step of a pipeline.
-
-      Partial(math.Add, 2)(3) --> 5 *)
-Partial(f, a) = x -> f(a, x)
+      Compose(math.Inc, it * 2)(3) --> 7 *)
+Compose(f, g, h = Identity) = x -> f(g(h(x)))
 (**   Complement(math.IsEven)(3) --> true *)
 Complement(f) = x -> not f(x)
 
@@ -25,8 +22,3 @@ defn Juxt(f, g, h = missing)
         Juxt(math.Inc, math.Dec)(1) --> [2, 0] *)
   if value.IsMissing(h) (x -> [f(x), g(x)]) else (x -> [f(x), g(x), h(x)]) end
 end
-
-(** x through up to four functions, in order.
-
-      Pipe(1, math.Inc, it * 3) --> 6 *)
-Pipe(x, f, g = Identity, h = Identity, k = Identity) = k(h(g(f(x))))

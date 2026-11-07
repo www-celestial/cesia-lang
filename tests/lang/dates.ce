@@ -27,8 +27,8 @@ isCsvEmptyFields() = value.Equal(csv.Parse(",\n"), [["", ""]])
 isCsvEmpty() = value.Equal(csv.Parse(""), [])
 isCsvSeparator() = value.Equal(csv.Parse("a;b\n", separator = ";"), [["a", "b"]])
 isCsvRecords() = csv.Records("name,age\nann,30\n")[1]["age"] == "30"
-isCsvWrite() = csv.Write([["a", "b,c"], [1, "d\"e"]]) == "a,\"b,c\"\n1,\"d\"\"e\"\n"
-isCsvRoundTrip() = value.Equal(csv.Parse(csv.Write([["a,b", "c\nd", "e\"f"]])), [["a,b", "c\nd", "e\"f"]])
+isCsvWrite() = csv.Text([["a", "b,c"], [1, "d\"e"]]) == "a,\"b,c\"\n1,\"d\"\"e\"\n"
+isCsvRoundTrip() = value.Equal(csv.Parse(csv.Text([["a,b", "c\nd", "e\"f"]])), [["a,b", "c\nd", "e\"f"]])
 
 isOffsetToUnix() = date.ToUnix(date.Date(2026, 11, 1, 15, Offset = 10800)) == date.ToUnix(date.Date(2026, 11, 1, 12))
 isOffsetFormat() = date.Format(date.Date(2026, 1, 2, 3, 4, 5, Offset = -19800)) == "2026-01-02T03:04:05-05:30"

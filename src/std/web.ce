@@ -24,7 +24,7 @@ end
 (** An application with a GET route added: Handler(request) gives a response. *)
 Get(pattern, handler, a) = Route("GET", pattern, handler, a)
 Post(pattern, handler, a) = Route("POST", pattern, handler, a)   (** An application with a POST route added. *)
-PutRoute(pattern, handler, a) = Route("PUT", pattern, handler, a)   (** An application with a PUT route added. *)
+Put(pattern, handler, a) = Route("PUT", pattern, handler, a)   (** An application with a PUT route added. *)
 Delete(pattern, handler, a) = Route("DELETE", pattern, handler, a)   (** An application with a DELETE route added. *)
 (** An application with a route added that takes any method. *)
 AnyMethod(pattern, handler, a) = Route("*", pattern, handler, a)
@@ -37,7 +37,7 @@ Plain(s, status = 200) = {Status: status, Body: s, Headers: [type("text/plain; c
 (** An HTML response. *)
 Html(s, status = 200) = {Status: status, Body: s, Headers: [type("text/html; charset=utf-8")]}
 (** A response with the JSON text of a value. *)
-SendJson(data, status = 200) = {Status: status, Body: json.Text(data), Headers: [type("application/json")]}
+Json(data, status = 200) = {Status: status, Body: json.Text(data), Headers: [type("application/json")]}
 (** A response that sends the client to another URL. *)
 Redirect(url, status = 302) = {Status: status, Body: "", Headers: [{Name: "location", Value: url}]}
 NotFound() = Plain("Not Found", status = 404)   (** A 404 response. *)
@@ -60,7 +60,7 @@ defn SetCookie(name, content, response, options = "Path=/; HttpOnly; SameSite=La
 end
 
 defn cookies(headers)
-  line = GetHeader("cookie", headers)
+  line = http.HeaderValue("cookie", headers)
   out = dict.Dict()
   if value.IsMissing(line)
     return out
@@ -73,9 +73,6 @@ defn cookies(headers)
   end
   out
 end
-
-(** The value of a header by its name in lower case, or missing. *)
-GetHeader(name, headers) = http.HeaderValue(name, headers)
 
 defn matchPath(parts, path)
   (** Binds :name parts, and a final * takes what remains. The parameters, or missing if the path doesn't match. *)

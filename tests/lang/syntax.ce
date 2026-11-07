@@ -28,21 +28,21 @@ isPlainWord() = value.Equal(syntax.Tokens("count", syntax.FirstState).Tokens, [[
 isKeywordInsideAName() = value.Equal(syntax.Tokens("ending", syntax.FirstState).Tokens, [[syntax.Plain, "ending"]])
 isNumber() = value.Equal(syntax.Tokens("x = 0x1F + 2.5", syntax.FirstState).Tokens[2], [syntax.Number, "0x1F"])
 isFloat() = value.Equal(syntax.Tokens("x = 2.5", syntax.FirstState).Tokens[2], [syntax.Number, "2.5"])
-isText() = syntax.String in roles("x = \"a\"")
-isTextWhole() = value.Equal(syntax.Tokens("x = \"a\"", syntax.FirstState).Tokens[2], [syntax.String, "\"a\""])
-isTextWithEscape() = value.Equal(syntax.Tokens("\"a\\\"b\" c", syntax.FirstState).Tokens[1], [syntax.String, "\"a\\\"b\""])
-isInterpolationStaysString() = value.Equal(syntax.Tokens("\"a $$(b) c\"", syntax.FirstState).Tokens, [[syntax.String, "\"a $$(b) c\""]])
+isText() = syntax.Text in roles("x = \"a\"")
+isTextWhole() = value.Equal(syntax.Tokens("x = \"a\"", syntax.FirstState).Tokens[2], [syntax.Text, "\"a\""])
+isTextWithEscape() = value.Equal(syntax.Tokens("\"a\\\"b\" c", syntax.FirstState).Tokens[1], [syntax.Text, "\"a\\\"b\""])
+isInterpolationStaysString() = value.Equal(syntax.Tokens("\"a $$(b) c\"", syntax.FirstState).Tokens, [[syntax.Text, "\"a $$(b) c\""]])
 isCommentLine() = value.Equal(syntax.Tokens("(* note *)", syntax.FirstState).Tokens, [[syntax.Comment, "(* note *)"]])
 isCommentAfterCode() = value.Equal(syntax.Tokens("x (* note *)", syntax.FirstState).Tokens, [[syntax.Plain, "x "], [syntax.Comment, "(* note *)"]])
 isDocIsAComment() = value.Equal(syntax.Tokens("(** doc *)", syntax.FirstState).Tokens, [[syntax.Comment, "(** doc *)"]])
 isDashesAreNoComment() = not (syntax.Comment in roles("x -- note")) and lost("x -- note")
-isDashesInTextStay() = value.Equal(roles("\"a -- b\""), [syntax.String])
+isDashesInTextStay() = value.Equal(roles("\"a -- b\""), [syntax.Text])
 isCommentCarries() = syntax.Tokens("(* a", syntax.FirstState).State.Comment == 1
 isCommentNests() = syntax.Tokens("(* (* a *)", syntax.FirstState).State.Comment == 1
 isCommentCloses() = syntax.Tokens("(* a *) x", syntax.FirstState).State.Comment == 0
 isCommentContinues() = value.Equal(syntax.Tokens("b *) if", {Comment: 1, Text: false}).Tokens, [[syntax.Comment, "b *)"], [syntax.Plain, " "], [syntax.Keyword, "if"]])
 isTextCarries() = syntax.Tokens("x = \"one", syntax.FirstState).State.Text
-isTextContinues() = value.Equal(syntax.Tokens("two\" + y", {Comment: 0, Text: true}).Tokens[1], [syntax.String, "two\""])
+isTextContinues() = value.Equal(syntax.Tokens("two\" + y", {Comment: 0, Text: true}).Tokens[1], [syntax.Text, "two\""])
 isTextEnds() = not syntax.Tokens("two\"", {Comment: 0, Text: true}).State.Text
 isEmptyLine() = value.Equal(syntax.Tokens("", syntax.FirstState).Tokens, []) and syntax.Tokens("", syntax.FirstState).State.Comment == 0
 isNothingLost() = list.All(list.Map(lost, ["defn f(x)", "  x = \"a\" -- b", "(* a *) if (* b", "é = 1.5e3 $$(", "\t.. ... ::", "\"\" \"\"\"\""]))

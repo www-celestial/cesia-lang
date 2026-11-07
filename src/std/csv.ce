@@ -31,10 +31,10 @@ defn field(x, separator)
   end
 end
 
-defn Write(rows, separator = ",")
+defn Text(rows, separator = ",")
   (** The CSV text of rows of values, quoting the fields that need it. Every row ends with a line end.
 
-        Write([["a", 1], ["b,c", 2]]) --> "a,1\n\"b,c\",2\n" *)
+        Text([["a", 1], ["b,c", 2]]) --> "a,1\n\"b,c\",2\n" *)
   lines = [text.Join(separator, [field(x, separator) for x in row]) for row in rows]
   "$(text.Join("\n", lines))\n"
 end

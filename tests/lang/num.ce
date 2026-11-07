@@ -62,19 +62,18 @@ defn isFftAnySize()
   allNear(num.Ifft(num.Fft(xs)).Re, xs)
 end
 
-defn isRandomRepeatable()
-  a = num.Uniform(5, num.Seeded(42))
-  b = num.Uniform(5, num.Seeded(42))
-  allNear(a.Values, b.Values) and list.All([x >= 0.0 and x < 1.0 for x in a.Values])
+defn isUniformRange()
+  xs = num.Uniform(1000)
+  value.Len(xs) == 1000 and list.All([x >= 0.0 and x < 1.0 for x in xs])
 end
 
 defn isRandomDiffers()
-  a = num.Uniform(2, num.Seeded(1))
-  b = num.Uniform(2, a.Next)
-  not near(a.Values[1], b.Values[1])
+  a = num.Uniform(2)
+  b = num.Uniform(2)
+  not near(a[1], b[1])
 end
 
 defn isNormal()
-  xs = num.Normal(4000, num.Seeded(7)).Values
+  xs = num.Normal(4000)
   math.Abs(list.Mean(xs)) < 0.1 and math.Abs(num.Std(xs) - 1.0) < 0.1
 end

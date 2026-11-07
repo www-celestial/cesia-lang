@@ -16,16 +16,16 @@ end
 
 (** A frame from a dictionary of columns.
 
-      Rows(Of({"a": [1, 2]})) --> 2 *)
+      RowCount(Of({"a": [1, 2]})) --> 2 *)
 Of(columns) = Table(dict.Keys(columns), dict.Values(columns))
 (** A frame with these columns and no row.
 
-      Rows(Empty(["a"])) --> 0 *)
+      RowCount(Empty(["a"])) --> 0 *)
 Empty(names) = Table(names, [[] for n in names])
 (** The number of rows.
 
-      Rows(Of({"a": [1, 2]})) --> 2 *)
-Rows(df) = if value.Len(df.Names) == 0 0 else value.Len(df.Columns[df.Names[1]]) end
+      RowCount(Of({"a": [1, 2]})) --> 2 *)
+RowCount(df) = if value.Len(df.Names) == 0 0 else value.Len(df.Columns[df.Names[1]]) end
 (** The names of the columns.
 
       Columns(Of({"a": [1], "b": [2]})) --> ["a", "b"] *)
@@ -41,12 +41,12 @@ Row(i, df) = dict.Dict([{Key: n, Value: df.Columns[n][i]} for n in df.Names])
 (** All the rows, each as a dictionary.
 
       value.Len(Records(Of({"a": [1, 2]}))) --> 2 *)
-Records(df) = [Row(i, df) for i in 1..Rows(df)]
+Records(df) = [Row(i, df) for i in 1..RowCount(df)]
 
 defn FromRecords(names, items)
   (** A frame from the dictionaries of the rows, taking the given columns. A missing key gives a missing value.
 
-        Rows(FromRecords(["a"], [{"a": 1}, {"a": 2}])) --> 2 *)
+        RowCount(FromRecords(["a"], [{"a": 1}, {"a": 2}])) --> 2 *)
   Table(names, [[dict.Get(n, r) for r in items] for n in names])
 end
 
@@ -55,13 +55,13 @@ take(ks, df) = Table(df.Names, [col.Pick(ks, df.Columns[n]) for n in df.Names])
 (** The first n rows.
 
       Column("a", Head(2, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [1, 2] *)
-Head(n, df) = take(1..list.Min(n, Rows(df)), df)
+Head(n, df) = take(1..list.Min(n, RowCount(df)), df)
 
 defn Tail(n, df)
   (** The last n rows.
 
         Column("a", Tail(2, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3] *)
-  total = Rows(df)
+  total = RowCount(df)
   take(list.Max(total - n, 0) + 1..total, df)
 end
 
@@ -83,7 +83,7 @@ defn SetColumn(name, values, df)
 end
 
 (** f takes a row as a dictionary, and gives the value of the new column. *)
-WithColumn(name, f, df) = SetColumn(name, [f(Row(i, df)) for i in 1..Rows(df)], df)
+WithColumn(name, f, df) = SetColumn(name, [f(Row(i, df)) for i in 1..RowCount(df)], df)
 
 (** A frame with a column renamed.
 
@@ -93,14 +93,14 @@ Rename(old, new, df) = Table([if n == old new else n end for n in df.Names], [df
 (** The rows for which f accepts the row as a dictionary.
 
       Column("a", Where(r -> r["a"] > 1, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3] *)
-Where(f, df) = take([i for i in 1..Rows(df) if f(Row(i, df))], df)
+Where(f, df) = take([i for i in 1..RowCount(df) if f(Row(i, df))], df)
 
 defn WhereColumn(name, f, df)
   (** The rows for which f accepts the value of a column.
 
         Column("a", WhereColumn("a", it > 1, Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> [2, 3] *)
   xs = df.Columns[name]
-  take([i for i in 1..Rows(df) if f(xs[i])], df)
+  take([i for i in 1..RowCount(df) if f(xs[i])], df)
 end
 
 (** The rows where a mask of booleans is true: WhereMask(Column("v", df) > 2.0, df). *)
@@ -118,11 +118,11 @@ end
 
 (** The rows of a followed by the rows of b, which has the same columns.
 
-      Rows(Append(Of({"a": [1, 2, 3], "b": [4, 5, 6]}), Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> 6 *)
+      RowCount(Append(Of({"a": [1, 2, 3], "b": [4, 5, 6]}), Of({"a": [1, 2, 3], "b": [4, 5, 6]}))) --> 6 *)
 Append(a, b) = Table(a.Names, [list.Concat(a.Columns[n], b.Columns[n]) for n in a.Names])
 (** The rows that have no missing value.
 
-      Rows(DropMissing(Of({"a": [1, missing]}))) --> 1 *)
+      RowCount(DropMissing(Of({"a": [1, missing]}))) --> 1 *)
 DropMissing(df) = Where(r -> not list.Any([value.IsMissing(v) for v in dict.Values(r)]), df)
 (** A frame where every missing value is replaced by a value.
 
@@ -140,7 +140,7 @@ defn GroupBy(by, aggregations, df)
   (** A frame with one row for each combination of the columns in by, and a column for each aggregation (see agg).
 
         Column("n", GroupBy(["k"], [Agg("n", "v", value.Len)], Of({"k": ["x", "y", "x"], "v": [1, 2, 3]}))) --> [2, 1] *)
-  g = col.Groups(if value.Len(by) == 0 [list.Fill(0, Rows(df))] else [df.Columns[n] for n in by] end)
+  g = col.Groups(if value.Len(by) == 0 [list.Fill(0, RowCount(df))] else [df.Columns[n] for n in by] end)
   out = Table(by, [col.Pick(g.Firsts, df.Columns[n]) for n in by])
   for a in aggregations
     out = SetColumn(a.Name, [a.F(part) for part in col.Split(g, df.Columns[a.Source])], out)
@@ -187,7 +187,7 @@ end
 (** The CSV text of a frame, with the names as its first row.
 
       ToCsv(Of({"a": [1]})) --> "a\n1\n" *)
-ToCsv(df, separator = ",") = csv.Write(list.Concat([df.Names], [[df.Columns[n][i] for n in df.Names] for i in 1..Rows(df)]), separator = separator)
+ToCsv(df, separator = ",") = csv.Text(list.Concat([df.Names], [[df.Columns[n][i] for n in df.Names] for i in 1..RowCount(df)]), separator = separator)
 
 defn Show(df)
   (** The text of a frame as an aligned table, one line for each row.
@@ -197,6 +197,6 @@ defn Show(df)
   widths = [list.Max(value.Len(n), list.Max(list.Concat([0], [value.Len(cell(x)) for x in df.Columns[n]]))) for n in df.Names]
   line(cells) = text.Join("  ", [text.PadRight(widths[k], " ", cells[k]) for k in 1..value.Len(cells)])
   headLine = line(df.Names)
-  body = [line([cell(df.Columns[n][i]) for n in df.Names]) for i in 1..Rows(df)]
+  body = [line([cell(df.Columns[n][i]) for n in df.Names]) for i in 1..RowCount(df)]
   text.Join("\n", list.Concat([headLine], body))
 end

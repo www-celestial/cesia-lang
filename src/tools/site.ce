@@ -27,11 +27,11 @@ classes = ["k", "n", "s", "m", "c", "", "f"]
 escape(t) = web.Escape(t)
 from(k, t) = text.ByteSlice(k, text.ByteLength(t), t)   (** The text from byte k. *)
 up(path) = text.Repeat(value.Len(text.Split("/", path)) - 1, "../")   (** From a page to the root of the site. *)
-parent(path) = text.Join("/", list.Butlast(text.Split("/", path)))
+parent(path) = text.Join("/", list.DropLast(1, text.Split("/", path)))
 
 defn rel(path, target)
   (** The link from the page at path to the file at target, both from the root: "Sort.html" next to it, "../std/num.html". *)
-  from = list.Butlast(text.Split("/", path))
+  from = list.DropLast(1, text.Split("/", path))
   to = text.Split("/", target)
   k = 1
   while k <= value.Len(from) and k < value.Len(to) and from[k] == to[k]
@@ -95,7 +95,7 @@ defn bookTarget(site, book, f)
   parts = []
   for part in text.Split("/", "$book/$f")
     if part == ".." and value.Len(parts) > 0
-      parts = list.Butlast(parts)
+      parts = list.DropLast(1, parts)
     else if part != "." and part != ""
       parts = list.Append(part, parts)
     end
@@ -193,7 +193,7 @@ defn treeOf(book, modules, lists)
     list.Append({Label: "Keywords", Path: "key/index.html"}, [{Label: g, Path: groupPath(g)} for g in groupsOf(modules)]))
   for g in groupsOf(modules)
     ups[groupPath(g)] = "ref/index.html"
-    kids[groupPath(g)] = [{Label: from(text.ByteLength(g) + 2, m), Path: modulePath(m)} for m in modules if text.StartsWith("$g/", m)]
+    kids[groupPath(g)] = [{Label: from(text.ByteLength(g) + 2, m), Path: modulePath(m)} for m in byKind(modules) if text.StartsWith("$g/", m)]
   end
   for m in modules
     ups[modulePath(m)] = if text.Contains("/", m) groupPath(groupOf(m)) else "ref/index.html" end
@@ -232,6 +232,20 @@ defn treeOf(book, modules, lists)
 end
 
 groupOf(m) = text.Split("/", m)[1]   (** The folder of a module: std for std/date. *)
+
+(* The engines: what other libraries of std/ build on, in OCaml or C. The reference shows them apart, after the others. *)
+engines = ["std/columns", "std/lapack", "std/sqlite3"]
+(** The modules first, then the engines among them. *)
+byKind(modules) = list.Concat([m for m in modules if not (m in engines)], [m for m in modules if m in engines])
+
+defn moduleRows(site, path, hooks, modules)
+  (** The list of modules of an index: the others, then the engines under a heading of their own. *)
+  row(m) = text.Str("<dt><a href=\"", rel(path, modulePath(m)), "\">", escape(m), "</a></dt><dd>", inlineHtml(summary(cesia.Doc(m)), hooks), "</dd>\n")
+  main = text.Join("", [row(m) for m in modules if not (m in engines)])
+  inner = text.Join("", [row(m) for m in modules if m in engines])
+  apart = if inner == "" "" else text.Str("<h2>Engines</h2>\n<p>What std/frame, std/sql and std/num build on, in OCaml or C: a program uses those rather than these.</p>\n<dl class=\"names\">\n", inner, "</dl>\n") end
+  text.Str("<dl class=\"names\">\n", main, "</dl>\n", apart)
+end
 groupsOf(modules) = list.Unique([groupOf(m) for m in modules if text.Contains("/", m)])
 groupPath(g) = "ref/$g.html"
 
@@ -239,7 +253,7 @@ defn groupBody(site, g, modules)
   (** The page of a folder of modules: what it holds, and each module with what it is for. *)
   path = groupPath(g)
   hooks = hooksFor(site, path, line -> "the folder $g")
-  rows = text.Join("", [text.Str("<dt><a href=\"", rel(path, modulePath(m)), "\">", escape(m), "</a></dt><dd>", inlineHtml(summary(cesia.Doc(m)), hooks), "</dd>\n") for m in modules if text.StartsWith("$g/", m)])
+  rows = moduleRows(site, path, hooks, [m for m in modules if text.StartsWith("$g/", m)])
   said = if g == "std"
     "What comes with Cesia: its libraries, written in Cesia, and the modules of its binary. A use writes std/ and the name: use std/date."
   else if g == "deps"
@@ -247,7 +261,7 @@ defn groupBody(site, g, modules)
   else
     "The packages of the project in its folder $g/. A use writes their path from the root: use $g/name."
   end
-  text.Str("<h1>", escape(g), "</h1>\n<p>", escape(said), "</p>\n<dl class=\"names\">\n", rows, "</dl>\n")
+  text.Str("<h1>", escape(g), "</h1>\n<p>", escape(said), "</p>\n", rows)
 end
 
 defn wayTo(tree, path)
@@ -316,7 +330,7 @@ defn trail(tree, path, way)
   if value.Len(steps) < 2
     return ""
   end
-  links = [text.Str("<a href=\"", rel(path, s), "\">", escape(tree.Label[s]), "</a>") for s in list.Butlast(steps)]
+  links = [text.Str("<a href=\"", rel(path, s), "\">", escape(tree.Label[s]), "</a>") for s in list.DropLast(1, steps)]
   text.Str("<nav class=\"trail\" aria-label=\"Where\">", text.Join(" <span aria-hidden=\"true\">›</span> ", list.Append(text.Str("<span>", escape(tree.Label[list.Last(steps)]), "</span>"), links)), "</nav>\n")
 end
 
@@ -360,9 +374,9 @@ end
 defn indexBody(site, path)
   (** The main part of the index of the reference: the modules, what each is for, and the keywords. *)
   hooks = hooksFor(site, path, line -> "the index")
-  rows = text.Join("", ["<dt><a href=\"$(rel(path, modulePath(m)))\">$(escape(m))</a></dt><dd>$(inlineHtml(summary(cesia.Doc(m)), hooks))</dd>\n" for m in site.Modules])
+  rows = moduleRows(site, path, hooks, site.Modules)
   words = text.Join(" ", ["<a href=\"$(rel(path, keyPath(w)))\"><code>$(escape(w))</code></a>" for w in keywords])
-  text.Str("<h1>Reference</h1>\n<dl class=\"names\">\n", rows, "</dl>\n<h2>Keywords</h2>\n<p class=\"words\">", words, "</p>\n")
+  text.Str("<h1>Reference</h1>\n", rows, "<h2>Keywords</h2>\n<p class=\"words\">", words, "</p>\n")
 end
 
 defn wordsBody(site, path)
@@ -527,7 +541,7 @@ defn arrows(code)
     at = 1
     for tok in r.Tokens
       last = at + text.ByteLength(tok[2]) - 1
-      if tok[1] == syntax.Comment or tok[1] == syntax.String
+      if tok[1] == syntax.Comment or tok[1] == syntax.Text
         (* not code *)
       else if value.Len(inCode) > 0 and inCode[value.Len(inCode)].To + 1 == at
         inCode[value.Len(inCode)].To = last
@@ -537,7 +551,7 @@ defn arrows(code)
       at += text.ByteLength(tok[2])
     end
     k = text.ByteFind("-->", 1, t)
-    while value.IsSome(k) and not list.Some(s -> s.From <= k and k + 2 <= s.To, inCode)
+    while value.IsSome(k) and not list.Any([s.From <= k and k + 2 <= s.To for s in inCode])
       k = text.ByteFind("-->", k + 1, t)
     end
     out = list.Append(if value.IsMissing(k) missing else {At: k, Code: text.Trim(text.ByteSlice(1, k - 1, t)), Want: text.Trim(from(k + 3, t))} end, out)
@@ -550,7 +564,7 @@ defn whole(code)
   depth = {"(": 0, "[": 0, "{": 0}
   closer = {")": "(", "]": "[", "}": "{"}
   for tok in syntax.Tokens(code, syntax.FirstState).Tokens
-    if tok[1] != syntax.Comment and tok[1] != syntax.String
+    if tok[1] != syntax.Comment and tok[1] != syntax.Text
       for c in text.Chars(tok[2])
         if dict.Has(c, depth)
           depth[c] += 1
@@ -941,7 +955,7 @@ defn booksOf(root, site)
   names = []
   for n in result.UnwrapOr([], sys.List(docs))
     info = sys.Stat("$docs/$n")
-    if result.IsOk(info) and info.Value.IsDir and list.Some(f -> text.EndsWith(".md", f), filesUnder("$docs/$n"))
+    if result.IsOk(info) and info.Value.IsDir and list.Any([text.EndsWith(".md", f) for f in filesUnder("$docs/$n")])
       names = list.Append(n, names)
     end
   end

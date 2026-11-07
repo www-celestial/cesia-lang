@@ -113,7 +113,7 @@ use std/frame
 use std/io
 use std/result
 df = frame.FromCsv(result.Unwrap(sys.Read("sales.csv")))
-frame.Rows(df) -->
+frame.RowCount(df) -->
 frame.Columns(df) -->
 io.Print(frame.Show(frame.Head(3, df)))
 ```
@@ -151,7 +151,7 @@ A column is a list, and the operators of the language work on a whole list at on
 units = frame.Column("units", df)
 units * 2 -->
 list.Mean(units) -->
-frame.Rows(frame.WhereMask(units > 10, df)) -->
+frame.RowCount(frame.WhereMask(units > 10, df)) -->
 ```
 
 ### Back to CSV

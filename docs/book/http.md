@@ -7,14 +7,14 @@ which also has the client.
 ## An application
 
 [web.App] starts an application with no route. Each [route](glossary.md#route) adds one: a method, a path, and a
-[handler](glossary.md#handler), the function of the request that gives the response. [web.Plain] makes a plain text response, and [web.SendJson] a JSON one:
+[handler](glossary.md#handler), the function of the request that gives the response. [web.Plain] makes a plain text response, and [web.Json] a JSON one:
 
 ```cesia
 use std/web
 app = web.App()
   then web.Get("/", r -> web.Plain("Welcome"))
   then web.Get("/hello/:name", r -> web.Plain("Hello, $(r.Params.name)!"))
-  then web.Get("/stock", r -> web.SendJson({bread: 40, cake: 6}))
+  then web.Get("/stock", r -> web.Json({bread: 40, cake: 6}))
 ```
 
 ### Words in the path
@@ -53,8 +53,8 @@ end
 
 defn addPurchase(request)
   match web.BodyJson(request) then result.AndThen(Purchase.From)
-    result.Ok(order) -> web.SendJson({Product: order.Product, Units: order.Units, Total: order.Units * 1.25}, status = 201)
-    result.Err(e) -> web.SendJson({Error: e.Message}, status = 400)
+    result.Ok(order) -> web.Json({Product: order.Product, Units: order.Units, Total: order.Units * 1.25}, status = 201)
+    result.Err(e) -> web.Json({Error: e.Message}, status = 400)
   end
 end
 

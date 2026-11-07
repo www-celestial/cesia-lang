@@ -125,10 +125,10 @@ For a table to compute on, [frame.FromCsv] of the chapter [Data](data.md) reads 
 
 ## Writing CSV
 
-[csv.Write] writes rows of values, and puts quotes where they are needed:
+[csv.Text] writes rows of values, and puts quotes where they are needed:
 
 ```cesia
-io.Print(csv.Write([["name", "note"], ["Ana", "says \"hi\""], ["Bo", "a,b"]]))
+io.Print(csv.Text([["name", "note"], ["Ana", "says \"hi\""], ["Bo", "a,b"]]))
 ```
 
 ## A small converter

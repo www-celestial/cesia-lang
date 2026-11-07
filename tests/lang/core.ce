@@ -14,16 +14,12 @@ isSomeValue() = value.IsSome(0) and not value.IsSome(missing)
 
 isIdentity() = fn.Identity(3) == 3
 isConstantly() = fn.Constantly(7)(1) == 7
-isComp() = fn.Comp(math.Inc, it * 2)(3) == 7 and fn.Comp(math.Inc, math.Inc, math.Inc)(0) == 3
-isPartial() = fn.Partial(math.Add, 2)(3) == 5 and value.Equal(fn.Partial(list.Map, math.Inc)([1, 2]), [2, 3])
+isCompose() = fn.Compose(math.Inc, it * 2)(3) == 7 and fn.Compose(math.Inc, math.Inc, math.Inc)(0) == 3
 isComplement() = fn.Complement(math.IsEven)(3) and not fn.Complement(math.IsEven)(2)
 isJuxt() = value.Equal(fn.Juxt(math.Inc, math.Dec)(1), [2, 0]) and value.Equal(fn.Juxt(math.Inc, math.Dec, fn.Identity)(1), [2, 0, 1])
-isPipe() = fn.Pipe(1, math.Inc) == 2 and fn.Pipe(1, math.Inc, it * 3) == 6 and fn.Pipe(1, math.Inc, math.Inc, math.Inc, math.Inc) == 5
 
 isFirstSecondLast() = list.First([1, 2, 3]) == 1 and list.Second([1, 2, 3]) == 2 and list.Last([1, 2, 3]) == 3
 isFirstOfNothing() = value.IsMissing(list.First([])) and value.IsMissing(list.Second([1])) and value.IsMissing(list.Last([]))
-isRest() = value.Equal(list.Rest([1, 2, 3]), [2, 3]) and value.Equal(list.Rest([1]), []) and value.Equal(list.Rest([]), [])
-isButlast() = value.Equal(list.Butlast([1, 2, 3]), [1, 2]) and value.Equal(list.Butlast([]), [])
 isNth() = list.Nth(2, [5, 6]) == 6
 isIsEmpty() = value.IsEmpty([]) and not value.IsEmpty([1]) and value.IsEmpty("") and value.IsEmpty(dict.Dict())
 isPrepend() = value.Equal(list.Prepend(1, [2]), [1, 2]) and value.Equal(list.Prepend(1, []), [1])
@@ -37,8 +33,6 @@ isKeep() = value.Equal(list.Keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3]
 isMapIndexed() = value.Equal(list.MapIndexed((k, x) -> k * x, [5, 6]), [5, 12])
 isInterleave() = value.Equal(list.Interleave([1, 2, 3], ["a", "b"]), [1, "a", 2, "b"])
 isInterpose() = value.Equal(list.Interpose(0, [1, 2, 3]), [1, 0, 2, 0, 3]) and value.Equal(list.Interpose(0, [1]), [1]) and value.Equal(list.Interpose(0, []), [])
-isEvery() = list.Every(math.IsOdd, [1, 3]) and not list.Every(math.IsOdd, [1, 2]) and list.Every(math.IsOdd, [])
-isSomeOf() = list.Some(math.IsOdd, [2, 3]) and not list.Some(math.IsOdd, [2]) and not list.Some(math.IsOdd, [])
 isIterate() = value.Equal(list.Iterate(math.Inc, 1, 3), [1, 2, 3]) and value.Equal(list.Iterate(math.Inc, 1, 0), [])
 isRepeatedly() = value.Equal(list.Repeatedly(() -> 5, 2), [5, 5]) and value.Equal(list.Repeatedly(() -> 5, 0), [])
 isFrequencies() = value.Equal(list.Frequencies(["a", "b", "a"]), {"a": 2, "b": 1})

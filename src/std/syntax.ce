@@ -10,7 +10,7 @@ Keyword = 1
 (** The role of a name that is called. *)
 Name = 2
 (** The role of a text, interpolations included. *)
-String = 3
+Text = 3
 (** The role of a number. *)
 Number = 4
 (** The role of a comment. *)
@@ -135,7 +135,7 @@ defn Tokens(line, state)
       r = textEnd(cs, i, n)
       inText = r.Open
       i = r.At
-      out = add(String, text.Join("", cs[start..i - 1]), out)
+      out = add(Text, text.Join("", cs[start..i - 1]), out)
     else
       c = cs[i]
       if c == "(" and cs[i + 1] == "*"
@@ -147,7 +147,7 @@ defn Tokens(line, state)
         r = textEnd(cs, i + 1, n)
         inText = r.Open
         i = r.At
-        out = add(String, text.Join("", cs[start..i - 1]), out)
+        out = add(Text, text.Join("", cs[start..i - 1]), out)
       else if isDigit(c)
         i = numberEnd(cs, i, n)
         out = add(Number, text.Join("", cs[start..i - 1]), out)
@@ -167,7 +167,8 @@ defn Tokens(line, state)
   {Tokens: out, State: {Comment: depth, Text: inText}}
 end
 
-(** Nothing is known yet but the state at the start of the first line.
+(** For editors, which color a long file line by line: the colors where nothing is known yet but the state at the start
+    of the first line.
 
       BlankColors().Known --> 1 *)
 BlankColors() = {Starts: [FirstState], Known: 1}
@@ -179,7 +180,8 @@ mayChange(words) = text.Contains("\"", words) or text.Contains("(*", words) or t
 stateAfter(words, state) = if mayChange(words) Tokens(words, state).State else state end
 
 defn ColoredTo(line, lineOf, colors)
-  (** The state at the start of line number line, once the lines before it are known; line_of(n) gives the text of line n.
+  (** For editors: the colors with the state at the start of line number line known, once the lines before it are;
+      lineOf(n) gives the text of line n.
 
         ColoredTo(2, n -> text.Join("", ["(", "* a"]), BlankColors()).Starts[2].Comment --> 1 *)
   have = value.Len(colors.Starts)
@@ -193,7 +195,8 @@ defn ColoredTo(line, lineOf, colors)
 end
 
 defn ForgetFrom(line, colors)
-  (** The colors with only the lines before the given one still known, after an edit in it. The first line is always known.
+  (** For editors: the colors with only the lines before the given one still known, after an edit in it. The first line is
+      always known.
 
         ForgetFrom(2, ColoredTo(5, n -> "x", BlankColors())).Known --> 2 *)
   keep = list.Max(1, line)
