@@ -53,4 +53,5 @@ meanwhile
 Ok(Ok("from a domain"))
 Ok("the main program waits too")
 Err({Message: "The fiber was cancelled here.", Kind: "cancelled", File: "src/main.ce", Line: 35})
+Err({Message: "The fiber was cancelled here.", Kind: "cancelled", File: "src/main.ce", Line: 35})
 exit 0

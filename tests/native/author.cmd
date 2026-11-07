@@ -11,3 +11,4 @@ cesia check cesia/echo/echo.ce src/main.ce
 echo "check: $?"
 cesia run $no_spec src/main.ce
 cesia run $no_spec --allow read=.,native=echo src/main.ce
+cesia do main 2>&1 | tail -1

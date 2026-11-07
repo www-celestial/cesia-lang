@@ -138,6 +138,7 @@ let of_tables (tables : Toml.table list) =
        | [ "deps"; _ ], _ -> read_dep table
        | [ "site" ], _ -> () (* read by cesia doc --site, which says what it doesn't know *)
        | [ "test" ], _ -> () (* read by cesia test *)
+       | [ "native" ], _ -> () (* read at the first use of a package, with [project] src *)
        | path, _ -> wrong_at table.start (Messages.project_table (String.concat "." path)))
     tables;
   let tasks = List.rev !tasks in

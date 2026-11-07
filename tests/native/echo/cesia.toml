@@ -5,3 +5,7 @@ src = ["cesia", "src"]
 [native]
 package = "cesia/echo"
 natives = ["echo4", "kindOf", "reverse", "fields", "field", "thing", "number", "boom", "refuse", "read", "later"]
+
+[tasks.main]
+file = "src/main.ce"
+allow = ["read=.", "native=echo"]
