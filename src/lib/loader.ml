@@ -83,6 +83,17 @@ let message_of_error = function
   | Out_of_memory -> Some (Messages.limit "memory").text
   | _ -> None
 
+(* An error leaves the frame base and the site where it was raised, deep in the calls: the native that goes on after it
+   puts them back, as a return would. *)
+let call_caught (ctx : ctx) f args =
+  let b = ctx.b and site = ctx.site in
+  match Compile.call_back ctx f args with
+  | v -> Ok v
+  | exception e when message_of_error e <> None ->
+    ctx.b <- b;
+    ctx.site <- site;
+    Error e
+
 let std_source name =
   match Sys.getenv_opt "CESIA_STD" with
   | Some dir ->

@@ -91,22 +91,23 @@ let run_examples (ctx : ctx) st path m src =
     in
     let check_eq c a =
       let line = int_arg a.(0) and code = text_arg a.(1) in
-      (try
-         let got = Compile.call_back c a.(2) [||] in
-         let want = Compile.call_back c a.(3) [||] in
-         if Value.equal c got want then st.passed <- st.passed + 1
-         else fail line code (Printf.sprintf "%s, got %s" (Value.show c want) (Value.show c got))
-       with e ->
-         match Loader.message_of_error e with
-         | Some msg -> fail line code ("error: " ^ msg)
-         | None -> raise e);
+      let error e = fail line code ("error: " ^ Option.get (Loader.message_of_error e)) in
+      (match Loader.call_caught c a.(2) [||] with
+       | Error e -> error e
+       | Ok got ->
+         match Loader.call_caught c a.(3) [||] with
+         | Error e -> error e
+         | Ok want ->
+           if Value.equal c got want then st.passed <- st.passed + 1
+           else fail line code (Printf.sprintf "%s, got %s" (Value.show c want) (Value.show c got)));
       Missing
     in
     let check_err c a =
       let line = int_arg a.(0) and code = text_arg a.(1) in
-      (match Compile.call_back c a.(2) [||] with
-       | v -> fail line code ("error, got " ^ Value.show c v)
-       | exception Value.Kerr _ -> st.passed <- st.passed + 1);
+      (match Loader.call_caught c a.(2) [||] with
+       | Ok v -> fail line code ("error, got " ^ Value.show c v)
+       | Error (Value.Kerr _) -> st.passed <- st.passed + 1
+       | Error e -> raise e);
       Missing
     in
     let doc_eq = native "docEq" 4 check_eq and doc_err = native "docErr" 3 check_err in

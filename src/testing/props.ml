@@ -202,7 +202,10 @@ let one_case ctx (a : t array) =
   let site = ctx.site in
   let call f args =
     ctx.site <- site;
-    match Compile.call_back ctx f args with v -> Ok v | exception Value.Kerr { text; _ } -> Error text
+    match Loader.call_caught ctx f args with
+    | Ok v -> Ok v
+    | Error (Value.Kerr { text; _ }) -> Error text
+    | Error e -> raise e
   in
   let value, holds, panic =
     match call a.(0) [||] with

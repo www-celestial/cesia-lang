@@ -1,0 +1,18 @@
+(* The examples after one that ends in an error read their own names: k is 3, and Twice(k) is 6. *)
+defn Twice(x)
+  (** Twice a number.
+
+        k = 3
+        Twice("a") --> error
+        Twice(k) --> 6
+        k --> 3
+        k --> 0
+        Twice("b") --> 4
+        k --> 3 *)
+  helper(x)
+end
+
+defn helper(x)
+  y = x * 2
+  y
+end

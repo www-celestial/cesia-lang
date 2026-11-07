@@ -1,0 +1,11 @@
+caught.test.ce:5: isSafe failed at case 2 of 100, shrunk from 2 draws to 2:
+  x = 0
+  | it stopped: Index 100 is outside this array of 3 elements.
+  saved, tried first next time; these cases again: cesia test caught.test.ce --seed 1
+0 passed, 1 failed, seed 1
+exit 1
+== examples after an error
+caught-examples.ce:9: k --> 0, got 3
+caught-examples.ce:10: Twice("b") --> error: Can't multiply the text "b" by the number 2.
+4 passed, 2 failed
+exit 1
