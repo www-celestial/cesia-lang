@@ -437,8 +437,6 @@ end
 
 App() = {Routes: [], Middleware: []}   (** An application with no route and no middleware. *)
 
-segments(path) = list.Filter(s -> s != "", text.Split("/", path))
-
 defn Route(method, pattern, handler, a)
   (** An application with a route added. The pattern may hold :name parts, which the handler finds in its params, and a final * for the rest of the path. *)
   entry = {Method: method, Parts: segments(pattern), Handler: handler}
@@ -505,7 +503,7 @@ defn matchPath(parts, path)
   for k in 1..n
     part = parts[k]
     if part == "*"
-      out["*"] = text.Join("/", list.Skip(k - 1, path))
+      out["*"] = text.Join("/", if k == 1 path else list.Skip(k - 1, path) end)
       return out
     end
     if k > value.Len(path)

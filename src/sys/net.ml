@@ -322,9 +322,19 @@ let natives n =
     "Write", Native.nat ~result:true "Write" 2 2 (write n);
     "Close", Native.nat "Close" 1 1 (close n) ]
 
+(* The parts of a path between its slashes, the empty ones left out: "/notes//12/" gives notes and 12. In one pass, because
+   every request is routed through here. *)
+let segments ctx (a : Types.t array) =
+  let path = Native.text_arg ctx "segments" a.(0) in
+  Runtime.build ctx ((String.length path / 8) + 1);
+  let parts = List.filter (fun p -> p <> "") (String.split_on_char '/' path) in
+  let items = Array.of_list (List.map (fun p -> Types.Text p) parts) in
+  Types.Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true }
+
 (* Small names: only the files of std/http see them, which keep the deadlines of the connections they serve. *)
 let http_natives n =
   [ "arm", Native.nat "arm" 2 2 (arm n);
     "reap", Native.nat "reap" 0 0 (reap n);
     "isHeader", Native.nat "isHeader" 2 2 is_header;
+    "segments", Native.nat "segments" 1 1 segments;
     "openCount", Native.nat "openCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]
