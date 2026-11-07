@@ -156,7 +156,7 @@ let idle p block =
   end
 
 (* The pipe stays open: a domain may still write in it. A wake asked for before a reset goes on the list of its own record,
-   which nothing reads any more. *)
+   which nothing reads any more, and that record, disarmed, never takes the pipe from the new one. *)
 let rec arm p r =
   if r.awaited > 0 && not r.armed then begin
     r.armed <- true;
@@ -198,7 +198,7 @@ let remote p wake =
       end
 
 let reset p =
-  Option.iter (fun r -> p.remote <- Some { r with asked = Atomic.make []; awaited = 0; armed = false }) p.remote;
+  Option.iter (fun r -> r.armed <- false; p.remote <- Some { r with asked = Atomic.make []; awaited = 0 }) p.remote;
   Hashtbl.reset p.readers;
   Hashtbl.reset p.writers;
   p.timers <- Timers.empty

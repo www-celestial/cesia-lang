@@ -1,6 +1,5 @@
 open Types
 
-let fingerprint = Package.fingerprint
 let texts items = Arrays.list (Array.of_list (List.map (fun s -> Text s) items))
 let record (_ : world) names fields = Trie.record (Trie.names names) fields
 let records w names rows = Arrays.list (Array.of_list (List.map (record w names) rows))
@@ -56,7 +55,7 @@ let natives ~libraries =
   [ "Version", Native.nat "cesia.Version" 0 0 (fun _ _ -> Text Version.number);
     "IsDev", Native.nat "cesia.IsDev" 0 0 (fun _ _ -> Value.of_bool Version.dev);
     "Binary", Native.nat "cesia.Binary" 0 0 (fun _ _ -> Text Sys.executable_name);
-    text "Fingerprint" (fun _ src -> Text (fingerprint src));
+    text "Fingerprint" (fun _ src -> Text (Package.fingerprint src));
     "Compare",
     Native.nat "cesia.Compare" 2 2 (fun ctx a ->
         Int (Version.compare (Native.text_arg ctx "cesia.Compare" a.(0)) (Native.text_arg ctx "cesia.Compare" a.(1))));

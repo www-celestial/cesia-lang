@@ -19,7 +19,11 @@ let list ctx a =
   shared a;
   Arrays.list a
 
-let keys names = Trie.names names
+let keys names =
+  let sorted = List.sort String.compare (Array.to_list names) in
+  if List.length (List.sort_uniq String.compare sorted) <> List.length sorted then
+    invalid_arg (Messages.engine_misuse "keys: each name once").text;
+  Trie.names names
 
 let record ctx (k : keys) a =
   let n = Array.length a in
