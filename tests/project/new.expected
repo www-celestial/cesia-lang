@@ -36,6 +36,8 @@ exit 2
 usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
        cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]
        cesia check [--json] [--stdin file.ce] [path...]
+       cesia fmt [--check] [path...]
+       cesia lsp
        cesia do [task]
        cesia new name
        cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]
