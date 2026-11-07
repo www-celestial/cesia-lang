@@ -100,9 +100,10 @@ let func b ~prefix ~nested (fn : Ir.func) =
     Printf.sprintf "%s%s_X" prefix name
   in
   (* An error: the interpreter remakes its message from the operands, at the site, from this frame. *)
-  let error code site a bv =
+  let error ?(ixs = [||]) code site a bv =
     stub (fun s ->
         let raw v = match v with Ir.Reg r -> Printf.bprintf s "  rsh x1, r%d, 1\n" r; "x1" | Int n -> string_of_int n | Float _ | Word _ -> "0" in
+        Array.iteri (fun d v -> Printf.bprintf s "  mov %s, %s\n" (cx (Ir.io_ixs + d)) (raw v)) ixs;
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_a) (raw a);
         Printf.bprintf s "  mov %s, %s\n" (cx Ir.io_b) (match bv with Some v -> raw v | None -> "0");
         links s site;
@@ -118,8 +119,10 @@ let func b ~prefix ~nested (fn : Ir.func) =
       (match k with Ir.Kint | Kval -> pr "  mov x2, %s\n" (operand v); "x2" | Kfloat -> pr "  dmov y0, %s\n" (operand v); "y0")
   in
   let arr a = Printf.sprintf "a%dd" a and len a = Printf.sprintf "a%dn" a in
+  (* The size of dimension [d] of array [a], doubled. *)
+  let dim a d = Printf.sprintf "a%ds%d" a d in
   let check_index ?(t = "d") a i site code =
-    let slot, _, _ = fn.arrays.(a) in
+    let slot, _, _, _ = fn.arrays.(a) in
     let raw_b = Ir.Int slot in
     match i with
     | Ir.Reg r ->
@@ -339,6 +342,24 @@ let func b ~prefix ~nested (fn : Ir.func) =
         (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) gc
     | Reserve _ -> ()
     | Elem_at (r, a, i) -> pr "  dmov r%d, d:-8(%s, r%d, 4)\n" r (arr a) i
+    | Offset (r, a, xs, site, write) ->
+      (* Each index from 0, doubled, checked below its size; then the cell, the last index first: c = c * size + index. *)
+      let slot, _, _, _ = fn.arrays.(a) in
+      let e = error ~ixs:xs (if write then Ir.err_write_nd else Ir.err_read_nd) site (Int (Array.length xs)) (Some (Int slot)) in
+      let from0 dst v = match v with
+        | Ir.Reg q -> pr "  sub %s, r%d, 2\n" dst q
+        | Int k -> pr "  mov %s, %s\n" dst (doubled (k - 1))
+        | Float _ | Word _ -> invalid_arg "index"
+      in
+      let n = Array.length xs in
+      let acc = Printf.sprintf "r%d" r in
+      from0 acc xs.(n - 1);
+      pr "  ubge %s, %s, %s\n" e acc (dim a (n - 1));
+      for d = n - 2 downto 0 do
+        from0 "x0" xs.(d);
+        pr "  ubge %s, x0, %s\n  rsh x1, %s, 1\n  mul %s, %s, x1\n  add %s, %s, x0\n" e (dim a d) (dim a d) acc acc acc acc
+      done;
+      pr "  add %s, %s, 2\n" acc acc
     | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"
@@ -410,7 +431,11 @@ let func b ~prefix ~nested (fn : Ir.func) =
   pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:xp, i64:xs, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, i64:x5, i64:x6, d:y0\n";
   Array.iteri (fun j _ -> pr "  local i64:c%d\n" j) fn.consts;
   Array.iteri (fun r k -> if not (is_param r) then pr "  local %s:r%d\n" (ty k) r) fn.kinds;
-  Array.iteri (fun a _ -> pr "  local i64:%s, i64:%s\n" (arr a) (len a)) fn.arrays;
+  Array.iteri
+    (fun a (_, _, _, nd) ->
+       pr "  local i64:%s, i64:%s\n" (arr a) (len a);
+       for d = 0 to nd - 1 do pr "  local i64:%s\n" (dim a d) done)
+    fn.arrays;
   (* The value stack at the frame, and the constants, once per entry: nothing moves them while native code runs. *)
   let setup () =
     if Array.length fn.arrays > 0 || Array.length fn.consts > 0 || Array.exists (fun (v : Ir.var) -> v.kind = Kval) fn.vars
@@ -419,13 +444,22 @@ let func b ~prefix ~nested (fn : Ir.func) =
   in
   let guards () =
     Array.iteri
-      (fun a (slot, written, store) ->
+      (fun a (slot, written, store, nd) ->
          pr "  mov x0, i64:%d(vp)\n  and x1, x0, 1\n  bne %s, x1, 0\n" (8 * slot) lf;
          pr "  mov x1, i64:-8(x0)\n  and x1, x1, 255\n  bne %s, x1, 3\n  mov x2, i64:0(x0)\n" lf;
          pr "  mov x1, i64:16(x2)\n  mov x3, i64:-8(x1)\n  and x3, x3, 255\n  bne %s, x3, %d\n" lf store;
          if written then pr "  mov x3, i64:24(x2)\n  bne %s, x3, 3\n" lf;
          pr "  mov %s, i64:0(x1)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n  mov x4, i64:8(x2)\n  rsh x4, x4, 1\n" (arr a);
-         pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a))
+         pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a);
+         (* Indexes one per dimension: as many dimensions, whose sizes, doubled, come from rows and cols for two and from
+            dims past them, an empty array for two. *)
+         if nd > 0 then begin
+           pr "  mov x1, i64:40(x2)\n  mov x3, i64:-8(x1)\n  ursh x3, x3, 10\n  bne %s, x3, %d\n" lf (if nd = 2 then 0 else nd);
+           for d = 0 to nd - 1 do
+             if nd = 2 then pr "  mov %s, i64:%d(x2)\n" (dim a d) (8 * d) else pr "  mov %s, i64:%d(x1)\n" (dim a d) (8 * d);
+             pr "  sub %s, %s, 1\n" (dim a d) (dim a d)
+           done
+         end)
       fn.arrays
   in
   let lr = Printf.sprintf "%s%s_R" prefix name in

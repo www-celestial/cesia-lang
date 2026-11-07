@@ -1,0 +1,15 @@
+use std/io
+use std/matrix
+
+(* A write out of an array of three dimensions is named at its step, with every index, as the interpreter names it. *)
+defn wr(a, n)
+  for i in 1..n
+    a[i, 2, 1] = 1.0
+  end
+  a[1, 2, 1]
+end
+defn go(n)
+  io.Print(wr(matrix.Zeros(3, 2, 2), n))
+end
+go(3)
+go(4)

@@ -44,6 +44,10 @@ type ins =
   | Elem_at of int * int * int
       (** the destination, the array, a register of its index from 1, doubled as every integer register, proved inside *)
   | Set_at of int * int * value  (** the array, a register of its index proved inside, the value *)
+  | Offset of int * int * value array * int * bool
+      (** [Offset (r, a, ixs, site, write)]: in [r], the cell of these integer indexes, one per dimension of array [a], from
+          1 and doubled as an index of [Elem_at]; each is checked inside its size, and one outside is the interpreter's
+          error of a read, or of a write when [write], at the site *)
   | Bump of int * value  (** an integer register plus a value, unchecked: an index that a loop moves by its step *)
   | Burn  (** one step of fuel, unchecked: a loop that proved it has the fuel for all its steps *)
   | Frame of int * int
@@ -95,8 +99,10 @@ type func = {
   params : var array;
   result : kind;
   vars : var array;  (** every variable in a register, the parameters and the loop counters included *)
-  arrays : (int * bool * int) array;
-      (** each array: its slot in the value stack, whether the code writes it, and its store, 0 floats or 1 values *)
+  arrays : (int * bool * int * int) array;
+      (** each array: its slot in the value stack, whether the code writes it, its store, 0 floats or 1 values, and the
+          indexes it takes when it takes more than one, as many as its dimensions: then its sizes are checked and read at
+          each entry; 0 when it takes one only *)
   consts : Types.t array;
       (** values whose first field native code reads, the keys of a map or the shape of a struct: written by [Engine] to
           the value slots from [frame] before each run *)
@@ -162,6 +168,10 @@ val io_mem : int
 (** the highest base a nested frame may take before the interpreter's frames, as [stride] and [need] count them, would
     want a longer stack: under a limit of memory, native code then asks for it as the interpreter would *)
 
+val io_ixs : int
+(** the first of [max_ixs] cells: the indexes of an error of [Offset], which takes at most that many, below [cx_result] *)
+
+val max_ixs : int
 val io_size : int
 
 (** Statuses. *)
@@ -196,3 +206,8 @@ val err_div : int
 val err_mod : int
 val err_read : int  (** an index outside the array: [io_a] the index, [io_b] the array's slot *)
 val err_write : int
+
+val err_read_nd : int
+(** an index of [Offset] outside: [io_a] the count of indexes, from cell [io_ixs] on, [io_b] the array's slot *)
+
+val err_write_nd : int

@@ -1,0 +1,7 @@
+300000.0
+7.0
+nd-guard.ce:9:14: This array has 2 dimensions: use 2 indexes, or one.
+  9 |     s = s + a[i, 1, 1]
+    |              ^
+  in along (nd-guard.ce:9)
+exit 1

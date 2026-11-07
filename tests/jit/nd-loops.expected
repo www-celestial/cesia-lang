@@ -1,0 +1,9 @@
+46453500.0 46453500.0
+37768416.0
+610206765000.0
+480000.0
+nd-loops.ce:24:18: Index [31, 1, 1] is outside this array of 30 by 30 by 30.
+  24 |         s = s + a[i, j, k]
+     |                  ^
+  in total (nd-loops.ce:24)
+exit 1

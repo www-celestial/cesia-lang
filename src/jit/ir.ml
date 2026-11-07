@@ -20,6 +20,7 @@ type ins =
   | Try of op * int * value * value * int
   | Elem_at of int * int * int
   | Set_at of int * int * value
+  | Offset of int * int * value array * int * bool
   | Bump of int * value
   | Burn
   | Frame of int * int
@@ -53,7 +54,7 @@ type func = {
   params : var array;
   result : kind;
   vars : var array;
-  arrays : (int * bool * int) array;
+  arrays : (int * bool * int * int) array;
   consts : Types.t array;
   keeps : (int * int * int) array;
   loose : bool;
@@ -92,7 +93,9 @@ let io_int = 18
 let io_until = 19
 let io_leave = 20
 let io_mem = 21
-let io_size = 22
+let io_ixs = 22
+let max_ixs = 7
+let io_size = io_ixs + max_ixs
 let ok = 0
 let fuel_out = 1
 let error = 2
@@ -116,3 +119,5 @@ let err_div = 5
 let err_mod = 6
 let err_read = 7
 let err_write = 8
+let err_read_nd = 9
+let err_write_nd = 10

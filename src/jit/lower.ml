@@ -17,7 +17,8 @@ type st = {
   mutable cur : int;
   regs : int array;  (* the register of each variable kept in one, or -1 *)
   arrays : int array;  (* the number of each variable that is a float array, or -1 *)
-  arr : (int * bool * int) Dynarray.t;  (* each array: its slot, whether written, its store: 0 floats, 1 values *)
+  arr : (int * bool * int * int) Dynarray.t;
+      (* each array: its slot, whether written, its store: 0 floats, 1 values, and the indexes it takes past one *)
   hidden : Ir.var Dynarray.t;
   resumes : int Dynarray.t;
   mutable loops : int list;  (* where a break goes *)
@@ -252,15 +253,28 @@ let rec observe st (e : expr) =
        let j = Value.field_index r.shape name in
        if j >= 0 then Some r.fields.(j) else None
      | _ -> None)
-  | Some ctx, Index ({ e = Var { b = Local a; _ }; _ }, [| Ix ix |], false) when st.inl = [] ->
-    let n =
-      match ix.e with
-      | Lint n -> Some n
-      | Var { b = Local j; _ } when st.ver.tv.(j) == TI -> Some ctx.i.(ctx.b + st.ver.map.(j))
+  | Some ctx, Index ({ e = Var { b = Local a; _ }; _ }, ixs, false) when st.inl = [] ->
+    let num = function
+      | Ix { e = Lint n; _ } -> Some n
+      | Ix { e = Var { b = Local j; _ }; _ } when st.ver.tv.(j) == TI -> Some ctx.i.(ctx.b + st.ver.map.(j))
       | _ -> None
     in
-    (match ctx.v.(ctx.b + st.ver.map.(a)), n with
-     | Array x, Some n when n >= 1 && n <= x.rows * x.cols -> Some (Value.elt x (n - 1))
+    let ns = Array.map num ixs in
+    (match ctx.v.(ctx.b + st.ver.map.(a)) with
+     | _ when Array.exists Option.is_none ns -> None
+     | Array x ->
+       (* The cell, column by column, of indexes one per dimension, or one alone. *)
+       let sizes = if Array.length ns = 1 then [| x.rows * x.cols |] else Arrays.sizes x in
+       if Array.length sizes <> Array.length ns then None
+       else begin
+         let rec go d off stride =
+           if d = Array.length ns then Some (Value.elt x off)
+           else
+             let k = Option.get ns.(d) in
+             if k >= 1 && k <= sizes.(d) then go (d + 1) (off + ((k - 1) * stride)) (stride * sizes.(d)) else None
+         in
+         go 0 0 1
+       end
      | _ -> None)
   | _ -> None
 
@@ -386,11 +400,16 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     fresh st Kfloat (fun r -> Elem_at (r, a, ix))
   | Index (b, [| Ix i |], false) ->
     let a = array_of st b in
-    let _, _, store = Dynarray.get st.arr a in
+    let _, _, store, _ = Dynarray.get st.arr a in
     (match guess st i (expr st i) with
      | x, Kint when store = 0 -> fresh st Kfloat (fun r -> Elem (r, a, x, site st e.pos))
      | x, Kint -> fresh st Kval (fun r -> Get (r, a, x, site st e.pos))
      | _ -> raise No)
+  | Index (b, ixs, false) when Array.length ixs >= 2 ->
+    let a = array_of st b in
+    let q = cell st a (indexes st a ixs) e.pos false in
+    let _, _, store, _ = Dynarray.get st.arr a in
+    if store = 0 then fresh st Kfloat (fun r -> Elem_at (r, a, q)) else fresh st Kval (fun r -> Get (r, a, Reg q, site st e.pos))
   | Field (b, name) ->
     let v = (match expr st b with v, Kval -> v | _ -> raise No) in
     (match observe st b with
@@ -526,6 +545,20 @@ and inline st (e : expr) (v : version) args =
   st.ncalls <- child.ncalls + 1;
   Ir.Reg res, kind_of v.ret
 
+(* Integer indexes, one per dimension of array [a], which then takes that many: its sizes are read at each entry. *)
+and indexes st a (ixs : index array) =
+  let slot, written, store, nd = Dynarray.get st.arr a in
+  let n = Array.length ixs in
+  if n > Ir.max_ixs || (nd <> 0 && nd <> n) then raise No;
+  Dynarray.set st.arr a (slot, written, store, n);
+  Array.map (function Ix i -> (match guess st i (expr st i) with x, Kint -> x | _ -> raise No) | All -> raise No) ixs
+
+(* The register of the cell at those indexes, checked inside, from 1 and doubled as [Elem_at] takes it. *)
+and cell st a xs pos write =
+  match fresh st Kint (fun r -> Offset (r, a, xs, site st pos, write)) with
+  | Reg q, _ -> q
+  | _ -> raise No
+
 and convert st k (v, vk) = if k = vk then v else if k = Ir.Kfloat then to_float st (v, vk) else raise No
 
 and value_block st (b : block) =
@@ -656,12 +689,21 @@ and stmt st (e : expr) =
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix ix |], false); sp } |]; value } when st.arrays.(i) >= 0 ->
     let a = st.arrays.(i) in
     let k = (match guess st ix (expr st ix) with x, Kint -> x | _ -> raise No) in
-    let slot, _, store = Dynarray.get st.arr a in
+    let slot, _, store, nd = Dynarray.get st.arr a in
     (* As the interpreter's write: the index, then the value, then the array, which an F store takes only as a number. *)
     let x = if store = 0 then to_float st (expr st value) else stored st value in
-    Dynarray.set st.arr a (slot, true, store);
+    Dynarray.set st.arr a (slot, true, store, nd);
     (* At the step, as the interpreter names an index outside the array. *)
     emit st (if store = 0 then Set_elem (a, k, x, site st sp) else Put (a, k, x, site st sp))
+  | Set { root = { b = Local i; _ }; path = [| { sk = Sindex (ixs, false); sp } |]; value }
+    when st.arrays.(i) >= 0 && Array.length ixs >= 2 ->
+    let a = st.arrays.(i) in
+    let xs = indexes st a ixs in
+    let x = (let _, _, store, _ = Dynarray.get st.arr a in if store = 0 then to_float st (expr st value) else stored st value) in
+    let slot, _, store, nd = Dynarray.get st.arr a in
+    Dynarray.set st.arr a (slot, true, store, nd);
+    let q = cell st a xs sp true in
+    emit st (if store = 0 then Set_at (a, q, x) else Put (a, Reg q, x, site st sp))
   | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
     let lo = expr st a in
     let hi = expr st b in
@@ -759,7 +801,7 @@ and allocates st (b : block) =
       || Array.exists (fun (a : arg) -> made a.value) c.args
     | Assign ({ b = Local i; _ }, v) -> (st.regs.(i) >= 0 && Dynarray.get st.kinds st.regs.(i) = Ir.Kval) || made v
     | Set { root = { b = Local i; _ }; value; _ } ->
-      (st.arrays.(i) >= 0 && (let _, _, store = Dynarray.get st.arr st.arrays.(i) in store = 1)) || made value
+      (st.arrays.(i) >= 0 && (let _, _, store, _ = Dynarray.get st.arr st.arrays.(i) in store = 1)) || made value
     | _ -> false
   in
   Array.exists made b
@@ -870,7 +912,7 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
   in
   (* The indexes of float arrays read or written with one index, in the whole body. *)
   let found = ref [] in
-  let floats v = st.arrays.(v) >= 0 && (let _, _, store = Dynarray.get st.arr st.arrays.(v) in store = 0) in
+  let floats v = st.arrays.(v) >= 0 && (let _, _, store, _ = Dynarray.get st.arr st.arrays.(v) in store = 0) in
   let rec walk (e : expr) =
     let blk b = Array.iter walk b in
     let ixs a = Array.iter (function Ix x -> walk x | All -> ()) a in
@@ -1057,7 +1099,7 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
       Dynarray.add_last kinds (kind_of ver.tv.(i));
       regs.(i) <- Dynarray.length kinds - 1
     | TFA when (i < np || region) && plain i ->
-      Dynarray.add_last arr (ver.map.(i), false, 0);
+      Dynarray.add_last arr (ver.map.(i), false, 0, 0);
       arrays.(i) <- Dynarray.length arr - 1
     | TA when region && plain i && List.mem i named ->
       let store =
@@ -1067,7 +1109,7 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
         | _ -> -1
       in
       if store >= 0 then begin
-        Dynarray.add_last arr (ver.map.(i), false, store);
+        Dynarray.add_last arr (ver.map.(i), false, store, 0);
         arrays.(i) <- Dynarray.length arr - 1
       end else begin
         Dynarray.add_last kinds Ir.Kval;

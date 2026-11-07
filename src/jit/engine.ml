@@ -36,7 +36,7 @@ let make (w : world) (ver : version) fns start loops =
       match Jit.load text [| entry |] with
       | [| addr |] ->
         let fn = fns.(0) in
-        let written = List.filter_map (fun (s, wr, _) -> if wr then Some s else None) (Array.to_list fn.arrays) in
+        let written = List.filter_map (fun (s, wr, _, _) -> if wr then Some s else None) (Array.to_list fn.arrays) in
         let known = Array.for_all (fun (f : Ir.func) -> f.stride >= 0) fns in
         let most g = if known then Array.fold_left (fun m f -> max m (g f)) 0 fns else -1 in
         Some { addr; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint); pure; calls; written = Array.of_list written;
@@ -126,6 +126,11 @@ let fail (ctx : ctx) =
     (* As the interpreter's write: the array owned, so copied when shared, then the write, which fails. *)
     let top = Runtime.own ctx ctx.v.(ctx.b + b) in
     Arrays.write ctx top [| Arrays.At a |] (Float 0.)
+  end
+  else if code = Ir.err_read_nd || code = Ir.err_write_nd then begin
+    let ixs = Array.init a (fun d -> Arrays.At io.(Ir.io_ixs + d)) in
+    if code = Ir.err_read_nd then ignore (Arrays.read ctx ctx.v.(ctx.b + b) ixs)
+    else Arrays.write ctx (Runtime.own ctx ctx.v.(ctx.b + b)) ixs (Float 0.)
   end;
   failwith "jit: an error that the interpreter doesn't see"
 
@@ -228,10 +233,11 @@ let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads =
    falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. *)
 let fits (ctx : ctx) code =
   Array.for_all
-    (fun (slot, written, store) ->
+    (fun (slot, written, store, nd) ->
+       let dims d = nd = 0 || Array.length d = (if nd = 2 then 0 else nd) in
        match ctx.v.(ctx.b + slot) with
-       | Array { store = F _; a_owned; _ } when store = 0 -> a_owned || not written
-       | Array { store = V _; a_owned; _ } when store = 1 -> a_owned || not written
+       | Array { store = F _; a_owned; dims = d; _ } when store = 0 -> (a_owned || not written) && dims d
+       | Array { store = V _; a_owned; dims = d; _ } when store = 1 -> (a_owned || not written) && dims d
        | _ -> false)
     (native code).fn.arrays
 
