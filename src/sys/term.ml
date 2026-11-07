@@ -13,8 +13,9 @@ type state = {
 }
 
 let create poll = { poll; buf = ""; at = 0; parked = false }
+(* Made at the first read: a program that never reads its input doesn't pay for it, nor does its limit of memory. *)
 let chunk_size = 65536
-let chunk = Bytes.create chunk_size
+let chunk = lazy (Bytes.create chunk_size)
 
 (* A pipe, a socket or a terminal can be waited for; a file or /dev/null never makes one wait. *)
 let waitable =
@@ -44,6 +45,7 @@ let rec more ?(alone = false) st ctx =
   st.at < String.length st.buf
   || begin
     if not alone then watch st ctx;
+    let chunk = Lazy.force chunk in
     match Unix.read Unix.stdin chunk 0 chunk_size with
     | 0 -> false
     | n ->
