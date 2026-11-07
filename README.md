@@ -33,7 +33,7 @@ ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/cesia
 ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/ce      # optional: the short name of the same binary
 ```
 
-Such a binary says `cesia 0.3.0+dev`: `git pull` and `dune build` update it, not `cesia upgrade`. `ce` and `cesia` are one
+Such a binary says `cesia 1.0.0+dev`: `git pull` and `dune build` update it, not `cesia upgrade`. `ce` and `cesia` are one
 program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
 
 ## Read the book

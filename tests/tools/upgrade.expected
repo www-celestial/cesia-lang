@@ -1,5 +1,5 @@
 == built from the sources
-This Cesia was built from its sources (cesia 0.3.0+dev): git pull and dune build bring it up to date, not cesia upgrade.
+This Cesia was built from its sources (cesia 1.0.0+dev): git pull and dune build bring it up to date, not cesia upgrade.
 exit 1
 == a lib/ that isn't Cesia's is never touched
 cesia upgrade replaces a Cesia that install.sh or install.ps1 put in place, with its bin/ and lib/ side by side, and TOP/other/bin/cesia isn't one: install the new one the way this one was. Nothing changed.
@@ -10,7 +10,7 @@ cesia 99.0.0
 New
 - feat: something new
 
-Replace cesia 0.3.0+dev by cesia 99.0.0? [y/n]
+Replace cesia 1.0.0+dev by cesia 99.0.0? [y/n]
 Nothing changed.
 the old binary, byte for byte
 == nightly
@@ -19,17 +19,17 @@ cesia 99.1.0-nightly+abc1234
 New
 - feat: something new
 
-Replace cesia 0.3.0+dev by cesia 99.1.0-nightly+abc1234? [y/n]
+Replace cesia 1.0.0+dev by cesia 99.1.0-nightly+abc1234? [y/n]
 Nothing changed.
 == not newer
-cesia 0.3.0+dev is the newest: nothing to do.
+cesia 1.0.0+dev is the newest: nothing to do.
 == a bad fingerprint
 cesia 99.0.0
 
 New
 - feat: something new
 
-Replace cesia 0.3.0+dev by cesia 99.0.0? [y/n]
+Replace cesia 1.0.0+dev by cesia 99.0.0? [y/n]
 The download of ARCHIVE doesn't match its fingerprint: nothing changed.
 the old binary, byte for byte
 == no archive for this system
@@ -38,7 +38,7 @@ cesia 99.0.0
 New
 - feat: something new
 
-Replace cesia 0.3.0+dev by cesia 99.0.0? [y/n]
+Replace cesia 1.0.0+dev by cesia 99.0.0? [y/n]
 This release has no ARCHIVE with its fingerprint: nothing changed.
 the old binary, byte for byte
 == y
@@ -47,7 +47,7 @@ cesia 99.0.0
 New
 - feat: something new
 
-Replace cesia 0.3.0+dev by cesia 99.0.0? [y/n]
+Replace cesia 1.0.0+dev by cesia 99.0.0? [y/n]
 cesia 99.0.0 is in place.
 cesia 99.0.0
 .:

@@ -1,8 +1,8 @@
-std/ holds the libraries of Cesia 0.3.0.
+std/ holds the libraries of Cesia 1.0.0.
 Created hello. Run it: cd hello && cesia do run
 [project]
 name = "hello"
-cesia = "0.3"
+cesia = "1.0"
 
 [tasks.run]
 file = "src/main.ce"
@@ -18,12 +18,12 @@ Hello from hello
 algo cpp crypto csv date dict encode fiber flags fn frame gen heap http list markdown math num path queue random result set sql syntax test tls value websocket 
  29 1
 all as installed
-std/csv        cesia 0.3.0  changed by hand
-std/ holds the libraries of Cesia 0.3.0.
+std/csv        cesia 1.0.0  changed by hand
+std/ holds the libraries of Cesia 1.0.0.
 all as installed again
 nothing to install: 0
-std  cesia 0.3.0  not installed
-std/ holds the libraries of Cesia 0.3.0.
+std  cesia 1.0.0  not installed
+std/ holds the libraries of Cesia 1.0.0.
 0 passed, 0 failed
 usage: cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]
 exit 1

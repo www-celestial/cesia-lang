@@ -1,7 +1,7 @@
 cesia = "99.0"
-cesia.toml:3:1: This project needs Cesia 99.0 or later, and this is 0.3.0: run cesia upgrade.
+cesia.toml:3:1: This project needs Cesia 99.0 or later, and this is 1.0.0: run cesia upgrade.
 run: 1
-cesia.toml:3: This project needs Cesia 99.0 or later, and this is 0.3.0: run cesia upgrade.
+cesia.toml:3: This project needs Cesia 99.0 or later, and this is 1.0.0: run cesia upgrade.
 do: 1
 cesia = "0.1"
 runs
