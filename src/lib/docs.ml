@@ -658,6 +658,56 @@ let doc_entry ctx (a : t array) =
     Trie.record entry_keys
       [| Text name; Text (Lazy.force m); Text e.signature; Text text; parts; examples; Value.of_bool builtin; Text e.file; Int e.line |]
 
+let definition_keys = Trie.names [| "Name"; "Owner"; "Kind"; "Line"; "Column"; "Signature"; "Text" |]
+
+(* cesia.Definitions(source): what a source defines at its top, as the parser reads it, each with the signature and the text
+   of its documentation. A name's column is that of its token, so an editor goes to the very word. *)
+let definitions ctx (a : t array) =
+  let w = ctx.w in
+  let src = Native.text_arg ctx "cesia.Definitions" a.(0) in
+  match
+    let toks = Lexer.tokens ~file:"" src in
+    toks, Parser.program ~file:"" ~nesting:w.limits.nesting toks
+  with
+  | exception Pos.Load_error { pos; text; _ } ->
+    Value.err w (Trie.record (Trie.names [| "Line"; "Message" |]) [| Int (Pos.line pos); Text text |])
+  | toks, fn ->
+    let names = Hashtbl.create 64 and structs = Hashtbl.create 8 in
+    Array.iter
+      (fun (tk : Lexer.token) ->
+         match tk.t with
+         | NAME n -> Hashtbl.add names (Pos.line tk.pos, n) (Pos.col tk.pos)
+         | STRUCT -> Hashtbl.replace structs tk.pos ()
+         | _ -> ())
+      toks;
+    let es = entries src in
+    let item (e : Ast.expr) =
+      let line = Pos.line e.pos in
+      let found ?signature kind owner name =
+        let key = match owner with Some o -> o ^ "." ^ name | None -> name in
+        let doc = List.find_opt (fun d -> String.equal d.name key && d.line = line) es in
+        (* The first token of the name on the line where the definition starts: Area in (r Rect) Area. *)
+        let column = List.fold_left min max_int (Hashtbl.find_all names (line, name)) in
+        let signature = match signature, doc with Some s, _ -> s | None, Some d -> d.signature | None, None -> "" in
+        Some
+          (Trie.record definition_keys
+             [| Text name; (match owner with Some o -> Text o | None -> Missing); Text kind; Int line;
+                Int (if column = max_int then Pos.col e.pos else column); Text signature;
+                Text (match doc with Some d -> d.text | None -> "") |])
+      in
+      match e.e with
+      | Fn_def (n, _) ->
+        (match Lexer.split_method n.text with
+         | Some (sname, static, m) -> found (if static then "static" else "method") (Some sname) m
+         | None -> found (if Hashtbl.mem structs e.pos then "struct" else "function") None n.text)
+      | Assign (n, _) -> found "value" None n.text
+      | Interface i -> found "interface" None i.iname
+      (* A use: the name the code gives the package, its path as its signature. *)
+      | Use { upath; ualias } -> found ~signature:upath "use" None ualias
+      | _ -> None
+    in
+    Value.ok w (Arrays.list (Array.of_list (List.filter_map item (Array.to_list fn.body))))
+
 let natives =
   [ "Doc", Native.nat "Doc" 1 1 doc;
     "DocNames", Native.nat "DocNames" 0 1 doc_names ]

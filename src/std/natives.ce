@@ -1389,6 +1389,19 @@ use std/test
       cesia.DocEntry("match").Module --> ""
       value.IsMissing(cesia.DocEntry("NoSuchName")) --> true *)
 
+(** cesia.Definitions(source)
+    For tools: what a source defines at its top, as the parser reads it, in an Ok: a list of structs with Name, Owner (the
+    struct of a method, or missing), Kind ("function", "method", "static", "struct", "interface", "value" or "use"), Line
+    and Column (where the name is, from 1, in characters), and the Signature and Text of its documentation, "" when it has
+    none; a use has the name the code gives the package, and its path as its Signature. An Err of {Line, Message} for a
+    source that doesn't read. Nothing runs: cesia lsp finds a name with it.
+
+      cesia.Definitions("x = 1")?[1].Kind --> "value"
+      cesia.Definitions("defn (r Rect) Area()\n  (** Its area. *)\n  1\nend")?[1].Text --> "Its area."
+      cesia.Definitions("defn (r Rect) Area()\n  1\nend")?[1].Column --> 15
+      cesia.Definitions("use std/set as sets")?[1].Signature --> "std/set"
+      cesia.Definitions("x = (").Error.Line --> 1 *)
+
 (** cesia.Keywords()
     The reserved words of the language, then it, as, _, ? and .., which mean something in some places only: what a highlighter
     colors, and the words the docs explain.

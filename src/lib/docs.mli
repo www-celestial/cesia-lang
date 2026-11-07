@@ -15,6 +15,10 @@ val examples : string -> (int * string) list
     missing. *)
 val doc_entry : ctx -> t array -> t
 
+(** [cesia.Definitions(source)]: an Ok of what a source defines at its top, as the parser reads it, each [{Name, Owner,
+    Kind, Line, Column, Signature, Text}]; an Err of [{Line, Message}] for a source that doesn't read. *)
+val definitions : ctx -> t array -> t
+
 (** [Doc] and [DocNames]. *)
 val natives : (string * t) list
 
