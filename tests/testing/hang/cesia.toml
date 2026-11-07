@@ -3,4 +3,4 @@ name = "hang"
 cesia = "0.3"
 
 [test]
-timeout = "0.3"
+timeout = "0.1"
