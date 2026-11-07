@@ -232,6 +232,12 @@ program's folder, the one that `exec=./build.sh` allows, even when `dir` names a
 program that keeps running, a server or a shell, [sys.Start] gives a process to write to and read from while it runs, with
 [sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit]. Its `dir` is the folder it runs in, as for [sys.Run].
 
+The programs started this way follow their program when it gets a stop signal. TERM, which a service manager sends to
+this program alone, goes on to each of them. INT and HUP come from a terminal, which sends them to every program it runs:
+they reach the programs started by themselves, but a [sys.Run] with a `timeout`, which runs apart, gets them from Cesia.
+A program that doesn't serve then ends at once, as it would without having started any; one that serves stops as the
+chapter [HTTP](http.md#stopping) says.
+
 ## The clock
 
 [sys.Now] gives the time in seconds since 1970, as a float. The difference of two of them times a piece of code. [sys.Sleep]

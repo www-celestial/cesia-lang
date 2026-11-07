@@ -126,12 +126,13 @@ failure(status) = render({Status: status, Body: Reason(status)}, closing = true)
 
 defn ready(response, headOnly)
   (** A response made ready to send: a struct with reply (its text), upgrade (a function or missing) and close, true when
-      the server closes the connection after it. *)
+      the server stops: the response tells the client, which asks again on a new connection, not on this one. *)
   upgrade = match response
     {Upgrade: upgrade} -> upgrade
     else -> missing
   end
-  {Reply: render(response, headOnly = headOnly), Upgrade: upgrade, Close: false}
+  closing = stopping()
+  {Reply: render(response, headOnly = headOnly, closing = closing), Upgrade: upgrade, Close: closing}
 end
 
 defn answer(handle, request, left)
@@ -284,7 +285,7 @@ defn waitForConnections(deadline)
 end
 
 defn serve(handle, port, host, timeout, maxBody, wrap, listener)
-  (** Serves the requests to handle until a stop signal, then finishes those in progress for at most 5 seconds.
+  (** Serves the requests to handle until a stop signal, then lets those in progress end, each by its deadline.
       handle(request) receives {Method, Path, Query, Headers, Body} and returns {Status, Body}, with optional headers, and
       optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
       after the response. *)
@@ -292,7 +293,7 @@ defn serve(handle, port, host, timeout, maxBody, wrap, listener)
   fiber.Spawn(() -> reaper(list.Max(0.01, list.Min(1.0, timeout / 2.0))))
   acceptLoop(handle, listener, {Timeout: timeout, MaxBody: maxBody, Wrap: if value.IsMissing(wrap) tcp else wrap end})?
   net.Close(listener)
-  waitForConnections(sys.Now() + 5)
+  waitForConnections(sys.Now() + timeout)
   result.Ok(missing)
 end
 
@@ -620,7 +621,8 @@ end
 Handler(a) = chain(a, value.Len(a.Middleware))
 
 defn Serve(a, port = 8080, host = "127.0.0.1", timeout = DefaultTimeout, maxBody = DefaultMaxBody, wrap = missing, listener = missing)
-  (** Serves an application until a stop signal, then finishes the requests in progress for at most 5 seconds. It listens
+  (** Serves an application until a stop signal, TERM, INT or HUP: then it accepts no more, lets the requests in progress
+      end, each by its deadline, with a response that tells its client that the connection closes, and gives Ok. It listens
       on port, on this machine only unless host says otherwise. timeout is the seconds a connection has for each request,
       to send it and to have it answered: a handler that takes longer gets a 503 and runs on alone. maxBody is the
       largest body read, in bytes; the bodies read at once take at most a quarter of the memory limit, and past it a

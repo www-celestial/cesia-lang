@@ -1,0 +1,15 @@
+(** A stop signal while a request is in progress: the server accepts no more, the request ends, its response tells the
+    client that the connection closes, Serve gives Ok, and the program goes on to its end. *)
+use std/http
+use std/io
+use std/sys
+
+defn handle(r)
+  if r.Path == "/slow"
+    sys.Sleep(0.4)
+  end
+  http.Plain("done $(r.Path)")
+end
+io.Print("serving")
+io.Print(http.Serve(http.App() then http.AnyMethod("*", handle), port = 18405, timeout = 5))
+io.Print("after Serve")

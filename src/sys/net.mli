@@ -11,6 +11,10 @@ val resolver : (string -> Unix.inet_addr) ref
 (** Did a stop signal arrive? *)
 val stopping : t -> bool
 
+(** The stop signals end the program at once, once passed on to the processes it started: for a program that starts
+    some, and doesn't serve. *)
+val follow : t -> unit
+
 (** A window takes the stop signals with [true], and leaves them with [false]. Taken before SDL starts, they stay
     Cesia's: SDL leaves alone a signal that has a handler, and makes no quit event for it. *)
 val take_stops : t -> bool -> unit

@@ -1,0 +1,16 @@
+(** A stop signal reaches the processes that the program started: a program that serves passes it on and goes on to its
+    end, and one that doesn't ends at once, as it would with no process started. *)
+use std/http
+use std/io
+use std/sys
+use std/text
+
+d = text.Char(36)
+proc = sys.Start("sh", args = ["-c", "echo $d$d; exec sleep 30"]).Value
+io.Print("child", text.Trim(sys.ReadOutput(proc).Value))
+if sys.Env("SERVE") == "yes"
+  http.Serve(http.App(), port = 18407)
+  io.Print("child ended with", sys.WaitExit(proc))
+else
+  sys.Sleep(30)
+end

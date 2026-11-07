@@ -9,6 +9,7 @@ type t = {
   mutable held_total : int;
   buffer : Bytes.t;  (* shared by reads: nothing suspends between a read and copying its bytes *)
   mutable stopping : bool;
+  mutable serving : bool;  (* a listener or a window takes the stop signals: they ask the program to stop *)
   mutable handlers : bool;
   mutable windows : int;  (* how many windows hear of the stop signals: see [take_stops] *)
   mutable unheard : bool;  (* a stop signal has come since a window last heard of one *)
@@ -16,39 +17,46 @@ type t = {
 }
 
 let chunk_size = 65536
-let exit_on_second_signal = 130
 
 let create poll =
   { poll; sockets = Hashtbl.create 64; deadlines = Hashtbl.create 64; held = Hashtbl.create 64; held_total = 0;
-    buffer = Bytes.create chunk_size; stopping = false;
+    buffer = Bytes.create chunk_size; stopping = false; serving = false;
     handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8 }
 
 let stopping n = n.stopping
 
-(* The first stop signal asks accept to end; the second one doesn't wait. With a window open, no signal cuts the program
-   short: it hears of them and decides, as it may have a question to ask, and two can come at once from timeout and
-   cesia do. *)
-let catch_stops n =
+(* The exit code of a program that a signal ends, as a shell gives it: 128 and the number of the signal. *)
+let signal_code s = 128 + if s = Sys.sigterm then 15 else if s = Sys.sighup then 1 else 2
+
+(* The stop signals are TERM, INT and HUP. In a program that serves, the first one asks accept to end, and the requests
+   in progress end by their deadlines; the second one doesn't wait. With a window open, no signal cuts the program short:
+   it hears of them and decides, as it may have a question to ask, and two can come at once from timeout and cesia do. A
+   program that doesn't serve, but has started others, ends at the first one, as it would without a handler. Either way,
+   the processes it started hear of the first one: see Proc.pass_on. *)
+let catch n ~serving =
+  if serving then n.serving <- true;
   if not n.handlers then begin
     n.handlers <- true;
     let stop =
       Sys.Signal_handle
-        (fun _ ->
-           if n.stopping && n.windows = 0 then exit exit_on_second_signal;
+        (fun s ->
+           if not n.stopping then Proc.pass_on s;
+           if (not n.serving) || (n.stopping && n.windows = 0) then exit (signal_code s);
            n.stopping <- true;
            n.unheard <- true;
            Poll.interrupt n.poll)
     in
-    Sys.set_signal Sys.sigint stop;
-    Sys.set_signal Sys.sigterm stop
+    List.iter (fun s -> Sys.set_signal s stop) [ Sys.sigint; Sys.sigterm; Sys.sighup ]
   end
 
 let install_handlers n =
   Sys.set_signal Sys.sigpipe Sys.Signal_ignore;
-  catch_stops n
+  catch n ~serving:true
+
+let follow n = catch n ~serving:false
 
 let take_stops n taken =
-  if taken then catch_stops n;
+  if taken then catch n ~serving:true;
   n.windows <- max 0 (n.windows + if taken then 1 else -1)
 
 let stop_asked n =
@@ -479,4 +487,5 @@ let http_natives n =
     "isHeader", Native.nat "isHeader" 2 2 is_header;
     "request", Native.nat "request" 3 3 request;
     "segments", Native.nat "segments" 1 1 segments;
-    "openCount", Native.nat "openCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets)) ]
+    "openCount", Native.nat "openCount" 0 0 (fun _ _ -> Int (Hashtbl.length n.sockets));
+    "stopping", Native.nat "stopping" 0 0 (fun _ _ -> Value.of_bool n.stopping) ]

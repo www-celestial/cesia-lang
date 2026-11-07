@@ -138,6 +138,7 @@ let rec watch (o : Runtime.options) file rest =
   (* From here a signal does what it does to any program, so none is lost: one that came earlier is what stopped tells of. *)
   uncatch Sys.sigint;
   uncatch Sys.sigterm;
+  uncatch Sys.sighup;
   (* A stop signal means stop, not wait for the next change. *)
   if stopped () then exit code;
   while changed stamps (file :: Loader.watched w) = [] do

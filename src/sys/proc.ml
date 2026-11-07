@@ -10,6 +10,21 @@ let text_list ctx name (v : t) =
   | Array x -> Array.init (x.rows * x.cols) (fun k -> Native.text_arg ctx name (Value.elt x k))
   | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
 
+(* The processes started and not yet waited for, and whether each leads a process group of its own. *)
+let children : (int, bool) Hashtbl.t = Hashtbl.create 8
+
+(* What a process that starts others does first: Net makes the stop signals reach them. *)
+let on_start = ref ignore
+
+(* A stop signal passed on to the processes this program started. TERM was sent to this process alone, as systemd and a
+   container do: each of them gets it. INT and HUP come from a terminal, which sends them to its whole process group: of
+   the processes started, only those that lead a group of their own, as a sys.Run with a timeout, need them from here. *)
+let pass_on signal =
+  Hashtbl.iter
+    (fun pid group ->
+       if signal = Sys.sigterm || group then try Unix.kill (if group then -pid else pid) signal with Unix.Unix_error _ -> ())
+    children
+
 (* A stream of the command, while it is open. *)
 type pipe = { fd : Unix.file_descr; mutable live : bool }
 
@@ -61,16 +76,20 @@ let exchange ctx poll stdin_pipe stdout_pipe stderr_pipe input =
   go ();
   Buffer.contents out, Buffer.contents err
 
-(* A child that closed its pipes may live on: other fibers run meanwhile. *)
+(* A child that closed its pipes may live on: other fibers run meanwhile. Once waited for, its number may go to another
+   process: it no longer hears of the stop signals. *)
 let rec exit_code ctx poll pid pause =
   match Unix.waitpid [ Unix.WNOHANG ] pid with
   | 0, _ ->
     Poll.sleep poll ctx pause;
     exit_code ctx poll pid (Float.min 0.05 (pause *. 2.))
-  | _, Unix.WEXITED code -> code
-  | _, (Unix.WSIGNALED _ | Unix.WSTOPPED _) -> -1
+  | _, status ->
+    Hashtbl.remove children pid;
+    (match status with Unix.WEXITED code -> code | Unix.WSIGNALED _ | Unix.WSTOPPED _ -> -1)
   | exception Unix.Unix_error (Unix.EINTR, _, _) -> exit_code ctx poll pid pause
-  | exception Unix.Unix_error (Unix.ECHILD, _, _) -> -1  (* our parent told the system to ignore children *)
+  | exception Unix.Unix_error (Unix.ECHILD, _, _) ->
+    Hashtbl.remove children pid;
+    -1  (* our parent told the system to ignore children *)
 
 (* Three pipes, or nothing: descriptors can run out on any of them. *)
 let rec pipes count =
@@ -97,6 +116,7 @@ external spawn_group : string -> string array -> Unix.file_descr array -> int = 
    command starts where its parent is, so the parent goes into [dir] for that moment: fibers take turns, and no other domain
    reads a relative path. With [group], it leads a process group of its own, which [stop] kills whole, but on Windows. *)
 let start ?(dir = "") ?(group = false) cmd argv child_in child_out child_err =
+  !on_start ();
   Sys.set_signal Sys.sigpipe Sys.Signal_default;
   let here = if dir = "" then "" else Unix.getcwd () in
   Fun.protect
@@ -105,8 +125,12 @@ let start ?(dir = "") ?(group = false) cmd argv child_in child_out child_err =
         if here <> "" then Unix.chdir here)
     (fun () ->
        if dir <> "" then Unix.chdir dir;
-       if group && not Sys.win32 then spawn_group cmd argv [| child_in; child_out; child_err |]
-       else Unix.create_process cmd argv child_in child_out child_err)
+       let pid =
+         if group && not Sys.win32 then spawn_group cmd argv [| child_in; child_out; child_err |]
+         else Unix.create_process cmd argv child_in child_out child_err
+       in
+       Hashtbl.replace children pid (group && not Sys.win32);
+       pid)
 
 (* A command named by its path is the one of this program's folder, which exec= names, whatever dir it runs in. *)
 let program cmd =

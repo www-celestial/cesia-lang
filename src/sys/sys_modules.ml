@@ -97,6 +97,7 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   w.timer <- (fun seconds f -> Poll.timer poll (Float.min max_sleep seconds) f);
   Option.iter (fun (period, f) -> Poll.set_tick poll period f) tick;
   let net = Net.create poll in
+  Proc.on_start := (fun () -> Net.follow net);
   Option.iter (fun r -> r := (fun () -> Net.reset net; Poll.reset poll)) reset;
   let input = Term.create poll in
   let sys =

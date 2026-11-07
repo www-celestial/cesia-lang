@@ -1,0 +1,9 @@
+(** A second stop signal doesn't wait for the requests in progress: the program ends at once, with 128 and the number of
+    the signal, as a shell gives it. *)
+use std/http
+use std/io
+use std/sys
+
+io.Print("serving")
+http.Serve(http.App() then http.AnyMethod("*", r -> {Status: 200, Body: "$(sys.Sleep(30))"}), port = 18406)
+io.Print("never")

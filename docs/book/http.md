@@ -92,7 +92,7 @@ http.Handler(http.Wrap(servedBy, shop))({Method: "GET", Path: "/", Query: "", He
 
 ## Serving
 
-[http.Serve] serves an application until the program gets a stop signal, as Ctrl-C. It listens on port 8080 unless `port`
+[http.Serve] serves an application until the program gets a stop signal, as Ctrl-C: see [Stopping](#stopping). It listens on port 8080 unless `port`
 says otherwise, and on `127.0.0.1`, this machine only, unless `host` does. It needs the permission to listen on its port.
 Here is a small `shop.ce`:
 
@@ -111,6 +111,16 @@ Run it, and ask it from another terminal:
 cesia run --allow net=:8080 shop.ce
 curl localhost:8080/hello/Ana
 ```
+
+### Stopping
+
+A stop signal stops a server cleanly: TERM, which systemd, Docker and Kubernetes send, INT, which Ctrl-C sends, or HUP,
+which a terminal sends as it closes. The server accepts no more connections, and the requests in progress end, each by
+its deadline, with a response that tells its client that the connection closes, so that the client asks again
+elsewhere. Then [http.Serve] gives `Ok`, and the program goes on to its end, which gives the exit code 0 unless it says
+otherwise. A second signal doesn't wait: the program ends at once, with 128 and the number of the signal, 143 for TERM
+and 130 for INT, as a shell gives them. The programs it started with [sys.Start] or [sys.Run] hear of the first signal
+too, as the chapter [Files](files.md#programs-that-keep-running) says.
 
 ### Serving and asking in one program
 
