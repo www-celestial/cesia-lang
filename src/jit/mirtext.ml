@@ -28,12 +28,17 @@ let flip = function Ir.Lt -> Ir.Gt | Le -> Ge | Gt -> Lt | Ge -> Le | c -> c
 (* A cell of the context, raw integers: the C glue copies [io] there and back. The stacks are cells 0, 1 and 2. *)
 let cx k = Printf.sprintf "i64:%d(cx)" (8 * k)
 
+(* The cell of a function's result, an integer or a double, which its caller reads at once. *)
+let result_cell = function Ir.Kint | Kval -> cx Ir.cx_result | Kfloat -> Printf.sprintf "d:%d(cx)" (8 * Ir.cx_result)
+
 (* The quantum of fuel a nested frame takes when it runs out: big, unless the limit of steps is nearer. *)
 let quantum = "1099511627776"
 
 (* The arguments every function takes before its own: the context, its base, its entry (-1 for a nested frame, 0 to start,
-   1 + a resume point) and its fuel. It gives its result and the fuel left, or a negative fuel when it stopped: the status
-   is then in the context, and each caller writes the link of its callee's frame as it goes up, for the trace. *)
+   1 + a resume point) and its fuel. It gives one result, as Windows x86-64 allows no more: the fuel left, its own result
+   then in the context's cell [cx_result], which the caller reads after the call; or a negative fuel when it stopped: the
+   status is then in the context, and each caller writes the link of its callee's frame as it goes up, for the trace.
+   The fuel is the one that comes back in a register, as the next call needs it at once, and the result later. *)
 let args_of ~nested (fn : Ir.func) =
   (if nested then "p:cx, i64:b, i64:fuel" else "p:cx, i64:b, i64:entry, i64:fuel")
   ^ String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) fn.params))
@@ -58,7 +63,6 @@ let func b ~prefix ~nested (fn : Ir.func) =
     f stubs;
     l
   in
-  let zero = match fn.result with Kint | Kval -> "0" | Kfloat -> "0.0" in
   let params = Array.map (fun (v : Ir.var) -> v.reg) fn.params in
   let is_param r = Array.mem r params in
   (* Only the outermost frame keeps its variables in its slots, when it leaves to come back. *)
@@ -76,7 +80,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
       fn.vars
   in
   let stop b status =
-    Printf.bprintf b "  mov %s, fuel\n  mov %s, %d\n  ret %s, -1\n" (cx Ir.io_fuel) (cx Ir.io_status) status zero
+    Printf.bprintf b "  mov %s, fuel\n  mov %s, %d\n  ret -1\n" (cx Ir.io_fuel) (cx Ir.io_status) status
   in
   (* The frames of inlined callees around a site: their bases, the innermost first, and the links an error writes so that
      the trace holds them, as the interpreter's frames. *)
@@ -173,7 +177,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
         link s at caller site;
         links s site;
         Printf.bprintf s "  mov %s, %s\n  mov %s, %d\n" (cx Ir.io_frame) at (cx Ir.io_point) fn.sites.(site);
-        Printf.bprintf s "  mov %s, fuel\n  mov %s, x1\n  ret %s, -1\n" (cx Ir.io_fuel) (cx Ir.io_status) zero)
+        Printf.bprintf s "  mov %s, fuel\n  mov %s, x1\n  ret -1\n" (cx Ir.io_fuel) (cx Ir.io_status))
   in
   (* A call that wants a longer stack, here or deeper, bails when it can: its statement's fuel back as at its start, the
      interpreter makes the call and grows the stack. *)
@@ -248,7 +252,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
           stub (fun s ->
               link s "nb" (frame_of site) site;
               links s site;
-              Printf.bprintf s "  ret %s, -1\n" zero)
+              Printf.bprintf s "  ret -1\n")
         in
         if back < 0 then unwind
         else begin
@@ -259,9 +263,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
         end
       in
       pr "  mov x0, %s\n  bgt %s, nb, x0\n" (cx Ir.io_lim) slow;
-      pr "  inline Q%s%d, %sg%d, r%d, fuel, cx, nb, fuel%s\n" prefix k prefix k r
+      pr "  inline Q%s%d, %sg%d, fuel, cx, nb, fuel%s\n" prefix k prefix k
         (String.concat "" (Array.to_list (Array.map (fun v -> ", " ^ operand v) args)));
-      pr "  blt %s, fuel, 0\n" up
+      pr "  blt %s, fuel, 0\n  %s r%d, %s\n" up (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (result_cell fn.kinds.(r))
     | Try (op, r, x, y, l) ->
       let x' = in_reg Kint x in
       (match op with
@@ -372,6 +376,12 @@ let func b ~prefix ~nested (fn : Ir.func) =
         pr "  sub fuel, fuel, 1\n  blt %s, fuel, 0\n%s:\n" out back
       end
   in
+  (* The function's result, in its cell, just before it returns its fuel. *)
+  let give v =
+    let k = fn.result in
+    let v = in_reg k v in
+    pr "  %s %s, %s\n" (if k = Kfloat then "dmov" else "mov") (result_cell k) v
+  in
   let term = function
     | Ir.Jump l -> pr "  jmp %s\n" (bl l)
     | Branch (c, k, x, y, yes, no) ->
@@ -380,13 +390,15 @@ let func b ~prefix ~nested (fn : Ir.func) =
       pr "  %sb%s %s, %s, %s\n  jmp %s\n" (if k = Kfloat then "d" else "") (cmp_name c) (bl yes) x (operand y) (bl no)
     | Return v ->
       let v = match fn.result, v with Kfloat, Int n -> Ir.Float (float_of_int n) | _ -> v in
-      pr "  ret %s, fuel\n" (operand v)
+      give v;
+      pr "  ret fuel\n"
     | Bail k -> pr "  jmp %s\n" (bail_to k)
     | Fuel_ge (v, yes, no) ->
       pr "  mov x0, %s\n  rsh x0, x0, 1\n  bge %s, fuel, x0\n  jmp %s\n" (operand v) (bl yes) (bl no)
     | Done ->
       spill b;
-      pr "  ret 0, fuel\n"
+      give (if fn.result = Kfloat then Ir.Float 0. else Int 0);
+      pr "  ret fuel\n"
     | Out v ->
       (match v with
        | Ir.Float _ -> pr "  mov fp, %s\n  lsh xa, b, 3\n  add fp, fp, xa\n  dmov y0, %s\n  dmov d:%d(fp), y0\n" (cx 1) (operand v) (8 * fn.frame)
@@ -394,7 +406,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
        | _ -> pr "  mov x0, %s\n  rsh x0, x0, 1\n  mov %s, x0\n" (operand v) (cx Ir.io_int));
       stop b Ir.returned
   in
-  pr "%s%s: func %s, i64, %s\n" prefix name (ty fn.result) (args_of ~nested fn);
+  pr "%s%s: func i64, %s\n" prefix name (args_of ~nested fn);
   pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:xp, i64:xs, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, i64:x5, i64:x6, d:y0\n";
   Array.iteri (fun j _ -> pr "  local i64:c%d\n" j) fn.consts;
   Array.iteri (fun r k -> if not (is_param r) then pr "  local %s:r%d\n" (ty k) r) fn.kinds;
@@ -450,7 +462,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   if !leave_used then begin
     pr "%s:\n" (leave_block ());
     spill b;
-    pr "  mov %s, xp\n  mov %s, fuel\n  mov %s, xs\n  ret %s, -1\n" (cx Ir.io_point) (cx Ir.io_fuel) (cx Ir.io_status) zero
+    pr "  mov %s, xp\n  mov %s, fuel\n  mov %s, xs\n  ret -1\n" (cx Ir.io_point) (cx Ir.io_fuel) (cx Ir.io_status)
   end;
   if !error_used then begin
     pr "%s:\n" (error_block ());
@@ -476,8 +488,8 @@ let emit (fns : Ir.func array) =
   pr "pd1: proto d, d:a\npd2: proto d, d:a, d:b\npmod: proto i64:a, i64:b\n";
   Array.iteri
     (fun k (fn : Ir.func) ->
-       pr "P%s%d: proto %s, i64, %s\n" prefix k (ty fn.result) (args_of ~nested:false fn);
-       pr "Q%s%d: proto %s, i64, %s\n" prefix k (ty fn.result) (args_of ~nested:true fn))
+       pr "P%s%d: proto i64, %s\n" prefix k (args_of ~nested:false fn);
+       pr "Q%s%d: proto i64, %s\n" prefix k (args_of ~nested:true fn))
     fns;
   (* A nested copy of each function another one calls; the first's only if one calls it. *)
   let called = Array.make (Array.length fns) false in
@@ -501,8 +513,9 @@ let emit (fns : Ir.func array) =
        | Kfloat -> pr "  dmov r%d, d:%d(fp)\n" v.reg (8 * v.slot)
        | Kval -> invalid_arg "Mirtext: a value as a parameter")
     f0.params;
-  pr "  call P%s0, %sf0, res, fuel, cx, b, entry, fuel%s\n  blt %sX, fuel, 0\n" prefix prefix
-    (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", r%d" v.reg) f0.params))) prefix;
+  pr "  call P%s0, %sf0, fuel, cx, b, entry, fuel%s\n  blt %sX, fuel, 0\n  %s res, %s\n" prefix prefix
+    (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", r%d" v.reg) f0.params))) prefix
+    (if f0.result = Kfloat then "dmov" else "mov") (result_cell f0.result);
   (match f0.result with
    | Kint | Kval -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
    | Kfloat -> pr "  dmov d:%d(fp), res\n" (8 * f0.frame));

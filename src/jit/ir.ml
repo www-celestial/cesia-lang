@@ -106,6 +106,7 @@ let reloaded = 9
 let bailed = 10
 let gc = 11
 let cx_young = 30
+let cx_result = 29
 let restored = 1 lsl 20
 let err_add = 1
 let err_sub = 2

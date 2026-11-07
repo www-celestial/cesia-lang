@@ -134,6 +134,10 @@ type func = {
 
 val cx_young : int
 
+val cx_result : int
+(** The cell of that context where a function puts its result just before it returns: its one result is the fuel it
+    leaves, or a negative one when it stopped, as Windows x86-64 gives a function only one. *)
+
 val restored : int
 
 val io_base : int
