@@ -1,0 +1,19 @@
+stopped at broken-code.ce:5 (start)
+breakpoint broken-code.ce:3 if x > 3 and zz
+stopped at broken-code.ce:3 (condition)
+  <prompt>:1:11: Name "zz" doesn't exist.
+  1 | x > 3 and zz
+    |           ^
+<prompt>:1:4: Expected an expression, found the end of the file.
+  1 | 1 +
+    |    ^
+<prompt>:1:3: Expected ")", found the end of the file.
+  1 | (x
+    |   ^
+3
+stopped at broken-code.ce:3 (condition)
+  <prompt>:1:11: Name "zz" doesn't exist.
+  1 | x > 3 and zz
+    |           ^
+11
+exit 0

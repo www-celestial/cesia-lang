@@ -183,6 +183,12 @@ let as_function ctx ~path ~names code =
   match Hashtbl.find_opt w.debug.made key with
   | Some g -> g
   | None ->
+    (* The code alone first: its own syntax error shows as it was typed, not in the function made around it. *)
+    let body = String.trim code in
+    (match parsed prompt_path body with
+     | exception (Pos.Load_error _ as e) ->
+       raise (Failed (error_text ctx ~typed:(Lazy.from_val { code = body; shift = 0; indent = 0 }) e))
+     | _ -> ());
     let src, t = wrapped w ~target ~names code in
     let lookup name = if target >= 0 then match Loader.in_package w target name with Some b -> Some b | None -> Loader.lookup w name else Loader.lookup w name in
     let g = run_above ctx ~typed:(Lazy.from_val t) (Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup) in
@@ -211,14 +217,15 @@ let eval ctx (a : t array) =
       | Missing -> at_prompt ctx code
       | frame -> in_frame ctx code frame)
 
-(* A condition of a breakpoint, at a site, with the variables there: an error stops too, to be seen. *)
+(* A condition of a breakpoint, at a site, with the variables there: whether it holds, or the error it gives. *)
 let test ctx s cond =
   (* The code runs above the frame of the site: the hook doesn't set it. *)
   let before = ctx.site in
   ctx.site <- s;
   match Fun.protect ~finally:(fun () -> ctx.site <- before) (fun () -> quietly ctx (fun () -> in_frame ctx cond (Debug.frame ctx ctx.b s))) with
-  | Struct { shape = { sname = Some "Ok"; _ }; fields = [| v |]; _ } -> v <> False && v <> Missing
-  | _ -> true
+  | Struct { shape = { sname = Some "Ok"; _ }; fields = [| v |]; _ } -> Ok (v <> False && v <> Missing)
+  | Struct { fields = [| Text text |]; _ } -> Error text
+  | v -> Error (Value.describe v)
 
 let read_file path = try Some (In_channel.with_open_bin path In_channel.input_all) with Sys_error _ -> None
 

@@ -1,0 +1,7 @@
+defn F(x)
+  y = x * 2
+  y + 1
+end
+io.Print(F(1))
+io.Print(F(5))
+use std/io

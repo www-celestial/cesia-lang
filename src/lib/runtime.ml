@@ -140,7 +140,7 @@ let create_world o =
     repl = o.o_repl;
     debug =
       { mode = Starting; stopped = false; breaks = []; on_stop = Missing;
-        stamp = 0; marked = (fun _ _ -> false); watches = []; test = (fun _ _ _ -> true); scope = []; typed_uses = []; main = "";
+        stamp = 0; marked = (fun _ _ -> false); watches = []; test = (fun _ _ _ -> Ok true); scope = []; typed_uses = []; main = "";
         made = Hashtbl.create 8 };
     on_hook = (fun _ _ _ -> ());
     hook_count = 0;

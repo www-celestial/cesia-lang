@@ -5,5 +5,5 @@ open Types
 (** [debug.Eval], [debug.Reload] and [debug.Complete]. *)
 val natives : (string * t) list
 
-(** Is the condition of a breakpoint true at a site, with the variables there? An error says yes, to be seen. *)
-val test : ctx -> int -> string -> bool
+(** Is the condition of a breakpoint true at a site, with the variables there? [Error] holds the error it gives. *)
+val test : ctx -> int -> string -> (bool, string) result

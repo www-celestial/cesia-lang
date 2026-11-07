@@ -115,12 +115,20 @@ let hook ctx s first =
     let site = Dynarray.get w.sites s in
     let line = Pos.line site.spos in
     let path, _ = Dynarray.get w.files site.sfile in
-    (* A line with several statements stops once on its breakpoint, at its first one. *)
+    (* A line with several statements stops once on its breakpoint, at its first one. A condition that gives an error
+       stops too, with it, to be seen. *)
     let on_break =
-      first && List.exists (fun (f, l, c) -> l = line && same_file path f && (c = "" || d.test ctx s c)) d.breaks
+      if not first then Ok false
+      else
+        match List.find_opt (fun (f, l, _) -> l = line && same_file path f) d.breaks with
+        | None -> Ok false
+        | Some (_, _, "") -> Ok true
+        | Some (_, _, c) -> d.test ctx s c
     in
-    if on_break then stop ctx s "break"
-    else
+    match on_break with
+    | Ok true -> stop ctx s "break"
+    | Error text -> stop ~error:text ctx s "condition"
+    | Ok false ->
       match d.mode with
       | Starting -> stop ctx s "start"
       | Stepping -> stop ctx s "step"

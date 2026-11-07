@@ -121,7 +121,7 @@ defn OnStop(stop)
   (** Shows the stop and reads commands until one resumes the program: gives its word. *)
   fiber = if stop.Fiber > 0 " in fiber $(stop.Fiber)" else "" end
   io.Print("stopped at $(stop.File):$(stop.Line) ($(stop.Reason))$fiber")
-  if stop.Reason == "error"
+  if stop.Reason == "error" or stop.Reason == "condition"
     io.Print("  $(stop.Error)")
   end
   for code in debug.Watches()

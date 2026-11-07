@@ -177,7 +177,8 @@ and debug = {
   mutable stamp : int;  (** the breakpoints changed this many times: a hook knows when to look at them again *)
   mutable marked : world -> int -> bool;  (** is there a breakpoint on the line of this site: set by [Loader] *)
   mutable watches : string list;  (** the expressions a debugger shows at each stop, in order *)
-  mutable test : ctx -> int -> string -> bool;  (** is a condition true at a site: set by [Eval] *)
+  mutable test : ctx -> int -> string -> (bool, string) result;
+      (** is a condition true at a site, or the error it gives: set by [Eval] *)
   mutable scope : int list;  (** the modules of the code run at the prompt, the last first *)
   mutable typed_uses : (string * string) list;  (** the uses written at the prompt: alias and path *)
   mutable main : string;  (** the path of the main file *)

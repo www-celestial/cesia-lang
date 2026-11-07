@@ -22,7 +22,8 @@ val sqlite_loader : (unit -> (unit, string) result) ref
 (** The code of std/debug's engine, which its plugin cesia_debug.cmxs gives when it loads: its natives, the test of a
     condition of a breakpoint, and the line editor of ReadLine on a terminal. *)
 val debugger :
-  ((string * t) list * (ctx -> int -> string -> bool) * (string -> (unit -> char option) -> string option)) option ref
+  ((string * t) list * (ctx -> int -> string -> (bool, string) result) * (string -> (unit -> char option) -> string option))
+  option ref
 
 (** Loads that plugin, at the first call of one of its natives: [Error] says why it didn't. [bin/main.ml] sets it. *)
 val debug_loader : (unit -> (unit, string) result) ref

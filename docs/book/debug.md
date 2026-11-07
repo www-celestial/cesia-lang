@@ -134,7 +134,7 @@ sum = 1.5
 | Command | What it does |
 |---|---|
 | `break FILE LINE` | stops at that line each time the program reaches it |
-| `break FILE LINE if CONDITION` | stops there only when the condition is true: an expression of the variables there |
+| `break FILE LINE if CONDITION` | stops there only when the condition is true: an expression of the variables there; one that gives an error stops with it |
 | `clear FILE LINE` | removes the breakpoint of that line |
 | `breaks` | lists the breakpoints |
 | `print EXPRESSION` | the value of any expression, in the current frame: its variables, its package, its uses |
@@ -203,10 +203,10 @@ A stop holds:
 | Field | What it is |
 |---|---|
 | `File`, `Line` | where the program stopped |
-| `Reason` | `"start"`, `"break"`, `"step"` or `"error"` |
+| `Reason` | `"start"`, `"break"`, `"step"`, `"error"`, or `"condition"` for a breakpoint whose condition gives an error |
 | `Frames` | the frames, from the innermost: each has `Function`, `File`, `Line` and `Vars`, each variable a `Name` and a `Value` |
 | `Fiber` | 0 for the main program, else the number of the fiber that stopped |
-| `Error` | the message of the error for a stop on an error, else missing |
+| `Error` | the message of the error for a stop on an error or on a condition, else missing |
 
 The functions of [std/debug] do the rest: [debug.SetBreak], [debug.ClearBreak] and [debug.Breaks] for breakpoints,
 [debug.Watch], [debug.Unwatch] and [debug.Watches] for the watches, which live with the program from one stop to the next;
