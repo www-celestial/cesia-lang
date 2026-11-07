@@ -174,57 +174,90 @@ let next ch =
 
 let send ctx (a : Types.t array) =
   let ch = channel_arg ctx "Send" a.(1) in
+  if ch.closed then Runtime.fail ctx User Messages.send_closed;
   let v = Value.share a.(0) in
   if Queue.length ch.items < ch.size then begin
     Queue.add v ch.items;
     wake_receiver ch
   end
-  else
+  else begin
     (* Full: the value waits with its fiber, which a receiver wakes as it takes it. Of size 0, it waits for one. *)
+    let me = ref None in
     park ctx (fun wake ->
-        Queue.add { sent = v; taken = false; wake } ch.senders;
+        let s = { sent = v; taken = false; wake } in
+        me := Some s;
+        Queue.add s ch.senders;
         wake_receiver ch);
+    match !me with
+    | Some { taken = true; _ } -> ()
+    | _ -> Runtime.fail ctx User Messages.send_closed
+  end;
   Missing
 
-let timeout_keys = Trie.names [| "Kind"; "Message" |]
+(* A timeout in seconds, or None for none. *)
+let seconds_arg ctx (v : Types.t) =
+  match v with
+  | Undef | Missing -> None
+  | Int i when i >= 0 -> Some (float_of_int i)
+  | Float x when x >= 0. -> Some x
+  | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
+
+type taken = Came of Types.t | Closed | Late
+
+(* Parks until a value comes, the channel is closed, or [limit] seconds pass, with one timer for the whole wait. A receiver
+   woken may find the value taken by one that never parked: it parks again, at the front, since it came first. *)
+let await ctx ch limit =
+  let timed_out = ref false and parked = ref None in
+  Option.iter
+    (fun seconds ->
+       ctx.w.timer seconds (fun () ->
+           timed_out := true;
+           Option.iter
+             (fun wake ->
+                ch.receivers <- List.filter (fun w -> w != wake) ch.receivers;
+                ignore (wake ()))
+             !parked))
+    limit;
+  let rec go again =
+    park ctx (fun wake ->
+        parked := Some wake;
+        ch.receivers <- (if again then wake :: ch.receivers else ch.receivers @ [ wake ]));
+    match next ch with
+    | Some v -> Came v
+    | None when ch.closed -> Closed
+    | None when !timed_out -> Late
+    | None -> go true
+  in
+  go false
+
+(* The oldest value of a channel, waiting at most [limit] seconds for one. *)
+let take ctx ch limit =
+  match next ch with
+  | Some v -> Came v
+  | None when ch.closed -> Closed
+  | None when limit = Some 0. -> Late
+  | None -> await ctx ch limit
 
 let receive ctx (a : Types.t array) =
   let ch = channel_arg ctx "Receive" a.(0) in
-  let limit =
-    match if Array.length a > 1 then a.(1) else Undef with
-    | Undef | Missing -> None
-    | Int i when i >= 0 -> Some (float_of_int i)
-    | Float x when x >= 0. -> Some x
-    | v -> Runtime.fail ctx Type (Messages.bad_timeout (Value.describe v))
-  in
-  let timed_out = ref (limit = Some 0.) in
-  (* One timer for the whole wait. A receiver woken may find the value taken by one that never parked: it parks again, at
-     the front, since it came first. *)
-  let parked = ref None and timing = ref false in
-  let rec take again =
-    match next ch with
-    | Some v -> Value.ok ctx.w v
-    | None when !timed_out -> Value.err ctx.w (Trie.record timeout_keys [| Text "timeout"; Text (Messages.receive_timeout.text) |])
-    | None ->
-      park ctx (fun wake ->
-          parked := Some wake;
-          ch.receivers <- (if again then wake :: ch.receivers else ch.receivers @ [ wake ]);
-          if not !timing then begin
-            timing := true;
-            Option.iter
-              (fun seconds ->
-                 ctx.w.timer seconds (fun () ->
-                     timed_out := true;
-                     Option.iter
-                       (fun wake ->
-                          ch.receivers <- List.filter (fun w -> w != wake) ch.receivers;
-                          ignore (wake ()))
-                       !parked))
-              limit
-          end);
-      take true
-  in
-  take false
+  match take ctx ch (seconds_arg ctx (if Array.length a > 1 then a.(1) else Undef)) with
+  | Came v -> Value.ok ctx.w v
+  | Closed -> Value.failure ctx.w "closed" Messages.channel_closed.text
+  | Late -> Value.failure ctx.w "timeout" Messages.receive_timeout.text
+
+let next_in ctx v = match take ctx (channel_arg ctx "for" v) None with Came v -> Some v | Closed | Late -> None
+
+(* Nothing more comes: the receivers parked wake to what is left, then to its end; the senders parked find it closed. *)
+let close ctx (a : Types.t array) =
+  let ch = channel_arg ctx "Close" a.(0) in
+  if ch.closed then Runtime.fail ctx User Messages.closed_twice;
+  ch.closed <- true;
+  let receivers = ch.receivers in
+  ch.receivers <- [];
+  List.iter (fun wake -> ignore (wake ())) receivers;
+  Queue.iter (fun s -> ignore (s.wake ())) ch.senders;
+  Queue.clear ch.senders;
+  Missing
 
 let channel ctx (a : Types.t array) =
   let size =
@@ -237,11 +270,12 @@ let channel ctx (a : Types.t array) =
   s.next_id <- s.next_id + 1;
   Handle
     { kind = "channel"; id = s.next_id - 1;
-      task = Some (Chan { items = Queue.create (); size; receivers = []; senders = Queue.create () }) }
+      task = Some (Chan { items = Queue.create (); size; receivers = []; senders = Queue.create (); closed = false }) }
 
 let natives =
   [ "Spawn", Native.nat "Spawn" 1 1 (fun ctx a -> spawn ctx a.(0));
     "Wait", Native.nat ~result:true "Wait" 1 1 (fun ctx a -> wait ctx a.(0));
     "Channel", Native.nat ~params:[| "size" |] "Channel" 0 1 channel;
     "Send", Native.nat ~params:[| "value"; "ch" |] "Send" 2 2 send;
-    "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive ]
+    "Receive", Native.nat ~result:true ~params:[| "ch"; "timeout" |] "Receive" 1 2 receive;
+    "Close", Native.nat ~params:[| "ch" |] "Close" 1 1 close ]

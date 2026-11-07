@@ -149,6 +149,7 @@ let create_world o =
     timer = (fun _ _ -> ());
     native_modules = [];
     yield = (fun _ -> ());
+    next_in = (fun _ _ -> None);
     on_panic = (fun _ _ -> ());
     on_error = (fun _ _ -> ());
     out = Buffer.create 4096;

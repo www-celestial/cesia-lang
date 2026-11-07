@@ -9,6 +9,9 @@ val suspend : ctx -> ((unit -> unit) -> unit) -> unit
 (** Lets the other fibers run, if there are any. *)
 val yield : ctx -> unit
 
+(** The next value of a channel, waiting for it, or None once it is closed and empty: [world.next_in]. *)
+val next_in : ctx -> t -> t option
+
 (** The natives of std/fiber: [Spawn], [Wait] and the channels. *)
 val natives : (string * t) list
 

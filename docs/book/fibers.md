@@ -82,31 +82,48 @@ A server works this way: a request whose handler has a bug gets a `500`, and the
 ## Channels
 
 A channel carries values from one fiber to another, in the order they were sent: this is
-[message passing](glossary.md#message-passing). [fiber.Channel] makes one, [fiber.Send] puts a value in
-it and never waits, and [fiber.Receive] takes the oldest, waiting for one if it is empty:
+[message passing](glossary.md#message-passing). [fiber.Channel] makes one, [fiber.Send] puts a value in it, and
+[fiber.Receive] takes the oldest, waiting for one if it is empty. [fiber.Close] tells that nothing more will come, and a
+`for` loop over a channel takes its values as they come, until it is closed:
 
 ```cesia
 use std/list
 use std/result
-use std/value
 orders = fiber.Channel()
 baker = fiber.Spawn(defn ()
   for product in ["bread", "cake", "tart"]
     fiber.Send(product, orders)
   end
-  fiber.Send(missing, orders)
+  fiber.Close(orders)
 end)
 
 made = []
-next = result.Unwrap(fiber.Receive(orders))
-while value.IsSome(next)
-  made = list.Append(next, made)
-  next = result.Unwrap(fiber.Receive(orders))
+for product in orders
+  made = list.Append(product, made)
 end
 made -->
 ```
 
-Here `missing` tells that nothing more will come.
+The values sent before [fiber.Close] still come; a [fiber.Send] after it is a bug, and stops its fiber. The `for` loop is
+[syntax sugar](glossary.md#syntax-sugar) for a loop of [fiber.Receive], which gives an `Err` of kind `"closed"` once the
+channel is closed and empty:
+
+```cesia
+orders = fiber.Channel()
+fiber.Spawn(defn ()
+  fiber.Send("pie", orders)
+  fiber.Close(orders)
+end)
+
+made = []
+got = fiber.Receive(orders)
+while result.IsOk(got)
+  made = list.Append(got.Value, made)
+  got = fiber.Receive(orders)
+end
+made -->
+got.Error.Kind --> "closed"
+```
 
 ### A time limit
 

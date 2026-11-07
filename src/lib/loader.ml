@@ -855,6 +855,7 @@ let guarded ?(strict = false) w body =
         else report_at (current ()) ~text:m.text ~hint:m.hint at)
   in
   w.yield <- Fiber.yield;
+  w.next_in <- Fiber.next_in;
   w.on_panic <-
     (fun fiber e ->
        match e with

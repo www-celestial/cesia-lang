@@ -1200,6 +1200,19 @@ and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 
           body st ctx;
           tick ctx off
         done
+      | Handle { kind = "channel"; _ } as ch ->
+        (* Each value as it comes, until the channel is closed and empty. *)
+        let rec go () =
+          ctx.site <- s;
+          match ctx.w.next_in ctx ch with
+          | Some v ->
+            set ctx v;
+            body st ctx;
+            tick ctx off;
+            go ()
+          | None -> ()
+        in
+        go ()
       | v ->
         ctx.site <- s;
         Runtime.fail ctx Type (Messages.cant_loop (Value.describe v))

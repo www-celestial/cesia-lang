@@ -57,12 +57,13 @@ and job = { mutable result : t option; mutable waiters : (unit -> unit) list }
 
 (** A channel: its [items] in the order they were sent, at most [size] of them ([max_int]: no limit), the [receivers]
     parked on it, oldest first, and the [senders] parked while it is full. A parked fiber's wake gives false when the
-    fiber had already gone, woken by something else. *)
+    fiber had already gone, woken by something else. Once [closed], nothing more is sent. *)
 and chan = {
   items : t Queue.t;
   size : int;
   mutable receivers : (unit -> bool) list;
   senders : sender Queue.t;
+  mutable closed : bool;
 }
 
 (** A value that waits to go in a full channel, and the fiber that sent it: [taken] once a receiver has it. *)
@@ -236,6 +237,9 @@ and world = {
       (** wakes what is ready, and [true] blocks until something is; returns false if nothing ever will *)
   mutable native_modules : (string * (string * t) list) list;  (** what [use] finds before std/ *)
   mutable yield : ctx -> unit;  (** set by [Loader]: gives way to the other fibers at a full checkpoint *)
+  mutable next_in : ctx -> t -> t option;
+      (** set by [Loader]: the next value of a channel, waiting for it, or None once it is closed and empty: what a for
+          loop over a channel takes *)
   mutable on_panic : ctx -> exn -> unit;  (** set by [Loader]: reports the panic of a fiber *)
   mutable on_error : ctx -> string -> unit;  (** with a debugger: a panic stops there, before it leaves *)
   out : Buffer.t;

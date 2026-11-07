@@ -196,11 +196,24 @@ use std/test
 
 (** fiber.Receive(ch, timeout = missing)
     An Ok of the oldest value of a channel. With none, the fiber waits for one, at most timeout seconds when given: then an Err of kind "timeout". A timeout of 0 never waits.
+    A channel closed with nothing left in it gives an Err of kind "closed" at once.
 
       ch = fiber.Channel()
       fiber.Send("a", ch)
       fiber.Receive(ch) --> result.Ok("a")
       fiber.Receive(ch, timeout = 0).Error.Kind --> "timeout" *)
+
+(** fiber.Close(ch)
+    Says that nothing more will be sent on a channel. The values already in it still come; then Receive gives an Err of
+    kind "closed" at once, and a for loop over the channel ends. Sending on it then, or closing it again, is a bug, as is
+    a Send that was waiting for room.
+
+      ch = fiber.Channel()
+      fiber.Send(1, ch)
+      fiber.Send(2, ch)
+      fiber.Close(ch)
+      [v * 10 for v in ch] --> [10, 20]
+      fiber.Receive(ch).Error.Kind --> "closed" *)
 
 (** value.Len(x)
     The number of elements of an array, of characters of a text, of pairs of a dictionary, or of fields of a struct; 1 for any other value.
