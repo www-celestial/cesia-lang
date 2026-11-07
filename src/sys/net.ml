@@ -47,6 +47,7 @@ let create poll =
     handlers = false; windows = 0; unheard = false; own = Hashtbl.create 8; inherited = taken_over (); supervisor = None }
 
 let supervise_with n f = n.supervisor <- Some f
+let worker n = n.inherited <> None
 
 let stopping n = n.stopping
 

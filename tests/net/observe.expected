@@ -1,0 +1,11 @@
+{"time":T,"level":"info","message":"started","Port":18412}
+{"time":T,"level":"info","message":"request","Method":"GET","Path":"/","Status":200,"Ms":M}
+{"time":T,"level":"info","message":"request","Method":"GET","Path":"/","Status":200,"Ms":M}
+{"time":T,"level":"info","message":"request","Method":"GET","Path":"/nowhere","Status":404,"Ms":M}
+{"time":T,"level":"info","message":"request","Method":"GET","Path":"/metrics","Status":200,"Ms":M}
+# TYPE http_requests_total counter
+http_requests_total{method="GET",status="200"} 2
+http_requests_total{method="GET",status="404"} 1
+# TYPE http_request_seconds histogram
+http_request_seconds_count 3
+exit 0

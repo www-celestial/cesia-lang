@@ -22,6 +22,9 @@ val take_stops : t -> bool -> unit
 (** Did a stop signal arrive since this was last asked, with a window to hear of it? *)
 val stop_asked : t -> bool
 
+(** Is this program a worker of cesia run --workers? *)
+val worker : t -> bool
+
 (** Makes this program the supervisor of cesia run --workers: its first listener, once open, goes to [f], which never
     returns. *)
 val supervise_with : t -> (Unix.file_descr -> string -> int -> unit) -> unit

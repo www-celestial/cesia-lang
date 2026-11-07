@@ -69,8 +69,8 @@ io.Print(post("not json").Body)
 
 ## Middleware
 
-A [middleware](glossary.md#middleware) sits in front of the routes: it sees each request, and the response that comes back. [http.Logger] prints one line
-per request. [http.Wrap] puts a middleware in front of an application:
+A [middleware](glossary.md#middleware) sits in front of the routes: it sees each request, and the response that comes back. [http.Logger] writes a line
+per request, as [Logs and metrics](#logs-and-metrics) says. [http.Wrap] puts a middleware in front of an application:
 
 ```cesia
 logged = http.Wrap(http.Logger, shop)
@@ -152,6 +152,33 @@ kill -HUP $(pgrep -o -f "cesia run --workers")
 
 Under systemd, `ExecReload=/bin/kill -HUP $MAINPID` does it with `systemctl reload`. Without `--workers`, HUP stops the
 server, as TERM does.
+
+### Logs and metrics
+
+[std/log] writes a line of JSON for each event, with its time in UTC, its level and its message, then the fields given:
+tools such as jq, Loki or Datadog read them as they come. [log.Info], [log.Warn] and [log.Error] give the level:
+
+```cesia
+use std/log
+log.Info("order placed", {Order: 7, Total: 12.5})
+```
+
+[http.Logger] writes one of these lines for each request, with its method, its path, its status and the milliseconds it
+took. [std/metrics] counts: [metrics.Add] adds to a counter, [metrics.Observe] puts a value, as the seconds a request
+took, in a histogram, and [metrics.Text] gives them all in the text format that Prometheus reads, for a route of the
+program. [http.Metrics] counts each request by method and status, with its time:
+
+```cesia
+use std/metrics
+use std/text
+counted = shop then http.Get("/metrics", r -> http.Plain(metrics.Text())) then http.Wrap(http.Metrics)
+http.Handler(counted)({Method: "GET", Path: "/stock", Query: "", Headers: [], Body: ""}).Status -->
+text.Contains("http_requests_total{method=\"GET\",status=\"200\"} 1", metrics.Text()) -->
+```
+
+Nothing is logged or counted unless the program asks: a line of the log costs about 5 microseconds, a count about 3,
+which a server that answers in 20 sees. Under `--workers`, each worker counts its own requests, and a scrape reads the
+counts of the worker that answers it; their log lines don't cut each other.
 
 ### Serving and asking in one program
 

@@ -259,6 +259,8 @@ let write ctx ~pretty v =
   go 0 v;
   Text (Buffer.contents b)
 
+let text ctx v = match write ctx ~pretty:false v with Text s -> s | _ -> ""
+
 let natives =
   [ "Parse", Native.nat ~result:true "Parse" 1 1 parse;
     "Text", Native.nat "Text" 1 1 (fun ctx a -> write ctx ~pretty:false a.(0));

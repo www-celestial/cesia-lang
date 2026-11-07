@@ -215,6 +215,12 @@ let need_port a = plain (Printf.sprintf "A port is a number from 0 to 65535, not
 let socket_closed = plain "This socket is closed."
 let too_many_sockets = plain "This system can't watch more sockets."
 let server_stopped = plain "The server is stopping."
+let log_fields a = plain (Printf.sprintf "The fields of a log line are a struct or a dictionary, not %s." a)
+let metric_labels a = plain (Printf.sprintf "The labels of a metric are a struct or a dictionary, not %s." a)
+let metric_name s =
+  plain (Printf.sprintf "%S isn't a name Prometheus takes: letters, digits and _, not first a digit." s)
+let metric_kind name kind = plain (Printf.sprintf "The metric %s is a %s: it can't be another kind too." name kind)
+let metric_negative n = plain (Printf.sprintf "A counter only grows: metrics.Add takes 0 or more, not %g." n)
 let workers_ended pid code = plain (Printf.sprintf "Worker %d ended with code %d: another starts." pid code)
 let workers_cant_start code =
   plain (Printf.sprintf "A worker ended with code %d before it could accept: the program can't start, the workers stop." code)

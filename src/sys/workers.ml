@@ -27,6 +27,23 @@ let longest_pause = 30.
 (* How long new workers have to accept, on HUP, before the supervisor gives up and keeps the running ones. *)
 let reload_wait = 30.
 
+(* The workers share their standard output: a write of at most 4096 bytes (PIPE_BUF) that ends a line can't be cut by
+   another worker's, into a pipe as into a file. *)
+let write_lines s =
+  let n = String.length s in
+  let rec go from =
+    if from < n then begin
+      let stop =
+        if n - from <= 4096 then n
+        else match String.rindex_from_opt s (from + 4095) '\n' with Some k when k >= from -> k + 1 | _ -> from + 4096
+      in
+      print_string (String.sub s from (stop - from));
+      flush stdout;
+      go stop
+    end
+  in
+  go 0
+
 let say (m : Messages.t) = prerr_endline ("cesia: " ^ m.text)
 let code_of = function Unix.WEXITED c -> c | Unix.WSIGNALED _ | Unix.WSTOPPED _ -> 1
 

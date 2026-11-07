@@ -7,6 +7,8 @@ use std/random
 use std/columns
 use std/debug
 use std/net
+use std/log
+use std/metrics
 use std/c
 use std/lapack
 use std/cesia
@@ -1099,6 +1101,47 @@ use std/test
       peer = net.Accept(server).Value
       net.Close(client)
       net.Read(peer) --> result.Ok("") *)
+
+(** log.Info(message, fields = missing)
+    Writes a line on the standard output, a JSON object of the time in UTC, the level "info", the message, then the
+    fields of a struct or a dictionary: what a server says of itself, read by tools such as jq, Loki or Datadog. Lines are
+    buffered as io.Print's are, and keep their order with them.
+
+      log.Info("server ready", {Port: 8080})
+      log.Info("shutting down") *)
+
+(** log.Warn(message, fields = missing)
+    A line of std/log of the level "warn": something went wrong, and the program goes on.
+
+      log.Warn("slow query", {Ms: 812}) *)
+
+(** log.Error(message, fields = missing)
+    A line of std/log of the level "error": something failed.
+
+      log.Error("payment failed", {Order: 7}) *)
+
+(** metrics.Add(name, n = 1, labels = missing)
+    Adds n, 0 or more, to a counter, which a struct or a dictionary of labels tells apart from the others of its name:
+    each program counts its own, and metrics.Text shows them. A name holds letters, digits and _.
+
+      metrics.Add("orders_total")
+      metrics.Add("orders_total", 2)
+      metrics.Add("orders_total", labels = {shop: "north"})
+      text.Contains("orders_total 3", metrics.Text()) --> true *)
+
+(** metrics.Observe(name, value, labels = missing)
+    Counts a value, as the seconds a request took, in a histogram with the buckets of Prometheus, from 0.005 to 10, and
+    keeps their sum.
+
+      metrics.Observe("job_seconds", 0.3)
+      text.Contains("job_seconds_bucket{le=\"0.5\"} 1", metrics.Text()) --> true *)
+
+(** metrics.Text()
+    The counters and histograms of this program in the text format of Prometheus, for a route that it scrapes:
+    http.Get("/metrics", r -> http.Plain(metrics.Text())).
+
+      metrics.Add("hits_total")
+      text.Contains("# TYPE hits_total counter", metrics.Text()) --> true *)
 
 (** c.Open(name, version = missing)
     Loads a shared library by its short name ("m", "sodium"), trying the usual file names of each system, and on macOS the folders of Homebrew: an Ok of the

@@ -8,9 +8,11 @@ use std/bug
 use std/dict
 use std/encode
 use std/fiber
-use std/io
 use std/json
 use std/list
+use std/log
+use std/math
+use std/metrics
 use std/result
 use std/text
 use std/value
@@ -665,12 +667,29 @@ defn upgrade(headers, onMessage, idle)
 end
 
 defn Logger(next, request)
-  (** A middleware that prints the method, the path and the status of each request.
+  (** A middleware that writes a line of std/log for each request: its method, its path, its status, and the milliseconds
+      it took.
 
         logged = Handler(App() then Get("/", r -> Plain("hi")) then Wrap(Logger))
         logged({Method: "GET", Path: "/nowhere", Query: "", Headers: [], Body: ""}).Status --> 404 *)
+  start = sys.Now()
   response = next(request)
-  io.Print("$(request.Method) $(request.Path) $(response.Status)")
+  ms = math.Round((sys.Now() - start) * 1000000) / 1000
+  log.Info("request", {Method: request.Method, Path: request.Path, Status: response.Status, Ms: ms})
+  response
+end
+
+defn Metrics(next, request)
+  (** A middleware that counts each request in std/metrics: http_requests_total by method and status, and its time in
+      http_request_seconds, a histogram. A route of the program shows them to Prometheus, with metrics.Text().
+
+        counted = Handler(App() then Get("/", r -> Plain("hi")) then Wrap(Metrics))
+        counted({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Status --> 200
+        text.Contains("http_requests_total{method=\"GET\",status=\"200\"}", metrics.Text()) --> true *)
+  start = sys.Now()
+  response = next(request)
+  metrics.Add("http_requests_total", labels = {method: request.Method, status: response.Status})
+  metrics.Observe("http_request_seconds", sys.Now() - start)
   response
 end
 

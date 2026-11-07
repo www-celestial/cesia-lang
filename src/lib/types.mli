@@ -223,7 +223,7 @@ and world = {
   mutable on_panic : ctx -> exn -> unit;  (** set by [Loader]: reports the panic of a fiber *)
   mutable on_error : ctx -> string -> unit;  (** with a debugger: a panic stops there, before it leaves *)
   out : Buffer.t;
-  sink : string -> unit;
+  mutable sink : string -> unit;
   err : string -> unit;
   period : int;  (** the steps between two checkpoints *)
   mutable steps_left : int;

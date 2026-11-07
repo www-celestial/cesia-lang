@@ -1,0 +1,24 @@
+(** A server that logs each request as a JSON line and counts it for Prometheus, on a route of its own. *)
+use std/http
+use std/fiber
+use std/io
+use std/log
+use std/metrics
+use std/sys
+use std/text
+
+app = http.App()
+  then http.Get("/", r -> http.Plain("hi"))
+  then http.Get("/metrics", r -> http.Plain(metrics.Text()))
+fiber.Spawn(() -> http.Serve(app then http.Wrap(http.Logger) then http.Wrap(http.Metrics), port = 18412))
+sys.Sleep(0)
+log.Info("started", {Port: 18412})
+for path in ["/", "/", "/nowhere"]
+  http.Fetch("http://127.0.0.1:18412$path")
+end
+scraped = http.Fetch("http://127.0.0.1:18412/metrics").Value.Body
+for line in text.Split("\n", scraped)
+  if text.StartsWith("http_requests_total", line) or text.StartsWith("# TYPE", line) or text.StartsWith("http_request_seconds_count", line)
+    io.Print(line)
+  end
+end
