@@ -21,9 +21,10 @@ jobs+=($!)
 each_folder --no-spec > "$logs/no-spec.log" 2>&1 &
 jobs+=($!)
 
-# The OCaml tests: their end when they pass, all they said when one fails.
-dune test > "$logs/dune.log" 2>&1 || { cat "$logs/dune.log"; exit 1; }
-tail -5 "$logs/dune.log"
+# The OCaml tests, beside the rest: their end when they pass, all they said when one fails.
+dune test > "$logs/dune.log" 2>&1 &
+dune=$!
+jobs+=($dune)
 dirs=$(ls -d tests/*/ 2>/dev/null || true)
 skip() {  # folder, reason
   echo "$1 skipped: $2"
@@ -38,6 +39,13 @@ golden=0
 tools/golden.sh --both --quick $dirs || golden=1
 
 failed=$golden
+if wait "$dune"; then
+  tail -5 "$logs/dune.log"
+else
+  cat "$logs/dune.log"
+  failed=1
+fi
+unset 'jobs[2]'
 for part in spec no-spec; do
   if wait "${jobs[0]}"; then
     cat "$logs/$part.log"
