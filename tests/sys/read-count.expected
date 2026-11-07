@@ -1,0 +1,8 @@
+éa
+😀b
+["c", "rest"]
+0
+read-count.ce:11:4: ReadInput needs a count of 0 or more, not the number -1.
+  11 | sys.ReadInput(-1)
+     |    ^
+exit 1

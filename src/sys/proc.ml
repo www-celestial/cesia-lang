@@ -212,18 +212,6 @@ let rec read_output poll procs ctx (a : t array) : t =
       read_output poll procs ctx a
   end
 
-(* All that the standard input holds, up to its end, read as it is, blocking: a file, a pipe or a terminal alike, and the
-   terminal of the shell stays as it was. *)
-let rec read_input ctx buffer chunk =
-  match Unix.read Unix.stdin chunk 0 chunk_size with
-  | 0 -> Value.ok ctx.w (Text (Buffer.contents buffer))
-  | n ->
-    Runtime.build ctx ((n / 8) + 1);
-    Buffer.add_subbytes buffer chunk 0 n;
-    read_input ctx buffer chunk
-  | exception Unix.Unix_error (e, _, _) when Fs.retry e -> read_input ctx buffer chunk
-  | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "read" "the standard input" e
-
 let quit ctx (a : t array) : t =
   match a.(0) with
   | Int code when code >= 0 && code <= 255 -> raise (Value.Quit code)
@@ -270,7 +258,6 @@ let natives poll =
   [ "Run", Native.nat ~result:true ~params:[| "cmd"; "args"; "input"; "dir"; "timeout" |] "Run" 1 5 (run poll);
     "Start", Native.nat ~result:true ~params:[| "cmd"; "args"; "dir" |] "Start" 1 3 (start_process poll procs);
     "ReadOutput", Native.nat ~result:true "ReadOutput" 1 1 (read_output poll procs);
-    "ReadInput", Native.nat ~result:true "ReadInput" 0 0 (fun ctx _ -> read_input ctx (Buffer.create 4096) (Bytes.create chunk_size));
     "Exit", Native.nat "Exit" 1 1 quit;
     "WriteInput", Native.nat ~result:true "WriteInput" 2 2 (write_input poll procs);
     "CloseInput", Native.nat "CloseInput" 1 1 (close_input poll procs);

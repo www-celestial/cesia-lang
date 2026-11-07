@@ -87,9 +87,11 @@ use std/test
 
       list.Sort([3, 1, 2]) --> [1, 2, 3] *)
 
-(** sys.ReadInput()
+(** sys.ReadInput(count = missing)
     All that the standard input holds, up to its end, in an Ok, or an Err: cat data.csv | cesia run clean.ce. The program
-    waits while it reads, its other fibers too. It needs no permission: the input is the program's own.
+    waits while it reads, its other fibers too. With a count, the next count bytes only, fewer at the end of the input and
+    "" after it, while the other fibers run: for a program that answers messages as they come, as cesia lsp does. It needs
+    no permission: the input is the program's own.
 
       script = "$(test.Temp())/shout.ce"
       sys.Write(script, "use std/sys\nuse std/io\nuse std/text\nio.Print(text.Upper(sys.ReadInput().Value))\n")

@@ -1,0 +1,11 @@
+(** sys.ReadInput(count) gives the next bytes of the input, fewer at its end and "" after it; without a count, the rest. *)
+use std/sys
+use std/io
+use std/result
+use std/text
+use std/value
+io.Print(result.Unwrap(sys.ReadInput(3)))
+io.Print(result.Unwrap(sys.ReadInput(5)))
+io.Print(text.Lines(result.Unwrap(sys.ReadInput())))
+io.Print(value.Len(result.Unwrap(sys.ReadInput(4))))
+sys.ReadInput(-1)

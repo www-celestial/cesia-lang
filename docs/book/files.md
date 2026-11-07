@@ -167,7 +167,8 @@ are [sys.Args]: `flags.Parse({i: false, max: 0}, sys.Args)`.
 ## Standard input and the exit code
 
 [sys.ReadInput] gives all that the program receives on its
-[standard input](glossary.md#standard-input-and-output), so that it can sit in a pipe of the shell. [sys.Exit] ends the
+[standard input](glossary.md#standard-input-and-output), so that it can sit in a pipe of the shell; `sys.ReadInput(10)` gives
+the next 10 bytes only, for a program that answers each message as it comes. [sys.Exit] ends the
 program at once with an [exit code](glossary.md#exit-code): 0 says that all went well, another number that something failed,
 for the shell or the script that ran it.
 

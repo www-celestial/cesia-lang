@@ -1,9 +1,9 @@
 open Cesia
 open Types
 
-(* debug.ReadLine: lines of the standard input as they come, from a pipe, a file or a terminal, where the line editor of
-   the plugin of the debugger's engine edits them. While it waits, the other fibers of the program run, but at a stop of
-   the debugger. *)
+(* The standard input, read through one buffer: sys.ReadInput takes bytes of it, debug.ReadLine lines, as they come, from a
+   pipe, a file or a terminal, where the line editor of the plugin of the debugger's engine edits them. While a fiber waits
+   for it, the other fibers of the program run, but at a stop of the debugger. *)
 
 type state = {
   poll : Poll.t;
@@ -13,7 +13,8 @@ type state = {
 }
 
 let create poll = { poll; buf = ""; at = 0; parked = false }
-let chunk = Bytes.create 4096
+let chunk_size = 65536
+let chunk = Bytes.create chunk_size
 
 (* A pipe, a socket or a terminal can be waited for; a file or /dev/null never makes one wait. *)
 let waitable =
@@ -36,17 +37,15 @@ let watch st ctx =
     Lazy.force blocking_at_exit
   end
 
-(* The next byte, or [None] at the end of the input. A read comes first, the wait after: the input says only when it
-   changes. *)
-let rec byte st ctx =
-  if st.at < String.length st.buf then begin
-    st.at <- st.at + 1;
-    Some st.buf.[st.at - 1]
-  end
-  else begin
-    watch st ctx;
-    match Unix.read Unix.stdin chunk 0 4096 with
-    | 0 -> None
+(* Whether the buffer holds a byte, read first when it is empty: false at the end of the input. A read comes first, the
+   wait after: the input says only when it changes. [alone]: the whole program waits, its other fibers too. Raises
+   [Unix.Unix_error] for a failed read. *)
+let rec more ?(alone = false) st ctx =
+  st.at < String.length st.buf
+  || begin
+    if not alone then watch st ctx;
+    match Unix.read Unix.stdin chunk 0 chunk_size with
+    | 0 -> false
     | n ->
       st.buf <- Bytes.sub_string chunk 0 n;
       st.at <- 0;
@@ -56,13 +55,21 @@ let rec byte st ctx =
         Poll.forget st.poll Unix.stdin;
         st.parked <- false
       end;
-      byte st ctx
+      true
     | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
-      if ctx.w.debug.stopped || not st.parked then ignore (Unix.select [ Unix.stdin ] [] [] (-1.))
+      if alone || ctx.w.debug.stopped || not st.parked then ignore (Unix.select [ Unix.stdin ] [] [] (-1.))
       else Poll.read_ready st.poll ctx Unix.stdin;
-      byte st ctx
-    | exception Unix.Unix_error _ -> None
+      more ~alone st ctx
   end
+
+(* The next byte, or [None] at the end of the input or after a failed read. *)
+let byte st ctx =
+  match more st ctx with
+  | true ->
+    st.at <- st.at + 1;
+    Some st.buf.[st.at - 1]
+  | false -> None
+  | exception Unix.Unix_error _ -> None
 
 (* A line as it comes, without its line end; [None] at the end of the input. *)
 let plain st ctx =
@@ -92,6 +99,32 @@ let read_line ~editor st ctx (a : Types.t array) =
   | None -> Missing
   | Some l -> Text l
 
-let natives ~editor poll =
-  let st = create poll in
+let natives ~editor st =
   [ "ReadLine", Native.nat ~perm:Debug ~params:[| "prompt" |] "ReadLine" 0 1 (read_line ~editor st) ]
+
+(* sys.ReadInput(count): the next count bytes of the input, fewer only at its end, while the other fibers run; without a
+   count, all of it up to its end, while the whole program waits, as a filter of the shell does. It needs no permission:
+   the input is the program's own. *)
+let read_input st ctx (a : Types.t array) =
+  let count =
+    match if Array.length a > 0 then a.(0) else Missing with
+    | Missing | Undef -> None
+    | Int n when n >= 0 -> Some n
+    | v -> Runtime.fail ctx Type (Messages.need_count "ReadInput" (Value.describe v))
+  in
+  let alone = count = None and count = Option.value count ~default:max_int in
+  let b = Buffer.create (min count chunk_size) in
+  let rec go () =
+    if Buffer.length b < count && more ~alone st ctx then begin
+      let k = min (count - Buffer.length b) (String.length st.buf - st.at) in
+      Runtime.build ctx ((k / 8) + 1);
+      Buffer.add_substring b st.buf st.at k;
+      st.at <- st.at + k;
+      go ()
+    end
+  in
+  match go () with
+  | () -> Value.ok ctx.w (Text (Buffer.contents b))
+  | exception Unix.Unix_error (e, _, _) -> Fs.failed ctx "read" "the standard input" e
+
+let input st = [ "ReadInput", Native.nat ~result:true ~params:[| "count" |] "ReadInput" 0 1 (read_input st) ]

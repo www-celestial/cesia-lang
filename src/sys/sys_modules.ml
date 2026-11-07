@@ -98,8 +98,9 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   Option.iter (fun (period, f) -> Poll.set_tick poll period f) tick;
   let net = Net.create poll in
   Option.iter (fun r -> r := (fun () -> Net.reset net; Poll.reset poll)) reset;
+  let input = Term.create poll in
   let sys =
-    Fs.natives @ Proc.natives poll
+    Fs.natives @ Proc.natives poll @ Term.input input
     @ [ "Now", Native.nat "Now" 0 0 (fun _ _ -> Float (Unix.gettimeofday ()));
         "Sleep",
         Native.nat "Sleep" 1 1 (fun ctx a ->
@@ -120,6 +121,6 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset w =
   Linalg.install ();
   w.debug.test <- debug_test;
   w.native_modules <-
-    ("debug", Term.natives ~editor:debug_editor poll @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("http", Net.http_natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
+    ("debug", Term.natives ~editor:debug_editor input @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("http", Net.http_natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
     :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
   fun () -> Net.stopping net
