@@ -191,6 +191,63 @@ matrix.Matmul(m, m) -->
 For more, such as solving a system of equations, the library `std/num` has [num.Solve] and its friends; the chapter on data
 comes back to it.
 
+## Arrays of more dimensions
+
+A field of temperatures in space, or a stack of images, is an array of three dimensions or more. [matrix.Zeros],
+[matrix.Ones] and [list.Fill] take one size for each dimension, and an element takes one position for each:
+
+```cesia
+a = matrix.Zeros(2, 3, 4)
+a[1, 2, 3] = 5.0
+a[1, 2, 3] -->
+value.Size(a) -->
+```
+
+The elements follow each other column by column: the first position moves fastest. One position alone counts in that
+order, as in a matrix:
+
+```cesia
+a[15] -->
+```
+
+Such an array isn't written in the code: [matrix.Reshape] gives the elements of a list the shape of a list of sizes. It
+shows each matrix of its first two dimensions, then `;;;` before the next along the third, and `;;;;` along the fourth:
+
+```cesia
+c = matrix.Reshape([2, 2, 2], 1..8)
+c -->
+matrix.Reshape([2, 4], c) -->
+```
+
+A wrong count of positions says how many the array takes:
+
+```cesia fails
+c[1, 2]
+```
+
+Arithmetic and comparisons work element by element, as on a matrix, between arrays of the same sizes or with a number:
+
+```cesia
+c * 2 -->
+c > 4 -->
+```
+
+### Sums along a dimension
+
+[list.Sum] with `dim` adds along that dimension, which the result no longer has: along the third dimension of a 2 by 2
+by 2 array, a 2 by 2 matrix. On a matrix, `dim = 1` gives the sum of each column and `dim = 2` of each row, both as lists.
+[list.Mean] takes `dim` too:
+
+```cesia
+list.Sum(c, dim = 3) -->
+list.Sum(m, dim = 1) -->
+list.Sum(m, dim = 2) -->
+list.Mean(c, dim = 1) -->
+```
+
+[matrix.Matmul] and [matrix.Transpose] stay on matrices. [json.Text] writes an array of more dimensions as lists in lists,
+the first position outermost.
+
 ## Next
 
 You can hold and compute with many values. The next chapter, [Choices and loops](choices.md), decides what runs and how often.

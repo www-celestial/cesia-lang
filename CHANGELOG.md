@@ -44,6 +44,8 @@ added, and the last one for a fix. A program written for 1.0 runs on every 1.x.
   `io.PrintError`, `sys.ReadInput` and `sys.Exit`.
 - The JIT: hot functions and loops become machine code, numbers, arrays, maps and structs included, with the same
   results as the interpreter. It runs on x86-64; on arm64 it is off for now, and programs run interpreted.
+- Arrays of three dimensions and more: `matrix.Zeros(2, 3, 4)`, `a[i, j, k]`, `value.Size`, `matrix.Reshape([2, 3, 4], xs)`,
+  sums and means along a dimension with `list.Sum(a, dim = 3)`, and arithmetic element by element, natively in the JIT.
 - `std/sql` on SQLite, with a pool, typed rows and transactions; channels between fibers; one storage for every map;
   `From` and `Fields` between structs and dictionaries.
 - Every error shows in one form, its place and then its message, at the prompt and in the debugger too.
@@ -95,7 +97,7 @@ with the usual message.
   the debugger); `date.DaysFromCivil`; `text.XorBytes` (inside std/websocket). The connection a `wrap` gives has
   `Read`, `Write` and `Close`: std/http sets the deadlines itself.
 - Arguments, the function or the sizes first and the data last:
-  - `matrix.Reshape(xs, rows, cols)` -> `matrix.Reshape(rows, cols, xs)`
+  - `matrix.Reshape(xs, rows, cols)` -> `matrix.Reshape([rows, cols], xs)`, the shape as a list of sizes
   - `algo.Bfs(start, neighbors)` -> `algo.Bfs(neighbors, start)`; `algo.Dfs` the same
   - `algo.Dijkstra(start, edges)` -> `algo.Dijkstra(edges, start)`
   - `algo.TopologicalSort(nodes, needs)` -> `algo.TopologicalSort(needs, nodes)`
@@ -107,6 +109,7 @@ with the usual message.
   - `fn.Pipe(x, f, g)` -> `x then f() then g()`; `fn.Partial(f, a)` -> `x -> f(a, x)`, or `f(a, it)` in an
     argument, as `list.Map(math.Add(2, it), xs)`
   - `set.Count(s)` and `queue.Count(q)` -> `value.Len(s)` and `value.Len(q)`
+  - `num.SumCols(m)` -> `list.Sum(m, dim = 1)`; `num.SumRows(m)` -> `list.Sum(m, dim = 2)`: the same lists
   - `num.Seeded(seed)` -> `cesia run --seed N`: `num.Uniform(n)` and `num.Normal(n)` take no generator and give a
     list, drawn by std/random as `random.Float` is
 - Renamed: `csv.Write` -> `csv.Text`; `frame.Rows` -> `frame.RowCount`; `fn.Comp` -> `fn.Compose`; `syntax.String` ->
