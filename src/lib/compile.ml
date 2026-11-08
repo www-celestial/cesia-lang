@@ -1306,7 +1306,7 @@ and index_read c e b ixs uses_end =
            fun ctx ->
              let x = base ctx in
              read ctx x (idx ctx))
-      | [| Ix { e = (Var _ | Lint _ | Bin _ | Call _ | Neg _ | Field _ | Index _ ); _ } as ix |], _ when not uses_end ->
+      | [| Ix { e = (Var _ | Lint _ | Bin _ | Call _ | Neg _ | Field _ | Index _ | Interp _); _ } as ix |], _ when not uses_end ->
         let v = (match ix with Ix i -> cv c i | All -> assert false) in
         fun ctx ->
           let x = base ctx in
@@ -1682,6 +1682,12 @@ and leaf c (e : expr) =
   | Lfloat x -> `K (Float x)
   | _ -> `X (cv c e)
 
+(* A text built from variables and literals alone: it runs no code of the program, so it can't change a variable. *)
+and pure_text (e : expr) =
+  match e.e with
+  | Interp parts -> Array.for_all (function Lit _ -> true | Hole { e = Var _ | Lint _ | Lfloat _ | Ltext _; _ } -> true | Hole _ -> false) parts
+  | _ -> false
+
 and plain_local c i = (not c.func.maybe_undef.(i)) && cell_of c i < 0 && c.tv.(i) != TI && c.tv.(i) != TF
 
 and leaf_value = function
@@ -1829,29 +1835,28 @@ and slow x y s f =
     f ctx p q
 
 and interp c parts pos =
-  let parts =
-    Array.map
-      (function
-        | Lit s -> `Lit s
-        | Hole e -> `Hole (cv c e))
-      parts
-  in
   let s = site c pos in
-  fun ctx ->
-    let b = Buffer.create 32 in
-    Array.iter
-      (function
-        | `Lit t -> Buffer.add_string b t
-        | `Hole f ->
-          let v = f ctx in
-          ctx.site <- s;
-          let text = Value.text_of ctx v in
-          Runtime.reserve ctx ((String.length text / 8) + 1);
-          Runtime.pay_bytes ctx (String.length text);
-          (try Buffer.add_string b text
-           with Out_of_memory | Failure _ -> raise (Value.Limit { what = "memory"; at = s })))
-      parts;
-    Text (Buffer.contents b)
+  let hole e =
+    let f = cv c e in
+    fun ctx ->
+      let v = f ctx in
+      ctx.site <- s;
+      let text = Value.text_of ctx v in
+      Runtime.reserve ctx ((String.length text / 8) + 1);
+      Runtime.pay_bytes ctx (String.length text);
+      text
+  in
+  (* The pieces joined once, into a text of their whole length: no buffer to grow and copy out. *)
+  let too_long () = raise (Value.Limit { what = "memory"; at = s }) in
+  let join pieces = try Text (String.concat "" pieces) with Out_of_memory | Invalid_argument _ -> too_long () in
+  let two a b = if String.length a + String.length b > Sys.max_string_length then too_long () else Text (a ^ b) in
+  match parts with
+  | [| Lit a; Hole e |] -> let h = hole e in fun ctx -> two a (h ctx)
+  | [| Hole e; Lit a |] -> let h = hole e in fun ctx -> two (h ctx) a
+  | [| Hole e |] -> let h = hole e in fun ctx -> Text (h ctx)
+  | _ ->
+    let pieces = Array.to_list (Array.map (function Lit t -> fun _ -> t | Hole e -> hole e) parts) in
+    fun ctx -> join (List.map (fun p -> p ctx) pieces)
 
 and cb c (e : expr) : ctx -> bool =
   match e.e with
@@ -2725,6 +2730,11 @@ and set_path c e root path value =
     fa_write2 c root sp i j value
   | [| { sp; sk = Sindex (ixs, false) } |] when fa && whole_indexes c ixs -> fa_writen c root sp ixs value
   | [| { sp; sk = Sindex ([| Ix ({ e = (Var _ | Lint _ | Bin _); _ } as ix) |], false) } |] -> set_elt c e root sp ix value
+  | [| { sp; sk = Sindex ([| Ix ({ e = Interp _ | Call _ | Field _ | Index _ | Neg _; _ } as ix) |], false) } |]
+    when (match root.b with Local r -> plain_local c r | _ -> false) || pure_text ix ->
+    (* m[k] = x with a key computed by any code: nothing but this statement writes a plain local, so the order of the
+       reads doesn't show. *)
+    set_elt c e root sp ix value
   | [| { sp; sk = Sfield name } |] -> set_name c root sp name value ~key:false
   | [| { sp; sk = Sindex ([| Ix { e = Ltext name; _ } |], false) } |] -> set_name c root sp name value ~key:true
   | _ -> set_general c e root path value
@@ -2810,6 +2820,11 @@ and set_elt c e root sp ix value =
     let x = read ctx in
     match x, i with
     | Array ({ a_owned = true; _ } as a), Int k when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
+    | Dict { d_owned = true; _ }, (Text _ | Int _) ->
+      (* The write of [write_root] without its steps: the map is owned, and the key is its own index. *)
+      ctx.site <- s;
+      let after = write_key ctx x i y in
+      if after != x then set ctx after
     | _ ->
       ctx.site <- s;
       write_root ctx pm set x (Rindex [| Arrays.ix_of ctx i |]) y
