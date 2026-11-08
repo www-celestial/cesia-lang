@@ -1,7 +1,11 @@
 # The prompt and the debugger
 
 Two ways to look inside a program while it runs, built on one engine: run this code here, where here is the running
-program, or the place where it stopped.
+program, or the place where it stopped. The prompt is a *REPL*, a read, eval, print loop, as Python's or Node's, with one
+difference: it runs inside a program that is running, as the REPL of a Lisp or a Smalltalk image does, and can replace
+its functions while it runs. The debugger is a *source-level debugger*, as pdb for Python or gdb for C: it stops the
+program at a *breakpoint*, a line where you asked it to stop, and lets you read every variable, *step* through the code
+one statement at a time, and look at the *call stack*, the calls in progress, each in its *frame*.
 
 ## The prompt
 
@@ -174,7 +178,9 @@ While the program is stopped, change the code in its file and save it. When the 
 reloaded total.ce
 ```
 
-The function that is running goes on with the code it started with; its next call runs the new code. A file with an error
+This is *fix and continue*, which Smalltalk, Lisp and the Java debuggers call hot swapping: the program never restarts,
+so a bug found after an hour of running is fixed without losing that hour. The function that is running goes on with the
+code it started with; its next call runs the new code. A file with an error
 doesn't reload: the debugger shows the error and stays stopped, so that you can fix it and type `continue` again.
 
 ## Your own debugger
@@ -219,8 +225,11 @@ with `--debugger`, and a program run without it pays nothing for it.
 
 ## Speed
 
-A program under a debugger runs nearly as fast as without one while nothing is asked of it: only a line with a breakpoint,
-and every line while you step, goes to the debugger. As at the prompt and under `--watch`, a function of the program can be
+Only a line with a breakpoint, and every line while you step, goes to the debugger, but a program under it runs slower
+all the same: each statement passes a hook, a test of whether to stop there. Measured on 2026-11-08, `bench/fib.ce`,
+`fib(35)`, 5 runs of each alternated, median: 86 ms without the debugger, 870 ms under `--debugger debugger`, told
+`continue` at once, and 448 ms in the interpreter alone, without the JIT. Code that loops on numbers pays it most; code
+that waits on the network or the disk, as a server, barely sees it. As at the prompt and under `--watch`, a function of the program can be
 defined again while a call to it runs, with results of another type, so the code that uses its results stays in the
 interpreter, which takes a value of any type. Hot code still becomes native code, calls included; a function whose code
 holds a breakpoint stays in the interpreter, and at each stop native code goes back to the interpreter and becomes native

@@ -118,7 +118,9 @@ frame.Columns(df) -->
 io.Print(frame.Show(frame.Head(3, df)))
 ```
 
-A frame is a value, as everything in Cesia: each function gives a new one, and `df` stays as it was.
+A frame is a value, as everything in Cesia: each function gives a new one, and `df` stays as it was. It is the *data frame*
+of pandas in Python and of R, a table of named columns of one length each; [std/frame] is a small one, written in Cesia
+on [std/columns], whose loops over whole columns are OCaml and run on several cores for a large column.
 
 ## Asking a table
 
@@ -160,6 +162,40 @@ frame.RowCount(frame.WhereMask(units > 10, df)) -->
 
 ```cesia allow=read
 frame.ToCsv(frame.Head(2, byCity)) -->
+```
+
+### Joining two tables
+
+[frame.JoinOn] puts beside each row of a table the columns of the rows of another table that have the same value in one
+column: a *join*, as `JOIN` in SQL. It is a *hash join*: the keys of the second table go into a hash table first, so each
+row of the first finds its matches at once, and the whole costs about the sum of the two sizes, not their product. With
+`how = "left"`, a row without a match stays, its new columns `missing`: a *left join*.
+
+```cesia allow=read
+cities = frame.Of({city: ["Lyon", "Paris"], region: ["Rhône", "Île-de-France"]})
+joined = frame.JoinOn("city", df, cities)
+frame.RowCount(joined) -->
+frame.Columns(joined) -->
+frame.RowCount(frame.JoinOn("city", df, cities, how = "left")) -->
+```
+
+### More of std/frame
+
+| To | Use |
+|---|---|
+| make a frame | [frame.Of] from a dictionary of columns, [frame.Table] from names and columns, [frame.FromRecords] from dictionaries, [frame.Empty] with no row |
+| read rows | [frame.Row] one, [frame.Records] all, as dictionaries; [frame.Tail] the last ones |
+| change columns | [frame.SetColumn] replaces or adds one, [frame.DropColumn] removes one, [frame.Rename] renames one |
+| keep rows | [frame.WhereColumn] by the value of one column, [frame.DropMissing] those without a hole |
+| fill holes | [frame.FillMissing] replaces each `missing`, [frame.Present] gives the values of a column that aren't missing |
+| join | [frame.Append] puts the rows of one frame after another's |
+| describe | [frame.Kinds] the kind of each column, [frame.ValueCounts] how many rows hold each value, [frame.Describe] the count, mean, minimum and maximum of each column of numbers |
+
+```cesia allow=read
+frame.Kinds(df) -->
+frame.Records(frame.ValueCounts("city", df)) -->
+io.Print(frame.Show(frame.Describe(df)))
+frame.Row(1, frame.Tail(1, df)) -->
 ```
 
 ## Numbers
@@ -222,5 +258,6 @@ These numbers are for samples and games, never for secrets: a password or a key 
 
 ## Next
 
-You can ask questions of your data. The next chapter, [JSON and CSV](json.md), reads data from other programs and writes it for them,
+You can ask questions of your data. The next chapter, [Numbers and algorithms](numbers.md), computes with arrays, matrices,
+graphs and the structures beside lists; then [JSON and CSV](json.md) reads data from other programs and writes it for them,
 and checks what comes in.

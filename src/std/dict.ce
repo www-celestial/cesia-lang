@@ -42,7 +42,9 @@ defn MergeWith(f, a, b)
 end
 
 defn SelectKeys(ks, d)
-  (**   value.Len(SelectKeys(["a", "z"], {"a": 1, "b": 2})) --> 1 *)
+  (** The dictionary of only the keys listed that it holds, in the order of the list; a listed key it lacks is left out.
+
+        value.Len(SelectKeys(["a", "z"], {"a": 1, "b": 2})) --> 1 *)
   out = Dict()
   for k in ks
     if Has(k, d)
@@ -52,11 +54,16 @@ defn SelectKeys(ks, d)
   out
 end
 
-(**   Zipmap(["a", "b"], [1, 2])["b"] --> 2 *)
+(** The dictionary of keys and values taken pair by pair from two lists, as far as the shorter goes.
+
+      Zipmap(["a", "b"], [1, 2])["b"] --> 2 *)
 Zipmap(ks, vs) = Dict([{Key: ks[k], Value: vs[k]} for k in 1..list.Min(value.Len(ks), value.Len(vs))])
 
 defn Invert(d)
-  (**   Invert({"a": 1})[1] --> "a" *)
+  (** Swaps the keys and the values: each value, a number or a text, becomes a key whose value is its old key. A value met
+      twice keeps its last key.
+
+        Invert({"a": 1})[1] --> "a" *)
   out = Dict()
   for k in Keys(d)
     out[d[k]] = k
@@ -90,5 +97,8 @@ defn PutIn(path, x, d)
   Put(k, PutIn(list.Skip(1, path), x, if value.IsDict(inner) inner else Dict() end), d)
 end
 
-(**   UpdateIn(["a"], math.Inc, {"a": 1})["a"] --> 2 *)
+(** The dictionary with the value at the end of a path of keys replaced by f of it, f(missing) when there is none, the
+    dictionaries on the way made as PutIn makes them.
+
+      UpdateIn(["a"], math.Inc, {"a": 1})["a"] --> 2 *)
 UpdateIn(path, f, d) = PutIn(path, f(GetIn(path, d)), d)

@@ -59,7 +59,9 @@ value.Len(more) -->
 
 ### Building a list in a loop
 
-A list grows well one element at a time, so building one in a loop is the usual way:
+A list grows well one element at a time, so building one in a loop is the usual way. A list that nothing else holds
+keeps free cells behind its last element, doubled when they run out, so each [list.Append] costs a constant time on
+average, an *amortized* constant:
 
 ```cesia
 squares = []
@@ -203,7 +205,8 @@ a[1, 2, 3] -->
 value.Size(a) -->
 ```
 
-The elements follow each other column by column: the first position moves fastest. One position alone counts in that
+The elements follow each other column by column: the first position moves fastest. This is *column-major order*, as in
+Fortran, MATLAB, R and Julia; C and numpy keep rows together instead, *row-major*. One position alone counts in that
 order, as in a matrix:
 
 ```cesia
@@ -247,6 +250,39 @@ list.Mean(c, dim = 1) -->
 
 [matrix.Matmul] and [matrix.Transpose] stay on matrices. [json.Text] writes an array of more dimensions as lists in lists,
 the first position outermost.
+
+## More of std/list
+
+| To | Use |
+|---|---|
+| read | [list.Second], [list.TakeLast], [list.DropLast], [list.TakeWhile], [list.DropWhile] |
+| add | [list.Prepend] at the front, [list.Interleave] two lists in turn, [list.Interpose] a separator between elements, [list.Flatten] lists of lists into one |
+| make | [list.Repeatedly] the results of a function, [list.Iterate] `x`, `f(x)`, `f(f(x))`... |
+| change | [list.MapIndexed] with the position, [list.FlatMap] and join, [list.Keep] the results that aren't `missing`, [list.Remove] the elements a test refuses |
+| ask | [list.Any] of a list of booleans, [list.MinBy] by a function, [list.Order] the positions that sort it |
+
+```cesia
+use std/text
+list.Prepend(0, [1, 2]) -->
+list.Interpose(", ", ["a", "b", "c"]) -->
+list.Flatten([[1, 2], [3]]) -->
+list.Iterate(it * 2, 1, 5) -->
+list.MapIndexed((k, x) -> "$k:$x", ["a", "b"]) -->
+list.Keep(text.Number, ["1", "x", "3"]) -->
+list.Order([30, 10, 20]) -->
+list.Any([false, true]) -->
+```
+
+### What each costs
+
+| Operation | Cost |
+|---|---|
+| `xs[k]`, `value.Len(xs)` | constant |
+| `xs[k] = v`, [list.Append] on a list nothing else holds | constant, amortized for Append |
+| the same on a list that is shared | a copy of the list, once, then constant |
+| [list.Concat], [list.Take], [list.Skip], [list.Map], [list.Filter] | linear: a new list |
+| [list.Sort], [list.SortBy], [list.Order] | `O(n log n)`, stable: equal elements keep their order |
+| `x in xs`, [list.IndexOf] | linear: a search from the start |
 
 ## Next
 

@@ -101,7 +101,8 @@ text.Find("z", "hello") -->
 text.Replace("cat", "dog", "cat and cat") -->
 ```
 
-For patterns, such as "every number in this text", the module [regex] has regular expressions.
+For patterns, such as "every number in this text", [std/regex] has regular expressions, the section
+[Regular expressions](#regular-expressions) below.
 
 ## Numbers and texts
 
@@ -151,6 +152,66 @@ end
 `for` runs its body once for each line; the chapter [Choices and loops](choices.md) shows it in full. `parts[1]` is the first
 piece: lists start at 1.
 
+## Regular expressions
+
+A *regular expression*, a regex, is a small text that describes a set of texts: `\d+` is "one digit or more", so it
+matches `42` in `"aisle 42"`. [std/regex] searches with them. [regex.Test] asks whether a pattern matches somewhere,
+[regex.Find] gives the first match, with its `Text`, its `Start` and `Stop` in characters from 1, and the `Groups`, the
+parts that the parentheses of the pattern caught; [regex.FindAll] gives every match, left to right, without overlap:
+
+```cesia
+use std/regex
+regex.Find("(\\d+)-(\\d+)", "call 555-1234 now") -->
+value.Len(regex.FindAll("\\w+", "one two, three")) --> 3
+regex.Test("^b", "abc") -->
+```
+
+A pattern is a Cesia text, so its `\` is written `\\`: the pattern `\d+` is the text `"\\d+"`. [regex.Replace] changes
+every match, `$1` to `$9` standing for the groups and `$$` for a dollar, and [regex.Split] cuts at each match:
+
+```cesia
+regex.Replace("(\\w+)@(\\w+)", "$2 at $1", "ana@home") -->
+regex.Split("\\s*;\\s*", "a ; b;c") -->
+```
+
+### What a pattern can say
+
+| Pattern | Matches |
+|---|---|
+| `a`, `é` | that character; `\.`, `\(`, `\\`... the character after the `\`, for those that mean something |
+| `.` | any character but a line end; any at all with `(?s)` |
+| `[abc]`, `[a-z]`, `[^0-9]` | one character of the set, of a range, or out of the set |
+| `\d`, `\w`, `\s` | a digit `0-9`; a letter, digit or `_` of ASCII; a space, tab or line end. `\D`, `\W`, `\S` are the others |
+| `\n`, `\t`, `\r` | a line end, a tab, a carriage return |
+| `^`, `$` | the start and the end of the text; of each line with `(?m)` |
+| `\b`, `\B` | a boundary between a word character and another, or no boundary |
+| `x*`, `x+`, `x?` | `x` 0 times or more, once or more, 0 or 1 time, as many as possible |
+| `x{3}`, `x{2,}`, `x{2,5}` | `x` 3 times, 2 or more, 2 to 5 times |
+| `x*?`, `x+?`, `x??`, `x{2,5}?` | the same, as few as possible: they are *lazy* |
+| `x\|y` | `x` or `y` |
+| `(x)` | `x`, caught as a group; `(?:x)` groups without catching |
+| `(?i)`, `(?m)`, `(?s)` | from anywhere in the pattern, for the whole of it: case ignored for A to Z, `^` and `$` at each line, `.` takes line ends |
+
+```cesia
+regex.Find("a{2,3}", "aaaa").Text -->
+regex.Find("a+?", "aaa").Text -->
+regex.Test("(?i)hello", "Say HELLO") -->
+regex.Test("(?m)^b", "a\nb") -->
+```
+
+A pattern that is wrong, as `"(a"`, is a bug, and its message says what is wrong: `Bad pattern: a parenthesis isn't
+closed.` A count is at most 1,000, groups at most 1,000, and a pattern at most 100 levels deep.
+
+### Why no pattern can hang a program
+
+Many regex engines try the ways a pattern can match one after the other, *backtracking*, and a pattern such as `(a+)+$`
+on a long line of `a`s then takes a time that doubles with each letter: a server that runs a pattern on what a user sends
+can be stalled by one request. [std/regex] is a *Pike machine*: it runs every way the pattern can go at once, step by step
+along the text, as Ken Thompson's method of 1968 does, and keeps each state once. Its time is at most the size of the
+pattern times the length of the text, *linear* in the text, whatever the pattern. The price: no *backreference*, `\1`
+inside a pattern for "the same text as group 1 again", which no linear engine can have, and no *lookahead* or
+*lookbehind*, `(?=...)` and `(?<=...)`. Each byte searched counts steps, so `--limit steps` bounds a search too.
+
 ## Bytes
 
 Underneath, a text is a sequence of bytes in [UTF-8](glossary.md#utf-8), where `é` takes two. Most programs never see them: [value.Len], [text.Slice] and
@@ -161,6 +222,26 @@ value.Len("é") -->
 text.ByteLength("é") -->
 text.Bytes("é") -->
 ```
+
+[text.Byte] gives one byte, by its position from 1, [text.ByteFind] the byte position of a part, from a byte on, and
+[text.FromBytes] the text of a list of bytes. [text.Code] gives the code point of a character, its number in Unicode, and
+[text.Char] the character of a code point:
+
+```cesia
+text.Byte(1, "é") -->
+text.ByteFind("b", 1, "abc") -->
+text.FromBytes([195, 169]) -->
+text.Code("é") -->
+text.Char(233) -->
+```
+
+A program reads a text in bytes when a format counts them, as HTTP's `content-length` does: a byte position is found at
+once, where a character position must walk the text from its start, as UTF-8 gives each character one to four bytes.
+
+## Further reading
+
+- Ken Thompson, *Regular expression search algorithm*, 1968, and Russ Cox, *Regular Expression Matching Can Be Simple
+  And Fast*, 2007, and *the Virtual Machine Approach*, 2009: the method of [std/regex]. See [References](references.md#texts-and-formats).
 
 ## Next
 

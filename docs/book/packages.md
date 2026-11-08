@@ -131,8 +131,9 @@ that runs.
 ## Code from other projects
 
 Any project with a `cesia.toml` can give its packages to others, as a [dependency](glossary.md#dependency) of theirs:
-there is no registry. A `[deps]` table names the repository,
-a tag, and the packages you take:
+there is no registry, no central server of packages as PyPI is for Python or npm for Node. As with Go's modules, a
+dependency is a git repository and a *tag*, a name given to one commit, as `v1.2.0`. A `[deps]` table names the
+repository, a tag, and the packages you take:
 
 ```toml
 [deps.geometry]
@@ -159,6 +160,14 @@ cesia pkg
   checks each file the first time it reads it, so a change by hand stops the program.
 - To change someone's package, fork it, then let `cesia pkg move` point the project at your fork.
 - `cesia run`, `cesia do` and `cesia test` never use the network.
+- Copying the code a project depends on into the project, here `std/` and `deps/`, is called *vendoring*: the program
+  runs on exactly that code, and a release of a dependency changes nothing until `cesia pkg update` asks for it.
+
+### What a dependency may do
+
+Permissions belong to the program, not to a package: a dependency's code runs with every permission the command line
+gives, as in Python, Node or Go. Read the code you take, or keep its program's `--allow` narrow, as the next chapter
+shows.
 
 ## Next
 

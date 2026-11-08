@@ -149,19 +149,33 @@ Count(f, xs) = value.Len(Filter(f, xs))
       FlatMap(x -> [x, x], [1, 2]) --> [1, 1, 2, 2] *)
 FlatMap(f, xs) = Flatten(Map(f, xs))
 
-(**   First([1, 2]) --> 1 *)
+(** The first element, or missing for an empty list.
+
+      First([1, 2]) --> 1 *)
 First(xs) = if value.Len(xs) == 0 missing else xs[1] end
-(**   Second([1, 2]) --> 2 *)
+(** The second element, or missing for a list of fewer than two.
+
+      Second([1, 2]) --> 2 *)
 Second(xs) = if value.Len(xs) < 2 missing else xs[2] end
-(**   Last([1, 2]) --> 2 *)
+(** The last element, or missing for an empty list.
+
+      Last([1, 2]) --> 2 *)
 Last(xs) = if value.Len(xs) == 0 missing else xs[value.Len(xs)] end
-(**   Nth(2, [5, 6]) --> 6 *)
+(** The element at position k, from 1, as xs[k]: a position outside the list is an error.
+
+      Nth(2, [5, 6]) --> 6 *)
 Nth(k, xs) = xs[k]
-(**   Prepend(1, [2]) --> [1, 2] *)
+(** A new list with x before the first element.
+
+      Prepend(1, [2]) --> [1, 2] *)
 Prepend(x, xs) = Concat([x], xs)
-(**   TakeLast(2, [1, 2, 3]) --> [2, 3] *)
+(** The last n elements, or all of them if there are fewer.
+
+      TakeLast(2, [1, 2, 3]) --> [2, 3] *)
 TakeLast(n, xs) = Skip(Max(value.Len(xs) - n, 0), xs)
-(**   DropLast(2, [1, 2, 3]) --> [1] *)
+(** The list without its last n elements: empty if it has n or fewer.
+
+      DropLast(2, [1, 2, 3]) --> [1] *)
 DropLast(n, xs) = Take(Max(value.Len(xs) - n, 0), xs)
 
 defn runLength(f, xs)
@@ -173,9 +187,13 @@ defn runLength(f, xs)
   value.Len(xs)
 end
 
-(**   TakeWhile(math.IsOdd, [1, 3, 4, 5]) --> [1, 3] *)
+(** The first elements, as long as f gives true for each.
+
+      TakeWhile(math.IsOdd, [1, 3, 4, 5]) --> [1, 3] *)
 TakeWhile(f, xs) = Take(runLength(f, xs), xs)
-(**   DropWhile(math.IsOdd, [1, 3, 4, 5]) --> [4, 5] *)
+(** The list from the first element for which f gives false.
+
+      DropWhile(math.IsOdd, [1, 3, 4, 5]) --> [4, 5] *)
 DropWhile(f, xs) = Skip(runLength(f, xs), xs)
 
 defn FindFirst(f, xs)
@@ -190,17 +208,25 @@ defn FindFirst(f, xs)
   missing
 end
 
-(**   Remove(math.IsEven, [1, 2, 3]) --> [1, 3] *)
+(** The elements for which f gives false: the opposite of Filter.
+
+      Remove(math.IsEven, [1, 2, 3]) --> [1, 3] *)
 Remove(f, xs) = Filter(x -> not f(x), xs)
 (** The results of f that aren't missing.
 
       Keep(x -> if x > 1 x * 2 else missing end, [1, 2, 3]) --> [4, 6] *)
 Keep(f, xs) = Filter(x -> not value.IsMissing(x), Map(f, xs))
-(**   MapIndexed((k, x) -> k * x, [5, 6]) --> [5, 12] *)
+(** f of the position, from 1, and of each element.
+
+      MapIndexed((k, x) -> k * x, [5, 6]) --> [5, 12] *)
 MapIndexed(f, xs) = [f(k, xs[k]) for k in 1..value.Len(xs)]
-(**   Interleave([1, 2], ["a", "b"]) --> [1, "a", 2, "b"] *)
+(** The elements of two lists taken in turn, one of each, as far as the shorter goes.
+
+      Interleave([1, 2], ["a", "b"]) --> [1, "a", 2, "b"] *)
 Interleave(a, b) = Flatten([[a[k], b[k]] for k in 1..Min(value.Len(a), value.Len(b))])
-(**   Interpose(0, [1, 2]) --> [1, 0, 2] *)
+(** The list with sep between each two elements.
+
+      Interpose(0, [1, 2]) --> [1, 0, 2] *)
 Interpose(sep, xs) = Flatten([if k == 1 [xs[k]] else [sep, xs[k]] end for k in 1..value.Len(xs)])
 
 defn Iterate(f, x, n)
@@ -214,7 +240,9 @@ defn Iterate(f, x, n)
   out
 end
 
-(**   Repeatedly(() -> 5, 2) --> [5, 5] *)
+(** n results of calling f with no argument, a new call for each: with std/random, n new draws.
+
+      Repeatedly(() -> 5, 2) --> [5, 5] *)
 Repeatedly(f, n) = [f() for k in 1..n]
 
 defn Frequencies(xs)
@@ -231,7 +259,13 @@ defn Frequencies(xs)
   out
 end
 
-(**   MinBy(math.Abs, [-3, 1, 2]) --> 1 *)
+(** The element for which f gives the smallest value, the first of them on a tie, or missing for an empty
+    list.
+
+      MinBy(math.Abs, [-3, 1, 2]) --> 1 *)
 MinBy(f, xs) = if value.Len(xs) == 0 missing else xs[Order(Map(f, xs))[1]] end
-(**   MaxBy(math.Abs, [-3, 1, 2]) --> -3 *)
+(** The element for which f gives the largest value, the last of them on a tie, or missing for an empty
+    list.
+
+      MaxBy(math.Abs, [-3, 1, 2]) --> -3 *)
 MaxBy(f, xs) = if value.Len(xs) == 0 missing else xs[Order(Map(f, xs))[value.Len(xs)]] end

@@ -1,6 +1,13 @@
 (** Any value: its kind, its length and size, its text, and whether two values are equal. *)
 
-(**   IsSome(0) --> true *)
+(** Is this value anything but missing? false and 0 are values.
+
+      IsSome(0) --> true
+      IsSome(missing) --> false *)
 IsSome(x) = not IsMissing(x)
-(**   IsEmpty([]) --> true *)
+(** Has this array, text or dictionary no element? Any other value has a length of 1, so it is never empty.
+
+      IsEmpty([]) --> true
+      IsEmpty("") --> true
+      IsEmpty([0]) --> false *)
 IsEmpty(xs) = Len(xs) == 0

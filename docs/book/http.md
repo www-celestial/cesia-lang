@@ -137,7 +137,22 @@ which the supervisor keeps open. The workers share nothing but the port: each ha
 values, as programs of their own, and what they must share goes to a database. The supervisor starts again a worker
 that ends, and TERM or Ctrl-C stops them all, each as [Stopping](#stopping) says; it ends with 0 when they all did. A
 program that can't start, as one with an error, ends at once, with the code of its first worker. `--workers` needs
-Linux or macOS: on Windows, a program serves on one core.
+Linux or macOS: on Windows, a program serves on one core. This is the *pre-fork* model of nginx: processes, not threads,
+so a bug in one worker can't touch the memory of another, and the supervisor starts a new one;
+[How Cesia works](internals.md#on-every-core) shows it in detail.
+
+Measured on 2026-11-07 on the machine of [Speed](speed.md#beside-the-giants), one run of `tools/http-bench.sh` with the
+server on two physical cores and their two hyperthreads, and the load client on the other four, requests per second:
+
+| Load | 1 process | `--workers 2` | `--workers 4` | Go, 4 cores |
+|---|---:|---:|---:|---:|
+| tiny route, 100 kept connections | 57,215 | 116,982 | 94,978 | 98,479 |
+| tiny route, 1,000 kept connections | 34,752 | 67,890 | 84,188 | 89,337 |
+| JSON route, 100 kept connections | 41,340 | 80,020 | 72,132 | 78,988 |
+| a new connection per request, 100 | 28,674 | 45,850 | 38,690 | 29,750 |
+
+Two workers double one process. Four gain only at 1,000 connections, since the machine has four physical cores, two of
+which ran the client.
 
 ### A new version without a pause
 
@@ -176,8 +191,10 @@ http.Handler(counted)({Method: "GET", Path: "/stock", Query: "", Headers: [], Bo
 text.Contains("http_requests_total{method=\"GET\",status=\"200\"} 1", metrics.Text()) -->
 ```
 
-Nothing is logged or counted unless the program asks: a line of the log costs about 5 microseconds, a count about 3,
-which a server that answers in 20 sees. Under `--workers`, each worker counts its own requests, and a scrape reads the
+Nothing is logged or counted unless the program asks. A line of the log costs about 5 microseconds and a count about 3,
+which a server that answers in 17 sees: on one core, at 100 kept connections, a tiny route answered 57,000 to 60,000
+requests a second without them, 44,000 to 49,000 with [http.Logger], and 50,000 to 53,000 with [http.Metrics], measured on
+2026-11-07. Under `--workers`, each worker counts its own requests, and a scrape reads the
 counts of the worker that answers it; their log lines don't cut each other.
 
 ### Serving and asking in one program
@@ -212,6 +229,64 @@ A server faces clients that are slow, greedy or broken, and keeps serving the ot
   the RAM otherwise: past it, a request with a body gets a `503` at once, instead of the server reaching the limit.
 - A handler that panics gets a `500`, and so does one that takes more memory than the limit: only its request fails.
 
+## More of std/http
+
+| To | Use |
+|---|---|
+| add a route | [http.Get], [http.Post], [http.Put], [http.Delete], [http.AnyMethod] for any method, [http.Route] for any one by name; a final `*` in a path takes the rest of it, in `r.Params["*"]` |
+| serve files | [http.Static] serves a folder under a prefix, and no path can leave the folder; [http.FileResponse] sends one file, its type from its extension |
+| answer | [http.Plain], [http.Json], [http.Html], [http.Redirect], [http.NotFound]; [http.WithHeader] adds a header, [http.SetCookie] a cookie; [http.Reason] is the text of a status |
+| read a request | [http.BodyJson] its body as JSON, [http.Form] as a form, [http.HeaderValue] a header by its name in lower case; [http.ParseUrl] takes a URL apart |
+| wrap | [http.Logger], [http.Metrics], and [http.Cors], which lets the pages of another origin read the responses |
+| write HTML | [http.Escape] escapes a value for a page, [http.Template] fills `{{name}}` with escaped values |
+| the defaults | [http.DefaultTimeout] is 60 seconds, [http.DefaultMaxBody] 1,048,576 bytes |
+
+```cesia
+files = http.App() then http.Route("PATCH", "/files/*", r -> http.Plain(r.Params["*"]))
+http.Handler(files)({Method: "PATCH", Path: "/files/a/b.txt", Query: "", Headers: [], Body: ""}).Body -->
+http.Redirect("/login").Headers -->
+http.Reason(404) -->
+http.Template("<p>Hello, {{name}}!</p>", {name: "<Ana>"}) -->
+```
+
+### Escaping
+
+[http.Template] and [http.Escape] write `<` as `&lt;`, `&` as `&amp;` and the quotes as `&quot;` and `&#39;`. Without
+that, a name typed by a visitor, as `<script>...</script>`, would run as code in the page of every other visitor: *cross-site
+scripting*, XSS. A value goes into a page escaped, as a value goes into SQL through `?`.
+
+## WebSocket
+
+A *WebSocket*, RFC 6455, is a connection that stays open after an HTTP request and carries messages both ways, for a chat
+or a live page. [http.Websocket] adds a route of one: `onMessage(text, send)` runs for each message, and `send(text)`
+answers. The handshake, the *upgrade* of the request, gives the status `101`; [std/websocket] does the rest, with
+[websocket.Accept], a silent connection closed after [websocket.DefaultIdle] seconds, and a frame larger than
+[websocket.MaxFrame] refused:
+
+```cesia
+chat = http.Handler(http.App() then http.Websocket("/chat", (m, send) -> send(m)))
+handshake = [{Name: "upgrade", Value: "websocket"}, {Name: "sec-websocket-key", Value: "dGhlIHNhbXBsZSBub25jZQ=="}]
+chat({Method: "GET", Path: "/chat", Query: "", Headers: handshake, Body: ""}).Status -->
+chat({Method: "GET", Path: "/chat", Query: "", Headers: [], Body: ""}).Status -->
+```
+
+## TCP: std/net
+
+Under [std/http] is [std/net], plain TCP: [net.Listen] opens a listener, [net.Accept] waits for a connection, [net.Connect]
+opens one, [net.Read] and [net.Write] move text, [net.Close] closes, and [net.Port] tells the port the system chose for
+`net.Listen(0)`. Each wait parks its fiber only. An empty text from [net.Read] means that the other side closed:
+
+```cesia allow=net=own
+use std/net
+server = net.Listen(0).Value
+client = net.Connect("127.0.0.1", net.Port(server)).Value
+peer = net.Accept(server).Value
+net.Write(client, "ping") -->
+net.Read(peer) -->
+net.Close(client)
+net.Read(peer) -->
+```
+
 ## The client
 
 [http.Fetch] sends a request, a `GET` unless `method` says otherwise, with a `body` and `headers` if you give them. It
@@ -238,7 +313,16 @@ page = http.Fetch("https://example.com/", secure = tls.Client(api))
 cesia run --allow net=example.com,ffi=ssl,ffi=crypto page.ce
 ```
 
+A server serves `https` the same way: `wrap = tls.Server(certificate, key, api)?` given to [http.Serve], with the paths of
+its certificate and its key, from a *certificate authority* such as Let's Encrypt. [std/tls] keeps the sockets with
+[std/net] and gives OpenSSL only memory buffers, so a handshake parks its fiber, never the whole server.
+
+## Further reading
+
+RFC 9110 and RFC 9112 for HTTP, RFC 6455 for WebSocket, RFC 9846 for TLS 1.3, the Prometheus exposition format, and
+the Linux pages of `epoll`: see [References](references.md#the-server-and-the-network).
+
 ## Next
 
-Your programs serve and ask the web. The next chapter, [Fibers](fibers.md), runs many things at once: a server's requests, a
-crawler's pages, a slow task beside a fast one.
+Your programs serve and ask the web. The next chapter, [Cryptography](crypto.md), keeps their secrets; then
+[Fibers](fibers.md) runs many things at once: a server's requests, a crawler's pages, a slow task beside a fast one.

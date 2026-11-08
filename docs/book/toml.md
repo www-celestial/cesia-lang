@@ -1,7 +1,9 @@
 # cesia.toml
 
-Every table and every key of `cesia.toml`, the file at the root of a project. A key that Cesia doesn't know stops `cesia do`
-with its line, so a typo can't go unseen. The keys of `[site]` are the exception: `cesia doc --site` reads them, and it is
+Every table and every key of `cesia.toml`, the file at the root of a project. It is written in TOML, a format of tables
+in brackets and `key = value` lines, and Cesia reads a strict subset of TOML 1.0: texts, `true` and `false`, and lists of
+texts. A file that Cesia accepts means the same to any TOML reader, and anything else is an error on its line, never a
+guess. A key that Cesia doesn't know stops `cesia do` with its line, so a typo can't go unseen. The keys of `[site]` are the exception: `cesia doc --site` reads them, and it is
 the one that checks them.
 
 ## `[project]`
@@ -61,8 +63,27 @@ needs = ["test", "serve"]
 | `allow` | its permissions, as `--allow` takes them, one per text |
 | `limit` | its limits, as `--limit` takes them, in one text |
 | `watch` | `true` to reload at each save, as `--watch` |
+| `workers` | the workers of a server, as `--workers` takes them, in a text: `"4"` or `"cores"`; not with `watch` |
 | `run` | a command and its arguments, run as they are, without a shell; a task has `file` or `run`, not both |
 | `needs` | the tasks to run first, in order; a task with only `needs` is a group |
+
+## `[test]`
+
+What `cesia test` gives every test of the project, beyond its defaults: reading the project, writing in its own temporary
+folder, and `net=own`.
+
+```toml
+[test]
+allow = ["net=example.com:443", "exec=git"]
+timeout = "30"
+serial = ["tests/e2e"]
+```
+
+| Key | What it says |
+|---|---|
+| `allow` | more permissions, as `--allow` takes them, one per text |
+| `timeout` | the seconds a test may take, as a text: `"10"` without it |
+| `serial` | the files and folders whose tests share something, as a port or a database, and run alone, after the others |
 
 ## `[deps.LABEL]`
 

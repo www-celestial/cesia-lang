@@ -14,11 +14,13 @@ person -->
 {Name: "Ana"} --> {"Name": "Ana"}
 ```
 
-A key can also be a text with any characters, or a number:
+A key is a text or a number: a list, a dictionary or `missing` can't be one. A key can be a text with any characters:
 
 ```cesia
 {"first name": "Ana", 2: "two"} -->
 ```
+
+`1` and `1.0` are one key, as they are one number: `{1: "one"}[1.0]` is `"one"`.
 
 ## Reading
 
@@ -133,6 +135,20 @@ use std/list
 list.Frequencies(text.Split(" ", "the cat and the dog and the bird")) --> counts
 ```
 
+### Combining dictionaries
+
+[dict.Update] applies a function to the value of one key, [dict.MergeWith] joins two dictionaries and combines the values
+of a key in both with a function, [dict.SelectKeys] keeps the keys of a list, and [dict.Invert] swaps the keys and the
+values:
+
+```cesia
+use std/math
+dict.Update("Age", math.Inc, person) -->
+dict.MergeWith(math.Add, {bread: 2, cake: 1}, {bread: 3}) -->
+dict.SelectKeys(["Name"], person) -->
+dict.Invert({a: "x", b: "y"}) -->
+```
+
 ## Nested
 
 A value can be a dictionary itself. [dict.GetIn] reads at the end of a path of keys, and [dict.PutIn] writes there, making the
@@ -143,6 +159,7 @@ config = {Server: {Port: 8080, Host: "127.0.0.1"}}
 config.Server.Port -->
 dict.GetIn(["Server", "Port"], config) --> config.Server.Port
 dict.PutIn(["Log", "Level"], "info", config) -->
+dict.UpdateIn(["Server", "Port"], it + 1, config).Server.Port -->
 ```
 
 ## From lists
@@ -154,6 +171,30 @@ one from a list of keys and a list of values:
 dict.Dict([{Key: "a", Value: 1}, {Key: "b", Value: 2}]) -->
 dict.Zipmap(["a", "b"], [1, 2]) -->
 ```
+
+## How a dictionary is stored, and what it costs
+
+Up to 32 keys, a dictionary is one block: its keys in their order, beside their hashes, and its values. Past 32, it is a
+[hash array mapped trie](glossary.md#hash-array-mapped-trie): a tree whose levels are chosen by 5 bits of each key's
+hash at a time, so a read or a write takes about log₃₂ n steps, 3 for 30,000 keys, and a write copies only the few small
+nodes on the path to its key. That is how [dict.Put] can give a new dictionary and keep the old one, at a small cost.
+The hash takes a seed drawn at each run, so nobody can send a server keys chosen to collide.
+[How Cesia works](internals.md#maps-a-hash-trie) shows the details.
+
+A dictionary that nothing else holds is changed in place, so the loop of [Counting](#counting) copies nothing. Beside
+Python's `dict`, a mutable hash table in C, a Cesia dictionary is slower to fill: 500,000 text keys written then read take
+about 1.2 s against 0.4 s, as [Speed](speed.md#computing) measures, the price of a structure that keeps its old versions.
+
+## Further reading
+
+- Phil Bagwell, *Ideal Hash Trees*, 2001: the hash array mapped trie.
+- Rich Hickey, *A History of Clojure*, 2020: persistent maps as a language's everyday dictionary.
+- James R. Driscoll and others, *Making data structures persistent*, 1989; Chris Okasaki, *Purely Functional Data
+  Structures*, 1998.
+- Scott A. Crosby and Dan S. Wallach, *Denial of Service via Algorithmic Complexity Attacks*, 2003: why the hash takes a
+  seed.
+
+Each with its link in [References](references.md#values-and-maps).
 
 ## Next
 

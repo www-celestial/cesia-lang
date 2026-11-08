@@ -34,7 +34,9 @@ end
 
 ## if gives a value
 
-An `if` is also a value: that of the part that ran. It fits on one line, which replaces the `? :` of other languages:
+An `if` is also a value: that of the part that ran. In the words of the field, Cesia's `if` is an *expression*, a piece of
+code that gives a value, and not only a *statement*, one that only does something. It fits on one line, which replaces the
+*ternary operator* `c ? a : b` of C, Java and JavaScript:
 
 ```cesia
 use std/math
@@ -71,7 +73,8 @@ for k in 1..value.Len(names)
 end
 ```
 
-A name that the loop changes keeps its last value after the loop:
+A `for` over a range, `for k in 1..n`, counts from `1` to `n` without making the list `1..n` in memory, so a loop of a
+billion turns takes no more memory than a loop of ten. A name that the loop changes keeps its last value after the loop:
 
 ```cesia
 total = 0
@@ -100,7 +103,8 @@ use std/list
 
 ## while and break
 
-[while] runs its body as long as its condition holds. It checks the condition before each turn:
+[while] runs its body as long as its condition holds. It checks the condition before each turn, so a body whose
+condition is false at the start never runs:
 
 ```cesia
 n = 1
@@ -197,7 +201,9 @@ use an `if`.
 ### When nothing fits
 
 When no pattern fits and there is no `else`, the program stops, and names the value that nothing took. A forgotten case shows at
-once, instead of giving a wrong answer later:
+once, instead of giving a wrong answer later. This check happens when the `match` runs: a language with sum types checked
+at compile time, as Rust or OCaml, says before the program runs that a case is missing, which Cesia, whose values have no
+declared type, can't always know:
 
 ```cesia fails
 match 7

@@ -119,6 +119,39 @@ sql.Query("select id, done from notes", [], db) -->
 
 The `delete` was undone: both notes are still there.
 
+### Inside a transaction
+
+A [sql.Transaction] inside another, on its `tx`, is a *savepoint*: undone alone when its function gives an `Err`, while
+the outer one goes on. `read = true` opens a transaction that only reads. A transaction runs in a fiber of its own, so
+that a [fiber.Cancel] of the fiber that began it can't leave it open: it ends as its function says.
+
+### What a transaction guarantees
+
+SQLite's transactions are *ACID*: *atomic*, all their changes or none; *consistent*, every rule of the tables holds after
+each one; *isolated*, as below; and *durable*, a change confirmed stays, even after a crash or a loss of power. Durable
+needs the log to reach the disk at each commit: SQLite's `synchronous` setting is `FULL`, 2, on the databases Cesia opens,
+which SQLite's documentation calls ACID in WAL mode, where `NORMAL` could lose the last commits to a loss of power. Cesia opens every database
+file in *WAL* mode, a [write-ahead log](glossary.md#write-ahead-log): each change is first written to the file `-wal` beside
+the database, then copied into it later, so that after a crash SQLite replays the log and loses nothing confirmed. With
+it, readers don't wait for the writer, nor the writer for them.
+
+The isolation is exact. Each transaction that reads sees the database as it was when its first read began, whatever the
+others commit meanwhile: *snapshot isolation*. And SQLite lets one writer at a time, so the transactions that write run
+one after the other: the result is always that of some order of the transactions, which is *serializable* isolation, the
+strongest of the SQL standard. A transaction of [sql.Transaction] that writes takes the write lock at its start, with
+`BEGIN IMMEDIATE`, so two of them never both read, then find that only one may write: the second waits at its start.
+
+Cesia also turns on *foreign keys*, so a column declared `references` another table refuses a row that points nowhere,
+and opens each file with SQLite's defensive settings: no extension loaded, nothing attached, no text or BLOB over 100 MB.
+
+### Waiting and the fibers
+
+A pool of connections, 8 by default, `max` of [sql.Open], serves the fibers: each call takes one, and gives it back. When
+the database is busy, held by a writer of another program, a call waits in its fiber, 1 ms, then twice as long each time
+up to 50 ms, for at most `wait` seconds, 5 by default, so the other fibers run meanwhile. A query that runs, though, runs
+to its end inside SQLite before any other fiber gets its turn, as any function of `std/` written in OCaml or C does: a
+query of seconds holds a server for seconds, and belongs in a background task, or in an index that makes it short.
+
 ## Many rows
 
 [sql.Each] calls a function on each row, with only a batch of rows in memory at a time, whatever the size of the result. The
@@ -166,6 +199,16 @@ cesia run --allow read=data,write=data visits.ce
 SQLite writes two more files beside the database while it runs, `visits.db-wal` and `visits.db-shm`. So the permissions
 are on the folder that holds them all, `data`: a permission on `data/visits.db` alone is denied, with the name of the file
 it lacks. A database in use by another fiber or program is waited for, in this fiber only, so the others go on.
+
+## Further reading
+
+- Kevin P. Gaffney and others, *SQLite: Past, Present, and Future*, 2022: how SQLite is built.
+- SQLite's pages on write-ahead logging and isolation, <https://www.sqlite.org/wal.html> and
+  <https://www.sqlite.org/isolation.html>: what this chapter's guarantees rest on.
+- Hal Berenson and others, *A Critique of ANSI SQL Isolation Levels*, 1995: snapshot isolation and serializability,
+  defined.
+
+Each with its link in [References](references.md#databases).
 
 ## Next
 

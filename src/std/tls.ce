@@ -159,7 +159,9 @@ defn io(t)
 end
 
 defn Server(certificate, key, api)
-  (** For http.Serve: wrap = tls.Server(certificate, key, api)? The chapter
+  (** What http.Serve takes as wrap to serve https: http.Serve(app, wrap = tls.Server(certificate, key, api)?). certificate
+      is the path of a PEM file of the server's certificate and the chain of those that signed it, key the path of its
+      private key in PEM, and api what Open gave. An Err when either can't be read. The chapter
       [HTTP](https://www-celestial.github.io/cesia-lang/http.html#https) uses tls. *)
   ctx = api.CtxNew(api.ServerMethod())
   if api.UseChain(ctx, certificate) != 1

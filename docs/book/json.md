@@ -6,8 +6,9 @@ deep in your code. The examples read three files: `order.json`, `user.json` and 
 
 ## Reading JSON
 
-[json.Parse] reads JSON text. An object becomes a dictionary, an array a list, and `null` becomes `missing`, Cesia's
-[null](glossary.md#null). It gives an `Ok`, or an `Err` that says where the text goes wrong. Here is `order.json`:
+[json.Parse] reads JSON text, as RFC 8259 defines it. An object becomes a dictionary, an array a list, and `null` becomes
+`missing`, Cesia's [null](glossary.md#null). It gives an `Ok`, or an `Err` that says where the text goes wrong. Here is
+`order.json`:
 
 ```text
 {
@@ -30,6 +31,17 @@ order.customer -->
 order.items[2].product -->
 order.note -->
 json.Parse("{\"id\": ") -->
+```
+
+A number without a dot or an exponent that fits in 63 bits becomes an integer, and any other number a float: so
+`12345678901234567890` is read as a float, close to it. A key given twice keeps its last value, as most readers of JSON do.
+A text may hold any escape of JSON, `\u00e9` included. JSON nested deeper than half the `nesting` limit, 300 levels by
+default, is an `Err`, `Too deep`, so a hostile input of ten thousand `[` can't overflow the reader.
+
+```cesia
+json.Parse("12345678901234567890") -->
+json.Parse("{\"a\": 1, \"a\": 2}") -->
+json.Parse("\"caf\\u00e9\"") -->
 ```
 
 From there, the data is plain values, and every chapter before this one applies:
@@ -160,6 +172,48 @@ match checked
 end
 io.Print(result.Unwrap(sys.Read("people.json")))
 ```
+
+## Bytes as text: hexadecimal, Base64 and URLs
+
+[std/encode] writes bytes as text that any channel carries. [encode.Hex] writes each byte as two hexadecimal digits, and
+[encode.Unhex] reads them back; [encode.Base64] writes three bytes as four characters of an alphabet of 64, as RFC 4648
+says, and [encode.Unbase64] reads both its alphabets, the standard one and the one of URLs, with or without the `=` of
+padding. [encode.UrlEncode] writes every byte of a text that a URL can't hold as `%` and two digits, *percent-encoding*,
+and [encode.UrlDecode] reads it back, a `+` as a space as forms write it; [encode.ParseQuery] reads the fields of a query
+or a form. [encode.Sha1] is the SHA-1 hash that the WebSocket handshake asks for, and nothing else: SHA-1 is broken for
+signatures, and [std/crypto] has the hashes for security.
+
+```cesia
+use std/encode
+encode.Hex("hi") -->
+encode.Unhex("6869") -->
+encode.Base64("hi") -->
+encode.Unbase64("aGk") -->
+encode.UrlEncode("a b&c") -->
+encode.UrlDecode("a+b%26c") -->
+encode.ParseQuery("product=bread&units=2") -->
+```
+
+## Markdown
+
+[std/markdown] turns Markdown, the text format of READMEs, into HTML: the part of CommonMark that GitHub shows the same way,
+and its tables. [markdown.Parse] gives the blocks, each a dictionary with its `Kind` and its `Line`; [markdown.Html] writes
+them, and asks its hooks for the colors of code, the target of a name in brackets and the anchor of a heading;
+[markdown.Plain] are hooks that add nothing. Everything a page shows is escaped, raw HTML included, and a link leads only
+to `http`, `https`, `mailto` or a page of the site: a text from anyone is safe in it. The pages of this book are made this
+way.
+
+```cesia
+use std/markdown
+markdown.Html(markdown.Parse("# Prices\n\nBread is *cheap*."), markdown.Plain) -->
+markdown.Html(markdown.Parse("<script>alert(1)</script>"), markdown.Plain) -->
+markdown.Parse("# Prices")[1].Kind -->
+```
+
+## Further reading
+
+RFC 8259 for JSON, RFC 4180 for CSV, RFC 4648 for Base64 and hexadecimal, RFC 3986 for the escapes of URLs, and the
+CommonMark specification for Markdown: see [References](references.md#texts-and-formats).
 
 ## Next
 

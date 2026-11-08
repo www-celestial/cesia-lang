@@ -93,7 +93,8 @@ It belongs to std/math, so a program can use it too, as a loop that stops when a
 
 ## Properties
 
-A test function checks the cases you thought of. A property checks a rule on many cases that Cesia makes: [test.ForAll]
+A test function checks the cases you thought of. A property checks a rule on many cases that Cesia makes, which is called
+*property-based testing*: QuickCheck began it in Haskell in 2000, and Hypothesis brought it to Python. [test.ForAll]
 takes the rule, a function that gives `true`, and a generator of std/gen, which makes the cases. A fast solution against a
 slow sure one is the most useful rule of all:
 
@@ -107,7 +108,10 @@ isSortAgrees() = test.ForAll(xs -> value.Equal(radixSort(xs), list.Sort(xs)), ge
 ```
 
 It tries 100 cases, small ones first. When one fails, Cesia makes it smaller as long as it still fails, and shows the
-smallest:
+smallest: this is *shrinking*. A case is made from the numbers its generator drew, its *tape*, and Cesia shrinks the tape,
+fewer draws and smaller ones, then makes the case again from it, as Hypothesis does: the smaller case always comes from
+the same generator, so it is always a case the generator could have made, and a struct whose fields have rules stays
+valid as it shrinks.
 
 ```text
 src/shop/sort.test.ce:6: isSortAgrees failed at case 41 of 100, shrunk from 33 draws to 9:
@@ -150,7 +154,8 @@ page(name) = "<h1>$name</h1>\n<p>Total: 3</p>\n"
 isPage() = test.Snapshot(page("Ana"))
 ```
 
-A new snapshot fails and shows its text: read it, then `cesia test --update` accepts it. A changed one shows the lines that
+This is *snapshot testing*, as Jest does it for JavaScript, or a *golden test* when the text is a whole output. A new
+snapshot fails and shows its text: read it, then `cesia test --update` accepts it. A changed one shows the lines that
 changed. The `.snap` file goes into git, where a review sees each change.
 
 ## What a test may do
@@ -266,7 +271,19 @@ cesia doc --site --open
 A project can have books too, in `docs/`: each folder of Markdown pages there is a book, whose `index.md` links to its
 chapters in their order. `docs/book/` is the home of the site, and another folder, as `docs/guides/`, is a book beside it. A
 `files/` folder in a book holds the files its examples read. Every `cesia` block of a page runs when the site is built, and
-what it prints is written under it. This book is built that way, so its examples can't drift from the language: a block
+what it prints is written under it. The blocks of a page are one program, in their order, so a name given in one block is
+known in the next.
+
+Words after `cesia` on the first line of a block change what is done with it:
+
+| Word | What it does |
+|---|---|
+| `norun` | shows the block without running it: a server, a program that waits for input |
+| `fails` | the block must stop with an error, whose message is shown under it; one that doesn't fail stops the build |
+| `allow=read,write,net,net=own,net=:PORT,ffi=m` | runs the block with these permissions; no other is given |
+| `output=md` | what the block prints is Markdown, shown as a part of the page |
+| `fold=code`, `fold=output` | the code, or what it printed, is folded, opened by a click |
+| `hide=code`, `hide=output` | the code, or what it printed, is not shown | This book is built that way, so its examples can't drift from the language: a block
 that gives another value stops the build. Each page runs as a program of the project, from `.cesia/site/`, which `cesia new`
 keeps out of git: its blocks can use the packages of `src/` and `deps/`, wherever the site is written.
 
@@ -279,6 +296,16 @@ docs/
   guides/
     index.md
 ```
+
+## Further reading
+
+- Koen Claessen and John Hughes, *QuickCheck*, 2000: properties on random cases.
+- David R. MacIver and Alastair F. Donaldson, *Test-Case Reduction via Test-Case Generation*, 2020: shrinking the draws,
+  as [test.ForAll] does.
+- Guy L. Steele Jr., Doug Lea and Christine H. Flood, *Fast Splittable Pseudorandom Number Generators*, 2014: SplitMix64,
+  the generator behind the cases and [std/random].
+
+Each with its link in [References](references.md#tests).
 
 ## Next
 
