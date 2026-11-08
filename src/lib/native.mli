@@ -12,8 +12,9 @@ val packages : (string * (string * t) list) list
     map, the fields of a struct; 1 for anything else. *)
 val length : t -> int
 
-(** The byte where [part], which isn't empty, first appears in a text from a byte, or -1. *)
-val find_from : string -> string -> int -> int
+(** The byte where [part], which isn't empty, first appears in a text from a byte, or -1; with [fold], ASCII letters match
+    in either case. *)
+val find_from : ?fold:bool -> string -> string -> int -> int
 
 (** The number that a text writes, or [missing]. *)
 val number : string -> t
@@ -26,6 +27,10 @@ val points_between : string -> int -> int -> int
 
 (** The text of an argument, or a [type] panic naming the function. *)
 val text_arg : ctx -> string -> t -> string
+
+(** [flag_arg ctx param a k]: the optional argument [k], true or false, false when it is absent or missing; else a [type]
+    panic naming the parameter. *)
+val flag_arg : ctx -> string -> t array -> int -> bool
 
 (** A native: name, minimum and maximum argument count, code. [result]: it gives an Ok or an Err. *)
 val nat :

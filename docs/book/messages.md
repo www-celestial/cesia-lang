@@ -112,6 +112,7 @@ A bug, when the line runs: an operation on a value that it can't take. The progr
 | `… needs numbers, not ….` | `When the value is "function <anonymous>": "it" belongs to the nearest call. Write x -> ... to use it further out.` |
 | `… needs a count of 0 or more, not ….` | Give a whole number of 0 or more. |
 | `… needs a text, not ….` | Give a text; value.Text makes one of any value. |
+| `… needs true or false, not ….` | An optional parameter, as `fold` of text.ByteFind or `sync` of sys.Write, takes true or false; leaving it out means false. |
 | `… needs an array, not ….` | Give a list or an array. |
 | `… needs a dictionary, not ….` | Give a dictionary. |
 | `… needs a dictionary, not ….` | `dict.Fields(x) gives the public fields of a struct as a dictionary.` |

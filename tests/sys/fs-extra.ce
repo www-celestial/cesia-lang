@@ -1,6 +1,7 @@
 use std/sys
 use std/io
 use std/result
+use std/text
 
 defn main()
   sys.Write("stat_a.txt", "hello")?
@@ -11,6 +12,11 @@ defn main()
   io.Print(sys.Stat(".")?.IsDir)
   io.Print(result.IsErr(sys.Stat("no_such_file")))
   sys.Remove("stat_b.txt")?
+  (* A write that waits for the disk, then a file of several reads of 64 KiB: read in one text of its size. *)
+  big = text.Repeat(20000, "0123456789")
+  io.Print(sys.Write("big.txt", big, sync = true), sys.Read("big.txt")? == big, text.ByteLength(sys.Read("big.txt")?))
+  io.Print(sys.Write("big.txt", "small", sync = false), sys.Read("big.txt"))
+  sys.Remove("big.txt")?
   result.Ok(missing)
 end
 

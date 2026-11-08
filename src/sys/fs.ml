@@ -52,26 +52,40 @@ let with_fd path flags f =
   let fd = Unix.openfile path (Unix.O_CLOEXEC :: flags) 0o644 in
   Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> f fd)
 
+(* One string of the file's size, read in place: no copy at the end. A file that grows while it is read is read on to
+   its end, past that size, through a Buffer; one that shrinks gives what it had. *)
 let read_all ctx path =
   with_fd path [ Unix.O_RDONLY ] (fun fd ->
       let size = (Unix.fstat fd).Unix.st_size in
       Runtime.build ctx ((size / 8) + 1);
-      let b = Buffer.create (size + 1) and chunk = Bytes.create 65536 in
-      let rec go () =
-        match Unix.read fd chunk 0 65536 with
-        | 0 -> Text (Buffer.contents b)
-        | n ->
-          Runtime.reserve ctx ((n / 8) + 1);
-          Buffer.add_subbytes b chunk 0 n;
-          go ()
-      in
-      go ())
+      let b = Bytes.create size in
+      let rec fill at = if at = size then at else match Unix.read fd b at (size - at) with 0 -> at | n -> fill (at + n) in
+      let got = fill 0 and chunk = Bytes.create 65536 in
+      match if got < size then 0 else Unix.read fd chunk 0 65536 with
+      | 0 -> Text (if got = size then Bytes.unsafe_to_string b else Bytes.sub_string b 0 got)
+      | n ->
+        let more = Buffer.create (size + n + 65536) in
+        let rec go n =
+          if n = 0 then Text (Buffer.contents more)
+          else begin
+            Runtime.reserve ctx ((n / 8) + 1);
+            Buffer.add_subbytes more chunk 0 n;
+            go (Unix.read fd chunk 0 65536)
+          end
+        in
+        Buffer.add_bytes more b;
+        go n)
 
-let write_all path flags text =
+(* With [sync], the text is on the disk before the Ok: the file by fsync, and its folder, which holds its name. *)
+let write_all ?(sync = false) path flags text =
   with_fd path (Unix.O_WRONLY :: Unix.O_CREAT :: flags) (fun fd ->
       let n = String.length text in
       let rec go at = if at < n then go (at + Unix.write_substring fd text at (n - at)) in
       go 0;
+      if sync then begin
+        Unix.fsync fd;
+        if not Sys.win32 then with_fd (Filename.dirname path) [ Unix.O_RDONLY ] Unix.fsync
+      end;
       Missing)
 
 let list_dir path =
@@ -132,16 +146,16 @@ let rec make_dir path =
   try Unix.mkdir path 0o755
   with Unix.Unix_error (Unix.EEXIST, _, _) when Sys.is_directory path -> ()
 
-let on_path name perm verb arity f =
+let on_path ?params ?least name perm verb arity f =
   name,
-  Native.nat ~result:true name arity arity (fun ctx a ->
+  Native.nat ?params ~result:true name (Option.value least ~default:arity) arity (fun ctx a ->
       let path = path_arg ctx name perm a.(0) in
       attempt ctx verb path (fun () -> f ctx path a))
 
 let natives =
   [ on_path "Read" Read "read" 1 (fun ctx path _ -> read_all ctx path);
-    on_path "Write" Write "write" 2 (fun ctx path a ->
-        write_all path [ Unix.O_TRUNC ] (Native.text_arg ctx "Write" a.(1)));
+    on_path ~params:[| "path"; "text"; "sync" |] ~least:2 "Write" Write "write" 3 (fun ctx path a ->
+        write_all ~sync:(Native.flag_arg ctx "sync" a 2) path [ Unix.O_TRUNC ] (Native.text_arg ctx "Write" a.(1)));
     on_path "Append" Write "append to" 2 (fun ctx path a ->
         write_all path [ Unix.O_APPEND ] (Native.text_arg ctx "Append" a.(1)));
     on_path "List" Read "list" 1 (fun _ path _ -> list_dir path);

@@ -582,12 +582,7 @@ let make_rows ctx (keys : keys) cells =
 let last_names = ref (Undef, false, Error "")
 
 let rows ctx (a : t array) =
-  let public =
-    match if Array.length a > 2 then a.(2) else Undef with
-    | True -> true
-    | Undef | Missing | False -> false
-    | v -> Runtime.fail ctx Type (Messages.c_need_bool (Value.describe v))
-  in
+  let public = Native.flag_arg ctx "public" a 2 in
   let found =
     match !last_names with
     | v, p, found when v == a.(0) && p = public -> found

@@ -138,7 +138,12 @@ and, as there, a C library is outside the sandbox.
   several bytes held in one machine word, a name its authors coined in 1996: how [text.Count] counts a byte and
   [text.IsUtf8] skips ASCII, eight bytes at a time.
 - Henry S. Warren, Jr. *Hacker's Delight*, 2nd edition, Addison-Wesley, 2013, section 6–1, "Find First 0-Byte". ISBN
-  978-0-321-84268-8. The test that sets the high bit of exactly the zero bytes of a word, which [text.Count] adds up.
+  978-0-321-84268-8. The test that sets the high bit of exactly the zero bytes of a word, which [text.Count] adds up and
+  [text.ByteFind] uses to find the rarest byte of a part.
+- Donald E. Knuth, James H. Morris Jr., Vaughan R. Pratt. "Fast Pattern Matching in Strings". *SIAM Journal on
+  Computing* 6(2):323–350, 1977. <https://doi.org/10.1137/0206024>. A search in time linear in the text and the part,
+  which never reads a byte of the text twice: [text.ByteFind] and the other searches of [std/text] for a part of 32 bytes
+  or more.
 - T. Bray (editor). "The JavaScript Object Notation (JSON) Data Interchange Format", RFC 8259, 2017.
   <https://www.rfc-editor.org/rfc/rfc8259>. [std/json].
 - Y. Shafranovich. "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005.

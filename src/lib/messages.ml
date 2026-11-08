@@ -242,6 +242,7 @@ let need_frame a = plain (Printf.sprintf "Eval needs a frame of a stop, as stop.
 let bad_answer a =
   plain (Printf.sprintf "OnStop must return \"continue\", \"step\", \"next\" or \"out\", not %s." a)
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
+let need_flag name a = plain (Printf.sprintf "%s needs true or false, not %s." name a)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
   "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\

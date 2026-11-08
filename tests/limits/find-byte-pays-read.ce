@@ -1,0 +1,9 @@
+(** A search pays for the bytes it read: the next line end near the start of a large text costs a few bytes. *)
+use std/io
+use std/text
+
+s = "a\n$(text.Repeat(2000000, "a"))"
+for i in 1..1000
+  text.ByteFind("\n", 1, s)
+end
+io.Print("not stopped")

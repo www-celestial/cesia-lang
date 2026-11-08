@@ -68,6 +68,29 @@ sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n") -->
 sys.Rename("todo.txt.new", "todo.txt") -->
 ```
 
+### Surviving a power cut
+
+A rename is atomic for the programs that run, but not yet on the disk: the system keeps what a program writes in memory,
+in its [page cache](glossary.md#page-cache), and writes it out later, Linux within about 30 seconds by default. A power
+cut in that time can lose it, even after [sys.Write] and [sys.Rename] said `Ok`: the file can be found empty or cut
+short. With `sync = true`, [sys.Write] gives its `Ok` only once the text is on the disk. It calls
+[fsync](glossary.md#fsync), the system call that returns once the disk holds a file's data, on the file, then on the
+folder, which holds the file's name (on Windows, the file's is enough). A save that must survive a power cut writes the
+new file so, then renames it:
+
+```cesia allow=read,write
+sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true) -->
+sys.Rename("todo.txt.new", "todo.txt") -->
+```
+
+After a power cut, the whole new text is in `todo.txt`, or still in `todo.txt.new` beside the old `todo.txt` when the
+rename didn't reach the disk: never a part of it, on the *journaling* filesystems of today (ext4, XFS, btrfs, APFS,
+NTFS), which write each change of a folder to a journal first, so that it is done whole or not at all. The price is the
+time the disk takes: on the machine of [Speed](speed.md#texts-and-files), 2.6 ms for a file of one line against 0.04 ms
+without, and 44 ms for 16 MB against 3.5, as Python, Node and Go take with their own fsync, since all wait for the same
+disk. A crash of the program alone, without `sync`, loses nothing: what it wrote is in the
+system's memory, which goes on to the disk; only the system or the power going down can lose it.
+
 ## Folders
 
 [sys.Mkdir] makes a folder and the folders above it. [sys.List] gives the names in a folder, sorted. [sys.Rename] moves a file

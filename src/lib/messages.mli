@@ -278,6 +278,9 @@ val bad_answer : string -> t
 val need_frame : string -> t
 val debug_plugin : string -> t
 val need_text : string -> string -> t
+
+(** [need_flag param a]: an optional parameter that is true or false, as fold = of text.ByteFind. *)
+val need_flag : string -> string -> t
 val empty_array : string -> t
 
 (** The texts of the command line. *)

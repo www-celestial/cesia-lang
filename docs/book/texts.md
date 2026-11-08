@@ -252,6 +252,28 @@ text.Char(233) -->
 A program reads a text in bytes when a format counts them, as HTTP's `content-length` does: a byte position is found at
 once, where a character position must walk the text from its start, as UTF-8 gives each character one to four bytes.
 
+### Searching bytes, with case or without
+
+`fold = true` makes [text.ByteFind] match the ASCII letters in either case, in the part and in the text, as the search
+of an editor that ignores case; other bytes, as the two of `é`, match only themselves:
+
+```cesia
+text.ByteFind("world", 1, "Hello World", fold = true) -->
+text.ByteFind("é", 1, "É and é", fold = true) -->
+```
+
+The search first looks for the *rarest* byte of the part, by a table of how common each byte is in English text and in
+code (`z` before `e`, a capital or a digit before any small letter), eight bytes at a time as [text.Count] does
+([SWAR](glossary.md#swar)), and compares the part whole at each place where that byte is. With `fold`, when that byte is
+a letter, the eight bytes are first or'ed with 32, `0x20`: a capital and its small letter differ by that one bit only,
+so both become the small one, and no other byte becomes it. A part of 32 bytes or more is searched by the method of
+Knuth, Morris and Pratt, whose time is linear in the text whatever the part. A word
+at the end of a text of 100 MB is found in 39 ms, 41 ms with `fold`, against 317 ms for a lower-case copy of the text
+then a search; [Speed](speed.md#texts-and-files) puts these beside Python, Node and Go.
+
+A search counts against `--limit steps` the bytes it read, from where it started to the end of what it found: finding
+the next line end of a large text, line after line, costs each line once, not the whole text each time.
+
 ### Valid UTF-8
 
 A text written in a program is always valid UTF-8, but one read from a file or the network holds whatever bytes it was
@@ -279,7 +301,8 @@ which decodes every byte (medians of 3 runs, same machine).
 
 - F. Yergeau, *UTF-8, a transformation format of ISO 10646*, RFC 3629, 2003: what valid UTF-8 is. Randall J. Fisher and
   Henry G. Dietz, *Compiling for SIMD Within a Register*, 1999, and Henry S. Warren, *Hacker's Delight*, 2013, section
-  6–1: the work on eight bytes at once of [text.Count] and [text.IsUtf8].
+  6–1: the work on eight bytes at once of [text.Count], [text.IsUtf8] and [text.ByteFind]. Donald E. Knuth, James H.
+  Morris and Vaughan R. Pratt, *Fast Pattern Matching in Strings*, 1977: the search of a long part.
 - Ken Thompson, *Regular expression search algorithm*, 1968, and Russ Cox, *Regular Expression Matching Can Be Simple
   And Fast*, 2007, and *the Virtual Machine Approach*, 2009: the method of [std/regex]. See [References](references.md#texts-and-formats).
 

@@ -742,10 +742,14 @@ use std/test
 
       text.ByteSlice(1, 2, "abc") --> "ab" *)
 
-(** text.ByteFind(part, from, s)
-    The byte position, from 1, where part first occurs in a text at or after byte from, or missing.
+(** text.ByteFind(part, from, s, fold = false)
+    The byte position, from 1, where part first occurs in a text at or after byte from, or missing. With fold = true, the
+    ASCII letters match in either case, in part and in s; other bytes, as é, match only themselves. It counts against
+    --limit steps the bytes it read, from byte from to the end of what it found, so finding the next line end of a large
+    text costs a line, not the text.
 
-      text.ByteFind("b", 1, "abc") --> 2 *)
+      text.ByteFind("b", 1, "abc") --> 2
+      text.ByteFind("World", 1, "hello world", fold = true) --> 7 *)
 
 (** math.BitAnd(a, b)
     The bits that are set in both integers.
@@ -971,12 +975,18 @@ use std/test
       sys.Read(file) --> result.Ok("hello")
       result.IsErr(sys.Read("$(test.Temp())/none.txt")) --> true *)
 
-(** sys.Write(path, text)
+(** sys.Write(path, text, sync = false)
     Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission.
+    With sync = true, the Ok comes only once the text is on the disk: the file is flushed by fsync, then the folder that
+    holds its name (but on Windows, where the file's flush is enough), so a power cut after the Ok loses nothing of it.
+    Without, the system writes it out later (Linux within about 30 seconds, by default): faster, and a crash of the
+    program alone loses nothing either. A save that replaces a file writes a new file with sync = true, then renames it
+    over the old one: after a power cut the whole new text is under one of the two names, on the journaling filesystems
+    of today (ext4, XFS, btrfs, APFS, NTFS).
 
       file = "$(test.Temp())/write.txt"
       sys.Write(file, "one") --> result.Ok(missing)
-      sys.Write(file, "two")
+      sys.Write(file, "two", sync = true) --> result.Ok(missing)
       sys.Read(file) --> result.Ok("two") *)
 
 (** sys.Append(path, text)

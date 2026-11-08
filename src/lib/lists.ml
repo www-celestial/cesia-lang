@@ -338,17 +338,18 @@ let text_natives =
           Runtime.build ctx ((last - first) / 8 + 1);
           Text (String.sub s (first - 1) (last - first + 1))
         end);
-    "ByteFind", nat "ByteFind" 3 3 (fun ctx a ->
+    (* It pays for the bytes it read, not for the whole text: the next line end of a large text costs a line. *)
+    "ByteFind", nat ~params:[| "part"; "from"; "s"; "fold" |] "ByteFind" 3 4 (fun ctx a ->
         let part = text_arg ctx "ByteFind" a.(0) and from = Arrays.whole_index ctx a.(1) in
         let s = text_arg ctx "ByteFind" a.(2) in
-        pay ctx part;
-        pay ctx s;
+        let fold = Native.flag_arg ctx "fold" a 3 in
         if part = "" then Int from
         else if from < 1 || from > String.length s then Missing
-        else
-          match Native.find_from s part (from - 1) with
-          | -1 -> Missing
-          | at -> Int (at + 1)) ]
+        else begin
+          let at = Native.find_from ~fold s part (from - 1) in
+          Runtime.pay_bytes ctx ((if at < 0 then String.length s else at + String.length part) - from + 1);
+          if at < 0 then Missing else Int (at + 1)
+        end) ]
 
 (* The masking of a WebSocket frame, a small name that only std/websocket sees. *)
 let packages =

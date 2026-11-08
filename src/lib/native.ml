@@ -390,9 +390,16 @@ let text_arg ctx name v =
   | Text s -> s
   | _ -> Runtime.fail ctx Type (Messages.need_text name (Value.describe v))
 
-(* Knuth, Morris and Pratt: linear, for the long patterns where the plain search could be quadratic. *)
-let find_long s part from =
-  let n = String.length s and m = String.length part in
+let flag_arg ctx name (a : t array) k =
+  match if k < Array.length a then a.(k) else Undef with
+  | True -> true
+  | Undef | Missing | False -> false
+  | v -> Runtime.fail ctx Type (Messages.need_flag name (Value.describe v))
+
+(* Knuth, Morris and Pratt: linear, for the long patterns where the plain search could be quadratic. [at i] is the byte i
+   of the text, folded or not, of [n] bytes. *)
+let find_long at n part from =
+  let m = String.length part in
   let fail = Array.make (m + 1) 0 in
   let k = ref 0 in
   for i = 1 to m - 1 do
@@ -403,25 +410,51 @@ let find_long s part from =
   let rec go i k =
     if k = m then i - m
     else if i >= n then -1
-    else if s.[i] = part.[k] then go (i + 1) (k + 1)
+    else if at i = part.[k] then go (i + 1) (k + 1)
     else if k > 0 then go i fail.(k)
     else go (i + 1) 0
   in
   go from 0
 
-(* The first position of [part] in [s] from byte [from], or -1. [part] isn't empty. *)
-let find_from s part from =
+let lows = 0x7F7F7F7F7F7F7F7FL
+let ones = 0x0101010101010101L
+
+(* The high bit of each byte of a word that is zero, and of no other: the test of Hacker's Delight, 6-1, exact. *)
+let[@inline] zero_bytes t = Int64.lognot (Int64.logor (Int64.logor (Int64.add (Int64.logand t lows) lows) t) lows)
+
+(* How common a byte is in text and code, the most common first, then the letters by their frequency in English: a byte
+   of none of them, a capital, a digit, is the rarest, 0. *)
+let ranks =
+  let r = Bytes.make 256 '\000' in
+  String.iteri (fun i c -> Bytes.set r (Char.code c) (Char.chr (33 - i))) " \n().,etaoinsrhldcumfpgwybvkxjqz";
+  Bytes.to_string r
+
+(* The first position of [part] in [s] from byte [from], or -1. [part] isn't empty. With [fold], the ASCII letters match
+   in either case, in both. The rarest byte of [part], by [ranks], is looked for eight bytes at a time (SWAR): the word
+   xor that byte repeated has a zero byte where it is; a letter is or'ed with 0x20 in each byte first, which turns its
+   capital into it and no other byte. Each place found is then compared whole. *)
+let find_from ?(fold = false) s part from =
+  let part = if fold then String.lowercase_ascii part else part in
   let n = String.length s and m = String.length part in
-  if m >= 32 then find_long s part from else
-  let rec same p k = k >= m || (s.[p + k] = part.[k] && same p (k + 1)) in
-  let rec go i =
-    if i + m > n then -1
-    else
-      match String.index_from_opt s i part.[0] with
-      | None -> -1
-      | Some p -> if p + m <= n && same p 1 then p else go (p + 1)
-  in
-  go from
+  let at i = if fold then Char.lowercase_ascii s.[i] else s.[i] in
+  if m >= 32 then find_long at n part from
+  else begin
+    let rank c = ranks.[Char.code c] in
+    let r = ref 0 in
+    String.iteri (fun k c -> if rank c < rank part.[!r] then r := k) part;
+    let r = !r in
+    let c = part.[r] in
+    let mask = if fold && c >= 'a' && c <= 'z' then Int64.mul 0x20L ones else 0L in
+    let want = Int64.mul (Int64.of_int (Char.code c)) ones in
+    let rec same p k = k >= m || (at (p + k) = part.[k] && same p (k + 1)) in
+    let rec bytes j stop = if j >= stop then -1 else if at j = c && j - r + m <= n && same (j - r) 0 then j - r else bytes (j + 1) stop in
+    let rec words i =
+      if i + 8 > n then bytes i n
+      else if Int64.equal (zero_bytes (Int64.logxor (Int64.logor (String.get_int64_le s i) mask) want)) 0L then words (i + 8)
+      else match bytes i (i + 8) with -1 -> words (i + 8) | p -> p
+    in
+    words (from + r)
+  end
 
 (* The pieces of [s] between the occurrences of [sep]. *)
 let pieces s sep =
@@ -442,13 +475,19 @@ let split ctx (a : t array) =
   let items = Array.of_list (List.map (fun p -> Text p) (pieces s sep)) in
   Array { rows = 1; cols = Array.length items; store = V items; a_owned = true; a_tip = true; dims = [||] }
 
+(* The buffer is sized first, from the texts in the list and 8 bytes for each other value, so a list of texts is copied
+   once into it, never into a buffer that doubles. *)
 let join ctx (a : t array) =
   let sep = text_arg ctx "Join" a.(0) in
   match a.(1) with
   | Array x ->
     let n = x.rows * x.cols in
     Runtime.build ctx n;
-    let b = Buffer.create 64 in
+    let size = ref (String.length sep * max 0 (n - 1)) in
+    for k = 0 to n - 1 do
+      size := !size + match Value.elt x k with Text s -> String.length s | _ -> 8
+    done;
+    let b = Buffer.create !size in
     for k = 0 to n - 1 do
       if k > 0 then Buffer.add_string b sep;
       let text = Value.text_of ctx (Value.elt x k) in
@@ -590,12 +629,11 @@ let is_utf8 s =
 let count part s =
   let n = String.length s in
   if String.length part = 1 then begin
-    let c = Int64.mul (Int64.of_int (Char.code part.[0])) 0x0101010101010101L and lows = 0x7F7F7F7F7F7F7F7FL in
+    let c = Int64.mul (Int64.of_int (Char.code part.[0])) ones in
     let total = ref 0 and i = ref 0 in
     while !i + 8 <= n do
-      let t = Int64.logxor (String.get_int64_le s !i) c in
-      let y = Int64.lognot (Int64.logor (Int64.logor (Int64.add (Int64.logand t lows) lows) t) lows) in
-      total := !total + Int64.to_int (Int64.shift_right_logical (Int64.mul (Int64.shift_right_logical y 7) 0x0101010101010101L) 56);
+      let y = zero_bytes (Int64.logxor (String.get_int64_le s !i) c) in
+      total := !total + Int64.to_int (Int64.shift_right_logical (Int64.mul (Int64.shift_right_logical y 7) ones) 56);
       i := !i + 8
     done;
     for j = !i to n - 1 do

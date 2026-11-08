@@ -74,3 +74,25 @@ badAt(n) = "$(text.Repeat(n, "a"))$(bytes([0xFF]))$(text.Repeat(9, "b"))"
 goodAt(n) = "$(text.Repeat(n, "a"))é$(text.Repeat(9, "b"))"
 isUtf8EveryPlace() = list.All([not text.IsUtf8(badAt(n)) and text.IsUtf8(goodAt(n)) for n in 0..20])
 isUtf8NotText() = fails(() -> text.IsUtf8(1), "type")
+(* text.ByteFind: the rarest byte of the part eight bytes at a time, then the part whole; from every byte, the same answer
+   as a search byte by byte; with fold, the same as on both texts in lower case; a part of 32 bytes or more by KMP. *)
+defn slowFind(p, from, s)
+  n = text.ByteLength(p)
+  for i in from..(text.ByteLength(s) - n + 1)
+    if text.ByteSlice(i, i + n - 1, s) == p
+      return i
+    end
+  end
+  missing
+end
+long = "abcdefghijklmnopqrstuvwxyz012345"
+finds = ["a", "abcabc", "$(text.Repeat(20, "x"))the", "Hello World, hello WORLD", "été et ÉTÉ", text.Repeat(5, "zq\nZQ "), "the THE tHe", "xx$(long)yy$(text.Repeat(3, "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"))"]
+parts = ["a", "the", "zq", "\n", "o w", "é", "World", "ÉTÉ", "xthe", "q\nz", long, "z0"]
+sameFinds(p, s) = list.All([value.Equal(text.ByteFind(p, f, s), slowFind(p, f, s)) for f in 1..text.ByteLength(s)])
+sameFolds(p, s) = list.All([value.Equal(text.ByteFind(p, f, s, fold = true), text.ByteFind(text.Lower(p), f, text.Lower(s))) for f in 1..text.ByteLength(s)])
+isByteFindAsSlow() = list.All([list.All([sameFinds(p, s) for p in parts]) for s in finds])
+isByteFindFold() = list.All([list.All([sameFolds(p, s) for p in parts]) for s in finds])
+isByteFindFoldCases() = text.ByteFind("World", 1, "hello WORLD", fold = true) == 7 and text.ByteFind("é", 1, "aÉé", fold = true) == 4 and value.IsMissing(text.ByteFind("World", 1, "hello WORLD"))
+isByteFindFoldOnlyLetters() = value.IsMissing(text.ByteFind("[", 1, "{", fold = true)) and value.IsMissing(text.ByteFind("@", 1, "`", fold = true))
+isByteFindEdges() = text.ByteFind("", 3, "abc") == 3 and value.IsMissing(text.ByteFind("a", 4, "abc")) and value.IsMissing(text.ByteFind("a", 1, ""))
+isByteFindFoldNotBool() = fails(() -> text.ByteFind("a", 1, "a", fold = 1), "type")

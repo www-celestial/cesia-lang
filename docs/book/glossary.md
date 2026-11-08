@@ -328,6 +328,12 @@ A division of integers that rounds toward minus infinity, so that the remainder 
 The way a language calls functions written in another one, most often C; FFI for short. Cesia's is [std/c]: [c.Open] loads
 a library and [c.Fn] binds a function by its types, with the `ffi` permission: see [C and C++](c.md).
 
+## Fsync
+
+The system call that returns only once the disk holds a file's data, not only the system's memory, which writes it out
+later: after it, a power cut loses nothing of the file. The folder that holds a new file's name needs its own fsync.
+[sys.Write] with `sync = true` does both: see [Files](files.md#surviving-a-power-cut).
+
 ## Future
 
 A value that a computation will give later, which a program can wait for: also called a promise. A task of [fiber.Spawn] is
@@ -809,7 +815,8 @@ character by itself, so valid UTF-8 never holds one: [text.IsUtf8] refuses it. S
 
 SIMD within a register: the same operation on several small values packed in one machine word, as eight bytes in 64
 bits, with the ordinary instructions of the processor. [text.Count] finds the bytes equal to the one it counts eight at a
-time so: see [Texts](texts.md#searching).
+time so, and [text.ByteFind] the rarest byte of the part it looks for: see [Texts](texts.md#searching) and
+[Bytes](texts.md#bytes).
 
 ## Syntax sugar
 

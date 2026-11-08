@@ -184,6 +184,36 @@ the collector: OCaml's copies each live fiber out of its young heap and marks it
 most of the time of a fiber here. Go's goroutines also run in parallel on every core; Cesia's fibers run on one, and
 `--workers` gives a server every core, as [HTTP](http.md#every-core) shows.
 
+### Texts and files
+
+A text of 100 MB, 2.46 million lines of OCaml source: read whole from a warm [page cache](glossary.md#page-cache), a word
+searched to its end with case and without, its lines joined back, and 16 MB of it written, with and without
+[fsync](glossary.md#fsync). Each timed inside the program, around the one operation, 7 runs of each language alternated;
+the median, and the lowest and the highest of the 7, which hold the median with a probability of 98.4%. Milliseconds:
+
+| | Cesia | Python | Node | Go |
+|---|---:|---:|---:|---:|
+| read the file, its bytes | **22** (22–23) | 20 (19–25) | 19 (19–22) | 18 (17–20) |
+| read it as checked UTF-8 | | 56 (51–80) | 47 (45–51) | |
+| search a word, exact | **39** (38–40) | 46 (44–48) | 49 (49–52) | 7 (6–19) |
+| search a word, case ignored | **41** (40–44), `fold` | 797 (761–906), `re.I` | 26 (25–28), `/i` | 3,296 (3,224–3,562), `(?i)` |
+| a lower-case copy, then a search | 317 (314–366) | 100 (95–116) | 74 (73–80) | 186 (183–295) |
+| join the 2.46 million lines | 218 (217–223) | 59 (58–88) | 142 (137–151) | 50 (49–53) |
+| write 16 MB | **3.5** (3.5–4.0) | 6.0 (5.8–7.0) | 7.2 (6.5–8.9) | 2.6 (2.4–3.1) |
+| write 16 MB, then fsync | **44** (43–75) | 60 (47–105) | 50 (45–91) | 44 (41–60) |
+
+Cesia's [sys.Read] reads the bytes in one text of the file's size, as fast as the others read bytes; it doesn't check
+the UTF-8 (a program asks with [text.IsUtf8], 26 ms more), where Python and Node decode into their own strings.
+[text.ByteFind] with `fold` ignores case as fast as it searches with it, 19 times sooner than Python's `re` and 80
+times Go's `regexp`, which run a general pattern engine for it.
+
+**Where a giant wins, and why.** Go's exact search, 7 ms, is assembly that compares 32 bytes at a time with the AVX2
+instructions of the processor; Cesia's core is OCaml only, which compares 8 at a time in a 64-bit word. Node's `/i`, 26
+ms, is a regular expression compiled to machine code by V8, which skips ahead by the bytes that can't start a match.
+And joining lines takes 3.7 times less in Python and 4.4 in Go: the bytes are copied at the same speed, but the
+profile puts most of Cesia's time in OCaml's collector, which marks the 2.46 million live lines again while the program
+allocates the 100 MB of the result, where Python counts references and Go's collector runs on the other cores. The time of an fsync is the disk's, the same for all.
+
 ## A server under load
 
 [std/http] against Node's `http` module and Go's `net/http`, each on one core, on the machine of
