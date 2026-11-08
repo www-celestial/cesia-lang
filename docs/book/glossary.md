@@ -329,6 +329,13 @@ A division of integers that rounds toward minus infinity, so that the remainder 
 The way a language calls functions written in another one, most often C; FFI for short. Cesia's is [std/c]: [c.Open] loads
 a library and [c.Fn] binds a function by its types, with the `ffi` permission: see [C and C++](c.md).
 
+## Frame descriptor
+
+What a compiler of a language with a garbage collector writes for each place in the code where a call returns: the size
+of the frame and which of its slots hold values, so that the collector can find them on the stack. OCaml builds a hash
+table of all of them at start: 19,723 for Cesia's binary, part of its start-up time, see
+[How Cesia works](internals.md#start-up).
+
 ## Fsync
 
 The system call that returns only once the disk holds a file's data, not only the system's memory, which writes it out
@@ -583,6 +590,13 @@ folder of `.ce` files: `use std/sql` brings one in, and `sql.Open` names a publi
 The copies of the files that the system keeps in free memory after reading them, so that the next read of the same bytes
 costs no disk. A *warm* cache holds them, a *cold* one doesn't: a program that reads a folder twice is faster the second
 time. [Solving a real problem](duplicates.md#threats-to-validity) measures both.
+
+## Page fault
+
+The trap a program takes the first time it touches a page of memory, 4 KB, that the kernel hasn't mapped for it yet:
+the kernel maps the page, zeroes it, or copies it when the program writes a page it shares, as the data of a binary
+that the loader fixes up. About 2 µs each on the machine of [Speed](speed.md#beside-the-giants); a start of Cesia takes
+about 590, see [How Cesia works](internals.md#start-up).
 
 ## Parameterized query
 

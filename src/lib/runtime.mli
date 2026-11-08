@@ -33,6 +33,9 @@ val link_base : int -> int
 (** Raises a Cesia error at the current site. *)
 val fail : ctx -> kind -> Messages.t -> 'a
 
+(** The young heap grown to 16 MB, once: at the first checkpoint, or once a program loaded 32 KB of source. *)
+val grow_young : unit -> unit
+
 (** The checkpoint: refills [fuel], flushes the output, looks at the memory, calls [on_checkpoint]. The second
     argument is the top of the v stack still in use: beyond it, everything is dead. *)
 val checkpoint : ctx -> int -> unit

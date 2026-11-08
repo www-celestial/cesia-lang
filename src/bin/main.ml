@@ -332,10 +332,6 @@ let test args =
        { path; cases; only; worker = !worker; update = !update; dir; timeout = config.timeout; clock = Unix.gettimeofday;
          remove = Cesia_sys.Fs.remove_tree })
 
-(* A 16 MB minor heap: the boxed floats of the generic path nearly all die young, and the trees and code of what a program
-   loads, which 8 MB promoted once or twice for most programs of a few packages, stay young until they are done. *)
-let tune_gc () = Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 21 }
-
 let doc args =
   let w = Runtime.create_world Runtime.default_options in
   let (_ : unit -> bool) = Cesia_sys.Sys_modules.register w in
@@ -412,7 +408,6 @@ let jit_mode () =
 
 let () =
   try
-    tune_gc ();
     jit_mode ();
     match Array.to_list Sys.argv with
     | _ :: "version" :: _ -> print_endline Version.text

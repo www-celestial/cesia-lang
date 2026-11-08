@@ -1,6 +1,11 @@
 open Types
 
-let register_file w path src = Vec.push w.files (path, src)
+let loaded = ref 0
+
+let register_file w path src =
+  loaded := !loaded + String.length src;
+  if !loaded > 32768 then Runtime.grow_young ();
+  Vec.push w.files (path, src)
 
 (* What the program printed, then OCaml's own standard output. *)
 let flush_all w = Runtime.flush_out w; flush stdout

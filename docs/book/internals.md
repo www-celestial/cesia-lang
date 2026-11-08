@@ -675,8 +675,10 @@ process.
 Cesia doesn't free memory itself: OCaml's *garbage collector* does, the GC, which finds the blocks that nothing points to
 any more and reuses their memory. OCaml's is *generational*: new blocks go to a small *minor heap*, which is emptied often
 and fast, because most blocks die young, as the boxed floats of a computation do; the blocks still alive move to the
-*major heap*, which is collected little by little, in slices, so a program never stops for long. Cesia sets the minor
-heap to 16 MB, 2 million words, at start-up, since its trees, closures and boxed floats nearly all die young there.
+*major heap*, which is collected little by little, in slices, so a program never stops for long. Cesia grows the minor
+heap from OCaml's 2 MB to 16 MB, 2 million words, at a program's first checkpoint, or once it has loaded 32 KB of
+source, since its trees, closures and boxed floats nearly all die young there. Growing it costs about 0.15 ms, which a
+short program that loads little never pays.
 
 The memory limit, 80% of the machine's memory unless `--limit memory=` says otherwise, is checked at full checkpoints and
 before each large allocation. When the heap seems past it, Cesia runs a full collection first, and stops the program only
@@ -689,26 +691,41 @@ can't race with the fibers.
 
 ## Start-up
 
-A program starts at once. Measured on 2026-11-08 on the machine above, 300 runs of each alternated, from the start of the
-process to its end, the minimum then the median:
+A program starts at once. Measured on 2026-11-09 on the machine above, 101 runs of each alternated with the binary
+before this change, from the start of the process to its end, the median:
 
 | Program | Time |
 |---|---:|
-| `/usr/bin/true`, a program that does nothing | 0.41 / 0.51 ms |
-| `cesia version` | 2.22 / 2.59 ms |
-| `use std/io` and `io.Print(1)` | 2.49 / 2.80 ms |
+| `/usr/bin/true`, a program that does nothing | 0.53 ms |
+| OCaml's own `print_endline "1"`, compiled | 1.05 ms |
+| `use std/io` and `io.Print(1)` | 2.64 ms, 2.85 before |
 
-So running a program, once Cesia has started, takes about 0.3 ms. What a start does:
+What a start does, counted by the processor's counter of the instructions run in the program, read at points of the
+start in a debugger, and by the system's count of *page faults*, each a 4 KB page of memory that the kernel maps, copies
+or zeroes the first time the program touches it, about 2 µs each on this machine:
 
-- the system loads the binary, and fixes up the addresses of its data, 28,458 of them in the count of 2026-11-07, as a
-  *position-independent executable* needs: one that can be loaded at any address, which makes a bug in C harder to
-  exploit;
-- the OCaml runtime starts, and Cesia sets its minor heap;
-- the sources of `std/` are inside the binary, so nothing is read from the disk but the program itself. A package of
-  `std/` is read when a file first uses it: one written in Cesia, as `std/list`, costs about 0.8 ms more to parse and
-  resolve, at each run, as `bench/RESULTS.md` measured on 2026-11-07; the parts in OCaml cost nothing until called;
-- the JIT, SQLite, the runner of `cesia test` and the engine of the debugger are plugins beside the binary, loaded at
+- **The loader fixes up the binary's addresses**: 850,000 instructions, against 283,000 for OCaml's own program. Cesia
+  is a *position-independent executable*, one that can be loaded at any address, which makes a bug in C harder to
+  exploit; so each of the 30,332 pointers of its data gets the address the binary landed at added to it, and each page
+  of 4 KB they are on, 256 of them, is copied for the process: a page fault each.
+- **OCaml's runtime reads its frame descriptors**: 722,000 instructions. A frame descriptor says, for one place in the
+  code where a call returns, which slots of the stack hold values, so that the garbage collector can find them; OCaml
+  puts all of them in a hash table at start, 19,723 for Cesia, whose interpreter, compiler, parser and natives of
+  `std/` are in the binary, against 322 for OCaml's own program. The table takes 512 KB, 129 page faults, and the
+  descriptors themselves are two thirds of the relocated pages above.
+- **The modules start**: 190,000 instructions, their tables of natives and of messages among them.
+- **The program runs**: 400,000 instructions, from reading `cesia.toml` if there is one to the last flush; the sources
+  of `std/` are inside the binary, so nothing is read from the disk but the program itself. A package of `std/` is read
+  when a file first uses it: one written in Cesia, as `std/list`, costs about 0.8 ms more to parse and resolve, at each
+  run, as `bench/RESULTS.md` measured on 2026-11-07; the parts in OCaml cost nothing until called.
+- The JIT, SQLite, the runner of `cesia test` and the engine of the debugger are plugins beside the binary, loaded at
   their first use. None of them costs a program that doesn't use it.
+
+The young heap grows to 16 MB only at a program's first checkpoint, or once it has loaded 32 KB of source
+([Memory](#memory-and-the-garbage-collector)): growing it at start cost every program 0.2 ms, about 260,000 instructions
+and 70 page faults, the first collection included, which a short program never needed. Moving the code that a run
+rarely needs into plugins would take about 6 % of the frame descriptors off the start: the hash table halves only under
+16,384 of them.
 
 Loading, the lexer, the parser and the resolver together, reads about 500,000 lines a second: 320,000 lines in 631 ms,
 `bench/load.sh`, on 2026-11-07.

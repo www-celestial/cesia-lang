@@ -92,11 +92,19 @@ let full_checkpoint ctx top =
   w.on_checkpoint ctx;
   w.yield ctx
 
+(* A 16 MB young heap: the boxed floats of the generic path nearly all die young, and the trees and code of what a program
+   loads, which 8 MB promoted once or twice for most programs of a few packages, stay young until they are done. Growing
+   it from OCaml's 2 MB costs about 0.3 ms, which a program that ends before its first checkpoint, having loaded little,
+   never pays. *)
+let grown = ref false
+let grow_young () = if not !grown then (grown := true; Gc.set { (Gc.get ()) with minor_heap_size = 1 lsl 21 })
+
 (* The checkpoint, with the top of the v stack still in use. A call adds a single frame and counts one step: at depth
    d, the limit can't fall before max_depth - d steps. Bounding fuel this way makes the limit exact without adding
    anything to a call; the price, counting d frames, only matters very close to the limit. *)
 let[@inline never] checkpoint ctx top =
   let w = ctx.w in
+  grow_young ();
   let spent = ctx.refill - ctx.fuel in
   if w.steps_left <> max_int then w.steps_left <- w.steps_left - spent;
   if w.steps_left <= 0 then limit "steps" ctx.site;
