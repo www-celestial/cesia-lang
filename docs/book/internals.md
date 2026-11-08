@@ -169,7 +169,7 @@ either a small constant or a pointer to a block whose header says which case it 
 | a float | 64 bits of IEEE 754, in a block of its own; unboxed in a typed version and in an array of floats |
 | a text | its bytes, in UTF-8, in a block that never changes |
 | a list, a matrix, an array | a size per dimension and one store of cells, column by column: floats, integers or values |
-| a struct | its *shape*, the names of its fields, shared by every struct of its kind, and an array of the values |
+| a struct | its *shape*, the names of its fields, shared by every struct of its kind, and a store of its values: their doubles while all are floats, as an array of floats keeps them, else the values |
 | a map | see [Maps: a hash table, then a hash trie](#maps-a-hash-table-then-a-hash-trie) |
 | a function | its code, and the values it captured |
 | a task, a channel, a connection | a *handle*: a kind and a number, which the system keeps track of |
@@ -223,6 +223,24 @@ none of them: the same keys, values, order, `==` and errors in each.
 array. The maps made at one place of the code share their array of keys, as the structs of one kind share their shape:
 `{X: 1, Y: 2}` in a loop makes many maps with one array of keys. A field read then caches the place of its key, as for a
 struct. This sharing is the idea of *hidden classes*, from Self, where they were called maps, and from V8.
+
+The values of such a map, and the fields of a struct, have a [storage strategy](glossary.md#storage-strategy) of their
+own: while all of them are floats, they are kept as bare doubles, as an array of floats keeps its cells; a value of any
+other kind written into one turns that store into an array of values, once. An integer stays an integer: `{X: 1}` keeps
+an `Int`, unlike a list of numbers, which keeps its integers as floats. A map of four floats takes 11 words of memory
+this way, the map, its store and four doubles, against 25 when each float was a value of its own: a float value is two
+blocks of OCaml, the case of the value and the boxed double it points to (Leroy, 1992, says why OCaml boxes a float
+outside a float array or record). The price is in the interpreter: reading `p.X` from such a map makes a float value,
+4 words, where it took the one stored; inside arithmetic, as `p.X + 1.0`, the interpreter reads the double without making
+one. The interpreter alone runs `bench/structs.ce` 8% slower for it, 595 ms against 550 (5 runs each, alternated);
+machine code, which reads and writes the doubles themselves, runs it in about 50 ms, as [What it makes](#what-it-makes)
+shows.
+
+```text
+{X: 1.0, Y: 2.0, Vx: 1.0, Vy: 0.5}
+before: map 4 words -> values 5 words -> 4 floats of 4 words each      25 words, 6 blocks
+now:    map 4 words -> store 2 words  -> 4 doubles, 5 words           11 words, 3 blocks
+```
 
 **Past 32 keys, while one name alone holds the map, a hash table.** A map that is *owned*, the bit of
 [copy-on-write](#value-semantics-and-copy-on-write), keeps its keys in an *insertion-ordered hash table*, the layout of
@@ -348,6 +366,47 @@ of `dyn` and of `structs`. Now only what the loop changes meets at the start of 
 instructions instead of 1,919, and 114 ms instead of 184; `structs` in 1,220 instead of 1,500, 187 ms instead of 225
 (11 runs each, alternated, beside main's binary).
 
+**A number stays a number across the turns.** In `dyn`, `total` comes from a call through a value, so inference can't
+type it, and before, each turn boxed its float into a new value and unboxed it at its next use. A variable of the loop
+that the frame holds as a float or an integer when the loop compiles, and that the loop reads before it assigns it in a
+turn, or assigns only with arithmetic, now gets a float or integer register for the whole run: the machine code checks
+its kind once, when it enters, each assignment gives that kind or bails, and the box is made once, when the run writes
+its variables back for the interpreter. This is *unboxing* by speculation, the way HotSpot and LuaJIT keep a loop's
+accumulator in a register. With it, a register read after the calls of the write barrier was kept by MIR in a stack
+slot for the whole loop, so the run now writes its numbers back before those calls: `total` lives in a register, and a
+turn of `dyn` costs 64 instructions and 18 cycles of the processor, against 126 and 34 before this part and the next
+(the processor's counters, the cost of one more turn, measured as the difference of 10 and 20 million turns).
+
+**A value is marked shared once.** A list or map read from a list into a variable is held twice, so it must lose its
+*owned* bit ([copy-on-write](#value-semantics-and-copy-on-write)) before anything may write it in place. Machine code
+writes no such variable in place, so it now clears the bit once, when the run writes the variable back, instead of at
+each read; a value the code knows is a number needs no mark at all.
+
+**Bounds proved.** `math.Mod(i, 4)` by a positive constant is between 0 and 3, so `math.Mod(i, 4) + 1` can't overflow:
+the addition goes unchecked. This is *range analysis*, the smallest form of it, on the bounds of integer registers.
+
+**A map that is never made.** In `structs`, each turn reads a map from a list, computes with its fields, and writes a
+new map back to the same place:
+
+```text
+p = ps[i]
+vy = p.Vy - 9.81 * dt
+ps[i] = {X: p.X + p.Vx * dt, Y: p.Y + vy * dt, Vx: p.Vx, Vy: vy}
+```
+
+`p` is used only for its fields, so the machine code never makes it: when it reads `ps[i]` it checks that the map
+there has these keys and a store of floats, and loads its four doubles into registers, which stand for `p`. This is
+*scalar replacement* (Stadler, Würthinger and Mössenböck, 2014). If the run must give back to the interpreter, the map is
+made then, of those registers, and only then: *allocation sinking*, as LuaJIT does on its traces (Pall, 2012). And the
+new map written back has the same keys, all floats: when the map it replaces is owned, nothing else can see it, so its
+four doubles are written in place, into the old map's store, which value semantics allows, the reuse of a unique value
+that Lorenzen, Leijen and Swierstra (2023) make the rule of *fully in-place* functional programs. A turn then allocates
+nothing and calls no write barrier; when the map there can't take them, the interpreter makes that one write and the
+loop goes on in machine code. A struct gets the same, as `ps[i] = Particle(x, y, vx, vy, p.M)` in
+`bench/real/particles.ce`. The values of a map that are all floats are doubles in its store
+([Maps](#maps-a-hash-table-then-a-hash-trie)), so a field is one load and the check of its kind is gone too: a turn of
+`structs` costs 60 instructions and 24 cycles, against 235 and 122 before, measured the same way.
+
 It compiles numbers and loops on them, arrays of floats and of values read and written by index, calls between compiled
 versions, recursion, in a loop the fields of maps and structs and new ones made there, and calls of a function held in a
 variable, as the next part shows.
@@ -404,25 +463,26 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 
 ### What it gains
 
-Measured on the evening of 2026-11-08, `release` profile, on the machine of [Speed](speed.md#beside-the-giants) while
-other work ran on it: each program of `bench/` 11 times with the JIT and 11 times with `CESIA_JIT=off`, alternated with
-the giants, from the start of the process to its end (`real/particles`, against main's binary, alternated). The median,
-then its 95% interval:
+Measured late on 2026-11-08, `release` profile, on the machine of [Speed](speed.md#beside-the-giants) while other work
+ran on it: each program of `bench/` 11 times with the JIT and 11 times with `CESIA_JIT=off`, alternated with the giants,
+from the start of the process to its end (`real/particles`, against main's binary, alternated). The median, then its 95%
+interval:
 
 | Program | What it does | With the JIT | Interpreter only |
 |---|---|---:|---:|
-| `fib` | `fib(35)`, recursive calls on integers | 73 ms (73–74) | 438 ms (436–470) |
-| `mandel` | a loop of floats | 61 ms (61–63) | 469 ms (468–477) |
-| `matmul` | matrices of floats, read by index | 47 ms (46–47) | 950 ms (938–1,093) |
-| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 186 ms (182–188) | 553 ms (546–571) |
-| `real/particles` | 1,000 structs, gravity and walls | 136 ms (135–139) | |
-| `dyn` | calls through a list of functions | 114 ms (112–115) | 720 ms (693–769) |
-| `maps` | 500,000 text keys written then read | 275 ms (272–278) | 278 ms (274–282) |
+| `fib` | `fib(35)`, recursive calls on integers | 74 ms (73–76) | 439 ms (436–450) |
+| `mandel` | a loop of floats | 62 ms (61–62) | 470 ms (467–489) |
+| `matmul` | matrices of floats, read by index | 47 ms (46–47) | 959 ms (944–1,097) |
+| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 49 ms (47–54) | 608 ms (588–672) |
+| `real/particles` | 2,000 structs, gravity and walls | 49 ms (49–57) | |
+| `dyn` | calls through a list of functions | 57 ms (57–59) | 700 ms (678–741) |
+| `maps` | 500,000 text keys written then read | 277 ms (272–281) | 279 ms (272–317) |
 
-`dyn` calls each function through a value, which the JIT now makes machine code with its inline cache of functions,
-and its `math.Mod(i, 2)` and `math.Mod(i, 4)` a mask of bits: before both, on the same day, it took 714 ms with the JIT, as
-long as without it, then 182 ms before its loop was entered only at its head; `structs` took 219 and `real/particles`
-175. The loop of `maps` builds a text at each turn and stays in the interpreter: its gain is the hash table's.
+`dyn` calls each function through a value, which the JIT makes machine code with its inline cache of functions, its
+`math.Mod(i, 2)` and `math.Mod(i, 4)` a mask of bits, and its `total` a float in a register: before those, on the same
+day, it took 714 ms with the JIT, then 182 before its loop was entered only at its head, and 114 before `total` stayed a
+register. `structs` took 219, then 186 before its maps were kept as doubles, and `real/particles` 175, then 136. The
+loop of `maps` builds a text at each turn and stays in the interpreter: its gain is the hash table's.
 
 [Speed](speed.md#beside-the-giants) puts these programs beside Python, Node, Java, Go, OCaml, Lua and LuaJIT.
 

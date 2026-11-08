@@ -85,8 +85,9 @@ it, for solving, factoring and eigenvalues. OpenBLAS and Apple's Accelerate are 
 
 A boxed number sits in a block of memory of its own, behind a pointer, with a tag that says its kind; an unboxed one is the
 bare machine number, in a register or a slot. Cesia's floats are boxed in values of any kind, and unboxed in a version of
-a function that inference typed and in an array of floats, so a loop of floats allocates nothing: see
-[How Cesia works](internals.md#running-closures-as-code).
+a function that inference typed, in an array of floats, in a map or struct whose values are all floats, and in machine
+code, where a variable that holds a float stays one in a register for the whole loop, so a loop of floats allocates
+nothing: see [How Cesia works](internals.md#what-it-makes).
 
 ## Breakpoint
 
@@ -670,6 +671,12 @@ A function whose result depends on its arguments only, and that does nothing els
 function can't change the values it is given: it is pure when it leaves the outside world alone. See
 [Functions](functions.md).
 
+## Range analysis
+
+What a compiler proves of the values an integer can take, to drop the checks they make useless. In Cesia's JIT,
+`math.Mod(i, 4)` is between 0 and 3, so `math.Mod(i, 4) + 1` needs no check of overflow: see
+[How Cesia works](internals.md#what-it-makes).
+
 ## Radix sort
 
 A sort of numbers by their digits, one digit at a time from the lowest, each pass putting the numbers into buckets by
@@ -718,6 +725,14 @@ hashes computed in advance is useless. [crypto.HashPassword] adds one: see [Cryp
 
 A place where a program runs with only the rights it was given. A Cesia program starts in one, and each `--allow` gives it
 the right to one kind of thing, within a scope, as Deno does for JavaScript. See [Permissions](permissions.md).
+
+## Scalar replacement and allocation sinking
+
+Two ways a compiler avoids making a value it can see through. *Scalar replacement* keeps an object that never leaves a
+piece of code as its fields alone, in registers, as Graal does for Java (Stadler, Würthinger and Mössenböck, 2014);
+*allocation sinking* makes the object only on the rare path that needs it whole, as LuaJIT does on the exits of its traces
+(Pall, 2012). In Cesia's JIT, `p = ps[i]` read only for `p.X` and the like is four doubles in registers, and the map is
+made only when the run gives back to the interpreter: see [How Cesia works](internals.md#what-it-makes).
 
 ## Scheduler
 
@@ -804,8 +819,9 @@ wrong before: see [Types](types.md#checked-when-a-value-comes-in).
 
 A collection that stores its elements by their kind, as bare machine numbers while all of them are numbers of one kind,
 and switches once, for good, to general storage when another kind arrives (Bolz, Diekmann and Tratt, 2013, from PyPy).
-Cesia's lists keep integers, floats or values so, and the hash table of a big map keeps its integer values bare: the
-program sees the same values either way. See [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
+Cesia's lists keep integers, floats or values so, the hash table of a big map keeps its integer values bare, and a small
+map or a struct keeps its values as doubles while all are floats: the program sees the same values either way. See
+[How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## String interpolation
 

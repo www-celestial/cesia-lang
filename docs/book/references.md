@@ -43,6 +43,9 @@ publisher moves it.
 - Sebastian Ullrich, Leonardo de Moura. "Counting Immutable Beans: Reference Counting Optimized for Purely Functional
   Programming". *IFL 2019*, ACM, 2019. <https://doi.org/10.1145/3412932.3412935>. Immutable values updated in place when
   they are unique, as Lean 4 does with full counts: the same idea as Cesia's copy-on-write, with one bit.
+- Xavier Leroy. "Unboxed Objects and Polymorphic Typing". *POPL 1992*, ACM, 177–188.
+  <https://doi.org/10.1145/143165.143205>. Why OCaml keeps a float in a block of its own, except in an array or a record
+  of floats only: a float value of Cesia is two blocks, and the store of a map or struct of floats an array of doubles.
 - IEEE. "IEEE Standard for Floating-Point Arithmetic", IEEE Std 754-2019, 2019.
   <https://doi.org/10.1109/IEEESTD.2019.8766229>. The 64-bit floats of Cesia, their rounding, their infinities and NaN.
 
@@ -87,6 +90,21 @@ publisher moves it.
   Translation for Correctness, Code Quality and Efficiency". *CGO 2009*, IEEE, 114–125.
   <https://dblp.org/rec/conf/cgo/BoissinotDRDG09>. Leaving SSA form puts a copy on each path into a block where versions of
   a variable meet, which only coalescing takes away: why a loop entered in its middle copied every variable at each turn.
+- Lukas Stadler, Thomas Würthinger, Hanspeter Mössenböck. "Partial Escape Analysis and Scalar Replacement for Java".
+  *CGO 2014*, ACM. <https://doi.org/10.1145/2544137.2544157>. An object kept as its fields where it doesn't
+  escape and made only on the paths where it does: the map that Cesia's machine code reads from a list for its fields
+  is four registers, made only at a bail or at the end of the run.
+- Mike Pall. "Allocation Sinking Optimization". LuaJIT wiki, 2012, shipped in LuaJIT 2.0; the text is kept at
+  <https://ujit.readthedocs.io/en/latest/public/tut-allocation-sinking.html>. An allocation moved off the fast path to the
+  exit that needs it: the same for Cesia's maps and structs of floats in a loop.
+- Andreas Wöß, Christian Wirth, Daniele Bonetta, Chris Seaton, Christian Humer, Hanspeter Mössenböck. "An Object Storage
+  Model for the Truffle Language Implementation Framework". *PPPJ 2014*, ACM, 133–144.
+  <https://doi.org/10.1145/2647508.2647517>. An object's fields kept by their kind, a double unboxed, a field written with
+  another kind generalized: the F store of a Cesia map or struct of floats, with one kind for the whole store.
+- Anton Lorenzen, Daan Leijen, Wouter Swierstra. "FP²: Fully in-Place Functional Programming". *Proceedings of the ACM on
+  Programming Languages* 7(ICFP), article 198, 275–304, 2023. <https://doi.org/10.1145/3607840>. A value nothing else
+  holds may be rebuilt in place without changing what the program means: why Cesia's machine code writes the doubles of
+  a new map into the owned one it replaces.
 - Vladimir Makarov. MIR, a lightweight JIT compiler. <https://github.com/vnmakarov/mir>, and "MIR: A lightweight JIT
   compiler project", Red Hat Developer, 2020.
   <https://developers.redhat.com/blog/2020/01/20/mir-a-lightweight-jit-compiler-project>. The backend that makes Cesia's

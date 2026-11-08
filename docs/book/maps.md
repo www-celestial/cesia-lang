@@ -174,7 +174,10 @@ dict.Zipmap(["a", "b"], [1, 2]) -->
 
 ## How a dictionary is stored, and what it costs
 
-Up to 32 keys, a dictionary is one block: its keys in their order, beside their hashes, and its values. Past 32, while
+Up to 32 keys, a dictionary is one block: its keys in their order, beside their hashes, and its values; while all of
+them are floats, as in `{X: 1.0, Y: 2.5}`, the values are kept as bare doubles, a
+[storage strategy](glossary.md#storage-strategy) that the program never sees: 11 words for four floats instead of 25,
+and machine code that reads and writes them in place. Past 32, while
 one name alone holds it, it is a [hash table](glossary.md#hash-table) in the order of insertion, as Python's `dict`: a
 read or a write takes a constant time on average, changed in place. Once it is shared and written, as by [dict.Put], it
 becomes, once and for good, a [hash array mapped trie](glossary.md#hash-array-mapped-trie) of the kind called
