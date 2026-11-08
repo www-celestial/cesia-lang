@@ -3,7 +3,9 @@
 In this chapter you handle what can go wrong: a file that isn't there, a text that isn't a number, input that `From` refuses.
 In Cesia an error is a value that a function gives back, as any other result: an
 [error value](glossary.md#error-value). There is no `try` and no [exception](glossary.md#exception): you see in the code
-where each error goes.
+where each error goes. Rust works this way, with its `Result` and its `?`, and Go with the `err` that each call gives
+back; Python, Java and JavaScript throw exceptions instead, which jump over the code between the error and the `try` that
+catches it, so that reading a function doesn't tell which of its calls can fail.
 
 ## Ok and Err
 
@@ -197,6 +199,15 @@ bug.Assert(value.Len([1, 2]) == 3, "the list should have three elements")
 
 A reading of a dictionary key that isn't there, a field a struct doesn't have, a denied permission: each of these is a bug too,
 and stops the program in the same way.
+
+### What a bug prints
+
+A bug stops the program with the exit code 1. It prints the file, the line and the column, the line itself with a mark
+under the place, the message, and on a last line, when there is one, what to write instead; then the calls that led
+there, the innermost first. The message comes from one table of the source, `src/lib/messages.ml`, so the same mistake
+always reads the same way. A bug has a *kind*: `syntax`, `name`, `type`, `index`, `field`, `math`, `permission`, or
+`user` for [bug.Panic] and [bug.Assert]. In a [fiber](fibers.md), a bug stops that fiber alone, and [fiber.Wait] gives an
+`Err` with its `Kind`, `Message`, `File` and `Line`.
 
 ## Next
 

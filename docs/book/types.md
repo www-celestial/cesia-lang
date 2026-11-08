@@ -32,6 +32,12 @@ and the interfaces further down.
 
 ## Checked when a value comes in
 
+Cesia checks a written type *while the program runs*, at the place where a value comes in, and `cesia check` adds what it
+can tell before: a value that surely can't fit. That is neither of the two common ways. Python's type hints are never
+checked when the program runs, only by a separate tool such as mypy, and TypeScript erases its types before the code
+runs; Java, Go and OCaml check every type before the program runs, *static typing*, and refuse a program they can't
+prove. Cesia's types are closest to the *contracts* of Racket: a promise checked at the boundary it is written on.
+
 A field is checked when the struct is built and each time the field is written. A parameter is checked at each call, and a
 result each time the function gives one. A value of the wrong type is a bug: the program stops and says which name wanted
 what.

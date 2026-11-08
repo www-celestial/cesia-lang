@@ -146,7 +146,15 @@ The chapter [Errors](errors.md) shows how to use the `Ok` and the `Err` that `Fr
 | Methods | yes | no |
 | For | data you design | data that comes from outside |
 
-Both are as fast: a dictionary whose keys are written in the code is stored as a struct is.
+Both are read the same way. A struct holds its *shape*, the list of its field names shared by every struct of its kind,
+and an array of its values; a dictionary of up to 32 keys written in the code holds an array of keys shared by every
+dictionary made at that place. A field read keeps, at its line, the last shape it met and the place of the field in it,
+so in a loop it costs one comparison and one load: see [How Cesia works](internals.md#caches-at-each-site). A struct is
+also checked: its fields are known, so a typo is an error, and a type written on a field is checked at each write.
+
+A struct is a *nominal* type: a value is a `Point` because `Point` made it, not because it has an `X` and a `Y`. So a
+dictionary with the same keys doesn't fit the pattern `Point(x, y)`. Interfaces, in [Types](types.md#interfaces), are
+the other way round: *structural*, met by whatever has their methods.
 
 ## Next
 

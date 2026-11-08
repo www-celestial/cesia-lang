@@ -1,9 +1,12 @@
 # Fibers
 
 In this chapter you do several things at once: fetch pages while others load, serve many clients, keep a slow task from
-holding up a fast one. A [fiber](glossary.md#fiber) is a function that runs beside the rest of the program. Fibers are light: a program
-can run thousands of them. They take turns on one core: they run [concurrently](glossary.md#concurrency-and-parallelism),
-not in parallel, and the wait of one is time for the others.
+holding up a fast one. A [fiber](glossary.md#fiber) is a function that runs beside the rest of the program, with its own
+stack: what Go calls a goroutine, Java 21 a virtual thread, and others a *green thread*, a thread that the language runs
+rather than the system. Fibers are light, about 3.6 KB each: a program can run a hundred thousand of them. They take turns
+on one core: they run [concurrently](glossary.md#concurrency-and-parallelism), not in parallel, and the wait of one is
+time for the others. Unlike `async` in Python or JavaScript, nothing is marked: any function can wait, and the code
+that calls it doesn't change.
 
 ## Spawn and Wait
 
@@ -35,9 +38,11 @@ A fiber that waits lets the others run: [sys.Sleep], a read from the network, a 
 
 ### A long computation
 
-A long computation doesn't hold the others up either: Cesia moves between fibers as they run, which is called
-[preemptive scheduling](glossary.md#preemptive-scheduling). So a server keeps answering its other clients while one of them
-asks for a large report. The fiber here is a function without a name on several lines, from `defn ()` to `end`, as the chapter
+A long computation doesn't hold the others up either: every million steps, a call or a turn of a loop each, a fiber that
+computes gives way to the others that are ready, which is called [preemptive scheduling](glossary.md#preemptive-scheduling):
+nobody writes a yield, as Erlang counts its reductions. So a server keeps answering its other clients while one of them
+asks for a large report. It is not the preemption of a system thread, which a timer can stop anywhere: a function of
+`std/` written in OCaml, as a [list.Sort] of a million elements, runs to its end before another fiber gets its turn. The fiber here is a function without a name on several lines, from `defn ()` to `end`, as the chapter
 [Functions](functions.md) showed:
 
 ```cesia
@@ -231,10 +236,35 @@ defn worker(jobs)
 end
 ```
 
+### When every fiber waits
+
+When every fiber waits for another, and none waits for the clock, the network or a signal, nothing can ever wake them: a
+*deadlock*. Cesia stops the program at once, with the line of the wait, rather than hang:
+
+```cesia fails
+lonely = fiber.Channel()
+fiber.Receive(lonely)
+```
+
 ### Shared values
 
 Values in Cesia never change in place, they are [immutable](glossary.md#immutability), so two fibers can't break a value they share: a fiber that changes a list makes a new
-one, and the other fiber keeps what it had. A channel is the way to pass the new one on.
+one, and the other fiber keeps what it had. A channel is the way to pass the new one on. So there are no *data races*, two
+threads writing one memory at the same time, and no locks to take: a fiber runs alone between two of its waits, on one
+core.
+
+## Further reading
+
+- C. A. R. Hoare, *Communicating Sequential Processes*, 1978: the channels, and the meeting of a send and a receive that a
+  channel of size 0 is.
+- The Go Programming Language Specification: buffered channels, `close` and `select`, which Cesia follows, but for
+  [fiber.Select], which tries its channels in the order of its list where Go picks at random among the ready ones.
+- KC Sivaramakrishnan and others, *Retrofitting Effect Handlers onto OCaml*, 2021: what each fiber is inside.
+- Joe Armstrong, *A History of Erlang*, 2007: processes switched by counted steps.
+
+Each with its link in [References](references.md#fibers-and-channels); [How Cesia works](internals.md#fibers-and-the-scheduler)
+shows the scheduler, and [Speed](speed.md#fibers-beside-goroutines-async-and-virtual-threads) fibers beside goroutines,
+`async` and virtual threads.
 
 ## Next
 

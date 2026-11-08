@@ -56,6 +56,18 @@ text.Lines(result.Unwrap(sys.Read("done.txt"))) -->
 
 A text of several lines is written as it is: end each line with `\n`, or join them with [text.Join].
 
+### Replacing a file safely
+
+[sys.Write] empties the file, then writes the text. If the program or the machine stops in between, the file is left cut
+short. To replace a file that must never be seen half written, as a configuration or a saved state, write the new text
+to another file, then [sys.Rename] it over the old one: on Linux and macOS a rename within one file system is *atomic*,
+done all at once, so a reader finds either the old file or the new one, never a mix.
+
+```cesia allow=read,write
+sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n") -->
+sys.Rename("todo.txt.new", "todo.txt") -->
+```
+
 ## Folders
 
 [sys.Mkdir] makes a folder and the folders above it. [sys.List] gives the names in a folder, sorted. [sys.Rename] moves a file
@@ -95,7 +107,13 @@ path.Stem("photos/2026/beach.JPG") -->
 path.Join("photos/2026", "beach.jpg") -->
 ```
 
-A path is written with `/`, on Windows too, which takes it as well as `\`.
+A path is written with `/`, on Windows too, which takes it as well as `\`. [path.IsAbsolute] tells a path that starts
+from the top, `/` or a drive as `C:`, from one relative to the current folder:
+
+```cesia
+path.IsAbsolute("/tmp/a.txt") -->
+path.IsAbsolute("photos/a.jpg") -->
+```
 
 ### Every file under a folder
 
@@ -161,7 +179,8 @@ a.Words -->
 flags.Parse({i: false, max: 0}, ["--min", "2"]) -->
 ```
 
-A name of one letter is written with one dash, a longer one with two: `maxCount` is `--max-count`. In a program, the words
+A name of one letter is written with one dash, a longer one with two: `maxCount` is `--max-count`, which [flags.Name]
+gives: `flags.Name("maxCount")` is `"--max-count"`. In a program, the words
 are [sys.Args]: `flags.Parse({i: false, max: 0}, sys.Args)`.
 
 ## Standard input and the exit code
@@ -211,7 +230,9 @@ port = if value.IsMissing(given) 8080 else text.Number(given) end
 ## Other programs
 
 [sys.Run] runs a program to its end and gives its exit code, what it wrote, and its errors. It needs `--allow exec`, or
-`exec=git` for one program. The arguments are a list: no shell reads them, so a name with a space or a `;` stays one argument.
+`exec=git` for one program. The arguments are a list: no shell reads them, so a name with a space or a `;` stays one
+argument. This rules out *shell injection*: with a shell, as Python's `os.system`, a file named `x; touch owned` given as
+an argument would run the `touch`, a second command that nobody wrote.
 
 ```cesia norun
 use std/io
@@ -230,7 +251,8 @@ end
 with every program it started, as the commands of a shell. A program named by its path, as `./build.sh`, is the one of this
 program's folder, the one that `exec=./build.sh` allows, even when `dir` names another folder. For a
 program that keeps running, a server or a shell, [sys.Start] gives a process to write to and read from while it runs, with
-[sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit]. Its `dir` is the folder it runs in, as for [sys.Run].
+[sys.WriteInput], [sys.ReadOutput] and [sys.WaitExit]; [sys.CloseInput] closes its input, as the end of a file, and
+[sys.Stop] asks it to end, with the TERM signal. Its `dir` is the folder it runs in, as for [sys.Run].
 
 The programs started this way follow their program when it gets a stop signal. TERM, which a service manager sends to
 this program alone, goes on to each of them. INT and HUP come from a terminal, which sends them to every program it runs:
@@ -238,10 +260,16 @@ they reach the programs started by themselves, but a [sys.Run] with a `timeout`,
 A program that doesn't serve then ends at once, as it would without having started any; one that serves stops as the
 chapter [HTTP](http.md#stopping) says.
 
+Under `--watch`, a program that must save its state before it ends takes the signals itself: [sys.TakeStops]`(true)` makes
+TERM and INT no longer end it, and [sys.StopAsked] tells whether one came since its last call, for the program to end by
+itself; [sys.TakeStops]`(false)` gives them back.
+
 ## The clock
 
-[sys.Now] gives the time in seconds since 1970, as a float. The difference of two of them times a piece of code. [sys.Sleep]
-waits:
+[sys.Now] gives the time in seconds since 1970, in UTC, as a float with microseconds: the *wall clock* of the system,
+which the system may set forward or back, as when it corrects itself over the network. The difference of two of them
+times a piece of code, as long as the clock isn't set in between. [sys.Sleep] waits, and lets the other fibers run
+meanwhile:
 
 ```cesia
 start = sys.Now()
@@ -277,6 +305,17 @@ date.Parse("2026-11-06T14:30:00+03:00") then result.MapOk(date.Utc) then result.
 ```
 
 The time zone is the system's: `TZ=Asia/Tokyo cesia run app.ce` runs a program on the clock of Tokyo.
+
+[date.FromUnix] gives the date in UTC of a number of seconds since 1970, [date.AddSeconds] moves a date by seconds on its
+own clock, [date.DaysInMonth] and [date.IsLeap] answer for the calendar. The calendar is the *proleptic Gregorian* one,
+today's rules carried back before 1582, with days counted by Howard Hinnant's algorithms:
+
+```cesia
+date.FromUnix(86400) then date.FormatDate() -->
+date.AddSeconds(90, date.Date(2026, 1, 1)).Minute -->
+date.DaysInMonth(2024, 2) -->
+date.IsLeap(1900) -->
+```
 
 ## Next
 

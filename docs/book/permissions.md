@@ -1,7 +1,9 @@
 # Permissions
 
 In this chapter you decide what a program may touch: files, the network, other programs. A Cesia program can touch nothing
-outside itself until its command line allows it: it runs in a [sandbox](glossary.md#sandbox). You also set limits on how long it runs and how much memory it takes, so that
+outside itself until its command line allows it: it runs in a [sandbox](glossary.md#sandbox), a place where a program has
+only the rights it was given. Python, Node, Java and Go give a program every right of the user who runs it; Deno, a
+runtime of JavaScript, works as Cesia does, with no right by default and `--allow` flags. You also set limits on how long it runs and how much memory it takes, so that
 a program you don't trust, or a bug, can't harm the machine.
 
 ## Nothing by default
@@ -93,7 +95,7 @@ cesia run --limit memory=512M,steps=10000000 program.ce
 | Limit | Stops the program when |
 |---|---|
 | `memory=512M` | it holds more memory than that: `K`, `M` and `G` are its units |
-| `steps=1000000` | it has run that many steps, as a loop that never ends |
+| `steps=1000000` | it has run that many steps, as a loop that never ends: a step is a call or a turn of a loop, and a native counts about one step per 16 values it makes |
 | `depth=10000` | calls inside calls go deeper than that: the default is 10,000 |
 | `nesting=600` | code, JSON or values are nested deeper than that: the default is 600 |
 
@@ -106,6 +108,30 @@ A function that calls itself forever stops at the depth limit, with the line of 
 forever(n) = forever(n + 1) + 1
 forever(1)
 ```
+
+### Where the limits come from
+
+The steps and the depth are counted by the interpreter and by the machine code of the JIT alike, so a limit stops a
+program at the same step whichever runs it; the memory is the heap of OCaml, looked at every million steps and before
+each large allocation, as [How Cesia works](internals.md#memory-and-the-garbage-collector) explains. A limit reached
+stops the program with exit code 1. In a fiber, a memory or nesting limit stops that fiber only, as the request of a
+server; the steps belong to the whole program.
+
+## What Cesia's own commands may touch
+
+The commands of `cesia` that run Cesia code, as `cesia check` or `cesia lsp`, run it with these permissions only:
+
+| Command | Its permissions |
+|---|---|
+| `cesia check`, `cesia lsp` | `read` |
+| `cesia fmt` | `read,write` |
+| `cesia pkg` | `read,write,exec=git,env=HOME,env=XDG_CACHE_HOME` |
+| `cesia doc --site` | `read`, `write` in the site's folder, the cache and the folder of the book's programs, `exec` of this `cesia` and of the system's opener of pages, `env=CESIA_CORES` |
+| `cesia upgrade` | `read,write,net,exec,env=HOME,env=CESIA_RELEASES,ffi=ssl,ffi=crypto,debug` |
+| `cesia test` | per test, as below |
+
+A test of `cesia test` may read the project, write in its own temporary folder, and use `net=own`; the `allow` of `[test]`
+in `cesia.toml` and `--allow` add to that, as [Tests](tests.md) shows.
 
 ## Running someone else's code
 

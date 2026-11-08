@@ -2,6 +2,19 @@
 
 Every command of `cesia`, and every option. `cesia` alone prints the short form of this page.
 
+## Exit codes
+
+The *exit code* of a command is the number it gives back to the shell or the program that started it: `$?` in a shell.
+
+| Code | When |
+|---|---|
+| `0` | all went well |
+| `1` | an error stopped the program: a syntax error, a panic, a denied permission, a limit reached; or a test failed, or `cesia check` found an error |
+| `2` | the command line is wrong: an unknown option, a bad value of `--limit` or `--workers`, a file that can't be read |
+| `3` | an internal error of Cesia itself, a bug to report |
+| `128 + N` | a second stop signal ended the program at once: 130 for INT, 143 for TERM |
+| any other | the code a program gave to [sys.Exit] |
+
 ## cesia run
 
 ```bash
@@ -14,15 +27,16 @@ Runs a program. The words after the file are its arguments, in [sys.Args].
 |---|---|
 | `--allow LIST` | the permissions, separated by commas: `read`, `write`, `net`, `exec`, `env`, `ffi`, `debug`, `all`, each with `=` and a scope if needed. See [Permissions](permissions.md). |
 | `--limit LIST` | the limits: `memory=512M`, `steps=N`, `depth=N`, `nesting=N`. See [Permissions](permissions.md). |
-| `--watch` | reloads the code at each save of one of its files, without stopping the program |
-| `--workers N` | serves on N processes, or one per core with `cores`, under a supervisor that starts again a worker that ends and replaces them all on HUP. See [Every core](http.md#every-core). Not with `--watch`, and not on Windows. |
+| `--watch` | reloads the code at each save of one of its files, without stopping the program: a change runs within 100 ms. A program that ended starts again at the next change |
+| `--workers N` | serves on N processes, from 1 to 1,024, or one per logical core with `cores`, under a supervisor that starts again a worker that ends and replaces them all on HUP. See [Every core](http.md#every-core) and [How Cesia works](internals.md#on-every-core). Not with `--watch`, and not on Windows. |
 | `--debugger FILE` | runs a debugger written in Cesia beside the program, and gives it the `debug` permission by itself: no `--allow debug`. `--debugger debugger` is the one that comes with Cesia. See [The prompt and the debugger](debug.md). |
 | `--repl` | opens a prompt beside the program, in the package of its main file: an expression shows its value, a function defined again replaces the program's own. Without a file, a prompt on an empty program. See [The prompt and the debugger](debug.md). |
 | `--no-spec` | runs without the versions of each function that Cesia makes for the types it sees: the results must be the same |
 | `--no-jit` | runs without native code, in the [interpreter](glossary.md#interpreter-and-jit) only |
 | `--seed N` | gives [std/random] the seed N, a whole number, in place of one from the system: the same seed gives the same numbers. [random.Seed] tells the seed of a run. |
 
-`cesia run .` runs all the files of the current folder as one program.
+`cesia run .` runs all the files of the current folder as one program. `cesia run --repl` without a file opens the prompt
+on an empty program. Without `--limit memory`, the limit is 80% of the machine's memory.
 
 ## cesia test
 
@@ -40,6 +54,11 @@ of a file. Ends with the code 1 when a test fails. See [Tests](tests.md).
 | `--update` | accepts the new and the changed [test.Snapshot]s of the tests that run |
 | `--allow LIST` | more permissions for the tests, as for `cesia run`, beyond those a test has by default |
 | `--no-spec` | runs without the versions of each function by type, as `cesia run --no-spec` |
+
+A project is tested in units side by side: each package with its test files, and each file that stands alone, as those of
+a `tests/` folder. Each unit runs in a `cesia test` of its own, as many at once as the machine has cores, each with its
+share of the memory limit; the files that `serial` of `[test]` names run alone, after the others. The option
+`--worker` is the one the runner gives each of those: it is not for the command line.
 
 ## cesia check
 
@@ -83,8 +102,10 @@ its `std/` and `deps/`. It needs the read and write permissions. Ends with the c
 cesia lsp
 ```
 
-A language server, for the editors that speak the Language Server Protocol: it reads their messages on its input and answers
-on its output. It shows what `cesia check` finds in an open file as it is typed, the documentation of the name under the
+A *language server*, for the editors that speak the Language Server Protocol, LSP, version 3.17: a program that an
+editor starts and talks to in JSON, so that one server gives every editor the errors, the documentation and the
+definitions of a language. It reads their messages on its input and answers on its output, and counts the positions in
+a line in UTF-16 code units, as the protocol says. It shows what `cesia check` finds in an open file as it is typed, the documentation of the name under the
 cursor, where a name is defined, and the names of a package after its dot. The editor starts it in the folder of the
 project, as [Editors](editors.md) shows for each one. It needs the read permission only.
 

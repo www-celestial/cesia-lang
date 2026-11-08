@@ -13,6 +13,15 @@ Any editor works, since a program is a text file. An editor that speaks the
 The editor starts `cesia lsp` in the folder of the project, the one that holds `cesia.toml`, and talks to it on its input and
 output. The server reads the files and never writes one. Below, each editor's few lines of configuration.
 
+## What the server speaks
+
+The protocol is LSP 3.17: messages of JSON, each after a `Content-Length` header. `cesia lsp` answers `initialize`,
+`shutdown` and `exit`; it takes the whole text of a file at each change, `textDocument/didOpen`, `didChange`, `didSave`
+and `didClose`, and checks the files that changed once the editor has been quiet for 50 ms, so typing checks once, then
+sends `textDocument/publishDiagnostics`, the marks under the code. It answers `textDocument/hover` with the documentation
+of a name, `textDocument/definition` with its place, and `textDocument/completion`, after a `.`, with the names of a
+package. Positions count UTF-16 code units, as the protocol does, so a line with an emoji is marked at the right place.
+
 ## Neovim
 
 The sources of Cesia hold `tools/editors/nvim/`: copy it into `~/.config/nvim/`. It gives Neovim the file type, the colours,

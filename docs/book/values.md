@@ -166,6 +166,23 @@ missing > 1 -->
 A comparison with `missing` is `missing` too, and `if` takes only `true` or `false`, so a test on a hole stops the program
 at that line instead of choosing a side by chance. [value.IsMissing] is the way to ask.
 
+### Asking what a value is
+
+[value.IsInt], [value.IsFloat], [value.IsNumber], [value.IsBool], [value.IsText], [value.IsArray], [value.IsDict],
+[value.IsStruct], [value.IsFunction] and [value.IsMissing] ask what kind a value is, and [value.IsEmpty] whether an array,
+a text or a dictionary has no element:
+
+```cesia
+value.IsInt(3) -->
+value.IsNumber(2.5) -->
+value.IsText("3") -->
+value.IsArray([1]) -->
+value.IsDict({A: 1}) -->
+value.IsBool(missing) -->
+value.IsFunction(value.Len) -->
+value.IsEmpty("") -->
+```
+
 ## Names
 
 `=` gives a name to a value: a [binding](glossary.md#binding). The same name can take another value later, of any kind. `+=`, `-=`, `*=` and `/=` change a number

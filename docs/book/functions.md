@@ -51,11 +51,22 @@ firstLong(["a"]) -->
 
 ### A function that calls itself
 
-A function can call itself:
+A function can call itself, which is called *recursion*:
 
 ```cesia
 factorial(n) = if n <= 1 1 else n * factorial(n - 1) end
 factorial(10) -->
+```
+
+Each call waits for the one it made, so the calls pile up: 10,000 at most by default, the `depth` limit of
+[Permissions](permissions.md#limit), past which the program stops at the line of the call. A call whose result is the
+function's own result, with nothing left to do after it, is in *tail position*: `countDown(n - 1)` below. A function that
+calls itself there runs as a loop, in one frame, so it has no depth limit. In `factorial`, the `n * ...` is left to do
+after the call, so that call is not in tail position.
+
+```cesia
+countDown(n) = if n == 0 "done" else countDown(n - 1) end
+countDown(1000000) -->
 ```
 
 ## Names inside a function
@@ -122,6 +133,17 @@ addTen(5) -->
 adder(100)(1) -->
 ```
 
+A closure keeps the *values* of those names, as they were when it was made, which is called *capture by value*. A name
+given another value later doesn't change the closure. In JavaScript and Python, a closure captures the *variable* itself,
+and sees its later values: there, the last line below would give 2.
+
+```cesia
+count = 1
+show = () -> count
+count = 2
+show() --> 1
+```
+
 ## Map, Filter and Reduce
 
 These three take a function first, and the list last. [list.Map] applies the function to each element, [list.Filter] keeps the elements
@@ -144,9 +166,24 @@ list.Count(x -> x > 2, numbers) -->
 list.FindFirst(x -> x > 2, numbers) -->
 ```
 
+### Functions of functions
+
+[std/fn] makes functions from functions. [fn.Compose] chains them, the last first; [fn.Complement] gives the opposite of a
+test; [fn.Juxt] gives the results of several functions on one value; [fn.Constantly] makes a function that gives one
+value whatever its argument, and [fn.Identity] gives its argument back:
+
+```cesia
+use std/fn
+fn.Compose(math.Inc, it * 2)(3) --> math.Inc(3 * 2)
+list.Filter(fn.Complement(math.IsOdd), numbers) -->
+fn.Juxt(list.Min, list.Max)(numbers) -->
+list.Map(fn.Constantly(0), numbers) -->
+fn.Identity(5) -->
+```
+
 ## it
 
-For a short function of one parameter, [it] saves writing it: an argument that holds `it` is a function of `it`.
+For a short function of one parameter, [it] saves writing it, as `it` does in Kotlin: an argument that holds `it` is a function of `it`.
 `list.Map(it * 2, numbers)` is short for `list.Map(x -> x * 2, numbers)`:
 
 ```cesia
@@ -157,7 +194,8 @@ list.Filter(it > 3, numbers) --> list.Filter(x -> x > 3, numbers)
 
 ## then
 
-[then] passes the value on its left to the call on its right. The value takes the place of an argument that is `it` alone;
+[then] passes the value on its left to the call on its right: a *pipeline operator*, as `|>` in F#, Elixir and
+OCaml. The value takes the place of an argument that is `it` alone;
 when there is none, it becomes the last argument. As the list comes last in these functions, a step only names what to do,
 so `it` alone is needed only where the value doesn't go last:
 
