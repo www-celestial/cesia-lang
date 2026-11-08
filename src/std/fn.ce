@@ -3,7 +3,9 @@
 use std/value
 use std/math
 
-(**   Identity(3) --> 3 *)
+(** Its argument, unchanged: the function to pass where a function is needed and nothing should change.
+
+      Identity(3) --> 3 *)
 Identity(x) = x
 (** A function that always gives x.
 
@@ -13,7 +15,9 @@ Constantly(x) = y -> x
 
       Compose(math.Inc, it * 2)(3) --> 7 *)
 Compose(f, g, h = Identity) = x -> f(g(h(x)))
-(**   Complement(math.IsEven)(3) --> true *)
+(** The function that gives not f(x): true where f gives false.
+
+      Complement(math.IsEven)(3) --> true *)
 Complement(f) = x -> not f(x)
 
 defn Juxt(f, g, h = missing)

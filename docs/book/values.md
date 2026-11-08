@@ -55,13 +55,29 @@ their value:
 1 == 1.0 -->
 ```
 
-Floats are those of your processor, so a decimal fraction is close, not exact. [math.Round] and [math.Floor] give whole numbers back:
+An integer has 63 bits: from -4,611,686,018,427,387,904 to 4,611,686,018,427,387,903. A result past them is an error, not a
+wrong number, and its message says to use a float. A float is a 64-bit *binary floating-point* number, the `double` of C,
+as the standard IEEE 754 defines it: about 15 to 17 significant decimal digits, up to about 1.8 × 10^308. It holds a
+fraction in base 2, so a decimal fraction such as `0.1` is close, not exact. [math.Round] and [math.Floor] give whole
+numbers back:
 
 ```cesia
 0.1 + 0.2 -->
 math.Round(2.5) -->
 math.Floor(2.7) -->
 ```
+
+A float division by zero follows IEEE 754 too: it gives an infinity, or `nan`, *not a number*, for `0.0 / 0.0`. `nan`
+equals nothing, not even itself:
+
+```cesia
+1 / 0 -->
+0.0 / 0.0 -->
+math.Nan == math.Nan --> false
+```
+
+[math.Div] and [math.Mod] work on integers, and their division by zero is an error, as the chapter
+[Errors](errors.md) shows.
 
 ## Texts
 
@@ -115,6 +131,14 @@ The chapter [Texts](texts.md) shows how to cut, search and join them.
 "apple" < "banana" -->
 ```
 
+Texts compare character by character, by their number in Unicode, the *code point*: every capital comes before every
+small letter, and `é`, 233, after `z`, 122. That is the order of [list.Sort] too.
+
+```cesia
+"Zoe" < "adam" -->
+"été" > "zoo" -->
+```
+
 `and` and `or` stop as soon as the answer is known, which is called
 [short-circuit evaluation](glossary.md#short-circuit-evaluation): in `false and f()`, `f` is never called.
 
@@ -136,7 +160,11 @@ instead of a wrong number:
 
 ```cesia
 1 + missing -->
+missing > 1 -->
 ```
+
+A comparison with `missing` is `missing` too, and `if` takes only `true` or `false`, so a test on a hole stops the program
+at that line instead of choosing a side by chance. [value.IsMissing] is the way to ask.
 
 ## Names
 
@@ -187,7 +215,9 @@ pattern, as the chapter [Choices and loops](choices.md) shows.
 
 ## Comments
 
-`(*` and `*)` hold a comment, on one line or several. `(**` opens a documentation comment: it describes the name it follows or
+`(*` and `*)` hold a comment, on one line or several, and a comment can hold another one, so a piece of code that holds
+comments can be put aside whole. `--` is no comment in Cesia: it is an error, which says to write `(* *)`. `(**` opens a
+documentation comment: it describes the name it follows or
 the one under it, and `cesia doc` shows it. The reference of this site is made from such comments.
 
 ```cesia
