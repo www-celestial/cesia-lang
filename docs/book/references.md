@@ -127,7 +127,7 @@ publisher moves it.
 - The Go Authors. Go 1.3 and Go 1.4 Release Notes, 2014. <https://go.dev/doc/go1.3>, <https://go.dev/doc/go1.4>, and the
   design document "Contiguous stacks", 2013. <https://go.dev/s/contigstacks>. A goroutine's stack starts at 2,048 bytes
   and is copied into a larger one when it fills: what Cesia's fibers are measured against, and why their stacks
-  start at 16 slots and double.
+  start at 8 slots and double.
 - Joe Armstrong. "A History of Erlang". *HOPL III*, ACM, 2007. <https://doi.org/10.1145/1238844.1238850>. Processes switched
   after a count of reductions, supervisors that start a failed process again, and code replaced while it runs: Cesia's
   checkpoints every million steps, the supervisor of `--workers`, and `--watch`.

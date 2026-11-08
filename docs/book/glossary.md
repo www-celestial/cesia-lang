@@ -302,7 +302,7 @@ predicts that reading each file once makes nearly all of the time go: see
 ## Fiber
 
 A function that runs beside the others in the same program, with its own stack, run by the language rather than by the
-system: also called a green thread, or a coroutine with a scheduler. Thousands of them cost little, about 2.5 KB each.
+system: also called a green thread, or a coroutine with a scheduler. Thousands of them cost little, about 2.1 KB each.
 They run one at a time on one core. In Cesia [fiber.Spawn] starts one and [fiber.Wait] waits for its end: see
 [Fibers](fibers.md) and [How Cesia works](internals.md#fibers-and-the-scheduler).
 

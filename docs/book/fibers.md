@@ -3,7 +3,7 @@
 In this chapter you do several things at once: fetch pages while others load, serve many clients, keep a slow task from
 holding up a fast one. A [fiber](glossary.md#fiber) is a function that runs beside the rest of the program, with its own
 stack: what Go calls a goroutine, Java 21 a virtual thread, and others a *green thread*, a thread that the language runs
-rather than the system. Fibers are light, about 2.5 KB each: a program can run a hundred thousand of them. They take turns
+rather than the system. Fibers are light, about 2.1 KB each: a program can run a hundred thousand of them. They take turns
 on one core: they run [concurrently](glossary.md#concurrency-and-parallelism), not in parallel, and the wait of one is
 time for the others. Unlike `async` in Python or JavaScript, nothing is marked: any function can wait, and the code
 that calls it doesn't change.

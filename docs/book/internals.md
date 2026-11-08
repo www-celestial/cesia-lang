@@ -134,7 +134,15 @@ machine number, in a register or a slot. A version for floats keeps its floats u
 
 A running function keeps its variables in a *frame*: a run of slots on a stack. Cesia has three stacks per fiber, one of
 values, one of integers and one of floats, so an unboxed number never needs a box to be stored. The stacks start at 4,096
-slots for the main program and 16 for a fiber, and double when they are full.
+slots for the main program and 8 for a fiber, and double when they are full.
+
+A text made by [string interpolation](glossary.md#string-interpolation) from a word and an integer, as `"key$k"`, is
+written in one piece: the word, then the digits, into a buffer the interpreter keeps, and the text copied out of it once.
+Made in three steps, the digits, a text of them, then a text of both, it took three allocations and three copies; one
+copy is the floor in OCaml without its unsafe functions, which Cesia's core never uses: a buffer becomes a text only by
+a copy. `bench/maps.ce` makes a million
+such keys: 277 ms before, 253 after, 1,830 million instructions before, 1,643 million after (the processor's counters,
+one run each). An integer shown alone, as `"$k"` or [io.Print], is made the same way.
 
 ### Steps and checkpoints
 
@@ -307,7 +315,8 @@ Each key of the trie carries its rank in the order of insertion, so [dict.Keys] 
 in, at any size.
 
 **Why the table first.** The benchmark `bench/maps.ce`, 500,000 text keys written then read, took 815 ms in the trie and
-takes 275 ms in the table (11 runs of each language, alternated, [Speed](speed.md#computing)): a read of the trie followed four or five nodes, each a miss of the processor's caches once the
+275 ms in the table, 258 since its keys are made in one copy (11 runs of each language, alternated,
+[Speed](speed.md#computing)): a read of the trie followed four or five nodes, each a miss of the processor's caches once the
 map outgrows them, 18.7 misses of the last level of cache an operation against 4.3 for Go and 3.7 for Python (counted by
 the processor's own counters); and every node, key and boxed integer was copied out of OCaml's young heap and marked
 again at each major cycle of its collector. The table holds a key in one entry and its integer value in an array of
@@ -458,6 +467,12 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 - the natives, functions of `std/` written in OCaml, as [text.Split]: they are machine code already;
 - `for x in xs` over the elements of a list, and a call through a value that reached five functions or more, or a
   function that captured variables;
+- a map read or written with a key computed as the program runs, as `m["key$k"]`, and the text built for it. Native code
+  never calls back into OCaml: nothing collects during a run, which lets the values it holds stay in registers, where the
+  collector couldn't find them to move them. The hash, the probe of the table, its growth and the new text would each
+  need such a call, with every value written back to its slot first and read again after; what native code could save
+  is the interpreter's own share of `bench/maps.ce`, a tenth of its time in its profile, and those calls would take much
+  of it back;
 - under a debugger, the functions that hold a breakpoint and the code you step through;
 - everything on arm64, as Apple's chips, for now: programs run in the interpreter there, with the same results.
 
@@ -499,8 +514,10 @@ back: a fiber that must wait performs the effect `Suspend`, and the handler arou
 fiber's work, its *continuation*, a value that can be resumed once. The handler stores it in the thing the fiber waits for,
 a channel, a timer, a socket, and returns to the scheduler. When the thing is ready, the continuation goes on the queue of
 fibers ready to run, and is resumed in its turn. A continuation holds the fiber's OCaml stack, which starts small and grows
-as needed: a new fiber takes about 320 words, 2.5 KB, as `tools/fiber-size.sh` measures, with its three stacks of 16
-slots. The main program is no fiber: it
+as needed: a new fiber takes about 270 words, 2.1 KB, as `tools/fiber-size.sh` measures, with its three stacks of 8
+slots; about 1 KB of it is the OCaml stack, which OCaml starts at 64 words and doubles at the fiber's first call. One
+handler, made once, serves every fiber: the effect carries the fiber that performs it, and the wake of a parked fiber is
+kept in the fiber's context, where [fiber.Cancel] finds it. The main program is no fiber: it
 keeps its own stack, and when it waits, it runs the scheduler itself until it is woken.
 
 The *scheduler* keeps one queue, first in, first out, of the fibers ready to run. A fiber runs until one of these:
