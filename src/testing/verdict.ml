@@ -77,8 +77,7 @@ let rewrite (fn : func) =
   let next = ref 0 in
   let fresh pos e = let id = !next in incr next; { id; pos; e } in
   let add test prop owner e kind =
-    Vec.add_last notes { test; prop; owner; text = show e; kind; sides = None };
-    Vec.length notes - 1
+    Vec.push notes { test; prop; owner; text = show e; kind; sides = None }
   in
   (* e becomes #note(k, e), in place. Gives the node that now holds what e held. *)
   let wrap k (e : expr) =

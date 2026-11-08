@@ -36,9 +36,6 @@ val share : t -> t
 (** No keys. *)
 val no_keys : keys
 
-(** These keys, with their hashes. *)
-val keys_of : t array -> keys
-
 (** These names as text keys, with their hashes. *)
 val names : string array -> keys
 
@@ -51,9 +48,6 @@ val record : keys -> t array -> t
 (** [index keys n h k]: the place of [k], of hash [h], among the first [n] keys, or -1. *)
 val index : keys -> int -> int -> t -> int
 
-(** [grow keys n k h]: the keys of a block of [n] and [k] after them: in place when [keys] allow it. *)
-val grow : keys -> int -> t -> int -> keys
-
 (** Keys made whole: every map that holds them has all of them, so a read can cache their places. *)
 val is_whole : keys -> bool
 
@@ -62,9 +56,6 @@ val extend : keys -> int -> t -> int -> keys
 
 (** [find m h k]: the value of [k], of hash [h], or [Undef]. *)
 val find : t -> int -> t -> t
-
-(** A copy of the array with one more element at its end. *)
-val append : 'a array -> 'a -> 'a array
 
 (** The values of a map of one block: [F] while every one is a float, [V] otherwise; [no_vals] of an empty or deep map. *)
 val no_vals : store
@@ -114,9 +105,6 @@ val drop : t -> int -> t -> t
 (** The keys and values, k1 v1 k2 v2..., in the order of insertion. Read only. *)
 val items : t -> t array
 
-(** Each key and its value, in no order. *)
-val iter : (t -> t -> unit) -> t -> unit
-
 (** A map of k1 v1 k2 v2...: a later key replaces the value and keeps the place. With the same keys as [like], in the same
     order and written alike, the map shares them. *)
 val of_items : ?like:keys -> t array -> t
@@ -129,5 +117,3 @@ val tree_insert : t -> t -> int -> dict -> dict
 
 (** The value of a key in a tree, or [Undef]. *)
 val tree_find : t -> dict -> t
-
-val tree_length : dict -> int

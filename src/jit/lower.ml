@@ -86,39 +86,44 @@ and unit_ = { versions : version Vec.t }
 (* What a block may assign, or [Unknown] for a construct the walk doesn't follow: then nothing is taken as invariant. *)
 exception Unknown
 
+(* Each expression of [e], [e] first, of the forms a loop that lowers holds; [f] says whether to go inside. *)
+let rec walk f (e : expr) =
+  if f e then begin
+    let w = walk f in
+    let ixs a = Array.iter (function Ix x -> w x | All -> ()) a in
+    match e.e with
+    | Field (x, _) | Neg x | Not x | Return { rvalue = Some x; _ } | Assign (_, x) -> w x
+    | Bin (_, x, y) | And (x, y) | Or (x, y) | Range (x, y) -> w x; w y
+    | If (c, y, n) -> w c; Array.iter w y; Array.iter w n
+    | Index (x, a, _) -> w x; ixs a
+    | Struct_lit { sfields; _ } -> Array.iter (fun (_, v) -> w v) sfields
+    | Call c -> w c.callee; Array.iter (fun (a : arg) -> w a.value) c.args
+    | Set { path; value; _ } -> w value; Array.iter (fun (s : step) -> match s.sk with Sindex (a, _) -> ixs a | Sfield _ -> ()) path
+    | For { iter; fbody; _ } -> w iter; Array.iter w fbody
+    | While { cond; body; _ } -> w cond; Array.iter w body
+    | _ -> ()
+  end
+
 (* With [sets] false, a variable written only through a path, as a cell of it, isn't counted. *)
-let rec assigned ?(sets = true) acc (e : expr) =
-  let assigned = assigned ~sets in
-  let blk acc b = Array.fold_left assigned acc b in
-  let ixs acc a = Array.fold_left (fun acc -> function Ix x -> assigned acc x | All -> acc) acc a in
-  match e.e with
-  | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | Hook _ -> acc
-  | Field (x, _) -> assigned acc x
-  | Struct_lit { sfields; _ } -> Array.fold_left (fun acc (_, v) -> assigned acc v) acc sfields
-  | Assign ({ b = Local j; _ }, v) -> assigned (j :: acc) v
-  | For { var = { b = Local j; _ }; iter; fbody; _ } -> blk (assigned (j :: acc) iter) fbody
-  | While { cond; body; _ } -> blk (assigned acc cond) body
-  | If (c, y, n) -> blk (blk (assigned acc c) y) n
-  | Set { root = { b = Local j; _ }; path; value } ->
-    let acc = if sets then j :: acc else acc in
-    assigned (Array.fold_left (fun acc (st : step) -> match st.sk with Sindex (a, _) -> ixs acc a | Sfield _ -> acc) acc path) value
-  | Return { rvalue = Some v; _ } -> assigned acc v
-  | Bin (_, x, y) | And (x, y) | Or (x, y) | Range (x, y) -> assigned (assigned acc x) y
-  | Neg x | Not x -> assigned acc x
-  | Index (x, a, _) -> ixs (assigned acc x) a
-  | Call c -> Array.fold_left (fun acc (a : arg) -> assigned acc a.value) (assigned acc c.callee) c.args
-  | _ -> raise Unknown
+let assigned ?(sets = true) acc e =
+  let acc = ref acc in
+  walk
+    (fun (x : expr) ->
+       (match x.e with
+        | Assign ({ b = Local j; _ }, _) | For { var = { b = Local j; _ }; _ } -> acc := j :: !acc
+        | Set { root = { b = Local j; _ }; _ } -> if sets then acc := j :: !acc
+        | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | Hook _ | Field _ | Struct_lit _ | While _ | If _
+        | Return { rvalue = Some _; _ } | Bin _ | And _ | Or _ | Range _ | Neg _ | Not _ | Index _ | Call _ -> ()
+        | _ -> raise Unknown);
+       true)
+    e;
+  !acc
 
 let math = [ "Sqrt", "sqrt"; "Exp", "exp"; "Log", "log"; "Sin", "sin"; "Cos", "cos"; "Tan", "tan"; "Asin", "asin";
              "Acos", "acos"; "Atan", "atan" ]
 
-let reg st k =
-  Vec.add_last st.kinds k;
-  Vec.length st.kinds - 1
-
-let block st =
-  Vec.add_last st.blocks { Ir.ins = []; term = Return (Int 0) };
-  Vec.length st.blocks - 1
+let reg st k = Vec.push st.kinds k
+let block st = Vec.push st.blocks { Ir.ins = []; term = Return (Int 0) }
 
 (* Something of the current statement shows: a guard can't send it back to the interpreter any more. *)
 let shows st =
@@ -182,13 +187,10 @@ let goto st l =
 (* With a debugger, the outermost frame of a unit writes its variables back on an error; an inlined or called one keeps
    them in registers, and a stop shows none of its own. *)
 let site st pos =
-  Vec.add_last st.sites (pos, st.ver, (if st.inl = [] && st.index = 0 then st.live else Bytes.empty), st.inl <> [] || st.index > 0);
   Vec.add_last st.chains st.inl;
-  Vec.length st.sites - 1
+  Vec.push st.sites (pos, st.ver, (if st.inl = [] && st.index = 0 then st.live else Bytes.empty), st.inl <> [] || st.index > 0)
 
-let point st l =
-  Vec.add_last st.resumes l;
-  Vec.length st.resumes - 1
+let point st l = Vec.push st.resumes l
 
 (* A tick can leave the run only in no loop of the function, or as the tick of a loop in no other. *)
 let outer st = st.loops = []
@@ -328,17 +330,11 @@ let unseen st = if st.ctx = None then raise No else raise Unseen
 
 (* A constant whose first field native code reads, in a value slot after the frame: one per value of that field. *)
 let const st (v : t) =
-  let first = function
-    | Dict { keys; _ } -> Some (`K keys)
-    | Struct { shape; _ } -> Some (`S shape)
-    | Fun { proto; _ } -> Some (`P proto)
-    | _ -> None
-  in
   let same a b =
-    match first a, first b with
-    | Some (`K x), Some (`K y) -> x == y
-    | Some (`S x), Some (`S y) -> x == y
-    | Some (`P x), Some (`P y) -> x == y
+    match a, b with
+    | Dict { keys = x; _ }, Dict { keys = y; _ } -> x == y
+    | Struct { shape = x; _ }, Struct { shape = y; _ } -> x == y
+    | Fun { proto = x; _ }, Fun { proto = y; _ } -> x == y
     | _ -> false
   in
   let cs = st.dyn.consts in
@@ -1179,25 +1175,16 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
     st.arrays.(v) >= 0 && (let _, _, store, nd = Vec.get st.arr st.arrays.(v) in store = 0 && (n = 1 || nd = n)) in
   let plain a = Array.for_all (function Ix _ -> true | All -> false) a in
   let exprs a = Array.map (function Ix x -> x | All -> assert false) a in
-  let rec walk (e : expr) =
-    let blk b = Array.iter walk b in
-    let ixs a = Array.iter (function Ix x -> walk x | All -> ()) a in
-    (match e.e with
-     | Index ({ e = Var { b = Local v; _ }; _ }, a, false) when plain a && floats v (Array.length a) ->
-       found := (e.id, v, exprs a) :: !found
-     | Set { root = { b = Local v; _ }; path = [| { sk = Sindex (a, false); _ } |]; _ } when plain a && floats v (Array.length a) ->
-       found := (e.id, v, exprs a) :: !found
-     | _ -> ());
-    match e.e with
-    | Assign (_, v) | Neg v | Not v | Return { rvalue = Some v; _ } -> walk v
-    | Bin (_, x, y) | And (x, y) | Or (x, y) -> walk x; walk y
-    | If (x, y, n) -> walk x; blk y; blk n
-    | Set { value; path; _ } -> walk value; Array.iter (fun (s : step) -> match s.sk with Sindex (a, _) -> ixs a | Sfield _ -> ()) path
-    | Index (x, a, _) -> walk x; ixs a
-    | Call call -> Array.iter (fun (a : arg) -> walk a.value) call.args
-    | _ -> ()
-  in
-  Array.iter walk fbody;
+  Array.iter
+    (walk (fun (e : expr) ->
+         match e.e with
+         | Index ({ e = Var { b = Local v; _ }; _ }, a, false)
+         | Set { root = { b = Local v; _ }; path = [| { sk = Sindex (a, false); _ } |]; _ } when plain a && floats v (Array.length a) ->
+           found := (e.id, v, exprs a) :: !found;
+           true
+         | Field _ | Struct_lit _ | For _ | While _ | Range _ -> false
+         | _ -> true))
+    fbody;
   (* Fuel for every step left: h - c + 1. *)
   let n = t Add (t Sub (Reg h) (Reg c)) (Int 1) in
   let ok = block st in
@@ -1363,24 +1350,17 @@ and finish ?(numbers = []) ?(sunk = []) st name ~params ~vars =
     Vec.to_array st.sites )
 
 (* The local variables a loop names. *)
-let rec locals acc (e : expr) =
-  let blk acc b = Array.fold_left locals acc b in
-  let ixs acc a = Array.fold_left (fun acc -> function Ix x -> locals acc x | All -> acc) acc a in
-  match e.e with
-  | Var { b = Local j; _ } -> j :: acc
-  | Assign ({ b = Local j; _ }, v) -> locals (j :: acc) v
-  | For { var = { b = Local j; _ }; iter; fbody; _ } -> blk (locals (j :: acc) iter) fbody
-  | While { cond; body; _ } -> blk (locals acc cond) body
-  | If (c, y, n) -> blk (blk (locals acc c) y) n
-  | Set { root = { b = Local j; _ }; path; value } ->
-    locals (Array.fold_left (fun acc (st : step) -> match st.sk with Sindex (a, _) -> ixs acc a | Sfield _ -> acc) (j :: acc) path) value
-  | Return { rvalue = Some v; _ } -> locals acc v
-  | Bin (_, x, y) | And (x, y) | Or (x, y) | Range (x, y) -> locals (locals acc x) y
-  | Neg x | Not x | Field (x, _) -> locals acc x
-  | Index (x, a, _) -> ixs (locals acc x) a
-  | Call c -> Array.fold_left (fun acc (a : arg) -> locals acc a.value) (locals acc c.callee) c.args
-  | Struct_lit { sfields; _ } -> Array.fold_left (fun acc (_, v) -> locals acc v) acc sfields
-  | _ -> acc
+let locals acc e =
+  let acc = ref acc in
+  walk
+    (fun (x : expr) ->
+       match x.e with
+       | Var { b = Local j; _ } | Assign ({ b = Local j; _ }, _) | For { var = { b = Local j; _ }; _ }
+       | Set { root = { b = Local j; _ }; _ } -> acc := j :: !acc; true
+       | Assign _ | For _ | Set _ -> false
+       | _ -> true)
+    e;
+  !acc
 
 (* The variables an iteration of a loop may read before it assigns them: those whose values go from one iteration to the
    next. A statement other than an assignment counts every variable it names. *)
@@ -1397,24 +1377,6 @@ let carried (loop : expr) =
          acc
        | _ -> before (locals [] s) @ acc)
     first body
-
-(* Each expression of [e], [e] first, of the forms a loop that lowers holds; [f] says whether to go inside. *)
-let rec walk f (e : expr) =
-  if f e then begin
-    let w = walk f in
-    let ixs a = Array.iter (function Ix x -> w x | All -> ()) a in
-    match e.e with
-    | Field (x, _) | Neg x | Not x | Return { rvalue = Some x; _ } | Assign (_, x) -> w x
-    | Bin (_, x, y) | And (x, y) | Or (x, y) | Range (x, y) -> w x; w y
-    | If (c, y, n) -> w c; Array.iter w y; Array.iter w n
-    | Index (x, a, _) -> w x; ixs a
-    | Struct_lit { sfields; _ } -> Array.iter (fun (_, v) -> w v) sfields
-    | Call c -> w c.callee; Array.iter (fun (a : arg) -> w a.value) c.args
-    | Set { path; value; _ } -> w value; Array.iter (fun (s : step) -> match s.sk with Sindex (a, _) -> ixs a | Sfield _ -> ()) path
-    | For { iter; fbody; _ } -> w iter; Array.iter w fbody
-    | While { cond; body; _ } -> w cond; Array.iter w body
-    | _ -> ()
-  end
 
 (* Can variable [i] be a map the run never makes: assigned only by statements p = a[k] of the loop's body, [a] a list
    that [list] takes, and read only as p.Name. *)
@@ -1476,12 +1438,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
   let spec = Array.make f.nvars false in
   for i = 0 to f.nvars - 1 do
     match ver.tv.(i) with
-    | TI | TF ->
-      Vec.add_last kinds (kind_of ver.tv.(i));
-      regs.(i) <- Vec.length kinds - 1
-    | TFA when (if region then List.mem i named else i < np) && plain i ->
-      Vec.add_last arr (ver.map.(i), false, 0, 0);
-      arrays.(i) <- Vec.length arr - 1
+    | TI | TF -> regs.(i) <- Vec.push kinds (kind_of ver.tv.(i))
+    | TFA when (if region then List.mem i named else i < np) && plain i -> arrays.(i) <- Vec.push arr (ver.map.(i), false, 0, 0)
     | TA when region && plain i && List.mem i named ->
       let store =
         match ctx, written with
@@ -1495,12 +1453,9 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
           (match ctx.v.(ctx.b + ver.map.(i)) with Int _ -> Some Ir.Kint | Float _ -> Some Kfloat | _ -> None)
         | _ -> None
       in
-      if store >= 0 then begin
-        Vec.add_last arr (ver.map.(i), false, store, 0);
-        arrays.(i) <- Vec.length arr - 1
-      end else begin
-        Vec.add_last kinds (Option.value number ~default:Ir.Kval);
-        regs.(i) <- Vec.length kinds - 1;
+      if store >= 0 then arrays.(i) <- Vec.push arr (ver.map.(i), false, store, 0)
+      else begin
+        regs.(i) <- Vec.push kinds (Option.value number ~default:Ir.Kval);
         spec.(i) <- number <> None
       end
     | _ -> ()
@@ -1512,9 +1467,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
    | Some loop, Some (ctx : ctx) ->
      for i = 0 to f.nvars - 1 do
        if regs.(i) >= 0 && ver.tv.(i) == TA && (not spec.(i)) && (not (List.mem i crossing)) && not (List.mem i values) then begin
-         let r kd = Vec.add_last kinds kd; Vec.length kinds - 1 in
          let sink n carrier =
-           sunk.(i) <- Some { parts = Array.init n (fun _ -> r Ir.Kfloat); carrier };
+           sunk.(i) <- Some { parts = Array.init n (fun _ -> Vec.push kinds Ir.Kfloat); carrier };
            regs.(i) <- -1
          in
          match ctx.v.(ctx.b + ver.map.(i)) with
@@ -1530,11 +1484,7 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
        if regs.(i) >= 0 && ver.tv.(i) == TA && sunk.(i) = None && (not spec.(i)) && (not (List.mem i crossing))
           && (not (List.mem i values)) && numeric loop i kept then begin
          (* A number assigned in each turn before it is read, kept as one as a carried one is. *)
-         let number k =
-           Vec.add_last kinds k;
-           regs.(i) <- Vec.length kinds - 1;
-           spec.(i) <- true
-         in
+         let number k = regs.(i) <- Vec.push kinds k; spec.(i) <- true in
          match ctx.v.(ctx.b + ver.map.(i)) with
          | Float _ -> number Ir.Kfloat
          | Int _ -> number Kint

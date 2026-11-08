@@ -206,16 +206,9 @@ let decltypes lib stmt n =
       let p = c2 lib.decltype stmt k in
       p <> 0 && String.uppercase_ascii (cstring p) = "BOOLEAN")
 
-(* Does [text] hold [word], whatever the case of its letters? [word] is in small letters. *)
-let mentions text word =
-  let n = String.length word and m = String.length text in
-  let rec same i k = k = n || (Char.lowercase_ascii text.[i + k] = word.[k] && same i (k + 1)) in
-  let rec at i = i + n <= m && (same i 0 || at (i + 1)) in
-  at 0
-
 (* A system's SQLite may keep the pragmas temp_store_directory and data_store_directory, which would move its files past
    the check of the path. *)
-let no_directory ctx text = if mentions text "store_directory" then Runtime.fail ctx Type Messages.sql_store_directory
+let no_directory ctx text = if Native.find_from ~fold:true text "store_directory" 0 >= 0 then Runtime.fail ctx Type Messages.sql_store_directory
 
 (* One statement: text after it that holds another is an error, so none rides in on a value glued by hand. *)
 let statement ctx lib c text =

@@ -23,30 +23,11 @@ let int_native nname f =
       f1 = None; i2 = Some f; gives_result = false }
 
 (* The return types inference can know. *)
-let same_number (a : ty array) =
-  match a with
-  | [| TI |] -> TI
-  | [| TF |] -> TF
-  | [| TFA |] -> TFA
-  | _ -> TA
-
-let float_of_number (a : ty array) =
-  match a with
-  | [| (TI | TF) |] -> TF
-  | [| TFA |] -> TFA
-  | _ -> TA
-
-let scalar_of_fa (a : ty array) =
-  match a with
-  | [| TFA |] -> TF
-  | _ -> TA
-
+let same_number (a : ty array) = match a with [| (TI | TF | TFA) as t |] -> t | _ -> TA
+let float_of_number (a : ty array) = match a with [| (TI | TF) |] -> TF | [| TFA |] -> TFA | _ -> TA
+let scalar_of_fa (a : ty array) = match a with [| TFA |] -> TF | _ -> TA
 let fa_size (_ : ty array) = TFA
-
-let same_fa (a : ty array) =
-  match a with
-  | [| TFA |] -> TFA
-  | _ -> TA
+let same_fa (a : ty array) = match a with [| TFA |] -> TFA | _ -> TA
 
 (* The line is built apart: showing a long value can let another fiber run. *)
 let print ctx args =

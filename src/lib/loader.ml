@@ -1,8 +1,9 @@
 open Types
 
-let register_file w path src =
-  Vec.add_last w.files (path, src);
-  Vec.length w.files - 1
+let register_file w path src = Vec.push w.files (path, src)
+
+(* What the program printed, then OCaml's own standard output. *)
+let flush_all w = Runtime.flush_out w; flush stdout
 
 let source_of w path =
   let found = ref None in
@@ -108,7 +109,6 @@ let use_error ~file ~pos ~kind (m : Messages.t) =
 let read_module ~from ~pos upath path =
   try In_channel.with_open_bin path In_channel.input_all
   with Sys_error _ -> use_error ~file:from ~pos ~kind:"name" (Messages.use_unreadable upath)
-
 
 (* A library of Cesia: a module of std/ that isn't the language itself. *)
 let own_library name = if List.mem name Docs.language then None else std_source name
@@ -834,12 +834,7 @@ let guarded ?(strict = false) w body =
   let current () = Option.value w.sched.current ~default:ctx in
   (* A site keeps the source of its compilation: the file may have changed since. *)
   let report_at fiber ~text ~hint at = w.err (report_site fiber ~text ~hint at) in
-  let flushed f =
-    Runtime.flush_out w;
-    flush stdout;
-    f ();
-    1
-  in
+  let flushed f = flush_all w; f (); 1 in
   let limit_reached what at =
     flushed (fun () ->
         let m = Messages.limit what in
@@ -852,8 +847,7 @@ let guarded ?(strict = false) w body =
     (fun fiber e ->
        match e with
        | Value.Kerr { text; hint; at; _ } ->
-         Runtime.flush_out w;
-         flush stdout;
+         flush_all w;
          report_at fiber ~text ~hint at
        | Value.Limit { what = "memory"; at } -> ignore (limit_reached "memory" at)
        | _ -> ());
@@ -866,18 +860,14 @@ let guarded ?(strict = false) w body =
       flushed (fun () ->
           w.err (format_error ~source:(source_of w file) ~path:file ~pos ~text ~hint ~trace:[]))
     | Value.Kerr { text; hint; at; _ } -> flushed (fun () -> report_at (current ()) ~text ~hint at)
-    | Value.Quit code ->
-      Runtime.flush_out w;
-      flush stdout;
-      code
+    | Value.Quit code -> flush_all w; code
     | Value.Limit { what; at } -> limit_reached what at
     | Sys_error text -> flushed (fun () -> w.err ("cesia: " ^ text ^ "\n"))
     (* The OCaml stack or the system said no: that is a limit, not a bug. *)
     | Stack_overflow when not strict -> limit_reached "depth" (current ()).site
     | Out_of_memory when not strict -> limit_reached "memory" (current ()).site
   in
-  Runtime.flush_out w;
-  flush stdout;
+  flush_all w;
   code
 
 (* The prompt of cesia run --repl: its tool's Main runs as a fiber beside the program, which ends when it does. *)
@@ -911,8 +901,7 @@ let program ctx path args =
       match if path <> "" then load ctx path with
       | () -> 0
       | exception ((Value.Kerr _ | Pos.Load_error _) as e) ->
-        Runtime.flush_out w;
-        flush stdout;
+        flush_all w;
         Option.iter w.err (error_report ctx e);
         ctx.b <- 0;
         w.sched.current <- Some ctx;
@@ -953,8 +942,7 @@ let run_tool w name args =
         ctx.site <- 0;
         (match Compile.call_value ctx ~base:2 w.modules.(m).cells.(k) [||] with
          | Struct { shape = { sname = Some "Err"; _ }; fields = V [| e |]; _ } ->
-           Runtime.flush_out w;
-           flush stdout;
+           flush_all w;
            (* An error of the system, as sys.List gives it, shows its message. *)
            let shown = match e with Text _ -> e | _ -> Option.value (Dict.get ctx "Main" (Text "Message") e) ~default:e in
            w.err (Value.text_of ctx shown ^ "\n");

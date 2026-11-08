@@ -228,8 +228,7 @@ let from_root w path =
 (* The site a test starts from: no line of the program, which a trace leaves out. A test that stops in a loop before any
    call or native shows no place it doesn't know, and its first frame isn't called from a line. *)
 let no_place w =
-  Vec.add_last w.sites { sfile = 0; spos = Pos.make 1 1; sfn = ""; sver = None; soff = 0; slive = Bytes.empty; shidden = false };
-  Vec.length w.sites - 1
+  Vec.push w.sites { sfile = 0; spos = Pos.make 1 1; sfn = ""; sver = None; soff = 0; slive = Bytes.empty; shidden = false }
 
 let run_tests (ctx : ctx) st path (layout : Ast.layout) cells =
   let ran = ref [] in

@@ -337,19 +337,12 @@ let ready st ctx =
   if st.ffi = 0 then fail ctx Messages.c_no_ffi
 
 let description st = function
-  | Void -> ffi_type st.ffi 0
-  | U8 | Bool -> ffi_type st.ffi 1
-  | I8 -> ffi_type st.ffi 2
-  | U16 -> ffi_type st.ffi 3
-  | I16 -> ffi_type st.ffi 4
-  | U32 -> ffi_type st.ffi 5
-  | I32 -> ffi_type st.ffi 6
-  | U64 -> ffi_type st.ffi 7
-  | I64 -> ffi_type st.ffi 8
-  | F32 -> ffi_type st.ffi 9
-  | F64 -> ffi_type st.ffi 10
-  | Ptr | Text | Callback -> ffi_type st.ffi 11
   | Aggregate l -> l.description
+  | ty ->
+    ffi_type st.ffi
+      (match ty with
+       | Void -> 0 | U8 | Bool -> 1 | I8 -> 2 | U16 -> 3 | I16 -> 4 | U32 -> 5 | I32 -> 6 | U64 -> 7 | I64 -> 8 | F32 -> 9
+       | F64 -> 10 | Ptr | Text | Callback | Aggregate _ -> 11)
 
 let signature st ctx args ret fixed =
   match ffi_cif st.ffi (description st ret) (Array.map (description st) args) fixed with

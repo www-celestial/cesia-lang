@@ -16,6 +16,8 @@ let[@inline] add_last v x =
   v.items.(v.size) <- x;
   v.size <- v.size + 1
 
+let[@inline] push v x = add_last v x; v.size - 1
+
 let clear v = v.size <- 0
 let to_array v = Array.sub v.items 0 v.size
 let to_list v = Array.to_list (to_array v)

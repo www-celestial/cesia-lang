@@ -113,10 +113,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   (* With a debugger, the one block where every error writes the variables back for the stop, out of the loops, as the
      ticks' below. *)
   let error_used = ref false in
-  let error_block () =
-    error_used := true;
-    Printf.sprintf "%s%s_X" prefix name
-  in
+  let error_block () = error_used := true; Printf.sprintf "%s%s_X" prefix name in
   (* An error: the interpreter remakes its message from the operands, at the site, from this frame. *)
   let error ?(ixs = [||]) code site a bv =
     stub (fun s ->
@@ -158,10 +155,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   (* The one block that spills every variable and leaves at the point in xp: every tick that leaves goes there, so that
      MIR's allocator meets the variables' uses in one place, out of the loops. *)
   let leave_used = ref false in
-  let leave_block () =
-    leave_used := true;
-    Printf.sprintf "%s%s_L" prefix name
-  in
+  let leave_block () = leave_used := true; Printf.sprintf "%s%s_L" prefix name in
   (* A failed guard: back to the interpreter before that statement, through the block that spills and leaves. *)
   let bail_to k =
     stub (fun s ->

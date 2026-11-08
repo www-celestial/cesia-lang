@@ -82,6 +82,23 @@ let name text = { text; b = Unresolved }
 (* A name given a value: a variable, a parameter, a function, a struct, an interface, a loop variable or a pattern name. *)
 let bind p text pos = p.bound <- (text, pos) :: p.bound
 
+(* A name, or the error that says what was wanted. *)
+let[@inline] word p what = match (cur p).t with NAME n -> advance p; n | _ -> unexpected p what
+
+(* A name given a value here. *)
+let bound_name p what = let at = (cur p).pos in let n = word p what in bind p n at; n
+
+(* Items up to [close], each read by [item], separated by commas, a comma allowed before [close], which is passed. *)
+let comma_list p close item =
+  let out = ref [] in
+  while (cur p).t != close do
+    out := item p :: !out;
+    if (cur p).t == COMMA then advance p
+    else if (cur p).t != close then unexpected p (Printf.sprintf "\",\" or \"%s\"" (tok_text close))
+  done;
+  advance p;
+  List.rev !out
+
 let hook p pos = node p pos (Hook { live = Bytes.empty })
 
 (* The body of a short form: a single statement. *)
@@ -230,25 +247,16 @@ and in_func p fname fpos parse =
 
 (* NAME [TYPE] [= default]: a parameter, or a field of a struct in either form. *)
 and param p what =
-  match (cur p).t with
-  | NAME pname ->
-    advance p;
-    let ptype = match (cur p).t with NAME _ -> Some (value_type p) | _ -> None in
-    let default =
-      if (cur p).t == ASSIGN then begin
-        advance p;
-        Some (expr p)
-      end else None
-    in
-    { pname; default; ptype }
-  | _ -> unexpected p what
+  let pname = word p what in
+  let ptype = match (cur p).t with NAME _ -> Some (value_type p) | _ -> None in
+  let default = if (cur p).t == ASSIGN then (advance p; Some (expr p)) else None in
+  { pname; default; ptype }
 
 (* Point, geo.Point, and ? when it also takes missing. *)
 and type_ref p =
   let tpos = (cur p).pos in
-  let word () = match (cur p).t with NAME n -> advance p; n | _ -> unexpected p "a type" in
-  let first = word () in
-  let tpkg, tname = if (cur p).t == DOT then (advance p; Some first, word ()) else None, first in
+  let first = word p "a type" in
+  let tpkg, tname = if (cur p).t == DOT then (advance p; Some first, word p "a type") else None, first in
   let topt = (cur p).t == QUESTION in
   if topt then advance p;
   let tbang = (cur p).t == BANG in
@@ -265,17 +273,7 @@ and value_type p =
 and listed ?(binds = false) p opening close what =
   with_mode p Ignore (fun () ->
       expect p opening (Printf.sprintf "\"%s\"" (tok_text opening));
-      let out = ref [] in
-      while (cur p).t != close do
-        let at = (cur p).pos in
-        let q = param p what in
-        if binds then bind p q.pname at;
-        out := q :: !out;
-        if (cur p).t == COMMA then advance p
-        else if (cur p).t != close then unexpected p (Printf.sprintf "\",\" or \"%s\"" (tok_text close))
-      done;
-      advance p;
-      Array.of_list (List.rev !out))
+      Array.of_list (comma_list p close (fun p -> let at = (cur p).pos in let q = param p what in if binds then bind p q.pname at; q)))
 
 and params p = listed ~binds:true p LP RP "a parameter name"
 
@@ -326,16 +324,10 @@ and function_expr p pos =
 (* What a definition says before its parameters: (r Rect) Area, Rect.Square or a plain name. Gives the object as a parameter,
    the name inside the core, where a static method has the mark that Lexer.split_method reads, and the name to show. *)
 and definition_name p =
-  let word what =
-    match (cur p).t with
-    | NAME n -> advance p; n
-    | _ -> unexpected p what
-  in
+  let word what = word p what in
   if (cur p).t == LP then begin
     advance p;
-    let at = (cur p).pos in
-    let pname = word "a parameter name" in
-    bind p pname at;
+    let pname = bound_name p "a parameter name" in
     let sname = word "the name of a struct" in
     if (cur p).t == DOT then error p (cur p).pos Messages.method_foreign;
     expect p RP "\")\"";
@@ -525,12 +517,9 @@ and postfix p =
       go ()
     | DOT ->
       advance p;
-      (match (cur p).t with
-       | NAME n ->
-         advance p;
-         e := node p t.pos (Field (!e, n));
-         go ()
-       | _ -> unexpected p "a field name")
+      let n = word p "a field name" in
+      e := node p t.pos (Field (!e, n));
+      go ()
     | _ -> ()
   in
   go ();
@@ -538,39 +527,22 @@ and postfix p =
 
 and call_args p =
   with_mode p Ignore (fun () ->
-      let args = ref [] in
-      while (cur p).t != RP do
-        (match (cur p).t with
-         | NAME n when next_tok p == ASSIGN ->
-           advance p;
-           advance p;
-           args := { aname = Some n; value = expr p } :: !args
-         | _ -> args := { aname = None; value = expr p } :: !args);
-        if (cur p).t == COMMA then advance p
-        else if (cur p).t != RP then unexpected p "\",\" or \")\""
-      done;
-      advance p;
-      Array.of_list (List.rev !args))
+      Array.of_list
+        (comma_list p RP (fun p ->
+             match (cur p).t with
+             | NAME n when next_tok p == ASSIGN -> advance p; advance p; { aname = Some n; value = expr p }
+             | _ -> { aname = None; value = expr p })))
 
 and index_args p =
   with_mode p Ignore (fun () ->
       let saved_end = p.saw_end in
       p.saw_end <- false;
       p.in_index <- p.in_index + 1;
-      let out = ref [] in
-      while (cur p).t != RB do
-        if (cur p).t == COLON && (next_tok p == COMMA || next_tok p == RB) then begin
-          advance p;
-          out := All :: !out
-        end else out := Ix (expr p) :: !out;
-        if (cur p).t == COMMA then advance p
-        else if (cur p).t != RB then unexpected p "\",\" or \"]\""
-      done;
-      advance p;
+      let out = comma_list p RB (fun p -> if (cur p).t == COLON && (next_tok p == COMMA || next_tok p == RB) then (advance p; All) else Ix (expr p)) in
       p.in_index <- p.in_index - 1;
       let uses_end = p.saw_end in
       p.saw_end <- saved_end;
-      Array.of_list (List.rev !out), uses_end)
+      Array.of_list out, uses_end)
 
 (* A pattern. {a, b}, {x: p}, [a, b], a name, _, or a literal. *)
 and pattern p =
@@ -585,49 +557,23 @@ and pattern p =
   | NAME n -> bind p n t.pos; advance p; Pname (name n)
   | LB ->
     advance p;
-    with_mode p Ignore (fun () ->
-        let out = ref [] in
-        while (cur p).t != RB do
-          out := pattern p :: !out;
-          if (cur p).t == COMMA then advance p
-          else if (cur p).t != RB then unexpected p "\",\" or \"]\""
-        done;
-        advance p;
-        Parray (Array.of_list (List.rev !out)))
+    with_mode p Ignore (fun () -> Parray (Array.of_list (comma_list p RB pattern)))
   | LC ->
     advance p;
     with_mode p Ignore (fun () ->
-        let out = ref [] in
-        while (cur p).t != RC do
-          (match (cur p).t with
-           | NAME n ->
-             let at = (cur p).pos in
-             advance p;
-             if (cur p).t == COLON then begin
-               advance p;
-               out := (n, pattern p) :: !out
-             end else (bind p n at; out := (n, Pname (name n)) :: !out)
-           | _ -> unexpected p "a field name");
-          if (cur p).t == COMMA then advance p
-          else if (cur p).t != RC then unexpected p "\",\" or \"}\""
-        done;
-        advance p;
-        Pstruct (Array.of_list (List.rev !out)))
+        Pstruct
+          (Array.of_list
+             (comma_list p RC (fun p ->
+                  let at = (cur p).pos in
+                  let n = word p "a field name" in
+                  if (cur p).t == COLON then (advance p; n, pattern p) else (bind p n at; n, Pname (name n))))))
   | INT _ | FLOAT _ | TEXT _ | TRUE | FALSE | MISSING | MINUS -> Plit (unary p)
   | _ -> unexpected p "a pattern"
 
 (* After the name of a struct in a pattern, the current token being its parenthesis: its fields. *)
 and constructor p cpkg cname cpos =
   advance p;
-  with_mode p Ignore (fun () ->
-      let out = ref [] in
-      while (cur p).t != RP do
-        out := pattern p :: !out;
-        if (cur p).t == COMMA then advance p
-        else if (cur p).t != RP then unexpected p "\",\" or \")\""
-      done;
-      advance p;
-      Pcons { cpkg; cname; cargs = Array.of_list (List.rev !out); cpos })
+  with_mode p Ignore (fun () -> Pcons { cpkg; cname; cargs = Array.of_list (comma_list p RP pattern); cpos })
 
 (* The token after the ] or } matching the current token. *)
 and after_close p =
@@ -652,18 +598,9 @@ and struct_lit p pos =
 
 (* {"a": 1, 2: "b", (key): 3}: a key is a literal, or an expression in parentheses. *)
 and dict_lit p pos saved_index =
-  let items = ref [] in
-  while (cur p).t != RC do
-    let key = primary p in
-    expect p COLON "\":\"";
-    let value = expr p in
-    items := { aname = None; value } :: { aname = None; value = key } :: !items;
-    if (cur p).t == COMMA then advance p
-    else if (cur p).t != RC then unexpected p "\",\" or \"}\""
-  done;
-  advance p;
+  let pairs = comma_list p RC (fun p -> let key = primary p in expect p COLON "\":\""; key, expr p) in
   p.in_index <- saved_index;
-  let args = Array.of_list (List.rev !items) in
+  let args = Array.of_list (List.concat_map (fun (key, value) -> [ { aname = None; value = key }; { aname = None; value } ]) pairs) in
   (* Keys that are texts of the code, few and each once, make their keys once, as names do. *)
   let keys = List.filteri (fun i _ -> i mod 2 = 0) (Array.to_list args) in
   let text (a : arg) = match a.value.e with Ltext s -> Some s | _ -> None in
@@ -673,31 +610,16 @@ and dict_lit p pos saved_index =
   else node p pos (Call { callee = node p pos (Var { text = "#dict"; b = Unresolved }); args; self_tail = false })
 
 and fields_lit p pos saved_index =
-      let out = ref [] in
-      while (cur p).t != RC do
-        (match (cur p).t with
-         | NAME n ->
-           advance p;
-           expect p COLON "\":\"";
-           out := (n, expr p) :: !out
-         | _ -> unexpected p "a field name");
-        if (cur p).t == COMMA then advance p
-        else if (cur p).t != RC then unexpected p "\",\" or \"}\""
-      done;
-      advance p;
-      p.in_index <- saved_index;
-      node p pos (Struct_lit { sname = None; sfields = Array.of_list (List.rev !out) })
+  let fields = comma_list p RC (fun p -> let n = word p "a field name" in expect p COLON "\":\""; n, expr p) in
+  p.in_index <- saved_index;
+  node p pos (Struct_lit { sname = None; sfields = Array.of_list fields })
 
 (* struct Name { field, field = default }, or struct Name and a line end, then one field per line until end: a function
    that builds the struct. *)
 and struct_def p pos =
   if p.in_function then error p pos Messages.struct_nested;
   advance p;
-  let sname =
-    match (cur p).t with
-    | NAME n -> bind p n (cur p).pos; advance p; n
-    | _ -> unexpected p "a struct name"
-  in
+  let sname = bound_name p "a struct name" in
   let f =
     in_func p sname pos (fun () ->
         let ps = if p.toks.(p.i).t == NL then field_lines p else listed p LC RC "a field name" in
@@ -736,22 +658,12 @@ and field_lines p =
 and interface_def p pos =
   if p.in_function || p.depth > 1 then error p pos Messages.interface_nested;
   advance p;
-  let iname =
-    match (cur p).t with
-    | NAME n -> bind p n (cur p).pos; advance p; n
-    | _ -> unexpected p "an interface name"
-  in
+  let iname = bound_name p "an interface name" in
   let imethods =
     if p.toks.(p.i).t != NL then
       with_mode p Ignore (fun () ->
           expect p LC "\"{\"";
-          let out = ref [] in
-          while (cur p).t != RC do
-            out := iface_method p :: !out;
-            if (cur p).t == COMMA then advance p else if (cur p).t != RC then unexpected p "\",\" or \"}\""
-          done;
-          advance p;
-          !out)
+          comma_list p RC iface_method)
     else
       with_mode p Lines (fun () ->
           let out = ref [] in
@@ -765,9 +677,9 @@ and interface_def p pos =
              | _ -> unexpected p "the end of the line")
           done;
           advance p;
-          !out)
+          List.rev !out)
   in
-  node p pos (Interface { iname; imethods = Array.of_list (List.rev imethods) })
+  node p pos (Interface { iname; imethods = Array.of_list imethods })
 
 (* Name(params) and maybe its return type, with no body and no default. *)
 and iface_method p =
@@ -806,10 +718,7 @@ and array_lit p pos =
         | COMMA -> advance p; skip_nl p
         | FOR when !rows = [] && List.length !row = 1 ->
           advance p;
-          let cvar = match (cur p).t with
-            | NAME n -> bind p n (cur p).pos; advance p; name n
-            | _ -> unexpected p "a variable"
-          in
+          let cvar = name (bound_name p "a variable") in
           expect p IN "in";
           let csrc = expr p in
           let cguard =
@@ -935,11 +844,7 @@ and match_expr p pos =
   node p pos (Match { subject; arms = Array.of_list (List.rev !arms) })
 
 and for_expr p pos =
-  let var =
-    match (cur p).t with
-    | NAME n -> bind p n (cur p).pos; advance p; name n
-    | _ -> unexpected p "a variable"
-  in
+  let var = name (bound_name p "a variable") in
   expect p IN "in";
   let iter = expr p in
   let saved = p.loop in
@@ -1037,11 +942,7 @@ and stmt p =
     let default = Filename.basename upath in
     let ualias =
       match (cur p).t with
-      | NAME "as" ->
-        advance p;
-        (match (cur p).t with
-         | NAME n -> advance p; n
-         | _ -> unexpected p "a name")
+      | NAME "as" -> advance p; word p "a name"
       | _ -> default
     in
     node p start (Use { upath; ualias })
@@ -1084,25 +985,18 @@ and stmt p =
       advance p;
       skip_nl p;
       let rhs = expr p in
-      let read =
-        match e.e with
-        | Var n -> node p e.pos (Var (name n.text))
-        | _ -> e
-      in
-      assign_to pos (node p pos (Bin (op, read, rhs)))
+      match op with
+      | None -> assign_to pos rhs
+      | Some op ->
+        let read = match e.e with Var n -> node p e.pos (Var (name n.text)) | _ -> e in
+        assign_to pos (node p pos (Bin (op, read, rhs)))
     in
     match (cur p).t with
-    | ASSIGN ->
-      ignore (path e []);
-      let pos = (cur p).pos in
-      advance p;
-      skip_nl p;
-      let rhs = expr p in
-      assign_to pos rhs
-    | PLUSEQ -> update Add
-    | MINUSEQ -> update Sub
-    | STAREQ -> update Mul
-    | SLASHEQ -> update Div
+    | ASSIGN -> update None
+    | PLUSEQ -> update (Some Add)
+    | MINUSEQ -> update (Some Sub)
+    | STAREQ -> update (Some Mul)
+    | SLASHEQ -> update (Some Div)
     | _ -> e
 
 (* A name the file gives a value to can't be a package it uses: text = "hi" would hide text.Upper. The first one tells. *)

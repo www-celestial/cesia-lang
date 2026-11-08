@@ -107,7 +107,6 @@ and shape = {
     fit; [wrong] says, for a value that doesn't, what was wanted and what was found: "a Text or missing", "an Int". *)
 and check = { accept : t -> t; wrong : t -> string * string }
 
-
 and proto = {
   pname : string;
   mutable file : int;
@@ -121,7 +120,6 @@ and proto = {
 }
 
 and last_call = No_call | Last of { ltag : int; lver : version }
-
 
 and version = {
   owner : proto;

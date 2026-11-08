@@ -60,9 +60,6 @@ let start_test ~path ~file ~test =
   (* The numbers of a test, std/random's and its cases', come from the seed of the run and its name alone. *)
   Rand.restart (Int64.to_int (fnv (Printf.sprintf "%d\000%s\000%s" (Rand.seed ()) file test)))
 
-
-
-
 (* Past this many draws a case draws 0, which ends any generator that stops at 0. *)
 let most_draws = 100_000
 

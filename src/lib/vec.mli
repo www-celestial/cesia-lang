@@ -8,6 +8,9 @@ val get : 'a t -> int -> 'a
 val set : 'a t -> int -> 'a -> unit
 val get_last : 'a t -> 'a
 val add_last : 'a t -> 'a -> unit
+
+(** [add_last], then the index of the new item. *)
+val push : 'a t -> 'a -> int
 val clear : 'a t -> unit
 val to_array : 'a t -> 'a array
 val to_list : 'a t -> 'a list

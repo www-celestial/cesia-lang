@@ -3554,7 +3554,6 @@ let run_main (ctx : ctx) ~file ~m (fn : func) =
     fn.export_of;
   value
 
-
 (* A version from before a reload. Already compiled code, sometimes still running, calls it: it keeps its frame
    layout, rereads its arguments and goes back through the dynamic call, hence to the new code. *)
 let retire (old : version) =

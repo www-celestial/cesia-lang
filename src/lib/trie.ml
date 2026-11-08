@@ -855,13 +855,6 @@ let items m =
     o
   | _ -> [||]
 
-(* Each key of the map and its value, in no order. *)
-let iter f m =
-  match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> for i = 0 to nvals vals - 1 do f keys.ks.(i) (vget vals i) done
-  | Dict { keys = { deep = Deep d; _ }; _ } -> iter_node (fun _ k v -> f k v) d.root
-  | _ -> ()
-
 (* Two keys written the same way: the keys of a map can be shared with another only then, as 1 and 1.0 are one key but don't
    print alike. *)
 let alike a b = match a, b with Text x, Text y -> String.equal x y | Int x, Int y -> x = y | _ -> false

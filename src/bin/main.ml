@@ -344,7 +344,6 @@ let doc args =
          Loader.init w;
          Docs.command ~home:(Loader.home w) w args))
 
-
 (* cesia doc --site [folder] [--open]: the site of the project here, in its site/, or else of Cesia, in the cache. The tool
    gets the root of the project, the folder, the cache and the folder where the programs of the pages run, all from the top
    of the file system. Those programs run in the project's .cesia/site, as files of the project wherever the folder is, so
@@ -379,7 +378,6 @@ let create name =
   let code = tool "pkg" [ "install" ] in
   if code = 0 then print_endline (Messages.project_created name);
   exit code
-
 
 (* The JIT, loaded at the first unit that gets hot, never at start-up; missing or refused, programs run interpreted, and
    CESIA_JIT_SHOW says why. *)
