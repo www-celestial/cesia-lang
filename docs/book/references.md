@@ -79,6 +79,14 @@ publisher moves it.
 - Andreas Gal and others. "Trace-based Just-in-Time Type Specialization for Dynamic Languages". *PLDI 2009*, 465–478.
   <https://doi.org/10.1145/1542476.1542528>. The tracing JIT, which compiles one hot path through the program. Cesia
   compiles whole functions and loops instead, with guards, which keeps its speed steady on code full of branches.
+- Stephen J. Fink, Feng Qian. "Design, Implementation and Evaluation of Adaptive Recompilation with On-Stack
+  Replacement". *CGO 2003*, IEEE, 241–252. <https://researchr.org/publication/FinkQ03>. Entering optimized code in the
+  middle of a running loop through an entry that rebuilds its state and goes to the loop's head: Cesia's machine code is
+  entered before a loop, whatever brought the run back, never in its body.
+- Benoit Boissinot, Alain Darte, Fabrice Rastello, Benoît Dupont de Dinechin, Christophe Guillon. "Revisiting Out-of-SSA
+  Translation for Correctness, Code Quality and Efficiency". *CGO 2009*, IEEE, 114–125.
+  <https://dblp.org/rec/conf/cgo/BoissinotDRDG09>. Leaving SSA form puts a copy on each path into a block where versions of
+  a variable meet, which only coalescing takes away: why a loop entered in its middle copied every variable at each turn.
 - Vladimir Makarov. MIR, a lightweight JIT compiler. <https://github.com/vnmakarov/mir>, and "MIR: A lightweight JIT
   compiler project", Red Hat Developer, 2020.
   <https://developers.redhat.com/blog/2020/01/20/mir-a-lightweight-jit-compiler-project>. The backend that makes Cesia's

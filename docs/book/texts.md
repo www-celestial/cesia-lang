@@ -267,9 +267,9 @@ code (`z` before `e`, a capital or a digit before any small letter), eight bytes
 ([SWAR](glossary.md#swar)), and compares the part whole at each place where that byte is. With `fold`, when that byte is
 a letter, the eight bytes are first or'ed with 32, `0x20`: a capital and its small letter differ by that one bit only,
 so both become the small one, and no other byte becomes it. A part of 32 bytes or more is searched by the method of
-Knuth, Morris and Pratt, whose time is linear in the text whatever the part. A word
-at the end of a text of 100 MB is found in 39 ms, 41 ms with `fold`, against 317 ms for a lower-case copy of the text
-then a search; [Speed](speed.md#texts-and-files) puts these beside Python, Node and Go.
+Knuth, Morris and Pratt, whose time is linear in the text whatever the part. A word at the end of a text of 100 MB is
+found in 39 ms, 41 ms with `fold`, against 317 ms for a lower-case copy of the text then a search;
+[Speed](speed.md#texts-and-files) puts these beside Python, Node and Go.
 
 A search counts against `--limit steps` the bytes it read, from where it started to the end of what it found: finding
 the next line end of a large text, line after line, costs each line once, not the whole text each time.

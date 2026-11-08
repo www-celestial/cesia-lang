@@ -780,6 +780,14 @@ Making a separate version of a function for each combination of the types of its
 types: called customization in the language Self, where it began. A Cesia function has up to 8 versions, then a generic
 one: see [How Cesia works](internals.md#types-inference-and-versions).
 
+## SSA form
+
+Static single assignment: a form of code where each variable is assigned in one place only, so a compiler sees at once
+where each value comes from. Where two paths meet, as at the start of a loop, a *phi* picks the version of the path that
+came; leaving SSA for the machine puts a copy on each path into it. MIR, which makes Cesia's machine code, works so, and a
+loop of Cesia is entered only before it, so that its only meeting point holds only what the loop changes: see
+[How Cesia works](internals.md#what-it-makes).
+
 ## Standard input and output
 
 The text a program reads, and the text it writes, in a terminal or a pipe of the shell; the standard error is a second

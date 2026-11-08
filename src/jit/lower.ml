@@ -161,8 +161,9 @@ let point st l =
 (* A tick can leave the run only in no loop of the function, or as the tick of a loop in no other. *)
 let outer st = st.loops = []
 
-let tick st l =
-  let p = point st l in
+(* A tick, then on to [l]; the run comes back at [resume], [l] unless a block outside the loop says the same. *)
+let tick ?resume st l =
+  let p = point st (Option.value resume ~default:l) in
   emit st (Ir.Tick (p, outer st));
   goto st l;
   p
@@ -770,13 +771,15 @@ and stmt st (e : expr) =
     inner_loop st (fun () -> ignore (for_loop ~lo:(fst lo, fst hi) st e i fbody))
   | While { cond = c; body; _ } ->
     inner_loop st (fun () ->
-        let head = block st and inside = block st and exit = block st in
+        let pre = block st and head = block st and inside = block st and exit = block st in
+        goto st pre;
         goto st head;
+        (* The room before the test, so that the run comes back before it, outside the loop: a loop has one join. *)
+        if allocates st body then reserve ~resume:pre st;
         cond st c inside exit;
         st.cur <- inside;
-        if allocates st body then reserve st;
         loop_in st exit (fun () -> Array.iter (stmt st) body);
-        let p = point st head in
+        let p = point st pre in
         emit st (Ir.Tick (p, outer st));
         Vec.add_last st.infos (e.id, -1, -1, p);
         close st (Jump head);
@@ -834,11 +837,11 @@ and inner_loop st f =
   st.dyn.need <- None;
   if around <> None then reserve st
 
-(* Room for the allocations of a loop's step, checked once at its top, a resume point: there, when the young heap lacks it,
-   the run leaves and comes back once the interpreter's allocation collected. *)
-and reserve st =
-  let l = block st in
-  goto st l;
+(* Room for the allocations of a loop's step, checked once at its top: there, when the young heap lacks it, the run leaves
+   and comes back once the interpreter's allocation collected, at [resume], a block before the loop that leads to the same
+   place, else at a block of its own. *)
+and reserve ?resume st =
+  let l = match resume with Some l -> l | None -> let l = block st in goto st l; l in
   let need = ref 0 in
   emit st (Reserve (need, point st l));
   st.dyn.need <- Some need
@@ -891,7 +894,9 @@ and stmts st ~root (b : block) =
    loop). An innermost loop, with no loop and no call inside, also gets a fast copy, taken when, before it starts, the
    fuel covers all its steps and each index that is a + b·counter is proved inside its array at both ends, every part of
    it without overflow: that copy checks neither, and moves those indexes by their step. The checked copy runs
-   otherwise, and is where the loop comes back after leaving. Gives the block that tests the counter. *)
+   otherwise. A run that leaves comes back before the loop, through [decide], never into its body: the loop's one join is
+   its body's start, where only what the loop changes meets (Fink and Qian's entry at the head of a loop), so MIR puts no
+   copies of the other variables in it. Gives the block that tests the counter. *)
 and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   let r = var st i in
   if Vec.get st.kinds r <> Kint then raise No;
@@ -902,6 +907,7 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   let h = hidden st in
   let hslot = (Vec.get_last st.hidden).slot in
   let head = block st and decide = block st and body = block st and next = block st and inc = block st and exit = block st in
+  let again = block st and step = block st in
   (match lo with
    | Some (l, x) ->
      (* An empty range leaves the variable as it was, as the interpreter's loop never writes it: the counter, which may be
@@ -919,15 +925,21 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   close st (Branch (Gt, Kint, Reg c, Reg h, exit, decide));
   st.cur <- body;
   let points = Vec.length st.resumes and calls = st.ncalls in
-  if allocates st fbody then reserve st;
+  if allocates st fbody then reserve ~resume:decide st;
   if not own then emit st (Move (r, Reg c));
   loop_in st exit (fun () -> stmts st ~root fbody);
   let inner = Vec.length st.resumes = points && st.ncalls = calls in
-  Vec.add_last st.infos (e.id, cslot, hslot, tick st next);
+  Vec.add_last st.infos (e.id, cslot, hslot, tick ~resume:again st next);
   close st (Branch (Eq, Kint, Reg c, Reg h, exit, inc));
   st.cur <- inc;
   emit st (Incr c);
   close st (Jump body);
+  (* After a step, from outside: the same test and step, then the loop from its start. *)
+  st.cur <- again;
+  close st (Branch (Eq, Kint, Reg c, Reg h, exit, step));
+  st.cur <- step;
+  emit st (Incr c);
+  close st (Jump decide);
   st.cur <- decide;
   (match written with
    | Some written when inner -> fast_copy st e i c h fbody written ~root ~slow:body ~exit
@@ -1282,16 +1294,18 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
        close st Done;
        points := (point st head, 0)
      | While { cond = c; body; _ } ->
-       let head = block st and inside = block st and exit = block st in
+       let pre = block st and head = block st and inside = block st and exit = block st in
+       st.cur <- pre;
+       close st (Jump head);
        st.cur <- head;
+       if allocates st body then reserve ~resume:pre st;
        (* A guard of the test goes back to the test: the interpreter's loop again. *)
        st.dyn.bail <- Some (-1);
        cond st c inside exit;
        shows st;
        st.cur <- inside;
-       if allocates st body then reserve st;
        loop_in st exit (fun () -> stmts st ~root:true body);
-       let p = point st head in
+       let p = point st pre in
        emit st (Ir.Tick (p, true));
        Vec.add_last st.infos (loop.id, -1, -1, p);
        close st (Jump head);

@@ -289,7 +289,7 @@ Each key of the trie carries its rank in the order of insertion, so [dict.Keys] 
 in, at any size.
 
 **Why the table first.** The benchmark `bench/maps.ce`, 500,000 text keys written then read, took 815 ms in the trie and
-takes 292 ms in the table (11 runs of each language, alternated): a read of the trie followed four or five nodes, each a miss of the processor's caches once the
+takes 275 ms in the table (11 runs of each language, alternated, [Speed](speed.md#computing)): a read of the trie followed four or five nodes, each a miss of the processor's caches once the
 map outgrows them, 18.7 misses of the last level of cache an operation against 4.3 for Go and 3.7 for Python (counted by
 the processor's own counters); and every node, key and boxed integer was copied out of OCaml's young heap and marked
 again at each major cycle of its collector. The table holds a key in one entry and its integer value in an array of
@@ -336,6 +336,17 @@ registers, of three kinds, integer, float and value. It writes the IR as text fo
 [MIR](references.md#the-jit), a small compiler of Vladimir Makarov, written in C and copied into `src/sys/mir/`, which makes
 the machine code. Integers sit in registers doubled, `2n` for `n`, so that the processor's own overflow flag tells the
 63-bit overflow of Cesia's integers at no cost.
+
+**One join per loop.** The run of a loop's machine code can leave for the interpreter and come back: at a full
+checkpoint, when the collector must make room, or after a step that a failed guard left to the interpreter. Each of these
+comes back *before* the loop, where the same test of its counter and the same step lead into it, never into its body:
+the entry at the head of a loop of Fink and Qian, 2003. MIR works in *SSA form*, where each variable is assigned once and
+a *phi*, a merge of its versions, stands at each block where paths meet; leaving SSA puts a copy on each path into such
+a block (Boissinot and others, 2009). When the run came back into the body, every variable of the loop met there, at each
+turn, and MIR, which keeps most of them in stack slots, copied each from one slot to another: about 60 instructions a turn
+of `dyn` and of `structs`. Now only what the loop changes meets at the start of its body: `dyn` runs in 1,340 million
+instructions instead of 1,919, and 114 ms instead of 184; `structs` in 1,220 instead of 1,500, 187 ms instead of 225
+(11 runs each, alternated, beside main's binary).
 
 It compiles numbers and loops on them, arrays of floats and of values read and written by index, calls between compiled
 versions, recursion, in a loop the fields of maps and structs and new ones made there, and calls of a function held in a
@@ -393,22 +404,25 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 
 ### What it gains
 
-Measured on 2026-11-08, `release` profile, on the machine of [Speed](speed.md#beside-the-giants) while other work ran on
-it (load 1.3 to 4): each program of `bench/` 11 times with the JIT and 11 times with `CESIA_JIT=off`, alternated, from the
-start of the process to its end. The median, then its 95% interval:
+Measured on the evening of 2026-11-08, `release` profile, on the machine of [Speed](speed.md#beside-the-giants) while
+other work ran on it: each program of `bench/` 11 times with the JIT and 11 times with `CESIA_JIT=off`, alternated with
+the giants, from the start of the process to its end (`real/particles`, against main's binary, alternated). The median,
+then its 95% interval:
 
 | Program | What it does | With the JIT | Interpreter only |
 |---|---|---:|---:|
-| `fib` | `fib(35)`, recursive calls on integers | 73 ms (73–74) | 441 ms (438–446) |
-| `mandel` | a loop of floats | 63 ms (63–64) | 467 ms (463–473) |
-| `matmul` | matrices of floats, read by index | 49 ms (49–51) | 948 ms (942–975) |
-| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 219 ms (214–224) | 560 ms (548–578) |
-| `real/particles` | 1,000 structs, gravity and walls | 176 ms (174–192) | 746 ms (737–762) |
-| `dyn` | calls through a list of functions | 182 ms (181–188) | 708 ms (696–738) |
+| `fib` | `fib(35)`, recursive calls on integers | 73 ms (73–74) | 438 ms (436–470) |
+| `mandel` | a loop of floats | 61 ms (61–63) | 469 ms (468–477) |
+| `matmul` | matrices of floats, read by index | 47 ms (46–47) | 950 ms (938–1,093) |
+| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 186 ms (182–188) | 553 ms (546–571) |
+| `real/particles` | 1,000 structs, gravity and walls | 136 ms (135–139) | |
+| `dyn` | calls through a list of functions | 114 ms (112–115) | 720 ms (693–769) |
+| `maps` | 500,000 text keys written then read | 275 ms (272–278) | 278 ms (274–282) |
 
 `dyn` calls each function through a value, which the JIT now makes machine code with its inline cache of functions,
 and its `math.Mod(i, 2)` and `math.Mod(i, 4)` a mask of bits: before both, on the same day, it took 714 ms with the JIT, as
-long as without it.
+long as without it, then 182 ms before its loop was entered only at its head; `structs` took 219 and `real/particles`
+175. The loop of `maps` builds a text at each turn and stays in the interpreter: its gain is the hash table's.
 
 [Speed](speed.md#beside-the-giants) puts these programs beside Python, Node, Java, Go, OCaml, Lua and LuaJIT.
 

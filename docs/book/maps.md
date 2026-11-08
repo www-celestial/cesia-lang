@@ -186,7 +186,7 @@ The hash takes a seed drawn at each run, so nobody can send a server keys chosen
 [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie) shows the details.
 
 A dictionary that nothing else holds is changed in place, so the loop of [Counting](#counting) copies nothing. 500,000
-text keys written then read take 0.29 s, against 0.42 s for Python's `dict`, 0.31 s for Go's map and 0.23 s for Java's
+text keys written then read take 0.28 s, against 0.41 s for Python's `dict`, 0.27 s for Go's map and 0.22 s for Java's
 `HashMap`, as [Speed](speed.md#computing) measures.
 
 ## Further reading
