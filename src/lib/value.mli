@@ -57,6 +57,10 @@ val pay : ctx -> int -> unit
 (** Like [show], but a text stays raw: what [Print] and [Text] display. *)
 val text_of : ctx -> t -> string
 
+(** [Bytes.sub_string scratch 0 (digits at i)] is the text of [scratch] before [at], then the integer [i] in decimal. *)
+val scratch : Bytes.t
+val digits : int -> int -> int
+
 (** How a message names a value: [the text "a"], [the number 1]. *)
 val describe : t -> string
 

@@ -1824,6 +1824,17 @@ and interp c parts pos =
   let join pieces = try Text (String.concat "" pieces) with Out_of_memory | Invalid_argument _ -> too_long () in
   let two a b = if String.length a + String.length b > Sys.max_string_length then too_long () else Text (a ^ b) in
   match parts with
+  | [| Lit a; Hole e |] when ty c e == TI && String.length a <= 40 ->
+    (* A text and an integer, the commonest key: the digits written after the text, copied out once. *)
+    let h = ci c e and la = String.length a in
+    fun ctx ->
+      let n = h ctx in
+      ctx.site <- s;
+      Bytes.blit_string a 0 Value.scratch 0 la;
+      let t = Bytes.sub_string Value.scratch 0 (Value.digits la n) in
+      Runtime.reserve ctx (((String.length t - la) / 8) + 1);
+      Runtime.pay_bytes ctx (String.length t - la);
+      Text t
   | [| Lit a; Hole e |] -> let h = hole e in fun ctx -> two a (h ctx)
   | [| Hole e; Lit a |] -> let h = hole e in fun ctx -> two (h ctx) a
   | [| Hole e |] -> let h = hole e in fun ctx -> Text (h ctx)

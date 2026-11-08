@@ -122,33 +122,35 @@ let nested ctx depth =
 let pay ctx n = ctx.w.charge ctx ((n / 16) + 1)
 
 (* An integer in decimal, as string_of_int writes it, without C's printf: two digits by a division by 100, which the
-   compiler makes a multiplication, read from a table of the pairs. The work is on the negative side, where min_int fits. *)
+   compiler makes a multiplication, read from a table of the pairs. The work is on the negative side, where min_int fits.
+   The digits go to [scratch], then out in one copy, the one allocation; texts are made on the main domain only. *)
 let small_ints = Array.init 10 string_of_int
 let pairs = String.init 200 (fun j -> Char.chr (48 + if j land 1 = 0 then j / 20 else j / 2 mod 10))
+let scratch = Bytes.create 64
 
-let int_text i =
-  if i >= 0 && i < 10 then small_ints.(i)
-  else begin
-    let x = if i < 0 then i else -i and sign = if i < 0 then 1 else 0 in
-    let n = ref sign and p = ref x in
-    while !p <> 0 do incr n; p := !p / 10 done;
-    let b = Bytes.create !n and x = ref x and j = ref (!n - 1) in
-    while !x <= -100 do
-      let q = !x / 100 in
-      let r = (q * 100) - !x in
-      Bytes.set b !j pairs.[(2 * r) + 1];
-      Bytes.set b (!j - 1) pairs.[2 * r];
-      x := q;
-      j := !j - 2
-    done;
-    if !x <= -10 then begin
-      Bytes.set b !j pairs.[(-2 * !x) + 1];
-      Bytes.set b (!j - 1) pairs.[-2 * !x]
-    end
-    else Bytes.set b !j (Char.chr (48 - !x));
-    if sign = 1 then Bytes.set b 0 '-';
-    Bytes.to_string b
+(* The digits of [i] written in [scratch] from [at]: where they end. *)
+let digits at i =
+  let x = if i < 0 then i else -i and sign = if i < 0 then 1 else 0 in
+  let n = ref (sign + 1) and p = ref (x / 10) in
+  while !p <> 0 do incr n; p := !p / 10 done;
+  let b = scratch and x = ref x and j = ref (at + !n - 1) in
+  while !x <= -100 do
+    let q = !x / 100 in
+    let r = (q * 100) - !x in
+    Bytes.set b !j pairs.[(2 * r) + 1];
+    Bytes.set b (!j - 1) pairs.[2 * r];
+    x := q;
+    j := !j - 2
+  done;
+  if !x <= -10 then begin
+    Bytes.set b !j pairs.[(-2 * !x) + 1];
+    Bytes.set b (!j - 1) pairs.[-2 * !x]
   end
+  else Bytes.set b !j (Char.chr (48 - !x));
+  if sign = 1 then Bytes.set b at '-';
+  at + !n
+
+let int_text i = if i >= 0 && i < 10 then small_ints.(i) else Bytes.sub_string scratch 0 (digits 0 i)
 
 let rec show ctx v = show_at ctx 0 v
 
