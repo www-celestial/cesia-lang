@@ -48,6 +48,13 @@ and node =
           several share are in a node of the next level, its bit set in [nmap], in [kids] in the order of the bits. The
           arrays can be longer, room for the owner's next keys. *)
   | Same of dict  (** keys whose 30 bits of hash are all equal: a balanced tree, which no choice of keys slows down *)
+  | Table of table  (** the root of a deep map that no other map ever held, never below a node *)
+
+(** An insertion-ordered hash table, Python's compact dict: each of [tslots], a power of two at least twice the entries, is
+    0 or hash * 2^32 + entry + 1, found by linear probing from hash land (size - 1); the keys [tkeys] and values [tvals] of
+    the [tcount] entries in the order of insertion, [tvals] an [I] while every value is an integer. The first write that
+    must keep the old map, or a probe of a new key past 128 slots, turns it into the trie, in place and for good. *)
+and table = { mutable tslots : int array; mutable tkeys : t array; mutable tvals : store; mutable tcount : int }
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
 (** What a handle of std/fiber points to. *)

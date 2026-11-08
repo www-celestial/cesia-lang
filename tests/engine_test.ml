@@ -337,6 +337,51 @@ let () =
     (Trie.length !m = n && Trie.find !m 0 (Int 9_999) = Int 19_998 && (Trie.items !m).(2 * (n - 1)) = Int (n - 1)
      && Trie.length !d = n / 2 && Trie.find !d 0 (Int 0) = Undef && (Trie.items !d).(0) = Int (n / 2));
   Trie.mask := 0x3FFF_FFFF;
+  (* A deep map that only one name holds is a table: puts in place against a list of keys in their order, integer values
+     then texts, which change its store; and with few bits of hash, or none, its probes run long and it becomes the trie
+     while it is written. A copy taken by a persistent put keeps what it had while the table goes on. *)
+  let is_table m = match m with Dict { keys = { deep = Deep { root = Table _; _ }; _ }; _ } -> true | _ -> false in
+  let owned mask =
+    Trie.mask := mask;
+    let rng = Random.State.make [| 77 |] in
+    let key i = if i land 1 = 0 then Int i else Text ("t" ^ string_of_int i) in
+    let m = ref (Trie.empty ()) and l = ref [] and ok = ref true and table_at = ref false and snaps = ref [] in
+    for step = 1 to 20_000 do
+      let k = key (Random.State.int rng 3_000) in
+      let v = if step < 12_000 then Int step else Text (string_of_int step) in
+      m := Trie.put_owned !m (Trie.hash k) k v;
+      l := if List.exists (fun (k', _) -> Trie.same k k') !l then List.map (fun (k', x) -> if Trie.same k k' then k', v else k', x) !l
+        else !l @ [ (k, v) ];
+      if Trie.length !m <> List.length !l then ok := false;
+      if step mod 2_500 = 0 then begin
+        if Array.to_list (Trie.items !m) <> List.concat_map (fun (k, v) -> [ k; v ]) !l then ok := false;
+        List.iter (fun (k, v) -> if Trie.find !m (Trie.hash k) k <> v then ok := false) !l
+      end;
+      if step = 15_000 then begin
+        table_at := is_table !m;
+        let x = Text "snap" in
+        snaps := (Trie.put !m (Trie.hash x) x (Int step), (x, Int step) :: List.rev !l) :: (!m, List.rev !l) :: !snaps;
+        m := Trie.own_copy !m
+      end
+    done;
+    List.iter (fun (s, l) -> if Array.to_list (Trie.items s) <> List.concat_map (fun (k, v) -> [ k; v ]) (List.rev l) then ok := false) !snaps;
+    Trie.mask := 0x3FFF_FFFF;
+    !ok, !table_at
+  in
+  check "an owned table keeps keys, values and order, and a copy what it had" (owned 0x3FFF_FFFF = (true, true));
+  check "an owned table with few bits of hash" (fst (owned 0x3F));
+  check "an owned table of one hash becomes the trie" (owned 0 = (true, false));
+  let fresh n = let m = ref (Trie.empty ()) in for i = 0 to n - 1 do m := Trie.put_owned !m (Trie.hash (Int i)) (Int i) (Int i) done; !m in
+  let big = fresh 100_000 in
+  let before = Trie.items big in
+  let p = Trie.put big (Trie.hash (Int (-1))) (Int (-1)) (Int 0) in
+  check "a table written after it was shared becomes the trie, the same keys in the same order"
+    (is_table (fresh 33) && (not (is_table big)) && Trie.items big = before && Trie.length p = 100_001
+     && Trie.find p (Trie.hash (Int 99_999)) (Int 99_999) = Int 99_999 && Trie.find big (Trie.hash (Int (-1))) (Int (-1)) = Undef);
+  let items = Array.concat (List.init 100 (fun i -> [| Text ("o" ^ string_of_int (i mod 70)); Int i |])) in
+  let o = Trie.of_items items in
+  check "a map of items past a block is a table: a key twice keeps its first place and its last value"
+    (is_table o && Trie.length o = 70 && (Trie.items o).(0) = Text "o0" && Trie.find o (Trie.hash (Text "o5")) (Text "o5") = Int 75);
   let program = "use std/io\nf(x) = x + 1\nio.Print(f(1))\n" in
   let code, count = hooks program in
   check "no hooks without --debugger" (code = 0 && count = 0);

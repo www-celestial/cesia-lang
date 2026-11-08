@@ -216,6 +216,176 @@ let pack h rk = (rk lsl 30) lor h
 
 let empty_node = Champ { dmap = 0; nmap = 0; kv = [||]; hr = [||]; kids = [||]; ed = 0 }
 
+(* Set by a write when its key is new. *)
+let added = ref false
+
+(* The table of a deep map that nothing else ever held (Python 3.6's compact dict, after Raymond Hettinger): at most half
+   of [tslots] used, a key there is found in 1.5 probes on average and one that isn't in 2.5 (Knuth, vol. 3, 6.4), against
+   the four or five nodes of the trie; the entries in the order of insertion, which is the map's order. *)
+let low32 = 0xFFFF_FFFF
+
+(* Random keys don't run this far from the home slot of a new key: at this load, a simulation found 45 slots at most in ten
+   runs of a million keys, and 51 in two of four million. Such a probe means keys that fall together, and the map becomes
+   the trie, whose depth no choice of keys changes. *)
+let probe_limit = 128
+
+let[@inline] tget tv e = match tv with I d -> Int d.(e) | V d -> d.(e) | F d -> Float (Float.Array.get d e)
+
+(* Entry [e] set to [v]: an integer stays one in an [I] store; another value makes the store [V], once. *)
+let tset t e v =
+  match t.tvals, v with
+  | I d, Int i -> d.(e) <- i
+  | V d, _ -> d.(e) <- v
+  | tv, _ ->
+    let d = Array.make (Array.length t.tkeys) Undef in
+    for j = 0 to t.tcount - 1 do d.(j) <- tget tv j done;
+    d.(e) <- v;
+    t.tvals <- V d
+
+(* The slot of [key] from slot [i] on, or the first empty one: no closure, as a read must allocate nothing. *)
+let rec probe (slots : int array) (ks : t array) h key i =
+  let s = slots.(i) in
+  if s = 0 || (s lsr 32 = h && same ks.((s land low32) - 1) key) then i
+  else probe slots ks h key ((i + 1) land (Array.length slots - 1))
+
+let table_find t h key =
+  let s = t.tslots.(probe t.tslots t.tkeys h key (h land (Array.length t.tslots - 1))) in
+  if s = 0 then Undef else tget t.tvals ((s land low32) - 1)
+
+let rec settle (slots : int array) s i =
+  if slots.(i) = 0 then slots.(i) <- s else settle slots s ((i + 1) land (Array.length slots - 1))
+
+(* Twice the entries and twice the slots, the slots placed again from their hashes. *)
+let grow_table t =
+  let cap = 2 * Array.length t.tkeys in
+  let extend a fill = let b = Array.make cap fill in Array.blit a 0 b 0 t.tcount; b in
+  t.tkeys <- extend t.tkeys Undef;
+  t.tvals <- (match t.tvals with I d -> I (extend d 0) | V d -> V (extend d Undef) | tv -> V (Array.init cap (fun j -> if j < t.tcount then tget tv j else Undef)));
+  let slots = Array.make (2 * cap) 0 and mask = (2 * cap) - 1 in
+  for i = 0 to Array.length t.tslots - 1 do
+    let s = t.tslots.(i) in
+    if s <> 0 then settle slots s ((s lsr 32) land mask)
+  done;
+  t.tslots <- slots
+
+(* [key] set to [v] in place; false, and nothing changed, when the probe of a new key passes [probe_limit]. *)
+let table_put t h key v =
+  if t.tcount = Array.length t.tkeys then grow_table t;
+  let slots = t.tslots in
+  let home = h land (Array.length slots - 1) in
+  let i = probe slots t.tkeys h key home in
+  let s = slots.(i) in
+  if s <> 0 then (tset t ((s land low32) - 1) v; true)
+  else
+    (i - home) land (Array.length slots - 1) <= probe_limit
+    && begin
+      let e = t.tcount in
+      slots.(i) <- (h lsl 32) lor (e + 1);
+      t.tkeys.(e) <- key;
+      tset t e v;
+      t.tcount <- e + 1;
+      added := true;
+      true
+    end
+
+(* A table of the first [n] keys, hashes and values, in this order: a key twice keeps its first place and its last value.
+   None when a probe runs too long. *)
+let table_of (hs : int array) (ks : t array) (vs : t array) n =
+  let cap = ref 64 in
+  while !cap < n do cap := 2 * !cap done;
+  let rec ints i = i = n || (match vs.(i) with Int _ -> ints (i + 1) | _ -> false) in
+  let t = { tslots = Array.make (2 * !cap) 0; tkeys = Array.make !cap Undef; tvals = (if ints 0 then I (Array.make !cap 0) else V (Array.make !cap Undef)); tcount = 0 } in
+  let rec go i = i = n || (table_put t hs.(i) ks.(i) vs.(i) && go (i + 1)) in
+  if go 0 then Some t else None
+
+(* The six fragments of 5 bits of a hash in the other order, the first level's in the highest bits: sorted by it, the keys
+   under each node of the trie are next to each other, and those of each of its bits too. Its own inverse. *)
+let reversed h =
+  ((h land 31) lsl 25) lor (((h lsr 5) land 31) lsl 20) lor (((h lsr 10) land 31) lsl 15) lor (((h lsr 15) land 31) lsl 10)
+  lor (((h lsr 20) land 31) lsl 5) lor ((h lsr 25) land 31)
+
+(* The bits of [level] of a sorted entry, and its number. *)
+let[@inline] bits_at (b : int array) j level = (b.(j) lsr (32 + (5 * (levels - 1 - level)))) land 31
+let[@inline] entry_at (b : int array) j = b.(j) land low32
+
+(* The trie of a table, each node made once at its size. Each entry as its hash reversed * 2^32 + its number, sorted by a
+   radix sort of three passes of 10 bits, so the entries of a node of the trie are a run of the array: a bit of the node
+   with one entry holds it inline, a bit of more a node of the next level made from that run, and past the last level the
+   tree of equal hashes. The ranks are the entries' numbers. *)
+let to_trie t ed =
+  let n = t.tcount in
+  let a = Array.make n 0 and b = Array.make n 0 and c = Array.make 1024 0 and j = ref 0 in
+  Array.iter (fun s -> if s <> 0 then (a.(!j) <- (reversed (s lsr 32) lsl 32) lor ((s land low32) - 1); incr j)) t.tslots;
+  let pass shift (src : int array) (dst : int array) =
+    Array.fill c 0 1024 0;
+    for j = 0 to n - 1 do
+      let d = (src.(j) lsr shift) land 1023 in
+      c.(d) <- c.(d) + 1
+    done;
+    let sum = ref 0 in
+    for d = 0 to 1023 do
+      let x = c.(d) in
+      c.(d) <- !sum;
+      sum := !sum + x
+    done;
+    for j = 0 to n - 1 do
+      let d = (src.(j) lsr shift) land 1023 in
+      dst.(c.(d)) <- src.(j);
+      c.(d) <- c.(d) + 1
+    done
+  in
+  pass 32 a b;
+  pass 42 b a;
+  pass 52 a b;
+  let bounds = Array.init levels (fun _ -> Array.make 33 0) in
+  let rec node lo hi level =
+    if level >= levels then begin
+      let tree = ref Leaf in
+      for j = lo to hi - 1 do tree := tree_insert t.tkeys.(entry_at b j) (tget t.tvals (entry_at b j)) (entry_at b j) !tree done;
+      Same !tree
+    end else begin
+      (* The runs of the bits of this level, at most 32: their starts in [runs], the last one's end after them. *)
+      let runs = bounds.(level) and r = ref 0 and dmap = ref 0 and nmap = ref 0 and j = ref lo in
+      while !j < hi do
+        let f = bits_at b !j level and k = ref (!j + 1) in
+        while !k < hi && bits_at b !k level = f do incr k done;
+        if !k - !j = 1 then dmap := !dmap lor (1 lsl f) else nmap := !nmap lor (1 lsl f);
+        runs.(!r) <- !j;
+        incr r;
+        j := !k
+      done;
+      runs.(!r) <- hi;
+      let kv = Array.make (2 * popcount !dmap) Undef and hr = Array.make (popcount !dmap) 0 in
+      let kids = Array.make (popcount !nmap) empty_node and i = ref 0 and m = ref 0 in
+      for x = 0 to !r - 1 do
+        let j = runs.(x) and k = runs.(x + 1) in
+        if k - j = 1 then begin
+          let e = entry_at b j in
+          kv.(2 * !i) <- t.tkeys.(e);
+          kv.((2 * !i) + 1) <- tget t.tvals e;
+          hr.(!i) <- pack (reversed (b.(j) lsr 32)) e;
+          incr i
+        end else begin
+          kids.(!m) <- node j k (level + 1);
+          incr m
+        end
+      done;
+      Champ { dmap = !dmap; nmap = !nmap; kv; hr; kids; ed }
+    end
+  in
+  node 0 n 0
+
+(* The root of a deep map as a trie: a table becomes one in place, once and for good, when a write must keep the old map or
+   a probe ran too long. *)
+let trie_root (keys : keys) =
+  match keys.deep with
+  | Deep ({ root = Table t; _ } as d) ->
+    let r = to_trie t d.ded in
+    d.root <- r;
+    r
+  | Deep d -> d.root
+  | Flat -> empty_node
+
 let rec find_node node h key level =
   match node with
   | Champ n ->
@@ -227,6 +397,7 @@ let rec find_node node h key level =
     else if n.nmap land bit <> 0 then find_node n.kids.(place n.nmap bit) h key (level + 1)
     else Undef
   | Same t -> tree_find key t
+  | Table t -> table_find t h key
 
 let find m h key =
   match m with
@@ -320,7 +491,7 @@ let copy n ed =
   | Champ n ->
     let e = popcount n.dmap and k = popcount n.nmap in
     Champ { dmap = n.dmap; nmap = n.nmap; kv = Array.sub n.kv 0 (2 * e); hr = Array.sub n.hr 0 e; kids = Array.sub n.kids 0 k; ed }
-  | Same _ -> n
+  | Same _ | Table _ -> n
 
 (* The node of two entries of different keys whose hashes agree below [level]: inline, or a level further down, or past
    the last level the tree of equal hashes. *)
@@ -337,7 +508,6 @@ let rec pair k1 v1 r1 k2 v2 r2 level ed =
    mark. The mark [frozen] is a persistent write's: its nodes are never changed in place, so they share with the old node
    every array the write leaves as it was, and copy only the one it changes. [added]: set when the key is new; one flag
    for the module, as maps live on one domain (the parallel kernels never touch them), and a write never waits. *)
-let added = ref false
 let frozen = 0
 
 let rec put_node node h key v rk level ed =
@@ -355,7 +525,7 @@ let rec put_node node h key v rk level ed =
           else if ed = frozen then Champ { n with kv = Array.sub n.kv 0 (2 * popcount n.dmap); ed }
           else copy node ed
         in
-        (match c with Champ m -> m.kv.((2 * i) + 1) <- v | Same _ -> ());
+        (match c with Champ m -> m.kv.((2 * i) + 1) <- v | _ -> ());
         c
       end else begin
         (* Two keys of these 5 bits: both go a level down. *)
@@ -381,7 +551,7 @@ let rec put_node node h key v rk level ed =
         Champ { n with kids; ed }
       end else begin
         let c = copy node ed in
-        (match c with Champ m -> m.kids.(j) <- kid' | Same _ -> ());
+        (match c with Champ m -> m.kids.(j) <- kid' | _ -> ());
         c
       end
     end else begin
@@ -398,6 +568,7 @@ let rec put_node node h key v rk level ed =
     let u = tree_insert key v rk t in
     if tree_length u > tree_length t then added := true;
     Same u
+  | Table _ -> node (* a table is a root, which [trie_root] turns into a trie before a write reaches the nodes *)
 
 let rec iter_node f = function
   | Champ n ->
@@ -408,6 +579,7 @@ let rec iter_node f = function
       iter_node f n.kids.(j)
     done
   | Same t -> tree_iter f t
+  | Table t -> for e = 0 to t.tcount - 1 do f e t.tkeys.(e) (tget t.tvals e) done
 
 (* A new root of the mark [ed] with the [n] entries of these arrays, put in their order: a key twice keeps its first rank
    and its last value. Gives the root and the number of keys. *)
@@ -453,8 +625,8 @@ let deep root size next ded =
 let add_new ?(owned = true) keys vals n h key v =
   if n < width then Dict { keys = grow keys n key h; vals = append_v vals v; d_owned = owned }
   else begin
-    let ed = fresh () and all = Array.init (n + 1) Fun.id in
-    let root, _ = build (with_last keys.hs n h) (with_last keys.ks n key) (append vals v) all (n + 1) ed in
+    let hs = with_last keys.hs n h and ks = with_last keys.ks n key and vs = append vals v and ed = fresh () in
+    let root = match table_of hs ks vs (n + 1) with Some t -> Table t | None -> fst (build hs ks vs (Array.init (n + 1) Fun.id) (n + 1) ed) in
     deep root (n + 1) (n + 1) ed
   end
 
@@ -481,11 +653,11 @@ let put m h key v =
       vals.(i) <- v;
       Dict { keys; vals; d_owned = false }
     end else add_new ~owned:false keys vals n h key v
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
+  | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
     (* Both maps hold these nodes now: the old one must copy before it writes. *)
     ignore (share m);
     added := false;
-    let root = put_node d.root h key v d.next 0 frozen and ed = fresh () in
+    let root = put_node (trie_root keys) h key v d.next 0 frozen and ed = fresh () in
     if not !added then deep root d.size d.next ed
     else if d.next + 1 >= !rank_limit then deep (renumber root (d.size + 1) (d.next + 1) ed) (d.size + 1) (d.size + 1) ed
     else deep root (d.size + 1) (d.next + 1) ed
@@ -502,9 +674,11 @@ let put_owned m h key v =
       vals.(i) <- v;
       m
     end else add_new keys vals n h key v
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
+  | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
     added := false;
-    d.root <- put_node d.root h key v d.next 0 d.ded;
+    (match d.root with
+     | Table t when table_put t h key v -> ()
+     | _ -> d.root <- put_node (trie_root keys) h key v d.next 0 d.ded);
     if !added then begin
       d.size <- d.size + 1;
       d.next <- d.next + 1;
@@ -529,8 +703,8 @@ let own_copy m =
   | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
     Array.iter (fun x -> ignore (share x)) vals;
     Dict { keys; vals = Array.copy vals; d_owned = true }
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
-    Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root = d.root; size = d.size; next = d.next; order = d.order; ded = fresh () } }; vals = [||]; d_owned = true }
+  | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
+    Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root = trie_root keys; size = d.size; next = d.next; order = d.order; ded = fresh () } }; vals = [||]; d_owned = true }
   | _ -> m
 
 (* What a node is once a key left it: nothing, one entry that its parent takes inline, or more. *)
@@ -583,6 +757,7 @@ let rec drop_node node h key level =
   | Same t ->
     let u = tree_delete key t in
     if tree_length u = tree_length t then node else Same u
+  | Table _ -> node
 
 let drop m h key =
   match m with
@@ -594,8 +769,8 @@ let drop m h key =
       ignore (share m);
       Dict { keys = { ks = cut keys.ks n i 1 Undef; hs = cut_h keys.hs n i; used = whole; deep = Flat }; vals = cut vals n i 1 Undef; d_owned = false }
     end
-  | Dict { keys = { deep = Deep d; _ }; _ } ->
-    let root = drop_node d.root h key 0 in
+  | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
+    let root = drop_node (trie_root keys) h key 0 in
     if root != d.root then ignore (share m);
     if root == d.root then m else deep root (d.size - 1) d.next (fresh ())
   | _ -> m
@@ -648,8 +823,11 @@ let of_items ?(like = no_keys) (a : t array) =
   end else begin
     let hs = Array.init n (fun i -> hash a.(2 * i)) and ks = Array.init n (fun i -> a.(2 * i)) and vs = Array.init n (fun i -> a.((2 * i) + 1)) in
     let ed = fresh () in
-    let root, count = build hs ks vs (Array.init n Fun.id) n ed in
-    deep root count n ed
+    match table_of hs ks vs n with
+    | Some t -> deep (Table t) t.tcount t.tcount ed
+    | None ->
+      let root, count = build hs ks vs (Array.init n Fun.id) n ed in
+      deep root count n ed
   end
 
 let keys_of_map = function Dict { keys = { deep = Flat; _ } as keys; _ } when is_whole keys -> keys | _ -> no_keys

@@ -174,20 +174,24 @@ dict.Zipmap(["a", "b"], [1, 2]) -->
 
 ## How a dictionary is stored, and what it costs
 
-Up to 32 keys, a dictionary is one block: its keys in their order, beside their hashes, and its values. Past 32, it is a
-[hash array mapped trie](glossary.md#hash-array-mapped-trie) of the kind called [CHAMP](glossary.md#champ): a tree whose
-levels are chosen by 5 bits of each key's hash at a time, each node holding the keys that are alone at their 5 bits, so
-a read or a write takes about log₃₂ n steps, 3 for 30,000 keys, and a write copies only the few small nodes on the path
-to its key. That is how [dict.Put] can give a new dictionary and keep the old one, at a small cost.
+Up to 32 keys, a dictionary is one block: its keys in their order, beside their hashes, and its values. Past 32, while
+one name alone holds it, it is a [hash table](glossary.md#hash-table) in the order of insertion, as Python's `dict`: a
+read or a write takes a constant time on average, changed in place. Once it is shared and written, as by [dict.Put], it
+becomes, once and for good, a [hash array mapped trie](glossary.md#hash-array-mapped-trie) of the kind called
+[CHAMP](glossary.md#champ): a tree whose levels are chosen by 5 bits of each key's hash at a time, each node holding the
+keys that are alone at their 5 bits, so a read or a write takes about log₃₂ n steps, 3 for 30,000 keys, and a write
+copies only the few small nodes on the path to its key. That is how [dict.Put] can give a new dictionary and keep the old
+one, at a small cost; the change of form costs about 0.25 s for a million keys, once.
 The hash takes a seed drawn at each run, so nobody can send a server keys chosen to collide.
-[How Cesia works](internals.md#maps-a-hash-trie) shows the details.
+[How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie) shows the details.
 
-A dictionary that nothing else holds is changed in place, so the loop of [Counting](#counting) copies nothing. Beside
-Python's `dict`, a mutable hash table in C, a Cesia dictionary is slower to fill: 500,000 text keys written then read take
-0.8 s against 0.4 s, as [Speed](speed.md#computing) measures, the price of a structure that keeps its old versions.
+A dictionary that nothing else holds is changed in place, so the loop of [Counting](#counting) copies nothing. 500,000
+text keys written then read take 0.29 s, against 0.42 s for Python's `dict`, 0.31 s for Go's map and 0.23 s for Java's
+`HashMap`, as [Speed](speed.md#computing) measures.
 
 ## Further reading
 
+- Python 3.6's compact `dict`, after a design of Raymond Hettinger: the hash table of a dictionary that one name holds.
 - Phil Bagwell, *Ideal Hash Trees*, 2001: the hash array mapped trie; Michael J. Steindorfer and Jurgen J. Vinju,
   *Optimizing Hash-Array Mapped Tries for Fast and Lean Immutable JVM Collections*, 2015: CHAMP, its nodes.
 - Rich Hickey, *A History of Clojure*, 2020: persistent maps as a language's everyday dictionary.

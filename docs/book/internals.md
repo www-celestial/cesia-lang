@@ -170,7 +170,7 @@ either a small constant or a pointer to a block whose header says which case it 
 | a text | its bytes, in UTF-8, in a block that never changes |
 | a list, a matrix, an array | a size per dimension and one store of cells, column by column: floats, integers or values |
 | a struct | its *shape*, the names of its fields, shared by every struct of its kind, and an array of the values |
-| a map | see [Maps: a hash trie](#maps-a-hash-trie) |
+| a map | see [Maps: a hash table, then a hash trie](#maps-a-hash-table-then-a-hash-trie) |
 | a function | its code, and the values it captured |
 | a task, a channel, a connection | a *handle*: a kind and a number, which the system keeps track of |
 
@@ -212,18 +212,48 @@ The bit is never set back once cleared: a value that was shared is copied at its
 gone. That costs one copy, never a wrong result. A list made by [list.Append] keeps free cells behind its last one,
 doubled when they run out, so a loop of appends costs a constant time per element on average: an *amortized* constant.
 
-## Maps: a hash trie
+## Maps: a hash table, then a hash trie
 
 A map, which Cesia calls a dictionary, takes any number or text as a key. It is a
 [persistent data structure](glossary.md#persistent-data-structure): [dict.Put] gives a new map and leaves the old one as
-it was, and both share most of their memory. Its storage, in `src/lib/trie.ml`, has two forms.
+it was, and both share most of their memory. Its storage, in `src/lib/trie.ml`, has three forms, and a program sees
+none of them: the same keys, values, order, `==` and errors in each.
 
 **Up to 32 keys, one block.** The keys sit in the order they came in, beside their hashes, and the values in a second
 array. The maps made at one place of the code share their array of keys, as the structs of one kind share their shape:
 `{X: 1, Y: 2}` in a loop makes many maps with one array of keys. A field read then caches the place of its key, as for a
 struct. This sharing is the idea of *hidden classes*, from Self, where they were called maps, and from V8.
 
-**Past 32 keys, a hash array mapped trie**, a HAMT. A *hash* is a number computed from a key, the same for the same key;
+**Past 32 keys, while one name alone holds the map, a hash table.** A map that is *owned*, the bit of
+[copy-on-write](#value-semantics-and-copy-on-write), keeps its keys in an *insertion-ordered hash table*, the layout of
+Python's `dict` since 3.6, after a design of Raymond Hettinger. The entries sit in arrays in the order they came in, the
+keys in one and the values in another; the values are bare machine integers in an array of integers while all of them
+are integers, a *storage strategy* as Cesia's lists have (Bolz, Diekmann and Tratt, 2013), and a value of another kind
+turns that array into one of values, once. Beside the entries, an *index* of slots, a power of two at least twice the
+number of entries, each empty or holding the hash of an entry and its number. A key is found by *linear probing*: from
+the slot its hash names, the slots one after the other until the key, compared first by the hash in the slot, or an
+empty slot. At this half load, a key that is there takes 1.5 slots on average and one that isn't 2.5 (Knuth, *The Art
+of Computer Programming*, vol. 3, 6.4), all in one or two cache lines of the index, where the trie below follows four or
+five nodes. The order of the keys is free: it is the order of the entries.
+
+```text
+a map of 4 keys, its index of 8 slots
+slots     [  -  | h2 #2 |  -  | h0 #0 | h3 #3 |  -  | h1 #1 |  -  ]    each empty, or a hash and an entry's number
+entries   #0 "apple" -> 3   #1 "pear" -> 9   #2 "fig" -> 1   #3 "kiwi" -> 4    in the order they came
+```
+
+A write puts a new key at the end of the entries and in the first empty slot from its hash: in place, a constant time on
+average. When the entries are full, both arrays double and the slots are placed again from their hashes: an
+*amortized* constant time per key.
+
+**Once a map is shared and written, a hash array mapped trie**, a HAMT. A write that must keep the old map, as
+[dict.Put] on any map, or a write to a map that another name holds, first turns the table into the trie, in place and for
+good, with the same keys, values and order: the next writes then copy only a path, as below. It is built in one pass: each
+entry's hash, its six pieces of 5 bits reversed, is sorted by three passes of a *radix sort* (by 10 bits at a time,
+counting), so that the keys of each node of the trie are next to each other, and each node is made once at its size.
+That costs about 0.11 s for a million keys when they fit in the processor's caches and 0.25 s past them (109 and 245 ns a
+key, at 100,000 and 1,000,000 keys), once per map; a program that keeps old versions of a big map pays it at its first
+[dict.Put], then each Put costs a path. A *hash* is a number computed from a key, the same for the same key;
 a *trie* is a tree where each level is chosen by a piece of the key. In a HAMT, each level takes 5 bits of the key's hash,
 so a node has up to 32 places, kept compact by a 32-bit *bitmap* that says which places are used: the place of a key in
 the node's arrays is the number of bits set below its own, counted by a few operations on the word. Cesia uses 30 bits of
@@ -247,15 +277,24 @@ root: 32 places, each a node, by bits 1-5 of the hash
         └── place 12: a node of the 3 keys that share it
 ```
 
-When nothing else holds the map, its owned bit lets a write change its own nodes in place: each node carries the mark
-of the map that made it, and its arrays keep room for a few more keys, doubled when they fill, up to 32. A write to a
-map that is shared makes nodes of no mark, which nobody changes in place.
+When nothing else holds a map that became a trie, its owned bit lets a write change its own nodes in place: each node
+carries the mark of the map that made it, and its arrays keep room for a few more keys, doubled when they fill, up to 32.
+A write to a map that is shared makes nodes of no mark, which nobody changes in place.
 
 Before CHAMP, Cesia's deep maps ended in blocks of up to 8 keys, each made with room for 8 whatever it held: at 500,000
 keys, a level of blocks of one or two keys each, five levels deep, and a heap of 16 million words, 128 MB, where CHAMP's
 takes 7.7 million, with a fifth of the allocation (`bench/maps.ce`, the counters of OCaml's collector).
 
-The order of insertion is kept beside the trie, so [dict.Keys] gives the keys in the order they came in, at any size.
+Each key of the trie carries its rank in the order of insertion, so [dict.Keys] gives the keys in the order they came
+in, at any size.
+
+**Why the table first.** The benchmark `bench/maps.ce`, 500,000 text keys written then read, took 815 ms in the trie and
+takes 292 ms in the table (11 runs of each language, alternated): a read of the trie followed four or five nodes, each a miss of the processor's caches once the
+map outgrows them, 18.7 misses of the last level of cache an operation against 4.3 for Go and 3.7 for Python (counted by
+the processor's own counters); and every node, key and boxed integer was copied out of OCaml's young heap and marked
+again at each major cycle of its collector. The table holds a key in one entry and its integer value in an array of
+integers that the collector scans without following anything. A map is shared and then written far less often than it
+is built or read, and when it is, it becomes the trie that persistence needs, once.
 
 Three details matter for safety and for numbers:
 
@@ -263,7 +302,10 @@ Three details matter for safety and for numbers:
   send a server keys that all share one hash, and every read would walk them all: a *hash flooding* attack, a denial of
   service.
 - **Keys whose 30 bits of hash are all equal** go to a balanced binary tree, sorted by key, so even keys chosen to collide
-  cost O(log n), never O(n).
+  cost O(log n), never O(n). In the table, keys that fall together make long runs of full slots: a new key whose probe
+  passes 128 slots turns the map into the trie, which no choice of keys makes deeper. Random keys don't come near it: in a
+  simulation of our table at its load, the longest probe of an insert was 45 slots in ten runs of a million random keys,
+  and 51 in two runs of four million.
 - **`1` and `1.0` are one key**, as they are equal numbers: a number hashes by its value.
 
 ```cesia
@@ -545,6 +587,9 @@ running, on 2026-11-01.
 
 The [References](references.md) give each work with its link. The ones this chapter rests on:
 
+- the hash table of an owned map: Python 3.6's compact `dict`, after Hettinger; linear probing and its cost, Knuth, *The
+  Art of Computer Programming*, vol. 3, 6.4; its integer values, Bolz, Diekmann and Tratt, *Storage Strategies for
+  Collections in Dynamically Typed Languages*, 2013;
 - the hash trie: Bagwell, *Ideal Hash Trees*, 2001, and Clojure's persistent maps, after it;
 - versions by type, inline caches, hidden classes and deoptimization: the papers of Self, by Chambers, Ungar and Hölzle,
   1989 to 1994;

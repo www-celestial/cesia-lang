@@ -112,7 +112,7 @@ The compressed hash-array mapped prefix tree of Steindorfer and Vinju, 2015: a [
 trie](#hash-array-mapped-trie) whose nodes hold inline each key that no other key under them shares 5 bits of hash with,
 and a node of the next level for the bits that several share, with two bitmaps to tell which. It takes less memory than
 a trie with buckets and no node holds a lone key below it. A Cesia map past 32 keys is one: see
-[How Cesia works](internals.md#maps-a-hash-trie).
+[How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Checkpoint
 
@@ -371,14 +371,24 @@ file: see [Solving a real problem](duplicates.md#7-what-is-left).
 
 A HAMT: a tree where each level is chosen by 5 bits of a key's hash, so a node has up to 32 children, kept compact by a
 bitmap of those that exist. Phil Bagwell described it in 2001, and Clojure made its persistent maps of it. A Cesia map of
-more than 32 keys is one, of the kind called [CHAMP](#champ): a read follows about log₃₂ n levels, and a write copies
-only its path. See [How Cesia works](internals.md#maps-a-hash-trie).
+more than 32 keys becomes one, of the kind called [CHAMP](#champ), at its first write that must keep the old map: a read
+follows about log₃₂ n levels, and a write copies only its path. See
+[How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Hash flooding
 
 An attack that sends a program many keys of the same hash, so that each read of its hash table walks them all and the
 program slows to a halt: a denial of service. Cesia's hash takes a seed drawn at each run, and keys of one hash go to a
-balanced tree: see [How Cesia works](internals.md#maps-a-hash-trie).
+balanced tree: see [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
+
+## Hash table
+
+An array of *slots* where a key's hash names the slot to look in first, so a read or a write takes a constant time on
+average, whatever the number of keys. With *open addressing* and *linear probing*, a key whose slot is taken goes to the
+next free one, and a read walks the slots from the first until the key or a free slot; kept at most half full, that is
+1.5 slots for a key there and 2.5 for one that isn't. Python's `dict`, since 3.6, keeps its entries in a second array in
+the order they came, and its slots hold their numbers: an *insertion-ordered* table. A Cesia map of more than 32 keys that
+one name alone holds is one: see [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Hash function
 
@@ -402,7 +412,7 @@ are the risks; what does it cost; how long does it take; what are the exams that
 
 The layout of an object, the names of its fields and their places, shared by every object of the same shape, so that a
 field read can be one comparison and one load. Self called them maps, V8 hidden classes. A Cesia struct has its shape, and
-the maps made at one place of the code share their keys: see [How Cesia works](internals.md#maps-a-hash-trie).
+the maps made at one place of the code share their keys: see [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Higher-order function
 
@@ -598,8 +608,9 @@ Writing a byte that a URL can't hold as `%` and its two hexadecimal digits: a sp
 ## Persistent data structure
 
 A structure that keeps its old version when it changes, and shares most of its memory with the new one, by
-[structural sharing](#structural-sharing). A dictionary of Cesia is a hash trie, as in Clojure: [dict.Put] gives a new
-one that shares the rest with the old. See [Maps](maps.md) and [How Cesia works](internals.md#maps-a-hash-trie).
+[structural sharing](#structural-sharing). A big dictionary of Cesia that is shared is a hash trie, as in Clojure:
+[dict.Put] gives a new one that shares the rest with the old; while one name alone holds it, it is a hash table changed in
+place, which nobody else can see. See [Maps](maps.md) and [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Pike machine
 
@@ -658,6 +669,13 @@ see [Cryptography](crypto.md#encrypting-for-someone).
 A function whose result depends on its arguments only, and that does nothing else: no print, no file, no clock. A Cesia
 function can't change the values it is given: it is pure when it leaves the outside world alone. See
 [Functions](functions.md).
+
+## Radix sort
+
+A sort of numbers by their digits, one digit at a time from the lowest, each pass putting the numbers into buckets by
+that digit and keeping the order of the pass before inside each bucket: no comparison, a time proportional to the count
+of numbers times the count of digits. A Cesia map that turns from a hash table into a trie sorts its hashes so, by 10 bits
+at a time: see [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Recursion
 
@@ -774,6 +792,13 @@ Types checked before the program runs, for every variable and expression, as in 
 be proven right is refused. Cesia's types are checked when the program runs, and `cesia check` reports what it can prove
 wrong before: see [Types](types.md#checked-when-a-value-comes-in).
 
+## Storage strategy
+
+A collection that stores its elements by their kind, as bare machine numbers while all of them are numbers of one kind,
+and switches once, for good, to general storage when another kind arrives (Bolz, Diekmann and Tratt, 2013, from PyPy).
+Cesia's lists keep integers, floats or values so, and the hash table of a big map keeps its integer values bare: the
+program sees the same values either way. See [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
+
 ## String interpolation
 
 Values written inside a text, where they go. In Cesia `"Hello, $name"` and `"$(2 + 2)"`, which are short for [text.Str]: see
@@ -788,7 +813,7 @@ written wrong is an error: see [Structs](structs.md).
 
 Two versions of a persistent structure that share the parts they have in common, so that a change copies only what it
 touches. A write to a Cesia map copies the path of nodes to its key, at most 6 small arrays, and shares the rest: see
-[How Cesia works](internals.md#maps-a-hash-trie).
+[How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Structural typing
 
