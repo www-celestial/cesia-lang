@@ -1,0 +1,2 @@
+Slow by nature: hundreds of folders written, walked and read on each path, for three properties of 100 cases, a shrink
+and a fixed case. It would cost the change loop about 90 ms, so tools/check.sh runs it, past the change loop.

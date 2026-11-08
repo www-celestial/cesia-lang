@@ -388,8 +388,8 @@ The four functions whose names start with `is` are the tests of `dupes.test.ce`:
 steps before. Three of them are properties: [test.ForAll] makes 100 folders with the generator `folders`, each a list of up
 to 12 short texts of `a` and `b`, so that many texts have one size and many are equal, the empty text too; then it checks
 the way on each, against the groups known from the texts. That is QuickCheck's method, by Koen Claessen and John Hughes
-(2000), as the chapter [Tests](tests.md#properties) shows. `cesia test` runs them, and the repository runs this file at
-each of its test runs, on both paths of the engine:
+(2000), as the chapter [Tests](tests.md#properties) shows. `cesia test` runs them, and the repository of Cesia runs this
+file in each of its checks, on both paths of the engine:
 
 ```text
 $ cesia test --seed 1 dupes.test.ce
