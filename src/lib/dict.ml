@@ -8,8 +8,6 @@ let is_key = function
   | _ -> false
 
 let check ctx k = if not (is_key k) then Runtime.fail ctx Type (Messages.dict_key (Value.describe k))
-let length = Trie.length
-
 let find ctx k d =
   check ctx k;
   match Trie.tree_find k d with Undef -> None | v -> Some v
@@ -52,8 +50,6 @@ let drop ctx name k m =
     check ctx k;
     Trie.drop m (Trie.hash k) k
   | _ -> not_map ctx name m
-
-let add_name ctx m name x = put ctx "" (Text name) x m
 
 let items ctx name m =
   match m with

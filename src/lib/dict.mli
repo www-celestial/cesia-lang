@@ -11,9 +11,6 @@ val is_key : t -> bool
 (** Panics when the value can't be a key. *)
 val check : ctx -> t -> unit
 
-(** The number of keys of a map. *)
-val length : t -> int
-
 (** The value of a key in a tree used as a set. A key of the wrong kind is a panic. *)
 val find : ctx -> t -> dict -> t option
 
@@ -36,9 +33,6 @@ val put : ctx -> string -> t -> t -> t -> t
 
 (** The map without that key. *)
 val drop : ctx -> string -> t -> t -> t
-
-(** [m.name = x] or [m["name"] = x]: the map with that key set. *)
-val add_name : ctx -> t -> string -> t -> t
 
 (** The keys and values of a map, k1 v1 k2 v2..., in the order of insertion. Read only. *)
 val items : ctx -> string -> t -> t array

@@ -22,11 +22,6 @@ val mode : int ref
     the call running natively ends with the old code, and the next call is the interpreter's. *)
 val watching : bool ref
 
-(** A version runs natively after this many calls; a loop after this many checkpoints inside it. *)
-val calls_before : int
-
-val checkpoints_before : int
-
 (** The steps a loop hot by its runs takes in the interpreter, at its next run, before it gets its machine code. *)
 val warm_steps : int
 

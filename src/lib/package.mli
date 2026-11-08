@@ -51,9 +51,6 @@ val folder : string -> string -> string
 (** A path as a person reads it: from the working directory when it is under it. *)
 val shown : string -> string
 
-(** cesia.lock, next to cesia.toml. *)
-val lock_file : string
-
 (** [blake2:] and the 64 hexadecimal digits of the BLAKE2b-256 of a text: what cesia.lock keeps of a file. *)
 val fingerprint : string -> string
 

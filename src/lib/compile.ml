@@ -181,14 +181,6 @@ let[@inline] enter_fast (ctx : ctx) (i : int array) b nb s (ver : version) =
 
 let[@inline] enter (ctx : ctx) nb s (ver : version) = enter_fast ctx ctx.i ctx.b nb s ver
 
-(* x - d, for a constant d > 0: the result can only overflow upward. *)
-let[@inline] sub_const ctx s x d =
-  let r = x - d in
-  if r > x then begin
-    ctx.site <- s;
-    Arith.sub_int ctx x d
-  end else r
-
 let rec seq_u : (ctx -> unit) list -> ctx -> unit = function
   | [] -> fun _ -> ()
   | [ a ] -> a
@@ -622,10 +614,7 @@ let new_proto ~file ~m (f : func) =
 let[@inline] is_float v = match v with Float _ -> true | _ -> false
 let[@inline] is_int v = match v with Int _ -> true | _ -> false
 
-let arg_other v =
-  match v with
-  | Array { store = F _; _ } -> 2
-  | _ -> 3
+let arg_other v = match v with Array { store = F _; _ } -> 2 | _ -> 3
 
 let[@inline] arg_type v = if is_float v then 1 else if is_int v then 0 else arg_other v
 
@@ -719,12 +708,7 @@ let rec find_in key = function
   | [] -> None
   | (k, v) :: rest -> if k = key then Some v else find_in key rest
 
-let tag_type tag i =
-  match (tag lsr (2 * i)) land 3 with
-  | 0 -> TI
-  | 1 -> TF
-  | 2 -> TFA
-  | _ -> TA
+let tag_type tag i = match (tag lsr (2 * i)) land 3 with 0 -> TI | 1 -> TF | 2 -> TFA | _ -> TA
 
 let[@inline never] fa_slow1 ctx x k s =
   ctx.site <- s;
@@ -738,23 +722,18 @@ let[@inline] fa_get (ctx : ctx) slot k s =
 let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -> 'a) -> ctx -> 'a =
   fun f frame prologue unbox body ->
   let once = match prologue with None -> body | Some p -> fun ctx -> p ctx; body ctx in
-  let guarded =
-    if f.has_return then (fun ctx -> try once ctx with Return_value v -> unbox ctx v) else once
-  in
-  let looped =
-    if f.has_self_tail then begin
-      let rec loop (ctx : ctx) =
-        let r = guarded ctx in
-        if ctx.again then begin
-          ctx.again <- false;
-          tick ctx frame;
-          loop ctx
-        end else r
-      in
-      loop
-    end else guarded
-  in
-  looped
+  let guarded = if f.has_return then (fun ctx -> try once ctx with Return_value v -> unbox ctx v) else once in
+  if not f.has_self_tail then guarded
+  else
+    let rec loop (ctx : ctx) =
+      let r = guarded ctx in
+      if ctx.again then begin
+        ctx.again <- false;
+        tick ctx frame;
+        loop ctx
+      end else r
+    in
+    loop
 
 (* A version that keeps a value as an Int or a Float already knows whether it fits a number type. *)
 let known_number (t : ptype) ty =
@@ -905,7 +884,7 @@ and store_var c i (e : expr) : ctx -> unit =
   | TF when cell_of c i < 0 ->
     (match e.e with
      | Bin (op, a, b) when ty c e == TF && (op = Add || op = Sub || op = Mul || op = Div) && not (super_float_applies c a b) ->
-       store_float c k op (fleaf3 c a) (fleaf3 c b)
+       store_float k op (fleaf3 c a) (fleaf3 c b)
      | _ ->
        let a = cf c e in
        fun ctx ->
@@ -931,22 +910,10 @@ and store_var c i (e : expr) : ctx -> unit =
               ctx.site <- s;
               Arrays.read1 ctx base (Arrays.At p)
           in
-          (match x with
-           | Array r -> r.a_owned <- false
-           | Struct r -> r.r_owned <- false
-           | Dict r -> r.d_owned <- false
-           | _ -> ());
-          ctx.v.(ctx.b + k) <- x
+          ctx.v.(ctx.b + k) <- Value.share x
       | Var _ | Index _ | Field _ ->
         let a = cv c e in
-        fun ctx ->
-          let x = a ctx in
-          (match x with
-           | Array r -> r.a_owned <- false
-           | Struct r -> r.r_owned <- false
-           | Dict r -> r.d_owned <- false
-           | _ -> ());
-          ctx.v.(ctx.b + k) <- x
+        fun ctx -> let x = a ctx in ctx.v.(ctx.b + k) <- Value.share x
       | Call
           { callee = { e = Var { b = Cell { m; k = ck; stable = true }; _ }; _ };
             args = [| { aname = None; value = key }; { aname = None; value }; { aname = None; value = { e = Var { b = Local j; _ }; _ } } |];
@@ -980,8 +947,7 @@ and store_var c i (e : expr) : ctx -> unit =
     end
 
 (* x = a op b on floats: the computation and the write in the same closure. *)
-and store_float c k op x y : ctx -> unit =
-  ignore c;
+and store_float k op x y : ctx -> unit =
   let[@inline] set (ctx : ctx) v = Float.Array.set ctx.f (ctx.b + k) v in
   match op, x, y with
   | Add, `L i, `L j -> fun ctx -> set ctx (fget ctx i +. fget ctx j)
@@ -991,11 +957,7 @@ and store_float c k op x y : ctx -> unit =
   | Add, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u +. fget ctx j)
   | Add, `X f, `K q -> fun ctx -> set ctx (f ctx +. q)
   | Add, `K q, `X g -> fun ctx -> set ctx (q +. g ctx)
-  | Add, `X f, `X g ->
-    fun ctx ->
-      let u = f ctx in
-      let v = g ctx in
-      set ctx (u +. v)
+  | Add, `X f, `X g -> fun ctx -> let u = f ctx in let v = g ctx in set ctx (u +. v)
   | Sub, `L i, `L j -> fun ctx -> set ctx (fget ctx i -. fget ctx j)
   | Sub, `L i, `K q -> fun ctx -> set ctx (fget ctx i -. q)
   | Sub, `K q, `L j -> fun ctx -> set ctx (q -. fget ctx j)
@@ -1003,11 +965,7 @@ and store_float c k op x y : ctx -> unit =
   | Sub, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u -. fget ctx j)
   | Sub, `X f, `K q -> fun ctx -> set ctx (f ctx -. q)
   | Sub, `K q, `X g -> fun ctx -> set ctx (q -. g ctx)
-  | Sub, `X f, `X g ->
-    fun ctx ->
-      let u = f ctx in
-      let v = g ctx in
-      set ctx (u -. v)
+  | Sub, `X f, `X g -> fun ctx -> let u = f ctx in let v = g ctx in set ctx (u -. v)
   | Mul, `L i, `L j -> fun ctx -> set ctx (fget ctx i *. fget ctx j)
   | Mul, `L i, `K q -> fun ctx -> set ctx (fget ctx i *. q)
   | Mul, `K q, `L j -> fun ctx -> set ctx (q *. fget ctx j)
@@ -1015,11 +973,7 @@ and store_float c k op x y : ctx -> unit =
   | Mul, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u *. fget ctx j)
   | Mul, `X f, `K q -> fun ctx -> set ctx (f ctx *. q)
   | Mul, `K q, `X g -> fun ctx -> set ctx (q *. g ctx)
-  | Mul, `X f, `X g ->
-    fun ctx ->
-      let u = f ctx in
-      let v = g ctx in
-      set ctx (u *. v)
+  | Mul, `X f, `X g -> fun ctx -> let u = f ctx in let v = g ctx in set ctx (u *. v)
   | Div, `L i, `L j -> fun ctx -> set ctx (fget ctx i /. fget ctx j)
   | Div, `L i, `K q -> fun ctx -> set ctx (fget ctx i /. q)
   | Div, `K q, `L j -> fun ctx -> set ctx (q /. fget ctx j)
@@ -1027,15 +981,8 @@ and store_float c k op x y : ctx -> unit =
   | Div, `X f, `L j -> fun ctx -> let u = f ctx in set ctx (u /. fget ctx j)
   | Div, `X f, `K q -> fun ctx -> set ctx (f ctx /. q)
   | Div, `K q, `X g -> fun ctx -> set ctx (q /. g ctx)
-  | Div, `X f, `X g ->
-    fun ctx ->
-      let u = f ctx in
-      let v = g ctx in
-      set ctx (u /. v)
-  | Add, `K p, `K q -> let r = p +. q in fun ctx -> set ctx r
-  | Sub, `K p, `K q -> let r = p -. q in fun ctx -> set ctx r
-  | Mul, `K p, `K q -> let r = p *. q in fun ctx -> set ctx r
-  | Div, `K p, `K q -> let r = p /. q in fun ctx -> set ctx r
+  | Div, `X f, `X g -> fun ctx -> let u = f ctx in let v = g ctx in set ctx (u /. v)
+  | (Add | Sub | Mul | Div), `K p, `K q -> let r = float_op op p q in fun ctx -> set ctx r
   | _ -> assert false
 
 (* An expression, as a boxed value. *)
@@ -1109,14 +1056,7 @@ and ce c (e : expr) : ctx -> t =
   match e.e with
   | Var { b = Local i; _ } when plain_local c i ->
     let k = c.map.(i) in
-    fun ctx ->
-      let x = ctx.v.(ctx.b + k) in
-      (match x with
-       | Array r -> r.a_owned <- false
-       | Struct r -> r.r_owned <- false
-       | Dict r -> r.d_owned <- false
-       | _ -> ());
-      x
+    fun ctx -> Value.share ctx.v.(ctx.b + k)
   | Var _ | Index _ | Field _ ->
     let v = cv c e in
     fun ctx -> Value.share (v ctx)
@@ -1125,15 +1065,19 @@ and ce c (e : expr) : ctx -> t =
     fun ctx -> if cond ctx then yes ctx else no ctx
   | _ -> cv c e
 
-and ce_block c (b : block) : ctx -> t =
+(* A block: its statements, then its last expression as [last] compiles it; [empty] when it has none. *)
+and block_with : 'a. c -> (c -> expr -> ctx -> 'a) -> (ctx -> 'a) -> block -> ctx -> 'a =
+  fun c last empty b ->
   let n = Array.length b in
-  if n = 0 then fun _ -> Missing
-  else if n = 1 then ce c b.(0)
+  if n = 0 then empty
+  else if n = 1 then last c b.(0)
   else begin
     let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
-    let last = ce c b.(n - 1) in
+    let last = last c b.(n - 1) in
     fun ctx -> pre ctx; last ctx
   end
+
+and ce_block c (b : block) : ctx -> t = block_with c ce (fun _ -> Missing) b
 
 (* In tail position, a local variable dies with the frame: it stays owned. *)
 and ctail c (e : expr) : ctx -> t =
@@ -1147,15 +1091,7 @@ and ctail c (e : expr) : ctx -> t =
   | Return { tail = true; rvalue = Some v } -> ctail c v
   | _ -> ce c e
 
-and ctail_block c (b : block) : ctx -> t =
-  let n = Array.length b in
-  if n = 0 then fun _ -> Missing
-  else if n = 1 then ctail c b.(0)
-  else begin
-    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
-    let last = ctail c b.(n - 1) in
-    fun ctx -> pre ctx; last ctx
-  end
+and ctail_block c (b : block) : ctx -> t = block_with c ctail (fun _ -> Missing) b
 
 (* A bound of a..b, evaluated once. A float with an integer value is accepted. *)
 and bound c (e : expr) pos : ctx -> int =
@@ -1781,78 +1717,52 @@ and field_float c (e : expr) =
 
 and binary_values c e op a b s =
   match op with
-  | Add when ty c b == TF && ty c a != TF && ty c a != TI ->
+  | Add | Sub | Mul | Div when ty c b == TF && ty c a != TF && ty c a != TI ->
     let x = cv c a and f = cf c b in
-    fun ctx ->
-      let p = x ctx in
-      let q = f ctx in
-      (match p with
-       | Float u -> Float (u +. q)
-       | Int u -> Float (float_of_int u +. q)
-       | _ -> add_a ctx s p (Float q))
-  | Add when ty c a == TF && ty c b != TF && ty c b != TI ->
+    (match op with
+     | Add ->
+       fun ctx ->
+         let p = x ctx in
+         let q = f ctx in
+         (match p with Float u -> Float (u +. q) | Int u -> Float (float_of_int u +. q) | _ -> add_a ctx s p (Float q))
+     | Sub ->
+       fun ctx ->
+         let p = x ctx in
+         let q = f ctx in
+         (match p with Float u -> Float (u -. q) | Int u -> Float (float_of_int u -. q) | _ -> sub_a ctx s p (Float q))
+     | Mul ->
+       fun ctx ->
+         let p = x ctx in
+         let q = f ctx in
+         (match p with Float u -> Float (u *. q) | Int u -> Float (float_of_int u *. q) | _ -> mul_a ctx s p (Float q))
+     | _ ->
+       fun ctx ->
+         let p = x ctx in
+         let q = f ctx in
+         (match p with Float u -> Float (u /. q) | Int u -> Float (float_of_int u /. q) | _ -> div_a ctx s p (Float q)))
+  | Add | Sub | Mul | Div when ty c a == TF && ty c b != TF && ty c b != TI ->
     let f = cf c a and y = cv c b in
-    fun ctx ->
-      let p = f ctx in
-      let q = y ctx in
-      (match q with
-       | Float u -> Float (p +. u)
-       | Int u -> Float (p +. float_of_int u)
-       | _ -> add_a ctx s (Float p) q)
-  | Sub when ty c b == TF && ty c a != TF && ty c a != TI ->
-    let x = cv c a and f = cf c b in
-    fun ctx ->
-      let p = x ctx in
-      let q = f ctx in
-      (match p with
-       | Float u -> Float (u -. q)
-       | Int u -> Float (float_of_int u -. q)
-       | _ -> sub_a ctx s p (Float q))
-  | Sub when ty c a == TF && ty c b != TF && ty c b != TI ->
-    let f = cf c a and y = cv c b in
-    fun ctx ->
-      let p = f ctx in
-      let q = y ctx in
-      (match q with
-       | Float u -> Float (p -. u)
-       | Int u -> Float (p -. float_of_int u)
-       | _ -> sub_a ctx s (Float p) q)
-  | Mul when ty c b == TF && ty c a != TF && ty c a != TI ->
-    let x = cv c a and f = cf c b in
-    fun ctx ->
-      let p = x ctx in
-      let q = f ctx in
-      (match p with
-       | Float u -> Float (u *. q)
-       | Int u -> Float (float_of_int u *. q)
-       | _ -> mul_a ctx s p (Float q))
-  | Mul when ty c a == TF && ty c b != TF && ty c b != TI ->
-    let f = cf c a and y = cv c b in
-    fun ctx ->
-      let p = f ctx in
-      let q = y ctx in
-      (match q with
-       | Float u -> Float (p *. u)
-       | Int u -> Float (p *. float_of_int u)
-       | _ -> mul_a ctx s (Float p) q)
-  | Div when ty c b == TF && ty c a != TF && ty c a != TI ->
-    let x = cv c a and f = cf c b in
-    fun ctx ->
-      let p = x ctx in
-      let q = f ctx in
-      (match p with
-       | Float u -> Float (u /. q)
-       | Int u -> Float (float_of_int u /. q)
-       | _ -> div_a ctx s p (Float q))
-  | Div when ty c a == TF && ty c b != TF && ty c b != TI ->
-    let f = cf c a and y = cv c b in
-    fun ctx ->
-      let p = f ctx in
-      let q = y ctx in
-      (match q with
-       | Float u -> Float (p /. u)
-       | Int u -> Float (p /. float_of_int u)
-       | _ -> div_a ctx s (Float p) q)
+    (match op with
+     | Add ->
+       fun ctx ->
+         let p = f ctx in
+         let q = y ctx in
+         (match q with Float u -> Float (p +. u) | Int u -> Float (p +. float_of_int u) | _ -> add_a ctx s (Float p) q)
+     | Sub ->
+       fun ctx ->
+         let p = f ctx in
+         let q = y ctx in
+         (match q with Float u -> Float (p -. u) | Int u -> Float (p -. float_of_int u) | _ -> sub_a ctx s (Float p) q)
+     | Mul ->
+       fun ctx ->
+         let p = f ctx in
+         let q = y ctx in
+         (match q with Float u -> Float (p *. u) | Int u -> Float (p *. float_of_int u) | _ -> mul_a ctx s (Float p) q)
+     | _ ->
+       fun ctx ->
+         let p = f ctx in
+         let q = y ctx in
+         (match q with Float u -> Float (p /. u) | Int u -> Float (p /. float_of_int u) | _ -> div_a ctx s (Float p) q))
   | Add ->
     (match leaf c a, leaf c b with
      | `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in add_a ctx s v.(p + i) v.(p + j)
@@ -1861,10 +1771,7 @@ and binary_values c e op a b s =
      | `L i, `X f -> fun ctx -> let y = f ctx in add_a ctx s ctx.v.(ctx.b + i) y
      | x, y ->
        let x = leaf_value x and y = leaf_value y in
-       fun ctx ->
-         let p = x ctx in
-         let q = y ctx in
-         add_a ctx s p q)
+       fun ctx -> let p = x ctx in let q = y ctx in add_a ctx s p q)
   | Sub ->
     (match leaf c a, leaf c b with
      | `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in sub_a ctx s v.(p + i) v.(p + j)
@@ -1873,10 +1780,7 @@ and binary_values c e op a b s =
      | `L i, `X f -> fun ctx -> let y = f ctx in sub_a ctx s ctx.v.(ctx.b + i) y
      | x, y ->
        let x = leaf_value x and y = leaf_value y in
-       fun ctx ->
-         let p = x ctx in
-         let q = y ctx in
-         sub_a ctx s p q)
+       fun ctx -> let p = x ctx in let q = y ctx in sub_a ctx s p q)
   | Mul ->
     (match leaf c a, leaf c b with
      | `L i, `L j -> fun ctx -> let v = ctx.v and p = ctx.b in mul_a ctx s v.(p + i) v.(p + j)
@@ -1885,29 +1789,15 @@ and binary_values c e op a b s =
      | `L i, `X f -> fun ctx -> let y = f ctx in mul_a ctx s ctx.v.(ctx.b + i) y
      | x, y ->
        let x = leaf_value x and y = leaf_value y in
-       fun ctx ->
-         let p = x ctx in
-         let q = y ctx in
-         mul_a ctx s p q)
+       fun ctx -> let p = x ctx in let q = y ctx in mul_a ctx s p q)
   | Div ->
     let x = cv c a and y = cv c b in
-    fun ctx ->
-      let p = x ctx in
-      let q = y ctx in
-      div_a ctx s p q
+    fun ctx -> let p = x ctx in let q = y ctx in div_a ctx s p q
   | Pow ->
     let x = cv c a and y = cv c b in
     slow x y s Arith.pow
   | Eq | Ne | Lt | Le | Gt | Ge ->
-    let f =
-      match op with
-      | Eq -> Arith.eq
-      | Ne -> Arith.ne
-      | Lt -> Arith.lt
-      | Le -> Arith.le
-      | Gt -> Arith.gt
-      | _ -> Arith.ge
-    in
+    let f = match op with Eq -> Arith.eq | Ne -> Arith.ne | Lt -> Arith.lt | Le -> Arith.le | Gt -> Arith.gt | _ -> Arith.ge in
     slow (cv c a) (cv c b) s f
 
 and slow x y s f =
@@ -2043,14 +1933,9 @@ and ci c (e : expr) : ctx -> int =
          && (match c.w.modules.(m).cells.(k) with Native { nname = "Mod"; _ } -> true | _ -> false) ->
     (* xs[Mod(i, n) + 1]: the idiom of a 1-indexed language. The result can't overflow while q stays small, which the
        mask guarantees for d and q on 31 bits. *)
-    if d < 1 lsl 31 && abs q < 1 lsl 31 then begin
-      let p = c.map.(i) and mask = d - 1 in
-      fun ctx -> (iget ctx p land mask) + q
-    end
-    else begin
-      let s = site c e.pos and p = c.map.(i) and mask = d - 1 in
-      fun ctx -> add_i ctx s (iget ctx p land mask) q
-    end
+    let p = c.map.(i) and mask = d - 1 in
+    if d < 1 lsl 31 && abs q < 1 lsl 31 then fun ctx -> (iget ctx p land mask) + q
+    else (let s = site c e.pos in fun ctx -> add_i ctx s (iget ctx p land mask) q)
   | Bin (((Add | Sub | Mul) as op), a, b) when ty c a == TI && ty c b == TI ->
     (match super_int c e op a b with
      | Some f -> f
@@ -2106,24 +1991,6 @@ and ci c (e : expr) : ctx -> int =
          write ctx;
          let b = ctx.b in
          enter ctx (b + off) s ver;
-         let r = ver.ri ctx in
-         ctx.b <- b;
-         r
-     | `Direct1 (ver, a, p, off, s) ->
-       fun ctx ->
-         let x = a ctx in
-         let b = ctx.b and i = ctx.i in
-         i.(b + p) <- x;
-         enter_fast ctx i b (b + off) s ver;
-         let r = ver.ri ctx in
-         ctx.b <- b;
-         r
-     | `Minus1 (ver, q, d, p, off, s, sub) ->
-       fun ctx ->
-         let b = ctx.b and i = ctx.i in
-         let x = (if d > 0 then sub_const ctx sub i.(b + q) d else sub_i ctx sub i.(b + q) d) in
-         i.(b + p) <- x;
-         enter_fast ctx i b (b + off) s ver;
          let r = ver.ri ctx in
          ctx.b <- b;
          r
@@ -2186,31 +2053,11 @@ and int_binary c (e : expr) op a b : ctx -> int =
   | _ ->
     let x = ci c a and y = ci c b in
     (match op with
-     | Add ->
-       fun ctx ->
-         let p = x ctx in
-         let q = y ctx in
-         add_i ctx s p q
-     | Sub ->
-       fun ctx ->
-         let p = x ctx in
-         let q = y ctx in
-         sub_i ctx s p q
-     | _ ->
-       fun ctx ->
-         let p = x ctx in
-         let q = y ctx in
-         mul_i ctx s p q)
+     | Add -> fun ctx -> let p = x ctx in let q = y ctx in add_i ctx s p q
+     | Sub -> fun ctx -> let p = x ctx in let q = y ctx in sub_i ctx s p q
+     | _ -> fun ctx -> let p = x ctx in let q = y ctx in mul_i ctx s p q)
 
-and ci_block c (b : block) : ctx -> int =
-  let n = Array.length b in
-  if n = 0 then fun _ -> 0
-  else if n = 1 then ci c b.(0)
-  else begin
-    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
-    let last = ci c b.(n - 1) in
-    fun ctx -> pre ctx; last ctx
-  end
+and ci_block c (b : block) : ctx -> int = block_with c ci (fun _ -> 0) b
 
 (* A float expression, or a converted integer one. *)
 and cf c (e : expr) : ctx -> float =
@@ -2278,46 +2125,16 @@ and cff c (e : expr) : ctx -> float =
   | Var { b = Local i; _ } when c.tv.(i) == TF && cell_of c i < 0 ->
     let k = c.map.(i) in
     fun ctx -> fget ctx k
-  | Bin (Mul, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
+  | Bin (((Mul | Add | Sub | Div) as op), { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
          { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
     when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
     let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
     let p = c.map.(p) and q = c.map.(q) in
-    fun ctx ->
-      let k = x ctx in
-      let u = fa_get ctx p k sx in
-      let l = y ctx in
-      u *. fa_get ctx q l sy
-  | Bin (Add, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
-         { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
-    when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
-    let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
-    let p = c.map.(p) and q = c.map.(q) in
-    fun ctx ->
-      let k = x ctx in
-      let u = fa_get ctx p k sx in
-      let l = y ctx in
-      u +. fa_get ctx q l sy
-  | Bin (Sub, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
-         { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
-    when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
-    let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
-    let p = c.map.(p) and q = c.map.(q) in
-    fun ctx ->
-      let k = x ctx in
-      let u = fa_get ctx p k sx in
-      let l = y ctx in
-      u -. fa_get ctx q l sy
-  | Bin (Div, { e = Index ({ e = Var { b = Local p; _ }; _ }, [| Ix i |], false); pos = ps; _ },
-         { e = Index ({ e = Var { b = Local q; _ }; _ }, [| Ix j |], false); pos = qs; _ })
-    when ty c i == TI && ty c j == TI && plain_local c p && plain_local c q ->
-    let x = ci c i and y = ci c j and sx = site c ps and sy = site c qs in
-    let p = c.map.(p) and q = c.map.(q) in
-    fun ctx ->
-      let k = x ctx in
-      let u = fa_get ctx p k sx in
-      let l = y ctx in
-      u /. fa_get ctx q l sy
+    (match op with
+     | Mul -> fun ctx -> let k = x ctx in let u = fa_get ctx p k sx in let l = y ctx in u *. fa_get ctx q l sy
+     | Add -> fun ctx -> let k = x ctx in let u = fa_get ctx p k sx in let l = y ctx in u +. fa_get ctx q l sy
+     | Sub -> fun ctx -> let k = x ctx in let u = fa_get ctx p k sx in let l = y ctx in u -. fa_get ctx q l sy
+     | _ -> fun ctx -> let k = x ctx in let u = fa_get ctx p k sx in let l = y ctx in u /. fa_get ctx q l sy)
   | Bin (((Add | Sub | Mul) as op), a, b) when super_float_applies c a b -> Option.get (super_float c op a b)
   | Var { b = Cell { m; k; stable = true }; _ } ->
     (match c.w.modules.(m).cells.(k) with
@@ -2340,10 +2157,7 @@ and cff c (e : expr) : ctx -> float =
      | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) +. float_of_int (iget ctx j)
      | `X f, `I j -> fun ctx -> let x = f ctx in x +. float_of_int (iget ctx j)
      | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) +. y
-     | `X f, `X g ->
-       fun ctx ->
-         let x = f ctx in
-         x +. g ctx)
+     | `X f, `X g -> fun ctx -> let x = f ctx in x +. g ctx)
   | Bin (Sub, a, b) ->
     (match fleaf c a, fleaf c b with
      | `L i, `L j -> fun ctx -> fget ctx i -. fget ctx j
@@ -2361,10 +2175,7 @@ and cff c (e : expr) : ctx -> float =
      | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) -. float_of_int (iget ctx j)
      | `X f, `I j -> fun ctx -> let x = f ctx in x -. float_of_int (iget ctx j)
      | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) -. y
-     | `X f, `X g ->
-       fun ctx ->
-         let x = f ctx in
-         x -. g ctx)
+     | `X f, `X g -> fun ctx -> let x = f ctx in x -. g ctx)
   | Bin (Mul, a, b) ->
     (match fleaf c a, fleaf c b with
      | `L i, `L j -> fun ctx -> fget ctx i *. fget ctx j
@@ -2382,10 +2193,7 @@ and cff c (e : expr) : ctx -> float =
      | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) *. float_of_int (iget ctx j)
      | `X f, `I j -> fun ctx -> let x = f ctx in x *. float_of_int (iget ctx j)
      | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) *. y
-     | `X f, `X g ->
-       fun ctx ->
-         let x = f ctx in
-         x *. g ctx)
+     | `X f, `X g -> fun ctx -> let x = f ctx in x *. g ctx)
   | Bin (Div, a, b) ->
     (match fleaf c a, fleaf c b with
      | `L i, `L j -> fun ctx -> fget ctx i /. fget ctx j
@@ -2403,10 +2211,7 @@ and cff c (e : expr) : ctx -> float =
      | `I i, `I j -> fun ctx -> float_of_int (iget ctx i) /. float_of_int (iget ctx j)
      | `X f, `I j -> fun ctx -> let x = f ctx in x /. float_of_int (iget ctx j)
      | `I i, `X g -> fun ctx -> let y = g ctx in float_of_int (iget ctx i) /. y
-     | `X f, `X g ->
-       fun ctx ->
-         let x = f ctx in
-         x /. g ctx)
+     | `X f, `X g -> fun ctx -> let x = f ctx in x /. g ctx)
   | Bin (Pow, a, b) ->
     let x = cf c a and y = cf c b in
     fun ctx ->
@@ -2447,24 +2252,6 @@ and cff c (e : expr) : ctx -> float =
          let r = ver.rf ctx in
          ctx.b <- b;
          r
-     | `Direct1 (ver, a, p, off, s) ->
-       fun ctx ->
-         let x = a ctx in
-         let b = ctx.b and i = ctx.i in
-         i.(b + p) <- x;
-         enter_fast ctx i b (b + off) s ver;
-         let r = ver.rf ctx in
-         ctx.b <- b;
-         r
-     | `Minus1 (ver, q, d, p, off, s, sub) ->
-       fun ctx ->
-         let b = ctx.b and i = ctx.i in
-         let x = (if d > 0 then sub_const ctx sub i.(b + q) d else sub_i ctx sub i.(b + q) d) in
-         i.(b + p) <- x;
-         enter_fast ctx i b (b + off) s ver;
-         let r = ver.rf ctx in
-         ctx.b <- b;
-         r
      | `Tail jump -> fun ctx -> jump ctx; 0.
      | `Other ->
        let v = ca c e in
@@ -2473,15 +2260,7 @@ and cff c (e : expr) : ctx -> float =
     let v = ca c e in
     fun ctx -> to_f ctx (v ctx)
 
-and cf_block c (b : block) : ctx -> float =
-  let n = Array.length b in
-  if n = 0 then fun _ -> 0.
-  else if n = 1 then cf c b.(0)
-  else begin
-    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
-    let last = cf c b.(n - 1) in
-    fun ctx -> pre ctx; last ctx
-  end
+and cf_block c (b : block) : ctx -> float = block_with c cf (fun _ -> 0.) b
 
 (* Reading an element of an FA array: the index is an integer, the read allocates nothing. *)
 and fa_read1 c e b i =
@@ -2560,10 +2339,7 @@ and setter c (n : name) : ctx -> t -> unit =
   match n.b with
   | Local i ->
     let cell = cell_of c i and k = c.map.(i) in
-    if cell >= 0 then begin
-      let md = c.w.modules.(c.ver.owner.pm) in
-      fun _ x -> md.cells.(cell) <- x
-    end
+    if cell >= 0 then (let md = c.w.modules.(c.ver.owner.pm) in fun _ x -> md.cells.(cell) <- x)
     else if c.tv.(i) == TI then fun ctx x -> ctx.i.(ctx.b + k) <- to_i ctx x
     else if c.tv.(i) == TF then fun ctx x -> Float.Array.set ctx.f (ctx.b + k) (to_f ctx x)
     else fun ctx x -> ctx.v.(ctx.b + k) <- x
@@ -3089,30 +2865,17 @@ and cpat c (pt : pat) pos : ctx -> t -> unit =
 
 and cublock c (b : block) : ctx -> unit = seq_u (List.map (cu c) (Array.to_list b))
 
-and cblock c (b : block) : ctx -> t =
-  let n = Array.length b in
-  if n = 0 then fun _ -> Missing
-  else if n = 1 then cv c b.(0)
-  else begin
-    let pre = seq_u (List.map (cu c) (Array.to_list (Array.sub b 0 (n - 1)))) in
-    let last = cv c b.(n - 1) in
-    fun ctx -> pre ctx; last ctx
-  end
+and cblock c (b : block) : ctx -> t = block_with c cv (fun _ -> Missing) b
 
 and closure c (f : func) : ctx -> t =
   let proto = new_proto ~file:c.file ~m:c.ver.owner.pm f in
-  if Array.length f.captures = 0 then begin
-    let v = Fun { proto; env = [||] } in
-    fun _ -> v
-  end else begin
+  if Array.length f.captures = 0 then (let v = Fun { proto; env = [||] } in fun _ -> v)
+  else begin
     let reads =
       Array.map
         (fun (outer, _) ->
            let cell = cell_of c outer and k = c.map.(outer) in
-           if cell >= 0 then begin
-             let md = c.w.modules.(c.ver.owner.pm) in
-             fun _ -> md.cells.(cell)
-           end
+           if cell >= 0 then (let md = c.w.modules.(c.ver.owner.pm) in fun _ -> md.cells.(cell))
            else if c.tv.(outer) == TI then fun ctx -> Int (iget ctx k)
            else if c.tv.(outer) == TF then fun ctx -> Float (fget ctx k)
            else fun ctx -> ctx.v.(ctx.b + k))
@@ -3161,24 +2924,6 @@ and call_any ?(target = -1) c e (call : call) : ctx -> t =
       write ctx;
       let b = ctx.b in
       enter ctx (b + off) s ver;
-      let r = ver.rv ctx in
-      ctx.b <- b;
-      r
-  | `Direct1 (ver, a, p, off, s) ->
-    fun ctx ->
-      let x = a ctx in
-      let b = ctx.b and i = ctx.i in
-      i.(b + p) <- x;
-      enter_fast ctx i b (b + off) s ver;
-      let r = ver.rv ctx in
-      ctx.b <- b;
-      r
-  | `Minus1 (ver, q, d, p, off, s, sub) ->
-    fun ctx ->
-      let b = ctx.b and i = ctx.i in
-      let x = (if d > 0 then sub_const ctx sub i.(b + q) d else sub_i ctx sub i.(b + q) d) in
-      i.(b + p) <- x;
-      enter_fast ctx i b (b + off) s ver;
       let r = ver.rv ctx in
       ctx.b <- b;
       r
@@ -3583,9 +3328,7 @@ and dispatch ctx g off n s =
   | Native nat ->
     if n < nat.min_args || n > nat.max_args then
       Runtime.fail ctx Type (Messages.arg_count nat.nname (string_of_int nat.min_args ^ " arguments") n);
-    (match nat.perm with
-     | Some p -> Runtime.check_perm ctx p None
-     | None -> ());
+    (match nat.perm with Some p -> Runtime.check_perm ctx p None | None -> ());
     let vals = Array.sub ctx.v (ctx.b + off) n in
     nat.run ctx vals
   | Bound { g; self } ->
@@ -3598,9 +3341,7 @@ and with_object ctx off n g self =
   let nb = ctx.b + off in
   if nb + n + 3 > ctx.cap then Runtime.grow ctx (nb + n + 3);
   Array.blit ctx.v nb ctx.v (nb + 1) n;
-  (match g with
-   | Fun { proto; _ } -> share_if proto.func.kept 0 self
-   | _ -> ());
+  (match g with Fun { proto; _ } -> share_if proto.func.kept 0 self | _ -> ());
   ctx.v.(nb) <- self
 
 (* The version for these real types: the last one seen, else the function's table. *)
@@ -3611,11 +3352,7 @@ and select (ctx : ctx) (proto : proto) n tag =
   | _ -> select_slow ctx proto n tag key
 
 and select_slow ctx proto n tag key =
-  let v =
-    match find_in key proto.by_tag with
-    | Some v -> v
-    | None -> pick ctx proto n tag
-  in
+  let v = match find_in key proto.by_tag with Some v -> v | None -> pick ctx proto n tag in
   proto.last <- Last { ltag = key; lver = v };
   v
 
@@ -3702,11 +3439,7 @@ and call_value (ctx : ctx) ~base g args =
    callee, so it is put back: a native that calls back again, or fails, still names its call. *)
 and call_back (ctx : ctx) g args =
   let site = ctx.site in
-  let base =
-    match (Vec.get ctx.w.sites site).sver with
-    | Some v -> v.size
-    | None -> 0
-  in
+  let base = match (Vec.get ctx.w.sites site).sver with Some v -> v.size | None -> 0 in
   let r = call_value ctx ~base g args in
   ctx.site <- site;
   r

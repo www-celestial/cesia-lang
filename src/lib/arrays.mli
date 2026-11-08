@@ -33,10 +33,6 @@ val sizes : arr -> int array
 (** The count of cells of these sizes, or the memory limit when it can't exist. *)
 val cells : ctx -> int array -> int
 
-(** The cell, from 0, at these indexes, one per dimension of an array of three dimensions or more: an index outside is an
-    error. *)
-val offset : ctx -> arr -> int array -> int
-
 (** A list. An empty one has the shape of [[]], so that the two are equal. *)
 val list : t array -> t
 

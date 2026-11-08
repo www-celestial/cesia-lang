@@ -44,10 +44,6 @@ val run_prepared : ctx -> int * int * Ast.func * Ast.layout -> unit
 (** Loads a folder as a package and runs its statements, once, and gives its first module. *)
 val folder : ctx -> string -> int
 
-(** Replaces the functions and structs of a module without rerunning its statements. Everything is parsed first: an
-    error returns its text, and the old code stays in place. *)
-val reload : world -> string -> (unit, string) result
-
 (** Reloads these files, trying again what failed as long as something else loads: a package may need one that comes
     later. Gives what still fails, with its error. *)
 val reload_all : world -> string list -> (string * string) list
@@ -77,9 +73,6 @@ val message_of_error : exn -> string option
     [message_of_error] tells or the [Value.Quit] of sys.Exit, with the frame base and the site put back as a return
     leaves them. *)
 val call_caught : ctx -> t -> t array -> (t, exn) result
-
-(** The libraries of this Cesia, as [use std/x] finds them without a copy: each name and its source. *)
-val libraries : unit -> (string * string) list
 
 (** [run_tool w name args] runs the tool [src/tools/NAME.ce] that the binary holds, with these arguments: its [Main()] gives
     [Ok], or an [Err] whose text goes to the errors, and then the code is 1. A tool sees no project's [std/]. *)

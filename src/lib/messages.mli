@@ -81,9 +81,6 @@ val index_type : string -> t
 val index_outside : int -> int -> t
 val index_outside2 : int -> int -> int -> int -> t
 
-(** "2 by 3 by 4". *)
-val sizes_text : int array -> string
-
 (** The indexes and the sizes of an array of three dimensions or more. *)
 val index_outside_nd : int array -> int array -> t
 

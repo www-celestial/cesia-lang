@@ -19,9 +19,6 @@ val is_test : string -> bool
 (** A value as shown under a failed test: 160 bytes at most. *)
 val cut : string -> string
 
-(** The code of an expression, as written. *)
-val show : Ast.expr -> string
-
 (** Rewrites the tests of a file, each [isX] with no parameter, in place: its nodes keep their ids, the new ones come after.
     Gives the notes, by number. *)
 val rewrite : Ast.func -> note array
