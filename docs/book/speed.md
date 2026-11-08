@@ -17,10 +17,13 @@ fails.
 - Loops over numbers, and arrays of floats or of values read and written by index.
 - Functions on numbers that call each other, as a recursion.
 - In a loop, maps and structs: reading their fields, computing with them, making new ones, storing them in a list.
+- In a loop, a call of a function held in a variable, as `f(x)` where `f` came from a list: the machine code tests the
+  functions the call met, at most four, and runs the one it finds, as [How Cesia works](internals.md#calls-through-a-value)
+  shows.
 
 This loop over a list of structs runs as machine code once it is hot, about four times as fast as in the interpreter:
-`bench/real/particles.ce`, the same loop on 1,000 particles, takes 173 ms against 718 ms without the JIT, the medians
-of 7 runs on the machine of [Beside the giants](#beside-the-giants):
+`bench/real/particles.ce`, the same loop on 1,000 particles, takes 176 ms against 746 ms without the JIT, the medians
+of 11 runs on the machine of [Beside the giants](#beside-the-giants):
 
 ```cesia
 use std/list
@@ -51,7 +54,8 @@ same, a little later.
 ## What stays in the interpreter
 
 - Calls to the functions of packages written in OCaml, as [text.Split] or [json.Parse]: they are machine code already.
-- Loops over the elements of a list, `for x in xs`, and functions passed as values.
+- Loops over the elements of a list, `for x in xs`, and a call through a value that met five functions or more, or a
+  function that captured variables of its own.
 - Under a debugger, a function whose code holds a breakpoint, and the code you step through: the rest stays machine code,
   as the chapter [The prompt and the debugger](debug.md#speed) says.
 - At the prompt, under `--watch` and under a debugger, the code that uses what the program's own functions give: such a
@@ -72,7 +76,7 @@ See [Environment variables](env.md) and [Commands](commands.md#cesia-run).
 ## Beside the giants
 
 The same programs in Cesia, Python, Node, Java, Go, OCaml, Lua and LuaJIT, on one machine: an Intel Core i7-4720HQ of
-2015, 8 logical cores, Linux, measured on 2026-11-08 while other work ran on it (load about 2). The versions: Python
+2015, 8 logical cores, Linux, measured on 2026-11-08 while other work ran on it (load 1.3 to 4). The versions: Python
 3.14.9, Node 26.13 (V8), Java 21 (OpenJDK, HotSpot), Go 1.26.3, OCaml 5.5.0 (`ocamlopt`, without flambda), Lua 5.5.1,
 LuaJIT 2.1, and Cesia in its `release` build.
 
@@ -91,15 +95,15 @@ A program that prints `1`, 101 runs of each, alternated:
 
 | | Median | 95% interval |
 |---|---:|---:|
-| `/usr/bin/true`, nothing | 0.53 ms | 0.51 to 0.54 |
-| Lua | 0.83 ms | 0.81 to 0.85 |
-| LuaJIT | 0.99 ms | 0.96 to 1.01 |
-| OCaml, native | 1.08 ms | 1.04 to 1.10 |
-| Go | 1.25 ms | 1.23 to 1.28 |
-| **Cesia** | **2.89 ms** | 2.86 to 2.90 |
-| Python | 14.30 ms | 14.17 to 14.39 |
-| Java | 25.39 ms | 25.09 to 25.67 |
-| Node | 38.23 ms | 37.74 to 39.00 |
+| `/usr/bin/true`, nothing | 0.52 ms | 0.50 to 0.54 |
+| Lua | 0.81 ms | 0.79 to 0.83 |
+| LuaJIT | 0.98 ms | 0.96 to 1.00 |
+| OCaml, native | 1.05 ms | 1.02 to 1.08 |
+| Go | 1.29 ms | 1.25 to 1.31 |
+| **Cesia** | **2.88 ms** | 2.85 to 2.90 |
+| Python | 14.06 ms | 14.02 to 14.13 |
+| Java | 24.75 ms | 24.67 to 24.85 |
+| Node | 37.78 ms | 37.18 to 38.55 |
 
 Cesia starts 5 times sooner than Python, 9 times sooner than Java and 13 times sooner than Node. A compiled Go or OCaml
 program, or Lua, starts in about half its time: Cesia carries its whole runtime, its standard library and its compiler
@@ -112,12 +116,12 @@ Milliseconds, median and 95% interval of 11 runs:
 
 | Program | Cesia | Cesia, no JIT | Python | Node | Java | Go | OCaml | Lua | LuaJIT |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `fib` | **74** (73–77) | 448 (444–451) | 1,453 (1,425–1,498) | 172 (170–282) | 71 (70–74) | 50 (49–57) | 53 (52–57) | 693 (687–712) | 96 (93–103) |
-| `mandel` | **64** (63–72) | 464 (455–505) | 2,604 (2,572–2,687) | 91 (87–97) | 82 (81–92) | 52 (51–53) | 58 (56–58) | 431 (428–443) | 55 (55–58) |
-| `matmul` | **49** (49–52) | 1,024 (952–1,232) | 4,858 (4,818–4,986) | 97 (97–103) | 93 (87–99) | 33 (33–35) | 61 (60–73) | 839 (825–875) | 87 (86–87) |
-| `structs` | **220** (212–234) | 556 (545–611) | 1,804 (1,778–1,836) | 171 (168–181) | 102 (101–113) | 9 (9–9) | 30 (30–30) | 1,536 (1,518–1,607) | 401 (393–423) |
-| `dyn` | **714** (679–859) | 763 (731–789) | 1,397 (1,372–1,421) | 172 (166–203) | 98 (97–105) | 28 (28–28) | 69 (67–71) | 740 (717–806) | 59 (57–63) |
-| `maps` | **1,201** (1,160–1,265) | 1,171 (1,153–1,210) | 416 (408–429) | 563 (555–583) | 234 (220–269) | 282 (273–373) | 532 (502–596) | 826 (812–891) | 326 (315–342) |
+| `fib` | **73** (73–74) | 441 (438–446) | 1,426 (1,417–1,495) | 171 (169–177) | 70 (70–71) | 49 (49–52) | 52 (52–54) | 691 (689–711) | 95 (92–97) |
+| `mandel` | **63** (63–64) | 467 (463–473) | 2,625 (2,578–2,665) | 92 (89–104) | 81 (81–90) | 52 (51–56) | 57 (56–60) | 432 (428–439) | 55 (55–57) |
+| `matmul` | **49** (49–51) | 948 (942–975) | 4,736 (4,659–5,031) | 97 (95–99) | 92 (92–93) | 33 (33–34) | 60 (59–65) | 824 (822–829) | 87 (86–88) |
+| `structs` | **219** (214–224) | 560 (548–578) | 1,738 (1,724–1,796) | 171 (166–180) | 100 (99–111) | 9 (9–9) | 30 (29–30) | 1,525 (1,502–1,548) | 394 (390–400) |
+| `dyn` | **182** (181–188) | 708 (696–738) | 1,363 (1,357–1,380) | 165 (163–166) | 97 (86–97) | 28 (28–28) | 67 (67–72) | 717 (715–721) | 57 (57–59) |
+| `maps` | **815** (791–828) | 816 (785–830) | 406 (403–414) | 541 (531–548) | 224 (212–230) | 269 (261–286) | 500 (489–517) | 809 (785–846) | 310 (305–336) |
 
 What each program does: `fib` is `fib(35)`, about 30 million recursive calls on integers; `mandel` a loop of floats over
 600 × 400 points; `matmul` the product of two 300 × 300 matrices read by index; `structs` 1,000 records of four floats,
@@ -126,24 +130,32 @@ each remade at each of 5,000 steps; `dyn` 10 million calls through a list of two
 
 **Where Cesia wins.** On loops of numbers and on recursion, the JIT puts Cesia beside Java and LuaJIT, and ahead of
 Node: `matmul` runs in half the time of Java, Node and LuaJIT, `mandel` and `fib` in about the time of Java. Against
-Python, the language most of its users come from, Cesia is 20 times faster on `fib`, 41 times on `mandel` and 99 times
-on `matmul`; against Lua, 7 to 17 times.
+Python, the language most of its users come from, Cesia is 20 times faster on `fib`, 42 times on `mandel` and 96 times
+on `matmul`; against Lua, 7 to 17 times. On `dyn` it is now as fast as Node, 182 ms against 165, and 7 times Python.
 
 **Where a giant wins, and why.**
 
 - **Go and OCaml win every line.** They compile the whole program to machine code before it runs, with every type known.
   Go's `structs` keeps its records as plain values inside the array, written in place: no record is ever allocated,
-  9 ms. Cesia's records are values of any kind, each a new block in memory, which the JIT builds at each step: 220 ms.
-- **`dyn`: Node, Java, OCaml and LuaJIT are 4 to 12 times faster, and Go 25 times.** A call through a function held in a list stays in
-  Cesia's interpreter, as [What stays in the interpreter](#what-stays-in-the-interpreter) says; HotSpot and V8 see that
-  each place calls the same two functions and compile the call inline, LuaJIT records the loop with its calls as one
-  trace. This is the next work of Cesia's JIT.
-- **`maps`: Cesia is the slowest, 3 times Python, 4 to 5 times Java and Go.** Three reasons. A Cesia map is persistent,
-  a hash trie where each write copies a path of nodes, where the others write a mutable hash table in place, as
-  [How Cesia works](internals.md#maps-a-hash-trie) explains: the price of value semantics. The key `"key$k"` is a new
-  text at each turn, and its hash is computed each time, where Python and Java keep the hash inside the string. And the
-  loop, which calls the natives of texts, stays in the interpreter. It also takes 149 MB, against 72 MB for Python and
-  52 MB for Go. OCaml's own persistent map, a balanced tree, takes 529 ms for the same work.
+  9 ms. OCaml makes a new record at each step too, but one block of 5 words, its four floats stored flat inside. A Cesia
+  map of four floats is 21 words, 168 bytes a step: the map, its array of values, and each new float a box of its own,
+  two blocks of OCaml, since a value of Cesia can hold anything. The JIT builds them at each step, with a test of each
+  field's kind: 219 ms, behind Node (171) and Java (100), which keep their objects' layout known in advance. Only an
+  array of records stored flat, as Go's, would close it.
+- **`dyn`: Java, OCaml and LuaJIT are 2 to 3 times faster, Go 6 times.** The call through a function held in a list is
+  machine code now, with a test of the two functions it met, inlined, the *polymorphic inline cache* of
+  [How Cesia works](internals.md#calls-through-a-value): 714 ms before, 182 now. What is left: `total` is a value the
+  inference can't type, as it comes from such a call, so each step makes a new box for its float and tests the kinds of
+  its arguments; HotSpot and LuaJIT keep it in a register for the whole loop.
+- **`maps`: Cesia is beside Lua, twice Python's time, 3 to 4 times Java's and Go's.** Three reasons. A Cesia map is
+  [persistent](glossary.md#persistent-data-structure), a [CHAMP](glossary.md#champ) trie of 5 bits a level, so a read of
+  one of 500,000 keys follows four or five nodes in memory, where Python's hash table reads one or two places; that is
+  the price of keeping old versions, which [dict.Put] gives for free. Every key written stays alive, and OCaml's
+  collector copies each one out of its young heap and marks it again at each major cycle: a third of the time, which
+  Python's reference counting doesn't pay. And the loop, which builds a text at each turn, stays in the interpreter. It
+  went from 1,201 ms to 815 since the work of [How Cesia works](internals.md#maps-a-hash-trie) on the trie and on the
+  writes of a computed key, and takes 89 MB, against 72 MB for Python, 52 MB for Go and 143 MB for Java. OCaml's own
+  persistent map, a balanced tree, takes 529 ms for the same work, and its hash table 500.
 - **Node and Java start slowly but run fast**: their JITs compile more, and later, with more time to spend on it.
 
 ### Fibers beside goroutines, async and virtual threads
@@ -156,18 +168,21 @@ that with one, divided by 100,000:
 
 | | 100,000 tasks | 95% interval | Per task | Memory per task |
 |---|---:|---:|---:|---:|
-| LuaJIT coroutines | 63 ms | 61 to 74 | 0.6 µs | 0.4 KB |
-| Go goroutines | 124 ms | 118 to 127 | 1.2 µs | 2.6 KB |
-| Lua coroutines | 139 ms | 133 to 145 | 1.4 µs | 1.0 KB |
-| Node `async` | 172 ms | 169 to 181 | 1.3 µs | 1.3 KB |
-| **Cesia fibers** | **548 ms** | 538 to 631 | **5.4 µs** | **3.6 KB** |
-| Python `asyncio` | 1,136 ms | 1,084 to 1,297 | 10.4 µs | 1.4 KB |
-| Java virtual threads | 1,769 ms | 1,631 to 2,055 | 17.2 µs | 2.1 KB |
+| LuaJIT coroutines | 64 ms | 61 to 70 | 0.6 µs | 0.4 KB |
+| Go goroutines | 123 ms | 119 to 130 | 1.2 µs | 2.6 KB |
+| Lua coroutines | 136 ms | 131 to 141 | 1.3 µs | 1.0 KB |
+| Node `async` | 175 ms | 169 to 228 | 1.4 µs | 1.3 KB |
+| **Cesia fibers** | **442 ms** | 435 to 445 | **4.3 µs** | **2.5 KB** |
+| Python `asyncio` | 1,083 ms | 1,078 to 1,124 | 10.1 µs | 1.4 KB |
+| Java virtual threads | 1,595 ms | 1,508 to 1,857 | 15.5 µs | 2.0 KB |
 
-A Cesia fiber takes half the time of a Python task and a third of a Java virtual thread to start, park and end, and
-four times a goroutine. It takes the most memory here, 3.6 KB with its task, since each fiber has three stacks of its
-own, for values, integers and floats, beside its OCaml stack. Go's goroutines also run in parallel on every core;
-Cesia's fibers run on one, and `--workers` gives a server every core, as [HTTP](http.md#every-core) shows.
+A Cesia fiber takes less than half the time of a Python task and a quarter of a Java virtual thread to start, park and
+end, and three and a half times a goroutine; 2.5 KB with its task, a little less than a goroutine's 2.6 KB. Each fiber
+has three stacks of its own, for values, integers and floats, beside its OCaml stack: they start at 16 slots and double
+when they fill, as a goroutine's stack starts at 2 KB and is copied into a larger one. What a goroutine doesn't pay is
+the collector: OCaml's copies each live fiber out of its young heap and marks it again at each major cycle, which is
+most of the time of a fiber here. Go's goroutines also run in parallel on every core; Cesia's fibers run on one, and
+`--workers` gives a server every core, as [HTTP](http.md#every-core) shows.
 
 ## A server under load
 
@@ -211,11 +226,15 @@ workers don't give one and a half times one process. `HTTP_GATE_SCALE=0.5` halve
 
 - Craig Chambers and David Ungar, *Customization*, 1989, and the papers of Self after it on inline caches, deoptimization
   and type feedback: the ideas of Cesia's JIT.
+- Urs Hölzle, Craig Chambers and David Ungar, *Optimizing Dynamically-Typed Object-Oriented Languages With Polymorphic
+  Inline Caches*, 1991: the test of each function a call met, which Cesia's JIT makes for a call through a value.
+- Michael J. Steindorfer and Jurgen J. Vinju, *Optimizing Hash-Array Mapped Tries for Fast and Lean Immutable JVM
+  Collections*, 2015: CHAMP, the trie of Cesia's maps.
 - Andreas Gal and others, *Trace-based Just-in-Time Type Specialization for Dynamic Languages*, 2009: the tracing JIT,
   which LuaJIT is, and Cesia isn't.
 - Vladimir Makarov's MIR, which makes Cesia's machine code.
 
-Each with its link in [References](references.md#the-jit); [How Cesia works](internals.md#the-jit) shows the JIT inside.
+Each with its link in [References](references.md#the-jit) and [Values and maps](references.md#values-and-maps); [How Cesia works](internals.md#the-jit) shows the JIT inside.
 
 ## Next
 

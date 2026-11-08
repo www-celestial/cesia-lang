@@ -134,7 +134,7 @@ machine number, in a register or a slot. A version for floats keeps its floats u
 
 A running function keeps its variables in a *frame*: a run of slots on a stack. Cesia has three stacks per fiber, one of
 values, one of integers and one of floats, so an unboxed number never needs a box to be stored. The stacks start at 4,096
-slots for the main program and 64 for a fiber, and double when they are full.
+slots for the main program and 16 for a fiber, and double when they are full.
 
 ### Steps and checkpoints
 
@@ -296,7 +296,12 @@ the machine code. Integers sit in registers doubled, `2n` for `n`, so that the p
 63-bit overflow of Cesia's integers at no cost.
 
 It compiles numbers and loops on them, arrays of floats and of values read and written by index, calls between compiled
-versions, recursion, and, in a loop, the fields of maps and structs, and new ones made there.
+versions, recursion, in a loop the fields of maps and structs and new ones made there, and calls of a function held in a
+variable, as the next part shows.
+
+A division or a modulo of integers by a power of two, as `math.Mod(i, 4)`, becomes a shift or a mask of bits: a
+division instruction costs tens of cycles, a mask one. The results are those of the floor, which Cesia's `Div` and `Mod`
+give, for negative numbers too: `math.Mod(-7, 4)` is 1 in both.
 
 ### Bets, guards and bails
 
@@ -310,6 +315,24 @@ later.
 Entering machine code in the middle of a loop that is already running, at a checkpoint, is called *on-stack replacement*;
 Cesia does it for loops, with the counter and the bound of a `for` put in their slots.
 
+### Calls through a value
+
+A call of a function held in a variable, as `f(total, x)` where `f` came from a list of functions, can reach a
+different function each time. The interpreter notes, at each such call, the functions it reached, at most four. The JIT
+bets on them: the machine code tests the function against the first, then the second, and calls the one that matches as
+it calls a function named in the code, or copies its body in place, *inlining* it; a function it didn't see bails, as a
+failed guard does. This is a *polymorphic inline cache*, the idea of Hölzle, Chambers and Ungar (1991), which V8 and
+HotSpot use for the same kind of call. A call that reached five functions or more is *megamorphic*: the JIT leaves it to
+the interpreter, and so does a call of a function that captured variables, or that takes or gives values other than
+numbers.
+
+```text
+f(total, x)                      in machine code
+├── f is (a, b) -> a + b ?       total + x, unboxed, inline
+├── f is (a, b) -> a * 0.5 + b ? total * 0.5 + x, inline
+└── else                         back to the interpreter, before the statement
+```
+
 ### The contract
 
 The same program gives the same output, the same errors at the same lines, and the same limits, in the interpreter and in
@@ -321,26 +344,30 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 ### What stays in the interpreter
 
 - the natives, functions of `std/` written in OCaml, as [text.Split]: they are machine code already;
-- `for x in xs` over the elements of a list, and calls of a function held in a variable;
+- `for x in xs` over the elements of a list, and a call through a value that reached five functions or more, or a
+  function that captured variables;
 - under a debugger, the functions that hold a breakpoint and the code you step through;
 - everything on arm64, as Apple's chips, for now: programs run in the interpreter there, with the same results.
 
 ### What it gains
 
-Measured on 2026-11-08 with the build of this book, `release` profile, on the machine above while other work ran on it
-(load 2 to 4): each program of `bench/` 7 times with the JIT and 7 times with `CESIA_JIT=off`, alternated, from the start
-of the process to its end. The minimum, then the median:
+Measured on 2026-11-08, `release` profile, on the machine of [Speed](speed.md#beside-the-giants) while other work ran on
+it (load 1.3 to 4): each program of `bench/` 11 times with the JIT and 11 times with `CESIA_JIT=off`, alternated, from the
+start of the process to its end. The median, then its 95% interval:
 
 | Program | What it does | With the JIT | Interpreter only |
 |---|---|---:|---:|
-| `fib` | `fib(35)`, recursive calls on integers | 72 / 73 ms | 443 / 444 ms |
-| `mandel` | a loop of floats | 63 / 63 ms | 451 / 454 ms |
-| `matmul` | matrices of floats, read by index | 49 / 49 ms | 933 / 950 ms |
-| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 212 / 217 ms | 542 / 544 ms |
-| `real/particles` | 1,000 structs, gravity and walls | 173 / 179 ms | 718 / 734 ms |
-| `dyn` | calls through a list of functions | 673 / 712 ms | 691 / 712 ms |
+| `fib` | `fib(35)`, recursive calls on integers | 73 ms (73–74) | 441 ms (438–446) |
+| `mandel` | a loop of floats | 63 ms (63–64) | 467 ms (463–473) |
+| `matmul` | matrices of floats, read by index | 49 ms (49–51) | 948 ms (942–975) |
+| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 219 ms (214–224) | 560 ms (548–578) |
+| `real/particles` | 1,000 structs, gravity and walls | 176 ms (174–192) | 746 ms (737–762) |
+| `dyn` | calls through a list of functions | 182 ms (181–188) | 708 ms (696–738) |
 
-`dyn` calls each function through a value, which stays in the interpreter: it shows the cost of what the JIT leaves out.
+`dyn` calls each function through a value, which the JIT now makes machine code with its inline cache of functions,
+and its `math.Mod(i, 2)` and `math.Mod(i, 4)` a mask of bits: before both, on the same day, it took 714 ms with the JIT, as
+long as without it.
+
 [Speed](speed.md#beside-the-giants) puts these programs beside Python, Node, Java, Go, OCaml, Lua and LuaJIT.
 
 ## Fibers and the scheduler
@@ -356,7 +383,8 @@ back: a fiber that must wait performs the effect `Suspend`, and the handler arou
 fiber's work, its *continuation*, a value that can be resumed once. The handler stores it in the thing the fiber waits for,
 a channel, a timer, a socket, and returns to the scheduler. When the thing is ready, the continuation goes on the queue of
 fibers ready to run, and is resumed in its turn. A continuation holds the fiber's OCaml stack, which starts small and grows
-as needed: a new fiber takes about 450 words, 3.6 KB, as `tools/fiber-size.sh` measures. The main program is no fiber: it
+as needed: a new fiber takes about 320 words, 2.5 KB, as `tools/fiber-size.sh` measures, with its three stacks of 16
+slots. The main program is no fiber: it
 keeps its own stack, and when it waits, it runs the scheduler itself until it is woken.
 
 The *scheduler* keeps one queue, first in, first out, of the fibers ready to run. A fiber runs until one of these:

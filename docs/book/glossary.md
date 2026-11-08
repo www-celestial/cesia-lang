@@ -87,6 +87,14 @@ A closure that keeps the values of the names it uses as they were when it was ma
 later doesn't change it. Cesia's closures capture by value; those of JavaScript and Python capture the variable itself,
 and see its later values: see [Functions](functions.md#closures).
 
+## CHAMP
+
+The compressed hash-array mapped prefix tree of Steindorfer and Vinju, 2015: a [hash array mapped
+trie](#hash-array-mapped-trie) whose nodes hold inline each key that no other key under them shares 5 bits of hash with,
+and a node of the next level for the bits that several share, with two bitmaps to tell which. It takes less memory than
+a trie with buckets and no node holds a lone key below it. A Cesia map past 32 keys is one: see
+[How Cesia works](internals.md#maps-a-hash-trie).
+
 ## Checkpoint
 
 A moment where the interpreter stops counting to look at the program: at least every 10,000 steps it checks the limits of
@@ -248,7 +256,7 @@ An expression is code that gives a value, as `2 + 3`; a statement is code that o
 ## Fiber
 
 A function that runs beside the others in the same program, with its own stack, run by the language rather than by the
-system: also called a green thread, or a coroutine with a scheduler. Thousands of them cost little, about 3.6 KB each.
+system: also called a green thread, or a coroutine with a scheduler. Thousands of them cost little, about 2.5 KB each.
 They run one at a time on one core. In Cesia [fiber.Spawn] starts one and [fiber.Wait] waits for its end: see
 [Fibers](fibers.md) and [How Cesia works](internals.md#fibers-and-the-scheduler).
 
@@ -305,8 +313,8 @@ The function that answers one kind of request. In [std/http] it takes the reques
 
 A HAMT: a tree where each level is chosen by 5 bits of a key's hash, so a node has up to 32 children, kept compact by a
 bitmap of those that exist. Phil Bagwell described it in 2001, and Clojure made its persistent maps of it. A Cesia map of
-more than 32 keys is one: a read follows about log₃₂ n levels, and a write copies only its path. See
-[How Cesia works](internals.md#maps-a-hash-trie).
+more than 32 keys is one, of the kind called [CHAMP](#champ): a read follows about log₃₂ n levels, and a write copies
+only its path. See [How Cesia works](internals.md#maps-a-hash-trie).
 
 ## Hash flooding
 
@@ -356,7 +364,9 @@ by [copy-on-write](#copy-on-write): see [Values and names](values.md#names).
 
 A small memory kept at one place of the code, as a field read, of the last kind of value met there and of where the field
 was in it, so that the next read of the same kind is fast. Cesia keeps one shape at each site, a monomorphic inline cache:
-see [How Cesia works](internals.md#caches-at-each-site).
+see [How Cesia works](internals.md#caches-at-each-site). One that keeps several kinds is *polymorphic*: Cesia's JIT makes
+one for each call through a value, of the functions it reached, up to four; past them a call is *megamorphic*, and stays
+in the interpreter: see [How Cesia works](internals.md#calls-through-a-value).
 
 ## Intermediate representation
 
@@ -472,6 +482,12 @@ variables carried over. Cesia's JIT does it at a checkpoint inside a hot loop: s
 
 Types that a program may write or leave out. In Cesia types are a plus: code without them runs as fast, and a type that is
 written is checked each time a value comes in: see [Types](types.md).
+
+## Overlong form
+
+A character of UTF-8 written with more bytes than it needs, as `0xC0 0x80` for the character 0, which takes one byte.
+RFC 3629 forbids it, since a check byte by byte could let a forbidden character through in disguise: [text.IsUtf8]
+refuses it. See [Texts](texts.md#valid-utf-8).
 
 ## Package
 
@@ -705,6 +721,17 @@ of an error, and [match] takes it apart case by case: see [Errors](errors.md#loo
 A process that starts others and starts again one that ends, as Erlang's supervisors do. Under `cesia run --workers`, the
 first process is the supervisor of the workers, and waits a little longer each time one ends too soon: see
 [How Cesia works](internals.md#on-every-core).
+
+## Surrogate
+
+A code point from U+D800 to U+DFFF, which UTF-16 keeps to write the characters past U+FFFF in two halves. It is no
+character by itself, so valid UTF-8 never holds one: [text.IsUtf8] refuses it. See [Texts](texts.md#valid-utf-8).
+
+## SWAR
+
+SIMD within a register: the same operation on several small values packed in one machine word, as eight bytes in 64
+bits, with the ordinary instructions of the processor. [text.Count] finds the bytes equal to the one it counts eight at a
+time so: see [Texts](texts.md#searching).
 
 ## Syntax sugar
 

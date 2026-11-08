@@ -16,6 +16,10 @@ publisher moves it.
 - Phil Bagwell. "Ideal Hash Trees". Technical report, EPFL, 2001. <https://infoscience.epfl.ch/record/64398>. The hash array
   mapped trie, a node of 32 children chosen by 5 bits of hash and kept compact by a bitmap: the storage of a map past 32
   keys, in [How Cesia works](internals.md#maps-a-hash-trie).
+- Michael J. Steindorfer, Jurgen J. Vinju. "Optimizing Hash-Array Mapped Tries for Fast and Lean Immutable JVM
+  Collections". *OOPSLA 2015*, ACM, 783–800. <https://doi.org/10.1145/2814270.2814312>. CHAMP: a node with two bitmaps,
+  its own keys inline and its kids apart, no lone key below a node, a drop that brings a key back up: the nodes of a
+  Cesia map past 32 keys.
 - Rich Hickey. "A History of Clojure". *Proceedings of the ACM on Programming Languages* 4(HOPL), article 71, 2020.
   <https://doi.org/10.1145/3386321>. Clojure's persistent maps, built on Bagwell's trie, as a language's everyday
   dictionary: the model of Cesia's.
@@ -42,6 +46,9 @@ publisher moves it.
 
 ## The JIT
 
+- L. Peter Deutsch, Allan M. Schiffman. "Efficient Implementation of the Smalltalk-80 System". *POPL 1984*, ACM, 297–302.
+  <https://doi.org/10.1145/800017.800542>. The inline cache: the class met last at a call kept beside it, so the next
+  call of the same class goes straight to its method. Cesia's caches of shapes and keys.
 - Craig Chambers, David Ungar. "Customization: Optimizing Compiler Technology for SELF, a Dynamically-Typed
   Object-Oriented Programming Language". *PLDI 1989*, 146–160. <https://doi.org/10.1145/73141.74831>. A function compiled
   once per kind of its arguments: Cesia's versions, one per tuple of argument types.
@@ -51,7 +58,8 @@ publisher moves it.
   small maps.
 - Urs Hölzle, Craig Chambers, David Ungar. "Optimizing Dynamically-Typed Object-Oriented Languages With Polymorphic Inline
   Caches". *ECOOP 1991*, LNCS 512, 21–38. <https://doi.org/10.1007/BFb0057013>. Inline caches at each site of the code;
-  Cesia's keep the last shape met, the monomorphic kind this paper starts from.
+  Cesia's of fields keep the last shape met, the monomorphic kind this paper starts from, and its JIT makes the
+  polymorphic kind of this paper for a call through a value: a test of each function met, up to four.
 - Urs Hölzle, Craig Chambers, David Ungar. "Debugging Optimized Code with Dynamic Deoptimization". *PLDI 1992*, 32–43.
   <https://doi.org/10.1145/143095.143114>. Leaving optimized code for the interpreter, with the state rebuilt: Cesia's
   bails.
@@ -80,6 +88,10 @@ publisher moves it.
 - Henry G. Baker Jr., Carl Hewitt. "The Incremental Garbage Collection of Processes". *Symposium on Artificial
   Intelligence and Programming Languages*, ACM, 55–59, 1977. <https://doi.org/10.1145/800228.806932>. The *future*, a value
   that a computation gives later: a task of [fiber.Spawn], which [fiber.Wait] reads.
+- The Go Authors. Go 1.3 and Go 1.4 Release Notes, 2014. <https://go.dev/doc/go1.3>, <https://go.dev/doc/go1.4>, and the
+  design document "Contiguous stacks", 2013. <https://go.dev/s/contigstacks>. A goroutine's stack starts at 2,048 bytes
+  and is copied into a larger one when it fills: what Cesia's fibers are measured against, and why their stacks
+  start at 16 slots and double.
 - Joe Armstrong. "A History of Erlang". *HOPL III*, ACM, 2007. <https://doi.org/10.1145/1238844.1238850>. Processes switched
   after a count of reductions, supervisors that start a failed process again, and code replaced while it runs: Cesia's
   checkpoints every million steps, the supervisor of `--workers`, and `--watch`.
