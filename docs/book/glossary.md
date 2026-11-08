@@ -155,6 +155,13 @@ receiver `r` in parentheses before the name, and `r.Area()` calls it: see [Struc
 Code between a server and its handlers, which sees each request and each response: a log, a header, a check. [http.Wrap]
 puts one in front of an application: see [HTTP](http.md#middleware).
 
+## Minor heap
+
+The young part of memory in a garbage collector that sorts values by age: a new value is made there by moving a pointer,
+and the collector empties it often, copying out the few values still in use. Most values die young, so they cost almost
+nothing to free. OCaml's is 256k words by default; Cesia runs with 2M words (16 MB): see
+[Native packages](native.md#what-a-call-costs).
+
 ## Native package
 
 A package whose heart is compiled code that the language loads as a program runs: an extension module in Python, an
@@ -231,6 +238,12 @@ a capability: the right to one kind of thing, within a scope. See
 The number a generator of random numbers starts from: the same seed gives the same numbers, so a run can be replayed. A Cesia
 run takes one from the system, [random.Seed] tells it, and `cesia run --seed N` gives it: see
 [Data](data.md#the-same-numbers-again).
+
+## Shared library
+
+A file of machine code that a running program loads and links to itself, as a `.so` on Linux, a `.dylib` on macOS and a
+`.dll` on Windows. OCaml's are plugins, `.cmxs` files: Cesia loads its JIT, its SQLite and the engines of native packages
+this way, at their first use: see [Native packages](native.md#using-one).
 
 ## Short-circuit evaluation
 
