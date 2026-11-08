@@ -20,7 +20,8 @@ let operand = function
 
 let ty = function Ir.Kint | Kval -> "i64" | Kfloat -> "d"
 
-(* The header of a block of OCaml 5: its size in words from bit 10, its color 0 as the young heap's, its tag. *)
+(* The header of a block of OCaml 5: its size in words from bit 10, its color 0 as the young heap's, its tag, which
+   native code reads alone, as the header's first byte (x86-64 and arm64 are little-endian). *)
 let header words tag = string_of_int ((words lsl 10) lor tag)
 let cmp_name = function Ir.Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
 let flip = function Ir.Lt -> Ir.Gt | Le -> Ge | Gt -> Lt | Ge -> Le | c -> c
@@ -72,7 +73,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
      or 8, whose own is at 16. *)
   let share b q =
     let d = label () and a = label () and rr = label () in
-    Printf.bprintf b "  and x0, r%d, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(r%d)\n  and x1, x1, 255\n  beq %s, x1, 3\n  beq %s, x1, 4\n  bne %s, x1, 8\n"
+    Printf.bprintf b "  and x0, r%d, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(r%d)\n  beq %s, x1, 3\n  beq %s, x1, 4\n  bne %s, x1, 8\n"
       q d q a rr d;
     Printf.bprintf b "%s:\n  mov i64:16(r%d), 1\n  jmp %s\n%s:\n  mov x2, i64:0(r%d)\n  mov i64:24(x2), 1\n%s:\n" rr q d a q d
   in
@@ -179,7 +180,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   (* A value whose tag is [tag], else bail: the tag in x1. *)
   let block_of v tag k =
     let b = bail_to k in
-    pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(%s)\n  and x1, x1, 255\n" v b v;
+    pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n" v b v;
     match tag with Some t -> pr "  bne %s, x1, %d\n" b t | None -> ()
   in
   (* A frame about to be entered at [at], above the limit: the stack is short, the interpreter's frames would want a longer
@@ -361,13 +362,13 @@ let func b ~prefix ~nested (fn : Ir.func) =
       (* The keys, then the store's kind, F (tag 0) or V (tag 1), then its array. *)
       let m = in_reg Kval m in
       block_of m (Some 8) k;
-      pr "  mov x2, i64:0(%s)\n  bne %s, x2, c%d\n  mov x2, i64:8(%s)\n  mov x1, i64:-8(x2)\n  and x1, x1, 255\n" m (bail_to k) c m;
+      pr "  mov x2, i64:0(%s)\n  bne %s, x2, c%d\n  mov x2, i64:8(%s)\n  mov x1, u8:-8(x2)\n" m (bail_to k) c m;
       pr "  bne %s, x1, %d\n  mov r%d, i64:0(x2)\n" (bail_to k) f r
     | Fields (r, v, sid, f, k) ->
       (* The shape's number, then the store's kind and its array. *)
       let v = in_reg Kval v in
       block_of v (Some 4) k;
-      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov x2, i64:8(%s)\n  mov x1, i64:-8(x2)\n  and x1, x1, 255\n" v (bail_to k) (tagged sid) v;
+      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov x2, i64:8(%s)\n  mov x1, u8:-8(x2)\n" v (bail_to k) (tagged sid) v;
       pr "  bne %s, x1, %d\n  mov r%d, i64:0(x2)\n" (bail_to k) f r
     | Load (r, a, i, k) ->
       if k >= 0 then pr "  mov x4, i64:-8(r%d)\n  ursh x4, x4, 10\n  ble %s, x4, %d\n" a (bail_to k) i;
@@ -399,9 +400,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
         | None ->
           ignore (check_index ~t:"i64" a i site Ir.err_write);
           cell ();
-          pr "  mov x1, i64:0(x0)\n  and x2, x1, 1\n  bne %s, x2, 0\n  mov x2, i64:-8(x1)\n  and x2, x2, 255\n  bne %s, x2, %d\n" fresh fresh tag;
+          pr "  mov x1, i64:0(x0)\n  and x2, x1, 1\n  bne %s, x2, 0\n  mov x2, u8:-8(x1)\n  bne %s, x2, %d\n" fresh fresh tag;
           pr "  mov x2, i64:0(x1)\n  bne %s, x2, c%d\n  mov x2, i64:16(x1)\n  bne %s, x2, 3\n" fresh c fresh;
-          pr "  mov x2, i64:8(x1)\n  mov x3, i64:-8(x2)\n  and x3, x3, 255\n  bne %s, x3, 0\n  mov x2, i64:0(x2)\n" fresh;
+          pr "  mov x2, i64:8(x1)\n  mov x3, u8:-8(x2)\n  bne %s, x3, 0\n  mov x2, i64:0(x2)\n" fresh;
           "x2"
       in
       Array.iteri (fun j v -> pr "  dmov d:%d(%s), %s\n" (8 * j) data (in_reg Kfloat v)) vals;
@@ -500,7 +501,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Is_fun (v, c, yes, no) ->
       (* A block of tag 5, Fun, whose first field, its code, is the constant's. *)
       let v = in_reg Kval v in
-      pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(%s)\n  and x1, x1, 255\n  bne %s, x1, 5\n" v (bl no) v (bl no);
+      pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n  bne %s, x1, 5\n" v (bl no) v (bl no);
       pr "  mov x2, i64:0(%s)\n  beq %s, x2, c%d\n  jmp %s\n" v (bl yes) c (bl no)
     | Done ->
       spill b;
@@ -532,8 +533,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
     Array.iteri
       (fun a (slot, written, store, nd) ->
          pr "  mov x0, i64:%d(vp)\n  and x1, x0, 1\n  bne %s, x1, 0\n" (8 * slot) lf;
-         pr "  mov x1, i64:-8(x0)\n  and x1, x1, 255\n  bne %s, x1, 3\n  mov x2, i64:0(x0)\n" lf;
-         pr "  mov x1, i64:16(x2)\n  mov x3, i64:-8(x1)\n  and x3, x3, 255\n  bne %s, x3, %d\n" lf store;
+         pr "  mov x1, u8:-8(x0)\n  bne %s, x1, 3\n  mov x2, i64:0(x0)\n" lf;
+         pr "  mov x1, i64:16(x2)\n  mov x3, u8:-8(x1)\n  bne %s, x3, %d\n" lf store;
          if written then pr "  mov x3, i64:24(x2)\n  bne %s, x3, 3\n" lf;
          pr "  mov %s, i64:0(x1)\n  mov x3, i64:0(x2)\n  rsh x3, x3, 1\n  mov x4, i64:8(x2)\n  rsh x4, x4, 1\n" (arr a);
          pr "  mul x3, x3, x4\n  lsh %s, x3, 1\n" (len a);
