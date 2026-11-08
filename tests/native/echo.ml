@@ -14,37 +14,52 @@ let _held =
     (Result.is_ok, Seq.empty, String.length, Sys.time, Uchar.of_int, Unix.sleepf, UnixLabels.sleepf, Stdlib.print_string),
     (CamlinternalFormat.make_printf, CamlinternalFormatBasics.concat_fmt, CamlinternalLazy.force_lazy_block) )
 
+(* The engine's own readers of arguments: a match each, no call to Cesia, and Cesia's message for a wrong one. *)
+let int ctx name = function C.Int i -> i | v -> C.need ctx name "an Int" v
+let float ctx name = function C.Float x -> x | C.Int i -> float_of_int i | v -> C.need ctx name "a Float" v
+let text ctx name = function C.Text s -> s | v -> C.need ctx name "a Text" v
+let bool ctx name = function C.Bool b -> b | v -> C.need ctx name "a Bool" v
+
 let four = C.keys [| "Int"; "Float"; "Text"; "Bool" |]
 
 let echo4 ctx a =
   let name = "echo.Echo4" in
   C.record ctx four
-    [| C.int (C.to_int ctx name a.(0)); C.float (C.to_float ctx name a.(1)); C.text (C.to_text ctx name a.(2));
-       C.bool (C.to_bool ctx name a.(3)) |]
+    [| Int (int ctx name a.(0)); Float (float ctx name a.(1)); Text (text ctx name a.(2)); Bool (bool ctx name a.(3)) |]
 
 let kind_name = function
-  | C.Missing -> "missing" | Bool -> "bool" | Int -> "int" | Float -> "float" | Text -> "text" | List -> "list"
-  | Map -> "map" | Struct -> "struct" | Function -> "function" | Handle -> "handle" | Other -> "other"
+  | C.Missing -> "missing" | Bool _ -> "bool" | Int _ -> "int" | Float _ -> "float" | Text _ -> "text" | List _ -> "list"
+  | Map _ -> "map" | Struct _ -> "struct" | Function _ -> "function" | Handle _ -> "handle" | Other _ -> "other"
 
-let kind_of _ a = C.text (kind_name (C.kind a.(0)))
-let reverse ctx a = let v = a.(0) and n = C.length a.(0) in C.list ctx (Array.init n (fun i -> C.item ctx v (n - 1 - i)))
+let kind_of _ a = C.Text (kind_name a.(0))
+
+let reverse ctx a =
+  match a.(0) with
+  | C.List l -> let n = C.length l in C.list ctx (Array.init n (fun i -> C.item ctx l (n - 1 - i)))
+  | v -> C.need ctx "echo.Reverse" "a list" v
 
 (* A map of the same fields, and one more, Count, the number of them. *)
 let fields ctx a =
-  let names = C.names a.(0) and values = C.values a.(0) in
-  C.record ctx (C.keys (Array.append names [| "Count" |])) (Array.append values [| C.int (C.length a.(0)) |])
+  match a.(0) with
+  | C.Map m | C.Struct m ->
+    C.record ctx (C.keys (Array.append (C.names m) [| "Count" |])) (Array.append (C.values m) [| Int (C.length m) |])
+  | v -> C.need ctx "echo.Fields" "a map or a struct" v
 
-let field ctx a = C.field a.(0) (C.to_text ctx "echo.Field" a.(1))
-let thing ctx a = C.handle "echo.thing" (C.to_int ctx "echo.Thing" a.(0))
-let number ctx a = C.int (C.handle_id ctx "echo.Number" "echo.thing" a.(0))
+let field ctx a =
+  match a.(0) with
+  | C.Map m | C.Struct m -> (C.fields (C.keys [| text ctx "echo.Field" a.(1) |]) m).(0)
+  | _ -> C.Missing
+
+let thing ctx a = C.Handle ("echo.thing", int ctx "echo.Thing" a.(0))
+let number ctx a = match a.(0) with C.Handle ("echo.thing", n) -> C.Int n | v -> C.need ctx "echo.Number" "a handle echo.thing" v
 let same _ a = a.(0)
 let boom _ _ = raise Not_found
-let refuse ctx a = C.panic ctx ("echo.Refuse: " ^ C.to_text ctx "echo.Refuse" a.(0))
-let read ctx a = C.need_read ctx (C.to_text ctx "echo.Read" a.(0)); C.ok ctx C.missing
+let refuse ctx a = C.panic ctx ("echo.Refuse: " ^ text ctx "echo.Refuse" a.(0))
+let read ctx a = C.need_read ctx (text ctx "echo.Read" a.(0)); C.ok ctx C.Missing
 
 (* Waits on a domain of its own, which wakes the fiber: the others run meanwhile. *)
 let later ctx a =
-  let seconds = C.to_float ctx "echo.Later" a.(0) in
+  let seconds = float ctx "echo.Later" a.(0) in
   C.suspend ctx (fun resume -> ignore (Domain.spawn (fun () -> Unix.sleepf seconds; resume ())));
   C.ok ctx a.(1)
 
