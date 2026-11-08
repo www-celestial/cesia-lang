@@ -74,6 +74,8 @@ type func = {
   chains : (int * int * int) list array;
   stride : int;
   need : int;
+  numbers : (var * int) array;
+  lent : int array;
 }
 
 let io_base = 3

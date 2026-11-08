@@ -47,11 +47,30 @@ let make (w : world) (ver : version) fns start loops =
         None
     end
 
+(* Does the value slot of each variable kept as a number hold one of its kind. *)
+let numbers_fit (ctx : ctx) (fn : Ir.func) =
+  Array.for_all
+    (fun ((v : Ir.var), slot) ->
+       match ctx.v.(ctx.b + slot), v.kind with Float _, Kfloat | Int _, Kint -> true | _ -> false)
+    fn.numbers
+
+(* A status after which the run wrote its variables back to their slots. *)
+let wrote (fn : Ir.func) st = st = Ir.ok || st = Ir.fuel_out || st = Ir.bailed || st = Ir.gc || (st = Ir.error && fn.spills)
+
 (* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,
-   comes off [ctx.fuel], so the next checkpoint counts it. *)
+   comes off [ctx.fuel], so the next checkpoint counts it. The variables kept as numbers are unboxed into their hidden
+   slots before, and boxed back after a run that wrote them. *)
 let rec run ?(leave = false) (ctx : ctx) code entry =
   let b = ctx.b and w = ctx.w in
   if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
+  if not (numbers_fit ctx code.fn) then Ir.fallback else begin
+  Array.iter
+    (fun ((v : Ir.var), slot) ->
+       match ctx.v.(b + slot) with
+       | Float x -> Float.Array.set ctx.f (b + v.slot) x
+       | Int n -> ctx.i.(b + v.slot) <- n
+       | _ -> ())
+    code.fn.numbers;
   let depth = if code.calls then b + code.fn.frame + code.fn.hidden + (2 * (ctx.max_depth - Runtime.frames ctx - 1)) else max_int in
   let fuel0 = ctx.fuel in
   io.(Ir.io_base) <- b;
@@ -80,6 +99,11 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   (* The constants whose first field native code reads, after the frame, where nothing else is while it runs. *)
   Array.iteri (fun j c -> ctx.v.(b + code.fn.frame + j) <- c) code.fn.consts;
   let st = Jit.call code.addr ctx.i ctx.f ctx.v io in
+  if wrote code.fn st then
+    Array.iter
+      (fun ((v : Ir.var), slot) ->
+         ctx.v.(b + slot) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
+      code.fn.numbers;
   if st = Ir.stack_out then begin
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
     ctx.fuel <- fuel0;
@@ -99,6 +123,7 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   end else begin
     ctx.fuel <- fuel0 - (io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel));
     st
+  end
   end
 
 (* At least [n] words of the young heap for native code: OCaml's own allocation collects when they are not there, and runs
@@ -232,7 +257,8 @@ let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads =
    which the interpreter does, at its step. Checked before the interpreter leaves its loops, so that native code then never
    falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. *)
 let fits (ctx : ctx) code =
-  Array.for_all
+  numbers_fit ctx (native code).fn
+  && Array.for_all
     (fun (slot, written, store, nd) ->
        let dims d = nd = 0 || Array.length d = (if nd = 2 then 0 else nd) in
        match ctx.v.(ctx.b + slot) with

@@ -7,6 +7,9 @@ exception No
 (* A guess that needs a value the frame doesn't hold yet: the loop can be lowered again later. *)
 exception Unseen
 
+(* A variable kept as a number for the whole run that an assignment can't keep so: the loop lowers again with it a value. *)
+exception Respec of int
+
 type st = {
   w : world;
   ver : version;
@@ -39,6 +42,7 @@ type st = {
       (* shared with inlined bodies, the interpreter's view of the function's calls: the highest base of one from its frame,
          and the largest frame called; -1 when a callee has no interpreter's code yet *)
   ctx : ctx option;  (* a region's frame as it is now, whose values guide the guesses *)
+  spec : bool array;  (* the variables of no type kept as a number for the whole run, as [Ir.func.numbers] *)
   dyn : dyn;  (* shared with inlined bodies *)
 }
 
@@ -62,6 +66,9 @@ and dyn = {
       (* in the block being built: a register of a map or struct already checked, its constant or -1 - its shape, and the
          register of its values *)
   mutable nums : (int * int * Ir.unbox * int) list;  (* in the block being built: a value's register, how, its number's *)
+  mutable lent : int list;  (* as [Ir.func.lent] *)
+  mutable ticked : bool;  (* a step or a call since the statement's start: the fuel may differ from its start's *)
+  mutable ranges : (int * (int * int)) list;  (* integer registers, each written once, and the bounds proved of them *)
 }
 
 and unit_ = { versions : version Vec.t }
@@ -112,7 +119,10 @@ let shows st =
    restores the fuel. *)
 let emit st i =
   (match i with
-   | Ir.Tick _ | Call _ | Enter _ -> st.dyn.bail <- None
+   | Ir.Tick _ | Call _ ->
+     st.dyn.bail <- None;
+     st.dyn.ticked <- true
+   | Enter _ -> st.dyn.bail <- None
    | Set_elem _ | Set_at _ | Put _ | Incr _ | Bump _ | Burn -> shows st
    | Move (r, x) ->
      let d = st.dyn in
@@ -235,6 +245,18 @@ let fresh st k f =
   let r = reg st k in
   emit st (f r);
   Ir.Reg r, k
+
+(* The bounds proved of an integer operand; small ones only, so that no sum of them overflows. *)
+let small = 1 lsl 60
+let range st = function
+  | Ir.Int n when n > - small && n < small -> Some (n, n)
+  | Reg q -> List.assoc_opt q st.dyn.ranges
+  | _ -> None
+
+let proves st (r, _) = function
+  | Some (lo, hi) when lo > - small && hi < small ->
+    (match r with Ir.Reg q -> st.dyn.ranges <- (q, (lo, hi)) :: st.dyn.ranges | _ -> ())
+  | _ -> ()
 
 (* What the frame holds now for a variable of the region, a field of it or a cell of one of its arrays: the guess that
    guards then check. *)
@@ -372,7 +394,15 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     (match snd x, snd y with
      | Kint, Kint ->
        let op = match op with Add -> Ir.Add | Sub -> Sub | _ -> Mul in
-       fresh st Kint (fun r -> Op (op, r, fst x, fst y, site st e.pos))
+       (* Bounds proved of both operands that keep the result far from overflow: no check (range analysis). *)
+       let proved =
+         match op, range st (fst x), range st (fst y) with
+         | (Ir.Add | Sub), Some (a, b), Some (c, d) -> Some (if op = Add then a + c, b + d else a - d, b - c)
+         | _ -> None
+       in
+       let r = fresh st Kint (fun r -> Op (op, r, fst x, fst y, if proved = None then site st e.pos else -1)) in
+       proves st r proved;
+       r
      | _ ->
        let op = match op with Add -> Ir.Fadd | Sub -> Fsub | _ -> Fmul in
        let x = to_float st x in
@@ -479,16 +509,22 @@ and checked st v c make =
 and stored st (e : expr) =
   match expr st e with
   | x, Kval ->
-    (match e.e with Var _ | Index _ | Field _ -> emit st (Share x) | _ -> ());
+    (match e.e with Var _ | Index _ | Field _ when not (number st x) -> emit st (Share x) | _ -> ());
     x
   | x -> box st x
+
+(* A value known in this block to be an Int or a Float, which no mark of sharing concerns. *)
+and number st = function
+  | Ir.Reg q -> List.exists (fun (b, v, _, _) -> b = st.cur && v = q) st.dyn.nums
+  | _ -> false
 
 (* While nothing of the statement showed but steps, a call that wants a longer stack bails: the interpreter makes it,
    with the fuel of the statement's start, kept there. Else such a call stops the run, which then must write nothing. *)
 and back st =
   match st.dyn.callable with
   | Some k when not st.dyn.dirty ->
-    if Vec.get st.dyn.keeps k = (-1, -1, -1) then begin
+    (* Before any step or call of the statement, the fuel is still its start's: nothing to keep. *)
+    if st.dyn.ticked && Vec.get st.dyn.keeps k = (-1, -1, -1) then begin
       let f = reg st Kint and sp = reg st Kint and q = reg st Kint in
       at_start st (Keep (f, sp, q));
       Vec.set st.dyn.keeps k (f, sp, q)
@@ -537,7 +573,7 @@ and inline st (e : expr) (v : version) args =
   let f = v.owner.func in
   let res = reg st (kind_of v.ret) and cont = block st in
   let child =
-    { st with ver = v; f; regs = Array.make f.nvars (-1); arrays = Array.make f.nvars (-1); loops = [];
+    { st with ver = v; f; regs = Array.make f.nvars (-1); arrays = Array.make f.nvars (-1); spec = Array.make f.nvars false; loops = [];
               inl = (vb, base, callsite) :: st.inl; ret_to = Some (res, cont); body = 0; region = false;
               fast = Hashtbl.create 1 }
   in
@@ -593,7 +629,10 @@ and call_expr st e (call : call) =
        let a = args_of call 2 in
        let x = expr st a.(0) and y = expr st a.(1) in
        if snd x <> Kint || snd y <> Kint then raise No;
-       fresh st Kint (fun r -> Op ((if name = "Div" then Div else Mod), r, fst x, fst y, site st e.pos))
+       let r = fresh st Kint (fun r -> Op ((if name = "Div" then Div else Mod), r, fst x, fst y, site st e.pos)) in
+       (* The floor modulo by a positive constant d is in 0..d - 1. *)
+       proves st r (match name, y with "Mod", (Ir.Int d, _) when d > 0 -> Some (0, d - 1) | _ -> None);
+       r
      | Native { nname; f1 = Some _; _ } when List.mem_assoc nname math ->
        let a = args_of call 1 in
        let x = to_float st (expr st a.(0)) in
@@ -652,7 +691,7 @@ and call_value st e (call : call) f =
   if targets = [] then raise No;
   let k = match targets with (_, (v : version)) :: rest when List.for_all (fun (_, (w : version)) -> w.ret == v.ret) rest -> kind_of v.ret | _ -> Ir.Kval in
   let r = reg st k and join = block st in
-  let before = st.dyn.bail and clean = st.dyn.dirty in
+  let before = st.dyn.bail and clean = st.dyn.dirty and calm = st.dyn.ticked in
   List.iter
     (fun (p, (v : version)) ->
        let yes = block st and next = block st in
@@ -662,6 +701,7 @@ and call_value st e (call : call) f =
        (* Each test runs after the ones before alone: a guard of its arguments may go back as the call's may. *)
        st.dyn.bail <- before;
        st.dyn.dirty <- clean;
+       st.dyn.ticked <- calm;
        let args = Array.mapi (fun j (x, xk) -> match v.sg.(j), xk with TI, Ir.Kval -> unbox st x Only_int | TF, Ir.Kval -> unbox st x Only_float | _ -> x, xk) vals in
        note st v;
        let res = if st.inl = [] && inlinable v then inline st e v args else native_call st e v (Array.map fst args) in
@@ -674,6 +714,7 @@ and call_value st e (call : call) f =
   close st (Bail (bail st));
   st.cur <- join;
   st.dyn.bail <- None;
+  st.dyn.ticked <- true;
   Ir.Reg r, k
 
 (* A call of a compiled version, native code to native code. *)
@@ -737,7 +778,25 @@ and stmt st (e : expr) =
   match e.e with
   | Assign ({ b = Local i; _ }, v) ->
     let r = var st i in
-    let x = (match Vec.get st.kinds r with Kval -> stored st v | k -> convert st k (expr st v)) in
+    let x =
+      match Vec.get st.kinds r with
+      | Kval ->
+        (* A value read elsewhere and held by a variable alone is marked shared when the run writes the variable back:
+           nothing in native code changes it in place. *)
+        (match expr st v with
+         | x, Kval ->
+           (match v.e with Var _ | Index _ | Field _ when not (List.mem r st.dyn.lent) -> st.dyn.lent <- r :: st.dyn.lent | _ -> ());
+           x
+         | x -> box st x)
+      | k when st.spec.(i) ->
+        (* A number for the whole run: the value assigned must be one of its kind, checked, or the loop lowers again with
+           the variable a value. *)
+        (match expr st v with
+         | x, k' when k' = k -> x
+         | x, Kval when st.dyn.bail <> None -> fst (unbox st x (if k = Kint then Only_int else Only_float))
+         | _ -> raise (Respec i))
+      | k -> convert st k (expr st v)
+    in
     emit st (Move (r, x));
     (* An inlined callee's variables are its own: the way back has nothing of them to put back. *)
     if st.inl = [] then st.dyn.dirty <- true
@@ -791,15 +850,16 @@ and stmt st (e : expr) =
     (* What the block of the test knew holds in both branches, and what both knew at their end holds after them. *)
     let base = facts st b0 in
     (* Either branch runs after the test alone: a guard in it may go back while nothing of the branch showed. *)
-    let before = st.dyn.bail and clean = st.dyn.dirty in
+    let before = st.dyn.bail and clean = st.dyn.dirty and calm = st.dyn.ticked in
     carry st base y;
     st.cur <- y;
     Array.iter (stmt st) yes;
     let end_yes = facts st st.cur in
     goto st join;
-    let after_yes = st.dyn.bail and dirty_yes = st.dyn.dirty in
+    let after_yes = st.dyn.bail and dirty_yes = st.dyn.dirty and ticked_yes = st.dyn.ticked in
     st.dyn.bail <- before;
     st.dyn.dirty <- clean;
+    st.dyn.ticked <- calm;
     carry st base n;
     st.cur <- n;
     Array.iter (stmt st) no;
@@ -807,7 +867,8 @@ and stmt st (e : expr) =
     goto st join;
     meet st end_yes end_no join;
     if after_yes = None then shows st;
-    st.dyn.dirty <- st.dyn.dirty || dirty_yes
+    st.dyn.dirty <- st.dyn.dirty || dirty_yes;
+    st.dyn.ticked <- st.dyn.ticked || ticked_yes
   | Break ->
     (match st.loops with
      | l :: _ ->
@@ -884,6 +945,7 @@ and stmts st ~root (b : block) =
          st.dyn.bail <- Some k;
          st.dyn.callable <- Some k;
          st.dyn.dirty <- false;
+         st.dyn.ticked <- false;
          stmt st x)
       b;
     shows st
@@ -1161,7 +1223,7 @@ let rec func st name =
   let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some (var_of i) else None) (List.init f.nvars Fun.id) in
   finish st name ~params ~vars
 
-and finish st name ~params ~vars =
+and finish ?(numbers = []) st name ~params ~vars =
   let ver = st.ver in
   let hidden = Vec.to_list st.hidden in
   let blocks = Vec.to_array st.blocks in
@@ -1177,7 +1239,7 @@ and finish st name ~params ~vars =
       pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ -> true | _ -> false));
       calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Vec.to_array st.chains;
       spills = st.w.hooks;
-      stride = st.mem.(0); need = st.mem.(1) },
+      stride = st.mem.(0); need = st.mem.(1); numbers = Array.of_list numbers; lent = Array.of_list st.dyn.lent },
     Vec.to_array st.sites )
 
 (* The local variables a loop names. *)
@@ -1200,10 +1262,28 @@ let rec locals acc (e : expr) =
   | Struct_lit { sfields; _ } -> Array.fold_left (fun acc (_, v) -> locals acc v) acc sfields
   | _ -> acc
 
+(* The variables an iteration of a loop may read before it assigns them: those whose values go from one iteration to the
+   next. A statement other than an assignment counts every variable it names. *)
+let carried (loop : expr) =
+  let body, first = match loop.e with For { fbody; _ } -> fbody, [] | While { cond; body; _ } -> body, locals [] cond | _ -> [||], [] in
+  let set = ref [] in
+  let before l = List.filter (fun j -> not (List.mem j !set)) l in
+  Array.fold_left
+    (fun acc (s : expr) ->
+       match s.e with
+       | Assign ({ b = Local j; _ }, v) ->
+         let acc = before (locals [] v) @ acc in
+         set := j :: !set;
+         acc
+       | _ -> before (locals [] s) @ acc)
+    first body
+
 (* A region's variables of any type that its loop names are values in registers; one it never assigns that holds an
    array of floats or of values now is an array, checked at each entry. A float array is one only where its loop names
-   it: one the function makes after the loop has no value yet, and would fail the check of every entry. *)
-let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
+   it: one the function makes after the loop has no value yet, and would fail the check of every entry. One whose value
+   goes from an iteration to the next and holds an Int or a Float now is kept as that number for the whole run, unless
+   [values] names it: an iteration then boxes and unboxes nothing. *)
+let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (ver : version) =
   let f = ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
   if (not region) && ver.ret != TI && ver.ret != TF then raise No;
@@ -1213,6 +1293,8 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
   let named = match scope with Some e -> locals [] e | None -> [] in
   let written = match scope with Some e -> (try Some (assigned ~sets:false [] e) with Unknown -> None) | None -> None in
   let plain i = (f.cell_of = [||] || f.cell_of.(i) < 0) && not f.maybe_undef.(i) in
+  let crossing = match scope with Some e -> carried e | None -> [] in
+  let spec = Array.make f.nvars false in
   for i = 0 to f.nvars - 1 do
     match ver.tv.(i) with
     | TI | TF ->
@@ -1228,20 +1310,27 @@ let start ?(region = false) ?ctx ?scope (w : world) unit index (ver : version) =
           (match ctx.v.(ctx.b + ver.map.(i)) with Array { store = F _; _ } -> 0 | Array { store = V _; _ } -> 1 | _ -> -1)
         | _ -> -1
       in
+      let number =
+        match ctx with
+        | Some (ctx : ctx) when List.mem i crossing && not (List.mem i values) ->
+          (match ctx.v.(ctx.b + ver.map.(i)) with Int _ -> Some Ir.Kint | Float _ -> Some Kfloat | _ -> None)
+        | _ -> None
+      in
       if store >= 0 then begin
         Vec.add_last arr (ver.map.(i), false, store, 0);
         arrays.(i) <- Vec.length arr - 1
       end else begin
-        Vec.add_last kinds Ir.Kval;
-        regs.(i) <- Vec.length kinds - 1
+        Vec.add_last kinds (Option.value number ~default:Ir.Kval);
+        regs.(i) <- Vec.length kinds - 1;
+        spec.(i) <- number <> None
       end
     | _ -> ()
   done;
   { w; ver; f; index; kinds; blocks = Vec.create (); cur = 0; regs; arrays; arr; hidden = Vec.create ();
     resumes = Vec.create (); loops = []; sites = Vec.create (); live = Bytes.empty; unit; body = 0; region; infos = Vec.create ();
-    fast = Hashtbl.create 1; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx;
+    fast = Hashtbl.create 1; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec;
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
-            vars = []; need = None; consts = Vec.create (); known = []; nums = [] } }
+            vars = []; need = None; consts = Vec.create (); known = []; nums = []; lent = []; ticked = true; ranges = [] } }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
 let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool) array) =
@@ -1254,12 +1343,12 @@ let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool
     pos
 
 (* The unit whose first function [first] makes: then each version it calls, as whole functions. *)
-let lower_unit ?ctx ?scope (w : world) (ver : version) first =
+let lower_unit ?ctx ?scope ?values (w : world) (ver : version) first =
   let u = { versions = Vec.create () } in
   Vec.add_last u.versions ver;
   let out = Vec.create () in
   match
-    let st0 = start ~region:(first <> None) ?ctx ?scope w u 0 ver in
+    let st0 = start ~region:(first <> None) ?ctx ?scope ?values w u 0 ver in
     let extra = match first with Some f -> f st0 | None -> Vec.add_last out (func st0 "f0"); None in
     (match extra with Some fn -> Vec.add_last out fn | None -> ());
     let i = ref 1 in
@@ -1313,11 +1402,27 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
        close st Done;
        points := (p, p)
      | _ -> raise No);
-    let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 then Some { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } else None)
+    let vars = List.filter_map (fun i -> if st.regs.(i) >= 0 && not st.spec.(i) then Some { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } else None)
         (List.init st.f.nvars Fun.id) in
+    (* A variable kept as a number lives in a hidden slot of its stack while the run lasts. *)
+    let numbers =
+      List.filter_map
+        (fun i ->
+           if not st.spec.(i) then None
+           else begin
+             let v = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.frame + Vec.length st.hidden } in
+             Vec.add_last st.hidden v;
+             Some (v, ver.map.(i))
+           end)
+        (List.init st.f.nvars Fun.id)
+    in
     infos := Vec.to_array st.infos;
-    Some (finish st "f0" ~params:[] ~vars)
+    Some (finish ~numbers st "f0" ~params:[] ~vars)
   in
-  match lower_unit ?ctx ~scope:loop w ver (Some make) with
-  | Some fns -> Some (fns, fst !points, !infos)
-  | None -> None
+  let rec go values =
+    match lower_unit ?ctx ~scope:loop ~values w ver (Some make) with
+    | Some fns -> Some (fns, fst !points, !infos)
+    | None -> None
+    | exception Respec i -> go (i :: values)
+  in
+  go []

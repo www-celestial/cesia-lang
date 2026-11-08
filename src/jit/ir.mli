@@ -24,7 +24,9 @@ type op = Add | Sub | Mul | Div | Mod | Fadd | Fsub | Fmul | Fdiv | Fpow
 type ins =
   | Move of int * value
   | Incr of int  (** an integer register plus 1, unchecked: a loop's counter below its bound *)
-  | Op of op * int * value * value * int  (** the destination, the operands, the site of an error *)
+  | Op of op * int * value * value * int
+      (** the destination, the operands, the site of an error; -1 for an integer [Add] or [Sub] whose operands' bounds
+          prove it can't overflow, then unchecked *)
   | Neg of int * value * int
   | Fneg of int * value
   | Float_of of int * value
@@ -131,6 +133,14 @@ type func = {
   need : int;
       (** the interpreter's frames for its calls, inlined or not: the highest base of one from the frame making it, and the
           largest such frame; [-1] when unknown. Under a limit of memory, native frames ask for the stack these would. *)
+  numbers : (var * int) array;
+      (** a region's variables of no type whose value crosses from one iteration to the next, that held a number when it
+          lowered: each kept as an integer or a float for the whole run, in a hidden slot of its stack (also in [vars]),
+          and its value slot. [Engine] unboxes them there before a run and boxes them back after one that wrote its
+          variables: a step pays no box *)
+  lent : int array;
+      (** the registers of value variables that may hold a value read from a list, a map or another variable: marked
+          shared when the run writes them back, not at each read *)
 }
 
 (** The frame of a call made from the outermost native frame starts [frame + hidden] above its base; a call from a nested

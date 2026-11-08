@@ -68,7 +68,17 @@ let func b ~prefix ~nested (fn : Ir.func) =
   (* Only the outermost frame keeps its variables in its slots, when it leaves to come back. *)
   (* MIR has two reload registers of each class for an instruction: every memory operand here has one register for its
      address, computed first, so that an instruction never needs more, whatever was spilled. *)
-  (* A value goes to its slot through OCaml's write barrier, as the value stack is in the major heap. *)
+  (* A list, struct or map no longer owned, as [Value.share]: a block of tag 3, whose array's flag is at 24, or of tag 4
+     or 8, whose own is at 16. *)
+  let share b q =
+    let d = label () and a = label () and rr = label () in
+    Printf.bprintf b "  and x0, r%d, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(r%d)\n  and x1, x1, 255\n  beq %s, x1, 3\n  beq %s, x1, 4\n  bne %s, x1, 8\n"
+      q d q a rr d;
+    Printf.bprintf b "%s:\n  mov i64:16(r%d), 1\n  jmp %s\n%s:\n  mov x2, i64:0(r%d)\n  mov i64:24(x2), 1\n%s:\n" rr q d a q d
+  in
+  (* A value goes to its slot through OCaml's write barrier, as the value stack is in the major heap; one that may be held
+     elsewhere too is marked shared first. The numbers go first: MIR kept a register written after such a call in a
+     stack slot for the whole function, so that `dyn`'s total went through memory at each step. *)
   let spill b =
     Printf.bprintf b "  mov ip, %s\n  lsh xa, b, 3\n  add ip, ip, xa\n  mov fp, %s\n  add fp, fp, xa\n" (cx 0) (cx 1);
     Array.iter
@@ -76,7 +86,14 @@ let func b ~prefix ~nested (fn : Ir.func) =
          match v.kind with
          | Kint -> Printf.bprintf b "  add x0, r%d, 1\n  mov i64:%d(ip), x0\n" v.reg (8 * v.slot)
          | Kfloat -> Printf.bprintf b "  dmov d:%d(fp), r%d\n" (8 * v.slot) v.reg
-         | Kval -> Printf.bprintf b "  add x0, vp, %d\n  call pmod, caml_modify, x0, r%d\n" (8 * v.slot) v.reg)
+         | Kval -> ())
+      fn.vars;
+    Array.iter
+      (fun (v : Ir.var) ->
+         if v.kind = Kval then begin
+           if Array.mem v.reg fn.lent then share b v.reg;
+           Printf.bprintf b "  add x0, vp, %d\n  call pmod, caml_modify, x0, r%d\n" (8 * v.slot) v.reg
+         end)
       fn.vars
   in
   let stop b status =
@@ -187,7 +204,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
   let again back =
     let f, sp, q = fn.keeps.(back) in
     let b = bail_to back in
-    stub (fun s -> Printf.bprintf s "  mov fuel, r%d\n  mov %s, r%d\n  mov %s, r%d\n  jmp %s\n" f (cx Ir.io_spent) sp (cx Ir.io_quantum) q b)
+    (* No [Keep]: nothing ran a step since the statement's start. *)
+    if f < 0 then b
+    else stub (fun s -> Printf.bprintf s "  mov fuel, r%d\n  mov %s, r%d\n  mov %s, r%d\n  jmp %s\n" f (cx Ir.io_spent) sp (cx Ir.io_quantum) q b)
   in
   (* A frame at [at] above the limit, for a call that can bail: past the stack, or where the interpreter's frames would want
      a longer one, bail; else the limit of depth. *)
@@ -206,6 +225,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Enter_or_bail (r, k) -> pr "  mov x0, %s\n  bgt %s, r%d, x0\n" (cx Ir.io_lim) (bail_to k) r
     | Ir.Move (r, v) -> pr "  %s r%d, %s\n" (if fn.kinds.(r) = Kfloat then "dmov" else "mov") r (operand v)
     | Incr r -> pr "  add r%d, r%d, 2\n" r r
+    | Op (((Add | Sub) as op), r, x, y, site) when site < 0 ->
+      (* Proved inside the integers: no check. *)
+      pr "  %s r%d, %s, %s\n" (if op = Add then "add" else "sub") r (in_reg Kint x) (operand y)
     | Op (((Add | Sub) as op), r, x, y, site) ->
       let x' = in_reg Kint x in
       pr "  %s r%d, %s, %s\n" (if op = Add then "addo" else "subo") r x' (operand y);
@@ -265,6 +287,13 @@ let func b ~prefix ~nested (fn : Ir.func) =
           stub (fun s ->
               link s "nb" (frame_of site) site;
               links s site;
+              (* With a debugger, an error deeper writes this frame's variables back too, as one here does. *)
+              if fn.spills && not nested then begin
+                let l = label () in
+                Printf.bprintf s "  mov x0, %s\n  bne %s, x0, %d\n" (cx Ir.io_status) l Ir.error;
+                spill s;
+                Printf.bprintf s "%s:\n" l
+              end;
               Printf.bprintf s "  ret -1\n")
         in
         if back < 0 then unwind
@@ -310,11 +339,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
          take 2;
          (match x with Reg q -> pr "  add x6, r%d, 1\n" q | _ -> pr "  mov x6, %s\n" (match x with Int n -> tagged n | v -> operand v));
          pr "  mov i64:0(x5), %s\n  mov i64:8(x5), x6\n  add r%d, x5, 8\n" (header 1 0) r)
-    | Share (Reg q) ->
-      let d = label () and a = label () and rr = label () in
-      pr "  and x0, r%d, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(r%d)\n  and x1, x1, 255\n  beq %s, x1, 3\n  beq %s, x1, 4\n  bne %s, x1, 8\n"
-        q d q a rr d;
-      pr "%s:\n  mov i64:16(r%d), 1\n  jmp %s\n%s:\n  mov x2, i64:0(r%d)\n  mov i64:24(x2), 1\n%s:\n" rr q d a q d
+    | Share (Reg q) -> share b q
     | Share _ -> ()
     | Vals (r, m, c, k) ->
       let m = in_reg Kval m in
