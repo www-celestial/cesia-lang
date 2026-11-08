@@ -127,14 +127,14 @@ each remade at each of 5,000 steps; `dyn` 10 million calls through a list of two
 **Where Cesia wins.** On loops of numbers and on recursion, the JIT puts Cesia beside Java and LuaJIT, and ahead of
 Node: `matmul` runs in half the time of Java, Node and LuaJIT, `mandel` and `fib` in about the time of Java. Against
 Python, the language most of its users come from, Cesia is 20 times faster on `fib`, 41 times on `mandel` and 99 times
-on `matmul`; against Lua, 9 to 17 times.
+on `matmul`; against Lua, 7 to 17 times.
 
 **Where a giant wins, and why.**
 
 - **Go and OCaml win every line.** They compile the whole program to machine code before it runs, with every type known.
   Go's `structs` keeps its records as plain values inside the array, written in place: no record is ever allocated,
   9 ms. Cesia's records are values of any kind, each a new block in memory, which the JIT builds at each step: 220 ms.
-- **`dyn`: Java, Node, LuaJIT and OCaml are 4 to 25 times faster.** A call through a function held in a list stays in
+- **`dyn`: Node, Java, OCaml and LuaJIT are 4 to 12 times faster, and Go 25 times.** A call through a function held in a list stays in
   Cesia's interpreter, as [What stays in the interpreter](#what-stays-in-the-interpreter) says; HotSpot and V8 see that
   each place calls the same two functions and compile the call inline, LuaJIT records the loop with its calls as one
   trace. This is the next work of Cesia's JIT.
@@ -191,7 +191,7 @@ Requests per second. The 99th percentile of the latency, the time under which 99
 kept connections on the tiny route: Cesia 3.6 ms, Node 4.2 ms, Go 4.0 ms; at 1,000: Cesia 37 ms, Node 19 ms, Go 31 ms. An
 idle connection takes 2.3 KB in Cesia, 2.5 KB in Node and 17 KB in Go, and a server at rest 13.6 MB, 54 MB and 10 MB.
 
-Cesia answers as many small requests as Go on one core, and half again as many as Node; on new connections it is the
+Cesia answers as many small requests as Go on one core, and a third to a half more than Node; on new connections it is the
 fastest of the three. Go wins the JSON route by 30%: its encoder is compiled code, where Cesia's handler and its response
 run partly in the interpreter. Both Go and Node hold 1,000 connections better: Cesia's latency there is twice Node's,
 since one core runs 1,000 fibers in turn. `--workers 2` gives Cesia two cores, and about 1.5 times the requests, as
@@ -206,6 +206,16 @@ tools/http-gate.sh     # the gate that a change to the server must pass
 connection. `tools/http-gate.sh` runs the main loads and fails if one request fails, if Cesia answers fewer requests than
 Node or than its floors, if its 99th percentile passes 10 ms, if an idle connection takes more than 4 KB, or if two
 workers don't give one and a half times one process. `HTTP_GATE_SCALE=0.5` halves the floors on a slower machine.
+
+## Further reading
+
+- Craig Chambers and David Ungar, *Customization*, 1989, and the papers of Self after it on inline caches, deoptimization
+  and type feedback: the ideas of Cesia's JIT.
+- Andreas Gal and others, *Trace-based Just-in-Time Type Specialization for Dynamic Languages*, 2009: the tracing JIT,
+  which LuaJIT is, and Cesia isn't.
+- Vladimir Makarov's MIR, which makes Cesia's machine code.
+
+Each with its link in [References](references.md#the-jit); [How Cesia works](internals.md#the-jit) shows the JIT inside.
 
 ## Next
 

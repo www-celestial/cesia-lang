@@ -168,6 +168,10 @@ and, as there, a C library is outside the sandbox.
   <https://doi.org/10.14778/3554821.3554842>. The engine behind [std/sql], and how it is built.
 - SQLite. "Write-Ahead Logging". <https://www.sqlite.org/wal.html>. The mode Cesia opens every database file in: readers
   don't block the writer, and each read sees the database as it was when it began.
+- SQLite. "Isolation In SQLite". <https://www.sqlite.org/isolation.html>. Serializable transactions, by writes run one at
+  a time, and snapshot isolation for the readers of a database in WAL mode.
+- SQLite. "Pragma statements", `synchronous`. <https://www.sqlite.org/pragma.html#pragma_synchronous>. `FULL` is ACID in
+  WAL mode, `NORMAL` may lose the last commits to a loss of power: why a commit of Cesia is durable.
 - Hal Berenson, Phil Bernstein, Jim Gray, Jim Melton, Elizabeth O'Neil, Patrick O'Neil. "A Critique of ANSI SQL Isolation
   Levels". *SIGMOD 1995*, 1–10. <https://doi.org/10.1145/223784.223785>. The exact meaning of isolation, snapshot and
   serializable, used in [SQLite](sqlite.md).

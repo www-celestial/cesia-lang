@@ -210,6 +210,11 @@ markdown.Html(markdown.Parse("<script>alert(1)</script>"), markdown.Plain) -->
 markdown.Parse("# Prices")[1].Kind -->
 ```
 
+## Further reading
+
+RFC 8259 for JSON, RFC 4180 for CSV, RFC 4648 for Base64 and hexadecimal, RFC 3986 for the escapes of URLs, and the
+CommonMark specification for Markdown: see [References](references.md#texts-and-formats).
+
 ## Next
 
 You can read and write the data of other programs. The next chapter, [HTTP](http.md), gets data from the web, and serves it.

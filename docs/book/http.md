@@ -317,6 +317,11 @@ A server serves `https` the same way: `wrap = tls.Server(certificate, key, api)?
 its certificate and its key, from a *certificate authority* such as Let's Encrypt. [std/tls] keeps the sockets with
 [std/net] and gives OpenSSL only memory buffers, so a handshake parks its fiber, never the whole server.
 
+## Further reading
+
+RFC 9110 and RFC 9112 for HTTP, RFC 6455 for WebSocket, RFC 9846 for TLS 1.3, the Prometheus exposition format, and
+the Linux pages of `epoll`: see [References](references.md#the-server-and-the-network).
+
 ## Next
 
 Your programs serve and ask the web. The next chapter, [Cryptography](crypto.md), keeps their secrets; then

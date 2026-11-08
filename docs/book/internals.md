@@ -6,8 +6,9 @@ write programs. It tells you why a program is fast or slow, what a guarantee res
 learn more. Each part names the file of the repository where the code lives, under `src/`, and the
 [References](references.md) give the papers.
 
-Every number on this page says how it was measured. Most come from `bench/RESULTS.md` in the repository, on one machine:
-an Intel Core i7-4720HQ of 2015, at 2.6 GHz, 8 logical cores, Linux, OCaml 5.5, the `release` build.
+Every number on this page says how it was measured, on one machine: an Intel Core i7-4720HQ of 2015, at 2.6 GHz, 4 cores
+and 8 logical cores, Linux, OCaml 5.5, the `release` build; the others come from `bench/RESULTS.md` in the repository,
+with their date.
 
 ## The path of a program
 
@@ -438,7 +439,7 @@ pipe, by the rule of POSIX called `PIPE_BUF`: no other worker's write can cut it
 ### What it serves
 
 On one core of the machine above, a tiny route answers about 62,000 requests a second at 100 kept connections, as many as
-Go's `net/http` on one core and half again as many as Node, with no request lost, and an idle connection takes 2.3 KB:
+Go's `net/http` on one core and a third more than Node, with no request lost, and an idle connection takes 2.3 KB:
 the medians of 6 runs of `tools/http-bench.sh`, which [Speed](speed.md#a-server-under-load) gives in full, beside Node and
 Go, with where they win. `tools/http-gate.sh` fails a change to the server that loses a request, falls under Node or
 under its floors, passes 10 ms at the 99th percentile, or lets `--workers 2` give less than one and a half times one
@@ -480,12 +481,12 @@ So running a program, once Cesia has started, takes about 0.3 ms. What a start d
 - the OCaml runtime starts, and Cesia sets its minor heap;
 - the sources of `std/` are inside the binary, so nothing is read from the disk but the program itself. A package of
   `std/` is read when a file first uses it: one written in Cesia, as `std/list`, costs about 0.8 ms more to parse and
-  resolve, at each run; the parts in OCaml cost nothing until called;
+  resolve, at each run, as `bench/RESULTS.md` measured on 2026-11-07; the parts in OCaml cost nothing until called;
 - the JIT, SQLite, the runner of `cesia test` and the engine of the debugger are plugins beside the binary, loaded at
   their first use. None of them costs a program that doesn't use it.
 
 Loading, the lexer, the parser and the resolver together, reads about 500,000 lines a second: 320,000 lines in 631 ms,
-`bench/load.sh`.
+`bench/load.sh`, on 2026-11-07.
 
 ## Reloading code: --watch
 
@@ -493,8 +494,8 @@ Under `cesia run --watch`, Cesia looks every 50 ms at the time, size and file nu
 changed file is parsed and resolved again at the next full checkpoint. If it has an error, the old code stays and the
 error is shown; otherwise its functions and structs replace the old ones, every function is compiled again at its next
 call, and the code already compiled that calls an old version reaches the new one. The values and fibers of the program
-stay as they were: this is *hot reload*. `tools/reload-test.sh` measures 12 to 19 ms from the save to the new function
-running.
+stay as they were: this is *hot reload*. `tools/reload-test.sh` measured 12 to 19 ms from the save to the new function
+running, on 2026-11-01.
 
 ## Further reading
 

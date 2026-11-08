@@ -185,6 +185,17 @@ A dictionary that nothing else holds is changed in place, so the loop of [Counti
 Python's `dict`, a mutable hash table in C, a Cesia dictionary is slower to fill: 500,000 text keys written then read take
 about 1.2 s against 0.4 s, as [Speed](speed.md#computing) measures, the price of a structure that keeps its old versions.
 
+## Further reading
+
+- Phil Bagwell, *Ideal Hash Trees*, 2001: the hash array mapped trie.
+- Rich Hickey, *A History of Clojure*, 2020: persistent maps as a language's everyday dictionary.
+- James R. Driscoll and others, *Making data structures persistent*, 1989; Chris Okasaki, *Purely Functional Data
+  Structures*, 1998.
+- Scott A. Crosby and Dan S. Wallach, *Denial of Service via Algorithmic Complexity Attacks*, 2003: why the hash takes a
+  seed.
+
+Each with its link in [References](references.md#values-and-maps).
+
 ## Next
 
 You can keep values under names. A dictionary takes any key, which suits data that comes from outside. For data whose fields

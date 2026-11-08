@@ -200,6 +200,16 @@ SQLite writes two more files beside the database while it runs, `visits.db-wal` 
 are on the folder that holds them all, `data`: a permission on `data/visits.db` alone is denied, with the name of the file
 it lacks. A database in use by another fiber or program is waited for, in this fiber only, so the others go on.
 
+## Further reading
+
+- Kevin P. Gaffney and others, *SQLite: Past, Present, and Future*, 2022: how SQLite is built.
+- SQLite's pages on write-ahead logging and isolation, <https://www.sqlite.org/wal.html> and
+  <https://www.sqlite.org/isolation.html>: what this chapter's guarantees rest on.
+- Hal Berenson and others, *A Critique of ANSI SQL Isolation Levels*, 1995: snapshot isolation and serializability,
+  defined.
+
+Each with its link in [References](references.md#databases).
+
 ## Next
 
 Your programs keep their data. The next chapter, [Tests](tests.md), checks that they keep doing what they should.
