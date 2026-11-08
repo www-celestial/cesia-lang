@@ -218,6 +218,15 @@ let func b ~prefix ~nested (fn : Ir.func) =
        | Reg p, Reg q -> pr "  rsh x0, r%d, 1\n  mulo r%d, r%d, x0\n" q r p
        | _ -> pr "  mov x0, %s\n  mulo r%d, x0, %s\n" (operand x) r (match y with Int n -> string_of_int n | _ -> "0"));
       pr "  bo %s\n" (error Ir.err_mul site x (Some y))
+    | Op (Mod, r, x, Int d, _) when d > 0 && d land (d - 1) = 0 ->
+      (* By a power of two, the floor modulo is the low bits whatever the sign, and on doubled integers too: 2n land
+         2(d - 1) = 2 (n land (d - 1)). No division, which costs tens of cycles. *)
+      pr "  and r%d, %s, %d\n" r (in_reg Kint x) (2 * (d - 1))
+    | Op (Div, r, x, Int d, _) when d > 0 && d land (d - 1) = 0 ->
+      (* The floor division by 2^k is a shift right by k, which can't overflow: 2n shifted by k + 1, doubled again. *)
+      let k = ref 0 in
+      while 1 lsl !k < d do incr k done;
+      pr "  rsh x0, %s, %d\n  lsh r%d, x0, 1\n" (in_reg Kint x) (!k + 1) r
     | Op (((Div | Mod) as op), r, x, y, site) ->
       let e = error (if op = Div then Ir.err_div else Ir.err_mod) site x (Some y) in
       pr "  mov x0, %s\n  rsh x0, x0, 1\n  mov x1, %s\n  rsh x1, x1, 1\n  beq %s, x1, 0\n" (operand x) (operand y) e;

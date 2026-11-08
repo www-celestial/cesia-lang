@@ -1,0 +1,27 @@
+use std/io
+use std/math
+
+(* Div and Mod by a power of two in native code, a shift and a mask: the floor's results, negative numbers included. *)
+defn sums(n)
+  a = 0
+  b = 0
+  c = 0
+  d = 0
+  for i in -n..n
+    a = a + math.Mod(i, 4) + math.Mod(i, 1) * 7 + math.Mod(i, 1024)
+    b = b + math.Div(i, 4) + math.Div(i, 1) + math.Div(i, 1024)
+    c = c + math.Mod(i * 3 - 1, 2) + math.Mod(i, 3)
+    d = d + math.Div(i * 3 - 1, 2) + math.Div(i, 3) + math.Div(i, -4) + math.Mod(i, -4)
+  end
+  [a, b, c, d]
+end
+io.Print(sums(100000))
+(* The ends of the integers: a shift never overflows. *)
+defn edges(n, x)
+  s = 0
+  for i in 1..n
+    s = math.Div(x, 2) + math.Div(x, 1024) + math.Mod(x, 8) + math.Mod(-7, 4) + math.Div(-7, 4)
+  end
+  s
+end
+io.Print(edges(100000, 4611686018427387903), edges(100000, -4611686018427387903 - 1), edges(100000, -1))
