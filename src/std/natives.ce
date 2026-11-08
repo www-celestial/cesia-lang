@@ -621,6 +621,26 @@ use std/test
 
       text.Contains("ell", "hello") --> true *)
 
+(** text.Count(part, s)
+    How many times a part, which isn't empty, occurs in a text, without overlaps: "aa" occurs twice in "aaaa", not three
+    times. A part of one byte, as a line end, is counted eight bytes at a time: about 35 ms for 100 MB.
+
+      text.Count("\n", "a\nb\nc") --> 2
+      text.Count("aa", "aaaa") --> 2
+      text.Count("x", "abc") --> 0 *)
+
+(** text.IsUtf8(s)
+    Is the text valid UTF-8, as RFC 3629 defines it? Each character is one to four bytes; a text is invalid if it holds a
+    byte that can't begin or continue a character, a character cut short, one written with more bytes than it needs (an
+    overlong form), one of the surrogates U+D800 to U+DFFF, or a code point past U+10FFFF. A text written in a program is
+    always valid; one read from a file or the network can hold any bytes. ASCII is checked eight bytes at a time: about
+    26 ms for 100 MB of ASCII, 46 ms when one character in 33 has an accent.
+
+      text.IsUtf8("héllo") --> true
+      text.IsUtf8(text.FromBytes([0xC3, 0xA9])) --> true
+      text.IsUtf8(text.FromBytes([0xC0, 0x80])) --> false
+      text.IsUtf8(text.FromBytes([0xED, 0xA0, 0x80])) --> false *)
+
 (** text.StartsWith(prefix, s)
     Does the text begin with the prefix?
 

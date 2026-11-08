@@ -54,3 +54,23 @@ isDecimalsBinary() = text.Decimals(2, 2.675) == "2.67" and text.Decimals(1, 0.05
 isDecimalsZero() = text.Decimals(2, -0.001) == "0.00" and text.Decimals(0, -0.4) == "0" and text.Decimals(1, -0.0) == "0.0"
 isDecimalsLarge() = text.Decimals(1, 1e20) == "100000000000000000000.0" and text.Decimals(2, 9007199254740993) == "9007199254740993.00"
 isDecimalsNoFloat() = text.Decimals(2, 123456.789) == "123456.79" and text.Decimals(4, 1.0 / 3) == "0.3333"
+(* text.Count: one byte eight at a time, and its last bytes; longer parts without overlaps; the same answer as Split. *)
+isCountByte() = text.Count("\n", "a\nb\nc") == 2 and text.Count("x", "") == 0 and text.Count("x", "abc") == 0
+isCountEveryLength() = list.All([text.Count("a", text.Repeat(n, "a")) == n and text.Count("a", text.Repeat(n, "ba")) == n for n in 0..40])
+isCountTail() = list.All([text.Count("z", "$(text.Repeat(n, "y"))z") == 1 for n in 0..20])
+isCountNoOverlap() = text.Count("aa", "aaaa") == 2 and text.Count("aa", "aaa") == 1 and text.Count("aba", "ababa") == 1
+isCountLong() = text.Count("abc", "abcabcab") == 2 and text.Count("abcd", "abc") == 0
+isCountAccents() = text.Count("é", "été") == 2 and text.Count(text.FromBytes([0xA9]), "été") == 2
+sameAsSplit(p) = list.All([text.Count(p, s) == value.Len(text.Split(p, s)) - 1 for s in ["", "a", "aaaaaaaaa", "abababababababab", "x\ny\n\nz\n", "aaxyzaaxyzxy", text.Repeat(9, "ab\n")]])
+isCountAsSplit() = list.All([sameAsSplit(p) for p in ["a", "ab", "\n", "aa", "xyz"]])
+isCountEmpty() = fails(() -> text.Count("", "a"), "type")
+isCountNotText() = fails(() -> text.Count("a", 1), "type")
+(* text.IsUtf8, as RFC 3629: the ASCII words, then each character, at every place of a word. *)
+bytes(xs) = text.FromBytes(xs)
+isUtf8Valid() = list.All([text.IsUtf8(s) for s in ["", "a", "héllo", "日本語", "😀", text.Repeat(17, "a"), text.Repeat(9, "aé")]])
+isUtf8Edges() = list.All([text.IsUtf8(bytes(xs)) for xs in [[0x7F], [0xC2, 0x80], [0xDF, 0xBF], [0xE0, 0xA0, 0x80], [0xED, 0x9F, 0xBF], [0xEE, 0x80, 0x80], [0xEF, 0xBF, 0xBF], [0xF0, 0x90, 0x80, 0x80], [0xF4, 0x8F, 0xBF, 0xBF]]])
+isUtf8Invalid() = not list.Any([text.IsUtf8(bytes(xs)) for xs in [[0x80], [0xBF], [0xC0, 0x80], [0xC1, 0xBF], [0xE0, 0x80, 0x80], [0xE0, 0x9F, 0xBF], [0xED, 0xA0, 0x80], [0xED, 0xBF, 0xBF], [0xF0, 0x80, 0x80, 0x80], [0xF0, 0x8F, 0xBF, 0xBF], [0xF4, 0x90, 0x80, 0x80], [0xF5, 0x80, 0x80, 0x80], [0xFE], [0xFF], [0xC3], [0xE2, 0x82], [0xF0, 0x9F, 0x98], [0xC3, 0x41]]])
+badAt(n) = "$(text.Repeat(n, "a"))$(bytes([0xFF]))$(text.Repeat(9, "b"))"
+goodAt(n) = "$(text.Repeat(n, "a"))é$(text.Repeat(9, "b"))"
+isUtf8EveryPlace() = list.All([not text.IsUtf8(badAt(n)) and text.IsUtf8(goodAt(n)) for n in 0..20])
+isUtf8NotText() = fails(() -> text.IsUtf8(1), "type")

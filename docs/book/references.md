@@ -118,6 +118,15 @@ and, as there, a C library is outside the sandbox.
   "Regular Expression Matching: the Virtual Machine Approach", 2009. <https://swtch.com/~rsc/regexp/regexp2.html>. The Pike
   machine, Thompson's method with the positions of groups, from the code of Rob Pike's editor sam: [std/regex], whose time
   stays linear whatever the pattern.
+- F. Yergeau. "UTF-8, a transformation format of ISO 10646", RFC 3629, STD 63, 2003.
+  <https://www.rfc-editor.org/info/rfc3629>. Valid UTF-8, without overlong forms, surrogates or code points past
+  U+10FFFF: what [text.IsUtf8] checks, and what Cesia's lexer asks of a source.
+- Randall J. Fisher, Henry G. Dietz. "Compiling for SIMD Within a Register". *Languages and Compilers for Parallel
+  Computing, LCPC'98*, LNCS 1656, Springer, 1999, 290–305. <https://doi.org/10.1007/3-540-48319-5_19>. SWAR, the work on
+  several bytes held in one machine word, a name its authors coined in 1996: how [text.Count] counts a byte and
+  [text.IsUtf8] skips ASCII, eight bytes at a time.
+- Henry S. Warren, Jr. *Hacker's Delight*, 2nd edition, Addison-Wesley, 2013, section 6–1, "Find First 0-Byte". ISBN
+  978-0-321-84268-8. The test that sets the high bit of exactly the zero bytes of a word, which [text.Count] adds up.
 - T. Bray (editor). "The JavaScript Object Notation (JSON) Data Interchange Format", RFC 8259, 2017.
   <https://www.rfc-editor.org/rfc/rfc8259>. [std/json].
 - Y. Shafranovich. "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005.

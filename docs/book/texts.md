@@ -93,6 +93,20 @@ text.Find("lo", "hello") -->
 text.Find("z", "hello") -->
 ```
 
+[text.Count] tells how many times a part occurs, without overlaps: once one is found, the search goes on after it, so
+`"aa"` occurs twice in `"aaaa"`, not three times. It is the number of pieces [text.Split] would give, less one, without
+making them:
+
+```cesia
+text.Count("\n", "one\ntwo\nthree\n") -->
+text.Count("aa", "aaaa") -->
+```
+
+A part of one byte, as a line end, is counted eight bytes at a time, a trick called *SWAR*, SIMD within a register: the
+eight bytes are read as one 64-bit word, and a few operations on the word find all the bytes equal to the part at once.
+Counting the 2.9 million line ends of a text of 100 MB takes 35 ms, where `value.Len(text.Split("\n", s)) - 1` takes
+790 ms, as it makes every line (medians of 3 runs, on the machine of [Speed](speed.md#beside-the-giants)).
+
 ### Replacing
 
 [text.Replace] changes every occurrence of a part:
@@ -238,8 +252,34 @@ text.Char(233) -->
 A program reads a text in bytes when a format counts them, as HTTP's `content-length` does: a byte position is found at
 once, where a character position must walk the text from its start, as UTF-8 gives each character one to four bytes.
 
+### Valid UTF-8
+
+A text written in a program is always valid UTF-8, but one read from a file or the network holds whatever bytes it was
+sent, and [text.FromBytes] makes any. [text.IsUtf8] tells whether a text is valid UTF-8 as
+[RFC 3629](references.md#texts-and-formats) defines it. A character takes one to four bytes; the first says how many follow,
+and each that follows starts with the bits `10`. A text is invalid if it holds a byte that can't begin or continue a
+character, a character cut short, a character written with more bytes than it needs (an *overlong form*, such as `0xC0
+0x80` for the character 0, which programs that check texts byte by byte can be tricked by), one of the *surrogates*
+U+D800 to U+DFFF, which UTF-16 keeps for itself, or a number past U+10FFFF, the last of Unicode:
+
+```cesia
+text.IsUtf8("héllo") -->
+text.IsUtf8(text.FromBytes([0xC3, 0xA9])) -->
+text.IsUtf8(text.FromBytes([0xC0, 0x80])) -->
+text.IsUtf8(text.FromBytes([0xED, 0xA0, 0x80])) -->
+text.IsUtf8(text.FromBytes([0xE9, 0x74, 0xE9])) -->
+```
+
+The last is `été` in Latin-1, an older encoding of one byte a character, as old files hold. The check reads eight bytes of
+ASCII at a time, by one test of their high bits, and decodes a character only where a byte isn't ASCII: 26 ms for a text
+of 100 MB of ASCII, 46 ms when one character in 33 has an accent, against 116 ms for OCaml's own `String.is_valid_utf_8`,
+which decodes every byte (medians of 3 runs, same machine).
+
 ## Further reading
 
+- F. Yergeau, *UTF-8, a transformation format of ISO 10646*, RFC 3629, 2003: what valid UTF-8 is. Randall J. Fisher and
+  Henry G. Dietz, *Compiling for SIMD Within a Register*, 1999, and Henry S. Warren, *Hacker's Delight*, 2013, section
+  6–1: the work on eight bytes at once of [text.Count] and [text.IsUtf8].
 - Ken Thompson, *Regular expression search algorithm*, 1968, and Russ Cox, *Regular Expression Matching Can Be Simple
   And Fast*, 2007, and *the Virtual Machine Approach*, 2009: the method of [std/regex]. See [References](references.md#texts-and-formats).
 

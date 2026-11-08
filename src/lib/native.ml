@@ -568,6 +568,47 @@ let decimals ctx (a : t array) =
     else Text (unsigned (Printf.sprintf "%.*f" n x))
   | v -> Runtime.fail ctx Type (Messages.need_number "text.Decimals" (Value.describe v))
 
+(* Valid UTF-8, as RFC 3629 defines it: no overlong form, no surrogate, nothing past U+10FFFF. Eight bytes of ASCII at a
+   time, by one test of their high bits; past the first byte that isn't ASCII, the decoder of the Stdlib, which follows
+   the same rules. *)
+let is_utf8 s =
+  let n = String.length s in
+  let rec go i =
+    if i + 8 <= n && Int64.logand (String.get_int64_le s i) 0x8080808080808080L = 0L then go (i + 8)
+    else if i >= n then true
+    else if Char.code s.[i] < 128 then go (i + 1)
+    else begin
+      let d = String.get_utf_8_uchar s i in
+      Uchar.utf_decode_is_valid d && go (i + Uchar.utf_decode_length d)
+    end
+  in
+  go 0
+
+(* The occurrences of [part], not empty, in [s], without overlaps. A part of one byte is counted eight bytes at a time:
+   the word xor the byte repeated is zero at each byte equal to it, and the classic test of a zero byte sets the high bit
+   of exactly those, which a multiplication adds up (SWAR, SIMD within a register). *)
+let count part s =
+  let n = String.length s in
+  if String.length part = 1 then begin
+    let c = Int64.mul (Int64.of_int (Char.code part.[0])) 0x0101010101010101L in
+    let total = ref 0 and i = ref 0 in
+    while !i + 8 <= n do
+      let t = Int64.logxor (String.get_int64_le s !i) c in
+      let lows = 0x7F7F7F7F7F7F7F7FL in
+      let y = Int64.lognot (Int64.logor (Int64.logor (Int64.add (Int64.logand t lows) lows) t) lows) in
+      total := !total + Int64.to_int (Int64.shift_right_logical (Int64.mul (Int64.shift_right_logical y 7) 0x0101010101010101L) 56);
+      i := !i + 8
+    done;
+    for j = !i to n - 1 do
+      if s.[j] = part.[0] then incr total
+    done;
+    !total
+  end else begin
+    let m = String.length part in
+    let rec go from k = match find_from s part from with -1 -> k | p -> go (p + m) (k + 1) in
+    go 0 0
+  end
+
 let text_natives =
   let pay ctx s = Runtime.pay_bytes ctx (String.length s) in
   let on_text name f =
@@ -596,6 +637,11 @@ let text_natives =
         Text (String.lowercase_ascii s));
     on_text "Number" number;
     test2 "StartsWith" (fun prefix s -> String.starts_with ~prefix s);
+    on_text "IsUtf8" (fun s -> Value.of_bool (is_utf8 s));
+    "Count", nat "Count" 2 2 (fun ctx a ->
+        let part = non_empty ctx "Count" (text_arg ctx "Count" a.(0)) and s = text_arg ctx "Count" a.(1) in
+        pay ctx s;
+        Int (count part s));
     test2 "Contains" (fun part s -> part = "" || find_from s part 0 >= 0) ]
 
 (* The dictionary literal, which only the parser writes: the one name the compiler finds without a use. *)
