@@ -291,6 +291,43 @@ let () =
   check "the trie keeps keys, values and order" (model 0x3FFF_FFFF);
   check "the trie with few bits of hash" (model 0x1F);
   check "the trie with equal hashes" (model 0);
+  (* Thousands of keys, so that nodes meet several levels down and drops bring keys back inline: puts in place and not,
+     drops, against a table of keys stamped in the order they came. *)
+  let big mask =
+    Trie.mask := mask;
+    let rng = Random.State.make [| 4242 |] in
+    let key i = if i mod 3 = 0 then Int i else Text ("b" ^ string_of_int i) in
+    let tbl = Hashtbl.create 16 and stamp = ref 0 and m = ref (Trie.empty ()) and ok = ref true in
+    for step = 1 to 40_000 do
+      let i = Random.State.int rng 6_000 in
+      let k = key i in
+      (match Random.State.int rng 5 with
+       | 0 ->
+         m := Trie.drop !m (Trie.hash k) k;
+         Hashtbl.remove tbl i
+       | 1 -> m := Trie.put !m (Trie.hash k) k (Int step)
+       | _ -> m := Trie.put_owned (Trie.own_copy !m) (Trie.hash k) k (Int step));
+      (match Random.State.int rng 5 with
+       | 0 -> ()
+       | _ when Hashtbl.mem tbl i -> if Trie.find !m (Trie.hash k) k == Undef then ok := false
+       | _ -> ());
+      (match Trie.find !m (Trie.hash k) k with
+       | Int v when v = step -> (match Hashtbl.find_opt tbl i with Some (st, _) -> Hashtbl.replace tbl i (st, step) | None -> incr stamp; Hashtbl.replace tbl i (!stamp, step))
+       | Undef -> if Hashtbl.mem tbl i then ok := false
+       | _ -> if not (Hashtbl.mem tbl i) then ok := false);
+      if Trie.length !m <> Hashtbl.length tbl then ok := false;
+      if step mod 4_000 = 0 then begin
+        let want = List.sort compare (Hashtbl.fold (fun i (st, v) acc -> (st, i, v) :: acc) tbl []) in
+        let got = Trie.items !m in
+        if Array.length got <> 2 * List.length want then ok := false
+        else List.iteri (fun j (_, i, v) -> if not (Trie.same got.(2 * j) (key i)) || got.((2 * j) + 1) <> Int v then ok := false) want
+      end
+    done;
+    Trie.mask := 0x3FFF_FFFF;
+    !ok
+  in
+  check "the trie of thousands of keys" (big 0x3FFF_FFFF);
+  check "the trie of thousands of keys, 10 bits of hash" (big 0x3FF);
   Trie.mask := 0;
   let n = 10_000 and m = ref (Trie.empty ()) in
   for i = 0 to n - 1 do m := Trie.put !m (Trie.hash (Int i)) (Int i) (Int (2 * i)) done;

@@ -225,19 +225,35 @@ struct. This sharing is the idea of *hidden classes*, from Self, where they were
 
 **Past 32 keys, a hash array mapped trie**, a HAMT. A *hash* is a number computed from a key, the same for the same key;
 a *trie* is a tree where each level is chosen by a piece of the key. In a HAMT, each level takes 5 bits of the key's hash,
-so a node has up to 32 children, kept in a compact array with a 32-bit map of which children exist. Cesia uses 30 bits of
-hash, so a key is at most 6 levels down, and the last level is a block of up to 8 keys. A read follows one path from the
-root: about log₃₂ n levels, written O(log₃₂ n), 3 levels for 30,000 keys. A write copies only the nodes on that path, at
-most 6 small arrays, and shares the rest with the old map: this is *structural sharing*. When nothing else holds the map,
-its owned bit lets a write change the nodes in place.
+so a node has up to 32 places, kept compact by a 32-bit *bitmap* that says which places are used: the place of a key in
+the node's arrays is the number of bits set below its own, counted by a few operations on the word. Cesia uses 30 bits of
+hash, so a key is at most 6 levels down.
+
+Cesia's nodes are those of *CHAMP*, the compressed hash-array mapped prefix tree of Steindorfer and Vinju, 2015. A node
+has two bitmaps. The first marks the keys held in the node itself, inline, each beside its hash and its value: the keys
+whose 5 bits at this level no other key under the node shares. The second marks the places that several keys share, each
+holding a node of the next level for them. So a key goes down a level only when another key shares its bits, and no
+node ever holds a lone key below it: when a key is dropped and leaves one beside it, that one comes back up into its
+parent. A read follows one path from the root, about log₃₂ n levels, written O(log₃₂ n): 3 for 30,000 keys, 4 for a
+million. A write copies only the nodes on that path, and of each only the array it changes, sharing the rest with the
+old map: this is *structural sharing*.
 
 ```text
 a map of 100,000 keys
-root: 32 children, by bits 1-5 of the hash
-└── child 17: 32 children, by bits 6-10
-    └── child 4: 32 children, by bits 11-15
-        └── block: "apple" -> 3, "pear" -> 9, ...
+root: 32 places, each a node, by bits 1-5 of the hash
+└── place 17: a node of 32 places, by bits 6-10
+    └── place 4: a node of about 98 keys under 32 places
+        ├── "apple" -> 3, "pear" -> 9, ...      the keys alone at their place, inline
+        └── place 12: a node of the 3 keys that share it
 ```
+
+When nothing else holds the map, its owned bit lets a write change its own nodes in place: each node carries the mark
+of the map that made it, and its arrays keep room for a few more keys, doubled when they fill, up to 32. A write to a
+map that is shared makes nodes of no mark, which nobody changes in place.
+
+Before CHAMP, Cesia's deep maps ended in blocks of up to 8 keys, each made with room for 8 whatever it held: at 500,000
+keys, a level of blocks of one or two keys each, five levels deep, and a heap of 16 million words, 128 MB, where CHAMP's
+takes 7.7 million, with a fifth of the allocation (`bench/maps.ce`, the counters of OCaml's collector).
 
 The order of insertion is kept beside the trie, so [dict.Keys] gives the keys in the order they came in, at any size.
 

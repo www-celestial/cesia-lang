@@ -39,13 +39,14 @@ and deep =
           [Trie.no_order] until asked; [ded]: the mark of the nodes that this map made, which it may change in place while
           it is owned *)
 
-(** A node of the trie, at a level: the keys under it agree on the first 5 bits of hash of each level above. The mark of the
+(** A node of the trie, at a level: the keys under it agree on the 5 bits of hash of each level above. The mark of the
     map that made it: no other map changes it in place. *)
 and node =
-  | Block of { mutable kv : t array; mutable hr : int array; bed : int; mutable bn : int }
-      (** [bn] keys: [kv] holds k1 v1 k2 v2..., [hr] each rank * 2^30 + hash; the arrays can be longer, room for the owner's
-          next keys *)
-  | Branch of { bits : int; kids : node array; ed : int }  (** a kid for each value of the next 5 bits of hash set in [bits] *)
+  | Champ of { mutable dmap : int; mutable nmap : int; mutable kv : t array; mutable hr : int array; mutable kids : node array; ed : int }
+      (** CHAMP's node: a key whose 5 bits of hash at this level no other key under it shares is held here, its bit set in
+          [dmap], in [kv] (k1 v1 k2 v2...) and [hr] (rank * 2^30 + hash) in the order of the bits; the keys of a bit that
+          several share are in a node of the next level, its bit set in [nmap], in [kids] in the order of the bits. The
+          arrays can be longer, room for the owner's next keys. *)
   | Same of dict  (** keys whose 30 bits of hash are all equal: a balanced tree, which no choice of keys slows down *)
 
 and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int }  (** [hr]: the rank of the key * 64 + the height *)
