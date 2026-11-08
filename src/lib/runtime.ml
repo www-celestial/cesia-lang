@@ -186,6 +186,7 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
     id;
     parks = 0;
     cancelled = false;
+    wake = (fun () -> false);
     w }
 
 (* Three stacks of [cap] entries. *)

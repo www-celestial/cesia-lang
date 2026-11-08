@@ -62,13 +62,12 @@ and dict = Leaf | Node of { l : dict; k : t; v : t; r : dict; hr : int; n : int 
 (** What a handle of std/fiber points to. *)
 and task = Job of job | Chan of chan
 
-(** A task: its [result] once it ended, the fibers that wait for it, and while it runs, its fiber and the wake of the
-    fiber's wait, which fiber.Cancel calls. A task that ended holds neither, so its fiber's stacks are freed. *)
+(** A task: its [result] once it ended, the fibers that wait for it, and its fiber while it runs. A task that ended
+    lets go of its fiber, so its stacks are freed. *)
 and job = {
   mutable result : t option;
-  mutable waiters : (unit -> unit) list;
+  mutable waiters : (unit -> bool) list;  (** the wakes of the fibers parked until it ends *)
   mutable cx : ctx option;
-  mutable wake : unit -> bool;
 }
 
 (** A channel: its [items] in the order they were sent, at most [size] of them ([max_int]: no limit), the [receivers]
@@ -178,6 +177,7 @@ and ctx = {
   id : int;  (** the number of the fiber, 0 for the main program *)
   mutable parks : int;  (** odd while parked: counts its waits and wakes, so a wake meant for an earlier wait does nothing *)
   mutable cancelled : bool;  (** fiber.Cancel asked it to stop: it does at its next wait, or now if it is waiting *)
+  mutable wake : unit -> bool;  (** while a spawned fiber is parked, what queues it again; fiber.Cancel calls it *)
   w : world;
 }
 

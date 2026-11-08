@@ -3,7 +3,7 @@ open Effect
 open Effect.Deep
 
 (* A fiber parks through an effect: [register] gets the function that wakes it. *)
-type _ Effect.t += Suspend : ((unit -> bool) -> unit) -> unit Effect.t
+type _ Effect.t += Suspend : ctx * ((unit -> bool) -> unit) -> unit Effect.t
 
 (* Raised where a fiber that fiber.Cancel stopped was waiting: it unwinds the fiber, as a panic does, but quietly. *)
 exception Cancelled
@@ -35,7 +35,7 @@ let[@inline] woken (ctx : ctx) n = ctx.parks = n && (ctx.parks <- n + 1; true)
 (* A spawned fiber parks through an effect. The main program isn't a fiber, which keeps its stack and its speed:
    it runs the scheduler itself until it is woken, in FIFO order with the others. *)
 let park (ctx : ctx) register =
-  if ctx.fiber then perform (Suspend register)
+  if ctx.fiber then perform (Suspend (ctx, register))
   else begin
     let w = ctx.w in
     let woke = ref false in
@@ -60,35 +60,34 @@ let yield (ctx : ctx) =
     if ctx.cancelled || not (Queue.is_empty w.sched.ready) then park ctx (fun wake -> ignore (wake ()))
   end
 
-(* Runs a fiber until it ends or parks. A panic is handled by the body, so what leaves here stops the program. The wake of
-   its wait goes in its task, so that Cancel can wake it; it resumes with Cancelled if it was asked to stop. *)
-let start w (job : job) ctx body =
-  let s = w.sched in
-  s.current <- Some ctx;
-  match_with body ()
-    { retc = Fun.id;
-      exnc = raise;
-      effc =
-        (fun (type a) (e : a Effect.t) ->
-           match e with
-           | Suspend register ->
-             Some
-               (fun (k : (a, unit) continuation) ->
-                  let n = parked ctx in
-                  let wake () =
-                    woken ctx n
-                    && begin
-                      Queue.add
-                        (fun () ->
-                           s.current <- Some ctx;
-                           if ctx.cancelled then discontinue k Cancelled else continue k ())
-                        s.ready;
-                      true
-                    end
-                  in
-                  job.wake <- wake;
-                  register wake)
-           | _ -> None) }
+(* The handler of every fiber, made once: a fiber that parks gets the wake that queues it again, kept in its context so
+   that Cancel can wake it; it resumes with Cancelled if it was asked to stop. A panic is handled by the body, so what
+   leaves here stops the program. *)
+let handler =
+  { retc = Fun.id;
+    exnc = raise;
+    effc =
+      (fun (type a) (e : a Effect.t) ->
+         match e with
+         | Suspend (ctx, register) ->
+           Some
+             (fun (k : (a, unit) continuation) ->
+                let s = ctx.w.sched and n = parked ctx in
+                let wake () =
+                  woken ctx n
+                  && begin
+                    Queue.add (fun () -> s.current <- Some ctx; if ctx.cancelled then discontinue k Cancelled else continue k ()) s.ready;
+                    true
+                  end
+                in
+                ctx.wake <- wake;
+                register wake)
+         | _ -> None) }
+
+(* Runs a fiber until it ends or parks. *)
+let start ctx body =
+  ctx.w.sched.current <- Some ctx;
+  match_with body () handler
 
 (* What [Wait] gives for a panic: the same fields as an error shown to the user. *)
 let panic_keys = Trie.names [| "Message"; "Kind"; "File"; "Line" |]
@@ -103,10 +102,34 @@ let panic_value w text kind at = ended_value w text (Value.kind_name kind) at
 let not_parked () = false
 
 (* The stacks of a new fiber, in entries. They grow on demand, and a server has thousands of idle fibers. *)
-let fiber_stack = 16
+let fiber_stack = 8
 
 (* What a new fiber takes in memory, as measured by tools/fiber-size.sh. *)
-let fiber_words = 320
+let fiber_words = 270
+
+(* The end of a fiber: its result kept in its task, which lets go of the fiber, and the fibers waiting for it woken. *)
+let finish fiber task r =
+  Runtime.settle fiber;
+  task.result <- Some r;
+  task.cx <- None;
+  List.iter (fun wake -> ignore (wake ())) (List.rev task.waiters);
+  task.waiters <- []
+
+(* What a fiber runs: its function, then its result or the error that stopped it. *)
+let body task fiber g () =
+  let w = fiber.w in
+  match if fiber.cancelled then raise Cancelled else Compile.call_value fiber ~base:2 g [||] with
+  | v -> finish fiber task (Value.ok w v)
+  | exception Cancelled -> finish fiber task (Value.err w (ended_value w Messages.cancelled.text "cancelled" fiber.site))
+  | exception (Value.Kerr { text; kind; at; _ } as e) ->
+    w.on_panic fiber e;
+    finish fiber task (Value.err w (panic_value w text kind at))
+  | exception (Value.Limit { what = ("nesting" | "memory") as what; _ } as e) ->
+    (* A value too deep to show is the problem of this fiber, and so is the memory it was taking when the limit came:
+       a server's request that takes too much stops alone, and frees what it took. The steps belong to the whole
+       program. *)
+    w.on_panic fiber e;
+    finish fiber task (Value.err w (panic_value w (Messages.limit what).text (if what = "memory" then Math else Type) fiber.site))
 
 let spawn (ctx : ctx) g =
   let w = ctx.w in
@@ -119,30 +142,8 @@ let spawn (ctx : ctx) g =
   s.next_id <- id + 1;
   let fiber = Runtime.create_ctx ~stack:fiber_stack ~fiber:true ~id w in
   fiber.site <- ctx.site;
-  let task = { result = None; waiters = []; cx = Some fiber; wake = not_parked } in
-  let finish r =
-    Runtime.settle fiber;
-    task.result <- Some r;
-    task.cx <- None;
-    task.wake <- not_parked;
-    List.iter (fun wake -> wake ()) (List.rev task.waiters);
-    task.waiters <- []
-  in
-  let body () =
-    match if fiber.cancelled then raise Cancelled else Compile.call_value fiber ~base:2 g [||] with
-    | v -> finish (Value.ok w v)
-    | exception Cancelled -> finish (Value.err w (ended_value w Messages.cancelled.text "cancelled" fiber.site))
-    | exception (Value.Kerr { text; kind; at; _ } as e) ->
-      w.on_panic fiber e;
-      finish (Value.err w (panic_value w text kind at))
-    | exception (Value.Limit { what = ("nesting" | "memory") as what; _ } as e) ->
-      (* A value too deep to show is the problem of this fiber, and so is the memory it was taking when the limit came:
-         a server's request that takes too much stops alone, and frees what it took. The steps belong to the whole
-         program. *)
-      w.on_panic fiber e;
-      finish (Value.err w (panic_value w (Messages.limit what).text (if what = "memory" then Math else Type) fiber.site))
-  in
-  Queue.add (fun () -> start w task fiber body) s.ready;
+  let task = { result = None; waiters = []; cx = Some fiber } in
+  Queue.add (fun () -> start fiber (body task fiber g)) s.ready;
   Handle { kind = "task"; id; task = Some (Job task) }
 
 (* A timeout in seconds, or None for none. *)
@@ -163,18 +164,18 @@ let wait ?timeout (ctx : ctx) t =
   let job = job_arg ctx "Wait" t in
   (match job.result, timeout with
    | Some _, _ | None, Some 0. -> ()
-   | None, None -> suspend ctx (fun wake -> job.waiters <- wake :: job.waiters)
+   | None, None -> park ctx (fun wake -> job.waiters <- wake :: job.waiters)
    | None, Some seconds ->
-     let stop_timer = ref ignore and mine = ref ignore in
+     let stop_timer = ref ignore and mine = ref not_parked in
      let leave () =
        !stop_timer ();
        job.waiters <- List.filter (fun w -> w != !mine) job.waiters
      in
      match
-       suspend ctx (fun wake ->
+       park ctx (fun wake ->
            (mine := fun () -> !stop_timer (); wake ());
            job.waiters <- !mine :: job.waiters;
-           stop_timer := ctx.w.timer seconds (fun () -> leave (); wake ()))
+           stop_timer := ctx.w.timer seconds (fun () -> leave (); ignore (wake ())))
      with
      | () -> ()
      | exception e -> leave (); raise e);
@@ -185,9 +186,9 @@ let wait ?timeout (ctx : ctx) t =
 (* A fiber that asks itself to stop does at once; another one, at its wait, or at its start if it hasn't begun. *)
 let cancel ctx (a : Types.t array) =
   (match (job_arg ctx "Cancel" a.(0)) with
-   | { cx = Some cx; wake; _ } when not cx.cancelled ->
+   | { cx = Some cx; _ } when not cx.cancelled ->
      cx.cancelled <- true;
-     if cx == ctx then raise Cancelled else ignore (wake ())
+     if cx == ctx then raise Cancelled else ignore (cx.wake ())
    | _ -> ());
   Missing
 
@@ -380,7 +381,7 @@ let close ctx (a : Types.t array) =
   let receivers = ch.receivers in
   ch.receivers <- [];
   List.iter (fun wake -> ignore (wake ())) receivers;
-  Queue.iter (fun s -> ignore (s.wake ())) ch.senders;
+  Queue.iter (fun (s : sender) -> ignore (s.wake ())) ch.senders;
   Queue.clear ch.senders;
   Missing
 
