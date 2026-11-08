@@ -79,6 +79,14 @@ use std/test
     call, so that a program that doesn't use it never pays for it. Needs read and write on the path of a database, and never
     ffi. *)
 
+(** log
+    Structured logs: each event a line of JSON on the standard output, with its time in UTC, its level and its message,
+    then the fields given. Under cesia run --workers, a line is written whole, so the lines of two workers never mix. *)
+
+(** metrics
+    Counters and histograms of this program, kept in memory, given in the text format that Prometheus scrapes. Under cesia
+    run --workers, each worker counts its own. *)
+
 (** math.Pi
     The ratio of a circle to its diameter.
 

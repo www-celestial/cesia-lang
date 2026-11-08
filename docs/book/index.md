@@ -49,6 +49,8 @@ language.
 21. [Speed](speed.md): what becomes machine code as a program runs, maps and structs included, and how to see it.
 22. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
 23. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+24. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
+    fibers and their scheduler, channels, the server on every core, the garbage collector and start-up, with their numbers.
 
 Appendices, to look things up:
 
@@ -57,5 +59,6 @@ Appendices, to look things up:
 - [cesia.toml](toml.md): every table and key of a project's file.
 - [Environment variables](env.md): those that Cesia reads.
 - [Words](glossary.md): the names of the ideas of this book, as programmers say them, each with its chapter.
+- [References](references.md): the papers, standards and books Cesia follows, each with what it took from them.
 
 The reference, under [Reference](ref/index.html), lists every module, every name and every keyword, each with its examples.

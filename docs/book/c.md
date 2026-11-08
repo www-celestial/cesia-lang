@@ -143,5 +143,5 @@ It compiles again only what changed. A C++ exception becomes a panic with its me
 
 ## Next
 
-Your programs can use the libraries of the system. The last chapter, [A real program](project.md), puts the chapters
+Your programs can use the libraries of the system. The next chapter, [A real program](project.md), puts the chapters
 together: a small web service on SQLite, with its tests, from `cesia new` to a server that runs.

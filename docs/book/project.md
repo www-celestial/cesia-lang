@@ -250,3 +250,5 @@ io.Print(http.Fetch(base).Value.Body)
 - Keep `cesia test` green and `cesia check` quiet as the code grows.
 - Read the reference: every name of Cesia has its page, with its examples, under [Reference](ref/index.html). Press `/` to
   search it.
+- Read [How Cesia works](internals.md), the next chapter, to know what makes a program fast or slow, and why each
+  guarantee holds.
