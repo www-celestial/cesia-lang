@@ -131,10 +131,7 @@ let int_text i =
   else begin
     let x = if i < 0 then i else -i and sign = if i < 0 then 1 else 0 in
     let n = ref sign and p = ref x in
-    while !p <> 0 do
-      incr n;
-      p := !p / 10
-    done;
+    while !p <> 0 do incr n; p := !p / 10 done;
     let b = Bytes.create !n and x = ref x and j = ref (!n - 1) in
     while !x <= -100 do
       let q = !x / 100 in

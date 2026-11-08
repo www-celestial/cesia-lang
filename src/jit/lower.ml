@@ -633,15 +633,8 @@ and call_expr st e (call : call) =
        if v.state = 0 then Infer.run st.w v;
        if v.state <> 2 || (v.ret != TI && v.ret != TF) then raise No;
        let vals = Array.map (expr st) a in
-       let args = Array.map fst vals in
-       let k = kind_of v.ret in
        note st v;
-       if st.inl = [] && inlinable v then inline st e v vals
-       else begin
-         st.ncalls <- st.ncalls + 1;
-         let back = back st in
-         fresh st k (fun r -> Call (r, callee st v, args, site st e.pos, back))
-       end
+       if st.inl = [] && inlinable v then inline st e v vals else native_call st e v (Array.map fst vals)
      | _ -> raise No)
   | Var { b = Local i; _ } when Vec.get st.kinds (var st i) = Ir.Kval -> call_value st e call (Ir.Reg (var st i))
   | _ -> raise No
@@ -656,11 +649,7 @@ and call_value st e (call : call) f =
   let vals = Array.map (expr st) (args_of call n) in
   let targets = List.filter_map (fun p -> target st p vals) seen in
   if targets = [] then raise No;
-  let k =
-    match targets with
-    | (_, (v : version)) :: rest when List.for_all (fun (_, (w : version)) -> w.ret == v.ret) rest -> kind_of v.ret
-    | _ -> Ir.Kval
-  in
+  let k = match targets with (_, (v : version)) :: rest when List.for_all (fun (_, (w : version)) -> w.ret == v.ret) rest -> kind_of v.ret | _ -> Ir.Kval in
   let r = reg st k and join = block st in
   let before = st.dyn.bail and clean = st.dyn.dirty in
   List.iter
@@ -672,24 +661,9 @@ and call_value st e (call : call) f =
        (* Each test runs after the ones before alone: a guard of its arguments may go back as the call's may. *)
        st.dyn.bail <- before;
        st.dyn.dirty <- clean;
-       let args =
-         Array.mapi
-           (fun j (x, xk) ->
-              match v.sg.(j), xk with
-              | TI, Ir.Kval -> unbox st x Only_int
-              | TF, Ir.Kval -> unbox st x Only_float
-              | _ -> x, xk)
-           vals
-       in
+       let args = Array.mapi (fun j (x, xk) -> match v.sg.(j), xk with TI, Ir.Kval -> unbox st x Only_int | TF, Ir.Kval -> unbox st x Only_float | _ -> x, xk) vals in
        note st v;
-       let res =
-         if st.inl = [] && inlinable v then inline st e v args
-         else begin
-           st.ncalls <- st.ncalls + 1;
-           let back = back st in
-           fresh st (kind_of v.ret) (fun q -> Call (q, callee st v, Array.map fst args, site st e.pos, back))
-         end
-       in
+       let res = if st.inl = [] && inlinable v then inline st e v args else native_call st e v (Array.map fst args) in
        emit st (Move (r, if k = Ir.Kval then box st res else fst res));
        close st (Jump join);
        st.cur <- next)
@@ -700,6 +674,12 @@ and call_value st e (call : call) f =
   st.cur <- join;
   st.dyn.bail <- None;
   Ir.Reg r, k
+
+(* A call of a compiled version, native code to native code. *)
+and native_call st e (v : version) args =
+  st.ncalls <- st.ncalls + 1;
+  let back = back st in
+  fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, back))
 
 (* A function that a call through a value reached, and the version the interpreter last chose for it, when native code
    can call it as it calls a direct one: a closure of nothing, of numbers in and out, which these arguments can reach. *)

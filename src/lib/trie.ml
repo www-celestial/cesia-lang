@@ -269,25 +269,43 @@ let append_v (a : t array) x =
   | [| a0; a1; a2; a3; a4; a5; a6; a7; a8; a9; a10; a11; a12; a13; a14; a15 |] -> [| a0; a1; a2; a3; a4; a5; a6; a7; a8; a9; a10; a11; a12; a13; a14; a15; x |]
   | _ -> append a x
 
-(* The first [n] of an array without the [w] places from [i], without a closure: values by two copies in C, which move a
-   block at once; hashes by one copy and a loop, whose writes need no barrier. *)
-let cut (a : t array) n i w =
-  if n = w then [||]
+(* Room for [e] entries in a node of the owner: twice its entries, at most 32. *)
+let room e = if e <= 2 then 2 else if e >= 16 then 32 else 2 * e
+
+(* The first [n] places of [a] with a gap of [w] at [i]: in place when [mine] and there is room, else in a new array, with
+   room for the owner, and no longer than needed for another map. *)
+let gap mine (a : 'a array) n i w (fill : 'a) =
+  if mine && n + w <= Array.length a then (Array.blit a i a (i + w) (n - i); a)
+  else begin
+    let b = Array.make (if mine then w * room ((n / w) + 1) else n + w) fill in
+    Array.blit a 0 b 0 i;
+    Array.blit a i b (i + w) (n - i);
+    b
+  end
+
+(* The first [n] places of [a] without the [w] from [i]: in place when [mine], the freed places emptied for the collector;
+   else a new array, made without a closure, its values moved by copies in C. *)
+let cut ?(mine = false) (a : 'a array) n i w (fill : 'a) =
+  if mine then (Array.blit a (i + w) a i (n - w - i); Array.fill a (n - w) w fill; a)
+  else if n = w then [||]
   else begin
     let b = Array.sub a 0 (n - w) in
     if i + w < n then Array.blit a (i + w) b i (n - w - i);
     b
   end
 
-let cut_h (a : int array) n i =
-  if n = 1 then [||]
-  else begin
-    let b = Array.sub a 0 (n - 1) in
-    for j = i to n - 2 do
-      b.(j) <- a.(j + 1)
-    done;
-    b
-  end
+(* The same for hashes, by loops, whose writes of integers need no barrier, where a copy in C takes one at each. *)
+let gap_h mine (a : int array) n i =
+  let b = if mine && n < Array.length a then a else Array.make (if mine then room (n + 1) else n + 1) 0 in
+  for j = n downto i + 1 do b.(j) <- a.(j - 1) done;
+  if b != a then for j = 0 to i - 1 do b.(j) <- a.(j) done;
+  b
+
+let cut_h ?(mine = false) (a : int array) n i =
+  let b = if mine then a else Array.make (n - 1) 0 in
+  if not mine then for j = 0 to i - 1 do b.(j) <- a.(j) done;
+  for j = i to n - 2 do b.(j) <- a.(j + 1) done;
+  b
 
 (* The marks of maps: a map changes in place only the nodes of its own mark, and a new mark copies a node once. *)
 let marks = ref 0
@@ -295,80 +313,6 @@ let marks = ref 0
 let fresh () =
   incr marks;
   !marks
-
-(* Room for [n] entries in a node of the owner: twice its entries, at most 32; a copy for another map has none. *)
-let[@inline] room n = if n <= 2 then 2 else if n >= 16 then 32 else 2 * n
-
-(* The [n] entries of a node with one more at [i]: in place when [mine] and there is room, else in new arrays. *)
-let insert_kv mine (kv : t array) n i k v =
-  if mine && (2 * n) + 2 <= Array.length kv then begin
-    Array.blit kv (2 * i) kv ((2 * i) + 2) (2 * (n - i));
-    kv.(2 * i) <- k;
-    kv.((2 * i) + 1) <- v;
-    kv
-  end else begin
-    let b = Array.make (2 * (if mine then room (n + 1) else n + 1)) Undef in
-    Array.blit kv 0 b 0 (2 * i);
-    b.(2 * i) <- k;
-    b.((2 * i) + 1) <- v;
-    Array.blit kv (2 * i) b ((2 * i) + 2) (2 * (n - i));
-    b
-  end
-
-let insert_h mine (hr : int array) n i r =
-  if mine && n + 1 <= Array.length hr then begin
-    for j = n downto i + 1 do
-      hr.(j) <- hr.(j - 1)
-    done;
-    hr.(i) <- r;
-    hr
-  end else begin
-    let b = Array.make (if mine then room (n + 1) else n + 1) 0 in
-    for j = 0 to i - 1 do
-      b.(j) <- hr.(j)
-    done;
-    b.(i) <- r;
-    for j = i to n - 1 do
-      b.(j + 1) <- hr.(j)
-    done;
-    b
-  end
-
-let insert_kid mine (kids : node array) n i x =
-  if mine && n + 1 <= Array.length kids then begin
-    Array.blit kids i kids (i + 1) (n - i);
-    kids.(i) <- x;
-    kids
-  end else begin
-    let b = Array.make (if mine then room (n + 1) else n + 1) x in
-    Array.blit kids 0 b 0 i;
-    Array.blit kids i b (i + 1) (n - i);
-    b
-  end
-
-(* The [n] entries of a node without the one at [i]: in place when [mine], the freed places emptied for the collector. *)
-let remove_kv mine (kv : t array) n i =
-  if mine then begin
-    Array.blit kv ((2 * i) + 2) kv (2 * i) (2 * (n - 1 - i));
-    kv.((2 * n) - 2) <- Undef;
-    kv.((2 * n) - 1) <- Undef;
-    kv
-  end
-  else cut kv (2 * n) (2 * i) 2
-
-let remove_h mine (hr : int array) n i =
-  if mine then begin
-    for j = i to n - 2 do
-      hr.(j) <- hr.(j + 1)
-    done;
-    hr
-  end
-  else cut_h hr n i
-
-let remove_kid (kids : node array) n i =
-  let b = Array.sub kids 0 (n - 1) in
-  if i + 1 < n then Array.blit kids (i + 1) b i (n - 1 - i);
-  b
 
 (* A node of the mark [ed] with the entries and kids of [n], in arrays of its own. *)
 let copy n ed =
@@ -418,15 +362,9 @@ let rec put_node node h key v rk level ed =
         added := true;
         let e = popcount n.dmap and k = popcount n.nmap and j = place n.nmap bit in
         let sub = pair n.kv.(2 * i) n.kv.((2 * i) + 1) r key v (pack h rk) (level + 1) ed in
-        let kv = remove_kv mine n.kv e i and hr = remove_h mine n.hr e i and kids = insert_kid mine n.kids k j sub in
-        if mine then begin
-          n.dmap <- n.dmap lxor bit;
-          n.nmap <- n.nmap lor bit;
-          n.kv <- kv;
-          n.hr <- hr;
-          n.kids <- kids;
-          node
-        end
+        let kv = cut ~mine n.kv (2 * e) (2 * i) 2 Undef and hr = cut_h ~mine n.hr e i and kids = gap mine n.kids k j 1 sub in
+        kids.(j) <- sub;
+        if mine then (n.dmap <- n.dmap lxor bit; n.nmap <- n.nmap lor bit; n.kv <- kv; n.hr <- hr; n.kids <- kids; node)
         else Champ { dmap = n.dmap lxor bit; nmap = n.nmap lor bit; kv; hr; kids; ed }
       end
     end
@@ -449,13 +387,11 @@ let rec put_node node h key v rk level ed =
     end else begin
       added := true;
       let e = popcount n.dmap and i = place n.dmap bit in
-      let kv = insert_kv mine n.kv e i key v and hr = insert_h mine n.hr e i (pack h rk) in
-      if mine then begin
-        n.dmap <- n.dmap lor bit;
-        n.kv <- kv;
-        n.hr <- hr;
-        node
-      end
+      let kv = gap mine n.kv (2 * e) (2 * i) 2 Undef and hr = gap_h mine n.hr e i in
+      kv.(2 * i) <- key;
+      kv.((2 * i) + 1) <- v;
+      hr.(i) <- pack h rk;
+      if mine then (n.dmap <- n.dmap lor bit; n.kv <- kv; n.hr <- hr; node)
       else Champ { dmap = n.dmap lor bit; nmap = n.nmap; kv; hr; kids = (if ed = frozen then n.kids else Array.sub n.kids 0 (popcount n.nmap)); ed }
     end
   | Same t ->
@@ -618,7 +554,7 @@ let rec drop_node node h key level =
       let i = place n.dmap bit in
       if n.hr.(i) land hash_bits = h && same n.kv.(2 * i) key then begin
         let e = popcount n.dmap in
-        Champ { n with dmap = n.dmap lxor bit; kv = cut n.kv (2 * e) (2 * i) 2; hr = cut_h n.hr e i; ed = frozen }
+        Champ { n with dmap = n.dmap lxor bit; kv = cut n.kv (2 * e) (2 * i) 2 Undef; hr = cut_h n.hr e i; ed = frozen }
       end
       else node
     end
@@ -630,11 +566,13 @@ let rec drop_node node h key level =
       else begin
         let e = popcount n.dmap and k = popcount n.nmap in
         match left kid' h with
-        | Gone -> Champ { n with nmap = n.nmap lxor bit; kids = remove_kid n.kids k j; ed = frozen }
+        | Gone -> Champ { n with nmap = n.nmap lxor bit; kids = cut n.kids k j 1 kid'; ed = frozen }
         | One (k', v', r') ->
           let i = place n.dmap bit in
-          Champ { dmap = n.dmap lor bit; nmap = n.nmap lxor bit; kv = insert_kv false n.kv e i k' v'; hr = insert_h false n.hr e i r';
-                  kids = remove_kid n.kids k j; ed = frozen }
+          let kv = gap false n.kv (2 * e) (2 * i) 2 k' and hr = gap_h false n.hr e i in
+          hr.(i) <- r';
+          kv.((2 * i) + 1) <- v';
+          Champ { dmap = n.dmap lor bit; nmap = n.nmap lxor bit; kv; hr; kids = cut n.kids k j 1 kid'; ed = frozen }
         | More ->
           let kids = Array.sub n.kids 0 k in
           kids.(j) <- kid';
@@ -654,7 +592,7 @@ let drop m h key =
     if i < 0 then m
     else begin
       ignore (share m);
-      Dict { keys = { ks = cut keys.ks n i 1; hs = cut_h keys.hs n i; used = whole; deep = Flat }; vals = cut vals n i 1; d_owned = false }
+      Dict { keys = { ks = cut keys.ks n i 1 Undef; hs = cut_h keys.hs n i; used = whole; deep = Flat }; vals = cut vals n i 1 Undef; d_owned = false }
     end
   | Dict { keys = { deep = Deep d; _ }; _ } ->
     let root = drop_node d.root h key 0 in

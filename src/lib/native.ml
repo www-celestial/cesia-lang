@@ -590,11 +590,10 @@ let is_utf8 s =
 let count part s =
   let n = String.length s in
   if String.length part = 1 then begin
-    let c = Int64.mul (Int64.of_int (Char.code part.[0])) 0x0101010101010101L in
+    let c = Int64.mul (Int64.of_int (Char.code part.[0])) 0x0101010101010101L and lows = 0x7F7F7F7F7F7F7F7FL in
     let total = ref 0 and i = ref 0 in
     while !i + 8 <= n do
       let t = Int64.logxor (String.get_int64_le s !i) c in
-      let lows = 0x7F7F7F7F7F7F7F7FL in
       let y = Int64.lognot (Int64.logor (Int64.logor (Int64.add (Int64.logand t lows) lows) t) lows) in
       total := !total + Int64.to_int (Int64.shift_right_logical (Int64.mul (Int64.shift_right_logical y 7) 0x0101010101010101L) 56);
       i := !i + 8
@@ -604,8 +603,7 @@ let count part s =
     done;
     !total
   end else begin
-    let m = String.length part in
-    let rec go from k = match find_from s part from with -1 -> k | p -> go (p + m) (k + 1) in
+    let rec go from k = match find_from s part from with -1 -> k | p -> go (p + String.length part) (k + 1) in
     go 0 0
   end
 
