@@ -40,16 +40,18 @@ language.
 12. [Permissions](permissions.md): `--allow`, `--limit`, and the permissions of a task.
 13. [Files](files.md): reading, writing, folders and paths, arguments and flags, other programs, the clock and local time.
 14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file, random samples.
-15. [JSON and CSV](json.md): reading, writing, and checking what comes in.
-16. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
-17. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
-18. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
-19. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site for your project.
-20. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
-21. [Speed](speed.md): what becomes machine code as a program runs, maps and structs included, and how to see it.
-22. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
-23. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
-24. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
+15. [Numbers and algorithms](numbers.md): std/math, std/num and LAPACK, the classic algorithms, sets, queues and heaps, and what each costs.
+16. [JSON and CSV](json.md): reading, writing, and checking what comes in.
+17. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
+18. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
+19. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
+20. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
+21. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site for your project.
+22. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
+23. [Speed](speed.md): what becomes machine code as a program runs, maps and structs included, and how to see it.
+24. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
+25. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+26. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
     fibers and their scheduler, channels, the server on every core, the garbage collector and start-up, with their numbers.
 
 Appendices, to look things up:
@@ -58,6 +60,8 @@ Appendices, to look things up:
 - [Editors](editors.md): the errors, the documentation and the definitions in Neovim, Helix and Emacs, through `cesia lsp`.
 - [cesia.toml](toml.md): every table and key of a project's file.
 - [Environment variables](env.md): those that Cesia reads.
+- [Error messages](messages.md): every message Cesia can print, where it comes from, and what to do.
+- [Modules for tools](tools.md): std/cesia, std/syntax, std/columns, std/sqlite3 and std/debug, which Cesia's own tools are written with.
 - [Words](glossary.md): the names of the ideas of this book, as programmers say them, each with its chapter.
 - [References](references.md): the papers, standards and books Cesia follows, each with what it took from them.
 
