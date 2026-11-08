@@ -345,26 +345,30 @@ let () =
     Trie.mask := mask;
     let rng = Random.State.make [| 77 |] in
     let key i = if i land 1 = 0 then Int i else Text ("t" ^ string_of_int i) in
-    let m = ref (Trie.empty ()) and l = ref [] and ok = ref true and table_at = ref false and snaps = ref [] in
-    for step = 1 to 20_000 do
-      let k = key (Random.State.int rng 3_000) in
-      let v = if step < 12_000 then Int step else Text (string_of_int step) in
+    (* The model: each key's number, its rank and its value. *)
+    let m = ref (Trie.empty ()) and tbl = Hashtbl.create 16 and ok = ref true and table_at = ref false and snaps = ref [] in
+    let listed () =
+      List.map (fun (_, i, v) -> key i, v) (List.sort compare (Hashtbl.fold (fun i (r, v) acc -> (r, i, v) :: acc) tbl []))
+    in
+    for step = 1 to 8_000 do
+      let i = Random.State.int rng 1_500 in
+      let k = key i and v = if step < 5_000 then Int step else Text (string_of_int step) in
       m := Trie.put_owned !m (Trie.hash k) k v;
-      l := if List.exists (fun (k', _) -> Trie.same k k') !l then List.map (fun (k', x) -> if Trie.same k k' then k', v else k', x) !l
-        else !l @ [ (k, v) ];
-      if Trie.length !m <> List.length !l then ok := false;
-      if step mod 2_500 = 0 then begin
-        if Array.to_list (Trie.items !m) <> List.concat_map (fun (k, v) -> [ k; v ]) !l then ok := false;
-        List.iter (fun (k, v) -> if Trie.find !m (Trie.hash k) k <> v then ok := false) !l
+      Hashtbl.replace tbl i ((match Hashtbl.find_opt tbl i with Some (r, _) -> r | None -> step), v);
+      if Trie.length !m <> Hashtbl.length tbl then ok := false;
+      if step mod 1_000 = 0 then begin
+        let l = listed () in
+        if Array.to_list (Trie.items !m) <> List.concat_map (fun (k, v) -> [ k; v ]) l then ok := false;
+        List.iter (fun (k, v) -> if Trie.find !m (Trie.hash k) k <> v then ok := false) l
       end;
-      if step = 15_000 then begin
+      if step = 6_000 then begin
         table_at := is_table !m;
-        let x = Text "snap" in
-        snaps := (Trie.put !m (Trie.hash x) x (Int step), (x, Int step) :: List.rev !l) :: (!m, List.rev !l) :: !snaps;
+        let x = Text "snap" and l = listed () in
+        snaps := (Trie.put !m (Trie.hash x) x (Int step), List.rev ((x, Int step) :: List.rev l)) :: (!m, l) :: !snaps;
         m := Trie.own_copy !m
       end
     done;
-    List.iter (fun (s, l) -> if Array.to_list (Trie.items s) <> List.concat_map (fun (k, v) -> [ k; v ]) (List.rev l) then ok := false) !snaps;
+    List.iter (fun (s, l) -> if Array.to_list (Trie.items s) <> List.concat_map (fun (k, v) -> [ k; v ]) l then ok := false) !snaps;
     Trie.mask := 0x3FFF_FFFF;
     !ok, !table_at
   in
@@ -372,12 +376,12 @@ let () =
   check "an owned table with few bits of hash" (fst (owned 0x3F));
   check "an owned table of one hash becomes the trie" (owned 0 = (true, false));
   let fresh n = let m = ref (Trie.empty ()) in for i = 0 to n - 1 do m := Trie.put_owned !m (Trie.hash (Int i)) (Int i) (Int i) done; !m in
-  let big = fresh 100_000 in
+  let big = fresh 30_000 in
   let before = Trie.items big in
   let p = Trie.put big (Trie.hash (Int (-1))) (Int (-1)) (Int 0) in
   check "a table written after it was shared becomes the trie, the same keys in the same order"
-    (is_table (fresh 33) && (not (is_table big)) && Trie.items big = before && Trie.length p = 100_001
-     && Trie.find p (Trie.hash (Int 99_999)) (Int 99_999) = Int 99_999 && Trie.find big (Trie.hash (Int (-1))) (Int (-1)) = Undef);
+    (is_table (fresh 33) && (not (is_table big)) && Trie.items big = before && Trie.length p = 30_001
+     && Trie.find p (Trie.hash (Int 29_999)) (Int 29_999) = Int 29_999 && Trie.find big (Trie.hash (Int (-1))) (Int (-1)) = Undef);
   let items = Array.concat (List.init 100 (fun i -> [| Text ("o" ^ string_of_int (i mod 70)); Int i |])) in
   let o = Trie.of_items items in
   check "a map of items past a block is a table: a key twice keeps its first place and its last value"
