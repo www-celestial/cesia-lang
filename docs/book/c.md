@@ -90,6 +90,39 @@ applyTwice(triple, 2)
 A panic inside a callback comes back to the Cesia code that called C. A C function that keeps a callback and calls it later,
 from another of its functions, says so when it is bound, with `callsBack = true`.
 
+### Variadic functions
+
+A function such as `printf` takes a *variable argument list*, whose types it doesn't declare. [c.Variadic] binds one: the
+types of its fixed arguments, then those of the arguments a call gives. C promotes a small integer or a `float` given
+there, so those are refused: write `i32` or `f64`.
+
+```cesia norun
+use std/c
+use std/result
+libc = result.Unwrap(c.Open("c", version = 6))
+snprintf = result.Unwrap(c.Variadic("snprintf", ["ptr", "u64", "text"], ["i32"], "i32", libc))
+```
+
+## How a call reaches C
+
+A call of up to 6 arguments, each an integer or a float, with such a result, goes through a C function made for its
+*shape*, the kinds of its arguments and of its result: 254 of them, written by `src/gen/gen_calls.ml` when Cesia is built.
+More arguments, a structure by value, a variadic function or a callback go through *libffi*, a library that builds a call
+of any C signature as the program runs; Cesia finds it on the system at the first such call, so it links nothing more.
+
+Measured on 2026-11-08, `bench/ccall.ce`: 10 million calls of C's `abs` in a loop, 5 runs of each alternated, the median
+and the range:
+
+| | Calls per second |
+|---|---:|
+| Cesia, `std/c` | 11.8 million (10.7 to 12.3) |
+| Python, `ctypes`, `bench/ccall.py` | 2.0 million (1.97 to 2.06) |
+| LuaJIT, its FFI, `bench/ccall.lua` | 818 million (509 to 868) |
+
+A call costs Cesia about 85 nanoseconds, 6 times less than Python's `ctypes`, and 70 times more than LuaJIT, whose JIT
+compiles the call into the machine code of the loop. A call to C is worth it for work that takes more than that, as a
+whole computation of a library, not for one small step in a loop.
+
 ## C++
 
 C++ has no stable binary form, no [ABI](glossary.md#abi), so [std/cpp] describes what to reach, writes a small C layer for it, compiles it once with the
@@ -139,7 +172,8 @@ cesia run --allow exec=g++,read=build,write=build,ffi=build/libdemo_cesia.so dem
 
 [result.Unwrap] at the end stops the program with the message of an `Err`, if the compiler or the library fails.
 
-It compiles again only what changed. A C++ exception becomes a panic with its message.
+It compiles again only what changed. A C++ exception becomes a panic with its message. [cpp.Source] gives the text of
+the C layer without compiling it, to read what [cpp.Wrap] would build.
 
 ## Next
 

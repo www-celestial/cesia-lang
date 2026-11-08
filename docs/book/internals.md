@@ -324,6 +324,7 @@ of the process to its end. The minimum, then the median:
 | `dyn` | calls through a list of functions | 673 / 712 ms | 691 / 712 ms |
 
 `dyn` calls each function through a value, which stays in the interpreter: it shows the cost of what the JIT leaves out.
+[Speed](speed.md#beside-the-giants) puts these programs beside Python, Node, Java, Go, OCaml, Lua and LuaJIT.
 
 ## Fibers and the scheduler
 
@@ -414,7 +415,7 @@ connection gets a fiber of its own, which reads the requests, calls the handler,
 kept open between requests, *keep-alive* in HTTP/1.1. A last fiber, the reaper, closes each connection that passes its
 deadline. A slow client only parks its own fiber, so the others go on.
 
-### Every core: --workers
+### On every core
 
 One process uses one core. `cesia run --workers N` serves on `N` processes, from `src/sys/workers.ml`, in the
 *pre-fork* model of servers such as nginx:
@@ -436,17 +437,11 @@ pipe, by the rule of POSIX called `PIPE_BUF`: no other worker's write can cut it
 
 ### What it serves
 
-Measured with `tools/http-bench.sh` on the machine above, one core, keep-alive connections, against Node on the same core:
-
-| Load | Cesia | Node |
-|---|---:|---:|
-| a tiny route, 100 connections | about 60,000 requests/s | 40,000 to 50,000 |
-| a JSON route, 100 connections | about 45,000 requests/s | |
-| a new connection per request | about 22,000 requests/s | about 12,000 |
-
-The 99th percentile of the latency, the time under which 99 requests of 100 are answered, is 4 ms at 100 connections, and
-an idle connection takes 2.3 KB. `tools/http-gate.sh` fails a change to the server that loses a request, falls under Node
-or under its floors, passes 10 ms at the 99th percentile, or lets `--workers 2` give less than one and a half times one
+On one core of the machine above, a tiny route answers about 62,000 requests a second at 100 kept connections, as many as
+Go's `net/http` on one core and half again as many as Node, with no request lost, and an idle connection takes 2.3 KB:
+the medians of 6 runs of `tools/http-bench.sh`, which [Speed](speed.md#a-server-under-load) gives in full, beside Node and
+Go, with where they win. `tools/http-gate.sh` fails a change to the server that loses a request, falls under Node or
+under its floors, passes 10 ms at the 99th percentile, or lets `--workers 2` give less than one and a half times one
 process.
 
 ## Memory and the garbage collector
