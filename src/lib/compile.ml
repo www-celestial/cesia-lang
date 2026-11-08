@@ -2809,6 +2809,10 @@ and set_elt c e root sp ix value =
       let x = read ctx in
       match x with
       | Array ({ a_owned = true; _ } as a) when k >= 1 && k <= a.rows * a.cols -> Arrays.store_elt ctx s a (k - 1) y
+      | Dict { d_owned = true; _ } ->
+        ctx.site <- s;
+        let after = write_key ctx x (Int k) y in
+        if after != x then set ctx after
       | _ ->
         ctx.site <- s;
         write_root ctx pm set x (Rindex [| Arrays.At k |]) y
