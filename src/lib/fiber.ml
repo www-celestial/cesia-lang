@@ -103,10 +103,10 @@ let panic_value w text kind at = ended_value w text (Value.kind_name kind) at
 let not_parked () = false
 
 (* The stacks of a new fiber, in entries. They grow on demand, and a server has thousands of idle fibers. *)
-let fiber_stack = 64
+let fiber_stack = 16
 
 (* What a new fiber takes in memory, as measured by tools/fiber-size.sh. *)
-let fiber_words = 450
+let fiber_words = 320
 
 let spawn (ctx : ctx) g =
   let w = ctx.w in
