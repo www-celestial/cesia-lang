@@ -1,0 +1,96 @@
+(** The ways of the chapter "Solving a real problem" of the book, timed on a folder:
+      cesia run --allow read bench/dupes.ce naive|memory|duplicates FOLDER
+    Each prints the groups of copies, one on a line, its paths cut by tabs, as bench/dupes.py does. memory is naive with
+    each file read once, then kept in memory. *)
+use std/sys
+use std/io
+use std/text
+use std/list
+use std/value
+use std/result
+use std/cesia
+
+defn main()
+  way = sys.Args[1]
+  folder = sys.Args[2]
+  groups = if way == "naive"
+    naive(folder)?
+  else if way == "memory"
+    naive(folder, read = readOnce(folder)?)?
+  else
+    Duplicates(folder)?
+  end
+  for g in groups
+    io.Print(text.Join("\t", g))
+  end
+  result.Ok(missing)
+end
+
+defn plainFiles(folder)
+  (** Each regular file under a folder, at any depth, as {Path, Size}: no folder, no link, no device. *)
+  out = []
+  for p in sys.Walk(folder)?
+    info = sys.Stat(p)?
+    if info.IsFile and not info.IsLink
+      out = list.Append({Path: p, Size: info.Size}, out)
+    end
+  end
+  result.Ok(out)
+end
+
+sorted(groups) = list.SortBy(g -> g[1], [list.Sort(g) for g in groups])   (** Each group in order, then the groups by their first path. *)
+
+defn naive(folder, read = sys.Read)
+  (** The groups of copies under a folder, the first way that comes to mind: each file against each one after it, byte
+      by byte, each read with read. *)
+  paths = [f.Path for f in plainFiles(folder)?]
+  n = value.Len(paths)
+  taken = list.Fill(false, n)
+  groups = []
+  for i in 1..n
+    if not taken[i]
+      group = [paths[i]]
+      for j in (i + 1)..n
+        if not taken[j] and read(paths[i])? == read(paths[j])?
+          group = list.Append(paths[j], group)
+          taken[j] = true
+        end
+      end
+      if value.Len(group) > 1
+        groups = list.Append(group, groups)
+      end
+    end
+  end
+  result.Ok(sorted(groups))
+end
+
+defn readOnce(folder)
+  (** A way to read the files of a folder from memory, where each was read once at the start. *)
+  kept = {}
+  for f in plainFiles(folder)?
+    kept[f.Path] = sys.Read(f.Path)?
+  end
+  result.Ok(p -> result.Ok(kept[p]))
+end
+
+defn Duplicates(folder)
+  (** The groups of files under a folder that hold the same bytes, two or more to a group: by size first, then, among
+      the files of one size, by their BLAKE2b-256. *)
+  groups = []
+  for same in list.Group(it.Size, plainFiles(folder)?)
+    if value.Len(same.Values) > 1
+      hashed = []
+      for f in same.Values
+        hashed = list.Append({Path: f.Path, Hash: cesia.Fingerprint(sys.Read(f.Path)?)}, hashed)
+      end
+      for g in list.Group(it.Hash, hashed)
+        if value.Len(g.Values) > 1
+          groups = list.Append([h.Path for h in g.Values], groups)
+        end
+      end
+    end
+  end
+  result.Ok(sorted(groups))
+end
+
+result.Unwrap(main())

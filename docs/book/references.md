@@ -165,6 +165,53 @@ and, as there, a C library is outside the sandbox.
   453–472. <https://doi.org/10.1145/2660193.2660195>. SplitMix64, the generator of [std/random]: the same seed gives the same
   numbers on every system.
 
+## Solving a problem
+
+The methods of [Solving a real problem](duplicates.md), step by step, and the documents of the tools it is compared with.
+BLAKE2 is under [Cryptography](#cryptography), QuickCheck and the shrinking of Hypothesis under [Tests](#tests).
+
+- George Pólya. *How to Solve It: A New Aspect of Mathematical Method*. Princeton University Press, 1945. The questions
+  that start a problem: the unknown, the data, the condition; and looking back at the end.
+- DARPA. "The Heilmeier Catechism". <https://www.darpa.mil/about/heilmeier-catechism>. The questions of George Heilmeier,
+  director of DARPA from 1975 to 1977: above all, the exam that tells success, which the chapter writes as a property.
+- Karl R. Popper. *Logik der Forschung*. Julius Springer, Vienna, 1934; in English, *The Logic of Scientific Discovery*,
+  Hutchinson, London, 1959. A claim is scientific when an experiment could refute it: the falsifiable hypothesis of step 3.
+- Raj Jain. *The Art of Computer Systems Performance Analysis: Techniques for Experimental Design, Measurement,
+  Simulation, and Modeling*. Wiley, 1991. ISBN 978-0-471-50336-1. Measuring before changing, the same task for every
+  system, and the errors of a measure.
+- Andy Georges, Dries Buytaert, Lieven Eeckhout. "Statistically Rigorous Java Performance Evaluation". *OOPSLA 2007*, ACM,
+  57–76. <https://doi.org/10.1145/1297027.1297033>. One run, or the best of a few, can rank two systems wrongly: report a
+  confidence interval.
+- Tomas Kalibera, Richard Jones. "Rigorous Benchmarking in Reasonable Time". *ISMM 2013*, ACM, 63–74.
+  <https://doi.org/10.1145/2464157.2464160>. Repeat the runs at the level where the noise is: here the whole process.
+- Jean-Yves Le Boudec. *Performance Evaluation of Computer and Communication Systems*. EPFL Press, 2010.
+  <https://leboudec.github.io/perfeval/>. Its theorem 2.1: the confidence interval of a median between two order
+  statistics, whatever the distribution, as every time of the chapter gives it.
+- Andreas Zeller, Ralf Hildebrandt. "Simplifying and Isolating Failure-Inducing Input". *IEEE Transactions on Software
+  Engineering* 28(2):183–200, 2002. <https://doi.org/10.1109/32.988498>. Delta debugging: a failing input made smaller
+  until it shows the cause, here two files of one size.
+- Alfred J. Menezes, Paul C. van Oorschot, Scott A. Vanstone. *Handbook of Applied Cryptography*. CRC Press, 1996, §2.1.5,
+  Fact 2.27. <https://cacr.uwaterloo.ca/hac/>. The birthday problem, its exact probability and its approximation
+  1 − exp(−n(n − 1)/2m), from which the bound of the chapter follows.
+- M-J. Saarinen (editor), J-P. Aumasson. "The BLAKE2 Cryptographic Hash and Message Authentication Code (MAC)", RFC 7693,
+  2015. <https://www.rfc-editor.org/rfc/rfc7693>. BLAKE2b of 1 to 64 bytes, and the collision security of 2^128 of its
+  32-byte form, the digest of [cesia.Fingerprint].
+- Xiaoyun Wang, Hongbo Yu. "How to Break MD5 and Other Hash Functions". *EUROCRYPT 2005*, LNCS 3494, Springer, 19–35.
+  <https://doi.org/10.1007/11426639_2>. Collisions of MD5 within an hour: why a tool that hashes with MD5 must compare
+  the bytes after.
+- Jean-Karim Zinzindohoué, Karthikeyan Bhargavan, Jonathan Protzenko, Benjamin Beurdouche. "HACL*: A Verified Modern
+  Cryptographic Library". *CCS 2017*, ACM, 1789–1806. <https://doi.org/10.1145/3133956.3134043>. The library whose
+  BLAKE2b Python uses since the change gh-119316 of CPython, 2024, <https://github.com/python/cpython/pull/119316>, with
+  a version for the AVX2 instructions: why Python hashes faster than Cesia on the machine of the chapter.
+- Todd Mytkowicz, Amer Diwan, Matthias Hauswirth, Peter F. Sweeney. "Producing Wrong Data Without Doing Anything Obviously
+  Wrong!". *ASPLOS 2009*, ACM, 265–276. <https://doi.org/10.1145/1508244.1508275>. Measurement bias from the setup, as the
+  size of the environment or the order of linking: the threats to validity of the chapter.
+- Adrian Lopez. fdupes, its manual page `fdupes.1`. <https://github.com/adrianlopezroche/fdupes>. Sizes, MD5, then the
+  bytes compared; zero-length files kept unless `-n`, hard links not duplicates unless `-H`.
+- Jody Bruchon. jdupes, its README and `filehash.c`. <https://codeberg.org/jbruchon/jdupes>. Sizes, the first 4 KiB, the
+  whole file with XXH64, then the bytes compared unless `-Q`; zero-length files only with `-z`, hard links not duplicates
+  unless `-H`.
+
 ## Data and numbers
 
 - Wes McKinney. "Data Structures for Statistical Computing in Python". *Proceedings of the 9th Python in Science

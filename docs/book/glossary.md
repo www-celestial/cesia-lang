@@ -50,10 +50,29 @@ Leaving machine code for the interpreter when a bet of the JIT turns out wrong, 
 interpreter keeps it, so the program goes on from the same statement. Other JITs call it deoptimization. Cesia's JIT
 bails before the statement whose guard failed: see [How Cesia works](internals.md#bets-guards-and-bails).
 
+## Baseline
+
+The first measure of a problem, taken before anything is changed: the number that every change is compared with. Without
+it, "faster" has no meaning. The baseline of [Solving a real problem](duplicates.md#the-baseline) is the time of the
+first way that comes to mind, each file against every other one.
+
+## Big O notation
+
+A way to say how the cost of a program grows with the size n of its input, without its constant: O(n) grows as n, O(n²)
+as its square, so twice the input takes four times the work. Comparing every file with every other one is O(n²); grouping
+them by size first reads each file at most once: see [Solving a real problem](duplicates.md#2-measure-before-changing-anything).
+
 ## Binding
 
 The link between a name and a value. In Cesia `=` binds a name, and binding it again gives it another value: see
 [Values and names](values.md#names).
+
+## Birthday bound
+
+The bound on the chance that two of k values drawn at random among N are equal: at most k(k − 1)/2N, one chance in N for
+each of the k(k − 1)/2 pairs. It is named after the surprise that 23 people suffice for two to share a birthday more often
+than not. For a million files and a digest of 256 bits it is 4.3 × 10^−66: see
+[Solving a real problem](duplicates.md#the-bound-worked-out).
 
 ## BLAS and LAPACK
 
@@ -111,6 +130,12 @@ closure keeps the values those names had when it was made: see [Functions](funct
 Running a syntax tree by first turning each of its nodes into a function of the host language, a closure, which calls the
 closures of its children: the work of looking at a node is done once, not at each step. Cesia's interpreter is written
 this way, in OCaml: see [How Cesia works](internals.md#running-closures-as-code).
+
+## Collision resistance
+
+The property of a hash function that nobody can find two texts with the same digest, a collision, faster than by trying.
+For a digest of b bits, trying takes about 2^(b/2) hashes, by the birthday bound, so BLAKE2b-256 has a collision security
+of 2^128. MD5 lost it in 2005. See [Solving a real problem](duplicates.md#4-research).
 
 ## Column-major order
 
@@ -181,6 +206,12 @@ Cesia stops the program with the line of the wait, `All fibers are waiting and n
 The rule that a name is given a value before it is read, on every path through the code. Cesia checks it when the file
 loads, so a name read too early is an error before anything runs: see [How Cesia works](internals.md#names-the-resolver).
 
+## Delta debugging
+
+Making a failing input smaller step by step, keeping each smaller one that still fails, until what is left shows the cause
+of the failure: Zeller and Hildebrandt's method, of 2002. The [shrinking](#shrinking) of [test.ForAll] does it on the
+draws that made a case: see [Solving a real problem](duplicates.md#a-shortcut-proved-wrong).
+
 ## Dependency
 
 Code from another project that yours uses. In Cesia a `[deps]` table of `cesia.toml` names its repository and its tag, and
@@ -226,6 +257,13 @@ The interface of Linux that tells which of many sockets are ready to read or wri
 only. Cesia's scheduler waits on it when no fiber is ready, and on `select` on macOS and Windows; `EPOLLEXCLUSIVE` makes a
 new connection wake one worker of `--workers`: see [How Cesia works](internals.md#waiting-on-the-system).
 
+## Equivalence relation
+
+A relation that holds between a thing and itself, both ways between two things, and from a first to a third through a
+second, as "holds the same bytes as" between files. It splits the things into classes, the sets whose members are related
+to each other: the groups of copies of a folder are the classes of two files or more. See
+[Solving a real problem](duplicates.md#1-the-problem-stated-precisely).
+
 ## Error propagation
 
 Passing an error from the function that met it up to a caller that can handle it. In Cesia `?` after a result does it: it
@@ -252,6 +290,13 @@ The number a program gives back to the one that started it: 0 when all went well
 An expression is code that gives a value, as `2 + 3`; a statement is code that only does something. In Cesia, `if` and
 `match` are expressions: `kind = if n > 0 "positive" else "other" end`. See
 [Choices and loops](choices.md#if-gives-a-value).
+
+## Falsifiable
+
+Said of a hypothesis that an experiment could prove wrong, since it predicts something that can be measured: Karl
+Popper's criterion of a scientific claim. "The time goes into reading the same files again" is falsifiable, as it
+predicts that reading each file once makes nearly all of the time go: see
+[Solving a real problem](duplicates.md#3-a-hypothesis-that-can-be-proved-wrong).
 
 ## Fiber
 
@@ -309,6 +354,13 @@ to the interpreter. See [How Cesia works](internals.md#bets-guards-and-bails).
 The function that answers one kind of request. In [std/http] it takes the request, a dictionary, and gives the response: see
 [HTTP](http.md#an-application).
 
+## Hard and symbolic links
+
+A hard link is one more name of the same file: the bytes are on the disk once, and deleting one name frees nothing while
+another is left. A symbolic link is a small file that holds a path, which the system follows. [sys.Walk] lists a symbolic
+link and never follows it; [sys.Stat] says that a path is a symbolic link, but not that two names are hard links to one
+file: see [Solving a real problem](duplicates.md#7-what-is-left).
+
 ## Hash array mapped trie
 
 A HAMT: a tree where each level is chosen by 5 bits of a key's hash, so a node has up to 32 children, kept compact by a
@@ -332,6 +384,13 @@ SHA-256 and BLAKE2b: see [Cryptography](crypto.md#hashes).
 
 A join of two tables that puts the keys of one into a hash table, then looks up each row of the other in it: a time of
 about the sum of their sizes, not their product. [frame.JoinOn] joins this way: see [Data](data.md#joining-two-tables).
+
+## Heilmeier catechism
+
+The questions that George Heilmeier, director of DARPA from 1975 to 1977, asked of every research project: what are you
+trying to do, in plain words; how is it done today, and what are its limits; what is new in your approach; who cares; what
+are the risks; what does it cost; how long does it take; what are the exams that check success. See
+[Solving a real problem](duplicates.md#1-the-problem-stated-precisely).
 
 ## Hidden class
 
@@ -483,6 +542,13 @@ variables carried over. Cesia's JIT does it at a checkpoint inside a hot loop: s
 Types that a program may write or leave out. In Cesia types are a plus: code without them runs as fast, and a type that is
 written is checked each time a value comes in: see [Types](types.md).
 
+## Order statistic
+
+The k-th smallest of a set of measures, once they are put in order: the first is the minimum, the middle one the median.
+Two of them bound a confidence interval of the median without any guess about how the measures are spread: of 11 runs,
+the 2nd and the 10th hold the true median with a probability of 98.8%. See
+[Solving a real problem](duplicates.md#how-it-was-measured).
+
 ## Overlong form
 
 A character of UTF-8 written with more bytes than it needs, as `0xC0 0x80` for the character 0, which takes one byte.
@@ -495,11 +561,23 @@ Code grouped under a name, also called a module, whose names you reach through i
 folder of `.ce` files: `use std/sql` brings one in, and `sql.Open` names a public function of it: see
 [Packages](packages.md).
 
+## Page cache
+
+The copies of the files that the system keeps in free memory after reading them, so that the next read of the same bytes
+costs no disk. A *warm* cache holds them, a *cold* one doesn't: a program that reads a folder twice is faster the second
+time. [Solving a real problem](duplicates.md#threats-to-validity) measures both.
+
 ## Parameterized query
 
 A query whose values travel apart from its SQL text, so that no input typed by a user can change the query: a SQL
 injection. In [std/sql] each `?` takes a value of the list: see
 [SQLite](sqlite.md#values-never-go-into-the-text).
+
+## Partition refinement
+
+Splitting a set into groups by a key, then splitting each group again by a finer key, and so on, so that no step joins
+what a step before had parted. Duplicate files are found this way: by size, then by digest among the files of one size:
+see [Solving a real problem](duplicates.md#4-research).
 
 ## Pattern matching
 
@@ -749,6 +827,12 @@ A call whose result is the result of the function that makes it, with nothing le
 calls itself in tail position runs as a loop, in one frame, so it has no depth limit: see
 [Functions](functions.md#a-function-that-calls-itself).
 
+## Threat to validity
+
+A cause that could make the conclusion of an experiment wrong although nothing in it looks wrong: a warm cache, a folder
+of an unusual shape, another program on the machine. Each one is named, then ruled out or measured: see
+[Solving a real problem](duplicates.md#threats-to-validity).
+
 ## Thundering herd
 
 Many processes woken at once for one event that only one of them can take, which then race for it in vain. On Linux, the
@@ -781,6 +865,12 @@ A value turned into another type by the language itself. Cesia does it in one ca
 
 The types that a program really met while it ran, which a JIT reads to bet on them. Cesia's JIT reads them in the frame
 of a loop when it compiles it: see [How Cesia works](internals.md#bets-guards-and-bails).
+
+## Union bound
+
+The rule that the chance that at least one of several events happens is at most the sum of their chances. It needs no
+assumption about how the events depend on each other, which is why it gives the birthday bound so simply: see
+[Solving a real problem](duplicates.md#4-research).
 
 ## UTF-8
 

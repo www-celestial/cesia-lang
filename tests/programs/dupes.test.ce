@@ -1,0 +1,105 @@
+(* dupes.test.ce *)
+use std/test
+use std/gen
+use std/sys
+use std/list
+use std/value
+use std/result
+use std/math
+use std/cesia
+
+defn plainFiles(folder)
+  (** Each regular file under a folder, at any depth, as {Path, Size}: no folder, no link, no device. *)
+  out = []
+  for p in sys.Walk(folder)?
+    info = sys.Stat(p)?
+    if info.IsFile and not info.IsLink
+      out = list.Append({Path: p, Size: info.Size}, out)
+    end
+  end
+  result.Ok(out)
+end
+
+sorted(groups) = list.SortBy(g -> g[1], [list.Sort(g) for g in groups])   (** Each group in order, then the groups by their first path. *)
+
+defn naive(folder, read = sys.Read)
+  (** The groups of copies under a folder, the first way that comes to mind: each file against each one after it, byte
+      by byte, each read with read. *)
+  paths = [f.Path for f in plainFiles(folder)?]
+  n = value.Len(paths)
+  taken = list.Fill(false, n)
+  groups = []
+  for i in 1..n
+    if not taken[i]
+      group = [paths[i]]
+      for j in (i + 1)..n
+        if not taken[j] and read(paths[i])? == read(paths[j])?
+          group = list.Append(paths[j], group)
+          taken[j] = true
+        end
+      end
+      if value.Len(group) > 1
+        groups = list.Append(group, groups)
+      end
+    end
+  end
+  result.Ok(sorted(groups))
+end
+
+defn bySize(folder)
+  (** The shortcut: files of one size taken as copies, without reading them. *)
+  groups = [[f.Path for f in g.Values] for g in list.Group(it.Size, plainFiles(folder)?) if value.Len(g.Values) > 1]
+  result.Ok(sorted(groups))
+end
+
+defn Duplicates(folder)
+  (** The groups of files under a folder that hold the same bytes, two or more to a group: by size first, then, among
+      the files of one size, by their BLAKE2b-256. *)
+  groups = []
+  for same in list.Group(it.Size, plainFiles(folder)?)
+    if value.Len(same.Values) > 1
+      hashed = []
+      for f in same.Values
+        hashed = list.Append({Path: f.Path, Hash: cesia.Fingerprint(sys.Read(f.Path)?)}, hashed)
+      end
+      for g in list.Group(it.Hash, hashed)
+        if value.Len(g.Values) > 1
+          groups = list.Append([h.Path for h in g.Values], groups)
+        end
+      end
+    end
+  end
+  result.Ok(sorted(groups))
+end
+
+defn written(contents, dir)
+  (** The folder dir, emptied, then with one file per text, spread over three folders. *)
+  sys.Mkdir(dir)?
+  for p in sys.Walk(dir)?
+    sys.Remove(p)?
+  end
+  for k in 1..value.Len(contents)
+    sys.Mkdir("$dir/d$(math.Mod(k, 3))")?
+    sys.Write("$dir/d$(math.Mod(k, 3))/f$k", contents[k])?
+  end
+  result.Ok(dir)
+end
+
+defn copies(contents, dir)
+  (** The groups that the folder of written must give, known from the texts it was made of. *)
+  at(k) = "$dir/d$(math.Mod(k, 3))/f$k"
+  sorted([[at(k) for k in g.Values] for g in list.Group(k -> contents[k], 1..value.Len(contents)) if value.Len(g.Values) > 1])
+end
+
+defn finds(way, contents, dir)
+  (** Does a way of finding copies give the groups of a folder made of these texts? *)
+  written(contents, dir)?
+  value.Equal(way(dir)?, copies(contents, dir))
+end
+
+folders = gen.List(gen.Text(max = 3, chars = "ab"), max = 12)   (** The texts of a folder: short, so that many have one size. *)
+
+isSizeEnough() = test.ForAll(cs -> finds(bySize, cs, "$(test.Temp())/case"), folders)
+isNaiveRight() = test.ForAll(cs -> finds(naive, cs, "$(test.Temp())/case"), folders)
+isDuplicatesRight() = test.ForAll(cs -> finds(Duplicates, cs, "$(test.Temp())/case"), folders)
+isOneSizeTwoTexts() = finds(Duplicates, ["aa", "ba"], "$(test.Temp())/case")

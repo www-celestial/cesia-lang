@@ -55,7 +55,9 @@ language.
 24. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
 25. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
 26. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
-27. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
+27. [Solving a real problem](duplicates.md): which files of a folder are duplicates, in seven steps, from the first
+    measure to the proof that it is solved: properties, the birthday bound, and the times beside Python.
+28. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
     fibers and their scheduler, channels, the server on every core, the garbage collector and start-up, with their numbers.
 
 Appendices, to look things up:

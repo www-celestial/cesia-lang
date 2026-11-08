@@ -1,0 +1,11 @@
+dupes.test.ce:102: isSizeEnough failed at case 4 of 100, shrunk from 17 draws to 13:
+  cs = ["aa", "ba"]
+  finds(bySize, cs, "$(test.Temp())/case")
+  | bySize = function bySize
+  | cs = ["aa", "ba"]
+  | test.Temp() = "TEMP/1-isSizeEnough"
+  saved, tried first next time; these cases again: cesia test dupes.test.ce --seed 1
+  Its Temp folder is kept: TEMP/1-isSizeEnough
+3 passed, 1 failed, seed 1
+exit 1
+exit 0
