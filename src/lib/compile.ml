@@ -5,6 +5,9 @@ exception Break_loop
 exception Return_value of t
 exception Bad_arg of Messages.t
 
+(* A field read as a float that holds none in an F store: the caller reads it as a value. *)
+exception Not_float
+
 type c = {
   w : world;
   file : int;
@@ -272,6 +275,9 @@ let plan w host (shape : shape) (i : Ast.iface) =
 
 let holds fields need = List.for_all (fun (f, n, _) -> takes n fields.(f)) need
 
+(* The same of a store: floats hold no method. *)
+let holds_s s need = match s with V d -> holds d need | _ -> need = []
+
 (* The place of the first method of the interface that a value lacks, or -1. *)
 let lacks fields (need, lack) = List.fold_left (fun first (f, n, k) -> if takes n fields.(f) then first else k) lack need
 
@@ -338,19 +344,19 @@ let type_check (w : world) (t : ptype) =
       (function
         | Struct r as x ->
           let s, need, seen = !last in
-          if r.shape == s && seen = w.reloads && holds r.fields need then x
+          if r.shape == s && seen = w.reloads && holds_s r.fields need then x
           else (
             match plan_of r.shape with
-            | need, -1 when holds r.fields need -> last := (r.shape, need, w.reloads); x
+            | need, -1 when holds_s r.fields need -> last := (r.shape, need, w.reloads); x
             | _ -> Undef)
         | Dict { keys = { deep = Flat; _ } as keys; vals; _ } as x ->
           let k, need, seen, n = !klast in
-          if keys == k && n = Array.length vals && seen = w.reloads && holds vals need then x
+          if keys == k && n = Trie.nvals vals && seen = w.reloads && holds_s vals need then x
           else (
             match Hashtbl.find_opt w.interfaces (host, name) with
             | Some i ->
-              (match key_plan i ~inside keys (Array.length vals) with
-               | need, -1 when holds vals need -> klast := (keys, need, w.reloads, Array.length vals); x
+              (match key_plan i ~inside keys (Trie.nvals vals) with
+               | need, -1 when holds_s vals need -> klast := (keys, need, w.reloads, Trie.nvals vals); x
                | _ -> Undef)
             | None -> Undef)
         | Dict _ as x ->
@@ -358,7 +364,7 @@ let type_check (w : world) (t : ptype) =
         | _ -> Undef),
       (function
         | Struct r as x ->
-          (match Hashtbl.find_opt w.interfaces (host, name), lacks r.fields (plan_of r.shape) with
+          (match Hashtbl.find_opt w.interfaces (host, name), lacks (Trie.vals_array r.fields) (plan_of r.shape) with
            | Some i, k when k >= 0 -> Messages.article shown, Value.type_of x ^ ", which has no " ^ method_text i.imethods.(k)
            | _ -> Messages.article shown, Value.type_of x)
         | Dict _ as x ->
@@ -514,12 +520,39 @@ let rec met (shape : shape) = function
   | k :: rest -> if k.ms == shape then Some k else met shape rest
 
 (* The field of an array of structs is the array of that field. *)
+(* The operation on doubles, for a site that knows its operator: inlined, so that no double is boxed. *)
+let[@inline] float_op (op : Ast.binop) u w = match op with Add -> u +. w | Sub -> u -. w | Mul -> u *. w | _ -> u /. w
+
+(* A field [name] of the local variable in [slot], read as a double without a box when it holds a float in an F store,
+   else [Not_float]: inlined into the arithmetic that reads it. *)
+type float_field = { fslot : int; fsite : int; fpm : int; fname : string; fkey : t; fh : int;
+                     fcache : field_cache ref; fkeys : key_cache ref }
+
+let[@inline] field_get (ctx : ctx) f =
+  match ctx.v.(ctx.b + f.fslot) with
+  | Dict { keys; vals = F d; _ } when keys == !(f.fkeys).ck -> Float.Array.get d !(f.fkeys).kc
+  | Dict { keys = { deep = Flat; _ } as keys; vals = F d; _ } when Trie.is_whole keys ->
+    let j = Trie.index keys (Float.Array.length d) f.fh f.fkey in
+    if j < 0 then raise_notrace Not_float;
+    f.fkeys := { ck = keys; kc = j };
+    Float.Array.get d j
+  | Struct { shape; fields = F d; _ } ->
+    let k = !(f.fcache) in
+    if shape == k.cs then Float.Array.get d k.ci
+    else begin
+      ctx.site <- f.fsite;
+      let j = field_slot ctx f.fpm shape f.fname in
+      f.fcache := { cs = shape; ci = j };
+      Float.Array.get d j
+    end
+  | _ -> raise_notrace Not_float
+
 let rec field_slow ctx pm v name =
   match v with
-  | Struct r -> r.fields.(field_slot ctx pm r.shape name)
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) (Trie.hash (Text name)) (Text name) >= 0 ->
+  | Struct r -> Trie.vget r.fields (field_slot ctx pm r.shape name)
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Trie.nvals vals) (Trie.hash (Text name)) (Text name) >= 0 ->
     (* As a field of a struct: an owned map lends it, and a write through it stays in place. *)
-    vals.(Trie.index keys (Array.length vals) (Trie.hash (Text name)) (Text name))
+    Trie.vget vals (Trie.index keys (Trie.nvals vals) (Trie.hash (Text name)) (Text name))
   | Dict _ ->
     (match Trie.find v (Trie.hash (Text name)) (Text name) with
      | Undef -> Runtime.fail ctx Index (Messages.dict_absent (Value.describe (Text name)))
@@ -544,8 +577,8 @@ let write_key ctx v k x =
   | Dict { keys = { deep = Flat; _ } as keys; vals; d_owned = true } ->
     Dict.check ctx k;
     let h = Trie.hash k in
-    let i = Trie.index keys (Array.length vals) h k in
-    if i >= 0 then (vals.(i) <- x; v) else Trie.add_absent v h k (Value.share x)
+    let i = Trie.index keys (Trie.nvals vals) h k in
+    if i >= 0 then (Trie.vset v i x; v) else Trie.add_absent v h k (Value.share x)
   | Dict { keys = { deep = Deep _; _ }; d_owned = true; _ } ->
     Dict.check ctx k;
     Trie.put_owned v (Trie.hash k) k (Value.share x)
@@ -566,7 +599,7 @@ let step_write ctx pm v st x =
     let i = Value.field_index r.shape name in
     if i < 0 then Runtime.fail ctx Field (Messages.named_field (Option.value r.shape.sname ~default:"") name);
     reach ctx pm r.shape name;
-    r.fields.(i) <- (if Array.length r.shape.checks = 0 then x else checked ctx r.shape i x);
+    Trie.vset v i (if Array.length r.shape.checks = 0 then x else checked ctx r.shape i x);
     v
   | Rfield name, _ -> Runtime.fail ctx Type (Messages.field_of (Value.describe v) name)
 
@@ -745,7 +778,7 @@ let result_check c pos known : (ctx -> t -> t) option =
           match x with
           | Struct r when r.shape == err -> x
           | Struct r when r.shape == ok ->
-            let v = r.fields.(0) in
+            let v = Trie.vget r.fields 0 in
             let y = ch.accept v in
             if y == Undef then wrong ctx x else if y == v then x else Value.ok c.w y
           | _ -> wrong ctx x)
@@ -1283,11 +1316,11 @@ and index_read c e b ixs uses_end =
           let x = base ctx in
           let last = !cache in
           (match x with
-           | Dict { keys; vals; _ } when keys == last.ck -> vals.(last.kc)
-           | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
-             let i = Trie.index keys (Array.length vals) h key in
+           | Dict { keys; vals; _ } when keys == last.ck -> Trie.vget vals last.kc
+           | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Trie.nvals vals) h key >= 0 ->
+             let i = Trie.index keys (Trie.nvals vals) h key in
              if Trie.is_whole keys then cache := { ck = keys; kc = i };
-             vals.(i)
+             Trie.vget vals i
            | _ ->
              ctx.site <- s;
              Arrays.read1 ctx x (Arrays.Key key))
@@ -1405,7 +1438,7 @@ and question c e a =
   let err = Value.shape_of c.w ~sname:"Err" [| "Error" |] in
   fun ctx ->
     match v ctx with
-    | Struct r when r.shape == ok -> Value.share r.fields.(0)
+    | Struct r when r.shape == ok -> Value.share (Trie.vget r.fields 0)
     | Struct r as x when r.shape == err -> raise_notrace (Return_value x)
     | x ->
       ctx.site <- s;
@@ -1426,21 +1459,21 @@ and struct_lit c sname fields =
       fun ctx ->
         let x = a ctx in
         let y = b ctx in
-        Dict { keys; vals = [| x; y |]; d_owned = true }
+        Dict { keys; vals = Trie.vals2 x y; d_owned = true }
     | [| a; b; d |] ->
       fun ctx ->
         let x = a ctx in
         let y = b ctx in
         let z = d ctx in
-        Dict { keys; vals = [| x; y; z |]; d_owned = true }
+        Dict { keys; vals = Trie.vals3 x y z; d_owned = true }
     | [| a; b; d; e |] ->
       fun ctx ->
         let x = a ctx in
         let y = b ctx in
         let z = d ctx in
         let w = e ctx in
-        Dict { keys; vals = [| x; y; z; w |]; d_owned = true }
-    | vals -> fun ctx -> Dict { keys; vals = Array.map (fun v -> v ctx) vals; d_owned = true }
+        Dict { keys; vals = Trie.vals4 x y z w; d_owned = true }
+    | vals -> fun ctx -> Dict { keys; vals = Trie.vals_of (Array.map (fun v -> v ctx) vals); d_owned = true }
   end else
   let shape = Value.shape_of c.w ?sname ~m:c.w.modules.(c.ver.owner.pm).host names in
   match Array.map (fun (_, v) -> ce c v) fields with
@@ -1448,15 +1481,15 @@ and struct_lit c sname fields =
     fun ctx ->
       let x = a ctx in
       let y = b ctx in
-      Struct { shape; fields = [| x; y |]; r_owned = true }
+      Struct { shape; fields = Trie.vals2 x y; r_owned = true }
   | [| a; b; d; e |] ->
     fun ctx ->
       let x = a ctx in
       let y = b ctx in
       let z = d ctx in
       let w = e ctx in
-      Struct { shape; fields = [| x; y; z; w |]; r_owned = true }
-  | vals -> fun ctx -> Struct { shape; fields = Array.map (fun v -> v ctx) vals; r_owned = true }
+      Struct { shape; fields = Trie.vals4 x y z w; r_owned = true }
+  | vals -> fun ctx -> Struct { shape; fields = Trie.vals_of (Array.map (fun v -> v ctx) vals); r_owned = true }
 
 (* User.From, which every struct has: made once, where the code names it. *)
 and struct_from c b name =
@@ -1475,20 +1508,20 @@ and field_read c e b name =
   let h = Trie.hash key in
   fun ctx ->
     match base ctx with
-    | Dict { keys; vals; _ } when keys == !kcache.ck -> vals.(!kcache.kc)
+    | Dict { keys; vals; _ } when keys == !kcache.ck -> Trie.vget vals !kcache.kc
     | Struct r ->
       let k = !cache in
-      if r.shape == k.cs then r.fields.(k.ci)
+      if r.shape == k.cs then Trie.vget r.fields k.ci
       else begin
         ctx.site <- s;
         let i = field_slot ctx pm r.shape name in
         cache := { cs = r.shape; ci = i };
-        r.fields.(i)
+        Trie.vget r.fields i
       end
-    | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
-      let i = Trie.index keys (Array.length vals) h key in
+    | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Trie.nvals vals) h key >= 0 ->
+      let i = Trie.index keys (Trie.nvals vals) h key in
       if Trie.is_whole keys then kcache := { ck = keys; kc = i };
-      vals.(i)
+      Trie.vget vals i
     | v ->
       ctx.site <- s;
       field_slow ctx pm v name
@@ -1531,16 +1564,16 @@ and member_read c e b name ~shared =
     | Struct r as x ->
       let k = !cache in
       if r.shape == k.ms && (k.mi <> -2 || k.mr = ctx.w.reloads) then
-        if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
+        if k.mi >= 0 then Trie.vget r.fields k.mi else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       else begin
-        let k = other ctx r.shape r.fields in
-        if k.mi >= 0 then r.fields.(k.mi) else Bound { g = k.mg; self = (if shared then Value.share x else x) }
+        let k = other ctx r.shape (Trie.vals_array r.fields) in
+        if k.mi >= 0 then Trie.vget r.fields k.mi else Bound { g = k.mg; self = (if shared then Value.share x else x) }
       end
-    | Dict { keys; vals; _ } when keys == !kcache.ck -> vals.(!kcache.kc)
-    | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Array.length vals) h key >= 0 ->
-      let i = Trie.index keys (Array.length vals) h key in
+    | Dict { keys; vals; _ } when keys == !kcache.ck -> Trie.vget vals !kcache.kc
+    | Dict { keys = { deep = Flat; _ } as keys; vals; _ } when Trie.index keys (Trie.nvals vals) h key >= 0 ->
+      let i = Trie.index keys (Trie.nvals vals) h key in
       if Trie.is_whole keys then kcache := { ck = keys; kc = i };
-      vals.(i)
+      Trie.vget vals i
     | Dict _ as x ->
       ctx.site <- s;
       map_member ctx pm x name
@@ -1604,8 +1637,8 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
     let want = Array.length ps and sname = Some name in
     fun ctx v ->
       (match v with
-       | Struct r when Array.length r.fields = want && r.shape.sname = sname ->
-         let rec go k = k >= want || (tests.(k) ctx r.fields.(k) && go (k + 1)) in
+       | Struct r when Trie.nvals r.fields = want && r.shape.sname = sname ->
+         let rec go k = k >= want || (tests.(k) ctx (Trie.vget r.fields k) && go (k + 1)) in
          go 0
        | _ -> false)
   | Pstruct fs ->
@@ -1620,7 +1653,7 @@ and pat_test c (pt : pat) : ctx -> t -> bool =
            || begin
              let name, test = tests.(k) in
              let i = Value.field_index r.shape name in
-             i >= 0 && (reach ctx pm r.shape name; test ctx r.fields.(i)) && go (k + 1)
+             i >= 0 && (reach ctx pm r.shape name; test ctx (Trie.vget r.fields i)) && go (k + 1)
            end
          in
          go 0
@@ -1702,6 +1735,51 @@ and leaf_value = function
 
 and binary c e op a b =
   let s = site c e.pos in
+  (* A field of a map or struct of floats, read as a double: no box for it, one for the result. *)
+  let num = (match op with Add -> Some add_a | Sub -> Some sub_a | Mul -> Some mul_a | Div -> Some div_a | _ -> None) in
+  match num, field_float c a, field_float c b with
+  | Some slow, Some fa, _ when ty c a != TF && ty c a != TI ->
+    let general = binary_values c e op a b s in
+    if ty c b == TF then begin
+      let g = cf c b in
+      fun ctx -> (match field_get ctx fa with u -> Float (float_op op u (g ctx)) | exception Not_float -> general ctx)
+    end else begin
+      let y = cv c b in
+      fun ctx ->
+        match field_get ctx fa with
+        | u ->
+          (match y ctx with
+           | Float w -> Float (float_op op u w)
+           | Int w -> Float (float_op op u (float_of_int w))
+           | q -> slow ctx s (Float u) q)
+        | exception Not_float -> general ctx
+    end
+  | Some slow, None, Some fb when ty c b != TF && ty c b != TI ->
+    let y = cv c b in
+    if ty c a == TF then begin
+      let g = cf c a in
+      fun ctx ->
+        let p = g ctx in
+        (match field_get ctx fb with v -> Float (float_op op p v) | exception Not_float -> slow ctx s (Float p) (y ctx))
+    end else begin
+      let x = cv c a in
+      fun ctx ->
+        let p = x ctx in
+        match field_get ctx fb with
+        | v -> (match p with Float u -> Float (float_op op u v) | Int u -> Float (float_op op (float_of_int u) v) | _ -> slow ctx s p (Float v))
+        | exception Not_float -> slow ctx s p (y ctx)
+    end
+  | _ -> binary_values c e op a b s
+
+(* A field of a local variable that [field_get] reads as a double. *)
+and field_float c (e : expr) =
+  match e.e with
+  | Field ({ e = Var { b = Local i; _ }; _ }, name) when plain_local c i ->
+    Some { fslot = c.map.(i); fsite = site c e.pos; fpm = c.ver.owner.pm; fname = name; fkey = Text name;
+           fh = Trie.hash (Text name); fcache = ref { cs = no_shape; ci = 0 }; fkeys = ref no_key }
+  | _ -> None
+
+and binary_values c e op a b s =
   match op with
   | Add when ty c b == TF && ty c a != TF && ty c a != TI ->
     let x = cv c a and f = cf c b in
@@ -2589,7 +2667,15 @@ and cu c (e : expr) : ctx -> unit =
               (* Hot by its runs, as a loop of a function called often: its first step interpreted, so that its
                  variables hold values to guess from, then native code from the next. *)
               if warm then begin
-                ctx.i.(ctx.b + k) <- lo;
+                (* Its first steps, a few: then its calls through a value have met the functions they take turns
+                   with, which the JIT bets on. *)
+                while !n < min (hi - 1) (lo + Tier.warm_steps - 1) do
+                  ctx.i.(ctx.b + k) <- !n;
+                  body ctx;
+                  tick ctx off;
+                  incr n
+                done;
+                ctx.i.(ctx.b + k) <- !n;
                 body ctx;
                 tick ctx off;
                 (match Tier.warmed ctx st ver outer with
@@ -2854,13 +2940,13 @@ and set_name c root sp name value ~key =
     let y = v ctx in
     let x = read ctx in
     match x with
-    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when d.keys == !here.ck -> d.vals.(!here.kc) <- y
-    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when Trie.index d.keys (Array.length d.vals) h k >= 0 ->
-      let i = Trie.index d.keys (Array.length d.vals) h k in
+    | Dict { keys = { deep = Flat; _ } as keys; d_owned = true; _ } when keys == !here.ck -> Trie.vset x !here.kc y
+    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when Trie.index d.keys (Trie.nvals d.vals) h k >= 0 ->
+      let i = Trie.index d.keys (Trie.nvals d.vals) h k in
       if Trie.is_whole d.keys then here := { ck = d.keys; kc = i };
-      d.vals.(i) <- y
-    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when Array.length d.vals < Trie.width ->
-      let n = Array.length d.vals in
+      Trie.vset x i y
+    | Dict ({ keys = { deep = Flat; _ }; d_owned = true; _ } as d) when Trie.nvals d.vals < Trie.width ->
+      let n = Trie.nvals d.vals in
       let before, m, after = !grown in
       let after =
         if d.keys == before && m = n then after
@@ -2870,7 +2956,7 @@ and set_name c root sp name value ~key =
           after
         end
       in
-      set ctx (Dict { keys = after; vals = Trie.append d.vals y; d_owned = true })
+      set ctx (Dict { keys = after; vals = Trie.vappend d.vals y; d_owned = true })
     | _ ->
       ctx.site <- s;
       write_root ctx pm set x st y
@@ -2985,8 +3071,8 @@ and cpat c (pt : pat) pos : ctx -> t -> unit =
     let want = Array.length ps and sname = Some name in
     fun ctx v ->
       (match v with
-       | Struct r when Array.length r.fields = want && r.shape.sname = sname ->
-         Array.iteri (fun k b -> b ctx (Value.share r.fields.(k))) binds
+       | Struct r when Trie.nvals r.fields = want && r.shape.sname = sname ->
+         Array.iteri (fun k b -> b ctx (Value.share (Trie.vget r.fields k))) binds
        | _ ->
          ctx.site <- s;
          Runtime.fail ctx Field (Messages.pattern_mismatch name (Value.describe v)))
@@ -3663,8 +3749,8 @@ and from_native (proto : proto) pm =
     in
     try
       (match a.(0) with
-       | Dict { keys; vals = vs; _ } when keys == fst !seen && Array.length vs = Array.length (snd !seen) ->
-         Array.iteri (fun j i -> put i vs.(j)) (snd !seen)
+       | Dict { keys; vals = vs; _ } when keys == fst !seen && Trie.nvals vs = Array.length (snd !seen) ->
+         Array.iteri (fun j i -> put i (Trie.vget vs j)) (snd !seen)
        | m ->
          let o = Dict.items ctx (sn ^ ".From") m in
          let places = Array.make (Array.length o / 2) (-1) in
@@ -3687,7 +3773,7 @@ and from_native (proto : proto) pm =
            put i o.((2 * j) + 1)
          done;
          (match m with
-          | Dict { keys; vals = vs; _ } when keys.deep = Flat && Array.length vs = Array.length places -> seen := (keys, places)
+          | Dict { keys; vals = vs; _ } when keys.deep = Flat && Trie.nvals vs = Array.length places -> seen := (keys, places)
           | _ -> ()));
       Array.iteri
         (fun i (p : param) ->
@@ -3695,13 +3781,13 @@ and from_native (proto : proto) pm =
              fail (if inside || Lexer.is_public p.pname then Messages.from_missing sn p.pname else Messages.from_private sn))
         f.params;
       if !direct && Array.for_all (fun v -> v != Undef) vals then
-        Value.ok ctx.w (Struct { shape; fields = Array.map Value.share vals; r_owned = true })
+        Value.ok ctx.w (Struct { shape; fields = Trie.vals_of (Array.map Value.share vals); r_owned = true })
       else begin
         let last = ref 0 in
         Array.iteri (fun i v -> if v != Undef then last := i + 1) vals;
         let made = call_back ctx ctor (Array.map Value.share (Array.sub vals 0 !last)) in
         (match made with
-         | Struct { shape = s; fields; _ } when s == shape && !last = Array.length vals ->
+         | Struct { shape = s; fields = V fields; _ } when s == shape && !last = Array.length vals ->
            direct := Array.for_all2 (fun x y -> x == y) fields vals || !direct
          | _ -> ());
         Value.ok ctx.w made

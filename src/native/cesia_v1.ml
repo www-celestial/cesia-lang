@@ -86,7 +86,7 @@ let length (c : compound) =
   match c with
   | Types.Array ({ rows; cols; _ } as a) when is_list a -> rows * cols
   | Types.Dict _ -> Trie.length c
-  | Types.Struct { fields; _ } -> Array.length fields
+  | Types.Struct { fields; _ } -> Trie.nvals fields
   | _ -> 0
 
 let item ctx (c : compound) i =
@@ -107,13 +107,13 @@ let fields (k : keys) c =
   | Types.Dict _, [| h0; h1; h2; h3 |], [| k0; k1; k2; k3 |] -> [| find c h0 k0; find c h1 k1; find c h2 k2; find c h3 k3 |]
   | Types.Dict _, hs, ks -> Array.init (Array.length hs) (fun i -> find c hs.(i) ks.(i))
   | Types.Struct { shape; fields; _ }, _, ks ->
-    let get key = match key with Types.Text n -> let j = Value.field_index shape n in if j < 0 then Missing else to_value fields.(j) | _ -> Missing in
+    let get key = match key with Types.Text n -> let j = Value.field_index shape n in if j < 0 then Missing else to_value (Trie.vget fields j) | _ -> Missing in
     Array.map get ks
   | _, _, ks -> Array.make (Array.length ks) Missing
 
 let pairs (c : compound) =
   match c with
-  | Types.Struct { shape; fields; _ } -> List.combine (Array.to_list shape.names) (Array.to_list fields)
+  | Types.Struct { shape; fields; _ } -> List.combine (Array.to_list shape.names) (Array.to_list (Trie.vals_array fields))
   | Types.Dict _ ->
     let items = Trie.items c in
     List.filter_map

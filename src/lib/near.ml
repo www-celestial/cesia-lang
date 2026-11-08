@@ -52,15 +52,15 @@ and walk ctx tol depth path a b =
         let rec go k = if k >= n then None else match walk ctx tol (depth + 1) (path ^ index x k) (Value.elt x k) (Value.elt y k) with None -> go (k + 1) | d -> d in
         go 0
     end
-  | Struct x, Struct y, _ when x.shape.sname = y.shape.sname && Array.length x.fields = Array.length y.fields ->
-    let n = Array.length x.fields in
+  | Struct x, Struct y, _ when x.shape.sname = y.shape.sname && Trie.nvals x.fields = Trie.nvals y.fields ->
+    let n = Trie.nvals x.fields in
     Value.pay ctx n;
     let rec go i =
       if i >= n then None
       else
         let k = Value.field_index y.shape x.shape.names.(i) in
         if k < 0 then here ()
-        else match walk ctx tol (depth + 1) (path ^ "." ^ x.shape.names.(i)) x.fields.(i) y.fields.(k) with None -> go (i + 1) | d -> d
+        else match walk ctx tol (depth + 1) (path ^ "." ^ x.shape.names.(i)) (Trie.vget x.fields i) (Trie.vget y.fields k) with None -> go (i + 1) | d -> d
     in
     go 0
   | Dict _, Dict _, _ ->

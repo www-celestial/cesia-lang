@@ -15,15 +15,17 @@ type t =
   | Float of float
   | Text of string
   | Array of arr
-  | Struct of { shape : shape; fields : t array; mutable r_owned : bool }
+  | Struct of { shape : shape; mutable fields : store; mutable r_owned : bool }
+      (** a struct: its values in a store, [F] while every one is a float, [V] otherwise, as a map's *)
   | Fun of { proto : proto; env : t array }
   | Native of native
   | Handle of { kind : string; id : int; task : task option }  (** a reference to something outside the values *)
-  | Dict of { keys : keys; vals : t array; mutable d_owned : bool }
+  | Dict of { keys : keys; mutable vals : store; mutable d_owned : bool }
       (** a map. Up to 32 keys it is one block: [keys] and [vals] in the order of insertion, and the [deep] of [keys] is
-          [Flat]; the maps made at one place of the code share [keys]. Past them, the keys are in the trie of the [deep] of
-          [keys], whose arrays are empty, as [vals]. [d_owned]: nothing else holds the map, a write may change it in
-          place. *)
+          [Flat]; the maps made at one place of the code share [keys]. [vals] is [F] while every value is a float (an Int
+          stays an Int, in [V]), [V] otherwise, and turns from [F] to [V] once, at a write of another value. Past 32 keys,
+          they are in the trie of the [deep] of [keys], whose arrays are empty, as [vals]. [d_owned]: nothing else holds
+          the map, a write may change it in place. *)
   | Bound of { g : t; self : t }  (** a method and its object, on their way to the call: never visible to the program *)
 
 (** Keys and their hashes. The arrays can be longer than a map that holds them, whose keys are as many as its values: a place,

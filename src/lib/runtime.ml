@@ -369,11 +369,15 @@ let copy ctx v =
     in
     Array { rows = a.rows; cols = a.cols; store; a_owned = true; a_tip = true; dims = a.dims }
   | Struct r ->
-    pay ctx (Array.length r.fields);
-    Array.iter (fun x -> ignore (Value.share x)) r.fields;
-    Struct { shape = r.shape; fields = Array.copy r.fields; r_owned = true }
+    pay ctx (Trie.nvals r.fields);
+    (match r.fields with
+     | F d -> Struct { shape = r.shape; fields = F (Float.Array.copy d); r_owned = true }
+     | s ->
+       let d = Trie.vals_array s in
+       Array.iter (fun x -> ignore (Value.share x)) d;
+       Struct { shape = r.shape; fields = V (Array.copy d); r_owned = true })
   | Dict { vals; _ } ->
-    pay ctx (Array.length vals);
+    pay ctx (Trie.nvals vals);
     Trie.own_copy v
   | _ -> v
 

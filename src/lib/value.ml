@@ -9,7 +9,7 @@ let of_bool b = if b then True else False
 (* The keys and values of a map, k1 v1 k2 v2..., in the order of insertion; a struct's fields by name. *)
 let items v =
   match v with
-  | Struct r -> Array.init (2 * Array.length r.fields) (fun j -> if j land 1 = 0 then Text r.shape.names.(j / 2) else r.fields.(j / 2))
+  | Struct r -> Array.init (2 * Trie.nvals r.fields) (fun j -> if j land 1 = 0 then Text r.shape.names.(j / 2) else Trie.vget r.fields (j / 2))
   | _ -> Trie.items v
 
 let share = Trie.share
@@ -94,7 +94,7 @@ let field_index shape name =
   go 0
 
 let result w sname field v =
-  Struct { shape = shape_of w ~sname [| field |]; fields = [| share v |]; r_owned = true }
+  Struct { shape = shape_of w ~sname [| field |]; fields = V [| share v |]; r_owned = true }
 
 (* The natives give an Ok or an Err at each call: their shapes are looked up once, for the last world that asked. *)
 let ok_shape = ref None
@@ -108,8 +108,8 @@ let cached cache w sname field =
     cache := Some (w, s);
     s
 
-let ok w v = Struct { shape = cached ok_shape w "Ok" "Value"; fields = [| share v |]; r_owned = true }
-let err w v = Struct { shape = cached err_shape w "Err" "Error"; fields = [| share v |]; r_owned = true }
+let ok w v = Struct { shape = cached ok_shape w "Ok" "Value"; fields = V [| share v |]; r_owned = true }
+let err w v = Struct { shape = cached err_shape w "Err" "Error"; fields = V [| share v |]; r_owned = true }
 
 let failure_keys = Trie.names [| "Kind"; "Message" |]
 let failure w kind text = err w (Trie.record failure_keys [| Text kind; Text text |])
@@ -164,7 +164,7 @@ and show_at ctx depth v =
   | Text s -> quote s
   | Array a -> show_array ctx depth a
   | Dict _ -> show_map ctx depth (items v)
-  | Struct r -> show_struct ctx depth r.shape r.fields
+  | Struct r -> show_struct ctx depth r.shape (Trie.vals_array r.fields)
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
   | Handle h -> Printf.sprintf "<%s %d>" h.kind h.id
@@ -276,15 +276,15 @@ and equal_at ctx depth a b =
       go 0
     end
   | Struct x, Struct y ->
-    let n = Array.length x.fields in
-    x.shape.sname = y.shape.sname && n = Array.length y.fields
+    let n = Trie.nvals x.fields in
+    x.shape.sname = y.shape.sname && n = Trie.nvals y.fields
     && begin
       pay ctx n;
       let rec go i =
         i >= n
         || begin
           let k = if x.shape == y.shape then i else field_index y.shape x.shape.names.(i) in
-          k >= 0 && equal_at ctx (depth + 1) x.fields.(i) y.fields.(k) && go (i + 1)
+          k >= 0 && equal_at ctx (depth + 1) (Trie.vget x.fields i) (Trie.vget y.fields k) && go (i + 1)
         end
       in
       go 0
@@ -297,10 +297,10 @@ and equal_at ctx depth a b =
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env
   | Native x, Native y -> x == y
   | Handle x, Handle y -> x.id = y.id && String.equal x.kind y.kind
-  | Dict { keys = { deep = Flat; _ } as kx; vals = vx; _ }, Dict { keys = { deep = Flat; _ } as ky; vals = vy; _ } when kx == ky && Array.length vx = Array.length vy ->
-    let n = Array.length vx in
+  | Dict { keys = { deep = Flat; _ } as kx; vals = vx; _ }, Dict { keys = { deep = Flat; _ } as ky; vals = vy; _ } when kx == ky && Trie.nvals vx = Trie.nvals vy ->
+    let n = Trie.nvals vx in
     pay ctx n;
-    let rec go i = i >= n || (equal_at ctx (depth + 1) vx.(i) vy.(i) && go (i + 1)) in
+    let rec go i = i >= n || (equal_at ctx (depth + 1) (Trie.vget vx i) (Trie.vget vy i) && go (i + 1)) in
     go 0
   | Dict _, Dict _ ->
     let n = Trie.length a in

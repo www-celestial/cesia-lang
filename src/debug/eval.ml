@@ -223,8 +223,8 @@ let test ctx s cond =
   let before = ctx.site in
   ctx.site <- s;
   match Fun.protect ~finally:(fun () -> ctx.site <- before) (fun () -> quietly ctx (fun () -> in_frame ctx cond (Debug.frame ctx ctx.b s))) with
-  | Struct { shape = { sname = Some "Ok"; _ }; fields = [| v |]; _ } -> Ok (v <> False && v <> Missing)
-  | Struct { fields = [| Text text |]; _ } -> Error text
+  | Struct { shape = { sname = Some "Ok"; _ }; fields = V [| v |]; _ } -> Ok (v <> False && v <> Missing)
+  | Struct { fields = V [| Text text |]; _ } -> Error text
   | v -> Error (Value.describe v)
 
 let read_file path = try Some (In_channel.with_open_bin path In_channel.input_all) with Sys_error _ -> None

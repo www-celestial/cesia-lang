@@ -47,12 +47,20 @@ let make (w : world) (ver : version) fns start loops =
         None
     end
 
-(* Does the value slot of each variable kept as a number hold one of its kind. *)
+(* Does the value slot of each variable kept as a number hold one of its kind, and of each kept as a map's or struct's
+   floats one of those keys or that shape, of floats. *)
 let numbers_fit (ctx : ctx) (fn : Ir.func) =
   Array.for_all
     (fun ((v : Ir.var), slot) ->
        match ctx.v.(ctx.b + slot), v.kind with Float _, Kfloat | Int _, Kint -> true | _ -> false)
     fn.numbers
+  && Array.for_all
+    (fun (_, slot, carrier) ->
+       match ctx.v.(ctx.b + slot), carrier with
+       | Dict { keys; vals = F _; _ }, Dict { keys = k; _ } -> keys == k
+       | Struct { shape; fields = F _; _ }, Struct { shape = s; _ } -> shape == s
+       | _ -> false)
+    fn.sunk
 
 (* A status after which the run wrote its variables back to their slots. *)
 let wrote (fn : Ir.func) st = st = Ir.ok || st = Ir.fuel_out || st = Ir.bailed || st = Ir.gc || (st = Ir.error && fn.spills)
@@ -71,6 +79,13 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
        | Int n -> ctx.i.(b + v.slot) <- n
        | _ -> ())
     code.fn.numbers;
+  Array.iter
+    (fun (parts, slot, _) ->
+       match ctx.v.(b + slot) with
+       | Dict { vals = F d; _ } | Struct { fields = F d; _ } -> Float.Array.blit d 0 ctx.f (b + parts) (Float.Array.length d)
+       | _ -> ())
+    code.fn.sunk;
+  io.(Ir.io_code) <- 0;
   let depth = if code.calls then b + code.fn.frame + code.fn.hidden + (2 * (ctx.max_depth - Runtime.frames ctx - 1)) else max_int in
   let fuel0 = ctx.fuel in
   io.(Ir.io_base) <- b;
@@ -104,6 +119,16 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
       (fun ((v : Ir.var), slot) ->
          ctx.v.(b + slot) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
       code.fn.numbers;
+  if wrote code.fn st then
+    Array.iter
+      (fun (parts, slot, carrier) ->
+         let floats n = F (Float.Array.sub ctx.f (b + parts) n) in
+         ctx.v.(b + slot) <-
+           (match carrier with
+            | Struct { shape; _ } -> Struct { shape; fields = floats (Array.length shape.names); r_owned = true }
+            | Dict { keys; _ } -> Dict { keys; vals = floats (Array.length keys.ks); d_owned = true }
+            | v -> v))
+      code.fn.sunk;
   if st = Ir.stack_out then begin
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
     ctx.fuel <- fuel0;
@@ -309,8 +334,9 @@ let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
   else if st = Ir.returned then
     Returned (match code.ret with Kfloat -> Float (result_float ctx code) | Kint | Kval -> Int io.(Ir.io_int))
   else if st = Ir.bailed then begin
-    (* A guess that keeps failing: the code goes, and the loop is lowered again later with what the frame holds then. *)
-    code.bails <- code.bails + 1;
+    (* A guess that keeps failing: the code goes, and the loop is lowered again later with what the frame holds then. A
+       write left to the interpreter is no guess. *)
+    if io.(Ir.io_code) <> Ir.written then code.bails <- code.bails + 1;
     if code.bails > 16 then begin
       l.code <- None;
       l.tries <- l.tries + 1;

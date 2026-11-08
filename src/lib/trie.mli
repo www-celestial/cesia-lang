@@ -66,6 +66,33 @@ val find : t -> int -> t -> t
 (** A copy of the array with one more element at its end. *)
 val append : 'a array -> 'a -> 'a array
 
+(** The values of a map of one block: [F] while every one is a float, [V] otherwise; [no_vals] of an empty or deep map. *)
+val no_vals : store
+
+(** The number of values of a store. *)
+val nvals : store -> int
+
+(** The value at a place of a store. *)
+val vget : store -> int -> t
+
+(** The store of these values: [F] when they are floats, else [V] of this array. *)
+val vals_of : t array -> store
+
+(** [vals_of] of two, three or four values, without an array between. *)
+val vals2 : t -> t -> store
+
+val vals3 : t -> t -> t -> store
+val vals4 : t -> t -> t -> t -> store
+
+(** The values as an array: the [V] store's own, or a new one. *)
+val vals_array : store -> t array
+
+(** [vset m i x]: value [i] of the owned map [m] of one block set in place; [x] not a float turns an [F] store into [V]. *)
+val vset : t -> int -> t -> unit
+
+(** The values and one more at their end, a new store. *)
+val vappend : store -> t -> store
+
 (** The number of keys of a map. *)
 val length : t -> int
 

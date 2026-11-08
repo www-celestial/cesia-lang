@@ -216,6 +216,22 @@ let func b ~prefix ~nested (fn : Ir.func) =
         Printf.bprintf s "  mov x0, %s\n  bgt %s, %s, x0\n  mov x0, %s\n  bgt %s, %s, x0\n  jmp %s\n" (cx Ir.io_cap2) g at
           (cx Ir.io_mem) g at deep)
   in
+  (* A new owned map ([tag] 8) or struct (4) into register [dst]: the array of values, or of doubles when all are floats,
+     then its store (tag 0 F, 1 V), then the block: its keys or shape, the store, and owned. *)
+  let record dst tag c vals =
+    let n = Array.length vals in
+    let floats = Array.for_all (function Ir.Float _ -> true | Reg q -> fn.kinds.(q) = Kfloat | _ -> false) vals in
+    take (n + 7);
+    pr "  mov i64:0(x5), %s\n" (header n (if floats then 254 else 0));
+    Array.iteri
+      (fun j v -> if floats then pr "  dmov d:%d(x5), %s\n" (8 * (j + 1)) (in_reg Kfloat v) else pr "  mov i64:%d(x5), %s\n" (8 * (j + 1)) (operand v))
+      vals;
+    let o = 8 * (n + 1) in
+    pr "  mov i64:%d(x5), %s\n  add x6, x5, 8\n  mov i64:%d(x5), x6\n" o (header 1 (if floats then 0 else 1)) (o + 8);
+    let o = o + 16 in
+    pr "  mov i64:%d(x5), %s\n  mov i64:%d(x5), c%d\n  add x6, x5, %d\n  mov i64:%d(x5), x6\n  mov i64:%d(x5), 3\n  add %s, x5, %d\n"
+      o (header 3 tag) (o + 8) c (o - 8) (o + 16) (o + 24) dst (o + 8)
+  in
   let ins = function
     | Ir.Frame (r, base) -> pr "  add r%d, %s, %d\n" r (reg_of base) (if base < 0 && not nested then fn.frame + fn.hidden else 2)
     | Enter (r, base, site, back) ->
@@ -341,17 +357,21 @@ let func b ~prefix ~nested (fn : Ir.func) =
          pr "  mov i64:0(x5), %s\n  mov i64:8(x5), x6\n  add r%d, x5, 8\n" (header 1 0) r)
     | Share (Reg q) -> share b q
     | Share _ -> ()
-    | Vals (r, m, c, k) ->
+    | Vals (r, m, c, f, k) ->
+      (* The keys, then the store's kind, F (tag 0) or V (tag 1), then its array. *)
       let m = in_reg Kval m in
       block_of m (Some 8) k;
-      pr "  mov x2, i64:0(%s)\n  bne %s, x2, c%d\n  mov r%d, i64:8(%s)\n" m (bail_to k) c r m
-    | Fields (r, v, sid, k) ->
+      pr "  mov x2, i64:0(%s)\n  bne %s, x2, c%d\n  mov x2, i64:8(%s)\n  mov x1, i64:-8(x2)\n  and x1, x1, 255\n" m (bail_to k) c m;
+      pr "  bne %s, x1, %d\n  mov r%d, i64:0(x2)\n" (bail_to k) f r
+    | Fields (r, v, sid, f, k) ->
+      (* The shape's number, then the store's kind and its array. *)
       let v = in_reg Kval v in
       block_of v (Some 4) k;
-      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov r%d, i64:8(%s)\n" v (bail_to k) (tagged sid) r v
+      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  bne %s, x2, %s\n  mov x2, i64:8(%s)\n  mov x1, i64:-8(x2)\n  and x1, x1, 255\n" v (bail_to k) (tagged sid) v;
+      pr "  bne %s, x1, %d\n  mov r%d, i64:0(x2)\n" (bail_to k) f r
     | Load (r, a, i, k) ->
       if k >= 0 then pr "  mov x4, i64:-8(r%d)\n  ursh x4, x4, 10\n  ble %s, x4, %d\n" a (bail_to k) i;
-      pr "  mov r%d, i64:%d(r%d)\n" r (8 * i) a
+      if fn.kinds.(r) = Kfloat then pr "  dmov r%d, d:%d(r%d)\n" r (8 * i) a else pr "  mov r%d, i64:%d(r%d)\n" r (8 * i) a
     | Get (r, a, i, site) -> pr "  mov r%d, %s\n" r (check_index ~t:"i64" a i site Ir.err_read)
     | Put (a, i, v, site) ->
       ignore (check_index ~t:"i64" a i site Ir.err_write);
@@ -360,14 +380,40 @@ let func b ~prefix ~nested (fn : Ir.func) =
        | Int k -> pr "  add x0, %s, %d\n" (arr a) (8 * (k - 1))
        | _ -> invalid_arg "index");
       pr "  call pmod, caml_modify, x0, %s\n" (in_reg Kval v)
-    | Record (r, tag, c, vals) ->
-      let n = Array.length vals in
-      take (n + 5);
-      pr "  mov i64:0(x5), %s\n" (header n 0);
-      Array.iteri (fun j v -> pr "  mov i64:%d(x5), %s\n" (8 * (j + 1)) (operand v)) vals;
-      let o = 8 * (n + 1) in
-      pr "  mov i64:%d(x5), %s\n  mov i64:%d(x5), c%d\n  add x6, x5, 8\n  mov i64:%d(x5), x6\n  mov i64:%d(x5), 3\n  add r%d, x5, %d\n"
-        o (header 3 tag) (o + 8) c (o + 16) (o + 24) r (o + 8)
+    | Record (r, tag, c, vals) -> record (Printf.sprintf "r%d" r) tag c vals
+    | Into (a, i, vals, c, tag, site, seen, back) ->
+      (* The cell; the map or struct there, in place when it is a block of this tag, of these keys or this shape, owned,
+         of an F store (tag 0); else a new one. One read and checked in this turn needs only its owned flag tested. *)
+      let cell () =
+        match i with
+        | Ir.Reg q -> pr "  lsh x0, r%d, 2\n  add x0, x0, %s\n  sub x0, x0, 8\n" q (arr a)
+        | Int k -> pr "  add x0, %s, %d\n" (arr a) (8 * (k - 1))
+        | _ -> invalid_arg "index"
+      in
+      let fresh = label () and over = label () in
+      let data =
+        match seen with
+        | Some (m, d) ->
+          pr "  mov x2, i64:16(r%d)\n  bne %s, x2, 3\n" m fresh;
+          Printf.sprintf "r%d" d
+        | None ->
+          ignore (check_index ~t:"i64" a i site Ir.err_write);
+          cell ();
+          pr "  mov x1, i64:0(x0)\n  and x2, x1, 1\n  bne %s, x2, 0\n  mov x2, i64:-8(x1)\n  and x2, x2, 255\n  bne %s, x2, %d\n" fresh fresh tag;
+          pr "  mov x2, i64:0(x1)\n  bne %s, x2, c%d\n  mov x2, i64:16(x1)\n  bne %s, x2, 3\n" fresh c fresh;
+          pr "  mov x2, i64:8(x1)\n  mov x3, i64:-8(x2)\n  and x3, x3, 255\n  bne %s, x3, 0\n  mov x2, i64:0(x2)\n" fresh;
+          "x2"
+      in
+      Array.iteri (fun j v -> pr "  dmov d:%d(%s), %s\n" (8 * j) data (in_reg Kfloat v)) vals;
+      if back >= 0 then
+        (* Out of line, a bail that says it failed no guess. *)
+        Printf.bprintf stubs "%s:\n  mov %s, %d\n  jmp %s\n" fresh (cx Ir.io_code) Ir.written (again back)
+      else begin
+        pr "  jmp %s\n%s:\n" over fresh;
+        if seen <> None then cell ();
+        record "x4" tag c vals;
+        pr "  call pmod, caml_modify, x0, x4\n%s:\n" over
+      end
     | Reserve (need, p) when !need > 0 ->
       let gc =
         stub (fun s ->

@@ -85,13 +85,66 @@ let[@inline] share v =
    | _ -> ());
   v
 
+(* The values of a map of one block, in their store: F while every one is a float, V otherwise. *)
+let no_vals = V [||]
+let nvals = function F d -> Float.Array.length d | V d -> Array.length d | I d -> Array.length d
+let[@inline] vget s i = match s with V d -> d.(i) | F d -> Float (Float.Array.get d i) | I d -> Int d.(i)
+let rec all_floats (vs : t array) i n = i = n || (match vs.(i) with Float _ -> all_floats vs (i + 1) n | _ -> false)
+
+let vals_of (vs : t array) =
+  let n = Array.length vs in
+  if n = 0 || not (all_floats vs 0 n) then V vs
+  else begin
+    let d = Float.Array.create n in
+    for i = 0 to n - 1 do match vs.(i) with Float f -> Float.Array.set d i f | _ -> () done;
+    F d
+  end
+
+(* The store of two, three or four values, made without an array between: the literals of the interpreter. *)
+let vals2 x y = match x, y with Float p, Float q -> let d = Float.Array.create 2 in Float.Array.set d 0 p; Float.Array.set d 1 q; F d | _ -> V [| x; y |]
+
+let vals3 x y z =
+  match x, y, z with
+  | Float p, Float q, Float r -> let d = Float.Array.create 3 in Float.Array.set d 0 p; Float.Array.set d 1 q; Float.Array.set d 2 r; F d
+  | _ -> V [| x; y; z |]
+
+let vals4 x y z w =
+  match x, y, z, w with
+  | Float p, Float q, Float r, Float u ->
+    let d = Float.Array.create 4 in
+    Float.Array.set d 0 p;
+    Float.Array.set d 1 q;
+    Float.Array.set d 2 r;
+    Float.Array.set d 3 u;
+    F d
+  | _ -> V [| x; y; z; w |]
+
+(* The values as an array of their own, or the V store's array itself. *)
+let vals_array = function V d -> d | s -> Array.init (nvals s) (vget s)
+
+(* Value [i] of an owned map of one block or struct, in place: another value than a float turns its F store into V,
+   once. *)
+let vset m i x =
+  match m, x with
+  | (Dict { vals = V d; _ } | Struct { fields = V d; _ }), _ -> d.(i) <- x
+  | (Dict { vals = F d; _ } | Struct { fields = F d; _ }), Float f -> Float.Array.set d i f
+  | Dict r, _ ->
+    let d = vals_array r.vals in
+    d.(i) <- x;
+    r.vals <- V d
+  | Struct r, _ ->
+    let d = vals_array r.fields in
+    d.(i) <- x;
+    r.fields <- V d
+  | _ -> ()
+
 let whole = max_int
 let no_keys = { ks = [||]; hs = [||]; used = whole; deep = Flat }
 let keys_of ks = { ks; hs = Array.map hash ks; used = whole; deep = Flat }
 let is_whole (k : keys) = k.used = whole
 let names names = keys_of (Array.map (fun n -> Text n) names)
-let empty () = Dict { keys = no_keys; vals = [||]; d_owned = true }
-let record keys vals = Dict { keys; vals; d_owned = true }
+let empty () = Dict { keys = no_keys; vals = no_vals; d_owned = true }
+let record keys vals = Dict { keys; vals = vals_of vals; d_owned = true }
 
 (* The place of a key among the first [n], or -1. *)
 let index (k : keys) n h key =
@@ -402,13 +455,13 @@ let rec find_node node h key level =
 let find m h key =
   match m with
   | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    let i = index keys (Array.length vals) h key in
-    if i < 0 then Undef else vals.(i)
+    let i = index keys (nvals vals) h key in
+    if i < 0 then Undef else vget vals i
   | Dict { keys = { deep = Deep d; _ }; _ } -> find_node d.root h key 0
   | _ -> Undef
 
 let length = function
-  | Dict { keys = { deep = Flat; _ }; vals; _ } -> Array.length vals
+  | Dict { keys = { deep = Flat; _ }; vals; _ } -> nvals vals
   | Dict { keys = { deep = Deep d; _ }; _ } -> d.size
   | _ -> 0
 
@@ -619,13 +672,25 @@ let deep_items root size next =
   end
 
 let deep root size next ded =
-  Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root; size; next; order = no_order; ded } }; vals = [||]; d_owned = true }
+  Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root; size; next; order = no_order; ded } }; vals = no_vals; d_owned = true }
+
+(* The values and one more: a float keeps an F store, or makes one of an empty map. *)
+let vappend s x =
+  match s, x with
+  | F d, Float f ->
+    let n = Float.Array.length d in
+    let e = Float.Array.make (n + 1) f in
+    Float.Array.blit d 0 e 0 n;
+    F e
+  | V [||], Float f -> F (Float.Array.make 1 f)
+  | V d, _ -> V (append_v d x)
+  | s, _ -> V (append (vals_array s) x)
 
 (* A block of [n] keys and a new one: one more key, or past [width] a deep map. *)
 let add_new ?(owned = true) keys vals n h key v =
-  if n < width then Dict { keys = grow keys n key h; vals = append_v vals v; d_owned = owned }
+  if n < width then Dict { keys = grow keys n key h; vals = vappend vals v; d_owned = owned }
   else begin
-    let hs = with_last keys.hs n h and ks = with_last keys.ks n key and vs = append vals v and ed = fresh () in
+    let hs = with_last keys.hs n h and ks = with_last keys.ks n key and vs = append (vals_array vals) v and ed = fresh () in
     let root = match table_of hs ks vs (n + 1) with Some t -> Table t | None -> fst (build hs ks vs (Array.init (n + 1) Fun.id) (n + 1) ed) in
     deep root (n + 1) (n + 1) ed
   end
@@ -646,12 +711,13 @@ let put m h key v =
   | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
     (* Both maps hold these values now: neither is owned, so a write to either copies it first and marks its values. *)
     ignore (share m);
-    let n = Array.length vals in
+    let n = nvals vals in
     let i = index keys n h key in
     if i >= 0 then begin
-      let vals = Array.copy vals in
-      vals.(i) <- v;
-      Dict { keys; vals; d_owned = false }
+      let c = Dict { keys; vals = (match vals with F d -> F (Float.Array.copy d) | s -> V (Array.copy (vals_array s))); d_owned = true } in
+      vset c i v;
+      (match c with Dict r -> r.d_owned <- false | _ -> ());
+      c
     end else add_new ~owned:false keys vals n h key v
   | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
     (* Both maps hold these nodes now: the old one must copy before it writes. *)
@@ -668,10 +734,10 @@ let put m h key v =
 let put_owned m h key v =
   match m with
   | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    let n = Array.length vals in
+    let n = nvals vals in
     let i = index keys n h key in
     if i >= 0 then begin
-      vals.(i) <- v;
+      vset m i v;
       m
     end else add_new keys vals n h key v
   | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
@@ -694,17 +760,19 @@ let put_owned m h key v =
 (* [put_owned] for a key that a map of one block lacks. *)
 let add_absent m h key v =
   match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> add_new keys vals (Array.length vals) h key v
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> add_new keys vals (nvals vals) h key v
   | _ -> put_owned m h key v
 
 (* A copy of a map that someone else holds too: a deep map gets a new mark, so that its writes copy the nodes first. *)
 let own_copy m =
   match m with
+  | Dict { keys = { deep = Flat; _ } as keys; vals = F d; _ } -> Dict { keys; vals = F (Float.Array.copy d); d_owned = true }
   | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    Array.iter (fun x -> ignore (share x)) vals;
-    Dict { keys; vals = Array.copy vals; d_owned = true }
+    let d = vals_array vals in
+    Array.iter (fun x -> ignore (share x)) d;
+    Dict { keys; vals = V (Array.copy d); d_owned = true }
   | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
-    Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root = trie_root keys; size = d.size; next = d.next; order = d.order; ded = fresh () } }; vals = [||]; d_owned = true }
+    Dict { keys = { ks = [||]; hs = [||]; used = whole; deep = Deep { root = trie_root keys; size = d.size; next = d.next; order = d.order; ded = fresh () } }; vals = no_vals; d_owned = true }
   | _ -> m
 
 (* What a node is once a key left it: nothing, one entry that its parent takes inline, or more. *)
@@ -762,12 +830,14 @@ let rec drop_node node h key level =
 let drop m h key =
   match m with
   | Dict { keys = { deep = Flat; _ } as keys; vals; _ } ->
-    let n = Array.length vals in
+    let n = nvals vals in
     let i = index keys n h key in
     if i < 0 then m
     else begin
       ignore (share m);
-      Dict { keys = { ks = cut keys.ks n i 1 Undef; hs = cut_h keys.hs n i; used = whole; deep = Flat }; vals = cut vals n i 1 Undef; d_owned = false }
+      let rest = cut (vals_array vals) n i 1 Undef in
+      Dict { keys = { ks = cut keys.ks n i 1 Undef; hs = cut_h keys.hs n i; used = whole; deep = Flat };
+             vals = (match vals with F _ -> vals_of rest | _ -> V rest); d_owned = false }
     end
   | Dict { keys = { deep = Deep d; _ } as keys; _ } ->
     let root = drop_node (trie_root keys) h key 0 in
@@ -777,7 +847,7 @@ let drop m h key =
 
 let items m =
   match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> Array.init (2 * Array.length vals) (fun j -> if j land 1 = 0 then keys.ks.(j / 2) else vals.(j / 2))
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> Array.init (2 * nvals vals) (fun j -> if j land 1 = 0 then keys.ks.(j / 2) else vget vals (j / 2))
   | Dict { keys = { deep = Deep d; _ }; _ } when d.order != no_order -> d.order
   | Dict { keys = { deep = Deep d; _ }; _ } ->
     let o = deep_items d.root d.size d.next in
@@ -788,7 +858,7 @@ let items m =
 (* Each key of the map and its value, in no order. *)
 let iter f m =
   match m with
-  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> Array.iteri (fun i v -> f keys.ks.(i) v) vals
+  | Dict { keys = { deep = Flat; _ } as keys; vals; _ } -> for i = 0 to nvals vals - 1 do f keys.ks.(i) (vget vals i) done
   | Dict { keys = { deep = Deep d; _ }; _ } -> iter_node (fun _ k v -> f k v) d.root
   | _ -> ()
 

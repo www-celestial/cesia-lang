@@ -30,12 +30,13 @@ type ins =
   | Unbox of int * value * unbox * int
   | Box of int * value
   | Share of value
-  | Vals of int * value * int * int
-  | Fields of int * value * int * int
+  | Vals of int * value * int * int * int
+  | Fields of int * value * int * int * int
   | Load of int * int * int * int
   | Get of int * int * value * int
   | Put of int * value * value * int
   | Record of int * int * int * value array
+  | Into of int * value * value array * int * int * int * (int * int) option * int
   | Keep of int * int * int
   | Reserve of int ref * int
 
@@ -76,6 +77,7 @@ type func = {
   need : int;
   numbers : (var * int) array;
   lent : int array;
+  sunk : (int * int * Types.t) array;
 }
 
 let io_base = 3
@@ -125,3 +127,4 @@ let err_read = 7
 let err_write = 8
 let err_read_nd = 9
 let err_write_nd = 10
+let written = 11

@@ -67,17 +67,28 @@ type ins =
       (** [Unbox (r, v, how, k)]: the number in the value [v]; else the run bails before statement [k] of its loop *)
   | Box of int * value  (** a value made of an integer or a float operand: an Int or a Float, in reserved room *)
   | Share of value  (** a list, struct or map stored elsewhere: it is no longer owned, as [Value.share] *)
-  | Vals of int * value * int * int
-      (** [Vals (r, m, c, k)]: the values of the map [m] whose keys are those of the constant [c]; else the run bails
-          before statement [k] *)
-  | Fields of int * value * int * int  (** [Fields (r, s, sid, k)]: the fields of the struct [s] of shape [sid]; else bails *)
+  | Vals of int * value * int * int * int
+      (** [Vals (r, m, c, f, k)]: the values of the map [m] whose keys are those of the constant [c], in a store of
+          floats ([f] 0) or of values (1); else the run bails before statement [k] *)
+  | Fields of int * value * int * int * int
+      (** [Fields (r, s, sid, f, k)]: the fields of the struct [s] of shape [sid], in a store of floats ([f] 0) or of
+          values (1); else bails *)
   | Load of int * int * int * int
-      (** [Load (r, a, i, k)]: cell [i] of those values or fields; with [k] >= 0, when there are that many, else bails *)
+      (** [Load (r, a, i, k)]: cell [i] of those values or fields, a double when [r] is a float register; with [k] >= 0,
+          when there are that many, else bails *)
   | Get of int * int * value * int  (** a cell of an array of values: the destination, the array, the index, the site *)
   | Put of int * value * value * int  (** the array of values, the index, the value, the site, through the write barrier *)
   | Record of int * int * int * value array
       (** [Record (r, tag, c, vals)]: a new owned map ([tag] 8) or struct ([tag] 4), its keys or shape those of the
-          constant [c], in reserved room *)
+          constant [c], in reserved room: its values in an F store when they are all floats, else in a V *)
+  | Into of int * value * value array * int * int * int * (int * int) option * int
+      (** [Into (a, i, xs, c, tag, site, seen, back)]: a map ([tag] 8) of the keys of the constant [c], or a struct (4)
+          of its shape, of the doubles [xs], written at index [i] of the array of values [a]: in place, into the one
+          there when it is owned, of those keys or that shape and of floats, so nothing else sees it; else, with [back]
+          >= 0, the run bails to that statement with its fuel as at its start, as [Call] does, and the interpreter makes
+          the write ([io_code] then [Ir.written]); with -1, a new one, in reserved room, through the write barrier.
+          [seen]: the registers of the one there and of its doubles, read and checked in this turn, when nothing wrote
+          the array since *)
   | Keep of int * int * int  (** the fuel, and the steps spent and the quantum of nested frames, at a statement's start *)
   | Reserve of int ref * int
       (** room for so many words of allocation before the next [Reserve]; when the young heap lacks it, the run leaves
@@ -141,6 +152,11 @@ type func = {
   lent : int array;
       (** the registers of value variables that may hold a value read from a list, a map or another variable: marked
           shared when the run writes them back, not at each read *)
+  sunk : (int * int * Types.t) array;
+      (** the variables kept as the values of a map or struct of floats that the run never makes: the first of the
+          hidden float slots of its values, its value slot, and a map of its keys or a struct of its shape, without
+          values. [Engine] puts the values there before a run, from the map or struct the slot holds, which must be of
+          those keys or that shape and of floats, and makes a new one of them after a run that wrote its variables *)
 }
 
 (** The frame of a call made from the outermost native frame starts [frame + hidden] above its base; a call from a nested
@@ -223,3 +239,6 @@ val err_read_nd : int
 (** an index of [Offset] outside: [io_a] the count of indexes, from cell [io_ixs] on, [io_b] the array's slot *)
 
 val err_write_nd : int
+
+val written : int
+(** In [io_code] after a bail: no guess failed, the interpreter makes a write that native code left to it. *)

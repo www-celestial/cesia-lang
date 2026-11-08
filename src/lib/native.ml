@@ -84,7 +84,7 @@ let length v =
   | Dict _ -> Trie.length v
   | Text s -> code_points s
   | Array a -> a.rows * a.cols
-  | Struct r -> Array.length r.fields
+  | Struct r -> Trie.nvals r.fields
   | _ -> 1
 
 (* What f gives for each key and value of a map, in the order of insertion. *)
@@ -714,7 +714,8 @@ let packages =
           dict_items ctx "Pairs" a.(0) (fun k v -> Trie.record pair_keys [| k; Value.share v |]));
       "Fields", nat "Fields" 1 1 (fun ctx a ->
           match a.(0) with
-          | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
+          | Struct { shape = { sname = Some _; _ } as shape; fields = s; _ } ->
+            let fields = Trie.vals_array s in
             (* Inside the package of the struct, its small fields too. *)
             let site = if ctx.site >= 0 && ctx.site < Vec.length ctx.w.sites then (Vec.get ctx.w.sites ctx.site).sver else None in
             let inside = (match site with Some v -> ctx.w.modules.(v.owner.pm).host = shape.sm | None -> false) in

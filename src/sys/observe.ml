@@ -62,7 +62,7 @@ let labels ctx (v : t) =
     | Dict _ ->
       let o = Value.items v in
       List.init (Array.length o / 2) (fun k -> Value.text_of ctx o.(2 * k), o.((2 * k) + 1))
-    | Struct { shape; fields; _ } -> List.init (Array.length fields) (fun k -> shape.names.(k), fields.(k))
+    | Struct { shape; fields; _ } -> List.init (Trie.nvals fields) (fun k -> shape.names.(k), Trie.vget fields k)
     | v -> Runtime.fail ctx Type (Messages.metric_labels (Value.describe v))
   in
   let escape s =

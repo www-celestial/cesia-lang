@@ -301,7 +301,7 @@ let rec deep_hash ctx wide big nodes depth v =
       !h
     | Struct { shape; fields; _ } ->
       let sum = ref 0 in
-      Array.iteri (fun i f -> sum := !sum + combine (Trie.hash_text shape.names.(i)) (hash f)) fields;
+      Array.iteri (fun i f -> sum := !sum + combine (Trie.hash_text shape.names.(i)) (hash f)) (Trie.vals_array fields);
       combine (match shape.sname with Some n -> Trie.hash_text n | None -> 5) (!sum land 0x3FFF_FFFF)
     | Dict _ ->
       let o = Trie.items v and sum = ref 0 in

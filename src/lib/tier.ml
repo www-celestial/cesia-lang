@@ -30,6 +30,9 @@ let loop (e : Ast.expr) = { seen = 0; code = None; reloads = 0; failed = false; 
 (* The steps a loop runs over its runs before it gets native code at the end of a first step. *)
 let runs_before = 100_000
 
+(* The steps of a loop interpreted before it gets its code that way. *)
+let warm_steps = 8
+
 exception Handoff of code * int
 
 type ran = Ran | Fell | Returned of t | Reloaded | Bailed of int

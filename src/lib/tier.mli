@@ -27,6 +27,9 @@ val calls_before : int
 
 val checkpoints_before : int
 
+(** The steps a loop hot by its runs takes in the interpreter, at its next run, before it gets its machine code. *)
+val warm_steps : int
+
 (** The native state of one loop of a version: [Compile] keeps one with each loop it compiles, with the loop's expression;
     the JIT fills [code], made at [reloads], or sets [failed]; [tries] counts the times its code was dropped, or could not
     be made yet. *)

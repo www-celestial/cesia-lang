@@ -952,7 +952,7 @@ let run_tool w name args =
         ctx.b <- 0;
         ctx.site <- 0;
         (match Compile.call_value ctx ~base:2 w.modules.(m).cells.(k) [||] with
-         | Struct { shape = { sname = Some "Err"; _ }; fields = [| e |]; _ } ->
+         | Struct { shape = { sname = Some "Err"; _ }; fields = V [| e |]; _ } ->
            Runtime.flush_out w;
            flush stdout;
            (* An error of the system, as sys.List gives it, shows its message. *)

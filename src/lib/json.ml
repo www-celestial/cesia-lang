@@ -240,7 +240,8 @@ let write ctx ~pretty v =
     | Array a ->
       Runtime.pay ctx (a.rows * a.cols);
       group '[' ']' depth (List.init (a.rows * a.cols) (Value.elt a)) (go (depth + 1))
-    | Struct { shape = { sname = Some _; _ } as shape; fields; _ } ->
+    | Struct { shape = { sname = Some _; _ } as shape; fields = s; _ } ->
+      let fields = Trie.vals_array s in
       (* Public fields only: a small one, a password hash, never leaks into a response. *)
       Runtime.charge ctx (Array.length fields + 1);
       let public = List.filter (fun k -> Lexer.is_public shape.names.(k)) (List.init (Array.length fields) Fun.id) in
