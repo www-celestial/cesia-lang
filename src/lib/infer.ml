@@ -14,7 +14,7 @@ let make_version (p : proto) sg =
       rv = (fun ctx -> ctx.w.compile_ver ctx v; v.rv ctx);
       ri = (fun ctx -> ctx.w.compile_ver ctx v; v.ri ctx);
       rf = (fun ctx -> ctx.w.compile_ver ctx v; v.rf ctx);
-      slots = [||]; state = 0; tv = [||]; tn = [||]; map = [||]; frame = 0; pk = [||]; call_off = 0 }
+      slots = [||]; state = 0; tv = [||]; tn = [||]; map = [||]; frame = 0; pk = [||]; call_off = 0; seen = [] }
   in
   v
 

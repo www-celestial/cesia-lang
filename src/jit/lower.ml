@@ -283,8 +283,19 @@ let unseen st = if st.ctx = None then raise No else raise Unseen
 
 (* A constant whose first field native code reads, in a value slot after the frame: one per value of that field. *)
 let const st (v : t) =
-  let first = function Dict { keys; _ } -> Some (`K keys) | Struct { shape; _ } -> Some (`S shape) | _ -> None in
-  let same a b = match first a, first b with Some (`K x), Some (`K y) -> x == y | Some (`S x), Some (`S y) -> x == y | _ -> false in
+  let first = function
+    | Dict { keys; _ } -> Some (`K keys)
+    | Struct { shape; _ } -> Some (`S shape)
+    | Fun { proto; _ } -> Some (`P proto)
+    | _ -> None
+  in
+  let same a b =
+    match first a, first b with
+    | Some (`K x), Some (`K y) -> x == y
+    | Some (`S x), Some (`S y) -> x == y
+    | Some (`P x), Some (`P y) -> x == y
+    | _ -> false
+  in
   let cs = st.dyn.consts in
   let rec find j = if j = Vec.length cs then (Vec.add_last cs v; j) else if same (Vec.get cs j) v then j else find (j + 1) in
   find 0
@@ -632,7 +643,75 @@ and call_expr st e (call : call) =
          fresh st k (fun r -> Call (r, callee st v, args, site st e.pos, back))
        end
      | _ -> raise No)
+  | Var { b = Local i; _ } when Vec.get st.kinds (var st i) = Ir.Kval -> call_value st e call (Ir.Reg (var st i))
   | _ -> raise No
+
+(* A call of a function held in a value: a bet on the functions the interpreter saw this call reach, the last first, each
+   tested in turn and called as a direct call is; any other goes back to the interpreter. This is the polymorphic inline
+   cache of Hölzle, Chambers and Ungar (ECOOP 1991), its entries filled by the interpreter's type feedback. *)
+and call_value st e (call : call) f =
+  let seen = match List.assoc_opt e.id st.ver.seen with Some l -> !l | None -> [] in
+  if seen = [] || List.length seen > Compile.seen_most then raise No;
+  let n = Array.length call.args in
+  let vals = Array.map (expr st) (args_of call n) in
+  let targets = List.filter_map (fun p -> target st p vals) seen in
+  if targets = [] then raise No;
+  let k =
+    match targets with
+    | (_, (v : version)) :: rest when List.for_all (fun (_, (w : version)) -> w.ret == v.ret) rest -> kind_of v.ret
+    | _ -> Ir.Kval
+  in
+  let r = reg st k and join = block st in
+  let before = st.dyn.bail and clean = st.dyn.dirty in
+  List.iter
+    (fun (p, (v : version)) ->
+       let yes = block st and next = block st in
+       let c = const st (Fun { proto = p; env = [||] }) in
+       close st (Is_fun (f, c, yes, next));
+       st.cur <- yes;
+       (* Each test runs after the ones before alone: a guard of its arguments may go back as the call's may. *)
+       st.dyn.bail <- before;
+       st.dyn.dirty <- clean;
+       let args =
+         Array.mapi
+           (fun j (x, xk) ->
+              match v.sg.(j), xk with
+              | TI, Ir.Kval -> unbox st x Only_int
+              | TF, Ir.Kval -> unbox st x Only_float
+              | _ -> x, xk)
+           vals
+       in
+       note st v;
+       let res =
+         if st.inl = [] && inlinable v then inline st e v args
+         else begin
+           st.ncalls <- st.ncalls + 1;
+           let back = back st in
+           fresh st (kind_of v.ret) (fun q -> Call (q, callee st v, Array.map fst args, site st e.pos, back))
+         end
+       in
+       emit st (Move (r, if k = Ir.Kval then box st res else fst res));
+       close st (Jump join);
+       st.cur <- next)
+    targets;
+  st.dyn.bail <- before;
+  st.dyn.dirty <- clean;
+  close st (Bail (bail st));
+  st.cur <- join;
+  st.dyn.bail <- None;
+  Ir.Reg r, k
+
+(* A function that a call through a value reached, and the version the interpreter last chose for it, when native code
+   can call it as it calls a direct one: a closure of nothing, of numbers in and out, which these arguments can reach. *)
+and target st (p : proto) vals =
+  match p.last with
+  | Last { lver = v; _ }
+    when Array.length p.func.captures = 0 && p.arity = Array.length vals && Array.length v.sg = p.arity
+         && not (Array.exists (fun (q : param) -> q.default <> None) p.func.params) ->
+    if v.state = 0 then Infer.run st.w v;
+    let fits t (_, k) = (t == TI && (k = Ir.Kint || k = Kval)) || (t == TF && (k = Ir.Kfloat || k = Kval)) in
+    if v.state = 2 && (v.ret == TI || v.ret == TF) && Array.for_all2 fits v.sg vals then Some (p, v) else None
+  | _ -> None
 
 (* A condition, as branches: no boolean value is ever made. *)
 and cond st (e : expr) yes no =
@@ -797,6 +876,8 @@ and allocates st (b : block) =
       (match c.callee.e with
        | Var { b = Cell { m; k; stable = true }; _ } ->
          (match st.w.modules.(m).cells.(k) with Fun { proto; _ } -> Resolve.struct_fields proto.func <> None | _ -> false)
+       (* A call through a value may box what its functions give. *)
+       | Var { b = Local _; _ } -> true
        | _ -> false)
       || Array.exists (fun (a : arg) -> made a.value) c.args
     | Assign ({ b = Local i; _ }, v) -> (st.regs.(i) >= 0 && Vec.get st.kinds st.regs.(i) = Ir.Kval) || made v

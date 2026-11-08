@@ -417,6 +417,11 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Bail k -> pr "  jmp %s\n" (bail_to k)
     | Fuel_ge (v, yes, no) ->
       pr "  mov x0, %s\n  rsh x0, x0, 1\n  bge %s, fuel, x0\n  jmp %s\n" (operand v) (bl yes) (bl no)
+    | Is_fun (v, c, yes, no) ->
+      (* A block of tag 5, Fun, whose first field, its code, is the constant's. *)
+      let v = in_reg Kval v in
+      pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, i64:-8(%s)\n  and x1, x1, 255\n  bne %s, x1, 5\n" v (bl no) v (bl no);
+      pr "  mov x2, i64:0(%s)\n  beq %s, x2, c%d\n  jmp %s\n" v (bl yes) c (bl no)
     | Done ->
       spill b;
       give (if fn.result = Kfloat then Ir.Float 0. else Int 0);

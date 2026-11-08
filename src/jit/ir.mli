@@ -88,6 +88,7 @@ type term =
   | Done  (** the end of a loop run natively: every variable back in its slot, and the interpreter goes on after the loop *)
   | Out of value  (** a [return] inside such a loop: the function ends with that value *)
   | Fuel_ge of value * int * int  (** to the first block if the fuel left is at least that integer, else the second *)
+  | Is_fun of value * int * int * int  (** to the first block if the value is a function of the constant's code, else the second *)
   | Bail of int  (** the run bails before that statement *)
 
 type block = { mutable ins : ins list;  (** in order *) mutable term : term }

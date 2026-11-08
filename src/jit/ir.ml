@@ -46,6 +46,7 @@ type term =
   | Done
   | Out of value
   | Fuel_ge of value * int * int
+  | Is_fun of value * int * int * int  (* a function of the constant's code: yes, else no *)
   | Bail of int
 type block = { mutable ins : ins list; mutable term : term }
 type var = { reg : int; kind : kind; slot : int }

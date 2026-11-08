@@ -1,0 +1,15 @@
+11.0
+-inf
+366669.0
+4
+3.2333333333333334
+1.0980392156862742
+calls-value.ce:43:33: The integer result of 4611686018427387903 + 1 doesn't fit in 63 bits.
+  43 | big(a, b) = 4611686018427387903 + b
+     |                                 ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in big (calls-value.ce:43)
+  called from overflow (calls-value.ce:49)
+  called from <anonymous> (calls-value.ce:53)
+Err("The integer result of 4611686018427387903 + 1 doesn't fit in 63 bits.")
+exit 0

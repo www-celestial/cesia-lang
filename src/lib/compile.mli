@@ -3,6 +3,10 @@ open Types
 
 val new_proto : file:int -> m:int -> Ast.func -> proto
 
+(** The most functions that a call through a value remembers in [version.seen]: past them it remembers one more, and no
+    other, a call that reaches too many for the JIT to bet on. *)
+val seen_most : int
+
 (** The keys of the maps that a literal of these names makes, the same for every such literal. *)
 val map_keys : string array -> keys
 

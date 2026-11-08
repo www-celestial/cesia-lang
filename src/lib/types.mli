@@ -130,6 +130,9 @@ and version = {
   mutable frame : int;  (** the entries taken by the variables and links *)
   mutable pk : int array;  (** each parameter: slot * 4 + stack (0 v, 1 i, 2 f) *)
   mutable call_off : int;  (** the highest base of a direct call's frame, from this one's: native code counts with it *)
+  mutable seen : (int * proto list ref) list;
+      (** each call of a function held in a value in its code, by the node of the call: the functions it reached, the
+          last first, at most [Compile.seen_most], on which the JIT bets *)
 }
 
 and slot = {

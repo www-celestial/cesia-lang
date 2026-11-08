@@ -576,6 +576,11 @@ let write_root ctx pm set x st y =
   let after = step_write ctx pm top st y in
   if after != x then set ctx after
 
+(* The most functions a call through a value remembers; one more, and the call reaches too many for the JIT to bet on. *)
+let seen_most = 4
+
+let[@inline never] saw seen l proto = if List.length l <= seen_most && not (List.memq proto l) then seen := proto :: l
+
 let new_proto ~file ~m (f : func) =
   { pname = f.fname; file; pm = m; func = f; versions = []; generic = None; by_tag = [];
     arity = Array.length f.params; last = No_call }
@@ -3130,9 +3135,9 @@ and ccall c e (call : call) target =
      | Fun { proto; env = [||] } ->
        (match Infer.bind_args proto.func call.args with
         | Error msg -> raise_at s Type msg
-        | Ok _ -> call_dynamic c s call target)
-     | _ -> call_dynamic c s call target)
-  | _ -> call_dynamic c s call target
+        | Ok _ -> call_dynamic c s e.id call target)
+     | _ -> call_dynamic c s e.id call target)
+  | _ -> call_dynamic c s e.id call target
 
 and raise_at s kind m = fun ctx ->
   ctx.site <- s;
@@ -3265,7 +3270,7 @@ and arg_writers c off (ver : version) modes (slots : expr option array) : ctx ->
     fun ctx -> a ctx; d ctx
   | _ -> seq_u (List.init (Array.length slots) writer)
 
-and call_dynamic c s (call : call) target =
+and call_dynamic c s id (call : call) target =
   let args = call.args in
   let callee, target, room =
     match call.callee.e with
@@ -3281,7 +3286,7 @@ and call_dynamic c s (call : call) target =
   let plain = Array.for_all (fun a -> a = None) names in
   let slots = Array.map (fun a -> Some a.value) args in
   let modes = passes c (fun k -> k >= 62 || not plain) (fun _ i -> i = target) slots in
-  if plain && n <= 3 && (n >= 1 || room = 1) then call_small c s callee slots modes room
+  if plain && n <= 3 && (n >= 1 || room = 1) then call_small c s id callee slots modes room
   else
   let off = c.off in
   c.top <- max c.top (off + n + 2);
@@ -3309,9 +3314,18 @@ and call_dynamic c s (call : call) target =
 (* A dynamic call with 1 to 3 arguments: they stay in OCaml variables until the version is chosen, and only those of
    type A go through the v stack, where each write costs a caml_modify. A call x.name() can also have none. [room] makes
    room for the object of a method. *)
-and call_small c s callee slots modes room =
+and call_small c s id callee slots modes room =
   let off = c.off in
   let n = Array.length slots in
+  (* The functions this call reached, for the JIT: a comparison or two when it reaches one of the first two it met. *)
+  let seen = ref [] in
+  c.ver.seen <- (id, seen) :: c.ver.seen;
+  let[@inline] note proto =
+    match !seen with
+    | p :: _ when p == proto -> ()
+    | _ :: p :: _ when p == proto -> ()
+    | l -> saw seen l proto
+  in
   c.top <- max c.top (off + n + room + 2);
   c.off <- off + n + 2;
   (* A local variable argument is read without a closure: slot >= 0. *)
@@ -3380,6 +3394,7 @@ and call_small c s callee slots modes room =
       ctx.site <- s;
       (match g with
        | Fun { proto; env } when proto.arity = 1 ->
+         note proto;
          share_if (proto.func.kept land lent) 0 x;
          let tag = if no_spec then no_tag else arg_type x in
          let key = tag lor (1 lsl 42) in
@@ -3401,6 +3416,7 @@ and call_small c s callee slots modes room =
       ctx.site <- s;
       (match g with
        | Fun { proto; env } when proto.arity = 2 ->
+         note proto;
          let kept = proto.func.kept land lent in
          share_if kept 0 x;
          share_if kept 1 y;
@@ -3427,6 +3443,7 @@ and call_small c s callee slots modes room =
       ctx.site <- s;
       (match g with
        | Fun { proto; env } when proto.arity = 3 ->
+         note proto;
          let tag =
            if no_spec then no_tag else arg_type x lor (arg_type y lsl 2) lor (arg_type z lsl 4)
          in
