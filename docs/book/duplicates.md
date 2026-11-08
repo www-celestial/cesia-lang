@@ -503,7 +503,7 @@ Where each one wins, and why, measured rather than guessed:
   holds 1,681 of them. Cesia's is the portable C of the runtime of OCaml, whose compression function, disassembled, does
   its arithmetic without any. On 1,000 files of one size, that gap is 31.6 ms of the 32.3 between the two.
   The walk and the sizes cost the same in both, 3.5 ms for 1,000 files once the start-up is taken off: 6.7 ms for Cesia
-  and 17.9 for Python, start-up in. So on 1,000 files of one size, Cesia gains 11 ms at the start, loses 32 in the hash,
+  and 17.9 for Python, start-up in, the medians of 21 runs. So on 1,000 files of one size, Cesia gains 11 ms at the start, loses 32 in the hash,
   and 12 more in reading and grouping, which this chapter did not take apart further: Python reads each file in pieces
   into one buffer, where Cesia makes one text of each whole file.
 - With a cold cache, the disk decides: the two intervals overlap, so no difference between them is shown.
