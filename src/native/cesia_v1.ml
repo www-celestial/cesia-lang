@@ -39,8 +39,8 @@ let[@inline] to_value (v : Types.t) =
   | Types.Fun _ | Types.Native _ | Types.Bound _ -> Function v
   | Types.Array _ | Types.Handle _ -> Other v
 
-(* Up to 8 values, the array is made inline: Array.map would call C to make it. *)
-let of_values a =
+(* Up to 6 values, the array is made inline: Array.map would call C to make it. *)
+let[@inline] of_values a =
   match a with
   | [||] -> [||]
   | [| a0 |] -> [| of_value a0 |]
@@ -96,25 +96,20 @@ let item ctx (c : compound) i =
     to_value (Value.elt a i)
   | v -> Runtime.fail ctx Type (Messages.index_value (Value.describe v))
 
-(* The field of the [i]th name of [k], by its hash in a map, by its name in a struct. *)
-let[@inline] field (c : compound) (k : keys) i =
-  match c with
-  | Types.Dict _ -> to_value (Trie.find c k.hs.(i) k.ks.(i))
-  | Types.Struct { shape; fields; _ } ->
-    (match k.ks.(i) with
-     | Types.Text name -> let j = Value.field_index shape name in if j < 0 then Missing else to_value fields.(j)
-     | _ -> Missing)
-  | _ -> Missing
+(* A map's fields by their hashes, its first ones made inline; a struct's by their names. *)
+let[@inline] find c h key = to_value (Trie.find c h key)
 
 let fields (k : keys) c =
-  match Array.length k.ks with
-  | 1 -> [| field c k 0 |]
-  | 2 -> [| field c k 0; field c k 1 |]
-  | 3 -> [| field c k 0; field c k 1; field c k 2 |]
-  | 4 -> [| field c k 0; field c k 1; field c k 2; field c k 3 |]
-  | 5 -> [| field c k 0; field c k 1; field c k 2; field c k 3; field c k 4 |]
-  | 6 -> [| field c k 0; field c k 1; field c k 2; field c k 3; field c k 4; field c k 5 |]
-  | n -> Array.init n (field c k)
+  match c, k.hs, k.ks with
+  | Types.Dict _, [| h0 |], [| k0 |] -> [| find c h0 k0 |]
+  | Types.Dict _, [| h0; h1 |], [| k0; k1 |] -> [| find c h0 k0; find c h1 k1 |]
+  | Types.Dict _, [| h0; h1; h2 |], [| k0; k1; k2 |] -> [| find c h0 k0; find c h1 k1; find c h2 k2 |]
+  | Types.Dict _, [| h0; h1; h2; h3 |], [| k0; k1; k2; k3 |] -> [| find c h0 k0; find c h1 k1; find c h2 k2; find c h3 k3 |]
+  | Types.Dict _, hs, ks -> Array.init (Array.length hs) (fun i -> find c hs.(i) ks.(i))
+  | Types.Struct { shape; fields; _ }, _, ks ->
+    let get key = match key with Types.Text n -> let j = Value.field_index shape n in if j < 0 then Missing else to_value fields.(j) | _ -> Missing in
+    Array.map get ks
+  | _, _, ks -> Array.make (Array.length ks) Missing
 
 let pairs (c : compound) =
   match c with
