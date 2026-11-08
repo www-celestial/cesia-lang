@@ -51,6 +51,7 @@ type st = {
   sunk : sunk option array;
   inplace : bool array;  (* the lists whose maps of floats a write may change in place: no value variable holds one *)
   dyn : dyn;  (* shared with inlined bodies *)
+  fixed : bool array Lazy.t;  (* the parameters the function never assigns: their bounds hold in its whole body *)
 }
 
 and dyn = {
@@ -198,7 +199,7 @@ let outer st = st.loops = []
 (* A tick, then on to [l]; the run comes back at [resume], [l] unless a block outside the loop says the same. *)
 let tick ?resume st l =
   let p = point st (Option.value resume ~default:l) in
-  emit st (Ir.Tick (p, outer st));
+  emit st (Ir.Tick (p, outer st, -1));
   goto st l;
   p
 
@@ -270,17 +271,64 @@ let fresh st k f =
   emit st (f r);
   Ir.Reg r, k
 
-(* The bounds proved of an integer operand; small ones only, so that no sum of them overflows. *)
+(* The bounds proved of an integer operand, small ones only, so that no sum of two overflows; a bound at small is none:
+   (2, small) is any integer from 2 up. *)
 let small = 1 lsl 60
 let range st = function
   | Ir.Int n when n > - small && n < small -> Some (n, n)
   | Reg q -> List.assoc_opt q st.dyn.ranges
   | _ -> None
 
+(* The bounds of a sum, or None when it may overflow: down only when both may be far below 0, up likewise. *)
+let sum (a, b) (c, d) =
+  let clamp x = max (- small) (min small x) in
+  if ((a > - small && c > - small) || a >= 0 || c >= 0) && ((b < small && d < small) || b <= 0 || d <= 0) then
+    Some ((if a = - small || c = - small then - small else clamp (a + c)), if b = small || d = small then small else clamp (b + d))
+  else None
+
+(* The bounds a condition proves of the integer parameters it compares with a constant, when it holds ([truth]) or not:
+   from the else branch of [if n < 2] on, n - 1 can't overflow. A parameter the function assigns proves nothing. *)
+let rec bounds st (c : expr) truth =
+  match c.e with
+  | Not a -> bounds st a (not truth)
+  | And (a, b) when truth -> bounds st a true @ bounds st b true
+  | Or (a, b) when not truth -> bounds st a false @ bounds st b false
+  | Bin (((Lt | Le | Gt | Ge | Eq) as op), x, y) ->
+    let fixed i = i < Array.length st.f.params && st.regs.(i) >= 0 && Vec.get st.kinds st.regs.(i) = Ir.Kint && (Lazy.force st.fixed).(i) in
+    let one op i k =
+      let r = st.regs.(i) in
+      let lo, hi = Option.value (List.assoc_opt r st.dyn.ranges) ~default:(- small, small) in
+      match op, truth with
+      | Lt, true | Ge, false -> [ r, (lo, min hi (k - 1)) ]
+      | Le, true | Gt, false -> [ r, (lo, min hi k) ]
+      | Gt, true | Le, false -> [ r, (max lo (k + 1), hi) ]
+      | Ge, true | Lt, false -> [ r, (max lo k, hi) ]
+      | Eq, true -> [ r, (max lo k, min hi k) ]
+      | _ -> []
+    in
+    (match x.e, y.e with
+     | Var { b = Local i; _ }, Lint k when fixed i && abs k < small - 1 -> one op i k
+     | Lint k, Var { b = Local i; _ } when fixed i && abs k < small - 1 ->
+       one (match op with Lt -> Gt | Le -> Ge | Gt -> Lt | Ge -> Le | o -> o) i k
+     | _ -> [])
+  | _ -> []
+
+(* Lowers [f] with the bounds of each branch of the test [c] added to what is proved. *)
+let assume st c truth f =
+  let saved = st.dyn.ranges in
+  st.dyn.ranges <- bounds st c truth @ saved;
+  f ();
+  st.dyn.ranges <- saved
+
+(* The parameters [body] never assigns, nor a self tail call. *)
+let fixed_params (f : func) =
+  lazy
+    (let all = try Some (Array.fold_left (assigned ~sets:true) [] f.body) with Unknown -> None in
+     Array.init (Array.length f.params) (fun i -> (not f.has_self_tail) && match all with Some l -> not (List.mem i l) | None -> false))
+
 let proves st (r, _) = function
-  | Some (lo, hi) when lo > - small && hi < small ->
-    (match r with Ir.Reg q -> st.dyn.ranges <- (q, (lo, hi)) :: st.dyn.ranges | _ -> ())
-  | _ -> ()
+  | Some bounds -> (match r with Ir.Reg q -> st.dyn.ranges <- (q, bounds) :: st.dyn.ranges | _ -> ())
+  | None -> ()
 
 (* What the frame holds now for a variable of the region, a field of it or a cell of one of its arrays: the guess that
    guards then check. *)
@@ -386,11 +434,16 @@ let numbers st a b x y =
     x, guess st b y
   | _ -> x, y
 
-(* The function of the unit for a version, lowered later. *)
+(* The function of the unit for a version, lowered later. The first is the unit's entry, a region or the outermost frame
+   of its version: a call of that version goes to a nested copy of its own. *)
 let callee st (v : version) =
   let vs = st.unit.versions in
   let rec find i = if i = Vec.length vs then (Vec.add_last vs v; i) else if Vec.get vs i == v then i else find (i + 1) in
-  find 0
+  find 1
+
+(* The outermost frame of a version calls its own nested copy instead of holding itself inlined: it runs once per call
+   from the interpreter, and its code then costs MIR half the time to make. *)
+let own st (v : version) = st.index = 0 && v == Vec.get st.unit.versions 0
 
 let rec expr st (e : expr) : Ir.value * Ir.kind =
   match e.e with
@@ -415,7 +468,8 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
        (* Bounds proved of both operands that keep the result far from overflow: no check (range analysis). *)
        let proved =
          match op, range st (fst x), range st (fst y) with
-         | (Ir.Add | Sub), Some (a, b), Some (c, d) -> Some (if op = Add then a + c, b + d else a - d, b - c)
+         | Ir.Add, Some p, Some q -> sum p q
+         | Sub, Some p, Some (c, d) -> sum p (- d, - c)
          | _ -> None
        in
        let r = fresh st Kint (fun r -> Op (op, r, fst x, fst y, if proved = None then site st e.pos else -1)) in
@@ -444,12 +498,12 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     let base = facts st b0 in
     carry st base y;
     st.cur <- y;
-    emit st (Move (r, convert st k (value_block st yes)));
+    assume st c true (fun () -> emit st (Move (r, convert st k (value_block st yes))));
     let end_yes = facts st st.cur in
     goto st join;
     carry st base n;
     st.cur <- n;
-    emit st (Move (r, convert st k (value_block st no)));
+    assume st c false (fun () -> emit st (Move (r, convert st k (value_block st no))));
     let end_no = facts st st.cur in
     goto st join;
     meet st end_yes end_no join;
@@ -630,7 +684,7 @@ and inline st (e : expr) (v : version) args =
   let child =
     { st with ver = v; f; regs = Array.make f.nvars (-1); arrays = Array.make f.nvars (-1); spec = Array.make f.nvars false; sunk = Array.make f.nvars None; inplace = Array.make f.nvars false; loops = [];
               inl = (vb, base, callsite) :: st.inl; ret_to = Some (res, cont); body = 0; region = false;
-              fast = Hashtbl.create 1 }
+              fast = Hashtbl.create 1; fixed = fixed_params f }
   in
   for i = 0 to f.nvars - 1 do
     match v.tv.(i) with TI | TF -> child.regs.(i) <- reg st (kind_of v.tv.(i)) | _ -> ()
@@ -642,7 +696,7 @@ and inline st (e : expr) (v : version) args =
        emit child (Move (r, convert child (Vec.get st.kinds r) x)))
     args;
   (* The callee's step, as its frame's entry counts one. *)
-  emit child (Ir.Tick (-1, false));
+  emit child (Ir.Tick (-1, false, site child e.pos));
   tail_block child f.body;
   st.cur <- cont;
   st.ncalls <- child.ncalls + 1;
@@ -714,7 +768,7 @@ and call_expr st e (call : call) =
        if v.state <> 2 || (v.ret != TI && v.ret != TF) then raise No;
        let vals = Array.map (expr st) a in
        note st v;
-       if st.inl = [] && inlinable v then inline st e v vals else native_call st e v (Array.map fst vals)
+       if st.inl = [] && inlinable v && not (own st v) then inline st e v vals else native_call st e v (Array.map fst vals)
      | _ -> raise No)
   | Var { b = Local i; _ } when Vec.get st.kinds (var st i) = Ir.Kval -> call_value st e call (Ir.Reg (var st i))
   | _ -> raise No
@@ -751,7 +805,7 @@ and frame_of_struct st (proto : proto) sname sfields =
   let vb = reg st Kint in
   emit st (Frame (vb, base));
   emit st (Enter_or_bail (vb, bail st));
-  emit st (Ir.Tick (-1, false));
+  emit st (Ir.Tick (-1, false, -1));
   let shape = Value.shape_of st.w ?sname ~m:st.w.modules.(proto.pm).host (Array.map fst sfields) in
   const st (Struct { shape; fields = Trie.no_vals; r_owned = false })
 
@@ -782,7 +836,7 @@ and call_value st e (call : call) f =
        st.dyn.ticked <- calm;
        let args = Array.mapi (fun j (x, xk) -> match v.sg.(j), xk with TI, Ir.Kval -> unbox st x Only_int | TF, Ir.Kval -> unbox st x Only_float | _ -> x, xk) vals in
        note st v;
-       let res = if st.inl = [] && inlinable v then inline st e v args else native_call st e v (Array.map fst args) in
+       let res = if st.inl = [] && inlinable v && not (own st v) then inline st e v args else native_call st e v (Array.map fst args) in
        emit st (Move (r, if k = Ir.Kval then box st res else fst res));
        close st (Jump join);
        st.cur <- next)
@@ -795,11 +849,63 @@ and call_value st e (call : call) f =
   st.dyn.ticked <- true;
   Ir.Reg r, k
 
-(* A call of a compiled version, native code to native code. *)
+(* A call of a compiled version, native code to native code. When the callee's body starts with a test of its
+   parameters that gives one of them or a constant at once, as fib's [n < 2] gives n, that test and that result are made
+   here, at the call (partial inlining): half of a tree recursion's calls are leaves, which then cost no call. The call
+   is made when the test fails, or when the frame or the fuel of the callee's step is short, which it then handles. *)
 and native_call st e (v : version) args =
   st.ncalls <- st.ncalls + 1;
   let back = back st in
-  fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, back))
+  let call () = fresh st (kind_of v.ret) (fun r -> Call (r, callee st v, args, site st e.pos, back)) in
+  let f = v.owner.func in
+  let np = Array.length f.params in
+  let rec simple (x : expr) = match x.e with Lint _ | Lfloat _ -> true | Var { b = Local i; _ } -> i < np | _ -> false
+  and test (x : expr) =
+    match x.e with
+    | Bin ((Lt | Le | Gt | Ge | Eq | Ne), a, b) -> simple a && simple b
+    | And (a, b) | Or (a, b) -> test a && test b
+    | Not a -> test a
+    | _ -> false
+  in
+  let leaf =
+    match f.body with
+    | [| { e = If (c, [| y |], _); _ } |] -> Some (c, y)
+    | [||] -> None
+    | b -> (match b.(0).e with If (c, [| { e = Return { rvalue = Some y; _ }; _ } |], _) -> Some (c, y) | _ -> None)
+  in
+  match leaf with
+  | Some (c, y) when test c && simple y && Array.length args = np && not f.has_self_tail ->
+    let k = kind_of v.ret in
+    let r = reg st k and quick = block st and burn = block st and slow = block st and cont = block st in
+    let base0 = facts st st.cur in
+    let blank x = Array.make f.nvars x in
+    let child = { st with ver = v; f; regs = blank (-1); arrays = blank (-1); spec = blank false; sunk = blank None; inplace = blank false; fixed = fixed_params f } in
+    Array.iteri
+      (fun j x ->
+         let q = reg st (kind_of v.tv.(j)) in
+         child.regs.(j) <- q;
+         emit st (Move (q, x)))
+      args;
+    cond child c quick slow;
+    st.cur <- quick;
+    let vb = reg st Kint in
+    emit st (Frame (vb, match st.inl with [] -> -1 | (b, _, _) :: _ -> b));
+    close st (Room (vb, burn, slow));
+    st.cur <- burn;
+    (* The callee's step, as a call's own: the statement may still bail with the fuel it kept. *)
+    let calm = st.dyn.callable in
+    emit st Burn;
+    st.dyn.callable <- calm;
+    child.cur <- burn;
+    emit st (Move (r, convert child k (expr child y)));
+    close st (Jump cont);
+    st.cur <- slow;
+    emit st (Move (r, fst (call ())));
+    goto st cont;
+    carry st base0 cont;
+    st.dyn.ticked <- true;
+    Ir.Reg r, k
+  | _ -> call ()
 
 (* A function that a call through a value reached, and the version the interpreter last chose for it, when native code
    can call it as it calls a direct one: a closure of nothing, of numbers in and out, which these arguments can reach. *)
@@ -951,7 +1057,7 @@ and stmt st (e : expr) =
         st.cur <- inside;
         loop_in st exit (fun () -> Array.iter (stmt st) body);
         let p = point st pre in
-        emit st (Ir.Tick (p, outer st));
+        emit st (Ir.Tick (p, outer st, -1));
         Vec.add_last st.infos (e.id, -1, -1, p);
         close st (Jump head);
         st.cur <- exit)
@@ -965,7 +1071,7 @@ and stmt st (e : expr) =
     let before = st.dyn.bail and clean = st.dyn.dirty and calm = st.dyn.ticked in
     carry st base y;
     st.cur <- y;
-    Array.iter (stmt st) yes;
+    assume st c true (fun () -> Array.iter (stmt st) yes);
     let end_yes = facts st st.cur in
     goto st join;
     let after_yes = st.dyn.bail and dirty_yes = st.dyn.dirty and ticked_yes = st.dyn.ticked in
@@ -974,7 +1080,7 @@ and stmt st (e : expr) =
     st.dyn.ticked <- calm;
     carry st base n;
     st.cur <- n;
-    Array.iter (stmt st) no;
+    assume st c false (fun () -> Array.iter (stmt st) no);
     let end_no = facts st st.cur in
     goto st join;
     meet st end_yes end_no join;
@@ -1279,9 +1385,9 @@ and tail st (e : expr) =
     let y = block st and n = block st in
     cond st c y n;
     st.cur <- y;
-    tail_block st yes;
+    assume st c true (fun () -> tail_block st yes);
     st.cur <- n;
-    tail_block st no
+    assume st c false (fun () -> tail_block st no)
   | Call ({ self_tail = true; _ } as call) when Array.length call.args = Array.length st.f.params ->
     let args = Array.map (fun (a : arg) -> if a.aname <> None then raise No else expr st a.value) call.args in
     let ps = Array.mapi (fun j (_ : param) -> var st j) st.f.params in
@@ -1297,7 +1403,7 @@ and tail st (e : expr) =
         args
     in
     Array.iteri (fun j r -> emit st (Move (ps.(j), Reg r))) tmp;
-    emit st (Ir.Tick (point st st.body, outer st));
+    emit st (Ir.Tick (point st st.body, outer st, -1));
     close st (Jump st.body)
   | _ -> give st (convert st k (expr st e))
 
@@ -1504,6 +1610,7 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
   { w; ver; f; index; kinds; blocks = Vec.create (); cur = 0; regs; arrays; arr; hidden = Vec.create ();
     resumes = Vec.create (); loops = []; sites = Vec.create (); live = Bytes.empty; unit; body = 0; region; infos = Vec.create ();
     fast = Hashtbl.create 1; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec; sunk; inplace;
+    fixed = fixed_params f;
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
             vars = []; need = None; consts = Vec.create (); known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [] } }
 
@@ -1570,7 +1677,7 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
        st.cur <- inside;
        loop_in st exit (fun () -> stmts st ~root:true body);
        let p = point st pre in
-       emit st (Ir.Tick (p, true));
+       emit st (Ir.Tick (p, true, -1));
        Vec.add_last st.infos (loop.id, -1, -1, p);
        close st (Jump head);
        st.cur <- exit;

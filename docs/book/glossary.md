@@ -590,6 +590,13 @@ A query whose values travel apart from its SQL text, so that no input typed by a
 injection. In [std/sql] each `?` takes a value of the list: see
 [SQLite](sqlite.md#values-never-go-into-the-text).
 
+## Partial inlining
+
+Copying only part of a function into the places that call it, usually the test that returns early, while the rest stays
+a call (Zhao and Amaral, 2005). Cesia's JIT does it when a callee starts with a test of its parameters that gives one of
+them or a constant, as `fib`'s `if n < 2 then n`: the leaves of a recursion then cost no call. See
+[How Cesia works](internals.md#what-it-makes).
+
 ## Partition refinement
 
 Splitting a set into groups by a key, then splitting each group again by a finer key, and so on, so that no step joins
@@ -674,8 +681,9 @@ function can't change the values it is given: it is pure when it leaves the outs
 ## Range analysis
 
 What a compiler proves of the values an integer can take, to drop the checks they make useless. In Cesia's JIT,
-`math.Mod(i, 4)` is between 0 and 3, so `math.Mod(i, 4) + 1` needs no check of overflow: see
-[How Cesia works](internals.md#what-it-makes).
+`math.Mod(i, 4)` is between 0 and 3, so `math.Mod(i, 4) + 1` needs no check of overflow; and in the `else` of
+`if n < 2`, `n` is at least 2, so `n - 1` needs none either, the bounds that a branch's test proves, as in ABCD (Bodík,
+Gupta and Sarkar, 2000): see [How Cesia works](internals.md#what-it-makes).
 
 ## Radix sort
 

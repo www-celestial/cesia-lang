@@ -38,11 +38,12 @@ type ins =
   | Call of int * int * value array * int * int
       (** the destination, the function of the unit, the arguments, the site, and the statement of a region's loop that
           the run bails to, its fuel as at its start, when the call wants a longer stack, or -1: the run then stops *)
-  | Tick of int * bool
+  | Tick of int * bool * int
       (** one step of fuel. When it runs out at a tick that can leave (outside any loop, or that of a loop in no other), the
           run leaves and comes back at the resume point; inside an inner loop, or in a nested frame, it takes another
           quantum, and when a full checkpoint is due it asks the next tick that can leave to do so: a full checkpoint then
-          waits at most for that inner loop. *)
+          waits at most for that inner loop. The last, a site whose inlined frames end with the one whose step it is, or
+          -1 for the function's own: where the limit of steps, reached there, names the frame *)
   | Try of op * int * value * value * int  (** [Add], [Sub] or [Mul] that goes to the block on overflow, raising nothing *)
   | Elem_at of int * int * int
       (** the destination, the array, a register of its index from 1, doubled as every integer register, proved inside *)
@@ -101,6 +102,9 @@ type term =
   | Done  (** the end of a loop run natively: every variable back in its slot, and the interpreter goes on after the loop *)
   | Out of value  (** a [return] inside such a loop: the function ends with that value *)
   | Fuel_ge of value * int * int  (** to the first block if the fuel left is at least that integer, else the second *)
+  | Room of int * int * int
+      (** [Room (r, yes, no)]: to [yes] if a frame at base [r] is under the limit, with no slow check, and the fuel has a
+          step left, else to [no] *)
   | Is_fun of value * int * int * int  (** to the first block if the value is a function of the constant's code, else the second *)
   | Bail of int  (** the run bails before that statement *)
 

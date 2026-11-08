@@ -90,6 +90,12 @@ publisher moves it.
   Translation for Correctness, Code Quality and Efficiency". *CGO 2009*, IEEE, 114–125.
   <https://dblp.org/rec/conf/cgo/BoissinotDRDG09>. Leaving SSA form puts a copy on each path into a block where versions of
   a variable meet, which only coalescing takes away: why a loop entered in its middle copied every variable at each turn.
+- Rastislav Bodík, Rajiv Gupta, Vivek Sarkar. "ABCD: Eliminating Array Bounds Checks on Demand". *PLDI 2000*, ACM,
+  321–333. <https://doi.org/10.1145/349299.349342>. Bounds proved from the tests that guard each branch, and the checks
+  they make useless dropped: Cesia's JIT drops the overflow check of `n - 1` in the `else` of `if n < 2`.
+- Peng Zhao, José Nelson Amaral. "Function Outlining and Partial Inlining". *SBAC-PAD 2005*, IEEE, 101–108.
+  <https://doi.org/10.1109/CAHPC.2005.26>. Inlining only the hot part of a function into its callers: Cesia's JIT copies
+  the test of a callee that returns at once, as `fib`'s `if n < 2 then n`, into each call.
 - Lukas Stadler, Thomas Würthinger, Hanspeter Mössenböck. "Partial Escape Analysis and Scalar Replacement for Java".
   *CGO 2014*, ACM. <https://doi.org/10.1145/2544137.2544157>. An object kept as its fields where it doesn't
   escape and made only on the paths where it does: the map that Cesia's machine code reads from a list for its fields

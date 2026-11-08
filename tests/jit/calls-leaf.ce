@@ -1,0 +1,29 @@
+use std/io
+
+(* A call whose callee starts with a test that gives a parameter or a constant: native code makes that test and gives
+   that result at the call, without calling. The same results, steps, depth and traces as the interpreter's. *)
+defn fib(n)
+  if n < 2
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+  end
+end
+defn leaves(n, d)
+  if n <= 0 or d > 3
+    d * 1.5
+  else
+    leaves(n - 1, d + 1) + leaves(n - 2, d)
+  end
+end
+defn down(n)
+  if n == 0
+    7
+  else
+    down(n - 1) + 1
+  end
+end
+io.Print(fib(24))
+io.Print(leaves(18, 0))
+io.Print(down(3000))
+io.Print(down(9990))

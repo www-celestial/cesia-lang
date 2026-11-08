@@ -1,0 +1,107 @@
+off:
+46368
+2668.5
+3007
+9997
+calls-leaf.ce:26:3: Limit "steps" reached.
+  26 | io.Print(fib(24))
+     |   ^
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+calls-leaf.ce:26:3: Limit "steps" reached.
+  26 | io.Print(fib(24))
+     |   ^
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+46368
+2668.5
+3007
+calls-leaf.ce:23:5: Limit "depth" reached.
+  23 |     down(n - 1) + 1
+     |     ^
+  in down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  ... and 9981 more
+always:
+46368
+2668.5
+3007
+9997
+calls-leaf.ce:26:3: Limit "steps" reached.
+  26 | io.Print(fib(24))
+     |   ^
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+calls-leaf.ce:26:3: Limit "steps" reached.
+  26 | io.Print(fib(24))
+     |   ^
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+  called from fib (calls-leaf.ce:9)
+46368
+2668.5
+3007
+calls-leaf.ce:23:5: Limit "depth" reached.
+  23 |     down(n - 1) + 1
+     |     ^
+  in down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  called from down (calls-leaf.ce:23)
+  ... and 9981 more
+exit 1

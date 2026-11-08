@@ -392,7 +392,30 @@ writes no such variable in place, so it now clears the bit once, when the run wr
 each read; a value the code knows is a number needs no mark at all.
 
 **Bounds proved.** `math.Mod(i, 4)` by a positive constant is between 0 and 3, so `math.Mod(i, 4) + 1` can't overflow:
-the addition goes unchecked. This is *range analysis*, the smallest form of it, on the bounds of integer registers.
+the addition goes unchecked. This is *range analysis*, the smallest form of it, on the bounds of integer registers. The
+tests of the program prove bounds too, in each branch of an `if` that compares a parameter with a constant, when the
+function never assigns that parameter: from the `else` of `if n < 2` on, `n` is at least 2, so `n - 1` and `n - 2` go
+unchecked. A bound may hold on one side only: `n >= 2` says nothing of how big `n` is, yet `n - 1` can't overflow, as it
+goes down from at least 2 and can't go up. The tests that guard branches are how ABCD (Bodík, Gupta and Sarkar, 2000)
+proves its bounds, as constraints that hold along each edge of the program.
+
+**A leaf at the call.** `fib` is a tree of calls, and half of its 30 million calls are leaves, `fib(0)` and `fib(1)`,
+which only give back their argument; each paid a whole call, the saving and restoring of five registers included. When
+the body of a callee starts with a test of its parameters that gives one of them or a constant, as `if n < 2 then n`,
+the JIT makes that test at the call, on the arguments:
+
+```text
+fib(n - 1)        before: a call, whatever n - 1 is
+                  after:  if n - 1 < 2, and its frame is under the limit of depth, and the fuel has a step left:
+                              one step counted, the result is n - 1, no call
+                          else the call, as before
+```
+
+When the test fails, or when the frame or the fuel is short, the call is made, and the callee does what it always did
+at its entry, so the limits of depth and of steps, and the traces, stay the interpreter's. This is *partial inlining*
+(Zhao and Amaral, 2005): the part of a function that returns early is copied into its callers, the rest stays a call. A
+call of `fib` costs 18.8 instructions and 5.5 cycles instead of 26.4 and 7.2 (the processor's counters, the cost of one
+more call, measured as the difference of `fib(30)` and `fib(35)`), Go's 14.5 and 5.9.
 
 **A map that is never made.** In `structs`, each turn reads a map from a list, computes with its fields, and writes a
 new map back to the same place:
@@ -423,6 +446,31 @@ variable, as the next part shows.
 A division or a modulo of integers by a power of two, as `math.Mod(i, 4)`, becomes a shift or a mask of bits: a
 division instruction costs tens of cycles, a mask one. The results are those of the floor, which Cesia's `Div` and `Mod`
 give, for negative numbers too: `math.Mod(-7, 4)` is 1 in both.
+
+### What it costs to make
+
+The machine code takes time to make, which a run pays before it gains anything. MIR spends 6 to 7 µs on each line of
+the text the JIT gives it, at its level 2, where it works in SSA form, numbers values, moves what a loop doesn't change
+out of it and allocates registers (a copy of MIR with a clock on each of its passes: making SSA form takes a quarter of
+the time, allocating registers a sixth, the liveness of values a tenth). Its level 1 makes code in 40 % less time, and
+`matmul` then runs half again as long: level 2 stays. So the JIT gives MIR fewer lines:
+
+- The paths a run takes when something rare happens, a failed check, a limit, an error, write what the interpreter needs
+  to go on, and were four fifths of `fib`'s lines. The stubs of those that never come back now end in a block their
+  function shares, one for an error, one for a frame past the limit of depth, one for a call on its way up after its
+  callee stopped: each stub puts its own values in a few registers and jumps there.
+- The outermost frame of a version, which the interpreter calls, calls a nested copy of the version instead of holding
+  itself inlined: it runs once per call from the interpreter, and the nested copy does the work. This also fixed a loop
+  that called its own function: MIR refused the call, and its error turned the JIT off for the rest of the program.
+- The checks of a run's arrays, and its constants, are written once for its start and its resumes, not twice.
+- The base of an inlined callee's frame is written from the function's own base and a constant, so no register holds it
+  across a call.
+
+`fib`'s unit went from 1,200 lines and 7.4 ms of compiling to 700 lines and 3.4 ms; `matmul`'s two units from 1,310
+lines to 1,090, 10.4 ms to 8.4. A stub that comes back into its loop, the one that takes a new quantum of fuel, stays
+inline: as a call, it made MIR keep every float of the loop in memory at each turn, around a call it almost never makes.
+What is left of the fixed cost, beside the start of the process (2.9 ms): loading the plugin, 0.65 ms, and MIR's
+compiling, 3 to 4 ms a unit.
 
 ### Bets, guards and bails
 
