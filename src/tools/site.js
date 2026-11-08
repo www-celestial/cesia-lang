@@ -103,7 +103,8 @@
   });
   // As many whole columns as the room holds, the last ones: none is cut at the left.
   function fit() {
-    if (!side || innerWidth <= 760) { if (side) side.style.width = ""; return; }
+    if (!side) return;
+    if (innerWidth <= 760) { side.style.width = ""; side.scrollLeft = side.scrollWidth; return; }
     var room = Math.min(innerWidth * 0.52, 860), width = 0;
     for (var k = cols.length - 1; k >= 0; k--) {
       var w = cols[k].getBoundingClientRect().width;

@@ -69,11 +69,10 @@ button.theme {
 main { max-width: calc(72ch + 64px); padding: 16px 32px 64px; min-width: 0; }
 @media (max-width: 760px) {
   .page { grid-template-columns: minmax(0, 1fr); }
-  .side {
-    position: static; height: auto; max-width: none; order: 2; flex-direction: column; border-right: 0;
-    border-top: 1px solid var(--edge);
-  }
-  .side .col, .side .col.root { flex: none; max-height: 40vh; border-right: 0; border-bottom: 1px solid var(--edge); }
+  /* On a phone the side comes first, above the text: the same columns side by side, each at most a third of the screen
+     high, its last columns in sight. */
+  .side { position: static; height: auto; max-width: none; border-right: 0; border-bottom: 1px solid var(--edge); }
+  .side .col { flex-basis: min(200px, 60vw); max-height: 36vh; }
   main { padding: 16px; }
 }
 
