@@ -97,19 +97,21 @@ A program that prints `1`, 101 runs of each, alternated:
 
 | | Median | 95% interval |
 |---|---:|---:|
-| `/usr/bin/true`, nothing | 0.53 ms | 0.52 to 0.54 |
-| Lua | 0.85 ms | 0.82 to 0.86 |
-| LuaJIT | 1.01 ms | 0.99 to 1.02 |
-| OCaml, native | 1.07 ms | 1.05 to 1.09 |
-| Go | 1.32 ms | 1.28 to 1.37 |
-| **Cesia** | **2.88 ms** | 2.85 to 2.91 |
-| Python | 14.15 ms | 14.09 to 14.21 |
-| Java | 25.39 ms | 25.11 to 25.65 |
-| Node | 38.32 ms | 37.77 to 39.18 |
+| `/usr/bin/true`, nothing | 0.53 ms | 0.51 to 0.53 |
+| Lua | 0.84 ms | 0.80 to 0.86 |
+| LuaJIT | 0.98 ms | 0.95 to 1.00 |
+| OCaml, native | 1.10 ms | 1.09 to 1.11 |
+| Go | 1.31 ms | 1.29 to 1.35 |
+| **Cesia** | **2.65 ms** | 2.62 to 2.67 |
+| Python | 14.06 ms | 14.00 to 14.11 |
+| Java | 25.09 ms | 24.98 to 25.19 |
+| Node | 37.86 ms | 37.23 to 38.64 |
 
-Cesia starts 5 times sooner than Python, 9 times sooner than Java and 13 times sooner than Node. A compiled Go or OCaml
-program, or Lua, starts in about half its time: Cesia carries its whole runtime, its standard library and its compiler
-in one binary, and the system must fix up the addresses of its data at each start, as
+Measured again on 2026-11-09: 2.84 ms for the binary before its young heap grew only when a program needs it,
+alternated in the same runs. Cesia starts 5 times sooner than Python, 9 times sooner than Java and 14 times sooner than
+Node. A compiled Go or OCaml program, or Lua, starts in about half its time: Cesia carries its whole runtime, its
+standard library and its compiler in one binary, 19,723 places in its code that OCaml's collector must know, against 322
+in OCaml's own program, and the system must fix up the addresses of its data at each start, as
 [How Cesia works](internals.md#start-up) shows.
 
 ### Computing
@@ -118,48 +120,52 @@ Milliseconds, median and 95% interval of 11 runs:
 
 | Program | Cesia | Cesia, no JIT | Python | Node | Java | Go | OCaml | Lua | LuaJIT |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `fib` | **74** (73–76) | 439 (436–450) | 1,447 (1,422–1,500) | 176 (172–182) | 72 (71–76) | 49 (49–56) | 53 (52–61) | 691 (685–720) | 96 (94–109) |
-| `mandel` | **62** (61–62) | 470 (467–489) | 2,668 (2,581–2,819) | 94 (89–98) | 82 (82–83) | 52 (51–54) | 57 (57–59) | 432 (430–437) | 55 (55–56) |
-| `matmul` | **47** (46–47) | 959 (944–1,097) | 5,140 (5,020–5,343) | 96 (94–98) | 93 (92–94) | 33 (33–39) | 60 (59–69) | 831 (825–958) | 87 (86–90) |
-| `structs` | **49** (47–54) | 608 (588–672) | 1,777 (1,732–1,868) | 175 (169–176) | 111 (110–114) | 9 (9–9) | 30 (30–33) | 1,507 (1,483–1,567) | 393 (390–415) |
-| `dyn` | **57** (57–59) | 700 (678–741) | 1,387 (1,368–1,439) | 168 (165–179) | 97 (87–113) | 28 (28–29) | 68 (67–71) | 713 (711–727) | 57 (57–59) |
-| `maps` | **258** (253–263) | 258 (249–265) | 410 (404–414) | 547 (536–579) | 226 (219–234) | 272 (265–293) | 516 (492–543) | 842 (798–904) | 324 (306–343) |
+| `fib` | **58** (57–59) | 441 (438–489) | 1,425 (1,420–1,510) | 173 (169–212) | 71 (70–77) | 49 (49–58) | 52 (51–56) | 688 (685–699) | 97 (91–98) |
+| `mandel` | **61** (61–62) | 456 (453–467) | 2,583 (2,568–2,633) | 90 (88–95) | 82 (81–84) | 52 (51–55) | 57 (56–61) | 431 (428–434) | 55 (55–55) |
+| `matmul` | **44** (43–45) | 977 (963–1,017) | 4,753 (4,709–4,821) | 97 (94–98) | 93 (93–94) | 33 (33–34) | 59 (59–63) | 825 (823–837) | 87 (86–89) |
+| `structs` | **46** (44–48) | 587 (579–594) | 1,736 (1,726–1,753) | 173 (169–180) | 111 (109–111) | 9 (9–9) | 30 (29–30) | 1,515 (1,482–1,557) | 395 (391–399) |
+| `dyn` | **55** (55–57) | 761 (692–802) | 1,374 (1,363–1,403) | 167 (163–176) | 97 (87–103) | 28 (28–30) | 67 (67–71) | 714 (710–719) | 57 (57–57) |
+| `maps` | **257** (254–263) | 256 (251–278) | 408 (401–415) | 547 (526–574) | 224 (214–226) | 273 (269–284) | 507 (494–588) | 806 (789–844) | 311 (304–326) |
 
-Measured again late on 2026-11-08, after the hash table of big maps, the loops entered only at their head, numbers kept
-in registers across the turns of a loop, and maps and structs of floats kept as doubles, read and written in place
-([How Cesia works](internals.md#what-it-makes)): `maps` took 815 ms that afternoon, `dyn` 182 and `structs` 219, the
-other rows within a few percent of today's. The `maps` row is of 2026-11-09, after texts of a word and an integer were
-made in one copy: 277 ms before.
+Measured again on 2026-11-09, after the leaves of a recursion were tested at their call and the JIT gave MIR two fifths
+fewer lines to compile ([How Cesia works](internals.md#what-it-makes)): `fib` took 74 ms the day before, `matmul` 47,
+`structs` 49, `dyn` 57, the other rows within a few percent of today's.
 
 What each program does: `fib` is `fib(35)`, about 30 million recursive calls on integers; `mandel` a loop of floats over
 600 × 400 points; `matmul` the product of two 300 × 300 matrices read by index; `structs` 1,000 records of four floats,
 each remade at each of 5,000 steps; `dyn` 10 million calls through a list of two functions, on values of mixed kinds;
 `maps` a map of 500,000 text keys, written then read.
 
-**Where Cesia wins.** On loops of numbers and on recursion, the JIT puts Cesia beside Java and LuaJIT, and ahead of
-Node: `matmul` runs in half the time of Java, Node and LuaJIT, and ahead of OCaml's, `mandel` and `fib` in about the time
-of Java. Against Python, the language most of its users come from, Cesia is 20 times faster on `fib`, 43 times on
-`mandel` and 109 times on `matmul`; against Lua, 7 to 31 times, and 3 times on `maps`. On `dyn` it is ahead of Node,
-Java and OCaml, 57 ms against 168, 97 and 68, level with LuaJIT, and 24 times Python. On `structs` it is ahead of Java,
-49 ms against 111, of Node, 175, and of LuaJIT, 393. On `maps` it is ahead of every language but Java, Go included:
-258 ms against 272.
+**Where Cesia wins.** On loops of numbers and on recursion, the JIT puts Cesia ahead of Java, Node and LuaJIT:
+`matmul` runs in about half the time of Java, Node and LuaJIT, and ahead of OCaml's, `fib` in 58 ms against Java's 71
+and LuaJIT's 97, and `mandel` ahead of Java and Node. Against Python, the language most of its users come from, Cesia
+is 25 times faster on `fib`, 42 times on `mandel` and 108 times on `matmul`; against Lua, 7 to 33 times, and 3 times on
+`maps`. On `dyn` it is ahead of Node, Java and OCaml, 55 ms against 167, 97 and 67, level with LuaJIT, and 25 times
+Python. On `structs` it is ahead of Java, 46 ms against 111, of Node, 173, and of LuaJIT, 395. On `maps` it is ahead of
+every language but Java, Go included: 257 ms against 273.
 
 **Where a giant wins, and why.**
 
 - **Go wins every line but `maps`; OCaml wins `fib`, `mandel` and `structs`.** They compile the
-  whole program to machine code before it runs, with every type known.
+  whole program to machine code before it runs, with every type known, and start in 1.1 to 1.3 ms. A call of `fib` now
+  costs Cesia 5.5 cycles of the processor, against Go's 5.9 (the counters, the cost of one more call): what keeps Go
+  9 ms ahead is the fixed cost, the start (2.65 ms against 1.31), loading the JIT, 0.65 ms, and MIR's compiling,
+  3.4 ms ([How Cesia works](internals.md#what-it-costs-to-make)). `mandel`'s inner loop waits on its chain of floats,
+  a subtraction, an addition and a multiplication from one turn to the next, 11 cycles, the floor of any language: Cesia
+  and Go both take 3.7 to 3.8 ns a turn, and the 9 ms between them are the fixed cost again. `matmul`'s inner loop runs
+  at Go's speed too, 1.15 ns a step; its two loops each cost MIR 3 to 5 ms to compile.
 - **`structs`: OCaml takes 0.6 times Cesia's time, Go a sixth.** A map of four floats now keeps them as doubles, and the
   JIT never makes the map it reads from the list: it keeps its four doubles in registers and writes the new ones in place
   of the old, which nothing else holds ([How Cesia works](internals.md#what-it-makes)). A step allocates nothing:
-  219 ms, then 186, now 49. What is left, about 60 instructions and 24 cycles a step against Go's 19 and 5: each step
+  219 ms, then 186, 49, now 46. What is left, about 60 instructions and 24 cycles a step against Go's 19 and 5: each step
   reads the map's address from the list and checks its kind, its keys, that it is owned and that its store holds
-  doubles, where Go's array holds the records' floats themselves at known places; and about 12 ms of fixed cost, the
+  doubles, where Go's array holds the records' floats themselves at known places; and about 10 ms of fixed cost, the
   start of the process, the first steps in the interpreter, and the compiling of the loop. OCaml makes a new record of 5
   words at each step, with no check: 30 ms.
 - **`dyn`: Go takes half the time; LuaJIT is level; Cesia is ahead of Java, OCaml and Node.** `total` comes from a call
   through a function held in a list, which the inference can't type; the JIT keeps it a float in a register for the
   whole loop, and the call is a test of the two functions it met, inlined, the *polymorphic inline cache* of
-  [How Cesia works](internals.md#calls-through-a-value): 714 ms, then 182, 114, now 57. Go's step is a call of all-float
+  [How Cesia works](internals.md#calls-through-a-value): 714 ms, then 182, 114, 57, now 55. Go's step is a call of all-float
   code with no test of kinds and no count of steps.
 - **`maps`: Java takes an eighth less time; Cesia is ahead of every other, Go included.** A big map that one name alone holds is now an
   insertion-ordered hash table, Python's layout, and becomes the [CHAMP](glossary.md#champ) trie of

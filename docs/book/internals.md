@@ -469,7 +469,7 @@ the time, allocating registers a sixth, the liveness of values a tenth). Its lev
 `fib`'s unit went from 1,200 lines and 7.4 ms of compiling to 700 lines and 3.4 ms; `matmul`'s two units from 1,310
 lines to 1,090, 10.4 ms to 8.4. A stub that comes back into its loop, the one that takes a new quantum of fuel, stays
 inline: as a call, it made MIR keep every float of the loop in memory at each turn, around a call it almost never makes.
-What is left of the fixed cost, beside the start of the process (2.9 ms): loading the plugin, 0.65 ms, and MIR's
+What is left of the fixed cost, beside the start of the process (2.6 ms): loading the plugin, 0.65 ms, and MIR's
 compiling, 3 to 4 ms a unit.
 
 ### Bets, guards and bails
@@ -526,26 +526,28 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 
 ### What it gains
 
-Measured late on 2026-11-08, `release` profile, on the machine of [Speed](speed.md#beside-the-giants) while other work
-ran on it: each program of `bench/` 11 times with the JIT and 11 times with `CESIA_JIT=off`, alternated with the giants,
-from the start of the process to its end (`real/particles`, against main's binary, alternated). The median, then its 95%
+Measured on 2026-11-09, `release` profile, on the machine of [Speed](speed.md#beside-the-giants) while other work ran on
+it: each program of `bench/` 11 times with the JIT and 11 times with `CESIA_JIT=off`, alternated with the giants, from
+the start of the process to its end (`real/particles`, against main's binary, alternated). The median, then its 95%
 interval:
 
 | Program | What it does | With the JIT | Interpreter only |
 |---|---|---:|---:|
-| `fib` | `fib(35)`, recursive calls on integers | 74 ms (73–76) | 439 ms (436–450) |
-| `mandel` | a loop of floats | 62 ms (61–62) | 470 ms (467–489) |
-| `matmul` | matrices of floats, read by index | 47 ms (46–47) | 959 ms (944–1,097) |
-| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 49 ms (47–54) | 608 ms (588–672) |
-| `real/particles` | 2,000 structs, gravity and walls | 49 ms (49–57) | |
-| `dyn` | calls through a list of functions | 57 ms (57–59) | 700 ms (678–741) |
-| `maps` | 500,000 text keys written then read | 277 ms (272–281) | 279 ms (272–317) |
+| `fib` | `fib(35)`, recursive calls on integers | 58 ms (57–59) | 441 ms (438–489) |
+| `mandel` | a loop of floats | 61 ms (61–62) | 456 ms (453–467) |
+| `matmul` | matrices of floats, read by index | 44 ms (43–45) | 977 ms (963–1,017) |
+| `structs` | 1,000 maps of 4 floats, remade 5,000 times | 46 ms (44–48) | 587 ms (579–594) |
+| `real/particles` | 2,000 structs, gravity and walls | 53 ms (49–59) | |
+| `dyn` | calls through a list of functions | 55 ms (55–57) | 761 ms (692–802) |
+| `maps` | 500,000 text keys written then read | 257 ms (254–263) | 256 ms (251–278) |
 
-`dyn` calls each function through a value, which the JIT makes machine code with its inline cache of functions, its
-`math.Mod(i, 2)` and `math.Mod(i, 4)` a mask of bits, and its `total` a float in a register: before those, on the same
-day, it took 714 ms with the JIT, then 182 before its loop was entered only at its head, and 114 before `total` stayed a
-register. `structs` took 219, then 186 before its maps were kept as doubles, and `real/particles` 175, then 136. The
-loop of `maps` builds a text at each turn and stays in the interpreter: its gain is the hash table's.
+`fib` took 74 ms the day before, until the leaves of its recursion were tested at their call and its unit took MIR half
+the time to compile. `dyn` calls each function through a value, which the JIT makes machine code with its inline cache
+of functions, its `math.Mod(i, 2)` and `math.Mod(i, 4)` a mask of bits, and its `total` a float in a register: before
+those, on 2026-11-08, it took 714 ms with the JIT, then 182 before its loop was entered only at its head, and 114
+before `total` stayed a register. `structs` took 219, then 186 before its maps were kept as doubles, and
+`real/particles` 175, then 136. The loop of `maps` builds a text at each turn and stays in the interpreter: its gain is
+the hash table's.
 
 [Speed](speed.md#beside-the-giants) puts these programs beside Python, Node, Java, Go, OCaml, Lua and LuaJIT.
 
@@ -710,8 +712,8 @@ before this change, from the start of the process to its end, the median:
 | Program | Time |
 |---|---:|
 | `/usr/bin/true`, a program that does nothing | 0.53 ms |
-| OCaml's own `print_endline "1"`, compiled | 1.05 ms |
-| `use std/io` and `io.Print(1)` | 2.64 ms, 2.85 before |
+| OCaml's own `print_endline "1"`, compiled | 1.10 ms |
+| `use std/io` and `io.Print(1)` | 2.62 ms, 2.84 before |
 
 What a start does, counted by the processor's counter of the instructions run in the program, read at points of the
 start in a debugger, and by the system's count of *page faults*, each a 4 KB page of memory that the kernel maps, copies
