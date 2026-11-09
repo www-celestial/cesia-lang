@@ -241,28 +241,38 @@ allocates the 100 MB of the result, where Python counts references and Go's coll
 [std/http] against Node's `http` module and Go's `net/http`, each on one core, on the machine of
 [Beside the giants](#beside-the-giants): the server pinned to the first core, the load client to the second, Go held to
 one core with `GOMAXPROCS=1`. Each serves the same two routes, a tiny text and a small JSON object, from
-`bench/http.ce`, `bench/http.js` and `bench/http.go`. `tools/http-bench.sh` ran 6 times, alternating the three servers,
-each load for 3 seconds; each cell gives the median of the 6 runs, and in parentheses the lowest and the highest, which
+`bench/http.ce`, `bench/http.js` and `bench/http.go`. `tools/http-bench.sh` ran 6 times, the three servers and the binary
+before this change in turn, the order turned by one at each run, each load for 3 seconds; each cell gives the median of the 6 runs, and in parentheses the lowest and the highest, which
 hold the median with a probability of 96.9%. No request failed, in any run.
 
 | Load | Cesia | Node | Go |
 |---|---:|---:|---:|
-| tiny route, 10 kept connections | **65,296** (60,917–67,447) | 42,909 (38,750–45,523) | 65,649 (60,689–66,933) |
-| tiny route, 100 kept connections | **62,252** (55,145–64,082) | 45,464 (41,992–49,301) | 61,408 (58,009–65,163) |
-| tiny route, 1,000 kept connections | **36,140** (35,106–36,423) | 41,172 (37,732–44,978) | 51,067 (44,919–53,328) |
-| JSON route, 100 kept connections | **38,254** (37,754–41,151) | 39,640 (31,714–42,711) | 49,916 (47,016–51,275) |
-| a new connection per request, 10 | **22,325** (20,638–22,725) | 11,434 (8,866–12,211) | 19,375 (18,241–19,871) |
-| a new connection per request, 100 | **21,618** (20,340–23,030) | 12,860 (12,279–13,439) | 19,426 (18,831–20,095) |
+| tiny route, 10 kept connections | **66,935** (64,769–68,234) | 44,398 (43,057–45,727) | 66,676 (65,570–67,089) |
+| tiny route, 100 kept connections | **64,070** (56,386–65,963) | 45,619 (42,014–51,156) | 66,140 (62,414–67,089) |
+| tiny route, 1,000 kept connections | **36,200** (34,482–36,992) | 42,235 (38,249–45,212) | 54,369 (53,777–54,619) |
+| JSON route, 100 kept connections | **47,728** (46,565–50,264) | 41,228 (38,300–45,993) | 52,330 (51,391–52,859) |
+| a new connection per request, 10 | **23,024** (22,616–23,298) | 12,066 (11,902–12,184) | 20,578 (19,774–20,728) |
+| a new connection per request, 100 | **22,973** (21,888–23,297) | 13,116 (12,663–13,791) | 20,188 (19,267–20,314) |
 
-Requests per second. The 99th percentile of the latency, the time under which 99 requests of 100 are answered, at 100
-kept connections on the tiny route: Cesia 3.6 ms, Node 4.2 ms, Go 4.0 ms; at 1,000: Cesia 37 ms, Node 19 ms, Go 31 ms. An
-idle connection takes 2.3 KB in Cesia, 2.5 KB in Node and 17 KB in Go, and a server at rest 13.6 MB, 54 MB and 10 MB.
+Requests per second, measured on 2026-11-09, the binary before this change alternating in the same runs: it answered
+53,918 and 53,546 on the tiny route at 10 and 100 connections, 32,682 at 1,000, and 41,980 on the JSON route. The 99th
+percentile of the latency, the time under which 99 requests of 100 are answered, at 100 kept connections on the tiny
+route: Cesia 3.2 ms, Node 3.3 ms, Go 3.2 ms; at 1,000: Cesia 34.5 ms, Node 17.7 ms, Go 27.3 ms. An idle connection takes
+2.3 KB in Cesia, 2.5 KB in Node and 18 KB in Go, and a server at rest 15 MB, 54 MB and 10 MB.
 
-Cesia answers as many small requests as Go on one core, and a third to a half more than Node; on new connections it is the
-fastest of the three. Go wins the JSON route by 30%: its encoder is compiled code, where Cesia's handler and its response
-run partly in the interpreter. Both Go and Node hold 1,000 connections better: Cesia's latency there is twice Node's,
-since one core runs 1,000 fibers in turn. `--workers 2` gives Cesia two cores, and about 1.5 times the requests, as
-`tools/http-gate.sh` checks at each change; Go's goroutines take every core by themselves.
+Cesia answers as many small requests as Go on one core, and two fifths more than Node; on new connections it is the
+fastest of the three; on the JSON route it is ahead of Node by a sixth, and Go keeps a tenth: its encoder is compiled
+code, where Cesia's handler and its response run partly in the interpreter. Each request's handler runs in a fiber of
+its own, and each grew its stacks, which asked OCaml for the size of its heap at each growth, a tenth of the server's
+time, until stacks this small were left to the checkpoints ([How Cesia works](internals.md#what-it-serves)).
+
+**Where a giant wins, and why: 1,000 connections.** Node and Go answer more requests at 1,000 kept connections, and
+Node holds its 99th percentile at half of Cesia's. One core runs Cesia's 1,000 fibers in turn: by *Little's law*, 1,000
+requests waiting, answered at 36,200 a second, wait 27.6 ms each on average, so the 99th percentile can't come under
+25 ms before the server answers more, and the requests in flight live through OCaml's minor collections, which copy
+them to the major heap, seven times the words they copy at 100 connections. Go's goroutines take every core of the
+machine by themselves, and Node's event loop keeps no stack per connection. `--workers 2` gives Cesia two cores, and
+about 1.5 times the requests, as `tools/http-gate.sh` checks at each change.
 
 ```bash
 tools/http-bench.sh    # each load against Node, and Go if it is there

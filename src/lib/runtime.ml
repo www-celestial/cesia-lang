@@ -197,11 +197,12 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
     wake = (fun () -> false);
     w }
 
-(* Three stacks of [cap] entries. *)
+(* Three stacks of [cap] entries. Under 4,096 they are left to the full checkpoints: OCaml's count of the heap walks its
+   pools, and a server's fibers, which each grow their stacks at a request, paid a tenth of their time for it. *)
 let[@inline never] grow ctx need =
   let cap = max need (2 * ctx.cap) in
   if cap > base_mask then limit "memory" ctx.site;
-  if ctx.w.limits.memory_words <> max_int then check_memory ctx (3 * cap) ctx.cap;
+  if ctx.w.limits.memory_words <> max_int && cap >= 4096 then check_memory ctx (3 * cap) ctx.cap;
   let v = Array.make cap Undef and f = Float.Array.make cap 0. and i = Array.make cap 0 in
   Array.blit ctx.v 0 v 0 ctx.cap;
   Float.Array.blit ctx.f 0 f 0 ctx.cap;

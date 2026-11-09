@@ -488,6 +488,13 @@ The names a piece of code sees are those written around it, not those of its cal
 parameters, its own names and those of its file; a name given a value inside it is its own, and `if` and `for` make no
 scope: see [Functions](functions.md).
 
+## Little's law
+
+In a system that takes requests at a steady rate, the number waiting inside, L, is the rate, λ, times the time each
+spends there, W: L = λW (Little, 1961). A server that holds 1,000 connections, each with a request waiting, and answers
+36,000 requests a second, answers each in 1,000 / 36,000 s, 28 ms, on average, however it schedules them. See
+[How Cesia works](internals.md#what-it-serves).
+
 ## Lock file
 
 A file that keeps the exact version and fingerprint of each dependency, so that every machine installs the same code.

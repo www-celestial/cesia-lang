@@ -147,6 +147,9 @@ publisher moves it.
 
 ## The server and the network
 
+- John D. C. Little. "A Proof for the Queuing Formula: L = λW". *Operations Research* 9(3), 1961, 383–387.
+  <https://doi.org/10.1287/opre.9.3.383>. The requests waiting are the rate times the time each waits: the floor of a
+  server's latency at 1,000 connections, whatever its scheduler.
 - R. Fielding, M. Nottingham, J. Reschke (editors). "HTTP Semantics", RFC 9110, 2022.
   <https://www.rfc-editor.org/rfc/rfc9110>, and "HTTP/1.1", RFC 9112, 2022. <https://www.rfc-editor.org/rfc/rfc9112>.
   Methods, statuses, headers, persistent connections: [std/http].

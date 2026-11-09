@@ -663,12 +663,25 @@ pipe, by the rule of POSIX called `PIPE_BUF`: no other worker's write can cut it
 
 ### What it serves
 
-On one core of the machine above, a tiny route answers about 62,000 requests a second at 100 kept connections, as many as
-Go's `net/http` on one core and a third more than Node, with no request lost, and an idle connection takes 2.3 KB:
-the medians of 6 runs of `tools/http-bench.sh`, which [Speed](speed.md#a-server-under-load) gives in full, beside Node and
-Go, with where they win. `tools/http-gate.sh` fails a change to the server that loses a request, falls under Node or
-under its floors, passes 10 ms at the 99th percentile, or lets `--workers 2` give less than one and a half times one
-process.
+On one core of the machine above, a tiny route answers about 64,000 requests a second at 100 kept connections, and the
+JSON route 47,700, ahead of Node, with no request lost, and an idle connection takes 2.3 KB: the medians of 6 runs of
+`tools/http-bench.sh`, which [Speed](speed.md#a-server-under-load) gives in full, beside Node and Go, with where they
+win. `tools/http-gate.sh` fails a change to the server that loses a request, falls under Node or under its floors,
+passes 10 ms at the 99th percentile, or lets `--workers 2` give less than one and a half times one process.
+
+Each request runs its handler in a fiber of its own, which starts with small stacks and grows them in its first calls.
+Each growth asked OCaml for the size of its heap, to check the limit of memory, and OCaml counts it by walking its pools
+of blocks: a tenth of a server's time, in the profile of the JSON route (gdb's stacks, sampled every 3 ms). Stacks of
+fewer than 4,096 entries are now left to the check of the full checkpoints. The timers of the scheduler, one or two a
+request, are kept in a balanced tree ordered by their time, which now compares a time and a number directly, not
+through OCaml's generic comparison. Both made the tiny route a fifth faster and the JSON route 14 % faster than the
+binary before.
+
+At 1,000 kept connections, one core serves 1,000 fibers in turn, and *Little's law* sets the floor of the latency: a
+server that answers λ requests a second with L of them waiting answers each in L / λ on average, 1,000 / 36,200 =
+27.6 ms here, so its 99th percentile can't come under that until it answers more. The requests in flight also live
+through more of OCaml's minor collections: a request's data is copied to the major heap, 478 words a request at 1,000
+connections against 69 at 100 (OCaml's counters, `v=0x400`), and the collector takes about a fifth of the time there.
 
 ## Memory and the garbage collector
 

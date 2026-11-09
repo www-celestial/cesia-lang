@@ -1,9 +1,11 @@
 open Cesia
 
+(* Ordered by time, then by number: the order of OCaml's compare, without its generic walk of the pair, which a server
+   paid at each of the timers a request sets. *)
 module Timers = Map.Make (struct
     type t = float * int
 
-    let compare = compare
+    let compare (a, i) (b, j) = match Float.compare a b with 0 -> Int.compare i j | c -> c
   end)
 
 (* The wakes that other domains ask for: a domain pushes its wake on [asked], then writes a byte in the pipe, which the
