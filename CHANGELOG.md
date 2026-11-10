@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.1.0
+
+Everything here is added: a program written for 1.0 runs as it did.
+
+### Language
+
+- `a if c else b`, the value first as in Python: the same tree as `if c a else b end`, so it costs nothing when it runs.
+- `return x if c` and `break if c`, when the condition ends the line, as in Ruby: the same tree as `if c return x end`.
+- `fiber.Channel(size = n)` holds n values at most; `fiber.Close`, `fiber.Select` with a timeout, `fiber.Cancel`, and
+  `fiber.Wait(task, timeout =)`.
+- `sys.Write(path, text, sync = true)` answers once the file and its folder are on the disk; `text.ByteFind(..., fold = true)`
+  ignores the case of ASCII letters; `text.IsUtf8` and `text.Count`; `sys.ReadInput(count)`; `sys.Start(..., dir =)`.
+
+### Servers
+
+- `cesia run --workers N` serves one listener from N processes; HUP replaces them without a failed request; TERM and INT
+  stop a server cleanly; `sys.Stops` tells every fiber of a stop.
+- `std/log` writes a JSON line per event and `std/metrics` counts for Prometheus; `http.Serve` holds under abuse.
+
+### Tools
+
+- `cesia lsp`, a language server: the marks of `cesia check` as you type, the docs under the cursor, definitions, completion.
+- `cesia fmt` writes files in the style of Cesia's code and checks that each keeps its tree.
+- Native packages: a package's engine in OCaml, compiled once against `Cesia_v1`, runs its natives under `native=LABEL`.
+
+### Speed
+
+Measured on the same machine as the others, in the book's chapter on speed:
+
+- `fib` 74 -> 58 ms, ahead of Java's 71; maps 253 ms, ahead of Go's 272;
+- a fiber 3.4 us and 2.1 KB, less memory than a goroutine;
+- a start in 2.62 ms;
+- HTTP: a tiny route 67k requests a second, beside Go's 67k, and JSON 48k, ahead of Node's 41k.
+
+### Fixes
+
+- An example's check that waits no longer overwrites the variables before it.
+- The tests run on macOS's own tools; on a phone, the site's contents come first, above the text.
+- The full list is in the commits since v1.0.0.
+
 ## 1.0.0
 
 Cesia is a small language for solving real problems directly: a script that cleans a CSV, a web server on a database, a
