@@ -19,7 +19,7 @@ let () =
   compares "1" "0.99.99" 1;
   compares "0.3.0-nightly+62b49d8" "0.3" 0;
   compares "0.2.0+dev" "v0.2.0" 0;
-  check "number" (Version.number = "1.0.0");
+  check "number" (Version.number = "1.1.0");
   check "text" (Version.text = "cesia " ^ Version.number ^ if Version.dev then "+dev" else "");
   check "at_least 0.1" (Version.at_least "0.1");
   check "at_least itself" (Version.at_least Version.number);

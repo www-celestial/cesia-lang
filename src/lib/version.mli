@@ -1,9 +1,9 @@
 (** The version of this Cesia, and how versions compare. *)
 
-(** The name and version shown by [cesia version]: [cesia 1.0.0+dev] when built from the sources. *)
+(** The name and version shown by [cesia version]: [cesia 1.1.0+dev] when built from the sources. *)
 val text : string
 
-(** The version alone: [1.0.0]. *)
+(** The version alone: [1.1.0]. *)
 val number : string
 
 (** Built from the sources, not by a release: {!text} ends in [+dev]. *)

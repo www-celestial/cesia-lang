@@ -30,7 +30,7 @@ A release holds every C library that Cesia's libraries need: nothing else is ins
 cesia version
 ```
 
-It prints the version, such as `cesia 1.0.0`. Later, `cesia upgrade` shows the notes of the newest release and asks before it
+It prints the version, such as `cesia 1.1.0`. Later, `cesia upgrade` shows the notes of the newest release and asks before it
 installs it; it checks the BLAKE2b fingerprint of what it downloads the same way.
 
 ## A first program
