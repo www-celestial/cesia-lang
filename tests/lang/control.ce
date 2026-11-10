@@ -41,7 +41,12 @@ defn repeatedPanics()
 end
 isPanicKeepsTheStack() = repeatedPanics()
 
-defn firstNegative(xs) for x in xs return x if x < 0 end "none" end
+defn firstNegative(xs)
+  for x in xs
+    return x if x < 0
+  end
+  "none"
+end
 isReturnIf() = firstNegative([3, -2, -7]) == -2 and firstNegative([1, 2]) == "none"
 defn sumUpTo(xs, n)
   total = 0
@@ -62,3 +67,13 @@ defn countTwos(xs)
   n
 end
 isIfAfterBlockHead() = countTwos([2, 1, 2]) == 2
+(* Cesia 1.0 code keeps its meaning: an if with no else after a value, or after return x in the middle of a line, is a
+   statement of its own. *)
+defn oldIfAfterValue(x)
+  n = 0
+  n += 1 if x > 0 n += 10 end
+  n
+end
+isOldIfAfterValue() = oldIfAfterValue(1) == 11 and oldIfAfterValue(-1) == 1
+defn oldIfAfterReturn(x) return x if x > 0 "dead" end end
+isOldIfAfterReturn() = oldIfAfterReturn(5) == 5 and oldIfAfterReturn(-5) == -5

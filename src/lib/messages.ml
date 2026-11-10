@@ -82,7 +82,6 @@ let duplicate_arg fname name = plain (Printf.sprintf "%s received the argument \
 let duplicate name = plain (Printf.sprintf "The function \"%s\" is defined twice." name)
 let assign_function name = plain (Printf.sprintf "\"%s\" is a function of this file and can't be assigned." name)
 let return_outside = plain "return can only be used inside a function."
-let if_needs_else = hinted "A value followed by if needs an else: a if c else b." "To leave early, write return x if c or break if c; for a statement, if c ... end."
 let whole_hint = "To get a whole number, use math.Floor(...), math.Ceil(...) or math.Round(...)."
 let range_bound a = hinted (Printf.sprintf "A range needs whole numbers, not %s." a) whole_hint
 let index_type a = hinted (Printf.sprintf "An index must be a whole number, not %s." a) whole_hint

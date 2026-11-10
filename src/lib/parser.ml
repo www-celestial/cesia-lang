@@ -166,9 +166,11 @@ let rec expr p =
   p.depth <- p.depth - 1;
   e
 
-(* a if c else b, the tree of if c a else b end; after return, an if with no else is a guard, which [guarded] takes. *)
+(* a if c else b, the tree of if c a else b end. With no else, nothing changes from Cesia 1.0: the if starts a statement of
+   its own, so the tokens are read again from it; after return or break, an if c that ends its line is a guard ([guarded]). *)
 and conditional p yes after_if =
   let t = cur p in
+  let back = (p.i, p.its, p.bound, p.first, p.saw_end) in
   advance p;
   let cond = then_expr p in
   if (cur p).t == ELSE then begin
@@ -176,13 +178,18 @@ and conditional p yes after_if =
     let no = expr p in
     node p t.pos (If (cond, arm p yes, arm p no))
   end
-  else if after_if = 1 then begin
-    p.guard <- Some (t.pos, cond);
+  else begin
+    if after_if = 1 && line_ends p then p.guard <- Some (t.pos, cond)
+    else begin
+      let i, its, bound, first, saw_end = back in
+      p.i <- i; p.its <- its; p.bound <- bound; p.first <- first; p.saw_end <- saw_end
+    end;
     yes
   end
-  else error p (cur p).pos Messages.if_needs_else
 
-(* return x if c and break if c: the tree of if c return x end. *)
+and line_ends p = let n = (cur p).t in n == NL || n == EOF
+
+(* return x if c and break if c, when the condition ends the line: the tree of if c return x end. *)
 and guarded p s =
   match p.guard with
   | Some (pos, cond) ->
@@ -190,8 +197,15 @@ and guarded p s =
     node p pos (If (cond, arm p s, [||]))
   | None when (cur p).t == IF ->
     let t = cur p in
+    let back = (p.i, p.its, p.bound, p.first, p.saw_end) in
     advance p;
-    node p t.pos (If (then_expr p, arm p s, [||]))
+    let cond = then_expr p in
+    if line_ends p then node p t.pos (If (cond, arm p s, [||]))
+    else begin
+      let i, its, bound, first, saw_end = back in
+      p.i <- i; p.its <- its; p.bound <- bound; p.first <- first; p.saw_end <- saw_end;
+      s
+    end
   | None -> s
 
 (* One branch, as [block] makes it: the debugger's hook first when it asks for one. *)

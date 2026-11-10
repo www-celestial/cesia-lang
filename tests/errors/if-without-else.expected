@@ -1,5 +1,0 @@
-if-without-else.ce:3:22: A value followed by if needs an else: a if c else b.
-  3 | size = 4 if limit > 2
-    |                      ^
-  To leave early, write return x if c or break if c; for a statement, if c ... end.
-exit 1

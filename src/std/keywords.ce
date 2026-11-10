@@ -19,8 +19,8 @@ use std/value
       if 0 > 1 "up" else if 0 < 1 "down" else "flat" end --> "down"
 
     The short form puts the value first, as in Python: a if c else b is if c a else b end, the same tree, so it costs
-    nothing more. It needs its else. After return or break, an if with no else leaves early: return x if c is if c return x
-    end, break if c is if c break end.
+    nothing more. It needs its else: without one, the if starts a statement of its own, as before. After return or break, an
+    if c that ends the line leaves early: return x if c is if c return x end, break if c is if c break end.
 
       "yes" if 2 > 1 else "no" --> "yes"
       "up" if 0 > 1 else "down" if 0 < 1 else "flat" --> "down" *)
@@ -71,7 +71,10 @@ use std/value
     break if c is a short way to write if c break end, the same tree.
 
       count = 0
-      for x in 1..10 break if x > 3 count += 1 end
+      for x in 1..10
+        break if x > 3
+        count += 1
+      end
       count --> 3 *)
 
 (** return
@@ -82,7 +85,7 @@ use std/value
       firstNegative([3, -2, -7]) --> -2
       firstNegative([1, 2]) --> "none"
 
-    return x if c is a short way to write if c return x end: for x in xs return x if x < 0 end. *)
+    return x if c, with the condition at the end of the line, is a short way to write if c return x end. *)
 
 (** defn
     Defines a function whose body is a block, up to end. A one-line function needs no defn: Twice(x) = 2 * x. A method writes its

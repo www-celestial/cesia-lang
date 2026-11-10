@@ -55,8 +55,8 @@ if 1 > 2 "never" end -->
 
 The value first, then the condition, as in Python: `a if c else b` is a short way to write `if c a else b end`. Both make
 the same tree in the parser, so the interpreter and the JIT see no difference: the short form costs nothing when it runs,
-however often a program uses it. It needs its `else`: a value followed by `if` alone is an error, since nothing would say
-what it gives when the condition is false.
+however often a program uses it. It needs its `else`: without one, the `if` after a value starts a statement of its own,
+as it always has, so code written before the short form keeps its meaning.
 
 ```cesia
 use std/math
@@ -180,8 +180,9 @@ end
 firstNegative([3, -2, -7]) -->
 ```
 
-Only `return` and `break` take an `if` with no `else` after them. `return if c a else b end` keeps its meaning: it returns the
-value of that `if`.
+Only `return` and `break` take an `if` with no `else` after them, and only when the condition ends the line: `return x if c y
+end` on one line is still `return x` followed by an `if` of its own, as before. `return if c a else b end` keeps its meaning
+too: it returns the value of that `if`.
 
 ## match
 
