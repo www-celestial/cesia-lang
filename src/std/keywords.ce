@@ -65,9 +65,9 @@ use std/value
     Leaves the function at once, with a value. A return alone gives missing. Without one, a function gives the value of its last
     line.
 
-      defn sign(x) if x < 0 return "negative" end "not negative" end
-      sign(-2) --> "negative"
-      sign(5) --> "not negative" *)
+      defn firstNegative(xs) for x in xs if x < 0 return x end end "none" end
+      firstNegative([3, -2, -7]) --> -2
+      firstNegative([1, 2]) --> "none" *)
 
 (** defn
     Defines a function whose body is a block, up to end. A one-line function needs no defn: Twice(x) = 2 * x. A method writes its
