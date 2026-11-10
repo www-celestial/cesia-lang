@@ -16,7 +16,14 @@ use std/value
 
       if 2 > 1 "yes" else "no" end --> "yes"
       if false 1 end --> missing
-      if 0 > 1 "up" else if 0 < 1 "down" else "flat" end --> "down" *)
+      if 0 > 1 "up" else if 0 < 1 "down" else "flat" end --> "down"
+
+    The short form puts the value first, as in Python: a if c else b is if c a else b end, the same tree, so it costs
+    nothing more. It needs its else. After return or break, an if with no else leaves early: return x if c is if c return x
+    end, break if c is if c break end.
+
+      "yes" if 2 > 1 else "no" --> "yes"
+      "up" if 0 > 1 else "down" if 0 < 1 else "flat" --> "down" *)
 
 (** else
     The branch of an if taken when the condition is false, and the arm of a match taken when no pattern fits.
@@ -59,7 +66,13 @@ use std/value
 
       seen = 0
       for x in 1..10 if x > 3 break end seen += 1 end
-      seen --> 3 *)
+      seen --> 3
+
+    break if c is a short way to write if c break end, the same tree.
+
+      count = 0
+      for x in 1..10 break if x > 3 count += 1 end
+      count --> 3 *)
 
 (** return
     Leaves the function at once, with a value. A return alone gives missing. Without one, a function gives the value of its last
@@ -67,7 +80,9 @@ use std/value
 
       defn firstNegative(xs) for x in xs if x < 0 return x end end "none" end
       firstNegative([3, -2, -7]) --> -2
-      firstNegative([1, 2]) --> "none" *)
+      firstNegative([1, 2]) --> "none"
+
+    return x if c is a short way to write if c return x end: for x in xs return x if x < 0 end. *)
 
 (** defn
     Defines a function whose body is a block, up to end. A one-line function needs no defn: Twice(x) = 2 * x. A method writes its

@@ -76,6 +76,7 @@ val duplicate_arg : string -> string -> t
 val duplicate : string -> t
 val assign_function : string -> t
 val return_outside : t
+val if_needs_else : t
 val range_bound : string -> t
 val index_type : string -> t
 val index_outside : int -> int -> t

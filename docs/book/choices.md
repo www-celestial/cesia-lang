@@ -51,6 +51,33 @@ With no `else`, an `if` whose condition is false gives `missing`:
 if 1 > 2 "never" end -->
 ```
 
+### The short form: a if c else b
+
+The value first, then the condition, as in Python: `a if c else b` is a short way to write `if c a else b end`. Both make
+the same tree in the parser, so the interpreter and the JIT see no difference: the short form costs nothing when it runs,
+however often a program uses it. It needs its `else`: a value followed by `if` alone is an error, since nothing would say
+what it gives when the condition is false.
+
+```cesia
+use std/math
+n = 4
+kind = "even" if math.Mod(n, 2) == 0 else "odd"
+kind -->
+size = "big" if n > 10 else "mid" if n > 3 else "small"
+size -->
+```
+
+The same two, in the plain form: `if math.Mod(n, 2) == 0 "even" else "odd" end` and
+`if n > 10 "big" else if n > 3 "mid" else "small" end`. In a list built with `for`, the short form chooses each value, and an
+`if` after the list's source keeps only some of them, as in Python:
+
+```cesia
+[x * 2 if x > 0 else 0 for x in [1, -2, 3, 4] if x != 4] -->
+```
+
+After the head of a block, `if c`, `while c`, `for x in xs` or `match x`, an `if` starts the body, never a short form:
+`for x in xs if x > 0 ... end end` is a loop whose body is an `if`.
+
 ## for
 
 [for] runs its body once for each element of a list or a range, in order:
@@ -126,6 +153,35 @@ for x in [3, 8, 12, 5, 20]
   end
 end
 ```
+
+### Leaving early: break if c and return x if c
+
+`break if c` is a short way to write `if c break end`, and `return x if c` one for `if c return x end`, as in Ruby. They are
+the same tree, so they cost nothing more. Here the loop adds numbers as long as the total stays at most 9:
+
+```cesia
+total = 0
+for x in [4, 4, 4]
+  break if total + x > 9
+  total += x
+end
+total -->
+```
+
+And a function that gives the first negative number of a list, or `"none"`:
+
+```cesia
+defn firstNegative(xs)
+  for x in xs
+    return x if x < 0
+  end
+  "none"
+end
+firstNegative([3, -2, -7]) -->
+```
+
+Only `return` and `break` take an `if` with no `else` after them. `return if c a else b end` keeps its meaning: it returns the
+value of that `if`.
 
 ## match
 

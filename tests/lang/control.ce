@@ -40,3 +40,25 @@ defn repeatedPanics()
   true
 end
 isPanicKeepsTheStack() = repeatedPanics()
+
+defn firstNegative(xs) for x in xs return x if x < 0 end "none" end
+isReturnIf() = firstNegative([3, -2, -7]) == -2 and firstNegative([1, 2]) == "none"
+defn sumUpTo(xs, n)
+  total = 0
+  for x in xs
+    break if total + x > n
+    total += x
+  end
+  total
+end
+isBreakIf() = sumUpTo([4, 4, 4], 9) == 8 and sumUpTo([], 9) == 0
+isValueIf() = (1 if 2 > 1 else 2) == 1 and ("a" if false else "b" if false else "c") == "c"
+isValueIfInList() = value.Equal([x * 2 if x > 0 else 0 for x in [1, -2, 3] if x != 3], [2, 0])
+defn pick(c) return if c "yes" else "no" end end
+isReturnOfIf() = pick(true) == "yes" and pick(false) == "no"
+defn countTwos(xs)
+  n = 0
+  for x in xs if x == 2 n += 1 end end
+  n
+end
+isIfAfterBlockHead() = countTwos([2, 1, 2]) == 2

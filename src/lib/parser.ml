@@ -21,6 +21,8 @@ type p = {
   mutable bound : (string * Pos.t) list;  (* each name the file gives a value to, and where, reversed *)
   mutable first : expr option;  (* an operand already read, which the next [unary] gives *)
   mutable its : int;  (* the [it] read so far: arguments that read none need no search for one *)
+  mutable after_if : int;  (* how the next [expr] takes an [if] after its value: 0 [a if c else b], 1 also a guard, 2 not *)
+  mutable guard : (Pos.t * expr) option;  (* the [if c] of [return x if c], read by [expr] *)
 }
 
 let error p pos (m : Messages.t) =
@@ -149,6 +151,8 @@ let next_tok p =
 
 (* Every expression passes here, so no closure: an error ends the parse, and nothing needs the depth back then. *)
 let rec expr p =
+  let after_if = p.after_if in
+  p.after_if <- 0;
   p.depth <- p.depth + 1;
   if p.depth > p.nesting then error p (cur p).pos Messages.too_nested;
   let t = cur p in
@@ -158,8 +162,45 @@ let rec expr p =
     | LP when after_paren p == ARROW -> lambda p
     | _ -> then_expr p
   in
+  let e = if after_if < 2 && (cur p).t == IF then conditional p e after_if else e in
   p.depth <- p.depth - 1;
   e
+
+(* a if c else b, the tree of if c a else b end; after return, an if with no else is a guard, which [guarded] takes. *)
+and conditional p yes after_if =
+  let t = cur p in
+  advance p;
+  let cond = then_expr p in
+  if (cur p).t == ELSE then begin
+    advance p;
+    let no = expr p in
+    node p t.pos (If (cond, arm p yes, arm p no))
+  end
+  else if after_if = 1 then begin
+    p.guard <- Some (t.pos, cond);
+    yes
+  end
+  else error p (cur p).pos Messages.if_needs_else
+
+(* return x if c and break if c: the tree of if c return x end. *)
+and guarded p s =
+  match p.guard with
+  | Some (pos, cond) ->
+    p.guard <- None;
+    node p pos (If (cond, arm p s, [||]))
+  | None when (cur p).t == IF ->
+    let t = cur p in
+    advance p;
+    node p t.pos (If (then_expr p, arm p s, [||]))
+  | None -> s
+
+(* One branch, as [block] makes it: the debugger's hook first when it asks for one. *)
+and arm p (e : expr) = if p.hooks then [| hook p e.pos; e |] else [| e |]
+
+(* The head of a block, if c, while c, for x in xs, match x: an if after it starts the body. *)
+and head p =
+  p.after_if <- 2;
+  expr p
 
 (* x then f(a): the value becomes the last positional argument, or takes the place of a lone [it]. *)
 and then_expr p =
@@ -720,7 +761,7 @@ and array_lit p pos =
           advance p;
           let cvar = name (bound_name p "a variable") in
           expect p IN "in";
-          let csrc = expr p in
+          let csrc = head p in
           let cguard =
             if (cur p).t == IF then begin
               advance p;
@@ -782,7 +823,7 @@ and text p pos parts =
     node p pos (Interp (Array.of_list (List.map part parts)))
 
 and if_expr p pos =
-  let cond = expr p in
+  let cond = head p in
   let yes = block p (fun t -> t == ELSE || t == END) in
   let no =
     if (cur p).t == ELSE then begin
@@ -804,7 +845,7 @@ and if_expr p pos =
   node p pos (If (cond, yes, no))
 
 and while_expr p pos =
-  let cond = expr p in
+  let cond = head p in
   let saved = p.loop in
   let flag = ref false in
   p.loop <- Some flag;
@@ -816,7 +857,7 @@ and while_expr p pos =
 and match_expr p pos =
   let saved = p.in_index in
   p.in_index <- 0;
-  let subject = expr p in
+  let subject = head p in
   let arms = ref [] in
   skip_nl p;
   while (cur p).t != END do
@@ -846,7 +887,7 @@ and match_expr p pos =
 and for_expr p pos =
   let var = name (bound_name p "a variable") in
   expect p IN "in";
-  let iter = expr p in
+  let iter = head p in
   let saved = p.loop in
   let flag = ref false in
   p.loop <- Some flag;
@@ -902,7 +943,7 @@ and stmt p =
      | Some flag -> flag := true
      | None -> error p t.pos Messages.break_outside);
     advance p;
-    node p t.pos Break
+    guarded p (node p t.pos Break)
   | STRUCT -> struct_def p t.pos
   | INTERFACE -> interface_def p t.pos
   | USE ->
@@ -956,8 +997,8 @@ and stmt p =
     if not p.in_function then error p t.pos Messages.return_outside;
     advance p;
     let next = (cur p).t in
-    let rvalue = if next == NL || next == END || next == ELSE || next == EOF then None else Some (expr p) in
-    node p t.pos (Return { rvalue; tail = false })
+    let rvalue = if next == NL || next == END || next == ELSE || next == EOF then None else (p.after_if <- 1; Some (expr p)) in
+    guarded p (node p t.pos (Return { rvalue; tail = false }))
   | NAME _ when next_tok p == LP && not p.toks.(p.i + 1).sp && after_call_is_def p (p.i + 1) ->
     short_def p t.pos (definition_name p)
   | NAME _ when short_method p -> short_def p t.pos (definition_name p)
@@ -1011,7 +1052,7 @@ let hides p (body : block) =
 
 let program ?(hooks = false) ~file ~nesting toks =
   let p = { toks; file; nesting; hooks; i = 0; depth = 0; mode = Lines; next_id = 0; loop = None; in_function = false;
-            in_index = 0; saw_end = false; stmt_at = 0; bound = []; first = None; its = 0 } in
+            in_index = 0; saw_end = false; stmt_at = 0; bound = []; first = None; its = 0; after_if = 0; guard = None } in
   let body = block p (fun t -> t == EOF) in
   hides p body;
   { fname = ""; params = [||]; ret = None; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
