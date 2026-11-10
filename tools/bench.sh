@@ -12,6 +12,9 @@ refs=${REFS:-python lua}
 cesia=_build/default/src/bin/main.exe
 runs=${RUNS:-3}
 status=0
+case " $refs " in
+  *" java"*) mkdir -p _build/bench-java && javac -d _build/bench-java bench/*.java || exit 1 ;;
+esac
 
 expected() {
   case "$1" in
@@ -60,6 +63,8 @@ for t in $tests; do
       lua) measure "$t" lua lua "bench/$t.lua" ;;
       luajit) measure "$t" luajit luajit "bench/$t.lua" ;;
       node) measure "$t" node node "bench/$t.js" ;;
+      java) measure "$t" java java -cp _build/bench-java "$t" ;;
+      java-int) measure "$t" java-int java -Xint -cp _build/bench-java "$t" ;;
     esac
   done
 done
