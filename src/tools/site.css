@@ -48,6 +48,7 @@ input.search {
   font: inherit; font-size: 15px; padding: 4px 8px; color: var(--ink); background: var(--page);
   border: 1px solid var(--edge); border-radius: 6px;
 }
+input.search::placeholder { color: var(--muted); opacity: 1; }
 button.theme {
   font: inherit; color: var(--on-band); background: none; border: 1px solid var(--on-band); border-radius: 6px; padding: 2px 8px;
   cursor: pointer;
@@ -138,6 +139,7 @@ math[display="block"] { margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; 
 .results[hidden] { display: none; }
 .results li { padding: 6px 10px; border-radius: 4px; cursor: pointer; }
 .results li[aria-selected="true"] { background: var(--pick); }
+.results li[aria-selected="true"] .kind, .results li[aria-selected="true"] .about { color: var(--ink); }
 .results .title { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .results .kind { color: var(--muted); font-size: 13px; margin-left: 8px; }
 .results .about { display: block; color: var(--muted); font-size: 14px; }
