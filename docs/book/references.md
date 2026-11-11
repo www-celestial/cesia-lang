@@ -25,8 +25,8 @@ publisher moves it.
   <https://docs.python.org/3/whatsnew/3.6.html>. The layout of the hash table of a Cesia map past 32 keys that one name
   holds: an index of slots over the entries in their order.
 - Donald E. Knuth. *The Art of Computer Programming*, vol. 3, *Sorting and Searching*, 2nd edition, Addison-Wesley, 1998,
-  section 6.4. Linear probing and its cost, (1 + 1/(1 − a))/2 slots for a key there and (1 + 1/(1 − a)²)/2 for one that
-  isn't at load a: 1.5 and 2.5 at half load, the most a Cesia table holds.
+  section 6.4. Linear probing and its cost, $(1 + 1/(1 - a))/2$ slots for a key there and $(1 + 1/(1 - a)^2)/2$ for one that
+  isn't at load $a$: 1.5 and 2.5 at half load, the most a Cesia table holds.
 - Carl Friedrich Bolz, Lukas Diekmann, Laurence Tratt. "Storage Strategies for Collections in Dynamically Typed
   Languages". *OOPSLA 2013*, ACM, 167–182. <https://doi.org/10.1145/2509136.2509531>. A collection of integers kept as
   bare integers, switched once to general storage when another kind arrives: Cesia's lists, and the values of its tables.
@@ -242,9 +242,9 @@ BLAKE2 is under [Cryptography](#cryptography), QuickCheck and the shrinking of H
   until it shows the cause, here two files of one size.
 - Alfred J. Menezes, Paul C. van Oorschot, Scott A. Vanstone. *Handbook of Applied Cryptography*. CRC Press, 1996, §2.1.5,
   Fact 2.27. <https://cacr.uwaterloo.ca/hac/>. The birthday problem, its exact probability and its approximation
-  1 − exp(−n(n − 1)/2m), from which the bound of the chapter follows.
+  $1 - \exp(-n(n - 1)/(2m))$, from which the bound of the chapter follows.
 - M-J. Saarinen (editor), J-P. Aumasson. "The BLAKE2 Cryptographic Hash and Message Authentication Code (MAC)", RFC 7693,
-  2015. <https://www.rfc-editor.org/rfc/rfc7693>. BLAKE2b of 1 to 64 bytes, and the collision security of 2^128 of its
+  2015. <https://www.rfc-editor.org/rfc/rfc7693>. BLAKE2b of 1 to 64 bytes, and the collision security of $2^{128}$ of its
   32-byte form, the digest of [cesia.Fingerprint].
 - Xiaoyun Wang, Hongbo Yu. "How to Break MD5 and Other Hash Functions". *EUROCRYPT 2005*, LNCS 3494, Springer, 19–35.
   <https://doi.org/10.1007/11426639_2>. Collisions of MD5 within an hour: why a tool that hashes with MD5 must compare

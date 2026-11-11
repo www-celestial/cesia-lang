@@ -290,7 +290,7 @@ has two bitmaps. The first marks the keys held in the node itself, inline, each 
 whose 5 bits at this level no other key under the node shares. The second marks the places that several keys share, each
 holding a node of the next level for them. So a key goes down a level only when another key shares its bits, and no
 node ever holds a lone key below it: when a key is dropped and leaves one beside it, that one comes back up into its
-parent. A read follows one path from the root, about log₃₂ n levels, written O(log₃₂ n): 3 for 30,000 keys, 4 for a
+parent. A read follows one path from the root, about $\log_{32} n$ levels, written $O(\log_{32} n)$: 3 for 30,000 keys, 4 for a
 million. A write copies only the nodes on that path, and of each only the array it changes, sharing the rest with the
 old map: this is *structural sharing*.
 
@@ -329,7 +329,7 @@ Three details matter for safety and for numbers:
   send a server keys that all share one hash, and every read would walk them all: a *hash flooding* attack, a denial of
   service.
 - **Keys whose 30 bits of hash are all equal** go to a balanced binary tree, sorted by key, so even keys chosen to collide
-  cost O(log n), never O(n). In the table, keys that fall together make long runs of full slots: a new key whose probe
+  cost $O(\log n)$, never $O(n)$. In the table, keys that fall together make long runs of full slots: a new key whose probe
   passes 128 slots turns the map into the trie, which no choice of keys makes deeper. Random keys don't come near it: in a
   simulation of our table at its load, the longest probe of an insert was 45 slots in ten runs of a million random keys,
   and 51 in two runs of four million.
@@ -680,10 +680,11 @@ through OCaml's generic comparison. Both made the tiny route a fifth faster and 
 binary before.
 
 At 1,000 kept connections, one core serves 1,000 fibers in turn, and *Little's law* sets the floor of the latency: a
-server that answers λ requests a second with L of them waiting answers each in L / λ on average, 1,000 / 36,200 =
-27.6 ms here, so its 99th percentile can't come under that until it answers more. The requests in flight also live
-through more of OCaml's minor collections: a request's data is copied to the major heap, 478 words a request at 1,000
-connections against 69 at 100 (OCaml's counters, `v=0x400`), and the collector takes about a fifth of the time there.
+server that answers $\lambda$ requests a second with $L$ of them waiting answers each in $L / \lambda$ on average,
+$1{,}000 / 36{,}200\ \text{s} = 27.6\ \text{ms}$ here, so its 99th percentile can't come under that until it answers
+more. The requests in flight also live through more of OCaml's minor collections: a request's data is copied to the
+major heap, 478 words a request at 1,000 connections against 69 at 100 (OCaml's counters, `v=0x400`), and the
+collector takes about a fifth of the time there.
 
 ## Memory and the garbage collector
 

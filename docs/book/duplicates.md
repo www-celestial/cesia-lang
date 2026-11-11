@@ -110,9 +110,9 @@ naive("downloads") -->
 ```
 
 It is right, since it does what the definition says, and it will serve as the sure answer that a faster way is checked
-against. Its cost: n files make n(n − 1)/2 pairs, and each pair reads its two files, so a folder without copies is read
-n(n − 1) times in all, each file n − 1 times. That cost is *quadratic*: twice the files, four times the reads. In the
-[big O notation](glossary.md#big-o-notation), it is O(n²).
+against. Its cost: $n$ files make $n(n - 1)/2$ pairs, and each pair reads its two files, so a folder without copies is read
+$n(n - 1)$ times in all, each file $n - 1$ times. That cost is *quadratic*: twice the files, four times the reads. In the
+[big O notation](glossary.md#big-o-notation), it is $O(n^2)$.
 
 ### How it was measured
 
@@ -177,7 +177,7 @@ read (a *warm* [page cache](glossary.md#page-cache)), measured on 2026-11-08, lo
 | 400 | 80.7 MB | 79,800 | 16,087 | 15,989 to 16,231 |
 
 Twice the files, three to five times the time. It is not exactly four because the folders differ in the mean size of
-their files: each file is read n − 1 times, so the naive way reads about 2.4, 8.3 and 32.2 GB, at 2.0 to 2.6 GB a
+their files: each file is read $n - 1$ times, so the naive way reads about 2.4, 8.3 and 32.2 GB, at 2.0 to 2.6 GB a
 second. At that pace a folder of 10,000 photos would take 625 times the 16 seconds of 400, about three hours.
 
 ## 3. A hypothesis that can be proved wrong
@@ -186,7 +186,7 @@ A *hypothesis* is worth something when an experiment can prove it wrong: it is
 [falsifiable](glossary.md#falsifiable), in the word of Karl Popper's *The Logic of Scientific Discovery* (1934). "The
 program is slow" is none. "The time goes into reading the same files again and again" is one, since it predicts what an
 experiment will show: read each file once, keep it in memory, compare the same pairs in the same order, and nearly all
-of the time must go, since each file is then read once instead of n − 1 times. If the time went instead into comparing
+of the time must go, since each file is then read once instead of $n - 1$ times. If the time went instead into comparing
 bytes, walking the folder or starting Cesia, it would hardly move.
 
 An experiment changes one thing only. `naive` takes its way of reading a file as a parameter, `read`, which is
@@ -259,19 +259,19 @@ read.
 **A cryptographic hash.** The dearer key is a [hash function](glossary.md#hash-function): a digest of a fixed length,
 computed from all the bytes of a file. BLAKE2b, by Jean-Philippe Aumasson, Samuel Neves, Zooko Wilcox-O'Hearn and
 Christian Winnerlein (2013), is a cryptographic one, as fast as MD5 and built so that nobody knows how to find two texts of
-the same digest. Its 256-bit form, BLAKE2b-256, has a *collision security* of 2^128, by RFC 7693: finding two texts with
-one digest takes about 2^128 tries of the hash, the generic attack. [cesia.Fingerprint] gives that digest, the one
+the same digest. Its 256-bit form, BLAKE2b-256, has a *collision security* of $2^{128}$, by RFC 7693: finding two texts with
+one digest takes about $2^{128}$ tries of the hash, the generic attack. [cesia.Fingerprint] gives that digest, the one
 `cesia.lock` keeps for each file. It needs no permission, where [crypto.Blake2b] calls libsodium; both give the same 32
 bytes.
 
 **The birthday bound.** Two different files of the same size may still get the same digest, by chance: a *collision*.
-How likely is that? For k different files, there are k(k − 1)/2 pairs. If the digests behave as random draws among the
-N = 2^256 possible ones, each pair collides with the probability 1/N, and the probability that at least one pair does is
+How likely is that? For $k$ different files, there are $k(k - 1)/2$ pairs. If the digests behave as random draws among the
+$N = 2^{256}$ possible ones, each pair collides with the probability $1/N$, and the probability that at least one pair does is
 at most the sum over the pairs, by the [union bound](glossary.md#union-bound):
 
-```text
-P(some collision among k files)  ≤  k(k − 1) / 2  ×  2^−256
-```
+$$
+P(\text{some collision among } k \text{ files}) \le \frac{k(k - 1)}{2} \times 2^{-256}
+$$
 
 This is the [birthday bound](glossary.md#birthday-bound), named after the classic surprise that 23 people are enough for
 two of them to share a birthday more often than not; the *Handbook of Applied Cryptography* of Menezes, van Oorschot and
@@ -289,9 +289,9 @@ The tools that people use for this problem do the same steps, by their documenta
 
 Both compare the bytes at the end, and for a reason: MD5 is broken, since Xiaoyun Wang and Hongbo Yu showed in 2005 how
 to make two texts of one MD5, and xxHash is no cryptographic hash, made for speed, with 64 bits in jdupes (XXH64, in its
-source). With 64 bits, the bound for a million files is 2.7 × 10^−8, and anyone can make two files of one xxHash on
-purpose. With BLAKE2b-256, the bound is 2^192 times smaller, about 6 × 10^57 times, and making two files of one digest
-takes the 2^128 tries of the generic attack. So this chapter takes the other choice: no comparison of bytes, one read of
+source). With 64 bits, the bound for a million files is $2.7 \times 10^{-8}$, and anyone can make two files of one xxHash on
+purpose. With BLAKE2b-256, the bound is $2^{192}$ times smaller, about $6 \times 10^{57}$ times, and making two files of one digest
+takes the $2^{128}$ tries of the generic attack. So this chapter takes the other choice: no comparison of bytes, one read of
 each file whose size another file has, and the bound as the proof that no group is wrong.
 
 What doesn't apply: jdupes hashes the first 4 KiB of a file before the whole file, which saves reading most of a large
@@ -422,10 +422,10 @@ bound(1000000, 256) * 1e9 * 3600 * 24 * 365.25 * 1000 -->
 ```
 
 For a million different files of one size, the chance that BLAKE2b-256 puts two of them in one group is at most
-4.3 × 10^−66; for a billion, 4.3 × 10^−60. Run a billion times a second for a thousand years, on a million files each
-time, the chance that any run ever goes wrong is at most the sum over the runs, the union bound again: 1.4 × 10^−46.
+$4.3 \times 10^{-66}$; for a billion, $4.3 \times 10^{-60}$. Run a billion times a second for a thousand years, on a million files each
+time, the chance that any run ever goes wrong is at most the sum over the runs, the union bound again: $1.4 \times 10^{-46}$.
 The bound rests on one assumption: that the digests of files that nobody made against BLAKE2b behave as random draws.
-Against files made on purpose, the guarantee is the collision security of 2^128.
+Against files made on purpose, the guarantee is the collision security of $2^{128}$.
 
 ### Speed, before and after, beside Python
 
@@ -477,8 +477,8 @@ Python, where their intervals don't meet and they differ by more than 2%:
 | 400 files | 16,087 (15,989 to 16,231) | 40.3 (39.8 to 40.6) | 41.0 (40.7 to 41.5) |
 | 1,000 files, 192 MB | | 94.3 (93.6 to 97.1) | **70.4** (69.8 to 70.9) |
 
-From 16.1 s to 40 ms at 400 files: 400 times faster, and the gap grows with the folder, since one cost is O(n²) and the
-other about O(n). `Duplicates` reads 59 of the 400 files there, 13.2 MB of 80.7: the copies, since no two different
+From 16.1 s to 40 ms at 400 files: 400 times faster, and the gap grows with the folder, since one cost is $O(n^2)$ and the
+other about $O(n)$. `Duplicates` reads 59 of the 400 files there, 13.2 MB of 80.7: the copies, since no two different
 photos of these folders had one size. Its peak memory, as the system counts it, stays under 16 MB, as Python's does:
 the largest file it holds is 1 MiB.
 

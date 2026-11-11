@@ -58,8 +58,8 @@ first way that comes to mind, each file against every other one.
 
 ## Big O notation
 
-A way to say how the cost of a program grows with the size n of its input, without its constant: O(n) grows as n, O(n²)
-as its square, so twice the input takes four times the work. Comparing every file with every other one is O(n²); grouping
+A way to say how the cost of a program grows with the size $n$ of its input, without its constant: $O(n)$ grows as $n$, $O(n^2)$
+as its square, so twice the input takes four times the work. Comparing every file with every other one is $O(n^2)$; grouping
 them by size first reads each file at most once: see [Solving a real problem](duplicates.md#2-measure-before-changing-anything).
 
 ## Binding
@@ -69,9 +69,9 @@ The link between a name and a value. In Cesia `=` binds a name, and binding it a
 
 ## Birthday bound
 
-The bound on the chance that two of k values drawn at random among N are equal: at most k(k − 1)/2N, one chance in N for
-each of the k(k − 1)/2 pairs. It is named after the surprise that 23 people suffice for two to share a birthday more often
-than not. For a million files and a digest of 256 bits it is 4.3 × 10^−66: see
+The bound on the chance that two of $k$ values drawn at random among $N$ are equal: at most $k(k - 1)/(2N)$, one chance in $N$ for
+each of the $k(k - 1)/2$ pairs. It is named after the surprise that 23 people suffice for two to share a birthday more often
+than not. For a million files and a digest of 256 bits it is $4.3 \times 10^{-66}$: see
 [Solving a real problem](duplicates.md#the-bound-worked-out).
 
 ## BLAS and LAPACK
@@ -135,8 +135,8 @@ this way, in OCaml: see [How Cesia works](internals.md#running-closures-as-code)
 ## Collision resistance
 
 The property of a hash function that nobody can find two texts with the same digest, a collision, faster than by trying.
-For a digest of b bits, trying takes about 2^(b/2) hashes, by the birthday bound, so BLAKE2b-256 has a collision security
-of 2^128. MD5 lost it in 2005. See [Solving a real problem](duplicates.md#4-research).
+For a digest of $b$ bits, trying takes about $2^{b/2}$ hashes, by the birthday bound, so BLAKE2b-256 has a collision security
+of $2^{128}$. MD5 lost it in 2005. See [Solving a real problem](duplicates.md#4-research).
 
 ## Column-major order
 
@@ -221,7 +221,7 @@ Code from another project that yours uses. In Cesia a `[deps]` table of `cesia.t
 ## Deque
 
 A double-ended queue: a sequence that takes and gives elements at both ends. [std/queue] is a persistent one, each
-operation in `O(log₃₂ n)`: see [Numbers and algorithms](numbers.md#sets-queues-and-heaps).
+operation in $O(\log_{32} n)$: see [Numbers and algorithms](numbers.md#sets-queues-and-heaps).
 
 ## Destructuring
 
@@ -380,7 +380,7 @@ file: see [Solving a real problem](duplicates.md#7-what-is-left).
 A HAMT: a tree where each level is chosen by 5 bits of a key's hash, so a node has up to 32 children, kept compact by a
 bitmap of those that exist. Phil Bagwell described it in 2001, and Clojure made its persistent maps of it. A Cesia map of
 more than 32 keys becomes one, of the kind called [CHAMP](#champ), at its first write that must keep the old map: a read
-follows about log₃₂ n levels, and a write copies only its path. See
+follows about $\log_{32} n$ levels, and a write copies only its path. See
 [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Hash flooding
@@ -490,9 +490,9 @@ scope: see [Functions](functions.md).
 
 ## Little's law
 
-In a system that takes requests at a steady rate, the number waiting inside, L, is the rate, λ, times the time each
-spends there, W: L = λW (Little, 1961). A server that holds 1,000 connections, each with a request waiting, and answers
-36,000 requests a second, answers each in 1,000 / 36,000 s, 28 ms, on average, however it schedules them. See
+In a system that takes requests at a steady rate, the number waiting inside, $L$, is the rate, $\lambda$, times the time each
+spends there, $W$: $L = \lambda W$ (Little, 1961). A server that holds 1,000 connections, each with a request waiting, and answers
+36,000 requests a second, answers each in $1{,}000 / 36{,}000$ s, 28 ms, on average, however it schedules them. See
 [How Cesia works](internals.md#what-it-serves).
 
 ## Lock file
@@ -680,7 +680,7 @@ than `net`: see [Permissions](permissions.md#allow).
 ## Priority queue
 
 A collection that always gives back its smallest key first. [std/heap] is one, a leftist heap, each insert and pop in
-`O(log n)`: see [Numbers and algorithms](numbers.md#sets-queues-and-heaps).
+$O(\log n)$: see [Numbers and algorithms](numbers.md#sets-queues-and-heaps).
 
 ## Property-based testing
 

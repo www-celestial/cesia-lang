@@ -132,7 +132,7 @@ fewer lines to compile ([How Cesia works](internals.md#what-it-makes)): `fib` to
 `structs` 49, `dyn` 57, the other rows within a few percent of today's.
 
 What each program does: `fib` is `fib(35)`, about 30 million recursive calls on integers; `mandel` a loop of floats over
-600 × 400 points; `matmul` the product of two 300 × 300 matrices read by index; `structs` 1,000 records of four floats,
+$600 \times 400$ points; `matmul` the product of two $300 \times 300$ matrices read by index; `structs` 1,000 records of four floats,
 each remade at each of 5,000 steps; `dyn` 10 million calls through a list of two functions, on values of mixed kinds;
 `maps` a map of 500,000 text keys, written then read.
 

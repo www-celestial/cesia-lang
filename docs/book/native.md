@@ -215,8 +215,8 @@ Four fields made by `record` and read back by `fields`, against the same work by
 
 | | 2 MB minor heap | 16 MB, as Cesia runs |
 |---|---|---|
-| through `Cesia_v1`, against Cesia's own code | +24.7 ns (88.4 against 63.8), 95% interval 24.2 to 25.1, n=40 | +27.8 ns (98.5 against 70.4), 95% interval 26.5 to 28.7, n=40 |
-| its first form, never released: a call to Cesia for each value | +60.9 ns (166.2 against 105.9), 95% interval 59.4 to 65.9, n=40 | +64.4 ns (178.7 against 115.7), 95% interval 62.1 to 68.2, n=40 |
+| through `Cesia_v1`, against Cesia's own code | +24.7 ns (88.4 against 63.8), 95% interval 24.2 to 25.1, $n = 40$ | +27.8 ns (98.5 against 70.4), 95% interval 26.5 to 28.7, $n = 40$ |
+| its first form, never released: a call to Cesia for each value | +60.9 ns (166.2 against 105.9), 95% interval 59.4 to 65.9, $n = 40$ | +64.4 ns (178.7 against 115.7), 95% interval 62.1 to 68.2, $n = 40$ |
 
 From a Cesia program, a million calls (measure 2), against the first form of the interface (never released), which gave
 an engine Cesia's own values and a call for each:
@@ -234,7 +234,7 @@ machine a box of two words costs about as much as a call, so for `echo4` the con
 they save; an engine that reads and makes maps saves the most (measure 1).
 
 The first call of a package's natives loads the plugin of `Cesia_v1` and the engine, and checks the engine's
-fingerprint: 548 µs (95% interval 536 to 564, n=1000) for the 45 KB engine of the tests more than a run that calls none.
+fingerprint: 548 µs (95% interval 536 to 564, $n = 1000$) for the 45 KB engine of the tests more than a run that calls none.
 
 ### Beside the giants
 

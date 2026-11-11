@@ -57,7 +57,7 @@ their value:
 
 An integer has 63 bits: from -4,611,686,018,427,387,904 to 4,611,686,018,427,387,903. A result past them is an error, not a
 wrong number, and its message says to use a float. A float is a 64-bit *binary floating-point* number, the `double` of C,
-as the standard IEEE 754 defines it: about 15 to 17 significant decimal digits, up to about 1.8 × 10^308. It holds a
+as the standard IEEE 754 defines it: about 15 to 17 significant decimal digits, up to about $1.8 \times 10^{308}$. It holds a
 fraction in base 2, so a decimal fraction such as `0.1` is close, not exact. [math.Round] and [math.Floor] give whole
 numbers back:
 
