@@ -148,15 +148,15 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   avec une différence : `Select` essaie ses channels dans l'ordre, là où Go en choisit un au hasard.
 - KC Sivaramakrishnan, Stephen Dolan, Leo White, Tom Kelly, Sadiq Jaffer, Anil Madhavapeddy. "Retrofitting Effect
   Handlers onto OCaml". *PLDI 2021*, 206–221. <https://doi.org/10.1145/3453483.3454039>. Les effect handlers (la partie
-  d'un programme qui attrape un effect et peut reprendre le code qui l'a lancé) et les petites piles qui grandissent
-  derrière eux, dans OCaml 5 : ce qu'est chaque fiber de Cesia.
+  d'un programme qui attrape un effect et peut reprendre le code qui l'a lancé) et les petites stacks (la pile des
+  appels en cours) qui grandissent derrière eux, dans OCaml 5 : ce qu'est chaque fiber de Cesia.
 - Henry G. Baker Jr., Carl Hewitt. "The Incremental Garbage Collection of Processes". *Symposium on Artificial
   Intelligence and Programming Languages*, ACM, 55–59, 1977. <https://doi.org/10.1145/800228.806932>. Le *future*, une
   valeur qu'un calcul donne plus tard : une tâche de [fiber.Spawn], que [fiber.Wait] lit.
 - The Go Authors. Go 1.3 and Go 1.4 Release Notes, 2014. <https://go.dev/doc/go1.3>, <https://go.dev/doc/go1.4>, et le
-  document de conception "Contiguous stacks", 2013. <https://go.dev/s/contigstacks>. La pile d'une goroutine commence à
+  document de conception "Contiguous stacks", 2013. <https://go.dev/s/contigstacks>. La stack d'une goroutine commence à
   2 048 octets et est recopiée dans une plus grande quand elle est pleine : ce à quoi les fibers de Cesia sont comparées
-  dans leurs mesures, et pourquoi leurs piles commencent à 8 slots et doublent.
+  dans leurs mesures, et pourquoi leurs stacks commencent à 8 slots et doublent.
 - Joe Armstrong. "A History of Erlang". *HOPL III*, ACM, 2007. <https://doi.org/10.1145/1238844.1238850>. Des processus
   relayés après un compte de réductions (de pas d'exécution), des supervisors qui redémarrent un processus tombé, et du
   code remplacé pendant qu'il tourne : les checkpoints de Cesia tous les millions de pas, le supervisor de `--workers`,
@@ -294,7 +294,7 @@ comparé. BLAKE2 est sous [Cryptographie](#cryptographie), QuickCheck et le shri
 - Adrian Lopez. fdupes, sa page de manuel `fdupes.1`. <https://github.com/adrianlopezroche/fdupes>. Les tailles, MD5,
   puis les octets comparés ; les fichiers vides gardés sauf avec `-n`, les hard links non doublons sauf avec `-H`.
 - Jody Bruchon. jdupes, son README et `filehash.c`. <https://codeberg.org/jbruchon/jdupes>. Les tailles, les 4 premiers
-  Kio, le fichier entier avec XXH64, puis les octets comparés sauf avec `-Q` ; les fichiers vides seulement avec `-z`,
+  KiB, le fichier entier avec XXH64, puis les octets comparés sauf avec `-Q` ; les fichiers vides seulement avec `-z`,
   les hard links non doublons sauf avec `-H`.
 
 ## Données et nombres

@@ -194,7 +194,7 @@ devant LuaJIT, 395. Sur `maps`, il est devant tous les langages sauf Java, Go co
   [persistent](glossary.md#persistent-data-structure) maps (qui gardent leur ancienne version quand elles changent) qu'une
   fois partagée et modifiée ([Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie)) : 815 ms
   avant, 275 avec la table, 258 depuis que chaque clé `"key$k"` est construite en une copie au lieu de trois
-  ([Comment Cesia fonctionne](internals.md#l-exécution-des-closures-comme-code)), en 68 Mo, contre 70 Mo pour Python, 50 pour Go et
+  ([Comment Cesia fonctionne](internals.md#l-exécution-des-closures-comme-code)), en 68 MB, contre 70 MB pour Python, 50 pour Go et
   139 pour Java. Les compteurs du processeur disent pourquoi : 3,1 cache misses (des lectures qui ne trouvent pas leur
   donnée dans le cache, la mémoire rapide du processeur, et doivent aller la chercher plus loin) par opération dans son
   dernier niveau de cache, là où le trie en faisait 18,7, contre 3,7 pour Python et 4,3 pour Go. Les 224 ms de Java
@@ -220,34 +220,34 @@ moins celui avec une seule, divisé par 100 000 :
 
 | | 100 000 tâches | Intervalle à 95 % | Par tâche | Mémoire par tâche |
 |---|---:|---:|---:|---:|
-| Coroutines de LuaJIT | 59 ms | 58 à 69 | 0,6 µs | 0,4 Ko |
-| Node `async` | 167 ms | 165 à 173 | 1,3 µs | 1,3 Ko |
-| Goroutines de Go | 129 ms | 127 à 134 | 1,3 µs | 2,6 Ko |
-| Coroutines de Lua | 132 ms | 131 à 134 | 1,3 µs | 1,0 Ko |
-| **Fibers de Cesia** | **351 ms** | 348 à 353 | **3,4 µs** | **2,1 Ko** |
-| Python `asyncio` | 1 072 ms | 1 055 à 1 083 | 10,0 µs | 1,4 Ko |
-| Virtual threads de Java | 1 663 ms | 1 562 à 1 738 | 16,2 µs | 2,3 Ko |
+| Coroutines de LuaJIT | 59 ms | 58 à 69 | 0,6 µs | 0,4 KB |
+| Node `async` | 167 ms | 165 à 173 | 1,3 µs | 1,3 KB |
+| Goroutines de Go | 129 ms | 127 à 134 | 1,3 µs | 2,6 KB |
+| Coroutines de Lua | 132 ms | 131 à 134 | 1,3 µs | 1,0 KB |
+| **Fibers de Cesia** | **351 ms** | 348 à 353 | **3,4 µs** | **2,1 KB** |
+| Python `asyncio` | 1 072 ms | 1 055 à 1 083 | 10,0 µs | 1,4 KB |
+| Virtual threads de Java | 1 663 ms | 1 562 à 1 738 | 16,2 µs | 2,3 KB |
 
 Une fiber de Cesia prend le tiers du temps d'une tâche Python et le cinquième de celui d'un virtual thread de Java pour
-démarrer, se mettre en attente et finir, et 2,7 fois celui d'une goroutine ; avec sa tâche, elle prend 2,1 Ko, moins que
-les 2,6 Ko d'une goroutine et les 2,3 Ko d'un virtual thread. Elle prenait 4,3 µs et 2,5 Ko jusqu'au 2026-11-08 : ses
-piles commencent maintenant à 8 slots (des places de taille fixe), et non 16, son corps et sa fin ne créent aucune
-closure (une fonction qui garde les noms de l'endroit où elle a été créée), une fiber qui attend une tâche y laisse sa
-propre fonction de réveil, et un seul handler (le code qui reçoit une fiber quand elle s'arrête pour attendre), créé une
-fois, sert toutes les fibers. Chaque fiber a trois piles à elle, pour les valeurs, les entiers et les floats, à côté de
-sa pile OCaml : elles doublent quand elles sont pleines, comme la pile d'une goroutine commence à 2 Ko et est recopiée
-dans une plus grande. Environ 1 Ko des 2,1 est cette pile OCaml : OCaml démarre une fiber à 64 mots et la double au
-premier appel de l'interpréteur en elle (gdb compte un agrandissement par fiber), si bien qu'une fiber en attente tient
-128 mots. Ce qu'une goroutine ne paie pas, c'est le garbage collector : celui d'OCaml copie chaque fiber vivante hors de
-son young heap et la marque de nouveau à chaque cycle majeur, ce qui fait l'essentiel du temps d'une fiber ici. Les
-goroutines de Go tournent aussi en parallèle sur tous les cœurs ; les fibers de Cesia tournent sur un seul, et
-`--workers` donne tous les cœurs à un serveur, comme le montre [HTTP](http.md#tous-les-cœurs).
+démarrer, se mettre en attente et finir, et 2,7 fois celui d'une goroutine ; avec sa tâche, elle prend 2,1 KB, moins que
+les 2,6 KB d'une goroutine et les 2,3 KB d'un virtual thread. Elle prenait 4,3 µs et 2,5 KB jusqu'au 2026-11-08 : ses
+stacks (ses piles de valeurs) commencent maintenant à 8 slots (des places de taille fixe), et non 16, son corps et sa
+fin ne créent aucune closure (une fonction qui garde les noms de l'endroit où elle a été créée), une fiber qui attend
+une tâche y laisse sa propre fonction de réveil, et un seul handler (le code qui reçoit une fiber quand elle s'arrête
+pour attendre), créé une fois, sert toutes les fibers. Chaque fiber a trois stacks à elle, pour les valeurs, les entiers
+et les floats, à côté de sa stack OCaml : elles doublent quand elles sont pleines, comme la stack d'une goroutine
+commence à 2 KB et est recopiée dans une plus grande. Environ 1 KB des 2,1 est cette stack OCaml : OCaml démarre une
+fiber à 64 mots et la double au premier appel de l'interpréteur en elle (gdb compte un agrandissement par fiber), si
+bien qu'une fiber en attente tient 128 mots. Ce qu'une goroutine ne paie pas, c'est le garbage collector : celui d'OCaml
+copie chaque fiber vivante hors de son young heap et la marque de nouveau à chaque cycle majeur, ce qui fait l'essentiel
+du temps d'une fiber ici. Les goroutines de Go tournent aussi en parallèle sur tous les cœurs ; les fibers de Cesia
+tournent sur un seul, et `--workers` donne tous les cœurs à un serveur, comme le montre [HTTP](http.md#tous-les-cœurs).
 
 ### Textes et fichiers
 
-Un texte de 100 Mo, 2,46 millions de lignes de source OCaml : lu en entier depuis un [page cache](glossary.md#page-cache)
+Un texte de 100 MB, 2,46 millions de lignes de source OCaml : lu en entier depuis un [page cache](glossary.md#page-cache)
 warm (la copie des fichiers que le système garde en mémoire après les avoir lus, ici qui tient déjà ce fichier), un mot
-cherché jusqu'à la fin en respectant la casse et en l'ignorant, ses lignes jointes de nouveau, et 16 Mo écrits, avec et
+cherché jusqu'à la fin en respectant la casse et en l'ignorant, ses lignes jointes de nouveau, et 16 MB écrits, avec et
 sans [fsync](glossary.md#fsync) (l'appel système qui attend que les octets écrits soient vraiment sur le disque).
 Chaque mesure est prise dans le programme, autour de la seule opération, 7 runs de chaque langage alternés ; la médiane,
 et le plus bas et le plus haut des 7, qui encadrent la médiane avec une probabilité de 98,4 %. En millisecondes :
@@ -260,8 +260,8 @@ et le plus bas et le plus haut des 7, qui encadrent la médiane avec une probabi
 | chercher un mot, casse ignorée | **41** (40–44), `fold` | 797 (761–906), `re.I` | 26 (25–28), `/i` | 3 296 (3 224–3 562), `(?i)` |
 | une copie en minuscules, puis une recherche | 317 (314–366) | 100 (95–116) | 74 (73–80) | 186 (183–295) |
 | joindre les 2,46 millions de lignes | 218 (217–223) | 59 (58–88) | 142 (137–151) | 50 (49–53) |
-| écrire 16 Mo | **3,5** (3,5–4,0) | 6,0 (5,8–7,0) | 7,2 (6,5–8,9) | 2,6 (2,4–3,1) |
-| écrire 16 Mo, puis fsync | **44** (43–75) | 60 (47–105) | 50 (45–91) | 44 (41–60) |
+| écrire 16 MB | **3,5** (3,5–4,0) | 6,0 (5,8–7,0) | 7,2 (6,5–8,9) | 2,6 (2,4–3,1) |
+| écrire 16 MB, puis fsync | **44** (43–75) | 60 (47–105) | 50 (45–91) | 44 (41–60) |
 
 Dans Cesia, [sys.Read] lit les octets dans un seul texte de la taille du fichier, aussi vite que les autres lisent des octets ; il ne
 vérifie pas l'UTF-8 (un programme le demande avec [text.IsUtf8], 26 ms de plus), là où Python et Node décodent dans
@@ -275,7 +275,7 @@ de 64 bits. Le `/i` de Node, 26 ms, est une regular expression compilée en code
 qui ne peuvent pas commencer une correspondance. Et joindre les lignes prend 3,7 fois moins de temps en Python et 4,4
 fois moins en Go : les octets sont copiés à la même vitesse, mais le profil (la mesure de l'endroit où passe le temps)
 met l'essentiel du temps de Cesia dans le garbage collector d'OCaml, qui marque de nouveau les 2,46 millions de lignes
-vivantes pendant que le programme alloue les 100 Mo du résultat, là où Python compte les références et où le garbage
+vivantes pendant que le programme alloue les 100 MB du résultat, là où Python compte les références et où le garbage
 collector de Go tourne sur les autres cœurs. Le temps d'un fsync est celui du disque, le même pour tous.
 
 ## Un serveur sous charge
@@ -302,15 +302,15 @@ Des requêtes par seconde, mesurées le 2026-11-09, le binaire d'avant ce change
 répondait à 53 918 et 53 546 requêtes sur la petite route à 10 et 100 connexions, 32 682 à 1 000, et 41 980 sur la
 route JSON. Le 99e percentile de la latence, le temps en dessous duquel 99 requêtes sur 100 reçoivent leur réponse, à
 100 connexions gardées sur la petite route : Cesia 3,2 ms, Node 3,3 ms, Go 3,2 ms ; à 1 000 : Cesia 34,5 ms, Node
-17,7 ms, Go 27,3 ms. Une connexion inactive prend 2,3 Ko dans Cesia, 2,5 Ko dans Node et 18 Ko dans Go, et un serveur au
-repos 15 Mo, 54 Mo et 10 Mo.
+17,7 ms, Go 27,3 ms. Une connexion inactive prend 2,3 KB dans Cesia, 2,5 KB dans Node et 18 KB dans Go, et un serveur au
+repos 15 MB, 54 MB et 10 MB.
 
 Cesia répond à autant de petites requêtes que Go sur un cœur, et à deux cinquièmes de plus que Node ; sur de nouvelles
 connexions, il est le plus rapide des trois ; sur la route JSON, il devance Node d'un sixième, et Go garde un dixième
 d'avance : son encodeur est du code compilé, là où le handler de Cesia (la fonction qui traite une requête) et sa
 réponse tournent en partie dans l'interpréteur. Le handler de chaque requête tourne dans sa propre fiber, et chacune
-agrandissait ses piles, ce qui demandait à OCaml la taille de son heap (la mémoire où vivent les valeurs) à chaque
-agrandissement, un dixième du temps du serveur, jusqu'à ce que des piles aussi petites soient laissées aux checkpoints
+agrandissait ses stacks, ce qui demandait à OCaml la taille de son heap (la mémoire où vivent les valeurs) à chaque
+agrandissement, un dixième du temps du serveur, jusqu'à ce que des stacks aussi petites soient laissées aux checkpoints
 (les moments où l'interpréteur arrête de compter pour regarder le programme)
 ([Comment Cesia fonctionne](internals.md#ce-qu-il-sert)).
 
@@ -322,7 +322,7 @@ moyenne, si bien que le 99e percentile ne peut pas descendre sous 25 ms avant qu
 requêtes, et les requêtes en cours survivent aux minor collections d'OCaml (les passages fréquents du garbage collector
 sur le young heap), qui les copient dans le major heap (la grande partie de la mémoire, nettoyée par tranches), sept
 fois plus de mots qu'à 100 connexions. Les goroutines de Go prennent d'elles-mêmes tous les cœurs de la machine, et
-l'event loop de Node (la boucle unique qui traite les événements l'un après l'autre) ne garde aucune pile par
+l'event loop de Node (la boucle unique qui traite les événements l'un après l'autre) ne garde aucune stack par
 connexion. `--workers 2` donne deux cœurs à Cesia, et environ 1,5 fois le nombre de requêtes, ce que
 `tools/http-gate.sh` vérifie à chaque changement.
 
@@ -334,7 +334,7 @@ tools/http-gate.sh     # the gate that a change to the server must pass
 `tools/http-bench.sh` fait aussi tourner 10 connexions actives à côté de 10 000 inactives, ce qui donne la mémoire d'une
 connexion inactive. `tools/http-gate.sh` lance les charges principales et échoue si une requête échoue, si Cesia répond
 à moins de requêtes que Node ou que ses planchers (les nombres minimaux fixés pour chaque charge), si son 99e percentile
-dépasse 10 ms, si une connexion inactive prend plus de 4 Ko, ou si deux workers (deux processus du même serveur, chacun
+dépasse 10 ms, si une connexion inactive prend plus de 4 KB, ou si deux workers (deux processus du même serveur, chacun
 sur un cœur) ne donnent pas une fois et demie un seul processus. `HTTP_GATE_SCALE=0.5` divise les planchers par deux
 sur une machine plus lente.
 

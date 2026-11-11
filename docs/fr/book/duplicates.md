@@ -141,8 +141,8 @@ Jain :
   *Performance Evaluation of Computer and Communication Systems* (2010) de Jean-Yves Le Boudec. Il ne suppose pas que
   les temps suivent une courbe en cloche, ce que des temps font rarement.
 - Le pic de mémoire est la plus grande taille résidente (la mémoire vive que le processus occupe vraiment) que le
-  système compte pour le processus. Il part des 13 Mo du programme qui mesure, que le système compte pour le processus
-  qu'il démarre, si bien qu'un programme qui affiche un nombre montre 13,2 Mo en Cesia comme en Python : sous 16 Mo, un
+  système compte pour le processus. Il part des 13 MB du programme qui mesure, que le système compte pour le processus
+  qu'il démarre, si bien qu'un programme qui affiche un nombre montre 13,2 MB en Cesia comme en Python : sous 16 MB, un
   pic ne veut guère dire plus que cela.
 
 La probabilité vient d'un compte : la vraie médiane est hors de l'intervalle quand au moins 10 des 11 runs tombent d'un
@@ -171,9 +171,9 @@ Le 2e et le 10e des 11 l'encadrent avec une probabilité de 98,8 % ; le 3e et le
 95 %.
 
 La machine est celle de [Vitesse](speed.md#à-côté-des-géants) : un Intel Core i7-4720HQ de 2015, 8 cœurs logiques,
-11 Go de mémoire, Linux, un SSD en SATA avec btrfs ; Cesia dans son build de ce dépôt, Python 3.14.9. Les dossiers
+11 GB de mémoire, Linux, un SSD en SATA avec btrfs ; Cesia dans son build de ce dépôt, Python 3.14.9. Les dossiers
 viennent de `bench/dupes-folder.py`, avec le seed 1 (le nombre dont part le générateur de nombres au hasard) : des
-fichiers d'octets au hasard, de 4 Kio à 1 Mio, répartis également sur une échelle logarithmique, comme le sont les photos
+fichiers d'octets au hasard, de 4 KiB à 1 MiB, répartis également sur une échelle logarithmique, comme le sont les photos
 et les téléchargements, dans dix dossiers ; un fichier sur dix est une copie d'un fichier précédent.
 
 ### La baseline
@@ -184,13 +184,13 @@ en mémoire tient déjà leurs octets), mesurés le 2026-11-08, charge 1,0 :
 
 | Fichiers | Leurs octets | Paires | `naive` | Intervalle à 95 % |
 |---:|---:|---:|---:|---:|
-| 100 | 24,4 Mo | 4 950 | 1 107 | 1 094 à 1 126 |
-| 200 | 41,9 Mo | 19 900 | 3 204 | 3 172 à 3 391 |
-| 400 | 80,7 Mo | 79 800 | 16 087 | 15 989 à 16 231 |
+| 100 | 24,4 MB | 4 950 | 1 107 | 1 094 à 1 126 |
+| 200 | 41,9 MB | 19 900 | 3 204 | 3 172 à 3 391 |
+| 400 | 80,7 MB | 79 800 | 16 087 | 15 989 à 16 231 |
 
 Deux fois plus de fichiers, trois à cinq fois plus de temps. Ce n'est pas exactement quatre parce que les dossiers
 diffèrent par la taille moyenne de leurs fichiers : chaque fichier est lu $n - 1$ fois, donc la façon naïve lit environ
-2,4 Go, 8,3 Go et 32,2 Go, entre 2,0 et 2,6 Go par seconde. À ce rythme, un dossier de 10 000 photos prendrait 625 fois
+2,4 GB, 8,3 GB et 32,2 GB, entre 2,0 et 2,6 GB par seconde. À ce rythme, un dossier de 10 000 photos prendrait 625 fois
 les 16 secondes de 400, environ trois heures.
 
 ## 3. Une hypothèse qu'on peut réfuter
@@ -224,14 +224,14 @@ Les mêmes dossiers, la même méthode :
 
 | Fichiers | `naive` | `naive`, chaque fichier lu une fois | Son pic de mémoire |
 |---:|---:|---:|---:|
-| 100 | 1 107 (1 094 à 1 126) | 32,3 (31,6 à 32,5) | 44 Mo |
-| 200 | 3 204 (3 172 à 3 391) | 54,2 (53,1 à 59,4) | 68 Mo |
-| 400 | 16 087 (15 989 à 16 231) | 112,6 (111,0 à 113,8) | 131 Mo |
+| 100 | 1 107 (1 094 à 1 126) | 32,3 (31,6 à 32,5) | 44 MB |
+| 200 | 3 204 (3 172 à 3 391) | 54,2 (53,1 à 59,4) | 68 MB |
+| 400 | 16 087 (15 989 à 16 231) | 112,6 (111,0 à 113,8) | 131 MB |
 
 La prédiction a tenu. À 400 fichiers, les mêmes comparaisons, dans le même ordre, prennent 113 ms au lieu de 16,1 s :
 99,3 % du temps de la façon naïve passait à relire les mêmes fichiers. L'hypothèse aurait pu échouer, et ne l'a pas
 fait : elle tient donc. Lire une seule fois n'est pas pour autant une solution : cela garde tout le dossier en mémoire à
-la fois, 131 Mo pour 81 Mo de fichiers, et cela compare encore chaque paire.
+la fois, 131 MB pour 81 MB de fichiers, et cela compare encore chaque paire.
 
 ### Un raccourci, réfuté
 
@@ -304,7 +304,7 @@ Les outils dont on se sert pour ce problème font les mêmes étapes, d'après l
 - **fdupes** : « Such files are found by comparing file sizes and MD5 signatures, followed by a byte-by-byte
   comparison », dit sa page de manuel : les fichiers sont trouvés en comparant leurs tailles et leurs signatures MD5,
   puis octet par octet.
-- **jdupes**, dérivé de fdupes 1.51 : les fichiers de tailles différentes ne sont pas comparés ; les 4 premiers Kio sont
+- **jdupes**, dérivé de fdupes 1.51 : les fichiers de tailles différentes ne sont pas comparés ; les 4 premiers KiB sont
   hashés et comparés, puis les fichiers entiers, avec xxHash ; « finally, actual file data is compared to verify that
   they are duplicates » (enfin, les données mêmes des fichiers sont comparées pour vérifier que ce sont des doublons),
   dit son README. Son `-Q` saute cette dernière étape, avec un warning (un avertissement) : il « may delete
@@ -318,7 +318,7 @@ $2^{192}$ fois plus petite, environ $6 \times 10^{57}$ fois, et fabriquer deux f
 essais de l'attaque générique. Ce chapitre fait donc l'autre choix : aucune comparaison d'octets, une seule lecture de
 chaque fichier dont un autre fichier a la taille, et la borne comme preuve qu'aucun groupe n'est faux.
 
-Ce qui ne s'applique pas : jdupes hashe les 4 premiers Kio d'un fichier avant le fichier entier, ce qui évite de lire
+Ce qui ne s'applique pas : jdupes hashe les 4 premiers KiB d'un fichier avant le fichier entier, ce qui évite de lire
 presque tout un grand fichier qui diffère tôt. [sys.Read] lit un fichier en entier, donc cette étape lirait autant que le
 hash complet.
 
@@ -505,30 +505,30 @@ Médianes de 11 runs et leur intervalle à 95 %, en millisecondes, avec un cache
 | 100 fichiers | 1 107 (1 094 à 1 126) | **17,2** (17,0 à 17,4) | 27,4 (26,8 à 27,9) |
 | 200 fichiers | 3 204 (3 172 à 3 391) | **25,6** (25,0 à 26,0) | 32,6 (31,8 à 33,1) |
 | 400 fichiers | 16 087 (15 989 à 16 231) | 40,3 (39,8 à 40,6) | 41,0 (40,7 à 41,5) |
-| 1 000 fichiers, 192 Mo | | 94,3 (93,6 à 97,1) | **70,4** (69,8 à 70,9) |
+| 1 000 fichiers, 192 MB | | 94,3 (93,6 à 97,1) | **70,4** (69,8 à 70,9) |
 
 De 16,1 s à 40 ms à 400 fichiers : 400 fois plus rapide, et l'écart grandit avec le dossier, puisqu'un coût est en
-$O(n^2)$ et l'autre environ en $O(n)$. `Duplicates` y lit 59 des 400 fichiers, 13,2 Mo sur 80,7 : les copies, puisque
+$O(n^2)$ et l'autre environ en $O(n)$. `Duplicates` y lit 59 des 400 fichiers, 13,2 MB sur 80,7 : les copies, puisque
 deux photos différentes de ces dossiers n'avaient jamais la même taille. Son pic de mémoire, tel que le système le
-compte, reste sous 16 Mo, comme celui de Python : le plus gros fichier qu'il tient fait 1 Mio.
+compte, reste sous 16 MB, comme celui de Python : le plus gros fichier qu'il tient fait 1 MiB.
 
-Le pire cas pour la taille, et un cache cold. Sur 1 000 fichiers d'exactement 64 Kio, la taille ne dit rien et chaque
+Le pire cas pour la taille, et un cache cold. Sur 1 000 fichiers d'exactement 64 KiB, la taille ne dit rien et chaque
 fichier est hashé. *Cold* veut dire qu'avant chaque run, chaque fichier du dossier est retiré du page cache (avec
 `posix_fadvise`, et `fincore` montre qu'il ne reste aucune de leurs pages), pour que ses octets viennent du disque :
 
 | Dossier | Cache | `Duplicates` | Python |
 |---|---|---:|---:|
 | 1 000 photos | cold | 341 (326 à 371) | 319 (295 à 335) |
-| 1 000 fichiers de 64 Kio | warm | 161,5 (161,0 à 166,3) | **129,2** (128,3 à 131,0) |
-| 1 000 fichiers de 64 Kio | cold | 1 126 (1 045 à 1 293) | 1 118 (1 066 à 1 210) |
+| 1 000 fichiers de 64 KiB | warm | 161,5 (161,0 à 166,3) | **129,2** (128,3 à 131,0) |
+| 1 000 fichiers de 64 KiB | cold | 1 126 (1 045 à 1 293) | 1 118 (1 066 à 1 210) |
 
 Où chacun gagne, et pourquoi, mesuré plutôt que deviné :
 
 - Sur un petit dossier, Cesia gagne, 17 ms contre 27 à 100 fichiers : il démarre en 3,2 ms là où Python en prend 14,4,
   les médianes de 21 runs d'un programme qui affiche un nombre.
 - Au-delà de 400 fichiers, Python gagne, d'un tiers sur 1 000 photos et d'un quart sur 1 000 fichiers d'une même taille.
-  La cause est le hash : BLAKE2b-256 de 64 Mio tenus en mémoire prend 75,6 ms en Python et 107,2 ms en Cesia, les
-  médianes de 11 essais, soit 867 Mo/s contre 612. Python 3.14 prend son BLAKE2b dans HACL*, une bibliothèque
+  La cause est le hash : BLAKE2b-256 de 64 MiB tenus en mémoire prend 75,6 ms en Python et 107,2 ms en Cesia, les
+  médianes de 11 essais, soit 867 MB/s contre 612. Python 3.14 prend son BLAKE2b dans HACL*, une bibliothèque
   cryptographique dont le code est prouvé correct par une machine, dans une version pour AVX2, les instructions
   vectorielles de 256 bits des processeurs Intel, que celui-ci possède : son module en contient 1 681. Celui de Cesia est
   le C portable du runtime d'OCaml (ce qui accompagne un programme OCaml pendant qu'il tourne), dont la fonction de
@@ -563,7 +563,7 @@ a été fait contre elle :
   le disque ajoutant le sien.
 - **L'écriture des dossiers.** La première série de runs a commencé juste après l'écriture des dossiers, pendant que le
   système les écrivait encore sur le disque, et ses temps à 100 fichiers s'étalaient de 17 à 267 ms. Cette série a été
-  jetée : les nombres ci-dessus viennent d'une deuxième, qui a attendu `sync`, avec 60 ko restant à écrire.
+  jetée : les nombres ci-dessus viennent d'une deuxième, qui a attendu `sync`, avec 60 kB restant à écrire.
 - **Un cache warm ou cold.** Un utilisateur qui lance le programme deux fois obtient les temps warm ; le premier run après
   un redémarrage obtient les temps cold, tous deux mesurés. Cold ne vise ici que les octets des fichiers : les noms et
   les tailles du dossier restent en mémoire, si bien qu'un premier run après un redémarrage paierait aussi le parcours sur
@@ -601,10 +601,10 @@ La solution répond à la question pour les dossiers sur lesquels elle a été p
 - **Les permissions.** Un fichier que Cesia n'a pas le droit de lire, ou que le système refuse, arrête le programme avec
   un `Err` qui le nomme : `?` le transmet. Une version qui saute ces fichiers et les liste à la fin ne coûte que quelques
   lignes de plus.
-- **La mémoire.** [sys.Read] tient un fichier entier en mémoire, donc un film de 4 Go demande 4 Go d'un coup.
+- **La mémoire.** [sys.Read] tient un fichier entier en mémoire, donc un film de 4 GB demande 4 GB d'un coup.
   `file_digest` de Python lit par morceaux. Cesia n'a pas encore de lecture d'un fichier par morceaux ; avec elle, le
-  hash lirait un morceau à la fois, et les 4 premiers Kio de jdupes s'appliqueraient aussi.
-- **La vitesse du hash.** Le BLAKE2b de Cesia, le C portable du runtime d'OCaml, hashe 612 Mo par seconde sur cette
+  hash lirait un morceau à la fois, et les 4 premiers KiB de jdupes s'appliqueraient aussi.
+- **La vitesse du hash.** Le BLAKE2b de Cesia, le C portable du runtime d'OCaml, hashe 612 MB par seconde sur cette
   machine, là où celui de Python, avec AVX2, atteint 867 : au-delà de quelques centaines de fichiers, Python est d'un
   quart à un tiers plus rapide. Une version avec des instructions vectorielles comblerait cet écart.
 - **Les fichiers vides** sont des doublons les uns des autres, d'après la définition, et sont groupés. jdupes les laisse
