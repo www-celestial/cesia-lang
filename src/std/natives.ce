@@ -1554,8 +1554,8 @@ use std/test
       "defn" in cesia.Keywords() --> true *)
 
 (** cesia.Asset(name)
-    For tools: a file of the look of the docs site, held in the binary: "site.css" or "site.js". Missing for another
-    name.
+    For tools: a file of the look of the docs site, held in the binary: "site.css", "site.js", the font of its formulas
+    "math.woff2", or that font's licence "math-OFL.txt". Missing for another name.
 
       value.IsText(cesia.Asset("site.css")) --> true
       cesia.Asset("logo.png") --> missing *)

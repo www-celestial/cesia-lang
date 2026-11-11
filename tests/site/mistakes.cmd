@@ -3,7 +3,10 @@ t=$(mktemp -d)
 export XDG_CACHE_HOME="$t/cache"
 f='```'
 add() { printf '%s\n' "$@" >> docs/book/first.md; }
-try() {  # what goes wrong, then the command that puts it in a copy of the project
+try() {  # what goes wrong, then the command that puts it in a copy of the project, without its French
+  french "$1" "rm -r docs/fr README.fr.md && $2"
+}
+french() {  # the same, with its French pages
   echo "== $1"
   rm -rf "$t/proj"
   cp -r proj "$t/"
@@ -31,4 +34,12 @@ else
   try "two pages whose names differ only in case" 'cp docs/book/files.md docs/book/Files.md && echo "And [again](Files.md)." >> docs/book/index.md'
 fi
 try "a book without its index.md" 'rm docs/book/index.md'
+try "a formula with a command it doesn't know" 'add "" "So \$\\foo + 1\$."'
+try "a formula with a character TeX writes otherwise" 'add "" "So \$x ≤ y\$ and \$x^\$."'
+try "a formula whose group isn't closed" 'add "" "" "\$\$" "\\frac{1}{2" "\$\$"'
+try "a color that isn't one" 'printf "%s\n" "[site]" "color = \"blue\"" >> cesia.toml'
+try "a README that links to a file which is no page" 'echo "See [the license](LICENSE)." >> README.md'
+french "a French page that drifts from its English one" 'sed "s/^x \\* 2 --> 10$/x * 2 --> 11/; s/^# Premiers pas$/## Premiers pas/; s/(first.md)/(files.md)/" docs/fr/book/first.md > f && mv f docs/fr/book/first.md && sed "s/(first.md)/(files.md)/" docs/fr/book/index.md > f && mv f docs/fr/book/index.md'
+french "a French page with no English one" 'echo "# En plus" > docs/fr/book/extra.md'
+french "a French link to a heading that isn't there" 'sed "s/#premiers-pas/#first-steps/" README.fr.md > f && mv f README.fr.md'
 rm -rf "$t"

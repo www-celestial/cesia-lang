@@ -684,26 +684,24 @@ defn lastBracket(nodes)
 end
 
 defn mathSpan(t, i)
-  (** The formula whose $ is at byte i, as GitHub reads one: {Tex, Next}, or missing. The $ that opens has no space after it,
-      the one that closes no space before it and no digit after it, both on one line: "it costs $5 and $6" holds none. *)
+  (** The formula whose $ is at byte i, as GitHub reads one: {Tex, Next}, or missing. The $ that opens has no space after it;
+      the next $ closes it, with no space before it and no digit after it, on the same line, and no ` between them: "it
+      costs $5 and $6" holds none. *)
   n = text.ByteLength(t)
   if i >= n or text.Byte(i + 1, t) == 32 or text.Byte(i + 1, t) == 10 or text.Byte(i + 1, t) == 36
     return missing
   end
-  stop = text.ByteFind("\n", i, t)
-  j = i + 1
-  while true
-    c = text.ByteFind("$", j, t)
-    if value.IsMissing(c) or (value.IsSome(stop) and c > stop)
-      return missing
-    end
-    before = text.Byte(c - 1, t)
-    digit = c < n and text.Byte(c + 1, t) >= 48 and text.Byte(c + 1, t) <= 57
-    if before != 32 and before != 92 and not digit
-      return {Tex: text.ByteSlice(i + 1, c - 1, t), Next: c + 1}
-    end
-    j = c + 1
+  c = text.ByteFind("$", i + 1, t)
+  if value.IsMissing(c)
+    return missing
   end
+  tex = text.ByteSlice(i + 1, c - 1, t)
+  before = text.Byte(c - 1, t)
+  digit = c < n and text.Byte(c + 1, t) >= 48 and text.Byte(c + 1, t) <= 57
+  if before == 32 or before == 92 or digit or text.Contains("\n", tex) or text.Contains("`", tex)
+    return missing
+  end
+  {Tex: tex, Next: c + 1}
 end
 
 defn inline(t, hooks, line)

@@ -2,7 +2,7 @@ built: 0
 == index.html
 <main id="text">
 <h1 id="proj">Proj</h1>
-<p>A tiny book. Start with <a href="first.html">the first steps</a>, then <a href="files.html#reading">files</a>.</p>
+<p>A tiny book. Start with <a href="first.html">the first steps</a>, then <a href="files.html#reading">files</a>, and <a href="math.html">formulas</a>.</p>
 <pre><code class="cesia"><span class="k">use</span> std/io
 io.<span class="f">Print</span>(<span class="s">&quot;home&quot;</span>)</code></pre>
 <pre class="output"><code>home</code></pre>
@@ -94,7 +94,7 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;http://127.0.0.1:18751/&
 <span class="k">end</span>
 <span class="s">&quot;a --&gt; b&quot;</span> --&gt; <span class="s">&quot;a --&gt; b&quot;</span></code></pre>
 <p>Back to <a href="index.html">the start</a>.</p>
-<nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><span></span></nav>
+<nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><a rel="next" href="math.html">Formulas and colors →</a></nav>
 </main>
 == the columns of a method: its module, then its struct, then itself
 <a href="../greet.html" class="open more">greet</a>
@@ -117,4 +117,127 @@ files.html">Files and folders
 == a site outside the project, with nothing in the cache: its pages still run as files of the project
 built: 0
 <code>Hello, Ana!</code>
+== formulas, GitHub's alerts and a table, in the colors of the project, and the font of formulas with its licence
+<main id="text">
+<nav class="trail" aria-label="Where"><a href="index.html">Book</a> <span aria-hidden="true">›</span> <span>Formulas and colors</span></nav>
+<h1 id="formulas-and-colors">Formulas and colors</h1>
+<p>In a line: <math><mi>O</mi><mo>(</mo><mi>n</mi><mspace width="0.1667em"></mspace><mi>log</mi><mspace width="0.1667em"></mspace><mi>n</mi><mo>)</mo></math>, <math><msup><mn>2</mn><mn>31</mn></msup><mo>−</mo><mn>1</mn></math>, <math><msub><mi>x</mi><mi>i</mi></msub></math>, <math><mo>⌈</mo><msub><mi>log</mi><mi>T</mi></msub><mo>(</mo><mi>N</mi><mo lspace="0" rspace="0">/</mo><mi>B</mi><mo>)</mo><mo>⌉</mo></math>, <math><mi>λ</mi><mo>=</mo><mi>N</mi><mo lspace="0" rspace="0">/</mo><mi>W</mi></math>, <math><mi mathvariant="normal">Θ</mi><mo>(</mo><msup><mi>N</mi><mn>2</mn></msup><mo>)</mo></math>,
+<math><mn>1,000</mn><mo lspace="0" rspace="0">/</mo><mn>36,200</mn><mspace width="0.25em"></mspace><mtext>s</mtext><mo>=</mo><mn>27.6</mn><mspace width="0.25em"></mspace><mtext>ms</mtext></math>, <math><mi>𝑣𝑙𝑜</mi><mo>+</mo><mn>32</mn><mi>j</mi></math>, <math><mo>(</mo><mtext>view</mtext><mo>,</mo><msup><mtext>delta</mtext><mo>′</mo></msup><mo>)</mo></math>, <math><msqrt><mn>2</mn></msqrt></math>.</p>
+<math display="block"><munder><mo>∑</mo><mrow><mi>j</mi><mo>∋</mo><mi>x</mi></mrow></munder><msub><mi>u</mi><mi>j</mi></msub><mo>≥</mo><mn>1</mn><mo>,</mo><mspace width="1em"></mspace><mo lspace="0" rspace="0">|</mo><mi>Q</mi><mo lspace="0" rspace="0">|</mo><mo>≤</mo><munder><mo>∏</mo><mi>j</mi></munder><mo lspace="0" rspace="0">|</mo><msub><mi>R</mi><mi>j</mi></msub><msup><mo lspace="0" rspace="0">|</mo><msub><mi>u</mi><mi>j</mi></msub></msup><mo>,</mo><mspace width="1em"></mspace><mi>P</mi><mo>(</mo><mtext>a collision</mtext><mo>)</mo><mo>≤</mo><mfrac><mrow><mi>k</mi><mo>(</mo><mi>k</mi><mo>−</mo><mn>1</mn><mo>)</mo></mrow><mn>2</mn></mfrac><mo>×</mo><msup><mn>2</mn><mrow><mo>−</mo><mn>256</mn></mrow></msup></math>
+<p>A price stays text, it costs $5 and $6, and code too: <code>$x$</code>.</p>
+<div class="alert note">
+<p class="alert-title">Note</p>
+<p>A note, with a formula: <math><mi>n</mi><mo>≥</mo><mn>2</mn></math>.</p>
+</div>
+<div class="alert warning">
+<p class="alert-title">Warning</p>
+<p>A warning.</p>
+</div>
+<table>
+<thead>
+<tr>
+<th>Size</th>
+<th>Cost</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>small</td>
+<td><math><mi>O</mi><mo>(</mo><mn>1</mn><mo>)</mo></math></td>
+</tr>
+<tr>
+<td>large</td>
+<td><code>slow</code></td>
+</tr>
+<tr>
+<td>huge</td>
+<td><math><mi>O</mi><mo>(</mo><msup><mi>n</mi><mn>2</mn></msup><mo>)</mo></math></td>
+</tr>
+</tbody>
+</table>
+<h2 id="whats-new"><span id="what-s-new"></span>What's new?</h2>
+<p>A heading whose id GitHub makes otherwise than the site did keeps the old one too.</p>
+<nav class="pager" aria-label="Pages"><a rel="prev" href="files.html">← Files and folders</a><a rel="up" href="index.html">Proj</a><span></span></nav>
+</main>
+:root { --accent: #2a5dd5; --band: #224cae; --on-band: #ffffff; --zebra: #f8f9fe; --tint: #eef2fc; --pick: #dfe7f9; --alert-note: #0969da; --alert-tip: #1a7f37; --alert-important: #8250df; --alert-warning: #9a6700; --alert-caution: #cf222e; }
+1
+SIL OPEN FONT LICENSE Version 1.1
+== the README, a page made from README.md, in the side of every page
+<main id="text">
+<h1 id="proj">Proj</h1>
+<p>A tiny project with <a href="index.html">a book</a>, its <a href="first.html#first-steps">first steps</a> and
+<a href="guides/index.html">guides</a>. A formula: <math><msup><mi>n</mi><mn>2</mn></msup></math>.</p>
+<div class="alert tip">
+<p class="alert-title">Tip</p>
+<p>The site shows this page as its README.</p>
+</div>
+<pre><code class="cesia"><span class="k">use</span> std/http
+http.<span class="f">Serve</span>(http.<span class="f">App</span>(), port = <span class="m">8080</span>)</code></pre>
+</main>
+<a href="readme.html">README</a>
+== the French site: a page translated, with the values of its blocks on its own lines, and one not yet
+<main id="text">
+<nav class="trail" aria-label="Chemin"><a href="index.html">Livre</a> <span aria-hidden="true">›</span> <span>Premiers pas</span></nav>
+<h1 id="premiers-pas">Premiers pas</h1>
+<p>Les noms,
+puis <a href="../ref/std/value/Len.html">value.Len</a> :</p>
+<pre><code class="cesia"><span class="k">use</span> src/greet
+<span class="k">use</span> std/io
+<span class="k">use</span> std/math
+<span class="k">use</span> std/value
+x = <span class="m">2</span> + <span class="m">3</span>
+x --&gt; <span class="m">5</span>
+x * <span class="m">2</span> --&gt; <span class="m">10</span>
+io.<span class="f">Print</span>(greet.<span class="f">Hello</span>(<span class="s">&quot;Ana&quot;</span>))
+value.<span class="f">Len</span>(<span class="s">&quot;abc&quot;</span>) --&gt; <span class="m">3</span></code></pre>
+<pre class="output"><code>Hello, Ana!</code></pre>
+<p>Une valeur qui contient
+une fin de ligne :</p>
+<pre><code class="cesia"><span class="s">&quot;a\nb&quot;</span> --&gt; <span class="s">&quot;a</span>
+<span class="s">b&quot;</span></code></pre>
+<p>Celui-ci s’arrête :</p>
+<pre><code class="cesia">math.<span class="f">Div</span>(x, <span class="m">0</span>)</code></pre>
+<pre class="output"><code>Div: division by zero.</code></pre>
+<p>Pas exécuté :</p>
+<pre><code class="cesia"><span class="k">use</span> std/http
+http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
+<p>Un tableau fait par le code :</p>
+<table>
+<thead>
+<tr>
+<th>a</th>
+<th>b</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="cesia"><span class="k">for</span> k <span class="k">in</span> <span class="m">1</span>..<span class="m">3</span>
+  io.<span class="f">Print</span>(k)
+<span class="k">end</span></code></pre>
+<details><summary>Sortie</summary>
+<pre class="output"><code>1
+2
+3</code></pre>
+</details>
+<pre><code class="language-toml">[project]
+name = &quot;x&quot;
+</code></pre>
+<nav class="pager" aria-label="Pages"><a rel="prev" href="index.html">← Proj</a><a rel="up" href="index.html">Proj</a><a rel="next" href="files.html">Files and folders →</a></nav>
+</main>
+<main id="text">
+<nav class="trail" aria-label="Chemin"><a href="index.html">Livre</a> <span aria-hidden="true">›</span> <span>Files and folders</span></nav>
+<p class="untranslated">Cette page n’est pas encore traduite : la voici en anglais.</p>
+<div lang="en">
+<h1 id="files-and-folders">Files and folders</h1>
+site/first.html:<nav class="langs" aria-label="Language"><a aria-current="true">EN</a><a href="fr/first.html" hreflang="fr" lang="fr" aria-label="Français">FR</a></nav>
+site/fr/first.html:<nav class="langs" aria-label="Langue"><a href="../first.html" hreflang="en" lang="en" aria-label="English">EN</a><a aria-current="true">FR</a></nav>
+site/ref/index.html:<nav class="langs" aria-label="Language"><a aria-current="true">EN</a><a href="../fr/index.html" hreflang="fr" lang="fr" aria-label="Français">FR</a></nav>
+<html lang="fr">
+<a class="ref" href="../ref/index.html">Référence (en anglais)</a>
+window.cesiaSearch = [["page","fr/index.html","Proj","Un tout petit li
 exit 0

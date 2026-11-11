@@ -15,7 +15,9 @@
   (glob_files ../std/*.ce)
   (glob_files ../tools/*.ce)
   (glob_files ../tools/*.css)
-  (glob_files ../tools/*.js))
+  (glob_files ../tools/*.js)
+  (glob_files ../tools/*.woff2)
+  (glob_files ../tools/*.txt))
  (action
   (with-stdout-to
    %{targets}
