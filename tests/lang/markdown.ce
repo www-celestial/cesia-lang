@@ -3,6 +3,7 @@
     mailto or a page, and a line indented by four spaces is no code. *)
 use std/markdown
 use std/cesia
+use std/dict
 use std/list
 use std/text
 use std/value
@@ -531,3 +532,27 @@ end
 
 isEveryDocTextGoesThrough() = list.All([value.IsText(html(t)) for t in list.Filter(value.IsText, docTexts())])
 isEveryLineOfStdGoesThrough() = list.All([value.IsText(html(l.Source)) for l in cesia.Libraries()])
+
+(* Formulas, for hooks that write them: the HTML here shows what the hook got, its text, display and line. *)
+mathHooks = dict.Put("Math", (tex, display, line) -> if tex == "none" missing else "[$tex|$display|$line]" end, markdown.Plain)
+withMath(source) = markdown.Html(markdown.Parse(source), mathHooks)
+isMathInALine() = withMath("a $$x^2$ b") == "<p>a [x^2|false|1] b</p>\n"
+isMathKeepsItsText() = withMath("$$a_b_c * d*$") == "<p>[a_b_c * d*|false|1]</p>\n"
+isMathOnItsLine() = withMath("a\nb $$x$") == "<p>a\nb [x|false|2]</p>\n"
+isMathNotAPrice() = withMath("it costs $5 and $6") == "<p>it costs $5 and $6</p>\n" and withMath("$ x$ and $$x $") == "<p>$ x$ and $$x $</p>\n"
+isMathNotBeforeADigit() = withMath("$$x$5") == "<p>$$x$5</p>\n"
+isMathNotAcrossLines() = withMath("$$x\ny$") == "<p>$$x\ny$</p>\n"
+isMathAloneIsText() = withMath("### With $") == "<h3>With $</h3>\n"
+isMathEscapedDollar() = withMath("\\$$x$") == "<p>$$x$</p>\n"
+isMathNotInCode() = withMath("`$$x$` and\n\n```\n$$y$$\n```") == "<p><code>$$x$</code> and</p>\n<pre><code>$$y$$\n</code></pre>\n"
+isMathInATable() = withMath("| a |\n|---|\n| $$x$ |") == "<table>\n<thead>\n<tr>\n<th>a</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>[x|false|1]</td>\n</tr>\n</tbody>\n</table>\n"
+isMathDisplay() = withMath("a\n\n$$$$\n\\frac{1}{2}\n$$$$\n\nb") == "<p>a</p>\n[\\frac{1}{2}|true|3]\n<p>b</p>\n"
+isMathHookLeavesText() = withMath("$$none$") == "<p>$$none$</p>\n"
+isMathOffWithoutTheHook() = html("a $$x$ and\n\n$$$$\ny\n$$$$") == "<p>a $$x$ and</p>\n<p>$$$$\ny\n$$$$</p>\n"
+
+(* GitHub's alerts: a quote whose first line names its kind. *)
+isAlertNote() = html("> [!NOTE]\n> Read *this*.") == "<div class=\"alert note\">\n<p class=\"alert-title\">Note</p>\n<p>Read <em>this</em>.</p>\n</div>\n"
+isAlertAnyCase() = html("> [!warning]\n> Hot.\n>\n> - a") == "<div class=\"alert warning\">\n<p class=\"alert-title\">Warning</p>\n<p>Hot.</p>\n<ul>\n<li>a</li>\n</ul>\n</div>\n"
+isAlertEachKind() = list.All([text.Contains("<div class=\"alert $k\">", html("> [!$(text.Upper(k))]\n> x")) for k in ["note", "tip", "important", "warning", "caution"]])
+isAlertUnknownIsAQuote() = html("> [!OTHER]\n> x") == "<blockquote>\n<p>[!OTHER]\nx</p>\n</blockquote>\n"
+isAlertAloneIsAQuote() = html("> [!NOTE]") == "<blockquote>\n<p>[!NOTE]</p>\n</blockquote>\n"
