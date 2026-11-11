@@ -144,7 +144,7 @@ il termine avec 0 quand ils l'ont tous fait. Un programme qui ne peut pas démar
 s'arrête aussitôt, avec le code de son premier worker. `--workers` demande Linux ou macOS : sous Windows, un programme sert
 sur un seul cœur. C'est le modèle *pre-fork* de nginx : des processus, pas des threads (des fils d'exécution d'un même
 processus, qui partagent sa mémoire), si bien qu'un bug dans un worker ne peut pas toucher la mémoire d'un autre, et que le
-supervisor en démarre un nouveau ; [Comment Cesia fonctionne](internals.md#on-every-core) le montre en détail.
+supervisor en démarre un nouveau ; [Comment Cesia fonctionne](internals.md#sur-chaque-cœur) le montre en détail.
 
 Mesuré le 7 novembre 2026 sur la machine de [Vitesse](speed.md#à-côté-des-géants), en une exécution de
 `tools/http-bench.sh`, le serveur sur deux cœurs physiques et leurs deux hyperthreads, et le client de charge sur les
