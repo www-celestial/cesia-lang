@@ -594,8 +594,7 @@ end
 
 defn sections(p)
   (** The sections of a page that the side and the search show, its headings ## and ###, each {Label, Path, Sub}. *)
-  ids = headingIds(p.Blocks)
-  [{Label: text.Replace("`", "", b.Text), Path: "$(p.Path)#$(ids[b.Line])", Sub: b.Level == 3} for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)]
+  [{Label: text.Replace("`", "", b.Text), Path: "$(p.Path)#$(p.Ids[b.Line])", Sub: b.Level == 3} for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)]
 end
 
 defn treeOf(book, modules, lists, words = enWords)
@@ -1468,7 +1467,7 @@ defn pagesOf(root, name, prefix, site)
     end
     pages = list.Append({File: f, Source: "$at/$f", Path: text.Str(prefix, bookPath(f)), Title: titleOf(blocks, f), Text: source, Blocks: blocks,
       Runs: runs, Lines: text.Lines(source), Broken: broken, Book: name, Index: text.Str(prefix, "index.html"), Files: "$dir/files",
-      Lang: "en", Translated: true, Readme: false, KeyText: source}, pages)
+      Lang: "en", Translated: true, Readme: false, KeyText: source, Ids: headingIds(blocks)}, pages)
   end
   pages
 end
@@ -1504,12 +1503,14 @@ defn readmeOf(root, file, path, lang, english = missing)
       return missing
     end
     return {File: english.File, Source: english.Source, Path: path, Title: english.Title, Text: english.Text, Blocks: english.Blocks, Runs: [],
-      Lines: english.Lines, Broken: false, Book: "", Index: path, Files: "", Lang: lang, Translated: false, Readme: true, KeyText: english.Text, En: english}
+      Lines: english.Lines, Broken: false, Book: "", Index: path, Files: "", Lang: lang, Translated: false, Readme: true, KeyText: english.Text, En: english,
+      Ids: english.Ids}
   end
   source = sys.Read("$root/$file").Value
   blocks = markdown.Parse(source)
   {File: file, Source: file, Path: path, Title: "README", Text: source, Blocks: blocks, Runs: [], Lines: text.Lines(source), Broken: false,
-    Book: "", Index: path, Files: "", Lang: lang, Translated: true, Readme: true, KeyText: if value.IsMissing(english) source else text.Str(source, "\n", english.Text) end, En: english}
+    Book: "", Index: path, Files: "", Lang: lang, Translated: true, Readme: true, KeyText: if value.IsMissing(english) source else text.Str(source, "\n", english.Text) end, En: english,
+    Ids: headingIds(blocks)}
 end
 
 (* The French site: docs/fr/BOOK/PAGE.md is the French of docs/BOOK/PAGE.md, at fr/ and the page's path. A page not there
@@ -1536,12 +1537,13 @@ defn frenchOf(root, en, site)
   index = "fr/$(en.Index)"
   if not sys.Exists("$root/$file")
     return {File: en.File, Source: en.Source, Path: path, Title: en.Title, Text: en.Text, Blocks: en.Blocks, Runs: en.Runs, Lines: en.Lines,
-      Broken: en.Broken, Book: en.Book, Index: index, Files: en.Files, Lang: "fr", Translated: false, Readme: false, KeyText: en.Text, En: en}
+      Broken: en.Broken, Book: en.Book, Index: index, Files: en.Files, Lang: "fr", Translated: false, Readme: false, KeyText: en.Text, En: en, Ids: en.Ids}
   end
   source = sys.Read("$root/$file").Value
   blocks = markdown.Parse(source)
   {File: en.File, Source: file, Path: path, Title: titleOf(blocks, en.File), Text: source, Blocks: blocks, Runs: runsOf(blocks), Lines: text.Lines(source),
-    Broken: en.Broken, Book: en.Book, Index: index, Files: en.Files, Lang: "fr", Translated: true, Readme: false, KeyText: text.Str(source, "\n", en.Text), En: en}
+    Broken: en.Broken, Book: en.Book, Index: index, Files: en.Files, Lang: "fr", Translated: true, Readme: false, KeyText: text.Str(source, "\n", en.Text), En: en,
+    Ids: headingIds(blocks)}
 end
 
 defn strays(root, book)
@@ -1588,7 +1590,7 @@ defn headingPlace(site, path, anchor, lang)
   if value.IsMissing(p) or anchor == ""
     return if anchor == "" -1 else 0 end
   end
-  ids = headingIds(p.Blocks)
+  ids = p.Ids
   hs = headingsIn(p.Blocks)
   k = list.IndexOf(anchor, [ids[b.Line] for b in hs])
   if value.IsMissing(k) 0 else k end
@@ -1735,7 +1737,7 @@ defn bookBody(site, page, results)
       has the French words of the site, and one not translated yet the English text under a note that says so. On the
       English site, a heading whose id changed when the ids became GitHub's keeps the old one too. *)
   lang = page.Lang
-  ids = headingIds(page.Blocks)
+  ids = page.Ids
   hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line", book = page.Book, formulas = true, lang = lang, ids = ids)
   r = dict.GetOr(page.Path, {Output: [], Values: []}, results)
   values = dict.Dict([{Key: v[1], Value: v[2]} for v in r.Values])
