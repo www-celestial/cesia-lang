@@ -1566,7 +1566,7 @@ defn linksOf(site, page)
     end
     missing
   end
-  html(page.Text, {Code: markdown.Plain.Code, Link: link, Url: url, Anchor: markdown.Plain.Anchor})
+  markdown.Html(page.Blocks, {Code: markdown.Plain.Code, Link: link, Url: url, Anchor: markdown.Plain.Anchor})
   out = []
   for l in drained(seen)
     if dict.Has("Name", l)
@@ -1583,17 +1583,24 @@ defn linksOf(site, page)
   out
 end
 
+defn placesOf(page)
+  (** The place of each heading of a page, from 1, by its id: what a link to it names, read once a page. *)
+  out = {}
+  k = 0
+  for b in headingsIn(page.Blocks)
+    k += 1
+    out[page.Ids[b.Line]] = k
+  end
+  out
+end
+
 defn headingPlace(site, path, anchor, lang)
   (** The place of the heading an anchor names on a page, from 1, in the page of that language; 0 for none. *)
-  pages = if lang == "fr" site.FrByPath else site.ByPath end
-  p = dict.Get(if lang == "fr" "fr/$path" else path end, pages)
-  if value.IsMissing(p) or anchor == ""
-    return if anchor == "" -1 else 0 end
+  if anchor == ""
+    return -1
   end
-  ids = p.Ids
-  hs = headingsIn(p.Blocks)
-  k = list.IndexOf(anchor, [ids[b.Line] for b in hs])
-  if value.IsMissing(k) 0 else k end
+  places = dict.Get(if lang == "fr" "fr/$path" else path end, if lang == "fr" site.FrPlaces else site.Places end)
+  if value.IsMissing(places) 0 else dict.GetOr(anchor, 0, places) end
 end
 
 defn parity(site, en, fr)
@@ -1879,7 +1886,7 @@ defn build(root, folder, cache, runs)
   end
   hasFr = sys.Exists("$root/docs/fr") or sys.Exists("$root/README.fr.md")
   site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache,
-    Run: runs, Tree: {}, Columns: {}, Version: if config.Name == "cesia" cesia.Version() else "Cesia $(cesia.Version())" end, Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, ByPath: {}, FrByPath: {}}
+    Run: runs, Tree: {}, Columns: {}, Version: if config.Name == "cesia" cesia.Version() else "Cesia $(cesia.Version())" end, Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, Places: {}, FrPlaces: {}}
   books = booksOf(root, site)
   book = books.Pages
   site.Home = books.Home
@@ -1888,13 +1895,13 @@ defn build(root, folder, cache, runs)
   readme = readmeOf(root, "README.md", "readme.html", "en")
   english = list.Concat(book, if value.IsSome(readme) [readme] else [] end)
   site.Tree = treeOf(english, modules, lists)
-  site.ByPath = dict.Dict([{Key: p.Path, Value: p} for p in english])
+  site.Places = dict.Dict([{Key: p.Path, Value: placesOf(p)} for p in english])
   french = []
   if hasFr
     frReadme = readmeOf(root, "README.fr.md", "fr/readme.html", "fr", english = readme)
     french = list.Concat([frenchOf(root, p, site) for p in book], if value.IsSome(frReadme) [frReadme] else [] end)
     site.FrPaths = dict.Dict([{Key: p.Path, Value: true} for p in french])
-    site.FrByPath = dict.Dict([{Key: p.Path, Value: p} for p in french])
+    site.FrPlaces = dict.Dict([{Key: p.Path, Value: placesOf(p)} for p in french])
     site.FrTree = treeOf(french, modules, lists, words = frWords)
     for m in strays(root, book)
       fiber.Send(m, site.Mistakes)
