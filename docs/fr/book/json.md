@@ -223,7 +223,7 @@ markdown.Parse("# Prices")[1].Kind -->
 ## Pour aller plus loin
 
 La RFC 8259 pour JSON, la RFC 4180 pour CSV, la RFC 4648 pour Base64 et l'hexadécimal, la RFC 3986 pour les échappements
-des URL, et la spécification CommonMark pour Markdown : voir [Références](references.md#texts-and-formats).
+des URL, et la spécification CommonMark pour Markdown : voir [Références](references.md#textes-et-formats).
 
 ## La suite
 

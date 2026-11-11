@@ -118,7 +118,7 @@ que peut prendre un résultat de [crypto.HashPassword], 128.
 ## Pour aller plus loin
 
 Bernstein sur Salsa20 et Poly1305, Bernstein et al. sur Ed25519, Aumasson et al. sur BLAKE2, Biryukov et al. sur Argon2,
-le FIPS 180-4 du NIST pour SHA-2, et la RFC 2104 pour HMAC : voir [Références](references.md#cryptography).
+le FIPS 180-4 du NIST pour SHA-2, et la RFC 2104 pour HMAC : voir [Références](references.md#cryptographie).
 
 ## La suite
 

@@ -123,7 +123,7 @@ redemande ailleurs. Puis [http.Serve] donne `Ok`, et le programme continue jusqu
 nombre que le programme rend à celui qui l'a lancé) 0, sauf s'il en décide autrement. Un second signal n'attend pas : le
 programme s'arrête aussitôt, avec 128 plus le numéro du signal, 143 pour TERM et 130 pour INT, comme les donne un shell
 (le programme qui lit vos commandes dans le terminal). Les programmes qu'il a démarrés avec [sys.Start] ou [sys.Run]
-reçoivent aussi le premier signal, comme le dit le chapitre [Fichiers](files.md#programs-that-keep-running).
+reçoivent aussi le premier signal, comme le dit le chapitre [Fichiers](files.md#les-programmes-qui-continuent-de-tourner).
 
 ### Tous les cœurs
 
@@ -146,7 +146,7 @@ sur un seul cœur. C'est le modèle *pre-fork* de nginx : des processus, pas des
 processus, qui partagent sa mémoire), si bien qu'un bug dans un worker ne peut pas toucher la mémoire d'un autre, et que le
 supervisor en démarre un nouveau ; [Comment Cesia fonctionne](internals.md#sur-chaque-cœur) le montre en détail.
 
-Mesuré le 7 novembre 2026 sur la machine de [Vitesse](speed.md#à-côté-des-géants), en une exécution de
+Mesuré le 2026-11-07 sur la machine de [Vitesse](speed.md#à-côté-des-géants), en une exécution de
 `tools/http-bench.sh`, le serveur sur deux cœurs physiques et leurs deux hyperthreads, et le client de charge sur les
 quatre autres ; en requêtes par seconde :
 
@@ -202,7 +202,7 @@ text.Contains("http_requests_total{method=\"GET\",status=\"200\"} 1", metrics.Te
 Rien n'est écrit dans le log ni compté sauf si le programme le demande. Une ligne de log coûte environ 5 microsecondes et
 un comptage environ 3, ce que voit un serveur qui répond en 17 : sur un cœur, à 100 connexions gardées ouvertes, une route
 minimale répondait à 57 000 à 60 000 requêtes par seconde sans eux, 44 000 à 49 000 avec [http.Logger], et 50 000 à
-53 000 avec [http.Metrics], mesuré le 7 novembre 2026. Avec `--workers`, chaque worker compte ses propres requêtes, et un
+53 000 avec [http.Metrics], mesuré le 2026-11-07. Avec `--workers`, chaque worker compte ses propres requêtes, et un
 scrape (la lecture des compteurs par Prometheus) lit les comptes du worker qui lui répond ; leurs lignes de log ne se
 coupent pas les unes les autres.
 
@@ -340,7 +340,7 @@ le serveur entier.
 ## Pour aller plus loin
 
 Les RFC 9110 et RFC 9112 pour HTTP, la RFC 6455 pour WebSocket, la RFC 9846 pour TLS 1.3, le format d'exposition de
-Prometheus, et les pages de Linux sur `epoll` : voir [Références](references.md#the-server-and-the-network).
+Prometheus, et les pages de Linux sur `epoll` : voir [Références](references.md#le-serveur-et-le-réseau).
 
 ## La suite
 

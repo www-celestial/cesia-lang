@@ -220,7 +220,7 @@ dans cette fiber seulement : les autres continuent.
 - Hal Berenson et al., *A Critique of ANSI SQL Isolation Levels*, 1995 : où sont définies la snapshot isolation et la
   serializability.
 
-Chacun avec son lien dans [Références](references.md#databases).
+Chacun avec son lien dans [Références](references.md#bases-de-données).
 
 ## La suite
 

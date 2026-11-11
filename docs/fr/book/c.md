@@ -121,7 +121,7 @@ variadique ou un callback passent par *libffi*, une bibliothèque qui construit 
 pendant que le programme tourne ; Cesia la trouve sur le système au premier appel de ce genre, et n'a donc rien de plus à
 lier.
 
-Mesuré le 8 novembre 2026, `bench/ccall.ce` : 10 millions d'appels de la fonction `abs` du C dans une boucle,
+Mesuré le 2026-11-08, `bench/ccall.ce` : 10 millions d'appels de la fonction `abs` du C dans une boucle,
 5 exécutions de chaque en alternance, la médiane et la plage, du minimum au maximum :
 
 | | Appels par seconde |

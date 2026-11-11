@@ -178,7 +178,7 @@ heap.Items(heap.Pop(h)) -->
   correcting deletions, insertions, and reversals*, 1966.
 - Chris Okasaki, *Purely Functional Data Structures*, 1998 : le leftist heap et les structures persistantes.
 
-Chacun avec son lien dans [Références](references.md#data-and-numbers).
+Chacun avec son lien dans [Références](references.md#données-et-nombres).
 
 ## La suite
 

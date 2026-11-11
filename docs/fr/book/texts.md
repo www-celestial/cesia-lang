@@ -295,7 +295,7 @@ entier à chaque fois.
 
 Un texte écrit dans un programme est toujours de l'UTF-8 valide, mais un texte lu dans un fichier ou sur le réseau
 contient les octets qu'on lui a envoyés, quels qu'ils soient, et [text.FromBytes] en fabrique de n'importe lesquels.
-[text.IsUtf8] dit si un texte est de l'UTF-8 valide au sens où le définit la [RFC 3629](references.md#texts-and-formats).
+[text.IsUtf8] dit si un texte est de l'UTF-8 valide au sens où le définit la [RFC 3629](references.md#textes-et-formats).
 Un caractère prend de un à quatre octets ; le premier dit combien en suivent, et chacun de ceux qui suivent commence par
 les bits `10`. Un texte est invalide s'il contient un octet qui ne peut ni commencer ni continuer un caractère, un
 caractère coupé avant sa fin, un caractère écrit avec plus d'octets qu'il ne lui en faut (une *overlong form*, comme `0xC0
@@ -325,7 +325,7 @@ sur 33 a un accent, contre 116 ms pour `String.is_valid_utf_8`, la fonction d'OC
   partie.
 - Ken Thompson, *Regular expression search algorithm*, 1968, et Russ Cox, *Regular Expression Matching Can Be Simple
   And Fast*, 2007, et *the Virtual Machine Approach*, 2009 : la méthode de [std/regex]. Voyez
-  [Références](references.md#texts-and-formats).
+  [Références](references.md#textes-et-formats).
 
 ## La suite
 

@@ -405,7 +405,7 @@ chaque unité compilée, ou pourquoi le JIT ne s'est pas chargé.
 Le JIT change une unité hot en sa propre *intermediate representation*, une IR (une forme du programme entre la
 source et le code machine) : des basic blocks (des suites d'instructions où l'on n'entre que par le début et d'où l'on
 ne sort que par la fin) d'instructions typées sur des registres virtuels, de trois sortes, entier, float et valeur. Il
-écrit l'IR sous forme de texte pour [MIR](references.md#the-jit), un petit compilateur de Vladimir Makarov, écrit en C et
+écrit l'IR sous forme de texte pour [MIR](references.md#le-jit), un petit compilateur de Vladimir Makarov, écrit en C et
 copié dans `src/sys/mir/`, qui fait le code machine. Les entiers sont rangés doublés dans les registres, `2n` pour `n`,
 pour que le flag d'overflow du processeur lui-même (le bit d'état qu'il lève quand un calcul déborde) signale sans aucun
 coût l'overflow à 63 bits des entiers de Cesia.
@@ -595,7 +595,7 @@ une différence est un bug du JIT.
 
 ### Ce qu'il gagne
 
-Mesuré le 9 novembre 2026, profil `release`, sur la machine de [Vitesse](speed.md#à-côté-des-géants) pendant que
+Mesuré le 2026-11-09, profil `release`, sur la machine de [Vitesse](speed.md#à-côté-des-géants) pendant que
 d'autres travaux y tournaient : chaque programme de `bench/` 11 fois avec le JIT et 11 fois avec `CESIA_JIT=off`, en
 alternance avec les géants, du début du processus à sa fin (`real/particles` contre le binaire de la branche main, en
 alternance). La médiane (la valeur du milieu des temps triés), puis son intervalle à 95 % (celui qui contient la vraie
@@ -614,7 +614,7 @@ médiane avec une probabilité de 95 %) :
 `fib` prenait 74 ms la veille, jusqu'à ce que les feuilles de sa récursion soient testées à leur appel et que son unité
 demande à MIR moitié moins de temps de compilation. `dyn` appelle chaque fonction à travers une valeur ; le JIT en fait
 du code machine, avec son inline cache de fonctions, ses `math.Mod(i, 2)` et `math.Mod(i, 4)` changés en masques de bits,
-et son `total` gardé en float dans un registre : avant cela, le 8 novembre 2026, il prenait 714 ms avec le JIT, puis 182
+et son `total` gardé en float dans un registre : avant cela, le 2026-11-08, il prenait 714 ms avec le JIT, puis 182
 avant que sa boucle ne soit plus entrée que par sa tête, et 114 avant que `total` reste dans un registre. `structs`
 prenait 219, puis 186 avant que ses maps soient gardées en doubles, et `real/particles` 175, puis 136. La boucle de
 `maps` construit un texte à chaque tour et reste dans l'interpréteur : son gain est celui de la hash table.
@@ -680,7 +680,7 @@ pour [sys.Sleep] et les timeouts (les délais au-delà desquels on abandonne), s
 échéance.
 
 Quand chaque fiber attend, que rien n'est prêt et que rien ne peut l'être, puisqu'aucune socket, aucun timer ni aucun
-signal n'est attendu, le programme attendrait pour toujours : c'est un *deadlock* (un interblocage). Cesia l'arrête avec
+signal n'est attendu, le programme attendrait pour toujours : c'est un *deadlock* (des tâches qui s'attendent l'une l'autre, sans fin). Cesia l'arrête avec
 la ligne de l'attente :
 
 ```cesia fails
@@ -802,7 +802,7 @@ touche aucune valeur du programme pendant qu'il tourne, donc il ne peut pas y av
 
 ## Le démarrage
 
-Un programme démarre tout de suite. Mesuré le 9 novembre 2026 sur la machine ci-dessus, 101 runs de chacun en
+Un programme démarre tout de suite. Mesuré le 2026-11-09 sur la machine ci-dessus, 101 runs de chacun en
 alternance avec le binaire d'avant ce changement, du début du processus à sa fin, la médiane :
 
 | Programme | Temps |
@@ -832,7 +832,7 @@ cette machine :
   de la sortie ; les sources de `std/` sont dans le binaire, donc rien n'est lu sur le disque sauf le programme
   lui-même. Un package de `std/` est lu quand un fichier l'utilise pour la première fois : un package écrit en Cesia,
   comme `std/list`, coûte environ 0,8 ms de plus pour passer par le parser et le resolver, à chaque run, comme l'a mesuré
-  `bench/RESULTS.md` le 7 novembre 2026 ; les parties en OCaml ne coûtent rien tant qu'on ne les appelle pas.
+  `bench/RESULTS.md` le 2026-11-07 ; les parties en OCaml ne coûtent rien tant qu'on ne les appelle pas.
 - Le JIT, SQLite, le runner de `cesia test` (le programme qui lance les tests) et le moteur du debugger sont des plugins
   à côté du binaire, chargés à leur première utilisation. Aucun d'eux ne coûte quoi que ce soit à un programme qui ne
   s'en sert pas.
@@ -844,7 +844,7 @@ jamais besoin. Déplacer dans des plugins le code dont un run a rarement besoin 
 frame descriptors : la hash table n'est réduite de moitié que sous 16 384 descriptors.
 
 Le chargement, le lexer, le parser et le resolver ensemble, lit environ 500 000 lignes par seconde : 320 000 lignes en
-631 ms, `bench/load.sh`, le 7 novembre 2026.
+631 ms, `bench/load.sh`, le 2026-11-07.
 
 ## Recharger le code : --watch
 

@@ -213,7 +213,7 @@ Go et 0,22 s pour le `HashMap` de Java, comme le mesure [Vitesse](speed.md#le-ca
 - Scott A. Crosby et Dan S. Wallach, *Denial of Service via Algorithmic Complexity Attacks*, 2003 : pourquoi le hash
   prend une seed.
 
-Chacun avec son lien dans [Références](references.md#values-and-maps).
+Chacun avec son lien dans [Références](references.md#valeurs-et-maps).
 
 ## La suite
 
