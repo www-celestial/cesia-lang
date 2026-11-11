@@ -21,6 +21,9 @@ and part = Plain of string | Code of token array
 
 val tokens : file:string -> string -> token array
 
+(** Empties a token array that is no longer read, so that the tokens it held die young: see the .ml. *)
+val release : token array -> unit
+
 (** The reserved words, then those that mean something in some places only: [it], [as], [_] and [?]. *)
 val words : string list
 

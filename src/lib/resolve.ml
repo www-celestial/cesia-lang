@@ -66,15 +66,15 @@ let rec pat_exprs f = function
   | Parray ps | Pcons { cargs = ps; _ } -> Array.iter (pat_exprs f) ps
   | Pstruct fs -> Array.iter (fun (_, q) -> pat_exprs f q) fs
 
-(* The subexpressions, without entering nested functions. *)
+(* The subexpressions, without entering nested functions. It makes no closure but for an index, as each load goes through
+   every node of the program with it, several times. *)
 let children (f : expr -> unit) (e : expr) =
-  let index = function All -> () | Ix e -> f e in
   match e.e with
   | Bin (_, a, b) | And (a, b) | Or (a, b) | Range (a, b) | In_op (a, b) -> f a; f b
   | Neg a | Not a | Field (a, _) | Question a -> f a
   | Assign (_, v) | Destructure (_, v) -> f v
-  | Struct_lit { sfields; _ } -> Array.iter (fun (_, v) -> f v) sfields
-  | Call { callee; args; _ } -> f callee; Array.iter (fun a -> f a.value) args
+  | Struct_lit { sfields; _ } -> for i = 0 to Array.length sfields - 1 do f (snd sfields.(i)) done
+  | Call { callee; args; _ } -> f callee; for i = 0 to Array.length args - 1 do f args.(i).value done
   | If (c, a, b) -> f c; Array.iter f a; Array.iter f b
   | While { cond; body; _ } -> f cond; Array.iter f body
   | For { iter; fbody; _ } -> f iter; Array.iter f fbody
@@ -82,9 +82,9 @@ let children (f : expr -> unit) (e : expr) =
   | Return { rvalue = Some v; _ } -> f v
   | Array_lit rows -> Array.iter (Array.iter f) rows
   | Comp { cbody; csrc; cguard; _ } -> f csrc; f cbody; Option.iter f cguard
-  | Index (b, ixs, _) -> f b; Array.iter index ixs
+  | Index (b, ixs, _) -> f b; Array.iter (function All -> () | Ix e -> f e) ixs
   | Set { path; value; _ } ->
-    Array.iter (fun st -> match st.sk with Sindex (ixs, _) -> Array.iter index ixs | Sfield _ -> ()) path;
+    Array.iter (fun st -> match st.sk with Sindex (ixs, _) -> Array.iter (function All -> () | Ix e -> f e) ixs | Sfield _ -> ()) path;
     f value
   | Match { subject; arms } ->
     f subject;
@@ -97,18 +97,21 @@ let children (f : expr -> unit) (e : expr) =
   | Return _ | Lambda _ | Fn_def _ | Lint _ | Lfloat _ | Lbool _ | Lmissing | Ltext _ | Var _ | Break | End_index | Use _
   | Interface _ | Hook _ -> ()
 
-(* The assigned names, without entering nested functions. *)
-let rec assigned sc (e : expr) =
-  match e.e with
-  | Assign (n, _) -> ignore (var sc n.text); children (assigned sc) e
-  | Set { root; _ } -> ignore (var sc root.text); children (assigned sc) e
-  | Destructure (pt, _) -> pat_names (fun n -> ignore (var sc n.text)) pt; children (assigned sc) e
-  | Match { arms; _ } ->
-    Array.iter (fun a -> pat_names (fun n -> ignore (var sc n.text)) a.pt) arms;
-    children (assigned sc) e
-  | For { var = v; _ } -> ignore (var sc v.text); children (assigned sc) e
-  | Fn_def (n, _) -> ignore (var sc n.text)
-  | _ -> children (assigned sc) e
+(* The assigned names, without entering nested functions: one closure for a statement, not one for each node. *)
+let assigned sc (e : expr) =
+  let rec go (e : expr) =
+    match e.e with
+    | Assign (n, _) -> ignore (var sc n.text); children go e
+    | Set { root; _ } -> ignore (var sc root.text); children go e
+    | Destructure (pt, _) -> pat_names (fun n -> ignore (var sc n.text)) pt; children go e
+    | Match { arms; _ } ->
+      Array.iter (fun a -> pat_names (fun n -> ignore (var sc n.text)) a.pt) arms;
+      children go e
+    | For { var = v; _ } -> ignore (var sc v.text); children go e
+    | Fn_def (n, _) -> ignore (var sc n.text)
+    | _ -> children go e
+  in
+  go e
 
 (* A variable of an enclosing scope. *)
 let rec find env sc celled text : binding option =
@@ -221,65 +224,69 @@ let type_ref env (t : ptype) =
       fail env t.tpos (match t.tpkg, env.home t.tname with None, Some p -> Messages.moved t.tname p | _ -> Messages.no_type shown)
   end
 
+(* The names that an expression reads, resolved. The walk is one closure for a statement, not one for each node, since the
+   load of a program goes through every node of it. *)
 let rec reads env sc celled (e : expr) =
-  let go = reads env sc celled in
-  match e.e with
-  | Field ({ e = Var { text; _ }; _ }, name)
-    when List.mem_assoc text env.spaces && find env sc celled text = None ->
-    (* r.name: a variable of another module. *)
-    let found = if Lexer.is_public name then (List.assoc text env.spaces) name else None in
-    (match found with
-     | Some b -> e.e <- Var { text = name; b }
-     | None -> fail env e.pos (Messages.no_name text name))
-  | Field (base, name) ->
-    (match static env sc celled base name with
-     | Some method_name -> e.e <- Var method_name
-     | None ->
-       (* geo.Rect.small: a static method of another package; a field is checked when it is read. *)
-       (match base.e with
-        | Field ({ e = Var { text = alias; _ }; _ }, sname) when not (Lexer.is_public name) && find env sc celled alias = None ->
-          (match Option.bind (List.assoc_opt alias env.spaces) (fun look -> look sname) with
-           | Some b when env.is_type b -> fail env e.pos (Messages.private_member name)
-           | _ -> ())
-        | _ -> ());
-       children go e;
-       (match base.e with
-        | Var { b = Cell { stable = true; _ }; text } -> struct_member env e.pos text name
-        | _ -> ()))
-  | Var n ->
-    (match find env sc celled n.text with
-     | Some b -> n.b <- b
-     | None ->
-       match env.lookup n.text with
+  let rec go (e : expr) =
+    match e.e with
+    | Field ({ e = Var { text; _ }; _ }, name)
+      when List.mem_assoc text env.spaces && find env sc celled text = None ->
+      (* r.name: a variable of another module. *)
+      let found = if Lexer.is_public name then (List.assoc text env.spaces) name else None in
+      (match found with
+       | Some b -> e.e <- Var { text = name; b }
+       | None -> fail env e.pos (Messages.no_name text name))
+    | Field (base, name) ->
+      (match static env sc celled base name with
+       | Some method_name -> e.e <- Var method_name
+       | None ->
+         (* geo.Rect.small: a static method of another package; a field is checked when it is read. *)
+         (match base.e with
+          | Field ({ e = Var { text = alias; _ }; _ }, sname) when not (Lexer.is_public name) && find env sc celled alias = None ->
+            (match Option.bind (List.assoc_opt alias env.spaces) (fun look -> look sname) with
+             | Some b when env.is_type b -> fail env e.pos (Messages.private_member name)
+             | _ -> ())
+          | _ -> ());
+         children go e;
+         (match base.e with
+          | Var { b = Cell { stable = true; _ }; text } -> struct_member env e.pos text name
+          | _ -> ()))
+    | Var n ->
+      (match find env sc celled n.text with
        | Some b -> n.b <- b
-       | None -> fail env e.pos (undefined env n.text))
-  | Assign (n, _) -> n.b <- Local (var sc n.text); children go e
-  | Set { root; path; _ } ->
-    root.b <- Local (var sc root.text);
-    children go e
-  | Destructure (pt, _) ->
-    constructors env sc celled pt;
-    pat_names (fun n -> n.b <- Local (var sc n.text)) pt;
-    children go e
-  | Match { arms; _ } ->
-    Array.iter (fun a -> constructors env sc celled a.pt; pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt) arms;
-    children go e
-  | For { var = v; _ } -> v.b <- Local (var sc v.text); children go e
-  | Comp { cbody; cvar; csrc; cguard } ->
-    go csrc;
-    let i = fresh sc cvar.text in
-    cvar.b <- Local i;
-    let saved = sc.overlay in
-    sc.overlay <- (cvar.text, i) :: saved;
-    go cbody;
-    Option.iter go cguard;
-    sc.overlay <- saved
-  | Fn_def (n, f) ->
-    if Lexer.split_method n.text <> None then fail env e.pos Messages.method_nested;
-    n.b <- Local (var sc n.text);
-    func env (Some sc) Anon celled f
-  | Lambda f -> func env (Some sc) Anon celled f
-  | _ -> children go e
+       | None ->
+         match env.lookup n.text with
+         | Some b -> n.b <- b
+         | None -> fail env e.pos (undefined env n.text))
+    | Assign (n, _) -> n.b <- Local (var sc n.text); children go e
+    | Set { root; path; _ } ->
+      root.b <- Local (var sc root.text);
+      children go e
+    | Destructure (pt, _) ->
+      constructors env sc celled pt;
+      pat_names (fun n -> n.b <- Local (var sc n.text)) pt;
+      children go e
+    | Match { arms; _ } ->
+      Array.iter (fun a -> constructors env sc celled a.pt; pat_names (fun n -> n.b <- Local (var sc n.text)) a.pt) arms;
+      children go e
+    | For { var = v; _ } -> v.b <- Local (var sc v.text); children go e
+    | Comp { cbody; cvar; csrc; cguard } ->
+      go csrc;
+      let i = fresh sc cvar.text in
+      cvar.b <- Local i;
+      let saved = sc.overlay in
+      sc.overlay <- (cvar.text, i) :: saved;
+      go cbody;
+      Option.iter go cguard;
+      sc.overlay <- saved
+    | Fn_def (n, f) ->
+      if Lexer.split_method n.text <> None then fail env e.pos Messages.method_nested;
+      n.b <- Local (var sc n.text);
+      func env (Some sc) Anon celled f
+    | Lambda f -> func env (Some sc) Anon celled f
+    | _ -> children go e
+  in
+  go e
 
 and func env parent kind celled (f : func) =
   let sc = { fn = f; kind; parent; vars = Hashtbl.create 8; names = []; caps = []; overlay = [] } in
@@ -375,11 +382,14 @@ and flow (f : func) =
 let keeps (f : func) k = k >= 62 || f.kept land (1 lsl k) <> 0
 let keep (f : func) k = if k < Array.length f.params && k < 62 then f.kept <- f.kept lor (1 lsl k)
 
-let rec note_writes (f : func) (e : expr) =
-  (match e.e with
-   | Set { root = { b = Local k; _ }; _ } | Assign ({ b = Local k; _ }, _) -> keep f k
-   | _ -> ());
-  children (note_writes f) e
+let note_writes (f : func) (e : expr) =
+  let rec go (e : expr) =
+    (match e.e with
+     | Set { root = { b = Local k; _ }; _ } | Assign ({ b = Local k; _ }, _) -> keep f k
+     | _ -> ());
+    children go e
+  in
+  go e
 
 (* Tail positions: a return costs nothing there, a call to itself becomes a loop. A variable returned there stays owned,
    so a parameter that is must not be lent. *)
@@ -407,13 +417,14 @@ and mark_block self f (b : block) =
   if Array.length b > 0 then mark_tail self f b.(Array.length b - 1)
 
 (* After [mark_tail]: is there a return that needs an exception? *)
-let rec nontail (e : expr) =
+exception Nontail
+
+let rec nontail_in (e : expr) =
   match e.e with
-  | Return { tail = false; _ } | Question _ -> true
-  | _ ->
-    let found = ref false in
-    children (fun x -> if nontail x then found := true) e;
-    !found
+  | Return { tail = false; _ } | Question _ -> raise_notrace Nontail
+  | _ -> children nontail_in e
+
+let nontail (e : expr) = match nontail_in e with () -> false | exception Nontail -> true
 
 (* The nested functions of a function, to mark tail positions in them. *)
 let rec finish_tail self (f : func) =

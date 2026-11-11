@@ -31,9 +31,10 @@ let by_first =
   List.iter (fun (w, k) -> t.(Char.code w.[0]) <- (w, Some k) :: t.(Char.code w.[0])) keywords;
   t
 
-let keyword s =
-  let rec find = function (w, k) :: rest -> if String.equal w s then k else find rest | [] -> None in
-  if String.length s = 0 then None else find by_first.(Char.code s.[0])
+let rec find_keyword s = function (w, k) :: rest -> if String.equal w s then k else find_keyword s rest | [] -> None
+
+(* No closure per call: every name of the code is looked up. *)
+let keyword s = if String.length s = 0 then None else find_keyword s by_first.(Char.code s.[0])
 
 (* And the words that mean something in some places only: it in a short function, as after a use, _ in a pattern and ? after
    a result. *)
@@ -196,6 +197,7 @@ let rec scan st ~in_code : token array =
     if !count = Array.length !out then begin
       let bigger = Array.make (2 * !count) filler in
       Array.blit !out 0 bigger 0 !count;
+      Array.fill !out 0 !count filler;
       out := bigger
     end;
     !out.(!count) <- tok;
@@ -311,7 +313,9 @@ let rec scan st ~in_code : token array =
   in
   push NL fin;
   push EOF fin;
-  Array.sub !out 0 !count
+  let tokens = Array.sub !out 0 !count in
+  Array.fill !out 0 !count filler;
+  tokens
 
 and text st start_pos =
   let s = st.src and n = String.length st.src in
@@ -359,6 +363,12 @@ and text st start_pos =
   done;
   flush ();
   match List.rev !parts with [] -> [ Plain "" ] | l -> l
+
+(* A token array of more than 256 places is made in the major heap, and the young tokens it points to stay roots of the next
+   minor collection until a major cycle frees the array: that collection would copy every token of the file to the major
+   heap, though nothing reads them any more, about a third of what it copies after loading a program. An array that is done
+   with is filled with the old filler instead, so that its tokens die young; scan does so with the arrays it outgrows. *)
+let release (toks : token array) = Array.fill toks 0 (Array.length toks) filler
 
 let tokens ~file src =
   if not (String.is_valid_utf_8 src) then

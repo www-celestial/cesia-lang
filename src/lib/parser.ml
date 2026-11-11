@@ -65,6 +65,9 @@ let node p pos e =
   p.next_id <- id + 1;
   { id; pos; e }
 
+(* A token that is a whole expression, as 1 or x: no closure for it, as it is most of the code. *)
+let literal p (t : token) e = advance p; node p t.pos e
+
 let with_mode p mode f =
   let saved = p.mode in
   p.mode <- mode;
@@ -547,38 +550,32 @@ and power p =
     node p pos (Bin (Pow, base, deeper p (fun () -> unary p)))
   end else base
 
-and postfix p =
-  let e = ref (primary p) in
-  let rec go () =
-    let t = cur p in
-    match t.t with
-    | LP when not t.sp ->
-      advance p;
-      let before = p.its in
-      let args = call_args p in
-      let args = if p.its = before then args else it_sugar p args in
-      e := node p (!e).pos (Call { callee = !e; args; self_tail = false });
-      go ()
-    | LB when not t.sp ->
-      advance p;
-      let ixs, uses_end = index_args p in
-      e := node p t.pos (Index (!e, ixs, uses_end));
-      go ()
-    | QUESTION ->
-      if t.sp then error p t.pos Messages.question_space;
-      if not p.in_function then error p t.pos Messages.question_file;
-      advance p;
-      e := node p t.pos (Question !e);
-      go ()
-    | DOT ->
-      advance p;
-      let n = word p "a field name" in
-      e := node p t.pos (Field (!e, n));
-      go ()
-    | _ -> ()
-  in
-  go ();
-  !e
+and postfix p = postfix_after p (primary p)
+
+(* The calls, indexes, ? and fields after e, as a loop with no closure: postfix runs for every operand of the code. *)
+and postfix_after p e =
+  let t = cur p in
+  match t.t with
+  | LP when not t.sp ->
+    advance p;
+    let before = p.its in
+    let args = call_args p in
+    let args = if p.its = before then args else it_sugar p args in
+    postfix_after p (node p e.pos (Call { callee = e; args; self_tail = false }))
+  | LB when not t.sp ->
+    advance p;
+    let ixs, uses_end = index_args p in
+    postfix_after p (node p t.pos (Index (e, ixs, uses_end)))
+  | QUESTION ->
+    if t.sp then error p t.pos Messages.question_space;
+    if not p.in_function then error p t.pos Messages.question_file;
+    advance p;
+    postfix_after p (node p t.pos (Question e))
+  | DOT ->
+    advance p;
+    let n = word p "a field name" in
+    postfix_after p (node p t.pos (Field (e, n)))
+  | _ -> e
 
 and call_args p =
   with_mode p Ignore (fun () ->
@@ -792,17 +789,16 @@ and array_lit p pos =
 
 and primary p =
   let t = cur p in
-  let lit e = advance p; node p t.pos e in
   match t.t with
-  | INT i -> lit (Lint i)
-  | FLOAT x -> lit (Lfloat x)
-  | TRUE -> lit (Lbool true)
-  | FALSE -> lit (Lbool false)
-  | MISSING -> lit Lmissing
+  | INT i -> literal p t (Lint i)
+  | FLOAT x -> literal p t (Lfloat x)
+  | TRUE -> literal p t (Lbool true)
+  | FALSE -> literal p t (Lbool false)
+  | MISSING -> literal p t Lmissing
   | TEXT parts -> advance p; text p t.pos parts
   | NAME n ->
     if String.equal n "it" then p.its <- p.its + 1;
-    lit (Var (name n))
+    literal p t (Var (name n))
   | LP ->
     advance p;
     let e = with_mode p Ignore (fun () -> expr p) in
@@ -817,7 +813,7 @@ and primary p =
   | LC -> advance p; struct_lit p t.pos
   | END when p.in_index > 0 ->
     p.saw_end <- true;
-    lit End_index
+    literal p t End_index
   | _ -> unexpected p "an expression"
 
 and text p pos parts =

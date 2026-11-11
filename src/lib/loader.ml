@@ -287,6 +287,7 @@ let parse ?(rewrite = ignore) w ~hooks ~path ~src ~use =
   rewrite fn;
   check_uses path fn;
   let names = used_names fn toks in
+  Lexer.release toks;
   let uses =
     List.filter_map
       (fun (e : Ast.expr) ->
