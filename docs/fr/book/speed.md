@@ -67,7 +67,7 @@ code machine garde ses deux floats dans des registres (les petites mémoires du 
   fonctions ou plus, ou une fonction qui a capturé ses propres variables.
 - Sous un debugger (un programme qui exécute le vôtre et peut l'arrêter, pour montrer ses variables), une fonction dont
   le code contient un breakpoint (une ligne où le programme doit s'arrêter), et le code que vous parcourez pas à pas :
-  tout le reste demeure du code machine, comme le dit le chapitre [Le prompt et le debugger](debug.md#speed).
+  tout le reste demeure du code machine, comme le dit le chapitre [Le prompt et le debugger](debug.md#vitesse).
 - Au prompt (la ligne où vous tapez du code à côté du programme qui tourne), sous `--watch` et sous un debugger, le code
   qui se sert de ce que donnent les fonctions du programme lui-même : une telle fonction peut être définie de nouveau
   pendant qu'un appel à elle tourne, avec des résultats d'un autre type, et ce code les prend aussitôt.
