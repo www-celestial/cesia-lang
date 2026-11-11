@@ -12,6 +12,7 @@ allow = ["exec=sh", "env=HOME", "debug", "ffi=m", "ffi=c", "ffi=sodium"]
 [site]
 title = "Cesia"
 source = "https://github.com/www-celestial/cesia-lang/blob/main/src/"
+color = "#3b5bdb"
 
 [tasks.build]
 run = ["dune", "build", "--profile", "release"]

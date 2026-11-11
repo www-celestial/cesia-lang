@@ -244,7 +244,7 @@ make code faster: see [Types](types.md#checked-when-a-value-comes-in) and
 
 The fewest insertions, deletions and replacements of a character that turn one text into another, also called the
 Levenshtein distance: 3 from `kitten` to `sitting`. [algo.Levenshtein] gives it: see
-[Numbers and algorithms](numbers.md#algorithms-std-algo).
+[Numbers and algorithms](numbers.md#algorithms-stdalgo).
 
 ## Effect handler
 
@@ -322,7 +322,7 @@ it was made. Cesia's closures are flat, which is why they capture by value: see
 
 A division of integers that rounds toward minus infinity, so that the remainder has the sign of the divisor:
 `math.Div(-7, 3)` is `-3` and `math.Mod(-7, 3)` is `2`, as in Python. C and Java truncate toward zero instead, giving
-`-2` and `-1`: see [Numbers and algorithms](numbers.md#one-number-std-math).
+`-2` and `-1`: see [Numbers and algorithms](numbers.md#one-number-stdmath).
 
 ## Foreign function interface
 
@@ -675,7 +675,7 @@ interrupts a fiber, and a function of `std/` written in OCaml runs to its end. S
 ## Principle of least privilege
 
 A program gets the rights it needs, and no more. In Cesia, `--allow read=./data` rather than `read`, and `net=:8080` rather
-than `net`: see [Permissions](permissions.md#allow).
+than `net`: see [Permissions](permissions.md#--allow).
 
 ## Priority queue
 
