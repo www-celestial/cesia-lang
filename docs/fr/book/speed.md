@@ -12,7 +12,7 @@ tourne sur x86-64, sous Linux, macOS et Windows ; sur arm64, comme les puces d'A
 les programmes tournent dans l'interpréteur, avec les mêmes résultats.
 
 Une fonction qui donne un nombre est *hot* (chaude : elle tourne assez souvent pour être compilée) après 1 000 appels, et
-une boucle après 10 000 à 20 000 tours : [Comment Cesia fonctionne](internals.md#the-jit) dit exactement quand, quelle
+une boucle après 10 000 à 20 000 tours : [Comment Cesia fonctionne](internals.md#le-jit) dit exactement quand, quelle
 sorte de JIT c'est, comment il parie sur les types et comment il rend la main à l'interpréteur quand un pari échoue.
 
 ## Ce qui devient du code machine
@@ -24,7 +24,7 @@ sorte de JIT c'est, comment il parie sur les types et comment il rend la main à
   une fois) : lire leurs champs, calculer avec eux, en créer de nouvelles, les ranger dans une liste.
 - Dans une boucle, l'appel d'une fonction gardée dans une variable, comme `f(x)` où `f` vient d'une liste : le code
   machine teste les fonctions que l'appel a rencontrées, quatre au plus, et lance celle qu'il trouve, comme le montre
-  [Comment Cesia fonctionne](internals.md#calls-through-a-value).
+  [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur).
 
 Cette boucle sur une liste de structs tourne en code machine dès qu'elle est hot, environ quinze fois plus vite que dans
 l'interpréteur : `bench/real/particles.ce`, la même boucle sur 2 000 particules, prend 49 ms contre 811 ms sans le JIT,
@@ -57,7 +57,7 @@ si un champ tient un texte, le programme continue dans l'interpréteur à partir
 code machine : la réponse est la même, un peu plus tard. Tant que les paris tiennent, `p` n'est jamais construite : le
 code machine garde ses deux floats dans des registres (les petites mémoires du processeur lui-même, où il calcule), et
 écrit la nouvelle `Particle` à la place de l'ancienne, que rien d'autre ne tient, comme le montre
-[Comment Cesia fonctionne](internals.md#what-it-makes).
+[Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
 
 ## Ce qui reste dans l'interpréteur
 
@@ -124,7 +124,7 @@ que Node. Un programme compilé en Go ou en OCaml, ou Lua, démarre en environ l
 seul binaire tout son runtime (ce qui accompagne un programme pendant qu'il tourne), sa bibliothèque standard et son
 compilateur, 19 723 endroits de son code que le garbage collector d'OCaml (la partie qui libère la mémoire que plus rien
 n'utilise) doit connaître, contre 322 dans le programme d'OCaml lui-même, et le système doit corriger les adresses de
-ses données à chaque démarrage, comme le montre [Comment Cesia fonctionne](internals.md#start-up).
+ses données à chaque démarrage, comme le montre [Comment Cesia fonctionne](internals.md#le-démarrage).
 
 ### Le calcul
 
@@ -141,7 +141,7 @@ En millisecondes, la médiane et l'intervalle à 95 % de 11 runs :
 
 Mesuré de nouveau le 2026-11-09, après que les feuilles d'une récursion (ses derniers appels, qui ne rappellent plus la
 fonction) ont été testées à leur appel et que le JIT a donné à MIR (le petit compilateur qui produit le code machine de
-Cesia) deux cinquièmes de lignes en moins à compiler ([Comment Cesia fonctionne](internals.md#what-it-makes)) : la
+Cesia) deux cinquièmes de lignes en moins à compiler ([Comment Cesia fonctionne](internals.md#ce-qu-il-produit)) : la
 veille, `fib` prenait 74 ms, `matmul` 47, `structs` 49, `dyn` 57, et les autres lignes restaient à quelques pour cent de
 celles d'aujourd'hui.
 
@@ -165,7 +165,7 @@ devant LuaJIT, 395. Sur `maps`, il est devant tous les langages sauf Java, Go co
   programme en code machine avant qu'il tourne, chaque type connu, et démarrent en 1,1 à 1,3 ms. Un appel de `fib` coûte
   maintenant à Cesia 5,5 cycles du processeur, contre 5,9 à Go (selon les compteurs du processeur : le coût d'un appel de
   plus) : ce qui garde Go 9 ms devant, c'est le coût fixe, le démarrage (2,65 ms contre 1,31), le chargement du JIT,
-  0,65 ms, et la compilation par MIR, 3,4 ms ([Comment Cesia fonctionne](internals.md#what-it-costs-to-make)). La boucle
+  0,65 ms, et la compilation par MIR, 3,4 ms ([Comment Cesia fonctionne](internals.md#ce-que-coûte-sa-fabrication)). La boucle
   intérieure de `mandel` attend sa chaîne de floats, une soustraction, une addition et une multiplication d'un tour au
   suivant, 11 cycles, le plancher de tout langage : Cesia et Go prennent tous deux 3,7 à 3,8 ns par tour, et les 9 ms
   qui les séparent sont encore le coût fixe. La boucle intérieure de `matmul` tourne elle aussi à la vitesse de Go,
@@ -173,7 +173,7 @@ devant LuaJIT, 395. Sur `maps`, il est devant tous les langages sauf Java, Go co
 - **`structs` : OCaml prend 0,6 fois le temps de Cesia, Go un sixième.** Une map de quatre floats les garde maintenant
   comme des doubles (le nombre machine de 64 bits, nu, sans bloc de mémoire autour), et le JIT ne construit jamais la
   map qu'il lit dans la liste : il garde ses quatre doubles dans des registres et écrit les nouveaux à la place des
-  anciens, que rien d'autre ne tient ([Comment Cesia fonctionne](internals.md#what-it-makes)). Un pas n'alloue rien (il
+  anciens, que rien d'autre ne tient ([Comment Cesia fonctionne](internals.md#ce-qu-il-produit)). Un pas n'alloue rien (il
   ne demande aucune mémoire) : 219 ms, puis 186, 49, maintenant 46. Ce qui reste, environ 60 instructions et 24 cycles
   par pas contre 19 et 5 pour Go : chaque pas lit dans la liste l'adresse de la map et vérifie sa sorte, ses clés,
   qu'elle n'est tenue que par un seul nom et que son stockage contient des doubles, là où l'array de Go contient les
@@ -185,23 +185,23 @@ devant LuaJIT, 395. Sur `maps`, il est devant tous les langages sauf Java, Go co
   écrive) ne peut pas typer ; le JIT le garde comme un float dans un registre pendant toute la boucle, et l'appel devient
   un test des deux fonctions qu'il a rencontrées, dont le code est recopié sur place (inlined), le *polymorphic inline
   cache* (la mémoire, à l'endroit de l'appel, des fonctions qu'il a déjà rencontrées) de
-  [Comment Cesia fonctionne](internals.md#calls-through-a-value) : 714 ms, puis 182, 114, 57, maintenant 55. Le pas de Go
+  [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) : 714 ms, puis 182, 114, 57, maintenant 55. Le pas de Go
   est un appel de code tout en floats, sans test de sorte et sans compte des pas.
 - **`maps` : Java prend un huitième de temps en moins ; Cesia est devant tous les autres, Go compris.** Une grande map
   que tient un seul nom est maintenant une hash table (un array de slots où le hash d'une clé, un nombre calculé à partir
   d'elle, désigne la place où la chercher) rangée dans l'ordre d'insertion, la disposition de Python, et ne devient le
   trie (un arbre où chaque niveau choisit sa branche d'après quelques bits du hash) [CHAMP](glossary.md#champ) des
   [persistent](glossary.md#persistent-data-structure) maps (qui gardent leur ancienne version quand elles changent) qu'une
-  fois partagée et modifiée ([Comment Cesia fonctionne](internals.md#maps-a-hash-table-then-a-hash-trie)) : 815 ms
+  fois partagée et modifiée ([Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie)) : 815 ms
   avant, 275 avec la table, 258 depuis que chaque clé `"key$k"` est construite en une copie au lieu de trois
-  ([Comment Cesia fonctionne](internals.md#running-closures-as-code)), en 68 Mo, contre 70 Mo pour Python, 50 pour Go et
+  ([Comment Cesia fonctionne](internals.md#l-exécution-des-closures-comme-code)), en 68 Mo, contre 70 Mo pour Python, 50 pour Go et
   139 pour Java. Les compteurs du processeur disent pourquoi : 3,1 cache misses (des lectures qui ne trouvent pas leur
   donnée dans le cache, la mémoire rapide du processeur, et doivent aller la chercher plus loin) par opération dans son
   dernier niveau de cache, là où le trie en faisait 18,7, contre 3,7 pour Python et 4,3 pour Go. Les 224 ms de Java
   viennent d'un garbage collector qui travaille sur les autres cœurs et d'un hash gardé dans chacune de ses chaînes ; et
   la boucle de `maps`, qui construit un texte à chaque tour, reste dans l'interpréteur de Cesia : sa part est d'environ
   un dixième du temps, et du code natif devrait rappeler OCaml pour le hash, la table et le texte
-  ([Comment Cesia fonctionne](internals.md#what-stays-in-the-interpreter)). Le prix de la table : le premier [dict.Put]
+  ([Comment Cesia fonctionne](internals.md#ce-qui-reste-dans-l-interpréteur)). Le prix de la table : le premier [dict.Put]
   sur une grande map construite sur place la change en trie, environ 0,25 s pour un million de clés, une seule fois.
 - **Node et Java démarrent lentement mais tournent vite** : leurs JIT compilent davantage, et plus tard, avec plus de
   temps à y consacrer.
@@ -246,11 +246,11 @@ goroutines de Go tournent aussi en parallèle sur tous les cœurs ; les fibers d
 ### Textes et fichiers
 
 Un texte de 100 Mo, 2,46 millions de lignes de source OCaml : lu en entier depuis un [page cache](glossary.md#page-cache)
-chaud (la copie des fichiers que le système garde en mémoire après les avoir lus), un mot cherché jusqu'à la fin en
-respectant la casse et en l'ignorant, ses lignes jointes de nouveau, et 16 Mo écrits, avec et sans
-[fsync](glossary.md#fsync) (l'appel système qui attend que les octets écrits soient vraiment sur le disque). Chaque
-mesure est prise dans le programme, autour de la seule opération, 7 runs de chaque langage alternés ; la médiane, et le
-plus bas et le plus haut des 7, qui encadrent la médiane avec une probabilité de 98,4 %. En millisecondes :
+warm (la copie des fichiers que le système garde en mémoire après les avoir lus, ici qui tient déjà ce fichier), un mot
+cherché jusqu'à la fin en respectant la casse et en l'ignorant, ses lignes jointes de nouveau, et 16 Mo écrits, avec et
+sans [fsync](glossary.md#fsync) (l'appel système qui attend que les octets écrits soient vraiment sur le disque).
+Chaque mesure est prise dans le programme, autour de la seule opération, 7 runs de chaque langage alternés ; la médiane,
+et le plus bas et le plus haut des 7, qui encadrent la médiane avec une probabilité de 98,4 %. En millisecondes :
 
 | | Cesia | Python | Node | Go |
 |---|---:|---:|---:|---:|
@@ -312,7 +312,7 @@ réponse tournent en partie dans l'interpréteur. Le handler de chaque requête 
 agrandissait ses piles, ce qui demandait à OCaml la taille de son heap (la mémoire où vivent les valeurs) à chaque
 agrandissement, un dixième du temps du serveur, jusqu'à ce que des piles aussi petites soient laissées aux checkpoints
 (les moments où l'interpréteur arrête de compter pour regarder le programme)
-([Comment Cesia fonctionne](internals.md#what-it-serves)).
+([Comment Cesia fonctionne](internals.md#ce-qu-il-sert)).
 
 **Là où un géant gagne, et pourquoi : 1 000 connexions.** Node et Go répondent à plus de requêtes à 1 000 connexions
 gardées, et Node tient son 99e percentile à la moitié de celui de Cesia. Un seul cœur fait tourner les 1 000 fibers de
@@ -354,7 +354,7 @@ sur une machine plus lente.
 - Le MIR de Vladimir Makarov, qui produit le code machine de Cesia.
 
 Chacun avec son lien dans [Références](references.md#the-jit) et [Valeurs et maps](references.md#values-and-maps) ;
-[Comment Cesia fonctionne](internals.md#the-jit) montre le JIT de l'intérieur.
+[Comment Cesia fonctionne](internals.md#le-jit) montre le JIT de l'intérieur.
 
 ## La suite
 
