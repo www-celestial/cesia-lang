@@ -17,7 +17,7 @@ vient :
 
 Chaque bloc de Cesia de cette page a tourné quand le livre a été construit. Les temps viennent de runs (des exécutions
 mesurées) sur une seule machine, avec la méthode écrite à côté. Les articles et les documents sont dans
-[Références](references.md#solving-a-problem).
+[Références](references.md#résoudre-un-problème).
 
 ## 1. Le problème, énoncé avec précision
 
@@ -632,7 +632,7 @@ La solution répond à la question pour les dossiers sur lesquels elle a été p
   validity.
 - La page de manuel de fdupes et le README de jdupes.
 
-Chacun avec son lien dans [Références](references.md#solving-a-problem).
+Chacun avec son lien dans [Références](references.md#résoudre-un-problème).
 
 ## La suite
 

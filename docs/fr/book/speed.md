@@ -353,7 +353,7 @@ sur une machine plus lente.
   (un JIT qui enregistre le chemin que prend une boucle hot et ne compile que ce chemin), ce qu'est LuaJIT, et pas Cesia.
 - Le MIR de Vladimir Makarov, qui produit le code machine de Cesia.
 
-Chacun avec son lien dans [Références](references.md#the-jit) et [Valeurs et maps](references.md#values-and-maps) ;
+Chacun avec son lien dans [Références](references.md#le-jit) et [Valeurs et maps](references.md#valeurs-et-maps) ;
 [Comment Cesia fonctionne](internals.md#le-jit) montre le JIT de l'intérieur.
 
 ## La suite
