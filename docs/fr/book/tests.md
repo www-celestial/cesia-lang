@@ -273,7 +273,9 @@ cesia.Doc(Total) -->
 ## Un site pour votre projet
 
 `cesia doc --site` construit un site du projet, comme celui-ci : une page pour chaque module et chaque nom public, avec
-une recherche. Avec `--open`, il ouvre le site dans le navigateur. Ses pages sont écrites dans `site/`, que `cesia new`
+une recherche. La référence contient aussi les modules de `std/`, et le bandeau du haut nomme le Cesia qui a fait le
+site : le mot Cesia et sa version (le site de Cesia lui-même montre la version seule). Avec `--open`, il ouvre le site
+dans le navigateur. Ses pages sont écrites dans `site/`, que `cesia new`
 tient hors de git.
 
 ```bash

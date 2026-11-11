@@ -1879,7 +1879,7 @@ defn build(root, folder, cache, runs)
   end
   hasFr = sys.Exists("$root/docs/fr") or sys.Exists("$root/README.fr.md")
   site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache,
-    Run: runs, Tree: {}, Columns: {}, Version: cesia.Version(), Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, ByPath: {}, FrByPath: {}}
+    Run: runs, Tree: {}, Columns: {}, Version: if config.Name == "cesia" cesia.Version() else "Cesia $(cesia.Version())" end, Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, ByPath: {}, FrByPath: {}}
   books = booksOf(root, site)
   book = books.Pages
   site.Home = books.Home
