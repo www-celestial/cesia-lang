@@ -166,9 +166,9 @@ où `tag.ce` affiche [cesia.Native]. L'OCaml doit être celui qui a construit ce
 - **Les domains.** Seul le domain de Cesia, le principal, touche aux valeurs. Les domains du moteur font le long travail, et
   rendent la main par le `resume` de `suspend`, la seule fonction que n'importe quel domain peut appeler. Une native qui
   bloque sans `suspend` bloque toutes les fibers. Un moteur n'appelle jamais `Gc.set`, `Unix.fork` ni `Sys.set_signal`.
-- **Les exceptions.** Une exception OCaml qui sort d'une native devient une panique qui la nomme :
+- **Les exceptions.** Une exception OCaml qui sort d'une native devient une panic (l'arrêt net de la fiber sur un bug) qui la nomme :
   `echo.boom raised Not_found: a bug of its native package.` (echo.boom a levé Not_found : un bug de son package natif).
-  Les paniques et les limites propres à Cesia traversent le moteur sans être touchées : il n'écrit donc jamais `with _ ->`
+  Les panics et les limites propres à Cesia traversent le moteur sans être touchées : il n'écrit donc jamais `with _ ->`
   autour d'un appel à `Cesia_v1`. Une fiber annulée pendant qu'elle attend dans `suspend` s'arrête aussitôt, et le
   `resume` tardif ne fait rien.
 - **Les modules.** Un moteur peut utiliser les modules de la Stdlib et d'Unix que contient le binaire de Cesia, et apporte
@@ -197,15 +197,15 @@ où `tag.ce` affiche [cesia.Native]. L'OCaml doit être celui qui a construit ce
 |---|---|
 | `list ctx values` | une liste de ces valeurs, comptée pour `--limit memory` |
 | `keys names` | les noms de champs de maps, faits une fois au démarrage du moteur, chaque nom une fois ; leurs hashes calculés à ce moment-là |
-| `record ctx keys values` | une map avec une valeur pour chaque nom de `keys`, dans l'ordre : une panique si leurs nombres diffèrent |
+| `record ctx keys values` | une map avec une valeur pour chaque nom de `keys`, dans l'ordre : une panic si leurs nombres diffèrent |
 | `ok ctx v`, `err ctx v` | `result.Ok(v)` et `result.Err(v)` |
 | `length c` | le nombre d'éléments d'une liste, de champs d'une map ou d'une struct ; 0 pour tout le reste |
-| `item ctx c i` | un élément d'une liste, à partir de 0 : une panique si `i` est en dehors, ou si `c` n'est pas une liste |
+| `item ctx c i` | un élément d'une liste, à partir de 0 : une panic si `i` est en dehors, ou si `c` n'est pas une liste |
 | `fields keys c` | les champs d'une map ou d'une struct qui ont les noms de `keys`, dans l'ordre, `Missing` pour un nom qui lui manque, en un seul appel |
 | `names c`, `values c` | les noms des champs d'une struct, ou les clés textes d'une map, dans l'ordre, et leurs valeurs |
-| `need ctx name what v` | une panique qui nomme la native, ce dont elle a besoin et ce qu'elle a reçu : `echo.Echo4 needs a Text, not the number 3.` |
+| `need ctx name what v` | une panic qui nomme la native, ce dont elle a besoin et ce qu'elle a reçu : `echo.Echo4 needs a Text, not the number 3.` |
 | `suspend ctx f` | suspend la fiber et appelle `f resume` ; `resume` la réveille une fois, depuis n'importe quel domain |
-| `need_read ctx path`, `need_write ctx path` | une panique, sauf si le programme peut lire ou écrire le chemin |
+| `need_read ctx path`, `need_write ctx path` | une panic, sauf si le programme peut lire ou écrire le chemin |
 | `panic ctx message` | arrête la fiber, comme [bug.Panic] |
 | `pay ctx n`, `reserve ctx words` | compte un parcours de valeurs pour `--limit steps`, et la mémoire que le moteur garde pour `--limit memory` |
 | `register natives` | les natives du moteur, une fois, à son démarrage |
@@ -277,7 +277,7 @@ Là où un géant gagne, et pourquoi :
   limited API).
 - **Le prix de Cesia**, 114 ns, est surtout celui de l'appel d'une native depuis un programme Cesia, pas celui de
   `Cesia_v1` : la fonction Cesia `Echo4` qui enveloppe la native, le stub (le petit morceau de code qui fait le pont), le
-  compte des arguments, le guard (la vérification) qui change une exception en panique, et la conversion des 4 arguments
+  compte des arguments, le guard (la vérification) qui change une exception en panic, et la conversion des 4 arguments
   et du résultat (environ 20 ns, mesurées à part). Fabriquer et lire la map par `Cesia_v1` coûte 25 ns de plus que le code
   de Cesia lui-même (mesure 1).
 - **La JNI de Java** paie 165 ns parce que `NewObject` appelle le constructeur de l'enregistrement depuis C, un appel du

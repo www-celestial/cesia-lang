@@ -91,7 +91,7 @@ Après une coupure de courant, le nouveau texte entier est dans `todo.txt`, ou e
 l'ancien `todo.txt` quand le renommage n'a pas atteint le disque : jamais une partie de ce texte, sur les file systems à
 *journaling* d'aujourd'hui (ext4, XFS, btrfs, APFS, NTFS), qui écrivent d'abord chaque changement d'un dossier dans un
 journal, pour qu'il soit fait en entier ou pas du tout. Le prix est le temps que prend le disque : sur la machine de
-[Vitesse](speed.md#textes-et-fichiers), 2,6 ms pour un fichier d'une ligne contre 0,04 ms sans, et 44 ms pour 16 Mo
+[Vitesse](speed.md#textes-et-fichiers), 2,6 ms pour un fichier d'une ligne contre 0,04 ms sans, et 44 ms pour 16 MB
 contre 3,5, les mêmes temps que Python, Node et Go avec leur propre fsync, puisque tous attendent le même disque. Un crash
 du programme seul, sans `sync`, ne perd rien : ce qu'il a écrit est dans la mémoire du système, qui continue vers le
 disque ; seule une panne du système ou du courant peut le perdre.

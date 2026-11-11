@@ -64,7 +64,7 @@ qu'un programme présente pour prouver ses droits), un HMAC, un hash.
 ## Chiffrer avec une clé
 
 [crypto.Seal] chiffre un message sous une clé secrète de 32 octets venue de [crypto.SecretKey], et [crypto.Unseal] le rend
-dans un `Ok`, ou une `Err` quand le message a été modifié ou que la clé est fausse. C'est de l'*authenticated encryption*
+dans un `Ok`, ou un `Err` quand le message a été modifié ou que la clé est fausse. C'est de l'*authenticated encryption*
 (un chiffrement qui prouve aussi que le message n'a pas été modifié) : XSalsa20 cache le message, et Poly1305 ajoute un
 *tag* (une étiquette) de [crypto.MacSize] octets, que personne ne peut fabriquer sans la clé ; un changement d'un seul bit
 est donc refusé, jamais déchiffré en données sans sens. Chaque message prend un *nonce*, un nombre utilisé une seule fois,

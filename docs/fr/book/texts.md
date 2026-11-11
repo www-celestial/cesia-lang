@@ -107,7 +107,7 @@ text.Count("aa", "aaaa") -->
 Une partie d'un seul octet, comme une fin de ligne, se compte huit octets à la fois, une astuce appelée *SWAR*, SIMD
 within a register (le SIMD, une même opération sur plusieurs données à la fois, fait ici dans un seul registre du
 processeur) : les huit octets sont lus comme un seul mot de 64 bits, et quelques opérations sur ce mot trouvent d'un
-coup tous les octets égaux à la partie. Compter les 2,9 millions de fins de ligne d'un texte de 100 Mo prend 35 ms, là
+coup tous les octets égaux à la partie. Compter les 2,9 millions de fins de ligne d'un texte de 100 MB prend 35 ms, là
 où `value.Len(text.Split("\n", s)) - 1` prend 790 ms, car cette expression fabrique chaque ligne (médianes de 3 exécutions, sur la
 machine de [Vitesse](speed.md#à-côté-des-géants)).
 
@@ -284,7 +284,7 @@ trouve cet octet. Avec `fold`, quand cet octet est une lettre, les huit octets p
 32, `0x20` : une majuscule et sa minuscule ne diffèrent que par ce seul bit, les deux deviennent donc la minuscule, et
 aucun autre octet ne devient cette minuscule. Une partie de 32 octets ou plus est cherchée par la méthode de Knuth,
 Morris et Pratt, dont le temps est linéaire en la longueur du texte, quelle que soit la partie. Un mot à la fin d'un
-texte de 100 Mo est trouvé en 39 ms, 41 ms avec `fold`, contre 317 ms pour une copie du texte en minuscules suivie
+texte de 100 MB est trouvé en 39 ms, 41 ms avec `fold`, contre 317 ms pour une copie du texte en minuscules suivie
 d'une recherche ; [Vitesse](speed.md#textes-et-fichiers) met ces temps à côté de Python, Node et Go.
 
 Une recherche compte dans `--limit steps` les octets qu'elle a lus, de son point de départ jusqu'à la fin de ce qu'elle a
@@ -312,7 +312,7 @@ text.IsUtf8(text.FromBytes([0xE9, 0x74, 0xE9])) -->
 
 Le dernier est `été` en Latin-1, un encodage plus ancien d'un octet par caractère, comme en contiennent de vieux
 fichiers. La vérification lit huit octets d'ASCII à la fois, par un seul test de leurs bits de poids fort, et ne décode
-un caractère que là où un octet n'est pas de l'ASCII : 26 ms pour un texte de 100 Mo d'ASCII, 46 ms quand un caractère
+un caractère que là où un octet n'est pas de l'ASCII : 26 ms pour un texte de 100 MB d'ASCII, 46 ms quand un caractère
 sur 33 a un accent, contre 116 ms pour `String.is_valid_utf_8`, la fonction d'OCaml lui-même, qui décode chaque octet
 (médianes de 3 exécutions, même machine).
 

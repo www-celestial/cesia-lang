@@ -325,7 +325,7 @@ hypothèse prédit que lire chaque fichier une seule fois fait disparaître pres
 
 ## Fiber
 
-Une fonction qui tourne à côté des autres dans le même programme, avec sa propre pile, menée par le langage plutôt que
+Une fonction qui tourne à côté des autres dans le même programme, avec sa propre stack (la pile de ses appels en cours), menée par le langage plutôt que
 par le système : on l'appelle aussi un green thread, ou une coroutine avec un scheduler. Des milliers coûtent peu, environ
 2,1 KB chacune. Elles tournent une à la fois sur un cœur. En Cesia, [fiber.Spawn] en démarre une et [fiber.Wait] attend
 sa fin : voir [Fibers](fibers.md) et [Comment Cesia fonctionne](internals.md#fibers-and-the-scheduler).
@@ -357,7 +357,7 @@ est [std/c] : [c.Open] charge une bibliothèque et [c.Fn] lie une fonction par s
 ## Frame descriptor
 
 Ce qu'écrit le compilateur d'un langage à garbage collector pour chaque endroit du code où un appel revient : la taille de
-la frame et lesquels de ses slots tiennent des valeurs, pour que le collector puisse les trouver sur la pile. OCaml
+la frame et lesquels de ses slots tiennent des valeurs, pour que le collector puisse les trouver sur la stack. OCaml
 construit une hash table de tous ces descripteurs au démarrage : 19 723 pour le binaire de Cesia, une partie de son temps
 de démarrage. Voir [Comment Cesia fonctionne](internals.md#start-up).
 

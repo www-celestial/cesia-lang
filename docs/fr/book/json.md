@@ -9,7 +9,7 @@ faux s'arrête à la porte au lieu d'aller loin dans votre code. Les exemples li
 
 [json.Parse] lit un texte JSON, tel que la RFC 8259 le définit. Un objet devient un dictionnaire, un array (la liste entre
 crochets de JSON) une liste, et `null` devient `missing`, le [null](glossary.md#null) de Cesia (la valeur qui dit qu'il
-n'y a pas de valeur). Il donne un `Ok`, ou une `Err` qui dit où le texte devient faux. Voici `order.json` :
+n'y a pas de valeur). Il donne un `Ok`, ou un `Err` qui dit où le texte devient faux. Voici `order.json` :
 
 ```text
 {

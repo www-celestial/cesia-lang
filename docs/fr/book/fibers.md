@@ -65,10 +65,10 @@ fiber.Wait(busy) -->
 
 ## Attendre au plus, et arrêter une fiber
 
-[fiber.Wait] peut attendre un temps au plus : passé ce temps, il donne une `Err` de sorte `"timeout"`, et la tâche continue
+[fiber.Wait] peut attendre un temps au plus : passé ce temps, il donne un `Err` de sorte `"timeout"`, et la tâche continue
 de tourner. [fiber.Cancel] l'arrête : la fiber s'arrête à sa prochaine attente, comme un [sys.Sleep], un [fiber.Receive]
 ou un appel au réseau, ou au prochain checkpoint d'un long calcul, là où elle laisse tourner les autres. Alors
-[fiber.Wait] donne une `Err` de sorte `"cancelled"`, qui dit le fichier et la ligne où était la fiber. Un serveur donne
+[fiber.Wait] donne un `Err` de sorte `"cancelled"`, qui dit le fichier et la ligne où était la fiber. Un serveur donne
 ainsi un temps à chaque requête :
 
 ```cesia
@@ -102,9 +102,9 @@ sys.Now() - start < 0.3 --> true
 Trois attentes de `0.1` seconde prennent ensemble environ `0.1` seconde, pas `0.3`. Les résultats arrivent dans l'ordre
 de la liste, quel que soit l'ordre dans lequel les fibers finissent.
 
-## Une panique dans une fiber
+## Une panic dans une fiber
 
-Un bug dans une fiber n'arrête que cette fiber. Son message est affiché, et [fiber.Wait] donne une `Err` avec le message :
+Un bug dans une fiber n'arrête que cette fiber. Son message est affiché, et [fiber.Wait] donne un `Err` avec le message :
 le programme peut donc continuer, l'écrire dans un log, ou s'arrêter.
 
 ```cesia
@@ -144,7 +144,7 @@ made -->
 
 Les valeurs envoyées avant [fiber.Close] arrivent quand même ; un [fiber.Send] après lui est un bug, et arrête sa fiber.
 La boucle `for` est du [syntax sugar](glossary.md#syntax-sugar) (une écriture plus courte d'une autre) pour une boucle de
-[fiber.Receive], qui donne une `Err` de sorte `"closed"` une fois le channel fermé et vide :
+[fiber.Receive], qui donne un `Err` de sorte `"closed"` une fois le channel fermé et vide :
 
 ```cesia
 orders = fiber.Channel()
@@ -165,7 +165,7 @@ got.Error.Kind --> "closed"
 
 ### Une limite de temps
 
-[fiber.Receive] peut aussi attendre un temps au plus, et donne alors une `Err` de sorte
+[fiber.Receive] peut aussi attendre un temps au plus, et donne alors un `Err` de sorte
 `"timeout"` :
 
 ```cesia
@@ -175,7 +175,7 @@ fiber.Receive(fiber.Channel(), timeout = 0.05) -->
 ### Plusieurs channels à la fois
 
 [fiber.Select] attend sur une liste de channels et reçoit du premier qui a une valeur, comme le `select` de Go. Il donne
-un `Ok` du `Channel` et de la `Value`, une `Err` de sorte `"closed"` pour un channel fermé et vide, ou de sorte
+un `Ok` du `Channel` et de la `Value`, un `Err` de sorte `"closed"` pour un channel fermé et vide, ou de sorte
 `"timeout"`. Les channels sont essayés dans l'ordre de la liste : un worker (une fiber qui traite des travaux) peut donc
 faire passer un arrêt avant son travail.
 

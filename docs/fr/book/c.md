@@ -39,7 +39,7 @@ numéro sont essayés d'abord, puis ceux qui ne l'ont pas.
 ### Des arguments et des noms faux
 
 Un `Int` là où C attend un float (un nombre à virgule) en devient un, comme pour un paramètre typé. Un nom que la
-bibliothèque n'a pas donne une `Err` :
+bibliothèque n'a pas donne un `Err` :
 
 ```cesia allow=ffi=m
 cos(0) -->
@@ -95,7 +95,7 @@ triple = c.Callback(x -> x * 3, ["i64"], "i64")
 applyTwice(triple, 2)
 ```
 
-Une panique dans un callback revient au code de Cesia qui a appelé C. Une fonction C qui garde un callback et l'appelle plus
+Une panic (l'arrêt net du programme sur un bug) dans un callback revient au code de Cesia qui a appelé C. Une fonction C qui garde un callback et l'appelle plus
 tard, depuis une autre de ses fonctions, le dit quand elle est liée, avec `callsBack = true`.
 
 ### Les fonctions variadiques
@@ -185,9 +185,9 @@ cesia run --allow exec=g++,read=build,write=build,ffi=build/libdemo_cesia.so dem
 1 6
 ```
 
-[result.Unwrap] à la fin arrête le programme avec le message d'une `Err`, si le compilateur ou la bibliothèque échoue.
+[result.Unwrap] à la fin arrête le programme avec le message d'un `Err`, si le compilateur ou la bibliothèque échoue.
 
-Il ne recompile que ce qui a changé. Une exception C++ devient une panique avec son message. [cpp.Source] donne le texte de
+Il ne recompile que ce qui a changé. Une exception C++ devient une panic avec son message. [cpp.Source] donne le texte de
 la couche C sans la compiler, pour lire ce que [cpp.Wrap] construirait.
 
 ## La suite

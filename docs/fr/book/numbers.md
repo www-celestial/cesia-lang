@@ -78,7 +78,7 @@ num.Det([1.0, 2.0; 3.0, 4.0]) -->
 
 - [num.Solve], [num.Det] et [num.Inverse] utilisent l'*élimination de Gauss avec pivot partiel* : à chaque colonne, la
   ligne qui a la plus grande valeur passe en premier, ce qui garde les erreurs d'arrondi petites. Une matrice dont le
-  pivot tombe sous $10^{-14}$ est *singulière* : elle n'a pas d'inverse, et donne une `Err` de sorte `"math"`.
+  pivot tombe sous $10^{-14}$ est *singulière* : elle n'a pas d'inverse, et donne un `Err` de sorte `"math"`.
 - [num.Eigen] prend une matrice symétrique et la rend diagonale par des *rotations de Jacobi*, dont chacune annule une
   valeur hors de la diagonale ; la diagonale qui reste contient les *valeurs propres*, les nombres $\lambda$ pour lesquels
   $a v = \lambda v$ a une solution $v$, son *vecteur propre*.
@@ -135,7 +135,7 @@ algo.TopologicalSort(n -> needs[n], ["app", "lib", "log"]) -->
 
 [algo.Dijkstra] garde les nœuds à visiter dans un [std/heap], selon leur distance trouvée jusque-là : il prend donc
 $O(E \log E)$ pour $E$ arêtes ; ses poids ne doivent pas être négatifs. [algo.TopologicalSort] parcourt le graphe en
-profondeur d'abord, et donne une `Err` de sorte `"cycle"` quand un nœud a besoin de lui-même à travers d'autres.
+profondeur d'abord, et donne un `Err` de sorte `"cycle"` quand un nœud a besoin de lui-même à travers d'autres.
 
 ## Sets, queues et heaps
 

@@ -78,7 +78,7 @@ fenêtre, garde son état et prend tout de suite le nouveau code. Appuyez sur `C
 
 ### Essayer une ligne
 
-`cesia run --repl` ouvre un prompt (une ligne où vous tapez du code), un [REPL](glossary.md#repl), pour *read, eval,
+`cesia run --repl` ouvre un prompt (une ligne où vous tapez du code), une [REPL](glossary.md#repl), pour *read, eval,
 print loop* (lire, évaluer, afficher, et recommencer) : tapez une expression, et il montre sa valeur. C'est commode pour
 essayer une fonction avant de l'écrire dans un fichier. Ctrl-D en sort.
 

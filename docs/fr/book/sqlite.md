@@ -41,7 +41,7 @@ sql.Exec("insert into notes (title) values (?)", ["call Bo"], db) -->
 
 ### Des règles enfreintes
 
-Une règle de la table qu'une ligne enfreint donne une `Err` avec un code, celui que lui donne SQL : `23505` pour une valeur
+Une règle de la table qu'une ligne enfreint donne un `Err` avec un code, celui que lui donne SQL : `23505` pour une valeur
 qui doit être unique, `23502` pour une valeur manquante, `23514` pour un `check` qui échoue.
 
 ```cesia
@@ -91,7 +91,7 @@ sql.One("select title from notes where id = ?", [9], db) -->
 ## Des lignes en structs
 
 Avec `as`, chaque ligne passe par une fonction, et le `From` d'une struct la vérifie. Une ligne qui ne convient pas donne
-une `Err` qui dit laquelle :
+un `Err` qui dit laquelle :
 
 ```cesia
 struct Note
@@ -107,7 +107,7 @@ sql.Query("select * from notes where not done", [], db, as = Note.From) -->
 
 Une [transaction](glossary.md#transaction) fait plusieurs changements comme un seul : tous, ou aucun. [sql.Transaction]
 exécute une fonction avec `tx`, qui sert de `db` dans chaque appel. Un `Ok` de la fonction garde tous ses changements ;
-une `Err`, ou une panique, les défait tous :
+un `Err`, ou une panic (l'arrêt net du programme sur un bug), les défait tous :
 
 ```cesia
 sql.Transaction(tx -> sql.Exec("update notes set done = true where id = ?", [1], tx), db) -->
@@ -124,7 +124,7 @@ Le `delete` a été défait : les deux notes sont toujours là.
 ### Dans une transaction
 
 Une [sql.Transaction] dans une autre, sur son `tx`, est un *savepoint* (un point de retour à l'intérieur d'une
-transaction) : elle est défaite seule quand sa fonction donne une `Err`, pendant que la transaction extérieure continue.
+transaction) : elle est défaite seule quand sa fonction donne un `Err`, pendant que la transaction extérieure continue.
 `read = true` ouvre une transaction qui ne fait que lire. Une transaction tourne dans une fiber à elle (une fonction qui
 tourne à côté du reste du programme), pour qu'un [fiber.Cancel] de la fiber qui l'a commencée ne puisse pas la laisser
 ouverte : elle se termine comme le dit sa fonction.

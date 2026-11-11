@@ -693,8 +693,8 @@ fiber.Receive(ch)
 
 [fiber.Cancel] marque une fiber. Si la fiber attend, elle est réveillée tout de suite ; sinon, elle s'arrête à sa
 prochaine attente ou à son prochain checkpoint complet. Dans les deux cas, la fiber remonte ses appels comme lors d'une
-panic, sans rien afficher, et [fiber.Wait] donne une `Err` de sorte `"cancelled"` avec le fichier et la ligne où elle en
-était. Une panic dans une fiber ne termine que cette fiber, et sa tâche donne une `Err` avec le message. Une fiber qui
+panic, sans rien afficher, et [fiber.Wait] donne un `Err` de sorte `"cancelled"` avec le fichier et la ligne où elle en
+était. Une panic dans une fiber ne termine que cette fiber, et sa tâche donne un `Err` avec le message. Une fiber qui
 prend plus de mémoire que la limite, ou qui imbrique une valeur trop profondément, s'arrête seule elle aussi : la requête
 d'un serveur qui prend trop échoue seule, et libère ce qu'elle a pris.
 
@@ -713,7 +713,7 @@ messages, et de Go, dont les channels le suivent. Ceux de Cesia sont proches de 
   channel synchrone du CSP de Hoare, et l'unbuffered channel (le channel sans buffer) de Go.
 - **Premier arrivé, premier servi.** Le plus ancien receveur en attente sur un channel reçoit la valeur suivante, et le
   plus ancien expéditeur en attente sur un channel plein passe en premier.
-- **Fermer.** Après [fiber.Close], les valeurs déjà dans le channel arrivent encore, puis [fiber.Receive] donne une `Err`
+- **Fermer.** Après [fiber.Close], les valeurs déjà dans le channel arrivent encore, puis [fiber.Receive] donne un `Err`
   de sorte `"closed"`. Un envoi sur un channel fermé, ou une seconde fermeture, est un bug, et fait une panic.
 - **Select dans l'ordre.** [fiber.Select] prend dans le premier channel de sa liste qui a une valeur, dans l'ordre de la
   liste. Go choisit au hasard parmi ceux qui sont prêts ; l'ordre de Cesia permet à un programme de donner la priorité à

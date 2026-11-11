@@ -240,7 +240,7 @@ Un serveur fait face à des clients lents, gourmands ou cassés, et continue de 
 - Les corps lus en même temps prennent au plus un quart de la limite de mémoire, que fixe `--limit memory=` et qui vaut
   sinon 80 % de la RAM : au-delà, une requête avec un corps reçoit aussitôt un `503`, au lieu que le serveur atteigne la
   limite.
-- Un handler qui panique (qui s'arrête sur un bug) vaut un `500` à son client, comme un handler qui prend plus de mémoire
+- Un handler qui s'arrête sur une panic (l'arrêt net sur un bug) vaut un `500` à son client, comme un handler qui prend plus de mémoire
   que la limite : seule sa requête échoue.
 
 ## Le reste de std/http
@@ -308,7 +308,7 @@ net.Read(peer) -->
 ## Le client
 
 [http.Fetch] envoie une requête, un `GET` sauf si `method` dit autrement, avec un `body` et des `headers` si vous les
-donnez. Il donne un `Ok` de la réponse, avec son `Status`, ses `Headers` et son `Body`, ou une `Err` quand le serveur ne
+donnez. Il donne un `Ok` de la réponse, avec son `Status`, ses `Headers` et son `Body`, ou un `Err` quand le serveur ne
 peut pas être atteint. Un `404` est une réponse, pas une erreur : regardez `Status`.
 
 ```cesia allow=net
