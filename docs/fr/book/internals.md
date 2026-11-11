@@ -197,7 +197,7 @@ de quel cas il s'agit.
 | un texte | ses octets, en UTF-8, dans un bloc qui ne change jamais |
 | une liste, une matrice, un array | une taille par dimension et une seule zone de cellules, colonne par colonne : des floats, des entiers ou des valeurs |
 | une struct | sa *forme*, les noms de ses champs, partagée par toutes les structs de son espèce, et une zone de ses valeurs : leurs doubles (les floats nus) tant que toutes sont des floats, comme les garde un array de floats, sinon les valeurs |
-| une map | voir [Maps : une hash table, puis un hash trie](#maps-une-hash-table-puis-un-hash-trie) |
+| une map | voir [Maps : une hash table, puis un hash trie](#maps--une-hash-table-puis-un-hash-trie) |
 | une fonction | son code, et les valeurs qu'elle a capturées |
 | une tâche, un channel (une file de valeurs entre fibers), une connexion | un *handle* : une sorte et un numéro, que le système suit |
 
@@ -268,7 +268,7 @@ lire `p.X` dans une telle map fabrique une valeur float, 4 mots, là où la lect
 un calcul, comme `p.X + 1.0`, l'interpréteur lit le double sans en fabriquer une. L'interpréteur seul exécute
 `bench/structs.ce` 8 % plus lentement à cause de cela, 595 ms contre 550 (5 runs chacun, en alternance) ; le code
 machine, qui lit et écrit les doubles eux-mêmes, l'exécute en environ 50 ms, comme le montre
-[Ce qu'il produit](#ce-qu-il-produit).
+[Ce qu'il produit](#ce-quil-produit).
 
 ```text
 {X: 1.0, Y: 2.0, Vx: 1.0, Vy: 0.5}
@@ -493,7 +493,7 @@ Swierstra (2023) font la règle des programmes fonctionnels *fully in-place* (en
 alors rien et n'appelle aucune write barrier ; quand la map qui est là ne peut pas les prendre, l'interpréteur fait cette
 écriture-là et la boucle continue en code machine. Une struct reçoit la même chose, comme
 `ps[i] = Particle(x, y, vx, vy, p.M)` dans `bench/real/particles.ce`. Les valeurs d'une map qui sont toutes des floats
-sont des doubles dans sa zone ([Maps](#maps-une-hash-table-puis-un-hash-trie)), donc un champ est un seul chargement et la
+sont des doubles dans sa zone ([Maps](#maps--une-hash-table-puis-un-hash-trie)), donc un champ est un seul chargement et la
 vérification de sa sorte disparaît aussi : un tour de `structs` coûte 60 instructions et 24 cycles, contre 235 et 122
 avant, mesurés de la même façon.
 

@@ -57,7 +57,7 @@ si un champ tient un texte, le programme continue dans l'interpréteur à partir
 code machine : la réponse est la même, un peu plus tard. Tant que les paris tiennent, `p` n'est jamais construite : le
 code machine garde ses deux floats dans des registres (les petites mémoires du processeur lui-même, où il calcule), et
 écrit la nouvelle `Particle` à la place de l'ancienne, que rien d'autre ne tient, comme le montre
-[Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
+[Comment Cesia fonctionne](internals.md#ce-quil-produit).
 
 ## Ce qui reste dans l'interpréteur
 
@@ -141,7 +141,7 @@ En millisecondes, la médiane et l'intervalle à 95 % de 11 runs :
 
 Mesuré de nouveau le 2026-11-09, après que les feuilles d'une récursion (ses derniers appels, qui ne rappellent plus la
 fonction) ont été testées à leur appel et que le JIT a donné à MIR (le petit compilateur qui produit le code machine de
-Cesia) deux cinquièmes de lignes en moins à compiler ([Comment Cesia fonctionne](internals.md#ce-qu-il-produit)) : la
+Cesia) deux cinquièmes de lignes en moins à compiler ([Comment Cesia fonctionne](internals.md#ce-quil-produit)) : la
 veille, `fib` prenait 74 ms, `matmul` 47, `structs` 49, `dyn` 57, et les autres lignes restaient à quelques pour cent de
 celles d'aujourd'hui.
 
@@ -173,7 +173,7 @@ devant LuaJIT, 395. Sur `maps`, il est devant tous les langages sauf Java, Go co
 - **`structs` : OCaml prend 0,6 fois le temps de Cesia, Go un sixième.** Une map de quatre floats les garde maintenant
   comme des doubles (le nombre machine de 64 bits, nu, sans bloc de mémoire autour), et le JIT ne construit jamais la
   map qu'il lit dans la liste : il garde ses quatre doubles dans des registres et écrit les nouveaux à la place des
-  anciens, que rien d'autre ne tient ([Comment Cesia fonctionne](internals.md#ce-qu-il-produit)). Un pas n'alloue rien (il
+  anciens, que rien d'autre ne tient ([Comment Cesia fonctionne](internals.md#ce-quil-produit)). Un pas n'alloue rien (il
   ne demande aucune mémoire) : 219 ms, puis 186, 49, maintenant 46. Ce qui reste, environ 60 instructions et 24 cycles
   par pas contre 19 et 5 pour Go : chaque pas lit dans la liste l'adresse de la map et vérifie sa sorte, ses clés,
   qu'elle n'est tenue que par un seul nom et que son stockage contient des doubles, là où l'array de Go contient les
@@ -192,16 +192,16 @@ devant LuaJIT, 395. Sur `maps`, il est devant tous les langages sauf Java, Go co
   d'elle, désigne la place où la chercher) rangée dans l'ordre d'insertion, la disposition de Python, et ne devient le
   trie (un arbre où chaque niveau choisit sa branche d'après quelques bits du hash) [CHAMP](glossary.md#champ) des
   [persistent](glossary.md#persistent-data-structure) maps (qui gardent leur ancienne version quand elles changent) qu'une
-  fois partagée et modifiée ([Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie)) : 815 ms
+  fois partagée et modifiée ([Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie)) : 815 ms
   avant, 275 avec la table, 258 depuis que chaque clé `"key$k"` est construite en une copie au lieu de trois
-  ([Comment Cesia fonctionne](internals.md#l-exécution-des-closures-comme-code)), en 68 MB, contre 70 MB pour Python, 50 pour Go et
+  ([Comment Cesia fonctionne](internals.md#lexécution--des-closures-comme-code)), en 68 MB, contre 70 MB pour Python, 50 pour Go et
   139 pour Java. Les compteurs du processeur disent pourquoi : 3,1 cache misses (des lectures qui ne trouvent pas leur
   donnée dans le cache, la mémoire rapide du processeur, et doivent aller la chercher plus loin) par opération dans son
   dernier niveau de cache, là où le trie en faisait 18,7, contre 3,7 pour Python et 4,3 pour Go. Les 224 ms de Java
   viennent d'un garbage collector qui travaille sur les autres cœurs et d'un hash gardé dans chacune de ses chaînes ; et
   la boucle de `maps`, qui construit un texte à chaque tour, reste dans l'interpréteur de Cesia : sa part est d'environ
   un dixième du temps, et du code natif devrait rappeler OCaml pour le hash, la table et le texte
-  ([Comment Cesia fonctionne](internals.md#ce-qui-reste-dans-l-interpréteur)). Le prix de la table : le premier [dict.Put]
+  ([Comment Cesia fonctionne](internals.md#ce-qui-reste-dans-linterpréteur)). Le prix de la table : le premier [dict.Put]
   sur une grande map construite sur place la change en trie, environ 0,25 s pour un million de clés, une seule fois.
 - **Node et Java démarrent lentement mais tournent vite** : leurs JIT compilent davantage, et plus tard, avec plus de
   temps à y consacrer.
@@ -312,7 +312,7 @@ réponse tournent en partie dans l'interpréteur. Le handler de chaque requête 
 agrandissait ses stacks, ce qui demandait à OCaml la taille de son heap (la mémoire où vivent les valeurs) à chaque
 agrandissement, un dixième du temps du serveur, jusqu'à ce que des stacks aussi petites soient laissées aux checkpoints
 (les moments où l'interpréteur arrête de compter pour regarder le programme)
-([Comment Cesia fonctionne](internals.md#ce-qu-il-sert)).
+([Comment Cesia fonctionne](internals.md#ce-quil-sert)).
 
 **Là où un géant gagne, et pourquoi : 1 000 connexions.** Node et Go répondent à plus de requêtes à 1 000 connexions
 gardées, et Node tient son 99e percentile à la moitié de celui de Cesia. Un seul cœur fait tourner les 1 000 fibers de

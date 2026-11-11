@@ -292,12 +292,15 @@ Les mots qui suivent `cesia` sur la première ligne d'un bloc changent ce qu'on 
 
 | Mot | Ce qu'il fait |
 |---|---|
-| `norun` | montre le bloc sans le lancer : un serveur, un programme qui attend une entrée |
+| `norun` | montre le bloc sans le lancer : un serveur, un programme qui attend une entrée. Il est tout de même vérifié, et des blocs norun qui se suivent forment un seul programme : un nom donné dans l'un est donc connu dans le suivant |
 | `fails` | le bloc doit s'arrêter sur une erreur, dont le message est montré en dessous ; un bloc qui n'échoue pas arrête le build (la construction du site) |
 | `allow=read,write,net,net=own,net=:PORT,ffi=m` | lance le bloc avec ces permissions ; aucune autre n'est donnée |
 | `output=md` | ce qu'affiche le bloc est du Markdown, montré comme une partie de la page |
 | `fold=code`, `fold=output` | le code, ou ce qu'il a affiché, est replié, et s'ouvre d'un clic |
 | `hide=code`, `hide=output` | le code, ou ce qu'il a affiché, n'est pas montré |
+
+Un bloc `toml` doit être un `cesia.toml` valide, sauf s'il porte lui aussi `norun` : c'est alors le fichier d'un autre
+programme, comme celui d'un serveur.
 
 Ce livre est construit ainsi, si bien que ses exemples ne peuvent pas s'écarter du langage : un bloc qui donne une autre
 valeur arrête le build. Chaque page tourne comme un programme du projet, depuis `.cesia/site/`, que `cesia new` tient hors
@@ -312,6 +315,105 @@ docs/
   guides/
     index.md
 ```
+
+### Formules
+
+Une formule s'écrit en TeX entre deux `$` dans une ligne, ou entre deux lignes qui ne contiennent que `$$`, comme un
+paragraphe à part : c'est aussi la syntaxe que GitHub affiche. Le build l'écrit en MathML (la façon d'écrire une formule
+dans une page web, que les navigateurs affichent eux-mêmes, sans script), dans la police STIX Two Math, que seule une page
+qui contient une formule télécharge. Cette source :
+
+```markdown
+A search in a sorted array of $n$ keys costs $O(\log n)$, and the birthday bound is
+
+$$
+P(\text{some collision among } k \text{ files}) \le \frac{k(k - 1)}{2} \times 2^{-256}
+$$
+```
+
+donne, ici en français : une recherche dans un array trié de $n$ clés coûte $O(\log n)$, et la birthday bound (la borne
+des anniversaires) est
+
+$$
+P(\text{une collision parmi } k \text{ fichiers}) \le \frac{k(k - 1)}{2} \times 2^{-256}
+$$
+
+Le `$` qui ouvre une formule n'a pas d'espace après lui ; le `$` suivant la ferme, sans espace avant lui ni chiffre après
+lui, sur la même ligne, et sans backtick (l'accent grave qui entoure le code) entre les deux. Ainsi « ça coûte $5 et $6 »
+ne contient aucune formule, `\$` écrit un dollar, et un `$` dans du code reste du code. Les commandes sont celles du
+tableau ; toute autre, ou un caractère comme ≤ écrit tel quel, arrête le build en donnant sa place et ce qu'il faut écrire :
+`docs/book/values.md:12: ≤ is no part of a formula: write \le`.
+
+| Sorte | Commandes |
+|---|---|
+| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` |
+| opérateurs | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod`, et `+ - = < > / ! , ; : .` |
+| parenthèses | `( ) [ ] \|`, `\lceil` `\rceil` `\lfloor` `\rfloor`, `\{` `\}` |
+| grec | `\alpha` à `\omega`, `\Gamma` `\Delta` `\Theta` `\Lambda` `\Xi` `\Pi` `\Sigma` `\Phi` `\Psi` `\Omega` |
+| fonctions | `\log` `\ln` `\exp` `\min` `\max` `\sin` `\cos`, avec les espaces fines de TeX : $n \log n$ |
+| sommes et produits | `\sum` `\prod`, leurs bornes avec `_` et `^`, à côté d'eux dans une ligne, au-dessus et en dessous dans une formule seule sur ses lignes |
+| structures | `x_i`, `2^{31}`, `f'`, `\frac{a}{b}`, `\sqrt{x}` |
+| mots et noms | `\text{some words}`, en romain ; `\mathit{vlo}`, un nom de plusieurs lettres en italique |
+| autres | `\dots` `\infty` `\emptyset` ; les espaces `\,` `\;` `\quad` et `\ ` ; `1{,}000` pour une virgule dans un nombre |
+
+La police est une partie de STIX Two Math 2.13 (du STIX Fonts Project, sous SIL Open Font License 1.1), réduite aux
+caractères qu'une formule peut contenir : 74 KB. Le site la garde à côté de sa licence, `math-OFL.txt`.
+
+### Remarques et avertissements
+
+Une citation dont la première ligne est l'une des alertes de GitHub, `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` ou
+`[!CAUTION]`, est montrée dans la couleur de sa sorte, sous son nom, en français sur le site français (Remarque, Astuce,
+Important, Attention, Prudence) :
+
+```markdown
+> [!TIP]
+> `cesia doc --site --open` builds the site and opens it.
+```
+
+donne, ici en français :
+
+> [!TIP]
+> `cesia doc --site --open` construit le site et l'ouvre.
+
+### Couleurs
+
+La `color` de la table `[site]` de `cesia.toml` est la couleur du projet, comme `"#3b5bdb"`. Le build en tire les couleurs
+des liens, des titres, du bandeau du haut, de la page ouverte dans la colonne de côté, des en-têtes et d'une ligne sur deux
+des tableaux, et du code dans une ligne, dans l'apparence claire et dans la sombre. Chaque texte atteint 4,5:1 face à son
+fond, le niveau AA des WCAG 2.2 (les règles d'accessibilité du web), d'après la luminance relative qu'elles définissent ; une
+couleur qui ne le peut pas, trop claire ou trop pâle, arrête le build en donnant la paire et son rapport. Sans `color`, le
+site prend `"#2b5fd9"`.
+
+### Le README
+
+Le `README.md` du projet (le fichier qui le présente, à la racine du dépôt) est une page du site, refaite à partir de lui à
+chaque build et montrée dans la colonne de côté : ses liens vers les pages de `docs/`, ou vers un de ses dossiers pour son
+index, mènent aux pages du site. Tout autre lien vers un fichier du projet, comme `LICENSE`, ne mène à aucune page du site et
+arrête le build : écrivez-le avec son URL complète. Ses blocs `cesia` sont montrés en couleur, jamais lancés.
+
+### Les ids des titres
+
+L'id d'un titre (le nom de sa place dans la page, que donne un lien après son signe #) est celui que GitHub lui donne : en
+minuscules, sans ponctuation, chaque espace changée en `-`, et `-1`, `-2` après un titre qui revient. « What's new? »
+donne `whats-new`, si bien qu'un lien `page.md#whats-new` mène au même endroit sur GitHub et sur le site. L'id que le site
+lui donnait avant, `what-s-new`, ses lettres et ses chiffres joints par des `-`, reste lui aussi sur le titre : un lien
+écrit à l'époque y mène toujours.
+
+### Un site en français
+
+`docs/fr/` contient le français des livres, sous les mêmes chemins : `docs/fr/book/values.md` est le français de
+`docs/book/values.md`, et `README.fr.md`, à côté de `README.md`, celui du README. Le site a alors une partie française sous
+`fr/`, en `<html lang="fr">` : les mêmes pages, les mots propres au site en français, une recherche à elle, et sur chaque
+page un choix entre EN et FR qui reste sur la même page. Une page pas encore traduite montre l'anglaise, sous une note qui
+le dit. La référence, tirée du code, est en anglais des deux côtés : le site français y renvoie sous le nom « Référence
+(en anglais) ».
+
+Une page française garde la structure de sa page anglaise, et le build le vérifie : les mêmes titres, aux mêmes niveaux,
+dans le même ordre ; les mêmes blocs de code, octet pour octet, puisque le code s'écrit en anglais ; et les mêmes liens, un
+lien vers un titre nommant le titre à la même place de sa page, puisque les ids français sont ceux des titres français. Une
+page qui s'en écarte arrête le build en donnant sa place : un changement du texte anglais montre ainsi où le français doit
+suivre. Il en va de même d'une page de `docs/fr/` qui n'est le français d'aucune page anglaise. Les blocs étant les mêmes,
+ils tournent une fois, pour la page anglaise, et la page française montre ce qu'ils ont affiché sur ses propres lignes.
 
 ## Pour aller plus loin
 

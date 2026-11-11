@@ -280,7 +280,7 @@ fois) : une fiber tourne seule entre deux de ses attentes, sur un cœur.
 
 Chacun avec son lien dans [Références](references.md#fibers-et-channels) ;
 [Comment Cesia fonctionne](internals.md#les-fibers-et-le-scheduler) montre le scheduler (la partie qui décide quelle fiber
-tourne ensuite), et [Vitesse](speed.md#les-fibers-à-côté-des-goroutines-d-async-et-des-virtual-threads) les fibers à côté
+tourne ensuite), et [Vitesse](speed.md#les-fibers-à-côté-des-goroutines-dasync-et-des-virtual-threads) les fibers à côté
 des goroutines, d'`async` et des virtual threads.
 
 ## La suite

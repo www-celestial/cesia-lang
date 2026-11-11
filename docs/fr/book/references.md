@@ -19,7 +19,7 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
 - Phil Bagwell. "Ideal Hash Trees". Rapport technique, EPFL, 2001. <https://infoscience.epfl.ch/record/64398>. Le hash
   array mapped trie, un nœud de 32 enfants choisis par 5 bits du hash et gardé compact par un bitmap (une suite de bits
   qui dit lesquels existent) : la façon de ranger une map de plus de 32 clés, dans
-  [Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+  [Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 - Michael J. Steindorfer, Jurgen J. Vinju. "Optimizing Hash-Array Mapped Tries for Fast and Lean Immutable JVM
   Collections". *OOPSLA 2015*, ACM, 783–800. <https://doi.org/10.1145/2814270.2814312>. CHAMP : un nœud à deux bitmaps,
   ses propres clés rangées sur place et ses enfants à part, aucune clé seule sous un nœud, une suppression qui fait

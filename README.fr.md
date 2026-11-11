@@ -24,7 +24,7 @@ Une release (une version publiée) contient le binaire et toutes les bibliothèq
 `~/.cesia/lib/` : OpenBLAS pour BLAS et LAPACK (macOS a les siennes), libsodium, SQLite, et OpenSSL sur macOS et Windows
 (Linux garde celle du système, pour ses correctifs de sécurité). Rien d'autre ne s'installe à la main. Depuis la 1.0, le
 premier nombre d'une version monte quand un changement peut casser un programme, celui du milieu quand quelque chose est
-ajouté, et le dernier pour une correction. [`CHANGELOG.md`](CHANGELOG.md) dit ce qu'apporte chaque version, et les notes
+ajouté, et le dernier pour une correction. [`CHANGELOG.md`](https://github.com/www-celestial/cesia-lang/blob/main/CHANGELOG.md) dit ce qu'apporte chaque version, et les notes
 d'une release viennent des messages de ses commits.
 
 Depuis les sources, avec OCaml 5.5 et dune :

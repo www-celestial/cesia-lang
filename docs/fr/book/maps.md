@@ -195,7 +195,7 @@ $\log_{32} n$ pas, 3 pour 30 000 clés, et une écriture ne copie que les quelqu
 C'est ainsi que [dict.Put] peut donner un nouveau dictionnaire et garder l'ancien, pour un petit coût ; le changement de
 forme coûte environ 0,25 s pour un million de clés, une seule fois. Le hash prend une seed (une valeur de départ) tirée
 au hasard à chaque exécution : personne ne peut donc envoyer à un serveur des clés choisies pour entrer en collision.
-[Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie) montre les détails.
+[Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie) montre les détails.
 
 Un dictionnaire que rien d'autre ne garde est changé sur place : la boucle de [Compter](#compter) ne copie donc rien.
 500 000 clés de texte écrites puis lues prennent 0,28 s, contre 0,41 s pour le `dict` de Python, 0,27 s pour la map de

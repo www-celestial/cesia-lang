@@ -63,7 +63,7 @@ factorial(10) -->
 ```
 
 Chaque appel attend celui qu'il a fait : les appels s'empilent donc, 10 000 au plus par défaut, la limite `depth` de
-[Permissions](permissions.md#limit), au-delà de laquelle le programme s'arrête à la ligne de l'appel. Un appel dont le
+[Permissions](permissions.md#--limit), au-delà de laquelle le programme s'arrête à la ligne de l'appel. Un appel dont le
 résultat est le résultat même de la fonction, sans rien qui reste à faire après lui, est en *tail position* (en position
 finale) : `countDown(n - 1)` ci-dessous. Une fonction qui s'appelle elle-même à cet endroit tourne comme une boucle, dans
 une seule frame (la place d'un appel en cours, avec ses variables), et n'a donc pas de limite de profondeur. Dans

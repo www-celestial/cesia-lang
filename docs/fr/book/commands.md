@@ -70,7 +70,7 @@ cesia check [--json] [--stdin file.ce] [path...]
 
 Lit le code et dit ce qui ne va pas, sans en exécuter une ligne : la syntaxe, les noms, les arguments d'une fonction,
 d'une struct ou d'une fonction native connue, les valeurs qui ne correspondent sûrement pas à un type, et les
-[résultats](types.md#vérifier-sans-exécuter-cesia-check) laissés sans traitement. Un chemin est un fichier, ou un
+[résultats](types.md#vérifier-sans-exécuter--cesia-check) laissés sans traitement. Un chemin est un fichier, ou un
 dossier avec ses sous-dossiers ; sans chemin, les dossiers de sources de `cesia.toml`. Un fichier d'un dossier de
 sources est lu avec les autres fichiers de son package, comme `use` les lit, et un test avec son package ; tout autre
 fichier tient seul, comme un programme. Il ne demande que la permission de lire, donc vérifier un projet venu d'ailleurs

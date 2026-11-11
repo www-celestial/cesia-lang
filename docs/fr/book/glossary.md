@@ -39,7 +39,7 @@ déchiffré en données sans sens. [crypto.Seal] et [crypto.BoxSeal] le font ave
 
 Un destinataire lent qui ralentit son expéditeur, pour que les valeurs qui attendent entre eux restent peu nombreuses et la
 mémoire bornée. En Cesia, un channel créé avec une taille, `fiber.Channel(size = 100)`, fait attendre [fiber.Send] tant
-qu'il est plein : voir [Fibers](fibers.md#un-channel-d-une-taille-donnée).
+qu'il est plein : voir [Fibers](fibers.md#un-channel-dune-taille-donnée).
 
 ## Backtracking
 
@@ -85,7 +85,7 @@ donne une fonction de hash) de 256 bits, elle vaut $4{,}3 \times 10^{-66}$ : voi
 Deux interfaces standard d'algèbre linéaire : BLAS pour les opérations de base, comme le produit de matrices, et LAPACK,
 écrit par-dessus, pour résoudre des systèmes, factoriser et trouver les valeurs propres. OpenBLAS et Accelerate d'Apple
 en sont des versions rapides, réglées pour chaque processeur. [std/num] en utilise une pour les grandes matrices, et
-[std/lapack] l'appelle directement : voir [Nombres et algorithmes](numbers.md#grandes-matrices-blas-et-lapack).
+[std/lapack] l'appelle directement : voir [Nombres et algorithmes](numbers.md#grandes-matrices--blas-et-lapack).
 
 ## Boxed and unboxed
 
@@ -94,7 +94,7 @@ unboxed est le nombre machine nu, dans un registre ou un slot (une place de tail
 les valeurs de toute sorte, et unboxed dans une version d'une fonction que l'inférence a typée, dans un array de floats,
 dans une map ou une struct dont toutes les valeurs sont des floats, et dans le code machine, où une variable qui tient un
 float le garde dans un registre pendant toute la boucle : une boucle de floats n'alloue donc rien. Voir
-[Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
+[Comment Cesia fonctionne](internals.md#ce-quil-produit).
 
 ## Breakpoint
 
@@ -106,7 +106,7 @@ Un endroit du code où un debugger arrête le programme, pour regarder ses varia
 
 Les appels en cours, chacun attendant celui qu'il a fait : la call stack (la pile des appels). Chaque appel a une frame,
 les slots de ses variables. Le debugger les montre avec `where`, et la limite `depth`, 10 000 par défaut, borne leur
-nombre : voir [Le prompt et le debugger](debug.md#le-debugger) et [Fonctions](functions.md#une-fonction-qui-s-appelle-elle-même).
+nombre : voir [Le prompt et le debugger](debug.md#le-debugger) et [Fonctions](functions.md#une-fonction-qui-sappelle-elle-même).
 
 ## Capture by value
 
@@ -121,7 +121,7 @@ trie](#hash-array-mapped-trie) dont les nœuds gardent sur place chaque clé qui
 clé sous eux, et un nœud du niveau suivant pour les bits que plusieurs partagent, avec deux bitmaps pour dire lesquels. Il
 prend moins de mémoire qu'un trie à buckets (des petits paquets de clés), et aucun nœud ne tient une clé seule en dessous
 de lui. Une map de Cesia de plus de 32 clés en est un : voir
-[Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+[Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Checkpoint
 
@@ -140,7 +140,7 @@ Une closure de Cesia garde les valeurs que ces noms avaient quand elle a été c
 
 Exécuter un syntax tree en changeant d'abord chacun de ses nœuds en une fonction du langage hôte, une closure, qui appelle
 les closures de ses enfants : le travail de regarder un nœud est fait une fois, pas à chaque pas. L'interpréteur de Cesia
-est écrit ainsi, en OCaml : voir [Comment Cesia fonctionne](internals.md#l-exécution-des-closures-comme-code).
+est écrit ainsi, en OCaml : voir [Comment Cesia fonctionne](internals.md#lexécution--des-closures-comme-code).
 
 ## Collision resistance
 
@@ -160,7 +160,7 @@ Cesia sont column-major, et une position seule compte dans cet ordre : voir
 
 Une table gardée comme un array par colonne plutôt qu'un enregistrement par ligne, pour qu'une somme ou un filtre parcoure
 toute une colonne. Une data frame, comme dans pandas, est une telle table ; celle de Cesia est [std/frame] : voir
-[Données](data.md#une-table-à-partir-d-un-fichier-csv).
+[Données](data.md#une-table-à-partir-dun-fichier-csv).
 
 ## Comprehension
 
@@ -186,7 +186,7 @@ répartition.
 
 Le reste d'un calcul, tenu comme une valeur que l'on peut reprendre : ce qu'il reste à faire à une fiber quand elle se met
 en attente. Les effect handlers d'OCaml 5 la donnent, une seule fois, et le scheduler de Cesia la reprend quand ce que la
-fiber attend est prêt : voir [Comment Cesia fonctionne](internals.md#comment-une-fiber-s-arrête-et-repart).
+fiber attend est prêt : voir [Comment Cesia fonctionne](internals.md#comment-une-fiber-sarrête-et-repart).
 
 ## Copy-on-write
 
@@ -206,7 +206,7 @@ suivent, et ceux de Cesia aussi : voir [Fibers](fibers.md#channels) et
 
 Une table de colonnes nommées, toutes de la même longueur, comme pandas en a en Python et comme R en a d'origine, sur
 laquelle un filtre, un groupe ou une somme traite une colonne entière à la fois. Celle de Cesia est [std/frame] : voir
-[Données](data.md#une-table-à-partir-d-un-fichier-csv).
+[Données](data.md#une-table-à-partir-dun-fichier-csv).
 
 ## Data race
 
@@ -224,7 +224,7 @@ attendent et que rien au-dehors ne peut en réveiller une, Cesia arrête le prog
 
 La règle qui veut qu'un nom reçoive une valeur avant d'être lu, sur chaque chemin du code. Cesia la vérifie au chargement
 du fichier : un nom lu trop tôt est donc une erreur avant que rien ne tourne. Voir
-[Comment Cesia fonctionne](internals.md#les-noms-le-resolver).
+[Comment Cesia fonctionne](internals.md#les-noms--le-resolver).
 
 ## Delta debugging
 
@@ -236,7 +236,7 @@ encore, jusqu'à ce que ce qui reste montre la cause de l'échec : la méthode d
 ## Dependency
 
 Du code d'un autre projet que le vôtre utilise : une dépendance. En Cesia, une table `[deps]` de `cesia.toml` nomme son
-dépôt et son tag, et `cesia pkg` la récupère dans `deps/` : voir [Packages](packages.md#du-code-d-autres-projets).
+dépôt et son tag, et `cesia pkg` la récupère dans `deps/` : voir [Packages](packages.md#du-code-dautres-projets).
 
 ## Deque
 
@@ -259,19 +259,19 @@ Cesia, un `call --> value` en retrait dans un commentaire `(**` en est un, et `c
 Des types qui appartiennent aux valeurs, vérifiés quand une opération s'exécute, plutôt qu'aux variables, vérifiés avant
 que le programme tourne. Cesia a un typage dynamique, avec des types que vous pouvez écrire, vérifiés quand une valeur
 arrive, et des types que l'inférence prouve pour rendre le code plus rapide : voir
-[Types](types.md#vérifié-quand-une-valeur-arrive) et [Comment Cesia fonctionne](internals.md#les-types-inférence-et-versions).
+[Types](types.md#vérifié-quand-une-valeur-arrive) et [Comment Cesia fonctionne](internals.md#les-types--inférence-et-versions).
 
 ## Edit distance
 
 Le plus petit nombre d'insertions, de suppressions et de remplacements d'un caractère qui changent un texte en un autre,
 qu'on appelle aussi la distance de Levenshtein : 3 de `kitten` à `sitting`. [algo.Levenshtein] la donne : voir
-[Nombres et algorithmes](numbers.md#algorithmes-std-algo).
+[Nombres et algorithmes](numbers.md#algorithmes--stdalgo).
 
 ## Effect handler
 
 Une partie d'un programme qui attrape un *effect*, une demande que fait le code à l'intérieur d'elle, comme une exception,
 mais qui peut reprendre le code qui l'a faite. OCaml 5 en a, et chaque fiber de Cesia se met en attente en faisant un
-effect : voir [Comment Cesia fonctionne](internals.md#comment-une-fiber-s-arrête-et-repart).
+effect : voir [Comment Cesia fonctionne](internals.md#comment-une-fiber-sarrête-et-repart).
 
 ## Epoll
 
@@ -308,7 +308,7 @@ message et la ligne). Voir [Erreurs](errors.md#erreurs-et-bugs).
 
 Le nombre qu'un programme rend à celui qui l'a lancé : 0 quand tout s'est bien passé, un autre quand quelque chose a
 échoué. En Cesia, [sys.Exit] termine avec un code, et un programme arrêté par un bug termine avec 1 : voir
-[Fichiers](files.md#la-standard-input-et-l-exit-code).
+[Fichiers](files.md#la-standard-input-et-lexit-code).
 
 ## Expression and statement
 
@@ -321,7 +321,7 @@ Voir [Choix et boucles](choices.md#if-donne-une-valeur).
 Se dit d'une hypothèse qu'une expérience pourrait réfuter, parce qu'elle prédit quelque chose qui se mesure : le critère de
 Karl Popper pour une affirmation scientifique. « Le temps passe à relire les mêmes fichiers » est falsifiable, car cette
 hypothèse prédit que lire chaque fichier une seule fois fait disparaître presque tout le temps : voir
-[Résoudre un vrai problème](duplicates.md#3-une-hypothèse-qu-on-peut-réfuter).
+[Résoudre un vrai problème](duplicates.md#3-une-hypothèse-quon-peut-réfuter).
 
 ## Fiber
 
@@ -346,7 +346,7 @@ où elle a été créée. Les closures de Cesia sont flat, et c'est pourquoi ell
 
 Une division d'entiers qui arrondit vers moins l'infini, pour que le reste ait le signe du diviseur : `math.Div(-7, 3)`
 vaut `-3` et `math.Mod(-7, 3)` vaut `2`, comme en Python. Le C et Java tronquent plutôt vers zéro, ce qui donne `-2` et
-`-1` : voir [Nombres et algorithmes](numbers.md#un-nombre-std-math).
+`-1` : voir [Nombres et algorithmes](numbers.md#un-nombre--stdmath).
 
 ## Foreign function interface
 
@@ -409,14 +409,14 @@ Un HAMT : un arbre où chaque niveau est choisi par 5 bits du hash d'une clé, d
 gardé compact par un bitmap de ceux qui existent. Phil Bagwell l'a décrit en 2001, et Clojure en a fait ses maps
 persistantes. Une map de Cesia de plus de 32 clés en devient un, de la sorte appelée [CHAMP](#champ), à sa première
 écriture qui doit garder l'ancienne map : une lecture suit environ $\log_{32} n$ niveaux, et une écriture ne copie que son
-chemin. Voir [Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+chemin. Voir [Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Hash flooding
 
 Une attaque qui envoie à un programme beaucoup de clés de même hash, pour que chaque lecture de sa hash table les parcoure
 toutes et que le programme ralentisse jusqu'à s'arrêter : un déni de service. Le hash de Cesia prend un seed (une valeur
 de départ) tiré à chaque lancement, et les clés d'un même hash vont dans un arbre équilibré : voir
-[Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+[Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Hash table
 
@@ -426,7 +426,7 @@ dont le slot est pris va au slot libre suivant, et une lecture parcourt les slot
 un slot libre ; quand la table est remplie au plus à moitié, cela fait 1,5 slot pour une clé présente et 2,5 pour une
 clé absente. Le `dict` de Python, depuis la 3.6, garde ses entrées dans un second array dans l'ordre où elles sont
 arrivées, et ses slots tiennent leurs numéros : une table *insertion-ordered*. Une map de Cesia de plus de 32 clés qu'un
-seul nom tient en est une : voir [Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+seul nom tient en est une : voir [Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Hash function
 
@@ -454,7 +454,7 @@ prend-il ; quels sont les examens qui vérifient la réussite. Voir
 La disposition d'un objet, les noms de ses champs et leurs places, partagée par tous les objets de même forme, pour que la
 lecture d'un champ puisse être une comparaison et une lecture en mémoire. Self les appelait maps, V8 hidden classes. Une
 struct de Cesia a sa forme, et les maps créées à un même endroit du code partagent leurs clés : voir
-[Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+[Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Higher-order function
 
@@ -491,7 +491,7 @@ fonctions qu'il a atteintes, jusqu'à quatre ; au-delà, un appel est *megamorph
 Une IR : la forme qu'un compilateur donne à un programme entre sa source et le code machine, plus simple à analyser que
 l'une et l'autre. Le JIT de Cesia change une unité hot (qui tourne souvent) en une IR de basic blocks (des suites
 d'instructions sans saut au milieu) d'instructions typées, dont MIR fait ensuite du code machine : voir
-[Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
+[Comment Cesia fonctionne](internals.md#ce-quil-produit).
 
 ## Interpreter and JIT
 
@@ -517,7 +517,7 @@ Cesia : voir [Éditeurs](editors.md).
 
 Le lexer découpe le texte d'un programme en tokens, ses mots ; le parser change les tokens en un syntax tree, en suivant
 la grammaire. Le parser de Cesia est écrit à la main, par recursive descent, une fonction par règle : voir
-[Comment Cesia fonctionne](internals.md#lire-le-lexer-et-le-parser).
+[Comment Cesia fonctionne](internals.md#lire--le-lexer-et-le-parser).
 
 ## Lexical scope
 
@@ -531,13 +531,13 @@ Dans un système qui reçoit des requêtes à un rythme régulier, le nombre de 
 le rythme, $\lambda$, multiplié par le temps que chacune y passe, $W$ : $L = \lambda W$ (Little, 1961). Un serveur qui
 tient 1 000 connexions, chacune avec une requête en attente, et répond à 36 000 requêtes par seconde, répond à chacune en
 $1\,000 / 36\,000$ s, 28 ms, en moyenne, quelle que soit la façon dont il les ordonne. Voir
-[Comment Cesia fonctionne](internals.md#ce-qu-il-sert).
+[Comment Cesia fonctionne](internals.md#ce-quil-sert).
 
 ## Lock file
 
 Un fichier qui garde la version exacte et l'empreinte de chaque dépendance, pour que toutes les machines installent le
 même code. Celui de Cesia est `cesia.lock`, que `cesia new` et `cesia pkg` écrivent : voir
-[Packages](packages.md#du-code-d-autres-projets).
+[Packages](packages.md#du-code-dautres-projets).
 
 ## Median
 
@@ -656,14 +656,14 @@ page qu'il partage, comme les données d'un binaire que le loader corrige. Envir
 
 Une query dont les valeurs voyagent à part de son texte SQL, pour qu'aucune entrée tapée par un utilisateur ne puisse
 changer la query : une SQL injection. Dans [std/sql], chaque `?` prend une valeur de la liste : voir
-[SQLite](sqlite.md#les-valeurs-n-entrent-jamais-dans-le-texte).
+[SQLite](sqlite.md#les-valeurs-nentrent-jamais-dans-le-texte).
 
 ## Partial inlining
 
 Ne copier qu'une partie d'une fonction aux endroits qui l'appellent, le plus souvent le test qui rend la main tôt, le
 reste restant un appel (Zhao et Amaral, 2005). Le JIT de Cesia le fait quand une fonction appelée commence par un test de
 ses paramètres qui donne l'un d'eux ou une constante, comme le `if n < 2 then n` de `fib` : les feuilles d'une récursion
-ne coûtent alors aucun appel. Voir [Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
+ne coûtent alors aucun appel. Voir [Comment Cesia fonctionne](internals.md#ce-quil-produit).
 
 ## Partition refinement
 
@@ -682,7 +682,7 @@ morceaux. [match] le fait sur les valeurs, les listes, les dictionnaires, les st
 
 Écrire un octet qu'une URL ne peut pas contenir sous la forme `%` suivi de ses deux chiffres hexadécimaux : une espace
 est `%20`. [encode.UrlEncode] et [encode.UrlDecode] le font : voir
-[JSON et CSV](json.md#des-octets-en-texte-hexadécimal-base64-et-url).
+[JSON et CSV](json.md#des-octets-en-texte--hexadécimal-base64-et-url).
 
 ## Persistent data structure
 
@@ -690,7 +690,7 @@ Une structure qui garde son ancienne version quand elle change, et partage la pl
 nouvelle, par [structural sharing](#structural-sharing). Un grand dictionnaire de Cesia qui est partagé est un hash trie,
 comme en Clojure : [dict.Put] en donne un nouveau qui partage le reste avec l'ancien ; tant qu'un seul nom le tient, c'est
 une hash table changée sur place, que personne d'autre ne peut voir. Voir [Maps](maps.md) et
-[Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+[Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Pike machine
 
@@ -722,12 +722,12 @@ prennent tous leurs connexions, comme le fait nginx. `cesia run --workers` sert 
 Le scheduler passe d'une tâche à une autre de lui-même, sans attendre que la tâche lui cède la place. Les fibers de Cesia
 cèdent la place quand elles attendent, et une fiber qui calcule la cède tous les millions de pas, comme Erlang compte ses
 réductions ; aucun timer n'interrompt une fiber, et une fonction de `std/` écrite en OCaml va jusqu'à sa fin. Voir
-[Fibers](fibers.md#un-long-calcul) et [Comment Cesia fonctionne](internals.md#comment-une-fiber-s-arrête-et-repart).
+[Fibers](fibers.md#un-long-calcul) et [Comment Cesia fonctionne](internals.md#comment-une-fiber-sarrête-et-repart).
 
 ## Principle of least privilege
 
 Un programme reçoit les droits dont il a besoin, et pas plus. En Cesia, `--allow read=./data` plutôt que `read`, et
-`net=:8080` plutôt que `net` : voir [Permissions](permissions.md#allow).
+`net=:8080` plutôt que `net` : voir [Permissions](permissions.md#--allow).
 
 ## Priority queue
 
@@ -744,7 +744,7 @@ réduire un cas qui échoue au plus petit. QuickCheck l'a commencé en Haskell ;
 
 La cryptographie avec une paire de clés : une clé publique, donnée à tous, et une clé secrète, gardée. Ce que la clé
 publique chiffre, seule la clé secrète l'ouvre ; ce que la clé secrète signe, la clé publique le vérifie.
-[crypto.BoxSeal] et [crypto.Sign] s'en servent : voir [Cryptographie](crypto.md#chiffrer-pour-quelqu-un).
+[crypto.BoxSeal] et [crypto.Sign] s'en servent : voir [Cryptographie](crypto.md#chiffrer-pour-quelquun).
 
 ## Pure function
 
@@ -758,7 +758,7 @@ Ce qu'un compilateur prouve des valeurs que peut prendre un entier, pour retirer
 inutiles. Dans le JIT de Cesia, `math.Mod(i, 4)` est entre 0 et 3, donc `math.Mod(i, 4) + 1` n'a besoin d'aucune
 vérification d'overflow (le dépassement de la taille d'un entier) ; et dans le `else` de `if n < 2`, `n` vaut au moins 2,
 donc `n - 1` n'en a pas besoin non plus : ce sont les bornes que prouve le test d'une branche, comme dans ABCD (Bodík,
-Gupta et Sarkar, 2000). Voir [Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
+Gupta et Sarkar, 2000). Voir [Comment Cesia fonctionne](internals.md#ce-quil-produit).
 
 ## Radix sort
 
@@ -766,19 +766,19 @@ Un tri de nombres par leurs chiffres, un chiffre à la fois en commençant par l
 nombres dans des buckets selon ce chiffre et gardant, dans chaque bucket, l'ordre de la passe précédente : aucune
 comparaison, un temps proportionnel au nombre de nombres multiplié par le nombre de chiffres. Une map de Cesia qui passe
 d'une hash table à un trie trie ainsi ses hashes, 10 bits à la fois : voir
-[Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+[Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Recursion
 
 Une fonction qui s'appelle elle-même, directement ou à travers d'autres : la récursion. Chaque appel attend celui qu'il a
 fait, jusqu'à la limite `depth`, sauf un appel en [tail position](#tail-call) : voir
-[Fonctions](functions.md#une-fonction-qui-s-appelle-elle-même).
+[Fonctions](functions.md#une-fonction-qui-sappelle-elle-même).
 
 ## Recursive descent
 
 Une façon d'écrire un parser à la main : une fonction par règle de la grammaire, chacune appelant les autres, de sorte que
 l'imbrication des appels suit l'imbrication du code. Le parser de Cesia en est un : voir
-[Comment Cesia fonctionne](internals.md#lire-le-lexer-et-le-parser).
+[Comment Cesia fonctionne](internals.md#lire--le-lexer-et-le-parser).
 
 ## Regular expression
 
@@ -790,7 +790,7 @@ un texte : une expression régulière. [std/regex] les exécute en un temps lin�
 
 Un envoi qui attend qu'un destinataire prenne sa valeur, de sorte que les deux tâches se rencontrent : le channel
 synchrone de CSP, et l'unbuffered channel de Go. Un [fiber.Channel] de taille 0 en est un : voir
-[Fibers](fibers.md#un-channel-d-une-taille-donnée).
+[Fibers](fibers.md#un-channel-dune-taille-donnée).
 
 ## REPL
 
@@ -823,13 +823,13 @@ pour Java (Stadler, Würthinger et Mössenböck, 2014) ; l'*allocation sinking* 
 qui en a besoin en entier, comme LuaJIT le fait aux sorties de ses traces (Pall, 2012). Dans le JIT de Cesia, `p = ps[i]`
 lu seulement pour `p.X` et ses semblables, ce sont quatre doubles (des floats de 64 bits) dans des registres, et la map
 n'est fabriquée que quand l'exécution rend la main à l'interpréteur : voir
-[Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
+[Comment Cesia fonctionne](internals.md#ce-quil-produit).
 
 ## Scheduler
 
 La partie d'un runtime qui décide quelle tâche tourne ensuite. Celui de Cesia garde une queue, premier entré, premier
 sorti, des fibers prêtes à tourner, et attend le système quand aucune ne l'est : voir
-[Comment Cesia fonctionne](internals.md#comment-une-fiber-s-arrête-et-repart).
+[Comment Cesia fonctionne](internals.md#comment-une-fiber-sarrête-et-repart).
 
 ## Seed
 
@@ -890,7 +890,7 @@ exécution, pour qu'une longue sortie n'ait pas à être écrite à la main. [te
 
 Fabriquer une version à part d'une fonction pour chaque combinaison des types de ses arguments, pour que chaque version
 connaisse ses types : on l'appelle customization dans le langage Self, où elle est née. Une fonction de Cesia a jusqu'à
-8 versions, puis une version générique : voir [Comment Cesia fonctionne](internals.md#les-types-inférence-et-versions).
+8 versions, puis une version générique : voir [Comment Cesia fonctionne](internals.md#les-types--inférence-et-versions).
 
 ## SSA form
 
@@ -899,14 +899,14 @@ compilateur voit tout de suite d'où vient chaque valeur. Là où deux chemins s
 un *phi* choisit la version du chemin par lequel on est arrivé ; quitter le SSA pour la machine met une copie sur chaque
 chemin qui y mène. MIR, qui fabrique le code machine de Cesia, travaille ainsi, et on n'entre dans une boucle de Cesia
 que par un point placé juste avant elle, pour que son seul point de rencontre ne tienne que ce que la boucle change : voir
-[Comment Cesia fonctionne](internals.md#ce-qu-il-produit).
+[Comment Cesia fonctionne](internals.md#ce-quil-produit).
 
 ## Standard input and output
 
 Le texte qu'un programme lit, et le texte qu'il écrit, dans un terminal ou un pipe du shell (un tuyau qui relie la sortie
 d'un programme à l'entrée d'un autre) ; la standard error est une seconde sortie, pour ce qui n'a pas marché. En Cesia,
 [io.Print] écrit sur la standard output, [io.PrintError] sur la standard error, et [sys.ReadInput] lit toute la standard
-input : voir [Fichiers](files.md#la-standard-input-et-l-exit-code).
+input : voir [Fichiers](files.md#la-standard-input-et-lexit-code).
 
 ## Static typing
 
@@ -922,7 +922,7 @@ d'une même sorte, et qui passe une fois, pour de bon, à un rangement général
 Diekmann et Tratt, 2013, venu de PyPy). Les listes de Cesia gardent ainsi des entiers, des floats ou des valeurs, la hash
 table d'une grande map garde nues ses valeurs entières, et une petite map ou une struct garde ses valeurs en doubles
 tant que toutes sont des floats : le programme voit les mêmes valeurs dans tous les cas. Voir
-[Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+[Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## String interpolation
 
@@ -938,7 +938,7 @@ valeurs par défaut et des types, et un champ mal écrit est une erreur : voir [
 
 Deux versions d'une structure persistante qui partagent les parties qu'elles ont en commun, de sorte qu'un changement ne
 copie que ce qu'il touche. Une écriture dans une map de Cesia copie le chemin de nœuds jusqu'à sa clé, au plus 6 petits
-arrays, et partage le reste : voir [Comment Cesia fonctionne](internals.md#maps-une-hash-table-puis-un-hash-trie).
+arrays, et partage le reste : voir [Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Structural typing
 
@@ -979,13 +979,13 @@ vérifiée : `a..b` est [list.Range]`(a, b)`, et `d.Name` est `d["Name"]` : voir
 
 Le programme sous forme d'arbre, un nœud par expression ou par statement, avec la ligne et la colonne de chacun : ce que
 le parser fabrique à partir du texte, et ce que Cesia compile. Voir
-[Comment Cesia fonctionne](internals.md#lire-le-lexer-et-le-parser).
+[Comment Cesia fonctionne](internals.md#lire--le-lexer-et-le-parser).
 
 ## Tail call
 
 Un appel dont le résultat est le résultat de la fonction qui le fait, sans rien qui reste à faire après lui. Une fonction
 de Cesia qui s'appelle elle-même en tail position tourne comme une boucle, dans une seule frame : elle n'a donc pas de
-limite de profondeur. Voir [Fonctions](functions.md#une-fonction-qui-s-appelle-elle-même).
+limite de profondeur. Voir [Fonctions](functions.md#une-fonction-qui-sappelle-elle-même).
 
 ## Threat to validity
 
@@ -1051,7 +1051,7 @@ se voit jamais par l'autre. Toutes les valeurs de Cesia marchent ainsi, les list
 
 Une seule opération sur un array entier, exécutée élément par élément par la machine au lieu d'une boucle du programme.
 En Cesia, `prices * 2` et `Sqrt(xs)` travaillent sur des arrays entiers, et sur les colonnes d'une frame : voir
-[Listes et arrays](lists.md#des-arrays-entiers-d-un-coup).
+[Listes et arrays](lists.md#des-arrays-entiers-dun-coup).
 
 ## Vendoring
 
@@ -1061,7 +1061,7 @@ ainsi `std/` et `deps/`, refaits à partir de `cesia.lock` par `cesia pkg instal
 ## Wall clock
 
 L'heure du jour telle que le système la tient, que le système peut avancer ou reculer, comme quand il se corrige par le
-réseau. [sys.Now] la lit : voir [Fichiers](files.md#l-horloge).
+réseau. [sys.Now] la lit : voir [Fichiers](files.md#lhorloge).
 
 ## WebSocket
 
