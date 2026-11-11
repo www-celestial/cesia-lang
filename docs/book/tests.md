@@ -53,7 +53,7 @@ isZeroStaysZero() -->
 isRoundsToCents() -->
 ```
 
-A test that gives `false` fails, and so does one that stops: an [bug.Assert] that is false, a bug. [bug.Assert] with a message says
+A test that gives `false` fails, and so does one that stops: a [bug.Assert] that is false, a bug. [bug.Assert] with a message says
 which part of a long test went wrong.
 
 ### When a test fails

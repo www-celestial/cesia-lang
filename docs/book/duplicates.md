@@ -498,7 +498,7 @@ Where each one wins, and why, measured rather than guessed:
   of 21 runs of a program that prints a number.
 - Past 400 files Python wins, by a third on 1,000 photos and by a quarter on 1,000 files of one size. The cause is the
   hash: BLAKE2b-256 of 64 MiB held in memory takes 75.6 ms in Python and 107.2 ms in Cesia, the medians of 11 tries, so
-  867 MB/s against 612. Python 3.14 takes its BLAKE2b from HACL*, a cryptographic library whose code is proved correct by
+  888 MB/s against 626. Python 3.14 takes its BLAKE2b from HACL*, a cryptographic library whose code is proved correct by
   machine, in a version for AVX2, the 256-bit vector instructions of Intel processors, which this one has: its module
   holds 1,681 of them. Cesia's is the portable C of the runtime of OCaml, whose compression function, disassembled, does
   its arithmetic without any. On 1,000 files of one size, that gap is 31.6 ms of the 32.3 between the two.
@@ -564,8 +564,8 @@ The solution answers the question for the folders it was proved on. Its limits, 
 - **Memory.** [sys.Read] holds a whole file in memory, so a film of 4 GB needs 4 GB at once. Python's `file_digest` reads
   by pieces. Cesia has no reading of a file by pieces yet; with one, the hash would read a piece at a time, and the first
   4 KiB of jdupes would apply too.
-- **The speed of the hash.** Cesia's BLAKE2b, the portable C of OCaml's runtime, hashes 612 MB a second on this machine,
-  where Python's, with AVX2, reaches 867: past a few hundred files, Python is a quarter to a third faster. A version
+- **The speed of the hash.** Cesia's BLAKE2b, the portable C of OCaml's runtime, hashes 626 MB a second on this machine,
+  where Python's, with AVX2, reaches 888: past a few hundred files, Python is a quarter to a third faster. A version
   with vector instructions would close that gap.
 - **Empty files** are duplicates of each other, by the definition, and are grouped. jdupes leaves them out unless asked,
   with `-z`; fdupes keeps them unless asked, with `-n`.

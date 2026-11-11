@@ -154,7 +154,7 @@ every language but Java, Go included: 257 ms against 273.
   a subtraction, an addition and a multiplication from one turn to the next, 11 cycles, the floor of any language: Cesia
   and Go both take 3.7 to 3.8 ns a turn, and the 9 ms between them are the fixed cost again. `matmul`'s inner loop runs
   at Go's speed too, 1.15 ns a step; its two loops each cost MIR 3 to 5 ms to compile.
-- **`structs`: OCaml takes 0.6 times Cesia's time, Go a sixth.** A map of four floats now keeps them as doubles, and the
+- **`structs`: OCaml takes 0.65 times Cesia's time, Go a fifth.** A map of four floats now keeps them as doubles, and the
   JIT never makes the map it reads from the list: it keeps its four doubles in registers and writes the new ones in place
   of the old, which nothing else holds ([How Cesia works](internals.md#what-it-makes)). A step allocates nothing:
   219 ms, then 186, 49, now 46. What is left, about 60 instructions and 24 cycles a step against Go's 19 and 5: each step

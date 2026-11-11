@@ -15,11 +15,11 @@ publisher moves it.
   <https://doi.org/10.1017/CBO9780511530104>. Persistent structures and their costs; [std/heap] is its leftist heap.
 - Phil Bagwell. "Ideal Hash Trees". Technical report, EPFL, 2001. <https://infoscience.epfl.ch/record/64398>. The hash array
   mapped trie, a node of 32 children chosen by 5 bits of hash and kept compact by a bitmap: the storage of a map past 32
-  keys, in [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
+  keys once a write must keep the old map, in [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 - Michael J. Steindorfer, Jurgen J. Vinju. "Optimizing Hash-Array Mapped Tries for Fast and Lean Immutable JVM
   Collections". *OOPSLA 2015*, ACM, 783–800. <https://doi.org/10.1145/2814270.2814312>. CHAMP: a node with two bitmaps,
   its own keys inline and its kids apart, no lone key below a node, a drop that brings a key back up: the nodes of a
-  Cesia map past 32 keys.
+  Cesia map past 32 keys once it is a trie.
 - Python Software Foundation. "What's New In Python 3.6", the dict "reimplemented to use a more compact representation
   based on a proposal by Raymond Hettinger", its entries in the order of insertion.
   <https://docs.python.org/3/whatsnew/3.6.html>. The layout of the hash table of a Cesia map past 32 keys that one name

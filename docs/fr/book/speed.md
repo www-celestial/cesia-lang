@@ -170,7 +170,7 @@ devant LuaJIT, 395. Sur `maps`, il est devant tous les langages sauf Java, Go co
   suivant, 11 cycles, le plancher de tout langage : Cesia et Go prennent tous deux 3,7 à 3,8 ns par tour, et les 9 ms
   qui les séparent sont encore le coût fixe. La boucle intérieure de `matmul` tourne elle aussi à la vitesse de Go,
   1,15 ns par pas ; ses deux boucles coûtent chacune 3 à 5 ms de compilation à MIR.
-- **`structs` : OCaml prend 0,6 fois le temps de Cesia, Go un sixième.** Une map de quatre floats les garde maintenant
+- **`structs` : OCaml prend 0,65 fois le temps de Cesia, Go un cinquième.** Une map de quatre floats les garde maintenant
   comme des doubles (le nombre machine de 64 bits, nu, sans bloc de mémoire autour), et le JIT ne construit jamais la
   map qu'il lit dans la liste : il garde ses quatre doubles dans des registres et écrit les nouveaux à la place des
   anciens, que rien d'autre ne tient ([Comment Cesia fonctionne](internals.md#ce-quil-produit)). Un pas n'alloue rien (il

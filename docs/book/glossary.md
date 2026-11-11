@@ -112,7 +112,8 @@ and see its later values: see [Functions](functions.md#closures).
 The compressed hash-array mapped prefix tree of Steindorfer and Vinju, 2015: a [hash array mapped
 trie](#hash-array-mapped-trie) whose nodes hold inline each key that no other key under them shares 5 bits of hash with,
 and a node of the next level for the bits that several share, with two bitmaps to tell which. It takes less memory than
-a trie with buckets and no node holds a lone key below it. A Cesia map past 32 keys is one: see
+a trie with buckets and no node holds a lone key below it. A Cesia map past 32 keys becomes one at its first write that
+must keep the old map; until then, while one name alone holds it, it is a hash table: see
 [How Cesia works](internals.md#maps-a-hash-table-then-a-hash-trie).
 
 ## Checkpoint

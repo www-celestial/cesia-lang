@@ -40,7 +40,7 @@ Un tel binaire affiche `cesia 1.1.0+dev` : ce sont `git pull` et `dune build` qu
 
 ## Lire le livre
 
-Le livre enseigne Cesia depuis le début, en 23 chapitres courts, et la référence a une page pour chaque nom, chacune avec
+Le livre enseigne Cesia depuis le début, en 28 chapitres courts, et la référence a une page pour chaque nom, chacune avec
 des exemples qui ont tourné quand le site a été construit : **https://www-celestial.github.io/cesia-lang/**. Il suit
 `main`, et chaque push le publie à nouveau.
 

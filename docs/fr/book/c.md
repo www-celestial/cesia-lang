@@ -122,7 +122,7 @@ pendant que le programme tourne ; Cesia la trouve sur le système au premier app
 lier.
 
 Mesuré le 2026-11-08, `bench/ccall.ce` : 10 millions d'appels de la fonction `abs` du C dans une boucle,
-5 exécutions de chaque en alternance, la médiane et la plage, du minimum au maximum :
+5 runs (des exécutions mesurées) de chaque en alternance, la médiane et la plage, du minimum au maximum :
 
 | | Appels par seconde |
 |---|---:|

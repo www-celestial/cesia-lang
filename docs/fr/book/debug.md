@@ -239,7 +239,7 @@ bibliothèque : il ne se charge qu'avec `--debugger`, et un programme lancé san
 
 Seule une ligne qui a un breakpoint, et chaque ligne pendant que vous avancez pas à pas, passe par le debugger, mais un
 programme sous le debugger tourne quand même plus lentement : chaque instruction passe un hook, un test pour savoir s'il
-faut s'y arrêter. Mesuré le 2026-11-08, `bench/fib.ce`, `fib(35)`, 5 exécutions de chaque en alternance, médiane :
+faut s'y arrêter. Mesuré le 2026-11-08, `bench/fib.ce`, `fib(35)`, 5 runs (des exécutions mesurées) de chaque en alternance, médiane :
 86 ms sans le debugger, 870 ms sous `--debugger debugger`, avec `continue` dès le premier arrêt, et 448 ms dans
 l'interpréteur seul, sans le JIT (la partie qui change en code machine le code qui tourne souvent). Le code qui boucle sur
 des nombres le paie le plus ; le code qui attend le réseau ou le disque, comme un serveur, le voit à peine. Comme au prompt

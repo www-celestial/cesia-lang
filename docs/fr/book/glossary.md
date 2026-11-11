@@ -120,7 +120,8 @@ Le compressed hash-array mapped prefix tree de Steindorfer et Vinju, 2015 : un [
 trie](#hash-array-mapped-trie) dont les nœuds gardent sur place chaque clé qui ne partage 5 bits de hash avec aucune autre
 clé sous eux, et un nœud du niveau suivant pour les bits que plusieurs partagent, avec deux bitmaps pour dire lesquels. Il
 prend moins de mémoire qu'un trie à buckets (des petits paquets de clés), et aucun nœud ne tient une clé seule en dessous
-de lui. Une map de Cesia de plus de 32 clés en est un : voir
+de lui. Une map de Cesia de plus de 32 clés en devient un à sa première écriture qui doit garder l'ancienne map ;
+jusque-là, tant qu'un seul nom la tient, c'est une hash table : voir
 [Comment Cesia fonctionne](internals.md#maps--une-hash-table-puis-un-hash-trie).
 
 ## Checkpoint

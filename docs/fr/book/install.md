@@ -39,7 +39,7 @@ qu'elle télécharge.
 
 ## Un premier programme
 
-Un programme est un fichier texte dont le nom finit par `.ce`. Créez un fichier `hello.ce` qui contient :
+Un programme est un fichier texte dont le nom finit par `.ce`. Créez un fichier `hello.ce` qui contient ces deux lignes :
 
 ```cesia
 use std/io

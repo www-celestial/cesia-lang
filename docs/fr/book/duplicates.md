@@ -528,7 +528,7 @@ Où chacun gagne, et pourquoi, mesuré plutôt que deviné :
   les médianes de 21 runs d'un programme qui affiche un nombre.
 - Au-delà de 400 fichiers, Python gagne, d'un tiers sur 1 000 photos et d'un quart sur 1 000 fichiers d'une même taille.
   La cause est le hash : BLAKE2b-256 de 64 MiB tenus en mémoire prend 75,6 ms en Python et 107,2 ms en Cesia, les
-  médianes de 11 essais, soit 867 MB/s contre 612. Python 3.14 prend son BLAKE2b dans HACL*, une bibliothèque
+  médianes de 11 essais, soit 888 MB/s contre 626. Python 3.14 prend son BLAKE2b dans HACL*, une bibliothèque
   cryptographique dont le code est prouvé correct par une machine, dans une version pour AVX2, les instructions
   vectorielles de 256 bits des processeurs Intel, que celui-ci possède : son module en contient 1 681. Celui de Cesia est
   le C portable du runtime d'OCaml (ce qui accompagne un programme OCaml pendant qu'il tourne), dont la fonction de
@@ -604,8 +604,8 @@ La solution répond à la question pour les dossiers sur lesquels elle a été p
 - **La mémoire.** [sys.Read] tient un fichier entier en mémoire, donc un film de 4 GB demande 4 GB d'un coup.
   `file_digest` de Python lit par morceaux. Cesia n'a pas encore de lecture d'un fichier par morceaux ; avec elle, le
   hash lirait un morceau à la fois, et les 4 premiers KiB de jdupes s'appliqueraient aussi.
-- **La vitesse du hash.** Le BLAKE2b de Cesia, le C portable du runtime d'OCaml, hashe 612 MB par seconde sur cette
-  machine, là où celui de Python, avec AVX2, atteint 867 : au-delà de quelques centaines de fichiers, Python est d'un
+- **La vitesse du hash.** Le BLAKE2b de Cesia, le C portable du runtime d'OCaml, hashe 626 MB par seconde sur cette
+  machine, là où celui de Python, avec AVX2, atteint 888 : au-delà de quelques centaines de fichiers, Python est d'un
   quart à un tiers plus rapide. Une version avec des instructions vectorielles comblerait cet écart.
 - **Les fichiers vides** sont des doublons les uns des autres, d'après la définition, et sont groupés. jdupes les laisse
   de côté sauf si on le demande, avec `-z` ; fdupes les garde sauf si on le demande, avec `-n`.

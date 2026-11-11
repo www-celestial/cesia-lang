@@ -35,7 +35,7 @@ installs it; it checks the BLAKE2b fingerprint of what it downloads the same way
 
 ## A first program
 
-A program is a text file whose name ends in `.ce`. Make a file `hello.ce` with one line:
+A program is a text file whose name ends in `.ce`. Make a file `hello.ce` with these two lines:
 
 ```cesia
 use std/io

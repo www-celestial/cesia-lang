@@ -108,7 +108,7 @@ Une partie d'un seul octet, comme une fin de ligne, se compte huit octets à la 
 within a register (le SIMD, une même opération sur plusieurs données à la fois, fait ici dans un seul registre du
 processeur) : les huit octets sont lus comme un seul mot de 64 bits, et quelques opérations sur ce mot trouvent d'un
 coup tous les octets égaux à la partie. Compter les 2,9 millions de fins de ligne d'un texte de 100 MB prend 35 ms, là
-où `value.Len(text.Split("\n", s)) - 1` prend 790 ms, car cette expression fabrique chaque ligne (médianes de 3 exécutions, sur la
+où `value.Len(text.Split("\n", s)) - 1` prend 790 ms, car cette expression fabrique chaque ligne (médianes de 3 runs, des exécutions mesurées, sur la
 machine de [Vitesse](speed.md#à-côté-des-géants)).
 
 ### Remplacer
@@ -314,7 +314,7 @@ Le dernier est `été` en Latin-1, un encodage plus ancien d'un octet par caract
 fichiers. La vérification lit huit octets d'ASCII à la fois, par un seul test de leurs bits de poids fort, et ne décode
 un caractère que là où un octet n'est pas de l'ASCII : 26 ms pour un texte de 100 MB d'ASCII, 46 ms quand un caractère
 sur 33 a un accent, contre 116 ms pour `String.is_valid_utf_8`, la fonction d'OCaml lui-même, qui décode chaque octet
-(médianes de 3 exécutions, même machine).
+(médianes de 3 runs, même machine).
 
 ## Pour aller plus loin
 
