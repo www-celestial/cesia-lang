@@ -1132,14 +1132,18 @@ end
 
 defn program(runs, chosen, mark)
   (** The program of the blocks chosen among those of a page: its use lines first, then each line of code on the line of the
-      page where it is written, so that an error names that line. {Text, Uses}: Uses are the lines of the use lines. *)
+      page where it is written, so that an error names that line. {Text, Uses}: Uses are the lines of the use lines. The
+      norun blocks that follow one another are one function that nothing calls: checked as one program, never run. *)
   uses = []
   useLines = []
   at = {}
   last = 0
-  for k in chosen
+  for j in 1..value.Len(chosen)
+    k = chosen[j]
     b = runs[k]
-    at[b.Line] = if b.Words.Norun "defn bookNotRun$k()" else "bookAt($k)" end
+    opens = b.Words.Norun and (j == 1 or not runs[chosen[j - 1]].Words.Norun)
+    closes = b.Words.Norun and (j == value.Len(chosen) or not runs[chosen[j + 1]].Words.Norun)
+    at[b.Line] = if not b.Words.Norun "bookAt($k)" else if opens "defn bookNotRun$k()" else "" end
     lines = text.Lines(b.Text)
     cut = arrows(b.Text)
     fresh = freshLines(b.Text)
@@ -1161,7 +1165,7 @@ defn program(runs, chosen, mark)
       end
     end
     last = b.Line + value.Len(lines) + 1
-    if b.Words.Norun
+    if closes
       at[last] = "end"
     end
   end
@@ -1444,7 +1448,7 @@ defn pagesOf(root, name, prefix, site)
         broken = true
       else if first == "cesia"
         runs = list.Append({Line: b.Line, Info: b.Info, Text: b.Text, Words: words.Value}, runs)
-      else if first == "toml" and result.IsErr(cesia.Toml(b.Text))
+      else if first == "toml" and not ("norun" in text.Split(" ", b.Info)) and result.IsErr(cesia.Toml(b.Text))
         e = cesia.Toml(b.Text).Error
         fiber.Send("$at/$f:$(b.Line + e.Line): $(e.Message)", site.Mistakes)
       end

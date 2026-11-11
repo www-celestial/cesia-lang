@@ -24,3 +24,20 @@ A price stays text, it costs $5 and $6, and code too: `$x$`.
 ## What's new?
 
 A heading whose id GitHub makes otherwise than the site did keeps the old one too.
+
+Two norun blocks in a row are one program, checked and not run; a toml block marked norun isn't checked either:
+
+```cesia norun
+use std/http
+use std/io
+page = http.Fetch("https://example.com")
+```
+
+```cesia norun
+io.Print(page)
+```
+
+```toml norun
+[[peer]]
+name = "a"
+```
