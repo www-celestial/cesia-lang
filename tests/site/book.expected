@@ -2,7 +2,7 @@ built: 0
 == index.html
 <main id="text">
 <h1 id="proj">Proj</h1>
-<p>A tiny book. Start with <a href="first.html">the first steps</a>, then <a href="files.html#reading">files</a>, and <a href="math.html">formulas</a>.</p>
+<p>A tiny book. Start with <a href="first.html">the first steps</a>, then <a href="files.html#reading">files</a>, and <a href="math.html">formulas</a>, and the <a href="ref/index.html">reference</a>.</p>
 <pre><code class="cesia"><span class="k">use</span> std/io
 io.<span class="f">Print</span>(<span class="s">&quot;home&quot;</span>)</code></pre>
 <pre class="output"><code>home</code></pre>
@@ -239,5 +239,6 @@ site/fr/first.html:<nav class="langs" aria-label="Langue"><a href="../first.html
 site/ref/index.html:<nav class="langs" aria-label="Language"><a aria-current="true">EN</a><a href="../fr/index.html" hreflang="fr" lang="fr" aria-label="Français">FR</a></nav>
 <html lang="fr">
 <a class="ref" href="../ref/index.html">Référence (en anglais)</a>
+<a href="../ref/index.html">référence</a>
 window.cesiaSearch = [["page","fr/index.html","Proj","Un tout petit li
 exit 0

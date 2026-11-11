@@ -46,5 +46,6 @@ sed -n '/<main/,/<h1/p' site/fr/files.html
 grep -o '<nav class="langs".*</nav>' site/first.html site/fr/first.html site/ref/index.html
 grep -o '<html lang="fr">' site/fr/index.html
 grep -o '<a class="ref" href="../ref/index.html">[^<]*</a>' site/fr/index.html
+grep -o '<a href="../ref/index.html">référence</a>' site/fr/index.html
 head -c 70 site/fr/search.js; echo
 rm -rf "$t"
