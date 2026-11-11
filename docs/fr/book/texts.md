@@ -109,7 +109,7 @@ within a register (le SIMD, une même opération sur plusieurs données à la fo
 processeur) : les huit octets sont lus comme un seul mot de 64 bits, et quelques opérations sur ce mot trouvent d'un
 coup tous les octets égaux à la partie. Compter les 2,9 millions de fins de ligne d'un texte de 100 Mo prend 35 ms, là
 où `value.Len(text.Split("\n", s)) - 1` prend 790 ms, car cette expression fabrique chaque ligne (médianes de 3 exécutions, sur la
-machine de [Vitesse](speed.md#beside-the-giants)).
+machine de [Vitesse](speed.md#à-côté-des-géants)).
 
 ### Remplacer
 
@@ -285,7 +285,7 @@ trouve cet octet. Avec `fold`, quand cet octet est une lettre, les huit octets p
 aucun autre octet ne devient cette minuscule. Une partie de 32 octets ou plus est cherchée par la méthode de Knuth,
 Morris et Pratt, dont le temps est linéaire en la longueur du texte, quelle que soit la partie. Un mot à la fin d'un
 texte de 100 Mo est trouvé en 39 ms, 41 ms avec `fold`, contre 317 ms pour une copie du texte en minuscules suivie
-d'une recherche ; [Vitesse](speed.md#texts-and-files) met ces temps à côté de Python, Node et Go.
+d'une recherche ; [Vitesse](speed.md#textes-et-fichiers) met ces temps à côté de Python, Node et Go.
 
 Une recherche compte dans `--limit steps` les octets qu'elle a lus, de son point de départ jusqu'à la fin de ce qu'elle a
 trouvé : chercher la fin de ligne suivante d'un grand texte, ligne après ligne, coûte chaque ligne une fois, pas le texte
