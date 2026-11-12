@@ -843,8 +843,10 @@ cette machine :
 - **Le programme tourne** : 400 000 instructions, de la lecture de `cesia.toml` s'il y en a un jusqu'au dernier vidage
   de la sortie ; les sources de `std/` sont dans le binaire, donc rien n'est lu sur le disque sauf le programme
   lui-même. Un package de `std/` est lu quand un fichier l'utilise pour la première fois : un package écrit en Cesia,
-  comme `std/list`, coûte environ 0,8 ms de plus pour passer par le parser et le resolver, à chaque run, comme l'a mesuré
-  `bench/RESULTS.md` le 2026-11-07 ; les parties en OCaml ne coûtent rien tant qu'on ne les appelle pas.
+  comme `std/list`, coûte environ 0,8 ms de plus pour passer par le parser et le resolver, comme l'a mesuré
+  `bench/RESULTS.md` le 2026-11-07, à son premier run, et moins une fois qu'il vient du
+  [cache des packages chargés](#le-cache-des-packages-chargés) ; les parties en OCaml ne coûtent rien tant qu'on ne les
+  appelle pas.
 - Le JIT, SQLite, le runner de `cesia test` (le programme qui lance les tests) et le moteur du debugger sont des plugins
   à côté du binaire, chargés à leur première utilisation. Aucun d'eux ne coûte quoi que ce soit à un programme qui ne
   s'en sert pas.
@@ -857,7 +859,95 @@ frame descriptors : la hash table n'est réduite de moitié que sous 16 384 desc
 
 Le chargement, le lexer, le parser et le resolver ensemble, lit environ 520 000 lignes par seconde : les 320 001 lignes
 de `bench/load.sh` en 614 ms, la médiane de 11 runs, contre 648 ms avant que le chargement fasse moins de déchets, le
-2026-11-11.
+2026-11-11. C'est le premier run d'un package : les suivants le lisent dans le cache ci-dessous.
+
+## Le cache des packages chargés
+
+Le lexer, le parser et le resolver coûtent environ 3 µs par ligne, à chaque run : un programme qui utilise [std/plot]
+lisait 2 300 lignes avant que sa propre première ligne ne tourne, environ les deux tiers de son temps. Cesia garde donc
+la forme chargée de chaque package, ses arbres tels que le resolver les laisse, dans le *cache des packages chargés* (un
+cache est une copie gardée pour ne pas refaire un travail) : le dossier `cesia/load` du dossier des caches,
+`$XDG_CACHE_HOME`, ou `~/.cache` sans cette variable. Au run suivant, un package dont les fichiers sont les mêmes ne
+repasse ni par le lexer, ni par le parser, ni par le resolver : ses arbres sont relus, et ses instructions tournent
+comme avant. Rien d'autre ne change : la même sortie, les mêmes erreurs aux mêmes lignes, et la même vitesse une fois
+que le programme tourne. Le code est dans `cache.ml` et `src/sys/entries.ml`.
+
+**Ce que garde une entrée.** Un fichier par package, nommé d'après un digest (une empreinte, voir plus bas) de l'endroit
+où est le package (son dossier, ou le nom d'un fichier de `std/` dans le binaire), et remplacé quand le package change :
+l'arbre de chacun de ses fichiers après le resolver, les noms que chaque fichier lit dans chaque package qu'il utilise,
+et les questions que le resolver a posées sur les autres modules, avec leurs réponses. Un nom que le resolver a lié à un
+module d'un autre package garde ce module par sa place : le j-ième module du package du u-ième use du fichier. Dans un
+autre run, les modules reçoivent d'autres numéros, et les places les retrouvent. Rien n'est gardé pour ce qu'ajoute le
+debugger (`--debugger`), pour ce que `cesia check` et les verdicts de `cesia test` lisent avec leurs propres règles, ni
+pour les packages de moins de 512 octets, que le parser lit plus vite qu'on ne trouve et ne vérifie leur entrée.
+
+**Ce qu'un run vérifie avant d'utiliser une entrée**, dans cet ordre :
+
+- le fichier est à la personne, et à personne d'autre : un fichier ordinaire, pas un lien, que personne d'autre ne peut
+  lire ni écrire, dans un dossier qui n'est qu'à elle, ce que Cesia fait en le créant (les permissions 0700 pour le
+  dossier, 0600 pour chaque fichier) ; le fichier ouvert est celui qu'on a regardé, le même device et le même inode (le
+  disque et le numéro du fichier sur ce disque), donc un lien mis à sa place entre-temps n'est pas suivi ;
+- son *digest* est celui écrit à son début. Un digest est une empreinte de tous les octets d'un fichier, qui change dès
+  que l'un d'eux change ; celui de Cesia est BLAKE2b, sur 16 octets. Une entrée abîmée ou coupée n'est jamais décodée ;
+- l'entrée nomme ce build de Cesia (cette version compilée du binaire), un digest de ses sources fait quand il est
+  compilé, la même limite `nesting`, et le digest de chaque source du package, dans l'ordre : un fichier changé depuis
+  le dernier run est relu. Un fichier de `std/` dans le binaire ne change qu'avec le build, et n'a pas besoin d'un
+  digest à lui ;
+- chaque use est retrouvé sur le disque, comme sans cache, et chaque question que le resolver a posée est reposée : ce
+  qu'est un nom d'un package utilisé, dans quelle cellule il vit, si c'est un struct. L'entrée n'est utilisée que si
+  chaque réponse est la même ; sinon le package repasse par le resolver depuis ses sources, comme quand un package qu'il
+  utilise a gagné une fonction avant celle qu'il appelle, et son entrée est réécrite.
+
+Le lecteur d'une entrée est de l'OCaml ordinaire, sans `Marshal`, le lecteur de valeurs d'OCaml lui-même, qui fait
+confiance à ses octets : il vérifie chaque compte contre les octets qui restent, et chaque référence dans l'entrée, à un
+texte, un module ou une définition, contre ce qui s'y trouve, donc une entrée fausse ne peut vouloir dire que « pas
+utilisée ». Tout échec, une entrée absente, abîmée, d'un autre build, un dossier où l'on ne peut pas écrire ou un disque
+plein, veut seulement dire que le package se charge comme sans cache. Les permissions ne sont jamais dans une entrée :
+elles viennent de la ligne de commande et de `cesia.toml` à chaque run, comme les fichiers qu'un use nomme viennent du
+disque.
+
+**L'écriture.** Les entrées d'un run sont écrites une fois qu'il a fini, sa sortie partie et son code de sortie fixé,
+par une copie du processus que la fin n'attend pas, faite avec `fork` (l'appel du système qui copie un processus) : un
+run ne dure pas plus longtemps que sans cache. La copie ferme son entrée et sa sortie et quitte la session du terminal,
+donc un shell qui attend la fin de la sortie, ou une touche qui arrête le programme, ni ne l'attend ni ne l'arrête. Un
+run tué, ou qui finit pendant que du travail tourne encore sur d'autres cœurs, ne laisse pas d'entrée, pas plus qu'un
+run sur Windows, qui n'a pas `fork` : le run suivant lit ses packages comme sans cache. Un programme qui tourne
+longtemps, comme un serveur, écrit ses entrées quand il s'arrête. Chaque entrée est écrite dans un nouveau fichier à
+côté d'elle, qu'aucun autre fichier ne peut être (Cesia le crée avec `O_EXCL`), puis renommée à la place de l'ancienne,
+qui est d'abord retirée : btrfs (un système de fichiers de Linux) écrit tout de suite sur le disque un fichier renommé
+par-dessus un autre, environ 8 ms. Un run qui lit une entrée pendant qu'un autre l'écrit voit l'ancienne, la nouvelle ou
+aucune, jamais une moitié, et deux runs qui l'écrivent en même temps en écrivent chacun une entière. À la première
+écriture d'un run, au-delà de 256 MB d'entrées, celles qui ont servi le moins récemment partent, jusqu'à 128 MB ; lire
+une entrée garde sa date fraîche, une fois par jour. Le dossier peut être supprimé à tout moment, comme n'importe quel
+cache.
+
+**Ce que ça fait gagner.** Du début du processus à sa fin, la médiane de 21 runs de chacun et son intervalle à 95 %,
+les trois à tour de rôle, le 2026-11-12 pendant que d'autres travaux tournaient sur la machine : avant le cache ; le
+premier run, avec un cache vide, dont les entrées sont écrites une fois qu'il a fini ; et les runs suivants, qui les
+lisent. Pour Cemacs, c'est son démarrage jusqu'à sa première image, comme son livre le mesure.
+
+| Programme | Avant | Premier run | Runs suivants |
+|---|---:|---:|---:|
+| `use std/io` et `io.Print(1)`, aucun package en Cesia | 4,50 ms [3,37, 5,17] | 3,99 ms [3,00, 4,55] | 3,75 ms [3,05, 4,26] |
+| `use std/plot`, 2 300 lignes | 9,66 ms [9,58, 9,85] | 9,61 ms [9,45, 9,88] | 5,69 ms [5,58, 5,75] |
+| `use std/cells`, 1 250 lignes | 6,79 ms [6,75, 6,91] | 6,86 ms [6,78, 7,19] | 4,36 ms [4,29, 4,57] |
+| `src/browser` de Ceti, 1 500 lignes | 7,14 ms [7,00, 7,46] | 7,22 ms [7,14, 7,91] | 4,70 ms [4,61, 4,95] |
+| Cemacs, 8 300 lignes en 28 packages | 52,16 ms [51,52, 53,09] | 54,26 ms [52,47, 57,66] | 36,97 ms [35,88, 38,63] |
+| Cemacs avec son notebook, 10 000 lignes en 32 packages | 61,27 ms [59,22, 66,12] | 62,88 ms [60,62, 73,07] | 39,62 ms [38,74, 42,10] |
+
+Le premier run prend le temps qu'il prenait avant le cache, à l'écart près entre les runs, sauf environ 2 ms pour
+Cemacs : environ 1 ms est le `fork` d'un processus plus gros, le reste les questions notées pendant le resolver. Relire
+une entrée est deux à trois fois plus rapide que de passer sa source par le lexer et le parser, et le resolver ne tourne
+pas du tout ; ce qui reste d'un chargement est surtout cette lecture, et les collections du jeune heap qui copient les
+nouveaux arbres vers le major heap (la grande partie de la mémoire, où vivent les valeurs qui durent), comme pour des
+arbres qui viennent du parser.
+
+**Testé** par `tests/cache_test.ml`, qui abîme chaque entrée à 60 endroits, la coupe à 8 longueurs, l'allonge, l'échange
+avec une autre et la lit avec un autre build, à chaque fois avec la même sortie et l'entrée réécrite telle qu'elle
+était, et qui change un fichier et une dépendance ; par `tests/cache/entries.cmd`, la même chose avec le binaire, et
+avec un lien, une entrée que d'autres peuvent lire, un dossier que d'autres peuvent lire et un dossier où l'on ne peut
+pas écrire, et quatre runs en même temps ; et par les golden tests (des tests qui comparent la sortie à un texte
+attendu), lancés une fois sans cache, une fois avec un cache vide et une fois avec un cache plein.
 
 ## Recharger le code : --watch
 

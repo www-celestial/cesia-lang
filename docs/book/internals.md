@@ -762,69 +762,77 @@ That is the first run of a package: the next ones read it from the cache below.
 ## The cache of loaded packages
 
 Lexing, parsing and resolving cost about 3 µs a line, at each run: a program that uses [std/plot] read 2,300 lines
-before its own first line ran, about two thirds of its time. So Cesia keeps the loaded form of each package, its trees as
-the resolver leaves them, in the *cache of loaded packages*: the folder `cesia/load` of the folder of caches,
-`$XDG_CACHE_HOME`, or `~/.cache` without that variable. At the next run, a package whose files are the same is neither lexed, parsed nor
-resolved again: its trees are read back, and its statements run as before. Nothing else changes: the same output, the same
-errors on the same lines, and the same speed once the program runs. The code is in `cache.ml` and `src/sys/entries.ml`.
+before its own first line ran, about two thirds of its time. So Cesia keeps the loaded form of each package, its trees
+as the resolver leaves them, in the *cache of loaded packages*: the folder `cesia/load` of the folder of caches,
+`$XDG_CACHE_HOME`, or `~/.cache` without that variable. At the next run, a package whose files are the same is neither
+lexed, parsed nor resolved again: its trees are read back, and its statements run as before. Nothing else changes: the
+same output, the same errors on the same lines, and the same speed once the program runs. The code is in `cache.ml` and
+`src/sys/entries.ml`.
 
 **What an entry holds.** One file per package, named by a digest of where the package is (its folder, or the name of a
 file of `std/` inside the binary), and replaced when the package changes: the tree of each of its files after the
 resolver, the names each file reads from each package it uses, and the questions the resolver asked about other modules,
-with their answers. A name that the resolver tied to a module of another package keeps that module by its place: the j-th
-module of the package of the file's u-th use. In another run, the modules get other numbers, and the places find them.
-Nothing is kept for what the debugger adds (`--debugger`), what `cesia check` and the verdicts of `cesia test` read with
-their own rules, and packages of less than 512 bytes, which parse faster than their entry is found and checked.
+with their answers. A name that the resolver tied to a module of another package keeps that module by its place: the
+j-th module of the package of the file's u-th use. In another run, the modules get other numbers, and the places find
+them. Nothing is kept for what the debugger adds (`--debugger`), what `cesia check` and the verdicts of `cesia test`
+read with their own rules, and packages of less than 512 bytes, which parse faster than their entry is found and
+checked.
 
 **What a run checks before it uses an entry**, in this order:
 
 - the file is the person's own, and no one else's: a plain file, not a link, that no one else may read or write, in a
-  folder that is theirs alone, which Cesia makes so (permissions 0700 for the folder, 0600 for each file); the file opened
-  is the one looked at, the same device and inode, so a link put in its place in between isn't followed;
-- its *digest* is the one written at its start. A digest is a fingerprint of all the bytes of a file that changes when any
-  of them does; Cesia's is BLAKE2b, of 16 bytes. A damaged or cut entry is never decoded;
+  folder that is theirs alone, which Cesia makes so (permissions 0700 for the folder, 0600 for each file); the file
+  opened is the one looked at, the same device and inode, so a link put in its place in between isn't followed;
+- its *digest* is the one written at its start. A digest is a fingerprint of all the bytes of a file that changes when
+  any of them does; Cesia's is BLAKE2b, of 16 bytes. A damaged or cut entry is never decoded;
 - the entry names this build of Cesia, a digest of its sources made when it is built, the same `nesting` limit, and the
   digest of each source of the package, in order: a file changed since the last run is read again. A file of `std/`
   inside the binary changes only with the build, and needs no digest of its own;
 - each use is found again on the disk, as without a cache, and each question the resolver asked is asked again: what a
-  name of a used package is, in which cell it lives, whether it is a struct. The entry is used only if every answer is the
-  same; otherwise the package is resolved from its sources, as when a package it uses gained a function before the one it
-  calls, and its entry is written again.
+  name of a used package is, in which cell it lives, whether it is a struct. The entry is used only if every answer is
+  the same; otherwise the package is resolved from its sources, as when a package it uses gained a function before the
+  one it calls, and its entry is written again.
 
-The reader of an entry is plain OCaml, without `Marshal`, OCaml's own reader of values, which trusts its bytes: it checks
-every count against the bytes left and every reference inside the entry, to a text, a module or a definition, against
-what is there, so a wrong entry can only mean "not used".
-Any failure, an entry missing, damaged, of another build, a folder that can't be written or a full disk, means only that
-the package loads as without a cache. Permissions are never in an entry: they come from the command line and `cesia.toml`
-at each run, as the files that a use names come from the disk.
+The reader of an entry is plain OCaml, without `Marshal`, OCaml's own reader of values, which trusts its bytes: it
+checks every count against the bytes left and every reference inside the entry, to a text, a module or a definition,
+against what is there, so a wrong entry can only mean "not used". Any failure, an entry missing, damaged, of another
+build, a folder that can't be written or a full disk, means only that the package loads as without a cache. Permissions
+are never in an entry: they come from the command line and `cesia.toml` at each run, as the files that a use names come
+from the disk.
 
-**Writing.** An entry is written to a new file beside it, which no other file can be (Cesia makes it with `O_EXCL`), then
-renamed in place of the old one, which is removed first: btrfs writes a file renamed over another to the disk at once,
-about 8 ms. A run that reads an entry while another writes it sees the old one, the new one or none, never a half, and two
-runs that write it at once both write a whole one. At the first write of a run, past 256 MB of entries, those used least
-lately go, down to 128 MB; reading an entry keeps its date fresh, once a day. The folder can be deleted at any time, as any
-cache.
+**Writing.** The entries of a run are written once it ends, its output out and its exit code set, by a copy of the
+process that the end doesn't wait for, made with `fork`: a run takes no longer than without a cache. The copy closes its
+input and output and leaves the terminal's session, so a shell that waits for the end of the output, or a key that stops
+the program, neither waits for it nor stops it. A run that is killed, or that ends while work still runs on other cores,
+leaves no entry, and neither does a run on Windows, which has no `fork`: the next run reads its packages as without a
+cache. A program that runs for a long time, as a server, writes its entries when it stops. Each entry is written to a
+new file beside it, which no other file can be (Cesia makes it with `O_EXCL`), then renamed in place of the old one,
+which is removed first: btrfs writes a file renamed over another to the disk at once, about 8 ms. A run that reads an
+entry while another writes it sees the old one, the new one or none, never a half, and two runs that write it at once
+both write a whole one. At the first write of a run, past 256 MB of entries, those used least lately go, down to 128 MB;
+reading an entry keeps its date fresh, once a day. The folder can be deleted at any time, as any cache.
 
-**What it saves.** From the start of the process to its end, the median of 21 runs of each, the three taking turns, on
-2026-11-12 while other work ran on the machine: before the cache; the first run, with an empty cache, which writes the
-entries; and the next runs, which read them. Cemacs is its start to its first frame, as its book measures it.
+**What it saves.** From the start of the process to its end, the median of 21 runs of each and its 95 % interval, the
+three taking turns, on 2026-11-12 while other work ran on the machine: before the cache; the first run, with an empty
+cache, whose entries are written once it has ended; and the next runs, which read them. Cemacs is its start to its
+first frame, as its book measures it.
 
 | Program | Before | First run | Next runs |
 |---|---:|---:|---:|
-| `use std/io` and `io.Print(1)`, no package of Cesia code | 2.87 ms | 2.85 ms | 2.76 ms |
-| `use std/plot`, 2,300 lines | 11.60 ms | 14.05 ms | 5.71 ms |
-| `use std/cells`, 1,250 lines | 7.07 ms | 8.36 ms | 4.35 ms |
-| Ceti's `src/browser`, 1,500 lines | 7.66 ms | 9.54 ms | 5.00 ms |
-| Cemacs, 8,300 lines in 28 packages | 61.05 ms | 71.73 ms | 37.38 ms |
-| Cemacs with its notebook, 10,000 lines in 32 packages | 67.97 ms | 78.99 ms | 39.94 ms |
+| `use std/io` and `io.Print(1)`, no package of Cesia code | 4.50 ms [3.37, 5.17] | 3.99 ms [3.00, 4.55] | 3.75 ms [3.05, 4.26] |
+| `use std/plot`, 2,300 lines | 9.66 ms [9.58, 9.85] | 9.61 ms [9.45, 9.88] | 5.69 ms [5.58, 5.75] |
+| `use std/cells`, 1,250 lines | 6.79 ms [6.75, 6.91] | 6.86 ms [6.78, 7.19] | 4.36 ms [4.29, 4.57] |
+| Ceti's `src/browser`, 1,500 lines | 7.14 ms [7.00, 7.46] | 7.22 ms [7.14, 7.91] | 4.70 ms [4.61, 4.95] |
+| Cemacs, 8,300 lines in 28 packages | 52.16 ms [51.52, 53.09] | 54.26 ms [52.47, 57.66] | 36.97 ms [35.88, 38.63] |
+| Cemacs with its notebook, 10,000 lines in 32 packages | 61.27 ms [59.22, 66.12] | 62.88 ms [60.62, 73.07] | 39.62 ms [38.74, 42.10] |
 
-The first run costs more than before: it writes each entry, about as long as reading it back takes, and one file per
-package. Reading an entry back is two to three times faster than lexing and parsing its source, and the resolver doesn't
-run at all; what is left of a load is mostly that reading, and the young collections that copy the new trees to the
-major heap, as for trees just parsed.
+The first run takes the time it took before the cache, within what the runs spread, but for about 2 ms in Cemacs: about
+1 ms is the `fork` of a larger process, the rest the questions noted while it resolves. Reading an entry back is two to
+three times faster than lexing and parsing its source, and the resolver doesn't run at all; what is left of a load is
+mostly that reading, and the young collections that copy the new trees to the major heap, as for trees just parsed.
 
-**Tested** by `tests/cache_test.ml`, which damages each entry at 60 places, cuts it at 8 lengths, grows it, swaps it with
-another and reads it with another build, each time with the same output and the entry written again as it was, and
+**Tested** by `tests/cache_test.ml`, which damages each entry at 60 places, cuts it at 8 lengths, grows it, swaps it
+with another and reads it with another build, each time with the same output and the entry written again as it was, and
 changes a file and a dependency; by `tests/cache/entries.cmd`, the same with the binary, and with a link, an entry that
 others may read, a folder that others may read and one that can't be written, and four runs at once; and by the golden
 tests, run once with no cache, once with an empty one and once with it full.
