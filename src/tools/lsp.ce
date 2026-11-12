@@ -270,17 +270,43 @@ end
 
 defn known(state, files)
   (** The state with the definitions of these files as cesia.Definitions reads them, each kept with the text it read:
-      a text that doesn't read, as one being typed, keeps the definitions of the last one that did. *)
+      a text that doesn't read, as one being typed, keeps the definitions of the last one that did, or, when none did,
+      takes those of the file on the disk. *)
   for f in files
     t = textOf(state, f)
     kept = dict.Get(f, state.Defs)
     if not value.IsMissing(t) and (value.IsMissing(kept) or kept.Text != t)
       got = cesia.Definitions(t)
-      before = if value.IsMissing(kept) [] else kept.List end
+      before = if value.IsMissing(kept) onDisk(f) else kept.List end
       state.Defs[f] = {Text: t, Lines: linesOf(t), List: if result.IsOk(got) got.Value else before end}
     end
   end
   state
+end
+
+defn onDisk(f)
+  (** The definitions of a file as it is on the disk, or none when it doesn't read there either. *)
+  read = sys.Read(f)
+  got = if result.IsOk(read) cesia.Definitions(read.Value) else read end
+  if result.IsOk(got) got.Value else [] end
+end
+
+defn qualified(state, used, names)
+  (** Where a name of a package of the project is defined, as its files are now, open or on the disk: Area, or
+      Rect.Square, a static method; {File, Def, Lines} with the signature that the package names, or missing. *)
+  owner = if value.Len(names) > 1 names[1] else missing end
+  for f in folderFiles(used)
+    kept = dict.Get(f, state.Defs)
+    for d in if value.IsMissing(kept) [] else kept.List end
+      if d.Name == list.Last(names) and d.Kind != "use" and value.Equal(d.Owner, owner)
+        if d.Signature != ""
+          d.Signature = "$(path.Base(used)).$(d.Signature)"
+        end
+        return {File: f, Def: d, Lines: kept.Lines}
+      end
+    end
+  end
+  missing
 end
 
 defn definitionOf(state, doc, w, packages)
@@ -346,7 +372,17 @@ defn target(state, doc, pos)
       found.Module = used
       return {State: state, Found: found}
     end
-    found.Entry = cesia.DocEntry("$(docName(used)).$(text.Join(".", parts[2..value.Len(parts)]))")
+    names = parts[2..value.Len(parts)]
+    (* A package of the project: its files as the editor holds them, which the disk may not have yet. *)
+    if not text.StartsWith("std/", used)
+      dir = "$(rootOf(doc.Path))/$used"
+      state = known(state, folderFiles(dir))
+      found.Local = qualified(state, dir, names)
+      if not value.IsMissing(found.Local)
+        return {State: state, Found: found}
+      end
+    end
+    found.Entry = cesia.DocEntry("$(docName(used)).$(text.Join(".", names))")
     return {State: state, Found: if value.IsMissing(found.Entry) missing else found end}
   end
   if not w.Dotted and value.Len(parts) == 1 and w.Word in cesia.Keywords()
