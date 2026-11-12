@@ -352,7 +352,7 @@ defn errorOf(app)
   e = missing
   while not value.IsMissing(batch) and value.IsMissing(e)
     e = list.First([m.Error for m in batch if "Error" in m])
-    batch = messages(c)
+    batch = if value.IsMissing(e) messages(c) else missing end
   end
   websocket.Close(c)
   e
