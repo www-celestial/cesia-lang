@@ -80,6 +80,8 @@ let reads ctx a =
     let rec walk (e : Ast.expr) =
       (match e.e with
        | Var { text; b } when b = free -> note text e.pos
+       (* x.hidden, where x is no package: the resolver leaves it, as a private name of a package is an error. *)
+       | Var { text; b = Unresolved } when Hashtbl.mem dotted text && not (List.mem text own) -> note text e.pos
        | Lambda f | Fn_def (_, f) -> body f
        | _ -> ());
       Resolve.children walk e

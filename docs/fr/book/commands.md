@@ -19,7 +19,7 @@ ou au programme qui l'a lancée : `$?` dans un shell.
 ## cesia run
 
 ```bash
-cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
+cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--cells] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
 ```
 
 Lance un programme. Les mots après le fichier sont ses arguments, dans [sys.Args].
@@ -32,6 +32,7 @@ Lance un programme. Les mots après le fichier sont ses arguments, dans [sys.Arg
 | `--workers N` | sert sur N processus, de 1 à 1 024, ou un par cœur logique avec `cores`, sous un supervisor (le processus qui démarre les workers) qui redémarre un worker qui finit et les remplace tous sur HUP. Voir [Tous les cœurs](http.md#tous-les-cœurs) et [Comment Cesia fonctionne](internals.md#sur-chaque-cœur). Pas avec `--watch`, et pas sous Windows. |
 | `--debugger FILE` | lance un debugger (un programme qui exécute le vôtre et peut l'arrêter, pour montrer ses variables) écrit en Cesia à côté du programme, et lui donne de lui-même la permission `debug` : pas besoin de `--allow debug`. `--debugger debugger` est celui qui vient avec Cesia. Voir [Le prompt et le debugger](debug.md). |
 | `--repl` | ouvre un prompt (une ligne où vous tapez du code, et qui y répond) à côté du programme, dans le package de son fichier principal : une expression montre sa valeur, une fonction définie de nouveau remplace celle du programme. Sans fichier, un prompt sur un programme vide. Voir [Le prompt et le debugger](debug.md). |
+| `--cells` | ne lance rien du fichier : une session de [std/cells] dessus, que [cells.Session] démarre, lit les cellules à lancer sur son entrée et répond sur sa sortie. Les cellules tournent au niveau du fichier, comme au prompt, sans les hooks d'un debugger, et avec la permission `debug` d'elle-même. Voir [Cells](cells.md). |
 | `--no-spec` | lance sans les versions de chaque fonction que Cesia fabrique pour les types qu'il voit : les résultats doivent être les mêmes |
 | `--no-jit` | lance sans code natif, dans l'[interpréteur](glossary.md#interpreter-and-jit) seulement |
 | `--seed N` | donne à [std/random] le seed N (le nombre dont part le générateur de nombres au hasard), un nombre entier, à la place d'un seed tiré du système : le même seed donne les mêmes nombres. [random.Seed] dit le seed d'un run. |
