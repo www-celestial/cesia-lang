@@ -351,6 +351,46 @@ let text_natives =
           if at < 0 then Missing else Int (at + 1)
         end) ]
 
-(* The masking of a WebSocket frame, a small name that only std/websocket sees. *)
+(* The value of each byte as a digit of Base64, standard or for URLs (RFC 4648 §4 and §5), 255 for the others; made at the
+   first use. *)
+let base64_digits =
+  lazy
+    (String.init 256 (fun i ->
+         match Char.chr i with
+         | 'A' .. 'Z' -> Char.chr (i - 65)
+         | 'a' .. 'z' -> Char.chr (i - 71)
+         | '0' .. '9' -> Char.chr (i + 4)
+         | '+' | '-' -> '\062'
+         | '/' | '_' -> '\063'
+         | _ -> '\255'))
+
+(* The bytes of Base64 with or without padding, or missing for a text that isn't Base64. Every = is left out wherever it
+   is, and the bits past the last whole byte are dropped, as encode.Unbase64 always did. Four digits make three bytes, with
+   no test inside the loop: a screenshot of a page is a megabyte of Base64. *)
+let unbase64 ctx (a : t array) =
+  let s = text_arg ctx "unbase64" a.(0) in
+  Runtime.pay_bytes ctx (String.length s);
+  let s = if String.contains s '=' then String.concat "" (String.split_on_char '=' s) else s in
+  let n = String.length s and d = Lazy.force base64_digits in
+  Runtime.build ctx ((n / 10) + 1);
+  let out = Bytes.create (n * 3 / 4) and bad = ref 0 and i = ref 0 and o = ref 0 in
+  let digit k = if k < n then Char.code d.[Char.code s.[k]] else 0 in
+  while !i + 4 <= n do
+    let a = Char.code d.[Char.code s.[!i]] and b = Char.code d.[Char.code s.[!i + 1]] in
+    let c = Char.code d.[Char.code s.[!i + 2]] and e = Char.code d.[Char.code s.[!i + 3]] in
+    bad := !bad lor a lor b lor c lor e;
+    let w = (a lsl 18) lor (b lsl 12) lor (c lsl 6) lor e in
+    Bytes.set_uint16_be out !o (w lsr 8);
+    Bytes.set_uint8 out (!o + 2) (w land 255);
+    i := !i + 4;
+    o := !o + 3
+  done;
+  let w = (digit !i lsl 18) lor (digit (!i + 1) lsl 12) lor (digit (!i + 2) lsl 6) in
+  bad := !bad lor digit !i lor digit (!i + 1) lor digit (!i + 2);
+  for k = 0 to Bytes.length out - !o - 1 do Bytes.set_uint8 out (!o + k) ((w lsr (16 - (8 * k))) land 255) done;
+  if n mod 4 = 1 || !bad >= 64 then Missing else Text (Bytes.to_string out)
+
 let packages =
-  [ "math", math_natives; "list", list_natives; "text", text_natives; "websocket", [ "xorBytes", nat "xorBytes" 2 2 xor_bytes ] ]
+  [ "math", math_natives; "list", list_natives; "text", text_natives; "encode", [ "unbase64", nat "unbase64" 1 1 unbase64 ];
+    (* The masking of a WebSocket frame, a small name that only std/websocket sees. *)
+    "websocket", [ "xorBytes", nat "xorBytes" 2 2 xor_bytes ] ]

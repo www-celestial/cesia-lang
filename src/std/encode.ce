@@ -75,51 +75,13 @@ defn Base64(s)
   text.Join("", parts)
 end
 
-defn base64Value(b)
-  if b >= 65 and b <= 90
-    b - 65
-  else if b >= 97 and b <= 122
-    b - 71
-  else if b >= 48 and b <= 57
-    b + 4
-  else if b == 43 or b == 45
-    62
-  else if b == 47 or b == 95
-    63
-  else
-    missing
-  end
-end
-
 defn Unbase64(s)
-  (** Takes the standard alphabet and the one of URLs, with or without padding.
+  (** Takes the standard alphabet and the one of URLs, with or without padding. unbase64, a native of this package,
+      decodes in one pass: a screenshot of a page is a megabyte of Base64.
 
         Unbase64("aGk=") --> result.Ok("hi") *)
-  clean = text.Replace("=", "", s)
-  codes = text.Bytes(clean)
-  n = value.Len(codes)
-  if math.Mod(n, 4) == 1
-    return bad("Base64")
-  end
-  out = list.Fill(0, math.Div(n * 3, 4))
-  used = 0
-  word = 0
-  bits = 0
-  for code in codes
-    v = base64Value(code)
-    if value.IsMissing(v)
-      return bad("Base64")
-    end
-    word = word * 64 + v
-    bits += 6
-    if bits >= 8
-      bits -= 8
-      used += 1
-      out[used] = math.Mod(math.Div(word, 2 ^ bits), 256)
-      word = math.Mod(word, 2 ^ bits)
-    end
-  end
-  result.Ok(text.FromBytes(list.Take(used, out)))
+  out = unbase64(s)
+  if value.IsMissing(out) bad("Base64") else result.Ok(out) end
 end
 
 urlSafe(b) = (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b == 45 or b == 46 or b == 95 or b == 126
