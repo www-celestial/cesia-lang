@@ -1,0 +1,409 @@
+(** std/live: its screens served by std/http, read by pages written here on the client of std/websocket, the network
+    between them a proxy of std/net that cuts connections at any byte and stops reading. After each message, the rows a
+    page holds of a show must be the rows of its source at that group: the source's history is drawn at random first. *)
+use std/live
+use std/http
+use std/websocket
+use std/net
+use std/fiber
+use std/dict
+use std/json
+use std/list
+use std/metrics
+use std/random
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(** The rows of an answer in one order, to compare two answers with their repeats; a row, by its id and the length of
+    its text, all of whose bytes are x. *)
+key(r) = "$(r.Id)/$(text.ByteLength(r.Pad))"
+sorted(rows) = list.Sort([key(r) for r in rows])
+
+defn history(groups, size = 1)
+  (** A random history of an answer: each group adds or removes up to three rows of a small set, with repeats, never
+      more than ten; a row holds size bytes of text. {Steps, At}: the changes in order, and the sorted rows after each
+      group, by group. *)
+  rows = []
+  steps = []
+  at = {0: []}
+  pad = text.Repeat(size, "x")
+  for g in 1..groups
+    added = []
+    removed = []
+    for k in 1..random.Int(1, 3)
+      if value.Len(rows) >= 10 or (value.Len(rows) > 0 and random.Int(1, 3) == 1)
+        i = random.Int(1, value.Len(rows))
+        removed = list.Append(rows[i], removed)
+        rows = list.Concat(list.Take(i - 1, rows), list.Skip(i, rows))
+      else
+        r = {Id: random.Int(1, 5), Pad: pad}
+        added = list.Append(r, added)
+        rows = list.Append(r, rows)
+      end
+    end
+    steps = list.Append({Group: g, Added: added, Removed: removed}, steps)
+    at[g] = sorted(rows)
+  end
+  {Steps: steps, At: at}
+end
+
+defn source(h, ended, pause)
+  (** The channel of a show of its own: the answer at group 0, then each step of a history, pause seconds apart, until
+      the screen ends. *)
+  ch = fiber.Channel()
+  fiber.Spawn(defn ()
+    fiber.Send({Group: 0, Rows: []}, ch)
+    for step in h.Steps
+      if fiber.Receive(ended, timeout = pause).Error.Kind == "closed"
+        return missing
+      end
+      fiber.Send(step, ch)
+    end
+  end)
+  ch
+end
+
+defn hub(h, pause)
+  (** A source that plays a history, pause seconds a group, whoever watches it, as a database goes on whoever reads it:
+      give it {Changes, Ended} to watch from now on, the answer first, until Ended closes. *)
+  join = fiber.Channel()
+  fiber.Spawn(defn ()
+    watching = []
+    rows = []
+    for step in h.Steps
+      came = fiber.Receive(join, timeout = pause)
+      while result.IsOk(came)
+        fiber.Send({Group: step.Group - 1, Rows: rows}, came.Value.Changes)
+        watching = list.Append(came.Value, watching)
+        came = fiber.Receive(join, timeout = 0)
+      end
+      watching = [w for w in watching if fiber.Receive(w.Ended, timeout = 0).Error.Kind != "closed"]
+      rows = list.Concat(rows, step.Added)
+      for r in step.Removed
+        k = list.IndexOf(r, rows)
+        rows = list.Concat(list.Take(k - 1, rows), list.Skip(k, rows))
+      end
+      for w in watching
+        fiber.Send(step, w.Changes)
+      end
+    end
+  end)
+  join
+end
+
+defn watch(join, s)
+  (** A show's channel of a hub, for a screen. *)
+  ch = fiber.Channel()
+  fiber.Send({Changes: ch, Ended: s.Ended}, join)
+  ch
+end
+
+defn serve(screen, actions = {})
+  (** The base URL of an app of live screens at /live, on a free port. *)
+  l = net.Listen(0)?
+  fiber.Spawn(() -> http.Serve(http.App() then live.Route("/live", screen, actions = actions), listener = l))
+  result.Ok("127.0.0.1:$(net.Port(l))")
+end
+
+defn proxy(target, cut = missing, stall = missing)
+  (** A network between a page and its app: each connection forwarded both ways, the app's side cut after a random number
+      of bytes up to cut, or, with stall, a channel, not read past the handshake until the channel closes. Gives
+      host:port to dial. *)
+  l = net.Listen(0)?
+  parts = text.Split(":", target)
+  fiber.Spawn(defn ()
+    while true
+      page = net.Accept(l)?
+      app = net.Connect(parts[1], text.Number(parts[2]))?
+      fiber.Spawn(() -> pipe(page, app, missing, false))
+      fiber.Spawn(() -> pipe(app, page, if value.IsMissing(cut) missing else random.Int(1, cut) end, stall))
+    end
+  end)
+  result.Ok("127.0.0.1:$(net.Port(l))")
+end
+
+defn pipe(from, to, left, stall)
+  (** Forwards the bytes of one side to the other until either ends, or until left bytes have gone: then both close. *)
+  got = net.Read(from)
+  while result.IsOk(got) and got.Value != ""
+    bytes = got.Value
+    if not value.IsMissing(left) and text.ByteLength(bytes) >= left
+      _ = net.Write(to, text.ByteSlice(1, left, bytes))
+      net.Close(to)
+      net.Close(from)
+      return missing
+    end
+    left = if value.IsMissing(left) missing else left - text.ByteLength(bytes) end
+    if result.IsErr(net.Write(to, bytes))
+      break
+    end
+    if not value.IsMissing(stall) and text.Contains("101 Switching", bytes)
+      _ = fiber.Receive(stall)
+    end
+    got = net.Read(from)
+  end
+  net.Close(to)
+  net.Close(from)
+end
+
+defn open(address)
+  (** A page: the connection to a screen, its hello sent. *)
+  c = websocket.Dial("ws://$address/live")?
+  websocket.Send(json.Text({Hello: 1}), c)?
+  result.Ok(c)
+end
+
+defn messages(c, timeout = 5)
+  (** The next frame of a screen, a list of messages, or missing when the connection ends or nothing comes in time. *)
+  got = fiber.Receive(c.Messages, timeout = timeout)
+  if result.IsErr(got) missing else json.Parse(got.Value).Value end
+end
+
+defn apply(rows, m)
+  (** The rows of a show after a message: an answer replaces them, a change adds its rows, then removes one of each. *)
+  if "Rows" in m
+    return m.Rows
+  end
+  rows = list.Concat(rows, m.Added)
+  for r in m.Removed
+    k = list.IndexOf(key(r), [key(x) for x in rows])
+    rows = list.Concat(list.Take(k - 1, rows), list.Skip(k, rows))
+  end
+  rows
+end
+
+defn follow(address, hs, reconnects = 0)
+  (** A page that follows the shows of a screen, hs a map of their histories by name, to the last group of each, and
+      checks after each message that the rows of its show are the source's at its group, the groups never going back and
+      each change after the last group seen. A broken connection opens a new one, which starts with the answers. Gives
+      {Ok, Opened}. *)
+  ok = true
+  opened = 0
+  done = false
+  while not done and opened <= reconnects + 50
+    c = open(address)
+    opened += 1
+    if result.IsErr(c)
+      sys.Sleep(0.01)
+    else
+      rows = dict.Dict()
+      groups = dict.Dict()
+      batch = messages(c.Value)
+      while not value.IsMissing(batch) and not done
+        for m in batch
+          if "Show" in m
+            g = dict.GetOr(m.Show, -1, groups)
+            ok = ok and (if "Rows" in m m.Group >= g else g >= 0 and m.Group > g end)
+            rows[m.Show] = apply(dict.GetOr(m.Show, [], rows), m)
+            groups[m.Show] = m.Group
+            ok = ok and value.Equal(sorted(rows[m.Show]), hs[m.Show].At[m.Group])
+          end
+        end
+        done = list.All([dict.GetOr(n, -1, groups) == value.Len(hs[n].Steps) for n in dict.Keys(hs)])
+        batch = if done missing else messages(c.Value) end
+      end
+      websocket.Close(c.Value)
+    end
+  end
+  {Ok: ok and done, Opened: opened}
+end
+
+defn isEveryChangeAsTheSourceHasIt()
+  (** Two shows of one screen, 200 groups each: after each message, the page's rows are the source's at that group. *)
+  a = history(200)
+  b = history(200)
+  address = serve(s -> [live.Show("a", source(a, s.Ended, 0.001)), live.Show("b", source(b, s.Ended, 0.001))])?
+  pages = [fiber.Spawn(() -> follow(address, {a: a, b: b})) for k in 1..3]
+  list.All([fiber.Wait(p)?.Ok for p in pages])
+end
+
+defn connectionsCut()
+  (** The network cuts each connection at a random byte: each new connection starts with the answers, and the rows are
+      still the source's at every group. *)
+  h = history(300)
+  join = hub(h, 0.005)
+  app = serve(s -> [live.Show("a", watch(join, s))])?
+  got = follow(proxy(app, cut = 3000)?, {a: h}, reconnects = 100)
+  got.Ok and got.Opened > 1
+end
+
+defn stalledScreen()
+  (** One page reads nothing past its handshake: its socket fills, its queue is dropped, and the 5 others still follow
+      every change to the end. Once it reads again, it gets the whole answer at its show's last group, and the changes
+      after it; the rows are the source's at every group. *)
+  h = history(300, size = 20000)
+  join = hub(h, 0.003)
+  app = serve(s -> [live.Show("a", watch(join, s))])?
+  stall = fiber.Channel()
+  stalled = open(proxy(app, stall = stall)?)?
+  pages = [fiber.Spawn(() -> follow(app, {a: h})) for k in 1..5]
+  fine = list.All([fiber.Wait(p)?.Ok for p in pages])
+  fiber.Close(stall)
+  fine and lateReader(stalled, h, 300)
+end
+
+defn lateReader(c, h, last)
+  (** Reads a page that read nothing for a while, to the last group: its rows the source's after each message, and at
+      least one answer after the first, the one it got for its queue dropped. *)
+  rows = []
+  answers = 0
+  seen = -1
+  ok = true
+  batch = messages(c)
+  while not value.IsMissing(batch) and seen < last
+    for m in batch
+      if "Rows" in m
+        answers += 1
+        ok = ok and m.Group >= seen
+      else
+        ok = ok and m.Group > seen
+      end
+      rows = apply(rows, m)
+      seen = m.Group
+      ok = ok and value.Equal(sorted(rows), h.At[m.Group])
+    end
+    batch = if seen < last messages(c) else missing end
+  end
+  websocket.Close(c)
+  ok and seen == last and answers >= 2
+end
+
+defn behindScreen()
+  (** A page that reads nothing for a second and a half, the socket between them not full: past QueueSize changes its
+      queue is dropped all the same, and it gets the whole answer at the last group once it reads again. *)
+  h = history(400, size = 20000)
+  join = hub(h, 0.001)
+  app = serve(s -> [live.Show("a", watch(join, s))])?
+  c = open(app)?
+  sys.Sleep(1.5)
+  lateReader(c, h, 400)
+end
+
+defn isEachSlowOneSideBySide()
+  (** The tests that wait, side by side: the network cut at random bytes, a stalled page, a page behind. *)
+  slow = [fiber.Spawn(f) for f in [connectionsCut, stalledScreen, behindScreen]]
+  value.Equal([fiber.Wait(t) for t in slow], [result.Ok(true), result.Ok(true), result.Ok(true)])
+end
+
+defn act(c, id, name, args)
+  websocket.Send(json.Text({Act: name, Id: id, Args: args}), c)
+end
+
+defn acks(c, n)
+  (** The replies to n actions, in the order they came. *)
+  got = []
+  while value.Len(got) < n
+    batch = messages(c)
+    if value.IsMissing(batch)
+      return got
+    end
+    got = list.Concat(got, [m for m in batch if "Ack" in m])
+  end
+  got
+end
+
+defn slow(s, a)
+  sys.Sleep(0.05)
+  a
+end
+
+defn isActionReplied()
+  (** Each action gets its reply in the order the page asked for them: an Ok's value, a plain value, an Err, a panic,
+      an action the screen doesn't have. *)
+  actions = {
+    Add: (s, a) -> result.Ok(a.X + 1),
+    Plain: (s, a) -> "plain",
+    No: (s, a) -> result.Err({Code: "conflict"}),
+    Boom: (s, a) -> a.Missing.Field,
+    Slow: slow}
+  app = serve(s -> [], actions = actions)?
+  c = open(app)?
+  act(c, 1, "Slow", 7)
+  act(c, 2, "Add", {X: 41})
+  act(c, 3, "Plain", missing)
+  act(c, 4, "No", {})
+  act(c, 5, "Boom", {})
+  act(c, 6, "Nothing", {})
+  got = acks(c, 6)
+  websocket.Close(c)
+  value.Equal([m.Ack for m in got], [1, 2, 3, 4, 5, 6]) and got[1].Ok == 7 and got[2].Ok == 42 and got[3].Ok == "plain" and
+    got[4].Err.Code == "conflict" and got[5].Err.Message == "The action Boom failed." and
+    got[6].Err.Message == "This screen has no action Nothing."
+end
+
+defn isScreenOfTheRequest()
+  (** The screen sees the request of its page, and its actions the same screen. *)
+  app = serve(s -> [], actions = {Who: (s, a) -> s.Request.Path})?
+  c = open(app)?
+  act(c, 1, "Who", missing)
+  got = acks(c, 1)
+  websocket.Close(c)
+  got[1].Ok == "/live"
+end
+
+defn errorOf(app)
+  (** The error a page gets from its screen, or missing. *)
+  c = open(app)?
+  batch = messages(c)
+  websocket.Close(c)
+  if value.IsMissing(batch) missing else list.First([m.Error for m in batch if "Error" in m]) end
+end
+
+defn isScreenErrorTold()
+  (** A screen whose function gives an Err, panics, or gives no list, and a show whose channel closes, end with an
+      error that the page gets. *)
+  closing = defn (s)
+    ch = fiber.Channel()
+    fiber.Send({Group: 1, Rows: []}, ch)
+    fiber.Close(ch)
+    [live.Show("a", ch)]
+  end
+  list.All([
+    errorOf(serve(s -> result.Err({Kind: "denied", Message: "no"}))?).Kind == "denied",
+    errorOf(serve(s -> s.Nothing)?).Message == "The screen stopped.",
+    errorOf(serve(s -> 5)?).Message == "The screen gave no list of live.Show.",
+    errorOf(serve(s -> [live.Show("a", fiber.Channel()), live.Show("a", fiber.Channel())])?).Message == "Two shows of the screen have the same name.",
+    errorOf(serve(closing)?).Message == "The show a ended."])
+end
+
+defn isEndedClosedWithTheConnection()
+  (** s.Ended closes once the page's connection ends: a source learns that its screen is gone. *)
+  seen = fiber.Channel(size = 1)
+  screen = defn (s)
+    fiber.Spawn(() -> fiber.Send(fiber.Receive(s.Ended, timeout = 5).Error.Kind, seen))
+    []
+  end
+  app = serve(screen)?
+  c = open(app)?
+  sys.Sleep(0.05)
+  websocket.Close(c)
+  fiber.Receive(seen, timeout = 5)? == "closed"
+end
+
+defn isPongAndDelays()
+  (** A ping gets its pong with the server's time; the delays a page reports go into std/metrics. *)
+  app = serve(s -> [])?
+  c = open(app)?
+  websocket.Send(json.Text({Ping: 12.5}), c)?
+  batch = messages(c)
+  websocket.Send(json.Text({Delays: {P50: 3.5, P99: 41.0, Count: 100}}), c)?
+  websocket.Send(json.Text({Delays: {P50: "bad", P99: 1}}), c)?
+  sys.Sleep(0.05)
+  websocket.Close(c)
+  batch[1].Pong == 12.5 and batch[1].At > 0 and text.Contains("live_delay_p99_seconds_bucket{le=\"0.05\"} 1", metrics.Text())
+end
+
+defn isNoHelloRefused()
+  (** A page whose first message is no hello, or that sends what live.js never sends, is closed. *)
+  app = serve(s -> [])?
+  c = websocket.Dial("ws://$app/live")?
+  websocket.Send("hello?", c)?
+  first = [m for m in c.Messages]
+  d = open(app)?
+  websocket.Send("[1]", d)?
+  batch = messages(d)
+  websocket.Close(d)
+  value.Equal(first, []) and batch[1].Error.Message == "The page sent a message that live.js doesn't send."
+end
