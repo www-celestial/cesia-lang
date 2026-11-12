@@ -80,7 +80,7 @@ struct Solution
   Y
   Events
   Stats
-  chunks  (* the steps, in arrays of 128 steps each: t, h, then y, k1, k3, k4, k5 and k6, n floats each *)
+  chunks  (* the steps, in arrays of perChunk(n) steps each: t, h, then y, k1, k3, k4, k5 and k6, n floats each *)
   count   (* the steps in chunks *)
   tail    (* [t, y, k1] at the end of the last step, or at the start when there is none *)
   till    (* the last time of the solution: the end of the last step, or a stopping event inside it *)
@@ -128,6 +128,13 @@ defn floats(xs, what)
   dims = value.Size(xs)
   if value.Len(dims) > 2 or dims[1] > 1 and dims[2] > 1
     bug.Panic("ode.Solve: $what is an array of size $(brief(dims)); give a number, or an array of one row or one column.")
+  end
+  kind = col.Kind(xs)
+  if kind == "float" or kind == "int"
+    total = list.Sum(xs * 0.0)
+    if total == 0.0
+      return xs * 1.0
+    end
   end
   out = matrix.Zeros(dims[1], dims[2])
   for i in 1..value.Len(xs)
@@ -281,7 +288,7 @@ defn run(f, p)
   most = p.Most
   watch = value.Len(p.Events) > 0
   width = 6 * n + 2
-  full = per * width
+  full = perChunk(n) * width
   chunks = []
   buf = matrix.Zeros(full)
   used = 0
@@ -466,7 +473,9 @@ end
 (** The Stats of a Solution. *)
 counts(taken, refused, evals) = {Steps: taken, Rejected: refused, Evaluations: evals, Jacobians: 0, Factorizations: 0}
 
-per = 128   (** the steps of each array of a Solution's chunks: arrays this small are made, never grown *)
+(** The steps in each array of a Solution's chunks: about 64 K floats, 512 KB, at least one step. Arrays of that size
+    are made as the steps come, never grown: a grown array is copied, and written slowly after. *)
+perChunk(n) = if 65536 > 6 * n + 2 math.Div(65536, 6 * n + 2) else 1 end
 
 defn dense(st, tail, size, u)
   (** The state at u, inside the step st = [t, h, y, k1, k3, k4, k5, k6] that tail = [t + h, y1, k7] ends, from
@@ -487,6 +496,7 @@ end
 defn startOf(s, k)
   (** Step k of a Solution, as dense takes it: [t, h, y, k1, k3, k4, k5, k6], its arrays rows. *)
   n = value.Len(s.tail[2])
+  per = perChunk(n)
   o = math.Mod(k - 1, per) * (6 * n + 2)
   b = s.chunks[math.Div(k - 1, per) + 1]
   [b[o + 1], b[o + 2], b[o + 3..o + 2 + n], b[o + 3 + n..o + 2 + 2 * n], b[o + 3 + 2 * n..o + 2 + 3 * n],
@@ -503,7 +513,12 @@ defn stepOf(s, k)
   [startOf(s, k), [next[1], next[3], next[4]]]
 end
 
-timeOf(s, k) = s.chunks[math.Div(k - 1, per) + 1][math.Mod(k - 1, per) * (6 * value.Len(s.tail[2]) + 2) + 1]   (** the start of step k *)
+defn timeOf(s, k)
+  (** The time at the start of step k. *)
+  n = value.Len(s.tail[2])
+  per = perChunk(n)
+  s.chunks[math.Div(k - 1, per) + 1][math.Mod(k - 1, per) * (6 * n + 2) + 1]
+end
 
 defn eventsIn(p, gs, st, tail)
   (** The events of the step st that tail ends: the sign of each g at its end against its start, and each change
@@ -573,7 +588,7 @@ defn solution(p, chunks, found, stats, tail, till)
   k = 0
   for b in chunks
     o = 0
-    while k < m and o < per * width
+    while k < m and o < perChunk(n) * width
       k += 1
       tt[k] = b[o + 1]
       for i in 1..n

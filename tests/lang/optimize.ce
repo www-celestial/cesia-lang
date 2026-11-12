@@ -296,7 +296,8 @@ defn isApsKnownRoots()
 end
 
 defn isApsCalls()
-  (** Brent's bound: at most the square of bisection's count, n^2 with n = log2((b - a) / (2 eps |x|)) + 2, and their
+  (** Never much slower than bisection, Brent's book says: here at most the square of bisection's count, n^2 with
+      n = log2((b - a) / (2 eps |x|)) + 2, a loose bound that each problem meets; and their
       total on the 154 problems, 2761, 8 more than scipy's brentq, which stops at 4 eps |x|. *)
   total = 0
   for c in apsCases
