@@ -1,0 +1,55 @@
+(** The client of std/websocket against Autobahn|Testsuite, the reference suite of RFC 6455. Its fuzzing server plays each
+    case of its config on port 9001, and this client sends back each message it gets; the server judges. Then the server
+    writes its reports, and this program fails unless each case is OK, NON-STRICT or INFORMATIONAL and each close OK or
+    INFORMATIONAL. The CI runs it, with the server in Docker:
+
+      cesia run --allow net=127.0.0.1:9001,read=reports tools/autobahn.ce *)
+use std/websocket
+use std/dict
+use std/io
+use std/json
+use std/list
+use std/result
+use std/sys
+use std/text
+use std/value
+
+server = "ws://127.0.0.1:9001"
+agent = "cesia"
+
+defn received(path, echo = false)
+  (** The messages of a connection, until the server closes it; with echo, each one is sent back as it comes. *)
+  c = websocket.Dial("$server$path")?
+  got = []
+  for m in c.Messages
+    got = list.Append(m, got)
+    if echo
+      websocket.Send(m, c)
+    end
+  end
+  websocket.Close(c)
+  result.Ok(got)
+end
+
+defn run()
+  count = json.Parse(received("/getCaseCount")?[1])?
+  for k in 1..count
+    _ = received("/runCase?case=$k&agent=$agent", echo = true)
+  end
+  received("/updateReports?agent=$agent")?
+  cases = json.Parse(sys.Read("reports/clients/index.json")?)?[agent]
+  bad = [k for k in dict.Keys(cases) if not (cases[k]["behavior"] in ["OK", "NON-STRICT", "INFORMATIONAL"] and cases[k]["behaviorClose"] in ["OK", "INFORMATIONAL"])]
+  for k in bad
+    io.Print("$k: $(cases[k]["behavior"]), close $(cases[k]["behaviorClose"])")
+  end
+  slowest = list.Take(5, list.SortBy(k -> -cases[k]["duration"], dict.Keys(cases)))
+  io.Print("slowest: $(text.Join(", ", ["$k $(cases[k]["duration"]) ms" for k in slowest]))")
+  io.Print("$(value.Len(cases)) cases of $count, $(value.Len(bad)) failed")
+  result.Ok(value.Len(bad) == 0 and value.Len(cases) == count)
+end
+
+done = run()
+if result.IsErr(done)
+  io.Print(done.Error.Message)
+end
+sys.Exit(if result.IsOk(done) and done.Value 0 else 1 end)

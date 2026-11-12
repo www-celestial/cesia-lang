@@ -54,3 +54,46 @@ jobs:
         if: failure()
         shell: bash
         run: tools/ci-error.sh out.txt jit.txt jit-test.log test.log
+
+  # The client of std/websocket against Autobahn|Testsuite, the reference suite of RFC 6455, whose fuzzing server runs in
+  # Docker, which the Linux runners have. Left out: 1.2.* and the binary cases of 9.*, binary messages, which the client
+  # doesn't send; 12.* and 13.*, compression (RFC 7692), which it doesn't do. The 9.* cases, large messages and many of
+  # them, run apart: their durations are the client's speed.
+  autobahn:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: protocol
+            cases: '["*"]'
+            exclude: '["1.2.*", "9.*", "12.*", "13.*"]'
+          - part: limits
+            cases: '["9.*"]'
+            exclude: '["9.2.*", "9.4.*", "9.6.*", "9.8.*"]'
+    name: autobahn (${{ matrix.part }})
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+      - run: sudo apt-get update && sudo apt-get install -y libffi-dev libsodium-dev
+      - run: opam install -y dune
+      - run: opam exec -- dune build --profile release
+      - name: Fuzzing server
+        run: |
+          mkdir -p config reports
+          echo '{"url": "ws://127.0.0.1:9001", "outdir": "./reports/clients", "cases": ${{ matrix.cases }},
+            "exclude-cases": ${{ matrix.exclude }}, "exclude-agent-cases": {}}' > config/fuzzingserver.json
+          docker run -d -v "$PWD/config:/config" -v "$PWD/reports:/reports" -p 9001:9001 --name fuzzingserver \
+            crossbario/autobahn-testsuite:25.10.1@sha256:519915fb568b04c9383f70a1c405ae3ff44ab9e35835b085239c258b6fac3074
+          # Docker takes the port before the server inside listens: wait for an HTTP answer, any.
+          for _ in $(seq 1 60); do curl -s -o /dev/null --max-time 2 http://127.0.0.1:9001/ && exit 0; sleep 1; done
+          docker logs fuzzingserver
+          exit 1
+      - name: Cases
+        timeout-minutes: 30
+        run: _build/default/src/bin/main.exe run --allow net=127.0.0.1:9001,read=reports tools/autobahn.ce
+      - name: Server log
+        if: failure()
+        run: docker logs fuzzingserver
