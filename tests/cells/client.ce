@@ -38,9 +38,13 @@ defn Main()
   cells.Forget(s, ["n"])?
   io.Print(shown(cells.Run(s, {Title: "", From: 30, To: 30, Source: "n + 1"})))
   io.Print([v.Name for v in cells.Variables(s)?])
+  g = cells.Run(s, {Title: "", From: 40, To: 41, Source: "use std/plot\nplot.Line([1, 2], [3, 4])"}, width = 500)?.Value
+  io.Print("graph: $(g.Kind), $(g.Scene.Width) by $(g.Scene.Height), $(value.Len(g.Scene.Items) > 10) items")
+  io.Print("again: $(cells.Scene(s, g.Key, 300)?.Width) wide")
+  io.Print(shown(cells.Run(s, {Title: "", From: 42, To: 42, Source: "plot.Line([1, 2], [1])"})))
   page = cells.Html("page.ce")
   io.Print("$(value.Len(text.Split("<section>", page?)) - 1) sections")
-  io.Print(text.Contains("<td>9.0</td>", page?), text.Contains("total 30", page?))
+  io.Print(text.Contains("<td>9.0</td>", page?), text.Contains("total 30", page?), text.Contains("<div class=\"graph\"><svg", page?))
   result.Ok(missing)
 end
 

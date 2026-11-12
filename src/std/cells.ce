@@ -300,15 +300,21 @@ defn answered(session, timeout = missing)
   if m.Value.Kind == "ended" result.Err({Kind: "cells", Message: "The session of $(session.Path) has ended."}) else result.Ok(m.Value) end
 end
 
-defn Run(session, cell)
+defn Run(session, cell, width = 640)
   (** Runs a cell of Parse in the session, and waits for it: an Ok of a struct with Output (the lines it printed), Value
       (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
-      struct with Kind: "text", and Text; "table", a frame, with Columns, Rows (the first 20, as texts) and Count; or
-      "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
+      struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, 400 high) and Key, which
+      Scene draws again at another width; "text", and Text; "table", a frame, with Columns, Rows (the first 20, as texts)
+      and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
       cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
       the session has ended. *)
-  ask(session, {Do: "run", Code: cell.Source, Line: list.Max(0, cell.From), Path: session.Path})?
+  runWith(session, cell, width, false)
+end
+
+defn runWith(session, cell, width, svg)
+  (** Run, with the SVG of a graph in place of its scene for svg, as Html wants it. *)
+  ask(session, {Do: "run", Code: cell.Source, Line: list.Max(0, cell.From), Path: session.Path, Width: width, Svg: svg})?
   output = []
   while true
     m = fiber.Receive(session.Inbox)
@@ -348,6 +354,14 @@ defn Rows(session, name, first, last)
   ask(session, {Do: "rows", Name: name, First: first, Last: last})?
   got = answered(session)?
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok({Columns: got.Columns, Rows: got.Rows, Count: got.Count}) end
+end
+
+defn Scene(session, key, width)
+  (** The scene of a graph that a run of the session showed, by its Key, drawn again at another width, 400 pixels high:
+      for a pane that changed its width. The session keeps the graphs of its last 64 runs; an Err for an older one. *)
+  ask(session, {Do: "scene", Key: key, Width: width})?
+  got = answered(session)?
+  if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok(got.Scene) end
 end
 
 defn Stop(session)
@@ -399,6 +413,8 @@ defn valueHtml(v)
   else if v.Kind == "table"
     more = if v.Count > value.Len(v.Rows) "<p class=\"count\">$(value.Len(v.Rows)) of $(v.Count) rows</p>\n" else "<p class=\"count\">$(v.Count) rows</p>\n" end
     "<table>\n<thead>$(cellsOf([v.Columns], "th"))</thead>\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n$more"
+  else if v.Kind == "graph"
+    "<div class=\"graph\">$(v.Svg)</div>\n"
   else if v.Kind == "array"
     "<p class=\"count\">$(text.Join(" × ", ["$k" for k in v.Shape]))</p>\n<table class=\"array\">\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n"
   else
@@ -423,6 +439,7 @@ table { border-collapse: collapse; margin: 0 0 8px; display: block; overflow-x: 
 th, td { border: 1px solid var(--edge); padding: 2px 8px; text-align: right; white-space: nowrap; }
 th { color: var(--muted); font-weight: 600; }
 .count { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+.graph { margin: 0 0 8px; overflow-x: auto; } .graph svg { max-width: 100%; height: auto; }
 .k { color: var(--k); } .n { color: var(--n); } .s { color: var(--s); } .m { color: var(--m); }
 .c { color: var(--c); font-style: italic; } .f { color: var(--f); }
 "
@@ -447,7 +464,7 @@ end
 defn Html(path, allow = [])
   (** Runs every cell of a file in a new session, from the top, and gives the page of the file in an Ok: one HTML text
       that needs no other file and no script, with each cell's title, its code colored, what it printed, its value (a
-      table, an array or a text) or its error. What it shows is what cesia run computes, not the state of an editor. The
+      graph as its SVG, a table, an array or a text) or its error. What it shows is what cesia run computes, not the state of an editor. The
       session has the permissions of allow, as Session. Needs the read permission of the file. *)
   cells = Parse(sys.Read(path)?)
   analysis = Analyse(cells)
@@ -457,7 +474,7 @@ defn Html(path, allow = [])
     errors = analysis[i].Errors
     ran = missing
     if value.Len(errors) == 0 and text.Trim(cells[i].Source) != ""
-      r = Run(session, cells[i])
+      r = runWith(session, cells[i], 640, true)
       if result.IsErr(r)
         return r
       end
@@ -485,8 +502,30 @@ cut(n, t) = if value.Len(t) <= n t else "$(text.Slice(1, n - 1, t))…" end
 (** Is this value a frame of std/frame? *)
 isFrame(v) = value.IsDict(v) and value.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and value.IsArray(v.Names)
 
-defn shown(v)
+(** The height of a graph under a cell, in pixels. *)
+graphHeight = 400
+
+defn drawn(v, width, svg)
+  (** The scene of a struct that is a graph of std/plot, or its SVG with svg, in an Ok; an Err of its message for a graph
+      that can't be drawn; missing for a struct that is no graph. std/plot loads here, in the session, the first time: a
+      program that only reads cells never pays for it. *)
+  f = evalCell(if svg "use std/plot\nplot.Svg" else "use std/plot\nplot.Scene" end, 0)
+  if result.IsErr(f)
+    return missing
+  end
+  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), graphHeight) end
+  if result.IsErr(r) and text.Contains("needs a graph", r.Error.Message)
+    return missing
+  end
+  r
+end
+
+defn shown(v, width = 640, svg = false, key = 0)
   (** What a cell's value shows, as texts that JSON carries. *)
+  g = if value.IsStruct(v) drawn(v, width, svg) else missing end
+  if value.IsSome(g)
+    return if result.IsErr(g) {Kind: "error", Text: g.Error.Message} else if svg {Kind: "graph", Svg: g.Value} else {Kind: "graph", Key: key, Scene: g.Value} end
+  end
   if value.IsMissing(v)
     missing
   else if isFrame(v)
@@ -513,15 +552,46 @@ defn errorLine(path, e)
   text.Number(text.Split(":", text.Slice(value.Len(path) + 2, value.Len(first), first))[1])
 end
 
-defn ran(c)
-  (** Runs the code of a cell and sends its answer. *)
+defn ran(c, key)
+  (** Runs the code of a cell and sends its answer; gives its value when it shows as a graph, which the session keeps. *)
   start = sys.Now()
   r = evalCell(c.Code, c.Line)
   seconds = sys.Now() - start
-  match r
-    result.Ok(v) -> send({Kind: "answer", Value: shown(v), Seconds: seconds})
-    result.Err(e) -> send({Kind: "answer", Error: {Line: errorLine(c.Path, e), Text: e}, Seconds: seconds})
+  if result.IsErr(r)
+    send({Kind: "answer", Error: {Line: errorLine(c.Path, r.Error), Text: r.Error}, Seconds: seconds})
+    return missing
   end
+  v = shown(r.Value, width = dict.GetOr("Width", 640, c), svg = dict.GetOr("Svg", false, c), key = key)
+  if value.IsSome(v) and v.Kind == "error"
+    (* A graph that std/plot can't draw: its message, as an error of the cell. *)
+    send({Kind: "answer", Error: {Line: missing, Text: v.Text}, Seconds: seconds})
+    return missing
+  end
+  send({Kind: "answer", Value: v, Seconds: seconds})
+  if value.IsSome(v) and v.Kind == "graph" r.Value else missing end
+end
+
+defn kept(task, key, graphs)
+  (** The graphs of the session once a run ended: its own under its key, if it showed one, and the last 64. *)
+  if value.IsMissing(task)
+    return graphs
+  end
+  w = fiber.Wait(task)
+  if result.IsErr(w) or value.IsMissing(w.Value)
+    return graphs
+  end
+  out = dict.Put("$key", w.Value, graphs)
+  if value.Len(out) > 64 dict.Drop(dict.Keys(out)[1], out) else out end
+end
+
+defn rescened(c, graphs)
+  (** The answer to a scene: the graph of a key drawn at a width. *)
+  g = dict.Get("$(c.Key)", graphs)
+  if value.IsMissing(g)
+    return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds those of its last 64 runs."}
+  end
+  r = drawn(g, c.Width, false)
+  if result.IsErr(r) {Kind: "scene", Error: r.Error.Message} else {Kind: "scene", Scene: r.Value} end
 end
 
 defn kind(v)
@@ -594,8 +664,10 @@ end
 defn serve()
   (** Reads the commands of std/cells, one a line, until the end of the input: a run starts its cell in a fiber of its
       own, which a stop cancels, and the other commands wait for it to end; the names of the cells run so far are those
-      the variables show. *)
+      the variables show, and the graphs of the last runs are kept for Scene. *)
   task = missing
+  key = 0
+  graphs = {}
   known = []
   line = debug.ReadLine()
   while not value.IsMissing(line)
@@ -603,15 +675,18 @@ defn serve()
     if value.IsMissing(c)
       c = {Do: ""}
     end
+    if c.Do != "stop"
+      graphs = kept(task, key, graphs)
+      task = missing
+    end
     if c.Do == "run"
-      if value.IsSome(task)
-        _ = fiber.Wait(task)
-      end
       defs = cesia.Definitions(c.Code)
       names = if result.IsOk(defs) [d.Name for d in defs.Value if d.Kind in shared and d.Kind != "use"] else [] end
       forgetNames(names)
       known = list.Concat([k for k in known if not (k in names)], names)
-      task = fiber.Spawn(() -> ran(c))
+      key += 1
+      now = key
+      task = fiber.Spawn(() -> ran(c, now))
     else if c.Do == "stop"
       if value.IsSome(task)
         fiber.Cancel(task)
@@ -619,30 +694,22 @@ defn serve()
         if result.IsErr(w) and w.Error.Kind == "cancelled"
           send({Kind: "answer", Error: {Line: missing, Text: "Stopped."}, Seconds: 0.0})
         end
+        graphs = kept(task, key, graphs)
         task = missing
       end
       send({Kind: "stopped"})
     else if c.Do == "forget"
-      if value.IsSome(task)
-        _ = fiber.Wait(task)
-      end
       forgetNames(c.Names)
       known = [k for k in known if not (k in c.Names)]
       send({Kind: "forgot"})
     else if c.Do == "variables"
-      if value.IsSome(task)
-        _ = fiber.Wait(task)
-      end
       send({Kind: "variables", Rows: rows(known)})
     else if c.Do == "rows"
-      if value.IsSome(task)
-        _ = fiber.Wait(task)
-      end
       send(slice(c.Name, c.First, c.Last))
+    else if c.Do == "scene"
+      send(rescened(c, graphs))
     end
     line = debug.ReadLine()
   end
-  if value.IsSome(task)
-    _ = fiber.Wait(task)
-  end
+  _ = kept(task, key, graphs)
 end
