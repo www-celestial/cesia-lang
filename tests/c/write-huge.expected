@@ -1,0 +1,4 @@
+write-huge.ce:4:2: c.Write of 1 value of u32 from offset 4611686018427387903 goes past this block of 8 bytes.
+  4 | c.Write("u32", 4611686018427387903, [1], b)
+    |  ^
+exit 1

@@ -583,7 +583,8 @@ let write_all st ctx (a : Types.t array) : Types.t =
   let w = width ty in
   let o =
     match a.(1) with
-    | Int o when o >= 0 && o + n * w <= b.size -> o
+    (* b.size - n * w and not o + n * w: an offset near max_int would overflow past the check. *)
+    | Int o when o >= 0 && n * w <= b.size && o <= b.size - n * w -> o
     | Int o when o < 0 -> fail ctx (Messages.c_offset o b.size (name_of ty))
     | Int o -> fail ctx (Messages.c_write_past o n (name_of ty) b.size)
     | v -> fail ctx (Messages.c_need_offset (Value.describe v))

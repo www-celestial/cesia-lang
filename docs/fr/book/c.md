@@ -85,7 +85,8 @@ Un buffer de beaucoup de nombres d'un même type, comme les vertices (les sommet
 pixels d'une image, tient en un appel : [c.Write] écrit tout un tableau à partir d'un offset, chaque nombre converti comme
 [c.Set] en convertit un, une matrice colonne par colonne. C'est une autre opération, pas une autre façon d'en écrire un :
 [c.Set] écrit une valeur là où la disposition la place, un champ d'une structure, et paie un appel chaque fois ; [c.Write]
-écrit des valeurs côte à côte et paie un appel pour toutes, ses bornes vérifiées une fois, avant d'écrire. Pour un champ,
+écrit des valeurs côte à côte et paie un appel pour toutes, ses bornes vérifiées une fois, avant d'écrire : un offset ou une
+longueur qui dépasse la fin du bloc n'écrit rien, et [c.Write] n'écrit jamais là où [c.Set] refuserait. Pour un champ,
 [c.Set] ; pour une suite de nombres, [c.Write] :
 
 ```cesia allow=ffi=m

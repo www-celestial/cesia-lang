@@ -78,7 +78,8 @@ A buffer of many numbers of one type, as the vertices of a shape for a renderer 
 [c.Write] writes a whole array from a byte offset, each number converted as [c.Set] converts one, a matrix column by
 column. It is another operation, not another way to write one: [c.Set] writes one value where the layout puts it, a field
 of a structure, and pays a call each time; [c.Write] writes a run of values side by side and pays one call for all of them,
-with its bounds checked once, before it writes. For a field, [c.Set]; for a run of numbers, [c.Write]:
+with its bounds checked once, before it writes: an offset or a length past the end of the block writes nothing, and
+[c.Write] never writes where [c.Set] would refuse to. For a field, [c.Set]; for a run of numbers, [c.Write]:
 
 ```cesia allow=ffi=m
 xy = c.Alloc(3 * 2 * 4)
