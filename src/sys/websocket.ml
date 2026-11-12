@@ -211,9 +211,9 @@ let natives =
   [ "Accept", Native.nat ~params:[| "key"; "onMessage"; "idle" |] "Accept" 2 3 accept;
     "DefaultIdle", Int default_idle;
     "MaxFrame", Int max_frame;
-    (* Small names, which only std/websocket sees: its client. *)
+    (* Small names, which only std/websocket sees: its client. A frame of no text is the mistake of a caller of Send. *)
     "frame", Native.nat "frame" 2 2 (fun ctx a ->
-        let p = Native.text_arg ctx "frame" a.(1) in
+        let p = Native.text_arg ctx "Send" a.(1) in
         Runtime.build ctx ((String.length p / 8) + 4);
         Text (frame (Arrays.whole_index ctx a.(0)) p (random_bytes ctx 4)));
     "parseFrame", Native.nat "parseFrame" 4 4 client_frame;
