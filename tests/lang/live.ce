@@ -91,6 +91,10 @@ defn hub(h, pause, again = 0)
         fiber.Send(if again > 0 and math.Mod(step.Group, again) == 0 {Group: step.Group, Rows: rows} else step end, w.Changes)
       end
     end
+    (* past its history, it still answers whoever comes: a page cut after the last group connects again *)
+    for w in join
+      fiber.Send({Group: value.Len(h.Steps), Rows: rows}, w.Changes)
+    end
   end)
   join
 end
