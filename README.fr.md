@@ -72,8 +72,9 @@ Helix, et pourquoi pas encore Zed et VS Code : [Éditeurs](docs/fr/book/editors.
 ## Limites
 
 - Les arrays ont deux dimensions au plus.
-- Linux sur x86-64 est la plateforme vérifiée. `.github/workflows/ci.yml` lance aussi les tests sur macOS, et ne fait que
-  construire sur Windows.
+- Linux sur x86-64 est la plateforme vérifiée : `.github/workflows/ci.yml` lance ses tests à chaque push. `systems.yml`
+  les lance sur macOS et Windows quand le code qui diffère d'un système à l'autre change, et une fois par semaine ; une
+  release teste les trois.
 
 ## Licence
 

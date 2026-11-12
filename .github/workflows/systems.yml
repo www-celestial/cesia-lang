@@ -1,0 +1,73 @@
+name: systems
+
+# The tests on macOS and Windows: when the code that differs between systems changes (the C, the natives, the JIT, the
+# binary, the builds, the test scripts), once a week, and by hand. Linux runs on each push, in ci.yml.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/sys/**"
+      - "src/native/**"
+      - "src/jit/**"
+      - "src/bin/**"
+      - "**/dune"
+      - "dune-project"
+      - "tools/test.sh"
+      - "tools/golden.sh"
+      - ".github/workflows/systems.yml"
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: systems-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ocaml/setup-ocaml@v3
+        with:
+          ocaml-compiler: "5.5"
+      - name: Libraries on macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install libffi libsodium openssl@3 coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+      - run: opam install -y dune
+      - run: opam exec -- dune build
+      # The JIT is a plugin (natdynlink: flexdll on Windows): the binary must load it, and run fib natively.
+      - name: JIT plugin
+        shell: bash
+        run: |
+          status=0
+          CESIA_JIT=always CESIA_JIT_SHOW=1 _build/default/src/bin/main.exe run bench/fib.ce > out.txt 2> jit.txt || status=$?
+          echo "exit $status" >> jit.txt
+          # Windows ends a line with CR LF. On arm64 the JIT is off for now: fib runs interpreted.
+          want='^jit: loaded'
+          [ "$RUNNER_ARCH" = ARM64 ] && want='^jit: off on arm64'
+          grep -q "$want" jit.txt || { echo "no line $want" | tee -a jit.txt; exit 1; }
+          tr -d '\r' < out.txt | grep -qx 9227465 || { echo "out.txt isn't 9227465" | tee -a jit.txt; exit 1; }
+      - name: JIT on Windows
+        if: runner.os == 'Windows'
+        shell: bash
+        run: opam exec -- dune exec tests/jit_test.exe 2>&1 | tee jit-test.log
+      - name: Tests
+        if: runner.os != 'Windows'
+        timeout-minutes: 10
+        shell: bash
+        env:
+          GOLDEN_TRACE: 1
+        run: opam exec -- tools/test.sh 2>&1 | tee test.log
+      # The logs need an account to be read; an annotation doesn't, for a public repository.
+      - name: Report a failure
+        if: failure()
+        shell: bash
+        run: tools/ci-error.sh out.txt jit.txt jit-test.log test.log
+

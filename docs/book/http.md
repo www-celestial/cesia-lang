@@ -325,7 +325,7 @@ after [websocket.Close]; those that arrive after it are dropped, as a browser dr
 Only `ws://` for now: `wss://`, WebSocket over TLS, gives an `Err` that says so. Text messages only: a binary message
 received comes as a text, since a text of Cesia is made of bytes, but none can be sent yet. [websocket.Dial] needs the
 `net` permission of the host, as [http.Fetch] does: `net=127.0.0.1:9222`, or `net=own` for a server of the program
-itself. On each push, the CI plays the cases of Autobahn|Testsuite, the reference suite of RFC 6455, against the client:
+itself. Each time the client changes, and once a week, the CI plays the cases of Autobahn|Testsuite, the reference suite of RFC 6455, against the client:
 all of them but those of binary messages to send and of compression (RFC 7692), which it doesn't do.
 
 Measured on one machine, against one echo server written in Go with gorilla/websocket 1.5.3, as the
