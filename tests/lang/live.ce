@@ -9,6 +9,7 @@ use std/fiber
 use std/dict
 use std/json
 use std/list
+use std/math
 use std/metrics
 use std/random
 use std/result
@@ -65,9 +66,10 @@ defn source(h, ended, pause)
   ch
 end
 
-defn hub(h, pause)
+defn hub(h, pause, again = 0)
   (** A source that plays a history, pause seconds a group, whoever watches it, as a database goes on whoever reads it:
-      give it {Changes, Ended} to watch from now on, the answer first, until Ended closes. *)
+      give it {Changes, Ended} to watch from now on, the answer first, until Ended closes. With again, every again
+      groups it sends the answer instead of the change, as a source does for a screen that reads too slowly. *)
   join = fiber.Channel()
   fiber.Spawn(defn ()
     watching = []
@@ -86,7 +88,7 @@ defn hub(h, pause)
         rows = list.Concat(list.Take(k - 1, rows), list.Skip(k, rows))
       end
       for w in watching
-        fiber.Send(step, w.Changes)
+        fiber.Send(if again > 0 and math.Mod(step.Group, again) == 0 {Group: step.Group, Rows: rows} else step end, w.Changes)
       end
     end
   end)
@@ -230,9 +232,8 @@ defn connectionsCut()
 end
 
 defn stalledScreen()
-  (** One page reads nothing past its handshake: its socket fills, its queue is dropped, and the 5 others still follow
-      every change to the end. Once it reads again, it gets the whole answer at its show's last group, and the changes
-      after it; the rows are the source's at every group. *)
+  (** One page reads nothing past its handshake while the 5 others follow every change to the end: its screen waits
+      on its connection alone. Once it reads again, it gets every change it missed, its rows the source's at each group. *)
   h = history(300, size = 20000)
   join = hub(h, 0.003)
   app = serve(s -> [live.Show("a", watch(join, s))])?
@@ -241,12 +242,11 @@ defn stalledScreen()
   pages = [fiber.Spawn(() -> follow(app, {a: h})) for k in 1..5]
   fine = list.All([fiber.Wait(p)?.Ok for p in pages])
   fiber.Close(stall)
-  fine and lateReader(stalled, h, 300)
+  fine and lateReader(stalled, h, 300) >= 1
 end
 
 defn lateReader(c, h, last)
-  (** Reads a page that read nothing for a while, to the last group: its rows the source's after each message, and at
-      least one answer after the first, the one it got for its queue dropped. *)
+  (** Reads a page to the last group, its rows the source's after each message: the number of answers it got, or -1. *)
   rows = []
   answers = 0
   seen = -1
@@ -267,23 +267,21 @@ defn lateReader(c, h, last)
     batch = if seen < last messages(c) else missing end
   end
   websocket.Close(c)
-  ok and seen == last and answers >= 2
+  if ok and seen == last answers else -1 end
 end
 
-defn behindScreen()
-  (** A page that reads nothing for a second and a half, the socket between them not full: past QueueSize changes its
-      queue is dropped all the same, and it gets the whole answer at the last group once it reads again. *)
-  h = history(400, size = 20000)
-  join = hub(h, 0.001)
+defn answersAgain()
+  (** A source that sends the answer again every 25 groups, as one does for a page that reads too slowly: the page
+      takes it in place of its rows, which are the source's at every group. *)
+  h = history(200)
+  join = hub(h, 0.002, again = 25)
   app = serve(s -> [live.Show("a", watch(join, s))])?
-  c = open(app)?
-  sys.Sleep(1.5)
-  lateReader(c, h, 400)
+  lateReader(open(app)?, h, 200) >= 8
 end
 
 defn isEachSlowOneSideBySide()
-  (** The tests that wait, side by side: the network cut at random bytes, a stalled page, a page behind. *)
-  slow = [fiber.Spawn(f) for f in [connectionsCut, stalledScreen, behindScreen]]
+  (** The tests that wait, side by side: the network cut at random bytes, a stalled page, answers again. *)
+  slow = [fiber.Spawn(f) for f in [connectionsCut, stalledScreen, answersAgain]]
   value.Equal([fiber.Wait(t) for t in slow], [result.Ok(true), result.Ok(true), result.Ok(true)])
 end
 
@@ -344,11 +342,16 @@ defn isScreenOfTheRequest()
 end
 
 defn errorOf(app)
-  (** The error a page gets from its screen, or missing. *)
+  (** The error a page gets from its screen, after the messages before it, or missing. *)
   c = open(app)?
   batch = messages(c)
+  e = missing
+  while not value.IsMissing(batch) and value.IsMissing(e)
+    e = list.First([m.Error for m in batch if "Error" in m])
+    batch = messages(c)
+  end
   websocket.Close(c)
-  if value.IsMissing(batch) missing else list.First([m.Error for m in batch if "Error" in m]) end
+  e
 end
 
 defn isScreenErrorTold()
