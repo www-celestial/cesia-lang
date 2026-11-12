@@ -295,6 +295,9 @@ defn isExtensionRefused()
   websocket.Dial(fake(s -> net.Close(s), respond = respond)?).Error.Message == "The response has an extension or a subprotocol that wasn't asked for."
 end
 
+(** Accept takes its key as a text takes it, as it did when it was written in Cesia: the answer below is the one it gave. *)
+isAcceptOfAnyKey() = websocket.Accept(123, (m, send) -> send(m)).Headers[3].Value == "V5hz1RKy1V4JclILDswC1e3Fek0="
+
 defn isUrlRefused()
   bad = ["http://127.0.0.1/", "wss://127.0.0.1/", "ws://127.0.0.1:99999/", "ws:///x", "ws://127.0.0.1/a b", "ws://h:1:2/", "ws://127.0.0.1/#x"]
   list.All([websocket.Dial(u).Error.Kind == "websocket" for u in bad])

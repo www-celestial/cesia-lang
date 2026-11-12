@@ -197,7 +197,8 @@ let accept_keys = Trie.names [| "Status"; "Body"; "Headers"; "Upgrade" |]
 let header_keys = Trie.names [| "Name"; "Value" |]
 
 let accept ctx (a : t array) =
-  let key = Native.text_arg ctx "Accept" a.(0) and on_message = a.(1) in
+  (* The key goes into the answer as it would into a text, whatever it is, as it always did. *)
+  let key = Value.text_of ctx a.(0) and on_message = a.(1) in
   let idle = if Array.length a > 2 && a.(2) != Undef then a.(2) else Int default_idle in
   let header name v = Trie.record header_keys [| Text name; Text v |] in
   let upgrade = Native.nat "upgrade" 2 2 (fun ctx b -> serve ctx b.(0) (Native.text_arg ctx "upgrade" b.(1)) on_message idle) in
