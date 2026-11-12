@@ -308,7 +308,8 @@ websocket.Close(c) -->
 ```
 
 Recevoir n'a pas de fonction à soi : c'est le channel, donc tout ce que les [Fibers](fibers.md) font d'un channel marche
-avec lui, une boucle `for`, une limite de temps, [fiber.Select]. La connexion vient en dernier dans [websocket.Send],
+avec lui : une boucle `for`, qui est [fiber.Receive] encore et encore jusqu'à ce que le channel se ferme, une limite de
+temps, [fiber.Select]. La connexion vient en dernier dans [websocket.Send],
 comme le channel dans [fiber.Send] : une connexion porte des messages comme un channel. Plusieurs fibers peuvent envoyer
 en même temps ; chaque message part entier.
 

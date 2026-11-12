@@ -290,8 +290,8 @@ fiber.Receive(c.Messages, timeout = 1) -->
 websocket.Close(c) -->
 ```
 
-Receiving has no function of its own: it is the channel, so all that [Fibers](fibers.md) do with a channel works on it, a
-`for` loop, a timeout, [fiber.Select]. The connection comes last in [websocket.Send], as the channel does in
+Receiving has no function of its own: it is the channel, so all that [Fibers](fibers.md) do with a channel works on it: a
+`for` loop, which is [fiber.Receive] again and again until the channel closes, a timeout, [fiber.Select]. The connection comes last in [websocket.Send], as the channel does in
 [fiber.Send]: a connection carries messages as a channel does. Fibers may send at once; each message goes out whole.
 
 ```cesia norun
