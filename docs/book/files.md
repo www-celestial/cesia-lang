@@ -281,7 +281,8 @@ The programs started this way follow their program when it gets a stop signal. T
 this program alone, goes on to each of them. INT and HUP come from a terminal, which sends them to every program it runs:
 they reach the programs started by themselves, but a [sys.Run] with a `timeout`, which runs apart, gets them from Cesia.
 A program that doesn't serve then ends at once, as it would without having started any; one that serves stops as the
-chapter [HTTP](http.md#stopping) says.
+chapter [HTTP](http.md#stopping) says. Under `cesia test`, they also end with the test that started them, as the chapter
+[Tests](tests.md) says.
 
 Under `--watch`, a program that must save its state before it ends takes the signals itself: [sys.TakeStops]`(true)` makes
 TERM and INT no longer end it, and [sys.StopAsked] tells whether one came since its last call, for the program to end by

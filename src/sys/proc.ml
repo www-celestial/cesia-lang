@@ -184,7 +184,25 @@ let run poll ctx (a : t array) =
 (* A process that lives on, for terminals and long builds. Its output and its errors arrive as one stream. *)
 type process = { pid : int; input : pipe; output : pipe }
 
-let start_process poll procs ctx (a : t array) : t =
+(* The processes of sys.Start that weren't waited for, by the id of their handle. *)
+let procs : (int, process) Hashtbl.t = Hashtbl.create 8
+
+(* The end of a test of cesia test: each process it started and hasn't waited for gets TERM, and KILL if it still runs a
+   second later; each is waited for, so that none outlives its test, even one that ran past its time. Its pipes close
+   without waking anyone: the test's fibers are gone. *)
+let reset () =
+  let quiet f = try f () with Unix.Unix_error _ | Invalid_argument _ -> () in
+  Hashtbl.iter (fun _ p -> List.iter (fun q -> if q.live then quiet (fun () -> Unix.close q.fd)) [ p.input; p.output ]) procs;
+  Hashtbl.reset procs;
+  let started = Hashtbl.fold (fun pid group acc -> (pid, group) :: acc) children [] in
+  Hashtbl.reset children;
+  List.iter (fun (pid, group) -> quiet (fun () -> Unix.kill (if group && not Sys.win32 then -pid else pid) Sys.sigterm)) started;
+  let running (pid, _) = match Unix.waitpid [ Unix.WNOHANG ] pid with 0, _ -> true | _ -> false | exception Unix.Unix_error _ -> false in
+  let deadline = Unix.gettimeofday () +. 1. in
+  let rec wait left = if left = [] || Unix.gettimeofday () > deadline then left else (Unix.sleepf 0.002; wait (List.filter running left)) in
+  List.iter (fun (pid, group) -> stop ~group pid; quiet (fun () -> ignore (Unix.waitpid [] pid))) (wait (List.filter running started))
+
+let start_process poll ctx (a : t array) : t =
   let w = ctx.w in
   let cmd = Native.text_arg ctx "Start" a.(0) in
   Runtime.check_perm ctx Exec (Some cmd);
@@ -210,7 +228,7 @@ let start_process poll procs ctx (a : t array) : t =
        Value.ok w (Handle { kind = "process"; id; task = None }))
   | _ -> assert false
 
-let process_arg procs ctx name (v : t) =
+let process_arg ctx name (v : t) =
   match v with
   | Handle { kind = "process"; id; _ } ->
     (match Hashtbl.find_opt procs id with
@@ -219,8 +237,8 @@ let process_arg procs ctx name (v : t) =
   | _ -> Runtime.fail ctx Type (Messages.need_process name (Value.describe v))
 
 (* What the process wrote, as it comes. An empty text means that it closed its output. *)
-let rec read_output poll procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "ReadOutput" a.(0) in
+let rec read_output poll ctx (a : t array) : t =
+  let _, p = process_arg ctx "ReadOutput" a.(0) in
   if not p.output.live then Value.ok ctx.w (Text "")
   else begin
     let chunk = Bytes.create chunk_size in
@@ -231,7 +249,7 @@ let rec read_output poll procs ctx (a : t array) : t =
     | n -> Value.ok ctx.w (Text (Bytes.sub_string chunk 0 n))
     | exception Unix.Unix_error (e, _, _) when Fs.retry e ->
       Poll.read_ready poll ctx p.output.fd;
-      read_output poll procs ctx a
+      read_output poll ctx a
   end
 
 let quit ctx (a : t array) : t =
@@ -239,8 +257,8 @@ let quit ctx (a : t array) : t =
   | Int code when code >= 0 && code <= 255 -> raise (Value.Quit code)
   | v -> Runtime.fail ctx Type (Messages.exit_code (Value.describe v))
 
-let write_input poll procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "WriteInput" a.(0) in
+let write_input poll ctx (a : t array) : t =
+  let _, p = process_arg ctx "WriteInput" a.(0) in
   let s = Native.text_arg ctx "WriteInput" a.(1) in
   let n = String.length s in
   let rec go at =
@@ -256,32 +274,31 @@ let write_input poll procs ctx (a : t array) : t =
   in
   go 0
 
-let close_input poll procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "CloseInput" a.(0) in
+let close_input poll ctx (a : t array) : t =
+  let _, p = process_arg ctx "CloseInput" a.(0) in
   finish poll p.input;
   Missing
 
 (* Waits for the end, closes the pipes and gives the exit code. *)
-let wait_exit poll procs ctx (a : t array) : t =
-  let id, p = process_arg procs ctx "WaitExit" a.(0) in
+let wait_exit poll ctx (a : t array) : t =
+  let id, p = process_arg ctx "WaitExit" a.(0) in
   let code = exit_code ctx poll p.pid 0.0005 in
   finish poll p.input;
   finish poll p.output;
   Hashtbl.remove procs id;
   Int code
 
-let stop_process procs ctx (a : t array) : t =
-  let _, p = process_arg procs ctx "Stop" a.(0) in
+let stop_process ctx (a : t array) : t =
+  let _, p = process_arg ctx "Stop" a.(0) in
   (try Unix.kill p.pid Sys.sigterm with Unix.Unix_error _ -> ());
   Missing
 
 let natives poll =
-  let procs = Hashtbl.create 8 in
   [ "Run", Native.nat ~result:true ~params:[| "cmd"; "args"; "input"; "dir"; "timeout" |] "Run" 1 5 (run poll);
-    "Start", Native.nat ~result:true ~params:[| "cmd"; "args"; "dir" |] "Start" 1 3 (start_process poll procs);
-    "ReadOutput", Native.nat ~result:true "ReadOutput" 1 1 (read_output poll procs);
+    "Start", Native.nat ~result:true ~params:[| "cmd"; "args"; "dir" |] "Start" 1 3 (start_process poll);
+    "ReadOutput", Native.nat ~result:true "ReadOutput" 1 1 (read_output poll);
     "Exit", Native.nat "Exit" 1 1 quit;
-    "WriteInput", Native.nat ~result:true "WriteInput" 2 2 (write_input poll procs);
-    "CloseInput", Native.nat "CloseInput" 1 1 (close_input poll procs);
-    "WaitExit", Native.nat "WaitExit" 1 1 (wait_exit poll procs);
-    "Stop", Native.nat "Stop" 1 1 (stop_process procs) ]
+    "WriteInput", Native.nat ~result:true "WriteInput" 2 2 (write_input poll);
+    "CloseInput", Native.nat "CloseInput" 1 1 (close_input poll);
+    "WaitExit", Native.nat "WaitExit" 1 1 (wait_exit poll);
+    "Stop", Native.nat "Stop" 1 1 stop_process ]

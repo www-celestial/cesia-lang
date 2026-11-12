@@ -181,8 +181,9 @@ closes one, its port is out of reach, as another program may take it. It names t
 out, as `127.0.0.1` or `::1`, or by `localhost`, and it looks up no other name, since a lookup already sends the name out of
 the machine. A test that needs a server of the network gets it by name in `allow` of `[test]`, as `net=example.com:443`.
 
-A test has 10 seconds, and its fibers, sockets and servers end with it. `[test]` in `cesia.toml` changes that for the whole
-project:
+A test has 10 seconds, and its fibers, sockets and servers end with it, as do the programs it started with [sys.Start] or
+[sys.Run]: at its end, whether it passed, failed or ran past its time, each one still running gets the TERM signal, and
+KILL a second later. `[test]` in `cesia.toml` changes the 10 seconds for the whole project:
 
 ```toml
 [test]

@@ -191,8 +191,10 @@ adresse de cette machine écrite en entier, comme `127.0.0.1` ou `::1`, ou par `
 autre nom (demander son adresse au DNS), puisqu'une résolution envoie déjà le nom hors de la machine. Un test qui a besoin
 d'un serveur du réseau l'obtient par son nom dans le `allow` de `[test]`, comme `net=example.com:443`.
 
-Un test a 10 secondes, et ses fibers, ses sockets et ses serveurs s'arrêtent avec lui. `[test]` dans `cesia.toml` change
-cela pour tout le projet :
+Un test a 10 secondes, et ses fibers, ses sockets et ses serveurs s'arrêtent avec lui, comme les programmes qu'il a
+lancés avec [sys.Start] ou [sys.Run] : à sa fin, qu'il ait réussi, échoué ou dépassé son temps, chacun de ceux qui
+tournent encore reçoit le signal TERM, puis KILL une seconde plus tard. `[test]` dans `cesia.toml` change les 10 secondes
+pour tout le projet :
 
 ```toml
 [test]

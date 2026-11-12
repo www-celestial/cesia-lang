@@ -1,0 +1,7 @@
+tests/orphans.test.ce:10: isFails returned false
+tests/orphans.test.ce:15: isRunsPastItsTime failed: The test ran past its 0.3 s.
+tests/orphans.test.ce:20: isRunsPastItsTimeInRun failed: The test ran past its 0.3 s.
+1 passed, 3 failed
+exit 1
+no program left
+exit 0

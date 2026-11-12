@@ -295,7 +295,8 @@ services envoie à ce programme seul, est transmis à chacun d'eux. INT et HUP v
 chaque programme qu'il fait tourner : ils atteignent d'eux-mêmes les programmes lancés, mais un [sys.Run] avec un
 `timeout`, qui tourne à part, les reçoit de Cesia. Un programme qui ne fait pas tourner de serveur finit alors tout de
 suite, comme s'il n'avait lancé aucun programme ; un programme qui en fait tourner un s'arrête comme le dit le chapitre
-[HTTP](http.md#arrêter).
+[HTTP](http.md#arrêter). Sous `cesia test`, ils finissent aussi avec le test qui les a lancés, comme le dit le chapitre
+[Tests](tests.md).
 
 Avec `--watch`, un programme qui doit enregistrer son état avant de finir prend lui-même les signaux :
 [sys.TakeStops]`(true)` fait que TERM et INT ne le terminent plus, et [sys.StopAsked] dit si l'un d'eux est arrivé

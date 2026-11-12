@@ -104,7 +104,7 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w
     (fun (count, argv) ->
        Net.supervise_with net (fun listener host port -> Workers.supervise ~count ~argv ~listener ~host ~port))
     workers;
-  Option.iter (fun r -> r := (fun () -> Net.reset net; Poll.reset poll)) reset;
+  Option.iter (fun r -> r := (fun () -> Net.reset net; Proc.reset (); Poll.reset poll)) reset;
   let input = Term.create poll in
   let sys =
     Fs.natives @ Proc.natives poll @ Term.input input

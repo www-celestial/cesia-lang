@@ -12,5 +12,8 @@ val pass_on : int -> unit
 (** Called before each process starts: Net makes the stop signals reach it. *)
 val on_start : (unit -> unit) ref
 
+(** The end of a test: stops and waits for each process started and not waited for. *)
+val reset : unit -> unit
+
 (** The function [sys.Run]. *)
 val natives : Poll.t -> (string * t) list

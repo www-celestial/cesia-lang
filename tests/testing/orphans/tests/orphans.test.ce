@@ -1,0 +1,23 @@
+(* Each test starts a program that would run for minutes: cesia test stops it when the test ends, whether the test passed,
+   failed or ran past its time, so that no program outlives the test that started it. *)
+use std/sys
+
+defn isPasses()
+  sys.Start("sleep", args = ["301"])?
+  true
+end
+
+defn isFails()
+  sys.Start("sleep", args = ["302"])?
+  false
+end
+
+defn isRunsPastItsTime()
+  sys.WaitExit(sys.Start("sleep", args = ["303"])?)
+  true
+end
+
+defn isRunsPastItsTimeInRun()
+  sys.Run("sleep", args = ["304"])
+  true
+end

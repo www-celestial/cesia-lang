@@ -1,0 +1,7 @@
+[project]
+name = "orphans"
+cesia = "1.1"
+
+[test]
+timeout = "0.3"
+allow = ["exec=sleep"]
