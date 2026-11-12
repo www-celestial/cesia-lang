@@ -132,7 +132,7 @@ let rec find env sc celled text : binding option =
         | Some k -> Some (Cell { m = env.m; k; stable = true })
         | None ->
           if Hashtbl.mem parent.vars text then begin
-            celled := text :: !celled;
+            Hashtbl.replace celled text ();
             Some (Cell { m = env.m; k = cell env text; stable = false })
           end else None
       end else begin
@@ -305,76 +305,71 @@ and finish sc =
   f.captures <- Array.of_list (List.rev sc.caps);
   flow f
 
-(* Definite assignment: a variable read without being surely assigned is marked. *)
+(* Definite assignment: a variable read without being surely assigned is marked. A branch notes on a trail the variables
+   it assigns, and takes them back after it: a statement costs the same whatever the number of variables. After a return
+   or a break, nothing runs: every variable counts as assigned. *)
 and flow (f : func) =
   let n = f.nvars in
-  let undef = Array.make n false in
-  let all () = Bytes.make n '\001' in
-  let set = ref (Bytes.make n '\000') in
-  Array.iteri (fun i _ -> Bytes.set !set i '\001') f.params;
-  Array.iter (fun (_, inner) -> undef.(inner) <- true; Bytes.set !set inner '\001') f.captures;
-  let inter a b =
-    Bytes.mapi (fun i c -> if c = '\001' && Bytes.get b i = '\001' then '\001' else '\000') a
-  in
-  let branch f =
-    let saved = !set in
-    set := Bytes.copy saved;
+  let undef = Array.make n false and set = Bytes.make n '\000' and trail = Array.make n 0 and top = ref 0 and dead = ref false in
+  Array.iteri (fun i _ -> Bytes.set set i '\001') f.params;
+  Array.iter (fun (_, inner) -> undef.(inner) <- true; Bytes.set set inner '\001') f.captures;
+  let assign i = if Bytes.get set i = '\000' then (Bytes.set set i '\001'; trail.(!top) <- i; incr top) in
+  let read i = if not (!dead || Bytes.get set i = '\001') then undef.(i) <- true in
+  (* Runs a branch, then takes back what it assigned: gives that, if [keep], or None if it never ends. *)
+  let branch keep f =
+    let mark = !top and was = !dead in
     f ();
-    let after = !set in
-    set := saved;
-    after
+    let rec back out = if !top = mark then out else (decr top; Bytes.set set trail.(!top) '\000'; back (if keep then trail.(!top) :: out else out)) in
+    let out = back [] and ended = not !dead in
+    dead := was;
+    if ended then Some out else None
   in
+  (* What two branches, one of which runs, both assign; None for one that never ends. Nothing of it is assigned before. *)
+  let meet x y =
+    match x, y with
+    | None, z | z, None -> z
+    | Some a, Some b ->
+      List.iter (fun i -> Bytes.set set i '\001') a;
+      let both = List.filter (fun i -> Bytes.get set i = '\001') b in
+      List.iter (fun i -> Bytes.set set i '\000') a;
+      Some both
+  in
+  let after = function None -> dead := true | Some l -> List.iter assign l in
   let rec go (e : expr) =
     match e.e with
-    | Hook h -> h.live <- Bytes.copy !set
-    | Var { b = Local i; _ } -> if Bytes.get !set i = '\000' then undef.(i) <- true
-    | Assign ({ b = Local i; _ }, v) -> go v; Bytes.set !set i '\001'
-    | Set { root = { b = Local i; _ }; _ } ->
-      if Bytes.get !set i = '\000' then undef.(i) <- true;
-      children go e
-    | Fn_def ({ b = Local i; _ }, g) -> capture g; Bytes.set !set i '\001'
+    | Hook h -> h.live <- (if !dead then Bytes.make n '\001' else Bytes.copy set)
+    | Var { b = Local i; _ } -> read i
+    | Assign ({ b = Local i; _ }, v) -> go v; assign i
+    | Set { root = { b = Local i; _ }; _ } -> read i; children go e
+    | Fn_def ({ b = Local i; _ }, g) -> capture g; assign i
     | Lambda g -> capture g
     | Destructure (pt, v) ->
       go v;
-      pat_names (fun n -> match n.b with Local i -> Bytes.set !set i '\001' | _ -> ()) pt
+      pat_names (fun n -> match n.b with Local i -> assign i | _ -> ()) pt
     | And (a, b) | Or (a, b) ->
       go a;
-      ignore (branch (fun () -> go b))
+      ignore (branch false (fun () -> go b))
     | If (c, a, b) ->
       go c;
-      let after_a = branch (fun () -> Array.iter go a) in
-      let after_b = branch (fun () -> Array.iter go b) in
-      set := inter after_a after_b
+      let after_a = branch true (fun () -> Array.iter go a) in
+      after (meet after_a (branch true (fun () -> Array.iter go b)))
     | While { cond; body; _ } ->
       go cond;
-      ignore (branch (fun () -> Array.iter go body))
+      ignore (branch false (fun () -> Array.iter go body))
     | For { var = { b = Local i; _ }; iter; fbody; _ } ->
       go iter;
-      ignore (branch (fun () -> Bytes.set !set i '\001'; Array.iter go fbody))
+      ignore (branch false (fun () -> assign i; Array.iter go fbody))
     | Comp { cbody; cvar = { b = Local i; _ }; csrc; cguard } ->
       go csrc;
-      ignore (branch (fun () ->
-          Bytes.set !set i '\001';
-          Option.iter go cguard;
-          go cbody))
+      ignore (branch false (fun () -> assign i; Option.iter go cguard; go cbody))
     | Match { subject; arms } ->
       go subject;
-      let after =
-        Array.map
-          (fun a ->
-             branch (fun () ->
-                 pat_names (fun n -> match n.b with Local i -> Bytes.set !set i '\001' | _ -> ()) a.pt;
-                 Option.iter go a.guard;
-                 go a.abody))
-          arms
-      in
-      if Array.length after > 0 then set := Array.fold_left inter after.(0) after
-    | Return r -> Option.iter go r.rvalue; set := all ()
-    | Break -> set := all ()
+      let arm a () = pat_names (fun n -> match n.b with Local i -> assign i | _ -> ()) a.pt; Option.iter go a.guard; go a.abody in
+      if Array.length arms > 0 then after (Array.fold_left (fun acc a -> meet acc (branch true (arm a))) None arms)
+    | Return r -> Option.iter go r.rvalue; dead := true
+    | Break -> dead := true
     | _ -> children go e
-  and capture (g : func) =
-    Array.iter (fun (outer, _) -> if Bytes.get !set outer = '\000' then undef.(outer) <- true) g.captures
-  in
+  and capture (g : func) = Array.iter (fun (outer, _) -> read outer) g.captures in
   Array.iter go f.body;
   f.maybe_undef <- undef
 
@@ -547,7 +542,8 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
        if Hashtbl.mem env.hoisted text then fail env fn.fpos (Messages.assign_function text))
     sc.vars;
   (* Another file of the package can read a variable while this one runs. *)
-  let celled = ref (if peers = [] then [] else Array.to_list keep) in
+  let celled = Hashtbl.create 16 in
+  if peers <> [] then Array.iter (fun text -> Hashtbl.replace celled text ()) keep;
   Array.iter (fun (e : expr) ->
       match e.e with
       | Fn_def (n, f) ->
@@ -560,7 +556,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
   ignore top_hoisted;
   (* Every file variable has a cell, for export. Those read by a named function live there. *)
   fn.cell_of <- Array.make fn.nvars (-1);
-  Array.iteri (fun i text -> if List.mem text !celled then fn.cell_of.(i) <- cell env text) fn.var_names;
+  Array.iteri (fun i text -> if Hashtbl.mem celled text then fn.cell_of.(i) <- cell env text) fn.var_names;
   fn.export_of <- Array.map (fun text -> cell env text) fn.var_names;
   Array.iter (fun (e : expr) ->
       match e.e with
