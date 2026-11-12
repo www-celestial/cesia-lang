@@ -97,7 +97,8 @@ cell that must write once is better run once, on purpose.
 waits for cells. [cells.Run] gives it one cell and waits for it: an Ok with Output, the lines it printed, Value, what its
 last expression shows, Error, or missing, with the Line of the file and the Text of the error as `cesia run` shows it,
 and Seconds, the time it ran. Before a cell runs, the names it defines are forgotten, so that a cell that fails leaves no
-old value behind.
+old value behind. A cell whose From is 0 is code typed at a prompt beside the cells, which no line of the file holds:
+its errors name `<prompt>`.
 
 ```cesia norun
 use std/cells
@@ -134,7 +135,8 @@ What a value shows:
 | anything else | `{Kind: "text", Text}`: its text, as `io.Print` writes it |
 
 Values stay in the session: [cells.Variables] gives each name's Name, Type, Size and Preview, a few texts, and never
-copies a large array.
+copies a large array; [cells.Rows] gives the rows from one to another of a frame, a matrix or a list, as texts, so that a
+viewer reads a large value one screen at a time.
 
 [cells.Stop] stops the cell that runs: its fiber is cancelled at its next wait or checkpoint, its Run gives the error
 `Stopped.`, and the session and the names defined before stay. A session that doesn't answer within 2 seconds, as a cell

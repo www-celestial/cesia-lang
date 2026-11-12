@@ -9,6 +9,9 @@
 {"Do":"run","Code":"rate","Line":14,"Path":"session.ce"}
 {"Do":"run","Code":"m = [1, 2; 3, 4]\nm","Line":15,"Path":"session.ce"}
 {"Do":"run","Code":"io.Print(\"a\")\nlist","Line":16,"Path":"session.ce"}
+{"Do":"run","Code":"1 +","Line":0,"Path":"session.ce"}
 {"Do":"variables"}
+{"Do":"rows","Name":"m","First":2,"Last":5}
+{"Do":"rows","Name":"half","First":1,"Last":2}
 {"Do":"stop"}
 not json

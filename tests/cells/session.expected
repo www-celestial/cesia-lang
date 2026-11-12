@@ -10,6 +10,9 @@ rate 3
 @{"Kind":"answer","Error":{"Line":14,"Text":"session.ce:14:1: Name \"rate\" doesn't exist.\n  14 | rate\n     | ^"},"Seconds":0}
 @{"Kind":"answer","Value":{"Kind":"array","Shape":[2,2],"Rows":[["1","2"],["3","4"]]},"Seconds":0}
 @{"Kind":"answer","Error":{"Line":17,"Text":"session.ce:17:1: Name \"list\" doesn't exist.\n  17 | list\n     | ^\n  list is a package of std/: write use std/list first."},"Seconds":0}
+@{"Kind":"answer","Error":{"Line":null,"Text":"<prompt>:1:4: Expected an expression, found the end of the file.\n  1 | 1 +\n    |    ^"},"Seconds":0}
 @{"Kind":"variables","Rows":[{"Name":"half","Type":"Function","Size":"","Preview":"function half"},{"Name":"m","Type":"Array","Size":"2 × 2","Preview":"[1 2; 3 4]"}]}
+@{"Kind":"rows","Columns":["1","2"],"Rows":[["3","4"]],"Count":2}
+@{"Kind":"rows","Error":"\"half\" holds no frame, matrix or list."}
 @{"Kind":"stopped"}
 exit 0

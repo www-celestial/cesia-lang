@@ -305,9 +305,10 @@ defn Run(session, cell)
       (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
       struct with Kind: "text", and Text; "table", a frame, with Columns, Rows (the first 20, as texts) and Count; or
-      "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. An
-      Err when the session has ended. *)
-  ask(session, {Do: "run", Code: cell.Source, Line: list.Max(1, cell.From), Path: session.Path})?
+      "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
+      cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
+      the session has ended. *)
+  ask(session, {Do: "run", Code: cell.Source, Line: list.Max(0, cell.From), Path: session.Path})?
   output = []
   while true
     m = fiber.Receive(session.Inbox)
@@ -338,6 +339,15 @@ defn Variables(session)
       characters, or the columns of a frame). Large values stay in the session: only these texts come. *)
   ask(session, {Do: "variables"})?
   result.Ok(answered(session)?.Rows)
+end
+
+defn Rows(session, name, first, last)
+  (** Rows first to last, from 1, of a frame, a matrix or a list that a name of the session holds, as texts, in an Ok of a
+      struct with Columns (the names of a frame's columns, or the numbers of a matrix's), Rows and Count, its number of
+      rows: a viewer reads a large value a screen at a time. An Err for a name that holds none of these. *)
+  ask(session, {Do: "rows", Name: name, First: first, Last: last})?
+  got = answered(session)?
+  if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok({Columns: got.Columns, Rows: got.Rows, Count: got.Count}) end
 end
 
 defn Stop(session)
@@ -554,6 +564,27 @@ defn rows(names)
   out
 end
 
+defn slice(name, first, last)
+  (** Rows first to last of the value of a name, as texts, for Rows. *)
+  got = valueOf(name)
+  if result.IsErr(got)
+    return {Kind: "rows", Error: "Name \"$name\" isn't in the session."}
+  end
+  v = got.Value
+  if isFrame(v)
+    count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
+    return {Kind: "rows", Columns: ["$n" for n in v.Names], Rows: [[cut(200, "$(v.Columns[c][i])") for c in v.Names] for i in list.Max(1, first)..list.Min(last, count)], Count: count}
+  end
+  if value.IsArray(v) and value.Len(value.Size(v)) == 2
+    shape = value.Size(v)
+    if shape[1] == 1
+      return {Kind: "rows", Columns: ["1"], Rows: [[cut(200, "$(v[i])")] for i in list.Max(1, first)..list.Min(last, shape[2])], Count: shape[2]}
+    end
+    return {Kind: "rows", Columns: ["$j" for j in 1..shape[2]], Rows: [[cut(200, "$(v[i, j])") for j in 1..shape[2]] for i in list.Max(1, first)..list.Min(last, shape[1])], Count: shape[1]}
+  end
+  {Kind: "rows", Error: "\"$name\" holds no frame, matrix or list."}
+end
+
 defn command(line)
   (** The command of a line, or missing for a line that isn't one. *)
   c = json.Parse(line)
@@ -603,6 +634,11 @@ defn serve()
         _ = fiber.Wait(task)
       end
       send({Kind: "variables", Rows: rows(known)})
+    else if c.Do == "rows"
+      if value.IsSome(task)
+        _ = fiber.Wait(task)
+      end
+      send(slice(c.Name, c.First, c.Last))
     end
     line = debug.ReadLine()
   end

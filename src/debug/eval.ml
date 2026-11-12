@@ -247,14 +247,17 @@ let eval ctx (a : t array) =
       | Missing -> at_prompt ctx code
       | frame -> in_frame ctx code frame)
 
-(* std/cells, in the session of a file: evalCell(code, line) runs a cell as the lines of the main file from that line;
+(* std/cells, in the session of a file: evalCell(code, line) runs a cell as the lines of the main file from that line, or
+   code typed at a prompt for line 0;
    forgetNames(names) removes names from what the prompt sees, their values with them; valueOf(name) gives an Ok of the
    value of a name the prompt sees, or an Err. A cell is the program, not code run beside it: no debugger runs, and its
    long computations let the other fibers run, so that a stop reaches it. *)
 let eval_cell ctx (a : t array) =
   let code = Native.text_arg ctx "evalCell" a.(0) in
-  let line = match a.(1) with Int n when n >= 1 -> n | _ -> 1 in
-  at_prompt ~cell:(ctx.w.debug.main, line) ctx code
+  (* Line 0: code typed at a prompt beside the cells, which no line of the file holds. *)
+  match a.(1) with
+  | Int n when n >= 1 -> at_prompt ~cell:(ctx.w.debug.main, n) ctx code
+  | _ -> at_prompt ~cell:(prompt_path, 1) ctx code
 
 let names_arg ctx name v =
   match v with
