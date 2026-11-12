@@ -43,7 +43,9 @@ let read name =
         if st.st_dev <> seen.st_dev || st.st_ino <> seen.st_ino then None
         else begin
           let b = Bytes.create st.st_size in
-          let rec fill i = if i < st.st_size then match Unix.read fd b i (st.st_size - i) with 0 -> raise End_of_file | n -> fill (i + n) in
+          let rec fill i =
+            if i < st.st_size then match Unix.read fd b i (st.st_size - i) with 0 -> raise End_of_file | n -> fill (i + n)
+          in
           fill 0;
           (* An entry in use stays among the newest, for the limit. *)
           if st.st_mtime < Unix.time () -. day then (try Unix.utimes path 0. 0. with Unix.Unix_error _ -> ());
@@ -87,7 +89,8 @@ let write name data =
        (* A new file of the person's alone: O_EXCL follows no link and takes no file already there. *)
        let fd = Unix.openfile tmp [ O_WRONLY; O_CREAT; O_EXCL; O_CLOEXEC ] 0o600 in
        Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
-           let rec put i = if i < String.length data then put (i + Unix.write_substring fd data i (String.length data - i)) in
+           let n = String.length data in
+           let rec put i = if i < n then put (i + Unix.write_substring fd data i (n - i)) in
            put 0);
        (* The old entry goes first: a file renamed over another makes some file systems, btrfs, write it to the disk
           at once, about 8 ms. *)
