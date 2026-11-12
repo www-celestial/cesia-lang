@@ -270,6 +270,70 @@ chat({Method: "GET", Path: "/chat", Query: "", Headers: handshake, Body: ""}).St
 chat({Method: "GET", Path: "/chat", Query: "", Headers: [], Body: ""}).Status -->
 ```
 
+### A client
+
+[websocket.Dial] opens a connection to a server, as a browser does: it connects to a `ws://` URL and makes the
+handshake, the HTTP request by which the client asks the server to switch the connection to WebSocket. It gives an `Ok`
+of a [websocket.Conn], whose field `Messages` is a channel of [std/fiber]: each message of the server comes on it whole,
+in order, and the channel closes when the connection ends. [websocket.Send] sends a text message, and [websocket.Close]
+closes the connection and tells how it ended:
+
+```cesia allow=net=own
+use std/websocket
+use std/net
+use std/fiber
+listener = net.Listen(0).Value
+fiber.Spawn(() -> http.Serve(http.App() then http.Websocket("/echo", (m, send) -> send(m)), listener = listener))
+c = websocket.Dial("ws://127.0.0.1:$(net.Port(listener))/echo").Value
+websocket.Send("hi", c) -->
+fiber.Receive(c.Messages, timeout = 1) -->
+websocket.Close(c) -->
+```
+
+Receiving has no function of its own: it is the channel, so all that [Fibers](fibers.md) do with a channel works on it, a
+`for` loop, a timeout, [fiber.Select]. The connection comes last in [websocket.Send], as the channel does in
+[fiber.Send]: a connection carries messages as a channel does. Fibers may send at once; each message goes out whole.
+
+```cesia norun
+for m in c.Messages
+  io.Print(m)
+end
+got = fiber.Select([sys.Stops(), c.Messages], timeout = 30)
+```
+
+What the client does for RFC 6455, so that a program never has to:
+
+- Each frame it sends, a header of a few bytes then the bytes of the message, is *masked*: its bytes are xored with a
+  key of 4 bytes, new for each frame, from the system's source of randomness (§5.3). A proxy between the two, a program
+  that passes the bytes on, then never sees bytes that the program chose, and can't be made to keep a forged response in
+  its cache (§10.3).
+- It answers each *ping*, a frame by which the server checks that the client is still there, with a *pong* of the same
+  bytes (§5.5.2), and it joins the *fragments* of a message, the frames a server may cut it into, once, at its end
+  (§5.4).
+- It refuses what the RFC refuses, and closes with the *close code*, a number that says why: 1002, a protocol error, for
+  a masked frame from the server, a reserved bit or opcode (the number of the kind of frame), or a control frame past
+  125 bytes (§5.1, §5.2, §5.5); 1007 for a text that isn't UTF-8 (§8.1); 1009 for a message past `maxMessage` bytes,
+  [websocket.DefaultMaxMessage] (64 MiB) unless `Dial` says otherwise, refused from the header of its frame, before its
+  bytes are read (§10.4). [websocket.Close] then gives the code, as `1009: message too big`.
+- [websocket.Close] sends the code 1000, a normal close, and waits at most a second for the close of the server and for
+  the server to close the TCP connection first (§7.1.1); then it closes by itself.
+
+`Messages` holds 64 messages. While it is full, the client reads nothing more from the network, and TCP makes the server
+wait: the [backpressure](glossary.md#backpressure) of a channel of a size. The messages already in `Messages` still come
+after [websocket.Close]; those that arrive after it are dropped, as a browser drops them.
+
+Only `ws://` for now: `wss://`, WebSocket over TLS, gives an `Err` that says so. Text messages only: a binary message
+received comes as a text, since a text of Cesia is made of bytes, but none can be sent yet. [websocket.Dial] needs the
+`net` permission of the host, as [http.Fetch] does: `net=127.0.0.1:9222`, or `net=own` for a server of the program
+itself. On each push, the CI plays the cases of Autobahn|Testsuite, the reference suite of RFC 6455, against the client:
+all of them but those of binary messages to send and of compression (RFC 7692), which it doesn't do.
+
+Measured on one machine, against one echo server written in Go with gorilla/websocket 1.5.3, as the
+[median](glossary.md#median) of 11 runs: a connection opens in 0.54 ms, a message of 100 bytes goes and comes back in
+34 µs, and one of 1.4 MB, a page's screenshot in Base64, in 4.7 ms. Go's client, gorilla/websocket, is faster: 0.47 ms,
+23 µs and 3.3 ms. The WebSocket of Node 26 takes 55 µs and 6.5 ms, and 56 ms for its first connection, as it loads its
+client then. A program reads the client only when it names it: a server of [std/http] starts as it did.
+
 ## TCP: std/net
 
 Under [std/http] is [std/net], plain TCP: [net.Listen] opens a listener, [net.Accept] waits for a connection, [net.Connect]

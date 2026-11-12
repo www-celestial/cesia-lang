@@ -154,7 +154,9 @@ publisher moves it.
   <https://www.rfc-editor.org/rfc/rfc9110>, and "HTTP/1.1", RFC 9112, 2022. <https://www.rfc-editor.org/rfc/rfc9112>.
   Methods, statuses, headers, persistent connections: [std/http].
 - I. Fette, A. Melnikov. "The WebSocket Protocol", RFC 6455, 2011. <https://www.rfc-editor.org/rfc/rfc6455>. The server
-  side of [std/websocket].
+  and the client of [std/websocket].
+- crossbar.io. Autobahn|Testsuite 25.10.1, the reference suite of RFC 6455. <https://github.com/crossbario/autobahn-testsuite>.
+  Its fuzzing server plays its cases against the client of [std/websocket] in the CI.
 - E. Rescorla. "The Transport Layer Security (TLS) Protocol Version 1.3", RFC 9846, 2026, which replaced RFC 8446.
   <https://www.rfc-editor.org/rfc/rfc9846>. The encryption of `https`, which [std/tls] gets from OpenSSL.
 - The Linux man-pages project. epoll(7) <https://man7.org/linux/man-pages/man7/epoll.7.html>, and epoll_ctl(2), whose

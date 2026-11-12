@@ -1067,7 +1067,8 @@ réseau. [sys.Now] la lit : voir [Fichiers](files.md#lhorloge).
 ## WebSocket
 
 Une connexion qui reste ouverte après une requête HTTP et porte des messages dans les deux sens, pour un chat ou une page
-qui se met à jour seule, comme la RFC 6455 la définit. [http.Websocket] en sert une : voir [HTTP](http.md#websocket).
+qui se met à jour seule, comme la RFC 6455 la définit. [http.Websocket] en sert une, et [websocket.Dial] en ouvre une
+comme client : voir [HTTP](http.md#websocket).
 
 ## Write-ahead log
 

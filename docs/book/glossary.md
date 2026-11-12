@@ -988,7 +988,7 @@ network. [sys.Now] reads it: see [Files](files.md#the-clock).
 ## WebSocket
 
 A connection that stays open after an HTTP request and carries messages both ways, for a chat or a live page, as RFC 6455
-defines it. [http.Websocket] serves one: see [HTTP](http.md#websocket).
+defines it. [http.Websocket] serves one, and [websocket.Dial] opens one as a client: see [HTTP](http.md#websocket).
 
 ## Write-ahead log
 
