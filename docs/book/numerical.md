@@ -35,8 +35,8 @@ x = fzero(@(x) x^3 - 2*x - 5, [2 3])   % 2.094551481542327
 ```
 
 The answers differ in their last digit: Cesia gives the float nearest to the zero, 2.0945514815423265, by default;
-scipy's `brentq` and MATLAB's `fzero` stop one float away from it at their defaults, and R's `uniroot` needs `tol` to get
-there.
+scipy's `brentq` and `fzero`, run in GNU Octave, stop one float away from it at their defaults, and R's `uniroot` needs
+`tol` to get there.
 
 ### From one start
 
@@ -50,7 +50,7 @@ optimize.Root(x -> math.Log(x) - 1.0, 0.01).Value.X -->
 math.Exp(1.0) -->
 ```
 
-`fzero(f, x0)` searches the same way; scipy has no search, so the Python version needs the bracket.
+`fzero(f, x0)` also searches for a bracket from one start; scipy's `brentq` has no search, and needs the bracket.
 
 ### What it promises
 
