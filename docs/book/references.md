@@ -155,6 +155,15 @@ publisher moves it.
   Methods, statuses, headers, persistent connections: [std/http].
 - I. Fette, A. Melnikov. "The WebSocket Protocol", RFC 6455, 2011. <https://www.rfc-editor.org/rfc/rfc6455>. The server
   and the client of [std/websocket].
+- Y. Bernier. "Latency Compensating Methods in Client/Server In-game Protocol Design and Optimization". Valve, GDC 2001.
+  <https://www.gamedevs.org/uploads/latency-compensation-in-client-server-protocols.pdf>; G. Gambetta. "Fast-Paced
+  Multiplayer (Part II): Client-Side Prediction and Server Reconciliation".
+  <https://www.gabrielgambetta.com/client-side-prediction-server-reconciliation.html>; Replicache, "How it works".
+  <https://doc.replicache.dev/concepts/how-it-works>. A player's own moves drawn at once, then the server's state with
+  the moves it hasn't answered replayed over it: the effects of the actions of a page of [std/live].
+- D. L. Mills. "Internet Time Synchronization: The Network Time Protocol". *IEEE Transactions on Communications* 39(10),
+  1991, 1482–1493. <https://doi.org/10.1109/26.103043>. The difference of two clocks from a round trip, its error at
+  most half the trip: how `live.js` reads the app's times of its changes.
 - crossbar.io. Autobahn|Testsuite 25.10.1, the reference suite of RFC 6455. <https://github.com/crossbario/autobahn-testsuite>.
   Its fuzzing server plays its cases against the client of [std/websocket] in the CI.
 - E. Rescorla. "The Transport Layer Security (TLS) Protocol Version 1.3", RFC 9846, 2026, which replaced RFC 8446.

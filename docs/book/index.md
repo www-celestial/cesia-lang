@@ -43,7 +43,7 @@ language.
 15. [Numbers and algorithms](numbers.md): std/math, std/num and LAPACK, the classic algorithms, sets, queues and heaps,
     and what each costs.
 16. [JSON and CSV](json.md): reading, writing, and checking what comes in.
-17. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
+17. [HTTP](http.md): a web server with routes and JSON, tested without the network, live screens, and the client.
 18. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
 19. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
 20. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
