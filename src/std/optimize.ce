@@ -1,0 +1,217 @@
+(** The zero of a function: Root, by Brent's method, as fzero in MATLAB and brentq in scipy. The chapter Numerical
+    methods of the book says what it promises, and where it comes from. *)
+use std/bug
+use std/math
+use std/result
+use std/value
+
+eps = 2.220446049250313e-16   (** the distance from 1.0 to the next float, 2^-52 *)
+
+defn brief(v)
+  (** A value as an error shows it. *)
+  if value.IsText(v) "\"$v\"" else value.Text(v) end
+end
+
+isFinite(x) = value.IsNumber(x) and x - x == 0.0
+
+defn fail(message, x, fx, count)
+  (** The Err of Root: its message, and the best point found. *)
+  result.Err({Kind: "optimize", Message: message, Best: {X: x, F: fx, Evaluations: count}})
+end
+
+defn value1(f, x)
+  (** f(x) as a float, or a text that says why it isn't one. *)
+  y = f(x)
+  if not isFinite(y)
+    return "optimize.Root: f($x) is $(brief(y)), not a finite number."
+  end
+  1.0 * y
+end
+
+defn Root(f, x, tol = 0.0)
+  (** A zero of f, a function of one number that gives one number: an X where f(X) = 0, or where f changes sign within
+      the tolerance. x is a bracket [a, b] where f(a) and f(b) have opposite signs, or one start, around which Root
+      first looks for such a bracket: steps growing twice as large on both sides, from 2 % of |x| (0.02 for 0), at
+      most 60 of them. It gives an Ok of {X, F, Evaluations}: the zero, f there, and the calls of f.
+
+      Brent's method (1973): steps of the secant and of inverse quadratic interpolation, kept inside the bracket, and a
+      bisection when they don't shrink it fast enough. It ends when the bracket that holds the sign change is at most
+      2 eps |X| + 2 tol wide, eps = 2^-52, so that tol = 0.0, the default, gives all the digits a float has: X is then
+      one of the two floats around the zero, the one where |f| is smaller.
+
+      An Err of kind "optimize" when there is no bracket, when f gives a NaN, an infinity or no number, or when |f|
+      at the end is larger than at both ends of the bracket: a jump or a pole, as 1/x on [-1, 1], changes sign too, but
+      is no zero. Its Best is the struct of the best point found.
+
+        Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0]).Value.X --> 2.0945514815423265
+        Root(x -> math.Cos(x) - x, 1.0).Value.X --> 0.7390851332151607
+        Root(x -> 1.0 / (x - 0.3), [0.0, 1.0]).Error.Message --> "optimize.Root: f changes sign near 0.30000000000000004, but |f| grows there to 18014398509481984.0: a jump or a pole, not a zero." *)
+  if not (isFinite(tol) and tol >= 0.0)
+    bug.Panic("optimize.Root: tol is $(brief(tol)); give a number of 0.0 or more.")
+  end
+  if isFinite(x)
+    return search(f, 1.0 * x, tol)
+  end
+  if not (value.IsArray(x) and value.Len(x) == 2 and isFinite(x[1]) and isFinite(x[2]) and x[1] != x[2])
+    bug.Panic("optimize.Root: x is $(brief(x)); give a bracket [a, b] of two different numbers, or one start.")
+  end
+  a = 1.0 * x[1]
+  b = 1.0 * x[2]
+  fa = value1(f, a)
+  if value.IsText(fa)
+    return fail(fa, a, math.Nan, 1)
+  end
+  fb = value1(f, b)
+  if value.IsText(fb)
+    return fail(fb, a, fa, 2)
+  end
+  if fa != 0.0 and fb != 0.0 and (fa > 0.0) == (fb > 0.0)
+    best = if math.Abs(fa) <= math.Abs(fb) a else b end
+    return fail("optimize.Root: f($a) = $fa and f($b) = $fb have the same sign; give a bracket where f changes sign, or one start.", best, if best == a fa else fb end, 2)
+  end
+  brent(f, a, fa, b, fb, tol, 2)
+end
+
+defn search(f, x0, tol)
+  (** A bracket around x0, then Brent in it: each side steps away until f changes sign, or gives no finite number. *)
+  f0 = value1(f, x0)
+  if value.IsText(f0)
+    return fail(f0, x0, math.Nan, 1)
+  end
+  if f0 == 0.0
+    return result.Ok({X: x0, F: 0.0, Evaluations: 1})
+  end
+  count = 1
+  best = x0
+  fbest = f0
+  dx = if x0 == 0.0 0.02 else 0.02 * math.Abs(x0) end
+  left = x0
+  fleft = f0
+  right = x0
+  fright = f0
+  goLeft = true
+  goRight = true
+  for k in 1..60
+    if goLeft
+      a = x0 - dx
+      fa = value1(f, a)
+      count += 1
+      if value.IsText(fa)
+        goLeft = false
+      else
+        if (fa > 0.0) != (f0 > 0.0) or fa == 0.0
+          return brent(f, a, fa, left, fleft, tol, count)
+        end
+        if math.Abs(fa) < math.Abs(fbest)
+          best = a
+          fbest = fa
+        end
+        left = a
+        fleft = fa
+      end
+    end
+    if goRight
+      b = x0 + dx
+      fb = value1(f, b)
+      count += 1
+      if value.IsText(fb)
+        goRight = false
+      else
+        if (fb > 0.0) != (f0 > 0.0) or fb == 0.0
+          return brent(f, right, fright, b, fb, tol, count)
+        end
+        if math.Abs(fb) < math.Abs(fbest)
+          best = b
+          fbest = fb
+        end
+        right = b
+        fright = fb
+      end
+    end
+    if not goLeft and not goRight
+      return fail("optimize.Root: f gives no finite number on either side of $x0 past $left and $right; give a bracket.", best, fbest, count)
+    end
+    dx = 2.0 * dx
+  end
+  fail("optimize.Root: f keeps the sign of f($x0) = $f0 from $left to $right; give a bracket where it changes sign.", best, fbest, count)
+end
+
+defn brent(f, a, fa, b, fb, tol, count)
+  (** Brent's zero on [a, b], where f(a) and f(b) have opposite signs or one is 0: the method of his book, ch. 4.
+      b is the best point so far, a the one before, and c the other end of the bracket. *)
+  far = list2max(math.Abs(fa), math.Abs(fb))
+  c = a
+  fc = fa
+  d = b - a
+  e = d
+  while true
+    if (fb > 0.0) == (fc > 0.0)
+      c = a
+      fc = fa
+      d = b - a
+      e = d
+    end
+    if math.Abs(fc) < math.Abs(fb)
+      a = b
+      b = c
+      c = a
+      fa = fb
+      fb = fc
+      fc = fa
+    end
+    t = eps * math.Abs(b) + tol   (* Brent's 2 macheps |b| + tol, macheps the unit roundoff 2^-53 *)
+    m = 0.5 * (c - b)
+    if math.Abs(m) <= t or fb == 0.0
+      if math.Abs(fb) > far
+        return fail("optimize.Root: f changes sign near $b, but |f| grows there to $(math.Abs(fb)): a jump or a pole, not a zero.", b, fb, count)
+      end
+      return result.Ok({X: b, F: fb, Evaluations: count})
+    end
+    if math.Abs(e) < t or math.Abs(fa) <= math.Abs(fb)
+      d = m
+      e = m
+    else
+      s = fb / fa
+      p = 0.0
+      q = 0.0
+      if a == c
+        p = 2.0 * m * s
+        q = 1.0 - s
+      else
+        q = fa / fc
+        r = fb / fc
+        p = s * (2.0 * m * q * (q - r) - (b - a) * (r - 1.0))
+        q = (q - 1.0) * (r - 1.0) * (s - 1.0)
+      end
+      if p > 0.0
+        q = -q
+      else
+        p = -p
+      end
+      s = e
+      e = d
+      if 2.0 * p < 3.0 * m * q - math.Abs(t * q) and p < math.Abs(0.5 * s * q)
+        d = p / q
+      else
+        d = m
+        e = m
+      end
+    end
+    a = b
+    fa = fb
+    if math.Abs(d) > t
+      b = b + d
+    else if m > 0.0
+      b = b + t
+    else
+      b = b - t
+    end
+    fb = value1(f, b)
+    count += 1
+    if value.IsText(fb)
+      return fail(fb, a, fa, count)
+    end
+  end
+end
+
+list2max(a, b) = if a >= b a else b end
