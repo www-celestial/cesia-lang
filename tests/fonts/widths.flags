@@ -1,0 +1,1 @@
+--allow ffi=SDL3_ttf,read=/usr/share/fonts

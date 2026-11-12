@@ -167,7 +167,9 @@ defn Scene(g, width, height)
       the columns and the rows, and Colors, row after row, missing for an empty cell) or "text" (X, Y on the baseline,
       Text, Size, Color, Anchor "start", "middle" or "end", Angle 0 or -90, and Width, its measured width). The data's
       items have Clip, the rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink" and "grid" for
-      the axes and the texts, which a back-end gives the colors of its theme.
+      the axes and the texts, which a back-end gives the colors of its theme. Each item has a Role too: "grid", "data",
+      "frame", "tick", "xlabel" and "ylabel" (the labels of the ticks), "factor" (the power of ten of an axis's labels),
+      "title", "xtitle", "ytitle", "legend" or "colorbar".
 
         value.Len(result.Unwrap(Scene(Line([1, 2], [3, 4]), 640, 400)).Items) > 0 --> true *)
   if not isGraph(g)
@@ -268,8 +270,8 @@ defn sizeOf(g, fn)
   if value.IsMissing(s)
     return result.Ok([640, 400])
   end
-  if not (value.IsArray(s) and value.Len(s) == 2 and isPositive(s[1]) and isPositive(s[2]))
-    return fail("plot.Of: size is $(brief(s)); give [width, height] in pixels.")
+  if not (value.IsArray(s) and value.Len(s) == 2 and isPositive(s[1]) and isPositive(s[2]) and s[1] >= 100 and s[2] >= 80)
+    return fail("plot.Of: size is $(brief(s)); give [width, height] in pixels, at least [100, 80].")
   end
   result.Ok(s)
 end
@@ -947,33 +949,56 @@ end
 
 tickValue(n, e) = if e >= 0 n * 10.0 ^ e else n / 10.0 ^ (0 - e) end
 
-defn labelsOf(ns, e)
-  (** The labels of the ticks ns times 10^e. Past 10^6, or under 10^-4, the labels count in a power of ten shown once, as
-      in matplotlib: the Factor. *)
+defn powerText(n, e)
+  (** The decimal n times 10^e, or, past 10^6 or under 10^-4, its digits times a power of ten. *)
+  top = decade(math.Abs(tickValue(n, e)))
+  if top >= 6 or top <= -5 "$(decimal(n, e - top))×10$(sup(top))" else decimal(n, e) end
+end
+
+defn labelsOf(ns, e, short = false)
+  (** The labels of the ticks ns times 10^e, for integers ns. When the ticks share 4 leading digits or more, they count
+      from an offset, a round number shown once at the end of the axis, as in matplotlib: 2, 4, 6 and +1.7314×10⁹ for
+      1731400002, 1731400004 and 1731400006. Past 10^6, or under 10^-4, they count in a power of ten shown there too: 1,
+      2, 3 and ×10⁷; with short, past 10^3 or under 10^-2 already, for an axis too short for the labels written out. *)
+  values = [tickValue(n, e) for n in ns]
+  k = value.Len(ns)
+  offset = 0.0
+  if k >= 2
+    span = ns[k] - ns[1]
+    big = list.Max(math.Abs(ns[1]), math.Abs(ns[k]))
+    if span > 0.0 and big >= span * 10000.0
+      p = pow10(decade(span) + 1)
+      offset = math.Floor(ns[1] / p) * p
+      ns = [n - offset for n in ns]
+    end
+  end
   big = 0.0
   for n in ns
     big = list.Max(big, math.Abs(tickValue(n, e)))
   end
   shift = 0
-  factor = missing
+  corner = []
   if big > 0.0
     top = decade(big)
-    if top >= 6 or top <= -5
+    if top >= 6 or top <= -5 or short and (top >= 3 or top <= -2)
       shift = top
-      factor = "×10$(sup(top))"
+      corner = ["×10$(sup(top))"]
     end
   end
-  {Values: [tickValue(n, e) for n in ns], Labels: [decimal(n, e - shift) for n in ns], Factor: factor}
+  if offset != 0.0
+    corner = list.Append("$(if offset > 0.0 "+" else "−" end)$(powerText(math.Abs(offset), e))", corner)
+  end
+  {Values: values, Labels: [decimal(n, e - shift) for n in ns], Factor: if value.Len(corner) == 0 missing else text.Join(" ", corner) end}
 end
 
 qInts = [1, 5, 2, 25, 4, 3]
 qShifts = [0, 0, 0, 1, 0, 0]
 qs = [1.0, 5.0, 2.0, 2.5, 4.0, 3.0]
 
-defn candidate(c)
+defn candidate(c, short = false)
   (** The labels of a candidate of the search: k labels, one every j steps of q times 10^z, from start. *)
   qi = c.Qi
-  labelsOf([(c.Start + i * c.J) * qInts[qi] for i in 0..c.K - 1], c.Z - qShifts[qi])
+  labelsOf([(c.Start + i * c.J) * qInts[qi] for i in 0..c.K - 1], c.Z - qShifts[qi], short = short)
 end
 
 defn extended(lo, hi, m, fits)
@@ -1061,28 +1086,22 @@ end
 
 defn linearTicks(axis, length, horizontal)
   m = list.Max(3, list.Min(12, math.Floor(length / if horizontal 100.0 else 60.0 end) + 1))
-  best = extended(axis.Lo, axis.Hi, m, defn (c)
-    t = candidate(c)
-    fitsAt(axis, length, horizontal, t.Values, t.Labels)
-  end)
-  if value.IsMissing(best)
-    best = extended(axis.Lo, axis.Hi, m, c -> true)
+  for short in [false, true]
+    best = extended(axis.Lo, axis.Hi, m, defn (c)
+      t = candidate(c, short = short)
+      fitsAt(axis, length, horizontal, t.Values, t.Labels)
+    end)
+    if not value.IsMissing(best)
+      return candidate(best, short = short)
+    end
   end
-  candidate(best)
-end
-
-defn logLabel(m, e)
-  (** A tick m times 10^e of a log axis: plain between 10^-4 and 10^6, else with its power of ten. *)
-  if e >= 6 or e <= -5
-    return if m == 1 "10$(sup(e))" else "$(m)×10$(sup(e))" end
-  end
-  decimal(m, e)
+  candidate(extended(axis.Lo, axis.Hi, m, c -> true), short = true)
 end
 
 defn logTicks(axis, length, horizontal)
   (** The ticks of a log axis: powers of ten, written 10ⁿ, every one, two, three or more of them so that 3 to 12 fit;
-      with fewer than 3 inside, the multiples 1, 2 and 5 of each power, written out; with fewer than 3 still, the ticks of
-      a linear axis. *)
+      with fewer than 3 inside, the multiples 1, 2 and 5 of each power, written as a linear axis writes its labels; with
+      fewer than 3 still, the ticks of a linear axis. *)
   lo = axis.Lo * (1 - 1e-12)
   hi = axis.Hi * (1 + 1e-12)
   e0 = decade(lo)
@@ -1109,19 +1128,17 @@ defn logTicks(axis, length, horizontal)
       return fallback
     end
   end
-  vs = []
-  ls = []
+  ns = []
   for e in e0 - 1..e1
     for m in [1, 2, 5]
       v = tickValue(m, e)
       if v >= lo and v <= hi
-        vs = list.Append(v, vs)
-        ls = list.Append(logLabel(m, e), ls)
+        ns = list.Append(m * 10.0 ^ (e - e0 + 1), ns)
       end
     end
   end
-  t = {Values: vs, Labels: ls, Factor: missing}
-  if value.Len(vs) >= 3 and value.Len(vs) <= 12 and fit(t)
+  t = labelsOf(ns, e0 - 1)
+  if value.Len(ns) >= 3 and value.Len(ns) <= 12 and fit(t)
     return t
   end
   linearTicks(axis, length, horizontal)
@@ -1377,7 +1394,7 @@ defn cellsItems(p, xa, ya, a, clip)
       colors[k] = missing
     end
   end
-  [{Kind: "cells", Xs: a.X + (inT(xa, xe) - a.T0x) * a.Sx, Ys: a.Y + (inT(ya, ye) - a.T0y) * a.Sy, Colors: colors, Clip: clip}]
+  [{Kind: "cells", Xs: a.X + (inT(xa, xe) - a.T0x) * a.Sx, Ys: a.Y + (inT(ya, ye) - a.T0y) * a.Sy, Colors: colors, Clip: clip, Role: "data"}]
 end
 
 defn dataItems(p, xa, ya, a, clip)
@@ -1396,14 +1413,14 @@ defn lineItems(p, xa, ya, a, clip)
   xs = inT(xa, p.X)
   ys = inT(ya, p.Y)
   runs = if p.E.Sorted and p.E.Count > 4.0 * a.W m4(xs, ys, a, p.E) else runsOf(xs, ys, a, p.E) end
-  [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip} for r in runs]
+  [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip, Role: "data"} for r in runs]
 end
 
 defn markItems(p, xa, ya, a, clip)
   px = a.X + (inT(xa, p.X) - a.T0x) * a.Sx
   py = a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy
   ok = col.Positions((px - px) + (py - py) == 0.0)
-  [{Kind: "marks", Xs: col.Pick(ok, px), Ys: col.Pick(ok, py), Shape: p.Shape, Size: p.Size, Color: p.Color, Clip: clip}]
+  [{Kind: "marks", Xs: col.Pick(ok, px), Ys: col.Pick(ok, py), Shape: p.Shape, Size: p.Size, Color: p.Color, Clip: clip, Role: "data"}]
 end
 
 defn areaItems(p, xa, ya, a, clip)
@@ -1411,7 +1428,7 @@ defn areaItems(p, xa, ya, a, clip)
   highs = runsOf(xs, inT(ya, p.High), a, missing)
   lows = runsOf(xs, inT(ya, p.Low), a, missing)
   [{Kind: "area", Xs: list.Concat(highs[k].X, list.Reverse(lows[k].X)), Ys: list.Concat(highs[k].Y, list.Reverse(lows[k].Y)),
-    Color: p.Color, Opacity: 0.3, Clip: clip} for k in 1..value.Len(highs)]
+    Color: p.Color, Opacity: 0.3, Clip: clip, Role: "data"} for k in 1..value.Len(highs)]
 end
 
 defn barItems(p, a, clip)
@@ -1426,7 +1443,7 @@ defn barItems(p, a, clip)
       if h - h == 0.0
         x0 = a.X + (i - 0.4 + (s - 1) * width - a.T0x) * a.Sx
         top = a.Y + (h - a.T0y) * a.Sy
-        out = list.Append({Kind: "rect", X: x0, Y: list.Min(top, base), W: width * a.Sx, H: math.Abs(top - base), Color: p.Colors[s], Opacity: 1.0, Clip: clip}, out)
+        out = list.Append({Kind: "rect", X: x0, Y: list.Min(top, base), W: width * a.Sx, H: math.Abs(top - base), Color: p.Colors[s], Opacity: 1.0, Clip: clip, Role: "data"}, out)
       end
     end
   end
@@ -1441,16 +1458,16 @@ defn histogramItems(p, xa, a, clip)
     c = p.Counts[k]
     if c > 0.0
       top = a.Y + (c - a.T0y) * a.Sy
-      out = list.Append({Kind: "rect", X: xs[k], Y: top, W: xs[k + 1] - xs[k], H: base - top, Color: p.Color, Opacity: 1.0, Clip: clip}, out)
+      out = list.Append({Kind: "rect", X: xs[k], Y: top, W: xs[k + 1] - xs[k], H: base - top, Color: p.Color, Opacity: 1.0, Clip: clip, Role: "data"}, out)
     end
   end
   out
 end
 
-line(xs, ys, color, width) = {Kind: "line", Xs: xs, Ys: ys, Color: color, Width: width, Dash: missing, Clip: missing}
+line(xs, ys, color, width, role) = {Kind: "line", Xs: xs, Ys: ys, Color: color, Width: width, Dash: missing, Clip: missing, Role: role}
 
-defn label(x, y, s, size, anchor, angle = 0)
-  {Kind: "text", X: x, Y: y, Text: s, Size: size, Color: "ink", Anchor: anchor, Angle: angle, Width: textWidth(s, size), Clip: missing}
+defn label(x, y, s, size, anchor, role, angle = 0)
+  {Kind: "text", X: x, Y: y, Text: s, Size: size, Color: "ink", Anchor: anchor, Angle: angle, Width: textWidth(s, size), Clip: missing, Role: role}
 end
 
 defn legendEntries(ps)
@@ -1563,7 +1580,7 @@ defn drawGraph(g, ox, oy, w, h)
     ah = math.Floor(h - top - bottom)
     ay = math.Floor(oy + top)
     if ah < 20
-      return fail("$gw: $(math.Round(w)) by $(math.Round(h)) pixels leave no room for the plot; give a larger size.")
+      return fail("$gw: $(text.Decimals(0, w)) by $(text.Decimals(0, h)) pixels leave no room for the plot; give a larger size.")
     end
     yt = ticksOf(ya, ah, false)
     if value.Len(shaded) > 0
@@ -1588,7 +1605,7 @@ defn drawGraph(g, ox, oy, w, h)
     ax = math.Ceil(ox + left)
     aw = math.Floor(ox + w - right - ax)
     if aw < 20
-      return fail("$gw: $(math.Round(w)) by $(math.Round(h)) pixels leave no room for the plot; give a larger size.")
+      return fail("$gw: $(text.Decimals(0, w)) by $(text.Decimals(0, h)) pixels leave no room for the plot; give a larger size.")
     end
     xt = ticksOf(xa, aw, true)
     moved = false
@@ -1630,48 +1647,48 @@ defn drawGraph(g, ox, oy, w, h)
   if not xa.Category
     for v in xt.Values
       x = snap(ax + pos(xa, aw, v))
-      items = list.Append(line([x, x], [ay, ay + ah], "grid", 1.0), items)
+      items = list.Append(line([x, x], [ay, ay + ah], "grid", 1.0, "grid"), items)
     end
   end
   for v in yt.Values
     y = snap(a.Y + (tf(ya, v) - ya.T0) * sy)
-    items = list.Append(line([ax, ax + aw], [y, y], "grid", 1.0), items)
+    items = list.Append(line([ax, ax + aw], [y, y], "grid", 1.0, "grid"), items)
   end
   for p in ps
     items = list.Concat(items, dataItems(p, xa, ya, a, clip))
   end
-  items = list.Append(line([ax - 0.5, ax + aw + 0.5, ax + aw + 0.5, ax - 0.5, ax - 0.5], [ay - 0.5, ay - 0.5, ay + ah + 0.5, ay + ah + 0.5, ay - 0.5], "ink", 1.0), items)
+  items = list.Append(line([ax - 0.5, ax + aw + 0.5, ax + aw + 0.5, ax - 0.5, ax - 0.5], [ay - 0.5, ay - 0.5, ay + ah + 0.5, ay + ah + 0.5, ay - 0.5], "ink", 1.0, "frame"), items)
   below = ay + ah + 0.5
   for i in 1..value.Len(xt.Values)
     x = snap(ax + pos(xa, aw, xt.Values[i]))
-    items = list.Append(line([x, x], [below, below + tickLen], "ink", 1.0), items)
+    items = list.Append(line([x, x], [below, below + tickLen], "ink", 1.0, "tick"), items)
     if rotated
-      items = list.Append(label(x + tickSize * cap / 2, below + tickLen + tickGap, xt.Labels[i], tickSize, "end", angle = -90), items)
+      items = list.Append(label(x + tickSize * cap / 2, below + tickLen + tickGap, xt.Labels[i], tickSize, "end", "xlabel", angle = -90), items)
     else
-      items = list.Append(label(x, below + tickLen + tickGap + tickSize * ascent, xt.Labels[i], tickSize, "middle"), items)
+      items = list.Append(label(x, below + tickLen + tickGap + tickSize * ascent, xt.Labels[i], tickSize, "middle", "xlabel"), items)
     end
   end
   for i in 1..value.Len(yt.Values)
     y = snap(a.Y + (tf(ya, yt.Values[i]) - ya.T0) * sy)
-    items = list.Append(line([ax - 0.5 - tickLen, ax - 0.5], [y, y], "ink", 1.0), items)
-    items = list.Append(label(ax - 0.5 - tickLen - tickGap, y + tickSize * cap / 2, yt.Labels[i], tickSize, "end"), items)
+    items = list.Append(line([ax - 0.5 - tickLen, ax - 0.5], [y, y], "ink", 1.0, "tick"), items)
+    items = list.Append(label(ax - 0.5 - tickLen - tickGap, y + tickSize * cap / 2, yt.Labels[i], tickSize, "end", "ylabel"), items)
   end
   namesH = if rotated widest(xa.Names, tickSize) else tickSize * lineRatio end
   under = below + tickLen + tickGap + namesH + 4.0 + axisSize * ascent
   if not value.IsMissing(title)
-    items = list.Append(label(ax + aw / 2, oy + outer + titleSize * ascent, title, titleSize, "middle"), items)
+    items = list.Append(label(ax + aw / 2, oy + outer + titleSize * ascent, title, titleSize, "middle", "title"), items)
   end
   if not value.IsMissing(xtitle)
-    items = list.Append(label(ax + aw / 2, under, xtitle, axisSize, "middle"), items)
+    items = list.Append(label(ax + aw / 2, under, xtitle, axisSize, "middle", "xtitle"), items)
   end
   if not value.IsMissing(xt.Factor)
-    items = list.Append(label(ax + aw, under, xt.Factor, tickSize, "end"), items)
+    items = list.Append(label(ax + aw, under, xt.Factor, tickSize, "end", "factor"), items)
   end
   if not value.IsMissing(ytitle)
-    items = list.Append(label(ox + outer + less + axisSize * ascent, ay + ah / 2, ytitle, axisSize, "middle", angle = -90), items)
+    items = list.Append(label(ox + outer + less + axisSize * ascent, ay + ah / 2, ytitle, axisSize, "middle", "ytitle", angle = -90), items)
   end
   if not value.IsMissing(yt.Factor)
-    items = list.Append(label(ax, ay - 4.0, yt.Factor, tickSize, "start"), items)
+    items = list.Append(label(ax, ay - 4.0, yt.Factor, tickSize, "start", "factor"), items)
   end
   right = ax + aw + 0.5
   if not value.IsMissing(barTicks)
@@ -1689,15 +1706,15 @@ defn colorBar(p, t, x, y, h)
   axis = t.Axis
   edges = [y + h - k * h / 256.0 for k in 0..256]
   vs = [axis.Lo + (k + 0.5) * (axis.Hi - axis.Lo) / 256.0 for k in 0..255]
-  items = [{Kind: "cells", Xs: [x, x + 14.0], Ys: edges, Colors: colorsOf(vs * 1.0, axis.Lo, axis.Hi, p.Map), Clip: missing}]
-  items = list.Append(line([x - 0.5, x + 14.5, x + 14.5, x - 0.5, x - 0.5], [y - 0.5, y - 0.5, y + h + 0.5, y + h + 0.5, y - 0.5], "ink", 1.0), items)
+  items = [{Kind: "cells", Xs: [x, x + 14.0], Ys: edges, Colors: colorsOf(vs * 1.0, axis.Lo, axis.Hi, p.Map), Clip: missing, Role: "colorbar"}]
+  items = list.Append(line([x - 0.5, x + 14.5, x + 14.5, x - 0.5, x - 0.5], [y - 0.5, y - 0.5, y + h + 0.5, y + h + 0.5, y - 0.5], "ink", 1.0, "colorbar"), items)
   for i in 1..value.Len(t.Values)
     ty = snap(y + h - pos(axis, h, t.Values[i]))
-    items = list.Append(line([x + 14.5, x + 14.5 + tickLen], [ty, ty], "ink", 1.0), items)
-    items = list.Append(label(x + 14.5 + tickLen + tickGap, ty + tickSize * cap / 2, t.Labels[i], tickSize, "start"), items)
+    items = list.Append(line([x + 14.5, x + 14.5 + tickLen], [ty, ty], "ink", 1.0, "colorbar"), items)
+    items = list.Append(label(x + 14.5 + tickLen + tickGap, ty + tickSize * cap / 2, t.Labels[i], tickSize, "start", "colorbar"), items)
   end
   if not value.IsMissing(t.Factor)
-    items = list.Append(label(x, y - 4.0, t.Factor, tickSize, "start"), items)
+    items = list.Append(label(x, y - 4.0, t.Factor, tickSize, "start", "colorbar"), items)
   end
   items
 end
@@ -1710,13 +1727,13 @@ defn legendItems(entries, x, y)
     e = entries[k]
     mid = y + (k - 1) * row + row / 2
     if e.Kind == "line"
-      items = list.Append({Kind: "line", Xs: [x, x + 22.0], Ys: [mid, mid], Color: e.Color, Width: e.Layer.Width, Dash: dashOf(e.Layer.Dash, e.Layer.Width), Clip: missing}, items)
+      items = list.Append({Kind: "line", Xs: [x, x + 22.0], Ys: [mid, mid], Color: e.Color, Width: e.Layer.Width, Dash: dashOf(e.Layer.Dash, e.Layer.Width), Clip: missing, Role: "legend"}, items)
     else if e.Kind == "mark"
-      items = list.Append({Kind: "marks", Xs: [x + 11.0], Ys: [mid], Shape: e.Layer.Shape, Size: e.Layer.Size, Color: e.Color, Clip: missing}, items)
+      items = list.Append({Kind: "marks", Xs: [x + 11.0], Ys: [mid], Shape: e.Layer.Shape, Size: e.Layer.Size, Color: e.Color, Clip: missing, Role: "legend"}, items)
     else
-      items = list.Append({Kind: "rect", X: x + 5.0, Y: mid - 5.0, W: 12.0, H: 10.0, Color: e.Color, Opacity: e.Opacity, Clip: missing}, items)
+      items = list.Append({Kind: "rect", X: x + 5.0, Y: mid - 5.0, W: 12.0, H: 10.0, Color: e.Color, Opacity: e.Opacity, Clip: missing, Role: "legend"}, items)
     end
-    items = list.Append(label(x + 28.0, mid + tickSize * cap / 2, e.Label, tickSize, "start"), items)
+    items = list.Append(label(x + 28.0, mid + tickSize * cap / 2, e.Label, tickSize, "start", "legend"), items)
   end
   items
 end
@@ -1870,7 +1887,7 @@ viridis = [
 
 (* Widths: from here *)
 basic = [260, 273, 429, 646, 572, 852, 737, 237, 312, 312, 548, 572, 273, 321, 272, 385, 572, 572, 572, 572, 572, 572, 572, 572, 572, 572, 272, 273, 572, 572, 572, 447, 899, 655, 654, 635, 731, 557, 528, 727, 748, 354, 290, 632, 534, 918, 776, 784, 610, 784, 632, 550, 562, 738, 615, 941, 611, 584, 574, 330, 385, 330, 572, 434, 306, 572, 620, 491, 620, 574, 357, 620, 627, 270, 270, 559, 270, 947, 627, 611, 620, 620, 423, 486, 383, 627, 527, 807, 543, 528, 477, 384, 551, 384, 572]
-latin = [260, 274, 572, 572, 571, 572, 551, 505, 584, 832, 364, 540, 572, 321, 832, 500, 427, 572, 359, 359, 306, 632, 653, 272, 236, 359, 379, 540, 770, 801, 800, 447, 655, 655, 655, 655, 655, 655, 902, 635, 557, 557, 557, 557, 354, 354, 354, 354, 731, 773, 784, 784, 784, 784, 784, 572, 784, 738, 738, 738, 738, 584, 612, 652, 572, 572, 572, 572, 572, 572, 880, 491, 574, 574, 574, 574, 270, 270, 270, 270, 611, 627, 611, 611, 611, 611, 611, 572, 609, 627, 627, 627, 627, 528, 620, 528, 655, 572, 655, 572, 655, 572, 635, 491, 635, 491, 635, 491, 635, 491, 731, 620, 731, 625, 557, 574, 557, 574, 557, 574, 557, 572, 557, 574, 727, 620, 727, 620, 727, 620, 727, 620, 748, 627, 748, 630, 354, 270, 354, 270, 354, 270, 354, 270, 354, 270, 644, 544, 290, 270, 631, 559, 559, 534, 270, 534, 270, 534, 270, 534, 298, 536, 272, 773, 627, 773, 627, 773, 627, 714, 776, 627, 784, 611, 784, 611, 784, 611, 941, 955, 632, 423, 632, 423, 632, 423, 550, 486, 550, 486, 550, 486, 550, 486, 562, 383, 562, 383, 562, 382, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 941, 808, 584, 528, 584, 574, 477, 574, 477, 574, 477, 343]
+latin = [260, 274, 572, 572, 571, 572, 551, 505, 584, 832, 364, 540, 572, 0, 832, 500, 427, 572, 359, 359, 306, 632, 653, 272, 236, 359, 379, 540, 770, 801, 800, 447, 655, 655, 655, 655, 655, 655, 902, 635, 557, 557, 557, 557, 354, 354, 354, 354, 731, 773, 784, 784, 784, 784, 784, 572, 784, 738, 738, 738, 738, 584, 612, 652, 572, 572, 572, 572, 572, 572, 880, 491, 574, 574, 574, 574, 270, 270, 270, 270, 611, 627, 611, 611, 611, 611, 611, 572, 609, 627, 627, 627, 627, 528, 620, 528, 655, 572, 655, 572, 655, 572, 635, 491, 635, 491, 635, 491, 635, 491, 731, 620, 731, 625, 557, 574, 557, 574, 557, 574, 557, 572, 557, 574, 727, 620, 727, 620, 727, 620, 727, 620, 748, 627, 748, 630, 354, 270, 354, 270, 354, 270, 354, 270, 354, 270, 644, 544, 290, 270, 631, 559, 559, 534, 270, 534, 270, 534, 270, 534, 298, 536, 272, 773, 627, 773, 627, 773, 627, 714, 776, 627, 784, 611, 784, 611, 784, 611, 941, 955, 632, 423, 632, 423, 632, 423, 550, 486, 550, 486, 550, 486, 550, 486, 562, 383, 562, 383, 562, 382, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 941, 808, 584, 528, 584, 574, 477, 574, 477, 574, 477, 343]
 greek = [455, 388, 691, 665, 192, 192, 784, 666, 0, 0, 257, 489, 491, 489, 273, 290, 0, 0, 0, 0, 251, 690, 734, 272, 739, 930, 558, 0, 917, 0, 814, 869, 352, 655, 654, 508, 648, 557, 574, 748, 784, 354, 631, 626, 918, 773, 625, 784, 738, 610, 0, 574, 562, 584, 861, 611, 838, 729, 354, 584, 633, 481, 618, 352, 610, 633, 618, 530, 594, 480, 467, 618, 600, 352, 559, 535, 640, 530, 500, 611, 680, 605, 495, 626, 506, 610, 751, 602, 773, 819, 352, 610, 611, 610, 821, 631, 646, 655, 610, 838, 610, 751, 904, 560, 771, 611, 635, 490, 522, 526, 497, 555, 593, 516, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 675, 605, 491, 270, 785, 503, 499, 612, 620, 635, 918, 754, 610, 635, 635, 635]
 extraCodes = [8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8240, 8242, 8243, 8304, 8305, 8308, 8309, 8310, 8311, 8312, 8313, 8314, 8315, 8316, 8317, 8318, 8319, 8320, 8321, 8322, 8323, 8324, 8325, 8326, 8327, 8328, 8329, 8330, 8331, 8332, 8333, 8334, 8722]
 extraWidths = [500, 1000, 187, 187, 384, 384, 376, 810, 1207, 253, 442, 359, 176, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 408, 359, 359, 359, 359, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 575]

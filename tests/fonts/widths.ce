@@ -1,0 +1,67 @@
+(** The widths std/plot measures its texts with, against SDL3_ttf's measure with the font Cemacs draws them with, Noto
+    Sans Medium, at 12 pixels, without hinting or kerning. A character of std/plot's table counts its advance: SDL3_ttf's
+    measure of it twenty times less its measure ten times, which leaves out the ink of the last glyph past its advance, as
+    an f or an î has. Texts of graphs count their advances, and SDL3_ttf the ink of their last glyph too. SDL3_ttf gives
+    whole pixels, so each width must be within a pixel of std/plot's. A character the font has no glyph for must count a
+    whole em, and the soft hyphen, which shaping hides, nothing. *)
+use std/c
+use std/io
+use std/list
+use std/math
+use std/plot
+use std/result
+use std/text
+use std/value
+
+lib = result.Unwrap(c.Open("SDL3_ttf", version = 0))
+bind(name, args, back) = result.Unwrap(c.Fn(name, args, back, lib))
+init = bind("TTF_Init", [], "bool")
+openFont = bind("TTF_OpenFont", ["text", "f32"], "ptr")
+kerning = bind("TTF_SetFontKerning", ["ptr", "bool"], "void")
+hinting = bind("TTF_SetFontHinting", ["ptr", "i32"], "void")
+hasGlyph = bind("TTF_FontHasGlyph", ["ptr", "u32"], "bool")
+stringSize = bind("TTF_GetStringSize", ["ptr", "text", "u64", "ptr", "ptr"], "bool")
+
+init()
+font = openFont("/usr/share/fonts/noto/NotoSans-Medium.ttf", 12.0)
+kerning(font, false)
+hinting(font, 3)
+w = c.Alloc(8)
+h = c.Alloc(8)
+
+defn measured(s)
+  stringSize(font, s, text.ByteLength(s), w, h)
+  c.Get("i32", 0, w)
+end
+
+extras = [8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8240, 8242, 8243, 8304, 8305, 8308, 8309, 8310, 8311, 8312,
+  8313, 8314, 8315, 8316, 8317, 8318, 8319, 8320, 8321, 8322, 8323, 8324, 8325, 8326, 8327, 8328, 8329, 8330, 8331, 8332,
+  8333, 8334, 8722]
+codes = list.Concat(list.Concat(32..126, 160..383), list.Concat(880..1023, extras))
+words = ["0123456789", "−1.5", "×10⁻⁶", "Temperature (°C)", "Wave Ä ç ő Ŧ", "αβγ ΔΣΩ", "time (s)", "Ångström", "10⁶ m²"]
+texts = list.Concat([text.Repeat(10, text.Char(k)) for k in codes], words)
+scene = result.Unwrap(plot.Scene(plot.Bars(texts, list.Fill(1, value.Len(texts))), 4000, 2000))
+labels = list.Filter(item -> item.Role == "xlabel", scene.Items)
+
+far = []
+empty = 0
+for k in 1..value.Len(texts)
+  s = texts[k]
+  ours = labels[k].Width
+  glyph = k > value.Len(codes) or hasGlyph(font, codes[k])
+  if not glyph
+    empty += 1
+    if ours != 120.0
+      far = list.Append("U+$(codes[k]) has no glyph, and std/plot counts $ours pixels for ten, not 120", far)
+    end
+  else
+    theirs = if k > value.Len(codes) measured(s) else measured("$s$s") - measured(s) end
+    if math.Abs(ours - theirs) > 1.0
+      far = list.Append("$(s): std/plot $ours, SDL3_ttf $theirs", far)
+    end
+  end
+end
+io.Print("$(value.Len(texts) - empty) texts within a pixel of SDL3_ttf, $empty characters without a glyph counted an em")
+for f in far
+  io.Print(f)
+end

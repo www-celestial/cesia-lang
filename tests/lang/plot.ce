@@ -1,0 +1,292 @@
+(** std/plot: the SVG of each function and option, kept byte for byte in plot.snap; the rules of the ticks, the labels
+    and the layout on generated data; M4 against all the points, pixel by pixel; and every error message. *)
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/plot
+use std/result
+use std/test
+use std/text
+use std/value
+
+svg(g) = result.Unwrap(plot.Svg(g))
+scene(g, w, h) = result.Unwrap(plot.Scene(g, w, h))
+role(s, r) = list.Filter(item -> item.Role == r, s.Items)
+message(g) = match plot.Svg(g)
+  result.Err(e) -> e.Message
+  else -> "no error"
+end
+
+xs = [1, 2, 3, 4, 5, 6]
+ys = [2.5, 3.1, 1.7, 4.2, 3.9, 5.0]
+zs = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0]
+grid = matrix.Reshape([3, 4], [1, 5, 9, 2, 6, 10, 3, 7, 11, 4, 8, 12])
+signed = matrix.Reshape([2, 3], [-2.0, 1.0, 0.5, -0.5, math.Nan, 3.0])
+
+(* Golden files: the SVG of each function and of each option, byte for byte. *)
+
+isLineSvg() = test.Snapshot(svg(plot.Line(xs, ys))) and test.Snapshot(svg(plot.Line(xs, ys, label = "a", color = "#123456", width = 3, dash = "dashed")))
+isLineDashes() = test.Snapshot(svg(plot.Of([plot.Line(xs, ys, dash = "dotted", label = "dotted"), plot.Line(xs, zs, dash = "dashdot", label = "dashdot")])))
+isLineGap() = test.Snapshot(svg(plot.Line(xs, [1.0, 2.0, math.Nan, 4.0, 5.0, 1.0 / 0.0])))
+isPointsSvg() = test.Snapshot(svg(plot.Points(xs, ys))) and test.Snapshot(svg(plot.Points(xs, ys, label = "p", color = "#aa0000", size = 10, shape = "square")))
+shapes = ["circle", "square", "triangle", "diamond", "cross", "plus"]
+isPointsShapes() = test.Snapshot(svg(plot.Of([plot.Points([k], [k], shape = shapes[k], label = shapes[k]) for k in 1..6])))
+isBarsSvg() = test.Snapshot(svg(plot.Bars(["a", "b", "c"], [3, -1, 2]))) and test.Snapshot(svg(plot.Bars(["a", "b"], [[1, 2], [3, 4]], label = ["x", "y"], color = ["#111111", "#222222"])))
+isBarsLongNames() = test.Snapshot(svg(plot.Bars(["a long name of a bar", "another long name", "and a third one", "a fourth", "a fifth long name", "a sixth long name"], [1, 2, 3, 4, 5, 6])))
+isHistogramSvg() = test.Snapshot(svg(plot.Histogram([1, 2, 2, 3, 3, 3, 4, 4, 5, 9]))) and test.Snapshot(svg(plot.Histogram([1, 2, 2, 3], bins = 2, label = "h", color = "#00aa00")))
+isHistogramEdges() = test.Snapshot(svg(plot.Histogram([0.5, 1.5, 1.5, 2.5, 7.0], bins = [0, 1, 2, 4])))
+isHeatmapSvg() = test.Snapshot(svg(plot.Heatmap(grid))) and test.Snapshot(svg(plot.Heatmap(grid, x = [10, 20, 30, 40], y = [0.1, 0.2, 0.4])))
+isHeatmapDiverging() = test.Snapshot(svg(plot.Heatmap(signed, colors = "diverging")))
+isDensitySvg() = test.Snapshot(svg(plot.Density([1, 2, 2, 3, 3, 3], [1, 1, 2, 2, 3, 3], bins = 3)))
+isAreaSvg() = test.Snapshot(svg(plot.Area(xs, ys - 1, ys + 1))) and test.Snapshot(svg(plot.Area(xs, ys - 1, ys + 1, label = "band", color = "#336699")))
+isOfOptions() = test.Snapshot(svg(plot.Of([plot.Line(xs, ys, label = "a"), plot.Points(xs, ys)], title = "A title", x = "x (m)", y = "y (s)", xlim = [0, 10], ylim = [-1, 6], legend = false, size = [500, 300])))
+isLogAxes() = test.Snapshot(svg(plot.Of([plot.Line(zs, zs)], xscale = "log", yscale = "log"))) and test.Snapshot(svg(plot.Of([plot.Line([1, 1000000], [3, 7])], xscale = "log")))
+isFactorLabels() = test.Snapshot(svg(plot.Line([0, 1, 2], [0.0, 2.5e7, 5e7]))) and test.Snapshot(svg(plot.Line([0, 1], [1e-7, 3e-7])))
+isGridSvg() = test.Snapshot(svg(plot.Grid([plot.Line(xs, ys), plot.Bars(["a"], [1]), plot.Points(xs, zs)], columns = 2)))
+isScene() = test.Snapshot(scene(plot.Of([plot.Line([1, 2], [3, 4], label = "l")], title = "t"), 320, 200))
+
+(* Properties of the ticks and the layout, on data of any scale and any size of graph. *)
+
+supers = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"]
+
+defn number(s)
+  (** The value a label writes: its true minus read as a minus, and 10ⁿ as 10 to the power n. *)
+  if text.StartsWith("10", s) and value.Len(s) > 2 and text.Slice(3, 3, s) in list.Append("⁻", supers)
+    e = text.Join("", [if c == "⁻" "-" else value.Text(list.IndexOf(c, supers) - 1) end for c in text.Chars(text.Slice(3, value.Len(s), s))])
+    return 10.0 ^ text.Number(e)
+  end
+  text.Number(text.Replace("−", "-", s))
+end
+
+defn plotArea(s)
+  f = role(s, "frame")[1]
+  {X: f.Xs[1] + 0.5, Y: f.Ys[1] + 0.5, W: f.Xs[2] - f.Xs[1] - 1.0, H: f.Ys[3] - f.Ys[1] - 1.0}
+end
+
+defn box(t)
+  (** The rectangle a text covers: its width along its line, and its line's height. *)
+  h = t.Size * 1.362
+  start = if t.Anchor == "start" 0.0 else if t.Anchor == "middle" t.Width / 2 else t.Width end
+  if t.Angle == 0
+    {X: t.X - start, Y: t.Y - t.Size * 1.069, W: t.Width, H: h}
+  else
+    {X: t.X - t.Size * 1.069, Y: t.Y - t.Width + start, W: h, H: t.Width}
+  end
+end
+
+defn ticksHold(s, horizontal)
+  (** The labels of an axis: 3 to 12, inside the plot, increasing, and apart. *)
+  a = plotArea(s)
+  ls = role(s, if horizontal "xlabel" else "ylabel" end)
+  n = value.Len(ls)
+  if n < 3 or n > 12
+    return false
+  end
+  for i in 1..n
+    p = if horizontal ls[i].X else ls[i].Y - ls[i].Size * 0.714 / 2 end
+    if p < (if horizontal a.X else a.Y end) - 1.0 or p > (if horizontal a.X + a.W else a.Y + a.H end) + 1.0
+      return false
+    end
+  end
+  for i in 1..n - 1
+    v = number(ls[i].Text)
+    w = number(ls[i + 1].Text)
+    if horizontal
+      if not (v < w and ls[i].X + ls[i].Width / 2 + 6.0 <= ls[i + 1].X - ls[i + 1].Width / 2 + 0.01)
+        return false
+      end
+    else if not (v < w and ls[i].Y - ls[i + 1].Y >= ls[i].Size * 1.362 + 1.99)
+      return false
+    end
+  end
+  true
+end
+
+defn insideScene(s)
+  (** Every text inside the scene, and every point of the data inside the plot. *)
+  a = plotArea(s)
+  for item in s.Items
+    if item.Kind == "text"
+      b = box(item)
+      if b.X < -0.01 or b.Y < -0.01 or b.X + b.W > s.Width + 0.01 or b.Y + b.H > s.Height + 0.01
+        return false
+      end
+    end
+    if item.Role == "data" and (item.Kind == "line" or item.Kind == "marks")
+      if list.Min(item.Xs) < a.X - 0.01 or list.Max(item.Xs) > a.X + a.W + 0.01 or list.Min(item.Ys) < a.Y - 0.01 or list.Max(item.Ys) > a.Y + a.H + 0.01
+        return false
+      end
+    end
+  end
+  true
+end
+
+defn data(c)
+  (** Points over a range of any scale: an offset and a spread, each from 10^-8 to 10^8. *)
+  scale = 10.0 ^ c.Scale
+  [c.Offset * 10.0 ^ c.Shift + scale * v for v in c.Values]
+end
+cases = gen.Of({Values: gen.List(gen.Float(-1, 1), min = 2, max = 40), Scale: gen.Int(-8, 8), Offset: gen.Float(-100, 100), Shift: gen.Int(-8, 8), W: gen.Int(300, 1400), H: gen.Int(220, 900)})
+
+defn layoutHolds(c)
+  vs = data(c)
+  if list.Max(vs) == list.Min(vs)
+    return true
+  end
+  s = scene(plot.Of([plot.Line(1..value.Len(vs), vs), plot.Points(vs, 1..value.Len(vs), label = "points")], title = "Title", x = "x", y = "y"), c.W, c.H)
+  ticksHold(s, true) and ticksHold(s, false) and insideScene(s)
+end
+isLayoutHolds() = test.ForAll(layoutHolds, cases, cases = 60)
+
+defn logHolds(c)
+  vs = math.Abs(data(c)) + 10.0 ^ c.Scale
+  s = scene(plot.Of([plot.Line(vs, vs)], xscale = "log", yscale = "log"), c.W, c.H)
+  ticksHold(s, true) and ticksHold(s, false) and insideScene(s)
+end
+isLogHolds() = test.ForAll(logHolds, cases, cases = 60)
+
+(* M4 against all the points: the line of each, rasterized by Bresenham's algorithm one pixel wide, lights the same
+   pixels. The axes are fixed by xlim and ylim, so that the test maps the points as std/plot does. *)
+
+defn bresenham(lit, x0, y0, x1, y1)
+  (** Lights the pixels of a segment between two pixels, by Bresenham's algorithm (1965), in all eight octants. *)
+  dx = math.Abs(x1 - x0)
+  dy = 0 - math.Abs(y1 - y0)
+  sx = if x0 < x1 1 else -1 end
+  sy = if y0 < y1 1 else -1 end
+  e = dx + dy
+  x = x0
+  y = y0
+  while true
+    lit[y, x] = 1.0
+    if x == x1 and y == y1
+      break
+    end
+    e2 = 2 * e
+    if e2 >= dy
+      e += dy
+      x += sx
+    end
+    if e2 <= dx
+      e += dx
+      y += sy
+    end
+  end
+  lit
+end
+
+defn raster(lines, w, h)
+  lit = matrix.Zeros(h, w)
+  for l in lines
+    for i in 1..value.Len(l.Xs) - 1
+      lit = bresenham(lit, math.Floor(l.Xs[i]) + 1, math.Floor(l.Ys[i]) + 1, math.Floor(l.Xs[i + 1]) + 1, math.Floor(l.Ys[i + 1]) + 1)
+    end
+  end
+  lit
+end
+
+defn allPoints(t, v, a)
+  (** The runs of the line in pixels as std/plot maps them, every point kept. *)
+  sx = a.W / (10.0 - 0.0)
+  sy = 0.0 - a.H / (2.0 - -2.0)
+  out = []
+  run = {Xs: [], Ys: []}
+  for i in 1..value.Len(t)
+    if v[i] - v[i] == 0.0
+      run.Xs = list.Append(a.X + (t[i] - 0.0) * sx, run.Xs)
+      run.Ys = list.Append(a.Y + a.H + (v[i] - -2.0) * sy, run.Ys)
+    else
+      out = list.Append(run, out)
+      run = {Xs: [], Ys: []}
+    end
+  end
+  list.Append(run, out)
+end
+
+defn isM4SamePixels()
+  n = 60000
+  t = [10.0 * (i - 1) / (n - 1) for i in 1..n]
+  waves = [
+    [math.Sin(x * 7.0) + 0.3 * math.Sin(x * 91.0) for x in t],
+    [if math.Mod(i, 5000) < 40 math.Nan else math.Sin(t[i] * 3.0) * math.Cos(t[i] * 50.0) end for i in 1..n],
+    [if math.Mod(i, 997) == 0 1.9 else 0.01 * math.Sin(i * 1.0) end for i in 1..n],
+    [math.Floor(x * 0.4) * 0.5 - 1.5 for x in t]
+  ]
+  for v in waves
+    s = scene(plot.Of([plot.Line(t, v)], xlim = [0, 10], ylim = [-2, 2]), 640, 400)
+    kept = role(s, "data")
+    a = plotArea(s)
+    count = list.Sum([value.Len(l.Xs) for l in kept])
+    if count > 4 * 2 * a.W or not value.Equal(raster(kept, 640, 400), raster(allPoints(t, v, a), 640, 400))
+      return false
+    end
+  end
+  true
+end
+
+(* Every error, each with its message. *)
+
+errors = [
+  [plot.Line([1, 2, 3], [1, 2]), "plot.Line: x has 3 values and y has 2; give both the same number."],
+  [plot.Line("a", [1]), "plot.Line: x must be a list of numbers, not \"a\"."],
+  [plot.Line([1, "b"], [1, 2]), "plot.Line: x[2] is \"b\", not a number."],
+  [plot.Line([1, 2; 3, 4], [1, 2, 3, 4]), "plot.Line: x must be a list of numbers, not an array of size [2, 2]."],
+  [plot.Line([math.Nan], [1]), "plot.Line: no point has a finite x and y."],
+  [plot.Line([1], [1], width = 0), "plot.Line: width is 0; give the width of the line in pixels, above 0."],
+  [plot.Line([1], [1], dash = "long"), "plot.Line: dash is \"long\"; it is missing for a solid line, or \"dashed\", \"dotted\" or \"dashdot\"."],
+  [plot.Line([1], [1], color = "red"), "plot.Line: color is \"red\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
+  [plot.Line([1], [1], label = 3), "plot.Line: label is 3; give a text."],
+  [plot.Points(1..200001, 1..200001), "plot.Points: 200001 points are too many to draw one by one, past 200,000; plot.Density counts them per cell."],
+  [plot.Points([1], [1], shape = "star"), "plot.Points: shape is \"star\"; it is \"circle\", \"square\", \"triangle\", \"diamond\", \"cross\" or \"plus\"."],
+  [plot.Points([1], [1], size = -1), "plot.Points: size is -1; give the width of a marker in pixels, above 0."],
+  [plot.Bars([], [1]), "plot.Bars: names must be a list of the names of the bars, not []."],
+  [plot.Bars(["a"], []), "plot.Bars: heights must be a list of numbers, or a list of lists for series side by side, not []."],
+  [plot.Bars(["a", "b"], [1]), "plot.Bars: there are 2 names and 1 heights; give one height for each name."],
+  [plot.Bars(["a"], [[1], [2]], label = ["x"]), "plot.Bars: label is [\"x\"]; give one text for each of the 2 series."],
+  [plot.Bars(["a"], [[1], [2]], color = "#000000"), "plot.Bars: color is \"#000000\"; give one color for each of the 2 series."],
+  [plot.Bars(["a"], [[1], [2]], label = ["x", 2]), "plot.Bars: label is 2; give a text."],
+  [plot.Bars(["a"], [[1], [2]], color = ["#000000", "blue"]), "plot.Bars: color is \"blue\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
+  [plot.Histogram([math.Nan]), "plot.Histogram: no value is finite."],
+  [plot.Histogram([1], bins = 0), "plot.Histogram: bins is 0; give a count of 1 or more, or the edges."],
+  [plot.Histogram([1], bins = [1]), "plot.Histogram: bins has 1 edges; give at least 2, increasing."],
+  [plot.Histogram([1], bins = [2, 1]), "plot.Histogram: bins[1] is 2.0 and bins[2] is 1.0; give finite edges, increasing."],
+  [plot.Heatmap(1), "plot.Heatmap: it needs a matrix of numbers, not 1."],
+  [plot.Heatmap([1, "a"; 2, 3]), "plot.Heatmap: the value at [1, 2] is \"a\", not a number."],
+  [plot.Heatmap([1, 2], colors = "jet"), "plot.Heatmap: colors is \"jet\"; it is \"viridis\" or \"diverging\"."],
+  [plot.Heatmap([1, 2], x = [1]), "plot.Heatmap: x has 1 values for 2 columns; give one for each."],
+  [plot.Heatmap([1, 2], x = [2, 1]), "plot.Heatmap: x[2] is 1.0; give finite values, increasing."],
+  [plot.Heatmap([math.Nan, math.Nan]), "plot.Heatmap: no value is finite."],
+  [plot.Density([1], [1, 2]), "plot.Density: x has 1 values and y has 2; give both the same number."],
+  [plot.Density([1], [1], bins = -3), "plot.Density: bins is -3; give a count of 1 or more."],
+  [plot.Density([math.Nan], [1]), "plot.Density: no point has a finite x and y."],
+  [plot.Area([1, 2], [1], [2, 3]), "plot.Area: x has 2 values, low 1 and high 2; give all three the same number."],
+  [plot.Area([1], [math.Nan], [1]), "plot.Area: no point has a finite x, low and high."],
+  [plot.Of([]), "plot.Of needs at least one layer."],
+  [plot.Of([1]), "plot.Of: layer 1 is 1, not a graph; give graphs, as plot.Line makes."],
+  [plot.Of([plot.Line([1], [1]), plot.Points([1], [1], shape = "x")]), "plot.Points (layer 2): shape is \"x\"; it is \"circle\", \"square\", \"triangle\", \"diamond\", \"cross\" or \"plus\"."],
+  [plot.Of([plot.Line([1], [1])], xscale = "ln"), "plot.Line: xscale is \"ln\"; it is \"linear\" or \"log\"."],
+  [plot.Of([plot.Line([1, 2], [0, 1], label = "a")], yscale = "log"), "plot.Line \"a\": a log y axis needs values above 0, and y[1] is 0.0."],
+  [plot.Of([plot.Bars(["a"], [1])], yscale = "log"), "plot.Bars needs a linear y axis: its bars start at 0."],
+  [plot.Of([plot.Line([1], [1])], xlim = [2, 1]), "plot.Line: xlim is [2, 1]; give [low, high], finite, low below high."],
+  [plot.Of([plot.Line([1], [1])], xscale = "log", xlim = [0, 1]), "plot.Line: a log x axis needs xlim above 0, not [0, 1]."],
+  [plot.Of([plot.Line([1], [1])], title = 1), "plot.Line: title is 1; give a text."],
+  [plot.Of([plot.Line([1], [1])], legend = "no"), "plot.Line: legend is \"no\"; give true or false."],
+  [plot.Of([plot.Line([1], [1])], size = [10]), "plot.Of: size is [10]; give [width, height] in pixels, at least [100, 80]."],
+  [plot.Of([plot.Line([1], [1])], size = [99, 400]), "plot.Of: size is [99, 400]; give [width, height] in pixels, at least [100, 80]."],
+  [plot.Of([plot.Line([1], [1], label = "a")], size = [120, 90], title = "t", x = "x"), "plot.Line \"a\": 120 by 90 pixels leave no room for the plot; give a larger size."],
+  [plot.Of([plot.Bars(["a"], [1]), plot.Bars(["a"], [2])]), "plot.Of: a graph holds one plot.Bars; give its series together, as plot.Bars(names, [h1, h2])."],
+  [plot.Grid([]), "plot.Grid needs a list of graphs, not []."],
+  [plot.Grid([plot.Line([1], [1])], columns = 0), "plot.Grid: columns is 0; give a count of 1 or more."],
+  [plot.Grid([plot.Line([1], [1]), 2]), "plot.Grid: graph 2 is 2; a grid holds graphs, as plot.Line or plot.Of makes, not grids."],
+  [1, "plot.Svg needs a graph, as plot.Line or plot.Of makes, not 1."]
+]
+isEachError() = list.All([message(e[1]) == e[2] for e in errors])
+isErrorKind() = value.Equal(result.MapErr(e -> e.Kind, plot.Svg(plot.Line([], []))), result.Err("plot"))
+message0(r) = match r
+  result.Err(e) -> e.Message
+  else -> "no error"
+end
+isSceneErrors() = message0(plot.Scene(1, 640, 400)) == "plot.Scene needs a graph, as plot.Line or plot.Of makes, not 1." and message0(plot.Scene(plot.Line([1], [1]), 50, 400)) == "plot.Scene needs at least 100 by 80 pixels, not 50 by 400."
+isSaveNeedsSvg() = message0(plot.Save(plot.Line([1], [1]), "a.png")) == "plot.Save writes SVG, to a name that ends in .svg, not \"a.png\"."
+isDropped() = scene(plot.Points([1, math.Nan, 3], [1, 2, missing]), 640, 400).Dropped == 2

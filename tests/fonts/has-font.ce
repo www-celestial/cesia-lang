@@ -1,0 +1,6 @@
+(** Stops when SDL3_ttf or the font Noto Sans Medium is missing: tools/test.sh then skips this folder. *)
+use std/bug
+use std/c
+use std/result
+use std/sys
+bug.Assert(result.IsOk(c.Open("SDL3_ttf", version = 0)) and sys.Exists("/usr/share/fonts/noto/NotoSans-Medium.ttf"), "No SDL3_ttf or no Noto Sans Medium.")

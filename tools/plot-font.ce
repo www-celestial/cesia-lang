@@ -1,6 +1,7 @@
 (** The advance widths that std/plot measures its texts with, read from the font that Cemacs draws them with, Noto Sans
     Medium (SIL Open Font License 1.1), version 2.015: the tables cmap (format 4 or 12), hmtx and head of the TrueType
-    file, as the OpenType specification lays them out. It prints the lines of src/std/plot.ce between "(* Widths: from
+    file, as the OpenType specification lays them out. The soft hyphen, U+00AD, counts 0: shaping hides it, in HarfBuzz as
+    in browsers. It prints the lines of src/std/plot.ce between "(* Widths: from
     here *)" and "(* Widths: to here *)", in units of the font's em, and with --check it says whether they are the lines
     there:
 
@@ -86,7 +87,10 @@ defn cmapOf(f)
 end
 
 defn advance(f, code)
-  (** The advance width of a code point in font units, 0 when the font has no glyph for it. *)
+  (** The advance width of a code point in font units, 0 when the font has no glyph for it, or for the soft hyphen. *)
+  if code == 173
+    return 0
+  end
   sub = cmapOf(f)
   g = if u16(f, sub) == 12 glyph12(f, sub, code) else glyph4(f, sub, code) end
   if g == 0
