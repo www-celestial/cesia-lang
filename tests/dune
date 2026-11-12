@@ -27,3 +27,8 @@
  (name jit_test)
  (modules jit_test)
  (libraries cesia cesia_sys cesia_jit))
+
+(test
+ (name cache_test)
+ (modules cache_test)
+ (libraries cesia cesia_sys unix))

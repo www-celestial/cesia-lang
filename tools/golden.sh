@@ -8,7 +8,7 @@
 # $no_spec on. A name.slow file marks a test slow by nature (a compiler, git, every core): --quick leaves those out, for the
 # change loop, and --slow runs only them.
 # The tests run side by side, the slowest of the last run first, so that none starts last and keeps the others waiting.
-# GOLDEN_TRACE=1 names each test as it starts: a test that hangs would otherwise leave no trace.
+# GOLDEN_TRACE=1 names each test as it starts: a test that hangs would otherwise leave no trace. GOLDEN_CACHE: below.
 set -u
 cd "$(dirname "$0")/.."
 root=$PWD
@@ -29,6 +29,9 @@ done
 times="$root/_build/golden-times"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+# Cesia keeps the packages it loads in the folder of caches: the tests have their own, empty at the start, unless
+# GOLDEN_CACHE names one, as to run them again with every package already there.
+export XDG_CACHE_HOME="${GOLDEN_CACHE:-$tmp/cache}"
 
 # The time in milliseconds into $ms, from bash itself when it can tell it, without a process.
 clock() {

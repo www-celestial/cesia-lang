@@ -39,6 +39,10 @@ Runs a program. The words after the file are its arguments, in [sys.Args].
 `cesia run .` runs all the files of the current folder as one program. `cesia run --repl` without a file opens the prompt
 on an empty program. Without `--limit memory`, the limit is 80% of the machine's memory.
 
+Each package of the program, once loaded, is kept in `~/.cache/cesia/load`, or `$XDG_CACHE_HOME/cesia/load`, so that the
+next run doesn't read it again while its files are the same: the output stays the same. See
+[The cache of loaded packages](internals.md#the-cache-of-loaded-packages).
+
 ## cesia test
 
 ```bash

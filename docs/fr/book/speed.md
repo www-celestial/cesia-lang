@@ -126,6 +126,13 @@ compilateur, 19 723 endroits de son code que le garbage collector d'OCaml (la pa
 n'utilise) doit connaître, contre 322 dans le programme d'OCaml lui-même, et le système doit corriger les adresses de
 ses données à chaque démarrage, comme le montre [Comment Cesia fonctionne](internals.md#le-démarrage).
 
+Un programme qui utilise des packages écrits en Cesia les lit à son premier run et les garde dans le
+[cache des packages chargés](internals.md#le-cache-des-packages-chargés) : à partir du run suivant, un package dont les
+fichiers sont les mêmes ne repasse ni par le lexer, ni par le parser, ni par le resolver. Mesuré le 2026-11-12, 21 runs
+de chacun, alternés, médianes : `use std/plot` démarre en 5,69 ms contre 9,66 avant, et Cemacs arrive à sa première
+image en 36,97 ms contre 52,16. Le premier run, dont les entrées sont écrites une fois qu'il a fini, prend à peu près le
+temps qu'il prenait avant : 9,61 et 54,26 ms.
+
 ### Le calcul
 
 En millisecondes, la médiane et l'intervalle à 95 % de 11 runs :

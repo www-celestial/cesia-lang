@@ -10,7 +10,7 @@ The environment variables that Cesia itself reads. A program reads others with [
 | `CESIA_JIT_SHOW` | when it is set, prints why each function did or didn't become native code |
 | `CESIA_STD` | a folder that holds the sources of `std/` to use instead of those in the binary: for work on Cesia itself |
 | `CESIA_RELEASES` | where `cesia upgrade` looks for releases: `file:///folder` reads `folder/latest.json` instead of GitHub, or `folder/nightly.json` for `cesia upgrade --nightly`: for a mirror |
-| `XDG_CACHE_HOME` | the folder of caches, `~/.cache` without it: packages fetched by `cesia pkg`, and the runs of the book's blocks |
+| `XDG_CACHE_HOME` | the folder of caches, `~/.cache` without it: packages fetched by `cesia pkg`, the runs of the book's blocks, and the [cache of loaded packages](internals.md#the-cache-of-loaded-packages) in `cesia/load` |
 | `HOME` | the home folder, for the default of `XDG_CACHE_HOME` |
 | `CESIA_WORKER` | set by the supervisor of `cesia run --workers` for each worker it starts: the path of its socket, the port and the host. A worker reads it once and empties it, so the programs it starts don't take it. Never set it by hand |
 

@@ -412,6 +412,8 @@ let jit_mode () =
 
 let () =
   try
+    Cache.store := Some (Cesia_sys.Entries.store Build.id);
+    at_exit (fun () -> if Cache.pending () then Cesia_sys.Entries.after Cache.save);
     jit_mode ();
     match Array.to_list Sys.argv with
     | _ :: "version" :: _ -> print_endline Version.text

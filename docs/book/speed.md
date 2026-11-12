@@ -114,6 +114,12 @@ standard library and its compiler in one binary, 19,723 places in its code that 
 in OCaml's own program, and the system must fix up the addresses of its data at each start, as
 [How Cesia works](internals.md#start-up) shows.
 
+A program that uses packages written in Cesia reads them at its first run and keeps them in the
+[cache of loaded packages](internals.md#the-cache-of-loaded-packages): from the next run on, a package whose files are the
+same is neither lexed, parsed nor resolved again. Measured on 2026-11-12, 21 runs of each, alternated, medians: `use
+std/plot` starts in 5.69 ms against 9.66 before, and Cemacs reaches its first frame in 36.97 ms against 52.16. The first
+run, whose entries are written once it has ended, takes about the time it took before: 9.61 and 54.26 ms.
+
 ### Computing
 
 Milliseconds, median and 95% interval of 11 runs:
