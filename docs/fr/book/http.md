@@ -346,9 +346,9 @@ navigateur les jette.
 Seulement `ws://` pour l'instant : `wss://`, WebSocket sur TLS, donne un `Err` qui le dit. Des messages texte seulement :
 un message binaire reçu arrive comme un texte, puisqu'un texte de Cesia est fait d'octets, mais on ne peut pas encore en
 envoyer. [websocket.Dial] demande la permission `net` de l'hôte, comme [http.Fetch] : `net=127.0.0.1:9222`, ou
-`net=own` pour un serveur du programme lui-même. À chaque push, la CI joue contre le client les cas
-d'Autobahn|Testsuite, la suite de référence de la RFC 6455 : tous, sauf ceux des messages binaires à envoyer et de la
-compression (RFC 7692), qu'il ne fait pas.
+`net=own` pour un serveur du programme lui-même. Chaque fois que le client change, et une fois par semaine, la CI joue
+contre le client les cas d'Autobahn|Testsuite, la suite de référence de la RFC 6455 : tous, sauf ceux des messages
+binaires à envoyer et de la compression (RFC 7692), qu'il ne fait pas.
 
 Mesuré sur une machine, face à un même serveur d'écho écrit en Go avec gorilla/websocket 1.5.3, en
 [médiane](glossary.md#median) de 11 essais : une connexion s'ouvre en 0,54 ms, un message de 100 octets fait l'aller et
@@ -356,6 +356,186 @@ le retour en 34 µs, et un de 1,4 Mo, la capture d'écran d'une page en Base64, 
 gorilla/websocket, est plus rapide : 0,47 ms, 23 µs et 3,3 ms. La WebSocket de Node 26 prend 55 µs et 6,5 ms, et 56 ms
 pour sa première connexion, parce qu'elle charge alors son client. Un programme ne lit le client que s'il le nomme : un
 serveur de [std/http] démarre comme avant.
+
+## Live screens : std/live
+
+Un *live screen*, un écran en direct, est une page dont les données changent d'elles-mêmes, à mesure que d'autres les
+changent, sans que la page redemande rien : les factures impayées d'un client, un tableau de bord, un chat. Sans lui, la
+façon habituelle est le *polling* (redemander sans cesse) : la page redemande toute la liste toutes les quelques
+secondes, si bien qu'un changement apparaît jusqu'à autant de secondes plus tard, et le serveur répond de nouveau à
+chaque page même quand rien n'a changé. [std/live] le fait plutôt avec une [WebSocket](#websocket) par page, et dans les
+deux sens :
+
+- l'application donne à chaque page ses *shows* (ce que la page montre) : un nom, et un channel de [std/fiber] dont les
+  messages sont un résultat puis ses changements. La page reçoit le résultat, puis chaque changement, poussé vers elle
+  dès qu'il arrive.
+- la page demande à l'application des *actions* : un nom et les valeurs de la page, que fait tourner une fonction de
+  l'application, dont la réponse revient à la page. La page montre aussitôt l'effet de sa propre action, avant la
+  réponse, et la réponse le confirme ou l'annule : une [optimistic update](glossary.md#optimistic-update), une mise à
+  jour optimiste.
+
+Dans les deux exemples ci-dessous, l'application garde ses données derrière des fonctions à elle : `clientOf(r)`, le
+client d'où vient une requête ; `unpaid(c)`, les factures impayées d'un client ; `addInvoice(c, a)`, qui en ajoute une ;
+et, pour le live screen, `watchUnpaid(c, ended)`, un channel du résultat puis de ses changements, jusqu'à ce que `ended`
+se ferme. Avec Cepheus, la dernière est `cepheus.Watch(1, unpaidOf(c), db, until = ended)?.Changes` : un watch de
+Cepheus (une requête qu'il tient à jour) donne exactement ces messages.
+
+```cesia norun hide=code
+clientOf(r) = 1
+unpaid(c) = []
+addInvoice(c, a) = result.Ok(1)
+watchUnpaid(c, ended) = fiber.Channel()
+```
+
+Avant, une page qui fait du polling :
+
+```cesia norun
+app = http.App()
+  then http.Get("/unpaid", r -> http.Json(unpaid(clientOf(r))))
+  then http.Post("/invoice", r -> http.Json(addInvoice(clientOf(r), http.BodyJson(r)?)))
+```
+```js
+setInterval(async () => draw(await (await fetch("/unpaid")).json()), 2000)   // all again, every 2 s
+```
+
+Après, un live screen : [live.Route] sert les écrans d'un chemin, et le côté de la page, `live.js`, au chemin suivi de
+`/live.js` :
+
+```cesia norun
+use std/live
+screen(s) = [live.Show("unpaid", watchUnpaid(clientOf(s.Request), s.Ended))]
+app = http.App() then live.Route("/live", screen, actions = {AddInvoice: (s, a) -> addInvoice(clientOf(s.Request), a)})
+```
+```js
+import { connect } from "/live/live.js"
+const live = await connect("/live")
+live.show("unpaid", rows => draw(rows))          // at once, then at each change
+add.onclick = () => live.act("AddInvoice", {Total: 90},
+  {unpaid: rows => [...rows, {Invoice: null, Total: 90}]})   // drawn at once; the reply confirms or undoes it
+```
+
+`a then live.Route(pattern, screen)` est `live.Route(pattern, screen, a)`, comme pour [http.Get] : `then` passe son côté
+gauche comme dernier argument.
+
+### Un écran
+
+`screen(s)` tourne quand une page se connecte. `s` est `{Request, Ended}` : la requête HTTP de la page, avec ses headers
+et ses cookies, pour savoir qui elle est, comme le fait une route ; et un channel qui se ferme quand la page s'en va. La
+fonction donne une liste de [live.Show], chacun un nom et un channel, ou un `Err`, que la page reçoit comme une erreur.
+Chaque message du channel d'un show est d'abord le résultat, `{Group, Rows}` : ses lignes au groupe `Group`, un nombre
+qui grandit à chaque changement ; puis chaque changement, `{Group, Added, Removed}` : les lignes arrivées et les lignes
+parties avec ce groupe ; ou de nouveau le résultat entier. Un watch de Cepheus donne exactement ces messages, et
+`until = s.Ended` le termine avec la page. Un channel à vous marche aussi :
+
+```cesia allow=net=own
+use std/live
+use std/websocket
+use std/json
+use std/net
+use std/fiber
+defn counter(s)
+  ch = fiber.Channel()
+  fiber.Send({Group: 0, Rows: [{N: 0}]}, ch)
+  fiber.Send({Group: 1, Added: [{N: 1}], Removed: [{N: 0}]}, ch)
+  [live.Show("count", ch)]
+end
+listener = net.Listen(0).Value
+fiber.Spawn(() -> http.Serve(http.App() then live.Route("/live", counter), listener = listener))
+page = websocket.Dial("ws://127.0.0.1:$(net.Port(listener))/live").Value
+websocket.Send(json.Text({Hello: 1}), page) -->
+answer = json.Parse(fiber.Receive(page.Messages, timeout = 1).Value).Value[1]
+[answer.Show, answer.Group, answer.Rows] -->
+change = json.Parse(fiber.Receive(page.Messages, timeout = 1).Value).Value[1]
+[change.Group, change.Added, change.Removed] -->
+websocket.Close(page) -->
+```
+
+Dans un navigateur, la page est `live.js` ; ici, c'est le client de [std/websocket], qui montre ce qui passe sur la
+connexion : la page dit `{"Hello": 1}`, puis chaque frame de l'application est une liste JSON de messages, chacun avec
+`At`, l'heure de l'horloge de l'application, en microsecondes, au moment où elle a lu le message de son show.
+
+Chaque écran a une [fiber](fibers.md) à lui, qui lit ses shows et n'écrit qu'à sa page : une page qui ne lit rien ne
+retient aucune autre. Tant que sa page est lente, un écran attend sur sa connexion, et ne lit plus rien ; la source d'un
+show, elle, n'attend donc jamais l'écran : elle donne à chaque écran un channel à lui, et quand l'un d'eux en contient
+trop, elle jette ce qu'il contient et renvoie le résultat entier. Un watch de Cepheus le fait de lui-même, avec sa
+`size` (64 messages sauf si on dit autrement) : une page trop en retard reçoit de nouveau le résultat entier plutôt que
+chaque changement qu'elle a manqué, et la mémoire d'un écran ne grandit jamais avec une page lente.
+
+### Les actions
+
+`actions` associe des noms à des fonctions `(s, args)`, `args` étant les valeurs que la page a envoyées. La valeur d'une
+action revient à la page comme sa réponse : la valeur d'un `Ok`, ou toute valeur qui n'est pas un `Err`, confirme
+l'action, et un `Err` l'annule. Les actions d'une page tournent l'une après l'autre, dans l'ordre où elle les a
+demandées, chacune dans une fiber à elle : une panic dans l'une est écrite dans [std/log], et la page apprend seulement
+que l'action a échoué. Une action que l'écran n'a pas, une page qui envoie autre chose que ce qu'envoie `live.js`, sont
+refusées. Les valeurs qu'envoie une page viennent de la page, et rien ne garantit ce qu'elles contiennent : une action
+les vérifie, comme une route vérifie un formulaire.
+
+Sur la page, `live.act(name, args, effects)` envoie l'action et donne une `Promise` (la promesse d'une valeur à venir)
+de sa réponse. `effects` associe des noms de shows à des fonctions qui donnent les lignes avec l'effet de l'action : la
+page dessine chaque show comme les lignes de l'application, avec par-dessus l'effet de chaque action encore sans
+réponse, dans l'ordre où elles ont été demandées, et de nouveau à chaque changement. C'est ainsi que les jeux montrent
+aussitôt les coups d'un joueur, et Replicache les écritures d'une page : la *client-side prediction* (la prédiction du
+côté du client), puis la *reconciliation* (la réconciliation) quand l'état du serveur arrive. Une réponse retire
+l'effet : aussitôt sur un `Err` ; sur un `Ok`, de chaque show qui a reçu un message depuis que l'action a été demandée,
+et des autres à leur message suivant, au plus 100 ms plus tard, pour que la ligne de l'action ne soit dessinée ni deux
+fois ni pas du tout, que son changement ou sa réponse arrive en premier. Pendant qu'une action tourne, l'écran retient
+les changements de ses shows, au plus 0,1 s, et les envoie avec la réponse dans une seule frame. Une page dessine chaque
+show au plus une fois par image de l'affichage, à `requestAnimationFrame`.
+
+### Le côté de la page
+
+`live.js` est servi au chemin de la route suivi de `/live.js` : un module de 211 lignes, sans rien à installer :
+
+| | |
+|---|---|
+| `connect(url)` | ouvre l'écran : une `Promise` de l'écran, ou un refus quand aucun écran ne s'ouvre à `url` |
+| `live.show(name, draw)` | `draw(rows)` avec les lignes d'un show, aussitôt si elles sont là, puis à chaque changement |
+| `live.act(name, args, effects)` | une action : une `Promise` de sa réponse, ses effets dessinés aussitôt |
+| `live.onError(f)` | `f(error)` pour une erreur de l'écran, comme un `Err` de `screen` ou un show qui a pris fin |
+| `live.close()` | ferme l'écran |
+
+Quand la connexion se coupe, la page se reconnecte d'elle-même, après 0,25 s, puis deux fois plus longtemps à chaque
+fois, jusqu'à 8 s ; le nouvel écran commence par les résultats. Une action demandée avant la coupure et encore sans
+réponse reçoit une erreur qui le dit : elle a pu tourner ou non, et les nouveaux résultats montrent lequel des deux.
+
+Une page d'une autre origine que celle de l'application, d'après son header `Origin`, reçoit un `403` : aucun autre site
+n'ouvre un écran avec les cookies de ses visiteurs, ce qu'une WebSocket permettrait sinon, puisqu'un navigateur ne la
+tient pas à la [same-origin rule](glossary.md#same-origin-check) (la règle de la même origine) comme il y tient `fetch`
+(RFC 6455 §10.2).
+
+### Le temps des changements d'une page
+
+`live.js` mesure combien de temps chaque changement met pour aller de l'application à la page : de `At` à son arrivée,
+avec l'écart entre les deux horloges tiré des pings de la page (de petits messages qui font l'aller-retour), toutes les
+30 s, celui de l'aller-retour le plus court, comme le fait NTP, le protocole qui met à l'heure les horloges d'Internet.
+Chaque minute, une page envoie son p50 et son p99, les temps que la moitié et 99 sur 100 de ses changements n'ont pas
+dépassés, et l'application les garde dans [std/metrics] en deux histogrammes, `live_delay_p50_seconds` et
+`live_delay_p99_seconds`, qu'une route montre à Prometheus avec `metrics.Text()`. Le nombre d'écrans ouverts est
+`live_screens_total`.
+
+### Ce que ça coûte
+
+Mesuré sur une machine de 8 cœurs, l'application sur 4 d'entre eux et les pages sur les 4 autres (un client de charge
+qui ouvre les écrans, puis publie à un rythme régulier des changements d'une ligne de 48 octets, chacun chronométré de
+sa publication à son arrivée sur chaque page), 21 runs alternés avec un hub (un point central qui relaie chaque message
+à tous) écrit à la main sur [std/websocket] dans la version d'avant : une seule fiber qui envoie le texte de chaque
+changement à toutes les connexions, sans renvoyer le résultat entier à une page lente. La médiane des p50 des runs, avec
+son intervalle à 95 % :
+
+| écrans | changements par seconde | hub écrit à la main | std/live | p99 de std/live |
+|---|---|---|---|---|
+| 1 | 50 | 0,44 ms (0,43 à 0,44) | 0,58 ms (0,56 à 0,60) | 0,74 ms |
+| 100 | 50 | 1,25 ms (1,17 à 1,27) | 2,67 ms (2,40 à 2,84) | 7,5 ms |
+| 1 000 | 50 | 5,7 ms (5,6 à 5,9) | 12,3 ms (11,8 à 13,3) | 40 ms |
+| 10 000 | 5 | 42 ms (42 à 44) | 294 ms (285 à 318) | 612 ms |
+
+Un écran de std/live prend environ deux fois le temps du hub. Il en fait plus : chaque écran est une fiber à lui qui
+écrit lui-même les messages de sa page, si bien qu'une page qui ne lit rien ne retient aucune autre, là où le hub
+l'attend. À 10 000 écrans et 50 000 changements par seconde à envoyer, std/live en envoie 47 600 par seconde, le hub
+51 200 : std/live prend du retard, et ses temps grandissent pendant le run. Un écran ouvert prend 29,2 KB de mémoire, la
+connexion du hub 23,2 KB. Un programme qui n'utilise pas [std/live] démarre comme avant : 2,92 ms (2,88 à 2,97) contre
+2,90 (2,85 à 2,94) pour `io.Print(1)`, 21 runs alternés.
 
 ## TCP : std/net
 

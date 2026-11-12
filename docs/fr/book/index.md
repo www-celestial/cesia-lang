@@ -49,7 +49,8 @@ construction : le livre ne peut donc pas s'écarter du langage.
 16. [Graphiques](graphs.md) : courbes, points, barres, histogrammes, cartes de chaleur et densités comme
     valeurs, dessinés en SVG, et la méthode que suit chaque étape.
 17. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive.
-18. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, et le client.
+18. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, les live screens (des pages
+    qui changent d'elles-mêmes), et le client.
 19. [Cryptographie](crypto.md) : les hashes, les mots de passe, le chiffrement avec une clé ou pour quelqu'un, les
     signatures, grâce à libsodium.
 20. [Fibers](fibers.md) : plusieurs choses à la fois, `Spawn`, `Wait`, `Pmap` et les channels.

@@ -534,6 +534,13 @@ tient 1 000 connexions, chacune avec une requête en attente, et répond à 36 0
 $1\,000 / 36\,000$ s, 28 ms, en moyenne, quelle que soit la façon dont il les ordonne. Voir
 [Comment Cesia fonctionne](internals.md#ce-quil-sert).
 
+## Live screen
+
+Un écran en direct : une page dont les données changent d'elles-mêmes, poussées vers elle par le serveur à mesure que
+d'autres les changent, au lieu que la page redemande tout toutes les quelques secondes, ce qu'on appelle le *polling*.
+En Cesia, [live.Route] sert de telles pages sur une WebSocket, chacune avec ses shows (ce qu'elle montre) et ses
+actions : voir [HTTP](http.md#live-screens--stdlive).
+
 ## Lock file
 
 Un fichier qui garde la version exacte et l'empreinte de chaque dépendance, pour que toutes les machines installent le
@@ -613,6 +620,15 @@ Une valeur qui veut dire « pas de valeur » : `null`, `nil` ou `None` dans d'au
 Faire passer une boucle qui tourne déjà de l'interpréteur au code machine, au milieu de ses tours, en emportant ses
 variables. Le JIT de Cesia le fait à un checkpoint dans une boucle hot : voir
 [Comment Cesia fonctionne](internals.md#paris-guards-et-bails).
+
+## Optimistic update
+
+Une mise à jour optimiste : montrer tout de suite l'effet de sa propre action, avant que le serveur ait répondu, puis
+s'en tenir à la réponse du serveur : son changement confirme l'effet, son erreur l'annule. Les jeux l'appellent
+*client-side prediction* (la prédiction du côté du client) et *reconciliation* (la réconciliation) : chaque nouvel état
+du serveur est dessiné avec, rejouées par-dessus, les actions auxquelles il n'a pas encore répondu, un *rebase* (comme
+des changements remis sur une base nouvelle). En Cesia, une page de [std/live] donne à `live.act` l'effet d'une action
+sur chaque show : voir [HTTP](http.md#les-actions).
 
 ## Optional typing
 
@@ -809,6 +825,13 @@ Une règle qui envoie les requêtes d'une méthode et d'un chemin à un handler.
 Des octets au hasard gardés avec le hash d'un mot de passe, pour que deux mots de passe égaux donnent deux hashes
 différents et qu'une table de hashes calculée à l'avance ne serve à rien. [crypto.HashPassword] en ajoute un : voir
 [Cryptographie](crypto.md#les-mots-de-passe).
+
+## Same-origin check
+
+La vérification, par un serveur, qu'une requête vient d'une page de son propre site, d'après le header `Origin` que le
+navigateur envoie : sans elle, une page venue d'ailleurs pourrait se servir des cookies du visiteur. Un navigateur
+applique lui-même cette règle à `fetch`, mais pas à une WebSocket : c'est donc au serveur de la vérifier (RFC 6455
+§10.2). [live.Route] répond `403` à une page d'une autre origine : voir [HTTP](http.md#le-côté-de-la-page).
 
 ## Sandbox
 
