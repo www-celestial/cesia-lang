@@ -181,6 +181,17 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   [std/http].
 - I. Fette, A. Melnikov. "The WebSocket Protocol", RFC 6455, 2011. <https://www.rfc-editor.org/rfc/rfc6455>. Le serveur
   et le client de [std/websocket].
+- Y. Bernier. "Latency Compensating Methods in Client/Server In-game Protocol Design and Optimization". Valve, GDC 2001.
+  <https://www.gamedevs.org/uploads/latency-compensation-in-client-server-protocols.pdf> ; G. Gambetta. "Fast-Paced
+  Multiplayer (Part II): Client-Side Prediction and Server Reconciliation".
+  <https://www.gabrielgambetta.com/client-side-prediction-server-reconciliation.html> ; Replicache, "How it works".
+  <https://doc.replicache.dev/concepts/how-it-works>. Les coups d'un joueur dessinés aussitôt, puis l'état du serveur,
+  avec par-dessus les coups auxquels il n'a pas encore répondu, rejoués : les effets des actions d'une page de
+  [std/live].
+- D. L. Mills. "Internet Time Synchronization: The Network Time Protocol". *IEEE Transactions on Communications* 39(10),
+  1991, 1482–1493. <https://doi.org/10.1109/26.103043>. L'écart entre deux horloges tiré d'un aller-retour, avec une
+  erreur d'au plus la moitié de ce trajet : comment `live.js` lit l'heure que l'application inscrit sur chacun de ses
+  changements.
 - crossbar.io. Autobahn|Testsuite 25.10.1, la suite de référence de la RFC 6455. <https://github.com/crossbario/autobahn-testsuite>.
   Son fuzzing server (le serveur qui envoie des cas difficiles) joue ses cas contre le client de [std/websocket] dans la CI.
 - E. Rescorla. "The Transport Layer Security (TLS) Protocol Version 1.3", RFC 9846, 2026, qui a remplacé la RFC 8446.
