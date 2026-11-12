@@ -1,0 +1,328 @@
+(** The tests of ode.Solve: the tableau of Dormand and Prince against its order conditions, the solver against that
+    tableau step by step, problems with closed forms, events, the stiffness alarm, and every kind of bad input. *)
+use std/fiber
+use std/list
+use std/math
+use std/matrix
+use std/ode
+use std/optimize
+use std/result
+use std/text
+use std/value
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+solved(r) = result.Unwrap(r)
+lastRow(s) = s.Y[value.Len(s.T), :]
+
+(* The tableau of Dormand and Prince (1980), RK5(4)7M, written here again from the paper, and the dense output of
+   Shampine (1986) as Hairer, Nørsett and Wanner print it for DOPRI5. *)
+cs = [0.0, 1.0 / 5.0, 3.0 / 10.0, 4.0 / 5.0, 8.0 / 9.0, 1.0, 1.0]
+as = [0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      1.0 / 5.0 0.0 0.0 0.0 0.0 0.0 0.0
+      3.0 / 40.0 9.0 / 40.0 0.0 0.0 0.0 0.0 0.0
+      44.0 / 45.0 -56.0 / 15.0 32.0 / 9.0 0.0 0.0 0.0 0.0
+      19372.0 / 6561.0 -25360.0 / 2187.0 64448.0 / 6561.0 -212.0 / 729.0 0.0 0.0 0.0
+      9017.0 / 3168.0 -355.0 / 33.0 46732.0 / 5247.0 49.0 / 176.0 -5103.0 / 18656.0 0.0 0.0
+      35.0 / 384.0 0.0 500.0 / 1113.0 125.0 / 192.0 -2187.0 / 6784.0 11.0 / 84.0 0.0]
+bs = [35.0 / 384.0, 0.0, 500.0 / 1113.0, 125.0 / 192.0, -2187.0 / 6784.0, 11.0 / 84.0, 0.0]
+b4s = [5179.0 / 57600.0, 0.0, 7571.0 / 16695.0, 393.0 / 640.0, -92097.0 / 339200.0, 187.0 / 2100.0, 1.0 / 40.0]
+ds = [-12715105075.0 / 11282082432.0, 0.0, 87487479700.0 / 32700410799.0, -10690763975.0 / 1880347072.0,
+      701980252875.0 / 199316789632.0, -1453857185.0 / 822651844.0, 69997945.0 / 29380423.0]
+
+av(v) = matrix.Reshape([1, 7], matrix.Matmul(as, matrix.Reshape([7, 1], v)))   (** a v, the stages applied to v *)
+ac = av(cs)
+close(x, want) = math.Abs(x - want) <= 4.0 * 2.220446049250313e-16 * list.Max(1.0, math.Abs(want))
+
+defn upTo4(w, th)
+  (** The 8 conditions of order 4 on weights w, scaled to a step of θ: for θ = 1, those of the method itself. *)
+  s(v) = list.Sum(w * v)
+  [s(1.0 + 0.0 * cs) - th, s(cs) - th ^ 2 / 2.0, s(cs * cs) - th ^ 3 / 3.0, s(ac) - th ^ 3 / 6.0,
+   s(cs ^ 3) - th ^ 4 / 4.0, s(cs * ac) - th ^ 4 / 8.0, s(av(cs * cs)) - th ^ 4 / 12.0, s(av(ac)) - th ^ 4 / 24.0]
+end
+
+defn of5(w)
+  (** The 9 conditions of order 5 on weights w. *)
+  s(v) = list.Sum(w * v)
+  [s(cs ^ 4) - 0.2, s(cs * cs * ac) - 0.1, s(cs * av(cs * cs)) - 1.0 / 15.0, s(cs * av(ac)) - 1.0 / 30.0,
+   s(ac * ac) - 0.05, s(av(cs ^ 3)) - 0.05, s(av(cs * ac)) - 1.0 / 40.0, s(av(av(cs * cs))) - 1.0 / 60.0,
+   s(av(av(ac))) - 1.0 / 120.0]
+end
+
+allZero(xs) = list.All([close(x, 0.0) for x in xs])
+isRowSums() = allZero([list.Sum(as[i, :]) - cs[i] for i in 1..7])
+isOrder5() = allZero(list.Concat(upTo4(bs, 1.0), of5(bs)))
+isOrder4Embedded() = allZero(upTo4(b4s, 1.0)) and not allZero(of5(b4s))
+isFsal() = allZero(as[7, :] - bs)
+
+defn denseWeights(th)
+  (** The weights B(θ) of the dense output, y(t + θh) = y + h Σ B_j(θ) k_j, from its form with r2 to r5. *)
+  first = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+  seventh = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+  r3 = first - bs
+  r4 = bs - seventh - r3
+  th * (bs + (1.0 - th) * (r3 + th * (r4 + (1.0 - th) * ds)))
+end
+
+isDenseOrder4() = list.All([allZero(upTo4(denseWeights(th), th)) for th in [0.1, 0.25, 0.5, 0.75, 0.9]])
+isDenseEnds() = allZero(denseWeights(0.0)) and allZero(denseWeights(1.0) - bs)
+
+(* The solver against the tableau: its first step, its dense output there, and the size of its second step, which the
+   PI control gives from the error estimate of the first. *)
+probe(t, y) = [math.Cos(t) * y[2], t - y[1] * y[1]]
+
+defn stepOf(f, t, y, h)
+  (** One step of the method of the tableau above: the new state and the error estimate. *)
+  ks = [f(t, y)]
+  for i in 2..7
+    yi = y
+    for j in 1..i - 1
+      yi = yi + (h * as[i, j]) * ks[j]
+    end
+    ks = list.Append(f(t + cs[i] * h, yi), ks)
+  end
+  y1 = y
+  e = 0.0 * y
+  for j in 1..7
+    y1 = y1 + (h * bs[j]) * ks[j]
+    e = e + (h * (bs[j] - b4s[j])) * ks[j]
+  end
+  {Y: y1, E: e, K: ks}
+end
+
+defn isFirstSteps()
+  y0 = [0.5, 1.0]
+  s = solved(ode.Solve(probe, [0.0, 1.0], y0, rtol = 1.0e-5, atol = 1.0e-8))
+  h1 = s.T[2]
+  h2 = s.T[3] - s.T[2]
+  one = stepOf(probe, 0.0, y0, h1)
+  sc = 1.0e-8 + 1.0e-5 * list.Max(math.Abs(y0), math.Abs(one.Y))
+  err = math.Sqrt(list.Sum((one.E / sc) ^ 2) / 2.0)
+  want = h1 / list.Max(0.1, list.Min(5.0, err ^ 0.17 / 1.0e-4 ^ 0.04 / 0.9))
+  th = 0.37
+  dense = y0 + h1 * matrix.Reshape([1, 2], matrix.Matmul(matrix.Reshape([2, 7], list.Flatten(one.K)), matrix.Reshape([7, 1], denseWeights(th))))
+  s.Stats.Rejected == 0 and math.Near(lastRowAt(s, 2), one.Y, rel = 1.0e-14) and math.Near(h2, want, rel = 1.0e-6) and
+    math.Near(s.At(th * h1), dense, rel = 1.0e-14)
+end
+
+lastRowAt(s, k) = s.Y[k, :]
+
+(* Closed forms: the error of the whole solution near the tolerance, here within 100 rtol |y|. *)
+defn isDecay()
+  s = solved(ode.Solve((t, y) -> -y, [0.0, 20.0], 1.0))
+  ts = num(s.T)
+  math.Near(s.Y[:, 1], math.Exp(-ts), rel = 1.0e-4, abs = 1.0e-8) and math.Abs(s.At(20.0) - math.Exp(-20.0)) < 1.0e-8
+end
+
+num(ts) = matrix.Reshape(value.Size(ts), [t for t in ts])
+
+defn isGrowth()
+  s = solved(ode.Solve((t, y) -> y, [0.0, 5.0], 1.0, rtol = 1.0e-8))
+  math.Abs(s.At(5.0) / math.Exp(5.0) - 1.0) < 1.0e-6
+end
+
+defn isRotation()
+  s = solved(ode.Solve((t, y) -> [y[2], -y[1]], [0.0, 10.0], [0.0, 1.0], rtol = 1.0e-9, atol = 1.0e-12))
+  tt = [0.0, 1.0, 3.0, 7.5, 10.0]
+  math.Near(s.At(tt), matrix.Reshape([5, 2], list.Concat(math.Sin(tt), math.Cos(tt))), rel = 1.0e-7, abs = 1.0e-8)
+end
+
+defn isEnergy()
+  (** The harmonic oscillator keeps y1^2 + y2^2 = 1 to the tolerance, over 16 periods. *)
+  s = solved(ode.Solve((t, y) -> [y[2], -y[1]], [0.0, 100.0], [1.0, 0.0], rtol = 1.0e-9, atol = 1.0e-12))
+  e = s.Y[:, 1] ^ 2 + s.Y[:, 2] ^ 2
+  list.Max(math.Abs(e - 1.0)) < 1.0e-7
+end
+
+defn isLogistic()
+  s = solved(ode.Solve((t, y) -> y * (1.0 - y), [0.0, 10.0], 0.1, rtol = 1.0e-8))
+  tt = [1.0, 2.5, 5.0, 10.0]
+  math.Near(s.At(tt)[:, 1], matrix.Reshape([4, 1], 1.0 / (1.0 + 9.0 * math.Exp(-1.0 * tt))), rel = 1.0e-7)
+end
+
+defn isSmallSystems()
+  (** y' = -y^3 / 2 from 1, y = 1 / sqrt(t + 1); y' = y cos t, y = exp(sin t); y' = y / 4 (1 - y / 20), the logistic
+      20 / (1 + 19 exp(-t / 4)): equations with closed forms, over [0, 20]. *)
+  a = solved(ode.Solve((t, y) -> -(y ^ 3) / 2.0, [0.0, 20.0], 1.0, rtol = 1.0e-8))
+  b = solved(ode.Solve((t, y) -> y * math.Cos(t), [0.0, 20.0], 1.0, rtol = 1.0e-8))
+  c = solved(ode.Solve((t, y) -> y / 4.0 * (1.0 - y / 20.0), [0.0, 20.0], 1.0, rtol = 1.0e-8))
+  math.Near(a.At(20.0), 1.0 / math.Sqrt(21.0), rel = 1.0e-6) and math.Near(b.At(20.0), math.Exp(math.Sin(20.0)), rel = 1.0e-6) and
+    math.Near(c.At(20.0), 20.0 / (1.0 + 19.0 * math.Exp(-5.0)), rel = 1.0e-6)
+end
+
+defn kepler(e)
+  (** Kepler's problem of eccentricity e, with a period of 2 pi, from its periapsis. *)
+  f = (t, q) -> [q[3], q[4], -q[1] / (q[1] * q[1] + q[2] * q[2]) ^ 1.5, -q[2] / (q[1] * q[1] + q[2] * q[2]) ^ 1.5]
+  {F: f, Q0: [1.0 - e, 0.0, 0.0, math.Sqrt((1.0 + e) / (1.0 - e))]}
+end
+
+defn orbitAt(e, t)
+  (** The exact state of kepler(e) at t, from Kepler's equation E - e sin E = t, solved by Root. *)
+  m = t - 2.0 * math.Pi * math.Floor(t / (2.0 * math.Pi))
+  big = result.Unwrap(optimize.Root(u -> u - e * math.Sin(u) - m, [m - 1.0, m + 1.0])).X
+  w = 1.0 - e * math.Cos(big)
+  [math.Cos(big) - e, math.Sqrt(1.0 - e * e) * math.Sin(big), -math.Sin(big) / w, math.Sqrt(1.0 - e * e) * math.Cos(big) / w]
+end
+
+defn keplerError(e, rtol)
+  (** The largest error of the positions at t = 20, against the exact orbit. *)
+  k = kepler(e)
+  s = solved(ode.Solve(k.F, [0.0, 20.0], k.Q0, rtol = rtol, atol = rtol * 1.0e-3))
+  list.Max(math.Abs(s.At(20.0) - orbitAt(e, 20.0)))
+end
+
+isKepler() = list.All([keplerError(e, 1.0e-9) < 1.0e-5 for e in [0.1, 0.3, 0.5, 0.7, 0.9]])
+
+defn isProportional()
+  (** Tolerance proportionality on Kepler's orbit at e = 0.5, three periods: the error at the end falls a hundredfold
+      when rtol does, and stays within 100 rtol from 1e-7 down. Above, it is more: 270 rtol at 1e-5, 320 at 1e-3. *)
+  errs = [keplerError(0.5, r) for r in [1.0e-7, 1.0e-9, 1.0e-11]]
+  ok = true
+  for k in 1..3
+    r = 10.0 ^ (-7.0 - 2.0 * (k - 1))
+    ok = ok and errs[k] >= 0.01 * r and errs[k] <= 100.0 * r
+  end
+  ok and errs[1] / errs[2] > 30.0 and errs[1] / errs[2] < 300.0 and errs[2] / errs[3] > 30.0 and errs[2] / errs[3] < 300.0
+end
+
+defn isRigidBody()
+  (** Euler's equations of a free rigid body keep y1^2 + y2^2 and 0.51 y1^2 + y3^2. *)
+  f = (t, y) -> [y[2] * y[3], -y[1] * y[3], -0.51 * y[1] * y[2]]
+  s = solved(ode.Solve(f, [0.0, 20.0], [0.0, 1.0, 1.0], rtol = 1.0e-9, atol = 1.0e-12))
+  a = s.Y[:, 1] ^ 2 + s.Y[:, 2] ^ 2
+  b = 0.51 * s.Y[:, 1] ^ 2 + s.Y[:, 3] ^ 2
+  list.Max(math.Abs(a - 1.0)) < 1.0e-7 and list.Max(math.Abs(b - 1.0)) < 1.0e-7
+end
+
+defn isArenstorf()
+  (** The Arenstorf orbit of Hairer, Nørsett and Wanner (I, §II.0) closes after T = 17.06521656015796. *)
+  mu = 0.012277471
+  nu = 1.0 - mu
+  f = defn (t, y)
+    d1 = ((y[1] + mu) ^ 2 + y[2] ^ 2) ^ 1.5
+    d2 = ((y[1] - nu) ^ 2 + y[2] ^ 2) ^ 1.5
+    [y[3], y[4], y[1] + 2.0 * y[4] - nu * (y[1] + mu) / d1 - mu * (y[1] - nu) / d2, y[2] - 2.0 * y[3] - nu * y[2] / d1 - mu * y[2] / d2]
+  end
+  y0 = [0.994, 0.0, 0.0, -2.00158510637908252240537862224]
+  s = solved(ode.Solve(f, [0.0, 17.0652165601579625588917206249], y0, rtol = 1.0e-10, atol = 1.0e-10))
+  list.Max(math.Abs(lastRow(s)[1..2] - y0[1..2])) < 1.0e-6
+end
+
+defn isBackward()
+  (** Forward then back to the start returns y0 within the tolerance; a solve back in time has decreasing T. *)
+  k = kepler(0.3)
+  there = solved(ode.Solve(k.F, [0.0, 6.0], k.Q0, rtol = 1.0e-10, atol = 1.0e-13))
+  back = solved(ode.Solve(k.F, [6.0, 0.0], lastRow(there), rtol = 1.0e-10, atol = 1.0e-13))
+  list.All(num(back.T)[2..value.Len(back.T)] < num(back.T)[1..value.Len(back.T) - 1]) and
+    list.Max(math.Abs(lastRow(back) - k.Q0)) < 1.0e-7 and math.Near(back.At(3.0), there.At(3.0), rel = 1.0e-7, abs = 1.0e-9)
+end
+
+defn isTimesAgree()
+  (** With three times or more, Y holds the dense output at those times: the same as At of the solve with two. *)
+  k = kepler(0.5)
+  two = solved(ode.Solve(k.F, [0.0, 10.0], k.Q0))
+  many = solved(ode.Solve(k.F, [0.0, 2.5, 5.0, 7.5, 10.0], k.Q0))
+  value.Equal(value.Size(many.T), [5, 1]) and value.Equal(value.Size(many.Y), [5, 4]) and many.T[3] == 5.0 and
+    value.Equal(many.Y, two.At([0.0, 2.5, 5.0, 7.5, 10.0])) and value.Equal(two.Stats, many.Stats)
+end
+
+defn isShapes()
+  (** A column y0 gives columns to f and from At; a number gives numbers; Y has a column per component either way. *)
+  col = solved(ode.Solve((t, y) -> [y[2]; -y[1]], [0.0, 1.0], [0.0; 1.0]))
+  one = solved(ode.Solve((t, y) -> -2.0 * y, [0.0, 1.0], 3.0))
+  value.Equal(value.Size(col.At(0.5)), [2, 1]) and value.Equal(value.Size(col.Y), [value.Len(col.T), 2]) and
+    value.IsFloat(one.At(0.5)) and value.Equal(value.Size(one.Y), [value.Len(one.T), 1]) and
+    value.Equal(value.Size(one.At([0.1, 0.2])), [2, 1])
+end
+
+defn isAtEnds()
+  (** At meets the states of the steps exactly, at both ends of each. *)
+  s = solved(ode.Solve((t, y) -> [y[2], -y[1]], [0.0, 3.0], [0.0, 1.0]))
+  list.All([value.Equal(s.At(s.T[k]), s.Y[k, :]) for k in 1..value.Len(s.T)])
+end
+
+(* Events. *)
+defn isBall()
+  (** A fall from 10 m, stopped at the ground: an exact quadratic, so the dense output is exact and the time is
+      sqrt(20 / 9.81) to the last bits. *)
+  ground = ode.Event((t, y) -> y[1], stop = true, direction = "down")
+  s = solved(ode.Solve((t, y) -> [y[2], -9.81], [0.0, 10.0], [10.0, 0.0], events = [ground]))
+  te = math.Sqrt(20.0 / 9.81)
+  value.Len(s.Events) == 1 and math.Abs(s.Events[1].T - te) <= 4.0 * 2.220446049250313e-16 * te and
+    s.T[value.Len(s.T)] == s.Events[1].T and math.Abs(lastRow(s)[1]) < 1.0e-12 and s.Events[1].Event == 1
+end
+
+defn isCrossings()
+  (** y = sin t crosses 0 at pi, 2 pi and 3 pi before 10: down, up, down; events in time order. *)
+  z = ode.Event((t, y) -> y)
+  up = ode.Event((t, y) -> y, direction = "up")
+  down = ode.Event((t, y) -> y, direction = "down")
+  s = solved(ode.Solve((t, y) -> math.Cos(t), [0.0, 10.0], 0.0, events = [z, up, down], rtol = 1.0e-10, atol = 1.0e-12))
+  got = [[e.Event, e.T] for e in s.Events]
+  value.Len(got) == 6 and value.Equal([g[1] for g in got], [1, 3, 1, 2, 1, 3]) and
+    math.Near([g[2] for g in got], math.Pi * [1.0, 1.0, 2.0, 2.0, 3.0, 3.0], rel = 1.0e-9) and s.T[value.Len(s.T)] == 10.0
+end
+
+defn isNoEventAtStart()
+  (** g = 0 at the first time is no event; the first one is the next crossing. *)
+  s = solved(ode.Solve((t, y) -> math.Cos(t), [0.0, 4.0], 0.0, events = [ode.Event((t, y) -> y)]))
+  value.Len(s.Events) == 1 and math.Near(s.Events[1].T, math.Pi, rel = 1.0e-5)
+end
+
+defn isEventsOrdered()
+  (** Two events in one long step come in time order, and the first that stops ends the solution. *)
+  a = ode.Event((t, y) -> t - 0.7)
+  b = ode.Event((t, y) -> t - 0.3, stop = true)
+  s = solved(ode.Solve((t, y) -> 0.0, [0.0, 1.0], 0.0, events = [a, b]))
+  value.Len(s.Events) == 1 and s.Events[1].Event == 2 and math.Near(s.Events[1].T, 0.3, rel = 1.0e-15)
+end
+
+(* What goes wrong: an Err with the solution so far, or a panic for a bad argument. *)
+defn isBlowUp()
+  r = ode.Solve((t, y) -> y * y, [0.0, 2.0], 1.0)
+  e = r.Error
+  result.IsErr(r) and e.Kind == "ode" and e.T > 0.999 and e.T < 1.001 and e.Partial.T[value.Len(e.Partial.T)] == e.T and
+    text.Contains("the step fell under 16 eps |t|", e.Message)
+end
+
+
+defn isStiff()
+  (** Van der Pol at mu = 1000: the alarm, after about a thousand steps, not millions. *)
+  r = ode.Solve((t, y) -> [y[2], 1000.0 * (1.0 - y[1] * y[1]) * y[2] - y[1]], [0.0, 3000.0], [2.0, 0.0])
+  result.IsErr(r) and text.Contains("looks stiff", r.Error.Message) and r.Error.Partial.Stats.Steps < 2000
+end
+
+defn isNotStiff()
+  (** Problems that are not stiff never raise the alarm, at loose or tight tolerances. *)
+  lorenz = (t, y) -> [10.0 * (y[2] - y[1]), y[1] * (28.0 - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
+  list.All([result.IsOk(ode.Solve(lorenz, [0.0, 30.0], [1.0, 1.0, 1.0], rtol = r)) for r in [1.0e-3, 1.0e-6, 1.0e-9]])
+end
+
+defn isSteps()
+  r = ode.Solve((t, y) -> [y[2], -y[1]], [0.0, 100.0], [0.0, 1.0], steps = 10)
+  result.IsErr(r) and r.Error.Message == "ode.Solve: 10 steps reached at t = $(r.Error.T), before 100.0; give more steps, or check f." and
+    r.Error.Partial.Stats.Steps + r.Error.Partial.Stats.Rejected == 10
+end
+
+defn isNan()
+  r = ode.Solve((t, y) -> if t > 0.5 [math.Nan, 1.0] else [1.0, 1.0] end, [0.0, 1.0], [0.0, 0.0])
+  result.IsErr(r) and text.Contains("f gave nan in component 1", r.Error.Message) and text.Contains("10 tries", r.Error.Message) and
+    r.Error.T <= 0.5 and r.Error.T > 0.4
+end
+
+isWrongLength() = ode.Solve((t, y) -> [1.0], [0.0, 1.0], [0.0, 0.0]).Error.Message == "ode.Solve: f gave [1.0] at t = 0.0, not an array of size [1, 2] as y0."
+isWrongLater() = text.Contains("not an array of size [1, 2] as y0", ode.Solve((t, y) -> if t > 0.5 [1.0] else [1.0, 1.0] end, [0.0, 1.0], [0.0, 0.0]).Error.Message)
+isColumnForRow() = ode.Solve((t, y) -> [1.0; 1.0], [0.0, 1.0], [0.0, 0.0]).Error.Message == "ode.Solve: f gave [1.0; 1.0] at t = 0.0, not an array of size [1, 2] as y0."
+isTextComponent() = ode.Solve((t, y) -> [1.0, "a"], [0.0, 1.0], [0.0, 0.0]).Error.Message == "ode.Solve: f gave [1.0, \"a\"] at t = 0.0: its component 2 is \"a\", not a number."
+isNotNumber() = ode.Solve((t, y) -> "a", [0.0, 1.0], 0.0).Error.Message == "ode.Solve: f gave \"a\" at t = 0.0, not a number as y0."
+isErrFromF() = text.Contains("not a number as y0", ode.Solve((t, y) -> result.Err("no"), [0.0, 1.0], 0.0).Error.Message)
+isEventNan() = text.Contains("gave nan", ode.Solve((t, y) -> 1.0, [0.0, 1.0], 0.0, events = [ode.Event((t, y) -> if t > 0.5 math.Nan else 1.0 end)]).Error.Message)
+
+isBadRtol() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], 1.0, rtol = 0.0)) == result.Err("ode.Solve: rtol is 0.0; give a number above 0.")
+isBadAtol() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], [1.0, 2.0], atol = [1.0])) == result.Err("ode.Solve: atol is [1.0]; give a number, or 2 numbers of 0.0 or more, one for each component of y0.")
+isBadTimes() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0, 0.5], 1.0)) == result.Err("ode.Solve: ts must increase or decrease, strictly: ts[2] is 1.0 and ts[3] is 0.5.")
+isSameTimes() = result.IsErr(message(() -> ode.Solve((t, y) -> y, [1.0, 1.0], 1.0)))
+isBadY0() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], [1.0, math.Nan])) == result.Err("ode.Solve: y0[2] is nan; give finite numbers.")
+isBadEvent() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], 1.0, events = [1])) == result.Err("ode.Solve: events[1] is 1; give an ode.Event.")
+isBadDirection() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], 1.0, events = [ode.Event((t, y) -> y, direction = "left")])) == result.Err("ode.Solve: the direction of events[1] is \"left\"; give \"both\", \"up\" or \"down\".")
+isBadSteps() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], 1.0, steps = 0)) == result.Err("ode.Solve: steps is 0; give a whole number of 1 or more.")
+isOutside() = message(() -> solved(ode.Solve((t, y) -> y, [0.0, 1.0], 1.0)).At(2.0)) == result.Err("ode: At(2.0) is outside the solution, from 0.0 to 1.0.")
