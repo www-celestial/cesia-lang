@@ -1,0 +1,3 @@
+use std/c
+b = c.Alloc(8)
+c.Write("i32", 0, [1, "two"], b)

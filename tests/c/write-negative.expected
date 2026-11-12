@@ -1,0 +1,4 @@
+write-negative.ce:3:2: Offset -1 is outside this block of 8 bytes for a u8.
+  3 | c.Write("u8", -1, [1], b)
+    |  ^
+exit 1

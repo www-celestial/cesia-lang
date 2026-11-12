@@ -1,0 +1,57 @@
+(* c.Write against a loop of c.Set, on random offsets, lengths, types and block sizes: both refuse the same writes, and
+   where they write, they write the same bytes. A refusal is a panic, which a fiber turns into an Err. *)
+use std/c
+use std/fiber
+use std/list
+use std/random
+use std/result
+use std/value
+
+types = [{Name: "i8", Width: 1}, {Name: "u8", Width: 1}, {Name: "i16", Width: 2}, {Name: "u16", Width: 2}, {Name: "i32", Width: 4},
+  {Name: "u32", Width: 4}, {Name: "i64", Width: 8}, {Name: "u64", Width: 8}, {Name: "f32", Width: 4}, {Name: "f64", Width: 8}, {Name: "bool", Width: 1}]
+
+(** The bytes of a block, as a list. *)
+bytes(block, size) = [c.Get("u8", k, block) for k in 0..size - 1]
+
+
+defn written(t, offset, values, size, bulk)
+  (** The bytes of a block of size after one c.Write, or a loop of c.Set, of values from offset, or missing when it refuses. *)
+  task = fiber.Spawn(() -> attempt(t, offset, values, size, bulk))
+  got = fiber.Wait(task)
+  if result.IsOk(got) got.Value else missing end
+end
+
+defn attempt(t, offset, values, size, bulk)
+  (** One write, and the bytes it left. *)
+  b = c.Alloc(size)
+  if bulk
+    c.Write(t.Name, offset, values, b)
+  else
+    for k in 1..value.Len(values)
+      c.Set(t.Name, offset + (k - 1) * t.Width, values[k], b)
+    end
+  end
+  out = bytes(b, size)
+  c.Free(b)
+  out
+end
+
+defn isWriteAsSetLoop()
+  (** 2,000 random cases, a few with an offset near max_int. *)
+  ok = true
+  for k in 1..2000
+    t = types[random.Int(1, value.Len(types))]
+    size = random.Int(1, 64)
+    n = random.Int(0, 12)
+    offset = if random.Float() < 0.05 4611686018427387903 - random.Int(0, 16) else random.Int(-4, 70) end
+    values = [if t.Name == "bool" random.Float() < 0.5 else if t.Name == "f32" or t.Name == "f64" (random.Float() - 0.5) * 1000.0 else random.Int(0, 100) end for i in 1..n]
+    bulk = written(t, offset, values, size, true)
+    loop = written(t, offset, values, size, false)
+    fits = offset >= 0 and offset <= size - n * t.Width
+    agree = if fits value.Equal(bulk, loop) else value.IsMissing(bulk) end
+    if not agree
+      ok = false
+    end
+  end
+  ok
+end

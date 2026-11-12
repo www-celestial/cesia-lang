@@ -1,0 +1,4 @@
+use std/c
+use std/math
+b = c.Alloc(8)
+c.Write("u32", 4611686018427387903, [1], b)

@@ -564,6 +564,41 @@ let set st ctx (a : Types.t array) : Types.t =
    | _ -> set64 b.data o word);
   Missing
 
+(* The numbers of an array one after the other from an offset, each converted as set converts one: a buffer of vertices
+   or of pixels at the cost of one call. A matrix goes in the order of its cells, column by column. *)
+let write_all st ctx (a : Types.t array) : Types.t =
+  let ty = ty_of st ctx a.(0) in
+  let _, b = block_arg st ctx "Write" a.(3) in
+  check_word st ctx "written to" ty;
+  let n, at =
+    match a.(2) with
+    | Array { rows; cols; store; _ } ->
+      ( rows * cols,
+        match store with
+        | F f -> fun k -> Types.Float (Float.Array.get f k)
+        | I i -> fun k -> Types.Int i.(k)
+        | V v -> fun k -> v.(k) )
+    | v -> fail ctx (Messages.c_need_numbers (Value.describe v))
+  in
+  let w = width ty in
+  let o =
+    match a.(1) with
+    (* b.size - n * w and not o + n * w: an offset near max_int would overflow past the check. *)
+    | Int o when o >= 0 && n * w <= b.size && o <= b.size - n * w -> o
+    | Int o when o < 0 -> fail ctx (Messages.c_offset o b.size (name_of ty))
+    | Int o -> fail ctx (Messages.c_write_past o n (name_of ty) b.size)
+    | v -> fail ctx (Messages.c_need_offset (Value.describe v))
+  in
+  for k = 0 to n - 1 do
+    let word = scalar st ctx ty (at k) and p = o + k * w in
+    match w with
+    | 1 -> b.data.{p} <- Char.chr (Int64.to_int word land 0xFF)
+    | 2 -> set16 b.data p (Int64.to_int word)
+    | 4 -> set32 b.data p (Int64.to_int32 word)
+    | _ -> set64 b.data p word
+  done;
+  Missing
+
 (* Bytes between a text and a block, for what C treats as bytes: a text can hold zeros, and goes through whole. *)
 let store st ctx (a : Types.t array) : Types.t =
   let s = Native.text_arg ctx "Store" a.(0) in
@@ -601,4 +636,5 @@ let natives st =
     "Store", Native.nat "Store" 3 3 (store st);
     "Load", Native.nat "Load" 3 3 (load st);
     "Set", Native.nat "Set" 4 4 (set st);
+    "Write", Native.nat "Write" 4 4 (write_all st);
     "Text", Native.nat "Text" 1 1 (text st) ]

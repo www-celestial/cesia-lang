@@ -32,6 +32,8 @@ Everything here is added: a program written for 1.0 runs as it did.
   run); `cells.Session`, `cells.Run`, `cells.Forget`, `cells.Variables`, `cells.Rows`, `cells.Scene` and `cells.Stop` run them in a process of their
   own, `cesia run --cells`, as fast as `cesia run`, a graph of `std/plot` as its scene; `cells.Html` gives the page of a
   file, its graphs in SVG.
+- `c.Write(type, offset, values, block)` writes a whole array of numbers into a block in one call, each converted as
+  `c.Set` converts one: the vertices of a shape or the pixels of an image.
 - `cesia.Reads(source)`: the names a source reads and doesn't define, with the compiler's own resolver.
   `cesia.Definitions` gives the names of `[q, r] = ...` too.
 - `cesia lsp`, a language server: the marks of `cesia check` as you type, the docs under the cursor, definitions, completion.

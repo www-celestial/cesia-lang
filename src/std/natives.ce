@@ -1334,6 +1334,20 @@ use std/test
       c.Set("f64", 0, 2.5, b)
       c.Get("f64", 0, b) --> 2.5 *)
 
+(** c.Write(type, offset, values, block)
+    Writes the numbers of an array into a block, one after the other from a byte offset, each converted to the type as
+    c.Set converts one: a matrix in the order of its cells, column by column, as LAPACK takes it. One call for a whole buffer, as the vertices of a shape or the pixels of an
+    image, where a loop of c.Set pays a call for each number. For a single value or a structure, c.Set. The offset and
+    the whole length are checked against the size of the block before anything is written, without an overflow even for
+    an offset near the largest integer: an offset or a length that goes past it writes nothing, and c.Write makes no
+    write that c.Set would refuse. A freed block is refused, as by c.Set.
+
+      b = c.Alloc(12)
+      c.Write("f32", 0, [1.5, 2.0, 2.5], b)
+      c.Get("f32", 8, b) --> 2.5
+      c.Write("i16", 2, [7, -1], b)
+      c.Get("i16", 4, b) --> -1 *)
+
 (** c.Store(text, offset, block)
     Copies the bytes of a text into a block at a byte offset.
 

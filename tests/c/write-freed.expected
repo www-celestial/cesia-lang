@@ -1,0 +1,4 @@
+write-freed.ce:4:2: This block was freed.
+  4 | c.Write("u8", 0, [1], b)
+    |  ^
+exit 1

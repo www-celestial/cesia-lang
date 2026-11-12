@@ -1,0 +1,4 @@
+write-past.ce:3:2: c.Write of 2 values of f32 from offset 4 goes past this block of 8 bytes.
+  3 | c.Write("f32", 4, [1.0, 2.0], b)
+    |  ^
+exit 1
