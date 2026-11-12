@@ -15,8 +15,8 @@ use std/io
 io.Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
-algo cpp crypto csv date dict encode fiber flags fn frame gen heap http list markdown math num path queue random result set sql syntax test tls value websocket 
- 29 1
+algo cells cpp crypto csv date dict encode fiber flags fn frame gen heap http list markdown math num path queue random result set sql syntax test tls value websocket 
+ 30 1
 all as installed
 std/csv        cesia 1.1.0  changed by hand
 std/ holds the libraries of Cesia 1.1.0.
@@ -33,7 +33,7 @@ hello already exists.
 exit 1
 A project name holds letters, digits, - and _, not a/b.
 exit 2
-usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
+usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--cells] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
        cesia test [path | file.ce:isName] [--seed N] [--cases N] [--update] [--allow LIST] [--no-spec]
        cesia check [--json] [--stdin file.ce] [path...]
        cesia fmt [--check] [path...]
