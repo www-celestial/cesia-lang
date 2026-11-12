@@ -147,7 +147,7 @@ defn isCloseByTheClient()
     websocket.Send("late", c).Error.Kind == "closed"
 end
 
-defn isCloseWithMessagesUnread()
+defn closeWithMessagesUnread()
   (** Messages holds 64 messages, and nothing more is read while it is full, the close of the server included: Close still
       ends within about a second, and the 64 messages still come. *)
   c = websocket.Dial(echo()?)?
@@ -256,7 +256,7 @@ defn isLostConnection()
   websocket.Close(c).Error.Message == "connection lost" and websocket.Send("late", c).Error.Kind == "closed"
 end
 
-defn isSilentServer()
+defn silentServer()
   (** A server that never answers the handshake: Dial gives up at its timeout. *)
   l = net.Listen(0)?
   start = sys.Now()
@@ -265,13 +265,19 @@ defn isSilentServer()
   got.Error.Kind == "websocket" and took >= 0.2 and took < 1
 end
 
-defn isServerThatStopsAnswering()
+defn serverThatStopsAnswering()
   (** A server that never answers the close: Close waits a second, then closes alone. *)
   c = websocket.Dial(fake(s -> sys.Sleep(5))?)?
   start = sys.Now()
   ended = websocket.Close(c)
   took = sys.Now() - start
   result.IsErr(ended) and took >= 0.9 and took < 2
+end
+
+defn isEachWaitBounded()
+  (** The waits that end at a deadline, side by side, so that they take a second in all. *)
+  waits = [fiber.Spawn(f) for f in [silentServer, serverThatStopsAnswering, closeWithMessagesUnread]]
+  value.Equal([fiber.Wait(t) for t in waits], [result.Ok(true), result.Ok(true), result.Ok(true)])
 end
 
 defn isBadHandshakeRefused()
