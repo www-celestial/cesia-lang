@@ -409,6 +409,7 @@ val io_failure : string -> string -> string -> t
 val need_socket : string -> string -> t
 val need_port : string -> t
 val socket_closed : t
+val no_random : t
 val too_many_sockets : t
 val server_stopped : t
 val log_fields : string -> t

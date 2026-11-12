@@ -1,113 +1,270 @@
-(** The server side of WebSocket, RFC 6455, on the connection http hands over: http.Websocket adds a route of it. *)
-use std/encode
+(** WebSocket, RFC 6455: a connection that stays open after an HTTP request and carries messages both ways. Dial opens one
+    as a client, and its messages come on a channel; the server side is Accept, which http.Websocket adds as a route. *)
+use std/dict
+use std/fiber
 use std/list
 use std/math
+use std/net
 use std/result
 use std/text
 use std/value
 
-guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
-(** The largest frame read, in bytes: a larger one is refused.
+crlf = "\r\n"
 
-      MaxFrame --> 1048576 *)
-MaxFrame = 1048576
-(** The seconds a connection may stay silent before it is closed, unless idle says otherwise.
+(** The largest message that Dial takes unless maxMessage says otherwise, in bytes: 64 MiB. A screenshot of a whole page,
+    in Base64, is far past the 1 MiB of MaxFrame, the largest frame a server of this package reads.
 
-      DefaultIdle --> 300 *)
-DefaultIdle = 300
+      DefaultMaxMessage --> 67108864 *)
+DefaultMaxMessage = 67108864
 
-defn frame(opcode, payload)
-  (** A frame from the server: never masked. *)
-  n = text.ByteLength(payload)
-  head = if n < 126
-    [128 + opcode, n]
-  else if n < 65536
-    [128 + opcode, 126, math.Div(n, 256), math.Mod(n, 256)]
-  else
-    list.Concat([128 + opcode, 127], [math.Mod(math.Div(n, 256 ^ (8 - k)), 256) for k in 1..8])
+(** A connection that Dial opened. Messages is a channel of std/fiber that receives each whole message, in order, and is
+    closed when the connection ends: Close then tells why it ended. It holds 64 messages: while it is full, nothing more
+    is read from the network, and TCP slows the server down. The other fields are the connection's own. *)
+struct Conn { Messages, socket, writer, closing, frames, ending }
+
+refused(message) = result.Err({Kind: "websocket", Message: message})   (* An Err of the kind "websocket". *)
+
+defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage)
+  (** Connects to the server of a ws:// URL and makes the handshake of RFC 6455 §4.1, both within timeout seconds: an Ok
+      of a Conn, or an Err of the kind "websocket" when the URL or the handshake is refused, or when the time runs out. A
+      message past maxMessage bytes ends the connection with the close code 1009. It needs the net permission of the host
+      and port, as net.Connect; wss:// isn't taken yet.
+
+        Dial("wss://example.com/") then result.MapErr(it.Kind) --> result.Err("websocket")
+        silent = net.Listen(0).Value
+        Dial("ws://127.0.0.1:$(net.Port(silent))/", timeout = 0.1).Error.Message --> "ws://127.0.0.1:$(net.Port(silent))/ gave no handshake in 0.1 seconds." *)
+  target = address(url)?
+  key = newKey()
+  opened = fiber.Channel(size = 1)
+  opening = fiber.Spawn(() -> handshake(target, key, opened))
+  done = fiber.Wait(opening, timeout = timeout)
+  if result.IsErr(done) and done.Error.Kind == "timeout"
+    fiber.Cancel(opening)
+    fiber.Receive(opened, timeout = 0) then result.MapOk(net.Close)
+    return refused("$url gave no handshake in $timeout seconds.")
   end
-  "$(text.FromBytes(head))$payload"
+  start = (done?)?
+  writer = fiber.Channel(size = 1)
+  fiber.Send(true, writer)
+  closing = fiber.Channel()
+  messages = fiber.Channel(size = 64)
+  frames = fiber.Spawn(() -> read(start.Socket, writer, closing, messages, start.Rest, maxMessage))
+  result.Ok(Conn(messages, start.Socket, writer, closing, frames, fiber.Spawn(() -> ending(frames, closing, start.Socket, messages))))
 end
 
-defn parseFrame(buffer)
-  (** The first frame of a buffer, missing if it isn't all there, or {Bad: true} for a frame to refuse. Its payload is
-      unmasked by xorBytes, a native of this package: each byte xor the byte of the key at its place, the key repeated. *)
-  size = text.ByteLength(buffer)
-  if size < 2
-    return missing
+defn address(url)
+  (** The Host, Port and Path of a ws:// URL, or an Err: a space, a line end or a # would change the request. *)
+  if not text.StartsWith("ws://", url)
+    return refused("This URL doesn't start with ws://, and wss:// isn't taken yet: $url")
   end
-  first = text.Byte(1, buffer)
-  second = text.Byte(2, buffer)
-  masked = second >= 128
-  n = math.BitAnd(second, 127)
-  at = 3
-  if n == 126
-    if size < 4
+  rest = text.ByteSlice(6, text.ByteLength(url), url)
+  slash = text.ByteFind("/", 1, rest)
+  parts = text.Split(":", if value.IsMissing(slash) rest else text.ByteSlice(1, slash - 1, rest) end)
+  port = if value.Len(parts) == 2 text.Number(parts[2]) else 80 end
+  if parts[1] == "" or value.Len(parts) > 2 or not value.IsInt(port) or port < 1 or port > 65535 or list.Any([text.Contains(c, url) for c in [" ", "\r", "\n", "#"]])
+    return refused("This URL has no host, a bad port, a space, a line end or a #: $url")
+  end
+  result.Ok({Host: parts[1], Port: port, Path: if value.IsMissing(slash) "/" else text.ByteSlice(slash, text.ByteLength(rest), rest) end})
+end
+
+defn handshake(target, key, opened)
+  (** Connects and asks for the upgrade: an Ok of the socket and of the bytes after the response, which are frames
+      already, or an Err. The socket goes into opened first, for Dial to close if its time runs out. *)
+  s = net.Connect(target.Host, target.Port)?
+  fiber.Send(s, opened)
+  sent = net.Write(s, "GET $(target.Path) HTTP/1.1$(crlf)Host: $(target.Host):$(target.Port)$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: $key$(crlf)Sec-WebSocket-Version: 13$crlf$crlf")
+  got = if result.IsOk(sent) upgraded(s, key, "") else sent end
+  if result.IsErr(got)
+    net.Close(s)
+  end
+  got then result.MapOk(rest -> {Socket: s, Rest: rest})
+end
+
+defn upgraded(s, key, buffer)
+  (** Reads the response to the handshake up to the empty line that ends its head, and checks it as RFC 6455 §4.1 asks:
+      the status 101, Upgrade: websocket, Connection: Upgrade, the Sec-WebSocket-Accept of the key, and no extension or
+      subprotocol, since none was asked for. An Ok of the bytes after the head, or an Err that says what is wrong. *)
+  at = text.ByteFind("$crlf$crlf", 1, buffer)
+  while value.IsMissing(at)
+    more = net.Read(s)?
+    if more == "" or text.ByteLength(buffer) > 16384
+      return refused("The server sent no whole response to the handshake.")
+    end
+    buffer = "$buffer$more"
+    at = text.ByteFind("$crlf$crlf", 1, buffer)
+  end
+  lines = text.Split(crlf, text.ByteSlice(1, at - 1, buffer))
+  fields = dict.Dict()
+  for line in lines[2..end]
+    colon = text.ByteFind(":", 1, line)
+    if not value.IsMissing(colon)
+      fields[text.Lower(text.Trim(text.ByteSlice(1, colon - 1, line)))] = text.Trim(text.ByteSlice(colon + 1, text.ByteLength(line), line))
+    end
+  end
+  field(name) = dict.GetOr(name, "", fields)
+  status = text.Split(" ", lines[1])
+  if value.Len(status) < 2 or status[2] != "101"
+    refused("The server answered $(lines[1]), not 101 Switching Protocols.")
+  else if text.Lower(field("upgrade")) != "websocket" or not ("upgrade" in [text.Lower(text.Trim(t)) for t in text.Split(",", field("connection"))])
+    refused("The response has no Upgrade: websocket or no Connection: Upgrade.")
+  else if field("sec-websocket-accept") != answer(key)
+    refused("The response has a Sec-WebSocket-Accept that isn't the one of its key.")
+  else if field("sec-websocket-extensions") != "" or field("sec-websocket-protocol") != ""
+    refused("The response has an extension or a subprotocol that wasn't asked for.")
+  else
+    result.Ok(text.ByteSlice(at + 4, text.ByteLength(buffer), buffer))
+  end
+end
+
+defn Send(message, c)
+  (** Sends a text message: Ok(missing), an Err of the kind "closed" once the connection is closing or closed, or the Err
+      of net.Write. Fibers may send at once: each frame goes out whole, one after the other. *)
+  write(frame(1, message), c.writer, c.closing, c.socket)
+end
+
+isClosing(closing) = fiber.Receive(closing, timeout = 0).Error.Kind == "closed"   (* closing is closed by shut. *)
+
+defn write(bytes, writer, closing, socket, data = true)
+  (** Writes a frame, but data once the connection is closing: RFC 6455 §5.5.1 sends none after a close frame, though a
+      pong still goes (§5.5.2). writer is a lock, a channel that holds one value: whoever writes takes it first, so that
+      the bytes of two frames never mix. *)
+  fiber.Receive(writer)
+  sent = if data and isClosing(closing) result.Err({Kind: "closed", Message: "This WebSocket connection is closed."}) else net.Write(socket, bytes) end
+  fiber.Send(true, writer)
+  sent
+end
+
+defn shut(code, writer, closing, socket)
+  (** Sends a close frame with a code, once: the connection is closing after it. A write that holds the lock past a
+      second, to a server that reads nothing, leaves the frame out. *)
+  lock = fiber.Receive(writer, timeout = 1)
+  if not isClosing(closing)
+    fiber.Close(closing)
+    if result.IsOk(lock)
+      net.Write(socket, frame(8, code))
+    end
+  end
+  if result.IsOk(lock)
+    fiber.Send(true, writer)
+  end
+end
+
+defn Close(c)
+  (** Closes a connection with the close code 1000, waits at most a second for the server to close its side, as RFC 6455
+      §7.1.1 asks, and gives how the connection ended: Ok(missing) after a close with 1000 or no code, else an Err of the
+      kind "websocket" that says why, as "1009: message too big" or "connection lost". The messages already in Messages
+      still come; those that arrive after Close are dropped. Closing again gives the same. *)
+  shut(text.FromBytes([3, 232]), c.writer, c.closing, c.socket)
+  done = fiber.Wait(c.ending, timeout = 1)
+  if result.IsErr(done)
+    net.Close(c.socket)
+    fiber.Cancel(c.frames)
+    done = fiber.Wait(c.ending)
+  end
+  done?
+end
+
+defn read(socket, writer, closing, messages, buffer, most)
+  (** The fiber that reads the frames of a connection, the next one at the byte at of buffer: each whole message goes to
+      messages unless the connection is closing, and each ping gets its pong. It gives how the connection ended. The
+      fragments of a message wait in a list, joined once at its end; parseFrame, a native of this package, refuses what
+      RFC 6455 refuses, with the code to close with. *)
+  at = 1
+  parts = []
+  size = 0
+  kind = 0
+  while true
+    f = parseFrame(buffer, at, most - size, kind)
+    if dict.Has("Needs", f)
+      buffer = gather(socket, text.ByteSlice(at, text.ByteLength(buffer), buffer), f.Needs)
+      at = 1
+      if value.IsMissing(buffer)
+        return refused("connection lost")
+      end
+    else if dict.Has("Code", f)
+      shut(text.FromBytes([math.Div(f.Code, 256), math.Mod(f.Code, 256)]), writer, closing, socket)
+      return refused("$(f.Code): $(meaning(f.Code))")
+    else if f.Opcode == 8
+      shut(if text.ByteLength(f.Payload) < 2 "" else text.ByteSlice(1, 2, f.Payload) end, writer, closing, socket)
+      return closed(f.Payload)
+    else
+      at = f.Next
+      if f.Opcode == 9
+        write(frame(10, f.Payload), writer, closing, socket, data = false)
+      else if f.Opcode != 10
+        parts = list.Append(f.Payload, parts)
+        size += text.ByteLength(f.Payload)
+        kind = if f.Opcode == 0 kind else f.Opcode end
+        if f.Fin
+          whole = if value.Len(parts) == 1 parts[1] else text.Join("", parts) end
+          if kind == 1 and not text.IsUtf8(whole)
+            shut(text.FromBytes([3, 239]), writer, closing, socket)
+            return refused("1007: $(meaning(1007))")
+          end
+          if not isClosing(closing)
+            fiber.Send(whole, messages)
+          end
+          parts = []
+          size = 0
+          kind = 0
+        end
+      end
+    end
+  end
+end
+
+defn gather(socket, buffer, needs)
+  (** buffer and what the socket reads after it, until it holds needs bytes, joined once: missing if the connection ends
+      first. *)
+  pieces = [buffer]
+  have = text.ByteLength(buffer)
+  while have < needs
+    got = net.Read(socket)
+    if result.IsErr(got) or got.Value == ""
       return missing
     end
-    n = text.Byte(3, buffer) * 256 + text.Byte(4, buffer)
-    at = 5
-  else if n == 127
-    if size < 10
-      return missing
-    end
-    if text.Byte(3, buffer) != 0
-      return {Bad: true}
-    end
-    n = list.Reduce((total, k) -> total * 256 + text.Byte(k, buffer), 0, 3..10)
-    at = 11
+    pieces = list.Append(got.Value, pieces)
+    have += text.ByteLength(got.Value)
   end
-  if not masked or n > MaxFrame or math.BitAnd(first, 112) != 0 or math.BitAnd(first, 128) == 0
-    return {Bad: true}
-  end
-  if size < at + 3 + n
-    return missing
-  end
-  key = text.ByteSlice(at, at + 3, buffer)
-  stop = at + 3 + n
-  payload = if n == 0 "" else xorBytes(key, text.ByteSlice(at + 4, stop, buffer)) end
-  rest = if stop >= size "" else text.ByteSlice(stop + 1, size, buffer) end
-  {Bad: false, Opcode: math.BitAnd(first, 15), Payload: payload, Rest: rest}
+  if value.Len(pieces) == 1 buffer else text.Join("", pieces) end
 end
 
-defn loop(io, buffer, onMessage, idle)
-  (** The deadline starts again at each message and ping: an idle client doesn't hold its fiber forever. *)
-  f = parseFrame(buffer)
-  if value.IsMissing(f)
-    more = io.Read()
-    if result.IsOk(more) and text.ByteLength(more.Value) > 0
-      loop(io, "$buffer$(more.Value)", onMessage, idle)
-    end
-  else if f.Bad or (f.Opcode >= 8 and text.ByteLength(f.Payload) > 125)
-    io.Write(frame(8, text.FromBytes([3, 234])))
-  else if f.Opcode == 8
-    io.Write(frame(8, f.Payload))
-  else if f.Opcode == 9
-    io.Arm(idle)
-    io.Write(frame(10, f.Payload))
-    loop(io, f.Rest, onMessage, idle)
-  else if f.Opcode == 1 or f.Opcode == 2
-    io.Arm(idle)
-    onMessage(f.Payload, s -> io.Write(frame(1, s)))
-    loop(io, f.Rest, onMessage, idle)
-  else if f.Opcode == 10
-    loop(io, f.Rest, onMessage, idle)
-  else
-    io.Write(frame(8, text.FromBytes([3, 234])))
+defn ending(frames, closing, socket, messages)
+  (** The fiber that ends a connection once its frames end, or once Close stops them: messages closes, and closing if a
+      lost connection left it open, then the server has a second to close the TCP connection first, as RFC 6455 §7.1.1
+      asks, and the socket closes. Gives how the connection ended. *)
+  done = fiber.Wait(frames)
+  fiber.Close(messages)
+  if not isClosing(closing)
+    fiber.Close(closing)
+  end
+  fiber.Wait(fiber.Spawn(() -> drained(socket)), timeout = 1)
+  net.Close(socket)
+  if result.IsOk(done) done.Value else if done.Error.Kind == "cancelled" refused("No close of the server was read within a second.") else done end
+end
+
+defn drained(socket)
+  (** Reads until the server closes its side. *)
+  got = net.Read(socket)
+  while result.IsOk(got) and got.Value != ""
+    got = net.Read(socket)
   end
 end
 
-defn begin(io, rest, onMessage, idle)
-  io.Arm(idle)
-  loop(io, rest, onMessage, idle)
+defn closed(payload)
+  (** How a connection ended with the close frame of the server: Ok(missing) for the code 1000 or none, else an Err with the
+      code and the reason it gave. *)
+  if text.ByteLength(payload) < 2
+    return result.Ok(missing)
+  end
+  code = text.Byte(1, payload) * 256 + text.Byte(2, payload)
+  reason = text.ByteSlice(3, text.ByteLength(payload), payload)
+  if code == 1000 result.Ok(missing) else refused(if reason == "" "$code" else "$code: $reason" end) end
 end
 
-defn Accept(key, onMessage, idle = DefaultIdle)
-  (** The response that upgrades a WebSocket request, given the key of its sec-websocket-key header: the connection is then
-      this package's, and onMessage(text, send) runs for each message. http.Websocket checks the request and calls it.
-
-        Accept("dGhlIHNhbXBsZSBub25jZQ==", (m, send) -> send(m)).Status --> 101 *)
-  answer = encode.Base64(encode.Sha1("$key$guid"))
-  {Status: 101, Body: "", Headers: [{Name: "upgrade", Value: "websocket"}, {Name: "connection", Value: "Upgrade"},
-    {Name: "sec-websocket-accept", Value: answer}], Upgrade: (io, rest) -> begin(io, rest, onMessage, idle)}
+(* What a code that the client closes with means, RFC 6455 §7.4.1. *)
+meaning(code) = match code
+  1002 -> "protocol error"
+  1007 -> "invalid UTF-8 text"
+  else -> "message too big"
 end

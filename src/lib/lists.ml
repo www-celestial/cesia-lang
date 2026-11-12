@@ -261,12 +261,6 @@ let bits name f =
 let shift x n =
   if n >= Sys.int_size || n <= -Sys.int_size then 0 else if n >= 0 then x lsl n else x lsr -n
 
-let xor_bytes ctx (a : t array) =
-  let key = text_arg ctx "xorBytes" a.(0) and s = text_arg ctx "xorBytes" a.(1) in
-  if key = "" then Runtime.fail ctx Type (Messages.need_char "xorBytes");
-  Runtime.build ctx ((String.length s / 8) + 1);
-  Text (String.mapi (fun i c -> Char.chr (Char.code c lxor Char.code key.[i mod String.length key])) s)
-
 let math_natives =
   [ bits "BitAnd" ( land );
     bits "BitOr" ( lor );
@@ -391,6 +385,4 @@ let unbase64 ctx (a : t array) =
   if n mod 4 = 1 || !bad >= 64 then Missing else Text (Bytes.to_string out)
 
 let packages =
-  [ "math", math_natives; "list", list_natives; "text", text_natives; "encode", [ "unbase64", nat "unbase64" 1 1 unbase64 ];
-    (* The masking of a WebSocket frame, a small name that only std/websocket sees. *)
-    "websocket", [ "xorBytes", nat "xorBytes" 2 2 xor_bytes ] ]
+  [ "math", math_natives; "list", list_natives; "text", text_natives; "encode", [ "unbase64", nat "unbase64" 1 1 unbase64 ] ]

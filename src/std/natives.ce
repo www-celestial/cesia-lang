@@ -7,6 +7,7 @@ use std/random
 use std/columns
 use std/debug
 use std/net
+use std/websocket
 use std/log
 use std/metrics
 use std/c
@@ -1194,6 +1195,22 @@ use std/test
       peer = net.Accept(server).Value
       net.Close(client)
       net.Read(peer) --> result.Ok("") *)
+
+(** websocket.Accept(key, onMessage, idle = DefaultIdle)
+    The response that upgrades a WebSocket request, given the key of its sec-websocket-key header: the connection is then
+    this package's, and onMessage(text, send) runs for each message. http.Websocket checks the request and calls it.
+
+      websocket.Accept("dGhlIHNhbXBsZSBub25jZQ==", (m, send) -> send(m)).Status --> 101 *)
+
+(** websocket.DefaultIdle
+    The seconds a connection may stay silent before it is closed, unless idle says otherwise.
+
+      websocket.DefaultIdle --> 300 *)
+
+(** websocket.MaxFrame
+    The largest frame read, in bytes: a larger one is refused.
+
+      websocket.MaxFrame --> 1048576 *)
 
 (** log.Info(message, fields = missing)
     Writes a line on the standard output, a JSON object of the time in UTC, the level "info", the message, then the

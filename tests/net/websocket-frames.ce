@@ -1,0 +1,103 @@
+(** The server side of WebSocket, frame by frame: what it answers to each frame a client may send, valid or not, each
+    followed by a close. *)
+use std/http
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/list
+use std/math
+use std/result
+use std/text
+use std/value
+
+crlf = "\r\n"
+mask(key, s) = text.FromBytes([math.BitXor(text.Byte(k, s), text.Byte(math.Mod(k - 1, 4) + 1, key)) for k in 1..text.ByteLength(s)])
+be(n, k) = [math.Mod(math.Div(n, 256 ^ (k - i)), 256) for i in 1..k]
+
+defn raw(first, payload, masked = true, form = 0)
+  (** A frame with first byte first; form 0 picks the shortest length, 2 forces 16 bits, 8 forces 64 bits. A long payload
+      is masked by a key of zeros, which leaves it as it is, and costs no time. *)
+  n = text.ByteLength(payload)
+  m = if masked 128 else 0 end
+  head = if form == 0 and n < 126
+    [first, m + n]
+  else if form != 8 and n < 65536
+    list.Concat([first, m + 126], be(n, 2))
+  else
+    list.Concat([first, m + 127], be(n, 8))
+  end
+  key = if n > 1000 text.FromBytes([0, 0, 0, 0]) else "k3y!" end
+  body = if not masked payload else if n > 1000 "$key$payload" else "$key$(mask(key, payload))" end
+  "$(text.FromBytes(head))$body"
+end
+
+closeFrame = raw(136, text.FromBytes([3, 232]))
+
+defn exchange(port, chunks)
+  c = result.Unwrap(net.Connect("127.0.0.1", port))
+  net.Write(c, "GET /echo HTTP/1.1$(crlf)Host: a$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==$(crlf)$crlf")
+  head = result.Unwrap(net.Read(c))
+  for chunk in chunks
+    net.Write(c, chunk)
+    sys.Sleep(0.002)
+  end
+  net.Write(c, closeFrame)
+  got = []
+  more = net.Read(c)
+  while result.IsOk(more) and more.Value != ""
+    got = list.Append(more.Value, got)
+    more = net.Read(c)
+  end
+  net.Close(c)
+  out = text.Join("", got)
+  b = text.Bytes(out)
+  if value.Len(b) > 40 "$(value.Len(b)) bytes: $(b[1..12]) ... $(b[value.Len(b) - 7..value.Len(b)])" else "$b" end
+end
+
+l = result.Unwrap(net.Listen(0))
+port = net.Port(l)
+fiber.Spawn(() -> http.Serve(http.App() then http.Websocket("/echo", (m, send) -> send("[$(text.ByteLength(m))]$m")), listener = l))
+sys.Sleep(0.05)
+
+big = text.Repeat(70000, "x")
+mid = text.Repeat(300, "y")
+cases = [
+  ["text", [raw(129, "hello")]],
+  ["binary", [raw(130, text.FromBytes([0, 255, 1]))]],
+  ["empty text", [raw(129, "")]],
+  ["two in one write", ["$(raw(129, "a"))$(raw(129, "bb"))"]],
+  ["split header", [text.ByteSlice(1, 1, raw(129, "abc")), text.ByteSlice(2, 9, raw(129, "abc"))]],
+  ["16-bit length", [raw(129, mid)]],
+  ["16-bit form for small", [raw(129, "tiny", form = 2)]],
+  ["64-bit form for small", [raw(129, "tiny", form = 8)]],
+  ["64-bit length", [raw(129, big)]],
+  ["unmasked", [raw(129, "hello", masked = false)]],
+  ["fragment start", [raw(1, "part")]],
+  ["continuation", [raw(128, "part")]],
+  ["rsv1", [raw(129 + 64, "x")]],
+  ["rsv3", [raw(129 + 16, "x")]],
+  ["opcode 3", [raw(131, "x")]],
+  ["opcode 11", [raw(139, "x")]],
+  ["ping", [raw(137, "pi")]],
+  ["empty ping", [raw(137, "")]],
+  ["pong", [raw(138, "po")]],
+  ["ping 125", [raw(137, text.Repeat(125, "p"))]],
+  ["ping 126", [raw(137, text.Repeat(126, "p"))]],
+  ["close with reason", [raw(136, "$(text.FromBytes([3, 233]))bye")]],
+  ["close empty", [raw(136, "")]],
+  ["close 1 byte", [raw(136, "a")]],
+  ["close 200 bytes", [raw(136, text.Repeat(200, "c"))]],
+  ["fragmented ping", [raw(9, "x")]],
+  ["max frame", [raw(130, text.Repeat(1048576, "m"))]],
+  ["past max frame", [raw(130, text.Repeat(1048577, "m"))]],
+  ["64-bit huge", ["$(text.FromBytes([130, 255, 1, 0, 0, 0, 0, 0, 0, 0]))"]],
+  ["64-bit msb", ["$(text.FromBytes([130, 255, 128, 0, 0, 0, 0, 0, 0, 0]))"]],
+  ["bytes after close", ["$(raw(136, ""))$(raw(129, "late"))"]],
+  ["text then ping then text", ["$(raw(129, "a"))$(raw(137, "p"))$(raw(129, "b"))"]],
+  ["invalid utf8 text", [raw(129, text.FromBytes([255, 254]))]],
+]
+for c in cases
+  io.Print(c[1], exchange(port, c[2]))
+end
+

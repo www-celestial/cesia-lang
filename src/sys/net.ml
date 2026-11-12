@@ -332,7 +332,8 @@ let connect n ctx (a : Types.t array) =
        | () -> finish ()
        | exception Unix.Unix_error (Unix.EINPROGRESS, _, _) ->
          Poll.watch n.poll fd;
-         Poll.write_ready n.poll ctx fd;
+         (* A fiber cancelled while it connects, as websocket.Dial past its timeout, leaves no socket open. *)
+         (try Poll.write_ready n.poll ctx fd with e -> Poll.forget n.poll fd; Unix.close fd; raise e);
          Poll.forget n.poll fd;
          (match Unix.getsockopt_error fd with
           | None -> finish ()

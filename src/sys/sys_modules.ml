@@ -129,6 +129,6 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w
   Linalg.install ();
   w.debug.test <- debug_test;
   w.native_modules <-
-    ("debug", Term.natives ~editor:debug_editor input @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("log", Observe.log_natives) :: ("metrics", Observe.natives ()) :: ("http", Net.http_natives net) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
+    ("debug", Term.natives ~editor:debug_editor input @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("log", Observe.log_natives) :: ("metrics", Observe.natives ()) :: ("http", Net.http_natives net) :: ("websocket", Websocket.natives) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
     :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
   fun () -> Net.stopping net

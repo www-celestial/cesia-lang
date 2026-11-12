@@ -1,0 +1,295 @@
+(** The client of std/websocket: against the server of std/http, and against servers written here on std/net, which send
+    what the server of std/http never sends. *)
+use std/websocket
+use std/http
+use std/net
+use std/fiber
+use std/encode
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text
+use std/value
+
+crlf = "\r\n"
+
+defn echo()
+  (** The URL of an echo route of std/http, on a free port. *)
+  l = net.Listen(0)?
+  fiber.Spawn(() -> http.Serve(http.App() then http.Websocket("/echo", (m, send) -> send(m)), listener = l))
+  result.Ok("ws://127.0.0.1:$(net.Port(l))/echo")
+end
+
+(** A frame as a server writes it, never masked: first is its first byte, FIN and opcode. *)
+defn frame(first, payload)
+  n = text.ByteLength(payload)
+  head = if n < 126 [first, n] else [first, 126, math.Div(n, 256), math.Mod(n, 256)] end
+  "$(text.FromBytes(head))$payload"
+end
+
+unmask(key, s) = text.FromBytes([math.BitXor(text.Byte(k, s), text.Byte(math.Mod(k - 1, 4) + 1, key)) for k in 1..text.ByteLength(s)])
+
+defn more(s, buffer, n)
+  (** buffer and what the socket reads after it, until it holds n bytes, or missing. *)
+  while text.ByteLength(buffer) < n
+    got = net.Read(s)
+    if result.IsErr(got) or got.Value == ""
+      return missing
+    end
+    buffer = "$buffer$(got.Value)"
+  end
+  buffer
+end
+
+defn clientFrame(s, buffer)
+  (** The next frame of the client: {Opcode, Masked, Key, Payload, Rest}, or missing when the connection ends. *)
+  buffer = more(s, buffer, 2)
+  if value.IsMissing(buffer)
+    return missing
+  end
+  n = math.BitAnd(text.Byte(2, buffer), 127)
+  at = 3
+  if n == 126
+    buffer = more(s, buffer, 4)
+    n = text.Byte(3, buffer) * 256 + text.Byte(4, buffer)
+    at = 5
+  end
+  buffer = more(s, buffer, at + 3 + n)
+  key = text.ByteSlice(at, at + 3, buffer)
+  payload = if n == 0 "" else unmask(key, text.ByteSlice(at + 4, at + 3 + n, buffer)) end
+  rest = if text.ByteLength(buffer) > at + 3 + n text.ByteSlice(at + 4 + n, text.ByteLength(buffer), buffer) else "" end
+  {Opcode: math.BitAnd(text.Byte(1, buffer), 15), Masked: text.Byte(2, buffer) >= 128, Key: key, Payload: payload, Rest: rest}
+end
+
+(** The response to a handshake that RFC 6455 asks for, given the Sec-WebSocket-Accept of its key. *)
+upgrade(accept) = "HTTP/1.1 101 Switching Protocols$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Accept: $accept$crlf$crlf"
+
+defn fake(script, respond = upgrade)
+  (** A server of one connection on a free port, written on std/net: it reads the request, answers it with respond of the
+      accept of its key, and runs script(socket); then it answers the close of the client and closes, as a server does.
+      Gives the URL to dial. *)
+  l = net.Listen(0)?
+  fiber.Spawn(defn ()
+    s = net.Accept(l)?
+    request = more(s, "", 1)
+    while not text.Contains("$crlf$crlf", request)
+      request = "$request$(net.Read(s)?)"
+    end
+    line = list.Filter(it then text.Lower then text.StartsWith("sec-websocket-key:"), text.Split(crlf, request))[1]
+    key = text.Trim(text.Split(":", line)[2])
+    net.Write(s, respond(encode.Base64(encode.Sha1("$(key)258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))))
+    script(s)
+    f = clientFrame(s, "")
+    while not value.IsMissing(f) and f.Opcode != 8
+      f = clientFrame(s, f.Rest)
+    end
+    net.Write(s, frame(136, if value.IsMissing(f) "" else f.Payload end))
+    net.Close(s)
+  end)
+  result.Ok("ws://127.0.0.1:$(net.Port(l))/")
+end
+
+defn closeCode(f)
+  (** The code of a close frame, or missing for one with none. *)
+  if value.IsMissing(f) or f.Opcode != 8 or text.ByteLength(f.Payload) < 2 missing else text.Byte(1, f.Payload) * 256 + text.Byte(2, f.Payload) end
+end
+
+defn refusedWith(frames, code, most = websocket.DefaultMaxMessage)
+  (** Does the client close with this code, and say so, when a server sends these bytes after the handshake? *)
+  seen = fiber.Channel(size = 1)
+  url = fake(defn (s)
+    net.Write(s, frames)
+    fiber.Send(closeCode(clientFrame(s, "")), seen)
+    net.Close(s)
+  end)?
+  c = websocket.Dial(url, maxMessage = most)?
+  [m for m in c.Messages]
+  ended = websocket.Close(c)
+  fiber.Receive(seen, timeout = 2)? == code and result.IsErr(ended) and text.StartsWith("$code: ", ended.Error.Message)
+end
+
+defn isEchoOfEachSize()
+  c = websocket.Dial(echo()?)?
+  sizes = [0, 1, 125, 126, 65535, 65536, 300000]
+  got = []
+  for n in sizes
+    websocket.Send(text.Repeat(n, "é"), c)?
+    got = list.Append(fiber.Receive(c.Messages, timeout = 5)? == text.Repeat(n, "é"), got)
+  end
+  list.All(got) and value.Equal(websocket.Close(c), result.Ok(missing))
+end
+
+defn isThousandMessagesInOrder()
+  c = websocket.Dial(echo()?)?
+  fiber.Spawn(() -> [websocket.Send("m$k", c) for k in 1..1000])
+  got = [fiber.Receive(c.Messages, timeout = 5)? for k in 1..1000]
+  websocket.Close(c)
+  value.Equal(got, ["m$k" for k in 1..1000])
+end
+
+defn isTwoSendersAtOnce()
+  (** Two fibers send messages larger than a write, which waits for room: each frame still goes out whole. *)
+  c = websocket.Dial(echo()?)?
+  a = text.Repeat(200000, "a")
+  b = text.Repeat(200000, "b")
+  fiber.Spawn(() -> [websocket.Send(a, c) for k in 1..10])
+  fiber.Spawn(() -> [websocket.Send(b, c) for k in 1..10])
+  got = [fiber.Receive(c.Messages, timeout = 10)? for k in 1..20]
+  websocket.Close(c)
+  value.Len(list.Filter(m -> m == a, got)) == 10 and value.Len(list.Filter(m -> m == b, got)) == 10
+end
+
+defn isCloseByTheClient()
+  c = websocket.Dial(echo()?)?
+  ended = websocket.Close(c)
+  value.Equal(ended, result.Ok(missing)) and value.Equal(websocket.Close(c), ended) and fiber.Receive(c.Messages).Error.Kind == "closed" and
+    websocket.Send("late", c).Error.Kind == "closed"
+end
+
+defn isCloseWithMessagesUnread()
+  (** Messages holds 64 messages, and nothing more is read while it is full, the close of the server included: Close still
+      ends within about a second, and the 64 messages still come. *)
+  c = websocket.Dial(echo()?)?
+  for k in 1..100
+    websocket.Send("m$k", c)?
+  end
+  sys.Sleep(0.2)
+  start = sys.Now()
+  ended = websocket.Close(c)
+  took = sys.Now() - start
+  value.Equal([m for m in c.Messages], ["m$k" for k in 1..64]) and took < 1.5 and ended.Error.Message == "No close of the server was read within a second."
+end
+
+defn isLateMessageDropped()
+  (** A message that comes after Close is dropped, as a browser drops it. *)
+  url = fake(defn (s)
+    f = clientFrame(s, "")
+    net.Write(s, "$(frame(129, "late"))$(frame(136, f.Payload))")
+    net.Close(s)
+  end)?
+  c = websocket.Dial(url)?
+  ended = websocket.Close(c)
+  value.Equal(ended, result.Ok(missing)) and value.Equal([m for m in c.Messages], [])
+end
+
+defn isMaskedWithFreshKeys()
+  (** RFC 6455 §5.3: every frame of a client is masked, each with a new key. *)
+  seen = fiber.Channel(size = 3)
+  url = fake(defn (s)
+    one = clientFrame(s, "")
+    two = clientFrame(s, one.Rest)
+    fiber.Send([one.Masked and two.Masked, one.Key != two.Key, one.Payload, two.Payload], seen)
+  end)?
+  c = websocket.Dial(url)?
+  websocket.Send("same", c)?
+  websocket.Send("same", c)?
+  got = fiber.Receive(seen, timeout = 2)?
+  websocket.Close(c)
+  value.Equal(got, [true, true, "same", "same"])
+end
+
+defn isCloseByTheServer()
+  seen = fiber.Channel(size = 1)
+  url = fake(defn (s)
+    net.Write(s, "$(frame(129, "last"))$(frame(136, "$(text.FromBytes([3, 233]))bye"))")
+    fiber.Send(closeCode(clientFrame(s, "")), seen)
+    net.Close(s)
+  end)?
+  c = websocket.Dial(url)?
+  got = [m for m in c.Messages]
+  ended = websocket.Close(c)
+  value.Equal(got, ["last"]) and fiber.Receive(seen, timeout = 2)? == 1001 and ended.Error.Message == "1001: bye"
+end
+
+defn isCloseWithoutCode()
+  c = websocket.Dial(fake(defn (s)
+    net.Write(s, frame(136, ""))
+    clientFrame(s, "")
+    net.Close(s)
+  end)?)?
+  [m for m in c.Messages]
+  value.Equal(websocket.Close(c), result.Ok(missing))
+end
+
+defn isFragmentsWithAPingBetween()
+  (** RFC 6455 §5.4: a message in fragments, with a control frame among them; the ping gets its pong. *)
+  seen = fiber.Channel(size = 1)
+  url = fake(defn (s)
+    net.Write(s, "$(frame(1, "Hel"))$(frame(137, "p"))$(frame(0, "l"))$(frame(128, "o"))")
+    pong = clientFrame(s, "")
+    fiber.Send([pong.Opcode, pong.Payload], seen)
+  end)?
+  c = websocket.Dial(url)?
+  m = fiber.Receive(c.Messages, timeout = 2)?
+  pong = fiber.Receive(seen, timeout = 2)?
+  websocket.Close(c)
+  m == "Hello" and value.Equal(pong, [10, "p"])
+end
+
+defn isBinaryAsText()
+  c = websocket.Dial(fake(s -> net.Write(s, frame(130, text.FromBytes([0, 255, 7]))))?)?
+  m = fiber.Receive(c.Messages, timeout = 2)?
+  websocket.Close(c)
+  value.Equal(text.Bytes(m), [0, 255, 7])
+end
+
+isMaskedFrameRefused() = refusedWith(text.FromBytes([129, 129, 1, 2, 3, 4, 96]), 1002)
+isReservedBitRefused() = refusedWith(frame(129 + 64, "x"), 1002)
+isUnknownOpcodeRefused() = refusedWith(frame(131, "x"), 1002)
+isLongPingRefused() = refusedWith(frame(137, text.Repeat(126, "p")), 1002)
+isFragmentedPingRefused() = refusedWith(frame(9, "p"), 1002)
+isContinuationWithoutStartRefused() = refusedWith(frame(128, "x"), 1002)
+isMessageInsideAMessageRefused() = refusedWith("$(frame(1, "a"))$(frame(129, "b"))", 1002)
+isBadCloseCodeRefused() = refusedWith(frame(136, text.FromBytes([3, 237])), 1002)
+isInvalidUtf8Refused() = refusedWith(frame(129, text.FromBytes([255])), 1007)
+isInvalidUtf8InFragmentsRefused() = refusedWith("$(frame(1, text.FromBytes([195])))$(frame(128, "("))", 1007)
+isInvalidUtf8CloseReasonRefused() = refusedWith(frame(136, text.FromBytes([3, 232, 255])), 1007)
+
+(** A message past maxMessage, whole or in fragments, closes with 1009 as soon as a header says so. *)
+isTooBigRefused() = refusedWith(frame(129, text.Repeat(11, "x")), 1009, most = 10) and refusedWith("$(frame(1, "123456"))$(frame(128, "789012"))", 1009, most = 10)
+
+defn isLostConnection()
+  (** A server that cuts TCP without a close: Messages closes, and Close says so. *)
+  c = websocket.Dial(fake(s -> net.Close(s))?)?
+  [m for m in c.Messages]
+  websocket.Close(c).Error.Message == "connection lost" and websocket.Send("late", c).Error.Kind == "closed"
+end
+
+defn isSilentServer()
+  (** A server that never answers the handshake: Dial gives up at its timeout. *)
+  l = net.Listen(0)?
+  start = sys.Now()
+  got = websocket.Dial("ws://127.0.0.1:$(net.Port(l))/", timeout = 0.2)
+  took = sys.Now() - start
+  got.Error.Kind == "websocket" and took >= 0.2 and took < 1
+end
+
+defn isServerThatStopsAnswering()
+  (** A server that never answers the close: Close waits a second, then closes alone. *)
+  c = websocket.Dial(fake(s -> sys.Sleep(5))?)?
+  start = sys.Now()
+  ended = websocket.Close(c)
+  took = sys.Now() - start
+  result.IsErr(ended) and took >= 0.9 and took < 2
+end
+
+defn isBadHandshakeRefused()
+  refused(respond) = websocket.Dial(fake(s -> net.Close(s), respond = respond)?).Error.Kind == "websocket"
+  list.All([
+    refused(a -> "HTTP/1.1 200 OK$(crlf)Content-Length: 0$crlf$crlf"),
+    refused(a -> upgrade("wrong=")),
+    refused(a -> "HTTP/1.1 101 Switching Protocols$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Accept: $a$crlf$crlf"),
+    refused(a -> "HTTP/1.1 101 Swit")])
+end
+
+defn isExtensionRefused()
+  (** A response with an extension that wasn't asked for is refused, RFC 6455 §4.1. *)
+  respond(a) = text.Replace("$crlf$crlf", "$(crlf)Sec-WebSocket-Extensions: permessage-deflate$crlf$crlf", upgrade(a))
+  websocket.Dial(fake(s -> net.Close(s), respond = respond)?).Error.Message == "The response has an extension or a subprotocol that wasn't asked for."
+end
+
+defn isUrlRefused()
+  bad = ["http://127.0.0.1/", "wss://127.0.0.1/", "ws://127.0.0.1:99999/", "ws:///x", "ws://127.0.0.1/a b", "ws://h:1:2/", "ws://127.0.0.1/#x"]
+  list.All([websocket.Dial(u).Error.Kind == "websocket" for u in bad])
+end

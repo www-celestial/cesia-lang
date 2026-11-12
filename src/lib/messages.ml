@@ -213,6 +213,7 @@ let io_failure verb target why = plain (Printf.sprintf "Can't %s %s: %s." verb t
 let need_socket name a = plain (Printf.sprintf "%s needs a socket, not %s." name a)
 let need_port a = plain (Printf.sprintf "A port is a number from 0 to 65535, not %s." a)
 let socket_closed = plain "This socket is closed."
+let no_random = plain "The system gave no random bytes: a WebSocket client needs them for its keys."
 let too_many_sockets = plain "This system can't watch more sockets."
 let server_stopped = plain "The server is stopping."
 let log_fields a = plain (Printf.sprintf "The fields of a log line are a struct or a dictionary, not %s." a)
