@@ -155,6 +155,15 @@ path.IsAbsolute("/tmp/a.txt") -->
 path.IsAbsolute("photos/a.jpg") -->
 ```
 
+[path.Abs] gives the absolute path of a path: the current folder before it, its `.` and `..` taken away. It reads
+nothing on the disk, so a symbolic link stays as it is written. As it tells where the program runs, it needs the read
+permission on the path:
+
+```cesia allow=read
+path.IsAbsolute(path.Abs("todo.txt")) -->
+path.Abs("archive/../todo.txt") == path.Abs("todo.txt") -->
+```
+
 ### Every file under a folder
 
 [sys.List] gives the names of one folder. [sys.Walk] goes down into the folders inside it, and gives the path of every file,

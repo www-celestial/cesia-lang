@@ -1,0 +1,15 @@
+HERE/photos/a.jpg
+HERE/photos/a.jpg
+HERE/photos/2026
+/tmp
+true HERE
+HERE/notes.txt
+HERE/photos/a.jpg
+HERE/photos/a.jpg
+HERE/photos/2026
+abs.ce:17:20: Permission "read" denied for notes.txt.
+  17 | io.Print(shown(path.Abs("notes.txt")))
+     |                    ^
+  Run again with --allow read=notes.txt, or a folder that holds it.
+  in Abs (std/path.ce:56)
+exit 1

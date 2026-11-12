@@ -1,0 +1,17 @@
+(* path.Abs: the current folder, here given by the test, before a relative path; . and .. taken away as text. It needs
+   the read permission on the path, as sys.Exists. *)
+use std/io
+use std/path
+use std/sys
+use std/text
+
+here = sys.Args[1]
+shown(p) = text.Replace(here, "HERE", p)
+io.Print(shown(path.Abs("photos/a.jpg")))
+io.Print(shown(path.Abs("photos/2026/./../a.jpg")))
+io.Print(shown(path.Abs("photos//2026/")))
+if sys.Args[2] == "all"
+  io.Print(path.Abs("/../tmp/./a/.."))
+  io.Print(shown(path.Abs("..")) == shown(path.Dir(here)), shown(path.Abs(".")))
+end
+io.Print(shown(path.Abs("notes.txt")))

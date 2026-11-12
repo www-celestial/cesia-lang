@@ -1,5 +1,5 @@
-(** Paths of files and folders, as texts: their parts, and one joined to another. Nothing here reads the disk. A path is
-    written with /, which Windows takes too; there a \ separates as well. *)
+(** Paths of files and folders, as texts: their parts, one joined to another, and the absolute path of one. Nothing here
+    reads the disk. A path is written with /, which Windows takes too; there a \ separates as well. *)
 use std/list
 use std/text
 use std/value
@@ -41,6 +41,36 @@ defn Join(a, b)
   else
     "$a/$b"
   end
+end
+
+defn Abs(p)
+  (** The absolute path of p: p when it is absolute, else p in the current folder, with its . and .. parts taken away as
+      text, a .. at the top staying there, and / between its parts, on Windows too. The disk is not read, so a symbolic
+      link stays as it is written, as Go's filepath.Abs, Python's os.path.abspath and Node's path.resolve do. Needs the
+      read permission on p, as sys.Exists does: it tells where p is, and so the name of the current folder.
+
+        Abs("photos/./../a.jpg") == Abs("a.jpg") --> true
+        IsAbsolute(Abs("photos")) --> true
+        Base(Abs("photos/2026/")) --> "2026" *)
+  s = slashes(Join(here(p), p))
+  parts = text.Split("/", s)
+  head = "/"
+  if windows and text.StartsWith("//", s) and value.Len(parts) >= 4
+    head = "//$(parts[3])/$(parts[4])/"
+    parts = list.Skip(4, parts)
+  else if windows and value.Len(s) >= 2 and text.Slice(2, 2, s) == ":"
+    head = "$(text.Slice(1, 2, s))/"
+    parts = list.Skip(1, parts)
+  end
+  out = []
+  for part in parts
+    if part == ".."
+      out = list.DropLast(1, out)
+    else if part != "" and part != "."
+      out = list.Append(part, out)
+    end
+  end
+  "$head$(text.Join("/", out))"
 end
 
 defn Base(p)
