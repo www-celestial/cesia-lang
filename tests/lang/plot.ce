@@ -290,3 +290,19 @@ end
 isSceneErrors() = message0(plot.Scene(1, 640, 400)) == "plot.Scene needs a graph, as plot.Line or plot.Of makes, not 1." and message0(plot.Scene(plot.Line([1], [1]), 50, 400)) == "plot.Scene needs at least 100 by 80 pixels, not 50 by 400."
 isSaveNeedsSvg() = message0(plot.Save(plot.Line([1], [1]), "a.png")) == "plot.Save writes SVG, to a name that ends in .svg, not \"a.png\"."
 isDropped() = scene(plot.Points([1, math.Nan, 3], [1, 2, missing]), 640, 400).Dropped == 2
+
+(* Past one cell per pixel, cells merge by their mean: by matrix products without NaN, by a loop with one. Both give the
+   same colors, but for the block that holds the NaN, which is neither the least value nor the greatest. *)
+defn isMergeWaysAgree()
+  m = matrix.Zeros(9, 3001)
+  for i in 1..9
+    for j in 1..3001
+      m[i, j] = j * 1.0 + i
+    end
+  end
+  full = role(scene(plot.Heatmap(m), 640, 400), "data")[1]
+  m[5, 1500] = math.Nan
+  holed = role(scene(plot.Heatmap(m), 640, 400), "data")[1]
+  n = value.Len(full.Colors)
+  n > 1 and n < 3001 * 9 and n == value.Len(holed.Colors) and list.Count(k -> full.Colors[k] != holed.Colors[k], 1..n) <= 1
+end

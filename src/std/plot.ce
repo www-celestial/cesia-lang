@@ -712,6 +712,7 @@ defn heatmapOf(l, w)
   p.Ye = edgesOf(ys)
   p.Vlo = list.Min(fin)
   p.Vhi = list.Max(fin)
+  p.Full = value.Len(fin) == rows * cols
   p.Map = l.Colors
   p.Cells = true
   p.Flip = value.IsMissing(l.Ys)
@@ -776,6 +777,7 @@ defn densityOf(l, w)
   p.Ye = [ylo + k * (yhi - ylo) / nb for k in 0..nb]
   p.Vlo = 0.0
   p.Vhi = list.Max(counts)
+  p.Full = true
   p.Map = "viridis"
   p.Cells = true
   p.Dropped = value.Len(x) - e.Count
@@ -1357,11 +1359,29 @@ defn inT(axis, xs)
   if axis.Scale == "log" math.Log(xs) / ln10 else xs end
 end
 
-defn mergeCells(vs, rows, cols, xe, ye, kx, ky, sums)
-  (** The cells merged in blocks of ky rows by kx columns, by their sum or their mean, NaNs left out; the edges kept. *)
+defn mergeCells(vs, rows, cols, xe, ye, kx, ky, sums, full)
+  (** The cells merged in blocks of ky rows by kx columns, by their sum or their mean, NaNs left out; the edges kept.
+      Without NaN, the sums are two matrix products, a times vs times b, where a and b hold a 1 for each row or column
+      of a block. *)
   nr = math.Div(rows + ky - 1, ky)
   nc = math.Div(cols + kx - 1, kx)
   out = matrix.Zeros(nr, nc)
+  if full
+    a = matrix.Zeros(nr, rows)
+    for r in 1..rows
+      a[math.Div(r - 1, ky) + 1, r] = 1.0
+    end
+    b = matrix.Zeros(cols, nc)
+    for c in 1..cols
+      b[c, math.Div(c - 1, kx) + 1] = 1.0
+    end
+    out = matrix.Matmul(matrix.Matmul(a, vs), b)
+    if not sums
+      sizes = matrix.Matmul(matrix.Reshape([nr, 1], [list.Min(r * ky, rows) - (r - 1) * ky for r in 1..nr]), matrix.Reshape([1, nc], [list.Min(c * kx, cols) - (c - 1) * kx for c in 1..nc]))
+      out = out / sizes
+    end
+    return {V: out, Rows: nr, Cols: nc, Xe: [xe[list.Min((c - 1) * kx + 1, cols + 1)] for c in 1..nc + 1], Ye: [ye[list.Min((r - 1) * ky + 1, rows + 1)] for r in 1..nr + 1]}
+  end
   for r in 1..nr
     for c in 1..nc
       total = 0.0
@@ -1391,7 +1411,7 @@ defn cellsItems(p, xa, ya, a, clip)
   kx = math.Ceil(cols / list.Max(1.0, a.W))
   ky = math.Ceil(rows / list.Max(1.0, a.H))
   if kx > 1 or ky > 1
-    merged = mergeCells(vs, rows, cols, xe, ye, kx, ky, p.Fn == "Density")
+    merged = mergeCells(vs, rows, cols, xe, ye, kx, ky, p.Fn == "Density", p.Full)
     vs = merged.V
     rows = merged.Rows
     cols = merged.Cols
