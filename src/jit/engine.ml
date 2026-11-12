@@ -278,7 +278,7 @@ let compile (ctx : ctx) (l : Tier.loop) ver =
 
 let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads = ctx.w.reloads -> Some c | _ -> None
 
-(* Native code takes arrays of floats only, and writes only into owned ones: a shared one is copied at its first write,
+(* Native code takes arrays of floats, integers or values only, and writes only into owned ones: a shared one is copied at its first write,
    which the interpreter does, at its step. Checked before the interpreter leaves its loops, so that native code then never
    falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. *)
 let fits (ctx : ctx) code =
@@ -289,6 +289,7 @@ let fits (ctx : ctx) code =
        match ctx.v.(ctx.b + slot) with
        | Array { store = F _; a_owned; dims = d; _ } when store = 0 -> (a_owned || not written) && dims d
        | Array { store = V _; a_owned; dims = d; _ } when store = 1 -> (a_owned || not written) && dims d
+       | Array { store = I _; a_owned; dims = d; _ } when store = 2 -> (a_owned || not written) && dims d
        | _ -> false)
     (native code).fn.arrays
 

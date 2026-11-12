@@ -1,0 +1,15 @@
+use std/io
+use std/list
+
+(* An index read from a list of integers, outside the array it indexes, after the loop got hot: the interpreter's
+   message, at the read. *)
+defn gather(idx, xs, n)
+  s = 0
+  for k in 1..n
+    s = s + xs[idx[k]]
+  end
+  s
+end
+idx = list.Fill(2, 50000)
+idx[49999] = 4
+io.Print(gather(idx, [10, 20, 30], 50000))

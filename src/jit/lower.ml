@@ -80,6 +80,9 @@ and dyn = {
   mutable lent : int list;  (* as [Ir.func.lent] *)
   mutable ticked : bool;  (* a step or a call since the statement's start: the fuel may differ from its start's *)
   mutable ranges : (int * (int * int)) list;  (* integer registers, each written once, and the bounds proved of them *)
+  mutable inside : (int * int * int) list;
+      (* in the block being built: an array and a register of an index checked inside it, which a later read or write of
+         the same cell needs not check again *)
 }
 
 and unit_ = { versions : version Vec.t }
@@ -134,6 +137,14 @@ let shows st =
 (* Instructions are kept in reverse while a block is built. Steps forbid a guard after them, not a call, whose way back
    restores the fuel. *)
 let emit st i =
+  (* A cell whose index was checked in this block: read or written without a check. *)
+  let i =
+    match i with
+    | Ir.Elem (r, a, Reg q, _) when List.mem (st.cur, a, q) st.dyn.inside -> Ir.Elem_at (r, a, q)
+    | Set_elem (a, Reg q, v, _) when List.mem (st.cur, a, q) st.dyn.inside -> Set_at (a, q, v)
+    | Elem (_, a, Reg q, _) | Set_elem (a, Reg q, _, _) -> st.dyn.inside <- (st.cur, a, q) :: st.dyn.inside; i
+    | _ -> i
+  in
   (match i with
    | Ir.Tick _ | Call _ ->
      st.dyn.bail <- None;
@@ -145,6 +156,7 @@ let emit st i =
      shows st
    | Incr r | Bump (r, _) ->
      st.dyn.elems <- List.filter (fun (_, _, i, _) -> i <> Ir.Reg r) st.dyn.elems;
+     st.dyn.inside <- List.filter (fun (_, _, q) -> q <> r) st.dyn.inside;
      shows st
    | Burn -> shows st
    | Move (r, x) ->
@@ -152,6 +164,7 @@ let emit st i =
      d.known <- List.filter (fun (_, m, _, _) -> m <> r) d.known;
      d.nums <- List.filter (fun (_, v, _, _) -> v <> r) d.nums;
      d.elems <- List.filter (fun (_, _, i, _) -> i <> Ir.Reg r) d.elems;
+     d.inside <- List.filter (fun (_, _, q) -> q <> r) d.inside;
      (* What the source holds, the destination holds too. *)
      (match x with
       | Reg q ->
@@ -217,6 +230,10 @@ let array_of st (e : expr) =
   match e.e with
   | Var { b = Local i; _ } when st.arrays.(i) >= 0 -> st.arrays.(i)
   | _ -> raise No
+
+(* The kind of the cells of array [a]: doubles of a store of floats, integers of a store of integers (a list of whole
+   numbers), or values. *)
+let cells_of st a = match Vec.get st.arr a with _, _, 0, _ -> Ir.Kfloat | _, _, 2, _ -> Kint | _ -> Kval
 
 (* An instruction at the start of the current statement, put there once it is known to be needed. *)
 let at_start st i =
@@ -511,19 +528,19 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
   | Index (b, _, false) when Hashtbl.mem st.fast e.id ->
     let a, ix = Hashtbl.find st.fast e.id in
     ignore (array_of st b);
-    fresh st Kfloat (fun r -> Elem_at (r, a, ix))
+    fresh st (cells_of st a) (fun r -> Elem_at (r, a, ix))
   | Index (b, [| Ix i |], false) ->
     let a = array_of st b in
-    let _, _, store, _ = Vec.get st.arr a in
-    (match guess st i (expr st i) with
-     | x, Kint when store = 0 -> fresh st Kfloat (fun r -> Elem (r, a, x, site st e.pos))
-     | x, Kint -> fresh st Kval (fun r -> Get (r, a, x, site st e.pos))
+    (match guess st i (expr st i), cells_of st a with
+     | (x, Kint), Kval -> fresh st Kval (fun r -> Get (r, a, x, site st e.pos))
+     | (x, Kint), k -> fresh st k (fun r -> Elem (r, a, x, site st e.pos))
      | _ -> raise No)
   | Index (b, ixs, false) when Array.length ixs >= 2 ->
     let a = array_of st b in
     let q = cell st a (indexes st a ixs) e.pos false in
-    let _, _, store, _ = Vec.get st.arr a in
-    if store = 0 then fresh st Kfloat (fun r -> Elem_at (r, a, q)) else fresh st Kval (fun r -> Get (r, a, Reg q, site st e.pos))
+    (match cells_of st a with
+     | Kval -> fresh st Kval (fun r -> Get (r, a, Reg q, site st e.pos))
+     | k -> fresh st k (fun r -> Elem_at (r, a, q)))
   | Field ({ e = Var { b = Local i; _ }; _ }, name) when sunk_map st i ->
     let s = Option.get st.sunk.(i) in
     let j =
@@ -717,6 +734,17 @@ and cell st a xs pos write =
   | _ -> raise No
 
 and convert st k (v, vk) = if k = vk then v else if k = Ir.Kfloat then to_float st (v, vk) else raise No
+
+(* A value written into a cell of array [a] of numbers: a double for floats; for integers, an integer alone, as any other
+   value turns the interpreter's store into one of values, which native code doesn't make. *)
+and cell_value st a value =
+  match cells_of st a with
+  | Ir.Kint ->
+    (match expr st value with
+     | x, Kint -> x
+     | x, Kval when st.dyn.bail <> None -> fst (unbox st x Only_int)
+     | _ -> raise No)
+  | _ -> to_float st (expr st value)
 
 and value_block st (b : block) =
   let n = Array.length b in
@@ -1004,7 +1032,7 @@ and stmt st (e : expr) =
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex (_, false); _ } |]; value }
     when st.arrays.(i) >= 0 && Hashtbl.mem st.fast e.id ->
     let a, ix = Hashtbl.find st.fast e.id in
-    let x = to_float st (expr st value) in
+    let x = cell_value st a value in
     emit st (Set_at (a, ix, x))
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix ix |], false); sp } |]; value } when st.arrays.(i) >= 0 ->
     let a = st.arrays.(i) in
@@ -1029,18 +1057,18 @@ and stmt st (e : expr) =
        end
      | _ ->
        (* As the interpreter's write: the index, then the value, then the array, which an F store takes only as a number. *)
-       let x = if store = 0 then to_float st (expr st value) else stored st value in
+       let x = if store = 1 then stored st value else cell_value st a value in
        (* At the step, as the interpreter names an index outside the array. *)
-       emit st (if store = 0 then Set_elem (a, k, x, site st sp) else Put (a, k, x, site st sp)))
+       emit st (if store = 1 then Put (a, k, x, site st sp) else Set_elem (a, k, x, site st sp)))
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex (ixs, false); sp } |]; value }
     when st.arrays.(i) >= 0 && Array.length ixs >= 2 ->
     let a = st.arrays.(i) in
     let xs = indexes st a ixs in
-    let x = (let _, _, store, _ = Vec.get st.arr a in if store = 0 then to_float st (expr st value) else stored st value) in
+    let x = (let _, _, store, _ = Vec.get st.arr a in if store = 1 then stored st value else cell_value st a value) in
     let slot, _, store, nd = Vec.get st.arr a in
     Vec.set st.arr a (slot, true, store, nd);
     let q = cell st a xs sp true in
-    emit st (if store = 0 then Set_at (a, q, x) else Put (a, Reg q, x, site st sp))
+    emit st (if store = 1 then Put (a, Reg q, x, site st sp) else Set_at (a, q, x))
   | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
     let lo = expr st a in
     let hi = expr st b in
@@ -1278,7 +1306,7 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
   (* The indexes of float arrays read or written with one index, or one per dimension, in the whole body. *)
   let found = ref [] in
   let floats v n =
-    st.arrays.(v) >= 0 && (let _, _, store, nd = Vec.get st.arr st.arrays.(v) in store = 0 && (n = 1 || nd = n)) in
+    st.arrays.(v) >= 0 && (let _, _, store, nd = Vec.get st.arr st.arrays.(v) in (store = 0 || store = 2) && (n = 1 || nd = n)) in
   let plain a = Array.for_all (function Ix _ -> true | All -> false) a in
   let exprs a = Array.map (function Ix x -> x | All -> assert false) a in
   Array.iter
@@ -1508,9 +1536,10 @@ let sinkable (loop : expr) i list =
   (match loop.e with For { iter; _ } -> check iter | While { cond; _ } -> check cond | _ -> ());
   !sets > 0 && not !bad
 
-(* Is every value the loop assigns to variable [i] a number by its form: arithmetic, a literal, or a field of a map that
-   [kept] says is kept as its floats. A read of a list or a call can give another kind at each turn. *)
-let numeric (loop : expr) i kept =
+(* Is every value the loop assigns to variable [i] a number by its form: arithmetic, a literal, a field of a map that
+   [kept] says is kept as its floats, or a cell of an array that [cells] says holds numbers, floats or integers. A read
+   of another list or a call can give another kind at each turn. *)
+let numeric (loop : expr) i kept cells =
   let ok = ref true in
   walk
     (fun (x : expr) ->
@@ -1519,6 +1548,7 @@ let numeric (loop : expr) i kept =
           (match v.e with
            | Bin ((Add | Sub | Mul | Div | Pow), _, _) | Neg _ | Lfloat _ | Lint _ -> ()
            | Field ({ e = Var { b = Local p; _ }; _ }, _) when kept p -> ()
+           | Index ({ e = Var { b = Local a; _ }; _ }, _, false) when cells a -> ()
            | _ -> ok := false)
         | _ -> ());
        true)
@@ -1550,7 +1580,11 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
       let store =
         match ctx, written with
         | Some (ctx : ctx), Some l when not (List.mem i l) ->
-          (match ctx.v.(ctx.b + ver.map.(i)) with Array { store = F _; _ } -> 0 | Array { store = V _; _ } -> 1 | _ -> -1)
+          (match ctx.v.(ctx.b + ver.map.(i)) with
+           | Array { store = F _; _ } -> 0
+           | Array { store = V _; _ } -> 1
+           | Array { store = I _; _ } -> 2
+           | _ -> -1)
         | _ -> -1
       in
       let number =
@@ -1586,9 +1620,10 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
        end
      done;
      let kept p = match sunk.(p) with Some { carrier = Dict _ | Struct _; _ } -> true | _ -> false in
+     let cells a = arrays.(a) >= 0 && (match Vec.get arr arrays.(a) with _, _, (0 | 2), _ -> true | _ -> false) in
      for i = 0 to f.nvars - 1 do
        if regs.(i) >= 0 && ver.tv.(i) == TA && sunk.(i) = None && (not spec.(i)) && (not (List.mem i crossing))
-          && (not (List.mem i values)) && numeric loop i kept then begin
+          && (not (List.mem i values)) && numeric loop i kept cells then begin
          (* A number assigned in each turn before it is read, kept as one as a carried one is. *)
          let number k = regs.(i) <- Vec.push kinds k; spec.(i) <- true in
          match ctx.v.(ctx.b + ver.map.(i)) with
@@ -1612,7 +1647,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) (w : world) unit index (v
     fast = Hashtbl.create 1; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec; sunk; inplace;
     fixed = fixed_params f;
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
-            vars = []; need = None; consts = Vec.create (); known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [] } }
+            vars = []; need = None; consts = Vec.create (); known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
+            inside = [] } }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
 let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool) array) =

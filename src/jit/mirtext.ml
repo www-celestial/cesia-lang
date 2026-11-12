@@ -147,6 +147,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
       (match k with Ir.Kint | Kval -> pr "  mov x2, %s\n" (operand v); "x2" | Kfloat -> pr "  dmov y0, %s\n" (operand v); "y0")
   in
   let arr a = Printf.sprintf "a%dd" a and len a = Printf.sprintf "a%dn" a in
+  (* An array of a store of integers, whose cells are OCaml integers; and an integer operand as one, in x0. *)
+  let ints a = match fn.arrays.(a) with _, _, 2, _ -> true | _ -> false in
+  let tag_of v = match v with Ir.Reg q -> Printf.sprintf "add x0, r%d, 1" q | v -> Printf.sprintf "mov x0, %s" (match v with Int n -> tagged n | v -> operand v) in
   (* The size of dimension [d] of array [a], doubled. *)
   let dim a d = Printf.sprintf "a%ds%d" a d in
   let check_index ?(t = "d") a i site code =
@@ -288,7 +291,13 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Math (name, r, x) -> pr "  call pd1, %s, r%d, %s\n" name r (operand x)
     | Len (r, a) -> pr "  mov r%d, %s\n" r (len a)
     | Dim (r, a, d) -> pr "  mov r%d, %s\n" r (dim a d)
+    | Elem (r, a, i, site) when fn.kinds.(r) = Kint ->
+      (* A cell of a store of integers, an OCaml integer 2n + 1: the register holds 2n. *)
+      pr "  mov r%d, %s\n  sub r%d, r%d, 1\n" r (check_index ~t:"i64" a i site Ir.err_read) r r
     | Elem (r, a, i, site) -> pr "  dmov r%d, %s\n" r (check_index a i site Ir.err_read)
+    | Set_elem (a, i, v, site) when ints a ->
+      let m = check_index ~t:"i64" a i site Ir.err_write in
+      pr "  %s\n  mov %s, x0\n" (tag_of v) m
     | Set_elem (a, i, v, site) ->
       let m = check_index a i site Ir.err_write in
       pr "  dmov %s, %s\n" m (operand v)
@@ -416,6 +425,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
       pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov x6, %s\n  mov x6, i64:0(x6)\n  ublt %s, x5, x6\n"
         (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) gc
     | Reserve _ -> ()
+    | Elem_at (r, a, i) when fn.kinds.(r) = Kint -> pr "  mov r%d, i64:-8(%s, r%d, 4)\n  sub r%d, r%d, 1\n" r (arr a) i r r
     | Elem_at (r, a, i) -> pr "  dmov r%d, d:-8(%s, r%d, 4)\n" r (arr a) i
     | Offset (r, a, xs, site, write) ->
       (* Each index from 0, doubled, checked below its size; then the cell, the last index first: c = c * size + index. *)
@@ -435,6 +445,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
         pr "  ubge %s, x0, %s\n  rsh x1, %s, 1\n  mul %s, %s, x1\n  add %s, %s, x0\n" e (dim a d) (dim a d) acc acc acc acc
       done;
       pr "  add %s, %s, 2\n" acc acc
+    | Set_at (a, i, v) when ints a -> pr "  %s\n  mov i64:-8(%s, r%d, 4), x0\n" (tag_of v) (arr a) i
     | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"

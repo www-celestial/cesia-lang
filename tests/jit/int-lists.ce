@@ -1,0 +1,65 @@
+use std/io
+use std/list
+use std/math
+use std/matrix
+
+(* Lists of integers read and written by index in loops that get hot: the same results as the interpreter's. *)
+defn gather(idx, xs, n)
+  s = 0.0
+  for k in 1..n
+    s = s + xs[idx[k]]
+  end
+  s
+end
+
+defn histogram(keys, n, m)
+  counts = list.Fill(0, m)
+  for k in 1..n
+    b = keys[k]
+    counts[b] = counts[b] + 1
+  end
+  counts
+end
+
+defn scatter(rows, vals, n, m)
+  y = matrix.Zeros(m)
+  for k in 1..n
+    i = rows[k]
+    y[i] = y[i] + vals[k] * 0.5
+  end
+  y
+end
+
+defn walk(next, start, steps)
+  (* A permutation followed: each read gives the next index. *)
+  p = start
+  total = 0
+  for k in 1..steps
+    p = next[p]
+    total = total + p
+  end
+  total
+end
+
+n = 60000
+m = 97
+keys = list.Fill(0, n)
+for k in 1..n
+  keys[k] = math.Mod(k * 31, m) + 1
+end
+xs = matrix.Zeros(m)
+for i in 1..m
+  xs[i] = i * 0.25
+end
+io.Print(gather(keys, xs, n))
+h = histogram(keys, n, m)
+io.Print(h[1], h[50], h[97], list.Sum(h))
+y = scatter(keys, keys * 0.5 + 1.0, n, m)
+io.Print(y[1], y[2], y[97], list.Sum(y))
+perm = list.Fill(0, m)
+for i in 1..m
+  perm[i] = math.Mod(i * 5, m) + 1
+end
+io.Print(walk(perm, 1, n))
+(* The lists stay lists of integers, and the counts' list is a new one each time. *)
+io.Print(h[1..5], keys[1..5])

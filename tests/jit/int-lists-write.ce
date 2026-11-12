@@ -1,0 +1,23 @@
+use std/io
+use std/list
+
+(* A write into a list of integers: an integer in place; a float makes it a list of floats, in the interpreter. *)
+defn fill(xs, n, last)
+  for k in 1..n
+    xs[k] = k * 2
+  end
+  xs[n] = last
+  xs
+end
+a = fill(list.Fill(0, 40000), 40000, 7)
+io.Print(a[1], a[39999], a[40000], list.Sum(a))
+b = fill(list.Fill(0, 40000), 40000, 0.5)
+io.Print(b[1], b[40000], list.Sum(b))
+defn over(xs, n)
+  for k in 1..n
+    xs[k + 1] = xs[k] + 4611686018427387
+  end
+  xs
+end
+io.Print(over(list.Fill(0, 30000), 1000)[1001])
+io.Print(over(list.Fill(0, 30000), 29999)[30000])

@@ -1,0 +1,9 @@
+2 79998 7 1599960007
+2 0.5 1599960000.5
+4611686018427387000
+int-lists-write.ce:18:23: The integer result of 4611686018427387000 + 4611686018427387 doesn't fit in 63 bits.
+  18 |     xs[k + 1] = xs[k] + 4611686018427387
+     |                       ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in over (int-lists-write.ce:18)
+exit 1

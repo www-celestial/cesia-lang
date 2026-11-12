@@ -1,0 +1,5 @@
+int-lists-read.ce:9:15: Index 4 is outside this array of 3 elements.
+  9 |     s = s + xs[idx[k]]
+    |               ^
+  in gather (int-lists-read.ce:9)
+exit 1
