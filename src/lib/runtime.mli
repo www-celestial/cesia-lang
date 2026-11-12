@@ -7,6 +7,7 @@ type options = {
   o_no_spec : bool;
   o_debugger : string option;
   o_repl : bool;  (** cesia run --repl *)
+  o_cells : bool;  (** cesia run --cells *)
   o_period : int;
   o_sink : string -> unit;
   o_err : string -> unit;

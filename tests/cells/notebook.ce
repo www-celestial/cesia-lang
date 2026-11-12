@@ -1,0 +1,26 @@
+(* The notebook that client.ce runs. *)
+use std/frame
+use std/io
+
+(* %% Data *)
+n = 4
+xs = [i * i for i in 1..n]
+df = frame.Of({"i": [1, 2, 3], "sq": [1.0, 4.0, 9.0]})
+df
+
+(* %% Sum *)
+defn total(v)
+  s = 0
+  for x in v
+    s = s + x
+  end
+  s
+end
+io.Print("total $(total(xs))")
+total(xs) + n
+
+(* %% Slow *)
+k = 0
+while true
+  k = k + 1
+end

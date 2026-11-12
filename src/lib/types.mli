@@ -245,6 +245,7 @@ and world = {
   hooks : bool;  (** a debugger is present: the program's files have hooks *)
   debugger : string option;
   repl : bool;  (** cesia run --repl: a prompt runs beside the program *)
+  cell_session : bool;  (** cesia run --cells: the session of std/cells on a file, which runs none of it *)
   debug : debug;
   mutable on_hook : ctx -> int -> bool -> unit;
       (** set by [Loader], so that [Compile] doesn't know [Debug]: a site, and whether it is the first statement of its line *)

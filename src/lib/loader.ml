@@ -884,6 +884,13 @@ let start_prompt ctx =
   run_prepared ctx prepared;
   Fiber.spawn ctx w.modules.(m).cells.(List.assoc "Main" w.modules.(m).mnames)
 
+(* cesia run --cells: the session of std/cells on a file, which runs none of its lines. The private serve of std/cells reads
+   the cells to run on the input, in a fiber, and the program ends with it. *)
+let start_cells ctx =
+  let w = ctx.w in
+  let m = use_module ctx ~hooks:false ~from:w.debug.main ~pos:(Pos.make 1 1) ~names:[ "serve" ] "std/cells" in
+  Fiber.spawn ctx w.modules.(m).cells.(List.assoc "serve" w.modules.(m).mnames)
+
 (* The main file, or the first file of the main folder: where the prompt runs. *)
 let main_file path =
   if path = "" || not (Package.is_dir path) then path
@@ -897,6 +904,11 @@ let program ctx path args =
   ignore (Package.sources w.root);
   Option.iter (load_debugger ctx) w.debugger;
   w.debug.main <- main_file path;
+  if w.cell_session then begin
+    ignore (Fiber.wait ctx (start_cells ctx));
+    0
+  end
+  else
   match if w.repl then Some (start_prompt ctx) else None with
   | None ->
     if path <> "" then load ctx path;

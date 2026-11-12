@@ -1562,7 +1562,22 @@ use std/test
       cesia.Definitions("defn (r Rect) Area()\n  (** Its area. *)\n  1\nend")?[1].Text --> "Its area."
       cesia.Definitions("defn (r Rect) Area()\n  1\nend")?[1].Column --> 15
       cesia.Definitions("use std/set as sets")?[1].Signature --> "std/set"
+      [d.Name for d in cesia.Definitions("[q, r] = [1, 2]")?] --> ["q", "r"]
       cesia.Definitions("x = (").Error.Line --> 1 *)
+
+(** cesia.Reads(source)
+    For tools: the names a source reads and doesn't define itself, as the compiler resolves them, in an Ok: a list of
+    structs with Name, Line and Column (where it is first read, from 1, in characters), in the order of the source. The
+    bodies of its functions count; a parameter, a local variable or a name the source defines anywhere at its top doesn't.
+    The packages of its own uses are left out, with the names read through them, as Print in io.Print; a name before a dot
+    that nothing defines is read, as io in io.Print without its use. An Err of {Line, Message} for a source that doesn't
+    read. Nothing runs: std/cells finds with it which cell needs which.
+
+      [r.Name for r in cesia.Reads("y = x + 1")?] --> ["x"]
+      [r.Name for r in cesia.Reads("use std/io\nio.Print(n)")?] --> ["n"]
+      [r.Name for r in cesia.Reads("defn f(a)\n  a * rate\nend\nf(k)")?] --> ["rate", "k"]
+      cesia.Reads("total = 0\ntotal + step")?[1].Line --> 2
+      cesia.Reads("x = (").Error.Line --> 1 *)
 
 (** cesia.Keywords()
     The reserved words of the language, then it, as, _, ? and .., which mean something in some places only: what a highlighter

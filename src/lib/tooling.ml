@@ -31,6 +31,73 @@ let uses ctx a =
     Value.ok w (texts (List.filter_map path (Array.to_list fn.body)))
   | exception Pos.Load_error { pos; text; _ } -> refused w (Pos.line pos) text
 
+(* The names a source reads and doesn't define, as the resolver finds them: each once, at its first place. The source is
+   resolved as a file alone, with a lookup that takes every name it is asked for, which marks it free. Its own uses are
+   packages, and so is a name before a dot that nothing defines, as io in io.Print: the source reads that name. *)
+let reads ctx a =
+  let w = ctx.w in
+  let src = Native.text_arg ctx "cesia.Reads" a.(0) in
+  match
+    let toks = Lexer.tokens ~file:"" src in
+    toks, Parser.program ~file:"" ~nesting:w.limits.nesting toks
+  with
+  | exception Pos.Load_error { pos; text; _ } -> refused w (Pos.line pos) text
+  | toks, fn ->
+    let free = Ast.Cell { m = -1; k = 0; stable = false } in
+    let first = Hashtbl.create 16 in
+    let note name pos =
+      match Hashtbl.find_opt first name with
+      | Some p when p <= pos -> ()
+      | _ -> Hashtbl.replace first name pos
+    in
+    let named = Hashtbl.create 64 and dotted = Hashtbl.create 16 in
+    let rec scan (toks : Lexer.token array) =
+      let n = Array.length toks in
+      let dot i = i >= 0 && i < n && toks.(i).t = DOT in
+      Array.iteri
+        (fun i (tk : Lexer.token) ->
+           match tk.t with
+           | NAME s ->
+             if not (Hashtbl.mem named s) then Hashtbl.add named s tk.pos;
+             if dot (i + 1) && (not (dot (i - 1))) && not (Hashtbl.mem dotted s) then Hashtbl.add dotted s tk.pos
+           | TEXT parts -> List.iter (function Lexer.Code c -> scan c | Plain _ -> ()) parts
+           | _ -> ())
+        toks
+    in
+    scan toks;
+    let own = List.filter_map (fun (e : Ast.expr) -> match e.e with Use { ualias; _ } -> Some ualias | _ -> None) (Array.to_list fn.body) in
+    let looked = Hashtbl.create 16 in
+    let lookup name =
+      if name = "" || name.[0] = '#' || String.contains name '.' || String.contains name ':' then None
+      else begin
+        Hashtbl.replace looked name ();
+        Some free
+      end
+    in
+    let space alias = if List.mem alias own then fun _ -> Some Ast.Unresolved else fun _ -> note alias (Hashtbl.find dotted alias); Some Ast.Unresolved in
+    let spaces = Hashtbl.fold (fun alias _ acc -> (alias, space alias) :: acc) dotted [] in
+    ignore (Resolve.file ~report:ignore ~file:"" ~m:(-1) ~lookup ~spaces fn);
+    let rec walk (e : Ast.expr) =
+      (match e.e with
+       | Var { text; b } when b = free -> note text e.pos
+       | Lambda f | Fn_def (_, f) -> body f
+       | _ -> ());
+      Resolve.children walk e
+    and body (f : Ast.func) =
+      Array.iter (fun (p : Ast.param) -> Option.iter walk p.default) f.params;
+      Array.iter walk f.body
+    in
+    body fn;
+    (* A struct or an interface named by a pattern or a type is no variable: its first place is that of its name. *)
+    let own_names = List.map (fun (text, _, _, _) -> text) (Resolve.definitions fn) in
+    Hashtbl.iter
+      (fun name () ->
+         if not (Hashtbl.mem first name || List.mem name own_names) then Option.iter (note name) (Hashtbl.find_opt named name))
+      looked;
+    let found = List.sort (fun (_, p) (_, q) -> compare p q) (Hashtbl.fold (fun name pos acc -> (name, pos) :: acc) first []) in
+    let row (name, pos) = [| Text name; Int (Pos.line pos); Int (Pos.col pos) |] in
+    Value.ok w (records w [| "Name"; "Line"; "Column" |] (List.map row found))
+
 (* The tree of a source with every position the same, so that two sources that differ only by their spaces, line ends and
    comments give equal trees: what cesia fmt checks before it writes a file. *)
 let tree w src =
@@ -69,4 +136,5 @@ let natives ~libraries =
     "Keywords", Native.nat "cesia.Keywords" 0 0 (fun _ _ -> texts Lexer.words);
     text "Asset" (fun _ name -> match List.assoc_opt name Embedded.assets with Some s -> Text s | None -> Missing);
     "Uses", Native.nat ~result:true "cesia.Uses" 1 1 uses;
+    "Reads", Native.nat ~result:true "cesia.Reads" 1 1 reads;
     "SameTree", Native.nat ~result:true "cesia.SameTree" 2 2 same_tree ]

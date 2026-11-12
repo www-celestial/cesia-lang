@@ -189,6 +189,10 @@ let run args =
       Tier.watching := true;
       let g = o.o_grants in
       options { o with o_repl = true; o_grants = { g with perms = (Types.Debug, None) :: g.perms } } rest
+    | "--cells" :: rest ->
+      (* std/cells starts it: the cells run as the prompt runs code, without the hooks of a debugger. *)
+      let g = o.o_grants in
+      options { o with o_cells = true; o_grants = { g with perms = (Types.Debug, None) :: g.perms } } rest
     | file :: rest when not (String.starts_with ~prefix:"--" file) -> o, file, rest
     | [] when o.o_repl -> o, "", []
     | _ -> usage ()
