@@ -38,6 +38,10 @@ let rel p m =
     in
     dep 0
 
+let memo f =
+  let seen = Hashtbl.create 64 in
+  fun m -> match Hashtbl.find_opt seen m with Some r -> r | None -> let r = f m in Hashtbl.add seen m r; r
+
 let abs p u j =
   match u with
   | 0 when j = 0 -> 0
@@ -53,12 +57,14 @@ let magic = "Cesia\000L1"
 
 (* Writing. The strings of an entry are each written once, then by their number. *)
 module Out = struct
-type out = { b : Buffer.t; strings : (string, int) Hashtbl.t; rel : int -> int * int }
+(* A place is written as its distance from the one before, most often a byte. *)
+type out = { b : Buffer.t; strings : (string, int) Hashtbl.t; rel : int -> int * int; mutable last : int }
 
 let[@inline] byte o n = Buffer.add_uint8 o.b n
 let rec uint o n = if n land lnot 127 = 0 then byte o n else (byte o (n land 127 lor 128); uint o (n lsr 7))
 let int o n = uint o ((n lsl 1) lxor (n asr 62))
 let bool o x = byte o (if x then 1 else 0)
+let pos o p = int o (p - o.last); o.last <- p
 
 let str o s =
   match Hashtbl.find_opt o.strings s with
@@ -86,9 +92,9 @@ let name o (n : name) = str o n.text; binding o n.b
 let binop o op = byte o (match op with Add -> 0 | Sub -> 1 | Mul -> 2 | Div -> 3 | Pow -> 4 | Eq -> 5 | Ne -> 6 | Lt -> 7 | Le -> 8 | Gt -> 9 | Ge -> 10)
 
 let ptype o t =
-  uint o t.tpos; opt str o t.tpkg; str o t.tname; bool o t.topt; bool o t.tbang; binding o t.tb
+  pos o t.tpos; opt str o t.tpkg; str o t.tname; bool o t.topt; bool o t.tbang; binding o t.tb
 
-let rec expr o (x : expr) = uint o x.id; uint o x.pos; node o x.e
+let rec expr o (x : expr) = uint o x.id; pos o x.pos; node o x.e
 
 and block o b = arr expr o b
 
@@ -126,7 +132,7 @@ and node o = function
   | Set { root; path; value } ->
     byte o 29;
     name o root;
-    arr (fun o s -> uint o s.sp; match s.sk with Sindex (ixs, u) -> byte o 0; arr index o ixs; bool o u | Sfield f -> byte o 1; str o f) o path;
+    arr (fun o s -> pos o s.sp; match s.sk with Sindex (ixs, u) -> byte o 0; arr index o ixs; bool o u | Sfield f -> byte o 1; str o f) o path;
     expr o value
   | Destructure (p, v) -> byte o 30; pat o p; expr o v
   | Match { subject; arms } ->
@@ -144,19 +150,19 @@ and pat o = function
   | Plit e -> byte o 2; expr o e
   | Parray ps -> byte o 3; arr pat o ps
   | Pstruct fs -> byte o 4; arr (fun o (s, p) -> str o s; pat o p) o fs
-  | Pcons c -> byte o 5; opt str o c.cpkg; str o c.cname; arr pat o c.cargs; uint o c.cpos
+  | Pcons c -> byte o 5; opt str o c.cpkg; str o c.cname; arr pat o c.cargs; pos o c.cpos
 
 and param o p = str o p.pname; opt expr o p.default; opt ptype o p.ptype
 
 and iface o i = str o i.iname; arr (fun o (s, ps, r) -> str o s; arr param o ps; opt ptype o r) o i.imethods
 
 and func o f =
-  str o f.fname; arr param o f.params; opt ptype o f.ret; block o f.body; uint o f.nnodes; uint o f.fpos;
+  str o f.fname; arr param o f.params; opt ptype o f.ret; block o f.body; uint o f.nnodes; pos o f.fpos;
   uint o f.nvars; arr str o f.var_names; arr (fun o (a, b) -> uint o a; uint o b) o f.captures;
   arr bool o f.maybe_undef; bool o f.has_return; bool o f.has_self_tail; int o f.kept; arr int o f.cell_of;
   arr int o f.export_of
 
-let use o u = str o u.upath; str o u.ualias; uint o u.upos; list str o u.unames
+let use o u = str o u.upath; str o u.ualias; pos o u.upos; list str o u.unames
 
 (* A hoisted function or an interface is the one of a definition of the file: it is kept as its place in the body, so
    that it stays the same value once read. They come in the order of the body. *)
@@ -177,7 +183,7 @@ end
 
 (* Reading, with every count and number checked against what is left: a wrong entry raises, never more. *)
 module In = struct
-type inp = { s : string; mutable p : int; strs : string Vec.t; mutable abs : int -> int -> int }
+type inp = { s : string; mutable p : int; strs : string Vec.t; mutable abs : int -> int -> int; mutable last : int }
 
 let[@inline] byte d =
   let c = Char.code d.s.[d.p] in
@@ -190,8 +196,9 @@ let rec more d acc shift =
 
 let[@inline] uint d = let c = byte d in if c < 128 then c else more d (c land 127) 7
 
-let int d = let z = uint d in (z lsr 1) lxor -(z land 1)
-let bool d = match byte d with 0 -> false | 1 -> true | _ -> raise Bad
+let[@inline] int d = let z = uint d in (z lsr 1) lxor -(z land 1)
+let pos d = let p = d.last + int d in d.last <- p; p
+let[@inline] bool d = match byte d with 0 -> false | 1 -> true | _ -> raise Bad
 let count d = let n = uint d in if n < 0 || n > String.length d.s - d.p then raise Bad else n
 
 let str d =
@@ -225,7 +232,7 @@ let binops = [| Add; Sub; Mul; Div; Pow; Eq; Ne; Lt; Le; Gt; Ge |]
 let binop d = let i = byte d in if i < Array.length binops then binops.(i) else raise Bad
 
 let ptype d =
-  let tpos = uint d in
+  let tpos = pos d in
   let tpkg = opt str d in
   let tname = str d in
   let topt = bool d in
@@ -235,7 +242,7 @@ let ptype d =
 
 let rec expr d =
   let id = uint d in
-  let pos = uint d in
+  let pos = pos d in
   let e = node d in
   { id; pos; e }
 
@@ -307,7 +314,7 @@ and node d =
   | 29 ->
     let root = name d in
     let step d =
-      let sp = uint d in
+      let sp = pos d in
       let sk =
         match byte d with
         | 0 -> let ixs = arr index d in Sindex (ixs, bool d)
@@ -343,7 +350,7 @@ and pat d =
     let cpkg = opt str d in
     let cname = str d in
     let cargs = arr pat d in
-    let cpos = uint d in
+    let cpos = pos d in
     Pcons { cpkg; cname; cargs; cpos }
   | _ -> raise Bad
 
@@ -364,7 +371,7 @@ and func d =
   let ret = opt ptype d in
   let body = block d in
   let nnodes = uint d in
-  let fpos = uint d in
+  let fpos = pos d in
   let nvars = uint d in
   let var_names = arr str d in
   let captures = arr (fun d -> let a = uint d in a, uint d) d in
@@ -380,7 +387,7 @@ and func d =
 let use d =
   let upath = str d in
   let ualias = str d in
-  let upos = uint d in
+  let upos = pos d in
   let unames = list str d in
   { upath; ualias; upos; unames }
 
@@ -431,7 +438,7 @@ let read slot =
          || not (String.equal (String.sub s 8 16) (Digest.BLAKE128.substring s 24 (String.length s - 24)))
       then raise Bad;
       let open In in
-      let d = { s; p = 24; strs = Vec.create (); abs = (fun _ _ -> raise Bad) } in
+      let d = { s; p = 24; strs = Vec.create (); abs = (fun _ _ -> raise Bad); last = 0 } in
       let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = slot.digests in
       if same then Some { d; uses = arr (list use) d } else None
     with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
@@ -462,7 +469,7 @@ let trees saved place ~lookup ~spaces ~is_type =
 
 let write slot place log uses trees =
   let open Out in
-  let o = { b = Buffer.create 65536; strings = Hashtbl.create 1024; rel = rel place } in
+  let o = { b = Buffer.create 65536; strings = Hashtbl.create 1024; rel = memo (rel place); last = 0 } in
   try
     str o slot.kept.build;
     uint o slot.nesting;
