@@ -278,10 +278,20 @@ let natives_only w upath names =
   | Some natives when not (List.exists (fun n -> not (List.mem_assoc n natives)) names && has_source w upath) -> Some natives
   | _ -> None
 
-(* Lexes and parses a source. [use] returns the module of each use, given the names the file reads from it. Gives the names of
-   the uses, and the first module of each package they name. *)
-let parse ?(rewrite = ignore) w ~hooks ~path ~src ~use =
-  let file = register_file w path src in
+(* Loads what a file uses, in order. [use] returns the module of each use, given the names the file reads from it. Gives the
+   names of the uses with the first module of each package they name, and the module of each use. *)
+let load_uses w ~use uses =
+  let one (u : Cache.use) =
+    let m = use ~pos:u.upos ~names:u.unames u.upath in
+    (* A check goes on past a use that failed: every name of it passes, so that one error says it. *)
+    if m < 0 then ((u.ualias, fun _ -> Some Ast.Unresolved), 0), m else ((u.ualias, in_package w m), w.modules.(m).host), m
+  in
+  let named, used = List.split (List.map one uses) in
+  List.split named, used
+
+(* Lexes and parses a source, which [file] says is already registered, then loads its uses. *)
+let parse ?(rewrite = ignore) ?file w ~hooks ~path ~src ~use =
+  let file = match file with Some file -> file | None -> register_file w path src in
   let toks = Lexer.tokens ~file:path src in
   let fn = Parser.program ~hooks ~file:path ~nesting:w.limits.nesting toks in
   rewrite fn;
@@ -292,14 +302,11 @@ let parse ?(rewrite = ignore) w ~hooks ~path ~src ~use =
     List.filter_map
       (fun (e : Ast.expr) ->
          match e.e with
-         | Use { upath; ualias } ->
-           let m = use ~pos:e.pos ~names:(names ualias) upath in
-           (* A check goes on past a use that failed: every name of it passes, so that one error says it. *)
-           if m < 0 then Some ((ualias, fun _ -> Some Ast.Unresolved), 0) else Some ((ualias, in_package w m), w.modules.(m).host)
+         | Use { upath; ualias } -> Some { Cache.upath; ualias; upos = e.pos; unames = names ualias }
          | _ -> None)
       (Array.to_list fn.body)
   in
-  file, fn, List.split uses
+  file, fn, uses, load_uses w ~use uses
 
 (* The methods of a package are looked for by a value, which knows its struct and not the cells. The struct can be in another
    file than its method: they meet at the host. *)
@@ -333,11 +340,16 @@ let set_checks w (prepared : (int * Ast.layout) list) =
 
 (* Resolves the files of a package, the modules from [first] on. Each one sees what the others define, small names included,
    before any is resolved: a file can call one that comes after it. [old] gives the cells a file already has, for a reload. *)
-let resolve_files ?report w ~lookup ~first ~old parsed =
-  let is_type = is_type w and home = home w in
+let resolve_files ?report ?log w ~lookup ~first ~old parsed =
+  let home = home w in
+  (* With a [log], what it asks about other modules is noted, for the cache. *)
+  let is_type, lookup = match log with Some l -> Cache.is_type l (is_type w), Cache.lookup l lookup | None -> is_type w, lookup in
+  let spaces i spaces =
+    match log with Some l -> List.map (fun (alias, look) -> alias, Cache.space l i alias look) spaces | None -> spaces
+  in
   match parsed with
-  | [ (path, _, fn, (spaces, _)) ] ->
-    [ Resolve.file ~keep:(old 0) ~is_type ~home ?report ~file:path ~m:first ~lookup ~spaces fn ]
+  | [ (path, _, fn, (named, _)) ] ->
+    [ Resolve.file ~keep:(old 0) ~is_type ~home ?report ~file:path ~m:first ~lookup ~spaces:(spaces 0 named) fn ]
   | _ ->
     Resolve.check_package ?report (List.map (fun (path, _, fn, _) -> path, fn) parsed);
     let seen = Hashtbl.create 64 in
@@ -367,8 +379,8 @@ let resolve_files ?report w ~lookup ~first ~old parsed =
     in
     let peers = List.map (fun (_, _, fn, _) -> fn) parsed in
     List.mapi
-      (fun i ((path, _, fn, (spaces, _)), keep) ->
-         Resolve.file ~keep ~peers ~is_type ~home ?report ~file:path ~m:(first + i) ~lookup:look ~spaces fn)
+      (fun i ((path, _, fn, (named, _)), keep) ->
+         Resolve.file ~keep ~peers ~is_type ~home ?report ~file:path ~m:(first + i) ~lookup:look ~spaces:(spaces i named) fn)
       (List.combine parsed keeps)
 
 (* cesia check reads packages as use does, but runs none. *)
@@ -377,25 +389,73 @@ let checking = ref false
 (* Loads the files of a package as new modules, their uses first, without running them. The examples of a file have it as
    [host]. [natives] is the module of the natives of a package of std/ that has them, which its files see. With [report],
    a check: each error goes there and the loading goes on, but a file that doesn't parse leaves the package unread. *)
-let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ctx ~sources ~lookup =
+let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ?key ctx ~sources ~lookup =
   let w = ctx.w in
-  let one (path, src) =
-    let use = match report with Some r -> checked_use ctx r ~from:path | None -> use_module ctx ~hooks ~from:path in
-    let file, fn, spaces = parse ?rewrite w ~hooks ~path ~src ~use in
-    path, file, fn, spaces
+  let use_of path = match report with Some r -> checked_use ctx r ~from:path | None -> use_module ctx ~hooks ~from:path in
+  let one ?file (path, src) =
+    let file, fn, uses, (named, used) = parse ?rewrite ?file w ~hooks ~path ~src ~use:(use_of path) in
+    (path, file, fn, named), (uses, used)
+  in
+  (* [key] names the package in the cache, which a debugger, a check, a test or an example doesn't use. *)
+  let slot =
+    match key with
+    | Some key when (not hooks) && host = None && report = None && rewrite = None ->
+      let fixed src = List.exists (fun (_, s) -> s == src) Embedded.files in
+      Cache.slot ~key ~nesting:w.limits.nesting ~fixed sources
+    | _ -> None
+  in
+  let saved = Option.bind slot Cache.read in
+  (* A package saved by an earlier run: its files are not lexed or parsed, and their uses load as they would. *)
+  let warm =
+    match saved with
+    | Some saved when Array.length (Cache.uses saved) = List.length sources ->
+      Some
+        (List.mapi
+           (fun i (path, src) ->
+              let file = register_file w path src in
+              let uses = (Cache.uses saved).(i) in
+              file, uses, load_uses w ~use:(use_of path) uses)
+           sources)
+    | _ -> None
   in
   let parsed =
-    match report with
-    | None -> List.map one sources
-    | Some r ->
+    match warm, report with
+    | Some _, _ -> []
+    | None, None -> List.map one sources
+    | None, Some r ->
       let read = List.map (fun s -> match one s with p -> Some p | exception (Pos.Load_error _ as e) -> r e; None) sources in
       if List.mem None read then [] else List.filter_map Fun.id read
   in
+  let count = match warm with Some files -> List.length files | None -> List.length parsed in
   let first = Array.length w.modules in
-  let package = Array.append (Array.init (List.length parsed) (fun i -> first + i)) (Option.to_list natives |> Array.of_list) in
+  let package = Array.append (Array.init count (fun i -> first + i)) (Option.to_list natives |> Array.of_list) in
   Option.iter (fun n -> w.modules.(n).package <- package) natives;
   let lookup = match natives with Some n -> with_natives w [| n |] | None -> lookup in
-  let layouts = if parsed = [] then [] else resolve_files ?report w ~lookup ~first ~old:(fun _ -> [||]) parsed in
+  let place used = { Cache.first; count; natives; used = Array.of_list (List.concat used); package = (fun m -> w.modules.(m).package) } in
+  let resolved parsed =
+    let parsed, uses = List.split parsed in
+    let log = Option.map (fun _ -> Cache.log ()) slot in
+    let layouts = if parsed = [] then [] else resolve_files ?report ?log w ~lookup ~first ~old:(fun _ -> [||]) parsed in
+    (match slot, log with
+     | Some slot, Some log ->
+       Cache.write slot (place (List.map snd uses)) log (Array.of_list (List.map fst uses))
+         (List.map2 (fun (_, _, fn, _) layout -> fn, layout) parsed layouts)
+     | _ -> ());
+    parsed, layouts
+  in
+  let parsed, layouts =
+    match saved, warm with
+    | Some saved, Some files ->
+      let spaces = Array.of_list (List.map (fun (_, _, ((named, _), _)) -> named) files) in
+      (match Cache.trees saved (place (List.map (fun (_, _, (_, used)) -> used) files)) ~lookup ~spaces ~is_type:(is_type w) with
+       | Some trees when List.compare_lengths trees files = 0 ->
+         ( List.map2 (fun ((path, _), (file, _, (named, _))) (fn, _) -> path, file, fn, named) (List.combine sources files) trees,
+           List.map snd trees )
+       | _ ->
+         (* Something it depends on changed: its files are read as without a cache, their uses already loaded. *)
+         resolved (List.map2 (fun source (file, _, _) -> one ~file source) sources files))
+    | _ -> resolved parsed
+  in
   let host = match host with Some h -> w.modules.(h).host | None -> first in
   let prepared = List.map2
     (fun (path, file, fn, (_, uses)) (layout : Ast.layout) ->
@@ -449,7 +509,7 @@ and run_package ctx ~hooks ?natives ~key read =
   let w = ctx.w in
   Hashtbl.replace w.loaded key (-1);
   match
-    let prepared = prepare_files ~hooks ?natives ctx ~sources:(read ()) ~lookup:(lookup w) in
+    let prepared = prepare_files ~hooks ?natives ~key ctx ~sources:(read ()) ~lookup:(lookup w) in
     if not !checking then List.iter (run_prepared ctx) prepared;
     prepared
   with
@@ -475,8 +535,8 @@ let folder ctx dir =
     in
     run_package ctx ~hooks:ctx.w.hooks ?natives:(engine_natives ctx.w key) ~key (fun () -> List.map read (Package.files key))
 
-let prepare ?hooks ?host ?natives ?rewrite ctx ~path ~src ~lookup =
-  List.hd (prepare_files ?hooks ?host ?natives ?rewrite ctx ~sources:[ path, src ] ~lookup)
+let prepare ?hooks ?host ?natives ?rewrite ?key ctx ~path ~src ~lookup =
+  List.hd (prepare_files ?hooks ?host ?natives ?rewrite ?key ctx ~sources:[ path, src ] ~lookup)
 
 (* The natives of the package of std/ that a file of std/ belongs to, std/list.ce or src/std/list.ce, as a module. *)
 let std_natives w path =
@@ -489,7 +549,7 @@ let load ctx path =
   if Package.is_dir path then ignore (folder ctx path)
   else
     let src = In_channel.with_open_bin path In_channel.input_all in
-    run_prepared ctx (prepare ~hooks:w.hooks ctx ~path ~src ~lookup:(lookup w))
+    run_prepared ctx (prepare ~hooks:w.hooks ~key:(Package.absolute path) ctx ~path ~src ~lookup:(lookup w))
 
 let tool_path name = "tools/" ^ name ^ Package.suffix
 
@@ -772,8 +832,8 @@ let reload w path =
              let path = w.modules.(k).path in
              let src = In_channel.with_open_bin path In_channel.input_all in
              check_installed w ~from:path ~pos:(Pos.make 1 1) path src;
-             let file, fn, spaces = parse w ~hooks:w.hooks ~path ~src ~use:(loaded_module w ~from:path) in
-             path, file, fn, spaces)
+             let file, fn, _, (named, _) = parse w ~hooks:w.hooks ~path ~src ~use:(loaded_module w ~from:path) in
+             path, file, fn, named)
           members
       in
       let old i = Array.of_list (List.map fst w.modules.(first + i).mnames) in

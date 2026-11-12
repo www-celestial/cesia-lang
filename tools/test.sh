@@ -10,6 +10,8 @@ logs=$(mktemp -d)
 jobs=()
 # shellcheck disable=SC2016
 trap 'kill ${jobs[@]+"${jobs[@]}"} 2> /dev/null || true; rm -rf "$logs"' EXIT
+# Cesia keeps the packages it loads in the folder of caches: the tests have their own, empty at the start.
+export XDG_CACHE_HOME="$logs/cache"
 
 each_folder() {
   for folder in tests/lang tests/celestial src/std; do

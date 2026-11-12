@@ -412,6 +412,7 @@ let jit_mode () =
 
 let () =
   try
+    Cache.build := Build.id;
     jit_mode ();
     match Array.to_list Sys.argv with
     | _ :: "version" :: _ -> print_endline Version.text

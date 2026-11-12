@@ -10,3 +10,15 @@
   arch.ml
   (echo
    "let name = \"%{architecture}\"\nlet system = \"%{ocaml-config:system}\"\nlet ocaml = \"%{ocaml_version}\"\nlet fp = %{ocaml-config:with_frame_pointers}\nlet flambda = %{ocaml-config:flambda}\n")))
+
+; The build that the cache of loaded packages names: what the core is made of.
+
+(rule
+ (targets build.ml)
+ (deps
+  (glob_files ../lib/*.ml)
+  (glob_files ../lib/*.mli))
+ (action
+  (with-stdout-to
+   %{targets}
+   (run ../gen/gen_id.exe %{ocaml_version} %{architecture} %{deps}))))
