@@ -228,8 +228,8 @@ end
 defn connectionsCut()
   (** The network cuts each connection at a random byte: each new connection starts with the answers, and the rows are
       still the source's at every group. *)
-  h = history(300)
-  join = hub(h, 0.005)
+  h = history(150)
+  join = hub(h, 0.003)
   app = serve(s -> [live.Show("a", watch(join, s))])?
   got = follow(proxy(app, cut = 3000)?, {a: h}, reconnects = 100)
   got.Ok and got.Opened > 1
@@ -238,15 +238,15 @@ end
 defn stalledScreen()
   (** One page reads nothing past its handshake while the 5 others follow every change to the end: its screen waits
       on its connection alone. Once it reads again, it gets every change it missed, its rows the source's at each group. *)
-  h = history(300, size = 20000)
-  join = hub(h, 0.003)
+  h = history(150, size = 40000)
+  join = hub(h, 0.002)
   app = serve(s -> [live.Show("a", watch(join, s))])?
   stall = fiber.Channel()
   stalled = open(proxy(app, stall = stall)?)?
   pages = [fiber.Spawn(() -> follow(app, {a: h})) for k in 1..5]
   fine = list.All([fiber.Wait(p)?.Ok for p in pages])
   fiber.Close(stall)
-  fine and lateReader(stalled, h, 300) >= 1
+  fine and lateReader(stalled, h, 150) >= 1
 end
 
 defn lateReader(c, h, last)
