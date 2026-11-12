@@ -28,6 +28,10 @@ let app = Filename.concat top "app"
 let shapes = Filename.concat app "src/shapes"
 let filler = String.concat "" (List.init 12 (fun i -> Printf.sprintf "(** Filler %d, to pass the least size. *)\nFill%d(x) = x + %d\n" i i i))
 
+(* units reads only a native of std/list, before shapes loads the Cesia code of std/list too: the package of std/list grows
+   between the two, and an entry must place its modules as they were when it was resolved. *)
+let units text = "(** Units. *)\nuse std/list\n\n" ^ text ^ "\n(** A total. *)\nTotal(xs) = list.Sum(xs)\n" ^ filler
+
 let () =
   write (Filename.concat app "cesia.toml") "[project]\nname = \"app\"\n";
   write (Filename.concat shapes "area.ce")
@@ -37,7 +41,7 @@ let () =
   write (Filename.concat shapes "broken.ce")
     "(** What fails. *)\nuse std/bug\n\n(** A panic, two calls down. *)\nBroken(n) = deeper(n)\n\
      deeper(n) = if n > 0 bug.Panic(\"broken $n\") else 0 end\n";
-  write (Filename.concat app "src/units/units.ce") ("(** Units. *)\nUnit = \" m2\"\n" ^ filler);
+  write (Filename.concat app "src/units/units.ce") (units "Unit = \" m2\"");
   write (Filename.concat app "main.ce")
     "use src/shapes\nuse std/io\n\nio.Print(shapes.All([shapes.Rect(2, 3), shapes.Rect(4, 5)]))\nio.Print(shapes.Broken(1))\n"
 
@@ -94,10 +98,10 @@ let () =
   check "back to this build: written again" (!writes = List.length entries);
   (* A changed file, then a dependency whose cells move: read again, as without a cache. *)
   let without () = with_store "" (fun () -> Cache.store := None; run ()) in
-  write (Filename.concat app "src/units/units.ce") ("(** Units. *)\nUnit = \" square meters\"\n" ^ filler);
+  write (Filename.concat app "src/units/units.ce") (units "Unit = \" square meters\"");
   let changed = run () in
   check "a changed file is read again" (changed = without () && changed <> plain);
-  write (Filename.concat app "src/units/units.ce") ("(** Units. *)\nFirst = 1\nSecond = 2\nUnit = \" sq m\"\n" ^ filler);
+  write (Filename.concat app "src/units/units.ce") (units "First = 1\nSecond = 2\nUnit = \" sq m\"");
   writes := 0;
   let moved = run () in
   check "a dependency whose cells moved: its users resolved again" (moved = without () && !writes = 2)

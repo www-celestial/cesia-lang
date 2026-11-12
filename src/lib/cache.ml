@@ -530,7 +530,13 @@ let encode slot place log uses trees =
    way. A package loaded again, in another world of the same process, replaces its own. *)
 let waiting : (string, unit -> unit) Hashtbl.t = Hashtbl.create 16
 
-let write slot place log uses trees = Hashtbl.replace waiting slot.name (fun () -> encode slot place log uses trees)
+(* The packages of the modules used, as they are now: one may grow before the end, as std/list once a file reads its Cesia
+   code after another read only its natives, and the next run finds them as they were. *)
+let write slot place log uses trees =
+  let now = Hashtbl.create 16 in
+  Array.iter (fun m -> if m >= 0 then Hashtbl.replace now m (Array.copy (place.package m))) place.used;
+  let place = { place with package = Hashtbl.find now } in
+  Hashtbl.replace waiting slot.name (fun () -> encode slot place log uses trees)
 let pending () = Hashtbl.length waiting > 0
 
 let save () =
