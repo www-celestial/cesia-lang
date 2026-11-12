@@ -496,6 +496,12 @@ spends there, $W$: $L = \lambda W$ (Little, 1961). A server that holds 1,000 con
 36,000 requests a second, answers each in $1{,}000 / 36{,}000$ s, 28 ms, on average, however it schedules them. See
 [How Cesia works](internals.md#what-it-serves).
 
+## Live screen
+
+A page whose data changes by itself, pushed to it by the server as others change it, instead of the page asking again
+every few seconds, which is *polling*. In Cesia, [live.Route] serves such pages over a WebSocket, each with its shows and
+its actions: see [HTTP](http.md#live-screens-stdlive).
+
 ## Lock file
 
 A file that keeps the exact version and fingerprint of each dependency, so that every machine installs the same code.
@@ -568,6 +574,13 @@ with a `?`, as `Text?`: see [Values and names](values.md#missing) and [Types](ty
 Switching a loop that is already running from the interpreter to machine code, in the middle of its turns, with its
 variables carried over. Cesia's JIT does it at a checkpoint inside a hot loop: see
 [How Cesia works](internals.md#bets-guards-and-bails).
+
+## Optimistic update
+
+Showing the effect of one's own action at once, before the server has answered, then keeping the server's answer: its
+change confirms the effect, its error undoes it. Games call it *client-side prediction* and *reconciliation*: each new
+state of the server is drawn with the actions it hasn't answered yet replayed over it, a *rebase*. In Cesia, a page of
+[std/live] gives `live.act` the effect of an action on each show: see [HTTP](http.md#actions).
 
 ## Optional typing
 
@@ -750,6 +763,13 @@ A rule that sends the requests of one method and one path to a handler. [http.Ge
 
 Random bytes stored with the hash of a password, so that two equal passwords give two different hashes and a table of
 hashes computed in advance is useless. [crypto.HashPassword] adds one: see [Cryptography](crypto.md#passwords).
+
+## Same-origin check
+
+A server's check that a request comes from a page of its own site, by the `Origin` header the browser sends: a page
+from elsewhere could otherwise use the cookies of the visitor. A browser holds `fetch` to this rule by itself, but not a
+WebSocket, so the server checks it (RFC 6455 §10.2). [live.Route] gives a page of another origin a `403`: see
+[HTTP](http.md#the-pages-side).
 
 ## Sandbox
 

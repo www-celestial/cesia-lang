@@ -45,7 +45,7 @@ language.
 16. [Graphs](graphs.md): lines, points, bars, histograms, heatmaps and densities as values, drawn to SVG, and the
     methods each step follows.
 17. [JSON and CSV](json.md): reading, writing, and checking what comes in.
-18. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
+18. [HTTP](http.md): a web server with routes and JSON, tested without the network, live screens, and the client.
 19. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
 20. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
 21. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.

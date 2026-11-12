@@ -8,8 +8,10 @@ module Timers = Map.Make (struct
     let compare (a, i) (b, j) = match Float.compare a b with 0 -> Int.compare i j | c -> c
   end)
 
-(* The wakes that other domains ask for: a domain pushes its wake on [asked], then writes a byte in the pipe, which the
-   scheduler watches while [awaited] wakes may still come. *)
+(* The wakes that other domains ask for: a domain pushes its wake on [asked], then writes a byte in the pipe if the list
+   was empty, which the scheduler watches while [awaited] wakes may still come. The scheduler empties the pipe before it
+   takes the whole list, so the byte of the first wake brings every wake pushed after it: a domain that wakes ten
+   thousand fibers makes one system call, not ten thousand. *)
 type remote = {
   pipe : Unix.file_descr * Unix.file_descr;
   asked : (unit -> unit) list Atomic.t;
@@ -194,9 +196,8 @@ let remote p wake =
         wake ()
       end
       else begin
-        let rec push () = let l = Atomic.get r.asked in if not (Atomic.compare_and_set r.asked l (wake :: l)) then push () in
-        push ();
-        try ignore (Unix.single_write_substring (snd r.pipe) "w" 0 1) with Unix.Unix_error _ -> ()
+        let rec push () = let l = Atomic.get r.asked in if Atomic.compare_and_set r.asked l (wake :: l) then l = [] else push () in
+        if push () then try ignore (Unix.single_write_substring (snd r.pipe) "w" 0 1) with Unix.Unix_error _ -> ()
       end
 
 let reset p =

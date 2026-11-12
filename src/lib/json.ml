@@ -193,27 +193,24 @@ let add_text b s =
   Buffer.add_char b '"'
 
 let write ctx ~pretty v =
-  let b = Buffer.create 256 in
+  let b = Buffer.create 64 in
   let line depth = if pretty then begin
       Buffer.add_char b '\n';
       Buffer.add_string b (String.make (2 * depth) ' ')
     end
   in
-  let group opening closing depth items add =
-    if items = [] then begin
-      Buffer.add_char b opening;
-      Buffer.add_char b closing
-    end else begin
-      Buffer.add_char b opening;
-      List.iteri
-        (fun k item ->
-           if k > 0 then Buffer.add_char b ',';
-           line (depth + 1);
-           add item)
-        items;
-      line depth;
-      Buffer.add_char b closing
-    end
+  (* n items between an opening and a closing character, add k writing the k-th: a loop, no list made. *)
+  let group opening closing depth n add =
+    Buffer.add_char b opening;
+    if n > 0 then begin
+      for k = 0 to n - 1 do
+        if k > 0 then Buffer.add_char b ',';
+        line (depth + 1);
+        add k
+      done;
+      line depth
+    end;
+    Buffer.add_char b closing
   in
   let bad x = Runtime.fail ctx Type (Messages.json_value (Value.describe x)) in
   let rec go depth x =
@@ -231,27 +228,27 @@ let write ctx ~pretty v =
       (* Lists in lists, the first index outermost, so that x[i][j][k] of the JSON is a[i, j, k]. *)
       Runtime.pay ctx (a.rows * a.cols);
       let rec nest depth d at stride =
-        let n = a.dims.(d) and below = stride * a.dims.(d) in
-        if d = Array.length a.dims - 1 then group '[' ']' depth (List.init n (fun i -> at + (i * stride))) (fun k -> go (depth + 1) (Value.elt a k))
-        else group '[' ']' depth (List.init n (fun i -> at + (i * stride))) (fun at -> nest (depth + 1) (d + 1) at below)
+        let below = stride * a.dims.(d) in
+        if d = Array.length a.dims - 1 then group '[' ']' depth a.dims.(d) (fun i -> go (depth + 1) (Value.elt a (at + (i * stride))))
+        else group '[' ']' depth a.dims.(d) (fun i -> nest (depth + 1) (d + 1) (at + (i * stride)) below)
       in
       if depth + Array.length a.dims > max_depth then bad x;
       nest depth 0 0 1
     | Array a ->
       Runtime.pay ctx (a.rows * a.cols);
-      group '[' ']' depth (List.init (a.rows * a.cols) (Value.elt a)) (go (depth + 1))
+      group '[' ']' depth (a.rows * a.cols) (fun k -> go (depth + 1) (Value.elt a k))
     | Struct { shape = { sname = Some _; _ } as shape; fields = s; _ } ->
       let fields = Trie.vals_array s in
       (* Public fields only: a small one, a password hash, never leaks into a response. *)
       Runtime.charge ctx (Array.length fields + 1);
-      let public = List.filter (fun k -> Lexer.is_public shape.names.(k)) (List.init (Array.length fields) Fun.id) in
-      group '{' '}' depth (List.map (fun k -> shape.names.(k), fields.(k)) public) (member depth)
+      let public = Array.of_list (List.filter (fun k -> Lexer.is_public shape.names.(k)) (List.init (Array.length fields) Fun.id)) in
+      group '{' '}' depth (Array.length public) (fun k -> member depth shape.names.(public.(k)) fields.(public.(k)))
     | Dict _ ->
       let o = Value.items x in
       Runtime.charge ctx ((Array.length o / 2) + 1);
-      group '{' '}' depth (List.init (Array.length o / 2) (fun k -> Value.text_of ctx o.(2 * k), o.((2 * k) + 1))) (member depth)
+      group '{' '}' depth (Array.length o / 2) (fun k -> member depth (Value.text_of ctx o.(2 * k)) o.((2 * k) + 1))
     | _ -> bad x
-  and member depth (k, v) =
+  and member depth k v =
     add_text b k;
     Buffer.add_char b ':';
     if pretty then Buffer.add_char b ' ';

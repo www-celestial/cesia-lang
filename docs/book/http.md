@@ -334,6 +334,173 @@ Measured on one machine, against one echo server written in Go with gorilla/webs
 23 µs and 3.3 ms. The WebSocket of Node 26 takes 55 µs and 6.5 ms, and 56 ms for its first connection, as it loads its
 client then. A program reads the client only when it names it: a server of [std/http] starts as it did.
 
+## Live screens: std/live
+
+A *live screen* is a page whose data changes by itself, as others change it, without the page asking again: the unpaid
+invoices of a client, a dashboard, a chat. The usual way without it is *polling*: the page asks for the whole list every
+few seconds, so a change shows up to that much later, and the server answers every page again even when nothing
+changed. [std/live] does it with a [WebSocket](#websocket) per page instead, and in both directions:
+
+- the app gives each page its *shows*: a name, and a channel of [std/fiber] whose messages are an answer and its
+  changes. The page gets the answer, then each change, pushed as it comes.
+- the page asks the app for *actions*: a name and the values of the page, run by a function of the app, whose reply
+  goes back to the page. The page shows the effect of its own action at once, before the reply, and the reply confirms
+  it or undoes it: an [optimistic update](glossary.md#optimistic-update).
+
+In both examples below, the app holds its data behind functions of its own: `clientOf(r)`, the client a request comes
+from; `unpaid(c)`, the unpaid invoices of a client; `addInvoice(c, a)`, which adds one; and, for the live screen,
+`watchUnpaid(c, ended)`, a channel of the answer then of its changes until `ended` closes. With Cepheus, the last is
+`cepheus.Watch(1, unpaidOf(c), db, until = ended)?.Changes`: a watch of Cepheus gives exactly these messages.
+
+```cesia norun hide=code
+clientOf(r) = 1
+unpaid(c) = []
+addInvoice(c, a) = result.Ok(1)
+watchUnpaid(c, ended) = fiber.Channel()
+```
+
+Before, a page that polls:
+
+```cesia norun
+app = http.App()
+  then http.Get("/unpaid", r -> http.Json(unpaid(clientOf(r))))
+  then http.Post("/invoice", r -> http.Json(addInvoice(clientOf(r), http.BodyJson(r)?)))
+```
+```js
+setInterval(async () => draw(await (await fetch("/unpaid")).json()), 2000)   // all again, every 2 s
+```
+
+After, a live screen: [live.Route] serves the screens of a path, and the page's side, `live.js`, at the path and
+`/live.js`:
+
+```cesia norun
+use std/live
+screen(s) = [live.Show("unpaid", watchUnpaid(clientOf(s.Request), s.Ended))]
+app = http.App() then live.Route("/live", screen, actions = {AddInvoice: (s, a) -> addInvoice(clientOf(s.Request), a)})
+```
+```js
+import { connect } from "/live/live.js"
+const live = await connect("/live")
+live.show("unpaid", rows => draw(rows))          // at once, then at each change
+add.onclick = () => live.act("AddInvoice", {Total: 90},
+  {unpaid: rows => [...rows, {Invoice: null, Total: 90}]})   // drawn at once; the reply confirms or undoes it
+```
+
+`a then live.Route(pattern, screen)` is `live.Route(pattern, screen, a)`, as for [http.Get]: `then` passes its left side
+as the last argument.
+
+### A screen
+
+`screen(s)` runs when a page connects. `s` is `{Request, Ended}`: the HTTP request of the page, with its headers and
+cookies, to tell who it is, as a route does; and a channel that closes when the page leaves. It gives a list of
+[live.Show], each a name and a channel, or an `Err`, which the page gets as an error. Each message of a show's channel
+is, first, the answer, `{Group, Rows}`: its rows at the group `Group`, a number that grows with each change; then each
+change, `{Group, Added, Removed}`: the rows that came and the rows that went with that group; or the answer again. A
+watch of Cepheus gives exactly these, and `until = s.Ended` ends it with the page. A channel of your own works too:
+
+```cesia allow=net=own
+use std/live
+use std/websocket
+use std/json
+use std/net
+use std/fiber
+defn counter(s)
+  ch = fiber.Channel()
+  fiber.Send({Group: 0, Rows: [{N: 0}]}, ch)
+  fiber.Send({Group: 1, Added: [{N: 1}], Removed: [{N: 0}]}, ch)
+  [live.Show("count", ch)]
+end
+listener = net.Listen(0).Value
+fiber.Spawn(() -> http.Serve(http.App() then live.Route("/live", counter), listener = listener))
+page = websocket.Dial("ws://127.0.0.1:$(net.Port(listener))/live").Value
+websocket.Send(json.Text({Hello: 1}), page) -->
+answer = json.Parse(fiber.Receive(page.Messages, timeout = 1).Value).Value[1]
+[answer.Show, answer.Group, answer.Rows] -->
+change = json.Parse(fiber.Receive(page.Messages, timeout = 1).Value).Value[1]
+[change.Group, change.Added, change.Removed] -->
+websocket.Close(page) -->
+```
+
+The page is `live.js` in a browser; here it is the client of [std/websocket], which shows what goes on the wire: the
+page says `{"Hello": 1}`, then each frame of the app is a JSON list of messages, each with `At`, the app's clock in
+microseconds when it read the message from its show.
+
+Each screen has a [fiber](fibers.md) of its own, which reads its shows and writes to its page alone: a page that reads
+nothing holds no other back. While its page is slow, a screen waits on its connection, and reads nothing more; so the
+source of a show never waits for the screen either: it gives each screen a channel of its own, and when one holds too
+much, it drops what it holds and sends the answer again. A watch of Cepheus does that by itself, with its `size`
+(64 messages unless said otherwise): a page too far behind gets the whole answer again rather than every change it
+missed, and the memory of a screen never grows with a slow page.
+
+### Actions
+
+`actions` maps names to functions `(s, args)`, `args` the values the page sent. An action's value goes back to the page
+as its reply: the value of an `Ok`, or any value that isn't an `Err`, confirms the action, and an `Err` undoes it. Each
+page's actions run one after the other, in the order it asked for them, each in a fiber of its own: a panic in one is
+written in [std/log], and the page learns only that the action failed. An action that the screen doesn't have, a page
+that sends something else than `live.js` sends, are refused. The values a page sends are the page's: an action checks
+them, as a route checks a form.
+
+On the page, `live.act(name, args, effects)` sends the action and gives a `Promise` of its reply. `effects` maps the
+names of shows to functions that give the rows with the action's effect: the page draws each show as the app's rows with
+the effect of each action not yet answered, in the order they were asked for, again at each change. This is how games
+show a player's own moves at once and Replicache a page's own writes: *client-side prediction*, then *reconciliation*
+when the server's state arrives. A reply drops the effect: at once on an `Err`; on an `Ok`, on each show that got a
+message since the action was asked for, and on the others at their next message, at most 100 ms later, so that the
+action's row is drawn neither twice nor not at all, whichever of its change and its reply comes first. While an action
+runs, the screen holds the changes of its shows, at most 0.1 s, and sends them with the reply in one frame. A page draws
+each show at most once a frame of the display, at `requestAnimationFrame`.
+
+### The page's side
+
+`live.js` is served at the path of the route and `/live.js`, a module of 211 lines with nothing to install:
+
+| | |
+|---|---|
+| `connect(url)` | opens the screen: a `Promise` of it, or a refusal when no screen opens at `url` |
+| `live.show(name, draw)` | `draw(rows)` with the rows of a show, at once if they are there, then at each change |
+| `live.act(name, args, effects)` | an action: a `Promise` of its reply, its effects drawn at once |
+| `live.onError(f)` | `f(error)` for an error of the screen, as an `Err` of `screen` or a show that ended |
+| `live.close()` | closes the screen |
+
+When the connection breaks, the page connects again by itself, after 0.25 s, then twice as long each time, up to 8 s;
+the new screen starts with the answers. An action asked before the break and not yet answered gets an error that says
+so: it may have run or not, and the new answers show which.
+
+A page of another origin than the app's, by its `Origin` header, gets a `403`: no other site opens a screen with the
+cookies of its visitors, which a WebSocket would otherwise allow, since a browser doesn't hold it to the
+[same-origin rule](glossary.md#same-origin-check) as it does `fetch` (RFC 6455 §10.2).
+
+### What a page's changes take
+
+`live.js` measures how long each change takes from the app to the page: from `At` to its arrival, with the difference
+between the two clocks taken from the page's pings, every 30 s, the one of the shortest round trip, as NTP does. Each
+minute, a page sends its p50 and p99, the times that half and 99 in 100 of its changes did not exceed, and the app keeps
+them in [std/metrics] as two histograms, `live_delay_p50_seconds` and `live_delay_p99_seconds`, which a route shows to
+Prometheus with `metrics.Text()`. The count of screens opened is `live_screens_total`.
+
+### What it costs
+
+Measured on one machine of 8 cores, the app on 4 of them and the pages on the 4 others (a load client that opens the
+screens, then publishes changes of one row of 48 bytes at a steady rate, each timed from its publication to its
+arrival at each page), 21 runs alternated with a hub written by hand on [std/websocket] in the version before: one
+fiber that sends each change's text to every connection, with no answer again for a slow page. The median of the
+runs' p50, with its 95 % interval:
+
+| screens | changes a second | hub written by hand | std/live | std/live's p99 |
+|---|---|---|---|---|
+| 1 | 50 | 0.44 ms [0.43, 0.44] | 0.58 ms [0.56, 0.60] | 0.74 ms |
+| 100 | 50 | 1.25 ms [1.17, 1.27] | 2.67 ms [2.40, 2.84] | 7.5 ms |
+| 1,000 | 50 | 5.7 ms [5.6, 5.9] | 12.3 ms [11.8, 13.3] | 40 ms |
+| 10,000 | 5 | 42 ms [42, 44] | 294 ms [285, 318] | 612 ms |
+
+A screen of std/live takes about twice the hub's time. It does more: each screen is a fiber of its own that writes its
+page's messages itself, so a page that reads nothing holds no other back, where the hub waits for it.
+At 10,000 screens and 50,000 changes a second to send, std/live sends 47,600 a second, the hub 51,200: std/live falls
+behind and its times grow during the run. A held screen takes 29.2 KB of memory, the hub's connection 23.2 KB. A
+program that doesn't use [std/live] starts as before: 2.92 ms [2.88, 2.97] against 2.90 [2.85, 2.94] for `io.Print(1)`,
+21 runs alternated.
+
 ## TCP: std/net
 
 Under [std/http] is [std/net], plain TCP: [net.Listen] opens a listener, [net.Accept] waits for a connection, [net.Connect]

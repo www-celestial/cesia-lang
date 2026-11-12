@@ -21,6 +21,9 @@ Everything here is added: a program written for 1.0 runs as it did.
 - `std/websocket` is a client too: `websocket.Dial(url)` gives a connection whose messages come on the channel
   `c.Messages`, with `websocket.Send`, `websocket.Close` and `websocket.DefaultMaxMessage`; tested against
   Autobahn|Testsuite in the CI.
+- `std/live`, live screens: `live.Route(path, screen, actions = {...})` serves pages whose shows change by themselves,
+  pushed over a WebSocket, and their actions, drawn at once by `live.js` and confirmed or undone by the app's reply;
+  `live.Show(name, changes)`.
 
 ### Tools
 
@@ -44,6 +47,8 @@ Measured on the same machine as the others, in the book's chapter on speed:
 - a start in 2.62 ms;
 - HTTP: a tiny route 67k requests a second, beside Go's 67k, and JSON 48k, ahead of Node's 41k;
 - `encode.Unbase64` of 1.4 MB, a page's screenshot, 572 -> 5.7 ms.
+- a native that wakes many fibers from another domain writes the wake pipe once: when one native wakes 10,000 fibers,
+  the last is awake in 9.5 ms instead of 11.6; `json.Text` of a small map in 314 ns instead of 390.
 
 ### Fixes
 
