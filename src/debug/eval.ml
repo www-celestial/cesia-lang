@@ -137,19 +137,49 @@ let replace_functions w ~target ~file (layout : Ast.layout) =
     Compile.retire_all w
   end
 
-(* At the prompt: the code sees the main file's package, its uses and what was run at the prompt before. *)
-let at_prompt ctx code =
+(* The aliases that a dot follows in the code, as io in io.Print: the uses that a cell needs from the cells above. *)
+let dotted code =
+  match Lexer.tokens ~file:prompt_path code with
+  | exception Pos.Load_error _ -> []
+  | toks ->
+    let out = ref [] in
+    let rec scan (toks : Lexer.token array) =
+      Array.iteri
+        (fun i (tk : Lexer.token) ->
+           match tk.t with
+           | NAME a when i + 1 < Array.length toks && toks.(i + 1).t = DOT -> out := a :: !out
+           | TEXT parts -> List.iter (function Lexer.Code c -> scan c | Plain _ -> ()) parts
+           | _ -> ())
+        toks
+    in
+    scan toks;
+    !out
+
+(* At the prompt: the code sees the main file's package, its uses and what was run at the prompt before. A cell of std/cells
+   runs as the lines of its file from [line]: empty lines after the uses it needs put its own at their place, so that its
+   errors and the calls that lead to them name the file and its lines. *)
+let at_prompt ?cell ctx code =
   let w = ctx.w in
   let d = w.debug in
-  let target = if d.main = "" then -1 else Loader.module_of w d.main in
-  let src, shift = source ~uses:(uses_of w target @ d.typed_uses) code in
+  (* A cell is no part of a program loaded: its file only names its modules, which the cells before it made. *)
+  let target = if d.main = "" || cell <> None then -1 else Loader.module_of w d.main in
+  let uses = uses_of w target @ d.typed_uses in
+  let uses = match cell with Some _ -> (let used = dotted code in List.filter (fun (a, _) -> List.mem a used) uses) | None -> uses in
+  let src, shift = source ~uses code in
+  let path, src, shift =
+    match cell with
+    | Some (path, line) when line - 1 >= shift ->
+      path, String.sub src 0 (String.length src - String.length code) ^ String.make (line - 1 - shift) '\n' ^ code, line - 1
+    | Some (path, _) -> path, src, shift
+    | None -> prompt_path, src, shift
+  in
   let lookup name =
     match List.find_map (fun m -> Loader.in_module w m name) d.scope with
     | Some b -> Some b
     | None -> if target >= 0 then (match Loader.in_package w target name with Some b -> Some b | None -> Loader.lookup w name) else Loader.lookup w name
   in
   let typed = Lazy.from_val { code; shift; indent = 0 } in
-  match Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path:prompt_path ~src ~lookup with
+  match Loader.prepare ctx ?host:(if target >= 0 then Some target else None) ~path ~src ~lookup with
   | exception e -> Value.err w (Text (error_text ctx ~typed e))
   | (file, m, _, layout) as prepared ->
     d.scope <- m :: d.scope;
@@ -217,6 +247,46 @@ let eval ctx (a : t array) =
       | Missing -> at_prompt ctx code
       | frame -> in_frame ctx code frame)
 
+(* std/cells, in the session of a file: evalCell(code, line) runs a cell as the lines of the main file from that line, or
+   code typed at a prompt for line 0;
+   forgetNames(names) removes names from what the prompt sees, their values with them; valueOf(name) gives an Ok of the
+   value of a name the prompt sees, or an Err. A cell is the program, not code run beside it: no debugger runs, and its
+   long computations let the other fibers run, so that a stop reaches it. *)
+let eval_cell ctx (a : t array) =
+  let code = Native.text_arg ctx "evalCell" a.(0) in
+  (* Line 0: code typed at a prompt beside the cells, which no line of the file holds. *)
+  match a.(1) with
+  | Int n when n >= 1 -> at_prompt ~cell:(ctx.w.debug.main, n) ctx code
+  | _ -> at_prompt ~cell:(prompt_path, 1) ctx code
+
+let names_arg ctx name v =
+  match v with
+  | Array { store = V items; rows; cols; _ } ->
+    List.map (Native.text_arg ctx name) (Array.to_list (Array.sub items 0 (rows * cols)))
+  | Array { rows; cols; _ } when rows * cols = 0 -> []
+  | _ -> [ Native.text_arg ctx name v ]
+
+let forget_names ctx (a : t array) =
+  let w = ctx.w in
+  let d = w.debug in
+  let names = names_arg ctx "forgetNames" a.(0) in
+  List.iter
+    (fun m ->
+       let md = w.modules.(m) in
+       let gone, kept = List.partition (fun (n, _) -> List.mem n names) md.mnames in
+       List.iter (fun (_, k) -> md.cells.(k) <- Undef) gone;
+       md.mnames <- kept)
+    d.scope;
+  d.typed_uses <- List.filter (fun (alias, _) -> not (List.mem alias names)) d.typed_uses;
+  Missing
+
+let value_of ctx (a : t array) =
+  let w = ctx.w in
+  let name = Native.text_arg ctx "valueOf" a.(0) in
+  match List.find_map (fun m -> Loader.in_module w m name) w.debug.scope with
+  | Some (Ast.Cell { m; k; _ }) when w.modules.(m).cells.(k) != Undef -> Value.ok w w.modules.(m).cells.(k)
+  | _ -> Value.err w (Text name)
+
 (* A condition of a breakpoint, at a site, with the variables there: whether it holds, or the error it gives. *)
 let test ctx s cond =
   (* The code runs above the frame of the site: the hook doesn't set it. *)
@@ -263,4 +333,7 @@ let complete ctx (a : t array) =
 let natives =
   [ "Eval", Native.nat ~perm:Debug ~params:[| "code"; "frame" |] ~result:true "Eval" 1 2 eval;
     "Reload", Native.nat ~perm:Debug ~result:true "Reload" 0 0 reload;
-    "IsComplete", Native.nat ~params:[| "code" |] "IsComplete" 1 1 complete ]
+    "IsComplete", Native.nat ~params:[| "code" |] "IsComplete" 1 1 complete;
+    "evalCell", Native.nat ~perm:Debug ~result:true "evalCell" 2 2 eval_cell;
+    "forgetNames", Native.nat ~perm:Debug "forgetNames" 1 1 forget_names;
+    "valueOf", Native.nat ~perm:Debug ~result:true "valueOf" 1 1 value_of ]

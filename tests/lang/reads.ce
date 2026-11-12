@@ -1,0 +1,89 @@
+(* cesia.Reads against the compiler, on every golden program of Cesia: the names that it gives for a program, and for the
+   end of a program cut after one of its statements, are the names that cesia check says don't exist there. *)
+use std/cesia
+use std/io
+use std/list
+use std/math
+use std/dict
+use std/regex
+use std/result
+use std/sys
+use std/text
+use std/value
+
+defn programs()
+  (** The golden programs: a .ce of a folder of tests/ with its .expected, run by cesia run. *)
+  out = []
+  for dir in result.Unwrap(sys.List("tests"))
+    entries = sys.List("tests/$dir")
+    if result.IsOk(entries)
+      for name in entries.Value
+        stem = if text.EndsWith(".ce", name) text.Slice(1, value.Len(name) - 3, name) else "" end
+        if stem != "" and "$stem.expected" in entries.Value and not ("$stem.cmd" in entries.Value)
+          out = list.Append("tests/$dir/$name", out)
+        end
+      end
+    end
+  end
+  out
+end
+
+(* The messages of a name that doesn't exist, with the name in their first group. *)
+undefined = ["^Name \"([^\"]+)\" doesn't exist", "^([A-Za-z0-9]+) is in std/", "^There is no struct \"([^\"]+)\" here",
+  "^There is no type \"([^\".]+)\""]
+
+defn missingNames(path, source)
+  (** The names that cesia check says don't exist in a source, or missing when it finds another error, which can hide
+      them, as a source that doesn't read. *)
+  names = []
+  for m in cesia.Check([path], dict.Dict([{Key: path, Value: source}]))
+    found = list.Keep(p -> regex.Find(p, m.Message), undefined)
+    if value.Len(found) > 0
+      names = list.Append(found[1].Groups[1], names)
+    else if m.Severity == "error"
+      return missing
+    end
+  end
+  list.Sort(list.Unique(names))
+end
+
+defn agrees(path, source)
+  (** Does Reads give the names that cesia check finds undefined? Compared is 0 for a source with another error, which
+      can hide them. *)
+  r = cesia.Reads(source)
+  want = missingNames(path, source)
+  if result.IsErr(r) or value.IsMissing(want)
+    return {Compared: 0, Ok: true}
+  end
+  got = list.Sort(list.Unique([x.Name for x in r.Value]))
+  if not value.Equal(got, want)
+    io.Print("$path: Reads $got, check $want")
+  end
+  {Compared: 1, Ok: value.Equal(got, want)}
+end
+
+defn tails(source)
+  (** The source cut before a statement at its top, at a third and at two thirds of it: the use lines above the cut, then
+      the rest. *)
+  lines = text.Lines(source)
+  starts = [k for k in 2..value.Len(lines) if regex.Find("^[A-Za-z\\[]", lines[k]) != missing and not text.StartsWith("use ", lines[k]) and not text.StartsWith("end", lines[k]) and not text.StartsWith("else", lines[k])]
+  picks = list.Unique([starts[list.Max(1, math.Div(value.Len(starts) * j, 3))] for j in [1, 2] if value.Len(starts) > 0])
+  [text.Join("\n", list.Concat([l for l in list.Take(k - 1, lines) if text.StartsWith("use ", l)], list.Skip(k - 1, lines))) for k in picks]
+end
+
+defn isReadsAsCompiler()
+  (** Every golden program, whole and cut: at least 600 sources compared. *)
+  ok = true
+  compared = 0
+  for path in programs()
+    source = result.Unwrap(sys.Read(path))
+    for a in list.Concat([agrees(path, source)], [agrees("tests/reads-cut.ce", t) for t in tails(source)])
+      ok = ok and a.Ok
+      compared += a.Compared
+    end
+  end
+  if compared < 600
+    io.Print("only $compared sources compared")
+  end
+  ok and compared >= 600
+end

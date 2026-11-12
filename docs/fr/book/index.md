@@ -58,18 +58,20 @@ construction : le livre ne peut donc pas s'écarter du langage.
     `cesia test`, et un site pour votre projet.
 23. [Le prompt et le debugger](debug.md) : `--repl` à côté d'un programme qui tourne, les breakpoints, les arrêts sur
     erreur, corriger et continuer.
-24. [Vitesse](speed.md) : ce qui devient du code machine pendant qu'un programme tourne, et Cesia à côté de Python, Node,
+24. [Cells](cells.md) : un notebook (du code coupé en cellules, chacune avec son résultat) dans un fichier `.ce`, des
+    cellules qui tournent de nouveau quand ce qu'elles lisent change, une session, et une page à partager.
+25. [Vitesse](speed.md) : ce qui devient du code machine pendant qu'un programme tourne, et Cesia à côté de Python, Node,
     Java, Go, OCaml, Lua et LuaJIT, mesuré : le démarrage, les boucles, les maps, les fibers et un serveur.
-25. [C et C++](c.md) : les bibliothèques du système, leurs types, la mémoire, les callbacks, et le C++ à travers une couche
+26. [C et C++](c.md) : les bibliothèques du système, leurs types, la mémoire, les callbacks, et le C++ à travers une couche
     C.
-26. [Packages natifs](native.md) : le moteur d'un package en OCaml, compilé une fois, sa permission, et comment en écrire
+27. [Packages natifs](native.md) : le moteur d'un package en OCaml, compilé une fois, sa permission, et comment en écrire
     un.
-27. [Un vrai programme](project.md) : un service web de notes sur SQLite, avec ses tests, de `cesia new` jusqu'à un
+28. [Un vrai programme](project.md) : un service web de notes sur SQLite, avec ses tests, de `cesia new` jusqu'à un
     serveur.
-28. [Résoudre un vrai problème](duplicates.md) : quels fichiers d'un dossier sont des doublons, en sept étapes, de la
+29. [Résoudre un vrai problème](duplicates.md) : quels fichiers d'un dossier sont des doublons, en sept étapes, de la
     première mesure à la preuve que c'est résolu : les propriétés, la borne des anniversaires, et les temps à côté de
     Python.
-29. [Comment Cesia fonctionne](internals.md) : le lexer, le parser, les closures, les valeurs en mémoire, le hash trie des
+30. [Comment Cesia fonctionne](internals.md) : le lexer, le parser, les closures, les valeurs en mémoire, le hash trie des
     maps, le JIT, les fibers et leur scheduler, les channels, le serveur sur tous les cœurs, le garbage collector et le
     démarrage, avec leurs chiffres.
 

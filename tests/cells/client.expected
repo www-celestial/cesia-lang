@@ -1,0 +1,17 @@
+["", "Data", "Sum", "Slow"]
+[["frame", "io"], ["n", "xs", "df"], ["total"], ["k"]]
+[2, 3]
+Ok: output [], value missing, error missing
+Ok: output [], value {Kind: "table", Columns: ["i", "sq"], Rows: [["1", "1.0"], ["2", "4.0"], ["3", "9.0"]], Count: 3}, error missing
+Ok: output ["total 30"], value {Kind: "text", Text: "34"}, error missing
+[{Name: "n", Type: "Int", Size: "", Preview: "4"}, {Name: "xs", Type: "Array", Size: "1 × 4", Preview: "[1, 4, 9, 16]"}, {Name: "df", Type: "Frame", Size: "3 × 2", Preview: "i, sq"}, {Name: "total", Type: "Function", Size: "", Preview: "function total"}]
+restarted: false
+Ok: output [], value missing, error {Line: missing, Text: "Stopped."}
+Ok: output [], value {Kind: "text", Text: "5"}, error missing
+Ok: output [], value missing, error {Line: 30, Text: "notebook.ce:30:1: Name \"n\" doesn't exist.
+  30 | n + 1
+     | ^"}
+["xs", "df", "total"]
+3 sections
+true true
+exit 0

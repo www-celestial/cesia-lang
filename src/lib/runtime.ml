@@ -14,13 +14,14 @@ type options = {
   o_no_spec : bool;
   o_debugger : string option;
   o_repl : bool;
+  o_cells : bool;
   o_period : int;
   o_sink : string -> unit;
   o_err : string -> unit;
 }
 
 let default_options =
-  { o_limits = default_limits; o_grants = { all = false; perms = [] }; o_no_spec = false; o_debugger = None; o_repl = false;
+  { o_limits = default_limits; o_grants = { all = false; perms = [] }; o_no_spec = false; o_debugger = None; o_repl = false; o_cells = false;
     o_period = default_period;
     o_sink = (fun s -> print_string s; flush stdout);
     o_err = (fun s -> prerr_string s; flush stderr) }
@@ -146,6 +147,7 @@ let create_world o =
     hooks = o.o_debugger <> None;
     debugger = o.o_debugger;
     repl = o.o_repl;
+    cell_session = o.o_cells;
     debug =
       { mode = Starting; stopped = false; breaks = []; on_stop = Missing;
         stamp = 0; marked = (fun _ _ -> false); watches = []; test = (fun _ _ _ -> Ok true); scope = []; typed_uses = []; main = "";

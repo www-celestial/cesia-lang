@@ -692,24 +692,32 @@ let definitions ctx (a : t array) =
         (* The first token of the name on the line where the definition starts: Area in (r Rect) Area. *)
         let column = List.fold_left min max_int (Hashtbl.find_all names (line, name)) in
         let signature = match signature, doc with Some s, _ -> s | None, Some d -> d.signature | None, None -> "" in
-        Some
-          (Trie.record definition_keys
-             [| Text name; (match owner with Some o -> Text o | None -> Missing); Text kind; Int line;
-                Int (if column = max_int then Pos.col e.pos else column); Text signature;
-                Text (match doc with Some d -> d.text | None -> "") |])
+        Trie.record definition_keys
+          [| Text name; (match owner with Some o -> Text o | None -> Missing); Text kind; Int line;
+             Int (if column = max_int then Pos.col e.pos else column); Text signature;
+             Text (match doc with Some d -> d.text | None -> "") |]
       in
       match e.e with
       | Fn_def (n, _) ->
         (match Lexer.split_method n.text with
-         | Some (sname, static, m) -> found (if static then "static" else "method") (Some sname) m
-         | None -> found (if Hashtbl.mem structs e.pos then "struct" else "function") None n.text)
-      | Assign (n, _) -> found "value" None n.text
-      | Interface i -> found "interface" None i.iname
+         | Some (sname, static, m) -> [ found (if static then "static" else "method") (Some sname) m ]
+         | None -> [ found (if Hashtbl.mem structs e.pos then "struct" else "function") None n.text ])
+      | Assign (n, _) -> [ found "value" None n.text ]
+      (* [q, r] = num.Qr(m) gives q and r. *)
+      | Destructure (pt, _) ->
+        let rec names acc = function
+          | Ast.Pname n -> found "value" None n.text :: acc
+          | Pwild | Plit _ -> acc
+          | Parray ps | Pcons { cargs = ps; _ } -> Array.fold_left names acc ps
+          | Pstruct fs -> Array.fold_left (fun acc (_, q) -> names acc q) acc fs
+        in
+        List.rev (names [] pt)
+      | Interface i -> [ found "interface" None i.iname ]
       (* A use: the name the code gives the package, its path as its signature. *)
-      | Use { upath; ualias } -> found ~signature:upath "use" None ualias
-      | _ -> None
+      | Use { upath; ualias } -> [ found ~signature:upath "use" None ualias ]
+      | _ -> []
     in
-    Value.ok w (Arrays.list (Array.of_list (List.filter_map item (Array.to_list fn.body))))
+    Value.ok w (Arrays.list (Array.of_list (List.concat_map item (Array.to_list fn.body))))
 
 let natives =
   [ "Doc", Native.nat "Doc" 1 1 doc;

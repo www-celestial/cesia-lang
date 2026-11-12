@@ -1,0 +1,648 @@
+(** Cells in a file of code, as a notebook has them, and a session that runs them one by one. A line that holds only a
+    comment starting with %%, as (* %% Simulation *), starts a cell, and its title is the rest of the comment; the lines
+    before the first one are the first cell, usually the uses. A cell reads the names that cells above it define, and a
+    run reruns the cells that depend on what it defines: the file means what cesia run computes. *)
+use std/cesia
+use std/debug
+use std/dict
+use std/fiber
+use std/io
+use std/json
+use std/list
+use std/result
+use std/syntax
+use std/sys
+use std/text
+use std/value
+
+(* ---- Cells and the names they read and define. *)
+
+defn marker(line)
+  (** The title of a line that starts a cell, or missing for another line. *)
+  t = text.Trim(line)
+  n = value.Len(t)
+  if n < 6 or not text.StartsWith("(*", t) or not text.EndsWith("*)", t)
+    return missing
+  end
+  inner = text.Trim(text.Slice(3, n - 2, t))
+  if not text.StartsWith("%%", inner) or text.Contains("*)", inner)
+    return missing
+  end
+  if value.Len(inner) == 2 "" else text.Trim(text.Slice(3, value.Len(inner), inner)) end
+end
+
+(** The source of lines first to last, from 1. *)
+lines(first, last, all) = if last < first "" else text.Join("\n", [all[i] for i in first..last]) end
+
+defn Parse(source)
+  (** The cells of a source, in order: each a struct with Title, From and To (its first and last lines, from 1) and Source,
+      its lines, the marker with them, so that line k of Source is line From + k - 1 of the file. The first cell holds the
+      lines before the first marker, and has no title; it is empty, with To = From - 1, when a marker opens the file.
+
+        [c.Title for c in Parse("use std/io\n(* %% Data *)\nn = 3")] --> ["", "Data"]
+        Parse("use std/io\n(* %% Data *)\nn = 3")[2].From --> 2
+        Parse("(* %% A *)\nx = 1")[1].To --> 0 *)
+  all = text.Lines(source)
+  out = []
+  from = 1
+  title = ""
+  for i in 1..value.Len(all)
+    t = marker(all[i])
+    if value.IsSome(t)
+      if i > 1 or value.Len(out) > 0
+        out = list.Append({Title: title, From: from, To: i - 1, Source: lines(from, i - 1, all)}, out)
+      else
+        out = [{Title: "", From: 1, To: 0, Source: ""}]
+      end
+      from = i
+      title = t
+    end
+  end
+  list.Append({Title: title, From: from, To: value.Len(all), Source: lines(from, value.Len(all), all)}, out)
+end
+
+(** The name of a cell in a message: its title, or "the first cell". *)
+called(cells, i) = if i == 1 or cells[i].Title == "" "the cell at line $(list.Max(1, cells[i].From))" else "the cell \"$(cells[i].Title)\" (line $(cells[i].From))" end
+
+(** An error of a cell, at a line of the file. *)
+fault(line, column, message) = {Line: line, Column: column, Message: message}
+
+defn wordLine(name, cell)
+  (** The line of the file where a name first shows as a whole word in a cell, or its first line. *)
+  all = text.Lines(cell.Source)
+  for k in 1..value.Len(all)
+    at = text.Find(name, all[k])
+    if value.IsSome(at)
+      before = if at == 1 " " else text.Slice(at - 1, at - 1, all[k]) end
+      last = at + value.Len(name)
+      after = if last > value.Len(all[k]) " " else text.Slice(last, last, all[k]) end
+      if not isNameChar(before) and not isNameChar(after)
+        return cell.From + k - 1
+      end
+    end
+  end
+  cell.From
+end
+
+defn isNameChar(c)
+  (** Can the character be part of a name? *)
+  k = text.Code(c)
+  (k >= 97 and k <= 122) or (k >= 65 and k <= 90) or (k >= 48 and k <= 57) or k == 95
+end
+
+(* The kinds of definition that a cell gives to the cells below it: a method stays with its struct. *)
+shared = ["function", "struct", "interface", "value", "use"]
+
+defn scanned(cell)
+  (** The definitions and reads of a cell, with their lines in the file, or the error of a cell that doesn't read. *)
+  defs = cesia.Definitions(cell.Source)
+  reads = cesia.Reads(cell.Source)
+  if result.IsErr(defs) or result.IsErr(reads)
+    e = if result.IsErr(defs) defs.Error else reads.Error end
+    return {Defs: [], Reads: [], Methods: [], Error: fault(cell.From + e.Line - 1, 1, e.Message)}
+  end
+  at = d -> {Name: d.Name, Line: cell.From + d.Line - 1, Column: d.Column}
+  {Defs: [at(d) for d in defs.Value if d.Kind in shared], Reads: [at(r) for r in reads.Value],
+    Methods: [{Name: d.Name, Owner: d.Owner, Line: cell.From + d.Line - 1, Column: d.Column} for d in defs.Value if d.Kind == "method" or d.Kind == "static"],
+    Structs: [d.Name for d in defs.Value if d.Kind == "struct" or d.Kind == "interface"], Error: missing}
+end
+
+defn assigned(cell, names)
+  (** Those of the names that a cell gives a value to without defining them, in a loop or a block: the source with a line
+      that reads them all tells which ones it doesn't read from outside. *)
+  if value.Len(names) == 0
+    return []
+  end
+  probe = cesia.Reads("$(cell.Source)\n[$(text.Join(", ", names))]")
+  if result.IsErr(probe)
+    return []
+  end
+  free = [r.Name for r in probe.Value]
+  [n for n in names if not (n in free)]
+end
+
+defn package(name)
+  (** Is a name that of a package of std/? *)
+  "std/$name" in cesia.DocNames()
+end
+
+defn Analyse(cells)
+  (** What each cell of Parse defines and reads, and its errors: a list with one struct for each cell, with Defines and
+      Reads (names) and Errors (each with Line and Column in the file, and Message). A name is defined by one cell only;
+      a cell reads only names that the cells above it define; and a name no cell defines is an error where it is read.
+
+        a = Analyse(Parse("n = 3\n(* %% Twice *)\nm = n * 2"))
+        a[2].Reads --> ["n"]
+        a[1].Defines --> ["n"]
+        Analyse(Parse("(* %% A *)\nx = y\n(* %% B *)\ny = 1"))[2].Errors[1].Line --> 2 *)
+  n = value.Len(cells)
+  scans = [scanned(c) for c in cells]
+  owners = {}
+  for i in 1..n
+    for d in scans[i].Defs
+      owners = dict.Put(d.Name, list.Append(i, dict.GetOr(d.Name, [], owners)), owners)
+    end
+  end
+  errors = [if value.IsMissing(s.Error) [] else [s.Error] end for s in scans]
+  (* R1: one cell for a name. *)
+  for i in 1..n
+    for d in scans[i].Defs
+      others = [j for j in owners[d.Name] if j != i]
+      if value.Len(others) > 0
+        errors[i] = list.Append(fault(d.Line, d.Column, "\"$(d.Name)\" is defined by $(called(cells, others[1])) too: a name is defined in one cell only."), errors[i])
+      end
+    end
+    for m in scans[i].Methods
+      if not (m.Owner in scans[i].Structs) and dict.Has(m.Owner, owners)
+        errors[i] = list.Append(fault(m.Line, m.Column, "The method $(m.Owner).$(m.Name) goes in the cell of its struct, $(called(cells, owners[m.Owner][1]))."), errors[i])
+      end
+    end
+  end
+  (* R2 and R3: a name read is defined above. *)
+  missingAt = {}
+  for i in 1..n
+    for r in scans[i].Reads
+      by = dict.GetOr(r.Name, [], owners)
+      if value.Len(by) == 0
+        missingAt = dict.Put(r.Name, list.Append({Cell: i, Read: r}, dict.GetOr(r.Name, [], missingAt)), missingAt)
+      else if list.Min(by) > i
+        errors[i] = list.Append(fault(r.Line, r.Column, "\"$(r.Name)\" is defined below, in $(called(cells, list.Min(by))): move that cell above this one."), errors[i])
+      end
+    end
+  end
+  (* A loop or a block of a cell that gives a value to a name another cell defines, or that a cell reads. *)
+  defined = dict.Keys(owners)
+  unknown = dict.Keys(missingAt)
+  hidden = {}
+  for i in 1..n
+    if value.IsMissing(scans[i].Error)
+      own = [d.Name for d in scans[i].Defs]
+      for name in assigned(cells[i], [x for x in list.Concat(defined, unknown) if not (x in own)])
+        if dict.Has(name, owners)
+          errors[i] = list.Append(fault(wordLine(name, cells[i]), 1, "\"$name\" is defined by $(called(cells, owners[name][1])): a loop or a block here gives it a value too, which cesia run would see there. Use another name here."), errors[i])
+        else if not dict.Has(name, hidden)
+          hidden = dict.Put(name, i, hidden)
+        end
+      end
+    end
+  end
+  for name in unknown
+    for m in missingAt[name]
+      message = if dict.Has(name, hidden)
+        "Name \"$name\" isn't defined by a cell: $(called(cells, hidden[name])) gives it a value only in a loop or a block. Give it its value at the top of that cell to share it."
+      else if package(name)
+        "$name is a package of std/: write use std/$name in the first cell."
+      else
+        "Name \"$name\" doesn't exist."
+      end
+      errors[m.Cell] = list.Append(fault(m.Read.Line, m.Read.Column, message), errors[m.Cell])
+    end
+  end
+  [{Defines: [d.Name for d in scans[i].Defs], Reads: [r.Name for r in scans[i].Reads], Errors: list.SortBy(e -> e.Line, errors[i])} for i in 1..n]
+end
+
+defn ToRun(analysis, changed)
+  (** The cells to run, in file order, after cell changed ran or was edited: that one, then each cell that reads, directly
+      or through other cells, a name it defines. The first cell, the uses, reruns them all.
+
+        a = Analyse(Parse("use std/math\n(* %% A *)\nx = 1\n(* %% B *)\ny = 2\n(* %% C *)\nz = x + 1"))
+        ToRun(a, 2) --> [2, 4]
+        ToRun(a, 1) --> [1, 2, 3, 4] *)
+  n = value.Len(analysis)
+  if changed == 1
+    return [i for i in 1..n]
+  end
+  out = [changed]
+  names = analysis[changed].Defines
+  for j in changed + 1..n
+    if list.Any([r in names for r in analysis[j].Reads])
+      out = list.Append(j, out)
+      names = list.Concat(names, analysis[j].Defines)
+    end
+  end
+  out
+end
+
+(* ---- A session: a Cesia process that runs the cells of one file, beside the program that asks. *)
+
+(** The byte that starts a message of the session, on a line of its output. *)
+mark = text.Char(1)
+
+defn heard(line, inbox, control)
+  (** Puts a line of the session where it goes: what a cell printed, an answer to a run, or another answer. *)
+  at = text.Find(mark, line)
+  if value.IsMissing(at)
+    fiber.Send({Kind: "output", Text: line}, inbox)
+    return missing
+  end
+  if at > 1
+    fiber.Send({Kind: "output", Text: text.Slice(1, at - 1, line)}, inbox)
+  end
+  m = json.Parse(text.Slice(at + 1, value.Len(line), line))
+  if result.IsOk(m)
+    fiber.Send(m.Value, if m.Value.Kind == "answer" inbox else control end)
+  end
+end
+
+defn reading(p, inbox, control, alive)
+  (** Reads what the session writes, line by line, until its output closes. *)
+  partial = ""
+  chunk = sys.ReadOutput(p)
+  while result.IsOk(chunk) and chunk.Value != ""
+    pieces = text.Split("\n", "$partial$(chunk.Value)")
+    partial = pieces[value.Len(pieces)]
+    for line in list.DropLast(1, pieces)
+      heard(line, inbox, control)
+    end
+    chunk = sys.ReadOutput(p)
+  end
+  if partial != ""
+    heard(partial, inbox, control)
+  end
+  code = sys.WaitExit(p)
+  fiber.Close(alive)
+  fiber.Send({Kind: "ended", Code: code}, inbox)
+  fiber.Send({Kind: "ended", Code: code}, control)
+end
+
+defn Session(path, allow = [])
+  (** Starts a session on a file: an Ok of the session, or an Err. It is a Cesia process of this binary, cesia run --cells,
+      that runs none of the file: Run gives it one cell at a time, at the file level, as the prompt of cesia run --repl
+      runs code, with the permissions of allow, as --allow takes them, and none else. Needs the exec permission of this
+      cesia, cesia.Binary(). *)
+  args = ["run", "--cells"]
+  if value.Len(allow) > 0
+    args = list.Concat(args, ["--allow", text.Join(",", allow)])
+  end
+  p = sys.Start(cesia.Binary(), args = list.Append(path, args))?
+  inbox = fiber.Channel()
+  control = fiber.Channel()
+  alive = fiber.Channel()
+  _ = fiber.Spawn(() -> reading(p, inbox, control, alive))
+  result.Ok({Path: path, Allow: allow, Process: p, Inbox: inbox, Control: control, Alive: alive, Restarted: false})
+end
+
+(** Has the session ended? Its reader closes Alive when its output closes. *)
+ended(session) = fiber.Receive(session.Alive, timeout = 0).Error.Kind == "closed"
+
+defn ask(session, command)
+  (** Writes a command for the session, or gives the Err of a session that ended. *)
+  gone = result.Err({Kind: "cells", Message: "The session of $(session.Path) has ended."})
+  if ended(session) or result.IsErr(sys.WriteInput(session.Process, "$(json.Text(command))\n")) gone else result.Ok(missing) end
+end
+
+defn answered(session, timeout = missing)
+  (** The next answer of the session of a kind other than a run's, or an Err when it ended or didn't answer in time. *)
+  m = fiber.Receive(session.Control, timeout = timeout)
+  if result.IsErr(m)
+    return result.Err({Kind: "cells", Message: "The session of $(session.Path) didn't answer."})
+  end
+  if m.Value.Kind == "ended" result.Err({Kind: "cells", Message: "The session of $(session.Path) has ended."}) else result.Ok(m.Value) end
+end
+
+defn Run(session, cell)
+  (** Runs a cell of Parse in the session, and waits for it: an Ok of a struct with Output (the lines it printed), Value
+      (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
+      when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
+      struct with Kind: "text", and Text; "table", a frame, with Columns, Rows (the first 20, as texts) and Count; or
+      "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
+      cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
+      the session has ended. *)
+  ask(session, {Do: "run", Code: cell.Source, Line: list.Max(0, cell.From), Path: session.Path})?
+  output = []
+  while true
+    m = fiber.Receive(session.Inbox)
+    if result.IsErr(m) or m.Value.Kind == "ended"
+      return result.Err({Kind: "cells", Message: "The session of $(session.Path) has ended.", Output: output})
+    end
+    if m.Value.Kind == "output"
+      output = list.Append(m.Value.Text, output)
+    else
+      a = m.Value
+      return result.Ok({Output: output, Value: dict.Get("Value", a), Error: dict.Get("Error", a), Seconds: a.Seconds})
+    end
+  end
+end
+
+defn Forget(session, names)
+  (** Removes names from the session, with their values: those of a cell that was deleted, whose readers must not see
+      them any more. An Ok, or an Err when the session has ended. *)
+  ask(session, {Do: "forget", Names: names})?
+  answered(session)?
+  result.Ok(missing)
+end
+
+defn Variables(session)
+  (** The names that the cells run in the session define, in an Ok: a list of structs with Name, Type (as "Int",
+      "Float", "Text", "Array", "Frame", "Dict", "Function" or the name of a struct), Size (the shape of an array or a frame
+      as "rows × columns", the length of a text or a dictionary, or "") and Preview (the start of its text, at most 80
+      characters, or the columns of a frame). Large values stay in the session: only these texts come. *)
+  ask(session, {Do: "variables"})?
+  result.Ok(answered(session)?.Rows)
+end
+
+defn Rows(session, name, first, last)
+  (** Rows first to last, from 1, of a frame, a matrix or a list that a name of the session holds, as texts, in an Ok of a
+      struct with Columns (the names of a frame's columns, or the numbers of a matrix's), Rows and Count, its number of
+      rows: a viewer reads a large value a screen at a time. An Err for a name that holds none of these. *)
+  ask(session, {Do: "rows", Name: name, First: first, Last: last})?
+  got = answered(session)?
+  if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok({Columns: got.Columns, Rows: got.Rows, Count: got.Count}) end
+end
+
+defn Stop(session)
+  (** Stops the cell that runs, whose Run then gives the error "Stopped.": the session and the names defined before stay,
+      in an Ok of the session. A session that doesn't answer within 2 seconds, as a cell in a long native computation,
+      is ended and a new one starts: the Ok then has Restarted true, and the cells must run again from the top. *)
+  ask(session, {Do: "stop"})?
+  if result.IsOk(answered(session, timeout = 2.0))
+    return result.Ok(session)
+  end
+  sys.Stop(session.Process)
+  fresh = Session(session.Path, allow = session.Allow)?
+  fresh.Restarted = true
+  result.Ok(fresh)
+end
+
+defn close(session)
+  (** Ends a session: it sees the end of its input. *)
+  _ = sys.CloseInput(session.Process)
+end
+
+(* ---- The page of a file: each cell, its code colored and what it gave, in one HTML file that needs nothing else. *)
+
+(** A text made safe for HTML. *)
+escape(t) = text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", t))))
+
+(* The class of each role of std/syntax, as the docs site colors code. *)
+classes = ["k", "n", "s", "m", "c", "", "f"]
+
+defn colored(code)
+  (** Cesia code as HTML, each word in a span of its role. *)
+  state = syntax.FirstState
+  out = []
+  for line in text.Lines(code)
+    r = syntax.Tokens(line, state)
+    state = r.State
+    out = list.Append(text.Join("", [if t[1] == syntax.Plain escape(t[2]) else "<span class=\"$(classes[t[1]])\">$(escape(t[2]))</span>" end for t in r.Tokens]), out)
+  end
+  text.Join("\n", out)
+end
+
+(** The rows of a table, in HTML. *)
+cellsOf(rows, tag) = text.Join("", ["<tr>$(text.Join("", ["<$tag>$(escape(x))</$tag>" for x in row]))</tr>\n" for row in rows])
+
+defn valueHtml(v)
+  (** What a cell's value shows, in HTML. *)
+  if value.IsMissing(v)
+    ""
+  else if v.Kind == "table"
+    more = if v.Count > value.Len(v.Rows) "<p class=\"count\">$(value.Len(v.Rows)) of $(v.Count) rows</p>\n" else "<p class=\"count\">$(v.Count) rows</p>\n" end
+    "<table>\n<thead>$(cellsOf([v.Columns], "th"))</thead>\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n$more"
+  else if v.Kind == "array"
+    "<p class=\"count\">$(text.Join(" × ", ["$k" for k in v.Shape]))</p>\n<table class=\"array\">\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n"
+  else
+    "<pre class=\"value\">$(escape(v.Text))</pre>\n"
+  end
+end
+
+style = ":root { --page: #ffffff; --code: #f7f8fa; --ink: #1e1f22; --muted: #6c707e; --edge: #dfe1e5; --bad: #c4314b;
+  --k: #0033b3; --n: #00627a; --s: #067d17; --m: #1750eb; --c: #707070; --f: #871094; --p: #080808; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root { --page: #0e1013; --code: #1c1e22; --ink: #dadde2; --muted: #8d929a; --edge: #2b2e34;
+  --bad: #f2667c; --k: #cf8e6d; --n: #56a8f5; --s: #6aab73; --m: #2aacb8; --c: #8a8e95; --f: #c77dbb; --p: #bcbec4; color-scheme: dark; } }
+body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, \"Segoe UI\", sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 24px 16px; }
+pre, code, table { font-family: ui-monospace, \"SF Mono\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace; font-size: 14px; }
+pre { background: var(--code); padding: 12px 16px; border-radius: 6px; overflow-x: auto; line-height: 1.45; margin: 0 0 8px; }
+pre code { color: var(--p); }
+section { margin: 0 0 28px; }
+h2 { font-size: 18px; margin: 0 0 8px; }
+pre.output, pre.value { background: none; border-left: 3px solid var(--edge); border-radius: 0; }
+pre.error { background: none; border-left: 3px solid var(--bad); border-radius: 0; color: var(--bad); }
+table { border-collapse: collapse; margin: 0 0 8px; display: block; overflow-x: auto; }
+th, td { border: 1px solid var(--edge); padding: 2px 8px; text-align: right; white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; }
+.count { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
+.k { color: var(--k); } .n { color: var(--n); } .s { color: var(--s); } .m { color: var(--m); }
+.c { color: var(--c); font-style: italic; } .f { color: var(--f); }
+"
+
+defn cellHtml(cell, errors, ran)
+  (** A cell of the page: its title, its code, then its errors, or what it printed and its value. *)
+  title = if cell.Title == "" "" else "<h2>$(escape(cell.Title))</h2>\n" end
+  body = text.Join("\n", list.DropWhile(l -> value.IsSome(marker(l)), text.Lines(cell.Source)))
+  code = if text.Trim(body) == "" "" else "<pre><code class=\"cesia\">$(colored(body))</code></pre>\n" end
+  out = [code]
+  if value.Len(errors) > 0
+    out = list.Append("<pre class=\"error\">$(escape(text.Join("\n", ["line $(e.Line): $(e.Message)" for e in errors])))</pre>\n", out)
+  else if value.IsSome(ran)
+    if value.Len(ran.Output) > 0
+      out = list.Append("<pre class=\"output\">$(escape(text.Join("\n", ran.Output)))</pre>\n", out)
+    end
+    out = list.Append(if value.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value) end, out)
+  end
+  if title == "" and text.Join("", out) == "" "" else "<section>\n$title$(text.Join("", out))</section>\n" end
+end
+
+defn Html(path, allow = [])
+  (** Runs every cell of a file in a new session, from the top, and gives the page of the file in an Ok: one HTML text
+      that needs no other file and no script, with each cell's title, its code colored, what it printed, its value (a
+      table, an array or a text) or its error. What it shows is what cesia run computes, not the state of an editor. The
+      session has the permissions of allow, as Session. Needs the read permission of the file. *)
+  cells = Parse(sys.Read(path)?)
+  analysis = Analyse(cells)
+  session = Session(path, allow = allow)?
+  parts = []
+  for i in 1..value.Len(cells)
+    errors = analysis[i].Errors
+    ran = missing
+    if value.Len(errors) == 0 and text.Trim(cells[i].Source) != ""
+      r = Run(session, cells[i])
+      if result.IsErr(r)
+        return r
+      end
+      ran = r.Value
+    end
+    parts = list.Append(cellHtml(cells[i], errors, ran), parts)
+  end
+  close(session)
+  name = list.Last(text.Split("/", path))
+  result.Ok(text.Str("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>", escape(name), "</title>\n<style>\n", style,
+    "</style>\n</head>\n<body>\n<main>\n<h1>", escape(name), "</h1>\n", text.Join("", parts), "</main>\n</body>\n</html>\n"))
+end
+
+(* ---- The side of the session: cesia run --cells starts serve, which reads one command a line. *)
+
+defn send(message)
+  (** Writes a message for the program that asked, on one line that starts with the byte 1. *)
+  io.Print("$mark$(json.Text(message))")
+end
+
+(** The start of a text, at most n characters. *)
+cut(n, t) = if value.Len(t) <= n t else "$(text.Slice(1, n - 1, t))…" end
+
+(** Is this value a frame of std/frame? *)
+isFrame(v) = value.IsDict(v) and value.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and value.IsArray(v.Names)
+
+defn shown(v)
+  (** What a cell's value shows, as texts that JSON carries. *)
+  if value.IsMissing(v)
+    missing
+  else if isFrame(v)
+    count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
+    {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[cut(80, "$(v.Columns[name][i])") for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
+  else if value.IsArray(v) and value.Len(value.Size(v)) == 2
+    shape = value.Size(v)
+    if shape[1] == 1
+      {Kind: "array", Shape: shape, Rows: [[cut(80, "$(v[j])") for j in 1..list.Min(10, shape[2])]]}
+    else
+      {Kind: "array", Shape: shape, Rows: [[cut(80, "$(v[i, j])") for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])]}
+    end
+  else
+    {Kind: "text", Text: cut(20000, "$v")}
+  end
+end
+
+defn errorLine(path, e)
+  (** The line of the file where an error of a cell is, from the place that starts its text, or missing. *)
+  first = text.Lines(e)[1]
+  if not text.StartsWith("$path:", first)
+    return missing
+  end
+  text.Number(text.Split(":", text.Slice(value.Len(path) + 2, value.Len(first), first))[1])
+end
+
+defn ran(c)
+  (** Runs the code of a cell and sends its answer. *)
+  start = sys.Now()
+  r = evalCell(c.Code, c.Line)
+  seconds = sys.Now() - start
+  match r
+    result.Ok(v) -> send({Kind: "answer", Value: shown(v), Seconds: seconds})
+    result.Err(e) -> send({Kind: "answer", Error: {Line: errorLine(c.Path, e), Text: e}, Seconds: seconds})
+  end
+end
+
+defn kind(v)
+  (** The type of a value, for the variables. *)
+  kinds = [{Is: value.IsInt, Name: "Int"}, {Is: value.IsFloat, Name: "Float"}, {Is: value.IsBool, Name: "Bool"},
+    {Is: value.IsText, Name: "Text"}, {Is: value.IsArray, Name: "Array"}, {Is: isFrame, Name: "Frame"},
+    {Is: value.IsDict, Name: "Dict"}, {Is: value.IsFunction, Name: "Function"}]
+  for k in kinds
+    if k.Is(v)
+      return k.Name
+    end
+  end
+  if value.IsStruct(v) text.Split("(", "$v")[1] else "Value" end
+end
+
+defn size(v)
+  (** The shape or the length of a value, for the variables. *)
+  if isFrame(v)
+    rows = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
+    "$rows × $(value.Len(v.Names))"
+  else if value.IsArray(v)
+    text.Join(" × ", ["$k" for k in value.Size(v)])
+  else if value.IsText(v) or value.IsDict(v)
+    "$(value.Len(v))"
+  else
+    ""
+  end
+end
+
+defn rows(names)
+  (** The variables of the session. *)
+  out = []
+  for name in names
+    v = valueOf(name)
+    if result.IsOk(v)
+      preview = if isFrame(v.Value) text.Join(", ", ["$c" for c in v.Value.Names]) else "$(v.Value)" end
+      out = list.Append({Name: name, Type: kind(v.Value), Size: size(v.Value), Preview: cut(80, text.Replace("\n", " ", preview))}, out)
+    end
+  end
+  out
+end
+
+defn slice(name, first, last)
+  (** Rows first to last of the value of a name, as texts, for Rows. *)
+  got = valueOf(name)
+  if result.IsErr(got)
+    return {Kind: "rows", Error: "Name \"$name\" isn't in the session."}
+  end
+  v = got.Value
+  if isFrame(v)
+    count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
+    return {Kind: "rows", Columns: ["$n" for n in v.Names], Rows: [[cut(200, "$(v.Columns[c][i])") for c in v.Names] for i in list.Max(1, first)..list.Min(last, count)], Count: count}
+  end
+  if value.IsArray(v) and value.Len(value.Size(v)) == 2
+    shape = value.Size(v)
+    if shape[1] == 1
+      return {Kind: "rows", Columns: ["1"], Rows: [[cut(200, "$(v[i])")] for i in list.Max(1, first)..list.Min(last, shape[2])], Count: shape[2]}
+    end
+    return {Kind: "rows", Columns: ["$j" for j in 1..shape[2]], Rows: [[cut(200, "$(v[i, j])") for j in 1..shape[2]] for i in list.Max(1, first)..list.Min(last, shape[1])], Count: shape[1]}
+  end
+  {Kind: "rows", Error: "\"$name\" holds no frame, matrix or list."}
+end
+
+defn command(line)
+  (** The command of a line, or missing for a line that isn't one. *)
+  c = json.Parse(line)
+  if result.IsOk(c) and value.IsDict(c.Value) and dict.Has("Do", c.Value) c.Value else missing end
+end
+
+defn serve()
+  (** Reads the commands of std/cells, one a line, until the end of the input: a run starts its cell in a fiber of its
+      own, which a stop cancels, and the other commands wait for it to end; the names of the cells run so far are those
+      the variables show. *)
+  task = missing
+  known = []
+  line = debug.ReadLine()
+  while not value.IsMissing(line)
+    c = command(line)
+    if value.IsMissing(c)
+      c = {Do: ""}
+    end
+    if c.Do == "run"
+      if value.IsSome(task)
+        _ = fiber.Wait(task)
+      end
+      defs = cesia.Definitions(c.Code)
+      names = if result.IsOk(defs) [d.Name for d in defs.Value if d.Kind in shared and d.Kind != "use"] else [] end
+      forgetNames(names)
+      known = list.Concat([k for k in known if not (k in names)], names)
+      task = fiber.Spawn(() -> ran(c))
+    else if c.Do == "stop"
+      if value.IsSome(task)
+        fiber.Cancel(task)
+        w = fiber.Wait(task)
+        if result.IsErr(w) and w.Error.Kind == "cancelled"
+          send({Kind: "answer", Error: {Line: missing, Text: "Stopped."}, Seconds: 0.0})
+        end
+        task = missing
+      end
+      send({Kind: "stopped"})
+    else if c.Do == "forget"
+      if value.IsSome(task)
+        _ = fiber.Wait(task)
+      end
+      forgetNames(c.Names)
+      known = [k for k in known if not (k in c.Names)]
+      send({Kind: "forgot"})
+    else if c.Do == "variables"
+      if value.IsSome(task)
+        _ = fiber.Wait(task)
+      end
+      send({Kind: "variables", Rows: rows(known)})
+    else if c.Do == "rows"
+      if value.IsSome(task)
+        _ = fiber.Wait(task)
+      end
+      send(slice(c.Name, c.First, c.Last))
+    end
+    line = debug.ReadLine()
+  end
+  if value.IsSome(task)
+    _ = fiber.Wait(task)
+  end
+end

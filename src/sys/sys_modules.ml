@@ -82,6 +82,17 @@ let debug_natives =
     [ "Eval", [| "code"; "frame" |], 1, 2, Some Debug, true; "Reload", [||], 0, 0, Some Debug, true;
       "IsComplete", [| "code" |], 1, 1, None, false ]
 
+(* The private natives of std/cells, which its session runs with: their code is in the same plugin. *)
+let cells_natives =
+  List.map
+    (fun (name, n, result) ->
+       name, Native.nat ~perm:Debug ~result name n n (fun ctx a ->
+           match debug_plugin () with
+           | Ok (natives, _, _) ->
+             (match List.assoc_opt name natives with Some (Native f) -> f.run ctx a | _ -> Runtime.fail ctx Type (Messages.debug_plugin ("no " ^ name)))
+           | Error reason -> Runtime.fail ctx Type (Messages.debug_plugin reason)))
+    [ "evalCell", 2, true; "forgetNames", 1, false; "valueOf", 1, true ]
+
 let debug_test ctx s cond =
   match debug_plugin () with
   | Ok (_, test, _) -> test ctx s cond
@@ -129,6 +140,6 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w
   Linalg.install ();
   w.debug.test <- debug_test;
   w.native_modules <-
-    ("debug", Term.natives ~editor:debug_editor input @ debug_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("log", Observe.log_natives) :: ("metrics", Observe.natives ()) :: ("http", Net.http_natives net) :: ("websocket", Websocket.natives) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
+    ("debug", Term.natives ~editor:debug_editor input @ debug_natives) :: ("cells", cells_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("log", Observe.log_natives) :: ("metrics", Observe.natives ()) :: ("http", Net.http_natives net) :: ("websocket", Websocket.natives) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
     :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
   fun () -> Net.stopping net

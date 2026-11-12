@@ -18,7 +18,7 @@ The *exit code* of a command is the number it gives back to the shell or the pro
 ## cesia run
 
 ```bash
-cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
+cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--cells] [--no-spec] [--no-jit] [--seed N] file.ce [args...]
 ```
 
 Runs a program. The words after the file are its arguments, in [sys.Args].
@@ -31,6 +31,7 @@ Runs a program. The words after the file are its arguments, in [sys.Args].
 | `--workers N` | serves on N processes, from 1 to 1,024, or one per logical core with `cores`, under a supervisor that starts again a worker that ends and replaces them all on HUP. See [Every core](http.md#every-core) and [How Cesia works](internals.md#on-every-core). Not with `--watch`, and not on Windows. |
 | `--debugger FILE` | runs a debugger written in Cesia beside the program, and gives it the `debug` permission by itself: no `--allow debug`. `--debugger debugger` is the one that comes with Cesia. See [The prompt and the debugger](debug.md). |
 | `--repl` | opens a prompt beside the program, in the package of its main file: an expression shows its value, a function defined again replaces the program's own. Without a file, a prompt on an empty program. See [The prompt and the debugger](debug.md). |
+| `--cells` | runs none of the file: a session of [std/cells] on it, which [cells.Session] starts, reads the cells to run on its input and answers on its output. The cells run at the file level, as at the prompt, without the hooks of a debugger, and with the `debug` permission by itself. See [Cells](cells.md). |
 | `--no-spec` | runs without the versions of each function that Cesia makes for the types it sees: the results must be the same |
 | `--no-jit` | runs without native code, in the [interpreter](glossary.md#interpreter-and-jit) only |
 | `--seed N` | gives [std/random] the seed N, a whole number, in place of one from the system: the same seed gives the same numbers. [random.Seed] tells the seed of a run. |

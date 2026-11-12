@@ -19,7 +19,8 @@ cesia.Fingerprint("abc") -->
 ```
 
 The others read code without running it. [cesia.Check] gives what `cesia check` finds in files; [cesia.Uses] the uses of a
-source, [cesia.Definitions] what it defines at its top; [cesia.SameTree] tells whether two sources read as the same program
+source, [cesia.Definitions] what it defines at its top, [cesia.Reads] the names it reads and doesn't define, with the
+compiler's own resolver, which [std/cells] links the cells of a notebook with; [cesia.SameTree] tells whether two sources read as the same program
 whatever their spaces and comments, which `cesia fmt` asks before it writes a file; [cesia.Toml] reads a `cesia.toml` or a
 `cesia.lock` as tables. [cesia.Doc], [cesia.DocNames] and [cesia.DocEntry] give the documentation as `cesia doc` and the
 site read it, and [cesia.Asset] the files of the site's look held in the binary.
@@ -27,6 +28,7 @@ site read it, and [cesia.Asset] the files of the site's look held in the binary.
 ```cesia
 cesia.Uses("use std/io\nuse src/shop\nio.Print(1)") -->
 cesia.SameTree("x = 1  (* one *)", "x = 1") -->
+[r.Name for r in cesia.Reads("use std/io\nio.Print(price * n)").Value] -->
 ```
 
 ## std/syntax: the colors of code

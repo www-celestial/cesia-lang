@@ -24,6 +24,12 @@ Everything here is added: a program written for 1.0 runs as it did.
 
 ### Tools
 
+- `std/cells`: a notebook in a `.ce` file, cut by `(* %% Title *)` comments. `cells.Parse`, `cells.Analyse` (what each
+  cell defines and reads, a name in one cell only, read only below its cell) and `cells.ToRun` (the cells that depend on a
+  run); `cells.Session`, `cells.Run`, `cells.Forget`, `cells.Variables`, `cells.Rows` and `cells.Stop` run them in a process of their
+  own, `cesia run --cells`, as fast as `cesia run`; `cells.Html` gives the page of a file.
+- `cesia.Reads(source)`: the names a source reads and doesn't define, with the compiler's own resolver.
+  `cesia.Definitions` gives the names of `[q, r] = ...` too.
 - `cesia lsp`, a language server: the marks of `cesia check` as you type, the docs under the cursor, definitions, completion.
 - `cesia fmt` writes files in the style of Cesia's code and checks that each keeps its tree.
 - Native packages: a package's engine in OCaml, compiled once against `Cesia_v1`, runs its natives under `native=LABEL`.

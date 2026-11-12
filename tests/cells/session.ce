@@ -1,0 +1,9 @@
+(* The file of a session of std/cells: cesia run --cells runs none of it, and the commands of session.stdin run its cells
+   one by one, as std/cells sends them. *)
+use std/io
+
+(* %% Half *)
+defn half(x)
+  x.Nope / 2
+end
+rate = 3
