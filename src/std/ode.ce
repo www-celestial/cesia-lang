@@ -1,0 +1,664 @@
+(** Ordinary differential equations: Solve, as ode45 in MATLAB and solve_ivp in scipy, by the method of Dormand and
+    Prince (1980), with its dense output, a PI control of the step size, events, and an alarm when the problem is stiff.
+    The chapter Numerical methods of the book says what it promises, and where each part comes from. *)
+use std/bug
+use std/columns as col
+use std/list
+use std/math
+use std/matrix
+use std/optimize
+use std/result
+use std/text
+use std/value
+
+eps = 2.220446049250313e-16   (** the distance from 1.0 to the next float, 2^-52 *)
+
+(* Dormand and Prince (1980), RK5(4)7M: the nodes c, the matrix a by rows, the weights b of order 5, which are also the
+   last row of a, as the method is FSAL (its last stage is the first of the next step), and e = b - b*, the weights of
+   the error estimate, b* those of the embedded method of order 4. a72 = b2 = e2 = 0. *)
+c2 = 1.0 / 5.0
+c3 = 3.0 / 10.0
+c4 = 4.0 / 5.0
+c5 = 8.0 / 9.0
+a21 = 1.0 / 5.0
+a31 = 3.0 / 40.0
+a32 = 9.0 / 40.0
+a41 = 44.0 / 45.0
+a42 = -56.0 / 15.0
+a43 = 32.0 / 9.0
+a51 = 19372.0 / 6561.0
+a52 = -25360.0 / 2187.0
+a53 = 64448.0 / 6561.0
+a54 = -212.0 / 729.0
+a61 = 9017.0 / 3168.0
+a62 = -355.0 / 33.0
+a63 = 46732.0 / 5247.0
+a64 = 49.0 / 176.0
+a65 = -5103.0 / 18656.0
+b1 = 35.0 / 384.0
+b3 = 500.0 / 1113.0
+b4 = 125.0 / 192.0
+b5 = -2187.0 / 6784.0
+b6 = 11.0 / 84.0
+e1 = 71.0 / 57600.0
+e3 = -71.0 / 16695.0
+e4 = 71.0 / 1920.0
+e5 = -17253.0 / 339200.0
+e6 = 22.0 / 525.0
+e7 = -1.0 / 40.0
+(* The dense output of order 4 of Shampine (1986), in the form Hairer, Nørsett and Wanner give it for DOPRI5 (I, §II.6):
+   y(t + θh) = y + θ (r2 + (1 - θ) (r3 + θ (r4 + (1 - θ) r5))), with r2 = y1 - y, r3 = h k1 - r2, r4 = r2 - h k7 - r3
+   and r5 = h (d1 k1 + d3 k3 + d4 k4 + d5 k5 + d6 k6 + d7 k7). *)
+d1 = -12715105075.0 / 11282082432.0
+d3 = 87487479700.0 / 32700410799.0
+d4 = -10690763975.0 / 1880347072.0
+d5 = 701980252875.0 / 199316789632.0
+d6 = -1453857185.0 / 822651844.0
+d7 = 69997945.0 / 29380423.0
+
+
+struct Event
+  (** Something to watch for along a solution: a time where g(t, y) crosses 0. Event(g, stop, direction): stop = true
+      ends the solution there; direction is "both", "up", for g going from below 0 to above, or "down".
+
+        Event((t, y) -> y[1], stop = true, direction = "down") then value.IsStruct() --> true *)
+  g
+  stop = false
+  direction = "both"
+end
+
+struct Solution
+  (** What Solve gives: T, the times, a column; Y, the states, one row for each time and one column for each component;
+      Events, the events met, in time order, each {Event, T, Y}, Event its place in the list given to Solve; Stats,
+      {Steps, Rejected, Evaluations, Jacobians, Factorizations}: the steps taken, those the error test refused, the calls
+      of f, and two counts kept for the methods that use a Jacobian, 0 here. s.At(t) gives the state at any time from
+      the first to the last, from the dense output of the step that holds t.
+
+        s = Solve((t, y) -> -y, [0.0, 1.0], 1.0).Value
+        math.Near(s.At(0.5), math.Exp(-0.5), rel = 1e-6) --> true *)
+  T
+  Y
+  Events
+  Stats
+  chunks  (* the steps, in arrays of perChunk(n) steps each: t, h, then y, k1, k3, k4, k5 and k6, n floats each *)
+  count   (* the steps in chunks *)
+  tail    (* [t, y, k1] at the end of the last step, or at the start when there is none *)
+  till    (* the last time of the solution: the end of the last step, or a stopping event inside it *)
+  shape   (* the size of y0, or missing for a number *)
+end
+
+defn Solve(f, ts, y0, rtol = 1.0e-6, atol = 1.0e-9, events = [], maxStep = missing, steps = 1000000)
+  (** The solution of y' = f(t, y) from y(ts[1]) = y0, in an Ok of a Solution: f(t, y) gives the derivative of y at t,
+      a number or an array of the same shape as y0. With two times, T holds the times of the steps the method took,
+      from the first to the last; with three or more, increasing or decreasing, T holds those times and Y the states
+      there. Times that decrease solve back in time.
+
+      The method is Dormand and Prince's of order 5 (1980), its error estimated by the embedded one of order 4: a step
+      is taken when the root mean square of the error estimate, each component divided by atol + rtol |y|, is at most 1.
+      This bounds the error made in each step, not the error of the whole solution: that one is often near rtol, but can
+      grow with time, as on a chaotic system. atol is a number or an array, one for each component. maxStep bounds the
+      size of a step; steps bounds their count, refused ones included. events is a list of Event.
+
+      An Err of kind "ode", with T, the time it reached, and Partial, the Solution up to there: when the step falls
+      under 16 eps |t|, as at a blow-up; when steps is reached; when f gives a NaN or an infinity at 10 tries in a row,
+      or a value of another shape; when the problem looks stiff, its steps held small by stability, not accuracy.
+
+        s = Solve((t, y) -> [y[2], -y[1]], [0.0, math.Pi], [0.0, 1.0]).Value
+        math.Near(s.Y[value.Len(s.T), 1], 0.0, abs = 1e-6) --> true *)
+  run(f, start(ts, y0, rtol, atol, events, maxStep, steps))
+end
+
+defn brief(v)
+  (** A value as an error shows it: its text, cut past 60 characters. *)
+  s = value.Text(v)
+  if value.IsText(v)
+    s = "\"$v\""
+  end
+  if value.Len(s) > 60 "$(text.Slice(1, 57, s))..." else s end
+end
+
+isFinite(x) = value.IsNumber(x) and x - x == 0.0
+
+defn floats(xs, what)
+  (** The numbers of an array as floats, in a new array of its shape; a panic that names the first one that is no
+      finite number. *)
+  if not value.IsArray(xs) or value.Len(xs) == 0
+    bug.Panic("ode.Solve: $what is $(brief(xs)); give a number or an array of numbers.")
+  end
+  dims = value.Size(xs)
+  if value.Len(dims) > 2 or dims[1] > 1 and dims[2] > 1
+    bug.Panic("ode.Solve: $what is an array of size $(brief(dims)); give a number, or an array of one row or one column.")
+  end
+  kind = col.Kind(xs)
+  if kind == "float" or kind == "int"
+    total = list.Sum(xs * 0.0)
+    if total == 0.0
+      return xs * 1.0
+    end
+  end
+  out = matrix.Zeros(dims[1], dims[2])
+  for i in 1..value.Len(xs)
+    if not isFinite(xs[i])
+      bug.Panic("ode.Solve: $what[$i] is $(brief(xs[i])); give finite numbers.")
+    end
+    out[i] = xs[i]
+  end
+  out
+end
+
+defn start(ts, y0, rtol, atol, events, maxStep, most)
+  (** The arguments, checked, as one struct; a bad one is a panic that names it. A number y0 becomes an array of one. *)
+  if not value.IsArray(ts) or value.Len(ts) < 2
+    bug.Panic("ode.Solve: ts is $(brief(ts)); give [t0, t1], or three times or more.")
+  end
+  times = floats(ts, "ts")
+  m = value.Len(times)
+  dir = if times[m] > times[1] 1.0 else -1.0 end
+  for k in 2..m
+    if not (dir * (times[k] - times[k - 1]) > 0.0)
+      bug.Panic("ode.Solve: ts must increase or decrease, strictly: ts[$(k - 1)] is $(times[k - 1]) and ts[$k] is $(times[k]).")
+    end
+  end
+  scalar = isFinite(y0)
+  y = if scalar matrix.Zeros(1) + y0 else floats(y0, "y0") end
+  n = value.Len(y)
+  if not (isFinite(rtol) and rtol > 0.0)
+    bug.Panic("ode.Solve: rtol is $(brief(rtol)); give a number above 0.")
+  end
+  if isFinite(atol)
+    if atol < 0.0
+      bug.Panic("ode.Solve: atol is $atol; give a number of 0.0 or more.")
+    end
+    atol = 1.0 * atol
+  else
+    a = floats(atol, "atol")
+    if scalar or value.Len(a) != n or list.Min(a) < 0.0
+      bug.Panic("ode.Solve: atol is $(brief(atol)); give a number, or $n numbers of 0.0 or more, one for each component of y0.")
+    end
+    atol = matrix.Reshape(value.Size(y), a)
+  end
+  hmax = math.Abs(times[m] - times[1])
+  if not value.IsMissing(maxStep)
+    if not (isFinite(maxStep) and maxStep > 0.0)
+      bug.Panic("ode.Solve: maxStep is $(brief(maxStep)); give a number above 0.")
+    end
+    hmax = if maxStep < hmax 1.0 * maxStep else hmax end
+  end
+  if not (value.IsInt(most) and most >= 1)
+    bug.Panic("ode.Solve: steps is $(brief(most)); give a whole number of 1 or more.")
+  end
+  if not value.IsArray(events)
+    bug.Panic("ode.Solve: events is $(brief(events)); give a list of ode.Event.")
+  end
+  for k in 1..value.Len(events)
+    e = events[k]
+    if not isEvent(e)
+      bug.Panic("ode.Solve: events[$k] is $(brief(e)); give an ode.Event.")
+    end
+    if not (e.direction in ["both", "up", "down"])
+      bug.Panic("ode.Solve: the direction of events[$k] is $(brief(e.direction)); give \"both\", \"up\" or \"down\".")
+    end
+    if not value.IsBool(e.stop)
+      bug.Panic("ode.Solve: stop of events[$k] is $(brief(e.stop)); give true or false.")
+    end
+  end
+  {Times: times, Dir: dir, Y0: y, N: n, Scalar: scalar, Size: if scalar missing else value.Size(y) end,
+   Rows: value.Size(y, 1), Rtol: 1.0 * rtol, Atol: atol, Hmax: hmax, Most: most, Events: events}
+end
+
+isEvent(e) = match e
+  Event(g, s, d) -> true
+  else -> false
+end
+
+defn shapeError(k, t, p)
+  (** missing when k, a value f gave at t, is numbers in the shape of y; else what is wrong, as a text. For a number
+      y0, k is the array of one that holds what f gave. *)
+  if p.Scalar
+    if value.IsNumber(k[1])
+      return missing
+    end
+    return "ode.Solve: f gave $(brief(k[1])) at t = $t, not a number as y0."
+  end
+  if value.IsArray(k) and value.Len(k) == p.N and value.Size(k, 1) == p.Rows
+    kind = col.Kind(k)
+    if kind == "float" or kind == "int"
+      return missing
+    end
+    for i in 1..p.N
+      if not value.IsNumber(k[i])
+        return "ode.Solve: f gave $(brief(k)) at t = $t: its component $i is $(brief(k[i])), not a number."
+      end
+    end
+    return missing
+  end
+  "ode.Solve: f gave $(brief(k)) at t = $t, not an array of size $(brief(p.Size)) as y0."
+end
+
+rms(x) = math.Sqrt(list.Sum(x * x) / value.Len(x))   (** the root mean square of an array *)
+
+defn firstStep(f, t, y, k1, p)
+  (** The size of the first step, by the rule of Hairer, Nørsett and Wanner (I, §II.4), after Gladwell, Shampine and
+      Brankin (1987): the step over which Euler's method moves y by 1 % of its scale, then a bound from the second
+      derivative, estimated by one more call of f. A text when that call gives no value of the shape of y. *)
+  sc = p.Atol + p.Rtol * math.Abs(y)
+  d0 = rms(y / sc)
+  d1 = rms(k1 / sc)
+  h0 = if d0 < 1.0e-5 or d1 < 1.0e-5 1.0e-6 else 0.01 * d0 / d1 end
+  h0 = if h0 < p.Hmax h0 else p.Hmax end
+  k = f(t + p.Dir * h0, y + p.Dir * h0 * k1)
+  bad = shapeError(k, t + p.Dir * h0, p)
+  if not value.IsMissing(bad)
+    return bad
+  end
+  big = list.Max(d1, rms((k - k1) / sc) / h0)
+  h1 = if not isFinite(big) h0 else if big <= 1.0e-15 list.Max(1.0e-6, h0 * 1.0e-3) else (0.01 / big) ^ 0.2 end
+  list.Min(list.Min(100.0 * h0, h1), p.Hmax)
+end
+
+defn badComponent(ks, t)
+  (** The first value of the stages of a step that is not finite, as a text. *)
+  for k in ks
+    for i in 1..value.Len(k)
+      if not isFinite(k[i])
+        return "f gave $(k[i]) in component $i near t = $t"
+      end
+    end
+  end
+  "the error estimate was no finite number near t = $t"
+end
+
+defn run(f, p)
+  (** The loop of the steps: each one tried, its error tested, then taken, kept for the dense output, with its events
+      and the test of stiffness, or refused and tried again smaller. The values f gives are checked as they come, by
+      two quick tests, then by shapeError when one fails. *)
+  if p.Scalar
+    f0 = f
+    f = (t, y) -> [f0(t, y[1])]
+  end
+  times = p.Times
+  t = times[1]
+  tEnd = times[value.Len(times)]
+  dir = p.Dir
+  y = p.Y0
+  n = p.N
+  rtol = p.Rtol
+  atol = p.Atol
+  hmax = p.Hmax
+  most = p.Most
+  watch = value.Len(p.Events) > 0
+  width = 6 * n + 2
+  full = perChunk(n) * width
+  chunks = []
+  buf = matrix.Zeros(full)
+  used = 0
+  found = []
+  k1 = f(t, y)
+  bad = shapeError(k1, t, p)
+  if not value.IsMissing(bad)
+    return failed(bad, p, list.Append(buf, chunks), found, counts(0, 0, 1), [t, y, k1], t)
+  end
+  h = firstStep(f, t, y, k1, p)
+  if value.IsText(h)
+    return failed(h, p, list.Append(buf, chunks), found, counts(0, 0, 2), [t, y, k1], t)
+  end
+  evals = 2
+  taken = 0
+  refused = 0
+  gs = []
+  for e in p.Events
+    g = e.g(t, if p.Scalar y[1] else y end)
+    if not isFinite(g)
+      return failed("ode.Solve: an event's g gave $(brief(g)) at t = $t, not a finite number.", p, list.Append(buf, chunks), found, counts(0, 0, evals), [t, y, k1], t)
+    end
+    gs = list.Append(1.0 * g, gs)
+  end
+  ay = math.Abs(y)
+  facold = 1.0e-4
+  justRefused = false
+  nans = 0
+  stiff = 0
+  calm = 0
+  while true
+    if taken + refused >= most
+      return failed("ode.Solve: $most steps reached at t = $t, before $tEnd; give more steps, or check f.", p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+    end
+    if h <= 16.0 * eps * math.Abs(t) or h == 0.0
+      return failed("ode.Solve: the step fell under 16 eps |t| at t = $t: the solution may blow up there.", p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+    end
+    last = false
+    if (t + 1.01 * dir * h - tEnd) * dir >= 0.0
+      h = math.Abs(tEnd - t)
+      last = true
+    end
+    s = dir * h
+    evals += 6
+    k2 = f(t + c2 * s, y + (s * a21) * k1)
+    if not (value.Len(k2) == n and col.Kind(k2) == "float")
+      bad = shapeError(k2, t, p)
+      if not value.IsMissing(bad)
+        return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+      end
+    end
+    k3 = f(t + c3 * s, y + (s * a31) * k1 + (s * a32) * k2)
+    if not (value.Len(k3) == n and col.Kind(k3) == "float")
+      bad = shapeError(k3, t, p)
+      if not value.IsMissing(bad)
+        return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+      end
+    end
+    k4 = f(t + c4 * s, y + (s * a41) * k1 + (s * a42) * k2 + (s * a43) * k3)
+    if not (value.Len(k4) == n and col.Kind(k4) == "float")
+      bad = shapeError(k4, t, p)
+      if not value.IsMissing(bad)
+        return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+      end
+    end
+    k5 = f(t + c5 * s, y + (s * a51) * k1 + (s * a52) * k2 + (s * a53) * k3 + (s * a54) * k4)
+    if not (value.Len(k5) == n and col.Kind(k5) == "float")
+      bad = shapeError(k5, t, p)
+      if not value.IsMissing(bad)
+        return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+      end
+    end
+    t7 = if last tEnd else t + s end
+    y6 = y + (s * a61) * k1 + (s * a62) * k2 + (s * a63) * k3 + (s * a64) * k4 + (s * a65) * k5
+    k6 = f(t7, y6)
+    if not (value.Len(k6) == n and col.Kind(k6) == "float")
+      bad = shapeError(k6, t, p)
+      if not value.IsMissing(bad)
+        return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+      end
+    end
+    y7 = y + (s * b1) * k1 + (s * b3) * k3 + (s * b4) * k4 + (s * b5) * k5 + (s * b6) * k6
+    k7 = f(t7, y7)
+    if not (value.Len(k7) == n and col.Kind(k7) == "float")
+      bad = shapeError(k7, t, p)
+      if not value.IsMissing(bad)
+        return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+      end
+    end
+    ay7 = math.Abs(y7)
+    w = ((s * e1) * k1 + (s * e3) * k3 + (s * e4) * k4 + (s * e5) * k5 + (s * e6) * k6 + (s * e7) * k7) / (atol + rtol * list.Max(ay, ay7))
+    err = math.Sqrt(list.Sum(w * w) / n)
+    if not (err - err == 0.0)
+      nans += 1
+      refused += 1
+      if nans >= 10
+        return failed("ode.Solve: $(badComponent([k1, k2, k3, k4, k5, k6, k7], t)), at 10 tries in a row, the step halved each time.", p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t)
+      end
+      h = 0.5 * h
+      justRefused = true
+    else if err > 1.0
+      nans = 0
+      refused += 1
+      fac = err ^ 0.17 / 0.9
+      h = h / (if fac < 5.0 fac else 5.0 end)
+      justRefused = true
+    else
+      nans = 0
+      taken += 1
+      (* The step size by the PI control of Gustafsson (1991), as Hairer and Wanner give it for DOPRI5 (II, §IV.2):
+         err^0.17 = err^(0.2 - 0.75 beta) and facold^beta, beta = 0.04; at most 10 times larger and 5 times smaller,
+         and no larger right after a refused step. *)
+      fac = err ^ 0.17 / facold ^ 0.04 / 0.9
+      fac = if fac > 5.0 5.0 else if fac < 0.1 0.1 else fac end
+      hnew = h / fac
+      facold = if err > 1.0e-4 err else 1.0e-4 end
+      if justRefused and hnew > h
+        hnew = h
+      end
+      justRefused = false
+      if used == full
+        chunks = list.Append(buf, chunks)
+        buf = matrix.Zeros(full)
+        used = 0
+      end
+      o = used + 2
+      buf[used + 1] = t
+      buf[o] = s
+      for i in 1..n
+        buf[o + i] = y[i]
+        buf[o + n + i] = k1[i]
+        buf[o + 2 * n + i] = k3[i]
+        buf[o + 3 * n + i] = k4[i]
+        buf[o + 4 * n + i] = k5[i]
+        buf[o + 5 * n + i] = k6[i]
+      end
+      used += width
+      (* The stiffness test of Hairer and Wanner (II, §IV.2), after Shampine (1977): h |λ| from the last two stages,
+         which are at the same time. Above 3.25, near the edge of the method's stability, on 15 steps with never 6 in a
+         row below it between them, the problem is stiff. Tried every 1000 steps, and at each step once one is above. *)
+      if stiff > 0 or math.Mod(taken, 1000) == 0
+        dy = y7 - y6
+        dk = k7 - k6
+        den = list.Sum(dy * dy)
+        if den > 0.0 and h * h * list.Sum(dk * dk) > 10.5625 * den
+          calm = 0
+          stiff += 1
+          if stiff == 15
+            return failed("ode.Solve: the problem looks stiff from t = $t7: for 15 steps the size of the step was held by the stability of the method, not by its accuracy, and going on would take very many steps.", p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t7, y7, k7], t7)
+          end
+        else if stiff > 0
+          calm += 1
+          if calm == 6
+            stiff = 0
+            calm = 0
+          end
+        end
+      end
+      if watch
+        ev = eventsIn(p, gs, [t, s, y, k1, k3, k4, k5, k6], [t7, y7, k7])
+        if value.IsText(ev)
+          return failed(ev, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t7, y7, k7], t7)
+        end
+        gs = ev.G
+        found = list.Concat(found, ev.Found)
+        if ev.Stop
+          return result.Ok(solution(p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t7, y7, k7], found[value.Len(found)].T))
+        end
+      end
+      t = t7
+      y = y7
+      ay = ay7
+      k1 = k7
+      if last
+        return result.Ok(solution(p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t, y, k1], t))
+      end
+      h = if hnew < hmax hnew else hmax end
+    end
+  end
+end
+
+(** The Stats of a Solution. *)
+counts(taken, refused, evals) = {Steps: taken, Rejected: refused, Evaluations: evals, Jacobians: 0, Factorizations: 0}
+
+(** The steps in each array of a Solution's chunks: about 64 K floats, 512 KB, at least one step. Arrays of that size
+    are made as the steps come, never grown: a grown array is copied, and written slowly after. *)
+perChunk(n) = if 65536 > 6 * n + 2 math.Div(65536, 6 * n + 2) else 1 end
+
+defn dense(st, tail, size, u)
+  (** The state at u, inside the step st = [t, h, y, k1, k3, k4, k5, k6] that tail = [t + h, y1, k7] ends, from
+      Shampine's dense output, in the shape of y0, size. *)
+  h = st[2]
+  y = st[3]
+  k1 = st[4]
+  k7 = tail[3]
+  th = (u - st[1]) / h
+  r2 = tail[2] - y
+  r3 = h * k1 - r2
+  r4 = r2 - h * k7 - r3
+  r5 = (h * d1) * k1 + (h * d3) * st[5] + (h * d4) * st[6] + (h * d5) * st[7] + (h * d6) * st[8] + (h * d7) * k7
+  v = y + th * (r2 + (1.0 - th) * (r3 + th * (r4 + (1.0 - th) * r5)))
+  if value.IsMissing(size) or value.Size(v, 1) == size[1] v else matrix.Reshape(size, v) end
+end
+
+defn startOf(s, k)
+  (** Step k of a Solution, as dense takes it: [t, h, y, k1, k3, k4, k5, k6], its arrays rows. *)
+  n = value.Len(s.tail[2])
+  per = perChunk(n)
+  o = math.Mod(k - 1, per) * (6 * n + 2)
+  b = s.chunks[math.Div(k - 1, per) + 1]
+  [b[o + 1], b[o + 2], b[o + 3..o + 2 + n], b[o + 3 + n..o + 2 + 2 * n], b[o + 3 + 2 * n..o + 2 + 3 * n],
+   b[o + 3 + 3 * n..o + 2 + 4 * n], b[o + 3 + 4 * n..o + 2 + 5 * n], b[o + 3 + 5 * n..o + 2 + 6 * n]]
+end
+
+defn stepOf(s, k)
+  (** Step k of a Solution and the tail that ends it, [t, y1, k7]: the start of the next step, or the Solution's own. *)
+  if k == s.count
+    n = value.Len(s.tail[2])
+    return [startOf(s, k), [s.tail[1], matrix.Reshape([1, n], s.tail[2]), matrix.Reshape([1, n], s.tail[3])]]
+  end
+  next = startOf(s, k + 1)
+  [startOf(s, k), [next[1], next[3], next[4]]]
+end
+
+defn timeOf(s, k)
+  (** The time at the start of step k. *)
+  n = value.Len(s.tail[2])
+  per = perChunk(n)
+  s.chunks[math.Div(k - 1, per) + 1][math.Mod(k - 1, per) * (6 * n + 2) + 1]
+end
+
+defn eventsIn(p, gs, st, tail)
+  (** The events of the step st that tail ends: the sign of each g at its end against its start, and each change
+      located by optimize.Root on the dense output. {G, Found, Stop}: the values of g at the end, the events in time
+      order up to the first that stops, and whether one stops; or a text when a g gives no finite number. *)
+  t = st[1]
+  t7 = tail[1]
+  size = p.Size
+  user = v -> if p.Scalar v[1] else v end
+  news = []
+  hits = []
+  for j in 1..value.Len(p.Events)
+    e = p.Events[j]
+    g1 = e.g(t7, user(tail[2]))
+    if not isFinite(g1)
+      return "ode.Solve: the g of event $j gave $(brief(g1)) at t = $t7, not a finite number."
+    end
+    g1 = 1.0 * g1
+    news = list.Append(g1, news)
+    g0 = gs[j]
+    if g0 != 0.0 and (g1 == 0.0 or (g1 > 0.0) != (g0 > 0.0))
+      if e.direction == "both" or (e.direction == "up") == (g0 < 0.0)
+        te = t7
+        if g1 != 0.0
+          g = e.g
+          r = optimize.Root(u -> g(u, user(dense(st, tail, size, u))), [t, t7])
+          if result.IsErr(r)
+            return "ode.Solve: event $j near t = $t7: $(r.Error.Message)"
+          end
+          te = r.Value.X
+        end
+        ye = if te == t7 tail[2] else dense(st, tail, size, te) end
+        hits = list.Append({Event: j, T: te, Y: user(ye), stop: e.stop}, hits)
+      end
+    end
+  end
+  hits = list.SortBy(h -> p.Dir * h.T, hits)
+  found = []
+  for h in hits
+    found = list.Append({Event: h.Event, T: h.T, Y: h.Y}, found)
+    if h.stop
+      return {G: news, Found: found, Stop: true}
+    end
+  end
+  {G: news, Found: found, Stop: false}
+end
+
+defn failed(message, p, chunks, found, stats, tail, till)
+  (** The Err of Solve, with the solution up to till. *)
+  result.Err({Kind: "ode", Message: message, T: till, Partial: solution(p, chunks, found, stats, tail, till)})
+end
+
+defn solution(p, chunks, found, stats, tail, till)
+  (** The Solution: its T and Y from the steps, or at the times asked for. *)
+  m = stats.Steps
+  n = p.N
+  width = 6 * n + 2
+  s = Solution([], [], found, stats, chunks, m, tail, till, p.Size)
+  if value.Len(p.Times) > 2
+    wanted = [t for t in p.Times if p.Dir * (t - till) <= 0.0]
+    tt = matrix.Reshape([value.Len(wanted), 1], wanted)
+    yy = if value.Len(wanted) == 0 matrix.Zeros(0, n) else s.At(wanted) end
+    return Solution(tt, yy, found, stats, chunks, m, tail, till, p.Size)
+  end
+  tt = matrix.Zeros(m + 1, 1)
+  yy = matrix.Zeros(m + 1, n)
+  k = 0
+  for b in chunks
+    o = 0
+    while k < m and o < perChunk(n) * width
+      k += 1
+      tt[k] = b[o + 1]
+      for i in 1..n
+        yy[k, i] = b[o + 2 + i]
+      end
+      o += width
+    end
+  end
+  tt[m + 1] = till
+  v = if till == tail[1] tail[2] else stateAt(s, till) end
+  for i in 1..n
+    yy[m + 1, i] = v[i]
+  end
+  Solution(tt, yy, found, stats, chunks, m, tail, till, p.Size)
+end
+
+defn locate(s, u)
+  (** The step that holds u: the last whose start is not past u, by a binary search. *)
+  dir = if s.till >= timeOf(s, 1) 1.0 else -1.0 end
+  lo = 1
+  hi = s.count
+  while lo < hi
+    mid = math.Div(lo + hi + 1, 2)
+    if dir * (timeOf(s, mid) - u) <= 0.0
+      lo = mid
+    else
+      hi = mid - 1
+    end
+  end
+  lo
+end
+
+defn stateAt(s, u)
+  (** The state at u, a time of the solution, as an array. *)
+  first = if s.count == 0 s.tail[1] else timeOf(s, 1) end
+  if not ((u - first) * (u - s.till) <= 0.0)
+    bug.Panic("ode: At($u) is outside the solution, from $first to $(s.till).")
+  end
+  if s.count == 0 or u == s.tail[1]
+    return s.tail[2]
+  end
+  w = stepOf(s, locate(s, u))
+  dense(w[1], w[2], s.shape, u)
+end
+
+defn (s Solution) At(t)
+  (** The state at time t, from the first time of the solution to the last; with an array of times, a matrix as Y, one
+      row for each time. Inside a step, the dense output of Shampine (1986), of order 4, which meets the step's own
+      states at both of its ends. A time outside the solution is a panic.
+
+        s = Solve((t, y) -> [y[2], -y[1]], [0.0, 2.0], [0.0, 1.0]).Value
+        math.Near(s.At([0.5, 1.5]), [math.Sin(0.5) math.Cos(0.5); math.Sin(1.5) math.Cos(1.5)], rel = 1e-5) --> true *)
+  if isFinite(t)
+    v = stateAt(s, 1.0 * t)
+    return if value.IsMissing(s.shape) v[1] else v end
+  end
+  if not value.IsArray(t)
+    bug.Panic("ode: At needs a time or an array of times, not $(brief(t)).")
+  end
+  m = value.Len(t)
+  n = value.Len(s.tail[2])
+  out = matrix.Zeros(m, n)
+  for j in 1..m
+    if not isFinite(t[j])
+      bug.Panic("ode: At needs times, and its argument holds $(brief(t[j])) at $j.")
+    end
+    v = stateAt(s, 1.0 * t[j])
+    for i in 1..n
+      out[j, i] = v[i]
+    end
+  end
+  out
+end

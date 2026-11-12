@@ -1,0 +1,334 @@
+(** The tests of optimize.Root: closed forms, the test problems of Alefeld, Potra and Shi (1995), a property on
+    polynomials with a known simple root, the bound on its calls of f, and its errors. *)
+use std/fiber
+use std/gen
+use std/list
+use std/math
+use std/optimize
+use std/result
+use std/test
+use std/value
+
+eps = 2.220446049250313e-16
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+rootOf(r) = result.Unwrap(r).X
+within(x, want) = math.Abs(x - want) <= 2.0 * eps * math.Abs(want)   (** as close as Root promises *)
+
+(* Closed forms: the float nearest to the zero, or one of the two around it. *)
+isCubic() = rootOf(optimize.Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0])) == 2.0945514815423265
+isCosine() = rootOf(optimize.Root(x -> math.Cos(x) - x, [0.0, 1.0])) == 0.7390851332151607
+isLog2() = rootOf(optimize.Root(x -> math.Exp(x) - 2.0, [0.0, 1.0])) == math.Log(2.0)
+isSqrt2Backwards() = within(rootOf(optimize.Root(x -> x * x - 2.0, [2.0, 0.0])), math.Sqrt(2.0))
+isEndIsRoot() = rootOf(optimize.Root(x -> x - 1.0, [1.0, 3.0])) == 1.0 and optimize.Root(x -> x - 1.0, [1.0, 3.0]).Value.Evaluations == 2
+isTolerance() = math.Abs(rootOf(optimize.Root(x -> x ^ 3 - 2.0 * x - 5.0, [2.0, 3.0], tol = 1.0e-6)) - 2.0945514815423265) <= 2.0e-6 + 2.0 * eps * 2.1
+
+(* From one start: a bracket is found first. *)
+isStartCosine() = rootOf(optimize.Root(x -> math.Cos(x) - x, 1.0)) == 0.7390851332151607
+isStartZero() = rootOf(optimize.Root(x -> x - 0.5, 0.0)) == 0.5
+isStartRoot() = optimize.Root(x -> x - 2.0, 2.0).Value == {X: 2.0, F: 0.0, Evaluations: 1}
+isStartPastNan() = within(rootOf(optimize.Root(x -> math.Sqrt(x) - 2.0, 1.0)), 4.0)
+
+defn aps(p, args)
+  (** Problem p of Alefeld, Potra and Shi (1995), with its parameters, as a function of x. *)
+  a = if value.Len(args) >= 1 args[1] else 0.0 end
+  b = if value.Len(args) >= 2 args[2] else 0.0 end
+  if p == 1
+    return x -> math.Sin(x) - x / 2.0
+  end
+  if p == 2
+    return defn (x)
+      s = 0.0
+      for i in 1..20
+        s = s + (2.0 * i - 5.0) ^ 2 / (x - 1.0 * i * i) ^ 3
+      end
+      -2.0 * s
+    end
+  end
+  if p == 3
+    return x -> a * x * math.Exp(b * x)
+  end
+  if p == 4
+    return x -> x ^ a - b
+  end
+  if p == 5
+    return x -> math.Sin(x) - 0.5
+  end
+  if p == 6
+    return x -> 2.0 * x * math.Exp(-a) - 2.0 * math.Exp(-a * x) + 1.0
+  end
+  if p == 7
+    return x -> (1.0 + (1.0 - a) ^ 2) * x - (1.0 - a * x) ^ 2
+  end
+  if p == 8
+    return x -> x * x - (1.0 - x) ^ a
+  end
+  if p == 9
+    return x -> (1.0 + (1.0 - a) ^ 4) * x - (1.0 - a * x) ^ 4
+  end
+  if p == 10
+    return x -> math.Exp(-a * x) * (x - 1.0) + x ^ a
+  end
+  if p == 11
+    return x -> (a * x - 1.0) / ((a - 1.0) * x)
+  end
+  if p == 12
+    return x -> x ^ (1.0 / a) - a ^ (1.0 / a)
+  end
+  if p == 13
+    return defn (x)
+      if x == 0.0
+        return 0.0
+      end
+      y = 1.0 / (x * x)
+      if y > 709.782712893384
+        return 0.0
+      end
+      x / math.Exp(y)
+    end
+  end
+  if p == 14
+    return x -> if x <= 0.0 (-a / 20.0) else a / 20.0 * (x / 1.5 + math.Sin(x) - 1.0) end
+  end
+  defn (x)
+    if x < 0.0
+      return -0.859
+    end
+    if x > 2.0e-3 / (1.0 + a)
+      return math.Exp(1.0) - 1.859
+    end
+    math.Exp((a + 1.0) * x / 2.0 * 1000.0) - 1.859
+  end
+end
+
+apsCases = [
+  {Id: "aps.01.00", P: 1, Args: [], A: 1.5707963267948966, B: 3.141592653589793},
+  {Id: "aps.02.00", P: 2, Args: [], A: 1.000000001, B: 3.999999999},
+  {Id: "aps.02.01", P: 2, Args: [], A: 4.000000001, B: 8.999999999},
+  {Id: "aps.02.02", P: 2, Args: [], A: 9.000000001, B: 15.999999999},
+  {Id: "aps.02.03", P: 2, Args: [], A: 16.000000001, B: 24.999999999},
+  {Id: "aps.02.04", P: 2, Args: [], A: 25.000000001, B: 35.999999999},
+  {Id: "aps.02.05", P: 2, Args: [], A: 36.000000001, B: 48.999999999},
+  {Id: "aps.02.06", P: 2, Args: [], A: 49.000000001, B: 63.999999999},
+  {Id: "aps.02.07", P: 2, Args: [], A: 64.000000001, B: 80.999999999},
+  {Id: "aps.02.08", P: 2, Args: [], A: 81.000000001, B: 99.999999999},
+  {Id: "aps.02.09", P: 2, Args: [], A: 100.000000001, B: 120.999999999},
+  {Id: "aps.03.00", P: 3, Args: [-40.0, -1.0], A: -9.0, B: 31.0},
+  {Id: "aps.03.01", P: 3, Args: [-100.0, -2.0], A: -9.0, B: 31.0},
+  {Id: "aps.03.02", P: 3, Args: [-200.0, -3.0], A: -9.0, B: 31.0},
+  {Id: "aps.04.00", P: 4, Args: [4.0, 0.2], A: 0.0, B: 5.0},
+  {Id: "aps.04.01", P: 4, Args: [6.0, 0.2], A: 0.0, B: 5.0},
+  {Id: "aps.04.02", P: 4, Args: [8.0, 0.2], A: 0.0, B: 5.0},
+  {Id: "aps.04.03", P: 4, Args: [10.0, 0.2], A: 0.0, B: 5.0},
+  {Id: "aps.04.04", P: 4, Args: [12.0, 0.2], A: 0.0, B: 5.0},
+  {Id: "aps.04.05", P: 4, Args: [4.0, 1.0], A: 0.0, B: 5.0},
+  {Id: "aps.04.06", P: 4, Args: [6.0, 1.0], A: 0.0, B: 5.0},
+  {Id: "aps.04.07", P: 4, Args: [8.0, 1.0], A: 0.0, B: 5.0},
+  {Id: "aps.04.08", P: 4, Args: [10.0, 1.0], A: 0.0, B: 5.0},
+  {Id: "aps.04.09", P: 4, Args: [12.0, 1.0], A: 0.0, B: 5.0},
+  {Id: "aps.04.10", P: 4, Args: [8.0, 1.0], A: -0.95, B: 4.05},
+  {Id: "aps.04.11", P: 4, Args: [10.0, 1.0], A: -0.95, B: 4.05},
+  {Id: "aps.04.12", P: 4, Args: [12.0, 1.0], A: -0.95, B: 4.05},
+  {Id: "aps.04.13", P: 4, Args: [14.0, 1.0], A: -0.95, B: 4.05},
+  {Id: "aps.05.00", P: 5, Args: [], A: 0.0, B: 1.5},
+  {Id: "aps.06.00", P: 6, Args: [1.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.01", P: 6, Args: [2.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.02", P: 6, Args: [3.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.03", P: 6, Args: [4.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.04", P: 6, Args: [5.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.05", P: 6, Args: [20.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.06", P: 6, Args: [40.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.07", P: 6, Args: [60.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.08", P: 6, Args: [80.0], A: 0.0, B: 1.0},
+  {Id: "aps.06.09", P: 6, Args: [100.0], A: 0.0, B: 1.0},
+  {Id: "aps.07.00", P: 7, Args: [5.0], A: 0.0, B: 1.0},
+  {Id: "aps.07.01", P: 7, Args: [10.0], A: 0.0, B: 1.0},
+  {Id: "aps.07.02", P: 7, Args: [20.0], A: 0.0, B: 1.0},
+  {Id: "aps.08.00", P: 8, Args: [2.0], A: 0.0, B: 1.0},
+  {Id: "aps.08.01", P: 8, Args: [5.0], A: 0.0, B: 1.0},
+  {Id: "aps.08.02", P: 8, Args: [10.0], A: 0.0, B: 1.0},
+  {Id: "aps.08.03", P: 8, Args: [15.0], A: 0.0, B: 1.0},
+  {Id: "aps.08.04", P: 8, Args: [20.0], A: 0.0, B: 1.0},
+  {Id: "aps.09.00", P: 9, Args: [1.0], A: 0.0, B: 1.0},
+  {Id: "aps.09.01", P: 9, Args: [2.0], A: 0.0, B: 1.0},
+  {Id: "aps.09.02", P: 9, Args: [4.0], A: 0.0, B: 1.0},
+  {Id: "aps.09.03", P: 9, Args: [5.0], A: 0.0, B: 1.0},
+  {Id: "aps.09.04", P: 9, Args: [8.0], A: 0.0, B: 1.0},
+  {Id: "aps.09.05", P: 9, Args: [15.0], A: 0.0, B: 1.0},
+  {Id: "aps.09.06", P: 9, Args: [20.0], A: 0.0, B: 1.0},
+  {Id: "aps.10.00", P: 10, Args: [1.0], A: 0.0, B: 1.0},
+  {Id: "aps.10.01", P: 10, Args: [5.0], A: 0.0, B: 1.0},
+  {Id: "aps.10.02", P: 10, Args: [10.0], A: 0.0, B: 1.0},
+  {Id: "aps.10.03", P: 10, Args: [15.0], A: 0.0, B: 1.0},
+  {Id: "aps.10.04", P: 10, Args: [20.0], A: 0.0, B: 1.0},
+  {Id: "aps.11.00", P: 11, Args: [2.0], A: 0.01, B: 1.0},
+  {Id: "aps.11.01", P: 11, Args: [5.0], A: 0.01, B: 1.0},
+  {Id: "aps.11.02", P: 11, Args: [15.0], A: 0.01, B: 1.0},
+  {Id: "aps.11.03", P: 11, Args: [20.0], A: 0.01, B: 1.0},
+  {Id: "aps.12.00", P: 12, Args: [2.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.01", P: 12, Args: [3.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.02", P: 12, Args: [4.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.03", P: 12, Args: [5.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.04", P: 12, Args: [6.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.05", P: 12, Args: [7.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.06", P: 12, Args: [9.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.07", P: 12, Args: [11.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.08", P: 12, Args: [13.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.09", P: 12, Args: [15.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.10", P: 12, Args: [17.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.11", P: 12, Args: [19.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.12", P: 12, Args: [21.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.13", P: 12, Args: [23.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.14", P: 12, Args: [25.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.15", P: 12, Args: [27.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.16", P: 12, Args: [29.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.17", P: 12, Args: [31.0], A: 1.0, B: 100.0},
+  {Id: "aps.12.18", P: 12, Args: [33.0], A: 1.0, B: 100.0},
+  {Id: "aps.13.00", P: 13, Args: [], A: -1.0, B: 4.0},
+  {Id: "aps.14.00", P: 14, Args: [1.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.01", P: 14, Args: [2.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.02", P: 14, Args: [3.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.03", P: 14, Args: [4.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.04", P: 14, Args: [5.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.05", P: 14, Args: [6.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.06", P: 14, Args: [7.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.07", P: 14, Args: [8.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.08", P: 14, Args: [9.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.09", P: 14, Args: [10.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.10", P: 14, Args: [11.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.11", P: 14, Args: [12.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.12", P: 14, Args: [13.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.13", P: 14, Args: [14.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.14", P: 14, Args: [15.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.15", P: 14, Args: [16.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.16", P: 14, Args: [17.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.17", P: 14, Args: [18.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.18", P: 14, Args: [19.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.19", P: 14, Args: [20.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.20", P: 14, Args: [21.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.21", P: 14, Args: [22.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.22", P: 14, Args: [23.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.23", P: 14, Args: [24.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.24", P: 14, Args: [25.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.25", P: 14, Args: [26.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.26", P: 14, Args: [27.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.27", P: 14, Args: [28.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.28", P: 14, Args: [29.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.29", P: 14, Args: [30.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.30", P: 14, Args: [31.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.31", P: 14, Args: [32.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.32", P: 14, Args: [33.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.33", P: 14, Args: [34.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.34", P: 14, Args: [35.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.35", P: 14, Args: [36.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.36", P: 14, Args: [37.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.37", P: 14, Args: [38.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.38", P: 14, Args: [39.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.14.39", P: 14, Args: [40.0], A: -1000.0, B: 1.5707963267948966},
+  {Id: "aps.15.00", P: 15, Args: [20.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.01", P: 15, Args: [21.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.02", P: 15, Args: [22.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.03", P: 15, Args: [23.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.04", P: 15, Args: [24.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.05", P: 15, Args: [25.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.06", P: 15, Args: [26.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.07", P: 15, Args: [27.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.08", P: 15, Args: [28.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.09", P: 15, Args: [29.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.10", P: 15, Args: [30.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.11", P: 15, Args: [31.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.12", P: 15, Args: [32.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.13", P: 15, Args: [33.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.14", P: 15, Args: [34.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.15", P: 15, Args: [35.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.16", P: 15, Args: [36.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.17", P: 15, Args: [37.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.18", P: 15, Args: [38.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.19", P: 15, Args: [39.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.20", P: 15, Args: [40.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.21", P: 15, Args: [100.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.22", P: 15, Args: [200.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.23", P: 15, Args: [300.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.24", P: 15, Args: [400.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.25", P: 15, Args: [500.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.26", P: 15, Args: [600.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.27", P: 15, Args: [700.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.28", P: 15, Args: [800.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.29", P: 15, Args: [900.0], A: -1000.0, B: 0.0001},
+  {Id: "aps.15.30", P: 15, Args: [1000.0], A: -1000.0, B: 0.0001}
+]
+
+defn changesSign(f, r, tol)
+  (** Does f change sign within 2 eps |x| + 2 tol of the answer, or vanish there? *)
+  d = 2.0 * eps * math.Abs(r.X) + 2.0 * tol
+  a = f(r.X - d)
+  b = f(r.X + d)
+  r.F == 0.0 or a == 0.0 or b == 0.0 or (a > 0.0) != (b > 0.0)
+end
+
+defn apsAll(tol)
+  (** Every problem of Alefeld, Potra and Shi solved, its answer inside its bracket, where f changes sign. *)
+  for c in apsCases
+    f = aps(c.P, c.Args)
+    r = optimize.Root(f, [c.A, c.B], tol = tol)
+    if result.IsErr(r)
+      return false
+    end
+    v = r.Value
+    if not (v.X >= list.Min(c.A, c.B) and v.X <= list.Max(c.A, c.B) and changesSign(f, v, tol))
+      return false
+    end
+  end
+  true
+end
+
+isApsFull() = apsAll(0.0)
+isApsLoose() = apsAll(1.0e-10)
+
+defn isApsKnownRoots()
+  (** The problems whose root is known in closed form. *)
+  r4 = [rootOf(optimize.Root(aps(4, [n, 1.0]), [0.0, 5.0])) for n in [4.0, 6.0, 8.0, 10.0, 12.0]]
+  r5 = rootOf(optimize.Root(aps(5, []), [0.0, 1.5]))
+  r8 = rootOf(optimize.Root(aps(8, [2.0]), [0.0, 1.0]))
+  r11 = rootOf(optimize.Root(aps(11, [20.0]), [0.01, 1.0]))
+  r12 = rootOf(optimize.Root(aps(12, [3.0]), [1.0, 100.0]))
+  math.Near(r4, [1.0, 1.0, 1.0, 1.0, 1.0], rel = 4.0 * eps) and math.Near(r5, math.Pi / 6.0, rel = 8.0 * eps) and
+    math.Near(r8, 0.5, rel = 4.0 * eps) and math.Near(r11, 0.05, rel = 4.0 * eps) and math.Near(r12, 3.0, rel = 4.0 * eps)
+end
+
+defn isApsCalls()
+  (** Never much slower than bisection, Brent's book says: here at most the square of bisection's count, n^2 with
+      n = log2((b - a) / (2 eps |x|)) + 2, a loose bound that each problem meets; and their
+      total on the 154 problems, 2761, 8 more than scipy's brentq, which stops at 4 eps |x|. *)
+  total = 0
+  for c in apsCases
+    r = result.Unwrap(optimize.Root(aps(c.P, c.Args), [c.A, c.B]))
+    width = 2.0 * eps * list.Max(math.Abs(r.X), 1.0e-300)
+    n = math.Log(math.Abs(c.B - c.A) / width) / math.Log(2.0) + 2.0
+    if r.Evaluations > n * n
+      return false
+    end
+    total += r.Evaluations
+  end
+  total == 2761
+end
+
+(* A property: a polynomial (x - r) (1 + c x^2) with one simple root r in a random bracket around it. *)
+cases = gen.Of({R: gen.Float(-1000, 1000), Left: gen.Float(0.001, 100), Right: gen.Float(0.001, 100), C: gen.Float(0, 10)})
+defn rootFound(c)
+  f = x -> (x - c.R) * (1.0 + c.C * x * x)
+  r = optimize.Root(f, [c.R - c.Left, c.R + c.Right]).Value
+  math.Abs(r.X - c.R) <= 2.0 * eps * math.Abs(r.X) + 1.0e-300
+end
+isPolynomialRoot() = test.ForAll(rootFound, cases)
+
+(* Errors: an Err with the best point, never a hang. *)
+isSameSign() = optimize.Root(x -> x * x + 1.0, [0.0, 1.0]) == result.Err({Kind: "optimize", Message: "optimize.Root: f(0.0) = 1.0 and f(1.0) = 2.0 have the same sign; give a bracket where f changes sign, or one start.", Best: {X: 0.0, F: 1.0, Evaluations: 2}})
+isNoBracket() = optimize.Root(x -> x * x + 1.0, 3.0).Error.Best.Evaluations == 121
+isPole() = optimize.Root(x -> 1.0 / (x - 0.3), [0.0, 1.0]).Error.Message == "optimize.Root: f changes sign near 0.30000000000000004, but |f| grows there to 18014398509481984.0: a jump or a pole, not a zero."
+isPoleHit() = optimize.Root(x -> 1.0 / x, [-1.0, 1.0]).Error.Message == "optimize.Root: f(0.0) is inf, not a finite number."
+isJump() = within(rootOf(optimize.Root(x -> if x < 0.3 (-1.0) else 1.0 end, [0.0, 1.0])), 0.3)
+isNan() = optimize.Root(x -> math.Nan, [0.0, 1.0]).Error.Message == "optimize.Root: f(0.0) is nan, not a finite number."
+isText() = optimize.Root(x -> "no", [0.0, 1.0]).Error.Message == "optimize.Root: f(0.0) is \"no\", not a finite number."
+isNanInside() = result.IsErr(optimize.Root(x -> if x > 0.2 and x < 0.8 math.Nan else x - 0.5 end, [0.0, 1.0]))
+isBadTol() = message(() -> optimize.Root(x -> x, [-1.0, 1.0], tol = -1.0)) == result.Err("optimize.Root: tol is -1.0; give a number of 0.0 or more.")
+isBadBracket() = message(() -> optimize.Root(x -> x, [1.0, 1.0])) == result.Err("optimize.Root: x is [1.0, 1.0]; give a bracket [a, b] of two different numbers, or one start.")
