@@ -555,27 +555,32 @@ defn binCount(s)
   math.Ceil(math.Log(n * 1.0) / math.Log(2.0)) + 1
 end
 
+defn below(s, x, strict)
+  (** How many of the sorted values are below x, or at most x when not strict: a binary search. *)
+  lo = 0
+  hi = value.Len(s)
+  while lo < hi
+    mid = math.Div(lo + hi, 2)
+    v = s[mid + 1]
+    if v < x or not strict and v == x
+      lo = mid + 1
+    else
+      hi = mid
+    end
+  end
+  lo
+end
+
 defn countSorted(s, edges)
-  (** The counts of sorted values in the bins between edges: [left, right), and the last bin [left, right]. *)
+  (** The counts of sorted values in the bins between edges: [left, right), and the last bin [left, right]. Each count
+      is the difference of two binary searches, so that the work grows with the bins, not with the values. *)
   nb = value.Len(edges) - 1
   counts = matrix.Zeros(1, nb)
-  n = value.Len(s)
-  i = 1
-  while i <= n and s[i] < edges[1]
-    i += 1
-  end
-  b = 1
-  last = edges[nb + 1]
-  while i <= n
-    v = s[i]
-    if v > last
-      break
-    end
-    while b < nb and v >= edges[b + 1]
-      b += 1
-    end
-    counts[b] += 1.0
-    i += 1
+  at = below(s, edges[1], true)
+  for b in 1..nb
+    next = below(s, edges[b + 1], b < nb)
+    counts[b] = next - at
+    at = next
   end
   counts
 end
@@ -745,23 +750,23 @@ defn densityOf(l, w)
     ylo -= 0.5
     yhi -= 0.5
   end
+  (* The cell of each point, from 0, row after row from the bottom; the greatest values fall in the last cell, not
+     past it. The points grouped by cell, each count is the size of a group. *)
   ix = math.Floor((x - xlo) * (nb / (xhi - xlo)))
   iy = math.Floor((y - ylo) * (nb / (yhi - ylo)))
+  for i in col.Positions(ix >= nb)
+    ix[i] = nb - 1.0
+  end
+  for i in col.Positions(iy >= nb)
+    iy[i] = nb - 1.0
+  end
+  k = iy * nb + ix
+  cells = col.Pick(col.Positions(k - k == 0.0), k)
+  groups = col.Groups([cells])
+  parts = col.Split(groups, cells)
   counts = matrix.Zeros(1, nb * nb)
-  top = nb - 1.0
-  for i in 1..value.Len(x)
-    cx = ix[i]
-    cy = iy[i]
-    if cx - cx == 0.0 and cy - cy == 0.0
-      if cx > top
-        cx = top
-      end
-      if cy > top
-        cy = top
-      end
-      k = cy * nb + cx + 1.0
-      counts[k] += 1.0
-    end
+  for g in 1..groups.Count
+    counts[cells[groups.Firsts[g]] + 1] = value.Len(parts[g])
   end
   p = base(l, w)
   p.M = matrix.Transpose(matrix.Reshape([nb, nb], counts))
@@ -1251,7 +1256,13 @@ defn m4(xs, ys, a, e)
   cap = 4 * (math.Ceil(math.Abs((e.Xhi - e.Xlo) * a.Sx)) + 2 + e.Runs) + e.Runs + 8
   keep = matrix.Zeros(1, cap)
   k = 0
-  edge = math.Floor(a.X + span)
+  ax = a.X
+  ay = a.Y
+  sx = a.Sx
+  sy = a.Sy
+  tx = a.T0x
+  ty = a.T0y
+  edge = math.Floor(ax + span)
   first = 0
   imin = 0
   imax = 0
@@ -1262,8 +1273,8 @@ defn m4(xs, ys, a, e)
     x = xs[i]
     y = ys[i]
     if x - x == 0.0 and y - y == 0.0
-      px = a.X + (x - a.T0x) * a.Sx
-      py = a.Y + (y - a.T0y) * a.Sy
+      px = ax + (x - tx) * sx
+      py = ay + (y - ty) * sy
       if first == 0 or px >= edge
         if first > 0
           keep[k + 1] = first
@@ -1741,13 +1752,27 @@ end
 (* SVG: the scene written out, numbers to a hundredth of a pixel. *)
 
 defn num(x)
-  s = text.Decimals(2, x)
-  if text.EndsWith(".00", s)
-    s = text.ByteSlice(1, text.ByteLength(s) - 3, s)
-  else if text.EndsWith("0", s)
-    s = text.ByteSlice(1, text.ByteLength(s) - 1, s)
+  (** A number of pixels to a hundredth, without the zeros at its end: from integers, faster than text.Decimals, and
+      through it past 10^9, where an integer of hundredths would grow too large. *)
+  if math.Abs(x) >= 1e9
+    s = text.Decimals(2, x)
+    return if text.EndsWith(".00", s) text.ByteSlice(1, text.ByteLength(s) - 3, s) else s end
   end
-  if s == "-0" "0" else s end
+  r = math.Div(math.Round(x * 100.0), 1)
+  if r < 0
+    return "-$(num(0.0 - x))"
+  end
+  q = math.Div(r, 100)
+  f = r - q * 100
+  if f == 0
+    "$q"
+  else if math.Mod(f, 10) == 0
+    "$q.$(math.Div(f, 10))"
+  else if f < 10
+    "$q.0$f"
+  else
+    "$q.$f"
+  end
 end
 
 paint(c) = match c
@@ -1790,27 +1815,50 @@ defn itemSvg(item)
 end
 
 defn marksSvg(item)
+  (** The markers of a layer. Circles and squares are one path: a circle is a line of length 0 with round caps as wide
+      as the marker, M x y h0, and a square a line as long as it is wide, M x-r y h2r. *)
   r = item.Size / 2
-  open = if item.Shape == "cross" or item.Shape == "plus" "<g fill=\"none\" stroke=\"$(item.Color)\" stroke-width=\"1.5\">" else "<g fill=\"$(item.Color)\">" end
-  parts = list.Fill("", value.Len(item.Xs))
-  for i in 1..value.Len(item.Xs)
+  n = value.Len(item.Xs)
+  parts = list.Fill("", n)
+  if item.Shape == "circle"
+    for i in 1..n
+      parts[i] = "M$(num(item.Xs[i])) $(num(item.Ys[i]))h0"
+    end
+    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(item.Color)\" stroke-width=\"$(num(item.Size))\" stroke-linecap=\"round\"/>"
+  end
+  if item.Shape == "square"
+    side = num(item.Size)
+    for i in 1..n
+      parts[i] = "M$(num(item.Xs[i] - r)) $(num(item.Ys[i]))h$side"
+    end
+    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(item.Color)\" stroke-width=\"$side\"/>"
+  end
+  for i in 1..n
     parts[i] = markOf(item.Shape, item.Xs[i], item.Ys[i], r)
   end
+  open = if item.Shape == "cross" or item.Shape == "plus" "<g fill=\"none\" stroke=\"$(item.Color)\" stroke-width=\"1.5\">" else "<g fill=\"$(item.Color)\">" end
   "$open$(text.Join("", parts))</g>"
 end
 
 defn cellsSvg(item)
+  (** The cells, a rectangle for each run of cells of one color along a row, with the texts of their edges written once. *)
   cols = value.Len(item.Xs) - 1
   rows = value.Len(item.Ys) - 1
+  xt = [num(x) for x in item.Xs]
   parts = []
   for r in 1..rows
-    y = list.Min(item.Ys[r], item.Ys[r + 1])
-    hh = math.Abs(item.Ys[r + 1] - item.Ys[r])
-    for c in 1..cols
+    head = "\" y=\"$(num(list.Min(item.Ys[r], item.Ys[r + 1])))\" height=\"$(num(math.Abs(item.Ys[r + 1] - item.Ys[r])))\" fill=\""
+    c = 1
+    while c <= cols
       color = item.Colors[(r - 1) * cols + c]
-      if not value.IsMissing(color)
-        parts = list.Append("<rect x=\"$(num(item.Xs[c]))\" y=\"$(num(y))\" width=\"$(num(item.Xs[c + 1] - item.Xs[c]))\" height=\"$(num(hh))\" fill=\"$color\"/>", parts)
+      run = c
+      while run < cols and item.Colors[(r - 1) * cols + run + 1] == color
+        run += 1
       end
+      if not value.IsMissing(color)
+        parts = list.Append("<rect x=\"$(xt[c])$head$color\" width=\"$(num(item.Xs[run + 1] - item.Xs[c]))\"/>", parts)
+      end
+      c = run + 1
     end
   end
   "<g shape-rendering=\"crispEdges\">$(text.Join("", parts))</g>"
