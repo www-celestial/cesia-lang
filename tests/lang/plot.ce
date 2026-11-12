@@ -306,3 +306,14 @@ defn isMergeWaysAgree()
   n = value.Len(full.Colors)
   n > 1 and n < 3001 * 9 and n == value.Len(holed.Colors) and list.Count(k -> full.Colors[k] != holed.Colors[k], 1..n) <= 1
 end
+
+(* A long line seen through a narrow xlim: M4 groups the points left and right of the plot, so the work and the scene
+   stay as small as the plot, and the part inside is drawn as before. *)
+defn isM4PastXlim()
+  n = 200000
+  t = [i * 1.0 for i in 1..n]
+  v = math.Sin(t * 0.001)
+  s = scene(plot.Of([plot.Line(t, v)], xlim = [100000, 100010], ylim = [-1.5, 1.5]), 640, 400)
+  kept = role(s, "data")
+  list.Sum([value.Len(l.Xs) for l in kept]) < 4 * 700
+end

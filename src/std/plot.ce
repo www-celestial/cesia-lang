@@ -13,11 +13,11 @@ use std/sys
 use std/text
 use std/value
 
-(** A graph: one layer, the layers of Of on shared axes, or the graphs of Grid side by side. Its fields are private: the
-    functions of this package make a graph, and Svg, Save and Scene draw it.
-
-      Line([1, 2], [3, 4]) then value.IsStruct() --> true *)
 struct Graph
+  (** A graph: one layer, the layers of Of on shared axes, or the graphs of Grid side by side. Its fields are private:
+      the functions of this package make a graph, and Svg, Save and Scene draw it.
+
+        Line([1, 2], [3, 4]) then value.IsStruct() --> true *)
   layers
   title = missing
   xtitle = missing
@@ -1252,19 +1252,21 @@ defn m4(xs, ys, a, e)
   (** M4 (Jugel, Jerzak, Hackenbroich and Markl, 2014): of the points of a line whose x never decreases, it keeps in each
       pixel column the first, the last, the lowest and the highest, in their order, and a gap at each NaN. The lines
       between them draw the same pixels as all the points: the first and the last join the columns as before, and the
-      lowest and the highest span the column as all of them did. *)
+      lowest and the highest span the column as all of them did. The points left or right of the plot, past xlim, count
+      as one column on each side: what joins them to the plot is kept, and the rest is cut at the frame. *)
   n = value.Len(xs)
-  span = (xs[e.First] - a.T0x) * a.Sx
-  cap = 4 * (math.Ceil(math.Abs((e.Xhi - e.Xlo) * a.Sx)) + 2 + e.Runs) + e.Runs + 8
-  keep = matrix.Zeros(1, cap)
-  k = 0
   ax = a.X
   ay = a.Y
   sx = a.Sx
   sy = a.Sy
   tx = a.T0x
   ty = a.T0y
-  edge = math.Floor(ax + span)
+  left = ax - 1.0
+  right = ax + a.W + 1.0
+  cap = 4 * (math.Ceil(a.W) + 4 + e.Runs) + e.Runs + 8
+  keep = matrix.Zeros(1, cap)
+  k = 0
+  edge = math.Floor(list.Min(right, list.Max(left, ax + (xs[e.First] - tx) * sx)))
   first = 0
   imin = 0
   imax = 0
@@ -1277,6 +1279,12 @@ defn m4(xs, ys, a, e)
     if x - x == 0.0 and y - y == 0.0
       px = ax + (x - tx) * sx
       py = ay + (y - ty) * sy
+      if px < left
+        px = left
+      end
+      if px > right
+        px = right
+      end
       if first == 0 or px >= edge
         if first > 0
           keep[k + 1] = first
