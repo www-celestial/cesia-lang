@@ -697,14 +697,15 @@ source, since its closures and boxed floats nearly all die young there. Growing 
 program that loads little never pays.
 
 The trees of the code that a load makes are another case: they live as long as the program, and the first minor
-collection after them copies them all to the major heap, about 15 ns a word. In the middle of the load of Cemacs, 324 KB
-of source in 44 modules, that was 740,000 words and 11 ms, a third of its load, at whatever place the minor heap filled.
-So the lexer, the parser and the resolver make as little garbage as they can: no closure for each node of the tree or each
-name, and a file's array of tokens is emptied once the file is parsed, as an array of more than 256 places is made in the
-major heap and the young tokens it points to would be copied with the trees, though nothing reads them any more. The load
-of Cemacs makes 1.84 million words instead of 3.38 million and ends before the minor heap is full: 24.5 ms instead of 37.4,
-on 2026-11-11. A larger load gets a minor collection for each 2 million words it makes, each copying the trees made
-since the one before: every tree is copied once, so the cost grows as the code does.
+collection after them copies them all to the major heap, about 15 ns a word. In the middle of the load of a program of
+324 KB of source in 44 modules, that was 740,000 words and 11 ms, a third of its load, at whatever place the minor heap
+filled. So the lexer, the parser and the resolver make as little garbage as they can: no closure for each node of the
+tree or each name, and a file's array of tokens is emptied once the file is parsed, as an array of more than 256 places
+is made in the major heap and the young tokens it points to would be copied with the trees, though nothing reads them
+any more. The load of that program makes 1.84 million words instead of 3.38 million and ends before the minor heap is
+full: 24.4 ms instead of 38.2, the medians of 21 runs, on 2026-11-11. A larger load gets a minor collection for each 2
+million words it makes, each copying the trees made since the one before: every tree is copied once, so the cost grows
+as the code does.
 
 The memory limit, 80% of the machine's memory unless `--limit memory=` says otherwise, is checked at full checkpoints and
 before each large allocation. When the heap seems past it, Cesia runs a full collection first, and stops the program only

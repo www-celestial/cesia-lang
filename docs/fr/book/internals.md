@@ -787,8 +787,20 @@ générations) : les nouveaux blocs vont dans un petit *minor heap*, qui est vid
 blocs meurent jeunes, comme les floats boxed d'un calcul ; les blocs encore vivants passent dans le *major heap*, qui est
 collecté petit à petit, par tranches, donc un programme ne s'arrête jamais longtemps. Cesia fait grandir le minor heap
 des 2 MB d'OCaml à 16 MB, 2 millions de mots, au premier checkpoint d'un programme, ou une fois qu'il a chargé 32 KB de
-source, puisque ses arbres, ses closures et ses floats boxed y meurent presque tous jeunes. Le faire grandir coûte
-environ 0,15 ms, qu'un programme court qui charge peu ne paie jamais.
+source, puisque ses closures et ses floats boxed y meurent presque tous jeunes. Le faire grandir coûte environ 0,15 ms,
+qu'un programme court qui charge peu ne paie jamais.
+
+Les arbres du code que fait un chargement sont un autre cas : ils vivent aussi longtemps que le programme, et la première
+minor collection qui les suit les copie tous dans le major heap, environ 15 ns par mot. Au milieu du chargement d'un
+programme de 324 KB de source en 44 modules, cela faisait 740 000 mots et 11 ms, un tiers de son chargement, à l'endroit,
+quel qu'il soit, où le minor heap se remplissait. Aussi le lexer, le parser et le resolver font-ils aussi peu de déchets
+qu'ils le peuvent : aucune closure pour chaque nœud de l'arbre ou pour chaque nom, et l'array des tokens d'un fichier est
+vidé une fois le fichier lu par le parser, car un array de plus de 256 places est fait dans le major heap, et les jeunes
+tokens vers lesquels il pointe seraient copiés avec les arbres, alors que plus rien ne les lit. Le chargement de ce
+programme fait 1,84 million de mots au lieu de 3,38 millions et finit avant que le minor heap soit plein : 24,4 ms au lieu
+de 38,2, les médianes de 21 runs, le 2026-11-11. Un chargement plus grand a une minor collection tous les 2 millions de
+mots qu'il fait, chacune copiant les arbres faits depuis la précédente : chaque arbre est copié une fois, donc le coût
+grandit comme le code.
 
 La limite de mémoire, 80 % de la mémoire de la machine sauf si `--limit memory=` dit autre chose, est vérifiée aux
 checkpoints complets et avant chaque grande allocation. Quand le heap semble la dépasser, Cesia fait d'abord une
@@ -843,8 +855,9 @@ source ([La mémoire](#la-mémoire-et-le-garbage-collector)) : le faire grandir 
 jamais besoin. Déplacer dans des plugins le code dont un run a rarement besoin retirerait du démarrage environ 6 % des
 frame descriptors : la hash table n'est réduite de moitié que sous 16 384 descriptors.
 
-Le chargement, le lexer, le parser et le resolver ensemble, lit environ 500 000 lignes par seconde : 320 000 lignes en
-631 ms, `bench/load.sh`, le 2026-11-07.
+Le chargement, le lexer, le parser et le resolver ensemble, lit environ 520 000 lignes par seconde : les 320 001 lignes
+de `bench/load.sh` en 614 ms, la médiane de 11 runs, contre 648 ms avant que le chargement fasse moins de déchets, le
+2026-11-11.
 
 ## Recharger le code : --watch
 
