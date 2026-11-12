@@ -1,9 +1,12 @@
 (** The loaded form of a package, kept between runs, so that a package unchanged since the last run is not lexed, parsed
-    or resolved again. One file per package, in [$XDG_CACHE_HOME/cesia/load], else [~/.cache/cesia/load]; any failure to
-    read or write it only means that the package loads as without it. *)
+    or resolved again. An entry is untrusted bytes: it is decoded only once its digest and what it was made from are
+    checked, by a decoder that raises on anything wrong, and any failure only means that the package loads as without it. *)
 
-(** The build of this Cesia, which the binary sets: an entry of another build is not read. Empty, nothing is cached. *)
-val build : string ref
+(** Where entries are kept, which the binary gives: its build, which an entry must name, and how an entry is read and
+    replaced by its name, each failing in silence. Without it, nothing is cached. *)
+type store = { build : string; read : string -> string option; write : string -> string -> unit }
+
+val store : store option ref
 
 (** Where the entry of a package goes, and what it must match: its sources and the nesting limit. *)
 type slot

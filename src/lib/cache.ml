@@ -1,35 +1,25 @@
 open Ast
 
-let build = ref ""
-
 (* Below this, the sources parse faster than their entry is found, read and checked. *)
 let least = 512
 
-type slot = { file : string; dir : string; nesting : int; digests : string list }
+type store = { build : string; read : string -> string option; write : string -> string -> unit }
+
+let store = ref None
+
+type slot = { name : string; kept : store; nesting : int; digests : string list }
 type place = { first : int; count : int; natives : int option; used : int array; package : int -> int array }
 type use = { upath : string; ualias : string; upos : Pos.t; unames : string list }
 
 (* An entry that isn't what it should be: it is not used. *)
 exception Bad
 
-(* The folder of caches, as for cesia pkg: $XDG_CACHE_HOME, else ~/.cache. *)
-let dir =
-  lazy
-    (let base =
-       match Sys.getenv_opt "XDG_CACHE_HOME", Sys.getenv_opt "HOME" with
-       | Some d, _ when d <> "" -> Some d
-       | _, Some h when h <> "" -> Some (Filename.concat h ".cache")
-       | _ -> None
-     in
-     Option.map (fun d -> Filename.concat (Filename.concat d "cesia") "load") base)
-
 (* A source of the binary itself changes only with the build: it needs no digest. *)
 let slot ~key ~nesting ~fixed sources =
-  match Lazy.force dir with
-  | Some dir when !build <> "" && List.fold_left (fun n (_, s) -> n + String.length s) 0 sources >= least ->
-    let name = Digest.BLAKE128.to_hex (Digest.BLAKE128.string key) in
+  match !store with
+  | Some kept when List.fold_left (fun n (_, s) -> n + String.length s) 0 sources >= least ->
     let digest (_, src) = if fixed src then "" else Digest.BLAKE128.string src in
-    Some { file = Filename.concat dir name; dir; nesting; digests = List.map digest sources }
+    Some { name = Digest.BLAKE128.to_hex (Digest.BLAKE128.string key); kept; nesting; digests = List.map digest sources }
   | _ -> None
 
 (* The module numbers of a binding, relative to the package: (0, 0) the core, (1, j) its file j or, at j = count, its
@@ -58,21 +48,7 @@ let abs p u j =
     if j < Array.length modules then modules.(j) else raise Bad
   | _ -> raise Bad
 
-(* A 63-bit sum of the bytes from [i], eight at a time: it finds a damaged or cut entry, not an attack. *)
-let sum s i =
-  let n = String.length s in
-  let h = ref ((n - i) * 0x9E3779B97F4A7C1) and i = ref i in
-  while !i + 8 <= n do
-    h := (!h lxor Int64.to_int (String.get_int64_le s !i)) * 0x165667B19E3779F9;
-    h := !h lxor (!h lsr 29);
-    i := !i + 8
-  done;
-  while !i < n do
-    h := (!h lxor Char.code s.[!i]) * 0x165667B19E3779F9;
-    incr i
-  done;
-  !h lxor (!h lsr 32)
-
+(* An entry: these 8 bytes, the BLAKE2b-128 of the rest, then the rest. *)
 let magic = "Cesia\000L1"
 
 (* Writing. The strings of an entry are each written once, then by their number. *)
@@ -444,16 +420,19 @@ type saved = { d : In.inp; uses : use list array }
 
 let uses saved = saved.uses
 
+(* Nothing of an entry is decoded before its digest and what it was made from, the build, the nesting limit and the digest
+   of each source, are those expected. *)
 let read slot =
-  match In_channel.with_open_bin slot.file In_channel.input_all with
-  | exception Sys_error _ -> None
-  | s ->
+  match slot.kept.read slot.name with
+  | None -> None
+  | Some s ->
     try
-      if String.length s < 16 || not (String.starts_with ~prefix:magic s) || Int64.to_int (String.get_int64_le s 8) <> sum s 16
+      if String.length s < 24 || not (String.starts_with ~prefix:magic s)
+         || not (String.equal (String.sub s 8 16) (Digest.BLAKE128.substring s 24 (String.length s - 24)))
       then raise Bad;
       let open In in
-      let d = { s; p = 16; strs = Vec.create (); abs = (fun _ _ -> raise Bad) } in
-      let same = String.equal (str d) !build && uint d = slot.nesting && list str d = slot.digests in
+      let d = { s; p = 24; strs = Vec.create (); abs = (fun _ _ -> raise Bad) } in
+      let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = slot.digests in
       if same then Some { d; uses = arr (list use) d } else None
     with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
@@ -481,33 +460,11 @@ let trees saved place ~lookup ~spaces ~is_type =
   try if asked (count d) then Some (list (fun d -> let fn = func d in fn, layout d fn) d) else None
   with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
-let rec make dir =
-  if not (Sys.file_exists dir) then begin
-    make (Filename.dirname dir);
-    try Sys.mkdir dir 0o700 with Sys_error _ -> ()
-  end
-
-(* Written beside, then renamed: a run that reads it at the same time sees the old entry or the new one, never half. *)
-let save slot body =
-  let check = Bytes.create 8 in
-  Bytes.set_int64_le check 0 (Int64.of_int (sum body 0));
-  make slot.dir;
-  let tmp = Filename.temp_file ~temp_dir:slot.dir "entry" ".tmp" in
-  match
-    Out_channel.with_open_bin tmp (fun oc ->
-        Out_channel.output_string oc magic;
-        Out_channel.output_bytes oc check;
-        Out_channel.output_string oc body);
-    Sys.rename tmp slot.file
-  with
-  | () -> ()
-  | exception e -> (try Sys.remove tmp with Sys_error _ -> ()); raise e
-
 let write slot place log uses trees =
   let open Out in
   let o = { b = Buffer.create 65536; strings = Hashtbl.create 1024; rel = rel place } in
   try
-    str o !build;
+    str o slot.kept.build;
     uint o slot.nesting;
     list str o slot.digests;
     arr (list use) o uses;
@@ -520,5 +477,6 @@ let write slot place log uses trees =
       log.found;
     Hashtbl.iter (fun b t -> byte o 2; binding o b; bool o t) log.types;
     list (fun o (fn, l) -> func o fn; layout o fn l) o trees;
-    save slot (Buffer.contents o.b)
-  with Exit | Sys_error _ -> ()
+    let body = Buffer.contents o.b in
+    slot.kept.write slot.name (String.concat "" [ magic; Digest.BLAKE128.string body; body ])
+  with Exit -> ()

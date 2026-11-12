@@ -1,0 +1,36 @@
+26 m2
+src/shapes/broken.ce:6:25: broken 1
+  6 | deeper(n) = if n > 0 bug.Panic("broken $n") else 0 end
+    |                         ^
+  in deeper (src/shapes/broken.ce:6)
+  called from Broken (src/shapes/broken.ce:5)
+exit 1
+cold: the same output and error
+entries: 2
+warm: the same output and error
+warm: every entry as it was
+damaged: the same output and error
+damaged: every entry as it was
+cut: the same output and error
+cut: every entry as it was
+swapped: the same output and error
+swapped: every entry as it was
+a link: the same output and error
+a link: replaced by an entry
+a link: what it pointed to untouched
+open to others: the same output and error
+-rw-------
+open to others: every entry as it was
+26 square meters
+a folder open to others: every entry as it was
+26 square meters
+26 sq m
+src/shapes/broken.ce:6:25: broken 1
+  6 | deeper(n) = if n > 0 bug.Panic("broken $n") else 0 end
+    |                         ^
+  in deeper (src/shapes/broken.ce:6)
+  called from Broken (src/shapes/broken.ce:5)
+exit 1
+four runs at once: 2 entries
+after them: the same output and error
+exit 0
