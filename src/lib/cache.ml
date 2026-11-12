@@ -38,9 +38,12 @@ let rel p m =
     in
     dep 0
 
-let memo f =
-  let seen = Hashtbl.create 64 in
-  fun m -> match Hashtbl.find_opt seen m with Some r -> r | None -> let r = f m in Hashtbl.add seen m r; r
+(* Each module is placed once: every module a package names comes before its own last one. *)
+let memo p =
+  let seen = Array.make (p.first + p.count + 1) None in
+  fun m ->
+    if m < 0 || m >= Array.length seen then rel p m
+    else match seen.(m) with Some r -> r | None -> let r = rel p m in seen.(m) <- Some r; r
 
 let abs p u j =
   match u with
@@ -490,7 +493,7 @@ let trees saved place ~lookup ~spaces ~is_type =
 
 let write slot place log uses trees =
   let open Out in
-  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo (rel place); last = 0 } in
+  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo place; last = 0 } in
   try
     str o slot.kept.build;
     uint o slot.nesting;
