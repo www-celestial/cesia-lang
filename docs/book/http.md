@@ -479,7 +479,27 @@ minute, a page sends its p50 and p99, the times that half and 99 in 100 of its c
 them in [std/metrics] as two histograms, `live_delay_p50_seconds` and `live_delay_p99_seconds`, which a route shows to
 Prometheus with `metrics.Text()`. The count of screens opened is `live_screens_total`.
 
-MEASURED_LIVE
+### What it costs
+
+Measured on one machine of 8 cores, the app on 4 of them and the pages on the 4 others (a load client that opens the
+screens, then publishes changes of one row of 48 bytes at a steady rate, each timed from its publication to its
+arrival at each page), 21 runs alternated with a hub written by hand on [std/websocket] in the version before: one
+fiber that sends each change's text to every connection, with no answer again for a slow page. The median of the
+runs' p50, with its 95 % interval:
+
+| screens | changes a second | hub written by hand | std/live | std/live's p99 |
+|---|---|---|---|---|
+| 1 | 50 | 0.44 ms [0.43, 0.44] | 0.58 ms [0.56, 0.60] | 0.74 ms |
+| 100 | 50 | 1.25 ms [1.17, 1.27] | 2.67 ms [2.40, 2.84] | 7.5 ms |
+| 1,000 | 50 | 5.7 ms [5.6, 5.9] | 12.3 ms [11.8, 13.3] | 40 ms |
+| 10,000 | 5 | 42 ms [42, 44] | 294 ms [285, 318] | 612 ms |
+
+A screen of std/live takes about twice the hub's time. It does more: each screen is a fiber of its own that writes its
+page's messages itself, so a page that reads nothing holds no other back, where the hub waits for it.
+At 10,000 screens and 50,000 changes a second to send, std/live sends 47,600 a second, the hub 51,200: std/live falls
+behind and its times grow during the run. A held screen takes 29.2 KB of memory, the hub's connection 23.2 KB. A
+program that doesn't use [std/live] starts as before: 2.92 ms [2.88, 2.97] against 2.90 [2.85, 2.94] for `io.Print(1)`,
+21 runs alternated.
 
 ## TCP: std/net
 
