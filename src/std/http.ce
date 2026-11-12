@@ -490,11 +490,15 @@ Delete(pattern, handler, a) = Route("DELETE", pattern, handler, a)
       Handler(ping)({Method: "OPTIONS", Path: "/ping", Query: "", Headers: [], Body: ""}).Body --> "OPTIONS" *)
 AnyMethod(pattern, handler, a) = Route("*", pattern, handler, a)
 
-(** A middleware is f(next, request), and calls next(request) to go on.
+(** A middleware is f(next, request), and calls next(request) to go on. What it puts in the request, as the person
+    signed in, the handler finds there.
 
       tag(next, r) = WithHeader("x-served-by", "cesia", next(r))
       served = Handler(App() then Get("/", r -> Plain("hi")) then Wrap(tag))
-      HeaderValue("x-served-by", served({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers) --> "cesia" *)
+      HeaderValue("x-served-by", served({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Headers) --> "cesia"
+      signed(next, r) = next(dict.Put("User", "Ana", r))
+      greeted = Handler(App() then Get("/", r -> Plain("Hello, $(r.User)!")) then Wrap(signed))
+      greeted({Method: "GET", Path: "/", Query: "", Headers: [], Body: ""}).Body --> "Hello, Ana!" *)
 Wrap(f, a) = {Routes: a.Routes, Middleware: list.Append(f, a.Middleware)}
 
 (** A plain text response.
@@ -579,8 +583,13 @@ defn matchPath(parts, path)
 end
 
 defn enrich(request, params)
-  {Method: request.Method, Path: request.Path, Query: encode.ParseQuery(request.Query), Params: params,
-   Headers: request.Headers, Body: request.Body, Cookies: cookies(request.Headers)}
+  (** The request that a handler gets: its query and its cookies read, the params of its route, and the rest as it came,
+      with what a middleware put in it. *)
+  r = request
+  r.Query = encode.ParseQuery(request.Query)
+  r.Params = params
+  r.Cookies = cookies(request.Headers)
+  r
 end
 
 (** The body of a form, or of JSON.
