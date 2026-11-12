@@ -108,6 +108,9 @@ let after save =
   | 0 ->
     (try
        ignore (Unix.setsid ());
+       (* A copy that a lock of another thread, copied with it, would hold forever ends anyway. *)
+       Sys.set_signal Sys.sigalrm Sys.Signal_default;
+       ignore (Unix.alarm 10);
        let null = Unix.openfile "/dev/null" [ O_RDWR ] 0 in
        List.iter (Unix.dup2 null) [ Unix.stdin; Unix.stdout; Unix.stderr ];
        save ()
