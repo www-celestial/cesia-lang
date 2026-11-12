@@ -40,7 +40,7 @@ defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage)
   done = fiber.Wait(opening, timeout = timeout)
   if result.IsErr(done) and done.Error.Kind == "timeout"
     fiber.Cancel(opening)
-    fiber.Receive(opened, timeout = 0) then result.MapOk(net.Close)
+    _ = fiber.Receive(opened, timeout = 0) then result.MapOk(net.Close)
     return refused("$url gave no handshake in $timeout seconds.")
   end
   start = (done?)?
@@ -128,7 +128,7 @@ defn write(bytes, writer, closing, socket, data = true)
   (** Writes a frame, but data once the connection is closing: RFC 6455 §5.5.1 sends none after a close frame, though a
       pong still goes (§5.5.2). writer is a lock, a channel that holds one value: whoever writes takes it first, so that
       the bytes of two frames never mix. *)
-  fiber.Receive(writer)
+  _ = fiber.Receive(writer)
   sent = if data and isClosing(closing) result.Err({Kind: "closed", Message: "This WebSocket connection is closed."}) else net.Write(socket, bytes) end
   fiber.Send(true, writer)
   sent
@@ -141,7 +141,7 @@ defn shut(code, writer, closing, socket)
   if not isClosing(closing)
     fiber.Close(closing)
     if result.IsOk(lock)
-      net.Write(socket, frame(8, code))
+      _ = net.Write(socket, frame(8, code))
     end
   end
   if result.IsOk(lock)
@@ -238,7 +238,7 @@ defn ending(frames, closing, socket, messages)
   if not isClosing(closing)
     fiber.Close(closing)
   end
-  fiber.Wait(fiber.Spawn(() -> drained(socket)), timeout = 1)
+  _ = fiber.Wait(fiber.Spawn(() -> drained(socket)), timeout = 1)
   net.Close(socket)
   if result.IsOk(done) done.Value else if done.Error.Kind == "cancelled" refused("No close of the server was read within a second.") else done end
 end

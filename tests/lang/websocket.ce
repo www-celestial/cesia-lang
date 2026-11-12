@@ -78,13 +78,13 @@ defn fake(script, respond = upgrade)
     end
     line = list.Filter(it then text.Lower then text.StartsWith("sec-websocket-key:"), text.Split(crlf, request))[1]
     key = text.Trim(text.Split(":", line)[2])
-    net.Write(s, respond(encode.Base64(encode.Sha1("$(key)258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))))
+    _ = net.Write(s, respond(encode.Base64(encode.Sha1("$(key)258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))))
     script(s)
     f = clientFrame(s, "")
     while not value.IsMissing(f) and f.Opcode != 8
       f = clientFrame(s, f.Rest)
     end
-    net.Write(s, frame(136, if value.IsMissing(f) "" else f.Payload end))
+    _ = net.Write(s, frame(136, if value.IsMissing(f) "" else f.Payload end))
     net.Close(s)
   end)
   result.Ok("ws://127.0.0.1:$(net.Port(l))/")
@@ -99,7 +99,7 @@ defn refusedWith(frames, code, most = websocket.DefaultMaxMessage)
   (** Does the client close with this code, and say so, when a server sends these bytes after the handshake? *)
   seen = fiber.Channel(size = 1)
   url = fake(defn (s)
-    net.Write(s, frames)
+    _ = net.Write(s, frames)
     fiber.Send(closeCode(clientFrame(s, "")), seen)
     net.Close(s)
   end)?
@@ -165,7 +165,7 @@ defn isLateMessageDropped()
   (** A message that comes after Close is dropped, as a browser drops it. *)
   url = fake(defn (s)
     f = clientFrame(s, "")
-    net.Write(s, "$(frame(129, "late"))$(frame(136, f.Payload))")
+    _ = net.Write(s, "$(frame(129, "late"))$(frame(136, f.Payload))")
     net.Close(s)
   end)?
   c = websocket.Dial(url)?
@@ -192,7 +192,7 @@ end
 defn isCloseByTheServer()
   seen = fiber.Channel(size = 1)
   url = fake(defn (s)
-    net.Write(s, "$(frame(129, "last"))$(frame(136, "$(text.FromBytes([3, 233]))bye"))")
+    _ = net.Write(s, "$(frame(129, "last"))$(frame(136, "$(text.FromBytes([3, 233]))bye"))")
     fiber.Send(closeCode(clientFrame(s, "")), seen)
     net.Close(s)
   end)?
@@ -204,7 +204,7 @@ end
 
 defn isCloseWithoutCode()
   c = websocket.Dial(fake(defn (s)
-    net.Write(s, frame(136, ""))
+    _ = net.Write(s, frame(136, ""))
     clientFrame(s, "")
     net.Close(s)
   end)?)?
@@ -216,7 +216,7 @@ defn isFragmentsWithAPingBetween()
   (** RFC 6455 §5.4: a message in fragments, with a control frame among them; the ping gets its pong. *)
   seen = fiber.Channel(size = 1)
   url = fake(defn (s)
-    net.Write(s, "$(frame(1, "Hel"))$(frame(137, "p"))$(frame(0, "l"))$(frame(128, "o"))")
+    _ = net.Write(s, "$(frame(1, "Hel"))$(frame(137, "p"))$(frame(0, "l"))$(frame(128, "o"))")
     pong = clientFrame(s, "")
     fiber.Send([pong.Opcode, pong.Payload], seen)
   end)?
