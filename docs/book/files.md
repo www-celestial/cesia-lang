@@ -115,7 +115,7 @@ to someone else gives an `Err` and stays as it was.
 
 ```cesia allow=read,write
 sys.Mkdir("keys", private = true) -->
-sys.Write("keys/token.txt", "s3cret", private = true) -->
+sys.Write("keys/token", "s3cret", private = true) -->
 ```
 
 On Windows a file takes the rights of the folder that holds it, and the folder of each person is theirs alone:
