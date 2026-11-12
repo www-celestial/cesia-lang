@@ -45,5 +45,11 @@ val trees :
   saved -> place -> lookup:(string -> Ast.binding option) -> spaces:(string * (string -> Ast.binding option)) list array ->
   is_type:(Ast.binding -> bool) -> (Ast.func * Ast.layout) list option
 
-(** Saves a package just resolved: its uses, the questions asked and its trees. *)
+(** Keeps a package just resolved, to save when the run ends: its uses, the questions asked and its trees. *)
 val write : slot -> place -> log -> use list array -> (Ast.func * Ast.layout) list -> unit
+
+(** Some entry waits to be saved. *)
+val pending : unit -> bool
+
+(** Saves the entries that wait. *)
+val save : unit -> unit

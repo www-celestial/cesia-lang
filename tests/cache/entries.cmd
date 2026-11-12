@@ -16,7 +16,12 @@ printf '(** What fails. *)\nuse std/bug\n\n(** A panic, two calls down. *)\nBrok
 units() { printf "(** Units. *)\n$1\n$fill" > "$app/src/units/units.ce"; }
 units 'Unit = " m2"'
 printf 'use src/shapes\nuse std/io\n\nio.Print(shapes.All([shapes.Rect(2, 3), shapes.Rect(4, 5)]))\nio.Print(shapes.Broken(1))\n' > "$app/main.ce"
-run() { (cd "$app" && cesia run $no_spec main.ce 2>&1; echo "exit $?") | sed "s|$top|TOP|g"; }
+# A run, then the end of the copy of it that writes its entries once it has ended.
+run() {
+  (cd "$app" && cesia run $no_spec "$app/main.ce" 2>&1; echo "exit $?") | sed "s|$top|TOP|g"
+  for i in $(seq 1 500); do pgrep -f -- "$app/main.ce" > /dev/null || return 0; sleep 0.01; done
+  echo "the entries were not written in 5 s"
+}
 # Each entry as it was when written, or not.
 kept() { for f in "$top"/good/*; do cmp -s "$f" "$load/${f##*/}" || { echo "$1: an entry differs"; return; }; done; echo "$1: every entry as it was"; }
 same() { [ "$(run)" = "$expected" ] && echo "$1: the same output and error" || echo "$1: another output"; }

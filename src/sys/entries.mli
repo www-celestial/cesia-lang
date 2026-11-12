@@ -9,3 +9,9 @@ val store : string -> Cesia.Cache.store
 (** Past [limit] bytes of entries, the ones used least lately go, down to half of it; temporary files that a run cut short
     left go after a day. Run once by a run that writes. *)
 val prune : limit:int -> string -> unit
+
+(** At the end of a run, [save] runs in a copy of the process that the end doesn't wait for: the run ends as soon as
+    without a cache. The copy holds none of its input and output, and leaves its session. A run killed, a system without
+    [fork], or one with work still running on other cores, writes nothing; the next run reads its packages as without a
+    cache. *)
+val after : (unit -> unit) -> unit

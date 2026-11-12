@@ -100,3 +100,18 @@ let write name data =
   | _ -> ()
 
 let store build = { Cesia.Cache.build; read; write }
+
+let after save =
+  flush stdout;
+  flush stderr;
+  match Unix.fork () with
+  | 0 ->
+    (try
+       ignore (Unix.setsid ());
+       let null = Unix.openfile "/dev/null" [ O_RDWR ] 0 in
+       List.iter (Unix.dup2 null) [ Unix.stdin; Unix.stdout; Unix.stderr ];
+       save ()
+     with _ -> ());
+    Unix._exit 0
+  | _ -> ()
+  | exception (Unix.Unix_error _ | Failure _ | Invalid_argument _) -> ()

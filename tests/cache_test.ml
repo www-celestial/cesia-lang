@@ -45,6 +45,8 @@ let run () =
   let out = Buffer.create 256 in
   let w = Runtime.create_world { Runtime.default_options with o_sink = Buffer.add_string out; o_err = Buffer.add_string out } in
   let code = Loader.run_file w (Filename.concat app "main.ce") [] in
+  (* What the binary writes when it ends, written here at once. *)
+  Cache.save ();
   Printf.sprintf "%sexit %d" (Buffer.contents out) code
 
 let with_store build f =

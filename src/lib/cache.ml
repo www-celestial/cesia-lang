@@ -505,7 +505,7 @@ let trees saved place ~lookup ~spaces ~is_type =
   try if asked (count d) then Some (list (fun d -> let fn = func d in fn, layout d fn) d) else None
   with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
-let write slot place log uses trees =
+let encode slot place log uses trees =
   let open Out in
   let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo place; last = 0 } in
   try
@@ -525,3 +525,15 @@ let write slot place log uses trees =
     let body = Bytes.sub_string o.b 0 o.n in
     slot.kept.write slot.name (String.concat "" [ magic; Digest.BLAKE128.string body; body ])
   with Exit -> ()
+
+(* The entries to write, by name: the trees don't change once resolved, so they are written when the run ends, off its
+   way. A package loaded again, in another world of the same process, replaces its own. *)
+let waiting : (string, unit -> unit) Hashtbl.t = Hashtbl.create 16
+
+let write slot place log uses trees = Hashtbl.replace waiting slot.name (fun () -> encode slot place log uses trees)
+let pending () = Hashtbl.length waiting > 0
+
+let save () =
+  let all = Hashtbl.fold (fun _ f acc -> f :: acc) waiting [] in
+  Hashtbl.reset waiting;
+  List.iter (fun f -> f ()) all
