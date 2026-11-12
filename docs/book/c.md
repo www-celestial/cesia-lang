@@ -74,6 +74,19 @@ c.Free(p)
 [c.Struct] lays out its fields as C does, with the same padding: here the `i32` starts after the two floats, at byte 16. A block
 used after [c.Free] stops the program, instead of reading memory that is no longer its own.
 
+A buffer of many numbers of one type, as the vertices of a shape for a renderer or the pixels of an image, is one call:
+[c.Write] writes a whole array from a byte offset, each number converted as [c.Set] converts one, a matrix column by
+column. It is another operation, not another way to write one: [c.Set] writes one value where the layout puts it, a field
+of a structure, and pays a call each time; [c.Write] writes a run of values side by side and pays one call for all of them,
+with its bounds checked once, before it writes. For a field, [c.Set]; for a run of numbers, [c.Write]:
+
+```cesia allow=ffi=m
+xy = c.Alloc(3 * 2 * 4)
+c.Write("f32", 0, [10.0, 20.0, 15.5, 4.0, 30.0, 8.25], xy)
+c.Get("f32", 8, xy) -->
+c.Free(xy)
+```
+
 ## Callbacks
 
 Some C functions take a function to call: a comparison, a handler of events. [c.Callback] makes a C function pointer from a

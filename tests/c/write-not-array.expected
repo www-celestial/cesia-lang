@@ -1,0 +1,4 @@
+write-not-array.ce:3:2: c.Write needs an array of numbers, not the number 5.
+  3 | c.Write("u8", 0, 5, b)
+    |  ^
+exit 1

@@ -1,0 +1,52 @@
+(* c.Write gives the bytes that a loop of c.Set gives, for every type a block holds, from a list, a matrix column by
+   column, an array of integers and one of floats. *)
+use std/c
+use std/io
+use std/list
+use std/value
+
+defn bytes(block, size)
+  (** The bytes of a block, as a list. *)
+  [c.Get("u8", k, block) for k in 0..size - 1]
+end
+
+defn same(ty, width, values)
+  (** Do c.Write and a loop of c.Set write the same bytes, from offset 3? *)
+  n = value.Len(values)
+  size = 3 + n * width + 2
+  a = c.Alloc(size)
+  b = c.Alloc(size)
+  c.Write(ty, 3, values, a)
+  for k in 1..n
+    c.Set(ty, 3 + (k - 1) * width, values[k], b)
+  end
+  ok = value.Equal(bytes(a, size), bytes(b, size))
+  c.Free(a)
+  c.Free(b)
+  ok
+end
+
+cases = [
+  {Type: "i8", Width: 1, Values: [0, 1, -1, 127, -128]},
+  {Type: "u8", Width: 1, Values: [0, 1, 128, 255]},
+  {Type: "i16", Width: 2, Values: [0, -1, 32767, -32768, 300]},
+  {Type: "u16", Width: 2, Values: [0, 1, 65535, 300]},
+  {Type: "i32", Width: 4, Values: [0, -1, 2147483647, -2147483648, 123456]},
+  {Type: "u32", Width: 4, Values: [0, 1, 4294967295, 123456]},
+  {Type: "i64", Width: 8, Values: [0, -1, 4611686018427387903, -4611686018427387903 - 1]},
+  {Type: "u64", Width: 8, Values: [0, 1, 4611686018427387903]},
+  {Type: "f32", Width: 4, Values: [0.0, -1.5, 3.25, 1.0e30, -2.0e-30, 7]},
+  {Type: "f64", Width: 8, Values: [0.0, -1.5, 3.141592653589793, 1.0e300, 7]},
+  {Type: "bool", Width: 1, Values: [true, false, true]}]
+for t in cases
+  io.Print("$(t.Type): $(same(t.Type, t.Width, t.Values))")
+end
+io.Print("f32 of floats only: $(same("f32", 4, [i * 0.5 for i in 1..1000]))")
+io.Print("i32 of integers only: $(same("i32", 4, [i * 7 - 3000 for i in 1..1000]))")
+m = c.Alloc(24)
+c.Write("f32", 0, [1, 2, 3; 4, 5, 6], m)
+io.Print("a matrix column by column: $([c.Get("f32", 4 * k, m) for k in 0..5])")
+c.Write("u8", 0, [], m)
+io.Print("an empty array writes nothing: $(c.Get("f32", 0, m))")
+c.Write("u8", 24, [], m)
+io.Print("even at the end of the block")

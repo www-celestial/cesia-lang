@@ -397,6 +397,8 @@ val c_need_ptr : string -> t
 val c_need_text : string -> t
 val c_size : string -> t
 val c_offset : int -> int -> string -> t
+val c_need_numbers : string -> t
+val c_write_past : int -> int -> string -> int -> t
 val c_need_offset : string -> t
 val c_block_type : string -> string -> t
 val c_need_block : string -> string -> t

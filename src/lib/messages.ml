@@ -202,6 +202,9 @@ let c_offset o size ty =
   let article = if ty.[0] = 'i' || ty.[0] = 'f' then "an" else "a" in
   plain (Printf.sprintf "Offset %d is outside this block of %d bytes for %s %s." o size article ty)
 let c_need_offset a = plain (Printf.sprintf "An offset is an integer, not %s." a)
+let c_need_numbers a = plain (Printf.sprintf "c.Write needs an array of numbers, not %s." a)
+let c_write_past o n ty size =
+  plain (Printf.sprintf "c.Write of %d %s of %s from offset %d goes past this block of %d bytes." n (if n = 1 then "value" else "values") ty o size)
 let c_block_type verb ty = plain (Printf.sprintf "%s can't be %s a block." ty verb)
 let c_need_block name a = plain (Printf.sprintf "c.%s needs a block, not %s." name a)
 let c_need_pointer a = plain (Printf.sprintf "c.Text needs a pointer, not %s." a)

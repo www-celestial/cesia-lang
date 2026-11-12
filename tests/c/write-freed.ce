@@ -1,0 +1,4 @@
+use std/c
+b = c.Alloc(8)
+c.Free(b)
+c.Write("u8", 0, [1], b)

@@ -1,0 +1,4 @@
+write-bad-value.ce:3:2: i32 needs an integer, not the text "two".
+  3 | c.Write("i32", 0, [1, "two"], b)
+    |  ^
+exit 1
