@@ -104,6 +104,23 @@ sys.List("archive/2026") -->
 sys.Remove("archive/2026/done.txt") -->
 ```
 
+### Yours alone
+
+A new folder can be entered and listed by everyone on the machine, and a new file read by everyone: only their owner can
+change them (their *modes*, 0755 and 0644, say so). For what is no one else's business, such as keys, a session or a
+browser's profile, `private = true` makes them their owner's alone, 0700 and 0600: no one else can list the folder,
+enter it, or read the file. [sys.Mkdir] makes so every folder it creates, and the last one if it was there already;
+[sys.Write] makes the file so before it writes the text, whether the file is new or not. A folder or a file that belongs
+to someone else gives an `Err` and stays as it was.
+
+```cesia allow=read,write
+sys.Mkdir("keys", private = true) -->
+sys.Write("keys/token.txt", "s3cret", private = true) -->
+```
+
+On Windows a file takes the rights of the folder that holds it, and the folder of each person is theirs alone:
+`private` changes nothing there, so keep such files in it.
+
 ### Exists and Stat
 
 [sys.Exists] asks whether a path is there, and [sys.Stat] tells more: the size in bytes, the time of the last change, and

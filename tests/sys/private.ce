@@ -1,0 +1,14 @@
+(* Folders and files with private = true are their owner's alone, 0700 and 0600, made so or made so again; the others
+   are as before. private.cmd shows their modes. *)
+use std/io
+use std/sys
+
+io.Print(sys.Mkdir("open/inside"))
+io.Print(sys.Write("open/plain.txt", "plain"))
+io.Print(sys.Mkdir("keys/deep/er", private = true))
+io.Print(sys.Write("keys/key.txt", "secret", private = true))
+io.Print(sys.Write("open/was-plain.txt", "one"))
+io.Print(sys.Write("open/was-plain.txt", "two", private = true), sys.Read("open/was-plain.txt"))
+io.Print(sys.Mkdir("open/inside", private = true))
+io.Print(sys.Mkdir("open/plain.txt", private = true))
+io.Print(sys.Write("keys", "not a file", private = true))

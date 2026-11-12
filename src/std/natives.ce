@@ -976,8 +976,13 @@ use std/test
       sys.Read(file) --> result.Ok("hello")
       result.IsErr(sys.Read("$(test.Temp())/none.txt")) --> true *)
 
-(** sys.Write(path, text, sync = false)
+(** sys.Write(path, text, sync = false, private = false)
     Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission.
+    A new file can be read by everyone on the machine and written by its owner (its mode is 0644, less the umask). With
+    private = true, for keys, sessions and what is no one else's business, the file is its owner's alone (0600: read and
+    written by them, by no one else), made so before the text is written, whether it is new or was there: one that
+    belongs to someone else gives an Err and stays as it was. On Windows, where a file takes the rights of the folder
+    that holds it, and the folder of each person is theirs alone, private changes nothing: keep such a file there.
     With sync = true, the Ok comes only once the text is on the disk: the file is flushed by fsync, then the folder that
     holds its name (but on Windows, where the file's flush is enough), so a power cut after the Ok loses nothing of it.
     Without, the system writes it out later (Linux within about 30 seconds, by default): faster, and a crash of the
@@ -988,7 +993,8 @@ use std/test
       file = "$(test.Temp())/write.txt"
       sys.Write(file, "one") --> result.Ok(missing)
       sys.Write(file, "two", sync = true) --> result.Ok(missing)
-      sys.Read(file) --> result.Ok("two") *)
+      sys.Read(file) --> result.Ok("two")
+      sys.Write("$(test.Temp())/key.txt", "s3cret", private = true) --> result.Ok(missing) *)
 
 (** sys.Append(path, text)
     Adds a text at the end of a file, creating it if needed: Ok(missing) or an Err. Needs the write permission.
@@ -1065,12 +1071,18 @@ use std/test
       sys.Rename("$(d)/draft.txt", "$(d)/final.txt") --> result.Ok(missing)
       sys.Read("$(d)/final.txt") --> result.Ok("text") *)
 
-(** sys.Mkdir(path)
+(** sys.Mkdir(path, private = false)
     Creates a folder and the missing folders above it, like mkdir -p: Ok(missing) or an Err. Needs the write permission.
+    A folder can be entered and listed by everyone on the machine, and changed by its owner (0755, less the umask). With
+    private = true, as for a browser's profile or keys, the folders it creates are their owner's alone (0700: no one else
+    can list them, enter them or reach what they hold), and the last one is made so if it was there already: one that
+    belongs to someone else gives an Err. On Windows, where a folder takes the rights of the one that holds it, and the
+    folder of each person is theirs alone, private changes nothing: make such a folder there.
 
       d = test.Temp()
       sys.Mkdir("$(d)/photos/2026") --> result.Ok(missing)
-      sys.Stat("$(d)/photos/2026")?.IsDir --> true *)
+      sys.Stat("$(d)/photos/2026")?.IsDir --> true
+      sys.Mkdir("$(d)/profile", private = true) --> result.Ok(missing) *)
 
 (** sys.Exists(path)
     Does this file or folder exist? Needs the read permission.

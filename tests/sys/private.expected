@@ -1,0 +1,30 @@
+Ok(missing)
+Ok(missing)
+Ok(missing)
+Ok(missing)
+Ok(missing)
+Ok(missing) Ok("two")
+Ok(missing)
+Err({Kind: "io", Message: "Can't create open/plain.txt: file exists."})
+Err({Kind: "io", Message: "Can't write keys: is a directory."})
+drwxr-xr-x open
+drwx------ open/inside
+-rw-r--r-- open/plain.txt
+-rw------- open/was-plain.txt
+drwx------ keys
+drwx------ keys/deep
+drwx------ keys/deep/er
+-rw------- keys/key.txt
+drwx------ open
+drwx------ open/inside
+-rw------- open/plain.txt
+-rw------- open/was-plain.txt
+drwx------ keys
+drwx------ keys/deep
+drwx------ keys/deep/er
+-rw------- keys/key.txt
+private.ce:6:13: Permission "write" denied for open/inside.
+  6 | io.Print(sys.Mkdir("open/inside"))
+    |             ^
+  Run again with --allow write=open/inside, or a folder that holds it.
+exit 1
