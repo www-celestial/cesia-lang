@@ -7,7 +7,8 @@ type store = { build : string; read : string -> string option; write : string ->
 
 let store = ref None
 
-type slot = { name : string; kept : store; nesting : int; digests : string list }
+(* The digests of the sources, only once an entry is there to check, or one is written. *)
+type slot = { name : string; kept : store; nesting : int; digests : string list Lazy.t }
 type place = { first : int; count : int; natives : int option; used : int array; package : int -> int array }
 type use = { upath : string; ualias : string; upos : Pos.t; unames : string list }
 
@@ -20,7 +21,7 @@ let slot ~key ~nesting ~fixed sources =
   | Some kept when List.fold_left (fun n (_, s) -> n + String.length s) 0 sources >= least ->
     let digest (_, src) = if fixed src then "" else Digest.BLAKE128.string src in
     let name = Digest.BLAKE128.to_hex (Digest.BLAKE128.string key) in
-    Some { name; kept; nesting; digests = List.map digest sources }
+    Some { name; kept; nesting; digests = lazy (List.map digest sources) }
   | _ -> None
 
 (* The module numbers of a binding, relative to the package: (0, 0) the core, (1, j) its file j or, at j = count, its
@@ -477,7 +478,7 @@ let read slot =
       then raise Bad;
       let open In in
       let d = { s; p = 24; strs = Vec.create (); abs = (fun _ _ -> raise Bad); last = 0 } in
-      let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = slot.digests in
+      let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = Lazy.force slot.digests in
       if same then Some { d; uses = arr (list use) d } else None
     with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
@@ -511,7 +512,7 @@ let encode slot place log uses trees =
   try
     str o slot.kept.build;
     uint o slot.nesting;
-    list str o slot.digests;
+    list str o (Lazy.force slot.digests);
     arr (list use) o uses;
     uint o (Hashtbl.length log.found + Hashtbl.length log.types);
     Hashtbl.iter
