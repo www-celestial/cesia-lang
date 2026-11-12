@@ -130,12 +130,14 @@ What a value shows:
 
 | Value | Shows |
 |---|---|
+| a graph of [std/plot] | `{Kind: "graph", Scene, Key}`: its scene, [plot.Scene] at the width Run gives, 640 pixels by default, and 400 high; a graph that std/plot can't draw is the cell's error, with std/plot's message |
 | a frame of [std/frame] | `{Kind: "table", Columns, Rows, Count}`: its first 20 rows, as texts, and its count |
 | an array or a matrix | `{Kind: "array", Shape, Rows}`: its shape and its first 10 × 10 values, as texts |
 | anything else | `{Kind: "text", Text}`: its text, as `io.Print` writes it |
 
 Values stay in the session: [cells.Variables] gives each name's Name, Type, Size and Preview, a few texts, and never
-copies a large array; [cells.Rows] gives the rows from one to another of a frame, a matrix or a list, as texts, so that a
+copies a large array. The session keeps the graphs of its last 64 runs, and [cells.Scene] draws one again at another
+width, by its Key, for a pane that changed its width. [cells.Rows] gives the rows from one to another of a frame, a matrix or a list, as texts, so that a
 viewer reads a large value one screen at a time.
 
 [cells.Stop] stops the cell that runs: its fiber is cancelled at its next wait or checkpoint, its Run gives the error
@@ -146,7 +148,7 @@ cells run again from the top.
 ## A page to share
 
 [cells.Html] runs every cell of a file in a new session, from the top, and gives one HTML page: each cell's title, its
-code colored as the docs color it, what it printed, its value as a table or text, or its error. The page needs no other
+code colored as the docs color it, what it printed, its value as a graph in SVG, a table or a text, or its error. The page needs no other
 file and no script, and shows what `cesia run` computes, not the state of an editor.
 
 ```cesia norun

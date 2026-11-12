@@ -12,6 +12,9 @@ Ok: output [], value missing, error {Line: 30, Text: "notebook.ce:30:1: Name \"n
   30 | n + 1
      | ^"}
 ["xs", "df", "total"]
-3 sections
-true true
+graph: graph, 500 by 400, true items
+again: 300 wide
+Ok: output [], value missing, error {Line: missing, Text: "plot.Line: x has 2 values and y has 1; give both the same number."}
+4 sections
+true true true
 exit 0
