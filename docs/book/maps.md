@@ -182,7 +182,7 @@ one name alone holds it, it is a [hash table](glossary.md#hash-table) in the ord
 read or a write takes a constant time on average, changed in place. Once it is shared and written, as by [dict.Put], it
 becomes, once and for good, a [hash array mapped trie](glossary.md#hash-array-mapped-trie) of the kind called
 [CHAMP](glossary.md#champ): a tree whose levels are chosen by 5 bits of each key's hash at a time, each node holding the
-keys that are alone at their 5 bits, so a read or a write takes about log₃₂ n steps, 3 for 30,000 keys, and a write
+keys that are alone at their 5 bits, so a read or a write takes about $\log_{32} n$ steps, 3 for 30,000 keys, and a write
 copies only the few small nodes on the path to its key. That is how [dict.Put] can give a new dictionary and keep the old
 one, at a small cost; the change of form costs about 0.25 s for a million keys, once.
 The hash takes a seed drawn at each run, so nobody can send a server keys chosen to collide.

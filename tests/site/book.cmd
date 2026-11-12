@@ -32,4 +32,20 @@ echo "== a site outside the project, with nothing in the cache: its pages still 
 XDG_CACHE_HOME="$t/fresh" cesia doc --site "$t/outside" > /dev/null
 echo "built: $?"
 grep -o '<code>Hello, Ana!</code>' "$t/outside/first.html"
+echo "== formulas, GitHub's alerts and a table, in the colors of the project, and the font of formulas with its licence"
+sed -n '/<main/,/<\/main>/p' site/math.html
+grep -o '^:root { --accent[^}]*}' site/site.css
+grep -c '@font-face { font-family: "STIX Two Math"; src: url("math.woff2")' site/site.css
+cmp -s site/math.woff2 "$root/src/tools/math.woff2" && grep -o 'SIL OPEN FONT LICENSE Version 1.1' site/math-OFL.txt
+echo "== the README, a page made from README.md, in the side of every page"
+sed -n '/<main/,/<\/main>/p' site/readme.html
+grep -o '<a href="readme.html">README</a>' site/index.html
+echo "== the French site: a page translated, with the values of its blocks on its own lines, and one not yet"
+sed -n '/<main/,/<\/main>/p' site/fr/first.html
+sed -n '/<main/,/<h1/p' site/fr/files.html
+grep -o '<nav class="langs".*</nav>' site/first.html site/fr/first.html site/ref/index.html
+grep -o '<html lang="fr">' site/fr/index.html
+grep -o '<a class="ref" href="../ref/index.html">[^<]*</a>' site/fr/index.html
+grep -o '<a href="../ref/index.html">référence</a>' site/fr/index.html
+head -c 70 site/fr/search.js; echo
 rm -rf "$t"

@@ -40,5 +40,35 @@ exit 1
 == a book without its index.md
 docs/book/index.md: a book starts at its index.md, which links to its other pages in their order.
 docs/guides/index.md:3: ../book/first.md is no page of docs/guides/.
+README.md:3: docs/book/index.md is no page of the site: a README links to the pages of docs/, or with a full URL.
+README.md:3: docs/book/first.md is no page of the site: a README links to the pages of docs/, or with a full URL.
+exit 1
+== a formula with a command it doesn't know
+docs/book/first.md:53: \foo is no command that cesia doc writes in a formula: the book lists them, in Tests, Formulas
+exit 1
+== a formula with a character TeX writes otherwise
+docs/book/first.md:53: ≤ is no part of a formula: write \le
+docs/book/first.md:53: something is missing at its end
+exit 1
+== a formula whose group isn't closed
+docs/book/first.md:54: a { is never closed
+exit 1
+== a color that isn't one
+TMP/proj/cesia.toml:4: [site] color is a color written #rrggbb, as "#3b5bdb".
+exit 1
+== a README that links to a file which is no page
+README.md:13: LICENSE is no page of the site: a README links to the pages of docs/, or with a full URL.
+exit 1
+== a French page that drifts from its English one
+docs/fr/book/index.md: its links drift from those of docs/book/index.md, not here: first.html; only here: files.html (a link to a heading names its place on its page).
+docs/fr/book/first.md: its headings drift from those of docs/book/first.md from heading 1 on: a French page has the same headings, of the same levels, in the same order (1 here, 1 there).
+docs/fr/book/first.md:6: this block isn't the one of docs/book/first.md:5, which a French page copies byte for byte.
+exit 1
+== a French page with no English one
+docs/fr/book/extra.md: no English page docs/book/extra.md has this page as its French.
+exit 1
+== a French link to a heading that isn't there
+README.fr.md:3: #first-steps names no heading of the French first.html.
+README.fr.md: its links drift from those of README.md, not here: first.html#1; only here: first.html#0 (a link to a heading names its place on its page).
 exit 1
 exit 0

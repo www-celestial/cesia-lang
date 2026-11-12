@@ -281,7 +281,7 @@ list.Any([false, true]) -->
 | `xs[k] = v`, [list.Append] on a list nothing else holds | constant, amortized for Append |
 | the same on a list that is shared | a copy of the list, once, then constant |
 | [list.Concat], [list.Take], [list.Skip], [list.Map], [list.Filter] | linear: a new list |
-| [list.Sort], [list.SortBy], [list.Order] | `O(n log n)`, stable: equal elements keep their order |
+| [list.Sort], [list.SortBy], [list.Order] | $O(n \log n)$, stable: equal elements keep their order |
 | `x in xs`, [list.IndexOf] | linear: a search from the start |
 
 ## Next

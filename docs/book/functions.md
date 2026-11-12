@@ -59,7 +59,7 @@ factorial(10) -->
 ```
 
 Each call waits for the one it made, so the calls pile up: 10,000 at most by default, the `depth` limit of
-[Permissions](permissions.md#limit), past which the program stops at the line of the call. A call whose result is the
+[Permissions](permissions.md#--limit), past which the program stops at the line of the call. A call whose result is the
 function's own result, with nothing left to do after it, is in *tail position*: `countDown(n - 1)` below. A function that
 calls itself there runs as a loop, in one frame, so it has no depth limit. In `factorial`, the `n * ...` is left to do
 after the call, so that call is not in tail position.

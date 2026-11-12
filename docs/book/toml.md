@@ -110,9 +110,11 @@ What `cesia doc --site` writes on each page.
 [site]
 title = "Shop"
 source = "https://github.com/someone/shop/blob/main/"
+color = "#0c8599"
 ```
 
 | Key | What it says |
 |---|---|
 | `title` | the name at the top of each page |
 | `source` | the start of a link to the code: a name's page links to its file and line |
+| `color` | the color of the project, `#rrggbb`, from which the site makes its colors at AA contrast: see [Tests](tests.md#colors) |

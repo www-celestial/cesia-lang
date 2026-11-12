@@ -22,7 +22,7 @@ cesia upgrade --nightly    # a build of main between releases, made by hand
 A release holds the binary and every C library its libraries use, in `~/.cesia/lib/`: OpenBLAS for BLAS and LAPACK (macOS has
 its own), libsodium, SQLite, and OpenSSL on macOS and Windows (Linux keeps the system's, for its security fixes).
 Nothing else is installed by hand. From 1.0, the first number of a version rises when a change can break a program, the
-middle one when something is added, and the last one for a fix. [`CHANGELOG.md`](CHANGELOG.md) says what each version brings,
+middle one when something is added, and the last one for a fix. [`CHANGELOG.md`](https://github.com/www-celestial/cesia-lang/blob/main/CHANGELOG.md) says what each version brings,
 and the notes of a release come from the messages of its commits.
 
 From the sources, with OCaml 5.5 and dune:
@@ -38,7 +38,7 @@ program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
 
 ## Read the book
 
-The book teaches Cesia from the start, in 23 short chapters, and the reference has a page for every name, each with examples
+The book teaches Cesia from the start, in 28 short chapters, and the reference has a page for every name, each with examples
 that ran when the site was built: **https://www-celestial.github.io/cesia-lang/**. It follows `main`, and each push publishes
 it again.
 

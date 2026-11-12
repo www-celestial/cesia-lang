@@ -53,7 +53,7 @@ isZeroStaysZero() -->
 isRoundsToCents() -->
 ```
 
-A test that gives `false` fails, and so does one that stops: an [bug.Assert] that is false, a bug. [bug.Assert] with a message says
+A test that gives `false` fails, and so does one that stops: a [bug.Assert] that is false, a bug. [bug.Assert] with a message says
 which part of a long test went wrong.
 
 ### When a test fails
@@ -260,7 +260,8 @@ cesia.Doc(Total) -->
 ## A site for your project
 
 `cesia doc --site` builds a site of the project, as this one: a page for every module and every public name, with search.
-With `--open`, it opens the site in the browser. Its pages are written in `site/`, which `cesia new` keeps out of git.
+The reference holds the modules of `std/` too, and the band at the top names the Cesia that made the site: the word
+Cesia and its version (Cesia's own site shows the version alone). With `--open`, it opens the site in the browser. Its pages are written in `site/`, which `cesia new` keeps out of git.
 
 ```bash
 cesia doc --site --open
@@ -278,12 +279,16 @@ Words after `cesia` on the first line of a block change what is done with it:
 
 | Word | What it does |
 |---|---|
-| `norun` | shows the block without running it: a server, a program that waits for input |
+| `norun` | shows the block without running it: a server, a program that waits for input. It is still checked, and norun blocks that follow one another are one program, so a name given in one is known in the next |
 | `fails` | the block must stop with an error, whose message is shown under it; one that doesn't fail stops the build |
 | `allow=read,write,net,net=own,net=:PORT,ffi=m` | runs the block with these permissions; no other is given |
 | `output=md` | what the block prints is Markdown, shown as a part of the page |
 | `fold=code`, `fold=output` | the code, or what it printed, is folded, opened by a click |
-| `hide=code`, `hide=output` | the code, or what it printed, is not shown | This book is built that way, so its examples can't drift from the language: a block
+| `hide=code`, `hide=output` | the code, or what it printed, is not shown |
+
+A `toml` block must be a valid `cesia.toml`, unless it is marked `norun` too: the file of another program, as a server's.
+
+This book is built that way, so its examples can't drift from the language: a block
 that gives another value stops the build. Each page runs as a program of the project, from `.cesia/site/`, which `cesia new`
 keeps out of git: its blocks can use the packages of `src/` and `deps/`, wherever the site is written.
 
@@ -296,6 +301,97 @@ docs/
   guides/
     index.md
 ```
+
+### Formulas
+
+A formula is written in TeX between two `$` in a line, or between two lines that hold `$$` alone, as a paragraph of its own:
+the syntax GitHub shows too. The build writes it in MathML, which browsers show without a script, in the font STIX Two Math,
+which only a page with a formula downloads. This source:
+
+```markdown
+A search in a sorted array of $n$ keys costs $O(\log n)$, and the birthday bound is
+
+$$
+P(\text{some collision among } k \text{ files}) \le \frac{k(k - 1)}{2} \times 2^{-256}
+$$
+```
+
+reads: a search in a sorted array of $n$ keys costs $O(\log n)$, and the birthday bound is
+
+$$
+P(\text{some collision among } k \text{ files}) \le \frac{k(k - 1)}{2} \times 2^{-256}
+$$
+
+The `$` that opens a formula has no space after it; the next `$` closes it, with no space before it and no digit after it,
+on the same line, and no backtick between them. So "it costs $5 and $6" holds no formula, `\$` writes a dollar, and a `$` in
+code is code. The commands are those of the table; any other, or a character such as ≤ written as it is, stops the build
+with its place and what to write: `docs/book/values.md:12: ≤ is no part of a formula: write \le`.
+
+| Kind | Commands |
+|---|---|
+| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` |
+| operators | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod`, and `+ - = < > / ! , ; : .` |
+| brackets | `( ) [ ] \|`, `\lceil` `\rceil` `\lfloor` `\rfloor`, `\{` `\}` |
+| Greek | `\alpha` to `\omega`, `\Gamma` `\Delta` `\Theta` `\Lambda` `\Xi` `\Pi` `\Sigma` `\Phi` `\Psi` `\Omega` |
+| functions | `\log` `\ln` `\exp` `\min` `\max` `\sin` `\cos`, with the thin spaces of TeX: $n \log n$ |
+| sums and products | `\sum` `\prod`, their limits with `_` and `^`, beside them in a line and above and below in a display |
+| structures | `x_i`, `2^{31}`, `f'`, `\frac{a}{b}`, `\sqrt{x}` |
+| words and names | `\text{some words}`, upright; `\mathit{vlo}`, a name of several letters in italic |
+| others | `\dots` `\infty` `\emptyset`; the spaces `\,` `\;` `\quad` and `\ `; `1{,}000` for a comma inside a number |
+
+The font is a part of STIX Two Math 2.13 (the STIX Fonts Project, SIL Open Font License 1.1), cut to the characters a
+formula can hold, 74 KB; the site holds it beside its licence, `math-OFL.txt`.
+
+### Notes and warnings
+
+A quote whose first line is one of GitHub's alerts, `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]`, is
+shown in the color of its kind, under its name:
+
+```markdown
+> [!TIP]
+> `cesia doc --site --open` builds the site and opens it.
+```
+
+> [!TIP]
+> `cesia doc --site --open` builds the site and opens it.
+
+### Colors
+
+The `color` of the `[site]` table of `cesia.toml` is the color of the project, as `"#3b5bdb"`. The build makes from it the
+colors of the links, the headings, the band at the top, the page open in the side, the heads and every other row of the
+tables, and the code in a line, in the light look and the dark one. Each text reaches 4.5:1 against its background, the
+AA level of WCAG 2.2, by the relative luminance it defines; a color that can't, too light or too pale, stops the build
+with the pair and its ratio. Without `color`, the site takes `"#2b5fd9"`.
+
+### The README
+
+The `README.md` of the project is a page of the site, made from it at each build and shown in the side: its links to the
+pages of `docs/`, or to a folder of it for its index, lead to the pages of the site. Any other link of the project, as one to
+`LICENSE`, is no page of the site and stops the build: write it with its full URL. Its `cesia` blocks are shown in color,
+never run.
+
+### The ids of the headings
+
+A heading's id is the one GitHub gives it: in lower case, without punctuation, each space a `-`, and `-1`, `-2` after a title
+that comes again. "What's new?" is `whats-new`, so a link `page.md#whats-new` leads to the same place on GitHub and on the
+site. The id the site gave it before, `what-s-new`, letters and digits joined by `-`, stays on the heading too, so a link
+made then still leads there.
+
+### A French site
+
+`docs/fr/` holds the French of the books, under the same paths: `docs/fr/book/values.md` is the French of
+`docs/book/values.md`, and `README.fr.md`, beside `README.md`, that of the README. The site then has a French side under
+`fr/`, in `<html lang="fr">`: the same pages, the site's own words in French, a search of its own, and on every page a
+switch between EN and FR that stays on the same page. A page not translated yet shows the English one under a note that
+says so. The reference, made from the code, is in English on both sides: the French site links to it as "Référence (en
+anglais)".
+
+A French page keeps its English page's structure, and the build checks it: the same headings, of the same levels, in the
+same order; the same blocks of code, byte for byte, since code is written in English; and the same links, a link to a heading
+naming the heading at the same place of its page, since the French ids are those of French titles. A page that drifts stops
+the build with its place, so a change of the English text shows where the French must follow; so does a page of `docs/fr/`
+that is the French of no English page. The blocks being the same, they run once, for the English page, and the French one
+shows what they printed on its own lines.
 
 ## Further reading
 

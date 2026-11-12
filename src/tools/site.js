@@ -1,9 +1,10 @@
 // The search and the keys of cesia doc --site. Every page reads without it; it asks for no file but those of the site, and
-// loads the index of the search at the first search only.
+// loads the index of the search at the first search only: the French one on a page of the French site.
 (function () {
   "use strict";
   var root = document.documentElement, base = document.body.getAttribute("data-root") || "";
   var header = document.querySelector("header"), input = document.querySelector("input.search");
+  var fr = root.lang === "fr", home = fr ? "fr/index.html" : "index.html";
   root.classList.add("js");
   try {
     var saved = localStorage.getItem("cesia-theme");
@@ -12,7 +13,7 @@
 
   var theme = document.createElement("button");
   theme.className = "theme"; theme.type = "button"; theme.textContent = "◐";
-  theme.setAttribute("aria-label", "Switch between dark and light");
+  theme.setAttribute("aria-label", fr ? "Passer du sombre au clair" : "Switch between dark and light");
   header.appendChild(theme);
   theme.addEventListener("click", function () {
     var chosen = root.getAttribute("data-theme");
@@ -30,7 +31,7 @@
   function load() {
     if (index || document.getElementById("search-index")) return;
     var s = document.createElement("script");
-    s.id = "search-index"; s.src = base + "search.js";
+    s.id = "search-index"; s.src = base + (fr ? "fr/" : "") + "search.js";
     s.onload = function () { index = window.cesiaSearch || []; find(); };
     document.body.appendChild(s);
   }
@@ -135,9 +136,11 @@
   }
 
   var keys = document.createElement("dl");
-  keys.className = "keys"; keys.hidden = true; keys.setAttribute("aria-label", "Keys");
-  [["/ s", "search"], ["n", "the next page"], ["p", "the previous page"], ["u", "the page above"], ["t", "the home page"],
-   ["?", "these keys"]].forEach(function (k) {
+  keys.className = "keys"; keys.hidden = true; keys.setAttribute("aria-label", fr ? "Touches" : "Keys");
+  (fr ? [["/ s", "rechercher"], ["n", "la page suivante"], ["p", "la page précédente"], ["u", "la page au-dessus"],
+         ["t", "l’accueil"], ["?", "ces touches"]]
+      : [["/ s", "search"], ["n", "the next page"], ["p", "the previous page"], ["u", "the page above"], ["t", "the home page"],
+         ["?", "these keys"]]).forEach(function (k) {
     keys.appendChild(part("dt", "", k[0])); keys.appendChild(part("dd", "", k[1]));
   });
   document.body.appendChild(keys);
@@ -146,7 +149,7 @@
     if (ev.ctrlKey || ev.metaKey || ev.altKey || t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable) return;
     if (ev.key === "/" || ev.key === "s") { input.focus(); ev.preventDefault(); }
     else if (rel) { var a = document.querySelector("a[rel=" + rel + "]"); if (a) location.href = a.href; }
-    else if (ev.key === "t") location.href = base + "index.html";
+    else if (ev.key === "t") location.href = base + home;
     else if (ev.key === "?") keys.hidden = !keys.hidden;
     else if (ev.key === "Escape") keys.hidden = true;
   });

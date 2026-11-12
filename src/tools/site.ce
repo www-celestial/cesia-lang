@@ -14,6 +14,7 @@ use std/dict
 use std/fiber
 use std/io
 use std/list
+use std/math
 use std/result
 use std/text
 use std/value
@@ -60,10 +61,77 @@ end
 
 codeBlock(code) = "<pre><code class=\"cesia\">$(colored(code))</code></pre>\n"
 
-defn slug(s)
-  (** The id of a heading: its letters and digits in lower case, words joined by -. *)
+defn oldSlug(s)
+  (** The id a heading had before the build took GitHub's: its letters and digits in lower case, words joined by -. A page
+      keeps it beside the new one, so that a link made then still leads there. *)
   words = text.Split(" ", text.Trim(text.Lower(text.Join("", [if (b >= 97 and b <= 122) or (b >= 48 and b <= 57) or b >= 128 text.Char(b) else " " end for b in text.Bytes(text.Lower(s))]))))
   text.Join("-", list.Filter(w -> w != "", words))
+end
+
+(* The characters GitHub drops from the id of a heading beyond ASCII: spaces, punctuation and symbols, from Latin-1 to the
+   dingbats. It keeps letters and digits, those of other scripts too, in lower case. *)
+defn dropped(k)
+  (k >= 160 and k <= 191 and not (k == 170 or k == 178 or k == 179 or k == 181 or k == 185 or k == 186 or k == 188 or k == 189 or k == 190)) or
+    k == 215 or k == 247 or (k >= 8192 and k <= 8303) or (k >= 8592 and k <= 10175) or (k >= 11776 and k <= 11903) or (k >= 12288 and k <= 12351)
+end
+
+defn lowerChar(c)
+  (** A letter in lower case: A to Z, and the capitals of Latin-1 and of Latin Extended-A, as É and Œ. *)
+  k = text.Code(c)
+  if (k >= 65 and k <= 90) or (k >= 192 and k <= 222 and k != 215)
+    text.Char(k + 32)
+  else if k >= 256 and k <= 383 and math.Mod(k, 2) == 0 and k != 312
+    text.Char(k + 1)
+  else
+    c
+  end
+end
+
+defn slug(s)
+  (** The id of a heading as GitHub makes it: in lower case, without punctuation and symbols, each space a -. "What's new?"
+      is whats-new, "Les données" les-données. *)
+  out = []
+  for c in text.Chars(s)
+    k = text.Code(c)
+    if c == " "
+      out = list.Append("-", out)
+    else if (k >= 48 and k <= 57) or (k >= 65 and k <= 90) or (k >= 97 and k <= 122) or c == "-" or c == "_"
+      out = list.Append(lowerChar(c), out)
+    else if k >= 128 and not dropped(k)
+      out = list.Append(lowerChar(c), out)
+    end
+  end
+  text.Join("", out)
+end
+
+defn headingsIn(blocks)
+  (** The headings among blocks, those in quotes and lists too, in the order of the page. *)
+  out = []
+  for b in blocks
+    if b.Kind == "heading"
+      out = list.Append(b, out)
+    else if b.Kind == "quote"
+      out = list.Concat(out, headingsIn(b.Blocks))
+    else if b.Kind == "list"
+      for item in b.Items
+        out = list.Concat(out, headingsIn(item))
+      end
+    end
+  end
+  out
+end
+
+defn headingIds(blocks)
+  (** The id of each heading of a page, by its line: the second "Examples" is examples-1, as on GitHub. *)
+  out = {}
+  seen = {}
+  for b in headingsIn(blocks)
+    base = slug(b.Text)
+    n = dict.GetOr(base, 0, seen)
+    seen[base] = n + 1
+    out[b.Line] = if n == 0 base else "$base-$n" end
+  end
+  out
 end
 
 wordFile(w) = if w == "?" "question" else if w == ".." "range" else w end   (** The file of a keyword: ? would start the query of a URL. *)
@@ -107,9 +175,41 @@ defn bookTarget(site, book, f)
   if dict.Has(page, site.BookPaths) page else missing end
 end
 
-defn hooksFor(site, path, where, book = missing)
-  (** The hooks of std/markdown for a page: Cesia code in color, [Name] to its page, an id for each heading. A [Name] that
-      leads nowhere is sent to the mistakes, with the place where it is written. *)
+defn joined(dir, f)
+  (** The path of f, written from the folder dir, from the root of the site: "ref/index.html" from "" or "guides". *)
+  parts = []
+  for part in text.Split("/", "$dir/$f")
+    if part == ".." and value.Len(parts) > 0
+      parts = list.DropLast(1, parts)
+    else if part != "." and part != ""
+      parts = list.Append(part, parts)
+    end
+  end
+  text.Join("/", parts)
+end
+
+anchorOf(u) = from(text.ByteLength(text.Split("#", u)[1]) + 1, u)   (** The #part of a link, or "". *)
+
+defn readmeTarget(site, f)
+  (** The page that a link of a README leads to: a page of docs/, or a folder of it for its index; under docs/fr/, the French
+      one. Missing for any other file: the site holds only its pages. *)
+  g = if text.StartsWith("./", f) from(3, f) else f end
+  if not text.StartsWith("docs/", g)
+    return missing
+  end
+  rest = from(6, g)
+  french = text.StartsWith("fr/", rest)
+  rest = if french from(4, rest) else rest end
+  file = if text.EndsWith(".md", rest) rest else text.Str(if text.EndsWith("/", rest) or rest == "" rest else "$rest/" end, "index.md") end
+  target = bookTarget(site, "", file)
+  if value.IsMissing(target) or (french and not site.HasFr) missing else if french "fr/$target" else target end
+end
+
+defn hooksFor(site, path, where, book = missing, formulas = false, lang = "en", ids = {})
+  (** The hooks of std/markdown for a page: Cesia code in color, [Name] to its page, an id for each heading (from ids, by its
+      line, else from its title), and with formulas the formulas in MathML. A page of the French site links to the French
+      pages. book is "" for a README, whose links lead from the root of the project. A [Name] or a link that leads
+      nowhere, or a formula that can't be written, is sent to the mistakes, with the place where it is written. *)
   defn link(target, line)
     found = dict.Get(target, site.Targets)
     if value.IsSome(found)
@@ -122,6 +222,18 @@ defn hooksFor(site, path, where, book = missing)
   end
   defn url(u, line)
     f = local(u)
+    if value.IsSome(f) and book == ""
+      target = readmeTarget(site, f)
+      if value.IsMissing(target)
+        fiber.Send("$(where(line)): $f is no page of the site: a README links to the pages of docs/, or with a full URL.", site.Mistakes)
+        return u
+      end
+      return text.Str(rel(path, target), anchorOf(u))
+    end
+    if value.IsSome(f) and lang == "fr" and not text.EndsWith(".md", f)
+      (* A French page links where its English page does: the reference, in English only, is that of the English site. *)
+      return text.Str(rel(path, joined(parent(from(4, path)), f)), anchorOf(u))
+    end
     if value.IsMissing(f) or not text.EndsWith(".md", f)
       return u
     end
@@ -131,13 +243,301 @@ defn hooksFor(site, path, where, book = missing)
       fiber.Send("$(where(line)): $f is no page of docs/$folder/.", site.Mistakes)
       return u
     end
-    text.Str(rel(path, target), from(text.ByteLength(text.Split("#", u)[1]) + 1, u))
+    text.Str(rel(path, if lang == "fr" "fr/$target" else target end), anchorOf(u))
   end
   code(info, s, line) = if text.Split(" ", info)[1] == "cesia" codeBlock(s) else missing end
-  {Code: code, Link: link, Url: url, Anchor: (level, title, line) -> slug(title)}
+  defn formula(tex, display, line)
+    made = TexMath(tex, display)
+    if result.IsErr(made)
+      fiber.Send("$(where(line)): $(made.Error)", site.Mistakes)
+      return missing
+    end
+    made.Value
+  end
+  hooks = {Code: code, Link: link, Url: url, Anchor: (level, title, line) -> dict.GetOr(line, slug(title), ids)}
+  if formulas dict.Put("Math", formula, hooks) else hooks end
 end
 
 html(source, hooks) = markdown.Html(markdown.Parse(source), hooks)
+
+(* Formulas: the TeX between $ and $, or $$ and $$, written as MathML Core, which a browser shows with no script. The
+   commands are those of the tables below; any other, or a character no command writes, is a mistake of the page, so that
+   no formula is ever shown wrong. *)
+
+texRelations = {"le": "≤", "ge": "≥", "ne": "≠", "approx": "≈", "equiv": "≡", "sim": "∼", "in": "∈", "notin": "∉", "ni": "∋",
+  "subset": "⊂", "subseteq": "⊆", "cup": "∪", "cap": "∩", "to": "→", "times": "×", "cdot": "⋅", "pm": "±", "dots": "…",
+  "lceil": "⌈", "rceil": "⌉", "lfloor": "⌊", "rfloor": "⌋", "{": "{", "}": "}", "bmod": "mod", "infty": "∞", "emptyset": "∅"}
+texGreek = {"alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ",
+  "iota": "ι", "kappa": "κ", "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π", "rho": "ρ", "sigma": "σ", "tau": "τ",
+  "upsilon": "υ", "phi": "φ", "chi": "χ", "psi": "ψ", "omega": "ω", "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ",
+  "Xi": "Ξ", "Pi": "Π", "Sigma": "Σ", "Phi": "Φ", "Psi": "Ψ", "Omega": "Ω"}
+texFunctions = ["log", "ln", "exp", "min", "max", "sin", "cos"]
+texBig = {"sum": "∑", "prod": "∏"}
+texSpaces = {",": "0.1667em", " ": "0.25em", ";": "0.2778em", "quad": "1em"}
+texOperators = "+-=<>/()[]|,;:!."
+texOpens = ["(", "[", "⌈", "⌊", "{"]
+
+isAsciiLetter(c) = (text.Code(c) >= 65 and text.Code(c) <= 90) or (text.Code(c) >= 97 and text.Code(c) <= 122)
+isAsciiDigit(c) = text.Code(c) >= 48 and text.Code(c) <= 57
+texEscape(t) = text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", t)))
+
+defn italic(c)
+  (** A letter as Unicode's mathematical italic writes it: what MathML Core shows for a name of several letters in italic. *)
+  k = text.Code(c)
+  if c == "h"
+    "ℎ"
+  else if k >= 97
+    text.Char(119886 + k - 97)
+  else
+    text.Char(119860 + k - 65)
+  end
+end
+
+defn braced(cs, i)
+  (** The text inside the braces that open at character i, and the character after them: {Text, Next}, or an Err. *)
+  if i > value.Len(cs) or cs[i] != "{"
+    return result.Err("a { must follow it")
+  end
+  depth = 0
+  j = i
+  while j <= value.Len(cs)
+    if cs[j] == "{"
+      depth += 1
+    else if cs[j] == "}"
+      depth -= 1
+      if depth == 0
+        return result.Ok({Text: text.Join("", list.Take(j - i - 1, list.Skip(i, cs))), Next: j + 1})
+      end
+    end
+    j += 1
+  end
+  result.Err("a { is never closed")
+end
+
+defn texTokens(tex)
+  (** The tokens of a formula, {K, V}: K is cmd, text, mathit, num, letter, op, or one of { } ^ _ '. Spaces separate only. *)
+  cs = text.Chars(tex)
+  n = value.Len(cs)
+  out = []
+  i = 1
+  while i <= n
+    c = cs[i]
+    if c == " " or c == "\n"
+      i += 1
+    else if c == "\\"
+      if i == n
+        return result.Err("the formula ends with a \\")
+      end
+      j = i + 1
+      while j <= n and isAsciiLetter(cs[j])
+        j += 1
+      end
+      name = if j == i + 1 cs[i + 1] else text.Join("", list.Take(j - i - 1, list.Skip(i, cs))) end
+      i = if j == i + 1 i + 2 else j end
+      if name == "text" or name == "mathit"
+        while i <= n and cs[i] == " "
+          i += 1
+        end
+        b = braced(cs, i)
+        if result.IsErr(b)
+          return result.Err("\\$name: $(b.Error)")
+        end
+        out = list.Append({K: name, V: b.Value.Text}, out)
+        i = b.Value.Next
+      else
+        out = list.Append({K: "cmd", V: name}, out)
+      end
+    else if isAsciiDigit(c) or (c == "." and i < n and isAsciiDigit(cs[i + 1]))
+      j = i
+      digits = []
+      while j <= n
+        if isAsciiDigit(cs[j]) or (cs[j] == "." and j < n and isAsciiDigit(cs[j + 1]))
+          digits = list.Append(cs[j], digits)
+          j += 1
+        else if j + 3 <= n and cs[j] == "{" and cs[j + 1] == "," and cs[j + 2] == "}" and isAsciiDigit(cs[j + 3])
+          digits = list.Append(",", digits)
+          j += 3
+        else
+          break
+        end
+      end
+      out = list.Append({K: "num", V: text.Join("", digits)}, out)
+      i = j
+    else if isAsciiLetter(c)
+      out = list.Append({K: "letter", V: c}, out)
+      i += 1
+    else if text.Contains(c, texOperators)
+      out = list.Append({K: "op", V: c}, out)
+      i += 1
+    else if c == "{" or c == "}" or c == "^" or c == "_" or c == "'"
+      out = list.Append({K: c, V: c}, out)
+      i += 1
+    else
+      known = [k for k in dict.Keys(texRelations) if texRelations[k] == c]
+      hint = if value.Len(known) > 0 ": write \\$(known[1])" else "" end
+      return result.Err("$c is no part of a formula$hint")
+    end
+  end
+  result.Ok(out)
+end
+
+(* An ordinary atom, a letter, a number, a word or a closing bracket, takes a thin space before the name of a function: n log n. *)
+isOrd(x) = not x.Fn and (text.StartsWith("<mi", x.H) or text.StartsWith("<mn", x.H) or text.StartsWith("<mtext", x.H) or text.StartsWith("<msub>", x.H) or text.StartsWith("<msup>", x.H) or text.StartsWith("<mfrac", x.H) or x.H == "<mo>)</mo>" or x.H == "<mo>]</mo>")
+group(nodes) = if value.Len(nodes) == 1 nodes[1] else {H: text.Str("<mrow>", text.Join("", [x.H for x in nodes]), "</mrow>"), Fn: false, Big: false, Open: false} end
+leaf(h) = {H: h, Fn: false, Big: false, Open: false}
+
+defn texAtom(toks, at)
+  (** One atom of a formula, without its scripts, from token at on: {N: {H, Fn, Big, Open}, At: the token after it}, or an
+      Err. *)
+  if at > value.Len(toks)
+    return result.Err("something is missing at its end")
+  end
+  t = toks[at]
+  next = at + 1
+  made(node) = result.Ok({N: node, At: next})
+  if t.K == "{"
+    inner = texRow(toks, next, true)?
+    return result.Ok({N: group(inner.Nodes), At: inner.At})
+  else if t.K == "letter"
+    return made(leaf("<mi>$(t.V)</mi>"))
+  else if t.K == "num"
+    return made(leaf("<mn>$(t.V)</mn>"))
+  else if t.K == "op"
+    shown = if t.V == "-" "−" else texEscape(t.V) end
+    (* TeX spaces neither a / nor a |, where MathML would space them as operators: |Q|, N/B. *)
+    tag = if t.V == "/" or t.V == "|" "<mo lspace=\"0\" rspace=\"0\">" else "<mo>" end
+    return made({H: "$tag$shown</mo>", Fn: false, Big: false, Open: t.V in texOpens})
+  else if t.K == "text"
+    (* MathML trims the spaces at the ends of a token, where TeX keeps them: they become spaces that don't break. *)
+    cs = text.Chars(t.V)
+    k = 1
+    while k <= value.Len(cs) and cs[k] == " "
+      k += 1
+    end
+    m = value.Len(cs)
+    while m >= k and cs[m] == " "
+      m -= 1
+    end
+    words = text.Str(text.Repeat(k - 1, " "), texEscape(text.Join("", list.Take(m - k + 1, list.Skip(k - 1, cs)))), text.Repeat(value.Len(cs) - m, " "))
+    return made(leaf("<mtext>$words</mtext>"))
+  else if t.K == "mathit"
+    if t.V == "" or not list.All([isAsciiLetter(c) for c in text.Chars(t.V)])
+      return result.Err("\\mathit takes letters only")
+    end
+    return made(leaf("<mi>$(text.Join("", [italic(c) for c in text.Chars(t.V)]))</mi>"))
+  else if t.K == "cmd"
+    v = t.V
+    if dict.Has(v, texRelations)
+      return made({H: "<mo>$(texRelations[v])</mo>", Fn: false, Big: false, Open: texRelations[v] in texOpens})
+    else if dict.Has(v, texGreek)
+      upright = text.Code(v) <= 90
+      return made(leaf(if upright "<mi mathvariant=\"normal\">$(texGreek[v])</mi>" else "<mi>$(texGreek[v])</mi>" end))
+    else if v in texFunctions
+      return made({H: "<mi>$v</mi>", Fn: true, Big: false, Open: false})
+    else if dict.Has(v, texBig)
+      return made({H: "<mo>$(texBig[v])</mo>", Fn: false, Big: true, Open: false})
+    else if dict.Has(v, texSpaces)
+      return made(leaf("<mspace width=\"$(texSpaces[v])\"></mspace>"))
+    else if v == "frac"
+      top = texAtom(toks, next)?
+      bottom = texAtom(toks, top.At)?
+      return result.Ok({N: leaf("<mfrac>$(top.N.H)$(bottom.N.H)</mfrac>"), At: bottom.At})
+    else if v == "sqrt"
+      inside = texAtom(toks, next)?
+      return result.Ok({N: leaf("<msqrt>$(inside.N.H)</msqrt>"), At: inside.At})
+    end
+    return result.Err("\\$v is no command that cesia doc writes in a formula: the book lists them, in Tests, Formulas")
+  else if t.K == "}"
+    return result.Err("a } closes nothing")
+  end
+  result.Err("a $(t.K) needs something before it")
+end
+
+defn texScripted(toks, at)
+  (** An atom and its scripts: x_i, 2^{31}, f', and the limits of a sum: {N, At}. *)
+  first = texAtom(toks, at)?
+  base = first.N
+  i = first.At
+  sub = missing
+  sup = []
+  while i <= value.Len(toks) and (toks[i].K == "_" or toks[i].K == "^" or toks[i].K == "'")
+    k = toks[i].K
+    i += 1
+    if k == "'"
+      sup = list.Append("<mo>′</mo>", sup)
+    else if k == "_"
+      if value.IsSome(sub)
+        return result.Err("a double subscript: write x_{ab}")
+      end
+      s = texAtom(toks, i)?
+      sub = s.N.H
+      i = s.At
+    else
+      if value.Len(sup) > 0 and sup[value.Len(sup)] != "<mo>′</mo>"
+        return result.Err("a double superscript: write x^{ab}")
+      end
+      s = texAtom(toks, i)?
+      sup = list.Append(s.N.H, sup)
+      i = s.At
+    end
+  end
+  if value.IsMissing(sub) and value.Len(sup) == 0
+    return result.Ok({N: base, At: i})
+  end
+  over = if value.Len(sup) == 1 sup[1] else text.Str("<mrow>", text.Join("", sup), "</mrow>") end
+  tags = if base.Big ["munder", "mover", "munderover"] else ["msub", "msup", "msubsup"] end
+  h = if value.Len(sup) == 0
+    "<$(tags[1])>$(base.H)$sub</$(tags[1])>"
+  else if value.IsMissing(sub)
+    "<$(tags[2])>$(base.H)$over</$(tags[2])>"
+  else
+    "<$(tags[3])>$(base.H)$sub$over</$(tags[3])>"
+  end
+  result.Ok({N: {H: h, Fn: base.Fn, Big: base.Big, Open: false}, At: i})
+end
+
+defn texRow(toks, at, closing)
+  (** The atoms from token at up to the } that closes a group, or to the end: {Nodes, At}. A thin space follows the name of a
+      function, as TeX puts it, unless a bracket does: log n, but log(n). *)
+  nodes = []
+  i = at
+  while i <= value.Len(toks) and toks[i].K != "}"
+    s = texScripted(toks, i)?
+    nodes = list.Append(s.N, nodes)
+    i = s.At
+  end
+  if closing
+    if i > value.Len(toks)
+      return result.Err("a { is never closed")
+    end
+    i += 1
+  else if i <= value.Len(toks)
+    return result.Err("a } closes nothing")
+  end
+  thin = leaf("<mspace width=\"0.1667em\"></mspace>")
+  out = []
+  for k in 1..value.Len(nodes)
+    if nodes[k].Fn and k > 1 and isOrd(nodes[k - 1])
+      out = list.Append(thin, out)
+    end
+    out = list.Append(nodes[k], out)
+    if nodes[k].Fn and k < value.Len(nodes) and not nodes[k + 1].Open
+      out = list.Append(thin, out)
+    end
+  end
+  result.Ok({Nodes: out, At: i})
+end
+
+defn TexMath(tex, display)
+  (** The MathML of a formula written in TeX, or an Err that says what is wrong. *)
+  if text.Trim(tex) == ""
+    return result.Err("the formula is empty")
+  end
+  toks = texTokens(tex)?
+  row = texRow(toks, 1, false)?
+  open = if display "<math display=\"block\">" else "<math>" end
+  result.Ok(text.Str(open, text.Join("", [x.H for x in row.Nodes]), "</math>"))
+end
 
 defn summary(s)
   (** The first sentence of a text, on one line. *)
@@ -146,47 +546,80 @@ defn summary(s)
   if value.IsMissing(k) line else text.ByteSlice(1, k, line) end
 end
 
-defn page(site, path, title, body)
+(* The words of the site itself, in English and in French; the reference, made from the code, is in English on both. *)
+enWords = {Book: "Book", Reference: "Reference", ReferenceLink: "Reference", Skip: "Skip to the text", Search: "Search  /",
+  SearchLabel: "Search the docs", Contents: "Contents", Where: "Where", Code: "Code", Output: "Output", RunsWith: "Runs with",
+  Language: "Language"}
+frWords = {Book: "Livre", Reference: "Référence", ReferenceLink: "Référence (en anglais)", Skip: "Aller au texte",
+  Search: "Rechercher  /", SearchLabel: "Rechercher dans la documentation", Contents: "Sommaire", Where: "Chemin",
+  Code: "Code", Output: "Sortie", RunsWith: "S’exécute avec", Language: "Langue"}
+wordsOf(lang) = if lang == "fr" frWords else enWords end
+frAlerts = [["Note", "Remarque"], ["Tip", "Astuce"], ["Important", "Important"], ["Warning", "Attention"], ["Caution", "Prudence"]]
+untranslated = "<p class=\"untranslated\">Cette page n’est pas encore traduite : la voici en anglais.</p>\n"
+
+defn langSwitch(site, path, lang)
+  (** The links to the same page in English and in French: a page of the reference, in English only, has the French home. *)
+  en = if lang == "fr" from(4, path) else path end
+  fr = if lang == "fr" path else if dict.Has("fr/$path", site.FrPaths) "fr/$path" else "fr/index.html" end
+  enLink = if lang == "en" "<a aria-current=\"true\">EN</a>" else "<a href=\"$(rel(path, en))\" hreflang=\"en\" lang=\"en\" aria-label=\"English\">EN</a>" end
+  frLink = if lang == "fr" "<a aria-current=\"true\">FR</a>" else "<a href=\"$(rel(path, fr))\" hreflang=\"fr\" lang=\"fr\" aria-label=\"Français\">FR</a>" end
+  "<nav class=\"langs\" aria-label=\"$(wordsOf(lang).Language)\">$enLink$frLink</nav>"
+end
+
+defn page(site, path, title, body, lang = "en")
   (** The HTML of a page: the text comes first, and the script at the end. *)
+  words = wordsOf(lang)
+  tree = if lang == "fr" site.FrTree else site.Tree end
   back = up(path)
-  way = wayTo(site.Tree, path)
-  text.Str("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
+  way = wayTo(tree, path)
+  home = if lang == "fr" "fr/index.html" else "index.html" end
+  switch = if site.HasFr langSwitch(site, path, lang) else "" end
+  text.Str("<!doctype html>\n<html lang=\"", lang, "\">\n<head>\n<meta charset=\"utf-8\">\n",
     "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
     "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'self'\">\n",
     "<title>", escape(title), " - ", escape(site.Title), "</title>\n",
     "<link rel=\"stylesheet\" href=\"", back, "site.css\">\n</head>\n",
-    "<body data-root=\"", back, "\">\n<a class=\"skip\" href=\"#text\">Skip to the text</a>\n",
-    "<header><a class=\"home\" href=\"", back, "index.html\">", escape(site.Title), "</a>",
+    "<body data-root=\"", back, "\">\n<a class=\"skip\" href=\"#text\">", words.Skip, "</a>\n",
+    "<header><a class=\"home\" href=\"", back, home, "\">", escape(site.Title), "</a>",
     "<span class=\"version\">", escape(site.Version), "</span>",
-    "<a class=\"ref\" href=\"", back, "ref/index.html\">Reference</a>",
-    "<input class=\"search\" type=\"search\" placeholder=\"Search  /\" aria-label=\"Search the docs\" autocomplete=\"off\"></header>\n",
-    "<div class=\"page\">\n<nav class=\"side\" aria-label=\"Contents\">\n", sideColumns(site.Tree, path, way, site.Columns), "</nav>\n",
-    "<main id=\"text\">\n", trail(site.Tree, path, way), body, "</main>\n</div>\n",
+    "<a class=\"ref\" href=\"", back, "ref/index.html\">", words.ReferenceLink, "</a>", switch,
+    "<input class=\"search\" type=\"search\" placeholder=\"", words.Search, "\" aria-label=\"", words.SearchLabel, "\" autocomplete=\"off\"></header>\n",
+    "<div class=\"page\">\n<nav class=\"side\" aria-label=\"", words.Contents, "\">\n", sideColumns(tree, path, way, if lang == "fr" site.FrColumns else site.Columns end), "</nav>\n",
+    "<main id=\"text\">\n", trail(tree, path, way, words.Where), body, "</main>\n</div>\n",
     "<script src=\"", back, "site.js\"></script>\n</body>\n</html>\n")
 end
 
 (* The side shows the site as the Finder shows folders, in columns: the first holds the book and the reference, each one
    opens the next, and the page's own children come last. *)
 
-defn treeOf(book, modules, lists)
+defn sections(p)
+  (** The sections of a page that the side and the search show, its headings ## and ###, each {Label, Path, Sub}. *)
+  [{Label: text.Replace("`", "", b.Text), Path: "$(p.Path)#$(p.Ids[b.Line])", Sub: b.Level == 3} for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)]
+end
+
+defn treeOf(book, modules, lists, words = enWords)
   (** The nodes of the side, by path: {Kids: path -> [{Label, Path}], Up: path -> the path above, Label: path -> label}. The
-      root is "". A chapter's children are its sections; a module's are its names, and a name whose part before a dot is
-      another name of the module goes under it: Date.Next under Date. *)
+      root is "": the books, the README, then the reference. A chapter's children are its sections; a module's are its
+      names, and a name whose part before a dot is another name of the module goes under it: Date.Next under Date. *)
   kids = {}
   ups = {}
   top = []
   for p in book
-    if p.File == "index.md"
-      (* A book: the home, or another one under the title of its index. *)
-      top = list.Append({Label: if p.Path == "index.html" "Book" else p.Title end, Path: p.Path}, top)
+    if dict.GetOr("Readme", false, p)
+      top = list.Append({Label: "README", Path: p.Path}, top)
       ups[p.Path] = ""
-      kids[p.Path] = [{Label: c.Title, Path: c.Path} for c in book if c.Book == p.Book and c.File != "index.md"]
+      kids[p.Path] = sections(p)
+    else if p.File == "index.md"
+      (* A book: the home, or another one under the title of its index. *)
+      top = list.Append({Label: if p.Path == "index.html" or p.Path == "fr/index.html" words.Book else p.Title end, Path: p.Path}, top)
+      ups[p.Path] = ""
+      kids[p.Path] = [{Label: c.Title, Path: c.Path} for c in book if c.Book == p.Book and c.File != "index.md" and not dict.GetOr("Readme", false, c)]
     else
       ups[p.Path] = p.Index
-      kids[p.Path] = [{Label: text.Replace("`", "", b.Text), Path: "$(p.Path)#$(slug(b.Text))", Sub: b.Level == 3} for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)]
+      kids[p.Path] = sections(p)
     end
   end
-  top = list.Append({Label: "Reference", Path: "ref/index.html"}, top)
+  top = list.Append({Label: words.Reference, Path: "ref/index.html"}, top)
   ups["ref/index.html"] = ""
   (* A module of a folder, std/date, goes under the folder's page, as its use writes it. *)
   kids["ref/index.html"] = list.Concat([{Label: m, Path: modulePath(m)} for m in modules if not text.Contains("/", m)],
@@ -324,14 +757,14 @@ defn sideColumns(tree, path, way, cache = {})
   text.Join("", out)
 end
 
-defn trail(tree, path, way)
+defn trail(tree, path, way, where = "Where")
   (** The way to the page above its text: Reference › std/date › Date › Next, each part a link but the last. *)
   steps = list.Skip(1, way)
   if value.Len(steps) < 2
     return ""
   end
   links = [text.Str("<a href=\"", rel(path, s), "\">", escape(tree.Label[s]), "</a>") for s in list.DropLast(1, steps)]
-  text.Str("<nav class=\"trail\" aria-label=\"Where\">", text.Join(" <span aria-hidden=\"true\">›</span> ", list.Append(text.Str("<span>", escape(tree.Label[list.Last(steps)]), "</span>"), links)), "</nav>\n")
+  text.Str("<nav class=\"trail\" aria-label=\"", where, "\">", text.Join(" <span aria-hidden=\"true\">›</span> ", list.Append(text.Str("<span>", escape(tree.Label[list.Last(steps)]), "</span>"), links)), "</nav>\n")
 end
 
 defn entryBody(site, path, e)
@@ -386,9 +819,93 @@ defn wordsBody(site, path)
   text.Str("<h1>Keywords</h1>\n<p>The words of the language itself. Each one has its page, with examples.</p>\n<dl class=\"names\">\n", rows, "</dl>\n")
 end
 
+(* The colors of a site: one color of the project, [site] color, from which the build makes the colors of its links, headings,
+   band, tables and code, in the light and the dark look, each dark or light enough to be read: every text on its
+   background reaches 4.5:1, the AA level of WCAG 2.2, as its relative luminance gives it. A color that can't is a mistake. *)
+
+hexDigits = "0123456789abcdef"
+
+rgbOf(hex) = [16 * text.ByteFind(text.Lower(text.ByteSlice(k, k, hex)), 1, hexDigits) + text.ByteFind(text.Lower(text.ByteSlice(k + 1, k + 1, hex)), 1, hexDigits) - 17 for k in [2, 4, 6]]
+isHexColor(t) = value.IsText(t) and text.ByteLength(t) == 7 and text.StartsWith("#", t) and list.All([text.Contains(c, hexDigits) for c in text.Chars(text.Lower(text.ByteSlice(2, 7, t)))])
+hexOf(c) = text.Str("#", text.Join("", [text.Str(text.ByteSlice(math.Div(v, 16) + 1, math.Div(v, 16) + 1, hexDigits), text.ByteSlice(math.Mod(v, 16) + 1, math.Mod(v, 16) + 1, hexDigits)) for v in c]))
+mix(a, b, t) = [math.Round(a[k] * (1 - t) + b[k] * t) for k in 1..3]   (** The color a part t of the way from a to b. *)
+
+defn channel(v)
+  s = v / 255.0
+  if s <= 0.04045 s / 12.92 else ((s + 0.055) / 1.055) ^ 2.4 end
+end
+
+luminance(c) = 0.2126 * channel(c[1]) + 0.7152 * channel(c[2]) + 0.0722 * channel(c[3])
+
+defn contrast(a, b)
+  (** The contrast ratio of two colors, from 1 to 21, as WCAG 2.2 defines it. *)
+  x = luminance(a)
+  y = luminance(b)
+  (list.Max(x, y) + 0.05) / (list.Min(x, y) + 0.05)
+end
+
+defn toward(c, target, grounds, ratio)
+  (** The color c moved toward target by the smallest step, of a hundredth, that reads at ratio on every one of grounds. *)
+  for k in 0..100
+    m = mix(c, target, k / 100.0)
+    if list.All([contrast(m, g) >= ratio for g in grounds])
+      return m
+    end
+  end
+  target
+end
+
+(* The neutral colors of both looks, and those of GitHub's alerts: note, tip, important, warning, caution. *)
+lightLook = {Page: "#ffffff", Side: "#f7f8fa", Code: "#f7f8fa", Ink: "#1e1f22", Muted: "#6c707e",
+  Alerts: ["#0969da", "#1a7f37", "#8250df", "#9a6700", "#cf222e"]}
+darkLook = {Page: "#0e1013", Side: "#131518", Code: "#1c1e22", Ink: "#dadde2", Muted: "#8d929a",
+  Alerts: ["#4493f8", "#3fb950", "#ab7df8", "#d29922", "#f85149"]}
+alertNames = ["note", "tip", "important", "warning", "caution"]
+
+defn lookOf(color, look, dark)
+  (** The colors of one look for the color of the project, {Vars: [name, color], Pairs: [what, text, background]}: each pair
+      a text that must read on its background. *)
+  c = rgbOf(color)
+  white = [255, 255, 255]
+  page = rgbOf(look.Page)
+  base = if dark page else white end
+  zebra = mix(c, base, if dark 0.9 else 0.965 end)
+  tint = mix(c, base, if dark 0.84 else 0.92 end)
+  pick = mix(c, base, if dark 0.72 else 0.85 end)
+  grounds = [page, rgbOf(look.Side), zebra, tint, pick]
+  accent = toward(c, if dark white else [0, 0, 0] end, grounds, 4.6)
+  band = toward(mix(c, [0, 0, 0], if dark 0.45 else 0.2 end), [0, 0, 0], [white], 4.6)
+  vars = [["accent", accent], ["band", band], ["on-band", white], ["zebra", zebra], ["tint", tint], ["pick", pick]]
+  alerts = [[text.Str("alert-", alertNames[k]), rgbOf(look.Alerts[k])] for k in 1..5]
+  ink = rgbOf(look.Ink)
+  pairs = list.Concat([["links and headings", accent, g] for g in grounds],
+    [["the band's words", white, band], ["text on a zebra row", ink, zebra],
+     ["inline code", ink, tint], ["the current page", ink, pick], ["muted text", rgbOf(look.Muted), page],
+     ["muted text in the side", rgbOf(look.Muted), rgbOf(look.Side)]])
+  {Vars: list.Concat(vars, alerts), Pairs: list.Concat(pairs, [[text.Str("the title of an alert ", alertNames[k]), rgbOf(look.Alerts[k]), page] for k in 1..5])}
+end
+
+defn colorCss(color, where)
+  (** The variables of the colors of a site, light and dark, as CSS; or an Err for a pair that doesn't read. *)
+  looks = [lookOf(color, lightLook, false), lookOf(color, darkLook, true)]
+  for k in 1..2
+    for p in looks[k].Pairs
+      r = contrast(p[2], p[3])
+      if r < 4.5
+        return result.Err("$where: $color gives $(p[1]) a contrast of $(text.Decimals(2, r)):1 in the $(if k == 1 "light" else "dark" end) look, below 4.5:1: take a color nearer the middle.")
+      end
+    end
+  end
+  vars(look) = text.Join(" ", ["--$(v[1]): $(hexOf(v[2]));" for v in look.Vars])
+  dark = vars(looks[2])
+  result.Ok(text.Str("\n/* The colors of this site, made from its color ", color, " by cesia doc --site. */\n:root { ", vars(looks[1]), " }\n",
+    "@media (prefers-color-scheme: dark) { :root:not([data-theme=\"light\"]) { ", dark, " } }\n",
+    ":root[data-theme=\"dark\"] { ", dark, " }\n"))
+end
+
 defn settings(root)
-  (** The [site] table of the project, its name and its folders of sources: {Name, Src, Title, Source}. *)
-  out = {Name: "", Src: ["src"], Title: "Cesia", Source: ""}
+  (** The [site] table of the project, its name and its folders of sources: {Name, Src, Title, Source, Color, ColorAt}. *)
+  out = {Name: "", Src: ["src"], Title: "Cesia", Source: "", Color: "#2b5fd9", ColorAt: "the color of a site without [site] color"}
   file = "$root/cesia.toml"
   if not sys.Exists(file)
     return result.Ok(out)
@@ -407,8 +924,14 @@ defn settings(root)
         out.Title = e.Value
       else if value.Equal(t.Path, ["site"]) and e.Key == "source"
         out.Source = e.Value
+      else if value.Equal(t.Path, ["site"]) and e.Key == "color"
+        if not isHexColor(e.Value)
+          return result.Err("$file:$(e.Line): [site] color is a color written #rrggbb, as \"#3b5bdb\".")
+        end
+        out.Color = text.Lower(e.Value)
+        out.ColorAt = "$file:$(e.Line)"
       else if value.Equal(t.Path, ["site"])
-        return result.Err("$file:$(e.Line): [site] has title and source, not $(e.Key).")
+        return result.Err("$file:$(e.Line): [site] has title, source and color, not $(e.Key).")
       end
     end
   end
@@ -608,14 +1131,18 @@ end
 
 defn program(runs, chosen, mark)
   (** The program of the blocks chosen among those of a page: its use lines first, then each line of code on the line of the
-      page where it is written, so that an error names that line. {Text, Uses}: Uses are the lines of the use lines. *)
+      page where it is written, so that an error names that line. {Text, Uses}: Uses are the lines of the use lines. The
+      norun blocks that follow one another are one function that nothing calls: checked as one program, never run. *)
   uses = []
   useLines = []
   at = {}
   last = 0
-  for k in chosen
+  for j in 1..value.Len(chosen)
+    k = chosen[j]
     b = runs[k]
-    at[b.Line] = if b.Words.Norun "defn bookNotRun$k()" else "bookAt($k)" end
+    opens = b.Words.Norun and (j == 1 or not runs[chosen[j - 1]].Words.Norun)
+    closes = b.Words.Norun and (j == value.Len(chosen) or not runs[chosen[j + 1]].Words.Norun)
+    at[b.Line] = if not b.Words.Norun "bookAt($k)" else if opens "defn bookNotRun$k()" else "" end
     lines = text.Lines(b.Text)
     cut = arrows(b.Text)
     fresh = freshLines(b.Text)
@@ -637,7 +1164,7 @@ defn program(runs, chosen, mark)
       end
     end
     last = b.Line + value.Len(lines) + 1
-    if b.Words.Norun
+    if closes
       at[last] = "end"
     end
   end
@@ -920,7 +1447,7 @@ defn pagesOf(root, name, prefix, site)
         broken = true
       else if first == "cesia"
         runs = list.Append({Line: b.Line, Info: b.Info, Text: b.Text, Words: words.Value}, runs)
-      else if first == "toml" and result.IsErr(cesia.Toml(b.Text))
+      else if first == "toml" and not ("norun" in text.Split(" ", b.Info)) and result.IsErr(cesia.Toml(b.Text))
         e = cesia.Toml(b.Text).Error
         fiber.Send("$at/$f:$(b.Line + e.Line): $(e.Message)", site.Mistakes)
       end
@@ -939,7 +1466,8 @@ defn pagesOf(root, name, prefix, site)
       end
     end
     pages = list.Append({File: f, Source: "$at/$f", Path: text.Str(prefix, bookPath(f)), Title: titleOf(blocks, f), Text: source, Blocks: blocks,
-      Runs: runs, Lines: text.Lines(source), Broken: broken, Book: name, Index: text.Str(prefix, "index.html"), Files: "$dir/files"}, pages)
+      Runs: runs, Lines: text.Lines(source), Broken: broken, Book: name, Index: text.Str(prefix, "index.html"), Files: "$dir/files",
+      Lang: "en", Translated: true, Readme: false, KeyText: source, Ids: headingIds(blocks)}, pages)
   end
   pages
 end
@@ -947,7 +1475,7 @@ end
 defn booksOf(root, site)
   (** The books of the project, {Home, Pages}, the pages of the home first: each folder of docs/ with pages is a book,
       docs/book/ the home at the root of the site, and any other under its own name. A folder of docs/ with no page, as one
-      of images, is none. *)
+      of images, is none, and docs/fr/ holds the French of the others. *)
   docs = "$root/docs"
   if not sys.Exists(docs)
     return {Home: "book", Pages: []}
@@ -955,13 +1483,181 @@ defn booksOf(root, site)
   names = []
   for n in result.UnwrapOr([], sys.List(docs))
     info = sys.Stat("$docs/$n")
-    if result.IsOk(info) and info.Value.IsDir and list.Any([text.EndsWith(".md", f) for f in filesUnder("$docs/$n")])
+    if n != "fr" and result.IsOk(info) and info.Value.IsDir and list.Any([text.EndsWith(".md", f) for f in filesUnder("$docs/$n")])
       names = list.Append(n, names)
     end
   end
   home = if "book" in names "book" else (if value.Len(names) > 0 names[1] else "" end) end
   ordered = list.Concat([n for n in names if n == home], [n for n in names if n != home])
   {Home: home, Pages: list.FlatMap(n -> pagesOf(root, n, if n == home "" else "$n/" end, site), ordered)}
+end
+
+(* The README of the project, README.md, is a page of the site, readme.html, made from it at each build; README.fr.md is that
+   of the French site. Its cesia blocks are shown in color, never run: a README shows a server as often as not. *)
+
+defn readmeOf(root, file, path, lang, english = missing)
+  (** The page of a README, as a page of the book is, or missing when there is none. On the French site, a README not
+      translated yet is the English one. *)
+  if not sys.Exists("$root/$file")
+    if value.IsMissing(english)
+      return missing
+    end
+    return {File: english.File, Source: english.Source, Path: path, Title: english.Title, Text: english.Text, Blocks: english.Blocks, Runs: [],
+      Lines: english.Lines, Broken: false, Book: "", Index: path, Files: "", Lang: lang, Translated: false, Readme: true, KeyText: english.Text, En: english,
+      Ids: english.Ids}
+  end
+  source = sys.Read("$root/$file").Value
+  blocks = markdown.Parse(source)
+  {File: file, Source: file, Path: path, Title: "README", Text: source, Blocks: blocks, Runs: [], Lines: text.Lines(source), Broken: false,
+    Book: "", Index: path, Files: "", Lang: lang, Translated: true, Readme: true, KeyText: if value.IsMissing(english) source else text.Str(source, "\n", english.Text) end, En: english,
+    Ids: headingIds(blocks)}
+end
+
+(* The French site: docs/fr/BOOK/PAGE.md is the French of docs/BOOK/PAGE.md, at fr/ and the page's path. A page not there
+   yet shows the English one under a note. A French page keeps its English page's headings, in their levels and order, its
+   blocks of code byte for byte, and its links, to the same pages and headings: one that drifts is a mistake, so a change
+   of the English text shows where the French must follow. The blocks being the same, they run once, for the English. *)
+
+defn runsOf(blocks)
+  (** The cesia blocks of a page, as pagesOf takes them, for a French page whose English one checked them. *)
+  out = []
+  for b in codeBlocks(blocks)
+    words = blockWords(b.Info)
+    if text.Split(" ", b.Info)[1] == "cesia" and result.IsOk(words)
+      out = list.Append({Line: b.Line, Info: b.Info, Text: b.Text, Words: words.Value}, out)
+    end
+  end
+  out
+end
+
+defn frenchOf(root, en, site)
+  (** The French page of an English page of a book. *)
+  file = "docs/fr/$(en.Book)/$(en.File)"
+  path = "fr/$(en.Path)"
+  index = "fr/$(en.Index)"
+  if not sys.Exists("$root/$file")
+    return {File: en.File, Source: en.Source, Path: path, Title: en.Title, Text: en.Text, Blocks: en.Blocks, Runs: en.Runs, Lines: en.Lines,
+      Broken: en.Broken, Book: en.Book, Index: index, Files: en.Files, Lang: "fr", Translated: false, Readme: false, KeyText: en.Text, En: en, Ids: en.Ids}
+  end
+  source = sys.Read("$root/$file").Value
+  blocks = markdown.Parse(source)
+  {File: en.File, Source: file, Path: path, Title: titleOf(blocks, en.File), Text: source, Blocks: blocks, Runs: runsOf(blocks), Lines: text.Lines(source),
+    Broken: en.Broken, Book: en.Book, Index: index, Files: en.Files, Lang: "fr", Translated: true, Readme: false, KeyText: text.Str(source, "\n", en.Text), En: en,
+    Ids: headingIds(blocks)}
+end
+
+defn strays(root, book)
+  (** The pages of docs/fr/ that are the French of no English page. *)
+  known = ["docs/fr/$(p.Book)/$(p.File)" for p in book]
+  ["docs/fr/$f: no English page docs/$f has this page as its French." for f in filesUnder("$root/docs/fr") if text.EndsWith(".md", f) and not text.StartsWith("files/", f) and not text.Contains("/files/", f) and not ("docs/fr/$f" in known)]
+end
+
+defn linksOf(site, page)
+  (** Where the links of a page lead, each {To, Line}: a page and the place of the heading on it (its count from the top),
+      a name of the reference, or a URL elsewhere. *)
+  seen = fiber.Channel()
+  defn url(u, line)
+    fiber.Send({U: u, Line: line}, seen)
+    u
+  end
+  defn link(t, line)
+    if dict.Has(t, site.Targets)
+      fiber.Send({U: "", Name: t, Line: line}, seen)
+    end
+    missing
+  end
+  markdown.Html(page.Blocks, {Code: markdown.Plain.Code, Link: link, Url: url, Anchor: markdown.Plain.Anchor})
+  out = []
+  for l in drained(seen)
+    if dict.Has("Name", l)
+      out = list.Append({To: "[$(l.Name)]", Line: l.Line, Anchor: ""}, out)
+    else
+      f = text.Split("#", l.U)[1]
+      inside = text.StartsWith("#", l.U) or value.IsSome(local(l.U))
+      self = if page.Lang == "fr" from(4, page.Path) else page.Path end
+      target = if text.StartsWith("#", l.U) self else if not inside missing else if page.Readme readmeTarget(site, f) else if text.EndsWith(".md", f) bookTarget(site, page.Book, f) else joined(parent(self), f) end
+      english = if value.IsSome(target) and text.StartsWith("fr/", target) from(4, target) else target end
+      out = list.Append({To: if not inside l.U else if value.IsMissing(english) "?$f" else english end, Line: l.Line, Anchor: if inside and text.Contains("#", l.U) from(2, anchorOf(l.U)) else "" end}, out)
+    end
+  end
+  out
+end
+
+defn placesOf(page)
+  (** The place of each heading of a page, from 1, by its id: what a link to it names, read once a page. *)
+  out = {}
+  k = 0
+  for b in headingsIn(page.Blocks)
+    k += 1
+    out[page.Ids[b.Line]] = k
+  end
+  out
+end
+
+defn headingPlace(site, path, anchor, lang)
+  (** The place of the heading an anchor names on a page, from 1, in the page of that language; 0 for none. *)
+  if anchor == ""
+    return -1
+  end
+  places = dict.Get(if lang == "fr" "fr/$path" else path end, if lang == "fr" site.FrPlaces else site.Places end)
+  if value.IsMissing(places) 0 else dict.GetOr(anchor, 0, places) end
+end
+
+defn parity(site, en, fr)
+  (** The ways a French page drifts from its English page, each a mistake with its place. *)
+  out = []
+  eh = [b.Level for b in headingsIn(en.Blocks)]
+  fh = [b.Level for b in headingsIn(fr.Blocks)]
+  if not value.Equal(eh, fh)
+    k = 1
+    while k <= list.Min(value.Len(eh), value.Len(fh)) and eh[k] == fh[k]
+      k += 1
+    end
+    out = list.Append("$(fr.Source): its headings drift from those of $(en.Source) from heading $k on: a French page has the same headings, of the same levels, in the same order ($(value.Len(fh)) here, $(value.Len(eh)) there).", out)
+  end
+  ec = codeBlocks(en.Blocks)
+  fc = codeBlocks(fr.Blocks)
+  if value.Len(ec) != value.Len(fc)
+    out = list.Append("$(fr.Source): $(value.Len(fc)) blocks of code, where $(en.Source) has $(value.Len(ec)): a French page copies them all, byte for byte.", out)
+  else
+    for k in 1..value.Len(ec)
+      if ec[k].Info != fc[k].Info or ec[k].Text != fc[k].Text
+        out = list.Append("$(fr.Source):$(fc[k].Line): this block isn't the one of $(en.Source):$(ec[k].Line), which a French page copies byte for byte.", out)
+      end
+    end
+  end
+  where(l, lang) = if l.Anchor == "" l.To else text.Str(l.To, "#", headingPlace(site, l.To, l.Anchor, lang)) end
+  el = list.Sort([where(l, "en") for l in linksOf(site, en)])
+  fl = []
+  for l in linksOf(site, fr)
+    if l.Anchor != "" and headingPlace(site, l.To, l.Anchor, "fr") == 0
+      out = list.Append("$(fr.Source):$(l.Line): #$(l.Anchor) names no heading of the French $(l.To).", out)
+    end
+    fl = list.Append(where(l, "fr"), fl)
+  end
+  fl = list.Sort(fl)
+  if not value.Equal(el, fl)
+    times(x, xs) = list.Count(y -> y == x, xs)
+    gone = list.Unique([x for x in el if times(x, el) > times(x, fl)])
+    added = list.Unique([x for x in fl if times(x, fl) > times(x, el)])
+    said = list.Concat(if value.Len(gone) == 0 [] else [text.Str("not here: ", text.Join(", ", gone))] end, if value.Len(added) == 0 [] else [text.Str("only here: ", text.Join(", ", added))] end)
+    out = list.Append("$(fr.Source): its links drift from those of $(en.Source), $(text.Join("; ", said)) (a link to a heading names its place on its page).", out)
+  end
+  out
+end
+
+defn frenchRuns(en, fr, r)
+  (** What the blocks of a French page printed: those of its English page, on the French page's own lines. *)
+  if value.IsMissing(r) or not fr.Translated or value.Len(en.Runs) != value.Len(fr.Runs)
+    return r
+  end
+  shift = {}
+  for k in 1..value.Len(en.Runs)
+    for i in 0..value.Len(text.Lines(en.Runs[k].Text))
+      shift[en.Runs[k].Line + i] = fr.Runs[k].Line + i
+    end
+  end
+  {Output: r.Output, Values: [[dict.GetOr(v[1], v[1], shift), v[2]] for v in r.Values]}
 end
 
 defn bookRuns(pages, site, root, config)
@@ -1025,27 +1721,31 @@ defn shownCode(run, values)
   text.Join("\n", shown)
 end
 
-defn folded(part, label, words)
-  (** A part of a block, inside a details that opens on a click if the block folds it. *)
-  if text.Lower(label) in words.Fold "<details><summary>$label</summary>\n$part</details>\n" else part end
+defn folded(part, which, label, words)
+  (** A part of a block, code or output, inside a details that opens on a click if the block folds it. *)
+  if which in words.Fold "<details><summary>$label</summary>\n$part</details>\n" else part end
 end
 
-defn bookBlock(run, output, values, hooks)
+defn bookBlock(run, output, values, hooks, said = enWords)
   (** The HTML of a cesia block of the book: its code, and under it what it printed. *)
   words = run.Words
-  code = if "code" in words.Hide "" else folded(codeBlock(shownCode(run, values)), "Code", words) end
+  code = if "code" in words.Hide "" else folded(codeBlock(shownCode(run, values)), "code", said.Code, words) end
   body = if text.EndsWith("\n", output) text.ByteSlice(1, text.ByteLength(output) - 1, output) else output end
   shown = if words.Md html(output, hooks) else "<pre class=\"output\"><code>$(escape(body))</code></pre>\n" end
-  out = if output == "" or "output" in words.Hide "" else folded(shown, "Output", words) end
+  out = if output == "" or "output" in words.Hide "" else folded(shown, "output", said.Output, words) end
   (* The permissions the block ran with, as cesia run takes them: a reader who types it needs them too. *)
   asked = [if a == "net" "net=127.0.0.1" else a end for a in words.Allow]
-  allow = if value.Len(asked) == 0 "" else "<p class=\"allow\">Runs with <code>--allow $(escape(text.Join(",", asked)))</code></p>\n" end
+  allow = if value.Len(asked) == 0 "" else "<p class=\"allow\">$(said.RunsWith) <code>--allow $(escape(text.Join(",", asked)))</code></p>\n" end
   text.Str(code, allow, out)
 end
 
 defn bookBody(site, page, results)
-  (** The main part of a page of the book, each cesia block with what it printed. *)
-  hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line", book = page.Book)
+  (** The main part of a page of the book or of a README, each cesia block with what it printed. A page of the French site
+      has the French words of the site, and one not translated yet the English text under a note that says so. On the
+      English site, a heading whose id changed when the ids became GitHub's keeps the old one too. *)
+  lang = page.Lang
+  ids = page.Ids
+  hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line", book = page.Book, formulas = true, lang = lang, ids = ids)
   r = dict.GetOr(page.Path, {Output: [], Values: []}, results)
   values = dict.Dict([{Key: v[1], Value: v[2]} for v in r.Values])
   defn code(info, s, line)
@@ -1053,16 +1753,30 @@ defn bookBody(site, page, results)
     if text.Split(" ", info)[1] != "cesia" or value.IsMissing(k)
       return hooks.Code(info, s, line)
     end
-    bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks)
+    bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks, said = wordsOf(lang))
   end
-  html(page.Text, {Code: code, Link: hooks.Link, Url: hooks.Url, Anchor: hooks.Anchor})
+  out = html(page.Text, dict.Put("Code", code, hooks))
+  if lang == "fr"
+    for a in frAlerts
+      out = text.Replace("<p class=\"alert-title\">$(a[1])</p>", "<p class=\"alert-title\">$(a[2])</p>", out)
+    end
+    return if page.Translated out else text.Str(untranslated, "<div lang=\"en\">\n", out, "</div>\n") end
+  end
+  known = dict.Values(ids)
+  for b in headingsIn(page.Blocks)
+    old = oldSlug(b.Text)
+    if old != ids[b.Line] and old != "" and not (old in known)
+      out = text.Replace("<h$(b.Level) id=\"$(ids[b.Line])\">", "<h$(b.Level) id=\"$(ids[b.Line])\"><span id=\"$old\"></span>", out)
+    end
+  end
+  out
 end
 
 defn bookSearch(page)
   (** What the search knows of a page of the book: the page, and each of its sections. *)
   texts = [b.Text for b in page.Blocks if b.Kind == "paragraph"]
   out = [["page", page.Path, page.Title, if value.Len(texts) == 0 "" else summary(texts[1]) end, ""]]
-  list.Concat(out, [["section", "$(page.Path)#$(slug(b.Text))", text.Replace("`", "", b.Text), page.Title, ""] for b in page.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)])
+  list.Concat(out, [["section", c.Path, c.Label, page.Title, ""] for c in sections(page)])
 end
 
 defn referencePages(site, modules, lists)
@@ -1148,14 +1862,16 @@ defn keptReference(folder, key, prints)
 end
 
 defn pageKey(key, shape, page, results)
-  (** What a page of the book is made from: the reference, the titles and sections of every page, its text and its runs. *)
-  cesia.Fingerprint(text.Str(key, "\n", shape, "\n", page.Path, "\n", page.Text, "\n", value.Text([dict.GetOr(page.Path, missing, results)])))
+  (** What a page of the book is made from: the reference, the titles and sections of every page, its text (and the English
+      one, for a French page) and its runs. *)
+  cesia.Fingerprint(text.Str(key, "\n", shape, "\n", page.Path, "\n", page.KeyText, "\n", value.Text([dict.GetOr(page.Path, missing, results)])))
 end
 
 defn build(root, folder, cache, runs)
   (** The pages of the site, written into the folder; the programs of its pages run in the folder runs. An Err lists the
       mistakes. *)
   config = settings(root)?
+  colors = colorCss(config.Color, config.ColorAt)?
   modules = cesia.DocNames()
   lists = dict.Dict([{Key: m, Value: names(m)} for m in modules])
   targets = {}
@@ -1168,42 +1884,80 @@ defn build(root, folder, cache, runs)
       targets[n.Name] = n.Path
     end
   end
-  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache, Run: runs, Tree: {}, Columns: {}, Version: cesia.Version(), Home: "book"}
+  hasFr = sys.Exists("$root/docs/fr") or sys.Exists("$root/README.fr.md")
+  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache,
+    Run: runs, Tree: {}, Columns: {}, Version: if config.Name == "cesia" cesia.Version() else "Cesia $(cesia.Version())" end, Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, Places: {}, FrPlaces: {}}
   books = booksOf(root, site)
   book = books.Pages
   site.Home = books.Home
   site.Book = book
-  site.Tree = treeOf(book, modules, lists)
   site.BookPaths = dict.Dict([{Key: p.Path, Value: true} for p in book])
+  readme = readmeOf(root, "README.md", "readme.html", "en")
+  english = list.Concat(book, if value.IsSome(readme) [readme] else [] end)
+  site.Tree = treeOf(english, modules, lists)
+  site.Places = dict.Dict([{Key: p.Path, Value: placesOf(p)} for p in english])
+  french = []
+  if hasFr
+    frReadme = readmeOf(root, "README.fr.md", "fr/readme.html", "fr", english = readme)
+    french = list.Concat([frenchOf(root, p, site) for p in book], if value.IsSome(frReadme) [frReadme] else [] end)
+    site.FrPaths = dict.Dict([{Key: p.Path, Value: true} for p in french])
+    site.FrPlaces = dict.Dict([{Key: p.Path, Value: placesOf(p)} for p in french])
+    site.FrTree = treeOf(french, modules, lists, words = frWords)
+    for m in strays(root, book)
+      fiber.Send(m, site.Mistakes)
+    end
+    for p in french
+      if p.Translated and value.IsSome(p.En)
+        for m in parity(site, p.En, p)
+          fiber.Send(m, site.Mistakes)
+        end
+      end
+    end
+  end
   results = bookRuns(book, site, root, config)
-  key = cesia.Fingerprint(text.Str(stamp(root, config), "|", config.Title, "|", config.Source, "|", text.Join(",", [p.Path for p in book])))
+  for p in french
+    if not p.Readme
+      r = frenchRuns(p.En, p, dict.Get(p.En.Path, results))
+      if value.IsSome(r)
+        results[p.Path] = r
+      end
+    end
+  end
+  key = cesia.Fingerprint(text.Str(stamp(root, config), "|", config.Title, "|", config.Source, "|", config.Color, "|", hasFr, "|", text.Join(",", [p.Path for p in english])))
   prints = printsIn(folder)
   kept = keptReference(folder, key, prints)
   (* A page of the book is made again only when what it is made from changed: the titles and sections of the book are in
      the side of each page, so they count for all. *)
-  shape = text.Join("\n", [text.Str(p.Path, " ", p.Title, " ", text.Join("|", [b.Text for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)])) for p in book])
+  shapeOf(ps) = text.Join("\n", [text.Str(p.Path, " ", p.Title, " ", text.Join("|", [b.Text for b in p.Blocks if b.Kind == "heading" and (b.Level == 2 or b.Level == 3)])) for p in ps])
+  shape = text.Str(shapeOf(english), "\n", shapeOf(french))
   last = saved(folder, ".book")
   before = if value.IsMissing(last) {} else dict.GetOr("Pages", {}, last) end
   bookKeys = {}
   keptBook = []
-  site.Columns = sideCache(site.Tree, [p.Path for p in book])
+  site.Columns = sideCache(site.Tree, [p.Path for p in english])
+  site.FrColumns = if hasFr sideCache(site.FrTree, [p.Path for p in french]) else {} end
   pages = []
   search = []
-  home = {Label: if value.Len(book) > 0 book[1].Title else "Reference" end, Path: "index.html"}
-  for k in 1..value.Len(book)
-    p = book[k]
+  frSearch = []
+  homes = {en: {Label: if value.Len(book) > 0 book[1].Title else "Reference" end, Path: "index.html"}, fr: {Label: if value.Len(french) > 0 french[1].Title else "Référence" end, Path: "fr/index.html"}}
+  everyPage = list.Concat(english, french)
+  for p in everyPage
     bookKeys[p.Path] = pageKey(key, shape, p, results)
     old = dict.Get(p.Path, before)
     if value.IsSome(old) and old.Key == bookKeys[p.Path] and dict.Get(p.Path, prints) == old.Print
       keptBook = list.Append({Path: p.Path, Print: old.Print}, keptBook)
     else
-      same = [c for c in book if c.Book == p.Book]
-      around = near([{Label: c.Title, Path: c.Path} for c in same], list.IndexOf(p.Path, [c.Path for c in same]))
-      up = if p.Path == "index.html" missing else if p.File == "index.md" home else {Label: same[1].Title, Path: p.Index} end
-      body = text.Str(bookBody(site, p, results), pager(p.Path, around.Prev, around.Next, up))
-      pages = list.Append({Path: p.Path, Html: page(site, p.Path, p.Title, body)}, pages)
+      same = [c for c in everyPage if c.Book == p.Book and c.Lang == p.Lang and not c.Readme]
+      around = if p.Readme {Prev: missing, Next: missing} else near([{Label: c.Title, Path: c.Path} for c in same], list.IndexOf(p.Path, [c.Path for c in same])) end
+      up = if p.Readme or p.Path == "index.html" or p.Path == "fr/index.html" missing else if p.File == "index.md" homes[p.Lang] else {Label: same[1].Title, Path: p.Index} end
+      body = text.Str(bookBody(site, p, results), if p.Readme "" else pager(p.Path, around.Prev, around.Next, up) end)
+      pages = list.Append({Path: p.Path, Html: page(site, p.Path, p.Title, body, lang = p.Lang)}, pages)
     end
-    search = list.Concat(search, bookSearch(p))
+    if p.Lang == "fr"
+      frSearch = list.Concat(frSearch, bookSearch(p))
+    else
+      search = list.Concat(search, bookSearch(p))
+    end
   end
   (* A book with mistakes stops here: the pages of the reference would take most of the time, for nothing. *)
   early = list.Concat(drained(site.Mistakes), sameButCase(list.Concat([p.Path for p in pages], [p.Path for p in keptBook])))
@@ -1219,13 +1973,17 @@ defn build(root, folder, cache, runs)
     return result.Err(text.Join("\n", list.Unique(mistakes)))
   end
   pages = list.Append({Path: "search.js", Html: "window.cesiaSearch = $(json.Text(search));\n"}, pages)
-  pages = list.Append({Path: "site.css", Html: cesia.Asset("site.css")}, list.Append({Path: "site.js", Html: cesia.Asset("site.js")}, pages))
+  if hasFr
+    pages = list.Append({Path: "fr/search.js", Html: "window.cesiaSearch = $(json.Text(list.Concat(frSearch, ref.Search)));\n"}, pages)
+  end
+  pages = list.Append({Path: "site.css", Html: text.Str(cesia.Asset("site.css"), colors)}, list.Append({Path: "site.js", Html: cesia.Asset("site.js")}, pages))
+  pages = list.Append({Path: "math.woff2", Html: cesia.Asset("math.woff2")}, list.Append({Path: "math-OFL.txt", Html: cesia.Asset("math-OFL.txt")}, pages))
   now = written(folder, pages, kept = keptPages)?
   if value.IsMissing(kept)
     made = [{Path: p.Path, Print: now[p.Path]} for p in ref.Pages]
     sys.Write("$folder/.reference", json.Text({Key: key, Pages: made, Search: ref.Search}))?
   end
-  sys.Write("$folder/.book", json.Text({Pages: dict.Dict([{Key: p.Path, Value: {Key: bookKeys[p.Path], Print: now[p.Path]}} for p in book])}))?
+  sys.Write("$folder/.book", json.Text({Pages: dict.Dict([{Key: p.Path, Value: {Key: bookKeys[p.Path], Print: now[p.Path]}} for p in everyPage])}))?
   result.Ok(value.Len(pages) + value.Len(keptPages))
 end
 

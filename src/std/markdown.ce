@@ -2,8 +2,11 @@
     paragraphs, emphasis, code spans, fenced code, nested and ordered lists, quotes, tables, links with their URL or a name
     in brackets, rules and hard breaks; no indented code, no raw HTML, no reference definitions. Raw HTML is text: everything a page shows
     is escaped, so a text from anyone is safe in it, and a link leads only to http, https, mailto or a page of the site.
+    GitHub's alerts too: a quote whose first line is [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION]. And its
+    formulas, $...$ in a line and a paragraph of $$...$$, for hooks that write them.
     Parse gives the blocks with their lines; Html writes them, and asks its hooks for the colors of code, the target of a
-    name in brackets and the anchor of a heading. *)
+    name in brackets, the anchor of a heading and the HTML of a formula. *)
+use std/dict
 use std/list
 use std/math
 use std/text
@@ -18,8 +21,10 @@ Plain = {Code: (info, code, line) -> missing, Link: (target, line) -> missing, U
 (* The text with &, <, > and " written as HTML writes them, as CommonMark writes them: http.Escape is the one for programs. *)
 escape(s) = text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s))))
 
-(* The bytes that may start something inline: \ ` * _ [ ] < and the line end. Any other byte is text. *)
+(* The bytes that may start something inline: \ ` * _ [ ] < and the line end, and $ for hooks that write formulas. Any other
+   byte is text. *)
 specials = [b == 92 or b == 96 or b == 42 or b == 95 or b == 91 or b == 93 or b == 60 or b == 10 for b in 0..255]
+mathSpecials = [specials[b + 1] or b == 36 for b in 0..255]
 
 isPunct(b) = (b >= 33 and b <= 47) or (b >= 58 and b <= 64) or (b >= 91 and b <= 96) or (b >= 123 and b <= 126)
 
@@ -678,15 +683,38 @@ defn lastBracket(nodes)
   k
 end
 
+defn mathSpan(t, i)
+  (** The formula whose $ is at byte i, as GitHub reads one: {Tex, Next}, or missing. The $ that opens has no space after it;
+      the next $ closes it, with no space before it and no digit after it, on the same line, and no ` between them: "it
+      costs $5 and $6" holds none. *)
+  n = text.ByteLength(t)
+  if i >= n or text.Byte(i + 1, t) == 32 or text.Byte(i + 1, t) == 10 or text.Byte(i + 1, t) == 36
+    return missing
+  end
+  c = text.ByteFind("$", i + 1, t)
+  if value.IsMissing(c)
+    return missing
+  end
+  tex = text.ByteSlice(i + 1, c - 1, t)
+  before = text.Byte(c - 1, t)
+  digit = c < n and text.Byte(c + 1, t) >= 48 and text.Byte(c + 1, t) <= 57
+  if before == 32 or before == 92 or digit or text.Contains("\n", tex) or text.Contains("`", tex)
+    return missing
+  end
+  {Tex: tex, Next: c + 1}
+end
+
 defn inline(t, hooks, line)
   (** The HTML of the text of a paragraph, a heading or a cell. *)
   nodes = []
   n = text.ByteLength(t)
   i = 1
   plain = 1
+  formula = dict.GetOr("Math", missing, hooks)
+  starts = if value.IsMissing(formula) specials else mathSpecials end
   while i <= n
     b = text.Byte(i, t)
-    if not specials[b + 1]
+    if not starts[b + 1]
       i += 1
     else
       upto = i - 1
@@ -771,6 +799,16 @@ defn inline(t, hooks, line)
           nodes = list.Append({K: 0, H: "]"}, nodes)
           i += 1
         end
+      else if b == 36
+        span = mathSpan(t, i)
+        made = if value.IsSome(span) formula(span.Tex, false, line + text.Count("\n", text.ByteSlice(1, i, t))) else missing end
+        if value.IsSome(made)
+          nodes = list.Append({K: 0, H: made}, nodes)
+          i = span.Next
+        else
+          nodes = list.Append(textNode("$"), nodes)
+          i += 1
+        end
       else
         link = autolink(t, i)
         if value.IsSome(link)
@@ -804,7 +842,14 @@ end
 defn written(b, hooks, tight, out)
   (** The HTML of block b added to out. In a tight list, a paragraph has no <p>. *)
   kind = b.Kind
-  if kind == "paragraph"
+  shown = if kind == "paragraph" display(b, hooks) else missing end
+  alert = if kind == "quote" alertOf(b) else missing end
+  if value.IsSome(shown)
+    list.Append(shown, cr(out))
+  else if value.IsSome(alert)
+    inner = list.Reduce((o, x) -> written(x, hooks, false, o), list.Append("<div class=\"alert $(alert.Kind)\">\n<p class=\"alert-title\">$(alert.Title)</p>\n", cr(out)), alert.Blocks)
+    list.Append("</div>\n", cr(inner))
+  else if kind == "paragraph"
     if tight
       list.Append(inline(b.Text, hooks, b.Line), out)
     else
@@ -843,6 +888,44 @@ defn written(b, hooks, tight, out)
   end
 end
 
+defn display(b, hooks)
+  (** The HTML of a paragraph that is one formula, $$ ... $$, for hooks that write formulas; else missing. *)
+  formula = dict.GetOr("Math", missing, hooks)
+  t = b.Text
+  n = text.ByteLength(t)
+  if value.IsMissing(formula) or n < 4 or not text.StartsWith("$$$$", t) or not text.EndsWith("$$$$", t)
+    return missing
+  end
+  made = formula(text.Trim(text.ByteSlice(3, n - 2, t)), true, b.Line)
+  if value.IsMissing(made) missing else text.Str(made, "\n") end
+end
+
+alertKinds = ["NOTE", "TIP", "IMPORTANT", "WARNING", "CAUTION"]
+
+defn alertOf(b)
+  (** A quote that is one of GitHub's alerts, {Kind, Title, Blocks}: its first line is [!NOTE], [!TIP], [!IMPORTANT], [!WARNING]
+      or [!CAUTION], in any case, and something follows it. Else missing. *)
+  if value.Len(b.Blocks) == 0 or b.Blocks[1].Kind != "paragraph"
+    return missing
+  end
+  first = b.Blocks[1]
+  lines = text.Split("\n", first.Text)
+  mark = text.Upper(text.Trim(lines[1]))
+  if text.ByteLength(mark) < 4 or not text.StartsWith("[!", mark) or not text.EndsWith("]", mark)
+    return missing
+  end
+  word = text.ByteSlice(3, text.ByteLength(mark) - 1, mark)
+  if not (word in alertKinds)
+    return missing
+  end
+  rest = text.Trim(text.Join("\n", list.Skip(1, lines)))
+  blocks = list.Concat(if rest == "" [] else [{Kind: "paragraph", Text: rest, Line: first.Line + 1, Gap: false}] end, list.Skip(1, b.Blocks))
+  if value.Len(blocks) == 0
+    return missing
+  end
+  {Kind: text.Lower(word), Title: text.Str(text.ByteSlice(1, 1, word), text.Lower(text.ByteSlice(2, text.ByteLength(word), word))), Blocks: blocks}
+end
+
 defn table(b, hooks)
   (** The HTML of a table. *)
   attribute(k) = if b.Align[k] == "" "" else " align=\"$(b.Align[k])\"" end
@@ -856,6 +939,8 @@ defn Html(blocks, hooks)
   (** The HTML of blocks from Parse. hooks has Code(info, code, line), the HTML of a block of code or missing for a plain
       pre; Link(target, line), the URL of a [target] or missing to leave it as text; Url(url, line), the address a link
       written `[text](url)` leads to; and Anchor(level, title, line), the id of a heading or missing. Plain gives none of them.
+      With Math(tex, display, line) too, the text between two $ of a line, or a paragraph between $$ and $$ (display is
+      true), is a formula, whose HTML it gives, or missing to leave the text as it is; without it, a $ is text.
 
         Html(Parse("Some *words*."), Plain) --> "<p>Some <em>words</em>.</p>\n"
         Html(Parse("<script>"), Plain) --> "<p>&lt;script&gt;</p>\n" *)
