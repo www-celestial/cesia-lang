@@ -1,0 +1,1877 @@
+(** Graphs as values: lines, points, bars, histograms, heatmaps, densities and bands. Of puts layers on shared axes and
+    Grid sets graphs side by side. Nothing is drawn until a back-end asks for it: Svg gives the SVG text of a graph, Save
+    writes it to a file, and Scene gives its shapes in pixels, which Cemacs draws. The chapter Graphs of the book shows
+    each step with the papers it follows: the ticks of Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman
+    and Diaconis, and the colors of Okabe and Ito, viridis and ColorBrewer. *)
+use std/columns as col
+use std/list
+use std/math
+use std/matrix
+use std/regex
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(** A graph: one layer, the layers of Of on shared axes, or the graphs of Grid side by side. Its fields are private: the
+    functions of this package make a graph, and Svg, Save and Scene draw it.
+
+      Line([1, 2], [3, 4]) then value.IsStruct() --> true *)
+struct Graph
+  layers
+  title = missing
+  xtitle = missing
+  ytitle = missing
+  xscale = "linear"
+  yscale = "linear"
+  xlim = missing
+  ylim = missing
+  legend = missing
+  size = missing
+  cells = missing
+  columns = missing
+end
+
+one(l) = Graph([l])
+
+defn Line(x, y, label = missing, color = missing, width = 1.5, dash = missing)
+  (** A line through the points (x[i], y[i]), in their order. A NaN or an infinity in x or y cuts it: a gap, as in
+      matplotlib. color is written "#rrggbb"; without it, the layers take the colors of Okabe and Ito in turn. width is
+      in pixels; dash is missing for a solid line, or "dashed", "dotted" or "dashdot". A line whose x never decreases and
+      that has more than 4 points per pixel column keeps 4 points per column, as M4 does: the first, the last, the lowest
+      and the highest, which draw the same pixels.
+
+        Svg(Line([1, 2, 3], [2, 4, 3])) then result.IsOk() --> true
+        Svg(Line([1, 2, 3], [2, 4])) --> result.Err({Kind: "plot", Message: "plot.Line: x has 3 values and y has 2; give both the same number."}) *)
+  one({Fn: "Line", X: x, Y: y, Label: label, Color: color, Width: width, Dash: dash})
+end
+
+defn Points(x, y, label = missing, color = missing, size = 6, shape = "circle")
+  (** A marker at each point (x[i], y[i]): shape is "circle", "square", "triangle", "diamond", "cross" or "plus", and
+      size its width in pixels. A point with a NaN or an infinity is left out, and Scene counts it in Dropped. At most
+      200,000 points: plot.Density counts more, per cell.
+
+        result.Unwrap(Scene(Points([1, 2, math.Nan], [3, 4, 5]), 640, 400)).Dropped --> 1 *)
+  one({Fn: "Points", X: x, Y: y, Label: label, Color: color, Size: size, Shape: shape})
+end
+
+defn Bars(names, heights, label = missing, color = missing)
+  (** A bar for each name, as high as its height, from 0. With a list of lists of heights, the bars of a name stand side
+      by side, one series for each list; label and color are then lists too, one for each series. A graph holds one
+      plot.Bars, on a linear y axis; other layers on it are drawn at x = 1 for the first name, 2 for the second, and on.
+
+        Svg(Bars(["a", "b"], [[1, 2], [3, 4]], label = ["2025", "2026"])) then result.IsOk() --> true *)
+  one({Fn: "Bars", Names: names, Heights: heights, Label: label, Color: color})
+end
+
+defn Histogram(values, bins = missing, label = missing, color = missing)
+  (** The values counted in bins, drawn as bars. bins is missing for the rule of Freedman and Diaconis (1981): bins about
+      2 IQR / n^(1/3) wide, the IQR being the distance between the quartiles, or ceil(log2(n)) + 1 bins (Sturges, 1926)
+      when the IQR is 0; at most 10,000 bins. A count gives that many bins of equal width, from the least value to the
+      greatest. A list gives the edges, increasing. A bin holds the values from its left edge, included, to its right edge,
+      left out, and the last bin holds its right edge too, as in numpy. A NaN, an infinity or a value outside the edges is
+      left out.
+
+        Svg(Histogram([1, 2, 2, 3], bins = 0)) --> result.Err({Kind: "plot", Message: "plot.Histogram: bins is 0; give a count of 1 or more, or the edges."}) *)
+  one({Fn: "Histogram", Values: values, Bins: bins, Label: label, Color: color})
+end
+
+defn Heatmap(values, x = missing, y = missing, colors = "viridis")
+  (** A matrix as colored cells, with a color bar beside. x gives the value of each column and y the value of each row,
+      increasing; without y, row 1 is at the top, as the matrix is written. colors is "viridis" (van der Walt and Smith,
+      2015), from the least value to the greatest, or "diverging", ColorBrewer's RdBu (Harrower and Brewer, 2003): blue
+      below 0, white at 0, red above, as far on both sides. A NaN leaves its cell empty. Past one cell per pixel, cells are
+      merged by their mean.
+
+        Svg(Heatmap([1, 2; 3, 4])) then result.IsOk() --> true *)
+  one({Fn: "Heatmap", Values: values, Xs: x, Ys: y, Colors: colors, Label: missing, Color: missing})
+end
+
+defn Density(x, y, bins = 100)
+  (** The points (x[i], y[i]) counted on a grid of bins by bins cells over their range, colored by viridis: a 2D
+      histogram for clouds of any size, where every point is counted and none is sampled. An empty cell stays empty. A
+      point with a NaN or an infinity is left out, and Scene counts it in Dropped.
+
+        Svg(Density([1, 2, 3], [3, 1, 2], bins = 2)) then result.IsOk() --> true *)
+  one({Fn: "Density", X: x, Y: y, Bins: bins, Label: missing, Color: missing})
+end
+
+defn Area(x, low, high, label = missing, color = missing)
+  (** The band between two curves, from low[i] to high[i] at x[i]: an interval, an envelope. It is filled with its color
+      at 30 % opacity. A NaN or an infinity cuts it.
+
+        Svg(Area([1, 2, 3], [0, 1, 0], [2, 3, 2])) then result.IsOk() --> true *)
+  one({Fn: "Area", X: x, Low: low, High: high, Label: label, Color: color})
+end
+
+defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing)
+  (** The layers on shared axes, the later on top: each layer is a graph, as Line or another Of gives, and its layers
+      join in order. title goes above the plot; x and y name the axes; xscale and yscale are "linear" or "log" (base 10);
+      xlim and ylim are [low, high], else an axis covers the data and 5 % more on each side; legend = false hides the
+      legend, which shows when a layer has a label; size is [width, height] in pixels, 640 by 400 by default. The options
+      of an Of given as a layer are left aside: those of this Of apply.
+
+        Svg(Of([Line([1, 2], [1, 4]), Points([1, 2], [1, 4])], title = "Squares", yscale = "log")) then result.IsOk() --> true *)
+  ls = []
+  if value.IsArray(layers)
+    for k in 1..value.Len(layers)
+      g = layers[k]
+      if isGraph(g) and value.IsMissing(g.cells)
+        ls = list.Concat(ls, g.layers)
+      else
+        ls = list.Append({Fn: "bad", Value: g, At: k}, ls)
+      end
+    end
+  else
+    ls = [{Fn: "bad", Value: layers, At: 0}]
+  end
+  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size)
+end
+
+defn Grid(graphs, columns = missing)
+  (** Graphs side by side, in rows of a number of columns, as MATLAB's subplot: by default, the square root of their
+      number, rounded up. Each graph keeps its own axes and options. Svg and Save give each graph the size of the first
+      one, 640 by 400 pixels unless it has a size.
+
+        Svg(Grid([Line([1, 2], [1, 2]), Bars(["a"], [1])])) then result.IsOk() --> true *)
+  Graph([], cells = graphs, columns = columns)
+end
+
+defn Svg(g)
+  (** The SVG text of a graph, in an Ok, or an Err of kind "plot" that names the layer and says what to do. The texts
+      name the font Noto Sans Medium first, then sans-serif, and are drawn without kerning, so that their widths are the
+      ones std/plot measured.
+
+        text.StartsWith("<svg", result.Unwrap(Svg(Line([1, 2], [3, 4])))) --> true
+        Svg(1) --> result.Err({Kind: "plot", Message: "plot.Svg needs a graph, as plot.Line or plot.Of makes, not 1."}) *)
+  size = sizeOf(g, "plot.Svg")?
+  scene = Scene(g, size[1], size[2])?
+  result.Ok(svgOf(scene))
+end
+
+defn Save(g, path)
+  (** Writes the SVG of a graph to a file whose name ends in .svg: Ok(missing), or an Err. Needs the write permission.
+
+        Save(Line([1, 2], [3, 4]), "graph.png") --> result.Err({Kind: "plot", Message: "plot.Save writes SVG, to a name that ends in .svg, not \"graph.png\"."}) *)
+  if not (value.IsText(path) and text.EndsWith(".svg", path))
+    return fail("plot.Save writes SVG, to a name that ends in .svg, not $(brief(path)).")
+  end
+  sys.Write(path, Svg(g)?)
+end
+
+defn Scene(g, width, height)
+  (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". The scene
+      is {Width, Height, Items, Dropped}: Items are drawn in order, and Dropped counts the points left out for a NaN or an
+      infinity. An item is a dictionary with a Kind: "line" (Xs, Ys, Color, Width, Dash), "area" (Xs, Ys, Color,
+      Opacity), "rect" (X, Y, W, H, Color, Opacity), "marks" (Xs, Ys, Shape, Size, Color), "cells" (Xs and Ys, the edges of
+      the columns and the rows, and Colors, row after row, missing for an empty cell) or "text" (X, Y on the baseline,
+      Text, Size, Color, Anchor "start", "middle" or "end", Angle 0 or -90, and Width, its measured width). The data's
+      items have Clip, the rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink" and "grid" for
+      the axes and the texts, which a back-end gives the colors of its theme.
+
+        value.Len(result.Unwrap(Scene(Line([1, 2], [3, 4]), 640, 400)).Items) > 0 --> true *)
+  if not isGraph(g)
+    return fail("plot.Scene needs a graph, as plot.Line or plot.Of makes, not $(brief(g)).")
+  end
+  if not (value.IsNumber(width) and value.IsNumber(height)) or width < 100 or height < 80
+    return fail("plot.Scene needs at least 100 by 80 pixels, not $(brief(width)) by $(brief(height)).")
+  end
+  if value.IsMissing(g.cells)
+    r = drawGraph(g, 0.0, 0.0, width * 1.0, height * 1.0)?
+    return result.Ok({Width: width, Height: height, Items: r.Items, Dropped: r.Dropped})
+  end
+  cells = g.cells
+  n = if value.IsArray(cells) value.Len(cells) else 0 end
+  if n == 0
+    return fail("plot.Grid needs a list of graphs, not $(brief(cells)).")
+  end
+  cols = gridColumns(g.columns, n)?
+  rows = math.Div(n + cols - 1, cols)
+  cw = width / cols
+  ch = height / rows
+  items = []
+  dropped = 0
+  for k in 1..n
+    c = cells[k]
+    if not isGraph(c) or not value.IsMissing(c.cells)
+      return fail("plot.Grid: graph $k is $(brief(c)); a grid holds graphs, as plot.Line or plot.Of makes, not grids.")
+    end
+    r = drawGraph(c, math.Mod(k - 1, cols) * cw, math.Div(k - 1, cols) * ch, cw, ch)?
+    items = list.Concat(items, r.Items)
+    dropped += r.Dropped
+  end
+  result.Ok({Width: width, Height: height, Items: items, Dropped: dropped})
+end
+
+(* Errors, names and checks. *)
+
+fail(message) = result.Err({Kind: "plot", Message: message})
+
+isGraph(g) = match g
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m) -> true
+  else -> false
+end
+
+defn brief(v)
+  (** A value as an error shows it: its text, cut past 40 characters. *)
+  s = value.Text(v)
+  if value.IsText(v)
+    s = "\"$v\""
+  end
+  if value.Len(s) > 40 "$(text.Slice(1, 37, s))..." else s end
+end
+
+isColor(c) = value.IsText(c) and regex.Test("^#[0-9a-fA-F]{6}$", c)
+isPositive(x) = value.IsNumber(x) and x > 0 and x - x == 0
+dashes = ["dashed", "dotted", "dashdot"]
+shapes = ["circle", "square", "triangle", "diamond", "cross", "plus"]
+
+defn named(l, at, count)
+  (** How an error names a layer: its function, its label, and its place when the graph has several. *)
+  s = "plot.$(l.Fn)"
+  if value.IsText(l.Label)
+    s = "$s \"$(l.Label)\""
+  end
+  if count > 1 "$s (layer $at)" else s end
+end
+
+defn gridColumns(columns, n)
+  if value.IsMissing(columns)
+    k = 1
+    while k * k < n
+      k += 1
+    end
+    return result.Ok(k)
+  end
+  if not (value.IsInt(columns) and columns >= 1)
+    return fail("plot.Grid: columns is $(brief(columns)); give a count of 1 or more.")
+  end
+  result.Ok(list.Min(columns, n))
+end
+
+defn sizeOf(g, fn)
+  (** The size a graph is drawn at, [width, height]: its own, the first graph's times the columns and rows of a grid, or
+      640 by 400. *)
+  if not isGraph(g)
+    return fail("$fn needs a graph, as plot.Line or plot.Of makes, not $(brief(g)).")
+  end
+  if not value.IsMissing(g.cells)
+    if not value.IsArray(g.cells) or value.Len(g.cells) == 0 or not isGraph(g.cells[1])
+      return result.Ok([640, 400])
+    end
+    one = sizeOf(g.cells[1], fn)?
+    n = value.Len(g.cells)
+    cols = gridColumns(g.columns, n)?
+    return result.Ok([one[1] * cols, one[2] * math.Div(n + cols - 1, cols)])
+  end
+  s = g.size
+  if value.IsMissing(s)
+    return result.Ok([640, 400])
+  end
+  if not (value.IsArray(s) and value.Len(s) == 2 and isPositive(s[1]) and isPositive(s[2]))
+    return fail("plot.Of: size is $(brief(s)); give [width, height] in pixels.")
+  end
+  result.Ok(s)
+end
+
+(* The data of a layer: numbers checked and made floats, ranges, and what the axes need. *)
+
+inf = 1.0 / 0.0
+ln10 = math.Log(10.0)
+
+defn floats(xs, what, w)
+  (** The numbers of a list as floats, missing as NaN, in an Ok; an Err that names the first value that is no number. *)
+  if not value.IsArray(xs)
+    return fail("$w: $what must be a list of numbers, not $(brief(xs)).")
+  end
+  dims = value.Size(xs)
+  if value.Len(dims) > 2 or dims[1] > 1 and dims[2] > 1
+    return fail("$w: $what must be a list of numbers, not an array of size $(brief(dims)).")
+  end
+  kind = col.Kind(xs)
+  if kind == "float"
+    return result.Ok(xs)
+  end
+  if kind == "int"
+    return result.Ok(xs * 1.0)
+  end
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for i in 1..n
+    v = xs[i]
+    if value.IsNumber(v)
+      out[i] = v
+    else if value.IsMissing(v)
+      out[i] = math.Nan
+    else
+      return fail("$w: $what[$i] is $(brief(v)), not a number.")
+    end
+  end
+  result.Ok(out)
+end
+
+defn extent(xs, ys)
+  (** One pass over the points where both x and y are finite: their count, their ranges, whether x never decreases along
+      them, the first index of a value <= 0 in each (0 if none), the first such point, and the runs of them between the
+      others. *)
+  count = 0
+  xlo = inf
+  xhi = -inf
+  ylo = inf
+  yhi = -inf
+  sorted = true
+  prev = -inf
+  xbad = 0
+  ybad = 0
+  runs = 0
+  first = 0
+  inside = false
+  for i in 1..value.Len(xs)
+    x = xs[i]
+    y = ys[i]
+    if x - x == 0.0 and y - y == 0.0
+      count += 1
+      if not inside
+        runs += 1
+        inside = true
+      end
+      if first == 0
+        first = i
+      end
+      if x < xlo
+        xlo = x
+      end
+      if x > xhi
+        xhi = x
+      end
+      if y < ylo
+        ylo = y
+      end
+      if y > yhi
+        yhi = y
+      end
+      if x < prev
+        sorted = false
+      end
+      prev = x
+      if x <= 0.0 and xbad == 0
+        xbad = i
+      end
+      if y <= 0.0 and ybad == 0
+        ybad = i
+      end
+    else
+      inside = false
+    end
+  end
+  {Count: count, Xlo: xlo, Xhi: xhi, Ylo: ylo, Yhi: yhi, Sorted: sorted, Xbad: xbad, Ybad: ybad, Runs: runs, First: first}
+end
+
+bad(name, xs, i) = if i == 0 missing else "$name[$i] is $(value.Text(xs[i]))" end
+
+defn base(l, w)
+  {Fn: l.Fn, W: w, Label: l.Label, Color: l.Color, Cells: false, Sticky: false, Flip: false, Category: false,
+   Xbad: missing, Ybad: missing, Dropped: 0}
+end
+
+defn prepare(l, at, count)
+  (** A layer checked and measured, in an Ok, or the Err that says what is wrong with it. *)
+  if l.Fn == "bad"
+    return fail("plot.Of: layer $(l.At) is $(brief(l.Value)), not a graph; give graphs, as plot.Line makes.")
+  end
+  w = named(l, at, count)
+  if not (value.IsMissing(l.Label) or value.IsText(l.Label) or l.Fn == "Bars")
+    return fail("$w: label is $(brief(l.Label)); give a text.")
+  end
+  if not (value.IsMissing(l.Color) or isColor(l.Color) or l.Fn == "Bars")
+    return fail("$w: color is $(brief(l.Color)); write a color as \"#rrggbb\", as \"#d55e00\".")
+  end
+  match l.Fn
+    "Line" -> pointsOf(l, w, false)
+    "Points" -> pointsOf(l, w, true)
+    "Area" -> areaOf(l, w)
+    "Bars" -> barsOf(l, w)
+    "Histogram" -> histogramOf(l, w)
+    "Heatmap" -> heatmapOf(l, w)
+    else -> densityOf(l, w)
+  end
+end
+
+defn pointsOf(l, w, marks)
+  x = floats(l.X, "x", w)?
+  y = floats(l.Y, "y", w)?
+  if value.Len(x) != value.Len(y)
+    return fail("$w: x has $(value.Len(x)) values and y has $(value.Len(y)); give both the same number.")
+  end
+  e = extent(x, y)
+  if e.Count == 0
+    return fail("$w: no point has a finite x and y.")
+  end
+  p = base(l, w)
+  if marks
+    if e.Count > 200000
+      return fail("$w: $(e.Count) points are too many to draw one by one, past 200,000; plot.Density counts them per cell.")
+    end
+    if not (l.Shape in shapes)
+      return fail("$w: shape is $(brief(l.Shape)); it is \"circle\", \"square\", \"triangle\", \"diamond\", \"cross\" or \"plus\".")
+    end
+    if not isPositive(l.Size)
+      return fail("$w: size is $(brief(l.Size)); give the width of a marker in pixels, above 0.")
+    end
+    p.Size = l.Size * 1.0
+    p.Shape = l.Shape
+    p.Dropped = value.Len(x) - e.Count
+  else
+    if not isPositive(l.Width)
+      return fail("$w: width is $(brief(l.Width)); give the width of the line in pixels, above 0.")
+    end
+    if not (value.IsMissing(l.Dash) or l.Dash in dashes)
+      return fail("$w: dash is $(brief(l.Dash)); it is missing for a solid line, or \"dashed\", \"dotted\" or \"dashdot\".")
+    end
+    p.Width = l.Width * 1.0
+    p.Dash = l.Dash
+  end
+  p.X = x
+  p.Y = y
+  p.E = e
+  p.Xlo = e.Xlo
+  p.Xhi = e.Xhi
+  p.Ylo = e.Ylo
+  p.Yhi = e.Yhi
+  p.Xbad = bad("x", x, e.Xbad)
+  p.Ybad = bad("y", y, e.Ybad)
+  result.Ok(p)
+end
+
+defn areaOf(l, w)
+  x = floats(l.X, "x", w)?
+  low = floats(l.Low, "low", w)?
+  high = floats(l.High, "high", w)?
+  if value.Len(x) != value.Len(low) or value.Len(x) != value.Len(high)
+    return fail("$w: x has $(value.Len(x)) values, low $(value.Len(low)) and high $(value.Len(high)); give all three the same number.")
+  end
+  (* NaN * 0.0 is NaN: a point is kept where x, low and high are all finite. *)
+  lows = low + high * 0.0
+  highs = high + low * 0.0
+  e = extent(x, lows)
+  h = extent(x, highs)
+  if e.Count == 0
+    return fail("$w: no point has a finite x, low and high.")
+  end
+  p = base(l, w)
+  p.X = x
+  p.Low = lows
+  p.High = highs
+  p.Xlo = e.Xlo
+  p.Xhi = e.Xhi
+  p.Ylo = list.Min(e.Ylo, h.Ylo)
+  p.Yhi = list.Max(e.Yhi, h.Yhi)
+  p.Xbad = bad("x", x, e.Xbad)
+  p.Ybad = if e.Ybad > 0 bad("low", lows, e.Ybad) else bad("high", highs, h.Ybad) end
+  result.Ok(p)
+end
+
+defn barsOf(l, w)
+  names = l.Names
+  if not value.IsArray(names) or value.Len(names) == 0
+    return fail("$w: names must be a list of the names of the bars, not $(brief(names)).")
+  end
+  hs = l.Heights
+  if not value.IsArray(hs) or value.Len(hs) == 0
+    return fail("$w: heights must be a list of numbers, or a list of lists for series side by side, not $(brief(hs)).")
+  end
+  grouped = value.IsArray(hs[1])
+  series = if grouped hs else [hs] end
+  n = value.Len(names)
+  ss = []
+  lo = 0.0
+  hi = 0.0
+  for k in 1..value.Len(series)
+    what = if grouped "heights[$k]" else "heights" end
+    s = floats(series[k], what, w)?
+    if value.Len(s) != n
+      return fail("$w: there are $n names and $(value.Len(s)) $what; give one height for each name.")
+    end
+    e = extent(s, s)
+    if e.Count > 0
+      lo = list.Min(lo, e.Xlo)
+      hi = list.Max(hi, e.Xhi)
+    end
+    ss = list.Append(s, ss)
+  end
+  m = value.Len(ss)
+  labels = if grouped l.Label else [l.Label] end
+  colors = if grouped l.Color else [l.Color] end
+  if grouped and not (value.IsMissing(labels) or value.IsArray(labels) and value.Len(labels) == m)
+    return fail("$w: label is $(brief(labels)); give one text for each of the $m series.")
+  end
+  if grouped and not (value.IsMissing(colors) or value.IsArray(colors) and value.Len(colors) == m)
+    return fail("$w: color is $(brief(colors)); give one color for each of the $m series.")
+  end
+  labels = if value.IsMissing(labels) list.Fill(missing, m) else labels end
+  colors = if value.IsMissing(colors) list.Fill(missing, m) else colors end
+  for k in 1..m
+    if not (value.IsMissing(labels[k]) or value.IsText(labels[k]))
+      return fail("$w: label is $(brief(labels[k])); give a text.")
+    end
+    if not (value.IsMissing(colors[k]) or isColor(colors[k]))
+      return fail("$w: color is $(brief(colors[k])); write a color as \"#rrggbb\", as \"#d55e00\".")
+    end
+  end
+  p = base(l, w)
+  p.Names = [if value.IsText(v) v else value.Text(v) end for v in names]
+  p.Series = ss
+  p.Labels = labels
+  p.Colors = colors
+  p.Category = true
+  p.Sticky = true
+  p.Xlo = 0.5
+  p.Xhi = n + 0.5
+  p.Ylo = lo
+  p.Yhi = hi
+  result.Ok(p)
+end
+
+defn quantile(s, p)
+  (** The quantile p of sorted values, by linear interpolation between the two nearest, as numpy and R's type 7. *)
+  at = p * (value.Len(s) - 1) + 1
+  low = math.Floor(at)
+  if low >= value.Len(s)
+    return s[value.Len(s)]
+  end
+  s[low] + (s[low + 1] - s[low]) * (at - low)
+end
+
+defn binCount(s)
+  (** The number of bins of Freedman and Diaconis for sorted values, or of Sturges when their IQR is 0, at most 10,000. *)
+  n = value.Len(s)
+  iqr = quantile(s, 0.75) - quantile(s, 0.25)
+  if iqr > 0.0
+    width = 2.0 * iqr / n ^ (1.0 / 3.0)
+    return list.Max(1, list.Min(10000, math.Ceil((s[n] - s[1]) / width)))
+  end
+  math.Ceil(math.Log(n * 1.0) / math.Log(2.0)) + 1
+end
+
+defn countSorted(s, edges)
+  (** The counts of sorted values in the bins between edges: [left, right), and the last bin [left, right]. *)
+  nb = value.Len(edges) - 1
+  counts = matrix.Zeros(1, nb)
+  n = value.Len(s)
+  i = 1
+  while i <= n and s[i] < edges[1]
+    i += 1
+  end
+  b = 1
+  last = edges[nb + 1]
+  while i <= n
+    v = s[i]
+    if v > last
+      break
+    end
+    while b < nb and v >= edges[b + 1]
+      b += 1
+    end
+    counts[b] += 1.0
+    i += 1
+  end
+  counts
+end
+
+defn histogramOf(l, w)
+  v = floats(l.Values, "values", w)?
+  s = list.Sort(col.Pick(col.Positions(v - v == 0.0), v))
+  n = value.Len(s)
+  if n == 0
+    return fail("$w: no value is finite.")
+  end
+  bins = l.Bins
+  edges = missing
+  if value.IsMissing(bins) or value.IsNumber(bins)
+    if not (value.IsMissing(bins) or value.IsInt(bins) and bins >= 1)
+      return fail("$w: bins is $(brief(bins)); give a count of 1 or more, or the edges.")
+    end
+    count = if value.IsMissing(bins) binCount(s) else bins end
+    lo = s[1]
+    hi = s[n]
+    if lo == hi
+      lo -= 0.5
+      hi += 0.5
+    end
+    edges = [lo + k * (hi - lo) / count for k in 0..count]
+    edges[count + 1] = hi
+  else
+    edges = floats(bins, "bins", w)?
+    if value.Len(edges) < 2
+      return fail("$w: bins has $(value.Len(edges)) edges; give at least 2, increasing.")
+    end
+    for k in 1..value.Len(edges) - 1
+      if not (edges[k] < edges[k + 1]) or edges[k] - edges[k] != 0.0 or edges[k + 1] - edges[k + 1] != 0.0
+        return fail("$w: bins[$k] is $(value.Text(edges[k])) and bins[$(k + 1)] is $(value.Text(edges[k + 1])); give finite edges, increasing.")
+      end
+    end
+  end
+  counts = countSorted(s, edges)
+  p = base(l, w)
+  p.Edges = edges
+  p.Counts = counts
+  p.Sticky = true
+  p.Xlo = edges[1]
+  p.Xhi = edges[value.Len(edges)]
+  p.Ylo = 0.0
+  p.Yhi = list.Max(counts)
+  p.Xbad = if edges[1] <= 0.0 "its first edge is $(value.Text(edges[1]))" else missing end
+  result.Ok(p)
+end
+
+defn edgesOf(cs)
+  (** The edges of cells around their centers: halfway between two, and as far again past the first and the last. *)
+  n = value.Len(cs)
+  if n == 1
+    return [cs[1] - 0.5, cs[1] + 0.5]
+  end
+  out = matrix.Zeros(1, n + 1)
+  out[1] = cs[1] - (cs[2] - cs[1]) / 2
+  for k in 2..n
+    out[k] = (cs[k - 1] + cs[k]) / 2
+  end
+  out[n + 1] = cs[n] + (cs[n] - cs[n - 1]) / 2
+  out
+end
+
+defn centersOf(given, n, what, w)
+  (** The centers of the columns or rows of a heatmap: 1 to n, or the values given, finite and increasing. *)
+  if value.IsMissing(given)
+    return result.Ok([k * 1.0 for k in 1..n])
+  end
+  cs = floats(given, what, w)?
+  if value.Len(cs) != n
+    return fail("$w: $what has $(value.Len(cs)) values for $n $(if what == "x" "columns" else "rows" end); give one for each.")
+  end
+  for k in 1..n
+    if cs[k] - cs[k] != 0.0 or k > 1 and not (cs[k - 1] < cs[k])
+      return fail("$w: $what[$k] is $(value.Text(cs[k])); give finite values, increasing.")
+    end
+  end
+  result.Ok(cs)
+end
+
+defn heatmapOf(l, w)
+  m = l.Values
+  if not value.IsArray(m) or value.Len(value.Size(m)) != 2
+    return fail("$w: it needs a matrix of numbers, not $(brief(m)).")
+  end
+  size = value.Size(m)
+  rows = size[1]
+  cols = size[2]
+  if rows * cols == 0
+    return fail("$w: the matrix is empty.")
+  end
+  if col.Kind(m) != "float"
+    if col.Kind(m) == "int"
+      m = m * 1.0
+    else
+      f = matrix.Zeros(rows, cols)
+      for i in 1..rows
+        for j in 1..cols
+          v = m[i, j]
+          if value.IsNumber(v)
+            f[i, j] = v
+          else if value.IsMissing(v)
+            f[i, j] = math.Nan
+          else
+            return fail("$w: the value at [$i, $j] is $(brief(v)), not a number.")
+          end
+        end
+      end
+      m = f
+    end
+  end
+  if not (l.Colors == "viridis" or l.Colors == "diverging")
+    return fail("$w: colors is $(brief(l.Colors)); it is \"viridis\" or \"diverging\".")
+  end
+  xs = centersOf(l.Xs, cols, "x", w)?
+  ys = centersOf(l.Ys, rows, "y", w)?
+  flat = matrix.Reshape([1, rows * cols], m)
+  fin = col.Pick(col.Positions(flat - flat == 0.0), flat)
+  if value.Len(fin) == 0
+    return fail("$w: no value is finite.")
+  end
+  p = base(l, w)
+  p.M = m
+  p.Rows = rows
+  p.Cols = cols
+  p.Xe = edgesOf(xs)
+  p.Ye = edgesOf(ys)
+  p.Vlo = list.Min(fin)
+  p.Vhi = list.Max(fin)
+  p.Map = l.Colors
+  p.Cells = true
+  p.Flip = value.IsMissing(l.Ys)
+  p.Xlo = p.Xe[1]
+  p.Xhi = p.Xe[cols + 1]
+  p.Ylo = p.Ye[1]
+  p.Yhi = p.Ye[rows + 1]
+  p.Xbad = if p.Xlo <= 0.0 "its first column's edge is $(value.Text(p.Xlo))" else missing end
+  p.Ybad = if p.Ylo <= 0.0 "its first row's edge is $(value.Text(p.Ylo))" else missing end
+  result.Ok(p)
+end
+
+defn densityOf(l, w)
+  x = floats(l.X, "x", w)?
+  y = floats(l.Y, "y", w)?
+  if value.Len(x) != value.Len(y)
+    return fail("$w: x has $(value.Len(x)) values and y has $(value.Len(y)); give both the same number.")
+  end
+  nb = l.Bins
+  if not (value.IsInt(nb) and nb >= 1)
+    return fail("$w: bins is $(brief(nb)); give a count of 1 or more.")
+  end
+  e = extent(x, y)
+  if e.Count == 0
+    return fail("$w: no point has a finite x and y.")
+  end
+  xlo = e.Xlo
+  xhi = if e.Xhi > e.Xlo e.Xhi else e.Xlo + 1.0 end
+  ylo = e.Ylo
+  yhi = if e.Yhi > e.Ylo e.Yhi else e.Ylo + 1.0 end
+  if e.Xhi == e.Xlo
+    xlo -= 0.5
+    xhi -= 0.5
+  end
+  if e.Yhi == e.Ylo
+    ylo -= 0.5
+    yhi -= 0.5
+  end
+  ix = math.Floor((x - xlo) * (nb / (xhi - xlo)))
+  iy = math.Floor((y - ylo) * (nb / (yhi - ylo)))
+  counts = matrix.Zeros(1, nb * nb)
+  top = nb - 1.0
+  for i in 1..value.Len(x)
+    cx = ix[i]
+    cy = iy[i]
+    if cx - cx == 0.0 and cy - cy == 0.0
+      if cx > top
+        cx = top
+      end
+      if cy > top
+        cy = top
+      end
+      k = cy * nb + cx + 1.0
+      counts[k] += 1.0
+    end
+  end
+  p = base(l, w)
+  p.M = matrix.Transpose(matrix.Reshape([nb, nb], counts))
+  p.Rows = nb
+  p.Cols = nb
+  p.Xe = [xlo + k * (xhi - xlo) / nb for k in 0..nb]
+  p.Ye = [ylo + k * (yhi - ylo) / nb for k in 0..nb]
+  p.Vlo = 0.0
+  p.Vhi = list.Max(counts)
+  p.Map = "viridis"
+  p.Cells = true
+  p.Dropped = value.Len(x) - e.Count
+  p.Xlo = xlo
+  p.Xhi = xhi
+  p.Ylo = ylo
+  p.Yhi = yhi
+  p.Xbad = bad("x", x, e.Xbad)
+  p.Ybad = bad("y", y, e.Ybad)
+  result.Ok(p)
+end
+
+(* Axes: their range, their scale and their ticks. *)
+
+defn pow10(e)
+  (** 10 to an integer power, exact up to 10^22. *)
+  if e >= 0
+    return 10.0 ^ e
+  end
+  1.0 / 10.0 ^ (0 - e)
+end
+
+defn decade(v)
+  (** The integer e with 10^e <= v < 10^(e+1), for v > 0: exact at the powers of ten, where a logarithm can miss by one. *)
+  e = math.Floor(math.Log(v) / ln10)
+  while e < 400 and pow10(e + 1) <= v
+    e += 1
+  end
+  while e > -400 and pow10(e) > v
+    e -= 1
+  end
+  e
+end
+
+tf(axis, v) = if axis.Scale == "log" math.Log(v) / ln10 else v * 1.0 end
+
+defn axisOf(which, ps, scale, lim, w)
+  (** An axis: its scale, its range [Lo, Hi] in the data and [T0, T1] on the scale, and whether it runs down. *)
+  if not (scale == "linear" or scale == "log")
+    return fail("$w: $(which)scale is $(brief(scale)); it is \"linear\" or \"log\".")
+  end
+  lo = inf
+  hi = -inf
+  pad = false
+  sticky = false
+  flip = false
+  category = false
+  for p in ps
+    lo = list.Min(lo, if which == "x" p.Xlo else p.Ylo end)
+    hi = list.Max(hi, if which == "x" p.Xhi else p.Yhi end)
+    if not p.Cells
+      pad = true
+    end
+    if which == "y" and p.Sticky
+      sticky = true
+    end
+    if which == "y" and p.Flip
+      flip = true
+    end
+    if which == "x" and p.Category
+      category = true
+    end
+    if scale == "log"
+      if p.Category and which == "x" or p.Sticky and which == "y"
+        return fail("$(p.W) needs a linear $which axis: its bars start at 0.")
+      end
+      why = if which == "x" p.Xbad else p.Ybad end
+      if not value.IsMissing(why)
+        return fail("$(p.W): a log $which axis needs values above 0, and $why.")
+      end
+    end
+  end
+  axis = {Scale: scale, Lo: lo, Hi: hi, T0: 0.0, T1: 1.0, Flip: flip, Category: category, Names: missing}
+  if not value.IsMissing(lim)
+    if not (value.IsArray(lim) and value.Len(lim) == 2 and value.IsNumber(lim[1]) and value.IsNumber(lim[2]) and lim[1] < lim[2] and lim[1] - lim[1] == 0 and lim[2] - lim[2] == 0)
+      return fail("$w: $(which)lim is $(brief(lim)); give [low, high], finite, low below high.")
+    end
+    if scale == "log" and lim[1] <= 0
+      return fail("$w: a log $which axis needs $(which)lim above 0, not $(brief(lim)).")
+    end
+    axis.Lo = lim[1] * 1.0
+    axis.Hi = lim[2] * 1.0
+  else if not category
+    t0 = tf(axis, lo)
+    t1 = tf(axis, hi)
+    if t1 - t0 <= 1e-12 * list.Max(math.Abs(t0), math.Abs(t1))
+      d = if scale == "log" 0.5 else if t0 == 0.0 1.0 else math.Abs(t0) * 0.1 end
+      t0 -= d
+      t1 += d
+    else if pad
+      d = (t1 - t0) * 0.05
+      t0 -= d
+      t1 += d
+      if sticky and lo == 0.0
+        t0 = 0.0
+      end
+      if sticky and hi == 0.0
+        t1 = 0.0
+      end
+    end
+    axis.Lo = if scale == "log" 10.0 ^ t0 else t0 end
+    axis.Hi = if scale == "log" 10.0 ^ t1 else t1 end
+  end
+  axis.T0 = tf(axis, axis.Lo)
+  axis.T1 = tf(axis, axis.Hi)
+  result.Ok(axis)
+end
+
+(* Fonts: the advance widths of Noto Sans Medium, in thousandths of an em, made by tools/plot-font.ce from the font. A
+   character it has no glyph for counts a whole em, wider than any of its glyphs but four, so that no text overlaps. *)
+
+tickSize = 12.0
+titleSize = 15.0
+axisSize = 13.0
+lineRatio = 1.362
+ascent = 1.069
+cap = 0.714
+
+defn advance(code)
+  if code >= 32 and code <= 126
+    return basic[code - 31]
+  end
+  if code >= 160 and code <= 383
+    return latin[code - 159]
+  end
+  if code >= 880 and code <= 1023 and greek[code - 879] > 0
+    return greek[code - 879]
+  end
+  k = list.IndexOf(code, extraCodes)
+  if value.IsMissing(k) 1000 else extraWidths[k] end
+end
+
+defn textWidth(s, size)
+  (** The width of a text in pixels at a font size: the sum of the advances of its characters, without kerning. *)
+  total = 0
+  for c in text.Chars(s)
+    total += advance(text.Code(c))
+  end
+  total * size / 1000.0
+end
+
+(* Labels: each the shortest decimal that reads back to its tick, written from integers, so that no rounding shows. *)
+
+superscripts = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"]
+
+defn sup(e)
+  (** An integer in superscript digits, with a superscript minus. *)
+  s = if e < 0 "⁻" else "" end
+  for c in text.Chars(text.Decimals(0, math.Abs(e)))
+    s = "$s$(superscripts[text.Code(c) - 47])"
+  end
+  s
+end
+
+defn decimal(n, e)
+  (** The decimal n times 10^e, for an integer n, without the zeros at its end, with a true minus sign. *)
+  if n == 0
+    return "0"
+  end
+  digits = text.Decimals(0, math.Abs(n))
+  while e < 0 and text.EndsWith("0", digits)
+    digits = text.ByteSlice(1, text.ByteLength(digits) - 1, digits)
+    e += 1
+  end
+  sign = if n < 0 "−" else "" end
+  if e >= 0
+    return "$sign$digits$(text.Repeat(e, "0"))"
+  end
+  d = 0 - e
+  if text.ByteLength(digits) <= d
+    digits = "$(text.Repeat(d - text.ByteLength(digits) + 1, "0"))$digits"
+  end
+  cut = text.ByteLength(digits) - d
+  "$sign$(text.ByteSlice(1, cut, digits)).$(text.ByteSlice(cut + 1, text.ByteLength(digits), digits))"
+end
+
+tickValue(n, e) = if e >= 0 n * 10.0 ^ e else n / 10.0 ^ (0 - e) end
+
+defn labelsOf(ns, e)
+  (** The labels of the ticks ns times 10^e. Past 10^6, or under 10^-4, the labels count in a power of ten shown once, as
+      in matplotlib: the Factor. *)
+  big = 0.0
+  for n in ns
+    big = list.Max(big, math.Abs(tickValue(n, e)))
+  end
+  shift = 0
+  factor = missing
+  if big > 0.0
+    top = decade(big)
+    if top >= 6 or top <= -5
+      shift = top
+      factor = "×10$(sup(top))"
+    end
+  end
+  {Values: [tickValue(n, e) for n in ns], Labels: [decimal(n, e - shift) for n in ns], Factor: factor}
+end
+
+qInts = [1, 5, 2, 25, 4, 3]
+qShifts = [0, 0, 0, 1, 0, 0]
+qs = [1.0, 5.0, 2.0, 2.5, 4.0, 3.0]
+
+defn candidate(c)
+  (** The labels of a candidate of the search: k labels, one every j steps of q times 10^z, from start. *)
+  qi = c.Qi
+  labelsOf([(c.Start + i * c.J) * qInts[qi] for i in 0..c.K - 1], c.Z - qShifts[qi])
+end
+
+defn extended(lo, hi, m, fits)
+  (** The search of Talbot, Lin and Hanrahan (2010) for the best labels of an axis from lo to hi, aiming at m labels,
+      among the sets of 3 to 12 that lie inside [lo, hi]: a step q times 10^z with q among 1, 5, 2, 2.5, 4 and 3 (the
+      first are simpler), every j-th of them labeled, scored by simplicity, coverage, density and legibility with the
+      paper's weights 0.25, 0.2, 0.5 and 0.05, and pruned by the bound of each score; a set whose labels cover less than
+      about a third of the range (a coverage below -1) is never tried. A set that fits(c) refuses has a legibility of minus
+      infinity. missing when no set fits. *)
+  range = hi - lo
+  best = missing
+  score = -inf
+  j = 1
+  done = false
+  while not done and j <= 8
+    for qi in 1..6
+      q = qs[qi]
+      sm = 2.0 - (qi - 1) / 5.0 - j
+      if 0.25 * sm + 0.75 < score
+        done = true
+        break
+      end
+      k = 3
+      while k <= 12
+        dm = if k >= m 2.0 - (k - 1) / (m - 1) else 1.0 end
+        if 0.25 * sm + 0.2 + 0.5 * dm + 0.05 < score
+          break
+        end
+        z = decade(range / ((k - 1) * j * q))
+        while true
+          step = j * q * pow10(z)
+          half = (range - (k - 1) * step) / 2
+          cm = 1.0 - half * half / (0.01 * range * range)
+          if cm < -1.0 or 0.25 * sm + 0.2 * cm + 0.5 * dm + 0.05 < score
+            break
+          end
+          u = q * pow10(z)
+          start = math.Ceil(lo / u - 1e-9)
+          last = math.Floor(hi / u + 1e-9) - (k - 1) * j
+          while start <= last
+            lmin = start * u
+            lmax = lmin + (k - 1) * step
+            zero = if start - j * math.Floor(start / j) == 0.0 and lmin <= 0.0 and lmax >= 0.0 1.0 else 0.0 end
+            s = 1.0 - (qi - 1) / 5.0 - j + zero
+            c = 1.0 - 0.5 * ((hi - lmax) ^ 2 + (lo - lmin) ^ 2) / (0.01 * range * range)
+            r = (k - 1) / (lmax - lmin)
+            rt = (m - 1) / range
+            g = 2.0 - list.Max(r / rt, rt / r)
+            total = 0.25 * s + 0.2 * c + 0.5 * g + 0.05
+            if total > score
+              cand = {Start: start, J: j, Qi: qi, Z: z, K: k}
+              if fits(cand)
+                score = total
+                best = cand
+              end
+            end
+            start += 1.0
+          end
+          z -= 1
+        end
+        k += 1
+      end
+    end
+    j += 1
+  end
+  best
+end
+
+defn pos(axis, length, v)
+  (** Where a value falls along an axis of a length in pixels, from its start. *)
+  (tf(axis, v) - axis.T0) / (axis.T1 - axis.T0) * length
+end
+
+defn fitsAt(axis, length, horizontal, values, labels)
+  (** Do the labels fit side by side: at least 6 pixels between two along x, or a line and 2 pixels along y? *)
+  for i in 1..value.Len(values) - 1
+    gap = math.Abs(pos(axis, length, values[i + 1]) - pos(axis, length, values[i]))
+    need = if horizontal (textWidth(labels[i], tickSize) + textWidth(labels[i + 1], tickSize)) / 2 + 6.0 else tickSize * lineRatio + 2.0 end
+    if gap < need
+      return false
+    end
+  end
+  true
+end
+
+defn linearTicks(axis, length, horizontal)
+  m = list.Max(3, list.Min(12, math.Floor(length / if horizontal 100.0 else 60.0 end) + 1))
+  best = extended(axis.Lo, axis.Hi, m, defn (c)
+    t = candidate(c)
+    fitsAt(axis, length, horizontal, t.Values, t.Labels)
+  end)
+  if value.IsMissing(best)
+    best = extended(axis.Lo, axis.Hi, m, c -> true)
+  end
+  candidate(best)
+end
+
+defn logLabel(m, e)
+  (** A tick m times 10^e of a log axis: plain between 10^-4 and 10^6, else with its power of ten. *)
+  if e >= 6 or e <= -5
+    return if m == 1 "10$(sup(e))" else "$(m)×10$(sup(e))" end
+  end
+  decimal(m, e)
+end
+
+defn logTicks(axis, length, horizontal)
+  (** The ticks of a log axis: powers of ten, written 10ⁿ, every one, two, three or more of them so that 3 to 12 fit;
+      with fewer than 3 inside, the multiples 1, 2 and 5 of each power, written out; with fewer than 3 still, the ticks of
+      a linear axis. *)
+  lo = axis.Lo * (1 - 1e-12)
+  hi = axis.Hi * (1 + 1e-12)
+  e0 = decade(lo)
+  if pow10(e0) < lo
+    e0 += 1
+  end
+  e1 = decade(hi)
+  fit = t -> fitsAt(axis, length, horizontal, t.Values, t.Labels)
+  if e1 - e0 >= 2
+    fallback = missing
+    for step in [1, 2, 3, 5, 10, 20, 50, 100]
+      es = [e for e in e0..e1 if e - step * math.Floor(e / step) == 0.0]
+      t = {Values: [pow10(e) for e in es], Labels: ["10$(sup(e))" for e in es], Factor: missing}
+      if value.Len(es) >= 3 and value.Len(es) <= 12
+        if fit(t)
+          return t
+        end
+        if value.IsMissing(fallback)
+          fallback = t
+        end
+      end
+    end
+    if not value.IsMissing(fallback)
+      return fallback
+    end
+  end
+  vs = []
+  ls = []
+  for e in e0 - 1..e1
+    for m in [1, 2, 5]
+      v = tickValue(m, e)
+      if v >= lo and v <= hi
+        vs = list.Append(v, vs)
+        ls = list.Append(logLabel(m, e), ls)
+      end
+    end
+  end
+  t = {Values: vs, Labels: ls, Factor: missing}
+  if value.Len(vs) >= 3 and value.Len(vs) <= 12 and fit(t)
+    return t
+  end
+  linearTicks(axis, length, horizontal)
+end
+
+defn ticksOf(axis, length, horizontal)
+  (** The ticks of an axis: {Values, Labels, Factor}. *)
+  if axis.Category
+    return {Values: [k * 1.0 for k in 1..value.Len(axis.Names)], Labels: axis.Names, Factor: missing}
+  end
+  if axis.Scale == "log"
+    return logTicks(axis, length, horizontal)
+  end
+  linearTicks(axis, length, horizontal)
+end
+
+defn widest(labels, size)
+  w = 0.0
+  for l in labels
+    w = list.Max(w, textWidth(l, size))
+  end
+  w
+end
+
+(* Colors: Okabe and Ito's eight for the layers, viridis and RdBu for the cells. *)
+
+palette = ["#0072b2", "#d55e00", "#009e73", "#cc79a7", "#56b4e9", "#e69f00", "#f0e442", "#000000"]
+rdbu = ["#053061", "#2166ac", "#4393c3", "#92c5de", "#d1e5f0", "#f7f7f7", "#fddbc7", "#f4a582", "#d6604d", "#b2182b", "#67001f"]
+
+hexOf(c, i) = math.Div(text.Byte(i, c) - if text.Byte(i, c) >= 97 87 else 48 end, 1)
+channel(c, i) = hexOf(c, i) * 16 + hexOf(c, i + 1)
+hexDigits = "0123456789abcdef"
+hex2(v) = "$(text.Slice(math.Div(v, 16) + 1, math.Div(v, 16) + 1, hexDigits))$(text.Slice(math.Mod(v, 16) + 1, math.Mod(v, 16) + 1, hexDigits))"
+
+defn diverging()
+  (** 256 colors from blue through white to red: ColorBrewer's 11 of RdBu, read from blue, joined by straight lines in RGB,
+      as matplotlib's RdBu_r. *)
+  out = []
+  for i in 0..255
+    at = i / 255.0 * 10.0
+    k = list.Min(9, math.Floor(at))
+    f = at - k
+    a = rdbu[k + 1]
+    b = rdbu[k + 2]
+    rgb = [math.Round(channel(a, n) + (channel(b, n) - channel(a, n)) * f) for n in [2, 4, 6]]
+    out = list.Append("#$(hex2(math.Div(rgb[1], 1)))$(hex2(math.Div(rgb[2], 1)))$(hex2(math.Div(rgb[3], 1)))", out)
+  end
+  out
+end
+
+defn colorsOf(vs, lo, hi, map)
+  (** The color of each value: its place from lo to hi among the 256 colors of the map, as matplotlib picks them;
+      missing for a NaN. "diverging" puts 0 in the middle, as far as the farthest value on each side. *)
+  table = if map == "viridis" viridis else diverging() end
+  if map == "diverging"
+    far = list.Max(math.Abs(lo), math.Abs(hi))
+    lo = 0.0 - far
+    hi = far
+  end
+  scale = if hi > lo 256.0 / (hi - lo) else 0.0 end
+  ks = math.Floor((vs - lo) * scale)
+  if hi <= lo
+    ks = vs * 0.0 + 128.0
+  end
+  out = list.Fill(missing, value.Len(vs))
+  for i in 1..value.Len(vs)
+    k = ks[i]
+    if k - k == 0.0
+      out[i] = table[list.Max(0, list.Min(255, k)) + 1]
+    end
+  end
+  out
+end
+
+(* From a graph to its scene. *)
+
+outer = 10.0
+tickLen = 5.0
+tickGap = 3.0
+
+snap(p) = math.Floor(p) + 0.5
+
+defn runsOf(xs, ys, a, b)
+  (** The polylines of a line in pixels, cut at its NaNs: each run of finite points, of 2 or more. *)
+  px = a.X + (xs - a.T0x) * a.Sx
+  py = a.Y + (ys - a.T0y) * a.Sy
+  ok = col.Positions((px - px) + (py - py) == 0.0)
+  out = []
+  n = value.Len(ok)
+  from = 1
+  for i in 1..n
+    if i == n or ok[i + 1] != ok[i] + 1
+      if i > from
+        keep = ok[from..i]
+        out = list.Append({X: col.Pick(keep, px), Y: col.Pick(keep, py)}, out)
+      end
+      from = i + 1
+    end
+  end
+  out
+end
+
+defn m4(xs, ys, a, e)
+  (** M4 (Jugel, Jerzak, Hackenbroich and Markl, 2014): of the points of a line whose x never decreases, it keeps in each
+      pixel column the first, the last, the lowest and the highest, in their order, and a gap at each NaN. The lines
+      between them draw the same pixels as all the points: the first and the last join the columns as before, and the
+      lowest and the highest span the column as all of them did. *)
+  n = value.Len(xs)
+  span = (xs[e.First] - a.T0x) * a.Sx
+  cap = 4 * (math.Ceil(math.Abs((e.Xhi - e.Xlo) * a.Sx)) + 2 + e.Runs) + e.Runs + 8
+  keep = matrix.Zeros(1, cap)
+  k = 0
+  edge = math.Floor(a.X + span)
+  first = 0
+  imin = 0
+  imax = 0
+  last = 0
+  vmin = 0.0
+  vmax = 0.0
+  for i in 1..n
+    x = xs[i]
+    y = ys[i]
+    if x - x == 0.0 and y - y == 0.0
+      px = a.X + (x - a.T0x) * a.Sx
+      py = a.Y + (y - a.T0y) * a.Sy
+      if first == 0 or px >= edge
+        if first > 0
+          keep[k + 1] = first
+          keep[k + 2] = imin
+          keep[k + 3] = imax
+          keep[k + 4] = last
+          k += 4
+        end
+        while px >= edge
+          edge += 1.0
+        end
+        first = i
+        imin = i
+        imax = i
+        vmin = py
+        vmax = py
+      end
+      if py < vmin
+        vmin = py
+        imin = i
+      end
+      if py > vmax
+        vmax = py
+        imax = i
+      end
+      last = i
+    else
+      if first > 0
+        keep[k + 1] = first
+        keep[k + 2] = imin
+        keep[k + 3] = imax
+        keep[k + 4] = last
+        keep[k + 5] = 0.0
+        k += 5
+        first = 0
+      end
+    end
+  end
+  if first > 0
+    keep[k + 1] = first
+    keep[k + 2] = imin
+    keep[k + 3] = imax
+    keep[k + 4] = last
+    k += 4
+  end
+  out = []
+  run = []
+  i = 1
+  while i <= k
+    if keep[i] == 0.0
+      out = runOut(run, xs, ys, a, out)
+      run = []
+      i += 1
+    else
+      for idx in list.Unique(list.Sort(keep[i..i + 3]))
+        run = list.Append(idx, run)
+      end
+      i += 4
+    end
+  end
+  runOut(run, xs, ys, a, out)
+end
+
+defn runOut(run, xs, ys, a, out)
+  if value.Len(run) < 2
+    return out
+  end
+  list.Append({X: a.X + (col.Pick(run, xs) - a.T0x) * a.Sx, Y: a.Y + (col.Pick(run, ys) - a.T0y) * a.Sy}, out)
+end
+
+dashOf(d, width) = match d
+  "dashed" -> [3.7 * width, 1.6 * width]
+  "dotted" -> [1.0 * width, 1.65 * width]
+  "dashdot" -> [6.4 * width, 1.6 * width, 1.0 * width, 1.6 * width]
+  else -> missing
+end
+
+defn inT(axis, xs)
+  (** The values of an array on an axis's scale: their logarithms in base 10 on a log axis. *)
+  if axis.Scale == "log" math.Log(xs) / ln10 else xs end
+end
+
+defn mergeCells(vs, rows, cols, xe, ye, kx, ky, sums)
+  (** The cells merged in blocks of ky rows by kx columns, by their sum or their mean, NaNs left out; the edges kept. *)
+  nr = math.Div(rows + ky - 1, ky)
+  nc = math.Div(cols + kx - 1, kx)
+  out = matrix.Zeros(nr, nc)
+  for r in 1..nr
+    for c in 1..nc
+      total = 0.0
+      count = 0
+      for i in (r - 1) * ky + 1..list.Min(r * ky, rows)
+        for j in (c - 1) * kx + 1..list.Min(c * kx, cols)
+          v = vs[i, j]
+          if v - v == 0.0
+            total += v
+            count += 1
+          end
+        end
+      end
+      out[r, c] = if count == 0 math.Nan else if sums total else total / count end
+    end
+  end
+  {V: out, Rows: nr, Cols: nc, Xe: [xe[list.Min((c - 1) * kx + 1, cols + 1)] for c in 1..nc + 1], Ye: [ye[list.Min((r - 1) * ky + 1, rows + 1)] for r in 1..nr + 1]}
+end
+
+defn cellsItems(p, xa, ya, a, clip)
+  (** The colored cells of a heatmap or a density, merged past one cell per pixel. *)
+  vs = p.M
+  rows = p.Rows
+  cols = p.Cols
+  xe = p.Xe
+  ye = p.Ye
+  kx = math.Ceil(cols / list.Max(1.0, a.W))
+  ky = math.Ceil(rows / list.Max(1.0, a.H))
+  if kx > 1 or ky > 1
+    merged = mergeCells(vs, rows, cols, xe, ye, kx, ky, p.Fn == "Density")
+    vs = merged.V
+    rows = merged.Rows
+    cols = merged.Cols
+    xe = merged.Xe
+    ye = merged.Ye
+  end
+  flat = matrix.Reshape([1, rows * cols], matrix.Transpose(vs))
+  colors = colorsOf(flat, p.Vlo, p.Vhi, p.Map)
+  if p.Fn == "Density"
+    for k in col.Positions(flat == 0.0)
+      colors[k] = missing
+    end
+  end
+  [{Kind: "cells", Xs: a.X + (inT(xa, xe) - a.T0x) * a.Sx, Ys: a.Y + (inT(ya, ye) - a.T0y) * a.Sy, Colors: colors, Clip: clip}]
+end
+
+defn dataItems(p, xa, ya, a, clip)
+  (** The items of a layer in pixels. *)
+  match p.Fn
+    "Line" -> lineItems(p, xa, ya, a, clip)
+    "Points" -> markItems(p, xa, ya, a, clip)
+    "Area" -> areaItems(p, xa, ya, a, clip)
+    "Bars" -> barItems(p, a, clip)
+    "Histogram" -> histogramItems(p, xa, a, clip)
+    else -> cellsItems(p, xa, ya, a, clip)
+  end
+end
+
+defn lineItems(p, xa, ya, a, clip)
+  xs = inT(xa, p.X)
+  ys = inT(ya, p.Y)
+  runs = if p.E.Sorted and p.E.Count > 4.0 * a.W m4(xs, ys, a, p.E) else runsOf(xs, ys, a, p.E) end
+  [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip} for r in runs]
+end
+
+defn markItems(p, xa, ya, a, clip)
+  px = a.X + (inT(xa, p.X) - a.T0x) * a.Sx
+  py = a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy
+  ok = col.Positions((px - px) + (py - py) == 0.0)
+  [{Kind: "marks", Xs: col.Pick(ok, px), Ys: col.Pick(ok, py), Shape: p.Shape, Size: p.Size, Color: p.Color, Clip: clip}]
+end
+
+defn areaItems(p, xa, ya, a, clip)
+  xs = inT(xa, p.X)
+  highs = runsOf(xs, inT(ya, p.High), a, missing)
+  lows = runsOf(xs, inT(ya, p.Low), a, missing)
+  [{Kind: "area", Xs: list.Concat(highs[k].X, list.Reverse(lows[k].X)), Ys: list.Concat(highs[k].Y, list.Reverse(lows[k].Y)),
+    Color: p.Color, Opacity: 0.3, Clip: clip} for k in 1..value.Len(highs)]
+end
+
+defn barItems(p, a, clip)
+  out = []
+  m = value.Len(p.Series)
+  width = 0.8 / m
+  base = a.Y + (0.0 - a.T0y) * a.Sy
+  for s in 1..m
+    hs = p.Series[s]
+    for i in 1..value.Len(hs)
+      h = hs[i]
+      if h - h == 0.0
+        x0 = a.X + (i - 0.4 + (s - 1) * width - a.T0x) * a.Sx
+        top = a.Y + (h - a.T0y) * a.Sy
+        out = list.Append({Kind: "rect", X: x0, Y: list.Min(top, base), W: width * a.Sx, H: math.Abs(top - base), Color: p.Colors[s], Opacity: 1.0, Clip: clip}, out)
+      end
+    end
+  end
+  out
+end
+
+defn histogramItems(p, xa, a, clip)
+  out = []
+  base = a.Y + (0.0 - a.T0y) * a.Sy
+  xs = a.X + (inT(xa, p.Edges) - a.T0x) * a.Sx
+  for k in 1..value.Len(p.Counts)
+    c = p.Counts[k]
+    if c > 0.0
+      top = a.Y + (c - a.T0y) * a.Sy
+      out = list.Append({Kind: "rect", X: xs[k], Y: top, W: xs[k + 1] - xs[k], H: base - top, Color: p.Color, Opacity: 1.0, Clip: clip}, out)
+    end
+  end
+  out
+end
+
+line(xs, ys, color, width) = {Kind: "line", Xs: xs, Ys: ys, Color: color, Width: width, Dash: missing, Clip: missing}
+
+defn label(x, y, s, size, anchor, angle = 0)
+  {Kind: "text", X: x, Y: y, Text: s, Size: size, Color: "ink", Anchor: anchor, Angle: angle, Width: textWidth(s, size), Clip: missing}
+end
+
+defn legendEntries(ps)
+  (** The entries of the legend: one for each layer or series with a label, with what to draw beside it. *)
+  out = []
+  for p in ps
+    if p.Fn == "Bars"
+      for s in 1..value.Len(p.Labels)
+        if not value.IsMissing(p.Labels[s])
+          out = list.Append({Kind: "box", Label: p.Labels[s], Color: p.Colors[s], Opacity: 1.0}, out)
+        end
+      end
+    else if not value.IsMissing(p.Label) and not p.Cells
+      kind = match p.Fn
+        "Line" -> "line"
+        "Points" -> "mark"
+        else -> "box"
+      end
+      out = list.Append({Kind: kind, Label: p.Label, Color: p.Color, Opacity: if p.Fn == "Area" 0.3 else 1.0 end, Layer: p}, out)
+    end
+  end
+  out
+end
+
+defn colored(ps)
+  (** The layers with their colors: those without one take Okabe and Ito's in turn, a series of bars counting as one. *)
+  k = 0
+  out = []
+  for p in ps
+    if p.Fn == "Bars"
+      cs = p.Colors
+      for s in 1..value.Len(cs)
+        if value.IsMissing(cs[s])
+          cs[s] = palette[math.Mod(k, 8) + 1]
+          k += 1
+        end
+      end
+      p.Colors = cs
+    else if not p.Cells and value.IsMissing(p.Color)
+      p.Color = palette[math.Mod(k, 8) + 1]
+      k += 1
+    end
+    out = list.Append(p, out)
+  end
+  out
+end
+
+defn checkText(t, what, w)
+  if value.IsMissing(t) or value.IsText(t)
+    return result.Ok(t)
+  end
+  fail("$w: $what is $(brief(t)); give a text.")
+end
+
+defn drawGraph(g, ox, oy, w, h)
+  (** The items of one graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}. *)
+  count = value.Len(g.layers)
+  if count == 0
+    return fail("plot.Of needs at least one layer.")
+  end
+  ps = []
+  for k in 1..count
+    ps = list.Append(prepare(g.layers[k], k, count)?, ps)
+  end
+  gw = if count == 1 ps[1].W else "plot.Of" end
+  title = checkText(g.title, "title", gw)?
+  xtitle = checkText(g.xtitle, "x", gw)?
+  ytitle = checkText(g.ytitle, "y", gw)?
+  if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
+    return fail("$gw: legend is $(brief(g.legend)); give true or false.")
+  end
+  bars = list.Filter(p -> p.Category, ps)
+  if value.Len(bars) > 1
+    return fail("$gw: a graph holds one plot.Bars; give its series together, as plot.Bars(names, [h1, h2]).")
+  end
+  xa = axisOf("x", ps, g.xscale, g.xlim, gw)?
+  ya = axisOf("y", ps, g.yscale, g.ylim, gw)?
+  if xa.Category
+    xa.Names = bars[1].Names
+  end
+  ps = colored(ps)
+  entries = if g.legend == false [] else legendEntries(ps) end
+  legendW = if value.Len(entries) == 0 0.0 else 12.0 + 22.0 + 6.0 + widest([e.Label for e in entries], tickSize) end
+  shaded = list.Filter(p -> p.Cells, ps)
+  barTicks = missing
+  barW = 0.0
+  dropped = 0
+  for p in ps
+    dropped += p.Dropped
+  end
+
+  (* The layout: the margins hold the texts, measured, so that none is cut or overlaps; the plot gets the rest. Each pass
+     measures what the one before placed, until nothing moves. *)
+  titleH = if value.IsMissing(title) 0.0 else titleSize * lineRatio + 6.0 end
+  rotated = false
+  more = 0.0
+  less = 0.0
+  yfactor = false
+  xfactor = false
+  ax = 0.0
+  ay = 0.0
+  aw = 0.0
+  ah = 0.0
+  xt = missing
+  yt = missing
+  for pass in 1..6
+    namesH = if rotated widest(xa.Names, tickSize) else tickSize * lineRatio end
+    top = outer + titleH + if yfactor tickSize * lineRatio + 2.0 else 0.0 end
+    bottom = outer + tickLen + tickGap + namesH + if not value.IsMissing(xtitle) or xfactor 4.0 + axisSize * lineRatio else 0.0 end
+    ah = math.Floor(h - top - bottom)
+    ay = math.Floor(oy + top)
+    if ah < 20
+      return fail("$gw: $(math.Round(w)) by $(math.Round(h)) pixels leave no room for the plot; give a larger size.")
+    end
+    yt = ticksOf(ya, ah, false)
+    if value.Len(shaded) > 0
+      s = shaded[1]
+      bar = {Scale: "linear", Lo: s.Vlo, Hi: s.Vhi, T0: s.Vlo, T1: s.Vhi, Flip: false, Category: false, Names: missing}
+      if s.Map == "diverging"
+        far = list.Max(math.Abs(s.Vlo), math.Abs(s.Vhi))
+        bar = {Scale: "linear", Lo: 0.0 - far, Hi: far, T0: 0.0 - far, T1: far, Flip: false, Category: false, Names: missing}
+      end
+      if bar.Hi <= bar.Lo
+        bar.Lo -= 0.5
+        bar.Hi += 0.5
+        bar.T0 = bar.Lo
+        bar.T1 = bar.Hi
+      end
+      barTicks = linearTicks(bar, ah, false)
+      barTicks.Axis = bar
+      barW = 12.0 + 14.0 + tickLen + tickGap + widest(barTicks.Labels, tickSize)
+    end
+    left = outer + less + widest(yt.Labels, tickSize) + tickGap + tickLen + if not value.IsMissing(ytitle) axisSize * lineRatio + 4.0 else 0.0 end
+    right = outer + legendW + barW + more
+    ax = math.Ceil(ox + left)
+    aw = math.Floor(ox + w - right - ax)
+    if aw < 20
+      return fail("$gw: $(math.Round(w)) by $(math.Round(h)) pixels leave no room for the plot; give a larger size.")
+    end
+    xt = ticksOf(xa, aw, true)
+    moved = false
+    if (not value.IsMissing(yt.Factor)) != yfactor
+      yfactor = not value.IsMissing(yt.Factor)
+      moved = true
+    end
+    if (not value.IsMissing(xt.Factor)) != xfactor
+      xfactor = not value.IsMissing(xt.Factor)
+      moved = true
+    end
+    if xa.Category and not rotated and not fitsAt(xa, aw, true, xt.Values, xt.Labels)
+      rotated = true
+      moved = true
+    end
+    if not rotated and value.Len(xt.Values) > 0
+      n = value.Len(xt.Values)
+      over = ax + pos(xa, aw, xt.Values[n]) + textWidth(xt.Labels[n], tickSize) / 2 - (ox + w - outer - legendW - barW)
+      if over > 0.5
+        more += over
+        moved = true
+      end
+      under = ox + outer - (ax + pos(xa, aw, xt.Values[1]) - textWidth(xt.Labels[1], tickSize) / 2)
+      if under > 0.5
+        less += under
+        moved = true
+      end
+    end
+    if not moved
+      break
+    end
+  end
+
+  (* The items: the grid, the data cut to the plot, the frame, the ticks and their labels, the titles, the legend. *)
+  sy = if ya.Flip ah / (ya.T1 - ya.T0) else 0.0 - ah / (ya.T1 - ya.T0) end
+  a = {X: ax, Y: if ya.Flip ay else ay + ah end, Sx: aw / (xa.T1 - xa.T0), Sy: sy, T0x: xa.T0, T0y: ya.T0, W: aw, H: ah}
+  clip = [ax, ay, aw, ah]
+  items = []
+  if not xa.Category
+    for v in xt.Values
+      x = snap(ax + pos(xa, aw, v))
+      items = list.Append(line([x, x], [ay, ay + ah], "grid", 1.0), items)
+    end
+  end
+  for v in yt.Values
+    y = snap(a.Y + (tf(ya, v) - ya.T0) * sy)
+    items = list.Append(line([ax, ax + aw], [y, y], "grid", 1.0), items)
+  end
+  for p in ps
+    items = list.Concat(items, dataItems(p, xa, ya, a, clip))
+  end
+  items = list.Append(line([ax - 0.5, ax + aw + 0.5, ax + aw + 0.5, ax - 0.5, ax - 0.5], [ay - 0.5, ay - 0.5, ay + ah + 0.5, ay + ah + 0.5, ay - 0.5], "ink", 1.0), items)
+  below = ay + ah + 0.5
+  for i in 1..value.Len(xt.Values)
+    x = snap(ax + pos(xa, aw, xt.Values[i]))
+    items = list.Append(line([x, x], [below, below + tickLen], "ink", 1.0), items)
+    if rotated
+      items = list.Append(label(x + tickSize * cap / 2, below + tickLen + tickGap, xt.Labels[i], tickSize, "end", angle = -90), items)
+    else
+      items = list.Append(label(x, below + tickLen + tickGap + tickSize * ascent, xt.Labels[i], tickSize, "middle"), items)
+    end
+  end
+  for i in 1..value.Len(yt.Values)
+    y = snap(a.Y + (tf(ya, yt.Values[i]) - ya.T0) * sy)
+    items = list.Append(line([ax - 0.5 - tickLen, ax - 0.5], [y, y], "ink", 1.0), items)
+    items = list.Append(label(ax - 0.5 - tickLen - tickGap, y + tickSize * cap / 2, yt.Labels[i], tickSize, "end"), items)
+  end
+  namesH = if rotated widest(xa.Names, tickSize) else tickSize * lineRatio end
+  under = below + tickLen + tickGap + namesH + 4.0 + axisSize * ascent
+  if not value.IsMissing(title)
+    items = list.Append(label(ax + aw / 2, oy + outer + titleSize * ascent, title, titleSize, "middle"), items)
+  end
+  if not value.IsMissing(xtitle)
+    items = list.Append(label(ax + aw / 2, under, xtitle, axisSize, "middle"), items)
+  end
+  if not value.IsMissing(xt.Factor)
+    items = list.Append(label(ax + aw, under, xt.Factor, tickSize, "end"), items)
+  end
+  if not value.IsMissing(ytitle)
+    items = list.Append(label(ox + outer + less + axisSize * ascent, ay + ah / 2, ytitle, axisSize, "middle", angle = -90), items)
+  end
+  if not value.IsMissing(yt.Factor)
+    items = list.Append(label(ax, ay - 4.0, yt.Factor, tickSize, "start"), items)
+  end
+  right = ax + aw + 0.5
+  if not value.IsMissing(barTicks)
+    items = list.Concat(items, colorBar(shaded[1], barTicks, right + 12.0, ay, ah))
+    right += barW
+  end
+  if value.Len(entries) > 0
+    items = list.Concat(items, legendItems(entries, right + 12.0, ay))
+  end
+  result.Ok({Items: items, Dropped: dropped})
+end
+
+defn colorBar(p, t, x, y, h)
+  (** The color bar of a heatmap or a density: its 256 colors from the least value at the bottom, and its ticks. *)
+  axis = t.Axis
+  edges = [y + h - k * h / 256.0 for k in 0..256]
+  vs = [axis.Lo + (k + 0.5) * (axis.Hi - axis.Lo) / 256.0 for k in 0..255]
+  items = [{Kind: "cells", Xs: [x, x + 14.0], Ys: edges, Colors: colorsOf(vs * 1.0, axis.Lo, axis.Hi, p.Map), Clip: missing}]
+  items = list.Append(line([x - 0.5, x + 14.5, x + 14.5, x - 0.5, x - 0.5], [y - 0.5, y - 0.5, y + h + 0.5, y + h + 0.5, y - 0.5], "ink", 1.0), items)
+  for i in 1..value.Len(t.Values)
+    ty = snap(y + h - pos(axis, h, t.Values[i]))
+    items = list.Append(line([x + 14.5, x + 14.5 + tickLen], [ty, ty], "ink", 1.0), items)
+    items = list.Append(label(x + 14.5 + tickLen + tickGap, ty + tickSize * cap / 2, t.Labels[i], tickSize, "start"), items)
+  end
+  if not value.IsMissing(t.Factor)
+    items = list.Append(label(x, y - 4.0, t.Factor, tickSize, "start"), items)
+  end
+  items
+end
+
+defn legendItems(entries, x, y)
+  (** The legend beside the plot: a sample of each layer and its label, one a line. *)
+  items = []
+  row = tickSize * lineRatio + 4.0
+  for k in 1..value.Len(entries)
+    e = entries[k]
+    mid = y + (k - 1) * row + row / 2
+    if e.Kind == "line"
+      items = list.Append({Kind: "line", Xs: [x, x + 22.0], Ys: [mid, mid], Color: e.Color, Width: e.Layer.Width, Dash: dashOf(e.Layer.Dash, e.Layer.Width), Clip: missing}, items)
+    else if e.Kind == "mark"
+      items = list.Append({Kind: "marks", Xs: [x + 11.0], Ys: [mid], Shape: e.Layer.Shape, Size: e.Layer.Size, Color: e.Color, Clip: missing}, items)
+    else
+      items = list.Append({Kind: "rect", X: x + 5.0, Y: mid - 5.0, W: 12.0, H: 10.0, Color: e.Color, Opacity: e.Opacity, Clip: missing}, items)
+    end
+    items = list.Append(label(x + 28.0, mid + tickSize * cap / 2, e.Label, tickSize, "start"), items)
+  end
+  items
+end
+
+(* SVG: the scene written out, numbers to a hundredth of a pixel. *)
+
+defn num(x)
+  s = text.Decimals(2, x)
+  if text.EndsWith(".00", s)
+    s = text.ByteSlice(1, text.ByteLength(s) - 3, s)
+  else if text.EndsWith("0", s)
+    s = text.ByteSlice(1, text.ByteLength(s) - 1, s)
+  end
+  if s == "-0" "0" else s end
+end
+
+paint(c) = match c
+  "ink" -> "#222222"
+  "grid" -> "#e6e6e6"
+  else -> c
+end
+
+escaped(s) = text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s)))
+
+defn pathOf(xs, ys, close)
+  parts = list.Fill("", value.Len(xs))
+  for i in 1..value.Len(xs)
+    parts[i] = "$(num(xs[i])) $(num(ys[i]))"
+  end
+  "M$(text.Join("L", parts))$(if close "Z" else "" end)"
+end
+
+defn markOf(shape, x, y, r)
+  (** One marker of a size r from its center, as an SVG element. *)
+  match shape
+    "circle" -> "<circle cx=\"$(num(x))\" cy=\"$(num(y))\" r=\"$(num(r))\"/>"
+    "square" -> "<rect x=\"$(num(x - r))\" y=\"$(num(y - r))\" width=\"$(num(2 * r))\" height=\"$(num(2 * r))\"/>"
+    "triangle" -> "<path d=\"M$(num(x)) $(num(y - r))L$(num(x + r)) $(num(y + r))L$(num(x - r)) $(num(y + r))Z\"/>"
+    "diamond" -> "<path d=\"M$(num(x)) $(num(y - r))L$(num(x + r)) $(num(y))L$(num(x)) $(num(y + r))L$(num(x - r)) $(num(y))Z\"/>"
+    "cross" -> "<path d=\"M$(num(x - r)) $(num(y - r))L$(num(x + r)) $(num(y + r))M$(num(x - r)) $(num(y + r))L$(num(x + r)) $(num(y - r))\"/>"
+    else -> "<path d=\"M$(num(x - r)) $(num(y))L$(num(x + r)) $(num(y))M$(num(x)) $(num(y - r))L$(num(x)) $(num(y + r))\"/>"
+  end
+end
+
+defn itemSvg(item)
+  match item.Kind
+    "line" -> "<path d=\"$(pathOf(item.Xs, item.Ys, false))\" fill=\"none\" stroke=\"$(paint(item.Color))\" stroke-width=\"$(num(item.Width))\" stroke-linejoin=\"round\"$(if value.IsMissing(item.Dash) "" else " stroke-dasharray=\"$(text.Join(" ", [num(d) for d in item.Dash]))\"" end)/>"
+    "area" -> "<path d=\"$(pathOf(item.Xs, item.Ys, true))\" fill=\"$(item.Color)\" fill-opacity=\"$(num(item.Opacity))\"/>"
+    "rect" -> "<rect shape-rendering=\"crispEdges\" x=\"$(num(item.X))\" y=\"$(num(item.Y))\" width=\"$(num(item.W))\" height=\"$(num(item.H))\" fill=\"$(item.Color)\"$(if item.Opacity < 1.0 " fill-opacity=\"$(num(item.Opacity))\"" else "" end)/>"
+    "marks" -> marksSvg(item)
+    "cells" -> cellsSvg(item)
+    else -> textSvg(item)
+  end
+end
+
+defn marksSvg(item)
+  r = item.Size / 2
+  open = if item.Shape == "cross" or item.Shape == "plus" "<g fill=\"none\" stroke=\"$(item.Color)\" stroke-width=\"1.5\">" else "<g fill=\"$(item.Color)\">" end
+  parts = list.Fill("", value.Len(item.Xs))
+  for i in 1..value.Len(item.Xs)
+    parts[i] = markOf(item.Shape, item.Xs[i], item.Ys[i], r)
+  end
+  "$open$(text.Join("", parts))</g>"
+end
+
+defn cellsSvg(item)
+  cols = value.Len(item.Xs) - 1
+  rows = value.Len(item.Ys) - 1
+  parts = []
+  for r in 1..rows
+    y = list.Min(item.Ys[r], item.Ys[r + 1])
+    hh = math.Abs(item.Ys[r + 1] - item.Ys[r])
+    for c in 1..cols
+      color = item.Colors[(r - 1) * cols + c]
+      if not value.IsMissing(color)
+        parts = list.Append("<rect x=\"$(num(item.Xs[c]))\" y=\"$(num(y))\" width=\"$(num(item.Xs[c + 1] - item.Xs[c]))\" height=\"$(num(hh))\" fill=\"$color\"/>", parts)
+      end
+    end
+  end
+  "<g shape-rendering=\"crispEdges\">$(text.Join("", parts))</g>"
+end
+
+defn textSvg(item)
+  turn = if item.Angle == 0 "" else " transform=\"rotate($(item.Angle) $(num(item.X)) $(num(item.Y)))\"" end
+  anchor = if item.Anchor == "start" "" else " text-anchor=\"$(item.Anchor)\"" end
+  "<text x=\"$(num(item.X))\" y=\"$(num(item.Y))\" font-size=\"$(num(item.Size))\" fill=\"$(paint(item.Color))\"$anchor$turn>$(escaped(item.Text))</text>"
+end
+
+defn svgOf(scene)
+  (** The SVG of a scene: a white page, the clip rectangles, then each item in order, inside the clip it names. *)
+  w = num(scene.Width)
+  h = num(scene.Height)
+  out = ["<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'Noto Sans', sans-serif\" font-weight=\"500\" style=\"font-kerning:none\">",
+         "<rect width=\"$w\" height=\"$h\" fill=\"#ffffff\"/>"]
+  clips = []
+  for item in scene.Items
+    if not value.IsMissing(item.Clip) and not (item.Clip in clips)
+      clips = list.Append(item.Clip, clips)
+    end
+  end
+  if value.Len(clips) > 0
+    defs = ["<clipPath id=\"c$k\"><rect x=\"$(num(clips[k][1]))\" y=\"$(num(clips[k][2]))\" width=\"$(num(clips[k][3]))\" height=\"$(num(clips[k][4]))\"/></clipPath>" for k in 1..value.Len(clips)]
+    out = list.Append("<defs>$(text.Join("", defs))</defs>", out)
+  end
+  current = missing
+  for item in scene.Items
+    if not value.Equal(item.Clip, current)
+      if not value.IsMissing(current)
+        out = list.Append("</g>", out)
+      end
+      if not value.IsMissing(item.Clip)
+        out = list.Append("<g clip-path=\"url(#c$(list.IndexOf(item.Clip, clips)))\">", out)
+      end
+      current = item.Clip
+    end
+    out = list.Append(itemSvg(item), out)
+  end
+  if not value.IsMissing(current)
+    out = list.Append("</g>", out)
+  end
+  out = list.Append("</svg>\n", out)
+  text.Join("\n", out)
+end
+
+(* The colors of viridis, from matplotlib's table of its 256 (van der Walt and Smith, 2015), to 8 bits. *)
+
+viridis = [
+  "#440154", "#440256", "#450457", "#450559", "#46075a", "#46085c", "#460a5d", "#460b5e", "#470d60", "#470e61", "#471063", "#471164",
+  "#471365", "#481467", "#481668", "#481769", "#48186a", "#481a6c", "#481b6d", "#481c6e", "#481d6f", "#481f70", "#482071", "#482173",
+  "#482374", "#482475", "#482576", "#482677", "#482878", "#482979", "#472a7a", "#472c7a", "#472d7b", "#472e7c", "#472f7d", "#46307e",
+  "#46327e", "#46337f", "#463480", "#453581", "#453781", "#453882", "#443983", "#443a83", "#443b84", "#433d84", "#433e85", "#423f85",
+  "#424086", "#424186", "#414287", "#414487", "#404588", "#404688", "#3f4788", "#3f4889", "#3e4989", "#3e4a89", "#3e4c8a", "#3d4d8a",
+  "#3d4e8a", "#3c4f8a", "#3c508b", "#3b518b", "#3b528b", "#3a538b", "#3a548c", "#39558c", "#39568c", "#38588c", "#38598c", "#375a8c",
+  "#375b8d", "#365c8d", "#365d8d", "#355e8d", "#355f8d", "#34608d", "#34618d", "#33628d", "#33638d", "#32648e", "#32658e", "#31668e",
+  "#31678e", "#31688e", "#30698e", "#306a8e", "#2f6b8e", "#2f6c8e", "#2e6d8e", "#2e6e8e", "#2e6f8e", "#2d708e", "#2d718e", "#2c718e",
+  "#2c728e", "#2c738e", "#2b748e", "#2b758e", "#2a768e", "#2a778e", "#2a788e", "#29798e", "#297a8e", "#297b8e", "#287c8e", "#287d8e",
+  "#277e8e", "#277f8e", "#27808e", "#26818e", "#26828e", "#26828e", "#25838e", "#25848e", "#25858e", "#24868e", "#24878e", "#23888e",
+  "#23898e", "#238a8d", "#228b8d", "#228c8d", "#228d8d", "#218e8d", "#218f8d", "#21908d", "#21918c", "#20928c", "#20928c", "#20938c",
+  "#1f948c", "#1f958b", "#1f968b", "#1f978b", "#1f988b", "#1f998a", "#1f9a8a", "#1e9b8a", "#1e9c89", "#1e9d89", "#1f9e89", "#1f9f88",
+  "#1fa088", "#1fa188", "#1fa187", "#1fa287", "#20a386", "#20a486", "#21a585", "#21a685", "#22a785", "#22a884", "#23a983", "#24aa83",
+  "#25ab82", "#25ac82", "#26ad81", "#27ad81", "#28ae80", "#29af7f", "#2ab07f", "#2cb17e", "#2db27d", "#2eb37c", "#2fb47c", "#31b57b",
+  "#32b67a", "#34b679", "#35b779", "#37b878", "#38b977", "#3aba76", "#3bbb75", "#3dbc74", "#3fbc73", "#40bd72", "#42be71", "#44bf70",
+  "#46c06f", "#48c16e", "#4ac16d", "#4cc26c", "#4ec36b", "#50c46a", "#52c569", "#54c568", "#56c667", "#58c765", "#5ac864", "#5cc863",
+  "#5ec962", "#60ca60", "#63cb5f", "#65cb5e", "#67cc5c", "#69cd5b", "#6ccd5a", "#6ece58", "#70cf57", "#73d056", "#75d054", "#77d153",
+  "#7ad151", "#7cd250", "#7fd34e", "#81d34d", "#84d44b", "#86d549", "#89d548", "#8bd646", "#8ed645", "#90d743", "#93d741", "#95d840",
+  "#98d83e", "#9bd93c", "#9dd93b", "#a0da39", "#a2da37", "#a5db36", "#a8db34", "#aadc32", "#addc30", "#b0dd2f", "#b2dd2d", "#b5de2b",
+  "#b8de29", "#bade28", "#bddf26", "#c0df25", "#c2df23", "#c5e021", "#c8e020", "#cae11f", "#cde11d", "#d0e11c", "#d2e21b", "#d5e21a",
+  "#d8e219", "#dae319", "#dde318", "#dfe318", "#e2e418", "#e5e419", "#e7e419", "#eae51a", "#ece51b", "#efe51c", "#f1e51d", "#f4e61e",
+  "#f6e620", "#f8e621", "#fbe723", "#fde725"
+]
+
+(* Widths: from here *)
+basic = [260, 273, 429, 646, 572, 852, 737, 237, 312, 312, 548, 572, 273, 321, 272, 385, 572, 572, 572, 572, 572, 572, 572, 572, 572, 572, 272, 273, 572, 572, 572, 447, 899, 655, 654, 635, 731, 557, 528, 727, 748, 354, 290, 632, 534, 918, 776, 784, 610, 784, 632, 550, 562, 738, 615, 941, 611, 584, 574, 330, 385, 330, 572, 434, 306, 572, 620, 491, 620, 574, 357, 620, 627, 270, 270, 559, 270, 947, 627, 611, 620, 620, 423, 486, 383, 627, 527, 807, 543, 528, 477, 384, 551, 384, 572]
+latin = [260, 274, 572, 572, 571, 572, 551, 505, 584, 832, 364, 540, 572, 321, 832, 500, 427, 572, 359, 359, 306, 632, 653, 272, 236, 359, 379, 540, 770, 801, 800, 447, 655, 655, 655, 655, 655, 655, 902, 635, 557, 557, 557, 557, 354, 354, 354, 354, 731, 773, 784, 784, 784, 784, 784, 572, 784, 738, 738, 738, 738, 584, 612, 652, 572, 572, 572, 572, 572, 572, 880, 491, 574, 574, 574, 574, 270, 270, 270, 270, 611, 627, 611, 611, 611, 611, 611, 572, 609, 627, 627, 627, 627, 528, 620, 528, 655, 572, 655, 572, 655, 572, 635, 491, 635, 491, 635, 491, 635, 491, 731, 620, 731, 625, 557, 574, 557, 574, 557, 574, 557, 572, 557, 574, 727, 620, 727, 620, 727, 620, 727, 620, 748, 627, 748, 630, 354, 270, 354, 270, 354, 270, 354, 270, 354, 270, 644, 544, 290, 270, 631, 559, 559, 534, 270, 534, 270, 534, 270, 534, 298, 536, 272, 773, 627, 773, 627, 773, 627, 714, 776, 627, 784, 611, 784, 611, 784, 611, 941, 955, 632, 423, 632, 423, 632, 423, 550, 486, 550, 486, 550, 486, 550, 486, 562, 383, 562, 383, 562, 382, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 941, 808, 584, 528, 584, 574, 477, 574, 477, 574, 477, 343]
+greek = [455, 388, 691, 665, 192, 192, 784, 666, 0, 0, 257, 489, 491, 489, 273, 290, 0, 0, 0, 0, 251, 690, 734, 272, 739, 930, 558, 0, 917, 0, 814, 869, 352, 655, 654, 508, 648, 557, 574, 748, 784, 354, 631, 626, 918, 773, 625, 784, 738, 610, 0, 574, 562, 584, 861, 611, 838, 729, 354, 584, 633, 481, 618, 352, 610, 633, 618, 530, 594, 480, 467, 618, 600, 352, 559, 535, 640, 530, 500, 611, 680, 605, 495, 626, 506, 610, 751, 602, 773, 819, 352, 610, 611, 610, 821, 631, 646, 655, 610, 838, 610, 751, 904, 560, 771, 611, 635, 490, 522, 526, 497, 555, 593, 516, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 675, 605, 491, 270, 785, 503, 499, 612, 620, 635, 918, 754, 610, 635, 635, 635]
+extraCodes = [8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8240, 8242, 8243, 8304, 8305, 8308, 8309, 8310, 8311, 8312, 8313, 8314, 8315, 8316, 8317, 8318, 8319, 8320, 8321, 8322, 8323, 8324, 8325, 8326, 8327, 8328, 8329, 8330, 8331, 8332, 8333, 8334, 8722]
+extraWidths = [500, 1000, 187, 187, 384, 384, 376, 810, 1207, 253, 442, 359, 176, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 408, 359, 359, 359, 359, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 575]
+(* Widths: to here *)

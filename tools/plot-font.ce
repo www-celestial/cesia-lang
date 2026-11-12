@@ -1,0 +1,144 @@
+(** The advance widths that std/plot measures its texts with, read from the font that Cemacs draws them with, Noto Sans
+    Medium (SIL Open Font License 1.1), version 2.015: the tables cmap (format 4 or 12), hmtx and head of the TrueType
+    file, as the OpenType specification lays them out. It prints the lines of src/std/plot.ce between "(* Widths: from
+    here *)" and "(* Widths: to here *)", in units of the font's em, and with --check it says whether they are the lines
+    there:
+
+      cesia run --allow read=/usr/share/fonts,read=src tools/plot-font.ce /usr/share/fonts/noto/NotoSans-Medium.ttf
+      cesia run --allow read=/usr/share/fonts,read=src tools/plot-font.ce /usr/share/fonts/noto/NotoSans-Medium.ttf --check *)
+use std/bug
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(* Big-endian integers at a byte offset from 0, as the specification counts them. *)
+u8(f, at) = text.Byte(at + 1, f)
+u16(f, at) = u8(f, at) * 256 + u8(f, at + 1)
+u32(f, at) = u16(f, at) * 65536 + u16(f, at + 2)
+s16(f, at) = if u16(f, at) >= 32768 u16(f, at) - 65536 else u16(f, at) end
+
+defn table(f, tag)
+  (** The offset of a table, from the directory at the start of the file. *)
+  for k in 0..u16(f, 4) - 1
+    at = 12 + 16 * k
+    if text.ByteSlice(at + 1, at + 4, f) == tag
+      return u32(f, at + 8)
+    end
+  end
+  bug.Panic("This font has no $tag table.")
+end
+
+defn glyph4(f, sub, code)
+  (** The glyph of a code point in a cmap subtable of format 4: segments of codes, each with a delta or an array. *)
+  segs = u16(f, sub + 6) / 2
+  for s in 0..segs - 1
+    ends = u16(f, sub + 14 + 2 * s)
+    if code <= ends
+      start = u16(f, sub + 16 + 2 * segs + 2 * s)
+      if code < start
+        return 0
+      end
+      delta = u16(f, sub + 16 + 4 * segs + 2 * s)
+      rangeAt = sub + 16 + 6 * segs + 2 * s
+      range = u16(f, rangeAt)
+      if range == 0
+        return math.Mod(code + delta, 65536)
+      end
+      g = u16(f, rangeAt + range + 2 * (code - start))
+      return if g == 0 0 else math.Mod(g + delta, 65536) end
+    end
+  end
+  0
+end
+
+defn glyph12(f, sub, code)
+  (** The glyph of a code point in a cmap subtable of format 12: groups of codes that follow their glyphs. *)
+  for k in 0..u32(f, sub + 12) - 1
+    at = sub + 16 + 12 * k
+    if code >= u32(f, at) and code <= u32(f, at + 4)
+      return u32(f, at + 8) + code - u32(f, at)
+    end
+  end
+  0
+end
+
+defn cmapOf(f)
+  (** The Unicode subtable of the cmap: platform 3 (Windows) with encoding 10 or 1, or platform 0 (Unicode). *)
+  c = table(f, "cmap")
+  best = missing
+  for k in 0..u16(f, c + 2) - 1
+    at = c + 4 + 8 * k
+    platform = u16(f, at)
+    encoding = u16(f, at + 2)
+    sub = c + u32(f, at + 4)
+    if platform == 3 and encoding == 10 or platform == 0 and encoding == 4
+      return sub
+    end
+    if platform == 3 and encoding == 1 or platform == 0
+      best = sub
+    end
+  end
+  best
+end
+
+defn advance(f, code)
+  (** The advance width of a code point in font units, 0 when the font has no glyph for it. *)
+  sub = cmapOf(f)
+  g = if u16(f, sub) == 12 glyph12(f, sub, code) else glyph4(f, sub, code) end
+  if g == 0
+    return 0
+  end
+  metrics = u16(f, table(f, "hhea") + 34)
+  u16(f, table(f, "hmtx") + 4 * list.Min(g, metrics - 1))
+end
+
+(* The ranges std/plot measures: Basic Latin, Latin-1 and Latin Extended-A, Greek, and the general punctuation,
+   superscripts, subscripts and minus sign of numbers and units. *)
+extras = [0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2026, 0x2030, 0x2032, 0x2033, 0x2070, 0x2071,
+  0x2074, 0x2075, 0x2076, 0x2077, 0x2078, 0x2079, 0x207A, 0x207B, 0x207C, 0x207D, 0x207E, 0x207F, 0x2080, 0x2081, 0x2082,
+  0x2083, 0x2084, 0x2085, 0x2086, 0x2087, 0x2088, 0x2089, 0x208A, 0x208B, 0x208C, 0x208D, 0x208E, 0x2212]
+
+row(f, name, codes) = "$name = [$(text.Join(", ", [advance(f, c) for c in codes]))]"
+
+defn lines(f)
+  em = u16(f, table(f, "head") + 18)
+  if em != 1000
+    bug.Panic("std/plot counts widths in thousandths of an em, and this font has $em units in its em.")
+  end
+  have = list.Filter(c -> advance(f, c) > 0, extras)
+  [
+    "(* Widths: from here *)",
+    row(f, "basic", 32..126),
+    row(f, "latin", 160..383),
+    row(f, "greek", 880..1023),
+    "extraCodes = [$(text.Join(", ", have))]",
+    row(f, "extraWidths", have),
+    "(* Widths: to here *)"
+  ]
+end
+
+defn main()
+  if value.Len(sys.Args) < 1
+    io.PrintError("Give the font: tools/plot-font.ce NotoSans-Medium.ttf [--check]")
+    sys.Exit(2)
+  end
+  made = lines(result.Unwrap(sys.Read(sys.Args[1])))
+  if value.Len(sys.Args) < 2
+    io.Print(text.Join("\n", made))
+    return missing
+  end
+  source = text.Lines(result.Unwrap(sys.Read("src/std/plot.ce")))
+  from = list.IndexOf(made[1], source)
+  kept = if from == missing [] else list.Take(value.Len(made), list.Skip(from - 1, source)) end
+  if value.Equal(kept, made)
+    io.Print("The widths of src/std/plot.ce are those of the font.")
+  else
+    io.PrintError("The widths of src/std/plot.ce differ from the font's: run this tool without --check and put its lines there.")
+    sys.Exit(1)
+  end
+end
+main()
