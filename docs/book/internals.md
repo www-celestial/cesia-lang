@@ -801,16 +801,20 @@ are never in an entry: they come from the command line and `cesia.toml` at each 
 from the disk.
 
 **Writing.** The entries of a run are written once it ends, its output out and its exit code set, by a copy of the
-process that the end doesn't wait for, made with `fork`: a run takes no longer than without a cache. The copy closes its
-input and output and leaves the terminal's session, so a shell that waits for the end of the output, or a key that stops
-the program, neither waits for it nor stops it. A run that is killed, or that ends while work still runs on other cores,
-leaves no entry, and neither does a run on Windows, which has no `fork`: the next run reads its packages as without a
-cache. A program that runs for a long time, as a server, writes its entries when it stops. Each entry is written to a
-new file beside it, which no other file can be (Cesia makes it with `O_EXCL`), then renamed in place of the old one,
-which is removed first: btrfs writes a file renamed over another to the disk at once, about 8 ms. A run that reads an
-entry while another writes it sees the old one, the new one or none, never a half, and two runs that write it at once
-both write a whole one. At the first write of a run, past 256 MB of entries, those used least lately go, down to 128 MB;
-reading an entry keeps its date fresh, once a day. The folder can be deleted at any time, as any cache.
+process that the end doesn't wait for, made with `fork`: a run takes no longer than without a cache. Before anything
+else, the copy closes every descriptor of the program, its files, sockets and pipes, and the run ends only once it has:
+a port the program listened on, a lock it held and a pipe it wrote to are free as soon as it has ended, and nothing more
+reaches a file it wrote. The copy then puts its input and output on `/dev/null`, leaves the terminal's session and takes
+none of the program's signal handlers, so a shell that waits for the end of the output, or a key that stops the program,
+neither waits for it nor stops it; it ends within 10 s whatever happens, without running the program's end a second
+time. A run that is killed, or that ends while work still runs on other cores, leaves no entry, and neither does a run
+on Windows, which has no `fork`: the next run reads its packages as without a cache. A program that runs for a long
+time, as a server, writes its entries when it stops. Each entry is written to a new file beside it, which no other file
+can be (Cesia makes it with `O_EXCL`), then renamed in place of the old one, which is removed first: btrfs writes a file
+renamed over another to the disk at once, about 8 ms. A run that reads an entry while another writes it sees the old
+one, the new one or none, never a half, and two runs that write it at once both write a whole one. At the first write of
+a run, past 256 MB of entries, those used least lately go, down to 128 MB; reading an entry keeps its date fresh, once a
+day. The folder can be deleted at any time, as any cache.
 
 **What it saves.** From the start of the process to its end, the median of 21 runs of each and its 95 % interval, the
 three taking turns, on 2026-11-12 while other work ran on the machine: before the cache; the first run, with an empty

@@ -145,6 +145,37 @@ let () =
   let left = List.sort compare (Array.to_list (Sys.readdir dir)) in
   check "past the limit, the oldest go, down to half" (left = [ "e6"; "e7"; "e8"; "e9"; "new.tmp" ])
 
+(* The copy that writes the entries at the end of a run: the program's descriptors are closed in it before anything else,
+   so a pipe ends, a port is free and nothing is written where the program writes, while the copy still runs. *)
+let () =
+  let r, w = Unix.pipe () in
+  let listener = Unix.socket PF_INET SOCK_STREAM 0 in
+  Unix.setsockopt listener SO_REUSEADDR true;
+  Unix.bind listener (ADDR_INET (Unix.inet_addr_loopback, 0));
+  Unix.listen listener 8;
+  let port = match Unix.getsockname listener with ADDR_INET (_, p) -> p | _ -> 0 in
+  let marker = Filename.concat top "copy" in
+  Cesia_sys.Entries.after (fun () ->
+      let still = match Unix.fstat w with _ -> "open" | exception Unix.Unix_error _ -> "closed" in
+      write (marker ^ ".new") still;
+      Sys.rename (marker ^ ".new") marker;
+      Unix.sleepf 1.);
+  Unix.close w;
+  Unix.close listener;
+  let again = Unix.socket PF_INET SOCK_STREAM 0 in
+  check "the port of a listener is free at once"
+    (match Unix.bind again (ADDR_INET (Unix.inet_addr_loopback, port)); Unix.listen again 8 with
+     | () -> true
+     | exception Unix.Unix_error _ -> false);
+  Unix.close again;
+  let t = Unix.gettimeofday () in
+  let ended = Unix.read r (Bytes.create 1) 0 1 = 0 in
+  check "the end of a pipe doesn't wait for the copy" (ended && Unix.gettimeofday () -. t < 0.5);
+  let rec wait n = if n > 0 && not (Sys.file_exists marker) then (Unix.sleepf 0.01; wait (n - 1)) in
+  wait 500;
+  check "the copy holds none of the program's descriptors"
+    (Sys.file_exists marker && In_channel.with_open_bin marker In_channel.input_all = "closed")
+
 let () =
   let rec remove path =
     match Unix.lstat path with

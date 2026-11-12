@@ -68,3 +68,20 @@ expected=$(run)
 for i in 1 2 3 4; do [ "$(cat "$top/out$i")" = "$expected" ] || echo "run $i at once: another output"; done
 echo "four runs at once: $(ls "$top/race/cesia/load" | grep -c -v tmp) entries"
 same "after them"
+# The copy that writes the entries holds none of the program's descriptors once the program has ended: the port it
+# listened on is free, a lock it held is free, a pipe it wrote to ends, and a file it wrote gets nothing more. Each run
+# starts with an empty cache, so that a copy writes.
+wait_copies() { for i in $(seq 1 500); do pgrep -f -- "$app/" > /dev/null || return 0; sleep 0.01; done; }
+printf 'use src/shapes\nuse std/io\nuse std/net\n\nlistener = net.Listen(0).Value\nio.Print(net.Port(listener))\n' > "$app/listen.ce"
+port=$(cd "$app" && XDG_CACHE_HOME="$top/port" cesia run $no_spec --allow net "$app/listen.ce")
+printf 'use std/io\nuse std/net\nuse std/result\n\nio.Print(result.IsOk(net.Listen(%s)))\n' "$port" > "$top/again.ce"
+[ "$(XDG_CACHE_HOME=/proc/none cesia run --allow net "$top/again.ce")" = true ] || echo "the port stays bound after the end"
+if command -v flock > /dev/null; then
+  (cd "$app" && XDG_CACHE_HOME="$top/lock" flock "$top/lock-file" "$root/_build/default/src/bin/main.exe" run $no_spec "$app/main.ce" > /dev/null 2>&1)
+  flock -n "$top/lock-file" true || echo "the lock stays held after the end"
+fi
+(cd "$app" && XDG_CACHE_HOME="$top/pipe" cesia run $no_spec "$app/main.ce" 3>&1 2>&1 | cat | head -1)
+(cd "$app" && XDG_CACHE_HOME="$top/file" cesia run $no_spec "$app/main.ce" > "$top/written" 2>&1)
+size=$(wc -c < "$top/written")
+wait_copies
+[ "$(wc -c < "$top/written")" = "$size" ] || echo "the copy wrote to the program's output"

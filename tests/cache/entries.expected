@@ -33,4 +33,5 @@ src/shapes/broken.ce:6:25: broken 1
 exit 1
 four runs at once: 2 entries
 after them: the same output and error
+26 sq m
 exit 0

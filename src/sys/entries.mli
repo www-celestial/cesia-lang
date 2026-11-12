@@ -11,7 +11,9 @@ val store : string -> Cesia.Cache.store
 val prune : limit:int -> string -> unit
 
 (** At the end of a run, [save] runs in a copy of the process that the end doesn't wait for: the run ends as soon as
-    without a cache. The copy holds none of its input and output, and leaves its session. A run killed, a system without
+    without a cache. The copy closes every descriptor of the program before anything else, puts its input and output on
+    /dev/null, leaves its session, takes none of its signal handlers and ends within 10 s, without running the program's
+    end a second time. A run killed, a system without
     [fork], or one with work still running on other cores, writes nothing; the next run reads its packages as without a
     cache. *)
 val after : (unit -> unit) -> unit

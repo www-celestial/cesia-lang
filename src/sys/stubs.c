@@ -1,5 +1,5 @@
 /* What OCaml's unix library doesn't offer: the epoll system calls, loading C libraries, the size of the RAM, and a command
-   started in a process group of its own. */
+   started in a process group of its own, and closing every descriptor from one on. */
 #include <caml/alloc.h>
 #include <caml/bigarray.h>
 #include <caml/memory.h>
@@ -21,13 +21,8 @@ _Static_assert(sizeof(void *) == 8, "Cesia needs 64 bits.");
 #endif
 
 /* An address fits in an OCaml integer. 0 means that it failed. */
-value cesia_dlopen(value name) {
-  return Val_long((intnat) open_library(String_val(name)));
-}
-
-value cesia_dlsym(value lib, value name) {
-  return Val_long((intnat) find_symbol((void *) Long_val(lib), String_val(name)));
-}
+value cesia_dlopen(value name) { return Val_long((intnat) open_library(String_val(name))); }
+value cesia_dlsym(value lib, value name) { return Val_long((intnat) find_symbol((void *) Long_val(lib), String_val(name))); }
 
 void *cesia_open(const char *name) { return open_library(name); }
 void *cesia_symbol(void *lib, const char *name) { return find_symbol(lib, name); }
@@ -56,14 +51,10 @@ value cesia_ram(value unit) {
 #endif
 }
 
-value cesia_block_address(value block) {
-  return Val_long((intnat) Caml_ba_data_val(block));
-}
+value cesia_block_address(value block) { return Val_long((intnat) Caml_ba_data_val(block)); }
 
 /* The n bytes at an address, zero bytes too: SQLite's texts and BLOBs. */
-value cesia_bytes(value address, value n) {
-  return caml_alloc_initialized_string(Long_val(n), (const char *) Long_val(address));
-}
+value cesia_bytes(value address, value n) { return caml_alloc_initialized_string(Long_val(n), (const char *) Long_val(address)); }
 
 /* sqlite3_db_config takes a variable argument list, which only a C call passes right on every system. */
 value cesia_db_config(value fn, value db, value op, value on) {
@@ -71,9 +62,7 @@ value cesia_db_config(value fn, value db, value op, value on) {
   return Val_int(config((void *) Long_val(db), Int_val(op), Int_val(on), (int *) 0));
 }
 
-value cesia_cstring(value address) {
-  return caml_copy_string((const char *) Long_val(address));
-}
+value cesia_cstring(value address) { return caml_copy_string((const char *) Long_val(address)); }
 
 /* posix_spawnp with the child as the leader of a process group, which a timeout kills whole: the command and what it
    started. Its standard streams are fds[0..2]. Windows has no process groups: proc.ml never calls it there. */
@@ -101,9 +90,20 @@ value cesia_spawn_group(value cmd, value args, value fds) {
   if (failed) caml_unix_error(failed, "create_process", cmd);
   return Val_int(pid);
 }
+
+/* Closes every descriptor from [first] on: at once where Linux has close_range, else one by one up to the limit. */
+#include <sys/syscall.h>
+value cesia_close_from(value first) {
+#ifdef SYS_close_range
+  if (syscall(SYS_close_range, Int_val(first), ~0U, 0) == 0) return Val_unit;
+#endif
+  for (long fd = Int_val(first), n = sysconf(_SC_OPEN_MAX); fd < n; fd++) close(fd);
+  return Val_unit;
+}
 #else
 #include <caml/fail.h>
 value cesia_spawn_group(value cmd, value args, value fds) { caml_failwith("no process groups on Windows"); }
+value cesia_close_from(value first) { return Val_unit; }
 #endif
 
 #ifdef __linux__

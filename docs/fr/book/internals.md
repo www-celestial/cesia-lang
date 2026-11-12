@@ -908,18 +908,22 @@ disque.
 
 **L'écriture.** Les entrées d'un run sont écrites une fois qu'il a fini, sa sortie partie et son code de sortie fixé,
 par une copie du processus que la fin n'attend pas, faite avec `fork` (l'appel du système qui copie un processus) : un
-run ne dure pas plus longtemps que sans cache. La copie ferme son entrée et sa sortie et quitte la session du terminal,
-donc un shell qui attend la fin de la sortie, ou une touche qui arrête le programme, ni ne l'attend ni ne l'arrête. Un
-run tué, ou qui finit pendant que du travail tourne encore sur d'autres cœurs, ne laisse pas d'entrée, pas plus qu'un
-run sur Windows, qui n'a pas `fork` : le run suivant lit ses packages comme sans cache. Un programme qui tourne
-longtemps, comme un serveur, écrit ses entrées quand il s'arrête. Chaque entrée est écrite dans un nouveau fichier à
-côté d'elle, qu'aucun autre fichier ne peut être (Cesia le crée avec `O_EXCL`), puis renommée à la place de l'ancienne,
-qui est d'abord retirée : btrfs (un système de fichiers de Linux) écrit tout de suite sur le disque un fichier renommé
-par-dessus un autre, environ 8 ms. Un run qui lit une entrée pendant qu'un autre l'écrit voit l'ancienne, la nouvelle ou
-aucune, jamais une moitié, et deux runs qui l'écrivent en même temps en écrivent chacun une entière. À la première
-écriture d'un run, au-delà de 256 MB d'entrées, celles qui ont servi le moins récemment partent, jusqu'à 128 MB ; lire
-une entrée garde sa date fraîche, une fois par jour. Le dossier peut être supprimé à tout moment, comme n'importe quel
-cache.
+run ne dure pas plus longtemps que sans cache. Avant toute chose, la copie ferme chaque descripteur du programme (le
+numéro par lequel il tient un fichier, un socket ou un pipe ouvert), et le run ne finit qu'une fois qu'elle l'a fait :
+un port sur lequel le programme écoutait, un verrou qu'il tenait et un pipe où il écrivait sont libres dès qu'il a fini,
+et plus rien n'arrive dans un fichier qu'il écrivait. La copie met ensuite son entrée et sa sortie sur `/dev/null`,
+quitte la session du terminal et ne garde aucun des gestionnaires de signaux du programme, donc un shell qui attend la
+fin de la sortie, ou une touche qui arrête le programme, ni ne l'attend ni ne l'arrête ; elle finit en 10 s quoi qu'il
+arrive, sans refaire la fin du programme. Un run tué, ou qui finit pendant que du travail tourne encore sur d'autres
+cœurs, ne laisse pas d'entrée, pas plus qu'un run sur Windows, qui n'a pas `fork` : le run suivant lit ses packages
+comme sans cache. Un programme qui tourne longtemps, comme un serveur, écrit ses entrées quand il s'arrête. Chaque
+entrée est écrite dans un nouveau fichier à côté d'elle, qu'aucun autre fichier ne peut être (Cesia le crée avec
+`O_EXCL`), puis renommée à la place de l'ancienne, qui est d'abord retirée : btrfs (un système de fichiers de Linux)
+écrit tout de suite sur le disque un fichier renommé par-dessus un autre, environ 8 ms. Un run qui lit une entrée
+pendant qu'un autre l'écrit voit l'ancienne, la nouvelle ou aucune, jamais une moitié, et deux runs qui l'écrivent en
+même temps en écrivent chacun une entière. À la première écriture d'un run, au-delà de 256 MB d'entrées, celles qui ont
+servi le moins récemment partent, jusqu'à 128 MB ; lire une entrée garde sa date fraîche, une fois par jour. Le dossier
+peut être supprimé à tout moment, comme n'importe quel cache.
 
 **Ce que ça fait gagner.** Du début du processus à sa fin, la médiane de 21 runs de chacun et son intervalle à 95 %,
 les trois à tour de rôle, le 2026-11-12 pendant que d'autres travaux tournaient sur la machine : avant le cache ; le

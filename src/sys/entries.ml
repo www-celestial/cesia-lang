@@ -101,20 +101,39 @@ let write name data =
 
 let store build = { Cesia.Cache.build; read; write }
 
+external close_from : int -> unit = "cesia_close_from"
+
+(* The signals a program may have set handlers for: the copy takes none of them. *)
+let signals =
+  Sys.[ sigint; sigterm; sighup; sigquit; sigpipe; sigalrm; sigchld; sigusr1; sigusr2; sigtstp; sigttin; sigttou; sigvtalrm ]
+
 let after save =
   flush stdout;
   flush stderr;
-  match Unix.fork () with
-  | 0 ->
-    (try
-       ignore (Unix.setsid ());
-       (* A copy that a lock of another thread, copied with it, would hold forever ends anyway. *)
-       Sys.set_signal Sys.sigalrm Sys.Signal_default;
-       ignore (Unix.alarm 10);
-       let null = Unix.openfile "/dev/null" [ O_RDWR ] 0 in
-       List.iter (Unix.dup2 null) [ Unix.stdin; Unix.stdout; Unix.stderr ];
-       save ()
-     with _ -> ());
-    Unix._exit 0
-  | _ -> ()
-  | exception (Unix.Unix_error _ | Failure _ | Invalid_argument _) -> ()
+  (* The end of the run waits until the copy holds none of its descriptors, when the copy's end of this pipe closes with
+     the others: a program started at once finds the port free and the lock free. *)
+  match Unix.pipe () with
+  | exception Unix.Unix_error _ -> ()
+  | closed, closing ->
+    match Unix.fork () with
+    | 0 ->
+      (try
+         (* Before anything else, none of the program's descriptors stays open in the copy: a listener stays bound, a
+            lock held and the end of a pipe open as long as one of them is. *)
+         close_from 3;
+         ignore (Unix.setsid ());
+         List.iter (fun s -> try Sys.set_signal s Sys.Signal_default with Invalid_argument _ | Sys_error _ -> ()) signals;
+         (* A copy that a lock of another thread, copied with it, would hold forever ends anyway. *)
+         ignore (Unix.alarm 10);
+         let null = Unix.openfile "/dev/null" [ O_RDWR ] 0 in
+         List.iter (Unix.dup2 null) [ Unix.stdin; Unix.stdout; Unix.stderr ];
+         Unix.close null;
+         save ()
+       with _ -> ());
+      (* No function of the program's end, nor a finalizer, runs a second time. *)
+      Unix._exit 0
+    | _ ->
+      Unix.close closing;
+      (try ignore (Unix.read closed (Bytes.create 1) 0 1) with Unix.Unix_error _ -> ());
+      Unix.close closed
+    | exception (Unix.Unix_error _ | Failure _ | Invalid_argument _) -> Unix.close closing; Unix.close closed
