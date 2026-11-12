@@ -15,7 +15,7 @@ use std/io
 io.Print("Hello from hello")
 > cesia run src/main.ce
 Hello from hello
-algo cells cpp crypto csv date dict encode fiber flags fn frame gen heap http list live markdown math num ode optimize path plot queue random result set sql syntax test tls value websocket 
+algo cells cpp crypto csv date dict encode fiber flags fn frame gen heap http list live markdown math num ode optimize path plot queue random result set special sql syntax test tls value websocket 
  34 1
 all as installed
 std/csv        cesia 1.1.0  changed by hand
