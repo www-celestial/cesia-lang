@@ -18,12 +18,16 @@ Everything here is added: a program written for 1.0 runs as it did.
 - `cesia run --workers N` serves one listener from N processes; HUP replaces them without a failed request; TERM and INT
   stop a server cleanly; `sys.Stops` tells every fiber of a stop.
 - `std/log` writes a JSON line per event and `std/metrics` counts for Prometheus; `http.Serve` holds under abuse.
+- `std/websocket` is a client too: `websocket.Dial(url)` gives a connection whose messages come on the channel
+  `c.Messages`, with `websocket.Send`, `websocket.Close` and `websocket.DefaultMaxMessage`; tested against
+  Autobahn|Testsuite in the CI.
 
 ### Tools
 
 - `cesia lsp`, a language server: the marks of `cesia check` as you type, the docs under the cursor, definitions, completion.
 - `cesia fmt` writes files in the style of Cesia's code and checks that each keeps its tree.
 - Native packages: a package's engine in OCaml, compiled once against `Cesia_v1`, runs its natives under `native=LABEL`.
+- `cesia test` stops the programs a test started with `sys.Start` or `sys.Run` when the test ends, even past its time.
 
 ### Speed
 
@@ -32,7 +36,8 @@ Measured on the same machine as the others, in the book's chapter on speed:
 - `fib` 74 -> 58 ms, ahead of Java's 71; maps 253 ms, ahead of Go's 272;
 - a fiber 3.4 us and 2.1 KB, less memory than a goroutine;
 - a start in 2.62 ms;
-- HTTP: a tiny route 67k requests a second, beside Go's 67k, and JSON 48k, ahead of Node's 41k.
+- HTTP: a tiny route 67k requests a second, beside Go's 67k, and JSON 48k, ahead of Node's 41k;
+- `encode.Unbase64` of 1.4 MB, a page's screenshot, 572 -> 5.7 ms.
 
 ### Fixes
 
