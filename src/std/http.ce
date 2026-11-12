@@ -239,6 +239,7 @@ defn connection(handle, conn, buffer, options, deadline)
     end
   else
     request = parsed.Value.Request
+    request.Peer = conn.Peer
     conn.Arm(0)
     done = answer(handle, request, deadline - sys.Now())
     conn.Arm(options.Timeout)
@@ -266,7 +267,7 @@ defn start(handle, c, options)
     net.Close(c)
   else
     w = made.Value
-    conn = {Read: w.Read, Write: w.Write, Close: w.Close, Arm: s -> arm(c, s), Hold: n -> hold(c, n)}
+    conn = {Read: w.Read, Write: w.Write, Close: w.Close, Arm: s -> arm(c, s), Hold: n -> hold(c, n), Peer: net.Peer(c)}
     connection(handle, conn, "", options, deadline)
   end
 end
@@ -303,7 +304,8 @@ end
 
 defn serve(handle, port, host, timeout, maxBody, wrap, listener)
   (** Serves the requests to handle until a stop signal, then lets those in progress end, each by its deadline.
-      handle(request) receives {Method, Path, Query, Headers, Body} and returns {Status, Body}, with optional headers, and
+      handle(request) receives {Method, Path, Query, Headers, Body, Peer}, Peer the address of the client as net.Peer
+      gives it, and returns {Status, Body}, with optional headers, and
       optional upgrade, a function of the connection and of the bytes after the request, which takes the connection over
       after the response. *)
   listener = if value.IsMissing(listener) net.Listen(port, host = host)? else listener end

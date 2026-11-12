@@ -236,7 +236,7 @@ A server faces clients that are slow, greedy or broken, and keeps serving the ot
 | add a route | [http.Get], [http.Post], [http.Put], [http.Delete], [http.AnyMethod] for any method, [http.Route] for any one by name; a final `*` in a path takes the rest of it, in `r.Params["*"]` |
 | serve files | [http.Static] serves a folder under a prefix, and no path can leave the folder; [http.FileResponse] sends one file, its type from its extension |
 | answer | [http.Plain], [http.Json], [http.Html], [http.Redirect], [http.NotFound]; [http.WithHeader] adds a header, [http.SetCookie] a cookie; [http.Reason] is the text of a status |
-| read a request | [http.BodyJson] its body as JSON, [http.Form] as a form, [http.HeaderValue] a header by its name in lower case; [http.ParseUrl] takes a URL apart |
+| read a request | [http.BodyJson] its body as JSON, [http.Form] as a form, [http.HeaderValue] a header by its name in lower case; `r.Peer` is the address of the client, without its port, as [net.Peer] gives it, to limit a client by; [http.ParseUrl] takes a URL apart |
 | pass data on | a middleware puts a key in the request, as the person signed in, and the handler finds it there: see [http.Wrap] |
 | wrap | [http.Logger], [http.Metrics], and [http.Cors], which lets the pages of another origin read the responses |
 | write HTML | [http.Escape] escapes a value for a page, [http.Template] fills `{{name}}` with escaped values |

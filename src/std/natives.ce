@@ -1169,6 +1169,16 @@ use std/test
 
       net.Port(net.Listen(0).Value) > 0 --> true *)
 
+(** net.Peer(socket)
+    The address of the other end of a connection, without its port, as "203.0.113.7" or "::1"; missing for a socket that
+    has none, as a listener. A server limits a client by it, as std/http's requests give it in Peer. Behind a proxy it is
+    the proxy's: the address of the client is then in a header the proxy writes, such as X-Forwarded-For.
+
+      server = net.Listen(0).Value
+      client = net.Connect("127.0.0.1", net.Port(server)).Value
+      net.Peer(net.Accept(server).Value) --> "127.0.0.1"
+      value.IsMissing(net.Peer(server)) --> true *)
+
 (** net.Accept(listener)
     Waits for a connection and gives an Ok of its socket. An Err of the kind "stopped" means that the program was asked to stop.
 
