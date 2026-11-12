@@ -70,8 +70,13 @@ sees are those written around it in the text, not those of whoever calls it. A n
 - a name of a package that the file uses, as `list.Map`.
 
 The resolver also checks *definite assignment*: a name read before any value reaches it is an error at load, `"x" has no
-value yet.`, not a surprise at run time. It marks the calls in *tail position*, a call whose result is the function's own
-result with nothing left to do after it: a function that calls itself there runs as a loop, so its depth doesn't grow.
+value yet.`, not a surprise at run time. This costs the same for each statement whatever the number of variables: a
+branch, as each side of an `if`, notes the variables it assigns, and takes them back once it is done, and where two
+branches meet, only what they assigned is compared. Copying the set of all the variables at each branch instead made a
+function of 4,000 variables, or a script of as many, take 150 to 200 ms to resolve, against about 10 ms now.
+
+The resolver marks the calls in *tail position*, a call whose result is the function's own result with nothing left to do
+after it: a function that calls itself there runs as a loop, so its depth doesn't grow.
 
 ```cesia
 defn countdown(n)
