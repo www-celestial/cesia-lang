@@ -887,7 +887,7 @@ defn axisOf(which, ps, scale, lim, w)
 end
 
 (* Fonts: the advance widths of Noto Sans Medium, in thousandths of an em, made by tools/plot-font.ce from the font. A
-   character it has no glyph for counts a whole em, wider than any of its glyphs but four, so that no text overlaps. *)
+   character outside them counts a whole em, as wide as any of them but ‰, so that no text overlaps. *)
 
 tickSize = 12.0
 titleSize = 15.0

@@ -176,5 +176,4 @@ Each with its link in [References](references.md#data-and-numbers).
 
 ## Next
 
-You can compute with numbers and structures. The next chapter, [JSON and CSV](json.md), reads data from other programs
-and writes it for them.
+You can compute with numbers and structures. The next chapter, [Graphs](graphs.md), draws what you compute.

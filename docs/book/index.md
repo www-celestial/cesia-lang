@@ -42,22 +42,24 @@ language.
 14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file, random samples.
 15. [Numbers and algorithms](numbers.md): std/math, std/num and LAPACK, the classic algorithms, sets, queues and heaps,
     and what each costs.
-16. [JSON and CSV](json.md): reading, writing, and checking what comes in.
-17. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
-18. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
-19. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
-20. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
-21. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site
+16. [Graphs](graphs.md): lines, points, bars, histograms, heatmaps and densities as values, drawn to SVG, and the
+    methods each step follows.
+17. [JSON and CSV](json.md): reading, writing, and checking what comes in.
+18. [HTTP](http.md): a web server with routes and JSON, tested without the network, and the client.
+19. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
+20. [Fibers](fibers.md): several things at once, `Spawn`, `Wait`, `Pmap` and channels.
+21. [SQLite](sqlite.md): tables, rows, queries with `?`, transactions and rows as structs.
+22. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site
     for your project.
-22. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
-23. [Speed](speed.md): what becomes machine code as a program runs, and Cesia beside Python, Node, Java, Go, OCaml, Lua
+23. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
+24. [Speed](speed.md): what becomes machine code as a program runs, and Cesia beside Python, Node, Java, Go, OCaml, Lua
     and LuaJIT, measured: start-up, loops, maps, fibers and a server.
-24. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
-25. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
-26. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
-27. [Solving a real problem](duplicates.md): which files of a folder are duplicates, in seven steps, from the first
+25. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.
+26. [Native packages](native.md): a package's engine in OCaml, compiled once, its permission, and how to write one.
+27. [A real program](project.md): a web service of notes on SQLite, with its tests, from `cesia new` to a server.
+28. [Solving a real problem](duplicates.md): which files of a folder are duplicates, in seven steps, from the first
     measure to the proof that it is solved: properties, the birthday bound, and the times beside Python.
-28. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
+29. [How Cesia works](internals.md): the lexer, the parser, closures, values in memory, the hash trie of maps, the JIT,
     fibers and their scheduler, channels, the server on every core, the garbage collector and start-up, with their numbers.
 
 Appendices, to look things up:

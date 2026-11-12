@@ -182,5 +182,5 @@ Chacun avec son lien dans [Références](references.md#données-et-nombres).
 
 ## La suite
 
-Vous savez calculer avec des nombres et des structures. Le chapitre suivant, [JSON et CSV](json.md), lit les données
-d'autres programmes et en écrit pour eux.
+Vous savez calculer avec des nombres et des structures. Le chapitre suivant, [Graphiques](graphs.md), dessine ce que
+vous calculez.
