@@ -58,9 +58,23 @@ let magic = "Cesia\000L1"
 (* Writing. The strings of an entry are each written once, then by their number. *)
 module Out = struct
 (* A place is written as its distance from the one before, most often a byte. *)
-type out = { b : Buffer.t; strings : (string, int) Hashtbl.t; rel : int -> int * int; mutable last : int }
+type out = {
+  mutable b : Bytes.t;
+  mutable n : int;
+  strings : (string, int) Hashtbl.t;
+  rel : int -> int * int;
+  mutable last : int;
+}
 
-let[@inline] byte o n = Buffer.add_uint8 o.b n
+let grow o k =
+  let b = Bytes.create (2 * (Bytes.length o.b + k)) in
+  Bytes.blit o.b 0 b 0 o.n;
+  o.b <- b
+
+let[@inline] byte o c =
+  if o.n = Bytes.length o.b then grow o 1;
+  Bytes.set o.b o.n (Char.chr c);
+  o.n <- o.n + 1
 let rec uint o n = if n land lnot 127 = 0 then byte o n else (byte o (n land 127 lor 128); uint o (n lsr 7))
 let int o n = uint o ((n lsl 1) lxor (n asr 62))
 let bool o x = byte o (if x then 1 else 0)
@@ -72,7 +86,10 @@ let str o s =
   | None ->
     Hashtbl.add o.strings s (Hashtbl.length o.strings);
     uint o (2 * String.length s);
-    Buffer.add_string o.b s
+    let k = String.length s in
+    if o.n + k > Bytes.length o.b then grow o k;
+    Bytes.blit_string s 0 o.b o.n k;
+    o.n <- o.n + k
 
 let opt f o = function None -> byte o 0 | Some x -> byte o 1; f o x
 let arr f o a = uint o (Array.length a); Array.iter (f o) a
@@ -100,7 +117,11 @@ and block o b = arr expr o b
 
 and node o = function
   | Lint n -> byte o 0; int o n
-  | Lfloat x -> byte o 1; Buffer.add_int64_le o.b (Int64.bits_of_float x)
+  | Lfloat x ->
+    byte o 1;
+    if o.n + 8 > Bytes.length o.b then grow o 8;
+    Bytes.set_int64_le o.b o.n (Int64.bits_of_float x);
+    o.n <- o.n + 8
   | Lbool x -> byte o 2; bool o x
   | Lmissing -> byte o 3
   | Ltext s -> byte o 4; str o s
@@ -469,7 +490,7 @@ let trees saved place ~lookup ~spaces ~is_type =
 
 let write slot place log uses trees =
   let open Out in
-  let o = { b = Buffer.create 65536; strings = Hashtbl.create 1024; rel = memo (rel place); last = 0 } in
+  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo (rel place); last = 0 } in
   try
     str o slot.kept.build;
     uint o slot.nesting;
@@ -484,6 +505,6 @@ let write slot place log uses trees =
       log.found;
     Hashtbl.iter (fun b t -> byte o 2; binding o b; bool o t) log.types;
     list (fun o (fn, l) -> func o fn; layout o fn l) o trees;
-    let body = Buffer.contents o.b in
+    let body = Bytes.sub_string o.b 0 o.n in
     slot.kept.write slot.name (String.concat "" [ magic; Digest.BLAKE128.string body; body ])
   with Exit -> ()

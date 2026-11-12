@@ -89,6 +89,9 @@ let write name data =
        Fun.protect ~finally:(fun () -> Unix.close fd) (fun () ->
            let rec put i = if i < String.length data then put (i + Unix.write_substring fd data i (String.length data - i)) in
            put 0);
+       (* The old entry goes first: a file renamed over another makes some file systems, btrfs, write it to the disk
+          at once, about 8 ms. *)
+       (try Unix.unlink (Filename.concat dir name) with Unix.Unix_error _ -> ());
        Unix.rename tmp (Filename.concat dir name)
      with Unix.Unix_error _ -> (try Unix.unlink tmp with Unix.Unix_error _ -> ()))
   | _ -> ()
