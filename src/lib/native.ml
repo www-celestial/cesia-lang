@@ -276,11 +276,6 @@ let leading ctx v =
      | _ -> if fill 0 then Some (a.rows, d) else None)
   | _ -> None
 
-(* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
-   of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
-   it that makes its element 0, the multiplier kept there. The operations of the textbook in its order, as num's code
-   in Cesia did them, so the same bits. {Singular, Lu, Perm, Sign}, Singular when a pivot is under 1e-14 in absolute
-   value; or missing when m is no matrix of numbers with as many columns as rows or more. *)
 (* std/sparse's kernels: a Matrix's arrays, counted from 1, checked and counted from 0 for Sparse, its results from 1
    again. Arrays that don't fit together, as a Matrix built by hand can hold, fail the call: no read leaves them. *)
 let sparse_ints ctx name v =
@@ -311,7 +306,7 @@ let from1 (x : int array) = Arrays.of_ints 1 (Array.length x) (Array.map succ x)
 let sparse_ordering ctx (a : t array) =
   let n, p, i = sparse_columns ctx "ordering" a in
   Runtime.pay ctx (Array.length i + n);
-  Runtime.reserve ctx ((4 * Array.length i) + (16 * n));
+  Runtime.reserve ctx ((8 * Array.length i) + (20 * n));
   from1 (Sparse.amd ~pay:(Runtime.pay ctx) n p i)
 
 (* luFactor(n, start, index, values, q, tol): [lstart, lindex, lvalues, ustart, uindex, uvalues, pinv], or missing when
@@ -326,6 +321,11 @@ let sparse_lu ctx (a : t array) =
     let floats x = Arrays.of_float 1 (Float.Array.length x) x in
     Arrays.list [| from1 lp; from1 li; floats lx; from1 up; from1 ui; floats ux; from1 pinv |]
 
+(* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
+   of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
+   it that makes its element 0, the multiplier kept there. The operations of the textbook in its order, as num's code
+   in Cesia did them, so the same bits. {Singular, Lu, Perm, Sign}, Singular when a pivot is under 1e-14 in absolute
+   value; or missing when m is no matrix of numbers with as many columns as rows or more. *)
 let lu_factor ctx (a : t array) =
   match leading ctx a.(0) with
   | None -> Missing
