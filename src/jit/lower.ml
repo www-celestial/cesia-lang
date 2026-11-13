@@ -1850,7 +1850,8 @@ and branch st (b : block) =
    loop). An innermost loop, with no loop and no call inside, also gets a fast copy, taken when, before it starts, the
    fuel covers all its steps and each index that is a + b·counter is proved inside its array at both ends, every part of
    it without overflow: that copy checks neither, and moves those indexes by their step. The checked copy runs
-   otherwise. A run that leaves comes back before the loop, through [decide], never into its body: the loop's one join is
+   otherwise. A loop around innermost ones gets a fast copy too, of its indexes counter + k only, its steps counted
+   (loop versioning, Midkiff, Moreira and Snir, 1998). A run that leaves comes back before the loop, through [decide], never into its body: the loop's one join is
    its body's start, where only what the loop changes meets (Fink and Qian's entry at the head of a loop), so MIR puts no
    copies of the other variables in it. Gives the block that tests the counter. *)
 and for_loop ?lo ?(root = false) st (e : expr) i fbody =
@@ -2014,18 +2015,20 @@ and fast_copy ?again st _e i c h fbody written ~root ~slow ~exit =
       e
   in
   Array.iter scan fbody;
-  (* The indexes kept: each affine; in a loop with loops inside, only c + k, which needs no register of its own (below). *)
+  (* The indexes kept: each affine; in a loop with loops inside, only c + k, which needs no register of its own (below),
+     for a k near 0, so that its 8 (k - 1) bytes of the cell's address are exact. *)
+  let near = 1 lsl 20 in
   let form x = dry := true; let f = affine x in dry := false; f in
   let kept (_, _, xs) =
     match again, xs with
     | None, _ -> Array.for_all (fun x -> form x <> None) xs
-    | Some _, [| x |] -> (match form x with Some (Ir.Int _, Ir.Int 1) -> true | _ -> false)
+    | Some _, [| x |] -> (match form x with Some (Ir.Int k, Ir.Int 1) -> abs k < near | _ -> false)
     | Some _, _ -> false
   in
   let found = List.filter kept !found in
   if again <> None && found = [] then (close st (Jump slow); false) else begin
   let table = Hashtbl.copy st.fast and steps = ref [] in
-  (* An index c + k checked inside, for a small k: then c and h are far from overflow, as h + k is at most a size. *)
+  (* An index c + k checked inside: then c and h are far from overflow, as k is near 0 and h + k at most a size. *)
   let bounded = ref false in
   let test cmp p q =
     if not (Hashtbl.mem tested (cmp, p, q)) then begin
@@ -2057,7 +2060,7 @@ and fast_copy ?again st _e i c h fbody written ~root ~slow ~exit =
   let regs = Hashtbl.create 8 in
   let index_reg ab first =
     match ab with
-    | Ir.Int k, Ir.Int 1 -> c, k
+    | Ir.Int k, Ir.Int 1 when abs k < near -> c, k
     | _ ->
       (match Hashtbl.find_opt regs ab with
        | Some ix -> ix, 0
@@ -2085,7 +2088,7 @@ and fast_copy ?again st _e i c h fbody written ~root ~slow ~exit =
        | [| Some ab |] ->
          let first = inside ab (size a (-1)) in
          let ix, k = index_reg ab first in
-         if ix = c && abs k < 1 lsl 30 then bounded := true;
+         if ix = c then bounded := true;
          Hashtbl.replace table node (a, ix, k)
        | abs when Array.for_all Option.is_some abs ->
          (* Each index inside its dimension at both ends: the cell, 1 + the sum of (index - 1) * stride, moves by the sum
