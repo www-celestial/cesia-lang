@@ -464,10 +464,12 @@ statement, as HotSpot does at the bytecode (Hölzle, Chambers and Ungar, 1992, w
 **What it can't make, it leaves.** A statement in a branch of an if that the JIT can't make, as `return failed(...)` or
 `io.Print`, no longer leaves the whole loop to the interpreter: the run goes back to the interpreter before it, the
 interpreter makes it, and the loop comes back to machine code at its next turn. Such statements are *cold*: they run
-rarely, as the error paths and the end of a loop do. The loop is then made again with them out of what the JIT looks at,
-so that a variable they alone assign, as a buffer made anew when it is full, is still an array of the loop. A call of a
-small function whose body gives a text in one place and a number in another is made the same way: inlined, its number
-path in machine code, and its text path a way back to the interpreter, which makes the call again.
+rarely, as the error paths and the end of a loop do. The loop is then made again with those that assign a variable, and
+the statements after them in their branch, out of what the JIT looks at, so that a variable they alone assign, as a
+buffer made anew when it is full, is still an array of the loop. One that assigns none, as `buf[used + 1] = t` after
+that branch, is tried again then, as what kept it out may have been only that the buffer was not yet an array of the
+loop. A call of a small function whose body gives a text in one place and a number in another is made the same way:
+inlined, its number path in machine code, and its text path a way back to the interpreter, which makes the call again.
 
 **Tests and kinds.** `(fa > 0.0) == (fb > 0.0)` compares two tests; `value.IsNumber(x)`, `value.IsText(x)` and the other
 tests of kind look at the tag of the value's block, or need no test at all when the JIT knows the kind; and a small
