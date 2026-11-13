@@ -323,7 +323,7 @@ let assume st c truth f =
 (* The parameters [body] never assigns, nor a self tail call. *)
 let fixed_params (f : func) =
   lazy
-    (let all = try Some (Array.fold_left (assigned ~sets:true) [] f.body) with Unknown -> None in
+    (let all = try Some (Array.fold_left (assigned ~sets:true) [] (Lazy.force f.body)) with Unknown -> None in
      Array.init (Array.length f.params) (fun i -> (not f.has_self_tail) && match all with Some l -> not (List.mem i l) | None -> false))
 
 let proves st (r, _) = function
@@ -660,7 +660,7 @@ and inlinable (v : version) =
        | _ -> 1)
   in
   (v.ret == TI || v.ret == TF) && v.state = 2 && Array.length f.captures = 0 && (not f.has_self_tail)
-  && blk_size size f.body <= 40
+  && blk_size size (Lazy.force f.body) <= 40
 
 and blk_size size b = Array.fold_left (fun n x -> n + size x) 0 b
 
@@ -697,7 +697,7 @@ and inline st (e : expr) (v : version) args =
     args;
   (* The callee's step, as its frame's entry counts one. *)
   emit child (Ir.Tick (-1, false, site child e.pos));
-  tail_block child f.body;
+  tail_block child (Lazy.force f.body);
   st.cur <- cont;
   st.ncalls <- child.ncalls + 1;
   Ir.Reg res, kind_of v.ret
@@ -781,7 +781,7 @@ and made_here st (e : expr) =
     Some (fun () -> let c, vals, floats = literal st sname sfields in c, vals, floats, if sname = None then 8 else 4)
   | Call ({ callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; self_tail = false; _ } as call) ->
     (match st.w.modules.(m).cells.(k) with
-     | Fun { proto = { func = { body = [| { e = Return { rvalue = Some { e = Struct_lit { sname = Some _ as sname; sfields }; _ }; _ }; _ } |];
+     | Fun { proto = { func = { body = lazy [| { e = Return { rvalue = Some { e = Struct_lit { sname = Some _ as sname; sfields }; _ }; _ }; _ } |];
                                 params; _ }; arity; _ } as proto; env = [||] }
        when Array.for_all (fun (p : param) -> p.ptype = None && p.default = None) params && Array.length params = arity ->
        Some (fun () ->
@@ -868,7 +868,7 @@ and native_call st e (v : version) args =
     | _ -> false
   in
   let leaf =
-    match f.body with
+    match Lazy.force f.body with
     | [| { e = If (c, [| y |], _); _ } |] -> Some (c, y)
     | [||] -> None
     | b -> (match b.(0).e with If (c, [| { e = Return { rvalue = Some y; _ }; _ } |], _) -> Some (c, y) | _ -> None)
@@ -1428,7 +1428,7 @@ let rec func st name =
   let body = block st in
   st.body <- body;
   ignore (tick st body);
-  tail_block st f.body;
+  tail_block st (Lazy.force f.body);
   let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)
   let params = List.filter_map (fun j -> if st.regs.(j) >= 0 then Some (var_of j) else None) (List.init (Array.length f.params) Fun.id) in

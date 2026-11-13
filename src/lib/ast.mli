@@ -86,7 +86,7 @@ and func = {
   fname : string;
   params : param array;
   ret : ptype option;  (** the return type *)
-  body : block;
+  body : block Lazy.t;  (** read from the cache of loaded packages at its first need: [Cache] *)
   nnodes : int;
   fpos : pos;
   mutable nvars : int;

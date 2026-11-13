@@ -325,9 +325,9 @@ and func env parent kind celled (f : func) =
   Array.iter (fun p -> ignore (new_var sc p.pname)) f.params;
   Array.iter (fun p -> Option.iter (type_ref env) p.ptype) f.params;
   Option.iter (type_ref env) f.ret;
-  Array.iter (assigned sc) f.body;
+  Array.iter (assigned sc) (Lazy.force f.body);
   Array.iter (fun p -> Option.iter (reads env sc celled) p.default) f.params;
-  Array.iter (reads env sc celled) f.body;
+  Array.iter (reads env sc celled) (Lazy.force f.body);
   finish sc
 
 and finish sc =
@@ -380,7 +380,7 @@ and flow (f : func) =
     | Break -> st.dead <- true
     | _ -> children go e
   and capture (g : func) = Array.iter (fun (outer, _) -> read st outer) g.captures in
-  Array.iter go f.body;
+  Array.iter go (Lazy.force f.body);
   f.maybe_undef <- st.undef
 
 (* The mask has 62 bits: past them, every parameter counts as kept. *)
@@ -433,11 +433,11 @@ let nontail (e : expr) = match nontail_in e with () -> false | exception Nontail
 
 (* The nested functions of a function, to mark tail positions in them. *)
 let rec finish_tail self (f : func) =
-  mark_block self f f.body;
-  f.has_return <- Array.exists nontail f.body;
-  Array.iter (note_writes f) f.body;
+  mark_block self f (Lazy.force f.body);
+  f.has_return <- Array.exists nontail (Lazy.force f.body);
+  Array.iter (note_writes f) (Lazy.force f.body);
   Array.iter (fun p -> Option.iter (note_writes f) p.default) f.params;
-  Array.iter nested f.body;
+  Array.iter nested (Lazy.force f.body);
   Array.iter (fun p -> Option.iter nested p.default) f.params
 
 and nested (e : expr) =
@@ -447,11 +447,14 @@ and nested (e : expr) =
   | Fn_def _ -> ()
   | _ -> children nested e
 
-(* The fields of a constructor, which is how a struct looks once parsed. *)
+(* The fields of a constructor, which is how a struct looks once parsed. A body still to read is never one: [Cache]
+   reads the body of a struct at once. *)
 let[@inline] struct_fields (f : func) =
-  match f.body with
-  | [| { e = Return { rvalue = Some { e = Struct_lit { sname = Some _; sfields }; _ }; _ }; _ } |] -> Some sfields
-  | _ -> None
+  if not (Lazy.is_val f.body) then None
+  else
+    match Lazy.force f.body with
+    | [| { e = Return { rvalue = Some { e = Struct_lit { sname = Some _; sfields }; _ }; _ }; _ } |] -> Some sfields
+    | _ -> None
 
 let check_method env pos sname static name =
   match Hashtbl.find_opt env.structs sname with
@@ -476,7 +479,7 @@ let definitions (fn : func) =
        | Assign (n, _) -> add n.text n.text e.pos false
        | Destructure (pt, _) -> pat_names (fun n -> add n.text n.text e.pos false) pt
        | _ -> ())
-    fn.body;
+    (Lazy.force fn.body);
   List.rev !out
 
 let check_package ?(report = raise) files =
@@ -512,7 +515,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
             | Fn_def (n, f) -> Option.iter (Hashtbl.replace env.structs n.text) (struct_fields f)
             | Interface i -> Hashtbl.replace env.interfaces i.iname ()
             | _ -> ())
-         peer.body)
+         (Lazy.force peer.body))
     peers;
   let hoist (e : expr) text shown =
     if Hashtbl.mem env.hoisted text then fail env e.pos (Messages.duplicate shown);
@@ -532,7 +535,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
          interfaces := (hoist e i.iname i.iname, i) :: !interfaces;
          Hashtbl.replace env.interfaces i.iname ()
        | _ -> ())
-    fn.body;
+    (Lazy.force fn.body);
   let method_types (_, ps, ret) =
     Array.iter (fun p -> Option.iter (type_ref env) p.ptype) ps;
     Option.iter (type_ref env) ret
@@ -546,7 +549,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
       !defined
   in
   let top_hoisted (e : expr) = match e.e with Fn_def _ | Interface _ -> true | _ -> false in
-  Array.iter (fun e -> if not (top_hoisted e) then assigned sc e) fn.body;
+  Array.iter (fun e -> if not (top_hoisted e) then assigned sc e) (Lazy.force fn.body);
   Hashtbl.iter
     (fun text _ ->
        if Hashtbl.mem env.hoisted text then fail env fn.fpos (Messages.assign_function text))
@@ -560,8 +563,8 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
         n.b <- Cell { m; k = Hashtbl.find env.hoisted n.text; stable = true };
         func env (Some sc) Named celled f
       | _ -> ())
-    fn.body;
-  Array.iter (fun e -> if not (top_hoisted e) then reads env sc celled e) fn.body;
+    (Lazy.force fn.body);
+  Array.iter (fun e -> if not (top_hoisted e) then reads env sc celled e) (Lazy.force fn.body);
   finish sc;
   ignore top_hoisted;
   (* Every file variable has a cell, for export. Those read by a named function live there. *)
@@ -572,8 +575,8 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
       match e.e with
       | Fn_def ({ b = Cell { k; _ }; _ }, f) -> finish_tail (Some k) f
       | _ -> ())
-    fn.body;
-  Array.iter nested fn.body;
+    (Lazy.force fn.body);
+  Array.iter nested (Lazy.force fn.body);
   fn.has_return <- false;
   { cell_names = Array.of_list (List.rev env.cell_list); hoisted = Array.of_list (List.rev !hoisted); methods;
     interfaces = List.rev !interfaces }

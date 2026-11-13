@@ -244,7 +244,7 @@ let check_uses path (fn : Ast.func) =
             use_error ~file:path ~pos:e.pos ~kind:"name" (Messages.use_same ualias other (Pos.line at))
           | None -> Hashtbl.add seen ualias (upath, e.pos))
        | _ -> ())
-    fn.body
+    (Lazy.force fn.body)
 
 (* The names that a file reads from each package it uses, by alias, each once: geo.Area, geo.Rect.Square, geo.Point(x, y) in
    a pattern, geo.Rect as a type, in the code of a text too. Its tokens tell, faster than its tree: no variable has the name
@@ -252,7 +252,7 @@ let check_uses path (fn : Ast.func) =
 let used_names (fn : Ast.func) toks =
   let out = Hashtbl.create 16 in
   Array.iter (fun (e : Ast.expr) -> match e.e with Use { ualias; _ } -> Hashtbl.replace out ualias (Hashtbl.create 16) | _ -> ())
-    fn.body;
+    (Lazy.force fn.body);
   let rec scan (toks : Lexer.token array) =
     let n = Array.length toks in
     let rec after j = if j < n && (match toks.(j).t with Lexer.NL -> true | _ -> false) then after (j + 1) else j in
@@ -304,7 +304,7 @@ let parse ?(rewrite = ignore) ?file w ~hooks ~path ~src ~use =
          match e.e with
          | Use { upath; ualias } -> Some { Cache.upath; ualias; upos = e.pos; unames = names ualias }
          | _ -> None)
-      (Array.to_list fn.body)
+      (Array.to_list (Lazy.force fn.body))
   in
   file, fn, uses, load_uses w ~use uses
 
@@ -448,7 +448,7 @@ let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ?key ctx 
     | Some saved, Some files ->
       let spaces = Array.of_list (List.map (fun (_, _, ((named, _), _)) -> named) files) in
       (match Cache.trees saved (place (List.map (fun (_, _, (_, used)) -> used) files)) ~lookup ~spaces ~is_type:(is_type w) with
-       | Some trees when List.compare_lengths trees files = 0 ->
+       | Some trees ->
          ( List.map2 (fun ((path, _), (file, _, (named, _))) (fn, _) -> path, file, fn, named) (List.combine sources files) trees,
            List.map snd trees )
        | _ ->
