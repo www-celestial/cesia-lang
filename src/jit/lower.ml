@@ -1856,7 +1856,9 @@ and branch st (b : block) =
    copies of the other variables in it. Gives the block that tests the counter. *)
 and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   let r = var st i in
-  if Vec.get st.kinds r <> Kint then raise No;
+  (* The interpreter hands a [for] over to native code, and takes it back, only for a variable of integers: another
+     one's loop keeps its counter and bound to itself, and a run that came back inside would not find them. *)
+  if Vec.get st.kinds r <> Kint || st.ver.tv.(i) != TI then raise No;
   let written = try Some (Array.fold_left (assigned ~cold:st.cold) [] fbody) with Unknown -> None in
   let own = match written with Some l -> not (List.mem i l) | None -> false in
   match Hashtbl.find_opt st.twins e.id, lo with
