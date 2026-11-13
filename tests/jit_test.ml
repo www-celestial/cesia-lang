@@ -100,8 +100,7 @@ let () =
   check "none left" (Jit.live () = live);
   print_endline "jit: contexts on two domains ok"
 
-(* A unit's level 2, made by another domain: one at a time, taken once made; dropped while it is made or once it is, its
-   context is freed once, by whichever of the domain and the unit comes second. *)
+(* A unit's level 2, made by another domain: one at a time, and made while the caller goes on. *)
 let () =
   let text n =
     let b = Buffer.create 65536 in
@@ -123,34 +122,15 @@ let () =
         Jit.free a.(0)
       | _ -> check "level 2 made" false)
    | None -> check "level 2 starts" false);
-  (* A few thousand lines: MIR takes milliseconds at level 2, and the drop comes first. *)
+  (* A few thousand lines: MIR takes milliseconds at level 2, while this domain goes on. *)
   let big = text 2000 in
   (match Level2.start ~wait:false big "l2" with
    | Some job ->
-     check "one at a time" (Level2.start ~wait:false big "l2" = None);
-     Level2.drop job;
+     check "one at a time" (Level2.start ~wait:false big "l2" = None && Atomic.get job = Level2.Working);
      idle ();
-     check "dropped while made" (Atomic.get job = Level2.Abandoned && Jit.live () = live)
+     (match Atomic.get job with Level2.Made a -> Jit.free a.(0) | _ -> check "made in the background" false);
+     check "freed" (Jit.live () = live)
    | None -> check "level 2 starts" false);
-  (match Level2.start ~wait:false big "l2" with
-   | Some job ->
-     idle ();
-     check "made in the background" (match Atomic.get job with Level2.Made _ -> true | _ -> false);
-     Level2.drop job;
-     Level2.drop job;
-     check "dropped once made, freed once" (Atomic.get job = Level2.Abandoned && Jit.live () = live)
-   | None -> check "level 2 starts" false);
-  (* Drops at every moment of the making: none leaves its context behind. *)
-  let small = text 200 in
-  for k = 0 to 39 do
-    match Level2.start ~wait:false small "l2" with
-    | Some job ->
-      for _ = 1 to k * k * 20 do Domain.cpu_relax () done;
-      Level2.drop job;
-      idle ()
-    | None -> check "level 2 starts" false
-  done;
-  check "drops leave nothing" (Jit.live () = live);
   print_endline "jit: level 2 in the background ok"
 
 (* Versions of a real program, lowered and run natively on the interpreter's stacks. *)
@@ -432,6 +412,33 @@ let () =
   let ver, _, f = native "early" [| TI |] in
   let st, io = run ver f (stacks ()) [| Int 1000 |] in
   check "break" (st = 0 && string_of_int io.(Ir.io_int) = line 8);
+  (* Units that die leave no context: a loop that reads a module's variable, made again at each of its six values, at
+     both levels each time under CESIA_JIT=always, and in the default mode with runs long enough for level 2, made
+     while the run goes on. Once collected, only the code still held keeps its context: the loop's last, and the unit
+     whose level 2 was made last, until the next run takes it. *)
+  let hot = !Tier.mode in
+  Tier.available := true;
+  Engine.install ();
+  List.iter
+    (fun (mode, n, sum) ->
+       Tier.mode := mode;
+       let before = Jit.live () in
+       let out = Buffer.create 16 in
+       let w = Runtime.create_world { Runtime.default_options with o_sink = Buffer.add_string out; o_err = prerr_string } in
+       Loader.init w;
+       let path = Filename.temp_file "jit" ".ce" in
+       Out_channel.with_open_bin path (fun oc ->
+           Printf.fprintf oc
+             "use std/io\nk = 0.0\ndefn f(n)\n  s = 0.0\n  for i in 1..n\n    s = s + k * i\n  end\n  s\nend\nt = 0.0\n\
+              for j in 1..6\n  k = j * 1.0\n  t = t + f(%d)\nend\nio.Print(t)\n" n);
+       check "remade as the interpreter" (Loader.run w path [] = 0 && String.trim (Buffer.contents out) = sum);
+       Sys.remove path;
+       let made = Jit.live () - before in
+       Gc.full_major ();
+       Gc.full_major ();
+       check (Printf.sprintf "units that die free their contexts (%d, then %d)" made (Jit.live () - before))
+         (Jit.live () - before <= 3))
+    [ Tier.always, 100_000, "105001050000.0"; hot, 2_000_000, "42000021000000.0" ];
   (* Last: MIR's error, in another domain, turns the JIT off for the rest of the run, on every domain. *)
   check "bad text fails"
     (Domain.join (Domain.spawn (fun () ->

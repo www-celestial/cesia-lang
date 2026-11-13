@@ -6,7 +6,7 @@ open Types
 type tier =
   | Level1 of { text : string; entry : string; hot_at : int; mutable steps : int }
       (* the steps its runs took, until [hot_at] *)
-  | Making of Level2.state Atomic.t
+  | Making  (* level 2 being made: the unit is [pending]'s *)
   | Final  (* level 2, or level 1 for good when level 2 couldn't be made *)
 
 type code = {
@@ -35,33 +35,46 @@ let native = function Native c -> c | _ -> invalid_arg "Engine: code of another 
    before the checkpoint that may. *)
 let io = Array.make Ir.io_size 0
 
-(* The steps of native code that take about as long as MIR takes to make one line of MIR text at level 1 (measured on
-   ode.Solve's step, the sparse product and optimize.Root: see the docs): a unit gets its level 2 once its runs took
-   that many steps a line of its text. *)
+(* The steps of native code that take about as long as MIR takes to make one line of MIR text at level 1: 1,000 to
+   1,400 for ode.Solve's step and the sparse product, 240 for optimize.Root. A unit gets its level 2 once its runs took
+   that many steps a line of its text; 2,000 and 4,000 were slower or even on the benchmarks (the docs give both). *)
 let steps_per_line = 1000
+
+(* The unit whose level 2 is being made, or made and not taken yet; held here, so that it lives until it takes it. *)
+let pending : (code * Level2.state Atomic.t) option ref = ref None
+
+(* The level 2 made takes over from level 1, which is freed. Called before a run of any unit's machine code, where none
+   runs anywhere, as machine code never calls back into OCaml and a program runs on one domain: a fiber stopped between
+   two quanta of the unit holds its record, not its address. Level 2, made from the same text, has the same frame and
+   the same points where a run starts again, so it goes on from there. *)
+let settle () =
+  match !pending with
+  | None -> ()
+  | Some (code, job) ->
+    (match Atomic.get job with
+     | Level2.Working -> ()
+     | Made a ->
+       pending := None;
+       Jit.free code.mir;
+       code.addr <- a.(1);
+       code.mir <- a.(0);
+       code.tier <- Final;
+       if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline "jit: level 2"
+     | Refused ->
+       pending := None;
+       code.tier <- Final)
 
 (* A unit hot at level 1 starts its level 2, or tries again at its next run while another unit's is made. *)
 let rise code text entry =
-  match Level2.start ~wait:(!Tier.mode = Tier.always) text entry with Some job -> code.tier <- Making job | None -> ()
+  settle ();
+  match Level2.start ~wait:(!Tier.mode = Tier.always) text entry with
+  | Some job ->
+    code.tier <- Making;
+    pending := Some (code, job)
+  | None -> ()
 
-(* At a safe point, where no native frame of the unit is left anywhere, as native code never calls back into OCaml and
-   programs run on one domain: level 2, made from the same text, has the same frame and resume points, so it takes over
-   from here, and level 1 is freed. *)
-let adopt code job =
-  match Atomic.get job with
-  | Level2.Working -> ()
-  | Made a ->
-    Jit.free code.mir;
-    code.addr <- a.(1);
-    code.mir <- a.(0);
-    code.tier <- Final;
-    if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline "jit: level 2"
-  | Refused | Abandoned -> code.tier <- Final
-
-(* A unit that nothing holds any more, so that nothing can run its code: its context goes, and so does its level 2. *)
-let release code =
-  (match code.tier with Making job -> Level2.drop job | Level1 _ | Final -> ());
-  Jit.free code.mir
+(* A unit that nothing holds any more, [pending] included, so that nothing can run its code: its context goes. *)
+let release code = Jit.free code.mir
 
 let make (w : world) (ver : version) fns start loops =
   let pure = Array.for_all (fun (f : Ir.func) -> f.pure) fns and calls = Array.exists (fun (f : Ir.func) -> f.calls) fns in
@@ -231,7 +244,7 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
        (* Stops at [hot_at]: no overflow, however long the wait for another unit's level 2. *)
        l.steps <- min l.hot_at (l.steps + spent);
        if l.steps >= l.hot_at then rise code l.text l.entry
-     | Making _ | Final -> ());
+     | Making | Final -> ());
     st
   end
   end
@@ -286,7 +299,7 @@ let root_point code = match code.loops with [||] -> -1 | a -> let _, _, _, p = a
    interpreter's. *)
 let go (ctx : ctx) code entry =
   let rec again ?(leave = false) entry first =
-    (match code.tier with Making job -> adopt code job | Level1 _ | Final -> ());
+    settle ();
     let st = run ~leave ctx code entry in
     if st = Ir.fuel_out then begin
       let p = io.(Ir.io_point) in
