@@ -7,6 +7,10 @@ val natives : (string * t) list
     the values of each group, missing ones too; [frequencies(xs)], what the loop of [Frequencies] gives, or missing. *)
 val list : (string * t) list
 
+(** Natives that only std/csv sees: [written(rows, separator)], the CSV text of a list of lists in one pass, or missing
+    for other rows. *)
+val csv_natives : (string * t) list
+
 (** The keys of rows with these names, made public names if asked, or why they can't be: two names give one key. Equal lists
     share their keys. *)
 val row_keys : bool -> string array -> (keys, string) result
