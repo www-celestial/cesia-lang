@@ -205,7 +205,21 @@ let repeated ctx n s =
   let size = String.length s in
   if size > 0 && n > Sys.max_string_length / size then Runtime.limit "memory" ctx.site;
   Runtime.build ctx ((n * size / 8) + 1);
-  String.init (n * size) (fun i -> s.[i mod size])
+  let total = n * size in
+  if size = 1 then String.make n s.[0]
+  else if total = 0 then ""
+  else begin
+    (* The copies made so far, copied after themselves: log n copies of memory, not a call per byte. *)
+    let b = Bytes.create total in
+    Bytes.blit_string s 0 b 0 size;
+    let filled = ref size in
+    while !filled < total do
+      let k = min !filled (total - !filled) in
+      Bytes.blit b 0 b !filled k;
+      filled := !filled + k
+    done;
+    Bytes.to_string b
+  end
 
 let find ctx (a : t array) =
   let part = text_arg ctx "Find" a.(0) and s = text_arg ctx "Find" a.(1) in
