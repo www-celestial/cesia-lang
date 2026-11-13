@@ -1,0 +1,8 @@
+band: 926.0 to 971.0
+uniform, n = 10000: 950 of 1000, in the band: true
+exponential, n = 10000: 942 of 1000, in the band: true
+Bernoulli 0.01, n = 10000: 950 of 1000, in the band: true
+uniform, tol = 0.005, mean N 13028.0: 944 of 1000, in the band: true
+exponential, tol = 0.02, mean N 10061.0: 945 of 1000, in the band: true
+Bernoulli 0.01, tol = 0.002, mean N 9915.0: 943 of 1000, in the band: true
+exit 0
