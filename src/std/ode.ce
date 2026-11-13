@@ -1,11 +1,13 @@
 (** Ordinary differential equations: Solve, as ode45 in MATLAB and solve_ivp in scipy, by the method of Dormand and
-    Prince (1980), with its dense output, a PI control of the step size, events, and an alarm when the problem is stiff.
-    The chapter Numerical methods of the book says what it promises, and where each part comes from. *)
+    Prince (1980), with its dense output, a PI control of the step size, events, and an alarm when the problem is stiff;
+    with stiff = true, as ode15s and ode23s, by the Rosenbrock method Rodas5P (Steinebach 2023). The chapter Numerical
+    methods of the book says what it promises, and where each part comes from. *)
 use std/bug
 use std/columns as col
 use std/list
 use std/math
 use std/matrix
+use std/num
 use std/optimize
 use std/result
 use std/text
@@ -56,6 +58,60 @@ d5 = 701980252875.0 / 199316789632.0
 d6 = -1453857185.0 / 822651844.0
 d7 = 69997945.0 / 29380423.0
 
+(* Rosenbrock methods for stiff problems (Hairer and Wanner II, §IV.7), in the form with the stages u_i of their (7.25),
+   which the code RODAS and those of Julia use. With s the signed step, J = ∂f/∂y and ft = ∂f/∂t at the start of the
+   step and W = I - s γ J, factored once, each stage solves
+
+     W u_i = s γ f(t + c_i s, y + Σ_j a_ij u_j) + s² γ d_i ft + γ Σ_j C_ij u_j,
+
+   the sums over j < i. The methods are stiffly accurate: y1 = y + Σ_j a_Sj u_j + u_S, the argument of the last stage
+   plus its own u, and u_S estimates the error, the difference with the embedded method of one order less, which is
+   the argument of the last stage. Dense output: y(t + θ s) = (1 - θ) y + θ (y1 + (1 - θ) (q1 + θ (q2 + θ q3))), with
+   q_j = Σ_i H_ji u_i. The tables are those Steinebach (2023) publishes with Rodas5P, in OrdinaryDiffEq.jl: Rodas4 of
+   Hairer and Wanner (1996), 6 stages, order 4 (3), dense output of order 3, and Rodas5P, 8 stages, order 5 (4), dense
+   output of order 4; both A-stable and L-stable. The tests check their order conditions. *)
+rodas4 = {Name: "Rodas4", Gamma: 0.25, Order: 4,
+  A: [0.0 0.0 0.0 0.0 0.0 0.0
+      1.544 0.0 0.0 0.0 0.0 0.0
+      0.9466785280815826 0.2557011698983284 0.0 0.0 0.0 0.0
+      3.314825187068521 2.896124015972201 0.9986419139977817 0.0 0.0 0.0
+      1.221224509226641 6.019134481288629 12.53708332932087 -0.687886036105895 0.0 0.0
+      1.221224509226641 6.019134481288629 12.53708332932087 -0.687886036105895 1.0 0.0],
+  C: [0.0 0.0 0.0 0.0 0.0 0.0
+      -5.6688 0.0 0.0 0.0 0.0 0.0
+      -2.430093356833875 -0.2063599157091915 0.0 0.0 0.0 0.0
+      -0.1073529058151375 -9.594562251023355 -20.47028614809616 0.0 0.0 0.0
+      7.496443313967647 -10.24680431464352 -33.99990352819905 11.7089089320616 0.0 0.0
+      8.083246795921522 -7.981132988064893 -31.52159432874371 16.31930543123136 -6.058818238834054 0.0],
+  Cs: [0.0, 0.386, 0.21, 0.63, 1.0, 1.0],
+  D: [0.25, -0.1043, 0.1035, -0.0362, 0.0, 0.0],
+  H: [10.12623508344586 -7.487995877610167 -34.80091861555747 -7.992771707568823 1.025137723295662 0.0
+      -0.6762803392801253 6.087714651680015 16.43084320892478 24.76722511418386 -6.594389125716872 0.0]}
+rodas5p = {Name: "Rodas5P", Gamma: 0.21193756319429014, Order: 5,
+  A: [0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      3.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      2.849394379747939 0.45842242204463923 0.0 0.0 0.0 0.0 0.0 0.0
+      -6.954028509809101 2.489845061869568 -10.358996098473584 0.0 0.0 0.0 0.0 0.0
+      2.8029986275628964 0.5072464736228206 -0.3988312541770524 -0.04721187230404641 0.0 0.0 0.0 0.0
+      -7.502846399306121 2.561846144803919 -11.627539656261098 -0.18268767659942256 0.030198172008377946 0.0 0.0 0.0
+      -7.502846399306121 2.561846144803919 -11.627539656261098 -0.18268767659942256 0.030198172008377946 1.0 0.0 0.0
+      -7.502846399306121 2.561846144803919 -11.627539656261098 -0.18268767659942256 0.030198172008377946 1.0 1.0 0.0],
+  C: [0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      -14.155112264123755 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      -17.97296035885952 -2.859693295451294 0.0 0.0 0.0 0.0 0.0 0.0
+      147.12150275711716 -1.41221402718213 71.68940251302358 0.0 0.0 0.0 0.0 0.0
+      165.43517024871676 -0.4592823456491126 42.90938336958603 -5.961986721573306 0.0 0.0 0.0 0.0
+      24.854864614690072 -3.0009227002832186 47.4931110020768 5.5814197821558125 -0.6610691825249471 0.0 0.0 0.0
+      30.91273214028599 -3.1208243349937974 77.79954646070892 34.28646028294783 -19.097331116725623 -28.087943162872662 0.0 0.0
+      37.80277123390563 -3.2571969029072276 112.26918849496327 66.9347231244047 -40.06618937091002 -54.66780262877968 -9.48861652309627 0.0],
+  Cs: [0.0, 0.6358126895828704, 0.4095798393397535, 0.9769306725060716, 0.4288403609558664, 1.0, 1.0, 1.0],
+  D: [0.21193756319429014, -0.42387512638858027, -0.3384627126235924, 1.8046452872882734, 2.325825639765069, 0.0, 0.0, 0.0],
+  H: [25.948786856663858 -2.5579724845846235 10.433815404888879 -2.3679251022685204 0.524948541321073 1.1241088310450404 0.4272876194431874 -0.17202221070155493
+      -9.91568850695171 -0.9689944594115154 3.0438037242978453 -24.495224566215796 20.176138334709044 15.98066361424651 -6.789040303419874 -6.710236069923372
+      11.419903575922262 2.8879645146136994 72.92137995996029 80.12511834622643 -52.072871366152654 -59.78993625266729 -0.15582684282751913 4.883087185713722]}
+rosenbrock = rodas5p   (* the method of stiff = true *)
+mostStiff = 1000       (** the most components of y with stiff = true: its matrices are n × n, 8 MB each at 1000 *)
+
 
 struct Event
   (** Something to watch for along a solution: a time where g(t, y) crosses 0. Event(g, stop, direction): stop = true
@@ -71,8 +127,8 @@ struct Solution
   (** What Solve gives: T, the times, a column; Y, the states, one row for each time and one column for each component;
       Events, the events met, in time order, each {Event, T, Y}, Event its place in the list given to Solve; Stats,
       {Steps, Rejected, Evaluations, Jacobians, Factorizations}: the steps taken, those the error test refused, the calls
-      of f, and two counts kept for the methods that use a Jacobian, 0 here. s.At(t) gives the state at any time from
-      the first to the last, from the dense output of the step that holds t.
+      of f, and with stiff = true the Jacobians computed and the matrices I - h γ J factored, 0 otherwise. s.At(t) gives
+      the state at any time from the first to the last, from the dense output of the step that holds t.
 
         s = Solve((t, y) -> -y, [0.0, 1.0], 1.0).Value
         math.Near(s.At(0.5), math.Exp(-0.5), rel = 1e-6) --> true *)
@@ -80,14 +136,16 @@ struct Solution
   Y
   Events
   Stats
-  chunks  (* the steps, in arrays of perChunk(n) steps each: t, h, then y, k1, k3, k4, k5 and k6, n floats each *)
+  chunks  (* the steps, in arrays of perChunk(width) steps each: t, h, then y, k1, k3, k4, k5 and k6, n floats each, or
+             y and the q of the dense output for stiff steps *)
   count   (* the steps in chunks *)
   tail    (* [t, y, k1] at the end of the last step, or at the start when there is none *)
   till    (* the last time of the solution: the end of the last step, or a stopping event inside it *)
   shape   (* the size of y0, or missing for a number *)
+  stiff   (* true when the steps are those of the Rosenbrock method, which keep y and the q of its dense output *)
 end
 
-defn Solve(f, ts, y0, rtol = 1.0e-6, atol = 1.0e-9, events = [], maxStep = missing, steps = 1000000)
+defn Solve(f, ts, y0, rtol = 1.0e-6, atol = 1.0e-9, events = [], maxStep = missing, steps = 1000000, stiff = false, jacobian = missing)
   (** The solution of y' = f(t, y) from y(ts[1]) = y0, in an Ok of a Solution: f(t, y) gives the derivative of y at t,
       a number or an array of the same shape as y0. With two times, T holds the times of the steps the method took,
       from the first to the last; with three or more, increasing or decreasing, T holds those times and Y the states
@@ -99,13 +157,25 @@ defn Solve(f, ts, y0, rtol = 1.0e-6, atol = 1.0e-9, events = [], maxStep = missi
       grow with time, as on a chaotic system. atol is a number or an array, one for each component. maxStep bounds the
       size of a step; steps bounds their count, refused ones included. events is a list of Event.
 
+      With stiff = true, for a problem whose steps the method above keeps small for its stability, not its accuracy,
+      the method is Rodas5P, a Rosenbrock method of order 5 (Steinebach 2023), its error estimated by the embedded one
+      of order 4: each step solves linear systems with the matrix I - h γ J, J the Jacobian ∂f/∂y at its start, so that
+      a large step stays stable. jacobian(t, y) gives J, an n × n matrix, or a number for a number y0; without it, J
+      comes from n more calls of f, by differences. y0 has at most 1000 components then. The test of the error sees the
+      ends of the steps only: where they are long, as when a fast decay follows a slow forcing, y' = λ (y - g(t)) with
+      λ far below 0, At between them can be further off than the tolerance; maxStep bounds them.
+
       An Err of kind "ode", with T, the time it reached, and Partial, the Solution up to there: when the step falls
       under 16 eps |t|, as at a blow-up; when steps is reached; when f gives a NaN or an infinity at 10 tries in a row,
-      or a value of another shape; when the problem looks stiff, its steps held small by stability, not accuracy.
+      or a value of another shape; when the problem looks stiff, its steps held small by stability, not accuracy; with
+      stiff = true, when the Jacobian holds a value that is no finite number, and when I - h γ J stays singular as the
+      step is halved 10 times.
 
         s = Solve((t, y) -> [y[2], -y[1]], [0.0, math.Pi], [0.0, 1.0]).Value
-        math.Near(s.Y[value.Len(s.T), 1], 0.0, abs = 1e-6) --> true *)
-  run(f, start(ts, y0, rtol, atol, events, maxStep, steps))
+        math.Near(s.Y[value.Len(s.T), 1], 0.0, abs = 1e-6) --> true
+        Solve((t, y) -> -1000.0 * (y - math.Cos(t)), [0.0, 10.0], 0.0, stiff = true).Value.Stats.Steps < 100 --> true *)
+  p = start(ts, y0, rtol, atol, events, maxStep, steps, stiff, jacobian)
+  if p.Stiff stiffRun(f, p) else run(f, p) end
 end
 
 defn brief(v)
@@ -146,7 +216,7 @@ defn floats(xs, what)
   out
 end
 
-defn start(ts, y0, rtol, atol, events, maxStep, most)
+defn start(ts, y0, rtol, atol, events, maxStep, most, stiff, jac)
   (** The arguments, checked, as one struct; a bad one is a panic that names it. A number y0 becomes an array of one. *)
   if not value.IsArray(ts) or value.Len(ts) < 2
     bug.Panic("ode.Solve: ts is $(brief(ts)); give [t0, t1], or three times or more.")
@@ -202,8 +272,22 @@ defn start(ts, y0, rtol, atol, events, maxStep, most)
       bug.Panic("ode.Solve: stop of events[$k] is $(brief(e.stop)); give true or false.")
     end
   end
+  if not value.IsBool(stiff)
+    bug.Panic("ode.Solve: stiff is $(brief(stiff)); give true or false.")
+  end
+  if not value.IsMissing(jac)
+    if not stiff
+      bug.Panic("ode.Solve: jacobian is for stiff = true only; give stiff = true, or no jacobian.")
+    end
+    if not value.IsFunction(jac)
+      bug.Panic("ode.Solve: jacobian is $(brief(jac)); give a function of (t, y) that gives the n × n matrix ∂f/∂y.")
+    end
+  end
+  if stiff and n > mostStiff
+    bug.Panic("ode.Solve: y0 has $n components, and stiff = true takes at most $mostStiff: its n × n matrices would take $(math.Div(8 * n * n, 1000000)) MB each.")
+  end
   {Times: times, Dir: dir, Y0: y, N: n, Scalar: scalar, Size: if scalar missing else value.Size(y) end,
-   Rows: value.Size(y, 1), Rtol: 1.0 * rtol, Atol: atol, Hmax: hmax, Most: most, Events: events}
+   Rows: value.Size(y, 1), Rtol: 1.0 * rtol, Atol: atol, Hmax: hmax, Most: most, Events: events, Stiff: stiff, Jac: jac}
 end
 
 isEvent(e) = match e
@@ -237,10 +321,11 @@ end
 
 rms(x) = math.Sqrt(list.Sum(x * x) / value.Len(x))   (** the root mean square of an array *)
 
-defn firstStep(f, t, y, k1, p)
+defn firstStep(f, t, y, k1, p, expo)
   (** The size of the first step, by the rule of Hairer, Nørsett and Wanner (I, §II.4), after Gladwell, Shampine and
       Brankin (1987): the step over which Euler's method moves y by 1 % of its scale, then a bound from the second
-      derivative, estimated by one more call of f. A text when that call gives no value of the shape of y. *)
+      derivative, estimated by one more call of f, to the power expo, one over the order of the error estimate. A text
+      when that call gives no value of the shape of y. *)
   sc = p.Atol + p.Rtol * math.Abs(y)
   d0 = rms(y / sc)
   d1 = rms(k1 / sc)
@@ -252,7 +337,7 @@ defn firstStep(f, t, y, k1, p)
     return bad
   end
   big = list.Max(d1, rms((k - k1) / sc) / h0)
-  h1 = if not isFinite(big) h0 else if big <= 1.0e-15 list.Max(1.0e-6, h0 * 1.0e-3) else (0.01 / big) ^ 0.2 end
+  h1 = if not isFinite(big) h0 else if big <= 1.0e-15 list.Max(1.0e-6, h0 * 1.0e-3) else (0.01 / big) ^ expo end
   list.Min(list.Min(100.0 * h0, h1), p.Hmax)
 end
 
@@ -288,7 +373,7 @@ defn run(f, p)
   most = p.Most
   watch = value.Len(p.Events) > 0
   width = 6 * n + 2
-  full = perChunk(n) * width
+  full = perChunk(width) * width
   chunks = []
   buf = matrix.Zeros(full)
   used = 0
@@ -298,7 +383,7 @@ defn run(f, p)
   if not value.IsMissing(bad)
     return failed(bad, p, list.Append(buf, chunks), found, counts(0, 0, 1), [t, y, k1], t)
   end
-  h = firstStep(f, t, y, k1, p)
+  h = firstStep(f, t, y, k1, p, 0.2)
   if value.IsText(h)
     return failed(h, p, list.Append(buf, chunks), found, counts(0, 0, 2), [t, y, k1], t)
   end
@@ -437,7 +522,7 @@ defn run(f, p)
           calm = 0
           stiff += 1
           if stiff == 15
-            return failed("ode.Solve: the problem looks stiff from t = $t7: for 15 steps the size of the step was held by the stability of the method, not by its accuracy, and going on would take very many steps.", p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t7, y7, k7], t7)
+            return failed("ode.Solve: the problem looks stiff from t = $t7: for 15 steps the size of the step was held by the stability of the method, not by its accuracy, and going on would take very many steps: solve it with stiff = true.", p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t7, y7, k7], t7)
           end
         else if stiff > 0
           calm += 1
@@ -470,12 +555,326 @@ defn run(f, p)
   end
 end
 
-(** The Stats of a Solution. *)
-counts(taken, refused, evals) = {Steps: taken, Rejected: refused, Evaluations: evals, Jacobians: 0, Factorizations: 0}
+defn jacobianAt(f, p, t, y, fy, s)
+  (** {J, Ft, Calls} at (t, y), where f gives fy, for a step s: J = ∂f/∂y, from the jacobian given or by forward
+      differences, and Ft = ∂f/∂t by one difference; Calls, the calls of f. Component j moves by sqrt(eps) max(|y_j|,
+      atol_j), as Dennis and Schnabel (1983, §5.4) advise with the typical size of y_j, here atol_j, under which the
+      error test sees no difference (sqrt(eps) when both are 0); t moves by sqrt(eps) |s|, the scale the step resolves,
+      and at least 4 eps |t|. The increment of RODAS, sqrt(eps max(|y_j|, 1e-5)), is far larger than a component of
+      1e-13 such as y2 of Robertson's problem: its Jacobian then took 4 times more steps, with an error of 15 %. A text
+      when f or jacobian gives a value of the wrong shape, or a value that is no finite number. *)
+  n = p.N
+  calls = 0
+  root = math.Sqrt(eps)
+  if value.IsMissing(p.Jac)
+    jac = matrix.Zeros(n, n)
+    for j in 1..n
+      yj = y
+      a = math.Abs(y[j])
+      floor = if value.IsArray(p.Atol) p.Atol[j] else p.Atol end
+      typical = if a > floor a else floor end
+      yj[j] = y[j] + root * (if typical > 0.0 typical else 1.0 end)
+      d = yj[j] - y[j]
+      fj = f(t, yj)
+      calls += 1
+      if not (value.Len(fj) == n and col.Kind(fj) == "float")
+        bad = shapeError(fj, t, p)
+        if not value.IsMissing(bad)
+          return bad
+        end
+      end
+      for i in 1..n
+        v = (fj[i] - fy[i]) / d
+        if not (v - v == 0.0)
+          return "ode.Solve: the Jacobian by differences is $v in row $i, column $j at t = $t, as f gave $(fj[i]) there: give jacobian =, or check f."
+        end
+        jac[i, j] = v
+      end
+    end
+  else
+    m = p.Jac(t, if p.Scalar y[1] else y end)
+    if p.Scalar and isFinite(m)
+      m = matrix.Zeros(1, 1) + m
+    end
+    if not (value.IsArray(m) and value.Len(value.Size(m)) == 2 and value.Size(m, 1) == n and value.Size(m, 2) == n)
+      return "ode.Solve: jacobian gave $(brief(m)) at t = $t, not an $n × $n matrix, ∂f/∂y."
+    end
+    for k in 1..n * n
+      if not isFinite(m[k])
+        return "ode.Solve: jacobian gave $(brief(m[k])) in row $(math.Mod(k - 1, n) + 1), column $(math.Div(k - 1, n) + 1) at t = $t, not a finite number."
+      end
+    end
+    jac = m * 1.0
+  end
+  dt = root * math.Abs(s)
+  least = 4.0 * eps * math.Abs(t)
+  t2 = t + (if s < 0.0 -1.0 else 1.0 end) * (if dt > least dt else least end)
+  f2 = f(t2, y)
+  calls += 1
+  if not (value.Len(f2) == n and col.Kind(f2) == "float")
+    bad = shapeError(f2, t2, p)
+    if not value.IsMissing(bad)
+      return bad
+    end
+  end
+  ft = (f2 - fy) / (t2 - t)
+  for i in 1..n
+    if not isFinite(ft[i])
+      return "ode.Solve: ∂f/∂t by a difference is $(ft[i]) in component $i at t = $t, as f gave $(f2[i]) there."
+    end
+  end
+  {J: jac, Ft: ft, Calls: calls}
+end
 
-(** The steps in each array of a Solution's chunks: about 64 K floats, 512 KB, at least one step. Arrays of that size
-    are made as the steps come, never grown: a grown array is copied, and written slowly after. *)
-perChunk(n) = if 65536 > 6 * n + 2 math.Div(65536, 6 * n + 2) else 1 end
+defn stiffRun(f, p)
+  (** The loop of the Rosenbrock steps, as run's for Dormand and Prince: the Jacobian at the start of each step taken,
+      the same after a refused one; I - s γ J factored once a step by num.Lu; the stages, each a solve, kept as the
+      rows of a matrix k, so that their sums with the coefficients of the method are products of matrices; the error
+      test on the last stage, then the step taken and kept for the dense output, with its events, or refused and tried
+      again smaller. A singular matrix halves the step, 10 times at most. *)
+  if p.Scalar
+    f0 = f
+    f = (t, y) -> [f0(t, y[1])]
+  end
+  tab = rosenbrock
+  stages = value.Len(tab.Cs)
+  gamma = tab.Gamma
+  nh = value.Size(tab.H, 1)
+  expo = 1.0 / tab.Order
+  arows = [tab.A[i, :] for i in 1..stages]
+  crows = [gamma * tab.C[i, :] for i in 1..stages]
+  times = p.Times
+  t = times[1]
+  tEnd = times[value.Len(times)]
+  dir = p.Dir
+  y = p.Y0
+  n = p.N
+  row = value.Size(y, 1) == 1
+  rtol = p.Rtol
+  atol = p.Atol
+  hmax = p.Hmax
+  most = p.Most
+  watch = value.Len(p.Events) > 0
+  width = widthOf(true, n)
+  full = perChunk(width) * width
+  chunks = []
+  buf = matrix.Zeros(full)
+  used = 0
+  found = []
+  eye = num.Eye(n)
+  fy = f(t, y)
+  bad = shapeError(fy, t, p)
+  if not value.IsMissing(bad)
+    return failed(bad, p, list.Append(buf, chunks), found, counts(0, 0, 1), [t, y, fy], t)
+  end
+  h = firstStep(f, t, y, fy, p, expo)
+  if value.IsText(h)
+    return failed(h, p, list.Append(buf, chunks), found, counts(0, 0, 2), [t, y, fy], t)
+  end
+  evals = 2
+  taken = 0
+  refused = 0
+  jacs = 0
+  lus = 0
+  gs = []
+  for e in p.Events
+    g = e.g(t, if p.Scalar y[1] else y end)
+    if not isFinite(g)
+      return failed("ode.Solve: an event's g gave $(brief(g)) at t = $t, not a finite number.", p, list.Append(buf, chunks), found, counts(0, 0, evals), [t, y, fy], t)
+    end
+    gs = list.Append(1.0 * g, gs)
+  end
+  ay = math.Abs(y)
+  fresh = false
+  jac = eye
+  ft = y
+  justRefused = false
+  hacc = h
+  erracc = 1.0
+  nans = 0
+  why = ""
+  singular = 0
+  while true
+    if taken + refused >= most
+      return failed("ode.Solve: $most steps reached at t = $t, before $tEnd; give more steps, or check f.", p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
+    end
+    if h <= 16.0 * eps * math.Abs(t) or h == 0.0
+      if nans > 0
+        return failed("ode.Solve: $why, the step halved until it fell under 16 eps |t|.", p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
+      end
+      return failed("ode.Solve: the step fell under 16 eps |t| at t = $t: the solution may blow up there.", p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
+    end
+    last = false
+    if (t + 1.01 * dir * h - tEnd) * dir >= 0.0
+      h = math.Abs(tEnd - t)
+      last = true
+    end
+    s = dir * h
+    if not fresh
+      jr = jacobianAt(f, p, t, y, fy, s)
+      jacs += 1
+      if value.IsText(jr)
+        return failed(jr, p, list.Append(buf, chunks), found, counts(taken, refused, evals + n + 1, jacs = jacs, lus = lus), [t, y, fy], t)
+      end
+      evals += jr.Calls
+      jac = jr.J
+      ft = jr.Ft
+      fresh = true
+    end
+    sg = s * gamma
+    w = num.Lu(eye - sg * jac)
+    lus += 1
+    if result.IsErr(w)
+      refused += 1
+      singular += 1
+      if singular >= 10
+        return failed("ode.Solve: the matrix I - h γ J stayed singular at t = $t, the step halved 10 times: f may have no solution past there.", p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
+      end
+      h = 0.5 * h
+      justRefused = true
+    else
+      singular = 0
+      lu = w.Value
+      k = matrix.Zeros(stages, n)
+      fi = fy
+      arg = y
+      u = y
+      wrong = 0
+      for i in 1..stages
+        if i > 1
+          sum = matrix.Matmul(arows[i], k)
+          arg = y + (if row sum else matrix.Transpose(sum) end)
+          ti = if last and tab.Cs[i] == 1.0 tEnd else t + tab.Cs[i] * s end
+          fi = f(ti, arg)
+          evals += 1
+          if not (value.Len(fi) == n and col.Kind(fi) == "float")
+            bad = shapeError(fi, ti, p)
+            if not value.IsMissing(bad)
+              return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
+            end
+          end
+          total = list.Sum(fi)
+          if not (total - total == 0.0)
+            wrong = i
+            break
+          end
+          sum = matrix.Matmul(crows[i], k)
+          rhs = sg * fi + (if row sum else matrix.Transpose(sum) end)
+        else
+          rhs = sg * fi
+        end
+        di = tab.D[i]
+        if di != 0.0
+          rhs = rhs + (sg * s * di) * ft
+        end
+        u = lu.Solve(rhs)
+        for c in 1..n
+          k[i, c] = u[c]
+        end
+      end
+      y1 = arg + u
+      ay1 = math.Abs(y1)
+      wv = u / (atol + rtol * list.Max(ay, ay1))
+      err = if wrong > 0 math.Nan else math.Sqrt(list.Sum(wv * wv) / n) end
+      if not (err - err == 0.0)
+        why = if wrong > 0 badComponent([fi], t) else "the error estimate was no finite number near t = $t" end
+        nans += 1
+        refused += 1
+        if nans >= 10
+          return failed("ode.Solve: $why, at 10 tries in a row, the step halved each time.", p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
+        end
+        h = 0.5 * h
+        justRefused = true
+      else if err > 1.0
+        nans = 0
+        refused += 1
+        fac = err ^ expo / 0.9
+        h = h / (if fac < 5.0 fac else 5.0 end)
+        justRefused = true
+      else
+        nans = 0
+        taken += 1
+        (* The step size as RODAS's: h err^(-1/p) 0.9, p the order of the method, or smaller by the predictive control
+           of Gustafsson (1994), from the last two steps taken, at most 6 times larger and 5 times smaller, and no
+           larger right after a refused step. On Van der Pol's problem at mu = 1000, it refuses 18 steps instead of 173. *)
+        fac = err ^ expo / 0.9
+        fac = if fac > 5.0 5.0 else if fac < 1.0 / 6.0 1.0 / 6.0 else fac end
+        if taken > 1
+          gus = hacc / h * (err * err / erracc) ^ expo / 0.9
+          gus = if gus > 5.0 5.0 else if gus < 1.0 / 6.0 1.0 / 6.0 else gus end
+          fac = if gus > fac gus else fac end
+        end
+        hacc = h
+        erracc = if err > 0.01 err else 0.01 end
+        hnew = h / fac
+        if justRefused and hnew > h
+          hnew = h
+        end
+        justRefused = false
+        t1 = if last tEnd else t + s end
+        f1 = f(t1, y1)
+        evals += 1
+        if not (value.Len(f1) == n and col.Kind(f1) == "float")
+          bad = shapeError(f1, t1, p)
+          if not value.IsMissing(bad)
+            return failed(bad, p, list.Append(buf, chunks), found, counts(taken - 1, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
+          end
+        end
+        if used == full
+          chunks = list.Append(buf, chunks)
+          buf = matrix.Zeros(full)
+          used = 0
+        end
+        o = used + 2
+        buf[used + 1] = t
+        buf[o] = s
+        for c in 1..n
+          buf[o + c] = y[c]
+        end
+        q = matrix.Matmul(tab.H, k)
+        for j in 1..nh
+          oj = o + j * n
+          for c in 1..n
+            buf[oj + c] = q[j, c]
+          end
+        end
+        used += width
+        if watch
+          qs = [if row q[j, :] else matrix.Transpose(q[j, :]) end for j in 1..nh]
+          ev = eventsIn(p, gs, list.Concat([t, s, y], qs), [t1, y1])
+          if value.IsText(ev)
+            return failed(ev, p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t1, y1, f1], t1)
+          end
+          gs = ev.G
+          found = list.Concat(found, ev.Found)
+          if ev.Stop
+            return result.Ok(solution(p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t1, y1, f1], found[value.Len(found)].T))
+          end
+        end
+        t = t1
+        y = y1
+        ay = ay1
+        fy = f1
+        fresh = false
+        if last
+          return result.Ok(solution(p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t))
+        end
+        h = if hnew < hmax hnew else hmax end
+      end
+    end
+  end
+end
+
+(** The Stats of a Solution. *)
+counts(taken, refused, evals, jacs = 0, lus = 0) = {Steps: taken, Rejected: refused, Evaluations: evals, Jacobians: jacs, Factorizations: lus}
+
+(** The steps in each array of a Solution's chunks, of width floats each: about 64 K floats, 512 KB, at least one
+    step. Arrays of that size are made as the steps come, never grown: a grown array is copied, and written slowly after. *)
+perChunk(width) = if 65536 > width math.Div(65536, width) else 1 end
+
+(** The floats of a step in the chunks: t, h and 6 arrays of n for Dormand and Prince, or t, h, y and the q of the dense
+    output for the Rosenbrock method. *)
+widthOf(stiff, n) = if stiff (1 + value.Size(rosenbrock.H, 1)) * n + 2 else 6 * n + 2 end
 
 defn dense(st, tail, size, u)
   (** The state at u, inside the step st = [t, h, y, k1, k3, k4, k5, k6] that tail = [t + h, y1, k7] ends, from
@@ -493,31 +892,53 @@ defn dense(st, tail, size, u)
   if value.IsMissing(size) or value.Size(v, 1) == size[1] v else matrix.Reshape(size, v) end
 end
 
+defn denseStiff(st, tail, size, u)
+  (** The state at u, inside the Rosenbrock step st = [t, h, y, q1, q2, ...] that tail = [t + h, y1] ends, in the shape
+      of y0, size. *)
+  th = (u - st[1]) / st[2]
+  last = value.Len(st)
+  q = st[last]
+  for j in list.Range(last - 1, 4, step = -1)
+    q = st[j] + th * q
+  end
+  v = (1.0 - th) * st[3] + th * (tail[2] + (1.0 - th) * q)
+  if value.IsMissing(size) or value.Size(v, 1) == size[1] v else matrix.Reshape(size, v) end
+end
+
+(** The state at u inside a step, by the dense output of its method. *)
+denseAt(stiff, st, tail, size, u) = if stiff denseStiff(st, tail, size, u) else dense(st, tail, size, u) end
+
 defn startOf(s, k)
-  (** Step k of a Solution, as dense takes it: [t, h, y, k1, k3, k4, k5, k6], its arrays rows. *)
+  (** Step k of a Solution, as dense takes it: [t, h, y, k1, k3, k4, k5, k6], or [t, h, y, q1, q2, ...] for a stiff
+      one, its arrays rows. *)
   n = value.Len(s.tail[2])
-  per = perChunk(n)
-  o = math.Mod(k - 1, per) * (6 * n + 2)
+  width = widthOf(s.stiff, n)
+  per = perChunk(width)
+  o = math.Mod(k - 1, per) * width
   b = s.chunks[math.Div(k - 1, per) + 1]
-  [b[o + 1], b[o + 2], b[o + 3..o + 2 + n], b[o + 3 + n..o + 2 + 2 * n], b[o + 3 + 2 * n..o + 2 + 3 * n],
-   b[o + 3 + 3 * n..o + 2 + 4 * n], b[o + 3 + 4 * n..o + 2 + 5 * n], b[o + 3 + 5 * n..o + 2 + 6 * n]]
+  list.Concat([b[o + 1], b[o + 2]], [b[o + 3 + (j - 1) * n..o + 2 + j * n] for j in 1..math.Div(width - 2, n)])
 end
 
 defn stepOf(s, k)
-  (** Step k of a Solution and the tail that ends it, [t, y1, k7]: the start of the next step, or the Solution's own. *)
+  (** Step k of a Solution and the tail that ends it, [t, y1, k7], or [t, y1] for a stiff one: the start of the next
+      step, or the Solution's own. *)
+  n = value.Len(s.tail[2])
   if k == s.count
-    n = value.Len(s.tail[2])
+    if s.stiff
+      return [startOf(s, k), [s.tail[1], matrix.Reshape([1, n], s.tail[2])]]
+    end
     return [startOf(s, k), [s.tail[1], matrix.Reshape([1, n], s.tail[2]), matrix.Reshape([1, n], s.tail[3])]]
   end
   next = startOf(s, k + 1)
-  [startOf(s, k), [next[1], next[3], next[4]]]
+  [startOf(s, k), if s.stiff [next[1], next[3]] else [next[1], next[3], next[4]] end]
 end
 
 defn timeOf(s, k)
   (** The time at the start of step k. *)
   n = value.Len(s.tail[2])
-  per = perChunk(n)
-  s.chunks[math.Div(k - 1, per) + 1][math.Mod(k - 1, per) * (6 * n + 2) + 1]
+  width = widthOf(s.stiff, n)
+  per = perChunk(width)
+  s.chunks[math.Div(k - 1, per) + 1][math.Mod(k - 1, per) * width + 1]
 end
 
 defn eventsIn(p, gs, st, tail)
@@ -544,13 +965,13 @@ defn eventsIn(p, gs, st, tail)
         te = t7
         if g1 != 0.0
           g = e.g
-          r = optimize.Root(u -> g(u, user(dense(st, tail, size, u))), [t, t7])
+          r = optimize.Root(u -> g(u, user(denseAt(p.Stiff, st, tail, size, u))), [t, t7])
           if result.IsErr(r)
             return "ode.Solve: event $j near t = $t7: $(r.Error.Message)"
           end
           te = r.Value.X
         end
-        ye = if te == t7 tail[2] else dense(st, tail, size, te) end
+        ye = if te == t7 tail[2] else denseAt(p.Stiff, st, tail, size, te) end
         hits = list.Append({Event: j, T: te, Y: user(ye), stop: e.stop}, hits)
       end
     end
@@ -575,20 +996,20 @@ defn solution(p, chunks, found, stats, tail, till)
   (** The Solution: its T and Y from the steps, or at the times asked for. *)
   m = stats.Steps
   n = p.N
-  width = 6 * n + 2
-  s = Solution([], [], found, stats, chunks, m, tail, till, p.Size)
+  width = widthOf(p.Stiff, n)
+  s = Solution([], [], found, stats, chunks, m, tail, till, p.Size, p.Stiff)
   if value.Len(p.Times) > 2
     wanted = [t for t in p.Times if p.Dir * (t - till) <= 0.0]
     tt = matrix.Reshape([value.Len(wanted), 1], wanted)
     yy = if value.Len(wanted) == 0 matrix.Zeros(0, n) else s.At(wanted) end
-    return Solution(tt, yy, found, stats, chunks, m, tail, till, p.Size)
+    return Solution(tt, yy, found, stats, chunks, m, tail, till, p.Size, p.Stiff)
   end
   tt = matrix.Zeros(m + 1, 1)
   yy = matrix.Zeros(m + 1, n)
   k = 0
   for b in chunks
     o = 0
-    while k < m and o < perChunk(n) * width
+    while k < m and o < perChunk(width) * width
       k += 1
       tt[k] = b[o + 1]
       for i in 1..n
@@ -602,7 +1023,7 @@ defn solution(p, chunks, found, stats, tail, till)
   for i in 1..n
     yy[m + 1, i] = v[i]
   end
-  Solution(tt, yy, found, stats, chunks, m, tail, till, p.Size)
+  Solution(tt, yy, found, stats, chunks, m, tail, till, p.Size, p.Stiff)
 end
 
 defn locate(s, u)
@@ -631,13 +1052,14 @@ defn stateAt(s, u)
     return s.tail[2]
   end
   w = stepOf(s, locate(s, u))
-  dense(w[1], w[2], s.shape, u)
+  denseAt(s.stiff, w[1], w[2], s.shape, u)
 end
 
 defn (s Solution) At(t)
   (** The state at time t, from the first time of the solution to the last; with an array of times, a matrix as Y, one
-      row for each time. Inside a step, the dense output of Shampine (1986), of order 4, which meets the step's own
-      states at both of its ends. A time outside the solution is a panic.
+      row for each time. Inside a step, the dense output of Shampine (1986), of order 4, or with stiff = true that of
+      Rodas5P, of order 4 too, which meet the step's own states at both of its ends. A time outside the solution is a
+      panic.
 
         s = Solve((t, y) -> [y[2], -y[1]], [0.0, 2.0], [0.0, 1.0]).Value
         math.Near(s.At([0.5, 1.5]), [math.Sin(0.5) math.Cos(0.5); math.Sin(1.5) math.Cos(1.5)], rel = 1e-5) --> true *)
