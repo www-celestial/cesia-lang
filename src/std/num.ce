@@ -46,18 +46,21 @@ defn Diag(xs)
   m
 end
 
-defn Variance(xs)
-  (** The variance of the elements: the mean of the squares of their distance from the mean.
+defn Variance(xs, sample = false)
+  (** The variance of the elements: the mean of the squares of their distance from the mean, over n, as numpy's var;
+      with sample, over n - 1, the variance of a sample as R's var and stats compute it.
 
-        Variance([1.0, 3.0]) --> 1.0 *)
+        Variance([1.0, 3.0]) --> 1.0
+        Variance([1.0, 3.0], sample = true) --> 2.0 *)
   d = xs - list.Mean(xs)
-  list.Sum(d * d) / value.Len(xs)
+  list.Sum(d * d) / (if sample value.Len(xs) - 1 else value.Len(xs) end)
 end
 
-(** The standard deviation of the elements.
+(** The standard deviation of the elements, over n; with sample, over n - 1, R's sd.
 
-      Std([1.0, 3.0]) --> 1.0 *)
-Std(xs) = math.Sqrt(Variance(xs))
+      Std([1.0, 3.0]) --> 1.0
+      Std([1.0, 3.0], sample = true) --> 1.4142135623730951 *)
+Std(xs, sample = false) = math.Sqrt(Variance(xs, sample = sample))
 
 defn Percentile(p, xs)
   (** The value below which p percent of the elements fall, interpolating between the two nearest ones.
@@ -101,10 +104,14 @@ Dot(a, b) = list.Sum(a * b)
       Norm([3.0, 4.0]) --> 5.0 *)
 Norm(xs) = math.Sqrt(Dot(xs, xs))
 
-defn Covariance(a, b)
-  (** The covariance of two arrays of the same length.
+defn Covariance(a, b, sample = false)
+  (** The covariance of two arrays of the same length, over n; with sample, over n - 1, R's cov.
 
-        math.Abs(Covariance([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 4.0 / 3.0) < 1e-9 --> true *)
+        math.Abs(Covariance([1.0, 2.0, 3.0], [2.0, 4.0, 6.0]) - 4.0 / 3.0) < 1e-9 --> true
+        Covariance([1.0, 2.0, 3.0], [2.0, 4.0, 6.0], sample = true) --> 2.0 *)
+  if sample
+    return list.Sum((a - list.Mean(a)) * (b - list.Mean(b))) / (value.Len(a) - 1)
+  end
   list.Mean((a - list.Mean(a)) * (b - list.Mean(b)))
 end
 
