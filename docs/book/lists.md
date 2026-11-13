@@ -3,6 +3,11 @@
 In this chapter you hold many values in one: a list of names, a column of numbers, a matrix. You read them, add to them,
 sort them, and compute with whole arrays at once.
 
+> [!NOTE]
+> The examples of arrays and matrices have tabs: the same computation in Python with numpy, in R and in MATLAB. Each tab
+> runs when the book is checked, and prints what the Cesia version shows; the MATLAB tabs run in GNU Octave. See
+> [Tabs in other languages](tests.md#tabs-in-other-languages).
+
 ## Lists
 
 A list sits between square brackets. Its elements can be of any kind, and the first one is at position 1:
@@ -149,6 +154,28 @@ prices + [1, 2, 3] -->
 math.Sqrt([1, 4, 9]) -->
 ```
 
+```python
+import numpy as np
+prices = np.array([10, 20, 30])
+print(prices * 2)
+print(prices + [1, 2, 3])
+print(np.sqrt([1, 4, 9]))
+```
+
+```r
+prices <- c(10, 20, 30)
+print(prices * 2)
+print(prices + c(1, 2, 3))
+print(sqrt(c(1, 4, 9)))
+```
+
+```matlab
+prices = [10 20 30];
+disp(prices * 2)
+disp(prices + [1 2 3])
+disp(sqrt([1 4 9]))
+```
+
 ### Comparing whole lists
 
 A comparison works on each pair too: `==` between two lists gives a list of `true` and `false`. To ask whether two lists
@@ -159,6 +186,25 @@ prices == [10, 25, 30] -->
 value.Equal(prices, [10, 20, 30]) -->
 ```
 
+```python
+import numpy as np
+prices = np.array([10, 20, 30])
+print(prices == [10, 25, 30])
+print(np.array_equal(prices, [10, 20, 30]))
+```
+
+```r
+prices <- c(10, 20, 30)
+print(prices == c(10, 25, 30))
+print(identical(prices, c(10, 20, 30)))
+```
+
+```matlab
+prices = [10 20 30];
+disp(mat2str(prices == [10 25 30]))
+disp(mat2str(isequal(prices, [10 20 30])))
+```
+
 ### One number from an array
 
 [list.Sum], [list.Mean], [list.Min] and [list.Max] reduce an array to one number:
@@ -167,6 +213,28 @@ value.Equal(prices, [10, 20, 30]) -->
 list.Sum(prices) -->
 list.Mean(prices) -->
 list.Max(prices) -->
+```
+
+```python
+import numpy as np
+prices = np.array([10, 20, 30])
+print(prices.sum())
+print(prices.mean())
+print(prices.max())
+```
+
+```r
+prices <- c(10, 20, 30)
+print(sum(prices))
+print(mean(prices))
+print(max(prices))
+```
+
+```matlab
+prices = [10 20 30];
+disp(sum(prices))
+disp(mean(prices))
+disp(max(prices))
 ```
 
 This is also the fast way: the work runs in a loop of the machine, not one step of the program per element.
@@ -184,10 +252,48 @@ value.Size(m) -->
 matrix.Transpose(m) -->
 ```
 
+```python
+import numpy as np
+m = np.array([[1, 2], [3, 4]])
+print(m[1, 0])
+print(m.shape)
+print(m.T)
+```
+
+```r
+m <- matrix(c(1, 2, 3, 4), nrow = 2, byrow = TRUE)
+print(m[2, 1])
+print(dim(m))
+print(t(m))
+```
+
+```matlab
+m = [1 2; 3 4];
+disp(m(2, 1))
+disp(size(m))
+disp(m')
+```
+
 [matrix.Matmul] is the matrix product, in floats:
 
 ```cesia
 matrix.Matmul(m, m) -->
+```
+
+```python
+import numpy as np
+m = np.array([[1, 2], [3, 4]])
+print(m @ m)
+```
+
+```r
+m <- matrix(c(1, 2, 3, 4), nrow = 2, byrow = TRUE)
+print(m %*% m)
+```
+
+```matlab
+m = [1 2; 3 4];
+disp(m * m)
 ```
 
 For more, such as solving a system of equations, the library `std/num` has [num.Solve] and its friends; the chapter on data
@@ -205,12 +311,53 @@ a[1, 2, 3] -->
 value.Size(a) -->
 ```
 
+```python
+import numpy as np
+a = np.zeros((2, 3, 4))
+a[0, 1, 2] = 5.0
+print(a[0, 1, 2])
+print(a.shape)
+```
+
+```r
+a <- array(0, c(2, 3, 4))
+a[1, 2, 3] <- 5
+print(a[1, 2, 3])
+print(dim(a))
+```
+
+```matlab
+a = zeros(2, 3, 4);
+a(1, 2, 3) = 5;
+disp(a(1, 2, 3))
+disp(size(a))
+```
+
 The elements follow each other column by column: the first position moves fastest. This is *column-major order*, as in
 Fortran, MATLAB, R and Julia; C and numpy keep rows together instead, *row-major*. One position alone counts in that
 order, as in a matrix:
 
 ```cesia
 a[15] -->
+```
+
+```python
+import numpy as np
+a = np.zeros((2, 3, 4))
+a[0, 1, 2] = 5.0
+print(a.ravel(order="F")[14])   # numpy keeps rows together: column-major is asked for
+```
+
+```r
+a <- array(0, c(2, 3, 4))
+a[1, 2, 3] <- 5
+print(a[15])
+```
+
+```matlab
+a = zeros(2, 3, 4);
+a(1, 2, 3) = 5;
+disp(a(15))
 ```
 
 Such an array isn't written in the code: [matrix.Reshape] gives the elements of a list the shape of a list of sizes. It
@@ -220,6 +367,28 @@ shows each matrix of its first two dimensions, then `;;;` before the next along 
 c = matrix.Reshape([2, 2, 2], 1..8)
 c -->
 matrix.Reshape([2, 4], c) -->
+```
+
+```python
+import numpy as np
+c = np.arange(1, 9).reshape((2, 2, 2), order="F")
+for k in range(2):
+    print(c[:, :, k])
+print(c.reshape((2, 4), order="F"))
+```
+
+```r
+c <- array(1:8, c(2, 2, 2))
+for (k in 1:2) print(c[, , k])
+print(matrix(c, 2, 4))
+```
+
+```matlab
+c = reshape(1:8, [2 2 2]);
+for k = 1:2
+  disp(c(:, :, k))
+end
+disp(reshape(c, [2 4]))
 ```
 
 A wrong count of positions says how many the array takes:
@@ -235,6 +404,31 @@ c * 2 -->
 c > 4 -->
 ```
 
+```python
+import numpy as np
+c = np.arange(1, 9).reshape((2, 2, 2), order="F")
+for k in range(2):
+    print((c * 2)[:, :, k])
+for k in range(2):
+    print((c > 4)[:, :, k])
+```
+
+```r
+c <- array(1:8, c(2, 2, 2))
+for (k in 1:2) print((c * 2)[, , k])
+for (k in 1:2) print((c > 4)[, , k])
+```
+
+```matlab
+c = reshape(1:8, [2 2 2]);
+for k = 1:2
+  disp(2 * c(:, :, k))
+end
+for k = 1:2
+  disp(mat2str(c(:, :, k) > 4))
+end
+```
+
 ### Sums along a dimension
 
 [list.Sum] with `dim` adds along that dimension, which the result no longer has: along the third dimension of a 2 by 2
@@ -246,6 +440,34 @@ list.Sum(c, dim = 3) -->
 list.Sum(m, dim = 1) -->
 list.Sum(m, dim = 2) -->
 list.Mean(c, dim = 1) -->
+```
+
+```python
+import numpy as np
+c = np.arange(1, 9).reshape((2, 2, 2), order="F")
+m = np.array([[1, 2], [3, 4]])
+print(c.sum(axis=2))
+print(m.sum(axis=0))
+print(m.sum(axis=1))
+print(c.mean(axis=0))
+```
+
+```r
+c <- array(1:8, c(2, 2, 2))
+m <- matrix(c(1, 2, 3, 4), nrow = 2, byrow = TRUE)
+print(apply(c, c(1, 2), sum))
+print(colSums(m))
+print(rowSums(m))
+print(apply(c, c(2, 3), mean))
+```
+
+```matlab
+c = reshape(1:8, [2 2 2]);
+m = [1 2; 3 4];
+disp(sum(c, 3))
+disp(sum(m, 1))
+disp(sum(m, 2)')
+disp(squeeze(mean(c, 1)))
 ```
 
 [matrix.Matmul] and [matrix.Transpose] stay on matrices. [json.Text] writes an array of more dimensions as lists in lists,
