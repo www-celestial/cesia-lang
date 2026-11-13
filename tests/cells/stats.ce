@@ -1,10 +1,11 @@
 (* std/cells with std/stats: a cell's random draws are the same each time it runs, whatever ran before, as the
    generator starts again from the seed of the session and the cell's title; an Ok of a struct shows the struct, and a
-   struct shows as a table of its fields. *)
+   struct shows as a table of its fields, each cut at 80 characters, and formats no more of a long list than that. *)
 use std/cells
 use std/io
 use std/result
 use std/sys
+use std/text
 use std/value
 
 defn Main()
@@ -19,6 +20,10 @@ defn Main()
   io.Print(t.Kind, t.Columns, t.Rows[1], t.Rows[5][1], t.Count)
   g = cells.Run(s, cs[4])?.Value
   io.Print(g.Kind, g.Rows)
+  long = cells.Run(s, cs[5])?.Value
+  io.Print(long.Kind, long.Rows)
+  d = cells.Run(s, cs[6])?.Value
+  io.Print(d.Kind, value.Len(d.Text), text.Slice(1, 30, d.Text))
   result.Ok(missing)
 end
 

@@ -133,7 +133,7 @@ What a value shows:
 | a graph of [std/plot] | `{Kind: "graph", Scene, Key}`: its scene, [plot.Scene] at the width Run gives, 640 pixels by default, and 400 high; a graph that std/plot can't draw is the cell's error, with std/plot's message |
 | a frame of [std/frame] | `{Kind: "table", Columns, Rows, Count}`: its first 20 rows, as texts, and its count |
 | an array or a matrix | `{Kind: "array", Shape, Rows}`: its shape and its first 10 × 10 values, as texts |
-| a struct of at most 20 fields, as a `stats.Test` | `{Kind: "table", Columns, Rows, Count}`: a row for each public field, its name and its value as a text; an `Ok` of a struct shows the struct |
+| a struct of at most 20 fields, as a `stats.Test` | `{Kind: "table", Columns, Rows, Count}`: a row for each public field, its name and its value as a text, cut at 80 characters and made from no more of a long list than that shows, so a model of $10^6$ rows shows at once; an `Ok` of a struct shows the struct |
 | anything else | `{Kind: "text", Text}`: its text, as `io.Print` writes it |
 
 Before each cell runs, [std/random] starts again from the seed of the session and the title of the cell, as `cesia
