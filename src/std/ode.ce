@@ -587,7 +587,8 @@ defn jacobianAt(f, p, t, y, fy, s)
     if not (value.IsArray(m) and value.Len(value.Size(m)) == 2 and value.Size(m, 1) == n and value.Size(m, 2) == n)
       return "ode.Solve: jacobian gave $(brief(m)) at t = $t, not an $n × $n matrix, ∂f/∂y."
     end
-    if list.Sum(0.0 * m) != 0.0
+    kind = col.Kind(m)
+    if not ((kind == "float" or kind == "int") and list.Sum(0.0 * m) == 0.0)
       for k in 1..n * n
         if not isFinite(m[k])
           return "ode.Solve: jacobian gave $(brief(m[k])) in row $(math.Mod(k - 1, n) + 1), column $(math.Div(k - 1, n) + 1) at t = $t, not a finite number."
