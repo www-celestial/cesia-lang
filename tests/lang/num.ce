@@ -1,4 +1,5 @@
 use std/num
+use std/fiber
 use std/list
 use std/math
 use std/matrix
@@ -33,6 +34,55 @@ isDetSingular() = near(num.Det(matrix.Reshape([2, 2], [1.0, 2.0, 2.0, 4.0])), 0.
 isSolve() = allNear(result.Unwrap(num.Solve(a, [3.0, 5.0])), [0.8, 1.4])
 isSolveSingular() = result.IsErr(num.Solve(matrix.Reshape([2, 2], [1.0, 2.0, 2.0, 4.0]), [1.0, 1.0]))
 isInverse() = allNear(matrix.Matmul(a, result.Unwrap(num.Inverse(a))), num.Eye(2))
+
+(* num.Lu: the factor solves for rows, columns and matrices, and gives the bits of Solve, Inverse and Det, which use the
+   same elimination below the order where LAPACK takes over. *)
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+defn hilbertish(n)
+  m = matrix.Zeros(n, n)
+  for i in 1..n
+    for j in 1..n
+      m[i, j] = 1.0 / (i + 2 * j - 1) + (if i == j 1.0 else 0.0 end)
+    end
+  end
+  m
+end
+
+defn isLuShapes()
+  f = result.Unwrap(num.Lu(a))
+  row = f.Solve([3.0, 5.0])
+  col = f.Solve([3.0; 5.0])
+  both = f.Solve(matrix.Reshape([2, 2], [3.0, 5.0, 1.0, 0.0]))
+  value.Equal(value.Size(row), [1, 2]) and value.Equal(value.Size(col), [2, 1]) and value.Equal(value.Size(both), [2, 2]) and
+    allNear(row, [0.8, 1.4]) and allNear(both, matrix.Reshape([2, 2], [0.8, 1.4, 0.6, -0.2]))
+end
+
+defn isLuSameBits()
+  (** For orders 1 to 31, below LAPACK's 32, the factor gives Solve's and Inverse's bits, and Det is the product of its
+      pivots: matrices without symmetry, with pivoting at each column. *)
+  ok = true
+  for n in [1, 2, 3, 4, 7, 12, 31]
+    m = hilbertish(n)
+    m[n, 1] = 5.0
+    b = [math.Sin(1.0 * k) for k in 1..n]
+    f = result.Unwrap(num.Lu(m))
+    ok = ok and value.Equal(f.Solve(b), result.Unwrap(num.Solve(m, b))) and value.Equal(f.Solve(num.Eye(n)), result.Unwrap(num.Inverse(m)))
+    x = f.Solve(matrix.Reshape([n, 1], b))
+    ok = ok and list.Max(math.Abs(matrix.Matmul(m, x) - matrix.Reshape([n, 1], b))) < 1.0e-12
+  end
+  ok
+end
+
+defn isLuIntegers()
+  f = result.Unwrap(num.Lu(matrix.Reshape([2, 2], [2, 1, 1, 3])))
+  value.Equal(f.Solve([1, 2]), result.Unwrap(num.Solve(matrix.Reshape([2, 2], [2, 1, 1, 3]), [1, 2])))
+end
+
+isLuSingular() = num.Lu(matrix.Reshape([3, 3], [1.0, 2.0, 3.0, 2.0, 4.0, 6.0, 1.0, 0.0, 1.0])).Error.Message == "This matrix is singular."
+isLuNotSquare() = message(() -> num.Lu(matrix.Zeros(2, 3))) == result.Err("num.Lu: m is [0.0 0.0 0.0; 0.0 0.0 0.0]; give a square matrix of numbers.")
+isLuText() = message(() -> num.Lu(matrix.Reshape([1, 1], ["a"]))) == result.Err("num.Lu: m[1] is \"a\"; give a square matrix of numbers.")
+isLuNotArray() = message(() -> num.Lu(3.0)) == result.Err("num.Lu: m is 3.0; give a square matrix of numbers.")
+isLuBadB() = message(() -> result.Unwrap(num.Lu(a)).Solve([1.0, 2.0, 3.0])) == result.Err("LuFactors.Solve: b is [1.0, 2.0, 3.0]; give 2 numbers, or a matrix of 2 rows.")
 
 defn isQr()
   m = matrix.Reshape([3, 2], [1.0, 3.0, 5.0, 2.0, 4.0, 7.0])
