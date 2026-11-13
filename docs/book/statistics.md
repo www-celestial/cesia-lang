@@ -537,6 +537,34 @@ On the machine of [Speed](speed.md#beside-the-giants), a call on one number cost
 for `GammaInc` and `BetaInc`, most of it the call itself; the computation inside is machine code made by the JIT:
 `special.Erf` on an array of $10^6$ floats takes about 70 ms, 70 ns an element.
 
+## Speed
+
+On the machine of [Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-13: the median of 21
+runs of each, alternated, and the 95 % interval of that median; Cesia in its `release` build, R 4.6.2, and scipy 1.18.1
+with numpy 2.5.4. Each time is taken inside the program, around the work alone.
+
+| | Cesia | R 4.6.2 | scipy 1.18.1 |
+|---|---:|---:|---:|
+| `Normal(0, 1).Quantile(p)`, one call in a loop | 1.13 µs (1.10 to 1.20) | `qnorm` 1.39 µs | `norm.ppf` 88 µs; `special.ndtri` 0.35 µs |
+| `Normal(0, 1).Cdf(xs)`, $10^6$ points | 70.5 ms (69.2 to 74.1) | `pnorm` 60 ms | `norm.cdf` 45 ms |
+| `StudentT(10).Quantile(p)` | 61.7 µs (60.2 to 65.0) | `qt` 2.65 µs | `t(10).ppf` 77.9 µs |
+| `ChiSquared(10).Quantile(p)` | 23.4 µs (22.5 to 24.3) | `qchisq` 2.55 µs | `chi2(10).ppf` 78.7 µs |
+| `Beta(2, 3).Quantile(p)` | 36.7 µs (36.1 to 38.8) | `qbeta` 3.2 µs | `beta(2, 3).ppf` 82.6 µs |
+| `Lm` of $10^6$ rows by 10 columns, with its table | 559 ms (546 to 619) | `lm` and `summary` 1,279 ms | `linalg.lstsq` and the QR of the errors 656 ms |
+
+**Where Cesia wins.** The linear model takes less than half of R's time, and less than scipy's: Householder's
+reflections, column by column, are machine code. A single normal quantile costs less than R's `qnorm` called in R's
+loop.
+
+**Where the others win.** R is 10 to 23 times faster on the quantiles of Student's t, the chi-squared and the beta:
+each step of their solver calls `special.GammaInc` or `special.BetaInc`, a function with a default parameter that
+checks the kind of its arguments, and the JIT doesn't yet make machine code of such a call, so the solver runs in the
+interpreter, about 10 µs a step for five or six steps. numpy is faster on a whole array of normal cdfs, with its loops
+in C. `use std/stats` adds 4.7 ms to the start of a program once the cache of loaded packages holds it (7.7 ms against
+3.0 for a program that prints 1), 10.8 ms the first time (13.8 ms): its 3,700 lines, and those of std/special, std/frame
+and std/num, which it uses. A program without it starts as before: 3.0 ms against 2.9 for main's binary, within the
+noise.
+
 ## Security
 
 The functions and methods read only their arguments: no file, network or permission is touched. Every loop is
