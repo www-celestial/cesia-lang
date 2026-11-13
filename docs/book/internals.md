@@ -358,8 +358,9 @@ program that never gets hot never pays for it.
 - A loop, at the second checkpoint met inside it: after 10,000 to 20,000 turns of a loop that runs alone. A loop that runs
   often but briefly, as in a function called for each request, gets hot once its runs add up to 100,000 steps.
 
-`CESIA_JIT=always` compiles every candidate at its first call or run, which the tests use to compare both tiers on the
-whole suite. `CESIA_JIT_SHOW=1` prints each unit compiled, or why the JIT didn't load.
+`CESIA_JIT=always` compiles every candidate at its first call or run, and makes its level 2 (below, *What it costs to
+make*) as soon as that first run ends, which the tests use to compare the interpreter and both levels on the whole
+suite. `CESIA_JIT_SHOW=1` prints each unit compiled, or why the JIT didn't load.
 
 ### What it makes
 
@@ -503,7 +504,8 @@ The machine code takes time to make, which a run pays before it gains anything. 
 the text the JIT gives it, at its level 2, where it works in SSA form, numbers values, moves what a loop doesn't change
 out of it and allocates registers (a copy of MIR with a clock on each of its passes: making SSA form takes a quarter of
 the time, allocating registers a sixth, the liveness of values a tenth). Its level 1 makes code in 40 % less time, and
-`matmul` then runs half again as long: level 2 stays. So the JIT gives MIR fewer lines:
+`matmul` then runs half again as long: so the JIT uses both, one after the other (below), and gives MIR fewer
+lines:
 
 - The paths a run takes when something rare happens, a failed check, a limit, an error, write what the interpreter needs
   to go on, and were four fifths of `fib`'s lines. The stubs of those that never come back now end in a block their
@@ -521,6 +523,76 @@ lines to 1,090, 10.4 ms to 8.4. A stub that comes back into its loop, the one th
 inline: as a call, it made MIR keep every float of the loop in memory at each turn, around a call it almost never makes.
 What is left of the fixed cost, beside the start of the process (2.6 ms): loading the plugin, 0.65 ms, and MIR's
 compiling, 3 to 4 ms a unit.
+
+**Two levels.** MIR makes code at levels: level 2, the one above, and level 1, which skips the passes in SSA form and
+takes 30 to 60 % less time, the more the bigger the unit, for code that runs up to half again as long, as `matmul`'s.
+Each suits a run: a short run should pay only the faster compile, a long one should run the faster code. So a unit's
+machine code is first made at level 1, and its level 2 comes later, from another core:
+
+- **Level 1 first.** Every unit is made at level 1, on the main domain, as before. The unit of `ode.Solve` with Lorenz's
+  equations, 3,612 lines of MIR, takes 18 ms at level 1 instead of 42 at level 2 (MIR alone).
+- **Hot at level 1.** Each run of the unit adds the steps it took, which the run counts anyway for its checkpoints. Once
+  they reach 1,000 steps for each line of the unit's text, it gets its level 2. A step of machine code takes 3.8 to 5.3
+  ns on Lorenz's step and the sparse product, and MIR takes 5 to 6.5 µs a line at level 1: 1,000 to 1,700 steps a
+  line, so a unit gets its level 2 once it ran about as long as its level 1 took to make. The size of the unit is in the
+  threshold, as V8 asks a function for more ticks of its budget before TurboFan the bigger its bytecode: bigger code
+  costs more to make, so it must run longer first. Thresholds of 2,000 and 4,000 steps a line were slower or even on
+  every program below.
+- **In another domain.** An OCaml domain makes level 2 from the same text, in a context of MIR of its own, without the
+  domain lock, so the main domain and its collections go on. One level 2 is made at a time; a unit hot meanwhile asks
+  again at its next run.
+- **Taken at a safe point.** Before each run of any unit's machine code, the main domain looks whether a level 2 is
+  made, and puts it in its unit. There no machine code runs anywhere: it never calls back into OCaml, and a program runs
+  on one domain. Both levels come from the same text, so the frame, which is the interpreter's, and every point where a
+  run starts again, after a quantum of steps, a collection or a bail, mean the same in both: the swap is one address
+  written, and a fiber stopped between two quanta of level 1 goes on in level 2. HotSpot and V8 install new code at a
+  method's next call, and replace a running frame by *on-stack replacement* at a loop's back-edge, which translates the
+  frame from one compiler's layout to the other's; here nothing needs translating.
+- **Freed.** Each unit has its own context of MIR, so its code can go alone: level 1's at the swap, and a unit's once
+  nothing holds it, by a finaliser of the collector, as when its loop is made again for new values. A context costs
+  about 0.13 ms to make and 120 KB, which a program of a hundred small units, each hot just before its end, pays: 147
+  ms instead of 139, and 39 MB instead of 27 (`units.ce` below).
+- **Safe.** The other domain reads only the unit's text, which only Cesia's own generator writes, and two atomic cells;
+  it never touches the unit, which the main domain holds until it takes its level 2, so no unit dies while its level 2
+  is made. MIR's state is a context's own: the two tables that its contexts share are written by the first one only,
+  before any other domain starts. Code pages are never writable and executable at once, and a unit's level 2 is
+  written in pages of its own while its level 1 runs. The tests make code on two domains at once, free contexts while
+  the other domain's code runs, swap levels under four fibers that take turns in one unit, and check that units that
+  die leave no context behind.
+- **`CESIA_JIT=always`** makes level 2 at the end of a unit's first run and waits for it, so the tests and the fuzzer
+  run the interpreter, level 1 and level 2, at the same points in every run.
+
+Measured on 2026-11-13, `release` profile, on the machine of *What it gains*, below: each program 11 times, alternated
+with the binary before, which made level 2 only, from the start of the process to its end; the shortest run, then the
+median, in ms:
+
+| Program | Before | Two levels |
+|---|---:|---:|
+| Lorenz on [0, 100] and [0, 50] | 83.0, 85.7 | 66.2, 67.8 |
+| Lorenz on [0, 2,000] | 255.1, 263.3 | 252.6, 261.5 |
+| `structs` | 51.3, 56.1 | 40.0, 41.2 |
+| `real/particles` | 53.8, 53.8 | 48.3, 48.7 |
+| `optimize.Root`, 22,000 roots | 71.2, 72.4 | 67.8, 68.5 |
+| `matmul` | 44.6, 46.2 | 44.4, 45.0 |
+| `dyn` | 59.5, 61.0 | 60.1, 61.4 |
+| `units.ce`, 100 small units | 138.8, 139.8 | 146.8, 148.2 |
+| `io.Print(1)`, the start | 2.5, 2.7 | 2.5, 2.8 |
+
+`fib`, `mandel`, `nd`, `nd-2d` and the sparse product are within 3 % at their shortest, and so are `real/csv` and
+`real/json`, which spend their time outside machine code. Short runs gain what level 1 saves of the compile; long ones
+keep level 2's speed, and gain its compile too, made on another core. `dyn` loses a millisecond: its loop runs its level
+1 until its level 2 comes.
+
+Where the giants do more: HotSpot has five levels, the interpreter, C1 with and without profiles, and C2, which compiles
+with what the profiles saw; V8 has four, Ignition, Sparkplug, Maglev and TurboFan. Their top levels speculate on the
+types and the branches that the levels below saw, and can be several times faster than those; Cesia's two levels are
+the same text, made better, at most half again apart, as its speculation is in the text already, from the
+interpreter's frame. They compile on several threads, from queues of methods, and flush the code of methods gone cold;
+Cesia makes one level 2 at a time, and keeps a unit's code as long as the unit lives. The Jalapeño virtual machine of
+Arnold and others (2000) recompiles a method when the time it is expected to save beats the time to compile it,
+expecting a method to run as long again as it ran. Cesia's rule is simpler, as level 2 is made on another core: a unit
+only has to have run as long as its level 1 took to make, which keeps the units that stop soon from taking the one level
+2 being made.
 
 ### Bets, guards and bails
 

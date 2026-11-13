@@ -94,6 +94,10 @@ publisher moves it.
   Translation for Correctness, Code Quality and Efficiency". *CGO 2009*, IEEE, 114–125.
   <https://dblp.org/rec/conf/cgo/BoissinotDRDG09>. Leaving SSA form puts a copy on each path into a block where versions of
   a variable meet, which only coalescing takes away: why a loop entered in its middle copied every variable at each turn.
+- Matthew Arnold, Stephen Fink, David Grove, Michael Hind, Peter F. Sweeney. "Adaptive Optimization in the Jalapeño
+  JVM". *OOPSLA 2000*, ACM, 47–65. <https://doi.org/10.1145/353171.353175>. Recompiling a method at a higher level when
+  the time it is expected to save, as it is expected to run as long again as it ran, beats the time to compile it:
+  Cesia's level 2, made once a unit ran about as long as its level 1 took to make.
 - Rastislav Bodík, Rajiv Gupta, Vivek Sarkar. "ABCD: Eliminating Array Bounds Checks on Demand". *PLDI 2000*, ACM,
   321–333. <https://doi.org/10.1145/349299.349342>. Bounds proved from the tests that guard each branch, and the checks
   they make useless dropped: Cesia's JIT drops the overflow check of `n - 1` in the `else` of `if n < 2`.
