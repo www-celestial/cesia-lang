@@ -256,7 +256,7 @@ let usage =
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia fmt [--check] [path...]\n\
   \       cesia lsp\n\
-  \       cesia do [task]\n\
+  \       cesia do [task [args...]]\n\
   \       cesia new name\n\
   \       cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]\n\
   \       cesia upgrade [--nightly]\n\
@@ -303,6 +303,7 @@ let project_bad_name name = Printf.sprintf "A project name holds letters, digits
 let project_exists name = name ^ " already exists."
 let project_created name = Printf.sprintf "Created %s. Run it: cd %s && cesia do run" name name
 let project_no_such_task name = Printf.sprintf "No task named %s." name
+let project_group_words name = Printf.sprintf "Task %s runs no program of its own, so it takes no words after its name." name
 let project_cant_start program reason = Printf.sprintf "Can't start %s: %s." program reason
 let need_count name a = plain (Printf.sprintf "%s needs a count of 0 or more, not %s." name a)
 let cant_sort a b = plain (Printf.sprintf "Can't sort %s with %s." a b)

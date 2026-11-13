@@ -322,6 +322,7 @@ val project_bad_name : string -> string
 val project_exists : string -> string
 val project_created : string -> string
 val project_no_such_task : string -> string
+val project_group_words : string -> string
 val project_cant_start : string -> string -> string
 
 val need_count : string -> string -> t
@@ -374,9 +375,9 @@ val c_no_library : string -> string -> t
 val c_no_function : string -> t
 val c_type : string -> t
 val c_void_arg : t
-val c_too_many : int -> t
 val c_slow_shape : t
 val c_slow_line : int -> t
+val c_too_many : int -> t
 val c_no_ffi : t
 val c_bad_signature : t
 val c_need_struct : string -> t

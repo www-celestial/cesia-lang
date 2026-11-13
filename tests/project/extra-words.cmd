@@ -1,1 +1,1 @@
-cd diamond && cesia do a b
+cd words && cesia do all x

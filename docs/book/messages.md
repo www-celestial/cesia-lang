@@ -476,6 +476,7 @@ From the reader of `cesia.toml`, each with `cesia.toml:LINE:` in front, and from
 | `… already exists.` |  |
 | `Created …. Run it: cd … && cesia do run` |  |
 | `No task named ….` |  |
+| `Task … runs no program of its own, so it takes no words after its name.` | Give the words to a task that has run or file. |
 | `Can't start …: ….` |  |
 
 ## Next

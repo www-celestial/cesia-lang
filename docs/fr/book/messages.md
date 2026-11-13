@@ -491,6 +491,7 @@ Ils viennent du lecteur de `cesia.toml`, chacun précédé de `cesia.toml:LINE:`
 | `… already exists.` |  |
 | `Created …. Run it: cd … && cesia do run` |  |
 | `No task named ….` |  |
+| `Task … runs no program of its own, so it takes no words after its name.` | Donner les mots à une tâche qui a run ou file. |
 | `Can't start …: ….` |  |
 
 ## La suite
