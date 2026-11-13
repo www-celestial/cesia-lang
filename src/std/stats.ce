@@ -2791,7 +2791,7 @@ end
    count, mean and sum of squared distances from the mean, then merged into the running ones by the formula of Chan,
    Golub and LeVeque (1983), whose case of one draw is Welford's update (1962). The running sum of the draws and that
    of the squares each keep the rounding errors of their additions beside them (Neumaier, 1974), so that the Mean is
-   within a unit or so in the last place of the exact mean of the draws, one by one or in batches of any size. The
+   within a few units in the last place of the exact mean of the draws, one by one or in batches of any size. The
    loops are plain arithmetic on floats, which the JIT makes machine code. *)
 
 struct Estimate
@@ -2936,8 +2936,8 @@ end
 defn gather(f, size, head)
   (** An array of size draws, head then a call of f for each of the others; true and false as 1.0 and 0.0; or, at the
       first value that is no number, true or false, {At, Value, Draws}: its place, it, and the array, whose draws
-      before it are made. Each value is tested as it comes, so that f is not called past a bad one; a NaN or an
-      infinity is found by the sums of the array. *)
+      before it are made. Each value is tested as it comes, so that f is not called past one that is no number; a NaN
+      or an infinity is found by the sums of the array. *)
   buf = matrix.Zeros(1, size)
   if not value.IsNumber(head)
     return gatherAny(f, buf, 1, head)

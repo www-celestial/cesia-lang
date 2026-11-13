@@ -5,9 +5,8 @@ Fisher's F, the uniform, the exponential, the gamma, the beta, the binomial and 
 its density, its cumulative distribution, its quantiles and its random draws, what R's `pnorm` and `qt` and scipy's
 `norm` and `t` give, and the mean of random draws with its interval, a Monte Carlo estimate. Under them are the
 special functions of [std/special]: the gamma and beta functions, the error function, and the incomplete gamma and beta
-ratios. Each comes from a published method, named here with what it
-promises, and the last part of each section says how close it comes, measured against values computed to 70 digits
-and against R and scipy.
+ratios. Each comes from a published method, named here with what it promises, and the last part of each section says
+how close it comes, measured against values computed to 70 digits and against R and scipy.
 
 ## Laws of probability
 
@@ -756,10 +755,41 @@ loop.
 each step of their solver calls `special.GammaInc` or `special.BetaInc`, a function with a default parameter that
 checks the kind of its arguments, and the JIT doesn't yet make machine code of such a call, so the solver runs in the
 interpreter, about 10 µs a step for five or six steps. numpy is faster on a whole array of normal cdfs, with its loops
-in C. `use std/stats` adds 4.7 ms to the start of a program once the cache of loaded packages holds it (7.7 ms against
-3.0 for a program that prints 1), 10.8 ms the first time (13.8 ms): its 3,700 lines, and those of std/special, std/frame
-and std/num, which it uses. A program without it starts as before: 3.0 ms against 2.9 for main's binary, within the
-noise.
+in C.
+
+**Monte Carlo.** On the same machine, on 2026-11-13: Cesia's times are the medians of 21 runs and the 95 % interval of
+each; numpy 2.5.4 with scipy 1.18.1, and Octave 11.3.0, the medians of 5 runs, in the same session. Each time is taken
+inside the program, around the work alone. Octave's `tinv` belongs to its statistics package, not installed here: its
+quantile comes from `betaincinv` of Octave's core, as `tinv` computes it.
+
+| | Cesia | numpy and scipy | Octave 11.3 |
+|---|---:|---:|---:|
+| $10^6$ draws in one batch, and their interval | 47.8 ms (46.2 to 49.2) | 10.4 ms | 31.3 ms |
+| of which the draws, `num.Uniform`, `rng.random`, `rand` | 45.2 ms (44.4 to 47.8) | 4.9 ms | 10.0 ms |
+| the interval of $10^6$ draws already made | 12.2 ms the first time, the JIT compiling; 3.9 ms after | 6.3 ms | 32.3 ms |
+| $10^7$ draws in batches of $10^5$, the work of `MonteCarlo` alone | 38.9 ms (38.6 to 39.7) | | |
+| $10^6$ single draws, a call of `f()` each, and their interval | 115 ms (114 to 119) | 166 ms, `np.fromiter` | 6,590 ms, `arrayfun` |
+| the cell above, `tol = 1e-4`: 15.6 million draws of $e^{-u^2}$ in batches of $10^5$ | 3,773 ms (3,733 to 3,813) | 243 ms | 995 ms |
+
+The work of `MonteCarlo` alone was measured on a batch made once and given again by `f`, so that no draw is made.
+
+**Where Cesia wins.** Single draws: a call of `f` for each costs less than Python's generator, and 57 times less than
+Octave's `arrayfun`. The work of `MonteCarlo` itself, its two passes over each block in machine code, about 4 ns a
+draw, costs less than numpy's mean and standard deviation. And neither numpy nor Octave has the loop of `tol`.
+
+**Where the others win.** numpy makes uniform draws 9 times faster than Cesia: `num.Uniform` is a loop of Cesia that
+calls `random.Float` for each number, about 45 ns each, where numpy's generator fills its array in C. And `x ^ 2` on an
+array costs about 110 ns an element in Cesia, against about 1 for `x * x`, as each element goes through the general
+arithmetic of values. These two make the cell 15 times slower than numpy's and 4 times slower than Octave's, though
+`MonteCarlo` takes about 0.2 s of its 3.8. A single draw pays a call of `f` with no argument through a value, which the
+JIT doesn't yet make machine code: about 65 ns with the draw of `random.Float()`, and `MonteCarlo` about 50 ns more to
+test it and store it.
+
+`use std/stats` adds 1.2 ms to the start of a program once the cache of loaded packages holds it (4.2 ms against 3.0
+for a program that prints 1), 11.8 ms the first time (14.8 ms): its 3,100 lines, and those of std/special, std/frame
+and std/num, which it uses; 4.21 ms against 4.20 for main's binary before `MonteCarlo`, and 14.85 against 14.59 the
+first time, within the noise. A program without it starts as before: 3.03 ms against 3.08 for main's binary. These
+are the medians of 21 runs, alternated, on 2026-11-13.
 
 ## Security
 
