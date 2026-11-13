@@ -70,9 +70,13 @@ fi
 # Pages publishes: a text of the docs with a [Name] that leads nowhere, or a block of the book that gives another value,
 # fails here and there.
 tools/golden.sh --both --slow tests/*/ > /dev/null 2>&1 || fail "a test marked slow fails: tools/golden.sh --both --slow tests/*/"
+# Their own folder of caches, empty at the start, as in tools/test.sh: none of the person's packages, none left there.
+cache=$(mktemp -d)
 for path in "" --no-spec; do
-  "$PWD/_build/default/src/bin/main.exe" test tests/slow $path > /dev/null 2>&1 || fail "a slow test fails: cesia test tests/slow $path"
+  XDG_CACHE_HOME="$cache" "$PWD/_build/default/src/bin/main.exe" test tests/slow $path > /dev/null 2>&1 \
+    || { rm -rf "$cache"; fail "a slow test fails: cesia test tests/slow $path"; }
 done
+rm -rf "$cache"
 site=$(mktemp -d)
 "$PWD/_build/default/src/bin/main.exe" doc --site "$site" > /dev/null || fail "Cesia's site doesn't build"
 rm -rf "$site"
