@@ -25,9 +25,9 @@ let slot ~key ~nesting ~fixed sources =
   | _ -> None
 
 (* The module numbers of a binding, relative to the package: (0, 0) the core, (1, j) its file j or, at j = count, its
-   natives, (u + 2, j) the module j from the end of the package of its use u. A package of std/ keeps its natives last, and
-   its Cesia code, when it loads after them, goes before them: counted from the end, a module has the same place whether
-   or not that code was loaded, in this run, in the run that wrote the entry, or since the package was resolved. *)
+   natives, (u + 2, j) the module j from the end of the package of its use u. A package of std/ keeps its natives last,
+   and its Cesia code, which loads only for a file that names something of it, goes before them: counted from the end, a
+   module has the same place whether or not another package of the run loaded that code first. *)
 let rel p m =
   if m = 0 then 0, 0
   else if m >= p.first && m < p.first + p.count then 1, m - p.first
@@ -521,10 +521,18 @@ let read slot =
       if same then Some { d; uses = arr (list use) d; paths = slot.paths } else None
     with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
+(* The packages of the modules used, as they are now: the array of the natives of a package of std/ is replaced later in
+   a run, when its Cesia code loads or a test runs a file of std/, while a body is read at its first call and an entry
+   is written when the run ends, and the names of a package keep the modules it had when it was resolved. *)
+let now place =
+  let now = Hashtbl.create 16 in
+  Array.iter (fun m -> if m >= 0 then Hashtbl.replace now m (Array.copy (place.package m))) place.used;
+  { place with package = Hashtbl.find now }
+
 let trees saved place ~lookup ~spaces ~is_type =
   let open In in
   let d = saved.d in
-  d.abs <- abs place;
+  d.abs <- abs (now place);
   let rec asked n =
     n = 0
     ||
@@ -576,7 +584,9 @@ let encode slot place log uses trees =
    way. A package loaded again, in another world of the same process, replaces its own. *)
 let waiting : (string, unit -> unit) Hashtbl.t = Hashtbl.create 16
 
-let write slot place log uses trees = Hashtbl.replace waiting slot.name (fun () -> encode slot place log uses trees)
+let write slot place log uses trees =
+  let place = now place in
+  Hashtbl.replace waiting slot.name (fun () -> encode slot place log uses trees)
 let pending () = Hashtbl.length waiting > 0
 
 let save () =
