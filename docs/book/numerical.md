@@ -293,17 +293,17 @@ Extended Rosenbrock with 1,000 numbers, given the gradient, from `(-1.2, 1, -1.2
 
 | | Minimize, n = 1,000 | Simplex, n = 2 |
 |---|---:|---:|
-| **Cesia** | **8.05 ms** (7.96 to 8.15) | **0.347 ms** (0.337 to 0.364) |
-| scipy 1.18.1, at Cesia's tolerance | 6.45 ms (6.40 to 6.53) | 3.96 ms (3.89 to 4.27) |
-| scipy 1.18.1, at its defaults | 6.10 ms (6.04 to 6.23) | 2.93 ms (2.86 to 2.97), 159 calls, `X` to $4 \cdot 10^{-5}$ |
+| **Cesia** | **7.77 ms** (7.73 to 8.01) | **0.337 ms** (0.331 to 0.340) |
+| scipy 1.18.1, at Cesia's tolerance | 6.47 ms (6.41 to 6.59) | 3.98 ms (3.90 to 4.03) |
+| scipy 1.18.1, at its defaults | 6.10 ms (6.04 to 6.16) | 2.88 ms (2.84 to 3.01), 159 calls, `X` to $4 \cdot 10^{-5}$ |
 | GNU Octave 11.3, `fminunc` and `fminsearch` | 32 s, 1,416 steps | 11.9 ms, 200 calls |
 
-scipy wins Minimize by a quarter: its loop is Fortran and its `f` numpy, while Cesia's line search runs in the
+scipy wins Minimize by a fifth: its loop is Fortran and its `f` numpy, while Cesia's line search runs in the
 interpreter, and each step makes a dozen arrays of 1,000 floats; the two loops of the direction, which cost most, run
-as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$ matrix. Simplex is 11
+as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$ matrix. Simplex is 12
 times faster than scipy's: its steps are a few small array operations, where scipy's pay for Python at each one.
 
-A program that calls Root starts 0.5 ms later than one that prints 1, 3.75 ms against 3.26, the medians of 21 runs
+A program that calls Root starts 0.5 ms later than one that prints 1, 3.71 ms against 3.19, the medians of 21 runs
 once its code is in the [cache of loaded packages](internals.md#the-cache-of-loaded-packages); the first run, which
 fills it, 5 ms later.
 
