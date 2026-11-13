@@ -34,7 +34,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 
 | Permission | Permet |
 |---|---|
-| `read`, `read=./data` | lire des fichiers, tous ou ceux qui sont sous un dossier |
+| `read`, `read=./data` | lire des fichiers, tous ou ceux qui sont sous un dossier, et dire où ils sont, comme le fait [path.Abs] |
 | `write`, `write=./out` | écrire, renommer et supprimer des fichiers, tous ou sous un dossier |
 | `net`, `net=:8080` | le réseau, ou seulement l'écoute sur un port de cette machine : l'adresse, ou celle que donne un nom, est 127.0.0.1 ou ::1 |
 | `net=0.0.0.0:8080`, `net=[::]:8080` | l'écoute sur un port, aussi pour les autres machines, sur toutes les adresses ou sur une seule |
@@ -67,6 +67,11 @@ Une permission avec `=` est la plus étroite que vous puissiez écrire. Donnez c
 programme qui lit ses données dans `./data` a besoin de `read=./data`, pas de `read`. Lire hors du dossier est refusé
 comme si rien n'avait été donné. Un dossier contient un chemin selon l'endroit où ce chemin mène, liens suivis : un lien
 dans `./data` qui pointe au-dehors est refusé lui aussi, comme l'écriture d'un nouveau fichier à travers un tel lien.
+
+Les permissions disent ce que le programme peut toucher ; les autres personnes de la machine sont tenues à l'écart par les
+modes des fichiers (les droits que le système note sur chacun). Ce qui contient un secret, des clés ou une session,
+s'écrit avec `private = true`, que prennent [sys.Write] et [sys.Mkdir] : le fichier ou le dossier est alors à son
+propriétaire seul dès son premier octet (voir [À vous seul](files.md#à-vous-seul)).
 
 ## ffi est une confiance totale
 

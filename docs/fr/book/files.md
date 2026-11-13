@@ -109,6 +109,26 @@ sys.List("archive/2026") -->
 sys.Remove("archive/2026/done.txt") -->
 ```
 
+### À vous seul
+
+Un nouveau dossier peut être ouvert et listé par tous ceux qui utilisent la machine, et un nouveau fichier lu par tous :
+seul leur propriétaire peut les changer (leurs *modes*, les droits que le système note sur chacun, 0755 et 0644, le
+disent). Pour ce qui ne regarde personne d'autre, comme des clés, une session ou le profil d'un navigateur,
+`private = true` les rend à leur propriétaire seul, 0700 et 0600 : personne d'autre ne peut lister le dossier, y entrer,
+ni lire le fichier. [sys.Mkdir] rend ainsi chaque dossier qu'il crée, et le dernier s'il existait déjà (un programme qui
+l'avait ouvert avant peut encore lister les noms qu'il contient). [sys.Write] met le texte dans un nouveau fichier fait
+ainsi, à côté de l'ancien, puis lui donne le nom de l'ancien : qui avait ouvert l'ancien fichier garde l'ancien texte, et
+un lien symbolique (un nom qui renvoie à un autre fichier) à ce nom est remplacé, ce vers quoi il menait restant tel
+quel. Un dossier ou un fichier qui appartient à quelqu'un d'autre donne un `Err` et reste tel qu'il était.
+
+```cesia allow=read,write
+sys.Mkdir("keys", private = true) -->
+sys.Write("keys/token", "s3cret", private = true) -->
+```
+
+Sur Windows, un fichier prend les droits du dossier qui le contient, et le dossier de chaque personne est à elle seule :
+`private` n'y change rien, gardez donc ces fichiers dedans.
+
 ### Exists et Stat
 
 [sys.Exists] demande si un chemin existe, et [sys.Stat] en dit plus : la taille en octets, l'heure du dernier
@@ -142,6 +162,15 @@ qui part du sommet, `/` ou un lecteur comme `C:`, d'un chemin relatif au dossier
 ```cesia
 path.IsAbsolute("/tmp/a.txt") -->
 path.IsAbsolute("photos/a.jpg") -->
+```
+
+[path.Abs] donne le chemin absolu d'un chemin : le dossier courant devant lui, ses `.` et `..` retirés. Il ne lit rien
+sur le disque, donc un lien symbolique reste tel qu'il est écrit. Comme il dit où le programme tourne, il demande la
+permission de lire ce chemin :
+
+```cesia allow=read
+path.IsAbsolute(path.Abs("todo.txt")) -->
+path.Abs("archive/../todo.txt") == path.Abs("todo.txt") -->
 ```
 
 ### Tous les fichiers sous un dossier
