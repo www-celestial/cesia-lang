@@ -1,0 +1,30 @@
+(** A map at every size up to 100,000 keys, beside tests/lang/maps.ce: put, drop, put again, the order of the keys, and
+    JSON both ways. Slow by nature: tools/check.sh runs it, past the change loop. *)
+use std/json
+use std/dict
+use std/list
+use std/result
+use std/value
+
+(* One storage at every size: a map grows by one block, then by more of the same kind, and the program sees none of it. *)
+defn sized(n)
+  m = dict.Dict()
+  for i in 1..n
+    m["k$(i)"] = i
+  end
+  m
+end
+
+defn sameAtSize(n)
+  m = sized(n)
+  p = dict.Put("k1", 0, m)
+  d = dict.Drop("k1", m)
+  back = dict.Put("k1", 9, d)
+  full = n == 0 or (m["k1"] == 1 and m["k$(n)"] == n and dict.Keys(m)[n] == "k$(n)" and dict.Values(m)[1] == 1 and p["k1"] == 0 and dict.Keys(p)[1] == "k1")
+  dropped = value.Len(d) == (if n == 0 0 else n - 1 end) and not dict.Has("k1", d) and (n < 2 or dict.Keys(d)[1] == "k2")
+  last = n == 0 or dict.Keys(back)[n] == "k1"
+  value.Len(m) == n and full and dropped and last and m == sized(n) and result.Unwrap(json.Parse(json.Text(m))) == m
+end
+
+isEverySize() = list.All([sameAtSize(n) for n in [0, 1, 31, 32, 33, 1000, 100000]])
+

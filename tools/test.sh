@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The full suite, on both paths, but the tests slow by nature (name.slow), which tools/check.sh runs past the change loop,
-# as it builds Cesia's own site. Its parts run side by side: the examples of each folder on each path, and the golden tests.
+# The full suite, on both paths, but the tests slow by nature (name.slow, and the files of tests/slow), which tools/check.sh
+# runs past the change loop, as it builds Cesia's own site. Its parts run side by side: the examples of each folder on each
+# path, and the golden tests.
 set -eu
 cd "$(dirname "$0")/.."
 dune build 2>&1 | head -60

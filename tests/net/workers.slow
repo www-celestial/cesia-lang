@@ -1,0 +1,1 @@
+Slow by nature: two worker processes, one killed and started again, twenty requests, on each path. tools/check.sh runs it, past the change loop.

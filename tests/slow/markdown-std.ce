@@ -1,0 +1,17 @@
+(** std/markdown on every text of the docs and every line of std, beside tests/lang/markdown.ce: each gives HTML. Slow
+    by nature: tools/check.sh runs it, past the change loop. *)
+use std/markdown
+use std/cesia
+use std/list
+use std/value
+
+html(source) = markdown.Html(markdown.Parse(source), markdown.Plain)
+
+defn docTexts()
+  (** Every text of the documentation of Cesia: the modules, the names and the keywords. *)
+  names = list.FlatMap(m -> cesia.DocNames(m), cesia.DocNames())
+  list.Concat([cesia.Doc(m) for m in cesia.DocNames()], list.Concat([cesia.Doc(n) for n in names], [cesia.Doc(k) for k in cesia.Keywords()]))
+end
+
+isEveryDocTextGoesThrough() = list.All([value.IsText(html(t)) for t in list.Filter(value.IsText, docTexts())])
+isEveryLineOfStdGoesThrough() = list.All([value.IsText(html(l.Source)) for l in cesia.Libraries()])

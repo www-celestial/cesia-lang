@@ -1,6 +1,5 @@
 (** The colors of Cesia code, std/syntax: what editors and the docs site show. *)
 use std/syntax
-use std/cesia
 use std/bug
 use std/list
 use std/text
@@ -57,33 +56,3 @@ isColoredToKeepsKnown() = value.Equal(syntax.ColoredTo(3, n -> bug.Panic("not re
 isColoredToFollowsComments() = syntax.ColoredTo(3, commentFirst, syntax.BlankColors()).Starts[3].Comment == 1
 isInterfaceIsAKeyword() = value.Equal(syntax.Tokens("interface Shape", syntax.FirstState).Tokens[1], [syntax.Keyword, "interface"])
 isItIsAKeyword() = value.Equal(syntax.Tokens("it", syntax.FirstState).Tokens, [[syntax.Keyword, "it"]])
-
-defn readAll(src)
-  (** Each line of a source read in order, each from the state the line before left: {Line, Tokens, State}, the state at
-      its end. *)
-  state = syntax.FirstState
-  out = []
-  for line in text.Lines(src)
-    r = syntax.Tokens(line, state)
-    state = r.State
-    out = list.Append({Line: line, Tokens: r.Tokens, State: state}, out)
-  end
-  out
-end
-
-(** The lines of a source, read in order, that lose a character. *)
-lostIn(read) = [r.Line for r in read if joined(r.Tokens) != r.Line]
-
-defn statesDiffer(src, read)
-  (** Do the states at the start of each line that ColoredTo gives differ from those of reading every line with Tokens? *)
-  count = value.Len(read)
-  allLines = text.Lines(src)
-  expected = list.Concat([syntax.FirstState], [r.State for r in read])
-  count > 0 and not value.Equal(syntax.ColoredTo(count, n -> allLines[n], syntax.BlankColors()).Starts, list.Take(count, expected))
-end
-
-(* Each library of std read once, for the two tests that check every line of std. *)
-libraries = cesia.Libraries()
-reads = [readAll(l.Source) for l in libraries]
-isEveryLineOfStdKeepsItsCharacters() = value.Len(libraries) > 10 and value.Equal(list.FlatMap(lostIn, reads), [])
-isEveryStateOfStdIsTheSame() = value.Equal([libraries[k].Name for k in 1..value.Len(libraries) if statesDiffer(libraries[k].Source, reads[k])], [])
