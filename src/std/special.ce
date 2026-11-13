@@ -15,8 +15,12 @@ use std/value
    math.Floor isn't machine code either, nor math.Pi and math.Nan, written 0.0 / 0.0. *)
 
 defn brief(v)
-  (** A value as an error shows it. *)
-  if value.IsText(v) "\"$v\"" else value.Text(v) end
+  (** A value as an error shows it: an array of more than 100 values by its size, so that a message stays short and no
+      large value is formatted. *)
+  if value.IsText(v)
+    return "\"$v\""
+  end
+  if value.IsArray(v) and value.Len(v) > 100 "an array of $(value.Len(v)) values" else value.Text(v) end
 end
 
 defn floats(x, name)

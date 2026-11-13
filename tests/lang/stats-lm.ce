@@ -183,5 +183,10 @@ isMissingValue() = stats.Lm("y", ["x"], frame.Of({"y": [1.0, 2.0, 3.0], "x": [1.
 isNoColumn() = stats.Lm("y", ["z"], frame.Of({"y": [1.0, 2.0], "x": [1.0, 2.0]})).Error.Message == "stats.Lm: the frame has no column \"z\"; its columns are [\"y\", \"x\"]."
 isNoInterceptR2() = result.Unwrap(stats.Lm("y", ["x"], frame.Of({"y": [2.0, 4.1, 5.9], "x": [1.0, 2.0, 3.0]}), intercept = false)).Rank == 1
 isBadTol() = message(() -> stats.Lm("y", ["x"], frame.Of({"y": [1.0, 2.0], "x": [1.0, 2.0]}), tol = -1)) == result.Err("stats.Lm: tol is -1; give a number from 0 to 1.")
+isNewLevel() = message(() -> fit.Predict(frame.Of({"wt": [2.5], "hp": [100], "cyl": ["12"]}))) == result.Err("stats.Model.Predict: column \"cyl\" holds \"12\" at row 1, which isn't one of the levels the model was fitted on.")
+defn isMissingLevel()
+  p = fit.Predict(frame.Of({"wt": [2.5, 2.5], "hp": [100, 100], "cyl": [missing, "4"]}))
+  p[1] != p[1] and near([p[2]], [25.580504283043208], 64.0)
+end
 isBadKind() = message(() -> fit.Band(new, kind = "both")) == result.Err("stats.Model.Band: kind is \"both\"; give \"confidence\" or \"prediction\".")
 isNoResidualDf() = list.All([v != v for v in frame.Column("low", result.Unwrap(stats.Lm("y", ["x"], frame.Of({"y": [1.0, 3.0], "x": [0.0, 1.0]}))).Confint())])

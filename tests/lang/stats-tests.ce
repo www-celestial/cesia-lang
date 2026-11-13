@@ -101,6 +101,16 @@ isKs() = near(test(stats.KsTest(z, stats.Normal(0, 1))).Statistic, 0.20135522028
 isKsOtherLaw() = near(test(stats.KsTest(z, stats.Exponential(2))).Statistic, 0.375, 4.0) and near(test(stats.KsTest(z, stats.Exponential(2))).PValue, 0.16157627105712902, 256.0)
 isKsTies() = test(stats.KsTest([0.1, 0.1, 0.5, 0.9], stats.Uniform(0, 1))).Method == "Asymptotic one-sample Kolmogorov-Smirnov test"
 isKsUniformRange() = list.All([test(stats.KsTest(stats.Uniform(0, 1).Sample(50), stats.Uniform(0, 1))).PValue > 1e-6 for k in 1..5])
+(* Exact references in rationals, for the double D itself: Birnbaum and Tingey's sum, whose last term is 0 here as
+   n (1 - D) is whole, and Durbin's matrix of Marsaglia, Tsang and Wang for the two-sided law, past n D^2 = 7.24. *)
+isKsOneSidedWholeEnd() = near(test(stats.KsTest([(i - 0.5) / 100 + 0.195 for i in 1..100], stats.Uniform(0, 1), alternative = "less")).PValue, 2.7759636640373246e-4, 256.0)
+isKsFarTail() = near(test(stats.KsTest([0.4375 + (i - 1) * (0.5625 / 39.0) for i in 1..40], stats.Uniform(0, 1))).PValue, 1.7460523955695864e-7, 256.0)
+(* 16,000 values far from the law: the matrix would be 3,841 x 3,841, a minute's work, and 1 - P(D < d) about 1e-13,
+   all rounding; the tail gives the p-value at once, about 1e-200. *)
+defn isKsFarFromTheLaw()
+  p = test(stats.KsTest([(i - 0.5) / 16000 + 0.12 for i in 1..16000], stats.Uniform(0, 1))).PValue
+  p > 0.0 and p < 1e-150
+end
 
 (* Chi-squared. *)
 isIndependence() = near(test(stats.ChiSquaredTest(matrix.Reshape([2, 3], [762, 327, 468, 484, 239, 477]))).Statistic, 242.30246520274775, 16.0) and test(stats.ChiSquaredTest(matrix.Reshape([2, 3], [762, 327, 468, 484, 239, 477]))).Df == 2 and near(test(stats.ChiSquaredTest(matrix.Reshape([2, 3], [762, 327, 468, 484, 239, 477]))).PValue, 2.424868575645102e-53, 512.0)

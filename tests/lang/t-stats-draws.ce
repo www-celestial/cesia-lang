@@ -15,3 +15,8 @@ for d in [stats.Normal(10, 2), stats.Uniform(-1, 1), stats.Exponential(2), stats
   io.Print(d, round(d.Sample(10)))
 end
 io.Print(round(stats.Gamma(2, 1).Sample()))
+(* Laws whose table would pass 65,536 counts, and single draws, by the quantile of each u. *)
+for d in [stats.Binomial(10000000, 0.5), stats.Poisson(1.0e10)]
+  io.Print(d, d.Sample(10))
+end
+io.Print(stats.Binomial(30, 0.2).Sample(), stats.Poisson(4).Sample())

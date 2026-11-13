@@ -185,7 +185,7 @@ stats.Poisson(4).Sample(5) then value.Len() -->
 | Beta | $G_a / (G_a + G_b)$, two gamma draws |
 | StudentT | $Z / \sqrt{X / \nu}$, a normal draw then a chi-squared one |
 | FisherF | $(X_1 / d_1) / (X_2 / d_2)$, two chi-squared draws |
-| Binomial, Poisson | inversion: the smallest `k` whose cumulative probability passes `u`, in a table of the law from 40 standard deviations below the mean to 40 above, which holds all of it but less than $10^{-300}$ |
+| Binomial, Poisson | inversion: the smallest `k` whose cumulative probability passes `u`, in a table of the law from 40 standard deviations below the mean to 40 above, which holds all of it but less than $10^{-300}$; one draw, or a law whose table would pass 65,536 counts, by `Quantile(u)`, the same inversion without the table |
 
 Each method is exact in law, given exact uniforms. The algorithms are frozen with the seeds: a seed gives the same
 numbers on every version, so a better method later would come under a new name, never as a change. The first ten
@@ -237,7 +237,9 @@ frame.Column("term", result.Unwrap(stats.Lm("mpg", ["wt", "cyl"], cars)).Coeffic
 
 A product or a power is a column you make first, `frame.SetColumn("wt2", frame.Column("wt", cars) ^ 2, cars)`, where
 R writes `I(wt^2)` in its formula: one way to make a column, not two. A column with a missing value is an `Err` that
-names the column and the row; `frame.DropMissing(frame.Select([...], df))` drops such rows.
+names the column and the row; `frame.DropMissing(frame.Select([...], df))` drops such rows. `Predict` and `Band` give
+NaN for a row with a missing value, and panic for a level of a text column that the fit didn't see, as R's "factor has
+new levels".
 
 The same model in Python, R and MATLAB:
 
@@ -353,8 +355,10 @@ t.test(x, y)
   no tie, the counts of the rank sum are those of the $q$-binomial coefficient, by its Pascal rule. Beyond 50, the
   normal approximation, with its corrections for ties and, with `correct`, for continuity.
 - **Kolmogorov–Smirnov**: $D = \max |F_n - F|$, $F_n$ the empirical law of the sample; exact up to 16,000 values
-  without ties by the method of Marsaglia, Tsang and Wang (2003), whose paper gives 13 to 15 digits there; the
-  limiting series of Kolmogorov beyond, or with ties; one-sided by the exact sum of Birnbaum and Tingey (1951). R
+  without ties by the method of Marsaglia, Tsang and Wang (2003), whose paper gives 13 to 15 digits there. Past
+  $n D^2 = 7.24$, where their paper leaves the matrix for a formula of the tail, $p < 10^{-6}$ and $1 - P(D < d)$ would
+  lose its digits: there $p$ is twice the one-sided tail, as $D^+$ and $D^-$ both past $d$ are about $e^{-6 n D^2}$ as
+  likely, less than $10^{-18}$ of it. The limiting series of Kolmogorov beyond 16,000 values, or with ties; one-sided by the exact sum of Birnbaum and Tingey (1951). R
   uses the limit from 100 values: its answers differ from Cesia's there unless given `exact = TRUE`.
 - **Chi-squared**: Pearson (1900), the expected counts from the margins of a table, and Yates's correction (1934) for
   a $2 \times 2$ table, as R's default.
@@ -575,7 +579,9 @@ each formula to a NaN, an infinity to the right limit. A text, a `missing` or an
 is a panic that names it, before any computation; a field of a law outside its domain is a panic that names the law,
 the field and the value; a missing value in the data of a test or a model is an `Err` that names its place. The size
 of a `Sample` is checked before anything is made, and its array, as every array, counts against the program's limit of
-memory: past it the program stops with its message.
+memory: past it the program stops with its message. No parameter makes a table or a matrix grow without bound: a law
+of counts draws through its quantile once its table would pass 65,536 counts, and the exact Kolmogorov–Smirnov matrix
+stays at most 681 × 681 (it is used up to $n D^2 = 7.24$, with $n \le 16{,}000$).
 
 ## Further reading
 

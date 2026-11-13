@@ -47,4 +47,7 @@ isBinomialSmall() = countsFit(stats.Binomial(12, 0.3))
 isBinomial() = countsFit(stats.Binomial(200, 0.45))
 isPoissonSmall() = countsFit(stats.Poisson(2.5))
 isPoisson() = countsFit(stats.Poisson(60))
+(* Laws whose table would pass 65,536 counts draw through their quantile: the same inversion, no table. *)
+isPoissonLarge() = result.Unwrap(stats.KsTest(stats.Poisson(1.0e10).Sample(n), stats.Normal(1.0e10, 1.0e5))).PValue > 1e-5
+isBinomialLarge() = result.Unwrap(stats.KsTest(stats.Binomial(10000000, 0.5).Sample(200), stats.Normal(5.0e6, math.Sqrt(2.5e6)))).PValue > 1e-5
 isDegenerateDraws() = list.All(stats.Binomial(5, 1).Sample(3) == 5.0) and stats.Poisson(0).Sample() == 0.0

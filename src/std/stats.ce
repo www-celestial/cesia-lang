@@ -17,8 +17,12 @@ use std/value
 (* ---- Arguments. *)
 
 defn brief(v)
-  (** A value as an error shows it. *)
-  if value.IsText(v) "\"$v\"" else value.Text(v) end
+  (** A value as an error shows it: an array of more than 100 values by its size, so that a message stays short and no
+      large value is formatted. *)
+  if value.IsText(v)
+    return "\"$v\""
+  end
+  if value.IsArray(v) and value.Len(v) > 100 "an array of $(value.Len(v)) values" else value.Text(v) end
 end
 
 defn each(f, x, name)
@@ -1614,6 +1618,7 @@ struct Model
   beta       (** the estimates of the kept terms, in the order of kept *)
   kept       (** the positions of the kept terms in terms *)
   rinv       (** the inverse of the factor R, rank x rank, by rows *)
+  levels     (** for each text column, its levels as a set: {"cyl": {"4": true, "6": true, "8": true}} *)
 end
 
 defn indicator(xs, level)
@@ -1629,11 +1634,12 @@ end
 defn design(names, df, intercept, name)
   (** The columns of X for the names of a frame: each number column as it is, each text column as one indicator column
       for each of its levels but the first in sorted order, named column[level]; an Err for a missing value or another
-      kind of column. Gives {Terms, Sources, Columns}. *)
+      kind of column. Gives {Terms, Sources, Columns, Levels}, Levels the levels of each text column as a set. *)
   n = frame.RowCount(df)
   terms = if intercept ["(intercept)"] else [] end
   sources = if intercept [[]] else [] end
   cols = if intercept [matrix.Ones(1, n)] else [] end
+  levels = {}
   for c in names
     if not (c in frame.Columns(df))
       return fail("$name: the frame has no column \"$c\"; its columns are $(brief(frame.Columns(df))).")
@@ -1662,18 +1668,18 @@ defn design(names, df, intercept, name)
     end
     if kind == "value"
       ls = list.Sort(list.Unique(xs))
-      for k in 2..value.Len(ls)
-        terms = list.Concat(terms, ["$c[$(ls[k])]"])
-        sources = list.Concat(sources, [[c, ls[k]]])
-        cols = list.Concat(cols, [indicator(xs, ls[k])])
-      end
+      levels = dict.Put(c, dict.Dict([{Key: l, Value: true} for l in ls]), levels)
+      rest = [ls[k] for k in 2..value.Len(ls)]
+      terms = list.Concat(terms, ["$c[$l]" for l in rest])
+      sources = list.Concat(sources, [[c, l] for l in rest])
+      cols = list.Concat(cols, [indicator(xs, l) for l in rest])
     else
       terms = list.Concat(terms, [c])
       sources = list.Concat(sources, [[c]])
       cols = list.Concat(cols, [matrix.Reshape([1, n], 1.0 * xs)])
     end
   end
-  result.Ok({Terms: terms, Sources: sources, Columns: cols})
+  result.Ok({Terms: terms, Sources: sources, Columns: cols, Levels: levels})
 end
 
 defn householder(cols, n, tol)
@@ -1869,12 +1875,24 @@ defn Lm(y, xs, df, intercept = true, tol = 1e-7)
     if df1 > 0 and rdf > 0 FisherF(df1, rdf).Cdf(fstat, upper = true) else 0.0 / 0.0 end, missing, missing, missing, "greater")
   table = frame.Table(["term", "estimate", "std error", "t value", "p value"], [d.Terms, est, ses, ts, ps])
   result.Ok(Model(table, math.Sqrt(sigma2), rdf, r2, adj, ftest, fitted, residuals, n, rank, d.Terms, d.Sources, beta,
-    kept, rinv))
+    kept, rinv, d.Levels))
 end
 
 defn (m Model) rows(df, who)
-  (** The kept columns of X for the rows of a frame, in the order of kept: a panic for a column the frame lacks. *)
+  (** The kept columns of X for the rows of a frame, in the order of kept, NaN in a row whose value is missing: a panic for
+      a column the frame lacks, or for a level of a text column that the fit didn't see. *)
   n = frame.RowCount(df)
+  for c in dict.Keys(m.levels)
+    if c in frame.Columns(df)
+      known = m.levels[c]
+      xs = frame.Column(c, df)
+      for i in 1..n
+        if not (value.IsMissing(xs[i]) or (value.IsText(xs[i]) and dict.Has(xs[i], known)))
+          bug.Panic("$who: column \"$c\" holds $(brief(xs[i])) at row $i, which isn't one of the levels the model was fitted on.")
+        end
+      end
+    end
+  end
   out = []
   for c in m.kept
     src = m.sources[c]
@@ -1886,7 +1904,8 @@ defn (m Model) rows(df, who)
       end
       xs = frame.Column(src[1], df)
       if value.Len(src) == 2
-        out = list.Concat(out, [indicator(xs, src[2])])
+        level = src[2]
+        out = list.Concat(out, [matrix.Reshape([1, n], [if value.IsMissing(x) 0.0 / 0.0 else if x == level 1.0 else 0.0 end for x in xs])])
       else
         out = list.Concat(out, [matrix.Reshape([1, n], [if value.IsNumber(x) 1.0 * x else 0.0 / 0.0 end for x in xs])])
       end
@@ -1897,7 +1916,7 @@ end
 
 defn (m Model) Predict(new)
   (** The fitted values X b for the rows of a frame of the same columns, as R's predict(fit, new); NaN where a value is
-      missing.
+      missing; a panic for a level of a text column that the fit didn't see, as R's "factor has new levels".
 
         cars = frame.Of({"mpg": [21.0, 22.8, 21.4, 18.7, 18.1], "wt": [2.62, 2.32, 3.215, 3.44, 3.46]})
         fit = result.Unwrap(Lm("mpg", ["wt"], cars))
@@ -2408,7 +2427,10 @@ defn smirnovOne(n, d)
   for j in 0..math.Floor(n * (1.0 - d))
     a = 1.0 - d - j / n
     b = d + j / n
-    s = s + math.Exp(lg - special.LogGamma(j + 1.0) - special.LogGamma(n - j + 1.0) + (n - j) * math.Log(a) + (j - 1) * math.Log(b))
+    (* The last term is 0 when n (1 - d) is whole, and its a may round below 0. *)
+    if a > 0.0
+      s = s + math.Exp(lg - special.LogGamma(j + 1.0) - special.LogGamma(n - j + 1.0) + (n - j) * math.Log(a) + (j - 1) * math.Log(b))
+    end
   end
   list.Min(1.0, d * s)
 end
@@ -2416,8 +2438,9 @@ end
 defn KsTest(x, law, alternative = "two-sided")
   (** The one-sample test of Kolmogorov and Smirnov that x comes from a law of std/stats: D = max |F_n(x) - F(x)|, F_n
       the empirical law of x. Exact for n up to 16,000 without ties, by Marsaglia, Tsang and Wang (2003), whose paper
-      gives 13 to 15 digits there; Kolmogorov's limiting series beyond, or with ties; one-sided, D+ or D-, by the exact
-      sum of Birnbaum and Tingey (1951). R's ks.test(x, "pnorm", 0, 1, exact = TRUE).
+      gives 13 to 15 digits there, and past n D^2 = 7.24 (p < 1e-6) twice the one-sided tail; Kolmogorov's limiting
+      series beyond 16,000, or with ties; one-sided, D+ or D-, by the exact sum of Birnbaum and Tingey (1951). R's
+      ks.test(x, "pnorm", 0, 1, exact = TRUE).
 
         k = result.Unwrap(KsTest([0.61, -0.27, 1.38, -0.45, 0.13, -1.12, 0.84, 0.29], Normal(0, 1)))
         k.Method --> "Exact one-sample Kolmogorov-Smirnov test" *)
@@ -2443,7 +2466,10 @@ defn KsTest(x, law, alternative = "two-sided")
   end
   d = list.Max(plus, minus)
   if n <= 16000 and not ties
-    p = list.Max(0.0, list.Min(1.0, 1.0 - mtw(n, d)))
+    (* Past n D^2 = 7.24, where Marsaglia, Tsang and Wang leave their matrix for a formula of the tail, p < 1e-6:
+       1 - P(D < d) would lose its digits, and the matrix grows with n D. There P(D >= d) is twice the one-sided
+       P(D+ >= d), as D+ and D- both past d are about e^(-6 n D^2) as likely, below 1e-18 of it. *)
+    p = if n * d * d > 7.24 list.Min(1.0, 2.0 * smirnovOne(n, d)) else list.Max(0.0, list.Min(1.0, 1.0 - mtw(n, d))) end
     return result.Ok(Test("Exact one-sample Kolmogorov-Smirnov test", d, missing, p, missing, missing, missing, alt))
   end
   result.Ok(Test("Asymptotic one-sample Kolmogorov-Smirnov test", d, missing, kolmogorovTail(math.Sqrt(n) * d), missing, missing, missing, alt))
@@ -2682,33 +2708,22 @@ defn countTable(lo, hi, mass)
   c
 end
 
-defn invert(c, lo, u)
-  (** The smallest k with c[k] > u, by halving, plus lo - 1: the inversion of a table of cumulative probabilities; past
-      its end, its last count. *)
-  m = value.Len(c)
-  a = 1
-  b = m
-  if c[m] <= u
-    return lo + m - 1.0
-  end
-  while a < b
-    h = math.Div(a + b, 2)
-    if c[h] > u
-      b = h
-    else
-      a = h + 1
-    end
-  end
-  lo + a - 1.0
-end
-
-defn countDraws(n, lo, hi, mass)
+defn countDraws(n, lo, hi, mass, quantile)
   (** One draw, or an array of n, of a law of counts by inversion: u from random.Float, and the smallest k whose
-      cumulative probability passes u, in the table from lo to hi, which holds all but less than 1e-300 of the law. *)
-  c = countTable(lo, hi, mass)
+      cumulative probability passes u, in the table from lo to hi, which holds all but less than 1e-300 of the law; one
+      draw, or a table that would pass 65,536 counts, by quantile(u), the same inversion without the table. *)
   if value.IsMissing(n)
-    return invert(c, lo, random.Float())
+    return quantile(random.Float())
   end
+  if hi - lo >= 65536.0
+    us = num.Uniform(n)
+    out = matrix.Zeros(1, n)
+    for k in 1..n
+      out[k] = quantile(us[k])
+    end
+    return out
+  end
+  c = countTable(lo, hi, mass)
   us = num.Uniform(n)
   out = matrix.Zeros(1, n)
   m = value.Len(c)
@@ -2738,7 +2753,7 @@ end
 defn (d Binomial) Sample(n = missing)
   (** One draw, or an array of n, by inversion: u from random.Float, and the smallest k with P(X <= k) > u, from a table
       of the cumulative probabilities from 40 standard deviations below the mean to 40 above, which holds all but less
-      than 1e-300 of the law.
+      than 1e-300 of the law; one draw, or a law whose table would pass 65,536 counts, by Quantile(u), without the table.
 
         Binomial(10, 0.5).Sample() <= 10.0 --> true *)
   nn = field(d.N, "Binomial", "N", "count")
@@ -2752,12 +2767,12 @@ defn (d Binomial) Sample(n = missing)
   sd = math.Sqrt(nn * p * (1.0 - p))
   lo = list.Max(0.0, math.Floor(mu - 40.0 * sd - 10.0))
   hi = list.Min(nn, math.Ceil(mu + 40.0 * sd + 10.0))
-  countDraws(count, lo, hi, k -> binomialMass(k, nn, p))
+  countDraws(count, lo, hi, k -> binomialMass(k, nn, p), u -> binomialQuantile(u, nn, p, 0.0))
 end
 
 defn (d Poisson) Sample(n = missing)
   (** One draw, or an array of n, by inversion as Binomial's, from a table from 0, or 40 standard deviations below the
-      mean, to 40 above.
+      mean, to 40 above; one draw, or a law whose table would pass 65,536 counts, by Quantile(u).
 
         Poisson(3).Sample() >= 0.0 --> true *)
   lam = field(d.Lambda, "Poisson", "Lambda", "nonnegative")
@@ -2768,5 +2783,5 @@ defn (d Poisson) Sample(n = missing)
   sd = math.Sqrt(lam)
   lo = list.Max(0.0, math.Floor(lam - 40.0 * sd - 10.0))
   hi = math.Ceil(lam + 40.0 * sd + 40.0)
-  countDraws(count, lo, hi, k -> poissonMass(k, lam))
+  countDraws(count, lo, hi, k -> poissonMass(k, lam), u -> poissonQuantile(u, lam, 0.0))
 end
