@@ -1,8 +1,18 @@
 (* The JIT's tier: makes native code of a unit and runs it, for the hooks of [Tier] that the interpreter calls. *)
 open Types
 
+(* Where a unit's code stands. Level 1 of MIR first, made in half the time; level 2, made from the same text by another
+   domain once the unit ran about as long as its level 1 took to make, then replaces it at a safe point. *)
+type tier =
+  | Level1 of { text : string; entry : string; hot_at : int; mutable steps : int }
+      (* the steps its runs took, until [hot_at] *)
+  | Making of Level2.state Atomic.t
+  | Final  (* level 2, or level 1 for good when level 2 couldn't be made *)
+
 type code = {
-  addr : nativeint;
+  mutable addr : nativeint;
+  mutable mir : nativeint;  (* the context of MIR that holds the code at [addr] *)
+  mutable tier : tier;
   fn : Ir.func;  (* the unit's first function, whose frame is the interpreter's *)
   ret : Ir.kind;  (* the kind of the version's result *)
   pure : bool;
@@ -25,6 +35,34 @@ let native = function Native c -> c | _ -> invalid_arg "Engine: code of another 
    before the checkpoint that may. *)
 let io = Array.make Ir.io_size 0
 
+(* The steps of native code that take about as long as MIR takes to make one line of MIR text at level 1 (measured on
+   ode.Solve's step, the sparse product and optimize.Root: see the docs): a unit gets its level 2 once its runs took
+   that many steps a line of its text. *)
+let steps_per_line = 1000
+
+(* A unit hot at level 1 starts its level 2, or tries again at its next run while another unit's is made. *)
+let rise code text entry =
+  match Level2.start ~wait:(!Tier.mode = Tier.always) text entry with Some job -> code.tier <- Making job | None -> ()
+
+(* At a safe point, where no native frame of the unit is left anywhere, as native code never calls back into OCaml and
+   programs run on one domain: level 2, made from the same text, has the same frame and resume points, so it takes over
+   from here, and level 1 is freed. *)
+let adopt code job =
+  match Atomic.get job with
+  | Level2.Working -> ()
+  | Made a ->
+    Jit.free code.mir;
+    code.addr <- a.(1);
+    code.mir <- a.(0);
+    code.tier <- Final;
+    if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline "jit: level 2"
+  | Refused | Abandoned -> code.tier <- Final
+
+(* A unit that nothing holds any more, so that nothing can run its code: its context goes, and so does its level 2. *)
+let release code =
+  (match code.tier with Making job -> Level2.drop job | Level1 _ | Final -> ());
+  Jit.free code.mir
+
 let make (w : world) (ver : version) fns start loops =
   let pure = Array.for_all (fun (f : Ir.func) -> f.pure) fns and calls = Array.exists (fun (f : Ir.func) -> f.calls) fns in
     (* A run that writes arrays can't start again when the stack runs out: its calls must bail then. Those of nested frames
@@ -33,14 +71,21 @@ let make (w : world) (ver : version) fns start loops =
     else begin
       let text, entry = Mirtext.emit fns in
       if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);
-      match Jit.load text [| entry |] with
-      | [| addr |] ->
+      match Jit.load text [| entry |] 1 with
+      | [| mir; addr |] ->
         let fn = fns.(0) in
         let written = List.filter_map (fun (s, wr, _, _) -> if wr then Some s else None) (Array.to_list fn.arrays) in
         let known = Array.for_all (fun (f : Ir.func) -> f.stride >= 0) fns in
         let most g = if known then Array.fold_left (fun m f -> max m (g f)) 0 fns else -1 in
-        Some { addr; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint); pure; calls; written = Array.of_list written;
-               reloads = w.reloads; start; loops; stride = most (fun f -> f.stride); need = most (fun f -> f.need); bails = 0 }
+        let lines = String.fold_left (fun n c -> if c = '\n' then n + 1 else n) 0 text in
+        let hot_at = if !Tier.mode = Tier.always then 0 else lines * steps_per_line in
+        let code =
+          { addr; mir; tier = Level1 { text; entry; hot_at; steps = 0 }; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint);
+            pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
+            need = most (fun f -> f.need); bails = 0 }
+        in
+        Gc.finalise release code;
+        Some code
       | _ -> None
       | exception Failure m ->
         if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m);
@@ -179,7 +224,14 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
     ctx.site <- site;
     run ~leave ctx code entry
   end else begin
-    ctx.fuel <- fuel0 - (io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel));
+    let spent = io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel) in
+    ctx.fuel <- fuel0 - spent;
+    (match code.tier with
+     | Level1 l ->
+       (* Stops at [hot_at]: no overflow, however long the wait for another unit's level 2. *)
+       l.steps <- min l.hot_at (l.steps + spent);
+       if l.steps >= l.hot_at then rise code l.text l.entry
+     | Making _ | Final -> ());
     st
   end
   end
@@ -234,6 +286,7 @@ let root_point code = match code.loops with [||] -> -1 | a -> let _, _, _, p = a
    interpreter's. *)
 let go (ctx : ctx) code entry =
   let rec again ?(leave = false) entry first =
+    (match code.tier with Making job -> adopt code job | Level1 _ | Final -> ());
     let st = run ~leave ctx code entry in
     if st = Ir.fuel_out then begin
       let p = io.(Ir.io_point) in

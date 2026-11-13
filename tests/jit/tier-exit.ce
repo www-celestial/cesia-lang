@@ -1,0 +1,12 @@
+use std/io
+
+(* A program that ends while the level 2 of its loop may still be in the making, in another domain: it ends at once,
+   with its output, and the domain goes with the process. *)
+defn sum(n)
+  s = 0.0
+  for i in 1..n
+    s = s + i * 0.5
+  end
+  s
+end
+io.Print(sum(400000))

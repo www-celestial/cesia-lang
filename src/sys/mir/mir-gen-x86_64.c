@@ -1933,6 +1933,8 @@ static int pattern_index_cmp (const void *a1, const void *a2) {
 
 static int get_max_insn_size (gen_ctx_t gen_ctx, const char *replacement);
 
+static int patterns_sized; /* Cesia: see below */
+
 static void patterns_init (gen_ctx_t gen_ctx) {
   MIR_alloc_t alloc = gen_alloc (gen_ctx);
   int i, ind, n = sizeof (patterns) / sizeof (struct pattern);
@@ -1942,13 +1944,16 @@ static void patterns_init (gen_ctx_t gen_ctx) {
 
   VARR_CREATE (int, pattern_indexes, alloc, 0);
   for (i = 0; i < n; i++) {
-    patterns[i].max_insn_size = get_max_insn_size (gen_ctx, patterns[i].replacement);
+    /* Cesia: written by the first context only, the same value each time: later ones start while another thread's context
+       reads the table. */
+    if (!patterns_sized) patterns[i].max_insn_size = get_max_insn_size (gen_ctx, patterns[i].replacement);
 #if 0
     fprintf (stderr, "size of \"%s\" = %d\n", patterns[i].replacement,
 	     patterns[i].max_insn_size);
 #endif
     VARR_PUSH (int, pattern_indexes, i);
   }
+  patterns_sized = 1; /* Cesia */
   qsort (VARR_ADDR (int, pattern_indexes), n, sizeof (int), pattern_index_cmp);
   VARR_CREATE (insn_pattern_info_t, insn_pattern_info, alloc, 0);
   for (i = 0; i < MIR_INSN_BOUND; i++) VARR_PUSH (insn_pattern_info_t, insn_pattern_info, pinfo);

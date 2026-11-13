@@ -1,9 +1,10 @@
-/* The JIT's glue to MIR: a context made at the first load, never at start-up; modules given as MIR text, which only
-   Cesia's own generator writes; and one entry to call what they export. */
+/* The JIT's glue to MIR: a context per module of MIR text, which only Cesia's own generator writes, made by its load,
+   never at start-up, and freed once nothing can run its code; and one entry to call what they export. */
 #include <caml/alloc.h>
 #include <caml/fail.h>
 #include <caml/memory.h>
 #include <caml/mlvalues.h>
+#include <caml/signals.h>
 #include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -48,10 +49,10 @@ static int unmap(void *a, size_t len, void *u) { return munmap(a, len); }
 #endif
 
 static struct MIR_code_alloc code = { map, unmap, protect, NULL };
-static MIR_context_t mir;
-static int broken;
-static jmp_buf on_error;
-static char error[256];
+/* A load runs on any domain, the level 2 of a unit on another one than its runs: each thread has its own way back. */
+static _Atomic int broken;
+static _Thread_local jmp_buf on_error;
+static _Thread_local char error[256];
 
 /* MIR stops at an error: back to the load, and the JIT is off for the rest of the run, as MIR's state is unknown. */
 static void MIR_NO_RETURN failed(MIR_error_type_t type, const char *format, ...) {
@@ -74,44 +75,62 @@ static MIR_item_t exported(MIR_module_t m, const char *name) {
   return NULL;
 }
 
-/* Loads a module of MIR text and gives the address of each function named, or fails with MIR's message. */
-value cesia_jit_load(value text, value names) {
-  CAMLparam2(text, names);
+/* Makes machine code of a module of MIR text at a level of MIR, in a context of its own, without the domain's lock, so
+   that the other domains, and their collections, go on meanwhile: the context, then the address of each function named;
+   or fails with MIR's message, and after an error of MIR, every load fails. */
+value cesia_jit_load(value text, value names, value level) {
+  CAMLparam3(text, names, level);
   CAMLlocal1(out);
   mlsize_t n = Wosize_val(names);
-  void *addrs[64];
+  void *addrs[65];
   if (n > 64) caml_failwith("jit: too many functions in one module");
-  if (broken) caml_failwith(error);
+  if (broken) caml_failwith("jit: off after an error of MIR");
+  char *src = caml_stat_strdup(String_val(text));
+  int opt = Int_val(level);
+  MIR_context_t mir;
+  caml_enter_blocking_section();
   if (setjmp(on_error)) {
     broken = 1;
+    caml_leave_blocking_section();
+    caml_stat_free(src);
     caml_failwith(error);
   }
-  if (mir == NULL) {
-    mir = MIR_init2(NULL, &code);
-    MIR_set_error_func(mir, failed);
-    MIR_gen_init(mir);
-    MIR_gen_set_optimize_level(mir, 2);
-    /* The functions of libm that the IR names, as OCaml calls them, so that results are the same to the bit. */
-    static const char *names[] = { "sqrt", "exp", "log", "sin", "cos", "tan", "asin", "acos", "atan", "fabs", "pow" };
-    void *fs[] = { sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs, pow };
-    for (int k = 0; k < 11; k++) MIR_load_external(mir, names[k], fs[k]);
-    MIR_load_external(mir, "caml_modify", caml_modify);
-  }
-  MIR_scan_string(mir, String_val(text));
+  mir = MIR_init2(NULL, &code);
+  MIR_set_error_func(mir, failed);
+  MIR_gen_init(mir);
+  MIR_gen_set_optimize_level(mir, opt);
+  /* The functions of libm that the IR names, as OCaml calls them, so that results are the same to the bit. */
+  static const char *libm[] = { "sqrt", "exp", "log", "sin", "cos", "tan", "asin", "acos", "atan", "fabs", "pow" };
+  void *fs[] = { sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs, pow };
+  for (int k = 0; k < 11; k++) MIR_load_external(mir, libm[k], fs[k]);
+  MIR_load_external(mir, "caml_modify", caml_modify);
+  MIR_scan_string(mir, src);
   MIR_module_t m = DLIST_TAIL(MIR_module_t, *MIR_get_module_list(mir));
   MIR_load_module(mir, m);
   MIR_link(mir, MIR_set_gen_interface, NULL);
+  /* Every function is made: the generator's own memory goes now, in the thread that made them. */
+  MIR_gen_finish(mir);
+  caml_leave_blocking_section();
+  caml_stat_free(src);
+  addrs[0] = mir;
   for (mlsize_t k = 0; k < n; k++) {
     MIR_item_t it = exported(m, String_val(Field(names, k)));
-    if (it == NULL) {
-      snprintf(error, sizeof error, "jit: no function %s", String_val(Field(names, k)));
-      caml_failwith(error);
-    }
-    addrs[k] = it->addr;
+    if (it == NULL) { MIR_finish(mir); caml_failwith("jit: a function named is not in the module"); }
+    addrs[k + 1] = it->addr;
   }
-  out = caml_alloc(n, 0);
-  for (mlsize_t k = 0; k < n; k++) Store_field(out, k, caml_copy_nativeint((intnat) addrs[k]));
+  out = caml_alloc(n + 1, 0);
+  for (mlsize_t k = 0; k <= n; k++) Store_field(out, k, caml_copy_nativeint((intnat) addrs[k]));
   CAMLreturn(out);
+}
+
+/* Frees what a load made, its machine code with it: called once nothing can run that code. The isb: on arm64, this core
+   then fetches the code that another core wrote, which replaces the code freed. */
+value cesia_jit_free(value mir) {
+  MIR_finish((MIR_context_t) Nativeint_val(mir));
+#if defined(__aarch64__)
+  __asm__ volatile("isb" ::: "memory");
+#endif
+  return Val_unit;
 }
 
 /* The one entry: f(cx) gives a status. cx holds the stacks (ints and io are OCaml int arrays, whose cells hold 2n + 1;

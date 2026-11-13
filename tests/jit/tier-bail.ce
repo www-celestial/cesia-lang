@@ -1,0 +1,17 @@
+use std/io
+use std/list
+
+(* A guard that fails twice: early, at MIR's level 1, then at its level 2, which took over after the first quantum of
+   steps. Each bail hands the statement to the interpreter, and machine code goes on at the next turn. *)
+defn total(ms, n)
+  s = 0.0
+  for i in 1..n
+    s = s + ms[i].X
+  end
+  s
+end
+n = 300000
+ms = list.Fill({X: 1.0}, n)
+ms[100] = {X: 2.0, Y: 0.0}
+ms[250000] = {X: 3.0, Y: 0.0}
+io.Print(total(ms, n))
