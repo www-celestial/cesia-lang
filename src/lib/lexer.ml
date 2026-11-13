@@ -36,9 +36,9 @@ let rec find_keyword s = function (w, k) :: rest -> if String.equal w s then k e
 (* No closure per call: every name of the code is looked up. *)
 let keyword s = if String.length s = 0 then None else find_keyword s by_first.(Char.code s.[0])
 
-(* And the words that mean something in some places only: it in a short function, as after a use, _ in a pattern and ? after
-   a result. *)
-let words = List.map fst keywords @ [ "it"; "as"; "_"; "?"; ".."; "!" ]
+(* And the words that mean something in some places only: it in a short function, as after a use, _ in a pattern or for a
+   do block, ? after a result, do after a call. *)
+let words = List.map fst keywords @ [ "it"; "as"; "_"; "?"; ".."; "!"; "do" ]
 
 type st = {
   src : string;

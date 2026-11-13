@@ -1,0 +1,5 @@
+block-hole-twice.ce:4:24: A call has one _ at most: its do block takes that place.
+  4 | total = list.Reduce(_, _, [1, 2]) do a, b
+    |                        ^
+  Write the other arguments in full.
+exit 1

@@ -4,6 +4,7 @@ if exists("b:current_syntax")
 endif
 syn keyword cesiaKeyword if else end for in while break return defn match struct interface then use
 syn keyword cesiaOperator and or not
+syn match cesiaKeyword ")\s*\zsdo\>"
 syn keyword cesiaConstant true false missing
 syn match cesiaNumber "\<\d\+\(\.\d\+\)\?\>"
 syn match cesiaFunction "\<\h\w*\ze("

@@ -1,0 +1,6 @@
+use std/list
+
+(* A do block takes the place of one _ only. *)
+total = list.Reduce(_, _, [1, 2]) do a, b
+  a + b
+end

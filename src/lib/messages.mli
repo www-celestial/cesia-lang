@@ -367,6 +367,15 @@ val map_of_struct : string -> string -> t
 val pattern_mismatch : string -> string -> t
 val question_file : t
 val question_space : t
+val hole_twice : t
+val hole_alone : t
+val block_line : t
+
+(** The name of the function that a do block makes: errors show "function <do block>". *)
+val do_block : string
+
+(** A type error about the function of a do block, with the hint that says where the block goes, unless it has one. *)
+val block_hint : t -> t
 val question_value : string -> t
 val need_task : string -> string -> t
 val empty_text : string -> t

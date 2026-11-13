@@ -1,5 +1,5 @@
 (** The documentation of the keywords, which have no source: cesia doc reads it, and cesia test runs its examples. Each one has
-    a block whose first line is the word. The first twenty are reserved, and no name can be one; the last four mean something
+    a block whose first line is the word. The first twenty are reserved, and no name can be one; the others mean something
     in some places only. Nothing here is code but the uses. *)
 use std/set
 use std/queue as line
@@ -193,9 +193,26 @@ use std/value
       line.First(line.Of([1, 2])) --> 1 *)
 
 (** _
-    In a pattern, takes anything and names nothing. A name has no _: words join by capitals, byteLength or ByteLength.
+    In a pattern, takes anything and names nothing. As an argument of a call with a do block, says where the block goes. A
+    name has no _: words join by capitals, byteLength or ByteLength.
 
-      match 9 1 -> "one" _ -> "any" end --> "any" *)
+      match 9 1 -> "one" _ -> "any" end --> "any"
+      more = dict.Update("bread", _, {"bread": 40}) do n
+        n + 10
+      end
+      more --> {"bread": 50} *)
+
+(** do
+    Right after the ) of a call, a function of several lines, which the call takes: do, its parameters, its lines, and end.
+    It takes the place of the argument that is _ alone, or else comes first, where the functions of std/ take theirs: the
+    mirror of then. It is the function defn (params) ... end, the same tree, which stays valid inside the parentheses.
+    Elsewhere, do is a plain name.
+
+      total = list.Reduce(0, [1, 2, 3]) do total, x
+        total + x
+      end
+      total --> 6
+      total --> list.Reduce(defn (total, x) total + x end, 0, [1, 2, 3]) *)
 
 (** ..
     The integers from the one on its left to the one on its right, both included: a..b is list.Range(a, b). In the brackets of a

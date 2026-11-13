@@ -166,6 +166,19 @@ let destructure_value a = plain (Printf.sprintf "This pattern needs an array, no
 let pattern_mismatch name a = plain (Printf.sprintf "This pattern needs %s, not %s." name a)
 let question_file = hinted "? can only be used inside a function, which it leaves with the Err." "At the top of a file, write result.Unwrap(...) where an Err would be a bug, or match on the result."
 let question_space = plain "? must follow its value, with no space."
+let hole_twice = hinted "A call has one _ at most: its do block takes that place." "Write the other arguments in full."
+let hole_alone =
+  hinted "_ stands for the do block of its call, and this call has none."
+    "Write the block after the call, f(a, _) do x ... end, or the argument in full."
+let block_line = hinted "A do block starts a line of its own after its parameters." "Write do x, y, then the body on the next lines, up to end."
+let do_block = "<do block>"
+let block_hint (m : t) =
+  let shown = "function " ^ do_block in
+  let n = String.length m.text and k = String.length shown in
+  let rec found i = i + k <= n && (String.sub m.text i k = shown || found (i + 1)) in
+  if m.hint = None && found 0 then
+    { m with hint = Some "A do block takes the place of the _ of its call, or else comes first: write _ where it goes, as in http.Get(\"/\", _) do r." }
+  else m
 let question_value a =
   hinted (Printf.sprintf "? needs an Ok or an Err, not %s." a) "Return a result from the function you call."
 let need_task name a = plain (Printf.sprintf "%s needs a task, not %s." name a)

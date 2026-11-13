@@ -1,0 +1,4 @@
+use std/list
+
+(* _ stands for a do block, and this call has none. *)
+doubled = list.Map(_, [1, 2])

@@ -1,0 +1,142 @@
+(* A function written as a do block after a call: it takes the place of the argument that is _ alone, or else comes first. *)
+use std/fiber
+use std/http
+use std/list
+use std/result
+use std/value
+
+both(a, b) = [a, b]
+apply(f, x) = f(x)
+lift(f, r) = result.Ok(f(r?))
+
+struct Box { v }
+defn (b Box) Apply(f)
+  b.v then f()
+end
+
+defn reduced()
+  list.Reduce(0, [1, 2, 3]) do total, x
+    total + x
+  end
+end
+
+defn reducedOld()
+  list.Reduce(defn (total, x)
+    total + x
+  end, 0, [1, 2, 3])
+end
+
+defn placed()
+  list.Map(_, [1, 2]) do x
+    x * 10
+  end
+end
+
+defn noParameter()
+  task = fiber.Spawn() do
+    n = 0
+    for k in 1..100
+      n += k
+    end
+    n
+  end
+  fiber.Wait(task)
+end
+
+defn piped()
+  [1, 2, 3] then list.Map() do x
+    x * 2
+  end
+end
+
+defn routed()
+  app = http.App()
+    then http.Get("/hello/:name", _) do r
+      name = r.Params.name
+      http.Plain("Hello, $(name)!")
+    end
+    then http.Post("/", r -> http.Plain(r.Body))
+  http.Handler(app)({Method: "GET", Path: "/hello/Ana", Query: "", Headers: [], Body: ""}).Body
+end
+
+defn nested()
+  list.Map([1, 2]) do x
+    list.Map([x, x]) do y
+      y + 1
+    end
+  end
+end
+
+defn inParentheses()
+  value.Len(list.Filter([1, 2, 3, 4]) do x
+    x > 2
+  end)
+end
+
+defn returned()
+  list.Map([1, 2]) do x
+    return x + 100 if x > 1
+    x
+  end
+end
+
+defn questioned()
+  r = result.Ok(2) then lift() do v
+    v + 1
+  end
+  result.Ok(r? * 2)
+end
+
+defn afterEnd()
+  list.Map([1, 2]) do x
+    x * 3
+  end then list.Sum()
+end
+
+defn typed()
+  list.Map([5]) do x Int
+    x + 1
+  end
+end
+
+defn method()
+  Box(4).Apply() do v
+    v * 10
+  end
+end
+
+defn named()
+  apply(f = _, 3) do x
+    x + 1
+  end
+end
+
+defn captures()
+  step = 5
+  list.Map([1]) do x
+    x + step
+  end
+end
+
+defn doIsAName()
+  do = 3
+  y = both(1, 2) do = 4
+  [y, do]
+end
+
+isFirstArgument() = reduced() == 6
+isOldFormSame() = reducedOld() == reduced()
+isHolePlaced() = value.Equal(placed(), [10, 20])
+isNoParameter() = noParameter() == result.Ok(5050)
+isAfterThen() = value.Equal(piped(), [2, 4, 6])
+isHoleWithThen() = routed() == "Hello, Ana!"
+isNested() = value.Equal(nested(), [[2, 2], [3, 3]])
+isInsideParentheses() = inParentheses() == 2
+isReturnLeavesBlock() = value.Equal(returned(), [1, 102])
+isQuestionInBlock() = questioned() == result.Ok(6)
+isThenAfterEnd() = afterEnd() == 9
+isTypedParameter() = value.Equal(typed(), [6])
+isMethodCall() = method() == 40
+isNamedHole() = named() == 4
+isClosure() = value.Equal(captures(), [6])
+isDoStillAName() = value.Equal(doIsAName(), [[1, 2], 4])
