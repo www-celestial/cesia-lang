@@ -1,0 +1,47 @@
+(** The draws of the laws of std/stats: 20,000 of each pass a Kolmogorov-Smirnov test against the law's own Cdf, the
+    counts of the discrete laws a chi-squared test against their masses, and the mean of each is within 5 standard
+    errors of the law's. Each test starts from its own seed, made of the run's and its name, so a failure comes back
+    with --seed. *)
+use std/list
+use std/math
+use std/num
+use std/result
+use std/stats
+use std/value
+
+n = 20000
+fits(d) = result.Unwrap(stats.KsTest(d.Sample(n), d)).PValue > 1e-5
+defn meanWithin(d, mean, sd)
+  xs = d.Sample(n)
+  math.Abs(list.Mean(xs) - mean) <= 5.0 * sd / math.Sqrt(n)
+end
+
+isNormal() = fits(stats.Normal(3, 2)) and meanWithin(stats.Normal(3, 2), 3.0, 2.0)
+isUniform() = fits(stats.Uniform(-2, 5)) and meanWithin(stats.Uniform(-2, 5), 1.5, 7.0 / math.Sqrt(12.0))
+isExponential() = fits(stats.Exponential(0.4)) and meanWithin(stats.Exponential(0.4), 2.5, 2.5)
+isGammaSmall() = fits(stats.Gamma(0.25, 3)) and meanWithin(stats.Gamma(0.25, 3), 0.25 / 3.0, 0.5 / 3.0)
+isGamma() = fits(stats.Gamma(7.5, 0.5)) and meanWithin(stats.Gamma(7.5, 0.5), 15.0, math.Sqrt(7.5) / 0.5)
+isChiSquared() = fits(stats.ChiSquared(3))
+isBeta() = fits(stats.Beta(0.6, 2.4)) and meanWithin(stats.Beta(0.6, 2.4), 0.2, math.Sqrt(0.6 * 2.4 / (9.0 * 4.0)))
+isStudent() = fits(stats.StudentT(5))
+isStudentInfinite() = fits(stats.StudentT(1.0 / 0.0))
+isFisher() = fits(stats.FisherF(4, 11))
+isNormalIsNum() = value.Len(stats.Normal(0, 1).Sample(0)) == 0 and value.Len(num.Normal(3)) == 3
+
+defn countsFit(d, top)
+  (** The chi-squared test of the counts of the draws of a law of counts, the cells from 0 to top and one past it. *)
+  xs = d.Sample(n)
+  counts = list.Fill(0, top + 2)
+  for x in xs
+    k = if x > top top + 1 else x end
+    counts[k + 1] += 1
+  end
+  ps = [d.Pdf(k) for k in 0..top]
+  ps = list.Concat(ps, [d.Cdf(top, upper = true)])
+  result.Unwrap(stats.ChiSquaredTest(counts, p = ps / list.Sum(ps))).PValue > 1e-5
+end
+isBinomialSmall() = countsFit(stats.Binomial(12, 0.3), 10)
+isBinomial() = countsFit(stats.Binomial(200, 0.45), 120)
+isPoissonSmall() = countsFit(stats.Poisson(2.5), 10)
+isPoisson() = countsFit(stats.Poisson(60), 100)
+isDegenerateDraws() = list.All(stats.Binomial(5, 1).Sample(3) == 5.0) and stats.Poisson(0).Sample() == 0.0
