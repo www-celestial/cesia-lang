@@ -12,7 +12,8 @@
 
     What a tab prints and what its cesia block showed are cut into values, compared one by one: numbers, words, and the
     words true, false, nan and inf in any case. Brackets, commas, quotes and other signs only separate them; R's marks of
-    positions, [1], [1,] and [,1], and Cesia's Ok( around a result are left out. A number Cesia shows is exact: it writes
+    positions, [1], [1,] and [,1], and Cesia's Ok( around a result are left out, and Ok(missing), what an action that went
+    well gives, as plot.Save, is nothing. A number Cesia shows is exact: it writes
     the shortest text that reads back as the same float. A number the tab prints stands for the numbers that it rounds, at
     half a unit of its last digit, an integer for itself alone; the two agree when Cesia's number is one of them, give or
     take 1e-14 of its size, the last bits of a computation done in another order. So R's 0.3333333 and Octave's 0.3333 are
@@ -137,7 +138,10 @@ defn valuesOf(s, lang = "")
       end
       w = slice(s, i, j - 1)
       low = text.Lower(w)
-      if w == "Ok" and byteAt(s, j) == 40
+      if w == "Ok" and slice(s, j, j + 8) == "(missing)"
+        (* What an action that went well gives, as plot.Save: nothing, as a tab that does the same prints. *)
+        j += 9
+      else if w == "Ok" and byteAt(s, j) == 40
         (* Cesia's Ok( around a result: other languages give the result itself, or stop. *)
       else if low == "nan"
         out = list.Append({K: "nan", S: w}, out)

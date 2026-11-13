@@ -363,7 +363,8 @@ disp(sqrt(2))
 
 Each tab of Cesia's own book runs, and must print what its cesia block shows: the value of each `-->` and what the block
 prints, in their order. `tools/check.sh` and the CI of the site run `tools/tabs.ce`, which compares the two one value at a
-time: texts exactly, `True` and `true` alike, and numbers to the digits the tab shows. A number Cesia shows is exact,
+time: texts exactly, `True` and `true` alike, `Ok(missing)`, what an action that went well gives, as nothing, and
+numbers to the digits the tab shows. A number Cesia shows is exact,
 the shortest text of its float; a number the tab prints stands for those it rounds, and Cesia's must be one of them, give
 or take 1e-14 of its size. So R's `1.414214` and Octave's `1.4142` are `1.4142135623730951`, `0.54` is not `0.5`, and
 `3.0` is `3`. Python runs with numpy, scipy,
