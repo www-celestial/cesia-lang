@@ -143,7 +143,7 @@ use std/test
     points, as value.Len counts them): the same text when it has at most most characters, else its first most - 1
     characters and an ellipsis, "…", so most characters in all. Only that start is made, so its time and memory follow
     most, not the size of the value: a list of 10^6 numbers, a long text from the network or a deeply nested value costs
-    what its first most characters cost.
+    what its first most characters cost. A text that isn't UTF-8 stops at 4 × most bytes too.
 
       value.Text(12) --> "12"
       value.Text([1, 2, 3], 9) --> "[1, 2, 3]"

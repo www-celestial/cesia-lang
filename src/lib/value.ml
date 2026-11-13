@@ -147,8 +147,9 @@ let int_text i = if i >= 0 && i < 10 then small_ints.(i) else Bytes.sub_string s
 
 (* A text being written by [write]. [left] is the number of characters (code points, counted as value.Len counts them)
    that still fit: past them, [Full] stops the walk, the buffer holding exactly the characters that fit. With [left] =
-   max_int nothing is counted, and the text is whole. *)
-type out = { b : Buffer.t; mutable left : int }
+   max_int nothing is counted, and the text is whole. [cap] bounds the bytes of a text that isn't UTF-8, whose
+   continuation bytes alone count no character: 4 bytes a character, which UTF-8 never reaches before [left] does. *)
+type out = { b : Buffer.t; mutable left : int; cap : int }
 
 exception Full
 
@@ -156,7 +157,8 @@ exception Full
 let add_sub o s pos len =
   if o.left = max_int then Buffer.add_substring o.b s pos len
   else begin
-    for i = pos to pos + len - 1 do
+    let stop = pos + max 0 (min len (o.cap - Buffer.length o.b)) in
+    for i = pos to stop - 1 do
       if Char.code s.[i] land 0xC0 <> 0x80 then begin
         if o.left = 0 then begin
           Buffer.add_substring o.b s pos (i - pos);
@@ -165,7 +167,8 @@ let add_sub o s pos len =
         o.left <- o.left - 1
       end
     done;
-    Buffer.add_substring o.b s pos len
+    Buffer.add_substring o.b s pos (stop - pos);
+    if stop < pos + len then raise Full
   end
 
 let add o s = add_sub o s 0 (String.length s)
@@ -212,7 +215,7 @@ let add_quoted o s =
   add_char o '"'
 
 let quote s =
-  let o = { b = Buffer.create (String.length s + 2); left = max_int } in
+  let o = { b = Buffer.create (String.length s + 2); left = max_int; cap = max_int } in
   add_quoted o s;
   Buffer.contents o.b
 
@@ -328,7 +331,7 @@ and write_slices o cell a sep =
 let show ctx v =
   match v with
   | Text _ | Array _ | Dict _ | Struct _ ->
-    let o = { b = Buffer.create 64; left = max_int } in
+    let o = { b = Buffer.create 64; left = max_int; cap = max_int } in
     write o ctx 0 v;
     Buffer.contents o.b
   | v -> word v
@@ -340,11 +343,12 @@ let text_upto ctx most v =
   match v with
   | Text s when String.length s <= most -> s
   | _ -> (
-    let o = { b = Buffer.create 64; left = most } in
+    let o = { b = Buffer.create 64; left = most; cap = (if most > max_int / 4 then max_int else 4 * most) } in
     match (match v with Text s -> add o s | _ -> write o ctx 0 v) with
     | () -> Buffer.contents o.b
     | exception Full ->
-      (* The buffer holds [most] characters: the last one gives its place to the ellipsis. *)
+      (* The buffer holds [most] characters, fewer for a text that isn't UTF-8: the last one gives its place to the
+         ellipsis. *)
       let s = Buffer.contents o.b in
       let rec start i = if i > 0 && Char.code s.[i] land 0xC0 = 0x80 then start (i - 1) else i in
       String.sub s 0 (start (String.length s - 1)) ^ "\u{2026}")

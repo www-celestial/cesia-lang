@@ -88,3 +88,9 @@ isDeepWholeFails() = result.IsErr(fiber.Wait(fiber.Spawn(() -> "$(deep(100000))"
 isMostHuge() = value.Text([1, 2], 4611686018427387903) == "[1, 2]" and value.Text("ab", 1e18) == "ab"
 isWideCharacters() = value.Text("a😀b", 2) == "a…" and value.Text(["😀😀"], 3) == "[\"…" and value.Text("😀😀", 2) == "😀😀"
 isLongWideText() = value.Text([text.Repeat(1000000, "😀")], 5) == "[\"😀😀…"
+
+(* A text that isn't UTF-8: continuation bytes alone count no character, so the bytes stop at 4 a character. *)
+loose = text.FromBytes(list.Fill(0x80, 1000000))
+isLooseBounded() = text.ByteLength(value.Text(loose, 5)) <= 20 + 3 and text.ByteLength(value.Text([loose], 5)) <= 20 + 3
+isLooseShort() = value.Text(text.FromBytes([0x80, 0x80, 0x41]), 1) == text.FromBytes([0x80, 0x80, 0x41])
+isLooseMixed() = value.Text(text.FromBytes([0xFF, 0xFE, 0x41, 0x42]), 3) == "$(text.FromBytes([0xFF, 0xFE]))…"
