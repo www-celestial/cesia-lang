@@ -160,6 +160,203 @@ The tails are given as the relative error of the tail at the answer, $|F(x) - p|
 R is right on all the others, and nearer than Cesia on a few: where a parameter is below about $10^{-2}$, `pbeta` keeps
 all its digits where Cesia's `BetaInc` loses up to a few hundred $\epsilon$.
 
+### Random draws
+
+`d.Sample()` draws one number of a law, `d.Sample(n)` an array of `n`, from the one generator of [std/random], so that
+`cesia run --seed N` gives the same numbers again, and each test of `cesia test` its own. In a file of
+[cells](cells.md), the generator starts again before each cell, from the seed of the session and the cell's title, as
+`cesia test` does for each test: a cell run again draws the same numbers, whatever ran before it, and editing one cell
+changes no other's.
+
+```cesia
+use std/value
+xs = stats.Normal(0, 1).Sample(1000)
+value.Size(xs) -->
+stats.Poisson(4).Sample(5) then value.Len() -->
+```
+
+| Law | How a draw is made |
+|---|---|
+| Normal | Box and Muller (1958), the cosine of two uniforms: `stats.Normal(0, 1).Sample(n)` is `num.Normal(n)` |
+| Uniform | `Low + (High - Low) u`, `u` from `random.Float`, of 53 bits |
+| Exponential | inversion, $-\log(1 - u) / \text{Rate}$, so that $1 - u$ is in $(0, 1]$ |
+| Gamma | the squeeze of Marsaglia and Tsang (2000) from a normal and a uniform; for a shape below 1, $G(a + 1) U^{1/a}$, from the same paper |
+| ChiSquared | twice a gamma draw of shape `Df / 2` |
+| Beta | $G_a / (G_a + G_b)$, two gamma draws |
+| StudentT | $Z / \sqrt{X / \nu}$, a normal draw then a chi-squared one |
+| FisherF | $(X_1 / d_1) / (X_2 / d_2)$, two chi-squared draws |
+| Binomial, Poisson | inversion: the smallest `k` whose cumulative probability passes `u`, in a table of the law from 40 standard deviations below the mean to 40 above, which holds all of it but less than $10^{-300}$ |
+
+Each method is exact in law, given exact uniforms. The algorithms are frozen with the seeds: a seed gives the same
+numbers on every version, so a better method later would come under a new name, never as a change. The first ten
+draws of each law for the seed 42 are pinned by Cesia's tests, and $2 \times 10^4$ draws of each pass a
+Kolmogorov–Smirnov or a chi-squared test against the law's own Cdf. R and numpy have other generators, so the same
+seed gives other numbers there: compare their statistics, not their draws.
+
+## The linear model
+
+[stats.Lm] fits a line, or a plane, through points by least squares: R's `lm`, without a formula. The column to
+explain comes first, then the columns that explain it, then the frame:
+
+```cesia
+use std/frame
+use std/result
+cars = frame.Of({"mpg": [21.0, 22.8, 21.4, 18.7, 18.1, 14.3, 24.4, 22.8, 19.2, 17.8],
+                 "wt": [2.62, 2.32, 3.215, 3.44, 3.46, 3.57, 3.19, 3.15, 3.44, 3.44],
+                 "hp": [110, 93, 110, 175, 105, 245, 62, 95, 123, 123]})
+fit = result.Unwrap(stats.Lm("mpg", ["wt", "hp"], cars))
+fit.Coefficients -->
+fit.Sigma -->
+fit.RSquared -->
+fit.F.PValue -->
+```
+
+`fit.Coefficients` is R's `coef(summary(fit))` as a frame: a row for each term, its estimate, its standard error, its
+t value and the p-value of that t. The other fields of the `Model`:
+
+| Cesia | R | Python, statsmodels |
+|---|---|---|
+| `stats.Lm("mpg", ["wt", "hp"], cars)` | `lm(mpg ~ wt + hp, data = cars)` | `smf.ols("mpg ~ wt + hp", cars).fit()` |
+| `stats.Lm("y", ["x"], df, intercept = false)` | `lm(y ~ x - 1)` | `smf.ols("y ~ x - 1", df)` |
+| `fit.Coefficients` | `coef(summary(fit))` | `res.params`, `res.bse`, `res.tvalues`, `res.pvalues` |
+| `fit.Sigma`, `fit.Df` | `summary(fit)$sigma`, `fit$df.residual` | `np.sqrt(res.scale)`, `res.df_resid` |
+| `fit.RSquared`, `fit.AdjustedRSquared` | `summary(fit)$r.squared`, `$adj.r.squared` | `res.rsquared`, `res.rsquared_adj` |
+| `fit.F`, a `stats.Test` | `summary(fit)$fstatistic` | `res.fvalue`, `res.f_pvalue` |
+| `fit.Confint(level = 0.95)` | `confint(fit)` | `res.conf_int()` |
+| `fit.Predict(new)` | `predict(fit, new)` | `res.predict(new)` |
+| `fit.Band(new, kind = "prediction")` | `predict(fit, new, interval = "prediction")` | `res.get_prediction(new).summary_frame()` |
+| `fit.Fitted`, `fit.Residuals`, `fit.Rows`, `fit.Rank` | `fitted(fit)`, `resid(fit)`, `nobs(fit)`, `fit$rank` | `res.fittedvalues`, `res.resid`, `res.nobs` |
+
+A number column is used as it is. A text column becomes one indicator column for each of its levels but the first in
+sorted order, named `name[level]`, the treatment coding of R:
+
+```cesia
+cars = frame.SetColumn("cyl", ["6", "4", "6", "8", "6", "8", "4", "4", "6", "6"], cars)
+frame.Column("term", result.Unwrap(stats.Lm("mpg", ["wt", "cyl"], cars)).Coefficients) -->
+```
+
+A product or a power is a column you make first, `frame.SetColumn("wt2", frame.Column("wt", cars) ^ 2, cars)`, where
+R writes `I(wt^2)` in its formula: one way to make a column, not two. A column with a missing value is an `Err` that
+names the column and the row; `frame.DropMissing(frame.Select([...], df))` drops such rows.
+
+The same model in Python and R:
+
+```python
+import statsmodels.formula.api as smf
+res = smf.ols("mpg ~ wt + hp", cars).fit()
+res.summary()
+```
+
+```r
+fit <- lm(mpg ~ wt + hp, data = cars)
+summary(fit)
+```
+
+### How it is computed
+
+Lm factors $[X \mid y]$, the columns of the model and then $y$, by Householder's reflections (Golub and Van Loan, 2013,
+chapter 5), as R's `lm` does with LINPACK's `dqrdc2` and LAPACK with `dgeqrf`. Its upper triangle $R$ gives the
+estimates by back substitution, its last column holds $Q^T y$ and the norm of the residuals, so $Q$ is never formed;
+the standard errors are $\sigma \sqrt{((R^T R)^{-1})_{jj}}$ from the inverse of $R$, with
+$\sigma^2 = \text{RSS} / (n - \text{rank})$. The normal equations $X^T X b = X^T y$, which `num.LeastSquares` solves,
+square the condition of $X$, the factor by which an error of the data grows in the answer, and lose twice as many
+digits; the QR loses them once.
+
+A column whose norm, past the columns before it, is below `tol` times its own norm is a combination of them, as R's
+rule: it is dropped, its estimate is `missing`, R's `NA`, and the model goes on without it. `tol = 1e-7` is R's.
+
+### What it promises
+
+The Statistical Reference Datasets of NIST, the American institute of standards, have certified values to 15 digits
+for regressions of lower, average and higher difficulty. Measured as the number of digits that agree with them
+(McCullough, 1998), the least over the estimates, their standard errors, $\sigma$ and $R^2$:
+
+| Dataset | Difficulty | Cesia | R 4.6.2 |
+|---|---|---:|---:|
+| Norris | lower | 13.3 | 12.5 |
+| Pontius | lower | 12.4 | 12.7 |
+| NoInt1, NoInt2 | average | 14.7, 15.0 | 14.4, 15.0 |
+| Longley | higher | 12.9 | 13.0 |
+| Wampler1, 2, 3 | higher | 9.7, 12.7, 9.3 | 9.8, 13.6, 9.3 |
+| Wampler4, 5 | higher | 7.8, 5.8 | 7.5, 5.5 |
+| Filip, a polynomial of degree 10, `tol = 1e-10` | higher | 7.2 | |
+
+With R's `tol`, Filip's tenth power is dropped, in R as in Cesia; Cesia's tests check that too. The digits lost on
+Wampler and Filip come from their data: a polynomial of degree 5 or 10 in $x$ makes columns that are nearly
+dependent, and a stable method loses the logarithm of their condition number in digits, whatever computes it.
+
+## Tests
+
+A test says whether a difference in data could come from chance alone. Each test of std/stats gives an `Ok` of a
+`stats.Test`, the fields of R's `htest`, or an `Err` for data it can't test: a missing value, too few values, values all
+equal where the statistic needs them to vary.
+
+```cesia
+x = [0.7, -1.6, -0.2, -1.2, -0.1, 3.4, 3.7, 0.8, 0.0, 2.0]
+y = [1.9, 0.8, 1.1, 0.1, -0.1, 4.4, 5.5, 1.6, 4.6, 3.4]
+t = result.Unwrap(stats.TTest2(x, y))
+t.PValue -->
+t.Interval -->
+t -->
+```
+
+`Method` names the test, `Statistic` is its number, `Df` its degrees of freedom, `PValue` the probability of a
+statistic at least as far from the null hypothesis when only chance is at work, `Estimate` the number that `Interval`
+brackets at `Level`, and `Alternative` the side of the test: `"two-sided"`, `"less"` or `"greater"`. In a cell, a
+struct shows as a table of its fields, one a row, so the test reads as R prints it.
+
+| Cesia | R | Python, scipy.stats |
+|---|---|---|
+| `stats.TTest(x, mu = 0.0)` | `t.test(x, mu = 0)` | `ttest_1samp(x, 0)` |
+| `stats.TTest(x - y)`, the paired test | `t.test(x, y, paired = TRUE)` | `ttest_rel(x, y)` |
+| `stats.TTest2(x, y)`, Welch's | `t.test(x, y)` | `ttest_ind(x, y, equal_var = False)` |
+| `stats.TTest2(x, y, equal = true)`, Student's | `t.test(x, y, var.equal = TRUE)` | `ttest_ind(x, y)` |
+| `stats.WilcoxonTest(x - y)`, signed rank | `wilcox.test(x, y, paired = TRUE)` | `wilcoxon(x, y)` |
+| `stats.WilcoxonTest2(x, y)`, rank sum | `wilcox.test(x, y)` | `mannwhitneyu(x, y)` |
+| `stats.KsTest(x, stats.Normal(0, 1))`, any law of std/stats | `ks.test(x, "pnorm", 0, 1, exact = TRUE)` | `kstest(x, "norm")` |
+| `stats.ChiSquaredTest(counts, p = probs)` | `chisq.test(counts, p = probs)` | `chisquare(counts, f_exp)` |
+| `stats.ChiSquaredTest(table)`, a matrix | `chisq.test(table)` | `chi2_contingency(table)` |
+| `stats.CorTest(x, y)`, Pearson's | `cor.test(x, y)` | `pearsonr(x, y)` |
+
+Each takes `alternative = "two-sided"`, and those with an interval `level = 0.95`. The paired tests are the one-sample
+tests of the differences, one way to write them.
+
+```python
+from scipy import stats
+stats.ttest_ind(x, y, equal_var=False)
+```
+
+```r
+t.test(x, y)
+```
+
+```matlab
+[h, p, ci, st] = ttest2(x, y, 'Vartype', 'unequal')
+```
+
+### What each test computes
+
+- **t-tests**: Student (1908); Welch (1947) with the degrees of freedom of Satterthwaite (1946); the mean and the
+  variance in two passes, the mean and then the squares of the distances from it, corrected by the sum of the
+  distances that rounding leaves (Chan, Golub and LeVeque, 1983).
+- **Wilcoxon**: the signed rank test (Wilcoxon, 1945) drops the zeros and gives ties their mean rank; the rank sum test
+  (Mann and Whitney, 1947) gives $W$, their $U$. Exact when there are fewer than 50 values, each sample for the rank
+  sum, as R 4.6: the law of the statistic given the ranks, ties and all, by counting the subsets of the ranks; with
+  no tie, the counts of the rank sum are those of the $q$-binomial coefficient, by its Pascal rule. Beyond 50, the
+  normal approximation, with its corrections for ties and, with `correct`, for continuity.
+- **Kolmogorov–Smirnov**: $D = \max |F_n - F|$, $F_n$ the empirical law of the sample; exact up to 16,000 values
+  without ties by the method of Marsaglia, Tsang and Wang (2003), whose paper gives 13 to 15 digits there; the
+  limiting series of Kolmogorov beyond, or with ties; one-sided by the exact sum of Birnbaum and Tingey (1951). R
+  uses the limit from 100 values: its answers differ from Cesia's there unless given `exact = TRUE`.
+- **Chi-squared**: Pearson (1900), the expected counts from the margins of a table, and Yates's correction (1934) for
+  a $2 \times 2$ table, as R's default.
+- **Correlation**: $t = r \sqrt{(n - 2) / (1 - r^2)}$ on $n - 2$ degrees of freedom; its interval by Fisher's
+  $z = \operatorname{atanh} r$ (1915), for 4 values or more.
+
+On random data of every test, and both alternatives, the statistics, degrees of freedom and intervals agree with
+R 4.6.2's to $10^{-15}$ and the p-values to $10^{-13}$; the tests of Cesia check R's own examples, and the exact laws of
+the rank statistics against all their cases, counted one by one.
+
 ## Special functions
 
 `std/special` holds the eleven functions under the laws, for those who need them alone: a physicist's `erf`, a
@@ -209,7 +406,8 @@ small answer:
 special.GammaInc(100, 200, upper = true) -->
 ```
 
-The first is the gap between two floats near 1, and has no digit right. The second is $Q(100, 200)$ to 15 digits.
+The first keeps one digit: $P$ is a float near 1, and its last bits are all that is left of $Q$. The second is
+$Q(100, 200)$ to 15 digits.
 
 ### Outside the domain
 
@@ -333,13 +531,54 @@ for `GammaInc` and `BetaInc`, most of it the call itself; the computation inside
 
 ## Security
 
-The functions read only their arguments: no file, network or permission is touched. Every loop is bounded: the series
-and continued fractions stop at a fixed number of terms (2,000 to 20,000) even if they haven't converged, so no
-argument can make a call run forever, and a NaN or an infinity goes through each formula to a NaN or the right limit.
-A text, a `missing` or another value where a number is expected is a panic that names it, before any computation.
+The functions and methods read only their arguments: no file, network or permission is touched. Every loop is
+bounded: the series and continued fractions stop at a fixed number of terms (2,000 to 20,000) even if they haven't
+converged, a quantile after 100 steps of its solver, a discrete quantile once its bracket is closed, a gamma draw by
+its rejection, which accepts more than 95 % of its tries; no argument can make a call run forever. A NaN goes through
+each formula to a NaN, an infinity to the right limit. A text, a `missing` or another value where a number is expected
+is a panic that names it, before any computation; a field of a law outside its domain is a panic that names the law,
+the field and the value; a missing value in the data of a test or a model is an `Err` that names its place. The size
+of a `Sample` is checked before anything is made, and its array, as every array, counts against the program's limit of
+memory: past it the program stops with its message.
 
 ## Further reading
 
+- Student. "The probable error of a mean". *Biometrika* 6(1):1–25, 1908. <https://doi.org/10.2307/2331554>.
+- B. L. Welch. "The generalization of 'Student's' problem when several different population variances are involved".
+  *Biometrika* 34(1–2):28–35, 1947. <https://doi.org/10.1093/biomet/34.1-2.28>.
+- F. E. Satterthwaite. "An approximate distribution of estimates of variance components". *Biometrics Bulletin*
+  2(6):110–114, 1946. <https://doi.org/10.2307/3002019>.
+- Frank Wilcoxon. "Individual comparisons by ranking methods". *Biometrics Bulletin* 1(6):80–83, 1945.
+  <https://doi.org/10.2307/3001968>.
+- H. B. Mann, D. R. Whitney. "On a test of whether one of two random variables is stochastically larger than the
+  other". *The Annals of Mathematical Statistics* 18(1):50–60, 1947. <https://doi.org/10.1214/aoms/1177730491>.
+- George Marsaglia, Wai Wan Tsang, Jingbo Wang. "Evaluating Kolmogorov's distribution". *Journal of Statistical
+  Software* 8(18), 2003. <https://doi.org/10.18637/jss.v008.i18>.
+- Z. W. Birnbaum, Fred H. Tingey. "One-sided confidence contours for probability distribution functions". *The Annals
+  of Mathematical Statistics* 22(4):592–596, 1951. <https://doi.org/10.1214/aoms/1177729550>.
+- Karl Pearson. "On the criterion that a given system of deviations from the probable in the case of a correlated
+  system of variables is such that it can be reasonably supposed to have arisen from random sampling". *Philosophical
+  Magazine* 50(302):157–175, 1900. <https://doi.org/10.1080/14786440009463897>.
+- F. Yates. "Contingency tables involving small numbers and the chi-squared test". *Supplement to the Journal of the
+  Royal Statistical Society* 1(2):217–235, 1934. <https://doi.org/10.2307/2983604>.
+- R. A. Fisher. "Frequency distribution of the values of the correlation coefficient in samples from an indefinitely
+  large population". *Biometrika* 10(4):507–521, 1915. <https://doi.org/10.2307/2331838>.
+- Tony F. Chan, Gene H. Golub, Randall J. LeVeque. "Algorithms for computing the sample variance: analysis and
+  recommendations". *The American Statistician* 37(3):242–247, 1983. <https://doi.org/10.1080/00031305.1983.10483115>.
+- Gene H. Golub, Charles F. Van Loan. *Matrix Computations*, fourth edition. Johns Hopkins University Press, 2013.
+  Chapter 5, Householder's QR and least squares.
+- B. D. McCullough. "Assessing the reliability of statistical software: Part I". *The American Statistician*
+  52(4):358–366, 1998. <https://doi.org/10.1080/00031305.1998.10480597>. The LRE, the digits that agree.
+- NIST, Statistical Reference Datasets, linear regression: <https://www.itl.nist.gov/div898/strd/lls/lls.shtml>.
+- J. W. Longley. "An appraisal of least squares programs for the electronic computer from the point of view of the
+  user". *Journal of the American Statistical Association* 62(319):819–841, 1967.
+  <https://doi.org/10.1080/01621459.1967.10500896>.
+- E. B. Wilson, M. M. Hilferty. "The distribution of chi-square". *Proceedings of the National Academy of Sciences*
+  17(12):684–688, 1931. <https://doi.org/10.1073/pnas.17.12.684>. The start of the gamma quantile.
+- George Marsaglia, Wai Wan Tsang. "A simple method for generating gamma variables". *ACM Transactions on Mathematical
+  Software* 26(3):363–372, 2000. <https://doi.org/10.1145/358407.358414>.
+- G. E. P. Box, Mervin E. Muller. "A note on the generation of random normal deviates". *The Annals of Mathematical
+  Statistics* 29(2):610–611, 1958. <https://doi.org/10.1214/aoms/1177706645>.
 - Milton Abramowitz, Irene A. Stegun, editors. *Handbook of Mathematical Functions*. National Bureau of Standards, 1964.
   Formula 6.1.33, the series of $\log \Gamma$.
 - W. J. Cody. "Rational Chebyshev approximations for the error function". *Mathematics of Computation* 23(107):631–637,
