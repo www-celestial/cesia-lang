@@ -1,0 +1,688 @@
+(** The tests of optimize.Minimize and optimize.Simplex on the 35 problems of Moré, Garbow and Hillstrom (1981), from
+    their standard starts, four of them at two sizes: f is the sum of the squares of residuals r(x), written from the
+    paper. F0 and G0, f and its gradient at the start, come from a second transcription, in Python, with derivatives by
+    complex steps; Want holds the minima a case may reach: 0 where the paper gives 0, else the value of MINPACK's
+    Levenberg-Marquardt (scipy's least_squares) from the same start at tight tolerances, which matches the paper's six
+    digits, or a local minimum that the paper lists beside it. *)
+use std/list
+use std/math
+use std/matrix
+use std/optimize
+use std/result
+use std/value
+
+defn rosenbrock(x)
+  [10.0 * (x[2] - x[1] ^ 2), 1.0 - x[1]]
+end
+
+defn freudensteinRoth(x)
+  [-13.0 + x[1] + ((5.0 - x[2]) * x[2] - 2.0) * x[2], -29.0 + x[1] + ((x[2] + 1.0) * x[2] - 14.0) * x[2]]
+end
+
+powellBadlyScaled(x) = [1.0e4 * x[1] * x[2] - 1.0, math.Exp(-x[1]) + math.Exp(-x[2]) - 1.0001]
+brownBadlyScaled(x) = [x[1] - 1.0e6, x[2] - 2.0e-6, x[1] * x[2] - 2.0]
+beale(x) = [1.5 - x[1] * (1.0 - x[2]), 2.25 - x[1] * (1.0 - x[2] ^ 2), 2.625 - x[1] * (1.0 - x[2] ^ 3)]
+jennrichSampson(x) = [2.0 + 2.0 * i - (math.Exp(i * x[1]) + math.Exp(i * x[2])) for i in 1..10]
+
+defn helicalValley(x)
+  theta = 0.25
+  if x[1] > 0.0
+    theta = math.Atan(x[2] / x[1]) / (2.0 * math.Pi)
+  else if x[1] < 0.0
+    theta = math.Atan(x[2] / x[1]) / (2.0 * math.Pi) + 0.5
+  else if x[2] < 0.0
+    theta = -0.25
+  end
+  [10.0 * (x[3] - 10.0 * theta), 10.0 * (math.Sqrt(x[1] ^ 2 + x[2] ^ 2) - 1.0), x[3]]
+end
+
+bardY = [0.14, 0.18, 0.22, 0.25, 0.29, 0.32, 0.35, 0.39, 0.37, 0.58, 0.73, 0.96, 1.34, 2.10, 4.39]
+bard(x) = [bardY[i] - (x[1] + i / ((16 - i) * x[2] + list.Min(i, 16 - i) * x[3])) for i in 1..15]
+gaussianY = [0.0009, 0.0044, 0.0175, 0.0540, 0.1295, 0.2420, 0.3521, 0.3989, 0.3521, 0.2420, 0.1295, 0.0540, 0.0175, 0.0044, 0.0009]
+gaussian(x) = [x[1] * math.Exp(-x[2] * ((8.0 - i) / 2.0 - x[3]) ^ 2 / 2.0) - gaussianY[i] for i in 1..15]
+meyerY = [34780.0, 28610.0, 23650.0, 19630.0, 16370.0, 13720.0, 11540.0, 9744.0, 8261.0, 7030.0, 6005.0, 5147.0, 4427.0, 3820.0, 3307.0, 2872.0]
+meyer(x) = [x[1] * math.Exp(x[2] / (45.0 + 5.0 * i + x[3])) - meyerY[i] for i in 1..16]
+
+defn gulf(x)
+  r = matrix.Zeros(10)
+  for i in 1..10
+    t = i / 100.0
+    y = 25.0 + (-50.0 * math.Log(t)) ^ (2.0 / 3.0)
+    r[i] = math.Exp(-math.Abs(y - x[2]) ^ x[3] / x[1]) - t
+  end
+  r
+end
+
+box3d(x) = [math.Exp(-0.1 * i * x[1]) - math.Exp(-0.1 * i * x[2]) - x[3] * (math.Exp(-0.1 * i) - math.Exp(-1.0 * i)) for i in 1..10]
+powellSingular(x) = [x[1] + 10.0 * x[2], math.Sqrt(5.0) * (x[3] - x[4]), (x[2] - 2.0 * x[3]) ^ 2, math.Sqrt(10.0) * (x[1] - x[4]) ^ 2]
+wood(x) = [10.0 * (x[2] - x[1] ^ 2), 1.0 - x[1], math.Sqrt(90.0) * (x[4] - x[3] ^ 2), 1.0 - x[3], math.Sqrt(10.0) * (x[2] + x[4] - 2.0), (x[2] - x[4]) / math.Sqrt(10.0)]
+kowalikY = [0.1957, 0.1947, 0.1735, 0.1600, 0.0844, 0.0627, 0.0456, 0.0342, 0.0323, 0.0235, 0.0246]
+kowalikU = [4.0, 2.0, 1.0, 0.5, 0.25, 0.167, 0.125, 0.1, 0.0833, 0.0714, 0.0625]
+kowalikOsborne(x) = [kowalikY[i] - x[1] * (kowalikU[i] ^ 2 + kowalikU[i] * x[2]) / (kowalikU[i] ^ 2 + kowalikU[i] * x[3] + x[4]) for i in 1..11]
+brownDennis(x) = [(x[1] + i / 5.0 * x[2] - math.Exp(i / 5.0)) ^ 2 + (x[3] + x[4] * math.Sin(i / 5.0) - math.Cos(i / 5.0)) ^ 2 for i in 1..20]
+osborne1Y = [0.844, 0.908, 0.932, 0.936, 0.925, 0.908, 0.881, 0.850, 0.818, 0.784, 0.751, 0.718, 0.685, 0.658, 0.628, 0.603, 0.580,
+             0.558, 0.538, 0.522, 0.506, 0.490, 0.478, 0.467, 0.457, 0.448, 0.438, 0.431, 0.424, 0.420, 0.414, 0.411, 0.406]
+osborne1(x) = [osborne1Y[i] - (x[1] + x[2] * math.Exp(-10.0 * (i - 1) * x[4]) + x[3] * math.Exp(-10.0 * (i - 1) * x[5])) for i in 1..33]
+
+defn biggs(x)
+  r = matrix.Zeros(13)
+  for i in 1..13
+    t = 0.1 * i
+    y = math.Exp(-t) - 5.0 * math.Exp(-10.0 * t) + 3.0 * math.Exp(-4.0 * t)
+    r[i] = x[3] * math.Exp(-t * x[1]) - x[4] * math.Exp(-t * x[2]) + x[6] * math.Exp(-t * x[5]) - y
+  end
+  r
+end
+
+osborne2Y = [1.366, 1.191, 1.112, 1.013, 0.991, 0.885, 0.831, 0.847, 0.786, 0.725, 0.746, 0.679, 0.608, 0.655, 0.616, 0.606,
+             0.602, 0.626, 0.651, 0.724, 0.649, 0.649, 0.694, 0.644, 0.624, 0.661, 0.612, 0.558, 0.533, 0.495, 0.500, 0.423,
+             0.395, 0.375, 0.372, 0.391, 0.396, 0.405, 0.428, 0.429, 0.523, 0.562, 0.607, 0.653, 0.672, 0.708, 0.633, 0.668,
+             0.645, 0.632, 0.591, 0.559, 0.597, 0.625, 0.739, 0.710, 0.729, 0.720, 0.636, 0.581, 0.428, 0.292, 0.162, 0.098,
+             0.054]
+
+defn osborne2(x)
+  r = matrix.Zeros(65)
+  for i in 1..65
+    t = (i - 1) / 10.0
+    r[i] = osborne2Y[i] - (x[1] * math.Exp(-t * x[5]) + x[2] * math.Exp(-(t - x[9]) ^ 2 * x[6]) +
+      x[3] * math.Exp(-(t - x[10]) ^ 2 * x[7]) + x[4] * math.Exp(-(t - x[11]) ^ 2 * x[8]))
+  end
+  r
+end
+
+defn watson(x)
+  n = value.Len(x)
+  r = matrix.Zeros(31)
+  for i in 1..29
+    t = i / 29.0
+    s1 = 0.0
+    for j in 2..n
+      s1 += (j - 1) * x[j] * t ^ (j - 2)
+    end
+    s2 = 0.0
+    for j in 1..n
+      s2 += x[j] * t ^ (j - 1)
+    end
+    r[i] = s1 - s2 ^ 2 - 1.0
+  end
+  r[30] = x[1]
+  r[31] = x[2] - x[1] ^ 2 - 1.0
+  r
+end
+
+defn extendedRosenbrock(x)
+  n = value.Len(x)
+  r = matrix.Zeros(n)
+  for i in 1..n / 2
+    r[2 * i - 1] = 10.0 * (x[2 * i] - x[2 * i - 1] ^ 2)
+    r[2 * i] = 1.0 - x[2 * i - 1]
+  end
+  r
+end
+
+defn extendedPowell(x)
+  n = value.Len(x)
+  r = matrix.Zeros(n)
+  for i in 1..n / 4
+    k = 4 * i - 3
+    r[k] = x[k] + 10.0 * x[k + 1]
+    r[k + 1] = math.Sqrt(5.0) * (x[k + 2] - x[k + 3])
+    r[k + 2] = (x[k + 1] - 2.0 * x[k + 2]) ^ 2
+    r[k + 3] = math.Sqrt(10.0) * (x[k] - x[k + 3]) ^ 2
+  end
+  r
+end
+
+defn penalty1(x)
+  n = value.Len(x)
+  r = matrix.Zeros(n + 1)
+  for i in 1..n
+    r[i] = math.Sqrt(1.0e-5) * (x[i] - 1.0)
+  end
+  r[n + 1] = list.Sum(x * x) - 0.25
+  r
+end
+
+defn penalty2(x)
+  n = value.Len(x)
+  r = matrix.Zeros(2 * n)
+  a = math.Sqrt(1.0e-5)
+  r[1] = x[1] - 0.2
+  for i in 2..n
+    y = math.Exp(i / 10.0) + math.Exp((i - 1) / 10.0)
+    r[i] = a * (math.Exp(x[i] / 10.0) + math.Exp(x[i - 1] / 10.0) - y)
+  end
+  for i in n + 1..2 * n - 1
+    r[i] = a * (math.Exp(x[i - n + 1] / 10.0) - math.Exp(-0.1))
+  end
+  s = 0.0
+  for j in 1..n
+    s += (n - j + 1) * x[j] ^ 2
+  end
+  r[2 * n] = s - 1.0
+  r
+end
+
+defn variablyDimensioned(x)
+  n = value.Len(x)
+  r = matrix.Zeros(n + 2)
+  s = 0.0
+  for j in 1..n
+    r[j] = x[j] - 1.0
+    s += j * (x[j] - 1.0)
+  end
+  r[n + 1] = s
+  r[n + 2] = s ^ 2
+  r
+end
+
+defn trigonometric(x)
+  n = value.Len(x)
+  c = list.Sum(math.Cos(x))
+  [n - c + i * (1.0 - math.Cos(x[i])) - math.Sin(x[i]) for i in 1..n]
+end
+
+defn brownAlmostLinear(x)
+  n = value.Len(x)
+  s = list.Sum(x)
+  r = matrix.Zeros(n)
+  p = 1.0
+  for i in 1..n
+    p *= x[i]
+  end
+  for i in 1..n - 1
+    r[i] = x[i] + s - (n + 1)
+  end
+  r[n] = p - 1.0
+  r
+end
+
+defn boundaryValue(x)
+  n = value.Len(x)
+  h = 1.0 / (n + 1)
+  r = matrix.Zeros(n)
+  for i in 1..n
+    before = if i > 1 x[i - 1] else 0.0 end
+    after = if i < n x[i + 1] else 0.0 end
+    r[i] = 2.0 * x[i] - before - after + h ^ 2 * (x[i] + i * h + 1.0) ^ 3 / 2.0
+  end
+  r
+end
+
+defn integralEquation(x)
+  n = value.Len(x)
+  h = 1.0 / (n + 1)
+  r = matrix.Zeros(n)
+  for i in 1..n
+    ti = i * h
+    s1 = 0.0
+    for j in 1..i
+      s1 += j * h * (x[j] + j * h + 1.0) ^ 3
+    end
+    s2 = 0.0
+    for j in i + 1..n
+      s2 += (1.0 - j * h) * (x[j] + j * h + 1.0) ^ 3
+    end
+    r[i] = x[i] + h * ((1.0 - ti) * s1 + ti * s2) / 2.0
+  end
+  r
+end
+
+defn broydenTridiagonal(x)
+  n = value.Len(x)
+  r = matrix.Zeros(n)
+  for i in 1..n
+    before = if i > 1 x[i - 1] else 0.0 end
+    after = if i < n x[i + 1] else 0.0 end
+    r[i] = (3.0 - 2.0 * x[i]) * x[i] - before - 2.0 * after + 1.0
+  end
+  r
+end
+
+defn broydenBanded(x)
+  n = value.Len(x)
+  r = matrix.Zeros(n)
+  for i in 1..n
+    s = 0.0
+    for j in list.Max(1, i - 5)..list.Min(n, i + 1)
+      if j != i
+        s += x[j] * (1.0 + x[j])
+      end
+    end
+    r[i] = x[i] * (2.0 + 5.0 * x[i] ^ 2) + 1.0 - s
+  end
+  r
+end
+
+defn linearFullRank(x)
+  n = value.Len(x)
+  m = 20
+  s = list.Sum(x)
+  r = matrix.Zeros(m)
+  for i in 1..m
+    r[i] = -2.0 / m * s - 1.0
+    if i <= n
+      r[i] += x[i]
+    end
+  end
+  r
+end
+
+defn linearRank1(x)
+  s = 0.0
+  for j in 1..value.Len(x)
+    s += j * x[j]
+  end
+  [i * s - 1.0 for i in 1..20]
+end
+
+defn linearRank1Zero(x)
+  n = value.Len(x)
+  s = 0.0
+  for j in 2..n - 1
+    s += j * x[j]
+  end
+  r = [(i - 1) * s - 1.0 for i in 1..20]
+  r[1] = -1.0
+  r[20] = -1.0
+  r
+end
+
+defn chebyquad(x)
+  n = value.Len(x)
+  r = matrix.Zeros(n)
+  for j in 1..n
+    y = 2.0 * x[j] - 1.0
+    t0 = 1.0
+    t1 = y
+    r[1] += t1
+    for i in 2..n
+      t2 = 2.0 * y * t1 - t0
+      r[i] += t2
+      t0 = t1
+      t1 = t2
+    end
+  end
+  for i in 1..n
+    r[i] = r[i] / n - (if math.Mod(i, 2) == 1 0.0 else -1.0 / (i * i - 1.0) end)
+  end
+  r
+end
+
+cases = [
+  {Name: "rosenbrock", R: rosenbrock, F0: 24.199999999999996,
+   X0: [-1.2, 1.0],
+   G0: [-215.59999999999997, -87.99999999999999],
+   Want: [0.0]},
+  {Name: "freudenstein-roth", R: freudensteinRoth, F0: 400.5,
+   X0: [0.5, -2.0],
+   G0: [30.0, -1272.0],
+   Want: [0.0, 48.98425367924003]},
+  {Name: "powell-badly-scaled", R: powellBadlyScaled, F0: 1.1352617173483783,
+   X0: [0.0, 1.0],
+   G0: [-20000.73555888234, -0.2705969905849911],
+   Want: [0.0]},
+  {Name: "brown-badly-scaled", R: brownBadlyScaled, F0: 999998000003.0,
+   X0: [1.0, 1.0],
+   G0: [-2000000.0, -3.999999999773102e-06],
+   Want: [0.0]},
+  {Name: "beale", R: beale, F0: 14.203125,
+   X0: [1.0, 1.0],
+   G0: [0.0, 27.75],
+   Want: [0.0]},
+  {Name: "jennrich-sampson", R: jennrichSampson, F0: 4171.306161960493,
+   X0: [0.3, 0.4],
+   G0: [33796.55882384698, 87402.1466703449],
+   Want: [124.36218235561486]},
+  {Name: "helical-valley", R: helicalValley, F0: 2500.0,
+   X0: [-1.0, 0.0, 0.0],
+   G0: [0.0, -1591.5494309189535, -1000.0],
+   Want: [0.0]},
+  {Name: "bard", R: bard, F0: 41.68169586167801,
+   X0: [1.0, 1.0, 1.0],
+   G0: [43.76571428571429, -51.87123752834467, -50.55998752834467],
+   Want: [0.008214877306578964]},
+  {Name: "gaussian", R: gaussian, F0: 3.888106991166885e-06,
+   X0: [0.4, 1.0, 0.0],
+   G0: [0.0074142846683999085, -0.0007441263921651493, 3.144674729217849e-20],
+   Want: [1.127932769618727e-08]},
+  {Name: "meyer", R: meyer, F0: 1693607809.4361455,
+   X0: [0.02, 4000.0, 250.0],
+   G0: [-87276662983.66699, -5619363.134236187, 72479077.05414924],
+   Want: [87.94585517053062]},
+  {Name: "gulf", R: gulf, F0: 4.130386686104858,
+   X0: [5.0, 2.5, 0.15],
+   G0: [0.6461703336387828, 0.009497174045229317, -12.715377874799417],
+   Want: [0.0]},
+  {Name: "box-3d", R: box3d, F0: 1031.1538106093983,
+   X0: [0.0, 10.0, 20.0],
+   G0: [98.22343149849218, -2.1193742067587364, 112.3881736222035],
+   Want: [0.0]},
+  {Name: "powell-singular", R: powellSingular, F0: 215.00000000000003,
+   X0: [3.0, -1.0, 0.0, 1.0],
+   G0: [306.00000000000006, -144.0, -2.0000000000000013, -310.0000000000001],
+   Want: [0.0]},
+  {Name: "wood", R: wood, F0: 19192.0,
+   X0: [-3.0, -1.0, -3.0, -1.0],
+   G0: [-12008.0, -2080.0, -10808.0, -1880.0],
+   Want: [0.0]},
+  {Name: "kowalik-osborne", R: kowalikOsborne, F0: 0.00531317227210854,
+   X0: [0.25, 0.39, 0.415, 0.39],
+   G0: [0.13357645325189552, -0.0007475349551313854, -0.009005561577392443, 0.011135535073328488],
+   Want: [0.000307505603849237]},
+  {Name: "brown-dennis", R: brownDennis, F0: 7926693.336997433,
+   X0: [25.0, 5.0, -5.0, -1.0],
+   G0: [1149322.836365895, 1779291.674339786, -254579.58546352093, -173400.42925311538],
+   Want: [85822.20162635697]},
+  {Name: "osborne-1", R: osborne1, F0: 0.8790262935446402,
+   X0: [0.5, 1.5, -1.0, 0.01, 0.02],
+   G0: [10.70995236720299, 3.0646451760789164, 1.5810647869019363, -411.6559666774159, 76.2617360323789],
+   Want: [5.464894697482672e-05]},
+  {Name: "biggs-exp6", R: biggs, F0: 0.7790700756559702,
+   X0: [1.0, 2.0, 1.0, 1.0, 1.0, 1.0],
+   G0: [-0.1493718875334259, -0.1831634681829355, -1.4839580135756407, 1.4282775038497413, -0.1493718875334259,
+        -1.4839580135756407],
+   Want: [0.0, 0.005655649925500129]},
+  {Name: "osborne-2", R: osborne2, F0: 2.0934195142120644,
+   X0: [1.3, 0.65, 0.65, 0.7, 0.6, 3.0, 5.0, 7.0, 2.0, 4.5, 5.5],
+   G0: [1.6303769857570483, 4.486186523707437, -0.9346409291935086, -1.1841640152980408, -0.41290272574767994,
+        -0.1005783864029797, 0.15750782205644945, 0.11783204344065794, -2.818856692727671, 0.04249603754425836,
+        -1.218405428800463],
+   Want: [0.040137736293547735]},
+  {Name: "watson-6", R: watson, F0: 30.0,
+   X0: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+   G0: [0.0, -60.0, -60.0, -61.03448275862069, -62.068965517241374, -63.11492886137193],
+   Want: [0.0022876700535523456]},
+  {Name: "watson-9", R: watson, F0: 30.0,
+   X0: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+   G0: [0.0, -60.0, -60.0, -61.03448275862069, -62.068965517241374, -63.11492886137193, -64.17237279101234,
+        -65.24128365505024, -66.32164780237323],
+   Want: [1.399760138095091e-06]},
+  {Name: "extended-rosenbrock-10", R: extendedRosenbrock, F0: 120.99999999999999,
+   X0: [-1.2, 1.0, -1.2, 1.0, -1.2, 1.0, -1.2, 1.0, -1.2, 1.0],
+   G0: [-215.59999999999997, -87.99999999999999, -215.59999999999997, -87.99999999999999, -215.59999999999997,
+        -87.99999999999999, -215.59999999999997, -87.99999999999999, -215.59999999999997, -87.99999999999999],
+   Want: [0.0]},
+  {Name: "extended-powell-12", R: extendedPowell, F0: 645.0000000000001,
+   X0: [3.0, -1.0, 0.0, 1.0, 3.0, -1.0, 0.0, 1.0, 3.0, -1.0, 0.0, 1.0],
+   G0: [306.00000000000006, -144.0, -2.0000000000000013, -310.0000000000001, 306.00000000000006, -144.0,
+        -2.0000000000000013, -310.0000000000001, 306.00000000000006, -144.0, -2.0000000000000013, -310.0000000000001],
+   Want: [0.0]},
+  {Name: "penalty-1-4", R: penalty1, F0: 885.06264,
+   X0: [1.0, 2.0, 3.0, 4.0],
+   G0: [119.0, 238.00002, 357.00004, 476.00006],
+   Want: [2.2499775008999375e-05]},
+  {Name: "penalty-1-10", R: penalty1, F0: 148032.56535,
+   X0: [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0],
+   G0: [1539.0, 3078.00002, 4617.00004, 6156.000059999999, 7695.00008, 9234.0001, 10773.000119999999, 12312.00014,
+        13851.00016, 15390.00018],
+   Want: [7.087651467090381e-05]},
+  {Name: "penalty-2-4", R: penalty2, F0: 2.340008805463025,
+   X0: [0.5, 0.5, 0.5, 0.5],
+   G0: [12.599999528964354, 8.999998851345083, 5.999997768304933, 2.999998753807191],
+   Want: [9.376293007355449e-06]},
+  {Name: "penalty-2-10", R: penalty2, F0: 162.65277656596712,
+   X0: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+   G0: [255.5999995289643, 229.49999885134505, 203.99999776830495, 178.49999657136044, 152.99999524853223,
+        127.49999378658094, 101.9999921708749, 76.49999038524356, 50.99998841181576, 25.499993841845107],
+   Want: [0.00029366053745674594]},
+  {Name: "variably-dimensioned-10", R: variablyDimensioned, F0: 2198551.1625,
+   X0: [0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.30000000000000004, 0.19999999999999996, 0.09999999999999998, 0.0],
+   G0: [-228343.7, -456687.4, -685031.0999999999, -913374.8, -1141718.5000000002, -1370062.2, -1598405.9, -1826749.6,
+        -2055093.3000000005, -2283437.0000000005],
+   Want: [0.0]},
+  {Name: "trigonometric-10", R: trigonometric, F0: 0.0070757594662228356,
+   X0: [0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1, 0.1],
+   G0: [0.0356278219525943, 0.018720179560762017, 0.0038075421661199014, -0.009110090231332054, -0.02003271763159387,
+        -0.02896034003466552, -0.03589295744054701, -0.04083056984923835, -0.04377317726073954, -0.04472077967505056],
+   Want: [0.0, 2.795056121878646e-05]},
+  {Name: "brown-almost-linear-10", R: brownAlmostLinear, F0: 273.2480478286743,
+   X0: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5],
+   G0: [-110.00390243530275, -110.00390243530275, -110.00390243530275, -110.00390243530275, -110.00390243530275,
+        -110.00390243530275, -110.00390243530275, -110.00390243530275, -110.00390243530275, -99.00390243530273],
+   Want: [0.0, 1.0]},
+  {Name: "discrete-boundary-value-10", R: boundaryValue, F0: 0.0007885191012648201,
+   X0: [-0.08264462809917356, -0.1487603305785124, -0.1983471074380165, -0.23140495867768596, -0.24793388429752064,
+        -0.24793388429752067, -0.23140495867768596, -0.1983471074380165, -0.14876033057851237, -0.08264462809917358],
+   G0: [-0.025537047263835728, -0.0008140947242122217, -0.0009350684059747838, -0.001111128547489237,
+        -0.001346809821560489, -0.001644331688460606, -0.0019999038941818726, -0.0023979685862084094,
+        -0.002802428646364583, 0.02991429853681613],
+   Want: [0.0]},
+  {Name: "discrete-integral-10", R: integralEquation, F0: 0.06341684157945265,
+   X0: [-0.08264462809917356, -0.1487603305785124, -0.1983471074380165, -0.23140495867768596, -0.24793388429752064,
+        -0.24793388429752067, -0.23140495867768596, -0.1983471074380165, -0.14876033057851237, -0.08264462809917358],
+   G0: [-0.10118915152212679, -0.17760642604730564, -0.22974862382391933, -0.2584606477940141, -0.26492130232123634,
+        -0.25074337109053374, -0.21820818441295284, -0.17066037187128102, -0.11307293045031629, -0.052745097991167375],
+   Want: [0.0]},
+  {Name: "broyden-tridiagonal-10", R: broydenTridiagonal, F0: 21.0,
+   X0: [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0],
+   G0: [-26.0, -4.0, -8.0, -8.0, -8.0, -8.0, -8.0, -8.0, -4.0, -38.0],
+   Want: [0.0]},
+  {Name: "broyden-banded-10", R: broydenBanded, F0: 360.0,
+   X0: [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0],
+   G0: [-264.00000000000006, -276.00000000000006, -276.00000000000006, -276.00000000000006, -276.00000000000006,
+        -264.00000000000006, -252.0000000000001, -240.00000000000009, -228.00000000000006, -216.00000000000006],
+   Want: [0.0]},
+  {Name: "linear-full-rank-10", R: linearFullRank, F0: 50.0,
+   X0: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+   G0: [4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0, 4.0],
+   Want: [9.999999999999995]},
+  {Name: "linear-rank-1-10", R: linearRank1, F0: 8658670.0,
+   X0: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+   G0: [315280.00000000006, 630560.0000000001, 945839.9999999999, 1261120.0000000002, 1576399.9999999998,
+        1891679.9999999998, 2206960.0000000005, 2522240.0000000005, 2837520.0000000005, 3152799.9999999995],
+   Want: [4.634146341463414]},
+  {Name: "linear-rank-1-zero-10", R: linearRank1Zero, F0: 4067996.0,
+   X0: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
+   G0: [0.0, 370500.0, 555750.0, 741000.0, 926249.9999999999, 1111500.0, 1296750.0, 1482000.0, 1667250.0000000002,
+        0.0],
+   Want: [6.135135135135135]},
+  {Name: "chebyquad-6", R: chebyquad, F0: 0.04642817229746083,
+   X0: [0.14285714285714285, 0.2857142857142857, 0.42857142857142855, 0.5714285714285714, 0.7142857142857143,
+        0.8571428571428571],
+   G0: [0.8601833623317475, -0.11189283955383238, -0.2673442034269919, 0.26734420342699183, 0.11189283955383215,
+        -0.8601833623317475],
+   Want: [0.0]},
+  {Name: "chebyquad-8", R: chebyquad, F0: 0.03861769828593027,
+   X0: [0.1111111111111111, 0.2222222222222222, 0.3333333333333333, 0.4444444444444444, 0.5555555555555556,
+        0.6666666666666666, 0.7777777777777778, 0.8888888888888888],
+   G0: [0.9443301594778707, -0.4321452163017199, 0.08798317031451411, 0.27556516967125977, -0.2755651696712602,
+        -0.08798317031451384, 0.43214521630172026, -0.9443301594778715],
+   Want: [0.0035168737256779355]}
+]
+
+(* Gradients written by hand, for the problems where differences limit the answer, and for Rosenbrock's. *)
+defn rosenbrockGradient(x)
+  n = value.Len(x)
+  g = matrix.Zeros(n)
+  for i in 1..n / 2
+    a = x[2 * i - 1]
+    b = x[2 * i]
+    g[2 * i - 1] = -400.0 * a * (b - a * a) - 2.0 * (1.0 - a)
+    g[2 * i] = 200.0 * (b - a * a)
+  end
+  g
+end
+
+defn meyerGradient(x)
+  g = matrix.Zeros(3)
+  for i in 1..16
+    d = 45.0 + 5.0 * i + x[3]
+    e = math.Exp(x[2] / d)
+    g = g + 2.0 * (x[1] * e - meyerY[i]) * [e, x[1] * e / d, -x[1] * e * x[2] / (d * d)]
+  end
+  g
+end
+
+defn gulfGradient(x)
+  g = matrix.Zeros(3)
+  for i in 1..10
+    t = i / 100.0
+    y = 25.0 + (-50.0 * math.Log(t)) ^ (2.0 / 3.0)
+    u = math.Abs(y - x[2])
+    p = u ^ x[3]
+    e = math.Exp(-p / x[1])
+    side = if y >= x[2] 1.0 else -1.0 end
+    g = g + 2.0 * (e - t) * [e * p / (x[1] * x[1]), e * x[3] * u ^ (x[3] - 1.0) * side / x[1], -e * p * math.Log(u) / x[1]]
+  end
+  g
+end
+
+defn osborne1Gradient(x)
+  g = matrix.Zeros(5)
+  for i in 1..33
+    t = 10.0 * (i - 1)
+    a = math.Exp(-t * x[4])
+    b = math.Exp(-t * x[5])
+    g = g - 2.0 * (osborne1Y[i] - (x[1] + x[2] * a + x[3] * b)) * [1.0, a, b, -t * x[2] * a, -t * x[3] * b]
+  end
+  g
+end
+
+defn watsonGradient(x)
+  n = value.Len(x)
+  g = matrix.Zeros(n)
+  for i in 1..29
+    t = i / 29.0
+    s1 = 0.0
+    s2 = 0.0
+    for j in 1..n
+      if j >= 2
+        s1 += (j - 1) * x[j] * t ^ (j - 2)
+      end
+      s2 += x[j] * t ^ (j - 1)
+    end
+    r = s1 - s2 ^ 2 - 1.0
+    for j in 1..n
+      d = -2.0 * s2 * t ^ (j - 1)
+      if j >= 2
+        d += (j - 1) * t ^ (j - 2)
+      end
+      g[j] += 2.0 * r * d
+    end
+  end
+  r31 = x[2] - x[1] ^ 2 - 1.0
+  g[1] += 2.0 * x[1] - 4.0 * r31 * x[1]
+  g[2] += 2.0 * r31
+  g
+end
+
+gradients = [
+  {Name: "rosenbrock", G: rosenbrockGradient},
+  {Name: "extended-rosenbrock-10", G: rosenbrockGradient},
+  {Name: "meyer", G: meyerGradient},
+  {Name: "gulf", G: gulfGradient},
+  {Name: "osborne-1", G: osborne1Gradient},
+  {Name: "watson-6", G: watsonGradient},
+  {Name: "watson-9", G: watsonGradient}
+]
+
+sumOfSquares(c) = x -> list.Sum(c.R(x) ^ 2)
+named(name) = list.FindFirst(c -> c.Name == name, cases)
+relative(g, want) = list.Max(math.Abs(g - want)) / list.Max(math.Abs(want))
+tolOf(c) = if c.Name == "gulf" 1.0e-10 else 1.0e-8 end   (** Gulf's valley is flat: at 1e-8, f stops at 4.7e-8 *)
+
+defn reached(fx, want)
+  (** Is fx within 1e-8 of one of the minima, relative to it when it isn't 0? *)
+  for w in want
+    if w == 0.0 and math.Abs(fx) <= 1.0e-8 or w != 0.0 and math.Abs(fx - w) <= 1.0e-8 * math.Abs(w)
+      return true
+    end
+  end
+  false
+end
+
+isStarts() = list.Count(c -> math.Abs(sumOfSquares(c)(c.X0) - c.F0) > 4.0 * 2.2e-16 * c.F0, cases) == 0
+isGradientsByHand() = list.Count(p -> relative(p.G(named(p.Name).X0), named(p.Name).G0) > 1.0e-14, gradients) == 0
+
+defn isGradientsByDifferences()
+  (** The gradient of Minimize by central differences at each start, against the exact one: within 1e-7 of its largest
+      component, but where the error of the formula is larger, as it says: Brown's badly scaled function has f = 1e12
+      there, so that rounding, eps |f| / h, is about 37 against a gradient of 2e6; Osborne 1's exp(-t x4), t up to 320,
+      has a third derivative near 1e8, and h^2 |f'''| / 6 is about 3e-4 against 411. *)
+  for c in cases
+    r = optimize.Minimize(sumOfSquares(c), c.X0, steps = 0)
+    g = if result.IsOk(r) r.Value.Gradient else r.Error.Best.Gradient end
+    bound = if c.Name == "brown-badly-scaled" 1.0e-5 else if c.Name == "osborne-1" 2.0e-6 else 1.0e-7 end
+    if relative(g, c.G0) > bound
+      return false
+    end
+  end
+  true
+end
+
+limited = ["meyer", "osborne-1", "watson-9"]   (** where the gradient by differences limits f, as below *)
+
+defn isMinimizeByDifferences()
+  (** From every start but three, Minimize without a gradient reaches a minimum within 1e-8. *)
+  for c in cases
+    if list.Count(n -> n == c.Name, limited) == 0
+      r = optimize.Minimize(sumOfSquares(c), c.X0, tol = tolOf(c))
+      if not (result.IsOk(r) and reached(r.Value.F, c.Want))
+        return false
+      end
+    end
+  end
+  true
+end
+
+defn isMinimizeWithGradients()
+  (** With their gradient, the three that differences limit reach it too, and so do the others written by hand. *)
+  for p in gradients
+    c = named(p.Name)
+    r = optimize.Minimize(sumOfSquares(c), c.X0, gradient = p.G, tol = tolOf(c))
+    if not (result.IsOk(r) and reached(r.Value.F, c.Want))
+      return false
+    end
+  end
+  true
+end
+
+defn isLimitOfDifferences()
+  (** Without a gradient, the three stop where f no longer falls, short of the last digits: Meyer's within 1e-3 of its
+      minimum, Osborne 1's and Watson's at n = 9 within 1e-5. *)
+  bounds = [1.0e-3, 1.0e-5, 1.0e-5]
+  for k in 1..3
+    c = named(limited[k])
+    r = optimize.Minimize(sumOfSquares(c), c.X0)
+    if not (result.IsOk(r) and math.Abs(r.Value.F - c.Want[1]) <= bounds[k] * c.Want[1])
+      return false
+    end
+  end
+  true
+end
+
+defn isMinimizeCalls()
+  (** The points where f and its gradient are evaluated, each 2n + 1 calls of f by differences: 3,772 on the 39 cases,
+      where scipy's L-BFGS-B, given the gradient, takes 2,956; most of the gap is on Meyer, Powell's badly scaled and
+      Jennrich and Sampson's, where it stops far from the minimum. *)
+  points = 0.0
+  for c in cases
+    r = optimize.Minimize(sumOfSquares(c), c.X0)
+    v = if result.IsOk(r) r.Value else r.Error.Best end
+    points += v.Evaluations / (2.0 * value.Len(c.X0) + 1.0)
+  end
+  points <= 3800.0
+end
+
+defn isSimplex()
+  (** Simplex reaches a minimum within 1e-8 from every start but Box's three-dimensional one, where it stops at 0.0756,
+      as scipy's Nelder-Mead does: the method has no proof that it ends at a minimum. It calls f 88,705 times on the 39
+      cases, where scipy's Nelder-Mead with the same coefficients makes 90,002 calls. *)
+  total = 0
+  for c in cases
+    r = optimize.Simplex(sumOfSquares(c), c.X0, steps = 100000)
+    if not result.IsOk(r)
+      return false
+    end
+    total += r.Value.Evaluations
+    if c.Name == "box-3d"
+      if math.Abs(r.Value.F - 0.0755887) > 1.0e-6
+        return false
+      end
+    else if not reached(r.Value.F, c.Want)
+      return false
+    end
+  end
+  total <= 90002
+end
