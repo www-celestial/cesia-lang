@@ -346,6 +346,8 @@ Ils viennent de std/c : voir [C et C++](c.md).
 | `This library has no function ….` | Vérifiez le nom dans le header de la bibliothèque (le fichier .h qui déclare ses fonctions). |
 | `… isn't a C type.` | Utilisez un type de la table de C et C++. |
 | `void can't be an argument.` | Une fonction sans argument prend []. |
+| `slow takes a function of at most 6 numbers, pointers or texts, which doesn't call back.` | La lier sans slow. |
+| `… slow C calls already wait for a place: this one can't wait too.` | Trop d'appels à la fois : refuser plus tôt, comme par une limite de connexions par client. |
 | `A C function takes at most 60 arguments, not ….` | Une fonction C prend ici 60 arguments au plus. |
 | `This needs libffi, which isn't installed.` | Installez libffi, pour plus de 6 arguments, les structures passées par valeur, les fonctions variadiques et les callbacks (des fonctions de votre programme que le C appelle). |
 | `libffi refuses this signature.` | Vérifiez les types avec le header C. |

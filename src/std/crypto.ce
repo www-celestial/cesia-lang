@@ -73,8 +73,8 @@ defn Open()
     SignPair: c.Fn("crypto_sign_keypair", ["ptr", "ptr"], "i32", lib)?,
     Sign: c.Fn("crypto_sign_detached", ["ptr", "ptr", "ptr", "u64", "ptr"], "i32", lib)?,
     Verify: c.Fn("crypto_sign_verify_detached", ["ptr", "ptr", "u64", "ptr"], "i32", lib)?,
-    HashPassword: c.Fn("crypto_pwhash_str", ["ptr", "ptr", "u64", "u64", "u64"], "i32", lib)?,
-    CheckPassword: c.Fn("crypto_pwhash_str_verify", ["ptr", "ptr", "u64"], "i32", lib)?,
+    HashPassword: c.Fn("crypto_pwhash_str", ["ptr", "ptr", "u64", "u64", "u64"], "i32", lib, slow = true)?,
+    CheckPassword: c.Fn("crypto_pwhash_str_verify", ["ptr", "ptr", "u64"], "i32", lib, slow = true)?,
     PasswordOps: c.Fn("crypto_pwhash_opslimit_interactive", [], "u64", lib)?,
     PasswordMemory: c.Fn("crypto_pwhash_memlimit_interactive", [], "u64", lib)?,
     Compare: c.Fn("sodium_memcmp", ["ptr", "ptr", "u64"], "i32", lib)?
@@ -268,6 +268,7 @@ end
 
 defn HashPassword(password, s)
   (** A hash of a password with Argon2, to store and to check with CheckPassword: the result holds its own salt and settings.
+      It takes 64 MiB and about 70 ms, on a thread of its own: the other fibers run meanwhile, as c.Fn's slow says.
 
         stored = HashPassword("correct horse", s)
         text.StartsWith("$$argon2id$$", stored) --> true *)
@@ -277,7 +278,8 @@ defn HashPassword(password, s)
 end
 
 defn CheckPassword(password, stored, s)
-  (** Does the password match a result of HashPassword?
+  (** Does the password match a result of HashPassword? It takes the time and the memory of HashPassword, on a thread
+      of its own too: a server's other requests go on while one signs in.
 
         CheckPassword("correct horse", stored, s) --> true
         CheckPassword("wrong horse", stored, s) --> false *)

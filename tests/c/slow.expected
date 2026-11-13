@@ -1,0 +1,23 @@
+ticks while a slow call runs: true
+its result: true
+lengths: true
+floats: 21.0
+slow.ce:50:40: 64 slow C calls already wait for a place: this one can't wait too.
+  50 | refused = fiber.Wait(fiber.Spawn(() -> spin(10)))
+     |                                        ^
+  in <anonymous> (slow.ce:50)
+past the line: Err("64 slow C calls already wait for a place: this one can't wait too.")
+the line ends: true true
+the cancelled one: Err("cancelled")
+after a cancel: true
+slow.ce:62:40: slow takes a function of at most 6 numbers, pointers or texts, which doesn't call back.
+  62 | io.Print(fiber.Wait(fiber.Spawn(() -> c.Fn("apply_twice", ["callback", "i64"], "i64", lib, slow = true))) then result.MapErr(it.Message))
+     |                                        ^
+  in <anonymous> (slow.ce:62)
+Err("slow takes a function of at most 6 numbers, pointers or texts, which doesn't call back.")
+slow.ce:63:40: slow takes a function of at most 6 numbers, pointers or texts, which doesn't call back.
+  63 | io.Print(fiber.Wait(fiber.Spawn(() -> c.Fn("spin", ["i64"], "i64", lib, callsBack = true, slow = true))) then result.MapErr(it.Message))
+     |                                        ^
+  in <anonymous> (slow.ce:63)
+Err("slow takes a function of at most 6 numbers, pointers or texts, which doesn't call back.")
+exit 0

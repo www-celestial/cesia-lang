@@ -375,6 +375,8 @@ val c_no_function : string -> t
 val c_type : string -> t
 val c_void_arg : t
 val c_too_many : int -> t
+val c_slow_shape : t
+val c_slow_line : int -> t
 val c_no_ffi : t
 val c_bad_signature : t
 val c_need_struct : string -> t
