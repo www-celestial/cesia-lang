@@ -37,8 +37,8 @@ let ways_out (f : func) =
     (match e.e with Return { rvalue = Some v; _ } -> tail v | _ -> ());
     Resolve.children returns e
   in
-  last f.body;
-  Array.iter returns f.body;
+  last (Lazy.force f.body);
+  Array.iter returns (Lazy.force f.body);
   !out
 
 (* Does a call give a result: a native that says so, or a function whose type ends with !, or one with a way out that is
@@ -206,7 +206,8 @@ let rec walk w add known host (u : use) (e : expr) =
 (* A function: its body, whose last value goes out, and its result type. *)
 and func w add known host (f : func) =
   Array.iter (fun (p : param) -> Option.iter (walk w add known host Kept) p.default) f.params;
-  Array.iteri (fun i x -> walk w add known host (if i = Array.length f.body - 1 then Kept else Dropped) x) f.body;
+  let body = Lazy.force f.body in
+  Array.iteri (fun i x -> walk w add known host (if i = Array.length body - 1 then Kept else Dropped) x) body;
   match f.ret with
   | None -> ()
   | Some t ->
@@ -223,7 +224,7 @@ and func w add known host (f : func) =
          | None, false -> (match found w v with Some fx when not (fits w t fx) -> wrong (shown_found fx) | _ -> ()))
       (ways_out f);
     let rec question (e : expr) = (match e.e with Question _ -> errs := true | _ -> ()); Resolve.children question e in
-    Array.iter question f.body;
+    Array.iter question (Lazy.force f.body);
     if !errs && not t.tbang then add t.tpos true (Messages.missing_bang f.fname (match t.tpkg with Some a -> a ^ "." ^ t.tname | None -> t.tname))
 
-let file w ~host (fn : func) add = Array.iter (walk w add (Hashtbl.create 64) host Dropped) fn.body
+let file w ~host (fn : func) add = Array.iter (walk w add (Hashtbl.create 64) host Dropped) (Lazy.force fn.body)

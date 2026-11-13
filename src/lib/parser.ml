@@ -276,9 +276,9 @@ and mentions_it (e : expr) =
 and short_function p (body : expr) =
   let returned = node p body.pos (Return { rvalue = Some body; tail = true }) in
   let f =
-    { fname = "<anonymous>"; params = [| { pname = "it"; default = None; ptype = None } |]; body = [| returned |];
-      ret = None; nnodes = p.next_id; fpos = body.pos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
-      has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
+    { fname = "<anonymous>"; params = [| { pname = "it"; default = None; ptype = None } |]; ret = None;
+      body = Lazy.from_val [| returned |]; nnodes = p.next_id; fpos = body.pos; nvars = 0; var_names = [||]; captures = [||];
+      maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
   in
   node p body.pos (Lambda f)
 
@@ -300,8 +300,8 @@ and in_func p fname fpos parse =
   p.next_id <- saved_id;
   p.loop <- saved_loop;
   p.in_function <- saved_fn;
-  { fname; params; ret; body; nnodes; fpos; nvars = 0; var_names = [||]; captures = [||]; maybe_undef = [||];
-    has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
+  { fname; params; ret; body = Lazy.from_val body; nnodes; fpos; nvars = 0; var_names = [||]; captures = [||];
+    maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
 
 (* NAME [TYPE] [= default]: a parameter, or a field of a struct in either form. *)
 and param p what =
@@ -1065,6 +1065,6 @@ let program ?(hooks = false) ~file ~nesting toks =
             in_index = 0; saw_end = false; stmt_at = 0; bound = []; first = None; its = 0; after_if = 0; guard = None } in
   let body = block p (fun t -> t == EOF) in
   hides p body;
-  { fname = ""; params = [||]; ret = None; body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0; var_names = [||];
-    captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||];
-    export_of = [||] }
+  { fname = ""; params = [||]; ret = None; body = Lazy.from_val body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0;
+    var_names = [||]; captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0;
+    cell_of = [||]; export_of = [||] }

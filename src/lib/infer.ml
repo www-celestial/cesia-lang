@@ -48,7 +48,7 @@ let blk_loops b = Array.exists loops b
 (* Arguments of no known type give the generic version, where everything is A, unless the function has a loop: its own
    version then infers its variables, so that its loops can run typed, and native. *)
 let version_for w (p : proto) sg =
-  if w.no_spec || (Array.for_all (fun t -> t == TA) sg && not (blk_loops p.func.body)) then generic_version p
+  if w.no_spec || (Array.for_all (fun t -> t == TA) sg && not (blk_loops (Lazy.force p.func.body))) then generic_version p
   else
     match List.find_opt (fun v -> v.sg = sg) p.versions with
     | Some v -> v
@@ -164,7 +164,7 @@ and analyze w ver fn =
            | Some d -> set_var env k (as_param fn k (ty env d))
            | None -> ())
       ver.sg;
-    let last = block env fn.body in
+    let last = block env (Lazy.force fn.body) in
     let r = join (as_result fn (join env.rett last)) ver.ret in
     if r != ver.ret then begin
       ver.ret <- r;

@@ -168,6 +168,7 @@ val no_match : string -> t
 val assertion : t
 val use_nested : t
 val use_cycle : t
+val cache_damaged : t
 
 (** [use_quoted path]: the hint shows that path from the root. *)
 val use_quoted : string -> t

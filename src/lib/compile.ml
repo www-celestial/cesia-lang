@@ -770,7 +770,7 @@ let result_check c pos known : (ctx -> t -> t) option =
 let tail_check c =
   let f = c.func in
   let last =
-    match f.body with
+    match Lazy.force f.body with
     | [||] -> f.fpos
     | b -> (match b.(Array.length b - 1) with { e = Return { rvalue = Some v; _ }; _ } -> v.pos | e -> e.pos)
   in
@@ -817,21 +817,21 @@ let rec compile_version (ctx : ctx) (ver : version) =
   let prologue = if writes = [] then None else Some (seq_u writes) in
   (match ver.ret with
    | TI ->
-     let body = ci_block c f.body in
+     let body = ci_block c (Lazy.force f.body) in
      let body = match tail_check c with Some check -> fun ctx -> to_i ctx (check ctx (Int (body ctx))) | None -> body in
      let entry = wrap f ver.frame prologue to_i body in
      ver.ri <- entry;
      ver.rv <- (fun ctx -> Int (entry ctx));
      ver.rf <- (fun ctx -> float_of_int (entry ctx))
    | TF ->
-     let body = cf_block c f.body in
+     let body = cf_block c (Lazy.force f.body) in
      let body = match tail_check c with Some check -> fun ctx -> to_f ctx (check ctx (Float (body ctx))) | None -> body in
      let entry = wrap f ver.frame prologue to_f body in
      ver.rf <- entry;
      ver.rv <- (fun ctx -> Float (entry ctx));
      ver.ri <- (fun ctx -> to_i ctx (Float (entry ctx)))
    | _ ->
-     let body = ctail_block c f.body in
+     let body = ctail_block c (Lazy.force f.body) in
      let body = match tail_check c with Some check -> fun ctx -> check ctx (body ctx) | None -> body in
      let entry = wrap f ver.frame prologue (fun _ v -> v) body in
      ver.rv <- entry;
