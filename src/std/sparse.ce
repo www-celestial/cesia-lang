@@ -589,424 +589,14 @@ defn products(start, index, values, x, cols, rows, k)
 end
 
 (* Solve: an ordering that keeps the factors sparse, then Cholesky's factorization or an LU one, then two triangular
-   solves. Davis (2006) is the book of each part: ch. 4 for Cholesky, ch. 6 for LU, ch. 7 for the orderings. *)
-
-defn amd(n, cp, ci)
-  (** The order in which to eliminate the n unknowns of a symmetric pattern so that the factor fills little: perm[k]
-      is the k-th, by the approximate minimum degree of Amestoy, Davis and Duff (1996). The pattern is the columns
-      cp, ci of a symmetric matrix without its diagonal: column j holds ci[cp[j]] to ci[cp[j + 1] - 1].
-
-      The graph of the matrix shrinks as it would under elimination, as a quotient graph: eliminating the variable k
-      makes an element, the set Lk of its neighbours, and absorbs the elements around k. Each variable i keeps its
-      elements Ei and its variables Ai in one list of iw, the elements first, and an element e its variables Le. The
-      degree of i, the size of its row in the factor, is bounded by |Ai| + Σ |Le \ Lk| + |Lk \ i| (the paper's
-      approximate degree), each |Le \ Lk| counted in a pass over the elements of Lk. Variables with the same lists
-      are merged into one (supervariables, found by a hash), an element inside Lk is absorbed, and a variable left
-      with Lk alone is eliminated with k. A variable of degree over 10 √n is put aside and eliminated last, as AMD
-      does with dense rows. The order is then a postorder of the tree of elements, which fills as much. *)
-  nz = cp[n + 1] - 1
-  room = nz + math.Div(nz, 5) + 2 * n + 1
-  iw = list.Fill(0, room)
-  for q in 1..nz
-    iw[q] = ci[q]
-  end
-  pfree = nz + 1
-  pe = list.Fill(0, n + 1)       (* where the list of node i starts in iw *)
-  len = list.Fill(0, n + 1)      (* its length *)
-  elen = list.Fill(0, n + 1)     (* a variable: its elements, first in its list; -1 a variable merged or eliminated
-                                    with an element; -2 an element *)
-  nv = list.Fill(1, n + 1)       (* the variables a principal variable stands for, those of an element; 0 for the others *)
-  degree = list.Fill(0, n + 1)   (* a variable: its approximate degree; an element: |Le| in variables *)
-  w = list.Fill(1, n + 1)        (* marks; an element absorbed has 0 *)
-  parent = list.Fill(0, n + 1)   (* the tree of elements, and where a variable went *)
-  head = list.Fill(0, n + 1)     (* head[d + 1]: a variable of degree d *)
-  next = list.Fill(0, n + 1)
-  last = list.Fill(0, n + 1)
-  hhead = list.Fill(0, n + 1)    (* the variables of a hash, while supervariables are found *)
-  saved = list.Fill(0, n + 1)
-  for v in 1..n
-    pe[v] = cp[v]
-    len[v] = cp[v + 1] - cp[v]
-    degree[v] = len[v]
-  end
-  nv[n + 1] = 0
-  dense = 10.0 * math.Sqrt(1.0 * n)
-  dense = if dense < 16.0 16.0 else dense end
-  dense = if dense > n - 2.0 n - 2.0 else dense end
-  nel = 0
-  mindeg = n
-  for v in 1..n
-    d = degree[v]
-    if d == 0
-      elen[v] = -2
-      nel += 1
-      w[v] = 0
-    else if d > dense
-      nv[v] = 0
-      elen[v] = -1
-      nel += 1
-      parent[v] = n + 1
-      nv[n + 1] += 1
-    else
-      h = head[d + 1]
-      if h != 0
-        last[h] = v
-      end
-      next[v] = h
-      head[d + 1] = v
-      if d < mindeg
-        mindeg = d
-      end
-    end
-  end
-  top = 1
-  lemax = 0
-  (* Each variable of the loop below holds an integer before it starts, even those of its rare branches: the JIT makes
-     machine code of a loop only once it has seen what each of its variables holds. *)
-  src = 0
-  dst = 0
-  j = 0
-  jlast = 0
-  ln = 0
-  eln = 0
-  same = 0
-  pend = 0
-  while nel < n
-    (* 1. A variable of least degree. *)
-    k = head[mindeg + 1]
-    while k == 0
-      mindeg += 1
-      k = head[mindeg + 1]
-    end
-    h = next[k]
-    if h != 0
-      last[h] = 0
-    end
-    head[mindeg + 1] = h
-    elenk = elen[k]
-    nvk = nv[k]
-    nel += nvk
-    (* 2. Room for Lk past the lists, at most degree[k] entries: else the lists are moved together. *)
-    if elenk > 0 and pfree + degree[k] > room
-      for v in 1..n
-        if len[v] > 0 and (elen[v] >= 0 or (elen[v] == -2 and w[v] != 0))
-          saved[v] = iw[pe[v]]
-          iw[pe[v]] = -v
-        end
-      end
-      src = 1
-      dst = 1
-      while src < pfree
-        j = -iw[src]
-        if j > 0
-          iw[dst] = saved[j]
-          pe[j] = dst
-          dst += 1
-          src += 1
-          for t in 2..len[j]
-            iw[dst] = iw[src]
-            dst += 1
-            src += 1
-          end
-        else
-          src += 1
-        end
-      end
-      pfree = dst
-    end
-    (* 3. Lk: the variables of the elements of k and of k's own list, each once; the elements of k are absorbed. *)
-    dk = 0
-    nv[k] = -nvk
-    p = pe[k]
-    pk1 = if elenk == 0 p else pfree end
-    pk2 = pk1
-    for k1 in 1..elenk + 1
-      e = k
-      pj = p
-      ln = len[k] - elenk
-      if k1 <= elenk
-        e = iw[p]
-        p += 1
-        pj = pe[e]
-        ln = len[e]
-      end
-      for k2 in 1..ln
-        i = iw[pj]
-        pj += 1
-        nvi = nv[i]
-        if nvi > 0
-          dk += nvi
-          nv[i] = -nvi
-          iw[pk2] = i
-          pk2 += 1
-          ni = next[i]
-          li = last[i]
-          if ni != 0
-            last[ni] = li
-          end
-          if li != 0
-            next[li] = ni
-          else
-            head[degree[i] + 1] = ni
-          end
-        end
-      end
-      if e != k
-        parent[e] = k
-        w[e] = 0
-      end
-    end
-    if elenk != 0
-      pfree = pk2
-    end
-    degree[k] = dk
-    pe[k] = pk1
-    len[k] = pk2 - pk1
-    elen[k] = -2
-    (* 4. |Le \ Lk| for each element e of a variable of Lk, as w[e] - mark. *)
-    mark = top + 1
-    for pk in pk1..pk2 - 1
-      i = iw[pk]
-      eln = elen[i]
-      if eln > 0
-        nvi = -nv[i]
-        wnvi = mark - nvi
-        for q in pe[i]..pe[i] + eln - 1
-          e = iw[q]
-          we = w[e]
-          if we >= mark
-            w[e] = we - nvi
-          else if we != 0
-            w[e] = degree[e] + wnvi
-          end
-        end
-      end
-    end
-    top = mark + lemax
-    (* 5. The degree of each variable of Lk, its lists pruned, k first among its elements; an element inside Lk is
-       absorbed, and a variable left with k alone is eliminated with it. *)
-    for pk in pk1..pk2 - 1
-      i = iw[pk]
-      p1 = pe[i]
-      p2 = p1 + elen[i] - 1
-      pn = p1
-      hash = 0
-      d = 0
-      for q in p1..p2
-        e = iw[q]
-        if w[e] != 0
-          dext = w[e] - mark
-          if dext > 0
-            d += dext
-            iw[pn] = e
-            pn += 1
-            hash += e
-          else
-            parent[e] = k
-            w[e] = 0
-          end
-        end
-      end
-      elen[i] = pn - p1 + 1
-      p3 = pn
-      for q in p2 + 1..p1 + len[i] - 1
-        j = iw[q]
-        nvj = nv[j]
-        if nvj > 0
-          d += nvj
-          iw[pn] = j
-          pn += 1
-          hash += j
-        end
-      end
-      if d == 0
-        parent[i] = k
-        nvi = -nv[i]
-        dk -= nvi
-        nvk += nvi
-        nel += nvi
-        nv[i] = 0
-        elen[i] = -1
-      else
-        if d < degree[i]
-          degree[i] = d
-        end
-        iw[pn] = iw[p3]
-        iw[p3] = iw[p1]
-        iw[p1] = k
-        len[i] = pn - p1 + 1
-        hash = math.Mod(hash, n) + 1
-        next[i] = hhead[hash]
-        hhead[hash] = i
-        last[i] = hash
-      end
-    end
-    degree[k] = dk
-    if dk > lemax
-      lemax = dk
-    end
-    (* 6. Supervariables: two variables of Lk with the same elements and variables become one. *)
-    for pk in pk1..pk2 - 1
-      i = iw[pk]
-      if nv[i] < 0
-        hash = last[i]
-        i = hhead[hash]
-        hhead[hash] = 0
-        while i != 0 and next[i] != 0
-          ln = len[i]
-          eln = elen[i]
-          top += 1
-          for q in pe[i] + 1..pe[i] + ln - 1
-            w[iw[q]] = top
-          end
-          jlast = i
-          j = next[i]
-          while j != 0
-            same = if len[j] == ln and elen[j] == eln 1 else 0 end
-            p = pe[j] + 1
-            pend = pe[j] + ln - 1
-            while same == 1 and p <= pend
-              if w[iw[p]] != top
-                same = 0
-              end
-              p += 1
-            end
-            if same == 1
-              parent[j] = i
-              nv[i] += nv[j]
-              nv[j] = 0
-              elen[j] = -1
-              j = next[j]
-              next[jlast] = j
-            else
-              jlast = j
-              j = next[j]
-            end
-          end
-          i = next[i]
-        end
-      end
-    end
-    (* 7. Back into the lists of degrees; Lk keeps its principal variables. *)
-    p = pk1
-    for pk in pk1..pk2 - 1
-      i = iw[pk]
-      nvi = -nv[i]
-      if nvi > 0
-        nv[i] = nvi
-        d = degree[i] + dk - nvi
-        if d > n - nel - nvi
-          d = n - nel - nvi
-        end
-        h = head[d + 1]
-        if h != 0
-          last[h] = i
-        end
-        next[i] = h
-        last[i] = 0
-        head[d + 1] = i
-        if d < mindeg
-          mindeg = d
-        end
-        degree[i] = d
-        iw[p] = i
-        p += 1
-      end
-    end
-    nv[k] = nvk
-    len[k] = p - pk1
-    if len[k] == 0
-      w[k] = 0
-    end
-    if elenk != 0
-      pfree = p
-    end
-  end
-  (* The postorder of the tree: each node after its children, the elements of a node before its variables, and the
-     dense variables, children of the node n + 1, last. *)
-  child = list.Fill(0, n + 2)
-  sibling = list.Fill(0, n + 2)
-  for t in 1..n
-    j = n + 1 - t
-    if nv[j] == 0
-      pj = parent[j]
-      sibling[j] = child[pj]
-      child[pj] = j
-    end
-  end
-  for t in 1..n
-    e = n + 1 - t
-    if nv[e] > 0 and parent[e] != 0
-      pj = parent[e]
-      sibling[e] = child[pj]
-      child[pj] = e
-    end
-  end
-  perm = list.Fill(0, n)
-  stack = list.Fill(0, n + 1)
-  count = 0
-  for root in 1..n + 1
-    if parent[root] == 0 and nv[root] > 0
-      depth = 1
-      stack[1] = root
-      while depth > 0
-        x = stack[depth]
-        c = child[x]
-        if c == 0
-          depth -= 1
-          if x <= n
-            count += 1
-            perm[count] = x
-          end
-        else
-          child[x] = sibling[c]
-          depth += 1
-          stack[depth] = c
-        end
-      end
-    end
-  end
-  if count != n
-    bug.Panic("sparse: the ordering placed $count of $n unknowns; this is a bug of std/sparse.")
-  end
-  perm
-end
-
-defn symmetric(a, t)
-  (** The pattern of a + t without its diagonal, t the transpose of a: the columns {Start, Index} that amd takes. *)
-  n = a.Cols
-  as = a.start
-  ai = a.index
-  ts = t.start
-  ti = t.index
-  start = list.Fill(0, n + 1)
-  index = list.Fill(0, a.Nnz + t.Nnz)
-  p = 1
-  for j in 1..n
-    start[j] = p
-    qa = as[j]
-    ea = as[j + 1]
-    qt = ts[j]
-    et = ts[j + 1]
-    while qa < ea or qt < et
-      ra = if qa < ea ai[qa] else n + 1 end
-      rt = if qt < et ti[qt] else n + 1 end
-      r = if ra < rt ra else rt end
-      if ra == r
-        qa += 1
-      end
-      if rt == r
-        qt += 1
-      end
-      if r != j
-        index[p] = r
-        p += 1
-      end
-    end
-  end
-  start[n + 1] = p
-  {Start: start, Index: index}
-end
+   solves. Davis (2006) is the book of each part: ch. 4 for Cholesky, ch. 6 for LU, ch. 7 for the orderings. The
+   ordering and LU are native code, private to this package: ordering(n, start, index), the approximate minimum degree
+   of Amestoy, Davis and Duff (1996) on the pattern of a + a'; luFactor(n, start, index, values, q, tol), left-looking
+   with the depth-first search of Gilbert and Peierls (1988), the columns of L and U and where each row went, or
+   missing when a column has no pivot above 0. Written in Cesia first, AMD took from 100 to 580 ms a call on 2-D
+   Poisson 300^2 against 60 to 85 ms native, as the JIT made its large loop again at each call, and LU 3.7 s against
+   1.9 s on a convection-diffusion matrix of the same size. Cholesky's factorization stays in Cesia: native, it was 10
+   to 25 % faster only, as both wait on the memory. *)
 
 defn gram(a, t)
   (** The pattern of a' a without its diagonal, t the transpose of a, without the rows of a of more than 10 √n
@@ -1192,145 +782,6 @@ defn cholesky(a, perm)
   {Start: lp, Index: li, Values: lx}
 end
 
-defn lu(a, q, tol)
-  (** The LU factorization of a q: p a q = L U, L lower triangular with ones on its diagonal, which is not kept, U upper
-      triangular with its diagonal last in each column, both in columns, their rows in the order of the pivots, and
-      Pinv, where each row of a went: {L, U, Pinv}, or missing when a is singular, a column without a pivot above 0.
-      Left-looking, by Gilbert and Peierls (1988): column k of L and U is a sparse triangular solve with the columns
-      before it, its pattern found first by a depth-first search, so the work is that of the arithmetic. The pivot is
-      the largest candidate of the column, or its diagonal when that one is at least tol times it. *)
-  n = a.Cols
-  as = a.start
-  ai = a.index
-  av = a.values
-  room = 4 * a.Nnz + n
-  lp = list.Fill(0, n + 1)
-  li = list.Fill(0, room)
-  lx = matrix.Zeros(room)
-  lroom = room
-  up = list.Fill(0, n + 1)
-  ui = list.Fill(0, room)
-  ux = matrix.Zeros(room)
-  uroom = room
-  pinv = list.Fill(0, n)
-  x = matrix.Zeros(n)
-  xi = list.Fill(0, n + 1)
-  seen = list.Fill(0, n)
-  stack = list.Fill(0, n)
-  pos = list.Fill(0, n)
-  lfree = 1
-  ufree = 1
-  for k in 1..n
-    lp[k] = lfree
-    up[k] = ufree
-    if lfree + n > lroom
-      lroom = 2 * lroom + n
-      li = list.Concat(li, list.Fill(0, lroom - value.Len(li)))
-      lx = list.Concat(lx, matrix.Zeros(lroom - value.Len(lx)))
-    end
-    if ufree + n > uroom
-      uroom = 2 * uroom + n
-      ui = list.Concat(ui, list.Fill(0, uroom - value.Len(ui)))
-      ux = list.Concat(ux, matrix.Zeros(uroom - value.Len(ux)))
-    end
-    jq = q[k]
-    (* The pattern of column k: the rows reached from those of a(:, jq) through the columns of L so far, in an
-       order where each comes after those it depends on, xi[top] to xi[n]. *)
-    top = n + 1
-    for r in as[jq]..as[jq + 1] - 1
-      i = ai[r]
-      if seen[i] != k
-        depth = 1
-        stack[1] = i
-        while depth > 0
-          j = stack[depth]
-          jj = pinv[j]
-          if seen[j] != k
-            seen[j] = k
-            pos[depth] = if jj == 0 0 else lp[jj] end
-          end
-          pend = if jj == 0 0 else lp[jj + 1] end
-          at = pos[depth]
-          pushed = 0
-          while at < pend and pushed == 0
-            c = li[at]
-            at += 1
-            if seen[c] != k
-              pos[depth] = at
-              depth += 1
-              stack[depth] = c
-              pushed = 1
-            end
-          end
-          if pushed == 0
-            depth -= 1
-            top -= 1
-            xi[top] = j
-          end
-        end
-      end
-    end
-    (* The values: x = L \ a(:, jq) on that pattern. *)
-    for r in as[jq]..as[jq + 1] - 1
-      x[ai[r]] = av[r]
-    end
-    for t in top..n
-      j = xi[t]
-      jj = pinv[j]
-      if jj != 0
-        xj = x[j]
-        for r in lp[jj]..lp[jj + 1] - 1
-          c = li[r]
-          x[c] = x[c] - lx[r] * xj
-        end
-      end
-    end
-    (* The pivot, among the rows not pivots yet; the others go to U. *)
-    ipiv = 0
-    big = -1.0
-    for t in top..n
-      i = xi[t]
-      if pinv[i] == 0
-        v = math.Abs(x[i])
-        if v > big
-          big = v
-          ipiv = i
-        end
-      else
-        ui[ufree] = pinv[i]
-        ux[ufree] = x[i]
-        ufree += 1
-      end
-    end
-    if ipiv == 0 or not (big > 0.0)
-      return missing
-    end
-    if pinv[jq] == 0 and math.Abs(x[jq]) >= tol * big
-      ipiv = jq
-    end
-    pivot = x[ipiv]
-    ui[ufree] = k
-    ux[ufree] = pivot
-    ufree += 1
-    pinv[ipiv] = k
-    for t in top..n
-      i = xi[t]
-      if pinv[i] == 0
-        li[lfree] = i
-        lx[lfree] = x[i] / pivot
-        lfree += 1
-      end
-      x[i] = 0.0
-    end
-  end
-  lp[n + 1] = lfree
-  up[n + 1] = ufree
-  for r in 1..lfree - 1
-    li[r] = pinv[li[r]]
-  end
-  {L: {Start: lp, Index: li, Values: lx}, U: {Start: up, Index: ui, Values: ux}, Pinv: pinv}
-end
-
 defn cholSolve(f, perm, b)
   (** x of a x = b from p a p' = L L': x = p' (L' \ (L \ (p b))), for one column b. *)
   n = value.Len(perm)
@@ -1411,8 +862,8 @@ defn shape(a, t)
   av = a.values
   ts = t.start
   ti = t.index
-  positive = true
-  diagonal = true
+  positive = 0
+  nonzero = 0
   matched = 0
   off = 0
   for j in 1..n
@@ -1433,15 +884,15 @@ defn shape(a, t)
         end
       end
     end
-    if not (d > 0.0)
-      positive = false
+    if d > 0.0
+      positive += 1
     end
-    if d == 0.0
-      diagonal = false
+    if d != 0.0
+      nonzero += 1
     end
   end
   same = value.Equal(a.index, t.index) and value.Equal(a.start, t.start) and value.Equal(a.values, t.values)
-  {Symmetric: same, Positive: positive, Matched: if off == 0 1.0 else 1.0 * matched / off end, Diagonal: diagonal}
+  {Symmetric: same, Positive: positive == n, Matched: if off == 0 1.0 else 1.0 * matched / off end, Diagonal: nonzero == n}
 end
 
 defn factored(a)
@@ -1455,21 +906,23 @@ defn factored(a)
   s = shape(a, t)
   near = s.Symmetric or (s.Matched >= 0.5 and s.Diagonal)
   if near
-    g = symmetric(a, t)
-    perm = amd(n, g.Start, g.Index)
+    perm = ordering(n, a.start, a.index)
     if s.Symmetric and s.Positive
       f = cholesky(a, perm)
       if not value.IsMissing(f)
         return {Cholesky: true, F: f, Perm: perm}
       end
     end
-    f = lu(a, perm, threshold)
+    f = luFactor(n, a.start, a.index, a.values, perm, threshold)
   else
     g = gram(a, t)
-    perm = amd(n, g.Start, g.Index)
-    f = lu(a, perm, 1.0)
+    perm = ordering(n, g.Start, g.Index)
+    f = luFactor(n, a.start, a.index, a.values, perm, 1.0)
   end
-  if value.IsMissing(f) missing else {Cholesky: false, F: f, Perm: perm} end
+  if value.IsMissing(f)
+    return missing
+  end
+  {Cholesky: false, F: {L: {Start: f[1], Index: f[2], Values: f[3]}, U: {Start: f[4], Index: f[5], Values: f[6]}, Pinv: f[7]}, Perm: perm}
 end
 
 solved(f, b) = if f.Cholesky cholSolve(f.F, f.Perm, b) else luSolve(f.F, f.Perm, b) end

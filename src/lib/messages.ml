@@ -171,6 +171,8 @@ let question_value a =
 let need_task name a = plain (Printf.sprintf "%s needs a task, not %s." name a)
 let empty_text name = plain (Printf.sprintf "%s needs a text that isn't empty." name)
 let need_array name a = plain (Printf.sprintf "%s needs an array, not %s." name a)
+let sparse_bad name =
+  plain (Printf.sprintf "%s: this is no sparse.Matrix that std/sparse made: its arrays don't fit together." name)
 let c_no_library name reason = plain (Printf.sprintf "Can't load %s: %s." name reason)
 let c_no_function name = plain (Printf.sprintf "This library has no function %s." name)
 let c_type name = plain (Printf.sprintf "%s isn't a C type." name)
