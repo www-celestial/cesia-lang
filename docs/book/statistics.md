@@ -137,7 +137,7 @@ tinv(0.975, 9), chi2inv(0.95, 4), binocdf(5, 20, 0.3), poisspdf(0:2, 4)
   where it is small. For $\nu = 1$ and $\nu = 2$, Student's quantile has its closed forms. Where the answer underflows
   the first term of the series is the answer.
 - **Pdf.** The densities whose parameters are large, a binomial of $10^6$ trials, a gamma of shape 1,000, are computed
-  through $\lambda = x / a$ and Stirling's series, $\sqrt{a / 2\pi}\, e^{a(\log\lambda - \lambda + 1)} / \Gamma^*(a)$,
+  through $\lambda = x / a$ and Stirling's series, $\sqrt{a / 2\pi}\, e^{a(\log\lambda - \lambda + 1)} / \Gamma^{\text{*}}(a)$,
   so that two large logarithms never cancel: the factors of the incomplete ratios of std/special.
 
 ### Beside R
@@ -260,7 +260,7 @@ mdl = fitlm(cars, 'mpg ~ wt + hp')
 
 ### How it is computed
 
-Lm factors $[X \mid y]$, the columns of the model and then $y$, by Householder's reflections (Golub and Van Loan, 2013,
+Lm factors $[X | y]$, the columns of the model and then $y$, by Householder's reflections (Golub and Van Loan, 2013,
 chapter 5), as R's `lm` does with LINPACK's `dqrdc2` and LAPACK with `dgeqrf`. Its upper triangle $R$ gives the
 estimates by back substitution, its last column holds $Q^T y$ and the norm of the residuals, so $Q$ is never formed;
 the standard errors are $\sigma \sqrt{((R^T R)^{-1})_{jj}}$ from the inverse of $R$, with
@@ -363,7 +363,7 @@ t.test(x, y)
 - **Chi-squared**: Pearson (1900), the expected counts from the margins of a table, and Yates's correction (1934) for
   a $2 \times 2$ table, as R's default.
 - **Correlation**: $t = r \sqrt{(n - 2) / (1 - r^2)}$ on $n - 2$ degrees of freedom; its interval by Fisher's
-  $z = \operatorname{atanh} r$ (1915), for 4 values or more.
+  $z = \text{atanh}\, r$ (1915), for 4 values or more.
 
 On random data of every test, and both alternatives, the statistics, degrees of freedom and intervals agree with
 R 4.6.2's to $10^{-15}$ and the p-values to $10^{-13}$; the tests of Cesia check R's own examples, and the exact laws of
@@ -387,14 +387,14 @@ special.BetaInc(2, 3, 0.4) -->
 | Cesia | What it is | R | Python | MATLAB |
 |---|---|---|---|---|
 | `special.Gamma(x)` | $\Gamma(x)$, $(n - 1)!$ at a whole $n$ | `gamma(x)` | `scipy.special.gamma(x)` | `gamma(x)` |
-| `special.LogGamma(x)` | $\log \lvert\Gamma(x)\rvert$, finite where $\Gamma$ overflows | `lgamma(x)` | `gammaln(x)` | `gammaln(x)` |
+| `special.LogGamma(x)` | the $\log$ of the absolute value of $\Gamma(x)$, finite where $\Gamma$ overflows | `lgamma(x)` | `gammaln(x)` | `gammaln(x)` |
 | `special.Beta(a, b)` | $B(a, b) = \Gamma(a) \Gamma(b) / \Gamma(a + b)$ | `beta(a, b)` | `beta(a, b)` | `beta(a, b)` |
 | `special.LogBeta(a, b)` | $\log B(a, b)$ | `lbeta(a, b)` | `betaln(a, b)` | `betaln(a, b)` |
-| `special.Erf(x)` | $\frac{2}{\sqrt\pi} \int_0^x e^{-t^2} dt$ | `2 * pnorm(x * sqrt(2)) - 1` | `erf(x)` | `erf(x)` |
-| `special.Erfc(x)` | $1 - \mathrm{erf}(x)$, computed directly | `2 * pnorm(-x * sqrt(2))` | `erfc(x)` | `erfc(x)` |
-| `special.Erfcx(x)` | $e^{x^2} \mathrm{erfc}(x)$ | | `erfcx(x)` | `erfcx(x)` |
-| `special.ErfInv(y)` | the $x$ where $\mathrm{erf}(x) = y$ | `qnorm((y + 1) / 2) / sqrt(2)` | `erfinv(y)` | `erfinv(y)` |
-| `special.ErfcInv(y)` | the $x$ where $\mathrm{erfc}(x) = y$ | `qnorm(y / 2, lower.tail = FALSE) / sqrt(2)` | `erfcinv(y)` | `erfcinv(y)` |
+| `special.Erf(x)` | $2 P(0 < Z < x \sqrt 2)$ for a standard normal $Z$ | `2 * pnorm(x * sqrt(2)) - 1` | `erf(x)` | `erf(x)` |
+| `special.Erfc(x)` | $1 - \text{erf}(x)$, computed directly | `2 * pnorm(-x * sqrt(2))` | `erfc(x)` | `erfc(x)` |
+| `special.Erfcx(x)` | $e^{x^2} \text{erfc}(x)$ | | `erfcx(x)` | `erfcx(x)` |
+| `special.ErfInv(y)` | the $x$ where $\text{erf}(x) = y$ | `qnorm((y + 1) / 2) / sqrt(2)` | `erfinv(y)` | `erfinv(y)` |
+| `special.ErfcInv(y)` | the $x$ where $\text{erfc}(x) = y$ | `qnorm(y / 2, lower.tail = FALSE) / sqrt(2)` | `erfcinv(y)` | `erfcinv(y)` |
 | `special.GammaInc(a, x)` | $P(a, x)$, the regularized lower incomplete gamma | `pgamma(x, a)` | `gammainc(a, x)` | `gammainc(x, a)` |
 | `special.GammaInc(a, x, upper = true)` | $Q(a, x) = 1 - P(a, x)$, computed directly | `pgamma(x, a, lower.tail = FALSE)` | `gammaincc(a, x)` | `gammainc(x, a, 'upper')` |
 | `special.BetaInc(a, b, x)` | $I_x(a, b)$, the regularized incomplete beta | `pbeta(x, a, b)` | `betainc(a, b, x)` | `betainc(x, a, b)` |
@@ -471,10 +471,10 @@ digits right, 45 $\epsilon$ about 14 digits.
   a difference that is exact. Near 1 and 2, where $\log \Gamma$ is 0, the series keeps the relative precision too.
 - **`Erf`, `Erfc`, `Erfcx`.** The rational approximations of Cody (1969), with the coefficients of his SPECFUN (1993),
   on $|x| \le 0.46875$, up to 4 and beyond. For a large $x$, $e^{-x^2}$ multiplies the error of $x^2$ by $x^2$: $x$ is
-  split into a number of 1/16ths, whose square is exact, and the rest, so that $\mathrm{erfc}$ keeps its digits down to
+  split into a number of 1/16ths, whose square is exact, and the rest, so that $\text{erfc}$ keeps its digits down to
   $10^{-308}$, at $x = 26.5$.
 - **`ErfInv`, `ErfcInv`.** The normal quantile PPND16 of Wichura (1988), rational approximations in three regions,
-  "accurate to about 1 part in $10^{16}$" (the paper), as $\mathrm{erfc}(x) = 2 P(Z > x \sqrt 2)$ for $Z$ of the
+  "accurate to about 1 part in $10^{16}$" (the paper), as $\text{erfc}(x) = 2 P(Z > x \sqrt 2)$ for $Z$ of the
   normal law. `ErfcInv` keeps its digits for a small `y`, down to the smallest float.
 - **`GammaInc`.** The regions of DiDonato and Morris (1986): near $x = a$ for $a \ge 20$, from $0.6 a$ to $1.4 a$,
   Temme's uniform asymptotic expansion (Temme 1979; DLMF 8.12), whose 142 coefficients come from the recurrence of
@@ -482,7 +482,7 @@ digits right, 45 $\epsilon$ about 14 digits.
   continued fraction for $Q$ (DLMF 8.9.2), evaluated forward by the modified method of Lentz (Thompson and Barnett,
   1986); for $a < 1$ and $x \le 1.5$, a series of $Q$ itself, whose three terms are each of the size of $a$, so that $Q$
   keeps its digits as $a$ goes to 0. The factor $x^a e^{-x} / \Gamma(a)$ is computed with `pow` and `exp` where neither
-  overflows, and else through $\lambda = x / a$: $\sqrt{a / 2\pi} \, e^{a (\log \lambda - \lambda + 1)} / \Gamma^*(a)$,
+  overflows, and else through $\lambda = x / a$: $\sqrt{a / 2\pi} \, e^{a (\log \lambda - \lambda + 1)} / \Gamma^{\text{*}}(a)$,
   with $\log(1 + t) - t$ computed without cancellation for a small $t$.
 - **`BetaInc`.** The smaller tail is computed: the one below the mean $a / (a + b)$, by the symmetry
   $I_x(a, b) = 1 - I_{1 - x}(b, a)$ (DLMF 8.17.4); for a small $x$ by the power series, else by the even part of the
@@ -501,7 +501,7 @@ On the values of 70 digits, a few thousand points spread over each domain:
 | `LogGamma`, within 0.25 of 1 or 2 | 208 | 2.4 $\epsilon$ | 0.36 $\epsilon$ |
 | `Gamma`, $0 < x < 171$ | 962 | 2.4 $\epsilon$ | 0.31 $\epsilon$ |
 | `Gamma`, $-170 < x < 0$ | 600 | 3.3 $\epsilon$ | 0.72 $\epsilon$ |
-| `Erf`, $\lvert x \rvert < 6$ | 1,200 | 2.0 $\epsilon$ | 0.34 $\epsilon$ |
+| `Erf`, $-6 < x < 6$ | 1,200 | 2.0 $\epsilon$ | 0.34 $\epsilon$ |
 | `ErfInv` and the normal quantile, $p$ down to $10^{-300}$ | 300 | 2.0 $\epsilon$ | 0.58 $\epsilon$ |
 
 On Boost's data, beside R 4.6.2 and scipy 1.18.1 on the same points:
@@ -529,7 +529,7 @@ data, to half an $\epsilon$.
 
 The largest errors of the incomplete ratios sit in their far tails, where the function itself changes by a large factor
 for a small change of its arguments: a relative change of $\epsilon$ in $x$ changes $P(a, x)$ by about
-$c \, \epsilon$, with $c = \lvert x \, \partial P / \partial x \rvert / P$, which reaches thousands there; the 70-digit tests
+$c \, \epsilon$, with $c = |x \, P'| / P$, $P'$ the slope of $P$ in $x$, which reaches thousands there; the 70-digit tests
 of Cesia accept $16 (1 + c) \, \epsilon$ there, and $4 \epsilon$ for `LogGamma`, `Gamma`, `LogBeta`, `Erf` and `Erfc`.
 DiDonato and Morris call this the *inherent error*: their codes promise 14 digits "when precision is not restricted by
 inherent error". Where an argument is below about $10^{-3}$, `BetaInc` loses up to about 2,500 $\epsilon$ in the tail
