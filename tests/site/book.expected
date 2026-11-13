@@ -118,7 +118,7 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;http://127.0.0.1:18751/&
 <nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><a rel="next" href="math.html">Formulas and colors →</a></nav>
 </main>
 == the tabs, for tools/tabs.ce: each with what its cesia block showed
-[{"Page":"docs/book/first.md","Line":55,"Lang":"python","Code":"print(5.5)\nprint(\"five\", 5)\n","Want":"5.5\nfive 5\n","Files":"TMP/proj/docs/book/files"},{"Page":"docs/book/first.md","Line":60,"Lang":"r","Code":"cat(5.5, \"\\n\")\ncat(\"five\", 5, \"\\n\")\n","Want":"5.5\nfive 5\n","Files":"TMP/proj/docs/book/files"},{"Page":"docs/book/first.md","Line":65,"Lang":"matlab","Code":"disp(5.5)\nprintf(\"five %d\\n\", 5)\n","Want":"5.5\nfive 5\n","Files":"TMP/proj/docs/book/files"}]
+[{"Page":"docs/book/first.md","Line":55,"Lang":"python","Code":"print(5.5)\nprint(\"five\", 5)\n","Want":"5.5\nfive 5\n","Files":"docs/book/files"},{"Page":"docs/book/first.md","Line":60,"Lang":"r","Code":"cat(5.5, \"\\n\")\ncat(\"five\", 5, \"\\n\")\n","Want":"5.5\nfive 5\n","Files":"docs/book/files"},{"Page":"docs/book/first.md","Line":65,"Lang":"matlab","Code":"disp(5.5)\nprintf(\"five %d\\n\", 5)\n","Want":"5.5\nfive 5\n","Files":"docs/book/files"}]
 == the columns of a method: its module, then its struct, then itself
 <a href="../greet.html" class="open more">greet</a>
 <a href="Greeter.html" class="open more">Greeter</a>
@@ -202,8 +202,16 @@ SIL OPEN FONT LICENSE Version 1.1
 <p class="alert-title">Tip</p>
 <p>The site shows this page as its README.</p>
 </div>
+<div class="tabs" role="group" aria-label="The example in other languages">
+<input type="radio" name="tab.9" id="tab.9.cesia" checked><label for="tab.9.cesia">Cesia</label>
+<input type="radio" name="tab.9" id="tab.9.python"><label for="tab.9.python">Python</label>
+<div class="tab">
 <pre><code class="cesia"><span class="k">use</span> std/http
 http.<span class="f">Serve</span>(http.<span class="f">App</span>(), port = <span class="m">8080</span>)</code></pre>
+</div>
+<div class="tab"><pre><code class="language-python">from http.server import HTTPServer, BaseHTTPRequestHandler
+HTTPServer((&quot;127.0.0.1&quot;, 8080), BaseHTTPRequestHandler).serve_forever()</code></pre></div>
+</div>
 </main>
 <a href="readme.html">README</a>
 == the French site: a page translated, with the values of its blocks on its own lines, and one not yet

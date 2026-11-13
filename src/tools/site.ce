@@ -1124,7 +1124,8 @@ end
 
 defn tabsOf(page, r)
   (** The tabs of a page of the book for tools/tabs.ce, each {Page, Line, Lang, Code, Want, Files}: Want is what its cesia
-      block showed, the value of each --> on a line and what it printed, in their order, and Files the files/ of its book. *)
+      block showed, the value of each --> on a line and what it printed, in their order, and Files the files/ of its book,
+      from the root of the project: the site holds no path of the machine that built it. *)
   if value.IsMissing(r)
     return []
   end
@@ -1134,7 +1135,7 @@ defn tabsOf(page, r)
   for g in tabGroups(page.Blocks)
     k = list.IndexOf(g.Line, lines)
     want = if value.IsMissing(k) or k > value.Len(said) "" else said[k] end
-    out = list.Concat(out, [{Page: page.Source, Line: t.Line, Lang: t.Lang, Code: t.Text, Want: want, Files: page.Files} for t in g.Tabs])
+    out = list.Concat(out, [{Page: page.Source, Line: t.Line, Lang: t.Lang, Code: t.Text, Want: want, Files: "docs/$(page.Book)/files"} for t in g.Tabs])
   end
   out
 end
@@ -1855,10 +1856,8 @@ defn bookBody(site, page, results)
       return ""
     end
     k = list.IndexOf(line, [x.Line for x in page.Runs])
-    if text.Split(" ", info)[1] != "cesia" or value.IsMissing(k)
-      return hooks.Code(info, s, line)
-    end
-    shown = bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks, said = wordsOf(lang))
+    (* A cesia block of a README is shown, not run: its tabs are drawn all the same. *)
+    shown = if text.Split(" ", info)[1] != "cesia" or value.IsMissing(k) hooks.Code(info, s, line) else bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks, said = wordsOf(lang)) end
     if dict.Has(line, withTabs) tabbed(withTabs[line], shown, wordsOf(lang)) else shown end
   end
   out = html(page.Text, dict.Put("Code", code, hooks))

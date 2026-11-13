@@ -10,3 +10,8 @@ Un tout petit projet, avec [un livre](docs/fr/book/index.md), ses [premiers pas]
 use std/http
 http.Serve(http.App(), port = 8080)
 ```
+
+```python
+from http.server import HTTPServer, BaseHTTPRequestHandler
+HTTPServer(("127.0.0.1", 8080), BaseHTTPRequestHandler).serve_forever()
+```
