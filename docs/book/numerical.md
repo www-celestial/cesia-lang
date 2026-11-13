@@ -340,17 +340,18 @@ at eccentricities 0.1 to 0.9, the invariants of a spinning rigid body, the orbit
 
 With `stiff = true`, Solve uses Rodas5P (Steinebach 2023), a *Rosenbrock method* (Hairer and Wanner II, §IV.7). Where
 an explicit method like Dormand and Prince's takes each stage from the stages before it, a Rosenbrock method solves, at
-each stage, a linear system with the matrix $W = I - h\gamma J$, where $J = \partial f / \partial y$ is the *Jacobian*
-of `f` at the start of the step: the $n \times n$ matrix of how each component of $f$ changes with each component of
-$y$. A fast component, which decays at a rate $\lambda$ far below 0, has its change divided by about $1 -
+each stage, a linear system with the matrix $W = I - h\gamma J$, where $J = f_y$ is the *Jacobian* of `f` at the start
+of the step: the $n \times n$ matrix of how each component of $f$ changes with each component of $y$. A fast component, which decays at a rate $\lambda$ far below 0, has its change divided by about $1 -
 h\gamma\lambda$, so its error dies out whatever the step: the method is *L-stable*, its factor of growth $R(z)$ at most
 1 for every $z = h\lambda$ whose real part is below 0, and 0 as $z$ goes to $-\infty$. The steps then follow the slow
 part of the solution only.
 
-In the form with the stages $u_i$ that the code RODAS of Hairer and Wanner uses, for a step from $t$ to $t + h$:
+In the form with the stages $u_i$ that the code RODAS of Hairer and Wanner uses, for a step from $t$ to $t + h$, with
+$f_t$ the derivative of $f$ in $t$:
 
-$$(I - h\gamma J)\, u_i = h\gamma\, f\Big(t + c_i h,\; y + \sum_{j<i} a_{ij} u_j\Big) + h^2 \gamma\, d_i\,
-\frac{\partial f}{\partial t} + \gamma \sum_{j<i} c_{ij} u_j$$
+$$
+(I - h\gamma J)\, u_i = h\gamma\, f(t + c_i h,\; y + \sum_{j<i} a_{ij} u_j) + h^2 \gamma\, d_i\, f_t + \gamma \sum_{j<i} c_{ij} u_j
+$$
 
 Rodas5P has 8 stages and $\gamma = 0.21193756319429014$; its numbers $a$, $c$ and $d$ are those Steinebach publishes
 with the Julia package OrdinaryDiffEq.jl. $y_1 = y + \sum_j a_{8j} u_j + u_8$ is of order 5; $y + \sum_j a_{8j} u_j$,
@@ -364,7 +365,7 @@ methods (`ode15s`, `Radau`, `BDF`), so no iteration that can fail to converge.
   differences, with $\text{atol}_j$ as the typical size of $y_j$, under which the error test sees no difference
   ($\sqrt{\epsilon}$ when both are 0). The rule of the code RODAS, $\sqrt{\epsilon \max(|y_j|, 10^{-5})}$, moves
   $y_2$ of Robertson's problem, about $10^{-13}$, by 400 times its own size: the Jacobian comes out 200 times too large in one place, and the solve
-  takes 4 times more steps, to an answer 15 % off. $\partial f / \partial t$ comes from one more difference, over
+  takes 4 times more steps, to an answer 15 % off. $f_t$ comes from one more difference, over
   $\sqrt{\epsilon} |h|$, the scale the step resolves. Without `jacobian`, a step calls `f` $n + 1$ more times.
 - **The next step**: $h_\text{new} = h \cdot \min(6, \max(0.2, 0.9 \cdot \text{err}^{-1/5}))$, or smaller by the
   *predictive control* of Gustafsson (1994), as in RODAS, $h \cdot 0.9 \cdot (h / h_\text{prev})^{-1} \cdot
