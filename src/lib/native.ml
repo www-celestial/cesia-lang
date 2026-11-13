@@ -45,10 +45,18 @@ let print_error ctx args =
   w.err (String.concat " " (Array.to_list (Array.map (Value.text_of ctx) args)) ^ "\n");
   Missing
 
+(* Eight bytes at a time (SWAR): a byte that continues a code point is 10xxxxxx, its high bit set and the next one clear,
+   which [w land lnot (w lsl 1)] leaves at the high bit; a multiplication adds up those bits. *)
 let points_between s a b =
-  let n = ref 0 in
-  for k = a to b - 1 do
-    if Char.code s.[k] land 0xC0 <> 0x80 then incr n
+  let n = ref 0 and k = ref a in
+  while !k + 8 <= b do
+    let w = String.get_int64_le s !k in
+    let follow = Int64.logand (Int64.logand w (Int64.lognot (Int64.shift_left w 1))) 0x8080808080808080L in
+    n := !n + 8 - Int64.to_int (Int64.shift_right_logical (Int64.mul (Int64.shift_right_logical follow 7) 0x0101010101010101L) 56);
+    k := !k + 8
+  done;
+  for j = !k to b - 1 do
+    if Char.code s.[j] land 0xC0 <> 0x80 then incr n
   done;
   !n
 
