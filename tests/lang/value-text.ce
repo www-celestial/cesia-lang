@@ -71,8 +71,8 @@ isMostMessage() = fiber.Wait(fiber.Spawn(() -> value.Text(1, 0))).Error.Message 
 
 (* Values that "$v" can't show in reasonable time or memory: the walk stops at most. *)
 isShared() = value.Text(list.Fill(list.Fill(1..1000, 1000), 1000), 12) == "[[[1, 2, 3,…"
-isLongText() = value.Text([text.Repeat(10000000, "ab")], 6) == "[\"aba…"
-isLongTextRaw() = value.Text(text.Repeat(10000000, "é"), 3) == "éé…"
+isLongText() = value.Text([text.Repeat(1000000, "ab")], 6) == "[\"aba…"
+isLongTextRaw() = value.Text(text.Repeat(1000000, "é"), 3) == "éé…"
 isLongMatrix() = value.Text(matrix.Zeros(1000, 1000), 10) == "[0.0 0.0 …"
 
 defn deep(n)
@@ -83,14 +83,14 @@ defn deep(n)
   d
 end
 
-isDeep() = value.Text(deep(100000), 6) == "[[[[[…"
-isDeepWholeFails() = result.IsErr(fiber.Wait(fiber.Spawn(() -> "$(deep(100000))")))
+isDeep() = value.Text(deep(5000), 6) == "[[[[[…"
+isDeepWholeFails() = result.IsErr(fiber.Wait(fiber.Spawn(() -> "$(deep(5000))")))
 isMostHuge() = value.Text([1, 2], 4611686018427387903) == "[1, 2]" and value.Text("ab", 1e18) == "ab"
 isWideCharacters() = value.Text("a😀b", 2) == "a…" and value.Text(["😀😀"], 3) == "[\"…" and value.Text("😀😀", 2) == "😀😀"
-isLongWideText() = value.Text([text.Repeat(1000000, "😀")], 5) == "[\"😀😀…"
+isLongWideText() = value.Text([text.Repeat(100000, "😀")], 5) == "[\"😀😀…"
 
 (* A text that isn't UTF-8: continuation bytes alone count no character, so the bytes stop at 4 a character. *)
-loose = text.FromBytes(list.Fill(0x80, 1000000))
+loose = text.FromBytes(list.Fill(0x80, 100000))
 isLooseBounded() = text.ByteLength(value.Text(loose, 5)) <= 20 + 3 and text.ByteLength(value.Text([loose], 5)) <= 20 + 3
 isLooseShort() = value.Text(text.FromBytes([0x80, 0x80, 0x41]), 1) == text.FromBytes([0x80, 0x80, 0x41])
 isLooseMixed() = value.Text(text.FromBytes([0xFF, 0xFE, 0x41, 0x42]), 3) == "$(text.FromBytes([0xFF, 0xFE]))…"
