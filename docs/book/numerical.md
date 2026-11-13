@@ -1,7 +1,8 @@
 # Numerical methods
 
-In this chapter you find where a function is zero, with [optimize.Root], and you solve differential equations, with
-[ode.Solve]: what `fzero` and `ode45` do in MATLAB, `brentq` and `solve_ivp` in scipy. Each method comes from a paper,
+In this chapter you find where a function is zero, with [optimize.Root], you solve differential equations, with
+[ode.Solve], and you compute integrals, with [quad.Integral]: what `fzero`, `ode45` and `integral` do in MATLAB,
+`brentq`, `solve_ivp` and `quad` in scipy. Each method comes from a paper,
 named here with what it promises; the tests of Cesia check each promise, and the last part of each section says how it
 compares with scipy and Octave, measured.
 
@@ -461,6 +462,290 @@ with Octave's `ode15s` waits for the measures made before each release.
 uses: 1.3 ms in the fastest of 21 runs (4.15 ms against 2.86 for a program that prints 1, on 2026-11-13), more on a
 busy machine; `use std/optimize` alone adds 0.45 ms. A program that uses neither starts as before.
 
+## Integrals
+
+[quad.Integral] computes the *integral* of a function `f` from `a` to `b`: the area under its curve, counted below 0
+where the curve is. It is what `integral` does in MATLAB and `quad` in scipy. Here the integral of $x^{-1/2} \log(1/x)$
+from 0 to 1, which is 4, of a function that grows without bound at 0:
+
+```cesia
+use std/quad
+logRoot(x) = x ^ (-0.5) * math.Log(1.0 / x)
+q = result.Unwrap(quad.Integral(logRoot, 0.0, 1.0))
+q -->
+```
+
+`Value` is the integral, `Error` the estimate of its error, `Evaluations` the calls of `f`, and `Intervals` the pieces
+the interval was cut into. `x -> ...` is a function written in place: `quad.Integral(x -> x * x, 0.0, 3.0)` is the same
+as defining `square(x) = x * x` and giving `square`. The same in Python, R and MATLAB, at the same tolerances:
+
+```python
+import math
+from scipy.integrate import quad
+y, err, info = quad(lambda x: x**-0.5 * math.log(1 / x), 0, 1, epsabs=1e-12, epsrel=1e-10, full_output=1)
+# 4.000000000000071, 2.1582735598713043e-13, info['neval'] 315, info['last'] 8
+```
+
+```r
+integrate(function(x) x^(-0.5) * log(1 / x), 0, 1, rel.tol = 1e-10, abs.tol = 1e-12)
+# 4.0000000000000711, 8 subdivisions
+```
+
+```matlab
+q = integral(@(x) x.^(-0.5) .* log(1 ./ x), 0, 1, 'RelTol', 1e-10, 'AbsTol', 1e-12)
+% 3.999999999976525 in GNU Octave
+```
+
+scipy's `quad` and R's `integrate` run QUADPACK's own code, whose method Cesia follows: the same value to the last bit,
+from the same 315 calls of `f`. MATLAB's `integral` is another method (Shampine 2008), and GNU Octave's calls `quadcc`,
+the rules of Clenshaw and Curtis that Gonnet (2010) made adaptive, which stops here 2.3e-11 from 4.
+
+| Cesia | MATLAB | scipy |
+|---|---|---|
+| `quad.Integral(f, a, b)` | `integral(f, a, b)` | `quad(f, a, b)` |
+| `math.Inf`, `-math.Inf` as a bound | `Inf`, `-Inf` | `np.inf`, `-np.inf` |
+| `rtol = 1e-10`, `atol = 1e-12`, the defaults | `'RelTol', 1e-6`, `'AbsTol', 1e-10` | `epsrel=1.49e-8`, `epsabs=1.49e-8` |
+| `points = [c1, c2]` | `'Waypoints', [c1 c2]` | `points=[c1, c2]` |
+| `limit = 1000` pieces | `'MaxIntervalCount', 650` | `limit=50` |
+| `q.Value`, `q.Error` | `[q, errbnd] = quadgk(...)` | `y, abserr = quad(...)` |
+
+`f` takes one number and gives one number, so any function works, one with an `if` too; MATLAB's `integral` calls `f`
+on arrays of points instead. `f` can itself call Integral: a double integral is two nested calls, here the area of the
+disk of radius 1, $\pi$, the integral from -1 to 1 of its chord at $x$, itself the integral of 1 from $-\sqrt{1 - x^2}$ to
+$\sqrt{1 - x^2}$:
+
+```cesia
+chord(x) = quad.Integral(y -> 1.0, -math.Sqrt(1.0 - x * x), math.Sqrt(1.0 - x * x)).Value.Value
+quad.Integral(chord, -1.0, 1.0).Value.Value -->
+```
+
+`quad.Integral(...).Value` is what the `Ok` holds, the struct, so `.Value.Value` is the integral itself; in a program,
+`result.Unwrap` or `?` reads better.
+
+### Infinite bounds
+
+A bound can be [math.Inf] or `-math.Inf`, which is `1.0 / 0.0` and its negative:
+
+```cesia
+bell(x) = math.Exp(-x * x)
+quad.Integral(bell, -math.Inf, math.Inf).Value -->
+math.Sqrt(math.Pi) -->
+quad.Integral(x -> math.Exp(-x), 0.0, math.Inf).Value.Value -->
+```
+
+The change of variable $x = a + (1 - t) / t$ maps $[a, \infty)$ onto $(0, 1]$, with $dx = -dt / t^2$: the integral of
+$f(x)$ from $a$ to $\infty$ is the integral of
+
+$$
+\frac{1}{t^2} f(a + \frac{1 - t}{t})
+$$
+
+from 0 to 1, and the method below works on $(0, 1]$, where it never evaluates $t = 0$. From $-\infty$ to $b$, $x = b - (1 - t) / t$;
+from $-\infty$ to $\infty$, $f(x) + f(-x)$ from 0. A function that decays slowly, as $1/x^2$, turns into one with a
+singularity at $t = 0$, which the extrapolation below handles. A finite bound far out, as `1e300`, is no infinity: on
+$[-10^{300}, 10^{300}]$ the 21 points of the first rule all fall where $e^{-x^2}$ is 0, and Integral gives 0 with an
+`Error` of 0. Give `math.Inf` for an infinite interval.
+
+### Places where f jumps
+
+`points` lists the places between `a` and `b` where `f` jumps, has a kink, or is singular: the first pieces end there,
+and none of them has the trouble inside. A step at 0.3:
+
+```cesia
+step(x) = if x < 0.3 1.0 else 2.0 end
+quad.Integral(step, 0.0, 1.0).Value -->
+quad.Integral(step, 0.0, 1.0, points = [0.3]).Value -->
+```
+
+Without `points` the method finds the jump itself, cutting the pieces around it smaller and smaller: 357 calls of `f`.
+With them, the two pieces are exact at once: 42 calls. Points outside the interval are a panic; points equal to `a` or
+`b` are left out, and a point given twice counts once. With an infinite bound, split the integral at a point in two
+calls.
+
+### What it promises
+
+`Integral` gives an `Ok` when `Error` is at most `max(atol, rtol |Value|)`: with the defaults, 10 digits, or `1e-12`
+near 0. `Error` is an estimate, from the method's own test, not a bound. On a smooth function it is pessimistic: the
+true error is often far smaller. It can be fooled by a feature that no point of the rule sees, as a peak narrower than
+the gaps between them, the way any method that only samples `f` can.
+
+The tests of Cesia check it on 42 integrals of the kinds that the QUADPACK book tests its methods on, each against its
+closed form: $x^\alpha \log(1/x)$ and $x^{-1/2}$, singular at an end; $|x - 1/3|^\alpha$, singular inside, with and
+without `points`; a peak of width $4^{-\alpha}$, $\alpha$ up to 8; $(1 - x^2)^{-1/2} / (x + 1 + 2^{-\alpha})$, singular at
+both ends beside a pole; $\sin^{\alpha - 1} x$ and $\log(1/x)^{\alpha - 1}$, whose integrals are values of the functions
+[special.Beta] and [special.Gamma]; $x^\alpha e^{-x}$ and $e^{-x^2}$ on infinite intervals; an oscillation, $x \sin 30x
+\cos x$ on $[0, 2\pi]$; a jump; reversed intervals. On each, the true error is within the tolerance and within `Error`;
+and each takes exactly as many calls of `f`, and as many pieces, as scipy's `quad` at the same tolerances, with the same
+value and the same `Error` to the last bit. GNU Octave's `integral` misses 10 of the 42 by more than the tolerance asked: on $|x - 1/3|^{-0.8}$
+by 0.0039, on $(1 + x)^{-1} x^{-1/2}$ over $[0, \infty)$ by 1.3e-8.
+
+### When it fails
+
+An `Err` of kind `"quad"` carries `Value` and `Error`, the best estimates found, and a message that says what to change.
+QUADPACK's own tests decide each case:
+
+```cesia
+quad.Integral(x -> 1.0 / x, 0.0, 1.0, limit = 20).Error.Message -->
+quad.Integral(x -> x ^ (-1.1), 0.0, 1.0).Error -->
+quad.Integral(x -> 1.0 / math.Abs(x - (1.0e10 + 1.0 / 3.0)), 1.0e10, 1.0e10 + 1.0).Error.Message -->
+quad.Integral(x -> math.Sin(x), 0.0, math.Inf).Error.Message -->
+```
+
+- **The limit**: the sum of the errors is still above the tolerance after `limit` pieces.
+- **Roundoff**: cutting a piece in two changed its integral by less than $10^{-5}$ of it while its error didn't fall,
+  10 times, or made the error grow, 20 times: the tolerance is below what floats can give. `rtol` can't go below
+  50 eps, $1.1 \cdot 10^{-14}$, with `atol = 0.0`.
+- **A bad place**: a piece became so small that its two halves can't be told apart in floats, as near
+  $10^{10} + 1/3$ above, where floats are $2 \cdot 10^{-6}$ apart: $1/|x - s|$ isn't integrable there.
+- **The extrapolation**: the table of the epsilon algorithm keeps changing by more than its own estimates, as for
+  $\sin x$ on $[0, \infty)$, whose integral has no limit.
+- **Divergence**: the extrapolated value and the sum of the pieces differ by more than a factor of 100, or the error is
+  above the area. The integral of $x^{-1.1}$ from 0 to 1 is infinite; the extrapolation gives $-10 = 1 / (1 - 1.1)$,
+  the value that $1 / (p + 1)$, the integral of $x^p$ for $p > -1$, takes at $p = -1.1$, and the test of divergence
+  refuses it. scipy and R give the same
+  $-10$ with a warning.
+- **What `f` gives**: a NaN, an infinity, a text or anything but a number is an `Err` that names the place:
+  `f(0.5) is "a", not a finite number.` A panic inside `f` stays a panic.
+
+Not every non-integrable function is caught. With `points = [1.0 / 3.0]`, $1 / (x - 1/3)$ on $[0, 1]$ gives an `Ok`
+of about 0: each side diverges, and the extrapolation of their sum settles on a number, as it does in QUADPACK's code.
+Integrate only what has an integral.
+
+### The method of Integral
+
+Integral is QUADPACK's QAGS (Piessens, de Doncker-Kapenga, Überhuber and Kahaner 1983), the method of de Doncker
+(1978); with `points`, QAGP; with an infinite bound, QAGI.
+
+- **The rule**: on a piece $[a, b]$, the *Gauss–Kronrod rule* of 21 points, $K = \sum_i w_i f(x_i)$. Ten of its points
+  are those of the Gauss rule $G$ of 10 points, the most precise rule on 10 points: it integrates exactly every
+  polynomial of degree 19 or less. Kronrod (1965) added 11 points so that the 21 integrate exactly every polynomial of
+  degree 31 or less, and $G$ comes free, from 10 of the same values of `f`. The new points are the zeros of the
+  *Stieltjes polynomial* $E_{11}$, which is orthogonal to $x^k P_{10}(x)$ for $k = 0, \dots, 10$, $P_{10}$ the Legendre
+  polynomial whose zeros are Gauss's points. Cesia's points and weights were computed for it from $E_{11}$ in exact
+  rational numbers, its zeros to 100 digits; its tests compute them again by the algorithm of Laurie (1997), as the
+  eigenvalues of a tridiagonal matrix, and agree to 2 eps.
+- **The error estimate**: $|K - G|$ would be an estimate of the error of $G$; the error of $K$ is far smaller. QUADPACK
+  takes $E = I_\text{asc} \min(1, (200 |K - G| / I_\text{asc})^{3/2})$, where $I_\text{asc}$, the integral of $|f - m|$
+  over the piece, $m$ the mean of `f` there, measures how much `f` varies: the power $3/2$ makes $E$ fall faster than
+  $|K - G|$ as the rule converges, and the factor 200 keeps it on the safe side. $E$ is at least $50 \epsilon$ times the
+  integral of $|f|$, what roundoff leaves.
+  The terms are added in pairs, $f(c - h x) + f(c + h x)$, so an odd `f` on an interval centred on 0 gives exactly 0.
+- **The strategy**: keep the pieces in the order of their errors; cut the one with the largest in two; stop when the
+  sum of the errors is at most the tolerance. Near a singularity the pieces get smaller and smaller, and their sums
+  converge slowly.
+- **The extrapolation**: when the piece of largest error is one of the smallest, as next to a singularity, the method
+  first cuts the larger pieces until their errors are below the tolerance, then adds the sum of all the pieces to a
+  sequence $S_1, S_2, \dots$, one level of cutting closer to the singularity each time, and estimates its limit by
+  the *epsilon algorithm* of Wynn (1956):
+  $$
+  \epsilon^{(n)}_{-1} = 0, \quad \epsilon^{(n)}_0 = S_n, \quad
+  \epsilon^{(n)}_{k+1} = \epsilon^{(n+1)}_{k-1} + \frac{1}{\epsilon^{(n+1)}_k - \epsilon^{(n)}_k}
+  $$
+  Its even columns $\epsilon_{2k}$ are Shanks's transforms of the sequence: $\epsilon_2$ is Aitken's
+  $\Delta^2$, exact on a sequence whose error shrinks by the same factor at each step, and the higher columns remove
+  several such terms at once. Near an end singularity such as $x^\alpha$, each level of cutting divides the error of
+  the piece at the end by about $2^{\alpha + 1}$: such a sequence. Cesia builds the even
+  columns alone by Wynn's *cross rule* (1966), as QUADPACK does, keeps at most 50 sums, and takes as the error of the
+  extrapolation the distance to the last three extrapolated values.
+- **Infinite bounds**: the change of variable above, and the Gauss–Kronrod rule of 15 points (7 of Gauss's), on
+  pieces of $(0, 1]$.
+
+The method runs as native code that calls `f` back, each step as QUADPACK's code takes it, in the same order: the same
+method written in Cesia spent six times as long on its own steps as on `f`, and the interpreter can't yet make machine
+code of them.
+
+Cesia's tests check, besides the 42 integrals: Laurie's points and weights for both rules; the degrees of the rules,
+$x^k$ exact to 4 eps up to $k = 31$ and not at 32, and $G$'s exactness up to 19 seen in the estimate; each `Err` above;
+what `f` gives; the bound of the calls of `f` by `limit`, $21 (2\,\text{limit} - 1)$; every bad argument.
+
+### In a cell
+
+In a file of [cells](cells.md), the area under a curve and the curve itself:
+
+```cesia norun
+use std/math
+use std/num
+use std/plot
+use std/quad
+use std/result
+
+(* %% Integral *)
+h(x) = math.Exp(-x * x)
+q = result.Unwrap(quad.Integral(h, 0.0, 1.0))
+q.Value
+
+(* %% Graph *)
+us = num.Linspace(0.0, 1.0, 100)
+xs = num.Linspace(-0.5, 1.5, 200)
+plot.Of([plot.Area(us, 0.0 * us, h(us), label = "$(q.Value) ± $(q.Error)"), plot.Line(xs, h(xs))])
+```
+
+`q.Value` shows 0.7468241328124271, $\frac{\sqrt{\pi}}{2} \text{erf}(1)$. The same graph, made here and drawn to SVG:
+
+```cesia
+use std/special
+h(x) = math.Exp(-x * x)
+qh = result.Unwrap(quad.Integral(h, 0.0, 1.0))
+math.Near(qh.Value, math.Sqrt(math.Pi) / 2.0 * special.Erf(1.0)) -->
+us = num.Linspace(0.0, 1.0, 100)
+xs = num.Linspace(-0.5, 1.5, 200)
+plot.Svg(plot.Of([plot.Area(us, 0.0 * us, h(us), label = "$(qh.Value) ± $(qh.Error)"), plot.Line(xs, h(xs))])) then result.IsOk() -->
+```
+
+### Speed of Integral
+
+The integral of $x^{-1/2} \log(1/x)$ from 0 to 1 at the defaults, `rtol = 1e-10` and `atol = 1e-12`, 315 calls of `f` in each
+language: the median of 21 runs of each, alternated, and the 95 % interval of that median, on the machine of
+[Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-13. A first call is the first in a fresh
+program; then the mean of 1,000 calls in the same program.
+
+| | first call | then, each call |
+|---|---:|---:|
+| **Cesia** | 135 µs (129 to 144) | **46.7 µs** (45.3 to 47.7) |
+| scipy 1.18.1, `quad` | **116 µs** (112 to 118) | 82.3 µs (80.0 to 85.6) |
+| GNU Octave 11.3, `integral` | | 2,309 µs (2,283 to 2,330) |
+
+Cesia is 1.8 times as fast as scipy once its code is read, and 49 times as fast as Octave, whose `integral` also stops
+further from 4, 2.3e-11 away. scipy wins the first call: Cesia reads and prepares the code of std/quad then. The time
+goes to the calls of `f`: with `math.Sqrt` as `f`, its integral from 0 to 1 takes 231 calls in 21 µs, about 90 ns each
+for the call and the method's own work, and `f`'s own work comes on top. MATLAB was not measured, as no MATLAB was at
+hand. `use std/quad` adds no time a program can measure to its start, 2.84 ms against 2.89 for a program
+that prints 1, and a program that doesn't use it starts as before.
+
+### Security of Integral
+
+`f` is code of the caller, so Integral checks what it gives: anything but a finite number is an `Err` that names the
+place, never a NaN inside the sums. Every loop is bounded: `limit` bounds the pieces, so `f` is called at most
+$21 (2\,\text{limit} - 1)$ times, $15 (2\,\text{limit} - 1)$ with one infinite bound and $30 (2\,\text{limit} - 1)$
+with two, and a function that never converges ends with the `Err` of the limit, the roundoff, the bad place or the
+extrapolation; the table of the epsilon algorithm keeps 50 sums at most. Keeping the pieces in order costs up to `limit`
+steps each, so a large `limit` costs time as its square: at 100,000, a function that never settles, $\sin(1/x)$, takes
+5 seconds. The memory grows with the pieces, six numbers each, in arrays that double as they fill, from 16: at the
+default `limit`, 48 KB. Past the memory limit of the program, the program stops with `Limit "memory" reached.`, as any.
+The native code counts its work against `--limit` as it goes, and each call of `f` is Cesia code, so `--limit` and
+[cells.Stop] stop a long integral within a few calls of `f`. It reads only the numbers Integral gives it, keeps no state
+outside one call, so `f` can call Integral again, and a panic in `f` goes up as a panic. Bad arguments, a NaN bound, a
+negative tolerance, `points` outside the interval, are panics that name them, before `f` is called.
+
+### Reading for integrals
+
+- Robert Piessens, Elise de Doncker-Kapenga, Christoph W. Überhuber, David K. Kahaner. *QUADPACK: A Subroutine Package
+  for Automatic Integration*. Springer, 1983. <https://doi.org/10.1007/978-3-642-61786-7>. QAGS, QAGP, QAGI, their rules
+  and tests; the package's own page: <https://www.netlib.org/quadpack/readme>.
+- Elise de Doncker. "An adaptive extrapolation algorithm for automatic integration". *ACM SIGNUM Newsletter*
+  13(2):12–18, 1978. <https://doi.org/10.1145/1053402.1053403>. The strategy of QAGS.
+- P. Wynn. "On a device for computing the $e_m(S_n)$ transformation". *Mathematical Tables and Other Aids to
+  Computation* 10(54):91–96, 1956. <https://doi.org/10.2307/2002183>. The epsilon algorithm.
+- P. Wynn. "Upon systems of recursions which obtain among the quotients of the Padé table". *Numerische Mathematik*
+  8:264–269, 1966. <https://doi.org/10.1007/BF02162562>. The cross rule.
+- A. S. Kronrod. *Nodes and Weights of Quadrature Formulas: Sixteen-Place Tables*. Consultants Bureau, 1965. The rules.
+- Dirk P. Laurie. "Calculation of Gauss-Kronrod quadrature rules". *Mathematics of Computation* 66(219):1133–1145, 1997.
+  <https://doi.org/10.1090/S0025-5718-97-00861-2>. The rules as eigenvalues, as the tests compute them.
+- L. F. Shampine. "Vectorized adaptive quadrature in MATLAB". *Journal of Computational and Applied Mathematics*
+  211(2):131–140, 2008. <https://doi.org/10.1016/j.cam.2006.11.021>. MATLAB's `integral`.
+- Pedro Gonnet. "Increasing the reliability of adaptive quadrature using explicit interpolants". *ACM Transactions on
+  Mathematical Software* 37(3), 2010. <https://doi.org/10.1145/1824801.1824804>. GNU Octave's `quadcc`.
+
 ## Security
 
 `f`, `g` and the functions given to Root are code of the caller, so the methods check what they give: a value of the
@@ -522,5 +807,5 @@ $n = 1000$ takes under a second, so `cells.Stop` still answers within a step.
 
 ## Next
 
-You can find zeros and solve differential equations. The next chapter, [Statistics](statistics.md), works with
+You can find zeros, solve differential equations and compute integrals. The next chapter, [Statistics](statistics.md), works with
 the laws of probability.
