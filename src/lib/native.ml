@@ -293,7 +293,8 @@ let lu_factor ctx (a : t array) =
       for r = col + 1 to n - 1 do
         if Float.abs (get r col) > Float.abs (get !pivot col) then pivot := r
       done;
-      Float.abs (get !pivot col) >= 1e-14
+      (* not (... < 1e-14), as num's code: a NaN pivot is no singular matrix, and the NaN goes on to the answer. *)
+      (not (Float.abs (get !pivot col) < 1e-14))
       && begin
         let p = !pivot in
         if p <> col then begin

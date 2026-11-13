@@ -83,6 +83,21 @@ isLuNotSquare() = message(() -> num.Lu(matrix.Zeros(2, 3))) == result.Err("num.L
 isLuText() = message(() -> num.Lu(matrix.Reshape([1, 1], ["a"]))) == result.Err("num.Lu: m[1] is \"a\"; give a square matrix of numbers.")
 isLuNotArray() = message(() -> num.Lu(3.0)) == result.Err("num.Lu: m is 3.0; give a square matrix of numbers.")
 isLuBadB() = message(() -> result.Unwrap(num.Lu(a)).Solve([1.0, 2.0, 3.0])) == result.Err("LuFactors.Solve: b is [1.0, 2.0, 3.0]; give 2 numbers, or a matrix of 2 rows.")
+isLuHandMade() = result.IsErr(message(() -> num.LuFactors(matrix.Zeros(2, 2), [5, 9], 1.0).Solve([1.0, 2.0]))) and
+  result.IsErr(message(() -> num.LuFactors([1.0 2.0; 3.0 "x"], [1, 2], 1.0).Solve([1.0, 2.0])))
+
+defn isLuNan()
+  (** A NaN in m is no singular matrix: it goes on to the answer, as the elimination in Cesia did. *)
+  m = [1.0 math.Nan; 2.0 1.0]
+  x = result.Unwrap(num.Solve(m, [1.0, 1.0]))
+  result.IsOk(num.Lu(m)) and not (x[1] == x[1]) and not (num.Det(m) == num.Det(m))
+end
+
+defn isNotSquareKept()
+  (** Det and Solve of a matrix with more columns than rows work on its first square, as before num.Lu. *)
+  w = [4.0 2.0 5.0; 1.0 3.0 7.0]
+  num.Det(w) == 10.0 and value.Equal(result.Unwrap(num.Solve(w, [1.0, 2.0])), result.Unwrap(num.Solve([4.0 2.0; 1.0 3.0], [1.0, 2.0])))
+end
 
 defn isQr()
   m = matrix.Reshape([3, 2], [1.0, 3.0, 5.0, 2.0, 4.0, 7.0])
