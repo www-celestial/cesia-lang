@@ -251,9 +251,11 @@ Une réponse est faite en entier avant de partir, ce qu'un export d'une grande t
 
 ```cesia norun
 use std/csv
+use std/result
+invoices(page) = [["INV-$page", "paid", 120]]   (* a page of the table, as a database gives it *)
 defn export(send)
-  for page in pages()
-    send(csv.Text(page))?
+  for page in 1..100
+    send(csv.Text(invoices(page)))?
   end
   result.Ok(missing)
 end
