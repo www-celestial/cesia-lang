@@ -1,0 +1,35 @@
+use std/io
+use std/list
+use std/matrix
+use std/value
+
+(* A buffer of no known type that a rare branch makes anew, then written in the same branch of an if, as ode.Solve keeps
+   its dense output: the writes after that rare branch are native code, and only the turns that take it leave. *)
+defn fill(n, opts)
+  full = opts.Full
+  zeros = opts.Zeros
+  buf = zeros(full)
+  chunks = []
+  used = 0
+  odd = 0
+  for i in 1..n
+    x = i * 0.5
+    if not (x - x == 0.0)
+      odd += 1
+    else
+      if used == full
+        chunks = list.Append(buf, chunks)
+        buf = zeros(full)
+        used = 0
+      end
+      buf[used + 1] = x
+      buf[used + 2] = -0.25 * x
+      used += 2
+    end
+  end
+  io.Print(value.Len(chunks), used, odd, list.Sum(list.Map(list.Sum, chunks)) + list.Sum(buf))
+end
+fill(30001, {Full: 64, Zeros: matrix.Zeros})
+fill(30001, {Full: 64, Zeros: matrix.Zeros})
+(* A write out of the buffer, at the interpreter's line. *)
+fill(10, {Full: 1, Zeros: matrix.Zeros})

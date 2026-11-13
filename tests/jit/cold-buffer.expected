@@ -1,0 +1,7 @@
+937 34 0 168766875.375
+937 34 0 168766875.375
+cold-buffer.ce:26:10: Index 2 is outside this array of 1 elements.
+  26 |       buf[used + 2] = -0.25 * x
+     |          ^
+  in fill (cold-buffer.ce:26)
+exit 1

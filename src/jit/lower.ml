@@ -1752,10 +1752,8 @@ and resume_at st k (x : expr) ~nested =
   st.dyn.ticked <- false;
   st.dyn.copies <- (false, false);
   st.dyn.dead <- false;
-  (* One left to the interpreter by a lowering before, which the loop's variables were looked at without: made here
-     again only if it assigns none, as a write into an array that became one of the loop since. *)
-  let assigns = try assigned ~sets:false [] x <> [] with Unknown -> true in
-  if nested && List.mem x.id st.cold && assigns then cold st k x
+  (* One the loop's variables were looked at without ([dead]) is the interpreter's. *)
+  if nested && List.mem x.id st.cold then cold st k x
   else if nested then begin
     let undo = saved st in
     match stmt st x with
@@ -1822,14 +1820,13 @@ and saved st =
 and branch st (b : block) =
   if not st.resumable then Array.iter (fun x -> if not st.dyn.dead then guarded st x) b
   else
+    (* After one left to the interpreter, the rest of the block is the interpreter's too. *)
     Array.iter
       (fun (x : expr) ->
          if not st.dyn.dead then begin
            let k = Vec.push st.dyn.points x.id in
            resume_at st k x ~nested:true
-         end
-         (* After one left to the interpreter, the rest of the block is the interpreter's too. *)
-         else if not (List.mem x.id st.dyn.colds) then st.dyn.colds <- x.id :: st.dyn.colds)
+         end)
       b
 
 (* A [for] over a..b. The counter is the loop's variable itself when the body leaves it alone, else a hidden slot; the
@@ -2162,6 +2159,25 @@ and finish ?(numbers = []) ?(sunk = []) st name ~params ~vars =
       cells = Array.of_list st.dyn.cells },
     Vec.to_array st.sites )
 
+(* What the lowering of a region leaves out of what it looks at, from the statements of its branches that didn't lower
+   before, [roots]: one that assigns a variable, and the rest of its block, which the interpreter makes after it. One
+   that assigns none is made again, looked at, as a write into an array that a statement left out made one of the loop
+   since: buf[used + 1] = t after the branch that makes buf anew. *)
+let dead roots (loop : expr) =
+  let out = ref [] in
+  let assigns x = try assigned ~sets:false [] x <> [] with Unknown -> true in
+  let rec block b =
+    ignore
+      (Array.fold_left
+         (fun off (x : expr) ->
+            let off = off || (List.mem x.id roots && assigns x) in
+            if off then out := x.id :: !out else inner x;
+            off)
+         false b)
+  and inner e = walk (fun (y : expr) -> match y.e with If (_, a, b) -> block a; block b; false | _ -> true) e in
+  if roots <> [] then inner loop;
+  !out
+
 (* The local variables a loop names. *)
 let locals ?cold acc e =
   let acc = ref acc in
@@ -2412,7 +2428,7 @@ let unit (w : world) (ver : version) = lower_unit w ver None
    step of an iteration, and it ends at [Done] with every variable back in its slot. The first two hidden slots are its
    counter and bound, for a [for]. *)
 let region ?ctx (w : world) (ver : version) (loop : expr) =
-  let points = ref (0, 0) and infos = ref [||] in
+  let points = ref (0, 0) and infos = ref [||] and roots = ref [] in
   let make st =
     let crossing = carried ~cold:st.cold loop in
     Array.iteri
@@ -2474,13 +2490,15 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
         (fun i -> match st.sunk.(i) with None -> None | Some s -> Some ((Array.map hide s.parts).(0), ver.map.(i), s.carrier))
         (List.init st.f.nvars Fun.id)
     in
-    (* Statements found cold now: the loop lowers again with them out of what it looks at. *)
-    if List.exists (fun c -> not (List.mem c st.cold)) st.dyn.colds then raise (Cold (List.sort_uniq compare (st.dyn.colds @ st.cold)));
+    (* Statements found cold now: the loop lowers again when what it leaves out changes with them. *)
+    let found = List.sort_uniq compare (st.dyn.colds @ !roots) in
+    if dead found loop <> st.cold then raise (Cold found);
     infos := Vec.to_array st.infos;
     Some (finish ~numbers ~sunk st "f0" ~params:[] ~vars)
   in
   let rec go values cold tries =
-    match lower_unit ?ctx ~scope:loop ~values ~cold w ver (Some make) with
+    roots := cold;
+    match lower_unit ?ctx ~scope:loop ~values ~cold:(dead cold loop) w ver (Some make) with
     | Some fns -> Some (fns, fst !points, !infos)
     | None -> None
     | exception Respec i -> go (i :: values) cold tries
