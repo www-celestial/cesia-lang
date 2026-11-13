@@ -1,0 +1,8 @@
+1.0 1.5 1.0 4499.0
+5000.0
+int-lists-outer-overflow.ce:11:39: The integer result of -4611686018427387904 - 1 doesn't fit in 63 bits.
+  11 |     for q in colptr[j]..colptr[j + 1] - 1
+     |                                       ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in mul (int-lists-outer-overflow.ce:11)
+exit 1

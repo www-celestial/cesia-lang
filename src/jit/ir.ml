@@ -45,9 +45,10 @@ type ins =
           waits at most for that inner loop. The last, a site whose inlined frames end with the one whose step it is, or
           -1 for the function's own: where the limit of steps, reached there, names the frame *)
   | Try of op * int * value * value * int  (** [Add], [Sub] or [Mul] that goes to the block on overflow, raising nothing *)
-  | Elem_at of int * int * int
-      (** the destination, the array, a register of its index from 1, doubled as every integer register, proved inside *)
-  | Set_at of int * int * value  (** the array, a register of its index proved inside, the value *)
+  | Elem_at of int * int * int * int
+      (** the destination, the array, a register of its index from 1, doubled as every integer register, and a number of
+          cells after it: the cell of their sum, proved inside *)
+  | Set_at of int * int * int * value  (** the array, a register of its index and cells after it, proved inside, the value *)
   | Offset of int * int * value array * int * bool
       (** [Offset (r, a, ixs, site, write)]: in [r], the cell of these integer indexes, one per dimension of array [a], from
           1 and doubled as an index of [Elem_at]; each is checked inside its size, and one outside is the interpreter's

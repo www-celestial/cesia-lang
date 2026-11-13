@@ -444,8 +444,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
       pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov x6, %s\n  mov x6, i64:0(x6)\n  ublt %s, x5, x6\n"
         (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) gc
     | Reserve _ -> ()
-    | Elem_at (r, a, i) when fn.kinds.(r) = Kint -> pr "  mov r%d, i64:-8(%s, r%d, 4)\n  sub r%d, r%d, 1\n" r (arr a) i r r
-    | Elem_at (r, a, i) -> pr "  dmov r%d, d:-8(%s, r%d, 4)\n" r (arr a) i
+    | Elem_at (r, a, i, k) when fn.kinds.(r) = Kint ->
+      pr "  mov r%d, i64:%d(%s, r%d, 4)\n  sub r%d, r%d, 1\n" r (8 * (k - 1)) (arr a) i r r
+    | Elem_at (r, a, i, k) -> pr "  dmov r%d, d:%d(%s, r%d, 4)\n" r (8 * (k - 1)) (arr a) i
     | Offset (r, a, xs, site, write) ->
       (* Each index from 0, doubled, checked below its size; then the cell, the last index first: c = c * size + index. *)
       let slot, _, _, _ = fn.arrays.(a) in
@@ -464,8 +465,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
         pr "  ubge %s, x0, %s\n  rsh x1, %s, 1\n  mul %s, %s, x1\n  add %s, %s, x0\n" e (dim a d) (dim a d) acc acc acc acc
       done;
       pr "  add %s, %s, 2\n" acc acc
-    | Set_at (a, i, v) when ints a -> pr "  %s\n  mov i64:-8(%s, r%d, 4), x0\n" (tag_of v) (arr a) i
-    | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
+    | Set_at (a, i, k, v) when ints a -> pr "  %s\n  mov i64:%d(%s, r%d, 4), x0\n" (tag_of v) (8 * (k - 1)) (arr a) i
+    | Set_at (a, i, k, v) -> pr "  dmov d:%d(%s, r%d, 4), %s\n" (8 * (k - 1)) (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"
     | Tick (p, can_leave, site) -> steps 1 p can_leave site

@@ -1,0 +1,8 @@
+1.0 1.5 1.0 4499.0
+5000.0
+int-lists-outer-max.ce:25:18: The integer result of 4611686018427387897 + 10 doesn't fit in 63 bits.
+  25 |     s = s + xs[j + 10]
+     |                  ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in shifted (int-lists-outer-max.ce:25)
+exit 1

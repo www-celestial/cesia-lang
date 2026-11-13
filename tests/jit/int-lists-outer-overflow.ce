@@ -1,0 +1,62 @@
+use std/io
+use std/list
+use std/matrix
+
+(* Integer overflow next to the checks made before the loop: the end of a column read from the list, minus 1, below the
+   smallest integer, once the loops are machine code: the interpreter's error, at its line. *)
+defn mul(colptr, rowidx, vals, x, n)
+  y = matrix.Zeros(n)
+  for j in 1..n
+    xj = x[j]
+    for q in colptr[j]..colptr[j + 1] - 1
+      i = rowidx[q]
+      y[i] = y[i] + vals[q] * xj
+    end
+  end
+  y
+end
+
+defn shifted(colptr, xs, lo, hi)
+  s = 0.0
+  for j in lo..hi
+    for q in colptr[1]..colptr[2] - 1
+      s = s + 1.0
+    end
+    s = s + xs[j + 10]
+  end
+  s
+end
+
+(* A tridiagonal matrix of n columns, in CSC. *)
+defn tri(n)
+  colptr = list.Fill(0, n + 1)
+  rowidx = list.Fill(0, 3 * n)
+  p = 1
+  for j in 1..n
+    colptr[j] = p
+    for i in j - 1..j + 1
+      if i >= 1 and i <= n
+        rowidx[p] = i
+        p += 1
+      end
+    end
+  end
+  colptr[n + 1] = p
+  {Colptr: colptr, Rowidx: list.Take(p - 1, rowidx), N: n}
+end
+
+a = tri(3000)
+vals = matrix.Zeros(3 * a.N) + 1.0
+x = matrix.Zeros(a.N) + 0.5
+for r in 1..30
+  y = mul(a.Colptr, a.Rowidx, vals, x, a.N)
+end
+io.Print(y[1], y[2], y[a.N], list.Sum(y))
+for r in 1..30
+  s = shifted(a.Colptr, x, 1, 2000)
+end
+io.Print(s)
+cols = a.Colptr
+cols[3] = -4611686018427387903 - 1
+y = mul(cols, a.Rowidx, vals, x, a.N)
+io.Print("not reached")

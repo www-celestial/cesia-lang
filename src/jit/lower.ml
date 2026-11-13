@@ -37,6 +37,10 @@ type vecv = { slot : int; n : int; rows : int; cols : int; vslot : int; ro : boo
    is asked for, and gives its operand; [at] its slots when it has some, else -1. *)
 type vec = { vn : int; vr : int; vc : int; cell : int -> Ir.value; at : int }
 
+(* A [for] lowered once: its counter, its bound, the block of its body, and whether it is innermost (no point, call or
+   allocation in it), for the twin made in the fast copy of the loop around it. *)
+type twin = { tc : int; th : int; tbody : int; tinner : bool }
+
 (* Where an inlined body gives a small array of floats: its slots, from the first one given, and its shape. *)
 type vout = { mutable out : int; mutable shape : int * int * int }
 
@@ -66,7 +70,9 @@ type st = {
   region : bool;  (* a loop of the version, not the whole of it *)
   infos : (int * int * int * int) Vec.t;
       (* each loop: its node, the slots of its counter and bound or -1, its point after a step *)
-  mutable fast : (int, int * int) Hashtbl.t;  (* in a loop's fast copy: each index proved inside, its array, its register *)
+  twins : (int, twin) Hashtbl.t;  (* each [for] lowered, for its twin *)
+  mutable fast : (int, int * int * int) Hashtbl.t;
+      (* in a loop's fast copy: each index proved inside, its array, its register and the cells after it *)
   mutable ncalls : int;  (* calls lowered so far *)
   mem : int array;
       (* shared with inlined bodies, the interpreter's view of the function's calls: the highest base of one from its frame,
@@ -175,6 +181,13 @@ let assigned ?(sets = true) ?cold acc e =
     e;
   !acc
 
+(* The deepest nest of loops in [b]: 0 without a loop, 1 when every loop in it is innermost. *)
+let rec nest (b : block) =
+  let d = ref 0 in
+  let inside body = d := max !d (1 + nest body); false in
+  Array.iter (walk (fun (x : expr) -> match x.e with For { fbody; _ } -> inside fbody | While { body; _ } -> inside body | _ -> true)) b;
+  !d
+
 let math = [ "Sqrt", "sqrt"; "Exp", "exp"; "Log", "log"; "Sin", "sin"; "Cos", "cos"; "Tan", "tan"; "Asin", "asin";
              "Acos", "acos"; "Atan", "atan" ]
 
@@ -192,15 +205,15 @@ let emit st i =
   (* A cell whose index was checked in this block: read or written without a check. *)
   let i =
     match i with
-    | Ir.Elem (r, a, Reg q, _) when List.mem (st.cur, a, q) st.dyn.inside -> Ir.Elem_at (r, a, q)
-    | Set_elem (a, Reg q, v, _) when List.mem (st.cur, a, q) st.dyn.inside -> Set_at (a, q, v)
+    | Ir.Elem (r, a, Reg q, _) when List.mem (st.cur, a, q) st.dyn.inside -> Ir.Elem_at (r, a, q, 0)
+    | Set_elem (a, Reg q, v, _) when List.mem (st.cur, a, q) st.dyn.inside -> Set_at (a, q, 0, v)
     | Elem (_, a, Reg q, _) | Set_elem (a, Reg q, _, _) -> st.dyn.inside <- (st.cur, a, q) :: st.dyn.inside; i
     | _ -> i
   in
   (match i with
    (* A step or a call shows nothing: a guard after it goes back with the fuel of the statement's start ([keep]). *)
    | Ir.Tick _ | Call _ | Burn -> st.dyn.ticked <- true
-   | Set_elem (a, _, _, _) | Set_at (a, _, _) | Put (a, _, _, _) | Into (a, _, _, _, _, _, _, _) ->
+   | Set_elem (a, _, _, _) | Set_at (a, _, _, _) | Put (a, _, _, _) | Into (a, _, _, _, _, _, _, _) ->
      (* The cell may hold another map now. *)
      st.dyn.elems <- List.filter (fun (_, b, _, _) -> b <> a) st.dyn.elems;
      shows st
@@ -641,9 +654,9 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
      | x, Kint -> fresh st Kfloat (fun r -> Vat (r, v.slot, v.n, x, site st e.pos, v.rows, v.cols))
      | _ -> raise No)
   | Index (b, _, false) when Hashtbl.mem st.fast e.id ->
-    let a, ix = Hashtbl.find st.fast e.id in
+    let a, ix, k = Hashtbl.find st.fast e.id in
     ignore (array_of st b);
-    fresh st (cells_of st a) (fun r -> Elem_at (r, a, ix))
+    fresh st (cells_of st a) (fun r -> Elem_at (r, a, ix, k))
   | Index (b, [| Ix i |], false) ->
     let a = array_of st b in
     (match guess st i (expr st i), cells_of st a with
@@ -655,7 +668,7 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     let q = cell st a (indexes st a ixs) e.pos false in
     (match cells_of st a with
      | Kval -> fresh st Kval (fun r -> Get (r, a, Reg q, site st e.pos))
-     | k -> fresh st k (fun r -> Elem_at (r, a, q)))
+     | k -> fresh st k (fun r -> Elem_at (r, a, q, 0)))
   | Field ({ e = Var { b = Local i; _ }; _ }, name) when sunk_map st i ->
     let s = Option.get st.sunk.(i) in
     let j =
@@ -1565,9 +1578,9 @@ and stmt st (e : expr) =
     if st.inl = [] then st.dyn.dirty <- true
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex (_, false); _ } |]; value }
     when st.arrays.(i) >= 0 && Hashtbl.mem st.fast e.id ->
-    let a, ix = Hashtbl.find st.fast e.id in
+    let a, ix, k = Hashtbl.find st.fast e.id in
     let x = cell_value st a value in
-    emit st (Set_at (a, ix, x))
+    emit st (Set_at (a, ix, k, x))
   | Set { root = { b = Local i; _ }; path = [| { sk = Sindex ([| Ix ix |], false); sp } |]; value } when st.arrays.(i) >= 0 ->
     let a = st.arrays.(i) in
     let k = (match guess st ix (expr st ix) with x, Kint -> x | _ -> raise No) in
@@ -1602,7 +1615,7 @@ and stmt st (e : expr) =
     let slot, _, store, nd = Vec.get st.arr a in
     Vec.set st.arr a (slot, true, store, nd);
     let q = cell st a xs sp true in
-    emit st (if store = 1 then Put (a, Reg q, x, site st sp) else Set_at (a, q, x))
+    emit st (if store = 1 then Put (a, Reg q, x, site st sp) else Set_at (a, q, 0, x))
   | For { var = { b = Local i; _ }; iter = { e = Range (a, b); _ }; fbody; _ } ->
     let lo = expr st a in
     let hi = expr st b in
@@ -1782,6 +1795,7 @@ and saved st =
   let hidden = Vec.length st.hidden and points = Vec.length d.points and need = Option.map ( ! ) d.need in
   let loose = d.loose and lent = d.lent and known = d.known and nums = d.nums and elems = d.elems and ranges = d.ranges in
   let inside = d.inside and colds = d.colds and ncalls = st.ncalls and fast = st.fast and resumable = st.resumable in
+  let twins = Hashtbl.copy st.twins in
   fun () ->
     let blk = Vec.get st.blocks b in
     let rec drop k l = if k = 0 then l else drop (k - 1) (List.tl l) in
@@ -1814,6 +1828,8 @@ and saved st =
     d.dead <- false;
     st.ncalls <- ncalls;
     st.fast <- fast;
+    Hashtbl.reset st.twins;
+    Hashtbl.iter (Hashtbl.replace st.twins) twins;
     st.resumable <- resumable
 
 (* The statements of a branch of an if: in the region's loop, each a point of its own, numbered after the loop's. *)
@@ -1842,6 +1858,9 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   if Vec.get st.kinds r <> Kint then raise No;
   let written = try Some (Array.fold_left (assigned ~cold:st.cold) [] fbody) with Unknown -> None in
   let own = match written with Some l -> not (List.mem i l) | None -> false in
+  match Hashtbl.find_opt st.twins e.id, lo with
+  | Some tw, Some (l, x) -> twin_loop st e i fbody written tw l x
+  | _ ->
   let c = if own then r else hidden st in
   let cslot = if own then st.ver.map.(i) else (Vec.get_last st.hidden).slot in
   let h = hidden st in
@@ -1872,7 +1891,9 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   if not own then emit st (Move (r, Reg c));
   loop_in st exit (fun () -> stmts st ~root fbody);
   let inner = Vec.length st.resumes = points && st.ncalls = calls && (match need with Some n -> !n = 0 | None -> true) in
-  Vec.add_last st.infos (e.id, cslot, hslot, tick ~resume:again st next);
+  let p = tick ~resume:again st next in
+  Vec.add_last st.infos (e.id, cslot, hslot, p);
+  Hashtbl.replace st.twins e.id { tc = c; th = h; tbody = body; tinner = inner };
   close st (Branch (Eq, Kint, Reg c, Reg h, exit, inc));
   st.cur <- inc;
   emit st (Incr c);
@@ -1885,15 +1906,51 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   close st (Jump decide);
   st.cur <- decide;
   (match written with
-   | Some written when inner -> fast_copy st e i c h fbody written ~root ~slow:body ~exit
+   | Some written when inner -> ignore (fast_copy st e i c h fbody written ~root ~slow:body ~exit)
+   (* A loop whose loops inside are innermost [for]s that allocate nothing, and that allocates nothing itself: its
+      indexes' bounds checked once before it, its steps counted as it goes. A run that comes back inside it comes back
+      into the slow copy, whose turns then go through [decide] again, so the next turn is the fast copy's. One level
+      only, so that an innermost body is made at most four times. *)
+   | Some written when (match need with Some n -> !n = 0 | None -> true) && nest fbody = 1 && plain_fors st fbody ->
+     if fast_copy ~again:p st e i c h fbody written ~root ~slow:body ~exit then (Vec.get st.blocks inc).term <- Jump decide
    | _ -> close st (Jump body));
   st.cur <- exit;
   head
 
-and fast_copy st _e i c h fbody written ~root ~slow ~exit =
+(* A loop inside a loop's fast copy, made a second time: the twin of the first, of the same counter and bound, holds
+   only its own fast copy, and leaves for the first's slow copy, with the rest of the loop around it, when that fast
+   copy's checks fail. So no point of the run comes back inside the fast copy around it, whose checks it would not have
+   made, and the code is not made twice. *)
+and twin_loop st (e : expr) i fbody written tw l x =
+  let c = tw.tc and h = tw.th and decide = block st and exit = block st in
+  emit st (Move (h, x));
+  let start = block st in
+  close st (Branch (Gt, Kint, l, Reg h, exit, start));
+  st.cur <- start;
+  emit st (Move (c, l));
+  goto st decide;
+  (match written with
+   | Some written when tw.tinner -> ignore (fast_copy st e i c h fbody written ~root:false ~slow:tw.tbody ~exit)
+   | _ -> close st (Jump tw.tbody));
+  st.cur <- exit;
+  decide
+
+(* Are the loops in [b] [for]s over a range whose bodies allocate nothing. *)
+and plain_fors st (b : block) =
+  let ok = ref true in
+  Array.iter
+    (walk (fun (x : expr) ->
+         match x.e with
+         | For { iter = { e = Range _; _ }; fbody; _ } -> if allocates st fbody then ok := false; false
+         | For _ | While _ -> ok := false; false
+         | _ -> true))
+    b;
+  !ok
+
+and fast_copy ?again st _e i c h fbody written ~root ~slow ~exit =
   (* The checks before the loop run one after the other, each block after the one before: an operation, a size or a test
-     made once serves every index after it. *)
-  let made = Hashtbl.create 16 and sizes = Hashtbl.create 8 and tested = Hashtbl.create 16 in
+     made once serves every index after it. [dry]: only whether an index is affine, nothing made. *)
+  let made = Hashtbl.create 16 and sizes = Hashtbl.create 8 and tested = Hashtbl.create 16 and dry = ref false in
   let t op x y =
     match op, x, y with
     | (Ir.Add | Sub), _, Ir.Int 0 -> x
@@ -1903,6 +1960,7 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
     | Mul, Ir.Int 1, _ -> y
     | (Add | Sub | Mul), Ir.Int p, Ir.Int q when abs p < 1 lsl 30 && abs q < 1 lsl 30 ->
       Int (match op with Add -> p + q | Sub -> p - q | _ -> p * q)
+    | _ when !dry -> Ir.Reg (-1)
     | _ ->
       (match Hashtbl.find_opt made (op, x, y) with
        | Some v -> v
@@ -1935,28 +1993,40 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
     | Neg x -> (match affine x with Some (a, b) -> checked (t Sub (Int 0) a, t Sub (Int 0) b) | None -> None)
     | _ -> None
   in
-  (* The indexes of float arrays read or written with one index, or one per dimension, in the whole body. *)
+  (* The indexes of float arrays read or written with one index, or one per dimension, in the whole body; for a loop with
+     loops inside ([again]), outside their bodies, the bounds of their ranges included. *)
   let found = ref [] in
   let floats v n =
     st.arrays.(v) >= 0 && (let _, _, store, nd = Vec.get st.arr st.arrays.(v) in (store = 0 || store = 2) && (n = 1 || nd = n)) in
   let plain a = Array.for_all (function Ix _ -> true | All -> false) a in
   let exprs a = Array.map (function Ix x -> x | All -> assert false) a in
-  Array.iter
-    (walk (fun (e : expr) ->
+  let rec scan e =
+    walk
+      (fun (e : expr) ->
          match e.e with
          | Index ({ e = Var { b = Local v; _ }; _ }, a, false)
          | Set { root = { b = Local v; _ }; path = [| { sk = Sindex (a, false); _ } |]; _ } when plain a && floats v (Array.length a) ->
            found := (e.id, v, exprs a) :: !found;
            true
+         | For { iter = { e = Range (x, y); _ }; _ } when again <> None -> scan x; scan y; false
          | Field _ | Struct_lit _ | For _ | While _ | Range _ -> false
-         | _ -> true))
-    fbody;
-  (* Fuel for every step left: h - c + 1. *)
-  let n = t Add (t Sub (Reg h) (Reg c)) (Int 1) in
-  let ok = block st in
-  close st (Fuel_ge (n, ok, slow));
-  st.cur <- ok;
-  let table = Hashtbl.create 8 and steps = ref [] in
+         | _ -> true)
+      e
+  in
+  Array.iter scan fbody;
+  (* The indexes kept: each affine; in a loop with loops inside, only c + k, which needs no register of its own (below). *)
+  let form x = dry := true; let f = affine x in dry := false; f in
+  let kept (_, _, xs) =
+    match again, xs with
+    | None, _ -> Array.for_all (fun x -> form x <> None) xs
+    | Some _, [| x |] -> (match form x with Some (Ir.Int _, Ir.Int 1) -> true | _ -> false)
+    | Some _, _ -> false
+  in
+  let found = List.filter kept !found in
+  if again <> None && found = [] then (close st (Jump slow); false) else begin
+  let table = Hashtbl.copy st.fast and steps = ref [] in
+  (* An index c + k checked inside, for a small k: then c and h are far from overflow, as h + k is at most a size. *)
+  let bounded = ref false in
   let test cmp p q =
     if not (Hashtbl.mem tested (cmp, p, q)) then begin
       Hashtbl.replace tested (cmp, p, q) ();
@@ -1965,14 +2035,38 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
       st.cur <- next
     end
   in
-  (* An index inside [1, size] at both ends. *)
+  (* An index inside [1, size] at both ends. The counter is at most its bound here, so a constant step orders the ends:
+     the lower one against 1, the upper one against the size. *)
   let inside ab size =
     let first = at ab (Reg c) and last = at ab (Reg h) in
-    test Lt first (Int 1);
-    test Lt last (Int 1);
-    test Gt first size;
-    test Gt last size;
+    (match snd ab with
+     | Ir.Int k ->
+       let lo, hi = if k >= 0 then first, last else last, first in
+       test Lt lo (Int 1);
+       test Gt hi size
+     | _ ->
+       test Lt first (Int 1);
+       test Lt last (Int 1);
+       test Gt first size;
+       test Gt last size);
     first
+  in
+  (* Where an index is at the counter's turn, a register and cells after it: c + k is the counter and k cells, nothing
+     to keep; any other a + b·c gets a register, moved by b at each turn. A run that comes back inside a loop with loops
+     inside finds its counter in its slot, and nothing else of the checks: such a loop keeps only c + k. *)
+  let regs = Hashtbl.create 8 in
+  let index_reg ab first =
+    match ab with
+    | Ir.Int k, Ir.Int 1 -> c, k
+    | _ ->
+      (match Hashtbl.find_opt regs ab with
+       | Some ix -> ix, 0
+       | None ->
+         let ix = reg st Kint in
+         emit st (Move (ix, first));
+         Hashtbl.replace regs ab ix;
+         steps := (ix, snd ab) :: !steps;
+         ix, 0)
   in
   (* The size of dimension [d] of array [a], or its cells for [d] = -1. *)
   let size a d =
@@ -1990,10 +2084,9 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
        match Array.map affine xs with
        | [| Some ab |] ->
          let first = inside ab (size a (-1)) in
-         let ix = reg st Kint in
-         emit st (Move (ix, first));
-         Hashtbl.replace table node (a, ix);
-         steps := (ix, snd ab) :: !steps
+         let ix, k = index_reg ab first in
+         if ix = c && abs k < 1 lsl 30 then bounded := true;
+         Hashtbl.replace table node (a, ix, k)
        | abs when Array.for_all Option.is_some abs ->
          (* Each index inside its dimension at both ends: the cell, 1 + the sum of (index - 1) * stride, moves by the sum
             of each step times its stride. *)
@@ -2006,25 +2099,60 @@ and fast_copy st _e i c h fbody written ~root ~slow ~exit =
               cell := (t Add a0 (t Mul (t Sub (fst ab) (Int 1)) !stride), t Add b0 (t Mul (snd ab) !stride));
               stride := t Mul !stride n)
            abs;
-         let ix = reg st Kint in
-         emit st (Move (ix, at !cell (Reg c)));
-         Hashtbl.replace table node (a, ix);
-         steps := (ix, snd !cell) :: !steps
+         let ix, k = index_reg !cell (at !cell (Reg c)) in
+         Hashtbl.replace table node (a, ix, k)
        | _ -> ())
-    !found;
+    found;
+  (* Fuel for every step left, h - c + 1, unless the loop counts its steps as it goes: unchecked when bounded. *)
+  if again = None then begin
+    let n =
+      if !bounded then begin
+        let d = reg st Kint and n = reg st Kint in
+        emit st (Op (Sub, d, Reg h, Reg c, -1));
+        emit st (Op (Add, n, Reg d, Int 1, -1));
+        Ir.Reg n
+      end
+      else t Add (t Sub (Reg h) (Reg c)) (Int 1)
+    in
+    let ok = block st in
+    close st (Fuel_ge (n, ok, slow));
+    st.cur <- ok
+  end;
   let fbody_b = block st and finc = block st in
   goto st fbody_b;
   let r = var st i in
   if r <> c then emit st (Move (r, Reg c));
+  let around = st.fast in
   st.fast <- table;
   loop_in st exit (fun () -> stmts st ~root fbody);
-  st.fast <- Hashtbl.create 1;
-  emit st Burn;
-  close st (Branch (Eq, Kint, Reg c, Reg h, exit, finc));
-  st.cur <- finc;
-  emit st (Incr c);
-  List.iter (fun (ix, step) -> emit st (Bump (ix, step))) !steps;
-  close st (Jump fbody_b)
+  st.fast <- around;
+  (* A step proved before the loop, or a tick, as the loops inside count steps that nothing proved. *)
+  (match again with
+   | None -> emit st Burn
+   | Some p ->
+     (* The slow copy's tick: the same point, so that a run that leaves comes back the same way from either. *)
+     emit st (Ir.Tick (p, outer st, -1));
+     goto st (block st));
+  (* Bounded, the counter's step can't overflow: the test at the bottom, one branch a turn; the variable then ends at
+     its bound, as the interpreter's. *)
+  if !bounded then begin
+    emit st (Incr c);
+    List.iter (fun (ix, step) -> emit st (Bump (ix, step))) !steps;
+    let last = block st in
+    close st (Branch (Le, Kint, Reg c, Reg h, fbody_b, last));
+    st.cur <- last;
+    emit st (Move (c, Reg h));
+    close st (Jump exit)
+  end
+  else begin
+    close st (Branch (Eq, Kint, Reg c, Reg h, exit, finc));
+    st.cur <- finc;
+    emit st (Incr c);
+    List.iter (fun (ix, step) -> emit st (Bump (ix, step))) !steps;
+    close st (Jump fbody_b)
+  end;
+  true
+  end
 
 and loop_in st exit f =
   st.loops <- exit :: st.loops;
@@ -2382,7 +2510,7 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
     scope;
   { w; ver; f; index; kinds; blocks = Vec.create (); cur = 0; regs; arrays; arr; hidden = Vec.create ();
     resumes = Vec.create (); loops = []; sites = Vec.create (); live = Bytes.empty; unit; body = 0; region; infos = Vec.create ();
-    fast = Hashtbl.create 1; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec; sunk; inplace;
+    fast = Hashtbl.create 1; twins = Hashtbl.create 8; ncalls = 0; chains = Vec.create (); inl = []; ret_to = None; mem = [| 0; 0 |]; ctx; spec; sunk; inplace;
     fixed = fixed_params f; resumable = false; cold; vecs; vret = None; flags = Array.make f.nvars (-1);
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
             vars = []; need = None; consts = Vec.create (); known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
