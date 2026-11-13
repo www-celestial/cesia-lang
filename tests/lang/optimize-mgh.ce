@@ -9,6 +9,7 @@ use std/math
 use std/matrix
 use std/optimize
 use std/result
+use std/text
 use std/value
 
 defn rosenbrock(x)
@@ -640,16 +641,15 @@ end
 
 defn isLimitOfDifferences()
   (** Without a gradient, the three stop where f no longer falls, short of the last digits: Meyer's within 1e-3 of its
-      minimum, Osborne 1's and Watson's at n = 9 within 1e-5. *)
-  bounds = [1.0e-3, 1.0e-5, 1.0e-5]
-  for k in 1..3
-    c = named(limited[k])
-    r = optimize.Minimize(sumOfSquares(c), c.X0)
-    if not (result.IsOk(r) and math.Abs(r.Value.F - c.Want[1]) <= bounds[k] * c.Want[1])
-      return false
-    end
-  end
-  true
+      minimum and Watson's at n = 9 within 1e-5, an Ok, as their gradient has shrunk to 1.5e-8 of its size at the
+      start; Osborne 1's within 1e-5 too, but its gradient is still 2.3e-8 of that size: an Err that asks for it. *)
+  meyer = optimize.Minimize(sumOfSquares(named("meyer")), named("meyer").X0)
+  watson = optimize.Minimize(sumOfSquares(named("watson-9")), named("watson-9").X0)
+  osborne = optimize.Minimize(sumOfSquares(named("osborne-1")), named("osborne-1").X0)
+  near(r, name, rel) = math.Abs(r.F - named(name).Want[1]) <= rel * named(name).Want[1]
+  result.IsOk(meyer) and near(meyer.Value, "meyer", 1.0e-3) and result.IsOk(watson) and
+    near(watson.Value, "watson-9", 1.0e-5) and result.IsErr(osborne) and near(osborne.Error.Best, "osborne-1", 1.0e-5) and
+    text.Contains("give the gradient", osborne.Error.Message)
 end
 
 defn isMinimizeCalls()

@@ -7,6 +7,7 @@ use std/columns as col
 use std/list
 use std/math
 use std/matrix
+use std/num
 use std/result
 use std/text
 use std/value
@@ -225,7 +226,6 @@ list2max(a, b) = if a >= b a else b end
 
 bigger(a, b) = if a >= b a else b end
 smaller(a, b) = if a <= b a else b end
-dot(a, b) = list.Sum(a * b)   (** the scalar product of two arrays of the same shape *)
 
 (* Minimize: the L-BFGS method of Liu and Nocedal (1989), with the line search of Moré and Thuente (1994). *)
 pairs = 10          (** the pairs (s, y) kept, m of Liu and Nocedal *)
@@ -235,6 +235,7 @@ xtol = eps          (** the line search stops when rounding leaves its interval 
 tries = 20          (** the most evaluations in one line search *)
 stepMost = 1.0e10   (** the longest step a line search tries, in units of the direction *)
 cbrtEps = 6.055454452393343e-06   (** eps^(1/3), the relative step of the central differences *)
+rootEps = 1.4901161193847656e-08  (** eps^(1/2): where f falls no further, how far its gradient must have shrunk *)
 
 defn checkStart(name, x)
   (** x checked: a finite number, or an array of one row or one column of finite numbers; a panic that names what is
@@ -397,7 +398,8 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
   (** Liu and Nocedal's Algorithm 2.1, with their scaling M3 of the first matrix, H0 = (s'y / y'y) I from the last pair,
       and the strong Wolfe conditions in the line search. The pairs (s, y), s the step and y the change of the
       gradient, are kept in a ring of pairs places, the newest at newest; a pair with s'y <= eps y'y, which would not
-      keep the matrix positive definite, is left out. *)
+      keep the matrix positive definite, is left out. The direction, H g by Nocedal's two loops (1980) over the pairs,
+      is direction's, native code: 4 m n operations a step, on arrays it doesn't make again at each step. *)
   e = evaluate(f, gradient, x, scalar)
   if value.IsText(e)
     return failMin(e, x, {F: math.Nan, G: x * math.Nan}, scalar, 0, 1)
@@ -407,6 +409,7 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
     what = if e.F - e.F == 0.0 "the gradient is $(brief(if scalar e.G[1] else e.G end))" else "f is $(e.F)" end
     return failMin("optimize.Minimize: $what at the start, $(brief(if scalar x[1] else x end)); give a start where f and its gradient are finite.", x, e, scalar, 0, calls)
   end
+  start = list.Max(math.Abs(e.G))   (* the largest component of the gradient at the start *)
   ss = list.Fill(missing, pairs)
   ys = list.Fill(missing, pairs)
   rho = matrix.Zeros(pairs)
@@ -427,12 +430,12 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
     if used > 0
       d = -direction(e.G, ss, ys, rho, used, newest, gamma)
     end
-    gd = dot(e.G, d)
+    gd = num.Dot(e.G, d)
     if not (gd < 0.0)
       (* Not a direction of descent, from rounding: the memory goes, and the step goes down the gradient. *)
       used = 0
       d = -e.G
-      gd = dot(e.G, d)
+      gd = num.Dot(e.G, d)
     end
     stp = if used == 0 smaller(1.0, 1.0 / math.Sqrt(-gd)) else 1.0 end
     ls = lineSearch(f, gradient, scalar, x, e, d, gd, stp)
@@ -440,17 +443,20 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
       return failMin(ls, x, e, scalar, taken, calls)
     end
     calls += ls.Calls
+    if ls.Far
+      return failMin("optimize.Minimize: f keeps falling along a line from $(brief(if scalar x[1] else x end)), to $(ls.E.F) at $(brief(if scalar ls.X[1] else ls.X end)): it may have no minimum.", ls.X, ls.E, scalar, taken + 1, calls)
+    end
     down = used == 0   (* this search went down the gradient *)
     moved = ls.E.F < e.F
     if ls.Wolfe and not moved
       (* The conditions hold where f has not changed: rounding leaves no decrease to find. *)
-      return result.Ok(found(x, e, scalar, taken, calls))
+      return settled(x, e, scalar, taken, calls, start)
     end
     if moved
       s = ls.X - x
       y = ls.E.G - e.G
-      sy = dot(s, y)
-      yy = dot(y, y)
+      sy = num.Dot(s, y)
+      yy = num.Dot(y, y)
       if sy > eps * yy
         newest = if newest == pairs 1 else newest + 1 end
         ss[newest] = s
@@ -464,7 +470,7 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
       e = ls.E
       taken += 1
       if ls.Wolfe and older - e.F <= 4.0 * eps * math.Abs(e.F)
-        return result.Ok(found(x, e, scalar, taken, calls))
+        return settled(x, e, scalar, taken, calls, start)
       end
       older = if ls.Wolfe previous else math.Nan end
     end
@@ -479,7 +485,7 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
           return failMin("optimize.Minimize: f grows along minus its gradient from $(brief(if scalar x[1] else x end)), where f = $(e.F): the gradient is wrong there, or f too rough for differences.", x, e, scalar, taken, calls)
         end
         if not moved or fails > 0
-          return result.Ok(found(x, e, scalar, taken, calls))
+          return settled(x, e, scalar, taken, calls, start)
         end
         fails += 1
       end
@@ -488,24 +494,15 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
   end
 end
 
-defn direction(g, ss, ys, rho, used, newest, gamma)
-  (** H g by Nocedal's two loops (1980), H the L-BFGS matrix of the last used pairs over H0 = gamma I. *)
-  q = g
-  alpha = matrix.Zeros(pairs)
-  k = newest
-  for j in 1..used
-    a = rho[k] * dot(ss[k], q)
-    alpha[k] = a
-    q = q - a * ys[k]
-    k = if k == 1 pairs else k - 1 end
+defn settled(x, e, scalar, taken, calls, start)
+  (** The end where f falls no further: an Ok when the gradient has shrunk to sqrt(eps) of its size at the start, or of
+      1, the limit of floats or of a gradient by differences; else an Err, as f stops falling where its slope is not
+      small: a kink, a wall past which f is not finite, or a gradient that is wrong or not exact enough. *)
+  big = list.Max(math.Abs(e.G))
+  if big <= rootEps * bigger(1.0, start)
+    return result.Ok(found(x, e, scalar, taken, calls))
   end
-  r = gamma * q
-  for j in 1..used
-    k = if k == pairs 1 else k + 1 end
-    b = rho[k] * dot(ys[k], r)
-    r = r + (alpha[k] - b) * ss[k]
-  end
-  r
+  failMin("optimize.Minimize: f falls no further from $(brief(if scalar x[1] else x end)), where f = $(e.F), but the largest component of its gradient is $big, and $(start) at the start: f may have a kink there, or no finite value past it, or a gradient not exact enough; give the gradient, or a larger tol.", x, e, scalar, taken, calls)
 end
 
 defn failMin(message, x, e, scalar, taken, calls)
@@ -518,10 +515,10 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
       f(x + a d) <= f(x) + ftol a gd and |g(x + a d)'d| <= gtol |gd|: the strong Wolfe conditions. Each trial step
       comes from cubic or quadratic interpolation of f and its slope at the ends of an interval that holds such a
       step, which shrinks; while no step has met the first condition with a positive slope, it works on
-      psi(a) = f(x + a d) - f(x) - ftol a gd instead of f. It gives {Wolfe, X, E, Calls}, E the evaluation at X; when no
-      step meets both within tries evaluations, or rounding stops the interval from shrinking, Wolfe is false and X is
-      the lowest point met, x itself if none is below f(x). A text when f or the gradient gives no number, or no array
-      of the shape of x. *)
+      psi(a) = f(x + a d) - f(x) - ftol a gd instead of f. It gives {Wolfe, Far, X, E, Calls}, E the evaluation at X,
+      Far true when f still falls fast at the longest step, stepMost; when no step meets both within tries
+      evaluations, or rounding stops the interval from shrinking, Wolfe is false and X is the lowest point met, x
+      itself if none is below f(x). A text when f or the gradient gives no number, or no array of the shape of x. *)
   gtest = ftol * gd
   width = stepMost
   wide = 2.0 * width
@@ -543,7 +540,7 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
     end
     calls += et.Calls
     fp = et.F
-    dp = if fp - fp == 0.0 dot(et.G, d) else math.Nan end
+    dp = if fp - fp == 0.0 num.Dot(et.G, d) else math.Nan end
     if not (dp - dp == 0.0)
       (* No finite value: back half way to the best step so far, and never as far again. *)
       far = stp
@@ -558,9 +555,12 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
         first = false
       end
       if fp <= ftest and math.Abs(dp) <= gtol * (-gd)
-        return {Wolfe: true, X: xt, E: et, Calls: calls}
+        return {Wolfe: true, Far: false, X: xt, E: et, Calls: calls}
       end
-      if st.Brackt and (stp <= lo or stp >= hi or hi - lo <= xtol * hi) or stp >= stepMost and fp <= ftest and dp <= gtest
+      if stp >= stepMost and fp <= ftest and dp <= gtest
+        return {Wolfe: false, Far: true, X: xt, E: et, Calls: calls}
+      end
+      if st.Brackt and (stp <= lo or stp >= hi or hi - lo <= xtol * hi)
         break
       end
       if first and fp <= st.Fx and fp > ftest
@@ -597,9 +597,9 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
     end
   end
   if value.IsMissing(best)
-    return {Wolfe: false, X: x, E: e, Calls: calls}
+    return {Wolfe: false, Far: false, X: x, E: e, Calls: calls}
   end
-  {Wolfe: false, X: best.X, E: best.E, Calls: calls}
+  {Wolfe: false, Far: false, X: best.X, E: best.E, Calls: calls}
 end
 
 defn trial(st, stp, fp, dp, lo, hi)
@@ -776,6 +776,9 @@ defn nelderMead(f, x0, scalar, tol, most)
     mid = mid / n
     worst = vs[n + 1]
     xr = mid + (mid - worst)
+    if not finiteAll(xr)
+      return failSimplex(grew(best, fs[1], scalar), best, fs[1], scalar, taken, calls)
+    end
     fr = valueAt(f, xr, scalar)
     if value.IsText(fr)
       return failSimplex(fr, best, fs[1], scalar, taken, calls + 1)
@@ -785,6 +788,9 @@ defn nelderMead(f, x0, scalar, tol, most)
     if fr < fs[1]
       (* Expand: farther along the same line, kept if lower than the reflected point. *)
       xe = mid + chi * (xr - mid)
+      if not finiteAll(xe)
+        return failSimplex(grew(best, fs[1], scalar), best, fs[1], scalar, taken, calls)
+      end
       fe = valueAt(f, xe, scalar)
       if value.IsText(fe)
         return failSimplex(fe, best, fs[1], scalar, taken, calls + 1)
@@ -837,6 +843,8 @@ defn nelderMead(f, x0, scalar, tol, most)
     end
   end
 end
+
+grew(x, fx, scalar) = "optimize.Simplex: the simplex grew past the largest floats, with f = $fx at $(brief(if scalar x[1] else x end)): f may have no minimum."   (** the message when it does *)
 
 defn valueAt(f, x, scalar)
   (** f at x for Simplex: a float, inf where f gives a nan or an infinity, a text when it gives no number. *)
