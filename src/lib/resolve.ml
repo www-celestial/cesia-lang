@@ -224,6 +224,38 @@ let type_ref env (t : ptype) =
       fail env t.tpos (match t.tpkg, env.home t.tname with None, Some p -> Messages.moved t.tname p | _ -> Messages.no_type shown)
   end
 
+(* Definite assignment in a function: what is surely assigned, the trail of what was since each branch began, and
+   whether what runs now can be reached. One for each function, and no closure for each step. *)
+type flow = { set : Bytes.t; trail : int array; mutable top : int; mutable dead : bool; undef : bool array }
+
+let assign st i = if Bytes.get st.set i = '\000' then (Bytes.set st.set i '\001'; st.trail.(st.top) <- i; st.top <- st.top + 1)
+let read st i = if not (st.dead || Bytes.get st.set i = '\001') then st.undef.(i) <- true
+
+(* Runs a branch, then takes back what it assigned: gives that, if [keep], or None if it never ends or isn't kept. *)
+let branch st keep f =
+  let mark = st.top and was = st.dead in
+  f ();
+  let out = ref [] and ended = not st.dead in
+  while st.top > mark do
+    st.top <- st.top - 1;
+    Bytes.set st.set st.trail.(st.top) '\000';
+    if keep then out := st.trail.(st.top) :: !out
+  done;
+  st.dead <- was;
+  if keep && ended then Some !out else None
+
+(* What two branches, one of which runs, both assign; None for one that never ends. Nothing of it is assigned before. *)
+let meet st x y =
+  match x, y with
+  | None, z | z, None -> z
+  | Some a, Some b ->
+    List.iter (fun i -> Bytes.set st.set i '\001') a;
+    let both = List.filter (fun i -> Bytes.get st.set i = '\001') b in
+    List.iter (fun i -> Bytes.set st.set i '\000') a;
+    Some both
+
+let after st = function None -> st.dead <- true | Some l -> List.iter (assign st) l
+
 (* The names that an expression reads, resolved. The walk is one closure for a statement, not one for each node, since the
    load of a program goes through every node of it. *)
 let rec reads env sc celled (e : expr) =
@@ -310,68 +342,46 @@ and finish sc =
    or a break, nothing runs: every variable counts as assigned. *)
 and flow (f : func) =
   let n = f.nvars in
-  let undef = Array.make n false and set = Bytes.make n '\000' and trail = Array.make n 0 and top = ref 0 and dead = ref false in
-  Array.iteri (fun i _ -> Bytes.set set i '\001') f.params;
-  Array.iter (fun (_, inner) -> undef.(inner) <- true; Bytes.set set inner '\001') f.captures;
-  let assign i = if Bytes.get set i = '\000' then (Bytes.set set i '\001'; trail.(!top) <- i; incr top) in
-  let read i = if not (!dead || Bytes.get set i = '\001') then undef.(i) <- true in
-  (* Runs a branch, then takes back what it assigned: gives that, if [keep], or None if it never ends. *)
-  let branch keep f =
-    let mark = !top and was = !dead in
-    f ();
-    let rec back out = if !top = mark then out else (decr top; Bytes.set set trail.(!top) '\000'; back (if keep then trail.(!top) :: out else out)) in
-    let out = back [] and ended = not !dead in
-    dead := was;
-    if ended then Some out else None
-  in
-  (* What two branches, one of which runs, both assign; None for one that never ends. Nothing of it is assigned before. *)
-  let meet x y =
-    match x, y with
-    | None, z | z, None -> z
-    | Some a, Some b ->
-      List.iter (fun i -> Bytes.set set i '\001') a;
-      let both = List.filter (fun i -> Bytes.get set i = '\001') b in
-      List.iter (fun i -> Bytes.set set i '\000') a;
-      Some both
-  in
-  let after = function None -> dead := true | Some l -> List.iter assign l in
+  let st = { set = Bytes.make n '\000'; trail = Array.make n 0; top = 0; dead = false; undef = Array.make n false } in
+  Array.iteri (fun i _ -> Bytes.set st.set i '\001') f.params;
+  Array.iter (fun (_, inner) -> st.undef.(inner) <- true; Bytes.set st.set inner '\001') f.captures;
   let rec go (e : expr) =
     match e.e with
-    | Hook h -> h.live <- (if !dead then Bytes.make n '\001' else Bytes.copy set)
-    | Var { b = Local i; _ } -> read i
-    | Assign ({ b = Local i; _ }, v) -> go v; assign i
-    | Set { root = { b = Local i; _ }; _ } -> read i; children go e
-    | Fn_def ({ b = Local i; _ }, g) -> capture g; assign i
+    | Hook h -> h.live <- (if st.dead then Bytes.make n '\001' else Bytes.copy st.set)
+    | Var { b = Local i; _ } -> read st i
+    | Assign ({ b = Local i; _ }, v) -> go v; assign st i
+    | Set { root = { b = Local i; _ }; _ } -> read st i; children go e
+    | Fn_def ({ b = Local i; _ }, g) -> capture g; assign st i
     | Lambda g -> capture g
     | Destructure (pt, v) ->
       go v;
-      pat_names (fun n -> match n.b with Local i -> assign i | _ -> ()) pt
+      pat_names (fun n -> match n.b with Local i -> assign st i | _ -> ()) pt
     | And (a, b) | Or (a, b) ->
       go a;
-      ignore (branch false (fun () -> go b))
+      ignore (branch st false (fun () -> go b))
     | If (c, a, b) ->
       go c;
-      let after_a = branch true (fun () -> Array.iter go a) in
-      after (meet after_a (branch true (fun () -> Array.iter go b)))
+      let after_a = branch st true (fun () -> Array.iter go a) in
+      after st (meet st after_a (branch st true (fun () -> Array.iter go b)))
     | While { cond; body; _ } ->
       go cond;
-      ignore (branch false (fun () -> Array.iter go body))
+      ignore (branch st false (fun () -> Array.iter go body))
     | For { var = { b = Local i; _ }; iter; fbody; _ } ->
       go iter;
-      ignore (branch false (fun () -> assign i; Array.iter go fbody))
+      ignore (branch st false (fun () -> assign st i; Array.iter go fbody))
     | Comp { cbody; cvar = { b = Local i; _ }; csrc; cguard } ->
       go csrc;
-      ignore (branch false (fun () -> assign i; Option.iter go cguard; go cbody))
+      ignore (branch st false (fun () -> assign st i; Option.iter go cguard; go cbody))
     | Match { subject; arms } ->
       go subject;
-      let arm a () = pat_names (fun n -> match n.b with Local i -> assign i | _ -> ()) a.pt; Option.iter go a.guard; go a.abody in
-      if Array.length arms > 0 then after (Array.fold_left (fun acc a -> meet acc (branch true (arm a))) None arms)
-    | Return r -> Option.iter go r.rvalue; dead := true
-    | Break -> dead := true
+      let arm a () = pat_names (fun n -> match n.b with Local i -> assign st i | _ -> ()) a.pt; Option.iter go a.guard; go a.abody in
+      if Array.length arms > 0 then after st (Array.fold_left (fun acc a -> meet st acc (branch st true (arm a))) None arms)
+    | Return r -> Option.iter go r.rvalue; st.dead <- true
+    | Break -> st.dead <- true
     | _ -> children go e
-  and capture (g : func) = Array.iter (fun (outer, _) -> read outer) g.captures in
+  and capture (g : func) = Array.iter (fun (outer, _) -> read st outer) g.captures in
   Array.iter go f.body;
-  f.maybe_undef <- undef
+  f.maybe_undef <- st.undef
 
 (* The mask has 62 bits: past them, every parameter counts as kept. *)
 let keeps (f : func) k = k >= 62 || f.kept land (1 lsl k) <> 0
