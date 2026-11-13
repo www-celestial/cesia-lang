@@ -584,8 +584,7 @@ defn jacobianAt(f, p, t, y, fy, s)
         end
       end
       dj = (fj - fy) / d
-      total = list.Sum(dj)
-      if not (total - total == 0.0)
+      if list.Sum(0.0 * dj) != 0.0
         for i in 1..n
           if not isFinite(dj[i])
             return "ode.Solve: the Jacobian by differences is $(dj[i]) in row $i, column $j at t = $t, as f gave $(fj[i]) there: give jacobian =, or check f."
@@ -604,9 +603,11 @@ defn jacobianAt(f, p, t, y, fy, s)
     if not (value.IsArray(m) and value.Len(value.Size(m)) == 2 and value.Size(m, 1) == n and value.Size(m, 2) == n)
       return "ode.Solve: jacobian gave $(brief(m)) at t = $t, not an $n × $n matrix, ∂f/∂y."
     end
-    for k in 1..n * n
-      if not isFinite(m[k])
-        return "ode.Solve: jacobian gave $(brief(m[k])) in row $(math.Mod(k - 1, n) + 1), column $(math.Div(k - 1, n) + 1) at t = $t, not a finite number."
+    if list.Sum(0.0 * m) != 0.0
+      for k in 1..n * n
+        if not isFinite(m[k])
+          return "ode.Solve: jacobian gave $(brief(m[k])) in row $(math.Mod(k - 1, n) + 1), column $(math.Div(k - 1, n) + 1) at t = $t, not a finite number."
+        end
       end
     end
     jac = m * 1.0
@@ -762,8 +763,7 @@ defn stiffRun(f, p)
               return failed(bad, p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t, y, fy], t)
             end
           end
-          total = list.Sum(fi)
-          if not (total - total == 0.0)
+          if list.Sum(0.0 * fi) != 0.0
             wrong = i
             break
           end

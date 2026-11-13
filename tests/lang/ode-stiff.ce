@@ -374,6 +374,12 @@ defn isNan()
   result.IsErr(r) and text.Contains("f gave nan in component 1", r.Error.Message) and r.Error.T <= 0.5 and r.Error.T > 0.3
 end
 
+defn isHugeValues()
+  (** Finite values whose sum overflows are no NaN: y' = -y from 9e307 in three components. *)
+  s = solved(ode.Solve((t, y) -> -y, [0.0, 1.0], [9.0e307, 9.0e307, 9.0e307], stiff = true))
+  math.Near(lastRow(s), 9.0e307 * math.Exp(-1.0) * [1.0, 1.0, 1.0], rel = 1.0e-5)
+end
+
 isJacobianShape() = text.Contains("jacobian gave [1.0, 2.0] at t = 0.0, not an 2 × 2 matrix", ode.Solve((t, y) -> -y, [0.0, 1.0], [1.0, 1.0], stiff = true, jacobian = (t, y) -> [1.0, 2.0]).Error.Message)
 isJacobianNan() = text.Contains("jacobian gave nan in row 2, column 1 at t = 0.0", ode.Solve((t, y) -> -y, [0.0, 1.0], [1.0, 1.0], stiff = true, jacobian = (t, y) -> [1.0 0.0; math.Nan 1.0]).Error.Message)
 isDifferenceNan() = text.Contains("the Jacobian by differences is", ode.Solve((t, y) -> if y[1] > 1.0 [math.Nan] else [0.0 - y[1]] end, [0.0, 1.0], [1.0], stiff = true).Error.Message)
