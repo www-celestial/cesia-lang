@@ -285,7 +285,7 @@ let leading ctx v =
    in Cesia did them, so the same bits. {Singular, Lu, Perm, Sign}, Singular when a pivot is under 1e-14 in absolute
    value; or missing when m is no matrix of numbers with as many columns as rows or more. *)
 (* The dot product of two float arrays of one shape in one pass, with the bits of list.Sum(a * b); missing for anything
-   else, which num.Dot then computes that way. std/optimize has it too, for its arrays of floats, without loading num. *)
+   else, which num.Dot then computes that way. *)
 let dot ctx (a : t array) =
   match a.(0), a.(1) with
   | Array ({ store = F _; _ } as x), Array ({ store = F _; _ } as y) when Value.same_shape x y ->
@@ -327,16 +327,30 @@ let lbfgs_direction ctx (a : t array) =
   done;
   match a.(0) with Array x -> Arrays.like x (F r) | _ -> fail ()
 
+(* The float cells of an array of floats, or the error of [name]. *)
+let floats_of ctx name v =
+  match v with
+  | Array ({ store = F _; _ } as x) -> (match (Value.trim x).store with F d -> x, d | _ -> assert false)
+  | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
+
 (* The largest |x| of a float array, nan when one is nan, 0 for none: the size of a gradient, or of a simplex, for
-   std/optimize, in one pass. Missing for anything else. *)
+   std/optimize, in one pass. A float always, so that inference knows it. *)
 let largest ctx (a : t array) =
-  match a.(0) with
-  | Array ({ store = F _; _ } as x) ->
-    Runtime.pay ctx (x.rows * x.cols);
-    (match (Value.trim x).store with
-     | F d -> Float (Float.Array.fold_left (fun m v -> let v = Float.abs v in if v > m || Float.is_nan v then v else m) 0. d)
-     | _ -> Missing)
-  | _ -> Missing
+  let x, d = floats_of ctx "largest" a.(0) in
+  Runtime.pay ctx (x.rows * x.cols);
+  let m = ref 0. in
+  for i = 0 to Float.Array.length d - 1 do
+    let v = Float.abs (Float.Array.get d i) in
+    if v > !m || Float.is_nan v then m := v
+  done;
+  Float !m
+
+(* num's dot for std/optimize, whose arrays are floats of one shape: a float always, or an error. *)
+let dot_floats ctx (a : t array) =
+  let x, p = floats_of ctx "dot" a.(0) and y, q = floats_of ctx "dot" a.(1) in
+  if not (Value.same_shape x y) then Runtime.fail ctx Type (Messages.shape (Arrays.sizes x) (Arrays.sizes y));
+  Runtime.pay ctx (x.rows * x.cols);
+  Float (Kernels.dot p q)
 
 let lu_factor ctx (a : t array) =
   match leading ctx a.(0) with
@@ -926,7 +940,10 @@ let packages =
       "Pi", Float (4. *. atan 1.);
       "Nan", Float nan ];
     "num", [ "dot", nat "dot" 2 2 dot; "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
-    "optimize", [ "direction", nat "direction" 7 7 lbfgs_direction; "dot", nat "dot" 2 2 dot; "largest", nat "largest" 1 1 largest ];
+    "optimize",
+    [ "direction", nat ~ret:fa_size "direction" 7 7 lbfgs_direction;
+      "dot", nat ~ret:(fun _ -> TF) "dot" 2 2 dot_floats;
+      "largest", nat ~ret:(fun _ -> TF) "largest" 1 1 largest ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
       "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));
