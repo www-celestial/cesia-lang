@@ -229,13 +229,42 @@ A server faces clients that are slow, greedy or broken, and keeps serving the ot
   the RAM otherwise: past it, a request with a body gets a `503` at once, instead of the server reaching the limit.
 - A handler that panics gets a `500`, and so does one that takes more memory than the limit: only its request fails.
 
+### A body in pieces
+
+A response is made whole before it goes, which an export of a large table can't afford. [http.Stream] sends its body
+in pieces as they are made, each a *chunk* of HTTP/1.1 (RFC 9112, section 7.1): `send(piece)` hands one to the
+client, and the body ends when the function returns.
+
+```cesia norun
+use std/csv
+defn export(send)
+  for page in pages()
+    send(csv.Text(page))?
+  end
+  result.Ok(missing)
+end
+app = http.App() then http.Get("/invoices.csv", r -> http.Stream(export, headers = [{Name: "content-type", Value: "text/csv"}]))
+```
+
+- `send` gives an `Err` once the client is gone, or when a piece took more than `timeout` seconds to come or to be
+  taken: a client that stops reading holds the server's fiber for one timeout, and one piece in memory, no more. The
+  `?` after `send` stops the export then.
+- A panic in the middle, or an `Err` that the function gives, cuts the body short, without its last chunk, so the client
+  sees an error rather than a body that looks whole.
+- `HEAD` gets the head alone, and the function doesn't run; a client of HTTP/1.0, which knows no chunks, gets the pieces
+  as they are, and the connection ends with the body.
+
+Measured on 2026-11-13, an export of 100,000 rows of 7 cells, 6 MB of CSV, the rows made as they are asked, as a
+database gives them (`bench/export.ce`): the peak of the server's memory grew by 77 MB for the whole body, by 32 MB in
+pieces of 1,000 rows, most of it what the collector had not yet taken back of the pages before.
+
 ## More of std/http
 
 | To | Use |
 |---|---|
 | add a route | [http.Get], [http.Post], [http.Put], [http.Delete], [http.AnyMethod] for any method, [http.Route] for any one by name; a final `*` in a path takes the rest of it, in `r.Params["*"]` |
 | serve files | [http.Static] serves a folder under a prefix, and no path can leave the folder; [http.FileResponse] sends one file, its type from its extension |
-| answer | [http.Plain], [http.Json], [http.Html], [http.Redirect], [http.NotFound]; [http.WithHeader] adds a header, [http.SetCookie] a cookie; [http.Reason] is the text of a status |
+| answer | [http.Plain], [http.Json], [http.Html], [http.Redirect], [http.NotFound], [http.Stream] for a body in pieces; [http.WithHeader] adds a header, [http.SetCookie] a cookie; [http.Reason] is the text of a status |
 | read a request | [http.BodyJson] its body as JSON, [http.Form] as a form, [http.HeaderValue] a header by its name in lower case; `r.Peer` is the address of the client, without its port, as [net.Peer] gives it, to limit a client by; [http.ParseUrl] takes a URL apart |
 | pass data on | a middleware puts a key in the request, as the person signed in, and the handler finds it there: see [http.Wrap] |
 | wrap | [http.Logger], [http.Metrics], [http.Cors], which lets the pages of another origin read the responses, and [http.SameOrigin], which refuses the requests of another site: see below |

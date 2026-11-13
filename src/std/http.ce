@@ -109,9 +109,10 @@ defn headerLine(h)
   "$line$crlf"
 end
 
-defn render(response, headOnly = false, closing = false)
+defn render(response, headOnly = false, closing = false, streamed = "")
   (** The text of an HTTP/1.1 response from {Status, Body} and optional headers. With headOnly, the body is left out; with
-      closing, a header tells the client that the server closes the connection after it. *)
+      closing, a header tells the client that the server closes the connection after it. A streamed body has no length:
+      streamed is "chunked" for its chunks, or "closed" for one that ends when the connection does. *)
   status = response.Status
   bug.Assert(value.IsInt(status), "This response has a status that isn't an integer.")
   body = value.Text(response.Body)
@@ -121,32 +122,77 @@ defn render(response, headOnly = false, closing = false)
   end
   custom = if value.Len(extra) == 0 "" else text.Join("", list.Map(headerLine, extra)) end
   ending = if closing "connection: close$crlf" else "" end
-  lengthLine = if status == 101 or status == 204 "" else "content-length: $(text.ByteLength(body))$crlf" end
-  shown = if headOnly "" else body end
+  lengthLine = if streamed == "chunked"
+    "transfer-encoding: chunked$crlf"
+  else if streamed != "" or status == 101 or status == 204
+    ""
+  else
+    "content-length: $(text.ByteLength(body))$crlf"
+  end
+  shown = if headOnly or streamed != "" "" else body end
   "HTTP/1.1 $status $(Reason(status))$crlf$lengthLine$custom$ending$crlf$shown"
 end
 
 (** The text of a response with just a status and its reason, after which the server closes the connection. *)
 failure(status) = render({Status: status, Body: Reason(status)}, closing = true)
 
-defn ready(response, headOnly)
-  (** A response made ready to send: a struct with reply (its text), upgrade (a function or missing) and close, true when
-      the server stops: the response tells the client, which asks again on a new connection, not on this one. *)
+defn ready(response, headOnly, chunked)
+  (** A response made ready to send: a struct with reply (its text, or its head when its body is streamed), upgrade (a
+      function or missing), stream (the function of a body that Stream gives, missing for HEAD), chunked, and close,
+      true when the server stops: the response tells the client, which asks again on a new connection, not on this
+      one. A client that doesn't read chunks, as HTTP/1.0, gets a streamed body that ends with the connection. *)
   upgrade = match response
     {Upgrade: upgrade} -> upgrade
     else -> missing
   end
-  closing = stopping()
-  {Reply: render(response, headOnly = headOnly, closing = closing), Upgrade: upgrade, Close: closing}
+  stream = match response
+    {Stream: stream} -> stream
+    else -> missing
+  end
+  streamed = if value.IsMissing(stream) "" else if chunked "chunked" else "closed" end
+  closing = stopping() or streamed == "closed"
+  {Reply: render(response, headOnly = headOnly, closing = closing, streamed = streamed), Upgrade: upgrade, Stream: if headOnly missing else stream end,
+    Chunked: chunked, Close: closing}
 end
 
-defn answer(handle, request, left)
+defn answer(handle, request, left, chunked)
   (** The response of a handler to a request, ready to send, within left seconds. A panic in the handler stops its own
       fiber only, and answers 500. A handler that takes longer gets a 503, and the connection closes while it runs on. *)
-  match fiber.Wait(fiber.Spawn(() -> ready(handle(request), request.Method == "HEAD")), timeout = list.Max(0, left))
+  match fiber.Wait(fiber.Spawn(() -> ready(handle(request), request.Method == "HEAD", chunked)), timeout = list.Max(0, left))
     result.Ok(done) -> done
-    result.Err(e) -> {Reply: failure(if e.Kind == "timeout" 503 else 500 end), Upgrade: missing, Close: true}
+    result.Err(e) -> {Reply: failure(if e.Kind == "timeout" 503 else 500 end), Upgrade: missing, Stream: missing, Chunked: chunked, Close: true}
   end
+end
+
+hexDigits = "0123456789abcdef"   (* The digits of the size of a chunk. *)
+
+defn hexOf(n)
+  (** The size of a chunk in hexadecimal, as RFC 9112 writes it. *)
+  d = math.Mod(n, 16) + 1
+  low = text.ByteSlice(d, d, hexDigits)
+  if n < 16 low else "$(hexOf(math.Div(n, 16)))$low" end
+end
+
+defn pour(conn, produce, chunked, timeout)
+  (** Sends a streamed body as produce gives its pieces, in a fiber of its own: each piece must come, and go out, within
+      timeout seconds of the one before, or the connection closes, so that a client that stops reading holds nothing
+      for long. Ok when produce returned and the body was ended, an Err when the client is gone or slow, or when produce
+      panicked or gave an Err: the body is then cut short, which the client sees. *)
+  defn send(piece)
+    bug.Assert(value.IsText(piece), "A piece of a streamed body is a text.")
+    if piece == ""
+      return result.Ok(missing)
+    end
+    conn.Arm(timeout)
+    conn.Write(if chunked "$(hexOf(text.ByteLength(piece)))$crlf$piece$crlf" else piece end)
+  end
+  conn.Arm(timeout)
+  made = fiber.Wait(fiber.Spawn(() -> produce(send)))
+  if result.IsErr(made) or result.IsErr(made.Value)
+    return if result.IsErr(made) made else made.Value end
+  end
+  conn.Arm(timeout)
+  if chunked conn.Write("0$crlf$crlf") else result.Ok(missing) end
 end
 
 (** How a connection reads, writes and closes without TLS: the wrap of Serve when it is missing, and of Fetch for http://. *)
@@ -241,10 +287,14 @@ defn connection(handle, conn, buffer, options, deadline)
     request = parsed.Value.Request
     request.Peer = conn.Peer
     conn.Arm(0)
-    done = answer(handle, request, deadline - sys.Now())
+    done = answer(handle, request, deadline - sys.Now(), parsed.Value.Chunked)
     conn.Arm(options.Timeout)
-    next = sys.Now() + options.Timeout
     sent = conn.Write(done.Reply)
+    if result.IsOk(sent) and not value.IsMissing(done.Stream)
+      sent = pour(conn, done.Stream, done.Chunked, options.Timeout)
+      conn.Arm(options.Timeout)
+    end
+    next = sys.Now() + options.Timeout
     if result.IsErr(sent) or done.Close or (parsed.Value.Close and value.IsMissing(done.Upgrade))
       conn.Close()
     else if not value.IsMissing(done.Upgrade)
@@ -536,6 +586,21 @@ Redirect(url, status = 302) = {Status: status, Body: "", Headers: [{Name: "locat
       NotFound() --> Plain("Not Found", status = 404) *)
 NotFound() = Plain("Not Found", status = 404)
 type(kind) = {Name: "content-type", Value: kind}
+
+defn Stream(produce, status = 200, headers = [])
+  (** A response whose body goes out in pieces, as an export of a large table: the whole body is never in memory.
+      produce(send) runs once the head has gone, and each send(piece), a text, goes to the client at once, as a chunk
+      of HTTP/1.1 (RFC 9112, section 7.1). send gives an Ok, or an Err once the client is gone, or when a piece took
+      more than the timeout of Serve to come or to be taken: produce stops then, as send(piece)? does. The body ends when
+      produce returns; a panic in produce, or an Err that it gives, cuts it short, which the client sees as an error,
+      not as a whole body. A HEAD request gets the
+      head alone, without running produce; a client of HTTP/1.0 gets the pieces as they are, and the connection ends
+      with the body.
+
+        rows = Handler(App() then Get("/rows", r -> Stream(send -> send("a,b\n"), headers = [type("text/csv")])))
+        rows({Method: "GET", Path: "/rows", Query: "", Headers: [], Body: ""}).Status --> 200 *)
+  {Status: status, Body: "", Headers: headers, Stream: produce}
+end
 
 defn WithHeader(name, content, response)
   (** A response with one more header.
