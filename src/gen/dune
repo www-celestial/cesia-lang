@@ -1,2 +1,2 @@
 (executables
- (names gen_super gen_embed gen_calls gen_id))
+ (names gen_super gen_embed gen_calls gen_id gen_fold))

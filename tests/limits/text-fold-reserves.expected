@@ -1,0 +1,4 @@
+text-fold-reserves.ce:7:9: Limit "memory" reached.
+  7 | y = text.Fold(x)
+    |         ^
+exit 1

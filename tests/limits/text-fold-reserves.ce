@@ -1,0 +1,8 @@
+(** A folded copy is reserved before it is built. *)
+use std/io
+use std/text
+use std/value
+
+x = text.Repeat(3000000, "A")
+y = text.Fold(x)
+io.Print(value.Len(y))

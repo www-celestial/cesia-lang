@@ -20,6 +20,8 @@ as it did.
   `fiber.Wait(task, timeout =)`.
 - `sys.Write(path, text, sync = true)` answers once the file and its folder are on the disk; `text.ByteFind(..., fold = true)`
   ignores the case of ASCII letters; `text.IsUtf8` and `text.Count`; `sys.ReadInput(count)`; `sys.Start(..., dir =)`.
+- `text.Fold(s)`, Unicode 18.0's simple case folding, to search and compare what people write:
+  `text.Fold("ÉLODIE") == text.Fold("Élodie")`. `text.Lower` and `text.Upper` stay ASCII, for the texts of protocols.
 
 ### Servers
 

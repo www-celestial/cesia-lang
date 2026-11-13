@@ -658,14 +658,32 @@ use std/test
       text.Trim("  a ") --> "a" *)
 
 (** text.Lower(s)
-    The text with the letters A to Z in lower case. Other letters are unchanged.
+    The text with the letters A to Z in lower case. Other letters are unchanged: Lower is for the texts of protocols and
+    formats, header names, hosts, tokens, keys, whose case is ASCII by their rules. Unicode's case mappings make different
+    texts equal, a case-mapping collision: the Kelvin sign K lowers to k, and one with the dotless ı made GitHub send a
+    password-reset mail to an attacker's address. For what people write, text.Fold.
 
-      text.Lower("AbC") --> "abc" *)
+      text.Lower("AbC") --> "abc"
+      text.Lower("ÉTÉ") --> "ÉtÉ" *)
 
 (** text.Upper(s)
-    The text with the letters a to z in upper case. Other letters are unchanged.
+    The text with the letters a to z in upper case. Other letters are unchanged, as text.Lower says why.
 
       text.Upper("AbC") --> "ABC" *)
+
+(** text.Fold(s)
+    The text with each character case-folded as Unicode 18.0 says (CaseFolding.txt, its simple folding, statuses C and S):
+    a capital and its small letter fold to one character, so texts that differ only by case fold to the same text. It
+    is for searching and comparing what people write, names, titles, words: text.Fold(a) == text.Fold(b), or a key of a
+    dictionary made of text.Fold(name). Each character folds to one character, mostly its small letter, Greek and
+    Cyrillic as Latin: ß stays ß, where Unicode's full folding gives ss. Folding loses what case told: the Kelvin sign K
+    folds to k, the long s ſ to s, so two texts that differ may fold to one, which a search wants and an identifier must
+    not have; keep text.Lower and ASCII for those. Bytes that aren't UTF-8 stay as they are. A text of ASCII without a
+    capital comes back as it is, without a copy.
+
+      text.Fold("Élodie") == text.Fold("ÉLODIE") --> true
+      text.Fold("ΣΊΣΥΦΟΣ") --> "σίσυφοσ"
+      text.Fold("Straße") --> "straße" *)
 
 (** text.Repeat(n, s)
     The text n times in a row.

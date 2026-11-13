@@ -200,6 +200,47 @@ let points s =
 
 let pay ctx s = Runtime.pay_bytes ctx (String.length s)
 
+(* The character that Unicode's simple case folding gives a code point past ASCII: the run whose first character is the
+   last at or below it, found by halves, moves it if it holds it. *)
+let fold_point p =
+  let runs = Casefold.runs in
+  let rec find lo hi = if hi - lo <= 1 then lo else let mid = (lo + hi) / 2 in if runs.(4 * mid) <= p then find mid hi else find lo mid in
+  let k = 4 * find 0 (Array.length runs / 4) in
+  if p >= runs.(k) && p <= runs.(k + 1) && (p - runs.(k)) land (runs.(k + 2) - 1) = 0 then p + runs.(k + 3) else p
+
+(* A character may fold to one a byte longer (U+023A, two bytes, to U+2C65, three): the folded text is at most half
+   again as long. *)
+let folded_size n = n + (n / 2)
+
+(* Each character of a text to its simple case folding, A to Z without a search. Bytes that aren't UTF-8 stay as they
+   are. A text of ASCII without a capital is given back as it is, without a copy. *)
+let fold s =
+  let n = String.length s in
+  let rec start i = if i < n && (match s.[i] with 'A' .. 'Z' | '\128' .. '\255' -> false | _ -> true) then start (i + 1) else i in
+  let i = start 0 in
+  if i = n then s
+  else begin
+    let out = Bytes.create (folded_size n) in
+    Bytes.blit_string s 0 out 0 i;
+    let rec go i j =
+      if i >= n then j
+      else if s.[i] < '\128' then begin
+        Bytes.set out j (Char.lowercase_ascii s.[i]);
+        go (i + 1) (j + 1)
+      end else begin
+        let d = String.get_utf_8_uchar s i in
+        let k = Uchar.utf_decode_length d in
+        let p = Uchar.to_int (Uchar.utf_decode_uchar d) in
+        let f = if Uchar.utf_decode_is_valid d then fold_point p else p in
+        if f = p then begin
+          Bytes.blit_string s i out j k;
+          go (i + k) (j + k)
+        end else go (i + k) (j + Bytes.set_utf_8_uchar out j (Uchar.of_int f))
+      end
+    in
+    Bytes.sub_string out 0 (go i i)
+  end
+
 (* n copies of a text, once the memory they take is granted. *)
 let repeated ctx n s =
   let size = String.length s in
@@ -298,6 +339,11 @@ let text_natives =
         pay ctx s;
         Runtime.reserve ctx ((String.length s / 8) + 1);
         Text (String.uppercase_ascii s));
+    "Fold", nat "Fold" 1 1 (fun ctx a ->
+        let s = text_arg ctx "Fold" a.(0) in
+        pay ctx s;
+        Runtime.reserve ctx ((folded_size (String.length s) / 8) + 1);
+        Text (fold s));
     "EndsWith", nat "EndsWith" 2 2 (fun ctx a ->
         let suffix = text_arg ctx "EndsWith" a.(0) in
         pay ctx suffix;

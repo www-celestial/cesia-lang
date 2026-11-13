@@ -1,5 +1,6 @@
 use std/fiber
 use std/list
+use std/random
 use std/result
 use std/text
 use std/value
@@ -96,3 +97,23 @@ isByteFindFoldCases() = text.ByteFind("World", 1, "hello WORLD", fold = true) ==
 isByteFindFoldOnlyLetters() = value.IsMissing(text.ByteFind("[", 1, "{", fold = true)) and value.IsMissing(text.ByteFind("@", 1, "`", fold = true))
 isByteFindEdges() = text.ByteFind("", 3, "abc") == 3 and value.IsMissing(text.ByteFind("a", 4, "abc")) and value.IsMissing(text.ByteFind("a", 1, ""))
 isByteFindFoldNotBool() = fails(() -> text.ByteFind("a", 1, "a", fold = 1), "type")
+(* text.Fold: Unicode's simple case folding, for search and comparison; text.Lower and text.Upper stay ASCII. *)
+isFold() = text.Fold("Élodie") == text.Fold("ÉLODIE") and text.Fold("ÉLODIE") == "élodie"
+isFoldAscii() = text.Fold("AbC-1 [@`{]") == "abc-1 [@`{]"
+isFoldSigma() = text.Fold("Σ") == "σ" and text.Fold("ς") == "σ" and text.Fold("ΣΊΣΥΦΟΣ") == "σίσυφοσ"
+isFoldKelvin() = text.Fold(text.Char(0x212A)) == "k" and text.Fold(text.Char(0x17F)) == "s"
+isFoldSimpleOnly() = text.Fold("ß") == "ß" and text.Fold(text.Char(0x1E9E)) == "ß" and text.Fold("ŉ") == "ŉ"
+isFoldCherokee() = text.Fold(text.Char(0xAB70)) == text.Char(0x13A0) and text.Fold(text.Char(0x13F8)) == text.Char(0x13F0)
+isFoldGrows() = text.Fold("ȺȾ") == text.Str(text.Char(0x2C65), text.Char(0x2C66)) and text.ByteLength(text.Fold("ȺȾ")) == 6
+isFoldFourBytes() = text.Fold(text.Char(0x10400)) == text.Char(0x10428) and text.Fold(text.Char(0x1E900)) == text.Char(0x1E922)
+isFoldKeepsBadBytes() = text.Fold(text.FromBytes([0xFF, 0x41, 0xC3])) == text.FromBytes([0xFF, 0x61, 0xC3])
+isFoldNotText() = fails(() -> text.Fold(1), "type")
+isLowerStaysAscii() = text.Lower(text.Str("ÉA", text.Char(0x212A))) == text.Str("Éa", text.Char(0x212A)) and text.Upper("éa") == "éA"
+(* Any bytes: folding twice is folding once, and the folded text is at most half again as long. *)
+someBytes = [0x41, 0x5A, 0x61, 0x80, 0x84, 0x89, 0x9E, 0xA4, 0xAA, 0xBA, 0xC3, 0xC8, 0xE2, 0xED, 0xF0, 0xFF]
+defn foldsOnce()
+  s = text.FromBytes([random.Pick(someBytes) for k in 1..random.Int(0, 12)])
+  f = text.Fold(s)
+  text.Fold(f) == f and 2 * text.ByteLength(f) <= 3 * text.ByteLength(s)
+end
+isFoldAnyBytes() = list.All([foldsOnce() for k in 1..3000])
