@@ -24,6 +24,16 @@ fails.
   functions the call met, at most four, and runs the one it finds, as [How Cesia works](internals.md#calls-through-a-value)
   shows.
 
+A sparse product, its matrix in columns (CSC: the rows and values of each column, one after the other, and where each
+column starts), is two loops over lists of integers: `for j in 1..n` over the columns, and inside it
+`for q in colptr[j]..colptr[j + 1] - 1` over the non-zeros of column `j`, which adds `vals[q] * x[j]` to `y[i]` for the
+row `i = rowidx[q]`. Once hot, it takes 2.8 ns a non-zero: 1.25 ms for the 448,800 non-zeros of a 2-D Poisson matrix of
+300 × 300 points, against 4.9 ns for Octave's product and 1.2 ns for scipy's (medians of 21 runs). scipy's loop is C
+that reads each row as a 32-bit integer, 12 bytes a non-zero against Cesia's 16, and checks no row against the size of
+`y`, where Cesia checks each one, so that a wrong row is an error at its line, never a write outside the array. The
+checks of `x[j]`, `colptr[j]` and `colptr[j + 1]` are made once, before the loops, as the part *What it makes* of How
+Cesia works says.
+
 This loop over a list of structs runs as machine code once it is hot, about fifteen times as fast as in the interpreter:
 `bench/real/particles.ce`, the same loop on 2,000 particles, takes 49 ms against 811 ms without the JIT, the medians
 of 11 and 5 runs on the machine of [Beside the giants](#beside-the-giants):
