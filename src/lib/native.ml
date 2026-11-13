@@ -279,11 +279,6 @@ let leading ctx v =
      | _ -> if fill 0 then Some (a.rows, d) else None)
   | _ -> None
 
-(* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
-   of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
-   it that makes its element 0, the multiplier kept there. The operations of the textbook in its order, as num's code
-   in Cesia did them, so the same bits. {Singular, Lu, Perm, Sign}, Singular when a pivot is under 1e-14 in absolute
-   value; or missing when m is no matrix of numbers with as many columns as rows or more. *)
 (* The dot product of two float arrays of one shape in one pass, with the bits of list.Sum(a * b); missing for anything
    else, which num.Dot then computes that way. *)
 let dot ctx (a : t array) =
@@ -293,16 +288,18 @@ let dot ctx (a : t array) =
     (match (Value.trim x).store, (Value.trim y).store with F p, F q -> Float (Kernels.dot p q) | _ -> Missing)
   | _ -> Missing
 
+(* The float cells of an array of floats, or the error of [name]. *)
+let floats_of ctx name v =
+  match v with
+  | Array ({ store = F _; _ } as x) -> (match (Value.trim x).store with F d -> x, d | _ -> assert false)
+  | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
+
 (* The direction H g of L-BFGS by the two loops of Nocedal (1980), for optimize.Minimize: the [used] newest pairs (s, y)
    of the rings [ss] and [ys], the newest at place [newest], [rho] their 1 / s'y, and H0 = gamma I. The bits of the same
    loops written in Cesia with num.Dot, without their arrays for each step. *)
 let lbfgs_direction ctx (a : t array) =
   let fail () = Runtime.fail ctx Type (Messages.need_array "direction" (Value.describe a.(0))) in
-  let floats v =
-    match v with
-    | Array ({ store = F _; _ } as x) -> (match (Value.trim x).store with F d -> d | _ -> fail ())
-    | _ -> fail ()
-  in
+  let floats v = snd (floats_of ctx "direction" v) in
   let ring v = match v with Array x -> x | _ -> fail () in
   let g = floats a.(0) and ss = ring a.(1) and ys = ring a.(2) and rho = floats a.(3) in
   let used, newest, gamma = match a.(4), a.(5), a.(6) with Int u, Int k, Float c -> u, k, c | _ -> fail () in
@@ -327,12 +324,6 @@ let lbfgs_direction ctx (a : t array) =
   done;
   match a.(0) with Array x -> Arrays.like x (F r) | _ -> fail ()
 
-(* The float cells of an array of floats, or the error of [name]. *)
-let floats_of ctx name v =
-  match v with
-  | Array ({ store = F _; _ } as x) -> (match (Value.trim x).store with F d -> x, d | _ -> assert false)
-  | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
-
 (* The largest |x| of a float array, nan when one is nan, 0 for none: the size of a gradient, or of a simplex, for
    std/optimize, in one pass. A float always, so that inference knows it. *)
 let largest ctx (a : t array) =
@@ -352,6 +343,11 @@ let dot_floats ctx (a : t array) =
   Runtime.pay ctx (x.rows * x.cols);
   Float (Kernels.dot p q)
 
+(* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
+   of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
+   it that makes its element 0, the multiplier kept there. The operations of the textbook in its order, as num's code
+   in Cesia did them, so the same bits. {Singular, Lu, Perm, Sign}, Singular when a pivot is under 1e-14 in absolute
+   value; or missing when m is no matrix of numbers with as many columns as rows or more. *)
 let lu_factor ctx (a : t array) =
   match leading ctx a.(0) with
   | None -> Missing

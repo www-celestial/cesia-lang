@@ -369,9 +369,11 @@ defn Minimize(f, x, gradient = missing, tol = 1.0e-8, steps = 10000)
       the limit of floats, or of a gradient by differences. It finds a point where the gradient vanishes: on a convex
       f, the minimum; elsewhere often a local minimum, the one the start leads to.
 
-      An Err of kind "optimize" when f gives a nan, an infinity or no number at x, when the steps run out, or when no
-      lower point can be found along the direction, as when the gradient is wrong; its Best is the struct of the best
-      point found. A text, a nan or an infinity from f or the gradient further on makes the line search step back.
+      An Err of kind "optimize" when f gives a nan, an infinity or no number at x, when the steps run out, when f
+      stops falling where its gradient is still large, at a kink, at a wall past which f is not finite, or with a
+      gradient wrong or not exact enough, or when f keeps falling past steps of 1e10; its Best is the struct of the
+      best point found. Further on, a nan or an infinity from f or the gradient makes the line search step back; a text,
+      or a gradient of the wrong shape, is an Err.
 
         m = Minimize(x -> (x[1] - 1.0) ^ 2 + 10.0 * (x[2] + 2.0) ^ 2, [0.0, 0.0]).Value
         math.Near(m.X, [1.0, -2.0], abs = 1.0e-7) --> true
@@ -705,8 +707,9 @@ defn Simplex(f, x, tol = 1.0e-8, steps = 10000)
       fminsearch in MATLAB. It ends when the points are within tol max(1, |X|) of the best one in each component and
       their values within tol max(1, |F|) of F. Nothing proves that it ends at a minimum: it may stop short of it.
 
-      An Err of kind "optimize" when f gives a nan, an infinity or no number at x, or when the steps run out; its Best
-      is the struct of the best point found. A nan or an infinity further on counts as a value worse than all others.
+      An Err of kind "optimize" when f gives a nan, an infinity or no number at x, when the steps run out, or when the
+      simplex grows past the largest floats, as f falls without end; its Best is the struct of the best point found. A
+      nan or an infinity further on counts as a value worse than all others.
 
         s = Simplex(x -> (x[1] - 1.0) ^ 2 + 10.0 * (x[2] + 2.0) ^ 2, [0.0, 0.0]).Value
         math.Near(s.X, [1.0, -2.0], abs = 1.0e-7) --> true *)
