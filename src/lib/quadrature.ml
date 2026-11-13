@@ -416,8 +416,6 @@ let engine ctx (a : t array) =
                  those that can still be cut before limit. *)
               let top = if last_ > 2 + (limit / 2) then limit + 3 - last_ else last_ in
               let k = ref !nrmax and stop = ref false in
-              let id = !nrmax in
-              k := id;
               while (not !stop) && !k <= top do
                 maxerr := order.(!nrmax);
                 errmax := el.(!maxerr);
