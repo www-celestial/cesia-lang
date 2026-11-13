@@ -76,7 +76,8 @@ folder, and `net=own`.
 [test]
 allow = ["net=example.com:443", "exec=git"]
 timeout = "30"
-serial = ["tests/e2e"]
+serial = ["tests/db"]
+skip = ["tests/e2e"]
 ```
 
 | Key | What it says |
@@ -84,6 +85,7 @@ serial = ["tests/e2e"]
 | `allow` | more permissions, as `--allow` takes them, one per text |
 | `timeout` | the seconds a test may take, as a text: `"10"` without it |
 | `serial` | the files and folders whose tests share something, as a port or a database, and run alone, after the others |
+| `skip` | the files and folders that `cesia test` leaves out, unless its path is in one of them: `cesia test tests/e2e` runs those |
 
 ## `[deps.LABEL]`
 
@@ -99,7 +101,7 @@ take = ["src/shapes"]
 | Key | What it says |
 |---|---|
 | `from` | the repository, without `https://` |
-| `version` | a tag of it |
+| `version` | a tag of it, or the whole hash of a commit for a project that has no tag yet |
 | `take` | the packages taken, as paths from its root; without it, every package of its `src` |
 
 ## `[site]`

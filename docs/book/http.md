@@ -229,16 +229,47 @@ A server faces clients that are slow, greedy or broken, and keeps serving the ot
   the RAM otherwise: past it, a request with a body gets a `503` at once, instead of the server reaching the limit.
 - A handler that panics gets a `500`, and so does one that takes more memory than the limit: only its request fails.
 
+### A body in pieces
+
+A response is made whole before it goes, which an export of a large table can't afford. [http.Stream] sends its body
+in pieces as they are made, each a *chunk* of HTTP/1.1 (RFC 9112, section 7.1): `send(piece)` hands one to the
+client, and the body ends when the function returns.
+
+```cesia norun
+use std/csv
+use std/result
+invoices(page) = [["INV-$page", "paid", 120]]   (* a page of the table, as a database gives it *)
+defn export(send)
+  for page in 1..100
+    send(csv.Text(invoices(page)))?
+  end
+  result.Ok(missing)
+end
+app = http.App() then http.Get("/invoices.csv", r -> http.Stream(export, headers = [{Name: "content-type", Value: "text/csv"}]))
+```
+
+- `send` gives an `Err` once the client is gone, or when a piece took more than `timeout` seconds to come or to be
+  taken: a client that stops reading holds the server's fiber for one timeout, and one piece in memory, no more. The
+  `?` after `send` stops the export then.
+- A panic in the middle, or an `Err` that the function gives, cuts the body short, without its last chunk, so the client
+  sees an error rather than a body that looks whole.
+- `HEAD` gets the head alone, and the function doesn't run; a client of HTTP/1.0, which knows no chunks, gets the pieces
+  as they are, and the connection ends with the body.
+
+Measured on 2026-11-13, an export of 100,000 rows of 7 cells, 6 MB of CSV, the rows made as they are asked, as a
+database gives them (`bench/export.ce`): the peak of the server's memory grew by 77 MB for the whole body, by 32 MB in
+pieces of 1,000 rows, most of it what the collector had not yet taken back of the pages before.
+
 ## More of std/http
 
 | To | Use |
 |---|---|
 | add a route | [http.Get], [http.Post], [http.Put], [http.Delete], [http.AnyMethod] for any method, [http.Route] for any one by name; a final `*` in a path takes the rest of it, in `r.Params["*"]` |
 | serve files | [http.Static] serves a folder under a prefix, and no path can leave the folder; [http.FileResponse] sends one file, its type from its extension |
-| answer | [http.Plain], [http.Json], [http.Html], [http.Redirect], [http.NotFound]; [http.WithHeader] adds a header, [http.SetCookie] a cookie; [http.Reason] is the text of a status |
+| answer | [http.Plain], [http.Json], [http.Html], [http.Redirect], [http.NotFound], [http.Stream] for a body in pieces; [http.WithHeader] adds a header, [http.SetCookie] a cookie; [http.Reason] is the text of a status |
 | read a request | [http.BodyJson] its body as JSON, [http.Form] as a form, [http.HeaderValue] a header by its name in lower case; `r.Peer` is the address of the client, without its port, as [net.Peer] gives it, to limit a client by; [http.ParseUrl] takes a URL apart |
 | pass data on | a middleware puts a key in the request, as the person signed in, and the handler finds it there: see [http.Wrap] |
-| wrap | [http.Logger], [http.Metrics], and [http.Cors], which lets the pages of another origin read the responses |
+| wrap | [http.Logger], [http.Metrics], [http.Cors], which lets the pages of another origin read the responses, and [http.SameOrigin], which refuses the requests of another site: see below |
 | write HTML | [http.Escape] escapes a value for a page, [http.Template] fills `{{name}}` with escaped values |
 | the defaults | [http.DefaultTimeout] is 60 seconds, [http.DefaultMaxBody] 1,048,576 bytes |
 
@@ -255,6 +286,34 @@ http.Template("<p>Hello, {{name}}!</p>", {name: "<Ana>"}) -->
 [http.Template] and [http.Escape] write `<` as `&lt;`, `&` as `&amp;` and the quotes as `&quot;` and `&#39;`. Without
 that, a name typed by a visitor, as `<script>...</script>`, would run as code in the page of every other visitor: *cross-site
 scripting*, XSS. A value goes into a page escaped, as a value goes into SQL through `?`.
+
+### Requests from another site
+
+A page of another site can make the browser of a visitor send a request to your app, with the visitor's cookies: a form
+that posts to `/pay`, a WebSocket that opens. That is *cross-site request forgery*, CSRF. [http.SameOrigin], a
+middleware, gives such a request a `403` when it can change something: any method but `GET`, `HEAD` and `OPTIONS`, and
+the `GET` that opens a WebSocket.
+
+```cesia
+pay = http.Handler(http.App() then http.Post("/pay", r -> http.Plain("paid")) then http.Wrap(http.SameOrigin))
+pay({Method: "POST", Path: "/pay", Query: "", Headers: [{Name: "sec-fetch-site", Value: "cross-site"}], Body: ""}).Status -->
+pay({Method: "POST", Path: "/pay", Query: "", Headers: [{Name: "sec-fetch-site", Value: "same-origin"}], Body: ""}).Status -->
+```
+
+It reads what the browser writes, which no page can change:
+
+- `Sec-Fetch-Site`, which every browser sends since 2023 (W3C, Fetch Metadata): `same-origin` passes, and `none`, an
+  address the person typed; `same-site`, a sibling host such as `blog.shop.example`, and `cross-site` get the `403`.
+- Without it, the `Origin` of an older browser, `scheme://host:port`, must be `http://` or `https://` then the `Host` of
+  the request, its port too. The letters A to Z match in either case, any other byte only itself: a browser writes an
+  international name in Punycode, in ASCII (RFC 6454), so no change of case can make two hosts one.
+- A request with neither comes from no browser, so from no visitor's cookies: it passes, and the app checks who sent it,
+  by a cookie or a token.
+
+These are the steps of `http.CrossOriginProtection` in Go 1.25, with their limit: by the `Origin` alone the scheme isn't
+checked, since the `Host` has none, so an older browser lets a page of `http://shop.example`, which a machine on the way
+can forge, post to `https://shop.example`. HSTS, the `Strict-Transport-Security` header, closes that: the browser never
+opens the `http://` page. [live.Route] checks its WebSockets the same way.
 
 ## WebSocket
 
@@ -289,6 +348,17 @@ c = websocket.Dial("ws://127.0.0.1:$(net.Port(listener))/echo").Value
 websocket.Send("hi", c) -->
 fiber.Receive(c.Messages, timeout = 1) -->
 websocket.Close(c) -->
+```
+
+`headers`, a list of `{Name, Value}` as [http.Fetch] takes, go with the handshake: a cookie, for a server that knows
+its visitors by one, or an `Origin`, for a server that checks where a page comes from, as [http.SameOrigin] does. A name that isn't a *token* of
+RFC 9110, letters, digits and marks such as `-` and `_`, a name the handshake writes itself (`Host`, `Upgrade`, `Connection`,
+`Content-Length`, `Transfer-Encoding`, and those that start with `Sec-WebSocket-`), or a line end or a zero byte in a
+value, gives an `Err` before any connection: a value from a visitor can't add a header of its own, which is *header
+injection*.
+
+```cesia allow=net=own
+websocket.Dial("ws://127.0.0.1:1/", headers = [{Name: "Cookie", Value: "sid=1\r\nX-Admin: 1"}]) -->
 ```
 
 Receiving has no function of its own: it is the channel, so all that [Fibers](fibers.md) do with a channel works on it: a
@@ -468,7 +538,7 @@ When the connection breaks, the page connects again by itself, after 0.25 s, the
 the new screen starts with the answers. An action asked before the break and not yet answered gets an error that says
 so: it may have run or not, and the new answers show which.
 
-A page of another origin than the app's, by its `Origin` header, gets a `403`: no other site opens a screen with the
+A page of another origin than the app's gets a `403`, as [http.SameOrigin] decides: no other site opens a screen with the
 cookies of its visitors, which a WebSocket would otherwise allow, since a browser doesn't hold it to the
 [same-origin rule](glossary.md#same-origin-check) as it does `fetch` (RFC 6455 §10.2).
 

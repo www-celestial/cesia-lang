@@ -1,0 +1,8 @@
+[project]
+name = "skip"
+
+[tasks.test]
+run = ["cesia", "test"]
+
+[test]
+skip = ["tests/e2e"]

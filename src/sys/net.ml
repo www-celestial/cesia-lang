@@ -466,7 +466,7 @@ let is_header ctx (a : Types.t array) =
 
 let header_keys = Trie.names [| "Name"; "Value" |]
 let request_keys = Trie.names [| "Method"; "Path"; "Query"; "Headers"; "Body" |]
-let parsed_keys = Trie.names [| "Request"; "Rest"; "Close" |]
+let parsed_keys = Trie.names [| "Request"; "Rest"; "Close"; "Chunked" |]
 let needs_keys = Trie.names [| "Needs" |]
 
 (* Where part first starts in s between from and until, or -1. *)
@@ -479,11 +479,11 @@ let find part s from until =
 let line_end s from until = find "\r\n" s from until
 
 (* The first request of a buffer, in one pass, since every request comes through here: Ok(missing) if its head isn't all
-   there, Ok({Needs}) with the size of the whole request if its body isn't, Ok({Request, Rest, Close}), or Err of the
+   there, Ok({Needs}) with the size of the whole request if its body isn't, Ok({Request, Rest, Close, Chunked}), or Err of the
    status that refuses it. Its line holds three words between single spaces and no line end; each header line holds a
    name, as is_header checks it, and its value, trimmed. A body comes with one content-length, of digits, no larger than
    [limit]; transfer-encoding is not implemented. Close says that the connection ends after it, as asked by HTTP/1.0 or by
-   connection: close. *)
+   connection: close; Chunked, that the client reads a chunked body, as HTTP/1.1 does. *)
 let request ctx (a : Types.t array) : Types.t =
   let s = Native.text_arg ctx "request" a.(0) in
   let int k = match a.(k) with Int i -> i | v -> Runtime.fail ctx Type (Messages.need_count "request" (Value.describe v)) in
@@ -537,7 +537,7 @@ let request ctx (a : Types.t array) : Types.t =
              let body = String.sub s body_at n and rest = String.sub s (body_at + n) (String.length s - body_at - n) in
              let close = version = "HTTP/1.0" || (match named "connection" with v :: _ -> String.lowercase_ascii v = "close" | [] -> false) in
              let req = Trie.record request_keys [| Text meth; Text path; Text query; list; Text body |] in
-             Value.ok ctx.w (Trie.record parsed_keys [| req; Text rest; Value.of_bool close |]))
+             Value.ok ctx.w (Trie.record parsed_keys [| req; Text rest; Value.of_bool close; Value.of_bool (version = "HTTP/1.1") |]))
     | _ -> fail 400
 
 (* The port a socket is bound to: the one the system chose for a Listen on port 0. *)

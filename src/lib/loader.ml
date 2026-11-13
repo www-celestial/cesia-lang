@@ -734,7 +734,7 @@ let std_packages () =
     Native.packages @ Lists.packages
     @ [ "math", Near.natives; "list", Columns.list; "fiber", Fiber.natives;
         "cesia", Tooling.natives ~libraries @ Docs.natives @ Engines.cesia @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
-        "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives;
+        "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives; "csv", Columns.csv_natives;
         "random", Rand.natives; "value", [ "Len", Native.nat ~ret:(fun _ -> TI) "Len" 1 1 len ] ]
     @ Testing.natives
   in

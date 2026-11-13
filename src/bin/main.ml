@@ -268,6 +268,11 @@ let test_grants root dir (config : Project.test) allow =
   let base = { Types.all = false; perms = Types.[ Read, Some root; Read, Some dir; Write, Some dir; Net, Some "own" ] @ here } in
   List.fold_left (fun g item -> parse_allow g item) base (config.allow @ allow)
 
+(* Is a unit, a path, the file or the folder that [s] of [test] names from the root, or inside it? *)
+let within root s u =
+  let s = Package.absolute (Filename.concat root s) and u = Package.absolute u in
+  u = s || String.starts_with ~prefix:(s ^ "/") u
+
 (* Several units go to workers, through src/tools/test.ce: each one a cesia test --worker of its own, as many at once as the
    cores, the units of [test] serial alone after the others. *)
 let in_workers ~root ~seed ~cases ~no_spec ~allow ~timeout ~serial units =
@@ -276,10 +281,7 @@ let in_workers ~root ~seed ~cases ~no_spec ~allow ~timeout ~serial units =
     @ (if !update then [ "--update" ] else [])
     @ List.concat_map (fun a -> [ "--allow"; a ]) allow
   in
-  let alone u =
-    List.exists (fun s -> let s = Package.absolute (Filename.concat root s) and u = Package.absolute u in
-                  u = s || String.starts_with ~prefix:(s ^ "/") u) serial
-  in
+  let alone u = List.exists (fun s -> within root s u) serial in
   let together, after = List.partition (fun u -> not (alone u)) units in
   let args =
     Sys.executable_name :: Printf.sprintf "%g" timeout :: string_of_int (Par.cores ()) :: flags
@@ -324,8 +326,10 @@ let test args =
     | Error m, _ -> bad_option (Messages.no_test_plugin m)
     | Ok (), None -> bad_option (Messages.no_test_plugin "it gave no runner")
   in
-  let units = if !worker || only <> None then [] else try t.units path with Sys_error m -> bad_option m in
-  if List.length units > 1 then
+  let found = if !worker || only <> None then [] else try t.units path with Sys_error m -> bad_option m in
+  (* A folder of skip runs only when the path given is in it. *)
+  let units = List.filter (fun u -> not (List.exists (fun s -> within root s u && not (within root s path)) config.skip)) found in
+  if List.length units > 1 || List.length units < List.length found then
     exit (in_workers ~root ~seed ~cases ~no_spec:o.o_no_spec ~allow ~timeout:config.timeout ~serial:config.serial units);
   (* A worker shares the memory with the others. *)
   let o = if !worker then { o with o_limits = { o.o_limits with memory_words = o.o_limits.memory_words / Par.cores () } } else o in

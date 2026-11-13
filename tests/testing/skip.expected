@@ -1,0 +1,5 @@
+1 passed, 0 failed
+0 passed, 0 failed
+tests/e2e/server.ce:2: isServerThere returned false
+0 passed, 1 failed
+exit 1

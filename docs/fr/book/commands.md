@@ -123,11 +123,14 @@ un nom est défini, et les noms d'un package après son point. L'éditeur le lan
 ## cesia do
 
 ```bash
-cesia do [task]
+cesia do [task [args...]]
 ```
 
 Sans tâche, liste les tâches de `cesia.toml`. Avec une tâche, lance les tâches dont elle a besoin, puis elle-même, et
-affiche d'abord chaque commande. Voir [cesia.toml](toml.md).
+affiche d'abord chaque commande. Les mots après la tâche vont à son propre programme, après les mots de sa commande :
+`cesia do seed 10 100` lance `cesia run seed.ce 10 100` pour une tâche de `file = "seed.ce"`, dont le programme les
+trouve dans `sys.Args` ; les tâches dont elle a besoin n'en reçoivent aucun, et une tâche qui ne lance pas de programme
+à elle n'en prend aucun. Chaque mot passe tel quel, jamais par un shell. Voir [cesia.toml](toml.md).
 
 ## cesia new
 

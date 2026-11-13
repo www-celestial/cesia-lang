@@ -1285,8 +1285,13 @@ use std/test
       cos = c.Fn("cos", ["f64"], "f64", m).Value
       cos(0.0) --> 1.0 *)
 
-(** c.Fn(name, args, ret, lib, callsBack = false)
+(** c.Fn(name, args, ret, lib, callsBack = false, slow = false)
     Binds a function of a library: an Ok of a Cesia function. The types are given by name ("i32", "f64", "text", "ptr", "void", and so on) or by c.Struct. Set callsBack if the function calls back into Cesia.
+    Set slow for a function that takes long, as a password hash: each call runs on a thread of its own while its fiber
+    waits and the other fibers run. As many run at once as the cores that CESIA_CORES gives, half of the machine's by
+    default; the others wait in line, 64 for each core at most, and one more stops its fiber with an error. A slow
+    function takes at most 6 numbers, pointers or texts, and doesn't call back; the blocks it is given stay alive until
+    it returns, and no other fiber may write into them meanwhile.
 
       m = c.Open("m", version = 6).Value
       pow = c.Fn("pow", ["f64", "f64"], "f64", m).Value

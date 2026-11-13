@@ -1,0 +1,63 @@
+(** A C function bound with slow = true runs away from the fibers: they go on while it computes, many calls at once
+    give each its own result, texts and all, and the line of the calls waiting for a place is bounded. CESIA_CORES=1
+    gives one place, so the line fills fast. *)
+use std/c
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text
+use std/value
+
+lib = result.Unwrap(c.Open(sys.Args[1]))
+spin = result.Unwrap(c.Fn("spin", ["i64"], "i64", lib, slow = true))
+length = result.Unwrap(c.Fn("text_length", ["text"], "i64", lib, slow = true))
+mix = result.Unwrap(c.Fn("float_mix", ["f32", "f64", "f32", "i32", "f64", "f32"], "f32", lib, slow = true))
+
+(* How many times a fiber that sleeps 1 ms wakes while f runs: it counts until it hears of the end. *)
+defn ticksDuring(f)
+  stop = fiber.Channel(size = 1)
+  ticker = fiber.Spawn(defn ()
+    ticks = 0
+    while result.IsErr(fiber.Receive(stop, timeout = 0.001))
+      ticks += 1
+    end
+    ticks
+  end)
+  sys.Sleep(0)
+  f()
+  fiber.Send(true, stop)
+  fiber.Wait(ticker).Value
+end
+
+(* A spin of a few hundred milliseconds, measured on the main fiber, so that the ticker has time to wake. *)
+n = 100000000
+io.Print("ticks while a slow call runs:", ticksDuring(() -> spin(n)) > 5)
+io.Print("its result:", spin(1000) == 3500)
+
+(* Many calls at once, each with its own text: each gets the length of its own. *)
+words = ["$(text.Repeat(k, "x"))" for k in 1..24]
+calls = [fiber.Spawn(() -> length(w)) for w in words]
+io.Print("lengths:", list.All([fiber.Wait(calls[k]).Value == k for k in 1..24]))
+io.Print("floats:", mix(1.0, 2.0, 3.0, 4, 5.0, 6.0))
+
+(* One place: the first call holds it, 64 wait, and the 66th is refused at once. *)
+long = fiber.Spawn(() -> spin(n))
+sys.Sleep(0)
+line = [fiber.Spawn(() -> spin(10)) for k in 1..64]
+sys.Sleep(0)
+refused = fiber.Wait(fiber.Spawn(() -> spin(10)))
+io.Print("past the line:", refused then result.MapErr(it.Message))
+(* A fiber cancelled in line leaves it, and the line moves on without it. *)
+fiber.Cancel(line[1])
+io.Print("the line ends:", list.All([result.IsOk(fiber.Wait(t)) for t in list.Skip(1, line)]), fiber.Wait(long).Value > 0)
+io.Print("the cancelled one:", fiber.Wait(line[1]) then result.MapErr(it.Kind))
+(* A fiber cancelled while its call runs: the place comes back when the call ends. *)
+gone = fiber.Spawn(() -> spin(n))
+sys.Sleep(0.01)
+fiber.Cancel(gone)
+io.Print("after a cancel:", spin(1000) == 3500)
+
+io.Print(fiber.Wait(fiber.Spawn(() -> c.Fn("apply_twice", ["callback", "i64"], "i64", lib, slow = true))) then result.MapErr(it.Message))
+io.Print(fiber.Wait(fiber.Spawn(() -> c.Fn("spin", ["i64"], "i64", lib, callsBack = true, slow = true))) then result.MapErr(it.Message))

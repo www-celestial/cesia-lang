@@ -1,0 +1,72 @@
+(** http.SameOrigin against what a page of another site can make a browser send: other ports, other schemes, names of
+    hosts that differ only by a change of case beyond ASCII, a WebSocket opened by a GET. *)
+use std/http
+use std/list
+use std/text
+
+app = http.Handler(http.App() then http.AnyMethod("/pay", r -> http.Plain("paid")) then http.Websocket("/ws", (m, send) -> send(m)) then http.Wrap(http.SameOrigin))
+
+(** The status of a request to /pay, by a method, with headers given as [name, value] pairs. *)
+defn status(method, pairs, path = "/pay")
+  app({Method: method, Path: path, Query: "", Headers: [{Name: p[1], Value: p[2]} for p in pairs], Body: ""}).Status
+end
+
+(** The status of a POST from a page of this origin to a server of this host, with no Sec-Fetch-Site. *)
+post(origin, host) = status("POST", [["origin", origin], ["host", host]])
+
+defn isSafeMethodPassed()
+  (** GET, HEAD and OPTIONS change nothing, and pass from anywhere; a method written in small letters is checked. *)
+  other = [["sec-fetch-site", "cross-site"], ["origin", "https://evil.example"], ["host", "shop.example"]]
+  list.All([status(m, other) == 200 for m in ["GET", "HEAD", "OPTIONS"]]) and status("get", other) == 403 and status("POST", other) == 403
+end
+
+defn isEveryChangingMethodChecked()
+  (** POST, PUT, PATCH, DELETE and a method of no standard: each gets a 403 from another site. *)
+  other = [["origin", "https://evil.example"], ["host", "shop.example"]]
+  list.All([status(m, other) == 403 for m in ["POST", "PUT", "PATCH", "DELETE", "PURGE"]])
+end
+
+defn isFetchSiteDeciding()
+  (** Sec-Fetch-Site, which no page can set, decides over the Origin: same-site, a sibling host, is another site. *)
+  sent(site) = status("POST", [["sec-fetch-site", site], ["origin", "https://shop.example"], ["host", "shop.example"]])
+  proxied = status("POST", [["sec-fetch-site", "same-origin"], ["origin", "https://shop.example"], ["host", "10.0.0.7:8080"]])
+  sent("same-origin") == 200 and sent("none") == 200 and sent("same-site") == 403 and sent("cross-site") == 403 and sent("Same-Origin") == 403 and proxied == 200
+end
+
+defn isPortPartOfTheOrigin()
+  (** Another port is another origin; the port of the Host is compared as it is written. *)
+  post("https://shop.example:8443", "shop.example:8443") == 200 and post("https://shop.example:8443", "shop.example:9443") == 403 and post("https://shop.example", "shop.example:8443") == 403 and post("https://shop.example:8443", "shop.example") == 403 and post("http://127.0.0.1:8090", "127.0.0.1:8090") == 200
+end
+
+defn isSchemeHttpOrHttps()
+  (** The Host has no scheme: http:// and https:// of the same host pass, as in Go's CrossOriginProtection; any other
+      scheme, a path, a user or a "null" doesn't. *)
+  bad = ["ftp://shop.example", "https://shop.example/", "https://a@shop.example", "null", "shop.example", "https://", "https://shop.example.evil.example", "https://evil.example/shop.example", "https://shop.example\tx"]
+  post("https://shop.example", "shop.example") == 200 and post("http://shop.example", "shop.example") == 200 and list.All([post(o, "shop.example") == 403 for o in bad])
+end
+
+defn isCaseOnlyAscii()
+  (** A name of a host is ASCII in an Origin, in Punycode for an international one (RFC 6454): letters A to Z match in
+      either case, any other byte only itself, so that the Kelvin sign K, whose lower case is k, makes no other host one. *)
+  kelvin = "https://$(text.Char(8490))ey.example"
+  post("https://SHOP.Example", "shop.example") == 200 and post("https://xn--bcher-kva.example", "XN--BCHER-KVA.example") == 200 and post("https://bücher.example", "xn--bcher-kva.example") == 403 and post(kelvin, "key.example") == 403 and post("https://BÜCHER.example", "bücher.example") == 403
+end
+
+defn isHostNeeded()
+  (** An Origin and no Host, or an empty one, never matches. *)
+  status("POST", [["origin", "https://shop.example"]]) == 403 and post("https://", "") == 403
+end
+
+defn isNoBrowserPassed()
+  (** A request with neither Sec-Fetch-Site nor Origin comes from no browser, which would send its visitor's cookies. *)
+  status("POST", []) == 200 and status("POST", [["host", "shop.example"]]) == 200
+end
+
+defn isWebsocketOpeningChecked()
+  (** A browser opens a WebSocket of any site by a GET, with its cookies: the GET of an upgrade is checked. *)
+  handshake = [["upgrade", "websocket"], ["sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="]]
+  other = list.Concat(handshake, [["origin", "https://evil.example"], ["host", "shop.example"]])
+  own = list.Concat(handshake, [["origin", "https://shop.example"], ["host", "shop.example"]])
+  shouted = [["upgrade", "WebSocket"], ["sec-websocket-key", "dGhlIHNhbXBsZSBub25jZQ=="], ["origin", "https://evil.example"], ["host", "shop.example"]]
+  status("GET", other, path = "/ws") == 403 and status("GET", shouted, path = "/ws") == 403 and status("GET", own, path = "/ws") == 101 and status("GET", handshake, path = "/ws") == 101
+end

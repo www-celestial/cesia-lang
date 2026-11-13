@@ -1,0 +1,76 @@
+(* A streamed response: its pieces go out as chunks and Fetch joins them; HEAD gets the head alone; a client of HTTP/1.0
+   gets the pieces as they are, the connection ending the body; a panic in the middle cuts the body short; a client that
+   stops reading gives send an Err within the timeout, while the server answers others. *)
+use std/bug
+use std/fiber
+use std/http
+use std/io
+use std/net
+use std/result
+use std/sys
+use std/text
+
+crlf = "\r\n"
+big = text.Repeat(65536, "x")
+heard = fiber.Channel(size = 1)
+
+defn rows(send)
+  for k in 1..3
+    send("row $k\n")?
+  end
+  result.Ok(missing)
+end
+
+defn broken(send)
+  send("first\n")?
+  bug.Panic("no more rows")
+end
+
+defn slow(send)
+  (* Pieces of 64 KiB until send refuses one, then how many went. *)
+  sent = 0
+  while sent < 4096 and result.IsOk(send(big))
+    sent += 1
+  end
+  fiber.Send(sent, heard)
+end
+
+defn raw(request)
+  (* The whole answer to a request written by hand, read to the end of the connection. *)
+  c = net.Connect("127.0.0.1", 18802)?
+  net.Write(c, request)?
+  out = ""
+  more = net.Read(c)?
+  while more != ""
+    out = "$out$more"
+    more = net.Read(c)?
+  end
+  net.Close(c)
+  result.Ok(out)
+end
+
+defn main()
+  app = http.App() then http.Get("/rows", r -> http.Stream(rows, headers = [{Name: "content-type", Value: "text/csv"}]))
+  app = app then http.Get("/broken", r -> http.Stream(broken)) then http.Get("/slow", r -> http.Stream(slow))
+  app = app then http.Get("/ping", r -> http.Plain("pong"))
+  fiber.Spawn(() -> http.Serve(app, port = 18802, timeout = 1))
+  sys.Sleep(0)
+  got = http.Fetch("http://127.0.0.1:18802/rows")?
+  io.Print(got.Status, got.Body, http.HeaderValue("transfer-encoding", got.Headers), http.HeaderValue("content-type", got.Headers))
+  head = raw("HEAD /rows HTTP/1.1$(crlf)Host: a$(crlf)Connection: close$crlf$crlf")?
+  io.Print("HEAD, the head alone:", text.EndsWith("$crlf$crlf", head) and not text.Contains("row", head))
+  old = raw("GET /rows HTTP/1.0$(crlf)Host: a$crlf$crlf")?
+  io.Print("HTTP/1.0, no chunks:", not text.Contains("transfer-encoding", old) and text.EndsWith("$(crlf)$(crlf)row 1\nrow 2\nrow 3\n", old))
+  io.Print(http.Fetch("http://127.0.0.1:18802/broken") then result.MapErr(e -> e.Message))
+  (* A client that asks and never reads: the server's writes fill the buffers of the socket, then send gives an Err. *)
+  c = net.Connect("127.0.0.1", 18802)?
+  net.Write(c, "GET /slow HTTP/1.1$(crlf)Host: a$crlf$crlf")?
+  io.Print("meanwhile:", http.Fetch("http://127.0.0.1:18802/ping")?.Body)
+  sent = fiber.Receive(heard, timeout = 5)?
+  io.Print("the slow client got some pieces, not all:", sent > 0 and sent < 4096)
+  net.Close(c)
+  result.Ok(missing)
+end
+
+io.Print(main())
+sys.Exit(0)

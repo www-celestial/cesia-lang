@@ -1,0 +1,49 @@
+(** csv.Text writes a list of lists in one pass, natively: it must give, for any values and any separator, the text that
+    RFC 4180's rules give when written here, field by field. A row of another kind is refused as before. *)
+use std/csv
+use std/fiber
+use std/list
+use std/random
+use std/text
+use std/value
+
+(** The text of one field as RFC 4180 writes it: quoted when it holds the separator, a quote or a line end. *)
+defn reference(x, separator)
+  s = value.Text(x)
+  if text.Contains(separator, s) or text.Contains("\"", s) or text.Contains("\n", s) or text.Contains("\r", s)
+    "\"$(text.Replace("\"", "\"\"", s))\""
+  else
+    s
+  end
+end
+
+written(rows, separator) = "$(text.Join("\n", [text.Join(separator, [reference(x, separator) for x in row]) for row in rows]))\n"
+
+pieces = ["a", ",", ";", "\"", "\n", "\r", " ", "é", "::", "1"]
+
+defn cell()
+  (** A value of any kind a table holds, or a text made of the pieces that need quoting. *)
+  match random.Int(1, 7)
+    1 -> random.Int(-1000, 1000)
+    2 -> random.Int(-1000, 1000) / 8.0
+    3 -> missing
+    4 -> random.Int(0, 1) == 1
+    5 -> [1, "a,b"]
+    else -> text.Join("", [pieces[random.Int(1, value.Len(pieces))] for k in 1..random.Int(0, 6)])
+  end
+end
+
+defn isSameAsTheRules()
+  ok = true
+  for run in 1..200
+    rows = [[cell() for c in 1..random.Int(0, 5)] for r in 1..random.Int(0, 4)]
+    for separator in [",", ";", "::", ""]
+      ok = ok and csv.Text(rows, separator = separator) == written(rows, separator)
+    end
+  end
+  ok
+end
+
+isEmpty() = csv.Text([]) == "\n" and csv.Text([[]]) == "\n" and csv.Text([[], []]) == "\n\n"
+
+isOtherRowRefused() = fiber.Wait(fiber.Spawn(() -> csv.Text([["a"], "bc"]))).Error.Message == "Can't loop over the text \"bc\"."

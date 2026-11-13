@@ -1,0 +1,12 @@
+[project]
+name = "x"
+
+[tasks.show]
+file = "args.ce"
+
+[tasks.echo]
+needs = ["show"]
+run = ["echo", "from echo:"]
+
+[tasks.all]
+needs = ["show"]

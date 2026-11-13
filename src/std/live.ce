@@ -36,8 +36,8 @@ defn Route(pattern, screen, a, actions = {})
       leaves, for the sources of its shows to stop, as cepheus.Watch does with until = s.Ended. actions maps the name of
       each action to a function (s, args) of the screen and of what the page sent: its value, an Ok's or anything that
       isn't an Err, goes back to the page, which then drops the effect it showed; an Err undoes it. Each screen's
-      actions run one after the other, in the order the page asked for them. A page of another origin than the app's,
-      by its Origin header, gets a 403, so that no other site opens a screen with the cookies of its visitor.
+      actions run one after the other, in the order the page asked for them. A page of another origin than the app's
+      gets a 403, as http.SameOrigin decides, so that no other site opens a screen with the cookies of its visitor.
 
         app = http.Handler(http.App() then Route("/live", s -> []))
         app({Method: "GET", Path: "/live/live.js", Query: "", Headers: [], Body: ""}).Status --> 200
@@ -45,30 +45,16 @@ defn Route(pattern, screen, a, actions = {})
         app({Method: "GET", Path: "/live", Query: "", Headers: handshake, Body: ""}).Status --> 101
         other = list.Append({Name: "origin", Value: "https://elsewhere.example"}, list.Append({Name: "host", Value: "shop.example"}, handshake))
         app({Method: "GET", Path: "/live", Query: "", Headers: other, Body: ""}).Status --> 403 *)
-  a then http.Get("$pattern/live.js", r -> {Status: 200, Body: client, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> opening(r, screen, actions))
-end
-
-defn sameOrigin(headers)
-  (** Does the page come from the app's own origin? A request without an Origin header comes from no browser. *)
-  origin = http.HeaderValue("origin", headers)
-  if value.IsMissing(origin)
-    return true
-  end
-  host = http.HeaderValue("host", headers)
-  scheme = text.ByteFind("://", 1, origin)
-  not value.IsMissing(host) and not value.IsMissing(scheme) and text.Lower(text.ByteSlice(scheme + 3, text.ByteLength(origin), origin)) == text.Lower(host)
+  a then http.Get("$pattern/live.js", r -> {Status: 200, Body: client, Headers: [{Name: "content-type", Value: "text/javascript; charset=utf-8"}, {Name: "cache-control", Value: "no-cache"}]}) then http.Get(pattern, r -> http.SameOrigin(s -> opening(s, screen, actions), r))
 end
 
 defn opening(request, screen, actions)
-  (** The response to the request of a screen: the upgrade to WebSocket, a 400 for a request that isn't one, a 403 for a
-      page of another origin. The connection, once upgraded, goes to the first message of the page, its hello. *)
+  (** The response to the request of a screen, which http.SameOrigin let pass: the upgrade to WebSocket, or a 400 for a
+      request that isn't one. The connection, once upgraded, goes to the first message of the page, its hello. *)
   key = http.HeaderValue("sec-websocket-key", request.Headers)
   asked = http.HeaderValue("upgrade", request.Headers)
   if value.IsMissing(key) or value.IsMissing(asked) or text.Lower(asked) != "websocket"
     return {Status: 400, Body: "This route takes the WebSocket connections of live.js."}
-  end
-  if not sameOrigin(request.Headers)
-    return {Status: 403, Body: "This page comes from another origin than the app's."}
   end
   ended = fiber.Channel()
   inbox = fiber.Channel(size = 64)

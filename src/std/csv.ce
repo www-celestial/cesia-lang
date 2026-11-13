@@ -32,9 +32,15 @@ defn field(x, separator)
 end
 
 defn Text(rows, separator = ",")
-  (** The CSV text of rows of values, quoting the fields that need it. Every row ends with a line end.
+  (** The CSV text of rows of values, quoting the fields that need it. Every row ends with a line end. A list of lists
+      is written in one pass by written, a native of this package; a row of another kind is refused here.
 
-        Text([["a", 1], ["b,c", 2]]) --> "a,1\n\"b,c\",2\n" *)
+        Text([["a", 1], ["b,c", 2]]) --> "a,1\n\"b,c\",2\n"
+        Text([["say \"hi\"", 1.5, missing], []], separator = ";") --> "\"say \"\"hi\"\"\";1.5;missing\n\n" *)
+  fast = written(rows, separator)
+  if value.IsText(fast)
+    return fast
+  end
   lines = [text.Join(separator, [field(x, separator) for x in row]) for row in rows]
   "$(text.Join("\n", lines))\n"
 end

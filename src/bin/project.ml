@@ -185,10 +185,11 @@ let program_args project path allow limit watch workers =
   @ (match workers with None -> [] | Some value -> [ "--workers"; value ])
   @ [ path ]
 
-let words project task =
+(* The command of a task, and after it the words given after its name, which go to its program. *)
+let words ?(extra = []) project task =
   match task.command with
-  | Run words -> words
-  | File { path; allow; limit; watch; workers } -> "cesia" :: "run" :: program_args project path allow limit watch workers
+  | Run words -> words @ extra
+  | File { path; allow; limit; watch; workers } -> ("cesia" :: "run" :: program_args project path allow limit watch workers) @ extra
   | Group -> []
 
 let list project =
@@ -234,25 +235,28 @@ let spawn program arguments line =
      | Unix.WEXITED code -> code
      | Unix.WSIGNALED _ | Unix.WSTOPPED _ -> 1)
 
-let execute project task =
+let execute ?(extra = []) project task =
   let code =
     match task.command with
     | Group | Run [] -> 0
-    | Run (program :: arguments) -> spawn program arguments (show (program :: arguments))
+    | Run (program :: arguments) -> spawn program (arguments @ extra) (show (program :: arguments @ extra))
     | File { path; allow; limit; watch; workers } ->
-      spawn Sys.executable_name ("run" :: program_args project path allow limit watch workers) (show (words project task))
+      spawn Sys.executable_name
+        (("run" :: program_args project path allow limit watch workers) @ extra)
+        (show (words ~extra project task))
   in
   if code <> 0 then exit code;
   (* What came after didn't run, so this isn't a success, even if the child ended with 0. *)
   if !stopped then exit 1
 
-let perform project by_name name =
+(* The words after the task's name go to its own program only, not to those of the tasks it needs. *)
+let perform project by_name name extra =
   let seen = Hashtbl.create 16 in
   let rec visit task =
     if not (Hashtbl.mem seen task.name) then begin
       Hashtbl.replace seen task.name ();
       List.iter (fun need -> visit (Hashtbl.find by_name need)) task.needs;
-      execute project task
+      execute ~extra:(if String.equal task.name name then extra else []) project task
     end
   in
   visit (Hashtbl.find by_name name)
@@ -260,13 +264,13 @@ let perform project by_name name =
 let run args =
   match args with
   | [] -> list (load ())
-  | [ name ] ->
+  | name :: extra ->
     let project = load () in
     let by_name = index project.tasks in
     if not (Hashtbl.mem by_name name) then stop 1 (Messages.project_no_such_task name);
+    if extra <> [] && (Hashtbl.find by_name name).command = Group then stop 2 (Messages.project_group_words name);
     catch_stops ();
-    perform project by_name name
-  | _ -> stop 2 Messages.usage
+    perform project by_name name extra
 
 let write path text = Out_channel.with_open_bin path (fun oc -> output_string oc text)
 let mkdir dir = if not (Sys.file_exists dir) then Sys.mkdir dir 0o755
@@ -287,12 +291,12 @@ let create name =
   (* An empty std/ asks cesia pkg install for Cesia's libraries. *)
   Sys.mkdir (Filename.concat name "std") 0o755
 
-type test = { allow : string list; timeout : float; serial : string list }
+type test = { allow : string list; timeout : float; serial : string list; skip : string list }
 
-let no_test = { allow = []; timeout = 10.; serial = [] }
+let no_test = { allow = []; timeout = 10.; serial = []; skip = [] }
 
-(* [test] of the cesia.toml at a root, if any: what cesia test allows beyond its defaults, the seconds a test may take, and
-   the folders and files that run alone. *)
+(* [test] of the cesia.toml at a root, if any: what cesia test allows beyond its defaults, the seconds a test may take, the
+   folders and files that run alone, and those it leaves out unless it is given one of them. *)
 let test_config root =
   let path = Filename.concat root file_name in
   match In_channel.with_open_bin path In_channel.input_all with
@@ -310,8 +314,9 @@ let test_config root =
              match e.key, e.value with
              | "allow", Texts l -> { c with allow = l }
              | "serial", Texts l -> { c with serial = l }
+             | "skip", Texts l -> { c with skip = l }
              | "timeout", Text t ->
                (match float_of_string_opt t with Some f when f > 0. -> { c with timeout = f } | _ -> wrong "seconds, as \"10\"")
-             | ("allow" | "serial"), _ -> wrong "a list of texts"
+             | ("allow" | "serial" | "skip"), _ -> wrong "a list of texts"
              | key, _ -> stop 1 (path ^ ": " ^ Messages.at_line e.line (Messages.project_field "[test]" key)))
           no_test table.entries

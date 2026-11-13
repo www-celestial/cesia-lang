@@ -2,6 +2,7 @@ open Cesia
 open Types
 
 external call : int -> int -> Bytes.t -> string array -> int -> unit = "cesia_call" [@@noalloc]
+external call_released : int -> int -> Bytes.t -> string array -> int -> unit = "cesia_call_released"
 external dlopen : string -> int = "cesia_dlopen"
 external dlsym : int -> string -> int = "cesia_dlsym"
 external dlerror : unit -> string = "cesia_dlerror"
@@ -196,6 +197,78 @@ let c_function st name address args ret =
       done;
       call address id st.slots st.texts !mask;
       return_value ctx ret (Bytes.get_int64_ne st.slots result_offset))
+
+(* The calls of a function bound with slow = true, as a password hash of 70 ms: each runs on a domain of its own, with
+   its runtime released, while its fiber waits and the others run, and no collection waits for it. As many run at once
+   as Par.cores gives; the others wait in line, 64 at most for each of those places, and one more is refused: a burst of
+   sign-ins can't take the memory of a thousand hashes at once, nor queue work that would run long after its request
+   gave up. The line belongs to the main domain: only it reads or changes it. A fiber cancelled in line leaves it; one
+   cancelled while its call runs leaves its place to the end of the call. *)
+type waiter = { mutable resume : unit -> unit; mutable granted : bool; mutable gone : bool }
+
+let running = ref 0  (* the places taken: calls on their domain, and waiters given a place who haven't run yet *)
+let in_flight = ref 0  (* the calls on their domain *)
+let waiting : waiter Queue.t = Queue.create ()
+
+(* A test ended, and its fibers with it: those in line never come back, and those given a place leave it. The calls on
+   their domain leave theirs as they end. *)
+let reset () =
+  Queue.iter (fun w -> w.gone <- true) waiting;
+  Queue.clear waiting;
+  running := !in_flight
+
+(* A place is free again: the first in line who is still there takes it. *)
+let rec leave () =
+  match Queue.take_opt waiting with
+  | Some w when w.gone -> leave ()
+  | Some w -> w.granted <- true; w.resume ()
+  | None -> decr running
+
+let enter ctx =
+  let places = Par.cores () in
+  if !running < places then incr running
+  else if Queue.length waiting >= 64 * places then Runtime.fail ctx Math (Messages.c_slow_line (Queue.length waiting))
+  else begin
+    let w = { resume = ignore; granted = false; gone = false } in
+    try Fiber.suspend ctx (fun resume -> w.resume <- resume; Queue.add w waiting)
+    with e -> w.gone <- true; if w.granted then leave (); raise e
+  end
+
+(* The blocks that a call's arguments name: kept alive until it ends, should another fiber free one meanwhile. *)
+let blocks_of st (a : Types.t array) =
+  Array.to_list a |> List.filter_map (function Handle { kind = "block"; id; _ } -> Hashtbl.find_opt st.blocks id | _ -> None)
+
+(* Runs a call away from the main domain, or on it when no domain can start. *)
+let away ctx address id slots texts mask keep =
+  enter ctx;
+  let failed = ref None in
+  let work () = try call_released address id slots texts mask with e -> failed := Some e in
+  Fiber.suspend ctx (fun wake ->
+      let domain = ref None in
+      let finish =
+        ctx.w.remote (fun () ->
+            ignore (Sys.opaque_identity keep);
+            Option.iter Domain.join !domain;
+            decr in_flight;
+            leave ();
+            wake ())
+      in
+      incr in_flight;
+      match Domain.spawn (fun () -> work (); finish ()) with
+      | d -> domain := Some d
+      | exception Failure _ -> work (); finish ());
+  Option.iter raise !failed
+
+let slow_function st name address args ret =
+  let id = shape_id args ret and n = Array.length args in
+  Native.nat name n n (fun ctx a ->
+      let mask = ref 0 in
+      for k = 0 to n - 1 do
+        mask := !mask lor arg_slot st ctx k args.(k) a.(k)
+      done;
+      let slots = Bytes.sub st.slots 0 (result_offset + 8) and texts = Array.copy st.texts in
+      away ctx address id slots texts !mask (blocks_of st a);
+      return_value ctx ret (Bytes.get_int64_ne slots result_offset))
 
 (* Where Homebrew puts libraries, which macOS doesn't search, and the folder of its OpenSSL, which it links nowhere else. *)
 let brew = [ "/opt/homebrew/lib"; "/opt/homebrew/opt/openssl@3/lib"; "/usr/local/lib"; "/usr/local/opt/openssl@3/lib" ]
@@ -413,10 +486,13 @@ let bind st ctx (a : Types.t array) =
   let name = c_name ctx "Fn" a.(0) in
   let args = types_of st ctx a.(1) and ret = ty_of st ctx a.(2) in
   if Array.mem Void args then Runtime.fail ctx Type Messages.c_void_arg;
-  let calls_back = Array.length a > 4 && a.(4) = True in
+  let calls_back = Array.length a > 4 && a.(4) = True and slow = Array.length a > 5 && a.(5) = True in
   let special = function Callback | Aggregate _ -> true | _ -> false in
+  let plain = Array.length args <= max_args && (not calls_back) && not (special ret || Array.exists special args) in
+  if slow && not plain then Runtime.fail ctx Type Messages.c_slow_shape;
   with_symbol ctx name a.(3) (fun address ->
-      if Array.length args <= max_args && (not calls_back) && not (special ret || Array.exists special args) then
+      if slow then Value.ok ctx.w (slow_function st name address args ret)
+      else if plain then
         Value.ok ctx.w (c_function st name address args ret)
       else begin
         ready st ctx;
@@ -624,7 +700,7 @@ let text st ctx (a : Types.t array) : Types.t =
 
 let natives st =
   [ "Open", Native.nat ~result:true ~params:[| "name"; "version" |] "Open" 1 2 (open_library st);
-    "Fn", Native.nat ~result:true ~params:[| "name"; "args"; "ret"; "lib"; "callsBack" |] "Fn" 4 5 (bind st);
+    "Fn", Native.nat ~result:true ~params:[| "name"; "args"; "ret"; "lib"; "callsBack"; "slow" |] "Fn" 4 6 (bind st);
     "Variadic", Native.nat "Variadic" 5 5 (variadic st);
     "Callback", Native.nat "Callback" 3 3 (c_callback st);
     "Struct", Native.nat "Struct" 1 1 (c_struct st);

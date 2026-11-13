@@ -38,7 +38,7 @@ usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugg
        cesia check [--json] [--stdin file.ce] [path...]
        cesia fmt [--check] [path...]
        cesia lsp
-       cesia do [task]
+       cesia do [task [args...]]
        cesia new name
        cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]
        cesia upgrade [--nightly]

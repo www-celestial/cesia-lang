@@ -110,11 +110,11 @@ AddDays(n, d) = AddSeconds(n * 86400, d)
       DaysBetween(Date(2026, 11, 1), Date(2026, 11, 5)) --> 4 *)
 DaysBetween(a, b) = daysFromCivil(b.Year, b.Month, b.Day) - daysFromCivil(a.Year, a.Month, a.Day)
 
-two(n) = text.PadLeft(2, "0", value.Text(n))
+two(n) = if n >= 0 and n < 10 "0$n" else text.PadLeft(2, "0", value.Text(n)) end
 (** The day of a Date as 2026-11-01.
 
       FormatDate(Date(2026, 11, 1)) --> "2026-11-01" *)
-FormatDate(d) = "$(text.PadLeft(4, "0", value.Text(d.Year)))-$(two(d.Month))-$(two(d.Day))"
+FormatDate(d) = "$(if d.Year >= 1000 and d.Year <= 9999 d.Year else text.PadLeft(4, "0", value.Text(d.Year)) end)-$(two(d.Month))-$(two(d.Day))"
 defn zone(offset)
   (** Z for UTC, else the offset as +03:00 or -05:30. *)
   if offset == 0

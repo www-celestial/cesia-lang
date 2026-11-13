@@ -4,6 +4,9 @@
 type t
 
 val create : unit -> t
+
+(** Forgets the fibers waiting to make a slow call: a test ended, and its fibers with it. *)
+val reset : unit -> unit
 val natives : t -> (string * Cesia.Types.t) list
 
 (** The same file names in the lib/ of a release, beside the bin/ that holds the running binary, links followed; none outside

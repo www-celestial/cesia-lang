@@ -1,0 +1,54 @@
+(* An export of 100,000 rows of 7 cells by a server of std/http, as one body made of the whole table (whole) or as
+   pieces of 1,000 rows made one after the other (stream), read by a client that drops what it reads: how much the peak
+   of the server's memory grew for it.
+     cesia run --allow read=/proc/self/status,net=own bench/export.ce whole|stream *)
+use std/csv
+use std/fiber
+use std/http
+use std/io
+use std/list
+use std/math
+use std/net
+use std/result
+use std/sys
+use std/text
+
+mode = sys.Args[1]
+
+(* The rows from..until of the table, made when asked, as a database gives a page. *)
+rows(from, until) = [["INV-$k", "Client $(math.Mod(k, 997))", "paid", math.Mod(k * 13, 100000), "2026-11-$(1 + math.Mod(k, 28))", "EUR", "note, $k"] for k in from..until]
+
+defn peak()
+  (* The peak of the resident memory of this process, in MB, as Linux keeps it. *)
+  line = list.Filter(it then text.StartsWith("VmHWM:"), text.Lines(sys.Read("/proc/self/status").Value))[1]
+  text.Number(text.Split(" ", text.Trim(text.Replace("kB", "", text.Replace("VmHWM:", "", line))))[1]) / 1024.0
+end
+
+defn pieces(send)
+  for at in 0..99
+    send(csv.Text(rows(at * 1000 + 1, at * 1000 + 1000)))?
+  end
+  result.Ok(missing)
+end
+
+defn main()
+  l = net.Listen(0)?
+  app = http.App() then http.Get("/whole", r -> http.Plain(csv.Text(rows(1, 100000)))) then http.Get("/stream", r -> http.Stream(pieces))
+  fiber.Spawn(() -> http.Serve(app, listener = l))
+  sys.Sleep(0)
+  before = peak()
+  c = net.Connect("127.0.0.1", net.Port(l))?
+  net.Write(c, "GET /$mode HTTP/1.1\r\nHost: a\r\nConnection: close\r\n\r\n")?
+  got = 0
+  more = net.Read(c)?
+  while more != ""
+    got += text.ByteLength(more)
+    more = net.Read(c)?
+  end
+  net.Close(c)
+  io.Print("$mode: $(text.Decimals(1, got / 1.0e6)) MB sent, the peak grew by $(text.Decimals(1, peak() - before)) MB")
+  result.Ok(missing)
+end
+
+_ = main()
+sys.Exit(0)

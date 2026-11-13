@@ -7,8 +7,9 @@ val run : string list -> unit
 val create : string -> unit
 
 (** What [test] of cesia.toml says: the permissions a test gets beyond its defaults, the seconds it may take ("10" by
-    default, as a text), and the files and folders that share a resource, which run alone. *)
-type test = { allow : string list; timeout : float; serial : string list }
+    default, as a text), the files and folders that share a resource, which run alone, and those that cesia test leaves
+    out unless its path is in one of them. *)
+type test = { allow : string list; timeout : float; serial : string list; skip : string list }
 
 (** [test] of the cesia.toml at a root, or its defaults without one; a wrong value stops the program. *)
 val test_config : string -> test

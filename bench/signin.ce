@@ -1,0 +1,49 @@
+(* 50 sign-ins at once (Argon2id through crypto.CheckPassword) against a server of std/http, while a fiber asks /ping
+   every 5 ms: the sign-ins' latency, and what the other requests feel meanwhile. One line of JSON.
+     cesia run --allow ffi=sodium,net=:18871,net=127.0.0.1:18871 bench/signin.ce *)
+use std/crypto
+use std/fiber
+use std/http
+use std/io
+use std/json
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/value
+
+s = result.Unwrap(crypto.Open())
+stored = crypto.HashPassword("correct horse", s)
+port = 18871
+app = http.App() then http.Post("/signin", r -> http.Plain(if crypto.CheckPassword(r.Body, stored, s) "ok" else "no" end)) then http.Get("/ping", r -> http.Plain("pong"))
+fiber.Spawn(() -> http.Serve(app, port = port))
+sys.Sleep(0.05)
+
+defn timed(f)
+  start = sys.Now()
+  r = f()
+  {Ms: (sys.Now() - start) * 1000.0, Ok: result.IsOk(r) and r.Value.Status == 200}
+end
+
+stop = fiber.Channel(size = 1)
+pinger = fiber.Spawn(defn ()
+  seen = []
+  ends = [sys.Now()]
+  while result.IsErr(fiber.Receive(stop, timeout = 0.005))
+    seen = list.Append(timed(() -> http.Fetch("http://127.0.0.1:$port/ping")).Ms, seen)
+    ends = list.Append(sys.Now(), ends)
+  end
+  ends = list.Append(sys.Now(), ends)
+  {Seen: seen, Gap: list.Max([(ends[k + 1] - ends[k]) * 1000.0 for k in 1..value.Len(ends) - 1])}
+end)
+start = sys.Now()
+signins = [fiber.Spawn(() -> timed(() -> http.Fetch("http://127.0.0.1:$port/signin", method = "POST", body = "correct horse"))) for k in 1..50]
+done = [fiber.Wait(t).Value for t in signins]
+wall = (sys.Now() - start) * 1000.0
+fiber.Send(true, stop)
+heard = fiber.Wait(pinger).Value
+pings = list.Sort(heard.Seen)
+times = list.Sort([d.Ms for d in done])
+at(q, xs) = xs[list.Max(1, math.Ceil(q * value.Len(xs)))]
+io.Print(json.Text({WallMs: wall, SigninP50: at(0.5, times), SigninMax: at(1.0, times), AllOk: list.All([d.Ok for d in done]), Pings: value.Len(pings), PingP50: at(0.5, pings), PingP99: at(0.99, pings), PingMax: at(1.0, pings), GapMax: heard.Gap}))
+sys.Exit(0)

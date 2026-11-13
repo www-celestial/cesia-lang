@@ -50,6 +50,10 @@ crypto.CheckPassword("correct horse", stored, s)    (* true *)
 crypto.CheckPassword("wrong", stored, s)            (* false *)
 ```
 
+Each takes about 70 ms and 64 MiB, on a thread of its own: the other fibers run meanwhile, so a server goes on answering
+while someone signs in. 50 sign-ins at once take 1,518 ms in all, where one after the other took 3,645 ms;
+see [C and C++](c.md#a-call-that-takes-long).
+
 ## Comparing secrets
 
 `==` stops at the first byte that differs, so the time it takes tells an attacker how many bytes were right, one guess
