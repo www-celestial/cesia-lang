@@ -9,6 +9,14 @@
 },
 {
 "Page": "docs/book/page.md",
+"Line": 11,
+"Lang": "python",
+"Code": "print(0.54)\n",
+"Want": "0.5\n",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
 "Line": 2,
 "Lang": "python",
 "Code": "print(3)\n",

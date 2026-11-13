@@ -56,12 +56,16 @@ jobs:
       - name: Site
         run: _build/default/src/bin/main.exe doc --site _site
       # The tabs of the book, its examples in Python, R and MATLAB, each run and checked against what its cesia block shows:
-      # Python 3 with numpy, scipy, pandas and matplotlib, R, and GNU Octave for MATLAB. Each tab runs capped and with no
-      # network, in a namespace of its own, which Ubuntu's AppArmor refuses to a user unless told otherwise. With CI set,
-      # a tab that can't run fails the build.
+      # Python 3 with numpy, scipy, pandas and matplotlib at the versions the book was checked with, R, and GNU Octave for
+      # MATLAB. Each tab runs capped and with no network, in a namespace of its own, which Ubuntu's AppArmor refuses to a
+      # user unless told otherwise. With CI set, a tab that can't run fails the build.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
       - name: The languages of the tabs
         run: |
-          sudo apt-get install -y python3-numpy python3-scipy python3-pandas python3-matplotlib r-base-core octave
+          python -m pip install numpy==2.5.4 scipy==1.18.1 pandas==2.3.3 matplotlib==3.11.2
+          sudo apt-get install -y r-base-core octave
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Tabs
         run: |

@@ -12,10 +12,11 @@
 
     What a tab prints and what its cesia block showed are cut into values, compared one by one: numbers, words, and the
     words true, false, nan and inf in any case. Brackets, commas, quotes and other signs only separate them; R's marks of
-    positions, [1], [1,] and [,1], and Cesia's Ok( around a result are left out. Two integers are equal, and an integer and
-    a float are equal, only when they are the same number. Two floats are equal to the digits shown: the less precise is
-    the other rounded to its last digit, at most half a unit of that digit away, so R's 0.3333333 and Octave's 0.3333 are
-    Cesia's 0.3333333333333333, and 0.3334 is not.
+    positions, [1], [1,] and [,1], and Cesia's Ok( around a result are left out. A number Cesia shows is exact: it writes
+    the shortest text that reads back as the same float. A number the tab prints stands for the numbers that it rounds, at
+    half a unit of its last digit, an integer for itself alone; the two agree when Cesia's number is one of them, give or
+    take 1e-14 of its size, the last bits of a computation done in another order. So R's 0.3333333 and Octave's 0.3333 are
+    Cesia's 0.3333333333333333, and 0.3334 is not; numpy's 0.54 is not Cesia's 0.5, and Python's 3 or 3.0 is Cesia's 3.
 
     A language whose program isn't here, or a system where the tabs can't be capped, is skipped with a warning, but where
     the variable CI is set, as on GitHub: there it fails. *)
@@ -155,20 +156,19 @@ defn valuesOf(s, lang = "")
   out
 end
 
-defn same(a, b)
-  (** Are two values equal under the rule of the tabs: integers exact, floats to the digits shown? *)
-  if a.K != b.K
+defn same(want, got)
+  (** Does a value a tab printed agree with the one its cesia block showed, which is exact: integers alike, or the shown
+      number among those that the printed one rounds, to 1e-14 of its size? *)
+  if want.K != got.K
     return false
-  else if a.K == "nan"
+  else if want.K == "nan"
     return true
-  else if a.K != "number"
-    return a.T == b.T
-  else if a.Int and b.Int
-    return a.T == b.T
-  else if a.Int or b.Int
-    return a.V == b.V
+  else if want.K != "number"
+    return want.T == got.T
+  else if want.Int and got.Int
+    return want.T == got.T
   end
-  math.Abs(a.V - b.V) <= list.Max(a.U, b.U) / 2 + 2.3e-16 * (math.Abs(a.V) + math.Abs(b.V))
+  math.Abs(want.V - got.V) <= (if got.Int 0.0 else got.U / 2 end) + 1e-14 * list.Max(math.Abs(want.V), math.Abs(got.V))
 end
 
 oneLine(t) = text.Replace("\n", " | ", text.Trim(t))
