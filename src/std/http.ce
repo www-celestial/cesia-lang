@@ -730,6 +730,47 @@ defn Cors(origin)
   (next, request) -> WithHeader("access-control-allow-origin", origin, next(request))
 end
 
+defn SameOrigin(next, request)
+  (** A middleware against cross-site request forgery, CSRF: a request that can change something, by any method but GET,
+      HEAD and OPTIONS, or that opens a WebSocket, gets a 403 when it comes from a page of another site, which the
+      browser would send with the cookies of its visitor. The browser's Sec-Fetch-Site header decides when it is there:
+      same-origin passes, and none, an address the person typed; same-site and cross-site don't. Without it, the Origin
+      header must be http:// or https:// then the Host header the request came with, its port too, in either case;
+      "null" never is. A request with neither header comes from no browser: it passes, and the program checks who sent
+      it, as by a cookie or a token. The method is read as it is written: a get is checked.
+
+        app = Handler(App() then Post("/pay", r -> Plain("paid")) then Wrap(SameOrigin))
+        pay(headers) = app({Method: "POST", Path: "/pay", Query: "", Headers: headers, Body: ""}).Status
+        pay([{Name: "sec-fetch-site", Value: "same-origin"}]) --> 200
+        pay([{Name: "sec-fetch-site", Value: "cross-site"}, {Name: "origin", Value: "https://shop.example"}, {Name: "host", Value: "shop.example"}]) --> 403
+        pay([{Name: "origin", Value: "https://shop.example"}, {Name: "host", Value: "shop.example"}]) --> 200
+        pay([{Name: "origin", Value: "https://elsewhere.example"}, {Name: "host", Value: "shop.example"}]) --> 403
+        pay([{Name: "origin", Value: "https://shop.example:8443"}, {Name: "host", Value: "shop.example"}]) --> 403
+        pay([{Name: "origin", Value: "null"}, {Name: "host", Value: "shop.example"}]) --> 403
+        pay([]) --> 200 *)
+  if isSameOrigin(request) next(request) else Plain("This request comes from another origin than the app's.", status = 403) end
+end
+
+(* Do two texts hold the same bytes, the ASCII letters in either case? Any other byte, as those of é, matches only
+   itself: no change of case can make the names of two hosts one. *)
+sameBytes(a, b) = text.ByteLength(a) == text.ByteLength(b) and text.ByteFind(a, 1, b, fold = true) == 1
+
+defn isSameOrigin(request)
+  (** Does SameOrigin let this request pass? *)
+  headers = request.Headers
+  asked = HeaderValue("upgrade", headers)
+  if request.Method in ["GET", "HEAD", "OPTIONS"] and not (value.IsText(asked) and sameBytes(asked, "websocket"))
+    return true
+  end
+  site = HeaderValue("sec-fetch-site", headers)
+  if value.IsText(site)
+    return site == "same-origin" or site == "none"
+  end
+  origin = HeaderValue("origin", headers)
+  host = HeaderValue("host", headers)
+  value.IsMissing(origin) or (value.IsText(host) and host != "" and (sameBytes(origin, "https://$host") or sameBytes(origin, "http://$host")))
+end
+
 (* Static files under a folder. A path can't leave it. *)
 types = {"html": "text/html; charset=utf-8", "css": "text/css", "js": "text/javascript", "json": "application/json",
   "png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "txt": "text/plain; charset=utf-8"}
