@@ -31,7 +31,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 
 | Permission | Allows |
 |---|---|
-| `read`, `read=./data` | reading files, all of them or those under a folder |
+| `read`, `read=./data` | reading files, all of them or those under a folder, and telling where they are, as [path.Abs] does |
 | `write`, `write=./out` | writing, renaming and removing files, all of them or under a folder |
 | `net`, `net=:8080` | the network, or listening on one port of this machine only: the address, or the one a name resolves to, is 127.0.0.1 or ::1 |
 | `net=0.0.0.0:8080`, `net=[::]:8080` | listening on one port for other machines too, on every address or on one |
@@ -63,6 +63,10 @@ A permission after `=` is as narrow as you can make it. Give that one, by the
 [principle of least privilege](glossary.md#principle-of-least-privilege): a program that reads its data from `./data` needs
 `read=./data`, not `read`. Reading outside the folder is denied as if nothing had been given. A folder holds a path by where
 it leads, its links followed: a link in `./data` that points outside it is denied too, as is writing a new file through one.
+
+Permissions say what the program may touch; the other people of the machine are kept out by the modes of the files. What
+holds a secret, keys or a session, is written with `private = true`, which [sys.Write] and [sys.Mkdir] take: the file or
+the folder is then its owner's alone from its first byte (see [Yours alone](files.md#yours-alone)).
 
 ## ffi is total trust
 
