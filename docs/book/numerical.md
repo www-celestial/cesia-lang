@@ -583,9 +583,9 @@ million non-zeros; in the order `Solve` picks, 2.9 million.
   leaves of the tree up, a dense matrix, its *front*, gathers the supernode's cells of `a` and the updates its children
   left; its columns are factored, and the update of the rows below them, the *Schur complement*, waits for the parent.
   Nearly all the arithmetic is then products of dense blocks, which BLAS does at the speed of dense code (Ng and Peyton
-  1993 showed this on processors with caches). The size of every block is counted before any is allocated: past the
-  memory limit, `Solve` gives an `Err` that says how large the factor would be. Cholesky needs no pivoting, and is
-  backward stable.
+  1993 compare such block methods on processors with caches). The size of every block is counted before any is
+  allocated: past the memory limit, `Solve` gives an `Err` that says how large the factor would be. Cholesky needs no
+  pivoting, and is backward stable.
 - **Any other square matrix**: LU with partial pivoting, `p a q = L U`. When `a`'s pattern is nearly symmetric, half
   its cells mirrored or more, with no 0 on its diagonal, the order is AMD on the pattern of `a + a'`, and LU follows
   the supernodes of that pattern, with fronts that hold both triangles, as UMFPACK's symmetric strategy does (Davis
@@ -673,23 +673,23 @@ On the machine of [Speed](speed.md#beside-the-giants), on 2026-11-14: Cesia's ti
 | | Cesia | scipy | Octave |
 |---|---:|---:|---:|
 | product `a x`, 2-D Poisson, 300 × 300 points, 448,800 non-zeros | **1.32 ms** (1.31 to 1.35) | 0.62 ms | 2.2 ms |
-| `Solve`, 2-D Poisson, 300 × 300 points, first call of the program | **315 ms** (312 to 319) | 805 ms | 330 ms |
-| `Solve`, 2-D Poisson, 300 × 300 points, the calls after it | **267 ms** (264 to 270) | | |
-| `Solve`, 2-D Poisson, 1000 × 1000 points | **3.86 s** (3.83 to 3.97) | 33.7 s | 8.1 s |
-| `Solve`, convection-diffusion, 300 × 300 points, LU | **358 ms** (358 to 363) | 801 ms | 563 ms |
+| `Solve`, 2-D Poisson, 300 × 300 points, first call of the program | **315 ms** (311 to 317) | 805 ms | 330 ms |
+| `Solve`, 2-D Poisson, 300 × 300 points, the calls after it | **266 ms** (265 to 269) | | |
+| `Solve`, 2-D Poisson, 1000 × 1000 points | **3.85 s** (3.82 to 3.88) | 33.7 s | 8.1 s |
+| `Solve`, convection-diffusion, 300 × 300 points, LU | **360 ms** (357 to 362) | 801 ms | 563 ms |
 
-Cesia's product takes 2.9 ns a non-zero, as [Speed](speed.md#what-becomes-machine-code) explains; scipy's loop reads
-its rows as 32-bit integers and checks none of them. For `Solve`, Octave's `\` calls CHOLMOD, supernodal too, its
-blocks factored by LAPACK and BLAS, and UMFPACK for LU; scipy's `spsolve` calls SuperLU, which factors even a symmetric matrix as
-unsymmetric. Before supernodes, Cesia's factorization went a column at a time and waited on the memory: 685 ms on the
+Cesia's product takes 2.9 ns a non-zero, as [Speed](speed.md#what-becomes-machine-code) explains; scipy's loop reads its
+rows as 32-bit integers and checks none of them. For `Solve`, Octave's `\` calls CHOLMOD, supernodal too, its blocks
+factored by LAPACK and BLAS, and UMFPACK for LU; scipy's `spsolve` calls SuperLU, which factors even a symmetric matrix
+as unsymmetric. Before supernodes, Cesia's factorization went a column at a time and waited on the memory: 679 ms on the
 300 × 300 grid, 24.1 s on the 1000 × 1000 one, 2.0 s for the LU. Where the giants still win: on the grid of 300 × 300
 points, the ordering by AMD now takes about a quarter of `Solve`, 70 ms, where SuiteSparse's takes 45 ms. On the eight
 Harwell-Boeing matrices of the tests, `Solve` takes from 0.33 ms (bcsstk01) to 15 ms (bcsstk14): faster than scipy on
-bcsstk14 (43 ms) and orsirr_1 (4.4 ms against 5.4), slower on the six others, by up to 2.6 times (bcsstk01, 0.13 ms);
-Octave is faster on each but orsirr_1, 2 to 7 times on the smallest, where the steps of `Solve` around the factorization
-(the transpose, the check of symmetry, the residual) cost more than the factorization. A factor that stays very thin, as
-that of the power network 1138_bus, pays for its fronts: each passes its parent an update as large as itself, and
-`Solve` takes 1.85 ms there, against 1.51 ms a column at a time before.
+bcsstk14 (43 ms) and orsirr_1 (4.4 ms against 5.4), slower on the six others, by up to 3.2 times (west0479, 0.68 ms);
+Octave is faster on each but orsirr_1, 1.4 to 7 times, most on the smallest, where the steps of `Solve` around the
+factorization (the transpose, the check of symmetry, the residual) cost more than the factorization. A factor that stays
+very thin, as that of the power network 1138_bus, pays for its fronts: each passes its parent an update as large as
+itself, and `Solve` takes 1.82 ms there, against 1.52 ms a column at a time before.
 
 BLAS does the products of the fronts on one thread, and on two from 2^27 multiply-adds: the machine's OpenBLAS, built
 with OpenMP, takes its 8 threads by itself, and on a machine busy with other programs they made the medium products of
