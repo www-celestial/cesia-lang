@@ -1,11 +1,13 @@
 (** Numerical computing, in the spirit of numpy. An array is a list or a matrix of floats, and the operators of the
     language already work element by element: a + b, a * 2.0, a > 0.0, matrix.Matmul(a, b), matrix.Transpose(a), list.Sum(a), list.Mean(a). *)
+use std/bug
 use std/lapack
 use std/list
 use std/math
 use std/matrix
 use std/random
 use std/result
+use std/text
 use std/value
 
 (** The library that does the large computations, or missing if the code of Cesia does them all. It has no example, as
@@ -135,46 +137,74 @@ defn Histogram(bins, xs)
   {Counts: counts, Edges: [low + k * width for k in 0..bins]}
 end
 
-defn eliminate(m, b)
-  (** Gaussian elimination with partial pivoting: the triangle, the swaps and their sign. *)
-  n = value.Size(m, 1)
-  sign = 1.0
-  for col in 1..n
-    pivot = col
-    for r in col + 1..n
-      if math.Abs(m[r, col]) > math.Abs(m[pivot, col])
-        pivot = r
-      end
-    end
-    if math.Abs(m[pivot, col]) < 1e-14
-      return {Singular: true, M: m, B: b, Sign: 0.0}
-    end
-    if pivot != col
-      sign = -sign
-      for c in 1..n
-        t = m[col, c]
-        m[col, c] = m[pivot, c]
-        m[pivot, c] = t
-      end
-      for c in 1..value.Size(b, 2)
-        t = b[col, c]
-        b[col, c] = b[pivot, c]
-        b[pivot, c] = t
-      end
-    end
-    for r in col + 1..n
-      f = m[r, col] / m[col, col]
-      if f != 0.0
-        for c in col..n
-          m[r, c] = m[r, c] - f * m[col, c]
-        end
-        for c in 1..value.Size(b, 2)
-          b[r, c] = b[r, c] - f * b[col, c]
-        end
+defn factor(m)
+  (** Gaussian elimination with partial pivoting, in the order of the textbook: at each column the row of the largest
+      element in absolute value comes up, then each row below loses the multiple of it that makes its element 0. The
+      multipliers are kept where those zeros would be. {Singular, Lu, Perm, Sign}: Singular when a pivot is under 1e-14
+      in absolute value; Perm, the rows of m in the order of the elimination; Sign, that of the permutation. The work is
+      luFactor's, native code, on the square of the first columns of m; a panic when m is no matrix of numbers. *)
+  t = luFactor(m)
+  if value.IsMissing(t)
+    bug.Panic("num: m is $(brief(m)); give a square matrix of numbers.")
+  end
+  t
+end
+
+struct LuFactors
+  (** The LU factorization of a square matrix m, which Lu gives: Gaussian elimination with partial pivoting, which writes
+      m, its rows in another order, as L U, L lower triangular with ones on its diagonal and U upper triangular, as
+      MATLAB's lu and scipy's lu_factor. f.Solve(b) then gives the x of m x = b for each b, at the cost of two triangular
+      solves, about n^2 operations, without the n^3 / 3 of the elimination again.
+
+        f = Lu(matrix.Reshape([2, 2], [2.0, 4.0, 1.0, 3.0])).Value
+        f.Solve([3.0, 7.0]) --> [1.0, 1.0] *)
+  lu    (* L under the diagonal, without its ones, and U on and above it, in one matrix of the order of m *)
+  perm  (* the rows of m in the order of the elimination: row k of L U is row perm[k] of m *)
+  sign  (* the sign of that permutation, 1.0 or -1.0 *)
+end
+
+defn Lu(m)
+  (** The LU factorization of a square matrix, in an Ok of a LuFactors, or an Err of the kind "math" if the matrix is singular:
+      when a pivot, the largest element left in its column, is under 1e-14 in absolute value, as Solve says. The code
+      of Cesia does it for every order; Solve, Det and Inverse use it below the order where LAPACK takes over.
+
+        f = Lu(matrix.Reshape([2, 2], [4.0, 2.0, 2.0, 3.0])).Value
+        f.Solve([6.0, 5.0]) --> [1.0, 1.0]
+        f.Solve(Eye(2)) then matrix.Matmul(matrix.Reshape([2, 2], [4.0, 2.0, 2.0, 3.0]), it) --> [1.0 0.0; 0.0 1.0]
+        Lu(matrix.Reshape([2, 2], [1.0, 2.0, 2.0, 4.0])).Error.Message --> "This matrix is singular." *)
+  dims = if value.IsArray(m) value.Size(m) else [] end
+  if value.Len(dims) != 2 or dims[1] != dims[2] or dims[1] == 0
+    bug.Panic("num.Lu: m is $(brief(m)); give a square matrix of numbers.")
+  end
+  t = luFactor(m)
+  if value.IsMissing(t)
+    for k in 1..value.Len(m)
+      if not value.IsNumber(m[k])
+        bug.Panic("num.Lu: m[$k] is $(brief(m[k])); give a square matrix of numbers.")
       end
     end
   end
-  {Singular: false, M: m, B: b, Sign: sign}
+  if t.Singular singular() else result.Ok(LuFactors(t.Lu, t.Perm, t.Sign)) end
+end
+
+defn brief(v)
+  (** A value as a panic shows it: its text, a text in quotes, cut past 60 characters. *)
+  s = if value.IsText(v) "\"$v\"" else value.Text(v) end
+  if value.Len(s) > 60 "$(text.Slice(1, 57, s))..." else s end
+end
+
+defn (f LuFactors) Solve(b)
+  (** The x of m x = b, for the m of the factorization f: b an array of n numbers, a row or a column, gives x in the
+      same shape; b a matrix of n rows gives x with a column for each of its columns. The operations are those of Solve,
+      in the same order, so both give the same bits.
+
+        f = Lu(matrix.Reshape([2, 2], [2.0, 1.0, 1.0, 3.0])).Value
+        f.Solve([3.0; 5.0]) --> [0.8; 1.4] *)
+  x = luSolve(f.lu, f.perm, b)
+  if value.IsMissing(x)
+    bug.Panic("LuFactors.Solve: b is $(brief(b)); give $(value.Len(f.perm)) numbers, or a matrix of $(value.Len(f.perm)) rows.")
+  end
+  x
 end
 
 defn Det(m)
@@ -185,30 +215,15 @@ defn Det(m)
   if not value.IsMissing(fast)
     return fast
   end
-  t = eliminate(m, matrix.Zeros(value.Size(m, 1), 1))
+  t = factor(m)
   if t.Singular
     return 0.0
   end
   d = t.Sign
   for k in 1..value.Size(m, 1)
-    d = d * t.M[k, k]
+    d = d * t.Lu[k, k]
   end
   d
-end
-
-defn back(t)
-  n = value.Size(t.M, 1)
-  x = t.B
-  for c in 1..value.Size(x, 2)
-    for r in list.Range(n, 1, step = -1)
-      s = x[r, c]
-      for k in r + 1..n
-        s = s - t.M[r, k] * x[k, c]
-      end
-      x[r, c] = s / t.M[r, r]
-    end
-  end
-  x
 end
 
 singular() = result.Err({Kind: "math", Message: "This matrix is singular."})
@@ -219,12 +234,14 @@ defn solved(m, b)
   if not value.IsMissing(fast)
     return if value.IsArray(fast) result.Ok(fast) else singular() end
   end
-  t = eliminate(m, b)
-  if t.Singular singular() else result.Ok(back(t)) end
+  t = factor(m)
+  if t.Singular singular() else result.Ok(LuFactors(t.Lu, t.Perm, t.Sign).Solve(b)) end
 end
 
 defn Solve(m, b)
-  (** The x of m * x = b, in an Ok, or an Err of the kind "math" if the matrix is singular.
+  (** The x of m * x = b, in an Ok, or an Err of the kind "math" if the matrix is singular: when a pivot of the
+      elimination, the largest element left in its column, is under 1e-14 in absolute value. Lu keeps the elimination
+      for many b.
 
         Solve(Eye(2), [1.0, 2.0]).Value --> [1.0, 2.0] *)
   n = value.Size(m, 1)
