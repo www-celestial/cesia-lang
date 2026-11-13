@@ -189,8 +189,8 @@ let add_char o c =
     Buffer.add_char o.b c
   end
 
-(* A text in quotes, its quotes and backslashes escaped. The runs between them go out at most 4096 bytes at a time, so
-   that a long text stops being read soon after the text is full. *)
+(* A text in quotes, its quotes and backslashes escaped. A run between them goes out as soon as it has more bytes than
+   characters fit, each byte being at most one character: a long text stops being read soon after the text is full. *)
 let add_quoted o s =
   add_char o '"';
   let n = String.length s in
@@ -203,7 +203,7 @@ let add_quoted o s =
         add_char o '\\';
         add_char o c;
         go (i + 1) (i + 1)
-      | _ when i - from >= 4096 ->
+      | _ when i - from > o.left ->
         add_sub o s from (i - from);
         go i (i + 1)
       | _ -> go from (i + 1)

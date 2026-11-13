@@ -36,7 +36,8 @@ end
 
 samples = [missing, true, false, 0, -12345, 1.5, 1e300, math.Sqrt(-1.0), "", "plain", "a \"quoted\" \\ text", "héllo wörld ✓",
   [], [1, 2, 3], [1.5; 2.5], [1, 2; 3, 4], ["a", 1; "b", 2], matrix.Reshape([2, 2, 2], 1..8), [[1, [2, "é"]], {A: 1}],
-  dict.Put(3, "x", dict.Put("b-c", [2], {A: 1})), deepMap(), Point(1, "y"), Box([1, 2]), result.Ok(Point(1.5, missing)), (x) -> x, math.Sqrt]
+  dict.Put(3, "x", dict.Put("b-c", [2], {A: 1})), deepMap(), Point(1, "y"), Box([1, 2]), result.Ok(Point(1.5, missing)), (x) -> x, math.Sqrt,
+  [text.Repeat(12, "é\"😀ab\\")]]
 
 defn sameAsWhole()
   (** For every sample and every most up to past its length, the rule, character by character. *)
@@ -86,3 +87,4 @@ isDeep() = value.Text(deep(100000), 6) == "[[[[[…"
 isDeepWholeFails() = result.IsErr(fiber.Wait(fiber.Spawn(() -> "$(deep(100000))")))
 isMostHuge() = value.Text([1, 2], 4611686018427387903) == "[1, 2]" and value.Text("ab", 1e18) == "ab"
 isWideCharacters() = value.Text("a😀b", 2) == "a…" and value.Text(["😀😀"], 3) == "[\"…" and value.Text("😀😀", 2) == "😀😀"
+isLongWideText() = value.Text([text.Repeat(1000000, "😀")], 5) == "[\"😀😀…"
