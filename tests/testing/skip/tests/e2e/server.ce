@@ -1,0 +1,2 @@
+(** An end-to-end test that needs a server this test doesn't start: it fails when it runs. *)
+isServerThere() = false

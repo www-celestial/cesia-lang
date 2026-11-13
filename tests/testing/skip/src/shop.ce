@@ -1,0 +1,4 @@
+(** Twice a number.
+
+      Twice(2) --> 4 *)
+Twice(x) = 2 * x

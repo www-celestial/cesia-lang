@@ -287,12 +287,12 @@ let create name =
   (* An empty std/ asks cesia pkg install for Cesia's libraries. *)
   Sys.mkdir (Filename.concat name "std") 0o755
 
-type test = { allow : string list; timeout : float; serial : string list }
+type test = { allow : string list; timeout : float; serial : string list; skip : string list }
 
-let no_test = { allow = []; timeout = 10.; serial = [] }
+let no_test = { allow = []; timeout = 10.; serial = []; skip = [] }
 
-(* [test] of the cesia.toml at a root, if any: what cesia test allows beyond its defaults, the seconds a test may take, and
-   the folders and files that run alone. *)
+(* [test] of the cesia.toml at a root, if any: what cesia test allows beyond its defaults, the seconds a test may take, the
+   folders and files that run alone, and those it leaves out unless it is given one of them. *)
 let test_config root =
   let path = Filename.concat root file_name in
   match In_channel.with_open_bin path In_channel.input_all with
@@ -312,6 +312,7 @@ let test_config root =
              | "serial", Texts l -> { c with serial = l }
              | "timeout", Text t ->
                (match float_of_string_opt t with Some f when f > 0. -> { c with timeout = f } | _ -> wrong "seconds, as \"10\"")
-             | ("allow" | "serial"), _ -> wrong "a list of texts"
+             | ("allow" | "serial" | "skip"), _ -> wrong "a list of texts"
              | key, _ -> stop 1 (path ^ ": " ^ Messages.at_line e.line (Messages.project_field "[test]" key)))
+             | "skip", Texts l -> { c with skip = l }
           no_test table.entries

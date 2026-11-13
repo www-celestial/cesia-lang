@@ -79,7 +79,8 @@ propre dossier temporaire, et `net=own`.
 [test]
 allow = ["net=example.com:443", "exec=git"]
 timeout = "30"
-serial = ["tests/e2e"]
+serial = ["tests/db"]
+skip = ["tests/e2e"]
 ```
 
 | Clé | Ce qu'elle dit |
@@ -87,6 +88,7 @@ serial = ["tests/e2e"]
 | `allow` | plus de permissions, comme `--allow` les prend, une par texte |
 | `timeout` | les secondes qu'un test peut prendre, sous la forme d'un texte : `"10"` sans elle |
 | `serial` | les fichiers et les dossiers dont les tests partagent quelque chose, comme un port ou une base de données, et tournent seuls, après les autres |
+| `skip` | les fichiers et les dossiers que `cesia test` laisse de côté, sauf si son chemin est dans l'un d'eux : `cesia test tests/e2e` lance ceux-là |
 
 ## `[deps.LABEL]`
 

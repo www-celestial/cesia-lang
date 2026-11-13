@@ -189,11 +189,14 @@ KILL a second later. `[test]` in `cesia.toml` changes the 10 seconds for the who
 [test]
 allow = ["exec=git"]
 timeout = "30"
-serial = ["tests/e2e"]
+serial = ["tests/db"]
+skip = ["tests/e2e"]
 ```
 
 `allow` adds permissions, as `--allow` does; `timeout` is in seconds, written as a text; `serial` names the files and folders
-that share something, as a database, and run alone, after the others.
+that share something, as a database, and run alone, after the others; `skip` names those that `cesia test` leaves out
+unless its path is in one of them, as end-to-end tests that need a server started first: `cesia test` runs the others,
+and `cesia test tests/e2e` those.
 
 ## cesia test
 
