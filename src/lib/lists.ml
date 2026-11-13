@@ -243,7 +243,8 @@ let fold s =
             k, if k + 4 < Array.length runs then runs.(k + 4) else max_int
         in
         let moves = p >= runs.(k) && p <= runs.(k + 1) && (p - runs.(k)) land (runs.(k + 2) - 1) = 0 in
-        if moves && Uchar.utf_decode_is_valid d then go (i + w) (j + Bytes.set_utf_8_uchar out j (Uchar.of_int (p + runs.(k + 3)))) k next
+        if moves && Uchar.utf_decode_is_valid d then
+          go (i + w) (j + Bytes.set_utf_8_uchar out j (Uchar.of_int (p + runs.(k + 3)))) k next
         else begin
           Bytes.blit_string s i out j w;
           go (i + w) (j + w) k next

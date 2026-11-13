@@ -4,9 +4,11 @@
      curl -O https://www.unicode.org/Public/X.Y.Z/ucd/CaseFolding.txt
      dune build src/gen/gen_fold.exe && _build/default/src/gen/gen_fold.exe CaseFolding.txt > src/lib/casefold.ml
 
-   The pairs become runs: characters one or two apart that move by the same distance, as A to Z, or the capitals and small
-   letters of Latin Extended-A that alternate: four numbers each, its first character, its last, the step between two of
-   them and the distance each moves, rising, for a binary search. *)
+   then give the new version where text.Fold's entry in src/std/natives.ce names it, and in the CHANGELOG.
+
+   The pairs become runs: characters one or two apart that move by the same distance, as A to Z, or the capitals and
+   small letters of Latin Extended-A that alternate: four numbers each, its first character, its last, the step between
+   two of them and the distance each moves, rising, for a binary search. *)
 
 let () =
   let path = Sys.argv.(1) in
