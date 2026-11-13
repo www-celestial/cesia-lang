@@ -2934,22 +2934,37 @@ defn notReached(count, s, tol, lv)
 end
 
 defn gather(f, size, head)
-  (** An array of size draws, head then a call of f for each of the others, true and false as 1.0 and 0.0; or, at the
-      first value that is no finite number, true or false, {At, Value, Draws}: its place, it, and the array, whose draws
-      before it are made. *)
+  (** An array of size draws, head then a call of f for each of the others; true and false as 1.0 and 0.0; or, at the
+      first value that is no number, true or false, {At, Value, Draws}: its place, it, and the array, whose draws
+      before it are made. Each value is tested as it comes, so that f is not called past a bad one; a NaN or an
+      infinity is found by the sums of the array. *)
   buf = matrix.Zeros(1, size)
+  if not value.IsNumber(head)
+    return gatherAny(f, buf, 1, head)
+  end
+  buf[1] = head
+  for k in 2..size
+    x = f()
+    if not value.IsNumber(x)
+      return gatherAny(f, buf, k, x)
+    end
+    buf[k] = x
+  end
+  buf
+end
+
+defn gatherAny(f, buf, from, head)
+  (** gather's loop from the place from on, where head, a value that is no number, came: true and false as 1.0 and
+      0.0, numbers as they are, and {At, Value, Draws} at the first other value. *)
   x = head
-  for k in 1..size
-    if k > 1
+  for k in from..value.Len(buf)
+    if k > from
       x = f()
     end
-    if value.IsNumber(x)
-      if x - x != 0.0
-        return {At: k, Value: x, Draws: buf}
-      end
-      buf[k] = x
-    else if value.IsBool(x)
+    if value.IsBool(x)
       buf[k] = if x 1.0 else 0.0 end
+    else if value.IsNumber(x)
+      buf[k] = x
     else
       return {At: k, Value: x, Draws: buf}
     end
@@ -2968,7 +2983,7 @@ defn singles(f, first, target, byTol, z, tol, lv)
     if not value.IsArray(buf)
       k = buf.At
       bad = buf.Value
-      what = if value.IsNumber(bad) "$(if bad != bad "NaN" else "an infinity" end) at call $(count + k); give finite numbers" else if value.IsArray(bad) "an array at call $(count + k), and numbers before: give a number each time, or an array each time" else "$(brief(bad)) at call $(count + k); give a number, true or false, or an array of them" end
+      what = if value.IsArray(bad) "an array at call $(count + k), and numbers before: give a number each time, or an array each time" else "$(brief(bad)) at call $(count + k); give a number, true or false, or an array of them" end
       return failed("f gave $what.", count + k - 1, merged(s, buf.Draws, k - 1), lv)
     end
     base = count
