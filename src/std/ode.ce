@@ -58,36 +58,21 @@ d5 = 701980252875.0 / 199316789632.0
 d6 = -1453857185.0 / 822651844.0
 d7 = 69997945.0 / 29380423.0
 
-(* Rosenbrock methods for stiff problems (Hairer and Wanner II, §IV.7), in the form with the stages u_i of their (7.25),
-   which the code RODAS and those of Julia use. With s the signed step, J = ∂f/∂y and ft = ∂f/∂t at the start of the
-   step and W = I - s γ J, factored once, each stage solves
+(* The Rosenbrock method of stiff = true (Hairer and Wanner II, §IV.7), in the form with the stages u_i of their
+   (7.25), which the code RODAS and those of Julia use. With s the signed step, J = ∂f/∂y and ft = ∂f/∂t at the start
+   of the step and W = I - s γ J, factored once, each stage solves
 
      W u_i = s γ f(t + c_i s, y + Σ_j a_ij u_j) + s² γ d_i ft + γ Σ_j C_ij u_j,
 
-   the sums over j < i. The methods are stiffly accurate: y1 = y + Σ_j a_Sj u_j + u_S, the argument of the last stage
+   the sums over j < i. The method is stiffly accurate: y1 = y + Σ_j a_Sj u_j + u_S, the argument of the last stage
    plus its own u, and u_S estimates the error, the difference with the embedded method of one order less, which is
    the argument of the last stage. Dense output: y(t + θ s) = (1 - θ) y + θ (y1 + (1 - θ) (q1 + θ (q2 + θ q3))), with
-   q_j = Σ_i H_ji u_i. The tables are those Steinebach (2023) publishes with Rodas5P, in OrdinaryDiffEq.jl: Rodas4 of
-   Hairer and Wanner (1996), 6 stages, order 4 (3), dense output of order 3, and Rodas5P, 8 stages, order 5 (4), dense
-   output of order 4; both A-stable and L-stable. The tests check their order conditions. *)
-rodas4 = {Name: "Rodas4", Gamma: 0.25, Order: 4,
-  A: [0.0 0.0 0.0 0.0 0.0 0.0
-      1.544 0.0 0.0 0.0 0.0 0.0
-      0.9466785280815826 0.2557011698983284 0.0 0.0 0.0 0.0
-      3.314825187068521 2.896124015972201 0.9986419139977817 0.0 0.0 0.0
-      1.221224509226641 6.019134481288629 12.53708332932087 -0.687886036105895 0.0 0.0
-      1.221224509226641 6.019134481288629 12.53708332932087 -0.687886036105895 1.0 0.0],
-  C: [0.0 0.0 0.0 0.0 0.0 0.0
-      -5.6688 0.0 0.0 0.0 0.0 0.0
-      -2.430093356833875 -0.2063599157091915 0.0 0.0 0.0 0.0
-      -0.1073529058151375 -9.594562251023355 -20.47028614809616 0.0 0.0 0.0
-      7.496443313967647 -10.24680431464352 -33.99990352819905 11.7089089320616 0.0 0.0
-      8.083246795921522 -7.981132988064893 -31.52159432874371 16.31930543123136 -6.058818238834054 0.0],
-  Cs: [0.0, 0.386, 0.21, 0.63, 1.0, 1.0],
-  D: [0.25, -0.1043, 0.1035, -0.0362, 0.0, 0.0],
-  H: [10.12623508344586 -7.487995877610167 -34.80091861555747 -7.992771707568823 1.025137723295662 0.0
-      -0.6762803392801253 6.087714651680015 16.43084320892478 24.76722511418386 -6.594389125716872 0.0]}
-rodas5p = {Name: "Rodas5P", Gamma: 0.21193756319429014, Order: 5,
+   q_j = Σ_i H_ji u_i. The table is Rodas5P's, of Steinebach (2023), as he publishes it in OrdinaryDiffEq.jl: 8
+   stages, order 5 (4), dense output of order 4, A-stable and L-stable. It was chosen over Rodas4 of Hairer and Wanner
+   (1996) by its work for the same error on Robertson's problem, Van der Pol's at two scales, HIRES and OREGO, from
+   rtol 1e-4 to 1e-10: up to 2.5 times fewer calls of f, and as many on the scaled Van der Pol. The tests check the order
+   conditions of both, and keep Rodas4 as an oracle. *)
+rodas5p = {Gamma: 0.21193756319429014, Order: 5,
   A: [0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
       3.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
       2.849394379747939 0.45842242204463923 0.0 0.0 0.0 0.0 0.0 0.0
@@ -109,7 +94,6 @@ rodas5p = {Name: "Rodas5P", Gamma: 0.21193756319429014, Order: 5,
   H: [25.948786856663858 -2.5579724845846235 10.433815404888879 -2.3679251022685204 0.524948541321073 1.1241088310450404 0.4272876194431874 -0.17202221070155493
       -9.91568850695171 -0.9689944594115154 3.0438037242978453 -24.495224566215796 20.176138334709044 15.98066361424651 -6.789040303419874 -6.710236069923372
       11.419903575922262 2.8879645146136994 72.92137995996029 80.12511834622643 -52.072871366152654 -59.78993625266729 -0.15582684282751913 4.883087185713722]}
-rosenbrock = rodas5p   (* the method of stiff = true *)
 mostStiff = 1000       (** the most components of y with stiff = true: its matrices are n × n, 8 MB each at 1000 *)
 
 
@@ -558,9 +542,9 @@ end
 defn jacobianAt(f, p, t, y, fy, s)
   (** {J, Ft, Calls} at (t, y), where f gives fy, for a step s: J = ∂f/∂y, from the jacobian given or by forward
       differences, and Ft = ∂f/∂t by one difference; Calls, the calls of f. Component j moves by sqrt(eps) max(|y_j|,
-      atol_j), as Dennis and Schnabel (1983, §5.4) advise with the typical size of y_j, here atol_j, under which the
-      error test sees no difference (sqrt(eps) when both are 0); t moves by sqrt(eps) |s|, the scale the step resolves,
-      and at least 4 eps |t|. The increment of RODAS, sqrt(eps max(|y_j|, 1e-5)), is far larger than a component of
+      atol_j), as Dennis and Schnabel (1996) advise for finite differences with the typical size of y_j, here atol_j,
+      under which the error test sees no difference (sqrt(eps) when both are 0); t moves by sqrt(eps) |s|, the scale
+      the step resolves, and at least 4 eps |t|. The increment of RODAS, sqrt(eps max(|y_j|, 1e-5)), is far larger than a component of
       1e-13 such as y2 of Robertson's problem: its Jacobian then took 4 times more steps, with an error of 15 %. A text
       when f or jacobian gives a value of the wrong shape, or a value that is no finite number. *)
   n = p.N
@@ -642,7 +626,7 @@ defn stiffRun(f, p)
     f0 = f
     f = (t, y) -> [f0(t, y[1])]
   end
-  tab = rosenbrock
+  tab = rodas5p
   stages = value.Len(tab.Cs)
   gamma = tab.Gamma
   nh = value.Size(tab.H, 1)
@@ -883,7 +867,7 @@ perChunk(width) = if 65536 > width math.Div(65536, width) else 1 end
 
 (** The floats of a step in the chunks: t, h and 6 arrays of n for Dormand and Prince, or t, h, y and the q of the dense
     output for the Rosenbrock method. *)
-widthOf(stiff, n) = if stiff (1 + value.Size(rosenbrock.H, 1)) * n + 2 else 6 * n + 2 end
+widthOf(stiff, n) = if stiff (1 + value.Size(rodas5p.H, 1)) * n + 2 else 6 * n + 2 end
 
 defn dense(st, tail, size, u)
   (** The state at u, inside the step st = [t, h, y, k1, k3, k4, k5, k6] that tail = [t + h, y1, k7] ends, from
