@@ -30,6 +30,10 @@ let g21 =
   [| 0.0; 0.06667134430868813759357; 0.1494513491505805931458; 0.2190863625159820439955; 0.2692667193099963550912;
      0.2955242247147528701739; 0.0; 0.0; 0.0; 0.0; 0.0 |]
 
+(* The places in x21 of the points in their own order, from the end inwards: QUADPACK adds the terms of I_asc so. *)
+let natural21 = [| 0; 6; 1; 7; 2; 8; 3; 9; 4; 10; 5 |]
+let natural15 = [| 0; 1; 2; 3; 4; 5; 6; 7 |]
+
 let x15 =
   [| 0.0; 0.9914553711208126392069; 0.9491079123427585245262; 0.8648644233597690727897; 0.7415311855993944398639;
      0.5860872354676911302941; 0.4058451513773971669066; 0.2077849550078984676007 |]
@@ -63,7 +67,7 @@ let at ctx f x =
    integral, QUADPACK's error estimate, the integral of |f| and that of |f - its mean|. A pair is one term,
    f(-x) + f(x), so that an odd f centred on 0 gives exactly 0. The estimate is I_asc min(1, (200 |K - G| / I_asc)^1.5),
    at least 50 eps times the integral of |f|. *)
-let estimate ys zs n h kw gw place =
+let estimate ys zs n h kw gw natural place =
   let resk = ref 0. and resg = ref 0. and sum_abs = ref 0. in
   for i = 0 to n - 1 do
     let p = ys.(i) +. zs.(i) in
@@ -72,7 +76,8 @@ let estimate ys zs n h kw gw place =
     sum_abs := !sum_abs +. (kw.(i) *. (Float.abs ys.(i) +. Float.abs zs.(i)))
   done;
   let half = 0.5 *. !resk and asc = ref 0. in
-  for i = 0 to n - 1 do
+  for j = 0 to n - 1 do
+    let i = natural.(j) in
     let d = if i = 0 then Float.abs (ys.(0) -. half) else Float.abs (ys.(i) -. half) +. Float.abs (zs.(i) -. half) in
     asc := !asc +. (kw.(i) *. d)
   done;
@@ -102,7 +107,7 @@ let rule ctx f way from ys zs a b =
       ys.(i) <- at ctx f (c -. hx);
       zs.(i) <- at ctx f (c +. hx)
     done;
-    estimate ys zs 11 h w21 g21 c
+    estimate ys zs 11 h w21 g21 natural21 c
   end
   else begin
     let value t =
@@ -119,7 +124,7 @@ let rule ctx f way from ys zs a b =
       ys.(i) <- value (c -. ht);
       zs.(i) <- value (c +. ht)
     done;
-    estimate ys zs 8 h w15 g15 (place way from c)
+    estimate ys zs 8 h w15 g15 natural15 (place way from c)
   end
 
 (* One step of Wynn's epsilon algorithm (1956) on the sequence of sums: table.(1..n) holds the two last ascending

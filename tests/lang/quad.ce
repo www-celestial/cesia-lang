@@ -240,7 +240,8 @@ defn isFamiliesWithinTolerance()
 end
 (* The same work as QUADPACK's own code: the same pieces cut in the same order. *)
 isFamiliesSameWorkAsQuadpack() = list.All([result.Unwrap(solved[i]).Evaluations == cases[i].Calls and result.Unwrap(solved[i]).Intervals == cases[i].Pieces for i in 1..value.Len(cases)])
-(* And the same numbers, where scipy's were written down: its value and error estimate to the last bit. *)
+(* And the same numbers: scipy's value and error estimate, to the last bit, as on all 42 when this was written; here
+   three of them. *)
 isSameBitsAsQuadpack() = result.Unwrap(quad.Integral(x -> x ^ (-0.5) * math.Log(1.0 / x), 0.0, 1.0)) == {Value: 4.000000000000071, Error: 2.1582735598713043e-13, Evaluations: 315, Intervals: 8}
 isSameBitsInfinite() = result.Unwrap(quad.Integral(x -> math.Exp(-x * x), -math.Inf, math.Inf)) == {Value: 1.772453850905516, Error: 1.0306805682733654e-12, Evaluations: 390, Intervals: 7}
 
@@ -253,10 +254,7 @@ isIntegers() = quad.Integral(x -> 1, 0, 2).Value.Value == 2.0
 isPointsKept() = quad.Integral(x -> math.Abs(x - 0.3), 0.0, 1.0, points = [1.0, 0.3, 0.0, 0.3]) == quad.Integral(x -> math.Abs(x - 0.3), 0.0, 1.0, points = [0.3])
 isPointsReversed() = quad.Integral(x -> math.Abs(x - 0.3), 1.0, 0.0, points = [0.3]).Value.Value == -0.29
 (* A looser tolerance stops sooner, by either test: 315 calls instead of 651, as QUADPACK's code. *)
-defn isRelativeTolerance()
-  q = result.Unwrap(quad.Integral(x -> math.Cos(100.0 * x), 0.0, 1.0, rtol = 1.0e-3, atol = 0.0))
-  q.Value == -0.005063656411098236 and q.Evaluations == 315 and q.Intervals == 8
-end
+isRelativeTolerance() = quad.Integral(x -> math.Cos(100.0 * x), 0.0, 1.0, rtol = 1.0e-3, atol = 0.0) == result.Ok({Value: -0.005063656411098236, Error: 5.934790263395495e-10, Evaluations: 315, Intervals: 8})
 isAbsoluteTolerance() = quad.Integral(x -> math.Cos(100.0 * x), 0.0, 1.0, rtol = 0.0, atol = 1.0e-6).Value.Evaluations == 315
 never() = 1 / 0
 
@@ -268,6 +266,8 @@ isRoundoff() = text.Contains("roundoff stops the error estimate", quad.Integral(
 isExtrapolationFails() = text.Contains("the extrapolation does not converge", quad.Integral(x -> math.Sin(x), 0.0, math.Inf).Error.Message)
 isBadPlace() = quad.Integral(x -> 1.0 / math.Abs(x - (1.0e10 + 1.0 / 3.0)), 1.0e10, 1.0e10 + 1.0).Error.Message == "quad.Integral: f behaves too badly near 10000000000.333374 for the piece around it to be cut again: a singularity that may not be integrable, or a jump; give it in points."
 (* A narrow peak that no point of the rule sees: Integral can't know, as any method that only samples f. *)
+(* A double integral as two nested calls: the area of the unit disk. *)
+isNested() = math.Near(quad.Integral(x -> quad.Integral(y -> 1.0, -math.Sqrt(1.0 - x * x), math.Sqrt(1.0 - x * x)).Value.Value, -1.0, 1.0).Value.Value, pi, rel = 1.0e-10)
 isPeakMissed() = quad.Integral(x -> math.Exp(-x * x), -1.0e300, 1.0e300) == result.Ok({Value: 0.0, Error: 0.0, Evaluations: 63, Intervals: 2})
 
 (* What f gives is checked: a NaN, an infinity, a text, a bool, an Err are Errs that name the place; a panic stays one. *)
