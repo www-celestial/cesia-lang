@@ -31,7 +31,9 @@ Everything here is added: a program written for 1.0 runs as it did.
   cell defines and reads, a name in one cell only, read only below its cell) and `cells.ToRun` (the cells that depend on a
   run); `cells.Session`, `cells.Run`, `cells.Forget`, `cells.Variables`, `cells.Rows`, `cells.Scene` and `cells.Stop` run them in a process of their
   own, `cesia run --cells`, as fast as `cesia run`, a graph of `std/plot` as its scene; `cells.Html` gives the page of a
-  file, its graphs in SVG.
+  file, its graphs in SVG. Each cell starts std/random again from the session's seed and its title, so a cell run again
+  draws the same numbers; a struct of at most 20 fields shows as a table of its fields, an `Ok` of a struct as the
+  struct.
 - `c.Write(type, offset, values, block)` writes a whole array of numbers into a block in one call, each converted as
   `c.Set` converts one: the vertices of a shape or the pixels of an image.
 - `cesia.Reads(source)`: the names a source reads and doesn't define, with the compiler's own resolver.
@@ -40,6 +42,16 @@ Everything here is added: a program written for 1.0 runs as it did.
 - `cesia fmt` writes files in the style of Cesia's code and checks that each keeps its tree.
 - Native packages: a package's engine in OCaml, compiled once against `Cesia_v1`, runs its natives under `native=LABEL`.
 - `cesia test` stops the programs a test started with `sys.Start` or `sys.Run` when the test ends, even past its time.
+
+### Statistics
+
+- `std/stats`: the laws Normal, StudentT, ChiSquared, FisherF, Uniform, Exponential, Gamma, Beta, Binomial and Poisson
+  as values, each with `Pdf`, `Cdf`, `Quantile` (both with `upper = true` for the upper tail, computed directly) and
+  `Sample`; `stats.Lm`, the linear model of R's `lm` without a formula, with `summary(lm)`'s table, `Predict`, `Band` and
+  `Confint`; the tests `TTest`, `TTest2`, `WilcoxonTest`, `WilcoxonTest2`, `KsTest`, `ChiSquaredTest` and `CorTest`, each
+  giving a `stats.Test`. Checked against values of 70 digits, NIST's datasets and R.
+- `std/special`: `Gamma`, `LogGamma`, `Beta`, `LogBeta`, `Erf`, `Erfc`, `Erfcx`, `ErfInv`, `ErfcInv`, `GammaInc` and
+  `BetaInc`, from the papers of Cody, Wichura, DiDonato and Morris, and Temme.
 
 ### Speed
 

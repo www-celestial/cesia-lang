@@ -10,8 +10,9 @@ val seed : unit -> int
 (** Starts the numbers of a run again from the seed, so that the same seed gives the same numbers whatever ran before. *)
 val reset : unit -> unit
 
-(** Starts the numbers again from a state, keeping the seed of the run: cesia test gives each test its own. *)
-val restart : int -> unit
+(** Starts the numbers again from a state made of the seed of the run and names, keeping the seed: cesia test gives each
+    test its own, from its file and name, std/cells each cell, from its title. *)
+val restart : string list -> unit
 
 (** From 0 to [n] - 1, for [n] > 0, without bias: what std/gen draws. *)
 val below : int -> int

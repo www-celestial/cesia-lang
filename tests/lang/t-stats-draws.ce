@@ -1,0 +1,22 @@
+(* The draws of each law of std/stats for a seed are pinned: the algorithms are frozen with the seeds. The first line,
+   Normal(0, 1).Sample(5), is what num.Normal(5) gives for the seed 42 as the first thing of a run, [0.8822489062222688,
+   -0.4508498757188601, ...]: one generator, not two. They are rounded to 8 decimals, as exp, log and cos may differ in
+   their last bit from one system's library to another's. *)
+use std/io
+use std/math
+use std/stats
+
+round(xs) = math.Round(xs * 1.0e8) / 1.0e8
+
+io.Print(round(stats.Normal(0, 1).Sample(5)))
+for d in [stats.Normal(10, 2), stats.Uniform(-1, 1), stats.Exponential(2), stats.Gamma(0.5, 1), stats.Gamma(3, 2),
+          stats.ChiSquared(4), stats.Beta(2, 5), stats.StudentT(3), stats.FisherF(4, 9), stats.Binomial(30, 0.2),
+          stats.Binomial(2000, 0.5), stats.Poisson(4), stats.Poisson(300)]
+  io.Print(d, round(d.Sample(10)))
+end
+io.Print(round(stats.Gamma(2, 1).Sample()))
+(* Laws whose table would pass 65,536 counts, and single draws, by the quantile of each u. *)
+for d in [stats.Binomial(10000000, 0.5), stats.Poisson(1.0e10)]
+  io.Print(d, d.Sample(10))
+end
+io.Print(stats.Binomial(30, 0.2).Sample(), stats.Poisson(4).Sample())

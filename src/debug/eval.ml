@@ -335,5 +335,7 @@ let natives =
     "Reload", Native.nat ~perm:Debug ~result:true "Reload" 0 0 reload;
     "IsComplete", Native.nat ~params:[| "code" |] "IsComplete" 1 1 complete;
     "evalCell", Native.nat ~perm:Debug ~result:true "evalCell" 2 2 eval_cell;
+    (* restartRandom(title): std/random starts again from the seed and a cell's title before the cell runs. *)
+    "restartRandom", Native.nat ~perm:Debug "restartRandom" 1 1 (fun ctx a -> Rand.restart [ "cell"; Native.text_arg ctx "restartRandom" a.(0) ]; Missing);
     "forgetNames", Native.nat ~perm:Debug "forgetNames" 1 1 forget_names;
     "valueOf", Native.nat ~perm:Debug ~result:true "valueOf" 1 1 value_of ]

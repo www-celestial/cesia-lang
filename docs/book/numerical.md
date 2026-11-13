@@ -409,5 +409,5 @@ stops with `Limit "memory" reached.`
 
 ## Next
 
-You can find zeros and solve differential equations. The next chapter, [JSON and CSV](json.md), reads data from other
-programs and writes it for them.
+You can find zeros and solve differential equations. The next chapter, [Statistics](statistics.md), works with
+the laws of probability.

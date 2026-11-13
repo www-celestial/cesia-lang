@@ -50,31 +50,34 @@ construction : le livre ne peut donc pas s'écarter du langage.
     valeurs, dessinés en SVG, et la méthode que suit chaque étape.
 17. [Méthodes numériques](numerical.md) : le zéro d'une fonction et les équations différentielles, comme
     `fzero` et `ode45`, avec ce que promet chaque méthode, à côté de scipy et d'Octave.
-18. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive.
-19. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, les live screens (des pages
+18. [Statistiques](statistics.md) : les lois de probabilité comme valeurs, leurs densités, leurs queues,
+    leurs quantiles et leurs tirages, les fonctions spéciales en dessous, avec ce que promet chaque méthode, à côté
+    de R et de scipy.
+19. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive.
+20. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, les live screens (des pages
     qui changent d'elles-mêmes), et le client.
-20. [Cryptographie](crypto.md) : les hashes, les mots de passe, le chiffrement avec une clé ou pour quelqu'un, les
+21. [Cryptographie](crypto.md) : les hashes, les mots de passe, le chiffrement avec une clé ou pour quelqu'un, les
     signatures, grâce à libsodium.
-21. [Fibers](fibers.md) : plusieurs choses à la fois, `Spawn`, `Wait`, `Pmap` et les channels.
-22. [SQLite](sqlite.md) : les tables, les lignes, les queries avec `?`, les transactions et les lignes comme structs.
-23. [Tests](tests.md) : les exemples dans la documentation, les fonctions de test, les propriétés, les snapshots,
+22. [Fibers](fibers.md) : plusieurs choses à la fois, `Spawn`, `Wait`, `Pmap` et les channels.
+23. [SQLite](sqlite.md) : les tables, les lignes, les queries avec `?`, les transactions et les lignes comme structs.
+24. [Tests](tests.md) : les exemples dans la documentation, les fonctions de test, les propriétés, les snapshots,
     `cesia test`, et un site pour votre projet.
-24. [Le prompt et le debugger](debug.md) : `--repl` à côté d'un programme qui tourne, les breakpoints, les arrêts sur
+25. [Le prompt et le debugger](debug.md) : `--repl` à côté d'un programme qui tourne, les breakpoints, les arrêts sur
     erreur, corriger et continuer.
-25. [Cells](cells.md) : un notebook (du code coupé en cellules, chacune avec son résultat) dans un fichier `.ce`, des
+26. [Cells](cells.md) : un notebook (du code coupé en cellules, chacune avec son résultat) dans un fichier `.ce`, des
     cellules qui tournent de nouveau quand ce qu'elles lisent change, une session, et une page à partager.
-26. [Vitesse](speed.md) : ce qui devient du code machine pendant qu'un programme tourne, et Cesia à côté de Python, Node,
+27. [Vitesse](speed.md) : ce qui devient du code machine pendant qu'un programme tourne, et Cesia à côté de Python, Node,
     Java, Go, OCaml, Lua et LuaJIT, mesuré : le démarrage, les boucles, les maps, les fibers et un serveur.
-27. [C et C++](c.md) : les bibliothèques du système, leurs types, la mémoire, les callbacks, et le C++ à travers une couche
+28. [C et C++](c.md) : les bibliothèques du système, leurs types, la mémoire, les callbacks, et le C++ à travers une couche
     C.
-28. [Packages natifs](native.md) : le moteur d'un package en OCaml, compilé une fois, sa permission, et comment en écrire
+29. [Packages natifs](native.md) : le moteur d'un package en OCaml, compilé une fois, sa permission, et comment en écrire
     un.
-29. [Un vrai programme](project.md) : un service web de notes sur SQLite, avec ses tests, de `cesia new` jusqu'à un
+30. [Un vrai programme](project.md) : un service web de notes sur SQLite, avec ses tests, de `cesia new` jusqu'à un
     serveur.
-30. [Résoudre un vrai problème](duplicates.md) : quels fichiers d'un dossier sont des doublons, en sept étapes, de la
+31. [Résoudre un vrai problème](duplicates.md) : quels fichiers d'un dossier sont des doublons, en sept étapes, de la
     première mesure à la preuve que c'est résolu : les propriétés, la borne des anniversaires, et les temps à côté de
     Python.
-31. [Comment Cesia fonctionne](internals.md) : le lexer, le parser, les closures, les valeurs en mémoire, le hash trie des
+32. [Comment Cesia fonctionne](internals.md) : le lexer, le parser, les closures, les valeurs en mémoire, le hash trie des
     maps, le JIT, les fibers et leur scheduler, les channels, le serveur sur tous les cœurs, le garbage collector et le
     démarrage, avec leurs chiffres.
 

@@ -1,0 +1,2787 @@
+(** Statistics: the laws of probability as values, with the same four methods on each, Pdf, Cdf, Quantile and Sample,
+    as scipy's frozen laws and Julia's Distributions. The chapter Statistics of the book says what each method promises,
+    the method it follows and how close it comes to the exact values, beside R and scipy. *)
+use std/bug
+use std/columns as col
+use std/dict
+use std/frame
+use std/list
+use std/math
+use std/matrix
+use std/num
+use std/random
+use std/result
+use std/special
+use std/value
+
+(* ---- Arguments. *)
+
+defn brief(v)
+  (** A value as an error shows it: an array of more than 100 values by its size, so that a message stays short and no
+      large value is formatted. *)
+  if value.IsText(v)
+    return "\"$v\""
+  end
+  if value.IsArray(v) and value.Len(v) > 100 "an array of $(value.Len(v)) values" else value.Text(v) end
+end
+
+defn each(f, x, name)
+  (** f of a number, or of each element of an array of numbers, in an array of the same shape. *)
+  if value.IsNumber(x)
+    return f(1.0 * x)
+  end
+  if not value.IsArray(x)
+    bug.Panic("$name: x is $(brief(x)); give a number or an array of numbers.")
+  end
+  n = value.Len(x)
+  if col.Kind(x) == "value"
+    for k in 1..n
+      if not value.IsNumber(x[k])
+        bug.Panic("$name: x[$k] is $(brief(x[k])); give numbers (frame.Present drops the missing ones).")
+      end
+    end
+  end
+  xs = 1.0 * x
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  matrix.Reshape(value.Size(x), out)
+end
+
+defn floats(x, name)
+  (** An array of numbers as an array of floats of the same shape, or a panic that names what isn't a number. *)
+  if not value.IsArray(x)
+    bug.Panic("$name: x is $(brief(x)); give a number or an array of numbers.")
+  end
+  if col.Kind(x) == "value"
+    for k in 1..value.Len(x)
+      if not value.IsNumber(x[k])
+        bug.Panic("$name: x[$k] is $(brief(x[k])); give numbers (frame.Present drops the missing ones).")
+      end
+    end
+  end
+  1.0 * x
+end
+
+defn clamped(xs, lo, hi)
+  (** The floats of xs held to [lo, hi], NaN kept. *)
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    x = xs[k]
+    out[k] = if x < lo lo else if x > hi hi else x end
+  end
+  out
+end
+
+defn field(v, law, name, rule)
+  (** A parameter of a law as a float, or a panic that names the law, the field and the value. rule: "positive",
+      "finite", "positive or infinite", "probability", "count" (a whole number of 0 or more), "nonnegative". *)
+  ok = value.IsNumber(v) and v == v
+  if ok
+    x = 1.0 * v
+    finite = x - x == 0.0
+    if rule == "positive"
+      ok = finite and x > 0.0
+    end
+    if rule == "positive or infinite"
+      ok = x > 0.0
+    end
+    if rule == "finite"
+      ok = finite
+    end
+    if rule == "probability"
+      ok = x >= 0.0 and x <= 1.0
+    end
+    if rule == "count"
+      ok = finite and x >= 0.0 and x == math.Floor(x) and x < 9007199254740992.0
+    end
+    if rule == "nonnegative"
+      ok = finite and x >= 0.0
+    end
+  end
+  if not ok
+    words = {"positive": "a finite number above 0", "finite": "a finite number", "positive or infinite": "a number above 0",
+      "probability": "a number from 0 to 1", "count": "a whole number of 0 or more", "nonnegative": "a finite number of 0 or more"}
+    bug.Panic("stats.$law: $name is $(brief(v)); give $(words[rule]).")
+  end
+  1.0 * v
+end
+
+defn draws(n, law)
+  (** The count of a Sample, checked before anything is made. *)
+  if not (value.IsInt(n) and n >= 0)
+    bug.Panic("stats.$law.Sample: n is $(brief(n)); give a whole number of 0 or more.")
+  end
+  n
+end
+
+(* ---- Private copies of std/special's helpers, which std/stats needs inside its own machine code: a name of another
+   package is a call the JIT doesn't make native, and a private name doesn't leave its package. The same code, the same
+   bits; tests/lang/stats.ce compares the laws with std/special on random points. As there, constants are written out:
+   machine code reads a literal but not a name of the module, nor math.Floor, math.Pi or math.Nan. *)
+
+defn log1p(x)
+  (** log(1 + x), accurate for a small x: Goldberg (1991), theorem 4. *)
+  if x > 1.0e300
+    return math.Log(x)
+  end
+  u = 1.0 + x
+  if u == 1.0
+    return x
+  end
+  if u <= 0.0
+    return if u == 0.0 (-(1.0 / 0.0)) else (0.0 / 0.0) end
+  end
+  math.Log(u) * x / (u - 1.0)
+end
+
+defn expm1(x)
+  (** exp(x) - 1, accurate for a small x. *)
+  if x > 709.0
+    return math.Exp(x)
+  end
+  u = math.Exp(x)
+  if u == 1.0
+    return x
+  end
+  um = u - 1.0
+  if um == -1.0
+    return -1.0
+  end
+  um * x / math.Log(u)
+end
+
+defn log1pmx(x)
+  (** log(1 + x) - x, without cancellation for |x| <= 1/2. *)
+  if x < -0.5 or x > 0.5
+    return log1p(x) - x
+  end
+  s = x / (2.0 + x)
+  t = s * s
+  w = 0.3333333333333333 + t * (0.2 + t * (0.14285714285714285 + t * (0.1111111111111111 + t * (0.09090909090909091
+    + t * (0.07692307692307693 + t * (0.06666666666666667 + t * (0.058823529411764705 + t * (0.05263157894736842
+    + t * (0.047619047619047616 + t * (0.043478260869565216 + t * (0.04 + t * (0.037037037037037035
+    + t * (0.034482758620689655 + t * (0.03225806451612903 + t * (0.030303030303030304 + t * (0.02857142857142857
+    + t * 0.02702702702702703))))))))))))))))
+  -s * x + 2.0 * s * t * w
+end
+
+defn corr(x)
+  (** Stirling's correction for x >= 10: log Gamma(x) - ((x - 1/2) log x - x + log sqrt(2 pi)). *)
+  r = 1.0 / x
+  r2 = r * r
+  r * (0.08333333333333333 + r2 * (-0.002777777777777778 + r2 * (0.0007936507936507937 + r2 * (-0.0005952380952380953
+    + r2 * (0.0008417508417508417 + r2 * (-0.0019175269175269176 + r2 * (0.00641025641025641
+    + r2 * -0.029550653594771242)))))))
+end
+
+defn erfSmall(y)
+  (** erf(y) for |y| <= 0.46875: Cody (1969). *)
+  z = y * y
+  top = 3209.3775891384694 + z * (377.485237685302 + z * (113.86415415105016 + z * (3.1611237438705655
+    + z * 0.18577770618460315)))
+  den = 2844.236833439171 + z * (1282.6165260773723 + z * (244.02463793444417 + z * (23.601290952344122 + z)))
+  y * top / den
+end
+
+defn erfcScaled(y)
+  (** erfc(y) exp(y^2) for y > 0.46875: Cody (1969). *)
+  if y <= 4.0
+    top = 1230.3393547979972 + y * (2051.0783778260716 + y * (1712.0476126340707 + y * (881.952221241769
+      + y * (298.6351381974001 + y * (66.11919063714163 + y * (8.883149794388377 + y * (0.5641884969886701
+      + y * 2.1531153547440383e-08)))))))
+    den = 1230.3393548037495 + y * (3439.3676741437216 + y * (4362.619090143247 + y * (3290.7992357334597
+      + y * (1621.3895745666903 + y * (537.1811018620099 + y * (117.6939508913125 + y * (15.744926110709835 + y)))))))
+    return top / den
+  end
+  z = 1.0 / (y * y)
+  top = 0.0006587491615298378 + z * (0.016083785148742275 + z * (0.12578172611122926 + z * (0.36034489994980445
+    + z * (0.30532663496123236 + z * 0.016315387137302097))))
+  den = 0.0023352049762686918 + z * (0.06051834131244132 + z * (0.5279051029514285 + z * (1.8729528499234673
+    + z * (2.568520192289822 + z))))
+  (0.5641895835477563 - z * top / den) / y
+end
+
+defn expMinusSquare(x, h)
+  (** exp(-h x^2), h = 1 or 1/2, with x split into a number of 1/16ths, whose square is exact, and the rest. *)
+  if x > 40.0
+    return 0.0
+  end
+  xs = ((x * 16.0 + 6755399441055744.0) - 6755399441055744.0) / 16.0
+  d = (x - xs) * (x + xs)
+  math.Exp(-h * xs * xs) * math.Exp(-h * d)
+end
+
+defn ndtri(q, r)
+  (** The quantile of the standard normal at p, given q = p - 1/2 and r = min(p, 1 - p): PPND16 of Wichura (1988). *)
+  if math.Abs(q) <= 0.425
+    s = 0.180625 - q * q
+    top = 3.3871328727963665 + s * (133.14166789178438 + s * (1971.5909503065513 + s * (13731.69376550946
+      + s * (45921.95393154987 + s * (67265.7709270087 + s * (33430.57558358813 + s * 2509.0809287301227))))))
+    den = 1.0 + s * (42.31333070160091 + s * (687.1870074920579 + s * (5394.196021424751 + s * (21213.794301586597
+      + s * (39307.89580009271 + s * (28729.085735721943 + s * 5226.495278852546))))))
+    return q * (top / den)
+  end
+  if r <= 0.0
+    return if q < 0.0 (-(1.0 / 0.0)) else (1.0 / 0.0) end
+  end
+  s = math.Sqrt(-math.Log(r))
+  z = 0.0
+  if s <= 5.0
+    t = s - 1.6
+    top = 1.4234371107496835 + t * (4.630337846156546 + t * (5.769497221460691 + t * (3.6478483247632045
+      + t * (1.2704582524523684 + t * (0.2417807251774506 + t * (0.022723844989269184 + t * 0.0007745450142783414))))))
+    den = 1.0 + t * (2.053191626637759 + t * (1.6763848301838038 + t * (0.6897673349851 + t * (0.14810397642748008
+      + t * (0.015198666563616457 + t * (0.0005475938084995345 + t * 1.0507500716444169e-09))))))
+    z = top / den
+  else
+    t = s - 5.0
+    top = 6.657904643501103 + t * (5.463784911164114 + t * (1.7848265399172913 + t * (0.29656057182850487
+      + t * (0.026532189526576124 + t * (0.0012426609473880784 + t * (2.7115555687434876e-05
+      + t * 2.0103343992922881e-07))))))
+    den = 1.0 + t * (0.599832206555888 + t * (0.1369298809227358 + t * (0.014875361290850615 + t * (0.0007868691311456133
+      + t * (1.8463183175100548e-05 + t * (1.421511758316446e-07 + t * 2.0442631033899397e-15))))))
+    z = top / den
+  end
+  if q < 0.0 (-z) else z end
+end
+
+(* ---- The standard normal. *)
+
+defn normalCdf(z, up)
+  (** P(Z <= z), or P(Z > z) when up is 1.0: erfc(-z / sqrt 2) / 2, with exp(-z^2 / 2) taken from z itself, as the
+      rounding of z / sqrt 2 would cost z^2 eps. *)
+  if z != z
+    return z
+  end
+  w = if up > 0.5 (-z) else z end
+  y = math.Abs(w) / 1.4142135623730951
+  if y <= 0.46875
+    return 0.5 + 0.5 * erfSmall(w / 1.4142135623730951)
+  end
+  if w < -38.5
+    return 0.0
+  end
+  r = if y > 27.3 0.0 else 0.5 * expMinusSquare(math.Abs(w), 0.5) * erfcScaled(y) end
+  if w > 0.0 1.0 - r else r end
+end
+
+defn normalQuantile(p, up)
+  (** The z with P(Z <= z) = p, or P(Z > z) = p when up is 1.0; NaN outside [0, 1]. *)
+  if p != p or p < 0.0 or p > 1.0
+    return 0.0 / 0.0
+  end
+  q = if up > 0.5 0.5 - p else p - 0.5 end
+  ndtri(q, if p < 0.5 p else 1.0 - p end)
+end
+
+defn normalDensity(z)
+  (** exp(-z^2 / 2) / sqrt(2 pi). *)
+  if z != z
+    return z
+  end
+  0.3989422804014327 * expMinusSquare(math.Abs(z), 0.5)
+end
+
+(* ---- Densities that keep their digits for large parameters. *)
+
+defn gammaDensity(a, x, ga)
+  (** x^(a - 1) e^-x / Gamma(a), x > 0; ga = Gamma(a), computed once by the caller (infinite past 171). By pow and exp
+      where neither overflows, else for a >= 20 through lambda = x / a and Stirling's series, else in logarithms, with
+      log Gamma(a) as log(ga). Three arguments: a call of more, through a value, isn't machine code. *)
+  if x != x
+    return x
+  end
+  if x <= 0.0
+    return if x < 0.0 0.0 else if a < 1.0 (1.0 / 0.0) else if a == 1.0 1.0 else 0.0 end
+  end
+  if x == 1.0 / 0.0
+    return 0.0
+  end
+  t = (a - 1.0) * math.Log(x)
+  if a < 171.0 and x < 708.0 and t < 709.0 and t - x > -708.0
+    return x ^ (a - 1.0) * math.Exp(-x) / ga
+  end
+  if a >= 20.0
+    return math.Sqrt(a / (2.0 * 3.141592653589793)) * math.Exp(a * log1pmx((x - a) / a) - corr(a)) / x
+  end
+  math.Exp(t - x - math.Log(ga))
+end
+
+defn betaDensity(a, b, x, y, lb)
+  (** x^(a - 1) y^(b - 1) / B(a, b), y = 1 - x; lb = log B(a, b), computed once by the caller. For a, b >= 10 through
+      Stirling's series, as std/special's factor of the incomplete beta. *)
+  if x == 0.0
+    return if a < 1.0 (1.0 / 0.0) else if a == 1.0 math.Exp(-lb) else 0.0 end
+  end
+  if y == 0.0
+    return if b < 1.0 (1.0 / 0.0) else if b == 1.0 math.Exp(-lb) else 0.0 end
+  end
+  if a >= 10.0 and b >= 10.0
+    top = b * x - a * y
+    t = a * log1pmx(top / a) + b * log1pmx(-top / b)
+    c = corr(a) + corr(b) - corr(a + b)
+    return math.Sqrt(a * b / (a + b) / (2.0 * 3.141592653589793)) * math.Exp(t - c) / (x * y)
+  end
+  lx = if x <= 0.5 math.Log(x) else log1p(-y) end
+  ly = if x <= 0.5 log1p(-x) else math.Log(y) end
+  math.Exp((a - 1.0) * lx + (b - 1.0) * ly - lb)
+end
+
+(* ---- Quantiles of the gamma and beta laws: a safeguarded Newton step on the tail, in logarithms while the tail is
+   far from its target, with Halley's correction near it, inside a bracket that every evaluation narrows, and a
+   bisection when a step leaves it. The variable iterated is the one on the small side, so that the answer keeps its
+   digits in both tails. At most 100 steps; the answer stops moving long before. *)
+
+defn gammaQuantile(a, t, up)
+  (** The x with P(a, x) = t, or Q(a, x) = t when up is 1.0. *)
+  if t != t or t < 0.0 or t > 1.0
+    return 0.0 / 0.0
+  end
+  if t > 0.5
+    return gammaQuantile(a, 1.0 - t, 1.0 - up)
+  end
+  if t == 0.0
+    return if up > 0.5 (1.0 / 0.0) else 0.0 end
+  end
+  lg = special.LogGamma(a)
+  ga = special.Gamma(a)
+  z = ndtri(t - 0.5, t)
+  if up > 0.5
+    z = -z
+  end
+  c = 1.0 / (9.0 * a)
+  w = 1.0 - c + z * math.Sqrt(c)
+  xwh = if w > 0.0 a * w * w * w else 0.0 end
+  lo = 0.0
+  hi = 1.0 / 0.0
+  x = xwh
+  if up < 0.5
+    (* P <= x^a / Gamma(a + 1): where that bound is t lies below the answer. *)
+    xs = math.Exp((math.Log(t) + special.LogGamma(a + 1.0)) / a)
+    lo = xs
+    x = if xwh > xs xwh else xs end
+  else
+    xs = math.Exp((log1p(-t) + special.LogGamma(a + 1.0)) / a)
+    if a < 1.0 or x <= 0.0
+      lo = xs
+    end
+    if xs > x
+      x = xs
+    end
+    if x <= 0.0
+      (* Q ~ x^(a - 1) e^-x / Gamma(a) for a large x. *)
+      x = -math.Log(t) - lg
+      if x < 1.0
+        x = 1.0
+      end
+      for k in 1..3
+        x = -math.Log(t) - lg + (a - 1.0) * math.Log(x)
+        if x < 0.001
+          x = 0.001
+        end
+      end
+    end
+  end
+  if x <= 0.0
+    return 0.0
+  end
+  for k in 1..100
+    f = special.GammaInc(a, x, upper = up > 0.5)
+    if f == t
+      return x
+    end
+    if (f < t) != (up > 0.5)
+      lo = x
+    else
+      hi = x
+    end
+    dens = gammaDensity(a, x, ga)
+    nx = -1.0
+    if dens > 0.0 and dens < 1.0 / 0.0 and f > 0.0
+      d = 0.0
+      if f > 2.0 * t or f < 0.5 * t
+        d = (math.Log(f) - math.Log(t)) * f / dens
+      else
+        d = (f - t) / dens
+        h = 1.0 - 0.5 * d * ((a - 1.0) / x - 1.0) * (if up > 0.5 (-1.0) else 1.0 end)
+        if h > 0.5 and h < 2.0
+          d = d / h
+        end
+      end
+      nx = if up > 0.5 x + d else x - d end
+    end
+    if not (nx > lo and nx < hi)
+      nx = if hi < 1.0 / 0.0 0.5 * (lo + hi) else 2.0 * x end
+    end
+    if math.Abs(nx - x) <= 8.881784197001252e-16 * nx
+      return nx
+    end
+    x = nx
+  end
+  x
+end
+
+defn betaSolve(p, q, tau, up, lb)
+  (** The u in (0, 1/2] with I_u(p, q) = tau, or 1 - I_u(p, q) = tau when up is 1.0; tau <= 1/2, lb = log B(p, q). *)
+  lo = 0.0
+  hi = 0.5
+  u = if up > 0.5 0.25 else math.Exp((math.Log(tau) + math.Log(p) + lb) / p) end
+  if p > 1.0 and q > 1.0
+    m = p / (p + q)
+    sd = math.Sqrt(p * q / ((p + q) * (p + q) * (p + q + 1.0)))
+    z = ndtri(tau - 0.5, tau)
+    un = if up > 0.5 m - z * sd else m + z * sd end
+    if un > 0.0 and un < 0.5 and (up > 0.5 or un > u)
+      u = un
+    end
+  end
+  if u < 1.0e-300 and up < 0.5
+    (* The power law I = u^p / (p B) is exact to first order in u: below 1e-300, where floats lose bits, it is the
+       answer. *)
+    return u
+  end
+  if not (u > 0.0 and u <= 0.5)
+    u = 0.25
+  end
+  for k in 1..200
+    f = special.BetaInc(p, q, u, upper = up > 0.5)
+    if f == tau
+      return u
+    end
+    if (f < tau) != (up > 0.5)
+      lo = u
+    else
+      hi = u
+    end
+    dens = betaDensity(p, q, u, 1.0 - u, lb)
+    nu = -1.0
+    if dens > 0.0 and dens < 1.0 / 0.0 and f > 0.0
+      d = 0.0
+      if f > 2.0 * tau or f < 0.5 * tau
+        d = (math.Log(f) - math.Log(tau)) * f / dens
+      else
+        d = (f - tau) / dens
+        h = 1.0 - 0.5 * d * ((p - 1.0) / u - (q - 1.0) / (1.0 - u)) * (if up > 0.5 (-1.0) else 1.0 end)
+        if h > 0.5 and h < 2.0
+          d = d / h
+        end
+      end
+      nu = if up > 0.5 u + d else u - d end
+    end
+    if not (nu > lo and nu < hi)
+      above = (f > tau) != (up > 0.5)
+      nu = if lo > 0.0 0.5 * (lo + hi) else if above 0.125 * hi else 0.5 * hi end
+    end
+    if math.Abs(nu - u) <= 8.881784197001252e-16 * nu
+      return nu
+    end
+    u = nu
+  end
+  u
+end
+
+defn betaQuantile(a, b, t, up)
+  (** [x, y], y = 1 - x, with I_x(a, b) = t, or 1 - I_x(a, b) = t when up is 1.0: the small one of x and y is solved
+      for, the other is 1 minus it. *)
+  if t != t or t < 0.0 or t > 1.0
+    return [0.0 / 0.0, 0.0 / 0.0]
+  end
+  if up > 0.5
+    r = betaQuantile(b, a, t, 0.0)
+    return [r[2], r[1]]
+  end
+  if t == 0.0
+    return [0.0, 1.0]
+  end
+  if t == 1.0
+    return [1.0, 0.0]
+  end
+  lb = special.LogBeta(a, b)
+  if t <= special.BetaInc(a, b, 0.5)
+    x = if t <= 0.5 betaSolve(a, b, t, 0.0, lb) else betaSolve(a, b, 1.0 - t, 1.0, lb) end
+    return [x, 1.0 - x]
+  end
+  y = if t >= 0.5 betaSolve(b, a, 1.0 - t, 0.0, lb) else betaSolve(b, a, t, 1.0, lb) end
+  [1.0 - y, y]
+end
+
+(* ---- The array forms of the methods whose work is machine code: one loop for each, calling its function through a
+   local name, f = normalLowerAt, which the JIT makes native for an argument read from an array, and which a loop
+   shared between functions would make native for only the first it meets. A call through a value of more than three
+   arguments isn't native: the tail, lower or upper, is a function of its own, not a flag. *)
+
+defn normalPdfAt(x, m, s)
+  normalDensity((x - m) / s) / s
+end
+
+defn normalPdfs(xs, m, s)
+  f = normalPdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], m, s)
+  end
+  out
+end
+
+defn normalLowerAt(x, m, s)
+  normalCdf((x - m) / s, 0.0)
+end
+
+defn normalLowers(xs, m, s)
+  f = normalLowerAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], m, s)
+  end
+  out
+end
+
+defn normalUpperAt(x, m, s)
+  normalCdf((x - m) / s, 1.0)
+end
+
+defn normalUppers(xs, m, s)
+  f = normalUpperAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], m, s)
+  end
+  out
+end
+
+defn normalQuantileAt(x, m, s)
+  m + s * normalQuantile(x, 0.0)
+end
+
+defn normalQuantiles(xs, m, s)
+  f = normalQuantileAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], m, s)
+  end
+  out
+end
+
+defn normalQuantileUpperAt(x, m, s)
+  m + s * normalQuantile(x, 1.0)
+end
+
+defn normalQuantilesUpper(xs, m, s)
+  f = normalQuantileUpperAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], m, s)
+  end
+  out
+end
+
+defn studentPdfAt(x, nu, lb)
+  studentDensity(x, nu, lb)
+end
+
+defn studentPdfs(xs, nu, lb)
+  f = studentPdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], nu, lb)
+  end
+  out
+end
+
+defn gammaPdfAt(x, a, ga)
+  gammaDensity(a, x, ga)
+end
+
+defn gammaPdfs(xs, a, ga)
+  f = gammaPdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], a, ga)
+  end
+  out
+end
+
+defn fisherPdfAt(x, d1, d2, lb)
+  fisherDensity(x, d1, d2, lb)
+end
+
+defn fisherPdfs(xs, d1, d2, lb)
+  f = fisherPdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], d1, d2, lb)
+  end
+  out
+end
+
+defn uniformPdfAt(x, lo, hi)
+  if x != x x else if x < lo or x > hi 0.0 else 1.0 / (hi - lo) end
+end
+
+defn uniformPdfs(xs, lo, hi)
+  f = uniformPdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], lo, hi)
+  end
+  out
+end
+
+defn uniformLowerAt(x, lo, hi)
+  if x != x x else if x <= lo 0.0 else if x >= hi 1.0 else (x - lo) / (hi - lo) end
+end
+
+defn uniformLowers(xs, lo, hi)
+  f = uniformLowerAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], lo, hi)
+  end
+  out
+end
+
+defn uniformUpperAt(x, lo, hi)
+  if x != x x else if x <= lo 1.0 else if x >= hi 0.0 else (hi - x) / (hi - lo) end
+end
+
+defn uniformUppers(xs, lo, hi)
+  f = uniformUpperAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], lo, hi)
+  end
+  out
+end
+
+defn uniformQuantileAt(x, lo, hi)
+  if x != x or x < 0.0 or x > 1.0 (0.0 / 0.0) else lo + x * (hi - lo) end
+end
+
+defn uniformQuantiles(xs, lo, hi)
+  f = uniformQuantileAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], lo, hi)
+  end
+  out
+end
+
+defn uniformQuantileUpperAt(x, lo, hi)
+  if x != x or x < 0.0 or x > 1.0 (0.0 / 0.0) else hi - x * (hi - lo) end
+end
+
+defn uniformQuantilesUpper(xs, lo, hi)
+  f = uniformQuantileUpperAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], lo, hi)
+  end
+  out
+end
+
+defn expPdfAt(x, r)
+  if x != x x else if x < 0.0 0.0 else r * math.Exp(-r * x) end
+end
+
+defn expPdfs(xs, r)
+  f = expPdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], r)
+  end
+  out
+end
+
+defn expCdfAt(x, r, up)
+  if x != x x else if x <= 0.0 (if up > 0.5 1.0 else 0.0 end) else if up > 0.5 math.Exp(-r * x) else 0.0 - expm1(-r * x) end
+end
+
+defn expCdfs(xs, r, up)
+  f = expCdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], r, up)
+  end
+  out
+end
+
+defn expQuantileAt(x, r, up)
+  if x != x or x < 0.0 or x > 1.0 (0.0 / 0.0) else if up > 0.5 (0.0 - math.Log(x)) / r else (0.0 - log1p(-x)) / r end
+end
+
+defn expQuantiles(xs, r, up)
+  f = expQuantileAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], r, up)
+  end
+  out
+end
+
+defn betaPdfAt(x, a, b, lb)
+  if x != x x else if x < 0.0 or x > 1.0 0.0 else betaDensity(a, b, x, 1.0 - x, lb) end
+end
+
+defn betaPdfs(xs, a, b, lb)
+  f = betaPdfAt
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k], a, b, lb)
+  end
+  out
+end
+
+(* ---- The laws. A law is a struct, made without a check: its first method call checks the fields, and a field outside
+   its domain is a bug of the caller, a panic that names the law, the field and the value. Each method takes a number
+   or an array of any shape, and gives a number or an array of the same shape. *)
+
+struct Normal
+  (** The normal law of a mean and a standard deviation, Sd > 0: the bell curve of Gauss. *)
+  Mean
+  Sd
+end
+
+defn (d Normal) Pdf(x)
+  (** The density at x: exp(-z^2 / 2) / (Sd sqrt(2 pi)), z = (x - Mean) / Sd, with z^2 split so that its rounding
+      costs nothing.
+
+        Normal(0, 1).Pdf(0) --> 0.3989422804014327
+        Normal(10, 2).Pdf([10, 12]) --> [0.19947114020071635, 0.12098536225957168] *)
+  m = field(d.Mean, "Normal", "Mean", "finite")
+  s = field(d.Sd, "Normal", "Sd", "positive")
+  if value.IsNumber(x)
+    return normalDensity((x - m) / s) / s
+  end
+  matrix.Reshape(value.Size(x), normalPdfs(floats(x, "stats.Normal.Pdf"), m, s))
+end
+
+defn (d Normal) Cdf(x, upper = false)
+  (** P(X <= x), or P(X > x) with upper, computed directly: the rational approximations of Cody (1969) for erf and
+      erfc, with exp(-z^2 / 2) from z itself, so that both tails keep their digits down to about 1e-308.
+
+        Normal(0, 1).Cdf(1.96) --> 0.9750021048517796
+        Normal(0, 1).Cdf(-40) --> 0.0
+        Normal(0, 1).Cdf(-37.5) --> 4.605353009581956e-308
+        Normal(0, 1).Cdf(10, upper = true) --> 7.619853024160527e-24 *)
+  m = field(d.Mean, "Normal", "Mean", "finite")
+  s = field(d.Sd, "Normal", "Sd", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return normalCdf((x - m) / s, up)
+  end
+  xs = floats(x, "stats.Normal.Cdf")
+  matrix.Reshape(value.Size(x), if upper normalUppers(xs, m, s) else normalLowers(xs, m, s) end)
+end
+
+defn (d Normal) Quantile(p, upper = false)
+  (** The x where P(X <= x) = p, or P(X > x) = p with upper: PPND16 of Wichura (1988), exact to the double; NaN for a p
+      outside [0, 1].
+
+        Normal(0, 1).Quantile(0.975) --> 1.9599639845400536
+        Normal(0, 1).Quantile(1e-300) --> -37.0470962993612
+        Normal(100, 15).Quantile(0.5) --> 100.0 *)
+  m = field(d.Mean, "Normal", "Mean", "finite")
+  s = field(d.Sd, "Normal", "Sd", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return m + s * normalQuantile(1.0 * p, up)
+  end
+  ps = floats(p, "stats.Normal.Quantile")
+  matrix.Reshape(value.Size(p), if upper normalQuantilesUpper(ps, m, s) else normalQuantiles(ps, m, s) end)
+end
+
+defn (d Normal) Sample(n = missing)
+  (** One draw, or an array of n: Mean + Sd z, z from num.Normal (Box and Muller, 1958), so that Normal(0, 1).Sample(n)
+      gives the numbers of num.Normal(n) for the same seed.
+
+        value.Len(Normal(0, 1).Sample(5)) --> 5 *)
+  m = field(d.Mean, "Normal", "Mean", "finite")
+  s = field(d.Sd, "Normal", "Sd", "positive")
+  if value.IsMissing(n)
+    return m + s * num.Normal(1)[1]
+  end
+  m + s * num.Normal(draws(n, "Normal"))
+end
+
+struct StudentT
+  (** Student's t law of Df degrees of freedom, Df > 0, infinite for the normal law. *)
+  Df
+end
+
+defn studentTail(t, nu)
+  (** P(T > |t|) = I_x(nu / 2, 1/2) / 2, x = nu / (nu + t^2), with x or 1 - x given to BetaInc, whichever is small. *)
+  if t != t
+    return t
+  end
+  if nu == 1.0 / 0.0
+    return normalCdf(math.Abs(t), 1.0)
+  end
+  u = math.Abs(t)
+  if u == 1.0 / 0.0
+    return 0.0
+  end
+  if u > 1.0e150
+    x = nu / u / u
+    if x < 1.0e-300
+      (* x underflows: the tail is x^(nu / 2) / (nu B(nu / 2, 1/2)) to first order, from the logarithms. *)
+      return math.Exp(0.5 * nu * (math.Log(nu) - 2.0 * math.Log(u)) - math.Log(nu) - special.LogBeta(0.5 * nu, 0.5))
+    end
+    return 0.5 * special.BetaInc(0.5 * nu, 0.5, x)
+  end
+  t2 = u * u
+  if t2 < nu
+    return 0.5 * special.BetaInc(0.5, 0.5 * nu, t2 / (nu + t2), upper = true)
+  end
+  0.5 * special.BetaInc(0.5 * nu, 0.5, nu / (nu + t2))
+end
+
+defn studentCdf(t, nu, up)
+  if t != t
+    return t
+  end
+  tail = studentTail(t, nu)
+  below = if up > 0.5 t > 0.0 else t < 0.0 end
+  if t == 0.0 0.5 else if below tail else 1.0 - tail end
+end
+
+defn studentQuantile(p, nu, up)
+  (** The t with P(T <= t) = p, or P(T > t) = p when up is 1.0: from the beta quantile of the tail, t^2 = nu y / x. *)
+  if p != p or p < 0.0 or p > 1.0
+    return 0.0 / 0.0
+  end
+  if nu == 1.0 / 0.0
+    return normalQuantile(p, up)
+  end
+  lowerP = if up > 0.5 1.0 - p else p end
+  tail = if p < 0.5 p else 1.0 - p end
+  sign = if (p < 0.5) == (up < 0.5) (-1.0) else 1.0 end
+  if p == 0.5
+    return 0.0
+  end
+  if tail == 0.0
+    return sign * (1.0 / 0.0)
+  end
+  if nu == 1.0
+    return sign / math.Tan(3.141592653589793 * tail)
+  end
+  if nu == 2.0
+    return sign * (1.0 - 2.0 * tail) / math.Sqrt(2.0 * tail * (1.0 - tail))
+  end
+  lx = 2.0 / nu * (math.Log(2.0 * tail) + math.Log(0.5 * nu) + special.LogBeta(0.5 * nu, 0.5))
+  r = if lx < -690.0 [0.0, 1.0] else betaQuantile(0.5 * nu, 0.5, 2.0 * tail, 0.0) end
+  if r[1] < 1.0e-300
+    (* x = nu / (nu + t^2) underflows: the tail is x^(nu / 2) / (nu B(nu / 2, 1/2)) to first order, so log x comes
+       from the logarithms, and t = sqrt(nu / x). *)
+    return sign * math.Exp(0.5 * (math.Log(nu) - lx))
+  end
+  sign * math.Sqrt(nu * (r[2] / r[1]))
+end
+
+defn studentDensity(t, nu, lb)
+  (** (1 + t^2 / nu)^(-(nu + 1) / 2) / (sqrt(nu) B(nu / 2, 1/2)); lb = log B(nu / 2, 1/2). *)
+  if t != t
+    return t
+  end
+  if nu == 1.0 / 0.0
+    return normalDensity(t)
+  end
+  u = math.Abs(t)
+  l = if u > 1.0e150 2.0 * math.Log(u) - math.Log(nu) else log1p(u * u / nu) end
+  math.Exp(-0.5 * (nu + 1.0) * l - lb - 0.5 * math.Log(nu))
+end
+
+defn (d StudentT) Pdf(x)
+  (** The density at x.
+
+        StudentT(1).Pdf(0) --> 0.3183098861837906
+        StudentT(5).Pdf(2) --> 0.06509031032621647 *)
+  nu = field(d.Df, "StudentT", "Df", "positive or infinite")
+  lb = if nu == 1.0 / 0.0 0.0 else special.LogBeta(0.5 * nu, 0.5) end
+  if value.IsNumber(x)
+    return studentDensity(1.0 * x, nu, lb)
+  end
+  matrix.Reshape(value.Size(x), studentPdfs(floats(x, "stats.StudentT.Pdf"), nu, lb))
+end
+
+defn (d StudentT) Cdf(x, upper = false)
+  (** P(T <= x), or P(T > x) with upper, from the incomplete beta ratio: P(T > |t|) = I_x(Df / 2, 1/2) / 2,
+      x = Df / (Df + t^2).
+
+        StudentT(10).Cdf(2.228138851986274) --> 0.975
+        StudentT(3).Cdf(-50) --> 8.808576020635974e-6 *)
+  nu = field(d.Df, "StudentT", "Df", "positive or infinite")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return studentCdf(1.0 * x, nu, up)
+  end
+  each(v -> studentCdf(v, nu, up), x, "stats.StudentT.Cdf")
+end
+
+defn (d StudentT) Quantile(p, upper = false)
+  (** The t where P(T <= t) = p, or P(T > t) = p with upper: closed forms for Df 1 and 2, else from the quantile of the
+      beta law of the tail, t^2 = Df (1 - x) / x, both computed so that each keeps its digits.
+
+        StudentT(10).Quantile(0.975) --> 2.2281388519862744
+        StudentT(1).Quantile(0.75) --> 1.0000000000000002 *)
+  nu = field(d.Df, "StudentT", "Df", "positive or infinite")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return studentQuantile(1.0 * p, nu, up)
+  end
+  each(v -> studentQuantile(v, nu, up), p, "stats.StudentT.Quantile")
+end
+
+struct ChiSquared
+  (** The chi-squared law of Df degrees of freedom, Df > 0: the sum of Df squares of standard normals. *)
+  Df
+end
+
+defn chiCdf(x, k, up)
+  if x != x
+    return x
+  end
+  if x <= 0.0
+    return if up > 0.5 1.0 else 0.0 end
+  end
+  special.GammaInc(0.5 * k, 0.5 * x, upper = up > 0.5)
+end
+
+defn (d ChiSquared) Pdf(x)
+  (** The density at x, the gamma density of shape Df / 2 and rate 1/2.
+
+        ChiSquared(2).Pdf(2) --> 0.18393972058572117 *)
+  k = field(d.Df, "ChiSquared", "Df", "positive")
+  a = 0.5 * k
+  ga = special.Gamma(a)
+  if value.IsNumber(x)
+    return 0.5 * gammaDensity(a, 0.5 * x, ga)
+  end
+  matrix.Reshape(value.Size(x), 0.5 * gammaPdfs(0.5 * floats(x, "stats.ChiSquared.Pdf"), a, ga))
+end
+
+defn (d ChiSquared) Cdf(x, upper = false)
+  (** P(X <= x), or P(X > x) with upper: the incomplete gamma ratio P(Df / 2, x / 2).
+
+        ChiSquared(1).Cdf(3.841458820694124) --> 0.95
+        ChiSquared(10).Cdf(100, upper = true) --> 5.449701982920529e-17 *)
+  k = field(d.Df, "ChiSquared", "Df", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return chiCdf(1.0 * x, k, up)
+  end
+  xs = floats(x, "stats.ChiSquared.Cdf")
+  matrix.Reshape(value.Size(x), special.GammaInc(0.5 * k, 0.5 * clamped(xs, 0.0, 1.0 / 0.0), upper = upper))
+end
+
+defn (d ChiSquared) Quantile(p, upper = false)
+  (** The x where P(X <= x) = p, or P(X > x) = p with upper: twice the quantile of the gamma law of shape Df / 2.
+
+        ChiSquared(1).Quantile(0.95) --> 3.841458820694126
+        ChiSquared(10).Quantile(0.05, upper = true) --> 18.307038053275146 *)
+  k = field(d.Df, "ChiSquared", "Df", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return 2.0 * gammaQuantile(0.5 * k, 1.0 * p, up)
+  end
+  each(v -> 2.0 * gammaQuantile(0.5 * k, v, up), p, "stats.ChiSquared.Quantile")
+end
+
+struct FisherF
+  (** Fisher's F law of Df1 and Df2 degrees of freedom, both > 0: the ratio of two chi-squared, each over its Df. *)
+  Df1
+  Df2
+end
+
+defn fisherCdf(x, d1, d2, up)
+  (** P(F <= x), or P(F > x): I_u(d1 / 2, d2 / 2), u = d1 x / (d1 x + d2), with u or 1 - u, whichever is small. *)
+  if x != x
+    return x
+  end
+  if x <= 0.0
+    return if up > 0.5 1.0 else 0.0 end
+  end
+  if x == 1.0 / 0.0
+    return if up > 0.5 0.0 else 1.0 end
+  end
+  u = d1 * x / (d1 * x + d2)
+  if u <= 0.5
+    return special.BetaInc(0.5 * d1, 0.5 * d2, u, upper = up > 0.5)
+  end
+  special.BetaInc(0.5 * d2, 0.5 * d1, d2 / (d1 * x + d2), upper = up < 0.5)
+end
+
+defn fisherQuantile(p, d1, d2, up)
+  r = betaQuantile(0.5 * d1, 0.5 * d2, p, up)
+  if r[1] != r[1]
+    return r[1]
+  end
+  d2 / d1 * (r[1] / r[2])
+end
+
+defn fisherDensity(v, d1, d2, lb)
+  (** The F density at v: u^(d1 / 2) (1 - u)^(d2 / 2) / (v B), u = d1 v / (d1 v + d2); lb = log B(d1 / 2, d2 / 2). *)
+  if v != v
+    return v
+  end
+  if v <= 0.0 or v == 1.0 / 0.0
+    return if v == 0.0 and d1 < 2.0 (1.0 / 0.0) else if v == 0.0 and d1 == 2.0 1.0 else 0.0 end
+  end
+  u = d1 * v / (d1 * v + d2)
+  w = d2 / (d1 * v + d2)
+  betaDensity(0.5 * d1, 0.5 * d2, u, w, lb) * u * w / v
+end
+
+defn (d FisherF) Pdf(x)
+  (** The density at x: u^(Df1 / 2) (1 - u)^(Df2 / 2) / (x B(Df1 / 2, Df2 / 2)), u = Df1 x / (Df1 x + Df2).
+
+        FisherF(5, 10).Pdf(1) --> 0.49547978348663846 *)
+  d1 = field(d.Df1, "FisherF", "Df1", "positive")
+  d2 = field(d.Df2, "FisherF", "Df2", "positive")
+  lb = special.LogBeta(0.5 * d1, 0.5 * d2)
+  if value.IsNumber(x)
+    return fisherDensity(1.0 * x, d1, d2, lb)
+  end
+  matrix.Reshape(value.Size(x), fisherPdfs(floats(x, "stats.FisherF.Pdf"), d1, d2, lb))
+end
+
+defn (d FisherF) Cdf(x, upper = false)
+  (** P(F <= x), or P(F > x) with upper: the incomplete beta ratio I_u(Df1 / 2, Df2 / 2), u = Df1 x / (Df1 x + Df2).
+
+        FisherF(5, 10).Cdf(3.325834530413011) --> 0.95
+        FisherF(2, 20).Cdf(30, upper = true) --> 9.536743164062494e-7 *)
+  d1 = field(d.Df1, "FisherF", "Df1", "positive")
+  d2 = field(d.Df2, "FisherF", "Df2", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return fisherCdf(1.0 * x, d1, d2, up)
+  end
+  each(v -> fisherCdf(v, d1, d2, up), x, "stats.FisherF.Cdf")
+end
+
+defn (d FisherF) Quantile(p, upper = false)
+  (** The x where P(F <= x) = p, or P(F > x) = p with upper: (Df2 / Df1) u / (1 - u), u the quantile of the beta law of
+      Df1 / 2 and Df2 / 2.
+
+        FisherF(5, 10).Quantile(0.95) --> 3.3258345304130104 *)
+  d1 = field(d.Df1, "FisherF", "Df1", "positive")
+  d2 = field(d.Df2, "FisherF", "Df2", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return fisherQuantile(1.0 * p, d1, d2, up)
+  end
+  each(v -> fisherQuantile(v, d1, d2, up), p, "stats.FisherF.Quantile")
+end
+
+struct Uniform
+  (** The uniform law on [Low, High], Low < High. *)
+  Low
+  High
+end
+
+defn (d Uniform) Pdf(x)
+  (** 1 / (High - Low) on [Low, High], 0 outside.
+
+        Uniform(0, 4).Pdf([1, 5]) --> [0.25, 0.0] *)
+  lo = field(d.Low, "Uniform", "Low", "finite")
+  hi = field(d.High, "Uniform", "High", "finite")
+  if not (hi > lo)
+    bug.Panic("stats.Uniform: High is $(brief(d.High)); give a number above Low, $(brief(d.Low)).")
+  end
+  if value.IsNumber(x)
+    return uniformPdfAt(1.0 * x, lo, hi)
+  end
+  matrix.Reshape(value.Size(x), uniformPdfs(floats(x, "stats.Uniform.Pdf"), lo, hi))
+end
+
+defn (d Uniform) Cdf(x, upper = false)
+  (** (x - Low) / (High - Low) on [Low, High], or (High - x) / (High - Low) with upper.
+
+        Uniform(0, 4).Cdf(1) --> 0.25 *)
+  lo = field(d.Low, "Uniform", "Low", "finite")
+  hi = field(d.High, "Uniform", "High", "finite")
+  if not (hi > lo)
+    bug.Panic("stats.Uniform: High is $(brief(d.High)); give a number above Low, $(brief(d.Low)).")
+  end
+  if value.IsNumber(x)
+    return if upper uniformUpperAt(1.0 * x, lo, hi) else uniformLowerAt(1.0 * x, lo, hi) end
+  end
+  xs = floats(x, "stats.Uniform.Cdf")
+  matrix.Reshape(value.Size(x), if upper uniformUppers(xs, lo, hi) else uniformLowers(xs, lo, hi) end)
+end
+
+defn (d Uniform) Quantile(p, upper = false)
+  (** Low + p (High - Low), or High - p (High - Low) with upper.
+
+        Uniform(0, 4).Quantile(0.25) --> 1.0 *)
+  lo = field(d.Low, "Uniform", "Low", "finite")
+  hi = field(d.High, "Uniform", "High", "finite")
+  if not (hi > lo)
+    bug.Panic("stats.Uniform: High is $(brief(d.High)); give a number above Low, $(brief(d.Low)).")
+  end
+  if value.IsNumber(p)
+    return if upper uniformQuantileUpperAt(1.0 * p, lo, hi) else uniformQuantileAt(1.0 * p, lo, hi) end
+  end
+  ps = floats(p, "stats.Uniform.Quantile")
+  matrix.Reshape(value.Size(p), if upper uniformQuantilesUpper(ps, lo, hi) else uniformQuantiles(ps, lo, hi) end)
+end
+
+defn (d Uniform) Sample(n = missing)
+  (** One draw, or an array of n: Low + (High - Low) u, u from random.Float, of 53 bits.
+
+        Uniform(2, 3).Sample() >= 2.0 --> true *)
+  lo = field(d.Low, "Uniform", "Low", "finite")
+  hi = field(d.High, "Uniform", "High", "finite")
+  if not (hi > lo)
+    bug.Panic("stats.Uniform: High is $(brief(d.High)); give a number above Low, $(brief(d.Low)).")
+  end
+  if value.IsMissing(n)
+    return lo + (hi - lo) * random.Float()
+  end
+  lo + (hi - lo) * num.Uniform(draws(n, "Uniform"))
+end
+
+struct Exponential
+  (** The exponential law of a rate, Rate > 0: the waiting time of events that come Rate times a unit of time. *)
+  Rate
+end
+
+defn (d Exponential) Pdf(x)
+  (** Rate exp(-Rate x) for x >= 0, 0 below.
+
+        Exponential(2).Pdf(0) --> 2.0 *)
+  r = field(d.Rate, "Exponential", "Rate", "positive")
+  if value.IsNumber(x)
+    return expPdfAt(1.0 * x, r)
+  end
+  matrix.Reshape(value.Size(x), expPdfs(floats(x, "stats.Exponential.Pdf"), r))
+end
+
+defn (d Exponential) Cdf(x, upper = false)
+  (** 1 - exp(-Rate x), computed as -expm1(-Rate x) so that a small x keeps its digits, or exp(-Rate x) with upper.
+
+        Exponential(1).Cdf(1e-10) --> 9.999999999500001e-11
+        Exponential(1).Cdf(800, upper = true) --> 0.0 *)
+  r = field(d.Rate, "Exponential", "Rate", "positive")
+  if value.IsNumber(x)
+    return expCdfAt(1.0 * x, r, if upper 1.0 else 0.0 end)
+  end
+  matrix.Reshape(value.Size(x), expCdfs(floats(x, "stats.Exponential.Cdf"), r, if upper 1.0 else 0.0 end))
+end
+
+defn (d Exponential) Quantile(p, upper = false)
+  (** -log(1 - p) / Rate, computed as -log1p(-p) / Rate, or -log(p) / Rate with upper.
+
+        Exponential(1).Quantile(0.5) --> 0.6931471805599453 *)
+  r = field(d.Rate, "Exponential", "Rate", "positive")
+  if value.IsNumber(p)
+    return expQuantileAt(1.0 * p, r, if upper 1.0 else 0.0 end)
+  end
+  matrix.Reshape(value.Size(p), expQuantiles(floats(p, "stats.Exponential.Quantile"), r, if upper 1.0 else 0.0 end))
+end
+
+defn (d Exponential) Sample(n = missing)
+  (** One draw, or an array of n: -log(1 - u) / Rate, u from random.Float, so that 1 - u is in (0, 1].
+
+        Exponential(1).Sample() >= 0.0 --> true *)
+  r = field(d.Rate, "Exponential", "Rate", "positive")
+  if value.IsMissing(n)
+    return -math.Log(1.0 - random.Float()) / r
+  end
+  -math.Log(1.0 - num.Uniform(draws(n, "Exponential"))) / r
+end
+
+struct Gamma
+  (** The gamma law of a shape and a rate, both > 0: Gamma(1, r) is Exponential(r), Gamma(k / 2, 1/2) ChiSquared(k). *)
+  Shape
+  Rate
+end
+
+defn gammaCdf(x, a, r, up)
+  if x != x
+    return x
+  end
+  if x <= 0.0
+    return if up > 0.5 1.0 else 0.0 end
+  end
+  special.GammaInc(a, r * x, upper = up > 0.5)
+end
+
+defn (d Gamma) Pdf(x)
+  (** The density at x: Rate (Rate x)^(Shape - 1) exp(-Rate x) / Gamma(Shape).
+
+        Gamma(2, 1).Pdf(1) --> 0.36787944117144233 *)
+  a = field(d.Shape, "Gamma", "Shape", "positive")
+  r = field(d.Rate, "Gamma", "Rate", "positive")
+  ga = special.Gamma(a)
+  if value.IsNumber(x)
+    return r * gammaDensity(a, r * x, ga)
+  end
+  matrix.Reshape(value.Size(x), r * gammaPdfs(r * floats(x, "stats.Gamma.Pdf"), a, ga))
+end
+
+defn (d Gamma) Cdf(x, upper = false)
+  (** P(X <= x), or P(X > x) with upper: the incomplete gamma ratio P(Shape, Rate x).
+
+        Gamma(2, 1).Cdf(1) --> 0.2642411176571153 *)
+  a = field(d.Shape, "Gamma", "Shape", "positive")
+  r = field(d.Rate, "Gamma", "Rate", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return gammaCdf(1.0 * x, a, r, up)
+  end
+  xs = floats(x, "stats.Gamma.Cdf")
+  matrix.Reshape(value.Size(x), special.GammaInc(a, r * clamped(xs, 0.0, 1.0 / 0.0), upper = upper))
+end
+
+defn (d Gamma) Quantile(p, upper = false)
+  (** The x where P(X <= x) = p, or P(X > x) = p with upper.
+
+        Gamma(2, 1).Quantile(0.2642411176571153) --> 1.0 *)
+  a = field(d.Shape, "Gamma", "Shape", "positive")
+  r = field(d.Rate, "Gamma", "Rate", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return gammaQuantile(a, 1.0 * p, up) / r
+  end
+  each(v -> gammaQuantile(a, v, up) / r, p, "stats.Gamma.Quantile")
+end
+
+struct Beta
+  (** The beta law of two shapes A and B, both > 0, on [0, 1]. *)
+  A
+  B
+end
+
+defn betaCdf(x, a, b, up)
+  if x != x
+    return x
+  end
+  if x <= 0.0
+    return if up > 0.5 1.0 else 0.0 end
+  end
+  if x >= 1.0
+    return if up > 0.5 0.0 else 1.0 end
+  end
+  if x <= 0.5
+    return special.BetaInc(a, b, x, upper = up > 0.5)
+  end
+  special.BetaInc(b, a, 1.0 - x, upper = up < 0.5)
+end
+
+defn (d Beta) Pdf(x)
+  (** The density at x: x^(A - 1) (1 - x)^(B - 1) / B(A, B) on [0, 1].
+
+        Beta(2, 3).Pdf(0.5) --> 1.5000000000000004 *)
+  a = field(d.A, "Beta", "A", "positive")
+  b = field(d.B, "Beta", "B", "positive")
+  lb = special.LogBeta(a, b)
+  if value.IsNumber(x)
+    return betaPdfAt(1.0 * x, a, b, lb)
+  end
+  matrix.Reshape(value.Size(x), betaPdfs(floats(x, "stats.Beta.Pdf"), a, b, lb))
+end
+
+defn (d Beta) Cdf(x, upper = false)
+  (** P(X <= x), or P(X > x) with upper: the incomplete beta ratio I_x(A, B).
+
+        Beta(2, 3).Cdf(0.5) --> 0.6875 *)
+  a = field(d.A, "Beta", "A", "positive")
+  b = field(d.B, "Beta", "B", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return betaCdf(1.0 * x, a, b, up)
+  end
+  xs = floats(x, "stats.Beta.Cdf")
+  matrix.Reshape(value.Size(x), special.BetaInc(a, b, clamped(xs, 0.0, 1.0), upper = upper))
+end
+
+defn (d Beta) Quantile(p, upper = false)
+  (** The x where P(X <= x) = p, or P(X > x) = p with upper.
+
+        Beta(2, 3).Quantile(0.6875) --> 0.5 *)
+  a = field(d.A, "Beta", "A", "positive")
+  b = field(d.B, "Beta", "B", "positive")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return betaQuantile(a, b, 1.0 * p, up)[1]
+  end
+  each(v -> betaQuantile(a, b, v, up)[1], p, "stats.Beta.Quantile")
+end
+
+struct Binomial
+  (** The binomial law: the number of successes in N trials, each a success with probability P. *)
+  N
+  P
+end
+
+defn binomialMass(k, n, p)
+  (** P(X = k) for a whole k in 0..n: x^k y^(n - k) / ((n + 1) B(k + 1, n - k + 1)), through the factor of the beta
+      ratio, which keeps its digits for large n. *)
+  q = 1.0 - p
+  if k < 0.0 or k > n or k != math.Floor(k)
+    return 0.0
+  end
+  if p == 0.0
+    return if k == 0.0 1.0 else 0.0 end
+  end
+  if p == 1.0
+    return if k == n 1.0 else 0.0 end
+  end
+  if k == 0.0
+    return math.Exp(n * log1p(-p))
+  end
+  if k == n
+    return math.Exp(n * math.Log(p))
+  end
+  lb = special.LogBeta(k, n - k)
+  betaDensity(k, n - k, p, q, lb) * p * q * n / (k * (n - k))
+end
+
+defn binomialCdf(x, n, p, up)
+  (** P(X <= x), or P(X > x): 1 - I_p(k + 1, n - k) for k = floor(x), from p or 1 - p, whichever is small. *)
+  if x != x
+    return x
+  end
+  k = math.Floor(x)
+  if k < 0.0
+    return if up > 0.5 1.0 else 0.0 end
+  end
+  if k >= n
+    return if up > 0.5 0.0 else 1.0 end
+  end
+  if p == 0.0 or p == 1.0
+    lower = if p == 0.0 1.0 else 0.0 end
+    return if up > 0.5 1.0 - lower else lower end
+  end
+  if p <= 0.5
+    return special.BetaInc(k + 1.0, n - k, p, upper = up < 0.5)
+  end
+  special.BetaInc(n - k, k + 1.0, 1.0 - p, upper = up > 0.5)
+end
+
+defn discreteSearch(cdf, target, up, start, most)
+  (** The smallest whole k in [0, most] with cdf(k) >= target, or cdf(k, upper) <= target when up is 1.0, from a
+      start: steps of growing length away from it until the answer is bracketed, then halving. *)
+  ok = k -> if up > 0.5 cdf(k) <= target else cdf(k) >= target end
+  k = if start < 0.0 0.0 else if start > most most else start end
+  lo = -1.0
+  hi = most
+  if ok(k)
+    hi = k
+    step = 1.0
+    while hi > 0.0
+      c = hi - step
+      c = if c < 0.0 0.0 else c end
+      if ok(c)
+        hi = c
+        step = 2.0 * step
+      else
+        lo = c
+        break
+      end
+      if c == 0.0
+        break
+      end
+    end
+  else
+    lo = k
+    step = 1.0
+    while lo < most
+      c = lo + step
+      c = if c > most most else c end
+      if ok(c)
+        hi = c
+        break
+      end
+      lo = c
+      step = 2.0 * step
+    end
+  end
+  while hi - lo > 1.0
+    m = math.Floor(0.5 * (lo + hi))
+    if ok(m)
+      hi = m
+    else
+      lo = m
+    end
+  end
+  hi
+end
+
+defn binomialQuantile(p, n, pr, up)
+  (** The smallest k with P(X <= k) >= p, or P(X > k) <= p when up is 1.0, as R's qbinom: p is first moved by 64 eps
+      toward the answer the rounding of a Cdf may hide. *)
+  if p != p or p < 0.0 or p > 1.0
+    return 0.0 / 0.0
+  end
+  if pr == 0.0 or pr == 1.0 or n == 0.0
+    return if pr == 1.0 n else 0.0 end
+  end
+  mu = n * pr
+  sigma = math.Sqrt(n * pr * (1.0 - pr))
+  gamma = (1.0 - 2.0 * pr) / sigma
+  z = normalQuantile(p, up)
+  start = math.Floor(mu + sigma * (z + gamma * (z * z - 1.0) / 6.0) + 0.5)
+  target = if up > 0.5 p * (1.0 + 1.4210854715202004e-14) else p * (1.0 - 1.4210854715202004e-14) end
+  discreteSearch(k -> binomialCdf(k, n, pr, up), target, up, start, n)
+end
+
+defn (d Binomial) Pdf(x)
+  (** P(X = x): 0 for an x that isn't a whole number in 0..N.
+
+        Binomial(10, 0.5).Pdf(5) --> 0.24609375000000008
+        Binomial(1000000, 0.5).Pdf(500000) --> 0.0007978843613317501 *)
+  n = field(d.N, "Binomial", "N", "count")
+  p = field(d.P, "Binomial", "P", "probability")
+  f = v -> if v != v v else binomialMass(v, n, p) end
+  if value.IsNumber(x)
+    return f(1.0 * x)
+  end
+  each(f, x, "stats.Binomial.Pdf")
+end
+
+defn (d Binomial) Cdf(x, upper = false)
+  (** P(X <= x), or P(X > x) with upper: the incomplete beta ratio, 1 - I_P(floor(x) + 1, N - floor(x)).
+
+        Binomial(10, 0.5).Cdf(5) --> 0.6230468749999996
+        Binomial(100, 0.3).Cdf(50, upper = true) --> 9.034686195720671e-6 *)
+  n = field(d.N, "Binomial", "N", "count")
+  p = field(d.P, "Binomial", "P", "probability")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return binomialCdf(1.0 * x, n, p, up)
+  end
+  each(v -> binomialCdf(v, n, p, up), x, "stats.Binomial.Cdf")
+end
+
+defn (d Binomial) Quantile(p, upper = false)
+  (** The smallest whole k with P(X <= k) >= p, or P(X > k) <= p with upper.
+
+        Binomial(10, 0.5).Quantile(0.5) --> 5.0 *)
+  n = field(d.N, "Binomial", "N", "count")
+  pr = field(d.P, "Binomial", "P", "probability")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return binomialQuantile(1.0 * p, n, pr, up)
+  end
+  each(v -> binomialQuantile(v, n, pr, up), p, "stats.Binomial.Quantile")
+end
+
+struct Poisson
+  (** The Poisson law of a mean Lambda >= 0: the number of events of a period where Lambda come on average. *)
+  Lambda
+end
+
+defn poissonMass(k, lam)
+  (** P(X = k) = lambda^k e^-lambda / k!, through the factor of the gamma ratio. *)
+  if k < 0.0 or k != math.Floor(k) or k == 1.0 / 0.0
+    return 0.0
+  end
+  if lam == 0.0
+    return if k == 0.0 1.0 else 0.0 end
+  end
+  if k == 0.0
+    return math.Exp(-lam)
+  end
+  gammaDensity(k + 1.0, lam, special.Gamma(k + 1.0))
+end
+
+defn poissonCdf(x, lam, up)
+  (** P(X <= x), or P(X > x): Q(floor(x) + 1, lambda). *)
+  if x != x
+    return x
+  end
+  k = math.Floor(x)
+  if k < 0.0
+    return if up > 0.5 1.0 else 0.0 end
+  end
+  if lam == 0.0 or k == 1.0 / 0.0
+    return if up > 0.5 0.0 else 1.0 end
+  end
+  special.GammaInc(k + 1.0, lam, upper = up < 0.5)
+end
+
+defn poissonQuantile(p, lam, up)
+  if p != p or p < 0.0 or p > 1.0
+    return 0.0 / 0.0
+  end
+  if lam == 0.0
+    return 0.0
+  end
+  if (up < 0.5 and p == 1.0) or (up > 0.5 and p == 0.0)
+    return 1.0 / 0.0
+  end
+  sigma = math.Sqrt(lam)
+  z = normalQuantile(p, up)
+  start = math.Floor(lam + sigma * (z + (z * z - 1.0) / (6.0 * sigma)) + 0.5)
+  target = if up > 0.5 p * (1.0 + 1.4210854715202004e-14) else p * (1.0 - 1.4210854715202004e-14) end
+  discreteSearch(k -> poissonCdf(k, lam, up), target, up, start, 9007199254740992.0)
+end
+
+defn (d Poisson) Pdf(x)
+  (** P(X = x): 0 for an x that isn't a whole number of 0 or more.
+
+        Poisson(3).Pdf(2) --> 0.22404180765538775 *)
+  lam = field(d.Lambda, "Poisson", "Lambda", "nonnegative")
+  f = v -> if v != v v else poissonMass(v, lam) end
+  if value.IsNumber(x)
+    return f(1.0 * x)
+  end
+  each(f, x, "stats.Poisson.Pdf")
+end
+
+defn (d Poisson) Cdf(x, upper = false)
+  (** P(X <= x), or P(X > x) with upper: the incomplete gamma ratio Q(floor(x) + 1, Lambda).
+
+        Poisson(3).Cdf(2) --> 0.42319008112684353 *)
+  lam = field(d.Lambda, "Poisson", "Lambda", "nonnegative")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(x)
+    return poissonCdf(1.0 * x, lam, up)
+  end
+  each(v -> poissonCdf(v, lam, up), x, "stats.Poisson.Cdf")
+end
+
+defn (d Poisson) Quantile(p, upper = false)
+  (** The smallest whole k with P(X <= k) >= p, or P(X > k) <= p with upper.
+
+        Poisson(3).Quantile(0.5) --> 3.0 *)
+  lam = field(d.Lambda, "Poisson", "Lambda", "nonnegative")
+  up = if upper 1.0 else 0.0 end
+  if value.IsNumber(p)
+    return poissonQuantile(1.0 * p, lam, up)
+  end
+  each(v -> poissonQuantile(v, lam, up), p, "stats.Poisson.Quantile")
+end
+
+
+(* ---- What tests and models give. *)
+
+struct Test
+  (** What a test gives, as R's htest: the Method, its Statistic, its degrees of freedom Df (missing, a number, or
+      [df1, df2]), the PValue, the Estimate an interval brackets and that Interval [low, high] (missing where there is
+      none), the Level of the interval, and the Alternative, "two-sided", "less" or "greater". *)
+  Method
+  Statistic
+  Df
+  PValue
+  Estimate
+  Interval
+  Level
+  Alternative
+end
+
+defn fail(message)
+  (** The Err of std/stats, of kind "stats". *)
+  result.Err({Kind: "stats", Message: message})
+end
+
+(* ---- The linear model. *)
+
+struct Model
+  (** A fitted linear model: the table of its Coefficients as R's summary(lm) gives it, a frame of the columns term,
+      estimate, std error, t value and p value; the residual standard deviation Sigma and its degrees of freedom Df;
+      RSquared and AdjustedRSquared; F, the F-test of the model as a Test; Fitted and Residuals, for each row; Rows, the
+      number of rows, and Rank, the number of estimates. *)
+  Coefficients
+  Sigma
+  Df
+  RSquared
+  AdjustedRSquared
+  F
+  Fitted
+  Residuals
+  Rows
+  Rank
+  terms      (** the names of the columns of X, "(intercept)" first *)
+  sources    (** for each term, [column, level] for an indicator, [column] for a number *)
+  beta       (** the estimates of the kept terms, in the order of kept *)
+  kept       (** the positions of the kept terms in terms *)
+  rinv       (** the inverse of the factor R, rank x rank, by rows *)
+  levels     (** for each text column, its levels as a set: {"cyl": {"4": true, "6": true, "8": true}} *)
+end
+
+defn indicator(xs, level)
+  (** 1.0 where xs is level, 0.0 elsewhere. *)
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for i in 1..n
+    out[i] = if xs[i] == level 1.0 else 0.0 end
+  end
+  out
+end
+
+defn design(names, df, intercept, name)
+  (** The columns of X for the names of a frame: each number column as it is, each text column as one indicator column
+      for each of its levels but the first in sorted order, named column[level]; an Err for a missing value or another
+      kind of column. Gives {Terms, Sources, Columns, Levels}, Levels the levels of each text column as a set. *)
+  n = frame.RowCount(df)
+  terms = if intercept ["(intercept)"] else [] end
+  sources = if intercept [[]] else [] end
+  cols = if intercept [matrix.Ones(1, n)] else [] end
+  levels = {}
+  for c in names
+    if not (c in frame.Columns(df))
+      return fail("$name: the frame has no column \"$c\"; its columns are $(brief(frame.Columns(df))).")
+    end
+    xs = frame.Column(c, df)
+    kind = col.Kind(xs)
+    if kind == "value"
+      texts = true
+      for i in 1..n
+        v = xs[i]
+        if value.IsMissing(v)
+          return fail("$name: column \"$c\" is missing at row $i; frame.DropMissing(frame.Select([...], df)) drops such rows.")
+        end
+        if not value.IsText(v)
+          texts = false
+        end
+      end
+      if not texts
+        for i in 1..n
+          if not value.IsNumber(xs[i])
+            return fail("$name: column \"$c\" holds $(brief(xs[i])) at row $i; give numbers, or texts for the levels of a factor.")
+          end
+        end
+        kind = "float"
+      end
+    end
+    if kind == "value"
+      ls = list.Sort(list.Unique(xs))
+      levels = dict.Put(c, dict.Dict([{Key: l, Value: true} for l in ls]), levels)
+      rest = [ls[k] for k in 2..value.Len(ls)]
+      terms = list.Concat(terms, ["$c[$l]" for l in rest])
+      sources = list.Concat(sources, [[c, l] for l in rest])
+      cols = list.Concat(cols, [indicator(xs, l) for l in rest])
+    else
+      terms = list.Concat(terms, [c])
+      sources = list.Concat(sources, [[c]])
+      cols = list.Concat(cols, [matrix.Reshape([1, n], 1.0 * xs)])
+    end
+  end
+  result.Ok({Terms: terms, Sources: sources, Columns: cols, Levels: levels})
+end
+
+defn householder(cols, n, tol)
+  (** The QR factorization of the n x m matrix of the columns cols, the last y, in a flat array, element (i, j) at
+      (j - 1) n + i, by Householder's reflections (Golub and Van Loan, ch. 5), in place, with the rank rule of R's dqrdc2: column j is
+      kept when the norm of what is left of it is at least tol times its first norm; else it is dropped, unreflected,
+      and the next column takes its place. The last column, y, is always kept. Gives {A, Kept, Diag}: the reflected
+      matrix, the positions of the kept columns, and the diagonal of R. All in one function, so that a is written in
+      place: an array given to another function and written there would be copied. *)
+  m = value.Len(cols)
+  a = matrix.Zeros(1, n * m)
+  for j in 1..m
+    off = (j - 1) * n
+    cj = cols[j]
+    for i in 1..n
+      a[off + i] = cj[i]
+    end
+  end
+  kept = []
+  diag = []
+  r = 1
+  for j in 1..m
+    off = (j - 1) * n
+    first = 0.0
+    for i in 1..n
+      first = first + a[off + i] * a[off + i]
+    end
+    first = math.Sqrt(first)
+    s = 0.0
+    for i in r..n
+      s = s + a[off + i] * a[off + i]
+    end
+    norm = math.Sqrt(s)
+    if j == m
+      (* y: Q'y, its first r - 1 entries z, the norm of the rest the residual norm. *)
+      kept = list.Concat(kept, [j])
+      diag = list.Concat(diag, [norm])
+    else
+      if r <= n and norm > 0.0 and norm >= tol * first
+        x1 = a[off + r]
+        alpha = if x1 > 0.0 (0.0 - norm) else norm end
+        v1 = x1 - alpha
+        a[off + r] = v1
+        tau = 1.0 / (alpha * v1)
+        for c in j + 1..m
+          oc = (c - 1) * n
+          d = 0.0
+          for i in r..n
+            d = d + a[off + i] * a[oc + i]
+          end
+          f = d * tau
+          for i in r..n
+            a[oc + i] = a[oc + i] + f * a[off + i]
+          end
+        end
+        kept = list.Concat(kept, [j])
+        diag = list.Concat(diag, [alpha])
+        r = r + 1
+      end
+    end
+  end
+  {A: a, Kept: kept, Diag: diag}
+end
+
+defn numbers(name, df, who)
+  (** A column of numbers of a frame as floats, or an Err that names the column and the row of a missing value. *)
+  if not (name in frame.Columns(df))
+    return fail("$who: the frame has no column \"$name\"; its columns are $(brief(frame.Columns(df))).")
+  end
+  xs = frame.Column(name, df)
+  if col.Kind(xs) == "value"
+    for i in 1..value.Len(xs)
+      if value.IsMissing(xs[i])
+        return fail("$who: column \"$name\" is missing at row $i; frame.DropMissing(frame.Select([...], df)) drops such rows.")
+      end
+      if not value.IsNumber(xs[i])
+        return fail("$who: column \"$name\" holds $(brief(xs[i])) at row $i; give numbers.")
+      end
+    end
+  end
+  result.Ok(matrix.Reshape([1, value.Len(xs)], 1.0 * xs))
+end
+
+defn sumSquares(xs, centre)
+  (** The sum of (x - centre)^2. *)
+  d = xs - centre
+  list.Sum(d * d)
+end
+
+defn Lm(y, xs, df, intercept = true, tol = 1e-7)
+  (** The linear model of the column y on the columns xs of the frame df, by least squares: R's lm(y ~ x1 + x2, df),
+      without a formula. A number column is used as it is; a text column becomes one indicator column for each of its
+      levels but the first in sorted order, named name[level], R's treatment coding. With intercept, the default, X
+      starts with a column of ones. An Ok of a Model, or an Err of kind "stats" for a column that isn't there or that
+      holds a missing value. A product or a power is a column to make first: frame.SetColumn("wt2", w * w, cars).
+
+      The QR factorization of [X | y] by Householder's reflections (Golub and Van Loan, ch. 5): its R gives the
+      estimates by back substitution, and its last column Q'y and the residual norm, so Q is never formed. A column
+      whose norm, past the columns before it, is below tol times its own norm is dropped, as R's lm.fit does with the
+      same tol: its estimate is missing. The rest is R's summary(lm): sigma^2 = RSS / (n - rank), the standard errors
+      from sigma^2 (R'R)^-1, t = estimate / std error on n - rank degrees of freedom, R^2, and the F-test.
+
+        cars = frame.Of({"mpg": [21.0, 22.8, 21.4, 18.7, 18.1], "wt": [2.62, 2.32, 3.215, 3.44, 3.46]})
+        fit = result.Unwrap(Lm("mpg", ["wt"], cars))
+        fit.Rank --> 2
+        frame.Column("term", fit.Coefficients) --> ["(intercept)", "wt"] *)
+  if not value.IsText(y)
+    bug.Panic("stats.Lm: y is $(brief(y)); give the name of a column.")
+  end
+  if not (value.IsArray(xs) and list.All([value.IsText(x) for x in xs]))
+    bug.Panic("stats.Lm: xs is $(brief(xs)); give a list of names of columns.")
+  end
+  if not (value.IsDict(df) and dict.Has("Names", df) and dict.Has("Columns", df))
+    bug.Panic("stats.Lm: df is $(brief(df)); give a frame of std/frame.")
+  end
+  if not (value.IsNumber(tol) and tol >= 0.0 and tol < 1.0)
+    bug.Panic("stats.Lm: tol is $(brief(tol)); give a number from 0 to 1.")
+  end
+  n = frame.RowCount(df)
+  if n == 0
+    return fail("stats.Lm: the frame has no row.")
+  end
+  ys = numbers(y, df, "stats.Lm")?
+  d = design(xs, df, intercept, "stats.Lm")?
+  p = value.Len(d.Terms)
+  qr = householder(list.Concat(d.Columns, [ys]), n, 1.0 * tol)
+  a = qr.A
+  kept = list.Take(value.Len(qr.Kept) - 1, qr.Kept)
+  rank = value.Len(kept)
+  diag = qr.Diag
+  rho = diag[rank + 1]
+  yoff = p * n
+  (* R1, the rank x rank triangle of the kept columns, and its inverse, by rows. *)
+  r1 = matrix.Zeros(rank, rank)
+  for c in 1..rank
+    oc = (kept[c] - 1) * n
+    for k in 1..c - 1
+      r1[k, c] = a[oc + k]
+    end
+    r1[c, c] = diag[c]
+  end
+  beta = matrix.Zeros(1, rank)
+  for k in list.Range(rank, 1, step = -1)
+    t = a[yoff + k]
+    for c in k + 1..rank
+      t = t - r1[k, c] * beta[c]
+    end
+    beta[k] = t / r1[k, k]
+  end
+  rinv = matrix.Zeros(rank, rank)
+  for c in 1..rank
+    rinv[c, c] = 1.0 / r1[c, c]
+    for k in list.Range(c - 1, 1, step = -1)
+      t = 0.0
+      for j in k + 1..c
+        t = t + r1[k, j] * rinv[j, c]
+      end
+      rinv[k, c] = -t / r1[k, k]
+    end
+  end
+  rdf = n - rank
+  rss = rho * rho
+  sigma2 = if rdf > 0 rss / rdf else 0.0 / 0.0 end
+  fitted = matrix.Zeros(1, n)
+  for c in 1..rank
+    fitted = fitted + beta[c] * d.Columns[kept[c]]
+  end
+  residuals = ys - fitted
+  dfint = if intercept 1 else 0 end
+  mss = if intercept sumSquares(fitted, list.Mean(fitted)) else list.Sum(fitted * fitted) end
+  r2 = mss / (mss + rss)
+  adj = 1.0 - (1.0 - r2) * ((n - dfint) / rdf)
+  law = StudentT(if rdf > 0 rdf else 0.0 / 0.0 end)
+  est = list.Fill(missing, p)
+  ses = list.Fill(missing, p)
+  ts = list.Fill(missing, p)
+  ps = list.Fill(missing, p)
+  for c in 1..rank
+    v = 0.0
+    for k in c..rank
+      v = v + rinv[c, k] * rinv[c, k]
+    end
+    se = math.Sqrt(sigma2 * v)
+    j = kept[c]
+    est[j] = beta[c]
+    ses[j] = se
+    ts[j] = beta[c] / se
+    ps[j] = if rdf > 0 2.0 * law.Cdf(math.Abs(beta[c] / se), upper = true) else 0.0 / 0.0 end
+  end
+  df1 = rank - dfint
+  fstat = (mss / df1) / sigma2
+  ftest = Test("F-test of the linear model", fstat, [df1, rdf],
+    if df1 > 0 and rdf > 0 FisherF(df1, rdf).Cdf(fstat, upper = true) else 0.0 / 0.0 end, missing, missing, missing, "greater")
+  table = frame.Table(["term", "estimate", "std error", "t value", "p value"], [d.Terms, est, ses, ts, ps])
+  result.Ok(Model(table, math.Sqrt(sigma2), rdf, r2, adj, ftest, fitted, residuals, n, rank, d.Terms, d.Sources, beta,
+    kept, rinv, d.Levels))
+end
+
+defn (m Model) rows(df, who)
+  (** The kept columns of X for the rows of a frame, in the order of kept, NaN in a row whose value is missing: a panic for
+      a column the frame lacks, or for a level of a text column that the fit didn't see. *)
+  n = frame.RowCount(df)
+  for c in dict.Keys(m.levels)
+    if c in frame.Columns(df)
+      known = m.levels[c]
+      xs = frame.Column(c, df)
+      for i in 1..n
+        if not (value.IsMissing(xs[i]) or (value.IsText(xs[i]) and dict.Has(xs[i], known)))
+          bug.Panic("$who: column \"$c\" holds $(brief(xs[i])) at row $i, which isn't one of the levels the model was fitted on.")
+        end
+      end
+    end
+  end
+  out = []
+  for c in m.kept
+    src = m.sources[c]
+    if value.Len(src) == 0
+      out = list.Concat(out, [matrix.Ones(1, n)])
+    else
+      if not (src[1] in frame.Columns(df))
+        bug.Panic("$who: the frame has no column \"$(src[1])\", which the model uses.")
+      end
+      xs = frame.Column(src[1], df)
+      if value.Len(src) == 2
+        level = src[2]
+        out = list.Concat(out, [matrix.Reshape([1, n], [if value.IsMissing(x) 0.0 / 0.0 else if x == level 1.0 else 0.0 end for x in xs])])
+      else
+        out = list.Concat(out, [matrix.Reshape([1, n], [if value.IsNumber(x) 1.0 * x else 0.0 / 0.0 end for x in xs])])
+      end
+    end
+  end
+  out
+end
+
+defn (m Model) Predict(new)
+  (** The fitted values X b for the rows of a frame of the same columns, as R's predict(fit, new); NaN where a value is
+      missing; a panic for a level of a text column that the fit didn't see, as R's "factor has new levels".
+
+        cars = frame.Of({"mpg": [21.0, 22.8, 21.4, 18.7, 18.1], "wt": [2.62, 2.32, 3.215, 3.44, 3.46]})
+        fit = result.Unwrap(Lm("mpg", ["wt"], cars))
+        value.Len(fit.Predict(frame.Of({"wt": [3.0, 4.0]}))) --> 2 *)
+  cols = m.rows(new, "stats.Model.Predict")
+  out = matrix.Zeros(1, frame.RowCount(new))
+  for c in 1..value.Len(cols)
+    out = out + m.beta[c] * cols[c]
+  end
+  out
+end
+
+defn (m Model) Band(new, kind = "confidence", level = 0.95)
+  (** The interval of the fit for the rows of a frame, as {Low, High}: with kind "confidence", where the line itself
+      lies, fit +- t se, se = Sigma |R^-T x0|; with kind "prediction", where a new observation falls,
+      fit +- t sqrt(Sigma^2 + se^2); t the Student quantile of (1 + level) / 2 on Df. R's predict(fit, new, interval =).
+
+        cars = frame.Of({"mpg": [21.0, 22.8, 21.4, 18.7, 18.1], "wt": [2.62, 2.32, 3.215, 3.44, 3.46]})
+        fit = result.Unwrap(Lm("mpg", ["wt"], cars))
+        b = fit.Band(frame.Of({"wt": [3.0]}))
+        b.Low[1] < b.High[1] --> true *)
+  if not (kind in ["confidence", "prediction"])
+    bug.Panic("stats.Model.Band: kind is $(brief(kind)); give \"confidence\" or \"prediction\".")
+  end
+  if not (value.IsNumber(level) and level > 0.0 and level < 1.0)
+    bug.Panic("stats.Model.Band: level is $(brief(level)); give a number between 0 and 1.")
+  end
+  cols = m.rows(new, "stats.Model.Band")
+  n = frame.RowCount(new)
+  rank = value.Len(cols)
+  fit = m.Predict(new)
+  t = if m.Df > 0 StudentT(m.Df).Quantile(0.5 + 0.5 * level) else 0.0 / 0.0 end
+  low = matrix.Zeros(1, n)
+  high = matrix.Zeros(1, n)
+  for i in 1..n
+    w2 = 0.0
+    for k in 1..rank
+      w = 0.0
+      for j in 1..k
+        w = w + cols[j][i] * m.rinv[j, k]
+      end
+      w2 = w2 + w * w
+    end
+    s2 = m.Sigma * m.Sigma * w2
+    half = t * math.Sqrt(if kind == "prediction" m.Sigma * m.Sigma + s2 else s2 end)
+    low[i] = fit[i] - half
+    high[i] = fit[i] + half
+  end
+  {Low: low, High: high}
+end
+
+defn (m Model) Confint(level = 0.95)
+  (** The intervals of the estimates, a frame of term, low and high: estimate +- t std error, t the Student quantile of
+      (1 + level) / 2 on Df, as R's confint(fit).
+
+        cars = frame.Of({"mpg": [21.0, 22.8, 21.4, 18.7, 18.1], "wt": [2.62, 2.32, 3.215, 3.44, 3.46]})
+        fit = result.Unwrap(Lm("mpg", ["wt"], cars))
+        frame.Columns(fit.Confint()) --> ["term", "low", "high"] *)
+  if not (value.IsNumber(level) and level > 0.0 and level < 1.0)
+    bug.Panic("stats.Model.Confint: level is $(brief(level)); give a number between 0 and 1.")
+  end
+  t = if m.Df > 0 StudentT(m.Df).Quantile(0.5 + 0.5 * level) else 0.0 / 0.0 end
+  est = frame.Column("estimate", m.Coefficients)
+  se = frame.Column("std error", m.Coefficients)
+  low = [if value.IsMissing(est[k]) missing else est[k] - t * se[k] end for k in 1..value.Len(est)]
+  high = [if value.IsMissing(est[k]) missing else est[k] + t * se[k] end for k in 1..value.Len(est)]
+  frame.Table(["term", "low", "high"], [m.terms, low, high])
+end
+
+(* ---- Tests. Each gives an Ok of a Test, or an Err of kind "stats" for data it can't test: a missing value, a sample
+   too small, data that are all equal where the statistic needs them to vary. *)
+
+defn sample(x, name, what, least)
+  (** The numbers of a sample as floats, or an Err: missing, not numbers, or fewer than least. *)
+  if not value.IsArray(x)
+    bug.Panic("$name: $what is $(brief(x)); give an array of numbers.")
+  end
+  n = value.Len(x)
+  if col.Kind(x) == "value"
+    for k in 1..n
+      if value.IsMissing(x[k])
+        return fail("$name: $what[$k] is missing; frame.Present drops the missing values.")
+      end
+      if not value.IsNumber(x[k])
+        bug.Panic("$name: $what[$k] is $(brief(x[k])); give numbers.")
+      end
+    end
+  end
+  if n < least
+    return fail("$name: $what has $n values; the test needs $least or more.")
+  end
+  result.Ok(matrix.Reshape([1, n], 1.0 * x))
+end
+
+defn side(alternative, name)
+  (** The alternative, checked. *)
+  if not (alternative in ["two-sided", "less", "greater"])
+    bug.Panic("$name: alternative is $(brief(alternative)); give \"two-sided\", \"less\" or \"greater\".")
+  end
+  alternative
+end
+
+defn levelOf(level, name)
+  if not (value.IsNumber(level) and level > 0.0 and level < 1.0)
+    bug.Panic("$name: level is $(brief(level)); give a number between 0 and 1.")
+  end
+  1.0 * level
+end
+
+defn meanVar(xs)
+  (** The mean and the variance over n - 1, in two passes (Chan, Golub and LeVeque, 1983): the mean, then the sum of
+      the squares of the distances from it, corrected by the sum of the distances, which rounding leaves. *)
+  n = value.Len(xs)
+  m = list.Sum(xs) / n
+  d = xs - m
+  s = list.Sum(d)
+  [m, (list.Sum(d * d) - s * s / n) / (n - 1)]
+end
+
+defn tTail(t, df, alternative)
+  (** The p-value of a t statistic. *)
+  law = StudentT(df)
+  if alternative == "less" law.Cdf(t) else if alternative == "greater" law.Cdf(t, upper = true) else
+    2.0 * law.Cdf(math.Abs(t), upper = true) end
+end
+
+defn tInterval(estimate, se, df, alternative, level)
+  law = StudentT(df)
+  if alternative == "less"
+    return [-1.0 / 0.0, estimate + law.Quantile(level) * se]
+  end
+  if alternative == "greater"
+    return [estimate - law.Quantile(level) * se, 1.0 / 0.0]
+  end
+  q = law.Quantile(0.5 + 0.5 * level)
+  [estimate - q * se, estimate + q * se]
+end
+
+defn TTest(x, mu = 0.0, alternative = "two-sided", level = 0.95)
+  (** Student's one-sample t-test (Student, 1908) that the mean of x is mu: t = (mean - mu) / (sd / sqrt n), on n - 1
+      degrees of freedom, R's t.test(x, mu = mu). The paired test is this one on the differences, TTest(x - y). An Ok
+      of a Test whose Estimate is the mean and whose Interval brackets it at level; an Err for fewer than 2 values,
+      a missing value, or values all equal.
+
+        t = result.Unwrap(TTest([5.1, 4.9, 5.6, 5.8, 6.0, 5.2], mu = 5.0))
+        t.Df --> 5 *)
+  name = "stats.TTest"
+  alt = side(alternative, name)
+  lv = levelOf(level, name)
+  xs = sample(x, name, "x", 2)?
+  n = value.Len(xs)
+  mv = meanVar(xs)
+  se = math.Sqrt(mv[2] / n)
+  if not (se > 0.0)
+    return fail("$name: the values of x are all equal, so t is undefined.")
+  end
+  t = (mv[1] - mu) / se
+  result.Ok(Test("One-sample t-test", t, n - 1, tTail(t, n - 1, alt), mv[1], tInterval(mv[1], se, n - 1, alt, lv), lv, alt))
+end
+
+defn TTest2(x, y, equal = false, mu = 0.0, alternative = "two-sided", level = 0.95)
+  (** The two-sample t-test that the means of x and y differ by mu: Welch's (1947), R's default, with the degrees of
+      freedom of Satterthwaite (1946); with equal, Student's, of a pooled variance on nx + ny - 2. The Estimate is
+      mean(x) - mean(y). R's t.test(x, y), t.test(x, y, var.equal = TRUE).
+
+        t = result.Unwrap(TTest2([19.1, 20.3, 18.4, 21.0, 19.9], [22.0, 21.4, 23.1, 22.7, 21.9]))
+        t.Method --> "Welch two-sample t-test" *)
+  name = "stats.TTest2"
+  alt = side(alternative, name)
+  lv = levelOf(level, name)
+  xs = sample(x, name, "x", 2)?
+  ys = sample(y, name, "y", 2)?
+  nx = value.Len(xs)
+  ny = value.Len(ys)
+  a = meanVar(xs)
+  b = meanVar(ys)
+  est = a[1] - b[1]
+  se = 0.0
+  df = 0.0
+  method = ""
+  if equal
+    v = ((nx - 1) * a[2] + (ny - 1) * b[2]) / (nx + ny - 2)
+    se = math.Sqrt(v * (1.0 / nx + 1.0 / ny))
+    df = nx + ny - 2
+    method = "Two-sample t-test"
+  else
+    vx = a[2] / nx
+    vy = b[2] / ny
+    se = math.Sqrt(vx + vy)
+    df = (vx + vy) * (vx + vy) / (vx * vx / (nx - 1) + vy * vy / (ny - 1))
+    method = "Welch two-sample t-test"
+  end
+  if not (se > 0.0)
+    return fail("$name: the values of x and y are all equal within each, so t is undefined.")
+  end
+  t = (est - mu) / se
+  result.Ok(Test(method, t, df, tTail(t, df, alt), est, tInterval(est, se, df, alt, lv), lv, alt))
+end
+
+defn ranks(xs)
+  (** The ranks of xs, from 1, the mean rank for ties, and the sum of t^3 - t over the groups of t ties. *)
+  n = value.Len(xs)
+  order = list.Order(xs)
+  r = matrix.Zeros(1, n)
+  ties = 0.0
+  i = 1
+  while i <= n
+    j = i
+    while j < n and xs[order[j + 1]] == xs[order[i]]
+      j = j + 1
+    end
+    for k in i..j
+      r[order[k]] = 0.5 * (i + j)
+    end
+    t = 1.0 * (j - i + 1)
+    ties = ties + t * t * t - t
+    i = j + 1
+  end
+  {Ranks: r, Ties: ties}
+end
+
+defn signedRankCounts(n)
+  (** The number of subsets of 1..n whose sum is each s from 0 to n (n + 1) / 2: the exact law of the signed rank
+      statistic, by the recursion g_i(s) = g_(i - 1)(s) + g_(i - 1)(s - i). *)
+  top = n * (n + 1) / 2
+  g = matrix.Zeros(1, top + 1)
+  g[1] = 1.0
+  for i in 1..n
+    for s in list.Range(i * (i + 1) / 2, i, step = -1)
+      g[s + 1] = g[s + 1] + g[s - i + 1]
+    end
+  end
+  g
+end
+
+defn rankSumCounts(m, n)
+  (** The number of ways the m ranks of x among m + n give each U from 0 to m n: the coefficients of the q-binomial
+      [m + n, m]_q, by its Pascal rule [N, j] = [N - 1, j] + q^(N - j) [N - 1, j - 1], all additions. *)
+  top = m * n
+  w = top + 1
+  p = matrix.Zeros(1, (m + 1) * w)
+  p[1] = 1.0
+  for big in 1..m + n
+    for j in list.Range(if big < m big else m end, 1, step = -1)
+      shift = big - j
+      if shift >= 0 and shift <= n
+        for s in list.Range(top, shift, step = -1)
+          p[j * w + s + 1] = p[j * w + s + 1] + p[(j - 1) * w + s - shift + 1]
+        end
+      end
+    end
+  end
+  [p[m * w + s + 1] for s in 0..top]
+end
+
+defn signedRankCountsTied(r2)
+  (** With ties: the number of subsets of the doubled ranks r2, whole numbers, whose sum is each s from 0 to their
+      total, the exact law of 2 V given the ties, by the same recursion. *)
+  n = value.Len(r2)
+  top = list.Sum(r2)
+  g = matrix.Zeros(1, top + 1)
+  g[1] = 1.0
+  acc = 0
+  for i in 1..n
+    q = r2[i]
+    acc = acc + q
+    for s in list.Range(acc, q, step = -1)
+      g[s + 1] = g[s + 1] + g[s - q + 1]
+    end
+  end
+  g
+end
+
+defn rankSumCountsTied(m, r2)
+  (** With ties: the number of the subsets of m of the doubled ranks r2 whose sum is each s from 0 to the sum of all,
+      the exact law of 2 (W + m (m + 1) / 2) given the ties: h_j(s) += h_(j - 1)(s - q) for each rank q in turn. *)
+  big = value.Len(r2)
+  top = list.Sum(r2)
+  w = top + 1
+  h = matrix.Zeros(1, (m + 1) * w)
+  h[1] = 1.0
+  acc = 0
+  for i in 1..big
+    q = r2[i]
+    acc = acc + q
+    for j in list.Range(if i < m i else m end, 1, step = -1)
+      for s in list.Range(acc, q, step = -1)
+        h[j * w + s + 1] = h[j * w + s + 1] + h[(j - 1) * w + s - q + 1]
+      end
+    end
+  end
+  [h[m * w + s + 1] for s in 0..top]
+end
+
+defn tailOf(counts, v, upper)
+  (** P(V <= v), or P(V >= v) with upper, from the counts of a law on 0..top. *)
+  total = list.Sum(counts)
+  top = value.Len(counts) - 1
+  s = 0.0
+  if upper
+    for k in math.Ceil(v)..top
+      s = s + counts[k + 1]
+    end
+  else
+    for k in 0..math.Floor(v)
+      s = s + counts[k + 1]
+    end
+  end
+  s / total
+end
+
+defn exactP(counts, stat, centre, alternative)
+  (** The p-value of an exact rank statistic, as R's wilcox.test. *)
+  if alternative == "less"
+    return tailOf(counts, stat, false)
+  end
+  if alternative == "greater"
+    return tailOf(counts, stat, true)
+  end
+  p = if stat > centre tailOf(counts, stat, true) else tailOf(counts, stat, false) end
+  list.Min(1.0, 2.0 * p)
+end
+
+defn normalP(z, alternative, correct)
+  (** The p-value of a rank statistic's normal approximation: z = statistic - mean, over sigma after the continuity
+      correction, as R's. *)
+  c = if not correct 0.0 else if alternative == "two-sided" (if z > 0.0 0.5 else if z < 0.0 (-0.5) else 0.0 end) else
+    if alternative == "greater" 0.5 else (-0.5) end end
+  [c]
+end
+
+defn WilcoxonTest(x, mu = 0.0, alternative = "two-sided", correct = true)
+  (** Wilcoxon's signed rank test (1945) that x is symmetric about mu: V, the sum of the ranks of |x - mu| where
+      x - mu > 0; zeros are dropped, ties get their mean rank. Exact when fewer than 50 remain, as R 4.6: the law of V
+      given the ranks, ties and all, by counting the subsets of the ranks; else the normal approximation, with its
+      correction for ties and, with correct, for continuity. The paired test is this one on the differences, WilcoxonTest(x - y).
+      R's wilcox.test(x, mu = mu).
+
+        w = result.Unwrap(WilcoxonTest([1.83, 0.5, 1.62, 2.48, 1.68, 1.88, 1.55, 3.06, 1.3] - [0.878, 0.647, 0.598, 2.05, 1.06, 1.29, 1.06, 3.14, 1.29]))
+        w.Statistic --> 40.0 *)
+  name = "stats.WilcoxonTest"
+  alt = side(alternative, name)
+  xs = sample(x, name, "x", 1)?
+  d = [v for v in xs - mu if v != 0.0]
+  zeros = value.Len(xs) - value.Len(d)
+  n = value.Len(d)
+  if n == 0
+    return fail("$name: every value of x is mu, so there is no rank to test.")
+  end
+  rk = ranks(math.Abs(d))
+  v = 0.0
+  for k in 1..n
+    if d[k] > 0.0
+      v = v + rk.Ranks[k]
+    end
+  end
+  if n < 50
+    p = 0.0
+    if rk.Ties == 0.0
+      p = exactP(signedRankCounts(n), v, 0.25 * n * (n + 1), alt)
+    else
+      r2 = [math.Round(2.0 * r) for r in rk.Ranks]
+      p = exactP(signedRankCountsTied(r2), 2.0 * v, 0.5 * list.Sum(r2), alt)
+    end
+    return result.Ok(Test("Wilcoxon signed rank exact test", v, missing, p, missing, missing, missing, alt))
+  end
+  z = v - 0.25 * n * (n + 1)
+  sigma = math.Sqrt(n * (n + 1) * (2 * n + 1) / 24.0 - rk.Ties / 48.0)
+  c = normalP(z, alt, correct)[1]
+  zc = (z - c) / sigma
+  p = if alt == "less" Normal(0, 1).Cdf(zc) else if alt == "greater" Normal(0, 1).Cdf(zc, upper = true) else
+    list.Min(1.0, 2.0 * Normal(0, 1).Cdf(math.Abs(zc), upper = true)) end
+  method = if correct "Wilcoxon signed rank test with continuity correction" else "Wilcoxon signed rank test" end
+  result.Ok(Test(method, v, missing, p, missing, missing, missing, alt))
+end
+
+defn WilcoxonTest2(x, y, mu = 0.0, alternative = "two-sided", correct = true)
+  (** The Wilcoxon rank sum test (Wilcoxon, 1945; Mann and Whitney, 1947) that x - mu and y come from one law:
+      W = the sum of the ranks of x - mu among all, less nx (nx + 1) / 2, the U of Mann and Whitney. Exact when both
+      samples have fewer than 50 values, as R 4.6: from the counts of the q-binomial coefficient without ties, by
+      counting the subsets of the mean ranks with them; else the normal approximation, with the corrections for ties
+      and continuity. R's wilcox.test(x, y).
+
+        w = result.Unwrap(WilcoxonTest2([0.8, 0.83, 1.89, 1.04, 1.45, 1.38, 1.91, 1.64, 0.73, 1.46], [1.15, 0.88, 0.9, 0.74, 1.21]))
+        w.Statistic --> 35.0 *)
+  name = "stats.WilcoxonTest2"
+  alt = side(alternative, name)
+  xs = sample(x, name, "x", 1)?
+  ys = sample(y, name, "y", 1)?
+  nx = value.Len(xs)
+  ny = value.Len(ys)
+  rk = ranks(list.Concat(xs - mu, ys))
+  w = list.Sum(list.Take(nx, rk.Ranks)) - 0.5 * nx * (nx + 1)
+  if nx < 50 and ny < 50
+    p = 0.0
+    if rk.Ties == 0.0
+      p = exactP(rankSumCounts(nx, ny), w, 0.5 * nx * ny, alt)
+    else
+      r2 = [math.Round(2.0 * r) for r in rk.Ranks]
+      counts = rankSumCountsTied(nx, r2)
+      p = exactP(counts, 2.0 * w + nx * (nx + 1), nx * list.Sum(r2) / (nx + ny), alt)
+    end
+    return result.Ok(Test("Wilcoxon rank sum exact test", w, missing, p, missing, missing, missing, alt))
+  end
+  z = w - 0.5 * nx * ny
+  total = 1.0 * (nx + ny)
+  sigma = math.Sqrt((nx * ny / 12.0) * ((total + 1.0) - rk.Ties / (total * (total - 1.0))))
+  c = normalP(z, alt, correct)[1]
+  zc = (z - c) / sigma
+  p = if alt == "less" Normal(0, 1).Cdf(zc) else if alt == "greater" Normal(0, 1).Cdf(zc, upper = true) else
+    list.Min(1.0, 2.0 * Normal(0, 1).Cdf(math.Abs(zc), upper = true)) end
+  method = if correct "Wilcoxon rank sum test with continuity correction" else "Wilcoxon rank sum test" end
+  result.Ok(Test(method, w, missing, p, missing, missing, missing, alt))
+end
+
+defn mtw(n, d)
+  (** P(D_n < d) for the one-sample Kolmogorov statistic, by the method of Marsaglia, Tsang and Wang (2003): the k-th
+      diagonal entry of H^n times n! / n^n, H the m x m matrix of their paper, m = 2k - 1, k = ceil(n d), powered by
+      squaring with its exponent of ten kept apart so that nothing overflows. *)
+  k = math.Floor(n * d) + 1
+  m = 2 * k - 1
+  h = k - n * d
+  hm = matrix.Zeros(m, m)
+  for i in 1..m
+    for j in 1..m
+      hm[i, j] = if i - j + 1 >= 0 1.0 else 0.0 end
+    end
+  end
+  for i in 1..m
+    hm[i, 1] = hm[i, 1] - h ^ i
+    hm[m, i] = hm[m, i] - h ^ (m - i + 1)
+  end
+  if 2.0 * h - 1.0 > 0.0
+    hm[m, 1] = hm[m, 1] + (2.0 * h - 1.0) ^ m
+  end
+  fact = matrix.Zeros(1, m + 1)
+  fact[1] = 1.0
+  for g in 1..m
+    fact[g + 1] = fact[g] * g
+  end
+  for i in 1..m
+    for j in 1..i
+      hm[i, j] = hm[i, j] / fact[i - j + 2]
+    end
+  end
+  (* Q = H^n by squaring, with the exponent of 10 apart. *)
+  q = num.Eye(m)
+  eq = 0
+  base = hm
+  eb = 0
+  e = n
+  while e > 0
+    if math.Mod(e, 2) == 1
+      q = matrix.Matmul(q, base)
+      eq = eq + eb
+      if q[k, k] > 1.0e140
+        q = q * 1.0e-140
+        eq = eq + 140
+      end
+    end
+    e = math.Div(e, 2)
+    if e > 0
+      base = matrix.Matmul(base, base)
+      eb = 2 * eb
+      if base[k, k] > 1.0e140
+        base = base * 1.0e-140
+        eb = eb + 140
+      end
+    end
+  end
+  s = q[k, k]
+  for i in 1..n
+    s = s * i / n
+    if s < 1.0e-140
+      s = s * 1.0e140
+      eq = eq - 140
+    end
+  end
+  s * 10.0 ^ eq
+end
+
+defn kolmogorovTail(x)
+  (** P(sqrt(n) D > x) in the limit, Kolmogorov (1933): 2 sum (-1)^(k - 1) exp(-2 k^2 x^2). *)
+  if x < 0.2
+    return 1.0
+  end
+  s = 0.0
+  for k in 1..100
+    t = math.Exp(-2.0 * k * k * x * x)
+    s = s + (if math.Mod(k, 2) == 1 t else 0.0 - t end)
+    if t < 1.0e-18
+      break
+    end
+  end
+  list.Min(1.0, 2.0 * s)
+end
+
+defn smirnovOne(n, d)
+  (** P(D+ >= d) exactly, Birnbaum and Tingey (1951): d sum over j of C(n, j) (1 - d - j / n)^(n - j) (d + j / n)^(j - 1). *)
+  if d <= 0.0
+    return 1.0
+  end
+  if d >= 1.0
+    return 0.0
+  end
+  s = 0.0
+  lg = special.LogGamma(n + 1.0)
+  for j in 0..math.Floor(n * (1.0 - d))
+    a = 1.0 - d - j / n
+    b = d + j / n
+    (* The last term is 0 when n (1 - d) is whole, and its a may round below 0. *)
+    if a > 0.0
+      s = s + math.Exp(lg - special.LogGamma(j + 1.0) - special.LogGamma(n - j + 1.0) + (n - j) * math.Log(a) + (j - 1) * math.Log(b))
+    end
+  end
+  list.Min(1.0, d * s)
+end
+
+defn KsTest(x, law, alternative = "two-sided")
+  (** The one-sample test of Kolmogorov and Smirnov that x comes from a law of std/stats: D = max |F_n(x) - F(x)|, F_n
+      the empirical law of x. Exact for n up to 16,000 without ties, by Marsaglia, Tsang and Wang (2003), whose paper
+      gives 13 to 15 digits there, and past n D^2 = 7.24 (p < 1e-6) twice the one-sided tail; Kolmogorov's limiting
+      series beyond 16,000, or with ties; one-sided, D+ or D-, by the exact sum of Birnbaum and Tingey (1951). R's
+      ks.test(x, "pnorm", 0, 1, exact = TRUE).
+
+        k = result.Unwrap(KsTest([0.61, -0.27, 1.38, -0.45, 0.13, -1.12, 0.84, 0.29], Normal(0, 1)))
+        k.Method --> "Exact one-sample Kolmogorov-Smirnov test" *)
+  name = "stats.KsTest"
+  alt = side(alternative, name)
+  xs = sample(x, name, "x", 1)?
+  n = value.Len(xs)
+  s = list.Sort(xs)
+  f = law.Cdf(s)
+  plus = 0.0
+  minus = 0.0
+  ties = false
+  for i in 1..n
+    plus = list.Max(plus, i / n - f[i])
+    minus = list.Max(minus, f[i] - (i - 1) / n)
+    if i > 1 and s[i] == s[i - 1]
+      ties = true
+    end
+  end
+  if alt != "two-sided"
+    st = if alt == "greater" plus else minus end
+    return result.Ok(Test("Exact one-sample Kolmogorov-Smirnov test", st, missing, smirnovOne(n, st), missing, missing, missing, alt))
+  end
+  d = list.Max(plus, minus)
+  if n <= 16000 and not ties
+    (* Past n D^2 = 7.24, where Marsaglia, Tsang and Wang leave their matrix for a formula of the tail, p < 1e-6:
+       1 - P(D < d) would lose its digits, and the matrix grows with n D. There P(D >= d) is twice the one-sided
+       P(D+ >= d), as D+ and D- both past d are about e^(-6 n D^2) as likely, below 1e-18 of it. *)
+    p = if n * d * d > 7.24 list.Min(1.0, 2.0 * smirnovOne(n, d)) else list.Max(0.0, list.Min(1.0, 1.0 - mtw(n, d))) end
+    return result.Ok(Test("Exact one-sample Kolmogorov-Smirnov test", d, missing, p, missing, missing, missing, alt))
+  end
+  result.Ok(Test("Asymptotic one-sample Kolmogorov-Smirnov test", d, missing, kolmogorovTail(math.Sqrt(n) * d), missing, missing, missing, alt))
+end
+
+defn ChiSquaredTest(x, p = missing, correct = true)
+  (** Pearson's chi-squared test (1900). For counts in a list, that they come from the probabilities p, equal by
+      default: X^2 = sum (O - E)^2 / E, E = n p, on k - 1 degrees of freedom. For a table, a matrix of r rows and c
+      columns, that its rows and columns are independent: E from the margins, on (r - 1)(c - 1) degrees of freedom, with
+      Yates's correction (1934) for a 2 x 2 table unless correct is false. R's chisq.test.
+
+        c = result.Unwrap(ChiSquaredTest([89, 37, 30, 28, 2], p = [0.4, 0.2, 0.2, 0.15, 0.05]))
+        c.Df --> 4 *)
+  name = "stats.ChiSquaredTest"
+  if not value.IsArray(x)
+    bug.Panic("$name: x is $(brief(x)); give a list of counts or a matrix.")
+  end
+  size = value.Size(x)
+  table = value.Len(size) == 2 and size[1] > 1 and size[2] > 1
+  os = sample(x, name, "x", 2)?
+  for k in 1..value.Len(os)
+    if os[k] < 0.0
+      return fail("$name: x[$k] is $(os[k]); counts can't be negative.")
+    end
+  end
+  if not table
+    k = value.Len(os)
+    ps = if value.IsMissing(p) list.Fill(1.0 / k, k) else p end
+    if not (value.IsArray(ps) and value.Len(ps) == k and list.All([value.IsNumber(v) and v >= 0.0 for v in ps]))
+      bug.Panic("$name: p is $(brief(p)); give $k probabilities of 0 or more, one for each count.")
+    end
+    if math.Abs(list.Sum(ps) - 1.0) > 1.0e-10
+      bug.Panic("$name: the probabilities p sum to $(list.Sum(ps)); give probabilities that sum to 1.")
+    end
+    total = list.Sum(os)
+    e = total * (1.0 * ps)
+    st = list.Sum((os - e) * (os - e) / e)
+    return result.Ok(Test("Chi-squared test for given probabilities", st, k - 1, ChiSquared(k - 1).Cdf(st, upper = true), missing, missing, missing, "greater"))
+  end
+  r = size[1]
+  c = size[2]
+  o = 1.0 * x
+  total = list.Sum(os)
+  rows = [list.Sum([o[i, j] for j in 1..c]) for i in 1..r]
+  cols = [list.Sum([o[i, j] for i in 1..r]) for j in 1..c]
+  yates = 0.0
+  if correct and r == 2 and c == 2
+    yates = 0.5
+    for i in 1..2
+      for j in 1..2
+        yates = list.Min(yates, math.Abs(o[i, j] - rows[i] * cols[j] / total))
+      end
+    end
+  end
+  st = 0.0
+  for i in 1..r
+    for j in 1..c
+      e = rows[i] * cols[j] / total
+      dev = math.Abs(o[i, j] - e) - yates
+      st = st + dev * dev / e
+    end
+  end
+  df = (r - 1) * (c - 1)
+  method = if yates > 0.0 "Pearson's chi-squared test with Yates' continuity correction" else "Pearson's chi-squared test" end
+  result.Ok(Test(method, st, df, ChiSquared(df).Cdf(st, upper = true), missing, missing, missing, "greater"))
+end
+
+defn tanh(z)
+  (** tanh z = expm1(2 z) / (expm1(2 z) + 2), which keeps its digits near 0; +-1 past 20. *)
+  if z > 20.0
+    return 1.0
+  end
+  if z < -20.0
+    return -1.0
+  end
+  e = expm1(2.0 * z)
+  e / (e + 2.0)
+end
+
+defn CorTest(x, y, alternative = "two-sided", level = 0.95)
+  (** The test of Pearson's correlation r of x and y: t = r sqrt((n - 2) / (1 - r^2)) on n - 2 degrees of freedom, and
+      the interval of r by Fisher's z = atanh(r) (1915), of deviation 1 / sqrt(n - 3), for n >= 4. R's cor.test(x, y).
+
+        c = result.Unwrap(CorTest([44.4, 45.9, 41.9, 53.3, 44.7, 44.1, 50.7, 45.2, 60.1], [2.6, 3.1, 2.5, 5.0, 3.6, 4.0, 5.2, 2.8, 3.8]))
+        c.Df --> 7 *)
+  name = "stats.CorTest"
+  alt = side(alternative, name)
+  lv = levelOf(level, name)
+  xs = sample(x, name, "x", 3)?
+  ys = sample(y, name, "y", 3)?
+  n = value.Len(xs)
+  if value.Len(ys) != n
+    bug.Panic("$name: x has $n values and y $(value.Len(ys)); give two samples of the same length.")
+  end
+  dx = xs - list.Sum(xs) / n
+  dy = ys - list.Sum(ys) / n
+  sxx = list.Sum(dx * dx)
+  syy = list.Sum(dy * dy)
+  if not (sxx > 0.0 and syy > 0.0)
+    return fail("$name: the values of x or of y are all equal, so the correlation is undefined.")
+  end
+  r = list.Sum(dx * dy) / math.Sqrt(sxx * syy)
+  r = list.Max(-1.0, list.Min(1.0, r))
+  df = n - 2
+  t = r * math.Sqrt(df / (1.0 - r * r))
+  interval = missing
+  if n > 3
+    z = 0.5 * log1p(2.0 * r / (1.0 - r))
+    se = 1.0 / math.Sqrt(n - 3)
+    law = Normal(0, 1)
+    lohi = if alt == "less" [-1.0 / 0.0, z + law.Quantile(lv) * se] else if alt == "greater" [z - law.Quantile(lv) * se, 1.0 / 0.0] else
+      [z - law.Quantile(0.5 + 0.5 * lv) * se, z + law.Quantile(0.5 + 0.5 * lv) * se] end
+    interval = [tanh(lohi[1]), tanh(lohi[2])]
+  end
+  result.Ok(Test("Pearson's product-moment correlation", t, df, tTail(t, df, alt), r, interval, if value.IsMissing(interval) missing else lv end, alt))
+end
+
+(* ---- Random draws, from std/random's one stream, so that cesia run --seed N, and each test of cesia test, gives the
+   same numbers again. Each algorithm is frozen: a better one later would be a new name, never a change, as a seed must
+   give the same numbers on every version. *)
+
+defn normalDraw()
+  (** One standard normal draw, as num.Normal makes them: Box and Muller (1958), the cosine of two uniforms. *)
+  a = 1.0 - random.Float()
+  b = random.Float()
+  math.Sqrt(-2.0 * math.Log(a)) * math.Cos(2.0 * 3.141592653589793 * b)
+end
+
+defn gammaDraw(a)
+  (** One draw of the gamma law of shape a and rate 1: the squeeze of Marsaglia and Tsang (2000), from a normal and a
+      uniform, accepted with a probability above 0.95 for every a >= 1; for a < 1, G(a + 1) U^(1/a), from the same
+      paper, U in (0, 1]. *)
+  if a < 1.0
+    g = gammaDraw(a + 1.0)
+    return g * (1.0 - random.Float()) ^ (1.0 / a)
+  end
+  d = a - 1.0 / 3.0
+  c = 1.0 / math.Sqrt(9.0 * d)
+  while true
+    x = normalDraw()
+    t = 1.0 + c * x
+    if t > 0.0
+      v = t * t * t
+      u = random.Float()
+      if u < 1.0 - 0.0331 * x * x * x * x
+        return d * v
+      end
+      if math.Log(u) < 0.5 * x * x + d * (1.0 - v + math.Log(v))
+        return d * v
+      end
+    end
+  end
+  0.0
+end
+
+defn draw(n, f)
+  (** One draw of f, or an array of n of them. *)
+  if value.IsMissing(n)
+    return f()
+  end
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f()
+  end
+  out
+end
+
+defn (d Gamma) Sample(n = missing)
+  (** One draw, or an array of n: Marsaglia and Tsang (2000), over Rate.
+
+        Gamma(2, 1).Sample() > 0.0 --> true *)
+  a = field(d.Shape, "Gamma", "Shape", "positive")
+  r = field(d.Rate, "Gamma", "Rate", "positive")
+  draw(if value.IsMissing(n) n else draws(n, "Gamma") end, () -> gammaDraw(a) / r)
+end
+
+defn (d ChiSquared) Sample(n = missing)
+  (** One draw, or an array of n: twice a gamma draw of shape Df / 2.
+
+        ChiSquared(3).Sample() > 0.0 --> true *)
+  k = field(d.Df, "ChiSquared", "Df", "positive")
+  draw(if value.IsMissing(n) n else draws(n, "ChiSquared") end, () -> 2.0 * gammaDraw(0.5 * k))
+end
+
+defn (d Beta) Sample(n = missing)
+  (** One draw, or an array of n: Ga / (Ga + Gb), two gamma draws of shapes A and B, in that order.
+
+        Beta(2, 3).Sample() < 1.0 --> true *)
+  a = field(d.A, "Beta", "A", "positive")
+  b = field(d.B, "Beta", "B", "positive")
+  f = defn ()
+    ga = gammaDraw(a)
+    gb = gammaDraw(b)
+    ga / (ga + gb)
+  end
+  draw(if value.IsMissing(n) n else draws(n, "Beta") end, f)
+end
+
+defn (d StudentT) Sample(n = missing)
+  (** One draw, or an array of n: Z / sqrt(X / Df), Z a normal draw, then X a chi-squared one; Z alone for an
+      infinite Df.
+
+        value.Len(StudentT(5).Sample(3)) --> 3 *)
+  nu = field(d.Df, "StudentT", "Df", "positive or infinite")
+  f = defn ()
+    z = normalDraw()
+    if nu == 1.0 / 0.0 z else z / math.Sqrt(2.0 * gammaDraw(0.5 * nu) / nu) end
+  end
+  draw(if value.IsMissing(n) n else draws(n, "StudentT") end, f)
+end
+
+defn (d FisherF) Sample(n = missing)
+  (** One draw, or an array of n: (X1 / Df1) / (X2 / Df2), two chi-squared draws in that order.
+
+        FisherF(3, 7).Sample() > 0.0 --> true *)
+  d1 = field(d.Df1, "FisherF", "Df1", "positive")
+  d2 = field(d.Df2, "FisherF", "Df2", "positive")
+  f = defn ()
+    x1 = 2.0 * gammaDraw(0.5 * d1)
+    x2 = 2.0 * gammaDraw(0.5 * d2)
+    (x1 / d1) / (x2 / d2)
+  end
+  draw(if value.IsMissing(n) n else draws(n, "FisherF") end, f)
+end
+
+defn countTable(lo, hi, mass)
+  (** The cumulative probabilities of a law of counts from lo to hi, its masses given by mass(k): the table that a
+      draw inverts. *)
+  m = hi - lo + 1
+  c = matrix.Zeros(1, m)
+  total = 0.0
+  for k in 1..m
+    total = total + mass(lo + k - 1)
+    c[k] = total
+  end
+  c
+end
+
+defn countDraws(n, lo, hi, mass, quantile)
+  (** One draw, or an array of n, of a law of counts by inversion: u from random.Float, and the smallest k whose
+      cumulative probability passes u, in the table from lo to hi, which holds all but less than 1e-300 of the law; one
+      draw, or a table that would pass 65,536 counts, by quantile(u), the same inversion without the table. *)
+  if value.IsMissing(n)
+    return quantile(random.Float())
+  end
+  if hi - lo >= 65536.0
+    us = num.Uniform(n)
+    out = matrix.Zeros(1, n)
+    for k in 1..n
+      out[k] = quantile(us[k])
+    end
+    return out
+  end
+  c = countTable(lo, hi, mass)
+  us = num.Uniform(n)
+  out = matrix.Zeros(1, n)
+  m = value.Len(c)
+  last = c[m]
+  for k in 1..n
+    (* invert(c, lo, us[k]), written out, which saves a call a draw. *)
+    u = us[k]
+    a = 1
+    b = m
+    if last <= u
+      a = m
+    else
+      while a < b
+        h = math.Div(a + b, 2)
+        if c[h] > u
+          b = h
+        else
+          a = h + 1
+        end
+      end
+    end
+    out[k] = lo + a - 1.0
+  end
+  out
+end
+
+defn (d Binomial) Sample(n = missing)
+  (** One draw, or an array of n, by inversion: u from random.Float, and the smallest k with P(X <= k) > u, from a table
+      of the cumulative probabilities from 40 standard deviations below the mean to 40 above, which holds all but less
+      than 1e-300 of the law; one draw, or a law whose table would pass 65,536 counts, by Quantile(u), without the table.
+
+        Binomial(10, 0.5).Sample() <= 10.0 --> true *)
+  nn = field(d.N, "Binomial", "N", "count")
+  p = field(d.P, "Binomial", "P", "probability")
+  count = if value.IsMissing(n) n else draws(n, "Binomial") end
+  if p == 0.0 or p == 1.0 or nn == 0.0
+    v = if p == 1.0 nn else 0.0 end
+    return if value.IsMissing(count) v else v + matrix.Zeros(1, count) end
+  end
+  mu = nn * p
+  sd = math.Sqrt(nn * p * (1.0 - p))
+  lo = list.Max(0.0, math.Floor(mu - 40.0 * sd - 10.0))
+  hi = list.Min(nn, math.Ceil(mu + 40.0 * sd + 10.0))
+  countDraws(count, lo, hi, k -> binomialMass(k, nn, p), u -> binomialQuantile(u, nn, p, 0.0))
+end
+
+defn (d Poisson) Sample(n = missing)
+  (** One draw, or an array of n, by inversion as Binomial's, from a table from 0, or 40 standard deviations below the
+      mean, to 40 above; one draw, or a law whose table would pass 65,536 counts, by Quantile(u).
+
+        Poisson(3).Sample() >= 0.0 --> true *)
+  lam = field(d.Lambda, "Poisson", "Lambda", "nonnegative")
+  count = if value.IsMissing(n) n else draws(n, "Poisson") end
+  if lam == 0.0
+    return if value.IsMissing(count) 0.0 else matrix.Zeros(1, count) end
+  end
+  sd = math.Sqrt(lam)
+  lo = list.Max(0.0, math.Floor(lam - 40.0 * sd - 10.0))
+  hi = math.Ceil(lam + 40.0 * sd + 40.0)
+  countDraws(count, lo, hi, k -> poissonMass(k, lam), u -> poissonQuantile(u, lam, 0.0))
+end

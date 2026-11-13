@@ -305,8 +305,8 @@ defn Run(session, cell, width = 640)
       (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
       struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, 400 high) and Key, which
-      Scene draws again at another width; "text", and Text; "table", a frame, with Columns, Rows (the first 20, as texts)
-      and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
+      Scene draws again at another width; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
+      of field and value for each, an Ok of a struct as that struct, with Columns, Rows (the first 20, as texts) and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
       cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
       the session has ended. *)
   runWith(session, cell, width, false)
@@ -499,6 +499,50 @@ end
 (** The start of a text, at most n characters. *)
 cut(n, t) = if value.Len(t) <= n t else "$(text.Slice(1, n - 1, t))…" end
 
+defn weight(x, most)
+  (** How many values x holds, nested ones too, counted up to more than most and no further. *)
+  if not (value.IsArray(x) or value.IsDict(x) or value.IsStruct(x))
+    return 1
+  end
+  if value.Len(x) > most
+    return most + 1
+  end
+  shape = if value.IsArray(x) value.Size(x) else [] end
+  if value.IsArray(x) and not (value.Len(shape) == 2 and shape[1] == 1)
+    return value.Len(x)
+  end
+  total = 1
+  for v in (if value.IsArray(x) x else dict.Values(if value.IsStruct(x) dict.Fields(x) else x end) end)
+    total = total + weight(v, most - total)
+    if total > most
+      return total
+    end
+  end
+  total
+end
+
+defn brief(x, n)
+  (** cut(n, "$x"), made from no more of a large list, dictionary or struct than its n characters show, so that a model
+      of 10^6 rows shows at once; a large matrix shows its size. *)
+  if weight(x, 1000) <= 1000
+    return cut(n, "$x")
+  end
+  if value.IsArray(x) and not (value.Len(value.Size(x)) == 2 and value.Size(x)[1] == 1)
+    return cut(n, "array of size $(text.Join(" × ", ["$d" for d in value.Size(x)]))")
+  end
+  d = if value.IsArray(x) x else if value.IsStruct(x) dict.Fields(x) else x end
+  ks = if value.IsArray(x) [] else dict.Keys(d) end
+  count = value.Len(d)
+  s = if value.IsArray(x) "[" else "{" end
+  i = 1
+  while value.Len(s) < n and i <= count
+    part = if value.IsArray(x) brief(x[i], n) else "$(ks[i]): $(brief(d[ks[i]], n))" end
+    s = if i == 1 "$s$part" else "$s, $part" end
+    i = i + 1
+  end
+  cut(n, if i <= count "$s, …" else if value.IsArray(x) "$s]" else "$s}" end)
+end
+
 (** Is this value a frame of std/frame? *)
 isFrame(v) = value.IsDict(v) and value.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and value.IsArray(v.Names)
 
@@ -522,12 +566,20 @@ end
 
 defn shown(v, width = 640, svg = false, key = 0)
   (** What a cell's value shows, as texts that JSON carries. *)
-  g = if value.IsStruct(v) drawn(v, width, svg) else missing end
+  (* A graph's fields are all private (std/plot): a struct with a public field is none, and isn't sent to plot. *)
+  g = if value.IsStruct(v) and value.Len(dict.Fields(v)) == 0 drawn(v, width, svg) else missing end
   if value.IsSome(g)
     return if result.IsErr(g) {Kind: "error", Text: g.Error.Message} else if svg {Kind: "graph", Svg: g.Value} else {Kind: "graph", Key: key, Scene: g.Value} end
   end
   if value.IsMissing(v)
     missing
+  else if value.IsStruct(v) and result.IsOk(v) and value.IsStruct(v.Value)
+    (* An Ok of a struct, as stats.TTest gives, shows the struct. *)
+    shown(v.Value, width = width, svg = svg, key = key)
+  else if value.IsStruct(v) and value.Len(dict.Fields(v)) <= 20
+    (* A struct of at most 20 fields: a table of its fields and their values, one row each. *)
+    fs = dict.Fields(v)
+    {Kind: "table", Columns: ["field", "value"], Rows: [[k, brief(fs[k], 80)] for k in dict.Keys(fs)], Count: value.Len(fs)}
   else if isFrame(v)
     count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
     {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[cut(80, "$(v.Columns[name][i])") for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
@@ -539,7 +591,7 @@ defn shown(v, width = 640, svg = false, key = 0)
       {Kind: "array", Shape: shape, Rows: [[cut(80, "$(v[i, j])") for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])]}
     end
   else
-    {Kind: "text", Text: cut(20000, "$v")}
+    {Kind: "text", Text: brief(v, 20000)}
   end
 end
 
@@ -553,8 +605,13 @@ defn errorLine(path, e)
 end
 
 defn ran(c, key)
-  (** Runs the code of a cell and sends its answer; gives its value when it shows as a graph, which the session keeps. *)
+  (** Runs the code of a cell and sends its answer; gives its value when it shows as a graph, which the session keeps.
+      std/random starts again first, from the seed of the session and the title of the cell, as cesia test does for each
+      test: a cell run again draws the same numbers, whatever ran before it. *)
   start = sys.Now()
+  first = text.Lines(c.Code)
+  title = if value.Len(first) == 0 "" else marker(first[1]) end
+  restartRandom(if value.IsMissing(title) "" else title end)
   r = evalCell(c.Code, c.Line)
   seconds = sys.Now() - start
   if result.IsErr(r)
@@ -627,7 +684,7 @@ defn rows(names)
   for name in names
     v = valueOf(name)
     if result.IsOk(v)
-      preview = if isFrame(v.Value) text.Join(", ", ["$c" for c in v.Value.Names]) else "$(v.Value)" end
+      preview = if isFrame(v.Value) text.Join(", ", ["$c" for c in v.Value.Names]) else brief(v.Value, 80) end
       out = list.Append({Name: name, Type: kind(v.Value), Size: size(v.Value), Preview: cut(80, text.Replace("\n", " ", preview))}, out)
     end
   end

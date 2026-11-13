@@ -1,0 +1,23 @@
+(* The notebook that stats.ce runs: draws, a test, a struct, a struct that holds 10^6 numbers. *)
+use std/result
+use std/stats
+
+(* %% Draws *)
+xs = stats.Normal(0, 1).Sample(3)
+xs
+
+(* %% Test *)
+stats.TTest([1.2, 0.8, 1.9, 1.4, 1.1], mu = 1.0)
+
+(* %% Law *)
+stats.Gamma(2, 3)
+
+(* %% Long *)
+struct Long
+  Xs
+  N
+end
+Long([0.5 * k for k in 1..1000000], 1000000)
+
+(* %% Long dictionary *)
+{Xs: [0.5 * k for k in 1..1000000]}
