@@ -58,9 +58,9 @@ d5 = 701980252875.0 / 199316789632.0
 d6 = -1453857185.0 / 822651844.0
 d7 = 69997945.0 / 29380423.0
 
-(* The Rosenbrock method of stiff = true (Hairer and Wanner II, §IV.7), in the form with the stages u_i of their
-   (7.25), which the code RODAS and those of Julia use. With s the signed step, J = ∂f/∂y and ft = ∂f/∂t at the start
-   of the step and W = I - s γ J, factored once, each stage solves
+(* The Rosenbrock method of stiff = true (Hairer and Wanner II, §IV.7), in the form with the stages u_i that the code
+   RODAS and those of Julia use: Steinebach's (1.2) with u_i = Σ_j Γ_ij k_j. With s the signed step, J = ∂f/∂y and
+   ft = ∂f/∂t at the start of the step and W = I - s γ J, factored once, each stage solves
 
      W u_i = s γ f(t + c_i s, y + Σ_j a_ij u_j) + s² γ d_i ft + γ Σ_j C_ij u_j,
 

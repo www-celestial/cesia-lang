@@ -16,7 +16,8 @@ solved(r) = result.Unwrap(r)
 lastRow(s) = s.Y[value.Len(s.T), :]
 eps = 2.220446049250313e-16
 
-(* The tables, written here again from their source, in the form with the stages u_i of Hairer and Wanner (II, (7.25)):
+(* The tables, written here again from their source, in the form with the stages u_i of the code RODAS (Hairer and
+   Wanner II, §IV.7):
    Rodas4 of Hairer and Wanner (1996) and Rodas5P of Steinebach (2023), as OrdinaryDiffEq.jl prints both. *)
 rodas4 = {Gamma: 0.25, Order: 4, Dense: 3,
   A: [0.0 0.0 0.0 0.0 0.0 0.0
@@ -95,7 +96,7 @@ end
 
 defn phi(tree, st)
   (** The elementary weight of a tree, a column of one value for each stage: a node with one child goes through beta,
-      one with more through alpha for each, the rule of Rosenbrock methods (Hairer and Wanner II, Table IV.7.1). *)
+      one with more through alpha for each, the rule of Rosenbrock methods (Steinebach 2023, Table 2). *)
   if value.Len(tree) == 0
     return matrix.Ones(st.S, 1)
   end

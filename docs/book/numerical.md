@@ -167,7 +167,7 @@ y(2, :)
 | `Y` | the states, one row for each time, one column for each component | `y` | `sol.y.T` |
 | `s.At(t)` | the state at any time `t` of the solution, or a matrix as `Y` for an array of times | `deval(sol, t)` | `sol.sol(t)` |
 | `Events` | the events met, in time order | `te`, `ye`, `ie` | `sol.t_events`, `sol.y_events` |
-| `Stats` | `Steps`, `Rejected`, `Evaluations`, and `Jacobians` and `Factorizations`, 0 for this method | `sol.stats` | `sol.nfev` |
+| `Stats` | `Steps`, `Rejected`, `Evaluations`, and with `stiff = true` `Jacobians` and `Factorizations`, 0 otherwise | `sol.stats` | `sol.nfev`, `sol.njev`, `sol.nlu` |
 
 With two times, `[t0, t1]`, `T` holds the times of the steps the method took. With three or more, increasing or
 decreasing, `T` holds those times and `Y` the states there, from the same steps, so `At` gives the same numbers either
@@ -236,7 +236,10 @@ which can still be plotted:
 - `steps` is reached;
 - `f` gives a NaN or an infinity: the step is halved and tried again, 10 times, then the message names the component;
 - `f` gives a value of another shape than `y0`, or no number;
-- the problem looks *stiff*, below.
+- the problem looks *stiff*, below;
+- with `stiff = true`, `jacobian` gives a value that is no `n × n` matrix of finite numbers, or a Jacobian by
+  differences holds a NaN or an infinity, or the matrix $I - h\gamma J$ of a step stays singular as the step is halved
+  10 times.
 
 $y' = y^2$ from $y(0) = 1$ is $1 / (1 - t)$, which goes to infinity at $t = 1$:
 
@@ -274,8 +277,37 @@ MATLAB's `ode45` and scipy's `RK45` say nothing, and take minutes. Solve watches
 after Shampine (1977), estimates $h |\lambda|$, the step times the largest rate of change along the step, from the last
 two stages of the step, which are at the same time. Past 3.25 the step is at the edge of what the method can take
 without its errors growing; on 15 such steps, without 6 calm steps in a row between them, Solve stops and says so. It
-tries the test every 1,000 steps, and at each step once one is past. A method made for stiff problems is the next part
-of Cesia's numerical methods.
+tries the test every 1,000 steps, and at each step once one is past. Its message says what to do: `stiff = true`, a
+method made for stiff problems, which takes some hundred steps where this one would take millions:
+
+```cesia
+w = result.Unwrap(ode.Solve(vdp, [0.0, 3000.0], [2.0, 0.0], stiff = true))
+w.Stats -->
+w.At(3000.0) -->
+```
+
+The same in Python, R and MATLAB, at the same tolerances. MATLAB's `ode15s` and `ode23s`, and scipy's `Radau`, `BDF`
+and `LSODA`, are their methods for stiff problems; Cesia has one, chosen by measure, below.
+
+```python
+sol = solve_ivp(lambda t, y: [y[1], 1000 * (1 - y[0] ** 2) * y[1] - y[0]], (0, 3000), [2, 0], method="Radau",
+                rtol=1e-6, atol=1e-9)
+sol.y[:, -1]   # [-1.51060692e+00, 1.17838003e-03]
+```
+
+```r
+library(deSolve)
+vdp <- function(t, y, p) list(c(y[2], 1000 * (1 - y[1]^2) * y[2] - y[1]))
+out <- ode(c(2, 0), c(0, 3000), vdp, NULL, method = "rodas", rtol = 1e-6, atol = 1e-9)
+out[2, ]
+```
+
+```matlab
+vdp = @(t, y) [y(2); 1000 * (1 - y(1)^2) * y(2) - y(1)];
+opts = odeset('RelTol', 1e-6, 'AbsTol', 1e-9);
+[t, y] = ode15s(vdp, [0 3000], [2 0], opts);
+y(end, :)
+```
 
 ### The method
 
@@ -303,6 +335,56 @@ bits; the dense output's order 4 at several points of a step; the solver's first
 the paper's table; and then problems with known solutions: the decay, a rotation, the logistic equation, Kepler's orbits
 at eccentricities 0.1 to 0.9, the invariants of a spinning rigid body, the orbit of Arenstorf that closes after
 17.0652165601579625588917206249, a solve forward then back.
+
+### The method for stiff problems
+
+With `stiff = true`, Solve uses Rodas5P (Steinebach 2023), a *Rosenbrock method* (Hairer and Wanner II, §IV.7). Where
+an explicit method like Dormand and Prince's takes each stage from the stages before it, a Rosenbrock method solves, at
+each stage, a linear system with the matrix $W = I - h\gamma J$, where $J = \partial f / \partial y$ is the *Jacobian*
+of `f` at the start of the step: the $n \times n$ matrix of how each component of $f$ changes with each component of
+$y$. A fast component, which decays at a rate $\lambda$ far below 0, has its change divided by about $1 -
+h\gamma\lambda$, so its error dies out whatever the step: the method is *L-stable*, its factor of growth $R(z)$ at most
+1 for every $z = h\lambda$ whose real part is below 0, and 0 as $z$ goes to $-\infty$. The steps then follow the slow
+part of the solution only.
+
+In the form with the stages $u_i$ that the code RODAS of Hairer and Wanner uses, for a step from $t$ to $t + h$:
+
+$$(I - h\gamma J)\, u_i = h\gamma\, f\Big(t + c_i h,\; y + \sum_{j<i} a_{ij} u_j\Big) + h^2 \gamma\, d_i\,
+\frac{\partial f}{\partial t} + \gamma \sum_{j<i} c_{ij} u_j$$
+
+Rodas5P has 8 stages and $\gamma = 0.21193756319429014$; its numbers $a$, $c$ and $d$ are those Steinebach publishes
+with the Julia package OrdinaryDiffEq.jl. $y_1 = y + \sum_j a_{8j} u_j + u_8$ is of order 5; $y + \sum_j a_{8j} u_j$,
+the argument of the last stage, is of order 4, so $u_8$ estimates the error of the step. A step costs one Jacobian, one
+factorization of $W$ by [num.Lu], 8 solves with it and 8 calls of `f`. There is no Newton iteration, as in the implicit
+methods (`ode15s`, `Radau`, `BDF`), so no iteration that can fail to converge.
+
+- **The Jacobian**: `jacobian = (t, y) -> J` gives it, an `n × n` matrix, or a number for a number `y0`. Without it,
+  Solve computes each column $j$ by a forward difference, from one more call of `f` with $y_j$ moved by
+  $\delta_j = \sqrt{\epsilon} \max(|y_j|, \text{atol}_j)$: the rule of Dennis and Schnabel (1996) for finite
+  differences, with $\text{atol}_j$ as the typical size of $y_j$, under which the error test sees no difference
+  ($\sqrt{\epsilon}$ when both are 0). The rule of the code RODAS, $\sqrt{\epsilon \max(|y_j|, 10^{-5})}$, moves
+  $y_2$ of Robertson's problem, about $10^{-13}$, by 400 times its own size: the Jacobian comes out 200 times too large in one place, and the solve
+  takes 4 times more steps, to an answer 15 % off. $\partial f / \partial t$ comes from one more difference, over
+  $\sqrt{\epsilon} |h|$, the scale the step resolves. Without `jacobian`, a step calls `f` $n + 1$ more times.
+- **The next step**: $h_\text{new} = h \cdot \min(6, \max(0.2, 0.9 \cdot \text{err}^{-1/5}))$, or smaller by the
+  *predictive control* of Gustafsson (1994), as in RODAS, $h \cdot 0.9 \cdot (h / h_\text{prev})^{-1} \cdot
+  (\text{err}^2 / \text{err}_\text{prev})^{-1/5}$, which follows the trend of the last two steps. On Van der Pol's
+  oscillator at $\mu = 1000$, it refuses 23 steps instead of 176.
+- **The dense output**: Steinebach's, a polynomial of degree 4 in each step, from its stages, which meets the states at
+  both ends. The error test sees only those ends. Where a fast decay follows a slow forcing, as in $y' = \lambda (y -
+  \cos t) - \sin t$ with $\lambda = -10^6$ (Prothero and Robinson 1974), the method puts each end on $\cos t$ whatever
+  the step: the steps grow to 3.4 at `rtol = 1e-6`, and `At` between them is off by 5 %. `maxStep` bounds the steps
+  where the values between them matter: with `maxStep = 0.05`, `At` is right to `1e-8`.
+- **The size**: `y0` has at most 1,000 components with `stiff = true`; $J$, $W$ and its factors are $n \times n$
+  matrices, 8 MB each at 1,000.
+
+Cesia's tests check the method itself: both tables, Rodas5P and Rodas4 (Hairer and Wanner 1996: 6 stages, order 4),
+against the conditions of order on every rooted tree up to order 5, as Steinebach's Table 2 lists them for Rosenbrock
+methods; their embedded methods, of one order less and not more; their dense outputs; the orders seen as the
+step halves, 4.0 and 5.9; the solver's first step against a step computed in the test, and Rodas4, written in the test,
+as an oracle; then the decay, the problem of Prothero and Robinson, a linear system with rates $-1$, $-10^3$ and
+$-10^6$, Robertson's reactions, HIRES and OREGO (Hairer and Wanner II, §IV.10) against references computed for the tests
+by scipy's `Radau` at `rtol = 1e-13`, tolerance proportionality, events, shapes and every error.
 
 ### In a cell
 
@@ -365,9 +447,18 @@ of [Speed](speed.md#what-becomes-machine-code) doesn't yet make machine code of 
 or computes on whole arrays, as `y + h * k`, so a top-level `f`, a closure and the `f` of a cell all cost the same:
 about 11 µs a step, 1.5 of them in the 6 calls of `f`, each array operation about 75 ns. The aim for the first solve, 60 ms, waits for a JIT that lowers that code.
 
-`use std/ode` adds 3.6 ms to the start of a program (the median of 21 runs: 6.48 ms against 2.63 for a program that
-prints 1), the time to read its code and that of std/optimize, which it uses; `use std/optimize` alone adds 0.45 ms. A
-program that uses neither starts as before.
+With `stiff = true`, measured the same way: Robertson's problem on `[0, 1e11]` at `rtol = 1e-6` and `atol = 1e-10`
+takes 207 steps and **15.2 ms** (14.2 to 25.0), Van der Pol's at $\mu = 1000$ on `[0, 3000]` at `rtol = atol = 1e-6`
+536 steps and **29.1 ms** (27.4 to 33.1); scipy's `Radau`, at `atol = 1e-9`, takes 1,292 steps on the second. Solved
+again in the same program, once the JIT has made `f` native, a step of Robertson's costs about 38 µs: the Jacobian by
+differences, the factorization of $W$ and its 8 solves run as native code in about 10 µs of them, and the rest is the
+loop of the stages in the interpreter. On a 1-D diffusion of 100 points, 53 steps take 70 ms with `jacobian` given, and
+100 ms by differences, which call `f` 100 more times a step. The comparison with scipy's `Radau`, `BDF` and `LSODA` and
+with Octave's `ode15s` waits for the measures made before each release.
+
+`use std/ode` adds to the start of a program the time to read its code and that of std/optimize and std/num, which it
+uses: 1.3 ms in the fastest of 21 runs (4.15 ms against 2.86 for a program that prints 1, on 2026-11-13), more on a
+busy machine; `use std/optimize` alone adds 0.45 ms. A program that uses neither starts as before.
 
 ## Security
 
@@ -377,6 +468,13 @@ bounded: Root by its 60 steps of search and by the bracket, which halves at leas
 Every loop is Cesia code, so [cells.Stop] stops a long solve within a step, and `--limit` applies, as to any program.
 The memory of a solve grows with its steps, by blocks of 128 steps; past the memory limit of the program, the program
 stops with `Limit "memory" reached.`
+
+With `stiff = true`, `jacobian` is code of the caller too: what it gives must be an `n × n` matrix of finite numbers,
+and a Jacobian by differences is checked the same way, so a NaN never reaches the factorization. `y0` has at most 1,000
+components, so its three `n × n` matrices stay under 24 MB; a bigger one is a panic that says so, before anything is
+allocated. The elimination of [num.Lu] runs as native code, which counts its work, about $n^3 / 3$ operations, against
+`--limit` before it starts, and reads only matrices of numbers whose shape it checks first; a factorization at
+$n = 1000$ takes under a second, so `cells.Stop` still answers within a step.
 
 ## Further reading
 
@@ -406,6 +504,20 @@ stops with `Limit "memory" reached.`
   Methods". *ACM Transactions on Mathematical Software* 3(1):44–53, 1977. <https://doi.org/10.1145/355719.355722>.
 - L. F. Shampine, S. Thompson. "Event location for ordinary differential equations". *Computers & Mathematics with
   Applications* 39(5–6):43–54, 2000. <https://doi.org/10.1016/S0898-1221(00)00045-6>.
+- Gerd Steinebach. "Construction of Rosenbrock–Wanner method Rodas5P and numerical benchmarks within the Julia
+  Differential Equations package". *BIT Numerical Mathematics* 63:27, 2023. <https://doi.org/10.1007/s10543-023-00967-x>.
+  Rodas5P, its dense output, and where its numbers and those of Rodas4 are published. Open access.
+- Ernst Hairer, Gerhard Wanner, as above, §IV.7: Rosenbrock methods, their conditions of order and the method Rodas4;
+  §IV.10: the stiff test problems, Robertson's, HIRES and OREGO.
+- Kjell Gustafsson. "Control-theoretic techniques for stepsize selection in implicit Runge-Kutta methods". *ACM
+  Transactions on Mathematical Software* 20(4):496–517, 1994. <https://doi.org/10.1145/198429.198437>. The predictive
+  control of the step.
+- J. E. Dennis Jr., Robert B. Schnabel. *Numerical Methods for Unconstrained Optimization and Nonlinear Equations*.
+  SIAM, 1996 (first published by Prentice-Hall, 1983). <https://doi.org/10.1137/1.9781611971200>. The step of a
+  forward difference.
+- A. Prothero, A. Robinson. "On the stability and accuracy of one-step methods for solving stiff systems of ordinary
+  differential equations". *Mathematics of Computation* 28(125):145–162, 1974.
+  <https://doi.org/10.1090/S0025-5718-1974-0331793-2>. Their test problem.
 
 ## Next
 
