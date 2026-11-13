@@ -599,8 +599,9 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     goto st join;
     meet st end_yes end_no join;
     Reg r, k
-  (* An if of no type, as one of numbers of the region: of the kind of its first branch's value, which the other must
-     have too. *)
+  (* An if of no type, as one of numbers of the region: of the kind both branches' values have. A value beside a number
+     is guessed as that number, checked at the end of its branch, as arithmetic does: a variable of no type holds a
+     value, as err in facold = if err > 1.0e-4 err else 1.0e-4 end. *)
   | If (c, yes, no) when ty st e == TA && Array.length yes > 0 && Array.length no > 0 ->
     let y = block st and n = block st and join = block st in
     let b0 = st.cur in
@@ -608,24 +609,31 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
     let base = facts st b0 in
     carry st base y;
     st.cur <- y;
-    let r = ref (-1) in
-    assume st c true (fun () ->
-        let x, k = value_block st yes in
-        r := reg st k;
-        emit st (Move (!r, x)));
-    let k = Vec.get st.kinds !r in
-    let end_yes = facts st st.cur in
-    goto st join;
+    let vy = ref (Ir.Int 0, Ir.Kval) and vn = ref (Ir.Int 0, Ir.Kval) in
+    assume st c true (fun () -> vy := value_block st yes);
+    let end_y = st.cur in
     carry st base n;
     st.cur <- n;
-    assume st c false (fun () ->
-        let x, k' = value_block st no in
-        if k' <> k then raise No;
-        emit st (Move (!r, x)));
-    let end_no = facts st st.cur in
-    goto st join;
+    assume st c false (fun () -> vn := value_block st no);
+    let end_n = st.cur in
+    let k = match snd !vy, snd !vn with a, b when a = b -> a | Kval, b -> b | a, Kval -> a | _ -> raise No in
+    let r = reg st k in
+    let finish at (b : block) v =
+      st.cur <- at;
+      let x =
+        match v with
+        | x, k' when k' = k -> x
+        | v -> (match guess st b.(Array.length b - 1) v with x, k' when k' = k -> x | _ -> raise No)
+      in
+      emit st (Move (r, x));
+      let known = facts st st.cur in
+      goto st join;
+      known
+    in
+    let end_yes = finish end_y yes !vy in
+    let end_no = finish end_n no !vn in
     meet st end_yes end_no join;
-    Reg !r, k
+    Reg r, k
   | Index ({ e = Var { b = Local i; _ }; _ }, [| Ix ix |], false) when st.vecs.(i) <> None ->
     let v = Option.get st.vecs.(i) in
     (match guess st ix (expr st ix) with

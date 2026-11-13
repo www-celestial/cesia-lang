@@ -1,0 +1,31 @@
+use std/io
+use std/list
+
+(* An if of no type whose one branch gives a value and the other a number, as facold = if err > 1.0e-4 err else 1.0e-4
+   end in ode.Solve: the value is guessed as that number and checked, and a run that meets another kind goes back to the
+   interpreter before the statement. *)
+defn run(xs, n)
+  low = 1.0e-4
+  high = 2.0
+  total = 0.0
+  for i in 1..n
+    err = xs[i]
+    low = if err > 1.0e-4 err else 1.0e-4 end
+    high = if err > 2.0 2.0 else err end
+    total = total + low + high
+  end
+  io.Print(total, low, high)
+end
+
+n = 50000
+xs = list.Fill(0, n)
+for i in 1..n
+  xs[i] = if i < 25000 0.5 * i / n else 0.25 end
+end
+run(xs, n)
+run(xs, n)
+(* Integers among the floats: each takes the interpreter's way and keeps its kind, as low and high show. *)
+xs[40000] = 3
+run(xs, n)
+xs[n] = 1
+run(xs, n)
