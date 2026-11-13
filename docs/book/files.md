@@ -109,9 +109,11 @@ sys.Remove("archive/2026/done.txt") -->
 A new folder can be entered and listed by everyone on the machine, and a new file read by everyone: only their owner can
 change them (their *modes*, 0755 and 0644, say so). For what is no one else's business, such as keys, a session or a
 browser's profile, `private = true` makes them their owner's alone, 0700 and 0600: no one else can list the folder,
-enter it, or read the file. [sys.Mkdir] makes so every folder it creates, and the last one if it was there already;
-[sys.Write] makes the file so before it writes the text, whether the file is new or not. A folder or a file that belongs
-to someone else gives an `Err` and stays as it was.
+enter it, or read the file. [sys.Mkdir] makes so every folder it creates, and the last one if it was there already
+(a program that had opened it before can still list the names in it). [sys.Write] puts the text in a new file made so,
+beside the old one, then gives it the old one's name: whoever had the old file open keeps the old text, and a symbolic
+link at that name is replaced, what it pointed to left as it was. A folder or a file that belongs to someone else gives
+an `Err` and stays as it was.
 
 ```cesia allow=read,write
 sys.Mkdir("keys", private = true) -->

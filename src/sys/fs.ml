@@ -77,22 +77,41 @@ let read_all ctx path =
         go n)
 
 (* The person's alone, 0700 for a folder and 0600 for a file, set on what is open: a link put in its place since changes
-   nothing. One of someone else's is refused. Windows has no such modes: there a file takes the rights of its folder. *)
+   nothing. One of someone else's is refused. Windows has no such modes: there a file takes the rights of its folder. A
+   folder made so keeps what was opened before: a descriptor of it can still list its names. *)
 let own fd = if not Sys.win32 then Unix.fchmod fd (if (Unix.fstat fd).st_kind = Unix.S_DIR then 0o700 else 0o600)
 
-(* With [sync], the text is on the disk before the Ok: the file by fsync, and its folder, which holds its name. A file
-   [alone] is made the person's before it is emptied: one that can't be is left as it was. *)
-let write_all ?(sync = false) ?(alone = false) path flags text =
-  with_fd ~perm:(if alone then 0o600 else 0o644) path (Unix.O_WRONLY :: Unix.O_CREAT :: if alone then [] else flags) (fun fd ->
-      if alone then (own fd; Unix.ftruncate fd 0);
-      let n = String.length text in
-      let rec go at = if at < n then go (at + Unix.write_substring fd text at (n - at)) in
-      go 0;
-      if sync then begin
-        Unix.fsync fd;
-        if not Sys.win32 then with_fd (Filename.dirname path) [ Unix.O_RDONLY ] Unix.fsync
-      end;
+let put fd text =
+  let n = String.length text in
+  let rec go at = if at < n then go (at + Unix.write_substring fd text at (n - at)) in
+  go 0
+
+let sync_dir path = if not Sys.win32 then with_fd (Filename.dirname path) [ Unix.O_RDONLY ] Unix.fsync
+
+(* With [sync], the text is on the disk before the Ok: the file by fsync, and its folder, which holds its name. *)
+let write_all ?(sync = false) path flags text =
+  with_fd path (Unix.O_WRONLY :: Unix.O_CREAT :: flags) (fun fd ->
+      put fd text;
+      if sync then (Unix.fsync fd; sync_dir path);
       Missing)
+
+let rand = lazy (Random.State.make_self_init ())
+
+(* A private text goes into a new file of the person's alone, made beside the path under a random name that no one can
+   have opened, then renamed over the path: a reader of the old file keeps the old text, and a link at the path is
+   replaced, its target untouched. A file of someone else's there is refused, and left as it was. *)
+let write_private ~sync path text =
+  (match Unix.lstat path with
+   | st when (not Sys.win32) && st.st_uid <> Unix.getuid () -> raise (Unix.Unix_error (Unix.EPERM, "write", path))
+   | _ | (exception Unix.Unix_error (Unix.ENOENT, _, _)) -> ());
+  let tmp = Printf.sprintf "%s/.%s.%08x.tmp" (Filename.dirname path) (Filename.basename path) (Random.State.bits (Lazy.force rand)) in
+  let fd = Unix.openfile tmp [ O_WRONLY; O_CREAT; O_EXCL; O_CLOEXEC ] 0o600 in
+  try
+    Fun.protect ~finally:(fun () -> Unix.close fd) (fun () -> own fd; put fd text; if sync then Unix.fsync fd);
+    Unix.rename tmp path;
+    if sync then sync_dir path;
+    Missing
+  with e -> (try Unix.unlink tmp with Unix.Unix_error _ -> ()); raise e
 
 let list_dir path =
   let d = Unix.opendir path in
@@ -162,8 +181,8 @@ let on_path ?params ?least name perm verb arity f =
 let natives =
   [ on_path "Read" Read "read" 1 (fun ctx path _ -> read_all ctx path);
     on_path ~params:[| "path"; "text"; "sync"; "private" |] ~least:2 "Write" Write "write" 4 (fun ctx path a ->
-        let alone = Native.flag_arg ctx "private" a 3 in
-        write_all ~sync:(Native.flag_arg ctx "sync" a 2) ~alone path [ Unix.O_TRUNC ] (Native.text_arg ctx "Write" a.(1)));
+        let sync = Native.flag_arg ctx "sync" a 2 and text = Native.text_arg ctx "Write" a.(1) in
+        if Native.flag_arg ctx "private" a 3 then write_private ~sync path text else write_all ~sync path [ Unix.O_TRUNC ] text);
     on_path "Append" Write "append to" 2 (fun ctx path a ->
         write_all path [ Unix.O_APPEND ] (Native.text_arg ctx "Append" a.(1)));
     on_path "List" Read "list" 1 (fun _ path _ -> list_dir path);
