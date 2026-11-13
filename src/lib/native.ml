@@ -285,7 +285,7 @@ let leading ctx v =
    in Cesia did them, so the same bits. {Singular, Lu, Perm, Sign}, Singular when a pivot is under 1e-14 in absolute
    value; or missing when m is no matrix of numbers with as many columns as rows or more. *)
 (* The dot product of two float arrays of one shape in one pass, with the bits of list.Sum(a * b); missing for anything
-   else, which num.Dot then computes that way. *)
+   else, which num.Dot then computes that way. std/optimize has it too, for its arrays of floats, without loading num. *)
 let dot ctx (a : t array) =
   match a.(0), a.(1) with
   | Array ({ store = F _; _ } as x), Array ({ store = F _; _ } as y) when Value.same_shape x y ->
@@ -915,7 +915,7 @@ let packages =
       "Pi", Float (4. *. atan 1.);
       "Nan", Float nan ];
     "num", [ "dot", nat "dot" 2 2 dot; "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
-    "optimize", [ "direction", nat "direction" 7 7 lbfgs_direction ];
+    "optimize", [ "direction", nat "direction" 7 7 lbfgs_direction; "dot", nat "dot" 2 2 dot ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
       "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));

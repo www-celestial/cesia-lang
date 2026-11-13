@@ -7,7 +7,6 @@ use std/columns as col
 use std/list
 use std/math
 use std/matrix
-use std/num
 use std/result
 use std/text
 use std/value
@@ -430,12 +429,12 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
     if used > 0
       d = -direction(e.G, ss, ys, rho, used, newest, gamma)
     end
-    gd = num.Dot(e.G, d)
+    gd = dot(e.G, d)
     if not (gd < 0.0)
       (* Not a direction of descent, from rounding: the memory goes, and the step goes down the gradient. *)
       used = 0
       d = -e.G
-      gd = num.Dot(e.G, d)
+      gd = dot(e.G, d)
     end
     stp = if used == 0 smaller(1.0, 1.0 / math.Sqrt(-gd)) else 1.0 end
     ls = lineSearch(f, gradient, scalar, x, e, d, gd, stp)
@@ -455,8 +454,8 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
     if moved
       s = ls.X - x
       y = ls.E.G - e.G
-      sy = num.Dot(s, y)
-      yy = num.Dot(y, y)
+      sy = dot(s, y)
+      yy = dot(y, y)
       if sy > eps * yy
         newest = if newest == pairs 1 else newest + 1 end
         ss[newest] = s
@@ -540,7 +539,7 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
     end
     calls += et.Calls
     fp = et.F
-    dp = if fp - fp == 0.0 num.Dot(et.G, d) else math.Nan end
+    dp = if fp - fp == 0.0 dot(et.G, d) else math.Nan end
     if not (dp - dp == 0.0)
       (* No finite value: back half way to the best step so far, and never as far again. *)
       far = stp
