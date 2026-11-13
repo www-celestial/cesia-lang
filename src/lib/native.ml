@@ -346,7 +346,9 @@ let sparse_cholesky ctx (a : t array) =
 let sparse_front ctx (a : t array) =
   let n, p, i = sparse_columns ctx "luFront" a in
   let x = sparse_values ctx "luFront" (Array.length i) a.(3) and q = sparse_order ctx "luFront" n a.(4) in
-  let tol = match a.(5) with Float t when t >= 0. && t <= 1. -> t | _ -> Runtime.fail ctx Type (Messages.sparse_bad "luFront") in
+  let tol =
+    match a.(5) with Float t when t >= 0. && t <= 1. -> t | _ -> Runtime.fail ctx Type (Messages.sparse_bad "luFront")
+  in
   let limit = ctx.w.limits.memory_words in
   sparse_factor n (Sparse.front_lu ~pay:(Runtime.pay ctx) ~reserve:(Runtime.reserve ctx) ~limit n p i x q tol)
 

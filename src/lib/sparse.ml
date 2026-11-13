@@ -495,6 +495,17 @@ let lu ~pay ~reserve n ap ai (ax : floatarray) q tol =
 
 let at f m r c = { Kernels.data = f; offset = r + (c * m); ld = m }
 
+(* Float.Array's fill with 0 and blit, by hand for a few cells, where a call into C costs more than the cells: most
+   fronts are small. *)
+let zero f o n = if n < 32 then for t = o to o + n - 1 do Float.Array.set f t 0. done else Float.Array.fill f o n 0.
+
+let copy src s dst d n =
+  if n < 32 then
+    for t = 0 to n - 1 do
+      Float.Array.set dst (d + t) (Float.Array.get src (s + t))
+    done
+  else Float.Array.blit src s dst d n
+
 (* Below this many products a call to BLAS costs more than it saves; from [wide] on, a second thread pays. More threads
    than that made the medium products of fronts 5 to 30 times slower on a busy machine. *)
 let least = 1024
@@ -507,7 +518,9 @@ let update ~pay ~rows ~cols ~inner ~trans out x y =
   pay work;
   if
     rows > 0 && cols > 0 && inner > 0
-    && not (work >= least && !Kernels.gemm ~rows ~cols ~inner ~trans ~sub:true ~threads:(if work < wide then 1 else 2) out x y)
+    && not
+         (work >= least
+         && !Kernels.gemm ~rows ~cols ~inner ~trans ~sub:true ~threads:(if work < wide then 1 else 2) out x y)
   then begin
     let { Kernels.data = od; offset = oo; ld = ol } = out and { Kernels.data = xd; offset = xo; ld = xl } = x in
     let { Kernels.data = yd; offset = yo; ld = yl } = y in
@@ -660,13 +673,17 @@ let rec lu_columns ~pay f m kp tol order j0 j1 =
     end
   end
 
-(* Which cells [gather] keeps, renamed (r, c), and where: [Lower] those with r >= c, at (r, c); [Below] those with r > c,
-   at (c, r), the rows of the lower triangle as columns; [Above] those with r < c, at (c, r), the rows of the upper
-   triangle; [Both] all, at (max, min), the lower triangle of the pattern of a + a'. *)
+(* Which cells [gather] keeps, renamed (r, c), and where: [Lower] those with r >= c, at (r, c); [Below] those with
+   r > c, at (c, r), the rows of the lower triangle as columns; [Above] those with r < c, at (c, r), the rows of the
+   upper triangle; [Both] all, at (max, min), the lower triangle of the pattern of a + a'. *)
 type side = Lower | Below | Above | Both
 
 let column side r c =
-  match side with Lower -> if r >= c then c else -1 | Below -> if r > c then r else -1 | Above -> if r < c then r else -1 | Both -> min r c
+  match side with
+  | Lower -> if r >= c then c else -1
+  | Below -> if r > c then r else -1
+  | Above -> if r < c then r else -1
+  | Both -> min r c
 
 let row side r c = match side with Lower -> r | Below | Above -> c | Both -> max r c
 
@@ -708,6 +725,7 @@ type symbolic = {
   n : int;
   fperm : int array;  (* the unknown eliminated k-th *)
   rank : int array;  (* the postorder: the new name of each column of the pattern *)
+  postordered : bool;  (* rank is the identity: the order was a postorder already, as AMD's often is *)
   super : int array;  (* the first column of each supernode, then n *)
   sparent : int array;
   hd : int array;  (* the first child of each supernode, nx the next *)
@@ -786,11 +804,19 @@ let analyse ~pay n cp ci perm =
   done;
   pay !work;
   (* The columns renamed in postorder: each subtree is then a run of columns. *)
-  let rank = Array.make n 0 in
-  Array.iteri (fun k j -> rank.(j) <- k) post;
-  let fperm = Array.init n (fun k -> perm.(post.(k))) in
-  let par = Array.init n (fun k -> match parent.(post.(k)) with -1 -> -1 | j -> rank.(j)) in
-  let count = Array.init n (fun k -> count.(post.(k))) in
+  let postordered = ref true in
+  Array.iteri (fun k j -> if j <> k then postordered := false) post;
+  let postordered = !postordered in
+  let rank, fperm, par, count =
+    if postordered then post, perm, parent, count
+    else begin
+      let rank = Array.make n 0 in
+      Array.iteri (fun k j -> rank.(j) <- k) post;
+      ( rank, Array.init n (fun k -> perm.(post.(k))),
+        Array.init n (fun k -> match parent.(post.(k)) with -1 -> -1 | j -> rank.(j)),
+        Array.init n (fun k -> count.(post.(k))) )
+    end
+  in
   (* Fundamental supernodes: column j joins j - 1 when j is its parent, its only child, and its pattern is that of j - 1
      less j - 1 (Liu, Ng and Peyton 1993). *)
   let kids = Array.make n 0 in
@@ -880,8 +906,9 @@ let analyse ~pay n cp ci perm =
     peak := max !peak !depth;
     incr g
   done;
-  { n; fperm; rank; super; sparent; hd; nx; rp; widest = !widest; front = !widest * !widest; peak = !peak; stored = !stored;
-    counted = !g = ns }
+  let widest = !widest in
+  { n; fperm; rank; postordered; super; sparent; hd; nx; rp; widest; front = widest * widest; peak = !peak;
+    stored = !stored; counted = !g = ns }
 
 (* The rows of each supernode: its columns in order, then the rows below them in no order, from the cells of the lower
    triangle (ap, ai), renamed, and the rows its children update. *)
@@ -936,9 +963,9 @@ let frontal ~pay s rows ~half ~assemble ~factor ~keep =
     done;
     if half then
       for c = 0 to m - 1 do
-        Float.Array.fill f ((c * m) + c) (m - c) 0.
+        zero f ((c * m) + c) (m - c)
       done
-    else Float.Array.fill f 0 (m * m) 0.;
+    else zero f 0 (m * m);
     assemble g f m map;
     while !top > 0 && s.sparent.(ids.(!top - 1)) = g do
       decr top;
@@ -973,11 +1000,11 @@ let frontal ~pay s rows ~half ~assemble ~factor ~keep =
         let u = m - k and o = offs.(!top) in
         if half then
           for q = 0 to u - 1 do
-            Float.Array.blit f (((k + q) * m) + k + q) stack (o + (q * u) + q) (u - q)
+            copy f (((k + q) * m) + k + q) stack (o + (q * u) + q) (u - q)
           done
         else
           for q = 0 to u - 1 do
-            Float.Array.blit f (((k + q) * m) + k) stack (o + (q * u)) u
+            copy f (((k + q) * m) + k) stack (o + (q * u)) u
           done;
         ids.(!top) <- g;
         offs.(!top + 1) <- o + (u * u);
@@ -1050,7 +1077,7 @@ let cholesky ~pay ~reserve ~limit n p i (x : floatarray) perm =
     reserve (words s more);
     (* A cell below the diagonal is in a column of which its row is an ancestor in the tree: renamed in postorder, it
        stays below the diagonal. *)
-    let ap, ai, ax = gather n cp ci (Some cx) s.rank Lower in
+    let ap, ai, ax = if s.postordered then cp, ci, cx else gather n cp ci (Some cx) s.rank Lower in
     let rows = rows_of s ap ai in
     let lp = offsets s (fun m k -> m * k) in
     let lx = Float.Array.make lp.(Array.length lp - 1) 0. in
@@ -1077,7 +1104,7 @@ let cholesky ~pay ~reserve ~limit n p i (x : floatarray) perm =
     in
     let keep g f m k =
       for j = 0 to k - 1 do
-        Float.Array.blit f ((j * m) + j) lx (lp.(g) + (j * m) + j) (m - j)
+        copy f ((j * m) + j) lx (lp.(g) + (j * m) + j) (m - j)
       done
     in
     if frontal ~pay s rows ~half:true ~assemble ~factor ~keep then Factor (Chol { s; rows; lp; lx }) else Failed
@@ -1097,8 +1124,8 @@ let front_lu ~pay ~reserve ~limit n p i (x : floatarray) perm tol =
   | Some w -> Memory w
   | None ->
     reserve (words s more);
-    let renamed = Array.map (fun k -> s.rank.(k)) pinv in
-    let ap, ai, _ = gather n cp ci None s.rank Lower in
+    let renamed = if s.postordered then pinv else Array.map (fun k -> s.rank.(k)) pinv in
+    let ap, ai = if s.postordered then cp, ci else (fun (p, i, _) -> p, i) (gather n cp ci None s.rank Lower) in
     let cols = rows_of s ap ai in
     let lo, li, lx = gather n p i (Some x) renamed Lower and uo, ui, ux = gather n p i (Some x) renamed Above in
     let pivots = Array.copy cols and order = Array.make (max 1 s.widest) 0 in
@@ -1137,12 +1164,13 @@ let front_lu ~pay ~reserve ~limit n p i (x : floatarray) perm tol =
       end
     in
     let keep g f m k =
-      Float.Array.blit f 0 llx llp.(g) (m * k);
+      copy f 0 llx llp.(g) (m * k);
       for c = k to m - 1 do
-        Float.Array.blit f (c * m) ulx (ulp.(g) + ((c - k) * k)) k
+        copy f (c * m) ulx (ulp.(g) + ((c - k) * k)) k
       done
     in
-    if frontal ~pay s cols ~half:false ~assemble ~factor ~keep then Factor (Lu { ls = s; cols; pivots; llp; llx; ulp; ulx })
+    if frontal ~pay s cols ~half:false ~assemble ~factor ~keep then
+      Factor (Lu { ls = s; cols; pivots; llp; llx; ulp; ulx })
     else Failed
 
 (* x of a x = b: for Cholesky, x = p' (L' \ (L \ (p b))); for LU, x = q (U \ (L \ (p b))), each block a column at a
@@ -1165,7 +1193,7 @@ let solve fac (b : floatarray) =
         done
       done;
       if u * k >= least then begin
-        Float.Array.fill t 0 u 0.;
+        zero t 0 u;
         update ~pay:nothing ~rows:u ~cols:1 ~inner:k ~trans:false (vec t 0 u) (vec lx (lp.(g) + k) m) (vec y f0 k);
         for q = 0 to u - 1 do
           let i = rows.(r0 + k + q) in
@@ -1227,7 +1255,7 @@ let solve fac (b : floatarray) =
         done
       done;
       if u * k >= least then begin
-        Float.Array.fill t 0 u 0.;
+        zero t 0 u;
         update ~pay:nothing ~rows:u ~cols:1 ~inner:k ~trans:false (vec t 0 u) (vec llx (llp.(g) + k) m) (vec w f0 k);
         for q = 0 to u - 1 do
           let i = pivots.(r0 + k + q) in
@@ -1249,7 +1277,8 @@ let solve fac (b : floatarray) =
       for q = 0 to u - 1 do
         Float.Array.set t q (Float.Array.get w cols.(r0 + k + q))
       done;
-      if u * k >= least then update ~pay:nothing ~rows:k ~cols:1 ~inner:u ~trans:false (vec w f0 k) (vec ulx ulp.(g) k) (vec t 0 u)
+      if u * k >= least then
+        update ~pay:nothing ~rows:k ~cols:1 ~inner:u ~trans:false (vec w f0 k) (vec ulx ulp.(g) k) (vec t 0 u)
       else
         for q = 0 to u - 1 do
           let xc = Float.Array.get t q and o = ulp.(g) + (q * k) in

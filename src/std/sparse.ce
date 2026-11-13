@@ -807,15 +807,17 @@ singular(why) = result.Err({Kind: "sparse", Message: "sparse.Solve: a is singula
 defn Solve(a, b)
   (** The x of a x = b, a square: MATLAB's A \ b, scipy's spsolve(A, b). b is an array of a.Rows numbers, a row or a
       column, and x has its shape, or a matrix of a.Rows rows, and x has a column for each of its columns. An Ok of x,
-      or an Err of the kind "sparse" when a is singular, or holds a NaN or an infinity.
+      or an Err of the kind "sparse" when a is singular, holds a NaN or an infinity, or when its factor would take more
+      memory than the limit allows.
 
       As MATLAB's backslash, a symmetric a with its diagonal above 0 is tried with Cholesky's factorization, L L',
       which halves the work and needs no pivoting; when a pivot is not above 0, a is not positive definite and LU
       takes over, as for any other a. Both first order the unknowns by approximate minimum degree (AMD, Amestoy, Davis
-      and Duff 1996), so that the factors fill little; LU picks its pivots as it goes, by partial pivoting, keeping a
-      diagonal pivot of a nearly symmetric a when it is at least 0.1 times the largest of its column. When the
-      residual |a x - b| is above n eps |a| |x|, one step of iterative refinement follows. The chapter Numerical
-      methods of the book says where each part comes from, and how to check x.
+      and Duff 1996), so that the factors fill little, then factor by supernodes, dense blocks of columns that BLAS
+      computes; LU picks its pivots as it goes, by partial pivoting, keeping a diagonal pivot of a nearly symmetric a
+      when it is at least 0.1 times the largest of its column. When the residual |a x - b| is above n eps |a| |x|, one
+      step of iterative refinement follows. The chapter Numerical methods of the book says where each part comes from,
+      and how to check x.
 
         a = Of([1, 2, 1, 2], [1, 1, 2, 2], [4.0, 1.0, 1.0, 3.0], 2, 2)
         Solve(a, [1.0, 2.0]).Value --> [0.09090909090909091, 0.6363636363636364]

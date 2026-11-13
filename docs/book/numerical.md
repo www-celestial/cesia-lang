@@ -666,29 +666,36 @@ plot.Heatmap(matrix.Reshape([k, k], u))
 
 ### Speed of sparse matrices
 
-On the machine of [Speed](speed.md#beside-the-giants), on 2026-11-13: Cesia's times are the median of 21 runs, with the
+On the machine of [Speed](speed.md#beside-the-giants), on 2026-11-14: Cesia's times are the median of 21 runs, with the
 95 % interval of that median; scipy 1.18.1's and GNU Octave 11.3's, the median of 5 runs, and one run of each for the
-1000 × 1000 grid (scipy's on 2026-11-12).
+1000 × 1000 grid. The product was measured on 2026-11-13.
 
-| 2-D Poisson | Cesia | scipy | Octave |
+| | Cesia | scipy | Octave |
 |---|---:|---:|---:|
-| product `a x`, 300 × 300 points, 448,800 non-zeros | **1.32 ms** (1.31 to 1.35) | 0.62 ms | 2.2 ms |
-| `Solve`, 300 × 300 points, first call of the program | **890 ms** (880 to 911) | 870 ms | 330 ms |
-| `Solve`, 300 × 300 points, the calls after it | **750 ms** (747 to 762) | | |
-| `Solve`, 1000 × 1000 points, one run | **24.7 s** | 37.8 s | 8.2 s |
+| product `a x`, 2-D Poisson, 300 × 300 points, 448,800 non-zeros | **1.32 ms** (1.31 to 1.35) | 0.62 ms | 2.2 ms |
+| `Solve`, 2-D Poisson, 300 × 300 points, first call of the program | **315 ms** (312 to 319) | 805 ms | 330 ms |
+| `Solve`, 2-D Poisson, 300 × 300 points, the calls after it | **267 ms** (264 to 270) | | |
+| `Solve`, 2-D Poisson, 1000 × 1000 points | **3.86 s** (3.83 to 3.97) | 33.7 s | 8.1 s |
+| `Solve`, convection-diffusion, 300 × 300 points, LU | **358 ms** (358 to 363) | 801 ms | 563 ms |
 
 Cesia's product takes 2.9 ns a non-zero, as [Speed](speed.md#what-becomes-machine-code) explains; scipy's loop reads
-its rows as 32-bit integers and checks none of them. For `Solve`, Octave's `\` calls CHOLMOD, which factors *supernodes*, columns
-of `L` with the same pattern, as dense blocks: 2.3 times faster than Cesia's factorization, one column at a time,
-whose time goes to reading `x[i]` at rows scattered in memory. scipy's `spsolve` calls SuperLU,
-which factors the matrix as unsymmetric, with an LU of dense blocks too. On an unsymmetric matrix of the same size, the convection and
-diffusion of heat (`cd` in the tests' benchmarks), Cesia's LU takes 1.9 s, scipy's 0.83 s and Octave's UMFPACK 0.56 s.
-Supernodes in Cesia are the next step. The first call of a program also makes the machine code of the triangular solves
-and of Cholesky's factorization: 140 ms here.
+its rows as 32-bit integers and checks none of them. For `Solve`, Octave's `\` calls CHOLMOD, supernodal too, its
+blocks factored by LAPACK and BLAS, and UMFPACK for LU; scipy's `spsolve` calls SuperLU, which factors even a symmetric matrix as
+unsymmetric. Before supernodes, Cesia's factorization went a column at a time and waited on the memory: 685 ms on the
+300 × 300 grid, 24.1 s on the 1000 × 1000 one, 2.0 s for the LU. Where the giants still win: on the grid of 300 × 300
+points, the ordering by AMD now takes about a quarter of `Solve`, 70 ms, where SuiteSparse's takes 45 ms. On the eight
+Harwell-Boeing matrices of the tests, `Solve` takes from 0.33 ms (bcsstk01) to 15 ms (bcsstk14): faster than scipy on
+bcsstk14 (43 ms) and orsirr_1 (4.4 ms against 5.4), slower on the six others, by up to 2.6 times (bcsstk01, 0.13 ms);
+Octave is faster on each but orsirr_1, 2 to 7 times on the smallest, where the steps of `Solve` around the factorization
+(the transpose, the check of symmetry, the residual) cost more than the factorization. A factor that stays very thin, as
+that of the power network 1138_bus, pays for its fronts: each passes its parent an update as large as itself, and
+`Solve` takes 1.85 ms there, against 1.51 ms a column at a time before.
 
-The ordering and LU are native code, written in OCaml: in Cesia, AMD took from 100 to 580 ms a call on the 300 × 300
-grid, as the JIT made its large loop again at each call, against 60 to 85 ms native; LU took 3.7 s against 1.9 s.
-Cholesky's factorization stays in Cesia: native, it was only 10 to 25 % faster, both waiting on the memory.
+BLAS does the products of the fronts on one thread, and on two from 2^27 multiply-adds: the machine's OpenBLAS, built
+with OpenMP, takes its 8 threads by itself, and on a machine busy with other programs they made the medium products of
+the fronts 5 to 30 times slower than one thread. Without BLAS, `Solve` does the same products in OCaml, several times
+slower on large fronts, and gives the same bits on every machine; with it, the last bits of a large factorization can
+change from one library to another, as `num.Solve`'s do.
 
 `use std/sparse` adds nothing measurable to the start of a program, once its code is in the cache of loaded packages.
 
@@ -706,11 +713,16 @@ entries over 1,024 bytes, more than 2^31 - 1 rows or columns, or anything it doe
 file and the line. The tests read 20,000 files made by changing, removing, adding and repeating bytes of a valid one:
 each gave an `Ok` or an `Err`, never a panic.
 
-The work is bounded and counted: `Of`, `Kron` and `Add` take time and memory in proportion to their non-zeros;
-Cholesky's factor is counted before it is allocated; LU's grows by doubling. The native code counts its work against
-`--limit` as it goes, so [cells.Stop] and a limit of steps stop a long factorization within a fraction of a second, and
-the memory it takes is reserved first: past the memory limit, the program stops with `Limit "memory" reached.` before it
-allocates. `Dense` takes 8 bytes a cell, and stops the same way past the limit.
+The work is bounded and counted: `Of`, `Kron` and `Add` take time and memory in proportion to their non-zeros. The
+factor by supernodes, its blocks, its largest front and the updates waiting on the way are counted from the pattern
+before anything is allocated, with no product that can overflow (each is at most `n²`, itself at most 2^53): when that
+alone is past `--limit memory`, `Solve` gives an `Err` that says how many megabytes it would take, as
+`sparse.Solve: the factor of a would take 48 MB, more than the memory limit allows.`; Gilbert and Peierls's LU grows by
+doubling. The native code counts its work against `--limit` as it goes, a block at a time, so [cells.Stop] and a limit
+of steps stop a long factorization within a fraction of a second, and the memory it takes is reserved first: past the
+memory limit, the program stops with `Limit "memory" reached.` before it allocates. Each dense block handed to BLAS is
+checked to lie inside its array, with sizes within BLAS's 32-bit integers, before the call. `Dense` takes 8 bytes a
+cell, and stops the same way past the limit.
 
 ### Further reading on sparse matrices
 
