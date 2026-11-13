@@ -1,0 +1,5 @@
+vecs-shape.ce:9:13: Can't combine an array of 1 by 2 with an array of 2 by 1.
+  9 |       y = y + [1.0; 2.0]
+    |             ^
+  in add (vecs-shape.ce:9)
+exit 1

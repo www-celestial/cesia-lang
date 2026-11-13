@@ -1,0 +1,75 @@
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/value
+
+(* Statements of a branch that native code doesn't make: the run leaves them to the interpreter, which goes on from
+   there, then native code takes the next turns again. *)
+defn sums(n)
+  xs = matrix.Zeros(n)
+  total = 0.0
+  count = 0
+  for i in 1..n
+    xs[i] = i * 0.5
+    if math.Mod(i, 10000) == 0
+      io.Print("at $i: $total")
+      count = count + 1
+    end
+    total = total + xs[i]
+  end
+  io.Print(total, count)
+end
+sums(50000)
+
+(* A buffer that a rare branch makes anew: the loop's other turns write it in place. *)
+defn chunks(n)
+  buf = matrix.Zeros(100)
+  used = 0
+  done = []
+  for i in 1..n
+    if used == 100
+      done = list.Append(buf, done)
+      buf = matrix.Zeros(100)
+      used = 0
+    end
+    used += 1
+    buf[used] = i * 1.0
+  end
+  io.Print(value.Len(done), used, list.Sum(list.Map(list.Sum, done)) + list.Sum(buf))
+end
+chunks(54321)
+
+(* A loop left by a return of a map, in a function called often: each call ends there. *)
+defn find(xs, target)
+  i = 1
+  while true
+    if xs[i] >= target
+      return {At: i, V: xs[i]}
+    end
+    i += 1
+  end
+end
+xs = matrix.Zeros(64)
+for i in 1..64
+  xs[i] = i * i * 1.0
+end
+total = 0
+for r in 1..30000
+  total = total + find(xs, math.Mod(r, 4000) * 1.0).At
+end
+io.Print(total, find(xs, 100.0))
+
+(* A cold branch taken at every turn: still the interpreter's results. *)
+defn every(n)
+  out = []
+  s = 0.0
+  for i in 1..n
+    s = s + i
+    if s > 0.0
+      out = list.Append(s, out)
+    end
+  end
+  io.Print(value.Len(out), list.Sum(out))
+end
+every(30000)

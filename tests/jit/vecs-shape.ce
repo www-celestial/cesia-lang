@@ -1,0 +1,14 @@
+use std/io
+
+(* A row and a column added: the interpreter's error of shapes, with native code or without. *)
+defn add(n)
+  y = [1.0, 2.0]
+  for i in 1..n
+    y = y + [0.5, 0.25]
+    if i == 25000
+      y = y + [1.0; 2.0]
+    end
+  end
+  y
+end
+io.Print(add(30000))

@@ -23,6 +23,8 @@ type c = {
   mutable live : Bytes.t;  (* the last compiled hook: what is assigned at this statement *)
   mutable hook_line : int;  (* the line of the last compiled hook *)
   mutable loops : Tier.loop list;  (* the loops around the code being compiled, the nearest first *)
+  mutable blocks : (int * (ctx -> unit) array) list;
+      (* in a loop, the statements of each block by the node of its first: native code may hand a run over inside one *)
 }
 
 let ty c (e : expr) = c.tn.(e.id)
@@ -784,7 +786,7 @@ let rec compile_version (ctx : ctx) (ver : version) =
   let f = ver.owner.func in
   let c =
     { w; file = ver.owner.file; fn = ver.owner.pname; func = f; ver; tv = ver.tv; tn = ver.tn; map = ver.map;
-      off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty; hook_line = 0; loops = [] }
+      off = ver.frame; top = ver.frame + 2; ends = []; live = Bytes.empty; hook_line = 0; loops = []; blocks = [] }
   in
   let generic = match ver.owner.generic with Some g -> g == ver | None -> false in
   let defaults =
@@ -2362,6 +2364,26 @@ and write_var c (n : name) (v : ctx -> t) : ctx -> unit =
     let x = v ctx in
     set ctx x
 
+(* Native code handed a run of a loop over before statement [node] of a branch of an if in its body: the rest of that
+   branch and of each around it, then the place in the body of the statement after the one that holds them. *)
+and resume c (body : block) node ctx =
+  let rec path (b : block) i =
+    if i = Array.length b then None
+    else if b.(i).id = node then Some [ b, i ]
+    else
+      match b.(i).e with
+      | If (_, y, n) ->
+        (match path y 0 with
+         | Some p -> Some ((b, i) :: p)
+         | None -> (match path n 0 with Some p -> Some ((b, i) :: p) | None -> path b (i + 1)))
+      | _ -> path b (i + 1)
+  in
+  let rest (b : block) from = let s = List.assoc b.(0).id c.blocks in for j = from to Array.length s - 1 do s.(j) ctx done in
+  let rec go = function [ (b, i) ] -> rest b i | (b, i) :: more -> go more; rest b (i + 1) | [] -> () in
+  match path body 0 with
+  | Some ((_, k) :: inner) -> go inner; k + 1
+  | _ -> invalid_arg "Compile.resume"
+
 and cu c (e : expr) : ctx -> unit =
   match e.e with
   | Hook h ->
@@ -2434,18 +2456,28 @@ and cu c (e : expr) : ctx -> unit =
             if n < hi then interp ctx (n + 1) hi;
             true
           | Tier.Bailed k ->
-            (* A guard failed before statement k of iteration n: the interpreter does the rest of it and its step, then
-               native code takes the next ones again, while it still has code. *)
+            (* A guard failed before statement k of iteration n, or before a statement in a branch of an if: the
+               interpreter does the rest of it and its step, then native code takes the next ones again, while it
+               still has code. *)
             let n = Tier.counter ctx code st in
-            for j = k to Array.length stmts - 1 do stmts.(j) ctx done;
-            tick ctx off;
-            if n < hi then begin
-              match Tier.ready ctx st ver with
-              | Some c when c == code ->
-                Tier.place ctx code st n hi;
-                if not (entered ctx code (Tier.after code (Tier.id st)) hi) then interp ctx (n + 1) hi
-              | _ -> interp ctx (n + 1) hi
-            end;
+            (match
+               let k = if k <= -2 then resume c fbody (-2 - k) ctx else k in
+               for j = k to Array.length stmts - 1 do stmts.(j) ctx done
+             with
+             | () ->
+               tick ctx off;
+               if n < hi then begin
+                 match Tier.ready ctx st ver with
+                 | Some c when c == code ->
+                   Tier.place ctx code st n hi;
+                   if not (entered ctx code (Tier.after code (Tier.id st)) hi) then interp ctx (n + 1) hi
+                 | _ -> interp ctx (n + 1) hi
+               end
+             (* A loop inside got hot in that rest, and its code is this loop's: native code takes the turn from there. *)
+             | exception (Tier.Handoff (h, from) as x) ->
+               if h != code then raise_notrace x;
+               Tier.place ctx code st n hi;
+               if not (entered ctx code (Tier.after code from) hi) then failwith "jit: a region refused after its check");
             true
         and interp ?(warm = false) ctx lo hi =
           if lo <= hi then begin
@@ -2470,13 +2502,17 @@ and cu c (e : expr) : ctx -> unit =
                  | None -> ());
                 incr n
               end;
+              (* A checkpoint met inside a turn, at this loop's step or in a call or a native of its body, where most
+                 steps of a loop of calls are: the count of the steps before the next full one moves. *)
+              let seen = ref ctx.until in
               while !going do
                 ctx.i.(ctx.b + k) <- !n;
                 body ctx;
                 let f = ctx.fuel - 1 in
                 ctx.fuel <- f;
-                if f < 0 then begin
-                  Runtime.checkpoint ctx (ctx.b + off);
+                if f < 0 || ctx.until <> !seen then begin
+                  if f < 0 then Runtime.checkpoint ctx (ctx.b + off);
+                  seen := ctx.until;
                   match Tier.hot ctx st ver outer with
                   | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
                   | None -> ()
@@ -2509,7 +2545,7 @@ and cu c (e : expr) : ctx -> unit =
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
   | Set { root; path; value } -> set_path c e root path value
   | While { cond; body; has_break } ->
-    let st = Tier.loop e and outer = c.loops in
+    let st = Tier.loop e and outer = c.loops and ast = body in
     let cond = cb c cond in
     c.loops <- st :: outer;
     let stmts = Array.map (cu c) body in
@@ -2534,15 +2570,23 @@ and cu c (e : expr) : ctx -> unit =
             interp ctx;
             true
           | Tier.Bailed k ->
-            (* Before statement k of the body, or, at -1, before the test; then native code takes the loop again. *)
-            if k >= 0 then begin
-              for j = k to Array.length stmts - 1 do stmts.(j) ctx done;
-              tick ctx off
-            end;
-            (match Tier.ready ctx st ver with
-             | Some c when c == code && k >= 0 ->
-               if not (entered ctx code (Tier.after code (Tier.id st))) then interp ctx
-             | _ -> interp ctx);
+            (* Before statement k of the body, or of a branch of an if, or, at -1, before the test; then native code
+               takes the loop again. *)
+            (match
+               if k <> -1 then begin
+                 let k = if k <= -2 then resume c ast (-2 - k) ctx else k in
+                 for j = k to Array.length stmts - 1 do stmts.(j) ctx done;
+                 tick ctx off
+               end
+             with
+             | () ->
+               (match Tier.ready ctx st ver with
+                | Some c when c == code && k <> -1 ->
+                  if not (entered ctx code (Tier.after code (Tier.id st))) then interp ctx
+                | _ -> interp ctx)
+             | exception (Tier.Handoff (h, from) as x) ->
+               if h != code then raise_notrace x;
+               if not (entered ctx code (Tier.after code from)) then failwith "jit: a region refused after its check");
             true
         and interp ?(warm = false) ctx =
           match
@@ -2553,12 +2597,14 @@ and cu c (e : expr) : ctx -> unit =
               | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
               | None -> ()
             end;
+            let seen = ref ctx.until in
             while cond ctx do
               body ctx;
               let f = ctx.fuel - 1 in
               ctx.fuel <- f;
-              if f < 0 then begin
-                Runtime.checkpoint ctx (ctx.b + off);
+              if f < 0 || ctx.until <> !seen then begin
+                if f < 0 then Runtime.checkpoint ctx (ctx.b + off);
+                seen := ctx.until;
                 match Tier.hot ctx st ver outer with
                 | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
                 | None -> ()
@@ -2874,7 +2920,10 @@ and cpat c (pt : pat) pos : ctx -> t -> unit =
          ctx.site <- s;
          Runtime.fail ctx Type (Messages.destructure_struct (Value.describe v)))
 
-and cublock c (b : block) : ctx -> unit = seq_u (List.map (cu c) (Array.to_list b))
+and cublock c (b : block) : ctx -> unit =
+  let stmts = List.map (cu c) (Array.to_list b) in
+  if c.loops <> [] && Array.length b > 0 && Tier.on () then c.blocks <- (b.(0).id, Array.of_list stmts) :: c.blocks;
+  seq_u stmts
 
 and cblock c (b : block) : ctx -> t = block_with c cv (fun _ -> Missing) b
 

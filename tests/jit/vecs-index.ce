@@ -1,0 +1,22 @@
+use std/io
+use std/math
+use std/sys
+use std/text
+
+(* A cell read out of a small array kept in slots, after the loop got hot: the interpreter's message, at the read, for
+   the index the command gives: past the end, 0, below 0 or near the largest integer. *)
+defn pick(n, bad)
+  y = [1.0, 2.0, 3.0]
+  s = 0.0
+  for i in 1..n
+    y = y * 1.0
+    k = math.Mod(i, 3) + 1
+    if i == 25000
+      k = bad
+    end
+    s = s + y[k]
+  end
+  s
+end
+io.Print(pick(30000, 2))
+io.Print(pick(30000, text.Number(sys.Args[1])))

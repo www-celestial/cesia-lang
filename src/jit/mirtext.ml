@@ -175,8 +175,12 @@ let func b ~prefix ~nested (fn : Ir.func) =
   (* A failed guard: back to the interpreter before that statement, through the block that spills and leaves. *)
   let bail_to k =
     stub (fun s ->
+        let refuel = k >= Ir.refuel in
+        let k = if refuel then k - Ir.refuel else k in
         let k =
-          if k < Ir.restored then k
+          if k >= Ir.leaving then (Printf.bprintf s "  mov %s, %d\n" (cx Ir.io_code) Ir.leaving_code; k - Ir.leaving)
+          else if k >= Ir.cold then (Printf.bprintf s "  mov %s, %d\n" (cx Ir.io_code) Ir.cold_code; k - Ir.cold)
+          else if k < Ir.restored then k
           else begin
             let k = k - Ir.restored in
             List.iter
@@ -185,6 +189,10 @@ let func b ~prefix ~nested (fn : Ir.func) =
             k
           end
         in
+        (* The fuel, as at the statement's start: the interpreter makes its steps again. *)
+        (if refuel then
+           let f, sp, q = fn.keeps.(k) in
+           Printf.bprintf s "  mov fuel, r%d\n  mov %s, r%d\n  mov %s, r%d\n" f (cx Ir.io_spent) sp (cx Ir.io_quantum) q);
         Printf.bprintf s "  mov xp, %d\n  mov xs, %d\n  jmp %s\n" k Ir.bailed (leave_block ()))
   in
   (* A value whose tag is [tag], else bail: the tag in x1. *)
@@ -204,13 +212,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   in
   (* A call that wants a longer stack, here or deeper, bails when it can: its statement's fuel back as at its start, the
      interpreter makes the call and grows the stack. *)
-  let again back =
-    let f, sp, q = fn.keeps.(back) in
-    let b = bail_to back in
-    (* No [Keep]: nothing ran a step since the statement's start. *)
-    if f < 0 then b
-    else stub (fun s -> Printf.bprintf s "  mov fuel, r%d\n  mov %s, r%d\n  mov %s, r%d\n  jmp %s\n" f (cx Ir.io_spent) sp (cx Ir.io_quantum) q b)
-  in
+  let again back = bail_to back in
   (* A frame at [at] above the limit, for a call that can bail: past the stack, or where the interpreter's frames would want
      a longer one, bail; else the limit of depth. *)
   let short at caller site back =
@@ -235,7 +237,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
     pr "  mov i64:%d(x5), %s\n  mov i64:%d(x5), c%d\n  add x6, x5, %d\n  mov i64:%d(x5), x6\n  mov i64:%d(x5), 3\n  add %s, x5, %d\n"
       o (header 3 tag) (o + 8) c (o - 8) (o + 16) (o + 24) dst (o + 8)
   in
-  let ins = function
+  let rec ins = function
     | Ir.Frame (r, _) -> pr "  add r%d, b, %d\n" r (offset r)
     | Enter (r, base, site, back) ->
       let at = "r" ^ string_of_int r in
@@ -301,6 +303,23 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Set_elem (a, i, v, site) ->
       let m = check_index a i site Ir.err_write in
       pr "  dmov %s, %s\n" m (operand v)
+    | Vget (r, k) -> pr "  dmov r%d, d:%d(vf)\n" r (8 * k)
+    | Vset (k, v) -> pr "  dmov d:%d(vf), %s\n" (8 * k) (in_reg Kfloat v)
+    | Vat (r, k, n, i, site, rows, cols) ->
+      let e =
+        stub (fun s ->
+            (match i with Ir.Reg q -> Printf.bprintf s "  rsh x1, r%d, 1\n" q | v -> Printf.bprintf s "  mov x1, %s\n" (operand v));
+            Printf.bprintf s "  mov %s, %d\n  mov x2, %d\n" (cx Ir.io_ixs) cols rows;
+            links s site;
+            base_in s "x5" (frame_of site);
+            Printf.bprintf s "  mov x3, %d\n  mov x4, %d\n  jmp %s\n" fn.sites.(site) Ir.err_vec (shared "E"))
+      in
+      let q = in_reg Kint i in
+      pr "  sub x0, %s, 2\n  ubge %s, x0, %s\n  dmov r%d, d:%d(vf, %s, 4)\n" q e (doubled n) r ((8 * k) - 8) q
+    | Tag (r, v) ->
+      let v = in_reg Kval v and word = label () and over = label () in
+      pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n  lsh r%d, x1, 1\n  jmp %s\n" v word v r over;
+      pr "%s:\n  add x1, %s, 256\n  lsh r%d, x1, 1\n%s:\n" word v r over
     | Keep (f, sp, q) -> pr "  mov r%d, fuel\n  mov r%d, %s\n  mov r%d, %s\n" f sp (cx Ir.io_spent) q (cx Ir.io_quantum)
     | Call (r, k, args, site, back) ->
       (* The base of the callee: above the whole frame of the outermost function, 2 above a nested one. *)
@@ -449,7 +468,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"
-    | Tick (p, can_leave, site) ->
+    | Tick (p, can_leave, site) -> steps 1 p can_leave site
+    | Steps (k, site) -> steps k (-1) false site
+  and steps k p can_leave site =
       let back = label () in
       let leave = can_leave && not nested in
       (* Another quantum, counted, within the limit of steps. When a full checkpoint is due, a tick of the outermost frame
@@ -480,11 +501,32 @@ let func b ~prefix ~nested (fn : Ir.func) =
       in
       if leave then begin
         let out = stub (fun s -> Printf.bprintf s "  mov xp, %d\n  mov xs, %d\n  jmp %s\n" p Ir.fuel_out (leave_block ())) in
-        pr "  sub fuel, fuel, 1\n  blt %s, fuel, 0\n  mov x0, %s\n  bne %s, x0, 0\n%s:\n" out (cx Ir.io_leave) out back
+        pr "  sub fuel, fuel, %d\n  blt %s, fuel, 0\n  mov x0, %s\n  bne %s, x0, 0\n%s:\n" k out (cx Ir.io_leave) out back
       end else begin
         let out = stub refill in
-        pr "  sub fuel, fuel, 1\n  blt %s, fuel, 0\n%s:\n" out back
+        pr "  sub fuel, fuel, %d\n  blt %s, fuel, 0\n%s:\n" k out back
       end
+  in
+  (* The steps of a statement's operations that can't leave, one after the other with nothing between them that can fail
+     or show: one count of them all, at the first, which the limit of steps meets no later than the interpreter's. *)
+  let rec fold = function
+    | Ir.Tick (-1, false, s) :: rest ->
+      let pure = function
+        | Ir.Move _ | Op ((Fadd | Fsub | Fmul | Fdiv | Fpow), _, _, _, _) | Fneg _ | Float_of _ | Math _ | Vget _ | Vset _
+        | Tag _ | Len _ ->
+          true
+        | Op ((Add | Sub), _, _, _, site) -> site < 0
+        | _ -> false
+      in
+      let rec gather k between = function
+        | Ir.Tick (-1, false, s') :: r when s' = s -> gather (k + 1) between r
+        | i :: r when pure i -> gather k (i :: between) r
+        | r -> k, List.rev between, r
+      in
+      let k, between, r = gather 1 [] rest in
+      (if k = 1 then Ir.Tick (-1, false, s) else Steps (k, s)) :: between @ fold r
+    | i :: rest -> i :: fold rest
+    | [] -> []
   in
   (* The function's result, in its cell, just before it returns its fuel. *)
   let give v =
@@ -515,6 +557,11 @@ let func b ~prefix ~nested (fn : Ir.func) =
       spill b;
       give (if fn.result = Kfloat then Ir.Float 0. else Int 0);
       pr "  ret fuel\n"
+    | Out v when (match v with Ir.Word _ -> true | Reg r -> fn.kinds.(r) = Kval | _ -> false) ->
+      (* A value: in its slot after the constants, through the write barrier. *)
+      pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n  add x0, vp, %d\n  call pmod, caml_modify, x0, %s\n" (cx 2)
+        (8 * (fn.frame + Array.length fn.consts)) (in_reg Kval v);
+      stop b Ir.returned_value
     | Out v ->
       (match v with
        | Ir.Float _ -> pr "  mov fp, %s\n  lsh xa, b, 3\n  add fp, fp, xa\n  dmov y0, %s\n  dmov d:%d(fp), y0\n" (cx 1) (operand v) (8 * fn.frame)
@@ -523,7 +570,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
       stop b Ir.returned
   in
   pr "%s%s: func i64, %s\n" prefix name (args_of ~nested fn);
-  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:xa, i64:xp, i64:xs, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, i64:x5, i64:x6, d:y0\n";
+  pr "  local i64:nb, i64:ip, i64:fp, i64:vp, i64:vf, i64:xa, i64:xp, i64:xs, i64:x0, i64:x1, i64:x2, i64:x3, i64:x4, i64:x5, i64:x6, d:y0\n";
   Array.iteri (fun j _ -> pr "  local i64:c%d\n" j) fn.consts;
   Array.iteri (fun r k -> if not (is_param r) then pr "  local %s:r%d\n" (ty k) r) fn.kinds;
   Array.iteri
@@ -559,6 +606,10 @@ let func b ~prefix ~nested (fn : Ir.func) =
        constants and the checks of the arrays: nothing moves them while native code runs. *)
     if Array.length fn.arrays > 0 || Array.length fn.consts > 0 || Array.exists (fun (v : Ir.var) -> v.kind = Kval) fn.vars
     then pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n" (cx 2);
+    (* The area of small arrays of floats, the last hidden slots of the float stack, where nothing moves while the run
+       lasts. *)
+    if fn.vslots > 0 then
+      pr "  mov vf, %s\n  lsh xa, b, 3\n  add vf, vf, xa\n  add vf, vf, %d\n" (cx 1) (8 * (fn.frame + fn.hidden - fn.vslots));
     pr "  bgt %s, entry, 0\n" lr;
     (* A slot of the int stack must hold an OCaml integer when the outermost frame writes it, whatever a register held. *)
     Array.iter (fun (v : Ir.var) -> if v.kind = Kint && not (is_param v.reg) then pr "  mov r%d, 0\n" v.reg) fn.vars;
@@ -579,7 +630,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
   Array.iteri
     (fun l (bk : Ir.block) ->
        pr "%s:\n" (bl l);
-       List.iter ins bk.ins;
+       List.iter ins (fold bk.ins);
        term bk.term)
     fn.blocks;
   Buffer.add_buffer b stubs;

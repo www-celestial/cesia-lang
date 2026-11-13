@@ -1,0 +1,40 @@
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/value
+
+(* A loop inside the rest of a turn that the interpreter makes, after a statement left to it: when that loop gets hot,
+   the region's machine code takes the turn over from it. *)
+defn f(n)
+  xs = matrix.Zeros(100)
+  out = []
+  s = 0.0
+  for i in 1..n
+    if math.Mod(i, 2) == 0
+      out = list.Append(i, out)
+      for j in 1..100
+        xs[j] = xs[j] + 1.0
+      end
+    end
+    s = s + xs[1]
+  end
+  io.Print(s, value.Len(out), list.Sum(xs))
+end
+f(20000)
+defn g(n)
+  xs = matrix.Zeros(50)
+  out = []
+  i = 0
+  while i < n
+    i += 1
+    if math.Mod(i, 3) == 0
+      out = list.Append(i, out)
+      for j in 1..50
+        xs[j] = xs[j] + 0.5
+      end
+    end
+  end
+  io.Print(value.Len(out), list.Sum(xs))
+end
+g(20000)

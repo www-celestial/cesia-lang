@@ -1,0 +1,34 @@
+use std/io
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text
+use std/value
+
+(* Pages of machine code are never writable and executable at once: after loops made native, the map of the process
+   has no page of both, where the system shows its map (Linux). *)
+defn sum(n)
+  s = 0.0
+  for i in 1..n
+    s = s + i * 0.5
+  end
+  s
+end
+defn count(n)
+  c = 0
+  for i in 1..n
+    if math.Mod(i, 3) == 0
+      c += 1
+    end
+  end
+  c
+end
+io.Print(sum(100000), count(100000))
+(* The map read, as its pages of code show; and none writable and executable. *)
+lines = match sys.Read("/proc/self/maps")
+  result.Ok(m) -> text.Split("\n", m)
+  result.Err(_) -> ["r-xp where the system shows no map"]
+end
+io.Print("pages executable:", value.Len(list.Filter(l -> text.Contains("r-xp", l), lines)) > 0)
+io.Print("writable and executable:", list.Filter(l -> text.Contains(" rwx", l), lines))

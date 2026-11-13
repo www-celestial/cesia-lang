@@ -1,0 +1,25 @@
+index 4:
+60000.0
+vecs-index.ce:17:14: Index 4 is outside this array of 3 elements.
+  17 |     s = s + y[k]
+     |              ^
+  in pick (vecs-index.ce:17)
+index 0:
+60000.0
+vecs-index.ce:17:14: Index 0 is outside this array of 3 elements.
+  17 |     s = s + y[k]
+     |              ^
+  in pick (vecs-index.ce:17)
+index -1:
+60000.0
+vecs-index.ce:17:14: Index -1 is outside this array of 3 elements.
+  17 |     s = s + y[k]
+     |              ^
+  in pick (vecs-index.ce:17)
+index 4611686018427387903:
+60000.0
+vecs-index.ce:17:14: Index 4611686018427387903 is outside this array of 3 elements.
+  17 |     s = s + y[k]
+     |              ^
+  in pick (vecs-index.ce:17)
+exit 0

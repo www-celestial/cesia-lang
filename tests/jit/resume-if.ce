@@ -1,0 +1,45 @@
+use std/io
+use std/list
+use std/matrix
+
+(* A guard that fails inside a branch of an if, after a write of the branch: the run goes back to the interpreter before
+   the statement of the guard, not before the if, so the write is made once. *)
+defn run(ms, n)
+  xs = matrix.Zeros(n)
+  total = 0.0
+  for i in 1..n
+    m = ms[i]
+    if i > 1
+      xs[i] = xs[i - 1] + 1.0
+      total = total + m.X
+      if m.X > 1.5
+        xs[i] = xs[i] + 0.25
+        total = total + m.X * 2.0
+      end
+    end
+  end
+  io.Print(total, xs[n], list.Sum(xs))
+end
+
+n = 60000
+ms = list.Fill(0, n)
+for i in 1..n
+  ms[i] = if i < 40000 {X: 1.0} else {X: 2.0, Y: 1.0} end
+end
+run(ms, n)
+run(ms, n)
+(* The same in a while, whose body's statements are its points too. *)
+defn walk(ms, n)
+  xs = matrix.Zeros(n)
+  i = 1
+  s = 0.0
+  while i < n
+    i += 1
+    if i > 2
+      xs[i] = xs[i - 1] + 0.5
+      s = s + ms[i].X
+    end
+  end
+  io.Print(s, xs[n])
+end
+walk(ms, n)

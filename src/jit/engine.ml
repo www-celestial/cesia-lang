@@ -47,13 +47,28 @@ let make (w : world) (ver : version) fns start loops =
         None
     end
 
-(* Does the value slot of each variable kept as a number hold one of its kind, and of each kept as a map's or struct's
-   floats one of those keys or that shape, of floats. *)
-let numbers_fit (ctx : ctx) (fn : Ir.func) =
+(* Does each variable of a module that the code took as a constant still hold that number. *)
+let cells_hold (w : world) (fn : Ir.func) =
   Array.for_all
-    (fun ((v : Ir.var), slot) ->
-       match ctx.v.(ctx.b + slot), v.kind with Float _, Kfloat | Int _, Kint -> true | _ -> false)
+    (fun (m, k, v) ->
+       match w.modules.(m).cells.(k), v with
+       | Int a, Int b -> a = b
+       | Float a, Float b -> Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
+       | _ -> false)
+    fn.cells
+
+let vec_fits v rows cols = match v with Array { rows = r; cols = c; store = F _; dims = [||]; _ } -> r = rows && c = cols | _ -> false
+
+(* Does the value slot of each variable kept as a number hold one of its kind, of each kept as a small array of floats
+   one of its shape, and of each kept as a map's or struct's floats one of those keys or that shape, of floats. One that a
+   turn assigns before it reads it may hold anything: no turn reads that. *)
+let numbers_fit (ctx : ctx) (fn : Ir.func) =
+  cells_hold ctx.w fn
+  && Array.for_all
+    (fun ((v : Ir.var), slot, flag) ->
+       flag >= 0 || match ctx.v.(ctx.b + slot), v.kind with Float _, Kfloat | Int _, Kint -> true | _ -> false)
     fn.numbers
+  && Array.for_all (fun (_, slot, rows, cols, flag) -> flag >= 0 || vec_fits ctx.v.(ctx.b + slot) rows cols) fn.vecs
   && Array.for_all
     (fun (_, slot, carrier) ->
        match ctx.v.(ctx.b + slot), carrier with
@@ -73,11 +88,12 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
   if not (numbers_fit ctx code.fn) then Ir.fallback else begin
   Array.iter
-    (fun ((v : Ir.var), slot) ->
-       match ctx.v.(b + slot) with
-       | Float x -> Float.Array.set ctx.f (b + v.slot) x
-       | Int n -> ctx.i.(b + v.slot) <- n
-       | _ -> ())
+    (fun ((v : Ir.var), slot, flag) ->
+       if flag >= 0 then ctx.i.(b + flag) <- 0;
+       match ctx.v.(b + slot), v.kind with
+       | Float x, Kfloat -> Float.Array.set ctx.f (b + v.slot) x
+       | Int n, Kint -> ctx.i.(b + v.slot) <- n
+       | _ -> if v.kind = Kfloat then Float.Array.set ctx.f (b + v.slot) 0. else ctx.i.(b + v.slot) <- 0)
     code.fn.numbers;
   Array.iter
     (fun (parts, slot, _) ->
@@ -85,6 +101,15 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
        | Dict { vals = F d; _ } | Struct { fields = F d; _ } -> Float.Array.blit d 0 ctx.f (b + parts) (Float.Array.length d)
        | _ -> ())
     code.fn.sunk;
+  (* A small array kept in slots: its cells, or, for one a turn assigns before it reads it, nothing to read yet. *)
+  Array.iter
+    (fun (first, slot, rows, cols, flag) ->
+       if flag >= 0 then ctx.i.(b + flag) <- 0;
+       (* A read of the store: none of its cells is written while the run lasts. *)
+       match ctx.v.(b + slot) with
+       | Array { store = F d; _ } as a when vec_fits a rows cols -> Float.Array.blit d 0 ctx.f (b + first) (rows * cols)
+       | _ -> Float.Array.fill ctx.f (b + first) (rows * cols) 0.)
+    code.fn.vecs;
   io.(Ir.io_code) <- 0;
   let depth = if code.calls then b + code.fn.frame + code.fn.hidden + (2 * (ctx.max_depth - Runtime.frames ctx - 1)) else max_int in
   let fuel0 = ctx.fuel in
@@ -116,7 +141,8 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   let st = Jit.call code.addr ctx.i ctx.f ctx.v io in
   if wrote code.fn st then
     Array.iter
-      (fun ((v : Ir.var), slot) ->
+      (fun ((v : Ir.var), slot, flag) ->
+         if flag < 0 || ctx.i.(b + flag) <> 0 then
          ctx.v.(b + slot) <- (if v.kind = Kfloat then Float (Float.Array.get ctx.f (b + v.slot)) else Int ctx.i.(b + v.slot)))
       code.fn.numbers;
   if wrote code.fn st then
@@ -129,6 +155,13 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
             | Dict { keys; _ } -> Dict { keys; vals = floats (Array.length keys.ks); d_owned = true }
             | v -> v))
       code.fn.sunk;
+  if wrote code.fn st then
+    Array.iter
+      (fun (first, slot, rows, cols, flag) ->
+         (* -2: one the loop only reads, still in its slot. *)
+         if flag = -1 || (flag >= 0 && ctx.i.(b + flag) <> 0) then
+           ctx.v.(b + slot) <- Arrays.of_float rows cols (Float.Array.sub ctx.f (b + first) (rows * cols)))
+      code.fn.vecs;
   if st = Ir.stack_out then begin
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
     ctx.fuel <- fuel0;
@@ -176,6 +209,11 @@ let fail (ctx : ctx) =
     (* As the interpreter's write: the array owned, so copied when shared, then the write, which fails. *)
     let top = Runtime.own ctx ctx.v.(ctx.b + b) in
     Arrays.write ctx top [| Arrays.At a |] (Float 0.)
+  end
+  else if code = Ir.err_vec then begin
+    (* A small array kept in slots: one of its shape says the same. *)
+    let rows = b and cols = io.(Ir.io_ixs) in
+    ignore (Arrays.read1 ctx (Arrays.of_float rows cols (Float.Array.make (rows * cols) 0.)) (Arrays.At a))
   end
   else if code = Ir.err_read_nd || code = Ir.err_write_nd then begin
     let ixs = Array.init a (fun d -> Arrays.At io.(Ir.io_ixs + d)) in
@@ -299,9 +337,18 @@ let pick (ctx : ctx) (l : Tier.loop) ver outer =
   let rec go = function
     | [] -> None
     | (c : Tier.loop) :: rest ->
+      (* Code made for numbers that a module's variables no longer hold is made again. *)
+      (match c.code with
+       | Some code when not (cells_hold ctx.w (native code).fn) ->
+         c.code <- None;
+         c.tries <- c.tries + 1;
+         if c.tries >= max_tries then c.failed <- true
+       | _ -> ());
       compile ctx c ver;
+      (* A region that left [l] to the interpreter, in a statement it doesn't make, can't take it over. *)
+      let holds code = Array.exists (fun (n, _, _, _) -> n = l.expr.id) (native code).loops in
       (match live ctx c with
-       | Some code when fits ctx code -> Some code
+       | Some code when fits ctx code && holds code -> Some code
        | k ->
          if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then
            prerr_endline (Printf.sprintf "jit: loop %d %s" c.expr.id (if k = None then "has no code" else "doesn't fit"));
@@ -334,17 +381,26 @@ let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
   else if st = Ir.reloaded then Reloaded
   else if st = Ir.returned then
     Returned (match code.ret with Kfloat -> Float (result_float ctx code) | Kint | Kval -> Int io.(Ir.io_int))
+  else if st = Ir.returned_value then begin
+    let slot = ctx.b + code.fn.frame + Array.length code.fn.consts in
+    let v = ctx.v.(slot) in
+    ctx.v.(slot) <- Missing;
+    Returned v
+  end
   else if st = Ir.bailed then begin
     (* A guess that keeps failing: the code goes, and the loop is lowered again later with what the frame holds then. A
-       write left to the interpreter is no guess. *)
-    if io.(Ir.io_code) <> Ir.written then code.bails <- code.bails + 1;
+       write or a statement left to the interpreter is no guess. *)
+    let why = io.(Ir.io_code) in
+    if why <> Ir.written && why <> Ir.cold_code && why <> Ir.leaving_code then code.bails <- code.bails + 1;
     if code.bails > 16 then begin
       l.code <- None;
       l.tries <- l.tries + 1;
       if l.tries >= max_tries then l.failed <- true;
       l.seen <- 0
     end;
-    Bailed io.(Ir.io_point)
+    (* A statement in a branch of an if goes to the interpreter as -2 - its node. *)
+    let k = io.(Ir.io_point) and points = code.fn.points in
+    Bailed (if k >= 0 && k < Array.length points && points.(k) >= 0 then -2 - points.(k) else k)
   end
   else begin
     (* Its arrays are not what native code takes this time, or one it writes is shared: nothing ran, this run is the

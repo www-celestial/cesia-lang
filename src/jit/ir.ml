@@ -54,6 +54,7 @@ type ins =
           error of a read, or of a write when [write], at the site *)
   | Bump of int * value  (** an integer register plus a value, unchecked: an index that a loop moves by its step *)
   | Burn  (** one step of fuel, unchecked: a loop that proved it has the fuel for all its steps *)
+  | Steps of int * int  (** [Tick (-1, false, site)] so many times, folded by [Mirtext] *)
   | Frame of int * int
       (** [Frame (r, base)]: [r], a raw integer, the base a callee of the frame at [base] takes: a register of a raw base,
           or -1 for the function's own frame *)
@@ -91,6 +92,12 @@ type ins =
           [seen]: the registers of the one there and of its doubles, read and checked in this turn, when nothing wrote
           the array since *)
   | Keep of int * int * int  (** the fuel, and the steps spent and the quantum of nested frames, at a statement's start *)
+  | Tag of int * value  (** the tag of a value's block, doubled; or 256 + the value, a word that is no block *)
+  | Vget of int * int  (** a float register, from slot [k] of the frame's area of small arrays of floats *)
+  | Vset of int * value  (** slot [k] of that area, a float operand *)
+  | Vat of int * int * int * value * int * int * int
+      (** [Vat (r, k, n, i, site, rows, cols)]: cell [i], from 1, of the [n] cells at slot [k] of that area; one outside
+          is the interpreter's error of a read of an array of those rows and columns *)
   | Reserve of int ref * int
       (** room for so many words of allocation before the next [Reserve]; when the young heap lacks it, the run leaves
           at the resume point, the interpreter's allocation collects, and the run comes back *)
@@ -148,14 +155,26 @@ type func = {
   need : int;
       (** the interpreter's frames for its calls, inlined or not: the highest base of one from the frame making it, and the
           largest such frame; [-1] when unknown. Under a limit of memory, native frames ask for the stack these would. *)
-  numbers : (var * int) array;
+  numbers : (var * int * int) array;
       (** a region's variables of no type whose value crosses from one iteration to the next, that held a number when it
           lowered: each kept as an integer or a float for the whole run, in a hidden slot of its stack (also in [vars]),
-          and its value slot. [Engine] unboxes them there before a run and boxes them back after one that wrote its
-          variables: a step pays no box *)
+          and its value slot, and, for one a turn assigns before it reads it, the hidden int slot of its flag, set when the
+          run assigns it, else -1. [Engine] unboxes them there before a run and boxes them back after one that wrote its
+          variables, a flagged one only when the run assigned it: a step pays no box *)
   lent : int array;
       (** the registers of value variables that may hold a value read from a list, a map or another variable: marked
           shared when the run writes them back, not at each read *)
+  vslots : int;  (* the frame's area of small arrays of floats: its slots, the last of [hidden] *)
+  vecs : (int * int * int * int * int) array;
+      (* the variables kept in it: the float slot of the first cell, the value slot, rows, columns, and the slot of its
+         flag as for [numbers], or -2 for one the loop only reads: [Engine] puts the cells there before a run, and makes an
+         array of them in the value slot after one that wrote its variables *)
+  cells : (int * int * Types.t) array;
+      (* the variables of modules read as constants, a number each: module, cell, value; [Engine] runs the code only
+         while each holds it *)
+  points : int array;
+      (* each point a guard goes back to: -1 for the statement of the region's loop of that number, else the node of a
+         statement of a branch of an if in it, where the interpreter goes on *)
   sunk : (int * int * Types.t) array;
       (** the variables kept as the values of a map or struct of floats that the run never makes: the first of the
           hidden float slots of its values, its value slot, and a map of its keys or a struct of its shape, without
@@ -177,6 +196,15 @@ let cx_result = 29
     leaves, or a negative one when it stopped, as Windows x86-64 gives a function only one. *)
 
 let restored = 1 lsl 20
+
+(* Added to the point of a [Bail]: a statement left to the interpreter, which a guess failed none of; one that is a
+   [return], at most once a run. *)
+let cold = 1 lsl 21
+
+let leaving = 1 lsl 22
+
+(* Added to the point of a bail after a step of its statement: the fuel goes back to the statement's [Keep]. *)
+let refuel = 1 lsl 23
 
 let io_base = 3
 let io_entry = 4  (** 0 to start, or 1 + a resume point *)
@@ -222,6 +250,10 @@ let frames_out = 8
 
 let reloaded = 9  (** not native code's: a reload came at a checkpoint, and the run left at its loop's step *)
 
+let returned_value = 14
+(** a [return] of a value inside a loop run natively, of a function whose result has no kind: the value in the value slot
+    after the constants *)
+
 let bailed = 10
 (** a guard failed before statement [io_point] of the region's loop, before anything of it showed: every variable is in its
     slot as at that statement, and the interpreter goes on from it *)
@@ -244,5 +276,11 @@ let err_read_nd = 9
 
 let err_write_nd = 10
 
+let err_vec = 15
+(** an index outside a small array kept in slots: [io_a] the index, [io_b] its rows, [io_ixs] its columns *)
+
 let written = 11
 (** In [io_code] after a bail: no guess failed, the interpreter makes a write that native code left to it. *)
+
+let cold_code = 12  (** after a bail: no guess failed, the interpreter makes a statement that native code left to it *)
+let leaving_code = 13  (** the same, a [return] *)
