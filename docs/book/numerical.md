@@ -574,14 +574,28 @@ million non-zeros; in the order `Solve` picks, 2.9 million.
   neighbours are the same, and puts an unknown joined to almost all others last. On the grid of 300 × 300, its order
   gives exactly the fill of AMD in SuiteSparse, which MATLAB and GNU Octave use: 2,928,059 non-zeros.
 - **Symmetric and positive definite**, as the grid's matrix: Cholesky's factorization, `a = L L'` (Davis 2006, ch.
-  4). Its *elimination tree* (Liu 1990) gives the pattern of each row of `L` before any arithmetic, so `L` is
-  counted, then allocated once, then computed row by row. It needs no pivoting, and is backward stable.
-- **Any other square matrix**: LU with partial pivoting, `p a q = L U`, column by column, each a sparse triangular
-  solve whose pattern a depth-first search finds first, so that the work is that of the arithmetic (Gilbert and
-  Peierls 1988). When `a`'s pattern is nearly symmetric, half its cells mirrored or more, with no 0 on its diagonal, the
-  order is AMD on the pattern of `a + a'`, and a diagonal pivot is kept when it is at least 0.1 times the largest one
-  of its column, which keeps the fill of that order; else the order is AMD on the pattern of `a' a`, and each pivot is
-  the largest of its column.
+  4). Its *elimination tree* (Liu 1990), where the parent of a column is the first row below its diagonal that it
+  fills, gives the pattern of `L` before any arithmetic: the count of each column, then its *supernodes*, runs of
+  columns of `L` that share their pattern below the diagonal (Liu, Ng and Peyton 1993). A supernode merges with its
+  parent when that stores few zeros, which makes fewer and larger blocks: the *relaxed* supernodes of Ashcraft and
+  Grimes (1989), with the thresholds of CHOLMOD (Chen, Davis, Hager and Rajamanickam 2008). Each supernode is a dense
+  block of `L`, and the *multifrontal* method (Duff and Reid 1983; Liu 1992) computes it: for each supernode, from the
+  leaves of the tree up, a dense matrix, its *front*, gathers the supernode's cells of `a` and the updates its children
+  left; its columns are factored, and the update of the rows below them, the *Schur complement*, waits for the parent.
+  Nearly all the arithmetic is then products of dense blocks, which BLAS does at the speed of dense code (Ng and Peyton
+  1993 showed this on processors with caches). The size of every block is counted before any is allocated: past the
+  memory limit, `Solve` gives an `Err` that says how large the factor would be. Cholesky needs no pivoting, and is
+  backward stable.
+- **Any other square matrix**: LU with partial pivoting, `p a q = L U`. When `a`'s pattern is nearly symmetric, half
+  its cells mirrored or more, with no 0 on its diagonal, the order is AMD on the pattern of `a + a'`, and LU follows
+  the supernodes of that pattern, with fronts that hold both triangles, as UMFPACK's symmetric strategy does (Davis
+  2004). Inside a front, a column's pivot is its diagonal cell when that is at least 0.1 times the largest cell of the
+  column, which keeps the fill of the order; else the largest cell of the rows the front holds whole, when it passes
+  the same test. When no row of the front passes, or when `a`'s pattern is far from symmetric, LU is computed column
+  by column instead, each column a sparse triangular solve whose pattern a depth-first search finds first, so that the
+  work is that of the arithmetic (Gilbert and Peierls 1988; Davis 2006, ch. 6): its pivot can come from any row. The
+  order is then AMD on the pattern of `a + a'` for a nearly symmetric `a`, else on that of `a' a`, with each pivot the
+  largest of its column.
 
 As MATLAB's backslash does, `Solve` tries Cholesky on a symmetric matrix whose diagonal is above 0; a pivot that is not
 above 0 shows that it is not positive definite, and LU takes over. Then, when the residual `|a x - b|` is above
@@ -709,6 +723,24 @@ allocates. `Dense` takes 8 bytes a cell, and stops the same way past the limit.
   on Scientific and Statistical Computing* 9(5):862–874, 1988. <https://doi.org/10.1137/0909058>. LU.
 - Joseph W. H. Liu. "The Role of Elimination Trees in Sparse Factorization". *SIAM Journal on Matrix Analysis and
   Applications* 11(1):134–172, 1990. <https://doi.org/10.1137/0611010>.
+- Iain S. Duff, John K. Reid. "The Multifrontal Solution of Indefinite Sparse Symmetric Linear Equations". *ACM
+  Transactions on Mathematical Software* 9(3):302–325, 1983. <https://doi.org/10.1145/356044.356047>. Fronts.
+- Joseph W. H. Liu. "The Multifrontal Method for Sparse Matrix Solution: Theory and Practice". *SIAM Review*
+  34(1):82–109, 1992. <https://doi.org/10.1137/1034004>.
+- Joseph W. H. Liu, Esmond G. Ng, Barry W. Peyton. "On Finding Supernodes for Sparse Matrix Computations". *SIAM
+  Journal on Matrix Analysis and Applications* 14(1):242–252, 1993. <https://doi.org/10.1137/0614019>.
+- Cleve Ashcraft, Roger Grimes. "The Influence of Relaxed Supernode Partitions on the Multifrontal Method". *ACM
+  Transactions on Mathematical Software* 15(4):291–309, 1989. <https://doi.org/10.1145/76909.76910>.
+- Esmond G. Ng, Barry W. Peyton. "Block Sparse Cholesky Algorithms on Advanced Uniprocessor Computers". *SIAM Journal
+  on Scientific Computing* 14(5):1034–1056, 1993. <https://doi.org/10.1137/0914063>.
+- Fred G. Gustavson. "Recursion Leads to Automatic Variable Blocking for Dense Linear-Algebra Algorithms". *IBM Journal
+  of Research and Development* 41(6):737–755, 1997. <https://doi.org/10.1147/rd.416.0737>. The dense factorization of
+  a front, by halves of its columns.
+- Yanqing Chen, Timothy A. Davis, William W. Hager, Sivasankaran Rajamanickam. "Algorithm 887: CHOLMOD, Supernodal
+  Sparse Cholesky Factorization and Update/Downdate". *ACM Transactions on Mathematical Software* 35(3):22, 2008.
+  <https://doi.org/10.1145/1391989.1391995>.
+- Timothy A. Davis. "A Column Pre-ordering Strategy for the Unsymmetric-pattern Multifrontal Method". *ACM Transactions
+  on Mathematical Software* 30(2):165–195, 2004. <https://doi.org/10.1145/992200.992205>. UMFPACK.
 - Ronald F. Boisvert, Roldan Pozo, Karin A. Remington. *The Matrix Market Exchange Formats: Initial Design*. NIST,
   1996. <https://math.nist.gov/MatrixMarket/formats.html>.
 - Timothy A. Davis, Yifan Hu. "The University of Florida Sparse Matrix Collection". *ACM Transactions on Mathematical

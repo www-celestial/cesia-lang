@@ -29,8 +29,15 @@ val sum_along : inner:int -> len:int -> outer:int -> floatarray -> floatarray
 
 (** The same on integers, or [None] if one overflows. *)
 val sum_along_ints : inner:int -> len:int -> outer:int -> int array -> int array option
-(** A faster [Matmul], from a library, for what it can take. It says whether it did the work. *)
-val fast_matmul : (rows:int -> cols:int -> inner:int -> out:floatarray -> floatarray -> floatarray -> bool) ref
+(** A block of a matrix kept by columns: its cell (i, j), from 0, is [data.(offset + i + j * ld)]. *)
+type block = { data : floatarray; offset : int; ld : int }
+
+(** [!gemm ~rows ~cols ~inner ~trans ~sub ~threads out x y]: out, rows x cols, becomes x y, x being rows x inner and y
+    inner x cols, or x y' when [trans], y then cols x inner; out minus that product when [sub]. Out shares no cell with x
+    or y. From a library when the machine has one, each block first checked to lie inside its array, on at most
+    [threads] threads, or as many as the library takes by itself for 0; the caller decides from what size a call is
+    worth it. It says whether it did the work. Matmul's product, and the dense blocks of std/sparse's factorizations. *)
+val gemm : (rows:int -> cols:int -> inner:int -> trans:bool -> sub:bool -> threads:int -> block -> block -> block -> bool) ref
 
 val matmul : rows:int -> cols:int -> inner:int -> out:floatarray -> floatarray -> floatarray -> floatarray
 (** The positions from 0 to [n], stably sorted by a comparison of two positions. [parallel] says that the comparison can run

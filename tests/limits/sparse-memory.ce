@@ -1,0 +1,15 @@
+(* sparse.Solve past the memory limit: the factor of the 3-D Laplacian of 24^3 points would fill to more than the
+   limit allows. Its size is counted before anything is allocated, and Solve gives an Err that says it. *)
+use std/io
+use std/matrix
+use std/result
+use std/sparse
+
+k = 24
+t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
+e = sparse.Eye(k)
+a = sparse.Add(sparse.Add(sparse.Kron(sparse.Kron(e, e), t), sparse.Kron(sparse.Kron(e, t), e)), sparse.Kron(sparse.Kron(t, e), e))
+match sparse.Solve(a, matrix.Ones(1, k * k * k))
+  result.Err(err) -> io.Print(err.Message)
+  result.Ok(x) -> io.Print("solved", x[1])
+end

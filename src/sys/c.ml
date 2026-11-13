@@ -91,6 +91,13 @@ let shape_id args ret =
   Array.iteri (fun k ty -> if is_float ty then mask := !mask lor (1 lsl k)) args;
   (((1 lsl Array.length args) - 1 + !mask) * 2) + if is_float ret then 1 else 0
 
+(* The int that the C function at [address] gives for up to 6 int arguments: what Linalg asks of a BLAS library. *)
+let call_ints address args =
+  let slots = Bytes.make 56 '\000' in
+  Array.iteri (fun k x -> Bytes.set_int64_ne slots (8 * k) (Int64.of_int x)) args;
+  call address (shape_id (Array.map (fun _ -> I64) args) I64) slots (Array.make max_args "") 0;
+  Int64.to_int (Bytes.get_int64_ne slots result_offset)
+
 let int_range = function
   | I8 -> -0x80, 0x7F
   | U8 -> 0, 0xFF

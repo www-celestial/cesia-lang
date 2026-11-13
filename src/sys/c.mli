@@ -15,3 +15,7 @@ val in_release : string list -> string list
 
 (** The files to try for a library's short name and version, in order: the release's own first. *)
 val candidates : string -> string option -> string list
+
+(** [call_ints address args]: the int that the C function at [address] gives for up to 6 int arguments; for a function
+    of no result, what its register holds. *)
+val call_ints : int -> int array -> int

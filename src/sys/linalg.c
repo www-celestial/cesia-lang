@@ -15,10 +15,11 @@ typedef void orgqr(const int *, const int *, const int *, double *, const int *,
 typedef void syev(const char *, const char *, const int *, double *, const int *, double *, double *, const int *, int *,
                   size_t, size_t);
 
-value cesia_dgemm(value f, value dims, value out, value x, value y) {
-  int rows = Int_val(Field(dims, 0)), cols = Int_val(Field(dims, 1)), inner = Int_val(Field(dims, 2));
-  double one = 1.0, zero = 0.0;
-  CALL(gemm, f)("N", "N", &rows, &cols, &inner, &one, DOUBLES(x), &rows, DOUBLES(y), &inner, &zero, DOUBLES(out), &rows, 1, 1);
+value cesia_dgemm(value f, value d, value out, value x, value y) {
+  int n[6]; double ab[2] = {Long_val(Field(d, 10)), Long_val(Field(d, 11))};
+  for (int k = 0; k < 6; k++) n[k] = Int_val(Field(d, k));
+  CALL(gemm, f)("N", Long_val(Field(d, 9)) ? "T" : "N", &n[0], &n[1], &n[2], ab, DOUBLES(x) + Long_val(Field(d, 6)), &n[3],
+                DOUBLES(y) + Long_val(Field(d, 7)), &n[4], ab + 1, DOUBLES(out) + Long_val(Field(d, 8)), &n[5], 1, 1);
   return Val_unit;
 }
 

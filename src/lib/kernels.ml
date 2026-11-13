@@ -182,14 +182,23 @@ let sum_along_ints ~inner ~len ~outer (x : int array) =
         if !bad < 0 then Atomic.set ok false);
   if Atomic.get ok then Some out else None
 
-let fast_matmul = ref (fun ~rows:_ ~cols:_ ~inner:_ ~out:_ _ _ -> false)
+type block = { data : floatarray; offset : int; ld : int }
+
+let gemm = ref (fun ~rows:_ ~cols:_ ~inner:_ ~trans:_ ~sub:_ ~threads:_ _ _ _ -> false)
 
 (* The grain of a loop over columns of this many cells each. *)
 let column_grain cells = max 1 ((1 lsl 17) / max 1 cells)
 
-(* By columns, to follow the storage order. *)
+(* By columns, to follow the storage order. Below 32^3 products, this loop is fast enough and gives the same bits on
+   every machine; above, a library when the machine has one. *)
 let matmul ~rows ~cols ~inner ~out x y =
-  if rows > 0 && inner > 0 && not (!fast_matmul ~rows ~cols ~inner ~out x y) then
+  if
+    rows > 0 && inner > 0
+    && not
+         (float rows *. float cols *. float inner >= 32768.
+         && !gemm ~rows ~cols ~inner ~trans:false ~sub:false ~threads:0 { data = out; offset = 0; ld = rows }
+              { data = x; offset = 0; ld = rows } { data = y; offset = 0; ld = inner })
+  then
     Par.ranges ~grain:(column_grain (rows * inner)) cols (fun lo hi ->
         for j = lo to hi - 1 do
           let dst = j * rows in

@@ -1,0 +1,2 @@
+sparse.Solve: the factor of a would take 48 MB, more than the memory limit allows.
+exit 0
