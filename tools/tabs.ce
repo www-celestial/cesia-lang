@@ -2,12 +2,13 @@
     what its cesia block shows. cesia doc --site writes them in the .tabs of the site's folder; tools/check.sh and the CI
     of the site run this tool on it:
 
-      cesia run --allow read,write=FOLDER,exec=prlimit,env=CI tools/tabs.ce SITE/.tabs FOLDER [--seconds N]
+      cesia run --allow read=SITE,read=docs,read=FOLDER,write=FOLDER,exec=prlimit,env=CI,env=PATH tools/tabs.ce SITE/.tabs FOLDER [--seconds N]
 
-    Each tab runs alone, in a folder of its own under FOLDER, which only its owner can open (0700), with a copy of the files/
-    of its book, and which is deleted after it. prlimit caps its memory at 1 GiB, its time at N seconds of the processor (30
-    by default) and the files it writes at 64 MiB; unshare -rn gives it a network of its own, with no way out; it is killed
-    past N seconds. Python 3 runs with -I, so neither the variables of the environment nor the folders of the user change
+    from the root of the project. Each tab runs alone, in a folder of its own under FOLDER, which only its owner can open
+    (0700), with a copy of the files/ of its book, and which is deleted after it. prlimit caps its memory at 1 GiB, its time
+    at N seconds of the processor (30 by default) and the files it writes at 64 MiB; unshare -rn gives it a network of its
+    own, with no way out; it is killed past N seconds. Its environment holds PATH alone of this one's, so no secret of it
+    reaches a tab. Python 3 runs with -I, so neither the variables of the environment nor the folders of the user change
     it; R with --vanilla; MATLAB's tabs run in GNU Octave, which runs MATLAB code with no licence.
 
     What a tab prints and what its cesia block showed are cut into values, compared one by one: numbers, words, and the
@@ -228,10 +229,11 @@ defn copied(source, target)
 end
 
 defn capped(seconds, dir, command)
-  (** The arguments of prlimit that run a command capped, in the folder dir, with no network. *)
+  (** The arguments of prlimit that run a command capped, in the folder dir, with no network and an environment of its own. *)
+  path = if value.IsSome(sys.Env("PATH")) sys.Env("PATH") else "/usr/local/bin:/usr/bin:/bin" end
   list.Concat(["--as=$memory", "--cpu=$seconds", "--fsize=$fileSize", "--core=0", "--",
-    "env", "LC_ALL=C.UTF-8", "HOME=$dir", "TMPDIR=$dir", "OPENBLAS_NUM_THREADS=1", "OMP_NUM_THREADS=1", "MPLBACKEND=Agg",
-    "unshare", "-rn", "--"], command)
+    "env", "-i", "PATH=$path", "LC_ALL=C.UTF-8", "HOME=$dir", "TMPDIR=$dir", "OPENBLAS_NUM_THREADS=1", "OMP_NUM_THREADS=1",
+    "MPLBACKEND=Agg", "unshare", "-rn", "--"], command)
 end
 
 defn prepared(dir, files, file, code)
@@ -265,7 +267,7 @@ defn checked(tab, k, folder, seconds)
   end
   r = ran.Value
   why = if r.Code == -1
-    "$where ran past its $seconds seconds."
+    "$where ran past its $seconds seconds, or a signal ended it, as past 64 MiB in a file."
   else if r.Code != 0
     "$where stopped with the code $(r.Code), its line k being line $(tab.Line) + k of the page:\n$(lastLines(text.Replace("$dir/", "", r.Err), 8))"
   else
@@ -279,6 +281,7 @@ defn checked(tab, k, folder, seconds)
 end
 
 defn worker(queue, done, folder, seconds)
+  (** Checks the tabs of the queue one after the other, and sends what went wrong with each, or missing. *)
   job = fiber.Receive(queue, timeout = 0)
   while result.IsOk(job)
     fiber.Send({K: job.Value.K, Why: checked(job.Value.Tab, job.Value.K, folder, seconds)}, done)
@@ -303,15 +306,21 @@ defn isTabs(v)
   value.IsArray(v) and list.All([isTab(t) for t in v])
 end
 
+usage = "usage: cesia run --allow read=SITE,read=docs,read=FOLDER,write=FOLDER,exec=prlimit,env=CI,env=PATH tools/tabs.ce SITE/.tabs FOLDER [--seconds N], FOLDER from /, N from 1 to 3600"
+
 defn main()
   if value.Len(sys.Args) < 2
-    io.PrintError("usage: cesia run --allow read,write=FOLDER,exec=prlimit,env=CI tools/tabs.ce SITE/.tabs FOLDER [--seconds N], FOLDER from /")
+    io.PrintError(usage)
     sys.Exit(2)
   end
   seconds = 30
   k = list.IndexOf("--seconds", sys.Args)
-  if value.IsSome(k) and k < value.Len(sys.Args)
-    seconds = text.Number(sys.Args[k + 1])
+  if value.IsSome(k)
+    seconds = if k < value.Len(sys.Args) text.Number(sys.Args[k + 1]) else missing end
+    if not value.IsInt(seconds) or seconds < 1 or seconds > 3600
+      io.PrintError(usage)
+      sys.Exit(2)
+    end
   end
   ci = value.IsSome(sys.Env("CI")) and sys.Env("CI") != "" and sys.Env("CI") != "false"
   start = sys.Now()
@@ -351,7 +360,10 @@ defn main()
   done = fiber.Channel()
   workers = [fiber.Spawn(() -> worker(queue, done, sys.Args[2], seconds)) for i in 1..list.Min(list.Min(columns.Cores(), 4), list.Max(1, value.Len(todo)))]
   for w in workers
-    _ = fiber.Wait(w)
+    ended = fiber.Wait(w)
+    if result.IsErr(ended)
+      io.PrintError("tabs: a check stopped: $(ended.Error.Message)")
+    end
   end
   results = {}
   got = fiber.Receive(done, timeout = 0)
@@ -359,9 +371,10 @@ defn main()
     results[got.Value.K] = got.Value.Why
     got = fiber.Receive(done, timeout = 0)
   end
-  wrong = [k for k in todo if value.IsSome(results[k])]
+  lost(k) = "$(tabs[k].Page):$(tabs[k].Line): the $(languages[tabs[k].Lang].Name) tab was never checked."
+  wrong = [k for k in todo if not dict.Has(k, results) or value.IsSome(results[k])]
   for k in wrong
-    io.PrintError(results[k])
+    io.PrintError(dict.GetOr(k, lost(k), results))
   end
   counts = text.Join(", ", ["$(languages[l].Name) $(list.Count(k -> tabs[k].Lang == l, todo))" for l in usable])
   io.Print("tabs: $(value.Len(todo) - value.Len(wrong)) of $(value.Len(todo)) agree ($counts) in $(text.Decimals(1, sys.Now() - start)) s")

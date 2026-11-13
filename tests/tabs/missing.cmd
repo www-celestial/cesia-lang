@@ -5,7 +5,7 @@ bin=$(mktemp -d)
 for p in prlimit env unshare; do ln -s "$(command -v $p)" "$bin/$p"; done
 ln -s "$(python3 -c 'import sys; print(sys.executable)')" "$bin/python3"
 run() {
-  (export PATH="$bin" CI="$1"; cesia run --allow "read,write=$w,exec=prlimit,env=CI" "$root/tools/tabs.ce" "$2" "$w"; echo "exit $?") 2>&1 |
+  (export PATH="$bin" CI="$1"; cesia run --allow "read,write=$w,exec=prlimit,env=CI,env=PATH" "$root/tools/tabs.ce" "$2" "$w"; echo "exit $?") 2>&1 |
     sed -e 's/ in [0-9.]* s$//' -e 's/ (exit [^)]*)//'
 }
 echo "== here"

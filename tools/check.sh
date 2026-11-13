@@ -76,7 +76,7 @@ site=$(mktemp -d)
 work=$(mktemp -d)
 trap 'cp "$backup" src/lib/messages.ml; rm -f "$backup"; rm -rf "$site" "$work"' EXIT
 "$PWD/_build/default/src/bin/main.exe" doc --site "$site" > /dev/null || fail "Cesia's site doesn't build"
-"$PWD/_build/default/src/bin/main.exe" run --allow "read,write=$work,exec=prlimit,env=CI" tools/tabs.ce "$site/.tabs" "$work" ||
+"$PWD/_build/default/src/bin/main.exe" run --allow "read=$site,read=docs,read=$work,write=$work,exec=prlimit,env=CI,env=PATH" tools/tabs.ce "$site/.tabs" "$work" ||
   fail "a tab of the book fails: tools/tabs.ce"
 
 echo "check: ok ($lines lines of the core, change loop in $ms ms)"

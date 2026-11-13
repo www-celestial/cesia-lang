@@ -70,7 +70,7 @@ jobs:
       - name: Tabs
         run: |
           work=$(mktemp -d)
-          _build/default/src/bin/main.exe run --allow "read,write=$work,exec=prlimit,env=CI" tools/tabs.ce _site/.tabs "$work"
+          _build/default/src/bin/main.exe run --allow "read=_site,read=docs,read=$work,write=$work,exec=prlimit,env=CI,env=PATH" tools/tabs.ce _site/.tabs "$work"
       # What the build keeps for itself: what lets the next build skip a page that didn't change, and the tabs it checked.
       - name: Only the pages
         run: rm -rf _site/.pages _site/.reference _site/.book _site/.tabs

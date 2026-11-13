@@ -369,8 +369,8 @@ the shortest text of its float; a number the tab prints stands for those it roun
 or take 1e-14 of its size. So R's `1.414214` and Octave's `1.4142` are `1.4142135623730951`, `0.54` is not `0.5`, and
 `3.0` is `3`. Python runs with numpy, scipy,
 pandas and matplotlib, R with its base packages, and the MATLAB tab in GNU Octave, which runs MATLAB code with no licence.
-Each tab runs alone, with the files of its book, so it holds its imports and its data; with no network, at most 1 GiB of
-memory and 30 seconds.
+Each tab runs alone, with the files of its book, so it holds its imports and its data; with no network, no variable of
+the environment but `PATH`, at most 1 GiB of memory and 30 seconds, in a folder only its owner can open, deleted after it.
 
 ### Formules
 

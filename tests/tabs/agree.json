@@ -22,5 +22,13 @@
 "Code": "print(5)\n",
 "Want": "Ok(missing)\n5\n",
 "Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 24,
+"Lang": "python",
+"Code": "import os\nprint(os.environ.get(\"TABS_SECRET\", \"absent\"), os.environ[\"HOME\"] == os.getcwd())\n",
+"Want": "absent true\n",
+"Files": "files"
 }
 ]

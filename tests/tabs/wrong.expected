@@ -7,7 +7,7 @@ docs/book/page.md:5: the Python tab stopped with the code 1, its line k being li
 docs/book/page.md:6: the Python tab stopped with the code 1, its line k being line 6 + k of the page:
 docs/book/page.md:7: the Python tab stopped with the code 1, its line k being line 7 + k of the page:
 docs/book/page.md:8: the Python tab stopped with the code 1, its line k being line 8 + k of the page:
-docs/book/page.md:9: the Python tab ran past its 2 seconds.
+docs/book/page.md:9: the Python tab ran past its 2 seconds, or a signal ended it, as past 64 MiB in a file.
 tabs: 0 of 10 agree (Python 10)
 exit 1
     ValueError: no
@@ -16,5 +16,7 @@ exit 1
     OSError: [Errno 27] File too large
 left: 0
 tabs: TMP/bad.json is no list of tabs as cesia doc --site writes it.
+exit 2
+usage: cesia run --allow read=SITE,read=docs,read=FOLDER,write=FOLDER,exec=prlimit,env=CI,env=PATH tools/tabs.ce SITE/.tabs FOLDER [--seconds N], FOLDER from /, N from 1 to 3600
 exit 2
 exit 0
