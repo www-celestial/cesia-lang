@@ -25,5 +25,6 @@ rm -rf deps
 cesia pkg install | clean
 cesia run $no_spec src/main.ce
 echo "== a hash that no commit has"
-cesia pkg update units --to 0123456789abcdef0123456789abcdef01234567 2>&1 | clean
+# git's own reason comes last, in words that vary from one run to the next: the line stops before it.
+cesia pkg update units --to 0123456789abcdef0123456789abcdef01234567 2>&1 | clean | sed -E 's/(at HASH): .*/\1: .../'
 cesia run $no_spec src/main.ce
