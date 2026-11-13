@@ -132,7 +132,7 @@ let rec find env sc celled text : binding option =
         | Some k -> Some (Cell { m = env.m; k; stable = true })
         | None ->
           if Hashtbl.mem parent.vars text then begin
-            celled := text :: !celled;
+            Hashtbl.replace celled text ();
             Some (Cell { m = env.m; k = cell env text; stable = false })
           end else None
       end else begin
@@ -224,6 +224,38 @@ let type_ref env (t : ptype) =
       fail env t.tpos (match t.tpkg, env.home t.tname with None, Some p -> Messages.moved t.tname p | _ -> Messages.no_type shown)
   end
 
+(* Definite assignment in a function: what is surely assigned, the trail of what was since each branch began, and
+   whether what runs now can be reached. One for each function, and no closure for each step. *)
+type flow = { set : Bytes.t; trail : int array; mutable top : int; mutable dead : bool; undef : bool array }
+
+let assign st i = if Bytes.get st.set i = '\000' then (Bytes.set st.set i '\001'; st.trail.(st.top) <- i; st.top <- st.top + 1)
+let read st i = if not (st.dead || Bytes.get st.set i = '\001') then st.undef.(i) <- true
+
+(* Runs a branch, then takes back what it assigned: gives that, if [keep], or None if it never ends or isn't kept. *)
+let branch st keep f =
+  let mark = st.top and was = st.dead in
+  f ();
+  let out = ref [] and ended = not st.dead in
+  while st.top > mark do
+    st.top <- st.top - 1;
+    Bytes.set st.set st.trail.(st.top) '\000';
+    if keep then out := st.trail.(st.top) :: !out
+  done;
+  st.dead <- was;
+  if keep && ended then Some !out else None
+
+(* What two branches, one of which runs, both assign; None for one that never ends. Nothing of it is assigned before. *)
+let meet st x y =
+  match x, y with
+  | None, z | z, None -> z
+  | Some a, Some b ->
+    List.iter (fun i -> Bytes.set st.set i '\001') a;
+    let both = List.filter (fun i -> Bytes.get st.set i = '\001') b in
+    List.iter (fun i -> Bytes.set st.set i '\000') a;
+    Some both
+
+let after st = function None -> st.dead <- true | Some l -> List.iter (assign st) l
+
 (* The names that an expression reads, resolved. The walk is one closure for a statement, not one for each node, since the
    load of a program goes through every node of it. *)
 let rec reads env sc celled (e : expr) =
@@ -293,9 +325,9 @@ and func env parent kind celled (f : func) =
   Array.iter (fun p -> ignore (new_var sc p.pname)) f.params;
   Array.iter (fun p -> Option.iter (type_ref env) p.ptype) f.params;
   Option.iter (type_ref env) f.ret;
-  Array.iter (assigned sc) f.body;
+  Array.iter (assigned sc) (Lazy.force f.body);
   Array.iter (fun p -> Option.iter (reads env sc celled) p.default) f.params;
-  Array.iter (reads env sc celled) f.body;
+  Array.iter (reads env sc celled) (Lazy.force f.body);
   finish sc
 
 and finish sc =
@@ -305,78 +337,51 @@ and finish sc =
   f.captures <- Array.of_list (List.rev sc.caps);
   flow f
 
-(* Definite assignment: a variable read without being surely assigned is marked. *)
+(* Definite assignment: a variable read without being surely assigned is marked. A branch notes on a trail the variables
+   it assigns, and takes them back after it: a statement costs the same whatever the number of variables. After a return
+   or a break, nothing runs: every variable counts as assigned. *)
 and flow (f : func) =
   let n = f.nvars in
-  let undef = Array.make n false in
-  let all () = Bytes.make n '\001' in
-  let set = ref (Bytes.make n '\000') in
-  Array.iteri (fun i _ -> Bytes.set !set i '\001') f.params;
-  Array.iter (fun (_, inner) -> undef.(inner) <- true; Bytes.set !set inner '\001') f.captures;
-  let inter a b =
-    Bytes.mapi (fun i c -> if c = '\001' && Bytes.get b i = '\001' then '\001' else '\000') a
-  in
-  let branch f =
-    let saved = !set in
-    set := Bytes.copy saved;
-    f ();
-    let after = !set in
-    set := saved;
-    after
-  in
+  let st = { set = Bytes.make n '\000'; trail = Array.make n 0; top = 0; dead = false; undef = Array.make n false } in
+  Array.iteri (fun i _ -> Bytes.set st.set i '\001') f.params;
+  Array.iter (fun (_, inner) -> st.undef.(inner) <- true; Bytes.set st.set inner '\001') f.captures;
   let rec go (e : expr) =
     match e.e with
-    | Hook h -> h.live <- Bytes.copy !set
-    | Var { b = Local i; _ } -> if Bytes.get !set i = '\000' then undef.(i) <- true
-    | Assign ({ b = Local i; _ }, v) -> go v; Bytes.set !set i '\001'
-    | Set { root = { b = Local i; _ }; _ } ->
-      if Bytes.get !set i = '\000' then undef.(i) <- true;
-      children go e
-    | Fn_def ({ b = Local i; _ }, g) -> capture g; Bytes.set !set i '\001'
+    | Hook h -> h.live <- (if st.dead then Bytes.make n '\001' else Bytes.copy st.set)
+    | Var { b = Local i; _ } -> read st i
+    | Assign ({ b = Local i; _ }, v) -> go v; assign st i
+    | Set { root = { b = Local i; _ }; _ } -> read st i; children go e
+    | Fn_def ({ b = Local i; _ }, g) -> capture g; assign st i
     | Lambda g -> capture g
     | Destructure (pt, v) ->
       go v;
-      pat_names (fun n -> match n.b with Local i -> Bytes.set !set i '\001' | _ -> ()) pt
+      pat_names (fun n -> match n.b with Local i -> assign st i | _ -> ()) pt
     | And (a, b) | Or (a, b) ->
       go a;
-      ignore (branch (fun () -> go b))
+      ignore (branch st false (fun () -> go b))
     | If (c, a, b) ->
       go c;
-      let after_a = branch (fun () -> Array.iter go a) in
-      let after_b = branch (fun () -> Array.iter go b) in
-      set := inter after_a after_b
+      let after_a = branch st true (fun () -> Array.iter go a) in
+      after st (meet st after_a (branch st true (fun () -> Array.iter go b)))
     | While { cond; body; _ } ->
       go cond;
-      ignore (branch (fun () -> Array.iter go body))
+      ignore (branch st false (fun () -> Array.iter go body))
     | For { var = { b = Local i; _ }; iter; fbody; _ } ->
       go iter;
-      ignore (branch (fun () -> Bytes.set !set i '\001'; Array.iter go fbody))
+      ignore (branch st false (fun () -> assign st i; Array.iter go fbody))
     | Comp { cbody; cvar = { b = Local i; _ }; csrc; cguard } ->
       go csrc;
-      ignore (branch (fun () ->
-          Bytes.set !set i '\001';
-          Option.iter go cguard;
-          go cbody))
+      ignore (branch st false (fun () -> assign st i; Option.iter go cguard; go cbody))
     | Match { subject; arms } ->
       go subject;
-      let after =
-        Array.map
-          (fun a ->
-             branch (fun () ->
-                 pat_names (fun n -> match n.b with Local i -> Bytes.set !set i '\001' | _ -> ()) a.pt;
-                 Option.iter go a.guard;
-                 go a.abody))
-          arms
-      in
-      if Array.length after > 0 then set := Array.fold_left inter after.(0) after
-    | Return r -> Option.iter go r.rvalue; set := all ()
-    | Break -> set := all ()
+      let arm a () = pat_names (fun n -> match n.b with Local i -> assign st i | _ -> ()) a.pt; Option.iter go a.guard; go a.abody in
+      if Array.length arms > 0 then after st (Array.fold_left (fun acc a -> meet st acc (branch st true (arm a))) None arms)
+    | Return r -> Option.iter go r.rvalue; st.dead <- true
+    | Break -> st.dead <- true
     | _ -> children go e
-  and capture (g : func) =
-    Array.iter (fun (outer, _) -> if Bytes.get !set outer = '\000' then undef.(outer) <- true) g.captures
-  in
-  Array.iter go f.body;
-  f.maybe_undef <- undef
+  and capture (g : func) = Array.iter (fun (outer, _) -> read st outer) g.captures in
+  Array.iter go (Lazy.force f.body);
+  f.maybe_undef <- st.undef
 
 (* The mask has 62 bits: past them, every parameter counts as kept. *)
 let keeps (f : func) k = k >= 62 || f.kept land (1 lsl k) <> 0
@@ -428,11 +433,11 @@ let nontail (e : expr) = match nontail_in e with () -> false | exception Nontail
 
 (* The nested functions of a function, to mark tail positions in them. *)
 let rec finish_tail self (f : func) =
-  mark_block self f f.body;
-  f.has_return <- Array.exists nontail f.body;
-  Array.iter (note_writes f) f.body;
+  mark_block self f (Lazy.force f.body);
+  f.has_return <- Array.exists nontail (Lazy.force f.body);
+  Array.iter (note_writes f) (Lazy.force f.body);
   Array.iter (fun p -> Option.iter (note_writes f) p.default) f.params;
-  Array.iter nested f.body;
+  Array.iter nested (Lazy.force f.body);
   Array.iter (fun p -> Option.iter nested p.default) f.params
 
 and nested (e : expr) =
@@ -442,11 +447,14 @@ and nested (e : expr) =
   | Fn_def _ -> ()
   | _ -> children nested e
 
-(* The fields of a constructor, which is how a struct looks once parsed. *)
+(* The fields of a constructor, which is how a struct looks once parsed. A body still to read is never one: [Cache]
+   reads the body of a struct at once. *)
 let[@inline] struct_fields (f : func) =
-  match f.body with
-  | [| { e = Return { rvalue = Some { e = Struct_lit { sname = Some _; sfields }; _ }; _ }; _ } |] -> Some sfields
-  | _ -> None
+  if not (Lazy.is_val f.body) then None
+  else
+    match Lazy.force f.body with
+    | [| { e = Return { rvalue = Some { e = Struct_lit { sname = Some _; sfields }; _ }; _ }; _ } |] -> Some sfields
+    | _ -> None
 
 let check_method env pos sname static name =
   match Hashtbl.find_opt env.structs sname with
@@ -471,7 +479,7 @@ let definitions (fn : func) =
        | Assign (n, _) -> add n.text n.text e.pos false
        | Destructure (pt, _) -> pat_names (fun n -> add n.text n.text e.pos false) pt
        | _ -> ())
-    fn.body;
+    (Lazy.force fn.body);
   List.rev !out
 
 let check_package ?(report = raise) files =
@@ -507,7 +515,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
             | Fn_def (n, f) -> Option.iter (Hashtbl.replace env.structs n.text) (struct_fields f)
             | Interface i -> Hashtbl.replace env.interfaces i.iname ()
             | _ -> ())
-         peer.body)
+         (Lazy.force peer.body))
     peers;
   let hoist (e : expr) text shown =
     if Hashtbl.mem env.hoisted text then fail env e.pos (Messages.duplicate shown);
@@ -527,7 +535,7 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
          interfaces := (hoist e i.iname i.iname, i) :: !interfaces;
          Hashtbl.replace env.interfaces i.iname ()
        | _ -> ())
-    fn.body;
+    (Lazy.force fn.body);
   let method_types (_, ps, ret) =
     Array.iter (fun p -> Option.iter (type_ref env) p.ptype) ps;
     Option.iter (type_ref env) ret
@@ -541,33 +549,34 @@ let file ?(keep = [||]) ?(peers = []) ?(is_type = fun _ -> false) ?(home = fun _
       !defined
   in
   let top_hoisted (e : expr) = match e.e with Fn_def _ | Interface _ -> true | _ -> false in
-  Array.iter (fun e -> if not (top_hoisted e) then assigned sc e) fn.body;
+  Array.iter (fun e -> if not (top_hoisted e) then assigned sc e) (Lazy.force fn.body);
   Hashtbl.iter
     (fun text _ ->
        if Hashtbl.mem env.hoisted text then fail env fn.fpos (Messages.assign_function text))
     sc.vars;
   (* Another file of the package can read a variable while this one runs. *)
-  let celled = ref (if peers = [] then [] else Array.to_list keep) in
+  let celled = Hashtbl.create 16 in
+  if peers <> [] then Array.iter (fun text -> Hashtbl.replace celled text ()) keep;
   Array.iter (fun (e : expr) ->
       match e.e with
       | Fn_def (n, f) ->
         n.b <- Cell { m; k = Hashtbl.find env.hoisted n.text; stable = true };
         func env (Some sc) Named celled f
       | _ -> ())
-    fn.body;
-  Array.iter (fun e -> if not (top_hoisted e) then reads env sc celled e) fn.body;
+    (Lazy.force fn.body);
+  Array.iter (fun e -> if not (top_hoisted e) then reads env sc celled e) (Lazy.force fn.body);
   finish sc;
   ignore top_hoisted;
   (* Every file variable has a cell, for export. Those read by a named function live there. *)
   fn.cell_of <- Array.make fn.nvars (-1);
-  Array.iteri (fun i text -> if List.mem text !celled then fn.cell_of.(i) <- cell env text) fn.var_names;
+  Array.iteri (fun i text -> if Hashtbl.mem celled text then fn.cell_of.(i) <- cell env text) fn.var_names;
   fn.export_of <- Array.map (fun text -> cell env text) fn.var_names;
   Array.iter (fun (e : expr) ->
       match e.e with
       | Fn_def ({ b = Cell { k; _ }; _ }, f) -> finish_tail (Some k) f
       | _ -> ())
-    fn.body;
-  Array.iter nested fn.body;
+    (Lazy.force fn.body);
+  Array.iter nested (Lazy.force fn.body);
   fn.has_return <- false;
   { cell_names = Array.of_list (List.rev env.cell_list); hoisted = Array.of_list (List.rev !hoisted); methods;
     interfaces = List.rev !interfaces }

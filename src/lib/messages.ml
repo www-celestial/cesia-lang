@@ -343,6 +343,7 @@ let no_match a = plain (Printf.sprintf "No branch of this match accepts %s." a)
 let assertion = plain "Assertion failed."
 let use_nested = plain "use can only be used at the top of a file."
 let use_cycle = plain "This use creates a cycle between modules."
+let cache_damaged = hinted "The cache of loaded packages kept this function damaged: its entry is removed." "Run the program again."
 let use_quoted path =
   let rec from_root p =
     let drop n = from_root (String.sub p n (String.length p - n)) in

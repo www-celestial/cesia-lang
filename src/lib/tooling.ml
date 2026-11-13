@@ -28,7 +28,7 @@ let uses ctx a =
   match Parser.program ~file:"" ~nesting:w.limits.nesting (Lexer.tokens ~file:"" src) with
   | fn ->
     let path (e : Ast.expr) = match e.e with Use { upath; _ } -> Some upath | _ -> None in
-    Value.ok w (texts (List.filter_map path (Array.to_list fn.body)))
+    Value.ok w (texts (List.filter_map path (Array.to_list (Lazy.force fn.body))))
   | exception Pos.Load_error { pos; text; _ } -> refused w (Pos.line pos) text
 
 (* The names a source reads and doesn't define, as the resolver finds them: each once, at its first place. The source is
@@ -65,7 +65,7 @@ let reads ctx a =
         toks
     in
     scan toks;
-    let own = List.filter_map (fun (e : Ast.expr) -> match e.e with Use { ualias; _ } -> Some ualias | _ -> None) (Array.to_list fn.body) in
+    let own = List.filter_map (fun (e : Ast.expr) -> match e.e with Use { ualias; _ } -> Some ualias | _ -> None) (Array.to_list (Lazy.force fn.body)) in
     let looked = Hashtbl.create 16 in
     let lookup name =
       if name = "" || name.[0] = '#' || String.contains name '.' || String.contains name ':' then None
@@ -87,7 +87,7 @@ let reads ctx a =
       Resolve.children walk e
     and body (f : Ast.func) =
       Array.iter (fun (p : Ast.param) -> Option.iter walk p.default) f.params;
-      Array.iter walk f.body
+      Array.iter walk (Lazy.force f.body)
     in
     body fn;
     (* A struct or an interface named by a pattern or a type is no variable: its first place is that of its name. *)

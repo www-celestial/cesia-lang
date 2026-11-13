@@ -34,7 +34,7 @@ let rec text (e : expr) =
   | Or (a, b) -> 2, at 2 a ^ " or " ^ at 3 b
   | Call { callee; args; _ } ->
     11, at 11 callee ^ "(" ^ all (fun (a : arg) -> (match a.aname with Some n -> n ^ " = " | None -> "") ^ show a.value) args ^ ")"
-  | Lambda { params = [| { pname = "it"; _ } |]; body = [| { e = Return { rvalue = Some b; _ }; _ } |]; fname = "<anonymous>"; _ } -> text b
+  | Lambda { params = [| { pname = "it"; _ } |]; body = lazy [| { e = Return { rvalue = Some b; _ }; _ } |]; fname = "<anonymous>"; _ } -> text b
   | Lambda f -> 1, (match f.params with [| p |] -> p.pname | ps -> "(" ^ all (fun (p : param) -> p.pname) ps ^ ")") ^ " -> ..."
   | Range (a, b) -> 6, at 7 a ^ ".." ^ at 7 b
   | In_op (a, b) -> 5, at 6 a ^ " in " ^ at 6 b
@@ -62,7 +62,7 @@ let rec is_literal (e : expr) =
 let is_test = Testing.is_test
 
 let rewrite (fn : func) =
-  let aliases = Array.to_list fn.body |> List.filter_map (fun (e : expr) -> match e.e with Use { upath; ualias } -> Some (ualias, upath) | _ -> None) in
+  let aliases = Array.to_list (Lazy.force fn.body) |> List.filter_map (fun (e : expr) -> match e.e with Use { upath; ualias } -> Some (ualias, upath) | _ -> None) in
   let is_alias (e : expr) = match e.e with Var { text; _ } -> List.mem_assoc text aliases | _ -> false in
   (* pkg.Name, where pkg is the alias of a use of std/pkg. *)
   let names upath name (e : expr) =
@@ -185,7 +185,7 @@ let rewrite (fn : func) =
     match e.e with
     | Lambda f ->
       next := max !next f.nnodes;
-      block test (match f.params with [| p |] -> p.pname | _ -> "") f.body;
+      block test (match f.params with [| p |] -> p.pname | _ -> "") (Lazy.force f.body);
       e.e <- Lambda { f with nnodes = !next }
     | _ -> questions test e
   in
@@ -194,10 +194,10 @@ let rewrite (fn : func) =
        match e.e with
        | Fn_def (n, f) when is_test n.text && Array.length f.params = 0 ->
          next := f.nnodes;
-         block n.text "" f.body;
+         block n.text "" (Lazy.force f.body);
          e.e <- Fn_def (n, { f with nnodes = !next })
        | _ -> ())
-    fn.body;
+    (Lazy.force fn.body);
   Vec.to_array notes
 
 let cut s =

@@ -407,7 +407,7 @@ let () =
       (match e.e with Lambda g | Fn_def (_, g) -> func g | _ -> ());
       Resolve.children walk e
     in
-    Array.iter walk f.body
+    Array.iter walk (Lazy.force f.body)
   in
   func fn;
   check "a rewritten verdict keeps unique ids under nnodes" (!ok && Array.length notes > 10);

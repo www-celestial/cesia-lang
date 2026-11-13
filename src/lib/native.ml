@@ -678,7 +678,9 @@ let packages =
             Runtime.fail ctx User m
           | v -> Runtime.fail ctx Type (Messages.condition (Value.describe v))) ];
     "text", text_natives @ [ "Str", nat "Str" 0 max_int str ];
-    "path", [ "windows", Value.of_bool Sys.win32 ];
+    (* The current folder, for path.Abs, which tells where a path is: as Exists, the read permission on it. *)
+    "path", [ "windows", Value.of_bool Sys.win32;
+              "here", nat "here" 1 1 (fun ctx a -> Runtime.check_perm ctx Read (Some (text_arg ctx "Abs" a.(0))); Text (Sys.getcwd ())) ];
     "dict",
     [ "Dict", nat "Dict" 0 1 dict_of_pairs;
       "Get", nat "Get" 2 2 (fun ctx a -> Option.fold ~none:Missing ~some:Value.share (Dict.get ctx "Get" a.(0) a.(1)));

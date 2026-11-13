@@ -70,8 +70,13 @@ sees are those written around it in the text, not those of whoever calls it. A n
 - a name of a package that the file uses, as `list.Map`.
 
 The resolver also checks *definite assignment*: a name read before any value reaches it is an error at load, `"x" has no
-value yet.`, not a surprise at run time. It marks the calls in *tail position*, a call whose result is the function's own
-result with nothing left to do after it: a function that calls itself there runs as a loop, so its depth doesn't grow.
+value yet.`, not a surprise at run time. This costs the same for each statement whatever the number of variables: a
+branch, as each side of an `if`, notes the variables it assigns, and takes them back once it is done, and where two
+branches meet, only what they assigned is compared. Copying the set of all the variables at each branch instead made a
+function of 4,000 variables, or a script of as many, take 120 to 190 ms to resolve, against 6 to 7 ms now.
+
+The resolver marks the calls in *tail position*, a call whose result is the function's own result with nothing left to do
+after it: a function that calls itself there runs as a loop, so its depth doesn't grow.
 
 ```cesia
 defn countdown(n)
@@ -848,6 +853,23 @@ build, a folder that can't be written or a full disk, means only that the packag
 are never in an entry: they come from the command line and `cesia.toml` at each run, as the files that a use names come
 from the disk.
 
+**A body read at its first call.** Most functions of a large program don't run as it starts: Cemacs, up to its first
+frame, calls 262 of the 1,118 functions of its packages. Reading every tree of an entry made the young collections copy
+them all to the major heap: 723,000 words promoted at Cemacs's start, 318,000 now. So the load reads the tree of each function but
+for its body, which it skips: the body is read from the entry the first time something needs it, its first call most
+often, or the JIT when it looks at a function it may inline. The body of a file, whose statements run at once, and the
+one of a struct, which the load reads to know its fields, are read with the rest. In the entry, a body comes after its
+length, and its places are counted from the place before it, so that skipping it changes nothing else; the texts of the
+entry, its names among them, come once at its start, so that a body read later finds them. The bytes it is read from
+are those of the entry checked when the package loaded, kept in memory: an entry changed on the disk since, or rewritten
+by another run, changes nothing for this run. A body is read by the same reader, which checks every count and reference
+against those bytes and must end where its length says. One that doesn't, which only a bug of Cesia or a change of the
+bytes in memory could make, the digest having been checked, stops the program with an error at its function, "The cache
+of loaded packages kept this function damaged", and the entry is removed, so that the next run reads the package from
+its sources. A body that the load doesn't read hides no error: an entry is written only for a package that loaded from
+its sources without one, and every error that a load finds, it finds then; the same functions run, with the same
+results, the same errors on the same lines and the same stack traces.
+
 **Writing.** The entries of a run are written once it ends, its output out and its exit code set, by a copy of the
 process that the end doesn't wait for, made with `fork`: a run takes no longer than without a cache. Before anything
 else, the copy closes every descriptor of the program, its files, sockets and pipes, and the run ends only once it has:
@@ -880,14 +902,31 @@ first frame, as its book measures it.
 
 The first run takes the time it took before the cache, within what the runs spread, but for about 2 ms in Cemacs: about
 1 ms is the `fork` of a larger process, the rest the questions noted while it resolves. Reading an entry back is two to
-three times faster than lexing and parsing its source, and the resolver doesn't run at all; what is left of a load is
-mostly that reading, and the young collections that copy the new trees to the major heap, as for trees just parsed.
+three times faster than lexing and parsing its source, and the resolver doesn't run at all; what was left of a load was
+mostly that reading, and the young collections that copied the new trees to the major heap, as for trees just parsed.
+
+Since the bodies are read at their first call, measured on 2026-11-13, 21 runs of each, the two binaries taking turns,
+the median and its 95 % interval, from the start of the process to its end, Cemacs from `bin/cemacs` to its first frame:
+
+| Program | Every body read at the load | Each body at its first call |
+|---|---:|---:|
+| `use std/io` and `io.Print(1)` | 3.16 ms [3.07, 3.21] | 3.13 ms [3.07, 3.18] |
+| `use std/plot` | 5.74 ms [5.59, 5.86] | 4.03 ms [3.98, 4.11] |
+| `use std/cells` | 4.43 ms [4.35, 4.62] | 3.80 ms [3.70, 3.84] |
+| Ceti's `src/browser` | 6.53 ms [6.36, 7.05] | 4.83 ms [4.73, 5.04] |
+| Cemacs of 2026-11-12, before its cells | 52.39 ms [52.07, 53.85] | 45.94 ms [45.36, 46.38] |
+| Cemacs with its cells and its IDE | 61.12 ms [60.17, 63.51] | 50.62 ms [50.07, 51.83] |
+
+The first runs, with an empty cache, take the same time with either binary, within what the runs spread.
 
 **Tested** by `tests/cache_test.ml`, which damages each entry at 60 places, cuts it at 8 lengths, grows it, swaps it
-with another and reads it with another build, each time with the same output and the entry written again as it was, and
-changes a file and a dependency; by `tests/cache/entries.cmd`, the same with the binary, and with a link, an entry that
-others may read, a folder that others may read and one that can't be written, and four runs at once; and by the golden
-tests, run once with no cache, once with an empty one and once with it full.
+with another and reads it with another build, each time with the same output and the entry written again as it was,
+changes a file and a dependency, checks that the bodies of the functions a run never calls stay unread, in a package
+with recursion, closures and a function inside a function, and damages an entry in memory once it was checked, which
+stops the run at the first call that needs a body of it; by `tests/cache/entries.cmd`, the same with the binary, and
+with a link, an entry that others may read, a folder that others may read and one that can't be written, four runs at
+once, and an entry changed on the disk while a run that read it runs; and by the golden tests, run once with no cache,
+once with an empty one and once with it full.
 
 ## Reloading code: --watch
 

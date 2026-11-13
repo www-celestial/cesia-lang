@@ -8,7 +8,7 @@ type store = { build : string; read : string -> string option; write : string ->
 let store = ref None
 
 (* The digests of the sources, only once an entry is there to check, or one is written. *)
-type slot = { name : string; kept : store; nesting : int; digests : string list Lazy.t }
+type slot = { name : string; kept : store; nesting : int; digests : string list Lazy.t; paths : string list }
 type place = { first : int; count : int; natives : int option; used : int array; package : int -> int array }
 type use = { upath : string; ualias : string; upos : Pos.t; unames : string list }
 
@@ -21,7 +21,7 @@ let slot ~key ~nesting ~fixed sources =
   | Some kept when List.fold_left (fun n (_, s) -> n + String.length s) 0 sources >= least ->
     let digest (_, src) = if fixed src then "" else Digest.BLAKE128.string src in
     let name = Digest.BLAKE128.to_hex (Digest.BLAKE128.string key) in
-    Some { name; kept; nesting; digests = lazy (List.map digest sources) }
+    Some { name; kept; nesting; digests = lazy (List.map digest sources); paths = List.map fst sources }
   | _ -> None
 
 (* The module numbers of a binding, relative to the package: (0, 0) the core, (1, j) its file j or, at j = count, its
@@ -58,9 +58,9 @@ let abs p u j =
   | _ -> raise Bad
 
 (* An entry: these 8 bytes, the BLAKE2b-128 of the rest, then the rest. *)
-let magic = "Cesia\000L1"
+let magic = "Cesia\000L2"
 
-(* Writing. The strings of an entry are each written once, then by their number. *)
+(* Writing. The strings of an entry are written once, at its start, and named by their number. *)
 module Out = struct
   (* A place is written as its distance from the one before, most often a byte. *)
   type out = {
@@ -85,16 +85,17 @@ module Out = struct
   let bool o x = byte o (if x then 1 else 0)
   let pos o p = int o (p - o.last); o.last <- p
 
+  let raw o s =
+    let k = String.length s in
+    uint o k;
+    if o.n + k > Bytes.length o.b then grow o k;
+    Bytes.blit_string s 0 o.b o.n k;
+    o.n <- o.n + k
+
   let str o s =
     match Hashtbl.find_opt o.strings s with
-    | Some i -> uint o ((2 * i) + 1)
-    | None ->
-      Hashtbl.add o.strings s (Hashtbl.length o.strings);
-      uint o (2 * String.length s);
-      let k = String.length s in
-      if o.n + k > Bytes.length o.b then grow o k;
-      Bytes.blit_string s 0 o.b o.n k;
-      o.n <- o.n + k
+    | Some i -> uint o i
+    | None -> let i = Hashtbl.length o.strings in Hashtbl.add o.strings s i; uint o i
 
   let opt f o = function None -> byte o 0 | Some x -> byte o 1; f o x
   let arr f o a = uint o (Array.length a); Array.iter (f o) a
@@ -150,8 +151,8 @@ module Out = struct
     | While { cond; body; has_break } -> byte o 15; expr o cond; block o body; bool o has_break
     | Break -> byte o 16
     | Return r -> byte o 17; opt expr o r.rvalue; bool o r.tail
-    | Lambda f -> byte o 18; func o f
-    | Fn_def (n, f) -> byte o 19; name o n; func o f
+    | Lambda f -> byte o 18; func false o f
+    | Fn_def (n, f) -> byte o 19; name o n; func false o f
     | Range (a, b) -> byte o 20; expr o a; expr o b
     | In_op (a, b) -> byte o 21; expr o a; expr o b
     | Array_lit rows -> byte o 22; arr block o rows
@@ -192,21 +193,33 @@ module Out = struct
 
   and iface o i = str o i.iname; arr (fun o (s, ps, r) -> str o s; arr param o ps; opt ptype o r) o i.imethods
 
-  and func o f =
-    str o f.fname; arr param o f.params; opt ptype o f.ret; block o f.body; uint o f.nnodes; pos o f.fpos;
+  (* A body is read at its first need, but that of a file, which runs at once, and that of a struct, which the load
+     reads: after its length, to skip it, with its places counted from the one before it. *)
+  and func now o f =
+    str o f.fname; arr param o f.params; opt ptype o f.ret; uint o f.nnodes; pos o f.fpos;
     uint o f.nvars; arr str o f.var_names; arr (fun o (a, b) -> uint o a; uint o b) o f.captures;
     arr bool o f.maybe_undef; bool o f.has_return; bool o f.has_self_tail; int o f.kept; arr int o f.cell_of;
-    arr int o f.export_of
+    arr int o f.export_of;
+    if now || Resolve.struct_fields f <> None then (byte o 0; block o (Lazy.force f.body))
+    else begin
+      byte o 1;
+      let at = o.n and last = o.last in
+      if o.n + 4 > Bytes.length o.b then grow o 4;
+      o.n <- o.n + 4;
+      block o (Lazy.force f.body);
+      Bytes.set_int32_le o.b at (Int32.of_int (o.n - at - 4));
+      o.last <- last
+    end
 
   let use o u = str o u.upath; str o u.ualias; pos o u.upos; list str o u.unames
 
   (* A hoisted function or an interface is the one of a definition of the file: it is kept as its place in the body, so
      that it stays the same value once read. They come in the order of the body. *)
   let layout o (fn : func) (l : layout) =
-    let at = ref 0 in
+    let at = ref 0 and body = Lazy.force fn.body in
     let place found =
-      while !at < Array.length fn.body && not (found fn.body.(!at).e) do incr at done;
-      if !at = Array.length fn.body then raise Exit;
+      while !at < Array.length body && not (found body.(!at).e) do incr at done;
+      if !at = Array.length body then raise Exit;
       uint o !at
     in
     arr str o l.cell_names;
@@ -219,7 +232,9 @@ end
 
 (* Reading, with every count and number checked against what is left: a wrong entry raises, never more. *)
 module In = struct
-  type inp = { s : string; mutable p : int; strs : string Vec.t; mutable abs : int -> int -> int; mutable last : int }
+  (* [file] names the file whose tree is read, and [drop] removes the entry, for a body that doesn't read. *)
+  type inp = { s : string; mutable p : int; strs : string array; mutable abs : int -> int -> int; mutable last : int;
+               mutable file : string; drop : unit -> unit }
 
   let[@inline] byte d =
     let c = Char.code d.s.[d.p] in
@@ -239,16 +254,12 @@ module In = struct
   let[@inline] bool d = match byte d with 0 -> false | 1 -> true | _ -> raise Bad
   let count d = let n = uint d in if n < 0 || n > String.length d.s - d.p then raise Bad else n
 
-  let str d =
-    let z = uint d in
-    if z land 1 = 1 then Vec.get d.strs (z lsr 1)
-    else
-      let n = z lsr 1 in
-      if n > String.length d.s - d.p then raise Bad;
-      let s = String.sub d.s d.p n in
-      d.p <- d.p + n;
-      Vec.add_last d.strs s;
-      s
+  let str d = d.strs.(uint d)
+  let raw d = let n = count d in let s = String.sub d.s d.p n in d.p <- d.p + n; s
+
+  (* The texts at the start of an entry, into an array made of "" then filled: one made of a young text, past 256, would
+     cost a young collection. *)
+  let texts d = let n = count d in let a = Array.make n "" in for i = 0 to n - 1 do a.(i) <- raw d done; a
 
   let opt f d = match byte d with 0 -> None | 1 -> Some (f d) | _ -> raise Bad
   let arr f d = let n = count d in Array.init n (fun _ -> f d)
@@ -408,7 +419,6 @@ module In = struct
     let fname = str d in
     let params = arr param d in
     let ret = opt ptype d in
-    let body = block d in
     let nnodes = uint d in
     let fpos = pos d in
     let nvars = uint d in
@@ -420,8 +430,31 @@ module In = struct
     let kept = int d in
     let cell_of = arr int d in
     let export_of = arr int d in
+    let body =
+      match byte d with
+      | 0 -> Lazy.from_val (block d)
+      | 1 ->
+        let n = Int32.to_int (String.get_int32_le d.s d.p) in
+        if n < 0 || n > String.length d.s - d.p - 4 then raise Bad;
+        let later = { d with p = d.p + 4 } and stop = d.p + 4 + n in
+        d.p <- stop;
+        lazy (read_later later stop fpos)
+      | _ -> raise Bad
+    in
     { fname; params; ret; body; nnodes; fpos; nvars; var_names; captures; maybe_undef; has_return; has_self_tail; kept;
       cell_of; export_of }
+
+  (* A body read at its first need, from the bytes checked with the entry: one that doesn't read as it was written is an
+     error of the entry, which goes, and the program stops there. *)
+  and read_later d stop fpos =
+    let bad () =
+      d.drop ();
+      let m = Messages.cache_damaged in
+      raise (Pos.Load_error { file = d.file; pos = fpos; kind = "load"; text = m.text; hint = m.hint })
+    in
+    match block d with
+    | b -> if d.p = stop then b else bad ()
+    | exception (Bad | Invalid_argument _ | Failure _ | Stack_overflow) -> bad ()
 
   let use d =
     let upath = str d in
@@ -432,7 +465,8 @@ module In = struct
 
   let layout d (fn : func) =
     let cell_names = arr str d in
-    let at d = let i = uint d in if i < Array.length fn.body then fn.body.(i).e else raise Bad in
+    let body = Lazy.force fn.body in
+    let at d = let i = uint d in if i < Array.length body then body.(i).e else raise Bad in
     let hoisted = arr (fun d -> let k = uint d in match at d with Fn_def (_, f) -> k, f | _ -> raise Bad) d in
     let methods = list (fun d -> let s = str d in let n = str d in let static = bool d in s, n, static, uint d) d in
     let interfaces = list (fun d -> let k = uint d in match at d with Interface i -> k, i | _ -> raise Bad) d in
@@ -462,7 +496,7 @@ let is_type log f b =
   Hashtbl.replace log.types b t;
   t
 
-type saved = { d : In.inp; uses : use list array }
+type saved = { d : In.inp; uses : use list array; paths : string list }
 
 let uses saved = saved.uses
 
@@ -477,15 +511,23 @@ let read slot =
          || not (String.equal (String.sub s 8 16) (Digest.BLAKE128.substring s 24 (String.length s - 24)))
       then raise Bad;
       let open In in
-      let d = { s; p = 24; strs = Vec.create (); abs = (fun _ _ -> raise Bad); last = 0 } in
+      let none = { s; p = 24; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; file = ""; drop = ignore } in
+      let d = { none with strs = texts none; drop = (fun () -> slot.kept.write slot.name "") } in
       let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = Lazy.force slot.digests in
-      if same then Some { d; uses = arr (list use) d } else None
+      if same then Some { d; uses = arr (list use) d; paths = slot.paths } else None
     with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
+
+(* The packages of the modules used, as they are now: one may grow later, as std/list once a file reads its Cesia code after
+   another read only its natives, while the names of a package keep the modules it had when it was resolved. *)
+let now place =
+  let now = Hashtbl.create 16 in
+  Array.iter (fun m -> if m >= 0 then Hashtbl.replace now m (Array.copy (place.package m))) place.used;
+  { place with package = Hashtbl.find now }
 
 let trees saved place ~lookup ~spaces ~is_type =
   let open In in
   let d = saved.d in
-  d.abs <- abs place;
+  d.abs <- abs (now place);
   let rec asked n =
     n = 0
     ||
@@ -503,7 +545,8 @@ let trees saved place ~lookup ~spaces ~is_type =
     in
     same && asked (n - 1)
   in
-  try if asked (count d) then Some (list (fun d -> let fn = func d in fn, layout d fn) d) else None
+  let file path = d.file <- path; let fn = func d in fn, layout d fn in
+  try if asked (count d) && count d = List.length saved.paths then Some (List.map file saved.paths) else None
   with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
 let encode slot place log uses trees =
@@ -522,8 +565,13 @@ let encode slot place log uses trees =
          | Space (i, alias, name) -> byte o 1; uint o i; str o alias; str o name; opt binding o b)
       log.found;
     Hashtbl.iter (fun b t -> byte o 2; binding o b; bool o t) log.types;
-    list (fun o (fn, l) -> func o fn; layout o fn l) o trees;
-    let body = Bytes.sub_string o.b 0 o.n in
+    list (fun o (fn, l) -> func true o fn; layout o fn l) o trees;
+    let rest = Bytes.sub_string o.b 0 o.n in
+    let all = Array.make (Hashtbl.length o.strings) "" in
+    Hashtbl.iter (fun s i -> all.(i) <- s) o.strings;
+    o.n <- 0;
+    arr raw o all;
+    let body = Bytes.sub_string o.b 0 o.n ^ rest in
     slot.kept.write slot.name (String.concat "" [ magic; Digest.BLAKE128.string body; body ])
   with Exit -> ()
 
@@ -531,12 +579,8 @@ let encode slot place log uses trees =
    way. A package loaded again, in another world of the same process, replaces its own. *)
 let waiting : (string, unit -> unit) Hashtbl.t = Hashtbl.create 16
 
-(* The packages of the modules used, as they are now: one may grow before the end, as std/list once a file reads its Cesia
-   code after another read only its natives, and the next run finds them as they were. *)
 let write slot place log uses trees =
-  let now = Hashtbl.create 16 in
-  Array.iter (fun m -> if m >= 0 then Hashtbl.replace now m (Array.copy (place.package m))) place.used;
-  let place = { place with package = Hashtbl.find now } in
+  let place = now place in
   Hashtbl.replace waiting slot.name (fun () -> encode slot place log uses trees)
 let pending () = Hashtbl.length waiting > 0
 

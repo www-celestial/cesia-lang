@@ -976,8 +976,15 @@ use std/test
       sys.Read(file) --> result.Ok("hello")
       result.IsErr(sys.Read("$(test.Temp())/none.txt")) --> true *)
 
-(** sys.Write(path, text, sync = false)
+(** sys.Write(path, text, sync = false, private = false)
     Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission.
+    A new file can be read by everyone on the machine and written by its owner (its mode is 0644, less the umask). With
+    private = true, for keys, sessions and what is no one else's business, the text goes into a new file of its owner's
+    alone (0600: read and written by them, by no one else), made beside it, which then takes the place of the old one.
+    So no one gets the text through the old file, even someone who had it open; a symbolic link at path is replaced by
+    the file, and what it pointed to is left as it was; a file at path that belongs to someone else gives an Err and
+    stays as it was. On Windows, where a file takes the rights of the folder that holds it, and the folder of each person
+    is theirs alone, private changes nothing but the new file: keep such a file there.
     With sync = true, the Ok comes only once the text is on the disk: the file is flushed by fsync, then the folder that
     holds its name (but on Windows, where the file's flush is enough), so a power cut after the Ok loses nothing of it.
     Without, the system writes it out later (Linux within about 30 seconds, by default): faster, and a crash of the
@@ -988,7 +995,8 @@ use std/test
       file = "$(test.Temp())/write.txt"
       sys.Write(file, "one") --> result.Ok(missing)
       sys.Write(file, "two", sync = true) --> result.Ok(missing)
-      sys.Read(file) --> result.Ok("two") *)
+      sys.Read(file) --> result.Ok("two")
+      sys.Write("$(test.Temp())/key.txt", "s3cret", private = true) --> result.Ok(missing) *)
 
 (** sys.Append(path, text)
     Adds a text at the end of a file, creating it if needed: Ok(missing) or an Err. Needs the write permission.
@@ -1065,12 +1073,18 @@ use std/test
       sys.Rename("$(d)/draft.txt", "$(d)/final.txt") --> result.Ok(missing)
       sys.Read("$(d)/final.txt") --> result.Ok("text") *)
 
-(** sys.Mkdir(path)
+(** sys.Mkdir(path, private = false)
     Creates a folder and the missing folders above it, like mkdir -p: Ok(missing) or an Err. Needs the write permission.
+    A folder can be entered and listed by everyone on the machine, and changed by its owner (0755, less the umask). With
+    private = true, as for a browser's profile or keys, the folders it creates are their owner's alone (0700: no one else
+    can list them, enter them or reach what they hold), and the last one is made so if it was there already, though a
+    descriptor opened on it before can still list its names; one that belongs to someone else gives an Err. On Windows, where a folder takes the rights of the one that holds it, and the
+    folder of each person is theirs alone, private changes nothing: make such a folder there.
 
       d = test.Temp()
       sys.Mkdir("$(d)/photos/2026") --> result.Ok(missing)
-      sys.Stat("$(d)/photos/2026")?.IsDir --> true *)
+      sys.Stat("$(d)/photos/2026")?.IsDir --> true
+      sys.Mkdir("$(d)/profile", private = true) --> result.Ok(missing) *)
 
 (** sys.Exists(path)
     Does this file or folder exist? Needs the read permission.
@@ -1156,6 +1170,16 @@ use std/test
     The port a socket is bound to: the one the system chose for net.Listen(0), which a test uses to take a free port.
 
       net.Port(net.Listen(0).Value) > 0 --> true *)
+
+(** net.Peer(socket)
+    The address of the other end of a connection, without its port, as "203.0.113.7" or "::1"; missing for a socket that
+    has none, as a listener. A server limits a client by it, as std/http's requests give it in Peer. Behind a proxy it is
+    the proxy's: the address of the client is then in a header the proxy writes, such as X-Forwarded-For.
+
+      server = net.Listen(0).Value
+      client = net.Connect("127.0.0.1", net.Port(server)).Value
+      net.Peer(net.Accept(server).Value) --> "127.0.0.1"
+      value.IsMissing(net.Peer(server)) --> true *)
 
 (** net.Accept(listener)
     Waits for a connection and gives an Ok of its socket. An Err of the kind "stopped" means that the program was asked to stop.
