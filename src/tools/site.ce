@@ -549,10 +549,10 @@ end
 (* The words of the site itself, in English and in French; the reference, made from the code, is in English on both. *)
 enWords = {Book: "Book", Reference: "Reference", ReferenceLink: "Reference", Skip: "Skip to the text", Search: "Search  /",
   SearchLabel: "Search the docs", Contents: "Contents", Where: "Where", Code: "Code", Output: "Output", RunsWith: "Runs with",
-  Language: "Language"}
+  Language: "Language", Versions: "The example in other languages"}
 frWords = {Book: "Livre", Reference: "Référence", ReferenceLink: "Référence (en anglais)", Skip: "Aller au texte",
   Search: "Rechercher  /", SearchLabel: "Rechercher dans la documentation", Contents: "Sommaire", Where: "Chemin",
-  Code: "Code", Output: "Sortie", RunsWith: "S’exécute avec", Language: "Langue"}
+  Code: "Code", Output: "Sortie", RunsWith: "S’exécute avec", Language: "Langue", Versions: "L’exemple dans d’autres langages"}
 wordsOf(lang) = if lang == "fr" frWords else enWords end
 frAlerts = [["Note", "Remarque"], ["Tip", "Astuce"], ["Important", "Important"], ["Warning", "Attention"], ["Caution", "Prudence"]]
 untranslated = "<p class=\"untranslated\">Cette page n’est pas encore traduite : la voici en anglais.</p>\n"
@@ -1052,6 +1052,93 @@ defn codeBlocks(blocks)
   out
 end
 
+(* Tabs: a block of python, r or matlab right after a cesia block, with nothing between them, is the same example in that
+   language, drawn as a tab beside it. tools/tabs.ce runs each tab of Cesia's book and checks that it prints what its cesia
+   block showed. *)
+
+tabLanguages = ["python", "r", "matlab"]
+tabNames = {cesia: "Cesia", python: "Python", r: "R", matlab: "MATLAB"}
+firstWord(info) = text.Split(" ", info)[1]
+
+defn tabGroups(blocks)
+  (** The cesia blocks that have tabs, each {Line, Tabs: [{Lang, Info, Line, Text}]}, among blocks from markdown.Parse, those
+      in quotes and lists too, in the order of the text. *)
+  out = []
+  k = 1
+  while k <= value.Len(blocks)
+    b = blocks[k]
+    if b.Kind == "quote"
+      out = list.Concat(out, tabGroups(b.Blocks))
+    else if b.Kind == "list"
+      for item in b.Items
+        out = list.Concat(out, tabGroups(item))
+      end
+    else if b.Kind == "code" and firstWord(b.Info) == "cesia"
+      tabs = []
+      while k < value.Len(blocks) and blocks[k + 1].Kind == "code" and firstWord(blocks[k + 1].Info) in tabLanguages
+        k += 1
+        t = blocks[k]
+        tabs = list.Append({Lang: firstWord(t.Info), Info: t.Info, Line: t.Line, Text: t.Text}, tabs)
+      end
+      if value.Len(tabs) > 0
+        out = list.Append({Line: b.Line, Tabs: tabs}, out)
+      end
+    end
+    k += 1
+  end
+  out
+end
+
+defn tabMistakes(groups, runs, at)
+  (** What is wrong with the tabs of a page whose source is at: the tabs follow their block in the order python, r, matlab,
+      each once, with no word after the language, and a block that fails has none. *)
+  out = []
+  for g in groups
+    k = list.IndexOf(g.Line, [r.Line for r in runs])
+    if value.IsSome(k) and runs[k].Words.Fails
+      out = list.Append("$at:$(g.Line): a block marked fails has no tabs: a tab prints what its block shows when it ends well.", out)
+    end
+    for j in 1..value.Len(g.Tabs)
+      t = g.Tabs[j]
+      if t.Info != t.Lang
+        out = list.Append("$at:$(t.Line): a $(t.Lang) tab has no word after its language.", out)
+      end
+      if j > 1 and list.IndexOf(t.Lang, tabLanguages) <= list.IndexOf(g.Tabs[j - 1].Lang, tabLanguages)
+        out = list.Append("$at:$(t.Line): the tabs of a block go python, r, matlab, each once: this $(t.Lang) tab comes after the $(g.Tabs[j - 1].Lang) tab.", out)
+      end
+    end
+  end
+  out
+end
+
+defn tabbed(g, first, said)
+  (** A cesia block, its HTML first, with its tabs: a radio input and its label for each language, then the panel of each.
+      CSS shows the panel of the checked input, so the tabs work without a script, and the keyboard moves between them as in
+      any group of radio buttons. *)
+  name = "tab.$(g.Line)"
+  langs = list.Concat(["cesia"], [t.Lang for t in g.Tabs])
+  heads = [text.Str("<input type=\"radio\" name=\"", name, "\" id=\"", name, ".", l, "\"", if l == "cesia" " checked" else "" end, "><label for=\"", name, ".", l, "\">", tabNames[l], "</label>\n") for l in langs]
+  panels = [text.Str("<div class=\"tab\"><pre><code class=\"language-", t.Lang, "\">", escape(if text.EndsWith("\n", t.Text) text.ByteSlice(1, text.ByteLength(t.Text) - 1, t.Text) else t.Text end), "</code></pre></div>\n") for t in g.Tabs]
+  text.Str("<div class=\"tabs\" role=\"group\" aria-label=\"", said.Versions, "\">\n", text.Join("", heads), "<div class=\"tab\">\n", first, "</div>\n", text.Join("", panels), "</div>\n")
+end
+
+defn tabsOf(page, r)
+  (** The tabs of a page of the book for tools/tabs.ce, each {Page, Line, Lang, Code, Want, Files}: Want is what its cesia
+      block showed, the value of each --> on a line and what it printed, in their order, and Files the files/ of its book. *)
+  if value.IsMissing(r)
+    return []
+  end
+  said = dict.GetOr("Said", [], r)
+  lines = [x.Line for x in page.Runs]
+  out = []
+  for g in tabGroups(page.Blocks)
+    k = list.IndexOf(g.Line, lines)
+    want = if value.IsMissing(k) or k > value.Len(said) "" else said[k] end
+    out = list.Concat(out, [{Page: page.Source, Line: t.Line, Lang: t.Lang, Code: t.Text, Want: want, Files: page.Files} for t in g.Tabs])
+  end
+  out
+end
+
 defn arrows(code)
   (** Each line of a block cut at its -->, as cesia test cuts it: {At, Code, Want}, Want empty for a value to show; or
       missing. A --> in a comment or a text is no check of the book: the example of a (** *) is for cesia test. *)
@@ -1113,14 +1200,16 @@ end
 
 defn helpers(mark)
   (** The functions the program calls to speak to the build: each prints a line that starts with the byte 1 and the mark. A
-      value is shown as cesia test shows it, its line ends as the byte 2. Their uses come last, under names that no page
-      gives, so that they move no line of the page. *)
+      value is shown as cesia test shows it, its line ends as the byte 2; a --> that checks a value tells it too, for the
+      tabs. Their uses come last, under names that no page gives, so that they move no line of the page. *)
   say = "bookIo.Print(bookText.Str(bookText.Char(1), $quote$mark $quote, "
   text.Join("\n", ["bookAt(k) = $(say)k))",
     "bookShown(v) = bookText.Replace(bookText.Char(10), bookText.Char(2), bookText.ByteSlice(2, bookText.ByteLength(bookValue.Text([v])) - 1, bookValue.Text([v])))",
     "bookShow(line, v) = $(say)$(quote)= $quote, line, $quote $quote, bookShown(v)))",
     "defn bookCheck(line, got, want)",
-    "  if not bookValue.Equal(got, want)",
+    "  if bookValue.Equal(got, want)",
+    "    bookShow(line, got)",
+    "  else",
     "    $(say)$(quote)! $quote, line, $quote $quote, bookShown(want), bookText.Char(3), bookShown(got)))",
     "  end",
     "end",
@@ -1172,31 +1261,37 @@ defn program(runs, chosen, mark)
 end
 
 defn heard(out, mark)
-  (** What a run printed, cut at its marks: {Output: block -> text, Values: line -> text, Wrong: [{Line, Want, Got}]}. *)
+  (** What a run printed, cut at its marks: {Output: block -> text, Values: line -> text, Wrong: [{Line, Want, Got}], Said:
+      block -> text}. Said is what a block showed, the value of each of its --> on a line and what it printed, in their
+      order: what its tabs must print. *)
   output = {}
   values = {}
   wrong = []
+  said = {}
   block = 0
   pieces = text.Split(text.Str(text.Char(1), mark, " "), out)
   for p in list.Skip(1, pieces)
     nl = text.ByteFind("\n", 1, p)
     head = if value.IsMissing(nl) p else text.ByteSlice(1, nl - 1, p) end
     rest = if value.IsMissing(nl) "" else from(nl + 1, p) end
-    said = text.Replace(text.Char(2), "\n", from(3, head))
-    space = text.ByteFind(" ", 1, said)
+    told = text.Replace(text.Char(2), "\n", from(3, head))
+    space = text.ByteFind(" ", 1, told)
     if text.StartsWith("= ", head)
-      values[text.Number(text.ByteSlice(1, space - 1, said))] = from(space + 1, said)
+      shown = from(space + 1, told)
+      values[text.Number(text.ByteSlice(1, space - 1, told))] = shown
+      said[block] = text.Str(dict.GetOr(block, "", said), shown, "\n")
     else if text.StartsWith("! ", head)
-      shown = text.Split(text.Char(3), from(space + 1, said))
-      wrong = list.Append({Line: text.Number(text.ByteSlice(1, space - 1, said)), Want: shown[1], Got: shown[2]}, wrong)
+      shown = text.Split(text.Char(3), from(space + 1, told))
+      wrong = list.Append({Line: text.Number(text.ByteSlice(1, space - 1, told)), Want: shown[1], Got: shown[2]}, wrong)
     else
       block = text.Number(head)
     end
     if rest != ""
       output[block] = text.Str(dict.GetOr(block, "", output), rest)
+      said[block] = text.Str(dict.GetOr(block, "", said), rest)
     end
   end
-  {Output: output, Values: values, Wrong: wrong}
+  {Output: output, Values: values, Wrong: wrong, Said: said}
 end
 
 defn placed(err, run, source)
@@ -1276,7 +1371,7 @@ end
 
 defn pageRun(job)
   (** The runs of a page: the blocks that don't fail as one program, then each block that fails after the blocks before it.
-      Ok({Output: [text of each block], Values: [[line, text]]}), or an Err of the mistakes. *)
+      Ok({Output: [text of each block], Values: [[line, text]], Said: [text of each block]}), or an Err of the mistakes. *)
   runs = job.Runs
   main = [k for k in 1..value.Len(runs) if not runs[k].Words.Fails]
   r = ran(job, main, job.Name)?
@@ -1287,6 +1382,7 @@ defn pageRun(job)
   got = heard(r.Out, job.Mark)
   mistakes = ["$(job.Source):$(w.Line): $(text.Trim(job.Lines[w.Line])), got $(w.Got)" for w in got.Wrong]
   output = [dict.GetOr(k, "", got.Output) for k in 1..value.Len(runs)]
+  shown = [dict.GetOr(k, "", got.Said) for k in 1..value.Len(runs)]
   for k in 1..value.Len(runs)
     if runs[k].Words.Fails
       f = ran(job, list.Append(k, [j for j in main if j < k]), "$(job.Name)-$(runs[k].Line)")?
@@ -1310,7 +1406,7 @@ defn pageRun(job)
       end
     end
   end
-  if value.Len(mistakes) > 0 result.Err(mistakes) else result.Ok({Output: output, Values: [[n, got.Values[n]] for n in dict.Keys(got.Values)]}) end
+  if value.Len(mistakes) > 0 result.Err(mistakes) else result.Ok({Output: output, Values: [[n, got.Values[n]] for n in dict.Keys(got.Values)], Said: shown}) end
 end
 
 defn worker(queue, done)
@@ -1451,6 +1547,9 @@ defn pagesOf(root, name, prefix, site)
         e = cesia.Toml(b.Text).Error
         fiber.Send("$at/$f:$(b.Line + e.Line): $(e.Message)", site.Mistakes)
       end
+    end
+    for m in tabMistakes(tabGroups(blocks), runs, "$at/$f")
+      fiber.Send(m, site.Mistakes)
     end
     for r in runs
       cut = arrows(r.Text)
@@ -1657,7 +1756,7 @@ defn frenchRuns(en, fr, r)
       shift[en.Runs[k].Line + i] = fr.Runs[k].Line + i
     end
   end
-  {Output: r.Output, Values: [[dict.GetOr(v[1], v[1], shift), v[2]] for v in r.Values]}
+  {Output: r.Output, Values: [[dict.GetOr(v[1], v[1], shift), v[2]] for v in r.Values], Said: dict.GetOr("Said", [], r)}
 end
 
 defn bookRuns(pages, site, root, config)
@@ -1748,12 +1847,19 @@ defn bookBody(site, page, results)
   hooks = hooksFor(site, page.Path, line -> "$(page.Source):$line", book = page.Book, formulas = true, lang = lang, ids = ids)
   r = dict.GetOr(page.Path, {Output: [], Values: []}, results)
   values = dict.Dict([{Key: v[1], Value: v[2]} for v in r.Values])
+  groups = tabGroups(page.Blocks)
+  withTabs = dict.Dict([{Key: g.Line, Value: g} for g in groups])
+  tabLines = dict.Dict([{Key: t.Line, Value: true} for t in list.FlatMap(g -> g.Tabs, groups)])
   defn code(info, s, line)
+    if dict.Has(line, tabLines)
+      return ""
+    end
     k = list.IndexOf(line, [x.Line for x in page.Runs])
     if text.Split(" ", info)[1] != "cesia" or value.IsMissing(k)
       return hooks.Code(info, s, line)
     end
-    bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks, said = wordsOf(lang))
+    shown = bookBlock(page.Runs[k], if k <= value.Len(r.Output) r.Output[k] else "" end, values, hooks, said = wordsOf(lang))
+    if dict.Has(line, withTabs) tabbed(withTabs[line], shown, wordsOf(lang)) else shown end
   end
   out = html(page.Text, dict.Put("Code", code, hooks))
   if lang == "fr"
@@ -1973,6 +2079,11 @@ defn build(root, folder, cache, runs)
     return result.Err(text.Join("\n", list.Unique(mistakes)))
   end
   pages = list.Append({Path: "search.js", Html: "window.cesiaSearch = $(json.Text(search));\n"}, pages)
+  (* What tools/tabs.ce checks: the tabs of the English pages, those of the French ones being the same blocks. *)
+  tabs = list.FlatMap(p -> tabsOf(p, dict.Get(p.Path, results)), [p for p in book if not p.Broken])
+  if value.Len(tabs) > 0
+    pages = list.Append({Path: ".tabs", Html: json.Text(tabs)}, pages)
+  end
   if hasFr
     pages = list.Append({Path: "fr/search.js", Html: "window.cesiaSearch = $(json.Text(list.Concat(frSearch, ref.Search)));\n"}, pages)
   end

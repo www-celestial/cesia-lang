@@ -55,6 +55,27 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot
 2
 3</code></pre>
 </details>
+<p>The same in Python, R and MATLAB, as tabs:</p>
+<div class="tabs" role="group" aria-label="The example in other languages">
+<input type="radio" name="tab.50" id="tab.50.cesia" checked><label for="tab.50.cesia">Cesia</label>
+<input type="radio" name="tab.50" id="tab.50.python"><label for="tab.50.python">Python</label>
+<input type="radio" name="tab.50" id="tab.50.r"><label for="tab.50.r">R</label>
+<input type="radio" name="tab.50" id="tab.50.matlab"><label for="tab.50.matlab">MATLAB</label>
+<div class="tab">
+<pre><code class="cesia">x + <span class="m">0.5</span> --&gt; <span class="m">5.5</span>
+io.<span class="f">Print</span>(<span class="s">&quot;five&quot;</span>, x)</code></pre>
+<pre class="output"><code>five 5</code></pre>
+</div>
+<div class="tab"><pre><code class="language-python">print(5.5)
+print(&quot;five&quot;, 5)</code></pre></div>
+<div class="tab"><pre><code class="language-r">cat(5.5, &quot;\n&quot;)
+cat(&quot;five&quot;, 5, &quot;\n&quot;)</code></pre></div>
+<div class="tab"><pre><code class="language-matlab">disp(5.5)
+printf(&quot;five %d\n&quot;, 5)</code></pre></div>
+</div>
+
+
+
 <pre><code class="language-toml">[project]
 name = &quot;x&quot;
 </code></pre>
@@ -96,6 +117,8 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;http://127.0.0.1:18751/&
 <p>Back to <a href="index.html">the start</a>.</p>
 <nav class="pager" aria-label="Pages"><a rel="prev" href="first.html">← First steps</a><a rel="up" href="index.html">Proj</a><a rel="next" href="math.html">Formulas and colors →</a></nav>
 </main>
+== the tabs, for tools/tabs.ce: each with what its cesia block showed
+[{"Page":"docs/book/first.md","Line":55,"Lang":"python","Code":"print(5.5)\nprint(\"five\", 5)\n","Want":"5.5\nfive 5\n","Files":"TMP/proj/docs/book/files"},{"Page":"docs/book/first.md","Line":60,"Lang":"r","Code":"cat(5.5, \"\\n\")\ncat(\"five\", 5, \"\\n\")\n","Want":"5.5\nfive 5\n","Files":"TMP/proj/docs/book/files"},{"Page":"docs/book/first.md","Line":65,"Lang":"matlab","Code":"disp(5.5)\nprintf(\"five %d\\n\", 5)\n","Want":"5.5\nfive 5\n","Files":"TMP/proj/docs/book/files"}]
 == the columns of a method: its module, then its struct, then itself
 <a href="../greet.html" class="open more">greet</a>
 <a href="Greeter.html" class="open more">Greeter</a>
@@ -232,6 +255,27 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot
 2
 3</code></pre>
 </details>
+<p>La même chose en Python, R et MATLAB, en onglets :</p>
+<div class="tabs" role="group" aria-label="L’exemple dans d’autres langages">
+<input type="radio" name="tab.52" id="tab.52.cesia" checked><label for="tab.52.cesia">Cesia</label>
+<input type="radio" name="tab.52" id="tab.52.python"><label for="tab.52.python">Python</label>
+<input type="radio" name="tab.52" id="tab.52.r"><label for="tab.52.r">R</label>
+<input type="radio" name="tab.52" id="tab.52.matlab"><label for="tab.52.matlab">MATLAB</label>
+<div class="tab">
+<pre><code class="cesia">x + <span class="m">0.5</span> --&gt; <span class="m">5.5</span>
+io.<span class="f">Print</span>(<span class="s">&quot;five&quot;</span>, x)</code></pre>
+<pre class="output"><code>five 5</code></pre>
+</div>
+<div class="tab"><pre><code class="language-python">print(5.5)
+print(&quot;five&quot;, 5)</code></pre></div>
+<div class="tab"><pre><code class="language-r">cat(5.5, &quot;\n&quot;)
+cat(&quot;five&quot;, 5, &quot;\n&quot;)</code></pre></div>
+<div class="tab"><pre><code class="language-matlab">disp(5.5)
+printf(&quot;five %d\n&quot;, 5)</code></pre></div>
+</div>
+
+
+
 <pre><code class="language-toml">[project]
 name = &quot;x&quot;
 </code></pre>

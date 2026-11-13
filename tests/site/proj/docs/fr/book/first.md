@@ -47,6 +47,28 @@ for k in 1..3
 end
 ```
 
+La même chose en Python, R et MATLAB, en onglets :
+
+```cesia
+x + 0.5 -->
+io.Print("five", x)
+```
+
+```python
+print(5.5)
+print("five", 5)
+```
+
+```r
+cat(5.5, "\n")
+cat("five", 5, "\n")
+```
+
+```matlab
+disp(5.5)
+printf("five %d\n", 5)
+```
+
 ```toml
 [project]
 name = "x"
