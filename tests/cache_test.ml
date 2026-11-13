@@ -1,7 +1,8 @@
 (* OCaml tests of the cache of loaded packages, whose entries are untrusted bytes. An entry changed anywhere, cut, grown, of
    another build or of other sources is not used, never raises, and the package loads as without it, its entry written
-   again as it was; a changed file or dependency is read again. The files of the store: a link or an entry open to others
-   is not read, and past the limit the entries used least lately go. *)
+   again as it was; a changed file or dependency is read again. A body is read at the first call of its function only, and
+   one damaged in memory after the entry was checked is refused at that call. The files of the store: a link or an entry
+   open to others is not read, and past the limit the entries used least lately go. *)
 open Cesia
 
 let failures = ref 0
@@ -26,7 +27,8 @@ let kept build = Some { Cache.build; read = Hashtbl.find_opt mem; write = (fun k
 
 let app = Filename.concat top "app"
 let shapes = Filename.concat app "src/shapes"
-let filler = String.concat "" (List.init 12 (fun i -> Printf.sprintf "(** Filler %d, to pass the least size. *)\nFill%d(x) = x + %d\n" i i i))
+let fill name = String.concat "" (List.init 12 (fun i -> Printf.sprintf "(** Filler %d, to pass the least size. *)\n%s%d(x) = x + %d\n" i name i i))
+let filler = fill "Fill"
 
 (* units reads only a native of std/list, before shapes loads the Cesia code of std/list too: the package of std/list grows
    between the two, and an entry must place its modules as they were when it was resolved. *)
@@ -41,17 +43,31 @@ let () =
   write (Filename.concat shapes "broken.ce")
     "(** What fails. *)\nuse std/bug\n\n(** A panic, two calls down. *)\nBroken(n) = deeper(n)\n\
      deeper(n) = if n > 0 bug.Panic(\"broken $n\") else 0 end\n";
+  write (Filename.concat shapes "more.ce")
+    ("(** Recursion and closures. *)\nuse std/list\n\n(** A factorial. *)\nFact(n) = if n < 2 1 else n * Fact(n - 1) end\n\n\
+      (** A function that adds n. *)\nAdder(n) = x -> x + n\n\n\
+      (** Even, through odd. *)\nEven(n) = if n == 0 true else odd(n - 1) end\nodd(n) = if n == 0 false else Even(n - 1) end\n\n\
+      (** Each of xs times k, by a function inside. *)\ndefn Scaled(xs, k)\n  defn by(x)\n    x * k\n  end\n  list.Map(by, xs)\nend\n"
+     ^ fill "More");
   write (Filename.concat app "src/units/units.ce") (units "Unit = \" m2\"");
+  write (Filename.concat app "loads.ce") "use src/shapes\nuse std/io\n\nio.Print(\"loaded\")\n";
   write (Filename.concat app "main.ce")
-    "use src/shapes\nuse std/io\n\nio.Print(shapes.All([shapes.Rect(2, 3), shapes.Rect(4, 5)]))\nio.Print(shapes.Broken(1))\n"
+    "use src/shapes\nuse std/io\n\nio.Print(shapes.All([shapes.Rect(2, 3), shapes.Rect(4, 5)]))\n\
+     add = shapes.Adder(3)\nio.Print(shapes.Fact(10), add(4), shapes.Even(7), shapes.Scaled([1, 2], 3))\n\
+     io.Print(shapes.Broken(1))\n"
 
-let run () =
+(* A run in a world of its own, which it gives with its output. *)
+let world_run ?(then_run = ignore) file =
   let out = Buffer.create 256 in
   let w = Runtime.create_world { Runtime.default_options with o_sink = Buffer.add_string out; o_err = Buffer.add_string out } in
-  let code = Loader.run_file w (Filename.concat app "main.ce") [] in
+  let code = Loader.run_file w (Filename.concat app file) [] in
+  then_run ();
+  let code = if file = "main.ce" then code else Loader.run w (Filename.concat app "main.ce") [] in
   (* What the binary writes when it ends, written here at once. *)
   Cache.save ();
-  Printf.sprintf "%sexit %d" (Buffer.contents out) code
+  w, Printf.sprintf "%sexit %d" (Buffer.contents out) code
+
+let run () = snd (world_run "main.ce")
 
 let with_store build f =
   let saved = !Cache.store in
@@ -67,8 +83,32 @@ let () =
   let entries = Hashtbl.fold (fun k v acc -> (k, v) :: acc) mem [] in
   check "cold: shapes, units and std/list saved" (List.length entries >= 3);
   writes := 0;
-  check "warm: the same output and error" (run () = plain);
+  let w, warm = world_run "main.ce" in
+  check "warm: the same output and error" (warm = plain);
   check "warm: every package from its entry, nothing written" (!writes = 0);
+  (* The body of a function is read at its first call: the fillers, never called, stay unread. *)
+  let body file name =
+    match Array.find_opt (fun (md : Types.modul) -> String.ends_with ~suffix:file md.path) w.modules with
+    | Some md -> (match md.cells.(List.assoc name md.mnames) with Fun { proto; _ } -> Some (Lazy.is_val proto.func.body) | _ -> None)
+    | None -> None
+  in
+  check "warm: the bodies of the functions called are read"
+    (List.for_all (fun name -> body "more.ce" name = Some true) [ "Fact"; "Adder"; "Even"; "odd"; "Scaled" ]
+     && body "area.ce" "All" = Some true && body "area.ce" "Area" = Some true);
+  check "warm: the bodies of the functions never called stay unread"
+    (body "area.ce" "Fill0" = Some false && body "more.ce" "More11" = Some false);
+  (* An entry damaged in memory once it was read and checked, which no digest can see: the body read later doesn't read
+     as it was written, so the first call of its function stops the program with an error there, the entry goes, and the
+     next run reads the package from its sources. *)
+  Hashtbl.filter_map_inplace (fun _ s -> Some (Bytes.to_string (Bytes.of_string s))) mem;
+  let damage () = Hashtbl.iter (fun _ s -> let b = Bytes.unsafe_of_string s in Bytes.fill b 24 (Bytes.length b - 24) '\255') mem in
+  let _, damaged = world_run ~then_run:damage "loads.ce" in
+  check "damaged after the load: refused at the first call, with an error at the function"
+    (String.starts_with ~prefix:"loaded\n" damaged && String.ends_with ~suffix:"exit 1" damaged
+     && List.exists (fun l -> String.ends_with ~suffix:(Messages.cache_damaged.text) l) (String.split_on_char '\n' damaged));
+  check "damaged after the load: the entry goes" (Hashtbl.fold (fun _ s n -> if s = "" then n + 1 else n) mem 0 >= 1);
+  check "damaged after the load: the next run as without a cache" (run () = plain);
+  check "damaged after the load: written again as it was" (List.for_all (fun (k, good) -> Hashtbl.find_opt mem k = Some good) entries);
   (* Each entry damaged, cut and grown: not used, written again as it was. *)
   let again name (k, good) bad =
     Hashtbl.replace mem k bad;

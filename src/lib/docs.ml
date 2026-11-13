@@ -717,7 +717,7 @@ let definitions ctx (a : t array) =
       | Use { upath; ualias } -> [ found ~signature:upath "use" None ualias ]
       | _ -> []
     in
-    Value.ok w (Arrays.list (Array.of_list (List.concat_map item (Array.to_list fn.body))))
+    Value.ok w (Arrays.list (Array.of_list (List.concat_map item (Array.to_list (Lazy.force fn.body)))))
 
 let natives =
   [ "Doc", Native.nat "Doc" 1 1 doc;

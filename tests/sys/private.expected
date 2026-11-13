@@ -1,0 +1,42 @@
+Ok(missing)
+Ok(missing)
+Ok(missing)
+Ok(missing)
+Ok(missing) Ok("secret again")
+Ok(missing)
+Ok(missing) Ok("two")
+Ok(missing) Ok("SECRET")
+Ok(missing) Ok("SECRET") Ok("target")
+Ok(missing)
+Err({Kind: "io", Message: "Can't create open/plain.txt: file exists."})
+Err({Kind: "io", Message: "Can't write keys: is a directory."})
+the reader opened before: old text
+drwxr-xr-x open
+drwx------ open/inside
+-rw-r--r-- open/plain.txt
+-rw------- open/was-plain.txt
+-rw------- open/reader.txt
+-rw------- open/link.txt
+-rw-r--r-- target.txt
+drwx------ keys
+drwx------ keys/deep
+drwx------ keys/deep/er
+-rw------- keys/key.txt
+left behind: 0
+drwx------ open
+drwx------ open/inside
+-rw------- open/plain.txt
+-rw------- open/was-plain.txt
+-rw------- open/reader.txt
+-rw------- open/link.txt
+-rw-r--r-- target.txt
+drwx------ keys
+drwx------ keys/deep
+drwx------ keys/deep/er
+-rw------- keys/key.txt
+left behind: 0
+private.ce:7:13: Permission "write" denied for open/inside.
+  7 | io.Print(sys.Mkdir("open/inside"))
+    |             ^
+  Run again with --allow write=open/inside, or a folder that holds it.
+exit 1

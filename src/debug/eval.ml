@@ -18,7 +18,7 @@ let uses_in path src =
   | fn ->
     List.filter_map
       (fun (e : Ast.expr) -> match e.e with Use { upath; ualias } -> Some (ualias, upath) | _ -> None)
-      (Array.to_list fn.body)
+      (Array.to_list (Lazy.force fn.body))
   | exception Pos.Load_error _ -> []
 
 (* The uses of the file of a module, as it was last loaded: the packages that code run there sees. *)

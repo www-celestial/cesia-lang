@@ -547,6 +547,13 @@ let port n ctx (a : Types.t array) =
       | Unix.ADDR_INET (_, p) -> Int p
       | _ -> Missing)
 
+(* The address of the other end of a connection, without its port: what a server limits a client by. *)
+let peer n ctx (a : Types.t array) =
+  with_socket n ctx "Peer" a.(0) (fun fd ->
+      match Unix.getpeername fd with
+      | Unix.ADDR_INET (h, _) -> Text (Unix.string_of_inet_addr h)
+      | _ | (exception Unix.Unix_error _) -> Missing)
+
 let reset n =
   Hashtbl.iter (fun _ fd -> Poll.forget n.poll fd; (try Unix.close fd with Unix.Unix_error _ -> ())) n.sockets;
   Hashtbl.reset n.sockets;
@@ -559,6 +566,7 @@ let reset n =
 let natives n =
   [ "Listen", Native.nat ~result:true ~params:[| "port"; "host" |] "Listen" 1 2 (listen n);
     "Port", Native.nat "Port" 1 1 (port n);
+    "Peer", Native.nat "Peer" 1 1 (peer n);
     "Accept", Native.nat ~result:true "Accept" 1 1 (accept n);
     "Connect", Native.nat ~result:true "Connect" 2 2 (connect n);
     "Read", Native.nat ~result:true "Read" 1 1 (read n);

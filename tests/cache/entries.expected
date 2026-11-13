@@ -33,5 +33,7 @@ src/shapes/broken.ce:6:25: broken 1
 exit 1
 four runs at once: 2 entries
 after them: the same output and error
+changed on the disk as it ran: loaded 26 sq m exit 0
+the next run: loaded 26 sq m exit 0
 26 sq m
 exit 0
