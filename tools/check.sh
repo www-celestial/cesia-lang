@@ -68,10 +68,15 @@ if [ -n "$slow" ]; then
 fi
 
 # The tests slow by nature, on both paths, and Cesia's own site, which GitHub Pages publishes: a text of the docs with a
-# [Name] that leads nowhere, or a block of the book that gives another value, fails here and there.
+# [Name] that leads nowhere, or a block of the book that gives another value, fails here and there; so does a tab of the
+# book, an example in Python, R or MATLAB, that prints other values than its cesia block. A tab whose language isn't
+# installed here is skipped with a warning: the CI of the site runs them all.
 tools/golden.sh --both --slow tests/*/ > /dev/null 2>&1 || fail "a test marked slow fails: tools/golden.sh --both --slow tests/*/"
 site=$(mktemp -d)
+work=$(mktemp -d)
+trap 'cp "$backup" src/lib/messages.ml; rm -f "$backup"; rm -rf "$site" "$work"' EXIT
 "$PWD/_build/default/src/bin/main.exe" doc --site "$site" > /dev/null || fail "Cesia's site doesn't build"
-rm -rf "$site"
+"$PWD/_build/default/src/bin/main.exe" run --allow "read,write=$work,exec=prlimit,env=CI" tools/tabs.ce "$site/.tabs" "$work" ||
+  fail "a tab of the book fails: tools/tabs.ce"
 
 echo "check: ok ($lines lines of the core, change loop in $ms ms)"

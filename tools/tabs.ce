@@ -1,0 +1,368 @@
+(** Runs the tabs of a site, the same examples in Python, R and MATLAB beside its cesia blocks, and checks that each prints
+    what its cesia block shows. cesia doc --site writes them in the .tabs of the site's folder; tools/check.sh and the CI
+    of the site run this tool on it:
+
+      cesia run --allow read,write=FOLDER,exec=prlimit,env=CI tools/tabs.ce SITE/.tabs FOLDER [--seconds N]
+
+    Each tab runs alone, in a folder of its own under FOLDER, which only its owner can open (0700), with a copy of the files/
+    of its book, and which is deleted after it. prlimit caps its memory at 1 GiB, its time at N seconds of the processor (30
+    by default) and the files it writes at 64 MiB; unshare -rn gives it a network of its own, with no way out; it is killed
+    past N seconds. Python 3 runs with -I, so neither the variables of the environment nor the folders of the user change
+    it; R with --vanilla; MATLAB's tabs run in GNU Octave, which runs MATLAB code with no licence.
+
+    What a tab prints and what its cesia block showed are cut into values, compared one by one: numbers, words, and the
+    words true, false, nan and inf in any case. Brackets, commas, quotes and other signs only separate them; R's marks of
+    positions, [1], [1,] and [,1], and Cesia's Ok( around a result are left out. Two integers are equal, and an integer and
+    a float are equal, only when they are the same number. Two floats are equal to the digits shown: the less precise is
+    the other rounded to its last digit, at most half a unit of that digit away, so R's 0.3333333 and Octave's 0.3333 are
+    Cesia's 0.3333333333333333, and 0.3334 is not.
+
+    A language whose program isn't here, or a system where the tabs can't be capped, is skipped with a warning, but where
+    the variable CI is set, as on GitHub: there it fails. *)
+use std/columns
+use std/dict
+use std/fiber
+use std/io
+use std/json
+use std/list
+use std/math
+use std/result
+use std/sys
+use std/text
+use std/value
+
+languages = {python: {Name: "Python", Program: "python3", Args: ["-I"], File: "tab.py"},
+  r: {Name: "R", Program: "Rscript", Args: ["--vanilla"], File: "tab.R"},
+  matlab: {Name: "MATLAB", Program: "octave-cli", Args: ["--norc", "--no-history", "--quiet"], File: "tab.m"}}
+memory = 1073741824
+fileSize = 67108864
+
+(* Values. *)
+
+byteAt(s, i) = if i >= 1 and i <= text.ByteLength(s) text.Byte(i, s) else 0 end
+isDigit(b) = b >= 48 and b <= 57
+isLetter(b) = (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or b == 95 or b >= 128
+slice(s, from, to) = if to < from "" else text.ByteSlice(from, to, s) end
+
+defn digitsFrom(s, i)
+  (** The byte after the digits that start at byte i. *)
+  j = i
+  while isDigit(byteAt(s, j))
+    j += 1
+  end
+  j
+end
+
+defn isInfinity(s, i)
+  (** Do the letters at byte i spell inf or infinity, in any case, and end there? *)
+  for w in ["infinity", "inf"]
+    n = text.ByteLength(w)
+    if text.Lower(slice(s, i, i + n - 1)) == w and not isLetter(byteAt(s, i + n)) and not isDigit(byteAt(s, i + n))
+      return i + n
+    end
+  end
+  missing
+end
+
+defn number(s, i)
+  (** The number that starts at byte i, {Tok, Next}: a sign, digits, a point and more digits, an exponent. Its unit is the
+      value of its last digit: 0.01 for 2.50, 1 for 3., 1000 for 1.5e4. *)
+  sign = if byteAt(s, i) == 45 "-" else "" end
+  j = if byteAt(s, i) == 45 or byteAt(s, i) == 43 i + 1 else i end
+  whole = slice(s, j, digitsFrom(s, j) - 1)
+  j = digitsFrom(s, j)
+  point = false
+  part = ""
+  if byteAt(s, j) == 46 and (whole != "" or isDigit(byteAt(s, j + 1)))
+    point = true
+    part = slice(s, j + 1, digitsFrom(s, j + 1) - 1)
+    j = digitsFrom(s, j + 1)
+  end
+  power = 0
+  e = byteAt(s, j)
+  signed = byteAt(s, j + 1) == 43 or byteAt(s, j + 1) == 45
+  if (e == 101 or e == 69) and (isDigit(byteAt(s, j + 1)) or (signed and isDigit(byteAt(s, j + 2))))
+    start = if signed j + 2 else j + 1 end
+    power = text.Number(slice(s, start, digitsFrom(s, start) - 1)) * (if byteAt(s, j + 1) == 45 -1 else 1 end)
+    point = true
+    j = digitsFrom(s, start)
+  end
+  exact = whole
+  while text.ByteLength(exact) > 1 and text.StartsWith("0", exact)
+    exact = text.ByteSlice(2, text.ByteLength(exact), exact)
+  end
+  float = text.Number(text.Str(sign, if whole == "" "0" else whole end, ".", if part == "" "0" else part end, "e", power))
+  tok = {K: "number", S: slice(s, i, j - 1), Int: not point, T: text.Str(if exact == "0" "" else sign end, exact), V: float, U: 10.0 ^ (power - text.ByteLength(part))}
+  {Tok: tok, Next: j}
+end
+
+defn rMark(s, i)
+  (** The byte after one of R's marks of position at byte i, [3], [3,] or [,3], or missing. *)
+  j = i + 1
+  digits = 0
+  commas = 0
+  while isDigit(byteAt(s, j)) or byteAt(s, j) == 44
+    if byteAt(s, j) == 44 commas += 1 else digits += 1 end
+    j += 1
+  end
+  if byteAt(s, j) == 93 and digits > 0 and commas <= 1 j + 1 else missing end
+end
+
+defn valuesOf(s, lang = "")
+  (** The values that a text prints, each {K, S} and more: K is number, word, nan or inf; S its text. lang is the language
+      that printed it, for R's marks. *)
+  out = []
+  n = text.ByteLength(s)
+  i = 1
+  while i <= n
+    b = byteAt(s, i)
+    before = byteAt(s, i - 1)
+    signs = (b == 45 or b == 43) and not (isLetter(before) or isDigit(before) or before == 46 or before == 41 or before == 93)
+    next = byteAt(s, i + 1)
+    if lang == "r" and b == 91 and value.IsSome(rMark(s, i))
+      i = rMark(s, i)
+    else if isDigit(b) or (b == 46 and isDigit(next)) or (signs and (isDigit(next) or (next == 46 and isDigit(byteAt(s, i + 2)))))
+      made = number(s, i)
+      out = list.Append(made.Tok, out)
+      i = made.Next
+    else if signs and b == 45 and value.IsSome(isInfinity(s, i + 1))
+      j = isInfinity(s, i + 1)
+      out = list.Append({K: "inf", S: slice(s, i, j - 1), T: "-inf"}, out)
+      i = j
+    else if isLetter(b)
+      j = i
+      while isLetter(byteAt(s, j)) or isDigit(byteAt(s, j))
+        j += 1
+      end
+      w = slice(s, i, j - 1)
+      low = text.Lower(w)
+      if w == "Ok" and byteAt(s, j) == 40
+        (* Cesia's Ok( around a result: other languages give the result itself, or stop. *)
+      else if low == "nan"
+        out = list.Append({K: "nan", S: w}, out)
+      else if low == "inf" or low == "infinity"
+        out = list.Append({K: "inf", S: w, T: "inf"}, out)
+      else if low == "true" or low == "false"
+        out = list.Append({K: "word", S: w, T: low}, out)
+      else
+        out = list.Append({K: "word", S: w, T: w}, out)
+      end
+      i = j
+    else
+      i += 1
+    end
+  end
+  out
+end
+
+defn same(a, b)
+  (** Are two values equal under the rule of the tabs: integers exact, floats to the digits shown? *)
+  if a.K != b.K
+    return false
+  else if a.K == "nan"
+    return true
+  else if a.K != "number"
+    return a.T == b.T
+  else if a.Int and b.Int
+    return a.T == b.T
+  else if a.Int or b.Int
+    return a.V == b.V
+  end
+  math.Abs(a.V - b.V) <= list.Max(a.U, b.U) / 2 + 2.3e-16 * (math.Abs(a.V) + math.Abs(b.V))
+end
+
+oneLine(t) = text.Replace("\n", " | ", text.Trim(t))
+
+defn compared(want, got, lang)
+  (** What differs between what a cesia block showed and what its tab printed, or missing when they agree. *)
+  w = valuesOf(want)
+  g = valuesOf(got, lang = lang)
+  for k in 1..list.Min(value.Len(w), value.Len(g))
+    if not same(w[k], g[k])
+      return "value $k of $(value.Len(w)) is $(g[k].S) where the Cesia block shows $(w[k].S)"
+    end
+  end
+  if value.Len(w) != value.Len(g)
+    return "it prints $(value.Len(g)) values where the Cesia block shows $(value.Len(w)): $(oneLine(got)) against $(oneLine(want))"
+  end
+  missing
+end
+
+(* Runs. *)
+
+defn removed(path)
+  (** Deletes a file, or a folder with all it holds; a link goes, never what it leads to. *)
+  info = sys.Stat(path)
+  if result.IsErr(info)
+    return result.Ok(missing)
+  end
+  if info.Value.IsDir and not info.Value.IsLink
+    for n in sys.List(path)?
+      removed("$path/$n")?
+    end
+  end
+  sys.Remove(path)
+end
+
+defn copied(source, target)
+  (** The files of the folder source, with its folders, copied into target. *)
+  if not sys.Exists(source)
+    return result.Ok(missing)
+  end
+  for n in sys.List(source)?
+    info = sys.Stat("$source/$n")?
+    if info.IsLink
+      (* not copied: a link of the book could lead anywhere *)
+    else if info.IsDir
+      sys.Mkdir("$target/$n", private = true)?
+      copied("$source/$n", "$target/$n")?
+    else
+      sys.Write("$target/$n", sys.Read("$source/$n")?, private = true)?
+    end
+  end
+  result.Ok(missing)
+end
+
+defn capped(seconds, dir, command)
+  (** The arguments of prlimit that run a command capped, in the folder dir, with no network. *)
+  list.Concat(["--as=$memory", "--cpu=$seconds", "--fsize=$fileSize", "--core=0", "--",
+    "env", "LC_ALL=C.UTF-8", "HOME=$dir", "TMPDIR=$dir", "OPENBLAS_NUM_THREADS=1", "OMP_NUM_THREADS=1", "MPLBACKEND=Agg",
+    "unshare", "-rn", "--"], command)
+end
+
+defn prepared(dir, files, file, code)
+  (** The folder of a tab, made anew, only its owner's, with the files of its book and its code. *)
+  removed(dir)?
+  sys.Mkdir(dir, private = true)?
+  copied(files, dir)?
+  sys.Write(file, code, private = true)
+end
+
+defn lastLines(t, n)
+  lines = text.Lines(text.Trim(t))
+  text.Join("\n", ["    $l" for l in list.Skip(list.Max(0, value.Len(lines) - n), lines)])
+end
+
+defn checked(tab, k, folder, seconds)
+  (** Runs one tab and compares what it printed: missing when it agrees, else what went wrong, at the page and line of the
+      tab. *)
+  lang = languages[tab.Lang]
+  where = "$(tab.Page):$(tab.Line): the $(lang.Name) tab"
+  dir = "$folder/tab-$k"
+  ready = prepared(dir, tab.Files, "$dir/$(lang.File)", tab.Code)
+  if result.IsErr(ready)
+    _ = removed(dir)
+    return "$where can't be set up in $dir: $(ready.Error.Message)"
+  end
+  ran = sys.Run("prlimit", args = capped(seconds, dir, list.Concat(list.Concat([lang.Program], lang.Args), [lang.File])), dir = dir, timeout = seconds)
+  gone = removed(dir)
+  if result.IsErr(ran)
+    return "$where didn't start: $(ran.Error.Message)"
+  end
+  r = ran.Value
+  why = if r.Code == -1
+    "$where ran past its $seconds seconds."
+  else if r.Code != 0
+    "$where stopped with the code $(r.Code), its line k being line $(tab.Line) + k of the page:\n$(lastLines(text.Replace("$dir/", "", r.Err), 8))"
+  else
+    differs = compared(tab.Want, r.Out, tab.Lang)
+    if value.IsMissing(differs) missing else "$where prints other values: $differs." end
+  end
+  if result.IsErr(gone)
+    return text.Str(if value.IsMissing(why) "" else "$why\n" end, "$where left $dir: $(gone.Error.Message)")
+  end
+  why
+end
+
+defn worker(queue, done, folder, seconds)
+  job = fiber.Receive(queue, timeout = 0)
+  while result.IsOk(job)
+    fiber.Send({K: job.Value.K, Why: checked(job.Value.Tab, job.Value.K, folder, seconds)}, done)
+    job = fiber.Receive(queue, timeout = 0)
+  end
+end
+
+defn here(command)
+  (** Does a command run here inside the caps, with no network? An Err says why not. *)
+  r = sys.Run("prlimit", args = list.Concat(["--", "unshare", "-rn", "--"], command), timeout = 30)
+  if result.IsErr(r)
+    return result.Err(r.Error.Message)
+  end
+  said = text.Lines(text.Trim(text.Str(r.Value.Err, "\n", r.Value.Out)))
+  if r.Value.Code != 0 result.Err(text.Str("exit ", r.Value.Code, if value.Len(said) > 0 ": $(said[1])" else "" end)) else result.Ok(missing) end
+end
+
+defn isTabs(v)
+  (** Is v a list of tabs, each {Page, Line, Lang, Code, Want, Files}, in a language this tool runs? *)
+  isTab(t) = value.IsDict(t) and list.All([dict.Has(k, t) for k in ["Page", "Line", "Lang", "Code", "Want", "Files"]]) and
+    list.All([value.IsText(t[k]) for k in ["Page", "Lang", "Code", "Want", "Files"]]) and value.IsInt(t.Line) and dict.Has(t.Lang, languages)
+  value.IsArray(v) and list.All([isTab(t) for t in v])
+end
+
+defn main()
+  if value.Len(sys.Args) < 2
+    io.PrintError("usage: cesia run --allow read,write=FOLDER,exec=prlimit,env=CI tools/tabs.ce SITE/.tabs FOLDER [--seconds N], FOLDER from /")
+    sys.Exit(2)
+  end
+  seconds = 30
+  k = list.IndexOf("--seconds", sys.Args)
+  if value.IsSome(k) and k < value.Len(sys.Args)
+    seconds = text.Number(sys.Args[k + 1])
+  end
+  ci = value.IsSome(sys.Env("CI")) and sys.Env("CI") != "" and sys.Env("CI") != "false"
+  start = sys.Now()
+  if not sys.Exists(sys.Args[1])
+    io.Print("tabs: none")
+    return missing
+  end
+  tabs = json.Parse(result.Unwrap(sys.Read(sys.Args[1])))
+  if result.IsErr(tabs) or not isTabs(tabs.Value)
+    io.PrintError("tabs: $(sys.Args[1]) is no list of tabs as cesia doc --site writes it.")
+    sys.Exit(2)
+  end
+  tabs = tabs.Value
+  warn(said) = io.PrintError(if ci "tabs: $said, and CI must run every tab." else "WARNING tabs: $said. CI runs them." end)
+  (* env alone prints the environment and ends well: a program that is surely there. *)
+  sandbox = here(["env"])
+  if result.IsErr(sandbox)
+    warn("no tab ran: prlimit and unshare -rn can't cap them here ($(sandbox.Error))")
+    sys.Exit(if ci 1 else 0 end)
+  end
+  langs = list.Unique([t.Lang for t in tabs])
+  usable = []
+  for l in langs
+    probe = here([languages[l].Program, "--version"])
+    if result.IsOk(probe)
+      usable = list.Append(l, usable)
+    else
+      count = list.Count(t -> t.Lang == l, tabs)
+      warn(text.Str(count, " ", languages[l].Name, if count == 1 " tab was" else " tabs were" end, " not run: ", languages[l].Program, " doesn't run here"))
+    end
+  end
+  queue = fiber.Channel()
+  todo = [k for k in 1..value.Len(tabs) if tabs[k].Lang in usable]
+  for k in todo
+    fiber.Send({K: k, Tab: tabs[k]}, queue)
+  end
+  done = fiber.Channel()
+  workers = [fiber.Spawn(() -> worker(queue, done, sys.Args[2], seconds)) for i in 1..list.Min(list.Min(columns.Cores(), 4), list.Max(1, value.Len(todo)))]
+  for w in workers
+    _ = fiber.Wait(w)
+  end
+  results = {}
+  got = fiber.Receive(done, timeout = 0)
+  while result.IsOk(got)
+    results[got.Value.K] = got.Value.Why
+    got = fiber.Receive(done, timeout = 0)
+  end
+  wrong = [k for k in todo if value.IsSome(results[k])]
+  for k in wrong
+    io.PrintError(results[k])
+  end
+  counts = text.Join(", ", ["$(languages[l].Name) $(list.Count(k -> tabs[k].Lang == l, todo))" for l in usable])
+  io.Print("tabs: $(value.Len(todo) - value.Len(wrong)) of $(value.Len(todo)) agree ($counts) in $(text.Decimals(1, sys.Now() - start)) s")
+  if value.Len(wrong) > 0 or (ci and value.Len(todo) < value.Len(tabs))
+    sys.Exit(1)
+  end
+end
+main()

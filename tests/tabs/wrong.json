@@ -1,0 +1,74 @@
+[
+{
+"Page": "docs/book/page.md",
+"Line": 1,
+"Lang": "python",
+"Code": "print(0.3334)\n",
+"Want": "0.3333333333333333\n",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 2,
+"Lang": "python",
+"Code": "print(3)\n",
+"Want": "3.5\n",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 3,
+"Lang": "python",
+"Code": "print(1, 2)\n",
+"Want": "1\n",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 4,
+"Lang": "python",
+"Code": "print(True)\n",
+"Want": "1\n",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 5,
+"Lang": "python",
+"Code": "raise ValueError(\"no\")\n",
+"Want": "",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 6,
+"Lang": "python",
+"Code": "import socket\nsocket.create_connection((\"1.1.1.1\", 53), timeout=3)\n",
+"Want": "",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 7,
+"Lang": "python",
+"Code": "x = bytearray(2 * 1024 ** 3)\n",
+"Want": "",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 8,
+"Lang": "python",
+"Code": "open(\"big\", \"wb\").write(b\"0\" * 100_000_000)\n",
+"Want": "",
+"Files": "files"
+},
+{
+"Page": "docs/book/page.md",
+"Line": 9,
+"Lang": "python",
+"Code": "while True:\n    pass\n",
+"Want": "",
+"Files": "files"
+}
+]

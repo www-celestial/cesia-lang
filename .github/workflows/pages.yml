@@ -55,9 +55,21 @@ jobs:
       - run: opam exec -- dune build --profile release ./src/bin/main.exe ./src/jit/cesia_jit.cmxs ./src/sqlite/cesia_sqlite.cmxs ./src/debug/cesia_debug.cmxs
       - name: Site
         run: _build/default/src/bin/main.exe doc --site _site
-      # What the build keeps for itself: what lets the next build skip a page that didn't change.
+      # The tabs of the book, its examples in Python, R and MATLAB, each run and checked against what its cesia block shows:
+      # Python 3 with numpy, scipy, pandas and matplotlib, R, and GNU Octave for MATLAB. Each tab runs capped and with no
+      # network, in a namespace of its own, which Ubuntu's AppArmor refuses to a user unless told otherwise. With CI set,
+      # a tab that can't run fails the build.
+      - name: The languages of the tabs
+        run: |
+          sudo apt-get install -y python3-numpy python3-scipy python3-pandas python3-matplotlib r-base-core octave
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+      - name: Tabs
+        run: |
+          work=$(mktemp -d)
+          _build/default/src/bin/main.exe run --allow "read,write=$work,exec=prlimit,env=CI" tools/tabs.ce _site/.tabs "$work"
+      # What the build keeps for itself: what lets the next build skip a page that didn't change, and the tabs it checked.
       - name: Only the pages
-        run: rm -rf _site/.pages _site/.reference _site/.book
+        run: rm -rf _site/.pages _site/.reference _site/.book _site/.tabs
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
