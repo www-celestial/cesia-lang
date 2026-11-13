@@ -1,0 +1,28 @@
+(* std/cells with std/stats: a cell's random draws are the same each time it runs, whatever ran before, as the
+   generator starts again from the seed of the session and the cell's title; an Ok of a struct shows the struct, and a
+   struct shows as a table of its fields. *)
+use std/cells
+use std/io
+use std/result
+use std/sys
+use std/value
+
+defn Main()
+  cs = cells.Parse(sys.Read("stats-notebook.ce")?)
+  s = cells.Session("stats-notebook.ce")?
+  cells.Run(s, cs[1])?
+  first = cells.Run(s, cs[2])?.Value
+  cells.Run(s, cs[3])?
+  again = cells.Run(s, cs[2])?.Value
+  io.Print("same draws: $(value.Equal(first, again))")
+  t = cells.Run(s, cs[3])?.Value
+  io.Print(t.Kind, t.Columns, t.Rows[1], t.Rows[5][1], t.Count)
+  g = cells.Run(s, cs[4])?.Value
+  io.Print(g.Kind, g.Rows)
+  result.Ok(missing)
+end
+
+r = Main()
+if result.IsErr(r)
+  io.Print(r)
+end

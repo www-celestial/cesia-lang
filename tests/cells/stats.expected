@@ -1,0 +1,4 @@
+same draws: true
+table ["field", "value"] ["Method", "One-sample t-test"] Estimate 8
+table [["Shape", "2"], ["Rate", "3"]]
+exit 0

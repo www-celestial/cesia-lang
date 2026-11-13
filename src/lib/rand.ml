@@ -27,11 +27,15 @@ let seed () =
    programs in one. *)
 let reset () = Option.iter (fun n -> state := Int64.of_int n) !seed_given
 
-(* cesia test starts each test from a state of its own, made of the seed and the test's name, so that a new test changes no
-   other's numbers; the seed of the run stays. *)
-let restart n =
+(* cesia test starts each test from a state of its own, made of the seed and the test's file and name, and std/cells each
+   cell from the seed and its title, so that a new one changes no other's numbers; the seed of the run stays. The state
+   is FNV-1a of the seed and the names, each after a zero byte. *)
+let restart names =
   start ();
-  state := Int64.of_int n
+  let h = ref 0xcbf29ce484222325L in
+  String.iter (fun c -> h := Int64.mul (Int64.logxor !h (Int64.of_int (Char.code c))) 0x100000001b3L)
+    (String.concat "\000" (string_of_int (Option.get !seed_given) :: names));
+  state := Int64.of_int (Int64.to_int !h)
 
 let next () =
   start ();

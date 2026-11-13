@@ -305,8 +305,8 @@ defn Run(session, cell, width = 640)
       (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
       struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, 400 high) and Key, which
-      Scene draws again at another width; "text", and Text; "table", a frame, with Columns, Rows (the first 20, as texts)
-      and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
+      Scene draws again at another width; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
+      of field and value for each, an Ok of a struct as that struct, with Columns, Rows (the first 20, as texts) and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
       cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
       the session has ended. *)
   runWith(session, cell, width, false)
@@ -528,6 +528,13 @@ defn shown(v, width = 640, svg = false, key = 0)
   end
   if value.IsMissing(v)
     missing
+  else if value.IsStruct(v) and result.IsOk(v) and value.IsStruct(v.Value)
+    (* An Ok of a struct, as stats.TTest gives, shows the struct. *)
+    shown(v.Value, width = width, svg = svg, key = key)
+  else if value.IsStruct(v) and value.Len(dict.Fields(v)) <= 20
+    (* A struct of at most 20 fields: a table of its fields and their values, one row each. *)
+    fs = dict.Fields(v)
+    {Kind: "table", Columns: ["field", "value"], Rows: [[k, cut(80, "$(fs[k])")] for k in dict.Keys(fs)], Count: value.Len(fs)}
   else if isFrame(v)
     count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
     {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[cut(80, "$(v.Columns[name][i])") for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
@@ -553,8 +560,13 @@ defn errorLine(path, e)
 end
 
 defn ran(c, key)
-  (** Runs the code of a cell and sends its answer; gives its value when it shows as a graph, which the session keeps. *)
+  (** Runs the code of a cell and sends its answer; gives its value when it shows as a graph, which the session keeps.
+      std/random starts again first, from the seed of the session and the title of the cell, as cesia test does for each
+      test: a cell run again draws the same numbers, whatever ran before it. *)
   start = sys.Now()
+  first = text.Lines(c.Code)
+  title = if value.Len(first) == 0 "" else marker(first[1]) end
+  restartRandom(if value.IsMissing(title) "" else title end)
   r = evalCell(c.Code, c.Line)
   seconds = sys.Now() - start
   if result.IsErr(r)

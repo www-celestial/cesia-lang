@@ -1,0 +1,13 @@
+(* The notebook that stats.ce runs: draws, a test, a struct. *)
+use std/result
+use std/stats
+
+(* %% Draws *)
+xs = stats.Normal(0, 1).Sample(3)
+xs
+
+(* %% Test *)
+stats.TTest([1.2, 0.8, 1.9, 1.4, 1.1], mu = 1.0)
+
+(* %% Law *)
+stats.Gamma(2, 3)

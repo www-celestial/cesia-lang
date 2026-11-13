@@ -40,11 +40,6 @@ let st =
     deadline = infinity; timeout = 10.; clock = (fun () -> 0.); path = ""; update = false; snaps = 0; store = None;
     taken = Hashtbl.create 8; snap_failure = [] }
 
-let fnv s =
-  let h = ref 0xcbf29ce484222325L in
-  String.iter (fun c -> h := Int64.mul (Int64.logxor !h (Int64.of_int (Char.code c))) 0x100000001b3L) s;
-  !h
-
 (* A test starts: its ForAlls count from 1 again. *)
 let start_test ~path ~file ~test =
   st.path <- path;
@@ -58,7 +53,7 @@ let start_test ~path ~file ~test =
   st.count <- st.count + 1;
   st.deadline <- st.clock () +. st.timeout;
   (* The numbers of a test, std/random's and its cases', come from the seed of the run and its name alone. *)
-  Rand.restart (Int64.to_int (fnv (Printf.sprintf "%d\000%s\000%s" (Rand.seed ()) file test)))
+  Rand.restart [ file; test ]
 
 (* Past this many draws a case draws 0, which ends any generator that stops at 0. *)
 let most_draws = 100_000

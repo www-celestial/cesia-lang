@@ -91,7 +91,7 @@ let cells_natives =
            | Ok (natives, _, _) ->
              (match List.assoc_opt name natives with Some (Native f) -> f.run ctx a | _ -> Runtime.fail ctx Type (Messages.debug_plugin ("no " ^ name)))
            | Error reason -> Runtime.fail ctx Type (Messages.debug_plugin reason)))
-    [ "evalCell", 2, true; "forgetNames", 1, false; "valueOf", 1, true ]
+    [ "evalCell", 2, true; "forgetNames", 1, false; "valueOf", 1, true; "restartRandom", 1, false ]
 
 let debug_test ctx s cond =
   match debug_plugin () with
