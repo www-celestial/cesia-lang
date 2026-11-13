@@ -4,7 +4,6 @@
     where it comes from. *)
 use std/bug
 use std/columns as col
-use std/list
 use std/math
 use std/matrix
 use std/result
@@ -250,7 +249,7 @@ defn checkStart(name, x)
     bug.Panic("$name: x is an array of size $(brief(dims)); give an array of one row or one column.")
   end
   kind = col.Kind(x)
-  if (kind == "float" or kind == "int") and list.Sum(x * 0.0) == 0.0
+  if (kind == "float" or kind == "int") and isFinite(largest(x * 1.0))
     return {X: x * 1.0, Scalar: false}
   end
   for i in 1..value.Len(x)
@@ -354,7 +353,7 @@ defn evaluate(f, gradient, x, scalar)
   {F: fx, G: g, Calls: 1}
 end
 
-finiteAll(xs) = list.Sum(xs * 0.0) == 0.0   (** are all the numbers of a float array finite? nan and inf give nan *)
+finiteAll(xs) = isFinite(largest(xs))   (** are all the numbers of a float array finite? *)
 
 defn Minimize(f, x, gradient = missing, tol = 1.0e-8, steps = 10000)
   (** A minimum of f, a smooth function of x, an array of numbers, that gives a number: an Ok of {X, F, Gradient,
@@ -408,9 +407,9 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
     what = if e.F - e.F == 0.0 "the gradient is $(brief(if scalar e.G[1] else e.G end))" else "f is $(e.F)" end
     return failMin("optimize.Minimize: $what at the start, $(brief(if scalar x[1] else x end)); give a start where f and its gradient are finite.", x, e, scalar, 0, calls)
   end
-  start = list.Max(math.Abs(e.G))   (* the largest component of the gradient at the start *)
-  ss = list.Fill(missing, pairs)
-  ys = list.Fill(missing, pairs)
+  start = largest(e.G)   (* the largest component of the gradient at the start *)
+  ss = [missing for k in 1..pairs]
+  ys = [missing for k in 1..pairs]
   rho = matrix.Zeros(pairs)
   used = 0
   newest = 0
@@ -419,11 +418,11 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
   older = math.Nan   (* f one step before the last, or nan unless the last two steps met the conditions *)
   fails = 0          (* the searches down the gradient that failed in a row *)
   while true
-    if list.Max(math.Abs(e.G)) <= tol * bigger(1.0, math.Abs(e.F))
+    if largest(e.G) <= tol * bigger(1.0, math.Abs(e.F))
       return result.Ok(found(x, e, scalar, taken, calls))
     end
     if taken >= most
-      return failMin("optimize.Minimize: no minimum within $most steps: f = $(e.F), and the largest component of its gradient is $(list.Max(math.Abs(e.G))); give more steps, a larger tol, or another start.", x, e, scalar, taken, calls)
+      return failMin("optimize.Minimize: no minimum within $most steps: f = $(e.F), and the largest component of its gradient is $(largest(e.G)); give more steps, a larger tol, or another start.", x, e, scalar, taken, calls)
     end
     d = -e.G
     if used > 0
@@ -497,7 +496,7 @@ defn settled(x, e, scalar, taken, calls, start)
   (** The end where f falls no further: an Ok when the gradient has shrunk to sqrt(eps) of its size at the start, or of
       1, the limit of floats or of a gradient by differences; else an Err, as f stops falling where its slope is not
       small: a kink, a wall past which f is not finite, or a gradient that is wrong or not exact enough. *)
-  big = list.Max(math.Abs(e.G))
+  big = largest(e.G)
   if big <= rootEps * bigger(1.0, start)
     return result.Ok(found(x, e, scalar, taken, calls))
   end
@@ -734,7 +733,7 @@ defn nelderMead(f, x0, scalar, tol, most)
   if not (f0 - f0 == 0.0)
     return failSimplex("optimize.Simplex: f is $f0 at the start, $(brief(if scalar x0[1] else x0 end)); give a start where f is finite.", x0, f0, scalar, 0, 1)
   end
-  vs = list.Fill(missing, n + 1)
+  vs = [missing for k in 1..n + 1]
   fs = matrix.Zeros(n + 1)
   vs[1] = x0
   fs[1] = f0
@@ -749,18 +748,18 @@ defn nelderMead(f, x0, scalar, tol, most)
     fs[i + 1] = if fv - fv == 0.0 fv else inf end
   end
   calls = n + 1
-  order = list.Order(fs)
-  vs = [vs[i] for i in order]
-  fs = [fs[i] for i in order]
+  s = sorted(vs, fs)
+  vs = s.Vs
+  fs = s.Fs
   taken = 0
   while true
     best = vs[1]
     if fs[n + 1] - fs[1] <= tol * bigger(1.0, math.Abs(fs[1]))
       wide = 0.0
       for i in 2..n + 1
-        wide = bigger(wide, list.Max(math.Abs(vs[i] - best)))
+        wide = bigger(wide, largest(vs[i] - best))
       end
-      if wide <= tol * bigger(1.0, list.Max(math.Abs(best)))
+      if wide <= tol * bigger(1.0, largest(best))
         return result.Ok({X: if scalar best[1] else best end, F: fs[1], Steps: taken, Evaluations: calls})
       end
     end
@@ -826,9 +825,9 @@ defn nelderMead(f, x0, scalar, tol, most)
         calls += 1
         fs[i] = fv
       end
-      order = list.Order(fs)
-      vs = [vs[i] for i in order]
-      fs = [fs[i] for i in order]
+      s = sorted(vs, fs)
+      vs = s.Vs
+      fs = s.Fs
     else
       (* The new point replaces the worst, after the points of a lower or equal value. *)
       j = n + 1
@@ -844,6 +843,24 @@ defn nelderMead(f, x0, scalar, tol, most)
 end
 
 grew(x, fx, scalar) = "optimize.Simplex: the simplex grew past the largest floats, with f = $fx at $(brief(if scalar x[1] else x end)): f may have no minimum."   (** the message when it does *)
+
+defn sorted(vs, fs)
+  (** {Vs, Fs}: the points vs and their values fs in increasing order of value, by insertion: points of equal value
+      keep their order, so that a shrink keeps the best point first. *)
+  for i in 2..value.Len(fs)
+    v = vs[i]
+    fv = fs[i]
+    j = i
+    while j > 1 and fs[j - 1] > fv
+      vs[j] = vs[j - 1]
+      fs[j] = fs[j - 1]
+      j -= 1
+    end
+    vs[j] = v
+    fs[j] = fv
+  end
+  {Vs: vs, Fs: fs}
+end
 
 defn valueAt(f, x, scalar)
   (** f at x for Simplex: a float, inf where f gives a nan or an infinity, a text when it gives no number. *)

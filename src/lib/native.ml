@@ -327,6 +327,17 @@ let lbfgs_direction ctx (a : t array) =
   done;
   match a.(0) with Array x -> Arrays.like x (F r) | _ -> fail ()
 
+(* The largest |x| of a float array, nan when one is nan, 0 for none: the size of a gradient, or of a simplex, for
+   std/optimize, in one pass. Missing for anything else. *)
+let largest ctx (a : t array) =
+  match a.(0) with
+  | Array ({ store = F _; _ } as x) ->
+    Runtime.pay ctx (x.rows * x.cols);
+    (match (Value.trim x).store with
+     | F d -> Float (Float.Array.fold_left (fun m v -> let v = Float.abs v in if v > m || Float.is_nan v then v else m) 0. d)
+     | _ -> Missing)
+  | _ -> Missing
+
 let lu_factor ctx (a : t array) =
   match leading ctx a.(0) with
   | None -> Missing
@@ -915,7 +926,7 @@ let packages =
       "Pi", Float (4. *. atan 1.);
       "Nan", Float nan ];
     "num", [ "dot", nat "dot" 2 2 dot; "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
-    "optimize", [ "direction", nat "direction" 7 7 lbfgs_direction; "dot", nat "dot" 2 2 dot ];
+    "optimize", [ "direction", nat "direction" 7 7 lbfgs_direction; "dot", nat "dot" 2 2 dot; "largest", nat "largest" 1 1 largest ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
       "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));
