@@ -59,7 +59,7 @@ val text_of : ctx -> t -> string
 
 (** [text_upto ctx most v]: [text_of ctx v] when it has at most [most] characters (code points), else its first
     [most - 1] and an ellipsis, "\u{2026}": [most] characters in all. The walk stops there, so its time and memory follow
-    [most], not the size of [v]. [most] >= 1. *)
+    [most], not the size of [v]; a text that isn't UTF-8 stops at [4 * most] bytes too. [most] >= 1. *)
 val text_upto : ctx -> int -> t -> string
 
 (** [Bytes.sub_string scratch 0 (digits at i)] is the text of [scratch] before [at], then the integer [i] in decimal. *)
