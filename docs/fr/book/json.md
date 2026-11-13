@@ -150,6 +150,11 @@ et les champs vides comme `missing`.
 io.Print(csv.Text([["name", "note"], ["Ana", "says \"hi\""], ["Bo", "a,b"]]))
 ```
 
+Une liste de listes s'écrit en un seul passage, en natif (du code OCaml compilé). Mesuré le 2026-11-13, 100 000 lignes
+de 7 cellules, la médiane de 5 lancements du meilleur de 5 (`bench/csv.ce`, `bench/csv.py`) : Cesia 0,81 µs par ligne,
+3,89 µs avant ; `csv.writer` de Python 3.14 1,12 µs. Pour les dates, Python gagne : [date.FormatDate] prend 0,61 µs,
+`date.isoformat` 0,34 µs.
+
 ## Un petit convertisseur
 
 Les morceaux s'assemblent en quelques lignes. Ce programme lit le CSV des personnes, vérifie chaque ligne, et écrit le

@@ -143,6 +143,10 @@ For a table to compute on, [frame.FromCsv] of the chapter [Data](data.md) reads 
 io.Print(csv.Text([["name", "note"], ["Ana", "says \"hi\""], ["Bo", "a,b"]]))
 ```
 
+A list of lists is written in one pass, natively. Measured on 2026-11-13, 100,000 rows of 7 cells, the median of 5
+runs of the best of 5 (`bench/csv.ce`, `bench/csv.py`): Cesia 0.81 µs a row, 3.89 µs before; Python 3.14's
+`csv.writer` 1.12 µs. For dates, Python wins: [date.FormatDate] takes 0.61 µs, `date.isoformat` 0.34 µs.
+
 ## A small converter
 
 The pieces fit in a few lines. This reads the CSV of people, checks each row, and writes the result as JSON, ready for another
