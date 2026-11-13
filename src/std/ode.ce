@@ -583,12 +583,17 @@ defn jacobianAt(f, p, t, y, fy, s)
           return bad
         end
       end
-      for i in 1..n
-        v = (fj[i] - fy[i]) / d
-        if not (v - v == 0.0)
-          return "ode.Solve: the Jacobian by differences is $v in row $i, column $j at t = $t, as f gave $(fj[i]) there: give jacobian =, or check f."
+      dj = (fj - fy) / d
+      total = list.Sum(dj)
+      if not (total - total == 0.0)
+        for i in 1..n
+          if not isFinite(dj[i])
+            return "ode.Solve: the Jacobian by differences is $(dj[i]) in row $i, column $j at t = $t, as f gave $(fj[i]) there: give jacobian =, or check f."
+          end
         end
-        jac[i, j] = v
+      end
+      for i in 1..n
+        jac[i, j] = dj[i]
       end
     end
   else
@@ -643,6 +648,9 @@ defn stiffRun(f, p)
   expo = 1.0 / tab.Order
   arows = [tab.A[i, :] for i in 1..stages]
   crows = [gamma * tab.C[i, :] for i in 1..stages]
+  cs = tab.Cs
+  ds = tab.D
+  hs = tab.H
   times = p.Times
   t = times[1]
   tEnd = times[value.Len(times)]
@@ -744,7 +752,8 @@ defn stiffRun(f, p)
         if i > 1
           sum = matrix.Matmul(arows[i], k)
           arg = y + (if row sum else matrix.Transpose(sum) end)
-          ti = if last and tab.Cs[i] == 1.0 tEnd else t + tab.Cs[i] * s end
+          ci = cs[i]
+          ti = if last and ci == 1.0 tEnd else t + ci * s end
           fi = f(ti, arg)
           evals += 1
           if not (value.Len(fi) == n and col.Kind(fi) == "float")
@@ -763,7 +772,7 @@ defn stiffRun(f, p)
         else
           rhs = sg * fi
         end
-        di = tab.D[i]
+        di = ds[i]
         if di != 0.0
           rhs = rhs + (sg * s * di) * ft
         end
@@ -831,7 +840,7 @@ defn stiffRun(f, p)
         for c in 1..n
           buf[o + c] = y[c]
         end
-        q = matrix.Matmul(tab.H, k)
+        q = matrix.Matmul(hs, k)
         for j in 1..nh
           oj = o + j * n
           for c in 1..n
