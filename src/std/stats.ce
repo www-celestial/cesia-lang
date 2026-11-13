@@ -1430,8 +1430,8 @@ defn binomialQuantile(p, n, pr, up)
   if p != p or p < 0.0 or p > 1.0
     return 0.0 / 0.0
   end
-  if pr == 0.0 or pr == 1.0
-    return if pr == 0.0 0.0 else n end
+  if pr == 0.0 or pr == 1.0 or n == 0.0
+    return if pr == 1.0 n else 0.0 end
   end
   mu = n * pr
   sigma = math.Sqrt(n * pr * (1.0 - pr))
@@ -1629,12 +1629,11 @@ end
 defn design(names, df, intercept, name)
   (** The columns of X for the names of a frame: each number column as it is, each text column as one indicator column
       for each of its levels but the first in sorted order, named column[level]; an Err for a missing value or another
-      kind of column. Gives {Terms, Sources, Columns, Levels}. *)
+      kind of column. Gives {Terms, Sources, Columns}. *)
   n = frame.RowCount(df)
   terms = if intercept ["(intercept)"] else [] end
   sources = if intercept [[]] else [] end
   cols = if intercept [matrix.Ones(1, n)] else [] end
-  levels = {}
   for c in names
     if not (c in frame.Columns(df))
       return fail("$name: the frame has no column \"$c\"; its columns are $(brief(frame.Columns(df))).")
@@ -1663,7 +1662,6 @@ defn design(names, df, intercept, name)
     end
     if kind == "value"
       ls = list.Sort(list.Unique(xs))
-      levels[c] = ls
       for k in 2..value.Len(ls)
         terms = list.Concat(terms, ["$c[$(ls[k])]"])
         sources = list.Concat(sources, [[c, ls[k]]])
@@ -1675,7 +1673,7 @@ defn design(names, df, intercept, name)
       cols = list.Concat(cols, [matrix.Reshape([1, n], 1.0 * xs)])
     end
   end
-  result.Ok({Terms: terms, Sources: sources, Columns: cols, Levels: levels})
+  result.Ok({Terms: terms, Sources: sources, Columns: cols})
 end
 
 defn householder(cols, n, tol)
@@ -1931,7 +1929,7 @@ defn (m Model) Band(new, kind = "confidence", level = 0.95)
   n = frame.RowCount(new)
   rank = value.Len(cols)
   fit = m.Predict(new)
-  t = StudentT(m.Df).Quantile(0.5 + 0.5 * level)
+  t = if m.Df > 0 StudentT(m.Df).Quantile(0.5 + 0.5 * level) else 0.0 / 0.0 end
   low = matrix.Zeros(1, n)
   high = matrix.Zeros(1, n)
   for i in 1..n
@@ -1961,7 +1959,7 @@ defn (m Model) Confint(level = 0.95)
   if not (value.IsNumber(level) and level > 0.0 and level < 1.0)
     bug.Panic("stats.Model.Confint: level is $(brief(level)); give a number between 0 and 1.")
   end
-  t = StudentT(m.Df).Quantile(0.5 + 0.5 * level)
+  t = if m.Df > 0 StudentT(m.Df).Quantile(0.5 + 0.5 * level) else 0.0 / 0.0 end
   est = frame.Column("estimate", m.Coefficients)
   se = frame.Column("std error", m.Coefficients)
   low = [if value.IsMissing(est[k]) missing else est[k] - t * se[k] end for k in 1..value.Len(est)]
@@ -2335,15 +2333,14 @@ defn mtw(n, d)
   if 2.0 * h - 1.0 > 0.0
     hm[m, 1] = hm[m, 1] + (2.0 * h - 1.0) ^ m
   end
+  fact = matrix.Zeros(1, m + 1)
+  fact[1] = 1.0
+  for g in 1..m
+    fact[g + 1] = fact[g] * g
+  end
   for i in 1..m
-    for j in 1..m
-      if i - j + 1 > 0
-        f = 1.0
-        for g in 1..i - j + 1
-          f = f * g
-        end
-        hm[i, j] = hm[i, j] / f
-      end
+    for j in 1..i
+      hm[i, j] = hm[i, j] / fact[i - j + 2]
     end
   end
   (* Q = H^n by squaring, with the exponent of 10 apart. *)
@@ -2717,7 +2714,7 @@ defn countDraws(n, lo, hi, mass)
   m = value.Len(c)
   last = c[m]
   for k in 1..n
-    (* invert(c, lo, us[k]), written out so that the loop is machine code. *)
+    (* invert(c, lo, us[k]), written out, which saves a call a draw. *)
     u = us[k]
     a = 1
     b = m

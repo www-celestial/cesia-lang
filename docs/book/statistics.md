@@ -189,7 +189,7 @@ stats.Poisson(4).Sample(5) then value.Len() -->
 
 Each method is exact in law, given exact uniforms. The algorithms are frozen with the seeds: a seed gives the same
 numbers on every version, so a better method later would come under a new name, never as a change. The first ten
-draws of each law for the seed 42 are pinned by Cesia's tests, and $2 \times 10^4$ draws of each pass a
+draws of each law for the seed 42 are pinned by Cesia's tests, and 2,000 draws of each pass a
 Kolmogorov–Smirnov or a chi-squared test against the law's own Cdf. R and numpy have other generators, so the same
 seed gives other numbers there: compare their statistics, not their draws.
 
@@ -239,7 +239,7 @@ A product or a power is a column you make first, `frame.SetColumn("wt2", frame.C
 R writes `I(wt^2)` in its formula: one way to make a column, not two. A column with a missing value is an `Err` that
 names the column and the row; `frame.DropMissing(frame.Select([...], df))` drops such rows.
 
-The same model in Python and R:
+The same model in Python, R and MATLAB:
 
 ```python
 import statsmodels.formula.api as smf
@@ -250,6 +250,10 @@ res.summary()
 ```r
 fit <- lm(mpg ~ wt + hp, data = cars)
 summary(fit)
+```
+
+```matlab
+mdl = fitlm(cars, 'mpg ~ wt + hp')
 ```
 
 ### How it is computed
@@ -279,7 +283,7 @@ for regressions of lower, average and higher difficulty. Measured as the number 
 | Longley | higher | 12.9 | 13.0 |
 | Wampler1, 2, 3 | higher | 9.7, 12.7, 9.3 | 9.8, 13.6, 9.3 |
 | Wampler4, 5 | higher | 7.8, 5.8 | 7.5, 5.5 |
-| Filip, a polynomial of degree 10, `tol = 1e-10` | higher | 7.2 | |
+| Filip, a polynomial of degree 10, `tol = 1e-10` | higher | 7.2 | 7.0 |
 
 With R's `tol`, Filip's tenth power is dropped, in R as in Cesia; Cesia's tests check that too. The digits lost on
 Wampler and Filip come from their data: a polynomial of degree 5 or 10 in $x$ makes columns that are nearly
@@ -320,6 +324,10 @@ struct shows as a table of its fields, one a row, so the test reads as R prints 
 
 Each takes `alternative = "two-sided"`, and those with an interval `level = 0.95`. The paired tests are the one-sample
 tests of the differences, one way to write them.
+
+The variance of a sample, which the tests use, divides by $n - 1$: R's `var(x)` and `sd(x)`. [num.Variance] and
+[num.Std] divide by $n$ by default, as numpy does, and `sample = true` gives R's: `num.Std(x, sample = true)` is
+`sd(x)`, and `num.Covariance(x, y, sample = true)` is `cov(x, y)`.
 
 ```python
 from scipy import stats

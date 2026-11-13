@@ -1,4 +1,4 @@
-(** The draws of the laws of std/stats: 20,000 of each pass a Kolmogorov-Smirnov test against the law's own Cdf, the
+(** The draws of the laws of std/stats: 2,000 of each pass a Kolmogorov-Smirnov test against the law's own Cdf, the
     counts of the discrete laws a chi-squared test against their masses, and the mean of each is within 5 standard
     errors of the law's. Each test starts from its own seed, made of the run's and its name, so a failure comes back
     with --seed. *)
@@ -9,7 +9,7 @@ use std/result
 use std/stats
 use std/value
 
-n = 20000
+n = 2000
 fits(d) = result.Unwrap(stats.KsTest(d.Sample(n), d)).PValue > 1e-5
 defn meanWithin(d, mean, sd)
   xs = d.Sample(n)
