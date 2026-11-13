@@ -174,3 +174,10 @@ isInfVector() = errs(sparse.Solve(sparse.Eye(2), [1.0, 1.0 / 0.0]), "b holds a N
 isNotSquare() = panics(() -> sparse.Solve(sparse.Of([], [], [], 2, 3), [1.0, 1.0]), "a is 2 × 3; give a square matrix")
 isBadB() = panics(() -> sparse.Solve(sparse.Eye(2), [1.0, 2.0, 3.0]), "give an array of 2 numbers")
 isTextB() = panics(() -> sparse.Solve(sparse.Eye(2), [1.0, "x"]), "b[2] is \"x\"")
+
+(* A Matrix built by hand, its fields not those Of makes: a panic that names it, never a read outside an array. *)
+isForgedRow() = panics(() -> sparse.Solve(sparse.Matrix(2, 2, 2, [1, 2, 3], [1, 3], [1.0, 1.0]), [1.0, 1.0]), "")
+isForgedStart() = panics(() -> sparse.Solve(sparse.Matrix(2, 2, 2, [1, 4, 3], [1, 2], [1.0, 1.0]), [1.0, 1.0]), "")
+isForgedNnz() = panics(() -> sparse.Solve(sparse.Matrix(2, 2, 5, [1, 2, 3], [1, 2], [1.0, 1.0]), [1.0, 1.0]), "whose fields were changed")
+isForgedValues() = panics(() -> sparse.Solve(sparse.Matrix(2, 2, 2, [1, 2, 3], [2, 1], ["x", 1.0]), [1.0, 1.0]), "")
+isForgedUnsorted() = math.Near(result.Unwrap(sparse.Solve(sparse.Matrix(2, 2, 3, [1, 3, 4], [2, 1, 2], [1.0, 4.0, 3.0]), [4.0, 4.0])), [1.0, 1.0], rel = 1e-12)
