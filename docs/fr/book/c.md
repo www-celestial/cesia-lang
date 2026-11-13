@@ -150,6 +150,40 @@ JIT (la partie qui change en code machine le code qui tourne souvent) compile l'
 appel à C vaut la peine pour un travail qui prend plus que cela, comme tout un calcul d'une bibliothèque, pas pour un petit
 pas dans une boucle.
 
+### Un appel qui prend du temps
+
+Un appel tourne sur le thread des fibers : pendant qu'il tourne, aucune autre fiber ne tourne, et un serveur ne répond à
+personne. Pour une fonction qui prend du temps, comme un hash de mot de passe de 70 ms, `slow = true` fait tourner chaque
+appel sur un thread à lui, pendant que sa fiber attend et que les autres tournent :
+
+```cesia norun
+use std/c
+use std/result
+sodium = result.Unwrap(c.Open("sodium", version = 26))
+verify = result.Unwrap(c.Fn("crypto_pwhash_str_verify", ["ptr", "ptr", "u64"], "i32", sodium, slow = true))
+```
+
+Il tourne à la fois autant d'appels lents que `CESIA_CORES` en donne, la moitié des cœurs de la machine par défaut ; les
+autres attendent dans une file, au plus 64 pour chacune de ces places, et un de plus arrête sa fiber par une erreur : une
+rafale de mille connexions ne peut pas prendre d'un coup la mémoire de mille hashes. Une fonction lente prend au plus 6
+nombres, pointeurs ou textes, et ne rappelle pas Cesia ; ses textes sont copiés pour elle, et les blocs qu'elle reçoit
+restent en vie jusqu'à ce qu'elle rende la main, même si une fiber en libère un entre-temps. Aucune autre fiber ne doit
+écrire dans ces blocs pendant qu'elle tourne : C les lirait au même moment. Chaque appel lance un thread à lui, ce qui
+coûte quelques dizaines de microsecondes : `slow` est pour des appels d'une milliseconde ou plus.
+
+Mesuré le 2026-11-13, 50 connexions à la fois à un serveur de [std/http], chacune un [crypto.CheckPassword], pendant
+qu'une fiber demande `/ping` au même serveur toutes les 5 ms (`bench/signin.ce`) : avant, chaque connexion attendait les
+autres, et rien d'autre ne tournait ; avec `slow`, quatre à la fois sur cette machine de 8 cœurs.
+
+| | Les 50 | Une connexion, médiane | Plus longue attente de `/ping` |
+|---|---:|---:|---:|
+| sans `slow` | 3 645 ms | 3 641 ms | 3 646 ms |
+| avec `slow` | 1 518 ms | 800 ms | 66 ms |
+
+Les 66 ms qui restent viennent avec les hashes qui tournent à la fois, chacun prenant puis rendant 64 Mio : quatre
+vérifications à la fois laissent une fiber qui dort 1 ms sans son tour jusqu'à 48 ms, deux 13 ms, une 2 ms
+(`CESIA_CORES=1`, `bench/signin-gap.ce`) ; une boucle de pur calcul, aussi longue, 3 ms avec quatre.
+
 ## C++
 
 Le C++ n'a pas de forme binaire stable, pas d'[ABI](glossary.md#abi) (la façon dont le code compilé passe ses arguments

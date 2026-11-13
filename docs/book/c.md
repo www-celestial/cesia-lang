@@ -137,6 +137,39 @@ A call costs Cesia about 85 nanoseconds, 6 times less than Python's `ctypes`, an
 compiles the call into the machine code of the loop. A call to C is worth it for work that takes more than that, as a
 whole computation of a library, not for one small step in a loop.
 
+### A call that takes long
+
+A call runs on the thread of the fibers: while it runs, no other fiber does, and a server answers no one. For a
+function that takes long, as a password hash of 70 ms, `slow = true` runs each call on a thread of its own, while its
+fiber waits and the others run:
+
+```cesia norun
+use std/c
+use std/result
+sodium = result.Unwrap(c.Open("sodium", version = 26))
+verify = result.Unwrap(c.Fn("crypto_pwhash_str_verify", ["ptr", "ptr", "u64"], "i32", sodium, slow = true))
+```
+
+As many slow calls run at once as `CESIA_CORES` gives, half of the cores of the machine by default; the others wait in
+line, at most 64 for each of those places, and one more stops its fiber with an error: a burst of a thousand sign-ins
+can't take the memory of a thousand hashes at once. A slow function takes at most 6 numbers, pointers or texts, and
+doesn't call back; its texts are copied for it, and the blocks it is given stay alive until it returns, even if a fiber
+frees one meanwhile. No other fiber may write into those blocks while it runs: C would read them at the same time.
+Each call starts a thread of its own, which costs tens of microseconds: `slow` is for calls of a millisecond or more.
+
+Measured on 2026-11-13, 50 sign-ins at once against a server of [std/http], each a [crypto.CheckPassword], while a
+fiber asks the same server `/ping` every 5 ms (`bench/signin.ce`): before, every sign-in waited for the others, and
+nothing else ran; with `slow`, four at once on this machine of 8 cores.
+
+| | All 50 | A sign-in, median | Longest wait of `/ping` |
+|---|---:|---:|---:|
+| without `slow` | 3,645 ms | 3,641 ms | 3,646 ms |
+| with `slow` | 1,518 ms | 800 ms | 66 ms |
+
+The 66 ms that remain come with the hashes that run at once, each taking and giving back 64 MiB: four checks at once
+leave a fiber that sleeps 1 ms without a turn for up to 48 ms, two for 13 ms, one for 2 ms (`CESIA_CORES=1`, `bench/signin-gap.ce`); a
+loop of pure computation, as long, for 3 ms with four.
+
 ## C++
 
 C++ has no stable binary form, no [ABI](glossary.md#abi), so [std/cpp] describes what to reach, writes a small C layer for it, compiles it once with the
