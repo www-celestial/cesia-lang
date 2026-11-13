@@ -366,8 +366,9 @@ defn Minimize(f, x, gradient = missing, tol = 1.0e-8, steps = 10000)
       The method is L-BFGS (Liu and Nocedal 1989): each step goes along a direction of quasi-Newton, from the last 10
       steps and changes of the gradient, then a line search (Moré and Thuente 1994) finds a point where f has fallen
       enough and its slope has shrunk. It ends when each component of the gradient is at most tol max(1, |F|), or
-      when two steps change f by less than 4 eps |F|, the limit of floats. It finds a point where the gradient
-      vanishes: on a convex f, the minimum; elsewhere often a local minimum, the one the start leads to.
+      when f falls no further: two steps change it by less than 4 eps |F|, or no step down the gradient lowers it,
+      the limit of floats, or of a gradient by differences. It finds a point where the gradient vanishes: on a convex
+      f, the minimum; elsewhere often a local minimum, the one the start leads to.
 
       An Err of kind "optimize" when f gives a nan, an infinity or no number at x, when the steps run out, or when no
       lower point can be found along the direction, as when the gradient is wrong; its Best is the struct of the best
@@ -413,7 +414,8 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
   newest = 0
   gamma = 1.0
   taken = 0
-  older = math.Nan   (* f one step before the last, or nan before the second step *)
+  older = math.Nan   (* f one step before the last, or nan unless the last two steps met the conditions *)
+  fails = 0          (* the searches down the gradient that failed in a row *)
   while true
     if list.Max(math.Abs(e.G)) <= tol * bigger(1.0, math.Abs(e.F))
       return result.Ok(found(x, e, scalar, taken, calls))
@@ -438,12 +440,13 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
       return failMin(ls, x, e, scalar, taken, calls)
     end
     calls += ls.Calls
-    if not ls.Ok
-      if used == 0
-        return failMin("optimize.Minimize: f grows along minus its gradient from $(brief(if scalar x[1] else x end)), where f = $(e.F): the gradient is wrong there, or f too rough for differences.", x, e, scalar, taken, calls)
-      end
-      used = 0   (* the memory goes, and one more try down the gradient *)
-    else
+    down = used == 0   (* this search went down the gradient *)
+    moved = ls.E.F < e.F
+    if ls.Wolfe and not moved
+      (* The conditions hold where f has not changed: rounding leaves no decrease to find. *)
+      return result.Ok(found(x, e, scalar, taken, calls))
+    end
+    if moved
       s = ls.X - x
       y = ls.E.G - e.G
       sy = dot(s, y)
@@ -460,10 +463,27 @@ defn lbfgs(f, gradient, x, scalar, tol, most)
       x = ls.X
       e = ls.E
       taken += 1
-      if older - e.F <= 4.0 * eps * math.Abs(e.F)
+      if ls.Wolfe and older - e.F <= 4.0 * eps * math.Abs(e.F)
         return result.Ok(found(x, e, scalar, taken, calls))
       end
-      older = previous
+      older = if ls.Wolfe previous else math.Nan end
+    end
+    if ls.Wolfe
+      fails = 0
+    else
+      (* No step met both conditions: rounding, or the error of the gradient, hides the slope along d. The memory goes,
+         and the next search goes down the gradient; when searches down the gradient fail twice in a row, or find no
+         lower point, f falls no further at this precision. *)
+      if down
+        if not moved and taken == 0
+          return failMin("optimize.Minimize: f grows along minus its gradient from $(brief(if scalar x[1] else x end)), where f = $(e.F): the gradient is wrong there, or f too rough for differences.", x, e, scalar, taken, calls)
+        end
+        if not moved or fails > 0
+          return result.Ok(found(x, e, scalar, taken, calls))
+        end
+        fails += 1
+      end
+      used = 0
     end
   end
 end
@@ -498,10 +518,10 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
       f(x + a d) <= f(x) + ftol a gd and |g(x + a d)'d| <= gtol |gd|: the strong Wolfe conditions. Each trial step
       comes from cubic or quadratic interpolation of f and its slope at the ends of an interval that holds such a
       step, which shrinks; while no step has met the first condition with a positive slope, it works on
-      psi(a) = f(x + a d) - f(x) - ftol a gd instead of f. It gives {Ok, X, E, Calls}, E the evaluation at X; when no
-      step meets both within tries evaluations, or rounding stops the interval from shrinking, X is the lowest point
-      met, and Ok is false if it isn't below f(x). A text when f or the gradient gives no number, or no array of the
-      shape of x. *)
+      psi(a) = f(x + a d) - f(x) - ftol a gd instead of f. It gives {Wolfe, X, E, Calls}, E the evaluation at X; when no
+      step meets both within tries evaluations, or rounding stops the interval from shrinking, Wolfe is false and X is
+      the lowest point met, x itself if none is below f(x). A text when f or the gradient gives no number, or no array
+      of the shape of x. *)
   gtest = ftol * gd
   width = stepMost
   wide = 2.0 * width
@@ -538,7 +558,7 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
         first = false
       end
       if fp <= ftest and math.Abs(dp) <= gtol * (-gd)
-        return {Ok: true, X: xt, E: et, Calls: calls}
+        return {Wolfe: true, X: xt, E: et, Calls: calls}
       end
       if st.Brackt and (stp <= lo or stp >= hi or hi - lo <= xtol * hi) or stp >= stepMost and fp <= ftest and dp <= gtest
         break
@@ -577,9 +597,9 @@ defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
     end
   end
   if value.IsMissing(best)
-    return {Ok: false, X: x, E: e, Calls: calls}
+    return {Wolfe: false, X: x, E: e, Calls: calls}
   end
-  {Ok: true, X: best.X, E: best.E, Calls: calls}
+  {Wolfe: false, X: best.X, E: best.E, Calls: calls}
 end
 
 defn trial(st, stp, fp, dp, lo, hi)
