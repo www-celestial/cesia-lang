@@ -18,7 +18,8 @@ and then, a constant time per element on average. See [How Cesia works](internal
 ## Anonymous function
 
 A function without a name, written where it is used; also called a lambda. In Cesia, `x -> x + 1` on one line, or
-`defn (x)` up to `end` for several: see [Functions](functions.md#functions-as-values).
+`defn (x)` up to `end` for several, or a [do block](#do-block) after a call: see
+[Functions](functions.md#functions-as-values).
 
 ## Atomic operation
 
@@ -228,6 +229,13 @@ operation in $O(\log_{32} n)$: see [Numbers and algorithms](numbers.md#sets-queu
 
 Taking a value apart into named pieces in one step. In Cesia a pattern of [match] does it: `[a, b]` for a list of two,
 `{Name: n}` for a dictionary, `Point(x, y)` for a struct: see [Choices and loops](choices.md#match).
+
+## Do block
+
+A function of several lines written after the call that takes it, rather than inside its parentheses. Julia has the same
+form, where the block always becomes the first argument. In Cesia, `list.Reduce(0, xs) do total, x` up to `end` gives
+the function `defn (total, x) ... end` as the first argument, unless an argument that is `_` alone says where it goes:
+see [Functions](functions.md#do-blocks).
 
 ## Doctest
 
