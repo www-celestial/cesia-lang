@@ -1,0 +1,176 @@
+(* sparse.Solve: exact solutions, Poisson's matrices against their closed forms, random matrices against dense
+   elimination, backward errors, singular matrices and bad arguments. *)
+use std/fiber
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/num
+use std/result
+use std/sparse
+use std/test
+use std/text
+use std/value
+
+eps = 2.220446049250313e-16
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+panics(f, part) = match message(f)
+  result.Err(m) -> text.Contains(part, m)
+  else -> false
+end
+errs(r, part) = match r
+  result.Err(e) -> e.Kind == "sparse" and text.Contains(part, e.Message)
+  else -> false
+end
+
+defn fromDense(d)
+  (** The sparse matrix of the non-zeros of a dense one. *)
+  rows = value.Size(d, 1)
+  cols = value.Size(d, 2)
+  i = []
+  j = []
+  v = []
+  for c in 1..cols
+    for r in 1..rows
+      if d[r, c] != 0.0
+        i = list.Append(r, i)
+        j = list.Append(c, j)
+        v = list.Append(d[r, c], v)
+      end
+    end
+  end
+  sparse.Of(i, j, v, rows, cols)
+end
+
+defn backward(a, x, b)
+  (** The backward error of x: |a x - b| / (|a| |x| + |b|), in the norm of the largest |cell|. *)
+  r = sparse.Mul(a, x) - b
+  na = list.Max(list.Sum(math.Abs(sparse.Dense(a)), dim = 2))
+  list.Max(math.Abs(r)) / (na * list.Max(math.Abs(x)) + list.Max(math.Abs(b)))
+end
+
+(* Random n × n matrices: a sparse b, then b' b + I (positive definite), or b with a diagonal that outweighs its rows,
+   its rows then turned (unsymmetric, pivots off the diagonal). *)
+defn dense(r)
+  n = r.N
+  d = matrix.Zeros(n, n)
+  for k in 1..value.Len(r.Cells)
+    c = r.Cells[k]
+    d[math.Mod(c, n) + 1, math.Mod(math.Div(c, n), n) + 1] = 1.0 * (math.Mod(c, 13) - 6)
+  end
+  d
+end
+defn spd(r)
+  d = dense(r)
+  m = matrix.Matmul(matrix.Transpose(d), d) + num.Eye(r.N)
+  {A: fromDense(m), D: m, B: [math.Sin(1.0 * k) for k in 1..r.N]}
+end
+defn unsymmetric(r)
+  d = dense(r)
+  n = r.N
+  for i in 1..n
+    d[i, i] = 1.0 + list.Sum(math.Abs(d[i, :]))
+  end
+  (* The rows turned by one: row i goes to i + 1, so the diagonal holds no pivot. *)
+  m = matrix.Zeros(n, n)
+  for i in 1..n
+    for c in 1..n
+      m[math.Mod(i, n) + 1, c] = d[i, c]
+    end
+  end
+  {A: fromDense(m), D: m, B: [math.Cos(1.0 * k) for k in 1..n]}
+end
+cells = gen.Of({N: gen.Int(1, 12), Cells: gen.List(gen.Int(0, 1000), max = 40)})
+
+defn solvesAs(s)
+  (** Solve gives the dense solution, to a backward error of at most 1e3 n eps. *)
+  x = result.Unwrap(sparse.Solve(s.A, s.B))
+  n = value.Len(s.B)
+  backward(s.A, x, s.B) <= 1.0e3 * n * eps and math.Near(x, result.Unwrap(num.Solve(s.D, s.B)), rel = 1e-9, abs = 1e-12)
+end
+isSolveSpd() = test.ForAll(solvesAs, gen.Map(spd, cells))
+isSolveUnsymmetric() = test.ForAll(solvesAs, gen.Map(unsymmetric, cells))
+
+defn isSolveExact()
+  (** b = a x* for a known x*: x* again. *)
+  a = sparse.Of([1, 2, 3, 1, 3, 2], [1, 1, 2, 3, 3, 2], [2.0, 1.0, 5.0, 3.0, 1.0, 4.0], 3, 3)
+  x = [1.0, -2.0, 0.5]
+  math.Near(result.Unwrap(sparse.Solve(a, sparse.Mul(a, x))), x, rel = 1e-14)
+end
+
+defn poisson(k)
+  t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
+  sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(t, sparse.Eye(k)))
+end
+
+defn isPoisson1d()
+  (** -u'' = 1 on n points: the second differences of i (n + 1 - i) / 2 are -1, exactly. *)
+  n = 200
+  x = result.Unwrap(sparse.Solve(sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], n), matrix.Ones(1, n)))
+  math.Near(x, [i * (n + 1.0 - i) / 2.0 for i in 1..n], rel = 1e-12)
+end
+
+defn isPoisson2d()
+  (** b an eigenvector of the 2-D Laplacian of k × k points, sin(p π i h) sin(q π j h), gives b / λ, with
+      λ = 4 - 2 cos(p π h) - 2 cos(q π h), h = 1 / (k + 1). *)
+  k = 40
+  h = 1.0 / (k + 1)
+  ok = true
+  for pq in [[1, 1], [3, 7], [40, 2]]
+    p = pq[1]
+    q = pq[2]
+    b = matrix.Zeros(1, k * k)
+    for j in 1..k
+      for i in 1..k
+        b[(j - 1) * k + i] = math.Sin(p * math.Pi * i * h) * math.Sin(q * math.Pi * j * h)
+      end
+    end
+    l = 4.0 - 2.0 * math.Cos(p * math.Pi * h) - 2.0 * math.Cos(q * math.Pi * h)
+    ok = ok and math.Near(result.Unwrap(sparse.Solve(poisson(k), b)), b / l, abs = 1e-12)
+  end
+  ok
+end
+
+defn isShapes()
+  a = poisson(3)
+  b = [1.0 * k for k in 1..9]
+  row = result.Unwrap(sparse.Solve(a, b))
+  col = result.Unwrap(sparse.Solve(a, matrix.Reshape([9, 1], b)))
+  both = result.Unwrap(sparse.Solve(a, matrix.Reshape([9, 2], list.Concat(b, b * 2.0))))
+  value.Equal(value.Size(row), [1, 9]) and value.Equal(value.Size(col), [9, 1]) and value.Equal(value.Size(both), [9, 2]) and
+    math.Near(both[:, 2], col * 2.0, rel = 1e-14) and math.Near(matrix.Reshape([1, 9], col), row, rel = 1e-14)
+end
+
+defn isIndefinite()
+  (** Symmetric, its diagonal above 0, not positive definite: Cholesky meets a pivot under 0, and LU solves it. *)
+  a = sparse.Of([1, 2, 1, 2], [1, 1, 2, 2], [1.0, 2.0, 2.0, 1.0], 2, 2)
+  math.Near(result.Unwrap(sparse.Solve(a, [3.0, 3.0])), [1.0, 1.0], rel = 1e-14)
+end
+
+defn isZeroDiagonal()
+  a = sparse.Of([2, 1, 3], [1, 2, 3], [1.0, 1.0, 1.0], 3, 3)
+  math.Near(result.Unwrap(sparse.Solve(a, [1.0, 2.0, 3.0])), [2.0, 1.0, 3.0], rel = 1e-15)
+end
+
+defn isArrow()
+  (** A full first row and column: AMD puts that unknown last, so the factor stays as sparse as the matrix. *)
+  n = 2000
+  i = list.Concat([k for k in 1..n], list.Concat([1 for k in 2..n], [k for k in 2..n]))
+  j = list.Concat([k for k in 1..n], list.Concat([k for k in 2..n], [1 for k in 2..n]))
+  v = list.Concat([1.0 * n for k in 1..n], matrix.Ones(1, 2 * n - 2))
+  a = sparse.Of(i, j, v, n, n)
+  x = [1.0 + math.Mod(k, 3) for k in 1..n]
+  math.Near(result.Unwrap(sparse.Solve(a, sparse.Mul(a, x))), x, rel = 1e-12)
+end
+
+isEmpty() = value.Equal(result.Unwrap(sparse.Solve(sparse.Of([], [], [], 0, 0), [])), [])
+isSingularColumn() = errs(sparse.Solve(sparse.Of([1, 2], [1, 1], [1.0, 1.0], 2, 2), [1.0, 1.0]), "is singular")
+isSingularRow() = errs(sparse.Solve(sparse.Of([1, 1], [1, 2], [1.0, 1.0], 2, 2), [1.0, 1.0]), "is singular")
+isSingularRank() = errs(sparse.Solve(sparse.Of([1, 2, 1, 2], [1, 1, 2, 2], [1.0, 2.0, 2.0, 4.0], 2, 2), [1.0, 1.0]), "is singular")
+isSingularSymmetric() = errs(sparse.Solve(sparse.Of([1, 2, 1, 2], [1, 1, 2, 2], [1.0, 1.0, 1.0, 1.0], 2, 2), [1.0, 2.0]), "is singular")
+isNanMatrix() = errs(sparse.Solve(sparse.Of([1], [1], [math.Nan], 1, 1), [1.0]), "a holds a NaN")
+isInfVector() = errs(sparse.Solve(sparse.Eye(2), [1.0, 1.0 / 0.0]), "b holds a NaN or an infinity")
+isNotSquare() = panics(() -> sparse.Solve(sparse.Of([], [], [], 2, 3), [1.0, 1.0]), "a is 2 × 3; give a square matrix")
+isBadB() = panics(() -> sparse.Solve(sparse.Eye(2), [1.0, 2.0, 3.0]), "give an array of 2 numbers")
+isTextB() = panics(() -> sparse.Solve(sparse.Eye(2), [1.0, "x"]), "b[2] is \"x\"")

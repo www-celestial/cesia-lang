@@ -7,10 +7,17 @@ use std/columns as col
 use std/list
 use std/math
 use std/matrix
+use std/regex
+use std/result
+use std/sys
 use std/text
 use std/value
 
 most = 9007199254740992   (** 2^53, the most cells, Rows × Cols, a Matrix may have: each then has an exact float position *)
+eps = 2.220446049250313e-16   (** the distance from 1.0 to the next float, 2^-52 *)
+threshold = 0.1               (** an LU pivot on the diagonal is kept when at least this times the largest of its column *)
+mostSide = 2147483647         (** the most rows or columns Read takes from a file, 2^31 - 1 *)
+longest = 1024                (** the longest line of entries Read takes, in bytes *)
 
 struct Matrix
   (** A sparse matrix of Rows rows and Cols columns, which holds Nnz non-zeros: Of, Eye, Diags, Kron, Add, Scale,
@@ -89,8 +96,19 @@ defn squeezed(rows, cols, start, index, values)
   Matrix(rows, cols, p - 1, start, index, values)
 end
 
+defn firsts(xs, n)
+  (** A new list of the first n integers of xs, which a loop writes into: a slice xs[1..n] shares its cells until its
+      first write, and the JIT leaves to the interpreter a loop that writes into a list it doesn't own. *)
+  out = list.Fill(0, n)
+  for k in 1..n
+    out[k] = xs[k]
+  end
+  out
+end
+
 defn entries(xs, name, low, high, n, where)
-  (** A panic unless xs is an array of n whole numbers from low to high, which names the first one that is not. *)
+  (** The whole numbers of the array xs, n of them, from low to high, as integers: a whole float, as 2.0, is taken as
+      Cesia's indexing takes it. A panic names the first one that is not such a number. *)
   if not value.IsArray(xs)
     bug.Panic("$where: $name is $(brief(xs)); give an array of whole numbers.")
   end
@@ -98,17 +116,20 @@ defn entries(xs, name, low, high, n, where)
     bug.Panic("$where: $name has $(value.Len(xs)) elements, and i has $n; give arrays of the same length.")
   end
   if n == 0
-    return missing
+    return []
   end
   if col.Kind(xs) == "int" and list.Min(xs) >= low and list.Max(xs) <= high
-    return missing
+    return xs
   end
+  out = list.Fill(0, n)
   for k in 1..n
     x = xs[k]
-    if not (value.IsInt(x) and x >= low and x <= high)
+    if not (value.IsNumber(x) and x >= low and x <= high and x == math.Floor(x))
       bug.Panic("$where: $name[$k] is $(brief(x)); give a whole number from $low to $high.")
     end
+    out[k] = math.Div(x, 1)
   end
+  out
 end
 
 defn numbers(xs, n, where, name)
@@ -140,8 +161,8 @@ defn Of(i, j, v, rows, cols)
   (** The rows × cols Matrix whose cell (i[k], j[k]) holds v[k], for each k, and every other cell 0.0: MATLAB's
       sparse(i, j, v, m, n), scipy's csc_array((v, (i, j)), shape = (m, n)) with rows and columns from 1. Values given
       for the same cell are added, and a cell whose sum is 0.0 is not kept, as MATLAB does. i, j and v are arrays of the
-      same length; a panic names the first index that is not a whole number from 1 to rows or cols, and the first value
-      that is no number. Time and memory grow as rows + cols + the length of i.
+      same length; a panic names the first index that is not a whole number from 1 to rows or cols, as 2 or 2.0, and
+      the first value that is no number. Time and memory grow as rows + cols + the length of i.
 
         a = Of([1, 2, 1], [1, 2, 1], [1.0, 5.0, 2.0], 2, 3)
         Dense(a) --> [3.0 0.0 0.0; 0.0 5.0 0.0]
@@ -151,8 +172,8 @@ defn Of(i, j, v, rows, cols)
     bug.Panic("sparse.Of: i is $(brief(i)); give an array of whole numbers.")
   end
   n = value.Len(i)
-  entries(i, "i", 1, rows, n, "sparse.Of")
-  entries(j, "j", 1, cols, n, "sparse.Of")
+  i = entries(i, "i", 1, rows, n, "sparse.Of")
+  j = entries(j, "j", 1, cols, n, "sparse.Of")
   vs = numbers(v, n, "sparse.Of", "v")
   (* By rows first, a counting sort: then each column takes its entries in increasing rows, and the entries of one cell
      come one after the other, to be added. *)
@@ -162,19 +183,19 @@ defn Of(i, j, v, rows, cols)
   end
   p = 1
   for r in 1..rows
-    c = byRow[r]
+    count = byRow[r]
     byRow[r] = p
-    p += c
+    p += count
   end
   byRow[rows + 1] = p
   colOf = list.Fill(0, n)
   valOf = matrix.Zeros(n)
   for k in 1..n
-    r = i[k]
-    q = byRow[r]
+    ik = i[k]
+    q = byRow[ik]
     colOf[q] = j[k]
     valOf[q] = vs[k]
-    byRow[r] = q + 1
+    byRow[ik] = q + 1
   end
   start = list.Fill(0, cols + 1)
   for k in 1..n
@@ -187,21 +208,21 @@ defn Of(i, j, v, rows, cols)
     p += m
   end
   start[cols + 1] = p
-  next = start[1..cols]
+  next = firsts(start, cols)
   index = list.Fill(0, n)
   values = matrix.Zeros(n)
   q = 1
   for r in 1..rows
     (* byRow[r] is now where row r + 1 starts *)
     for t in q..byRow[r] - 1
-      c = colOf[t]
-      at = next[c]
-      if at > start[c] and index[at - 1] == r
+      jt = colOf[t]
+      at = next[jt]
+      if at > start[jt] and index[at - 1] == r
         values[at - 1] = values[at - 1] + valOf[t]
       else
         index[at] = r
         values[at] = valOf[t]
-        next[c] = at + 1
+        next[jt] = at + 1
       end
     end
     q = byRow[r]
@@ -252,7 +273,7 @@ defn Diags(values, offsets, n)
   if value.Len(values) != m
     bug.Panic("sparse.Diags: values has $(value.Len(values)) elements, and offsets $m; give one value for each offset.")
   end
-  entries(offsets, "offsets", 1 - n, n - 1, m, "sparse.Diags")
+  offsets = entries(offsets, "offsets", 1 - n, n - 1, m, "sparse.Diags")
   for k in 1..m
     for h in 1..k - 1
       if offsets[h] == offsets[k]
@@ -423,13 +444,13 @@ defn Transpose(a)
     start[ai[q]] += 1
   end
   p = 1
-  for i in 1..rows
-    m = start[i]
-    start[i] = p
+  for r in 1..rows
+    m = start[r]
+    start[r] = p
     p += m
   end
   start[rows + 1] = p
-  next = start[1..rows]
+  next = firsts(start, rows)
   index = list.Fill(0, nnz)
   values = matrix.Zeros(nnz)
   for j in 1..cols
@@ -565,4 +586,1136 @@ defn products(start, index, values, x, cols, rows, k)
     end
   end
   y
+end
+
+(* Solve: an ordering that keeps the factors sparse, then Cholesky's factorization or an LU one, then two triangular
+   solves. Davis (2006) is the book of each part: ch. 4 for Cholesky, ch. 6 for LU, ch. 7 for the orderings. *)
+
+defn amd(n, cp, ci)
+  (** The order in which to eliminate the n unknowns of a symmetric pattern so that the factor fills little: perm[k]
+      is the k-th, by the approximate minimum degree of Amestoy, Davis and Duff (1996). The pattern is the columns
+      cp, ci of a symmetric matrix without its diagonal: column j holds ci[cp[j]] to ci[cp[j + 1] - 1].
+
+      The graph of the matrix shrinks as it would under elimination, as a quotient graph: eliminating the variable k
+      makes an element, the set Lk of its neighbours, and absorbs the elements around k. Each variable i keeps its
+      elements Ei and its variables Ai in one list of iw, the elements first, and an element e its variables Le. The
+      degree of i, the size of its row in the factor, is bounded by |Ai| + Σ |Le \ Lk| + |Lk \ i| (the paper's
+      approximate degree), each |Le \ Lk| counted in a pass over the elements of Lk. Variables with the same lists
+      are merged into one (supervariables, found by a hash), an element inside Lk is absorbed, and a variable left
+      with Lk alone is eliminated with k. A variable of degree over 10 √n is put aside and eliminated last, as AMD
+      does with dense rows. The order is then a postorder of the tree of elements, which fills as much. *)
+  nz = cp[n + 1] - 1
+  room = nz + math.Div(nz, 5) + 2 * n + 1
+  iw = list.Fill(0, room)
+  for q in 1..nz
+    iw[q] = ci[q]
+  end
+  pfree = nz + 1
+  pe = list.Fill(0, n + 1)       (* where the list of node i starts in iw *)
+  len = list.Fill(0, n + 1)      (* its length *)
+  elen = list.Fill(0, n + 1)     (* a variable: its elements, first in its list; -1 a variable merged or eliminated
+                                    with an element; -2 an element *)
+  nv = list.Fill(1, n + 1)       (* the variables a principal variable stands for, those of an element; 0 for the others *)
+  degree = list.Fill(0, n + 1)   (* a variable: its approximate degree; an element: |Le| in variables *)
+  w = list.Fill(1, n + 1)        (* marks; an element absorbed has 0 *)
+  parent = list.Fill(0, n + 1)   (* the tree of elements, and where a variable went *)
+  head = list.Fill(0, n + 1)     (* head[d + 1]: a variable of degree d *)
+  next = list.Fill(0, n + 1)
+  last = list.Fill(0, n + 1)
+  hhead = list.Fill(0, n + 1)    (* the variables of a hash, while supervariables are found *)
+  saved = list.Fill(0, n + 1)
+  for v in 1..n
+    pe[v] = cp[v]
+    len[v] = cp[v + 1] - cp[v]
+    degree[v] = len[v]
+  end
+  nv[n + 1] = 0
+  dense = 10.0 * math.Sqrt(1.0 * n)
+  dense = if dense < 16.0 16.0 else dense end
+  dense = if dense > n - 2.0 n - 2.0 else dense end
+  nel = 0
+  mindeg = n
+  for v in 1..n
+    d = degree[v]
+    if d == 0
+      elen[v] = -2
+      nel += 1
+      w[v] = 0
+    else if d > dense
+      nv[v] = 0
+      elen[v] = -1
+      nel += 1
+      parent[v] = n + 1
+      nv[n + 1] += 1
+    else
+      h = head[d + 1]
+      if h != 0
+        last[h] = v
+      end
+      next[v] = h
+      head[d + 1] = v
+      if d < mindeg
+        mindeg = d
+      end
+    end
+  end
+  top = 1
+  lemax = 0
+  (* Each variable of the loop below holds an integer before it starts, even those of its rare branches: the JIT makes
+     machine code of a loop only once it has seen what each of its variables holds. *)
+  src = 0
+  dst = 0
+  j = 0
+  jlast = 0
+  ln = 0
+  eln = 0
+  same = 0
+  pend = 0
+  while nel < n
+    (* 1. A variable of least degree. *)
+    k = head[mindeg + 1]
+    while k == 0
+      mindeg += 1
+      k = head[mindeg + 1]
+    end
+    h = next[k]
+    if h != 0
+      last[h] = 0
+    end
+    head[mindeg + 1] = h
+    elenk = elen[k]
+    nvk = nv[k]
+    nel += nvk
+    (* 2. Room for Lk past the lists, at most degree[k] entries: else the lists are moved together. *)
+    if elenk > 0 and pfree + degree[k] > room
+      for v in 1..n
+        if len[v] > 0 and (elen[v] >= 0 or (elen[v] == -2 and w[v] != 0))
+          saved[v] = iw[pe[v]]
+          iw[pe[v]] = -v
+        end
+      end
+      src = 1
+      dst = 1
+      while src < pfree
+        j = -iw[src]
+        if j > 0
+          iw[dst] = saved[j]
+          pe[j] = dst
+          dst += 1
+          src += 1
+          for t in 2..len[j]
+            iw[dst] = iw[src]
+            dst += 1
+            src += 1
+          end
+        else
+          src += 1
+        end
+      end
+      pfree = dst
+    end
+    (* 3. Lk: the variables of the elements of k and of k's own list, each once; the elements of k are absorbed. *)
+    dk = 0
+    nv[k] = -nvk
+    p = pe[k]
+    pk1 = if elenk == 0 p else pfree end
+    pk2 = pk1
+    for k1 in 1..elenk + 1
+      e = k
+      pj = p
+      ln = len[k] - elenk
+      if k1 <= elenk
+        e = iw[p]
+        p += 1
+        pj = pe[e]
+        ln = len[e]
+      end
+      for k2 in 1..ln
+        i = iw[pj]
+        pj += 1
+        nvi = nv[i]
+        if nvi > 0
+          dk += nvi
+          nv[i] = -nvi
+          iw[pk2] = i
+          pk2 += 1
+          ni = next[i]
+          li = last[i]
+          if ni != 0
+            last[ni] = li
+          end
+          if li != 0
+            next[li] = ni
+          else
+            head[degree[i] + 1] = ni
+          end
+        end
+      end
+      if e != k
+        parent[e] = k
+        w[e] = 0
+      end
+    end
+    if elenk != 0
+      pfree = pk2
+    end
+    degree[k] = dk
+    pe[k] = pk1
+    len[k] = pk2 - pk1
+    elen[k] = -2
+    (* 4. |Le \ Lk| for each element e of a variable of Lk, as w[e] - mark. *)
+    mark = top + 1
+    for pk in pk1..pk2 - 1
+      i = iw[pk]
+      eln = elen[i]
+      if eln > 0
+        nvi = -nv[i]
+        wnvi = mark - nvi
+        for q in pe[i]..pe[i] + eln - 1
+          e = iw[q]
+          we = w[e]
+          if we >= mark
+            w[e] = we - nvi
+          else if we != 0
+            w[e] = degree[e] + wnvi
+          end
+        end
+      end
+    end
+    top = mark + lemax
+    (* 5. The degree of each variable of Lk, its lists pruned, k first among its elements; an element inside Lk is
+       absorbed, and a variable left with k alone is eliminated with it. *)
+    for pk in pk1..pk2 - 1
+      i = iw[pk]
+      p1 = pe[i]
+      p2 = p1 + elen[i] - 1
+      pn = p1
+      hash = 0
+      d = 0
+      for q in p1..p2
+        e = iw[q]
+        if w[e] != 0
+          dext = w[e] - mark
+          if dext > 0
+            d += dext
+            iw[pn] = e
+            pn += 1
+            hash += e
+          else
+            parent[e] = k
+            w[e] = 0
+          end
+        end
+      end
+      elen[i] = pn - p1 + 1
+      p3 = pn
+      for q in p2 + 1..p1 + len[i] - 1
+        j = iw[q]
+        nvj = nv[j]
+        if nvj > 0
+          d += nvj
+          iw[pn] = j
+          pn += 1
+          hash += j
+        end
+      end
+      if d == 0
+        parent[i] = k
+        nvi = -nv[i]
+        dk -= nvi
+        nvk += nvi
+        nel += nvi
+        nv[i] = 0
+        elen[i] = -1
+      else
+        if d < degree[i]
+          degree[i] = d
+        end
+        iw[pn] = iw[p3]
+        iw[p3] = iw[p1]
+        iw[p1] = k
+        len[i] = pn - p1 + 1
+        hash = math.Mod(hash, n) + 1
+        next[i] = hhead[hash]
+        hhead[hash] = i
+        last[i] = hash
+      end
+    end
+    degree[k] = dk
+    if dk > lemax
+      lemax = dk
+    end
+    (* 6. Supervariables: two variables of Lk with the same elements and variables become one. *)
+    for pk in pk1..pk2 - 1
+      i = iw[pk]
+      if nv[i] < 0
+        hash = last[i]
+        i = hhead[hash]
+        hhead[hash] = 0
+        while i != 0 and next[i] != 0
+          ln = len[i]
+          eln = elen[i]
+          top += 1
+          for q in pe[i] + 1..pe[i] + ln - 1
+            w[iw[q]] = top
+          end
+          jlast = i
+          j = next[i]
+          while j != 0
+            same = if len[j] == ln and elen[j] == eln 1 else 0 end
+            p = pe[j] + 1
+            pend = pe[j] + ln - 1
+            while same == 1 and p <= pend
+              if w[iw[p]] != top
+                same = 0
+              end
+              p += 1
+            end
+            if same == 1
+              parent[j] = i
+              nv[i] += nv[j]
+              nv[j] = 0
+              elen[j] = -1
+              j = next[j]
+              next[jlast] = j
+            else
+              jlast = j
+              j = next[j]
+            end
+          end
+          i = next[i]
+        end
+      end
+    end
+    (* 7. Back into the lists of degrees; Lk keeps its principal variables. *)
+    p = pk1
+    for pk in pk1..pk2 - 1
+      i = iw[pk]
+      nvi = -nv[i]
+      if nvi > 0
+        nv[i] = nvi
+        d = degree[i] + dk - nvi
+        if d > n - nel - nvi
+          d = n - nel - nvi
+        end
+        h = head[d + 1]
+        if h != 0
+          last[h] = i
+        end
+        next[i] = h
+        last[i] = 0
+        head[d + 1] = i
+        if d < mindeg
+          mindeg = d
+        end
+        degree[i] = d
+        iw[p] = i
+        p += 1
+      end
+    end
+    nv[k] = nvk
+    len[k] = p - pk1
+    if len[k] == 0
+      w[k] = 0
+    end
+    if elenk != 0
+      pfree = p
+    end
+  end
+  (* The postorder of the tree: each node after its children, the elements of a node before its variables, and the
+     dense variables, children of the node n + 1, last. *)
+  child = list.Fill(0, n + 2)
+  sibling = list.Fill(0, n + 2)
+  for t in 1..n
+    j = n + 1 - t
+    if nv[j] == 0
+      pj = parent[j]
+      sibling[j] = child[pj]
+      child[pj] = j
+    end
+  end
+  for t in 1..n
+    e = n + 1 - t
+    if nv[e] > 0 and parent[e] != 0
+      pj = parent[e]
+      sibling[e] = child[pj]
+      child[pj] = e
+    end
+  end
+  perm = list.Fill(0, n)
+  stack = list.Fill(0, n + 1)
+  count = 0
+  for root in 1..n + 1
+    if parent[root] == 0 and nv[root] > 0
+      depth = 1
+      stack[1] = root
+      while depth > 0
+        x = stack[depth]
+        c = child[x]
+        if c == 0
+          depth -= 1
+          if x <= n
+            count += 1
+            perm[count] = x
+          end
+        else
+          child[x] = sibling[c]
+          depth += 1
+          stack[depth] = c
+        end
+      end
+    end
+  end
+  if count != n
+    bug.Panic("sparse: the ordering placed $count of $n unknowns; this is a bug of std/sparse.")
+  end
+  perm
+end
+
+defn symmetric(a, t)
+  (** The pattern of a + t without its diagonal, t the transpose of a: the columns {Start, Index} that amd takes. *)
+  n = a.Cols
+  as = a.start
+  ai = a.index
+  ts = t.start
+  ti = t.index
+  start = list.Fill(0, n + 1)
+  index = list.Fill(0, a.Nnz + t.Nnz)
+  p = 1
+  for j in 1..n
+    start[j] = p
+    qa = as[j]
+    ea = as[j + 1]
+    qt = ts[j]
+    et = ts[j + 1]
+    while qa < ea or qt < et
+      ra = if qa < ea ai[qa] else n + 1 end
+      rt = if qt < et ti[qt] else n + 1 end
+      r = if ra < rt ra else rt end
+      if ra == r
+        qa += 1
+      end
+      if rt == r
+        qt += 1
+      end
+      if r != j
+        index[p] = r
+        p += 1
+      end
+    end
+  end
+  start[n + 1] = p
+  {Start: start, Index: index}
+end
+
+defn gram(a, t)
+  (** The pattern of a' a without its diagonal, t the transpose of a, without the rows of a of more than 10 √n
+      non-zeros, which would make it dense: Davis (2006, §7.3) orders the columns of an LU by it. Two passes, the first
+      counts, so that its arrays are allocated once. *)
+  n = a.Cols
+  as = a.start
+  ai = a.index
+  ts = t.start
+  ti = t.index
+  dense = 10.0 * math.Sqrt(1.0 * n)
+  dense = if dense < 16.0 16.0 else dense end
+  seen = list.Fill(0, n)
+  start = list.Fill(0, n + 1)
+  index = []
+  for pass in 1..2
+    p = 1
+    for j in 1..n
+      start[j] = p
+      stamp = 2 * j + pass
+      seen[j] = stamp
+      for q in as[j]..as[j + 1] - 1
+        i = ai[q]
+        if ts[i + 1] - ts[i] <= dense
+          for r in ts[i]..ts[i + 1] - 1
+            c = ti[r]
+            if seen[c] != stamp
+              seen[c] = stamp
+              if pass == 2
+                index[p] = c
+              end
+              p += 1
+            end
+          end
+        end
+      end
+    end
+    start[n + 1] = p
+    if pass == 1
+      index = list.Fill(0, p - 1)
+    end
+  end
+  {Start: start, Index: index}
+end
+
+defn cholesky(a, perm)
+  (** The Cholesky factor L of p a p', a symmetric, p the permutation perm, so that p a p' = L L': {Start, Index,
+      Values} in columns, the diagonal first in each, or missing when a pivot is not above 0, so a is not positive
+      definite. Davis (2006, ch. 4): the elimination tree (Liu's algorithm), the count of each column of L from the
+      rows of L, each the reach of a column of a in that tree, so that L is allocated once, then the up-looking
+      factorization, row k of L by a sparse triangular solve. *)
+  n = a.Cols
+  as = a.start
+  ai = a.index
+  av = a.values
+  pinv = list.Fill(0, n)
+  for k in 1..n
+    pinv[perm[k]] = k
+  end
+  (* c: the upper triangle of p a p', from the upper triangle of a: its columns are not sorted. *)
+  cs = list.Fill(0, n + 1)
+  for j in 1..n
+    pj = pinv[j]
+    for q in as[j]..as[j + 1] - 1
+      i = ai[q]
+      if i <= j
+        pi = pinv[i]
+        cs[if pi > pj pi else pj end] += 1
+      end
+    end
+  end
+  p = 1
+  for j in 1..n
+    m = cs[j]
+    cs[j] = p
+    p += m
+  end
+  cs[n + 1] = p
+  fill = firsts(cs, n)
+  ci = list.Fill(0, p - 1)
+  cv = matrix.Zeros(p - 1)
+  for j in 1..n
+    pj = pinv[j]
+    for q in as[j]..as[j + 1] - 1
+      i = ai[q]
+      if i <= j
+        pi = pinv[i]
+        jc = if pi > pj pi else pj end
+        at = fill[jc]
+        ci[at] = if pi < pj pi else pj end
+        cv[at] = av[q]
+        fill[jc] = at + 1
+      end
+    end
+  end
+  (* The elimination tree, by Liu's algorithm, with path compression through ancestor. *)
+  parent = list.Fill(0, n)
+  ancestor = list.Fill(0, n)
+  for k in 1..n
+    for q in cs[k]..cs[k + 1] - 1
+      i = ci[q]
+      while i != 0 and i < k
+        inext = ancestor[i]
+        ancestor[i] = k
+        if inext == 0
+          parent[i] = k
+        end
+        i = inext
+      end
+    end
+  end
+  (* The count of each column of L: row k of L is the reach of column k of c in the tree. *)
+  flag = list.Fill(0, n)
+  counts = list.Fill(0, n)
+  for k in 1..n
+    flag[k] = k
+    counts[k] += 1
+    for q in cs[k]..cs[k + 1] - 1
+      i = ci[q]
+      while flag[i] != k
+        counts[i] += 1
+        flag[i] = k
+        i = parent[i]
+      end
+    end
+  end
+  lp = list.Fill(0, n + 1)
+  p = 1
+  for k in 1..n
+    lp[k] = p
+    p += counts[k]
+  end
+  lp[n + 1] = p
+  li = list.Fill(0, p - 1)
+  lx = matrix.Zeros(p - 1)
+  (* Row k of L: x = L(1:k-1, 1:k-1) \ c(1:k-1, k), its pattern s from top to n, then the diagonal. *)
+  next = firsts(lp, n)
+  x = matrix.Zeros(n)
+  s = list.Fill(0, n)
+  for k in 1..n
+    top = n + 1
+    flag[k] = -k
+    for q in cs[k]..cs[k + 1] - 1
+      i = ci[q]
+      x[i] = cv[q]
+      size = 0
+      while flag[i] != -k
+        size += 1
+        s[size] = i
+        flag[i] = -k
+        i = parent[i]
+      end
+      while size > 0
+        top -= 1
+        s[top] = s[size]
+        size -= 1
+      end
+    end
+    d = x[k]
+    x[k] = 0.0
+    for t in top..n
+      i = s[t]
+      lki = x[i] / lx[lp[i]]
+      x[i] = 0.0
+      for q in lp[i] + 1..next[i] - 1
+        r = li[q]
+        x[r] = x[r] - lx[q] * lki
+      end
+      d -= lki * lki
+      at = next[i]
+      li[at] = k
+      lx[at] = lki
+      next[i] = at + 1
+    end
+    if not (d > 0.0)
+      return missing
+    end
+    at = next[k]
+    li[at] = k
+    lx[at] = math.Sqrt(d)
+    next[k] = at + 1
+  end
+  {Start: lp, Index: li, Values: lx}
+end
+
+defn lu(a, q, tol)
+  (** The LU factorization of a q: p a q = L U, L lower triangular with ones on its diagonal, which is not kept, U upper
+      triangular with its diagonal last in each column, both in columns, their rows in the order of the pivots, and
+      Pinv, where each row of a went: {L, U, Pinv}, or missing when a is singular, a column without a pivot above 0.
+      Left-looking, by Gilbert and Peierls (1988): column k of L and U is a sparse triangular solve with the columns
+      before it, its pattern found first by a depth-first search, so the work is that of the arithmetic. The pivot is
+      the largest candidate of the column, or its diagonal when that one is at least tol times it. *)
+  n = a.Cols
+  as = a.start
+  ai = a.index
+  av = a.values
+  room = 4 * a.Nnz + n
+  lp = list.Fill(0, n + 1)
+  li = list.Fill(0, room)
+  lx = matrix.Zeros(room)
+  lroom = room
+  up = list.Fill(0, n + 1)
+  ui = list.Fill(0, room)
+  ux = matrix.Zeros(room)
+  uroom = room
+  pinv = list.Fill(0, n)
+  x = matrix.Zeros(n)
+  xi = list.Fill(0, n + 1)
+  seen = list.Fill(0, n)
+  stack = list.Fill(0, n)
+  pos = list.Fill(0, n)
+  lfree = 1
+  ufree = 1
+  for k in 1..n
+    lp[k] = lfree
+    up[k] = ufree
+    if lfree + n > lroom
+      lroom = 2 * lroom + n
+      li = list.Concat(li, list.Fill(0, lroom - value.Len(li)))
+      lx = list.Concat(lx, matrix.Zeros(lroom - value.Len(lx)))
+    end
+    if ufree + n > uroom
+      uroom = 2 * uroom + n
+      ui = list.Concat(ui, list.Fill(0, uroom - value.Len(ui)))
+      ux = list.Concat(ux, matrix.Zeros(uroom - value.Len(ux)))
+    end
+    jq = q[k]
+    (* The pattern of column k: the rows reached from those of a(:, jq) through the columns of L so far, in an
+       order where each comes after those it depends on, xi[top] to xi[n]. *)
+    top = n + 1
+    for r in as[jq]..as[jq + 1] - 1
+      i = ai[r]
+      if seen[i] != k
+        depth = 1
+        stack[1] = i
+        while depth > 0
+          j = stack[depth]
+          jj = pinv[j]
+          if seen[j] != k
+            seen[j] = k
+            pos[depth] = if jj == 0 0 else lp[jj] end
+          end
+          pend = if jj == 0 0 else lp[jj + 1] end
+          at = pos[depth]
+          pushed = 0
+          while at < pend and pushed == 0
+            c = li[at]
+            at += 1
+            if seen[c] != k
+              pos[depth] = at
+              depth += 1
+              stack[depth] = c
+              pushed = 1
+            end
+          end
+          if pushed == 0
+            depth -= 1
+            top -= 1
+            xi[top] = j
+          end
+        end
+      end
+    end
+    (* The values: x = L \ a(:, jq) on that pattern. *)
+    for r in as[jq]..as[jq + 1] - 1
+      x[ai[r]] = av[r]
+    end
+    for t in top..n
+      j = xi[t]
+      jj = pinv[j]
+      if jj != 0
+        xj = x[j]
+        for r in lp[jj]..lp[jj + 1] - 1
+          c = li[r]
+          x[c] = x[c] - lx[r] * xj
+        end
+      end
+    end
+    (* The pivot, among the rows not pivots yet; the others go to U. *)
+    ipiv = 0
+    big = -1.0
+    for t in top..n
+      i = xi[t]
+      if pinv[i] == 0
+        v = math.Abs(x[i])
+        if v > big
+          big = v
+          ipiv = i
+        end
+      else
+        ui[ufree] = pinv[i]
+        ux[ufree] = x[i]
+        ufree += 1
+      end
+    end
+    if ipiv == 0 or not (big > 0.0)
+      return missing
+    end
+    if pinv[jq] == 0 and math.Abs(x[jq]) >= tol * big
+      ipiv = jq
+    end
+    pivot = x[ipiv]
+    ui[ufree] = k
+    ux[ufree] = pivot
+    ufree += 1
+    pinv[ipiv] = k
+    for t in top..n
+      i = xi[t]
+      if pinv[i] == 0
+        li[lfree] = i
+        lx[lfree] = x[i] / pivot
+        lfree += 1
+      end
+      x[i] = 0.0
+    end
+  end
+  lp[n + 1] = lfree
+  up[n + 1] = ufree
+  for r in 1..lfree - 1
+    li[r] = pinv[li[r]]
+  end
+  {L: {Start: lp, Index: li, Values: lx}, U: {Start: up, Index: ui, Values: ux}, Pinv: pinv}
+end
+
+defn cholSolve(f, perm, b)
+  (** x of a x = b from p a p' = L L': x = p' (L' \ (L \ (p b))), for one column b. *)
+  n = value.Len(perm)
+  lp = f.Start
+  li = f.Index
+  lx = f.Values
+  y = matrix.Zeros(n)
+  for k in 1..n
+    y[k] = b[perm[k]]
+  end
+  for j in 1..n
+    yj = y[j] / lx[lp[j]]
+    y[j] = yj
+    for q in lp[j] + 1..lp[j + 1] - 1
+      r = li[q]
+      y[r] = y[r] - lx[q] * yj
+    end
+  end
+  for t in 1..n
+    jb = n + 1 - t
+    s = y[jb]
+    for q in lp[jb] + 1..lp[jb + 1] - 1
+      s -= lx[q] * y[li[q]]
+    end
+    y[jb] = s / lx[lp[jb]]
+  end
+  x = matrix.Zeros(n)
+  for k in 1..n
+    x[perm[k]] = y[k]
+  end
+  x
+end
+
+defn luSolve(f, q, b)
+  (** x of a x = b from p a q = L U: x = q (U \ (L \ (p b))), for one column b. *)
+  n = value.Len(q)
+  pinv = f.Pinv
+  lp = f.L.Start
+  li = f.L.Index
+  lx = f.L.Values
+  up = f.U.Start
+  ui = f.U.Index
+  ux = f.U.Values
+  y = matrix.Zeros(n)
+  for i in 1..n
+    y[pinv[i]] = b[i]
+  end
+  for j in 1..n
+    yj = y[j]
+    for r in lp[j]..lp[j + 1] - 1
+      c = li[r]
+      y[c] = y[c] - lx[r] * yj
+    end
+  end
+  for t in 1..n
+    jb = n + 1 - t
+    yj = y[jb] / ux[up[jb + 1] - 1]
+    y[jb] = yj
+    for r in up[jb]..up[jb + 1] - 2
+      c = ui[r]
+      y[c] = y[c] - ux[r] * yj
+    end
+  end
+  x = matrix.Zeros(n)
+  for k in 1..n
+    x[q[k]] = y[k]
+  end
+  x
+end
+
+defn shape(a, t)
+  (** What decides the method of Solve, t the transpose of a: {Symmetric, Positive, Matched, Diagonal}: a equal to t;
+      each diagonal cell above 0; the share of the cells off the diagonal whose mirror is a non-zero too; and each
+      diagonal cell a non-zero. *)
+  n = a.Cols
+  as = a.start
+  ai = a.index
+  av = a.values
+  ts = t.start
+  ti = t.index
+  positive = true
+  diagonal = true
+  matched = 0
+  off = 0
+  for j in 1..n
+    d = 0.0
+    qt = ts[j]
+    et = ts[j + 1]
+    for q in as[j]..as[j + 1] - 1
+      i = ai[q]
+      if i == j
+        d = av[q]
+      else
+        off += 1
+        while qt < et and ti[qt] < i
+          qt += 1
+        end
+        if qt < et and ti[qt] == i
+          matched += 1
+        end
+      end
+    end
+    if not (d > 0.0)
+      positive = false
+    end
+    if d == 0.0
+      diagonal = false
+    end
+  end
+  same = value.Equal(a.index, t.index) and value.Equal(a.start, t.start) and value.Equal(a.values, t.values)
+  {Symmetric: same, Positive: positive, Matched: if off == 0 1.0 else 1.0 * matched / off end, Diagonal: diagonal}
+end
+
+defn factored(a)
+  (** The factorization Solve uses, {Cholesky, F, Perm}, or missing when a is singular. As MATLAB's backslash: a
+      symmetric with its diagonal above 0 is tried with Cholesky, ordered by AMD on its pattern; a pivot not above 0
+      sends it to LU. LU orders by AMD on the pattern of a + a' when a's pattern is nearly symmetric (half its cells
+      mirrored or more) with no 0 on its diagonal, and prefers diagonal pivots; else by AMD on that of a' a, with
+      partial pivoting. *)
+  n = a.Cols
+  t = Transpose(a)
+  s = shape(a, t)
+  near = s.Symmetric or (s.Matched >= 0.5 and s.Diagonal)
+  if near
+    g = symmetric(a, t)
+    perm = amd(n, g.Start, g.Index)
+    if s.Symmetric and s.Positive
+      f = cholesky(a, perm)
+      if not value.IsMissing(f)
+        return {Cholesky: true, F: f, Perm: perm}
+      end
+    end
+    f = lu(a, perm, threshold)
+  else
+    g = gram(a, t)
+    perm = amd(n, g.Start, g.Index)
+    f = lu(a, perm, 1.0)
+  end
+  if value.IsMissing(f) missing else {Cholesky: false, F: f, Perm: perm} end
+end
+
+solved(f, b) = if f.Cholesky cholSolve(f.F, f.Perm, b) else luSolve(f.F, f.Perm, b) end
+
+defn largest(xs)
+  (** The largest |x| of an array of floats. *)
+  m = 0.0
+  for k in 1..value.Len(xs)
+    v = math.Abs(xs[k])
+    if v > m
+      m = v
+    end
+  end
+  m
+end
+
+defn norm(a)
+  (** The norm of a for the largest |x|: the largest sum of |a(i, j)| along a row. *)
+  sums = matrix.Zeros(a.Rows)
+  ai = a.index
+  av = a.values
+  for q in 1..a.Nnz
+    i = ai[q]
+    sums[i] = sums[i] + math.Abs(av[q])
+  end
+  largest(sums)
+end
+
+singular(why) = result.Err({Kind: "sparse", Message: "sparse.Solve: a is singular$why."})
+
+defn Solve(a, b)
+  (** The x of a x = b, a square: MATLAB's A \ b, scipy's spsolve(A, b). b is an array of a.Rows numbers, a row or a
+      column, and x has its shape, or a matrix of a.Rows rows, and x has a column for each of its columns. An Ok of x,
+      or an Err of the kind "sparse" when a is singular, or holds a NaN or an infinity.
+
+      As MATLAB's backslash, a symmetric a with its diagonal above 0 is tried with Cholesky's factorization, L L',
+      which halves the work and needs no pivoting; when a pivot is not above 0, a is not positive definite and LU
+      takes over, as for any other a. Both first order the unknowns by approximate minimum degree (AMD, Amestoy, Davis
+      and Duff 1996), so that the factors fill little; LU picks its pivots as it goes, by partial pivoting, keeping a
+      diagonal pivot of a nearly symmetric a when it is at least 0.1 times the largest of its column. When the
+      residual |a x - b| is above n eps |a| |x|, one step of iterative refinement follows, as UMFPACK does. The
+      chapter Numerical methods of the book says where each part comes from, and how to check x.
+
+        a = Of([1, 2, 1, 2], [1, 1, 2, 2], [4.0, 1.0, 1.0, 3.0], 2, 2)
+        Solve(a, [1.0, 2.0]).Value --> [0.09090909090909091, 0.6363636363636364]
+        Solve(Of([1], [1], [1.0], 2, 2), [1.0, 1.0]).Error.Message --> "sparse.Solve: a is singular: a column of its LU factorization has no pivot but 0." *)
+  checked(a, "sparse.Solve", "a")
+  n = a.Rows
+  if a.Cols != n
+    bug.Panic("sparse.Solve: a is $n × $(a.Cols); give a square matrix.")
+  end
+  t = dense(b, n, "sparse.Solve", "b")
+  if n == 0
+    return result.Ok(t.X)
+  end
+  if not (list.Sum(a.values * 0.0) == 0.0)
+    return result.Err({Kind: "sparse", Message: "sparse.Solve: a holds a NaN or an infinity."})
+  end
+  if not (list.Sum(t.X * 0.0) == 0.0)
+    return result.Err({Kind: "sparse", Message: "sparse.Solve: b holds a NaN or an infinity."})
+  end
+  f = factored(a)
+  if value.IsMissing(f)
+    return singular(": a column of its LU factorization has no pivot but 0")
+  end
+  x = matrix.Zeros(value.Size(t.X, 1), value.Size(t.X, 2))
+  bound = n * eps * norm(a)
+  cols = t.Cols
+  xs = t.X
+  for c in 1..cols
+    o = (c - 1) * n
+    bc = matrix.Zeros(n)
+    for i in 1..n
+      bc[i] = xs[o + i]
+    end
+    xc = solved(f, bc)
+    r = bc - product(a.start, a.index, a.values, xc, n, matrix.Zeros(n))
+    if largest(r) > bound * largest(xc)
+      xc = xc + solved(f, r)
+    end
+    for i in 1..n
+      x[o + i] = xc[i]
+    end
+  end
+  if not (list.Sum(x * 0.0) == 0.0)
+    return singular(" to the precision of floats: x holds a NaN or an infinity")
+  end
+  result.Ok(x)
+end
+
+defn bad(path, line, message)
+  (** The Err of Read for a line of the file. *)
+  result.Err({Kind: "sparse", Message: "sparse.Read: $path:$line: $message", Line: line})
+end
+
+defn whole(word, low, high)
+  (** The whole number a word of the file writes, from low to high, or missing. *)
+  x = text.Number(word)
+  if value.IsInt(x) and x >= low and x <= high x else missing end
+end
+
+defn Read(path)
+  (** The Matrix of a file in the Matrix Market format of NIST (Boisvert, Pozo and Remington 1996), in an Ok: the format
+      of the SuiteSparse Matrix Collection, and of scipy's mmread and mmwrite. The file starts with the line
+      %%MatrixMarket matrix coordinate FIELD SYMMETRY, FIELD real, integer or pattern (no values: each 1.0) and
+      SYMMETRY general, symmetric (the lower triangle, mirrored) or skew-symmetric (the part under the diagonal, mirrored
+      with the opposite sign); then lines of comments that start with %; then the line "rows cols entries"; then one line
+      for each entry, "i j value", from 1. Entries of one cell are added, and a 0.0 is not kept, as Of does.
+
+      The file is untrusted: an Err of kind "sparse" names the line of anything else, a dense array file, complex values,
+      an index out of range, a value that is no finite number, an entry above the diagonal of a symmetric file, more or
+      fewer entries than its third size says, a line of entries over 1024 bytes, or more than 2^31 - 1 rows or columns.
+      The memory grows with the entries read, never with what the file says it holds; besides them, the Matrix takes 8
+      bytes a column, and Of 8 bytes a row while it sorts. Needs the read permission. *)
+  if not value.IsText(path)
+    bug.Panic("sparse.Read: path is $(brief(path)); give the path of a file, a text.")
+  end
+  r = sys.Read(path)
+  if result.IsErr(r)
+    return r
+  end
+  parsed(path, result.Unwrap(r))
+end
+
+defn parsed(path, s)
+  (** The Matrix of the text s of a Matrix Market file, or the Err of its first bad line. *)
+  size = text.ByteLength(s)
+  at = 1
+  line = 0
+  (* The banner, then the comments, then the sizes. *)
+  rows = -1
+  cols = -1
+  nnz = -1
+  field = ""
+  kind = ""
+  while nnz < 0
+    if at > size
+      return bad(path, line, if line == 0 "the file is empty." else "the file ends before the line of its sizes." end)
+    end
+    e = text.ByteFind("\n", at, s)
+    e = if value.IsMissing(e) size + 1 else e end
+    ln = text.Trim(text.ByteSlice(at, e - 1, s))
+    at = e + 1
+    line += 1
+    if line == 1
+      words = regex.Split("[ \t]+", ln)
+      if value.Len(words) != 5 or words[1] != "%%MatrixMarket"
+        return bad(path, 1, "the first line is not %%MatrixMarket matrix coordinate FIELD SYMMETRY.")
+      end
+      if text.Lower(words[2]) != "matrix"
+        return bad(path, 1, "the object is $(words[2]); Read takes a matrix.")
+      end
+      if text.Lower(words[3]) != "coordinate"
+        return bad(path, 1, "the format is $(words[3]); Read takes coordinate, the format of sparse matrices, not array.")
+      end
+      field = text.Lower(words[4])
+      if not (field in ["real", "integer", "pattern"])
+        return bad(path, 1, "the field is $(words[4]); Read takes real, integer and pattern.")
+      end
+      kind = text.Lower(words[5])
+      if not (kind in ["general", "symmetric", "skew-symmetric"])
+        return bad(path, 1, "the symmetry is $(words[5]); Read takes general, symmetric and skew-symmetric.")
+      end
+    else if ln != "" and not text.StartsWith("%", ln)
+      words = regex.Split("[ \t]+", ln)
+      if value.Len(words) != 3 or value.Len(ln) > longest
+        return bad(path, line, "the line of sizes is not \"rows cols entries\", three whole numbers.")
+      end
+      rows = whole(words[1], 0, mostSide)
+      cols = whole(words[2], 0, mostSide)
+      nnz = whole(words[3], 0, most)
+      if value.IsMissing(rows) or value.IsMissing(cols) or value.IsMissing(nnz)
+        return bad(path, line, "the sizes $(words[1]), $(words[2]) and $(words[3]) must be whole numbers from 0, rows and columns at most 2^31 - 1.")
+      end
+      if 1.0 * rows * cols > 1.0 * most
+        return bad(path, line, "$rows × $cols is over 2^53 cells.")
+      end
+      if kind != "general" and rows != cols
+        return bad(path, line, "a $kind matrix is square, and this one is $rows × $cols.")
+      end
+      if 1.0 * nnz > 1.0 * rows * cols
+        return bad(path, line, "$nnz entries don't fit in $rows × $cols cells.")
+      end
+    end
+  end
+  (* The entries, as they come: the arrays grow with them, twice as large each time they are full. *)
+  room = if nnz < 4096 nnz + 1 else 4096 end
+  is = list.Fill(0, room)
+  js = list.Fill(0, room)
+  vs = matrix.Zeros(room)
+  m = 0
+  count = 0
+  values = if field == "pattern" 2 else 3 end
+  while at <= size
+    e = text.ByteFind("\n", at, s)
+    e = if value.IsMissing(e) size + 1 else e end
+    if e - at > longest
+      return bad(path, line + 1, "the line is over $longest bytes, too long for an entry.")
+    end
+    ln = text.Trim(text.ByteSlice(at, e - 1, s))
+    at = e + 1
+    line += 1
+    if ln != "" and not text.StartsWith("%", ln)
+      words = regex.Split("[ \t]+", ln)
+      if value.Len(words) != values
+        return bad(path, line, "an entry of a $field file is \"i j$(if values == 3 " value" else "" end)\": $(value.Len(words)) words here.")
+      end
+      count += 1
+      if count > nnz
+        return bad(path, line, "more entries than the $nnz the line of sizes says.")
+      end
+      i = whole(words[1], 1, rows)
+      j = whole(words[2], 1, cols)
+      if value.IsMissing(i) or value.IsMissing(j)
+        return bad(path, line, "the indices $(words[1]) and $(words[2]) must be whole numbers from 1 to $rows and to $cols.")
+      end
+      x = 1.0
+      if values == 3
+        x = text.Number(words[3])
+        if not (value.IsNumber(x) and x - x == 0.0) or (field == "integer" and not value.IsInt(x))
+          return bad(path, line, "the value $(words[3]) is no finite $(if field == "integer" "whole number" else "number" end).")
+        end
+      end
+      if kind != "general" and (i < j or (kind == "skew-symmetric" and i == j))
+        return bad(path, line, "a $kind file holds the cells under the diagonal$(if kind == "symmetric" ", and on it" else "" end): ($i, $j) is not one of them.")
+      end
+      if m + 2 > room
+        room = 2 * room
+        is = list.Concat(is, list.Fill(0, room - value.Len(is)))
+        js = list.Concat(js, list.Fill(0, room - value.Len(js)))
+        vs = list.Concat(vs, matrix.Zeros(room - value.Len(vs)))
+      end
+      m += 1
+      is[m] = i
+      js[m] = j
+      vs[m] = x
+      if kind != "general" and i != j
+        m += 1
+        is[m] = j
+        js[m] = i
+        vs[m] = if kind == "symmetric" x else -x end
+      end
+    end
+  end
+  if count < nnz
+    return bad(path, line, "the file ends after $count entries of the $nnz the line of sizes says.")
+  end
+  result.Ok(Of(is[1..m], js[1..m], vs[1..m], rows, cols))
 end
