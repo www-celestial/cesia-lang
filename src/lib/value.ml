@@ -42,13 +42,6 @@ let float_text x =
     | None -> if String.contains s '.' then s else s ^ ".0"
   end
 
-let quote s =
-  let b = Buffer.create (String.length s + 2) in
-  Buffer.add_char b '"';
-  String.iter (function '"' -> Buffer.add_string b "\\\"" | '\\' -> Buffer.add_string b "\\\\" | c -> Buffer.add_char b c) s;
-  Buffer.add_char b '"';
-  Buffer.contents b
-
 let[@inline] elt a k =
   match a.store with
   | F d -> Float (Float.Array.get d k)
@@ -152,84 +145,209 @@ let digits at i =
 
 let int_text i = if i >= 0 && i < 10 then small_ints.(i) else Bytes.sub_string scratch 0 (digits 0 i)
 
-let rec show ctx v = show_at ctx 0 v
+(* A text being written by [write]. [left] is the number of characters (code points, counted as value.Len counts them)
+   that still fit: past them, [Full] stops the walk, the buffer holding exactly the characters that fit. With [left] =
+   max_int nothing is counted, and the text is whole. *)
+type out = { b : Buffer.t; mutable left : int }
 
-and show_at ctx depth v =
-  nested ctx depth;
-  match v with
+exception Full
+
+(* [len] bytes of [s] from [pos], as many of their characters as fit. *)
+let add_sub o s pos len =
+  if o.left = max_int then Buffer.add_substring o.b s pos len
+  else begin
+    for i = pos to pos + len - 1 do
+      if Char.code s.[i] land 0xC0 <> 0x80 then begin
+        if o.left = 0 then begin
+          Buffer.add_substring o.b s pos (i - pos);
+          raise Full
+        end;
+        o.left <- o.left - 1
+      end
+    done;
+    Buffer.add_substring o.b s pos len
+  end
+
+let add o s = add_sub o s 0 (String.length s)
+
+(* The first [n] bytes of [b], all ASCII. *)
+let add_ascii o b n =
+  if o.left >= n then begin
+    if o.left <> max_int then o.left <- o.left - n;
+    Buffer.add_subbytes o.b b 0 n
+  end
+  else begin
+    Buffer.add_subbytes o.b b 0 o.left;
+    raise Full
+  end
+
+let add_char o c =
+  if o.left = max_int then Buffer.add_char o.b c
+  else if o.left = 0 then raise Full
+  else begin
+    o.left <- o.left - 1;
+    Buffer.add_char o.b c
+  end
+
+(* A text in quotes, its quotes and backslashes escaped. The runs between them go out at most 4096 bytes at a time, so
+   that a long text stops being read soon after the text is full. *)
+let add_quoted o s =
+  add_char o '"';
+  let n = String.length s in
+  let rec go from i =
+    if i = n then add_sub o s from (i - from)
+    else
+      match s.[i] with
+      | ('"' | '\\') as c ->
+        add_sub o s from (i - from);
+        add_char o '\\';
+        add_char o c;
+        go (i + 1) (i + 1)
+      | _ when i - from >= 4096 ->
+        add_sub o s from (i - from);
+        go i (i + 1)
+      | _ -> go from (i + 1)
+  in
+  go 0 0;
+  add_char o '"'
+
+let quote s =
+  let o = { b = Buffer.create (String.length s + 2); left = max_int } in
+  add_quoted o s;
+  Buffer.contents o.b
+
+(* How many of [n] values a walk may write: each writes at least one character, so no more than one past those that fit. *)
+let visits o n = if o.left < n then o.left + 1 else n
+
+(* Only numbers: a matrix of them separates its columns with spaces. *)
+let numeric a n =
+  match a.store with
+  | F _ | I _ -> true
+  | V d ->
+    let rec go k = k = n || (is_number d.(k) && go (k + 1)) in
+    go 0
+
+(* The text of a value that holds no other and isn't a text, which needs no buffer; "" for the others, which [write] walks. *)
+let word = function
   | Missing -> "missing"
   | Undef | Bound _ -> "undefined"
   | True -> "true"
   | False -> "false"
   | Int i -> int_text i
   | Float x -> float_text x
-  | Text s -> quote s
-  | Array a -> show_array ctx depth a
-  | Dict _ -> show_map ctx depth (items v)
-  | Struct r -> show_struct ctx depth r.shape (Trie.vals_array r.fields)
   | Fun c -> "function " ^ c.proto.pname
   | Native n -> "function " ^ n.nname
   | Handle h -> Printf.sprintf "<%s %d>" h.kind h.id
+  | Text _ | Array _ | Dict _ | Struct _ -> ""
+
+(* The value written as code, in [o]. *)
+let rec write o ctx depth v =
+  nested ctx depth;
+  match v with
+  | Int i -> add_ascii o scratch (digits 0 i)
+  | Text s -> add_quoted o s
+  | Array a -> write_array o ctx depth a
+  | Dict _ -> write_map o ctx depth (items v)
+  | Struct r -> write_struct o ctx depth r.shape r.fields
+  | v -> add o (word v)
 
 (* A key that is a name as the code writes it, {Name: 1}, another as a value, {"a-b": 1, 2: 3}. *)
-and show_map ctx depth o =
-  let n = Array.length o / 2 in
-  pay ctx n;
-  let key = function Text s when Lexer.is_plain_name s -> s | k -> show_at ctx (depth + 1) k in
-  "{" ^ String.concat ", " (List.init n (fun i -> key o.(2 * i) ^ ": " ^ show_at ctx (depth + 1) o.((2 * i) + 1))) ^ "}"
+and write_map o ctx depth kv =
+  let n = Array.length kv / 2 in
+  pay ctx (visits o n);
+  add_char o '{';
+  for i = 0 to n - 1 do
+    if i > 0 then add o ", ";
+    (match kv.(2 * i) with Text s when Lexer.is_plain_name s -> add o s | k -> write o ctx (depth + 1) k);
+    add o ": ";
+    write o ctx (depth + 1) kv.((2 * i) + 1)
+  done;
+  add_char o '}'
 
 (* A struct with one field shows its value only, as the code builds it: Ok(42). More fields show their names. *)
-and show_struct ctx depth (shape : shape) fields =
+and write_struct o ctx depth (shape : shape) fields =
   let names = shape.names in
   let n = Array.length names in
-  pay ctx n;
-  match shape.sname with
-  | Some sname when n = 1 -> sname ^ "(" ^ show_at ctx (depth + 1) fields.(0) ^ ")"
-  | sname ->
-    let field i = names.(i) ^ " = " ^ show_at ctx (depth + 1) fields.(i) in
-    Option.value sname ~default:"" ^ "(" ^ String.concat ", " (List.init n field) ^ ")"
+  pay ctx (visits o n);
+  (match shape.sname with Some sname -> add o sname | None -> ());
+  add_char o '(';
+  if n = 1 && shape.sname <> None then write o ctx (depth + 1) (Trie.vget fields 0)
+  else
+    for i = 0 to n - 1 do
+      if i > 0 then add o ", ";
+      add o names.(i);
+      add o " = ";
+      write o ctx (depth + 1) (Trie.vget fields i)
+    done;
+  add_char o ')'
 
-and show_array ctx depth a =
-  let cell k = show_at ctx (depth + 1) (elt a k) in
+and write_array o ctx depth a =
   let n = a.rows * a.cols in
-  pay ctx n;
-  let numeric () = match (trim a).store with F _ | I _ -> true | V d -> Array.for_all is_number d in
-  if n = 0 then "[]"
-  else if Array.length a.dims > 0 then show_slices cell a (if numeric () then " " else ", ")
-  else if a.rows = 1 then "[" ^ String.concat ", " (List.init n cell) ^ "]"
-  else if a.cols = 1 then "[" ^ String.concat "; " (List.init n cell) ^ "]"
+  pay ctx (visits o n);
+  let cell k = write o ctx (depth + 1) (elt a k) in
+  let cells first count sep = for k = 0 to count - 1 do if k > 0 then add o sep; cell (first k) done in
+  if n = 0 then add o "[]"
+  else if Array.length a.dims > 0 then write_slices o cell a (if numeric a n then " " else ", ")
   else begin
-    let sep = if numeric () then " " else ", " in
-    let row i = String.concat sep (List.init a.cols (fun j -> cell ((j * a.rows) + i))) in
-    "[" ^ String.concat "; " (List.init a.rows row) ^ "]"
+    add_char o '[';
+    if a.rows = 1 then cells Fun.id n ", "
+    else if a.cols = 1 then cells Fun.id n "; "
+    else begin
+      let sep = if numeric a n then " " else ", " in
+      for i = 0 to a.rows - 1 do
+        if i > 0 then add o "; ";
+        cells (fun j -> (j * a.rows) + i) a.cols sep
+      done
+    end;
+    add_char o ']'
   end
 
 (* Three dimensions or more: each matrix of the first two, as a matrix shows, then ;;; before the next along the third,
    ;;;; along the fourth, and so on, as Julia writes them: [1 3; 2 4;;; 5 7; 6 8] is 2 by 2 by 2. *)
-and show_slices cell a sep =
+and write_slices o cell a sep =
   let r = a.dims.(0) and c = a.dims.(1) in
   let slices = (a.rows * a.cols) / (r * c) in
-  let b = Buffer.create 64 in
-  Buffer.add_char b '[';
+  add_char o '[';
   for s = 0 to slices - 1 do
     if s > 0 then begin
       (* One more ; for each dimension past the second that starts again here. *)
       let rec semis d step = if d < Array.length a.dims - 1 && s mod (step * a.dims.(d)) = 0 then semis (d + 1) (step * a.dims.(d)) else d in
-      Buffer.add_string b (String.make (semis 2 1 + 1) ';');
-      Buffer.add_char b ' '
+      add o (String.make (semis 2 1 + 1) ';');
+      add_char o ' '
     end;
     for i = 0 to r - 1 do
-      if i > 0 then Buffer.add_string b "; ";
+      if i > 0 then add o "; ";
       for j = 0 to c - 1 do
-        if j > 0 then Buffer.add_string b sep;
-        Buffer.add_string b (cell ((s * r * c) + (j * r) + i))
+        if j > 0 then add o sep;
+        cell ((s * r * c) + (j * r) + i)
       done
     done
   done;
-  Buffer.add_char b ']';
-  Buffer.contents b
+  add_char o ']'
 
-let text_of ctx v = match v with Text s -> s | Int i -> int_text i | _ -> show ctx v
+let show ctx v =
+  match v with
+  | Text _ | Array _ | Dict _ | Struct _ ->
+    let o = { b = Buffer.create 64; left = max_int } in
+    write o ctx 0 v;
+    Buffer.contents o.b
+  | v -> word v
+
+let text_of ctx v = match v with Text s -> s | _ -> show ctx v
+
+(* The text of [text_of], cut: whole when it has at most [most] characters, else its first [most - 1] and an ellipsis. *)
+let text_upto ctx most v =
+  match v with
+  | Text s when String.length s <= most -> s
+  | _ -> (
+    let o = { b = Buffer.create 64; left = most } in
+    match (match v with Text s -> add o s | _ -> write o ctx 0 v) with
+    | () -> Buffer.contents o.b
+    | exception Full ->
+      (* The buffer holds [most] characters: the last one gives its place to the ellipsis. *)
+      let s = Buffer.contents o.b in
+      let rec start i = if i > 0 && Char.code s.[i] land 0xC0 = 0x80 then start (i - 1) else i in
+      String.sub s 0 (start (String.length s - 1)) ^ "\u{2026}")
 
 (* Out of line: inlined in [describe], it slows down the hot code that names a value on its cold path. *)
 let[@inline never] struct_name n = Messages.article n

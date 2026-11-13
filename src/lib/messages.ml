@@ -112,6 +112,7 @@ let shape a b = plain (Printf.sprintf "Can't combine an array of %s with an arra
 let matmul_shape a b c d =
   plain (Printf.sprintf "Matmul can't multiply %d by %d with %d by %d: the columns of the first must equal the rows of the second." a b c d)
 let decimals_count a = plain (Printf.sprintf "text.Decimals needs a count of decimals from 0 to 20, not %s." a)
+let text_most a = plain (Printf.sprintf "value.Text needs a count of 1 or more characters as most, not %s." a)
 let need_number name a =
   let text = Printf.sprintf "%s needs numbers, not %s." name a in
   if a = "function <anonymous>" then hinted text "\"it\" belongs to the nearest call. Write x -> ... to use it further out."

@@ -142,6 +142,7 @@ A bug, when the line runs: an operation on a value that it can't take. The progr
 | `Can't combine an array of … with an array of ….` | Give arrays of the same sizes, or a number and an array. |
 | `Matmul can't multiply … by … with … by …: the columns of the first must equal the rows of the second.` | Transpose one, or check the sizes with value.Size. |
 | `text.Decimals needs a count of decimals from 0 to 20, not ….` | Give 0 to 20 decimals. |
+| `value.Text needs a count of 1 or more characters as most, not ….` | Give a whole number of 1 or more. |
 | `Can't sort … with ….` | Sort numbers or texts, or give list.SortBy a function that gives one. |
 | `… needs a text with a character.` | Give a text with at least one character. |
 | `FromBytes needs integers from 0 to 255, not ….` | Give integers from 0 to 255. |

@@ -138,10 +138,17 @@ use std/test
 
       text.Str("a", 1, true) --> "a1true" *)
 
-(** value.Text(x)
-    The text of a value, as print shows it.
+(** value.Text(x, most = missing)
+    The text of a value, as print shows it: "$x" is value.Text(x). With most, a count of 1 or more characters (code
+    points, as value.Len counts them): the same text when it has at most most characters, else its first most - 1
+    characters and an ellipsis, "…", so most characters in all. Only that start is made, so its time and memory follow
+    most, not the size of the value: a list of 10^6 numbers, a long text from the network or a deeply nested value costs
+    what its first most characters cost.
 
-      value.Text(12) --> "12" *)
+      value.Text(12) --> "12"
+      value.Text([1, 2, 3], 9) --> "[1, 2, 3]"
+      value.Text([1, 2, 3], 5) --> "[1, …"
+      value.Text("héllo", 3) --> "hé…" *)
 
 (** bug.Panic(message)
     Stops the fiber with a user error: a bug, not a value to handle.
