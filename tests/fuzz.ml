@@ -1,6 +1,7 @@
 (* The fuzzer: random bytes and mutated valid programs, with strict limits. Only Cesia errors are allowed. The two
    paths, typed and --no-spec, must also give the same result; with CESIA_JIT=always, the typed path runs natively all it
-   can. Usage: fuzz.exe --seconds N --seed S, from the
+   can, and with --jit the programs are of the shapes the JIT compiles, whose loops get hot on the typed path. Usage:
+   fuzz.exe --seconds N --seed S [--jit], from the
    repository root. Failures go to _build/fuzz_fail/. *)
 open Cesia
 
@@ -178,6 +179,62 @@ let random_bytes st = String.init (Random.State.int st 400) (fun _ -> Char.chr (
 let generate st corpus =
   if Random.State.bool st || Array.length corpus = 0 then random_bytes st else mutate st (pick st corpus)
 
+(* A program of the shapes the JIT makes machine code of, at random: loops long enough to get hot, over lists of
+   integers read and written by index, small arrays of floats made by literals, calls through a value and operations
+   cell by cell, branches the JIT leaves to the interpreter, and now and then a value of another kind or an index out of
+   its array late in the loop. The typed path runs them natively, the --no-spec path in the interpreter: both must say
+   the same. *)
+let shaped st =
+  let b = Buffer.create 2048 in
+  let p fmt = Printf.bprintf b fmt in
+  let int a z = a + Random.State.int st (z - a + 1) in
+  let n = int 2 4 and m = int 3 9 and turns = int 21000 26000 in
+  let coin () = Random.State.bool st in
+  let flt () = Printf.sprintf "%d.%d" (int 0 3) (int 0 99) in
+  let cell () = Printf.sprintf "y[%d]" (int 1 n) in
+  (* A scalar of the cells of y, t and constants, kept small. *)
+  let rec scalar d =
+    match if d = 0 then int 0 2 else int 0 6 with
+    | 0 -> cell ()
+    | 1 -> flt ()
+    | 2 -> "t"
+    | 3 -> Printf.sprintf "(%s + %s)" (scalar (d - 1)) (scalar (d - 1))
+    | 4 -> Printf.sprintf "(%s - %s)" (scalar (d - 1)) (scalar (d - 1))
+    | 5 -> Printf.sprintf "(%s * %s)" (scalar (d - 1)) (scalar (d - 1))
+    | _ -> Printf.sprintf "%s / (1.0 + math.Abs(%s))" (scalar (d - 1)) (scalar (d - 1))
+  in
+  (* An array of n cells, of y and k, cell by cell. *)
+  let rec vec d =
+    match if d = 0 then int 0 1 else int 0 7 with
+    | 0 -> "y"
+    | 1 -> "k"
+    | 2 -> Printf.sprintf "(%s + %s)" (vec (d - 1)) (vec (d - 1))
+    | 3 -> Printf.sprintf "(%s - %s * %s)" (vec (d - 1)) (flt ()) (vec (d - 1))
+    | 4 -> Printf.sprintf "(%s * %s)" (scalar 1) (vec (d - 1))
+    | 5 -> Printf.sprintf "math.Abs(%s)" (vec (d - 1))
+    | 6 -> Printf.sprintf "list.%s(%s, %s)" (if coin () then "Max" else "Min") (vec (d - 1)) (vec (d - 1))
+    | _ -> Printf.sprintf "(%s / (1.0 + math.Abs(%s)))" (vec (d - 1)) (vec (d - 1))
+  in
+  let literal () = "[" ^ String.concat ", " (List.init n (fun _ -> scalar 2)) ^ "]" in
+  p "use std/io\nuse std/list\nuse std/math\nuse std/value\n\n";
+  p "fuzzF(t, y) = %s\n" (literal ());
+  p "fuzzG(t, y) = if t > %d.5 %s else %s end\n\n" (int 1 turns) (literal ()) (literal ());
+  p "defn fuzzRun(f, idx, turns)\n  y = [%s]\n  k = y * 0.5\n  acc = 0.0\n  cnt = 0\n  hist = list.Fill(0, %d)\n" (String.concat ", " (List.init n (fun _ -> flt ()))) m;
+  p "  for i in 1..turns\n    t = i * 0.0001\n    k = f(t, y)\n";
+  p "    y = %s * 0.25 + y * 0.5\n" (vec 2);
+  p "    j = idx[math.Mod(i, %d) + 1]\n    hist[j] = hist[j] + 1\n" m;
+  p "    acc = acc + list.Sum(%s) * 0.001 + y[math.Mod(j, %d) + 1]\n" (vec 1) n;
+  p "    if acc > %d.0\n      acc = acc / %d.0\n      cnt += 1\n" (int 1 50) (int 2 9);
+  if coin () then p "      if cnt == %d\n        io.Print(\"turn $i: $y\")\n      end\n" (int 1 40);
+  p "    end\n";
+  if coin () then p "    if i == %d\n      k = list.Max(k, y) - [%s]\n    end\n" (int 1 turns) (String.concat ", " (List.init n (fun _ -> flt ())));
+  if Random.State.int st 4 = 0 then p "    if i == %d\n      acc = acc + idx[%d]\n    end\n" (int 15000 turns) (m + 1);
+  if Random.State.int st 4 = 0 then p "    if i == %d\n      y = y + [%s]\n    end\n" (int 15000 turns) (String.concat "; " (List.init n (fun _ -> "1.0")));
+  p "  end\n  io.Print(y, acc, cnt, hist)\nend\n\n";
+  p "idx = list.Fill(1, %d)\nfor i in 1..%d\n  idx[i] = math.Mod(i * %d, %d) + 1\nend\n" m m (int 1 7) m;
+  p "fuzzRun(%s, idx, %d)\n" (if coin () then "fuzzF" else "fuzzG") turns;
+  Buffer.contents b
+
 let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
 let toml_bytes = "\"'[]=.,#\\\n\r\t"
 
@@ -227,15 +284,16 @@ let attempt_toml src =
     None
 
 let args () =
-  let seconds = ref 60. and seed = ref 1 in
+  let seconds = ref 60. and seed = ref 1 and jit = ref false in
   Arg.parse
-    [ "--seconds", Arg.Set_float seconds, "duration"; "--seed", Arg.Set_int seed, "seed" ]
+    [ "--seconds", Arg.Set_float seconds, "duration"; "--seed", Arg.Set_int seed, "seed";
+      "--jit", Arg.Set jit, "programs of the shapes the JIT compiles only" ]
     (fun _ -> ())
-    "fuzz --seconds N --seed S";
-  !seconds, !seed
+    "fuzz --seconds N --seed S [--jit]";
+  !seconds, !seed, !jit
 
 let () =
-  let seconds, seed = args () in
+  let seconds, seed, jit = args () in
   (* CESIA_JIT=always: the typed path compiles what it can at once, so it is native code against the interpreter. *)
   (* The JIT linked here, given at the first hot unit as the binary's plugin is. *)
   Tier.available := true;
@@ -264,11 +322,13 @@ let () =
   in
   while Unix.gettimeofday () < stop do
     let trial_seed = Random.State.bits master in
-    let src = generate (Random.State.make [| trial_seed |]) corpus in
+    let src = (if jit then shaped else fun st -> generate st corpus) (Random.State.make [| trial_seed |]) in
     incr trials;
     report trial_seed ".ce" src (attempt src);
-    let toml = generate_toml (Random.State.make [| trial_seed |]) tomls in
-    report trial_seed ".toml" toml (attempt_toml toml)
+    if not jit then begin
+      let toml = generate_toml (Random.State.make [| trial_seed |]) tomls in
+      report trial_seed ".toml" toml (attempt_toml toml)
+    end
   done;
   Printf.printf "%d trials, %d finished normally, %d toml accepted, %d failures\n" !trials !finished !toml_accepted
     !failures;
