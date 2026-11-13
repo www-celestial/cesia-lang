@@ -439,9 +439,61 @@ loop goes on in machine code. A struct gets the same, as `ps[i] = Particle(x, y,
 ([Maps](#maps-a-hash-table-then-a-hash-trie)), so a field is one load and the check of its kind is gone too: a turn of
 `structs` costs 60 instructions and 24 cycles, against 235 and 122 before, measured the same way.
 
-It compiles numbers and loops on them, arrays of floats and of values read and written by index, calls between compiled
-versions, recursion, in a loop the fields of maps and structs and new ones made there, and calls of a function held in a
-variable, as the next part shows.
+**Lists of integers by index.** A list whose cells are all integers keeps them in a store of integers
+([Values in memory](#values-in-memory)). A loop reads and writes such a list by index as it does an array of floats: one
+load, the check of the index, and the cell's integer, with no box, as a sparse product reads the rows of each column:
+
+```text
+for q in colptr[j]..colptr[j + 1] - 1
+  i = rowidx[q]             a load from the list of integers, its index proved inside before the loop
+  y[i] = y[i] + vals[q] * xj  i checked once, for the read and the write of y
+end
+```
+
+The index read from the list is the program's, so it is checked at each turn: an index outside `y` is the interpreter's
+error, at the same line. An index checked in a block is not checked again in it, as `y[i]` read then written.
+
+**A guard inside an if.** A guard that fails used to send the run back to the interpreter before the statement of the
+loop that held it, and only while nothing of that statement showed: a write into an array, or a step, ruled it out. Now
+each statement of a branch of an if inside the loop is a point of its own, which the interpreter can go on from: it runs
+the rest of that branch, then the rest of each block around it, then the statements of the loop after them. And a step
+or a call before the guard no longer rules it out: the run goes back with the fuel it had at the statement's start, so
+the interpreter counts those steps again, as if native code had never made them. This is *deoptimization* at the
+statement, as HotSpot does at the bytecode (Hölzle, Chambers and Ungar, 1992, who named it).
+
+**What it can't make, it leaves.** A statement in a branch of an if that the JIT can't make, as `return failed(...)` or
+`io.Print`, no longer leaves the whole loop to the interpreter: the run goes back to the interpreter before it, the
+interpreter makes it, and the loop comes back to machine code at its next turn. Such statements are *cold*: they run
+rarely, as the error paths and the end of a loop do. The loop is then made again with them out of what the JIT looks at,
+so that a variable they alone assign, as a buffer made anew when it is full, is still an array of the loop. A call of a
+small function whose body gives a text in one place and a number in another is made the same way: inlined, its number
+path in machine code, and its text path a way back to the interpreter, which makes the call again.
+
+**Tests and kinds.** `(fa > 0.0) == (fb > 0.0)` compares two tests; `value.IsNumber(x)`, `value.IsText(x)` and the other
+tests of kind look at the tag of the value's block, or need no test at all when the JIT knows the kind; and a small
+function that is one test, as `isFinite(x) = value.IsNumber(x) and x - x == 0.0`, is made in place, a test like any
+other.
+
+**Small arrays of floats.** An array of at most 15 floats that a loop makes again at each turn, as the state of an
+equation, `y = y + h * f(t, y)`, is never made while the run lasts: its cells sit in slots of the frame, in a part of the
+float stack, and each operation cell by cell becomes a few instructions on those slots, the operations of one statement
+fused, with no array between them:
+
+```text
+k2 = f(t + c2 * s, y + (s * a21) * k1)
+     the argument: for each of the 3 cells, y[j] + (s * a21) * k1[j], into 3 slots
+     f, here lorenz(t, y) = [sigma * (y[2] - y[1]), ...], inlined: its literal's 3 cells into k2's slots
+```
+
+Each operation counts its steps as the interpreter's natives do, one for an array under 16 cells, and the same cells,
+in the same order, give the same floats: a sum adds from 0.0, each cell in turn, as the interpreter's. When the run ends,
+or goes back to the interpreter, each such variable it assigned becomes an array again, of the same shape; a function
+that gives an array of another size goes back to the interpreter. This is *scalar replacement* of the arrays, as for maps
+above, and the fusion of operations on arrays that APL compilers made (Abrams, 1970).
+
+It compiles numbers and loops on them, arrays of floats, of integers and of values read and written by index, small
+arrays of floats made and worked on cell by cell, calls between compiled versions, recursion, in a loop the fields of maps
+and structs and new ones made there, and calls of a function held in a variable, as the next part shows.
 
 A division or a modulo of integers by a power of two, as `math.Mod(i, 4)`, becomes a shift or a mask of bits: a
 division instruction costs tens of cycles, a mask one. The results are those of the floor, which Cesia's `Div` and `Mod`
@@ -492,8 +544,9 @@ bets on them: the machine code tests the function against the first, then the se
 it calls a function named in the code, or copies its body in place, *inlining* it; a function it didn't see bails, as a
 failed guard does. This is a *polymorphic inline cache*, the idea of Hölzle, Chambers and Ungar (1991), which V8 and
 HotSpot use for the same kind of call. A call that reached five functions or more is *megamorphic*: the JIT leaves it to
-the interpreter, and so does a call of a function that captured variables, or that takes or gives values other than
-numbers.
+the interpreter, and so does a call of a function that captured variables. A function that takes or gives other values
+than numbers, as a small array of floats or a text on an error path, is inlined when it is small, with no loop: its
+body is made in place, and what it can't make goes back to the interpreter, which makes the call.
 
 ```text
 f(total, x)                      in machine code
@@ -515,6 +568,10 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 - the natives, functions of `std/` written in OCaml, as [text.Split]: they are machine code already;
 - `for x in xs` over the elements of a list, and a call through a value that reached five functions or more, or a
   function that captured variables;
+- in a loop, a statement inside an if that it can't make, as a `return` of a struct or an `io.Print`: that statement
+  alone, each time it runs, and the loop comes back to machine code at its next turn;
+- arrays of more than 15 floats made in a loop: the interpreter's operations on them, which work on many cells at a
+  time, already cost little a cell;
 - a map read or written with a key computed as the program runs, as `m["key$k"]`, and the text built for it. Native code
   never calls back into OCaml: nothing collects during a run, which lets the values it holds stay in registers, where the
   collector couldn't find them to move them. The hash, the probe of the table, its growth and the new text would each

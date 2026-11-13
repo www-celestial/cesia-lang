@@ -59,6 +59,10 @@ publisher moves it.
 
 ## The JIT
 
+- Philip S. Abrams. *An APL Machine*. PhD thesis, Stanford University, report SLAC-114, 1970.
+  <https://www.softwarepreservation.org/projects/apl/Papers/197002_An%20APL%20Machine-Abrams.pdf>. *Drag-along*: the
+  operations of an expression on arrays deferred, then made cell by cell in one pass, with no array between them: the
+  fusion of the operations on small arrays of floats in Cesia's JIT.
 - L. Peter Deutsch, Allan M. Schiffman. "Efficient Implementation of the Smalltalk-80 System". *POPL 1984*, ACM, 297–302.
   <https://doi.org/10.1145/800017.800542>. The inline cache: the class met last at a call kept beside it, so the next
   call of the same class goes straight to its method. Cesia's caches of shapes and keys.

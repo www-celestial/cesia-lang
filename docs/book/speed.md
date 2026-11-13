@@ -14,7 +14,10 @@ fails.
 
 ## What becomes machine code
 
-- Loops over numbers, and arrays of floats or of values read and written by index.
+- Loops over numbers, and arrays of floats, of integers or of values read and written by index: a sparse product over
+  lists of row numbers, a histogram, a permutation followed.
+- In a loop, small arrays of floats, up to 15 cells, made and worked on cell by cell, as the state of an equation in
+  `y + h * f(t, y)`: they are never made while the loop runs, and a function that gives one, as `f` here, is inlined.
 - Functions on numbers that call each other, as a recursion.
 - In a loop, maps and structs: reading their fields, computing with them, making new ones, storing them in a list.
 - In a loop, a call of a function held in a variable, as `f(x)` where `f` came from a list: the machine code tests the
@@ -58,6 +61,8 @@ writes the new `Particle` in place of the old one, which nothing else holds, as
 - Calls to the functions of packages written in OCaml, as [text.Split] or [json.Parse]: they are machine code already.
 - Loops over the elements of a list, `for x in xs`, and a call through a value that met five functions or more, or a
   function that captured variables of its own.
+- In a loop, a statement inside an if that it can't make, as the `return` of an error or an `io.Print`: that statement
+  goes to the interpreter each time it runs, and the rest of the loop stays machine code.
 - Under a debugger, a function whose code holds a breakpoint, and the code you step through: the rest stays machine code,
   as the chapter [The prompt and the debugger](debug.md#speed) says.
 - At the prompt, under `--watch` and under a debugger, the code that uses what the program's own functions give: such a
