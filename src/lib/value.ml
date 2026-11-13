@@ -192,6 +192,11 @@ let add_char o c =
     Buffer.add_char o.b c
   end
 
+(* A separator: the mark, then a space. *)
+let add_sep o c =
+  add_char o c;
+  add_char o ' '
+
 (* A text in quotes, its quotes and backslashes escaped. A run between them goes out as soon as it has more bytes than
    characters fit, each byte being at most one character: a long text stops being read soon after the text is full. *)
 let add_quoted o s =
@@ -247,7 +252,7 @@ let word = function
 let rec write o ctx depth v =
   nested ctx depth;
   match v with
-  | Int i -> add_ascii o scratch (digits 0 i)
+  | Int i -> if i >= 0 && i < 10 then add_char o (Char.chr (48 + i)) else add_ascii o scratch (digits 0 i)
   | Text s -> add_quoted o s
   | Array a -> write_array o ctx depth a
   | Dict _ -> write_map o ctx depth (items v)
@@ -260,9 +265,9 @@ and write_map o ctx depth kv =
   pay ctx (visits o n);
   add_char o '{';
   for i = 0 to n - 1 do
-    if i > 0 then add o ", ";
+    if i > 0 then add_sep o ',';
     (match kv.(2 * i) with Text s when Lexer.is_plain_name s -> add o s | k -> write o ctx (depth + 1) k);
-    add o ": ";
+    add_sep o ':';
     write o ctx (depth + 1) kv.((2 * i) + 1)
   done;
   add_char o '}'
@@ -277,7 +282,7 @@ and write_struct o ctx depth (shape : shape) fields =
   if n = 1 && shape.sname <> None then write o ctx (depth + 1) (Trie.vget fields 0)
   else
     for i = 0 to n - 1 do
-      if i > 0 then add o ", ";
+      if i > 0 then add_sep o ',';
       add o names.(i);
       add o " = ";
       write o ctx (depth + 1) (Trie.vget fields i)
@@ -287,27 +292,35 @@ and write_struct o ctx depth (shape : shape) fields =
 and write_array o ctx depth a =
   let n = a.rows * a.cols in
   pay ctx (visits o n);
-  let cell k = write o ctx (depth + 1) (elt a k) in
-  let cells first count sep = for k = 0 to count - 1 do if k > 0 then add o sep; cell (first k) done in
   if n = 0 then add o "[]"
-  else if Array.length a.dims > 0 then write_slices o cell a (if numeric a n then " " else ", ")
+  else if Array.length a.dims > 0 then write_slices o ctx depth a (numeric a n)
   else begin
     add_char o '[';
-    if a.rows = 1 then cells Fun.id n ", "
-    else if a.cols = 1 then cells Fun.id n "; "
-    else begin
-      let sep = if numeric a n then " " else ", " in
-      for i = 0 to a.rows - 1 do
-        if i > 0 then add o "; ";
-        cells (fun j -> (j * a.rows) + i) a.cols sep
+    if a.rows = 1 || a.cols = 1 then begin
+      let mark = if a.rows = 1 then ',' else ';' in
+      for k = 0 to n - 1 do
+        if k > 0 then add_sep o mark;
+        write o ctx (depth + 1) (elt a k)
       done
-    end;
+    end
+    else write_rows o ctx depth a 0 a.rows a.cols (numeric a n);
     add_char o ']'
   end
 
+(* The rows of the [r] by [c] matrix that starts at [first] in [a]'s store, its columns apart by a space when [num], else
+   by a comma. *)
+and write_rows o ctx depth a first r c num =
+  for i = 0 to r - 1 do
+    if i > 0 then add_sep o ';';
+    for j = 0 to c - 1 do
+      if j > 0 then (if num then add_char o ' ' else add_sep o ',');
+      write o ctx (depth + 1) (elt a (first + (j * r) + i))
+    done
+  done
+
 (* Three dimensions or more: each matrix of the first two, as a matrix shows, then ;;; before the next along the third,
    ;;;; along the fourth, and so on, as Julia writes them: [1 3; 2 4;;; 5 7; 6 8] is 2 by 2 by 2. *)
-and write_slices o cell a sep =
+and write_slices o ctx depth a num =
   let r = a.dims.(0) and c = a.dims.(1) in
   let slices = (a.rows * a.cols) / (r * c) in
   add_char o '[';
@@ -318,13 +331,7 @@ and write_slices o cell a sep =
       add o (String.make (semis 2 1 + 1) ';');
       add_char o ' '
     end;
-    for i = 0 to r - 1 do
-      if i > 0 then add o "; ";
-      for j = 0 to c - 1 do
-        if j > 0 then add o sep;
-        cell ((s * r * c) + (j * r) + i)
-      done
-    done
+    write_rows o ctx depth a (s * r * c) r c num
   done;
   add_char o ']'
 
