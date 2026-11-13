@@ -439,16 +439,11 @@ loop goes on in machine code. A struct gets the same, as `ps[i] = Particle(x, y,
 ([Maps](#maps-a-hash-table-then-a-hash-trie)), so a field is one load and the check of its kind is gone too: a turn of
 `structs` costs 60 instructions and 24 cycles, against 235 and 122 before, measured the same way.
 
-**Lists of integers by index.** A list whose cells are all integers keeps them in a store of integers
-([Values in memory](#values-in-memory)). A loop reads and writes such a list by index as it does an array of floats: one
-load, the check of the index, and the cell's integer, with no box, as a sparse product reads the rows of each column:
-
-```text
-for q in colptr[j]..colptr[j + 1] - 1
-  i = rowidx[q]             a load from the list of integers, its index proved inside before the loop
-  y[i] = y[i] + vals[q] * xj  i checked once, for the read and the write of y
-end
-```
+**Lists of integers by index.** A list whose cells are all integers keeps them in a store of integers, as the part
+Values in memory says. A loop reads and writes such a list by index as it does an array of floats: one load, the check
+of the index, and the cell's integer, with no box, as a sparse product reads the rows of each column. In
+`for q in colptr[j]..colptr[j + 1] - 1`, the statement `i = rowidx[q]` is a load from the list of integers, its index
+proved inside before the loop, and `y[i] = y[i] + vals[q] * xj` checks `i` once, for the read and the write of `y`.
 
 The index read from the list is the program's, so it is checked at each turn: an index outside `y` is the interpreter's
 error, at the same line. An index checked in a block is not checked again in it, as `y[i]` read then written.
@@ -477,13 +472,9 @@ other.
 **Small arrays of floats.** An array of at most 15 floats that a loop makes again at each turn, as the state of an
 equation, `y = y + h * f(t, y)`, is never made while the run lasts: its cells sit in slots of the frame, in a part of the
 float stack, and each operation cell by cell becomes a few instructions on those slots, the operations of one statement
-fused, with no array between them:
-
-```text
-k2 = f(t + c2 * s, y + (s * a21) * k1)
-     the argument: for each of the 3 cells, y[j] + (s * a21) * k1[j], into 3 slots
-     f, here lorenz(t, y) = [sigma * (y[2] - y[1]), ...], inlined: its literal's 3 cells into k2's slots
-```
+fused, with no array between them. In `k2 = f(t + c2 * s, y + (s * a21) * k1)`, the argument is made cell by cell,
+`y[j] + (s * a21) * k1[j]` for each of the 3 cells, into 3 slots; and `f`, here
+`lorenz(t, y) = [sigma * (y[2] - y[1]), ...]`, is inlined: the 3 cells of its literal go into the slots of `k2`.
 
 Each operation counts its steps as the interpreter's natives do, one for an array under 16 cells, and the same cells,
 in the same order, give the same floats: a sum adds from 0.0, each cell in turn, as the interpreter's. When the run ends,
