@@ -1,6 +1,9 @@
-(* num.Solve against a slow sure Gaussian elimination, on generated systems kept away from singular ones. *)
+(* num.Solve against a slow sure Gaussian elimination, on generated systems kept away from singular ones; num.Dot, -x,
+   math.Abs, list.Max and list.Min on arrays of floats, which take one pass in native code, against the rule cell by
+   cell. *)
 use std/test
 use std/gen
+use std/list
 use std/num
 use std/math
 use std/matrix
@@ -58,3 +61,25 @@ cells = gen.Map(system, gen.Of({M: gen.List(gen.Float(-10, 10), min = 9, max = 9
 
 isSolveAsElimination() = test.ForAll(s -> math.Near(result.Unwrap(num.Solve(s.M, s.B)), eliminate(s.M, s.B), rel = 1e-9, abs = 1e-12), cells)
 isSolveSolves() = test.ForAll(s -> math.Near(matrix.Matmul(s.M, matrix.Reshape([3, 1], result.Unwrap(num.Solve(s.M, s.B)))), matrix.Reshape([3, 1], s.B), abs = 1e-9), cells)
+
+(* Two arrays of floats of one length, from 1 to 40, with the infinities, NaN and -0.0 among them. *)
+floatPairs = gen.Map(ps -> {A: [p.A for p in ps] * 1.0, B: [p.B for p in ps] * 1.0},
+  gen.List(gen.Of({A: gen.Float(-1e6, 1e6, special = true), B: gen.Float(-1e6, 1e6, special = true)}), min = 1, max = 40))
+same(a, b) = value.Equal(a, b) or a != a and b != b   (** equal, or both NaN *)
+largest(xs) = list.Reduce((m, v) -> if v > m v else m end, xs[1], xs)
+smallest(xs) = list.Reduce((m, v) -> if v < m v else m end, xs[1], xs)
+
+isDotAsSum() = test.ForAll(p -> same(num.Dot(p.A, p.B), list.Sum(p.A * p.B)), floatPairs)
+isNegAsCells() = test.ForAll(p -> value.Equal(-p.A, [-v for v in p.A] * 1.0), floatPairs)
+isAbsAsCells() = test.ForAll(p -> value.Equal(math.Abs(p.A), [math.Abs(v) for v in p.A] * 1.0), floatPairs)
+isMaxAsCells() = test.ForAll(p -> same(list.Max(p.A), largest(p.A)) and same(list.Min(p.A), smallest(p.A)), floatPairs)
+
+defn isDotPastOneBlock()
+  (** Past 65,536 cells the sums go by blocks: num.Dot keeps their order. *)
+  a = matrix.Zeros(70001) + 0.1
+  b = matrix.Zeros(70001) + 0.3
+  for k in 1..70001
+    a[k] = 1.0 / k
+  end
+  num.Dot(a, b) == list.Sum(a * b) and num.Dot([1, 2], [3, 4]) == 11
+end

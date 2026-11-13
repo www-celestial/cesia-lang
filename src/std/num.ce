@@ -97,10 +97,14 @@ end
 
       Diff([1, 4, 9]) --> [3, 5] *)
 Diff(xs) = [xs[k + 1] - xs[k] for k in 1..value.Len(xs) - 1]
-(** The dot product of two arrays.
+defn Dot(a, b)
+  (** The dot product of two arrays: list.Sum(a * b), in one pass with no array of the products when both hold floats
+      and have one shape.
 
-      Dot([1, 2], [3, 4]) --> 11 *)
-Dot(a, b) = list.Sum(a * b)
+        Dot([1, 2], [3, 4]) --> 11 *)
+  d = dot(a, b)
+  if value.IsMissing(d) list.Sum(a * b) else d end
+end
 (** The Euclidean length of an array.
 
       Norm([3.0, 4.0]) --> 5.0 *)
