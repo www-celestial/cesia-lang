@@ -963,8 +963,8 @@ defn Solve(a, b)
       takes over, as for any other a. Both first order the unknowns by approximate minimum degree (AMD, Amestoy, Davis
       and Duff 1996), so that the factors fill little; LU picks its pivots as it goes, by partial pivoting, keeping a
       diagonal pivot of a nearly symmetric a when it is at least 0.1 times the largest of its column. When the
-      residual |a x - b| is above n eps |a| |x|, one step of iterative refinement follows. The
-      chapter Numerical methods of the book says where each part comes from, and how to check x.
+      residual |a x - b| is above n eps |a| |x|, one step of iterative refinement follows. The chapter Numerical
+      methods of the book says where each part comes from, and how to check x.
 
         a = Of([1, 2, 1, 2], [1, 1, 2, 2], [4.0, 1.0, 1.0, 3.0], 2, 2)
         Solve(a, [1.0, 2.0]).Value --> [0.09090909090909091, 0.6363636363636364]

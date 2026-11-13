@@ -48,4 +48,3 @@ defn isArrow()
   x = [1.0 + math.Mod(k, 3) for k in 1..n]
   math.Near(result.Unwrap(sparse.Solve(a, sparse.Mul(a, x))), x, rel = 1e-12)
 end
-
