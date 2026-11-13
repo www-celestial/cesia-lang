@@ -423,6 +423,16 @@ end
 
 clean(s) = not (text.Contains(" ", s) or text.Contains("\r", s) or text.Contains("\n", s))
 
+defn hostOf(target)
+  (** The Host header of a request to a target of ParseUrl: its port too, unless it is the scheme's own, as a browser
+      writes it (RFC 9110, section 7.2), so that a server that compares the Origin of a page with it finds the same text.
+
+        hostOf(ParseUrl("http://127.0.0.1:8090/a").Value) --> "127.0.0.1:8090"
+        hostOf(ParseUrl("https://example.com/").Value) --> "example.com"
+        hostOf(ParseUrl("http://example.com:443/").Value) --> "example.com:443" *)
+  if target.Port == (if target.Secure 443 else 80 end) target.Host else "$(target.Host):$(target.Port)" end
+end
+
 defn Fetch(url, method = "GET", body = "", headers = [], secure = missing)
   (** Asks a server: an Ok of {Status, Headers, Body}, as the server answered, or an Err when it can't be reached or its
       answer isn't HTTP. A 404 is a response, not an error: look at Status. For https, secure = tls.Client(api).
@@ -444,7 +454,7 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing)
   conn = made.Value
   custom = text.Join("", list.Map(headerLine, headers))
   sized = if body == "" and method == "GET" "" else "Content-Length: $(text.ByteLength(body))$crlf" end
-  message = "$method $(target.Path) HTTP/1.1$(crlf)Host: $(target.Host)$(crlf)Connection: close$crlf$sized$custom$crlf$body"
+  message = "$method $(target.Path) HTTP/1.1$(crlf)Host: $(hostOf(target))$(crlf)Connection: close$crlf$sized$custom$crlf$body"
   sent = conn.Write(message)
   raw = if result.IsOk(sent) readResponse(conn, "") else sent end
   conn.Close()

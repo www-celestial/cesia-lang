@@ -68,11 +68,13 @@ defn address(url)
 end
 
 defn handshake(target, key, opened)
-  (** Connects and asks for the upgrade: an Ok of the socket and of the bytes after the response, which are frames
-      already, or an Err. The socket goes into opened first, for Dial to close if its time runs out. *)
+  (** Connects and asks for the upgrade, its Host without the port when it is 80, as a browser writes it: an Ok of the
+      socket and of the bytes after the response, which are frames already, or an Err. The socket goes into opened
+      first, for Dial to close if its time runs out. *)
   s = net.Connect(target.Host, target.Port)?
   fiber.Send(s, opened)
-  sent = net.Write(s, "GET $(target.Path) HTTP/1.1$(crlf)Host: $(target.Host):$(target.Port)$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: $key$(crlf)Sec-WebSocket-Version: 13$crlf$crlf")
+  host = if target.Port == 80 target.Host else "$(target.Host):$(target.Port)" end
+  sent = net.Write(s, "GET $(target.Path) HTTP/1.1$(crlf)Host: $host$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: $key$(crlf)Sec-WebSocket-Version: 13$crlf$crlf")
   got = if result.IsOk(sent) upgraded(s, key, "") else sent end
   if result.IsErr(got)
     net.Close(s)
