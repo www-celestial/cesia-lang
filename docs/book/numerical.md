@@ -461,6 +461,259 @@ with Octave's `ode15s` waits for the measures made before each release.
 uses: 1.3 ms in the fastest of 21 runs (4.15 ms against 2.86 for a program that prints 1, on 2026-11-13), more on a
 busy machine; `use std/optimize` alone adds 0.45 ms. A program that uses neither starts as before.
 
+## Sparse matrices
+
+A *sparse* matrix has nearly all its cells 0: the matrix of a grid, where each point touches its few neighbours, of a
+network, of a circuit. [std/sparse] keeps only its non-zeros, column by column: for each column, the rows of its
+non-zeros in increasing order and their values, and where each column starts. That is *compressed sparse columns*
+(CSC), the format of MATLAB and of the solvers of Davis (2006). A 2-D grid of 300 × 300 points gives a matrix of
+90,000 × 90,000 cells, 8.1 billion of them; it holds 448,800 non-zeros, which take 8 MB instead of 65 GB.
+
+```cesia
+use std/sparse
+a = sparse.Of([1, 2, 2, 3], [1, 1, 2, 3], [4.0, -1.0, 4.0, 2.0], 3, 3)
+a.Nnz -->
+sparse.Dense(a) -->
+sparse.Mul(a, [1.0, 2.0, 3.0]) -->
+sparse.Get(a, 2, 1) -->
+```
+
+| Cesia | MATLAB | scipy |
+|---|---|---|
+| `sparse.Of(i, j, v, rows, cols)`, indices from 1, values of one cell added | `sparse(i, j, v, m, n)` | `csc_array((v, (i, j)), shape = (m, n))`, from 0 |
+| `sparse.Eye(n)`, `sparse.Diags(values, offsets, n)` | `speye(n)`, `spdiags(B, d, n, n)` | `eye_array(n)`, `diags_array(values, offsets = d)` |
+| `sparse.Kron(a, b)`, `sparse.Add(a, b)`, `sparse.Scale(c, a)` | `kron(A, B)`, `A + B`, `c * A` | `kron(A, B)`, `A + B`, `c * A` |
+| `sparse.Mul(a, x)` | `A * x` | `A @ x` |
+| `sparse.Transpose(a)`, `sparse.Dense(a)`, `sparse.Get(a, i, j)` | `A'`, `full(A)`, `A(i, j)` | `A.T`, `A.toarray()`, `A[i, j]` |
+| `sparse.Solve(a, b)` | `A \ b` | `spsolve(A, b)` |
+| `sparse.Read(path)` | (none) | `scipy.io.mmread(path)` |
+
+Cesia has no operators on structs, so where MATLAB writes `A * x` and `A + B`, Cesia writes `sparse.Mul(a, x)` and
+`sparse.Add(a, b)`: one function for each, and no second way.
+
+### Building a sparse matrix
+
+[sparse.Of] takes three arrays of the same length, the row `i[k]`, the column `j[k]` and the value `v[k]` of each
+non-zero, then the size. Values given for the same cell are added, and a cell whose sum is 0.0 is not kept, as MATLAB's
+`sparse` does: `Nnz` counts the cells that are not 0. An index that is not a whole number from 1 to `rows` or `cols` is a
+panic that names it, as `i[2] is 5`.
+
+[sparse.Diags] puts a number, or an array, on each diagonal: 0 is the main one, 1 the one above it, -1 the one below.
+[sparse.Kron] is the Kronecker product, the matrix of blocks `a(i, j) b`: with [sparse.Eye], it turns the matrix of a
+line of points into that of a grid. The second differences on a line of `k` points, then on a grid of `k × k`:
+
+```cesia
+k = 3
+t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
+sparse.Dense(t) -->
+a = sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(t, sparse.Eye(k)))
+[a.Rows, a.Nnz] -->
+```
+
+### Solving a x = b
+
+[sparse.Solve] solves `a x = b` for a square `a`, as MATLAB's `A \ b`. `b` is an array of `a.Rows` numbers, and `x` has
+its shape, or a matrix of `a.Rows` rows, one column for each right-hand side. The heat at each point of a square plate
+whose border is held at 0, heated evenly, is the solution of Poisson's equation, here on a grid of 50 × 50 points:
+
+```cesia
+use std/list
+use std/matrix
+k = 50
+t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
+a = sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(t, sparse.Eye(k)))
+u = result.Unwrap(sparse.Solve(a, matrix.Ones(1, k * k) / ((k + 1.0) ^ 2)))
+list.Max(u) -->
+```
+
+The same in Python, R and MATLAB:
+
+```python
+import numpy as np, scipy.sparse as sp, scipy.sparse.linalg as sla
+k = 50
+t = sp.diags_array([-1.0, 2.0, -1.0], offsets=[-1, 0, 1], shape=(k, k))
+a = (sp.kron(sp.eye_array(k), t) + sp.kron(t, sp.eye_array(k))).tocsc()
+u = sla.spsolve(a, np.ones(k * k) / (k + 1.0) ** 2)
+u.max()   # 0.07360100807413761
+```
+
+```r
+library(Matrix)
+k <- 50
+t <- bandSparse(k, k, -1:1, list(rep(-1, k - 1), rep(2, k), rep(-1, k - 1)))
+a <- kronecker(Diagonal(k), t) + kronecker(t, Diagonal(k))
+u <- solve(a, rep(1, k * k) / (k + 1)^2)
+max(u)   # 0.07360101
+```
+
+```matlab
+k = 50;
+t = spdiags(ones(k, 1) * [-1 2 -1], -1:1, k, k);
+a = kron(speye(k), t) + kron(t, speye(k));
+u = a \ (ones(k * k, 1) / (k + 1)^2);
+max(u)   % 0.073601
+```
+
+`Solve` gives an `Ok` of `x`, or an `Err` of the kind `"sparse"` when `a` is singular, when a column of its
+factorization has no pivot but 0, or when `a` or `b` holds a NaN or an infinity:
+
+```cesia
+sparse.Solve(sparse.Of([1, 2], [1, 1], [1.0, 1.0], 2, 2), [1.0, 1.0]) -->
+```
+
+### How Solve works
+
+`Solve` *factors* `a`: it writes it as a product of triangular matrices, then solves two triangular systems, each in
+time proportional to the non-zeros of its factor. The factor of a sparse matrix holds more non-zeros than the matrix:
+eliminating an unknown joins all its neighbours to each other, and those new non-zeros are the *fill*. The order of
+elimination decides the fill. On the grid of 300 × 300 points, in the order of the grid, the factor would hold 27
+million non-zeros; in the order `Solve` picks, 2.9 million.
+
+- **The order**: *minimum degree*, which eliminates first the unknown with the fewest neighbours, in the approximate
+  form of Amestoy, Davis and Duff (1996), AMD: it bounds each degree instead of counting it, merges unknowns whose
+  neighbours are the same, and puts an unknown joined to almost all others last. On the grid of 300 × 300, its order
+  gives exactly the fill of AMD in SuiteSparse, which MATLAB and GNU Octave use: 2,928,059 non-zeros.
+- **Symmetric and positive definite**, as the grid's matrix: Cholesky's factorization, `a = L L'` (Davis 2006, ch.
+  4). Its *elimination tree* (Liu 1990) gives the pattern of each row of `L` before any arithmetic, so `L` is
+  counted, then allocated once, then computed row by row. It needs no pivoting, and is backward stable.
+- **Any other square matrix**: LU with partial pivoting, `p a q = L U`, column by column, each a sparse triangular
+  solve whose pattern a depth-first search finds first, so that the work is that of the arithmetic (Gilbert and
+  Peierls 1988). When `a`'s pattern is nearly symmetric, half its cells mirrored or more, with no 0 on its diagonal, the
+  order is AMD on the pattern of `a + a'`, and a diagonal pivot is kept when it is at least 0.1 times the largest one
+  of its column, which keeps the fill of that order; else the order is AMD on the pattern of `a' a`, and each pivot is
+  the largest of its column.
+
+As MATLAB's backslash does, `Solve` tries Cholesky on a symmetric matrix whose diagonal is above 0; a pivot that is not
+above 0 shows that it is not positive definite, and LU takes over. Then, when the residual `|a x - b|` is above
+`n eps |a| |x|`, one step of *iterative refinement* solves for the residual and corrects `x`.
+
+### Checking a solution
+
+The *backward error* of `x`, `|a x - b| / (|a| |x| + |b|)`, in the norm of the largest cell, says how much `a` and `b`
+would have to change for `x` to be exact: about `eps`, 2.2e-16, means `x` is as good as floats allow. The error of `x`
+itself can be larger, by the *condition number* of `a`, which measures how much the solution of `a` moves when `a` does:
+
+```cesia
+use std/math
+x = result.Unwrap(sparse.Solve(a, matrix.Ones(1, k * k)))
+r = sparse.Mul(a, x) - matrix.Ones(1, k * k)
+norm = list.Max(list.Sum(math.Abs(sparse.Dense(a)), dim = 2))
+list.Max(math.Abs(r)) / (norm * list.Max(math.Abs(x)) + 1.0) < 1e-15 -->
+```
+
+Cesia's tests check `Solve` against closed forms: the 1-D Poisson matrix, whose solution for `b = 1` is
+`i (n + 1 - i) / 2`, and the 2-D one, whose eigenvectors `sin(p π i h) sin(q π j h)` give `b / λ`; against dense
+elimination on random positive definite and unsymmetric matrices, with pivots off the diagonal; and singular,
+indefinite and bad inputs. On eight matrices of the Harwell-Boeing collection (nos4, bcsstk01, bcsstk14, 1138_bus,
+gr_30_30, west0479, orsirr_1, sherman1), its backward error is at most 0.02 `n eps`, as scipy's and Octave's.
+
+### Matrix Market files
+
+[sparse.Read] reads a file in the Matrix Market format of NIST (Boisvert, Pozo and Remington 1996), that of the
+SuiteSparse Matrix Collection (Davis and Hu 2011): a first line `%%MatrixMarket matrix coordinate FIELD SYMMETRY`,
+lines of comments that start with `%`, the line `rows cols entries`, then one line `i j value` for each entry. The
+field is `real`, `integer` or `pattern` (no values: each is 1.0); a `symmetric` file holds the lower triangle, mirrored
+when read, and a `skew-symmetric` one the part under the diagonal, mirrored with the opposite sign. `laplace.mtx`:
+
+```text
+%%MatrixMarket matrix coordinate real symmetric
+% A 3 x 3 matrix of a 1-D Laplacian: its lower triangle, the upper one is its mirror.
+3 3 5
+1 1 2.0
+2 1 -1.0
+2 2 2.0
+3 2 -1.0
+3 3 2.0
+```
+
+```cesia allow=read
+sparse.Read("laplace.mtx") then result.MapOk(sparse.Dense) -->
+```
+
+It needs the read permission. scipy's `mmread` reads the same files; MATLAB and Octave have no reader of their own.
+
+### A plate in a cell
+
+In a file of [cells](cells.md), the heat on the plate, drawn as a map of colours under the cell in Cemacs:
+
+```cesia norun
+use std/matrix
+use std/plot
+use std/result
+use std/sparse
+
+(* %% Poisson on a square *)
+k = 300
+t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
+a = sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(t, sparse.Eye(k)))
+u = result.Unwrap(sparse.Solve(a, matrix.Ones(1, k * k) / ((k + 1.0) ^ 2)))
+plot.Heatmap(matrix.Reshape([k, k], u))
+```
+
+### Speed of sparse matrices
+
+On the machine of [Speed](speed.md#beside-the-giants), on 2026-11-13: Cesia's times are the median of 21 runs, with the
+95 % interval of that median; scipy 1.18.1's and GNU Octave 11.3's, the median of 5 runs, and one run of each for the
+1000 × 1000 grid (scipy's on 2026-11-12).
+
+| 2-D Poisson | Cesia | scipy | Octave |
+|---|---:|---:|---:|
+| product `a x`, 300 × 300 points, 448,800 non-zeros | **1.32 ms** (1.31 to 1.35) | 0.62 ms | 2.2 ms |
+| `Solve`, 300 × 300 points, first call of the program | **890 ms** (880 to 911) | 870 ms | 330 ms |
+| `Solve`, 300 × 300 points, the calls after it | **750 ms** (747 to 762) | | |
+| `Solve`, 1000 × 1000 points, one run | **24.7 s** | 37.8 s | 8.2 s |
+
+Cesia's product takes 2.9 ns a non-zero, as [Speed](speed.md#what-becomes-machine-code) explains; scipy's loop reads
+its rows as 32-bit integers and checks none of them. For `Solve`, Octave's `\` calls CHOLMOD, which factors *supernodes*, columns
+of `L` with the same pattern, as dense blocks: 2.3 times faster than Cesia's factorization, one column at a time,
+whose time goes to reading `x[i]` at rows scattered in memory. scipy's `spsolve` calls SuperLU,
+which factors the matrix as unsymmetric, with an LU of dense blocks too. On an unsymmetric matrix of the same size, the convection and
+diffusion of heat (`cd` in the tests' benchmarks), Cesia's LU takes 1.9 s, scipy's 0.83 s and Octave's UMFPACK 0.56 s.
+Supernodes in Cesia are the next step. The first call of a program also makes the machine code of the triangular solves
+and of Cholesky's factorization: 140 ms here.
+
+The ordering and LU are native code, written in OCaml: in Cesia, AMD took from 100 to 580 ms a call on the 300 × 300
+grid, as the JIT made its large loop again at each call, against 60 to 85 ms native; LU took 3.7 s against 1.9 s.
+Cholesky's factorization stays in Cesia: native, it was only 10 to 25 % faster, both waiting on the memory.
+
+`use std/sparse` adds nothing measurable to the start of a program, once its code is in the cache of loaded packages.
+
+### Security of sparse matrices
+
+The arrays of a `Matrix` are private: only std/sparse makes them, through `Of`, which checks each index, each value
+and the lengths, and refuses a size over 2^53 cells. A `Matrix` built by hand, with its fields filled in another way,
+gets a panic at the first read that doesn't fit, never a read outside an array: the native code of the ordering and of
+LU checks every array it is given before it reads it, and each array of Cesia checks its indices.
+
+A Matrix Market file is untrusted input. `Read` checks each line as it comes: the sizes, with no overflow; each index,
+from 1 to the size; each value, a finite number; the triangle of a symmetric file. It counts the entries against the
+count of the third size, and its arrays grow with the entries read, never with what the file says it holds. A line of
+entries over 1,024 bytes, more than 2^31 - 1 rows or columns, or anything it doesn't know is an `Err` that names the
+file and the line. The tests read 20,000 files made by changing, removing, adding and repeating bytes of a valid one:
+each gave an `Ok` or an `Err`, never a panic.
+
+The work is bounded and counted: `Of`, `Kron` and `Add` take time and memory in proportion to their non-zeros;
+Cholesky's factor is counted before it is allocated; LU's grows by doubling. The native code counts its work against
+`--limit` as it goes, so [cells.Stop] and a limit of steps stop a long factorization within a fraction of a second, and
+the memory it takes is reserved first: past the memory limit, the program stops with `Limit "memory" reached.` before it
+allocates. `Dense` takes 8 bytes a cell, and stops the same way past the limit.
+
+### Further reading on sparse matrices
+
+- Timothy A. Davis. *Direct Methods for Sparse Linear Systems*. SIAM, 2006. <https://doi.org/10.1137/1.9780898718881>.
+  Compressed columns, the elimination tree, Cholesky's factorization up-looking (ch. 4), LU's left-looking (ch. 6),
+  the orderings (ch. 7).
+- Patrick R. Amestoy, Timothy A. Davis, Iain S. Duff. "An Approximate Minimum Degree Ordering Algorithm". *SIAM Journal
+  on Matrix Analysis and Applications* 17(4):886–905, 1996. <https://doi.org/10.1137/S0895479894278952>. AMD.
+- John R. Gilbert, Tim Peierls. "Sparse Partial Pivoting in Time Proportional to Arithmetic Operations". *SIAM Journal
+  on Scientific and Statistical Computing* 9(5):862–874, 1988. <https://doi.org/10.1137/0909058>. LU.
+- Joseph W. H. Liu. "The Role of Elimination Trees in Sparse Factorization". *SIAM Journal on Matrix Analysis and
+  Applications* 11(1):134–172, 1990. <https://doi.org/10.1137/0611010>.
+- Ronald F. Boisvert, Roldan Pozo, Karin A. Remington. *The Matrix Market Exchange Formats: Initial Design*. NIST,
+  1996. <https://math.nist.gov/MatrixMarket/formats.html>.
+- Timothy A. Davis, Yifan Hu. "The University of Florida Sparse Matrix Collection". *ACM Transactions on Mathematical
+  Software* 38(1):1–25, 2011. <https://doi.org/10.1145/2049662.2049663>. Now the SuiteSparse Matrix Collection.
+
 ## Security
 
 `f`, `g` and the functions given to Root are code of the caller, so the methods check what they give: a value of the

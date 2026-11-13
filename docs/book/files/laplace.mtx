@@ -1,0 +1,8 @@
+%%MatrixMarket matrix coordinate real symmetric
+% A 3 x 3 matrix of a 1-D Laplacian: its lower triangle, the upper one is its mirror.
+3 3 5
+1 1 2.0
+2 1 -1.0
+2 2 2.0
+3 2 -1.0
+3 3 2.0

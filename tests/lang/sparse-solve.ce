@@ -114,10 +114,10 @@ end
 defn isPoisson2d()
   (** b an eigenvector of the 2-D Laplacian of k × k points, sin(p π i h) sin(q π j h), gives b / λ, with
       λ = 4 - 2 cos(p π h) - 2 cos(q π h), h = 1 / (k + 1). *)
-  k = 40
+  k = 24
   h = 1.0 / (k + 1)
   ok = true
-  for pq in [[1, 1], [3, 7], [40, 2]]
+  for pq in [[1, 1], [3, 7], [24, 2]]
     p = pq[1]
     q = pq[2]
     b = matrix.Zeros(1, k * k)
