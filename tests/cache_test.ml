@@ -146,6 +146,35 @@ let () =
   let moved = run () in
   check "a dependency whose cells moved: its users resolved again" (moved = without () && !writes = 2)
 
+(* Two programs that use units, which reads only a native of std/list: in one, units loads before the Cesia code of
+   std/list and calls into it after; in the other, that code loads first, so units sees the package of std/list grown.
+   Each run after the other finds units in its entry, and a changed units is read again in both. *)
+let () =
+  write (Filename.concat app "later.ce")
+    "use src/units\nuse std/list\nuse std/io\n\nio.Print(units.Total([1, 2]), list.Map(x -> x + 1, [1, 2]), units.Unit)\n";
+  write (Filename.concat app "first.ce")
+    "use std/list\nuse src/units\nuse std/io\n\nio.Print(list.Map(x -> x + 1, [1, 2]), units.Total([1, 2]), units.Unit)\n";
+  let alone file =
+    let out = Buffer.create 64 in
+    let w = Runtime.create_world { Runtime.default_options with o_sink = Buffer.add_string out; o_err = Buffer.add_string out } in
+    let code = Loader.run_file w (Filename.concat app file) [] in
+    Cache.save ();
+    Printf.sprintf "%sexit %d" (Buffer.contents out) code
+  in
+  let plain file = with_store "" (fun () -> Cache.store := None; alone file) in
+  with_store "test" @@ fun () ->
+  let later = plain "later.ce" and first = plain "first.ce" in
+  ignore (alone "later.ce");
+  ignore (alone "first.ce");
+  writes := 0;
+  let outs = List.map alone [ "later.ce"; "first.ce"; "later.ce"; "first.ce" ] in
+  check "two programs in turn: the same outputs as without a cache" (outs = [ later; first; later; first ]);
+  check "two programs in turn: nothing resolved again" (!writes = 0);
+  write (Filename.concat app "src/units/units.ce") (units "Unit = \" ha\"");
+  let later' = plain "later.ce" and first' = plain "first.ce" in
+  check "two programs in turn, units changed: read again in both"
+    (later' <> later && alone "later.ce" = later' && alone "first.ce" = first' && alone "later.ce" = later')
+
 (* The store's files. *)
 let () =
   let cache = Filename.concat top "cache" in
