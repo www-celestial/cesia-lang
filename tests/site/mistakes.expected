@@ -64,7 +64,7 @@ exit 1
 TMP/proj/cesia.toml:4: [site] color is a color written #rrggbb, as "#3b5bdb".
 exit 1
 == a README that links to a file which is no page
-README.md:13: LICENSE is no page of the site: a README links to the pages of docs/, or with a full URL.
+README.md:18: LICENSE is no page of the site: a README links to the pages of docs/, or with a full URL.
 exit 1
 == a French page that drifts from its English one
 docs/fr/book/index.md: its links drift from those of docs/book/index.md, not here: first.html; only here: files.html (a link to a heading names its place on its page).
