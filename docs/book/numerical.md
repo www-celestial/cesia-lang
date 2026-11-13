@@ -720,7 +720,7 @@ $21 (2\,\text{limit} - 1)$ times, $15 (2\,\text{limit} - 1)$ with one infinite b
 with two, and a function that never converges ends with the `Err` of the limit, the roundoff, the bad place or the
 extrapolation; the table of the epsilon algorithm keeps 50 sums at most. Keeping the pieces in order costs up to `limit`
 steps each, so a large `limit` costs time as its square: at 100,000, a function that never settles, $\sin(1/x)$, takes
-5 seconds. The memory grows with the pieces, six numbers each, in arrays that double as they fill, from 16: at the
+3.4 seconds before roundoff stops it. The memory grows with the pieces, six numbers each, in arrays that double as they fill, from 16: at the
 default `limit`, 48 KB. Past the memory limit of the program, the program stops with `Limit "memory" reached.`, as any.
 The native code counts its work against `--limit` as it goes, and each call of `f` is Cesia code, so `--limit` and
 [cells.Stop] stop a long integral within a few calls of `f`. It reads only the numbers Integral gives it, keeps no state
