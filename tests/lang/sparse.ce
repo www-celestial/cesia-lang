@@ -1,0 +1,141 @@
+(* std/sparse: building, products, transpose, against dense matrices that the test fills cell by cell. *)
+use std/fiber
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/result
+use std/sparse
+use std/test
+use std/text
+use std/value
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+panics(f, part) = match message(f)
+  result.Err(m) -> text.Contains(part, m)
+  else -> false
+end
+
+defn full(t)
+  (** The dense matrix of triplets {I, J, V, Rows, Cols}, cell by cell, duplicates added. *)
+  d = matrix.Zeros(t.Rows, t.Cols)
+  for k in 1..value.Len(t.I)
+    d[t.I[k], t.J[k]] = d[t.I[k], t.J[k]] + t.V[k]
+  end
+  d
+end
+
+defn wellFormed(a)
+  (** The invariants of a Matrix, read through Get and Dense only: each column's rows increase, no 0.0 is kept, and
+      Nnz counts the non-zeros of Dense. *)
+  d = sparse.Dense(a)
+  count = 0
+  for k in 1..value.Len(d)
+    if d[k] != 0.0
+      count += 1
+    end
+  end
+  count == a.Nnz and value.Equal(value.Size(d), [a.Rows, a.Cols])
+end
+
+(* Triplets on up to 6 × 6 cells, with duplicates, zeros, and cancelling pairs. *)
+defn triplets(r)
+  rows = r.Rows
+  cols = r.Cols
+  n = value.Len(r.Cells)
+  i = list.Fill(0, n)
+  j = list.Fill(0, n)
+  v = matrix.Zeros(n)
+  for k in 1..n
+    c = r.Cells[k]
+    i[k] = math.Mod(c, rows) + 1
+    j[k] = math.Mod(math.Div(c, rows), cols) + 1
+    v[k] = 1.0 * (math.Mod(c, 7) - 3)
+  end
+  {I: i, J: j, V: v, Rows: rows, Cols: cols}
+end
+sets = gen.Map(triplets, gen.Of({Rows: gen.Int(1, 6), Cols: gen.Int(1, 6), Cells: gen.List(gen.Int(0, 100), max = 20)}))
+of(t) = sparse.Of(t.I, t.J, t.V, t.Rows, t.Cols)
+
+isOfAsDense() = test.ForAll(t -> value.Equal(sparse.Dense(of(t)), full(t)), sets)
+isOfWellFormed() = test.ForAll(t -> wellFormed(of(t)), sets)
+isTransposeAsDense() = test.ForAll(t -> value.Equal(sparse.Dense(sparse.Transpose(of(t))), matrix.Transpose(full(t))), sets)
+isTransposeTwice() = test.ForAll(t -> value.Equal(sparse.Transpose(sparse.Transpose(of(t))), of(t)), sets)
+defn getAll(t)
+  a = of(t)
+  d = full(t)
+  ok = true
+  for i in 1..t.Rows
+    for j in 1..t.Cols
+      ok = ok and sparse.Get(a, i, j) == d[i, j]
+    end
+  end
+  ok
+end
+isGetAsDense() = test.ForAll(getAll, sets)
+isMulAsDense() = test.ForAll(t -> value.Equal(sparse.Mul(of(t), matrix.Reshape([t.Cols, 1], [1.0 * k for k in 1..t.Cols])), matrix.Matmul(full(t), matrix.Reshape([t.Cols, 1], [1.0 * k for k in 1..t.Cols]))), sets)
+isMulRow() = test.ForAll(t -> t.Cols == 1 or value.Equal(sparse.Mul(of(t), [1.0 * k for k in 1..t.Cols]), matrix.Reshape([1, t.Rows], matrix.Matmul(full(t), matrix.Reshape([t.Cols, 1], [1.0 * k for k in 1..t.Cols])))), sets)
+defn mulMatrix(t)
+  x = matrix.Reshape([t.Cols, 3], [1.0 * k for k in 1..3 * t.Cols])
+  value.Equal(sparse.Mul(of(t), x), matrix.Matmul(full(t), x))
+end
+isMulMatrix() = test.ForAll(mulMatrix, sets)
+isAddAsDense() = test.ForAll(t -> value.Equal(sparse.Dense(sparse.Add(of(t), sparse.Scale(-0.5, of(t)))), full(t) * 0.5) and wellFormed(sparse.Add(of(t), sparse.Scale(-1.0, of(t)))), sets)
+isAddCancels() = test.ForAll(t -> sparse.Add(of(t), sparse.Scale(-1.0, of(t))).Nnz == 0, sets)
+
+defn kronDense(a, b)
+  (** The Kronecker product of two dense matrices, cell by cell. *)
+  ra = value.Size(a, 1)
+  ca = value.Size(a, 2)
+  rb = value.Size(b, 1)
+  cb = value.Size(b, 2)
+  d = matrix.Zeros(ra * rb, ca * cb)
+  for i in 1..ra
+    for j in 1..ca
+      for k in 1..rb
+        for l in 1..cb
+          d[(i - 1) * rb + k, (j - 1) * cb + l] = a[i, j] * b[k, l]
+        end
+      end
+    end
+  end
+  d
+end
+isKronAsDense() = test.ForAll(t -> value.Equal(sparse.Dense(sparse.Kron(of(t), sparse.Transpose(of(t)))), kronDense(full(t), matrix.Transpose(full(t)))), sets)
+
+isOfSums() = value.Equal(sparse.Dense(sparse.Of([2, 1, 2, 2], [1, 1, 1, 2], [1.0, 2.0, 3.0, 4.0], 2, 2)), matrix.Reshape([2, 2], [2.0, 4.0, 0.0, 4.0]))
+isOfDropsZeros() = sparse.Of([1, 2, 1], [1, 2, 1], [1.0, 0.0, -1.0], 2, 2).Nnz == 0
+isOfIntegers() = value.Equal(sparse.Dense(sparse.Of([1], [1], [3], 1, 1)), matrix.Reshape([1, 1], [3.0]))
+isOfEmpty() = sparse.Of([], [], [], 3, 4).Nnz == 0 and value.Equal(sparse.Dense(sparse.Of([], [], [], 3, 4)), matrix.Zeros(3, 4))
+isOfColumns() = value.Equal(sparse.Dense(sparse.Of([1; 2], [2; 1], [5.0; 6.0], 2, 2)), matrix.Reshape([2, 2], [0.0, 6.0, 5.0, 0.0]))
+isOfNan() = sparse.Get(sparse.Of([1], [1], [math.Nan], 1, 1), 1, 1) != sparse.Get(sparse.Of([1], [1], [math.Nan], 1, 1), 1, 1)
+isEye() = value.Equal(sparse.Dense(sparse.Eye(3)), matrix.Reshape([3, 3], [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0])) and sparse.Eye(0).Nnz == 0
+isDiags() = value.Equal(sparse.Dense(sparse.Diags([[1.0, 2.0], 5.0, [3, 4]], [1, 0, -1], 3)), matrix.Reshape([3, 3], [5.0, 3.0, 0.0, 1.0, 5.0, 4.0, 0.0, 2.0, 5.0]))
+isDiagsZero() = sparse.Diags([0.0, 1.0], [0, 2], 3).Nnz == 1
+isScaleZero() = sparse.Scale(0.0, sparse.Eye(4)).Nnz == 0
+isGetEmpty() = sparse.Get(sparse.Of([], [], [], 2, 2), 2, 2) == 0.0
+isMulEmpty() = value.Equal(sparse.Mul(sparse.Of([], [], [], 2, 3), [1.0, 2.0, 3.0]), [0.0, 0.0])
+isMulInts() = value.Equal(sparse.Mul(sparse.Eye(2), [1, 2]), [1.0, 2.0])
+
+(* Every bad argument is a panic that names it. *)
+isOfBadRow() = panics(() -> sparse.Of([1, 3], [1, 1], [1.0, 1.0], 2, 2), "i[2] is 3")
+isOfZeroRow() = panics(() -> sparse.Of([0], [1], [1.0], 2, 2), "i[1] is 0")
+isOfFloatIndex() = panics(() -> sparse.Of([1.0], [1], [1.0], 2, 2), "i[1] is 1.0")
+isOfBadColumn() = panics(() -> sparse.Of([1], [5], [1.0], 2, 2), "j[1] is 5")
+isOfLengths() = panics(() -> sparse.Of([1, 2], [1], [1.0, 1.0], 2, 2), "j has 1 elements")
+isOfBadValue() = panics(() -> sparse.Of([1], [1], ["x"], 2, 2), "v[1] is \"x\"")
+isOfNegativeSize() = panics(() -> sparse.Of([], [], [], -1, 2), "rows is -1")
+isOfHugeSize() = panics(() -> sparse.Of([], [], [], 4294967296, 4294967296), "over 2^53")
+isOfText() = panics(() -> sparse.Of("ab", [1], [1.0], 2, 2), "i is \"ab\"")
+isMulShape() = panics(() -> sparse.Mul(sparse.Eye(2), [1.0, 2.0, 3.0]), "give an array of 2 numbers")
+isMulNotMatrix() = panics(() -> sparse.Mul([1.0], [1.0]), "a is [1.0]; give a sparse.Matrix")
+isAddSizes() = panics(() -> sparse.Add(sparse.Eye(2), sparse.Eye(3)), "a is 2 × 2 and b 3 × 3")
+isGetOutside() = panics(() -> sparse.Get(sparse.Eye(2), 3, 1), "i is 3")
+isDiagsTwice() = panics(() -> sparse.Diags([1.0, 2.0], [0, 0], 2), "offsets[1] and offsets[2] are both 0")
+isDiagsLength() = panics(() -> sparse.Diags([[1.0]], [1], 3), "values[1] is [1.0]")
+isDiagsFar() = panics(() -> sparse.Diags([1.0], [3], 3), "offsets[1] is 3")
+defn isChangedByHand()
+  a = sparse.Eye(2)
+  a.Cols = 3
+  panics(() -> sparse.Mul(a, [1.0, 2.0, 3.0]), "whose fields were changed")
+end

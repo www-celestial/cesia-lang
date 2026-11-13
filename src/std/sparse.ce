@@ -1,0 +1,568 @@
+(** Sparse matrices, those whose cells are nearly all 0, as MATLAB's sparse and scipy's csc_array: a Matrix keeps
+    only its non-zeros, column by column (compressed sparse column, CSC). Of builds one from (i, j, value) triplets;
+    Mul multiplies it by a vector or a dense matrix, and Solve solves a x = b. The chapter Numerical methods of the book
+    says how, and where each method comes from. *)
+use std/bug
+use std/columns as col
+use std/list
+use std/math
+use std/matrix
+use std/text
+use std/value
+
+most = 9007199254740992   (** 2^53, the most cells, Rows × Cols, a Matrix may have: each then has an exact float position *)
+
+struct Matrix
+  (** A sparse matrix of Rows rows and Cols columns, which holds Nnz non-zeros: Of, Eye, Diags, Kron, Add, Scale,
+      Transpose and Read make one, with its non-zeros in columns, each column's rows in increasing order, no row twice
+      in a column and no 0.0 kept. Its cells are read with Get, or all at once with Dense.
+
+        a = Of([1, 2, 2], [1, 1, 2], [4.0, 1.0, 3.0], 2, 2)
+        [a.Rows, a.Cols, a.Nnz] --> [2, 2, 3] *)
+  Rows
+  Cols
+  Nnz
+  start   (* Cols + 1 integers: the non-zeros of column j are at start[j] to start[j + 1] - 1 of index and values *)
+  index   (* Nnz integers: the row of each non-zero, increasing within each column *)
+  values  (* Nnz floats: the non-zeros, none 0.0 *)
+end
+
+defn brief(v)
+  (** A value as a panic shows it: its text, a text in quotes, cut past 60 characters. *)
+  s = if value.IsText(v) "\"$v\"" else value.Text(v) end
+  if value.Len(s) > 60 "$(text.Slice(1, 57, s))..." else s end
+end
+
+isMatrix(a) = match a
+  Matrix(r, c, n, s, i, v) -> true
+  else -> false
+end
+
+defn checked(a, where, what)
+  (** a when it is a Matrix whose parts agree, as std/sparse made it; else a panic that names it. The test reads its
+      sizes, not its rows: a Matrix changed by hand still can't make a read outside its arrays, which Cesia checks. *)
+  if not isMatrix(a)
+    bug.Panic("$where: $what is $(brief(a)); give a sparse.Matrix.")
+  end
+  if not (value.IsInt(a.Rows) and value.IsInt(a.Cols) and value.IsInt(a.Nnz) and a.Rows >= 0 and a.Cols >= 0 and
+          value.Len(a.start) == a.Cols + 1 and value.Len(a.index) == a.Nnz and value.Len(a.values) == a.Nnz and
+          a.start[1] == 1 and a.start[a.Cols + 1] == a.Nnz + 1)
+    bug.Panic("$where: $what is a sparse.Matrix whose fields were changed: Rows $(brief(a.Rows)), Cols $(brief(a.Cols)), Nnz $(brief(a.Nnz)); make it again with sparse.Of.")
+  end
+  a
+end
+
+defn size(rows, cols, where)
+  (** A panic unless rows and cols are whole numbers of 0 or more whose product is at most 2^53. *)
+  if not (value.IsInt(rows) and rows >= 0)
+    bug.Panic("$where: rows is $(brief(rows)); give a whole number of 0 or more.")
+  end
+  if not (value.IsInt(cols) and cols >= 0)
+    bug.Panic("$where: cols is $(brief(cols)); give a whole number of 0 or more.")
+  end
+  if 1.0 * rows * cols > 1.0 * most
+    bug.Panic("$where: $rows × $cols is over 2^53 cells; give a smaller size.")
+  end
+end
+
+defn squeezed(rows, cols, start, index, values)
+  (** The Matrix of columns whose non-zeros are at start[j] to start[j + 1] - 1, their rows in increasing order, with
+      each 0.0 taken out: index and values may be longer than the last column needs. *)
+  p = 1
+  for j in 1..cols
+    q0 = start[j]
+    start[j] = p
+    for q in q0..start[j + 1] - 1
+      x = values[q]
+      if x != 0.0
+        index[p] = index[q]
+        values[p] = x
+        p += 1
+      end
+    end
+  end
+  start[cols + 1] = p
+  if p - 1 < value.Len(index)
+    index = index[1..p - 1]
+    values = values[1..p - 1]
+  end
+  Matrix(rows, cols, p - 1, start, index, values)
+end
+
+defn entries(xs, name, low, high, n, where)
+  (** A panic unless xs is an array of n whole numbers from low to high, which names the first one that is not. *)
+  if not value.IsArray(xs)
+    bug.Panic("$where: $name is $(brief(xs)); give an array of whole numbers.")
+  end
+  if value.Len(xs) != n
+    bug.Panic("$where: $name has $(value.Len(xs)) elements, and i has $n; give arrays of the same length.")
+  end
+  if n == 0
+    return missing
+  end
+  if col.Kind(xs) == "int" and list.Min(xs) >= low and list.Max(xs) <= high
+    return missing
+  end
+  for k in 1..n
+    x = xs[k]
+    if not (value.IsInt(x) and x >= low and x <= high)
+      bug.Panic("$where: $name[$k] is $(brief(x)); give a whole number from $low to $high.")
+    end
+  end
+end
+
+defn numbers(xs, n, where, name)
+  (** The numbers of the array xs, n of them, as floats; a panic that names the first one that is no number. *)
+  if not value.IsArray(xs)
+    bug.Panic("$where: $name is $(brief(xs)); give an array of numbers.")
+  end
+  if value.Len(xs) != n
+    bug.Panic("$where: $name has $(value.Len(xs)) elements, and i has $n; give arrays of the same length.")
+  end
+  if n == 0
+    return matrix.Zeros(0)
+  end
+  kind = col.Kind(xs)
+  if kind == "float" or kind == "int"
+    return matrix.Reshape([1, n], xs * 1.0)
+  end
+  out = matrix.Zeros(n)
+  for k in 1..n
+    if not value.IsNumber(xs[k])
+      bug.Panic("$where: $name[$k] is $(brief(xs[k])); give numbers.")
+    end
+    out[k] = xs[k]
+  end
+  out
+end
+
+defn Of(i, j, v, rows, cols)
+  (** The rows × cols Matrix whose cell (i[k], j[k]) holds v[k], for each k, and every other cell 0.0: MATLAB's
+      sparse(i, j, v, m, n), scipy's csc_array((v, (i, j)), shape = (m, n)) with rows and columns from 1. Values given
+      for the same cell are added, and a cell whose sum is 0.0 is not kept, as MATLAB does. i, j and v are arrays of the
+      same length; a panic names the first index that is not a whole number from 1 to rows or cols, and the first value
+      that is no number. Time and memory grow as rows + cols + the length of i.
+
+        a = Of([1, 2, 1], [1, 2, 1], [1.0, 5.0, 2.0], 2, 3)
+        Dense(a) --> [3.0 0.0 0.0; 0.0 5.0 0.0]
+        Of([1, 1], [1, 1], [2.0, -2.0], 1, 1).Nnz --> 0 *)
+  size(rows, cols, "sparse.Of")
+  if not value.IsArray(i)
+    bug.Panic("sparse.Of: i is $(brief(i)); give an array of whole numbers.")
+  end
+  n = value.Len(i)
+  entries(i, "i", 1, rows, n, "sparse.Of")
+  entries(j, "j", 1, cols, n, "sparse.Of")
+  vs = numbers(v, n, "sparse.Of", "v")
+  (* By rows first, a counting sort: then each column takes its entries in increasing rows, and the entries of one cell
+     come one after the other, to be added. *)
+  byRow = list.Fill(0, rows + 1)
+  for k in 1..n
+    byRow[i[k]] += 1
+  end
+  p = 1
+  for r in 1..rows
+    c = byRow[r]
+    byRow[r] = p
+    p += c
+  end
+  byRow[rows + 1] = p
+  colOf = list.Fill(0, n)
+  valOf = matrix.Zeros(n)
+  for k in 1..n
+    r = i[k]
+    q = byRow[r]
+    colOf[q] = j[k]
+    valOf[q] = vs[k]
+    byRow[r] = q + 1
+  end
+  start = list.Fill(0, cols + 1)
+  for k in 1..n
+    start[colOf[k]] += 1
+  end
+  p = 1
+  for c in 1..cols
+    m = start[c]
+    start[c] = p
+    p += m
+  end
+  start[cols + 1] = p
+  next = start[1..cols]
+  index = list.Fill(0, n)
+  values = matrix.Zeros(n)
+  q = 1
+  for r in 1..rows
+    (* byRow[r] is now where row r + 1 starts *)
+    for t in q..byRow[r] - 1
+      c = colOf[t]
+      at = next[c]
+      if at > start[c] and index[at - 1] == r
+        values[at - 1] = values[at - 1] + valOf[t]
+      else
+        index[at] = r
+        values[at] = valOf[t]
+        next[c] = at + 1
+      end
+    end
+    q = byRow[r]
+  end
+  (* Each column's entries are at start[c] to next[c] - 1: closed up, without the 0.0s. *)
+  p = 1
+  for c in 1..cols
+    q0 = start[c]
+    start[c] = p
+    for t in q0..next[c] - 1
+      x = values[t]
+      if x != 0.0
+        index[p] = index[t]
+        values[p] = x
+        p += 1
+      end
+    end
+  end
+  start[cols + 1] = p
+  if p - 1 < n
+    index = index[1..p - 1]
+    values = values[1..p - 1]
+  end
+  Matrix(rows, cols, p - 1, start, index, values)
+end
+
+defn Eye(n)
+  (** The n × n identity, MATLAB's speye(n) and scipy's eye_array(n).
+
+        Dense(Eye(2)) --> [1.0 0.0; 0.0 1.0] *)
+  size(n, n, "sparse.Eye")
+  Matrix(n, n, n, [k for k in 1..n + 1], [k for k in 1..n], matrix.Zeros(n) + 1.0)
+end
+
+defn Diags(values, offsets, n)
+  (** The n × n Matrix with values[k] on the diagonal offsets[k]: 0 the main diagonal, 1 the one above it, -1 the one
+      below, and so on, as scipy's diags_array(values, offsets = d, shape = (n, n)). values[k] is a number, the same all
+      along that diagonal, or an array of its n - |offsets[k]| cells, from its top left. MATLAB's spdiags(B, d, n, n) does
+      the same with its own alignment of the columns of B.
+
+        Dense(Diags([-1.0, 2.0, -1.0], [-1, 0, 1], 3)) --> [2.0 -1.0 0.0; -1.0 2.0 -1.0; 0.0 -1.0 2.0]
+        Dense(Diags([[1.0, 2.0]], [1], 3)) --> [0.0 1.0 0.0; 0.0 0.0 2.0; 0.0 0.0 0.0] *)
+  size(n, n, "sparse.Diags")
+  if not value.IsArray(offsets) or not value.IsArray(values)
+    bug.Panic("sparse.Diags: give values and offsets as two arrays of the same length; they are $(brief(values)) and $(brief(offsets)).")
+  end
+  m = value.Len(offsets)
+  if value.Len(values) != m
+    bug.Panic("sparse.Diags: values has $(value.Len(values)) elements, and offsets $m; give one value for each offset.")
+  end
+  entries(offsets, "offsets", 1 - n, n - 1, m, "sparse.Diags")
+  for k in 1..m
+    for h in 1..k - 1
+      if offsets[h] == offsets[k]
+        bug.Panic("sparse.Diags: offsets[$h] and offsets[$k] are both $(offsets[k]); give each diagonal once.")
+      end
+    end
+    d = values[k]
+    if not value.IsNumber(d)
+      length = n - math.Abs(offsets[k])
+      if not (value.IsArray(d) and value.Len(d) == length)
+        bug.Panic("sparse.Diags: values[$k] is $(brief(d)); give a number, or an array of the $length cells of the diagonal $(offsets[k]).")
+      end
+      kind = col.Kind(d)
+      if not (kind == "float" or kind == "int")
+        for t in 1..length
+          if not value.IsNumber(d[t])
+            bug.Panic("sparse.Diags: values[$k][$t] is $(brief(d[t])); give numbers.")
+          end
+        end
+      end
+    end
+  end
+  (* Column j holds the cell (j - d, j) of each diagonal d with 1 <= j - d <= n: in decreasing d, its rows increase. *)
+  order = list.Order(offsets)
+  ds = list.Fill(0, m)
+  for k in 1..m
+    ds[k] = offsets[order[m + 1 - k]]
+  end
+  start = list.Fill(0, n + 1)
+  index = list.Fill(0, m * n)
+  cells = matrix.Zeros(m * n)
+  p = 1
+  for j in 1..n
+    start[j] = p
+    for k in 1..m
+      d = ds[k]
+      i = j - d
+      if i >= 1 and i <= n
+        index[p] = i
+        x = values[order[m + 1 - k]]
+        cells[p] = if value.IsNumber(x) x else x[if i < j i else j end] end
+        p += 1
+      end
+    end
+  end
+  start[n + 1] = p
+  squeezed(n, n, start, index, cells)
+end
+
+defn Kron(a, b)
+  (** The Kronecker product of a and b: the matrix of blocks a(i, j) b, (a.Rows b.Rows) × (a.Cols b.Cols), MATLAB's
+      kron(A, B) and scipy's kron(A, B). With Eye, it builds the matrices of grids: a 2-D Laplacian from a 1-D one.
+
+        Dense(Kron(Eye(2), Of([1, 2], [2, 1], [1.0, 2.0], 2, 2))) --> [0.0 1.0 0.0 0.0; 2.0 0.0 0.0 0.0; 0.0 0.0 0.0 1.0; 0.0 0.0 2.0 0.0] *)
+  checked(a, "sparse.Kron", "a")
+  checked(b, "sparse.Kron", "b")
+  rows = a.Rows * b.Rows
+  cols = a.Cols * b.Cols
+  size(rows, cols, "sparse.Kron")
+  as = a.start
+  ai = a.index
+  av = a.values
+  bs = b.start
+  bi = b.index
+  bv = b.values
+  br = b.Rows
+  start = list.Fill(0, cols + 1)
+  index = list.Fill(0, a.Nnz * b.Nnz)
+  values = matrix.Zeros(a.Nnz * b.Nnz)
+  ac = a.Cols
+  bc = b.Cols
+  p = 1
+  c = 1
+  for ja in 1..ac
+    for jb in 1..bc
+      start[c] = p
+      c += 1
+      for qa in as[ja]..as[ja + 1] - 1
+        r0 = (ai[qa] - 1) * br
+        x = av[qa]
+        for qb in bs[jb]..bs[jb + 1] - 1
+          index[p] = r0 + bi[qb]
+          values[p] = x * bv[qb]
+          p += 1
+        end
+      end
+    end
+  end
+  start[cols + 1] = p
+  squeezed(rows, cols, start, index, values)
+end
+
+defn Add(a, b)
+  (** a + b, of the same size: MATLAB's A + B. A cell where they cancel is not kept.
+
+        Dense(Add(Eye(2), Of([1, 2], [2, 2], [3.0, -1.0], 2, 2))) --> [1.0 3.0; 0.0 0.0] *)
+  checked(a, "sparse.Add", "a")
+  checked(b, "sparse.Add", "b")
+  if a.Rows != b.Rows or a.Cols != b.Cols
+    bug.Panic("sparse.Add: a is $(a.Rows) × $(a.Cols) and b $(b.Rows) × $(b.Cols); give two matrices of the same size.")
+  end
+  cols = a.Cols
+  as = a.start
+  ai = a.index
+  av = a.values
+  bs = b.start
+  bi = b.index
+  bv = b.values
+  start = list.Fill(0, cols + 1)
+  index = list.Fill(0, a.Nnz + b.Nnz)
+  values = matrix.Zeros(a.Nnz + b.Nnz)
+  p = 1
+  for j in 1..cols
+    start[j] = p
+    qa = as[j]
+    ea = as[j + 1]
+    qb = bs[j]
+    eb = bs[j + 1]
+    while qa < ea or qb < eb
+      ra = if qa < ea ai[qa] else -1 end
+      rb = if qb < eb bi[qb] else -1 end
+      if rb == -1 or (ra != -1 and ra < rb)
+        index[p] = ra
+        values[p] = av[qa]
+        qa += 1
+      else if ra == -1 or rb < ra
+        index[p] = rb
+        values[p] = bv[qb]
+        qb += 1
+      else
+        index[p] = ra
+        values[p] = av[qa] + bv[qb]
+        qa += 1
+        qb += 1
+      end
+      p += 1
+    end
+  end
+  start[cols + 1] = p
+  squeezed(a.Rows, cols, start, index, values)
+end
+
+defn Scale(c, a)
+  (** c a, each non-zero of a times the number c: MATLAB's c * A. A product that is 0.0 is not kept.
+
+        Dense(Scale(2.0, Eye(2))) --> [2.0 0.0; 0.0 2.0]
+        Scale(0.0, Eye(2)).Nnz --> 0 *)
+  checked(a, "sparse.Scale", "a")
+  if not value.IsNumber(c)
+    bug.Panic("sparse.Scale: c is $(brief(c)); give a number.")
+  end
+  squeezed(a.Rows, a.Cols, a.start, a.index, a.values * c)
+end
+
+defn Transpose(a)
+  (** The transpose of a, its rows made columns: MATLAB's A' (for real numbers) and scipy's A.T.
+
+        Dense(Transpose(Of([1], [2], [5.0], 1, 2))) --> [0.0; 5.0] *)
+  checked(a, "sparse.Transpose", "a")
+  rows = a.Rows
+  cols = a.Cols
+  as = a.start
+  ai = a.index
+  av = a.values
+  nnz = a.Nnz
+  start = list.Fill(0, rows + 1)
+  for q in 1..nnz
+    start[ai[q]] += 1
+  end
+  p = 1
+  for i in 1..rows
+    m = start[i]
+    start[i] = p
+    p += m
+  end
+  start[rows + 1] = p
+  next = start[1..rows]
+  index = list.Fill(0, nnz)
+  values = matrix.Zeros(nnz)
+  for j in 1..cols
+    for q in as[j]..as[j + 1] - 1
+      i = ai[q]
+      t = next[i]
+      index[t] = j
+      values[t] = av[q]
+      next[i] = t + 1
+    end
+  end
+  Matrix(cols, rows, nnz, start, index, values)
+end
+
+defn Dense(a)
+  (** a as a dense matrix of Rows × Cols floats, the 0.0s written: MATLAB's full(A), scipy's A.toarray(). It takes
+      8 bytes a cell: past the memory limit of the program, it stops before it allocates them.
+
+        Dense(Eye(2)) --> [1.0 0.0; 0.0 1.0] *)
+  checked(a, "sparse.Dense", "a")
+  rows = a.Rows
+  as = a.start
+  ai = a.index
+  av = a.values
+  cols = a.Cols
+  d = matrix.Zeros(rows, cols)
+  for j in 1..cols
+    base = (j - 1) * rows
+    for q in as[j]..as[j + 1] - 1
+      d[base + ai[q]] = av[q]
+    end
+  end
+  d
+end
+
+defn Get(a, i, j)
+  (** The cell of a at row i and column j, 0.0 where it holds no non-zero: MATLAB's A(i, j), scipy's A[i, j] (from
+      0). A binary search within column j.
+
+        Get(Of([2], [1], [7.0], 2, 2), 2, 1) --> 7.0
+        Get(Eye(2), 1, 2) --> 0.0 *)
+  checked(a, "sparse.Get", "a")
+  if not (value.IsInt(i) and i >= 1 and i <= a.Rows)
+    bug.Panic("sparse.Get: i is $(brief(i)); give a whole number from 1 to $(a.Rows).")
+  end
+  if not (value.IsInt(j) and j >= 1 and j <= a.Cols)
+    bug.Panic("sparse.Get: j is $(brief(j)); give a whole number from 1 to $(a.Cols).")
+  end
+  low = a.start[j]
+  high = a.start[j + 1] - 1
+  while low <= high
+    mid = math.Div(low + high, 2)
+    r = a.index[mid]
+    if r == i
+      return a.values[mid]
+    end
+    if r < i
+      low = mid + 1
+    else
+      high = mid - 1
+    end
+  end
+  0.0
+end
+
+defn dense(x, rows, where, name)
+  (** {X, Cols, Row}: x as floats, with its count of columns, when x is a matrix of numbers of that many rows, or a row
+      of that many numbers (Row true, one column); else a panic that names x. *)
+  if not value.IsArray(x)
+    bug.Panic("$where: $name is $(brief(x)); give an array of $rows numbers, or a matrix of $rows rows.")
+  end
+  dims = value.Size(x)
+  if value.Len(dims) > 2 or not (dims[1] == rows or dims[1] == 1 and value.Len(x) == rows)
+    bug.Panic("$where: $name is an array of size $(brief(dims)); give an array of $rows numbers, or a matrix of $rows rows.")
+  end
+  kind = col.Kind(x)
+  if not (kind == "float" or kind == "int")
+    for k in 1..value.Len(x)
+      if not value.IsNumber(x[k])
+        bug.Panic("$where: $name[$k] is $(brief(x[k])); give numbers.")
+      end
+    end
+  end
+  row = dims[1] != rows
+  {X: if kind == "float" x else x * 1.0 end, Cols: if row 1 else value.Len(x) / rows end, Row: row}
+end
+
+defn Mul(a, x)
+  (** The product a x: x a matrix of a.Cols rows gives a matrix of a.Rows rows, as many columns; x a row of a.Cols
+      numbers gives a row of a.Rows numbers. MATLAB's A * x, scipy's A @ x. Each non-zero costs one multiplication and
+      one addition.
+
+        a = Of([1, 2, 2], [1, 1, 2], [4.0, 1.0, 3.0], 2, 2)
+        Mul(a, [1.0, 2.0]) --> [4.0, 7.0]
+        Mul(a, [1.0; 2.0]) --> [4.0; 7.0] *)
+  checked(a, "sparse.Mul", "a")
+  t = dense(x, a.Cols, "sparse.Mul", "x")
+  rows = a.Rows
+  if t.Row
+    return product(a.start, a.index, a.values, t.X, a.Cols, matrix.Zeros(1, rows))
+  end
+  k = math.Div(value.Len(t.X), a.Cols)
+  if k == 1
+    return product(a.start, a.index, a.values, t.X, a.Cols, matrix.Zeros(rows, 1))
+  end
+  products(a.start, a.index, a.values, t.X, a.Cols, rows, k)
+end
+
+defn product(start, index, values, x, cols, y)
+  (** y + a x, a in its columns, for one x. *)
+  for j in 1..cols
+    xj = x[j]
+    for q in start[j]..start[j + 1] - 1
+      i = index[q]
+      y[i] = y[i] + values[q] * xj
+    end
+  end
+  y
+end
+
+defn products(start, index, values, x, cols, rows, k)
+  (** a x for x of k columns. *)
+  y = matrix.Zeros(rows, k)
+  for c in 1..k
+    ox = (c - 1) * cols
+    oy = (c - 1) * rows
+    for j in 1..cols
+      xj = x[ox + j]
+      for q in start[j]..start[j + 1] - 1
+        i = oy + index[q]
+        y[i] = y[i] + values[q] * xj
+      end
+    end
+  end
+  y
+end
