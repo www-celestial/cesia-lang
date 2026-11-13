@@ -131,12 +131,37 @@ text.Number("12 apples") -->
 
 ### The text of a value
 
-[value.Text] goes the other way: the text of any value, as [io.Print] shows it.
+[value.Text] goes the other way: the text of any value, as [io.Print] shows it. `"$x"` is `value.Text(x)`.
 
 ```cesia
 value.Text(42) -->
 value.Text([1, 2]) -->
 ```
+
+For a preview, a second argument, `most`, stops the text at that many characters (code points, as [value.Len] counts
+them): the whole text when it has at most `most` characters, else its first `most - 1` characters and an ellipsis, `…`,
+so `most` characters in all.
+
+```cesia
+value.Text([1, 2, 3], 9) -->
+value.Text([1, 2, 3], 5) -->
+value.Text("héllo", 3) -->
+```
+
+Written plainly, with [value.Len] and [text.Slice], the rule is this; `value.Text(x, most)` gives the same text:
+
+```cesia
+t = "$([1, 2, 3])"
+most = 5
+if value.Len(t) <= most t else "$(text.Slice(1, most - 1, t))…" end -->
+```
+
+But the plain form makes the whole text first, and `value.Text(x, most)` makes only its start: the work stops once the
+text is full, so a preview of a list of a million numbers, of a long text read from the network or of a deeply nested
+value takes what its first `most` characters take, not what the whole value would. `value.Text(xs, 80)` of a list of
+10^6 floats takes 12 µs, where `"$xs"` takes 0.94 s. A text that isn't valid UTF-8 (see [Valid UTF-8](#valid-utf-8)) can
+hold bytes that count no character; its text stops at 4 × `most` bytes as well, which a UTF-8 text never reaches before
+`most` characters.
 
 ### Decimals
 
