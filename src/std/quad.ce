@@ -3,33 +3,12 @@
     interval, QAGP when points names where f jumps or is singular, QAGI when a bound is infinite. The chapter Numerical
     methods of the book says what it promises, and where each part comes from. *)
 use std/bug
-use std/columns as col
 use std/list
 use std/math
-use std/matrix
 use std/result
 use std/value
 
-eps = 2.220446049250313e-16      (** the distance from 1.0 to the next float, 2^-52 *)
-tiny = 2.2250738585072014e-308   (** the smallest normal float *)
-huge = 1.7976931348623157e308    (** the largest float *)
-depth = 50                       (** the most areas the table of the epsilon algorithm keeps *)
-
-(* The Gauss–Kronrod rules on [-1, 1]. Kronrod's 2n + 1 points are the n points of Gauss's rule and the n + 1 zeros of
-   Stieltjes's polynomial E_{n+1}, orthogonal to x^k P_n(x) for k = 0..n, P_n Legendre's polynomial. The rule of 21
-   points (n = 10) integrates exactly every polynomial of degree 31 or less, the 10 points of Gauss's rule those of
-   degree 19 or less; the rule of 15 points (n = 7), 23 and 13. The values were computed for Cesia, from E_{n+1} in
-   exact rational numbers and from its zeros to 100 digits, then rounded here to 22 digits.
-
-   Each array starts at the middle, 0, then lists the positive points x, each standing for the pair -x and x, in the
-   order in which QUADPACK adds them: for 21 points, Gauss's first, then Kronrod's own; for 15, from the end inwards.
-   The weights of Gauss's rule are 0 at Kronrod's own points. *)
-x21 = [0.0, 0.9739065285171717200780, 0.8650633666889845107321, 0.6794095682990244062343, 0.4333953941292471907993, 0.1488743389816312108848, 0.9956571630258080807355, 0.9301574913557082260012, 0.7808177265864168970637, 0.5627571346686046833390, 0.2943928627014601981311]
-w21 = [0.1494455540029169056649, 0.03255816230796472747882, 0.07503967481091995276704, 0.1093871588022976418992, 0.1347092173114733259281, 0.1477391049013384913748, 0.01169463886737187427806, 0.05475589657435199603138, 0.09312545458369760553507, 0.1234919762620658510780, 0.1427759385770600807971]
-g21 = [0.0, 0.06667134430868813759357, 0.1494513491505805931458, 0.2190863625159820439955, 0.2692667193099963550912, 0.2955242247147528701739, 0.0, 0.0, 0.0, 0.0, 0.0]
-x15 = [0.0, 0.9914553711208126392069, 0.9491079123427585245262, 0.8648644233597690727897, 0.7415311855993944398639, 0.5860872354676911302941, 0.4058451513773971669066, 0.2077849550078984676007]
-w15 = [0.2094821410847278280130, 0.02293532201052922496373, 0.06309209262997855329070, 0.1047900103222501838399, 0.1406532597155259187452, 0.1690047266392679028266, 0.1903505780647854099133, 0.2044329400752988924142]
-g15 = [0.4179591836734693877551, 0.0, 0.1294849661688696932706, 0.0, 0.2797053914892766679015, 0.0, 0.3818300505051189449504, 0.0]
+eps = 2.220446049250313e-16   (** the distance from 1.0 to the next float, 2^-52 *)
 
 defn Integral(f, a, b, rtol = 1.0e-10, atol = 1.0e-12, points = [], limit = 1000)
   (** The integral of f from a to b, in an Ok of {Value, Error, Evaluations, Intervals}: f takes one number and gives
@@ -85,19 +64,19 @@ defn Integral(f, a, b, rtol = 1.0e-10, atol = 1.0e-12, points = [], limit = 1000
     end
     way = if lo == -math.Inf and hi == math.Inf 2 else if hi == math.Inf 1 else -1 end
     from = if way == 1 lo else if way == -1 hi else 0.0 end
-    return signed(adapt(f, way, from, [0.0, 1.0], rtol, atol, limit, false), sign)
+    return signed(outcome(engine(f, way, from, [0.0, 1.0], rtol, atol, limit, false), way), sign)
   end
   if not isFinite(hi - lo)
     bug.Panic("quad.Integral: b - a is $(hi - lo), too large for a float; give math.Inf for an infinite bound.")
   end
   if value.Len(inner) == 0
-    return adapt(f, 0, 0.0, [1.0 * a, 1.0 * b], rtol, atol, limit, false)
+    return outcome(engine(f, 0, 0.0, [1.0 * a, 1.0 * b], rtol, atol, limit, false), 0)
   end
   ends = list.Concat([lo], list.Concat(inner, [hi]))
   if limit < value.Len(ends) - 1
     bug.Panic("quad.Integral: limit is $limit, and points makes $(value.Len(ends) - 1) pieces; give limit of at least that.")
   end
-  signed(adapt(f, 0, 0.0, ends, rtol, atol, limit, true), sign)
+  signed(outcome(engine(f, 0, 0.0, ends, rtol, atol, limit, true), 0), sign)
 end
 
 defn brief(v)
@@ -156,450 +135,30 @@ defn signed(r, sign)
   end
 end
 
-defn bad(ys, xs)
-  (** The text of the error for the first value of ys that is no finite number, f at xs of the same place, or missing
-      when they all are. *)
-  for i in 1..value.Len(ys)
-    if not isFinite(ys[i])
-      return "quad.Integral: f($(xs[i])) is $(brief(ys[i])), not a finite number."
-    end
+defn outcome(r, way)
+  (** The Ok or the Err of what the native engine gives: [code, value, error, calls, pieces, tolerance, place, given].
+      The engine is QUADPACK's adaptive strategy, the same for QAGS (one piece), QAGP (the pieces between points) and QAGI
+      (way not 0: the rule of 15 points on (0, 1]), as de Doncker (1978) made it and the book of 1983 gives it: the pieces
+      kept in the order of their errors, the one of largest error cut in two, and, when that one is among the smallest,
+      as near a singularity, the larger pieces cut first, then the sum of all of them added to the sequence that Wynn's
+      epsilon algorithm extrapolates. It runs as native code, which calls f back: the same method in Cesia spent six
+      times as long on its own steps as on f. *)
+  code = r[1]
+  if code == 0
+    return result.Ok({Value: r[2], Error: r[3], Evaluations: r[4], Intervals: r[5]})
   end
-  missing
+  near = if way == 2 "±$(r[7])" else "$(r[7])" end
+  if code == 6
+    return failed("quad.Integral: f($(r[7])) is $(brief(r[8])), not a finite number.", r[2], r[3])
+  end
+  if code == 7
+    return failed("quad.Integral: the values of f near $near are too large: their sum overflows.", r[2], r[3])
+  end
+  if code == 8
+    return failed("quad.Integral: f($(r[7])) / t^2 overflows, t = $(r[8]), after the change of variable x = a + (1 - t) / t: the integral likely diverges.", r[2], r[3])
+  end
+  ended(code, r[2], r[3], r[4], r[5], r[6], near)
 end
-
-defn numeric(ys)
-  (** Does the array ys hold numbers only? *)
-  kind = col.Kind(ys)
-  kind == "float" or kind == "int"
-end
-
-defn place(way, from, t)
-  (** The x of a t of (0, 1] for an infinite bound, x = from + (1 - t) / t or from - (1 - t) / t; for way 2, the
-      positive one of the two places. *)
-  if way == -1 from - (1.0 - t) / t else from + (1.0 - t) / t end
-end
-
-defn estimate(ys, zs, h, kw, gw)
-  (** The rule's answer on its piece: [its integral, the error estimate of QUADPACK, the integral of |f|, the integral of
-      |f - its mean|], or missing when one isn't finite. ys holds f at the middle then at the points -x of the pairs,
-      zs 0 then f at their x: the sums take each pair as one term, f(-x) + f(x), in QUADPACK's order, so that an odd f
-      on an interval centred on 0 gives exactly 0. kw and gw are the weights of the rules of Kronrod and Gauss on
-      [-1, 1], h half the piece.
-
-      The error estimate is |K - G| scaled by the variation of f on the piece, I_asc, the integral of |f - mean|:
-      E = I_asc min(1, (200 |K - G| / I_asc)^1.5). Where the two rules agree well, E is far below |K - G|, as the
-      Kronrod rule is much better than the Gauss rule it estimates its error from. E is at least 50 eps times the
-      integral of |f|, what roundoff can't go below. *)
-  if not (numeric(ys) and numeric(zs))
-    return missing
-  end
-  pairs = ys + zs
-  resk = list.Sum(kw * pairs)
-  resg = list.Sum(gw * pairs)
-  ah = math.Abs(h)
-  resabs = list.Sum(kw * (math.Abs(ys) + math.Abs(zs))) * ah
-  half = 0.5 * resk
-  dev = math.Abs(ys - half) + math.Abs(zs - half)
-  dev[1] = math.Abs(ys[1] - half)
-  resasc = list.Sum(kw * dev) * ah
-  if not (resabs - resabs == 0.0 and resasc - resasc == 0.0)
-    return missing   (* a NaN or an infinity among the values, or a sum that overflows: resasc is finite only if resk is *)
-  end
-  err = math.Abs((resk - resg) * h)
-  if resasc != 0.0 and err != 0.0
-    r = 200.0 * err / resasc
-    err = resasc * (if r < 1.0 r ^ 1.5 else 1.0 end)
-  end
-  if resabs > tiny / (50.0 * eps)
-    floor = 50.0 * eps * resabs
-    err = if floor > err floor else err end
-  end
-  [resk * h, err, resabs, resasc]
-end
-
-defn rule21(f, a, b)
-  (** The rule of 21 points on [a, b], as estimate gives it, or a text that says why f gave no finite number. *)
-  c = 0.5 * (a + b)
-  h = 0.5 * (b - a)
-  hx = h * x21
-  lefts = c - hx
-  rights = c + hx
-  ys = matrix.Zeros(1, 11)
-  zs = matrix.Zeros(1, 11)
-  ys[1] = f(c)
-  for i in 2..11
-    ys[i] = f(lefts[i])
-    zs[i] = f(rights[i])
-  end
-  r = estimate(ys, zs, h, w21, g21)
-  if not value.IsMissing(r)
-    return r
-  end
-  why = bad(ys, lefts)
-  if value.IsMissing(why)
-    why = bad(zs, rights)
-  end
-  if value.IsMissing(why) "quad.Integral: the values of f near $c are too large: their sum overflows." else why end
-end
-
-defn rule15(f, way, from, a, b)
-  (** The rule of 15 points on [a, b] inside (0, 1], for an infinite bound: t there is x = from + (1 - t) / t, or
-      from - (1 - t) / t for way -1, and dx = dt / t² in size; with way 2, f(x) + f(-x) from 0. *)
-  c = 0.5 * (a + b)
-  h = 0.5 * (b - a)
-  ht = h * x15
-  lefts = c - ht
-  rights = c + ht
-  xl = place(way, from, lefts)
-  xr = place(way, from, rights)
-  ys = matrix.Zeros(1, 8)
-  zs = matrix.Zeros(1, 8)
-  ys[1] = f(xl[1])
-  for i in 2..8
-    ys[i] = f(xl[i])
-    zs[i] = f(xr[i])
-  end
-  us = ys
-  vs = zs
-  if way == 2
-    us = matrix.Zeros(1, 8)
-    vs = matrix.Zeros(1, 8)
-    us[1] = f(-xl[1])
-    for i in 2..8
-      us[i] = f(-xl[i])
-      vs[i] = f(-xr[i])
-    end
-  end
-  if numeric(ys) and numeric(zs) and numeric(us) and numeric(vs)
-    if way == 2
-      ys = ys + us
-      zs = zs + vs
-    end
-    r = estimate(ys / lefts / lefts, zs / rights / rights, h, w15, g15)
-    if not value.IsMissing(r)
-      return r
-    end
-  end
-  why = bad(ys, xl)
-  if value.IsMissing(why)
-    why = bad(zs, xr)
-  end
-  if value.IsMissing(why) and way == 2
-    why = bad(us, -xl)
-    if value.IsMissing(why)
-      why = bad(vs, -xr)
-    end
-  end
-  if value.IsMissing(why) "quad.Integral: f(x) / t^2 overflows near x = $(xl[1]), t = $c, after the change of variable x = a + (1 - t) / t: the integral likely diverges." else why end
-end
-
-defn adapt(f, way, from, ends, rtol, atol, limit, byLevel)
-  (** QUADPACK's adaptive strategy, the same for QAGS (one piece), QAGP (the pieces between points; byLevel) and QAGI
-      (way not 0: the rule of 15 points on (0, 1]), as de Doncker (1978) made it and the book of 1983 gives it.
-
-      The pieces are kept in the order of their error estimates. Each step cuts the piece of largest error in two, and
-      the sum of the errors falls. When the piece of largest error is one of the smallest, as near a singularity, the
-      method first cuts the larger pieces until their errors are below the tolerance, then adds the sum of all the
-      pieces, the area, to a sequence whose limit the epsilon algorithm estimates: each such sum stops one level
-      closer to the singularity. "Large" means wider than small, which halves at each extrapolation, or, with
-      byLevel, cut fewer times than levmax.
-
-      Its tests of roundoff count the steps where cutting a piece changed its integral by under 1e-5 of it while its
-      error didn't fall below 0.99 of what it was (iroff1 before extrapolation, iroff2 after), and those where cutting
-      made the error grow (iroff3). *)
-  n0 = value.Len(ends) - 1
-  points = if way == 0 21 else if way == 2 30 else 15 end
-  size = if limit < 16 limit else 16 end
-  size = if size < n0 + 1 n0 + 1 else size end
-  al = matrix.Zeros(1, size)   (* the left ends of the pieces *)
-  bl = matrix.Zeros(1, size)   (* their right ends *)
-  rl = matrix.Zeros(1, size)   (* their integrals *)
-  el = matrix.Zeros(1, size)   (* their error estimates *)
-  lv = list.Fill(0, size)      (* how many times each was cut *)
-  order = list.Fill(0, size)   (* the pieces by error, the largest first *)
-  first = 0.0
-  firstErr = 0.0
-  defabs = 0.0
-  resasc = 0.0
-  saturated = list.Fill(false, n0)   (* the first pieces whose estimate is |f - mean| itself: QAGP cuts them early *)
-  for i in 1..n0
-    r = if way == 0 rule21(f, ends[i], ends[i + 1]) else rule15(f, way, from, ends[i], ends[i + 1]) end
-    if value.IsText(r)
-      return failed(r, math.Nan, math.Inf)
-    end
-    al[i] = ends[i]
-    bl[i] = ends[i + 1]
-    rl[i] = r[1]
-    el[i] = r[2]
-    first = first + r[1]
-    firstErr = firstErr + r[2]
-    defabs = defabs + r[3]
-    resasc = r[4]
-    order[i] = i
-    saturated[i] = r[2] == r[4] and r[2] != 0.0
-  end
-  errsum = firstErr
-  if byLevel
-    errsum = 0.0
-    for i in 1..n0
-      if saturated[i]
-        el[i] = firstErr
-      end
-      errsum = errsum + el[i]
-    end
-    order = byError(order, el, n0)
-  end
-  ier = 0
-  errbnd = max2(atol, rtol * math.Abs(first))
-  if firstErr <= 100.0 * eps * defabs and firstErr > errbnd
-    ier = 2
-  end
-  done = if byLevel firstErr <= errbnd else firstErr <= errbnd and firstErr != resasc or firstErr == 0.0 end
-  if done
-    return result.Ok({Value: first, Error: firstErr, Evaluations: points * n0, Intervals: n0})
-  end
-  if ier == 0 and limit == n0
-    ier = 1
-  end
-  if ier != 0
-    return ended(ier, first, firstErr, points * n0, n0, errbnd, 0.0)
-  end
-  table = matrix.Zeros(1, depth + 2)   (* the sequence of areas the epsilon algorithm extrapolates *)
-  table[1] = first
-  count = if byLevel 1 else 2 end
-  last3 = [0.0, 0.0, 0.0]
-  calls = 0
-  maxerr = order[1]
-  errmax = el[maxerr]
-  area = first
-  abserr = huge
-  best = first
-  nrmax = 1
-  ktmin = 0
-  extrap = false
-  noext = false
-  iroff1 = 0
-  iroff2 = 0
-  iroff3 = 0
-  ierro = 0
-  ksgn = if math.Abs(first) >= (1.0 - 50.0 * eps) * defabs 1 else -1 end
-  erlarg = errsum
-  ertest = errbnd
-  correc = 0.0
-  small = math.Abs(ends[n0 + 1] - ends[1]) * 0.375
-  levmax = 1
-  last = n0
-  cut = 0.0   (* the middle of the last piece cut *)
-  while true
-    last = last + 1
-    if last > size
-      al = list.Concat(al, matrix.Zeros(1, size))
-      bl = list.Concat(bl, matrix.Zeros(1, size))
-      rl = list.Concat(rl, matrix.Zeros(1, size))
-      el = list.Concat(el, matrix.Zeros(1, size))
-      lv = list.Concat(lv, list.Fill(0, size))
-      order = list.Concat(order, list.Fill(0, size))
-      size = size + size
-    end
-    a1 = al[maxerr]
-    b1 = 0.5 * (al[maxerr] + bl[maxerr])
-    a2 = b1
-    b2 = bl[maxerr]
-    cut = b1
-    level = lv[maxerr] + 1
-    erlast = errmax
-    r1 = if way == 0 rule21(f, a1, b1) else rule15(f, way, from, a1, b1) end
-    if value.IsText(r1)
-      return failed(r1, area, errsum)
-    end
-    r2 = if way == 0 rule21(f, a2, b2) else rule15(f, way, from, a2, b2) end
-    if value.IsText(r2)
-      return failed(r2, area, errsum)
-    end
-    area12 = r1[1] + r2[1]
-    erro12 = r1[2] + r2[2]
-    errsum = errsum + erro12 - errmax
-    area = area + area12 - rl[maxerr]
-    if not (r1[4] == r1[2] or r2[4] == r2[2])
-      if math.Abs(rl[maxerr] - area12) <= 1.0e-5 * math.Abs(area12) and erro12 >= 0.99 * errmax
-        if extrap
-          iroff2 = iroff2 + 1
-        else
-          iroff1 = iroff1 + 1
-        end
-      end
-      if last > 10 and erro12 > errmax
-        iroff3 = iroff3 + 1
-      end
-    end
-    lv[maxerr] = level
-    lv[last] = level
-    errbnd = max2(atol, rtol * math.Abs(area))
-    if iroff1 + iroff2 >= 10 or iroff3 >= 20
-      ier = 2
-    end
-    if iroff2 >= 5
-      ierro = 3
-    end
-    if last == limit
-      ier = 1
-    end
-    if max2(math.Abs(a1), math.Abs(b2)) <= (1.0 + 100.0 * eps) * (math.Abs(a2) + 1000.0 * tiny)
-      ier = 4   (* the piece is too small to be cut again *)
-    end
-    (* The piece of larger error keeps the place of the one cut; the other is the new last. *)
-    if r2[2] > r1[2]
-      al[maxerr] = a2
-      al[last] = a1
-      bl[last] = b1
-      rl[maxerr] = r2[1]
-      rl[last] = r1[1]
-      el[maxerr] = r2[2]
-      el[last] = r1[2]
-    else
-      al[last] = a2
-      bl[maxerr] = b1
-      bl[last] = b2
-      rl[maxerr] = r1[1]
-      rl[last] = r2[1]
-      el[maxerr] = r1[2]
-      el[last] = r2[2]
-    end
-    s = inserted(order, el, limit, last, maxerr, nrmax)
-    order = s.Order
-    nrmax = s.Nrmax
-    maxerr = order[nrmax]
-    errmax = el[maxerr]
-    if errsum <= errbnd
-      return result.Ok({Value: list.Sum(rl[1..last]), Error: errsum, Evaluations: evaluations(points, n0, last), Intervals: last})
-    end
-    if ier != 0
-      break
-    end
-    if not byLevel and last == 2
-      small = math.Abs(ends[2] - ends[1]) * 0.375
-      erlarg = errsum
-      ertest = errbnd
-      table[2] = area
-    else if not noext
-      erlarg = erlarg - erlast
-      large = if byLevel level + 1 <= levmax else math.Abs(b1 - a1) > small end
-      if large
-        erlarg = erlarg + erro12
-      end
-      goOn = false   (* true: cut the next piece now, and extrapolate later *)
-      if not extrap
-        if (if byLevel lv[maxerr] + 1 <= levmax else math.Abs(bl[maxerr] - al[maxerr]) > small end)
-          goOn = true
-        else
-          extrap = true
-          nrmax = 2
-        end
-      end
-      if not goOn and ierro != 3 and erlarg > ertest
-        (* The smallest pieces have the largest errors: cut the larger ones first, from the largest error down, among
-           those that can still be cut before limit. *)
-        top = if last > 2 + math.Div(limit, 2) limit + 3 - last else last end
-        for k in nrmax..top
-          maxerr = order[nrmax]
-          errmax = el[maxerr]
-          if (if byLevel lv[maxerr] + 1 <= levmax else math.Abs(bl[maxerr] - al[maxerr]) > small end)
-            goOn = true
-            break
-          end
-          nrmax = nrmax + 1
-        end
-      end
-      if not goOn
-        count = count + 1
-        table[count] = area
-        stop = false
-        if not byLevel or count > 2
-          e = epsilon(table, count, last3, calls)
-          table = e.Table
-          count = e.Count
-          last3 = e.Last3
-          calls = e.Calls
-          ktmin = ktmin + 1
-          if ktmin > 5 and abserr < 1.0e-3 * errsum
-            ier = 5
-          end
-          if e.Error < abserr
-            ktmin = 0
-            abserr = e.Error
-            best = e.Value
-            correc = erlarg
-            ertest = max2(atol, rtol * math.Abs(e.Value))
-            if (if byLevel abserr < ertest else abserr <= ertest end)
-              stop = true
-            end
-          end
-          if count == 1
-            noext = true
-          end
-          if ier == 5
-            stop = true
-          end
-        end
-        if stop
-          break
-        end
-        maxerr = order[1]
-        errmax = el[maxerr]
-        nrmax = 1
-        extrap = false
-        small = small * 0.5
-        levmax = levmax + 1
-        erlarg = errsum
-      end
-    end
-  end
-  (* The end: the extrapolated value, or the sum of the pieces, whichever has the smaller relative error; then
-     QUADPACK's test of divergence, that the two agree to within a factor of 100 and that the error is below the area. *)
-  calls = evaluations(points, n0, last)
-  sum = abserr == huge
-  divergence = false
-  if not sum
-    if ier + ierro == 0
-      divergence = true
-    else
-      if ierro == 3
-        abserr = abserr + correc
-      end
-      if ier == 0
-        ier = 3
-      end
-      if best != 0.0 and area != 0.0
-        sum = abserr / math.Abs(best) > errsum / math.Abs(area)
-        divergence = not sum
-      else if abserr > errsum
-        sum = true
-      else if area != 0.0
-        divergence = true
-      end
-    end
-  end
-  if divergence and not (ksgn == -1 and max2(math.Abs(best), math.Abs(area)) <= defabs * 0.01)
-    if 0.01 > best / area or best / area > 100.0 or errsum > math.Abs(area)
-      ier = 6
-    end
-  end
-  if sum
-    best = list.Sum(rl[1..last])
-    abserr = errsum
-  end
-  if ier > 2
-    ier = ier - 1
-  end
-  if ier == 0
-    return result.Ok({Value: best, Error: abserr, Evaluations: calls, Intervals: last})
-  end
-  ended(ier, best, abserr, calls, last, errbnd, if way == 0 "$cut" else if way == 2 "±$(place(1, 0.0, cut))" else "$(place(way, from, cut))" end)
-end
-
-max2(a, b) = if a >= b a else b end
-
-evaluations(points, n0, last) = points * n0 + 2 * points * (last - n0)
 
 failed(message, v, e) = result.Err({Kind: "quad", Message: message, Value: v, Error: e})
 
@@ -617,144 +176,4 @@ defn ended(ier, v, e, calls, last, tol, near)
     "the integral looks divergent, or converges too slowly to be computed."
   end
   failed("quad.Integral: $why", v, e)
-end
-
-defn byError(order, el, n)
-  (** order[1..n] sorted so that the errors fall: QUADPACK's sort of the first pieces of QAGP. *)
-  for i in 1..n - 1
-    big = order[i]
-    at = i
-    for j in i + 1..n
-      if el[order[j]] >= el[big]
-        big = order[j]
-        at = j
-      end
-    end
-    if at != i
-      order[at] = order[i]
-      order[i] = big
-    end
-  end
-  order
-end
-
-defn inserted(order, el, limit, last, maxerr, nrmax)
-  (** The order of the pieces by error after maxerr was cut: maxerr holds the half of larger error, last the other.
-      Only the first `top` places are kept in order, as many as can still be cut before limit. Equal errors: a new one
-      goes first, unless it moved up past larger ones. Gives {Order, Nrmax}. *)
-  if last <= 2
-    order[1] = 1
-    order[2] = 2
-    return {Order: order, Nrmax: nrmax}
-  end
-  errmax = el[maxerr]
-  (* After a cut that made the error grow, maxerr may move up past the pieces skipped before it. *)
-  while nrmax > 1 and errmax > el[order[nrmax - 1]]
-    order[nrmax] = order[nrmax - 1]
-    nrmax = nrmax - 1
-  end
-  top = if last > math.Div(limit, 2) + 2 limit + 3 - last else last end
-  errmin = el[last]
-  i = nrmax + 1
-  while i <= top - 1 and errmax < el[order[i]]
-    order[i - 1] = order[i]
-    i = i + 1
-  end
-  if i > top - 1
-    order[top - 1] = maxerr
-    order[top] = last
-    return {Order: order, Nrmax: nrmax}
-  end
-  order[i - 1] = maxerr
-  k = top - 1
-  while k >= i and errmin >= el[order[k]]
-    order[k + 1] = order[k]
-    k = k - 1
-  end
-  order[k + 1] = last
-  {Order: order, Nrmax: nrmax}
-end
-
-defn epsilon(table, n, last3, calls)
-  (** One step of Wynn's epsilon algorithm (1956) on the sequence of areas: table[1..n] holds the two last ascending
-      diagonals of the table of even columns, interleaved, and table[n] the newest area. The new diagonal is made by
-      the cross rule of Wynn (1966), 1/(N - C) + 1/(S - C) = 1/(W - C) + 1/(E - C), which links the even columns
-      alone: the new element E from its neighbours. Of the new elements, Value is the one whose change from its
-      neighbours is smallest; Error, from the fourth call, is the sum of its distances to the last three Values, and at
-      least 5 eps |Value|. A column whose elements agree to the precision of floats ends the table there; so does one
-      where the rule would divide by almost 0. The table keeps at most depth areas. Gives {Table, Count, Last3, Calls,
-      Value, Error}. *)
-  calls = calls + 1
-  err = huge
-  res = table[n]
-  if n < 3
-    return {Table: table, Count: n, Last3: last3, Calls: calls, Value: res, Error: max2(err, 5.0 * eps * math.Abs(res))}
-  end
-  num = n
-  newelm = math.Div(n - 1, 2)
-  table[n + 2] = table[n]
-  table[n] = huge
-  k1 = n
-  for i in 1..newelm
-    e0 = table[k1 - 2]
-    e1 = table[k1 - 1]
-    e2 = table[k1 + 2]
-    e1abs = math.Abs(e1)
-    delta2 = e2 - e1
-    err2 = math.Abs(delta2)
-    tol2 = max2(math.Abs(e2), e1abs) * eps
-    delta3 = e1 - e0
-    err3 = math.Abs(delta3)
-    tol3 = max2(e1abs, math.Abs(e0)) * eps
-    if err2 <= tol2 and err3 <= tol3
-      (* e0, e1 and e2 agree to the last bits: the sequence has converged. *)
-      return {Table: table, Count: num, Last3: last3, Calls: calls, Value: e2, Error: max2(err2 + err3, 5.0 * eps * math.Abs(e2))}
-    end
-    e3 = table[k1]
-    table[k1] = e1
-    delta1 = e1 - e3
-    err1 = math.Abs(delta1)
-    tol1 = max2(e1abs, math.Abs(e3)) * eps
-    ss = 0.0
-    cut = err1 <= tol1 or err2 <= tol2 or err3 <= tol3
-    if not cut
-      ss = 1.0 / delta1 + 1.0 / delta2 - 1.0 / delta3
-      cut = math.Abs(ss * e1) <= 1.0e-4
-    end
-    if cut
-      n = i + i - 1
-      break
-    end
-    r = e1 + 1.0 / ss
-    table[k1] = r
-    k1 = k1 - 2
-    e = err2 + math.Abs(r - e2) + err3
-    if e <= err
-      err = e
-      res = r
-    end
-  end
-  (* Shift the table, so that its newest diagonal ends at table[n] again. *)
-  if n == depth
-    n = 2 * math.Div(depth, 2) - 1
-  end
-  ib = if math.Mod(num, 2) == 0 2 else 1 end
-  for i in 1..newelm + 1
-    table[ib] = table[ib + 2]
-    ib = ib + 2
-  end
-  if num != n
-    from = num - n + 1
-    for i in 1..n
-      table[i] = table[from + i - 1]
-    end
-  end
-  if calls < 4
-    last3[calls] = res
-    err = huge
-  else
-    err = math.Abs(res - last3[3]) + math.Abs(res - last3[2]) + math.Abs(res - last3[1])
-    last3 = [last3[2], last3[3], res]
-  end
-  {Table: table, Count: n, Last3: last3, Calls: calls, Value: res, Error: max2(err, 5.0 * eps * math.Abs(res))}
 end
