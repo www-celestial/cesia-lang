@@ -126,6 +126,13 @@ The words after the task go to its own program, after the words of its command: 
 get none, and a task that runs no program of its own takes none. Each word goes as it is, never through a shell. See
 [cesia.toml](toml.md).
 
+The tasks it needs run one after the other, each as a child of `cesia do`: one that ends with a code other than 0 stops
+it with that code, and one killed by a signal with 1. A stop signal, TERM or INT, that comes meanwhile goes on to the
+child, and `cesia do` ends with 1 once it ended, since the tasks after it didn't run. On Linux and macOS the last task
+then takes the place of `cesia do`, in the same process, as `exec` does in a shell: a supervisor such as systemd sees
+the program itself, stops it with one TERM, and gets its own exit code, as from `cesia run`; killed by a signal, the
+shell gives 128 and its number, 143 for TERM. Windows has no such `exec`: there the last task runs as a child too.
+
 ## cesia new
 
 ```bash

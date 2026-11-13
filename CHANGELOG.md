@@ -2,7 +2,15 @@
 
 ## 1.1.0
 
-Everything here is added: a program written for 1.0 runs as it did.
+Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.0 runs
+as it did.
+
+### Changed
+
+- On Linux and macOS, the last task of `cesia do` takes its place, in the same process (`exec`): systemd sees the
+  program itself, stops it with one TERM, and gets its own exit code, as from `cesia run`. Two exit codes change: a last
+  task killed by a signal gives the shell's 128 and its number, 143 for TERM, instead of 1; a last task that a TERM
+  stops cleanly, as a server does, gives its own code, 0, instead of 1. Windows keeps the last task as a child.
 
 ### Language
 

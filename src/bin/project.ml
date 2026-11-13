@@ -235,28 +235,45 @@ let spawn program arguments line =
      | Unix.WEXITED code -> code
      | Unix.WSIGNALED _ | Unix.WSTOPPED _ -> 1)
 
-let execute ?(extra = []) project task =
-  let code =
-    match task.command with
-    | Group | Run [] -> 0
-    | Run (program :: arguments) -> spawn program (arguments @ extra) (show (program :: arguments @ extra))
-    | File { path; allow; limit; watch; workers } ->
-      spawn Sys.executable_name
-        (("run" :: program_args project path allow limit watch workers) @ extra)
-        (show (words ~extra project task))
-  in
-  if code <> 0 then exit code;
-  (* What came after didn't run, so this isn't a success, even if the child ended with 0. *)
-  if !stopped then exit 1
+(* The last task becomes this process: a supervisor such as systemd stops one process, with one TERM, and gets the
+   program's own exit code, as from cesia run. Setting a signal back to its default runs the handler of one already
+   received, so a stop that came before ends cesia do here, and one that comes after does to it what it would do to the
+   program: none falls between the check and the exec. *)
+let become program arguments line =
+  Sys.set_signal Sys.sigint Sys.Signal_default;
+  Sys.set_signal Sys.sigterm Sys.Signal_default;
+  if !stopped then exit 1;
+  prerr_endline ("> " ^ line);
+  flush_all ();
+  try Unix.execvp program (Array.of_list (program :: arguments))
+  with Unix.Unix_error (e, _, _) -> stop 1 (Messages.project_cant_start (quote program) (Unix.error_message e))
 
-(* The words after the task's name go to its own program only, not to those of the tasks it needs. *)
+(* Windows has no exec that keeps the process: its last task stays a child, as the tasks it needs. *)
+let execute ~last ?(extra = []) project task =
+  let program =
+    match task.command with
+    | Group | Run [] -> None
+    | Run (program :: arguments) -> Some (program, arguments @ extra)
+    | File { path; allow; limit; watch; workers } ->
+      Some (Sys.executable_name, ("run" :: program_args project path allow limit watch workers) @ extra)
+  in
+  match program with
+  | Some (program, arguments) when last && not Sys.win32 -> become program arguments (show (words ~extra project task))
+  | _ ->
+    let code = Option.fold ~none:0 ~some:(fun (p, a) -> spawn p a (show (words ~extra project task))) program in
+    if code <> 0 then exit code;
+    (* What came after didn't run, so this isn't a success, even if the child ended with 0. *)
+    if !stopped then exit 1
+
+(* The words after the task's name go to its own program only, not to those of the tasks it needs, which run before it. *)
 let perform project by_name name extra =
   let seen = Hashtbl.create 16 in
   let rec visit task =
     if not (Hashtbl.mem seen task.name) then begin
       Hashtbl.replace seen task.name ();
       List.iter (fun need -> visit (Hashtbl.find by_name need)) task.needs;
-      execute ~extra:(if String.equal task.name name then extra else []) project task
+      let last = String.equal task.name name in
+      execute ~last ~extra:(if last then extra else []) project task
     end
   in
   visit (Hashtbl.find by_name name)
