@@ -257,6 +257,117 @@ let transpose ctx (a : t array) =
        Array { rows = x.cols; cols = x.rows; store = V out; a_owned = true; a_tip = true; dims = [||] })
   | v -> v
 
+(* The first n columns of a matrix of numbers, n its rows, as floats: a copy the elimination can write, or None. *)
+let leading ctx v =
+  match v with
+  | Array a when Array.length a.dims = 0 && a.rows <= a.cols ->
+    let n = a.rows * a.rows in
+    Runtime.reserve ctx n;
+    let d = Float.Array.create n in
+    let rec fill k =
+      k >= n
+      || (match Value.elt a k with
+          | Int i -> Float.Array.set d k (float_of_int i); fill (k + 1)
+          | Float x -> Float.Array.set d k x; fill (k + 1)
+          | _ -> false)
+    in
+    if fill 0 then Some (a.rows, d) else None
+  | _ -> None
+
+(* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
+   of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
+   it that makes its element 0, the multiplier kept there. The operations of the textbook in its order, as num's code
+   in Cesia did them, so the same bits. {Singular, Lu, Perm, Sign}, Singular when a pivot is under 1e-14 in absolute
+   value; or missing when m is no matrix of numbers with as many columns as rows or more. *)
+let lu_factor ctx (a : t array) =
+  match leading ctx a.(0) with
+  | None -> Missing
+  | Some (n, d) ->
+    Runtime.pay ctx ((n * n * n / 3) + n);
+    let get r c = Float.Array.get d ((c * n) + r) and set r c x = Float.Array.set d ((c * n) + r) x in
+    let perm = Array.init n (fun k -> k + 1) and sign = ref 1. in
+    let rec go col =
+      col >= n
+      ||
+      let pivot = ref col in
+      for r = col + 1 to n - 1 do
+        if Float.abs (get r col) > Float.abs (get !pivot col) then pivot := r
+      done;
+      Float.abs (get !pivot col) >= 1e-14
+      && begin
+        let p = !pivot in
+        if p <> col then begin
+          sign := -. !sign;
+          for c = 0 to n - 1 do
+            let x = get col c in
+            set col c (get p c);
+            set p c x
+          done;
+          let k = perm.(col) in
+          perm.(col) <- perm.(p);
+          perm.(p) <- k
+        end;
+        for r = col + 1 to n - 1 do
+          let f = get r col /. get col col in
+          set r col f;
+          if f <> 0. then for c = col + 1 to n - 1 do set r c (get r c -. (f *. get col c)) done
+        done;
+        go (col + 1)
+      end
+    in
+    let ok = go 0 in
+    Trie.record (Trie.names [| "Singular"; "Lu"; "Perm"; "Sign" |])
+      [| Value.of_bool (not ok); Arrays.of_float n n d; Arrays.of_ints 1 n perm; Float (if ok then !sign else 0.) |]
+
+(* The x of m x = b from lu_factor's Lu and Perm, by two triangular solves: b an array of n numbers, a row or a column,
+   gives x in its shape; b a matrix of n rows, x with a column for each of its columns. Missing for another b. *)
+let lu_solve ctx (a : t array) =
+  match a.(0), a.(1), a.(2) with
+  | Array l, Array p, Array b when Array.length b.dims = 0 && l.rows = l.cols && p.rows * p.cols = l.rows ->
+    let n = l.rows in
+    let vector = b.rows * b.cols = n && (b.rows = 1 || b.cols = 1) in
+    if (not vector) && b.rows <> n then Missing
+    else begin
+      let cols = if vector then 1 else b.cols in
+      Runtime.reserve ctx (n * cols);
+      let x = Float.Array.create (n * cols) in
+      let lu = floats ctx "Solve" a.(0) in
+      let at r c = Float.Array.get lu ((c * n) + r) in
+      let perm = Array.init n (fun k -> match Value.elt p k with Int i when i >= 1 && i <= n -> i - 1 | _ -> -1) in
+      let rec fill k =
+        k >= n * cols
+        || (let i = perm.(k mod n) in
+            i >= 0
+            && (match Value.elt b ((k / n * n) + i) with
+                | Int v -> Float.Array.set x k (float_of_int v); fill (k + 1)
+                | Float v -> Float.Array.set x k v; fill (k + 1)
+                | _ -> false))
+      in
+      if not (fill 0) then Missing
+      else begin
+        Runtime.pay ctx (n * n * cols);
+        for c = 0 to cols - 1 do
+          let o = c * n in
+          for col = 0 to n - 2 do
+            let xc = Float.Array.get x (o + col) in
+            for r = col + 1 to n - 1 do
+              let f = at r col in
+              if f <> 0. then Float.Array.set x (o + r) (Float.Array.get x (o + r) -. (f *. xc))
+            done
+          done;
+          for r = n - 1 downto 0 do
+            let s = ref (Float.Array.get x (o + r)) in
+            for k = r + 1 to n - 1 do
+              s := !s -. (at r k *. Float.Array.get x (o + k))
+            done;
+            Float.Array.set x (o + r) (!s /. at r r)
+          done
+        done;
+        if vector then Arrays.of_float b.rows b.cols x else Arrays.of_float n cols x
+      end
+    end
+  | _ -> Missing
+
 let sum ctx v =
   match v with
   | Array ({ rows; cols; store = F _; _ } as x) ->
@@ -740,6 +851,7 @@ let packages =
                 Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
       "Pi", Float (4. *. atan 1.);
       "Nan", Float nan ];
+    "num", [ "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
       "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));

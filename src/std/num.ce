@@ -141,42 +141,13 @@ defn factor(m)
   (** Gaussian elimination with partial pivoting, in the order of the textbook: at each column the row of the largest
       element in absolute value comes up, then each row below loses the multiple of it that makes its element 0. The
       multipliers are kept where those zeros would be. {Singular, Lu, Perm, Sign}: Singular when a pivot is under 1e-14
-      in absolute value; Perm, the rows of m in the order of the elimination; Sign, that of the permutation. *)
-  n = value.Size(m, 1)
-  perm = [k for k in 1..n]
-  sign = 1.0
-  for col in 1..n
-    pivot = col
-    for r in col + 1..n
-      if math.Abs(m[r, col]) > math.Abs(m[pivot, col])
-        pivot = r
-      end
-    end
-    if math.Abs(m[pivot, col]) < 1e-14
-      return {Singular: true, Lu: m, Perm: perm, Sign: 0.0}
-    end
-    if pivot != col
-      sign = -sign
-      for c in 1..n
-        t = m[col, c]
-        m[col, c] = m[pivot, c]
-        m[pivot, c] = t
-      end
-      k = perm[col]
-      perm[col] = perm[pivot]
-      perm[pivot] = k
-    end
-    for r in col + 1..n
-      f = m[r, col] / m[col, col]
-      m[r, col] = f
-      if f != 0.0
-        for c in col + 1..n
-          m[r, c] = m[r, c] - f * m[col, c]
-        end
-      end
-    end
+      in absolute value; Perm, the rows of m in the order of the elimination; Sign, that of the permutation. The work is
+      luFactor's, native code, on the square of the first columns of m; a panic when m is no matrix of numbers. *)
+  t = luFactor(m)
+  if value.IsMissing(t)
+    bug.Panic("num: m is $(brief(m)); give a square matrix of numbers.")
   end
-  {Singular: false, Lu: m, Perm: perm, Sign: sign}
+  t
 end
 
 struct LuFactors
@@ -205,12 +176,14 @@ defn Lu(m)
   if value.Len(dims) != 2 or dims[1] != dims[2] or dims[1] == 0
     bug.Panic("num.Lu: m is $(brief(m)); give a square matrix of numbers.")
   end
-  for k in 1..value.Len(m)
-    if not value.IsNumber(m[k])
-      bug.Panic("num.Lu: m[$k] is $(brief(m[k])); give a square matrix of numbers.")
+  t = luFactor(m)
+  if value.IsMissing(t)
+    for k in 1..value.Len(m)
+      if not value.IsNumber(m[k])
+        bug.Panic("num.Lu: m[$k] is $(brief(m[k])); give a square matrix of numbers.")
+      end
     end
   end
-  t = factor(m)
   if t.Singular singular() else result.Ok(LuFactors(t.Lu, t.Perm, t.Sign)) end
 end
 
@@ -227,60 +200,9 @@ defn (f LuFactors) Solve(b)
 
         f = Lu(matrix.Reshape([2, 2], [2.0, 1.0, 1.0, 3.0])).Value
         f.Solve([3.0; 5.0]) --> [0.8; 1.4] *)
-  a = f.lu
-  p = f.perm
-  n = value.Len(p)
-  dims = if value.IsArray(b) value.Size(b) else [] end
-  if value.Len(dims) == 2 and value.Len(b) == n and (dims[1] == 1 or dims[2] == 1)
-    x = matrix.Zeros(dims[1], dims[2])
-    for i in 1..n
-      x[i] = b[p[i]]
-    end
-    for c in 1..n - 1
-      xc = x[c]
-      for r in c + 1..n
-        l = a[r, c]
-        if l != 0.0
-          x[r] = x[r] - l * xc
-        end
-      end
-    end
-    for r in list.Range(n, 1, step = -1)
-      s = x[r]
-      for k in r + 1..n
-        s = s - a[r, k] * x[k]
-      end
-      x[r] = s / a[r, r]
-    end
-    return x
-  end
-  if value.Len(dims) != 2 or dims[1] != n
-    bug.Panic("LuFactors.Solve: b is $(brief(b)); give $n numbers, or a matrix of $n rows.")
-  end
-  x = matrix.Zeros(n, dims[2])
-  for c in 1..dims[2]
-    for i in 1..n
-      x[i, c] = b[p[i], c]
-    end
-  end
-  for col in 1..n - 1
-    for r in col + 1..n
-      l = a[r, col]
-      if l != 0.0
-        for c in 1..dims[2]
-          x[r, c] = x[r, c] - l * x[col, c]
-        end
-      end
-    end
-  end
-  for c in 1..dims[2]
-    for r in list.Range(n, 1, step = -1)
-      s = x[r, c]
-      for k in r + 1..n
-        s = s - a[r, k] * x[k, c]
-      end
-      x[r, c] = s / a[r, r]
-    end
+  x = luSolve(f.lu, f.perm, b)
+  if value.IsMissing(x)
+    bug.Panic("LuFactors.Solve: b is $(brief(b)); give $(value.Len(f.perm)) numbers, or a matrix of $(value.Len(f.perm)) rows.")
   end
   x
 end
