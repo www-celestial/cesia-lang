@@ -184,7 +184,42 @@ let generate st corpus =
    cell by cell, branches the JIT leaves to the interpreter, and now and then a value of another kind or an index out of
    its array late in the loop. The typed path runs them natively, the --no-spec path in the interpreter: both must say
    the same. *)
-let shaped st =
+(* The loops of a sparse product in CSC: an outer loop over columns, its indexes j + k checked before it, an inner loop
+   over a range read from a list of integers, whose rows index y. The last call may break a list (a row outside y, a
+   float, a short colptr, a huge or the smallest integer, a write into the rows while the loops run). *)
+let csc st =
+  let b = Buffer.create 2048 in
+  let p fmt = Printf.bprintf b fmt in
+  let int a z = a + Random.State.int st (z - a + 1) in
+  let coin () = Random.State.bool st in
+  let n = int 40 160 and per = int 1 4 and dx = int 0 2 in
+  let calls = 1 + (120_000 / (n * (per + 2))) in
+  p "use std/io\nuse std/list\nuse std/math\nuse std/matrix\n\n";
+  p "defn fuzzMul(colptr, rowidx, vals, x, n, at, v)\n  y = matrix.Zeros(n)\n  rowidx[1] = rowidx[1]\n  s = 0.0\n";
+  p "  for j in 1..n\n    xj = x[j + %d]\n" dx;
+  p "    for q in colptr[j]..colptr[j + 1] - 1\n      i = rowidx[q]\n      y[i] = y[i] + vals[q] * xj\n";
+  p "      if q == at\n        rowidx[q + 1] = v\n      end\n    end\n";
+  if coin () then p "    s = s + x[j + %d] * %d.5\n" (int 0 dx) (int 0 3);
+  if coin () then p "    y[j] = y[j] + s * 0.001\n";
+  p "  end\n  io.Print(list.Sum(y), y[1], y[n], s)\n  y\nend\n\n";
+  p "n = %d\ncolptr = list.Fill(0, n + 1)\nrowidx = list.Fill(0, %d * n + 1)\np = 1\n" n per;
+  p "for j in 1..n\n  colptr[j] = p\n  for e in 1..math.Mod(j * %d, %d)\n" (int 1 7) (per + 1);
+  p "    rowidx[p] = math.Mod(j * %d + e * %d, n) + 1\n    p += 1\n  end\nend\ncolptr[n + 1] = p\n" (int 1 97) (int 1 13);
+  p "rowidx = list.Take(p - 1, rowidx)\nvals = matrix.Zeros(p - 1) + 0.25\nfor q in 1..p - 1\n  vals[q] = q * 0.5\nend\n";
+  p "x = matrix.Zeros(n + %d) + 1.5\nfor r in 1..%d\n  y = fuzzMul(colptr, rowidx, vals, x, n, 0, 0)\nend\n" dx calls;
+  let r = "math.Mod(" ^ string_of_int (int 1 1000) ^ ", p - 1) + 1" in
+  (match int 0 9 with
+   | 0 -> p "rowidx[%s] = %s\n" r (pick st [| "n + 1"; "0"; "-1"; "2.0"; "2.5" |])
+   | 1 -> p "colptr = list.Take(n, colptr)\n"
+   | 2 -> p "colptr[%d] = %s\n" (int 2 n) (pick st [| "4611686018427387903"; "-4611686018427387903 - 1"; "p + 5"; "0" |])
+   | 3 -> p "y = fuzzMul(colptr, rowidx, vals, x, n, %s, %s)\n" r (pick st [| "1"; "n"; "n + 1"; "0.5"; "3.0" |])
+   | 4 -> p "x = matrix.Zeros(n)\n"
+   | _ -> ());
+  p "y = fuzzMul(colptr, rowidx, vals, x, n, 0, 0)\n";
+  Buffer.contents b
+
+(* A small system of equations stepped in a loop, with a histogram of a list of integers. *)
+let odes st =
   let b = Buffer.create 2048 in
   let p fmt = Printf.bprintf b fmt in
   let int a z = a + Random.State.int st (z - a + 1) in
@@ -234,6 +269,8 @@ let shaped st =
   p "idx = list.Fill(1, %d)\nfor i in 1..%d\n  idx[i] = math.Mod(i * %d, %d) + 1\nend\n" m m (int 1 7) m;
   p "fuzzRun(%s, idx, %d)\n" (if coin () then "fuzzF" else "fuzzG") turns;
   Buffer.contents b
+
+let shaped st = if Random.State.int st 3 = 0 then csc st else odes st
 
 let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
 let toml_bytes = "\"'[]=.,#\\\n\r\t"
