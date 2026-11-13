@@ -859,7 +859,8 @@ let packages =
                 in
                 Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
       "Pi", Float (4. *. atan 1.);
-      "Nan", Float nan ];
+      "Nan", Float nan;
+      "Inf", Float infinity ];
     "num", [ "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
