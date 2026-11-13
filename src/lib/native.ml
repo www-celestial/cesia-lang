@@ -271,7 +271,9 @@ let leading ctx v =
           | Float x -> Float.Array.set d k x; fill (k + 1)
           | _ -> false)
     in
-    if fill 0 then Some (a.rows, d) else None
+    (match a.store with
+     | F src -> Float.Array.blit src 0 d 0 n; Some (a.rows, d)
+     | _ -> if fill 0 then Some (a.rows, d) else None)
   | _ -> None
 
 (* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
@@ -284,41 +286,48 @@ let lu_factor ctx (a : t array) =
   | None -> Missing
   | Some (n, d) ->
     Runtime.pay ctx ((n * n * n / 3) + n);
-    let get r c = Float.Array.get d ((c * n) + r) and set r c x = Float.Array.set d ((c * n) + r) x in
-    let perm = Array.init n (fun k -> k + 1) and sign = ref 1. in
-    let rec go col =
-      col >= n
-      ||
-      let pivot = ref col in
-      for r = col + 1 to n - 1 do
-        if Float.abs (get r col) > Float.abs (get !pivot col) then pivot := r
+    let perm = Array.init n (fun k -> k + 1) and sign = ref 1. and ok = ref true and col = ref 0 in
+    while !ok && !col < n do
+      let k = !col in
+      let ck = k * n in
+      let pivot = ref k in
+      for r = k + 1 to n - 1 do
+        if Float.abs (Float.Array.get d (ck + r)) > Float.abs (Float.Array.get d (ck + !pivot)) then pivot := r
       done;
-      (* not (... < 1e-14), as num's code: a NaN pivot is no singular matrix, and the NaN goes on to the answer. *)
-      (not (Float.abs (get !pivot col) < 1e-14))
-      && begin
-        let p = !pivot in
-        if p <> col then begin
+      let p = !pivot in
+      (* As num's code, a test of < 1e-14: a NaN pivot is no singular matrix, and the NaN goes on to the answer. *)
+      if Float.abs (Float.Array.get d (ck + p)) < 1e-14 then ok := false
+      else begin
+        if p <> k then begin
           sign := -. !sign;
           for c = 0 to n - 1 do
-            let x = get col c in
-            set col c (get p c);
-            set p c x
+            let x = Float.Array.get d ((c * n) + k) in
+            Float.Array.set d ((c * n) + k) (Float.Array.get d ((c * n) + p));
+            Float.Array.set d ((c * n) + p) x
           done;
-          let k = perm.(col) in
-          perm.(col) <- perm.(p);
-          perm.(p) <- k
+          let q = perm.(k) in
+          perm.(k) <- perm.(p);
+          perm.(p) <- q
         end;
-        for r = col + 1 to n - 1 do
-          let f = get r col /. get col col in
-          set r col f;
-          if f <> 0. then for c = col + 1 to n - 1 do set r c (get r c -. (f *. get col c)) done
+        (* The multipliers of the rows below, then each column right of k loses them times its element of row k: each
+           element gets the operations it got row by row, in loops that read memory in its order. *)
+        let pk = Float.Array.get d (ck + k) in
+        for r = k + 1 to n - 1 do
+          Float.Array.set d (ck + r) (Float.Array.get d (ck + r) /. pk)
         done;
-        go (col + 1)
+        for c = k + 1 to n - 1 do
+          let cc = c * n in
+          let top = Float.Array.get d (cc + k) in
+          for r = k + 1 to n - 1 do
+            let f = Float.Array.get d (ck + r) in
+            if f <> 0. then Float.Array.set d (cc + r) (Float.Array.get d (cc + r) -. (f *. top))
+          done
+        done;
+        incr col
       end
-    in
-    let ok = go 0 in
+    done;
     Trie.record (Trie.names [| "Singular"; "Lu"; "Perm"; "Sign" |])
-      [| Value.of_bool (not ok); Arrays.of_float n n d; Arrays.of_ints 1 n perm; Float (if ok then !sign else 0.) |]
+      [| Value.of_bool (not !ok); Arrays.of_float n n d; Arrays.of_ints 1 n perm; Float (if !ok then !sign else 0.) |]
 
 (* The x of m x = b from lu_factor's Lu and Perm, by two triangular solves: b an array of n numbers, a row or a column,
    gives x in its shape; b a matrix of n rows, x with a column for each of its columns. Missing for another b. *)
@@ -333,7 +342,6 @@ let lu_solve ctx (a : t array) =
       Runtime.reserve ctx (n * cols);
       let x = Float.Array.create (n * cols) in
       let lu = floats ctx "Solve" a.(0) in
-      let at r c = Float.Array.get lu ((c * n) + r) in
       let perm = Array.init n (fun k -> match Value.elt p k with Int i when i >= 1 && i <= n -> i - 1 | _ -> -1) in
       let rec fill k =
         k >= n * cols
@@ -352,16 +360,16 @@ let lu_solve ctx (a : t array) =
           for col = 0 to n - 2 do
             let xc = Float.Array.get x (o + col) in
             for r = col + 1 to n - 1 do
-              let f = at r col in
+              let f = Float.Array.get lu ((col * n) + r) in
               if f <> 0. then Float.Array.set x (o + r) (Float.Array.get x (o + r) -. (f *. xc))
             done
           done;
           for r = n - 1 downto 0 do
             let s = ref (Float.Array.get x (o + r)) in
             for k = r + 1 to n - 1 do
-              s := !s -. (at r k *. Float.Array.get x (o + k))
+              s := !s -. (Float.Array.get lu ((k * n) + r) *. Float.Array.get x (o + k))
             done;
-            Float.Array.set x (o + r) (!s /. at r r)
+            Float.Array.set x (o + r) (!s /. Float.Array.get lu ((r * n) + r))
           done
         done;
         if vector then Arrays.of_float b.rows b.cols x else Arrays.of_float n cols x
