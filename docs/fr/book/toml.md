@@ -104,7 +104,7 @@ take = ["src/shapes"]
 | Clé | Ce qu'elle dit |
 |---|---|
 | `from` | le dépôt, sans `https://` |
-| `version` | un de ses tags (le nom git d'une version) |
+| `version` | un de ses tags (le nom git d'une version), ou le hash entier d'un commit pour un projet qui n'a pas encore de tag |
 | `take` | les packages pris, sous la forme de chemins depuis sa racine ; sans elle, chaque package de son `src` |
 
 ## `[site]`

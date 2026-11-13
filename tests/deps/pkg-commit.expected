@@ -1,0 +1,14 @@
+== add at the first commit, which no tag names
+deps/bob/units: HASH, src/meters.
+[deps.units]
+from = "file://TOP/repos/bob/units"
+version = "HASH"
+meters, first commit
+== install from the cache
+deps/bob/units: HASH, src/meters.
+meters, first commit
+== a hash that no commit has
+units: HASH to HASH
+Can't fetch bob/units at HASH: fatal: remote error: upload-pack: not our ref HASH
+meters, first commit
+exit 0

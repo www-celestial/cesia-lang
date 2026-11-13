@@ -101,7 +101,7 @@ take = ["src/shapes"]
 | Key | What it says |
 |---|---|
 | `from` | the repository, without `https://` |
-| `version` | a tag of it |
+| `version` | a tag of it, or the whole hash of a commit for a project that has no tag yet |
 | `take` | the packages taken, as paths from its root; without it, every package of its `src` |
 
 ## `[site]`
