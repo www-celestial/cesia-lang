@@ -265,7 +265,8 @@ let execute ~last ?(extra = []) project task =
     (* What came after didn't run, so this isn't a success, even if the child ended with 0. *)
     if !stopped then exit 1
 
-(* The words after the task's name go to its own program only, not to those of the tasks it needs, which run before it. *)
+(* The words after the task's name go to its own program only, not to those of the tasks it needs, which run before
+   it. *)
 let perform project by_name name extra =
   let seen = Hashtbl.create 16 in
   let rec visit task =
