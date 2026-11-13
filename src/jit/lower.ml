@@ -2325,21 +2325,33 @@ let locals ?cold acc e =
   !acc
 
 (* The variables an iteration of a loop may read before it assigns them: those whose values go from one iteration to the
-   next. A statement other than an assignment counts every variable it names. *)
+   next. An assignment counts the variables of its value, then its own as assigned; an if, a for or a while counts those
+   of its test or range, then those its blocks may read before they assign them, each block from what is assigned before
+   it (and a for's variable): a variable a loop inside assigns before it reads it, as the row read from a list in each
+   turn, carries nothing, even when that loop may not run. Any other statement counts every variable it names. *)
 let carried ?cold (loop : expr) =
-  let body, first = match loop.e with For { fbody; _ } -> fbody, [] | While { cond; body; _ } -> body, locals [] cond | _ -> [||], [] in
-  let set = ref [] in
-  let before l = List.filter (fun j -> not (List.mem j !set)) l in
-  Array.fold_left
-    (fun acc (s : expr) ->
-       match s.e with
-       | _ when (match cold with Some c -> List.mem s.id c | None -> false) -> acc
-       | Assign ({ b = Local j; _ }, v) ->
-         let acc = before (locals [] v) @ acc in
-         set := j :: !set;
-         acc
-       | _ -> before (locals ?cold [] s) @ acc)
-    first body
+  let is_cold (s : expr) = match cold with Some c -> List.mem s.id c | None -> false in
+  let rec seq set (b : block) acc =
+    let set = ref set in
+    let before l = List.filter (fun j -> not (List.mem j !set)) l in
+    Array.fold_left
+      (fun acc (s : expr) ->
+         match s.e with
+         | _ when is_cold s -> acc
+         | Assign ({ b = Local j; _ }, v) ->
+           let acc = before (locals [] v) @ acc in
+           set := j :: !set;
+           acc
+         | If (c, y, n) -> before (locals [] c) @ seq !set y (seq !set n acc)
+         | For { var = { b = Local j; _ }; iter; fbody; _ } -> before (locals [] iter) @ seq (j :: !set) fbody acc
+         | While { cond; body; _ } -> before (locals [] cond) @ seq !set body acc
+         | _ -> before (locals ?cold [] s) @ acc)
+      acc b
+  in
+  match loop.e with
+  | For { fbody; _ } -> seq [] fbody []
+  | While { cond; body; _ } -> seq [] body (locals [] cond)
+  | _ -> []
 
 (* Can variable [i] be a map the run never makes: assigned only by statements p = a[k] of the loop's body, [a] a list
    that [list] takes, and read only as p.Name. *)
