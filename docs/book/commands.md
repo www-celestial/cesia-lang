@@ -90,8 +90,9 @@ cesia fmt [--check] [path...]
 ```
 
 Writes files in the style that the code of Cesia shares, and names each one it changes. A line that starts a statement is
-indented two spaces for each block it is in, `defn`, `if`, `for`, `while`, `match` or `struct`, and a line that goes on with
-a statement, inside brackets or after a comma, moves with the line it continues; no line ends with spaces; no two blank
+indented two spaces for each block it is in, `defn`, `if`, `for`, `while`, `match`, `struct` or a `do` block, and a line that
+goes on with a statement, inside brackets or after a comma, moves with the line it continues; the body of a `do` block on a
+line that starts with `then` goes two spaces in from that line, and its `end` under it; no line ends with spaces; no two blank
 lines follow each other, and none starts or ends the file. Nothing else changes: not a word, not a comment, not a text, not
 a `\r\n`. Before it writes a file, it checks that the code reads as the same program; a file that doesn't read stays as it
 is, and is named with its error. A path is a file, or a folder with its subfolders; with none, the project here, without

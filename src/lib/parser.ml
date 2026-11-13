@@ -602,8 +602,9 @@ and hole p (args : arg array) =
   !at
 
 and no_hole p args =
-  let k = hole p args in
-  if k >= 0 then error p args.(k).value.pos Messages.hole_alone;
+  for k = 0 to Array.length args - 1 do
+    match args.(k).value.e with Var { text = "_"; _ } -> error p args.(k).value.pos Messages.hole_alone | _ -> ()
+  done;
   args
 
 (* f(args) do params, the body, end: the function defn (params) body end, the same tree, which takes the place of the
