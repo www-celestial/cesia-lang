@@ -876,10 +876,13 @@ que le programme tourne. Le code est dans `cache.ml` et `src/sys/entries.ml`.
 où est le package (son dossier, ou le nom d'un fichier de `std/` dans le binaire), et remplacé quand le package change :
 l'arbre de chacun de ses fichiers après le resolver, les noms que chaque fichier lit dans chaque package qu'il utilise,
 et les questions que le resolver a posées sur les autres modules, avec leurs réponses. Un nom que le resolver a lié à un
-module d'un autre package garde ce module par sa place : le j-ième module du package du u-ième use du fichier. Dans un
-autre run, les modules reçoivent d'autres numéros, et les places les retrouvent. Rien n'est gardé pour ce qu'ajoute le
-debugger (`--debugger`), pour ce que `cesia check` et les verdicts de `cesia test` lisent avec leurs propres règles, ni
-pour les packages de moins de 512 octets, que le parser lit plus vite qu'on ne trouve et ne vérifie leur entrée.
+module d'un autre package garde ce module par sa place : le j-ième module, compté depuis la fin, du package du u-ième
+use du fichier. Dans un autre run, les modules reçoivent d'autres numéros, et les places les retrouvent. Un package de
+`std/` qui a des natives (des fonctions écrites en OCaml) les garde en dernier, et son code Cesia, qui ne se charge que
+pour un fichier qui en nomme quelque chose, se place avant elles : comptée depuis la fin, une place reste la même, qu'un
+autre package du run ait chargé ce code ou non. Rien n'est gardé pour ce qu'ajoute le debugger (`--debugger`), pour ce
+que `cesia check` et les verdicts de `cesia test` lisent avec leurs propres règles, ni pour les packages de moins de 512
+octets, que le parser lit plus vite qu'on ne trouve et ne vérifie leur entrée.
 
 **Ce qu'un run vérifie avant d'utiliser une entrée**, dans cet ordre :
 
@@ -948,10 +951,12 @@ arbres qui viennent du parser.
 
 **Testé** par `tests/cache_test.ml`, qui abîme chaque entrée à 60 endroits, la coupe à 8 longueurs, l'allonge, l'échange
 avec une autre et la lit avec un autre build, à chaque fois avec la même sortie et l'entrée réécrite telle qu'elle
-était, et qui change un fichier et une dépendance ; par `tests/cache/entries.cmd`, la même chose avec le binaire, et
-avec un lien, une entrée que d'autres peuvent lire, un dossier que d'autres peuvent lire et un dossier où l'on ne peut
-pas écrire, et quatre runs en même temps ; et par les golden tests (des tests qui comparent la sortie à un texte
-attendu), lancés une fois sans cache, une fois avec un cache vide et une fois avec un cache plein.
+était, qui change un fichier et une dépendance, et qui lance tour à tour deux programmes qui chargent le code Cesia de
+`std/list` avant et après un package qui n'en lit que les natives, sans rien résoudre de nouveau ; par
+`tests/cache/entries.cmd`, la même chose avec le binaire, et avec un lien, une entrée que d'autres peuvent lire, un
+dossier que d'autres peuvent lire et un dossier où l'on ne peut pas écrire, et quatre runs en même temps ; et par les
+golden tests (des tests qui comparent la sortie à un texte attendu), lancés une fois sans cache, une fois avec un cache
+vide et une fois avec un cache plein.
 
 ## Recharger le code : --watch
 
