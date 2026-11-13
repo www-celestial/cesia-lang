@@ -65,16 +65,19 @@ end
 (** The response to a handshake that RFC 6455 asks for, given the Sec-WebSocket-Accept of its key. *)
 upgrade(accept) = "HTTP/1.1 101 Switching Protocols$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Accept: $accept$crlf$crlf"
 
-defn fake(script, respond = upgrade)
-  (** A server of one connection on a free port, written on std/net: it reads the request, answers it with respond of the
-      accept of its key, and runs script(socket); then it answers the close of the client and closes, as a server does.
-      Gives the URL to dial. *)
+defn fake(script, respond = upgrade, heard = missing)
+  (** A server of one connection on a free port, written on std/net: it reads the request, sends it on the channel heard
+      if there is one, answers it with respond of the accept of its key, and runs script(socket); then it answers the
+      close of the client and closes, as a server does. Gives the URL to dial. *)
   l = net.Listen(0)?
   fiber.Spawn(defn ()
     s = net.Accept(l)?
     request = more(s, "", 1)
     while not text.Contains("$crlf$crlf", request)
       request = "$request$(net.Read(s)?)"
+    end
+    if not value.IsMissing(heard)
+      fiber.Send(request, heard)
     end
     line = list.Filter(it then text.Lower then text.StartsWith("sec-websocket-key:"), text.Split(crlf, request))[1]
     key = text.Trim(text.Split(":", line)[2])
@@ -301,4 +304,31 @@ isAcceptOfAnyKey() = websocket.Accept(123, (m, send) -> send(m)).Headers[3].Valu
 defn isUrlRefused()
   bad = ["http://127.0.0.1/", "wss://127.0.0.1/", "ws://127.0.0.1:99999/", "ws:///x", "ws://127.0.0.1/a b", "ws://h:1:2/", "ws://127.0.0.1/#x"]
   list.All([websocket.Dial(u).Error.Kind == "websocket" for u in bad])
+end
+
+defn isHeaderSentWithTheHandshake()
+  (** The headers given to Dial reach the server, each on a line of its own, beside those of the handshake, whose Host
+      names the port, which isn't 80. *)
+  heard = fiber.Channel(size = 1)
+  url = fake(s -> missing, heard = heard)?
+  c = websocket.Dial(url, headers = [{Name: "Cookie", Value: "sid=abc"}, {Name: "Origin", Value: "http://127.0.0.1"}, {Name: "X-Trace", Value: "7"}])?
+  request = fiber.Receive(heard, timeout = 2)?
+  _ = websocket.Close(c)
+  lines = text.Split(crlf, request)
+  host = "Host: $(text.ByteSlice(6, text.ByteLength(url) - 1, url))"
+  list.All([l in lines for l in ["Cookie: sid=abc", "Origin: http://127.0.0.1", "X-Trace: 7", "Sec-WebSocket-Version: 13", host]]) and text.EndsWith("$crlf$crlf", request)
+end
+
+defn isHeaderInjectionRefused()
+  (** A line end or a zero byte in a value, a name that isn't a token or one of the handshake's own: an Err, before
+      any connection. *)
+  l = net.Listen(0)?
+  url = "ws://127.0.0.1:$(net.Port(l))/"
+  bad = [{Name: "Cookie", Value: "a\r\nX-Admin: 1"}, {Name: "Cookie", Value: "a\nb"}, {Name: "Cookie", Value: "a\rb"},
+    {Name: "Cookie", Value: "a$(text.Char(0))b"}, {Name: "X Admin", Value: "1"}, {Name: "X:A", Value: "1"},
+    {Name: "Bad\r\nName", Value: "1"}, {Name: "Host", Value: "evil"}, {Name: "Upgrade", Value: "h2c"},
+    {Name: "Connection", Value: "close"}, {Name: "Sec-WebSocket-Key", Value: "x"}, {Name: "sec-websocket-protocol", Value: "x"},
+    {Name: "", Value: "1"}, {Name: "Content-Length", Value: "5"}, {Name: "Transfer-Encoding", Value: "chunked"},
+    {Name: "X-Count", Value: 7}, {Name: "Wörd", Value: "1"}]
+  list.All([websocket.Dial(url, headers = [h], timeout = 1).Error.Message == "This header can't go with a handshake: $(h.Name)." for h in bad])
 end

@@ -291,6 +291,17 @@ fiber.Receive(c.Messages, timeout = 1) -->
 websocket.Close(c) -->
 ```
 
+`headers`, a list of `{Name, Value}` as [http.Fetch] takes, go with the handshake: a cookie, for a server that knows
+its visitors by one, or an `Origin`, for a server that checks where a page comes from. A name that isn't a *token* of
+RFC 9110, letters, digits and marks such as `-` and `_`, a name the handshake writes itself (`Host`, `Upgrade`, `Connection`,
+`Content-Length`, `Transfer-Encoding`, and those that start with `Sec-WebSocket-`), or a line end or a zero byte in a
+value, gives an `Err` before any connection: a value from a visitor can't add a header of its own, which is *header
+injection*.
+
+```cesia allow=net=own
+websocket.Dial("ws://127.0.0.1:1/", headers = [{Name: "Cookie", Value: "sid=1\r\nX-Admin: 1"}]) -->
+```
+
 Receiving has no function of its own: it is the channel, so all that [Fibers](fibers.md) do with a channel works on it: a
 `for` loop, which is [fiber.Receive] again and again until the channel closes, a timeout, [fiber.Select]. The connection comes last in [websocket.Send], as the channel does in
 [fiber.Send]: a connection carries messages as a channel does. Fibers may send at once; each message goes out whole.
