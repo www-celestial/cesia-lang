@@ -1,0 +1,127 @@
+(** The tests of the tests of std/stats: R 4.6.2's answers on the examples of its own documentation (the sleep data of
+    Student, the depression scores of Hollander and Wolfe, Agresti's table of party and gender), the exact laws of the
+    rank statistics against all their cases counted one by one, the method of Marsaglia, Tsang and Wang against their
+    paper, properties, and the errors. *)
+use std/fiber
+use std/list
+use std/math
+use std/matrix
+use std/result
+use std/stats
+use std/value
+
+eps = 2.220446049250313e-16
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+near(got, want, n) = math.Abs(got - want) <= n * eps * math.Abs(want)
+test(r) = result.Unwrap(r)
+
+x = [0.7, -1.6, -0.2, -1.2, -0.1, 3.4, 3.7, 0.8, 0.0, 2.0]
+y = [1.9, 0.8, 1.1, 0.1, -0.1, 4.4, 5.5, 1.6, 4.6, 3.4]
+
+(* R's t.test on the sleep data. *)
+defn isWelch()
+  t = test(stats.TTest2(x, y))
+  near(t.Statistic, -1.8608134674868531, 8.0) and near(t.Df, 17.776473516178498, 8.0) and near(t.PValue, 0.079394140187358173, 64.0) and near(t.Interval[1], -3.3654832307117104, 64.0) and near(t.Interval[2], 0.20548323071171018, 256.0) and near(t.Estimate, -1.58, 8.0) and t.Method == "Welch two-sample t-test"
+end
+defn isPooled()
+  t = test(stats.TTest2(x, y, equal = true))
+  near(t.Statistic, -1.8608134674868528, 8.0) and t.Df == 18 and near(t.PValue, 0.079186714215938175, 64.0) and near(t.Interval[1], -3.3638740322875984, 64.0)
+end
+defn isPaired()
+  t = test(stats.TTest(x - y))
+  near(t.Statistic, -4.0621276833820366, 8.0) and t.Df == 9 and near(t.PValue, 0.0028328901973842702, 64.0) and near(t.Interval[2], -0.70011423672301754, 64.0)
+end
+defn isOneSided()
+  t = test(stats.TTest(x, mu = 0.5, alternative = "greater"))
+  near(t.Statistic, 0.44190338023794046, 8.0) and near(t.PValue, 0.33449331180733743, 64.0) and near(t.Interval[1], -0.28705527872925918, 64.0) and t.Interval[2] == 1.0 / 0.0
+end
+isShift() = near(test(stats.TTest2(x + 100.0, y + 100.0)).Statistic, test(stats.TTest2(x, y)).Statistic, 1e5)
+isSwap() = test(stats.TTest2(y, x)).Statistic == -test(stats.TTest2(x, y)).Statistic
+
+(* Wilcoxon: R's examples, exact and with ties. *)
+dx = [1.83, 0.5, 1.62, 2.48, 1.68, 1.88, 1.55, 3.06, 1.3]
+dy = [0.878, 0.647, 0.598, 2.05, 1.06, 1.29, 1.06, 3.14, 1.29]
+isSignedRank() = test(stats.WilcoxonTest(dx - dy, alternative = "greater")).Statistic == 40.0 and near(test(stats.WilcoxonTest(dx - dy, alternative = "greater")).PValue, 0.01953125, 2.0)
+isRankSum() = test(stats.WilcoxonTest2([0.8, 0.83, 1.89, 1.04, 1.45, 1.38, 1.91, 1.64, 0.73, 1.46], [1.15, 0.88, 0.9, 0.74, 1.21], alternative = "greater")).Statistic == 35.0 and near(test(stats.WilcoxonTest2([0.8, 0.83, 1.89, 1.04, 1.45, 1.38, 1.91, 1.64, 0.73, 1.46], [1.15, 0.88, 0.9, 0.74, 1.21], alternative = "greater")).PValue, 0.1272061272061272, 4.0)
+isRankSumTies() = test(stats.WilcoxonTest2(x, y)).Statistic == 25.5 and near(test(stats.WilcoxonTest2(x, y)).PValue, 0.065816536404771697, 64.0) and test(stats.WilcoxonTest2(x, y)).Method == "Wilcoxon rank sum exact test"
+
+defn signedRankBrute(d)
+  (** P(V >= v) over the 2^n signs of the ranks of |d|, counted one by one. *)
+  n = value.Len(d)
+  v = test(stats.WilcoxonTest(d)).Statistic
+  count = 0
+  for mask in 0..math.BitShift(1, n) - 1
+    s = 0
+    for k in 1..n
+      if math.BitAnd(mask, math.BitShift(1, k - 1)) != 0
+        s = s + k
+      end
+    end
+    if s >= v
+      count = count + 1
+    end
+  end
+  count / math.BitShift(1, n)
+end
+isSignedRankTies() = near(test(stats.WilcoxonTest(x - y)).PValue, 0.00390625, 2.0)
+isSignedRankExact() = list.All([near(test(stats.WilcoxonTest(d, alternative = "greater")).PValue, signedRankBrute(d), 8.0) for d in [[1.5, -0.3, 2.2, 0.7, -1.1, 3.0], [0.2, 0.9, -1.7, 2.4, 1.3, -0.6, 0.1, 1.9, -2.8, 0.45, 1.05, 3.3]]])
+
+defn rankSumBrute(m, n, w)
+  (** P(W >= w) over all the ways to choose the m ranks of x among m + n, counted one by one. *)
+  total = 0
+  count = 0
+  for mask in 0..math.BitShift(1, m + n) - 1
+    bits = 0
+    s = 0
+    for k in 1..m + n
+      if math.BitAnd(mask, math.BitShift(1, k - 1)) != 0
+        bits = bits + 1
+        s = s + k
+      end
+    end
+    if bits == m
+      total = total + 1
+      if s - m * (m + 1) / 2 >= w
+        count = count + 1
+      end
+    end
+  end
+  count / total
+end
+defn isRankSumExact()
+  a = [3.1, 0.4, 2.2, 5.9, 1.7, 4.4, 0.9]
+  b = [2.6, 6.3, 3.8, 5.2, 7.7, 1.2, 6.8, 4.9, 8.1]
+  t = test(stats.WilcoxonTest2(a, b, alternative = "greater"))
+  near(t.PValue, rankSumBrute(7, 9, t.Statistic), 8.0)
+end
+
+(* Kolmogorov and Smirnov. *)
+z = [0.61, -0.27, 1.38, -0.45, 0.13, -1.12, 0.84, 0.29]
+isKs() = near(test(stats.KsTest(z, stats.Normal(0, 1))).Statistic, 0.20135522028792008, 8.0) and near(test(stats.KsTest(z, stats.Normal(0, 1))).PValue, 0.84282196111029939, 256.0)
+isKsOtherLaw() = near(test(stats.KsTest(z, stats.Exponential(2))).Statistic, 0.375, 4.0) and near(test(stats.KsTest(z, stats.Exponential(2))).PValue, 0.16157627105712902, 256.0)
+isKsTies() = test(stats.KsTest([0.1, 0.1, 0.5, 0.9], stats.Uniform(0, 1))).Method == "Asymptotic one-sample Kolmogorov-Smirnov test"
+isKsUniformRange() = list.All([test(stats.KsTest(stats.Uniform(0, 1).Sample(50), stats.Uniform(0, 1))).PValue > 1e-6 for k in 1..5])
+
+(* Chi-squared. *)
+isIndependence() = near(test(stats.ChiSquaredTest(matrix.Reshape([2, 3], [762, 327, 468, 484, 239, 477]))).Statistic, 242.30246520274775, 16.0) and test(stats.ChiSquaredTest(matrix.Reshape([2, 3], [762, 327, 468, 484, 239, 477]))).Df == 2 and near(test(stats.ChiSquaredTest(matrix.Reshape([2, 3], [762, 327, 468, 484, 239, 477]))).PValue, 2.424868575645102e-53, 512.0)
+isYates() = near(test(stats.ChiSquaredTest(matrix.Reshape([2, 2], [12, 5, 7, 7]))).Statistic, 0.64112026389503174, 16.0) and near(test(stats.ChiSquaredTest(matrix.Reshape([2, 2], [12, 5, 7, 7]))).PValue, 0.42330542432241836, 64.0)
+isGoodnessOfFit() = near(test(stats.ChiSquaredTest([89, 37, 30, 28, 2], p = [0.4, 0.2, 0.2, 0.15, 0.05])).Statistic, 9.9901433691756267, 16.0) and near(test(stats.ChiSquaredTest([89, 37, 30, 28, 2], p = [0.4, 0.2, 0.2, 0.15, 0.05])).PValue, 0.040594043344781221, 64.0)
+isEqualByDefault() = test(stats.ChiSquaredTest([10, 10, 10])).Statistic == 0.0 and test(stats.ChiSquaredTest([10, 10, 10])).PValue == 1.0
+
+(* Pearson's correlation. *)
+cx = [44.4, 45.9, 41.9, 53.3, 44.7, 44.1, 50.7, 45.2, 60.1]
+cy = [2.6, 3.1, 2.5, 5.0, 3.6, 4.0, 5.2, 2.8, 3.8]
+defn isCorrelation()
+  c = test(stats.CorTest(cx, cy))
+  near(c.Statistic, 1.8410826381153382, 16.0) and c.Df == 7 and near(c.PValue, 0.10817305434949379, 64.0) and near(c.Interval[1], -0.14974263303675717, 256.0) and near(c.Interval[2], 0.89557946183873927, 64.0) and near(c.Estimate, 0.57118155756382871, 8.0)
+end
+isCorrelationSmall() = value.IsMissing(test(stats.CorTest([1.0, 2.0, 4.0], [1.0, 3.0, 2.0])).Interval)
+
+(* Errors of the data, bugs of the caller. *)
+isTooSmall() = stats.TTest([1.0]).Error.Message == "stats.TTest: x has 1 values; the test needs 2 or more."
+isMissingValue() = stats.TTest2([1.0, missing, 3.0], [1.0, 2.0]).Error.Message == "stats.TTest2: x[2] is missing; frame.Present drops the missing values."
+isConstant() = stats.TTest([2.0, 2.0, 2.0]).Error.Message == "stats.TTest: the values of x are all equal, so t is undefined."
+isConstantCorrelation() = result.IsErr(stats.CorTest([1.0, 1.0, 1.0], [1.0, 2.0, 3.0]))
+isNegativeCount() = stats.ChiSquaredTest([3, -1, 2]).Error.Message == "stats.ChiSquaredTest: x[2] is -1.0; counts can't be negative."
+isBadAlternative() = message(() -> stats.TTest([1.0, 2.0], alternative = "bigger")) == result.Err("stats.TTest: alternative is \"bigger\"; give \"two-sided\", \"less\" or \"greater\".")
+isBadProbabilities() = message(() -> stats.ChiSquaredTest([1, 2], p = [0.5, 0.6])) == result.Err("stats.ChiSquaredTest: the probabilities p sum to 1.1; give probabilities that sum to 1.")

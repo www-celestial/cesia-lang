@@ -19,29 +19,24 @@ defn brief(v)
   if value.IsText(v) "\"$v\"" else value.Text(v) end
 end
 
-defn each(f, x, name)
-  (** f of a number, or of each element of an array of numbers, in an array of the same shape. *)
-  if value.IsNumber(x)
-    return f(1.0 * x)
-  end
+defn floats(x, name)
+  (** An array of numbers as an array of floats of the same shape, or a panic that names what isn't a number. *)
   if not value.IsArray(x)
     bug.Panic("$name: x is $(brief(x)); give a number or an array of numbers.")
   end
-  n = value.Len(x)
   if col.Kind(x) == "value"
-    for k in 1..n
+    for k in 1..value.Len(x)
       if not value.IsNumber(x[k])
         bug.Panic("$name: x[$k] is $(brief(x[k])); give numbers.")
       end
     end
   end
-  xs = 1.0 * x
-  out = matrix.Zeros(1, n)
-  for k in 1..n
-    out[k] = f(xs[k])
-  end
-  matrix.Reshape(value.Size(x), out)
+  1.0 * x
 end
+
+(* One loop for each function over an array, each its own, as a loop that calls a function given as a value becomes
+   machine code only for the first function it meets; and each calls its function through a local name, f = erfF,
+   which the JIT makes native for an argument read from an array, where a direct call needs types it can't infer. *)
 
 defn number(v, what, name)
   (** v as a float, or a panic that names it. *)
@@ -247,6 +242,17 @@ defn betaF(a, b)
   math.Exp(lbeta(a, b))
 end
 
+defn gammaArray(xs)
+  (** gammaF(x) for each element. *)
+  f = gammaF
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  out
+end
+
 defn Gamma(x)
   (** The gamma function: (n - 1)! at a whole n, and pi / (sin(pi x) Gamma(1 - x)) below 0; infinite at 0 with the sign
       of the zero, NaN at the negative whole numbers. From the Taylor series of log Gamma at 2, then the recurrence
@@ -258,7 +264,18 @@ defn Gamma(x)
   if value.IsNumber(x)
     return gammaF(1.0 * x)
   end
-  each(gammaF, x, "special.Gamma")
+  matrix.Reshape(value.Size(x), gammaArray(floats(x, "special.Gamma")))
+end
+
+defn lgammaArray(xs)
+  (** lgamma(x) for each element. *)
+  f = lgamma
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  out
 end
 
 defn LogGamma(x)
@@ -269,7 +286,18 @@ defn LogGamma(x)
   if value.IsNumber(x)
     return lgamma(1.0 * x)
   end
-  each(lgamma, x, "special.LogGamma")
+  matrix.Reshape(value.Size(x), lgammaArray(floats(x, "special.LogGamma")))
+end
+
+defn betaArray(a, xs)
+  (** betaF(a, x) for each element. *)
+  f = betaF
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(a, xs[k])
+  end
+  out
 end
 
 defn Beta(a, b)
@@ -280,7 +308,18 @@ defn Beta(a, b)
     return betaF(1.0 * a, 1.0 * b)
   end
   a = number(a, "a", "special.Beta")
-  each(v -> betaF(a, v), b, "special.Beta")
+  matrix.Reshape(value.Size(b), betaArray(a, floats(b, "special.Beta")))
+end
+
+defn lbetaArray(a, xs)
+  (** lbeta(a, x) for each element. *)
+  f = lbeta
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(a, xs[k])
+  end
+  out
 end
 
 defn LogBeta(a, b)
@@ -291,7 +330,7 @@ defn LogBeta(a, b)
     return lbeta(1.0 * a, 1.0 * b)
   end
   a = number(a, "a", "special.LogBeta")
-  each(v -> lbeta(a, v), b, "special.LogBeta")
+  matrix.Reshape(value.Size(b), lbetaArray(a, floats(b, "special.LogBeta")))
 end
 
 (* ---- The error function: the rational approximations of Cody (1969), on three intervals, the coefficients of his
@@ -361,6 +400,17 @@ defn erfF(x)
   if x < 0.0 r - 1.0 else 1.0 - r end
 end
 
+defn erfArray(xs)
+  (** erfF(x) for each element. *)
+  f = erfF
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  out
+end
+
 defn Erf(x)
   (** The error function, 2 / sqrt(pi) times the integral of exp(-t^2) from 0 to x.
 
@@ -369,7 +419,18 @@ defn Erf(x)
   if value.IsNumber(x)
     return erfF(1.0 * x)
   end
-  each(erfF, x, "special.Erf")
+  matrix.Reshape(value.Size(x), erfArray(floats(x, "special.Erf")))
+end
+
+defn erfcArray(xs)
+  (** erfcF(x) for each element. *)
+  f = erfcF
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  out
 end
 
 defn Erfc(x)
@@ -380,7 +441,7 @@ defn Erfc(x)
   if value.IsNumber(x)
     return erfcF(1.0 * x)
   end
-  each(erfcF, x, "special.Erfc")
+  matrix.Reshape(value.Size(x), erfcArray(floats(x, "special.Erfc")))
 end
 
 defn erfcxF(x)
@@ -402,6 +463,17 @@ defn erfcxF(x)
   2.0 * e - erfcScaled(y)
 end
 
+defn erfcxArray(xs)
+  (** erfcxF(x) for each element. *)
+  f = erfcxF
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  out
+end
+
 defn Erfcx(x)
   (** The scaled complementary error function, Erfc(x) exp(x^2), which stays near 1 / (x sqrt(pi)) for a large x
       where Erfc underflows; the normal law's cumulative distribution of std/stats is built on it.
@@ -410,7 +482,7 @@ defn Erfcx(x)
   if value.IsNumber(x)
     return erfcxF(1.0 * x)
   end
-  each(erfcxF, x, "special.Erfcx")
+  matrix.Reshape(value.Size(x), erfcxArray(floats(x, "special.Erfcx")))
 end
 
 (* ---- The normal quantile: PPND16 of Wichura (1988), rational approximations in three regions of p. *)
@@ -463,6 +535,17 @@ defn erfcInvF(y)
   -ndtri(0.5 * (y - 1.0), 0.5 * (if y < 1.0 y else 2.0 - y end)) / 1.4142135623730951
 end
 
+defn erfInvArray(xs)
+  (** erfInvF(x) for each element. *)
+  f = erfInvF
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  out
+end
+
 defn ErfInv(y)
   (** The inverse of Erf: the x where Erf(x) = y, for y from -1 to 1; NaN outside. From the normal quantile of Wichura
       (1988), as Erf(x) = 2 P(Z <= x sqrt 2) - 1.
@@ -471,7 +554,18 @@ defn ErfInv(y)
   if value.IsNumber(y)
     return erfInvF(1.0 * y)
   end
-  each(erfInvF, y, "special.ErfInv")
+  matrix.Reshape(value.Size(y), erfInvArray(floats(y, "special.ErfInv")))
+end
+
+defn erfcInvArray(xs)
+  (** erfcInvF(x) for each element. *)
+  f = erfcInvF
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(xs[k])
+  end
+  out
 end
 
 defn ErfcInv(y)
@@ -481,7 +575,7 @@ defn ErfcInv(y)
   if value.IsNumber(y)
     return erfcInvF(1.0 * y)
   end
-  each(erfcInvF, y, "special.ErfcInv")
+  matrix.Reshape(value.Size(y), erfcInvArray(floats(y, "special.ErfcInv")))
 end
 
 (* ---- The incomplete gamma ratios P(a, x) and Q(a, x) = 1 - P(a, x), by the regions of DiDonato and Morris (1986):
@@ -680,6 +774,17 @@ defn gammaInc(a, x, up)
   if up > 0.5 q else 1.0 - q end
 end
 
+defn gammaIncArray(a, xs, up)
+  (** gammaInc(a, x, up) for each element. *)
+  f = gammaInc
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(a, xs[k], up)
+  end
+  out
+end
+
 defn GammaInc(a, x, upper = false)
   (** The regularized lower incomplete gamma function P(a, x), the integral of t^(a - 1) e^-t from 0 to x over
       Gamma(a), for a >= 0 and x >= 0; with upper, Q(a, x) = 1 - P(a, x), computed directly so that a small Q keeps its
@@ -694,7 +799,7 @@ defn GammaInc(a, x, upper = false)
     return gammaInc(1.0 * a, 1.0 * x, up)
   end
   a = number(a, "a", "special.GammaInc")
-  each(v -> gammaInc(a, v, up), x, "special.GammaInc")
+  matrix.Reshape(value.Size(x), gammaIncArray(a, floats(x, "special.GammaInc"), up))
 end
 
 (* ---- The incomplete beta ratio I_x(a, b): the power series for a small x, the continued fraction elsewhere, both for
@@ -811,6 +916,17 @@ defn betaTail(a, b, x, y)
   betaFraction(a, b, x, y)
 end
 
+defn betaIncArray(a, b, xs, up)
+  (** betaInc(a, b, x, 1.0 - x, up) for each element. *)
+  f = betaInc
+  n = value.Len(xs)
+  out = matrix.Zeros(1, n)
+  for k in 1..n
+    out[k] = f(a, b, xs[k], 1.0 - xs[k], up)
+  end
+  out
+end
+
 defn BetaInc(a, b, x, upper = false)
   (** The regularized incomplete beta function I_x(a, b), the integral of t^(a - 1) (1 - t)^(b - 1) from 0 to x over
       B(a, b), for a, b >= 0 and x from 0 to 1; with upper, 1 - I_x(a, b), computed directly. NaN outside. x may be an
@@ -824,5 +940,5 @@ defn BetaInc(a, b, x, upper = false)
   end
   a = number(a, "a", "special.BetaInc")
   b = number(b, "b", "special.BetaInc")
-  each(v -> betaInc(a, b, v, 1.0 - v, up), x, "special.BetaInc")
+  matrix.Reshape(value.Size(x), betaIncArray(a, b, floats(x, "special.BetaInc"), up))
 end

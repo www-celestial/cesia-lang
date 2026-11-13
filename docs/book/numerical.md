@@ -409,5 +409,5 @@ stops with `Limit "memory" reached.`
 
 ## Next
 
-You can find zeros and solve differential equations. The next chapter, [Statistics](statistics.md), computes with
-the functions under the laws of probability.
+You can find zeros and solve differential equations. The next chapter, [Statistics](statistics.md), works with
+the laws of probability.

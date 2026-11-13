@@ -1,0 +1,175 @@
+(** The tests of the laws of std/stats: values computed to 70 digits with the decimal arithmetic of Python, from the
+    exact floats of the arguments; closed forms; both tails; quantiles back through the Cdf; the discrete laws against
+    their masses; arrays, NaN, infinities and wrong parameters. A point's bounds are in eps: 16 (1 + c), c the largest
+    |d log F / d log v| over x and each parameter, how much F changes for a relative change of eps in one of them. *)
+use std/fiber
+use std/list
+use std/math
+use std/matrix
+use std/num
+use std/result
+use std/special
+use std/stats
+use std/value
+
+eps = 2.220446049250313e-16
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+relative(got, want) = math.Abs(got - want) / math.Abs(want) / eps
+near(got, want, n) = relative(got, want) <= n
+nan(x) = x != x
+
+defn law(name, p)
+  (** The law of a point of the table. *)
+  match name
+    "Normal" -> stats.Normal(p[1], p[2])
+    "StudentT" -> stats.StudentT(p[1])
+    "ChiSquared" -> stats.ChiSquared(p[1])
+    "FisherF" -> stats.FisherF(p[1], p[2])
+    "Gamma" -> stats.Gamma(p[1], p[2])
+    "Beta" -> stats.Beta(p[1], p[2])
+    "Exponential" -> stats.Exponential(p[1])
+    "Binomial" -> stats.Binomial(p[1], p[2])
+    "Poisson" -> stats.Poisson(p[1])
+    else -> stats.Uniform(p[1], p[2])
+  end
+end
+
+lawPoints = [{Law: "Normal", Params: [-4.194998486093776, 0.26318868194069955], X: -4.379775870166171, Pdf: 1.184704120872027, Cdf: 0.24131715547864988, CdfTol: 360, Upper: 0.75868284452135015, UpperTol: 125},
+  {Law: "Normal", Params: [4.403764075850579, 2.5748722427049273], X: -2.0841246464153693, Pdf: 0.0064791497387920935, Cdf: 0.0058728539236819468, CdfTol: 131, Upper: 0.99412714607631802, UpperTol: 17},
+  {Law: "Normal", Params: [-2.598078176185228, 0.14136259495731882], X: -2.652389538522588, Pdf: 2.6213360732339055, Cdf: 0.35041549356424578, CdfTol: 333, Upper: 0.64958450643575416, UpperTol: 187},
+  {Law: "Normal", Params: [-2.119589395973619, 0.24565571567415329], X: -2.1261284594118455, Pdf: 1.6234141625169145, Cdf: 0.48938188418015188, CdfTol: 129, Upper: 0.51061811581984817, UpperTol: 124},
+  {Law: "Normal", Params: [7.123074189626614, 0.5121670336969021], X: 7.086429194522812, Pdf: 0.77693880690919093, Cdf: 0.47148044822366747, CdfTol: 204, Upper: 0.52851955177633259, UpperTol: 184},
+  {Law: "Normal", Params: [1.6057206109533806, 0.2141721507008376], X: 2.2002446813131136, Pdf: 0.039525058434904378, Cdf: 0.99724768532228358, CdfTol: 17, Upper: 0.0027523146777164659, UpperTol: 522},
+  {Law: "StudentT", Params: [1.0], X: -1.0663141548836739, Pdf: 0.14894994469825912, Cdf: 0.23978799589842734, CdfTol: 27, Upper: 0.76021200410157264, UpperTol: 19},
+  {Law: "StudentT", Params: [2.0], X: 2.7742046932835915, Pdf: 0.033120498733681634, Cdf: 0.94545871752582056, CdfTol: 18, Upper: 0.05454128247417947, UpperTol: 43},
+  {Law: "StudentT", Params: [3.5], X: -0.5836079141688034, Pdf: 0.30167040974521719, Cdf: 0.2974983847009654, CdfTol: 25, Upper: 0.70250161529903465, UpperTol: 20},
+  {Law: "StudentT", Params: [10.0], X: 3.598906872038643, Pdf: 0.0040322183850720287, Cdf: 0.99757164258043263, CdfTol: 16, Upper: 0.0024283574195673786, UpperTol: 112},
+  {Law: "StudentT", Params: [47.3], X: -0.6330779780892482, Pdf: 0.32368256246055038, Cdf: 0.2648659176357881, CdfTol: 28, Upper: 0.73513408236421196, UpperTol: 20},
+  {Law: "StudentT", Params: [10000.0], X: 2.8100313541099053, Pdf: 0.0077045952886759545, Cdf: 0.9975183543938142, CdfTol: 16, Upper: 0.0024816456061858556, UpperTol: 156},
+  {Law: "ChiSquared", Params: [0.7], X: 0.7271791473372199, Pdf: 0.26350215139818334, Cdf: 0.72042387074238612, CdfTol: 22, Upper: 0.27957612925761388, UpperTol: 32},
+  {Law: "ChiSquared", Params: [1.0], X: 1.2237087871678092, Pdf: 0.19558972661288879, Cdf: 0.73136597280421811, CdfTol: 22, Upper: 0.26863402719578189, UpperTol: 33},
+  {Law: "ChiSquared", Params: [2.0], X: 2.1199236904357206, Pdf: 0.17323451476410393, Cdf: 0.65353097047179221, CdfTol: 26, Upper: 0.34646902952820785, UpperTol: 35},
+  {Law: "ChiSquared", Params: [9.0], X: 7.736297693166632, Pdf: 0.10225184976306374, Cdf: 0.43907600426055465, CdfTol: 48, Upper: 0.5609239957394454, UpperTol: 41},
+  {Law: "ChiSquared", Params: [55.5], X: 46.588640411149754, Pdf: 0.030107540269944093, Cdf: 0.20280066094347038, CdfTol: 137, Upper: 0.79719933905652962, UpperTol: 47},
+  {Law: "ChiSquared", Params: [3000.0], X: 4286.620047271246, Pdf: 4.5859268939234682e-50, Cdf: 1, CdfTol: 16, Upper: 3.0401684926903659e-49, UpperTol: 10362},
+  {Law: "FisherF", Params: [1.0, 1.0], X: 1.1803808717122197, Pdf: 0.13437135061240735, Cdf: 0.52636361043345725, CdfTol: 21, Upper: 0.4736363895665428, UpperTol: 21},
+  {Law: "FisherF", Params: [5.0, 10.0], X: 0.6648605998414655, Pdf: 0.65308923711703482, Cdf: 0.34130745468689444, CdfTol: 36, Upper: 0.6586925453131055, UpperTol: 27},
+  {Law: "FisherF", Params: [2.5, 40.0], X: 0.20296113236063945, Pdf: 0.75455247437586537, Cdf: 0.13834313401960041, CdfTol: 38, Upper: 0.86165686598039959, UpperTol: 19},
+  {Law: "FisherF", Params: [100.0, 7.0], X: 1.7686022702522353, Pdf: 0.25334129262987798, Cdf: 0.78235092026426389, CdfTol: 25, Upper: 0.21764907973573611, UpperTol: 49},
+  {Law: "FisherF", Params: [300.0, 500.0], X: 0.9560041241660243, Pdf: 3.6735535413573914, Cdf: 0.33508248623234643, CdfTol: 184, Upper: 0.66491751376765351, UpperTol: 101},
+  {Law: "Gamma", Params: [0.3, 1.0], X: 0.3315359272181729, Pdf: 0.51969116682725913, Cdf: 0.74419687614128416, CdfTol: 21, Upper: 0.25580312385871579, UpperTol: 32},
+  {Law: "Gamma", Params: [1.0, 2.0], X: 0.5134569965666609, Pdf: 0.71622077643572823, Cdf: 0.64188961178213588, CdfTol: 27, Upper: 0.35811038821786412, UpperTol: 35},
+  {Law: "Gamma", Params: [2.5, 0.5], X: 19.036247739740485, Pdf: 0.00081188058975448761, Cdf: 0.99810751779072338, CdfTol: 16, Upper: 0.0018924822092765785, UpperTol: 147},
+  {Law: "Gamma", Params: [40.0, 3.0], X: 24.98529228712713, Pdf: 5.3955328904606876e-06, Cdf: 0.99999635030740852, CdfTol: 16, Upper: 3.6496925914568831e-06, UpperTol: 607},
+  {Law: "Gamma", Params: [900.0, 1.5], X: 444.9851140162473, Pdf: 3.8691828812643351e-18, Cdf: 7.3167028090042877e-18, CdfTol: 4372, Upper: 1, UpperTol: 16},
+  {Law: "Beta", Params: [0.5, 0.5], X: 0.4138692761387841, Pdf: 0.64628085393288959, Cdf: 0.44489260827136429, CdfTol: 27, Upper: 0.55510739172863566, UpperTol: 25},
+  {Law: "Beta", Params: [2.0, 3.0], X: 0.6152156427197661, Pdf: 1.0930585660133225, Cdf: 0.83788125277860825, CdfTol: 29, Upper: 0.16211874722139172, UpperTol: 82},
+  {Law: "Beta", Params: [0.2, 8.0], X: 0.001, Pdf: 81.524585983626523, Cdf: 0.41000961859563573, CdfTol: 31, Upper: 0.58999038140436433, UpperTol: 26},
+  {Law: "Beta", Params: [30.0, 60.0], X: 0.3450285305661081, Pdf: 7.6567889959354885, Cdf: 0.60188834613219511, CdfTol: 86, Upper: 0.39811165386780489, UpperTol: 122},
+  {Law: "Beta", Params: [700.0, 900.0], X: 0.4370595549260584, Pdf: 32.149488246430153, Cdf: 0.48667333164537607, CdfTol: 478, Upper: 0.51332666835462393, UpperTol: 454},
+  {Law: "Exponential", Params: [0.5], X: 1.9552739692769152, Pdf: 0.18809950670402342, Cdf: 0.62380098659195315, CdfTol: 25, Upper: 0.37619901340804685, UpperTol: 32},
+  {Law: "Exponential", Params: [3.0], X: 0.2058605676951359, Pdf: 1.617740763688946, Cdf: 0.46075307877035132, CdfTol: 28, Upper: 0.53924692122964868, UpperTol: 26},
+  {Law: "Binomial", Params: [10.0, 0.5], X: 5.0, Pdf: 0.24609375, Cdf: 0.623046875, CdfTol: 48, Upper: 0.376953125, UpperTol: 68},
+  {Law: "Binomial", Params: [37.0, 0.13], X: 0.0, Pdf: 0.0057837877472081559, Cdf: 0.0057837877472081559, CdfTol: 104, Upper: 0.99421621225279189, UpperTol: 17},
+  {Law: "Binomial", Params: [1000.0, 0.7], X: 697.0, Pdf: 0.026862627267833439, Cdf: 0.42976791474899262, CdfTol: 723, Upper: 0.57023208525100733, UpperTol: 549},
+  {Law: "Binomial", Params: [100000.0, 0.001], X: 111.0, Pdf: 0.021100334108930904, Cdf: 0.87408016012486744, CdfTol: 55, Upper: 0.12591983987513258, UpperTol: 284},
+  {Law: "Binomial", Params: [1000000.0, 0.5], X: 498951.0, Pdf: 8.8337284157578386e-05, Cdf: 0.017996761393237696, CdfTol: 39366, Upper: 0.98200323860676231, UpperTol: 737},
+  {Law: "Poisson", Params: [0.3], X: 0.0, Pdf: 0.74081822068171788, Cdf: 0.74081822068171788, CdfTol: 21, Upper: 0.25918177931828212, UpperTol: 30},
+  {Law: "Poisson", Params: [3.0], X: 1.0, Pdf: 0.14936120510359183, Cdf: 0.19914827347145578, CdfTol: 52, Upper: 0.80085172652854419, UpperTol: 25},
+  {Law: "Poisson", Params: [47.5], X: 39.0, Pdf: 0.028345087902109361, Cdf: 0.12082397889465635, CdfTol: 194, Upper: 0.87917602110534365, UpperTol: 41},
+  {Law: "Poisson", Params: [2500.0], X: 2563.0, Pdf: 0.0035862336247306768, Cdf: 0.89760090144047244, CdfTol: 176, Upper: 0.10239909855952752, UpperTol: 1417},
+  {Law: "Poisson", Params: [1000000.0], X: 1001135.0, Pdf: 0.00020942811110292596, Cdf: 0.87190697588514687, CdfTol: 3859, Upper: 0.12809302411485313, UpperTol: 26176}]
+
+(* Against the 70-digit values: the Pdf within 64 eps or the bound of the Cdf, the larger, and both tails. *)
+isPdfTable() = list.All([near(law(r.Law, r.Params).Pdf(r.X), r.Pdf, list.Max(64.0, r.CdfTol)) for r in lawPoints])
+isCdfTable() = list.All([near(law(r.Law, r.Params).Cdf(r.X), r.Cdf, r.CdfTol) for r in lawPoints])
+isUpperTable() = list.All([near(law(r.Law, r.Params).Cdf(r.X, upper = true), r.Upper, r.UpperTol) for r in lawPoints])
+
+(* Closed forms. *)
+xs = [0.001, 0.1, 0.5, 1.0, 2.0, 7.5, 30.0]
+isChiSquared2() = list.All([near(stats.ChiSquared(2).Cdf(x, upper = true), math.Exp(-x / 2.0), 8.0) for x in xs])
+isChiSquared1() = list.All([near(stats.ChiSquared(1).Cdf(x), special.Erf(math.Sqrt(x / 2.0)), 8.0) for x in xs])
+isCauchy() = list.All([near(stats.StudentT(1).Cdf(t), 0.5 + math.Atan(t) / math.Pi, 8.0) for t in [-3.0, -0.5, 0.25, 1.0, 9.0]])
+isStudent2() = list.All([near(stats.StudentT(2).Cdf(t), 0.5 + t / (2.0 * math.Sqrt(2.0 + t * t)), 8.0) for t in [-3.0, -0.5, 0.25, 1.0, 9.0]])
+isBetaPower() = list.All([near(stats.Beta(2.5, 1).Cdf(x), x ^ 2.5, 8.0) for x in [0.01, 0.2, 0.5, 0.9]])
+isBetaUniform() = list.All([near(stats.Beta(1, 1).Cdf(x), stats.Uniform(0, 1).Cdf(x), 2.0) for x in [0.01, 0.2, 0.5, 0.9]])
+isGammaExponential() = list.All([near(stats.Gamma(1, 2.5).Cdf(x), stats.Exponential(2.5).Cdf(x), 8.0) and near(stats.Gamma(1, 2.5).Pdf(x), stats.Exponential(2.5).Pdf(x), 8.0) for x in xs])
+isFisherBeta() = list.All([near(stats.FisherF(5, 9).Cdf(f), stats.Beta(2.5, 4.5).Cdf(5.0 * f / (5.0 * f + 9.0)), 16.0) for f in [0.1, 0.8, 1.0, 3.0]])
+isChiGamma() = list.All([near(stats.ChiSquared(7).Pdf(x), stats.Gamma(3.5, 0.5).Pdf(x), 8.0) for x in xs])
+isStudentInfinite() = stats.StudentT(1.0 / 0.0).Cdf(1.3) == stats.Normal(0, 1).Cdf(1.3) and stats.StudentT(1.0 / 0.0).Quantile(0.9) == stats.Normal(0, 1).Quantile(0.9)
+
+(* Both tails, exactly symmetric where the law is. *)
+isNormalSymmetric() = list.All([stats.Normal(0, 1).Cdf(-x) == stats.Normal(0, 1).Cdf(x, upper = true) for x in [0.1, 0.5, 1.96, 8.0, 37.0]])
+isStudentSymmetric() = list.All([stats.StudentT(4.5).Cdf(-x) == stats.StudentT(4.5).Cdf(x, upper = true) for x in [0.1, 0.5, 1.96, 8.0, 1e6]])
+isNormalFarTail() = near(stats.Normal(0, 1).Cdf(-37.5), 4.605353009581956e-308, 4.0) and near(stats.Normal(0, 1).Cdf(10, upper = true), 7.619853024160527e-24, 4.0)
+isUpperDigits() = stats.ChiSquared(10).Cdf(100, upper = true) > 0.0 and 1.0 - stats.ChiSquared(10).Cdf(100) == 0.0
+
+(* Quantiles back through the Cdf: the Cdf at the answer is p within tol (1 + c) eps, c = |x Pdf(x)| / p, as the
+   answer is a float, rounded: near x = 1, the 1 - x of a beta law keeps no more digits than x, and an answer that
+   rounds to 1 is skipped. *)
+ps = [1e-300, 1e-100, 1e-20, 1e-5, 0.01, 0.2, 0.5, 0.7, 0.99, 0.999999]
+defn backThrough(d, tol)
+  ok = true
+  for p in ps
+    for up in [false, true]
+      x = d.Quantile(p, upper = up)
+      if x - x == 0.0 and math.Abs(x) > 1e-300 and x != 1.0
+        c = math.Abs(x * d.Pdf(x)) / p
+        if c - c == 0.0
+          ok = ok and near(d.Cdf(x, upper = up), p, tol * (1.0 + c))
+        end
+      end
+    end
+  end
+  ok
+end
+isNormalBack() = backThrough(stats.Normal(3, 2), 4096.0)
+isStudentBack() = list.All([backThrough(stats.StudentT(nu), 8192.0) for nu in [0.5, 1.0, 2.0, 3.0, 12.0, 300.0, 1e6]])
+isChiSquaredBack() = list.All([backThrough(stats.ChiSquared(k), 8192.0) for k in [0.3, 1.0, 5.0, 60.0, 5000.0]])
+isFisherBack() = list.All(list.Flatten([[backThrough(stats.FisherF(a, b), 8192.0) for b in [1.5, 40.0]] for a in [0.7, 5.0, 300.0]]))
+isGammaBack() = list.All([backThrough(stats.Gamma(a, 2.0), 8192.0) for a in [0.01, 0.5, 3.0, 2000.0]])
+isBetaBack() = list.All(list.Flatten([[backThrough(stats.Beta(a, b), 8192.0) for b in [0.3, 4.0, 1200.0]] for a in [0.05, 1.0, 7.0, 900.0]]))
+isExponentialBack() = backThrough(stats.Exponential(0.25), 64.0)
+isNormalQuantileExact() = stats.Normal(0, 1).Quantile(0.975) == 1.9599639845400536 and stats.Normal(0, 1).Quantile(1e-300) == -37.0470962993612
+isStudentTiny() = stats.StudentT(0.24163878828558052).Quantile(6.0929166903934015e-62) < -1e251
+isQuantileEnds() = stats.Normal(0, 1).Quantile(0) == -1.0 / 0.0 and stats.Normal(0, 1).Quantile(1) == 1.0 / 0.0 and stats.ChiSquared(3).Quantile(0) == 0.0 and stats.ChiSquared(3).Quantile(1) == 1.0 / 0.0 and stats.Beta(2, 3).Quantile(1) == 1.0
+isQuantileOutside() = nan(stats.Normal(0, 1).Quantile(1.5)) and nan(stats.Gamma(2, 1).Quantile(-0.1)) and nan(stats.Binomial(10, 0.3).Quantile(2.0))
+
+(* The discrete laws: the Cdf is the sum of the masses, the masses sum to 1, and the quantile is the smallest k. *)
+defn sums(d, top)
+  total = 0.0
+  ok = true
+  for k in 0..top
+    total = total + d.Pdf(k)
+    ok = ok and math.Abs(d.Cdf(k) - total) <= 1e-13
+  end
+  ok
+end
+isBinomialSums() = sums(stats.Binomial(40, 0.37), 40) and math.Abs(list.Sum(stats.Binomial(40, 0.37).Pdf(0..40)) - 1.0) <= 1e-14
+isPoissonSums() = sums(stats.Poisson(6.5), 60) and math.Abs(list.Sum(stats.Poisson(6.5).Pdf(0..80)) - 1.0) <= 1e-14
+defn smallest(d, p)
+  k = d.Quantile(p)
+  d.Cdf(k) >= p * (1.0 - 64.0 * eps) and (k == 0.0 or d.Cdf(k - 1.0) < p)
+end
+isBinomialQuantile() = list.All(list.Flatten([[smallest(stats.Binomial(n, 0.3), p) for p in [1e-10, 0.05, 0.5, 0.95, 0.999]] for n in [1, 10, 1000, 1000000]]))
+isPoissonQuantile() = list.All(list.Flatten([[smallest(stats.Poisson(lam), p) for p in [1e-10, 0.05, 0.5, 0.95, 0.999]] for lam in [0.1, 4.0, 300.0, 1e7]]))
+isBinomialUpperQuantile() = list.All([stats.Binomial(50, 0.4).Cdf(stats.Binomial(50, 0.4).Quantile(p, upper = true), upper = true) <= p * (1.0 + 64.0 * eps) for p in [0.001, 0.3, 0.9]])
+isNotWhole() = stats.Binomial(10, 0.5).Pdf(2.5) == 0.0 and stats.Poisson(2).Pdf(-1) == 0.0 and stats.Binomial(10, 0.5).Cdf(2.5) == stats.Binomial(10, 0.5).Cdf(2)
+isDegenerate() = stats.Binomial(10, 0).Pdf(0) == 1.0 and stats.Binomial(10, 1).Cdf(9) == 0.0 and stats.Poisson(0).Pdf(0) == 1.0 and stats.Poisson(0).Quantile(0.7) == 0.0
+
+(* Arrays, NaN and infinities. *)
+isArrayShape() = value.Equal(value.Size(stats.Normal(0, 1).Cdf(matrix.Reshape([2, 3], [1, 2, 3, 4, 5, 6]))), [2, 3])
+isArrayValues() = stats.Gamma(2, 1).Cdf([0.5, 1.0])[2] == stats.Gamma(2, 1).Cdf(1.0) and stats.Beta(2, 3).Quantile([0.25, 0.5])[1] == stats.Beta(2, 3).Quantile(0.25)
+isNanThrough() = nan(stats.Normal(0, 1).Cdf(math.Nan)) and nan(stats.StudentT(3).Pdf(math.Nan)) and nan(stats.Poisson(3).Cdf(math.Nan))
+isInfinities() = stats.Normal(0, 1).Cdf(1.0 / 0.0) == 1.0 and stats.StudentT(2).Cdf(-1.0 / 0.0) == 0.0 and stats.ChiSquared(4).Cdf(1.0 / 0.0, upper = true) == 0.0 and stats.Poisson(4).Cdf(1.0 / 0.0) == 1.0
+isOutsideSupport() = stats.Beta(2, 3).Pdf(1.5) == 0.0 and stats.Gamma(2, 1).Cdf(-1) == 0.0 and stats.Uniform(0, 1).Cdf(2) == 1.0 and stats.Exponential(1).Pdf(-1) == 0.0
+
+(* Wrong parameters are bugs of the caller. *)
+isBadSd() = message(() -> stats.Normal(0, -1).Cdf(0)) == result.Err("stats.Normal: Sd is -1; give a finite number above 0.")
+isBadDf() = message(() -> stats.StudentT(0).Quantile(0.5)) == result.Err("stats.StudentT: Df is 0; give a number above 0.")
+isBadN() = message(() -> stats.Binomial(10.5, 0.3).Pdf(1)) == result.Err("stats.Binomial: N is 10.5; give a whole number of 0 or more.")
+isBadP() = message(() -> stats.Binomial(10, 1.5).Cdf(1)) == result.Err("stats.Binomial: P is 1.5; give a number from 0 to 1.")
+isBadUniform() = message(() -> stats.Uniform(2, 1).Pdf(1)) == result.Err("stats.Uniform: High is 1; give a number above Low, 2.")
+isBadNan() = message(() -> stats.Gamma(math.Nan, 1).Cdf(1)) == result.Err("stats.Gamma: Shape is nan; give a finite number above 0.")
+isBadElement() = message(() -> stats.Normal(0, 1).Cdf([1.0, "a"])) == result.Err("stats.Normal.Cdf: x[2] is \"a\"; give numbers (frame.Present drops the missing ones).")
+isBadCount() = message(() -> stats.Normal(0, 1).Sample(-1)) == result.Err("stats.Normal.Sample: n is -1; give a whole number of 0 or more.")

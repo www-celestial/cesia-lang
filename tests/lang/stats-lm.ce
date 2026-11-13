@@ -1,0 +1,186 @@
+(** The tests of stats.Lm: the datasets of NIST's Statistical Reference Datasets for linear regression, of lower to
+    higher difficulty, against their certified values to 15 digits, as the number of digits that agree (the LRE of
+    McCullough, 1998); R's summary(lm) table on the cars of mtcars, with a text column; and its errors. *)
+use std/fiber
+use std/frame
+use std/list
+use std/math
+use std/result
+use std/stats
+use std/value
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+
+defn lre(got, want)
+  (** The digits of got that agree with want: -log10 of the relative error, 15 at most. *)
+  if got == want
+    return 15.0
+  end
+  e = if want == 0.0 math.Abs(got) else math.Abs(got - want) / math.Abs(want) end
+  list.Min(15.0, -math.Log(e) / math.Log(10.0))
+end
+
+defn digits(set, tol)
+  (** The smallest LRE of the estimates, of their standard errors, of the residual sd and of R-squared. *)
+  fit = result.Unwrap(stats.Lm("y", set.Xs, set.Df, intercept = set.Intercept, tol = tol))
+  est = frame.Column("estimate", fit.Coefficients)
+  se = frame.Column("std error", fit.Coefficients)
+  worst = 15.0
+  for k in 1..value.Len(set.Estimates)
+    worst = list.Min(worst, list.Min(lre(est[k], set.Estimates[k]), lre(se[k], set.Errors[k])))
+  end
+  list.Min(worst, list.Min(lre(fit.Sigma, set.Sd), lre(fit.RSquared, set.R2)))
+end
+
+defn norris()
+  (** NIST StRD Norris: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [0.1, 338.8, 118.1, 888.0, 9.2, 228.1, 668.5, 998.5, 449.1, 778.9, 559.2, 0.3, 0.1, 778.1, 668.8, 339.3, 448.9, 10.8, 557.7, 228.3, 998.0, 888.8, 119.6, 0.3, 0.6, 557.6, 339.3, 888.0, 998.5, 778.9, 10.2, 117.6, 228.9, 668.4, 449.2, 0.2], "x": [0.2, 337.4, 118.2, 884.6, 10.1, 226.5, 666.3, 996.3, 448.6, 777.0, 558.2, 0.4, 0.6, 775.5, 666.9, 338.0, 447.5, 11.6, 556.0, 228.1, 995.8, 887.6, 120.2, 0.3, 0.3, 556.8, 339.1, 887.2, 999.0, 779.0, 11.1, 118.3, 229.2, 669.1, 448.9, 0.5]})
+  {Df: df, Xs: ["x"], Intercept: true, Estimates: [-0.262323073774029, 1.00211681802045], Errors: [0.232818234301152, 0.000429796848199937], Sd: 0.884796396144373, R2: 0.999993745883712}
+end
+
+defn pontius()
+  (** NIST StRD Pontius: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [0.11019, 0.21956, 0.32949, 0.43899, 0.54803, 0.65694, 0.76562, 0.87487, 0.98292, 1.09146, 1.20001, 1.30822, 1.41599, 1.52399, 1.63194, 1.73947, 1.84646, 1.95392, 2.06128, 2.16844, 0.11052, 0.22018, 0.32939, 0.43886, 0.54798, 0.65739, 0.76596, 0.87474, 0.983, 1.0915, 1.20004, 1.30818, 1.41613, 1.52408, 1.63159, 1.73965, 1.84696, 1.95445, 2.06177, 2.16829], "x": [150000.0, 300000.0, 450000.0, 600000.0, 750000.0, 900000.0, 1050000.0, 1200000.0, 1350000.0, 1500000.0, 1650000.0, 1800000.0, 1950000.0, 2100000.0, 2250000.0, 2400000.0, 2550000.0, 2700000.0, 2850000.0, 3000000.0, 150000.0, 300000.0, 450000.0, 600000.0, 750000.0, 900000.0, 1050000.0, 1200000.0, 1350000.0, 1500000.0, 1650000.0, 1800000.0, 1950000.0, 2100000.0, 2250000.0, 2400000.0, 2550000.0, 2700000.0, 2850000.0, 3000000.0]})
+  df = frame.SetColumn("x2", frame.Column("x", df) ^ 2, df)
+  {Df: df, Xs: ["x", "x2"], Intercept: true, Estimates: [0.000673565789473684, 7.32059160401003e-07, -3.16081871345029e-15], Errors: [0.000107938612033077, 1.57817399981659e-10, 4.86652849992036e-17], Sd: 0.000205177424076185, R2: 0.999999900178537}
+end
+
+defn noint1()
+  (** NIST StRD NoInt1: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [130.0, 131.0, 132.0, 133.0, 134.0, 135.0, 136.0, 137.0, 138.0, 139.0, 140.0], "x": [60.0, 61.0, 62.0, 63.0, 64.0, 65.0, 66.0, 67.0, 68.0, 69.0, 70.0]})
+  {Df: df, Xs: ["x"], Intercept: false, Estimates: [2.07438016528926], Errors: [0.0165289256198347], Sd: 3.56753034006338, R2: 0.999365492298663}
+end
+
+defn noint2()
+  (** NIST StRD NoInt2: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [3.0, 4.0, 4.0], "x": [4.0, 5.0, 6.0]})
+  {Df: df, Xs: ["x"], Intercept: false, Estimates: [0.727272727272727], Errors: [0.0420827318078432], Sd: 0.369274472937998, R2: 0.993348115299335}
+end
+
+defn longley()
+  (** NIST StRD Longley: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [60323.0, 61122.0, 60171.0, 61187.0, 63221.0, 63639.0, 64989.0, 63761.0, 66019.0, 67857.0, 68169.0, 66513.0, 68655.0, 69564.0, 69331.0, 70551.0], "x1": [83.0, 88.5, 88.2, 89.5, 96.2, 98.1, 99.0, 100.0, 101.2, 104.6, 108.4, 110.8, 112.6, 114.2, 115.7, 116.9], "x2": [234289.0, 259426.0, 258054.0, 284599.0, 328975.0, 346999.0, 365385.0, 363112.0, 397469.0, 419180.0, 442769.0, 444546.0, 482704.0, 502601.0, 518173.0, 554894.0], "x3": [2356.0, 2325.0, 3682.0, 3351.0, 2099.0, 1932.0, 1870.0, 3578.0, 2904.0, 2822.0, 2936.0, 4681.0, 3813.0, 3931.0, 4806.0, 4007.0], "x4": [1590.0, 1456.0, 1616.0, 1650.0, 3099.0, 3594.0, 3547.0, 3350.0, 3048.0, 2857.0, 2798.0, 2637.0, 2552.0, 2514.0, 2572.0, 2827.0], "x5": [107608.0, 108632.0, 109773.0, 110929.0, 112075.0, 113270.0, 115094.0, 116219.0, 117388.0, 118734.0, 120445.0, 121950.0, 123366.0, 125368.0, 127852.0, 130081.0], "x6": [1947.0, 1948.0, 1949.0, 1950.0, 1951.0, 1952.0, 1953.0, 1954.0, 1955.0, 1956.0, 1957.0, 1958.0, 1959.0, 1960.0, 1961.0, 1962.0]})
+  {Df: df, Xs: ["x1", "x2", "x3", "x4", "x5", "x6"], Intercept: true, Estimates: [-3482258.63459582, 15.0618722713733, -0.035819179292591, -2.02022980381683, -1.03322686717359, -0.0511041056535807, 1829.15146461355], Errors: [890420.383607373, 84.9149257747669, 0.0334910077722432, 0.488399681651699, 0.214274163161675, 0.22607320006937, 455.478499142212], Sd: 304.854073561965, R2: 0.995479004577296}
+end
+
+defn filip()
+  (** NIST StRD Filip: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [0.8116, 0.9072, 0.9052, 0.9039, 0.8053, 0.8377, 0.8667, 0.8809, 0.7975, 0.8162, 0.8515, 0.8766, 0.8885, 0.8859, 0.8959, 0.8913, 0.8959, 0.8971, 0.9021, 0.909, 0.9139, 0.9199, 0.8692, 0.8872, 0.89, 0.891, 0.8977, 0.9035, 0.9078, 0.7675, 0.7705, 0.7713, 0.7736, 0.7775, 0.7841, 0.7971, 0.8329, 0.8641, 0.8804, 0.7668, 0.7633, 0.7678, 0.7697, 0.77, 0.7749, 0.7796, 0.7897, 0.8131, 0.8498, 0.8741, 0.8061, 0.846, 0.8751, 0.8856, 0.8919, 0.8934, 0.894, 0.8957, 0.9047, 0.9129, 0.9209, 0.9219, 0.7739, 0.7681, 0.7665, 0.7703, 0.7702, 0.7761, 0.7809, 0.7961, 0.8253, 0.8602, 0.8809, 0.8301, 0.8664, 0.8834, 0.8898, 0.8964, 0.8963, 0.9074, 0.9119, 0.9228], "x": [-6.860120914, -4.324130045, -4.358625055, -4.358426747, -6.955852379, -6.661145254, -6.355462942, -6.118102026, -7.115148017, -6.815308569, -6.519993057, -6.204119983, -5.853871964, -6.109523091, -5.79832982, -5.482672118, -5.171791386, -4.851705903, -4.517126416, -4.143573228, -3.709075441, -3.499489089, -6.300769497, -5.953504836, -5.642065153, -5.031376979, -4.680685696, -4.329846955, -3.928486195, -8.56735134, -8.363211311, -8.107682739, -7.823908741, -7.522878745, -7.218819279, -6.920818754, -6.628932138, -6.323946875, -5.991399828, -8.781464495, -8.663140179, -8.473531488, -8.247337057, -7.971428747, -7.676129393, -7.352812702, -7.072065318, -6.774174009, -6.478861916, -6.159517513, -6.835647144, -6.53165267, -6.224098421, -5.910094889, -5.598599459, -5.290645224, -4.974284616, -4.64454848, -4.290560426, -3.885055584, -3.408378962, -3.13200249, -8.726767166, -8.66695597, -8.511026475, -8.165388579, -7.886056648, -7.588043762, -7.283412422, -6.995678626, -6.691862621, -6.392544977, -6.067374056, -6.684029655, -6.378719832, -6.065855188, -5.752272167, -5.132414673, -4.811352704, -4.098269308, -3.66174277, -3.2644011]})
+  df = frame.SetColumn("x2", frame.Column("x", df) ^ 2, df)
+  df = frame.SetColumn("x3", frame.Column("x", df) ^ 3, df)
+  df = frame.SetColumn("x4", frame.Column("x", df) ^ 4, df)
+  df = frame.SetColumn("x5", frame.Column("x", df) ^ 5, df)
+  df = frame.SetColumn("x6", frame.Column("x", df) ^ 6, df)
+  df = frame.SetColumn("x7", frame.Column("x", df) ^ 7, df)
+  df = frame.SetColumn("x8", frame.Column("x", df) ^ 8, df)
+  df = frame.SetColumn("x9", frame.Column("x", df) ^ 9, df)
+  df = frame.SetColumn("x10", frame.Column("x", df) ^ 10, df)
+  {Df: df, Xs: ["x", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10"], Intercept: true, Estimates: [-1467.4896142298, -2772.17959193342, -2316.37108160893, -1127.97394098372, -354.478233703349, -75.1242017393757, -10.8753180355343, -1.06221498588947, -0.0670191154593408, -0.00246781078275479, -4.02962525080404e-05], Errors: [298.084530995537, 559.77986547495, 466.477572127796, 227.204274477751, 71.6478660875927, 15.28971787474, 2.23691159816033, 0.221624321934227, 0.0142363763154724, 0.000535617408889821, 8.96632837373868e-06], Sd: 0.00334801051324544, R2: 0.99672741618562}
+end
+
+defn wampler1()
+  (** NIST StRD Wampler1: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [1.0, 6.0, 63.0, 364.0, 1365.0, 3906.0, 9331.0, 19608.0, 37449.0, 66430.0, 111111.0, 177156.0, 271453.0, 402234.0, 579195.0, 813616.0, 1118481.0, 1508598.0, 2000719.0, 2613660.0, 3368421.0], "x": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0]})
+  df = frame.SetColumn("x2", frame.Column("x", df) ^ 2, df)
+  df = frame.SetColumn("x3", frame.Column("x", df) ^ 3, df)
+  df = frame.SetColumn("x4", frame.Column("x", df) ^ 4, df)
+  df = frame.SetColumn("x5", frame.Column("x", df) ^ 5, df)
+  {Df: df, Xs: ["x", "x2", "x3", "x4", "x5"], Intercept: true, Estimates: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], Errors: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], Sd: 0.0, R2: 1.0}
+end
+
+defn wampler2()
+  (** NIST StRD Wampler2: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [1.0, 1.11111, 1.24992, 1.42753, 1.65984, 1.96875, 2.38336, 2.94117, 3.68928, 4.68559, 6.0, 7.71561, 9.92992, 12.75603, 16.32384, 20.78125, 26.29536, 33.05367, 41.26528, 51.16209, 63.0], "x": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0]})
+  df = frame.SetColumn("x2", frame.Column("x", df) ^ 2, df)
+  df = frame.SetColumn("x3", frame.Column("x", df) ^ 3, df)
+  df = frame.SetColumn("x4", frame.Column("x", df) ^ 4, df)
+  df = frame.SetColumn("x5", frame.Column("x", df) ^ 5, df)
+  {Df: df, Xs: ["x", "x2", "x3", "x4", "x5"], Intercept: true, Estimates: [1.0, 0.1, 0.01, 0.001, 0.0001, 1e-05], Errors: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], Sd: 0.0, R2: 1.0}
+end
+
+defn wampler3()
+  (** NIST StRD Wampler3: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [760.0, -2042.0, 2111.0, -1684.0, 3888.0, 1858.0, 11379.0, 17560.0, 39287.0, 64382.0, 113159.0, 175108.0, 273291.0, 400186.0, 581243.0, 811568.0, 1121004.0, 1506550.0, 2002767.0, 2611612.0, 3369180.0], "x": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0]})
+  df = frame.SetColumn("x2", frame.Column("x", df) ^ 2, df)
+  df = frame.SetColumn("x3", frame.Column("x", df) ^ 3, df)
+  df = frame.SetColumn("x4", frame.Column("x", df) ^ 4, df)
+  df = frame.SetColumn("x5", frame.Column("x", df) ^ 5, df)
+  {Df: df, Xs: ["x", "x2", "x3", "x4", "x5"], Intercept: true, Estimates: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], Errors: [2152.3262467817, 2363.55173469681, 779.343524331583, 101.47550755035, 5.64566512170752, 0.112324854679312], Sd: 2360.14502379268, R2: 0.99999555902582}
+end
+
+defn wampler4()
+  (** NIST StRD Wampler4: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [75901.0, -204794.0, 204863.0, -204436.0, 253665.0, -200894.0, 214131.0, -185192.0, 221249.0, -138370.0, 315911.0, -27644.0, 455253.0, 197434.0, 783995.0, 608816.0, 1370781.0, 1303798.0, 2205519.0, 2408860.0, 3444321.0], "x": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0]})
+  df = frame.SetColumn("x2", frame.Column("x", df) ^ 2, df)
+  df = frame.SetColumn("x3", frame.Column("x", df) ^ 3, df)
+  df = frame.SetColumn("x4", frame.Column("x", df) ^ 4, df)
+  df = frame.SetColumn("x5", frame.Column("x", df) ^ 5, df)
+  {Df: df, Xs: ["x", "x2", "x3", "x4", "x5"], Intercept: true, Estimates: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], Errors: [215232.62467817, 236355.173469681, 77934.3524331583, 10147.550755035, 564.566512170752, 11.2324854679312], Sd: 236014.502379268, R2: 0.957478440825662}
+end
+
+defn wampler5()
+  (** NIST StRD Wampler5: the data, and the certified estimates, their standard deviations, the residual standard deviation and
+      R-squared. *)
+  df = frame.Of({"y": [7590001.0, -20479994.0, 20480063.0, -20479636.0, 25231365.0, -20476094.0, 20489331.0, -20460392.0, 18417449.0, -20413570.0, 20591111.0, -20302844.0, 18651453.0, -20077766.0, 21059195.0, -19666384.0, 26348481.0, -18971402.0, 22480719.0, -17866340.0, 10958421.0], "x": [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 20.0]})
+  df = frame.SetColumn("x2", frame.Column("x", df) ^ 2, df)
+  df = frame.SetColumn("x3", frame.Column("x", df) ^ 3, df)
+  df = frame.SetColumn("x4", frame.Column("x", df) ^ 4, df)
+  df = frame.SetColumn("x5", frame.Column("x", df) ^ 5, df)
+  {Df: df, Xs: ["x", "x2", "x3", "x4", "x5"], Intercept: true, Estimates: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0], Errors: [21523262.467817, 23635517.3469681, 7793435.24331583, 1014755.0755035, 56456.6512170752, 1123.24854679312], Sd: 23601450.2379268, R2: 0.0022466892157494}
+end
+
+
+(* The targets: 12 digits on the sets of lower and average difficulty, 9 on Longley and Wampler 1 to 3, and on the
+   hardest what R reaches: Wampler 4 and 5, and Filip, a polynomial of degree 10, with tol = 1e-10. *)
+isNorris() = digits(norris(), 1e-7) >= 12.0
+isPontius() = digits(pontius(), 1e-7) >= 12.0
+isNoInt1() = digits(noint1(), 1e-7) >= 12.0
+isNoInt2() = digits(noint2(), 1e-7) >= 12.0
+isLongley() = digits(longley(), 1e-7) >= 12.0
+isWampler1() = digits(wampler1(), 1e-7) >= 9.0
+isWampler2() = digits(wampler2(), 1e-7) >= 12.0
+isWampler3() = digits(wampler3(), 1e-7) >= 9.0
+isWampler4() = digits(wampler4(), 1e-7) >= 7.5
+isWampler5() = digits(wampler5(), 1e-7) >= 5.5
+isFilip() = digits(filip(), 1e-10) >= 7.0
+defn isFilipDropsAColumn()
+  (** With R's tolerance, Filip's x^10 is a combination of the columns before it, as in R: its estimate is missing. *)
+  f = filip()
+  fit = result.Unwrap(stats.Lm("y", f.Xs, f.Df))
+  fit.Rank == 10 and value.IsMissing(frame.Column("estimate", fit.Coefficients)[11])
+end
+
+(* R 4.6.2's summary(lm(mpg ~ wt + hp + cyl, mtcars)), cyl as a text column: the treatment coding of its levels. *)
+cars = frame.Of({"mpg": [21.0, 21.0, 22.8, 21.4, 18.7, 18.1, 14.3, 24.4, 22.8, 19.2, 17.8, 16.4, 17.3, 15.2, 10.4, 10.4, 14.7, 32.4, 30.4, 33.9, 21.5, 15.5, 15.2, 13.3, 19.2, 27.3, 26.0, 30.4, 15.8, 19.7, 15.0, 21.4], "wt": [2.62, 2.875, 2.32, 3.215, 3.44, 3.46, 3.57, 3.19, 3.15, 3.44, 3.44, 4.07, 3.73, 3.78, 5.25, 5.424, 5.345, 2.2, 1.615, 1.835, 2.465, 3.52, 3.435, 3.84, 3.845, 1.935, 2.14, 1.513, 3.17, 2.77, 3.57, 2.78], "hp": [110, 110, 93, 110, 175, 105, 245, 62, 95, 123, 123, 180, 180, 180, 205, 215, 230, 66, 52, 65, 97, 150, 150, 245, 175, 66, 91, 113, 264, 175, 335, 109], "cyl": ["6", "6", "4", "6", "8", "6", "8", "4", "4", "6", "6", "8", "8", "8", "8", "8", "8", "4", "4", "4", "4", "8", "8", "8", "8", "4", "4", "4", "8", "6", "8", "4"]})
+fit = result.Unwrap(stats.Lm("mpg", ["wt", "hp", "cyl"], cars))
+near(xs, want, n) = list.All([math.Abs(xs[k] - want[k]) <= n * 2.220446049250313e-16 * math.Abs(want[k]) for k in 1..value.Len(want)])
+isTerms() = value.Equal(frame.Column("term", fit.Coefficients), ["(intercept)", "wt", "hp", "cyl[6]", "cyl[8]"])
+isEstimates() = near(frame.Column("estimate", fit.Coefficients), [35.845995315187714, -3.1814040466796158, -0.023119809154454662, -3.3590248959359514, -3.1858844449775261], 64.0)
+isErrors() = near(frame.Column("std error", fit.Coefficients), [2.0410190714103309, 0.71960100213438905, 0.011952196008800819, 1.4016697192928618, 2.1704752896998918], 64.0)
+isTValues() = near(frame.Column("t value", fit.Coefficients), [17.56279292893543, -4.4210667262042982, -1.9343565933348768, -2.3964453606307266, -1.4678280190962383], 64.0)
+isPValues() = near(frame.Column("p value", fit.Coefficients), [2.6703201406812734e-16, 0.00014417557610598369, 0.063612686401873592, 0.023747180276686347, 0.15370474056762357], 1024.0)
+isSummary() = near([fit.Sigma, fit.RSquared, fit.AdjustedRSquared], [2.4402309695225082, 0.85721945246219755, 0.83606677875289348], 64.0) and fit.Df == 27 and fit.Rows == 32 and fit.Rank == 5
+isFTest() = near([fit.F.Statistic, fit.F.PValue], [40.525347492366741, 4.8691419315967091e-11], 1024.0) and value.Equal(fit.F.Df, [4, 27])
+isConfint() = near(frame.Column("low", fit.Confint()), [31.658170099749743, -4.6579033425487504, -0.047643689664266048, -6.2350136000074006, -7.6393318796501521], 256.0) and near(frame.Column("high", fit.Confint()), [40.033820530625682, -1.7049047508104815, 0.0014040713553567265, -0.48303619186450275, 1.2675629896950995], 256.0)
+new = frame.Of({"wt": [2.5, 3.5], "hp": [100, 200], "cyl": ["4", "8"]})
+isPredict() = near(fit.Predict(new), [25.580504283043208, 16.901234875940602], 64.0)
+isConfidence() = near(fit.Band(new).Low, [23.981825752922443, 15.358754756112294], 256.0) and near(fit.Band(new).High, [27.179182813163973, 18.443714995768911], 256.0)
+isPrediction() = near(fit.Band(new, kind = "prediction").Low, [20.324533876288839, 11.662084487368602], 256.0) and near(fit.Band(new, kind = "prediction").High, [30.836474689797576, 22.140385264512602], 256.0)
+isResiduals() = math.Abs(list.Sum(fit.Residuals)) < 1e-12 and near(fit.Fitted + fit.Residuals, frame.Column("mpg", cars), 4.0)
+
+(* Errors and bugs. *)
+isMissingValue() = stats.Lm("y", ["x"], frame.Of({"y": [1.0, 2.0, 3.0], "x": [1.0, missing, 3.0]})).Error.Message == "stats.Lm: column \"x\" is missing at row 2; frame.DropMissing(frame.Select([...], df)) drops such rows."
+isNoColumn() = stats.Lm("y", ["z"], frame.Of({"y": [1.0, 2.0], "x": [1.0, 2.0]})).Error.Message == "stats.Lm: the frame has no column \"z\"; its columns are [\"y\", \"x\"]."
+isNoInterceptR2() = result.Unwrap(stats.Lm("y", ["x"], frame.Of({"y": [2.0, 4.1, 5.9], "x": [1.0, 2.0, 3.0]}), intercept = false)).Rank == 1
+isBadTol() = message(() -> stats.Lm("y", ["x"], frame.Of({"y": [1.0, 2.0], "x": [1.0, 2.0]}), tol = -1)) == result.Err("stats.Lm: tol is -1; give a number from 0 to 1.")
+isBadKind() = message(() -> fit.Band(new, kind = "both")) == result.Err("stats.Model.Band: kind is \"both\"; give \"confidence\" or \"prediction\".")

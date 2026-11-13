@@ -46,8 +46,8 @@ language.
     methods each step follows.
 17. [Numerical methods](numerical.md): the zero of a function and differential equations, as `fzero` and `ode45`,
     with what each method promises, beside scipy and Octave.
-18. [Statistics](statistics.md): the gamma, beta and error functions and the incomplete ratios under every law of
-    probability, with what each method promises, beside R and scipy.
+18. [Statistics](statistics.md): the laws of probability as values, their densities, tails, quantiles and draws, the
+    special functions under them, with what each method promises, beside R and scipy.
 19. [JSON and CSV](json.md): reading, writing, and checking what comes in.
 20. [HTTP](http.md): a web server with routes and JSON, tested without the network, live screens, and the client.
 21. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.
