@@ -1,0 +1,17 @@
+use std/io
+use std/math
+
+(* A loop whose machine code moves from MIR's level 1 to its level 2 while it runs. The logistic map is chaotic: a
+   float that came out other, at either level, would change every digit after it. *)
+defn walk(n)
+  x = 0.5
+  s = 0
+  for i in 1..n
+    x = x * 3.7 * (1.0 - x)
+    if x > 0.5
+      s = s + math.Mod(i, 7)
+    end
+  end
+  io.Print(s, x)
+end
+walk(1000000)

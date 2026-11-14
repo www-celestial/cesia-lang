@@ -254,6 +254,13 @@ defn isPart(s, more)
   s != "" and not text.StartsWith(".", s) and not text.StartsWith("-", s) and list.All(list.Map(c -> text.Contains(c, "$nameChars$more"), text.Chars(s)))
 end
 
+defn isCommit(version)
+  (** Is the version the whole hash of a commit, 40 hexadecimal digits in small letters, or 64 for a repository of SHA-256?
+      A commit never moves, as a tag can: a project that has no tag yet is taken at one. *)
+  n = text.ByteLength(version)
+  (n == 40 or n == 64) and list.All(list.Map(c -> text.Contains(c, "0123456789abcdef"), text.Chars(version)))
+end
+
 defn checkDep(path, from, version)
   (** Ok, or an Err when a dependency, from a cesia.toml of the project or of a project it takes, could write outside deps/ or
       the cache, or give git an option. *)
@@ -298,15 +305,27 @@ defn cacheDir()
   "$base/cesia/git"
 end
 
+defn fetchCommit(from, version, staging)
+  (** Fetches one commit, by its hash, into a new repository at staging, and checks it out. *)
+  git(["init", "--quiet", "--", staging])?
+  git(["-C", staging, "fetch", "--quiet", "--depth", "1", "--", gitUrl(from), version])?
+  git(["-C", staging, "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"])
+end
+
 defn fetch(path, from, version)
-  (** A project at a tag, from the cache, cloned there the first time: {Path, From, Version, Dir, Commit, Src, Deps}. *)
+  (** A project at a tag or at a commit, from the cache, cloned there the first time: {Path, From, Version, Dir, Commit,
+      Src, Deps}. A commit is fetched alone, by its hash, which the server must give: GitHub and git itself do. *)
   checkDep(path, from, version)?
   dir = "$(cacheDir())/$path/$version"
   if not sys.Exists("$dir/.git")
     staging = "$dir.new"
     removeAll(staging)?
     sys.Mkdir(parent(dir))?
-    cloned = git(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", version, "--", gitUrl(from), staging])
+    cloned = if isCommit(version)
+      fetchCommit(from, version, staging)
+    else
+      git(["-c", "advice.detachedHead=false", "clone", "--quiet", "--depth", "1", "--branch", version, "--", gitUrl(from), staging])
+    end
     if result.IsErr(cloned)
       _ = removeAll(staging)
       return result.Err("Can't fetch $path at $version: $(cloned.Error)")
@@ -315,6 +334,9 @@ defn fetch(path, from, version)
     sys.Rename(staging, dir)?
   end
   commit = text.Trim(git(["-C", dir, "rev-parse", "HEAD"])?)
+  if isCommit(version) and commit != version
+    return result.Err("$path gave the commit $commit when $version was asked: its cache folder $dir is wrong; remove it.")
+  end
   if not sys.Exists("$dir/$projectFile")
     return result.Err("$path has no cesia.toml at $version: it is not a Cesia project.")
   end
@@ -420,6 +442,9 @@ defn resolve(wanted)
                 return result.Err("$(item.Path)/$dir/$name uses $u, and the cesia.toml of $(item.Path) has no [deps] for $(target.Path).")
               end
               known = dict.Get(target.Path, versions)
+              if not value.IsMissing(known) and asked[1].Version != known.Version and (isCommit(asked[1].Version) or isCommit(known.Version))
+                return result.Err("$(target.Path) is asked at $(asked[1].Version) by $(item.Path), and at $(known.Version) by $(known.Asked): a commit comes in no order, so both must ask for the same version.")
+              end
               if value.IsMissing(known) or cesia.Compare(asked[1].Version, known.Version) > 0
                 versions[target.Path] = {Version: asked[1].Version, From: asked[1].From, Label: asked[1].Label, Asked: item.Path,
                   Take: missing}
@@ -584,7 +609,7 @@ defn add(lock, args)
   (** cesia pkg add URL@TAG [package...]: a new [deps] table at the end of cesia.toml, then the install. *)
   parts = text.Split("@", args[2])
   if value.Len(parts) < 2 or list.Last(parts) == ""
-    return result.Err("cesia pkg add needs a tag: cesia pkg add github.com/x/y@v1.2.0.")
+    return result.Err("cesia pkg add needs a tag or the hash of a commit: cesia pkg add github.com/x/y@v1.2.0.")
   end
   from = text.Join("@", parts[1..value.Len(parts) - 1])
   version = list.Last(parts)
@@ -726,6 +751,8 @@ defn check()
     newest = newestTag(d.From)
     state = if result.IsErr(newest)
       newest.Error
+    else if isCommit(d.Version)
+      "a commit; the newest tag is $(newest.Value): cesia pkg update $(d.Label)"
     else if cesia.Compare(newest.Value, d.Version) > 0
       "$(newest.Value) is out: cesia pkg update $(d.Label)"
     else

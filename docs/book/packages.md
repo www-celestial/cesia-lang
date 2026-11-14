@@ -156,6 +156,10 @@ cesia pkg
 ```
 
 - git fetches each tag once, into a cache: another project that takes it needs no network.
+- A project that has no tag yet is taken at a commit: `version` is then the whole hash of the commit, 40 hexadecimal
+  digits, as `cesia pkg add github.com/someone/geometry@3f9c…` writes it. A commit never moves, as a tag can; git
+  fetches that commit alone. Two projects that ask for the same one at a commit must ask for the same commit: a commit
+  comes in no order, so there is no highest one to take.
 - `cesia.lock`, the [lock file](glossary.md#lock-file), keeps the commit of each tag and a fingerprint of each file. The code in `std/` and `deps/` is read only: Cesia
   checks each file the first time it reads it, so a change by hand stops the program.
 - To change someone's package, fork it, then let `cesia pkg move` point the project at your fork.

@@ -179,6 +179,12 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   <https://www.rfc-editor.org/rfc/rfc9110>, et "HTTP/1.1", RFC 9112, 2022. <https://www.rfc-editor.org/rfc/rfc9112>.
   Les méthodes, les statuts, les en-têtes, les connexions persistantes (gardées ouvertes d'une requête à l'autre) :
   [std/http].
+- A. Barth. "The Web Origin Concept", RFC 6454, 2011. <https://www.rfc-editor.org/rfc/rfc6454>. Le header `Origin`,
+  scheme, hôte et port, son hôte en ASCII : ce que [http.SameOrigin] compare au `Host`.
+- W3C. "Fetch Metadata Request Headers", Working Draft. <https://www.w3.org/TR/fetch-metadata/>. Le header
+  `Sec-Fetch-Site`, qu'aucune page ne peut écrire ; F. Valsorda. "Cross-Site Request Forgery", 13 août 2025.
+  <https://words.filippo.io/csrf/>, et `net/http.CrossOriginProtection` de Go 1.25.
+  <https://pkg.go.dev/net/http#CrossOriginProtection>. Les étapes de [http.SameOrigin], et leur limite avec le scheme.
 - I. Fette, A. Melnikov. "The WebSocket Protocol", RFC 6455, 2011. <https://www.rfc-editor.org/rfc/rfc6455>. Le serveur
   et le client de [std/websocket].
 - Y. Bernier. "Latency Compensating Methods in Client/Server In-game Protocol Design and Optimization". Valve, GDC 2001.

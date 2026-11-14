@@ -46,3 +46,8 @@ The core only: `mir.c`, `mir-gen.c` and what they include (the five targets, the
   overflow of an operation on a value fixed in the inner loop, as `k * c` with `k` an outer counter, went unseen.
 - `mir-gen.c` `gen_assert` and `mir.h` `mir_assert`: a failed check calls `cesia_mir_failed` (in `src/sys/jit.c`), which goes
   back to the load as MIR's errors do, and the JIT is off for the rest of the run: a check of MIR never kills Cesia.
+- `mir-gen-x86_64.c`, `patterns_init`: the table of patterns, shared by every context, gets its sizes from the first
+  context made, not from each one. The JIT makes a context per unit, and a unit's level 2 in another thread: a context
+  made then would write the table while that thread's context reads it, the same values, but a race in C all the same.
+- `mir-interp.c`, `interp_init`: the offsets of MIR's interpreter, shared by every context, are written by the first context
+  made only, for the same reason.

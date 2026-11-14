@@ -766,10 +766,11 @@ hashes computed in advance is useless. [crypto.HashPassword] adds one: see [Cryp
 
 ## Same-origin check
 
-A server's check that a request comes from a page of its own site, by the `Origin` header the browser sends: a page
-from elsewhere could otherwise use the cookies of the visitor. A browser holds `fetch` to this rule by itself, but not a
-WebSocket, so the server checks it (RFC 6455 §10.2). [live.Route] gives a page of another origin a `403`: see
-[HTTP](http.md#the-pages-side).
+A server's check that a request comes from a page of its own site, by the `Sec-Fetch-Site` or the `Origin` header the
+browser sends: a page from elsewhere could otherwise use the cookies of the visitor, which is *cross-site request
+forgery*, CSRF. A browser holds `fetch` to this rule by itself, but not a form or a WebSocket, so the server checks it
+(RFC 6455 §10.2). [http.SameOrigin] gives a request of another site a `403`: see
+[HTTP](http.md#requests-from-another-site); [live.Route] does the same for its screens.
 
 ## Sandbox
 

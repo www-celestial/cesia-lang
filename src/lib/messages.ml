@@ -175,6 +175,8 @@ let c_no_library name reason = plain (Printf.sprintf "Can't load %s: %s." name r
 let c_no_function name = plain (Printf.sprintf "This library has no function %s." name)
 let c_type name = plain (Printf.sprintf "%s isn't a C type." name)
 let c_void_arg = plain "void can't be an argument."
+let c_slow_shape = plain "slow takes a function of at most 6 numbers, pointers or texts, which doesn't call back."
+let c_slow_line n = plain (Printf.sprintf "%d slow C calls already wait for a place: this one can't wait too." n)
 let c_too_many n = plain (Printf.sprintf "A C function takes at most 60 arguments, not %d." n)
 let c_no_ffi = plain "This needs libffi, which isn't installed."
 let c_bad_signature = plain "libffi refuses this signature."
@@ -254,7 +256,7 @@ let usage =
   \       cesia check [--json] [--stdin file.ce] [path...]\n\
   \       cesia fmt [--check] [path...]\n\
   \       cesia lsp\n\
-  \       cesia do [task]\n\
+  \       cesia do [task [args...]]\n\
   \       cesia new name\n\
   \       cesia pkg [install | update [label] [--to tag] | add url@tag [package...] | move old new | --check]\n\
   \       cesia upgrade [--nightly]\n\
@@ -301,6 +303,7 @@ let project_bad_name name = Printf.sprintf "A project name holds letters, digits
 let project_exists name = name ^ " already exists."
 let project_created name = Printf.sprintf "Created %s. Run it: cd %s && cesia do run" name name
 let project_no_such_task name = Printf.sprintf "No task named %s." name
+let project_group_words name = Printf.sprintf "Task %s runs no program of its own, so it takes no words after its name." name
 let project_cant_start program reason = Printf.sprintf "Can't start %s: %s." program reason
 let need_count name a = plain (Printf.sprintf "%s needs a count of 0 or more, not %s." name a)
 let cant_sort a b = plain (Printf.sprintf "Can't sort %s with %s." a b)

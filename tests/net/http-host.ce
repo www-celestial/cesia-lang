@@ -1,0 +1,15 @@
+(* Fetch names the port in Host when it isn't the scheme's own (RFC 9110, section 7.2): a server that compares the
+   Origin of a page with its Host finds the same text. A line end in the host or the port of a URL is an Err before any
+   connection: no URL can add a header of its own. *)
+use std/fiber
+use std/http
+use std/io
+use std/result
+use std/sys
+
+app = http.App() then http.Get("/", r -> http.Plain(http.HeaderValue("host", r.Headers)))
+fiber.Spawn(() -> http.Serve(app, port = 18801))
+sys.Sleep(0)
+io.Print(http.Fetch("http://127.0.0.1:18801/") then result.MapOk(x -> x.Body))
+io.Print(http.Fetch("http://127.0.0.1\r\nX-Admin/") then result.MapErr(e -> e.Message))
+io.Print(http.Fetch("http://127.0.0.1:18801\r\nX-Admin: 1/") then result.MapErr(e -> e.Message))

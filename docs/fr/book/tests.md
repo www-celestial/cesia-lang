@@ -200,12 +200,14 @@ pour tout le projet :
 [test]
 allow = ["exec=git"]
 timeout = "30"
-serial = ["tests/e2e"]
+serial = ["tests/db"]
+skip = ["tests/e2e"]
 ```
 
 `allow` ajoute des permissions, comme le fait `--allow` ; `timeout` est en secondes, écrit comme un texte ; `serial` nomme
 les fichiers et les dossiers qui partagent quelque chose, comme une base de données, et qui tournent seuls, après les
-autres.
+autres ; `skip` nomme ceux que `cesia test` laisse de côté, sauf si son chemin est dans l'un d'eux, comme des tests de
+bout en bout qui ont besoin d'un serveur lancé avant : `cesia test` lance les autres, et `cesia test tests/e2e` ceux-là.
 
 ## cesia test
 

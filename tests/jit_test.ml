@@ -36,7 +36,7 @@ add2:   func i64, p:cx
 |}
 
 let () =
-  let f = (Jit.load add2 [| "add2" |]).(0) in
+  let f = (Jit.load add2 [| "add2" |] 2).(1) in
   let ints = [| 0; 3; 4; 0 |] and floats = Float.Array.of_list [ 0.; 1.5; 0. ] and io = Array.make Cesia_jit.Ir.io_size 0 in
   io.(Cesia_jit.Ir.io_base) <- 1;
   let status = Jit.call f ints floats [||] io in
@@ -52,7 +52,7 @@ two:    func i64, p:cx
         ret 2
         endfunc
         endmodule
-|} [| "two" |]).(0) in
+|} [| "two" |] 1).(1) in
   check "second module" (Jit.call g [||] (Float.Array.create 0) [||] (Array.make Cesia_jit.Ir.io_size 0) = 2);
   check "first still runs" (Jit.call f ints floats [||] io = 7 && ints.(3) = 7);
   print_endline "jit: hand-written MIR ok"
@@ -69,13 +69,69 @@ let () =
   Printf.bprintf b "  mov s, 0\n";
   for k = n - 1 downto 0 do Printf.bprintf b "  add s, s, v%d\n" k done;
   Printf.bprintf b "  ret s\n  endfunc\n  endmodule\n";
-  let f = (Jit.load (Buffer.contents b) [| "big" |]).(0) in
+  let f = (Jit.load (Buffer.contents b) [| "big" |] 2).(1) in
   let ints = Array.init n Fun.id in
   let run () = Jit.call f ints (Float.Array.create 0) [||] (Array.make Cesia_jit.Ir.io_size 0) in
   (* The cells of an OCaml int array hold 2k + 1. *)
   let want = (n * (n - 1)) + n in
   check "a frame of many pages" (Domain.join (Domain.spawn run) = want && run () = want);
   print_endline "jit: a frame of many pages ok"
+
+(* A context per module: two domains make machine code at once, at both levels, and each runs; those of one freed, the
+   other's still run, and a load after the frees runs too. *)
+let () =
+  let make k level =
+    Jit.load (Printf.sprintf "m_k%d: module\n  export k%d\nk%d: func i64, p:cx\n  ret %d\n  endfunc\n  endmodule\n" k k k k)
+      [| Printf.sprintf "k%d" k |] level
+  in
+  let run a = Jit.call a.(1) [||] (Float.Array.create 0) [||] (Array.make Cesia_jit.Ir.io_size 0) in
+  let all base units = Array.for_all Fun.id (Array.mapi (fun k a -> run a = base + k) units) in
+  let live = Jit.live () in
+  let other = Domain.spawn (fun () -> Array.init 50 (fun k -> make (100 + k) 2)) in
+  let mine = Array.init 50 (fun k -> make k 1) in
+  let theirs = Domain.join other in
+  check "loads at once on two domains" (all 0 mine && all 100 theirs);
+  Array.iter (fun a -> Jit.free a.(0)) mine;
+  check "freed, the others still run" (all 100 theirs);
+  Array.iter (fun a -> Jit.free a.(0)) theirs;
+  let again = make 7 2 in
+  check "a load after frees" (run again = 7);
+  Jit.free again.(0);
+  check "none left" (Jit.live () = live);
+  print_endline "jit: contexts on two domains ok"
+
+(* A unit's level 2, made by another domain: one at a time, and made while the caller goes on. *)
+let () =
+  let text n =
+    let b = Buffer.create 65536 in
+    Printf.bprintf b "m_l2: module\n  export l2\nl2: func i64, p:cx\n  local i64:s, i64:t, i64:ints\n  mov s, 0\n";
+    Printf.bprintf b "  mov ints, i64:0(cx)\n  mov t, i64:0(ints)\n";
+    for k = 1 to n do Printf.bprintf b "  add s, s, t\n  xor t, t, %d\n" k done;
+    Printf.bprintf b "  ret s\n  endfunc\n  endmodule\n";
+    Buffer.contents b
+  in
+  let idle () = while Level2.busy () do Domain.cpu_relax () done in
+  let live = Jit.live () in
+  (match Level2.start ~wait:true (text 3) "l2" with
+   | Some job ->
+     (match Atomic.get job with
+      | Level2.Made a ->
+        (* The cell of 5 holds 11: 11 + (11 xor 1) + (11 xor 1 xor 2). *)
+        let got = Jit.call a.(1) [| 5 |] (Float.Array.create 0) [||] (Array.make Cesia_jit.Ir.io_size 0) in
+        check "level 2 runs" (got = 11 + 10 + 8 && Jit.live () = live + 1);
+        Jit.free a.(0)
+      | _ -> check "level 2 made" false)
+   | None -> check "level 2 starts" false);
+  (* A few thousand lines: MIR takes milliseconds at level 2, while this domain goes on. *)
+  let big = text 2000 in
+  (match Level2.start ~wait:false big "l2" with
+   | Some job ->
+     check "one at a time" (Level2.start ~wait:false big "l2" = None && Atomic.get job = Level2.Working);
+     idle ();
+     (match Atomic.get job with Level2.Made a -> Jit.free a.(0) | _ -> check "made in the background" false);
+     check "freed" (Jit.live () = live)
+   | None -> check "level 2 starts" false);
+  print_endline "jit: level 2 in the background ok"
 
 (* Versions of a real program, lowered and run natively on the interpreter's stacks. *)
 open Cesia
@@ -222,8 +278,8 @@ let native name sg =
     let text, entry = Mirtext.emit fns in
     (* JIT_TEST_SHOW=fib prints the MIR of a unit. *)
     if Sys.getenv_opt "JIT_TEST_SHOW" = Some name then print_string text;
-    (match Jit.load text [| entry |] with
-     | [| f |] -> ver, fns.(0), f
+    (match Jit.load text [| entry |] 2 with
+     | [| _; f |] -> ver, fns.(0), f
      | _ -> assert false
      | exception Failure m -> prerr_endline text; failwith (name ^ ": " ^ m))
 
@@ -356,8 +412,37 @@ let () =
   let ver, _, f = native "early" [| TI |] in
   let st, io = run ver f (stacks ()) [| Int 1000 |] in
   check "break" (st = 0 && string_of_int io.(Ir.io_int) = line 8);
-  (* Last: MIR's error turns the JIT off for the rest of the run. *)
-  check "bad text fails" (match Jit.load "m_bad: module\n  nonsense\n" [| "x" |] with _ -> false | exception Failure _ -> true);
-  check "then off" (match Jit.load add2 [| "add2" |] with _ -> false | exception Failure _ -> true);
+  (* Units that die leave no context: a loop that reads a module's variable, made again at each of its six values, at
+     both levels each time under CESIA_JIT=always, and in the default mode with runs long enough for level 2, made
+     while the run goes on. Once collected, only the code still held keeps its context: the loop's last, and the unit
+     whose level 2 was made last, until the next run takes it. *)
+  let hot = !Tier.mode in
+  Tier.available := true;
+  Engine.install ();
+  List.iter
+    (fun (mode, n, sum) ->
+       Tier.mode := mode;
+       let before = Jit.live () in
+       let out = Buffer.create 16 in
+       let w = Runtime.create_world { Runtime.default_options with o_sink = Buffer.add_string out; o_err = prerr_string } in
+       Loader.init w;
+       let path = Filename.temp_file "jit" ".ce" in
+       Out_channel.with_open_bin path (fun oc ->
+           Printf.fprintf oc
+             "use std/io\nk = 0.0\ndefn f(n)\n  s = 0.0\n  for i in 1..n\n    s = s + k * i\n  end\n  s\nend\nt = 0.0\n\
+              for j in 1..6\n  k = j * 1.0\n  t = t + f(%d)\nend\nio.Print(t)\n" n);
+       check "remade as the interpreter" (Loader.run w path [] = 0 && String.trim (Buffer.contents out) = sum);
+       Sys.remove path;
+       let made = Jit.live () - before in
+       Gc.full_major ();
+       Gc.full_major ();
+       check (Printf.sprintf "units that die free their contexts (%d, then %d)" made (Jit.live () - before))
+         (Jit.live () - before <= 3))
+    [ Tier.always, 100_000, "105001050000.0"; hot, 2_000_000, "42000021000000.0" ];
+  (* Last: MIR's error, in another domain, turns the JIT off for the rest of the run, on every domain. *)
+  check "bad text fails"
+    (Domain.join (Domain.spawn (fun () ->
+         match Jit.load "m_bad: module\n  nonsense\n" [| "x" |] 2 with _ -> false | exception Failure _ -> true)));
+  check "then off" (match Jit.load add2 [| "add2" |] 2 with _ -> false | exception Failure _ -> true);
   if !fails > 0 then exit 1;
   print_endline "jit lowered: ok"

@@ -117,11 +117,14 @@ project, as [Editors](editors.md) shows for each one. It needs the read permissi
 ## cesia do
 
 ```bash
-cesia do [task]
+cesia do [task [args...]]
 ```
 
 Without a task, lists the tasks of `cesia.toml`. With one, runs the tasks it needs, then it, and prints each command first.
-See [cesia.toml](toml.md).
+The words after the task go to its own program, after the words of its command: `cesia do seed 10 100` runs
+`cesia run seed.ce 10 100` for a task of `file = "seed.ce"`, whose program finds them in `sys.Args`; the tasks it needs
+get none, and a task that runs no program of its own takes none. Each word goes as it is, never through a shell. See
+[cesia.toml](toml.md).
 
 ## cesia new
 

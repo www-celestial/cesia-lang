@@ -1,0 +1,17 @@
+200 row 1
+row 2
+row 3
+ chunked text/csv
+HEAD, the head alone: true
+HTTP/1.0, no chunks: true
+http-stream.ce:26:6: no more rows
+  26 |   bug.Panic("no more rows")
+     |      ^
+  in broken (http-stream.ce:26)
+  called from <anonymous> (std/http.ce:190)
+  called from pour (std/http.ce:190)
+Err("This chunked body is cut short.")
+meanwhile: pong
+the slow client got some pieces, not all: true
+Ok(missing)
+exit 0

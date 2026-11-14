@@ -1,0 +1,20 @@
+use std/fiber
+use std/io
+use std/math
+
+(* One function hot in four fibers at once: they take turns inside its machine code, at its full checkpoints, while its
+   level 2 replaces level 1. A fiber that stopped inside level 1 goes on in level 2; each result is the interpreter's. *)
+defn spin(seed, n)
+  x = seed
+  s = 0
+  for i in 1..n
+    x = x * 3.9 * (1.0 - x)
+    s = s + math.Mod(i + s, 5)
+  end
+  s * 1.0 + x
+end
+ts = [fiber.Spawn(() -> spin(0.11, 400000)), fiber.Spawn(() -> spin(0.22, 400000)), fiber.Spawn(() -> spin(0.33, 400000))]
+io.Print(spin(0.44, 400000))
+for t in ts
+  io.Print(fiber.Wait(t))
+end

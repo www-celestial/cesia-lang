@@ -54,6 +54,10 @@ crypto.CheckPassword("correct horse", stored, s)    (* true *)
 crypto.CheckPassword("wrong", stored, s)            (* false *)
 ```
 
+Chacun prend environ 70 ms et 64 Mio, sur un thread à lui : les autres fibers tournent pendant ce temps, si bien qu'un
+serveur continue de répondre pendant que quelqu'un se connecte. 50 connexions à la fois prennent 1 518 ms en tout, là
+où l'une après l'autre prenaient 3 645 ms ; voir [C et C++](c.md#un-appel-qui-prend-du-temps).
+
 ## Comparer des secrets
 
 `==` s'arrête au premier octet qui diffère : le temps qu'il prend dit donc à un attaquant combien d'octets étaient justes,

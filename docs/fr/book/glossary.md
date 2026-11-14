@@ -828,10 +828,12 @@ différents et qu'une table de hashes calculée à l'avance ne serve à rien. [c
 
 ## Same-origin check
 
-La vérification, par un serveur, qu'une requête vient d'une page de son propre site, d'après le header `Origin` que le
-navigateur envoie : sans elle, une page venue d'ailleurs pourrait se servir des cookies du visiteur. Un navigateur
-applique lui-même cette règle à `fetch`, mais pas à une WebSocket : c'est donc au serveur de la vérifier (RFC 6455
-§10.2). [live.Route] répond `403` à une page d'une autre origine : voir [HTTP](http.md#le-côté-de-la-page).
+La vérification, par un serveur, qu'une requête vient d'une page de son propre site, d'après le header `Sec-Fetch-Site`
+ou `Origin` que le navigateur envoie : sans elle, une page venue d'ailleurs pourrait se servir des cookies du visiteur,
+ce qui est la *cross-site request forgery*, CSRF. Un navigateur applique lui-même cette règle à `fetch`, mais pas à un
+formulaire ni à une WebSocket : c'est donc au serveur de la vérifier (RFC 6455 §10.2). [http.SameOrigin] répond `403`
+à une requête d'un autre site : voir [HTTP](http.md#des-requêtes-dun-autre-site) ; [live.Route] fait de même pour ses
+écrans.
 
 ## Sandbox
 

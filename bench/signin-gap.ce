@@ -1,0 +1,32 @@
+(* The longest gap of a fiber that sleeps 1 ms while N password checks run at once, N from the arguments.
+     cesia run --allow ffi=sodium bench/signin-gap.ce 4 *)
+use std/crypto
+use std/fiber
+use std/io
+use std/list
+use std/result
+use std/sys
+use std/text
+
+s = result.Unwrap(crypto.Open())
+stored = crypto.HashPassword("correct horse", s)
+n = text.Number(sys.Args[1])
+
+stop = fiber.Channel(size = 1)
+ticker = fiber.Spawn(defn ()
+  last = sys.Now()
+  gap = 0.0
+  while result.IsErr(fiber.Receive(stop, timeout = 0.001))
+    now = sys.Now()
+    gap = list.Max(gap, now - last)
+    last = now
+  end
+  gap
+end)
+sys.Sleep(0)
+start = sys.Now()
+checks = [fiber.Spawn(() -> crypto.CheckPassword("correct horse", stored, s)) for k in 1..n]
+done = [fiber.Wait(t).Value for t in checks]
+wall = sys.Now() - start
+fiber.Send(true, stop)
+io.Print("n=$n wall=$(text.Decimals(0, wall * 1000)) ms, longest gap of the ticker $(text.Decimals(1, fiber.Wait(ticker).Value * 1000)) ms, all true: $(list.All(done))")

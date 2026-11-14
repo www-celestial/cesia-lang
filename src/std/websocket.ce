@@ -24,19 +24,24 @@ struct Conn { Messages, socket, writer, closing, frames, ending }
 
 refused(message) = result.Err({Kind: "websocket", Message: message})   (* An Err of the kind "websocket". *)
 
-defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage)
+defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage, headers = [])
   (** Connects to the server of a ws:// URL and makes the handshake of RFC 6455 §4.1, both within timeout seconds: an Ok
       of a Conn, or an Err of the kind "websocket" when the URL or the handshake is refused, or when the time runs out. A
-      message past maxMessage bytes ends the connection with the close code 1009. It needs the net permission of the host
-      and port, as net.Connect; wss:// isn't taken yet.
+      message past maxMessage bytes ends the connection with the close code 1009. headers, a list of {Name, Value} as
+      http.Fetch takes, go with the handshake, as a cookie or an Origin. One whose name isn't a token of RFC 9110, or is
+      one the handshake writes itself (Host, Upgrade, Connection, Content-Length, Transfer-Encoding, or a name that starts
+      with Sec-WebSocket-), or whose value holds a line end or a zero byte, is an Err before any connection: no value can
+      add a header of its own. It needs the net permission of the host and port, as net.Connect; wss:// isn't taken yet.
 
         Dial("wss://example.com/") then result.MapErr(it.Kind) --> result.Err("websocket")
         silent = net.Listen(0).Value
-        Dial("ws://127.0.0.1:$(net.Port(silent))/", timeout = 0.1).Error.Message --> "ws://127.0.0.1:$(net.Port(silent))/ gave no handshake in 0.1 seconds." *)
+        Dial("ws://127.0.0.1:$(net.Port(silent))/", timeout = 0.1).Error.Message --> "ws://127.0.0.1:$(net.Port(silent))/ gave no handshake in 0.1 seconds."
+        Dial("ws://127.0.0.1:$(net.Port(silent))/", headers = [{Name: "Cookie", Value: "a=1\r\nX-Admin: 1"}]).Error.Message --> "This header can't go with a handshake: Cookie." *)
   target = address(url)?
+  extra = headerLines(headers)?
   key = newKey()
   opened = fiber.Channel(size = 1)
-  opening = fiber.Spawn(() -> handshake(target, key, opened))
+  opening = fiber.Spawn(() -> handshake(target, key, opened, extra))
   done = fiber.Wait(opening, timeout = timeout)
   if result.IsErr(done) and done.Error.Kind == "timeout"
     fiber.Cancel(opening)
@@ -67,12 +72,49 @@ defn address(url)
   result.Ok({Host: parts[1], Port: port, Path: if value.IsMissing(slash) "/" else text.ByteSlice(slash, text.ByteLength(rest), rest) end})
 end
 
-defn handshake(target, key, opened)
-  (** Connects and asks for the upgrade: an Ok of the socket and of the bytes after the response, which are frames
-      already, or an Err. The socket goes into opened first, for Dial to close if its time runs out. *)
+(* The characters of a token, the name of a header (RFC 9110, section 5.6.2), but the letters and digits. *)
+tokenMarks = "!#$$%&'*+-.^_`|~"
+
+(* The headers that the handshake writes itself, or that would give a GET a body: Dial refuses them in its headers. *)
+ownHeaders = ["host", "upgrade", "connection", "content-length", "transfer-encoding"]
+
+defn isToken(name)
+  (** Is the text a token of RFC 9110, as a header's name must be: letters, digits and tokenMarks, at least one? *)
+  for i in 1..text.ByteLength(name)
+    b = text.Byte(i, name)
+    if not ((b >= 48 and b <= 57) or (b >= 65 and b <= 90) or (b >= 97 and b <= 122) or text.Contains(text.ByteSlice(i, i, name), tokenMarks))
+      return false
+    end
+  end
+  name != ""
+end
+
+defn headerLines(headers)
+  (** The lines of the headers that Dial sends beside its own, or an Err for one that would change the request. *)
+  lines = []
+  for h in headers
+    name = h.Name
+    good = value.IsText(name) and value.IsText(h.Value) and isToken(name)
+    if good
+      lower = text.Lower(name)
+      good = not (lower in ownHeaders or text.StartsWith("sec-websocket-", lower) or text.Contains("\r", h.Value) or text.Contains("\n", h.Value) or text.Contains(text.Char(0), h.Value))
+    end
+    if not good
+      return refused("This header can't go with a handshake: $name.")
+    end
+    lines = list.Append("$name: $(h.Value)$crlf", lines)
+  end
+  result.Ok(text.Join("", lines))
+end
+
+defn handshake(target, key, opened, extra)
+  (** Connects and asks for the upgrade, its Host without the port when it is 80, as a browser writes it, with the
+      lines of extra after its own: an Ok of the socket and of the bytes after the response, which are frames already,
+      or an Err. The socket goes into opened first, for Dial to close if its time runs out. *)
   s = net.Connect(target.Host, target.Port)?
   fiber.Send(s, opened)
-  sent = net.Write(s, "GET $(target.Path) HTTP/1.1$(crlf)Host: $(target.Host):$(target.Port)$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: $key$(crlf)Sec-WebSocket-Version: 13$crlf$crlf")
+  host = if target.Port == 80 target.Host else "$(target.Host):$(target.Port)" end
+  sent = net.Write(s, "GET $(target.Path) HTTP/1.1$(crlf)Host: $host$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: $key$(crlf)Sec-WebSocket-Version: 13$crlf$extra$crlf")
   got = if result.IsOk(sent) upgraded(s, key, "") else sent end
   if result.IsErr(got)
     net.Close(s)

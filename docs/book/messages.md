@@ -333,6 +333,8 @@ From std/c: see [C and C++](c.md).
 | `This library has no function ….` | Check the name in the library's header. |
 | `… isn't a C type.` | Use a type of the table of C and C++. |
 | `void can't be an argument.` | A function of no argument takes []. |
+| `slow takes a function of at most 6 numbers, pointers or texts, which doesn't call back.` | Bind it without slow. |
+| `… slow C calls already wait for a place: this one can't wait too.` | Too many at once: refuse sooner, as by a limit of sign-ins by client. |
 | `A C function takes at most 60 arguments, not ….` | A C function takes 60 arguments at most here. |
 | `This needs libffi, which isn't installed.` | Install libffi, for more than 6 arguments, structures by value, variadic functions and callbacks. |
 | `libffi refuses this signature.` | Check the types against the C header. |
@@ -474,6 +476,7 @@ From the reader of `cesia.toml`, each with `cesia.toml:LINE:` in front, and from
 | `… already exists.` |  |
 | `Created …. Run it: cd … && cesia do run` |  |
 | `No task named ….` |  |
+| `Task … runs no program of its own, so it takes no words after its name.` | Give the words to a task that has run or file. |
 | `Can't start …: ….` |  |
 
 ## Next

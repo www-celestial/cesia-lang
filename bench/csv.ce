@@ -1,0 +1,26 @@
+(* The export of an app of invoices: 100,000 rows of 7 cells through csv.Text, and 100,000 dates through
+   date.FormatDate. Prints microseconds a row and a date, the best of 5. Python's: bench/csv.py.
+     cesia run bench/csv.ce *)
+use std/csv
+use std/date
+use std/io
+use std/list
+use std/math
+use std/sys
+
+rows = [["INV-$k", "Client $(math.Mod(k, 997))", "paid", math.Mod(k * 13, 100000), "2026-11-$(1 + math.Mod(k, 28))", "EUR", "note, $k"] for k in 1..100000]
+days = [date.Date(2026, 1 + math.Mod(k, 12), 1 + math.Mod(k, 28)) for k in 1..100000]
+
+defn best(f)
+  times = []
+  for run in 1..5
+    start = sys.Now()
+    f()
+    times = list.Append(sys.Now() - start, times)
+  end
+  list.Min(times)
+end
+
+csvUs = best(() -> csv.Text(rows)) * 10.0
+dateUs = best(() -> [date.FormatDate(d) for d in days]) * 10.0
+io.Print("csv.Text us/row: $csvUs, date.FormatDate us/date: $dateUs")

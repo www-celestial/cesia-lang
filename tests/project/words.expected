@@ -1,0 +1,7 @@
+> cesia run args.ce 1 "two words" "$HOME"
+["1", "two words", "$HOME"]
+> cesia run args.ce
+[]
+> echo "from echo:" x
+from echo: x
+exit 0

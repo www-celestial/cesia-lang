@@ -62,6 +62,8 @@ Measured on the same machine as the others, in the book's chapter on speed:
 - a start in 2.62 ms;
 - HTTP: a tiny route 67k requests a second, beside Go's 67k, and JSON 48k, ahead of Node's 41k;
 - `encode.Unbase64` of 1.4 MB, a page's screenshot, 572 -> 5.7 ms.
+- the JIT makes a unit's machine code at MIR's level 1 first, in 30 to 60 % less time, and its level 2 in another
+  domain once the unit is hot: Lorenz on [0, 100] 83 -> 66 ms, `structs` 51 -> 40, long runs at level 2's speed.
 - a native that wakes many fibers from another domain writes the wake pipe once: when one native wakes 10,000 fibers,
   the last is awake in 9.5 ms instead of 11.6; `json.Text` of a small map in 314 ns instead of 390.
 

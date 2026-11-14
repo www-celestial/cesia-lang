@@ -1871,13 +1871,20 @@ static void call (MIR_context_t ctx, MIR_val_t *bp, MIR_op_t *insn_arg_ops, code
   }
 }
 
+static int addr_offsets_set; /* Cesia: see below */
+
 static void interp_init (MIR_context_t ctx) {
   MIR_alloc_t alloc = ctx->alloc;
   struct interp_ctx *interp_ctx;
 
-  addr_offset8 = _MIR_addr_offset (ctx, MIR_ADDR8);
-  addr_offset16 = _MIR_addr_offset (ctx, MIR_ADDR16);
-  addr_offset32 = _MIR_addr_offset (ctx, MIR_ADDR32);
+  /* Cesia: written by the first context only, the same values each time: later ones start while another thread's context
+     works. */
+  if (!addr_offsets_set) {
+    addr_offset8 = _MIR_addr_offset (ctx, MIR_ADDR8);
+    addr_offset16 = _MIR_addr_offset (ctx, MIR_ADDR16);
+    addr_offset32 = _MIR_addr_offset (ctx, MIR_ADDR32);
+    addr_offsets_set = 1;
+  }
   if ((interp_ctx = ctx->interp_ctx = MIR_malloc (alloc, sizeof (struct interp_ctx))) == NULL)
     MIR_get_error_func (ctx) (MIR_alloc_error, "Not enough memory for ctx");
 #if DIRECT_THREADED_DISPATCH

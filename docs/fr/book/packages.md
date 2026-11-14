@@ -162,6 +162,10 @@ cesia pkg
 
 - git va chercher chaque tag une seule fois, dans un cache (un dossier qui garde ce qui a déjà été téléchargé) : un autre
   projet qui le prend n'a pas besoin du réseau.
+- Un projet qui n'a pas encore de tag se prend à un commit : `version` est alors le hash entier du commit, 40 chiffres
+  hexadécimaux, comme `cesia pkg add github.com/someone/geometry@3f9c…` l'écrit. Un commit ne bouge jamais, comme un tag
+  le peut ; git va chercher ce seul commit. Deux projets qui demandent le même à un commit doivent demander le même
+  commit : des commits ne viennent dans aucun ordre, il n'y a donc pas de plus haut à prendre.
 - `cesia.lock`, le [lock file](glossary.md#lock-file), garde le commit de chaque tag et un fingerprint de chaque fichier.
   Le code dans `std/` et `deps/` est en lecture seule : Cesia vérifie chaque fichier la première fois qu'il le lit, et un
   changement fait à la main arrête donc le programme.

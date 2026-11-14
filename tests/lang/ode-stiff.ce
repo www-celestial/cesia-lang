@@ -1,0 +1,394 @@
+(** The tests of ode.Solve with stiff = true: the two Rosenbrock tables against their order conditions, the solver
+    against the table step by step, the other table as an oracle, closed forms, published stiff problems against
+    reference solutions, events, shapes, and every kind of bad input. *)
+use std/fiber
+use std/list
+use std/math
+use std/matrix
+use std/num
+use std/ode
+use std/result
+use std/text
+use std/value
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+solved(r) = result.Unwrap(r)
+lastRow(s) = s.Y[value.Len(s.T), :]
+eps = 2.220446049250313e-16
+
+(* The tables, written here again from their source, in the form with the stages u_i of the code RODAS (Hairer and
+   Wanner II, §IV.7):
+   Rodas4 of Hairer and Wanner (1996) and Rodas5P of Steinebach (2023), as OrdinaryDiffEq.jl prints both. *)
+rodas4 = {Gamma: 0.25, Order: 4, Dense: 3,
+  A: [0.0 0.0 0.0 0.0 0.0 0.0
+      1.544 0.0 0.0 0.0 0.0 0.0
+      0.9466785280815826 0.2557011698983284 0.0 0.0 0.0 0.0
+      3.314825187068521 2.896124015972201 0.9986419139977817 0.0 0.0 0.0
+      1.221224509226641 6.019134481288629 12.53708332932087 -0.687886036105895 0.0 0.0
+      1.221224509226641 6.019134481288629 12.53708332932087 -0.687886036105895 1.0 0.0],
+  C: [0.0 0.0 0.0 0.0 0.0 0.0
+      -5.6688 0.0 0.0 0.0 0.0 0.0
+      -2.430093356833875 -0.2063599157091915 0.0 0.0 0.0 0.0
+      -0.1073529058151375 -9.594562251023355 -20.47028614809616 0.0 0.0 0.0
+      7.496443313967647 -10.24680431464352 -33.99990352819905 11.7089089320616 0.0 0.0
+      8.083246795921522 -7.981132988064893 -31.52159432874371 16.31930543123136 -6.058818238834054 0.0],
+  Cs: [0.0, 0.386, 0.21, 0.63, 1.0, 1.0],
+  D: [0.25, -0.1043, 0.1035, -0.0362, 0.0, 0.0],
+  H: [10.12623508344586 -7.487995877610167 -34.80091861555747 -7.992771707568823 1.025137723295662 0.0
+      -0.6762803392801253 6.087714651680015 16.43084320892478 24.76722511418386 -6.594389125716872 0.0]}
+rodas5p = {Gamma: 0.21193756319429014, Order: 5, Dense: 4,
+  A: [0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      3.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      2.849394379747939 0.45842242204463923 0.0 0.0 0.0 0.0 0.0 0.0
+      -6.954028509809101 2.489845061869568 -10.358996098473584 0.0 0.0 0.0 0.0 0.0
+      2.8029986275628964 0.5072464736228206 -0.3988312541770524 -0.04721187230404641 0.0 0.0 0.0 0.0
+      -7.502846399306121 2.561846144803919 -11.627539656261098 -0.18268767659942256 0.030198172008377946 0.0 0.0 0.0
+      -7.502846399306121 2.561846144803919 -11.627539656261098 -0.18268767659942256 0.030198172008377946 1.0 0.0 0.0
+      -7.502846399306121 2.561846144803919 -11.627539656261098 -0.18268767659942256 0.030198172008377946 1.0 1.0 0.0],
+  C: [0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      -14.155112264123755 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+      -17.97296035885952 -2.859693295451294 0.0 0.0 0.0 0.0 0.0 0.0
+      147.12150275711716 -1.41221402718213 71.68940251302358 0.0 0.0 0.0 0.0 0.0
+      165.43517024871676 -0.4592823456491126 42.90938336958603 -5.961986721573306 0.0 0.0 0.0 0.0
+      24.854864614690072 -3.0009227002832186 47.4931110020768 5.5814197821558125 -0.6610691825249471 0.0 0.0 0.0
+      30.91273214028599 -3.1208243349937974 77.79954646070892 34.28646028294783 -19.097331116725623 -28.087943162872662 0.0 0.0
+      37.80277123390563 -3.2571969029072276 112.26918849496327 66.9347231244047 -40.06618937091002 -54.66780262877968 -9.48861652309627 0.0],
+  Cs: [0.0, 0.6358126895828704, 0.4095798393397535, 0.9769306725060716, 0.4288403609558664, 1.0, 1.0, 1.0],
+  D: [0.21193756319429014, -0.42387512638858027, -0.3384627126235924, 1.8046452872882734, 2.325825639765069, 0.0, 0.0, 0.0],
+  H: [25.948786856663858 -2.5579724845846235 10.433815404888879 -2.3679251022685204 0.524948541321073 1.1241088310450404 0.4272876194431874 -0.17202221070155493
+      -9.91568850695171 -0.9689944594115154 3.0438037242978453 -24.495224566215796 20.176138334709044 15.98066361424651 -6.789040303419874 -6.710236069923372
+      11.419903575922262 2.8879645146136994 72.92137995996029 80.12511834622643 -52.072871366152654 -59.78993625266729 -0.15582684282751913 4.883087185713722]}
+
+defn standard(tab)
+  (** The table in the standard form of Hairer and Wanner (II, §IV.7): Gamma = (I / gamma - C)^-1, alpha = A Gamma,
+      beta = alpha + Gamma, and the weights b of y1 and bhat of the embedded method, from the stages that give them. *)
+  s = value.Len(tab.Cs)
+  g = result.Unwrap(num.Inverse(num.Eye(s) / tab.Gamma - tab.C))
+  al = matrix.Matmul(tab.A, g)
+  m = tab.A[s, :]
+  m[s] = 1.0
+  {S: s, Gamma: g, Alpha: al, Beta: al + g, M: m, B: matrix.Matmul(m, g), Bhat: matrix.Matmul(tab.A[s, :], g)}
+end
+
+(* The rooted trees up to order 5, each as the list of its subtrees: 1, 1, 2, 4 and 9 of them. *)
+trees = [[[]], [[[]]], [[[], []], [[[]]]],
+         [[[], [], []], [[], [[]]], [[[], []]], [[[[]]]]],
+         [[[], [], [], []], [[], [], [[]]], [[], [[], []]], [[], [[[]]]], [[[]], [[]]], [[[], [], []]], [[[], [[]]]],
+          [[[[], []]]], [[[[[]]]]]]]
+
+defn order(tree)
+  (** The nodes of a tree. *)
+  k = 1
+  for sub in tree
+    k += order(sub)
+  end
+  k
+end
+
+defn density(tree)
+  (** γ(t): its order times the densities of its subtrees. *)
+  d = order(tree)
+  for sub in tree
+    d *= density(sub)
+  end
+  d
+end
+
+defn phi(tree, st)
+  (** The elementary weight of a tree, a column of one value for each stage: a node with one child goes through beta,
+      one with more through alpha for each, the rule of Rosenbrock methods (Steinebach 2023, Table 2). *)
+  if value.Len(tree) == 0
+    return matrix.Ones(st.S, 1)
+  end
+  if value.Len(tree) == 1
+    return matrix.Matmul(st.Beta, phi(tree[1], st))
+  end
+  out = matrix.Ones(st.S, 1)
+  for sub in tree
+    out = out * matrix.Matmul(st.Alpha, phi(sub, st))
+  end
+  out
+end
+
+defn residual(w, st, q, th)
+  (** The largest error of the conditions of order q, for the weights w of a step of θ: Σ w φ(t) = θ^q / γ(t). *)
+  list.Max([math.Abs(matrix.Matmul(w, phi(tree, st))[1] - th ^ q / density(tree)) for tree in trees[q]])
+end
+
+upTo(w, st, p, th) = list.Max([residual(w, st, q, th) for q in 1..p])
+defn isRowSums(tab)
+  (** The rows of alpha sum to the times c of the stages, those of Gamma to the d of ∂f/∂t. *)
+  st = standard(tab)
+  list.All([math.Abs(list.Sum(st.Alpha[i, :]) - tab.Cs[i]) < 1.0e-13 and math.Abs(list.Sum(st.Gamma[i, :]) - tab.D[i]) < 1.0e-13 for i in 1..st.S])
+end
+
+defn isOrders(tab)
+  (** The method of its order and not of the next, the embedded one of one order less and not of the method's. *)
+  st = standard(tab)
+  p = tab.Order
+  ok = upTo(st.B, st, p, 1.0) < 1.0e-12 and upTo(st.Bhat, st, p - 1, 1.0) < 1.0e-12 and residual(st.Bhat, st, p, 1.0) > 1.0e-6
+  if p < 5
+    ok = ok and residual(st.B, st, p + 1, 1.0) > 1.0e-6
+  end
+  ok
+end
+
+defn isDense(tab)
+  (** The dense output of its order at several θ: y(t + θh) = y + Σ w_i(θ) u_i, w(θ) = θ m + θ (1 - θ) Σ_j θ^(j-1) H_j. *)
+  st = standard(tab)
+  nh = value.Size(tab.H, 1)
+  worst = 0.0
+  for th in [0.1, 0.3, 0.5, 0.8]
+    w = th * st.M
+    for j in 1..nh
+      w = w + (th * (1.0 - th) * th ^ (j - 1)) * tab.H[j, :]
+    end
+    worst = list.Max(worst, upTo(matrix.Matmul(w, st.Gamma), st, tab.Dense, th))
+  end
+  worst < 1.0e-12
+end
+
+isRodas4() = isRowSums(rodas4) and isOrders(rodas4) and isDense(rodas4)
+isRodas5p() = isRowSums(rodas5p) and isOrders(rodas5p) and isDense(rodas5p)
+
+(* One step of a table, with the Jacobian given, on an autonomous f, where ∂f/∂t is 0: the solver against the table,
+   and the oracle of the other one. *)
+defn stepOf(tab, f, jac, y, h)
+  s = value.Len(tab.Cs)
+  g = tab.Gamma
+  lu = result.Unwrap(num.Lu(num.Eye(value.Len(y)) - (h * g) * jac(0.0, y)))
+  ks = []
+  arg = y
+  for i in 1..s
+    arg = y
+    for j in 1..i - 1
+      arg = arg + tab.A[i, j] * ks[j]
+    end
+    rhs = (h * g) * f(0.0, arg)
+    for j in 1..i - 1
+      rhs = rhs + (g * tab.C[i, j]) * ks[j]
+    end
+    ks = list.Append(lu.Solve(rhs), ks)
+  end
+  {Y: arg + ks[s], E: ks[s], K: ks}
+end
+
+probe(t, y) = [y[2], -y[1] - 50.0 * y[2] * (1.0 + y[1] * y[1])]
+probeJ(t, y) = [0.0 1.0; -1.0 - 100.0 * y[1] * y[2] -50.0 * (1.0 + y[1] * y[1])]
+
+defn isFirstSteps()
+  (** The first step of the solver is one step of Rodas5P; the second is as large as the control of the step says, from
+      the error estimate of the first; the dense output inside the first is that of the table. *)
+  y0 = [1.0, 0.0]
+  s = solved(ode.Solve(probe, [0.0, 5.0], y0, stiff = true, jacobian = probeJ, rtol = 1.0e-5, atol = 1.0e-8))
+  h1 = s.T[2]
+  h2 = s.T[3] - s.T[2]
+  one = stepOf(rodas5p, probe, probeJ, y0, h1)
+  sc = 1.0e-8 + 1.0e-5 * list.Max(math.Abs(y0), math.Abs(one.Y))
+  err = math.Sqrt(list.Sum((one.E / sc) ^ 2) / 2.0)
+  want = h1 / list.Max(1.0 / 6.0, list.Min(5.0, err ^ 0.2 / 0.9))
+  th = 0.37
+  st = standard(rodas5p)
+  w = th * st.M
+  for j in 1..3
+    w = w + (th * (1.0 - th) * th ^ (j - 1)) * rodas5p.H[j, :]
+  end
+  dense = y0
+  for i in 1..8
+    dense = dense + w[i] * one.K[i]
+  end
+  s.Stats.Rejected == 0 and math.Near(s.Y[2, :], one.Y, rel = 1.0e-13, abs = 1.0e-15) and math.Near(h2, want, rel = 1.0e-6) and
+    math.Near(s.At(th * h1), dense, rel = 1.0e-13, abs = 1.0e-15)
+end
+
+defn fixed(tab, f, jac, y0, t1, m)
+  (** m equal steps of a table from 0 to t1: the oracle. *)
+  y = y0
+  for k in 1..m
+    y = stepOf(tab, f, jac, y, t1 / m).Y
+  end
+  y
+end
+
+defn isOracle()
+  (** Rodas4 in fixed steps, an oracle written here, and the solver agree on the probe, a stiff Van der Pol, at t = 5. *)
+  want = fixed(rodas4, probe, probeJ, [1.0, 0.0], 5.0, 4000)
+  s = solved(ode.Solve(probe, [0.0, 5.0], [1.0, 0.0], stiff = true, rtol = 1.0e-10, atol = 1.0e-12))
+  math.Near(lastRow(s), want, rel = 1.0e-7, abs = 1.0e-9)
+end
+
+defn isOrdersSeen()
+  (** In fixed steps on a rotation, which is not stiff, halving h divides the error by about 2^4 for Rodas4 and 2^5
+      for Rodas5P: here 4.0 and 5.9. On the probe, stiff, both lose some of it, as Rosenbrock methods do. *)
+  rot = (t, y) -> [y[2], -y[1]]
+  rotJ = (t, y) -> [0.0 1.0; -1.0 0.0]
+  exact = [math.Sin(2.0), math.Cos(2.0)]
+  e4 = [list.Max(math.Abs(fixed(rodas4, rot, rotJ, [0.0, 1.0], 2.0, m) - exact)) for m in [10, 20]]
+  e5 = [list.Max(math.Abs(fixed(rodas5p, rot, rotJ, [0.0, 1.0], 2.0, m) - exact)) for m in [10, 20]]
+  r4 = math.Log(e4[1] / e4[2]) / math.Log(2.0)
+  r5 = math.Log(e5[1] / e5[2]) / math.Log(2.0)
+  r4 > 3.6 and r4 < 4.6 and r5 > 4.6 and r5 < 6.3
+end
+
+(* Closed forms. *)
+defn isDecay()
+  s = solved(ode.Solve((t, y) -> -y, [0.0, 20.0], 1.0, stiff = true))
+  math.Near(s.At(0.5), math.Exp(-0.5), rel = 1.0e-5) and math.Abs(s.At(20.0) - math.Exp(-20.0)) < 1.0e-8 and
+    s.Stats.Jacobians == s.Stats.Steps and s.Stats.Factorizations == s.Stats.Steps + s.Stats.Rejected
+end
+
+defn isProthero()
+  (** y' = λ (y - cos t) - sin t, y = cos t, with λ = -1e6, the problem of Prothero and Robinson (1974), where a method
+      whose stages lose their order shows it; non-autonomous, so ∂f/∂t counts. The ends of the steps are within the
+      tolerance, though the steps are long, up to 3.4 at rtol 1e-6, as the error test sees only them: inside, the dense
+      output is off by 5 % then, and maxStep bounds the steps when At matters there. *)
+  f = (t, y) -> -1.0e6 * (y - math.Cos(t)) - math.Sin(t)
+  s = solved(ode.Solve(f, [0.0, 10.0], 1.0, stiff = true, rtol = 1.0e-8, atol = 1.0e-10))
+  ends = math.Abs(s.Y[:, 1] - math.Cos(matrix.Reshape([value.Len(s.T), 1], [t for t in s.T])))
+  b = solved(ode.Solve(f, [0.0, 10.0], 1.0, stiff = true, rtol = 1.0e-8, atol = 1.0e-10, maxStep = 0.05))
+  tt = [0.5, 2.0, 5.0, 10.0]
+  list.Max(ends) < 1.0e-8 and s.Stats.Steps < 100 and math.Near(b.At(tt)[:, 1], matrix.Reshape([4, 1], math.Cos(tt)), abs = 1.0e-8)
+end
+
+defn isLinear()
+  (** y' = A y, A = V diag(-1, -1000, -1e6) V^-1: y = V exp(diag t) V^-1 y0, three time scales 1e6 apart. *)
+  v = [1.0 1.0 0.0; 0.0 1.0 1.0; 1.0 0.0 1.0]
+  vi = result.Unwrap(num.Inverse(v))
+  lam = [-1.0, -1000.0, -1.0e6]
+  a = matrix.Matmul(matrix.Matmul(v, num.Diag(lam)), vi)
+  y0 = [1.0, 2.0, 3.0]
+  exact = t -> matrix.Reshape([1, 3], matrix.Matmul(matrix.Matmul(v, num.Diag(math.Exp(lam * t))), matrix.Matmul(vi, matrix.Reshape([3, 1], y0))))
+  s = solved(ode.Solve((t, y) -> matrix.Reshape([1, 3], matrix.Matmul(a, matrix.Reshape([3, 1], y))), [0.0, 10.0], y0, stiff = true, jacobian = (t, y) -> a, rtol = 1.0e-8, atol = 1.0e-10))
+  list.All([math.Near(s.At(t), exact(t), rel = 1.0e-6, abs = 1.0e-8) for t in [1.0e-6, 1.0e-3, 0.1, 1.0, 10.0]]) and s.Stats.Steps < 300
+end
+
+(* Published stiff problems, from Hairer and Wanner (II, §IV.10), against reference solutions computed for these tests
+   by scipy's Radau, an implicit Runge-Kutta method of order 5, at rtol 1e-13 with the exact Jacobian, and checked
+   against its BDF at rtol 1e-12: they agree to 1e-10 relative. *)
+rober(t, y) = [-0.04 * y[1] + 1.0e4 * y[2] * y[3], 0.04 * y[1] - 1.0e4 * y[2] * y[3] - 3.0e7 * y[2] * y[2], 3.0e7 * y[2] * y[2]]
+
+defn hires(t, y)
+  [-1.71 * y[1] + 0.43 * y[2] + 8.32 * y[3] + 0.0007, 1.71 * y[1] - 8.75 * y[2], -10.03 * y[3] + 0.43 * y[4] + 0.035 * y[5],
+   8.32 * y[2] + 1.71 * y[3] - 1.12 * y[4], -1.745 * y[5] + 0.43 * y[6] + 0.43 * y[7],
+   -280.0 * y[6] * y[8] + 0.69 * y[4] + 1.71 * y[5] - 0.43 * y[6] + 0.69 * y[7], 280.0 * y[6] * y[8] - 1.81 * y[7],
+   -280.0 * y[6] * y[8] + 1.81 * y[7]]
+end
+
+orego(t, y) = [77.27 * (y[2] + y[1] * (1.0 - 8.375e-6 * y[1] - y[2])), (y[3] - (1.0 + y[1]) * y[2]) / 77.27, 0.161 * (y[1] - y[3])]
+vdp(t, y) = [y[2], 1000.0 * (1.0 - y[1] * y[1]) * y[2] - y[1]]
+relError(y, want) = list.Max(math.Abs(y - want) / math.Abs(want))
+
+defn isRobertson()
+  s = solved(ode.Solve(rober, [0.0, 1.0e11], [1.0, 0.0, 0.0], stiff = true, rtol = 1.0e-8, atol = 1.0e-14))
+  relError(s.At(40.0), [0.7158270687194043, 9.185534764557798e-6, 0.2841637457458305]) < 1.0e-6 and
+    relError(lastRow(s), [2.083340149700481e-8, 8.333360770331573e-14, 0.9999999791665103]) < 1.0e-5
+end
+
+defn isHires()
+  s = solved(ode.Solve(hires, [0.0, 321.8122], [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0057], stiff = true, rtol = 1.0e-8, atol = 1.0e-12))
+  relError(lastRow(s), [0.000737131257332535, 0.00014424857263161222, 5.88872974096698e-5, 0.0011756513432830895,
+                        0.0023863561988303706, 0.006238968252739786, 0.002849998395185094, 0.002850001604814915]) < 1.0e-5
+end
+
+defn isOrego()
+  s = solved(ode.Solve(orego, [0.0, 360.0], [1.0, 2.0, 3.0], stiff = true, rtol = 1.0e-8, atol = 1.0e-8))
+  relError(lastRow(s), [1.000814870318523, 1228.1785215498974, 132.05549428465338]) < 1.0e-5
+end
+
+defn isProportional()
+  (** Tolerance proportionality on HIRES: the error at the end falls when rtol does, 1900 and 42 times for a hundredfold. *)
+  y0 = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0057]
+  want = [0.000737131257332535, 0.00014424857263161222, 5.88872974096698e-5, 0.0011756513432830895,
+          0.0023863561988303706, 0.006238968252739786, 0.002849998395185094, 0.002850001604814915]
+  errs = [relError(lastRow(solved(ode.Solve(hires, [0.0, 321.8122], y0, stiff = true, rtol = r, atol = r * 1.0e-4))), want) for r in [1.0e-5, 1.0e-7, 1.0e-9]]
+  errs[1] / errs[2] > 10.0 and errs[1] / errs[2] < 5000.0 and errs[2] / errs[3] > 10.0 and errs[2] / errs[3] < 5000.0 and
+    errs[3] < 1.0e-6
+end
+
+defn isVanDerPol()
+  (** Van der Pol at mu = 1000, where the method of Dormand and Prince raises its alarm: some hundred steps. *)
+  s = solved(ode.Solve(vdp, [0.0, 3000.0], [2.0, 0.0], stiff = true, rtol = 1.0e-6, atol = 1.0e-6))
+  s.Stats.Steps < 1000 and s.Stats.Rejected < 100 and math.Abs(lastRow(s)[1] + 1.5) < 0.1
+end
+
+defn isJacobianGiven()
+  (** The Jacobian given or by differences: the same answer within the tolerance; given, fewer calls of f. *)
+  j = (t, y) -> [-0.04 1.0e4 * y[3] 1.0e4 * y[2]; 0.04 -1.0e4 * y[3] - 6.0e7 * y[2] -1.0e4 * y[2]; 0.0 6.0e7 * y[2] 0.0]
+  a = solved(ode.Solve(rober, [0.0, 1.0e5], [1.0, 0.0, 0.0], stiff = true, atol = 1.0e-12))
+  b = solved(ode.Solve(rober, [0.0, 1.0e5], [1.0, 0.0, 0.0], stiff = true, atol = 1.0e-12, jacobian = j))
+  relError(lastRow(a), lastRow(b)) < 1.0e-5 and b.Stats.Evaluations < a.Stats.Evaluations and
+    a.Stats.Jacobians == a.Stats.Steps and b.Stats.Jacobians == b.Stats.Steps
+end
+
+defn isBackward()
+  (** Back in time, y' = 1000 (y - cos t) - sin t is stiff and stable: y = cos t from t = 1 down to 0. *)
+  s = solved(ode.Solve((t, y) -> 1000.0 * (y - math.Cos(t)) - math.Sin(t), [1.0, 0.0], math.Cos(1.0), stiff = true, rtol = 1.0e-9, atol = 1.0e-12))
+  list.All([s.T[k + 1] < s.T[k] for k in 1..value.Len(s.T) - 1]) and math.Abs(lastRow(s)[1] - 1.0) < 1.0e-8 and s.Stats.Steps < 100
+end
+
+defn isTimesAgree()
+  two = solved(ode.Solve(vdp, [0.0, 10.0], [2.0, 0.0], stiff = true))
+  many = solved(ode.Solve(vdp, [0.0, 2.5, 5.0, 7.5, 10.0], [2.0, 0.0], stiff = true))
+  value.Equal(many.Y, two.At([0.0, 2.5, 5.0, 7.5, 10.0])) and value.Equal(two.Stats, many.Stats)
+end
+
+defn isShapes()
+  (** A column y0 gives columns to f, to jacobian's y, to the events' g and from At; a number gives numbers. *)
+  f = (t, y) -> [y[2]; -1000.0 * y[1] - 1001.0 * y[2]]
+  j = (t, y) -> if value.Equal(value.Size(y), [2, 1]) [0.0 1.0; -1000.0 -1001.0] else [] end
+  g = (t, y) -> if value.Equal(value.Size(y), [2, 1]) y[1] - 0.5 else math.Nan end
+  c = solved(ode.Solve(f, [0.0, 1.0], [1.0; 0.0], stiff = true, jacobian = j, events = [ode.Event(g)]))
+  one = solved(ode.Solve((t, y) -> -2.0 * y, [0.0, 1.0], 3.0, stiff = true, jacobian = (t, y) -> -2.0))
+  value.Equal(value.Size(c.At(0.5)), [2, 1]) and value.Equal(value.Size(c.Y), [value.Len(c.T), 2]) and
+    value.Equal(value.Size(c.Events[1].Y), [2, 1]) and math.Near(c.Events[1].T, math.Log(2000.0 / 999.0), rel = 1.0e-5) and
+    value.IsFloat(one.At(0.5)) and math.Near(one.At(0.5), 3.0 * math.Exp(-2.0 * 0.5), rel = 1.0e-5)
+end
+
+defn isAtEnds()
+  s = solved(ode.Solve(vdp, [0.0, 5.0], [2.0, 0.0], stiff = true))
+  list.All([value.Equal(s.At(s.T[k]), s.Y[k, :]) for k in 1..value.Len(s.T)])
+end
+
+defn isEvents()
+  (** Events on the dense output of the Rosenbrock steps: y = exp(-t) at 1/2, a stop, and Robertson's y1 at 1/2. *)
+  half = ode.Event((t, y) -> y - 0.5, stop = true)
+  s = solved(ode.Solve((t, y) -> -y, [0.0, 5.0], 1.0, stiff = true, rtol = 1.0e-10, atol = 1.0e-12, events = [half]))
+  r = solved(ode.Solve(rober, [0.0, 1.0e5], [1.0, 0.0, 0.0], stiff = true, rtol = 1.0e-9, atol = 1.0e-14, events = [ode.Event((t, y) -> y[1] - 0.5, direction = "down")]))
+  fine = solved(ode.Solve(rober, [0.0, 1.0e5], [1.0, 0.0, 0.0], stiff = true, rtol = 1.0e-11, atol = 1.0e-16))
+  value.Len(s.Events) == 1 and math.Near(s.Events[1].T, math.Log(2.0), rel = 1.0e-8) and s.T[value.Len(s.T)] == s.Events[1].T and
+    value.Len(r.Events) == 1 and math.Abs(fine.At(r.Events[1].T)[1] - 0.5) < 1.0e-7
+end
+
+(* What goes wrong: an Err with the solution so far, or a panic for a bad argument. *)
+defn isBlowUp()
+  r = ode.Solve((t, y) -> y * y, [0.0, 2.0], 1.0, stiff = true)
+  result.IsErr(r) and r.Error.T > 0.999 and r.Error.T < 1.001 and text.Contains("the step fell under 16 eps |t|", r.Error.Message)
+end
+
+defn isSteps()
+  r = ode.Solve(vdp, [0.0, 3000.0], [2.0, 0.0], stiff = true, steps = 10)
+  result.IsErr(r) and text.Contains("10 steps reached", r.Error.Message) and r.Error.Partial.Stats.Steps + r.Error.Partial.Stats.Rejected == 10
+end
+
+defn isNan()
+  r = ode.Solve((t, y) -> if t > 0.5 [math.Nan, -y[2]] else -y end, [0.0, 1.0], [1.0, 1.0], stiff = true)
+  result.IsErr(r) and text.Contains("f gave nan in component 1", r.Error.Message) and r.Error.T <= 0.5 and r.Error.T > 0.3
+end
+
+defn isHugeValues()
+  (** Finite values whose sum overflows are no NaN: y' = -y from 9e307 in three components. *)
+  s = solved(ode.Solve((t, y) -> -y, [0.0, 1.0], [9.0e307, 9.0e307, 9.0e307], stiff = true))
+  math.Near(lastRow(s), 9.0e307 * math.Exp(-1.0) * [1.0, 1.0, 1.0], rel = 1.0e-5)
+end
+
+isJacobianShape() = text.Contains("jacobian gave [1.0, 2.0] at t = 0.0, not an 2 × 2 matrix", ode.Solve((t, y) -> -y, [0.0, 1.0], [1.0, 1.0], stiff = true, jacobian = (t, y) -> [1.0, 2.0]).Error.Message)
+isJacobianNan() = text.Contains("jacobian gave nan in row 2, column 1 at t = 0.0", ode.Solve((t, y) -> -y, [0.0, 1.0], [1.0, 1.0], stiff = true, jacobian = (t, y) -> [1.0 0.0; math.Nan 1.0]).Error.Message)
+isJacobianText() = text.Contains("jacobian gave \"a\" in row 1, column 2 at t = 0.0, not a finite number", ode.Solve((t, y) -> -y, [0.0, 1.0], [1.0, 1.0], stiff = true, jacobian = (t, y) -> [1.0 "a"; 0.0 1.0]).Error.Message)
+isDifferenceNan() = text.Contains("the Jacobian by differences is", ode.Solve((t, y) -> if y[1] > 1.0 [math.Nan] else [0.0 - y[1]] end, [0.0, 1.0], [1.0], stiff = true).Error.Message)
+isWrongLength() = ode.Solve((t, y) -> [1.0], [0.0, 1.0], [0.0, 0.0], stiff = true).Error.Message == "ode.Solve: f gave [1.0] at t = 0.0, not an array of size [1, 2] as y0."
+isPartial() = ode.Solve((t, y) -> y * y, [0.0, 2.0], 1.0, stiff = true).Error.Partial.Stats.Factorizations > 0
+
+isBadStiff() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], 1.0, stiff = 1)) == result.Err("ode.Solve: stiff is 1; give true or false.")
+isJacobianAlone() = message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], 1.0, jacobian = (t, y) -> 1.0)) == result.Err("ode.Solve: jacobian is for stiff = true only; give stiff = true, or no jacobian.")
+isJacobianNotFunction() = text.Contains("jacobian is [1.0]; give a function of (t, y)", message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], 1.0, stiff = true, jacobian = [1.0])).Error)
+isTooLarge() = text.Contains("y0 has 1001 components, and stiff = true takes at most 1000", message(() -> ode.Solve((t, y) -> y, [0.0, 1.0], matrix.Zeros(1001), stiff = true)).Error)

@@ -509,6 +509,46 @@ let csv_rows ctx s separator =
 
 let texts row = Arrays.list (Array.map (fun s -> Text s) row)
 
+(* csv.Text in one pass: each row's values as value.Text writes them, joined by the separator, a field quoted when it
+   holds the separator, a quote or a line end, its quotes doubled (RFC 4180), and a line end after each row, as after
+   none when there is no row. Missing when rows or a row isn't an array: std/csv writes those itself. *)
+let csv_text ctx (a : t array) =
+  let separator = Native.text_arg ctx "Text" a.(1) in
+  let holds s =
+    let m = String.length separator and n = String.length s in
+    let rec at i k = k = m || (s.[i + k] = separator.[k] && at i (k + 1)) in
+    let rec from i = i + m <= n && (at i 0 || from (i + 1)) in
+    String.exists (fun c -> c = '"' || c = '\n' || c = '\r') s || from 0
+  in
+  let rec arrays r i = i >= r.rows * r.cols || ((match Value.elt r i with Array _ -> true | _ -> false) && arrays r (i + 1)) in
+  match a.(0) with
+  | Array r when arrays r 0 ->
+    let b = Buffer.create 4096 in
+    let field v =
+      let s = Value.text_of ctx v in
+      if holds s then begin
+        Buffer.add_char b '"';
+        String.iter (fun c -> if c = '"' then Buffer.add_string b "\"\"" else Buffer.add_char b c) s;
+        Buffer.add_char b '"'
+      end
+      else Buffer.add_string b s
+    in
+    for i = 0 to (r.rows * r.cols) - 1 do
+      (match Value.elt r i with
+       | Array row ->
+         for j = 0 to (row.rows * row.cols) - 1 do
+           if j > 0 then Buffer.add_string b separator;
+           field (Value.elt row j)
+         done
+       | _ -> ());
+      Buffer.add_char b '\n';
+      Runtime.pay_bytes ctx 64
+    done;
+    if r.rows * r.cols = 0 then Buffer.add_char b '\n';
+    Runtime.build ctx ((Buffer.length b / 8) + 1);
+    Text (Buffer.contents b)
+  | _ -> Missing
+
 let csv ctx (a : t array) =
   let s = Native.text_arg ctx "Csv" a.(0) and separator = Native.text_arg ctx "Csv" a.(1) in
   Arrays.list (Array.map texts (csv_rows ctx s separator))
@@ -609,6 +649,8 @@ let natives =
     "Present", Native.nat "Present" 1 1 present;
     "Csv", Native.nat "Csv" 2 2 csv;
     "ReadCsv", Native.nat "ReadCsv" 2 2 read_csv ]
+
+let csv_natives = [ "written", Native.nat "written" 2 2 csv_text ]
 
 let list =
   [ "groupIds", Native.nat "groupIds" 1 1 group_ids;
