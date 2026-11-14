@@ -443,10 +443,10 @@ let after code from =
   let rec find k = if k = Array.length code.loops then invalid_arg "Tier.after" else let n, _, _, p = code.loops.(k) in if n = from then p + 1 else find (k + 1) in
   find 0
 
-(* A loop's code goes when its runs that ended for a cold statement, past [cold_runs] of them, made fewer than
-   [cold_steps] steps each on average: leaving native code and coming back costs about 450 ns, what native code gains on
-   12 to 14 steps of a loop of floats (a branch left to the interpreter every e turns, 10^6 turns: 72 ms native against
-   54 interpreted for e = 8, 38 against 49 for e = 16). *)
+(* A loop's code goes when it went back for cold statements [cold_runs] times or more, having made fewer than
+   [cold_steps] steps for each on average: leaving native code and coming back costs about 450 ns, what native code
+   gains on 8 to 20 steps of a loop of floats. Two loops of 10^6 turns whose branch left to the interpreter runs every e
+   turns: native code lost to the interpreter up to e = 8 in both, won from e = 24 and 16, and broke even between. *)
 let cold_runs = 64
 let cold_steps = 12
 

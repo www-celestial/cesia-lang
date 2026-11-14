@@ -515,7 +515,7 @@ loop. A call of a small function whose body gives a text in one place and a numb
 inlined, its number path in machine code, and its text path a way back to the interpreter, which makes the call again.
 
 A cold statement that runs at nearly every turn costs more than it saves: each turn leaves machine code and comes back,
-about 450 ns, what native code gains on 12 to 14 steps of a loop of floats. So once a loop has gone back for cold
+about 450 ns, what native code gains on 8 to 20 steps of a loop of floats. So once a loop has gone back for cold
 statements 64 times, and its machine code made fewer than 12 steps for each of them on average, its code goes and the
 loop is the interpreter's for good, never slower than the interpreter. Measured on 2026-11-14 on a loop of 10^6 turns whose branch
 left to the interpreter runs every e turns, the best of 5, in ms:
