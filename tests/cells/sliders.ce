@@ -1,0 +1,55 @@
+(* The sliders of std/cells from the side of a program that runs cells: Set gives a slider its value in the session in
+   place, so that a function of a cell not run again reads it, even after a stop; its errors; and the page, which shows
+   each slider as the file writes it. *)
+use std/cells
+use std/fiber
+use std/io
+use std/result
+use std/sys
+use std/text
+
+defn shown(r)
+  (** A run without its time. *)
+  match r
+    result.Ok(x) -> "Ok: output $(x.Output), value $(x.Value), error $(x.Error)"
+    result.Err(e) -> "Err: $(e.Message)"
+  end
+end
+
+defn Main()
+  (** The steps, each printed. *)
+  cs = cells.Parse(sys.Read("knobs.ce")?)
+  a = cells.Analyse(cs)
+  io.Print([x.Sliders for x in a])
+  s = cells.Session("knobs.ce")?
+  io.Print("before its cell: $(cells.Set(s, a, "rho", 31.5))")
+  for i in 1..4
+    io.Print(shown(cells.Run(s, cs[i])))
+  end
+  io.Print(cells.Set(s, a, "rho", 31.6))
+  io.Print("Use alone: $(shown(cells.Run(s, cs[4])))")
+  io.Print(cells.Set(s, a, "n", 7.4))
+  loop = {Title: "", From: 0, To: 0, Source: "k = 0\nwhile true\n  k = k + 1\nend"}
+  slow = fiber.Spawn(() -> cells.Run(s, loop))
+  sys.Sleep(0.2)
+  s = cells.Stop(s)?
+  io.Print(shown(fiber.Wait(slow)?))
+  io.Print("after a stop: $(shown(cells.Run(s, cs[4])))")
+  io.Print(cells.Set(s, a, "rho", 51.0))
+  io.Print(cells.Set(s, a, "rho", -0.5))
+  io.Print(cells.Set(s, a, "rho", 1.0 / 0.0))
+  io.Print(cells.Set(s, a, "rate", 1.0))
+  io.Print(cells.Set(s, a, "nope", 1.0))
+  page = cells.Html("knobs.ce")?
+  for line in text.Lines(page)
+    if text.Contains("class=\"slider\"", line)
+      io.Print(line)
+    end
+  end
+  result.Ok(missing)
+end
+
+r = Main()
+if result.IsErr(r)
+  io.Print(r)
+end

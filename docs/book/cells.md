@@ -152,6 +152,111 @@ viewer reads a large value one screen at a time.
 inside one long native call, is ended and a new one starts: the session that Stop gives then has Restarted true, and the
 cells run again from the top.
 
+## Sliders
+
+A *slider* is a bar with a knob that you drag to change a number. In a cell of its own, each line
+`name = cells.Slider(value, min, max)` gives a name a number that an editor moves: Cemacs draws the slider under the line,
+and a move writes the new number in the file, then runs again only the cells that read that name.
+
+```cesia norun
+use std/cells
+use std/ode
+use std/result
+
+(* %% Parameters *)
+rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
+n = cells.Slider(3, 1, 10)
+
+(* %% Lorenz *)
+lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (rho - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
+s = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0]))
+```
+
+The file is the truth: after a move, `cesia run`, the window and the page of [cells.Html] read the same number. A slider is
+a plain function call, and under `cesia run` [cells.Slider] checks its numbers and gives the value:
+
+```cesia
+use std/cells
+cells.Slider(28.0, 0.0, 50.0, step = 0.5) -->
+cells.Slider(3, 1, 10) -->
+```
+
+Two rules, besides the three of the cells, make a slider something an editor can move without guessing:
+
+4. A cell with a slider holds only sliders, one a line, and comments. A slider that sat beside other code would make its
+   cell run again at each move, and what that code computes would go stale.
+5. A slider takes numbers written in the file, possibly negative, as `28.0`, `-1.5` or `1e-3`: an editor rewrites the
+   value's number, and draws the slider before anything runs. `cells.Slider(1.0, 0.0, top)` is the error
+   `cells.Slider takes numbers written in the file, not expressions.`
+
+[cells.Analyse] finds the sliders through the name that the first cell's `use std/cells` gives, `cells` or the name
+after `as`, and gives each cell its Sliders: each with its Name, its Line, the Column and the End of the value's number
+on that line, counted from 1, its Value, its Min, its Max and its Step.
+
+```cesia
+use std/cells
+a = cells.Analyse(cells.Parse("use std/cells\n(* %% P *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)"))
+a[2].Sliders[1] -->
+cells.Analyse(cells.Parse("use std/cells\n(* %% P *)\nrho = cells.Slider(60.0, 0.0, 50.0)"))[2].Errors[1].Message -->
+```
+
+The numbers are checked in both places, with the same text: [cells.Slider] panics and [cells.Analyse] gives the error
+when a number isn't finite, when the min is not below the max, when the value is outside them, when the step is not above
+0 or is wider than max - min, and past $10^6$ steps. The step defaults to (max - min) / 100, with two more decimals than
+min and max have, so that 0.0 to 0.7 steps by 0.007; or to 1 when value, min and max are Ints, and such a slider gives
+Ints. A value written off the steps stays as it is until it moves.
+
+A slider's positions are min + k × step, for k a whole number, computed and never added up, and the last one is the
+largest at most max, as an HTML range input has it. [cells.Snap] gives the position nearest a number, and steps more
+when asked: its Text is what the file writes, with the decimals of min and step, so that steps of 0.1 write `0.3` and not
+`0.30000000000000004`, and its Value is the number `cesia run` reads back from that text.
+
+```cesia
+use std/cells
+s = {Value: 0.0, Min: 0.0, Max: 1.0, Step: 0.1}
+cells.Snap(s, 0.31) -->
+cells.Snap(s, 0.31, steps = 1).Text -->
+```
+
+[cells.Set] gives a slider its new value in a session: snapped as Snap does, checked against the slider's min and max,
+and given to the name **in place**. A cell run again first forgets the names it defines, so that a function of another
+cell that reads one of them would find it without a value until its own cell ran again; Set changes the number the name
+holds, and the function reads the new one at once. Set gives the value and ToRun, the cells to run again: those that
+read the name, directly or through other cells, in file order. The slider's own cell is never among them, since it holds
+nothing else.
+
+```cesia norun
+use std/cells
+use std/io
+use std/result
+use std/sys
+
+defn Main()
+  cs = cells.Parse(sys.Read("lorenz.ce")?)
+  a = cells.Analyse(cs)
+  s = cells.Session("lorenz.ce")?
+  for c in cs
+    cells.Run(s, c)?
+  end
+  moved = cells.Set(s, a, "rho", 31.5)?
+  for i in moved.ToRun
+    cells.Run(s, cs[i])?
+  end
+  result.Ok(missing)
+end
+```
+
+Set is an Err for a name that is no slider of the analysis, a value that is no finite number or is outside the slider's
+min and max, and a session that has no value for the name yet: the slider's cell runs first, as [cells.ToRun] gives it.
+
+The page of [cells.Html] shows each slider under its cell, with its value as the file writes it, on a range that doesn't
+move: the page has no script, and nothing there could run again what reads it.
+
+What a slider trusts is little. The session takes a set only for a name that holds a number already, and gives it only a
+finite number: never a function, whose calls may have been compiled with it, nor a text. [cells.Set] checks the name,
+the number and the range before it asks. What an editor writes in the file is the editor's to check: see
+[Cemacs](https://www-celestial.github.io/cemacs/cells.html).
+
 ## A page to share
 
 [cells.Html] runs every cell of a file in a new session, from the top, and gives one HTML page: each cell's title, its

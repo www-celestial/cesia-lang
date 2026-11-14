@@ -1,0 +1,17 @@
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"set","Error":"\"rho\" holds no number in the session yet: its cell runs first."}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"63.0"},"Seconds":0}
+@{"Kind":"set","Error":"\"rate\" holds no number in the session yet: its cell runs first."}
+@{"Kind":"set","Error":"\"label\" holds no number in the session yet: its cell runs first."}
+@{"Kind":"set","Error":"\"nope\" holds no number in the session yet: its cell runs first."}
+@{"Kind":"set","Error":"A slider takes a finite number, not nan."}
+@{"Kind":"set","Error":"A slider takes a finite number, not 1e400."}
+@{"Kind":"set","Error":"A slider takes a finite number, not x."}
+@{"Kind":"set","Error":"A set takes the name of a slider and the text of its number."}
+@{"Kind":"set","Error":"A set takes the name of a slider and the text of its number."}
+@{"Kind":"set","Error":"A set takes the name of a slider and the text of its number."}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,3],"Rows":[["31.5","a text","31.5"]]},"Seconds":0}
+exit 0
