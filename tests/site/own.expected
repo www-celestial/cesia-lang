@@ -1,0 +1,24 @@
+== the book uses the project as a dependency: run and checked
+exit 0
+Hello, Ana!
+== a norun block with a mistake, in a package of the project
+docs/book/index.md:5:1: Module "top" has no name "Nothing".
+exit 1
+== another owner is no address of the project
+docs/book/index.md:4:5: deps/other/echo isn't installed: run cesia pkg install.
+exit 1
+== a block that runs a native of the project's own package
+docs/book/index.md: TMP/echo/cesia/echo/echo.ce:8:12: Permission "native" denied for echo.
+Run again with --allow native=echo.
+exit 1
+== a block that asks for the native permission
+docs/book/index.md:3: allow=native=echo is no word of a cesia block: they are norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT, net=own or ffi=m.
+exit 1
+== without the source of [site], the same use is of a dependency
+docs/book/index.md:4:5: deps/someone/echo isn't installed: run cesia pkg install.
+exit 1
+== a dependency's native package: checked in a norun block, refused in a block that runs
+docs/book/index.md: TMP/app/deps/someone/echo/cesia/echo/echo.ce:8:12: Permission "native" denied for echoes.
+Run again with --allow native=echoes.
+exit 1
+exit 0

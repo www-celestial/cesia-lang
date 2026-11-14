@@ -283,7 +283,7 @@ Words after `cesia` on the first line of a block change what is done with it:
 
 | Word | What it does |
 |---|---|
-| `norun` | shows the block without running it: a server, a program that waits for input. It is still checked, and norun blocks that follow one another are one program, so a name given in one is known in the next |
+| `norun` | shows the block without running it: a server, a program that waits for input. It is still checked, as `cesia check` checks, with the packages it uses, and nothing of them runs either, not even their top: so a norun block needs no permission, no server and no engine. Norun blocks that follow one another are one program, so a name given in one is known in the next |
 | `fails` | the block must stop with an error, whose message is shown under it; one that doesn't fail stops the build |
 | `allow=read,write,net,net=own,net=:PORT,ffi=m` | runs the block with these permissions; no other is given |
 | `output=md` | what the block prints is Markdown, shown as a part of the page |
@@ -294,7 +294,13 @@ A `toml` block must be a valid `cesia.toml`, unless it is marked `norun` too: th
 
 This book is built that way, so its examples can't drift from the language: a block
 that gives another value stops the build. Each page runs as a program of the project, from `.cesia/site/`, which `cesia new`
-keeps out of git: its blocks can use the packages of `src/` and `deps/`, wherever the site is written.
+keeps out of git: its blocks can use the packages of `src/` and `deps/`, wherever the site is written. A book shows the
+project's own packages as another project uses them, `use deps/someone/shop/src/prices`, when `someone/shop` is the place
+that the `source` of `[site]` gives, `https://github.com/someone/shop/blob/main/` (a host other than `github.com` stays
+first, as in `deps/`): the site reads them from the project itself, as `use src/prices`, with no copy in `deps/`, no
+download and no script. No block is ever given the `native` permission, which runs machine code out of Cesia's reach: a
+block that calls a native of a native package stops the build, its own project's as a dependency's, and a norun block that
+uses one is checked without its engine.
 
 ```text
 docs/

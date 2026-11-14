@@ -1219,10 +1219,40 @@ defn helpers(mark)
     "use std/value as bookValue", ""])
 end
 
-defn program(runs, chosen, mark)
+defn selfOf(source)
+  (** The folder of deps/ where another project puts this one, read from the source of [site], the address of its files:
+      "https://github.com/someone/geometry/blob/main/" gives "deps/someone/geometry/", where cesia pkg puts
+      github.com/someone/geometry; another host stays first, as "deps/codeberg.org/someone/geometry/". "" without a
+      source of three parts. *)
+  rest = source
+  for scheme in ["https://", "http://"]
+    if text.StartsWith(scheme, rest)
+      rest = from(text.ByteLength(scheme) + 1, rest)
+    end
+  end
+  parts = text.Split("/", rest)
+  if value.Len(parts) < 3 or list.Any([p == "" or p == "." or p == ".." for p in parts[1..3]])
+    return ""
+  end
+  text.Str("deps/", if parts[1] == "github.com" "" else "$(parts[1])/" end, parts[2], "/", parts[3], "/")
+end
+
+defn ownUse(line, self)
+  (** A use line of a block, with the project's own packages read from the project: a book shows them as another project
+      uses them, use deps/someone/geometry/src/shapes, and that is src/shapes of this project, never a copy in deps/. *)
+  head = "use $self"
+  if self != "" and text.StartsWith(head, line) and text.ByteLength(line) > text.ByteLength(head)
+    "use $(from(text.ByteLength(head) + 1, line))"
+  else
+    line
+  end
+end
+
+defn program(runs, chosen, mark, self)
   (** The program of the blocks chosen among those of a page: its use lines first, then each line of code on the line of the
       page where it is written, so that an error names that line. {Text, Uses}: Uses are the lines of the use lines. The
-      norun blocks that follow one another are one function that nothing calls: checked as one program, never run. *)
+      norun blocks that follow one another are one function that nothing calls. self is the folder of deps/ that names
+      this project, as selfOf gives it. *)
   uses = []
   useLines = []
   at = {}
@@ -1241,8 +1271,9 @@ defn program(runs, chosen, mark)
       a = cut[i]
       if fresh[i] and text.StartsWith("use ", text.Trim(t))
         (* A use already on top is written once: a fails block runs again the uses of the blocks before it. *)
-        if value.IsMissing(list.IndexOf(text.Trim(t), uses))
-          uses = list.Append(text.Trim(t), uses)
+        u = ownUse(text.Trim(t), self)
+        if value.IsMissing(list.IndexOf(u, uses))
+          uses = list.Append(u, uses)
           useLines = list.Append(b.Line + i, useLines)
         end
       else if value.IsSome(a) and a.Want == ""
@@ -1346,7 +1377,7 @@ end
 defn ran(job, chosen, name)
   (** Runs the blocks chosen of a page as one program in the folder of runs, in a fresh copy of the files/ of its book, with
       the permissions its blocks ask for there: {Code, Out, Err, Program, Uses}. *)
-  p = program(job.Runs, chosen, job.Mark)
+  p = program(job.Runs, chosen, job.Mark, job.Self)
   file = "$(job.Run)/$name.ce"
   work = "$(job.Run)/$name"
   sys.Write(file, p.Text)?
@@ -1370,23 +1401,54 @@ defn stopped(r, source)
   end
 end
 
+defn checked(job, chosen)
+  (** The mistakes of the norun blocks among the blocks chosen of a page, read with them as one program by cesia check:
+      nothing of it runs, not even the top of a package it uses, so a norun block needs no permission, no server and no
+      engine of a native package. The mistakes of the other blocks are those of their run. *)
+  p = program(job.Runs, chosen, job.Mark, job.Self)
+  file = "$(job.Run)/$(job.Name)-norun.ce"
+  sys.Write(file, p.Text)?
+  norun = {}
+  for k in chosen
+    if job.Runs[k].Words.Norun
+      for i in 1..value.Len(text.Lines(job.Runs[k].Text))
+        norun[job.Runs[k].Line + i] = true
+      end
+    end
+  end
+  out = []
+  for m in cesia.Check([file])
+    line = if m.Line <= value.Len(p.Uses) p.Uses[m.Line] else m.Line - value.Len(p.Uses) end
+    if m.Severity == "error" and dict.Has(line, norun)
+      out = list.Append(text.Str(job.Source, ":", line, ":", m.Column, ": ", m.Message, if value.IsMissing(m.Hint) "" else "\n$(m.Hint)" end), out)
+    end
+  end
+  result.Ok(out)
+end
+
 defn pageRun(job)
-  (** The runs of a page: the blocks that don't fail as one program, then each block that fails after the blocks before it.
-      Ok({Output: [text of each block], Values: [[line, text]], Said: [text of each block]}), or an Err of the mistakes. *)
+  (** The runs of a page: the norun blocks checked, the blocks that don't fail as one program, then each block that fails
+      after the blocks before it. Ok({Output: [text of each block], Values: [[line, text]], Said: [text of each block]}), or
+      an Err of the mistakes. *)
   runs = job.Runs
   main = [k for k in 1..value.Len(runs) if not runs[k].Words.Fails]
-  r = ran(job, main, job.Name)?
-  why = stopped(r, job.Source)
-  if value.IsSome(why)
-    return result.Err([why])
+  runnable = [k for k in main if not runs[k].Words.Norun]
+  mistakes = if value.Len(runnable) < value.Len(main) checked(job, main)? else [] end
+  got = heard("", job.Mark)
+  if value.Len(runnable) > 0
+    r = ran(job, runnable, job.Name)?
+    why = stopped(r, job.Source)
+    if value.IsSome(why)
+      return result.Err(list.Append(why, mistakes))
+    end
+    got = heard(r.Out, job.Mark)
   end
-  got = heard(r.Out, job.Mark)
-  mistakes = ["$(job.Source):$(w.Line): $(text.Trim(job.Lines[w.Line])), got $(w.Got)" for w in got.Wrong]
+  mistakes = list.Concat(mistakes, ["$(job.Source):$(w.Line): $(text.Trim(job.Lines[w.Line])), got $(w.Got)" for w in got.Wrong])
   output = [dict.GetOr(k, "", got.Output) for k in 1..value.Len(runs)]
   shown = [dict.GetOr(k, "", got.Said) for k in 1..value.Len(runs)]
   for k in 1..value.Len(runs)
     if runs[k].Words.Fails
-      f = ran(job, list.Append(k, [j for j in main if j < k]), "$(job.Name)-$(runs[k].Line)")?
+      f = ran(job, list.Append(k, [j for j in runnable if j < k]), "$(job.Name)-$(runs[k].Line)")?
       if f.Code == 0
         mistakes = list.Append("$(job.Source):$(runs[k].Line): this block is marked fails, but it ran to its end.", mistakes)
       else if f.Code == -1
@@ -1779,7 +1841,7 @@ defn bookRuns(pages, site, root, config)
         out[p.Path] = before.Value
       else
         name = text.ByteSlice(1, text.ByteLength(p.File) - 3, p.File)
-        jobs = list.Append({Name: name, Path: p.Path, Key: file, Source: p.Source, Runs: p.Runs, Lines: p.Lines, Mark: mark, Run: site.Run, Files: p.Files}, jobs)
+        jobs = list.Append({Name: name, Path: p.Path, Key: file, Source: p.Source, Runs: p.Runs, Lines: p.Lines, Mark: mark, Run: site.Run, Files: p.Files, Self: site.Self}, jobs)
       end
     end
   end
@@ -1990,7 +2052,7 @@ defn build(root, folder, cache, runs)
     end
   end
   hasFr = sys.Exists("$root/docs/fr") or sys.Exists("$root/README.fr.md")
-  site = {Title: config.Title, Source: config.Source, Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache,
+  site = {Title: config.Title, Source: config.Source, Self: selfOf(config.Source), Modules: modules, Targets: targets, Mistakes: fiber.Channel(), BookPaths: {}, Book: [], Cache: cache,
     Run: runs, Tree: {}, Columns: {}, Version: if config.Name == "cesia" cesia.Version() else "Cesia $(cesia.Version())" end, Home: "book", HasFr: hasFr, FrTree: {}, FrColumns: {}, FrPaths: {}, Places: {}, FrPlaces: {}}
   books = booksOf(root, site)
   book = books.Pages
