@@ -360,6 +360,51 @@ let dot_floats ctx (a : t array) =
   Runtime.pay ctx (x.rows * x.cols);
   Float (Kernels.dot p q)
 
+(* std/sparse's kernels: a Matrix's arrays, counted from 1, checked and counted from 0 for Sparse, its results from 1
+   again. Arrays that don't fit together, as a Matrix built by hand can hold, fail the call: no read leaves them. *)
+let sparse_ints ctx name v =
+  match v with
+  | Array ({ store = I _; _ } as a) -> (match (Value.trim a).store with I d -> Array.map pred d | _ -> [||])
+  | Array a when a.rows * a.cols = 0 -> [||]
+  | _ -> Runtime.fail ctx Type (Messages.sparse_bad name)
+
+let sparse_columns ctx name (a : t array) =
+  let n = match a.(0) with Int n when n >= 0 -> n | _ -> Runtime.fail ctx Type (Messages.sparse_bad name) in
+  let p = sparse_ints ctx name a.(1) and i = sparse_ints ctx name a.(2) in
+  if not (Sparse.valid ~m:n ~n p i) then Runtime.fail ctx Type (Messages.sparse_bad name);
+  n, p, i
+
+let sparse_values ctx name n v =
+  let x = floats ctx name v in
+  if Float.Array.length x <> n then Runtime.fail ctx Type (Messages.sparse_bad name);
+  x
+
+let sparse_order ctx name n v =
+  let q = sparse_ints ctx name v in
+  if not (Sparse.permutation n q) then Runtime.fail ctx Type (Messages.sparse_bad name);
+  q
+
+let from1 (x : int array) = Arrays.of_ints 1 (Array.length x) (Array.map succ x)
+
+(* ordering(n, start, index): the order of AMD, from 1. *)
+let sparse_ordering ctx (a : t array) =
+  let n, p, i = sparse_columns ctx "ordering" a in
+  Runtime.pay ctx (Array.length i + n);
+  Runtime.reserve ctx ((8 * Array.length i) + (20 * n));
+  from1 (Sparse.amd ~pay:(Runtime.pay ctx) n p i)
+
+(* luFactor(n, start, index, values, q, tol): [lstart, lindex, lvalues, ustart, uindex, uvalues, pinv], or missing when
+   a is singular. *)
+let sparse_lu ctx (a : t array) =
+  let n, p, i = sparse_columns ctx "luFactor" a in
+  let x = sparse_values ctx "luFactor" (Array.length i) a.(3) and q = sparse_order ctx "luFactor" n a.(4) in
+  let tol = match a.(5) with Float t when t >= 0. && t <= 1. -> t | _ -> Runtime.fail ctx Type (Messages.sparse_bad "luFactor") in
+  match Sparse.lu ~pay:(Runtime.pay ctx) ~reserve:(Runtime.reserve ctx) n p i x q tol with
+  | None -> Missing
+  | Some (lp, li, lx, up, ui, ux, pinv) ->
+    let floats x = Arrays.of_float 1 (Float.Array.length x) x in
+    Arrays.list [| from1 lp; from1 li; floats lx; from1 up; from1 ui; floats ux; from1 pinv |]
+
 (* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
    of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
    it that makes its element 0, the multiplier kept there. The operations of the textbook in its order, as num's code
@@ -958,6 +1003,8 @@ let packages =
     [ "direction", nat ~ret:fa_size "direction" 7 7 lbfgs_direction;
       "dot", nat ~ret:(fun _ -> TF) "dot" 2 2 dot_floats;
       "largest", nat ~ret:(fun _ -> TF) "largest" 1 1 largest ];
+    "sparse",
+    [ "ordering", nat "ordering" 3 3 sparse_ordering; "luFactor", nat "luFactor" 6 6 sparse_lu ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
       "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));

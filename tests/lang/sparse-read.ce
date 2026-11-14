@@ -1,0 +1,103 @@
+(* sparse.Read: files of the Matrix Market format, each Err it gives for a bad file, and mutated files, which give an Ok
+   or an Err, never a panic. *)
+use std/fiber
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/result
+use std/sparse
+use std/sys
+use std/test
+use std/text
+use std/value
+
+defn read(name, body)
+  (** body written to a file of the test's folder, then read. *)
+  path = "$(test.Temp())/$name"
+  result.Unwrap(sys.Write(path, body))
+  sparse.Read(path)
+end
+dense(r) = sparse.Dense(result.Unwrap(r))
+errs(r, part) = match r
+  result.Err(e) -> e.Kind == "sparse" and text.Contains(part, e.Message)
+  else -> false
+end
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+panics(f, part) = match message(f)
+  result.Err(m) -> text.Contains(part, m)
+  else -> false
+end
+
+general = "%%MatrixMarket matrix coordinate real general\n% made by hand\n\n3 4 4\n1 1 2.5\n3 2 -1e-3\n2 4 7\n1 1 0.5\n"
+isGeneral() = value.Equal(dense(read("g.mtx", general)), matrix.Reshape([3, 4], [3.0, 0.0, 0.0, 0.0, 0.0, -0.001, 0.0, 0.0, 0.0, 0.0, 7.0, 0.0]))
+isSymmetric() = value.Equal(dense(read("s.mtx", "%%MatrixMarket matrix coordinate real symmetric\n2 2 2\n1 1 4\n2 1 -1\n")), matrix.Reshape([2, 2], [4.0, -1.0, -1.0, 0.0]))
+isSkew() = value.Equal(dense(read("k.mtx", "%%MatrixMarket matrix coordinate integer skew-symmetric\n2 2 1\n2 1 3\n")), matrix.Reshape([2, 2], [0.0, 3.0, -3.0, 0.0]))
+isPattern() = value.Equal(dense(read("p.mtx", "%%MatrixMarket matrix coordinate pattern general\n2 2 2\n1 2\n2 1\n")), matrix.Reshape([2, 2], [0.0, 1.0, 1.0, 0.0]))
+isCrlfCaseTabs() = value.Equal(dense(read("c.mtx", "%%MatrixMarket Matrix Coordinate REAL General\r\n1 1 1\r\n1\t1   5\r\n")), matrix.Reshape([1, 1], [5.0]))
+isZeroDropped() = result.Unwrap(read("z.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 2\n1 1 0\n2 2 1\n")).Nnz == 1
+isEmptyMatrix() = result.Unwrap(read("e.mtx", "%%MatrixMarket matrix coordinate real general\n0 0 0\n")).Rows == 0
+isNoFile() = result.IsErr(sparse.Read("$(test.Temp())/none.mtx"))
+
+isEmpty() = errs(read("e1.mtx", ""), "the file is empty")
+isBanner() = errs(read("e2.mtx", "%MatrixMarket matrix coordinate real general\n1 1 0\n"), ":1: the first line is not")
+isArray() = errs(read("e3.mtx", "%%MatrixMarket matrix array real general\n1 1\n2.0\n"), "the format is array")
+isComplex() = errs(read("e4.mtx", "%%MatrixMarket matrix coordinate complex general\n1 1 1\n1 1 1 0\n"), "the field is complex")
+isHermitian() = errs(read("e5.mtx", "%%MatrixMarket matrix coordinate real hermitian\n1 1 0\n"), "the symmetry is hermitian")
+isNoSizes() = errs(read("e6.mtx", "%%MatrixMarket matrix coordinate real general\n% only a comment\n"), "ends before the line of its sizes")
+isBadSizes() = errs(read("e7.mtx", "%%MatrixMarket matrix coordinate real general\n2 -1 0\n"), ":2: the sizes 2, -1 and 0")
+isHugeSizes() = errs(read("e8.mtx", "%%MatrixMarket matrix coordinate real general\n99999999999999999999 1 0\n"), "must be whole numbers")
+isTooWide() = errs(read("e9.mtx", "%%MatrixMarket matrix coordinate real general\n2147483648 1 0\n"), "at most 2^31 - 1")
+isOver53() = errs(read("e10.mtx", "%%MatrixMarket matrix coordinate real general\n2147483647 2147483647 0\n"), "over 2^53 cells")
+isSquare() = errs(read("e11.mtx", "%%MatrixMarket matrix coordinate real symmetric\n2 3 0\n"), "a symmetric matrix is square")
+isTooMany() = errs(read("e12.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 5\n"), "5 entries don't fit in 2 × 2 cells")
+isIndexZero() = errs(read("e13.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n0 1 1.0\n"), ":3: the indices 0 and 1")
+isIndexOut() = errs(read("e14.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n1 3 1.0\n"), "the indices 1 and 3")
+isIndexFloat() = errs(read("e15.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n1.5 1 1.0\n"), "the indices 1.5 and 1")
+isValueText() = errs(read("e16.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n1 1 x\n"), "the value x is no finite number")
+isValueInf() = errs(read("e17.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n1 1 1e400\n"), "the value 1e400")
+isIntegerFloat() = errs(read("e18.mtx", "%%MatrixMarket matrix coordinate integer general\n2 2 1\n1 1 1.5\n"), "no finite whole number")
+isUpper() = errs(read("e19.mtx", "%%MatrixMarket matrix coordinate real symmetric\n2 2 1\n1 2 1.0\n"), "(1, 2) is not one of them")
+isSkewDiagonal() = errs(read("e20.mtx", "%%MatrixMarket matrix coordinate real skew-symmetric\n2 2 1\n1 1 1.0\n"), "(1, 1) is not one of them")
+isMoreEntries() = errs(read("e21.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n1 1 1\n2 2 1\n"), ":4: more entries than the 1")
+isFewerEntries() = errs(read("e22.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 3\n1 1 1\n"), "ends after 1 entries of the 3")
+isWords() = errs(read("e23.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n1 1\n"), "2 words here")
+isLongLine() = errs(read("e24.mtx", "%%MatrixMarket matrix coordinate real general\n2 2 1\n1 1 $(text.Repeat(2000, "1"))\n"), "over 1024 bytes")
+isNotText() = panics(() -> sparse.Read(3), "path is 3")
+
+(* Mutated files: a byte changed, taken out or put in, the file cut, a line twice, then read: an Ok or an Err, never a
+   panic; an Ok is a well-formed matrix of the declared size. *)
+symmetric = "%%MatrixMarket matrix coordinate real symmetric\n% a comment\n5 5 8\n1 1 4.0\n2 1 -1.0\n2 2 4\n3 2 -1\n3 3 4\n4 3 -1e0\n4 4 4\n5 5 2.5\n"
+defn mutated(changes)
+  bytes = text.Bytes(symmetric)
+  for c in changes
+    n = value.Len(bytes)
+    at = math.Mod(c.At, n + 1) + 1
+    if n == 0
+      bytes = [c.Byte]
+    else if at > n
+      bytes = list.Append(c.Byte, bytes)
+    else if c.Kind == 0
+      bytes[at] = c.Byte
+    else if c.Kind == 1
+      bytes = list.Concat(bytes[1..at - 1], bytes[at + 1..n])
+    else if c.Kind == 2
+      bytes = list.Concat(list.Concat(bytes[1..at - 1], [c.Byte]), bytes[at..n])
+    else if c.Kind == 3
+      bytes = bytes[1..at]
+    else
+      bytes = list.Concat(bytes, bytes[at..n])
+    end
+  end
+  text.FromBytes(bytes)
+end
+digits = [48, 49, 50, 57, 32, 10, 37, 45, 46, 101, 0, 255, 9, 13, 120]
+changes = gen.List(gen.Of({Kind: gen.Int(0, 4), At: gen.Int(0, 400), Byte: gen.Pick(digits)}), min = 1, max = 4)
+defn readsOrErrs(cs)
+  r = read("m.mtx", mutated(cs))
+  match r
+    result.Ok(a) -> value.Equal(value.Size(sparse.Dense(a)), [a.Rows, a.Cols])
+    result.Err(e) -> e.Kind == "sparse"
+  end
+end
+isFuzzed() = test.ForAll(readsOrErrs, changes)

@@ -1,0 +1,33 @@
+use std/io
+use std/list
+use std/math
+use std/value
+
+(* The variable of a for that the function also assigns an element of a list is not a variable of integers: the
+   interpreter keeps that loop's counter and bound to itself. A while inside it that gets hot hands the run to native
+   code, which must not take that for over: it would come back into it with a bound it never had (here, an elimination
+   tree whose reads ran past the end of ci). *)
+defn tree(n, cs, ci)
+  parent = list.Fill(0, n)
+  for k in 1..n
+    for q in cs[k]..cs[k + 1] - 1
+      i = ci[q]
+      while i != 0 and i < k
+        parent[i] = k
+        i = 0
+      end
+    end
+  end
+  q = parent[1]
+  parent
+end
+
+n = 900
+cs = [2 * k - 1 for k in 1..n + 1]
+ci = [math.Div(k + 1, 2) - 1 for k in 1..2 * n]
+first = tree(n, cs, ci)
+same = true
+for r in 1..30
+  same = same and value.Equal(tree(n, cs, ci), first)
+end
+io.Print(same, list.Sum(first))
