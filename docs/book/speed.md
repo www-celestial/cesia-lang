@@ -20,9 +20,10 @@ fails.
   `y + h * f(t, y)`: they are never made while the loop runs, and a function that gives one, as `f` here, is inlined.
 - Functions on numbers that call each other, as a recursion.
 - In a loop, maps and structs: reading their fields, computing with them, making new ones, storing them in a list.
-- In a loop, a call of a function held in a variable, as `f(x)` where `f` came from a list: the machine code tests the
-  functions the call met, at most four, and runs the one it finds, as [How Cesia works](internals.md#calls-through-a-value)
-  shows.
+- In a loop, a call of a function held in a variable, as `f(x)` where `f` came from a list, or `f()` with no
+  argument: the machine code tests the functions the call met, at most four, and runs the one it finds, as
+  [How Cesia works](internals.md#calls-through-a-value) shows.
+- `random.Float()`, the step of its generator made in place, the same numbers as the interpreter's in the same order.
 
 A sparse product, its matrix in columns (CSC: the rows and values of each column, one after the other, and where each
 column starts), is two loops over lists of integers: `for j in 1..n` over the columns, and inside it

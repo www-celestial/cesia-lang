@@ -514,10 +514,37 @@ that branch, is tried again then, as what kept it out may have been only that th
 loop. A call of a small function whose body gives a text in one place and a number in another is made the same way:
 inlined, its number path in machine code, and its text path a way back to the interpreter, which makes the call again.
 
+A cold statement that runs at nearly every turn costs more than it saves: each turn leaves machine code and comes back,
+about 450 ns, what native code gains on 12 to 14 steps of a loop of floats. So once a loop has gone back for cold
+statements 64 times, and its machine code made fewer than 12 steps for each of them on average, its code goes and the
+loop is the interpreter's for good, never slower than the interpreter. Measured on 2026-11-14 on a loop of 10^6 turns whose branch
+left to the interpreter runs every e turns, the best of 5, in ms:
+
+| e | Before | Now | Interpreter only |
+|---:|---:|---:|---:|
+| 1 | 1,011 | 75 | 75 |
+| 4 | 136 | 31 | 31 |
+| 8 | 60 | 25 | 25 |
+| 16 | 28 | 28 | 21 |
+| 64 | 8.2 | 8.1 | 17 |
+
+`stats.MonteCarlo` first gathered its single draws with `x = f()` under `if k > 1`, which native code couldn't call:
+10^6 draws took 539 ms (the median of 21 runs), against about 120 interpreted. That loop now runs as machine code from end to end, `f`
+and its draw included (below): 8.9 ms.
+
 **Tests and kinds.** `(fa > 0.0) == (fb > 0.0)` compares two tests; `value.IsNumber(x)`, `value.IsText(x)` and the other
 tests of kind look at the tag of the value's block, or need no test at all when the JIT knows the kind; and a small
 function that is one test, as `isFinite(x) = value.IsNumber(x) and x - x == 0.0`, is made in place, a test like any
 other.
+
+**Draws.** `random.Float()` is made in place, as `math.Sqrt(x)` is: the step of SplitMix64 (Steele, Lea and Flood,
+2014), the same instructions as the interpreter's, on the same state, so the same floats come in the same order whoever
+draws them. The state is 64 bits, held as the bits of the one cell of an array of floats that the interpreter and machine
+code both read and write. A draw changes something the program sees, as a write into an array does: no guard after it
+may send its statement back to the interpreter, which would draw again, and only the unit's own code and the bodies it
+inlines draw, so that no call of another compiled function hides one. The one memory a draw writes is that cell's 8
+bytes, in an array std/random keeps to itself and never gives to a program. A loop of 10^6 calls of `f()`, where
+`f = () -> random.Float()`, takes 7.3 ms instead of 65 (the medians of 21 runs, 2026-11-14).
 
 **Small arrays of floats.** An array of at most 15 floats that a loop makes again at each turn, as the state of an
 equation, `y = y + h * f(t, y)`, is never made while the run lasts: its cells sit in slots of the frame, in a part of the
@@ -660,6 +687,12 @@ the interpreter, and so does a call of a function that captured variables. A fun
 than numbers, as a small array of floats or a text on an error path, is inlined when it is small, with no loop: its
 body is made in place, and what it can't make goes back to the interpreter, which makes the call.
 
+A call with no argument, as `f()` in the single draws of `stats.MonteCarlo`, is made the same way: the interpreter notes
+the functions it reaches, as it does for one to three arguments, and a function of no parameter infers its variables
+and its result, as one called with typed arguments does, so that `() -> 0.25` is known to give a float. Such a call took
+37 ns, always in the interpreter; it takes 2.2 ns, as `f(k)` does, and 4.1 ns when `f` draws, `() -> random.Float()`
+(the medians of 21 runs, 2026-11-14).
+
 ```text
 f(total, x)                      in machine code
 ├── f is (a, b) -> a + b ?       total + x, unboxed, inline
@@ -681,7 +714,8 @@ OCaml as usual. The tests run the whole suite in both tiers, and a difference is
 - `for x in xs` over the elements of a list, and a call through a value that reached five functions or more, or a
   function that captured variables;
 - in a loop, a statement inside an if that it can't make, as a `return` of a struct or an `io.Print`: that statement
-  alone, each time it runs, and the loop comes back to machine code at its next turn;
+  alone, each time it runs, and the loop comes back to machine code at its next turn; the whole loop, when such
+  statements run every few steps;
 - arrays of more than 15 floats made in a loop: the interpreter's operations on them, which work on many cells at a
   time, already cost little a cell;
 - a map read or written with a key computed as the program runs, as `m["key$k"]`, and the text built for it. Native code
