@@ -1,0 +1,5 @@
+block-line.ce:4:35: A do block starts a line of its own after its parameters.
+  4 | doubled = list.Map([1, 2]) do x x * 2 end
+    |                                   ^
+  Write do x, y, then the body on the next lines, up to end.
+exit 1

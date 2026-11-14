@@ -1,0 +1,7 @@
+use std/http
+
+(* Without a _, a do block comes first: here in the place of the pattern, which needs a text. *)
+app = http.App()
+  then http.Get("/hello") do r
+    http.Plain("hi")
+  end

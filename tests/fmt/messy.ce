@@ -35,4 +35,12 @@ struct Point
 end
    help =
 "Commands"
-io.Print(twice(3), Point(1).Y, help)
+summed = list.Reduce(0, [1, 2, 3]) do total, x
+      total + x
+  end
+shown = [1, 2]
+      then list.Map() do x
+            x * 10
+         end
+    then list.Sum()
+io.Print(twice(3), Point(1).Y, help, summed, shown)

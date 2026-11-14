@@ -21,6 +21,7 @@
                     "then" "use" "and" "or" "not")
                   'words)
      . font-lock-keyword-face)
+    (")[ \t]*\\(\\<do\\>\\)" 1 font-lock-keyword-face)
     (,(regexp-opt '("true" "false" "missing") 'words) . font-lock-constant-face)
     ("\\<\\([a-zA-Z_][a-zA-Z0-9_]*\\)(" 1 font-lock-function-name-face)))
 

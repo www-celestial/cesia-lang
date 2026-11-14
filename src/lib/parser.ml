@@ -561,6 +561,7 @@ and postfix_after p e =
     let before = p.its in
     let args = call_args p in
     let args = if p.its = before then args else it_sugar p args in
+    let args = if starts_block p then with_block p args else no_hole p args in
     postfix_after p (node p e.pos (Call { callee = e; args; self_tail = false }))
   | LB when not t.sp ->
     advance p;
@@ -584,6 +585,53 @@ and call_args p =
              match (cur p).t with
              | NAME n when next_tok p == ASSIGN -> advance p; advance p; { aname = Some n; value = expr p }
              | _ -> { aname = None; value = expr p })))
+
+(* f(args) do x, y: do right after the parenthesis, on its line, and before a name or the line end, so that do stays a plain
+   name elsewhere. *)
+and starts_block p =
+  match p.toks.(p.i).t with NAME "do" -> (match p.toks.(p.i + 1).t with NAME _ | NL -> true | _ -> false) | _ -> false
+
+(* The place of the argument that is _ alone, or -1. *)
+and hole p (args : arg array) =
+  let at = ref (-1) in
+  for k = 0 to Array.length args - 1 do
+    match args.(k).value.e with
+    | Var { text = "_"; _ } -> if !at >= 0 then error p args.(k).value.pos Messages.hole_twice else at := k
+    | _ -> ()
+  done;
+  !at
+
+and no_hole p args =
+  for k = 0 to Array.length args - 1 do
+    match args.(k).value.e with Var { text = "_"; _ } -> error p args.(k).value.pos Messages.hole_alone | _ -> ()
+  done;
+  args
+
+(* f(args) do params, the body, end: the function defn (params) body end, the same tree, which takes the place of the
+   argument that is _ alone, or else comes first: the mirror of then, whose value takes the place of it, or else comes
+   last. *)
+and with_block p args =
+  let pos = p.toks.(p.i).pos in
+  advance p;
+  let f =
+    with_mode p Lines (fun () ->
+        in_func p Messages.do_block pos (fun () ->
+            let rec names acc =
+              let at = (cur p).pos in
+              let q = param p "a parameter name" in
+              bind p q.pname at;
+              if (cur p).t == COMMA then (advance p; names (q :: acc)) else List.rev (q :: acc)
+            in
+            let ps = if (cur p).t == NL then [||] else Array.of_list (names []) in
+            if (cur p).t != NL then error p (cur p).pos Messages.block_line;
+            let body = block p (fun t -> t == END) in
+            expect p END "end";
+            ps, None, body))
+  in
+  let block = node p pos (Lambda f) in
+  match hole p args with
+  | -1 -> Array.append [| { aname = None; value = block } |] args
+  | k -> Array.mapi (fun i (a : arg) -> if i = k then { a with value = block } else a) args
 
 and index_args p =
   with_mode p Ignore (fun () ->

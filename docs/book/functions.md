@@ -121,6 +121,8 @@ end
 longInc(4) --> inc(4)
 ```
 
+Given to a call, such a function can also come after the call, as a [do block](#do-blocks).
+
 ### Closures
 
 A function made inside another one keeps the names it saw there, with the values they had: it is a
@@ -209,6 +211,56 @@ the inside out:
 
 ```cesia
 numbers then list.Filter(math.IsOdd) then list.Map(it * 10) then list.Sum() --> list.Sum(list.Map(x -> x * 10, list.Filter(math.IsOdd, numbers)))
+```
+
+## do blocks
+
+A function of several lines given to a call reads better after the call than inside its parentheses, where its `end` meets
+the other arguments. A *do block* writes it there: [do] right after the `)`, its parameters, its lines from the next line
+on, and `end`. The block takes the place of the argument that is `_` alone; when there is none, it becomes the first
+argument, where the functions of `std/` take their function. It is the mirror of [then], whose value takes the place of
+`it`, or else goes last.
+
+```cesia
+total = list.Reduce(0, numbers) do total, x
+  doubled = x * 2
+  total + doubled
+end
+total -->
+```
+
+The block is [syntax sugar](glossary.md#syntax-sugar) for the function `defn (total, x) ... end` given as the first
+argument: the same tree, so it costs nothing. That form stays valid, and gives the same value:
+
+```cesia
+same = list.Reduce(defn (total, x)
+  doubled = x * 2
+  total + doubled
+end, 0, numbers)
+same --> total
+```
+
+Where the function doesn't go first, `_` says where it goes. [dict.Update] takes a key, then the function, then the
+dictionary:
+
+```cesia
+use std/dict
+stock = {"bread": 40}
+more = dict.Update("bread", _, stock) do n
+  n + 10
+end
+more -->
+more --> dict.Update("bread", n -> n + 10, stock)
+```
+
+A block with no parameter is `do` alone at the end of the line, as a [fiber](fibers.md) is started. A block also works
+after [then], whose value still goes last. As in any function, `return` leaves the block, not the function around it.
+
+```cesia
+squares = numbers then list.Map() do x
+  x * x
+end
+squares --> list.Map(x -> x * x, numbers)
 ```
 
 ## A small program

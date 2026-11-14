@@ -1,0 +1,4 @@
+use std/list
+
+(* The body of a do block starts on the next line. *)
+doubled = list.Map([1, 2]) do x x * 2 end

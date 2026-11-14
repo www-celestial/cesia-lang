@@ -1,0 +1,5 @@
+block-hole-alone.ce:4:20: _ stands for the do block of its call, and this call has none.
+  4 | doubled = list.Map(_, [1, 2])
+    |                    ^
+  Write the block after the call, f(a, _) do x ... end, or the argument in full.
+exit 1

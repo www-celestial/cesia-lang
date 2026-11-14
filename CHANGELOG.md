@@ -16,6 +16,10 @@ as it did.
 
 - `a if c else b`, the value first as in Python: the same tree as `if c a else b end`, so it costs nothing when it runs.
 - `return x if c` and `break if c`, when the condition ends the line, as in Ruby: the same tree as `if c return x end`.
+- A do block after the `)` of a call, `list.Reduce(0, xs) do total, x` up to `end`: the function `defn (total, x) ... end`,
+  the same tree, in the place of the argument that is `_` alone, or else first, as in Julia. `do` stays a plain name
+  elsewhere, and the function written inside the parentheses stays valid. `cesia fmt` and the modes for Emacs and Neovim
+  know it.
 - `fiber.Channel(size = n)` holds n values at most; `fiber.Close`, `fiber.Select` with a timeout, `fiber.Cancel`, and
   `fiber.Wait(task, timeout =)`.
 - `sys.Write(path, text, sync = true)` answers once the file and its folder are on the disk; `text.ByteFind(..., fold = true)`

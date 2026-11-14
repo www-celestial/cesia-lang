@@ -1,0 +1,7 @@
+block-first.ce:5:3: segments needs a text, not function <do block>.
+  5 |   then http.Get("/hello") do r
+    |   ^
+  A do block takes the place of the _ of its call, or else comes first: write _ where it goes, as in http.Get("/", _) do r.
+  in Route (std/http.ce:524)
+  called from Get (std/http.ce:532)
+exit 1

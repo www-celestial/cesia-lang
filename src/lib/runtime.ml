@@ -33,6 +33,7 @@ let flush_out w =
   end
 
 let[@inline never] fail ctx kind (m : Messages.t) =
+  let m = if kind = Type then Messages.block_hint m else m in
   ctx.w.on_error ctx m.text;
   raise (Value.Kerr { kind; text = m.text; hint = m.hint; at = ctx.site })
 

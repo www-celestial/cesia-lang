@@ -42,17 +42,18 @@ A long computation doesn't hold the others up either: every million steps, a cal
 computes gives way to the others that are ready, which is called [preemptive scheduling](glossary.md#preemptive-scheduling):
 nobody writes a yield, as Erlang counts its reductions. So a server keeps answering its other clients while one of them
 asks for a large report. It is not the preemption of a system thread, which a timer can stop anywhere: a function of
-`std/` written in OCaml, as a [list.Sort] of a million elements, runs to its end before another fiber gets its turn. The fiber here is a function without a name on several lines, from `defn ()` to `end`, as the chapter
-[Functions](functions.md) showed:
+`std/` written in OCaml, as a [list.Sort] of a million elements, runs to its end before another fiber gets its turn. The fiber here is a function without a name on several lines,
+written as a [do block](functions.md#do-blocks) after [fiber.Spawn]: `do` alone, as it takes no parameter, its lines,
+and `end`:
 
 ```cesia
-busy = fiber.Spawn(defn ()
+busy = fiber.Spawn() do
   n = 0
   for k in 1..2000000
     n += k
   end
   n
-end)
+end
 sys.Sleep(0.001)
 "the program still runs" -->
 fiber.Wait(busy) -->
@@ -63,7 +64,8 @@ fiber.Wait(busy) -->
 [fiber.Wait] can wait for a time at most: past it, it gives an `Err` of kind `"timeout"`, and the task runs on.
 [fiber.Cancel] stops it: the fiber stops at its next wait, as a [sys.Sleep], a [fiber.Receive] or a call to the network, or
 at the next checkpoint of a long computation, where it lets the others run. Then [fiber.Wait] gives an `Err` of kind
-`"cancelled"`, which tells the file and the line where the fiber was. A server gives each request a time this way:
+`"cancelled"`, which tells the file and the line where the fiber was. A server gives each request a time this way. The
+fiber is written here the older way, as `defn ()` up to `end` inside the parentheses, which makes the same function:
 
 ```cesia
 stuck = fiber.Spawn(defn ()
@@ -118,12 +120,12 @@ A channel carries values from one fiber to another, in the order they were sent:
 use std/list
 use std/result
 orders = fiber.Channel()
-baker = fiber.Spawn(defn ()
+baker = fiber.Spawn() do
   for product in ["bread", "cake", "tart"]
     fiber.Send(product, orders)
   end
   fiber.Close(orders)
-end)
+end
 
 made = []
 for product in orders
@@ -138,10 +140,10 @@ channel is closed and empty:
 
 ```cesia
 orders = fiber.Channel()
-fiber.Spawn(defn ()
+fiber.Spawn() do
   fiber.Send("pie", orders)
   fiber.Close(orders)
-end)
+end
 
 made = []
 got = fiber.Receive(orders)
@@ -171,7 +173,7 @@ an `Ok` of the `Channel` and the `Value`, an `Err` of kind `"closed"` for a chan
 ```cesia
 jobs = fiber.Channel()
 stop = fiber.Channel()
-worker = fiber.Spawn(defn ()
+worker = fiber.Spawn() do
   done = []
   got = fiber.Select([stop, jobs], timeout = 1)
   while result.IsOk(got)
@@ -179,7 +181,7 @@ worker = fiber.Spawn(defn ()
     got = fiber.Select([stop, jobs], timeout = 1)
   end
   done
-end)
+end
 fiber.Send("wash", jobs)
 fiber.Send("dry", jobs)
 sys.Sleep(0)
@@ -199,12 +201,12 @@ the pace of its receiver. This is called [backpressure](glossary.md#backpressure
 ```cesia
 tray = fiber.Channel(size = 1)
 start = sys.Now()
-fiber.Spawn(defn ()
+fiber.Spawn() do
   for k in 1..3
     sys.Sleep(0.1)
     result.Unwrap(fiber.Receive(tray))
   end
-end)
+end
 for k in 1..3
   fiber.Send(k, tray)
 end

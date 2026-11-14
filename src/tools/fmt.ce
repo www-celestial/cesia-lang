@@ -1,5 +1,6 @@
 (** cesia fmt: writes the files of a project in the one style its code shares. A line that starts a statement is indented
-    two spaces for each block it is in, and a line that goes on with a statement moves with the line it continues; no line
+    two spaces for each block it is in, and a line that goes on with a statement moves with the line it continues; the body
+    of a do block on a line that starts with then goes two spaces in from that line; no line
     ends with spaces; no two blank lines follow each other, and none starts or ends the file. Nothing else changes: not a
     word, not a comment, not a text. Before it writes a file, fmt checks that the code keeps its tree and that only spaces
     and line ends moved. cesia fmt [--check] [path...]: a path is a file, or a folder and its subfolders; with none, the
@@ -20,7 +21,7 @@ backslash = 92
 dollar = 36
 newline = 10
 
-(* The words that open a block that end closes, when they stand out of brackets. *)
+(* The words that open a block that end closes, when they stand out of brackets; do too, after the ) of a call. *)
 openers = ["defn", "for", "while", "match", "if", "struct", "interface"]
 
 (* The last tokens of a line after which the statement goes on, on the next line. *)
@@ -143,38 +144,58 @@ defn indentOf(line)
   k
 end
 
+defn startsName(t)
+  (** Is a token a name, and not a number? *)
+  c = text.Bytes(t)[1]
+  nameByte(c) and not (c >= 48 and c <= 57)
+end
+
 defn opening(t, k, tokens)
   (** Does the k-th token of a line open a block that end closes? An if after else or before the -> of a match arm opens
-      none, nor a struct or an interface written on one line. *)
+      none, nor a struct or an interface written on one line. do opens one right after the ) of a call, before a name or
+      the line end: elsewhere it is a name. *)
   n = value.Len(tokens)
   rest = if k < n tokens[(k + 1)..n] else [] end
   if t == "if"
     not ((k > 1 and tokens[k - 1] == "else") or "->" in rest)
   else if t == "struct" or t == "interface"
     not ("{" in rest)
+  else if t == "do"
+    k > 1 and tokens[k - 1] == ")" and (k == n or startsName(tokens[k + 1]))
   else
     t in openers
   end
 end
 
-defn blocksAfter(blocks, tokens)
+defn blocksAfter(blocks, tokens, indent)
   (** The blocks open after the tokens of a line, in their order: an opener adds one, an end closes the innermost one
-      that end closes, with the bodies above it. *)
+      that end closes, with the bodies above it. A do block on a line that starts with then, indented under its statement,
+      has its body under that line: it is a "t", after a "c" for each step of that indent, which its end closes too. *)
   out = blocks
   for k in 1..value.Len(tokens)
     t = tokens[k]
     if t == "end"
       j = value.Len(out)
-      while j > 0 and out[j] != "k"
+      while j > 0 and out[j] != "k" and out[j] != "t"
         j -= 1
       end
       out = if j == 0 [] else list.Take(j - 1, out) end
+      while value.Len(out) > 0 and list.Last(out) == "c"
+        out = list.DropLast(1, out)
+      end
+    else if opening(t, k, tokens) and t == "do" and tokens[1] == "then"
+      while 2 * value.Len(out) < indent
+        out = list.Append("c", out)
+      end
+      out = list.Append("t", out)
     else if opening(t, k, tokens)
       out = list.Append("k", out)
     end
   end
   out
 end
+
+thens(blocks) = value.Len(list.Filter(it == "t", blocks))   (** How many do blocks of a then line are open. *)
 
 defn done(blocks)
   (** The blocks after a statement that ended: the bodies of -> and = it was the statement of are over. *)
@@ -193,6 +214,7 @@ defn shaped(src)
   out = []
   blocks = []     (* each open block: "k" for one that end closes, "v0" and "v1" for the body of a -> or = at the end of a line, before and after its first line *)
   shift = 0
+  shifts = []     (* the shift of each then line whose do block is open: the lines after its end move as it did *)
   continued = false
   for line in scan(src)
     (* A line keeps its own line end, \r\n or \n. *)
@@ -204,6 +226,7 @@ defn shaped(src)
     body = text.Trim(line.Text)
     statement = line.In == "code" and line.Open == 0 and not continued and first != "then"
     rest = if line.Out == "text" line.Text else "$(trimEnd(line.Text))$cr" end
+    indent = 0
     if line.In == "text"
       (* A line that starts in a text keeps all it holds. *)
       out = list.Append({Text: line.Text, Blank: false}, out)
@@ -219,10 +242,19 @@ defn shaped(src)
       out = list.Append({Text: "$(text.Repeat(2 * level, " "))$(text.Trim(rest))$cr", Blank: false}, out)
     else
       moved = if value.IsMissing(at) or shift == 0 rest else "$(text.Repeat(list.Max([0, at + shift]), " "))$(text.Trim(rest))$cr" end
+      indent = if value.IsMissing(indentOf(moved)) 0 else indentOf(moved) end
       out = list.Append({Text: moved, Blank: false}, out)
     end
     if body != ""
-      blocks = blocksAfter(blocks, tokens)
+      before = thens(blocks)
+      blocks = blocksAfter(blocks, tokens, indent)
+      while value.Len(shifts) < thens(blocks)
+        shifts = list.Append(shift, shifts)
+      end
+      if thens(blocks) < before
+        shift = shifts[thens(blocks) + 1]
+        shifts = list.Take(thens(blocks), shifts)
+      end
       (* A statement ends at a line end out of brackets, texts and comments, after a token that doesn't ask for more. A
          line of comment only, with no token, ends none. *)
       ends = line.Close == 0 and line.Out == "code" and (not value.IsMissing(last) or line.Open > 0 or line.In != "code")

@@ -1,6 +1,6 @@
 big [2, 3]
 more 6
-6 0 Commands
+6 0 Commands 6 30
 messy.ce
 check: 1
 messy.ce
@@ -40,7 +40,15 @@ struct Point
 end
 help =
   "Commands"
-io.Print(twice(3), Point(1).Y, help)
+summed = list.Reduce(0, [1, 2, 3]) do total, x
+  total + x
+end
+shown = [1, 2]
+      then list.Map() do x
+        x * 10
+      end
+    then list.Sum()
+io.Print(twice(3), Point(1).Y, help, summed, shown)
 use std/io^M
 x = 1^M
 ^M
@@ -48,7 +56,7 @@ io.Print(x)^M
 check again: 0
 big [2, 3]
 more 6
-6 0 Commands
+6 0 Commands 6 30
 fmt: no cesia.toml here; name the files or folders to format.
 no path: 1
 fmt: unknown option --nope; cesia fmt [--check] [path...]
