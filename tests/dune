@@ -32,3 +32,8 @@
  (name cache_test)
  (modules cache_test)
  (libraries cesia cesia_sys unix))
+
+(test
+ (name float_test)
+ (modules float_test)
+ (libraries cesia))

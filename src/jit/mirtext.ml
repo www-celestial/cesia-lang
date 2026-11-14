@@ -8,9 +8,7 @@ let doubled n = Int64.to_string (Int64.mul 2L (Int64.of_int n))
 let tagged n = Int64.to_string (Int64.add (Int64.mul 2L (Int64.of_int n)) 1L)
 
 (* A float that MIR reads back exactly, and as a float. *)
-let float_lit x =
-  let s = Printf.sprintf "%.17g" x in
-  if String.exists (fun c -> c = '.' || c = 'e') s then s else s ^ ".0"
+let float_lit = Value.float_text
 
 let operand = function
   | Ir.Reg r -> "r" ^ string_of_int r

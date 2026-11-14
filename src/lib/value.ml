@@ -24,23 +24,11 @@ let kind_name = function
   | Permission -> "permission"
   | User -> "user"
 
-(* The first format that reads back identically, in a single spelling: 1.0, 1e20, 1.5e-7. *)
+(* The first of 15, 16 and 17 significant digits that reads back identically, in a single spelling: 1.0, 1e20, 1.5e-7.
+   Its own bytes, so that any domain can call it; [write] and json.ml use [scratch], on the main domain. *)
 let float_text x =
-  if Float.is_nan x then "nan"
-  else if x = infinity then "inf"
-  else if x = neg_infinity then "-inf"
-  else begin
-    let s = Printf.sprintf "%.15g" x in
-    let s = if float_of_string s = x then s else Printf.sprintf "%.16g" x in
-    let s = if float_of_string s = x then s else Printf.sprintf "%.17g" x in
-    match String.index_opt s 'e' with
-    | Some i ->
-      let mant = String.sub s 0 i in
-      let exp = int_of_string (let r = String.sub s (i + 1) (String.length s - i - 1) in
-                               if r.[0] = '+' then String.sub r 1 (String.length r - 1) else r) in
-      Printf.sprintf "%se%d" mant exp
-    | None -> if String.contains s '.' then s else s ^ ".0"
-  end
+  let b = Bytes.create 24 in
+  Bytes.sub_string b 0 (Ryu.write b 0 x)
 
 let[@inline] elt a k =
   match a.store with
@@ -253,6 +241,7 @@ let rec write o ctx depth v =
   nested ctx depth;
   match v with
   | Int i -> if i >= 0 && i < 10 then add_char o (Char.chr (48 + i)) else add_ascii o scratch (digits 0 i)
+  | Float x -> add_ascii o scratch (Ryu.write scratch 0 x)
   | Text s -> add_quoted o s
   | Array a -> write_array o ctx depth a
   | Dict _ -> write_map o ctx depth (items v)

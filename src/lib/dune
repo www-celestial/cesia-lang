@@ -10,6 +10,13 @@
    (run ../gen/gen_super.exe))))
 
 (rule
+ (targets pow5.ml)
+ (action
+  (with-stdout-to
+   %{targets}
+   (run ../gen/gen_pow5.exe))))
+
+(rule
  (targets embedded.ml)
  (deps
   (glob_files ../std/*.ce)
