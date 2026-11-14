@@ -11,8 +11,8 @@ each library is for, and what it costs.
 [math.Inc] and [math.Dec]; the rounding, [math.Round], [math.Floor] and [math.Ceil]; [math.Abs] and [math.Sign]; the
 roots, powers and logarithms, [math.Sqrt], [math.Exp] and [math.Log]; the trigonometry in radians, [math.Sin],
 [math.Cos], [math.Tan], [math.Asin], [math.Acos], [math.Atan], and [math.Atan2] for the angle of a point; the constants
-[math.Pi] and [math.Nan]; and the tests [math.IsZero], [math.IsPos], [math.IsNeg], [math.IsEven] and [math.IsOdd]. Each
-function of one number also works on an array, element by element.
+[math.Pi], [math.Nan] and [math.Inf], `1.0 / 0.0`; and the tests [math.IsZero], [math.IsPos], [math.IsNeg],
+[math.IsEven] and [math.IsOdd]. Each function of one number also works on an array, element by element.
 
 ```cesia
 use std/math

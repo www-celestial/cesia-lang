@@ -13,8 +13,8 @@ coûte.
 et [math.Inc] et [math.Dec] ; les arrondis, [math.Round], [math.Floor] et [math.Ceil] ; [math.Abs] et [math.Sign] ; les
 racines, les puissances et les logarithmes, [math.Sqrt], [math.Exp] et [math.Log] ; la trigonométrie en radians,
 [math.Sin], [math.Cos], [math.Tan], [math.Asin], [math.Acos], [math.Atan], et [math.Atan2] pour l'angle d'un point ; les
-constantes [math.Pi] et [math.Nan] ; et les tests [math.IsZero], [math.IsPos], [math.IsNeg], [math.IsEven] et
-[math.IsOdd]. Chaque fonction d'un seul nombre marche aussi sur un array, élément par élément.
+constantes [math.Pi], [math.Nan] et [math.Inf], `1.0 / 0.0` ; et les tests [math.IsZero], [math.IsPos], [math.IsNeg],
+[math.IsEven] et [math.IsOdd]. Chaque fonction d'un seul nombre marche aussi sur un array, élément par élément.
 
 ```cesia
 use std/math

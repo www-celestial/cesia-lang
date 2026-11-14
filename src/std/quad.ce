@@ -1,0 +1,179 @@
+(** Integrals: Integral, the integral of a function of one number from a to b, as integral in MATLAB and quad in scipy,
+    by the adaptive methods of QUADPACK (Piessens, de Doncker-Kapenga, Überhuber and Kahaner 1983): QAGS on a finite
+    interval, QAGP when points names where f jumps or is singular, QAGI when a bound is infinite. The chapter Numerical
+    methods of the book says what it promises, and where each part comes from. *)
+use std/bug
+use std/list
+use std/math
+use std/result
+use std/value
+
+eps = 2.220446049250313e-16   (** the distance from 1.0 to the next float, 2^-52 *)
+
+defn Integral(f, a, b, rtol = 1.0e-10, atol = 1.0e-12, points = [], limit = 1000)
+  (** The integral of f from a to b, in an Ok of {Value, Error, Evaluations, Intervals}: f takes one number and gives
+      one number; a and b are numbers, and either can be math.Inf or -math.Inf. Value is the integral, Error the
+      estimate of its error, Evaluations the calls of f, and Intervals the pieces the interval was cut into. It is an
+      Ok when Error <= max(atol, rtol |Value|). points lists the places between a and b where f jumps, has a kink or is
+      singular, so that the pieces start there; limit bounds the pieces.
+
+      The method is QUADPACK's (1983): Kronrod's rule of 21 points on each piece, whose difference with the rule of
+      Gauss's 10 among them estimates its error; the piece of largest error is cut in two, until the sum of the errors
+      is small enough. Where f is singular at a place, the pieces near it get smaller and smaller, and Wynn's epsilon
+      algorithm (1956) extrapolates the sums to their limit. With an infinite bound, x = a + (1 - t) / t maps the
+      interval onto (0, 1], and the rule of 15 points works there. Error is an estimate, not a bound: it can be fooled
+      by a narrow peak that no point of the rule sees, as any method that only samples f.
+
+      An Err of kind "quad", with Value and Error, the best estimates found, when the tolerance is not met within limit
+      pieces; when roundoff stops the error from falling; when f behaves so badly at a place that a piece around it
+      can't be cut again; when the extrapolation doesn't converge; when the integral looks divergent; and when f gives
+      a NaN, an infinity or no number.
+
+        Integral(x -> x * x, 0.0, 3.0).Value --> {Value: 9.000000000000002, Error: 9.992007221626411e-14, Evaluations: 21, Intervals: 1}
+        Integral(x -> 1.0 / math.Sqrt(x), 0.0, 1.0).Value.Value --> 1.9999999999999984
+        Integral(x -> math.Exp(-x * x), -math.Inf, math.Inf).Value.Value --> 1.772453850905516
+        Integral(x -> math.Abs(x - 0.3), 0.0, 1.0, points = [0.3]).Value.Intervals --> 2
+        Integral(x -> 1.0 / x, 0.0, 1.0, limit = 20).Error.Message --> "quad.Integral: the error estimate 9.350560373140297 is above the tolerance 2.0882425258589698e-9 after 20 pieces, the limit; raise limit, or give in points the places where f jumps or is singular." *)
+  if not value.IsFunction(f)
+    bug.Panic("quad.Integral: f is $(brief(f)); give a function of one number.")
+  end
+  bound("a", a)
+  bound("b", b)
+  if not (isFinite(rtol) and rtol >= 0.0)
+    bug.Panic("quad.Integral: rtol is $(brief(rtol)); give a number of 0.0 or more.")
+  end
+  if not (isFinite(atol) and atol >= 0.0)
+    bug.Panic("quad.Integral: atol is $(brief(atol)); give a number of 0.0 or more.")
+  end
+  if atol == 0.0 and rtol < 50.0 * eps
+    bug.Panic("quad.Integral: rtol is $(brief(rtol)) and atol is 0.0; give rtol of at least 50 eps, 1.1102230246251565e-14, or atol above 0.0.")
+  end
+  if not (value.IsInt(limit) and limit >= 1)
+    bug.Panic("quad.Integral: limit is $(brief(limit)); give a whole number of 1 or more.")
+  end
+  if a == b
+    return result.Ok({Value: 0.0, Error: 0.0, Evaluations: 0, Intervals: 0})
+  end
+  inner = places(points, a, b)
+  lo = if a < b 1.0 * a else 1.0 * b end
+  hi = if a < b 1.0 * b else 1.0 * a end
+  sign = if a < b 1.0 else -1.0 end
+  if lo == -math.Inf or hi == math.Inf
+    if value.Len(inner) > 0
+      bug.Panic("quad.Integral: points needs a finite interval; integrate from a to a point and from there to the infinite bound, in two calls.")
+    end
+    way = if lo == -math.Inf and hi == math.Inf 2 else if hi == math.Inf 1 else -1 end
+    from = if way == 1 lo else if way == -1 hi else 0.0 end
+    return signed(outcome(engine(f, way, from, [0.0, 1.0], rtol, atol, limit, false), way), sign)
+  end
+  if not isFinite(hi - lo)
+    bug.Panic("quad.Integral: b - a is $(hi - lo), too large for a float; give math.Inf for an infinite bound.")
+  end
+  if value.Len(inner) == 0
+    return outcome(engine(f, 0, 0.0, [1.0 * a, 1.0 * b], rtol, atol, limit, false), 0)
+  end
+  ends = list.Concat([lo], list.Concat(inner, [hi]))
+  if limit < value.Len(ends) - 1
+    bug.Panic("quad.Integral: limit is $limit, and points makes $(value.Len(ends) - 1) pieces; give limit of at least that.")
+  end
+  signed(outcome(engine(f, 0, 0.0, ends, rtol, atol, limit, true), 0), sign)
+end
+
+defn brief(v)
+  (** A value as an error shows it. *)
+  if value.IsText(v) "\"$v\"" else value.Text(v) end
+end
+
+isFinite(x) = value.IsNumber(x) and x - x == 0.0
+
+defn bound(name, x)
+  (** A panic unless x is a number, finite or infinite. *)
+  if not (value.IsNumber(x) and x == x)
+    bug.Panic("quad.Integral: $name is $(brief(x)); give a number, or math.Inf or -math.Inf.")
+  end
+end
+
+defn places(points, a, b)
+  (** The points strictly between a and b, sorted, each once, as floats; a panic for one that is no finite number or
+      lies outside. *)
+  if not (value.IsArray(points) and value.Len(value.Size(points)) <= 2)
+    bug.Panic("quad.Integral: points is $(brief(points)); give a list of numbers.")
+  end
+  lo = if a < b a else b end
+  hi = if a < b b else a end
+  kept = []
+  for i in 1..value.Len(points)
+    p = points[i]
+    if not isFinite(p)
+      bug.Panic("quad.Integral: points[$i] is $(brief(p)); give finite numbers.")
+    end
+    if p < lo or p > hi
+      bug.Panic("quad.Integral: points[$i] is $p, outside the interval from $lo to $hi.")
+    end
+    if p > lo and p < hi
+      kept = list.Append(1.0 * p, kept)
+    end
+  end
+  sorted = list.Sort(kept)
+  once = []
+  for i in 1..value.Len(sorted)
+    if i == 1 or sorted[i] != sorted[i - 1]
+      once = list.Append(sorted[i], once)
+    end
+  end
+  once
+end
+
+defn signed(r, sign)
+  (** r for the interval taken the other way: Value times sign. *)
+  if sign == 1.0
+    return r
+  end
+  match r
+    result.Ok(q) -> result.Ok({Value: -q.Value, Error: q.Error, Evaluations: q.Evaluations, Intervals: q.Intervals})
+    result.Err(e) -> result.Err({Kind: e.Kind, Message: e.Message, Value: -e.Value, Error: e.Error})
+  end
+end
+
+defn outcome(r, way)
+  (** The Ok or the Err of what the native engine gives: [code, value, error, calls, pieces, tolerance, place, given].
+      The engine is QUADPACK's adaptive strategy, the same for QAGS (one piece), QAGP (the pieces between points) and QAGI
+      (way not 0: the rule of 15 points on (0, 1]), as de Doncker (1978) made it and the book of 1983 gives it: the pieces
+      kept in the order of their errors, the one of largest error cut in two, and, when that one is among the smallest,
+      as near a singularity, the larger pieces cut first, then the sum of all of them added to the sequence that Wynn's
+      epsilon algorithm extrapolates. It runs as native code, which calls f back: the same method in Cesia spent six
+      times as long on its own steps as on f. *)
+  code = r[1]
+  if code == 0
+    return result.Ok({Value: r[2], Error: r[3], Evaluations: r[4], Intervals: r[5]})
+  end
+  near = if way == 2 "±$(r[7])" else "$(r[7])" end
+  if code == 6
+    return failed("quad.Integral: f($(r[7])) is $(brief(r[8])), not a finite number.", r[2], r[3])
+  end
+  if code == 7
+    return failed("quad.Integral: the values of f near $near are too large: their sum overflows.", r[2], r[3])
+  end
+  if code == 8
+    return failed("quad.Integral: f($(r[7])) / t^2 overflows, t = $(r[8]), after the change of variable x = a + (1 - t) / t: the integral likely diverges.", r[2], r[3])
+  end
+  ended(code, r[2], r[3], r[5], r[6], near)
+end
+
+failed(message, v, e) = result.Err({Kind: "quad", Message: message, Value: v, Error: e})
+
+defn ended(ier, v, e, last, tol, near)
+  (** The Err for QUADPACK's flag ier, 1 to 5, with the best value and its error estimate. *)
+  why = if ier == 1
+    "the error estimate $e is above the tolerance $tol after $last pieces, the limit; raise limit, or give in points the places where f jumps or is singular."
+  else if ier == 2
+    "roundoff stops the error estimate at $e, above the tolerance $tol; ask for less, with a larger rtol or atol."
+  else if ier == 3
+    "f behaves too badly near $near for the piece around it to be cut again: a singularity that may not be integrable, or a jump; give it in points."
+  else if ier == 4
+    "the extrapolation does not converge, as roundoff spoils its table: the error estimate is $e, above the tolerance $tol."
+  else
+    "the integral looks divergent, or converges too slowly to be computed."
+  end
+  failed("quad.Integral: $why", v, e)
+end

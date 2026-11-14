@@ -951,7 +951,8 @@ let packages =
                 in
                 Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
       "Pi", Float (4. *. atan 1.);
-      "Nan", Float nan ];
+      "Nan", Float nan;
+      "Inf", Float infinity ];
     "num", [ "dot", nat "dot" 2 2 dot; "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
     "optimize",
     [ "direction", nat ~ret:fa_size "direction" 7 7 lbfgs_direction;

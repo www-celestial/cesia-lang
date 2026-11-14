@@ -432,6 +432,13 @@ use std/test
 
       math.Nan == math.Nan --> false *)
 
+(** math.Inf
+    The float infinity, 1.0 / 0.0: above every other number, as -math.Inf is below every other. quad.Integral takes
+    either as a bound.
+
+      math.Inf > 1.0e308 --> true
+      -math.Inf < -1.0e308 --> true *)
+
 (** math.Near(a, b, rel = 1e-9, abs = 0.0)
     Are two numbers within a tolerance: |a - b| <= max(rel * max(|a|, |b|), abs)? Arrays, maps and structs of the same shape
     are near when each of their elements is; other values when they are equal. Infinities are near only themselves, and
