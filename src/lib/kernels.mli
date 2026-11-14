@@ -1,12 +1,14 @@
 (** Loops over [F] and [I] storage, with no boxed value. *)
 
-type op = Add | Sub | Mul | Div
+(** [Pow] is OCaml's [**], the C library's pow, as [Arith.pow] on one cell: the same bits. *)
+type op = Add | Sub | Mul | Div | Pow
 
 val both : op -> floatarray -> floatarray -> floatarray
 val right : op -> floatarray -> float -> floatarray
 val left : op -> float -> floatarray -> floatarray
 
-(** [ints op (x, step) (y, step) n]: n cells of integers, or [None] if one overflows. A step of 0 reads one cell, a scalar. *)
+(** [ints op (x, step) (y, step) n]: n cells of integers, or [None] if one overflows or [op] is [Div] or [Pow]. A step of
+    0 reads one cell, a scalar. *)
 val ints : op -> int array * int -> int array * int -> int -> int array option
 
 val of_ints : int array -> floatarray

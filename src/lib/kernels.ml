@@ -1,4 +1,4 @@
-type op = Add | Sub | Mul | Div
+type op = Add | Sub | Mul | Div | Pow
 
 let both op x y =
   let n = Float.Array.length x in
@@ -8,7 +8,8 @@ let both op x y =
       | Add -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i +. Float.Array.get y i) done
       | Sub -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i -. Float.Array.get y i) done
       | Mul -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i *. Float.Array.get y i) done
-      | Div -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i /. Float.Array.get y i) done);
+      | Div -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i /. Float.Array.get y i) done
+      | Pow -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i ** Float.Array.get y i) done);
   out
 
 let right op x s =
@@ -19,7 +20,8 @@ let right op x s =
       | Add -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i +. s) done
       | Sub -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i -. s) done
       | Mul -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i *. s) done
-      | Div -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i /. s) done);
+      | Div -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i /. s) done
+      | Pow -> for i = lo to hi - 1 do Float.Array.set out i (Float.Array.get x i ** s) done);
   out
 
 let left op s y =
@@ -30,7 +32,8 @@ let left op s y =
       | Add -> for i = lo to hi - 1 do Float.Array.set out i (s +. Float.Array.get y i) done
       | Sub -> for i = lo to hi - 1 do Float.Array.set out i (s -. Float.Array.get y i) done
       | Mul -> for i = lo to hi - 1 do Float.Array.set out i (s *. Float.Array.get y i) done
-      | Div -> for i = lo to hi - 1 do Float.Array.set out i (s /. Float.Array.get y i) done);
+      | Div -> for i = lo to hi - 1 do Float.Array.set out i (s /. Float.Array.get y i) done
+      | Pow -> for i = lo to hi - 1 do Float.Array.set out i (s ** Float.Array.get y i) done);
   out
 
 (* Loops over I storage, with the checks of [Arith.add_int], [sub_int] and [mul_int]: [None] when a cell overflows, so
@@ -66,7 +69,7 @@ let ints op ((x : int array), sx) ((y : int array), sy) n =
            let a = x.(i * sx) and b = y.(i * sy) in
            if mul_fits a b then out.(i) <- a * b else bad := -1
          done
-       | Div -> bad := -1);
+       | Div | Pow -> bad := -1);
       if !bad < 0 then Atomic.set ok false);
   if Atomic.get ok then Some out else None
 
@@ -85,7 +88,8 @@ let right_ints op (x : int array) s =
       | Add -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) +. s) done
       | Sub -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) -. s) done
       | Mul -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) *. s) done
-      | Div -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) /. s) done);
+      | Div -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) /. s) done
+      | Pow -> for i = lo to hi - 1 do Float.Array.set out i (float_of_int x.(i) ** s) done);
   out
 
 let left_ints op s (y : int array) =
@@ -96,7 +100,8 @@ let left_ints op s (y : int array) =
       | Add -> for i = lo to hi - 1 do Float.Array.set out i (s +. float_of_int y.(i)) done
       | Sub -> for i = lo to hi - 1 do Float.Array.set out i (s -. float_of_int y.(i)) done
       | Mul -> for i = lo to hi - 1 do Float.Array.set out i (s *. float_of_int y.(i)) done
-      | Div -> for i = lo to hi - 1 do Float.Array.set out i (s /. float_of_int y.(i)) done);
+      | Div -> for i = lo to hi - 1 do Float.Array.set out i (s /. float_of_int y.(i)) done
+      | Pow -> for i = lo to hi - 1 do Float.Array.set out i (s ** float_of_int y.(i)) done);
   out
 
 (* Masks: [true] or [false] in [out] for each pair of cells; [x > y] is [y < x]. Comparisons of floats follow IEEE, so
