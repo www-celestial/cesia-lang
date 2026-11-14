@@ -1,12 +1,16 @@
 name: release
 
-# A tag vX.Y.Z makes the release vX.Y.Z; Run workflow on main, by hand, replaces the pre-release nightly: three systems and
-# their C libraries cost too many minutes for each push. Each holds, for each system, an archive of bin/cesia and lib/ (the C
-# libraries of tools/release-libs.sh) with its fingerprint in a .blake2 file, and the notes of tools/notes.sh. cesia upgrade
-# reads them.
+# A tag vX.Y.Z makes the release vX.Y.Z; the pre-release nightly is made again from main each time ci passes there (or
+# by hand, Run workflow on main), so that Cemacs and Cepheus, which build with the nightly, test and publish against main.
+# Each holds, for each system, an archive of bin/cesia and lib/ (the C libraries of tools/release-libs.sh) with its
+# fingerprint in a .blake2 file, and the notes of tools/notes.sh. cesia upgrade reads them.
 on:
   push:
     tags: ["v*"]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 # Only publish writes: the builds run the configure and make of downloaded sources.
@@ -19,6 +23,10 @@ concurrency:
 
 jobs:
   build:
+    # After ci, only a push to main that passed makes a nightly.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     strategy:
       # One system failing doesn't stop the others: each says what it lacks.
       fail-fast: false
@@ -40,6 +48,8 @@ jobs:
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
         with:
+          # The commit ci tested, not a later one.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           persist-credentials: false
       - uses: ocaml/setup-ocaml@v3
         with:
@@ -173,6 +183,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
       - uses: actions/download-artifact@v8
         with:
