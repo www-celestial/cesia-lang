@@ -127,6 +127,8 @@ end
 longInc(4) --> inc(4)
 ```
 
+Donnée à un appel, une telle fonction peut aussi venir après l'appel, comme un [do block](#do-blocks).
+
 ### Closures
 
 Une fonction créée dans une autre garde les noms qu'elle y voyait, avec les valeurs qu'ils avaient : c'est une
@@ -220,6 +222,57 @@ appels, qui se lisent de l'intérieur vers l'extérieur :
 
 ```cesia
 numbers then list.Filter(math.IsOdd) then list.Map(it * 10) then list.Sum() --> list.Sum(list.Map(x -> x * 10, list.Filter(math.IsOdd, numbers)))
+```
+
+## do blocks
+
+Une fonction de plusieurs lignes donnée à un appel se lit mieux après l'appel que dans ses parenthèses, où son `end`
+rencontre les autres arguments. Un *do block* (un bloc `do`) l'écrit là : [do] juste après la `)`, ses paramètres, ses
+lignes à partir de la ligne suivante, et `end`. Le bloc prend la place de l'argument qui est `_` seul ; quand il n'y en a
+pas, il devient le premier argument, là où les fonctions de `std/` prennent leur fonction. C'est le miroir de [then],
+dont la valeur prend la place de `it`, ou sinon va en dernier.
+
+```cesia
+total = list.Reduce(0, numbers) do total, x
+  doubled = x * 2
+  total + doubled
+end
+total -->
+```
+
+Le bloc est du [syntax sugar](glossary.md#syntax-sugar) pour la fonction `defn (total, x) ... end` donnée en premier
+argument : le même arbre, donc il ne coûte rien. Cette forme reste valable, et donne la même valeur :
+
+```cesia
+same = list.Reduce(defn (total, x)
+  doubled = x * 2
+  total + doubled
+end, 0, numbers)
+same --> total
+```
+
+Là où la fonction ne vient pas en premier, `_` dit où elle va. [dict.Update] prend une clé, puis la fonction, puis le
+dictionnaire :
+
+```cesia
+use std/dict
+stock = {"bread": 40}
+more = dict.Update("bread", _, stock) do n
+  n + 10
+end
+more -->
+more --> dict.Update("bread", n -> n + 10, stock)
+```
+
+Un bloc sans paramètre est `do` seul en fin de ligne, comme on lance une [fiber](fibers.md). Un bloc marche aussi après
+[then], dont la valeur va toujours en dernier. Comme dans toute fonction, `return` quitte le bloc, pas la fonction
+autour.
+
+```cesia
+squares = numbers then list.Map() do x
+  x * x
+end
+squares --> list.Map(x -> x * x, numbers)
 ```
 
 ## Un petit programme

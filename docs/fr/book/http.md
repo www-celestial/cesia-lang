@@ -25,6 +25,30 @@ app = http.App()
 Une partie d'un chemin qui commence par `:` prend n'importe quel mot, et le handler le trouve dans `r.Params`.
 L'application est une valeur : chaque route en donne une nouvelle, et [then] les enchaîne.
 
+### Un handler de plusieurs lignes
+
+Un handler de plusieurs lignes s'écrit après sa route, comme un [do block](functions.md#do-blocks), avec `_` à la place
+du handler : le chemin vient en premier. Sans le `_`, le bloc prendrait la première place, celle du chemin.
+
+```cesia
+use std/text
+app = app
+  then http.Get("/shout/:word", _) do r
+    word = text.Upper(r.Params.word)
+    http.Plain("$(word)!")
+  end
+```
+
+La même route, avec le handler écrit dans les parenthèses, à l'ancienne :
+
+```cesia
+same = http.App()
+  then http.Get("/shout/:word", defn (r)
+    word = text.Upper(r.Params.word)
+    http.Plain("$(word)!")
+  end)
+```
+
 ## L'essayer sans le réseau
 
 [http.Handler] donne la fonction que le serveur appelle pour chaque requête. Vous pouvez l'appeler vous-même, avec une
@@ -35,6 +59,7 @@ use std/io
 handle = http.Handler(app)
 ask(path) = handle({Method: "GET", Path: path, Query: "", Headers: [], Body: ""})
 ask("/hello/Ana").Body -->
+ask("/shout/hey").Body -->
 ask("/stock").Status -->
 io.Print(ask("/stock").Body)
 ask("/nowhere").Status -->

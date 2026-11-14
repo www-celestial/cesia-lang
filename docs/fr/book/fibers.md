@@ -48,16 +48,17 @@ une fiber qui calcule cède la place aux autres fibers prêtes, ce qu'on appelle
 autres clients pendant que l'un d'eux demande un gros rapport. Ce n'est pas la préemption d'un thread du système, qu'un
 timer (une minuterie du système) peut arrêter n'importe où : une fonction de `std/` écrite en OCaml, comme un [list.Sort]
 d'un million d'éléments, va jusqu'à sa fin avant qu'une autre fiber ait son tour. La fiber est ici une fonction sans nom
-sur plusieurs lignes, de `defn ()` à `end`, comme l'a montré le chapitre [Fonctions](functions.md) :
+sur plusieurs lignes, écrite comme un [do block](functions.md#do-blocks) après [fiber.Spawn] : `do` seul, puisqu'elle ne
+prend pas de paramètre, ses lignes, et `end` :
 
 ```cesia
-busy = fiber.Spawn(defn ()
+busy = fiber.Spawn() do
   n = 0
   for k in 1..2000000
     n += k
   end
   n
-end)
+end
 sys.Sleep(0.001)
 "the program still runs" -->
 fiber.Wait(busy) -->
@@ -69,7 +70,8 @@ fiber.Wait(busy) -->
 de tourner. [fiber.Cancel] l'arrête : la fiber s'arrête à sa prochaine attente, comme un [sys.Sleep], un [fiber.Receive]
 ou un appel au réseau, ou au prochain checkpoint d'un long calcul, là où elle laisse tourner les autres. Alors
 [fiber.Wait] donne un `Err` de sorte `"cancelled"`, qui dit le fichier et la ligne où était la fiber. Un serveur donne
-ainsi un temps à chaque requête :
+ainsi un temps à chaque requête. La fiber est écrite ici à l'ancienne, avec `defn ()` jusqu'à `end` dans les parenthèses,
+ce qui fait la même fonction :
 
 ```cesia
 stuck = fiber.Spawn(defn ()
@@ -128,12 +130,12 @@ jusqu'à ce qu'il soit fermé :
 use std/list
 use std/result
 orders = fiber.Channel()
-baker = fiber.Spawn(defn ()
+baker = fiber.Spawn() do
   for product in ["bread", "cake", "tart"]
     fiber.Send(product, orders)
   end
   fiber.Close(orders)
-end)
+end
 
 made = []
 for product in orders
@@ -148,10 +150,10 @@ La boucle `for` est du [syntax sugar](glossary.md#syntax-sugar) (une écriture p
 
 ```cesia
 orders = fiber.Channel()
-fiber.Spawn(defn ()
+fiber.Spawn() do
   fiber.Send("pie", orders)
   fiber.Close(orders)
-end)
+end
 
 made = []
 got = fiber.Receive(orders)
@@ -182,7 +184,7 @@ faire passer un arrêt avant son travail.
 ```cesia
 jobs = fiber.Channel()
 stop = fiber.Channel()
-worker = fiber.Spawn(defn ()
+worker = fiber.Spawn() do
   done = []
   got = fiber.Select([stop, jobs], timeout = 1)
   while result.IsOk(got)
@@ -190,7 +192,7 @@ worker = fiber.Spawn(defn ()
     got = fiber.Select([stop, jobs], timeout = 1)
   end
   done
-end)
+end
 fiber.Send("wash", jobs)
 fiber.Send("dry", jobs)
 sys.Sleep(0)
@@ -211,12 +213,12 @@ tant qu'il est plein : l'expéditeur va au rythme de son destinataire. C'est ce 
 ```cesia
 tray = fiber.Channel(size = 1)
 start = sys.Now()
-fiber.Spawn(defn ()
+fiber.Spawn() do
   for k in 1..3
     sys.Sleep(0.1)
     result.Unwrap(fiber.Receive(tray))
   end
-end)
+end
 for k in 1..3
   fiber.Send(k, tray)
 end

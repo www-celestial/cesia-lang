@@ -94,9 +94,10 @@ cesia fmt [--check] [path...]
 
 Écrit les fichiers dans le style que partage le code de Cesia, et nomme chacun de ceux qu'il change. Une ligne qui
 commence un statement (une instruction) est indentée de deux espaces pour chaque bloc où elle se trouve, `defn`, `if`,
-`for`, `while`, `match` ou `struct`, et une ligne qui continue un statement, entre parenthèses ou crochets ou après une
-virgule, se déplace avec la ligne qu'elle continue ; aucune ligne ne finit par des espaces ; deux lignes vides ne se
-suivent jamais, et aucune ne commence ni ne finit le fichier. Rien d'autre ne change : pas un mot, pas un commentaire,
+`for`, `while`, `match`, `struct` ou un bloc `do`, et une ligne qui continue un statement, entre parenthèses ou crochets
+ou après une virgule, se déplace avec la ligne qu'elle continue ; le corps d'un bloc `do` sur une ligne qui commence par
+`then` va deux espaces plus loin que cette ligne, et son `end` dessous ; aucune ligne ne finit par des espaces ; deux
+lignes vides ne se suivent jamais, et aucune ne commence ni ne finit le fichier. Rien d'autre ne change : pas un mot, pas un commentaire,
 pas un texte, pas un `\r\n`. Avant d'écrire un fichier, il vérifie que le code se lit comme le même programme ; un
 fichier qui ne se lit pas reste tel quel, et est nommé avec son erreur. Un chemin est un fichier, ou un dossier avec ses
 sous-dossiers ; sans chemin, le projet d'ici, sans ses `std/` et `deps/`. Il demande les permissions de lire et
