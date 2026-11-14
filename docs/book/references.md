@@ -217,6 +217,10 @@ and, as there, a C library is outside the sandbox.
   Computing* 6(2):323–350, 1977. <https://doi.org/10.1137/0206024>. A search in time linear in the text and the part,
   which never reads a byte of the text twice: [text.ByteFind] and the other searches of [std/text] for a part of 32 bytes
   or more.
+- Ulf Adams. "Ryū: fast float-to-string conversion". *PLDI 2018*, ACM, 270–282.
+  <https://doi.org/10.1145/3192366.3192369>. A float and the bounds of the decimals that read back to it, scaled to a
+  power of 10 at once by products with 126-bit powers of 5 from a table: the text of every float Cesia writes, in the bytes
+  C's `printf` gave it before, 15 to 35 times faster.
 - T. Bray (editor). "The JavaScript Object Notation (JSON) Data Interchange Format", RFC 8259, 2017.
   <https://www.rfc-editor.org/rfc/rfc8259>. [std/json].
 - Y. Shafranovich. "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005.

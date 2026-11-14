@@ -259,7 +259,7 @@ let write ctx ~pretty v =
     | Int i -> Buffer.add_string b (string_of_int i)
     | Float f ->
       if Float.is_nan f || Float.abs f = infinity then bad x;
-      Buffer.add_string b (Value.float_text f)
+      Buffer.add_subbytes b Value.scratch 0 (Ryu.write Value.scratch 0 f)
     | Text s -> add_text b s
     | Array a when Array.length a.dims > 0 ->
       (* Lists in lists, the first index outermost, so that x[i][j][k] of the JSON is a[i, j, k]. *)
