@@ -1,0 +1,1 @@
+Slow by nature: four runs of the same tabs, each a Python in a sandbox of its own where it can be capped. tools/check.sh runs it, past the change loop.
