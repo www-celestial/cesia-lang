@@ -1,0 +1,1 @@
+Slow by nature: nine tabs, each a Python in a sandbox of its own, about 0.15 s of CPU each. tools/check.sh runs it, past the change loop.
