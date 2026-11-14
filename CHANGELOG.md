@@ -2,7 +2,15 @@
 
 ## 1.1.0
 
-Everything here is added: a program written for 1.0 runs as it did.
+Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.0 runs
+as it did.
+
+### Changed
+
+- On Linux and macOS, the last task of `cesia do` takes its place, in the same process (`exec`): systemd sees the
+  program itself, stops it with one TERM, and gets its own exit code, as from `cesia run`. Two exit codes change: a last
+  task killed by a signal gives the shell's 128 and its number, 143 for TERM, instead of 1; a last task that a TERM
+  stops cleanly, as a server does, gives its own code, 0, instead of 1. Windows keeps the last task as a child.
 
 ### Language
 
@@ -12,6 +20,8 @@ Everything here is added: a program written for 1.0 runs as it did.
   `fiber.Wait(task, timeout =)`.
 - `sys.Write(path, text, sync = true)` answers once the file and its folder are on the disk; `text.ByteFind(..., fold = true)`
   ignores the case of ASCII letters; `text.IsUtf8` and `text.Count`; `sys.ReadInput(count)`; `sys.Start(..., dir =)`.
+- `text.Fold(s)`, Unicode 18.0's simple case folding, to search and compare what people write:
+  `text.Fold("ÉLODIE") == text.Fold("Élodie")`. `text.Lower` and `text.Upper` stay ASCII, for the texts of protocols.
 
 ### Servers
 

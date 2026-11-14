@@ -14,3 +14,6 @@ run = ["sh", "-c", "trap 'exit 0' TERM; echo started; sleep 0.35 & wait"]
 [tasks.last_term]
 needs = ["trapped"]
 run = ["sh", "-c", "echo last"]
+
+[tasks.pid]
+run = ["sh", "-c", "echo $$"]

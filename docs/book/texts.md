@@ -21,6 +21,11 @@ text.Lower("SHOUT") -->
 text.Trim("   padded   ") -->
 ```
 
+Upper and Lower change A to Z only, as the texts of protocols want: header names, hosts, tokens. To search and compare
+what people write, `text.Fold` folds the case of every script, Unicode's own way: `text.Fold("ÉLODIE")` and
+`text.Fold("Élodie")` both give `"élodie"`, and `text.Fold("ΣΊΣΥΦΟΣ")` gives `"σίσυφοσ"`. Its entry in the reference
+says why Lower stays ASCII: two different texts may fold to one.
+
 ## Cutting
 
 [text.Split] cuts a text at each separator, and gives a list of the pieces. Two separators in a row leave an empty piece between

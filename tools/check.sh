@@ -7,9 +7,9 @@ fail() { echo "check: $1" >&2; exit 1; }
 
 # Budget: 28,000 handwritten lines of the core, src/lib, src/bin and src/sys, the ceiling of the owner (raised from 26,000
 # on 2026-11-08, for the speed of maps and loops, and from 27,000 on 2026-11-12, for the load of packages)
-# (src/lib/super.ml, src/lib/embedded.ml and src/sys/backend.ml are generated). The plugins the binary loads at their
-# first use, src/jit, src/sqlite, src/testing, src/debug and src/native, are outside it.
-lines=$(cat $(ls src/lib/*.ml src/lib/*.mli src/bin/*.ml src/sys/*.ml src/sys/*.mli src/sys/*.ml.in 2>/dev/null | grep -vE 'src/lib/(super|embedded)\.ml$|src/sys/backend\.ml$') 2>/dev/null | wc -l)
+# (src/lib/super.ml, src/lib/embedded.ml, src/lib/casefold.ml and src/sys/backend.ml are generated). The plugins the
+# binary loads at their first use, src/jit, src/sqlite, src/testing, src/debug and src/native, are outside it.
+lines=$(cat $(ls src/lib/*.ml src/lib/*.mli src/bin/*.ml src/sys/*.ml src/sys/*.mli src/sys/*.ml.in 2>/dev/null | grep -vE 'src/lib/(super|embedded|casefold)\.ml$|src/sys/backend\.ml$') 2>/dev/null | wc -l)
 [ "$lines" -le 28000 ] || fail "over budget: $lines lines of the core of 28000"
 
 # File names are separated with -. OCaml can't: a file name is a module name there.

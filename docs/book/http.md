@@ -120,7 +120,9 @@ its deadline, with a response that tells its client that the connection closes, 
 elsewhere. Then [http.Serve] gives `Ok`, and the program goes on to its end, which gives the exit code 0 unless it says
 otherwise. A second signal doesn't wait: the program ends at once, with 128 and the number of the signal, 143 for TERM
 and 130 for INT, as a shell gives them. The programs it started with [sys.Start] or [sys.Run] hear of the first signal
-too, as the chapter [Files](files.md#programs-that-keep-running) says.
+too, as the chapter [Files](files.md#programs-that-keep-running) says. Started by `cesia do serve`, the server is still
+one process: the last task takes the place of `cesia do`, as the chapter Commands says, so the TERM of a supervisor
+reaches it once, and its stop is a clean one.
 
 ### Every core
 
