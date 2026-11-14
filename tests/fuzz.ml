@@ -270,9 +270,10 @@ let odes st =
   p "fuzzRun(%s, idx, %d)\n" (if coin () then "fuzzF" else "fuzzG") turns;
   Buffer.contents b
 
-(* Calls through a value with no argument, f(), in a loop: closures of nothing that give integers or floats, inlined
-   or called, more of them than a call remembers now and then, and late in the loop one that gives a text, NaN or an
-   integer past 63 bits; and a branch the JIT leaves to the interpreter (a text built) taken at every turn, or rarely. *)
+(* Calls through a value with no argument, f(), in a loop: closures of nothing that give integers or floats, random
+   draws among them, inlined or called, more of them than a call remembers now and then, and late in the loop one that
+   gives a text, NaN or an integer past 63 bits; and a branch the JIT leaves to the interpreter (a text built) taken at
+   every turn, or rarely. Both paths draw the same numbers: each run starts from the seed. *)
 let thunks st =
   let b = Buffer.create 2048 in
   let p fmt = Printf.bprintf b fmt in
@@ -280,15 +281,17 @@ let thunks st =
   let coin () = Random.State.bool st in
   let turns = int 21000 30000 and nf = int 1 6 in
   let body k =
-    match int 0 5 with
+    match int 0 7 with
     | 0 -> Printf.sprintf "%d" (int (-9) 99)
     | 1 -> Printf.sprintf "%d.%d" (int 0 9) (int 0 99)
     | 2 -> Printf.sprintf "fuzzK * %d.5" (int 0 3)
     | 3 -> Printf.sprintf "fuzzN + %d" k
     | 4 -> Printf.sprintf "math.Sqrt(%d.25)" (int 0 50)
+    | 5 -> "random.Float()"
+    | 6 -> Printf.sprintf "random.Float() * %d.5 - fuzzK" (int 0 9)
     | _ -> "fuzzLoop()"
   in
-  p "use std/io\nuse std/math\nuse std/value\n\nfuzzK = %d.%d\nfuzzN = %d\n" (int 0 9) (int 0 9) (int 0 1000);
+  p "use std/io\nuse std/math\nuse std/random\nuse std/value\n\nfuzzK = %d.%d\nfuzzN = %d\n" (int 0 9) (int 0 9) (int 0 1000);
   p "defn fuzzLoop()\n  s = 0.0\n  for j in 1..%d\n    s = s + j * 0.5\n  end\n  s\nend\n" (int 1 4);
   for k = 1 to nf do p "fuzzF%d() = %s\n" k (body k) done;
   p "fuzzText() = \"t\"\nfuzzNan() = 0.0 / 0.0\nfuzzBig() = 4611686018427387903\n\n";

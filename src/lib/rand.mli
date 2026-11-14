@@ -17,6 +17,12 @@ val restart : string list -> unit
 (** From 0 to [n] - 1, for [n] > 0, without bias: what std/gen draws. *)
 val below : int -> int
 
+(** random.Float, which the JIT draws in machine code from the state in [cell]. *)
+val float : t
+
+(** The array of one float whose 64 bits are the state of the generator: its step, in machine code, is [Float]'s. *)
+val cell : t
+
 (** The natives of std/random: Int, Float and Seed. *)
 val natives : (string * t) list
 

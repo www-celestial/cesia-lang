@@ -31,6 +31,10 @@ type ins =
   | Fneg of int * value
   | Float_of of int * value
   | Math of string * int * value  (** a function of C's libm: sqrt, exp, log, sin, cos, tan, asin, acos, atan, fabs *)
+  | Draw of int * int
+      (** [Draw (r, c)]: a float from 0 included to 1 excluded, one step of std/random's generator, whose state is the
+          cell of the array of floats of the constant [c] ([Rand.cell]): random.Float's step, the same bits. The state
+          changes, which shows *)
   | Len of int * int  (** the number of cells of an array, by its number in [arrays] *)
   | Dim of int * int * int  (** [Dim (r, a, d)]: the size of dimension [d], from 0, of an array that takes an index per dimension *)
   | Elem of int * int * value * int  (** the destination, the array, the index from 1, the site *)
