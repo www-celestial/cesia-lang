@@ -322,12 +322,12 @@ docs/
     index.md
 ```
 
-### Tabs in other languages
+### Onglets dans d'autres langages
 
-A block of `python`, `r` or `matlab` right after a `cesia` block, with nothing between them, is the same example in that
-language: the site shows it as a tab beside the Cesia one, Cesia | Python | R | MATLAB, which a click or the arrow keys
-switch, with no script. The tabs follow their block in that order, each once, with no word after the language, and a
-block marked `fails` has none. This source:
+Un bloc `python`, `r` ou `matlab` juste après un bloc `cesia`, sans rien entre eux, est le même exemple dans ce langage :
+le site le montre comme un onglet à côté de celui de Cesia, Cesia | Python | R | MATLAB, qu'un clic ou les flèches du
+clavier font passer de l'un à l'autre, sans script. Les onglets suivent leur bloc dans cet ordre, chacun une fois, sans
+mot après le langage, et un bloc marqué `fails` n'en a pas. Cette source :
 
 ````markdown
 ```cesia
@@ -341,7 +341,7 @@ print(math.sqrt(2.0))
 ```
 ````
 
-with an `r` and a `matlab` block after it, shows:
+avec un bloc `r` et un bloc `matlab` après elle, affiche :
 
 ```cesia
 use std/math
@@ -361,16 +361,20 @@ print(sqrt(2))
 disp(sqrt(2))
 ```
 
-Each tab of Cesia's own book runs, and must print what its cesia block shows: the value of each `-->` and what the block
-prints, in their order. `tools/check.sh` and the CI of the site run `tools/tabs.ce`, which compares the two one value at a
-time: texts exactly, `True` and `true` alike, R's marks of position such as `[1]` left out, `Ok(missing)`, what an action
-that went well gives, as nothing, and numbers to the digits the tab shows. A number Cesia shows is exact, the shortest
-text of its float; a number the tab prints stands for those it rounds, and Cesia's must be one of them, give or take
-1e-14 of its size. So R's `1.414214` and Octave's `1.4142` are `1.4142135623730951`, `0.54` is not `0.5`, and `3.0` is
-`3`. Python runs with numpy, scipy, pandas and matplotlib, R with its base packages, and the MATLAB tab in GNU Octave,
-which runs MATLAB code with no licence. Each tab runs alone, with the files of its book, so it holds its imports and its
-data; with no network, no variable of the environment but `PATH`, at most 1 GiB of memory and 30 seconds, in a folder
-only its owner can open, deleted after it.
+Chaque onglet du propre livre de Cesia tourne, et doit afficher ce que montre son bloc cesia : la valeur de chaque `-->`
+et ce qu'affiche le bloc, dans leur ordre. `tools/check.sh` et la CI du site lancent `tools/tabs.ce`, qui compare les
+deux une valeur à la fois : les textes exactement, `True` et `true` pareils, les marques de position de R comme `[1]`
+laissées de côté, `Ok(missing)`, ce que donne une action qui s'est bien passée, comme rien, et les nombres aux chiffres
+que montre l'onglet. Un nombre que montre Cesia est exact : son float écrit avec 15 chiffres significatifs, sinon 16,
+sinon 17, le premier qui se relit en le même float, ce qui est aussi le texte le plus court du float sauf pour quelques
+puissances de 2 et les plus petits subnormaux (les floats plus petits que le plus petit float normal, écrits avec moins
+de chiffres de précision) : `4.94065645841247e-324`, là où `5e-324` suffirait. Un nombre qu'affiche l'onglet tient lieu
+de ceux qu'il arrondit, et celui de Cesia doit en faire partie, à 1e-14 de sa taille près. Ainsi le `1.414214` de R et
+le `1.4142` d'Octave valent `1.4142135623730951`, `0.54` n'est pas `0.5`, et `3.0` est `3`. Python tourne avec numpy,
+scipy, pandas et matplotlib, R avec ses packages de base, et l'onglet MATLAB dans GNU Octave, qui fait tourner du code
+MATLAB sans licence. Chaque onglet tourne seul, avec les fichiers de son livre, si bien qu'il contient ses imports et
+ses données ; sans réseau, sans autre variable d'environnement que `PATH`, avec au plus 1 GiB de mémoire et
+30 secondes, dans un dossier que seul son propriétaire peut ouvrir, effacé après lui.
 
 ### Formules
 
