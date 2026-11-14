@@ -126,10 +126,25 @@ let mask_floats test (x, sx) (y, sy) (out : Types.t array) =
       | Eq -> for i = lo to hi - 1 do out.(i) <- truth (Float.Array.get x (i * sx) = Float.Array.get y (i * sy)) done
       | Ne -> for i = lo to hi - 1 do out.(i) <- truth (Float.Array.get x (i * sx) <> Float.Array.get y (i * sy)) done)
 
-let map1 f x =
+type fn = Neg | Abs | Sqrt | Exp | Log | Sin | Cos | Tan | Asin | Acos | Atan
+
+(* A loop per function, so that each float goes to it unboxed: through a closure, each was boxed on the way in and out. *)
+let map fn x =
   let n = Float.Array.length x in
   let out = Float.Array.create n in
-  Par.ranges n (fun lo hi -> for i = lo to hi - 1 do Float.Array.set out i (f (Float.Array.get x i)) done);
+  Par.ranges n (fun lo hi ->
+      match fn with
+      | Neg -> for i = lo to hi - 1 do Float.Array.set out i (Float.neg (Float.Array.get x i)) done
+      | Abs -> for i = lo to hi - 1 do Float.Array.set out i (Float.abs (Float.Array.get x i)) done
+      | Sqrt -> for i = lo to hi - 1 do Float.Array.set out i (sqrt (Float.Array.get x i)) done
+      | Exp -> for i = lo to hi - 1 do Float.Array.set out i (exp (Float.Array.get x i)) done
+      | Log -> for i = lo to hi - 1 do Float.Array.set out i (log (Float.Array.get x i)) done
+      | Sin -> for i = lo to hi - 1 do Float.Array.set out i (sin (Float.Array.get x i)) done
+      | Cos -> for i = lo to hi - 1 do Float.Array.set out i (cos (Float.Array.get x i)) done
+      | Tan -> for i = lo to hi - 1 do Float.Array.set out i (tan (Float.Array.get x i)) done
+      | Asin -> for i = lo to hi - 1 do Float.Array.set out i (asin (Float.Array.get x i)) done
+      | Acos -> for i = lo to hi - 1 do Float.Array.set out i (acos (Float.Array.get x i)) done
+      | Atan -> for i = lo to hi - 1 do Float.Array.set out i (atan (Float.Array.get x i)) done);
   out
 
 (* In blocks of a fixed size, so that the rounding doesn't depend on the number of cores. *)

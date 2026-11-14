@@ -22,7 +22,12 @@ type test = Lt | Le | Eq | Ne
 
 val mask_ints : test -> int array * int -> int array * int -> Types.t array -> unit
 val mask_floats : test -> floatarray * int -> floatarray * int -> Types.t array -> unit
-val map1 : (float -> float) -> floatarray -> floatarray
+(** The functions of one float that [map] applies to each cell. *)
+type fn = Neg | Abs | Sqrt | Exp | Log | Sin | Cos | Tan | Asin | Acos | Atan
+
+(** [map fn x]: [fn] of each cell of [x], in a new array: OCaml's [Float.neg], [Float.abs] and the C library's sqrt, exp,
+    log, sin, cos, tan, asin, acos and atan, as on one float. *)
+val map : fn -> floatarray -> floatarray
 val sum : floatarray -> float
 
 (** [dot x y]: the sum of the products of [x] and [y], of one length, in the order of [sum], so that it gives the bits
