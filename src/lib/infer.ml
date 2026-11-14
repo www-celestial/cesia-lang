@@ -46,9 +46,11 @@ let rec loops (e : expr) =
 let blk_loops b = Array.exists loops b
 
 (* Arguments of no known type give the generic version, where everything is A, unless the function has a loop: its own
-   version then infers its variables, so that its loops can run typed, and native. *)
+   version then infers its variables, so that its loops can run typed, and native. A function of no parameter has one
+   version, which infers its variables and its result: () -> 0.25 gives a float, which native code can call. *)
 let version_for w (p : proto) sg =
-  if w.no_spec || (Array.for_all (fun t -> t == TA) sg && not (blk_loops (Lazy.force p.func.body))) then generic_version p
+  if w.no_spec || (Array.length sg > 0 && Array.for_all (fun t -> t == TA) sg && not (blk_loops (Lazy.force p.func.body)))
+  then generic_version p
   else
     match List.find_opt (fun v -> v.sg = sg) p.versions with
     | Some v -> v
