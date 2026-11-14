@@ -128,8 +128,8 @@ as it did.
 Measured on the same machine as the others, in the book's chapters on speed and numerical methods:
 
 - The cache of loaded packages: a package unchanged since the last run is neither lexed, parsed nor resolved again,
-  its entry written once the run has ended, checked by its BLAKE2b digest, in a folder of the person's alone: `use
-  std/plot` starts in 5.69 ms instead of 9.66, Cemacs reaches its first frame in 36.97 ms instead of 52.16. A
+  its entry written once the run has ended, checked by its BLAKE2b digest, in a folder of the person's alone:
+  `use std/plot` starts in 5.69 ms instead of 9.66, Cemacs reaches its first frame in 36.97 ms instead of 52.16. A
   function's body is read from the cache at its first call: 4.03 and 50.62 ms. An entry places a used package's modules
   from its end, so two programs run in turn no longer resolve a package again: 0.4 to 1.2 ms a run.
 - Loading makes half the garbage it made: Cemacs's 44 modules load in 24.4 ms instead of 38.2.
