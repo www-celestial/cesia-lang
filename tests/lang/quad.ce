@@ -253,8 +253,10 @@ isEmpty() = quad.Integral(x -> never(), 2.0, 2.0) == result.Ok({Value: 0.0, Erro
 isIntegers() = quad.Integral(x -> 1, 0, 2).Value.Value == 2.0
 isPointsKept() = quad.Integral(x -> math.Abs(x - 0.3), 0.0, 1.0, points = [1.0, 0.3, 0.0, 0.3]) == quad.Integral(x -> math.Abs(x - 0.3), 0.0, 1.0, points = [0.3])
 isPointsReversed() = quad.Integral(x -> math.Abs(x - 0.3), 1.0, 0.0, points = [0.3]).Value.Value == -0.29
-(* A looser tolerance stops sooner, by either test: 315 calls instead of 651, as QUADPACK's code. *)
-isRelativeTolerance() = quad.Integral(x -> math.Cos(100.0 * x), 0.0, 1.0, rtol = 1.0e-3, atol = 0.0) == result.Ok({Value: -0.005063656411098236, Error: 5.934790263395495e-10, Evaluations: 315, Intervals: 8})
+(* A looser tolerance stops sooner, by either test: 315 calls instead of 651, as QUADPACK's code. The value is checked to
+   4 ulps, not to the bit: math.Cos is the system's, and macOS's differs from glibc's in the last bit. *)
+isRelativeTolerance() = loose(quad.Integral(x -> math.Cos(100.0 * x), 0.0, 1.0, rtol = 1.0e-3, atol = 0.0), -0.005063656411098236)
+loose(r, v) = r.Value.Evaluations == 315 and r.Value.Intervals == 8 and math.Abs(r.Value.Value - v) <= 4.0 * 2.220446049250313e-16 * math.Abs(v)
 isAbsoluteTolerance() = quad.Integral(x -> math.Cos(100.0 * x), 0.0, 1.0, rtol = 0.0, atol = 1.0e-6).Value.Evaluations == 315
 never() = 1 / 0
 
