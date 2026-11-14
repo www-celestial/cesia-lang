@@ -22,6 +22,8 @@ as it did.
   ignores the case of ASCII letters; `text.IsUtf8` and `text.Count`; `sys.ReadInput(count)`; `sys.Start(..., dir =)`.
 - `text.Fold(s)`, Unicode 18.0's simple case folding, to search and compare what people write:
   `text.Fold("ÉLODIE") == text.Fold("Élodie")`. `text.Lower` and `text.Upper` stay ASCII, for the texts of protocols.
+- `value.Text(x, most)`: the text of a value, cut at `most` characters, its first `most - 1` and an ellipsis; only that
+  start is made, so a preview of a list of 10^6 numbers or of a long text costs what its `most` characters cost.
 
 ### Servers
 
@@ -76,6 +78,8 @@ Measured on the same machine as the others, in the book's chapter on speed:
   domain once the unit is hot: Lorenz on [0, 100] 83 -> 66 ms, `structs` 51 -> 40, long runs at level 2's speed.
 - a native that wakes many fibers from another domain writes the wake pipe once: when one native wakes 10,000 fibers,
   the last is awake in 9.5 ms instead of 11.6; `json.Text` of a small map in 314 ns instead of 390.
+- `cells.Variables` of a session that holds 10^6 numbers and a model fitted on 10^6 rows answers in 0.09 ms instead of
+  4.1 s; `"$xs"` of 10^6 integers 131 -> 55 ms, of 10^6 floats 1080 -> 936 ms.
 
 ### Fixes
 

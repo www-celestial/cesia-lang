@@ -112,6 +112,9 @@ val len_result : string -> string -> t
 
 (** [decimals_count v]: text.Decimals(n, x) with an n that isn't a whole number from 0 to 20. *)
 val decimals_count : string -> t
+
+(** [text_most v]: value.Text(x, most) with a most that isn't a whole number of 1 or more. *)
+val text_most : string -> t
 val no_field : string -> t
 val named_field : string -> string -> t
 val from_missing : string -> string -> t

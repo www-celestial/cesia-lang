@@ -496,51 +496,12 @@ defn send(message)
   io.Print("$mark$(json.Text(message))")
 end
 
-(** The start of a text, at most n characters. *)
-cut(n, t) = if value.Len(t) <= n t else "$(text.Slice(1, n - 1, t))…" end
-
-defn weight(x, most)
-  (** How many values x holds, nested ones too, counted up to more than most and no further. *)
-  if not (value.IsArray(x) or value.IsDict(x) or value.IsStruct(x))
-    return 1
-  end
-  if value.Len(x) > most
-    return most + 1
-  end
-  shape = if value.IsArray(x) value.Size(x) else [] end
-  if value.IsArray(x) and not (value.Len(shape) == 2 and shape[1] == 1)
-    return value.Len(x)
-  end
-  total = 1
-  for v in (if value.IsArray(x) x else dict.Values(if value.IsStruct(x) dict.Fields(x) else x end) end)
-    total = total + weight(v, most - total)
-    if total > most
-      return total
-    end
-  end
-  total
-end
-
 defn brief(x, n)
-  (** cut(n, "$x"), made from no more of a large list, dictionary or struct than its n characters show, so that a model
-      of 10^6 rows shows at once; a large matrix shows its size. *)
-  if weight(x, 1000) <= 1000
-    return cut(n, "$x")
+  (** value.Text(x, n), but a matrix of more than 1000 values shows its size. *)
+  if value.IsArray(x) and value.Len(x) > 1000 and not (value.Len(value.Size(x)) == 2 and value.Size(x)[1] == 1)
+    return value.Text("array of size $(text.Join(" × ", ["$d" for d in value.Size(x)]))", n)
   end
-  if value.IsArray(x) and not (value.Len(value.Size(x)) == 2 and value.Size(x)[1] == 1)
-    return cut(n, "array of size $(text.Join(" × ", ["$d" for d in value.Size(x)]))")
-  end
-  d = if value.IsArray(x) x else if value.IsStruct(x) dict.Fields(x) else x end
-  ks = if value.IsArray(x) [] else dict.Keys(d) end
-  count = value.Len(d)
-  s = if value.IsArray(x) "[" else "{" end
-  i = 1
-  while value.Len(s) < n and i <= count
-    part = if value.IsArray(x) brief(x[i], n) else "$(ks[i]): $(brief(d[ks[i]], n))" end
-    s = if i == 1 "$s$part" else "$s, $part" end
-    i = i + 1
-  end
-  cut(n, if i <= count "$s, …" else if value.IsArray(x) "$s]" else "$s}" end)
+  value.Text(x, n)
 end
 
 (** Is this value a frame of std/frame? *)
@@ -582,13 +543,13 @@ defn shown(v, width = 640, svg = false, key = 0)
     {Kind: "table", Columns: ["field", "value"], Rows: [[k, brief(fs[k], 80)] for k in dict.Keys(fs)], Count: value.Len(fs)}
   else if isFrame(v)
     count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
-    {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[cut(80, "$(v.Columns[name][i])") for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
+    {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[value.Text(v.Columns[name][i], 80) for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
   else if value.IsArray(v) and value.Len(value.Size(v)) == 2
     shape = value.Size(v)
     if shape[1] == 1
-      {Kind: "array", Shape: shape, Rows: [[cut(80, "$(v[j])") for j in 1..list.Min(10, shape[2])]]}
+      {Kind: "array", Shape: shape, Rows: [[value.Text(v[j], 80) for j in 1..list.Min(10, shape[2])]]}
     else
-      {Kind: "array", Shape: shape, Rows: [[cut(80, "$(v[i, j])") for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])]}
+      {Kind: "array", Shape: shape, Rows: [[value.Text(v[i, j], 80) for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])]}
     end
   else
     {Kind: "text", Text: brief(v, 20000)}
@@ -661,7 +622,7 @@ defn kind(v)
       return k.Name
     end
   end
-  if value.IsStruct(v) text.Split("(", "$v")[1] else "Value" end
+  if value.IsStruct(v) text.Split("(", value.Text(v, 80))[1] else "Value" end
 end
 
 defn size(v)
@@ -685,7 +646,7 @@ defn rows(names)
     v = valueOf(name)
     if result.IsOk(v)
       preview = if isFrame(v.Value) text.Join(", ", ["$c" for c in v.Value.Names]) else brief(v.Value, 80) end
-      out = list.Append({Name: name, Type: kind(v.Value), Size: size(v.Value), Preview: cut(80, text.Replace("\n", " ", preview))}, out)
+      out = list.Append({Name: name, Type: kind(v.Value), Size: size(v.Value), Preview: value.Text(text.Replace("\n", " ", preview), 80)}, out)
     end
   end
   out
@@ -700,14 +661,14 @@ defn slice(name, first, last)
   v = got.Value
   if isFrame(v)
     count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
-    return {Kind: "rows", Columns: ["$n" for n in v.Names], Rows: [[cut(200, "$(v.Columns[c][i])") for c in v.Names] for i in list.Max(1, first)..list.Min(last, count)], Count: count}
+    return {Kind: "rows", Columns: ["$n" for n in v.Names], Rows: [[value.Text(v.Columns[c][i], 200) for c in v.Names] for i in list.Max(1, first)..list.Min(last, count)], Count: count}
   end
   if value.IsArray(v) and value.Len(value.Size(v)) == 2
     shape = value.Size(v)
     if shape[1] == 1
-      return {Kind: "rows", Columns: ["1"], Rows: [[cut(200, "$(v[i])")] for i in list.Max(1, first)..list.Min(last, shape[2])], Count: shape[2]}
+      return {Kind: "rows", Columns: ["1"], Rows: [[value.Text(v[i], 200)] for i in list.Max(1, first)..list.Min(last, shape[2])], Count: shape[2]}
     end
-    return {Kind: "rows", Columns: ["$j" for j in 1..shape[2]], Rows: [[cut(200, "$(v[i, j])") for j in 1..shape[2]] for i in list.Max(1, first)..list.Min(last, shape[1])], Count: shape[1]}
+    return {Kind: "rows", Columns: ["$j" for j in 1..shape[2]], Rows: [[value.Text(v[i, j], 200) for j in 1..shape[2]] for i in list.Max(1, first)..list.Min(last, shape[1])], Count: shape[1]}
   end
   {Kind: "rows", Error: "\"$name\" holds no frame, matrix or list."}
 end

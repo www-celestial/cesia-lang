@@ -132,6 +132,15 @@ let size ctx (a : t array) =
     Array { rows = 1; cols = Array.length sizes; store = V (Array.map (fun n -> Int n) sizes); a_owned = true; a_tip = true; dims = Arrays.flat }
   else Int sizes.(dim_of ctx "Size" x a.(1) - 1)
 
+(* value.Text(x, most): the text of x, cut at most characters with most. *)
+let text ctx (a : t array) =
+  if Array.length a = 1 || a.(1) == Missing then Text (Value.text_of ctx a.(0))
+  else
+    match a.(1) with
+    | Int most when most >= 1 -> Text (Value.text_upto ctx most a.(0))
+    | Float x when Float.is_integer x && x >= 1. && x < 4e18 -> Text (Value.text_upto ctx (int_of_float x) a.(0))
+    | v -> Runtime.fail ctx Type (Messages.text_most (Value.describe v))
+
 let reshape ctx (a : t array) =
   let sizes =
     match a.(0) with
@@ -826,7 +835,7 @@ let packages =
             Dict.of_items ctx (Array.of_list (List.concat_map (fun i -> [ Text shape.names.(i); Value.share fields.(i) ]) keep))
           | v -> Runtime.fail ctx Type (Messages.fields_of (Value.describe v))) ];
     "value",
-    [ "Text", nat "Text" 1 1 (fun ctx a -> Text (Value.text_of ctx a.(0)));
+    [ "Text", nat ~params:[| "x"; "most" |] "Text" 1 2 text;
       is_ "IsDict" (function Dict _ -> true | _ -> false);
       "Equal", nat "Equal" 2 2 (fun ctx a -> Value.of_bool (Value.equal ctx a.(0) a.(1)));
       "Size", nat ~params:[| "x"; "dim" |] "Size" 1 2 size;

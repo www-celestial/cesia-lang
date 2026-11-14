@@ -216,10 +216,7 @@ end
 
 defn brief(v)
   (** A value as an error shows it: its text, cut past 40 characters. *)
-  s = value.Text(v)
-  if value.IsText(v)
-    s = "\"$v\""
-  end
+  s = if value.IsText(v) "\"$(value.Text(v, 41))\"" else value.Text(v, 41) end
   if value.Len(s) > 40 "$(text.Slice(1, 37, s))..." else s end
 end
 

@@ -135,12 +135,38 @@ text.Number("12 apples") -->
 
 ### Le texte d'une valeur
 
-[value.Text] fait le chemin inverse : le texte de n'importe quelle valeur, tel que [io.Print] l'affiche.
+[value.Text] fait le chemin inverse : le texte de n'importe quelle valeur, tel que [io.Print] l'affiche. `"$x"` est
+`value.Text(x)`.
 
 ```cesia
 value.Text(42) -->
 value.Text([1, 2]) -->
 ```
+
+Pour un aperçu, un second argument, `most`, arrête le texte à ce nombre de caractères (des code points, des points de
+code Unicode, comptés comme [value.Len] les compte) : le texte entier s'il a au plus `most` caractères, sinon ses
+`most - 1` premiers caractères et des points de suspension, `…`, donc `most` caractères en tout.
+
+```cesia
+value.Text([1, 2, 3], 9) -->
+value.Text([1, 2, 3], 5) -->
+value.Text("héllo", 3) -->
+```
+
+Écrite simplement, avec [value.Len] et [text.Slice], la règle est celle-ci ; `value.Text(x, most)` donne le même texte :
+
+```cesia
+t = "$([1, 2, 3])"
+most = 5
+if value.Len(t) <= most t else "$(text.Slice(1, most - 1, t))…" end -->
+```
+
+Mais la forme simple fabrique d'abord le texte entier, et `value.Text(x, most)` seulement son début : le travail
+s'arrête dès que le texte est plein, donc l'aperçu d'une liste d'un million de nombres, d'un long texte reçu du réseau
+ou d'une valeur imbriquée très profondément coûte ce que coûtent ses `most` premiers caractères, pas la valeur entière.
+`value.Text(xs, 80)` d'une liste de 10^6 floats prend 12 µs, là où `"$xs"` prend 0,94 s. Un texte qui n'est pas de
+l'UTF-8 valide (voir [UTF-8 valide](#utf-8-valide)) peut contenir des octets qui ne comptent pour aucun caractère ; son
+texte s'arrête aussi à 4 × `most` octets, ce qu'un texte UTF-8 n'atteint jamais avant `most` caractères.
 
 ### Décimales
 

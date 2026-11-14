@@ -133,8 +133,8 @@ What a value shows:
 | a graph of [std/plot] | `{Kind: "graph", Scene, Key}`: its scene, [plot.Scene] at the width Run gives, 640 pixels by default, and 400 high; a graph that std/plot can't draw is the cell's error, with std/plot's message |
 | a frame of [std/frame] | `{Kind: "table", Columns, Rows, Count}`: its first 20 rows, as texts, and its count |
 | an array or a matrix | `{Kind: "array", Shape, Rows}`: its shape and its first 10 × 10 values, as texts |
-| a struct of at most 20 fields, as a `stats.Test` | `{Kind: "table", Columns, Rows, Count}`: a row for each public field, its name and its value as a text, cut at 80 characters and made from no more of a long list than that shows, so a model of $10^6$ rows shows at once; an `Ok` of a struct shows the struct |
-| anything else | `{Kind: "text", Text}`: its text, as `io.Print` writes it |
+| a struct of at most 20 fields, as a `stats.Test` | `{Kind: "table", Columns, Rows, Count}`: a row for each public field, its name and its value as a text, `value.Text(v, 80)`, which makes no more of a long list than its 80 characters, so a model of $10^6$ rows shows at once, and a matrix of more than 1000 values as its size; an `Ok` of a struct shows the struct |
+| anything else | `{Kind: "text", Text}`: its text, as `io.Print` writes it, cut at 20,000 characters by `value.Text` |
 
 Before each cell runs, [std/random] starts again from the seed of the session and the title of the cell, as `cesia
 test` starts each test: a cell run again draws the same numbers, whatever ran before it, a change in one cell changes
@@ -142,7 +142,8 @@ no other's draws, and [cells.Html] gives the numbers Cemacs showed for the same 
 numbers; `cesia run` on the file, one stream from the top, draws other numbers than its cells.
 
 Values stay in the session: [cells.Variables] gives each name's Name, Type, Size and Preview, a few texts, and never
-copies a large array. The session keeps the graphs of its last 64 runs, and [cells.Scene] draws one again at another
+copies a large array: each text is made by `value.Text(v, 80)`, which stops at 80 characters, so a session that holds a
+model of $10^6$ rows answers in a tenth of a millisecond. The session keeps the graphs of its last 64 runs, and [cells.Scene] draws one again at another
 width, by its Key, for a pane that changed its width. [cells.Rows] gives the rows from one to another of a frame, a matrix or a list, as texts, so that a
 viewer reads a large value one screen at a time.
 
