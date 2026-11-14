@@ -517,19 +517,20 @@ y(end, :)
 
 ### The method
 
-Solve uses the method of Dormand and Prince (1980), the one of MATLAB's `ode45` and scipy's `RK45`. It is a
-*Runge–Kutta method*: each step from $t$ to $t + h$ evaluates $f$ at 7 *stages*, $k_i = f(t + c_i h, y + h \sum_j a_{ij}
-k_j)$, and combines them into $y_1 = y + h \sum_i b_i k_i$, which matches the Taylor series of the solution up to $h^5$:
-it is of *order 5*. The numbers $a$, $b$ and $c$ are the paper's. Another combination, $z_1 = y + h \sum_i
-\beta_i k_i$, is of order 4, and their difference estimates the error of the step at no cost. The last stage is
-$f(t + h, y_1)$, the first stage of the next step, so a step costs 6 calls of `f`.
+Solve uses the method of Dormand and Prince (1980), the one of MATLAB's `ode45` and scipy's `RK45`. It is a *Runge–Kutta
+method*: each step from $t$ to $t + h$ evaluates $f$ at 7 *stages*, $k_i = f(t + c_i h, y + h \sum_j a_{ij} k_j)$, and
+combines them into $y_1 = y + h \sum_i b_i k_i$, which matches the Taylor series of the solution up to $h^5$: it is of
+*order 5*. The numbers $a$, $b$ and $c$ are the paper's. Another combination, $z_1 = y + h \sum_i \beta_i k_i$, is of
+order 4, and their difference estimates the error of the step at no cost. The last stage is $f(t + h, y_1)$, the first
+stage of the next step, so a step costs 6 calls of `f`.
 
-- **The error test**, as Hairer, Nørsett and Wanner give it (I, §II.4): $\text{err} = \sqrt{\frac{1}{n} \sum_i
-  ((y_{1,i} - z_{1,i}) / \text{sc}_i)^2}$ with $\text{sc}_i = \text{atol}_i + \text{rtol} \cdot \max(|y_i|,
-  |y_{1,i}|)$; the step is taken when $\text{err} \le 1$.
-- **The next step**, by the PI control of Gustafsson (1991) as DOPRI5 has it: $h_\text{new} = h \cdot \min(10,
-  \max(0.2, 0.9 \cdot \text{err}^{-0.17} \cdot \text{err}_{\text{prev}}^{0.04}))$, no larger right after a refused step.
-  The second factor, from the previous step's error, smooths the sequence of steps; Söderlind (2003) explains why.
+- **The error test**, as Hairer, Nørsett and Wanner give it (I, §II.4):
+  $\text{err} = \sqrt{\frac{1}{n} \sum_i ((y_{1,i} - z_{1,i}) / \text{sc}_i)^2}$ with
+  $\text{sc}_i = \text{atol}_i + \text{rtol} \cdot \max(|y_i|, |y_{1,i}|)$; the step is taken when $\text{err} \le 1$.
+- **The next step**, by the PI control of Gustafsson (1991) as DOPRI5 has it:
+  $h_\text{new} = h \cdot \min(10, \max(0.2, 0.9 \cdot \text{err}^{-0.17} \cdot \text{err}_{\text{prev}}^{0.04}))$, no
+  larger right after a refused step. The second factor, from the previous step's error, smooths the sequence of steps;
+  Söderlind (2003) explains why.
 - **The first step**, by the rule of Gladwell, Shampine and Brankin (1987): the step over which Euler's method moves `y`
   by 1 % of its scale, then bounded by an estimate of the second derivative, from one more call of `f`.
 - **The dense output** of Shampine (1986): a polynomial of degree 4 in each step, from the stages already computed,
@@ -544,13 +545,13 @@ at eccentricities 0.1 to 0.9, the invariants of a spinning rigid body, the orbit
 
 ### The method for stiff problems
 
-With `stiff = true`, Solve uses Rodas5P (Steinebach 2023), a *Rosenbrock method* (Hairer and Wanner II, §IV.7). Where
-an explicit method like Dormand and Prince's takes each stage from the stages before it, a Rosenbrock method solves, at
+With `stiff = true`, Solve uses Rodas5P (Steinebach 2023), a *Rosenbrock method* (Hairer and Wanner II, §IV.7). Where an
+explicit method like Dormand and Prince's takes each stage from the stages before it, a Rosenbrock method solves, at
 each stage, a linear system with the matrix $W = I - h\gamma J$, where $J = f_y$ is the *Jacobian* of `f` at the start
-of the step: the $n \times n$ matrix of how each component of $f$ changes with each component of $y$. A fast component, which decays at a rate $\lambda$ far below 0, has its change divided by about $1 -
-h\gamma\lambda$, so its error dies out whatever the step: the method is *L-stable*, its factor of growth $R(z)$ at most
-1 for every $z = h\lambda$ whose real part is below 0, and 0 as $z$ goes to $-\infty$. The steps then follow the slow
-part of the solution only.
+of the step: the $n \times n$ matrix of how each component of $f$ changes with each component of $y$. A fast component,
+which decays at a rate $\lambda$ far below 0, has its change divided by about $1 - h\gamma\lambda$, so its error dies
+out whatever the step: the method is *L-stable*, its factor of growth $R(z)$ at most 1 for every $z = h\lambda$ whose
+real part is below 0, and 0 as $z$ goes to $-\infty$. The steps then follow the slow part of the solution only.
 
 In the form with the stages $u_i$ that the code RODAS of Hairer and Wanner uses, for a step from $t$ to $t + h$, with
 $f_t$ the derivative of $f$ in $t$:
@@ -574,14 +575,14 @@ methods (`ode15s`, `Radau`, `BDF`), so no iteration that can fail to converge.
   takes 4 times more steps, to an answer 15 % off. $f_t$ comes from one more difference, over
   $\sqrt{\epsilon} |h|$, the scale the step resolves. Without `jacobian`, a step calls `f` $n + 1$ more times.
 - **The next step**: $h_\text{new} = h \cdot \min(6, \max(0.2, 0.9 \cdot \text{err}^{-1/5}))$, or smaller by the
-  *predictive control* of Gustafsson (1994), as in RODAS, $h \cdot 0.9 \cdot (h / h_\text{prev})^{-1} \cdot
-  (\text{err}^2 / \text{err}_\text{prev})^{-1/5}$, which follows the trend of the last two steps. On Van der Pol's
-  oscillator at $\mu = 1000$, it refuses 23 steps instead of 176.
+  *predictive control* of Gustafsson (1994), as in RODAS,
+  $h \cdot 0.9 \cdot (h / h_\text{prev})^{-1} \cdot (\text{err}^2 / \text{err}_\text{prev})^{-1/5}$, which follows the
+  trend of the last two steps. On Van der Pol's oscillator at $\mu = 1000$, it refuses 23 steps instead of 176.
 - **The dense output**: Steinebach's, a polynomial of degree 4 in each step, from its stages, which meets the states at
-  both ends. The error test sees only those ends. Where a fast decay follows a slow forcing, as in $y' = \lambda (y -
-  \cos t) - \sin t$ with $\lambda = -10^6$ (Prothero and Robinson 1974), the method puts each end on $\cos t$ whatever
-  the step: the steps grow to 3.4 at `rtol = 1e-6`, and `At` between them is off by 5 %. `maxStep` bounds the steps
-  where the values between them matter: with `maxStep = 0.05`, `At` is right to `1e-8`.
+  both ends. The error test sees only those ends. Where a fast decay follows a slow forcing, as in
+  $y' = \lambda (y - \cos t) - \sin t$ with $\lambda = -10^6$ (Prothero and Robinson 1974), the method puts each end on
+  $\cos t$ whatever the step: the steps grow to 3.4 at `rtol = 1e-6`, and `At` between them is off by 5 %. `maxStep`
+  bounds the steps where the values between them matter: with `maxStep = 0.05`, `At` is right to `1e-8`.
 - **The size**: `y0` has at most 1,000 components with `stiff = true`; $J$, $W$ and its factors are $n \times n$
   matrices, 8 MB each at 1,000.
 
@@ -776,13 +777,13 @@ the gaps between them, the way any method that only samples `f` can.
 
 The tests of Cesia check it on 42 integrals of the kinds that the QUADPACK book tests its methods on, each against its
 closed form: $x^\alpha \log(1/x)$ and $x^{-1/2}$, singular at an end; $|x - 1/3|^\alpha$, singular inside, with and
-without `points`; a peak of width $4^{-\alpha}$, $\alpha$ up to 8; $(1 - x^2)^{-1/2} / (x + 1 + 2^{-\alpha})$, singular at
-both ends beside a pole; $\sin^{\alpha - 1} x$ and $\log(1/x)^{\alpha - 1}$, whose integrals are values of the functions
-[special.Beta] and [special.Gamma]; $x^\alpha e^{-x}$ and $e^{-x^2}$ on infinite intervals; an oscillation, $x \sin 30x
-\cos x$ on $[0, 2\pi]$; a jump; reversed intervals. On each, the true error is within the tolerance and within `Error`;
-and each takes exactly as many calls of `f`, and as many pieces, as scipy's `quad` at the same tolerances, with the same
-value and the same `Error` to the last bit. GNU Octave's `integral` misses 10 of the 42 by more than the tolerance asked: on $|x - 1/3|^{-0.8}$
-by 0.0039, on $(1 + x)^{-1} x^{-1/2}$ over $[0, \infty)$ by 1.3e-8.
+without `points`; a peak of width $4^{-\alpha}$, $\alpha$ up to 8; $(1 - x^2)^{-1/2} / (x + 1 + 2^{-\alpha})$, singular
+at both ends beside a pole; $\sin^{\alpha - 1} x$ and $\log(1/x)^{\alpha - 1}$, whose integrals are values of the
+functions [special.Beta] and [special.Gamma]; $x^\alpha e^{-x}$ and $e^{-x^2}$ on infinite intervals; an oscillation,
+$x \sin 30x \cos x$ on $[0, 2\pi]$; a jump; reversed intervals. On each, the true error is within the tolerance and
+within `Error`; and each takes exactly as many calls of `f`, and as many pieces, as scipy's `quad` at the same
+tolerances, with the same value and the same `Error` to the last bit. GNU Octave's `integral` misses 10 of the 42 by
+more than the tolerance asked: on $|x - 1/3|^{-0.8}$ by 0.0039, on $(1 + x)^{-1} x^{-1/2}$ over $[0, \infty)$ by 1.3e-8.
 
 ### When it fails
 
@@ -841,12 +842,8 @@ Integral is QUADPACK's QAGS (Piessens, de Doncker-Kapenga, Überhuber and Kahane
 - **The extrapolation**: when the piece of largest error is one of the smallest, as next to a singularity, the method
   first cuts the larger pieces until their errors are below the tolerance, then adds the sum of all the pieces to a
   sequence $S_1, S_2, \dots$, one level of cutting closer to the singularity each time, and estimates its limit by
-  the *epsilon algorithm* of Wynn (1956):
-  $$
-  \epsilon^{(n)}_{-1} = 0, \quad \epsilon^{(n)}_0 = S_n, \quad
-  \epsilon^{(n)}_{k+1} = \epsilon^{(n+1)}_{k-1} + \frac{1}{\epsilon^{(n+1)}_k - \epsilon^{(n)}_k}
-  $$
-  Its even columns $\epsilon_{2k}$ are Shanks's transforms of the sequence: $\epsilon_2$ is Aitken's
+  the *epsilon algorithm* of Wynn (1956): $\epsilon^{(n)}_{-1} = 0$, $\epsilon^{(n)}_0 = S_n$ and
+  $\epsilon^{(n)}_{k+1} = \epsilon^{(n+1)}_{k-1} + \frac{1}{\epsilon^{(n+1)}_k - \epsilon^{(n)}_k}$. Its even columns $\epsilon_{2k}$ are Shanks's transforms of the sequence: $\epsilon_2$ is Aitken's
   $\Delta^2$, exact on a sequence whose error shrinks by the same factor at each step, and the higher columns remove
   several such terms at once. Near an end singularity such as $x^\alpha$, each level of cutting divides the error of
   the piece at the end by about $2^{\alpha + 1}$: such a sequence. Cesia builds the even

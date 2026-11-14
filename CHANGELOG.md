@@ -1,8 +1,8 @@
 # Changelog
 
-## 1.1.0
+## 1.2.0
 
-Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.0 runs
+Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.1 runs
 as it did.
 
 ### Changed
@@ -14,32 +14,36 @@ as it did.
 
 ### Language
 
-- `a if c else b`, the value first as in Python: the same tree as `if c a else b end`, so it costs nothing when it runs.
-- `return x if c` and `break if c`, when the condition ends the line, as in Ruby: the same tree as `if c return x end`.
 - A do block after the `)` of a call, `list.Reduce(0, xs) do total, x` up to `end`: the function `defn (total, x) ... end`,
   the same tree, in the place of the argument that is `_` alone, or else first, as in Julia. `do` stays a plain name
   elsewhere, and the function written inside the parentheses stays valid. `cesia fmt` and the modes for Emacs and Neovim
   know it.
-- `fiber.Channel(size = n)` holds n values at most; `fiber.Close`, `fiber.Select` with a timeout, `fiber.Cancel`, and
-  `fiber.Wait(task, timeout =)`.
-- `sys.Write(path, text, sync = true)` answers once the file and its folder are on the disk; `text.ByteFind(..., fold = true)`
-  ignores the case of ASCII letters; `text.IsUtf8` and `text.Count`; `sys.ReadInput(count)`; `sys.Start(..., dir =)`.
 - `text.Fold(s)`, Unicode 18.0's simple case folding, to search and compare what people write:
   `text.Fold("ÉLODIE") == text.Fold("Élodie")`. `text.Lower` and `text.Upper` stay ASCII, for the texts of protocols.
 - `value.Text(x, most)`: the text of a value, cut at `most` characters, its first `most - 1` and an ellipsis; only that
   start is made, so a preview of a list of 10^6 numbers or of a long text costs what its `most` characters cost.
+- `path.Abs(p)`, the absolute path of a path from the current folder, its `.` and `..` taken away as text; it needs the
+  read permission on the path.
+- `sys.Mkdir` and `sys.Write` take `private = true`: a folder 0700 and a file 0600, their owner's alone from their
+  creation on, or made so if they were there; a private `sys.Write` writes a new file and renames it over the path, so
+  that a reader of the old file never gets the text, and a link there is replaced, its target untouched.
 
 ### Servers
 
-- `cesia run --workers N` serves one listener from N processes; HUP replaces them without a failed request; TERM and INT
-  stop a server cleanly; `sys.Stops` tells every fiber of a stop.
-- `std/log` writes a JSON line per event and `std/metrics` counts for Prometheus; `http.Serve` holds under abuse.
 - `std/websocket` is a client too: `websocket.Dial(url)` gives a connection whose messages come on the channel
   `c.Messages`, with `websocket.Send`, `websocket.Close` and `websocket.DefaultMaxMessage`; tested against
-  Autobahn|Testsuite in the CI.
+  Autobahn|Testsuite in the CI. `websocket.Dial(url, headers = ...)` sends a cookie or an Origin, and refuses before any
+  connection a name that isn't a token or that the handshake writes itself, and a line end or a zero byte in a value.
 - `std/live`, live screens: `live.Route(path, screen, actions = {...})` serves pages whose shows change by themselves,
   pushed over a WebSocket, and their actions, drawn at once by `live.js` and confirmed or undone by the app's reply;
   `live.Show(name, changes)`.
+- `http.Stream(produce)`, a response whose body goes out in chunks as it is made, each piece within the timeout or the
+  connection ends; a panic or an `Err` cuts it short, and HEAD runs nothing.
+- `http.SameOrigin`, a middleware against cross-site request forgery, by `Sec-Fetch-Site` then `Origin` and `Host`, as
+  Go's CrossOriginProtection; std/live uses it for its screens.
+- `net.Peer` gives the address of the other end of a connection, and std/http puts it in each request as `Peer`, to
+  limit a client by; a handler gets the request as a middleware left it, with the keys it put there, as the person
+  signed in.
 
 ### Tools
 
@@ -50,16 +54,59 @@ as it did.
   file, its graphs in SVG. Each cell starts std/random again from the session's seed and its title, so a cell run again
   draws the same numbers; a struct of at most 20 fields shows as a table of its fields, an `Ok` of a struct as the
   struct.
+- `std/plot`, graphs as values: `plot.Line`, `Points`, `Bars`, `Histogram`, `Heatmap`, `Density` and `Area`, on shared
+  axes with `plot.Of` and side by side with `plot.Grid`, drawn to SVG by `plot.Svg` and `plot.Save`, and to a scene of
+  shapes in pixels by `plot.Scene`; the ticks by the extended Wilkinson algorithm, long lines by M4, the colors of Okabe
+  and Ito and viridis. A line of 10^6 points in 37 ms.
 - `c.Write(type, offset, values, block)` writes a whole array of numbers into a block in one call, each converted as
   `c.Set` converts one: the vertices of a shape or the pixels of an image.
+- `c.Fn(..., slow = true)` runs each call on a domain of its own, the runtime released while its fiber waits, at most
+  one per core at once; `crypto.HashPassword` and `crypto.CheckPassword` use it, so a sign-in no longer stops every
+  fiber for 70 ms.
 - `cesia.Reads(source)`: the names a source reads and doesn't define, with the compiler's own resolver.
   `cesia.Definitions` gives the names of `[q, r] = ...` too.
-- `cesia lsp`, a language server: the marks of `cesia check` as you type, the docs under the cursor, definitions, completion.
-- `cesia fmt` writes files in the style of Cesia's code and checks that each keeps its tree.
-- Native packages: a package's engine in OCaml, compiled once against `Cesia_v1`, runs its natives under `native=LABEL`.
+- `cesia do TASK ARGS...` passes the words after the task to its own program, as its `sys.Args`, never through a shell;
+  a task with no program of its own refuses them.
+- `[test] skip` in `cesia.toml` names the folders and files that `cesia test` leaves out unless its path is in one of
+  them, as end-to-end tests that need a server started first.
+- A `[deps]` version may be the whole hash of a commit, for a project that has no tag yet: `cesia pkg` fetches that
+  commit alone and checks it.
 - `cesia test` stops the programs a test started with `sys.Start` or `sys.Run` when the test ends, even past its time.
 - `cesia test` of a folder starts its largest files first, so that a long one doesn't start last and keep the others
   waiting; the reports still come in the order of the files. Cesia's tests/lang, 89 files on 8 threads: 2.44 -> 1.85 s.
+- `cesia doc --site` writes formulas in MathML, GitHub's alerts and heading ids, the colors of `[site] color` at AA
+  contrast and the README as a page, checks the `norun` blocks that follow one another as one program, and builds the
+  French site of `docs/fr/`, whose pages must keep the headings, code and links of the English ones; Cesia's book is in
+  French too. `std/markdown` writes GitHub's alerts, and the formulas of `$...$` and `$$...$$`.
+- Tabs in the docs: a `python`, `r` or `matlab` block right after a `cesia` block shows as a tab beside it,
+  Cesia | Python | R | MATLAB, with no script; `tools/tabs.ce` runs each tab of Cesia's book, capped and with no
+  network, and checks that it prints what its cesia block shows.
+- For those who work on Cesia: `tools/test.sh` runs the typed path and the OCaml tests only, the change loop, 11 ->
+  4.4 s; `tools/test.sh --no-spec` runs the same tests on the other path, and `tools/test.sh --slow` the tests slow by
+  nature, on both paths; `tools/check.sh` runs those two after the loop, and the CI the first two.
+- The nightly pre-release is made again from main each time the CI passes there, from the commit it tested, so that
+  projects that build against main test with it.
+
+### Numerical methods
+
+- `std/optimize`: `optimize.Root`, the zero of a function by Brent's method, from a bracket or one start, to the last
+  float by default, tested on the 154 problems of Alefeld, Potra and Shi; `optimize.Minimize`, by L-BFGS with the line
+  search of Moré and Thuente, and `optimize.Simplex`, by Nelder and Mead with the coefficients of Gao and Han, both
+  tested on the 35 problems of Moré, Garbow and Hillstrom. An `Err` with the best point where there is no zero or no minimum.
+- `std/ode`: `ode.Solve`, the method of Dormand and Prince with its dense output, a PI control of the step, events
+  located by `optimize.Root`, and an alarm when the problem is stiff; `stiff = true` runs Rodas5P, a Rosenbrock method
+  of order 5, with the Jacobian given by `jacobian =` or by differences. An `Err` with the solution so far at a blow-up,
+  a NaN or past its steps. Lorenz on [0, 100] at `rtol = 1e-8` in 127 ms, against 681 for scipy and 8,827 for Octave.
+- `std/quad`: `quad.Integral(f, a, b)`, QUADPACK's QAGS, QAGP at the `points` given and QAGI for an infinite bound,
+  with Wynn's epsilon algorithm, in a native engine that calls `f` back: the same value and error estimate as scipy's
+  `quad`, to the last bit, on 42 integrals, in 46.7 us against scipy's 82.3. `math.Inf`, the infinity.
+- `std/sparse`: matrices in compressed columns, `sparse.Of` from triplets with every index checked, `Eye`, `Diags`,
+  `Kron`, `Add`, `Scale`, `Transpose`, `Dense`, `Get` and `Mul`; `sparse.Solve`, as MATLAB's backslash, orders by
+  approximate minimum degree, then factors by supernodes, multifrontal, Cholesky or LU on dense fronts through BLAS,
+  with one step of refinement; `sparse.Read` reads Matrix Market files, every line checked. Poisson on 300 x 300 points
+  in 315 ms (scipy 805, Octave 330), on 1000 x 1000 in 3.85 s (scipy 33.7, Octave 8.1).
+- `num.Lu` factors a square matrix once, for many solves with its `Solve`; `num.Solve`, `Inverse` and `Det` go through
+  the same native elimination, with the same bits as before: an `Lu` of order 100 in 0.65 ms instead of 3.6.
 
 ### Statistics
 
@@ -68,8 +115,85 @@ as it did.
   `Sample`; `stats.Lm`, the linear model of R's `lm` without a formula, with `summary(lm)`'s table, `Predict`, `Band` and
   `Confint`; the tests `TTest`, `TTest2`, `WilcoxonTest`, `WilcoxonTest2`, `KsTest`, `ChiSquaredTest` and `CorTest`, each
   giving a `stats.Test`. Checked against values of 70 digits, NIST's datasets and R.
+- `stats.MonteCarlo(f, n = ...)` or `(f, tol = ...)`: the mean of random draws, single or in batches, with its
+  standard error and Student's interval, as a `stats.Estimate`; with `tol`, it draws until the interval is narrow
+  enough, by the rule of Chow and Robbins. Its coverage is checked on 1,000 runs of each law.
 - `std/special`: `Gamma`, `LogGamma`, `Beta`, `LogBeta`, `Erf`, `Erfc`, `Erfcx`, `ErfInv`, `ErfcInv`, `GammaInc` and
   `BetaInc`, from the papers of Cody, Wichura, DiDonato and Morris, and Temme.
+- `num.Variance`, `num.Std` and `num.Covariance` take `sample = true`, which divides by n - 1 as R's `var`, `sd` and
+  `cov`; the default stays numpy's n.
+
+### Speed
+
+Measured on the same machine as the others, in the book's chapters on speed and numerical methods:
+
+- The cache of loaded packages: a package unchanged since the last run is neither lexed, parsed nor resolved again,
+  its entry written once the run has ended, checked by its BLAKE2b digest, in a folder of the person's alone:
+  `use std/plot` starts in 5.69 ms instead of 9.66, Cemacs reaches its first frame in 36.97 ms instead of 52.16. A
+  function's body is read from the cache at its first call: 4.03 and 50.62 ms. An entry places a used package's modules
+  from its end, so two programs run in turn no longer resolve a package again: 0.4 to 1.2 ms a run.
+- Loading makes half the garbage it made: Cemacs's 44 modules load in 24.4 ms instead of 38.2.
+- The resolver's definite assignment costs the same per statement whatever the number of variables: a function of
+  4,000 variables resolves in 6 to 7 ms instead of 120 to 190.
+- The start stays where it was before std/sparse and std/quad: the sources of std/ are strings that only code names,
+  and a program's stacks start small: `io.Print(1)` in 2.70 ms, 2.82 before, in the release build.
+- `encode.Unbase64` of 1.4 MB, a page's screenshot, 572 -> 5.7 ms.
+- The JIT makes a unit's machine code at MIR's level 1 first, in 30 to 60 % less time, and its level 2 in another
+  domain once the unit is hot: Lorenz on [0, 100] 83 -> 66 ms, `structs` 51 -> 40, long runs at level 2's speed.
+- The JIT reads and writes lists of integers by index, and checks the indexes that move with a loop's counter once,
+  before the loop: a sparse product 3.75 -> 2.79 ns a non-zero.
+- The JIT keeps small arrays of floats in slots and inlines the functions that give them, goes back to the interpreter
+  inside an if, and leaves it the statements it can't make, so the loop of `ode.Solve` is machine code; a loop whose
+  statement left to the interpreter runs at nearly every turn stays in the interpreter: 1,011 -> 75 ms for 10^6 turns.
+- `f()`, a call with no argument of a function held in a value, and `random.Float()` are machine code: `f()` 37 -> 2.2
+  ns, 10^6 single draws of `stats.MonteCarlo` 539 -> 8.9 ms. `^`, `math.Exp` and the other functions of one float on an
+  array of floats run unboxed, and `num.Uniform` draws in one native loop, the same numbers for a seed.
+- `-x`, `math.Abs`, `list.Max` and `list.Min` on an array of floats in one native pass, and `num.Dot` without the array
+  of products: 2 to 10 times faster at 1,000 floats, the same bits.
+- A native that wakes many fibers from another domain writes the wake pipe once: when one native wakes 10,000 fibers,
+  the last is awake in 9.5 ms instead of 11.6; `json.Text` of a small map in 314 ns instead of 390.
+- `json.Text` and `json.Parse` take a text eight bytes at a time, and so does the length of a text: 1.6 MB 3.6 ->
+  0.6 ms. `csv.Text` writes a list of lists natively, 5 times as fast.
+- `cells.Variables` of a session that holds 10^6 numbers and a model fitted on 10^6 rows answers in 0.09 ms instead of
+  4.1 s; `"$xs"` of 10^6 integers 131 -> 55 ms, of 10^6 floats 1080 -> 936 ms; the text of `[1, 2, 3]` 145 -> 120 ns.
+- The text of a float, for `io.Print`, `"$x"`, `value.Text` and `json.Text`, by Ryu's tables (Adams, PLDI 2018)
+  instead of up to three `printf` and two `strtod`, in the same bytes: `json.Text` of 32,000 floats 97 -> 3.9 ms, the
+  scene of a Lorenz curve 30 -> 1.4 ms, `"$x"` of a float of 17 digits 2.9 us -> 0.19 us.
+
+### Fixes
+
+- On a phone no page of the site scrolls sideways: the header takes a second line, long links and code wrap, and a
+  formula wider than its line scrolls in its own box.
+- `http.Fetch` names the port in `Host` when it isn't the scheme's own, so that a server that compares a page's
+  `Origin` with its `Host` finds the same text.
+- `cesia lsp` finds a name of a package of the project, as `shop.Total`, in its open buffers before the disk, with its
+  doc text for hover.
+- The full list is in the commits since v1.1.0.
+
+## 1.1.0
+
+Everything here is added: a program written for 1.0 runs as it did.
+
+### Language
+
+- `a if c else b`, the value first as in Python: the same tree as `if c a else b end`, so it costs nothing when it runs.
+- `return x if c` and `break if c`, when the condition ends the line, as in Ruby: the same tree as `if c return x end`.
+- `fiber.Channel(size = n)` holds n values at most; `fiber.Close`, `fiber.Select` with a timeout, `fiber.Cancel`, and
+  `fiber.Wait(task, timeout =)`.
+- `sys.Write(path, text, sync = true)` answers once the file and its folder are on the disk; `text.ByteFind(..., fold = true)`
+  ignores the case of ASCII letters; `text.IsUtf8` and `text.Count`; `sys.ReadInput(count)`; `sys.Start(..., dir =)`.
+
+### Servers
+
+- `cesia run --workers N` serves one listener from N processes; HUP replaces them without a failed request; TERM and INT
+  stop a server cleanly; `sys.Stops` tells every fiber of a stop.
+- `std/log` writes a JSON line per event and `std/metrics` counts for Prometheus; `http.Serve` holds under abuse.
+
+### Tools
+
+- `cesia lsp`, a language server: the marks of `cesia check` as you type, the docs under the cursor, definitions, completion.
+- `cesia fmt` writes files in the style of Cesia's code and checks that each keeps its tree.
+- Native packages: a package's engine in OCaml, compiled once against `Cesia_v1`, runs its natives under `native=LABEL`.
 
 ### Speed
 
@@ -78,24 +202,12 @@ Measured on the same machine as the others, in the book's chapter on speed:
 - `fib` 74 -> 58 ms, ahead of Java's 71; maps 253 ms, ahead of Go's 272;
 - a fiber 3.4 us and 2.1 KB, less memory than a goroutine;
 - a start in 2.62 ms;
-- HTTP: a tiny route 67k requests a second, beside Go's 67k, and JSON 48k, ahead of Node's 41k;
-- `encode.Unbase64` of 1.4 MB, a page's screenshot, 572 -> 5.7 ms.
-- the JIT makes a unit's machine code at MIR's level 1 first, in 30 to 60 % less time, and its level 2 in another
-  domain once the unit is hot: Lorenz on [0, 100] 83 -> 66 ms, `structs` 51 -> 40, long runs at level 2's speed.
-- a native that wakes many fibers from another domain writes the wake pipe once: when one native wakes 10,000 fibers,
-  the last is awake in 9.5 ms instead of 11.6; `json.Text` of a small map in 314 ns instead of 390.
-- `cells.Variables` of a session that holds 10^6 numbers and a model fitted on 10^6 rows answers in 0.09 ms instead of
-  4.1 s; `"$xs"` of 10^6 integers 131 -> 55 ms, of 10^6 floats 1080 -> 936 ms.
-- The text of a float, for `io.Print`, `"$x"`, `value.Text` and `json.Text`, by Ryu's tables (Adams, PLDI 2018)
-  instead of up to three `printf` and two `strtod`, in the same bytes: `json.Text` of 32,000 floats 97 -> 3.9 ms, the
-  scene of a Lorenz curve 30 -> 1.4 ms, `"$x"` of a float of 17 digits 2.9 us -> 0.19 us.
+- HTTP: a tiny route 67k requests a second, beside Go's 67k, and JSON 48k, ahead of Node's 41k.
 
 ### Fixes
 
 - An example's check that waits no longer overwrites the variables before it.
 - The tests run on macOS's own tools; on a phone, the site's contents come first, above the text.
-- On a phone no page of the site scrolls sideways: the header takes a second line, long links and code wrap, and a
-  formula wider than its line scrolls in its own box.
 - The full list is in the commits since v1.0.0.
 
 ## 1.0.0
