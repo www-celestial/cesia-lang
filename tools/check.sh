@@ -44,7 +44,7 @@ fi
 c_lines=$(cat src/sys/stubs.c src/sys/ffi.c src/sys/linalg.c src/sys/jit.c | wc -l)
 [ "$c_lines" -le 520 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 520"
 
-# Change loop: a touched .ml, rebuilt and tested in under 5 s, in the dev profile.
+# Change loop: a touched .ml, rebuilt and tested on the typed path in under 5 s, in the dev profile.
 budget_ms=5000
 dune build 2>&1 | head -20
 backup=$(mktemp)
@@ -56,16 +56,8 @@ tools/test.sh > /dev/null 2>&1 || fail "tools/test.sh fails"
 ms=$((($(date +%s%N) - s) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "change loop: $ms ms, budget $budget_ms ms"
 
-# Past the budget: C++ to compile, TLS to shake hands over and the loops the JIT makes native, on the path tools/test.sh
-# leaves out for them.
-slow=""
-command -v g++ > /dev/null && slow="$slow tests/cpp"
-pkg-config --exists openssl 2>/dev/null && slow="$slow tests/tls"
-CESIA_JIT_SHOW=1 "$PWD/_build/default/src/bin/main.exe" version 2>&1 | grep -q '^jit: off' || slow="$slow tests/jit"
-if [ -n "$slow" ]; then
-  # shellcheck disable=SC2086
-  tools/golden.sh --no-spec $slow > /dev/null 2>&1 || fail "--no-spec fails on $slow"
-fi
+# Past the budget: the same tests on the other path, which the loop leaves out.
+tools/test.sh --no-spec > /dev/null 2>&1 || fail "the other path fails: tools/test.sh --no-spec"
 
 # The tests slow by nature (name.slow, and the files of tests/slow), on both paths, and Cesia's own site, which GitHub
 # Pages publishes: a text of the docs with a [Name] that leads nowhere, or a block of the book that gives another value,

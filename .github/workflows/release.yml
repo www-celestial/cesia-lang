@@ -70,6 +70,11 @@ jobs:
         if: runner.os != 'Windows'
         timeout-minutes: 15
         run: opam exec -- tools/test.sh 2>&1 | tee test.log
+      # The same tests on the other path of the engine, as in ci.yml.
+      - name: Tests on the other path
+        if: runner.os != 'Windows'
+        timeout-minutes: 15
+        run: opam exec -- tools/test.sh --no-spec 2>&1 | tee test-no-spec.log
       - name: The version of this build
         run: |
           file=src/lib/version.ml
@@ -150,7 +155,7 @@ jobs:
       # The logs need an account to be read; an annotation doesn't, for a public repository.
       - name: Report a failure
         if: failure()
-        run: tools/ci-error.sh test.log libs.log archive.log jit.txt
+        run: tools/ci-error.sh test.log test-no-spec.log libs.log archive.log jit.txt
       - uses: actions/upload-artifact@v7
         with:
           name: cesia-${{ matrix.system }}
