@@ -58,6 +58,8 @@ as it did.
 - `cesia fmt` writes files in the style of Cesia's code and checks that each keeps its tree.
 - Native packages: a package's engine in OCaml, compiled once against `Cesia_v1`, runs its natives under `native=LABEL`.
 - `cesia test` stops the programs a test started with `sys.Start` or `sys.Run` when the test ends, even past its time.
+- `cesia test` of a folder starts its largest files first, so that a long one doesn't start last and keep the others
+  waiting; the reports still come in the order of the files. Cesia's tests/lang, 89 files on 8 threads: 2.44 -> 1.85 s.
 
 ### Statistics
 
