@@ -13,7 +13,11 @@
 
    Exact. Each product is the exact floor of its quotient, for every e2 a double has and every M it brings: this was
    checked with exact integers, the least and the most of a * M mod m over the range of M by Euclid's recursion, as
-   Ryu's own analysis (EuclidMinMax) does; the smallest margin is 7e-20 of a step. The results stay below 2^62. *)
+   Ryu's own analysis (EuclidMinMax) does; the smallest margin is 7e-20 of a step. The results stay below 2^62.
+
+   Safe. Any 64 bits make a float it writes, nan payloads and subnormals too. The indices of the tables are in range
+   (pow5 1..341, inv 0..290, by the same check over every exponent), and every read and write is bounds-checked; the text
+   has at most 24 bytes; no loop runs more than 52 steps. *)
 
 let mask = (1 lsl 30) - 1
 
