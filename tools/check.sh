@@ -56,21 +56,15 @@ tools/test.sh > /dev/null 2>&1 || fail "tools/test.sh fails"
 ms=$((($(date +%s%N) - s) / 1000000))
 [ "$ms" -lt "$budget_ms" ] || fail "change loop: $ms ms, budget $budget_ms ms"
 
-# Past the budget: the same tests on the other path, which the loop leaves out.
+# Past the budget: the same tests on the other path, which the loop leaves out, then the tests slow by nature (name.slow,
+# and the files of tests/slow), on both paths.
 tools/test.sh --no-spec > /dev/null 2>&1 || fail "the other path fails: tools/test.sh --no-spec"
+tools/test.sh --slow > /dev/null 2>&1 || fail "a test slow by nature fails: tools/test.sh --slow"
 
-# The tests slow by nature (name.slow, and the files of tests/slow), on both paths, and Cesia's own site, which GitHub
-# Pages publishes: a text of the docs with a [Name] that leads nowhere, or a block of the book that gives another value,
-# fails here and there; so does a tab of the book, an example in Python, R or MATLAB, that prints other values than its
-# cesia block. A tab whose language isn't installed here is skipped with a warning: the CI of the site runs them all.
-tools/golden.sh --both --slow tests/*/ > /dev/null 2>&1 || fail "a test marked slow fails: tools/golden.sh --both --slow tests/*/"
-# Their own folder of caches, empty at the start, as in tools/test.sh: none of the person's packages, none left there.
-cache=$(mktemp -d)
-for path in "" --no-spec; do
-  XDG_CACHE_HOME="$cache" "$PWD/_build/default/src/bin/main.exe" test tests/slow $path > /dev/null 2>&1 \
-    || { rm -rf "$cache"; fail "a slow test fails: cesia test tests/slow $path"; }
-done
-rm -rf "$cache"
+# Cesia's own site, which GitHub Pages publishes: a text of the docs with a [Name] that leads nowhere, or a block of the
+# book that gives another value, fails here and there; so does a tab of the book, an example in Python, R or MATLAB, that
+# prints other values than its cesia block. A tab whose language isn't installed here is skipped with a warning: the CI
+# of the site runs them all.
 site=$(mktemp -d)
 work=$(mktemp -d)
 trap 'cp "$backup" src/lib/messages.ml; rm -f "$backup"; rm -rf "$site" "$work"' EXIT
