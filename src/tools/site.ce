@@ -266,7 +266,8 @@ html(source, hooks) = markdown.Html(markdown.Parse(source), hooks)
 
 texRelations = {"le": "≤", "ge": "≥", "ne": "≠", "approx": "≈", "equiv": "≡", "sim": "∼", "in": "∈", "notin": "∉", "ni": "∋",
   "subset": "⊂", "subseteq": "⊆", "cup": "∪", "cap": "∩", "to": "→", "times": "×", "cdot": "⋅", "pm": "±", "dots": "…",
-  "lceil": "⌈", "rceil": "⌉", "lfloor": "⌊", "rfloor": "⌋", "{": "{", "}": "}", "bmod": "mod", "infty": "∞", "emptyset": "∅"}
+  "lceil": "⌈", "rceil": "⌉", "lfloor": "⌊", "rfloor": "⌋", "{": "{", "}": "}", "bmod": "mod", "infty": "∞", "emptyset": "∅",
+  "ast": "∗", "circ": "∘", "leftarrow": "←"}
 texGreek = {"alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "epsilon": "ε", "zeta": "ζ", "eta": "η", "theta": "θ",
   "iota": "ι", "kappa": "κ", "lambda": "λ", "mu": "μ", "nu": "ν", "xi": "ξ", "pi": "π", "rho": "ρ", "sigma": "σ", "tau": "τ",
   "upsilon": "υ", "phi": "φ", "chi": "χ", "psi": "ψ", "omega": "ω", "Gamma": "Γ", "Delta": "Δ", "Theta": "Θ", "Lambda": "Λ",
@@ -315,7 +316,8 @@ defn braced(cs, i)
 end
 
 defn texTokens(tex)
-  (** The tokens of a formula, {K, V}: K is cmd, text, mathit, num, letter, op, or one of { } ^ _ '. Spaces separate only. *)
+  (** The tokens of a formula, {K, V}: K is cmd, text, mathit, mathrm, num, letter, op, or one of { } ^ _ '. Spaces separate
+      only. *)
   cs = text.Chars(tex)
   n = value.Len(cs)
   out = []
@@ -334,7 +336,7 @@ defn texTokens(tex)
       end
       name = if j == i + 1 cs[i + 1] else text.Join("", list.Take(j - i - 1, list.Skip(i, cs))) end
       i = if j == i + 1 i + 2 else j end
-      if name == "text" or name == "mathit"
+      if name == "text" or name == "mathit" or name == "mathrm"
         while i <= n and cs[i] == " "
           i += 1
         end
@@ -420,6 +422,13 @@ defn texAtom(toks, at)
     end
     words = text.Str(text.Repeat(k - 1, " "), texEscape(text.Join("", list.Take(m - k + 1, list.Skip(k - 1, cs)))), text.Repeat(value.Len(cs) - m, " "))
     return made(leaf("<mtext>$words</mtext>"))
+  else if t.K == "mathrm"
+    (* An upright name, as pred: TeX drops the spaces of a \mathrm, which a \text keeps, so it takes letters only and is
+       then written as \text writes them. *)
+    if t.V == "" or not list.All([isAsciiLetter(c) for c in text.Chars(t.V)])
+      return result.Err("\\mathrm takes letters only: write words with \\text")
+    end
+    return made(leaf("<mtext>$(t.V)</mtext>"))
   else if t.K == "mathit"
     if t.V == "" or not list.All([isAsciiLetter(c) for c in text.Chars(t.V)])
       return result.Err("\\mathit takes letters only")

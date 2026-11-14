@@ -38,6 +38,7 @@ fi
 try "a book without its index.md" 'rm docs/book/index.md'
 try "a formula with a command it doesn't know" 'add "" "So \$\\foo + 1\$."'
 try "a formula with a character TeX writes otherwise" 'add "" "So \$x ≤ y\$ and \$x^\$."'
+try "a \\mathrm with a space, which TeX would drop" 'add "" "So \$\\mathrm{a b}\$."'
 try "a formula whose group isn't closed" 'add "" "" "\$\$" "\\frac{1}{2" "\$\$"'
 try "a color that isn't one" 'printf "%s\n" "[site]" "color = \"blue\"" >> cesia.toml'
 try "a README that links to a file which is no page" 'echo "See [the license](LICENSE)." >> README.md'

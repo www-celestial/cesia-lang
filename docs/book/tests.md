@@ -389,18 +389,18 @@ with its place and what to write: `docs/book/values.md:12: ≤ is no part of a f
 
 | Kind | Commands |
 |---|---|
-| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` |
-| operators | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod`, and `+ - = < > / ! , ; : .` |
+| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` `\leftarrow` |
+| operators | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod` `\ast` `\circ`, and `+ - = < > / ! , ; : .` |
 | brackets | `( ) [ ] \|`, `\lceil` `\rceil` `\lfloor` `\rfloor`, `\{` `\}` |
 | Greek | `\alpha` to `\omega`, `\Gamma` `\Delta` `\Theta` `\Lambda` `\Xi` `\Pi` `\Sigma` `\Phi` `\Psi` `\Omega` |
 | functions | `\log` `\ln` `\exp` `\min` `\max` `\sin` `\cos`, with the thin spaces of TeX: $n \log n$ |
 | sums and products | `\sum` `\prod`, their limits with `_` and `^`, beside them in a line and above and below in a display |
 | structures | `x_i`, `2^{31}`, `f'`, `\frac{a}{b}`, `\sqrt{x}` |
-| words and names | `\text{some words}`, upright; `\mathit{vlo}`, a name of several letters in italic |
+| words and names | `\text{some words}`, upright; `\mathrm{pred}`, an upright name, of letters only, written as `\text` writes it; `\mathit{vlo}`, a name of several letters in italic |
 | others | `\dots` `\infty` `\emptyset`; the spaces `\,` `\;` `\quad` and `\ `; `1{,}000` for a comma inside a number |
 
 The font is a part of STIX Two Math 2.13 (the STIX Fonts Project, SIL Open Font License 1.1), cut to the characters a
-formula can hold, 74 KB; the site holds it beside its licence, `math-OFL.txt`.
+formula can hold, 75 KB; the site holds it beside its licence, `math-OFL.txt`.
 
 ### Notes and warnings
 
