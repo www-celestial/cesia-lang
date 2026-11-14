@@ -3,8 +3,14 @@ use std/cesia
 use std/io
 use std/list
 use std/text
+use std/value
 
 io.Print(list.Filter(m -> not text.StartsWith("std/", m), cesia.DocNames()))
 io.Print(cesia.DocNames("shapes"), cesia.DocNames("notes"))
 e = cesia.DocEntry("shapes.Unit")
 io.Print(e.Module, e.Signature, e.Text, e.File, e.Line, e.Builtin)
+
+(* Each name that DocNames lists has its entry, also those of std/test, whose name test leads to the folder test/. *)
+io.Print(list.Filter(n -> value.IsMissing(cesia.DocEntry(n)), list.FlatMap(m -> cesia.DocNames(m), cesia.DocNames())))
+e2 = cesia.DocEntry("test.ForAll")
+io.Print(e2.Module, e2.Signature)

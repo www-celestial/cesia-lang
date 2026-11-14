@@ -800,7 +800,20 @@ near(items, k) = {Prev: if k > 1 items[k - 1] else missing end, Next: if k < val
 
 names(m) = [{Name: n, Short: shortOf(n, m), Path: namePath(m, n)} for n in cesia.DocNames(m)]   (** The documented names of a module, each {Name, Short, Path}. *)
 
-withEntries(items) = [{Name: n.Name, Short: n.Short, Path: n.Path, Entry: cesia.DocEntry(n.Name)} for n in items]   (** The names with their docs, {Name, Short, Path, Entry}: only for the pages of the reference, which a kept build doesn't make. *)
+defn withEntries(site, m, items)
+  (** The names of the module m with their docs, {Name, Short, Path, Entry}: only for the pages of the reference, which a kept
+      build doesn't make. A name that DocNames lists and DocEntry doesn't find is a mistake that names both, not a crash. *)
+  out = []
+  for n in items
+    e = cesia.DocEntry(n.Name)
+    if value.IsMissing(e)
+      fiber.Send("the reference: cesia.DocNames($quote$m$quote) lists $(n.Name), which cesia.DocEntry doesn't find: a bug of Cesia.", site.Mistakes)
+    else
+      out = list.Append({Name: n.Name, Short: n.Short, Path: n.Path, Entry: e}, out)
+    end
+  end
+  out
+end
 
 defn about(e)
   (** What a list shows of a name: the first sentence of its text, else its first example. *)
@@ -1961,7 +1974,7 @@ defn referencePages(site, modules, lists)
   (** The pages of the reference, {Pages, Search}: a page for each module, name and keyword, and the indexes. *)
   pages = []
   search = []
-  lists = dict.Dict([{Key: m, Value: withEntries(lists[m])} for m in modules])
+  lists = dict.Dict([{Key: m, Value: withEntries(site, m, lists[m])} for m in modules])
   site.Columns = sideCache(site.Tree, dict.Keys(site.Tree.Up))
   index = {Label: "Reference", Path: "ref/index.html"}
   moduleLinks = [{Label: m, Path: modulePath(m)} for m in modules]

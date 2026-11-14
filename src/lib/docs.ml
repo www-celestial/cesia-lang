@@ -531,7 +531,13 @@ let found_entry w name =
         let es = module_entries w m in
         match find short es with
         | Some e -> Some (outside w m es e), short, lazy (module_name w m), false
-        | None -> native, short, lazy ("std/" ^ m), true
+        | None ->
+          (* A folder of the project can take the name of a library, as test/ takes test: what that library defines in
+             Cesia, test.ForAll, is still its own, as DocNames lists it, and so are its natives. *)
+          let library = if String.contains m '/' then [] else module_entries w ("std/" ^ m) in
+          match find short library with
+          | Some e -> Some (outside w m library e), short, lazy ("std/" ^ m), false
+          | None -> native, short, lazy ("std/" ^ m), true
     in
     if public_name short then Option.map (fun e -> e, md, builtin) entry else None
 
