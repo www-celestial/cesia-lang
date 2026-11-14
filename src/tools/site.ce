@@ -691,6 +691,8 @@ defn groupBody(site, g, modules)
     "What comes with Cesia: its libraries, written in Cesia, and the modules of its binary. A use writes std/ and the name: use std/date."
   else if g == "deps"
     "The packages taken from other projects, which cesia pkg puts in deps/. A use writes their whole path: use deps/owner/project/src/name."
+  else if site.Self != ""
+    "The packages of the project in its folder $g/. Another project writes their path after the project's place in deps/: use $(site.Self)$g/name; the project's own code writes it from its root: use $g/name."
   else
     "The packages of the project in its folder $g/. A use writes their path from the root: use $g/name."
   end

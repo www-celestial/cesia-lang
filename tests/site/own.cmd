@@ -24,6 +24,7 @@ page "the book uses the project as a dependency: run and checked" \
   "${f}cesia" "use deps/someone/echo/src/greet" 'greet.Hello("Ana") -->' "$f" \
   "${f}cesia norun" "use deps/someone/echo/src/greet" "use deps/someone/echo/cesia/echo/top" 'greet.Hello(top.Made)' "$f"
 grep -o 'Hello, Ana!' "$p/site/index.html" | head -1
+grep -o 'Another project writes [^<]*' "$p/site/ref/src.html"
 page "a norun block with a mistake, in a package of the project" \
   "${f}cesia norun" "use deps/someone/echo/cesia/echo/top" 'top.Nothing' "$f"
 page "another owner is no address of the project" \

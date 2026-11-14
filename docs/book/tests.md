@@ -283,7 +283,7 @@ Words after `cesia` on the first line of a block change what is done with it:
 
 | Word | What it does |
 |---|---|
-| `norun` | shows the block without running it: a server, a program that waits for input. It is still checked, as `cesia check` checks, with the packages it uses, and nothing of them runs either, not even their top: so a norun block needs no permission, no server and no engine. Norun blocks that follow one another are one program, so a name given in one is known in the next |
+| `norun` | shows the block without running it: a server, a program that waits for input. It is still checked, as `cesia check` checks, with the packages it uses, and nothing of them runs either, not even their top: so a norun block needs no permission, no server and no engine, and a block that runs writes its own uses. Norun blocks that follow one another are one program, so a name given in one is known in the next |
 | `fails` | the block must stop with an error, whose message is shown under it; one that doesn't fail stops the build |
 | `allow=read,write,net,net=own,net=:PORT,ffi=m` | runs the block with these permissions; no other is given |
 | `output=md` | what the block prints is Markdown, shown as a part of the page |

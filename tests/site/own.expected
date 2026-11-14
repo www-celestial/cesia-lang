@@ -1,6 +1,7 @@
 == the book uses the project as a dependency: run and checked
 exit 0
 Hello, Ana!
+Another project writes their path after the project&#39;s place in deps/: use deps/someone/echo/src/name; the project&#39;s own code writes it from its root: use src/name.
 == a norun block with a mistake, in a package of the project
 docs/book/index.md:5:1: Module "top" has no name "Nothing".
 exit 1
