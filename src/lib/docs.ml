@@ -361,7 +361,7 @@ let std name =
   | Some dir ->
     let path = Filename.concat dir (name ^ Package.suffix) in
     if Sys.file_exists path then Some (In_channel.with_open_bin path In_channel.input_all) else None
-  | None -> List.assoc_opt name Embedded.files
+  | None -> Embedded.file name
 
 let language = [ "natives"; "keywords" ]
 
@@ -578,7 +578,7 @@ let deps_modules w =
 (* The modules of Cesia itself: its libraries and the modules of the binary. *)
 let own_modules w =
   List.map (fun m -> "std/" ^ m)
-    (List.filter_map (fun (m, _) -> if List.mem m language then None else Some m) Embedded.files @ List.map fst w.native_modules)
+    (List.filter_map (fun m -> if List.mem m language then None else Some m) Embedded.names @ List.map fst w.native_modules)
 
 let modules w = List.sort_uniq String.compare (own_modules w @ project_modules w @ deps_modules w)
 

@@ -106,7 +106,7 @@ let std_source name =
     let path = Filename.concat dir (name ^ Package.suffix) in
     if Sys.file_exists path then Some (path, In_channel.with_open_bin path In_channel.input_all) else None
   | None ->
-    Option.map (fun src -> "std/" ^ name ^ Package.suffix, src) (List.assoc_opt name Embedded.files)
+    Option.map (fun src -> "std/" ^ name ^ Package.suffix, src) (Embedded.file name)
 
 let use_error ~file ~pos ~kind (m : Messages.t) =
   raise (Pos.Load_error { file; pos; kind; text = m.text; hint = m.hint })
@@ -124,7 +124,7 @@ let standard upath =
   | [ "std"; name ] when name <> "" -> Some name
   | _ -> None
 
-let libraries () = List.filter_map (fun (name, _) -> Option.map (fun (_, src) -> name, src) (own_library name)) Embedded.files
+let libraries () = List.filter_map (fun name -> Option.map (fun (_, src) -> name, src) (own_library name)) Embedded.names
 
 (* A file of std/ or deps/ loads only as installed: its fingerprint in cesia.lock, on a text read anyway. *)
 let check_installed w ~from ~pos path src =
@@ -400,8 +400,7 @@ let rec prepare_files ?(hooks = false) ?host ?natives ?report ?rewrite ?key ctx 
   let slot =
     match key with
     | Some key when (not hooks) && host = None && report = None && rewrite = None ->
-      let fixed src = List.exists (fun (_, s) -> s == src) Embedded.files in
-      Cache.slot ~key ~nesting:w.limits.nesting ~fixed sources
+      Cache.slot ~key ~nesting:w.limits.nesting ~fixed:Embedded.holds sources
     | _ -> None
   in
   let saved = Option.bind slot Cache.read in
@@ -560,11 +559,12 @@ let load_debugger ctx name =
   let pos = Pos.make 1 1 in
   let is_file = (String.contains name '/' && standard name = None) || Package.is_source name in
   let path, src =
-    if List.mem_assoc name Embedded.tools then tool_path name, List.assoc name Embedded.tools
-    else if is_file then
+    match Embedded.tool name with
+    | Some src -> tool_path name, src
+    | None when is_file ->
       if Sys.file_exists name then name, read_module ~from:name ~pos name name
       else use_error ~file:name ~pos ~kind:"name" (Messages.use_missing name)
-    else
+    | None ->
       let _, read, _ = locate w ~from:name ~pos name in
       List.hd (read ())
   in
@@ -869,7 +869,7 @@ let rec reload_all w paths =
 (* The files to watch. Sources embedded in the binary don't change. *)
 let watched w =
   let is_embedded path =
-    List.exists (fun (name, _) -> String.equal path (tool_path name)) Embedded.tools
+    List.exists (fun name -> String.equal path (tool_path name)) Embedded.tools
     || Package.embedded_std path
   in
   List.filter (fun p -> p <> "" && not (is_embedded p)) (List.map (fun md -> md.path) (Array.to_list w.modules))
@@ -940,7 +940,7 @@ let guarded ?(strict = false) w body =
 let start_prompt ctx =
   let w = ctx.w in
   let path = tool_path "repl" in
-  let ((_, m, _, _) as prepared) = prepare ctx ~path ~src:(List.assoc "repl" Embedded.tools) ~lookup:(lookup w) in
+  let ((_, m, _, _) as prepared) = prepare ctx ~path ~src:(Option.get (Embedded.tool "repl")) ~lookup:(lookup w) in
   run_prepared ctx prepared;
   Fiber.spawn ctx w.modules.(m).cells.(List.assoc "Main" w.modules.(m).mnames)
 
@@ -1007,7 +1007,7 @@ let run_tool w name args =
       let path = tool_path name in
       let pos = Pos.make 1 1 in
       let src =
-        match List.assoc_opt name Embedded.tools with
+        match Embedded.tool name with
         | Some src -> src
         | None -> use_error ~file:path ~pos ~kind:"name" (Messages.use_missing path)
       in
