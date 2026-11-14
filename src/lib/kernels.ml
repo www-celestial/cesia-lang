@@ -142,6 +142,20 @@ let sum x =
       done);
   Float.Array.fold_left ( +. ) 0. totals
 
+let dot x y =
+  let n = Float.Array.length x in
+  let blocks = (n + block - 1) / block in
+  let totals = Float.Array.make blocks 0. in
+  Par.ranges ~grain:2 blocks (fun lo hi ->
+      for b = lo to hi - 1 do
+        let acc = ref 0. in
+        for i = b * block to min n ((b + 1) * block) - 1 do
+          acc := !acc +. (Float.Array.get x i *. Float.Array.get y i)
+        done;
+        Float.Array.set totals b !acc
+      done);
+  Float.Array.fold_left ( +. ) 0. totals
+
 (* For each cell of the result, from 0 to [inner * outer], the sum of the [len] cells of [x] at [inner] from each other,
    in order: a sum along a dimension, with [inner] cells before it and [outer] after. *)
 let along ~inner ~len ~outer f =

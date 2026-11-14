@@ -23,6 +23,10 @@ val mask_floats : test -> floatarray * int -> floatarray * int -> Types.t array 
 val map1 : (float -> float) -> floatarray -> floatarray
 val sum : floatarray -> float
 
+(** [dot x y]: the sum of the products of [x] and [y], of one length, in the order of [sum], so that it gives the bits
+    of [sum] on the array of the products, without making it. *)
+val dot : floatarray -> floatarray -> float
+
 (** [sum_along ~inner ~len ~outer x]: the sums along a dimension of [len] cells, with [inner] cells for the dimensions
     before it and [outer] after: [inner * outer] sums, each of its cells in order. *)
 val sum_along : inner:int -> len:int -> outer:int -> floatarray -> floatarray

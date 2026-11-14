@@ -1,5 +1,8 @@
 (** The tests of optimize.Root: closed forms, the test problems of Alefeld, Potra and Shi (1995), a property on
-    polynomials with a known simple root, the bound on its calls of f, and its errors. *)
+    polynomials with a known simple root, the bound on its calls of f, and its errors; those of Minimize and Simplex for
+    each shape of x, their calls of f and their errors. Their tests on the problems of Moré, Garbow and Hillstrom are in
+    optimize-mgh.ce. *)
+use std/bug
 use std/fiber
 use std/gen
 use std/list
@@ -7,6 +10,7 @@ use std/math
 use std/optimize
 use std/result
 use std/test
+use std/text
 use std/value
 
 eps = 2.220446049250313e-16
@@ -332,3 +336,76 @@ isText() = optimize.Root(x -> "no", [0.0, 1.0]).Error.Message == "optimize.Root:
 isNanInside() = result.IsErr(optimize.Root(x -> if x > 0.2 and x < 0.8 math.Nan else x - 0.5 end, [0.0, 1.0]))
 isBadTol() = message(() -> optimize.Root(x -> x, [-1.0, 1.0], tol = -1.0)) == result.Err("optimize.Root: tol is -1.0; give a number of 0.0 or more.")
 isBadBracket() = message(() -> optimize.Root(x -> x, [1.0, 1.0])) == result.Err("optimize.Root: x is [1.0, 1.0]; give a bracket [a, b] of two different numbers, or one start.")
+
+(* Minimize and Simplex: what they give for each shape of x, their calls of f, and their errors. *)
+quadratic(x) = (x[1] - 1.0) ^ 2 + 10.0 * (x[2] + 2.0) ^ 2
+quadraticGradient(x) = [2.0 * (x[1] - 1.0), 20.0 * (x[2] + 2.0)]
+minimum(r) = result.Unwrap(r)
+nearMinimum(x) = math.Near(x, [1.0, -2.0], abs = 1.0e-7)
+infinite = 1.0 / 0.0
+
+isMinimize() = nearMinimum(minimum(optimize.Minimize(quadratic, [0.0, 0.0])).X)
+isMinimizeGradient() = nearMinimum(minimum(optimize.Minimize(quadratic, [0.0, 0.0], gradient = quadraticGradient)).X)
+isMinimizeInts() = nearMinimum(minimum(optimize.Minimize(quadratic, [0, 0])).X)
+isMinimizeColumn() = value.Equal(value.Size(minimum(optimize.Minimize(quadratic, [0.0; 0.0])).X), [2, 1])
+isMinimizeNumber() = minimum(optimize.Minimize(x -> (x - 3.0) ^ 2, 0.0, gradient = x -> 2.0 * (x - 3.0))).X == 3.0
+isMinimizeNumberByDifferences() = math.Abs(minimum(optimize.Minimize(x -> (x - 3.0) ^ 2, 0.0)).X - 3.0) < 1.0e-8
+
+defn isMinimizeCalls()
+  (** Given the gradient, one call of f a point; by differences, 2n + 1: the same steps, five times the calls at n = 2. *)
+  a = minimum(optimize.Minimize(quadratic, [0.0, 0.0], gradient = quadraticGradient))
+  b = minimum(optimize.Minimize(quadratic, [0.0, 0.0]))
+  a.Steps == b.Steps and b.Evaluations == 5 * a.Evaluations
+end
+
+defn isMinimizeTol()
+  (** A larger tol stops sooner, where each component of the gradient is at most tol max(1, |F|). *)
+  m = minimum(optimize.Minimize(quadratic, [0.0, 0.0], gradient = quadraticGradient, tol = 1.0e-3))
+  list.Max(math.Abs(m.Gradient)) <= 1.0e-3 and m.Steps < minimum(optimize.Minimize(quadratic, [0.0, 0.0], gradient = quadraticGradient)).Steps
+end
+
+minimizeError(r) = r.Error.Message
+isMinimizeNanStart() = minimizeError(optimize.Minimize(x -> math.Nan, [0.0, 0.0])) == "optimize.Minimize: f is nan at the start, [0.0, 0.0]; give a start where f and its gradient are finite."
+isMinimizeText() = minimizeError(optimize.Minimize(x -> "no", [0.0, 0.0])) == "optimize.Minimize: f gave \"no\" at [0.0, 0.0], not a number."
+isMinimizeGradientShape() = minimizeError(optimize.Minimize(quadratic, [0.0, 0.0], gradient = x -> [1.0])) == "optimize.Minimize: gradient gave [1.0] at [0.0, 0.0], not an array of 2 numbers, as x."
+isMinimizeWrongGradient() = minimizeError(optimize.Minimize(quadratic, [0.0, 0.0], gradient = x -> -quadraticGradient(x))) == "optimize.Minimize: f grows along minus its gradient from [0.0, 0.0], where f = 41.0: the gradient is wrong there, or f too rough for differences."
+
+defn isMinimizeSteps()
+  (** Out of steps: an Err, with the best point found in Best. *)
+  r = optimize.Minimize(quadratic, [0.0, 0.0], steps = 2)
+  result.IsErr(r) and r.Error.Best.Steps == 2 and r.Error.Best.F < 41.0 and text.StartsWith("optimize.Minimize: no minimum within 2 steps", r.Error.Message)
+end
+
+defn isMinimizeWall()
+  (** Past x1 = 0.5, f is infinite: the line search steps back, f falls no further at the wall, but its slope there is
+      not small, so it is an Err, not a minimum. *)
+  r = optimize.Minimize(x -> if x[1] > 0.5 infinite else quadratic(x) end, [0.0, 0.0])
+  result.IsErr(r) and math.Abs(r.Error.Best.X[1] - 0.5) < 1.0e-4 and text.Contains("falls no further", r.Error.Message)
+end
+
+isMinimizeUnbounded() = text.Contains("it may have no minimum", minimizeError(optimize.Minimize(x -> x[1] + x[2], [0.0, 0.0])))
+isMinimizeUserPanic() = message(() -> optimize.Minimize(x -> bug.Panic("mine"), [0.0, 0.0])) == result.Err("mine")
+isMinimizeBadTol() = message(() -> optimize.Minimize(quadratic, [0.0, 0.0], tol = -1.0)) == result.Err("optimize.Minimize: tol is -1.0; give a number of 0.0 or more.")
+isMinimizeBadSteps() = message(() -> optimize.Minimize(quadratic, [0.0, 0.0], steps = 1.5)) == result.Err("optimize.Minimize: steps is 1.5; give a whole number of 0 or more.")
+isMinimizeBadF() = message(() -> optimize.Minimize(1, [0.0, 0.0])) == result.Err("optimize.Minimize: f is 1; give a function of x that gives a number.")
+isMinimizeBadGradient() = message(() -> optimize.Minimize(quadratic, [0.0, 0.0], gradient = 3)) == result.Err("optimize.Minimize: gradient is 3; give a function of x that gives the array of the derivatives of f.")
+isMinimizeEmpty() = message(() -> optimize.Minimize(quadratic, [])) == result.Err("optimize.Minimize: x is []; give a number, or an array of numbers.")
+isMinimizeMatrix() = message(() -> optimize.Minimize(quadratic, [1.0 2.0; 3.0 4.0])) == result.Err("optimize.Minimize: x is an array of size [2, 2]; give an array of one row or one column.")
+isMinimizeNanX() = message(() -> optimize.Minimize(quadratic, [1.0, math.Nan])) == result.Err("optimize.Minimize: x[2] is nan; give finite numbers.")
+
+isSimplex() = nearMinimum(minimum(optimize.Simplex(quadratic, [0.0, 0.0])).X)
+isSimplexKink() = nearMinimum(minimum(optimize.Simplex(x -> math.Abs(x[1] - 1.0) + math.Abs(x[2] + 2.0), [0.0, 0.0])).X)
+isSimplexNumber() = math.Abs(minimum(optimize.Simplex(x -> (x - 3.0) ^ 2, 0.0)).X - 3.0) < 1.0e-8
+isSimplexSame() = optimize.Simplex(quadratic, [0.0, 0.0]) == optimize.Simplex(quadratic, [0.0, 0.0])   (** no randomness *)
+isSimplexWall() = math.Abs(minimum(optimize.Simplex(x -> if x[1] > 0.5 math.Nan else quadratic(x) end, [0.0, 0.0])).X[1] - 0.5) < 1.0e-8
+isSimplexNanStart() = minimizeError(optimize.Simplex(x -> math.Nan, [0.0, 0.0])) == "optimize.Simplex: f is nan at the start, [0.0, 0.0]; give a start where f is finite."
+
+defn isSimplexSteps()
+  r = optimize.Simplex(quadratic, [0.0, 0.0], steps = 3)
+  result.IsErr(r) and r.Error.Best.Steps == 3 and r.Error.Best.Evaluations == 9
+end
+
+isSimplexUnbounded() = text.Contains("f may have no minimum", minimizeError(optimize.Simplex(x -> x[1], [0.0])))
+isSimplexBadTol() = message(() -> optimize.Simplex(quadratic, [0.0, 0.0], tol = math.Nan)) == result.Err("optimize.Simplex: tol is nan; give a number of 0.0 or more.")
+isSimplexBadSteps() = message(() -> optimize.Simplex(quadratic, [0.0, 0.0], steps = -1)) == result.Err("optimize.Simplex: steps is -1; give a whole number of 0 or more.")
+isSimplexBadF() = message(() -> optimize.Simplex("f", [0.0, 0.0])) == result.Err("optimize.Simplex: f is \"f\"; give a function of x that gives a number.")

@@ -1,15 +1,21 @@
-(** The zero of a function: Root, by Brent's method, as fzero in MATLAB and brentq in scipy. The chapter Numerical
-    methods of the book says what it promises, and where it comes from. *)
+(** The zero of a function: Root, by Brent's method, as fzero in MATLAB and brentq in scipy; the minimum of a function:
+    Minimize, by the L-BFGS method of Liu and Nocedal, as fminunc in MATLAB and minimize in scipy, and Simplex, by the
+    method of Nelder and Mead, as fminsearch. The chapter Numerical methods of the book says what each promises, and
+    where it comes from. *)
 use std/bug
+use std/columns as col
 use std/math
+use std/matrix
 use std/result
+use std/text
 use std/value
 
 eps = 2.220446049250313e-16   (** the distance from 1.0 to the next float, 2^-52 *)
 
 defn brief(v)
-  (** A value as an error shows it. *)
-  if value.IsText(v) "\"$v\"" else value.Text(v) end
+  (** A value as an error shows it: its text, cut past 60 characters. *)
+  s = if value.IsText(v) "\"$v\"" else value.Text(v) end
+  if value.Len(s) > 60 "$(text.Slice(1, 57, s))..." else s end
 end
 
 isFinite(x) = value.IsNumber(x) and x - x == 0.0
@@ -215,3 +221,657 @@ defn brent(f, a, fa, b, fb, tol, count)
 end
 
 list2max(a, b) = if a >= b a else b end
+
+bigger(a, b) = if a >= b a else b end
+smaller(a, b) = if a <= b a else b end
+
+(* Minimize: the L-BFGS method of Liu and Nocedal (1989), with the line search of Moré and Thuente (1994). *)
+pairs = 10          (** the pairs (s, y) kept, m of Liu and Nocedal *)
+ftol = 1.0e-4       (** the sufficient decrease of the line search: f falls by at least ftol a g'd *)
+gtol = 0.9          (** its curvature condition: |g(x + a d)'d| at most gtol |g'd| *)
+xtol = eps          (** the line search stops when rounding leaves its interval narrower than xtol times its larger end *)
+tries = 20          (** the most evaluations in one line search *)
+stepMost = 1.0e10   (** the longest step a line search tries, in units of the direction *)
+cbrtEps = 6.055454452393343e-06   (** eps^(1/3), the relative step of the central differences *)
+rootEps = 1.4901161193847656e-08  (** eps^(1/2): where f falls no further, how far its gradient must have shrunk *)
+
+defn checkStart(name, x)
+  (** x checked: a finite number, or an array of one row or one column of finite numbers; a panic that names what is
+      wrong. It gives {X, Scalar}: X the numbers as floats in an array of the shape of x, or of one for a number. *)
+  if isFinite(x)
+    return {X: matrix.Zeros(1) + x, Scalar: true}
+  end
+  if not value.IsArray(x) or value.Len(x) == 0
+    bug.Panic("$name: x is $(brief(x)); give a number, or an array of numbers.")
+  end
+  dims = value.Size(x)
+  if value.Len(dims) > 2 or dims[1] > 1 and dims[2] > 1
+    bug.Panic("$name: x is an array of size $(brief(dims)); give an array of one row or one column.")
+  end
+  kind = col.Kind(x)
+  if (kind == "float" or kind == "int") and isFinite(largest(x * 1.0))
+    return {X: x * 1.0, Scalar: false}
+  end
+  for i in 1..value.Len(x)
+    if not isFinite(x[i])
+      bug.Panic("$name: x[$i] is $(brief(x[i])); give finite numbers.")
+    end
+  end
+  {X: x * 1.0, Scalar: false}
+end
+
+defn checkSteps(name, tol, steps)
+  (** tol and steps checked, as the panics of Minimize and Simplex. *)
+  if not (isFinite(tol) and tol >= 0.0)
+    bug.Panic("$name: tol is $(brief(tol)); give a number of 0.0 or more.")
+  end
+  if not (value.IsInt(steps) and steps >= 0)
+    bug.Panic("$name: steps is $(brief(steps)); give a whole number of 0 or more.")
+  end
+end
+
+defn objective(name, f, x, scalar)
+  (** f at x, an array: a float, nan when f gives an infinity or a nan, or a text when it gives no number. For a number
+      x0, f takes the number. *)
+  v = if scalar f(x[1]) else f(x) end
+  if value.IsNumber(v)
+    return 1.0 * v
+  end
+  "$name: f gave $(brief(v)) at $(brief(if scalar x[1] else x end)), not a number."
+end
+
+defn given(g, x, scalar)
+  (** The gradient g gives at x, as floats in an array of the shape of x; a text when it isn't n numbers. A non-finite
+      component stays, for the caller to see. *)
+  v = if scalar g(x[1]) else g(x) end
+  n = value.Len(x)
+  if scalar and value.IsNumber(v)
+    return matrix.Zeros(1) + v
+  end
+  if value.IsArray(v) and value.Len(v) == n
+    kind = col.Kind(v)
+    if kind == "float" or kind == "int"
+      return if value.Size(v, 1) == value.Size(x, 1) v * 1.0 else matrix.Reshape(value.Size(x), v * 1.0) end
+    end
+    for i in 1..n
+      if not value.IsNumber(v[i])
+        return "optimize.Minimize: gradient gave $(brief(v)) at $(brief(if scalar x[1] else x end)): its component $i is $(brief(v[i])), not a number."
+      end
+    end
+    return matrix.Reshape(value.Size(x), v * 1.0)
+  end
+  what = if scalar "a number" else "an array of $n numbers, as x" end
+  "optimize.Minimize: gradient gave $(brief(v)) at $(brief(if scalar x[1] else x end)), not $what."
+end
+
+defn differences(f, x, scalar)
+  (** The gradient of f at x by central differences, {G, Calls}, or a text when f gives no number: component i is
+      (f(x + h e_i) - f(x - h e_i)) / 2h, with h = eps^(1/3) max(1, |x_i|), which balances the error of the formula,
+      h^2 |f'''| / 6, against that of rounding, about eps |f| / h. 2n calls of f. *)
+  n = value.Len(x)
+  g = x * 0.0
+  xs = x * 1.0
+  for i in 1..n
+    xi = x[i]
+    h = cbrtEps * bigger(1.0, math.Abs(xi))
+    up = xi + h
+    down = xi - h
+    xs[i] = up
+    a = objective("optimize.Minimize", f, xs, scalar)
+    if value.IsText(a)
+      return a
+    end
+    xs[i] = down
+    b = objective("optimize.Minimize", f, xs, scalar)
+    if value.IsText(b)
+      return b
+    end
+    xs[i] = xi
+    g[i] = (a - b) / (up - down)
+  end
+  {G: g, Calls: 2 * n}
+end
+
+defn evaluate(f, gradient, x, scalar)
+  (** f and its gradient at x: {F, G, Calls}, F nan or G with a non-finite component when f or the gradient gives no
+      finite number there; a text when one gives no number, or no array of the shape of x. *)
+  fx = objective("optimize.Minimize", f, x, scalar)
+  if value.IsText(fx)
+    return fx
+  end
+  if value.IsMissing(gradient)
+    d = differences(f, x, scalar)
+    if value.IsText(d)
+      return d
+    end
+    return {F: fx, G: d.G, Calls: 1 + d.Calls}
+  end
+  g = given(gradient, x, scalar)
+  if value.IsText(g)
+    return g
+  end
+  {F: fx, G: g, Calls: 1}
+end
+
+finiteAll(xs) = isFinite(largest(xs))   (** are all the numbers of a float array finite? *)
+
+defn Minimize(f, x, gradient = missing, tol = 1.0e-8, steps = 10000)
+  (** A minimum of f, a smooth function of x, an array of numbers, that gives a number: an Ok of {X, F, Gradient,
+      Steps, Evaluations}, the point, f there, its gradient, the steps taken and the calls of f. gradient, a function of
+      x that gives the array of the derivatives of f, as x, makes it faster and more exact; without it the gradient is
+      computed by central differences, 2n more calls of f each time. x may also be a number, for a function of one
+      number.
+
+      The method is L-BFGS (Liu and Nocedal 1989): each step goes along a direction of quasi-Newton, from the last 10
+      steps and changes of the gradient, then a line search (Moré and Thuente 1994) finds a point where f has fallen
+      enough and its slope has shrunk. It ends when each component of the gradient is at most tol max(1, |F|), or
+      when f falls no further: two steps change it by less than 4 eps |F|, or no step down the gradient lowers it,
+      the limit of floats, or of a gradient by differences. It finds a point where the gradient vanishes: on a convex
+      f, the minimum; elsewhere often a local minimum, the one the start leads to.
+
+      An Err of kind "optimize" when f gives a nan, an infinity or no number at x, when the steps run out, when f
+      stops falling where its gradient is still large, at a kink, at a wall past which f is not finite, or with a
+      gradient wrong or not exact enough, or when f keeps falling past steps of 1e10; its Best is the struct of the
+      best point found. Further on, a nan or an infinity from f or the gradient makes the line search step back; a text,
+      or a gradient of the wrong shape, is an Err.
+
+        m = Minimize(x -> (x[1] - 1.0) ^ 2 + 10.0 * (x[2] + 2.0) ^ 2, [0.0, 0.0]).Value
+        math.Near(m.X, [1.0, -2.0], abs = 1.0e-7) --> true
+        Minimize(x -> (x - 3.0) ^ 2, 0.0, gradient = x -> 2.0 * (x - 3.0)).Value.X --> 3.0 *)
+  checkSteps("optimize.Minimize", tol, steps)
+  if not value.IsFunction(f)
+    bug.Panic("optimize.Minimize: f is $(brief(f)); give a function of x that gives a number.")
+  end
+  if not (value.IsMissing(gradient) or value.IsFunction(gradient))
+    bug.Panic("optimize.Minimize: gradient is $(brief(gradient)); give a function of x that gives the array of the derivatives of f.")
+  end
+  p = checkStart("optimize.Minimize", x)
+  lbfgs(f, gradient, p.X, p.Scalar, 1.0 * tol, steps)
+end
+
+defn found(x, e, scalar, taken, calls)
+  (** The struct of a result: X, F, Gradient, Steps, Evaluations, X and Gradient numbers for a number x0. *)
+  {X: if scalar x[1] else x end, F: e.F, Gradient: if scalar e.G[1] else e.G end, Steps: taken, Evaluations: calls}
+end
+
+defn lbfgs(f, gradient, x, scalar, tol, most)
+  (** Liu and Nocedal's Algorithm 2.1, with their scaling M3 of the first matrix, H0 = (s'y / y'y) I from the last pair,
+      and the strong Wolfe conditions in the line search. The pairs (s, y), s the step and y the change of the
+      gradient, are kept in a ring of pairs places, the newest at newest; a pair with s'y <= eps y'y, which would not
+      keep the matrix positive definite, is left out. The direction, H g by Nocedal's two loops (1980) over the pairs,
+      is direction's, native code: 4 m n operations a step, on arrays it doesn't make again at each step. *)
+  e = evaluate(f, gradient, x, scalar)
+  if value.IsText(e)
+    return failMin(e, x, {F: math.Nan, G: x * math.Nan}, scalar, 0, 1)
+  end
+  calls = e.Calls
+  if not (e.F - e.F == 0.0 and finiteAll(e.G))
+    what = if e.F - e.F == 0.0 "the gradient is $(brief(if scalar e.G[1] else e.G end))" else "f is $(e.F)" end
+    return failMin("optimize.Minimize: $what at the start, $(brief(if scalar x[1] else x end)); give a start where f and its gradient are finite.", x, e, scalar, 0, calls)
+  end
+  start = largest(e.G)   (* the largest component of the gradient at the start *)
+  ss = [missing for k in 1..pairs]
+  ys = [missing for k in 1..pairs]
+  rho = matrix.Zeros(pairs)
+  used = 0
+  newest = 0
+  gamma = 1.0
+  taken = 0
+  older = math.Nan   (* f one step before the last, or nan unless the last two steps met the conditions *)
+  fails = 0          (* the searches down the gradient that failed in a row *)
+  while true
+    if largest(e.G) <= tol * bigger(1.0, math.Abs(e.F))
+      return result.Ok(found(x, e, scalar, taken, calls))
+    end
+    if taken >= most
+      return failMin("optimize.Minimize: no minimum within $most steps: f = $(e.F), and the largest component of its gradient is $(largest(e.G)); give more steps, a larger tol, or another start.", x, e, scalar, taken, calls)
+    end
+    d = -e.G
+    if used > 0
+      d = -direction(e.G, ss, ys, rho, used, newest, gamma)
+    end
+    gd = dot(e.G, d)
+    if not (gd < 0.0)
+      (* Not a direction of descent, from rounding: the memory goes, and the step goes down the gradient. *)
+      used = 0
+      d = -e.G
+      gd = dot(e.G, d)
+    end
+    stp = if used == 0 smaller(1.0, 1.0 / math.Sqrt(-gd)) else 1.0 end
+    ls = lineSearch(f, gradient, scalar, x, e, d, gd, stp)
+    if value.IsText(ls)
+      return failMin(ls, x, e, scalar, taken, calls)
+    end
+    calls += ls.Calls
+    if ls.Far
+      return failMin("optimize.Minimize: f keeps falling along a line from $(brief(if scalar x[1] else x end)), to $(ls.E.F) at $(brief(if scalar ls.X[1] else ls.X end)): it may have no minimum.", ls.X, ls.E, scalar, taken + 1, calls)
+    end
+    down = used == 0   (* this search went down the gradient *)
+    moved = ls.E.F < e.F
+    if ls.Wolfe and not moved
+      (* The conditions hold where f has not changed: rounding leaves no decrease to find. *)
+      return settled(x, e, scalar, taken, calls, start)
+    end
+    if moved
+      s = ls.X - x
+      y = ls.E.G - e.G
+      sy = dot(s, y)
+      yy = dot(y, y)
+      if sy > eps * yy
+        newest = if newest == pairs 1 else newest + 1 end
+        ss[newest] = s
+        ys[newest] = y
+        rho[newest] = 1.0 / sy
+        used = smaller(used + 1, pairs)
+        gamma = sy / yy
+      end
+      previous = e.F
+      x = ls.X
+      e = ls.E
+      taken += 1
+      if ls.Wolfe and older - e.F <= 4.0 * eps * math.Abs(e.F)
+        return settled(x, e, scalar, taken, calls, start)
+      end
+      older = if ls.Wolfe previous else math.Nan end
+    end
+    if ls.Wolfe
+      fails = 0
+    else
+      (* No step met both conditions: rounding, or the error of the gradient, hides the slope along d. The memory goes,
+         and the next search goes down the gradient; when searches down the gradient fail twice in a row, or find no
+         lower point, f falls no further at this precision. *)
+      if down
+        if not moved and taken == 0
+          return failMin("optimize.Minimize: f grows along minus its gradient from $(brief(if scalar x[1] else x end)), where f = $(e.F): the gradient is wrong there, or f too rough for differences.", x, e, scalar, taken, calls)
+        end
+        if not moved or fails > 0
+          return settled(x, e, scalar, taken, calls, start)
+        end
+        fails += 1
+      end
+      used = 0
+    end
+  end
+end
+
+defn settled(x, e, scalar, taken, calls, start)
+  (** The end where f falls no further: an Ok when the gradient has shrunk to sqrt(eps) of its size at the start, or of
+      1, the limit of floats or of a gradient by differences; else an Err, as f stops falling where its slope is not
+      small: a kink, a wall past which f is not finite, or a gradient that is wrong or not exact enough. *)
+  big = largest(e.G)
+  if big <= rootEps * bigger(1.0, start)
+    return result.Ok(found(x, e, scalar, taken, calls))
+  end
+  failMin("optimize.Minimize: f falls no further from $(brief(if scalar x[1] else x end)), where f = $(e.F), but the largest component of its gradient is $big, and $(start) at the start: f may have a kink there, or no finite value past it, or a gradient not exact enough; give the gradient, or a larger tol.", x, e, scalar, taken, calls)
+end
+
+defn failMin(message, x, e, scalar, taken, calls)
+  (** The Err of Minimize: its message, and the best point found. *)
+  result.Err({Kind: "optimize", Message: message, Best: found(x, e, scalar, taken, calls)})
+end
+
+defn lineSearch(f, gradient, scalar, x, e, d, gd, stp)
+  (** Moré and Thuente's search (1994) along d from x, where f is e.F and its slope gd < 0, for a step a with
+      f(x + a d) <= f(x) + ftol a gd and |g(x + a d)'d| <= gtol |gd|: the strong Wolfe conditions. Each trial step
+      comes from cubic or quadratic interpolation of f and its slope at the ends of an interval that holds such a
+      step, which shrinks; while no step has met the first condition with a positive slope, it works on
+      psi(a) = f(x + a d) - f(x) - ftol a gd instead of f. It gives {Wolfe, Far, X, E, Calls}, E the evaluation at X,
+      Far true when f still falls fast at the longest step, stepMost; when no step meets both within tries
+      evaluations, or rounding stops the interval from shrinking, Wolfe is false and X is the lowest point met, x
+      itself if none is below f(x). A text when f or the gradient gives no number, or no array of the shape of x. *)
+  gtest = ftol * gd
+  width = stepMost
+  wide = 2.0 * width
+  st = {Stx: 0.0, Fx: e.F, Dx: gd, Sty: 0.0, Fy: e.F, Dy: gd, Brackt: false, Stp: stp}
+  first = true          (* the first stage, on psi *)
+  lo = 0.0
+  hi = 5.0 * stp
+  far = 2.0 * stepMost  (* the shortest step where f or its gradient was not finite, beyond reach until one is *)
+  calls = 0
+  best = missing
+  for k in 1..tries
+    if not (stp > 0.0)
+      break
+    end
+    xt = x + stp * d
+    et = evaluate(f, gradient, xt, scalar)
+    if value.IsText(et)
+      return et
+    end
+    calls += et.Calls
+    fp = et.F
+    dp = if fp - fp == 0.0 dot(et.G, d) else math.Nan end
+    if not (dp - dp == 0.0)
+      (* No finite value: back half way to the best step so far, and never as far again. *)
+      far = stp
+      stp = st.Stx + 0.5 * (stp - st.Stx)
+      hi = smaller(hi, far)
+    else
+      ftest = e.F + stp * gtest
+      if (fp < e.F or fp <= ftest) and (value.IsMissing(best) or fp < best.E.F)
+        best = {X: xt, E: et}
+      end
+      if first and fp <= ftest and dp >= ftol * gd
+        first = false
+      end
+      if fp <= ftest and math.Abs(dp) <= gtol * (-gd)
+        return {Wolfe: true, Far: false, X: xt, E: et, Calls: calls}
+      end
+      if stp >= stepMost and fp <= ftest and dp <= gtest
+        return {Wolfe: false, Far: true, X: xt, E: et, Calls: calls}
+      end
+      if st.Brackt and (stp <= lo or stp >= hi or hi - lo <= xtol * hi)
+        break
+      end
+      if first and fp <= st.Fx and fp > ftest
+        (* The first stage, on psi: the same choice on the values and slopes of psi. *)
+        m = {Stx: st.Stx, Fx: st.Fx - st.Stx * gtest, Dx: st.Dx - gtest, Sty: st.Sty, Fy: st.Fy - st.Sty * gtest,
+             Dy: st.Dy - gtest, Brackt: st.Brackt}
+        n = trial(m, stp, fp - stp * gtest, dp - gtest, lo, hi)
+        st = {Stx: n.Stx, Fx: n.Fx + n.Stx * gtest, Dx: n.Dx + gtest, Sty: n.Sty, Fy: n.Fy + n.Sty * gtest,
+              Dy: n.Dy + gtest, Brackt: n.Brackt, Stp: n.Stp}
+      else
+        st = trial(st, stp, fp, dp, lo, hi)
+      end
+      stp = st.Stp
+      if st.Brackt
+        (* Bisect when the interval has not shrunk by a third in two trials. *)
+        if math.Abs(st.Sty - st.Stx) >= 0.66 * wide
+          stp = st.Stx + 0.5 * (st.Sty - st.Stx)
+        end
+        wide = width
+        width = math.Abs(st.Sty - st.Stx)
+        lo = smaller(st.Stx, st.Sty)
+        hi = bigger(st.Stx, st.Sty)
+      else
+        lo = stp + 1.1 * (stp - st.Stx)
+        hi = stp + 4.0 * (stp - st.Stx)
+      end
+      stp = smaller(bigger(stp, 0.0), stepMost)
+      if stp >= far
+        stp = st.Stx + 0.5 * (far - st.Stx)
+      end
+      if st.Brackt and (stp <= lo or stp >= hi or hi - lo <= xtol * hi)
+        stp = st.Stx
+      end
+    end
+  end
+  if value.IsMissing(best)
+    return {Wolfe: false, Far: false, X: x, E: e, Calls: calls}
+  end
+  {Wolfe: false, Far: false, X: best.X, E: best.E, Calls: calls}
+end
+
+defn trial(st, stp, fp, dp, lo, hi)
+  (** Moré and Thuente's next trial step, and the interval after stp, where f is fp and its slope dp: st holds the ends
+      of the interval, x the best step so far and y the other, f and its slope at each, and whether they bracket a
+      step that meets the conditions; the step stays within [lo, hi] when they don't. Four cases, by what stp shows. *)
+  stx = st.Stx
+  fx = st.Fx
+  dx = st.Dx
+  sty = st.Sty
+  fy = st.Fy
+  dy = st.Dy
+  brackt = st.Brackt
+  sgnd = if dx < 0.0 (-dp) else dp end   (* dp times the sign of dx *)
+  stpf = stp
+  if fp > fx
+    (* 1: a higher value: bracketed. The step of the cubic through both ends if nearer to stx than the step of the
+       quadratic through the values and the slope at stx, else between the two. *)
+    c = cubic(stx, fx, dx, stp, fp, dp, stp < stx)
+    stpc = stx + c * (stp - stx)
+    stpq = stx + ((dx / ((fx - fp) / (stp - stx) + dx)) / 2.0) * (stp - stx)
+    stpf = if math.Abs(stpc - stx) < math.Abs(stpq - stx) stpc else stpc + (stpq - stpc) / 2.0 end
+    brackt = true
+  else if sgnd < 0.0
+    (* 2: lower, the slopes of opposite signs: bracketed. Of the cubic step and the secant step on the slopes, the one
+       farther from stp. *)
+    c = cubic(stp, fp, dp, stx, fx, dx, stp > stx)
+    stpc = stp + c * (stx - stp)
+    stpq = stp + (dp / (dp - dx)) * (stx - stp)
+    stpf = if math.Abs(stpc - stp) > math.Abs(stpq - stp) stpc else stpq end
+    brackt = true
+  else if math.Abs(dp) < math.Abs(dx)
+    (* 3: lower, the same sign, the slope shrinks. The cubic step only when the cubic has its minimum beyond stp, else
+       the end of [lo, hi]; then the nearer to stp of it and the secant step, kept within two thirds of the way to sty
+       when bracketed, else the farther. *)
+    theta = 3.0 * (fx - fp) / (stp - stx) + dx + dp
+    s = bigger(math.Abs(theta), bigger(math.Abs(dx), math.Abs(dp)))
+    gamma = s * math.Sqrt(bigger(0.0, (theta / s) ^ 2 - (dx / s) * (dp / s)))
+    if stp > stx
+      gamma = -gamma
+    end
+    r = ((gamma - dp) + theta) / ((gamma + (dx - dp)) + gamma)
+    stpc = if r < 0.0 and gamma != 0.0 stp + r * (stx - stp) else if stp > stx hi else lo end
+    stpq = stp + (dp / (dp - dx)) * (stx - stp)
+    if brackt
+      stpf = if math.Abs(stpc - stp) < math.Abs(stpq - stp) stpc else stpq end
+      stpf = if stp > stx smaller(stp + 0.66 * (sty - stp), stpf) else bigger(stp + 0.66 * (sty - stp), stpf) end
+    else
+      stpf = if math.Abs(stpc - stp) > math.Abs(stpq - stp) stpc else stpq end
+      stpf = bigger(lo, smaller(hi, stpf))
+    end
+  else
+    (* 4: lower, the same sign, the slope doesn't shrink: the cubic step on stp and sty when bracketed, else the end
+       of [lo, hi]. *)
+    if brackt
+      c = cubic(stp, fp, dp, sty, fy, dy, stp > sty)
+      stpf = stp + c * (sty - stp)
+    else
+      stpf = if stp > stx hi else lo end
+    end
+  end
+  if fp > fx
+    sty = stp
+    fy = fp
+    dy = dp
+  else
+    if sgnd < 0.0
+      sty = stx
+      fy = fx
+      dy = dx
+    end
+    stx = stp
+    fx = fp
+    dx = dp
+  end
+  {Stx: stx, Fx: fx, Dx: dx, Sty: sty, Fy: fy, Dy: dy, Brackt: brackt, Stp: stpf}
+end
+
+defn cubic(a, fa, da, b, fb, db, flip)
+  (** Where the cubic through f and its slope at a and b has its minimum, as a fraction of the way from a to b; flip
+      changes the sign of the root, as the side of b demands. *)
+  theta = 3.0 * (fa - fb) / (b - a) + da + db
+  s = bigger(math.Abs(theta), bigger(math.Abs(da), math.Abs(db)))
+  gamma = s * math.Sqrt(bigger(0.0, (theta / s) ^ 2 - (da / s) * (db / s)))
+  if flip
+    gamma = -gamma
+  end
+  ((gamma - da) + theta) / (((gamma - da) + gamma) + db)
+end
+
+(* Simplex: the method of Nelder and Mead (1965), in the form of Lagarias, Reeds, Wright and Wright (1998), with the
+   coefficients of Gao and Han (2012). *)
+inf = 1.0 / 0.0   (** the value a point gets where f gives no finite number: worse than any other *)
+
+defn Simplex(f, x, tol = 1.0e-8, steps = 10000)
+  (** A minimum of f, a function of x, an array of numbers, that gives a number, by the method of Nelder and Mead
+      (1965), which needs no gradient: an Ok of {X, F, Steps, Evaluations}, the point, f there, the steps taken and
+      the calls of f. For an f that is not smooth, or noisy, or of a few numbers; Minimize is faster and more exact on
+      a smooth f. x may also be a number, for a function of one number.
+
+      It moves a simplex of n + 1 points: each step reflects the worst point through the middle of the others, then
+      goes farther if that is better, or less far, or shrinks the simplex towards the best point, with the coefficients
+      of Gao and Han (2012) for n numbers: 1, 1 + 2/n, 0.75 - 1/(2n) and 1 - 1/n, those of Nelder and Mead at n = 1
+      and 2. The first simplex is x and, for each component, x with that component 5 % larger, or 0.00025 for a 0, as
+      fminsearch in MATLAB. It ends when the points are within tol max(1, |X|) of the best one in each component and
+      their values within tol max(1, |F|) of F. Nothing proves that it ends at a minimum: it may stop short of it.
+
+      An Err of kind "optimize" when f gives a nan, an infinity or no number at x, when the steps run out, or when the
+      simplex grows past the largest floats, as f falls without end; its Best is the struct of the best point found. A
+      nan or an infinity further on counts as a value worse than all others.
+
+        s = Simplex(x -> (x[1] - 1.0) ^ 2 + 10.0 * (x[2] + 2.0) ^ 2, [0.0, 0.0]).Value
+        math.Near(s.X, [1.0, -2.0], abs = 1.0e-7) --> true *)
+  checkSteps("optimize.Simplex", tol, steps)
+  if not value.IsFunction(f)
+    bug.Panic("optimize.Simplex: f is $(brief(f)); give a function of x that gives a number.")
+  end
+  p = checkStart("optimize.Simplex", x)
+  nelderMead(f, p.X, p.Scalar, 1.0 * tol, steps)
+end
+
+defn nelderMead(f, x0, scalar, tol, most)
+  (** The simplex vs, its values fs in increasing order: a new point goes after those of equal value, and a shrink keeps
+      the best point first among equals, the rules of Lagarias et al. that make each step well defined. *)
+  n = value.Len(x0)
+  k = 1.0 * bigger(n, 2)   (* Gao and Han's coefficients ask n >= 2; at n = 1, those of n = 2, Nelder and Mead's *)
+  chi = 1.0 + 2.0 / k
+  psi = 0.75 - 1.0 / (2.0 * k)
+  sigma = 1.0 - 1.0 / k
+  f0 = objective("optimize.Simplex", f, x0, scalar)
+  if value.IsText(f0)
+    return failSimplex(f0, x0, math.Nan, scalar, 0, 1)
+  end
+  if not (f0 - f0 == 0.0)
+    return failSimplex("optimize.Simplex: f is $f0 at the start, $(brief(if scalar x0[1] else x0 end)); give a start where f is finite.", x0, f0, scalar, 0, 1)
+  end
+  vs = [missing for k in 1..n + 1]
+  fs = matrix.Zeros(n + 1)
+  vs[1] = x0
+  fs[1] = f0
+  for i in 1..n
+    v = x0 * 1.0
+    v[i] = if x0[i] != 0.0 1.05 * x0[i] else 0.00025 end
+    fv = objective("optimize.Simplex", f, v, scalar)
+    if value.IsText(fv)
+      return failSimplex(fv, x0, f0, scalar, 0, i + 1)
+    end
+    vs[i + 1] = v
+    fs[i + 1] = if fv - fv == 0.0 fv else inf end
+  end
+  calls = n + 1
+  s = sorted(vs, fs)
+  vs = s.Vs
+  fs = s.Fs
+  taken = 0
+  while true
+    best = vs[1]
+    if fs[n + 1] - fs[1] <= tol * bigger(1.0, math.Abs(fs[1]))
+      wide = 0.0
+      for i in 2..n + 1
+        wide = bigger(wide, largest(vs[i] - best))
+      end
+      if wide <= tol * bigger(1.0, largest(best))
+        return result.Ok({X: if scalar best[1] else best end, F: fs[1], Steps: taken, Evaluations: calls})
+      end
+    end
+    if taken >= most
+      return failSimplex("optimize.Simplex: no minimum within $most steps: f = $(fs[1]) at the best point, $(fs[n + 1]) at the worst; give more steps, a larger tol, or another start.", best, fs[1], scalar, taken, calls)
+    end
+    taken += 1
+    mid = best
+    for i in 2..n
+      mid = mid + vs[i]
+    end
+    mid = mid / n
+    worst = vs[n + 1]
+    xr = mid + (mid - worst)
+    if not finiteAll(xr)
+      return failSimplex(grew(best, fs[1], scalar), best, fs[1], scalar, taken, calls)
+    end
+    fr = valueAt(f, xr, scalar)
+    if value.IsText(fr)
+      return failSimplex(fr, best, fs[1], scalar, taken, calls + 1)
+    end
+    calls += 1
+    shrink = false
+    if fr < fs[1]
+      (* Expand: farther along the same line, kept if lower than the reflected point. *)
+      xe = mid + chi * (xr - mid)
+      if not finiteAll(xe)
+        return failSimplex(grew(best, fs[1], scalar), best, fs[1], scalar, taken, calls)
+      end
+      fe = valueAt(f, xe, scalar)
+      if value.IsText(fe)
+        return failSimplex(fe, best, fs[1], scalar, taken, calls + 1)
+      end
+      calls += 1
+      if fe < fr
+        xr = xe
+        fr = fe
+      end
+    else if fr >= fs[n]
+      (* Contract: outside, between the middle and the reflected point, or inside, between the middle and the worst. *)
+      outside = fr < fs[n + 1]
+      xc = if outside mid + psi * (xr - mid) else mid - psi * (mid - worst) end
+      fc = valueAt(f, xc, scalar)
+      if value.IsText(fc)
+        return failSimplex(fc, best, fs[1], scalar, taken, calls + 1)
+      end
+      calls += 1
+      if outside and fc <= fr or not outside and fc < fs[n + 1]
+        xr = xc
+        fr = fc
+      else
+        shrink = true
+      end
+    end
+    if shrink
+      (* Shrink every point towards the best. *)
+      for i in 2..n + 1
+        vs[i] = best + sigma * (vs[i] - best)
+        fv = valueAt(f, vs[i], scalar)
+        if value.IsText(fv)
+          return failSimplex(fv, best, fs[1], scalar, taken, calls + 1)
+        end
+        calls += 1
+        fs[i] = fv
+      end
+      s = sorted(vs, fs)
+      vs = s.Vs
+      fs = s.Fs
+    else
+      (* The new point replaces the worst, after the points of a lower or equal value. *)
+      j = n + 1
+      while j > 1 and fs[j - 1] > fr
+        vs[j] = vs[j - 1]
+        fs[j] = fs[j - 1]
+        j -= 1
+      end
+      vs[j] = xr
+      fs[j] = fr
+    end
+  end
+end
+
+grew(x, fx, scalar) = "optimize.Simplex: the simplex grew past the largest floats, with f = $fx at $(brief(if scalar x[1] else x end)): f may have no minimum."   (** the message when it does *)
+
+defn sorted(vs, fs)
+  (** {Vs, Fs}: the points vs and their values fs in increasing order of value, by insertion: points of equal value
+      keep their order, so that a shrink keeps the best point first. *)
+  for i in 2..value.Len(fs)
+    v = vs[i]
+    fv = fs[i]
+    j = i
+    while j > 1 and fs[j - 1] > fv
+      vs[j] = vs[j - 1]
+      fs[j] = fs[j - 1]
+      j -= 1
+    end
+    vs[j] = v
+    fs[j] = fv
+  end
+  {Vs: vs, Fs: fs}
+end
+
+defn valueAt(f, x, scalar)
+  (** f at x for Simplex: a float, inf where f gives a nan or an infinity, a text when it gives no number. *)
+  v = objective("optimize.Simplex", f, x, scalar)
+  if value.IsText(v) or v - v == 0.0 v else inf end
+end
+
+defn failSimplex(message, x, fx, scalar, taken, calls)
+  (** The Err of Simplex: its message, and the best point found. *)
+  result.Err({Kind: "optimize", Message: message, Best: {X: if scalar x[1] else x end, F: fx, Steps: taken, Evaluations: calls}})
+end

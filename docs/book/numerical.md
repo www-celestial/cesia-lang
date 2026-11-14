@@ -1,9 +1,10 @@
 # Numerical methods
 
-In this chapter you find where a function is zero, with [optimize.Root], and you solve differential equations, with
-[ode.Solve]: what `fzero` and `ode45` do in MATLAB, `brentq` and `solve_ivp` in scipy. Each method comes from a paper,
-named here with what it promises; the tests of Cesia check each promise, and the last part of each section says how it
-compares with scipy and Octave, measured.
+In this chapter you find where a function is zero, with [optimize.Root], where it is smallest, with [optimize.Minimize]
+and [optimize.Simplex], and you solve differential equations, with [ode.Solve]: what `fzero`, `fminunc`, `fminsearch`
+and `ode45` do in MATLAB, `brentq`, `minimize` and `solve_ivp` in scipy. Each method comes from a paper, named here with
+what it promises; the tests of Cesia check each promise, and the last part of each section says how it compares with
+scipy and Octave, measured.
 
 ## The zero of a function
 
@@ -101,6 +102,210 @@ The zero of $x^3 - 2x - 5$ on `[2, 3]` to the last float, 20,000 times in a loop
 of the median of 21 runs: 6.9 to 7.5), 11.5 µs for scipy's `brentq` (11.3 to 12.0), each with 8 calls of `f`, measured as
 the solves of [Speed of Solve](#speed-of-solve) are. Root's loop runs in the interpreter, as the JIT doesn't yet make
 machine code of a loop that calls [math.Abs] or [value.IsNumber].
+
+## The minimum of a function
+
+[optimize.Minimize] finds an `x` where a function `f` of an array of numbers is smallest, and [optimize.Simplex] does
+the same with another method. Rosenbrock's function is a classic test: a narrow curved valley whose floor falls slowly
+towards its minimum, 0 at `[1, 1]`. Its *gradient*, the array of the slopes of `f` along each coordinate, can be given
+with it:
+
+```cesia
+use std/optimize
+use std/result
+rosen(x) = (1.0 - x[1]) ^ 2 + 100.0 * (x[2] - x[1] ^ 2) ^ 2
+grad(x) = [-2.0 * (1.0 - x[1]) - 400.0 * x[1] * (x[2] - x[1] ^ 2), 200.0 * (x[2] - x[1] ^ 2)]
+m = result.Unwrap(optimize.Minimize(rosen, [-1.2, 1.0], gradient = grad))
+m -->
+```
+
+`X` is the point found, `F` is `f(X)`, `Gradient` the gradient there, `Steps` the steps taken and `Evaluations` the
+calls of `f`. Without `gradient`, Minimize computes it from `f` by differences, at the cost of more calls:
+
+```cesia
+optimize.Minimize(rosen, [-1.2, 1.0]).Value.Evaluations -->
+s = result.Unwrap(optimize.Simplex(rosen, [-1.2, 1.0]))
+s -->
+```
+
+`x` may also be a number, for a function of one number, and then `X` and `Gradient` are numbers. The same in Python, R
+and MATLAB:
+
+```python
+from scipy.optimize import minimize
+rosen = lambda x: (1 - x[0])**2 + 100 * (x[1] - x[0]**2)**2
+grad = lambda x: [-2 * (1 - x[0]) - 400 * x[0] * (x[1] - x[0]**2), 200 * (x[1] - x[0]**2)]
+m = minimize(rosen, [-1.2, 1.0], jac=grad, method="L-BFGS-B", options={"gtol": 1e-8, "ftol": 4 * 2.2e-16})
+# m.nit 38, m.nfev 46
+s = minimize(rosen, [-1.2, 1.0], method="Nelder-Mead", options={"adaptive": True, "xatol": 1e-8, "fatol": 1e-8})
+# s.nfev 219, s.x equal to Simplex's X to 14 digits
+```
+
+```r
+fr <- function(x) (1 - x[1])^2 + 100 * (x[2] - x[1]^2)^2
+grr <- function(x) c(-2 * (1 - x[1]) - 400 * x[1] * (x[2] - x[1]^2), 200 * (x[2] - x[1]^2))
+optim(c(-1.2, 1), fr, grr, method = "L-BFGS-B", control = list(factr = 1, pgtol = 1e-8))  # 49 calls
+optim(c(-1.2, 1), fr, control = list(reltol = 1e-16))  # Nelder-Mead, without Gao and Han's coefficients: 251 calls
+```
+
+```matlab
+rosen = @(x) (1 - x(1))^2 + 100 * (x(2) - x(1)^2)^2;
+x = fminsearch(rosen, [-1.2 1], optimset('TolX', 1e-8, 'TolFun', 1e-8))  % 200 calls in GNU Octave
+x = fminunc(@rosenAndGradient, [-1.2; 1], optimset('GradObj', 'on'))     % a file that gives f and its gradient
+```
+
+Which one to use:
+
+| | Minimize | Simplex |
+|---|---|---|
+| `f` | smooth: it has a slope everywhere | anything that gives a number: with kinks, steps or noise |
+| Speed | fast, more so with `gradient`; fit for thousands of numbers | slow past a few numbers: 550 to 2,500 calls at 4, 1,200 to 10,500 at 10 |
+| Promise | a point where the gradient is near 0 | none: it may stop short of a minimum |
+| MATLAB, scipy | `fminunc`; `minimize(method = "L-BFGS-B")` | `fminsearch`; `minimize(method = "Nelder-Mead")` |
+
+Both are deterministic: the same call gives the same answer, to the last bit, on the same machine.
+
+### What Minimize promises
+
+The method is L-BFGS, of Liu and Nocedal (1989), the one scipy's `L-BFGS-B` uses when no bounds are given. Each step
+goes along a *direction of descent*, a direction in which `f` falls, then a *line search* chooses how far to go along
+it.
+
+- **The direction.** Minus the gradient points downhill, but in a curved valley it points at the wall, and steps along
+  it zigzag. Newton's method corrects this with the *Hessian*, the matrix of the second derivatives of `f`: its inverse
+  times the gradient points at the bottom of the valley. A *quasi-Newton* method never computes the Hessian: it learns
+  it from how the gradient changed between steps (the method of Broyden, Fletcher, Goldfarb and Shanno, *BFGS*).
+  L-BFGS, for *limited memory*, keeps only the last 10 steps `s` and the last 10 changes of the gradient `y`, `20 n`
+  numbers instead of the `n × n` of a matrix, and computes the direction from them by Nocedal's *two loops* (1980), in
+  `4 · 10 · n` operations. The first matrix of each step is `(s'y / y'y)` times the identity, the scale of the last
+  pair (Liu and Nocedal's M3). A pair with `s'y` not above $\epsilon\, y'y$ is left out, as it would make the
+  direction point uphill.
+- **The line search.** Along the direction `d`, a step `a` is good when `f` has fallen by at least $10^{-4}$ of what
+  its slope promised, $f(x + a d) \le f(x) + 10^{-4} a\, g'd$ (*sufficient decrease*), and its slope has flattened to
+  at most 0.9 of what it was, $|g(x + a d)'d| \le 0.9\, |g'd|$ (*curvature*): together the *strong Wolfe conditions*.
+  Moré and Thuente's search (1994) finds such a step by fitting cubics and parabolas to `f` and its slope inside an
+  interval that holds one, which shrinks; their paper proves that its trial steps converge to such a step and that,
+  but in pathological cases, it ends after a finite number of them. Minimize allows it 20 evaluations of `f` a step,
+  as Liu and Nocedal's code and scipy do, and tries the step 1 first, which is often good, but for the first step down
+  the gradient, where it tries `1 / |g|`.
+- **The end.** Minimize stops with an `Ok` when each component of the gradient is at most `tol · max(1, |F|)`,
+  `tol = 1e-8` by default. Near a minimum, rounding can make `f` stop falling before that: when two steps change `f`
+  by less than $4 \epsilon |F|$, where $\epsilon = 2^{-52}$, or when a search fails twice down the gradient itself,
+  Minimize stops too, with an `Ok` only if the gradient has shrunk to $\sqrt{\epsilon} \approx 1.5 \cdot 10^{-8}$ of
+  its largest component at the start, or of 1: the limit of floats, or of the gradient by differences. Otherwise `f`
+  stopped falling where its slope is not small, at a kink, at a wall past which `f` has no finite value, or with a
+  wrong gradient, and it is an `Err`.
+
+The promise: for a function twice differentiable whose curvature is bounded above and below by positive numbers in
+every direction, a *uniformly convex* function, Liu and Nocedal prove that L-BFGS converges to the minimum, and that the
+gap to the minimum shrinks at least geometrically, $f_k - f_{\min} \le r^k (f_0 - f_{\min})$ for some $r < 1$ after $k$
+steps (*R-linear* convergence). For other functions there is no such theorem: Minimize ends at a point where the gradient is near 0,
+most often a *local minimum*, lower than every point near it but not always the lowest of all, the one the start leads
+to. From another start, it may find another.
+
+On extended Rosenbrock with 1,000 numbers, given the gradient, Minimize and scipy's `L-BFGS-B` at the same tolerance
+give the same answer to the last bit: `F = 1.2343201197106615e-22`, after 37 steps and 46 calls of `f`.
+
+### The gradient by differences
+
+Without `gradient`, component `i` of the gradient is a *central difference*,
+$(f(x + h e_i) - f(x - h e_i)) / 2h$, with $h = \epsilon^{1/3} \max(1, |x_i|) \approx 6 \cdot 10^{-6} \max(1, |x_i|)$
+(Nocedal and Wright, §8.1). Its error has two parts: the formula's, about $h^2 |f'''| / 6$, which a smaller `h`
+shrinks, and rounding's, about $\epsilon |f| / h$, which a smaller `h` grows; that `h` balances them, for an error near
+$\epsilon^{2/3} \approx 4 \cdot 10^{-11}$ of the gradient's size on a function of ordinary scale. Each gradient costs
+`2n` calls of `f`, so a step costs `2n + 1` where the gradient given costs 1: give it when it is at hand.
+
+The error matters where `f` is steep or badly scaled. On Osborne's first problem of Moré, Garbow and Hillstrom,
+$e^{-t x_4}$ with `t` up to 320 has a third derivative near $10^8$, the error of the differences reaches $10^{-6}$ of
+the gradient, and `f` stops falling $2 \cdot 10^{-6}$ above its minimum, with a gradient still larger than the rule of
+the end allows: an `Err` that asks for the gradient, which then reaches the minimum to 14 digits.
+
+### What Simplex promises
+
+The method is Nelder and Mead's (1965), as MATLAB's `fminsearch`, with the coefficients of Gao and Han (2012). It moves
+a *simplex*, `n + 1` points in `n` dimensions: a triangle in the plane, a tetrahedron in space. At each step it takes
+the worst point, the one of highest `f`, and *reflects* it through the middle of the others. If the new point is the
+best so far, it tries going twice as far, an *expansion*; if it is no better than the second worst, it tries a point
+between, a *contraction*; if that fails too, every point moves halfway towards the best, a *shrink*. It never uses a
+slope, so `f` may have kinks, steps or noise.
+
+Gao and Han's coefficients, for `n` numbers, are `1` for the reflection, `1 + 2/n` for the expansion, `0.75 - 1/(2n)`
+for the contraction and `1 - 1/n` for the shrink; at `n = 2` they are Nelder and Mead's own, 1, 2, 1/2 and 1/2, and for
+larger `n` they keep the simplex from flattening, which slows the original coefficients down. The first simplex is `x`
+and, for each component, `x` with that component 5 % larger, or 0.00025 for a 0, as in `fminsearch`. Simplex ends when
+the points are within `tol · max(1, |X|)` of the best one in each component and their values within
+`tol · max(1, |F|)` of `F`, `tol = 1e-8` by default. On Rosenbrock it takes the same steps as scipy's Nelder-Mead
+with `adaptive = True`, the same coefficients: 219 calls, and the same `X` to 14 digits.
+
+There is no promise: Lagarias, Reeds, Wright and Wright (1998) prove that the method converges to the minimum of a
+strictly convex function of one number, and only limited results for two; McKinnon (1998) gives strictly convex
+functions of two numbers, smooth, on which it converges to a point that is no minimum. On Box's function of three
+numbers, from the start of Moré, Garbow and Hillstrom, both Simplex and scipy stop at `f = 0.0756`, where the minimum
+is 0. So use Minimize for a smooth `f`, and check what Simplex finds.
+
+### When there is no minimum
+
+Both give an `Err` of kind `"optimize"`, with `Best`, the struct of the best point found, when `f` gives a NaN, an
+infinity or no number at the start, and when the steps run out:
+
+```cesia
+optimize.Minimize(rosen, [-1.2, 1.0], steps = 3).Error.Message -->
+optimize.Minimize(x -> x[1] - x[2], [0.0, 0.0]).Error.Message -->
+optimize.Simplex(x -> x[1], [0.0]).Error.Message -->
+```
+
+Minimize also gives one when `f` falls without end, past steps of $10^{10}$ times the direction; when `f` stops
+falling where its slope is not small, as above; and when `f` rises along minus the gradient from the start, which a
+wrong gradient does. Simplex gives one when its points grow past the largest floats. Past the start, a NaN or an
+infinity from `f` makes Minimize's line search step back, and counts in Simplex as a value worse than any other: a
+function infinite past a wall is minimized up to the wall by Simplex, and stops Minimize there with an `Err`. A bad
+argument, a negative `tol`, `steps` that isn't a whole number, an `x` that isn't numbers in one row or one column, is a
+bug of the caller: a panic that names it.
+
+### Checks
+
+The tests of Cesia run both on the 35 problems of Moré, Garbow and Hillstrom (1981), the reference set for such
+methods, written from their paper: curved valleys, badly scaled problems with numbers from $10^{-6}$ to $10^6$, flat
+regions, and minima at the bottom of narrow wells, from the starts the paper gives, four of them at two sizes, 39 cases
+in all. The values at the start and the gradient there come from a second transcription, in Python; the minima, to all
+their digits, from MINPACK's Levenberg-Marquardt, which agree with the six digits of the paper.
+
+- Minimize without gradient reaches a minimum within $10^{-8}$ (relative, or absolute for 0) on 36 cases, Gulf's flat
+  valley at `tol = 1e-10`; on the 3 others, Meyer's, Osborne's first and Watson's at `n = 9`, the error of the
+  differences stops it short, by up to $5 \cdot 10^{-4}$, and with their gradient it reaches them too.
+- The gradient by differences agrees with the exact one at each start within $10^{-7}$ of its largest component, but
+  on the two problems where the error formula above says it can't: Brown's badly scaled function, where `f` is $10^{12}$
+  at the start, and Osborne's first.
+- Minimize evaluates `f` and its gradient at 3,772 points over the 39 cases, where scipy's `L-BFGS-B` with the exact
+  gradient takes 2,956: most of the gap is on Meyer's, Powell's badly scaled and Jennrich and Sampson's problems,
+  where scipy stops far from the minimum (at 13,335 against 87.9, $2 \cdot 10^{-7}$ against 0, 214 against 124). On
+  33 of the 36 others, both take the same number of steps within a fifth; extended Rosenbrock at `n = 10` takes 76
+  against 38, the error of the differences slowing its end.
+- Simplex reaches a minimum within $10^{-8}$ on 38 cases, Box's being the exception above, in 88,705 calls of `f`,
+  where scipy's Nelder-Mead with the same coefficients makes 90,002.
+
+### Speed of Minimize and Simplex
+
+Extended Rosenbrock with 1,000 numbers, given the gradient, from `(-1.2, 1, -1.2, 1, ...)`, and Rosenbrock with 2 from
+`(-1.2, 1)`, at `tol = 1e-8`: the time of one call, inside each program, the median of 21 runs alternated, and from the
+6th to the 16th of them, an interval that holds the true median 97 times in 100, on the machine of
+[Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-13.
+
+| | Minimize, n = 1,000 | Simplex, n = 2 |
+|---|---:|---:|
+| **Cesia** | **7.77 ms** (7.73 to 8.01) | **0.337 ms** (0.331 to 0.340) |
+| scipy 1.18.1, at Cesia's tolerance | 6.47 ms (6.41 to 6.59) | 3.98 ms (3.90 to 4.03) |
+| scipy 1.18.1, at its defaults | 6.10 ms (6.04 to 6.16) | 2.88 ms (2.84 to 3.01), 159 calls, `X` to $4 \cdot 10^{-5}$ |
+| GNU Octave 11.3, `fminunc` and `fminsearch` | 32 s, 1,416 steps | 11.9 ms, 200 calls |
+
+scipy wins Minimize by a fifth: its loop is Fortran and its `f` numpy, while Cesia's line search runs in the
+interpreter, and each step makes a dozen arrays of 1,000 floats; the two loops of the direction, which cost most, run
+as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$ matrix. Simplex is 12
+times faster than scipy's: its steps are a few small array operations, where scipy's pay for Python at each one.
+
+A program that calls Root starts 0.5 ms later than one that prints 1, 3.71 ms against 3.19, the medians of 21 runs
+once its code is in the [cache of loaded packages](internals.md#the-cache-of-loaded-packages); the first run, which
+fills it, 5 ms later.
 
 ## Differential equations
 
@@ -477,6 +682,18 @@ allocated. The elimination of [num.Lu] runs as native code, which counts its wor
 `--limit` before it starts, and reads only matrices of numbers whose shape it checks first; a factorization at
 $n = 1000$ takes under a second, so `cells.Stop` still answers within a step.
 
+Minimize and Simplex check what `f` and `gradient` give in the same way: a text, or an array of the wrong shape, is an
+`Err` that names it; a NaN or an infinity is an `Err` at the start, and past it a point to step back from, or the worst
+of all. A panic inside `f` is a bug of the caller and goes through, as from any call, naming its line. Every loop is
+bounded: Minimize by `steps`, 10,000 by default, with at most 20 evaluations of `f` in a line search and `2n` calls of
+`f` in a gradient by differences; Simplex by `steps`, with at most `n + 2` calls of `f` a step. Each runs as Cesia code
+but the three natives of std/optimize, the two loops of the direction, a dot product and the largest component of an
+array, which read only arrays of floats whose kinds and lengths they check first, and count their work, `4 · 10 · n`
+operations at most, against `--limit`: so [cells.Stop] stops a long minimization within a step, and `--limit steps`
+stops an `f` that never ends. Minimize keeps 20 arrays as large as `x`, its steps and the changes of its gradient, and a
+few more; past the memory limit of the program, the program stops with `Limit "memory" reached.` Neither draws a random
+number: the same call gives the same answer.
+
 ## Further reading
 
 - Richard P. Brent. *Algorithms for Minimization without Derivatives*. Prentice-Hall, 1973; Dover, 2002. Chapter 4:
@@ -485,6 +702,27 @@ $n = 1000$ takes under a second, so `cells.Stop` still answers within a step.
   14(4):422–425, 1971. <https://doi.org/10.1093/comjnl/14.4.422>.
 - G. E. Alefeld, F. A. Potra, Yixun Shi. "Algorithm 748: Enclosing Zeros of Continuous Functions". *ACM Transactions on
   Mathematical Software* 21(3):327–344, 1995. <https://doi.org/10.1145/210089.210111>. Their test problems.
+- Dong C. Liu, Jorge Nocedal. "On the limited memory BFGS method for large scale optimization". *Mathematical
+  Programming* 45:503–528, 1989. <https://doi.org/10.1007/BF01589116>. L-BFGS, its scaling M3, and the proof of its
+  convergence on uniformly convex functions.
+- Jorge Nocedal. "Updating quasi-Newton matrices with limited storage". *Mathematics of Computation* 35(151):773–782,
+  1980. <https://doi.org/10.1090/S0025-5718-1980-0572855-7>. The two loops.
+- Jorge J. Moré, David J. Thuente. "Line search algorithms with guaranteed sufficient decrease". *ACM Transactions on
+  Mathematical Software* 20(3):286–307, 1994. <https://doi.org/10.1145/192115.192132>. The line search.
+- Jorge Nocedal, Stephen J. Wright. *Numerical Optimization*, second edition. Springer, 2006.
+  <https://doi.org/10.1007/978-0-387-40065-5>. Chapter 7: L-BFGS; §8.1: the step of a central difference.
+- J. A. Nelder, R. Mead. "A simplex method for function minimization". *The Computer Journal* 7(4):308–313, 1965.
+  <https://doi.org/10.1093/comjnl/7.4.308>.
+- Fuchang Gao, Lixing Han. "Implementing the Nelder-Mead simplex algorithm with adaptive parameters". *Computational
+  Optimization and Applications* 51(1):259–277, 2012. <https://doi.org/10.1007/s10589-010-9329-3>. The coefficients.
+- Jeffrey C. Lagarias, James A. Reeds, Margaret H. Wright, Paul E. Wright. "Convergence properties of the Nelder–Mead
+  simplex method in low dimensions". *SIAM Journal on Optimization* 9(1):112–147, 1998.
+  <https://doi.org/10.1137/S1052623496303470>. What is proven, and the rules for equal values.
+- K. I. M. McKinnon. "Convergence of the Nelder–Mead simplex method to a nonstationary point". *SIAM Journal on
+  Optimization* 9(1):148–158, 1998. <https://doi.org/10.1137/S1052623496303482>.
+- Jorge J. Moré, Burton S. Garbow, Kenneth E. Hillstrom. "Testing unconstrained optimization software". *ACM
+  Transactions on Mathematical Software* 7(1):17–41, 1981. <https://doi.org/10.1145/355934.355936>. The 35 problems of
+  the tests.
 - J. R. Dormand, P. J. Prince. "A family of embedded Runge-Kutta formulae". *Journal of Computational and Applied
   Mathematics* 6(1):19–26, 1980. <https://doi.org/10.1016/0771-050X(80)90013-3>. The method, RK5(4)7M.
 - Lawrence F. Shampine. "Some practical Runge-Kutta formulas". *Mathematics of Computation* 46(173):135–150, 1986.
@@ -522,5 +760,5 @@ $n = 1000$ takes under a second, so `cells.Stop` still answers within a step.
 
 ## Next
 
-You can find zeros and solve differential equations. The next chapter, [Statistics](statistics.md), works with
+You can find zeros and minima, and solve differential equations. The next chapter, [Statistics](statistics.md), works with
 the laws of probability.

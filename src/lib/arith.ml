@@ -182,6 +182,9 @@ let pow ctx a b = broadcast ctx pow_scalar a b
 
 let rec neg ctx a =
   match as_num a with
+  | Array ({ store = F _; _ } as x) ->
+    Runtime.build ctx (x.rows * x.cols);
+    (match (Value.trim x).store with F d -> Arrays.like x (F (Float.Array.map Float.neg d)) | _ -> a)
   | Array x ->
     Runtime.build ctx (x.rows * x.cols);
     Arrays.vals_like x (Array.init (x.rows * x.cols) (fun k -> neg ctx (Value.elt x k)))

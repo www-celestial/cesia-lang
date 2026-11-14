@@ -176,6 +176,9 @@ let rec abs_value ctx v =
   | True -> Int 1
   | False -> Int 0
   | Missing -> Missing
+  | Array ({ store = F _; _ } as x) ->
+    Runtime.build ctx (x.rows * x.cols);
+    (match (Value.trim x).store with F d -> Arrays.like x (F (Float.Array.map Float.abs d)) | _ -> v)
   | Array _ -> elementwise ctx "Abs" abs_value v
   | _ -> Runtime.fail ctx Type (Messages.need_number "Abs" (Value.describe v))
 
@@ -292,6 +295,70 @@ let leading ctx v =
      | F src -> Float.Array.blit src 0 d 0 n; Some (a.rows, d)
      | _ -> if fill 0 then Some (a.rows, d) else None)
   | _ -> None
+
+(* The dot product of two float arrays of one shape in one pass, with the bits of list.Sum(a * b); missing for anything
+   else, which num.Dot then computes that way. *)
+let dot ctx (a : t array) =
+  match a.(0), a.(1) with
+  | Array ({ store = F _; _ } as x), Array ({ store = F _; _ } as y) when Value.same_shape x y ->
+    Runtime.pay ctx (x.rows * x.cols);
+    (match (Value.trim x).store, (Value.trim y).store with F p, F q -> Float (Kernels.dot p q) | _ -> Missing)
+  | _ -> Missing
+
+(* The float cells of an array of floats, or the error of [name]. *)
+let floats_of ctx name v =
+  match v with
+  | Array ({ store = F _; _ } as x) -> (match (Value.trim x).store with F d -> x, d | _ -> assert false)
+  | _ -> Runtime.fail ctx Type (Messages.need_array name (Value.describe v))
+
+(* The direction H g of L-BFGS by the two loops of Nocedal (1980), for optimize.Minimize: the [used] newest pairs (s, y)
+   of the rings [ss] and [ys], the newest at place [newest], [rho] their 1 / s'y, and H0 = gamma I. The bits of the same
+   loops written in Cesia with num.Dot, without their arrays for each step. *)
+let lbfgs_direction ctx (a : t array) =
+  let fail () = Runtime.fail ctx Type (Messages.need_array "direction" (Value.describe a.(0))) in
+  let floats v = snd (floats_of ctx "direction" v) in
+  let ring v = match v with Array x -> x | _ -> fail () in
+  let g = floats a.(0) and ss = ring a.(1) and ys = ring a.(2) and rho = floats a.(3) in
+  let used, newest, gamma = match a.(4), a.(5), a.(6) with Int u, Int k, Float c -> u, k, c | _ -> fail () in
+  let m = Float.Array.length rho and n = Float.Array.length g in
+  if used < 0 || used > m || newest < 1 || newest > m || ss.rows * ss.cols <> m || ys.rows * ys.cols <> m then fail ();
+  let pair r k = let d = floats (Value.elt r (k - 1)) in if Float.Array.length d <> n then fail () else d in
+  Runtime.pay ctx (4 * used * n);
+  let q = Float.Array.copy g and alpha = Float.Array.make m 0. and k = ref newest in
+  for _ = 1 to used do
+    let y = pair ys !k in
+    let al = Float.Array.get rho (!k - 1) *. Kernels.dot (pair ss !k) q in
+    Float.Array.set alpha (!k - 1) al;
+    for i = 0 to n - 1 do Float.Array.set q i (Float.Array.get q i -. (al *. Float.Array.get y i)) done;
+    k := if !k = 1 then m else !k - 1
+  done;
+  let r = Float.Array.map (fun v -> gamma *. v) q in
+  for _ = 1 to used do
+    k := if !k = m then 1 else !k + 1;
+    let s = pair ss !k in
+    let c = Float.Array.get alpha (!k - 1) -. (Float.Array.get rho (!k - 1) *. Kernels.dot (pair ys !k) r) in
+    for i = 0 to n - 1 do Float.Array.set r i (Float.Array.get r i +. (c *. Float.Array.get s i)) done
+  done;
+  match a.(0) with Array x -> Arrays.like x (F r) | _ -> fail ()
+
+(* The largest |x| of a float array, nan when one is nan, 0 for none: the size of a gradient, or of a simplex, for
+   std/optimize, in one pass. A float always, so that inference knows it. *)
+let largest ctx (a : t array) =
+  let x, d = floats_of ctx "largest" a.(0) in
+  Runtime.pay ctx (x.rows * x.cols);
+  let m = ref 0. in
+  for i = 0 to Float.Array.length d - 1 do
+    let v = Float.abs (Float.Array.get d i) in
+    if v > !m || Float.is_nan v then m := v
+  done;
+  Float !m
+
+(* num's dot for std/optimize, whose arrays are floats of one shape: a float always, or an error. *)
+let dot_floats ctx (a : t array) =
+  let x, p = floats_of ctx "dot" a.(0) and y, q = floats_of ctx "dot" a.(1) in
+  if not (Value.same_shape x y) then Runtime.fail ctx Type (Messages.shape (Arrays.sizes x) (Arrays.sizes y));
+  Runtime.pay ctx (x.rows * x.cols);
+  Float (Kernels.dot p q)
 
 (* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
    of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
@@ -467,7 +534,7 @@ let mean_of ctx (a : t array) =
     | v, _ -> v
 
 (* min and max: the whole array with one argument, element by element with two. *)
-let best name better ctx (a : t array) =
+let best name better fbetter ctx (a : t array) =
   let pick ctx x y =
     match x, y with
     | Missing, _ | _, Missing -> Missing
@@ -476,6 +543,14 @@ let best name better ctx (a : t array) =
   if Array.length a = 2 then Arith.broadcast ctx pick a.(0) a.(1)
   else
     match a.(0) with
+    | Array ({ store = F _; _ } as x) when x.rows * x.cols > 0 ->
+      Runtime.pay ctx (x.rows * x.cols);
+      (match (Value.trim x).store with
+       | F d ->
+         let acc = ref (Float.Array.get d 0) in
+         Float.Array.iter (fun y -> if fbetter y !acc then acc := y) d;
+         Float !acc
+       | _ -> a.(0))
     | Array x ->
       let n = x.rows * x.cols in
       if n = 0 then Runtime.fail ctx Type (Messages.empty_array name);
@@ -877,7 +952,11 @@ let packages =
                 Float (Float.atan2 (num y) (num x))) a.(0) a.(1));
       "Pi", Float (4. *. atan 1.);
       "Nan", Float nan ];
-    "num", [ "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
+    "num", [ "dot", nat "dot" 2 2 dot; "luFactor", nat "luFactor" 1 1 lu_factor; "luSolve", nat "luSolve" 3 3 lu_solve ];
+    "optimize",
+    [ "direction", nat ~ret:fa_size "direction" 7 7 lbfgs_direction;
+      "dot", nat ~ret:(fun _ -> TF) "dot" 2 2 dot_floats;
+      "largest", nat ~ret:(fun _ -> TF) "largest" 1 1 largest ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
       "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));
@@ -896,7 +975,7 @@ let packages =
       "Fill", nat "Fill" 2 (max_dims + 1) (fun ctx a -> filled ctx a.(0) (sizes_of ctx "Fill" a 1));
       "Sum", nat ~params:[| "xs"; "dim" |] ~ret:scalar_of_fa "Sum" 1 2 sum_of;
       "Mean", nat ~params:[| "xs"; "dim" |] ~ret:scalar_of_fa "Mean" 1 2 mean_of;
-      "Min", nat ~ret:scalar_of_fa "Min" 1 2 (best "Min" Arith.lt);
-      "Max", nat ~ret:scalar_of_fa "Max" 1 2 (best "Max" Arith.gt);
+      "Min", nat ~ret:scalar_of_fa "Min" 1 2 (best "Min" Arith.lt (fun (x : float) y -> x < y));
+      "Max", nat ~ret:scalar_of_fa "Max" 1 2 (best "Max" Arith.gt (fun (x : float) y -> x > y));
       "Any", nat "Any" 1 1 (mask_all "Any" true);
       "All", nat "All" 1 1 (mask_all "All" false) ] ]
