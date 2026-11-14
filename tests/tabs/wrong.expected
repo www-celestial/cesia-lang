@@ -7,8 +7,7 @@ docs/book/page.md:5: the Python tab stopped with the code 1, its line k being li
 docs/book/page.md:6: the Python tab stopped with the code 1, its line k being line 6 + k of the page:
 docs/book/page.md:7: the Python tab stopped with the code 1, its line k being line 7 + k of the page:
 docs/book/page.md:8: the Python tab stopped with the code 1, its line k being line 8 + k of the page:
-docs/book/page.md:9: the Python tab ran past its 2 seconds, or a signal ended it, as past 64 MiB in a file.
-tabs: 0 of 10 agree (Python 10)
+tabs: 0 of 9 agree (Python 9)
 exit 1
     ValueError: no
     OSError: [Errno 101] Network is unreachable

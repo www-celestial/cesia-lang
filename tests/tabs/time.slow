@@ -1,0 +1,1 @@
+Slow by nature: a tab that spins its 2 seconds of the processor, its time limit. tools/check.sh runs it, past the change loop.
