@@ -178,7 +178,7 @@ let rec abs_value ctx v =
   | Missing -> Missing
   | Array ({ store = F _; _ } as x) ->
     Runtime.build ctx (x.rows * x.cols);
-    (match (Value.trim x).store with F d -> Arrays.like x (F (Float.Array.map Float.abs d)) | _ -> v)
+    (match (Value.trim x).store with F d -> Arrays.like x (F (Kernels.map Kernels.Abs d)) | _ -> v)
   | Array _ -> elementwise ctx "Abs" abs_value v
   | _ -> Runtime.fail ctx Type (Messages.need_number "Abs" (Value.describe v))
 
@@ -190,7 +190,7 @@ and elementwise ctx _name scalar v =
   | _ -> scalar ctx v
 
 (* A math function: float to float, element by element. *)
-let math1 name f =
+let math1 name f kernel =
   let rec go ctx v =
     match v with
     | Float x -> Float (f x)
@@ -200,7 +200,7 @@ let math1 name f =
     | Missing -> Missing
     | Array ({ rows; cols; store = F _; _ } as x) ->
       Runtime.build ctx (rows * cols);
-      (match (Value.trim x).store with F d -> Arrays.like x (F (Kernels.map1 f d)) | _ -> v)
+      (match (Value.trim x).store with F d -> Arrays.like x (F (Kernels.map kernel d)) | _ -> v)
     | Array _ -> elementwise ctx name go v
     | _ -> Runtime.fail ctx Type (Messages.need_number name (Value.describe v))
   in
@@ -1011,8 +1011,9 @@ let packages =
     [ "Div", int_native "Div" Arith.int_div;
       "Mod", int_native "Mod" Arith.int_mod;
       "Abs", nat ~ret:same_number "Abs" 1 1 (fun ctx a -> abs_value ctx a.(0));
-      math1 "Sqrt" sqrt; math1 "Exp" exp; math1 "Log" log; math1 "Sin" sin; math1 "Cos" cos; math1 "Tan" tan;
-      math1 "Asin" asin; math1 "Acos" acos; math1 "Atan" atan;
+      math1 "Sqrt" sqrt Kernels.Sqrt; math1 "Exp" exp Kernels.Exp; math1 "Log" log Kernels.Log; math1 "Sin" sin Kernels.Sin;
+      math1 "Cos" cos Kernels.Cos; math1 "Tan" tan Kernels.Tan; math1 "Asin" asin Kernels.Asin;
+      math1 "Acos" acos Kernels.Acos; math1 "Atan" atan Kernels.Atan;
       rounding "Floor" floor; rounding "Ceil" ceil; rounding "Round" Float.round;
       "Sign", nat ~ret:same_number "Sign" 1 1 (fun ctx a -> sign ctx a.(0));
       "Atan2", nat "Atan2" 2 2 (fun ctx a ->

@@ -178,13 +178,35 @@ let pow_scalar ctx a b =
     | Some p, Some q -> Float (p ** q)
     | _ -> bad ctx "raise" "to the power" false a b
 
-let pow ctx a b = broadcast ctx pow_scalar a b
+(* Integers raised to integers stay integers, each cell by [int_pow] with its checks, in the order of the cells: the
+   first overflow is the error the cell by cell rule raises. A negative exponent makes its cell a float; [None] then, so a
+   mix of the two goes cell by cell as before. *)
+let[@inline never] pow_ints ctx a b =
+  trim a;
+  trim b;
+  let sh = typed a b in
+  let n = sh.rows * sh.cols in
+  match int_cells a, int_cells b with
+  | Some (x, sx), Some (y, sy) when n > 0 && Array.for_all (fun q -> q >= 0) y ->
+    Runtime.build ctx n;
+    Some (Arrays.like sh (I (Array.init n (fun k -> int_pow ctx x.(k * sx) y.(k * sy)))))
+  | _ -> None
+
+(* Typed stores in one loop, as [add]: a float cell, or an integer one raised to a float, gives [**] of the two, as
+   [pow_scalar] does, so the same bits with no value boxed on the way. *)
+let pow ctx a b =
+  match a, b with
+  | Array _, _ | _, Array _ ->
+    (match int_cells a, int_cells b with
+     | Some _, Some _ -> (match pow_ints ctx a b with Some r -> r | None -> broadcast ctx pow_scalar a b)
+     | _ -> lifted Kernels.Pow pow_scalar ctx a b)
+  | _ -> pow_scalar ctx a b
 
 let rec neg ctx a =
   match as_num a with
   | Array ({ store = F _; _ } as x) ->
     Runtime.build ctx (x.rows * x.cols);
-    (match (Value.trim x).store with F d -> Arrays.like x (F (Float.Array.map Float.neg d)) | _ -> a)
+    (match (Value.trim x).store with F d -> Arrays.like x (F (Kernels.map Kernels.Neg d)) | _ -> a)
   | Array x ->
     Runtime.build ctx (x.rows * x.cols);
     Arrays.vals_like x (Array.init (x.rows * x.cols) (fun k -> neg ctx (Value.elt x k)))

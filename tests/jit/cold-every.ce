@@ -1,0 +1,68 @@
+use std/fiber
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/random
+use std/result
+use std/value
+
+(* A statement left to the interpreter in a branch that runs at nearly every turn, here a call that native code can't
+   make: the loop leaves native code at each turn, so it goes back to the interpreter for good, with the same results. *)
+count = 0
+defn next()
+  (** A call native code leaves to the interpreter: a text built at each call. *)
+  t = "x$count"
+  value.Len(t) * 0.25
+end
+
+defn gather(f, size, head)
+  buf = matrix.Zeros(1, size)
+  x = head
+  for k in 1..size
+    if k > 1
+      x = f()
+    end
+    if value.IsNumber(x)
+      if x - x != 0.0
+        return {At: k, Value: x, Draws: buf}
+      end
+      buf[k] = x
+    else if value.IsBool(x)
+      buf[k] = if x 1.0 else 0.0 end
+    else
+      return {At: k, Value: x, Draws: buf}
+    end
+  end
+  buf
+end
+
+total = 0.0
+for r in 1..300
+  total = total + list.Sum(gather(next, 1000, 0.5))
+end
+io.Print(total)
+
+(* The same loop, its cold branch taken at every turn at first, then rarely: the code goes or stays, the results don't
+   change. *)
+defn mixed(n, every)
+  s = 0.0
+  t = ""
+  for i in 1..n
+    if i < 2000 or math.Mod(i, every) == 0
+      t = "k$i"
+    end
+    s = s + i * 0.5 + value.Len(t)
+  end
+  s
+end
+io.Print(mixed(100000, 1), mixed(100000, 10000), mixed(100000, 3))
+
+(* A value of another kind late in the loop, after the code went: the interpreter's map, as before. *)
+drifting() = if random.Float() < 0.00001 "late" else 0.5 end
+r = gather(drifting, 300000, 0.5)
+io.Print(r.At, r.Value, list.Sum(r.Draws))
+(* NaN in the loop. *)
+sometimes() = if random.Float() < 0.001 0.0 / 0.0 else 1.5 end
+r2 = gather(sometimes, 50000, 0.5)
+io.Print(r2.At, r2.Value != r2.Value, list.Sum(r2.Draws))

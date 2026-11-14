@@ -1,0 +1,29 @@
+(** The tests of the functions of std/math, of - and of math.Abs on arrays of floats: each cell gets the bits it gets alone,
+    NaN, infinities and -0.0 included, past the size at which the loop splits among the cores too. *)
+use std/columns
+use std/list
+use std/math
+use std/num
+use std/value
+
+cellwise(xs, f) = [f(x) for x in xs]
+sameBits(a, b) = value.Len(a) == value.Len(b) and list.All([(a[k] == b[k] and 1.0 / a[k] == 1.0 / b[k]) or (a[k] != a[k] and b[k] != b[k]) for k in 1..value.Len(a)])
+
+xs = [0.5, -1.5, 0.0, -0.0, 2.0, 1.0e-300, 1.0e300, -1.0e300, math.Inf, -math.Inf, math.Nan, 0.75, -0.25, 7.0]
+isSqrt() = sameBits(math.Sqrt(xs), cellwise(xs, math.Sqrt)) and columns.Kind(math.Sqrt(xs)) == "float"
+isExp() = sameBits(math.Exp(xs), cellwise(xs, math.Exp))
+isLog() = sameBits(math.Log(xs), cellwise(xs, math.Log))
+isSin() = sameBits(math.Sin(xs), cellwise(xs, math.Sin))
+isCos() = sameBits(math.Cos(xs), cellwise(xs, math.Cos))
+isTan() = sameBits(math.Tan(xs), cellwise(xs, math.Tan))
+isAsin() = sameBits(math.Asin(xs), cellwise(xs, math.Asin))
+isAcos() = sameBits(math.Acos(xs), cellwise(xs, math.Acos))
+isAtan() = sameBits(math.Atan(xs), cellwise(xs, math.Atan))
+isAbs() = sameBits(math.Abs(xs), cellwise(xs, math.Abs)) and columns.Kind(math.Abs(xs)) == "float"
+isNeg() = sameBits(-xs, cellwise(xs, x -> -x)) and columns.Kind(-xs) == "float"
+isShape() = value.Equal(value.Size(math.Exp([0.0 1.0; 2.0 3.0])), [2, 2]) and value.Equal(value.Size(-[1.0 2.0; 3.0 4.0]), [2, 2])
+defn isLarge()
+  (** Past the size at which the loop splits among the cores. *)
+  ys = num.Uniform(300000) * 8.0 - 4.0
+  sameBits(math.Exp(ys), cellwise(ys, math.Exp)) and sameBits(-ys, cellwise(ys, y -> -y)) and sameBits(math.Abs(ys), cellwise(ys, math.Abs))
+end

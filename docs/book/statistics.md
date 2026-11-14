@@ -757,33 +757,36 @@ checks the kind of its arguments, and the JIT doesn't yet make machine code of s
 interpreter, about 10 µs a step for five or six steps. numpy is faster on a whole array of normal cdfs, with its loops
 in C.
 
-**Monte Carlo.** On the same machine, on 2026-11-13: Cesia's times are the medians of 21 runs and the 95 % interval of
+**Monte Carlo.** On the same machine, on 2026-11-14: Cesia's times are the medians of 21 runs and the 95 % interval of
 each; numpy 2.5.4 with scipy 1.18.1, and Octave 11.3.0, the medians of 5 runs, in the same session. Each time is taken
 inside the program, around the work alone. Octave's `tinv` belongs to its statistics package, not installed here: its
 quantile comes from `betaincinv` of Octave's core, as `tinv` computes it.
 
 | | Cesia | numpy and scipy | Octave 11.3 |
 |---|---:|---:|---:|
-| $10^6$ draws in one batch, and their interval | 47.8 ms (46.2 to 49.2) | 10.4 ms | 31.3 ms |
-| of which the draws, `num.Uniform`, `rng.random`, `rand` | 45.2 ms (44.4 to 47.8) | 4.9 ms | 10.0 ms |
-| the interval of $10^6$ draws already made | 12.2 ms the first time, the JIT compiling; 3.9 ms after | 6.3 ms | 32.3 ms |
-| $10^7$ draws in batches of $10^5$, the work of `MonteCarlo` alone | 38.9 ms (38.6 to 39.7) | | |
-| $10^6$ single draws, a call of `f()` each, and their interval | 115 ms (114 to 119) | 166 ms, `np.fromiter` | 6,590 ms, `arrayfun` |
-| the cell above, `tol = 1e-4`: 15.6 million draws of $e^{-u^2}$ in batches of $10^5$ | 3,773 ms (3,733 to 3,813) | 243 ms | 995 ms |
+| $10^6$ draws in one batch, and their interval | 9.2 ms (9.1 to 9.6) | 10.1 ms | 33.1 ms |
+| of which the draws, `num.Uniform`, `rng.random`, `rand` | 4.4 ms (4.0 to 4.6) | 4.7 ms | 11.3 ms |
+| the interval of $10^6$ draws already made | 19.4 ms the first time, the JIT loading and compiling; 4.0 ms after | 5.4 ms | 38.5 ms |
+| $10^7$ draws in batches of $10^5$, the work of `MonteCarlo` alone | 40.2 ms (39.3 to 42.0) | | |
+| $10^6$ single draws, a call of `f()` each, and their interval | 24.8 ms (23.8 to 25.6) | 149 ms, `np.fromiter` | 6,714 ms, `arrayfun` |
+| the cell above, `tol = 1e-4`: 15.6 million draws of $e^{-u^2}$ in batches of $10^5$ | 676 ms (665 to 708) | 244 ms | 1,035 ms |
 
 The work of `MonteCarlo` alone was measured on a batch made once and given again by `f`, so that no draw is made.
 
-**Where Cesia wins.** Single draws: a call of `f` for each costs less than Python's generator, and 57 times less than
+**Where Cesia wins.** Uniform draws: `num.Uniform` fills its array in one loop of OCaml, the step of SplitMix64 as
+`random.Float`'s, about 3.5 ns a draw, as fast as numpy's generator. Single draws: `f()` and the draw of
+`random.Float()` in it are machine code, so a call of `f` for each costs a sixth of Python's generator and a 270th of
 Octave's `arrayfun`. The work of `MonteCarlo` itself, its two passes over each block in machine code, about 4 ns a
 draw, costs less than numpy's mean and standard deviation. And neither numpy nor Octave has the loop of `tol`.
 
-**Where the others win.** numpy makes uniform draws 9 times faster than Cesia: `num.Uniform` is a loop of Cesia that
-calls `random.Float` for each number, about 45 ns each, where numpy's generator fills its array in C. And `x ^ 2` on an
-array costs about 110 ns an element in Cesia, against about 1 for `x * x`, as each element goes through the general
-arithmetic of values. These two make the cell 15 times slower than numpy's and 4 times slower than Octave's, though
-`MonteCarlo` takes about 0.2 s of its 3.8. A single draw pays a call of `f` with no argument through a value, which the
-JIT doesn't yet make machine code: about 65 ns with the draw of `random.Float()`, and `MonteCarlo` about 50 ns more to
-test it and store it.
+**Where the others win.** The cell takes 2.8 times numpy's time, though it beats Octave's: a draw of $e^{-u^2}$ costs
+33 ns in Cesia, 15 in numpy, on batches of $10^5$ that one core takes. Most of it is `x ^ 2`, which calls the C
+library's `pow` for each element, 23 ns, where numpy squares, `x * x`, in 0.5 ns. `pow` gives each element the bits that
+`^` gives that number alone; a square by `x * x`, rounded once, differs from glibc's `pow(x, 2)` in the last bit of
+about one random double in 2,300. `math.Exp` takes 7.2 ns an element, numpy's `exp` 6.2. Before 2026-11-14,
+`num.Uniform` was a loop of Cesia that called `random.Float` for each number, 40 ns each, `x ^ 2` boxed each element,
+110 ns, `-` and `math.Exp` boxed it on the way in and out of a closure, and a call `f()` stayed in the interpreter: the
+cell took 2,912 ms, single draws 118 ms, $10^6$ draws 50 ms, the medians of 21 runs of main's binary beside these.
 
 `use std/stats` adds 1.2 ms to the start of a program once the cache of loaded packages holds it (4.2 ms against 3.0
 for a program that prints 1), 11.8 ms the first time (14.8 ms): its 3,100 lines, and those of std/special, std/frame
