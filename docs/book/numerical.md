@@ -1,10 +1,11 @@
 # Numerical methods
 
 In this chapter you find where a function is zero, with [optimize.Root], where it is smallest, with [optimize.Minimize]
-and [optimize.Simplex], you solve differential equations, with [ode.Solve], and you compute integrals, with
-[quad.Integral]: what `fzero`, `fminunc`, `fminsearch`, `ode45` and `integral` do in MATLAB, `brentq`, `minimize`,
-`solve_ivp` and `quad` in scipy. Each method comes from a paper, named here with what it promises; the tests of Cesia
-check each promise, and the last part of each section says how it compares with scipy and Octave, measured.
+and [optimize.Simplex], you solve differential equations, with [ode.Solve], you compute integrals, with
+[quad.Integral], and you solve systems whose matrix is sparse, with [sparse.Solve]: what `fzero`, `fminunc`,
+`fminsearch`, `ode45`, `integral` and `A \ b` do in MATLAB, `brentq`, `minimize`, `solve_ivp`, `quad` and `spsolve` in
+scipy. Each method comes from a paper, named here with what it promises; the tests of Cesia check each promise, and the
+last part of each section says how it compares with scipy and Octave, measured.
 
 ## The zero of a function
 
@@ -1341,5 +1342,5 @@ number: the same call gives the same answer.
 
 ## Next
 
-You can find zeros and minima, solve differential equations and compute integrals. The next chapter,
-[Statistics](statistics.md), works with the laws of probability.
+You can find zeros and minima, solve differential equations, compute integrals and solve sparse systems. The next
+chapter, [Statistics](statistics.md), works with the laws of probability.

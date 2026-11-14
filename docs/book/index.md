@@ -44,8 +44,9 @@ language.
     and what each costs.
 16. [Graphs](graphs.md): lines, points, bars, histograms, heatmaps and densities as values, drawn to SVG, and the
     methods each step follows.
-17. [Numerical methods](numerical.md): the zero of a function, its minimum, differential equations and integrals, as
-    `fzero`, `fminsearch`, `ode45` and `integral`, with what each method promises, beside scipy and Octave.
+17. [Numerical methods](numerical.md): the zero of a function, its minimum, differential equations, integrals and
+    sparse systems, as `fzero`, `fminsearch`, `ode45`, `integral` and `A \ b`, with what each method promises, beside
+    scipy and Octave.
 18. [Statistics](statistics.md): the laws of probability as values, their densities, tails, quantiles and draws, Monte
     Carlo means with their intervals, the special functions under them, with what each method promises, beside R and
     scipy.
