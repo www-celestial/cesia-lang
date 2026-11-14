@@ -73,9 +73,9 @@ La bissection est lente mais sûre : elle coupe l'encadrement en deux à chaque 
 que quand il tombe dans l'encadrement et le resserre assez vite, et coupe en deux sinon, si bien que, dit son livre, la
 méthode « never converges much more slowly than bisection » (ne converge jamais beaucoup plus lentement que la
 bissection). Elle s'arrête quand l'encadrement a une largeur d'au plus $2 \epsilon |X| + 2 \cdot \text{tol}$, où
-$\epsilon = 2^{-52}$ est l'écart entre 1.0 et le float suivant : avec `tol = 0.0`, la valeur par défaut, `X` est l'un des
-deux floats qui entourent le zéro. `tol` est une tolérance absolue : `tol = 1e-6` s'arrête plus tôt, à environ `1e-6` du
-zéro.
+$\epsilon = 2^{-52}$ est l'écart entre 1.0 et le float suivant : avec `tol = 0.0`, la valeur par défaut, `X` est l'un
+des deux floats qui entourent le zéro. `tol` est une tolérance absolue : `tol = 1e-6` s'arrête plus tôt, à environ
+`1e-6` du zéro.
 
 La promesse vaut pour toute `f` continue qui change de signe dans l'encadrement : `X` est, à la largeur ci-dessus près,
 un point où `f` change de signe. Une fonction avec plusieurs zéros dans l'encadrement en donne un. Les tests de Cesia le
@@ -112,12 +112,13 @@ scipy fait 2 753 appels, puisqu'il s'arrête un float plus tôt.
 Le zéro de $x^3 - 2x - 5$ sur `[2, 3]` jusqu'au dernier float, 20 000 fois dans une boucle : 7,1 µs par appel dans Cesia
 (intervalle à 95 % de la médiane de 21 lancements : 6,9 à 7,5), 11,5 µs pour le `brentq` de scipy (11,3 à 12,0), chacun
 avec 8 appels de `f`, mesurés comme le sont les résolutions de [La vitesse de Solve](#la-vitesse-de-solve). La boucle de
-Root tourne dans l'interpréteur, puisque le JIT (le compilateur qui traduit le code en code machine pendant qu'il tourne)
-ne fait pas encore de code machine d'une boucle qui appelle [math.Abs] ou [value.IsNumber].
+Root tourne dans l'interpréteur, puisque le JIT (le compilateur qui traduit le code en code machine pendant qu'il
+tourne) ne fait pas encore de code machine d'une boucle qui appelle [math.Abs] ou [value.IsNumber].
 
 ## Le minimum d'une fonction
 
-[optimize.Minimize] trouve un `x` où une fonction `f` d'un array de nombres est la plus petite, et [optimize.Simplex]
+[optimize.Minimize] trouve un `x` où une fonction `f` d'un array de nombres (une suite de nombres rangés côte
+à côte) est la plus petite, et [optimize.Simplex]
 fait la même chose avec une autre méthode. La fonction de Rosenbrock est un test classique : une vallée étroite et
 courbe dont le fond descend lentement vers son minimum, 0 en `[1, 1]`. Son *gradient*, l'array des pentes de `f` le long
 de chaque coordonnée, peut être donné avec elle :
@@ -183,15 +184,15 @@ La méthode est L-BFGS, de Liu et Nocedal (1989), celle que prend le `L-BFGS-B` 
 Chaque pas suit une *direction de descente*, une direction dans laquelle `f` baisse, puis une *line search* (une
 recherche le long d'une droite) choisit jusqu'où aller dans cette direction.
 
-- **La direction.** Moins le gradient pointe vers le bas, mais dans une vallée courbe il pointe vers la paroi, et des pas
-  qui le suivent font des zigzags. La méthode de Newton corrige cela avec la *hessienne*, la matrice des dérivées
+- **La direction.** Moins le gradient pointe vers le bas, mais dans une vallée courbe il pointe vers la paroi, et des
+  pas qui le suivent font des zigzags. La méthode de Newton corrige cela avec la *hessienne*, la matrice des dérivées
   secondes de `f` : son inverse fois le gradient pointe vers le fond de la vallée. Une méthode *quasi-Newton* ne calcule
   jamais la hessienne : elle l'apprend de la façon dont le gradient a changé entre les pas (la méthode de Broyden,
   Fletcher, Goldfarb et Shanno, *BFGS*). L-BFGS, pour *limited memory* (mémoire limitée), ne garde que les 10 derniers
-  pas `s` et les 10 derniers changements du gradient `y`, `20 n` nombres au lieu des `n × n` d'une matrice, et en tire la
-  direction par les *deux boucles* de Nocedal (1980), en `4 · 10 · n` opérations. La première matrice de chaque pas est
-  `(s'y / y'y)` fois l'identité, l'échelle de la dernière paire (le M3 de Liu et Nocedal). Une paire dont `s'y` n'est
-  pas au-dessus de $\epsilon\, y'y$ est laissée de côté, puisqu'elle ferait pointer la direction vers le haut.
+  pas `s` et les 10 derniers changements du gradient `y`, `20 n` nombres au lieu des `n × n` d'une matrice, et en tire
+  la direction par les *deux boucles* de Nocedal (1980), en `4 · 10 · n` opérations. La première matrice de chaque pas
+  est `(s'y / y'y)` fois l'identité, l'échelle de la dernière paire (le M3 de Liu et Nocedal). Une paire dont `s'y`
+  n'est pas au-dessus de $\epsilon\, y'y$ est laissée de côté, puisqu'elle ferait pointer la direction vers le haut.
 - **La line search.** Le long de la direction `d`, un pas `a` est bon quand `f` a baissé d'au moins $10^{-4}$ de ce que
   promettait sa pente, $f(x + a d) \le f(x) + 10^{-4} a\, g'd$ (la *décroissance suffisante*), et que sa pente s'est
   aplatie jusqu'à au plus 0,9 de ce qu'elle était, $|g(x + a d)'d| \le 0{,}9\, |g'd|$ (la *courbure*) : ensemble, les
@@ -205,30 +206,30 @@ recherche le long d'une droite) choisit jusqu'où aller dans cette direction.
   `tol = 1e-8` par défaut. Près d'un minimum, l'arrondi peut faire que `f` cesse de baisser avant cela : quand deux pas
   changent `f` de moins de $4 \epsilon |F|$, où $\epsilon = 2^{-52}$, ou quand une recherche échoue deux fois le long du
   gradient lui-même, Minimize s'arrête aussi, avec un `Ok` seulement si le gradient a diminué jusqu'à
-  $\sqrt{\epsilon} \approx 1{,}5 \cdot 10^{-8}$ de sa plus grande composante au départ, ou de 1 : la limite des floats, ou
-  du gradient par différences. Sinon `f` a cessé de baisser là où sa pente n'est pas petite, à un coude, à une paroi
+  $\sqrt{\epsilon} \approx 1{,}5 \cdot 10^{-8}$ de sa plus grande composante au départ, ou de 1 : la limite des floats,
+  ou du gradient par différences. Sinon `f` a cessé de baisser là où sa pente n'est pas petite, à un coude, à une paroi
   au-delà de laquelle `f` n'a pas de valeur finie, ou avec un gradient faux, et c'est un `Err`.
 
 La promesse : pour une fonction deux fois dérivable dont la courbure est bornée en dessous et au-dessus par des nombres
 positifs dans toutes les directions, une fonction *uniformément convexe*, Liu et Nocedal prouvent que L-BFGS converge
-vers le minimum, et que l'écart au minimum diminue au moins géométriquement,
-$f_k - f_{\min} \le r^k (f_0 - f_{\min})$ pour un certain $r < 1$ après $k$ pas (la convergence *R-linéaire*). Pour les
-autres fonctions, il n'y a pas de tel théorème : Minimize finit en un point où le gradient est proche de 0, le plus
-souvent un *minimum local*, plus bas que tous les points proches mais pas toujours le plus bas de tous, celui vers lequel
-mène le départ. À partir d'un autre départ, il peut en trouver un autre.
+vers le minimum, et que l'écart au minimum diminue au moins géométriquement, $f_k - f_{\min} \le r^k (f_0 - f_{\min})$
+pour un certain $r < 1$ après $k$ pas (la convergence *R-linéaire*). Pour les autres fonctions, il n'y a pas de tel
+théorème : Minimize finit en un point où le gradient est proche de 0, le plus souvent un *minimum local*, plus bas que
+tous les points proches mais pas toujours le plus bas de tous, celui vers lequel mène le départ. À partir d'un autre
+départ, il peut en trouver un autre.
 
 Sur la fonction de Rosenbrock étendue à 1 000 nombres, le gradient donné, Minimize et le `L-BFGS-B` de scipy à la même
 tolérance donnent la même réponse jusqu'au dernier bit : `F = 1.2343201197106615e-22`, après 37 pas et 46 appels de `f`.
 
 ### Le gradient par différences
 
-Sans `gradient`, la composante `i` du gradient est une *différence centrée*,
-$(f(x + h e_i) - f(x - h e_i)) / 2h$, avec $h = \epsilon^{1/3} \max(1, |x_i|) \approx 6 \cdot 10^{-6} \max(1, |x_i|)$
-(Nocedal et Wright, §8.1). Son erreur a deux parts : celle de la formule, environ $h^2 |f'''| / 6$, qu'un `h` plus petit
-réduit, et celle de l'arrondi, environ $\epsilon |f| / h$, qu'un `h` plus petit fait grandir ; ce `h` les équilibre, pour
-une erreur proche de $\epsilon^{2/3} \approx 4 \cdot 10^{-11}$ de la taille du gradient sur une fonction d'échelle
-ordinaire. Chaque gradient coûte `2n` appels de `f`, donc un pas coûte `2n + 1` là où le gradient donné coûte 1 :
-donnez-le quand vous l'avez sous la main.
+Sans `gradient`, la composante `i` du gradient est une *différence centrée*, $(f(x + h e_i) - f(x - h e_i)) / 2h$, avec
+$h = \epsilon^{1/3} \max(1, |x_i|) \approx 6 \cdot 10^{-6} \max(1, |x_i|)$ (Nocedal et Wright, §8.1). Son erreur a deux
+parts : celle de la formule, environ $h^2 |f'''| / 6$, qu'un `h` plus petit réduit, et celle de l'arrondi, environ
+$\epsilon |f| / h$, qu'un `h` plus petit fait grandir ; ce `h` les équilibre, pour une erreur proche de
+$\epsilon^{2/3} \approx 4 \cdot 10^{-11}$ de la taille du gradient sur une fonction d'échelle ordinaire. Chaque gradient
+coûte `2n` appels de `f`, donc un pas coûte `2n + 1` là où le gradient donné coûte 1 : donnez-le quand vous l'avez sous
+la main.
 
 L'erreur compte là où `f` est raide ou mal mise à l'échelle. Sur le premier problème d'Osborne de Moré, Garbow et
 Hillstrom, $e^{-t x_4}$ avec `t` jusqu'à 320 a une dérivée troisième proche de $10^8$, l'erreur des différences atteint
@@ -242,9 +243,9 @@ La méthode est celle de Nelder et Mead (1965), comme le `fminsearch` de MATLAB,
 (2012). Elle déplace un *simplex*, `n + 1` points en `n` dimensions : un triangle dans le plan, un tétraèdre dans
 l'espace. À chaque pas, elle prend le pire point, celui du plus grand `f`, et le *réfléchit* par le milieu des autres.
 Si le nouveau point est le meilleur jusque-là, elle essaie d'aller deux fois plus loin, une *expansion* ; s'il n'est pas
-meilleur que l'avant-dernier, elle essaie un point entre les deux, une *contraction* ; si cela échoue aussi, chaque point
-se rapproche à mi-chemin du meilleur, un *rétrécissement*. Elle ne se sert jamais d'une pente, si bien que `f` peut avoir
-des coudes, des marches ou du bruit.
+meilleur que l'avant-dernier, elle essaie un point entre les deux, une *contraction* ; si cela échoue aussi, chaque
+point se rapproche à mi-chemin du meilleur, un *rétrécissement*. Elle ne se sert jamais d'une pente, si bien que `f`
+peut avoir des coudes, des marches ou du bruit.
 
 Les coefficients de Gao et Han, pour `n` nombres, sont `1` pour la réflexion, `1 + 2/n` pour l'expansion,
 `0.75 - 1/(2n)` pour la contraction et `1 - 1/n` pour le rétrécissement ; à `n = 2` ce sont ceux de Nelder et Mead
@@ -259,13 +260,13 @@ Il n'y a pas de promesse : Lagarias, Reeds, Wright et Wright (1998) prouvent que
 d'une fonction strictement convexe d'un nombre, et n'ont que des résultats limités pour deux ; McKinnon (1998) donne des
 fonctions strictement convexes de deux nombres, lisses, sur lesquelles elle converge vers un point qui n'est pas un
 minimum. Sur la fonction de Box à trois nombres, depuis le départ de Moré, Garbow et Hillstrom, Simplex et scipy
-s'arrêtent tous deux à `f = 0.0756`, là où le minimum vaut 0. Prenez donc Minimize pour une `f` lisse, et vérifiez ce que
-trouve Simplex.
+s'arrêtent tous deux à `f = 0.0756`, là où le minimum vaut 0. Prenez donc Minimize pour une `f` lisse, et vérifiez ce
+que trouve Simplex.
 
 ### Quand il n'y a pas de minimum
 
-Les deux donnent un `Err` de sorte `"optimize"`, avec `Best`, la struct du meilleur point trouvé, quand `f` donne un
-NaN, un infini ou pas un nombre au départ, et quand les pas sont épuisés :
+Les deux donnent un `Err` de sorte `"optimize"`, avec `Best`, la struct (la valeur aux champs nommés) du meilleur point
+trouvé, quand `f` donne un NaN, un infini ou pas un nombre au départ, et quand les pas sont épuisés :
 
 ```cesia
 optimize.Minimize(rosen, [-1.2, 1.0], steps = 3).Error.Message -->
@@ -274,13 +275,13 @@ optimize.Simplex(x -> x[1], [0.0]).Error.Message -->
 ```
 
 Minimize en donne aussi un quand `f` baisse sans fin, au-delà de pas de $10^{10}$ fois la direction ; quand `f` cesse de
-baisser là où sa pente n'est pas petite, comme ci-dessus ; et quand `f` monte le long de moins le gradient dès le départ,
-ce que fait un gradient faux. Simplex en donne un quand ses points grandissent au-delà des plus grands floats. Après le
-départ, un NaN ou un infini venant de `f` fait reculer la line search de Minimize, et compte dans Simplex comme une valeur
-pire que toutes les autres : une fonction infinie au-delà d'une paroi est minimisée jusqu'à la paroi par Simplex, et
-arrête Minimize à cet endroit avec un `Err`. Un mauvais argument, un `tol` négatif, un `steps` qui n'est pas un nombre
-entier, un `x` qui n'est pas fait de nombres sur une ligne ou une colonne, est un bug de l'appelant : une panic qui le
-nomme.
+baisser là où sa pente n'est pas petite, comme ci-dessus ; et quand `f` monte le long de moins le gradient dès le
+départ, ce que fait un gradient faux. Simplex en donne un quand ses points grandissent au-delà des plus grands floats.
+Après le départ, un NaN ou un infini venant de `f` fait reculer la line search de Minimize, et compte dans Simplex comme
+une valeur pire que toutes les autres : une fonction infinie au-delà d'une paroi est minimisée jusqu'à la paroi par
+Simplex, et arrête Minimize à cet endroit avec un `Err`. Un mauvais argument, un `tol` négatif, un `steps` qui n'est pas
+un nombre entier, un `x` qui n'est pas fait de nombres sur une ligne ou une colonne, est un bug de l'appelant : une
+panic qui le nomme.
 
 ### Les vérifications
 
@@ -410,15 +411,15 @@ composantes d'échelles très différentes. `maxStep` borne la taille d'un pas, 
 leur nombre, pas refusés compris.
 
 Ce que promet une tolérance demande de l'attention. À chaque pas, la méthode estime l'erreur qu'elle fait dans ce pas,
-l'*erreur locale*, et ne fait le pas que quand la moyenne quadratique de cette estimation, chaque composante divisée
-par $\text{atol} + \text{rtol} \cdot |y|$, vaut au plus 1. L'erreur de la solution entière, l'*erreur globale*,
-additionne les erreurs locales à mesure que l'équation les emporte : aucune méthode ne la borne en général. Ce qui vaut,
-et que vérifient les tests de Cesia, c'est la *proportionnalité à la tolérance* : l'erreur globale baisse à peu près
-aussi vite que la tolérance. Sur l'orbite de Kepler à une excentricité de 0,5, après trois tours, l'erreur de la position
-vaut 30 à 65 fois `rtol` de `1e-7` jusqu'à `1e-12`, 270 fois à `1e-5` et 320 fois à `1e-3`. Sur un système *chaotique*,
-comme celui de Lorenz, une petite erreur grandit de façon exponentielle avec le temps : en `t = 12.5`, les trois solvers
-(les codes qui résolvent l'équation) de cette page donnent `x` = -11.891, -11.889 et -11.893 à leurs réglages par défaut,
-et la vraie valeur est -11.896. Un `rtol` plus petit repousse cet horizon plus tard, il ne le supprime pas.
+l'*erreur locale*, et ne fait le pas que quand la moyenne quadratique de cette estimation, chaque composante divisée par
+$\text{atol} + \text{rtol} \cdot |y|$, vaut au plus 1. L'erreur de la solution entière, l'*erreur globale*, additionne
+les erreurs locales à mesure que l'équation les emporte : aucune méthode ne la borne en général. Ce qui vaut, et que
+vérifient les tests de Cesia, c'est la *proportionnalité à la tolérance* : l'erreur globale baisse à peu près aussi vite
+que la tolérance. Sur l'orbite de Kepler à une excentricité de 0,5, après trois tours, l'erreur de la position vaut 30 à
+65 fois `rtol` de `1e-7` jusqu'à `1e-12`, 270 fois à `1e-5` et 320 fois à `1e-3`. Sur un système *chaotique*, comme
+celui de Lorenz, une petite erreur grandit de façon exponentielle avec le temps : en `t = 12.5`, les trois solvers (les
+codes qui résolvent l'équation) de cette page donnent `x` = -11.891, -11.889 et -11.893 à leurs réglages par défaut, et
+la vraie valeur est -11.896. Un `rtol` plus petit repousse cet horizon plus tard, il ne le supprime pas.
 
 ### Les événements
 
@@ -435,8 +436,8 @@ math.Sqrt(20.0 / 9.81) -->
 ```
 
 Après chaque pas, Solve compare le signe de chaque `g` aux deux bouts du pas ; un changement est localisé par
-[optimize.Root] sur la sortie dense du pas, jusqu'aux derniers bits de `t`. Chaque événement donne `Event`, sa place dans
-la liste, `T` et `Y`. Un `g` qui vaut 0 au premier temps n'est pas un événement, comme le conseillent Shampine et
+[optimize.Root] sur la sortie dense du pas, jusqu'aux derniers bits de `t`. Chaque événement donne `Event`, sa place
+dans la liste, `T` et `Y`. Un `g` qui vaut 0 au premier temps n'est pas un événement, comme le conseillent Shampine et
 Thompson (2000), pour qu'une résolution partie d'un événement ne s'arrête pas aussitôt. Deux passages du même `g` à
 l'intérieur d'un pas s'annulent et sont manqués, comme dans MATLAB et scipy : `maxStep` rend les pas assez courts pour
 les voir.
@@ -508,10 +509,10 @@ v.Error.Partial.Stats.Steps -->
 ```
 
 Le `ode45` de MATLAB et le `RK45` de scipy ne disent rien, et prennent des minutes. Solve y fait attention : le test de
-Hairer et Wanner, d'après Shampine (1977), estime $h |\lambda|$, le pas fois la plus grande vitesse de changement le long
-du pas, à partir des deux derniers étages du pas, qui sont au même temps. Au-delà de 3,25, le pas est à la limite de ce
-que la méthode peut supporter sans que ses erreurs grandissent ; sur 15 tels pas, sans 6 pas calmes à la suite entre
-eux, Solve s'arrête et le dit. Il fait le test tous les 1 000 pas, et à chaque pas dès qu'un pas l'a dépassé. Son
+Hairer et Wanner, d'après Shampine (1977), estime $h |\lambda|$, le pas fois la plus grande vitesse de changement le
+long du pas, à partir des deux derniers étages du pas, qui sont au même temps. Au-delà de 3,25, le pas est à la limite
+de ce que la méthode peut supporter sans que ses erreurs grandissent ; sur 15 tels pas, sans 6 pas calmes à la suite
+entre eux, Solve s'arrête et le dit. Il fait le test tous les 1 000 pas, et à chaque pas dès qu'un pas l'a dépassé. Son
 message dit quoi faire : `stiff = true`, une méthode faite pour les problèmes stiff, qui fait une centaine de pas là où
 celle-ci en ferait des millions :
 
@@ -548,25 +549,26 @@ y(end, :)
 ### La méthode
 
 Solve se sert de la méthode de Dormand et Prince (1980), celle du `ode45` de MATLAB et du `RK45` de scipy. C'est une
-*méthode de Runge–Kutta* : chaque pas de $t$ à $t + h$ évalue $f$ en 7 *étages*, $k_i = f(t + c_i h, y + h \sum_j a_{ij}
-k_j)$, et les combine en $y_1 = y + h \sum_i b_i k_i$, qui suit la série de Taylor de la solution jusqu'à $h^5$ : elle
-est d'*ordre 5*. Les nombres $a$, $b$ et $c$ sont ceux de l'article. Une autre combinaison, $z_1 = y + h \sum_i
-\beta_i k_i$, est d'ordre 4, et leur différence estime l'erreur du pas sans coût. Le dernier étage est
-$f(t + h, y_1)$, le premier étage du pas suivant, si bien qu'un pas coûte 6 appels de `f`.
+*méthode de Runge–Kutta* : chaque pas de $t$ à $t + h$ évalue $f$ en 7 *étages*,
+$k_i = f(t + c_i h, y + h \sum_j a_{ij} k_j)$, et les combine en $y_1 = y + h \sum_i b_i k_i$, qui suit la série de
+Taylor de la solution jusqu'à $h^5$ : elle est d'*ordre 5*. Les nombres $a$, $b$ et $c$ sont ceux de l'article. Une
+autre combinaison, $z_1 = y + h \sum_i \beta_i k_i$, est d'ordre 4, et leur différence estime l'erreur du pas sans coût.
+Le dernier étage est $f(t + h, y_1)$, le premier étage du pas suivant, si bien qu'un pas coûte 6 appels de `f`.
 
-- **Le test de l'erreur**, tel que le donnent Hairer, Nørsett et Wanner (I, §II.4) : $\text{err} = \sqrt{\frac{1}{n} \sum_i
-  ((y_{1,i} - z_{1,i}) / \text{sc}_i)^2}$ avec $\text{sc}_i = \text{atol}_i + \text{rtol} \cdot \max(|y_i|,
-  |y_{1,i}|)$ ; le pas est fait quand $\text{err} \le 1$.
-- **Le pas suivant**, par le contrôle PI de Gustafsson (1991) tel que l'a DOPRI5 : $h_\text{new} = h \cdot \min(10 ;
-  \max(0{,}2 ; 0{,}9 \cdot \text{err}^{-0{,}17} \cdot \text{err}_{\text{prev}}^{0{,}04}))$, pas plus grand juste après un pas
-  refusé. Le second facteur, venant de l'erreur du pas précédent, lisse la suite des pas ; Söderlind (2003) explique
-  pourquoi.
+- **Le test de l'erreur**, tel que le donnent Hairer, Nørsett et Wanner (I, §II.4) :
+  $\text{err} = \sqrt{\frac{1}{n} \sum_i ((y_{1,i} - z_{1,i}) / \text{sc}_i)^2}$ avec
+  $\text{sc}_i = \text{atol}_i + \text{rtol} \cdot \max(|y_i|, |y_{1,i}|)$ ; le pas est fait quand $\text{err} \le 1$.
+- **Le pas suivant**, par le contrôle PI de Gustafsson (1991) tel que l'a DOPRI5 :
+  $h_\text{new} = h \cdot \min(10 ; \max(0{,}2 ; 0{,}9 \cdot \text{err}^{-0{,}17} \cdot \text{err}_{\text{prev}}^{0{,}04}))$,
+  pas plus grand juste après un pas refusé. Le second facteur, venant de l'erreur du pas précédent, lisse la suite des
+  pas ; Söderlind (2003) explique pourquoi.
 - **Le premier pas**, par la règle de Gladwell, Shampine et Brankin (1987) : le pas sur lequel la méthode d'Euler
   déplace `y` de 1 % de son échelle, puis borné par une estimation de la dérivée seconde, à partir d'un appel de `f` de
   plus.
-- **La sortie dense** de Shampine (1986) : un polynôme de degré 4 dans chaque pas, à partir des étages déjà calculés, qui
-  rejoint les états du pas aux deux bouts ; `At` l'évalue, et l'erreur d'un état entre deux pas est de l'ordre de celle
-  de la méthode elle-même. Elle a besoin des étages de chaque pas : $6n + 2$ floats par pas, 160 octets pour Lorenz.
+- **La sortie dense** de Shampine (1986) : un polynôme de degré 4 dans chaque pas, à partir des étages déjà calculés,
+  qui rejoint les états du pas aux deux bouts ; `At` l'évalue, et l'erreur d'un état entre deux pas est de l'ordre de
+  celle de la méthode elle-même. Elle a besoin des étages de chaque pas : $6n + 2$ floats par pas, 160 octets pour
+  Lorenz.
 
 Les tests de Cesia vérifient la méthode elle-même : les 17 conditions d'ordre 5 sur $b$ et les 8 d'ordre 4 sur
 $\beta$, jusqu'aux derniers bits ; l'ordre 4 de la sortie dense en plusieurs points d'un pas ; le premier pas du solver
@@ -578,10 +580,10 @@ vers l'arrière.
 ### La méthode pour les problèmes stiff
 
 Avec `stiff = true`, Solve se sert de Rodas5P (Steinebach 2023), une *méthode de Rosenbrock* (Hairer et Wanner II,
-§IV.7). Là où une méthode explicite comme celle de Dormand et Prince tire chaque étage des étages d'avant, une méthode de
-Rosenbrock résout, à chaque étage, un système linéaire de matrice $W = I - h\gamma J$, où $J = f_y$ est le *jacobien* de
-`f` au début du pas : la matrice $n \times n$ de la façon dont chaque composante de $f$ change avec chaque composante de
-$y$. Une composante rapide, qui décroît à une vitesse $\lambda$ bien en dessous de 0, voit son changement divisé par
+§IV.7). Là où une méthode explicite comme celle de Dormand et Prince tire chaque étage des étages d'avant, une méthode
+de Rosenbrock résout, à chaque étage, un système linéaire de matrice $W = I - h\gamma J$, où $J = f_y$ est le *jacobien*
+de `f` au début du pas : la matrice $n \times n$ de la façon dont chaque composante de $f$ change avec chaque composante
+de $y$. Une composante rapide, qui décroît à une vitesse $\lambda$ bien en dessous de 0, voit son changement divisé par
 environ $1 - h\gamma\lambda$, si bien que son erreur s'éteint quel que soit le pas : la méthode est *L-stable*, son
 facteur de croissance $R(z)$ vaut au plus 1 pour tout $z = h\lambda$ dont la partie réelle est sous 0, et 0 quand $z$
 tend vers $-\infty$. Les pas ne suivent alors que la partie lente de la solution.
@@ -590,11 +592,12 @@ Sous la forme avec les étages $u_i$ que prend le code RODAS de Hairer et Wanner
 $f_t$ la dérivée de $f$ en $t$ :
 
 $$
-(I - h\gamma J)\, u_i = h\gamma\, f(t + c_i h,\; y + \sum_{j<i} a_{ij} u_j) + h^2 \gamma\, d_i\, f_t + \gamma \sum_{j<i} c_{ij} u_j
+(I - h\gamma J)\, u_i = h\gamma\, f(t + c_i h,\; y + \sum_{j<i} a_{ij} u_j) + h^2 \gamma\, d_i\, f_t + \gamma \sum_{j<i}
+c_{ij} u_j
 $$
 
-Rodas5P a 8 étages et $\gamma = 0{,}21193756319429014$ ; ses nombres $a$, $c$ et $d$ sont ceux que publie Steinebach avec
-le package Julia OrdinaryDiffEq.jl. $y_1 = y + \sum_j a_{8j} u_j + u_8$ est d'ordre 5 ; $y + \sum_j a_{8j} u_j$,
+Rodas5P a 8 étages et $\gamma = 0{,}21193756319429014$ ; ses nombres $a$, $c$ et $d$ sont ceux que publie Steinebach
+avec le package Julia OrdinaryDiffEq.jl. $y_1 = y + \sum_j a_{8j} u_j + u_8$ est d'ordre 5 ; $y + \sum_j a_{8j} u_j$,
 l'argument du dernier étage, est d'ordre 4, si bien que $u_8$ estime l'erreur du pas. Un pas coûte un jacobien, une
 factorisation de $W$ par [num.Lu], 8 résolutions avec elle et 8 appels de `f`. Il n'y a pas d'itération de Newton, comme
 dans les méthodes implicites (`ode15s`, `Radau`, `BDF`), donc pas d'itération qui puisse ne pas converger.
@@ -603,21 +606,21 @@ dans les méthodes implicites (`ode15s`, `Radau`, `BDF`), donc pas d'itération 
   Solve calcule chaque colonne $j$ par une différence avant, à partir d'un appel de `f` de plus avec $y_j$ déplacé de
   $\delta_j = \sqrt{\epsilon} \max(|y_j|, \text{atol}_j)$ : la règle de Dennis et Schnabel (1996) pour les différences
   finies, avec $\text{atol}_j$ comme taille typique de $y_j$, sous laquelle le test de l'erreur ne voit pas de
-  différence ($\sqrt{\epsilon}$ quand les deux valent 0). La règle du code RODAS, $\sqrt{\epsilon \max(|y_j|, 10^{-5})}$,
-  déplace le $y_2$ du problème de Robertson, environ $10^{-13}$, de 400 fois sa propre taille : le jacobien sort
-  200 fois trop grand à un endroit, et la résolution fait 4 fois plus de pas, jusqu'à une réponse fausse de 15 %. $f_t$
-  vient d'une différence de plus, sur $\sqrt{\epsilon} |h|$, l'échelle que le pas distingue. Sans `jacobian`, un pas
-  appelle `f` $n + 1$ fois de plus.
-- **Le pas suivant** : $h_\text{new} = h \cdot \min(6 ; \max(0{,}2 ; 0{,}9 \cdot \text{err}^{-1/5}))$, ou plus petit par le
-  *contrôle prédictif* de Gustafsson (1994), comme dans RODAS, $h \cdot 0{,}9 \cdot (h / h_\text{prev})^{-1} \cdot
-  (\text{err}^2 / \text{err}_\text{prev})^{-1/5}$, qui suit la tendance des deux derniers pas. Sur l'oscillateur de
-  Van der Pol à $\mu = 1000$, il refuse 23 pas au lieu de 176.
+  différence ($\sqrt{\epsilon}$ quand les deux valent 0). La règle du code RODAS,
+  $\sqrt{\epsilon \max(|y_j|, 10^{-5})}$, déplace le $y_2$ du problème de Robertson, environ $10^{-13}$, de 400 fois sa
+  propre taille : le jacobien sort 200 fois trop grand à un endroit, et la résolution fait 4 fois plus de pas, jusqu'à
+  une réponse fausse de 15 %. $f_t$ vient d'une différence de plus, sur $\sqrt{\epsilon} |h|$, l'échelle que le pas
+  distingue. Sans `jacobian`, un pas appelle `f` $n + 1$ fois de plus.
+- **Le pas suivant** : $h_\text{new} = h \cdot \min(6 ; \max(0{,}2 ; 0{,}9 \cdot \text{err}^{-1/5}))$, ou plus petit par
+  le *contrôle prédictif* de Gustafsson (1994), comme dans RODAS,
+  $h \cdot 0{,}9 \cdot (h / h_\text{prev})^{-1} \cdot (\text{err}^2 / \text{err}_\text{prev})^{-1/5}$, qui suit la
+  tendance des deux derniers pas. Sur l'oscillateur de Van der Pol à $\mu = 1000$, il refuse 23 pas au lieu de 176.
 - **La sortie dense** : celle de Steinebach, un polynôme de degré 4 dans chaque pas, à partir de ses étages, qui rejoint
   les états aux deux bouts. Le test de l'erreur ne voit que ces bouts. Là où une décroissance rapide suit un forçage
   lent, comme dans $y' = \lambda (y - \cos t) - \sin t$ avec $\lambda = -10^6$ (Prothero et Robinson 1974), la méthode
   met chaque bout sur $\cos t$ quel que soit le pas : les pas grandissent jusqu'à 3,4 à `rtol = 1e-6`, et `At` entre eux
-  est faux de 5 %. `maxStep` borne les pas là où les valeurs entre eux comptent : avec `maxStep = 0.05`, `At` est juste à
-  `1e-8` près.
+  est faux de 5 %. `maxStep` borne les pas là où les valeurs entre eux comptent : avec `maxStep = 0.05`, `At` est juste
+  à `1e-8` près.
 - **La taille** : `y0` a au plus 1 000 composantes avec `stiff = true` ; $J$, $W$ et ses facteurs sont des matrices
   $n \times n$, de 8 MB chacune à 1 000.
 
@@ -692,9 +695,10 @@ près.
 Chaque pas fait 6 appels de `f` et environ 58 opérations sur des arrays de 3 floats, et les deux tournent dans
 l'interpréteur : le JIT de [Vitesse](speed.md#ce-qui-devient-du-code-machine) ne fait pas encore de code machine d'une
 boucle qui fait des arrays, comme `[a, b, c]`, ou qui calcule sur des arrays entiers, comme `y + h * k`, si bien qu'une
-`f` de premier niveau, une closure et la `f` d'une cell coûtent toutes la même chose : environ 11 µs par pas, dont 1,5
-dans les 6 appels de `f`, chaque opération sur un array environ 75 ns. L'objectif pour la première résolution, 60 ms,
-attend un JIT qui descende ce code jusqu'au code machine.
+`f` de premier niveau, une closure (une fonction qui garde les variables de l'endroit où elle est écrite) et la `f`
+d'une cell coûtent toutes la même chose : environ 11 µs par pas, dont 1,5 dans les 6 appels de `f`, chaque opération sur
+un array environ 75 ns. L'objectif pour la première résolution, 60 ms, attend un JIT qui descende ce code jusqu'au code
+machine.
 
 Avec `stiff = true`, mesuré de la même façon : le problème de Robertson sur `[0, 1e11]` à `rtol = 1e-6` et
 `atol = 1e-10` fait 207 pas en **15,2 ms** (14,2 à 25,0), celui de Van der Pol à $\mu = 1000$ sur `[0, 3000]` à
@@ -770,8 +774,8 @@ chord(x) = quad.Integral(y -> 1.0, -math.Sqrt(1.0 - x * x), math.Sqrt(1.0 - x * 
 quad.Integral(chord, -1.0, 1.0).Value.Value -->
 ```
 
-`quad.Integral(...).Value` est ce que contient l'`Ok`, la struct, donc `.Value.Value` est l'intégrale elle-même ; dans un
-programme, `result.Unwrap` ou `?` se lisent mieux.
+`quad.Integral(...).Value` est ce que contient l'`Ok`, la struct, donc `.Value.Value` est l'intégrale elle-même ; dans
+un programme, `result.Unwrap` ou `?` se lisent mieux.
 
 ### Les bornes infinies
 
@@ -808,22 +812,22 @@ quad.Integral(step, 0.0, 1.0).Value -->
 quad.Integral(step, 0.0, 1.0, points = [0.3]).Value -->
 ```
 
-Sans `points`, la méthode trouve le saut elle-même, en coupant les morceaux autour de plus en plus petits : 357 appels de
-`f`. Avec eux, les deux morceaux sont exacts tout de suite : 42 appels. Des points hors de l'intervalle sont une panic ;
-des points égaux à `a` ou à `b` sont laissés de côté, et un point donné deux fois compte une fois. Avec une borne
-infinie, coupez l'intégrale en un point en deux appels.
+Sans `points`, la méthode trouve le saut elle-même, en coupant les morceaux autour de plus en plus petits : 357 appels
+de `f`. Avec eux, les deux morceaux sont exacts tout de suite : 42 appels. Des points hors de l'intervalle sont une
+panic ; des points égaux à `a` ou à `b` sont laissés de côté, et un point donné deux fois compte une fois. Avec une
+borne infinie, coupez l'intégrale en un point en deux appels.
 
 ### Ce qu'elle promet
 
-`Integral` donne un `Ok` quand `Error` vaut au plus `max(atol, rtol |Value|)` : avec les valeurs par défaut,
-10 chiffres, ou `1e-12` près de 0. `Error` est une estimation, venant du propre test de la méthode, pas une borne. Sur une
+`Integral` donne un `Ok` quand `Error` vaut au plus `max(atol, rtol |Value|)` : avec les valeurs par défaut, 10
+chiffres, ou `1e-12` près de 0. `Error` est une estimation, venant du propre test de la méthode, pas une borne. Sur une
 fonction lisse, elle est pessimiste : la vraie erreur est souvent bien plus petite. Elle peut être trompée par un détail
 qu'aucun point de la règle ne voit, comme un pic plus étroit que les écarts entre eux, comme peut l'être toute méthode
 qui ne fait qu'échantillonner `f`.
 
 Les tests de Cesia la vérifient sur 42 intégrales des sortes sur lesquelles le livre de QUADPACK teste ses méthodes,
-chacune contre sa forme close : $x^\alpha \log(1/x)$ et $x^{-1/2}$, singulières à un bout ; $|x - 1/3|^\alpha$, singulière
-à l'intérieur, avec et sans `points` ; un pic de largeur $4^{-\alpha}$, $\alpha$ jusqu'à 8 ;
+chacune contre sa forme close : $x^\alpha \log(1/x)$ et $x^{-1/2}$, singulières à un bout ; $|x - 1/3|^\alpha$,
+singulière à l'intérieur, avec et sans `points` ; un pic de largeur $4^{-\alpha}$, $\alpha$ jusqu'à 8 ;
 $(1 - x^2)^{-1/2} / (x + 1 + 2^{-\alpha})$, singulière aux deux bouts à côté d'un pôle ; $\sin^{\alpha - 1} x$ et
 $\log(1/x)^{\alpha - 1}$, dont les intégrales sont des valeurs des fonctions [special.Beta] et [special.Gamma] ;
 $x^\alpha e^{-x}$ et $e^{-x^2}$ sur des intervalles infinis ; une oscillation, $x \sin 30x \cos x$ sur $[0, 2\pi]$ ; un
@@ -854,8 +858,8 @@ quad.Integral(x -> math.Sin(x), 0.0, math.Inf).Error.Message -->
 - **L'extrapolation** : la table de l'algorithme epsilon continue de changer de plus que ses propres estimations, comme
   pour $\sin x$ sur $[0, \infty)$, dont l'intégrale n'a pas de limite.
 - **La divergence** : la valeur extrapolée et la somme des morceaux diffèrent de plus d'un facteur 100, ou l'erreur est
-  au-dessus de l'aire. L'intégrale de $x^{-1{,}1}$ de 0 à 1 est infinie ; l'extrapolation donne $-10 = 1 / (1 - 1{,}1)$, la
-  valeur que prend $1 / (p + 1)$, l'intégrale de $x^p$ pour $p > -1$, en $p = -1{,}1$, et le test de divergence la
+  au-dessus de l'aire. L'intégrale de $x^{-1{,}1}$ de 0 à 1 est infinie ; l'extrapolation donne $-10 = 1 / (1 - 1{,}1)$,
+  la valeur que prend $1 / (p + 1)$, l'intégrale de $x^p$ pour $p > -1$, en $p = -1{,}1$, et le test de divergence la
   refuse. scipy et R donnent le même $-10$ avec un avertissement.
 - **Ce que donne `f`** : un NaN, un infini, un texte ou tout autre chose qu'un nombre est un `Err` qui nomme l'endroit :
   `f(0.5) is "a", not a finite number.` Une panic à l'intérieur de `f` reste une panic.
@@ -875,9 +879,9 @@ Integral est le QAGS de QUADPACK (Piessens, de Doncker-Kapenga, Überhuber et Ka
   tout polynôme de degré 31 ou moins, et $G$ vient gratuitement, à partir de 10 des mêmes valeurs de `f`. Les nouveaux
   points sont les zéros du *polynôme de Stieltjes* $E_{11}$, qui est orthogonal à $x^k P_{10}(x)$ pour
   $k = 0, \dots, 10$, $P_{10}$ étant le polynôme de Legendre dont les zéros sont les points de Gauss. Les points et les
-  poids de Cesia ont été calculés pour elle à partir de $E_{11}$ en nombres rationnels exacts, ses zéros à 100 chiffres ;
-  ses tests les recalculent par l'algorithme de Laurie (1997), comme les valeurs propres d'une matrice tridiagonale, et
-  s'accordent à 2 eps près.
+  poids de Cesia ont été calculés pour elle à partir de $E_{11}$ en nombres rationnels exacts, ses zéros à 100 chiffres
+  ; ses tests les recalculent par l'algorithme de Laurie (1997), comme les valeurs propres d'une matrice tridiagonale,
+  et s'accordent à 2 eps près.
 - **L'estimation de l'erreur** : $|K - G|$ serait une estimation de l'erreur de $G$ ; l'erreur de $K$ est bien plus
   petite. QUADPACK prend $E = I_\text{asc} \min(1, (200 |K - G| / I_\text{asc})^{3/2})$, où $I_\text{asc}$, l'intégrale
   de $|f - m|$ sur le morceau, $m$ la moyenne de `f` sur celui-ci, mesure à quel point `f` varie : la puissance $3/2$
@@ -885,28 +889,26 @@ Integral est le QAGS de QUADPACK (Piessens, de Doncker-Kapenga, Überhuber et Ka
   vaut au moins $50 \epsilon$ fois l'intégrale de $|f|$, ce que laisse l'arrondi. Les termes sont additionnés par
   paires, $f(c - h x) + f(c + h x)$, si bien qu'une `f` impaire sur un intervalle centré en 0 donne exactement 0.
 - **La stratégie** : garder les morceaux dans l'ordre de leurs erreurs ; couper en deux celui qui a la plus grande ;
-  s'arrêter quand la somme des erreurs vaut au plus la tolérance. Près d'une singularité, les morceaux deviennent de plus
-  en plus petits, et leurs sommes convergent lentement.
+  s'arrêter quand la somme des erreurs vaut au plus la tolérance. Près d'une singularité, les morceaux deviennent de
+  plus en plus petits, et leurs sommes convergent lentement.
 - **L'extrapolation** : quand le morceau de plus grande erreur est l'un des plus petits, comme à côté d'une singularité,
   la méthode coupe d'abord les morceaux plus grands jusqu'à ce que leurs erreurs soient sous la tolérance, puis ajoute
   la somme de tous les morceaux à une suite $S_1, S_2, \dots$, un niveau de coupe plus près de la singularité à chaque
-  fois, et estime sa limite par l'*algorithme epsilon* de Wynn (1956) :
-  $$
-  \epsilon^{(n)}_{-1} = 0, \quad \epsilon^{(n)}_0 = S_n, \quad
-  \epsilon^{(n)}_{k+1} = \epsilon^{(n+1)}_{k-1} + \frac{1}{\epsilon^{(n+1)}_k - \epsilon^{(n)}_k}
-  $$
-  Ses colonnes paires $\epsilon_{2k}$ sont les transformées de Shanks de la suite : $\epsilon_2$ est le $\Delta^2$
-  d'Aitken, exact sur une suite dont l'erreur diminue du même facteur à chaque pas, et les colonnes plus hautes enlèvent
-  plusieurs de ces termes à la fois. Près d'une singularité à un bout comme $x^\alpha$, chaque niveau de coupe divise
-  l'erreur du morceau du bout par environ $2^{\alpha + 1}$ : une telle suite. Cesia construit les colonnes paires seules
-  par la *règle de la croix* (cross rule) de Wynn (1966), comme le fait QUADPACK, garde au plus 50 sommes, et prend
-  comme erreur de l'extrapolation la distance aux trois dernières valeurs extrapolées.
+  fois, et estime sa limite par l'*algorithme epsilon* de Wynn (1956) : $\epsilon^{(n)}_{-1} = 0$,
+  $\epsilon^{(n)}_0 = S_n$ et
+  $\epsilon^{(n)}_{k+1} = \epsilon^{(n+1)}_{k-1} + \frac{1}{\epsilon^{(n+1)}_k - \epsilon^{(n)}_k}$. Ses colonnes paires
+  $\epsilon_{2k}$ sont les transformées de Shanks de la suite : $\epsilon_2$ est le $\Delta^2$ d'Aitken, exact sur une
+  suite dont l'erreur diminue du même facteur à chaque pas, et les colonnes plus hautes enlèvent plusieurs de ces termes
+  à la fois. Près d'une singularité à un bout comme $x^\alpha$, chaque niveau de coupe divise l'erreur du morceau du
+  bout par environ $2^{\alpha + 1}$ : une telle suite. Cesia construit les colonnes paires seules par la *règle de la
+  croix* (cross rule) de Wynn (1966), comme le fait QUADPACK, garde au plus 50 sommes, et prend comme erreur de
+  l'extrapolation la distance aux trois dernières valeurs extrapolées.
 - **Les bornes infinies** : le changement de variable ci-dessus, et la règle de Gauss–Kronrod à 15 points (7 de Gauss),
   sur des morceaux de $(0, 1]$.
 
 La méthode tourne en code natif qui rappelle `f`, chaque pas tel que le prend le code de QUADPACK, dans le même ordre :
-la même méthode écrite en Cesia passait six fois plus de temps sur ses propres pas que sur `f`, et l'interpréteur ne sait
-pas encore en faire du code machine.
+la même méthode écrite en Cesia passait six fois plus de temps sur ses propres pas que sur `f`, et l'interpréteur ne
+sait pas encore en faire du code machine.
 
 Les tests de Cesia vérifient, en plus des 42 intégrales : les points et les poids de Laurie pour les deux règles ; les
 degrés des règles, $x^k$ exact à 4 eps près jusqu'à $k = 31$ et pas à 32, et l'exactitude de $G$ jusqu'à 19 vue dans
@@ -975,22 +977,22 @@ avant.
 qui nomme l'endroit, jamais un NaN dans les sommes. Chaque boucle est bornée : `limit` borne les morceaux, si bien que
 `f` est appelée au plus $21 (2\,\text{limit} - 1)$ fois, $15 (2\,\text{limit} - 1)$ avec une borne infinie et
 $30 (2\,\text{limit} - 1)$ avec deux, et une fonction qui ne converge jamais finit sur l'`Err` de la limite, de
-l'arrondi, du mauvais endroit ou de l'extrapolation ; la table de l'algorithme epsilon garde au plus 50 sommes. Garder les
-morceaux dans l'ordre coûte jusqu'à `limit` pas chacun, si bien qu'une grande `limit` coûte un temps qui va comme son
-carré : à 100 000, une fonction qui ne se stabilise jamais, $\sin(1/x)$, prend 3,4 secondes avant que l'arrondi
-l'arrête. La mémoire grandit avec les morceaux, six nombres chacun, dans des arrays qui doublent quand ils sont pleins, à
-partir de 16 : à la `limit` par défaut, 48 KB. Au-delà de la limite de mémoire du programme, le programme s'arrête avec
-`Limit "memory" reached.`, comme tout programme. Le code natif compte son travail dans `--limit` à mesure qu'il avance,
-et chaque appel de `f` est du code Cesia, si bien que `--limit` et [cells.Stop] arrêtent une longue intégrale en
-quelques appels de `f`. Il ne lit que les nombres qu'Integral lui donne, ne garde aucun état hors d'un appel, si bien que
-`f` peut rappeler Integral, et une panic dans `f` remonte comme une panic. Les mauvais arguments, une borne NaN, une
+l'arrondi, du mauvais endroit ou de l'extrapolation ; la table de l'algorithme epsilon garde au plus 50 sommes. Garder
+les morceaux dans l'ordre coûte jusqu'à `limit` pas chacun, si bien qu'une grande `limit` coûte un temps qui va comme
+son carré : à 100 000, une fonction qui ne se stabilise jamais, $\sin(1/x)$, prend 3,4 secondes avant que l'arrondi
+l'arrête. La mémoire grandit avec les morceaux, six nombres chacun, dans des arrays qui doublent quand ils sont pleins,
+à partir de 16 : à la `limit` par défaut, 48 KB. Au-delà de la limite de mémoire du programme, le programme s'arrête
+avec `Limit "memory" reached.`, comme tout programme. Le code natif compte son travail dans `--limit` à mesure qu'il
+avance, et chaque appel de `f` est du code Cesia, si bien que `--limit` et [cells.Stop] arrêtent une longue intégrale en
+quelques appels de `f`. Il ne lit que les nombres qu'Integral lui donne, ne garde aucun état hors d'un appel, si bien
+que `f` peut rappeler Integral, et une panic dans `f` remonte comme une panic. Les mauvais arguments, une borne NaN, une
 tolérance négative, des `points` hors de l'intervalle, sont des panics qui les nomment, avant que `f` soit appelée.
 
 ### Lectures sur les intégrales
 
 - Robert Piessens, Elise de Doncker-Kapenga, Christoph W. Überhuber, David K. Kahaner. *QUADPACK: A Subroutine Package
-  for Automatic Integration*. Springer, 1983. <https://doi.org/10.1007/978-3-642-61786-7>. QAGS, QAGP, QAGI, leurs règles
-  et leurs tests ; la page du package lui-même : <https://www.netlib.org/quadpack/readme>.
+  for Automatic Integration*. Springer, 1983. <https://doi.org/10.1007/978-3-642-61786-7>. QAGS, QAGP, QAGI, leurs
+  règles et leurs tests ; la page du package lui-même : <https://www.netlib.org/quadpack/readme>.
 - Elise de Doncker. "An adaptive extrapolation algorithm for automatic integration". *ACM SIGNUM Newsletter*
   13(2):12–18, 1978. <https://doi.org/10.1145/1053402.1053403>. La stratégie de QAGS.
 - P. Wynn. "On a device for computing the $e_m(S_n)$ transformation". *Mathematical Tables and Other Aids to
@@ -1045,8 +1047,8 @@ n'est pas un nombre entier de 1 à `rows` ou à `cols` est une panic qui le nomm
 
 [sparse.Diags] met un nombre, ou un array, sur chaque diagonale : 0 est la diagonale principale, 1 celle du dessus, -1
 celle du dessous. [sparse.Kron] est le produit de Kronecker, la matrice des blocs `a(i, j) b` : avec [sparse.Eye], il
-change la matrice d'une ligne de points en celle d'une grille. Les différences secondes sur une ligne de `k` points, puis
-sur une grille de `k × k` :
+change la matrice d'une ligne de points en celle d'une grille. Les différences secondes sur une ligne de `k` points,
+puis sur une grille de `k × k` :
 
 ```cesia
 k = 3
@@ -1110,42 +1112,43 @@ sparse.Solve(sparse.Of([1, 2], [1, 1], [1.0, 1.0], 2, 2), [1.0, 1.0]) -->
 
 ### Comment marche Solve
 
-`Solve` *factorise* `a` : il l'écrit comme un produit de matrices triangulaires, puis résout deux systèmes triangulaires,
-chacun en un temps proportionnel aux non-zéros de son facteur. Le facteur d'une matrice sparse contient plus de non-zéros
-que la matrice : éliminer une inconnue relie tous ses voisins entre eux, et ces nouveaux non-zéros sont le *fill* (le
-remplissage). L'ordre d'élimination décide du fill. Sur la grille de 300 × 300 points, dans l'ordre de la grille, le
-facteur contiendrait 27 millions de non-zéros ; dans l'ordre que choisit `Solve`, 2,9 millions.
+`Solve` *factorise* `a` : il l'écrit comme un produit de matrices triangulaires, puis résout deux systèmes
+triangulaires, chacun en un temps proportionnel aux non-zéros de son facteur. Le facteur d'une matrice sparse contient
+plus de non-zéros que la matrice : éliminer une inconnue relie tous ses voisins entre eux, et ces nouveaux non-zéros
+sont le *fill* (le remplissage). L'ordre d'élimination décide du fill. Sur la grille de 300 × 300 points, dans l'ordre
+de la grille, le facteur contiendrait 27 millions de non-zéros ; dans l'ordre que choisit `Solve`, 2,9 millions.
 
 - **L'ordre** : le *degré minimum*, qui élimine d'abord l'inconnue qui a le moins de voisins, sous la forme approchée
   d'Amestoy, Davis et Duff (1996), AMD : il borne chaque degré au lieu de le compter, fusionne les inconnues dont les
   voisins sont les mêmes, et met en dernier une inconnue reliée à presque toutes les autres. Sur la grille de 300 × 300,
-  son ordre donne exactement le fill de l'AMD de SuiteSparse, dont se servent MATLAB et GNU Octave : 2 928 059 non-zéros.
+  son ordre donne exactement le fill de l'AMD de SuiteSparse, dont se servent MATLAB et GNU Octave : 2 928 059
+  non-zéros.
 - **Symétrique et définie positive**, comme la matrice de la grille : la factorisation de Cholesky, `a = L L'` (Davis
   2006, ch. 4). Son *arbre d'élimination* (Liu 1990), où le parent d'une colonne est la première ligne sous sa diagonale
   qu'elle remplit, donne la forme de `L` avant tout calcul : le compte de chaque colonne, puis ses *supernodes* (ses
   super-nœuds), des suites de colonnes de `L` qui partagent leur forme sous la diagonale (Liu, Ng et Peyton 1993). Un
-  supernode fusionne avec son parent quand cela stocke peu de zéros, ce qui fait des blocs moins nombreux et plus
-  grands : les supernodes *relaxés* d'Ashcraft et Grimes (1989), avec les seuils de CHOLMOD (Chen, Davis, Hager et
-  Rajamanickam 2008). Chaque supernode est un bloc dense de `L`, et la méthode *multifrontale* (Duff et Reid 1983 ;
-  Liu 1992) le calcule : pour chaque supernode, des feuilles de l'arbre vers le haut, une matrice dense, son *front*,
-  rassemble les cellules de `a` du supernode et les mises à jour que ses enfants ont laissées ; ses colonnes sont
-  factorisées, et la mise à jour des lignes en dessous, le *complément de Schur*, attend le parent. Presque tout le calcul
-  devient alors des produits de blocs denses, que BLAS fait à la vitesse du code dense (Ng et Peyton 1993 comparent de
-  telles méthodes par blocs sur des processeurs avec caches). La taille de chaque bloc est comptée avant qu'aucun ne
-  soit alloué : au-delà de la limite de mémoire, `Solve` donne un `Err` qui dit quelle taille aurait le facteur.
-  Cholesky n'a pas besoin de pivot, et est stable à rebours (son résultat est la solution exacte d'un problème à peine
-  changé).
+  supernode fusionne avec son parent quand cela stocke peu de zéros, ce qui fait des blocs moins nombreux et plus grands
+  : les supernodes *relaxés* d'Ashcraft et Grimes (1989), avec les seuils de CHOLMOD (Chen, Davis, Hager et Rajamanickam
+  2008). Chaque supernode est un bloc dense de `L`, et la méthode *multifrontale* (Duff et Reid 1983 ; Liu 1992) le
+  calcule : pour chaque supernode, des feuilles de l'arbre vers le haut, une matrice dense, son *front*, rassemble les
+  cellules de `a` du supernode et les mises à jour que ses enfants ont laissées ; ses colonnes sont factorisées, et la
+  mise à jour des lignes en dessous, le *complément de Schur*, attend le parent. Presque tout le calcul devient alors
+  des produits de blocs denses, que BLAS (la bibliothèque standard des produits de matrices denses) fait à la vitesse du
+  code dense (Ng et Peyton 1993 comparent de telles méthodes par blocs sur des processeurs avec caches). La taille de
+  chaque bloc est comptée avant qu'aucun ne soit alloué : au-delà de la limite de mémoire, `Solve` donne un `Err` qui
+  dit quelle taille aurait le facteur. Cholesky n'a pas besoin de pivot, et est stable à rebours (son résultat est la
+  solution exacte d'un problème à peine changé).
 - **Toute autre matrice carrée** : LU avec pivot partiel, `p a q = L U`. Quand la forme de `a` est presque symétrique,
   la moitié de ses cellules en miroir ou plus, sans 0 sur sa diagonale, l'ordre est AMD sur la forme de `a + a'`, et LU
   suit les supernodes de cette forme, avec des fronts qui contiennent les deux triangles, comme le fait la stratégie
   symétrique d'UMFPACK (Davis 2004). À l'intérieur d'un front, le pivot d'une colonne est sa cellule diagonale quand
   celle-ci vaut au moins 0,1 fois la plus grande cellule de la colonne, ce qui garde le fill de l'ordre ; sinon la plus
-  grande cellule des lignes que le front contient entières, quand elle passe le même test. Quand aucune ligne du front ne
-  passe, ou quand la forme de `a` est loin d'être symétrique, LU est plutôt calculée colonne par colonne, chaque colonne
-  une résolution triangulaire sparse dont une recherche en profondeur trouve d'abord la forme, pour que le travail soit
-  celui du calcul (Gilbert et Peierls 1988 ; Davis 2006, ch. 6) : son pivot peut venir de n'importe quelle ligne.
-  L'ordre est alors AMD sur la forme de `a + a'` pour une `a` presque symétrique, sinon sur celle de `a' a`, avec chaque
-  pivot le plus grand de sa colonne.
+  grande cellule des lignes que le front contient entières, quand elle passe le même test. Quand aucune ligne du front
+  ne passe, ou quand la forme de `a` est loin d'être symétrique, LU est plutôt calculée colonne par colonne, chaque
+  colonne une résolution triangulaire sparse dont une recherche en profondeur trouve d'abord la forme, pour que le
+  travail soit celui du calcul (Gilbert et Peierls 1988 ; Davis 2006, ch. 6) : son pivot peut venir de n'importe quelle
+  ligne. L'ordre est alors AMD sur la forme de `a + a'` pour une `a` presque symétrique, sinon sur celle de `a' a`, avec
+  chaque pivot le plus grand de sa colonne.
 
 Comme le fait l'antislash de MATLAB, `Solve` essaie Cholesky sur une matrice symétrique dont la diagonale est au-dessus
 de 0 ; un pivot qui n'est pas au-dessus de 0 montre qu'elle n'est pas définie positive, et LU prend le relais. Ensuite,
@@ -1154,10 +1157,10 @@ corrige `x`.
 
 ### Vérifier une solution
 
-L'*erreur inverse* (backward error) de `x`, `|a x - b| / (|a| |x| + |b|)`, dans la norme de la plus grande cellule, dit de
-combien `a` et `b` devraient changer pour que `x` soit exact : environ `eps`, 2.2e-16, veut dire que `x` est aussi bon
-que les floats le permettent. L'erreur de `x` lui-même peut être plus grande, du *conditionnement* de `a`, qui mesure de
-combien la solution de `a` bouge quand `a` bouge :
+L'*erreur inverse* (backward error) de `x`, `|a x - b| / (|a| |x| + |b|)`, dans la norme de la plus grande cellule, dit
+de combien `a` et `b` devraient changer pour que `x` soit exact : environ `eps`, 2.2e-16, veut dire que `x` est aussi
+bon que les floats le permettent. L'erreur de `x` lui-même peut être plus grande, du *conditionnement* de `a`, qui
+mesure de combien la solution de `a` bouge quand `a` bouge :
 
 ```cesia
 use std/math
@@ -1167,9 +1170,9 @@ norm = list.Max(list.Sum(math.Abs(sparse.Dense(a)), dim = 2))
 list.Max(math.Abs(r)) / (norm * list.Max(math.Abs(x)) + 1.0) < 1e-15 -->
 ```
 
-Les tests de Cesia vérifient `Solve` contre des formes closes : la matrice de Poisson 1-D, dont la solution pour
-`b = 1` est `i (n + 1 - i) / 2`, et celle en 2-D, dont les vecteurs propres `sin(p π i h) sin(q π j h)` donnent `b / λ` ;
-contre l'élimination dense sur des matrices au hasard définies positives et non symétriques, avec des pivots hors de la
+Les tests de Cesia vérifient `Solve` contre des formes closes : la matrice de Poisson 1-D, dont la solution pour `b = 1`
+est `i (n + 1 - i) / 2`, et celle en 2-D, dont les vecteurs propres `sin(p π i h) sin(q π j h)` donnent `b / λ` ; contre
+l'élimination dense sur des matrices au hasard définies positives et non symétriques, avec des pivots hors de la
 diagonale ; et sur des entrées singulières, indéfinies et mauvaises. Sur huit matrices de la collection Harwell-Boeing
 (nos4, bcsstk01, bcsstk14, 1138_bus, gr_30_30, west0479, orsirr_1, sherman1), son erreur inverse vaut au plus 0,02
 `n eps`, comme celles de scipy et d'Octave.
@@ -1235,26 +1238,26 @@ Sur la machine de [Vitesse](speed.md#à-côté-des-géants), le 2026-11-14 : les
 | `Solve`, convection-diffusion, 300 × 300 points, LU | **360 ms** (357 à 362) | 801 ms | 563 ms |
 
 Le produit de Cesia prend 2,9 ns par non-zéro, comme l'explique [Vitesse](speed.md#ce-qui-devient-du-code-machine) ; la
-boucle de scipy lit ses lignes comme des entiers de 32 bits et n'en vérifie aucune. Pour `Solve`, le `\` d'Octave appelle
-CHOLMOD, supernodal lui aussi, ses blocs factorisés par LAPACK et BLAS, et UMFPACK pour LU ; le `spsolve` de scipy
-appelle SuperLU, qui factorise même une matrice symétrique comme une non symétrique. Avant les supernodes, la
-factorisation de Cesia avançait une colonne à la fois et attendait la mémoire : 679 ms sur la grille de 300 × 300,
-24,1 s sur celle de 1000 × 1000, 2,0 s pour la LU. Là où les géants gagnent encore : sur la grille de 300 × 300 points,
-l'ordre par AMD prend maintenant environ un quart de `Solve`, 70 ms, là où celui de SuiteSparse prend 45 ms. Sur les huit
-matrices Harwell-Boeing des tests, `Solve` prend de 0,33 ms (bcsstk01) à 15 ms (bcsstk14) : plus vite que scipy sur
-bcsstk14 (43 ms) et orsirr_1 (4,4 ms contre 5,4), plus lentement sur les six autres, jusqu'à 3,2 fois (west0479,
-0,68 ms) ; Octave est plus rapide sur chacune sauf orsirr_1, de 1,4 à 7 fois, surtout sur les plus petites, où les
-étapes de `Solve` autour de la factorisation (la transposée, la vérification de la symétrie, le résidu) coûtent plus que
-la factorisation. Un facteur qui reste très mince, comme celui du réseau électrique 1138_bus, paie ses fronts : chacun
+boucle de scipy lit ses lignes comme des entiers de 32 bits et n'en vérifie aucune. Pour `Solve`, le `\` d'Octave
+appelle CHOLMOD, supernodal lui aussi, ses blocs factorisés par LAPACK et BLAS, et UMFPACK pour LU ; le `spsolve` de
+scipy appelle SuperLU, qui factorise même une matrice symétrique comme une non symétrique. Avant les supernodes, la
+factorisation de Cesia avançait une colonne à la fois et attendait la mémoire : 679 ms sur la grille de 300 × 300, 24,1
+s sur celle de 1000 × 1000, 2,0 s pour la LU. Là où les géants gagnent encore : sur la grille de 300 × 300 points,
+l'ordre par AMD prend maintenant environ un quart de `Solve`, 70 ms, là où celui de SuiteSparse prend 45 ms. Sur les
+huit matrices Harwell-Boeing des tests, `Solve` prend de 0,33 ms (bcsstk01) à 15 ms (bcsstk14) : plus vite que scipy sur
+bcsstk14 (43 ms) et orsirr_1 (4,4 ms contre 5,4), plus lentement sur les six autres, jusqu'à 3,2 fois (west0479, 0,68
+ms) ; Octave est plus rapide sur chacune sauf orsirr_1, de 1,4 à 7 fois, surtout sur les plus petites, où les étapes de
+`Solve` autour de la factorisation (la transposée, la vérification de la symétrie, le résidu) coûtent plus que la
+factorisation. Un facteur qui reste très mince, comme celui du réseau électrique 1138_bus, paie ses fronts : chacun
 passe à son parent une mise à jour aussi grande que lui, et `Solve` y prend 1,82 ms, contre 1,52 ms une colonne à la
 fois avant.
 
-BLAS fait les produits des fronts sur un seul thread, et sur deux à partir de 2^27 multiplications-additions :
-l'OpenBLAS de la machine, construit avec OpenMP, prend ses 8 threads de lui-même, et sur une machine occupée par d'autres
-programmes ils rendaient les produits moyens des fronts de 5 à 30 fois plus lents qu'un seul thread. Sans BLAS, `Solve`
-fait les mêmes produits en OCaml, plusieurs fois plus lentement sur les grands fronts, et donne les mêmes bits sur chaque
-machine ; avec, les derniers bits d'une grande factorisation peuvent changer d'une bibliothèque à l'autre, comme ceux de
-`num.Solve`.
+BLAS fait les produits des fronts sur un seul thread (un fil d'exécution du système), et sur deux à partir de 2^27
+multiplications-additions : l'OpenBLAS de la machine, construit avec OpenMP, prend ses 8 threads de lui-même, et sur une
+machine occupée par d'autres programmes ils rendaient les produits moyens des fronts de 5 à 30 fois plus lents qu'un
+seul thread. Sans BLAS, `Solve` fait les mêmes produits en OCaml, plusieurs fois plus lentement sur les grands fronts,
+et donne les mêmes bits sur chaque machine ; avec, les derniers bits d'une grande factorisation peuvent changer d'une
+bibliothèque à l'autre, comme ceux de `num.Solve`.
 
 `use std/sparse` n'ajoute rien de mesurable au démarrage d'un programme, une fois son code dans le cache des packages
 chargés.
@@ -1279,14 +1282,13 @@ Le travail est borné et compté : `Of`, `Kron` et `Add` prennent un temps et un
 non-zéros. Le facteur par supernodes, ses blocs, son plus grand front et les mises à jour qui attendent en chemin sont
 comptés à partir de la forme avant que quoi que ce soit soit alloué, sans produit qui puisse déborder (chacun vaut au
 plus `n²`, lui-même au plus 2^53) : quand cela seul dépasse `--limit memory`, `Solve` donne un `Err` qui dit combien de
-mégaoctets il prendrait, comme
-`sparse.Solve: the factor of a would take 48 MB, more than the memory limit allows.` ; la LU de Gilbert et Peierls
-grandit en doublant. Le code natif compte son travail dans `--limit` à mesure qu'il avance, un bloc à la fois, si bien
-que [cells.Stop] et une limite de pas arrêtent une longue factorisation en une fraction de seconde, et la mémoire qu'il
-prend est réservée d'abord : au-delà de la limite de mémoire, le programme s'arrête avec `Limit "memory" reached.` avant
-d'allouer. Chaque bloc dense passé à BLAS est vérifié comme étant dans son array, avec des tailles qui tiennent dans les
-entiers de 32 bits de BLAS, avant l'appel. `Dense` prend 8 octets par cellule, et s'arrête de la même façon au-delà de la
-limite.
+mégaoctets il prendrait, comme `sparse.Solve: the factor of a would take 48 MB, more than the memory limit allows.` ; la
+LU de Gilbert et Peierls grandit en doublant. Le code natif compte son travail dans `--limit` à mesure qu'il avance, un
+bloc à la fois, si bien que [cells.Stop] et une limite de pas arrêtent une longue factorisation en une fraction de
+seconde, et la mémoire qu'il prend est réservée d'abord : au-delà de la limite de mémoire, le programme s'arrête avec
+`Limit "memory" reached.` avant d'allouer. Chaque bloc dense passé à BLAS est vérifié comme étant dans son array, avec
+des tailles qui tiennent dans les entiers de 32 bits de BLAS, avant l'appel. `Dense` prend 8 octets par cellule, et
+s'arrête de la même façon au-delà de la limite.
 
 ### Pour aller plus loin sur les matrices sparse
 
@@ -1333,8 +1335,8 @@ arrête une longue résolution en un pas, et `--limit` s'applique, comme à tout
 grandit avec ses pas, par blocs de 128 pas ; au-delà de la limite de mémoire du programme, le programme s'arrête avec
 `Limit "memory" reached.`
 
-Avec `stiff = true`, `jacobian` est aussi du code de l'appelant : ce qu'il donne doit être une matrice `n × n` de nombres
-finis, et un jacobien par différences est vérifié de la même façon, si bien qu'un NaN n'atteint jamais la
+Avec `stiff = true`, `jacobian` est aussi du code de l'appelant : ce qu'il donne doit être une matrice `n × n` de
+nombres finis, et un jacobien par différences est vérifié de la même façon, si bien qu'un NaN n'atteint jamais la
 factorisation. `y0` a au plus 1 000 composantes, si bien que ses trois matrices `n × n` restent sous 24 MB ; un plus
 grand est une panic qui le dit, avant que quoi que ce soit soit alloué. L'élimination de [num.Lu] tourne en code natif,
 qui compte son travail, environ $n^3 / 3$ opérations, dans `--limit` avant de commencer, et ne lit que des matrices de
@@ -1343,16 +1345,16 @@ nombres dont elle vérifie d'abord la forme ; une factorisation à $n = 1000$ pr
 
 Minimize et Simplex vérifient de la même façon ce que donnent `f` et `gradient` : un texte, ou un array de la mauvaise
 forme, est un `Err` qui le nomme ; un NaN ou un infini est un `Err` au départ, et après lui un point d'où reculer, ou le
-pire de tous. Une panic à l'intérieur de `f` est un bug de l'appelant et passe au travers, comme de n'importe quel appel,
-en nommant sa ligne. Chaque boucle est bornée : Minimize par `steps`, 10 000 par défaut, avec au plus 20 évaluations de
-`f` dans une line search et `2n` appels de `f` dans un gradient par différences ; Simplex par `steps`, avec au plus
-`n + 2` appels de `f` par pas. Chacun tourne en code Cesia sauf les trois natives de std/optimize, les deux boucles de la
-direction, un produit scalaire et la plus grande composante d'un array, qui ne lisent que des arrays de floats dont ils
-vérifient d'abord la sorte et la longueur, et comptent leur travail, au plus `4 · 10 · n` opérations, dans `--limit` :
-si bien que [cells.Stop] arrête une longue minimisation en un pas, et que `--limit steps` arrête une `f` qui ne finit
-jamais. Minimize garde 20 arrays aussi grands que `x`, ses pas et les changements de son gradient, et quelques autres ;
-au-delà de la limite de mémoire du programme, le programme s'arrête avec `Limit "memory" reached.` Aucun des deux ne tire
-de nombre au hasard : le même appel donne la même réponse.
+pire de tous. Une panic à l'intérieur de `f` est un bug de l'appelant et passe au travers, comme de n'importe quel
+appel, en nommant sa ligne. Chaque boucle est bornée : Minimize par `steps`, 10 000 par défaut, avec au plus 20
+évaluations de `f` dans une line search et `2n` appels de `f` dans un gradient par différences ; Simplex par `steps`,
+avec au plus `n + 2` appels de `f` par pas. Chacun tourne en code Cesia sauf les trois natives de std/optimize, les deux
+boucles de la direction, un produit scalaire et la plus grande composante d'un array, qui ne lisent que des arrays de
+floats dont ils vérifient d'abord la sorte et la longueur, et comptent leur travail, au plus `4 · 10 · n` opérations,
+dans `--limit` : si bien que [cells.Stop] arrête une longue minimisation en un pas, et que `--limit steps` arrête une
+`f` qui ne finit jamais. Minimize garde 20 arrays aussi grands que `x`, ses pas et les changements de son gradient, et
+quelques autres ; au-delà de la limite de mémoire du programme, le programme s'arrête avec `Limit "memory" reached.`
+Aucun des deux ne tire de nombre au hasard : le même appel donne la même réponse.
 
 ## Pour aller plus loin
 
@@ -1363,8 +1365,8 @@ de nombre au hasard : le même appel donne la même réponse.
 - G. E. Alefeld, F. A. Potra, Yixun Shi. "Algorithm 748: Enclosing Zeros of Continuous Functions". *ACM Transactions on
   Mathematical Software* 21(3):327–344, 1995. <https://doi.org/10.1145/210089.210111>. Leurs problèmes de test.
 - Dong C. Liu, Jorge Nocedal. "On the limited memory BFGS method for large scale optimization". *Mathematical
-  Programming* 45:503–528, 1989. <https://doi.org/10.1007/BF01589116>. L-BFGS, sa mise à l'échelle M3, et la preuve de sa
-  convergence sur les fonctions uniformément convexes.
+  Programming* 45:503–528, 1989. <https://doi.org/10.1007/BF01589116>. L-BFGS, sa mise à l'échelle M3, et la preuve de
+  sa convergence sur les fonctions uniformément convexes.
 - Jorge Nocedal. "Updating quasi-Newton matrices with limited storage". *Mathematics of Computation* 35(151):773–782,
   1980. <https://doi.org/10.1090/S0025-5718-1980-0572855-7>. Les deux boucles.
 - Jorge J. Moré, David J. Thuente. "Line search algorithms with guaranteed sufficient decrease". *ACM Transactions on
@@ -1388,8 +1390,8 @@ de nombre au hasard : le même appel donne la même réponse.
 - Lawrence F. Shampine. "Some practical Runge-Kutta formulas". *Mathematics of Computation* 46(173):135–150, 1986.
   <https://doi.org/10.1090/S0025-5718-1986-0815836-3>. La sortie dense.
 - Ernst Hairer, Syvert P. Nørsett, Gerhard Wanner. *Solving Ordinary Differential Equations I: Nonstiff Problems*,
-  deuxième édition. Springer, 1993. <https://doi.org/10.1007/978-3-540-78862-1>. Le test de l'erreur, le premier pas, la sortie
-  dense de DOPRI5, l'orbite d'Arenstorf.
+  deuxième édition. Springer, 1993. <https://doi.org/10.1007/978-3-540-78862-1>. Le test de l'erreur, le premier pas, la
+  sortie dense de DOPRI5, l'orbite d'Arenstorf.
 - Ernst Hairer, Gerhard Wanner. *Solving Ordinary Differential Equations II: Stiff and Differential-Algebraic
   Problems*, deuxième édition. Springer, 1996. <https://doi.org/10.1007/978-3-642-05221-7>. Le contrôle PI de DOPRI5 et
   son test de raideur.
@@ -1404,8 +1406,9 @@ de nombre au hasard : le même appel donne la même réponse.
 - L. F. Shampine, S. Thompson. "Event location for ordinary differential equations". *Computers & Mathematics with
   Applications* 39(5–6):43–54, 2000. <https://doi.org/10.1016/S0898-1221(00)00045-6>.
 - Gerd Steinebach. "Construction of Rosenbrock–Wanner method Rodas5P and numerical benchmarks within the Julia
-  Differential Equations package". *BIT Numerical Mathematics* 63:27, 2023. <https://doi.org/10.1007/s10543-023-00967-x>.
-  Rodas5P, sa sortie dense, et l'endroit où ses nombres et ceux de Rodas4 sont publiés. En accès libre.
+  Differential Equations package". *BIT Numerical Mathematics* 63:27, 2023.
+  <https://doi.org/10.1007/s10543-023-00967-x>. Rodas5P, sa sortie dense, et l'endroit où ses nombres et ceux de Rodas4
+  sont publiés. En accès libre.
 - Ernst Hairer, Gerhard Wanner, comme ci-dessus, §IV.7 : les méthodes de Rosenbrock, leurs conditions d'ordre et la
   méthode Rodas4 ; §IV.10 : les problèmes de test stiff, celui de Robertson, HIRES et OREGO.
 - Kjell Gustafsson. "Control-theoretic techniques for stepsize selection in implicit Runge-Kutta methods". *ACM
