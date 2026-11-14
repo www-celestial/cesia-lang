@@ -3,7 +3,9 @@
     paper. F0 and G0, f and its gradient at the start, come from a second transcription, in Python, with derivatives by
     complex steps; Want holds the minima a case may reach: 0 where the paper gives 0, else the value of MINPACK's
     Levenberg-Marquardt (scipy's least_squares) from the same start at tight tolerances, which matches the paper's six
-    digits, or a local minimum that the paper lists beside it. *)
+    digits, or a local minimum that the paper lists beside it. Slow by nature, the whole suite to its last digits: 1.6 s
+    of CPU on the typed path, 4 s on the other; tools/check.sh runs it, past the change loop, and tests/lang/optimize.ce
+    stays in the loop. *)
 use std/list
 use std/math
 use std/matrix
