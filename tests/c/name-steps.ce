@@ -4,7 +4,7 @@ use std/fiber
 use std/io
 
 name = "abcdefghij"
-for i in 1..17
+for i in 1..14
   name = "$name$name"
 end
 for i in 1..20

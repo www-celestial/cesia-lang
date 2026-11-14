@@ -86,8 +86,11 @@ let fixture =
 #include <stdbool.h>
 #include <stdint.h>
 #ifdef _WIN32
+#include <windows.h>
 #define EXPORT __declspec(dllexport)
 #else
+#include <errno.h>
+#include <time.h>
 #define EXPORT
 #endif
 #define ECHO(name, type) EXPORT type echo_##name(type x) { return x; }
@@ -150,6 +153,18 @@ EXPORT int64_t spin(int64_t n) {
   volatile int64_t sum = 0;
   for (int64_t i = 0; i < n; i++) sum += i & 7;
   return sum;
+}
+/* A call that lasts ms milliseconds without using the processor: what a slow call waits for, a disk or a network. A
+   signal that cuts it short sends it back to sleep for what is left; no time, or less, returns at once. */
+EXPORT int64_t nap(int64_t ms) {
+  if (ms <= 0) return ms;
+#ifdef _WIN32
+  Sleep((DWORD) ms);
+#else
+  struct timespec left = { ms / 1000, (ms % 1000) * 1000000 };
+  while (nanosleep(&left, &left) != 0 && errno == EINTR) {}
+#endif
+  return ms;
 }
 EXPORT int64_t deep_stack(void) {
   volatile char bytes[256 * 1024];
