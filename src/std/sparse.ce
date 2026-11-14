@@ -589,14 +589,17 @@ defn products(start, index, values, x, cols, rows, k)
 end
 
 (* Solve: an ordering that keeps the factors sparse, then Cholesky's factorization or an LU one, then two triangular
-   solves. Davis (2006) is the book of each part: ch. 4 for Cholesky, ch. 6 for LU, ch. 7 for the orderings. The
-   ordering and LU are native code, private to this package: ordering(n, start, index), the approximate minimum degree
-   of Amestoy, Davis and Duff (1996) on the pattern of a + a'; luFactor(n, start, index, values, q, tol), left-looking
-   with the depth-first search of Gilbert and Peierls (1988), the columns of L and U and where each row went, or
-   missing when a column has no pivot above 0. Written in Cesia first, AMD took from 100 to 580 ms a call on 2-D
-   Poisson 300^2 against 60 to 85 ms native, as the JIT made its large loop again at each call, and LU 3.7 s against
-   1.9 s on a convection-diffusion matrix of the same size. Cholesky's factorization stays in Cesia: native, it was 10
-   to 25 % faster only, as both wait on the memory. *)
+   solves. Davis (2006) is the book of each part: ch. 4 for Cholesky, ch. 6 for LU, ch. 7 for the orderings. They are
+   native code, private to this package: ordering(n, start, index), the approximate minimum degree of Amestoy, Davis
+   and Duff (1996) on the pattern of a + a'; cholesky(n, start, index, values, perm) and luFront(n, start, index,
+   values, perm, tol), by supernodes, multifrontal (Liu 1992), their dense blocks factored by BLAS when the machine has
+   it, which give a function that solves with the factor it keeps, or missing when the factorization fails, or the
+   bytes it would take past the memory limit; luFactor(n, start, index, values, q, tol), left-looking with the
+   depth-first search of Gilbert and Peierls (1988), the columns of L and U and where each row went, or missing when a
+   column has no pivot above 0. Written in Cesia first, AMD took from 100 to 580 ms a call on 2-D Poisson 300^2
+   against 60 to 85 ms native, as the JIT made its large loop again at each call; Cholesky a column at a time, in
+   Cesia, 530 ms; LU on a convection-diffusion matrix of the same size 3.7 s in Cesia and 1.9 s native, a column at a
+   time. The chapter Numerical methods gives the times by supernodes. *)
 
 defn gram(a, t)
   (** The pattern of a' a without its diagonal, t the transpose of a, without the rows of a of more than 10 √n
@@ -640,179 +643,6 @@ defn gram(a, t)
     end
   end
   {Start: start, Index: index}
-end
-
-defn cholesky(a, perm)
-  (** The Cholesky factor L of p a p', a symmetric, p the permutation perm, so that p a p' = L L': {Start, Index,
-      Values} in columns, the diagonal first in each, or missing when a pivot is not above 0, so a is not positive
-      definite. Davis (2006, ch. 4): the elimination tree (Liu's algorithm), the count of each column of L from the
-      rows of L, each the reach of a column of a in that tree, so that L is allocated once, then the up-looking
-      factorization, row k of L by a sparse triangular solve. *)
-  n = a.Cols
-  as = a.start
-  ai = a.index
-  av = a.values
-  pinv = list.Fill(0, n)
-  for k in 1..n
-    pinv[perm[k]] = k
-  end
-  (* c: the upper triangle of p a p', from the upper triangle of a: its columns are not sorted. *)
-  cs = list.Fill(0, n + 1)
-  for j in 1..n
-    pj = pinv[j]
-    for q in as[j]..as[j + 1] - 1
-      i = ai[q]
-      if i <= j
-        pi = pinv[i]
-        cs[if pi > pj pi else pj end] += 1
-      end
-    end
-  end
-  p = 1
-  for j in 1..n
-    m = cs[j]
-    cs[j] = p
-    p += m
-  end
-  cs[n + 1] = p
-  fill = firsts(cs, n)
-  ci = list.Fill(0, p - 1)
-  cv = matrix.Zeros(p - 1)
-  for j in 1..n
-    pj = pinv[j]
-    for q in as[j]..as[j + 1] - 1
-      i = ai[q]
-      if i <= j
-        pi = pinv[i]
-        jc = if pi > pj pi else pj end
-        at = fill[jc]
-        ci[at] = if pi < pj pi else pj end
-        cv[at] = av[q]
-        fill[jc] = at + 1
-      end
-    end
-  end
-  (* The elimination tree, by Liu's algorithm, with path compression through ancestor. *)
-  parent = list.Fill(0, n)
-  ancestor = list.Fill(0, n)
-  for k in 1..n
-    for q in cs[k]..cs[k + 1] - 1
-      i = ci[q]
-      while i != 0 and i < k
-        inext = ancestor[i]
-        ancestor[i] = k
-        if inext == 0
-          parent[i] = k
-        end
-        i = inext
-      end
-    end
-  end
-  (* The count of each column of L: row k of L is the reach of column k of c in the tree. *)
-  flag = list.Fill(0, n)
-  counts = list.Fill(0, n)
-  for k in 1..n
-    flag[k] = k
-    counts[k] += 1
-    for q in cs[k]..cs[k + 1] - 1
-      i = ci[q]
-      while flag[i] != k
-        counts[i] += 1
-        flag[i] = k
-        i = parent[i]
-      end
-    end
-  end
-  lp = list.Fill(0, n + 1)
-  p = 1
-  for k in 1..n
-    lp[k] = p
-    p += counts[k]
-  end
-  lp[n + 1] = p
-  li = list.Fill(0, p - 1)
-  lx = matrix.Zeros(p - 1)
-  (* Row k of L: x = L(1:k-1, 1:k-1) \ c(1:k-1, k), its pattern s from top to n, then the diagonal. *)
-  next = firsts(lp, n)
-  x = matrix.Zeros(n)
-  s = list.Fill(0, n)
-  for k in 1..n
-    top = n + 1
-    flag[k] = -k
-    for q in cs[k]..cs[k + 1] - 1
-      i = ci[q]
-      x[i] = cv[q]
-      size = 0
-      while flag[i] != -k
-        size += 1
-        s[size] = i
-        flag[i] = -k
-        i = parent[i]
-      end
-      while size > 0
-        top -= 1
-        s[top] = s[size]
-        size -= 1
-      end
-    end
-    d = x[k]
-    x[k] = 0.0
-    for t in top..n
-      i = s[t]
-      lki = x[i] / lx[lp[i]]
-      x[i] = 0.0
-      for q in lp[i] + 1..next[i] - 1
-        r = li[q]
-        x[r] = x[r] - lx[q] * lki
-      end
-      d -= lki * lki
-      at = next[i]
-      li[at] = k
-      lx[at] = lki
-      next[i] = at + 1
-    end
-    if not (d > 0.0)
-      return missing
-    end
-    at = next[k]
-    li[at] = k
-    lx[at] = math.Sqrt(d)
-    next[k] = at + 1
-  end
-  {Start: lp, Index: li, Values: lx}
-end
-
-defn cholSolve(f, perm, b)
-  (** x of a x = b from p a p' = L L': x = p' (L' \ (L \ (p b))), for one column b. *)
-  n = value.Len(perm)
-  lp = f.Start
-  li = f.Index
-  lx = f.Values
-  y = matrix.Zeros(n)
-  for k in 1..n
-    y[k] = b[perm[k]]
-  end
-  for j in 1..n
-    yj = y[j] / lx[lp[j]]
-    y[j] = yj
-    for q in lp[j] + 1..lp[j + 1] - 1
-      r = li[q]
-      y[r] = y[r] - lx[q] * yj
-    end
-  end
-  for t in 1..n
-    jb = n + 1 - t
-    s = y[jb]
-    for q in lp[jb] + 1..lp[jb + 1] - 1
-      s -= lx[q] * y[li[q]]
-    end
-    y[jb] = s / lx[lp[jb]]
-  end
-  x = matrix.Zeros(n)
-  for k in 1..n
-    x[perm[k]] = y[k]
-  end
-  x
 end
 
 defn luSolve(f, q, b)
@@ -896,11 +726,15 @@ defn shape(a, t)
 end
 
 defn factored(a)
-  (** The factorization Solve uses, {Cholesky, F, Perm}, or missing when a is singular. As MATLAB's backslash: a
+  (** The factorization Solve uses, {Solver, F, Perm, Bytes}, or missing when a is singular. Solver, when not missing,
+      solves with a factorization by supernodes that it keeps; else F and Perm are Gilbert and Peierls's LU. Bytes, 0
+      or the bytes a factor would take when that is more than the memory limit allows. As MATLAB's backslash: a
       symmetric with its diagonal above 0 is tried with Cholesky, ordered by AMD on its pattern; a pivot not above 0
       sends it to LU. LU orders by AMD on the pattern of a + a' when a's pattern is nearly symmetric (half its cells
-      mirrored or more) with no 0 on its diagonal, and prefers diagonal pivots; else by AMD on that of a' a, with
-      partial pivoting. *)
+      mirrored or more) with no 0 on its diagonal, by the supernodes of a + a', a pivot inside each front that is at
+      least 0.1 times the largest of its column, the diagonal preferred; when a front has none, or when a's pattern is
+      not nearly symmetric, Gilbert and Peierls's LU, which takes its pivots from any row, ordered by AMD on the pattern
+      of a + a' or a' a, with partial pivoting in the second case. *)
   n = a.Cols
   t = Transpose(a)
   s = shape(a, t)
@@ -908,10 +742,20 @@ defn factored(a)
   if near
     perm = ordering(n, a.start, a.index)
     if s.Symmetric and s.Positive
-      f = cholesky(a, perm)
-      if not value.IsMissing(f)
-        return {Cholesky: true, F: f, Perm: perm}
+      f = cholesky(n, a.start, a.index, a.values, perm)
+      if value.IsInt(f)
+        return {Solver: missing, F: missing, Perm: perm, Bytes: f}
       end
+      if not value.IsMissing(f)
+        return {Solver: f, F: missing, Perm: perm, Bytes: 0}
+      end
+    end
+    f = luFront(n, a.start, a.index, a.values, perm, threshold)
+    if value.IsInt(f)
+      return {Solver: missing, F: missing, Perm: perm, Bytes: f}
+    end
+    if not value.IsMissing(f)
+      return {Solver: f, F: missing, Perm: perm, Bytes: 0}
     end
     f = luFactor(n, a.start, a.index, a.values, perm, threshold)
   else
@@ -922,10 +766,17 @@ defn factored(a)
   if value.IsMissing(f)
     return missing
   end
-  {Cholesky: false, F: {L: {Start: f[1], Index: f[2], Values: f[3]}, U: {Start: f[4], Index: f[5], Values: f[6]}, Pinv: f[7]}, Perm: perm}
+  {Solver: missing, F: {L: {Start: f[1], Index: f[2], Values: f[3]}, U: {Start: f[4], Index: f[5], Values: f[6]}, Pinv: f[7]}, Perm: perm, Bytes: 0}
 end
 
-solved(f, b) = if f.Cholesky cholSolve(f.F, f.Perm, b) else luSolve(f.F, f.Perm, b) end
+defn solved(f, b)
+  (** x of a x = b from the factorization f of a, for one column b. *)
+  if value.IsMissing(f.Solver)
+    return luSolve(f.F, f.Perm, b)
+  end
+  g = f.Solver
+  g(b)
+end
 
 defn largest(xs)
   (** The largest |x| of an array of floats. *)
@@ -956,15 +807,17 @@ singular(why) = result.Err({Kind: "sparse", Message: "sparse.Solve: a is singula
 defn Solve(a, b)
   (** The x of a x = b, a square: MATLAB's A \ b, scipy's spsolve(A, b). b is an array of a.Rows numbers, a row or a
       column, and x has its shape, or a matrix of a.Rows rows, and x has a column for each of its columns. An Ok of x,
-      or an Err of the kind "sparse" when a is singular, or holds a NaN or an infinity.
+      or an Err of the kind "sparse" when a is singular, holds a NaN or an infinity, or when its factor would take more
+      memory than the limit allows.
 
       As MATLAB's backslash, a symmetric a with its diagonal above 0 is tried with Cholesky's factorization, L L',
       which halves the work and needs no pivoting; when a pivot is not above 0, a is not positive definite and LU
       takes over, as for any other a. Both first order the unknowns by approximate minimum degree (AMD, Amestoy, Davis
-      and Duff 1996), so that the factors fill little; LU picks its pivots as it goes, by partial pivoting, keeping a
-      diagonal pivot of a nearly symmetric a when it is at least 0.1 times the largest of its column. When the
-      residual |a x - b| is above n eps |a| |x|, one step of iterative refinement follows. The chapter Numerical
-      methods of the book says where each part comes from, and how to check x.
+      and Duff 1996), so that the factors fill little, then factor by supernodes, dense blocks of columns that BLAS
+      computes; LU picks its pivots as it goes, by partial pivoting, keeping a diagonal pivot of a nearly symmetric a
+      when it is at least 0.1 times the largest of its column. When the residual |a x - b| is above n eps |a| |x|, one
+      step of iterative refinement follows. The chapter Numerical methods of the book says where each part comes from,
+      and how to check x.
 
         a = Of([1, 2, 1, 2], [1, 1, 2, 2], [4.0, 1.0, 1.0, 3.0], 2, 2)
         Solve(a, [1.0, 2.0]).Value --> [0.09090909090909091, 0.6363636363636364]
@@ -987,6 +840,9 @@ defn Solve(a, b)
   f = factored(a)
   if value.IsMissing(f)
     return singular(": a column of its LU factorization has no pivot but 0")
+  end
+  if f.Bytes > 0
+    return result.Err({Kind: "sparse", Message: "sparse.Solve: the factor of a would take $(math.Div(f.Bytes + 999999, 1000000)) MB, more than the memory limit allows."})
   end
   x = matrix.Zeros(value.Size(t.X, 1), value.Size(t.X, 2))
   bound = n * eps * norm(a)

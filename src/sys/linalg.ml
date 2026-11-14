@@ -3,13 +3,28 @@ open Types
 
 external dlopen : string -> int = "cesia_dlopen"
 external dlsym : int -> string -> int = "cesia_dlsym"
+(* dgemm f d out x y: out = alpha x op(y) + beta out, on blocks of the three arrays; d holds rows, cols, inner, the
+   leading dimensions of x, y and out, their offsets, 1 when op(y) is y', alpha and beta. [gemm] checks every block. *)
 external dgemm : int -> int array -> floatarray -> floatarray -> floatarray -> unit = "cesia_dgemm" [@@noalloc]
 external dgesv : int -> int -> int -> floatarray -> floatarray -> int = "cesia_dgesv" [@@noalloc]
 external dgetrf : int -> int -> floatarray -> floatarray -> int = "cesia_dgetrf" [@@noalloc]
 external qr_factors : int -> int -> int array -> floatarray -> floatarray -> int = "cesia_qr" [@@noalloc]
 external dsyev : int -> int -> floatarray -> floatarray -> int = "cesia_dsyev" [@@noalloc]
 
-type library = { name : string; fast : bool; gemm : int; gesv : int; getrf : int; geqrf : int; orgqr : int; syev : int }
+(* [threads]: the threads OpenBLAS takes by itself, and its functions that read and set them; 0 for another library. *)
+type library = {
+  name : string;
+  fast : bool;
+  gemm : int;
+  gesv : int;
+  getrf : int;
+  geqrf : int;
+  orgqr : int;
+  syev : int;
+  threads : int;
+  set_threads : int;
+  mutable current : int;
+}
 
 (* A fast library first. LAPACK brings the BLAS it was linked with. *)
 let candidates =
@@ -23,8 +38,10 @@ let open_library ?(chosen = false) name =
   | handle ->
     let symbol s = dlsym handle s in
     let fast = chosen || symbol "openblas_get_config" <> 0 || String.ends_with ~suffix:"Accelerate" name in
+    let get = symbol "openblas_get_num_threads" and set_threads = symbol "openblas_set_num_threads" in
+    let threads = if get <> 0 && set_threads <> 0 then max 1 (C.call_ints get [||]) else 0 in
     let lib = { name; fast; gemm = symbol "dgemm_"; gesv = symbol "dgesv_"; getrf = symbol "dgetrf_"; geqrf = symbol "dgeqrf_";
-                orgqr = symbol "dorgqr_"; syev = symbol "dsyev_" } in
+                orgqr = symbol "dorgqr_"; syev = symbol "dsyev_"; threads; set_threads; current = threads } in
     if List.mem 0 [ lib.gemm; lib.gesv; lib.getrf; lib.geqrf; lib.orgqr; lib.syev ] then None else Some lib
 
 let library =
@@ -42,17 +59,35 @@ let max_order = 1 lsl 30
 
 let fits n = n >= min_order && n <= max_order
 
+(* OpenBLAS on at most [threads] threads, or on its own count for 0, for the calls that follow. *)
+let use_threads lib threads =
+  let want = if threads = 0 then lib.threads else min threads lib.threads in
+  if lib.set_threads <> 0 && want <> lib.current then begin
+    ignore (C.call_ints lib.set_threads [| want |]);
+    lib.current <- want
+  end
+
+(* A block of rows x cols cells inside its array, its leading dimension within the 32 bits of Fortran. *)
+let inside { Kernels.data; offset; ld } rows cols =
+  offset >= 0 && ld >= max 1 rows && ld <= max_order
+  && (rows = 0 || cols = 0 || offset + ((cols - 1) * ld) + rows <= Float.Array.length data)
+
 let install () =
-  Kernels.fast_matmul :=
-    fun ~rows ~cols ~inner ~out x y ->
-      if rows * cols * inner < min_order * min_order * min_order || rows > max_order || cols > max_order || inner > max_order
-      then false
-      else
-        match Lazy.force library with
-        | Some lib when lib.fast ->
-          dgemm lib.gemm [| rows; cols; inner |] out x y;
-          true
-        | _ -> false
+  Kernels.gemm :=
+    fun ~rows ~cols ~inner ~trans ~sub ~threads ({ Kernels.data = od; offset = oo; ld = ol } as out)
+      ({ Kernels.data = xd; offset = xo; ld = xl } as x) ({ Kernels.data = yd; offset = yo; ld = yl } as y) ->
+      rows >= 0 && cols >= 0 && inner >= 0 && rows <= max_order && cols <= max_order && inner <= max_order
+      && inside out rows cols && inside x rows inner
+      && (if trans then inside y cols inner else inside y inner cols)
+      &&
+      match Lazy.force library with
+      | Some lib when lib.fast ->
+        use_threads lib threads;
+        let d = [| rows; cols; inner; xl; yl; ol; xo; yo; oo; Bool.to_int trans; 1; 0 |] in
+        if sub then (d.(10) <- -1; d.(11) <- 1);
+        dgemm lib.gemm d od xd yd;
+        true
+      | _ -> false
 
 (* A copy of a matrix of numbers with its shape, which LAPACK can overwrite. *)
 let matrix ctx v =
@@ -84,7 +119,12 @@ let square ctx v =
 let pay ctx n = Runtime.pay ctx (n * n * n)
 
 (* Calls [f] when the machine has a library and the arguments suit it. *)
-let with_library f = match Lazy.force library with None -> Missing | Some lib -> f lib
+let with_library f =
+  match Lazy.force library with
+  | None -> Missing
+  | Some lib ->
+    use_threads lib 0;
+    f lib
 
 let record (_ : world) names values = Trie.record (Trie.names names) values
 

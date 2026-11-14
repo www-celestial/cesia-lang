@@ -1,0 +1,92 @@
+(* sparse.Solve by supernodes: dense blocks large enough for BLAS, many small ones, a forest of separate blocks, relaxed
+   supernodes that store zeros, a pivot under 0 deep in a block; LU's fronts, a pivot from another row of the front, a
+   column whose pivot lies in another front; against dense elimination. *)
+use std/list
+use std/math
+use std/matrix
+use std/num
+use std/result
+use std/sparse
+use std/value
+
+eps = 2.220446049250313e-16
+
+defn backward(a, x, b)
+  (** The backward error of x: |a x - b| / (|a| |x| + |b|), in the norm of the largest |cell|. *)
+  r = sparse.Mul(a, x) - b
+  na = list.Max(list.Sum(math.Abs(sparse.Dense(a)), dim = 2))
+  list.Max(math.Abs(r)) / (na * list.Max(math.Abs(x)) + list.Max(math.Abs(b)))
+end
+
+defn solvesAsDense(a, b)
+  (** Solve gives num.Solve's x on the dense copy of a, to a backward error of 1e3 n eps. *)
+  x = result.Unwrap(sparse.Solve(a, b))
+  backward(a, x, b) <= 1.0e3 * value.Len(b) * eps and math.Near(x, result.Unwrap(num.Solve(sparse.Dense(a), b)), rel = 1e-9, abs = 1e-12)
+end
+
+defn full(n, f)
+  (** The n × n sparse matrix whose cell (r, c) is f(r, c), all of them kept. *)
+  i = [1 + math.Mod(t - 1, n) for t in 1..n * n]
+  j = [1 + math.Div(t - 1, n) for t in 1..n * n]
+  sparse.Of(i, j, [f(i[t], j[t]) for t in 1..n * n], n, n)
+end
+
+(* A full positive definite matrix of order 120: one supernode, its products large enough for BLAS. *)
+isOneBlock() = solvesAsDense(full(120, (r, c) -> 1.0 / (r + c - 1.0) + if r == c 1.0 else 0.0 end), [math.Sin(1.0 * k) for k in 1..120])
+
+defn isForest()
+  (** Full blocks of 1 to 40 unknowns, none touching another: a forest of supernodes. *)
+  i = []
+  j = []
+  v = []
+  o = 0
+  for s in [1, 40, 3, 17, 2, 33, 5]
+    i = list.Concat(i, [o + 1 + math.Mod(t - 1, s) for t in 1..s * s])
+    j = list.Concat(j, [o + 1 + math.Div(t - 1, s) for t in 1..s * s])
+    v = list.Concat(v, [if math.Mod(t - 1, s) == math.Div(t - 1, s) 2.0 * s else 1.0 / (1 + math.Mod(t, 7)) end for t in 1..s * s])
+    o += s
+  end
+  a = sparse.Add(sparse.Of(i, j, v, o, o), sparse.Transpose(sparse.Of(i, j, v, o, o)))
+  solvesAsDense(a, [math.Cos(1.0 * k) for k in 1..o])
+end
+
+(* A band of half-width 9 and order 200: chains of columns that relaxed supernodes merge, storing some zeros. *)
+isBanded() = solvesAsDense(sparse.Diags([if w == 0 20.0 else 1.0 / (1.0 + math.Abs(w)) end for w in -9..9], [w for w in -9..9], 200), [1.0 + math.Mod(k, 5) for k in 1..200])
+
+defn graph(n, edges, seed)
+  (** The Laplacian of a graph of n nodes and some edges spread at random, plus the identity: its factor fills. *)
+  p = [1 + math.Mod(math.Mod(t * 2654435761 + seed, 4294967296), n) for t in 1..edges]
+  q = [1 + math.Mod(math.Mod(t * t * 7919 + t * 40503 + seed, 2147483647), n) for t in 1..edges]
+  rows = list.Concat(list.Concat(p, q), list.Concat(p, q))
+  cols = list.Concat(list.Concat(q, p), list.Concat(p, q))
+  sparse.Add(sparse.Eye(n), sparse.Of(rows, cols, list.Concat(matrix.Ones(1, 2 * edges) * -1.0, matrix.Ones(1, 2 * edges)), n, n))
+end
+
+(* The top of its tree is large dense blocks, under many small ones. *)
+isRandomGraph() = solvesAsDense(graph(400, 1200, 17), [math.Sin(0.1 * k) for k in 1..400])
+
+defn isIndefiniteDeep()
+  (** The 2-D Laplacian of 20 × 20 points less 3 I: symmetric, its diagonal above 0, not positive definite. Cholesky
+      meets a pivot under 0 inside a block; then a front of LU finds a column whose largest cell lies in a row of
+      another front, so Gilbert and Peierls's LU, which can take any row, does the work. *)
+  k = 20
+  t = sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k)
+  a = sparse.Add(sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(t, sparse.Eye(k))), sparse.Scale(-3.0, sparse.Eye(k * k)))
+  solvesAsDense(a, [math.Sin(1.0 * q) for q in 1..k * k])
+end
+
+defn isConvection()
+  (** Convection and diffusion on 25 × 25 points by upwind differences: unsymmetric, its pattern symmetric, so LU by
+      the supernodes of a + a'. *)
+  k = 25
+  c = 20.0 / (k + 1)
+  t = sparse.Diags([-1.0 - c, 2.0 + c, -1.0], [-1, 0, 1], k)
+  a = sparse.Add(sparse.Kron(sparse.Eye(k), t), sparse.Kron(sparse.Diags([-1.0, 2.0, -1.0], [-1, 0, 1], k), sparse.Eye(k)))
+  solvesAsDense(a, [1.0 + math.Mod(q, 3) for q in 1..k * k])
+end
+
+(* Full, its diagonal 1e-3 and the rest near 1: each pivot comes from another row of the front. *)
+isFrontSwap() = solvesAsDense(full(60, (r, c) -> if r == c 1e-3 else 1.0 / (1.0 + math.Mod(r * 7 + c * 3, 11)) end), [math.Cos(1.0 * k) for k in 1..60])
+
+(* Tridiagonal, its diagonal 1e-3, off it 1: pivots off the diagonal, inside fronts of a few columns. *)
+isTinyDiagonal() = solvesAsDense(sparse.Diags([1.0, 1e-3, 1.0], [-1, 0, 1], 50), [1.0 + math.Mod(k, 4) for k in 1..50])

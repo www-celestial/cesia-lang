@@ -1063,14 +1063,28 @@ million non-zeros; in the order `Solve` picks, 2.9 million.
   neighbours are the same, and puts an unknown joined to almost all others last. On the grid of 300 × 300, its order
   gives exactly the fill of AMD in SuiteSparse, which MATLAB and GNU Octave use: 2,928,059 non-zeros.
 - **Symmetric and positive definite**, as the grid's matrix: Cholesky's factorization, `a = L L'` (Davis 2006, ch.
-  4). Its *elimination tree* (Liu 1990) gives the pattern of each row of `L` before any arithmetic, so `L` is
-  counted, then allocated once, then computed row by row. It needs no pivoting, and is backward stable.
-- **Any other square matrix**: LU with partial pivoting, `p a q = L U`, column by column, each a sparse triangular
-  solve whose pattern a depth-first search finds first, so that the work is that of the arithmetic (Gilbert and
-  Peierls 1988). When `a`'s pattern is nearly symmetric, half its cells mirrored or more, with no 0 on its diagonal, the
-  order is AMD on the pattern of `a + a'`, and a diagonal pivot is kept when it is at least 0.1 times the largest one
-  of its column, which keeps the fill of that order; else the order is AMD on the pattern of `a' a`, and each pivot is
-  the largest of its column.
+  4). Its *elimination tree* (Liu 1990), where the parent of a column is the first row below its diagonal that it
+  fills, gives the pattern of `L` before any arithmetic: the count of each column, then its *supernodes*, runs of
+  columns of `L` that share their pattern below the diagonal (Liu, Ng and Peyton 1993). A supernode merges with its
+  parent when that stores few zeros, which makes fewer and larger blocks: the *relaxed* supernodes of Ashcraft and
+  Grimes (1989), with the thresholds of CHOLMOD (Chen, Davis, Hager and Rajamanickam 2008). Each supernode is a dense
+  block of `L`, and the *multifrontal* method (Duff and Reid 1983; Liu 1992) computes it: for each supernode, from the
+  leaves of the tree up, a dense matrix, its *front*, gathers the supernode's cells of `a` and the updates its children
+  left; its columns are factored, and the update of the rows below them, the *Schur complement*, waits for the parent.
+  Nearly all the arithmetic is then products of dense blocks, which BLAS does at the speed of dense code (Ng and Peyton
+  1993 compare such block methods on processors with caches). The size of every block is counted before any is
+  allocated: past the memory limit, `Solve` gives an `Err` that says how large the factor would be. Cholesky needs no
+  pivoting, and is backward stable.
+- **Any other square matrix**: LU with partial pivoting, `p a q = L U`. When `a`'s pattern is nearly symmetric, half
+  its cells mirrored or more, with no 0 on its diagonal, the order is AMD on the pattern of `a + a'`, and LU follows
+  the supernodes of that pattern, with fronts that hold both triangles, as UMFPACK's symmetric strategy does (Davis
+  2004). Inside a front, a column's pivot is its diagonal cell when that is at least 0.1 times the largest cell of the
+  column, which keeps the fill of the order; else the largest cell of the rows the front holds whole, when it passes
+  the same test. When no row of the front passes, or when `a`'s pattern is far from symmetric, LU is computed column
+  by column instead, each column a sparse triangular solve whose pattern a depth-first search finds first, so that the
+  work is that of the arithmetic (Gilbert and Peierls 1988; Davis 2006, ch. 6): its pivot can come from any row. The
+  order is then AMD on the pattern of `a + a'` for a nearly symmetric `a`, else on that of `a' a`, with each pivot the
+  largest of its column.
 
 As MATLAB's backslash does, `Solve` tries Cholesky on a symmetric matrix whose diagonal is above 0; a pivot that is not
 above 0 shows that it is not positive definite, and LU takes over. Then, when the residual `|a x - b|` is above
@@ -1141,29 +1155,36 @@ plot.Heatmap(matrix.Reshape([k, k], u))
 
 ### Speed of sparse matrices
 
-On the machine of [Speed](speed.md#beside-the-giants), on 2026-11-13: Cesia's times are the median of 21 runs, with the
+On the machine of [Speed](speed.md#beside-the-giants), on 2026-11-14: Cesia's times are the median of 21 runs, with the
 95 % interval of that median; scipy 1.18.1's and GNU Octave 11.3's, the median of 5 runs, and one run of each for the
-1000 × 1000 grid (scipy's on 2026-11-12).
+1000 × 1000 grid. The product was measured on 2026-11-13.
 
-| 2-D Poisson | Cesia | scipy | Octave |
+| | Cesia | scipy | Octave |
 |---|---:|---:|---:|
-| product `a x`, 300 × 300 points, 448,800 non-zeros | **1.32 ms** (1.31 to 1.35) | 0.62 ms | 2.2 ms |
-| `Solve`, 300 × 300 points, first call of the program | **890 ms** (880 to 911) | 870 ms | 330 ms |
-| `Solve`, 300 × 300 points, the calls after it | **750 ms** (747 to 762) | | |
-| `Solve`, 1000 × 1000 points, one run | **24.7 s** | 37.8 s | 8.2 s |
+| product `a x`, 2-D Poisson, 300 × 300 points, 448,800 non-zeros | **1.32 ms** (1.31 to 1.35) | 0.62 ms | 2.2 ms |
+| `Solve`, 2-D Poisson, 300 × 300 points, first call of the program | **315 ms** (311 to 317) | 805 ms | 330 ms |
+| `Solve`, 2-D Poisson, 300 × 300 points, the calls after it | **266 ms** (265 to 269) | | |
+| `Solve`, 2-D Poisson, 1000 × 1000 points | **3.85 s** (3.82 to 3.88) | 33.7 s | 8.1 s |
+| `Solve`, convection-diffusion, 300 × 300 points, LU | **360 ms** (357 to 362) | 801 ms | 563 ms |
 
-Cesia's product takes 2.9 ns a non-zero, as [Speed](speed.md#what-becomes-machine-code) explains; scipy's loop reads
-its rows as 32-bit integers and checks none of them. For `Solve`, Octave's `\` calls CHOLMOD, which factors *supernodes*, columns
-of `L` with the same pattern, as dense blocks: 2.3 times faster than Cesia's factorization, one column at a time,
-whose time goes to reading `x[i]` at rows scattered in memory. scipy's `spsolve` calls SuperLU,
-which factors the matrix as unsymmetric, with an LU of dense blocks too. On an unsymmetric matrix of the same size, the convection and
-diffusion of heat (`cd` in the tests' benchmarks), Cesia's LU takes 1.9 s, scipy's 0.83 s and Octave's UMFPACK 0.56 s.
-Supernodes in Cesia are the next step. The first call of a program also makes the machine code of the triangular solves
-and of Cholesky's factorization: 140 ms here.
+Cesia's product takes 2.9 ns a non-zero, as [Speed](speed.md#what-becomes-machine-code) explains; scipy's loop reads its
+rows as 32-bit integers and checks none of them. For `Solve`, Octave's `\` calls CHOLMOD, supernodal too, its blocks
+factored by LAPACK and BLAS, and UMFPACK for LU; scipy's `spsolve` calls SuperLU, which factors even a symmetric matrix
+as unsymmetric. Before supernodes, Cesia's factorization went a column at a time and waited on the memory: 679 ms on the
+300 × 300 grid, 24.1 s on the 1000 × 1000 one, 2.0 s for the LU. Where the giants still win: on the grid of 300 × 300
+points, the ordering by AMD now takes about a quarter of `Solve`, 70 ms, where SuiteSparse's takes 45 ms. On the eight
+Harwell-Boeing matrices of the tests, `Solve` takes from 0.33 ms (bcsstk01) to 15 ms (bcsstk14): faster than scipy on
+bcsstk14 (43 ms) and orsirr_1 (4.4 ms against 5.4), slower on the six others, by up to 3.2 times (west0479, 0.68 ms);
+Octave is faster on each but orsirr_1, 1.4 to 7 times, most on the smallest, where the steps of `Solve` around the
+factorization (the transpose, the check of symmetry, the residual) cost more than the factorization. A factor that stays
+very thin, as that of the power network 1138_bus, pays for its fronts: each passes its parent an update as large as
+itself, and `Solve` takes 1.82 ms there, against 1.52 ms a column at a time before.
 
-The ordering and LU are native code, written in OCaml: in Cesia, AMD took from 100 to 580 ms a call on the 300 × 300
-grid, as the JIT made its large loop again at each call, against 60 to 85 ms native; LU took 3.7 s against 1.9 s.
-Cholesky's factorization stays in Cesia: native, it was only 10 to 25 % faster, both waiting on the memory.
+BLAS does the products of the fronts on one thread, and on two from 2^27 multiply-adds: the machine's OpenBLAS, built
+with OpenMP, takes its 8 threads by itself, and on a machine busy with other programs they made the medium products of
+the fronts 5 to 30 times slower than one thread. Without BLAS, `Solve` does the same products in OCaml, several times
+slower on large fronts, and gives the same bits on every machine; with it, the last bits of a large factorization can
+change from one library to another, as `num.Solve`'s do.
 
 `use std/sparse` adds nothing measurable to the start of a program, once its code is in the cache of loaded packages.
 
@@ -1181,11 +1202,16 @@ entries over 1,024 bytes, more than 2^31 - 1 rows or columns, or anything it doe
 file and the line. The tests read 20,000 files made by changing, removing, adding and repeating bytes of a valid one:
 each gave an `Ok` or an `Err`, never a panic.
 
-The work is bounded and counted: `Of`, `Kron` and `Add` take time and memory in proportion to their non-zeros;
-Cholesky's factor is counted before it is allocated; LU's grows by doubling. The native code counts its work against
-`--limit` as it goes, so [cells.Stop] and a limit of steps stop a long factorization within a fraction of a second, and
-the memory it takes is reserved first: past the memory limit, the program stops with `Limit "memory" reached.` before it
-allocates. `Dense` takes 8 bytes a cell, and stops the same way past the limit.
+The work is bounded and counted: `Of`, `Kron` and `Add` take time and memory in proportion to their non-zeros. The
+factor by supernodes, its blocks, its largest front and the updates waiting on the way are counted from the pattern
+before anything is allocated, with no product that can overflow (each is at most `n²`, itself at most 2^53): when that
+alone is past `--limit memory`, `Solve` gives an `Err` that says how many megabytes it would take, as
+`sparse.Solve: the factor of a would take 48 MB, more than the memory limit allows.`; Gilbert and Peierls's LU grows by
+doubling. The native code counts its work against `--limit` as it goes, a block at a time, so [cells.Stop] and a limit
+of steps stop a long factorization within a fraction of a second, and the memory it takes is reserved first: past the
+memory limit, the program stops with `Limit "memory" reached.` before it allocates. Each dense block handed to BLAS is
+checked to lie inside its array, with sizes within BLAS's 32-bit integers, before the call. `Dense` takes 8 bytes a
+cell, and stops the same way past the limit.
 
 ### Further reading on sparse matrices
 
@@ -1198,6 +1224,24 @@ allocates. `Dense` takes 8 bytes a cell, and stops the same way past the limit.
   on Scientific and Statistical Computing* 9(5):862–874, 1988. <https://doi.org/10.1137/0909058>. LU.
 - Joseph W. H. Liu. "The Role of Elimination Trees in Sparse Factorization". *SIAM Journal on Matrix Analysis and
   Applications* 11(1):134–172, 1990. <https://doi.org/10.1137/0611010>.
+- Iain S. Duff, John K. Reid. "The Multifrontal Solution of Indefinite Sparse Symmetric Linear Equations". *ACM
+  Transactions on Mathematical Software* 9(3):302–325, 1983. <https://doi.org/10.1145/356044.356047>. Fronts.
+- Joseph W. H. Liu. "The Multifrontal Method for Sparse Matrix Solution: Theory and Practice". *SIAM Review*
+  34(1):82–109, 1992. <https://doi.org/10.1137/1034004>.
+- Joseph W. H. Liu, Esmond G. Ng, Barry W. Peyton. "On Finding Supernodes for Sparse Matrix Computations". *SIAM
+  Journal on Matrix Analysis and Applications* 14(1):242–252, 1993. <https://doi.org/10.1137/0614019>.
+- Cleve Ashcraft, Roger Grimes. "The Influence of Relaxed Supernode Partitions on the Multifrontal Method". *ACM
+  Transactions on Mathematical Software* 15(4):291–309, 1989. <https://doi.org/10.1145/76909.76910>.
+- Esmond G. Ng, Barry W. Peyton. "Block Sparse Cholesky Algorithms on Advanced Uniprocessor Computers". *SIAM Journal
+  on Scientific Computing* 14(5):1034–1056, 1993. <https://doi.org/10.1137/0914063>.
+- Fred G. Gustavson. "Recursion Leads to Automatic Variable Blocking for Dense Linear-Algebra Algorithms". *IBM Journal
+  of Research and Development* 41(6):737–755, 1997. <https://doi.org/10.1147/rd.416.0737>. The dense factorization of
+  a front, by halves of its columns.
+- Yanqing Chen, Timothy A. Davis, William W. Hager, Sivasankaran Rajamanickam. "Algorithm 887: CHOLMOD, Supernodal
+  Sparse Cholesky Factorization and Update/Downdate". *ACM Transactions on Mathematical Software* 35(3):22, 2008.
+  <https://doi.org/10.1145/1391989.1391995>.
+- Timothy A. Davis. "A Column Pre-ordering Strategy for the Unsymmetric-pattern Multifrontal Method". *ACM Transactions
+  on Mathematical Software* 30(2):165–195, 2004. <https://doi.org/10.1145/992200.992205>. UMFPACK.
 - Ronald F. Boisvert, Roldan Pozo, Karin A. Remington. *The Matrix Market Exchange Formats: Initial Design*. NIST,
   1996. <https://math.nist.gov/MatrixMarket/formats.html>.
 - Timothy A. Davis, Yifan Hu. "The University of Florida Sparse Matrix Collection". *ACM Transactions on Mathematical

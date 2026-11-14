@@ -405,6 +405,37 @@ let sparse_lu ctx (a : t array) =
     let floats x = Arrays.of_float 1 (Float.Array.length x) x in
     Arrays.list [| from1 lp; from1 li; floats lx; from1 up; from1 ui; floats ux; from1 pinv |]
 
+(* What cholesky and luFront give: a function that gives the x of a x = b, the factor of a inside it; missing when the
+   factorization fails; the bytes it would take when that is past the memory limit. *)
+let sparse_factor n = function
+  | Sparse.Failed -> Missing
+  | Sparse.Memory words -> Int (8 * words)
+  | Sparse.Factor f ->
+    nat "solve" 1 1 (fun ctx b ->
+        let b = floats ctx "solve" b.(0) in
+        if Float.Array.length b <> n then Runtime.fail ctx Type (Messages.sparse_bad "solve");
+        Runtime.pay ctx (2 * Sparse.size f);
+        Runtime.reserve ctx (3 * n);
+        Arrays.of_float 1 n (Sparse.solve f b))
+
+(* cholesky(n, start, index, values, perm): Cholesky's factorization by supernodes, as sparse_factor gives it. *)
+let sparse_cholesky ctx (a : t array) =
+  let n, p, i = sparse_columns ctx "cholesky" a in
+  let x = sparse_values ctx "cholesky" (Array.length i) a.(3) and q = sparse_order ctx "cholesky" n a.(4) in
+  let limit = ctx.w.limits.memory_words in
+  sparse_factor n (Sparse.cholesky ~pay:(Runtime.pay ctx) ~reserve:(Runtime.reserve ctx) ~limit n p i x q)
+
+(* luFront(n, start, index, values, perm, tol): LU's factorization by the supernodes of a + a', as sparse_factor gives
+   it. *)
+let sparse_front ctx (a : t array) =
+  let n, p, i = sparse_columns ctx "luFront" a in
+  let x = sparse_values ctx "luFront" (Array.length i) a.(3) and q = sparse_order ctx "luFront" n a.(4) in
+  let tol =
+    match a.(5) with Float t when t >= 0. && t <= 1. -> t | _ -> Runtime.fail ctx Type (Messages.sparse_bad "luFront")
+  in
+  let limit = ctx.w.limits.memory_words in
+  sparse_factor n (Sparse.front_lu ~pay:(Runtime.pay ctx) ~reserve:(Runtime.reserve ctx) ~limit n p i x q tol)
+
 (* num's Gaussian elimination with partial pivoting, on the square of the first columns of m: at each column the row
    of the largest element in absolute value comes up (the first of equals), then each row below loses the multiple of
    it that makes its element 0, the multiplier kept there. The operations of the textbook in its order, as num's code
@@ -1004,7 +1035,8 @@ let packages =
       "dot", nat ~ret:(fun _ -> TF) "dot" 2 2 dot_floats;
       "largest", nat ~ret:(fun _ -> TF) "largest" 1 1 largest ];
     "sparse",
-    [ "ordering", nat "ordering" 3 3 sparse_ordering; "luFactor", nat "luFactor" 6 6 sparse_lu ];
+    [ "ordering", nat "ordering" 3 3 sparse_ordering; "luFactor", nat "luFactor" 6 6 sparse_lu;
+      "cholesky", nat "cholesky" 5 5 sparse_cholesky; "luFront", nat "luFront" 6 6 sparse_front ];
     "matrix",
     [ "Zeros", nat ~ret:fa_size "Zeros" 1 max_dims (fun ctx a -> filled ctx (Float 0.) (sizes_of ctx "Zeros" a 0));
       "Ones", nat ~ret:fa_size "Ones" 1 max_dims (fun ctx a -> filled ctx (Float 1.) (sizes_of ctx "Ones" a 0));
