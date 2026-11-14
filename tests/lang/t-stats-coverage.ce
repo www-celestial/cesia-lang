@@ -1,0 +1,40 @@
+(* The coverage of the interval of stats.MonteCarlo: for each law of known mean, 1,000 runs with n and 1,000 with tol,
+   each counting the intervals that hold the mean. A count must fall in the band that holds 99.9 % of the counts of a
+   binomial law of 1,000 tries at 0.95, from its 0.05 % quantile to its 99.95 % one. With tol, the mean N of the runs
+   is shown. The counts don't depend on the last bits of exp and log, so they are the same on every system for a seed.
+   A slow test: tools/check.sh runs it, past the change loop. *)
+use std/io
+use std/math
+use std/num
+use std/stats
+use std/value
+
+low = stats.Binomial(1000, 0.95).Quantile(0.0005)
+high = stats.Binomial(1000, 0.95).Quantile(0.9995)
+io.Print("band: $low to $high")
+
+uniform() = num.Uniform(1000)
+exponential() = -math.Log(1.0 - num.Uniform(1000))
+bernoulli() = num.Uniform(1000) < 0.01
+
+defn coverage(name, f, mean, n, tol)
+  (** The intervals of 1,000 runs that hold the mean, and whether that count is in the band. *)
+  held = 0
+  draws = 0
+  for run in 1..1000
+    e = if value.IsMissing(tol) stats.MonteCarlo(f, n = n).Value else stats.MonteCarlo(f, tol = tol).Value end
+    if e.Interval[1] <= mean and mean <= e.Interval[2]
+      held += 1
+    end
+    draws += e.N
+  end
+  how = if value.IsMissing(tol) "n = $n" else "tol = $tol, mean N $(math.Round(draws / 1000.0))" end
+  io.Print("$name, $how: $held of 1000, in the band: $(held >= low and held <= high)")
+end
+
+coverage("uniform", uniform, 0.5, 10000, missing)
+coverage("exponential", exponential, 1.0, 10000, missing)
+coverage("Bernoulli 0.01", bernoulli, 0.01, 10000, missing)
+coverage("uniform", uniform, 0.5, missing, 0.005)
+coverage("exponential", exponential, 1.0, missing, 0.02)
+coverage("Bernoulli 0.01", bernoulli, 0.01, missing, 0.002)

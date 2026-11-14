@@ -44,10 +44,11 @@ language.
     and what each costs.
 16. [Graphs](graphs.md): lines, points, bars, histograms, heatmaps and densities as values, drawn to SVG, and the
     methods each step follows.
-17. [Numerical methods](numerical.md): the zero of a function, differential equations and integrals, as `fzero`,
-    `ode45` and `integral`, with what each method promises, beside scipy and Octave.
-18. [Statistics](statistics.md): the laws of probability as values, their densities, tails, quantiles and draws, the
-    special functions under them, with what each method promises, beside R and scipy.
+17. [Numerical methods](numerical.md): the zero of a function, its minimum, differential equations and integrals, as
+    `fzero`, `fminsearch`, `ode45` and `integral`, with what each method promises, beside scipy and Octave.
+18. [Statistics](statistics.md): the laws of probability as values, their densities, tails, quantiles and draws, Monte
+    Carlo means with their intervals, the special functions under them, with what each method promises, beside R and
+    scipy.
 19. [JSON and CSV](json.md): reading, writing, and checking what comes in.
 20. [HTTP](http.md): a web server with routes and JSON, tested without the network, live screens, and the client.
 21. [Cryptography](crypto.md): hashes, passwords, encryption with a key or for someone, signatures, through libsodium.

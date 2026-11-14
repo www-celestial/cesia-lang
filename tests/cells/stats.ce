@@ -1,6 +1,7 @@
 (* std/cells with std/stats: a cell's random draws are the same each time it runs, whatever ran before, as the
    generator starts again from the seed of the session and the cell's title; an Ok of a struct shows the struct, and a
-   struct shows as a table of its fields, each cut at 80 characters, and formats no more of a long list than that. *)
+   struct shows as a table of its fields, each cut at 80 characters, and formats no more of a long list than that; a
+   Monte Carlo estimate, run again after another cell, is the same. *)
 use std/cells
 use std/io
 use std/result
@@ -24,6 +25,10 @@ defn Main()
   io.Print(long.Kind, long.Rows)
   d = cells.Run(s, cs[6])?.Value
   io.Print(d.Kind, value.Len(d.Text), text.Slice(1, 30, d.Text))
+  mc = cells.Run(s, cs[7])?.Value
+  cells.Run(s, cs[2])?
+  again2 = cells.Run(s, cs[7])?.Value
+  io.Print("same estimate: $(value.Equal(mc, again2))", mc.Kind, mc.Columns, [r[1] for r in mc.Rows])
   result.Ok(missing)
 end
 

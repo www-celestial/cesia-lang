@@ -3,10 +3,10 @@
 In this chapter you work with the laws of probability, with [std/stats]: the normal, Student's t, the chi-squared,
 Fisher's F, the uniform, the exponential, the gamma, the beta, the binomial and the Poisson laws, each a value with
 its density, its cumulative distribution, its quantiles and its random draws, what R's `pnorm` and `qt` and scipy's
-`norm` and `t` give. Under them are the special functions of [std/special]: the gamma and beta functions, the error
-function, and the incomplete gamma and beta ratios. Each comes from a published method, named here with what it
-promises, and the last part of each section says how close it comes, measured against values computed to 70 digits
-and against R and scipy.
+`norm` and `t` give, and the mean of random draws with its interval, a Monte Carlo estimate. Under them are the
+special functions of [std/special]: the gamma and beta functions, the error function, and the incomplete gamma and beta
+ratios. Each comes from a published method, named here with what it promises, and the last part of each section says
+how close it comes, measured against values computed to 70 digits and against R and scipy.
 
 ## Laws of probability
 
@@ -541,6 +541,197 @@ On the machine of [Speed](speed.md#beside-the-giants), a call on one number cost
 for `GammaInc` and `BetaInc`, most of it the call itself; the computation inside is machine code made by the JIT:
 `special.Erf` on an array of $10^6$ floats takes about 70 ms, 70 ns an element.
 
+## Monte Carlo
+
+[stats.MonteCarlo] estimates a mean by drawing at random: an integral as the mean of a function at uniform points, a
+probability as the mean of a test, the expected value of a simulation as the mean of its runs. It gives the mean of the
+draws, its *standard error*, which says how far that mean may be from the true one, and an *interval* that holds the
+true mean with the probability `level`, 0.95 by default. With numpy and `scipy.stats.t.interval`, or MATLAB's `mean`
+and `tinv`, that takes a few lines, and a loop of your own to draw until the interval is narrow enough.
+
+`f()` gives one draw, a number, or a *batch* of draws, an array; `true` and `false` count as 1 and 0, so that the mean
+of a test is its probability. Give `n`, the number of draws, or `tol`, the half-width the interval must reach:
+
+```cesia
+use std/math
+use std/num
+use std/random
+mc = result.Unwrap(stats.MonteCarlo(() -> math.Exp(-num.Uniform(100000) ^ 2), tol = 1e-3))
+mc.Interval[2] - mc.Mean <= 1e-3 -->
+math.Abs(mc.Mean - special.Erf(1) * math.Sqrt(math.Pi) / 2) < 5 * mc.StdError -->
+p = result.Unwrap(stats.MonteCarlo(() -> random.Float() < 0.25, n = 10000))
+p.N -->
+```
+
+The first estimates the integral of $e^{-x^2}$ from 0 to 1, $\sqrt{\pi}\, \text{erf}(1) / 2 = 0.746824132812427$, as
+the mean of $e^{-u^2}$ for $u$ uniform on $[0, 1)$, by batches of 100,000 draws, until the half-width of the interval
+is $10^{-3}$ or less; one run gave `Mean = 0.747162`, `StdError = 0.000449` and the interval `[0.746283, 0.748042]`,
+from `N = 200000` draws. The second is the probability that a uniform draw is below 0.25, from 10,000 single draws.
+What it gives is a `stats.Estimate`:
+
+| Field | What it holds |
+|---|---|
+| `Mean` | the mean of the draws |
+| `StdError` | $s / \sqrt{N}$, $s$ the standard deviation of the draws, over $N - 1$ |
+| `Interval` | `[Mean - t StdError, Mean + t StdError]`, $t$ the quantile of Student's law of $N - 1$ degrees of freedom at $(1 + \text{Level}) / 2$ |
+| `N` | the number of draws |
+| `Level` | the level asked for |
+
+A batch made by array operations costs far less than as many calls of a function that gives one draw, as
+[Speed](#speed) shows. With `n`, the last batch is cut, so that exactly `n` draws are used. With `tol`, the test is
+made after each batch, or each 1,000 single draws, from 1,000 draws on; `most`, $10^9$ by default, bounds the draws.
+
+| Cesia | Python, numpy and scipy | MATLAB | R |
+|---|---|---|---|
+| `stats.MonteCarlo(f, n = 100000)`, `f()` a batch | `x = f()`, then `stats.t.interval(0.95, x.size - 1, x.mean(), stats.sem(x))` | `x = f()`, then `mean(x) + tinv([0.025 0.975], numel(x) - 1) * std(x) / sqrt(numel(x))` | `x <- f()`, then `t.test(x)$conf.int` |
+| `stats.MonteCarlo(f, n = 100000)`, `f()` one draw | `x = np.fromiter((f() for _ in range(n)), float, n)`, then the same | `x = arrayfun(@(k) f(), 1:n)`, then the same | `x <- replicate(n, f())`, then the same |
+| `stats.MonteCarlo(f, tol = 1e-3)` | a loop of your own | a loop of your own | a loop of your own |
+
+```python
+import numpy as np
+from scipy import stats
+rng = np.random.default_rng()
+x = np.exp(-rng.random(200000) ** 2)
+stats.t.interval(0.95, x.size - 1, loc=x.mean(), scale=stats.sem(x))
+```
+
+```matlab
+x = exp(-rand(200000, 1) .^ 2);
+mean(x) + tinv([0.025 0.975], numel(x) - 1) * std(x) / sqrt(numel(x))
+```
+
+```r
+x <- exp(-runif(200000)^2)
+t.test(x)$conf.int
+```
+
+`tinv` belongs to MATLAB's Statistics Toolbox, and to Octave's statistics package.
+
+### In a cell
+
+In a file of [cells](cells.md), the estimate shows as a table of its fields, and a histogram of one batch shows how the
+draws spread. Each cell draws from a seed of its own, made of the session's and the cell's title, so a cell run again
+gives the same interval, whatever ran before it, as [Random draws](#random-draws) says:
+
+```cesia norun
+use std/math
+use std/num
+use std/plot
+use std/stats
+
+(* %% Monte Carlo *)
+mc = stats.MonteCarlo(() -> math.Exp(-num.Uniform(100000) ^ 2), tol = 1e-4)
+mc
+
+(* %% One batch *)
+plot.Of([plot.Histogram(math.Exp(-num.Uniform(100000) ^ 2))], x = "e^(-u^2)", y = "draws")
+```
+
+At `tol = 1e-4` the first cell makes 15.6 million draws, nearly all its time spent in `f`, as [Speed](#speed) shows.
+The same histogram, made here and drawn to SVG:
+
+```cesia
+use std/plot
+g = plot.Of([plot.Histogram(math.Exp(-num.Uniform(100000) ^ 2))], x = "e^(-u^2)", y = "draws")
+result.IsOk(plot.Svg(g)) -->
+```
+
+### How it is computed
+
+The draws are never kept. They are reduced 1,000 at a time, those of a batch or 1,000 single draws gathered in an
+array: for each block of $k$ draws $x_i$, the *corrected two-pass algorithm* of Chan, Golub and LeVeque (1983) takes
+their mean $m$, then the distances $d_i = x_i - m$, whose sum $c$ is the part of the mean that rounding left out of
+$m$:
+
+$$
+\text{mean} = m + \frac{c}{k}, \quad q = \sum_i d_i^2 - \frac{c^2}{k}
+$$
+
+$q$ being the sum of the squares of the distances from the mean. Both hold for any $m$; an $m$ near the mean keeps
+their digits. The blocks are merged by their formula, for two sets of $n_a$ and $n_b$ draws of means $m_a$ and $m_b$:
+
+$$
+q_{ab} = q_a + q_b + \frac{n_a n_b}{n_a + n_b} (m_b - m_a)^2
+$$
+
+of which Welford's update (1962) is the case $n_b = 1$, one draw at a time. These identities were checked here in exact
+rational arithmetic, on a thousand random sets. The running sum of the draws and the running $q$ each keep the rounding
+errors of their additions beside them, by Neumaier's compensated sum (1974): the `Mean` is within
+a few units in the last place of the exact mean of the draws, whether they came one by one or in batches of any size.
+On uniform, exponential and shifted draws, given one at a time and in batches of 7, 1,000, 4,096 and all at once, it
+was 0 or 1 unit from the exact mean, and up to 4 on draws of 0 and 1, where `list.Mean` of the same draws was 20 to 57
+units off. The `StdError` of the same draws agrees to $10^{-15}$ whatever the batches, or to about $\kappa \epsilon$ when
+the mean is $\kappa$ times the standard deviation: the distance between two means that the merge squares is known to
+$\epsilon$ times the mean.
+
+Then
+
+$$
+\text{StdError} = \frac{s}{\sqrt{N}}, \quad s^2 = \frac{q}{N - 1}, \quad \text{Interval} = \text{Mean} \pm t_{N-1} \, \text{StdError}
+$$
+
+with $t_{N-1}$ the quantile of Student's law (1908) of $N - 1$ degrees of freedom at $(1 + \text{level}) / 2$, as
+`stats.TTest` computes it: on the same values, the two give the same interval to $10^{-15}$.
+
+With `tol`, the draws go on by the rule of Chow and Robbins (1965): stop at the first $N \ge 1000$ where
+$t_{N-1} \, s / \sqrt{N} \le \text{tol}$. Their rule, for a half-width $d$, stops at the first $n \ge n_0$ with
+$n \ge a_n^2 (s_n^2 + 1/n) / d^2$, where $a_n$ is any sequence that tends to $a$, the normal quantile of the level.
+Cesia's takes $n_0 = 1000$ and $a_n = t_{n-1}$, and leaves out their $1/n$: a term in the units of the draws squared,
+which for draws of size $10^{-6}$ asked to a `tol` of $10^{-9}$ would ask for $a / \text{tol}$, $2 \times 10^9$ draws,
+whatever their spread. The 1,000 keep the rule from stopping on a small, unlucky sample. The test is made after each
+batch, not each draw: for batches of a bounded size, that is their rule on the sequence of the ends of the batches,
+whose ratio of one to the next tends to 1, as their lemma asks. Student's quantile costs a solve of the beta law, about
+60 µs; the normal quantile, which is below it, is tested first, so that the solve runs only near the end.
+
+### What it promises
+
+- **With `n`.** For normal draws, the interval holds the true mean with probability `level` exactly (Student, 1908).
+  For draws of any law with a finite variance, the probability tends to `level` as `n` grows, by the central limit
+  theorem. At a given `n` it can be less, the more so as the law is skewed: for a draw of 1 with probability 0.01 and
+  0 otherwise, it is 94.62 % at $n = 10{,}000$ and 94.99 % at 5,000, computed exactly by summing the binomial law.
+- **With `tol`.** The half-width of the interval is at most `tol`: it is the test. Chow and Robbins proved, for draws
+  of a law whose variance $\sigma^2$ is finite and above 0, that as `tol` tends to 0 the probability that the interval
+  holds the true mean tends to `level`, and $N$ tends to $(a \sigma / \text{tol})^2$, the number of draws one would
+  choose knowing $\sigma$, its mean too; Mukhopadhyay and Datta (1996) state the theorem so. For a law whose values
+  have a probability of their own, as a test's true and false, the first 1,000 draws can all be equal, with some
+  probability $p_0$, $0.99^{1000} = 4.3 \times 10^{-5}$ for an event of probability 0.01: the rule then stops at 1,000
+  draws with a `StdError` of 0, and the limit is `level` less at most $p_0$. At a given `tol`, nothing is promised:
+  the coverage tends to `level` as `tol` shrinks, not before.
+- **Never.** For draws without a finite variance, as Cauchy's, the mean of the draws doesn't settle and the interval
+  means nothing; the draws can't tell it for sure.
+- **Draws all equal** give a `StdError` of 0 and an interval of one point: an event too rare to show up in the draws
+  looks so.
+
+Measured: 1,000 runs for each law, each counting the intervals that hold the true mean. The counts of a binomial law of
+1,000 tries at 0.95 lie from 926 to 971 with probability 99.9 %: each count is there, those of `tol` a little lower,
+as a rule that stops when the sample happens to look narrow can be.
+
+| Draws, true mean | `n = 10000` | `tol`, and the mean `N` of the runs |
+|---|---:|---:|
+| uniform on $[0, 1)$, 0.5 | 950 | 944, `tol = 0.005`, 13,028 |
+| exponential of rate 1, 1 | 942 | 945, `tol = 0.02`, 10,061 |
+| 1 with probability 0.01, else 0; 0.01 | 950 | 943, `tol = 0.002`, 9,915 |
+
+Cesia's tests run them again with the seed 42, and check single draws against batches of every size, the interval
+against `stats.TTest`, and the integral of $e^{-x^2}$ against its value.
+
+### When it fails
+
+An `Err` of kind `"stats"`, whose `Partial` is the `Estimate` of the draws before the bad one, or `missing` under 2:
+when `f` gives NaN or an infinity, the message naming the call or the element of a batch; when it gives a value that is
+no number, `true` or `false`, an empty array, an array after numbers or a number after arrays; when the squares of the
+draws pass the largest float, about $1.8 \times 10^{308}$; and with `tol`, when `most` draws pass before the interval
+is narrow enough, `Partial` then holding the interval reached.
+
+```cesia
+r = stats.MonteCarlo(() -> [1.0, 0.0 / 0.0], n = 10)
+r.Error.Message -->
+```
+
+A panic in `f` goes through, as any bug. A wrong argument is a panic that names it: `f` that is no function, neither or
+both of `n` and `tol`, `n` that is no whole number from 2 to `most`, `tol` that is no finite number above 0, `level`
+outside $(0, 1)$, `most` below 2, or below 1,000 with `tol`.
+
 ## Speed
 
 On the machine of [Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-13: the median of 21
@@ -564,10 +755,41 @@ loop.
 each step of their solver calls `special.GammaInc` or `special.BetaInc`, a function with a default parameter that
 checks the kind of its arguments, and the JIT doesn't yet make machine code of such a call, so the solver runs in the
 interpreter, about 10 µs a step for five or six steps. numpy is faster on a whole array of normal cdfs, with its loops
-in C. `use std/stats` adds 4.7 ms to the start of a program once the cache of loaded packages holds it (7.7 ms against
-3.0 for a program that prints 1), 10.8 ms the first time (13.8 ms): its 3,700 lines, and those of std/special, std/frame
-and std/num, which it uses. A program without it starts as before: 3.0 ms against 2.9 for main's binary, within the
-noise.
+in C.
+
+**Monte Carlo.** On the same machine, on 2026-11-13: Cesia's times are the medians of 21 runs and the 95 % interval of
+each; numpy 2.5.4 with scipy 1.18.1, and Octave 11.3.0, the medians of 5 runs, in the same session. Each time is taken
+inside the program, around the work alone. Octave's `tinv` belongs to its statistics package, not installed here: its
+quantile comes from `betaincinv` of Octave's core, as `tinv` computes it.
+
+| | Cesia | numpy and scipy | Octave 11.3 |
+|---|---:|---:|---:|
+| $10^6$ draws in one batch, and their interval | 47.8 ms (46.2 to 49.2) | 10.4 ms | 31.3 ms |
+| of which the draws, `num.Uniform`, `rng.random`, `rand` | 45.2 ms (44.4 to 47.8) | 4.9 ms | 10.0 ms |
+| the interval of $10^6$ draws already made | 12.2 ms the first time, the JIT compiling; 3.9 ms after | 6.3 ms | 32.3 ms |
+| $10^7$ draws in batches of $10^5$, the work of `MonteCarlo` alone | 38.9 ms (38.6 to 39.7) | | |
+| $10^6$ single draws, a call of `f()` each, and their interval | 115 ms (114 to 119) | 166 ms, `np.fromiter` | 6,590 ms, `arrayfun` |
+| the cell above, `tol = 1e-4`: 15.6 million draws of $e^{-u^2}$ in batches of $10^5$ | 3,773 ms (3,733 to 3,813) | 243 ms | 995 ms |
+
+The work of `MonteCarlo` alone was measured on a batch made once and given again by `f`, so that no draw is made.
+
+**Where Cesia wins.** Single draws: a call of `f` for each costs less than Python's generator, and 57 times less than
+Octave's `arrayfun`. The work of `MonteCarlo` itself, its two passes over each block in machine code, about 4 ns a
+draw, costs less than numpy's mean and standard deviation. And neither numpy nor Octave has the loop of `tol`.
+
+**Where the others win.** numpy makes uniform draws 9 times faster than Cesia: `num.Uniform` is a loop of Cesia that
+calls `random.Float` for each number, about 45 ns each, where numpy's generator fills its array in C. And `x ^ 2` on an
+array costs about 110 ns an element in Cesia, against about 1 for `x * x`, as each element goes through the general
+arithmetic of values. These two make the cell 15 times slower than numpy's and 4 times slower than Octave's, though
+`MonteCarlo` takes about 0.2 s of its 3.8. A single draw pays a call of `f` with no argument through a value, which the
+JIT doesn't yet make machine code: about 65 ns with the draw of `random.Float()`, and `MonteCarlo` about 50 ns more to
+test it and store it.
+
+`use std/stats` adds 1.2 ms to the start of a program once the cache of loaded packages holds it (4.2 ms against 3.0
+for a program that prints 1), 11.8 ms the first time (14.8 ms): its 3,100 lines, and those of std/special, std/frame
+and std/num, which it uses; 4.21 ms against 4.20 for main's binary before `MonteCarlo`, and 14.85 against 14.59 the
+first time, within the noise. A program without it starts as before: 3.03 ms against 3.08 for main's binary. These
+are the medians of 21 runs, alternated, on 2026-11-13.
 
 ## Security
 
@@ -582,6 +804,14 @@ of a `Sample` is checked before anything is made, and its array, as every array,
 memory: past it the program stops with its message. No parameter makes a table or a matrix grow without bound: a law
 of counts draws through its quantile once its table would pass 65,536 counts, and the exact Kolmogorov–Smirnov matrix
 stays at most 681 × 681 (it is used up to $n D^2 = 7.24$, with $n \le 16{,}000$).
+
+`stats.MonteCarlo` reads only what `f` gives. Its draws are bounded: `n` is checked against `most` before the first call,
+and with `tol` the draws stop at `most`, $10^9$ by default, with an `Err` that holds the estimate reached, so no
+`tol` can make it run forever; `cells.Stop` stops it within a block of draws, as every loop of Cesia code. It keeps no
+draw: single draws go through an array of 1,000 floats, and a batch is read where `f` made it, with no copy, so its
+memory is `f`'s own. Each single draw is tested as it comes, so `f` is not called again past a value that is no number;
+a NaN or an infinity is found by the sums of its block and named, as are an empty array, which would never end the
+draws, and a sum of squares past the largest float. A panic in `f` goes through unchanged.
 
 ## Further reading
 
@@ -607,6 +837,17 @@ stays at most 681 × 681 (it is used up to $n D^2 = 7.24$, with $n \le 16{,}000$
   large population". *Biometrika* 10(4):507–521, 1915. <https://doi.org/10.2307/2331838>.
 - Tony F. Chan, Gene H. Golub, Randall J. LeVeque. "Algorithms for computing the sample variance: analysis and
   recommendations". *The American Statistician* 37(3):242–247, 1983. <https://doi.org/10.1080/00031305.1983.10483115>.
+- B. P. Welford. "Note on a method for calculating corrected sums of squares and products". *Technometrics*
+  4(3):419–420, 1962. <https://doi.org/10.1080/00401706.1962.10490022>.
+- A. Neumaier. "Rundungsfehleranalyse einiger Verfahren zur Summation endlicher Summen". *Zeitschrift für Angewandte
+  Mathematik und Mechanik* 54(1):39–51, 1974. <https://doi.org/10.1002/zamm.19740540106>. The compensated sum of
+  `stats.MonteCarlo`.
+- Y. S. Chow, Herbert Robbins. "On the asymptotic theory of fixed-width sequential confidence intervals for the mean".
+  *The Annals of Mathematical Statistics* 36(2):457–462, 1965. <https://doi.org/10.1214/aoms/1177700156>.
+- Nitis Mukhopadhyay, Sujay Datta. "On sequential fixed-width confidence intervals for the mean and second-order
+  expansions of the associated coverage probabilities". *Annals of the Institute of Statistical Mathematics*
+  48(3):497–507, 1996. <https://doi.org/10.1007/BF00050850>. Chow and Robbins's rule and theorem, restated in its
+  introduction.
 - Gene H. Golub, Charles F. Van Loan. *Matrix Computations*, fourth edition. Johns Hopkins University Press, 2013.
   Chapter 5, Householder's QR and least squares.
 - B. D. McCullough. "Assessing the reliability of statistical software: Part I". *The American Statistician*

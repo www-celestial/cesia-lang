@@ -1,0 +1,215 @@
+(** The tests of stats.MonteCarlo: the interval of a batch against stats.TTest on the same values; single draws and
+    batches of every size giving the same Mean and StdError for the same draws; n cutting the last batch; tol stopping
+    at the first test that passes; true and false as 1 and 0; the integral of e^(-x^2) on [0, 1]; and each Err and
+    panic. The coverage of 1,000 runs is in t-stats-coverage.ce, a slow test. *)
+use std/bug
+use std/fiber
+use std/list
+use std/math
+use std/num
+use std/random
+use std/result
+use std/stats
+use std/value
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+near(a, b, rel) = math.Abs(a - b) <= rel * math.Abs(b)
+halfWidth(e) = e.Interval[2] - e.Mean
+square(u) = u * u
+
+orZero(r) = if result.IsOk(r) r.Value else 0.0 end
+
+defn feeder(xs, size)
+  (** A function that gives the values of xs, size at a time in an array, or one at a time for size 0, then 0.0. *)
+  ch = fiber.Channel()
+  n = value.Len(xs)
+  k = 1
+  while k <= n
+    hi = list.Min(n, k + list.Max(size, 1) - 1)
+    fiber.Send(if size == 0 xs[k] else xs[k..hi] end, ch)
+    k = hi + 1
+  end
+  () -> orZero(fiber.Receive(ch, timeout = 0))
+end
+
+defn exactMean(xs)
+  (** The mean of xs from a sum that keeps its rounding errors beside it (Neumaier, 1974). *)
+  s = 0.0
+  c = 0.0
+  for i in 1..value.Len(xs)
+    x = xs[i]
+    t = s + x
+    c += if math.Abs(s) >= math.Abs(x) (s - t) + x else (x - t) + s end
+    s = t
+  end
+  (s + c) / value.Len(xs)
+end
+
+defn isBatchIsTTest()
+  e = stats.MonteCarlo(() -> [1.0, 2.0, 3.0, 4.0], n = 8).Value
+  t = stats.TTest([1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0]).Value
+  e.Mean == 2.5 and e.N == 8 and e.Level == 0.95 and near(e.StdError, math.Sqrt(10.0 / 7.0 / 8.0), 1e-15) and
+    near(e.Interval[1], t.Interval[1], 1e-15) and near(e.Interval[2], t.Interval[2], 1e-15)
+end
+
+defn isLevel()
+  e = stats.MonteCarlo(() -> [1.0, 2.0, 3.0, 4.0], n = 8, level = 0.99).Value
+  t = stats.TTest([1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0], level = 0.99).Value
+  e.Level == 0.99 and near(e.Interval[2], t.Interval[2], 1e-15)
+end
+
+defn isConstant()
+  e = stats.MonteCarlo(() -> 2.5, n = 1000).Value
+  e.Mean == 2.5 and e.StdError == 0.0 and value.Equal(e.Interval, [2.5, 2.5]) and e.N == 1000
+end
+
+defn agrees(xs)
+  (** Single draws and batches of 7, 1,000, 4,096 and all give the same Mean, to 1e-15 of the exact mean, and the same
+      StdError, to 1e-15 or, for draws whose mean is k times their deviation, to k eps: the distance between two means
+      that the merge squares is known to eps times the mean. *)
+  n = value.Len(xs)
+  m = exactMean(xs)
+  one = stats.MonteCarlo(feeder(xs, 0), n = n).Value
+  k = math.Abs(m) / (one.StdError * math.Sqrt(n))
+  runs = [stats.MonteCarlo(feeder(xs, size), n = n).Value for size in [0, 7, 1000, 4096, n]]
+  list.All([near(e.Mean, m, 1e-15) and near(e.StdError, one.StdError, list.Max(1e-15, k * 2.220446049250313e-16)) and e.N == n for e in runs])
+end
+
+isSinglesAndBatchesUniform() = agrees(num.Uniform(5000))
+isSinglesAndBatchesExponential() = agrees(-math.Log(1.0 - num.Uniform(5000)))
+isSinglesAndBatchesShifted() = agrees(1000.0 + num.Uniform(5000))
+
+defn isLargeBatchAgreesWithTTest()
+  xs = -math.Log(1.0 - num.Uniform(100000))
+  e = stats.MonteCarlo(() -> xs, n = 100000).Value
+  t = stats.TTest(xs).Value
+  near(e.Mean, exactMean(xs), 1e-15) and near(e.Interval[1], t.Interval[1], 1e-13) and near(e.Interval[2], t.Interval[2], 1e-13)
+end
+
+defn isNCutsTheLastBatch()
+  xs = num.Uniform(1200)
+  e = stats.MonteCarlo(feeder(xs, 300), n = 1000).Value
+  e.N == 1000 and near(e.Mean, exactMean(xs[1..1000]), 1e-15)
+end
+
+defn isIntegerBatch()
+  e = stats.MonteCarlo(() -> [1, 2, 3, 4], n = 8).Value
+  e.Mean == 2.5 and near(e.StdError, math.Sqrt(10.0 / 7.0 / 8.0), 1e-15)
+end
+
+defn isMatrixBatch()
+  stats.MonteCarlo(() -> [1.0 2.0; 3.0 4.0], n = 8).Value.Mean == 2.5
+end
+
+defn isTolSingles()
+  e = stats.MonteCarlo(() -> random.Float(), tol = 0.01).Value
+  e.N >= 1000 and math.Mod(e.N, 1000) == 0 and halfWidth(e) <= 0.01
+end
+
+defn isTolStopsAtTheFirstPass()
+  (** The same draws, by batches of 500: tol stops at N, and the interval of the N - 500 before is wider than tol. *)
+  xs = num.Uniform(40000)
+  e = stats.MonteCarlo(feeder(xs, 500), tol = 0.005).Value
+  before = stats.MonteCarlo(feeder(xs, 500), n = e.N - 500).Value
+  halfWidth(e) <= 0.005 and (e.N == 1000 or halfWidth(before) > 0.005) and near(e.Mean, exactMean(xs[1..e.N]), 1e-15)
+end
+
+defn isTolFromAThousand()
+  e = stats.MonteCarlo(() -> [0.5, 0.5], tol = 0.1).Value
+  e.N == 1000 and e.StdError == 0.0
+end
+
+defn isBools()
+  a = stats.MonteCarlo(() -> [true, false, false, true], n = 8).Value
+  b = stats.MonteCarlo(() -> random.Float() < 0.25, n = 20000).Value
+  c = stats.MonteCarlo(() -> num.Uniform(1000) < 0.25, n = 20000).Value
+  a.Mean == 0.5 and math.Abs(b.Mean - 0.25) < 5.0 * b.StdError and math.Abs(c.Mean - 0.25) < 5.0 * c.StdError
+end
+
+defn isIntegral()
+  (** The integral of e^(-x^2) on [0, 1], erf(1) sqrt(pi) / 2 = 0.746824132812427, within 5 standard errors. *)
+  e = stats.MonteCarlo(() -> math.Exp(-square(num.Uniform(100000))), n = 100000).Value
+  math.Abs(e.Mean - 0.746824132812427) < 5.0 * e.StdError and e.StdError < 0.0007
+end
+
+defn isNan()
+  xs = num.Uniform(2000)
+  xs[1500] = math.Nan
+  r = stats.MonteCarlo(feeder(xs, 0), n = 2000)
+  r.Error.Message == "stats.MonteCarlo: f gave NaN at call 1500; give finite numbers." and r.Error.Partial.N == 1499 and
+    near(r.Error.Partial.Mean, exactMean(xs[1..1499]), 1e-15)
+end
+
+defn isInfinityInABatch()
+  xs = num.Uniform(30)
+  xs[13] = -1.0 / 0.0
+  r = stats.MonteCarlo(feeder(xs, 10), n = 30)
+  r.Error.Message == "stats.MonteCarlo: f gave an infinity at element 3 of the array of call 2; give finite numbers." and
+    r.Error.Partial.N == 12 and near(r.Error.Partial.Mean, exactMean(xs[1..12]), 1e-15)
+end
+
+defn isNotANumber()
+  a = stats.MonteCarlo(() -> "a", n = 10)
+  b = stats.MonteCarlo(feeder([1.0, 2.0, 3.0, missing], 0), n = 10)
+  a.Error.Message == "stats.MonteCarlo: f gave \"a\" at call 1; give a number, true or false, or an array of them." and
+    value.IsMissing(a.Error.Partial) and
+    b.Error.Message == "stats.MonteCarlo: f gave missing at call 4; give a number, true or false, or an array of them." and
+    b.Error.Partial.N == 3 and b.Error.Partial.Mean == 2.0
+end
+
+defn isMixedBatch()
+  r = stats.MonteCarlo(() -> [1.0, true, "a"], n = 10)
+  r.Error.Message == "stats.MonteCarlo: f gave an array at call 1 whose element 3 is \"a\"; give numbers, true or false." and
+    r.Error.Partial.N == 2 and r.Error.Partial.Mean == 1.0
+end
+
+defn isEmptyBatch()
+  stats.MonteCarlo(() -> [], n = 10).Error.Message == "stats.MonteCarlo: f gave an empty array at call 1."
+end
+
+defn isArraysThenANumber()
+  a = stats.MonteCarlo(feeder([[1.0, 2.0], 3.0], 0), n = 10)
+  b = stats.MonteCarlo(feeder([1.0, 2.0, [3.0]], 0), n = 10)
+  a.Error.Message == "stats.MonteCarlo: f gave a number at call 2, and arrays before: give an array each time, or a number each time." and
+    b.Error.Message == "stats.MonteCarlo: f gave an array at call 3, and numbers before: give a number each time, or an array each time." and
+    b.Error.Partial.Mean == 1.5
+end
+
+defn isMostReached()
+  r = stats.MonteCarlo(() -> num.Uniform(500), tol = 1e-6, most = 2000)
+  text = r.Error.Message
+  r.Error.Kind == "stats" and r.Error.Partial.N == 2000 and
+    text == "stats.MonteCarlo: 2000 draws, most, and the half-width of the interval is still $(halfWidth(r.Error.Partial)), above tol = 1e-6; give a larger tol, or a larger most."
+end
+
+defn isTooLarge()
+  stats.MonteCarlo(() -> [1.0e300, -1.0e300], n = 10).Error.Message == "stats.MonteCarlo: the draws are too large: the sum of their squares passes the largest float, about 1.8e308."
+end
+
+isPanicInF() = message(() -> stats.MonteCarlo(() -> bug.Panic("no draw today"), n = 10)) == result.Err("no draw today")
+
+defn isBadArguments()
+  bad = [message(() -> stats.MonteCarlo(3, n = 10)),
+         message(() -> stats.MonteCarlo(() -> 1.0)),
+         message(() -> stats.MonteCarlo(() -> 1.0, n = 10, tol = 0.1)),
+         message(() -> stats.MonteCarlo(() -> 1.0, n = 1)),
+         message(() -> stats.MonteCarlo(() -> 1.0, n = 2.5)),
+         message(() -> stats.MonteCarlo(() -> 1.0, n = 2000, most = 1000)),
+         message(() -> stats.MonteCarlo(() -> 1.0, tol = 0)),
+         message(() -> stats.MonteCarlo(() -> 1.0, tol = math.Nan)),
+         message(() -> stats.MonteCarlo(() -> 1.0, tol = 0.1, most = 999)),
+         message(() -> stats.MonteCarlo(() -> 1.0, n = 10, level = 1)),
+         message(() -> stats.MonteCarlo(() -> 1.0, n = 10, most = 0))]
+  want = ["stats.MonteCarlo: f is 3; give a function of no arguments that gives a draw, or an array of draws.",
+          "stats.MonteCarlo: give n, the number of draws, or tol, the half-width the interval must reach.",
+          "stats.MonteCarlo: give n, the number of draws, or tol, the half-width the interval must reach, not both.",
+          "stats.MonteCarlo: n is 1; give a whole number of 2 or more.",
+          "stats.MonteCarlo: n is 2.5; give a whole number of 2 or more.",
+          "stats.MonteCarlo: n is 2000, above most = 1000; give a larger most.",
+          "stats.MonteCarlo: tol is 0; give a finite number above 0.",
+          "stats.MonteCarlo: tol is nan; give a finite number above 0.",
+          "stats.MonteCarlo: most is 999; with tol, give 1000 or more, as the interval is first tested at 1,000 draws.",
+          "stats.MonteCarlo: level is 1; give a number between 0 and 1.",
+          "stats.MonteCarlo: most is 0; give a whole number of 2 or more."]
+  value.Equal(bad, [result.Err(w) for w in want])
+end

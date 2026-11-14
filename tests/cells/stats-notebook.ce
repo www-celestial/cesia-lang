@@ -1,4 +1,4 @@
-(* The notebook that stats.ce runs: draws, a test, a struct, a struct that holds 10^6 numbers. *)
+(* The notebook that stats.ce runs: draws, a test, a struct, a struct that holds 10^6 numbers, a Monte Carlo estimate. *)
 use std/result
 use std/stats
 
@@ -21,3 +21,6 @@ Long([0.5 * k for k in 1..1000000], 1000000)
 
 (* %% Long dictionary *)
 {Xs: [0.5 * k for k in 1..1000000]}
+
+(* %% Monte Carlo *)
+stats.MonteCarlo(() -> stats.Uniform(0, 1).Sample(1000), n = 5000)

@@ -3,4 +3,5 @@ table ["field", "value"] ["Method", "One-sample t-test"] Estimate 8
 table [["Shape", "2"], ["Rate", "3"]]
 table [["Xs", "[0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5, 7.0, 7.5, 8.0…"], ["N", "1000000"]]
 text 20000 {Xs: [0.5, 1.0, 1.5, 2.0, 2.5,
+same estimate: true table ["field", "value"] ["Mean", "StdError", "Interval", "N", "Level"]
 exit 0

@@ -51,8 +51,8 @@ construction : le livre ne peut donc pas s'écarter du langage.
 17. [Méthodes numériques](numerical.md) : le zéro d'une fonction et les équations différentielles, comme
     `fzero` et `ode45`, avec ce que promet chaque méthode, à côté de scipy et d'Octave.
 18. [Statistiques](statistics.md) : les lois de probabilité comme valeurs, leurs densités, leurs queues,
-    leurs quantiles et leurs tirages, les fonctions spéciales en dessous, avec ce que promet chaque méthode, à côté
-    de R et de scipy.
+    leurs quantiles et leurs tirages, les moyennes de Monte-Carlo avec leur intervalle, les fonctions spéciales en
+    dessous, avec ce que promet chaque méthode, à côté de R et de scipy.
 19. [JSON et CSV](json.md) : lire, écrire, et vérifier ce qui arrive.
 20. [HTTP](http.md) : un serveur web avec des routes et du JSON, testé sans le réseau, les live screens (des pages
     qui changent d'elles-mêmes), et le client.
