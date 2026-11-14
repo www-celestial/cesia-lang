@@ -24,6 +24,8 @@ type code = {
   stride : int;  (* the interpreter's frames for the unit's calls, as [Ir.func]'s; -1 when unknown *)
   need : int;
   mutable bails : int;  (* the runs that a failed guard sent back to the interpreter *)
+  mutable colds : int;  (* the runs that ended for the interpreter to make a statement left to it *)
+  mutable spent : int;  (* the steps of all its runs *)
 }
 
 (* What the interpreter holds of it. *)
@@ -95,7 +97,7 @@ let make (w : world) (ver : version) fns start loops =
         let code =
           { addr; mir; tier = Level1 { text; entry; hot_at; steps = 0 }; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint);
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
-            need = most (fun f -> f.need); bails = 0 }
+            need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0 }
         in
         Gc.finalise release code;
         Some code
@@ -239,6 +241,7 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   end else begin
     let spent = io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel) in
     ctx.fuel <- fuel0 - spent;
+    code.spent <- code.spent + spent;
     (match code.tier with
      | Level1 l ->
        (* Stops at [hot_at]: no overflow, however long the wait for another unit's level 2. *)
@@ -440,6 +443,12 @@ let after code from =
   let rec find k = if k = Array.length code.loops then invalid_arg "Tier.after" else let n, _, _, p = code.loops.(k) in if n = from then p + 1 else find (k + 1) in
   find 0
 
+(* A loop's code goes when its runs that ended for a cold statement, past [cold_runs] of them, made fewer than
+   [cold_steps] steps each on average: leaving native code and coming back costs about as much as that many steps
+   gain. *)
+let cold_runs = 64
+let cold_steps = 64
+
 let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
   let code = native code in
   let st = go ctx code entry in
@@ -458,7 +467,14 @@ let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
        write or a statement left to the interpreter is no guess. *)
     let why = io.(Ir.io_code) in
     if why <> Ir.written && why <> Ir.cold_code && why <> Ir.leaving_code then code.bails <- code.bails + 1;
-    if code.bails > 16 then begin
+    if why = Ir.cold_code then code.colds <- code.colds + 1;
+    (* A statement left to the interpreter as cold that runs at most turns: each of them leaves native code and comes
+       back, which costs more than the few steps native code made between. The loop is the interpreter's for good. *)
+    if code.colds >= cold_runs && code.spent < code.colds * cold_steps then begin
+      l.code <- None;
+      l.failed <- true
+    end
+    else if code.bails > 16 then begin
       l.code <- None;
       l.tries <- l.tries + 1;
       if l.tries >= max_tries then l.failed <- true;
