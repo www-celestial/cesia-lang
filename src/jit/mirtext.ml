@@ -25,6 +25,7 @@ let ty = function Ir.Kint | Kval -> "i64" | Kfloat -> "d"
 let header words tag = string_of_int ((words lsl 10) lor tag)
 let cmp_name = function Ir.Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
 let flip = function Ir.Lt -> Ir.Gt | Le -> Ge | Gt -> Lt | Ge -> Le | c -> c
+let negate = function Ir.Eq -> Ir.Ne | Ne -> Eq | Lt -> Ge | Ge -> Lt | Gt -> Le | Le -> Gt
 
 (* A cell of the context, raw integers: the C glue copies [io] there and back. The stacks are cells 0, 1 and 2. *)
 let cx k = Printf.sprintf "i64:%d(cx)" (8 * k)
@@ -444,8 +445,9 @@ let func b ~prefix ~nested (fn : Ir.func) =
       pr "  mov x6, %s\n  mov x5, i64:0(x6)\n  sub x5, x5, %d\n  mov x6, %s\n  mov x6, i64:0(x6)\n  ublt %s, x5, x6\n"
         (cx Ir.cx_young) (8 * !need) (cx (Ir.cx_young + 1)) gc
     | Reserve _ -> ()
-    | Elem_at (r, a, i) when fn.kinds.(r) = Kint -> pr "  mov r%d, i64:-8(%s, r%d, 4)\n  sub r%d, r%d, 1\n" r (arr a) i r r
-    | Elem_at (r, a, i) -> pr "  dmov r%d, d:-8(%s, r%d, 4)\n" r (arr a) i
+    | Elem_at (r, a, i, k) when fn.kinds.(r) = Kint ->
+      pr "  mov r%d, i64:%d(%s, r%d, 4)\n  sub r%d, r%d, 1\n" r (8 * (k - 1)) (arr a) i r r
+    | Elem_at (r, a, i, k) -> pr "  dmov r%d, d:%d(%s, r%d, 4)\n" r (8 * (k - 1)) (arr a) i
     | Offset (r, a, xs, site, write) ->
       (* Each index from 0, doubled, checked below its size; then the cell, the last index first: c = c * size + index. *)
       let slot, _, _, _ = fn.arrays.(a) in
@@ -464,8 +466,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
         pr "  ubge %s, x0, %s\n  rsh x1, %s, 1\n  mul %s, %s, x1\n  add %s, %s, x0\n" e (dim a d) (dim a d) acc acc acc acc
       done;
       pr "  add %s, %s, 2\n" acc acc
-    | Set_at (a, i, v) when ints a -> pr "  %s\n  mov i64:-8(%s, r%d, 4), x0\n" (tag_of v) (arr a) i
-    | Set_at (a, i, v) -> pr "  dmov d:-8(%s, r%d, 4), %s\n" (arr a) i (operand v)
+    | Set_at (a, i, k, v) when ints a -> pr "  %s\n  mov i64:%d(%s, r%d, 4), x0\n" (tag_of v) (8 * (k - 1)) (arr a) i
+    | Set_at (a, i, k, v) -> pr "  dmov d:%d(%s, r%d, 4), %s\n" (8 * (k - 1)) (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"
     | Tick (p, can_leave, site) -> steps 1 p can_leave site
@@ -534,12 +536,17 @@ let func b ~prefix ~nested (fn : Ir.func) =
     let v = in_reg k v in
     pr "  %s %s, %s\n" (if k = Kfloat then "dmov" else "mov") (result_cell k) v
   in
-  let term = function
-    | Ir.Jump l -> pr "  jmp %s\n" (bl l)
+  (* A block's end, [l] the block written next: no jump to it, as the code runs on into it; an integer test whose
+     yes is next goes to its no when it fails (not a float test, which a NaN fails both ways). *)
+  let term l = function
+    | Ir.Jump t -> if t <> l then pr "  jmp %s\n" (bl t)
     | Branch (c, k, x, y, yes, no) ->
       let c, x, y = match x with Ir.Reg _ -> c, x, y | _ -> flip c, y, x in
       let x = in_reg k x in
-      pr "  %sb%s %s, %s, %s\n  jmp %s\n" (if k = Kfloat then "d" else "") (cmp_name c) (bl yes) x (operand y) (bl no)
+      let d = if k = Kfloat then "d" else "" in
+      if no = l then pr "  %sb%s %s, %s, %s\n" d (cmp_name c) (bl yes) x (operand y)
+      else if yes = l && k = Kint then pr "  b%s %s, %s, %s\n" (cmp_name (negate c)) (bl no) x (operand y)
+      else pr "  %sb%s %s, %s, %s\n  jmp %s\n" d (cmp_name c) (bl yes) x (operand y) (bl no)
     | Return v ->
       let v = match fn.result, v with Kfloat, Int n -> Ir.Float (float_of_int n) | _ -> v in
       give v;
@@ -547,7 +554,8 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Bail k -> pr "  jmp %s\n" (bail_to k)
     | Room (r, yes, no) -> pr "  mov x0, %s\n  bgt %s, r%d, x0\n  blt %s, fuel, 1\n  jmp %s\n" (cx Ir.io_lim) (bl no) r (bl no) (bl yes)
     | Fuel_ge (v, yes, no) ->
-      pr "  mov x0, %s\n  rsh x0, x0, 1\n  bge %s, fuel, x0\n  jmp %s\n" (operand v) (bl yes) (bl no)
+      pr "  mov x0, %s\n  rsh x0, x0, 1\n" (operand v);
+      if yes = l then pr "  blt %s, fuel, x0\n" (bl no) else pr "  bge %s, fuel, x0\n  jmp %s\n" (bl yes) (bl no)
     | Is_fun (v, c, yes, no) ->
       (* A block of tag 5, Fun, whose first field, its code, is the constant's. *)
       let v = in_reg Kval v in
@@ -631,7 +639,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
     (fun l (bk : Ir.block) ->
        pr "%s:\n" (bl l);
        List.iter ins (fold bk.ins);
-       term bk.term)
+       term (l + 1) bk.term)
     fn.blocks;
   Buffer.add_buffer b stubs;
   (* The link of the frame at x5 to its caller's at x6, from the site x4. *)

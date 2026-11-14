@@ -1,0 +1,45 @@
+use std/io
+use std/list
+use std/matrix
+
+(* The outer loop's index colptr[j + 1] past the list, once the loop is machine code: its check before the loop fails,
+   the checked copy runs, and the read past the end is the interpreter's error, at its line. *)
+defn mul(colptr, rowidx, vals, x, n)
+  y = matrix.Zeros(n)
+  for j in 1..n
+    xj = x[j]
+    for q in colptr[j]..colptr[j + 1] - 1
+      i = rowidx[q]
+      y[i] = y[i] + vals[q] * xj
+    end
+  end
+  y
+end
+
+(* A tridiagonal matrix of n columns, in CSC. *)
+defn tri(n)
+  colptr = list.Fill(0, n + 1)
+  rowidx = list.Fill(0, 3 * n)
+  p = 1
+  for j in 1..n
+    colptr[j] = p
+    for i in j - 1..j + 1
+      if i >= 1 and i <= n
+        rowidx[p] = i
+        p += 1
+      end
+    end
+  end
+  colptr[n + 1] = p
+  {Colptr: colptr, Rowidx: list.Take(p - 1, rowidx), N: n}
+end
+
+a = tri(3000)
+vals = matrix.Zeros(3 * a.N) + 1.0
+x = matrix.Zeros(a.N) + 0.5
+for r in 1..30
+  y = mul(a.Colptr, a.Rowidx, vals, x, a.N)
+end
+io.Print(y[1], y[2], y[a.N], list.Sum(y))
+y = mul(list.Take(a.N, a.Colptr), a.Rowidx, vals, x, a.N)
+io.Print("not reached")

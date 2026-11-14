@@ -101,6 +101,9 @@ publisher moves it.
 - Rastislav Bodík, Rajiv Gupta, Vivek Sarkar. "ABCD: Eliminating Array Bounds Checks on Demand". *PLDI 2000*, ACM,
   321–333. <https://doi.org/10.1145/349299.349342>. Bounds proved from the tests that guard each branch, and the checks
   they make useless dropped: Cesia's JIT drops the overflow check of `n - 1` in the `else` of `if n < 2`.
+- Samuel P. Midkiff, José E. Moreira, Marc Snir. "Optimizing Array Reference Checking in Java Programs". *IBM Systems
+  Journal* 37(3), 409–453, 1998. <https://doi.org/10.1147/sj.373.0409>. Loop versioning: a copy of a loop with no check
+  of its arrays, chosen by tests made once before it, and the checked copy otherwise. Cesia's fast copies of a loop.
 - Peng Zhao, José Nelson Amaral. "Function Outlining and Partial Inlining". *SBAC-PAD 2005*, IEEE, 101–108.
   <https://doi.org/10.1109/CAHPC.2005.26>. Inlining only the hot part of a function into its callers: Cesia's JIT copies
   the test of a callee that returns at once, as `fib`'s `if n < 2 then n`, into each call.

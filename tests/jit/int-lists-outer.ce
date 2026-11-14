@@ -1,0 +1,93 @@
+use std/io
+use std/list
+use std/math
+use std/matrix
+
+(* A loop over columns whose inner loop reads a list of integers by index, as a sparse product in CSC: the outer loop's
+   indexes x[j], colptr[j] and colptr[j + 1] checked once before it, the inner loop's at each turn. The same results as
+   the interpreter's, the loops' variables after them too. *)
+defn poisson(k)
+  n = k * k
+  colptr = list.Fill(0, n + 1)
+  rowidx = list.Fill(0, 5 * n)
+  vals = matrix.Zeros(5 * n)
+  p = 1
+  for j in 1..n
+    colptr[j] = p
+    r = math.Mod(j - 1, k)
+    for d in [-k, -1, 0, 1, k]
+      i = j + d
+      if i >= 1 and i <= n and not ((d == -1 and r == 0) or (d == 1 and r == k - 1))
+        rowidx[p] = i
+        vals[p] = if d == 0 4.0 else -1.0 end
+        p += 1
+      end
+    end
+  end
+  colptr[n + 1] = p
+  {Colptr: colptr, Rowidx: list.Take(p - 1, rowidx), Vals: vals[1..p - 1], N: n}
+end
+
+defn mul(colptr, rowidx, vals, x, n)
+  y = matrix.Zeros(n)
+  j = 0
+  q = 0
+  i = 0
+  for j in 1..n
+    xj = x[j]
+    for q in colptr[j]..colptr[j + 1] - 1
+      i = rowidx[q]
+      y[i] = y[i] + vals[q] * xj
+    end
+  end
+  {Y: y, J: j, Q: q, I: i}
+end
+
+(* Columns of no entry, and a last column that is empty: the inner loop never runs there. *)
+defn sparse(n)
+  colptr = list.Fill(0, n + 1)
+  rowidx = list.Fill(0, n)
+  p = 1
+  for j in 1..n
+    colptr[j] = p
+    if math.Mod(j, 3) == 1 and j < n
+      rowidx[p] = n + 1 - j
+      p += 1
+    end
+  end
+  colptr[n + 1] = p
+  {Colptr: colptr, Rowidx: list.Take(p - 1, rowidx), Vals: matrix.Zeros(p - 1) + 0.5, N: n}
+end
+
+(* Two arrays read at j and j - 1 in the outer loop, and a write at j: the checks cover each. *)
+defn diffs(colptr, xs, n)
+  d = matrix.Zeros(n)
+  for j in 2..n
+    s = 0.0
+    for q in colptr[j - 1]..colptr[j] - 1
+      s = s + 1.0
+    end
+    d[j] = xs[j] - xs[j - 1] + s
+  end
+  d
+end
+
+a = poisson(40)
+x = matrix.Zeros(a.N)
+for i in 1..a.N
+  x[i] = 1.0 + math.Mod(i, 7) * 0.25
+end
+for r in 1..40
+  m = mul(a.Colptr, a.Rowidx, a.Vals, x, a.N)
+end
+io.Print(m.Y[1], m.Y[2], m.Y[a.N], list.Sum(m.Y), m.J, m.Q, m.I)
+b = sparse(3000)
+xb = matrix.Zeros(b.N) + 2.0
+for r in 1..40
+  mb = mul(b.Colptr, b.Rowidx, b.Vals, xb, b.N)
+end
+io.Print(mb.Y[1], mb.Y[b.N], list.Sum(mb.Y), mb.J, mb.Q, mb.I)
+for r in 1..40
+  dd = diffs(a.Colptr, x, a.N)
+end
+io.Print(dd[1], dd[2], dd[a.N], list.Sum(dd))

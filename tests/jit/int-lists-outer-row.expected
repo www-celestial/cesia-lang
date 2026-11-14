@@ -1,0 +1,6 @@
+1.0 1.5 1.0 4499.0
+int-lists-outer-row.ce:13:15: Index 3001 is outside this array of 3000 elements.
+  13 |       y[i] = y[i] + vals[q] * xj
+     |               ^
+  in mul (int-lists-outer-row.ce:13)
+exit 1

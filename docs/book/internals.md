@@ -454,6 +454,48 @@ proved inside before the loop, and `y[i] = y[i] + vals[q] * xj` checks `i` once,
 The index read from the list is the program's, so it is checked at each turn: an index outside `y` is the interpreter's
 error, at the same line. An index checked in a block is not checked again in it, as `y[i]` read then written.
 
+**Checks before the loop.** An index that moves with the loop's counter, as `x[j]` or `colptr[j + 1]` in
+`for j in 1..n`, is inside its array at every turn when it is inside at the first and the last turn. So the JIT makes two
+copies of a loop: a *fast copy*, with no check of such an index, and the checked copy it had. Before the loop, a few
+tests decide which one runs. In the sparse product above, they are made once, before `for j in 1..n`: `j` starts at 1,
+at least 1, and `n` and `n + 1`, the last turn's `j` and `j + 1`, are at most the sizes of `x` and of `colptr`. When
+they hold, the fast copy runs, with no check of `x[j]`, `colptr[j]` and `colptr[j + 1]`; when one fails, the checked
+copy runs, which gives the interpreter's error at the index outside, at its line.
+
+This is *loop versioning*, which Midkiff, Moreira and Snir (1998) made for the array checks of Java. The inner loop is
+the innermost one: its fast copy also checks, before it starts, that the fuel covers all its steps, so it never tests
+the fuel at a turn, and `rowidx[q]` and `vals[q]` need no check either. Only `y[i]` is checked at each turn, as `i` comes from
+the list. An index `j + k` is read at the counter's own register, `k` cells further, so the fast copy keeps no register
+of its own for it, for a `k` near 0. The loop around keeps its steps counted at each turn, as its inner loops' steps
+aren't known before it starts. When the run leaves inside it, at a full checkpoint or for the collector, it comes back
+into the checked copy, which made every check, and the next turn of the loop around goes through the tests again: so a
+run never comes back into the middle of a fast copy, whose tests it would not have made. The inner loop of the fast copy
+is made once more, its fast copy only: when its own tests fail, the run goes on in the checked copy's.
+
+A copy of a loop costs MIR time to compile, so it is made only where it pays: for an innermost loop, and for a loop
+whose loops inside are innermost `for` loops that allocate nothing. A sparse product's unit then has 499 lines of MIR
+instead of 453, and gets its level 2 one call later. Measured on 2026-11-13, `release` profile, 21 runs alternated with
+main's binary, each run 14 products of the 2-D Poisson matrix of 300 × 300 points (448,800 non-zeros), the medians and
+their 95% intervals, in ns a non-zero:
+
+| Product | Before | Now |
+|---|---:|---:|
+| the first, at level 1, compiling included | 5.01 (4.92–5.31) | 5.05 (4.82–5.37) |
+| the first five, added | 26.5 (23.4–28.3) | 27.3 (23.6–27.8) |
+| each one at level 2, from the 8th | 3.75 (3.73–3.78) | 2.79 (2.75–2.85) |
+
+A product then takes 1.25 ms. A histogram of 10^6 keys from a list of integers, already an innermost loop, takes 2.28 ns
+a key instead of 2.31, and a permutation of 10^6 floats, `y[k] = x[p[k]]`, 11.7 ns an element either way: it waits on
+memory, a cell 63 KB from the one before.
+
+What keeps it safe: a fast copy reads or writes without a check only a cell that the tests before it proved inside its
+array at every turn, the first and the last turn computed with their overflow checked; an array keeps its size while a
+run lasts, its size and store checked at each entry. A row read from the list is checked at each turn, so a wrong one is
+the interpreter's error, never a write outside `y`. A `k` of 2^20 cells or more gets a register or its check, so that
+the bytes `k` adds to an address are exact. The tests run each such loop with the JIT off, hot and always, with an index
+outside, a float in the list, the list written while the loops run, and the overflow of `colptr[j + 1] - 1` and of
+`j + k`, and the fuzzer makes sparse products whose last call breaks a list in one of those ways.
+
 **A guard inside an if.** A guard that fails used to send the run back to the interpreter before the statement of the
 loop that held it, and only while nothing of that statement showed: a write into an array, or a step, ruled it out. Now
 each statement of a branch of an if inside the loop is a point of its own, which the interpreter can go on from: it runs

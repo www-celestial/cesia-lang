@@ -1,0 +1,6 @@
+1.0 1.5 1.0 4499.0
+int-lists-outer-read.ce:11:31: Index 3001 is outside this array of 3000 elements.
+  11 |     for q in colptr[j]..colptr[j + 1] - 1
+     |                               ^
+  in mul (int-lists-outer-read.ce:11)
+exit 1

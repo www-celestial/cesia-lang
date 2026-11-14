@@ -1,0 +1,9 @@
+1.0 1.5 1.0 4499.0
+1.0 2.0 1.0 4499.0
+1.0 1.5 1.0 4499.0
+int-lists-outer-float.ce:13:15: An index must be a whole number, not the number 2.5.
+  13 |       y[i] = y[i] + vals[q] * xj
+     |               ^
+  To get a whole number, use math.Floor(...), math.Ceil(...) or math.Round(...).
+  in mul (int-lists-outer-float.ce:13)
+exit 1
