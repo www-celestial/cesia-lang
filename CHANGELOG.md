@@ -84,6 +84,9 @@ Measured on the same machine as the others, in the book's chapter on speed:
   the last is awake in 9.5 ms instead of 11.6; `json.Text` of a small map in 314 ns instead of 390.
 - `cells.Variables` of a session that holds 10^6 numbers and a model fitted on 10^6 rows answers in 0.09 ms instead of
   4.1 s; `"$xs"` of 10^6 integers 131 -> 55 ms, of 10^6 floats 1080 -> 936 ms.
+- The text of a float, for `io.Print`, `"$x"`, `value.Text` and `json.Text`, by Ryu's tables (Adams, PLDI 2018)
+  instead of up to three `printf` and two `strtod`, in the same bytes: `json.Text` of 32,000 floats 97 -> 3.9 ms, the
+  scene of a Lorenz curve 30 -> 1.4 ms, `"$x"` of a float of 17 digits 2.9 us -> 0.19 us.
 
 ### Fixes
 
