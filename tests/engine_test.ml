@@ -10,9 +10,15 @@ let check name ok =
     prerr_endline ("FAILED: " ^ name)
   end
 
-(* What the start of every program relies on, checked first, before the other tests allocate. The sources of std/ are
-   strings that no data of the binary points to, each the same string at every call, which is how the cache knows them. *)
+(* What the start of every program relies on, checked first, before the other tests allocate. The lexer's arrays of more
+   than 256 tokens are made without emptying the minor heap: their filler is never young. The sources of std/ are strings
+   that no data of the binary points to, each the same string at every call, which is how the cache knows them. *)
 let () =
+  let src = String.concat " " (List.init 2000 (fun i -> "x" ^ string_of_int i)) in
+  let before = (Gc.quick_stat ()).minor_collections in
+  let toks = Lexer.tokens ~file:"t.ce" src in
+  check "a file of 2000 tokens is read without a minor collection"
+    ((Gc.quick_stat ()).minor_collections = before && Array.length toks > 2000);
   (match Embedded.file "list", Embedded.file "list" with
    | Some a, Some b ->
      check "a file of std/ is the same string at every call" (a == b && Embedded.holds a);
