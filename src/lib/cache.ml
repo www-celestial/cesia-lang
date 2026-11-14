@@ -25,7 +25,9 @@ let slot ~key ~nesting ~fixed sources =
   | _ -> None
 
 (* The module numbers of a binding, relative to the package: (0, 0) the core, (1, j) its file j or, at j = count, its
-   natives, (u + 2, j) the module j of the package of its use u. *)
+   natives, (u + 2, j) the module j from the end of the package of its use u. A package of std/ keeps its natives last,
+   and its Cesia code, which loads only for a file that names something of it, goes before them: counted from the end, a
+   module has the same place whether or not another package of the run loaded that code first. *)
 let rel p m =
   if m = 0 then 0, 0
   else if m >= p.first && m < p.first + p.count then 1, m - p.first
@@ -34,8 +36,9 @@ let rel p m =
     let rec dep u =
       if u >= Array.length p.used then raise Exit
       else
-        match if p.used.(u) < 0 then None else Array.find_index (Int.equal m) (p.package p.used.(u)) with
-        | Some j -> u + 2, j
+        let modules = if p.used.(u) < 0 then [||] else p.package p.used.(u) in
+        match Array.find_index (Int.equal m) modules with
+        | Some j -> u + 2, Array.length modules - 1 - j
         | None -> dep (u + 1)
     in
     dep 0
@@ -54,7 +57,8 @@ let abs p u j =
   | 1 when j = p.count -> (match p.natives with Some n -> n | None -> raise Bad)
   | _ when u >= 2 && u - 2 < Array.length p.used ->
     let modules = p.package p.used.(u - 2) in
-    if j >= 0 && j < Array.length modules then modules.(j) else raise Bad
+    let n = Array.length modules in
+    if j >= 0 && j < n then modules.(n - 1 - j) else raise Bad
   | _ -> raise Bad
 
 (* An entry: these 8 bytes, the BLAKE2b-128 of the rest, then the rest. *)
@@ -517,8 +521,9 @@ let read slot =
       if same then Some { d; uses = arr (list use) d; paths = slot.paths } else None
     with Bad | Invalid_argument _ | Failure _ | Stack_overflow -> None
 
-(* The packages of the modules used, as they are now: one may grow later, as std/list once a file reads its Cesia code after
-   another read only its natives, while the names of a package keep the modules it had when it was resolved. *)
+(* The packages of the modules used, as they are now: the array of the natives of a package of std/ is replaced later in
+   a run, when its Cesia code loads or a test runs a file of std/, while a body is read at its first call and an entry
+   is written when the run ends, and the names of a package keep the modules it had when it was resolved. *)
 let now place =
   let now = Hashtbl.create 16 in
   Array.iter (fun m -> if m >= 0 then Hashtbl.replace now m (Array.copy (place.package m))) place.used;

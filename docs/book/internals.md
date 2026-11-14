@@ -900,10 +900,12 @@ same output, the same errors on the same lines, and the same speed once the prog
 file of `std/` inside the binary), and replaced when the package changes: the tree of each of its files after the
 resolver, the names each file reads from each package it uses, and the questions the resolver asked about other modules,
 with their answers. A name that the resolver tied to a module of another package keeps that module by its place: the
-j-th module of the package of the file's u-th use. In another run, the modules get other numbers, and the places find
-them. Nothing is kept for what the debugger adds (`--debugger`), what `cesia check` and the verdicts of `cesia test`
-read with their own rules, and packages of less than 512 bytes, which parse faster than their entry is found and
-checked.
+j-th module, counted from the end, of the package of the file's u-th use. In another run, the modules get other numbers,
+and the places find them. A package of `std/` with natives keeps them last, and its Cesia code, which loads only for a
+file that names something of it, goes before them: counted from the end, a place stays the same whether or not another
+package of the run loaded that code. Nothing is kept for what the debugger adds (`--debugger`), what `cesia check` and
+the verdicts of `cesia test` read with their own rules, and packages of less than 512 bytes, which parse faster than
+their entry is found and checked.
 
 **What a run checks before it uses an entry**, in this order:
 
@@ -995,12 +997,13 @@ The first runs, with an empty cache, take the same time with either binary, with
 
 **Tested** by `tests/cache_test.ml`, which damages each entry at 60 places, cuts it at 8 lengths, grows it, swaps it
 with another and reads it with another build, each time with the same output and the entry written again as it was,
-changes a file and a dependency, checks that the bodies of the functions a run never calls stay unread, in a package
-with recursion, closures and a function inside a function, and damages an entry in memory once it was checked, which
-stops the run at the first call that needs a body of it; by `tests/cache/entries.cmd`, the same with the binary, and
-with a link, an entry that others may read, a folder that others may read and one that can't be written, four runs at
-once, and an entry changed on the disk while a run that read it runs; and by the golden tests, run once with no cache,
-once with an empty one and once with it full.
+changes a file and a dependency, runs in turn two programs that load the Cesia code of `std/list` before and after a
+package that reads only its natives, with nothing resolved again, checks that the bodies of the functions a run never
+calls stay unread, in a package with recursion, closures and a function inside a function, and damages an entry in
+memory once it was checked, which stops the run at the first call that needs a body of it; by
+`tests/cache/entries.cmd`, the same with the binary, and with a link, an entry that others may read, a folder that
+others may read and one that can't be written, four runs at once, and an entry changed on the disk while a run that
+read it runs; and by the golden tests, run once with no cache, once with an empty one and once with it full.
 
 ## Reloading code: --watch
 
