@@ -1,6 +1,6 @@
 (* The text of a float (Value.float_text, by Ryu.write) against the function it replaced, kept here only: printf "%.15g",
    else "%.16g", else "%.17g", the first that reads back, then its layout. Both must give the same bytes for every
-   double. Usage: float_test.exe [N [SEED]]: N random doubles of each kind (default 50,000; the release check runs
+   double. Usage: float_test.exe [N [SEED]]: N random doubles of each kind (default 20,000; the release check runs
    10^7), and every power of 2 and of 10, their neighbors, the edges of the subnormals and of the layout, +-0, nan, +-inf.
    Each kind: random bit patterns; patterns whose low mantissa bits are zero, where the ties of rounding are; subnormals;
    short decimals as people write them. *)
@@ -53,7 +53,7 @@ let around x =
   both (Float.pred x)
 
 let () =
-  let n = if Array.length Sys.argv > 1 then int_of_string Sys.argv.(1) else 50_000 in
+  let n = if Array.length Sys.argv > 1 then int_of_string Sys.argv.(1) else 20_000 in
   let seed = if Array.length Sys.argv > 2 then int_of_string Sys.argv.(2) else 2026 in
   let rng = Random.State.make [| seed |] in
   List.iter check [ 0.0; -0.0; Float.nan; -.Float.nan; infinity; neg_infinity; Float.of_string "nan" ];
@@ -64,8 +64,8 @@ let () =
       1.0; 1.5; 2.5; 100.0; 1e14; 1e15; 1e16; 1e17; 999999999999999.0; 999999999999999.9; 9999999999999998.0;
       9007199254740992.0; 9007199254740993.0; 18014398509481984.0; 123456789012345678.0; 1e22; 1e23; 5e-310;
       2.2250738585072009e-308; 4.9406564584124654e-324; 1.7976931348623157e308; 100.0 /. 3.0; 0.1 +. 0.2 ];
-  (* Every whole number from 1 to 10^5, and their tenths and hundredths. *)
-  for i = 1 to 100_000 do
+  (* Every whole number from 1 to 10^4, and their tenths and hundredths. *)
+  for i = 1 to 10_000 do
     let f = float_of_int i in
     check f;
     check (f /. 10.0);

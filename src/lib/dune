@@ -10,11 +10,11 @@
    (run ../gen/gen_super.exe))))
 
 (rule
- (targets pow5.ml)
+ (targets ryutab.ml)
  (action
   (with-stdout-to
    %{targets}
-   (run ../gen/gen_pow5.exe))))
+   (run ../gen/gen_ryutab.exe))))
 
 (rule
  (targets embedded.ml)
