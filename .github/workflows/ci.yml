@@ -48,9 +48,17 @@ jobs:
         env:
           GOLDEN_TRACE: 1
         run: opam exec -- tools/test.sh 2>&1 | tee test.log
+      # The same tests on the other path of the engine, without the versions by type, which tools/test.sh leaves to a run
+      # of its own: tools/check.sh runs it past the change loop.
+      - name: Tests on the other path
+        timeout-minutes: 10
+        shell: bash
+        env:
+          GOLDEN_TRACE: 1
+        run: opam exec -- tools/test.sh --no-spec 2>&1 | tee test-no-spec.log
       # The logs need an account to be read; an annotation doesn't, for a public repository.
       - name: Report a failure
         if: failure()
         shell: bash
-        run: tools/ci-error.sh out.txt jit.txt jit-test.log test.log
+        run: tools/ci-error.sh out.txt jit.txt jit-test.log test.log test-no-spec.log
 

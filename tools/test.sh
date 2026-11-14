@@ -1,9 +1,29 @@
 #!/usr/bin/env bash
-# The full suite, on both paths, but the tests slow by nature (name.slow, and the files of tests/slow), which tools/check.sh
-# runs past the change loop, as it builds Cesia's own site. Its parts run side by side: the examples of each folder on each
-# path, and the golden tests.
+# The tests, in three parts, each of the folders and skips below:
+#   tools/test.sh             the typed path, and the OCaml tests: the change loop
+#   tools/test.sh --no-spec   the same tests on the other path, without the versions by type; a test that runs the same on
+#                             both paths runs only in the first
+#   tools/test.sh --slow      the tests slow by nature, name.slow and the files of tests/slow, on both paths
+# tools/check.sh runs the last two past the change loop, as it builds Cesia's own site; the CI runs the first two.
 set -eu
 cd "$(dirname "$0")/.."
+mode="$*"
+paths=("")
+folders=(tests/lang tests/celestial src/std)
+pick=(--quick)
+case "$mode" in
+  "") ;;
+  --no-spec)
+    paths=(--no-spec)
+    pick=(--no-spec --quick)
+    ;;
+  --slow)
+    paths=("" --no-spec)
+    folders=(tests/slow)
+    pick=(--both --slow)
+    ;;
+  *) echo "usage: tools/test.sh [--no-spec | --slow]" >&2; exit 2 ;;
+esac
 dune build 2>&1 | head -60
 [ "${PIPESTATUS[0]}" -eq 0 ] || exit 1
 cesia=_build/default/src/bin/main.exe
@@ -17,21 +37,30 @@ export XDG_CACHE_HOME="$logs/cache"
 # those cores are taken from the others for nothing (tests/lang: 1.3 s of CPU on each path). Here they sleep at once.
 export OMP_WAIT_POLICY=passive
 
-# Each folder on each path in a run of its own, all at once: one that waited for the folder before it ran alone at the end.
-folders=()
-for path in "" --no-spec; do
-  for folder in tests/lang tests/celestial src/std; do
-    log="$logs/${folder//\//-}$path.log"
-    "$cesia" test "$folder" $path > "$log" 2>&1 &
-    jobs+=($!)
-    folders+=("$!:$log")
+# The examples of each folder on each path, each in a run of its own, all at once beside the golden tests: one that waited
+# for the folder before it ran alone at the end. The slow ones, past the golden tests, one at a time: long or timed, they
+# would make each other late.
+runs=()
+if [ "$mode" != --slow ]; then
+  for path in "${paths[@]}"; do
+    for folder in "${folders[@]}"; do
+      log="$logs/${folder//\//-}$path.log"
+      # shellcheck disable=SC2086
+      "$cesia" test "$folder" $path > "$log" 2>&1 &
+      jobs+=($!)
+      runs+=("$!:$log")
+    done
   done
-done
+fi
 
-# The OCaml tests, beside the rest: their end when they pass, all they said when one fails.
-dune test > "$logs/dune.log" 2>&1 &
-dune=$!
-jobs+=($dune)
+# The OCaml tests, beside the rest, in the first part alone: they have no path. Their end when they pass, all they said
+# when one fails.
+dune=""
+if [ -z "$mode" ]; then
+  dune test > "$logs/dune.log" 2>&1 &
+  dune=$!
+  jobs+=($dune)
+fi
 dirs=$(ls -d tests/*/ 2>/dev/null || true)
 skip() {  # folder, reason
   echo "$1 skipped: $2"
@@ -47,19 +76,29 @@ CESIA_JIT_SHOW=1 "$cesia" version 2>&1 | grep -q '^jit: off' && skip tests/jit "
 # An engine that an earlier build made for this machine, kept in git: another system or compiler has none for its tag.
 tag=$("$cesia" run tests/native/tag.ce)
 if [ -f "tests/native/older/echo-$tag.cmxs" ]; then dirs="$dirs tests/native/older/"; else echo "tests/native/older skipped: no older engine for $tag"; fi
-golden=0
-tools/golden.sh --both --quick $dirs || golden=1
+failed=0
+# shellcheck disable=SC2086
+tools/golden.sh "${pick[@]}" $dirs || failed=1
 
-failed=$golden
-if wait "$dune"; then
-  tail -5 "$logs/dune.log"
-else
-  cat "$logs/dune.log"
-  failed=1
+if [ -n "$dune" ]; then
+  if wait "$dune"; then
+    tail -5 "$logs/dune.log"
+  else
+    cat "$logs/dune.log"
+    failed=1
+  fi
 fi
-for f in "${folders[@]}"; do
-  wait "${f%%:*}" || failed=1
-  cat "${f#*:}"
+for r in ${runs[@]+"${runs[@]}"}; do
+  wait "${r%%:*}" || failed=1
+  cat "${r#*:}"
 done
+if [ "$mode" = --slow ]; then
+  for path in "${paths[@]}"; do
+    for folder in "${folders[@]}"; do
+      # shellcheck disable=SC2086
+      "$cesia" test "$folder" $path || failed=1
+    done
+  done
+fi
 jobs=()
 exit "$failed"

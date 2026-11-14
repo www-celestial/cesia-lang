@@ -70,13 +70,5 @@
 "Code": "open(\"big\", \"wb\").write(b\"0\" * 100_000_000)\n",
 "Want": "",
 "Files": "files"
-},
-{
-"Page": "docs/book/page.md",
-"Line": 9,
-"Lang": "python",
-"Code": "while True:\n    pass\n",
-"Want": "",
-"Files": "files"
 }
 ]

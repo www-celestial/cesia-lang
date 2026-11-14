@@ -3,7 +3,9 @@
     paper. F0 and G0, f and its gradient at the start, come from a second transcription, in Python, with derivatives by
     complex steps; Want holds the minima a case may reach: 0 where the paper gives 0, else the value of MINPACK's
     Levenberg-Marquardt (scipy's least_squares) from the same start at tight tolerances, which matches the paper's six
-    digits, or a local minimum that the paper lists beside it. *)
+    digits, or a local minimum that the paper lists beside it. Slow by nature, the whole suite to its last digits: 1.6 s
+    of CPU on the typed path, 4 s on the other; tools/check.sh runs it, past the change loop, and tests/lang/optimize.ce
+    stays in the loop. *)
 use std/list
 use std/math
 use std/matrix
@@ -614,11 +616,16 @@ end
 
 limited = ["meyer", "osborne-1", "watson-9"]   (** where the gradient by differences limits f, as below *)
 
+(* Minimize without a gradient from each start, at its tol of 1e-8, run once for the three tests that read it. *)
+byDifferences = [optimize.Minimize(sumOfSquares(c), c.X0) for c in cases]
+ranFrom(name) = byDifferences[list.IndexOf(name, [c.Name for c in cases])]
+
 defn isMinimizeByDifferences()
   (** From every start but three, Minimize without a gradient reaches a minimum within 1e-8. *)
-  for c in cases
+  for k in 1..value.Len(cases)
+    c = cases[k]
     if list.Count(n -> n == c.Name, limited) == 0
-      r = optimize.Minimize(sumOfSquares(c), c.X0, tol = tolOf(c))
+      r = if tolOf(c) == 1.0e-8 byDifferences[k] else optimize.Minimize(sumOfSquares(c), c.X0, tol = tolOf(c)) end
       if not (result.IsOk(r) and reached(r.Value.F, c.Want))
         return false
       end
@@ -643,9 +650,9 @@ defn isLimitOfDifferences()
   (** Without a gradient, the three stop where f no longer falls, short of the last digits: Meyer's within 1e-3 of its
       minimum and Watson's at n = 9 within 1e-5, an Ok, as their gradient has shrunk to 1.5e-8 of its size at the
       start; Osborne 1's within 1e-5 too, but its gradient is still 2.3e-8 of that size: an Err that asks for it. *)
-  meyer = optimize.Minimize(sumOfSquares(named("meyer")), named("meyer").X0)
-  watson = optimize.Minimize(sumOfSquares(named("watson-9")), named("watson-9").X0)
-  osborne = optimize.Minimize(sumOfSquares(named("osborne-1")), named("osborne-1").X0)
+  meyer = ranFrom("meyer")
+  watson = ranFrom("watson-9")
+  osborne = ranFrom("osborne-1")
   near(r, name, rel) = math.Abs(r.F - named(name).Want[1]) <= rel * named(name).Want[1]
   result.IsOk(meyer) and near(meyer.Value, "meyer", 1.0e-3) and result.IsOk(watson) and
     near(watson.Value, "watson-9", 1.0e-5) and result.IsErr(osborne) and near(osborne.Error.Best, "osborne-1", 1.0e-5) and
@@ -657,10 +664,10 @@ defn isMinimizeCalls()
       where scipy's L-BFGS-B, given the gradient, takes 2,956; most of the gap is on Meyer, Powell's badly scaled and
       Jennrich and Sampson's, where it stops far from the minimum. *)
   points = 0.0
-  for c in cases
-    r = optimize.Minimize(sumOfSquares(c), c.X0)
+  for k in 1..value.Len(cases)
+    r = byDifferences[k]
     v = if result.IsOk(r) r.Value else r.Error.Best end
-    points += v.Evaluations / (2.0 * value.Len(c.X0) + 1.0)
+    points += v.Evaluations / (2.0 * value.Len(cases[k].X0) + 1.0)
   end
   points <= 3800.0
 end

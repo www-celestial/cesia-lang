@@ -273,8 +273,18 @@ let within root s u =
   let s = Package.absolute (Filename.concat root s) and u = Package.absolute u in
   u = s || String.starts_with ~prefix:(s ^ "/") u
 
+(* The bytes of a unit, a file or the files of a folder: the workers start the largest first, so that a long one doesn't
+   start last and keep the others waiting. *)
+let unit_bytes u =
+  let bytes p = try (Unix.stat p).Unix.st_size with Unix.Unix_error _ -> 0 in
+  try
+    if Sys.is_directory u then Array.fold_left (fun n f -> n + bytes (Filename.concat u f)) 0 (Sys.readdir u)
+    else bytes u
+  with Sys_error _ -> 0
+
 (* Several units go to workers, through src/tools/test.ce: each one a cesia test --worker of its own, as many at once as the
-   cores, the units of [test] serial alone after the others. *)
+   cores, the largest first, the units of [test] serial alone after the others; the reports come in the order of the
+   units. *)
 let in_workers ~root ~seed ~cases ~no_spec ~allow ~timeout ~serial units =
   let flags =
     [ "--seed"; string_of_int seed; "--cases"; string_of_int cases ] @ (if no_spec then [ "--no-spec" ] else [])
@@ -286,6 +296,7 @@ let in_workers ~root ~seed ~cases ~no_spec ~allow ~timeout ~serial units =
   let args =
     Sys.executable_name :: Printf.sprintf "%g" timeout :: string_of_int (Par.cores ()) :: flags
     @ ("--" :: together) @ ("--serial" :: after)
+    @ ("--bytes" :: List.map (fun u -> string_of_int (unit_bytes u)) together)
   in
   tool ~grants:("exec=" ^ Sys.executable_name) "test" args
 
