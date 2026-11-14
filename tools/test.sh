@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# The full suite, on both paths, but the tests slow by nature (name.slow), which tools/check.sh runs past the change loop,
-# as it builds Cesia's own site. Its parts run side by side: the examples of each folder on each path, and the golden tests.
+# The full suite, on both paths, but the tests slow by nature (name.slow, and the files of tests/slow), which tools/check.sh
+# runs past the change loop, as it builds Cesia's own site. Its parts run side by side: the examples of each folder on each
+# path, and the golden tests.
 set -eu
 cd "$(dirname "$0")/.."
 dune build 2>&1 | head -60
@@ -12,16 +13,20 @@ jobs=()
 trap 'kill ${jobs[@]+"${jobs[@]}"} 2> /dev/null || true; rm -rf "$logs"' EXIT
 # Cesia keeps the packages it loads in the folder of caches: the tests have their own, empty at the start.
 export XDG_CACHE_HOME="$logs/cache"
+# OpenBLAS's OpenMP threads, once a product is done, spin a while on a core before they sleep: with every test at once,
+# those cores are taken from the others for nothing (tests/lang: 1.3 s of CPU on each path). Here they sleep at once.
+export OMP_WAIT_POLICY=passive
 
-each_folder() {
+# Each folder on each path in a run of its own, all at once: one that waited for the folder before it ran alone at the end.
+folders=()
+for path in "" --no-spec; do
   for folder in tests/lang tests/celestial src/std; do
-    "$cesia" test "$folder" $1
+    log="$logs/${folder//\//-}$path.log"
+    "$cesia" test "$folder" $path > "$log" 2>&1 &
+    jobs+=($!)
+    folders+=("$!:$log")
   done
-}
-each_folder "" > "$logs/spec.log" 2>&1 &
-jobs+=($!)
-each_folder --no-spec > "$logs/no-spec.log" 2>&1 &
-jobs+=($!)
+done
 
 # The OCaml tests, beside the rest: their end when they pass, all they said when one fails.
 dune test > "$logs/dune.log" 2>&1 &
@@ -51,14 +56,9 @@ else
   cat "$logs/dune.log"
   failed=1
 fi
-unset 'jobs[2]'
-for part in spec no-spec; do
-  if wait "${jobs[0]}"; then
-    cat "$logs/$part.log"
-  else
-    cat "$logs/$part.log"
-    failed=1
-  fi
-  jobs=("${jobs[@]:1}")
+for f in "${folders[@]}"; do
+  wait "${f%%:*}" || failed=1
+  cat "${f#*:}"
 done
+jobs=()
 exit "$failed"

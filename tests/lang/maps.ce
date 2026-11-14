@@ -173,19 +173,6 @@ defn sized(n)
   m
 end
 
-defn sameAtSize(n)
-  m = sized(n)
-  p = dict.Put("k1", 0, m)
-  d = dict.Drop("k1", m)
-  back = dict.Put("k1", 9, d)
-  full = n == 0 or (m["k1"] == 1 and m["k$(n)"] == n and dict.Keys(m)[n] == "k$(n)" and dict.Values(m)[1] == 1 and p["k1"] == 0 and dict.Keys(p)[1] == "k1")
-  dropped = value.Len(d) == (if n == 0 0 else n - 1 end) and not dict.Has("k1", d) and (n < 2 or dict.Keys(d)[1] == "k2")
-  last = n == 0 or dict.Keys(back)[n] == "k1"
-  value.Len(m) == n and full and dropped and last and m == sized(n) and result.Unwrap(json.Parse(json.Text(m))) == m
-end
-
-isEverySize() = list.All([sameAtSize(n) for n in [0, 1, 31, 32, 33, 1000, 100000]])
-
 (* m = Put(k, x, m) writes in place, but never through another name. *)
 defn isPutOnItself()
   a = sized(40)

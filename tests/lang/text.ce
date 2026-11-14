@@ -1,5 +1,6 @@
 use std/fiber
 use std/list
+use std/math
 use std/random
 use std/result
 use std/text
@@ -68,6 +69,19 @@ isCountEmpty() = fails(() -> text.Count("", "a"), "type")
 isCountNotText() = fails(() -> text.Count("a", 1), "type")
 (* text.IsUtf8, as RFC 3629: the ASCII words, then each character, at every place of a word. *)
 bytes(xs) = text.FromBytes(xs)
+defn isLenAtEveryPlace()
+  (** The code points of texts of one to four bytes each, at every place of the words of eight bytes they are counted by:
+      as many as text.Chars gives, and text.Find counts them up to the place it finds. *)
+  mix = ["a", "é", "日", "😀", "b", "ü", "z", "€", "c"]
+  fine = true
+  for k in 0..8
+    for n in 0..30
+      s = text.Join("", [mix[1 + math.Mod(k + j, 9)] for j in 0..n - 1])
+      fine = fine and value.Len(s) == value.Len(text.Chars(s)) and text.Find("x", "$(s)x") == n + 1
+    end
+  end
+  fine
+end
 isUtf8Valid() = list.All([text.IsUtf8(s) for s in ["", "a", "héllo", "日本語", "😀", text.Repeat(17, "a"), text.Repeat(9, "aé")]])
 isUtf8Edges() = list.All([text.IsUtf8(bytes(xs)) for xs in [[0x7F], [0xC2, 0x80], [0xDF, 0xBF], [0xE0, 0xA0, 0x80], [0xED, 0x9F, 0xBF], [0xEE, 0x80, 0x80], [0xEF, 0xBF, 0xBF], [0xF0, 0x90, 0x80, 0x80], [0xF4, 0x8F, 0xBF, 0xBF]]])
 isUtf8Invalid() = not list.Any([text.IsUtf8(bytes(xs)) for xs in [[0x80], [0xBF], [0xC0, 0x80], [0xC1, 0xBF], [0xE0, 0x80, 0x80], [0xE0, 0x9F, 0xBF], [0xED, 0xA0, 0x80], [0xED, 0xBF, 0xBF], [0xF0, 0x80, 0x80, 0x80], [0xF0, 0x8F, 0xBF, 0xBF], [0xF4, 0x90, 0x80, 0x80], [0xF5, 0x80, 0x80, 0x80], [0xFE], [0xFF], [0xC3], [0xE2, 0x82], [0xF0, 0x9F, 0x98], [0xC3, 0x41]]])

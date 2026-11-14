@@ -1,0 +1,1 @@
+Slow by nature: 400,000 lines printed beside 200 long ones, so that a line cut by another shows. tools/check.sh runs it, past the change loop.

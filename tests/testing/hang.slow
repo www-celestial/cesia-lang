@@ -1,0 +1,1 @@
+Slow by nature: three tests that each run past their 0.1 s, on each path. tools/check.sh runs it, past the change loop.

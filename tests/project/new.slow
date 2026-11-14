@@ -1,0 +1,1 @@
+Slow by nature: cesia new, which installs std through cesia pkg, then a run of the new project. tools/check.sh runs it, past the change loop.

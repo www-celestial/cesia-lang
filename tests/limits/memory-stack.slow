@@ -1,0 +1,1 @@
+Slow by nature: a recursion that grows the stack until the memory limit stops it, on each path. tools/check.sh runs it, past the change loop.

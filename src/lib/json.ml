@@ -4,6 +4,17 @@ exception Bad of string
 
 let max_depth = 1000
 
+(* The high bit of each byte of a word that is zero, and of no other: the test of Hacker's Delight, 6-1, exact, as in
+   Native, here again so that it stays inline in every profile. *)
+let lows = 0x7F7F7F7F7F7F7F7FL
+let[@inline] zero_bytes t = Int64.lognot (Int64.logor (Int64.logor (Int64.add (Int64.logand t lows) lows) t) lows)
+
+(* Does a word of eight bytes hold one that a text can't keep as it is: a quote, a backslash, or a control character,
+   whose three high bits are zero? Texts are read and written eight bytes at a time (SWAR). *)
+let[@inline] stops w =
+  not (Int64.equal 0L (Int64.logor (zero_bytes (Int64.logand w 0xE0E0E0E0E0E0E0E0L))
+                         (Int64.logor (zero_bytes (Int64.logxor w 0x2222222222222222L)) (zero_bytes (Int64.logxor w 0x5C5C5C5C5C5C5C5CL)))))
+
 let parse_text ctx s =
   let n = String.length s and i = ref 0 in
   (* A value as deep as the limit of values could not be shown, or even compared. *)
@@ -45,35 +56,53 @@ let parse_text ctx s =
     in
     Buffer.add_utf_8_uchar b (Uchar.of_int code)
   in
+  (* The end of a run of bytes that a text keeps as they are, from j: its closing quote, an escape, a control character
+     or the end of the document. *)
+  let rec plain j =
+    if j + 8 <= n && not (stops (String.get_int64_le s j)) then plain (j + 8)
+    else if j < n && (match s.[j] with '"' | '\\' -> false | c -> c >= ' ') then plain (j + 1)
+    else j
+  in
   let text () =
     incr i;
-    let b = Buffer.create 16 in
-    let rec go () =
-      if !i >= n then bad Messages.json_open_text;
-      match s.[!i] with
-      | '"' -> incr i
-      | '\\' ->
-        incr i;
-        let c = peek () in
-        incr i;
-        (match c with
-         | '"' | '\\' | '/' -> Buffer.add_char b c
-         | 'n' -> Buffer.add_char b '\n'
-         | 't' -> Buffer.add_char b '\t'
-         | 'r' -> Buffer.add_char b '\r'
-         | 'b' -> Buffer.add_char b '\b'
-         | 'f' -> Buffer.add_char b '\012'
-         | 'u' -> unicode b
-         | _ -> bad Messages.json_bad_escape);
-        go ()
-      | c when c < ' ' -> bad Messages.json_control
-      | c ->
-        Buffer.add_char b c;
-        incr i;
-        go ()
-    in
-    go ();
-    Buffer.contents b
+    let j = plain !i in
+    if j < n && s.[j] = '"' then begin
+      (* No escape, as in most texts: one copy of the run. *)
+      let t = String.sub s !i (j - !i) in
+      i := j + 1;
+      t
+    end else begin
+      let b = Buffer.create (max 16 (2 * (j - !i))) in
+      Buffer.add_substring b s !i (j - !i);
+      i := j;
+      let rec go () =
+        if !i >= n then bad Messages.json_open_text;
+        match s.[!i] with
+        | '"' -> incr i
+        | '\\' ->
+          incr i;
+          let c = peek () in
+          incr i;
+          (match c with
+           | '"' | '\\' | '/' -> Buffer.add_char b c
+           | 'n' -> Buffer.add_char b '\n'
+           | 't' -> Buffer.add_char b '\t'
+           | 'r' -> Buffer.add_char b '\r'
+           | 'b' -> Buffer.add_char b '\b'
+           | 'f' -> Buffer.add_char b '\012'
+           | 'u' -> unicode b
+           | _ -> bad Messages.json_bad_escape);
+          go ()
+        | c when c < ' ' -> bad Messages.json_control
+        | _ ->
+          let j = plain !i in
+          Buffer.add_substring b s !i (j - !i);
+          i := j;
+          go ()
+      in
+      go ();
+      Buffer.contents b
+    end
   in
   let digits () =
     let start = !i in
@@ -177,19 +206,27 @@ let parse ctx (a : t array) =
   | v -> Value.ok ctx.w v
   | exception Bad text -> Value.failure ctx.w "json" text
 
+(* The bytes between two that need an escape go as one run. *)
 let add_text b s =
   Buffer.add_char b '"';
-  String.iter
-    (fun c ->
-       match c with
-       | '"' -> Buffer.add_string b "\\\""
-       | '\\' -> Buffer.add_string b "\\\\"
-       | '\n' -> Buffer.add_string b "\\n"
-       | '\t' -> Buffer.add_string b "\\t"
-       | '\r' -> Buffer.add_string b "\\r"
-       | c when c < ' ' -> Buffer.add_string b (Printf.sprintf "\\u%04x" (Char.code c))
-       | c -> Buffer.add_char b c)
-    s;
+  let n = String.length s in
+  let rec go from k =
+    if k + 8 <= n && not (stops (String.get_int64_le s k)) then go from (k + 8)
+    else if k >= n then Buffer.add_substring b s from (n - from)
+    else
+      match s.[k] with
+      | ('"' | '\\') as c ->
+        Buffer.add_substring b s from (k - from);
+        Buffer.add_char b '\\';
+        Buffer.add_char b c;
+        go (k + 1) (k + 1)
+      | c when c < ' ' ->
+        Buffer.add_substring b s from (k - from);
+        Buffer.add_string b (match c with '\n' -> "\\n" | '\t' -> "\\t" | '\r' -> "\\r" | c -> Printf.sprintf "\\u%04x" (Char.code c));
+        go (k + 1) (k + 1)
+      | _ -> go from (k + 1)
+  in
+  go 0 0;
   Buffer.add_char b '"'
 
 let write ctx ~pretty v =

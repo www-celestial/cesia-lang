@@ -1,0 +1,1 @@
+Slow by nature: some thirty runs of cesia, each waited for until the copy that writes its entries has ended. tools/check.sh runs it, past the change loop.

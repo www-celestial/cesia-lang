@@ -46,6 +46,23 @@ isWriteText() = json.Text("a\"\n\\é") == "\"a\\\"\\n\\\\é\""
 isNestingStaysInItsFiber() = result.IsErr(fiber.Wait(fiber.Spawn(() -> value.Text(deep(700))))) and value.Text(1) == "1"
 isHugeExponent() = bad("1e999")
 
+defn isEveryPlaceOfAnEscape()
+  (** Each byte that a text escapes, at every place of a text long enough to be read and written eight bytes at a time:
+      its escape at its place, and the text read back the same. *)
+  fine = true
+  for p in [["\"", "\\\""], ["\\", "\\\\"], ["\n", "\\n"], ["\t", "\\t"], [text.Char(1), "\\u0001"], [text.Char(31), "\\u001f"]]
+    for a in 0..17
+      for b in 0..9
+        s = "$(text.Repeat(a, "x"))$(p[1])$(text.Repeat(b, "é"))"
+        t = json.Text(s)
+        fine = fine and t == "\"$(text.Repeat(a, "x"))$(p[2])$(text.Repeat(b, "é"))\"" and ok(t) == s
+      end
+    end
+  end
+  fine
+end
+isEveryPlaceOfAControl() = list.All([(json.Parse("\"$(text.Repeat(a, "x"))$(text.Char(1))yyyyyyyy\"") then result.MapErr(it.Message)) == result.Err("A control character in a text, at byte $(a + 2).") for a in 0..17])
+
 defn deep(n)
   x = 1
   for k in 1..n

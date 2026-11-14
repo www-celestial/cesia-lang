@@ -67,9 +67,17 @@ if [ -n "$slow" ]; then
   tools/golden.sh --no-spec $slow > /dev/null 2>&1 || fail "--no-spec fails on $slow"
 fi
 
-# The tests slow by nature, on both paths, and Cesia's own site, which GitHub Pages publishes: a text of the docs with a
-# [Name] that leads nowhere, or a block of the book that gives another value, fails here and there.
+# The tests slow by nature (name.slow, and the files of tests/slow), on both paths, and Cesia's own site, which GitHub
+# Pages publishes: a text of the docs with a [Name] that leads nowhere, or a block of the book that gives another value,
+# fails here and there.
 tools/golden.sh --both --slow tests/*/ > /dev/null 2>&1 || fail "a test marked slow fails: tools/golden.sh --both --slow tests/*/"
+# Their own folder of caches, empty at the start, as in tools/test.sh: none of the person's packages, none left there.
+cache=$(mktemp -d)
+for path in "" --no-spec; do
+  XDG_CACHE_HOME="$cache" "$PWD/_build/default/src/bin/main.exe" test tests/slow $path > /dev/null 2>&1 \
+    || { rm -rf "$cache"; fail "a slow test fails: cesia test tests/slow $path"; }
+done
+rm -rf "$cache"
 site=$(mktemp -d)
 "$PWD/_build/default/src/bin/main.exe" doc --site "$site" > /dev/null || fail "Cesia's site doesn't build"
 rm -rf "$site"

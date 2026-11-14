@@ -1,0 +1,95 @@
+(** std/plot's M4 against all the points of lines of 60,000, pixel by pixel, beside tests/lang/plot.ce. Slow by nature:
+    tools/check.sh runs it, past the change loop. *)
+use std/list
+use std/math
+use std/matrix
+use std/plot
+use std/result
+use std/value
+
+scene(g, w, h) = result.Unwrap(plot.Scene(g, w, h))
+role(s, r) = list.Filter(item -> item.Role == r, s.Items)
+
+defn plotArea(s)
+  f = role(s, "frame")[1]
+  {X: f.Xs[1] + 0.5, Y: f.Ys[1] + 0.5, W: f.Xs[2] - f.Xs[1] - 1.0, H: f.Ys[3] - f.Ys[1] - 1.0}
+end
+
+(* M4 against all the points: the line of each, rasterized by Bresenham's algorithm one pixel wide, lights the same
+   pixels. The axes are fixed by xlim and ylim, so that the test maps the points as std/plot does. *)
+
+defn bresenham(lit, x0, y0, x1, y1)
+  (** Lights the pixels of a segment between two pixels, by Bresenham's algorithm (1965), in all eight octants. *)
+  dx = math.Abs(x1 - x0)
+  dy = 0 - math.Abs(y1 - y0)
+  sx = if x0 < x1 1 else -1 end
+  sy = if y0 < y1 1 else -1 end
+  e = dx + dy
+  x = x0
+  y = y0
+  while true
+    lit[y, x] = 1.0
+    if x == x1 and y == y1
+      break
+    end
+    e2 = 2 * e
+    if e2 >= dy
+      e += dy
+      x += sx
+    end
+    if e2 <= dx
+      e += dx
+      y += sy
+    end
+  end
+  lit
+end
+
+defn raster(lines, w, h)
+  lit = matrix.Zeros(h, w)
+  for l in lines
+    for i in 1..value.Len(l.Xs) - 1
+      lit = bresenham(lit, math.Floor(l.Xs[i]) + 1, math.Floor(l.Ys[i]) + 1, math.Floor(l.Xs[i + 1]) + 1, math.Floor(l.Ys[i + 1]) + 1)
+    end
+  end
+  lit
+end
+
+defn allPoints(t, v, a)
+  (** The runs of the line in pixels as std/plot maps them, every point kept. *)
+  sx = a.W / (10.0 - 0.0)
+  sy = 0.0 - a.H / (2.0 - -2.0)
+  out = []
+  run = {Xs: [], Ys: []}
+  for i in 1..value.Len(t)
+    if v[i] - v[i] == 0.0
+      run.Xs = list.Append(a.X + (t[i] - 0.0) * sx, run.Xs)
+      run.Ys = list.Append(a.Y + a.H + (v[i] - -2.0) * sy, run.Ys)
+    else
+      out = list.Append(run, out)
+      run = {Xs: [], Ys: []}
+    end
+  end
+  list.Append(run, out)
+end
+
+defn isM4SamePixels()
+  n = 60000
+  t = [10.0 * (i - 1) / (n - 1) for i in 1..n]
+  waves = [
+    [math.Sin(x * 7.0) + 0.3 * math.Sin(x * 91.0) for x in t],
+    [if math.Mod(i, 5000) < 40 math.Nan else math.Sin(t[i] * 3.0) * math.Cos(t[i] * 50.0) end for i in 1..n],
+    [if math.Mod(i, 997) == 0 1.9 else 0.01 * math.Sin(i * 1.0) end for i in 1..n],
+    [math.Floor(x * 0.4) * 0.5 - 1.5 for x in t]
+  ]
+  for v in waves
+    s = scene(plot.Of([plot.Line(t, v)], xlim = [0, 10], ylim = [-2, 2]), 640, 400)
+    kept = role(s, "data")
+    a = plotArea(s)
+    count = list.Sum([value.Len(l.Xs) for l in kept])
+    if count > 4 * 2 * a.W or not value.Equal(raster(kept, 640, 400), raster(allPoints(t, v, a), 640, 400))
+      return false
+    end
+  end
+  true
+end
