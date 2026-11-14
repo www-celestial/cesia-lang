@@ -19,3 +19,6 @@ val below : int -> int
 
 (** The natives of std/random: Int, Float and Seed. *)
 val natives : (string * t) list
+
+(** The native of std/num that draws: uniform(n), the n floats of num.Uniform, those of n calls of Float in turn. *)
+val num : (string * t) list

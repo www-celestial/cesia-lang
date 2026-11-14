@@ -37,13 +37,22 @@ let restart names =
     (String.concat "\000" (string_of_int (Option.get !seed_given) :: names));
   state := Int64.of_int (Int64.to_int !h)
 
-let next () =
-  start ();
-  state := Int64.add !state 0x9E3779B97F4A7C15L;
-  let z = !state in
+(* One step of SplitMix64: the state moves by the golden gamma, and the number is a mix of the new state. *)
+let gamma = 0x9E3779B97F4A7C15L
+
+let[@inline] mix z =
   let z = Int64.mul (Int64.logxor z (Int64.shift_right_logical z 30)) 0xBF58476D1CE4E5B9L in
   let z = Int64.mul (Int64.logxor z (Int64.shift_right_logical z 27)) 0x94D049BB133111EBL in
   Int64.logxor z (Int64.shift_right_logical z 31)
+
+let next () =
+  start ();
+  state := Int64.add !state gamma;
+  mix !state
+
+(* A float from 0 included to 1 excluded: the 53 high bits of a number, which an OCaml integer holds exactly, so that
+   the conversion is one instruction, not a call of C as Int64.to_float. *)
+let[@inline] unit z = float_of_int (Int64.to_int (Int64.shift_right_logical z 11)) *. 0x1p-53
 
 (* 62 bits, from 0 to max_int. *)
 let bits () = Int64.to_int (Int64.shift_right_logical (next ()) 2)
@@ -70,7 +79,24 @@ let int ctx (a : t array) =
   if n <= 0 then Runtime.fail ctx Math (Messages.random_range low high);
   Int (low + below n)
 
+(* num.Uniform(n): n draws of Float, in their order, into one row of floats, as matrix.Zeros(1, n) is; the state stays
+   in a register for the loop, and goes back once. *)
+let uniform ctx (a : t array) =
+  let n = Native.dim ctx "Uniform" a.(0) in
+  Runtime.pay ctx n;
+  let d = Runtime.alloc_float ctx n 0. in
+  start ();
+  let s = ref !state in
+  for k = 0 to n - 1 do
+    s := Int64.add !s gamma;
+    Float.Array.set d k (unit (mix !s))
+  done;
+  state := !s;
+  Arrays.of_float 1 n d
+
 let natives =
   [ "Int", Native.nat ~params:[| "low"; "high" |] "Int" 2 2 int;
-    "Float", Native.nat "Float" 0 0 (fun _ _ -> Float (Int64.to_float (Int64.shift_right_logical (next ()) 11) *. 0x1p-53));
+    "Float", Native.nat "Float" 0 0 (fun _ _ -> Float (unit (next ())));
     "Seed", Native.nat "Seed" 0 0 (fun _ _ -> Int (seed ())) ]
+
+let num = [ "uniform", Native.nat ~ret:(fun _ -> TFA) "uniform" 1 1 uniform ]
