@@ -1,13 +1,13 @@
 # Statistiques
 
 Dans ce chapitre, vous travaillez avec les lois de probabilité, grâce à [std/stats] : la loi normale, celle de Student,
-celle du khi-deux, celle de Fisher, la loi uniforme, l'exponentielle, la loi gamma, la loi bêta, la binomiale et celle de
-Poisson, chacune une valeur avec sa densité, sa fonction de répartition, ses quantiles et ses tirages au hasard, ce que
-donnent `pnorm` et `qt` dans R et `norm` et `t` dans scipy, et la moyenne de tirages au hasard avec son intervalle, une
-estimation de Monte-Carlo. En dessous se trouvent les fonctions spéciales de [std/special] : les fonctions gamma et bêta,
-la fonction d'erreur, et les rapports gamma et bêta incomplets. Chacune vient d'une méthode publiée, nommée ici avec ce
-qu'elle promet, et la dernière partie de chaque section dit à quel point elle s'en approche, mesurée contre des valeurs
-calculées à 70 chiffres et contre R et scipy.
+celle du khi-deux, celle de Fisher, la loi uniforme, l'exponentielle, la loi gamma, la loi bêta, la binomiale et celle
+de Poisson, chacune une valeur avec sa densité, sa fonction de répartition, ses quantiles et ses tirages au hasard, ce
+que donnent `pnorm` et `qt` dans R et `norm` et `t` dans scipy, et la moyenne de tirages au hasard avec son intervalle,
+une estimation de Monte-Carlo. En dessous se trouvent les fonctions spéciales de [std/special] : les fonctions gamma et
+bêta, la fonction d'erreur, et les rapports gamma et bêta incomplets. Chacune vient d'une méthode publiée, nommée ici
+avec ce qu'elle promet, et la dernière partie de chaque section dit à quel point elle s'en approche, mesurée contre des
+valeurs calculées à 70 chiffres et contre R et scipy.
 
 ## Les lois de probabilité
 
@@ -36,8 +36,8 @@ Chaque loi a les quatre mêmes méthodes :
 | `d.Sample()`, `d.Sample(n)` | un tirage, ou un array de `n` | `rnorm(1, 100, 15)`, `rnorm(n, 100, 15)` | `d.rvs()`, `d.rvs(n)` | `normrnd(100, 15, 1, n)` |
 
 `Pdf` est la densité (*probability density function*), `Cdf` la fonction de répartition (*cumulative distribution
-function*), la probabilité d'une valeur inférieure ou égale à `x`. `x` et `p` sont un nombre ou un array de n'importe
-quelle forme, et la réponse a cette forme. Les lois, et leurs champs :
+function*), la probabilité d'une valeur inférieure ou égale à `x`. `x` et `p` sont un nombre ou un array (une suite ou
+une matrice de nombres) de n'importe quelle forme, et la réponse a cette forme. Les lois, et leurs champs :
 
 | Cesia | Ses champs | R | scipy.stats | MATLAB |
 |---|---|---|---|---|
@@ -56,9 +56,10 @@ Dans la colonne MATLAB, `…` vaut `pdf`, `cdf`, `inv` ou `rnd` : `tcdf(x, nu)`,
 prennent l'échelle des lois exponentielle et gamma, le temps moyen entre deux événements, là où R et Cesia prennent le
 taux : l'`Exponential(2)` de Cesia est l'`exp…(0.5)` de MATLAB.
 
-Une loi est une struct, donc `d.Mean` lit un champ et une loi se passe à une fonction comme n'importe quelle valeur. Elle
-est faite sans vérification ; son premier appel de méthode vérifie ses champs, et un champ hors de son domaine est un bug
-de l'appelant, une panic (un arrêt du programme) qui nomme la loi, le champ et la valeur :
+Une loi est une struct (une valeur dont les champs sont déclarés une fois), donc `d.Mean` lit un champ et une loi se
+passe à une fonction comme n'importe quelle valeur. Elle est faite sans vérification ; son premier appel de méthode
+vérifie ses champs, et un champ hors de son domaine est un bug de l'appelant, une panic (un arrêt du programme) qui
+nomme la loi, le champ et la valeur :
 
 ```cesia fails
 stats.Normal(0, -1).Cdf(0)
@@ -148,8 +149,8 @@ tinv(0.975, 9), chi2inv(0.95, 4), binocdf(5, 20, 0.3), poisspdf(0:2, 4)
 ### À côté de R
 
 Sur 300 points au hasard pour chaque loi, ses paramètres répartis de $e^{-3}$ à $e^{8}$, `x` autour du gros de la loi et
-jusque dans les queues, et `p` de $10^{-200}$ à 1, les réponses de Cesia sont à moins de 2 $\epsilon$ de celles de
-R 4.6.2 en médiane, pour chaque méthode de chaque loi. Là où elles diffèrent davantage, les valeurs à 70 chiffres ont été
+jusque dans les queues, et `p` de $10^{-200}$ à 1, les réponses de Cesia sont à moins de 2 $\epsilon$ de celles de R
+4.6.2 en médiane, pour chaque méthode de chaque loi. Là où elles diffèrent davantage, les valeurs à 70 chiffres ont été
 calculées, et c'est Cesia qui était la plus proche, de loin :
 
 | R 4.6.2 | Cesia | La valeur exacte |
@@ -168,10 +169,11 @@ $10^{-2}$, `pbeta` garde tous ses chiffres là où le `BetaInc` de Cesia en perd
 ### Les tirages au hasard
 
 `d.Sample()` tire un nombre d'une loi, `d.Sample(n)` un array de `n`, à partir de l'unique générateur de [std/random],
-pour que `cesia run --seed N` redonne les mêmes nombres, et que chaque test de `cesia test` ait les siens. Dans un fichier
-de [cells](cells.md) (les morceaux d'un notebook), le générateur repart avant chaque cell, du seed de la session et du
-titre de la cell, comme `cesia test` le fait pour chaque test : une cell qui tourne de nouveau tire les mêmes nombres,
-quoi qu'il ait tourné avant elle, et modifier une cell ne change les tirages d'aucune autre.
+pour que `cesia run --seed N` redonne les mêmes nombres à partir du seed N (le nombre dont part le générateur), et que
+chaque test de `cesia test` ait les siens. Dans un fichier de [cells](cells.md) (les morceaux d'un notebook), le
+générateur repart avant chaque cell, du seed de la session et du titre de la cell, comme `cesia test` le fait pour
+chaque test : une cell qui tourne de nouveau tire les mêmes nombres, quoi qu'il ait tourné avant elle, et modifier une
+cell ne change les tirages d'aucune autre.
 
 ```cesia
 use std/value
@@ -192,16 +194,17 @@ stats.Poisson(4).Sample(5) then value.Len() -->
 | FisherF | $(X_1 / d_1) / (X_2 / d_2)$, deux tirages du khi-deux |
 | Binomial, Poisson | l'inversion : le plus petit `k` dont la probabilité cumulée dépasse `u`, dans une table de la loi de 40 écarts types sous la moyenne à 40 au-dessus, qui en contient tout sauf moins de $10^{-300}$ ; un tirage seul, ou une loi dont la table dépasserait 65 536 comptes, par `Quantile(u)`, la même inversion sans la table |
 
-Chaque méthode est exacte en loi, si les uniformes sont exactes. Les algorithmes sont figés avec les seeds : un seed donne
-les mêmes nombres dans chaque version, donc une meilleure méthode viendrait plus tard sous un nouveau nom, jamais comme
-un changement. Les dix premiers tirages de chaque loi pour le seed 42 sont fixés par les tests de Cesia, et 2 000 tirages
-de chacune passent un test de Kolmogorov–Smirnov ou du khi-deux contre la propre Cdf de la loi. R et numpy ont d'autres
-générateurs, si bien que le même seed y donne d'autres nombres : comparez leurs statistiques, pas leurs tirages.
+Chaque méthode est exacte en loi, si les uniformes sont exactes. Les algorithmes sont figés avec les seeds : un seed
+donne les mêmes nombres dans chaque version, donc une meilleure méthode viendrait plus tard sous un nouveau nom, jamais
+comme un changement. Les dix premiers tirages de chaque loi pour le seed 42 sont fixés par les tests de Cesia, et 2 000
+tirages de chacune passent un test de Kolmogorov–Smirnov ou du khi-deux contre la propre Cdf de la loi. R et numpy ont
+d'autres générateurs, si bien que le même seed y donne d'autres nombres : comparez leurs statistiques, pas leurs
+tirages.
 
 ## Le modèle linéaire
 
-[stats.Lm] ajuste une droite, ou un plan, à des points par les moindres carrés : le `lm` de R, sans formule. La colonne à
-expliquer vient d'abord, puis les colonnes qui l'expliquent, puis le frame (la table de colonnes de std/frame) :
+[stats.Lm] ajuste une droite, ou un plan, à des points par les moindres carrés : le `lm` de R, sans formule. La colonne
+à expliquer vient d'abord, puis les colonnes qui l'expliquent, puis le frame (la table de colonnes de std/frame) :
 
 ```cesia
 use std/frame
@@ -301,9 +304,9 @@ calcule.
 
 ## Les tests
 
-Un test dit si une différence dans des données pourrait venir du seul hasard. Chaque test de std/stats donne un `Ok` d'un
-`stats.Test`, les champs du `htest` de R, ou un `Err` pour des données qu'il ne peut pas tester : une valeur manquante,
-trop peu de valeurs, des valeurs toutes égales là où la statistique a besoin qu'elles varient.
+Un test dit si une différence dans des données pourrait venir du seul hasard. Chaque test de std/stats donne un `Ok`
+d'un `stats.Test`, les champs du `htest` de R, ou un `Err` pour des données qu'il ne peut pas tester : une valeur
+manquante, trop peu de valeurs, des valeurs toutes égales là où la statistique a besoin qu'elles varient.
 
 ```cesia
 x = [0.7, -1.6, -0.2, -1.2, -0.1, 3.4, 3.7, 0.8, 0.0, 2.0]
@@ -314,10 +317,11 @@ t.Interval -->
 t -->
 ```
 
-`Method` nomme le test, `Statistic` est son nombre, `Df` ses degrés de liberté, `PValue` la probabilité d'une statistique
-au moins aussi éloignée de l'hypothèse nulle quand seul le hasard est à l'œuvre, `Estimate` le nombre que `Interval`
-encadre au niveau `Level`, et `Alternative` le côté du test : `"two-sided"`, `"less"` ou `"greater"`. Dans une cell, une
-struct s'affiche comme une table de ses champs, un par ligne, si bien que le test se lit comme R l'affiche.
+`Method` nomme le test, `Statistic` est son nombre, `Df` ses degrés de liberté, `PValue` la probabilité d'une
+statistique au moins aussi éloignée de l'hypothèse nulle quand seul le hasard est à l'œuvre, `Estimate` le nombre que
+`Interval` encadre au niveau `Level`, et `Alternative` le côté du test : `"two-sided"`, `"less"` ou `"greater"`. Dans
+une cell, une struct s'affiche comme une table de ses champs, un par ligne, si bien que le test se lit comme R
+l'affiche.
 
 | Cesia | R | Python, scipy.stats |
 |---|---|---|
@@ -332,8 +336,8 @@ struct s'affiche comme une table de ses champs, un par ligne, si bien que le tes
 | `stats.ChiSquaredTest(table)`, une matrice | `chisq.test(table)` | `chi2_contingency(table)` |
 | `stats.CorTest(x, y)`, celui de Pearson | `cor.test(x, y)` | `pearsonr(x, y)` |
 
-Chacun prend `alternative = "two-sided"`, et ceux qui ont un intervalle `level = 0.95`. Les tests appariés sont les tests
-à un échantillon des différences, une seule façon de les écrire.
+Chacun prend `alternative = "two-sided"`, et ceux qui ont un intervalle `level = 0.95`. Les tests appariés sont les
+tests à un échantillon des différences, une seule façon de les écrire.
 
 La variance d'un échantillon, dont les tests se servent, divise par $n - 1$ : le `var(x)` et le `sd(x)` de R.
 [num.Variance] et [num.Std] divisent par $n$ par défaut, comme le fait numpy, et `sample = true` donne ceux de R :
@@ -359,17 +363,17 @@ t.test(x, y)
   l'arrondi laisse (Chan, Golub et LeVeque, 1983).
 - **Wilcoxon** : le test des rangs signés (Wilcoxon, 1945) enlève les zéros et donne aux ex aequo leur rang moyen ; le
   test de la somme des rangs (Mann et Whitney, 1947) donne $W$, leur $U$. Exact quand il y a moins de 50 valeurs, chaque
-  échantillon pour la somme des rangs, comme R 4.6 : la loi de la statistique connaissant les rangs, ex aequo compris, en
-  comptant les sous-ensembles des rangs ; sans ex aequo, les comptes de la somme des rangs sont ceux du coefficient
+  échantillon pour la somme des rangs, comme R 4.6 : la loi de la statistique connaissant les rangs, ex aequo compris,
+  en comptant les sous-ensembles des rangs ; sans ex aequo, les comptes de la somme des rangs sont ceux du coefficient
   $q$-binomial, par sa règle de Pascal. Au-delà de 50, l'approximation normale, avec ses corrections pour les ex aequo
   et, avec `correct`, pour la continuité.
 - **Kolmogorov–Smirnov** : $D = \max |F_n - F|$, $F_n$ la loi empirique de l'échantillon ; exact jusqu'à 16 000 valeurs
-  sans ex aequo par la méthode de Marsaglia, Tsang et Wang (2003), dont l'article y donne de 13 à 15 chiffres. Au-delà de
-  $n D^2 = 7{,}24$, là où leur article quitte la matrice pour une formule de la queue, $p < 10^{-6}$ et
-  $1 - P(D < d)$ perdrait ses chiffres : là, $p$ vaut deux fois la queue d'un seul côté, puisque $D^+$ et $D^-$ tous deux
-  au-delà de $d$ sont environ $e^{-6 n D^2}$ fois aussi probables, moins de $10^{-18}$ de celle-ci. La série limite de
-  Kolmogorov au-delà de 16 000 valeurs, ou avec des ex aequo ; d'un seul côté par la somme exacte de Birnbaum et Tingey
-  (1951). R prend la limite dès 100 valeurs : ses réponses y diffèrent de celles de Cesia sauf si on lui donne
+  sans ex aequo par la méthode de Marsaglia, Tsang et Wang (2003), dont l'article y donne de 13 à 15 chiffres. Au-delà
+  de $n D^2 = 7{,}24$, là où leur article quitte la matrice pour une formule de la queue, $p < 10^{-6}$ et
+  $1 - P(D < d)$ perdrait ses chiffres : là, $p$ vaut deux fois la queue d'un seul côté, puisque $D^+$ et $D^-$ tous
+  deux au-delà de $d$ sont environ $e^{-6 n D^2}$ fois aussi probables, moins de $10^{-18}$ de celle-ci. La série limite
+  de Kolmogorov au-delà de 16 000 valeurs, ou avec des ex aequo ; d'un seul côté par la somme exacte de Birnbaum et
+  Tingey (1951). R prend la limite dès 100 valeurs : ses réponses y diffèrent de celles de Cesia sauf si on lui donne
   `exact = TRUE`.
 - **Khi-deux** : Pearson (1900), les comptes attendus à partir des marges d'une table, et la correction de Yates (1934)
   pour une table $2 \times 2$, comme R par défaut.
@@ -413,7 +417,8 @@ special.BetaInc(2, 3, 0.4) -->
 | `special.BetaInc(a, b, x, upper = true)` | $1 - I_x(a, b)$, calculée directement | `pbeta(x, a, b, lower.tail = FALSE)` | `betaincc(a, b, x)` | `betainc(x, a, b, 'upper')` |
 
 R n'a pas d'`erf` : les lignes ci-dessus l'écrivent avec la loi normale, ce que font les utilisateurs de R. MATLAB met
-`x` en premier dans `gammainc` et `betainc` ; Cesia met en dernier l'argument qui peut être un array, comme le fait scipy.
+`x` en premier dans `gammainc` et `betainc` ; Cesia met en dernier l'argument qui peut être un array, comme le fait
+scipy.
 
 Les rapports incomplets sont des probabilités : $P(a, x)$ est la probabilité qu'une variable gamma de forme $a$ tombe
 sous $x$, et $I_x(a, b)$ la probabilité qu'une variable bêta tombe sous $x$. Chaque loi des sections suivantes repose
@@ -439,8 +444,8 @@ seconde est $Q(100, 200)$ à 15 chiffres.
 Un domaine est l'endroit où une fonction est définie. En dehors, la réponse est NaN, comme le donne `math.Log(-1.0)` :
 `GammaInc(a, x)` avec un `a` ou un `x` négatif, `BetaInc(a, b, x)` avec `x` hors de `[0, 1]`, `ErfInv(y)` avec
 `|y| > 1`. Un NaN donné est un NaN rendu. $\Gamma$ est infinie en 0, avec le signe du zéro, et NaN aux entiers négatifs,
-où elle a des pôles ; `LogGamma` y est infinie. Un argument qui n'est pas un nombre, ou un array qui contient un texte ou
-un `missing`, est un bug de l'appelant : une panic qui le nomme.
+où elle a des pôles ; `LogGamma` y est infinie. Un argument qui n'est pas un nombre, ou un array qui contient un texte
+ou un `missing`, est un bug de l'appelant : une panic qui le nomme.
 
 ```cesia
 special.Gamma(-0.5) -->
@@ -485,18 +490,18 @@ $2{,}2 \times 10^{-16}$, environ 16 chiffres justes, 45 $\epsilon$ environ 14 ch
   précision relative.
 - **`Erf`, `Erfc`, `Erfcx`.** Les approximations rationnelles de Cody (1969), avec les coefficients de son SPECFUN
   (1993), sur $|x| \le 0{,}46875$, jusqu'à 4 et au-delà. Pour un grand $x$, $e^{-x^2}$ multiplie l'erreur de $x^2$ par
-  $x^2$ : $x$ est coupé en un nombre de seizièmes, dont le carré est exact, et le reste, pour que $\text{erfc}$ garde ses
-  chiffres jusqu'à $10^{-308}$, en $x = 26{,}5$.
+  $x^2$ : $x$ est coupé en un nombre de seizièmes, dont le carré est exact, et le reste, pour que $\text{erfc}$ garde
+  ses chiffres jusqu'à $10^{-308}$, en $x = 26{,}5$.
 - **`ErfInv`, `ErfcInv`.** Le quantile normal PPND16 de Wichura (1988), des approximations rationnelles dans trois
   régions, « accurate to about 1 part in $10^{16}$ » (précis à environ une part sur $10^{16}$, dit l'article), puisque
-  $\text{erfc}(x) = 2 P(Z > x \sqrt 2)$ pour $Z$ de loi normale. `ErfcInv` garde ses chiffres pour un petit `y`, jusqu'au
-  plus petit float.
+  $\text{erfc}(x) = 2 P(Z > x \sqrt 2)$ pour $Z$ de loi normale. `ErfcInv` garde ses chiffres pour un petit `y`,
+  jusqu'au plus petit float.
 - **`GammaInc`.** Les régions de DiDonato et Morris (1986) : près de $x = a$ pour $a \ge 20$, de $0{,}6 a$ à $1{,}4 a$,
   le développement asymptotique uniforme de Temme (Temme 1979 ; DLMF 8.12), dont les 142 coefficients viennent de la
   récurrence de DLMF 8.12.12, calculés exactement en rationnels ; en dessous, la série entière de $P$ ; au-dessus, la
   partie paire de la fraction continue de Legendre pour $Q$ (DLMF 8.9.2), évaluée vers l'avant par la méthode de Lentz
-  modifiée (Thompson et Barnett, 1986) ; pour $a < 1$ et $x \le 1{,}5$, une série de $Q$ elle-même, dont les trois termes
-  sont chacun de la taille de $a$, pour que $Q$ garde ses chiffres quand $a$ tend vers 0. Le facteur
+  modifiée (Thompson et Barnett, 1986) ; pour $a < 1$ et $x \le 1{,}5$, une série de $Q$ elle-même, dont les trois
+  termes sont chacun de la taille de $a$, pour que $Q$ garde ses chiffres quand $a$ tend vers 0. Le facteur
   $x^a e^{-x} / \Gamma(a)$ est calculé avec `pow` et `exp` là où aucun des deux ne déborde, et sinon à travers
   $\lambda = x / a$ : $\sqrt{a / 2\pi} \, e^{a (\log \lambda - \lambda + 1)} / \Gamma^{\text{*}}(a)$, avec
   $\log(1 + t) - t$ calculé sans annulation pour un petit $t$.
@@ -540,8 +545,8 @@ Sur les données de Boost, à côté de R 4.6.2 et de scipy 1.18.1 sur les même
 
 **Là où les autres gagnent.** R est plus proche sur les plus grandes lois gamma, `igamma_big_data`, avec $a$ jusqu'à
 $10^5$ : là, le facteur $e^{a(\log\lambda - \lambda + 1)}$ a un exposant de quelques centaines, et R le calcule en deux
-floats, une somme qui garde environ 30 chiffres, là où Cesia en prend un seul. Le `betaincc` de scipy, qui est le code de
-Boost, est plus proche sur les propres données bêta de Boost, à un demi-$\epsilon$ près.
+floats, une somme qui garde environ 30 chiffres, là où Cesia en prend un seul. Le `betaincc` de scipy, qui est le code
+de Boost, est plus proche sur les propres données bêta de Boost, à un demi-$\epsilon$ près.
 
 Les plus grandes erreurs des rapports incomplets se trouvent dans leurs queues lointaines, là où la fonction elle-même
 change d'un grand facteur pour un petit changement de ses arguments : un changement relatif de $\epsilon$ en $x$ change
@@ -599,8 +604,8 @@ l'intervalle soit de $10^{-3}$ ou moins ; un lancement a donné `Mean = 0.747162
 
 Un batch fait par des opérations sur des arrays coûte bien moins qu'autant d'appels d'une fonction qui donne un seul
 tirage, comme le montre [Vitesse](#vitesse). Avec `n`, le dernier batch est coupé, pour que exactement `n` tirages
-servent. Avec `tol`, le test est fait après chaque batch, ou tous les 1 000 tirages un par un, à partir de 1 000 tirages ;
-`most`, $10^9$ par défaut, borne les tirages.
+servent. Avec `tol`, le test est fait après chaque batch, ou tous les 1 000 tirages un par un, à partir de 1 000 tirages
+; `most`, $10^9$ par défaut, borne les tirages.
 
 | Cesia | Python, numpy et scipy | MATLAB | R |
 |---|---|---|---|
@@ -631,9 +636,9 @@ t.test(x)$conf.int
 ### Dans une cell
 
 Dans un fichier de [cells](cells.md), l'estimation s'affiche comme une table de ses champs, et un histogramme d'un batch
-montre comment les tirages se répartissent. Chaque cell tire à partir d'un seed à elle, fait de celui de la session et du
-titre de la cell, si bien qu'une cell qui tourne de nouveau donne le même intervalle, quoi qu'il ait tourné avant elle,
-comme le dit [Les tirages au hasard](#les-tirages-au-hasard) :
+montre comment les tirages se répartissent. Chaque cell tire à partir d'un seed à elle, fait de celui de la session et
+du titre de la cell, si bien qu'une cell qui tourne de nouveau donne le même intervalle, quoi qu'il ait tourné avant
+elle, comme le dit [Les tirages au hasard](#les-tirages-au-hasard) :
 
 ```cesia norun
 use std/math
@@ -662,8 +667,8 @@ result.IsOk(plot.Svg(g)) -->
 
 Les tirages ne sont jamais gardés. Ils sont réduits 1 000 à la fois, ceux d'un batch ou 1 000 tirages un par un
 rassemblés dans un array : pour chaque bloc de $k$ tirages $x_i$, l'*algorithme à deux passages corrigé* de Chan, Golub
-et LeVeque (1983) prend leur moyenne $m$, puis les distances $d_i = x_i - m$, dont la somme $c$ est la part de la moyenne
-que l'arrondi a laissée hors de $m$ :
+et LeVeque (1983) prend leur moyenne $m$, puis les distances $d_i = x_i - m$, dont la somme $c$ est la part de la
+moyenne que l'arrondi a laissée hors de $m$ :
 
 $$
 \text{mean} = m + \frac{c}{k}, \quad q = \sum_i d_i^2 - \frac{c^2}{k}
@@ -680,9 +685,9 @@ $$
 dont la mise à jour de Welford (1962) est le cas $n_b = 1$, un tirage à la fois. Ces identités ont été vérifiées ici en
 arithmétique rationnelle exacte, sur un millier d'ensembles au hasard. La somme courante des tirages et le $q$ courant
 gardent chacun à côté d'eux les erreurs d'arrondi de leurs additions, par la somme compensée de Neumaier (1974) : la
-`Mean` est à quelques unités de la dernière place près de la moyenne exacte des tirages, qu'ils soient venus un par un ou
-par batches de n'importe quelle taille. Sur des tirages uniformes, exponentiels et décalés, donnés un à la fois et par
-batches de 7, 1 000, 4 096 et tous à la fois, elle était à 0 ou 1 unité de la moyenne exacte, et jusqu'à 4 sur des
+`Mean` est à quelques unités de la dernière place près de la moyenne exacte des tirages, qu'ils soient venus un par un
+ou par batches de n'importe quelle taille. Sur des tirages uniformes, exponentiels et décalés, donnés un à la fois et
+par batches de 7, 1 000, 4 096 et tous à la fois, elle était à 0 ou 1 unité de la moyenne exacte, et jusqu'à 4 sur des
 tirages de 0 et 1, là où `list.Mean` des mêmes tirages était à 20 à 57 unités. La `StdError` des mêmes tirages s'accorde
 à $10^{-15}$ près quels que soient les batches, ou à environ $\kappa \epsilon$ près quand la moyenne vaut $\kappa$ fois
 l'écart type : la distance entre deux moyennes que la fusion met au carré est connue à $\epsilon$ fois la moyenne près.
@@ -690,7 +695,8 @@ l'écart type : la distance entre deux moyennes que la fusion met au carré est 
 Ensuite
 
 $$
-\text{StdError} = \frac{s}{\sqrt{N}}, \quad s^2 = \frac{q}{N - 1}, \quad \text{Interval} = \text{Mean} \pm t_{N-1} \, \text{StdError}
+\text{StdError} = \frac{s}{\sqrt{N}}, \quad s^2 = \frac{q}{N - 1}, \quad \text{Interval} = \text{Mean} \pm t_{N-1} \,
+\text{StdError}
 $$
 
 avec $t_{N-1}$ le quantile de la loi de Student (1908) à $N - 1$ degrés de liberté en $(1 + \text{level}) / 2$, comme le
@@ -701,19 +707,19 @@ $t_{N-1} \, s / \sqrt{N} \le \text{tol}$. Leur règle, pour une demi-largeur $d$
 $n \ge a_n^2 (s_n^2 + 1/n) / d^2$, où $a_n$ est n'importe quelle suite qui tend vers $a$, le quantile normal du niveau.
 Celle de Cesia prend $n_0 = 1000$ et $a_n = t_{n-1}$, et laisse de côté leur $1/n$ : un terme dans les unités des
 tirages au carré, qui pour des tirages de taille $10^{-6}$ demandés à un `tol` de $10^{-9}$ demanderait
-$a / \text{tol}$, $2 \times 10^9$ tirages, quelle que soit leur dispersion. Les 1 000 empêchent la règle de s'arrêter sur
-un petit échantillon malchanceux. Le test est fait après chaque batch, pas après chaque tirage : pour des batches d'une
-taille bornée, c'est leur règle sur la suite des fins des batches, dont le rapport de l'une à la suivante tend vers 1,
-comme le demande leur lemme. Le quantile de Student coûte une résolution de la loi bêta, environ 60 µs ; le quantile
-normal, qui est en dessous, est testé d'abord, pour que la résolution ne tourne que près de la fin.
+$a / \text{tol}$, $2 \times 10^9$ tirages, quelle que soit leur dispersion. Les 1 000 empêchent la règle de s'arrêter
+sur un petit échantillon malchanceux. Le test est fait après chaque batch, pas après chaque tirage : pour des batches
+d'une taille bornée, c'est leur règle sur la suite des fins des batches, dont le rapport de l'une à la suivante tend
+vers 1, comme le demande leur lemme. Le quantile de Student coûte une résolution de la loi bêta, environ 60 µs ; le
+quantile normal, qui est en dessous, est testé d'abord, pour que la résolution ne tourne que près de la fin.
 
 ### Ce qu'il promet
 
 - **Avec `n`.** Pour des tirages normaux, l'intervalle contient la vraie moyenne avec une probabilité `level` exactement
-  (Student, 1908). Pour des tirages de n'importe quelle loi de variance finie, la probabilité tend vers `level` quand `n`
-  grandit, par le théorème central limite. À un `n` donné, elle peut être moindre, d'autant plus que la loi est
-  asymétrique : pour un tirage de 1 avec une probabilité de 0,01 et 0 sinon, elle vaut 94,62 % à $n = 10\,000$ et
-  94,99 % à 5 000, calculées exactement en sommant la loi binomiale.
+  (Student, 1908). Pour des tirages de n'importe quelle loi de variance finie, la probabilité tend vers `level` quand
+  `n` grandit, par le théorème central limite. À un `n` donné, elle peut être moindre, d'autant plus que la loi est
+  asymétrique : pour un tirage de 1 avec une probabilité de 0,01 et 0 sinon, elle vaut 94,62 % à $n = 10\,000$ et 94,99
+  % à 5 000, calculées exactement en sommant la loi binomiale.
 - **Avec `tol`.** La demi-largeur de l'intervalle est au plus `tol` : c'est le test. Chow et Robbins ont prouvé, pour
   des tirages d'une loi dont la variance $\sigma^2$ est finie et au-dessus de 0, que quand `tol` tend vers 0, la
   probabilité que l'intervalle contienne la vraie moyenne tend vers `level`, et que $N$ tend vers
@@ -746,9 +752,9 @@ tailles, l'intervalle contre `stats.TTest`, et l'intégrale de $e^{-x^2}$ contre
 
 Un `Err` de sorte `"stats"`, dont le `Partial` est l'`Estimate` des tirages d'avant le mauvais, ou `missing` sous 2 :
 quand `f` donne NaN ou un infini, le message nommant l'appel ou l'élément d'un batch ; quand il donne une valeur qui
-n'est ni un nombre, ni `true` ni `false`, un array vide, un array après des nombres ou un nombre après des arrays ; quand
-les carrés des tirages dépassent le plus grand float, environ $1{,}8 \times 10^{308}$ ; et avec `tol`, quand `most`
-tirages passent avant que l'intervalle soit assez étroit, `Partial` contenant alors l'intervalle atteint.
+n'est ni un nombre, ni `true` ni `false`, un array vide, un array après des nombres ou un nombre après des arrays ;
+quand les carrés des tirages dépassent le plus grand float, environ $1{,}8 \times 10^{308}$ ; et avec `tol`, quand
+`most` tirages passent avant que l'intervalle soit assez étroit, `Partial` contenant alors l'intervalle atteint.
 
 ```cesia
 r = stats.MonteCarlo(() -> [1.0, 0.0 / 0.0], n = 10)
@@ -780,14 +786,15 @@ de R appelé dans une boucle de R.
 
 **Là où les autres gagnent.** R est de 10 à 23 fois plus rapide sur les quantiles de Student, du khi-deux et de la loi
 bêta : chaque pas de leur solver (le code qui résout l'équation) appelle `special.GammaInc` ou `special.BetaInc`, une
-fonction avec un paramètre par défaut qui vérifie la sorte de ses arguments, et le JIT ne fait pas encore de code machine
-d'un tel appel, si bien que le solver tourne dans l'interpréteur, environ 10 µs par pas pour cinq ou six pas. numpy est
-plus rapide sur un array entier de cdf normales, avec ses boucles en C.
+fonction avec un paramètre par défaut qui vérifie la sorte de ses arguments, et le JIT ne fait pas encore de code
+machine d'un tel appel, si bien que le solver tourne dans l'interpréteur, environ 10 µs par pas pour cinq ou six pas.
+numpy est plus rapide sur un array entier de cdf normales, avec ses boucles en C.
 
 **Monte-Carlo.** Sur la même machine, le 2026-11-14 : les temps de Cesia sont les médianes de 21 lancements et
 l'intervalle à 95 % de chacune ; numpy 2.5.4 avec scipy 1.18.1, et Octave 11.3.0, les médianes de 5 lancements, dans la
-même session. Chaque temps est pris à l'intérieur du programme, autour du travail seul. Le `tinv` d'Octave fait partie de
-son package statistics, pas installé ici : son quantile vient du `betaincinv` du cœur d'Octave, comme le calcule `tinv`.
+même session. Chaque temps est pris à l'intérieur du programme, autour du travail seul. Le `tinv` d'Octave fait partie
+de son package statistics, pas installé ici : son quantile vient du `betaincinv` du cœur d'Octave, comme le calcule
+`tinv`.
 
 | | Cesia | numpy et scipy | Octave 11.3 |
 |---|---:|---:|---:|
@@ -810,14 +817,15 @@ l'écart type de numpy. Et ni numpy ni Octave n'ont la boucle de `tol`.
 
 **Là où les autres gagnent.** La cell prend 2,8 fois le temps de numpy, même si elle bat Octave : un tirage de
 $e^{-u^2}$ coûte 33 ns dans Cesia, 15 dans numpy, sur des batches de $10^5$ qu'un seul cœur prend. L'essentiel vient de
-`x ^ 2`, qui appelle le `pow` de la bibliothèque C pour chaque élément, 23 ns, là où numpy met au carré, `x * x`, en
-0,5 ns. `pow` donne à chaque élément les bits que `^` donne à ce nombre seul ; un carré par `x * x`, arrondi une seule
-fois, diffère du `pow(x, 2)` de la glibc dans le dernier bit d'environ un double au hasard sur 2 300. `math.Exp` prend
-7,2 ns par élément, l'`exp` de numpy 6,2. Avant le 2026-11-14, `num.Uniform` était une boucle de Cesia qui appelait
-`random.Float` pour chaque nombre, 40 ns chacun, `x ^ 2` mettait chaque élément dans une box (un bloc de mémoire à part),
-110 ns, `-` et `math.Exp` le mettaient dans une box à l'entrée et à la sortie d'une closure, et un appel `f()` restait
-dans l'interpréteur : la cell prenait 2 912 ms, les tirages un par un 118 ms, $10^6$ tirages 50 ms, les médianes de
-21 lancements du binaire de main à côté de ceux-ci.
+`x ^ 2`, qui appelle le `pow` de la bibliothèque C pour chaque élément, 23 ns, là où numpy met au carré, `x * x`, en 0,5
+ns. `pow` donne à chaque élément les bits que `^` donne à ce nombre seul ; un carré par `x * x`, arrondi une seule fois,
+diffère du `pow(x, 2)` de la glibc dans le dernier bit d'environ un double au hasard sur 2 300. `math.Exp` prend 7,2 ns
+par élément, l'`exp` de numpy 6,2. Avant le 2026-11-14, `num.Uniform` était une boucle de Cesia qui appelait
+`random.Float` pour chaque nombre, 40 ns chacun, `x ^ 2` mettait chaque élément dans une box (un bloc de mémoire à
+part), 110 ns, `-` et `math.Exp` le mettaient dans une box à l'entrée et à la sortie d'une closure (une fonction qui
+garde les variables de l'endroit où elle est écrite), et un appel `f()` restait dans l'interpréteur : la cell prenait 2
+912 ms, les tirages un par un 118 ms, $10^6$ tirages 50 ms, les médianes de 21 lancements du binaire de main à côté de
+ceux-ci.
 
 `use std/stats` ajoute 1,2 ms au démarrage d'un programme une fois que le cache des packages chargés le contient (4,2 ms
 contre 3,0 pour un programme qui affiche 1), 11,8 ms la première fois (14,8 ms) : ses 3 100 lignes, et celles de
@@ -834,20 +842,20 @@ encadrement fermé, un tirage gamma par son rejet, qui accepte plus de 95 % de s
 tourner un appel sans fin. Un NaN traverse chaque formule jusqu'à un NaN, un infini jusqu'à la bonne limite. Un texte,
 un `missing` ou une autre valeur là où un nombre est attendu est une panic qui le nomme, avant tout calcul ; un champ
 d'une loi hors de son domaine est une panic qui nomme la loi, le champ et la valeur ; une valeur manquante dans les
-données d'un test ou d'un modèle est un `Err` qui nomme sa place. La taille d'un `Sample` est vérifiée avant que quoi que
-ce soit soit fait, et son array, comme tout array, compte dans la limite de mémoire du programme : au-delà, le programme
-s'arrête avec son message. Aucun paramètre ne fait grandir une table ou une matrice sans limite : une loi de comptes tire
-à travers son quantile dès que sa table dépasserait 65 536 comptes, et la matrice exacte de Kolmogorov–Smirnov reste
-d'au plus 681 × 681 (elle sert jusqu'à $n D^2 = 7{,}24$, avec $n \le 16\,000$).
+données d'un test ou d'un modèle est un `Err` qui nomme sa place. La taille d'un `Sample` est vérifiée avant que quoi
+que ce soit soit fait, et son array, comme tout array, compte dans la limite de mémoire du programme : au-delà, le
+programme s'arrête avec son message. Aucun paramètre ne fait grandir une table ou une matrice sans limite : une loi de
+comptes tire à travers son quantile dès que sa table dépasserait 65 536 comptes, et la matrice exacte de
+Kolmogorov–Smirnov reste d'au plus 681 × 681 (elle sert jusqu'à $n D^2 = 7{,}24$, avec $n \le 16\,000$).
 
 `stats.MonteCarlo` ne lit que ce que `f` donne. Ses tirages sont bornés : `n` est vérifié contre `most` avant le premier
 appel, et avec `tol` les tirages s'arrêtent à `most`, $10^9$ par défaut, avec un `Err` qui contient l'estimation
 atteinte, si bien qu'aucun `tol` ne peut le faire tourner sans fin ; `cells.Stop` l'arrête en un bloc de tirages, comme
 toute boucle de code Cesia. Il ne garde aucun tirage : les tirages un par un passent par un array de 1 000 floats, et un
-batch est lu là où `f` l'a fait, sans copie, si bien que sa mémoire est celle de `f`. Chaque tirage un par un est testé à
-son arrivée, si bien que `f` n'est plus appelé après une valeur qui n'est pas un nombre ; un NaN ou un infini est trouvé
-par les sommes de son bloc et nommé, comme le sont un array vide, qui ne finirait jamais les tirages, et une somme de
-carrés au-delà du plus grand float. Une panic dans `f` passe au travers telle quelle.
+batch est lu là où `f` l'a fait, sans copie, si bien que sa mémoire est celle de `f`. Chaque tirage un par un est testé
+à son arrivée, si bien que `f` n'est plus appelé après une valeur qui n'est pas un nombre ; un NaN ou un infini est
+trouvé par les sommes de son bloc et nommé, comme le sont un array vide, qui ne finirait jamais les tirages, et une
+somme de carrés au-delà du plus grand float. Une panic dans `f` passe au travers telle quelle.
 
 ## Pour aller plus loin
 
@@ -898,8 +906,8 @@ carrés au-delà du plus grand float. Une panic dans `f` passe au travers telle 
   Software* 26(3):363–372, 2000. <https://doi.org/10.1145/358407.358414>.
 - G. E. P. Box, Mervin E. Muller. "A note on the generation of random normal deviates". *The Annals of Mathematical
   Statistics* 29(2):610–611, 1958. <https://doi.org/10.1214/aoms/1177706645>.
-- Milton Abramowitz, Irene A. Stegun, éditeurs. *Handbook of Mathematical Functions*. National Bureau of Standards, 1964.
-  La formule 6.1.33, la série de $\log \Gamma$.
+- Milton Abramowitz, Irene A. Stegun, éditeurs. *Handbook of Mathematical Functions*. National Bureau of
+  Standards, 1964. La formule 6.1.33, la série de $\log \Gamma$.
 - W. J. Cody. "Rational Chebyshev approximations for the error function". *Mathematics of Computation* 23(107):631–637,
   1969. <https://doi.org/10.1090/S0025-5718-1969-0247736-4>.
 - Michael J. Wichura. "Algorithm AS 241: The percentage points of the normal distribution". *Applied Statistics*
@@ -910,8 +918,9 @@ carrés au-delà du plus grand float. Une panic dans `f` passe au travers telle 
   ratios". *ACM Transactions on Mathematical Software* 18(3):360–373, 1992. <https://doi.org/10.1145/131766.131776>.
 - N. M. Temme. "The asymptotic expansion of the incomplete gamma functions". *SIAM Journal on Mathematical Analysis*
   10(4):757–766, 1979. <https://doi.org/10.1137/0510071>.
-- NIST Digital Library of Mathematical Functions, chapitre 8, *Incomplete Gamma and Related Functions* : §8.9 (les fractions
-  continues), §8.12 (les développements uniformes), §8.17 (la fonction bêta incomplète). <https://dlmf.nist.gov/8>.
+- NIST Digital Library of Mathematical Functions, chapitre 8, *Incomplete Gamma and Related Functions* : §8.9 (les
+  fractions continues), §8.12 (les développements uniformes), §8.17 (la fonction bêta incomplète).
+  <https://dlmf.nist.gov/8>.
 - I. J. Thompson, A. R. Barnett. "Coulomb and Bessel functions of complex arguments and order". *Journal of
   Computational Physics* 64(2):490–509, 1986. <https://doi.org/10.1016/0021-9991(86)90046-X>. La méthode de Lentz
   modifiée pour les fractions continues.

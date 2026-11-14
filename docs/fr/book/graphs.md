@@ -1,8 +1,8 @@
 # Graphiques
 
 Dans ce chapitre, vous dessinez des données avec [std/plot] : des courbes, des points, des barres, des histogrammes, des
-heatmaps (des cartes de chaleur), des densités et des bandes. Un graphique est une valeur, comme un nombre ou une liste :
-vous le faites, en mettez plusieurs sur des axes communs, et le dessinez dans un fichier SVG, ou Cemacs le dessine sur
+heatmaps (des cartes de chaleur), des densités et des bandes. Un graphique est une valeur, comme un nombre ou une liste
+: vous le faites, en mettez plusieurs sur des axes communs, et le dessinez dans un fichier SVG, ou Cemacs le dessine sur
 son écran. Chaque étape des données jusqu'aux pixels suit une méthode publiée, nommée ici avec son article, et les tests
 de Cesia vérifient ce que promet chaque étape.
 
@@ -55,11 +55,11 @@ navigateur web ouvre et qui reste net à tous les zooms. La légende s'affiche p
 
 ## Un graphique est une valeur
 
-Rien n'est dessiné quand un graphique est fait. [plot.Line] donne un [plot.Graph] d'un seul layer, et un layer seul est un
-graphique : il s'affiche avec ses propres axes. [plot.Of] réunit les layers des graphiques qu'on lui donne, les derniers
-par-dessus ; [plot.Grid] place des graphiques côte à côte, chacun avec ses propres axes, comme le fait `subplot` dans
-MATLAB. Trois fonctions dessinent un graphique : [plot.Svg] donne son texte SVG, [plot.Save] écrit ce texte dans un
-fichier, et [plot.Scene] donne les formes dont il est fait, en pixels, que Cemacs dessine, comme le montre
+Rien n'est dessiné quand un graphique est fait. [plot.Line] donne un [plot.Graph] d'un seul layer, et un layer seul est
+un graphique : il s'affiche avec ses propres axes. [plot.Of] réunit les layers des graphiques qu'on lui donne, les
+derniers par-dessus ; [plot.Grid] place des graphiques côte à côte, chacun avec ses propres axes, comme le fait
+`subplot` dans MATLAB. Trois fonctions dessinent un graphique : [plot.Svg] donne son texte SVG, [plot.Save] écrit ce
+texte dans un fichier, et [plot.Scene] donne les formes dont il est fait, en pixels, que Cemacs dessine, comme le montre
 [Des scènes](#des-scènes-pour-un-back-end). Voici les labels des ticks de l'axe du temps ci-dessus :
 
 ```cesia
@@ -80,8 +80,8 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Grid] `(graphs, columns)` | des graphiques côte à côte |
 | [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height)` | le dessin |
 
-Une couleur s'écrit `"#rrggbb"`, le rouge, le vert et le bleu d'une couleur en deux chiffres hexadécimaux chacun, comme en
-CSS. Un layer sans couleur prend la suivante de la palette de [Couleurs](#couleurs).
+Une couleur s'écrit `"#rrggbb"`, le rouge, le vert et le bleu d'une couleur en deux chiffres hexadécimaux chacun, comme
+en CSS. Un layer sans couleur prend la suivante de la palette de [Couleurs](#couleurs).
 
 ### Courbes et points
 
@@ -103,8 +103,8 @@ result.Unwrap(plot.Scene(noisy, 640, 400)).Dropped -->
 
 ### Barres et histogrammes
 
-[plot.Bars] dessine une barre de 0 à chaque hauteur, une pour chaque nom. Avec une liste de listes, les barres d'un nom se
-tiennent côte à côte, une série pour chaque liste, et `label` et `color` sont des listes, une pour chaque série :
+[plot.Bars] dessine une barre de 0 à chaque hauteur, une pour chaque nom. Avec une liste de listes, les barres d'un nom
+se tiennent côte à côte, une série pour chaque liste, et `label` et `color` sont des listes, une pour chaque série :
 
 ```cesia norun
 plot.Bars(["north", "south", "west"], [[12, 9, 4], [14, 7, 6]], label = ["2025", "2026"])
@@ -135,28 +135,28 @@ deuxième à `x = 2`, et ainsi de suite, si bien qu'une courbe qui passe par `[1
 Un nom trop large pour sa barre met son label à la verticale.
 
 [plot.Histogram] compte des valeurs dans des *bins*, des intervalles côte à côte, et dessine une barre pour chacun.
-`bins` vaut missing pour la règle de Freedman et Diaconis, un nombre pour autant de bins de même largeur de la plus petite
-valeur à la plus grande, ou une liste de bords, croissants. Un bin contient les valeurs de son bord gauche, inclus, à son
-bord droit, exclu, et le dernier bin contient aussi son bord droit, comme le fait numpy. Les NaN, les infinis et les
-valeurs hors des bords sont laissés de côté.
+`bins` vaut missing pour la règle de Freedman et Diaconis, un nombre pour autant de bins de même largeur de la plus
+petite valeur à la plus grande, ou une liste de bords, croissants. Un bin contient les valeurs de son bord gauche,
+inclus, à son bord droit, exclu, et le dernier bin contient aussi son bord droit, comme le fait numpy. Les NaN, les
+infinis et les valeurs hors des bords sont laissés de côté.
 
-La règle de Freedman et Diaconis (1981) fait des bins de largeur $h = 2 \cdot IQR \cdot n^{-1/3}$, où $n$ est le nombre de
-valeurs et l'IQR, l'*interquartile range* (l'écart interquartile), est la distance entre le premier quartile, la valeur
-sous laquelle se trouve un quart des valeurs, et le troisième, sous lequel se trouvent les trois quarts. Leur article
-montre que l'erreur d'un histogramme comme estimation de la densité des valeurs, mesurée en $L^2$, est la plus petite pour
-des bins d'une largeur qui diminue comme $n^{-1/3}$, et propose $2 \cdot IQR$ pour le facteur : l'IQR empêche la largeur
-de suivre quelques valeurs lointaines. Le nombre de bins est $\lceil (\max - \min) / h \rceil$, au plus 10 000. Quand
-l'IQR vaut 0, comme quand la plupart des valeurs sont égales, la largeur vaudrait 0, et la règle de Sturges (1926),
-$\lceil \log_2 n \rceil + 1$ bins, prend sa place. Les quartiles interpolent entre les deux valeurs triées les plus
-proches, le *type 7* de Hyndman et Fan, que numpy et R prennent par défaut. Les comptes viennent des valeurs triées, par
-une recherche dichotomique pour chaque bord.
+La règle de Freedman et Diaconis (1981) fait des bins de largeur $h = 2 \cdot IQR \cdot n^{-1/3}$, où $n$ est le nombre
+de valeurs et l'IQR, l'*interquartile range* (l'écart interquartile), est la distance entre le premier quartile, la
+valeur sous laquelle se trouve un quart des valeurs, et le troisième, sous lequel se trouvent les trois quarts. Leur
+article montre que l'erreur d'un histogramme comme estimation de la densité des valeurs, mesurée en $L^2$, est la plus
+petite pour des bins d'une largeur qui diminue comme $n^{-1/3}$, et propose $2 \cdot IQR$ pour le facteur : l'IQR
+empêche la largeur de suivre quelques valeurs lointaines. Le nombre de bins est $\lceil (\max - \min) / h \rceil$, au
+plus 10 000. Quand l'IQR vaut 0, comme quand la plupart des valeurs sont égales, la largeur vaudrait 0, et la règle de
+Sturges (1926), $\lceil \log_2 n \rceil + 1$ bins, prend sa place. Les quartiles interpolent entre les deux valeurs
+triées les plus proches, le *type 7* de Hyndman et Fan, que numpy et R prennent par défaut. Les comptes viennent des
+valeurs triées, par une recherche dichotomique pour chaque bord.
 
 ### Heatmaps et densités
 
 [plot.Heatmap] colore chaque cellule d'une matrice selon sa valeur, et met à côté une *barre de couleurs*, l'échelle qui
-va des couleurs aux valeurs. `x` donne la valeur de chaque colonne et `y` celle de chaque ligne, croissantes ; une cellule
-s'étend jusqu'à mi-chemin de ses voisines. Sans `y`, la ligne 1 est en haut, comme la matrice s'écrit, et les lignes sont
-numérotées vers le bas. Un NaN laisse sa cellule vide.
+va des couleurs aux valeurs. `x` donne la valeur de chaque colonne et `y` celle de chaque ligne, croissantes ; une
+cellule s'étend jusqu'à mi-chemin de ses voisines. Sans `y`, la ligne 1 est en haut, comme la matrice s'écrit, et les
+lignes sont numérotées vers le bas. Un NaN laisse sa cellule vide.
 
 ```cesia norun
 m = [-2.0, 0.5, 1.0; 1.5, -0.5, 3.0]
@@ -231,8 +231,8 @@ invisible(dev.off())
 [plot.Of] prend les options des axes : `title` ; `x` et `y`, les noms des axes ; `xscale` et `yscale`, `"linear"` ou
 `"log"` pour un axe logarithmique en base 10, où chaque puissance de dix prend la même longueur ; `xlim` et `ylim`,
 l'étendue d'un axe sous la forme `[low, high]` ; `legend = false` pour cacher la légende ; `size = [width, height]` en
-pixels, 640 sur 400 par défaut, 100 sur 80 au moins. Les options d'un [plot.Of] donné comme layer sont laissées de côté :
-celles du plus extérieur s'appliquent.
+pixels, 640 sur 400 par défaut, 100 sur 80 au moins. Les options d'un [plot.Of] donné comme layer sont laissées de côté
+: celles du plus extérieur s'appliquent.
 
 ## Des données aux pixels
 
@@ -241,10 +241,10 @@ celles du plus extérieur s'appliquent.
 Un axe couvre les données de ses layers, plus 5 % de cette étendue de chaque côté, comme le font matplotlib et ggplot2,
 pour qu'aucun point ne soit posé sur le cadre ; sur un axe logarithmique, les 5 % sont pris de l'étendue des
 logarithmes. Les barres et les histogrammes partent de 0, si bien que leur axe ne descend pas sous 0 quand aucune valeur
-n'y descend. Les cellules d'une heatmap ou d'une densité couvrent leur axe exactement. `xlim` et `ylim` donnent l'étendue
-exactement, et les données au-delà sont coupées au cadre. Quand toutes les valeurs sont une seule valeur, l'axe en couvre
-10 % de chaque côté, ou 1 autour de 0, ou une demi-puissance de dix sur un axe logarithmique. Un axe logarithmique avec une
-valeur à 0 ou en dessous est un `Err` qui nomme le layer et la première de ces valeurs.
+n'y descend. Les cellules d'une heatmap ou d'une densité couvrent leur axe exactement. `xlim` et `ylim` donnent
+l'étendue exactement, et les données au-delà sont coupées au cadre. Quand toutes les valeurs sont une seule valeur,
+l'axe en couvre 10 % de chaque côté, ou 1 autour de 0, ou une demi-puissance de dix sur un axe logarithmique. Un axe
+logarithmique avec une valeur à 0 ou en dessous est un `Err` qui nomme le layer et la première de ces valeurs.
 
 ### Les ticks
 
@@ -255,26 +255,27 @@ par quatre mesures :
 
 - la *simplicité*, $1 - \frac{i - 1}{5} - j + v$, où $i$ est la place de $q$ dans la liste et $v$ vaut 1 quand 0 est un
   label ;
-- la *couverture*, $1 - \frac{1}{2} \cdot \frac{(d_{max} - l_{max})^2 + (d_{min} - l_{min})^2}{(0{,}1 (d_{max} - d_{min}))^2}$ :
-  quelle part de l'étendue de l'axe $[d_{min}, d_{max}]$ les labels $[l_{min}, l_{max}]$ couvrent ;
+- la *couverture*,
+  $1 - \frac{1}{2} \cdot \frac{(d_{max} - l_{max})^2 + (d_{min} - l_{min})^2}{(0{,}1 (d_{max} - d_{min}))^2}$ : quelle
+  part de l'étendue de l'axe $[d_{min}, d_{max}]$ les labels $[l_{min}, l_{max}]$ couvrent ;
 - la *densité*, $2 - \max(r / r_t, r_t / r)$, où $r$ est le nombre de labels par unité et $r_t$ la cible, un label pour
   100 pixels le long de x et pour 60 le long de y ;
 - la *lisibilité* : moins l'infini quand deux labels se toucheraient, à moins de 6 pixels l'un de l'autre le long de x,
   ou à moins d'une ligne et 2 pixels le long de y ; 1 sinon.
 
-La note est $0{,}25 s + 0{,}2 c + 0{,}5 d + 0{,}05 l$, les poids de l'article, et la recherche arrête une branche dès que la
-meilleure note qu'elle pourrait encore atteindre est sous la meilleure trouvée. Un changement par rapport à l'article :
-l'étendue de l'axe est fixée d'abord, comme le dit la section au-dessus, et seuls les ensembles de labels à l'intérieur
-sont essayés, si bien que chaque tick est sur l'axe. Quand aucun ensemble ne tient, les labels s'écrivent plus courts,
-avec une puissance de dix, et quand aucun ne tient encore, sur un axe trop court pour trois labels, le meilleur ensemble
-est pris tel quel.
+La note est $0{,}25 s + 0{,}2 c + 0{,}5 d + 0{,}05 l$, les poids de l'article, et la recherche arrête une branche dès
+que la meilleure note qu'elle pourrait encore atteindre est sous la meilleure trouvée. Un changement par rapport à
+l'article : l'étendue de l'axe est fixée d'abord, comme le dit la section au-dessus, et seuls les ensembles de labels à
+l'intérieur sont essayés, si bien que chaque tick est sur l'axe. Quand aucun ensemble ne tient, les labels s'écrivent
+plus courts, avec une puissance de dix, et quand aucun ne tient encore, sur un axe trop court pour trois labels, le
+meilleur ensemble est pris tel quel.
 
-Un label est le décimal le plus court qui se relit en son tick : `0.5`, `2`, `−1.5`, avec le vrai signe moins, U+2212. Il
-est écrit à partir d'entiers, $n \cdot 10^e$ pour chaque tick, jamais à partir du float binaire, si bien que
-`0.30000000000000004` ne peut pas s'afficher. Au-delà de $10^6$, ou sous $10^{-4}$, les labels comptent en une
-puissance de dix, montrée une fois au bout de l'axe : `1`, `2`, `3` et `×10⁷`. Quand les ticks partagent 4 premiers
-chiffres ou plus, comme des temps en secondes depuis 1970, ils comptent à partir d'un *offset* (un décalage), un nombre
-rond montré là aussi : `2`, `4`, `6` et `+1.7314×10⁹`. Ce sont les deux façons de matplotlib, avec des seuils à nous.
+Un label est le décimal le plus court qui se relit en son tick : `0.5`, `2`, `−1.5`, avec le vrai signe moins, U+2212.
+Il est écrit à partir d'entiers, $n \cdot 10^e$ pour chaque tick, jamais à partir du float binaire, si bien que
+`0.30000000000000004` ne peut pas s'afficher. Au-delà de $10^6$, ou sous $10^{-4}$, les labels comptent en une puissance
+de dix, montrée une fois au bout de l'axe : `1`, `2`, `3` et `×10⁷`. Quand les ticks partagent 4 premiers chiffres ou
+plus, comme des temps en secondes depuis 1970, ils comptent à partir d'un *offset* (un décalage), un nombre rond montré
+là aussi : `2`, `4`, `6` et `+1.7314×10⁹`. Ce sont les deux façons de matplotlib, avec des seuils à nous.
 
 Un axe logarithmique met ses ticks aux puissances de dix, écrites `10ⁿ` : toutes, ou une sur deux, trois, cinq ou plus,
 pour qu'il en tienne de 3 à 12. Avec moins de 3 puissances de dix dans son étendue, il ajoute 2 et 5 fois chaque
@@ -286,21 +287,22 @@ Les marges autour du tracé sont mesurées, pas devinées : la largeur de chaque
 (les chasses) de ses caractères, de combien chacun fait avancer la plume, dans la police avec laquelle Cemacs dessine,
 Noto Sans Medium. [std/plot] garde ces largeurs pour les lettres latines, Latin-1 et Latin Extended-A, le grec, et la
 ponctuation, les exposants, les indices et le signe moins des nombres et des unités, lues dans le fichier de la police
-par `tools/plot-font.ce`. Un test mesure chacune d'elles avec SDL3_ttf, la bibliothèque de texte de Cemacs, et les trouve
-toutes à moins d'un pixel près. Un caractère hors de celles-ci, comme un caractère chinois, compte pour un *em* entier,
-la taille de la police, aussi large que n'importe lequel de ces glyphes sauf `‰`, pour qu'aucun label ne chevauche ou ne
-soit coupé, au prix d'un peu de place. Le trait d'union conditionnel ne compte rien, puisque la mise en forme le cache.
+par `tools/plot-font.ce`. Un test mesure chacune d'elles avec SDL3_ttf, la bibliothèque de texte de Cemacs, et les
+trouve toutes à moins d'un pixel près. Un caractère hors de celles-ci, comme un caractère chinois, compte pour un *em*
+entier, la taille de la police, aussi large que n'importe lequel de ces glyphes sauf `‰`, pour qu'aucun label ne
+chevauche ou ne soit coupé, au prix d'un peu de place. Le trait d'union conditionnel ne compte rien, puisque la mise en
+forme le cache.
 
-Les textes sont dessinés sans *kerning* (le crénage), les petits déplacements entre des paires de lettres comme `AV`, pour
-que les largeurs mesurées soient les largeurs dessinées. Le SVG nomme d'abord Noto Sans, puis la police sans-serif du
-navigateur : un lecteur sans Noto Sans dessine les textes dans une autre police, un peu plus large ou plus étroite que ce
-qui a été mesuré. L'encre de quelques lettres, comme un `f` ou un `î` au bout d'un label, va jusqu'à environ 0,2 em
-au-delà de sa chasse, 2 pixels à 12 ; l'espace gardé entre les labels, 6 pixels, le couvre.
+Les textes sont dessinés sans *kerning* (le crénage), les petits déplacements entre des paires de lettres comme `AV`,
+pour que les largeurs mesurées soient les largeurs dessinées. Le SVG nomme d'abord Noto Sans, puis la police sans-serif
+du navigateur : un lecteur sans Noto Sans dessine les textes dans une autre police, un peu plus large ou plus étroite
+que ce qui a été mesuré. L'encre de quelques lettres, comme un `f` ou un `î` au bout d'un label, va jusqu'à environ 0,2
+em au-delà de sa chasse, 2 pixels à 12 ; l'espace gardé entre les labels, 6 pixels, le couvre.
 
-Les largeurs connues, la mise en page réserve le titre, les labels des ticks, les noms des axes, la légende et la barre de
-couleurs, et donne au tracé ce qui reste. Un label au bout d'un axe peut dépasser du tracé : la marge grandit pour le
-contenir. Les tests vérifient, sur des graphiques de données au hasard et de tailles au hasard, que chaque texte est dans
-l'image et que deux labels d'un axe ne se chevauchent jamais.
+Les largeurs connues, la mise en page réserve le titre, les labels des ticks, les noms des axes, la légende et la barre
+de couleurs, et donne au tracé ce qui reste. Un label au bout d'un axe peut dépasser du tracé : la marge grandit pour le
+contenir. Les tests vérifient, sur des graphiques de données au hasard et de tailles au hasard, que chaque texte est
+dans l'image et que deux labels d'un axe ne se chevauchent jamais.
 
 ### Les longues courbes : M4
 
@@ -310,9 +312,9 @@ plus bas et le plus haut. Les pixels allumés sont les mêmes qu'avec tous les p
 les colonnes comme le faisaient tous les points, et le plus bas et le plus haut couvrent la colonne comme le faisaient
 tous les points. L'article le prouve pour une courbe d'un pixel de large, dessinée sans anti-aliasing (le lissage des
 bords) à la taille pour laquelle les points ont été groupés ; un test de [std/plot] dessine des courbes de 60 000 points
-des deux façons avec l'algorithme de Bresenham (1965), la façon classique de dessiner une ligne sur une grille de pixels,
-et compare chaque pixel. Une courbe lissée ou plus large, comme Cemacs et les navigateurs en dessinent, peut différer
-d'une nuance au bord d'une colonne.
+des deux façons avec l'algorithme de Bresenham (1965), la façon classique de dessiner une ligne sur une grille de
+pixels, et compare chaque pixel. Une courbe lissée ou plus large, comme Cemacs et les navigateurs en dessinent, peut
+différer d'une nuance au bord d'une colonne.
 
 [std/plot] se sert de M4 quand x ne décroît jamais le long de la courbe et qu'il y a plus de 4 points par colonne du
 tracé. Une courbe dont le x va et vient, comme un cercle, garde tous ses points.
@@ -321,17 +323,17 @@ tracé. Une courbe dont le x va et vient, comme un cercle, garde tous ses points
 
 Les layers prennent tour à tour les huit couleurs d'Okabe et Ito (2008), choisies pour rester distinctes pour les formes
 courantes de daltonisme : bleu `#0072b2`, vermillon `#d55e00`, vert bleuté `#009e73`, pourpre rougeâtre `#cc79a7`, bleu
-ciel `#56b4e9`, orange `#e69f00`, jaune `#f0e442` et noir `#000000`. Le noir vient en dernier, puisqu'il disparaît sur un
-fond sombre.
+ciel `#56b4e9`, orange `#e69f00`, jaune `#f0e442` et noir `#000000`. Le noir vient en dernier, puisqu'il disparaît sur
+un fond sombre.
 
-Les heatmaps et les densités prennent *viridis*, de van der Walt et Smith (2015) : sa luminosité croît régulièrement de la
-plus petite valeur à la plus grande, si bien que des pas égaux des données ont l'air de pas égaux de couleur, une carte
-*perceptuellement uniforme*, et elle reste dans l'ordre en gris et pour des yeux daltoniens. Une valeur prend l'une de
-ses 256 couleurs, celles de la table de matplotlib, le numéro
+Les heatmaps et les densités prennent *viridis*, de van der Walt et Smith (2015) : sa luminosité croît régulièrement de
+la plus petite valeur à la plus grande, si bien que des pas égaux des données ont l'air de pas égaux de couleur, une
+carte *perceptuellement uniforme*, et elle reste dans l'ordre en gris et pour des yeux daltoniens. Une valeur prend
+l'une de ses 256 couleurs, celles de la table de matplotlib, le numéro
 $\lfloor 256 (v - v_{min}) / (v_{max} - v_{min}) \rfloor$, la dernière pour la plus grande. `colors = "diverging"` prend
 le RdBu de ColorBrewer, de Harrower et Brewer (2003), pour des données autour de 0 : bleu foncé pour la plus négative,
-blanc à 0, rouge foncé pour la plus positive, ses 11 couleurs reliées par des segments, et la même distance des deux côtés
-de 0. Les thèmes de Cemacs changent les axes et les textes, jamais les couleurs des données.
+blanc à 0, rouge foncé pour la plus positive, ses 11 couleurs reliées par des segments, et la même distance des deux
+côtés de 0. Les thèmes de Cemacs changent les axes et les textes, jamais les couleurs des données.
 
 ## Des scènes, pour un back-end
 
@@ -350,8 +352,8 @@ chacun un dictionnaire avec un `Kind` (une sorte) et un `Role` (un rôle) :
 
 Les coordonnées sont en pixels depuis le coin en haut à gauche. Les éléments des données ont `Clip`, le rectangle
 `[x, y, width, height]` du tracé auquel ils sont coupés. Une `Color` vaut `"#rrggbb"`, ou `"ink"` et `"grid"` pour le
-cadre, les ticks et les textes, qu'un back-end peint dans les couleurs de son thème ; [plot.Svg] les peint en `#222222` et
-`#e6e6e6` sur du blanc. Le `Role` dit ce qu'est un élément : `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"` et
+cadre, les ticks et les textes, qu'un back-end peint dans les couleurs de son thème ; [plot.Svg] les peint en `#222222`
+et `#e6e6e6` sur du blanc. Le `Role` dit ce qu'est un élément : `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"` et
 `"ylabel"` pour les labels des ticks, `"factor"` pour la puissance de dix ou l'offset d'un axe, `"title"`, `"xtitle"`,
 `"ytitle"`, `"legend"` ou `"colorbar"`.
 
@@ -368,14 +370,14 @@ plot.Svg(plot.Of([plot.Line([1, 10], [0, 5], label = "rate")], yscale = "log")) 
 
 Les vérifications : les longueurs de `x` et `y`, une valeur qui n'est pas un nombre, aucune valeur finie du tout, un axe
 logarithmique avec une valeur à 0 ou en dessous, plus de 200 000 points, un nombre de bins sous 1 ou des bords qui ne
-croissent pas, une couleur, une forme, un tireté, une échelle ou une étendue mal écrits, et une taille trop petite pour le
-tracé.
+croissent pas, une couleur, une forme, un tireté, une échelle ou une étendue mal écrits, et une taille trop petite pour
+le tracé.
 
 ## Vitesse
 
 Un programme qui ne se sert pas de [std/plot] démarre aussi vite qu'avant : 2,8 ms pour `io.Print(1)`. `use std/plot`
-charge ses 2 000 lignes en environ 6,5 ms, et un premier graphique, du début du programme à son SVG, prend 15 ms. Ensuite
-[plot.Svg] prend, en médiane de 21 lancements sur un ordinateur de bureau de 8 cœurs :
+charge ses 2 000 lignes en environ 6,5 ms, et un premier graphique, du début du programme à son SVG, prend 15 ms.
+Ensuite [plot.Svg] prend, en médiane de 21 lancements sur un ordinateur de bureau de 8 cœurs :
 
 | Graphique | Temps |
 |---|---|
@@ -392,8 +394,8 @@ temps.
 
 ## Limites
 
-- Du SVG seulement, pour l'instant ; le PNG viendra avec un rasterizer (le code qui change un dessin en pixels) choisi sur
-  mesure.
+- Du SVG seulement, pour l'instant ; le PNG viendra avec un rasterizer (le code qui change un dessin en pixels) choisi
+  sur mesure.
 - Une seule police est mesurée, Noto Sans Medium ; les autres polices dessinent un peu plus large ou plus étroit.
 - La légende et la barre de couleurs sont à droite du tracé ; les barres sont debout ; un graphique contient un seul
   [plot.Bars].
@@ -403,8 +405,8 @@ temps.
 ## Pour aller plus loin
 
 - Justin Talbot, Sharon Lin, Pat Hanrahan. "An Extension of Wilkinson's Algorithm for Positioning Tick Labels on Axes".
-  *IEEE Transactions on Visualization and Computer Graphics* 16(6):1036–1043, 2010. <https://doi.org/10.1109/TVCG.2010.130>.
-  La recherche des ticks et ses quatre notes.
+  *IEEE Transactions on Visualization and Computer Graphics* 16(6):1036–1043, 2010.
+  <https://doi.org/10.1109/TVCG.2010.130>. La recherche des ticks et ses quatre notes.
 - Uwe Jugel, Zbigniew Jerzak, Gregor Hackenbroich, Volker Markl. "M4: A Visualization-Oriented Time Series Data
   Aggregation". *Proceedings of the VLDB Endowment* 7(10):797–808, 2014. <https://doi.org/10.14778/2732951.2732953>. Les
   quatre points par colonne de pixels d'une longue courbe.
@@ -418,8 +420,8 @@ temps.
 - Masataka Okabe, Kei Ito. "Color Universal Design (CUD): How to make figures and presentations that are friendly to
   Colorblind people". J*Fly, 2002, revu en 2008. <https://jfly.uni-koeln.de/color/>. Les couleurs des layers.
 - Stéfan van der Walt, Nathaniel Smith. "matplotlib colormaps", la page des cartes de couleurs qu'ils ont conçues pour
-  être celles de matplotlib par défaut, avec leur exposé à SciPy 2015. <https://bids.github.io/colormap/>. Viridis, d'après
-  la table de matplotlib 3.11.
+  être celles de matplotlib par défaut, avec leur exposé à SciPy 2015. <https://bids.github.io/colormap/>. Viridis,
+  d'après la table de matplotlib 3.11.
 - Mark Harrower, Cynthia A. Brewer. "ColorBrewer.org: An Online Tool for Selecting Colour Schemes for Maps". *The
   Cartographic Journal* 40(1):27–37, 2003. <https://doi.org/10.1179/000870403235002042>. RdBu.
 - J. E. Bresenham. "Algorithm for computer control of a digital plotter". *IBM Systems Journal* 4(1):25–30, 1965.
@@ -430,5 +432,5 @@ temps.
 ## La suite
 
 Vous savez dessiner ce que vous calculez. Le chapitre suivant, [Méthodes numériques](numerical.md), trouve les zéros et
-les minima des fonctions, résout les équations différentielles et les systèmes sparse (dont la matrice est presque toute faite de zéros), et
-calcule des intégrales.
+les minima des fonctions, résout les équations différentielles et les systèmes sparse (dont la matrice est presque toute
+faite de zéros), et calcule des intégrales.
