@@ -406,18 +406,18 @@ tableau ; toute autre, ou un caractère comme ≤ écrit tel quel, arrête le bu
 
 | Sorte | Commandes |
 |---|---|
-| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` |
-| opérateurs | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod`, et `+ - = < > / ! , ; : .` |
+| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` `\leftarrow` |
+| opérateurs | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod` `\ast` `\circ`, et `+ - = < > / ! , ; : .` |
 | parenthèses | `( ) [ ] \|`, `\lceil` `\rceil` `\lfloor` `\rfloor`, `\{` `\}` |
 | grec | `\alpha` à `\omega`, `\Gamma` `\Delta` `\Theta` `\Lambda` `\Xi` `\Pi` `\Sigma` `\Phi` `\Psi` `\Omega` |
 | fonctions | `\log` `\ln` `\exp` `\min` `\max` `\sin` `\cos`, avec les espaces fines de TeX : $n \log n$ |
 | sommes et produits | `\sum` `\prod`, leurs bornes avec `_` et `^`, à côté d'eux dans une ligne, au-dessus et en dessous dans une formule seule sur ses lignes |
 | structures | `x_i`, `2^{31}`, `f'`, `\frac{a}{b}`, `\sqrt{x}` |
-| mots et noms | `\text{some words}`, en romain ; `\mathit{vlo}`, un nom de plusieurs lettres en italique |
+| mots et noms | `\text{some words}`, en romain ; `\mathrm{pred}`, un nom droit, de lettres seulement, écrit comme `\text` l'écrit ; `\mathit{vlo}`, un nom de plusieurs lettres en italique |
 | autres | `\dots` `\infty` `\emptyset` ; les espaces `\,` `\;` `\quad` et `\ ` ; `1{,}000` pour une virgule dans un nombre |
 
 La police est une partie de STIX Two Math 2.13 (du STIX Fonts Project, sous SIL Open Font License 1.1), réduite aux
-caractères qu'une formule peut contenir : 74 KB. Le site la garde à côté de sa licence, `math-OFL.txt`.
+caractères qu'une formule peut contenir : 75 KB. Le site la garde à côté de sa licence, `math-OFL.txt`.
 
 ### Remarques et avertissements
 
