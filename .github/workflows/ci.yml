@@ -38,6 +38,10 @@ jobs:
           [ "$RUNNER_ARCH" = ARM64 ] && want='^jit: off on arm64'
           grep -q "$want" jit.txt || { echo "no line $want" | tee -a jit.txt; exit 1; }
           tr -d '\r' < out.txt | grep -qx 9227465 || { echo "out.txt isn't 9227465" | tee -a jit.txt; exit 1; }
+      # tests/tabs runs Python with no network, in a namespace of its own, which Ubuntu's AppArmor refuses to a user unless
+      # told otherwise.
+      - name: Namespaces for tests/tabs
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
       - name: Tests
         timeout-minutes: 10
         shell: bash

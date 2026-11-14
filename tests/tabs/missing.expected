@@ -1,0 +1,20 @@
+== here
+WARNING tabs: 1 R tab was not run: Rscript doesn't run here. CI runs them.
+WARNING tabs: 2 MATLAB tabs were not run: octave-cli doesn't run here. CI runs them.
+tabs: 1 of 1 agree (Python 1)
+exit 0
+== in CI
+tabs: 1 R tab was not run: Rscript doesn't run here, and CI must run every tab.
+tabs: 2 MATLAB tabs were not run: octave-cli doesn't run here, and CI must run every tab.
+tabs: 1 of 1 agree (Python 1)
+exit 1
+== without unshare, here
+WARNING tabs: no tab ran: prlimit and unshare -rn can't cap them here. CI runs them.
+exit 0
+== without unshare, in CI
+tabs: no tab ran: prlimit and unshare -rn can't cap them here, and CI must run every tab.
+exit 1
+== a site without tabs
+tabs: none
+exit 0
+exit 0

@@ -9,6 +9,8 @@ for page in index first files; do
   echo "== $page.html"
   sed -n '/<main/,/<\/main>/p' "site/$page.html"
 done
+echo "== the tabs, for tools/tabs.ce: each with what its cesia block showed"
+sed "s#$t#TMP#g" site/.tabs; echo
 echo "== the columns of a method: its module, then its struct, then itself"
 sed -n '/<nav class="side"/,/<\/nav>/p' site/ref/src/greet/Greeter.Say.html | grep -E 'greet|Greeter|Say|Hello'
 grep -o '<nav class="trail".*</nav>' site/ref/src/greet/Greeter.Say.html

@@ -5,6 +5,11 @@ value, as a number or a list is: you make it, put several on shared axes, and dr
 on its screen. Each step from the data to the pixels follows a published method, named here with its paper, and the
 tests of Cesia check what each step promises.
 
+> [!NOTE]
+> The first graphs have tabs: the same graph in Python with matplotlib and in R with its own graphics. Each tab runs when
+> the book is checked and must end well, printing what the Cesia version shows: here nothing, as `Ok(missing)` says. They
+> have no MATLAB tab yet. See [Tabs in other languages](tests.md#tabs-in-other-languages).
+
 ## A first graph
 
 [plot.Line] makes a line through points, [plot.Of] puts several layers on shared axes with a title and the names of the
@@ -19,6 +24,27 @@ t = num.Linspace(0.0, 10.0, 200)
 waves = plot.Of([plot.Line(t, math.Sin(t), label = "sin"), plot.Line(t, math.Cos(t), label = "cos", dash = "dashed")],
   title = "Two waves", x = "time (s)", y = "value")
 plot.Save(waves, "waves.svg") -->
+```
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+t = np.linspace(0.0, 10.0, 200)
+fig, ax = plt.subplots(figsize=(6.4, 4.0))
+ax.plot(t, np.sin(t), label="sin")
+ax.plot(t, np.cos(t), label="cos", linestyle="dashed")
+ax.set(title="Two waves", xlabel="time (s)", ylabel="value")
+ax.legend()
+fig.savefig("waves.svg")
+```
+
+```r
+t <- seq(0, 10, length.out = 200)
+svg("waves.svg", width = 6.4, height = 4)
+plot(t, sin(t), type = "l", main = "Two waves", xlab = "time (s)", ylab = "value")
+lines(t, cos(t), lty = "dashed")
+legend("topright", legend = c("sin", "cos"), lty = c("solid", "dashed"))
+invisible(dev.off())
 ```
 
 `waves.svg` is an image of 640 by 400 pixels in *SVG*, Scalable Vector Graphics, the format of drawings that every web
@@ -79,6 +105,26 @@ side, one series for each list, and `label` and `color` are lists, one for each 
 plot.Bars(["north", "south", "west"], [[12, 9, 4], [14, 7, 6]], label = ["2025", "2026"])
 ```
 
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+names = ["north", "south", "west"]
+x = np.arange(len(names))
+fig, ax = plt.subplots()
+ax.bar(x - 0.2, [12, 9, 4], width=0.4, label="2025")
+ax.bar(x + 0.2, [14, 7, 6], width=0.4, label="2026")
+ax.set_xticks(x, names)
+ax.legend()
+fig.savefig("bars.svg")
+```
+
+```r
+svg("bars.svg")
+barplot(rbind(c(12, 9, 4), c(14, 7, 6)), beside = TRUE, names.arg = c("north", "south", "west"),
+  legend.text = c("2025", "2026"))
+invisible(dev.off())
+```
+
 A graph holds one [plot.Bars]. Other layers can share its axes: the first name is at `x = 1`, the second at `x = 2`, and
 on, so a line through `[1, 2, 3]` crosses the bars at their middles. A name too wide for its bar turns its label upright.
 
@@ -108,6 +154,23 @@ m = [-2.0, 0.5, 1.0; 1.5, -0.5, 3.0]
 plot.Heatmap(m, colors = "diverging")
 ```
 
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+m = np.array([[-2.0, 0.5, 1.0], [1.5, -0.5, 3.0]])
+fig, ax = plt.subplots()
+cells = ax.imshow(m, cmap="RdBu_r", vmin=-3.0, vmax=3.0)
+fig.colorbar(cells)
+fig.savefig("heatmap.svg")
+```
+
+```r
+m <- matrix(c(-2, 0.5, 1, 1.5, -0.5, 3), nrow = 2, byrow = TRUE)
+svg("heatmap.svg")
+image(t(m[nrow(m):1, ]), col = hcl.colors(21, "Blue-Red"), zlim = c(-3, 3), axes = FALSE)
+invisible(dev.off())
+```
+
 [plot.Density] is a *2D histogram*: it splits the range of the points into `bins` by `bins` cells, 100 by 100 by
 default, counts the points of each cell, and colors the cells by their count. Every point is counted, none is sampled,
 so a cloud of ten million points shows as it is. An empty cell stays empty.
@@ -125,6 +188,32 @@ confidence interval, the envelope of a signal. A NaN in any of the three cuts th
 mean = math.Sin(t)
 spread = 0.2 + 0.1 * math.Cos(t)
 plot.Of([plot.Area(t, mean - spread, mean + spread, label = "±1 σ"), plot.Line(t, mean, label = "mean")])
+```
+
+```python
+import numpy as np
+import matplotlib.pyplot as plt
+t = np.linspace(0.0, 10.0, 200)
+mean = np.sin(t)
+spread = 0.2 + 0.1 * np.cos(t)
+fig, ax = plt.subplots()
+ax.fill_between(t, mean - spread, mean + spread, alpha=0.3, label="±1 σ")
+ax.plot(t, mean, label="mean")
+ax.legend()
+fig.savefig("band.svg")
+```
+
+```r
+t <- seq(0, 10, length.out = 200)
+middle <- sin(t)
+spread <- 0.2 + 0.1 * cos(t)
+band <- adjustcolor("steelblue", alpha.f = 0.3)
+svg("band.svg")
+plot(t, middle, type = "n", ylim = range(middle - spread, middle + spread), xlab = "", ylab = "")
+polygon(c(t, rev(t)), c(middle - spread, rev(middle + spread)), col = band, border = NA)
+lines(t, middle)
+legend("topright", legend = c("±1 σ", "mean"), fill = c(band, NA), border = NA, lty = c(NA, 1))
+invisible(dev.off())
 ```
 
 ### Options of a graph

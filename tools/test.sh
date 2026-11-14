@@ -41,6 +41,7 @@ command -v g++ > /dev/null || skip tests/cpp "no g++"
 pkg-config --exists libsodium 2>/dev/null || skip tests/crypto "no libsodium"
 pkg-config --exists openssl 2>/dev/null || skip tests/tls "no OpenSSL"
 "$cesia" run tests/sqlite/has-sqlite.ce > /dev/null 2>&1 || skip tests/sqlite "no SQLite"
+{ command -v python3 && command -v prlimit && unshare -rn true; } > /dev/null 2>&1 || skip tests/tabs "no python3, prlimit or unshare -rn"
 "$cesia" run --allow ffi=SDL3_ttf,read=/usr/share/fonts tests/fonts/has-font.ce > /dev/null 2>&1 || skip tests/fonts "no SDL3_ttf or Noto Sans Medium"
 CESIA_JIT_SHOW=1 "$cesia" version 2>&1 | grep -q '^jit: off' && skip tests/jit "no JIT on this machine"
 # An engine that an earlier build made for this machine, kept in git: another system or compiler has none for its tag.

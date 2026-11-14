@@ -22,6 +22,8 @@ try "a --> at the end of a call written on several lines" 'add "" "${f}cesia" "l
 try "a norun block with an unknown name" 'add "" "${f}cesia norun" "NoSuchName(1)" "$f"'
 try "a word cesia blocks don't have" 'add "" "${f}cesia quiet" "1" "$f"'
 try "--> error in a book" 'add "" "${f}cesia" "math.Div(1, 0) --> error" "$f"'
+try "tabs out of order, and one with a word after its language" 'add "" "${f}cesia" "1" "$f" "${f}r" "1" "$f" "${f}python x" "1" "$f"'
+try "tabs on a block that fails" 'add "" "${f}cesia fails" "math.Div(1, 0)" "$f" "${f}python" "1 // 0" "$f"'
 try "a name in brackets that leads nowhere" 'add "" "See [NoSuchName]."'
 try "a toml block that doesn't parse" 'add "" "${f}toml" "[project" "$f"'
 try "a page that book/index.md doesn't link" 'echo "# Extra" > docs/book/extra.md'

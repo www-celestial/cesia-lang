@@ -4,6 +4,11 @@ In this chapter you work on many records at once: you compute a value for each, 
 them. Then you load a CSV file into a table of columns and ask the same questions in a few lines. The data is a bakery's sales
 over four days, in `sales.csv`.
 
+> [!NOTE]
+> The examples of std/frame and std/num have tabs: the same computation in Python with pandas and numpy, and in R. Each tab
+> runs when the book is checked, and prints what the Cesia version shows. They have no MATLAB tab: GNU Octave, which
+> checks the MATLAB tabs, has no tables. See [Tabs in other languages](tests.md#tabs-in-other-languages).
+
 ## Records in a list
 
 A list of dictionaries is the simplest table: one dictionary per row, the same keys in each.
@@ -118,6 +123,21 @@ frame.Columns(df) -->
 io.Print(frame.Show(frame.Head(3, df)))
 ```
 
+```python
+import pandas as pd
+df = pd.read_csv("sales.csv")
+print(len(df))
+print(list(df.columns))
+print(df.head(3).to_string(index=False))
+```
+
+```r
+df <- read.csv("sales.csv")
+print(nrow(df))
+print(names(df))
+print(head(df, 3), row.names = FALSE)
+```
+
 A frame is a value, as everything in Cesia: each function gives a new one, and `df` stays as it was. It is the *data frame*
 of pandas in Python and of R, a table of named columns of one length each; [std/frame] is a small one, written in Cesia
 on [std/columns], whose loops over whole columns are OCaml and run on several cores for a large column.
@@ -133,6 +153,21 @@ lyon = frame.Where(r -> r.city == "Lyon", withTotal)
 io.Print(frame.Show(frame.Select(["day", "product", "total"], lyon)))
 ```
 
+```python
+import pandas as pd
+df = pd.read_csv("sales.csv")
+with_total = df.assign(total=df["units"] * df["price"])
+lyon = with_total[with_total["city"] == "Lyon"]
+print(lyon[["day", "product", "total"]].to_string(index=False))
+```
+
+```r
+df <- read.csv("sales.csv")
+with_total <- transform(df, total = units * price)
+lyon <- subset(with_total, city == "Lyon", select = c(day, product, total))
+print(lyon, row.names = FALSE)
+```
+
 ### Groups of rows
 
 [frame.GroupBy] makes one row per value of its columns, and a column for each [frame.Agg]: a new name, the column it reads,
@@ -141,6 +176,20 @@ and the function of its values. [frame.SortBy] orders the rows:
 ```cesia allow=read
 byCity = frame.GroupBy(["city"], [frame.Agg("units", "units", list.Sum), frame.Agg("rows", "day", value.Len)], df)
 io.Print(frame.Show(frame.SortBy("units", byCity, descending = true)))
+```
+
+```python
+import pandas as pd
+df = pd.read_csv("sales.csv")
+by_city = df.groupby("city", sort=False).agg(units=("units", "sum"), rows=("day", "size")).reset_index()
+print(by_city.sort_values("units", ascending=False).to_string(index=False))
+```
+
+```r
+df <- read.csv("sales.csv")
+city <- factor(df$city, levels = unique(df$city))
+by_city <- data.frame(city = levels(city), units = as.vector(tapply(df$units, city, sum)), rows = as.vector(table(city)))
+print(by_city[order(-by_city$units), ], row.names = FALSE)
 ```
 
 ### Whole columns
@@ -156,12 +205,43 @@ list.Mean(units) -->
 frame.RowCount(frame.WhereMask(units > 10, df)) -->
 ```
 
+```python
+import pandas as pd
+df = pd.read_csv("sales.csv")
+units = df["units"]
+print((units * 2).tolist())
+print(units.mean())
+print(len(df[units > 10]))
+```
+
+```r
+df <- read.csv("sales.csv")
+units <- df$units
+print(units * 2)
+print(mean(units))
+print(nrow(df[units > 10, ]))
+```
+
 ### Back to CSV
 
 [frame.ToCsv] writes a frame back as CSV text, for [sys.Write]:
 
 ```cesia allow=read
 frame.ToCsv(frame.Head(2, byCity)) -->
+```
+
+```python
+import pandas as pd
+df = pd.read_csv("sales.csv")
+by_city = df.groupby("city", sort=False).agg(units=("units", "sum"), rows=("day", "size")).reset_index()
+print(by_city.head(2).to_csv(index=False), end="")
+```
+
+```r
+df <- read.csv("sales.csv")
+city <- factor(df$city, levels = unique(df$city))
+by_city <- data.frame(city = levels(city), units = as.vector(tapply(df$units, city, sum)), rows = as.vector(table(city)))
+write.csv(head(by_city, 2), stdout(), row.names = FALSE, quote = FALSE)
 ```
 
 ### Joining two tables
@@ -177,6 +257,25 @@ joined = frame.JoinOn("city", df, cities)
 frame.RowCount(joined) -->
 frame.Columns(joined) -->
 frame.RowCount(frame.JoinOn("city", df, cities, how = "left")) -->
+```
+
+```python
+import pandas as pd
+df = pd.read_csv("sales.csv")
+cities = pd.DataFrame({"city": ["Lyon", "Paris"], "region": ["Rhône", "Île-de-France"]})
+joined = df.merge(cities, on="city")
+print(len(joined))
+print(list(joined.columns))
+print(len(df.merge(cities, on="city", how="left")))
+```
+
+```r
+df <- read.csv("sales.csv")
+cities <- data.frame(city = c("Lyon", "Paris"), region = c("Rhône", "Île-de-France"))
+joined <- merge(df, cities, by = "city")[, c(names(df), "region")]
+print(nrow(joined))
+print(names(joined))
+print(nrow(merge(df, cities, by = "city", all.x = TRUE)))
 ```
 
 ### More of std/frame
@@ -208,6 +307,22 @@ use std/num
 num.Median(units) -->
 num.Std(units) -->
 num.Polyfit(1, [1.0, 2.0, 3.0], [3.0, 5.0, 7.0]) -->
+```
+
+```python
+import numpy as np
+import pandas as pd
+units = pd.read_csv("sales.csv")["units"].to_numpy()
+print(np.median(units))
+print(np.std(units))
+print(np.polynomial.polynomial.polyfit([1.0, 2.0, 3.0], [3.0, 5.0, 7.0], 1))
+```
+
+```r
+units <- read.csv("sales.csv")$units
+print(median(units))
+print(sqrt(mean((units - mean(units))^2)))   # the deviation of the whole: sd() divides by n - 1
+print(unname(coef(lm(c(3, 5, 7) ~ c(1, 2, 3)))))
 ```
 
 ## Random samples

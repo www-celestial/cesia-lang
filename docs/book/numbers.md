@@ -5,6 +5,11 @@ statistics, [std/lapack] for the large matrices, [std/algo] for the classic algo
 and dictionaries: sets, queues and heaps. Each function is in the reference, with its examples; this chapter shows what
 each library is for, and what it costs.
 
+> [!NOTE]
+> The examples of std/math and std/num have tabs: the same computation in Python with numpy, in R and in MATLAB. Each
+> tab runs when the book is checked, and prints what the Cesia version shows; the MATLAB tabs run in GNU Octave. See
+> [Tabs in other languages](tests.md#tabs-in-other-languages).
+
 ## One number: std/math
 
 [std/math] holds the operators as functions, [math.Add], [math.Sub], [math.Mul], [math.Div] and [math.Mod], and
@@ -24,6 +29,34 @@ math.Sqrt([4, 9]) -->
 math.IsEven(10) -->
 ```
 
+```python
+import numpy as np
+print(np.ceil(2.1))
+print(np.sign(-3))
+print(np.arctan2(1.0, 1.0) * 4)
+print(np.log(np.exp(2.0)))
+print(np.sqrt([4, 9]))
+print(10 % 2 == 0)
+```
+
+```r
+print(ceiling(2.1))
+print(sign(-3))
+print(atan2(1, 1) * 4)
+print(log(exp(2)))
+print(sqrt(c(4, 9)))
+print(10 %% 2 == 0)
+```
+
+```matlab
+disp(ceil(2.1))
+disp(sign(-3))
+disp(atan2(1, 1) * 4)
+disp(log(exp(2)))
+disp(sqrt([4 9]))
+disp(mat2str(mod(10, 2) == 0))
+```
+
 [math.Div] rounds down, toward minus infinity, and [math.Mod] has the sign of the divisor, so `math.Mod(-7, 3)` is `2`
 and `math.Div(-7, 3) * 3 + math.Mod(-7, 3)` is `-7` again: the *floored division* of Python, not the *truncated* one of
 C and Java, where `-7 % 3` is `-1`.
@@ -31,6 +64,21 @@ C and Java, where `-7 % 3` is `-1`.
 ```cesia
 math.Div(-7, 3) -->
 math.Mod(-7, 3) -->
+```
+
+```python
+print(-7 // 3)
+print(-7 % 3)
+```
+
+```r
+print(-7 %/% 3)
+print(-7 %% 3)
+```
+
+```matlab
+disp(floor(-7 / 3))
+disp(mod(-7, 3))
 ```
 
 ### Bits
@@ -44,6 +92,30 @@ math.BitOr(12, 10) -->
 math.BitXor(12, 10) -->
 math.BitShift(1, 4) -->
 math.BitShift(16, -2) -->
+```
+
+```python
+print(12 & 10)
+print(12 | 10)
+print(12 ^ 10)
+print(1 << 4)
+print(16 >> 2)
+```
+
+```r
+print(bitwAnd(12L, 10L))
+print(bitwOr(12L, 10L))
+print(bitwXor(12L, 10L))
+print(bitwShiftL(1L, 4L))
+print(bitwShiftR(16L, 2L))
+```
+
+```matlab
+disp(bitand(12, 10))
+disp(bitor(12, 10))
+disp(bitxor(12, 10))
+disp(bitshift(1, 4))
+disp(bitshift(16, -2))
 ```
 
 ## Arrays and statistics: std/num
@@ -70,6 +142,42 @@ num.Cumsum([1, 2, 3]) -->
 num.Trapezoid([0.0, 1.0, 2.0], [0.0, 1.0, 4.0]) -->
 num.Solve([2.0, 1.0; 1.0, 3.0], [3.0; 5.0]) -->
 num.Det([1.0, 2.0; 3.0, 4.0]) -->
+```
+
+```python
+import numpy as np
+print(np.linspace(0.0, 1.0, 5))
+print(np.percentile(np.arange(1, 11), 90))
+print(np.corrcoef([1.0, 2.0, 3.0], [2.0, 4.0, 6.5])[0, 1])
+print(np.cumsum([1, 2, 3]))
+print(np.trapezoid([0.0, 1.0, 4.0], [0.0, 1.0, 2.0]))
+print(np.linalg.solve([[2.0, 1.0], [1.0, 3.0]], [3.0, 5.0]))
+print(np.linalg.det([[1.0, 2.0], [3.0, 4.0]]))
+```
+
+```r
+print(seq(0, 1, length.out = 5))
+print(quantile(1:10, 0.9, names = FALSE))
+print(cor(c(1, 2, 3), c(2, 4, 6.5)))
+print(cumsum(c(1, 2, 3)))
+x <- c(0, 1, 2)
+y <- c(0, 1, 4)
+print(sum(diff(x) * (head(y, -1) + tail(y, -1)) / 2))
+print(solve(matrix(c(2, 1, 1, 3), 2), c(3, 5)))
+print(det(matrix(c(1, 3, 2, 4), 2)))
+```
+
+```matlab
+disp(linspace(0, 1, 5))
+x = 1:10;                      % the 90th percentile, linear between ranks, as numpy and R
+h = (numel(x) - 1) * 0.9 + 1;
+disp(x(floor(h)) + (h - floor(h)) * (x(ceil(h)) - x(floor(h))))
+r = corrcoef([1 2 3], [2 4 6.5]);
+disp(r(1, 2))
+disp(cumsum([1 2 3]))
+disp(trapz([0 1 2], [0 1 4]))
+disp([2 1; 1 3] \ [3; 5])
+disp(det([1 2; 3 4]))
 ```
 
 ### How it computes

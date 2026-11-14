@@ -1,32 +1,39 @@
 == a wrong -->
-docs/book/first.md:54: 1 + 1 --> 3, got 2
+docs/book/first.md:76: 1 + 1 --> 3, got 2
 exit 1
 == a block that stops
-docs/book/first.md:54:5: Div: division by zero.
+docs/book/first.md:76:5: Div: division by zero.
 exit 1
 == a block marked fails that ends well
-docs/book/first.md:53: this block is marked fails, but it ran to its end.
+docs/book/first.md:75: this block is marked fails, but it ran to its end.
 exit 1
 == a wrong --> in a block marked fails, before it stops
-docs/book/first.md:54: 1 + 1 --> 3, got 2
+docs/book/first.md:76: 1 + 1 --> 3, got 2
 exit 1
 == a --> at the end of a call written on several lines
-docs/book/first.md:55: a --> checks the expression of its own line, and this one goes on from the lines before: name the value there, then check the name.
+docs/book/first.md:77: a --> checks the expression of its own line, and this one goes on from the lines before: name the value there, then check the name.
 exit 1
 == a norun block with an unknown name
-docs/book/first.md:54:1: Name "NoSuchName" doesn't exist.
+docs/book/first.md:76:1: Name "NoSuchName" doesn't exist.
 exit 1
 == a word cesia blocks don't have
-docs/book/first.md:53: quiet is no word of a cesia block: they are norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT, net=own or ffi=m.
+docs/book/first.md:75: quiet is no word of a cesia block: they are norun, fails, output=md, fold=code, fold=output, hide=code, hide=output and allow= with read, write, net, net=:PORT, net=own or ffi=m.
 exit 1
 == --> error in a book
-docs/book/first.md:54: --> error is for cesia test; here a block that stops is marked fails.
+docs/book/first.md:76: --> error is for cesia test; here a block that stops is marked fails.
+exit 1
+== tabs out of order, and one with a word after its language
+docs/book/first.md:81: a python tab has no word after its language.
+docs/book/first.md:81: the tabs of a block go python, r, matlab, each once: this python tab comes after the r tab.
+exit 1
+== tabs on a block that fails
+docs/book/first.md:75: a block marked fails has no tabs: a tab prints what its block shows when it ends well.
 exit 1
 == a name in brackets that leads nowhere
-docs/book/first.md:53: [NoSuchName] names nothing documented.
+docs/book/first.md:75: [NoSuchName] names nothing documented.
 exit 1
 == a toml block that doesn't parse
-docs/book/first.md:54: Expected ].
+docs/book/first.md:76: Expected ].
 exit 1
 == a page that book/index.md doesn't link
 docs/book/extra.md: no link of docs/book/index.md leads to this page.
@@ -44,20 +51,20 @@ README.md:3: docs/book/index.md is no page of the site: a README links to the pa
 README.md:3: docs/book/first.md is no page of the site: a README links to the pages of docs/, or with a full URL.
 exit 1
 == a formula with a command it doesn't know
-docs/book/first.md:53: \foo is no command that cesia doc writes in a formula: the book lists them, in Tests, Formulas
+docs/book/first.md:75: \foo is no command that cesia doc writes in a formula: the book lists them, in Tests, Formulas
 exit 1
 == a formula with a character TeX writes otherwise
-docs/book/first.md:53: ≤ is no part of a formula: write \le
-docs/book/first.md:53: something is missing at its end
+docs/book/first.md:75: ≤ is no part of a formula: write \le
+docs/book/first.md:75: something is missing at its end
 exit 1
 == a formula whose group isn't closed
-docs/book/first.md:54: a { is never closed
+docs/book/first.md:76: a { is never closed
 exit 1
 == a color that isn't one
 TMP/proj/cesia.toml:4: [site] color is a color written #rrggbb, as "#3b5bdb".
 exit 1
 == a README that links to a file which is no page
-README.md:13: LICENSE is no page of the site: a README links to the pages of docs/, or with a full URL.
+README.md:18: LICENSE is no page of the site: a README links to the pages of docs/, or with a full URL.
 exit 1
 == a French page that drifts from its English one
 docs/fr/book/index.md: its links drift from those of docs/book/index.md, not here: first.html; only here: files.html (a link to a heading names its place on its page).
