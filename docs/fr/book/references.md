@@ -71,6 +71,10 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
 
 ## Le JIT
 
+- Philip S. Abrams. *An APL Machine*. Thèse de doctorat, Stanford University, rapport SLAC-114, 1970.
+  <https://www.softwarepreservation.org/projects/apl/Papers/197002_An%20APL%20Machine-Abrams.pdf>. Le *drag-along* : les
+  opérations d'une expression sur des arrays repoussées, puis faites cellule par cellule en un seul passage, sans array
+  entre elles : la fusion des opérations sur les petits arrays de floats dans le JIT de Cesia.
 - L. Peter Deutsch, Allan M. Schiffman. "Efficient Implementation of the Smalltalk-80 System". *POPL 1984*, ACM, 297–302.
   <https://doi.org/10.1145/800017.800542>. L'inline cache : la dernière classe rencontrée à un appel, gardée à côté de
   lui, pour que l'appel suivant de la même classe aille droit à sa méthode. Les caches de formes et de clés de Cesia.
@@ -106,10 +110,19 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   endroit) met une copie sur chaque chemin qui entre dans un bloc où des versions d'une variable se rejoignent, et seul
   le coalescing (la fusion de variables copiées l'une dans l'autre) l'enlève : pourquoi une boucle entrée en son milieu
   copiait chaque variable à chaque tour.
+- Matthew Arnold, Stephen Fink, David Grove, Michael Hind, Peter F. Sweeney. "Adaptive Optimization in the Jalapeño
+  JVM". *OOPSLA 2000*, ACM, 47–65. <https://doi.org/10.1145/353171.353175>. Recompiler une méthode à un niveau plus haut
+  quand le temps qu'elle doit faire gagner, en s'attendant à ce qu'elle tourne encore aussi longtemps qu'elle a tourné,
+  dépasse le temps de la compiler : le niveau 2 de Cesia, fait dès qu'une unité a tourné à peu près aussi longtemps que
+  son niveau 1 a pris à faire.
 - Rastislav Bodík, Rajiv Gupta, Vivek Sarkar. "ABCD: Eliminating Array Bounds Checks on Demand". *PLDI 2000*, ACM,
   321–333. <https://doi.org/10.1145/349299.349342>. Des bornes prouvées à partir des tests qui gardent chaque branche, et
   les vérifications qu'elles rendent inutiles retirées : le JIT de Cesia retire la vérification d'overflow (le
   dépassement de la taille d'un entier) de `n - 1` dans le `else` de `if n < 2`.
+- Samuel P. Midkiff, José E. Moreira, Marc Snir. "Optimizing Array Reference Checking in Java Programs". *IBM Systems
+  Journal* 37(3), 409–453, 1998. <https://doi.org/10.1147/sj.373.0409>. Le loop versioning : une copie d'une boucle sans
+  vérification de ses arrays, choisie par des tests faits une fois avant elle, et la copie vérifiée sinon. Les copies
+  rapides d'une boucle dans Cesia.
 - Peng Zhao, José Nelson Amaral. "Function Outlining and Partial Inlining". *SBAC-PAD 2005*, IEEE, 101–108.
   <https://doi.org/10.1109/CAHPC.2005.26>. Ne faire l'inlining (recopier le code d'une fonction à l'endroit de l'appel)
   que de la partie hot d'une fonction dans ses appelants : le JIT de Cesia recopie dans chaque appel le test d'une
@@ -237,6 +250,10 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   Computing* 6(2):323–350, 1977. <https://doi.org/10.1137/0206024>. Une recherche en un temps linéaire en la longueur du
   texte et de la partie cherchée, qui ne lit jamais deux fois un octet du texte : [text.ByteFind] et les autres
   recherches de [std/text] pour une partie de 32 octets ou plus.
+- Ulf Adams. "Ryū: fast float-to-string conversion". *PLDI 2018*, ACM, 270–282.
+  <https://doi.org/10.1145/3192366.3192369>. Un float et les bornes des décimaux qui se relisent en lui, mis d'un coup à
+  l'échelle d'une puissance de 10 par des produits avec des puissances de 5 de 126 bits tirées d'une table : le texte de
+  chaque float qu'écrit Cesia, avec les octets que lui donnait avant le `printf` du C, de 15 à 35 fois plus vite.
 - T. Bray (éditeur). "The JavaScript Object Notation (JSON) Data Interchange Format", RFC 8259, 2017.
   <https://www.rfc-editor.org/rfc/rfc8259>. [std/json].
 - Y. Shafranovich. "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005.

@@ -75,9 +75,15 @@ l'appelle. Un nom est l'un de ceux-ci :
 - un nom d'un package que le fichier utilise, comme `list.Map`.
 
 Le resolver vérifie aussi la *definite assignment* (l'affectation certaine) : un nom lu avant qu'une valeur ne l'atteigne
-est une erreur au chargement, `"x" has no value yet.`, et non une surprise à l'exécution. Il marque les appels en *tail
-position* (en position terminale) : un appel dont le résultat est le résultat même de la fonction, sans rien à faire
-après lui. Une fonction qui s'appelle elle-même à cette place tourne comme une boucle, donc sa profondeur ne grandit pas.
+est une erreur au chargement, `"x" has no value yet.`, et non une surprise à l'exécution. Cela coûte la même chose pour
+chaque instruction quel que soit le nombre de variables : une branche, comme chaque côté d'un `if`, note les variables
+auxquelles elle donne une valeur, et les reprend une fois qu'elle a fini, et là où deux branches se rejoignent, seul ce
+qu'elles ont affecté est comparé. Copier plutôt l'ensemble de toutes les variables à chaque branche faisait qu'une
+fonction de 4 000 variables, ou un script d'autant, prenait de 120 à 190 ms à résoudre, contre 6 à 7 ms maintenant.
+
+Le resolver marque les appels en *tail position* (en position terminale) : un appel dont le résultat est le résultat
+même de la fonction, sans rien à faire après lui. Une fonction qui s'appelle elle-même à cette place tourne comme une
+boucle, donc sa profondeur ne grandit pas.
 
 ```cesia
 defn countdown(n)
@@ -396,8 +402,9 @@ hot, donc un programme qui ne devient jamais hot ne le paie jamais.
   seule. Une boucle qui tourne souvent mais brièvement, comme dans une fonction appelée pour chaque requête, devient
   hot une fois que ses runs font 100 000 pas en tout.
 
-`CESIA_JIT=always` compile chaque candidat à son premier appel ou à son premier run, ce dont les tests se servent pour
-comparer les deux niveaux d'exécution, l'interpréteur et le code machine, sur toute la suite. `CESIA_JIT_SHOW=1` affiche
+`CESIA_JIT=always` compile chaque candidat à son premier appel ou à son premier run, et fait son niveau 2 (plus bas,
+*Ce que coûte sa fabrication*) dès que ce premier run finit, ce dont les tests se servent pour comparer l'interpréteur
+et les deux niveaux sur toute la suite. `CESIA_JIT_SHOW=1` affiche
 chaque unité compilée, ou pourquoi le JIT ne s'est pas chargé.
 
 ### Ce qu'il produit
@@ -497,9 +504,143 @@ sont des doubles dans sa zone ([Maps](#maps--une-hash-table-puis-un-hash-trie)),
 vérification de sa sorte disparaît aussi : un tour de `structs` coûte 60 instructions et 24 cycles, contre 235 et 122
 avant, mesurés de la même façon.
 
-Il compile les nombres et les boucles sur eux, les arrays de floats et de valeurs lus et écrits par index, les appels
-entre versions compilées, la récursion, dans une boucle les champs des maps et des structs et les nouvelles qu'elle y
-fait, et les appels d'une fonction tenue dans une variable, comme le montre la partie suivante.
+**Des listes d'entiers par index.** Une liste dont toutes les cellules sont des entiers les garde dans une zone
+d'entiers, comme le dit la partie Les valeurs en mémoire. Une boucle lit et écrit une telle liste par index comme elle le
+fait d'un array de floats : un chargement, la vérification de l'index, et l'entier de la cellule, sans box (sans bloc de
+mémoire à part), comme un produit sparse lit les lignes de chaque colonne. Dans
+`for q in colptr[j]..colptr[j + 1] - 1`, l'instruction `i = rowidx[q]` est un chargement depuis la liste d'entiers, son
+index prouvé à l'intérieur avant la boucle, et `y[i] = y[i] + vals[q] * xj` vérifie `i` une seule fois, pour la lecture
+et l'écriture de `y`.
+
+L'index lu dans la liste est celui du programme, donc il est vérifié à chaque tour : un index hors de `y` est l'erreur de
+l'interpréteur, à la même ligne. Un index vérifié dans un bloc n'y est pas vérifié de nouveau, comme `y[i]` lu puis
+écrit.
+
+**Des vérifications avant la boucle.** Un index qui bouge avec le compteur de la boucle, comme `x[j]` ou `colptr[j + 1]`
+dans `for j in 1..n`, est dans son array à chaque tour quand il y est au premier et au dernier tour. Le JIT fait donc deux
+copies d'une boucle : une *copie rapide*, sans vérification d'un tel index, et la copie vérifiée qu'il avait. Avant la
+boucle, quelques tests décident laquelle tourne. Dans le produit sparse ci-dessus, ils sont faits une seule fois, avant
+`for j in 1..n` : `j` part de 1, au moins 1, et `n` et `n + 1`, le `j` et le `j + 1` du dernier tour, valent au plus les
+tailles de `x` et de `colptr`. Quand ils tiennent, la copie rapide tourne, sans vérification de `x[j]`, `colptr[j]` et
+`colptr[j + 1]` ; quand l'un échoue, la copie vérifiée tourne, qui donne l'erreur de l'interpréteur à l'index hors de
+l'array, à sa ligne.
+
+C'est le *loop versioning* (les versions d'une boucle), que Midkiff, Moreira et Snir (1998) ont fait pour les
+vérifications des arrays de Java. La boucle intérieure est la plus intérieure : sa copie rapide vérifie aussi, avant de
+commencer, que le fuel (les pas qu'il reste à faire) couvre tous ses pas, si bien qu'elle ne teste jamais le fuel à un
+tour, et `rowidx[q]` et `vals[q]` n'ont besoin d'aucune vérification non plus. Seul `y[i]` est vérifié à chaque tour,
+puisque `i` vient de la liste. Un index `j + k` est lu au registre du compteur lui-même, `k` cellules plus loin, si bien
+que la copie rapide ne garde pas de registre à lui, pour un `k` proche de 0. La boucle autour garde ses pas comptés à
+chaque tour, puisque les pas de ses boucles intérieures ne sont pas connus avant qu'elle commence. Quand l'exécution
+sort à l'intérieur, à un checkpoint complet ou pour le collecteur, elle revient dans la copie vérifiée, qui a fait
+chaque vérification, et le tour suivant de la boucle autour repasse par les tests : une exécution ne revient donc jamais
+au milieu d'une copie rapide, dont elle n'aurait pas fait les tests. La boucle intérieure de la copie rapide est faite
+encore une fois, sa copie rapide seulement : quand ses propres tests échouent, l'exécution continue dans celle de la
+copie vérifiée.
+
+Une copie d'une boucle coûte du temps de compilation à MIR, donc elle n'est faite que là où elle rapporte : pour une
+boucle la plus intérieure, et pour une boucle dont les boucles intérieures sont des boucles `for` les plus intérieures
+qui n'allouent rien. L'unité d'un produit sparse a alors 499 lignes de MIR au lieu de 453, et reçoit son niveau 2 un
+appel plus tard. Mesuré le 2026-11-13, profil `release`, 21 lancements alternés avec le binaire de main, chaque lancement
+faisant 14 produits de la matrice de Poisson 2-D de 300 × 300 points (448 800 non-zéros), les médianes et leurs
+intervalles à 95 %, en ns par non-zéro :
+
+| Produit | Avant | Maintenant |
+|---|---:|---:|
+| le premier, au niveau 1, compilation comprise | 5,01 (4,92–5,31) | 5,05 (4,82–5,37) |
+| les cinq premiers, additionnés | 26,5 (23,4–28,3) | 27,3 (23,6–27,8) |
+| chacun au niveau 2, à partir du 8e | 3,75 (3,73–3,78) | 2,79 (2,75–2,85) |
+
+Un produit prend alors 1,25 ms. Un histogramme de 10^6 clés tirées d'une liste d'entiers, déjà une boucle la plus
+intérieure, prend 2,28 ns par clé au lieu de 2,31, et une permutation de 10^6 floats, `y[k] = x[p[k]]`, 11,7 ns par
+élément dans les deux cas : elle attend la mémoire, une cellule à 63 KB de la précédente.
+
+Ce qui garde la sécurité : une copie rapide ne lit ou n'écrit sans vérification qu'une cellule que les tests d'avant ont
+prouvée dans son array à chaque tour, le premier et le dernier tour calculés avec leur dépassement vérifié ; un array
+garde sa taille tant que dure une exécution, sa taille et sa zone vérifiées à chaque entrée. Une ligne lue dans la liste
+est vérifiée à chaque tour, si bien qu'une mauvaise ligne est l'erreur de l'interpréteur, jamais une écriture hors de
+`y`. Un `k` de 2^20 cellules ou plus reçoit un registre ou sa vérification, pour que les octets que `k` ajoute à une
+adresse soient exacts. Les tests font tourner chaque boucle de ce genre avec le JIT éteint, hot et toujours, avec un
+index hors de l'array, un float dans la liste, la liste écrite pendant que les boucles tournent, et le dépassement de
+`colptr[j + 1] - 1` et de `j + k`, et le fuzzer fait des produits sparse dont le dernier appel casse une liste de l'une
+de ces façons.
+
+**Un guard à l'intérieur d'un if.** Un guard qui échouait renvoyait l'exécution à l'interpréteur avant l'instruction de
+la boucle qui le contenait, et seulement tant que rien de cette instruction ne s'était vu : une écriture dans un array, ou
+un pas, l'empêchait. Maintenant, chaque instruction d'une branche d'un if à l'intérieur de la boucle est un point à elle,
+d'où l'interpréteur peut repartir : il fait tourner le reste de cette branche, puis le reste de chaque bloc autour, puis
+les instructions de la boucle d'après. Et un pas ou un appel avant le guard ne l'empêche plus : l'exécution repart avec
+le fuel qu'elle avait au début de l'instruction, si bien que l'interpréteur compte de nouveau ces pas, comme si le code
+natif ne les avait jamais faits. C'est la *deoptimization* (le retour du code optimisé vers l'interpréteur) à
+l'instruction, comme HotSpot la fait au bytecode (Hölzle, Chambers et Ungar, 1992, qui l'ont nommée).
+
+**Ce qu'il ne sait pas faire, il le laisse.** Une instruction dans une branche d'un if que le JIT ne sait pas faire, comme
+`return failed(...)` ou `io.Print`, ne laisse plus toute la boucle à l'interpréteur : l'exécution retourne à
+l'interpréteur avant elle, l'interpréteur la fait, et la boucle revient au code machine à son tour suivant. De telles
+instructions sont *cold* (froides) : elles tournent rarement, comme les chemins d'erreur et la fin d'une boucle. La
+boucle est alors refaite avec celles qui donnent une valeur à une variable, et les instructions qui les suivent dans
+leur branche, hors de ce que regarde le JIT, pour qu'une variable à laquelle elles seules donnent une valeur, comme un
+tampon refait quand il est plein, reste un array de la boucle. Une instruction qui n'en donne à aucune, comme
+`buf[used + 1] = t` après cette branche, est alors essayée de nouveau, puisque ce qui l'avait tenue dehors n'était
+peut-être que le fait que le tampon n'était pas encore un array de la boucle. Un appel d'une petite fonction dont le
+corps donne un texte à un endroit et un nombre à un autre est fait de la même façon : inliné (son corps mis à la place
+de l'appel), son chemin des nombres en code machine, et son chemin du texte un retour à l'interpréteur, qui refait
+l'appel.
+
+Une instruction cold qui tourne à presque chaque tour coûte plus qu'elle ne rapporte : chaque tour quitte le code
+machine et y revient, environ 450 ns, ce que le code natif gagne sur 8 à 20 pas d'une boucle de floats. Donc dès qu'une
+boucle est retournée 64 fois à l'interpréteur pour des instructions cold, et que son code machine a fait en moyenne
+moins de 12 pas pour chacune, son code s'en va et la boucle est à l'interpréteur pour de bon, jamais plus lente que
+l'interpréteur. Mesuré le 2026-11-14 sur une boucle de 10^6 tours dont la branche laissée à l'interpréteur tourne tous
+les e tours, le meilleur de 5, en ms :
+
+| e | Avant | Maintenant | Interpréteur seul |
+|---:|---:|---:|---:|
+| 1 | 1 011 | 75 | 75 |
+| 4 | 136 | 31 | 31 |
+| 8 | 60 | 25 | 25 |
+| 16 | 28 | 28 | 21 |
+| 64 | 8,2 | 8,1 | 17 |
+
+`stats.MonteCarlo` rassemblait d'abord ses tirages un par un avec `x = f()` sous `if k > 1`, que le code natif ne savait
+pas appeler : 10^6 tirages prenaient 539 ms (la médiane de 21 lancements), contre environ 120 en interprété. Cette boucle
+tourne maintenant en code machine de bout en bout, `f` et son tirage compris (ci-dessous) : 8,9 ms.
+
+**Les tests et les sortes.** `(fa > 0.0) == (fb > 0.0)` compare deux tests ; `value.IsNumber(x)`, `value.IsText(x)` et
+les autres tests de sorte regardent l'étiquette du bloc de la valeur, ou n'ont besoin d'aucun test quand le JIT connaît la
+sorte ; et une petite fonction qui est un seul test, comme `isFinite(x) = value.IsNumber(x) and x - x == 0.0`, est faite
+sur place, un test comme un autre.
+
+**Les tirages.** `random.Float()` est fait sur place, comme l'est `math.Sqrt(x)` : le pas de SplitMix64 (Steele, Lea et
+Flood, 2014), les mêmes instructions que celles de l'interpréteur, sur le même état, si bien que les mêmes floats
+viennent dans le même ordre quel que soit celui qui les tire. L'état fait 64 bits, gardés comme les bits de l'unique
+cellule d'un array de floats que l'interpréteur et le code machine lisent et écrivent tous deux. Un tirage change
+quelque chose que le programme voit, comme le fait une écriture dans un array : aucun guard après lui ne peut renvoyer son
+instruction à l'interpréteur, qui tirerait de nouveau, et seuls le propre code de l'unité et les corps qu'elle inline
+tirent, pour qu'aucun appel d'une autre fonction compilée n'en cache un. La seule mémoire qu'écrit un tirage, ce sont les
+8 octets de cette cellule, dans un array que std/random garde pour lui et ne donne jamais à un programme. Une boucle de
+10^6 appels de `f()`, où `f = () -> random.Float()`, prend 7,3 ms au lieu de 65 (les médianes de 21 lancements,
+2026-11-14).
+
+**De petits arrays de floats.** Un array d'au plus 15 floats qu'une boucle refait à chaque tour, comme l'état d'une
+équation, `y = y + h * f(t, y)`, n'est jamais fait tant que dure l'exécution : ses cellules sont dans des places de la
+frame, dans une partie de la pile des floats, et chaque opération cellule par cellule devient quelques instructions sur
+ces places, les opérations d'une même instruction fusionnées, sans array entre elles. Dans
+`k2 = f(t + c2 * s, y + (s * a21) * k1)`, l'argument est fait cellule par cellule, `y[j] + (s * a21) * k1[j]` pour
+chacune des 3 cellules, dans 3 places ; et `f`, ici `lorenz(t, y) = [sigma * (y[2] - y[1]), ...]`, est inlinée : les
+3 cellules de son littéral vont dans les places de `k2`.
+
+Chaque opération compte ses pas comme le font les natives de l'interpréteur, un pour un array de moins de 16 cellules,
+et les mêmes cellules, dans le même ordre, donnent les mêmes floats : une somme additionne à partir de 0.0, chaque
+cellule à son tour, comme celle de l'interpréteur. Quand l'exécution finit, ou retourne à l'interpréteur, chaque
+variable de ce genre à laquelle elle a donné une valeur redevient un array, de la même forme ; une fonction qui donne un
+array d'une autre taille retourne à l'interpréteur. C'est le *scalar replacement* des arrays, comme pour les maps
+ci-dessus, et la fusion des opérations sur les arrays que faisaient les compilateurs d'APL (Abrams, 1970).
+
+Il compile les nombres et les boucles sur eux, les arrays de floats, d'entiers et de valeurs lus et écrits par index, les
+petits arrays de floats faits et travaillés cellule par cellule, les appels entre versions compilées, la récursion, dans
+une boucle les champs des maps et des structs et les nouvelles qu'elle y fait, et les appels d'une fonction tenue dans
+une variable, comme le montre la partie suivante.
 
 Une division ou un modulo d'entiers par une puissance de deux, comme `math.Mod(i, 4)`, devient un décalage ou un masque
 de bits : une instruction de division coûte des dizaines de cycles, un masque un seul. Les résultats sont ceux de la
@@ -513,7 +654,7 @@ ligne du texte que lui donne le JIT, à son niveau 2, où il travaille en SSA fo
 ce qu'elle ne change pas et alloue les registres (mesuré sur une copie de MIR avec une horloge sur chacune de ses passes :
 faire la SSA form prend un quart du temps, allouer les registres un sixième, la liveness des valeurs, savoir où chacune
 sert encore, un dixième). Son niveau 1 fait du code en 40 % de temps en moins, et `matmul` tourne alors moitié plus
-longtemps : le niveau 2 reste. Le JIT donne donc moins de lignes à MIR :
+longtemps : le JIT se sert donc des deux, l'un après l'autre (ci-dessous), et donne moins de lignes à MIR :
 
 - Les chemins qu'une exécution prend quand il se passe quelque chose de rare, une vérification qui échoue, une limite,
   une erreur, écrivent ce dont l'interpréteur a besoin pour continuer, et faisaient les quatre cinquièmes des lignes de
@@ -536,6 +677,85 @@ quantum de fuel, reste inline : sous forme d'appel, il faisait garder par MIR ch
 chaque tour, autour d'un appel qu'il ne fait presque jamais. Ce qui reste du coût fixe, à côté du démarrage du processus
 (2,6 ms) : charger le plugin, 0,65 ms, et la compilation de MIR, 3 à 4 ms par unité.
 
+**Deux niveaux.** MIR fait du code à des niveaux : le niveau 2, celui ci-dessus, et le niveau 1, qui saute les passes en
+SSA form et prend de 30 à 60 % de temps en moins, d'autant plus que l'unité est grande, pour un code qui tourne jusqu'à
+moitié plus longtemps, comme celui de `matmul`. Chacun convient à une exécution : une exécution courte ne devrait payer
+que la compilation la plus rapide, une longue devrait faire tourner le code le plus rapide. Le code machine d'une unité
+est donc fait d'abord au niveau 1, et son niveau 2 vient plus tard, depuis un autre cœur :
+
+- **Le niveau 1 d'abord.** Chaque unité est faite au niveau 1, sur le domaine principal, comme avant. L'unité de
+  `ode.Solve` avec les équations de Lorenz, 3 612 lignes de MIR, prend 18 ms au niveau 1 au lieu de 42 au niveau 2 (MIR
+  seul).
+- **Hot au niveau 1.** Chaque exécution de l'unité ajoute les pas qu'elle a faits, que l'exécution compte de toute façon
+  pour ses checkpoints. Dès qu'ils atteignent 1 000 pas pour chaque ligne du texte de l'unité, celle-ci reçoit son
+  niveau 2. Un pas de code machine prend de 3,8 à 5,3 ns sur le pas de Lorenz et le produit sparse, et MIR prend de 5 à
+  6,5 µs par ligne au niveau 1 : de 1 000 à 1 700 pas par ligne, si bien qu'une unité reçoit son niveau 2 dès qu'elle a
+  tourné à peu près aussi longtemps que son niveau 1 a pris à faire. La taille de l'unité est dans le seuil, comme V8
+  demande à une fonction plus de ticks de son budget avant TurboFan que son bytecode est grand : un code plus grand coûte
+  plus à faire, donc il doit d'abord tourner plus longtemps. Des seuils de 2 000 et 4 000 pas par ligne étaient plus
+  lents ou à égalité sur chaque programme ci-dessous.
+- **Dans un autre domaine.** Un domaine OCaml (un fil d'exécution qui tourne en parallèle sur un autre cœur) fait le
+  niveau 2 à partir du même texte, dans un contexte de MIR à lui, sans le verrou du domaine, si bien que le domaine
+  principal et ses collectes continuent. Un seul niveau 2 est fait à la fois ; une unité devenue hot entre-temps
+  redemande à son exécution suivante.
+- **Pris à un point sûr.** Avant chaque exécution du code machine de n'importe quelle unité, le domaine principal regarde
+  si un niveau 2 est fait, et le met dans son unité. À ce moment, aucun code machine ne tourne nulle part : il ne rappelle
+  jamais OCaml, et un programme tourne sur un seul domaine. Les deux niveaux viennent du même texte, si bien que la frame,
+  qui est celle de l'interpréteur, et chaque point où une exécution repart, après un quantum de pas, une collecte ou un
+  bail, veulent dire la même chose dans les deux : l'échange est une adresse écrite, et une fiber arrêtée entre deux
+  quanta du niveau 1 continue dans le niveau 2. HotSpot et V8 installent le nouveau code au prochain appel d'une méthode,
+  et remplacent une frame qui tourne par l'*on-stack replacement* (le remplacement sur la pile) au retour en arrière
+  d'une boucle, qui traduit la frame de la disposition d'un compilateur à celle de l'autre ; ici, rien n'a besoin d'être
+  traduit.
+- **Libéré.** Chaque unité a son propre contexte de MIR, si bien que son code peut partir seul : celui du niveau 1 à
+  l'échange, et celui d'une unité dès que rien ne la tient plus, par un finaliser du collecteur, comme quand sa boucle
+  est refaite pour de nouvelles valeurs. Un contexte coûte environ 0,13 ms à faire et 120 KB, ce que paie un programme
+  d'une centaine de petites unités, chacune hot juste avant sa fin : 147 ms au lieu de 139, et 39 MB au lieu de 27
+  (`units.ce` ci-dessous).
+- **Sûr.** L'autre domaine ne lit que le texte de l'unité, que seul le propre générateur de Cesia écrit, et deux cellules
+  atomiques ; il ne touche jamais l'unité, que le domaine principal tient jusqu'à ce qu'il prenne son niveau 2, si bien
+  qu'aucune unité ne meurt pendant que son niveau 2 est fait. L'état de MIR est propre à un contexte : les deux tables que
+  ses contextes partagent ne sont écrites que par le premier, avant qu'aucun autre domaine ne démarre. Les pages de code
+  ne sont jamais à la fois écrivables et exécutables, et le niveau 2 d'une unité est écrit dans des pages à lui pendant
+  que son niveau 1 tourne. Les tests font du code sur deux domaines à la fois, libèrent des contextes pendant que le code
+  de l'autre domaine tourne, échangent les niveaux sous quatre fibers qui se relaient dans une unité, et vérifient que
+  les unités qui meurent ne laissent aucun contexte derrière elles.
+- **`CESIA_JIT=always`** fait le niveau 2 à la fin de la première exécution d'une unité et l'attend, si bien que les
+  tests et le fuzzer font tourner l'interpréteur, le niveau 1 et le niveau 2 aux mêmes points à chaque lancement.
+
+Mesuré le 2026-11-13, profil `release`, sur la machine de *Ce qu'il gagne*, plus bas : chaque programme 11 fois, alterné
+avec le binaire d'avant, qui ne faisait que le niveau 2, du début du processus à sa fin ; le lancement le plus court,
+puis la médiane, en ms :
+
+| Programme | Avant | Deux niveaux |
+|---|---:|---:|
+| Lorenz sur [0, 100] et [0, 50] | 83,0 ; 85,7 | 66,2 ; 67,8 |
+| Lorenz sur [0, 2 000] | 255,1 ; 263,3 | 252,6 ; 261,5 |
+| `structs` | 51,3 ; 56,1 | 40,0 ; 41,2 |
+| `real/particles` | 53,8 ; 53,8 | 48,3 ; 48,7 |
+| `optimize.Root`, 22 000 zéros | 71,2 ; 72,4 | 67,8 ; 68,5 |
+| `matmul` | 44,6 ; 46,2 | 44,4 ; 45,0 |
+| `dyn` | 59,5 ; 61,0 | 60,1 ; 61,4 |
+| `units.ce`, 100 petites unités | 138,8 ; 139,8 | 146,8 ; 148,2 |
+| `io.Print(1)`, le démarrage | 2,5 ; 2,7 | 2,5 ; 2,8 |
+
+`fib`, `mandel`, `nd`, `nd-2d` et le produit sparse sont à 3 % près à leur plus court, tout comme `real/csv` et
+`real/json`, qui passent leur temps hors du code machine. Les exécutions courtes gagnent ce que le niveau 1 économise sur
+la compilation ; les longues gardent la vitesse du niveau 2, et gagnent aussi sa compilation, faite sur un autre cœur.
+`dyn` perd une milliseconde : sa boucle fait tourner son niveau 1 jusqu'à ce que son niveau 2 arrive.
+
+Là où les géants font plus : HotSpot a cinq niveaux, l'interpréteur, C1 avec et sans profils, et C2, qui compile avec ce
+que les profils ont vu ; V8 en a quatre, Ignition, Sparkplug, Maglev et TurboFan. Leurs niveaux du haut spéculent sur
+les types et les branches que les niveaux du bas ont vus, et peuvent être plusieurs fois plus rapides qu'eux ; les deux
+niveaux de Cesia sont le même texte, mieux fait, au plus moitié plus rapide l'un que l'autre, puisque sa spéculation
+est déjà dans le texte, venue de la frame de l'interpréteur. Ils compilent sur plusieurs threads, à partir de files de
+méthodes, et jettent le code des méthodes devenues froides ; Cesia fait un seul niveau 2 à la fois, et garde le code
+d'une unité aussi longtemps que l'unité vit. La machine virtuelle Jalapeño d'Arnold et d'autres (2000) recompile une
+méthode quand le temps qu'elle doit faire gagner dépasse le temps de la compiler, en s'attendant à ce qu'une méthode
+tourne encore aussi longtemps qu'elle a tourné. La règle de Cesia est plus simple, puisque le niveau 2 est fait sur un
+autre cœur : une unité doit seulement avoir tourné aussi longtemps que son niveau 1 a pris à faire, ce qui empêche les
+unités qui s'arrêtent vite de prendre l'unique niveau 2 en cours.
+
 ### Paris, guards et bails
 
 Là où l'inférence ne peut pas prouver un type, le JIT *spécule* : il regarde les valeurs de la frame quand il compile, le
@@ -557,8 +777,16 @@ deuxième, et appelle celle qui correspond comme il appelle une fonction nommée
 place, ce qui s'appelle l'*inlining* ; une fonction qu'il n'a pas vue fait un bail, comme un guard qui échoue. C'est un
 *polymorphic inline cache* (un inline cache pour plusieurs formes), l'idée de Hölzle, Chambers et Ungar (1991), dont V8
 et HotSpot se servent pour la même sorte d'appel. Un appel qui a atteint cinq fonctions ou plus est *megamorphic* (il a
-trop de formes pour un cache) : le JIT le laisse à l'interpréteur, comme un appel d'une fonction qui a capturé des
-variables, ou qui prend ou donne autre chose que des nombres.
+trop de formes pour un cache) : le JIT le laisse à l'interpréteur, tout comme un appel d'une fonction qui a capturé des
+variables. Une fonction qui prend ou donne d'autres valeurs que des nombres, comme un petit array de floats ou un texte
+sur un chemin d'erreur, est inlinée quand elle est petite, sans boucle : son corps est fait sur place, et ce qu'il ne
+sait pas faire retourne à l'interpréteur, qui fait l'appel.
+
+Un appel sans argument, comme `f()` dans les tirages un par un de `stats.MonteCarlo`, est fait de la même façon :
+l'interpréteur note les fonctions qu'il atteint, comme il le fait pour un à trois arguments, et une fonction sans
+paramètre infère ses variables et son résultat, comme le fait une fonction appelée avec des arguments typés, si bien
+qu'on sait que `() -> 0.25` donne un float. Un tel appel prenait 37 ns, toujours dans l'interpréteur ; il prend 2,2 ns,
+comme `f(k)`, et 4,1 ns quand `f` tire au hasard, `() -> random.Float()` (les médianes de 21 lancements, 2026-11-14).
 
 ```text
 f(total, x)                      in machine code
@@ -581,6 +809,11 @@ une différence est un bug du JIT.
 - les natives, des fonctions de `std/` écrites en OCaml, comme [text.Split] : elles sont déjà du code machine ;
 - `for x in xs` sur les éléments d'une liste, et un appel à travers une valeur qui a atteint cinq fonctions ou plus, ou
   une fonction qui a capturé des variables ;
+- dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme un `return` d'une struct ou un
+  `io.Print` : cette instruction seule, chaque fois qu'elle tourne, et la boucle revient au code machine à son tour
+  suivant ; la boucle entière, quand de telles instructions tournent tous les quelques pas ;
+- les arrays de plus de 15 floats faits dans une boucle : les opérations de l'interpréteur sur eux, qui travaillent sur
+  beaucoup de cellules à la fois, coûtent déjà peu par cellule ;
 - une map lue ou écrite avec une clé calculée pendant que le programme tourne, comme `m["key$k"]`, et le texte construit
   pour elle. Le code natif ne rappelle jamais OCaml : rien ne collecte pendant une exécution, ce qui permet aux valeurs
   qu'il tient de rester dans des registres, où le collector ne pourrait pas les trouver pour les déplacer. Le hash, le
@@ -909,6 +1142,26 @@ plein, veut seulement dire que le package se charge comme sans cache. Les permis
 elles viennent de la ligne de commande et de `cesia.toml` à chaque run, comme les fichiers qu'un use nomme viennent du
 disque.
 
+**Un corps lu à son premier appel.** La plupart des fonctions d'un gros programme ne tournent pas à son démarrage :
+Cemacs, jusqu'à sa première image, appelle 262 des 1 118 fonctions de ses packages. Lire chaque arbre d'une entrée faisait
+que les collections du jeune heap les copiaient tous vers le major heap (la grande partie de la mémoire, où vivent les
+valeurs qui durent) : 723 000 mots promus au démarrage de Cemacs, 318 000 maintenant. Le chargement lit donc l'arbre de
+chaque fonction sauf son corps, qu'il saute : le corps est lu dans l'entrée la première fois que quelque chose en a
+besoin, son premier appel le plus souvent, ou le JIT quand il regarde une fonction qu'il pourrait inliner. Le corps d'un
+fichier, dont les instructions tournent tout de suite, et celui d'une struct, que le chargement lit pour connaître ses
+champs, sont lus avec le reste. Dans l'entrée, un corps vient après sa longueur, et ses places sont comptées à partir de
+la place d'avant, pour que le sauter ne change rien d'autre ; les textes de l'entrée, ses noms parmi eux, viennent une
+seule fois à son début, pour qu'un corps lu plus tard les trouve. Les octets dont il est lu sont ceux de l'entrée
+vérifiée quand le package s'est chargé, gardés en mémoire : une entrée changée sur le disque depuis, ou réécrite par un
+autre run, ne change rien pour ce run. Un corps est lu par le même lecteur, qui vérifie chaque compte et chaque référence
+contre ces octets et doit finir là où le dit sa longueur. Un corps qui ne le fait pas, ce que seul un bug de Cesia ou un
+changement des octets en mémoire pourrait produire, le digest ayant été vérifié, arrête le programme avec une erreur à sa
+fonction, « The cache of loaded packages kept this function damaged », et l'entrée est retirée, pour que le run suivant
+lise le package depuis ses sources. Un corps que le chargement ne lit pas ne cache aucune erreur : une entrée n'est
+écrite que pour un package qui s'est chargé depuis ses sources sans erreur, et chaque erreur que trouve un chargement, il
+la trouve alors ; les mêmes fonctions tournent, avec les mêmes résultats, les mêmes erreurs aux mêmes lignes et les mêmes
+stack traces.
+
 **L'écriture.** Les entrées d'un run sont écrites une fois qu'il a fini, sa sortie partie et son code de sortie fixé,
 par une copie du processus que la fin n'attend pas, faite avec `fork` (l'appel du système qui copie un processus) : un
 run ne dure pas plus longtemps que sans cache. Avant toute chose, la copie ferme chaque descripteur du programme (le
@@ -946,15 +1199,33 @@ Le premier run prend le temps qu'il prenait avant le cache, à l'écart près en
 Cemacs : environ 1 ms est le `fork` d'un processus plus gros, le reste les questions notées pendant le resolver. Relire
 une entrée est deux à trois fois plus rapide que de passer sa source par le lexer et le parser, et le resolver ne tourne
 pas du tout ; ce qui reste d'un chargement est surtout cette lecture, et les collections du jeune heap qui copient les
-nouveaux arbres vers le major heap (la grande partie de la mémoire, où vivent les valeurs qui durent), comme pour des
-arbres qui viennent du parser.
+nouveaux arbres vers le major heap, comme pour des arbres qui viennent du parser.
+
+Depuis que les corps sont lus à leur premier appel, mesuré le 2026-11-13, 21 runs de chacun, les deux binaires à tour de
+rôle, la médiane et son intervalle à 95 %, du début du processus à sa fin, Cemacs de `bin/cemacs` jusqu'à sa première
+image :
+
+| Programme | Chaque corps lu au chargement | Chaque corps à son premier appel |
+|---|---:|---:|
+| `use std/io` et `io.Print(1)` | 3,16 ms [3,07, 3,21] | 3,13 ms [3,07, 3,18] |
+| `use std/plot` | 5,74 ms [5,59, 5,86] | 4,03 ms [3,98, 4,11] |
+| `use std/cells` | 4,43 ms [4,35, 4,62] | 3,80 ms [3,70, 3,84] |
+| `src/browser` de Ceti | 6,53 ms [6,36, 7,05] | 4,83 ms [4,73, 5,04] |
+| Cemacs du 2026-11-12, avant ses cells | 52,39 ms [52,07, 53,85] | 45,94 ms [45,36, 46,38] |
+| Cemacs avec ses cells et son IDE | 61,12 ms [60,17, 63,51] | 50,62 ms [50,07, 51,83] |
+
+Les premiers runs, avec un cache vide, prennent le même temps avec l'un ou l'autre binaire, à l'écart près entre les
+runs.
 
 **Testé** par `tests/cache_test.ml`, qui abîme chaque entrée à 60 endroits, la coupe à 8 longueurs, l'allonge, l'échange
 avec une autre et la lit avec un autre build, à chaque fois avec la même sortie et l'entrée réécrite telle qu'elle
 était, qui change un fichier et une dépendance, et qui lance tour à tour deux programmes qui chargent le code Cesia de
-`std/list` avant et après un package qui n'en lit que les natives, sans rien résoudre de nouveau ; par
-`tests/cache/entries.cmd`, la même chose avec le binaire, et avec un lien, une entrée que d'autres peuvent lire, un
-dossier que d'autres peuvent lire et un dossier où l'on ne peut pas écrire, et quatre runs en même temps ; et par les
+`std/list` avant et après un package qui n'en lit que les natives, sans rien résoudre de nouveau, qui vérifie que les
+corps des fonctions qu'un run n'appelle jamais restent non lus, dans un package avec de la récursion, des closures et une
+fonction dans une fonction, et qui abîme une entrée en mémoire une fois vérifiée, ce qui arrête le run au premier appel
+qui a besoin d'un de ses corps ; par `tests/cache/entries.cmd`, la même chose avec le binaire, et avec un lien, une
+entrée que d'autres peuvent lire, un dossier que d'autres peuvent lire et un dossier où l'on ne peut pas écrire, quatre
+runs en même temps, et une entrée changée sur le disque pendant qu'un run qui l'a lue tourne ; et par les
 golden tests (des tests qui comparent la sortie à un texte attendu), lancés une fois sans cache, une fois avec un cache
 vide et une fois avec un cache plein.
 
@@ -966,7 +1237,7 @@ l'ancien code reste et l'erreur est montrée ; sinon, ses fonctions et ses struc
 fonction est compilée de nouveau à son appel suivant, et le code déjà compilé qui appelle une ancienne version atteint
 la nouvelle. Les valeurs et les fibers du programme restent telles qu'elles étaient : c'est le *hot reload* (le
 rechargement à chaud). `tools/reload-test.sh` a mesuré 12 à 19 ms entre l'enregistrement et le moment où la nouvelle
-fonction tourne, le 1er novembre 2026.
+fonction tourne, le 2026-11-01.
 
 ## Pour aller plus loin
 

@@ -6,9 +6,10 @@ colonnes et vous posez les mêmes questions en quelques lignes. Les données son
 jours, dans `sales.csv`.
 
 > [!NOTE]
-> The examples of std/frame and std/num have tabs: the same computation in Python with pandas and numpy, and in R. Each tab
-> runs when the book is checked, and prints what the Cesia version shows. They have no MATLAB tab: GNU Octave, which
-> checks the MATLAB tabs, has no tables. See [Tabs in other languages](tests.md#tabs-in-other-languages).
+> Les exemples de std/frame et de std/num ont des onglets : le même calcul en Python avec pandas et numpy, et en R.
+> Chaque onglet tourne quand le livre est vérifié, et affiche ce que montre la version Cesia. Ils n'ont pas d'onglet
+> MATLAB : GNU Octave, qui vérifie les onglets MATLAB, n'a pas de tables. Voir
+> [Onglets dans d'autres langages](tests.md#onglets-dans-dautres-langages).
 
 ## Des enregistrements dans une liste
 

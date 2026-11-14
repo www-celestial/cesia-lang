@@ -147,6 +147,7 @@ ligne, ou c'est la fiber (une fonction qui tourne à côté des autres) qui s'ar
 | `Can't combine an array of … with an array of ….` | Donnez des arrays de mêmes tailles, ou un nombre et un array. |
 | `Matmul can't multiply … by … with … by …: the columns of the first must equal the rows of the second.` | Transposez l'une des deux, ou vérifiez les tailles avec value.Size. |
 | `text.Decimals needs a count of decimals from 0 to 20, not ….` | Donnez de 0 à 20 décimales. |
+| `value.Text needs a count of 1 or more characters as most, not ….` | Donnez un nombre entier de 1 ou plus. |
 | `Can't sort … with ….` | Triez des nombres ou des textes, ou donnez à list.SortBy une fonction qui en donne un. |
 | `… needs a text with a character.` | Donnez un texte d'au moins un caractère. |
 | `FromBytes needs integers from 0 to 255, not ….` | Donnez des entiers de 0 à 255. |

@@ -403,5 +403,5 @@ of M4 take most of the time.
 
 ## Next
 
-You can draw what you compute. The next chapter, [JSON and CSV](json.md), reads data from other programs and writes it
-for them.
+You can draw what you compute. The next chapter, [Numerical methods](numerical.md), finds the zeros and minima of
+functions, solves differential equations and sparse systems, and computes integrals.

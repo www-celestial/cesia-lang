@@ -18,13 +18,30 @@ sorte de JIT c'est, comment il parie sur les types et comment il rend la main à
 ## Ce qui devient du code machine
 
 - Les boucles sur des nombres, et les arrays (des suites de valeurs lues par leur numéro), de floats (des nombres à
-  virgule) ou de valeurs, lus et écrits par index.
+  virgule), d'entiers ou de valeurs, lus et écrits par index : un produit sparse sur des listes de numéros de lignes, un
+  histogramme, une permutation suivie.
+- Dans une boucle, les petits arrays de floats, jusqu'à 15 cellules, faits et travaillés cellule par cellule, comme
+  l'état d'une équation dans `y + h * f(t, y)` : ils ne sont jamais faits pendant que la boucle tourne, et une fonction
+  qui en donne un, comme `f` ici, est inlinée (son corps mis à la place de l'appel).
 - Les fonctions sur des nombres qui s'appellent entre elles, comme dans une récursion.
 - Dans une boucle, les maps (des valeurs rangées sous des clés) et les structs (des valeurs dont les champs sont déclarés
   une fois) : lire leurs champs, calculer avec eux, en créer de nouvelles, les ranger dans une liste.
-- Dans une boucle, l'appel d'une fonction gardée dans une variable, comme `f(x)` où `f` vient d'une liste : le code
-  machine teste les fonctions que l'appel a rencontrées, quatre au plus, et lance celle qu'il trouve, comme le montre
-  [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur).
+- Dans une boucle, l'appel d'une fonction gardée dans une variable, comme `f(x)` où `f` vient d'une liste, ou `f()` sans
+  argument : le code machine teste les fonctions que l'appel a rencontrées, quatre au plus, et lance celle qu'il trouve,
+  comme le montre [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur).
+- `random.Float()`, le pas de son générateur fait sur place, les mêmes nombres que ceux de l'interpréteur dans le même
+  ordre.
+
+Un produit sparse (sur une matrice presque toute faite de zéros), sa matrice en colonnes (CSC : les lignes et les
+valeurs de chaque colonne, l'une après l'autre, et l'endroit où commence chaque colonne), est fait de deux boucles sur des
+listes d'entiers : `for j in 1..n` sur les colonnes, et à l'intérieur `for q in colptr[j]..colptr[j + 1] - 1` sur les
+non-zéros de la colonne `j`, qui ajoute `vals[q] * x[j]` à `y[i]` pour la ligne `i = rowidx[q]`. Une fois hot, il prend
+2,8 ns par non-zéro : 1,25 ms pour les 448 800 non-zéros d'une matrice de Poisson 2-D de 300 × 300 points, contre
+4,9 ns pour le produit d'Octave et 1,2 ns pour celui de scipy (médianes de 21 runs). La boucle de scipy est du C qui lit
+chaque ligne comme un entier de 32 bits, 12 octets par non-zéro contre 16 pour Cesia, et ne vérifie aucune ligne par
+rapport à la taille de `y`, là où Cesia les vérifie toutes, pour qu'une mauvaise ligne soit une erreur à sa ligne,
+jamais une écriture hors de l'array. Les vérifications de `x[j]`, `colptr[j]` et `colptr[j + 1]` sont faites une seule
+fois, avant les boucles, comme le dit la partie *Ce qu'il produit* de Comment Cesia fonctionne.
 
 Cette boucle sur une liste de structs tourne en code machine dès qu'elle est hot, environ quinze fois plus vite que dans
 l'interpréteur : `bench/real/particles.ce`, la même boucle sur 2 000 particules, prend 49 ms contre 811 ms sans le JIT,
@@ -65,6 +82,9 @@ code machine garde ses deux floats dans des registres (les petites mémoires du 
   [json.Parse] : elles sont déjà du code machine.
 - Les boucles sur les éléments d'une liste, `for x in xs`, et un appel à travers une valeur qui a rencontré cinq
   fonctions ou plus, ou une fonction qui a capturé ses propres variables.
+- Dans une boucle, une instruction à l'intérieur d'un if qu'il ne sait pas faire, comme le `return` d'une erreur ou un
+  `io.Print` : cette instruction passe à l'interpréteur chaque fois qu'elle tourne, et le reste de la boucle reste du
+  code machine.
 - Sous un debugger (un programme qui exécute le vôtre et peut l'arrêter, pour montrer ses variables), une fonction dont
   le code contient un breakpoint (une ligne où le programme doit s'arrêter), et le code que vous parcourez pas à pas :
   tout le reste demeure du code machine, comme le dit le chapitre [Le prompt et le debugger](debug.md#vitesse).
@@ -131,7 +151,10 @@ Un programme qui utilise des packages écrits en Cesia les lit à son premier ru
 fichiers sont les mêmes ne repasse ni par le lexer, ni par le parser, ni par le resolver. Mesuré le 2026-11-12, 21 runs
 de chacun, alternés, médianes : `use std/plot` démarre en 5,69 ms contre 9,66 avant, et Cemacs arrive à sa première
 image en 36,97 ms contre 52,16. Le premier run, dont les entrées sont écrites une fois qu'il a fini, prend à peu près le
-temps qu'il prenait avant : 9,61 et 54,26 ms.
+temps qu'il prenait avant : 9,61 et 54,26 ms. Depuis le 2026-11-13, le corps d'une fonction n'est lu dans le cache
+qu'à son premier appel : `use std/plot` démarre alors en 4,03 ms contre 5,74 avec chaque corps lu au chargement, et
+Cemacs avec ses cells et son IDE, de `bin/cemacs` jusqu'à sa première image, en 50,62 ms contre 61,12, 21 runs de
+chacun, alternés, médianes.
 
 ### Le calcul
 
