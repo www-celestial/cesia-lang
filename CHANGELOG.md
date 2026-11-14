@@ -71,6 +71,8 @@ Measured on the same machine as the others, in the book's chapter on speed:
 
 - An example's check that waits no longer overwrites the variables before it.
 - The tests run on macOS's own tools; on a phone, the site's contents come first, above the text.
+- On a phone no page of the site scrolls sideways: the header takes a second line, long links and code wrap, and a
+  formula wider than its line scrolls in its own box.
 - The full list is in the commits since v1.0.0.
 
 ## 1.0.0

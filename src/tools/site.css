@@ -31,7 +31,7 @@ a:focus-visible, input:focus-visible, button:focus-visible, summary:focus-visibl
 .skip:focus { left: 8px; top: 8px; background: var(--page); padding: 4px 8px; z-index: 2; }
 
 header {
-  display: flex; align-items: center; gap: 16px; padding: 8px 16px; background: var(--band); color: var(--on-band);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 8px 16px; background: var(--band); color: var(--on-band);
   position: sticky; top: 0; z-index: 1;
 }
 header a { text-decoration: none; color: var(--on-band); }
@@ -72,7 +72,7 @@ button.theme {
 .side .col a[aria-current="page"] { background: var(--pick); box-shadow: inset 3px 0 0 var(--accent); }
 .trail { margin: 0 0 4px; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
 .trail a { color: var(--muted); }
-main { max-width: calc(72ch + 64px); padding: 16px 32px 64px; min-width: 0; }
+main { max-width: calc(72ch + 64px); padding: 16px 32px 64px; min-width: 0; overflow-wrap: break-word; }
 @media (max-width: 760px) {
   .page { grid-template-columns: minmax(0, 1fr); }
   /* On a phone the side comes first, above the text: the same columns side by side, each at most a third of the screen
@@ -129,7 +129,8 @@ details[open] > summary { margin-bottom: 8px; }
 math { font-family: "STIX Two Math", math; font-size: 1.05em; }
 math[display="block"] { margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; }
 
-.pager { display: flex; justify-content: space-between; gap: 16px; margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--edge); }
+.pager { display: flex; flex-wrap: wrap; gap: 16px; margin-top: 48px; padding-top: 16px; border-top: 1px solid var(--edge); }
+.pager > * + * { margin-left: auto; }
 
 .results {
   position: absolute; right: 16px; top: 44px; width: min(560px, calc(100vw - 32px)); max-height: 70vh; overflow-y: auto;
@@ -147,3 +148,16 @@ math[display="block"] { margin: 0 0 16px; overflow-x: auto; overflow-y: hidden; 
 .keys[hidden] { display: none; }
 .keys dt { float: left; clear: left; width: 48px; }
 .keys dd { margin: 0 0 4px 56px; }
+
+/* On a phone the header takes a second line when it must: the search fills the room left beside the theme's button, its
+   results open below the header, a heading a link leads to stops below the header, and EN and FR are 24 px targets. A
+   formula in a line, which can't wrap, scrolls in its own box when it is wider than the line; its 4 px of padding, taken
+   back by its margin, keep the ink of its letters out of the clip. */
+@media (max-width: 760px) {
+  header { row-gap: 8px; }
+  header .search { flex: 1 1 auto; min-width: 0; }
+  header .langs a { min-width: 24px; line-height: 24px; text-align: center; }
+  .results { top: 100%; }
+  h1, h2, h3 { scroll-margin-top: 100px; }
+  math:not([display="block"]) { max-width: calc(100% + 8px); overflow-x: auto; overflow-y: hidden; padding: 4px; margin: -4px; }
+}
