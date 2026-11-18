@@ -59,6 +59,12 @@ as it did.
   that holds other code, or of a slider whose numbers aren't written in the file; `cells.Snap` gives a slider's position
   nearest a number and its text, `0.3` and not `0.30000000000000004`; `cells.Set` gives a session the new number in place
   and the cells to run again, only those that read it; `cells.Html` shows each slider on the page.
+- Animations: `plot.Frames(graphs, fps = 30)`, 1 to 300 graphs shown one after the other, on the axes that all of them
+  cover, each frame changing only its data and its title; `plot.Scene(g, width, height, frame = k)` draws one, with
+  `Frames` and `Fps` in its scene, and `cells.Scene(session, key, width, frame = k)` asks a session for it, so that an
+  editor fetches one frame at a time. `plot.Svg` and `plot.Save` write the frames as an animation of CSS that loops,
+  without a script, paused on frame 1 under `prefers-reduced-motion`, keeping every k-th frame past 8 MB; `cells.Html`
+  starts each paused under a box Play.
 - `std/plot`, graphs as values: `plot.Line`, `Points`, `Bars`, `Histogram`, `Heatmap`, `Density` and `Area`, on shared
   axes with `plot.Of` and side by side with `plot.Grid`, drawn to SVG by `plot.Svg` and `plot.Save`, and to a scene of
   shapes in pixels by `plot.Scene`; the ticks by the extended Wilkinson algorithm, long lines by M4, the colors of Okabe
