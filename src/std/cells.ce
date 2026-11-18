@@ -1,7 +1,9 @@
 (** Cells in a file of code, as a notebook has them, and a session that runs them one by one. A line that holds only a
     comment starting with %%, as (* %% Simulation *), starts a cell, and its title is the rest of the comment; the lines
     before the first one are the first cell, usually the uses. A cell reads the names that cells above it define, and a
-    run reruns the cells that depend on what it defines: the file means what cesia run computes. *)
+    run reruns the cells that depend on what it defines: the file means what cesia run computes. A cell of sliders,
+    name = cells.Slider(28.0, 0.0, 50.0), gives numbers that an editor moves by writing them in the file. *)
+use std/bug
 use std/cesia
 use std/debug
 use std/dict
@@ -9,18 +11,19 @@ use std/fiber
 use std/io
 use std/json
 use std/list
+use std/math
 use std/result
 use std/syntax
 use std/sys
 use std/text
-use std/value
+use std/value as values
 
 (* ---- Cells and the names they read and define. *)
 
 defn marker(line)
   (** The title of a line that starts a cell, or missing for another line. *)
   t = text.Trim(line)
-  n = value.Len(t)
+  n = values.Len(t)
   if n < 6 or not text.StartsWith("(*", t) or not text.EndsWith("*)", t)
     return missing
   end
@@ -28,7 +31,7 @@ defn marker(line)
   if not text.StartsWith("%%", inner) or text.Contains("*)", inner)
     return missing
   end
-  if value.Len(inner) == 2 "" else text.Trim(text.Slice(3, value.Len(inner), inner)) end
+  if values.Len(inner) == 2 "" else text.Trim(text.Slice(3, values.Len(inner), inner)) end
 end
 
 (** The source of lines first to last, from 1. *)
@@ -46,10 +49,10 @@ defn Parse(source)
   out = []
   from = 1
   title = ""
-  for i in 1..value.Len(all)
+  for i in 1..values.Len(all)
     t = marker(all[i])
-    if value.IsSome(t)
-      if i > 1 or value.Len(out) > 0
+    if values.IsSome(t)
+      if i > 1 or values.Len(out) > 0
         out = list.Append({Title: title, From: from, To: i - 1, Source: lines(from, i - 1, all)}, out)
       else
         out = [{Title: "", From: 1, To: 0, Source: ""}]
@@ -58,7 +61,7 @@ defn Parse(source)
       title = t
     end
   end
-  list.Append({Title: title, From: from, To: value.Len(all), Source: lines(from, value.Len(all), all)}, out)
+  list.Append({Title: title, From: from, To: values.Len(all), Source: lines(from, values.Len(all), all)}, out)
 end
 
 (** The name of a cell in a message: its title, or "the first cell". *)
@@ -70,12 +73,12 @@ fault(line, column, message) = {Line: line, Column: column, Message: message}
 defn wordLine(name, cell)
   (** The line of the file where a name first shows as a whole word in a cell, or its first line. *)
   all = text.Lines(cell.Source)
-  for k in 1..value.Len(all)
+  for k in 1..values.Len(all)
     at = text.Find(name, all[k])
-    if value.IsSome(at)
+    if values.IsSome(at)
       before = if at == 1 " " else text.Slice(at - 1, at - 1, all[k]) end
-      last = at + value.Len(name)
-      after = if last > value.Len(all[k]) " " else text.Slice(last, last, all[k]) end
+      last = at + values.Len(name)
+      after = if last > values.Len(all[k]) " " else text.Slice(last, last, all[k]) end
       if not isNameChar(before) and not isNameChar(after)
         return cell.From + k - 1
       end
@@ -110,7 +113,7 @@ end
 defn assigned(cell, names)
   (** Those of the names that a cell gives a value to without defining them, in a loop or a block: the source with a line
       that reads them all tells which ones it doesn't read from outside. *)
-  if value.Len(names) == 0
+  if values.Len(names) == 0
     return []
   end
   probe = cesia.Reads("$(cell.Source)\n[$(text.Join(", ", names))]")
@@ -128,27 +131,36 @@ end
 
 defn Analyse(cells)
   (** What each cell of Parse defines and reads, and its errors: a list with one struct for each cell, with Defines and
-      Reads (names) and Errors (each with Line and Column in the file, and Message). A name is defined by one cell only;
-      a cell reads only names that the cells above it define; and a name no cell defines is an error where it is read.
+      Reads (names), Errors (each with Line and Column in the file, and Message) and Sliders. A name is defined by one cell
+      only; a cell reads only names that the cells above it define; and a name no cell defines is an error where it is
+      read. Sliders lists the lines name = cells.Slider(...) of a cell, through the name that the use of std/cells of the
+      first cell gives, each {Name, Line, Column, End, Value, Min, Max, Step}: Column and End are the first and the last
+      columns of the value's number on its line, from 1, Step is the default one when none is written; Value, Min, Max and
+      Step are Ints for a slider of Ints, else Floats, as Slider gives. A cell with a slider holds only sliders and
+      comments, and a slider takes numbers written in the file, which Slider would take.
 
         a = Analyse(Parse("n = 3\n(* %% Twice *)\nm = n * 2"))
         a[2].Reads --> ["n"]
         a[1].Defines --> ["n"]
-        Analyse(Parse("(* %% A *)\nx = y\n(* %% B *)\ny = 1"))[2].Errors[1].Line --> 2 *)
-  n = value.Len(cells)
+        Analyse(Parse("(* %% A *)\nx = y\n(* %% B *)\ny = 1"))[2].Errors[1].Line --> 2
+        s = Analyse(Parse("use std/cells\n(* %% P *)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)"))[2].Sliders[1]
+        [s.Name, s.Line, s.Column, s.End, s.Value, s.Step] --> ["rho", 3, 20, 23, 28.0, 0.5] *)
+  n = values.Len(cells)
   scans = [scanned(c) for c in cells]
+  alias = if n == 0 missing else cellsAlias(cells[1]) end
+  sliders = [slidersOf(cells[i], i, alias) for i in 1..n]
   owners = {}
   for i in 1..n
     for d in scans[i].Defs
       owners = dict.Put(d.Name, list.Append(i, dict.GetOr(d.Name, [], owners)), owners)
     end
   end
-  errors = [if value.IsMissing(s.Error) [] else [s.Error] end for s in scans]
+  errors = [list.Concat(if values.IsMissing(scans[i].Error) [] else [scans[i].Error] end, sliders[i].Errors) for i in 1..n]
   (* R1: one cell for a name. *)
   for i in 1..n
     for d in scans[i].Defs
       others = [j for j in owners[d.Name] if j != i]
-      if value.Len(others) > 0
+      if values.Len(others) > 0
         errors[i] = list.Append(fault(d.Line, d.Column, "\"$(d.Name)\" is defined by $(called(cells, others[1])) too: a name is defined in one cell only."), errors[i])
       end
     end
@@ -163,7 +175,7 @@ defn Analyse(cells)
   for i in 1..n
     for r in scans[i].Reads
       by = dict.GetOr(r.Name, [], owners)
-      if value.Len(by) == 0
+      if values.Len(by) == 0
         missingAt = dict.Put(r.Name, list.Append({Cell: i, Read: r}, dict.GetOr(r.Name, [], missingAt)), missingAt)
       else if list.Min(by) > i
         errors[i] = list.Append(fault(r.Line, r.Column, "\"$(r.Name)\" is defined below, in $(called(cells, list.Min(by))): move that cell above this one."), errors[i])
@@ -175,7 +187,7 @@ defn Analyse(cells)
   unknown = dict.Keys(missingAt)
   hidden = {}
   for i in 1..n
-    if value.IsMissing(scans[i].Error)
+    if values.IsMissing(scans[i].Error)
       own = [d.Name for d in scans[i].Defs]
       for name in assigned(cells[i], [x for x in list.Concat(defined, unknown) if not (x in own)])
         if dict.Has(name, owners)
@@ -198,7 +210,7 @@ defn Analyse(cells)
       errors[m.Cell] = list.Append(fault(m.Read.Line, m.Read.Column, message), errors[m.Cell])
     end
   end
-  [{Defines: [d.Name for d in scans[i].Defs], Reads: [r.Name for r in scans[i].Reads], Errors: list.SortBy(e -> e.Line, errors[i])} for i in 1..n]
+  [{Defines: [d.Name for d in scans[i].Defs], Reads: [r.Name for r in scans[i].Reads], Errors: list.SortBy(e -> e.Line, errors[i]), Sliders: sliders[i].Sliders} for i in 1..n]
 end
 
 defn ToRun(analysis, changed)
@@ -208,19 +220,380 @@ defn ToRun(analysis, changed)
         a = Analyse(Parse("use std/math\n(* %% A *)\nx = 1\n(* %% B *)\ny = 2\n(* %% C *)\nz = x + 1"))
         ToRun(a, 2) --> [2, 4]
         ToRun(a, 1) --> [1, 2, 3, 4] *)
-  n = value.Len(analysis)
   if changed == 1
-    return [i for i in 1..n]
+    return [i for i in 1..values.Len(analysis)]
   end
-  out = [changed]
-  names = analysis[changed].Defines
-  for j in changed + 1..n
-    if list.Any([r in names for r in analysis[j].Reads])
+  list.Prepend(changed, readers(analysis, changed, analysis[changed].Defines))
+end
+
+defn readers(analysis, from, names)
+  (** The cells below cell from that read one of names, directly or through the names of other such cells, in file order. *)
+  out = []
+  known = names
+  for j in from + 1..values.Len(analysis)
+    if list.Any([r in known for r in analysis[j].Reads])
       out = list.Append(j, out)
-      names = list.Concat(names, analysis[j].Defines)
+      known = list.Concat(known, analysis[j].Defines)
     end
   end
   out
+end
+
+(* ---- Sliders: a cell of lines name = cells.Slider(value, min, max, step = s), whose numbers the file holds. An editor
+   moves one by writing its new number in the file, and Set gives that number to the session, in place. *)
+
+(** The most steps from the min to the max of a slider. *)
+mostSteps = 1000000
+
+(** The most decimals of the min, the max and the step of a slider. *)
+mostDecimals = 18
+
+(** Is x a finite number: neither NaN nor an infinity? *)
+finite(x) = values.IsNumber(x) and x - x == 0
+
+defn decimals(x)
+  (** The decimals of the shortest text of a number: 2 for 0.25, 1 for 28.0, 0 for 3 and for 1e16, 7 for 1e-7. *)
+  t = "$x"
+  e = text.Find("e", t)
+  head = if values.IsMissing(e) t else text.Slice(1, e - 1, t) end
+  shift = if values.IsMissing(e) 0 else text.Number(text.Slice(e + 1, values.Len(t), t)) end
+  dot = text.Find(".", head)
+  list.Max(0, (if values.IsMissing(dot) 0 else values.Len(head) - dot end) - shift)
+end
+
+(** Does a slider give Ints: are its value, its min, its max and its step, when one is written, all Ints? *)
+whole(at, min, max, step) = values.IsInt(at) and values.IsInt(min) and values.IsInt(max) and (values.IsMissing(step) or values.IsInt(step))
+
+defn stepOf(at, min, max, step)
+  (** The step of a slider: the one written, else 1 for a slider of Ints, else (max - min) / 100 with two decimals more than
+      min and max have, so that 0.0 to 0.7 steps by 0.007 and not by 0.006999999999999999. *)
+  if values.IsSome(step)
+    step
+  else if whole(at, min, max, step)
+    1
+  else
+    s = text.Number(text.Decimals(list.Max(decimals(min), decimals(max)) + 2, (max - min) / 100))
+    if s > 0 s else (max - min) / 100 end
+  end
+end
+
+defn stepCount(min, max, step)
+  (** The number of steps from min to max: the last position is the largest one at most max, as an HTML range input has it.
+      Exact for Ints; for Floats a quotient a hair below a whole number counts it, as 0.7 / 0.007 is 99.99999999999999, and
+      Snap steps back from that position when its text is past max. *)
+  if values.IsInt(min) and values.IsInt(max) and values.IsInt(step) math.Div(max - min, step) else math.Div(math.Floor((max - min) / step + 1e-9), 1) end
+end
+
+defn sliderFault(at, min, max, step)
+  (** What is wrong with the numbers of a slider, or missing: one text for the panic of Slider and the error of Analyse. *)
+  if not (finite(at) and finite(min) and finite(max) and (values.IsMissing(step) or finite(step)))
+    return "cells.Slider takes finite numbers."
+  end
+  if not (min < max)
+    return "cells.Slider needs its min below its max: $min is not below $max."
+  end
+  if at < min or at > max
+    return "cells.Slider needs its value from its min to its max: $at is not in $min to $max."
+  end
+  (* The text of a position has the decimals of min and of the step, at most 20 in text.Decimals, and the default step two
+     more than min and max: 18 at most each. *)
+  for x in list.Concat([min, max], if values.IsMissing(step) [] else [step] end)
+    if decimals(x) > mostDecimals
+      return "cells.Slider takes numbers of at most $mostDecimals decimals: $x has $(decimals(x))."
+    end
+  end
+  (* max - min of two Ints fits in 63 bits, and of Floats is finite: the steps are counted from it. *)
+  ints = values.IsInt(min) and values.IsInt(max)
+  if (ints and min < 0 and max > 4611686018427387903 + min) or (not ints and not finite(1.0 * max - 1.0 * min))
+    return "cells.Slider needs max - min to fit in a number: $min to $max is too wide."
+  end
+  s = stepOf(at, min, max, step)
+  if not (s > 0) or s > max - min
+    return "cells.Slider needs a step above 0 and at most its max - min, $(max - min): $s is not."
+  end
+  if (max - min) / s > mostSteps + 1e-9
+    return "cells.Slider has at most $mostSteps steps: $min to $max by $s makes more."
+  end
+  missing
+end
+
+defn Slider(value, min, max, step = missing)
+  (** A number that an editor moves, for a notebook: gives value, as an Int when value, min, max and the step written are
+      Ints, else as a Float. Written in a cell of sliders only, one a line, with numbers written there, as
+      rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5): Cemacs draws a slider under the line, and a move writes the new
+      number in the file, so that cesia run reads it. The step goes from min to max; it is (max - min) / 100 when none is
+      written, or 1 when value, min and max are Ints. Panics on numbers that aren't finite, a min not below the max, a
+      value out of them, a min, a max or a step of more than 18 decimals, a max - min too wide for a number, a step not
+      above 0 or past max - min, or more than 10^6 steps: Analyse says the same of the file.
+
+        Slider(28.0, 0.0, 50.0, step = 0.5) --> 28.0
+        Slider(3, 0, 10) --> 3
+        Slider(3, 0, 10, step = 0.5) --> 3.0 *)
+  fault = sliderFault(value, min, max, step)
+  if values.IsSome(fault)
+    bug.Panic(fault)
+  end
+  if whole(value, min, max, step) value else value * 1.0 end
+end
+
+defn Snap(slider, x, steps = 0)
+  (** The position of a slider of Analyse nearest to x, then steps further, within its min and its max: {Value, Text}, Text
+      as the file writes it and Value the number cesia run reads from that text. A position is Min + k × Step for a whole
+      k, computed and never added up, and its text has the decimals of Min and of Step, so that steps of 0.1 write 0.3
+      and not 0.30000000000000004. An editor moves a slider with it, and Set snaps the value it gives with it.
+
+        s = {Value: 0.0, Min: 0.0, Max: 1.0, Step: 0.1}
+        Snap(s, 0.31).Text --> "0.3"
+        Snap(s, 0.31, steps = 1).Value --> 0.4
+        Snap(s, 0.31, steps = -10).Text --> "0.0"
+        Snap({Value: 5, Min: 0, Max: 10, Step: 3}, 10).Text --> "9" *)
+  ints = whole(slider.Value, slider.Min, slider.Max, slider.Step)
+  (* A slider of Floats counts in Floats: an Int min and a Float max may be farther apart than 63 bits hold. *)
+  float = n -> if ints n else 1.0 * n end
+  min = float(slider.Min)
+  max = float(slider.Max)
+  step = float(slider.Step)
+  last = stepCount(min, max, step)
+  near = math.Div(math.Round((list.Max(min, list.Min(max, float(x))) - min) / step), 1)
+  k = list.Max(0, list.Min(last, near + steps))
+  if ints
+    at = min + k * step
+    return {Value: at, Text: "$at"}
+  end
+  p = position(min, step, k)
+  if p.Value > max and k > 0 position(min, step, k - 1) else p end
+end
+
+defn position(min, step, k)
+  (** The position k of a slider of Floats, min + k × step, {Value, Text}: its text has the decimals of min and of step. *)
+  t = text.Decimals(list.Max(1, list.Max(decimals(min), decimals(step))), min + k * step)
+  (* A position next to 0 can round to -0.0, which the file needn't say. *)
+  t = if text.StartsWith("-", t) and text.Number(t) == 0 text.Slice(2, values.Len(t), t) else t end
+  {Value: text.Number(t), Text: t}
+end
+
+defn cellsAlias(first)
+  (** The name that the use of std/cells of the first cell gives, or missing: cells, or the name after as. *)
+  for line in text.Lines(first.Source)
+    words = text.Split(" ", text.Trim(line))
+    if values.Len(words) >= 2 and words[1] == "use" and words[2] == "std/cells"
+      return if values.Len(words) == 4 and words[3] == "as" words[4] else "cells" end
+    end
+  end
+  missing
+end
+
+defn codeOnly(lines)
+  (** The lines of a cell with their comments and their texts made spaces, each character in its column: only code is read
+      for sliders, and a slider named in a comment or in a text is none. *)
+  depth = 0
+  quoted = false
+  out = []
+  for line in lines
+    cs = text.Chars(line)
+    n = values.Len(cs)
+    kept = []
+    i = 1
+    while i <= n
+      c = cs[i]
+      two = if i < n "$c$(cs[i + 1])" else c end
+      if depth > 0 or (not quoted and two == "(*")
+        depth = if two == "(*" depth + 1 else if two == "*)" depth - 1 else depth end
+        wide = if two == "(*" or two == "*)" 2 else 1 end
+        kept = list.Concat(kept, if wide == 2 ["  "] else [" "] end)
+        i += wide
+      else if quoted
+        quoted = c != "\""
+        kept = list.Append(if c == "\\" and i < n "  " else " " end, kept)
+        i += if c == "\\" 2 else 1 end
+      else
+        quoted = c == "\""
+        kept = list.Append(if quoted " " else c end, kept)
+        i += 1
+      end
+    end
+    out = list.Append(text.Join("", kept), out)
+  end
+  out
+end
+
+(** Can the character start a name, or go on with one? *)
+nameStart(c) = (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or c == "_"
+nameChar(c) = nameStart(c) or (c >= "0" and c <= "9")   (** Can the character go on with a name? *)
+digit(c) = c >= "0" and c <= "9"   (** Is the character a digit? *)
+
+defn after(cs, i, test)
+  (** The first place from i whose character fails test, or the place after the last one. *)
+  j = i
+  while j <= values.Len(cs) and test(cs[j])
+    j += 1
+  end
+  j
+end
+
+(** The place of the first character from i that isn't a space. *)
+spaced(cs, i) = after(cs, i, c -> c == " " or c == "\t")
+
+defn numberEnd(cs, i)
+  (** The place after a number written from i, possibly negative, as 28, -0.5 or 1e-3, or i when none starts there. *)
+  j = if i <= values.Len(cs) and cs[i] == "-" i + 1 else i end
+  k = after(cs, j, digit)
+  if k == j
+    return i
+  end
+  if k < values.Len(cs) and cs[k] == "." and digit(cs[k + 1])
+    k = after(cs, k + 1, digit)
+  end
+  if k <= values.Len(cs) and (cs[k] == "e" or cs[k] == "E")
+    e = if k < values.Len(cs) and (cs[k + 1] == "+" or cs[k + 1] == "-") k + 2 else k + 1 end
+    if e <= values.Len(cs) and digit(cs[e])
+      k = after(cs, e, digit)
+    end
+  end
+  if k <= values.Len(cs) and (nameChar(cs[k]) or cs[k] == ".") i else k end
+end
+
+defn sliderCall(code, alias)
+  (** The slider of a line of code name = alias.Slider(...): {Name, Args}, each argument {Key, Text, Column, End}, its Key
+      "" when it has no name; {Fault, Column} for such a line whose arguments are no numbers written there; missing for
+      another line. *)
+  cs = text.Chars(code)
+  n = values.Len(cs)
+  first = spaced(cs, 1)
+  i = after(cs, first, nameChar)
+  if i == first or not nameStart(cs[first])
+    return missing
+  end
+  name = text.Join("", cs[first..i - 1])
+  i = spaced(cs, i)
+  if i > n or cs[i] != "=" or (i < n and cs[i + 1] == "=")
+    return missing
+  end
+  i = spaced(cs, i + 1)
+  head = "$alias.Slider"
+  call = i
+  if i + values.Len(head) - 1 > n or text.Join("", cs[i..i + values.Len(head) - 1]) != head
+    return missing
+  end
+  i = spaced(cs, i + values.Len(head))
+  bad = at -> {Fault: "cells.Slider takes numbers written in the file, not expressions.", Column: at}
+  if i > n or cs[i] != "("
+    return bad(call)
+  end
+  args = []
+  i = spaced(cs, i + 1)
+  while i <= n and cs[i] != ")"
+    key = ""
+    j = after(cs, i, nameChar)
+    if j > i and nameStart(cs[i])
+      k = spaced(cs, j)
+      if k > n or cs[k] != "=" or (k < n and cs[k + 1] == "=")
+        return bad(i)
+      end
+      key = text.Join("", cs[i..j - 1])
+      i = spaced(cs, k + 1)
+    end
+    e = numberEnd(cs, i)
+    if e == i
+      return bad(i)
+    end
+    args = list.Append({Key: key, Text: text.Join("", cs[i..e - 1]), Column: i, End: e - 1}, args)
+    i = spaced(cs, e)
+    if i <= n and cs[i] == ","
+      i = spaced(cs, i + 1)
+    else if i > n or cs[i] != ")"
+      return bad(i)
+    end
+  end
+  if i > n or spaced(cs, i + 1) <= n
+    return bad(list.Min(i, n))
+  end
+  {Name: name, Args: args}
+end
+
+defn sliderArgs(args)
+  (** The arguments of a slider by their parameters, value, min, max and step, as a call gives them: in order, then by
+      name; or missing when a call would give them otherwise. *)
+  params = ["value", "min", "max", "step"]
+  got = {}
+  for k in 1..values.Len(args)
+    a = args[k]
+    p = if a.Key == "" (if k <= 4 and values.Len(got) == k - 1 params[k] else "" end) else a.Key end
+    if not (p in params) or dict.Has(p, got)
+      return missing
+    end
+    got = dict.Put(p, a, got)
+  end
+  if dict.Has("value", got) and dict.Has("min", got) and dict.Has("max", got) got else missing end
+end
+
+defn slidersOf(cell, i, alias)
+  (** The sliders of a cell, {Sliders, Errors}: its lines name = cells.Slider(...) through alias, and the errors of R4 (a
+      cell with a slider holds only sliders and comments), of R5 (numbers written in the file) and of their numbers. *)
+  none = {Sliders: [], Errors: []}
+  if values.IsMissing(alias) or not text.Contains("$alias.Slider", cell.Source)
+    return none
+  end
+  code = codeOnly(text.Lines(cell.Source))
+  head = "$alias.Slider"
+  if i == 1
+    for k in 1..values.Len(code)
+      if text.Contains(head, code[k])
+        return {Sliders: [], Errors: [fault(cell.From + k - 1, text.Find(head, code[k]), "Sliders go in a cell below the uses, as (* %% Parameters *) starts one.")]}
+      end
+    end
+    return none
+  end
+  out = []
+  errors = []
+  others = []
+  for k in 1..values.Len(code)
+    line = cell.From + k - 1
+    c = sliderCall(code[k], alias)
+    if values.IsMissing(c) and text.Contains(head, code[k])
+      c = {Fault: "cells.Slider takes numbers written in the file, not expressions.", Column: text.Find(head, code[k])}
+    end
+    if values.IsMissing(c)
+      if text.Trim(code[k]) != ""
+        others = list.Append(fault(line, spaced(text.Chars(code[k]), 1), "A cell with a slider holds only sliders: move line $line to a cell below."), others)
+      end
+    else if dict.Has("Fault", c)
+      errors = list.Append(fault(line, c.Column, c.Fault), errors)
+    else
+      got = sliderArgs(c.Args)
+      if values.IsMissing(got)
+        errors = list.Append(fault(line, c.Args[1].Column, "cells.Slider takes numbers written in the file, not expressions."), errors)
+      else
+        number = p -> if dict.Has(p, got) text.Number(got[p].Text) else missing end
+        at = number("value")
+        problem = sliderFault(at, number("min"), number("max"), number("step"))
+        if values.IsSome(problem)
+          errors = list.Append(fault(line, got["value"].Column, problem), errors)
+        else if list.Any([s.Name == c.Name for s in out])
+          errors = list.Append(fault(line, 1, "\"$(c.Name)\" is a slider of this cell already."), errors)
+        else
+          (* A slider of Floats is Floats, as Slider gives: its Value may be written 3, and its Min an Int far from a Float Max. *)
+          float = x -> if whole(at, number("min"), number("max"), number("step")) x else 1.0 * x end
+          out = list.Append({Name: c.Name, Line: line, Column: got["value"].Column, End: got["value"].End, Value: float(at),
+            Min: float(number("min")), Max: float(number("max")), Step: float(stepOf(at, number("min"), number("max"), number("step")))}, out)
+        end
+      end
+    end
+  end
+  (* A cell that names a slider only in a comment or a text has none. *)
+  if values.Len(out) == 0 and values.Len(errors) == 0 none else {Sliders: out, Errors: list.Concat(errors, others)} end
+end
+
+defn sliderNamed(analysis, name)
+  (** The slider of a name in an analysis and its cell, {Slider, Cell}, or missing. *)
+  for i in 1..values.Len(analysis)
+    for s in analysis[i].Sliders
+      if s.Name == name
+        return {Slider: s, Cell: i}
+      end
+    end
+  end
+  missing
 end
 
 (* ---- A session: a Cesia process that runs the cells of one file, beside the program that asks. *)
@@ -231,14 +604,14 @@ mark = text.Char(1)
 defn heard(line, inbox, control)
   (** Puts a line of the session where it goes: what a cell printed, an answer to a run, or another answer. *)
   at = text.Find(mark, line)
-  if value.IsMissing(at)
+  if values.IsMissing(at)
     fiber.Send({Kind: "output", Text: line}, inbox)
     return missing
   end
   if at > 1
     fiber.Send({Kind: "output", Text: text.Slice(1, at - 1, line)}, inbox)
   end
-  m = json.Parse(text.Slice(at + 1, value.Len(line), line))
+  m = json.Parse(text.Slice(at + 1, values.Len(line), line))
   if result.IsOk(m)
     fiber.Send(m.Value, if m.Value.Kind == "answer" inbox else control end)
   end
@@ -250,7 +623,7 @@ defn reading(p, inbox, control, alive)
   chunk = sys.ReadOutput(p)
   while result.IsOk(chunk) and chunk.Value != ""
     pieces = text.Split("\n", "$partial$(chunk.Value)")
-    partial = pieces[value.Len(pieces)]
+    partial = pieces[values.Len(pieces)]
     for line in list.DropLast(1, pieces)
       heard(line, inbox, control)
     end
@@ -271,7 +644,7 @@ defn Session(path, allow = [])
       runs code, with the permissions of allow, as --allow takes them, and none else. Needs the exec permission of this
       cesia, cesia.Binary(). *)
   args = ["run", "--cells"]
-  if value.Len(allow) > 0
+  if values.Len(allow) > 0
     args = list.Concat(args, ["--allow", text.Join(",", allow)])
   end
   p = sys.Start(cesia.Binary(), args = list.Append(path, args))?
@@ -364,6 +737,35 @@ defn Scene(session, key, width)
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok(got.Scene) end
 end
 
+defn Set(session, analysis, name, value)
+  (** Gives the slider of a name in an analysis a value, snapped to its step as Snap does, in the session, in place: the
+      name keeps its place, so that a function of another cell that reads it sees the new value at once, and never a name
+      without a value. An Ok of {Value, ToRun}: Value the number set, ToRun the cells that read the name, directly or
+      through other cells, in file order, without the cell of the slider, which holds nothing else. An Err for a name that
+      is no slider of the analysis, a value that is no finite number or is out of the slider's min and max, a session that
+      has no value for the name yet (its cell runs first: ToRun(analysis, cell) gives the cells), or a session that has
+      ended. An editor writes the slider's number in the file first, Snap(slider, value).Text, so that the file says what
+      the session holds. *)
+  found = sliderNamed(analysis, name)
+  if values.IsMissing(found)
+    return result.Err({Kind: "cells", Message: "\"$name\" is no slider of the cells."})
+  end
+  s = found.Slider
+  if not finite(value)
+    return result.Err({Kind: "cells", Message: "A slider takes a finite number, not $value."})
+  end
+  if value < s.Min or value > s.Max
+    return result.Err({Kind: "cells", Message: "$value is out of the slider $name, from $(s.Min) to $(s.Max)."})
+  end
+  at = Snap(s, value)
+  ask(session, {Do: "set", Name: name, Text: at.Text})?
+  got = answered(session)?
+  if dict.Has("Error", got)
+    return result.Err({Kind: "cells", Message: got.Error})
+  end
+  result.Ok({Value: at.Value, ToRun: readers(analysis, found.Cell, [name])})
+end
+
 defn Stop(session)
   (** Stops the cell that runs, whose Run then gives the error "Stopped.": the session and the names defined before stay,
       in an Ok of the session. A session that doesn't answer within 2 seconds, as a cell in a long native computation,
@@ -408,10 +810,10 @@ cellsOf(rows, tag) = text.Join("", ["<tr>$(text.Join("", ["<$tag>$(escape(x))</$
 
 defn valueHtml(v)
   (** What a cell's value shows, in HTML. *)
-  if value.IsMissing(v)
+  if values.IsMissing(v)
     ""
   else if v.Kind == "table"
-    more = if v.Count > value.Len(v.Rows) "<p class=\"count\">$(value.Len(v.Rows)) of $(v.Count) rows</p>\n" else "<p class=\"count\">$(v.Count) rows</p>\n" end
+    more = if v.Count > values.Len(v.Rows) "<p class=\"count\">$(values.Len(v.Rows)) of $(v.Count) rows</p>\n" else "<p class=\"count\">$(v.Count) rows</p>\n" end
     "<table>\n<thead>$(cellsOf([v.Columns], "th"))</thead>\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n$more"
   else if v.Kind == "graph"
     "<div class=\"graph\">$(v.Svg)</div>\n"
@@ -440,23 +842,34 @@ th, td { border: 1px solid var(--edge); padding: 2px 8px; text-align: right; whi
 th { color: var(--muted); font-weight: 600; }
 .count { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
 .graph { margin: 0 0 8px; overflow-x: auto; } .graph svg { max-width: 100%; height: auto; }
+.slider { margin: 0 0 8px; font-family: ui-monospace, \"SF Mono\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace; font-size: 14px; }
+.slider input { vertical-align: middle; width: 240px; max-width: 50%; } .slider .value { color: var(--muted); }
 .k { color: var(--k); } .n { color: var(--n); } .s { color: var(--s); } .m { color: var(--m); }
 .c { color: var(--c); font-style: italic; } .f { color: var(--f); }
 "
 
-defn cellHtml(cell, errors, ran)
-  (** A cell of the page: its title, its code, then its errors, or what it printed and its value. *)
+defn sliderHtml(s)
+  (** A slider of a cell in the page, as it stands in the file: its name, a range that doesn't move, without a script to
+      run again what reads it, and its value. *)
+  number = x -> escape("$x")
+  text.Str("<p class=\"slider\"><label>", escape(s.Name), " <input type=\"range\" min=\"", number(s.Min), "\" max=\"", number(s.Max),
+    "\" step=\"", number(s.Step), "\" value=\"", number(s.Value), "\" disabled></label> <span class=\"value\">", number(s.Value), "</span></p>\n")
+end
+
+defn cellHtml(cell, errors, ran, sliders)
+  (** A cell of the page: its title, its code, then its errors, or its sliders, what it printed and its value. *)
   title = if cell.Title == "" "" else "<h2>$(escape(cell.Title))</h2>\n" end
-  body = text.Join("\n", list.DropWhile(l -> value.IsSome(marker(l)), text.Lines(cell.Source)))
+  body = text.Join("\n", list.DropWhile(l -> values.IsSome(marker(l)), text.Lines(cell.Source)))
   code = if text.Trim(body) == "" "" else "<pre><code class=\"cesia\">$(colored(body))</code></pre>\n" end
   out = [code]
-  if value.Len(errors) > 0
+  if values.Len(errors) > 0
     out = list.Append("<pre class=\"error\">$(escape(text.Join("\n", ["line $(e.Line): $(e.Message)" for e in errors])))</pre>\n", out)
-  else if value.IsSome(ran)
-    if value.Len(ran.Output) > 0
+  else if values.IsSome(ran)
+    out = list.Concat(out, [sliderHtml(x) for x in sliders])
+    if values.Len(ran.Output) > 0
       out = list.Append("<pre class=\"output\">$(escape(text.Join("\n", ran.Output)))</pre>\n", out)
     end
-    out = list.Append(if value.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value) end, out)
+    out = list.Append(if values.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value) end, out)
   end
   if title == "" and text.Join("", out) == "" "" else "<section>\n$title$(text.Join("", out))</section>\n" end
 end
@@ -470,17 +883,17 @@ defn Html(path, allow = [])
   analysis = Analyse(cells)
   session = Session(path, allow = allow)?
   parts = []
-  for i in 1..value.Len(cells)
+  for i in 1..values.Len(cells)
     errors = analysis[i].Errors
     ran = missing
-    if value.Len(errors) == 0 and text.Trim(cells[i].Source) != ""
+    if values.Len(errors) == 0 and text.Trim(cells[i].Source) != ""
       r = runWith(session, cells[i], 640, true)
       if result.IsErr(r)
         return r
       end
       ran = r.Value
     end
-    parts = list.Append(cellHtml(cells[i], errors, ran), parts)
+    parts = list.Append(cellHtml(cells[i], errors, ran, analysis[i].Sliders), parts)
   end
   close(session)
   name = list.Last(text.Split("/", path))
@@ -498,14 +911,14 @@ end
 
 defn brief(x, n)
   (** value.Text(x, n), but a matrix of more than 1000 values shows its size. *)
-  if value.IsArray(x) and value.Len(x) > 1000 and not (value.Len(value.Size(x)) == 2 and value.Size(x)[1] == 1)
-    return value.Text("array of size $(text.Join(" × ", ["$d" for d in value.Size(x)]))", n)
+  if values.IsArray(x) and values.Len(x) > 1000 and not (values.Len(values.Size(x)) == 2 and values.Size(x)[1] == 1)
+    return values.Text("array of size $(text.Join(" × ", ["$d" for d in values.Size(x)]))", n)
   end
-  value.Text(x, n)
+  values.Text(x, n)
 end
 
 (** Is this value a frame of std/frame? *)
-isFrame(v) = value.IsDict(v) and value.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and value.IsArray(v.Names)
+isFrame(v) = values.IsDict(v) and values.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and values.IsArray(v.Names)
 
 (** The height of a graph under a cell, in pixels. *)
 graphHeight = 400
@@ -528,28 +941,28 @@ end
 defn shown(v, width = 640, svg = false, key = 0)
   (** What a cell's value shows, as texts that JSON carries. *)
   (* A graph's fields are all private (std/plot): a struct with a public field is none, and isn't sent to plot. *)
-  g = if value.IsStruct(v) and value.Len(dict.Fields(v)) == 0 drawn(v, width, svg) else missing end
-  if value.IsSome(g)
+  g = if values.IsStruct(v) and values.Len(dict.Fields(v)) == 0 drawn(v, width, svg) else missing end
+  if values.IsSome(g)
     return if result.IsErr(g) {Kind: "error", Text: g.Error.Message} else if svg {Kind: "graph", Svg: g.Value} else {Kind: "graph", Key: key, Scene: g.Value} end
   end
-  if value.IsMissing(v)
+  if values.IsMissing(v)
     missing
-  else if value.IsStruct(v) and result.IsOk(v) and value.IsStruct(v.Value)
+  else if values.IsStruct(v) and result.IsOk(v) and values.IsStruct(v.Value)
     (* An Ok of a struct, as stats.TTest gives, shows the struct. *)
     shown(v.Value, width = width, svg = svg, key = key)
-  else if value.IsStruct(v) and value.Len(dict.Fields(v)) <= 20
+  else if values.IsStruct(v) and values.Len(dict.Fields(v)) <= 20
     (* A struct of at most 20 fields: a table of its fields and their values, one row each. *)
     fs = dict.Fields(v)
-    {Kind: "table", Columns: ["field", "value"], Rows: [[k, brief(fs[k], 80)] for k in dict.Keys(fs)], Count: value.Len(fs)}
+    {Kind: "table", Columns: ["field", "value"], Rows: [[k, brief(fs[k], 80)] for k in dict.Keys(fs)], Count: values.Len(fs)}
   else if isFrame(v)
-    count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
-    {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[value.Text(v.Columns[name][i], 80) for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
-  else if value.IsArray(v) and value.Len(value.Size(v)) == 2
-    shape = value.Size(v)
+    count = if values.Len(v.Names) == 0 0 else values.Len(v.Columns[v.Names[1]]) end
+    {Kind: "table", Columns: ["$n" for n in v.Names], Rows: [[values.Text(v.Columns[name][i], 80) for name in v.Names] for i in 1..list.Min(20, count)], Count: count}
+  else if values.IsArray(v) and values.Len(values.Size(v)) == 2
+    shape = values.Size(v)
     if shape[1] == 1
-      {Kind: "array", Shape: shape, Rows: [[value.Text(v[j], 80) for j in 1..list.Min(10, shape[2])]]}
+      {Kind: "array", Shape: shape, Rows: [[values.Text(v[j], 80) for j in 1..list.Min(10, shape[2])]]}
     else
-      {Kind: "array", Shape: shape, Rows: [[value.Text(v[i, j], 80) for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])]}
+      {Kind: "array", Shape: shape, Rows: [[values.Text(v[i, j], 80) for j in 1..list.Min(10, shape[2])] for i in 1..list.Min(10, shape[1])]}
     end
   else
     {Kind: "text", Text: brief(v, 20000)}
@@ -562,7 +975,7 @@ defn errorLine(path, e)
   if not text.StartsWith("$path:", first)
     return missing
   end
-  text.Number(text.Split(":", text.Slice(value.Len(path) + 2, value.Len(first), first))[1])
+  text.Number(text.Split(":", text.Slice(values.Len(path) + 2, values.Len(first), first))[1])
 end
 
 defn ran(c, key)
@@ -571,8 +984,8 @@ defn ran(c, key)
       test: a cell run again draws the same numbers, whatever ran before it. *)
   start = sys.Now()
   first = text.Lines(c.Code)
-  title = if value.Len(first) == 0 "" else marker(first[1]) end
-  restartRandom(if value.IsMissing(title) "" else title end)
+  title = if values.Len(first) == 0 "" else marker(first[1]) end
+  restartRandom(if values.IsMissing(title) "" else title end)
   r = evalCell(c.Code, c.Line)
   seconds = sys.Now() - start
   if result.IsErr(r)
@@ -580,32 +993,32 @@ defn ran(c, key)
     return missing
   end
   v = shown(r.Value, width = dict.GetOr("Width", 640, c), svg = dict.GetOr("Svg", false, c), key = key)
-  if value.IsSome(v) and v.Kind == "error"
+  if values.IsSome(v) and v.Kind == "error"
     (* A graph that std/plot can't draw: its message, as an error of the cell. *)
     send({Kind: "answer", Error: {Line: missing, Text: v.Text}, Seconds: seconds})
     return missing
   end
   send({Kind: "answer", Value: v, Seconds: seconds})
-  if value.IsSome(v) and v.Kind == "graph" r.Value else missing end
+  if values.IsSome(v) and v.Kind == "graph" r.Value else missing end
 end
 
 defn kept(task, key, graphs)
   (** The graphs of the session once a run ended: its own under its key, if it showed one, and the last 64. *)
-  if value.IsMissing(task)
+  if values.IsMissing(task)
     return graphs
   end
   w = fiber.Wait(task)
-  if result.IsErr(w) or value.IsMissing(w.Value)
+  if result.IsErr(w) or values.IsMissing(w.Value)
     return graphs
   end
   out = dict.Put("$key", w.Value, graphs)
-  if value.Len(out) > 64 dict.Drop(dict.Keys(out)[1], out) else out end
+  if values.Len(out) > 64 dict.Drop(dict.Keys(out)[1], out) else out end
 end
 
 defn rescened(c, graphs)
   (** The answer to a scene: the graph of a key drawn at a width. *)
   g = dict.Get("$(c.Key)", graphs)
-  if value.IsMissing(g)
+  if values.IsMissing(g)
     return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds those of its last 64 runs."}
   end
   r = drawn(g, c.Width, false)
@@ -614,26 +1027,26 @@ end
 
 defn kind(v)
   (** The type of a value, for the variables. *)
-  kinds = [{Is: value.IsInt, Name: "Int"}, {Is: value.IsFloat, Name: "Float"}, {Is: value.IsBool, Name: "Bool"},
-    {Is: value.IsText, Name: "Text"}, {Is: value.IsArray, Name: "Array"}, {Is: isFrame, Name: "Frame"},
-    {Is: value.IsDict, Name: "Dict"}, {Is: value.IsFunction, Name: "Function"}]
+  kinds = [{Is: values.IsInt, Name: "Int"}, {Is: values.IsFloat, Name: "Float"}, {Is: values.IsBool, Name: "Bool"},
+    {Is: values.IsText, Name: "Text"}, {Is: values.IsArray, Name: "Array"}, {Is: isFrame, Name: "Frame"},
+    {Is: values.IsDict, Name: "Dict"}, {Is: values.IsFunction, Name: "Function"}]
   for k in kinds
     if k.Is(v)
       return k.Name
     end
   end
-  if value.IsStruct(v) text.Split("(", value.Text(v, 80))[1] else "Value" end
+  if values.IsStruct(v) text.Split("(", values.Text(v, 80))[1] else "Value" end
 end
 
 defn size(v)
   (** The shape or the length of a value, for the variables. *)
   if isFrame(v)
-    rows = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
-    "$rows × $(value.Len(v.Names))"
-  else if value.IsArray(v)
-    text.Join(" × ", ["$k" for k in value.Size(v)])
-  else if value.IsText(v) or value.IsDict(v)
-    "$(value.Len(v))"
+    rows = if values.Len(v.Names) == 0 0 else values.Len(v.Columns[v.Names[1]]) end
+    "$rows × $(values.Len(v.Names))"
+  else if values.IsArray(v)
+    text.Join(" × ", ["$k" for k in values.Size(v)])
+  else if values.IsText(v) or values.IsDict(v)
+    "$(values.Len(v))"
   else
     ""
   end
@@ -646,7 +1059,7 @@ defn rows(names)
     v = valueOf(name)
     if result.IsOk(v)
       preview = if isFrame(v.Value) text.Join(", ", ["$c" for c in v.Value.Names]) else brief(v.Value, 80) end
-      out = list.Append({Name: name, Type: kind(v.Value), Size: size(v.Value), Preview: value.Text(text.Replace("\n", " ", preview), 80)}, out)
+      out = list.Append({Name: name, Type: kind(v.Value), Size: size(v.Value), Preview: values.Text(text.Replace("\n", " ", preview), 80)}, out)
     end
   end
   out
@@ -660,23 +1073,38 @@ defn slice(name, first, last)
   end
   v = got.Value
   if isFrame(v)
-    count = if value.Len(v.Names) == 0 0 else value.Len(v.Columns[v.Names[1]]) end
-    return {Kind: "rows", Columns: ["$n" for n in v.Names], Rows: [[value.Text(v.Columns[c][i], 200) for c in v.Names] for i in list.Max(1, first)..list.Min(last, count)], Count: count}
+    count = if values.Len(v.Names) == 0 0 else values.Len(v.Columns[v.Names[1]]) end
+    return {Kind: "rows", Columns: ["$n" for n in v.Names], Rows: [[values.Text(v.Columns[c][i], 200) for c in v.Names] for i in list.Max(1, first)..list.Min(last, count)], Count: count}
   end
-  if value.IsArray(v) and value.Len(value.Size(v)) == 2
-    shape = value.Size(v)
+  if values.IsArray(v) and values.Len(values.Size(v)) == 2
+    shape = values.Size(v)
     if shape[1] == 1
-      return {Kind: "rows", Columns: ["1"], Rows: [[value.Text(v[i], 200)] for i in list.Max(1, first)..list.Min(last, shape[2])], Count: shape[2]}
+      return {Kind: "rows", Columns: ["1"], Rows: [[values.Text(v[i], 200)] for i in list.Max(1, first)..list.Min(last, shape[2])], Count: shape[2]}
     end
-    return {Kind: "rows", Columns: ["$j" for j in 1..shape[2]], Rows: [[value.Text(v[i, j], 200) for j in 1..shape[2]] for i in list.Max(1, first)..list.Min(last, shape[1])], Count: shape[1]}
+    return {Kind: "rows", Columns: ["$j" for j in 1..shape[2]], Rows: [[values.Text(v[i, j], 200) for j in 1..shape[2]] for i in list.Max(1, first)..list.Min(last, shape[1])], Count: shape[1]}
   end
   {Kind: "rows", Error: "\"$name\" holds no frame, matrix or list."}
+end
+
+defn setTo(c)
+  (** The answer to a set: the name given the number of its text in place, where it is, when it holds a number already. *)
+  if not values.IsText(dict.GetOr("Name", missing, c)) or not values.IsText(dict.GetOr("Text", missing, c))
+    return {Kind: "set", Error: "A set takes the name of a slider and the text of its number."}
+  end
+  x = text.Number(c.Text)
+  if not finite(x)
+    return {Kind: "set", Error: "A slider takes a finite number, not $(c.Text)."}
+  end
+  if result.IsErr(setValue(c.Name, x))
+    return {Kind: "set", Error: "\"$(c.Name)\" holds no number in the session yet: its cell runs first."}
+  end
+  {Kind: "set"}
 end
 
 defn command(line)
   (** The command of a line, or missing for a line that isn't one. *)
   c = json.Parse(line)
-  if result.IsOk(c) and value.IsDict(c.Value) and dict.Has("Do", c.Value) c.Value else missing end
+  if result.IsOk(c) and values.IsDict(c.Value) and dict.Has("Do", c.Value) c.Value else missing end
 end
 
 defn serve()
@@ -688,9 +1116,9 @@ defn serve()
   graphs = {}
   known = []
   line = debug.ReadLine()
-  while not value.IsMissing(line)
+  while not values.IsMissing(line)
     c = command(line)
-    if value.IsMissing(c)
+    if values.IsMissing(c)
       c = {Do: ""}
     end
     if c.Do != "stop"
@@ -706,7 +1134,7 @@ defn serve()
       now = key
       task = fiber.Spawn(() -> ran(c, now))
     else if c.Do == "stop"
-      if value.IsSome(task)
+      if values.IsSome(task)
         fiber.Cancel(task)
         w = fiber.Wait(task)
         if result.IsErr(w) and w.Error.Kind == "cancelled"
@@ -726,6 +1154,8 @@ defn serve()
       send(slice(c.Name, c.First, c.Last))
     else if c.Do == "scene"
       send(rescened(c, graphs))
+    else if c.Do == "set"
+      send(setTo(c))
     end
     line = debug.ReadLine()
   end

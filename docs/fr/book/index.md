@@ -66,7 +66,8 @@ construction : le livre ne peut donc pas s'écarter du langage.
 25. [Le prompt et le debugger](debug.md) : `--repl` à côté d'un programme qui tourne, les breakpoints, les arrêts sur
     erreur, corriger et continuer.
 26. [Cells](cells.md) : un notebook (du code coupé en cells, des morceaux qui ont chacun leur résultat) dans un fichier
-    `.ce`, des cells qui tournent de nouveau quand ce qu'elles lisent change, une session, et une page à partager.
+    `.ce`, des cells qui tournent de nouveau quand ce qu'elles lisent change, une session, des sliders (des curseurs), et
+    une page à partager.
 27. [Vitesse](speed.md) : ce qui devient du code machine pendant qu'un programme tourne, et Cesia à côté de Python, Node,
     Java, Go, OCaml, Lua et LuaJIT, mesuré : le démarrage, les boucles, les maps, les fibers et un serveur.
 28. [C et C++](c.md) : les bibliothèques du système, leurs types, la mémoire, les callbacks, et le C++ à travers une couche
