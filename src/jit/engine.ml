@@ -113,8 +113,8 @@ let make (w : world) (ver : version) fns start loops =
         None
     end
 
-(* Does each variable of a module that the code took as a constant still hold that number, and each that moved a number
-   of the kind the code takes: in every function of the unit, the ones it calls as the first. *)
+(* Does each variable of a module that the code took as a constant still hold that number, and each it reads from a slot
+   a number of the kind the code takes: in every function of the unit, the ones it calls as the first. *)
 let holds now v =
   match now, v with
   | Int a, Int b -> a = b
@@ -220,7 +220,7 @@ let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
   io.(Ir.io_leave) <- (if leave then 1 else 0);
   (* The constants whose first field native code reads, after the frame, where nothing else is while it runs. *)
   Array.iteri (fun j c -> ctx.v.(b + code.fn.frame + j) <- c) code.fn.consts;
-  (* The variables of modules that moved, each of its kind, after them: native code reads them at its entry. *)
+  (* The variables of modules read from slots, each of its kind, after them: native code reads them at its entry. *)
   let at = Ir.moved_at code.fn in
   Array.iteri
     (fun j (m, k, _) ->
@@ -336,8 +336,8 @@ let go (ctx : ctx) code entry =
     if st = Ir.fuel_out then begin
       let p = io.(Ir.io_point) in
       Runtime.checkpoint ctx (ctx.b + code.fn.frame);
-      (* Another fiber may have given a variable of a module another value there. One that moved, still of its kind, is
-         read from its slot at the next run, as the interpreter reads it at once. One taken as a constant, or of another
+      (* Another fiber may have given a variable of a module another value there. One the code reads from a slot, still of
+         its kind, is read at the next run, as the interpreter reads it at once. One taken as a constant, or of another
          kind now, is as a reload: the run ends at its loop's step, where the interpreter goes on and the loop's code is
          made again; elsewhere native code goes on with the numbers it started with to where it can leave, as a fiber
          switch waits for nested native frames. *)

@@ -179,10 +179,11 @@ type func = {
       (* the variables of modules read as constants, a number each: module, cell, value; [Engine] runs the code only
          while each holds it *)
   moved : (int * int) array;
-      (* the variables of modules that moved under native code, as a slider's number set in place, that this function
-         reads: each its register, loaded at the function's entry, and its number in the unit's [moving] *)
+      (* the variables of modules read from a slot that this function reads, those that moved under native code or that a
+         session can set in place, as a slider's number: each its register, loaded at the function's entry, and its
+         number in the unit's [moving] *)
   moving : (int * int * kind) array;
-      (* of the unit's first function: each variable of a module that moved, read by any function of the unit, by its
+      (* of the unit's first function: each variable of a module read from a slot by any function of the unit, by its
          number: module, cell, and the kind the code takes. [Engine] writes its value, checked of that kind, to the value
          slot [moved_at] + its number of the outermost frame before each run *)
   points : int array;
@@ -298,6 +299,6 @@ let written = 11
 let cold_code = 12  (** after a bail: no guess failed, the interpreter makes a statement that native code left to it *)
 let leaving_code = 13  (** the same, a [return] *)
 
-(** The value slot of the outermost frame, from its base, where the variables of modules that moved start: after its
-    constants and the slot of a [return]'s value. *)
+(** The value slot of the outermost frame, from its base, where the variables of modules read from slots start: after
+    its constants and the slot of a [return]'s value. *)
 let moved_at (f0 : func) = f0.frame + Array.length f0.consts + 1

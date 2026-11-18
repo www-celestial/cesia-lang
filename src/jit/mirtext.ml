@@ -614,8 +614,8 @@ let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
          end)
       fn.arrays
   in
-  (* The variables of modules that moved, from their slots of the outermost frame, at [vp]: an Int's field, 2n + 1, as
-     2n; a Float's, its double. *)
+  (* The variables of modules read from slots, those of the outermost frame at [vp]: an Int's field, 2n + 1, as 2n; a
+     Float's, its double. *)
   let moved vp =
     Array.iter
       (fun (r, j) ->

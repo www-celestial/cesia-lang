@@ -134,12 +134,12 @@ and dyn = {
   mutable starts : int list;  (* the block of each instruction put at a statement's start, the last first *)
   mutable vslots : int;  (* the slots of small arrays taken so far in the frame's area of them *)
   mutable cells : (int * int * t) list;  (* the variables of modules read as constants: module, cell, value *)
-  mutable moved : (int * int) list;  (* the variables of modules that moved read here: register, number in the unit *)
+  mutable moved : (int * int) list;  (* the variables of modules read from slots here: register, number in the unit *)
 }
 
 and unit_ = {
   versions : version Vec.t;
-  moving : (int * int * Ir.kind) Vec.t;  (* the variables of modules that moved, read in the unit, as [Ir.func.moving] *)
+  moving : (int * int * Ir.kind) Vec.t;  (* the variables of modules read from slots in the unit, as [Ir.func.moving] *)
 }
 
 (* What a block may assign, or [Unknown] for a construct the walk doesn't follow: then nothing is taken as invariant. *)
@@ -2626,7 +2626,7 @@ let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
     let fs = Vec.to_array out in
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
     let fns = Array.map fst fs in
-    (* The variables that moved, read anywhere in the unit, in value slots of the outermost frame after its own. *)
+    (* The variables read from slots anywhere in the unit, in value slots of the outermost frame after its own. *)
     if Vec.length u.moving > 0 then begin
       let moving = Vec.to_array u.moving and f0 = fns.(0) in
       fns.(0) <- { f0 with moving; size = max f0.size (Ir.moved_at f0 + Array.length moving + 2) }
