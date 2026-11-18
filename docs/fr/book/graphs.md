@@ -473,7 +473,8 @@ le tracé.
 ## Vitesse
 
 Un programme qui ne se sert pas de [std/plot] démarre aussi vite qu'avant : 2,8 ms pour `io.Print(1)`. `use std/plot`
-charge ses 2 000 lignes en environ 6,5 ms, et un premier graphique, du début du programme à son SVG, prend 15 ms.
+charge ses 2 300 lignes en environ 8,6 ms la première fois, avant que le cache des packages chargés les garde ; une fois
+qu'il les garde, un premier graphique, du début du programme à son SVG, prend 10 ms.
 Ensuite [plot.Svg] prend, en médiane de 21 lancements sur un ordinateur de bureau de 8 cœurs :
 
 | Graphique | Temps |
@@ -489,10 +490,10 @@ Tout est en Cesia, rendu rapide par le JIT (le compilateur qui traduit le code e
 pour une longue courbe, le passage sur les points qui trouve leur étendue et le passage de M4 prennent l'essentiel du
 temps.
 
-Une animation de 300 images d'une onde de 500 points se fait en 35 ms, la vérification de chaque image et de leurs
-étendues communes, et s'écrit en SVG en 0,54 s, 2,1 Mo. Une image de la courbe de Lorenz, 5 000 points, se dessine en
-scène en 2 ms ; son SVG de 300 images, réduit à 100, prend 2,7 s. Dans Cemacs, une de ses images va de la session à
-l'écran en 10 ms environ, et elle se joue à 30 images par seconde.
+Une animation de 300 images d'une onde de 500 points se fait en 21 ms, la vérification de chaque image et de leurs
+étendues communes, et s'écrit en SVG en 0,43 s, 2,1 Mo. Une image de la courbe de Lorenz, 5 000 points, se dessine en
+scène en 1,2 ms ; son SVG de 300 images, réduit à 100, prend 2,8 s. Dans Cemacs, une de ses images revient de la session
+en 10 ms environ, et elle se joue à 29 ou 30 images par seconde.
 
 ## Limites
 

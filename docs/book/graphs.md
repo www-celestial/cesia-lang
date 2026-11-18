@@ -442,8 +442,9 @@ scale or a range written wrong, and a size too small for the plot.
 
 ## Speed
 
-A program that doesn't use [std/plot] starts as fast as before: 2.8 ms for `io.Print(1)`. `use std/plot` loads its 2,000
-lines in about 6.5 ms, and a first graph, from the start of the program to its SVG, takes 15 ms. Then [plot.Svg] takes,
+A program that doesn't use [std/plot] starts as fast as before: 2.8 ms for `io.Print(1)`. `use std/plot` loads its 2,300
+lines in about 8.6 ms the first time, before the cache of loaded packages holds them; once it does, a first graph, from
+the start of the program to its SVG, takes 10 ms. Then [plot.Svg] takes,
 the median of 21 runs on a desktop of 8 cores:
 
 | Graph | Time |
@@ -458,10 +459,10 @@ the median of 21 runs on a desktop of 8 cores:
 All of it is Cesia, made fast by the JIT; for a long line, the pass over the points that finds their range and the pass
 of M4 take most of the time.
 
-An animation of 300 frames of a wave of 500 points is made in 35 ms, the check of every frame and their shared ranges,
-and written as SVG in 0.54 s, 2.1 MB. One frame of the Lorenz curve, 5,000 points, takes 2 ms to draw as a scene; its
-SVG of 300 frames, thinned to 100, takes 2.7 s. In Cemacs, a frame of it goes from the session to the screen in about
-10 ms, and it plays at 30 frames a second.
+An animation of 300 frames of a wave of 500 points is made in 21 ms, the check of every frame and their shared ranges,
+and written as SVG in 0.43 s, 2.1 MB. One frame of the Lorenz curve, 5,000 points, takes 1.2 ms to draw as a scene; its
+SVG of 300 frames, thinned to 100, takes 2.8 s. In Cemacs, a frame of it comes back from the session in about 10 ms, and
+it plays at 29 to 30 frames a second.
 
 ## Limits
 
