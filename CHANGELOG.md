@@ -172,6 +172,11 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   a cell that the session ran again, no longer counts that drop toward giving up for good: the parameter cell of that
   notebook run again with a new number makes ode's loop again, 43 ms, instead of 22.7 ms interpreted for good after a
   few edits.
+- A number set in place in a session, as `cells.Set` gives a slider's, no longer makes the machine code of the loops
+  that read it again at each step: machine code reads the numbers of the modules a session runs from slots at each run,
+  checked of their kind, and so it does for a variable that the top code of a file gives again, once it changed. A
+  slider step of the Lorenz notebook, `rho` set and the solve cell run again, takes 2.6 ms instead of 24 (2.9 instead of
+  28 on average), and solving again after the steps 2.8 ms instead of 26 (medians of 21 steps, five rounds).
 
 ### Fixes
 
@@ -184,6 +189,9 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - Machine code no longer runs on with an old number of a module variable that a function it calls read, as `k` in a
   loop's `g(x)` after `k = 5`: the numbers each function of the code took are checked before each run, not only the
   loop's own.
+- A module's variable that the top code gave another number while another fiber's machine code that reads it waited at
+  a full checkpoint no longer stops the program with an internal error: the code reads the new number at its next run,
+  or a loop gives the rest of its turns to the interpreter at its next step.
 - The full list is in the commits since v1.1.0.
 
 ## 1.1.0

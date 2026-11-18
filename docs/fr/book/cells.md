@@ -250,7 +250,10 @@ cells.Snap(s, 0.31, steps = 1).Text -->
 vérifiée contre le min et le max du slider, et donnée au nom **en place** (le nom garde sa place, sans être défini de
 nouveau). Une cell qui tourne de nouveau oublie d'abord les noms qu'elle définit, si bien qu'une fonction d'une autre
 cell qui lit l'un d'eux le trouverait sans valeur jusqu'à ce que sa cell ait tourné de nouveau ; Set change le nombre que
-tient le nom, et la fonction lit le nouveau tout de suite. Set donne la valeur et ToRun, les cells à relancer : celles
+tient le nom, et la fonction lit le nouveau tout de suite. Le code machine d'une boucle qui le lit lit chaque nouveau
+nombre dans un slot, si bien qu'il garde son code : un pas du slider de `rho` dans le notebook de Lorenz, Set puis la cell
+de résolution relancée, prend 2,6 ms au lieu de 24, comme le dit
+[Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur). Set donne la valeur et ToRun, les cells à relancer : celles
 qui lisent le nom, directement ou par d'autres cells, dans l'ordre du fichier. La cell du slider n'en fait jamais
 partie, puisqu'elle ne contient rien d'autre.
 

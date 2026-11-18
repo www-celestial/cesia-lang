@@ -708,6 +708,21 @@ took a variable of a cell that the session ran again, which the session forgot a
 as an edit of the parameter cell of that notebook makes. Each such edit makes ode's loop again, 43 ms instead of 22.7
 interpreted, and the runs after it take 2.2 ms again.
 
+A number given to a variable of a module *in place*, as [cells.Set] gives a slider's, keeps the variable where it is.
+Machine code reads such a variable from a slot: before each run the engine writes the variable's value there, checked of
+the kind the code takes, an Int or a Float, and the code loads it into a register when it starts, wherever the unit
+reads it, in the loop, in a function inlined in it or in a function it calls. It does so for the variables of the
+modules a session runs, the only ones a session can set in place, from their first code on; and for any other variable
+once it moved under machine code, as one that the top code of a file gives again: the code that took its number as a
+constant is dropped once, as above, and the variable is marked. Each new number of that kind then runs the same code: a
+step of the slider of `rho` in the Lorenz notebook, `rho` set and `ode.Solve` on [0, 50] run again, takes 2.6 ms instead
+of 24, where each step made ode's loop again, 40 to 70 ms, until the loop stayed interpreted for good (medians of 21
+steps, 2026-11-18). A variable of another module stays a constant of the code until it moves, as the 38 coefficients of
+ode's step: nothing is read at each run that doesn't need to be. A number of the other kind, an Int where the code took a
+Float, drops the code, as a changed constant does. The marks hold at most 4,096 variables, then start again, which costs
+one code made again. A fuzzer of sessions, `tests/jit/slider-fuzz.ce`, moves sliders at random among edits of cells and
+checks that each answer is the interpreter's.
+
 None of this runs code with a wrong value: the identity of a code is a number the session gives, never a hash that two
 codes could share; the session compares the two whole trees before it gives the old one's; the numbers a code took are
 checked before each of its runs, as for any code; and the session keeps the last function of at most 1,024 names, so
@@ -810,12 +825,19 @@ The *scheduler* keeps one queue, first in, first out, of the fibers ready to run
 
 So a long computation can't hold the others for more than a million steps. This is close to what Erlang does by
 counting *reductions*, and it is called *preemptive* there: nobody writes a yield. It is not the preemption of a system
-thread, which a timer can interrupt anywhere: a fiber is switched only at a wait or a checkpoint. Two consequences:
+thread, which a timer can interrupt anywhere: a fiber is switched only at a wait or a checkpoint. Three consequences:
 
 - a native runs to its end: [list.Sort] of a million elements, or [json.Parse] of a large file, runs whole before another
   fiber gets its turn;
 - in machine code that calls itself, a recursion compiled by the JIT, a switch waits until the outermost compiled call
-  returns or its loop reaches its next step. Results never change; only the order in which fibers print can differ there.
+  returns or its loop reaches its next step. Results are those of a run where the switch came there instead: they can
+  differ only for fibers that read a module's variable the top code changes, and the order in which fibers print can
+  differ.
+- when the top code gives a module's variable another number at a switch inside machine code that reads it, a code that
+  reads it from a slot reads the new one at its next run, as the interpreter does, when it is of the same kind. A number
+  the code took as a constant, or one of the other kind, it can't read: a loop gives the rest of its turns to the
+  interpreter at its next step, which reads the new number; machine code made for a whole function goes on to the end of
+  the call with the numbers it started with, as if the switch came there.
 
 Since a fiber is switched only at those points, code between two of them sees no other fiber: there are no *data races*,
 two threads changing the same memory at once, and no locks to take. Values are not shared anyway: a value sent on a

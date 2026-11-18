@@ -24,6 +24,8 @@ fails.
   argument: the machine code tests the functions the call met, at most four, and runs the one it finds, as
   [How Cesia works](internals.md#calls-through-a-value) shows; a function that a cell or the prompt defines again with
   the same code is the same to it.
+- A variable of a module whose number changes under machine code, as a slider's that [cells.Set] gives in place: read
+  from a slot at each run, so the code stays for each new number.
 - `random.Float()`, the step of its generator made in place, the same numbers as the interpreter's in the same order.
 
 A sparse product, its matrix in columns (CSC: the rows and values of each column, one after the other, and where each

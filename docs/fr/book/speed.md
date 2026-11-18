@@ -30,6 +30,8 @@ sorte de JIT c'est, comment il parie sur les types et comment il rend la main à
   argument : le code machine teste les fonctions que l'appel a rencontrées, quatre au plus, et lance celle qu'il trouve,
   comme le montre [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) ; une fonction qu'une cell ou
   le prompt définit de nouveau avec le même code est la même pour lui.
+- Une variable d'un module dont le nombre change sous le code machine, comme celui d'un slider que [cells.Set] donne en
+  place : lue dans un slot à chaque lancement, si bien que le code reste pour chaque nouveau nombre.
 - `random.Float()`, le pas de son générateur fait sur place, les mêmes nombres que ceux de l'interpréteur dans le même
   ordre.
 
