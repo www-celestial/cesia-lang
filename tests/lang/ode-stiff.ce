@@ -349,6 +349,16 @@ defn isAtEnds()
   list.All([value.Equal(s.At(s.T[k]), s.Y[k, :]) for k in 1..value.Len(s.T)])
 end
 
+defn isAtWalk()
+  (** At of an array of times in any order, back, forth and repeated: each row is At of its time alone. *)
+  s = solved(ode.Solve(vdp, [0.0, 5.0], [2.0, 0.0], stiff = true))
+  m = value.Len(s.T)
+  ts = list.Concat([5.0, 0.0, 2.5, 2.5, 4.75, 0.125], [s.T[m + 1 - k] for k in 1..m])
+  ts = list.Concat(ts, [0.025 * k for k in 0..200])
+  ys = s.At(ts)
+  value.Equal(value.Size(ys), [value.Len(ts), 2]) and list.All([value.Equal(ys[j, :], s.At(ts[j])) for j in 1..value.Len(ts)])
+end
+
 defn isEvents()
   (** Events on the dense output of the Rosenbrock steps: y = exp(-t) at 1/2, a stop, and Robertson's y1 at 1/2. *)
   half = ode.Event((t, y) -> y - 0.5, stop = true)

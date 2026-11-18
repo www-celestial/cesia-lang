@@ -1,0 +1,21 @@
+(** At across the chunks of a long Solution: 10,000 steps of one component, kept in chunks of 8,192, and 1,000 times
+    spread over them, in a scrambled order, sorted and repeated: each row is At of its time alone, and the sine it
+    solves for, to 1e-8, also around the steps where one chunk ends and the next begins. Slow by nature: the solve takes
+    about 0.1 s; tools/check.sh runs it, past the change loop. *)
+use std/list
+use std/math
+use std/ode
+use std/result
+use std/value
+
+defn isAcrossChunks()
+  s = result.Unwrap(ode.Solve((t, y) -> math.Cos(t), [0.0, 100.0], 0.0, maxStep = 0.01))
+  m = value.Len(s.T)
+  edge = [s.T[k] for k in 8190..8195]
+  edge = list.Concat(edge, [0.5 * (s.T[k] + s.T[k + 1]) for k in 8190..8195])
+  ts = list.Concat(edge, [100.0 * math.Mod(k * 7919, 10007) / 10007.0 for k in 1..1000])
+  ts = list.Concat(ts, list.Concat(list.Sort(ts), ts[1..100]))
+  ys = s.At(ts)
+  m > 8195 and value.Equal(value.Size(ys), [value.Len(ts), 1]) and
+    list.All([ys[j] == s.At(ts[j]) and math.Abs(ys[j] - math.Sin(ts[j])) < 1.0e-8 for j in 1..value.Len(ts)])
+end

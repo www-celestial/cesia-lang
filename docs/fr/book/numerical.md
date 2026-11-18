@@ -710,6 +710,18 @@ environ 10 µs de celles-ci, et le reste est la boucle des étages dans l'interp
 par pas. La comparaison avec le `Radau`, le `BDF` et le `LSODA` de scipy et avec le `ode15s` d'Octave attend les mesures
 faites avant chaque release.
 
+`s.At` d'un array de temps parcourt les pas une seule fois : chaque temps est dans le pas du temps d'avant, ou sinon son
+pas est cherché à partir de là, et la sortie dense d'un pas est préparée une fois pour tous les temps qui y tombent, en
+code natif qui ne fait aucun array pour chaque temps. Mesurés de la même façon, le 2026-11-18, les 5 000 temps du
+graphe ci-dessus, sur les 2 284 pas de Lorenz sur `[0, 50]`, prennent **0,53 ms** (0,51 à 0,53) ; 86,6 ms (86,2 à
+87,7) avant, quand chaque temps cherchait son pas par moitiés depuis le premier et calculait son état sur des arrays
+de 3. Les mêmes 5 000 temps dans un ordre mélangé prennent 1,9 ms, car chacun cherche de nouveau son pas, et un seul
+temps 2,7 µs. Le `sol.sol(t)` de scipy prend 48,0 ms (45,7 à 50,9) pour les 5 000 temps, et 18,8 µs pour un seul : il trie
+les temps, trouve leurs pas avec `searchsorted`, puis appelle la sortie dense de chaque pas tour à tour, depuis Python.
+Il ne gagne nulle part ici, pas même avec peu de pas et beaucoup de temps : sur l'oscillateur `[y[2], -y[1]]` sur
+`[0, 10]`, 56 pas ici et 52 pour scipy, un million de temps prennent 19,5 ms (19,3 à 19,7) contre 158,6 (157,6 à
+160,3). Dans n'importe quel ordre, répétés ou non, les temps donnent les mêmes lignes, jusqu'au dernier bit.
+
 `use std/ode` ajoute au démarrage d'un programme le temps de lire son code et celui de std/optimize et de std/num, dont
 il se sert : 1,3 ms au plus rapide de 21 lancements (4,15 ms contre 2,86 pour un programme qui affiche 1, le
 2026-11-13), plus sur une machine occupée ; `use std/optimize` seul ajoute 0,45 ms. Un programme qui ne se sert d'aucun
@@ -1330,10 +1342,13 @@ s'arrête de la même façon au-delà de la limite.
 `f`, `g` et les fonctions données à Root sont du code de l'appelant, donc les méthodes vérifient ce qu'elles donnent :
 une valeur de la mauvaise forme, un texte, un NaN ou un infini est un `Err` qui la nomme, jamais un plantage à
 l'intérieur du solver. Chaque boucle est bornée : Root par ses 60 pas de recherche et par l'encadrement, qui se coupe en
-deux au moins tous les quelques pas ; Solve par `steps`. Chaque boucle est du code Cesia, si bien que [cells.Stop]
-arrête une longue résolution en un pas, et `--limit` s'applique, comme à tout programme. La mémoire d'une résolution
-grandit avec ses pas, par blocs de 128 pas ; au-delà de la limite de mémoire du programme, le programme s'arrête avec
-`Limit "memory" reached.`
+deux au moins tous les quelques pas ; Solve par `steps`. Chaque boucle de Solve est du code Cesia, si bien que
+[cells.Stop] arrête une longue résolution en un pas, et `--limit` s'applique, comme à tout programme. La mémoire d'une
+résolution grandit avec ses pas, par blocs de 128 pas ; au-delà de la limite de mémoire du programme, le programme
+s'arrête avec `Limit "memory" reached.` `s.At` parcourt les pas en code natif : il vérifie chaque array de la Solution
+avant de le lire, si bien qu'une Solution écrite à la main dont les arrays ne vont pas ensemble est une panic qui le
+dit, jamais une lecture hors d'un array, et il compte son travail et son résultat contre `--limit` avant de commencer ;
+un million de temps prennent 20 ms, si bien que `cells.Stop` répond peu après.
 
 Avec `stiff = true`, `jacobian` est aussi du code de l'appelant : ce qu'il donne doit être une matrice `n × n` de
 nombres finis, et un jacobien par différences est vérifié de la même façon, si bien qu'un NaN n'atteint jamais la
