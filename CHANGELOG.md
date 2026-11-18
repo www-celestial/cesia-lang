@@ -159,6 +159,9 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - The text of a float, for `io.Print`, `"$x"`, `value.Text` and `json.Text`, by Ryu's tables (Adams, PLDI 2018)
   instead of up to three `printf` and two `strtod`, in the same bytes: `json.Text` of 32,000 floats 97 -> 3.9 ms, the
   scene of a Lorenz curve 30 -> 1.4 ms, `"$x"` of a float of 17 digits 2.9 us -> 0.19 us.
+- `s.At` of an `ode.Solution` at an array of times walks the steps once, in native code: the 5,000 times of a Lorenz
+  curve 86.6 -> 0.53 ms, in a scrambled order 66.7 -> 1.9 ms, a time alone 12.8 -> 2.7 us, the same bits; scipy's
+  `sol.sol(t)` takes 48 ms.
 
 ### Fixes
 

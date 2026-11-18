@@ -710,6 +710,17 @@ environ 10 µs de celles-ci, et le reste est la boucle des étages dans l'interp
 par pas. La comparaison avec le `Radau`, le `BDF` et le `LSODA` de scipy et avec le `ode15s` d'Octave attend les mesures
 faites avant chaque release.
 
+`s.At` d'un array de temps parcourt les pas une seule fois : chaque temps est dans le pas du temps d'avant, ou sinon son
+pas est cherché à partir de là, et la sortie dense d'un pas est préparée une fois pour tous les temps qui y tombent, en
+code natif qui ne fait aucun array pour chaque temps. Mesurés de la même façon, le 2026-11-18, les 5 000 temps du
+graphe ci-dessus, sur les 2 284 pas de Lorenz sur `[0, 50]`, prennent **0,53 ms** (0,51 à 0,53) ; 86,6 ms (86,2 à
+87,7) avant, quand chaque temps cherchait son pas par moitiés depuis le premier et calculait son état sur des arrays
+de 3. Les mêmes 5 000 temps dans un ordre mélangé prennent 1,9 ms, car chacun cherche de nouveau son pas, et un seul
+temps 2,7 µs. Le `sol.sol(t)` de scipy prend 48,0 ms (45,7 à 50,9) pour les 5 000 temps, et 18,8 µs pour un seul : il trie
+les temps, trouve leurs pas avec `searchsorted`, puis appelle la sortie dense de chaque pas tour à tour, depuis Python.
+Il ne gagne nulle part ici, pas même avec 52 pas et un million de temps, 165 ms contre 20. Dans n'importe quel ordre,
+répétés ou non, les temps donnent les mêmes lignes, jusqu'au dernier bit.
+
 `use std/ode` ajoute au démarrage d'un programme le temps de lire son code et celui de std/optimize et de std/num, dont
 il se sert : 1,3 ms au plus rapide de 21 lancements (4,15 ms contre 2,86 pour un programme qui affiche 1, le
 2026-11-13), plus sur une machine occupée ; `use std/optimize` seul ajoute 0,45 ms. Un programme qui ne se sert d'aucun

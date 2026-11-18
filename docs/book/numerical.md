@@ -664,6 +664,16 @@ loop of the stages in the interpreter. On a 1-D diffusion of 100 points, 53 step
 100 ms by differences, which call `f` 100 more times a step. The comparison with scipy's `Radau`, `BDF` and `LSODA` and
 with Octave's `ode15s` waits for the measures made before each release.
 
+`s.At` of an array of times walks the steps once: each time is in the step of the time before, or else its step is
+sought from there, and the dense output of a step is prepared once for all the times in it, in native code that makes
+no array for each time. Measured the same way, on 2026-11-18, the 5,000 times of the graph above, on the 2,284 steps of
+Lorenz on `[0, 50]`, take **0.53 ms** (0.51 to 0.53); 86.6 ms (86.2 to 87.7) before, when each time looked for its step
+by halves from the first one and computed its state on arrays of 3. The same 5,000 times in a scrambled order take
+1.9 ms, as each looks for its step again, and a single time 2.7 µs. scipy's `sol.sol(t)` takes 48.0 ms (45.7 to 50.9)
+for the 5,000 times, and 18.8 µs for a single one: it sorts the times, finds their steps with `searchsorted`, then calls
+the dense output of each step in turn, from Python. It wins nowhere here, not even with 52 steps and a million times,
+165 ms against 20. In any order, repeated or not, the times give the same rows, to the last bit.
+
 `use std/ode` adds to the start of a program the time to read its code and that of std/optimize and std/num, which it
 uses: 1.3 ms in the fastest of 21 runs (4.15 ms against 2.86 for a program that prints 1, on 2026-11-13), more on a
 busy machine; `use std/optimize` alone adds 0.45 ms. A program that uses neither starts as before.
