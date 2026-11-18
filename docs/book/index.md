@@ -58,8 +58,8 @@ language.
 24. [Tests](tests.md): examples in the documentation, test functions, properties, snapshots, `cesia test`, and a site
     for your project.
 25. [The prompt and the debugger](debug.md): `--repl` beside a running program, breakpoints, stops on errors, fix and continue.
-26. [Cells](cells.md): a notebook in a `.ce` file, cells that run again when what they read changes, a session, and
-    a page to share.
+26. [Cells](cells.md): a notebook in a `.ce` file, cells that run again when what they read changes, a session,
+    sliders, and a page to share.
 27. [Speed](speed.md): what becomes machine code as a program runs, and Cesia beside Python, Node, Java, Go, OCaml, Lua
     and LuaJIT, measured: start-up, loops, maps, fibers and a server.
 28. [C and C++](c.md): libraries of the system, their types, memory, callbacks, and C++ through a C layer.

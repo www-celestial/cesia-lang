@@ -1,0 +1,19 @@
+[[], [{Name: "rho", Line: 7, Column: 20, End: 23, Value: 28.0, Min: 0.0, Max: 50.0, Step: 0.5}, {Name: "n", Line: 8, Column: 18, End: 18, Value: 3, Min: 0, Max: 10, Step: 1}], [], []]
+before its cell: Err({Kind: "cells", Message: "\"rho\" holds no number in the session yet: its cell runs first."})
+Ok: output [], value missing, error missing
+Ok: output [], value missing, error missing
+Ok: output [], value missing, error missing
+Ok: output ["n is 3"], value {Kind: "text", Text: "56.0"}, error missing
+Ok({Value: 31.5, ToRun: [3, 4]})
+Use alone: Ok: output ["n is 3"], value {Kind: "text", Text: "63.0"}, error missing
+Ok({Value: 7, ToRun: [4]})
+Ok: output [], value missing, error {Line: missing, Text: "Stopped."}
+after a stop: Ok: output ["n is 7"], value {Kind: "text", Text: "63.0"}, error missing
+Err({Kind: "cells", Message: "51.0 is out of the slider rho, from 0.0 to 50.0."})
+Err({Kind: "cells", Message: "-0.5 is out of the slider rho, from 0.0 to 50.0."})
+Err({Kind: "cells", Message: "A slider takes a finite number, not inf."})
+Err({Kind: "cells", Message: "\"rate\" is no slider of the cells."})
+Err({Kind: "cells", Message: "\"nope\" is no slider of the cells."})
+<p class="slider"><label>rho <input type="range" min="0.0" max="50.0" step="0.5" value="28.0" disabled></label> <span class="value">28.0</span></p>
+<p class="slider"><label>n <input type="range" min="0" max="10" step="1" value="3" disabled></label> <span class="value">3</span></p>
+exit 0
