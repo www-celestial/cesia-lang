@@ -201,8 +201,9 @@ cells.Analyse(cells.Parse("use std/cells\n(* %% P *)\nrho = cells.Slider(60.0, 0
 ```
 
 The numbers are checked in both places, with the same text: [cells.Slider] panics and [cells.Analyse] gives the error
-when a number isn't finite, when the min is not below the max, when the value is outside them, when the step is not above
-0 or is wider than max - min, and past $10^6$ steps. The step defaults to (max - min) / 100, with two more decimals than
+when a number isn't finite, when the min is not below the max, when the value is outside them, when the min, the max or
+the step has more than 18 decimals (the text of a position has theirs), when max - min is too wide for a number (an Int
+holds 63 bits), when the step is not above 0 or is wider than max - min, and past $10^6$ steps. The step defaults to (max - min) / 100, with two more decimals than
 min and max have, so that 0.0 to 0.7 steps by 0.007; or to 1 when value, min and max are Ints, and such a slider gives
 Ints. A value written off the steps stays as it is until it moves.
 
@@ -252,8 +253,9 @@ min and max, and a session that has no value for the name yet: the slider's cell
 The page of [cells.Html] shows each slider under its cell, with its value as the file writes it, on a range that doesn't
 move: the page has no script, and nothing there could run again what reads it.
 
-What a slider trusts is little. The session takes a set only for a name that holds a number already, and gives it only a
-finite number: never a function, whose calls may have been compiled with it, nor a text. [cells.Set] checks the name,
+What a slider trusts is little. [cells.Analyse] reads the file's text without ever panicking: numbers that a slider
+couldn't count or write are errors of the file, as above. The session takes a set only for a name that holds a number
+already, and gives it only a finite number: never a function, whose calls may have been compiled with it, nor a text. [cells.Set] checks the name,
 the number and the range before it asks. What an editor writes in the file is the editor's to check: see
 [Cemacs](https://www-celestial.github.io/cemacs/cells.html).
 

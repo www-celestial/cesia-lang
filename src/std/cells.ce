@@ -244,6 +244,9 @@ end
 (** The most steps from the min to the max of a slider. *)
 mostSteps = 1000000
 
+(** The most decimals of the min, the max and the step of a slider. *)
+mostDecimals = 18
+
 (** Is x a finite number: neither NaN nor an infinity? *)
 finite(x) = values.IsNumber(x) and x - x == 0
 
@@ -287,6 +290,18 @@ defn sliderFault(at, min, max, step)
   if at < min or at > max
     return "cells.Slider needs its value from its min to its max: $at is not in $min to $max."
   end
+  (* The text of a position has the decimals of min and of the step, at most 20 in text.Decimals, and the default step two
+     more than min and max: 18 at most each. *)
+  for x in list.Concat([min, max], if values.IsMissing(step) [] else [step] end)
+    if decimals(x) > mostDecimals
+      return "cells.Slider takes numbers of at most $mostDecimals decimals: $x has $(decimals(x))."
+    end
+  end
+  (* max - min of two Ints fits in 63 bits, and of Floats is finite: the steps are counted from it. *)
+  wide = 1.0 * max - 1.0 * min
+  if not finite(wide) or (values.IsInt(min) and values.IsInt(max) and wide >= 4611686018427387904.0)
+    return "cells.Slider needs max - min to fit in a number: $min to $max is too wide."
+  end
   s = stepOf(at, min, max, step)
   if not (s > 0) or s > max - min
     return "cells.Slider needs a step above 0 and at most its max - min, $(max - min): $s is not."
@@ -303,7 +318,8 @@ defn Slider(value, min, max, step = missing)
       rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5): Cemacs draws a slider under the line, and a move writes the new
       number in the file, so that cesia run reads it. The step goes from min to max; it is (max - min) / 100 when none is
       written, or 1 when value, min and max are Ints. Panics on numbers that aren't finite, a min not below the max, a
-      value out of them, a step not above 0 or past max - min, or more than 10^6 steps: Analyse says the same of the file.
+      value out of them, a min, a max or a step of more than 18 decimals, a max - min too wide for a number, a step not
+      above 0 or past max - min, or more than 10^6 steps: Analyse says the same of the file.
 
         Slider(28.0, 0.0, 50.0, step = 0.5) --> 28.0
         Slider(3, 0, 10) --> 3
