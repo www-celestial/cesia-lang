@@ -48,9 +48,16 @@ defn Main()
   io.Print("frame 3: $(third.Width) wide, $(third.Frames) frames, $(value.Len(third.Items) > 10) items")
   io.Print(cells.Scene(s, moving.Key, 300, frame = 5))
   io.Print(cells.Scene(s, g.Key, 300, frame = 2))
+  solid = cells.Run(s, {Title: "", From: 44, To: 44, Source: "plot.Of([plot.Surface([1, 2, 3; 2, 4, 1])], view = [10, 20])"}, width = 500)?.Value
+  io.Print("surface: view $(solid.View), its scene's $(solid.Scene.View)")
+  turned = cells.Scene(s, solid.Key, 400, view = [-62.5, 20])?
+  io.Print("turned: $(turned.Width) wide, view $(turned.View), $(value.Len([x for x in turned.Items if x.Kind == "mesh"])) mesh")
+  io.Print(cells.Scene(s, g.Key, 300, view = [0, 30]))
+  io.Print(cells.Scene(s, solid.Key, 300, view = [0, 91]))
   page = cells.Html("page.ce")
   io.Print("$(value.Len(text.Split("<section>", page?)) - 1) sections")
   io.Print(text.Contains("<td>9.0</td>", page?), text.Contains("total 30", page?), text.Contains("<div class=\"graph\"><svg", page?))
+  io.Print(text.Contains("<title>Surface, 2 × 3 points, z from 1 to 4</title>", page?))
   io.Print(text.Contains("<div class=\"graph anim\"><input type=\"checkbox\" class=\"play\" id=\"play5\"><label for=\"play5\">Play</label>\n<svg", page?), text.Contains(".anim .f { animation-play-state: paused; }", page?))
   result.Ok(missing)
 end
