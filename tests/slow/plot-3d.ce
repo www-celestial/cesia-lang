@@ -1,6 +1,7 @@
-(** The order of the quads of std/plot's surfaces on many grids, beside tests/lang/plot.ce: the quad painted last is the
-    nearest one at points of the screen that two quads or more cover, on 1,500 random surfaces and views in fifteen tests,
-    60 points each. Slow by nature: tools/check.sh runs it, past the change loop. *)
+(** std/plot's 3D on many grids and views, beside tests/lang/plot.ce: the quad painted last is the nearest one at points of
+    the screen that two quads or more cover, on 1,500 random surfaces and views in fifteen tests, 60 points each; and the
+    texts of the axes of a surface stand apart and inside the graph at 72 views and 3 sizes. Slow by nature:
+    tools/check.sh runs it, past the change loop. *)
 use std/columns as col
 use std/gen
 use std/list
@@ -13,6 +14,49 @@ use std/test
 use std/value
 
 scene(g, w, h) = result.Unwrap(plot.Scene(g, w, h))
+
+defn box(t)
+  (** The rectangle a text covers: its width along its line, and its line's height. *)
+  h = t.Size * 1.362
+  start = if t.Anchor == "start" 0.0 else if t.Anchor == "middle" t.Width / 2 else t.Width end
+  if t.Angle == 0
+    {X: t.X - start, Y: t.Y - t.Size * 1.069, W: t.Width, H: h}
+  else
+    {X: t.X - t.Size * 1.069, Y: t.Y - t.Width + start, W: h, H: t.Width}
+  end
+end
+
+defn isLabelsApart()
+  (* At 72 views and 3 sizes, the texts of the axes of a surface stand apart, and inside the graph. *)
+  z = matrix.Zeros(5, 6)
+  for i in 1..5
+    for j in 1..6
+      z[i, j] = 1000.0 * math.Sin(i * 0.9) * math.Cos(j * 0.6)
+    end
+  end
+  g = plot.Of([plot.Surface(z, x = [0, 1, 2, 4, 5, 6] * 0.001)], title = "T", x = "the x axis", y = "the y axis", z = "z")
+  for size in [[640, 400], [400, 300], [1000, 700]]
+    for az in [k * 30.0 - 180.0 for k in 0..11]
+      for el in [-60.0, -30.0, 0.0, 30.0, 60.0, 90.0]
+        s = result.Unwrap(plot.Scene(g, size[1], size[2], view = [az, el]))
+        texts = [box(x) for x in s.Items if x.Kind == "text" and x.Role != "colorbar"]
+        for i in 1..value.Len(texts)
+          b = texts[i]
+          if b.X < -0.01 or b.Y < -0.01 or b.X + b.W > s.Width + 0.01 or b.Y + b.H > s.Height + 0.01
+            return false
+          end
+          for j in i + 1..value.Len(texts)
+            o = texts[j]
+            if b.X < o.X + o.W and o.X < b.X + b.W and b.Y < o.Y + o.H and o.Y < b.Y + b.H
+              return false
+            end
+          end
+        end
+      end
+    end
+  end
+  true
+end
 
 defn orderHolds(c)
   (** Is the quad painted last the nearest one, at points of the screen that two quads or more cover? The surface is
