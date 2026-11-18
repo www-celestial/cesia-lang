@@ -380,6 +380,11 @@ let dropped (l : Tier.loop) code =
   l.tries <- l.tries + 1;
   if l.tries >= max_tries then l.failed <- true
 
+(* A variable of a module that a session forgot, as it does with the names of a cell it runs again, is Undef for good:
+   code that took it as a constant can never run again, and its drop is an edit of the session, no sign that the loop's
+   code keeps failing. *)
+let forgot (w : world) code = Array.exists (fun (m, k, _) -> match w.modules.(m).cells.(k) with Undef -> true | _ -> false) code.cells
+
 let compile (ctx : ctx) (l : Tier.loop) ver =
   let w = ctx.w in
   if (not l.failed) && l.code = None then begin
@@ -423,7 +428,7 @@ let pick (ctx : ctx) (l : Tier.loop) ver outer =
       (match c.code with
        | Some code when not (cells_hold ctx.w (native code)) ->
          c.code <- None;
-         dropped c (native code)
+         if not (forgot ctx.w (native code)) then dropped c (native code)
        | _ -> ());
       compile ctx c ver;
       (* A region that left [l] to the interpreter, in a statement it doesn't make, can't take it over. *)
