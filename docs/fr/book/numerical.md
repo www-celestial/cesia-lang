@@ -718,8 +718,9 @@ graphe ci-dessus, sur les 2 284 pas de Lorenz sur `[0, 50]`, prennent **0,53 ms*
 de 3. Les mêmes 5 000 temps dans un ordre mélangé prennent 1,9 ms, car chacun cherche de nouveau son pas, et un seul
 temps 2,7 µs. Le `sol.sol(t)` de scipy prend 48,0 ms (45,7 à 50,9) pour les 5 000 temps, et 18,8 µs pour un seul : il trie
 les temps, trouve leurs pas avec `searchsorted`, puis appelle la sortie dense de chaque pas tour à tour, depuis Python.
-Il ne gagne nulle part ici, pas même avec 52 pas et un million de temps, 165 ms contre 20. Dans n'importe quel ordre,
-répétés ou non, les temps donnent les mêmes lignes, jusqu'au dernier bit.
+Il ne gagne nulle part ici, pas même avec peu de pas et beaucoup de temps : sur l'oscillateur `[y[2], -y[1]]` sur
+`[0, 10]`, 56 pas ici et 52 pour scipy, un million de temps prennent 19,5 ms (19,3 à 19,7) contre 158,6 (157,6 à
+160,3). Dans n'importe quel ordre, répétés ou non, les temps donnent les mêmes lignes, jusqu'au dernier bit.
 
 `use std/ode` ajoute au démarrage d'un programme le temps de lire son code et celui de std/optimize et de std/num, dont
 il se sert : 1,3 ms au plus rapide de 21 lancements (4,15 ms contre 2,86 pour un programme qui affiche 1, le

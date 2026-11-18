@@ -671,8 +671,9 @@ Lorenz on `[0, 50]`, take **0.53 ms** (0.51 to 0.53); 86.6 ms (86.2 to 87.7) bef
 by halves from the first one and computed its state on arrays of 3. The same 5,000 times in a scrambled order take
 1.9 ms, as each looks for its step again, and a single time 2.7 µs. scipy's `sol.sol(t)` takes 48.0 ms (45.7 to 50.9)
 for the 5,000 times, and 18.8 µs for a single one: it sorts the times, finds their steps with `searchsorted`, then calls
-the dense output of each step in turn, from Python. It wins nowhere here, not even with 52 steps and a million times,
-165 ms against 20. In any order, repeated or not, the times give the same rows, to the last bit.
+the dense output of each step in turn, from Python. It wins nowhere here, not even with few steps and many times: on
+the oscillator `[y[2], -y[1]]` over `[0, 10]`, 56 steps here and 52 for scipy, a million times take 19.5 ms (19.3 to
+19.7) against 158.6 (157.6 to 160.3). In any order, repeated or not, the times give the same rows, to the last bit.
 
 `use std/ode` adds to the start of a program the time to read its code and that of std/optimize and std/num, which it
 uses: 1.3 ms in the fastest of 21 runs (4.15 ms against 2.86 for a program that prints 1, on 2026-11-13), more on a
