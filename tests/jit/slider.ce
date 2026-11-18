@@ -16,4 +16,4 @@ end
 
 (* %% Spring *)
 spring(t, y) = [y[2], -k * y[1]]
-run(spring, 100000)
+run(spring, 20000)

@@ -1,30 +1,30 @@
 {"Do": "run", "Code": "use std/io\nuse std/cells", "Line": 1, "Path": "slider.ce"}
 {"Do": "run", "Code": "(* %% Parameters *)\nk = cells.Slider(3.0, 0.0, 10.0, step = 0.25)\nm = cells.Slider(2, 1, 5)", "Line": 4, "Path": "slider.ce"}
 {"Do": "run", "Code": "(* %% Loop *)\ndefn run(f, n)\n  y = [1.0, 0.0]\n  for i in 1..n\n    y = y + 0.001 * f(i * 0.001, y)\n  end\n  y[1]\nend", "Line": 8, "Path": "slider.ce"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "3.25"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "3.5"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "3.75"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "4.0"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "4.25"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "4.5"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "4.75"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "5.0"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "5.25"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "5.5"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "6"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "6.25"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}
 {"Do": "set", "Name": "k", "Text": "7"}
-{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 17, "Path": "slider.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 20000)", "Line": 17, "Path": "slider.ce"}

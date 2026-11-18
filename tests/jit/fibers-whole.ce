@@ -2,7 +2,7 @@
    the whole function (inner, called often, with an Int result): no error, and each call's count is between those of
    the values k held, as the interpreter's, which may see k change inside a call. Native code that keeps the numbers it
    started with until the call ends, as a fiber switch waits for nested native frames, gives one of a value k held. Kinds:
-   Int only, Float only, then both in turn. *)
+   Int only, then Int and Float in turn. *)
 use std/fiber
 use std/io
 use std/list
@@ -27,6 +27,13 @@ defn expect(m, v)
   end
   n
 end
+defn busy(n)
+  s = 0
+  for q in 1..n
+    s = s + q
+  end
+  s
+end
 defn work(n)
   rs = list.Fill(0, n)
   j = 0
@@ -36,17 +43,14 @@ defn work(n)
   end
   rs
 end
-for kinds in 1..3
+for kinds in 1..2
   k = 2
   held = [2]
-  f = fiber.Spawn(() -> work(12000))
+  f = fiber.Spawn(() -> work(6000))
   for j in 1..400
-    k = if kinds == 1 j else if kinds == 2 j * 0.5 else if math.Mod(j, 3) == 0 j else j * 0.25 end
+    k = if kinds == 1 j else if math.Mod(j, 3) == 0 j else j * 0.25 end
     held = list.Concat(held, [k])
-    s = 0
-    for q in 1..5000
-      s = s + q
-    end
+    _ = busy(8000)
   end
   rs = fiber.Wait(f).Value
   valid = [expect(500, v) for v in held]

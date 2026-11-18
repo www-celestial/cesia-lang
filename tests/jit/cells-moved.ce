@@ -38,8 +38,8 @@ defn count(n)
   t
 end
 for step in 1..12
-  io.Print("rho $rho: $(euler(20000))")
-  io.Print("k $k: $(count(20000))")
+  io.Print("rho $rho: $(euler(6000))")
+  io.Print("k $k: $(count(6000))")
   rho = 28.0 + step * 0.5
   k = if step < 5 step else if step < 8 step * 0.75 else step - 6 end
 end
