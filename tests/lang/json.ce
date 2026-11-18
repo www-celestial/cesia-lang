@@ -1,9 +1,12 @@
 use std/json
+use std/columns
 use std/dict
 use std/fiber
+use std/gen
 use std/io
 use std/list
 use std/result
+use std/test
 use std/text
 use std/value
 
@@ -45,6 +48,34 @@ isPrettyEmpty() = json.Pretty([]) == "[]"
 isWriteText() = json.Text("a\"\n\\é") == "\"a\\\"\\n\\\\é\""
 isNestingStaysInItsFiber() = result.IsErr(fiber.Wait(fiber.Spawn(() -> value.Text(deep(700))))) and value.Text(1) == "1"
 isHugeExponent() = bad("1e999")
+
+(* Numbers: the short ones are read without a copy of their text, a decimal of at most 15 digits as one product or
+   quotient of two exact doubles; any number must read as text.Number reads it, through the C library, to the bit. *)
+defn decimalOf(c)
+  (** A number as JSON may write it: a sign, digits, maybe leading zeros, a fraction and an exponent. *)
+  whole = if c.Lead "0" else text.Join("", ["$d" for d in c.Whole]) end
+  fraction = if value.Len(c.Fraction) == 0 "" else ".$(text.Join("", ["$d" for d in c.Fraction]))" end
+  power = if c.Power "e$(c.Ten)" else "" end
+  "$(if c.Minus "-" else "" end)$whole$fraction$power"
+end
+defn readsAsText(c)
+  (** Does JSON read a number as text.Number does, or refuse it where it is past the largest float? *)
+  s = decimalOf(c)
+  want = text.Number(s)
+  if value.IsFloat(want) and want - want != 0.0
+    return bad(s) and bad("[$s]")
+  end
+  got = ok(s)
+  value.Equal(got, want) and value.IsInt(got) == value.IsInt(want) and value.Equal(ok("[$s, $s]"), [want, want])
+end
+numbers = gen.Of({Minus: gen.Bool(), Lead: gen.Bool(), Whole: gen.List(gen.Int(1, 9), min = 1, max = 22), Fraction: gen.List(gen.Int(0, 9), min = 0, max = 22),
+  Power: gen.Bool(), Ten: gen.Int(-330, 330)})
+isNumbersAsText() = test.ForAll(readsAsText, numbers, cases = 2000)
+readsBack(x) = value.Equal(ok(json.Text(x)), x) and value.Equal(ok(json.Text([x, x * 3.0])), [x, x * 3.0])   (** Does a float read back from its JSON? *)
+isFloatsReadBack() = test.ForAll(c -> readsBack(c.M * 10.0 ^ c.E), gen.Of({M: gen.Float(-1, 1), E: gen.Int(-320, 300)}), cases = 2000)
+isNumberEdges() = value.Equal([ok("0.1"), ok("1e22"), ok("1e23"), ok("123456789012345.6"), ok("9007199254740993"), ok("-0.0"), ok("0e5"), ok("4.9e-324"), ok("1.7976931348623157e308")],
+  [0.1, 1e22, 1e23, 123456789012345.6, 9007199254740993, -0.0, 0.0, 4.9e-324, 1.7976931348623157e308]) and value.IsInt(ok("123456789012345678")) and value.IsInt(ok("-1234567890123456789")) and value.IsFloat(ok("12345678901234567890"))
+isArrayKinds() = columns.Kind(ok("[1.5, 2.5]")) == "float" and columns.Kind(ok("[1, 2]")) == "int" and columns.Kind(ok("[1, 2.5]")) == "value" and value.Equal(ok("[1, 2.5, \"a\"]"), [1, 2.5, "a"])
 
 defn isEveryPlaceOfAnEscape()
   (** Each byte that a text escapes, at every place of a text long enough to be read and written eight bytes at a time:
