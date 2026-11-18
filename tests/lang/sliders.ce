@@ -81,6 +81,27 @@ defn isIntSnap()
   s.Text == "8" and value.IsInt(s.Value)
 end
 isIntWithFloatStep() = cells.Snap(slider("n = cells.Slider(3, 0, 10, step = 0.5)"), 7.6).Text == "7.5"
+(* A slider of Floats is Floats in Analyse too, as cells.Slider gives: an editor that computes value - min with an Int min
+   and a Float max far apart doesn't overflow 63 bits. *)
+defn isFloatsAnalysed()
+  s = slider("a = cells.Slider(3, -4611686018427387903, 1e308)")
+  list.All([value.IsFloat(x) for x in [s.Value, s.Min, s.Max, s.Step]]) and s.Value == 3 and (s.Value - s.Min) / (s.Max - s.Min) < 1e-289
+end
+defn isIntsAnalysed()
+  s = slider("k = cells.Slider(3, 0, 10, step = 2)")
+  list.All([value.IsInt(x) for x in [s.Value, s.Min, s.Max, s.Step]])
+end
+(* Positions of a huge Int step past a Float max: counted in Floats, never as Int products. *)
+defn isHugeIntStep()
+  s = slider("a = cells.Slider(0, 0, 1e24, step = 4611686018427387903)")
+  cells.Snap(s, s.Max).Value <= s.Max
+end
+(* max - min of Ints is checked exactly: 2^62 - 1 fits, 2^62 doesn't. *)
+defn isWidestInts()
+  s = slider("a = cells.Slider(0, -1, 4611686018427387902, step = 4611686018427387903)")
+  cells.Snap(s, s.Max).Value == 4611686018427387902
+end
+isJustTooWideInts() = same([0, -2, 4611686018427387902, 4611686018427387903], "a = cells.Slider(0, -2, 4611686018427387902, step = 4611686018427387903)")
 
 (* Positions, computed and never added up, and their text. *)
 tenths = {Value: 0.0, Min: 0.0, Max: 1.0, Step: 0.1}
@@ -89,6 +110,9 @@ isTenthsRead() = list.All([cells.Snap(tenths, k / 10).Value == k / 10 for k in 0
 isSteps() = cells.Snap(tenths, 0.3, steps = 1).Text == "0.4" and cells.Snap(tenths, 0.3, steps = -1).Text == "0.2"
 isClamped() = cells.Snap(tenths, 0.3, steps = 100).Text == "1.0" and cells.Snap(tenths, 0.3, steps = -100).Text == "0.0" and cells.Snap(tenths, 5.0).Text == "1.0"
 isLastBelowMax() = cells.Snap({Value: 0, Min: 0, Max: 10, Step: 3}, 10).Value == 9
+(* A max a hair short of a whole number of steps: the last position is below it, for Ints and for Floats. *)
+isLastBelowMaxWideStep() = cells.Snap(slider("a = cells.Slider(0, 0, 7999999999, step = 4000000000)"), 7999999999).Value == 4000000000
+isLastBelowMaxHair() = cells.Snap(slider("a = cells.Slider(0.0, 0.0, 2.9999999999, step = 1.0)"), 3.0).Text == "2.0"
 isThirds() = cells.Snap({Value: 0.0, Min: 0.0, Max: 0.3, Step: 0.1}, 1.0).Text == "0.3"
 isNoMinusZero() = cells.Snap({Value: 0.0, Min: -0.9, Max: 0.9, Step: 0.3}, 0.0).Text == "0.0"
 isNegativeSteps() = value.Equal([cells.Snap({Value: 0.0, Min: -1.0, Max: 1.0, Step: 0.25}, x).Text for x in [-1.0, -0.6, 0.1, 1.0]], ["-1.00", "-0.50", "0.00", "1.00"])
@@ -113,7 +137,7 @@ isRandomLines() = test.ForAll(sane, lines, cases = 300)
 (* Lines of a slider whose numbers are drawn among those that break things: Analyse never panics, and Snap writes each
    slider it finds without a panic, within its min and its max, in a text that reads back as its value. *)
 numbers = ["0", "3", "-1", "0.5", "28.0", "1e-6", "1e308", "-1e308", "1e-300", "1e-25", "1e400", "4611686018427387903",
-  "-4611686018427387903", "0.1"]
+  "-4611686018427387903", "0.1", "1e24", "2.9999999999", "4000000000", "7999999999"]
 sliderLines = gen.Map(xs -> "a = cells.Slider($(xs[1]), $(xs[2]), $(xs[3])$(if xs[4] == "0" "" else ", step = $(xs[4])" end))",
   gen.List(gen.Pick(numbers), min = 4, max = 4))
 

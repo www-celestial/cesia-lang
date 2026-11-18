@@ -135,8 +135,9 @@ defn Analyse(cells)
       only; a cell reads only names that the cells above it define; and a name no cell defines is an error where it is
       read. Sliders lists the lines name = cells.Slider(...) of a cell, through the name that the use of std/cells of the
       first cell gives, each {Name, Line, Column, End, Value, Min, Max, Step}: Column and End are the first and the last
-      columns of the value's number on its line, from 1, Step is the default one when none is written. A cell with a
-      slider holds only sliders and comments, and a slider takes numbers written in the file, which Slider would take.
+      columns of the value's number on its line, from 1, Step is the default one when none is written; Value, Min, Max and
+      Step are Ints for a slider of Ints, else Floats, as Slider gives. A cell with a slider holds only sliders and
+      comments, and a slider takes numbers written in the file, which Slider would take.
 
         a = Analyse(Parse("n = 3\n(* %% Twice *)\nm = n * 2"))
         a[2].Reads --> ["n"]
@@ -276,8 +277,12 @@ defn stepOf(at, min, max, step)
   end
 end
 
-(** The number of steps from min to max: the last position is the largest one at most max, as an HTML range input has it. *)
-stepCount(min, max, step) = math.Div(math.Floor((max - min) / step + 1e-9), 1)
+defn stepCount(min, max, step)
+  (** The number of steps from min to max: the last position is the largest one at most max, as an HTML range input has it.
+      Exact for Ints; for Floats a quotient a hair below a whole number counts it, as 0.7 / 0.007 is 99.99999999999999, and
+      Snap steps back from that position when its text is past max. *)
+  if values.IsInt(min) and values.IsInt(max) and values.IsInt(step) math.Div(max - min, step) else math.Div(math.Floor((max - min) / step + 1e-9), 1) end
+end
 
 defn sliderFault(at, min, max, step)
   (** What is wrong with the numbers of a slider, or missing: one text for the panic of Slider and the error of Analyse. *)
@@ -298,8 +303,8 @@ defn sliderFault(at, min, max, step)
     end
   end
   (* max - min of two Ints fits in 63 bits, and of Floats is finite: the steps are counted from it. *)
-  wide = 1.0 * max - 1.0 * min
-  if not finite(wide) or (values.IsInt(min) and values.IsInt(max) and wide >= 4611686018427387904.0)
+  ints = values.IsInt(min) and values.IsInt(max)
+  if (ints and min < 0 and max > 4611686018427387903 + min) or (not ints and not finite(1.0 * max - 1.0 * min))
     return "cells.Slider needs max - min to fit in a number: $min to $max is too wide."
   end
   s = stepOf(at, min, max, step)
@@ -342,14 +347,26 @@ defn Snap(slider, x, steps = 0)
         Snap(s, 0.31, steps = 1).Value --> 0.4
         Snap(s, 0.31, steps = -10).Text --> "0.0"
         Snap({Value: 5, Min: 0, Max: 10, Step: 3}, 10).Text --> "9" *)
-  last = stepCount(slider.Min, slider.Max, slider.Step)
-  near = math.Div(math.Round((list.Max(slider.Min, list.Min(slider.Max, x)) - slider.Min) / slider.Step), 1)
+  ints = whole(slider.Value, slider.Min, slider.Max, slider.Step)
+  (* A slider of Floats counts in Floats: an Int min and a Float max may be farther apart than 63 bits hold. *)
+  float = n -> if ints n else 1.0 * n end
+  min = float(slider.Min)
+  max = float(slider.Max)
+  step = float(slider.Step)
+  last = stepCount(min, max, step)
+  near = math.Div(math.Round((list.Max(min, list.Min(max, float(x))) - min) / step), 1)
   k = list.Max(0, list.Min(last, near + steps))
-  at = slider.Min + k * slider.Step
-  if whole(slider.Value, slider.Min, slider.Max, slider.Step)
+  if ints
+    at = min + k * step
     return {Value: at, Text: "$at"}
   end
-  t = text.Decimals(list.Max(1, list.Max(decimals(slider.Min), decimals(slider.Step))), at)
+  p = position(min, step, k)
+  if p.Value > max and k > 0 position(min, step, k - 1) else p end
+end
+
+defn position(min, step, k)
+  (** The position k of a slider of Floats, min + k × step, {Value, Text}: its text has the decimals of min and of step. *)
+  t = text.Decimals(list.Max(1, list.Max(decimals(min), decimals(step))), min + k * step)
   (* A position next to 0 can round to -0.0, which the file needn't say. *)
   t = if text.StartsWith("-", t) and text.Number(t) == 0 text.Slice(2, values.Len(t), t) else t end
   {Value: text.Number(t), Text: t}
@@ -555,8 +572,10 @@ defn slidersOf(cell, i, alias)
         else if list.Any([s.Name == c.Name for s in out])
           errors = list.Append(fault(line, 1, "\"$(c.Name)\" is a slider of this cell already."), errors)
         else
-          out = list.Append({Name: c.Name, Line: line, Column: got["value"].Column, End: got["value"].End, Value: at, Min: number("min"),
-            Max: number("max"), Step: stepOf(at, number("min"), number("max"), number("step"))}, out)
+          (* A slider of Floats is Floats, as Slider gives: its Value may be written 3, and its Min an Int far from a Float Max. *)
+          float = x -> if whole(at, number("min"), number("max"), number("step")) x else 1.0 * x end
+          out = list.Append({Name: c.Name, Line: line, Column: got["value"].Column, End: got["value"].End, Value: float(at),
+            Min: float(number("min")), Max: float(number("max")), Step: float(stepOf(at, number("min"), number("max"), number("step")))}, out)
         end
       end
     end

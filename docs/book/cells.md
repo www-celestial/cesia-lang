@@ -191,7 +191,8 @@ Two rules, besides the three of the cells, make a slider something an editor can
 
 [cells.Analyse] finds the sliders through the name that the first cell's `use std/cells` gives, `cells` or the name
 after `as`, and gives each cell its Sliders: each with its Name, its Line, the Column and the End of the value's number
-on that line, counted from 1, its Value, its Min, its Max and its Step.
+on that line, counted from 1, its Value, its Min, its Max and its Step: Ints for a slider of Ints, else Floats, as
+`cesia run` reads them.
 
 ```cesia
 use std/cells
