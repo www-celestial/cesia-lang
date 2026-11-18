@@ -1,0 +1,28 @@
+units the same after four runs again: true
+units made again for another body: true
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-1.062127550778394"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-1.062127550778394"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.00742013118087776"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-1.062127550778394"},"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.5947676722234344"},"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.5947676722234344"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.5947676722234344"},"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.5947676722234344"},"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.025457626840738053"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.025457626840738053"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.025457626840738053"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"17711"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"17711"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.5947676722234344"},"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.5947676722234344"},"Seconds":0}
+@{"Kind":"answer","Error":{"Line":16,"Text":"twins.ce:16:29: Index 3 is outside this array of 2 elements.\n  16 | spring(t, y) = [y[2], -k * y[3]]\n     |                             ^\n  in spring (twins.ce:16)\n  called from run (twins.ce:10)"},"Seconds":0}
+@{"Kind":"answer","Error":{"Line":16,"Text":"twins.ce:16:29: Index 3 is outside this array of 2 elements.\n  16 | spring(t, y) = [y[2], -k * y[3]]\n     |                             ^\n  in spring (twins.ce:16)\n  called from run (twins.ce:10)"},"Seconds":0}
+the same with the JIT off
+exit 0

@@ -155,6 +155,142 @@ let dotted code =
     scan toks;
     !out
 
+(* Two definitions of a function are the same code when nothing tells them apart: the same name, the same path and the
+   same text on the lines they span, so that an error in either prints the same; the same tree, node by node, at the same
+   positions; each name bound to the same place, the same local or the same cell of the same module. A name of the cell
+   that defines it is a cell of another module at each run of that cell: a function that reads one is never the same.
+   Nothing whose meaning depends on the module that defines it, whose shapes and private names change at each run: no
+   named struct, no private field, method or key read or written by name, no use, interface, inner named function or
+   hook. *)
+exception Differ
+
+let same_code (w : world) (a : proto) (b : proto) =
+  let last = ref 0 in
+  let check c = if not c then raise Differ in
+  let arr f x y = check (Array.length x = Array.length y); Array.iter2 f x y in
+  let opt f x y = match x, y with None, None -> () | Some x, Some y -> f x y | _ -> raise Differ in
+  let text x y = check (String.equal x y) in
+  let public n = check (Lexer.is_public n) in
+  let binding (x : Ast.binding) (y : Ast.binding) =
+    match x, y with
+    | Unresolved, Unresolved -> ()
+    | Local i, Local j -> check (i = j)
+    | Cell x, Cell y -> check (x.m = y.m && x.k = y.k && x.stable = y.stable)
+    | _ -> raise Differ
+  in
+  let name (x : Ast.name) (y : Ast.name) = text x.text y.text; binding x.b y.b in
+  let ptype (x : Ast.ptype) (y : Ast.ptype) =
+    check (x.tpos = y.tpos && x.topt = y.topt && x.tbang = y.tbang);
+    opt text x.tpkg y.tpkg;
+    text x.tname y.tname;
+    binding x.tb y.tb
+  in
+  let rec expr (x : Ast.expr) (y : Ast.expr) =
+    check (x.id = y.id && x.pos = y.pos);
+    last := max !last (Pos.line x.pos);
+    match x.e, y.e with
+    | Lint i, Lint j -> check (i = j)
+    | Lfloat f, Lfloat g -> check (Int64.equal (Int64.bits_of_float f) (Int64.bits_of_float g))
+    | Lbool p, Lbool q -> check (p = q)
+    | Lmissing, Lmissing | Break, Break | End_index, End_index -> ()
+    | Ltext p, Ltext q -> text p q
+    | Interp p, Interp q -> arr part p q
+    | Var p, Var q -> name p q
+    | Bin (o, p1, p2), Bin (q, q1, q2) -> check (o = q); expr p1 q1; expr p2 q2
+    | Neg p, Neg q | Not p, Not q | Question p, Question q -> expr p q
+    | And (p1, p2), And (q1, q2) | Or (p1, p2), Or (q1, q2) | Range (p1, p2), Range (q1, q2) | In_op (p1, p2), In_op (q1, q2) ->
+      expr p1 q1;
+      expr p2 q2
+    | Call p, Call q -> call p q
+    | Assign (n, p), Assign (m, q) -> name n m; expr p q
+    | If (c, p1, p2), If (d, q1, q2) -> expr c d; block p1 q1; block p2 q2
+    | While p, While q -> check (p.has_break = q.has_break); expr p.cond q.cond; block p.body q.body
+    | Return p, Return q -> check (p.tail = q.tail); opt expr p.rvalue q.rvalue
+    | Lambda f, Lambda g -> func f g
+    | Array_lit p, Array_lit q -> arr (arr expr) p q
+    | Comp p, Comp q -> expr p.cbody q.cbody; name p.cvar q.cvar; expr p.csrc q.csrc; opt expr p.cguard q.cguard
+    | Index (p, i, e), Index (q, j, f) -> check (e = f); expr p q; arr index i j
+    | Field (p, n), Field (q, m) -> public n; text n m; expr p q
+    | Struct_lit { sname = None; sfields = p }, Struct_lit { sname = None; sfields = q } ->
+      arr (fun (n, x) (m, y) -> text n m; expr x y) p q
+    | For p, For q -> check (p.f_break = q.f_break); name p.var q.var; expr p.iter q.iter; block p.fbody q.fbody
+    | Set p, Set q -> name p.root q.root; arr step p.path q.path; expr p.value q.value
+    | Destructure (p, x), Destructure (q, y) -> pat p q; expr x y
+    | Match p, Match q -> expr p.subject q.subject; arr arm p.arms q.arms
+    | _ -> raise Differ
+  and block x y = arr expr x y
+  and part (x : Ast.part) (y : Ast.part) = match x, y with Lit p, Lit q -> text p q | Hole p, Hole q -> expr p q | _ -> raise Differ
+  and index (x : Ast.index) (y : Ast.index) = match x, y with All, All -> () | Ix p, Ix q -> expr p q | _ -> raise Differ
+  and call (x : Ast.call) (y : Ast.call) =
+    check (x.self_tail = y.self_tail);
+    expr x.callee y.callee;
+    arr (fun (p : Ast.arg) (q : Ast.arg) -> opt text p.aname q.aname; expr p.value q.value) x.args y.args
+  and step (x : Ast.step) (y : Ast.step) =
+    check (x.sp = y.sp);
+    match x.sk, y.sk with
+    | Sindex (i, e), Sindex (j, f) -> check (e = f); arr index i j
+    | Sfield n, Sfield m -> public n; text n m
+    | _ -> raise Differ
+  and arm (x : Ast.arm) (y : Ast.arm) = pat x.pt y.pt; opt expr x.guard y.guard; expr x.abody y.abody
+  and pat (x : Ast.pat) (y : Ast.pat) =
+    match x, y with
+    | Pname n, Pname m -> name n m
+    | Pwild, Pwild -> ()
+    | Plit p, Plit q -> expr p q
+    | Parray p, Parray q -> arr pat p q
+    | Pstruct p, Pstruct q -> arr (fun (n, x) (m, y) -> public n; text n m; pat x y) p q
+    | _ -> raise Differ
+  and func (f : Ast.func) (g : Ast.func) =
+    text f.fname g.fname;
+    arr
+      (fun (p : Ast.param) (q : Ast.param) -> text p.pname q.pname; opt expr p.default q.default; opt ptype p.ptype q.ptype)
+      f.params g.params;
+    opt ptype f.ret g.ret;
+    check
+      (f.nnodes = g.nnodes && f.fpos = g.fpos && f.nvars = g.nvars && f.var_names = g.var_names && f.captures = g.captures
+       && f.maybe_undef = g.maybe_undef && f.has_return = g.has_return && f.has_self_tail = g.has_self_tail
+       && f.kept = g.kept && f.cell_of = g.cell_of && f.export_of = g.export_of);
+    last := max !last (Pos.line f.fpos);
+    block (Lazy.force f.body) (Lazy.force g.body)
+  in
+  (* The text of lines [first] to [final] of a source, from 1: from the offset where line [first] starts to the one where
+     line [final + 1] does, or the end. *)
+  let lines src first final =
+    let n = String.length src in
+    let rec at i line l =
+      if line >= l || i >= n then i else match String.index_from_opt src i '\n' with Some j -> at (j + 1) (line + 1) l | None -> n
+    in
+    let a = at 0 1 first in
+    String.sub src a (at a first (final + 1) - a)
+  in
+  a.arity = b.arity && String.equal a.pname b.pname
+  && (let pa, sa = Vec.get w.files a.file and pb, sb = Vec.get w.files b.file in
+      String.equal pa pb
+      && (match func a.func b.func with () -> true | exception Differ -> false)
+      && (let first = Pos.line a.func.fpos in String.equal (lines sa first !last) (lines sb first !last)))
+
+(* A function the code at the prompt defines again with the same code as the one before under its name takes the identity
+   of that code: the JIT's native code, which tests a function by it, runs the new one at once, as it ran the old. The
+   table keeps the last function of each name, at most [most_named] names; past them, it starts again, which only costs
+   the next definition of each a compile. Not under a debugger, whose hooks are in the code. *)
+let most_named = 1024
+
+let twins (w : world) m (layout : Ast.layout) =
+  if not w.hooks then begin
+    let methods = List.map (fun (_, _, _, k) -> k) layout.methods in
+    let table = w.debug.defined in
+    Array.iter
+      (fun (k, _) ->
+         match w.modules.(m).cells.(k) with
+         | Fun { proto; env = [||] } when not (List.mem k methods) ->
+           let name = layout.cell_names.(k) in
+           (match Hashtbl.find_opt table name with Some before when same_code w before proto -> proto.code <- before.code | _ -> ());
+           if Hashtbl.length table >= most_named && not (Hashtbl.mem table name) then Hashtbl.reset table;
+           Hashtbl.replace table name proto
+         | _ -> ())
+      layout.hoisted
+  end
+
 (* At the prompt: the code sees the main file's package, its uses and what was run at the prompt before. A cell of std/cells
    runs as the lines of its file from [line]: empty lines after the uses it needs put its own at their place, so that its
    errors and the calls that lead to them name the file and its lines. *)
@@ -184,7 +320,7 @@ let at_prompt ?cell ctx code =
   | (file, m, _, layout) as prepared ->
     d.scope <- m :: d.scope;
     List.iter (fun (a, p) -> if not (List.mem_assoc a d.typed_uses) then d.typed_uses <- d.typed_uses @ [ a, p ]) (uses_in prompt_path code);
-    if target >= 0 then replace_functions w ~target ~file layout;
+    if target >= 0 then replace_functions w ~target ~file layout else twins w m layout;
     match run_above ctx ~typed prepared with
     | v -> Value.ok w v
     | exception Failed text -> Value.err w (Text text)

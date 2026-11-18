@@ -479,7 +479,6 @@ let const st (v : t) =
     match a, b with
     | Dict { keys = x; _ }, Dict { keys = y; _ } -> x == y
     | Struct { shape = x; _ }, Struct { shape = y; _ } -> x == y
-    | Fun { proto = x; _ }, Fun { proto = y; _ } -> x == y
     | _ -> false
   in
   let cs = st.dyn.consts in
@@ -1054,8 +1053,7 @@ and call_value st e (call : call) f =
   List.iter
     (fun (p, (v : version)) ->
        let yes = block st and next = block st in
-       let c = const st (Fun { proto = p; env = [||] }) in
-       close st (Is_fun (f, c, yes, next));
+       close st (Is_fun (f, p.code, yes, next));
        st.cur <- yes;
        (* Each test runs after the ones before alone: a guard of its arguments may go back as the call's may. *)
        st.dyn.bail <- before;
@@ -1424,8 +1422,7 @@ and vcall st (e : expr) (call : call) : vec =
     List.iter
       (fun (p, (v : version)) ->
          let yes = block st and next = block st in
-         let c = const st (Fun { proto = p; env = [||] }) in
-         close st (Is_fun (f, c, yes, next));
+         close st (Is_fun (f, p.code, yes, next));
          st.cur <- yes;
          st.dyn.bail <- before;
          st.dyn.callable <- callable;

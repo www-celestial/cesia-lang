@@ -782,6 +782,20 @@ variables. Une fonction qui prend ou donne d'autres valeurs que des nombres, com
 sur un chemin d'erreur, est inlinée quand elle est petite, sans boucle : son corps est fait sur place, et ce qu'il ne
 sait pas faire retourne à l'interpréteur, qui fait l'appel.
 
+Le test porte sur le *code* de la fonction, pas sur la fonction : chaque fonction a l'identité de son code, la sienne.
+Quand le prompt (la ligne où l'on tape du code à côté du programme) ou une cell d'une session (un morceau d'un notebook,
+un cahier de calcul, que fait tourner un processus Cesia à part) définit de nouveau une fonction avec le même code, la
+nouvelle prend l'identité du code de l'ancienne, et le code machine fait pour l'ancienne lance la nouvelle tout de suite, refait ni par le JIT ni
+par MIR. Le même code veut dire : le même nom, le même texte sur les mêmes lignes du même fichier, pour qu'une erreur
+s'affiche pareil ; le même arbre, chaque nom lié à la même variable ou à la même fonction ; et rien dont le sens dépend du
+module qui la définit, qui est un autre à chaque lancement d'une cell : pas de struct nommée, ni de champ, de méthode ou
+de clé privés lus par leur nom. Une fonction qui appelle une autre fonction de sa cell, ou elle-même, lit un nom de ce
+nouveau module : elle est refaite, comme la première fois. La cell de résolution d'un notebook de Lorenz, `lorenz`
+définie de nouveau puis `ode.Solve` sur [0, 50], prend {{SAME}} ms au lieu de 53 à 64 ms, le temps de refaire la boucle
+d'ode avec une fonction de plus à son appel de `f`, et de 22 ms pour de bon une fois que cet appel en avait rencontré cinq
+(médianes de 21 lancements, 2026-11-18). Une fonction définie de nouveau au même endroit, la même ou changée, prend la
+place de l'ancienne parmi les quatre dont un appel se souvient.
+
 Un appel sans argument, comme `f()` dans les tirages un par un de `stats.MonteCarlo`, est fait de la même façon :
 l'interpréteur note les fonctions qu'il atteint, comme il le fait pour un à trois arguments, et une fonction sans
 paramètre infère ses variables et son résultat, comme le fait une fonction appelée avec des arguments typés, si bien

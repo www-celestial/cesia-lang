@@ -1,0 +1,28 @@
+(* A module's number that a function called from native code reads, as a function of the unit beside the loop's, is
+   checked before each run, as the loop's own: the native code made with k = 2 isn't run once k is 5. *)
+use std/io
+use std/math
+k = 2
+defn g(x)
+  s = 0
+  j = 0
+  while j < 3
+    if x > k
+      s = s + 1
+    end
+    j += 1
+  end
+  s
+end
+defn run(n)
+  t = 0
+  for i in 1..n
+    t = t + g(math.Mod(i, 10))
+  end
+  t
+end
+io.Print(run(100000))
+k = 5
+io.Print(run(100000))
+k = 8
+io.Print(run(100000))

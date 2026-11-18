@@ -687,6 +687,18 @@ the interpreter, and so does a call of a function that captured variables. A fun
 than numbers, as a small array of floats or a text on an error path, is inlined when it is small, with no loop: its
 body is made in place, and what it can't make goes back to the interpreter, which makes the call.
 
+The test is on the function's *code*, not on the function: each function has the identity of its code, its own. When
+the prompt or a cell of a session defines a function again with the same code, the new one takes the identity of the old
+one's, and the machine code made for the old one runs the new one at once, made again neither by the JIT nor by MIR.
+The same code means: the same name, the same text on the same lines of the same file, so that an error prints the same;
+the same tree, each name bound to the same variable or function; and nothing whose meaning depends on the module that
+defines it, which is another at each run of a cell: no named struct and no private field, method or key read by name.
+A function that calls another of its own cell, or itself, reads a name of that new module: it is made again, as the first
+time. The solve cell of a Lorenz notebook, `lorenz` defined again and `ode.Solve` on [0, 50], takes {{SAME}} ms instead
+of 53 to 64 ms, the time to make ode's loop again with one more function at its call of `f`, and of 22 ms for good once
+that call had met five (medians of 21 runs, 2026-11-18). A function defined again in the same place, the same or
+changed, takes the old one's place among the four a call remembers.
+
 A call with no argument, as `f()` in the single draws of `stats.MonteCarlo`, is made the same way: the interpreter notes
 the functions it reaches, as it does for one to three arguments, and a function of no parameter infers its variables
 and its result, as one called with typed arguments does, so that `() -> 0.25` is known to give a float. Such a call took

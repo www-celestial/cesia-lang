@@ -159,6 +159,11 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - The text of a float, for `io.Print`, `"$x"`, `value.Text` and `json.Text`, by Ryu's tables (Adams, PLDI 2018)
   instead of up to three `printf` and two `strtod`, in the same bytes: `json.Text` of 32,000 floats 97 -> 3.9 ms, the
   scene of a Lorenz curve 30 -> 1.4 ms, `"$x"` of a float of 17 digits 2.9 us -> 0.19 us.
+- A cell run again, or code at the prompt, that defines a function with the same code keeps the machine code the JIT
+  made with the one before: the solve cell of a Lorenz notebook {{SAME}} ms instead of 22 (53 to 64 ms while the JIT
+  made ode's loop again at each run, then interpreted for good). A function defined again, the same or changed, no
+  longer fills the four functions a call through a value remembers, and a loop whose machine code paid for itself
+  before it was dropped no longer counts toward giving up for good.
 
 ### Fixes
 
@@ -168,6 +173,9 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   `Origin` with its `Host` finds the same text.
 - `cesia lsp` finds a name of a package of the project, as `shop.Total`, in its open buffers before the disk, with its
   doc text for hover.
+- Machine code no longer runs on with an old number of a module variable that a function it calls read, as `k` in a
+  loop's `g(x)` after `k = 5`: the numbers each function of the code took are checked before each run, not only the
+  loop's own.
 - The full list is in the commits since v1.1.0.
 
 ## 1.1.0

@@ -121,7 +121,10 @@ end
 The cells run at the file level, as the prompt of `cesia run --repl` runs code: each sees the names the cells before it
 defined, and the uses written above it. They run as the program would, not under the hook of the debugger, which costs
 about ten times: fib(35) in a cell takes 56.8 ms, the same file under `cesia run` 56.8 ms too (medians of 21 runs). Their
-errors and the calls that lead to them name the file and its lines.
+errors and the calls that lead to them name the file and its lines. A cell run again that defines a function with the
+same code as before keeps the machine code the JIT made with it: the solve cell of a Lorenz notebook, `lorenz` defined
+again and solved again, takes {{SAME}} ms instead of 22, as [How Cesia works](internals.md#calls-through-a-value) says;
+a function that changed, or that calls another of its cell, is made again.
 
 A session has only the permissions of its `allow`, as `--allow` takes them: `cells.Session("mean.ce", allow = ["read"])`.
 The program that starts it needs the `exec` permission of this `cesia`, [cesia.Binary].

@@ -134,7 +134,11 @@ Les cells tournent au niveau du fichier, comme le prompt de `cesia run --repl` f
 noms que les cells d'avant ont définis, et les uses écrits au-dessus d'elle. Elles tournent comme le ferait le
 programme, pas sous le hook du debugger (le crochet qu'il pose sur chaque pas), qui coûte environ dix fois plus :
 fib(35) dans une cell prend 56,8 ms, le même fichier sous `cesia run` 56,8 ms aussi (médianes de 21 lancements). Leurs
-erreurs et les appels qui y mènent nomment le fichier et ses lignes.
+erreurs et les appels qui y mènent nomment le fichier et ses lignes. Une cell relancée qui définit une fonction avec le
+même code qu'avant garde le code machine que le JIT a fait avec elle : la cell de résolution d'un notebook de Lorenz,
+`lorenz` définie de nouveau et résolue de nouveau, prend {{SAME}} ms au lieu de 22, comme le dit
+[Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) ; une fonction qui a changé, ou qui appelle une autre
+fonction de sa cell, est refaite.
 
 Une session n'a que les permissions de son `allow`, tel que `--allow` les prend :
 `cells.Session("mean.ce", allow = ["read"])`. Le programme qui la démarre a besoin de la permission `exec` de ce

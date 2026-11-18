@@ -606,10 +606,29 @@ let write_root ctx pm set x st y =
 (* The most functions a call through a value remembers; one more, and the call reaches too many for the JIT to bet on. *)
 let seen_most = 4
 
-let[@inline never] saw seen l proto = if List.length l <= seen_most && not (List.memq proto l) then seen := proto :: l
+(* Another definition of a function in the same place of the same file, its name and position, as a prompt or a cell of
+   a session makes when it defines the function again: it takes the place of the one before, changed or not, so that a
+   call reaching each definition in turn still reaches one function. The closures of one lambda, of one tree, stay
+   apart, as before. *)
+let same_place (w : world) (p : proto) (q : proto) =
+  p.func != q.func && String.equal p.pname q.pname && Int.equal p.func.fpos q.func.fpos
+  && String.equal (fst (Vec.get w.files p.file)) (fst (Vec.get w.files q.file))
+
+let[@inline never] saw w seen l proto =
+  if not (List.memq proto l) then begin
+    let l = if List.exists (same_place w proto) l then List.filter (fun q -> not (same_place w proto q)) l else l in
+    if List.length l <= seen_most then seen := proto :: l
+  end
+
+(* The identity of a new code: a function defined again with the same code takes that of the one before ([Eval]). *)
+let codes = ref 0
+
+let fresh_code () =
+  incr codes;
+  !codes
 
 let new_proto ~file ~m (f : func) =
-  { pname = f.fname; file; pm = m; func = f; versions = []; generic = None; by_tag = [];
+  { code = fresh_code (); pname = f.fname; file; pm = m; func = f; versions = []; generic = None; by_tag = [];
     arity = Array.length f.params; last = No_call }
 
 (* No jump table: an indirect branch predicts badly when types alternate. *)
@@ -3214,7 +3233,7 @@ and call_small c s id callee slots modes room =
     match !seen with
     | p :: _ when p == proto -> ()
     | _ :: p :: _ when p == proto -> ()
-    | l -> saw seen l proto
+    | l -> saw c.w seen l proto
   in
   c.top <- max c.top (off + n + room + 2);
   c.off <- off + n + 2;
@@ -3674,6 +3693,7 @@ let retire_all (w : world) =
     w.modules
 
 let replace (proto : proto) ~file (f : func) =
+  proto.code <- fresh_code ();
   proto.func <- f;
   proto.file <- file;
   proto.arity <- Array.length f.params

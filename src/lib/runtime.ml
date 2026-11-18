@@ -155,7 +155,7 @@ let create_world o =
     debug =
       { mode = Starting; stopped = false; breaks = []; on_stop = Missing;
         stamp = 0; marked = (fun _ _ -> false); watches = []; test = (fun _ _ _ -> Ok true); scope = []; typed_uses = []; main = "";
-        made = Hashtbl.create 8 };
+        made = Hashtbl.create 8; defined = Hashtbl.create 8 };
     on_hook = (fun _ _ _ -> ());
     hook_count = 0;
     sched = { ready = Queue.create (); next_id = 1; jobs = 0; current = None };
