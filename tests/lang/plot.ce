@@ -125,6 +125,10 @@ isLine3Svg() = test.Snapshot(svg(plot.Of([plot.Line3(attractor[1], attractor[2],
 waves = plot.Frames([plot.Of([plot.Surface(wavy * k)], title = "k = $k") for k in [1, 2, 3]], fps = 2)
 isFrames3dSvg() = test.Snapshot(svg(waves))
 isFrames3dShareAxes() = value.Equal(still(frameOf2(waves, 1)), still(frameOf2(waves, 3)))
+(* Frame 1 of three, its heights a third of the last's, takes the colors of the heights of all three, not its own; frame 3, which
+   holds the least and the greatest, its own. *)
+frameMesh(k) = list.FindFirst(x -> x.Kind == "mesh", frameOf2(waves, k).Items)
+isFrames3dShareColors() = not value.Equal(frameMesh(1).Colors, meshOf(plot.Surface(wavy)).Colors) and value.Equal(frameMesh(3).Colors, meshOf(plot.Surface(wavy * 3)).Colors)
 
 defn isProjection()
   (* The 8 corners of the box, 0 to 1 on each axis, at 6 views: from its center c, s pixels a unit, at

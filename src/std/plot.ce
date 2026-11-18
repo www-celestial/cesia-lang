@@ -2024,6 +2024,7 @@ defn surfaceOf(l, w)
   end
   p.Filled = filled
   p.Colors = quadColors(p, matrix.Zeros(rows, cols))
+  p.Painted = [p.Vlo, p.Vhi]
   result.Ok(p)
 end
 
@@ -2272,7 +2273,7 @@ defn meshOf(p, b, clip)
   ux = unitOf(b, 1, p.Gx)
   uy = unitOf(b, 2, p.Gy)
   colors = p.Colors
-  if b.R[1][1] > p.Xlo or b.R[1][2] < p.Xhi or b.R[2][1] > p.Ylo or b.R[2][2] < p.Yhi or b.R[3][1] > p.Zlo or b.R[3][2] < p.Zhi or p.Vlo != p.Zlo or p.Vhi != p.Zhi
+  if b.R[1][1] > p.Xlo or b.R[1][2] < p.Xhi or b.R[2][1] > p.Ylo or b.R[2][2] < p.Yhi or b.R[3][1] > p.Zlo or b.R[3][2] < p.Zhi or p.Vlo != p.Painted[1] or p.Vhi != p.Painted[2]
     uz = unitOf(b, 3, p.M)
     edge = 1e-9
     outx = (ux < -0.5 - edge) * 1.0 + (ux > 0.5 + edge) * 1.0
