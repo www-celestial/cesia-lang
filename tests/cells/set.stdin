@@ -13,4 +13,7 @@
 {"Do":"set","Name":"rho"}
 {"Do":"set","Text":"1"}
 {"Do":"set","Name":7,"Text":"1"}
+{"Do":"run","Code":"defn count(k)\n  s = 0\n  for i in 1..k\n    s = s + n\n  end\n  s\nend\ncount(1000000)","Line":0,"Path":"knobs.ce"}
+{"Do":"set","Name":"n","Text":"3.5"}
+{"Do":"run","Code":"count(1000000)","Line":0,"Path":"knobs.ce"}
 {"Do":"run","Code":"[rho, label, rate(1)]","Line":0,"Path":"knobs.ce"}
