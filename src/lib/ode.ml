@@ -101,6 +101,9 @@ let size ctx = function Int n when n >= 1 -> n | _ -> fail ctx
    order walk the steps once, and the dense output of a step is prepared once for the times in it. *)
 let states ctx (a : t array) =
   let stiff = flag ctx a.(0) and n = size ctx a.(1) in
+  (* First the tail, whose n floats bound n, so that width can't overflow; then divisions, never a product that
+     could. *)
+  let last, e = ends ctx stiff n a.(6) in
   let per = size ctx a.(5) in
   let width = match a.(4) with Int w when w = width stiff n -> w | _ -> fail ctx in
   let chunks =
@@ -108,12 +111,15 @@ let states ctx (a : t array) =
     | Array l ->
       Array.init (l.rows * l.cols) (fun k ->
           match Value.elt l k with
-          | Array ({ store = F d; _ } as c) when c.rows * c.cols >= per * width -> d
+          | Array ({ store = F d; _ } as c) when c.rows * c.cols / width >= per -> d
           | _ -> fail ctx)
     | _ -> fail ctx
   in
-  let count = match a.(3) with Int c when c >= 0 && c <= Array.length chunks * per -> c | _ -> fail ctx in
-  let last, e = ends ctx stiff n a.(6) in
+  let count =
+    match a.(3) with
+    | Int c when c >= 0 && (c = 0 || (c - 1) / per < Array.length chunks) -> c
+    | _ -> fail ctx
+  in
   let till = number ctx a.(7) in
   let ts = match a.(8) with Array t -> t | _ -> fail ctx in
   let m = ts.rows * ts.cols in
@@ -195,12 +201,12 @@ let states ctx (a : t array) =
 (* stateIn(stiff, n, b, o, tail, u): the state, 1 x n, at u inside the step at b[o + 1] that tail ends. *)
 let state_in ctx (a : t array) =
   let stiff = flag ctx a.(0) and n = size ctx a.(1) in
+  let _, e = ends ctx stiff n a.(4) in
   let b, o =
     match a.(2), a.(3) with
     | Array ({ store = F d; _ } as c), Int o when o >= 0 && o <= (c.rows * c.cols) - width stiff n -> d, o
     | _ -> fail ctx
   in
-  let _, e = ends ctx stiff n a.(4) in
   let u = number ctx a.(5) in
   Runtime.pay ctx (5 * n);
   let r = Float.Array.make (5 * n) 0. and out = Runtime.alloc_float ctx n 0. in
