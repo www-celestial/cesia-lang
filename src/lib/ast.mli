@@ -98,6 +98,9 @@ and func = {
   mutable kept : int;  (** bit k: parameter k is written, reassigned or returned, so it can't be lent *)
   mutable cell_of : int array;  (** file only: variable to cell, -1 if it stays local *)
   mutable export_of : int array;  (** file only: variable to its export cell *)
+  mutable no_number : binding array option;
+      (** [Some cells] when no value it gives back can be a number, unless one of these stable cells, called where it
+          gives back, gives one; [None] when one can. [Resolve] sets it, [Infer] reads it *)
 }
 
 (** What [Resolve] returns for a file. *)

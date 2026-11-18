@@ -104,6 +104,24 @@ let divide a b =
   | TFA, (TFA | TF | TI) | (TF | TI), TFA -> TFA
   | _ -> TA
 
+(* A function none of whose values given back can be a number, as [Resolve] found, but for the calls of stable cells it
+   gives back: no number either when each of them gives none, a native that says nothing of its result, or a function
+   such as this one. A function met again, in a cycle, adds no number. *)
+let gives_no_number w (f : func) =
+  let rec none seen (f : func) =
+    match f.no_number with
+    | None -> false
+    | Some cells -> List.memq f seen || Array.for_all (cell (f :: seen)) cells
+  and cell seen = function
+    | Cell { m; k; _ } when m >= 0 && m < Array.length w.modules && k >= 0 && k < Array.length w.modules.(m).cells ->
+      (match w.modules.(m).cells.(k) with
+       | Native n -> n.ret_ty == Native.any
+       | Fun { proto; env = [||] } -> none seen proto.func
+       | _ -> true)
+    | _ -> false
+  in
+  none [] f
+
 type env = {
   w : world;
   ver : version;
@@ -337,6 +355,9 @@ and call_type env (call : call) =
     (* Where a function can be defined again while a call to it runs, at the prompt, under --watch or a debugger, its
        result may come back of another type: the caller takes it as any value, as without the versions by type. *)
     else if (!Tier.watching || w.hooks) && not (Package.embedded_std w.modules.(proto.pm).path) then TA
+    (* A function that gives no number is any value to its caller, as its inference would find: it is inferred at its
+       first call only, so that a call never made costs neither its body nor the functions it calls. *)
+    else if gives_no_number w proto.func then TA
     else (
       match bind_args proto.func call.args with
       | Error _ -> TA

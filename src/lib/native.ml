@@ -2,7 +2,9 @@ open Types
 
 (* A direct call doesn't share its arguments, so that measuring a variable leaves it owned. A native returning one of
    its inputs therefore creates the second reference here. *)
-let nat ?perm ?(params = [||]) ?(ret = fun _ -> TA) ?(result = false) nname min_args max_args run =
+let any (_ : ty array) = TA
+
+let nat ?perm ?(params = [||]) ?(ret = any) ?(result = false) nname min_args max_args run =
   let run ctx (a : t array) =
     let r = run ctx a in
     if Array.memq r a then Value.share r else r

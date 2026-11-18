@@ -203,7 +203,7 @@ module Out = struct
     str o f.fname; arr param o f.params; opt ptype o f.ret; uint o f.nnodes; pos o f.fpos;
     uint o f.nvars; arr str o f.var_names; arr (fun o (a, b) -> uint o a; uint o b) o f.captures;
     arr bool o f.maybe_undef; bool o f.has_return; bool o f.has_self_tail; int o f.kept; arr int o f.cell_of;
-    arr int o f.export_of;
+    arr int o f.export_of; opt (arr binding) o f.no_number;
     if now || Resolve.struct_fields f <> None then (byte o 0; block o (Lazy.force f.body))
     else begin
       byte o 1;
@@ -434,6 +434,7 @@ module In = struct
     let kept = int d in
     let cell_of = arr int d in
     let export_of = arr int d in
+    let no_number = opt (arr binding) d in
     let body =
       match byte d with
       | 0 -> Lazy.from_val (block d)
@@ -446,7 +447,7 @@ module In = struct
       | _ -> raise Bad
     in
     { fname; params; ret; body; nnodes; fpos; nvars; var_names; captures; maybe_undef; has_return; has_self_tail; kept;
-      cell_of; export_of }
+      cell_of; export_of; no_number }
 
   (* A body read at its first need, from the bytes checked with the entry: one that doesn't read as it was written is an
      error of the entry, which goes, and the program stops there. *)
