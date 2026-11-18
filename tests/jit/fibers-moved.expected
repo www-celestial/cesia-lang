@@ -1,0 +1,5 @@
+1: Ok(375000062.5) Ok(375000125.0)
+2: Ok(337500200.0) Ok(500000400.0)
+the same with the JIT off
+the same with machine code from the first run
+exit 0

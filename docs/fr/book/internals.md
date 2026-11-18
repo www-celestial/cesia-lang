@@ -807,6 +807,23 @@ relancée, que la session a oubliée et qui ne tiendra plus jamais de nombre, co
 paramètres de ce notebook. Chacune de ces modifications refait la boucle d'ode, 43 ms au lieu de 22,7 interprétée, et les
 lancements d'après reprennent 2,2 ms.
 
+Un nombre donné à une variable d'un module *en place*, comme [cells.Set] donne celui d'un slider, laisse la variable où
+elle est. Le code machine lit une telle variable dans un slot : avant chaque lancement, le moteur y écrit la valeur de la
+variable, vérifiée de la sorte de nombre que prend le code, un Int ou un Float, et le code la charge dans un registre
+quand il commence, partout où l'unité la lit, dans la boucle, dans une fonction inlinée dedans ou dans une fonction
+qu'elle appelle. Il le fait pour les variables des modules que lance une session, les seules qu'une session peut changer
+en place, dès leur premier code ; et pour toute autre variable une fois qu'elle a *bougé* sous le code machine, comme une
+que le code du haut d'un fichier donne de nouveau : le code qui a pris son nombre pour une constante est jeté une fois,
+comme plus haut, et la variable est marquée. Chaque nouveau nombre de cette sorte fait alors tourner le même code : un pas
+du slider de `rho` dans le notebook de Lorenz, `rho` donné puis `ode.Solve` sur [0, 50] relancé, prend 2,6 ms au lieu de
+24, quand chaque pas refaisait la boucle d'ode, 40 à 70 ms, jusqu'à ce que la boucle reste interprétée pour de bon
+(médianes de 21 pas, 2026-11-18). Une variable d'un autre module reste une constante du code jusqu'à ce qu'elle bouge,
+comme les 38 coefficients du pas d'ode : rien n'est lu à chaque lancement qui n'a pas besoin de l'être. Un nombre de
+l'autre sorte, un Int là où le code a pris un Float, jette le code, comme une constante changée. Les marques tiennent au
+plus 4 096 variables, puis repartent de zéro, ce qui coûte un code refait une fois. Un fuzzer de sessions,
+`tests/jit/slider-fuzz.ce`, bouge des sliders au hasard parmi des modifications de cells et vérifie que chaque réponse est
+celle de l'interpréteur.
+
 Rien de cela ne fait tourner du code avec une mauvaise valeur : l'identité d'un code est un nombre que donne la session,
 jamais un hash (une empreinte calculée) que deux codes pourraient partager ; la session compare les deux arbres entiers
 avant de donner celle de l'ancien ; les nombres qu'un code a pris sont vérifiés avant chacun de ses lancements, comme pour
@@ -922,13 +939,20 @@ fibers prêtes à tourner. Une fiber tourne jusqu'à l'un de ces moments :
 Un long calcul ne peut donc pas retenir les autres plus d'un million de pas. C'est proche de ce que fait Erlang en
 comptant des *reductions* (des unités de travail), et Erlang appelle cela *preemptive* (préemptif) : personne n'écrit de
 yield, l'instruction qui cède la main. Ce n'est pas la préemption d'un thread du système, qu'un timer peut interrompre
-n'importe où : une fiber n'est changée qu'à une attente ou à un checkpoint. Deux conséquences :
+n'importe où : une fiber n'est changée qu'à une attente ou à un checkpoint. Trois conséquences :
 
 - une native tourne jusqu'à sa fin : [list.Sort] d'un million d'éléments, ou [json.Parse] d'un gros fichier, tourne en
   entier avant qu'une autre fiber ait son tour ;
 - dans du code machine qui s'appelle lui-même, une récursion compilée par le JIT, un changement de fiber attend que
-  l'appel compilé le plus extérieur revienne ou que sa boucle atteigne son pas suivant. Les résultats ne changent
-  jamais ; seul l'ordre dans lequel les fibers affichent peut y être différent.
+  l'appel compilé le plus extérieur revienne ou que sa boucle atteigne son pas suivant. Les résultats sont ceux d'un
+  lancement où le changement serait venu là : ils ne peuvent différer que pour des fibers qui lisent une variable d'un
+  module que le code du haut du fichier change, et l'ordre dans lequel les fibers affichent peut différer ;
+- quand le code du haut du fichier donne un autre nombre à une variable d'un module, à un changement de fiber au milieu
+  d'un code machine qui la lit, un code qui la lit dans un slot lit le nouveau à son lancement suivant, comme le fait
+  l'interpréteur, quand il est de la même sorte. Un nombre que le code a pris pour une constante, ou un de l'autre sorte,
+  il ne peut pas le lire : une boucle laisse le reste de ses tours à l'interpréteur à son pas suivant, qui lit le nouveau
+  nombre ; le code machine fait pour une fonction entière va jusqu'à la fin de l'appel avec les nombres qu'il avait au
+  départ, comme si le changement était venu là.
 
 Puisqu'une fiber n'est changée qu'à ces moments-là, le code entre deux d'entre eux ne voit aucune autre fiber : il n'y a
 pas de *data races*, deux threads qui changent la même mémoire en même temps, et aucun lock (ce qui réserve une donnée à

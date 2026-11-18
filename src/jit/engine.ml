@@ -28,6 +28,7 @@ type code = {
   mutable spent : int;  (* the steps of all its runs *)
   worth : int;  (* the steps of native code that take about as long as making it: once its runs took them, it paid *)
   cells : (int * int * t) array;  (* the variables of modules that any function of the unit took as constants *)
+  last : t array;  (* the values of [fn.moving] that the last run took *)
 }
 
 (* What the interpreter holds of it. *)
@@ -101,7 +102,8 @@ let make (w : world) (ver : version) fns start loops =
           { addr; mir; tier = Level1 { text; entry; hot_at; steps = 0 }; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint);
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
             need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; worth;
-            cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns)) }
+            cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns));
+            last = Array.make (Array.length fn.moving) Missing }
         in
         Gc.finalise release code;
         Some code
@@ -111,15 +113,28 @@ let make (w : world) (ver : version) fns start loops =
         None
     end
 
-(* Does each variable of a module that the code took as a constant still hold that number: in every function of the
-   unit, the ones it calls as the first. *)
+(* Does each variable of a module that the code took as a constant still hold that number, and each it reads from a slot
+   a number of the kind the code takes: in every function of the unit, the ones it calls as the first. *)
+let holds now v =
+  match now, v with
+  | Int a, Int b -> a = b
+  | Float a, Float b -> Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
+  | _ -> false
+
 let cells_hold (w : world) code =
-  Array.for_all
+  Array.for_all (fun (m, k, v) -> holds w.modules.(m).cells.(k) v) code.cells
+  && Array.for_all
+    (fun (m, k, kind) -> match w.modules.(m).cells.(k), kind with Int _, Ir.Kint | Float _, Ir.Kfloat -> true | _ -> false)
+    code.fn.moving
+
+(* The variables taken as constants whose number changed, as a slider's set in place: code made after reads them from
+   slots. One the session forgot (Undef) is gone for good, and one of another kind no number. *)
+let mark_moved (w : world) code =
+  Array.iter
     (fun (m, k, v) ->
-       match w.modules.(m).cells.(k), v with
-       | Int a, Int b -> a = b
-       | Float a, Float b -> Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
-       | _ -> false)
+       match w.modules.(m).cells.(k) with
+       | (Int _ | Float _) as now when not (holds now v) -> Lower.mark w m k
+       | _ -> ())
     code.cells
 
 let vec_fits v rows cols = match v with Array { rows = r; cols = c; store = F _; dims = [||]; _ } -> r = rows && c = cols | _ -> false
@@ -127,9 +142,9 @@ let vec_fits v rows cols = match v with Array { rows = r; cols = c; store = F _;
 (* Does the value slot of each variable kept as a number hold one of its kind, of each kept as a small array of floats
    one of its shape, and of each kept as a map's or struct's floats one of those keys or that shape, of floats. One that a
    turn assigns before it reads it may hold anything: no turn reads that. *)
-let numbers_fit (ctx : ctx) code =
+let numbers_fit ?(cells = true) (ctx : ctx) code =
   let fn = code.fn in
-  cells_hold ctx.w code
+  ((not cells) || cells_hold ctx.w code)
   && Array.for_all
     (fun ((v : Ir.var), slot, flag) ->
        flag >= 0 || match ctx.v.(ctx.b + slot), v.kind with Float _, Kfloat | Int _, Kint -> true | _ -> false)
@@ -148,11 +163,12 @@ let wrote (fn : Ir.func) st = st = Ir.ok || st = Ir.fuel_out || st = Ir.bailed |
 
 (* One run from [entry]. The interpreter's view of fuel stays exact: what native code used, nested quanta included,
    comes off [ctx.fuel], so the next checkpoint counts it. The variables kept as numbers are unboxed into their hidden
-   slots before, and boxed back after a run that wrote them. *)
-let rec run ?(leave = false) (ctx : ctx) code entry =
+   slots before, and boxed back after a run that wrote them. A [stale] run goes on after a checkpoint where a variable of
+   a module changed out of what the code takes: with the numbers the run started with. *)
+let rec run ?(leave = false) ?(stale = false) (ctx : ctx) code entry =
   let b = ctx.b and w = ctx.w in
   if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
-  if not (numbers_fit ctx code) then Ir.fallback else begin
+  if not (numbers_fit ~cells:(not stale) ctx code) then Ir.fallback else begin
   Array.iter
     (fun ((v : Ir.var), slot, flag) ->
        if flag >= 0 then ctx.i.(b + flag) <- 0;
@@ -204,6 +220,13 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
   io.(Ir.io_leave) <- (if leave then 1 else 0);
   (* The constants whose first field native code reads, after the frame, where nothing else is while it runs. *)
   Array.iteri (fun j c -> ctx.v.(b + code.fn.frame + j) <- c) code.fn.consts;
+  (* The variables of modules read from slots, each of its kind, after them: native code reads them at its entry. *)
+  let at = Ir.moved_at code.fn in
+  Array.iteri
+    (fun j (m, k, _) ->
+       if not stale then code.last.(j) <- w.modules.(m).cells.(k);
+       ctx.v.(b + at + j) <- code.last.(j))
+    code.fn.moving;
   let st = Jit.call code.addr ctx.i ctx.f ctx.v io in
   if wrote code.fn st then
     Array.iter
@@ -232,7 +255,7 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
     (* Pure: the run wrote nothing that shows, so it starts again on a longer stack. *)
     ctx.fuel <- fuel0;
     Runtime.grow ctx (max (ctx.cap + 1) (min (2 * ctx.cap) (depth + 2)));
-    run ~leave ctx code entry
+    run ~leave ~stale ctx code entry
   end else if st = Ir.frames_out then begin
     (* As the interpreter's call: the stacks grow, the frame entered, so that a limit reached names it; then the run starts
        again, as nothing it wrote shows. *)
@@ -243,7 +266,7 @@ let rec run ?(leave = false) (ctx : ctx) code entry =
     Runtime.grow ctx (ctx.cap + 1);
     ctx.b <- b;
     ctx.site <- site;
-    run ~leave ctx code entry
+    run ~leave ~stale ctx code entry
   end else begin
     let spent = io.(Ir.io_spent) + io.(Ir.io_quantum) - io.(Ir.io_fuel) in
     ctx.fuel <- fuel0 - spent;
@@ -307,15 +330,21 @@ let root_point code = match code.loops with [||] -> -1 | a -> let _, _, _, p = a
    native code goes on to that step first; a whole version's native code goes on to its end, and its next call is the
    interpreter's. *)
 let go (ctx : ctx) code entry =
-  let rec again ?(leave = false) entry first =
+  let rec again ?(leave = false) ?(stale = false) entry first =
     settle ();
-    let st = run ~leave ctx code entry in
+    let st = run ~leave ~stale ctx code entry in
     if st = Ir.fuel_out then begin
       let p = io.(Ir.io_point) in
       Runtime.checkpoint ctx (ctx.b + code.fn.frame);
-      if ctx.w.reloads = code.reloads then again (p + 1) false
+      (* Another fiber may have given a variable of a module another value there. One the code reads from a slot, still of
+         its kind, is read at the next run, as the interpreter reads it at once. One taken as a constant, or of another
+         kind now, is as a reload: the run ends at its loop's step, where the interpreter goes on and the loop's code is
+         made again; elsewhere native code goes on with the numbers it started with to where it can leave, as a fiber
+         switch waits for nested native frames. *)
+      let moved = not (cells_hold ctx.w code) in
+      if ctx.w.reloads = code.reloads && not moved then again (p + 1) false
       else if p = root_point code then Ir.reloaded
-      else again ~leave:(root_point code >= 0) (p + 1) false
+      else again ~leave:(root_point code >= 0) ~stale:moved (p + 1) false
     end
     else if st = Ir.gc then begin
       room io.(Ir.io_a);
@@ -383,7 +412,9 @@ let dropped (l : Tier.loop) code =
 (* A variable of a module that a session forgot, as it does with the names of a cell it runs again, is Undef for good:
    code that took it as a constant can never run again, and its drop is an edit of the session, no sign that the loop's
    code keeps failing. *)
-let forgot (w : world) code = Array.exists (fun (m, k, _) -> match w.modules.(m).cells.(k) with Undef -> true | _ -> false) code.cells
+let forgot (w : world) code =
+  let gone m k = match w.modules.(m).cells.(k) with Undef -> true | _ -> false in
+  Array.exists (fun (m, k, _) -> gone m k) code.cells || Array.exists (fun (m, k, _) -> gone m k) code.fn.moving
 
 let compile (ctx : ctx) (l : Tier.loop) ver =
   let w = ctx.w in
@@ -428,6 +459,7 @@ let pick (ctx : ctx) (l : Tier.loop) ver outer =
       (match c.code with
        | Some code when not (cells_hold ctx.w (native code)) ->
          c.code <- None;
+         mark_moved ctx.w (native code);
          if not (forgot ctx.w (native code)) then dropped c (native code)
        | _ -> ());
       compile ctx c ver;

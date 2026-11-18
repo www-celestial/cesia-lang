@@ -227,7 +227,9 @@ cells.Snap(s, 0.31, steps = 1).Text -->
 [cells.Set] gives a slider its new value in a session: snapped as Snap does, checked against the slider's min and max,
 and given to the name **in place**. A cell run again first forgets the names it defines, so that a function of another
 cell that reads one of them would find it without a value until its own cell ran again; Set changes the number the name
-holds, and the function reads the new one at once. Set gives the value and ToRun, the cells to run again: those that
+holds, and the function reads the new one at once. The machine code of a loop that reads it reads each new number from a
+slot, so it keeps its code: a step of the slider of `rho` in the Lorenz notebook, Set then the solve cell run again,
+takes 2.6 ms instead of 24, as [How Cesia works](internals.md#calls-through-a-value) says. Set gives the value and ToRun, the cells to run again: those that
 read the name, directly or through other cells, in file order. The slider's own cell is never among them, since it holds
 nothing else.
 

@@ -1,0 +1,60 @@
+(* Random moves of the sliders of slider.ce in a session (cells.Set, in place), with the spring defined again with
+   another body, the parameter cell run again (new k and m, the old ones forgotten) and the spring after it, the loop run
+   again, and a function
+   with its own loop that reads both: each answer printed, so that a run under the JIT and one with CESIA_JIT=off print
+   the same. cesia run --seed N picks the actions. *)
+use std/cells
+use std/io
+use std/random
+use std/result
+use std/sys
+use std/value
+
+bodies = ["[y[2], -k * y[1]]", "[y[2], -k * y[1] - 0.1 * m * y[2]]", "[y[2] * m, -k * y[1]]", "[y[2], -(k + m) * y[1]]"]
+params = ["k = cells.Slider(3.0, 0.0, 10.0, step = 0.25)\nm = cells.Slider(2, 1, 5)", "k = cells.Slider(1.5, 0.0, 10.0, step = 0.25)\nm = cells.Slider(4, 1, 5)"]
+loop = "(* %% Loop *)\ndefn run(f, n)\n  y = [1.0, 0.0]\n  for i in 1..n\n    y = y + 0.001 * f(i * 0.001, y)\n  end\n  y[1]\nend"
+own = "defn sim(n)\n  x = 0.0\n  v = 1.0\n  for i in 1..n\n    a = -k * x - 0.01 * m * v\n    v = v + 0.001 * a\n    x = x + 0.001 * v\n  end\n  x\nend\nsim(30000)"
+
+defn shown(r)
+  (** A run's value or error, without its time. *)
+  match r
+    result.Ok(x) -> if value.IsSome(x.Error) "error $(x.Error.Text)" else value.Text(x.Value, 300) end
+    result.Err(e) -> "session: $(e.Message)"
+  end
+end
+
+defn cell(s, code, line)
+  (** Runs code as the cell at that line. *)
+  shown(cells.Run(s, {Title: "", From: line, To: line, Source: code}))
+end
+
+a = cells.Analyse(cells.Parse(result.Unwrap(sys.Read("slider.ce"))))
+s = result.Unwrap(cells.Session("slider.ce"))
+_ = cell(s, "use std/io\nuse std/cells", 1)
+_ = cell(s, "(* %% Parameters *)\n$(params[1])", 4)
+_ = cell(s, loop, 8)
+body = bodies[1]
+_ = cell(s, "(* %% Spring *)\nspring(t, y) = $body\nrun(spring, 30000)", 17)
+for i in 1..40
+  c = random.Int(1, 8)
+  if c <= 3
+    v = random.Int(0, 40) * 0.25
+    set = cells.Set(s, a, "k", v)
+    io.Print("k = $v: $(if result.IsOk(set) cell(s, "run(spring, 30000)", 20) else "no set" end)")
+  else if c == 4
+    v = random.Int(1, 5)
+    set = cells.Set(s, a, "m", v)
+    io.Print("m = $v: $(if result.IsOk(set) cell(s, "run(spring, 30000)", 20) else "no set" end)")
+  else if c == 5
+    body = random.Pick(bodies)
+    io.Print("spring $body: $(cell(s, "(* %% Spring *)\nspring(t, y) = $body\nrun(spring, 30000)", 17))")
+  else if c == 6
+    p = random.Pick(params)
+    _ = cell(s, "(* %% Parameters *)\n$p", 4)
+    io.Print("parameters, then spring: $(cell(s, "(* %% Spring *)\nspring(t, y) = $body\nrun(spring, 30000)", 17))")
+  else if c == 7
+    io.Print("own loop: $(cell(s, own, 21))")
+  else
+    io.Print("again: $(cell(s, "run(spring, 30000)", 20))")
+  end
+end

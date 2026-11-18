@@ -1,0 +1,35 @@
+ten values of k, no unit more: true
+an Int, a Float, an Int: three units more: true
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":null,"Seconds":0}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-1.0268675186676002"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.07518154082935379"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.9945457161238275"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.5338917493854117"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.6941149027067058"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.9649484650812322"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.015525000976390708"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.968550490207321"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.7770476183303849"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.28373185293155784"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-1.0311170361827697"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"0.30872906017748447"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"1.0271716908979112"},"Seconds":0}
+@{"Kind":"set"}
+@{"Kind":"answer","Value":{"Kind":"text","Text":"-0.9452102481003368"},"Seconds":0}
+the same with the JIT off
+the same with machine code from the first run
+exit 0

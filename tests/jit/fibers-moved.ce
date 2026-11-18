@@ -1,0 +1,38 @@
+(* A module number that the top code changes while a fiber's loop reads it: the fibers switch at checkpoints, which
+   native code keeps at the interpreter's steps, so each mode gives the same sums. Kinds: Float only, then Int and Float
+   in turn. *)
+use std/fiber
+use std/io
+use std/math
+k = 2
+defn work(n)
+  t = 0
+  for i in 1..n
+    t = t + k
+  end
+  t
+end
+defn twice(n)
+  t = 0.0
+  for i in 1..n
+    t = t + 2 * k
+  end
+  t
+end
+defn busy(n)
+  s = 0
+  for q in 1..n
+    s = s + q
+  end
+  s
+end
+for kinds in 1..2
+  k = 2
+  f = fiber.Spawn(() -> work(3000000))
+  g = fiber.Spawn(() -> twice(2000000))
+  for j in 1..400
+    k = if kinds == 1 j * 0.5 else if math.Mod(j, 3) == 0 j else j * 0.25 end
+    _ = busy(8000)
+  end
+  io.Print("$kinds: $(fiber.Wait(f)) $(fiber.Wait(g))")
+end
