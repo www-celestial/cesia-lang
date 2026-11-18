@@ -1261,9 +1261,12 @@ cell, and stops the same way past the limit.
 `f`, `g` and the functions given to Root are code of the caller, so the methods check what they give: a value of the
 wrong shape, a text, a NaN or an infinity is an `Err` that names it, never a crash inside the solver. Every loop is
 bounded: Root by its 60 steps of search and by the bracket, which halves at least every few steps; Solve by `steps`.
-Every loop is Cesia code, so [cells.Stop] stops a long solve within a step, and `--limit` applies, as to any program.
-The memory of a solve grows with its steps, by blocks of 128 steps; past the memory limit of the program, the program
-stops with `Limit "memory" reached.`
+Every loop of Solve is Cesia code, so [cells.Stop] stops a long solve within a step, and `--limit` applies, as to any
+program. The memory of a solve grows with its steps, by blocks of 128 steps; past the memory limit of the program, the
+program stops with `Limit "memory" reached.` `s.At` walks the steps in native code: it checks each array of the
+Solution before it reads it, so a Solution written by hand whose arrays don't fit is a panic that says so, never a read
+outside an array, and it counts its work and its result against `--limit` before it starts; a million times take
+20 ms, so `cells.Stop` answers soon after.
 
 With `stiff = true`, `jacobian` is code of the caller too: what it gives must be an `n × n` matrix of finite numbers,
 and a Jacobian by differences is checked the same way, so a NaN never reaches the factorization. `y0` has at most 1,000

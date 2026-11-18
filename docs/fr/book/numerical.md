@@ -1342,10 +1342,13 @@ s'arrête de la même façon au-delà de la limite.
 `f`, `g` et les fonctions données à Root sont du code de l'appelant, donc les méthodes vérifient ce qu'elles donnent :
 une valeur de la mauvaise forme, un texte, un NaN ou un infini est un `Err` qui la nomme, jamais un plantage à
 l'intérieur du solver. Chaque boucle est bornée : Root par ses 60 pas de recherche et par l'encadrement, qui se coupe en
-deux au moins tous les quelques pas ; Solve par `steps`. Chaque boucle est du code Cesia, si bien que [cells.Stop]
-arrête une longue résolution en un pas, et `--limit` s'applique, comme à tout programme. La mémoire d'une résolution
-grandit avec ses pas, par blocs de 128 pas ; au-delà de la limite de mémoire du programme, le programme s'arrête avec
-`Limit "memory" reached.`
+deux au moins tous les quelques pas ; Solve par `steps`. Chaque boucle de Solve est du code Cesia, si bien que
+[cells.Stop] arrête une longue résolution en un pas, et `--limit` s'applique, comme à tout programme. La mémoire d'une
+résolution grandit avec ses pas, par blocs de 128 pas ; au-delà de la limite de mémoire du programme, le programme
+s'arrête avec `Limit "memory" reached.` `s.At` parcourt les pas en code natif : il vérifie chaque array de la Solution
+avant de le lire, si bien qu'une Solution écrite à la main dont les arrays ne vont pas ensemble est une panic qui le
+dit, jamais une lecture hors d'un array, et il compte son travail et son résultat contre `--limit` avant de commencer ;
+un million de temps prennent 20 ms, si bien que `cells.Stop` répond peu après.
 
 Avec `stiff = true`, `jacobian` est aussi du code de l'appelant : ce qu'il donne doit être une matrice `n × n` de
 nombres finis, et un jacobien par différences est vérifié de la même façon, si bien qu'un NaN n'atteint jamais la
