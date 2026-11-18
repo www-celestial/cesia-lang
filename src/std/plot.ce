@@ -1,9 +1,11 @@
-(** Graphs as values: lines, points, bars, histograms, heatmaps, densities and bands. Of puts layers on shared axes and
-    Grid sets graphs side by side. Nothing is drawn until a back-end asks for it: Svg gives the SVG text of a graph, Save
-    writes it to a file, and Scene gives its shapes in pixels, which Cemacs draws. The chapter Graphs of the book shows
+(** Graphs as values: lines, points, bars, histograms, heatmaps, densities and bands. Of puts layers on shared axes,
+    Grid sets graphs side by side and Frames shows them one after the other, an animation. Nothing is drawn until a
+    back-end asks for it: Svg gives the SVG text of a graph, Save writes it to a file, and Scene gives its shapes in
+    pixels, which Cemacs draws. The chapter Graphs of the book shows
     each step with the papers it follows: the ticks of Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman
     and Diaconis, and the colors of Okabe and Ito, viridis and ColorBrewer. *)
 use std/columns as col
+use std/dict
 use std/list
 use std/math
 use std/matrix
@@ -30,6 +32,7 @@ struct Graph
   size = missing
   cells = missing
   columns = missing
+  frames = missing
 end
 
 one(l) = Graph([l])
@@ -116,7 +119,7 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   if value.IsArray(layers)
     for k in 1..value.Len(layers)
       g = layers[k]
-      if isGraph(g) and value.IsMissing(g.cells)
+      if isGraph(g) and value.IsMissing(g.cells) and value.IsMissing(g.frames)
         ls = list.Concat(ls, g.layers)
       else
         ls = list.Append({Fn: "bad", Value: g, At: k}, ls)
@@ -137,6 +140,20 @@ defn Grid(graphs, columns = missing)
   Graph([], cells = graphs, columns = columns)
 end
 
+defn Frames(graphs, fps = 30)
+  (** An animation: the graphs shown one after the other, fps a second, from frame 1 to the last, then again. It holds 1
+      to 300 graphs, 10 seconds at 30 a second, and fps is from 1 to 60. The frames share one set of axes, which covers
+      the data of all of them, unless their xlim and ylim give it, so that the axes never jump: a frame changes only its
+      data and its title, and keeps the layers, their options and the options of Of that the first frame has. Scene draws
+      one frame and says how many there are; Svg and Save write them all, as an animation of CSS that loops, without a
+      script. An SVG keeps at most 8 MB of frames: past that, it keeps every k-th frame, at fps / k a second so that it
+      lasts as long, and a note under the graph says so.
+
+        result.Unwrap(Scene(Frames([Line([1, 2], [1, 2]), Line([1, 2], [2, 1])], fps = 10), 640, 400, frame = 2)).Frames --> 2
+        Svg(Frames([Line([1, 2], [1, 2]), Points([1, 2], [2, 1])])) --> result.Err({Kind: "plot", Message: "plot.Frames: frame 2 differs from frame 1 in the kind of layer 1, plot.Points and not plot.Line; a frame changes only its data and its title."}) *)
+  Graph([], frames = {Graphs: graphs, Fps: fps, Shared: sharedOf(graphs, fps)})
+end
+
 defn Svg(g)
   (** The SVG text of a graph, in an Ok, or an Err of kind "plot" that names the layer and says what to do. The texts
       name the font Noto Sans Medium first, then sans-serif, and are drawn without kerning, so that their widths are the
@@ -145,6 +162,9 @@ defn Svg(g)
         text.StartsWith("<svg", result.Unwrap(Svg(Line([1, 2], [3, 4])))) --> true
         Svg(1) --> result.Err({Kind: "plot", Message: "plot.Svg needs a graph, as plot.Line or plot.Of makes, not 1."}) *)
   size = sizeOf(g, "plot.Svg")?
+  if not value.IsMissing(g.frames)
+    return animationSvg(g.frames, size[1], size[2])
+  end
   scene = Scene(g, size[1], size[2])?
   result.Ok(svgOf(scene))
 end
@@ -159,10 +179,11 @@ defn Save(g, path)
   sys.Write(path, Svg(g)?)
 end
 
-defn Scene(g, width, height)
+defn Scene(g, width, height, frame = 1)
   (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". The scene
       is {Width, Height, Items, Dropped}: Items are drawn in order, and Dropped counts the points left out for a NaN or an
-      infinity. An item is a dictionary with a Kind: "line" (Xs, Ys, Color, Width, Dash), "area" (Xs, Ys, Color,
+      infinity. For an animation of Frames, it is the scene of one frame, frame from 1, with two fields more: Frames, how
+      many there are, and Fps, how many a second. An item is a dictionary with a Kind: "line" (Xs, Ys, Color, Width, Dash), "area" (Xs, Ys, Color,
       Opacity), "rect" (X, Y, W, H, Color, Opacity), "marks" (Xs, Ys, Shape, Size, Color), "cells" (Xs and Ys, the edges of
       the columns and the rows, and Colors, row after row, missing for an empty cell) or "text" (X, Y on the baseline,
       Text, Size, Color, Anchor "start", "middle" or "end", Angle 0 or -90, and Width, its measured width). The data's
@@ -177,6 +198,19 @@ defn Scene(g, width, height)
   end
   if not (value.IsNumber(width) and value.IsNumber(height)) or width < 100 or height < 80
     return fail("plot.Scene needs at least 100 by 80 pixels, not $(brief(width)) by $(brief(height)).")
+  end
+  if not value.IsMissing(g.frames)
+    f = g.frames
+    f.Shared?
+    n = value.Len(f.Graphs)
+    if not (value.IsInt(frame) and frame >= 1 and frame <= n)
+      return fail("plot.Scene: frame is $(brief(frame)); this animation has frames 1 to $n.")
+    end
+    r = drawFrame(f, frame, width * 1.0, height * 1.0, missing)?
+    return result.Ok({Width: width, Height: height, Items: r.Items, Dropped: r.Dropped, Frames: n, Fps: f.Fps})
+  end
+  if not (value.IsInt(frame) and frame == 1)
+    return fail("plot.Scene: frame is $(brief(frame)); a graph that is no animation has frame 1 only.")
   end
   if value.IsMissing(g.cells)
     r = drawGraph(g, 0.0, 0.0, width * 1.0, height * 1.0)?
@@ -195,6 +229,9 @@ defn Scene(g, width, height)
   dropped = 0
   for k in 1..n
     c = cells[k]
+    if isGraph(c) and not value.IsMissing(c.frames)
+      return fail("plot.Grid: graph $k is an animation; a grid holds graphs, as plot.Line or plot.Of makes, not animations.")
+    end
     if not isGraph(c) or not value.IsMissing(c.cells)
       return fail("plot.Grid: graph $k is $(brief(c)); a grid holds graphs, as plot.Line or plot.Of makes, not grids.")
     end
@@ -210,7 +247,7 @@ end
 fail(message) = result.Err({Kind: "plot", Message: message})
 
 isGraph(g) = match g
-  Graph(a, b, c, d, e, f, h, i, j, k, l, m) -> true
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n) -> true
   else -> false
 end
 
@@ -253,6 +290,10 @@ defn sizeOf(g, fn)
       640 by 400. *)
   if not isGraph(g)
     return fail("$fn needs a graph, as plot.Line or plot.Of makes, not $(brief(g)).")
+  end
+  if not value.IsMissing(g.frames)
+    g.frames.Shared?
+    return sizeOf(g.frames.Graphs[1], fn)
   end
   if not value.IsMissing(g.cells)
     if not value.IsArray(g.cells) or value.Len(g.cells) == 0 or not isGraph(g.cells[1])
@@ -376,6 +417,9 @@ end
 defn prepare(l, at, count)
   (** A layer checked and measured, in an Ok, or the Err that says what is wrong with it. *)
   if l.Fn == "bad"
+    if isGraph(l.Value) and not value.IsMissing(l.Value.frames)
+      return fail("plot.Of: layer $(l.At) is an animation; plot.Frames goes around the graphs, as plot.Frames([plot.Of(...), ...]).")
+    end
     return fail("plot.Of: layer $(l.At) is $(brief(l.Value)), not a graph; give graphs, as plot.Line makes.")
   end
   w = named(l, at, count)
@@ -1559,15 +1603,21 @@ defn checkText(t, what, w)
   fail("$w: $what is $(brief(t)); give a text.")
 end
 
-defn drawGraph(g, ox, oy, w, h)
-  (** The items of one graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}. *)
+defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing)
+  (** The items of one graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}. A frame of an animation
+      takes the ranges its frames share, those of each of its layers over every frame, so that its axes and its colors
+      are those of every frame. A note is a line under the graph. *)
   count = value.Len(g.layers)
   if count == 0
     return fail("plot.Of needs at least one layer.")
   end
   ps = []
   for k in 1..count
-    ps = list.Append(prepare(g.layers[k], k, count)?, ps)
+    p = prepare(g.layers[k], k, count)?
+    if not value.IsMissing(shared)
+      p = spanned(p, shared[k])
+    end
+    ps = list.Append(p, ps)
   end
   gw = if count == 1 ps[1].W else "plot.Of" end
   title = checkText(g.title, "title", gw)?
@@ -1599,6 +1649,7 @@ defn drawGraph(g, ox, oy, w, h)
   (* The layout: the margins hold the texts, measured, so that none is cut or overlaps; the plot gets the rest. Each pass
      measures what the one before placed, until nothing moves. *)
   titleH = if value.IsMissing(title) 0.0 else titleSize * lineRatio + 6.0 end
+  noteH = if value.IsMissing(note) 0.0 else tickSize * lineRatio + 4.0 end
   rotated = false
   more = 0.0
   less = 0.0
@@ -1613,7 +1664,7 @@ defn drawGraph(g, ox, oy, w, h)
   for pass in 1..6
     namesH = if rotated widest(xa.Names, tickSize) else tickSize * lineRatio end
     top = outer + titleH + if yfactor tickSize * lineRatio + 2.0 else 0.0 end
-    bottom = outer + tickLen + tickGap + namesH + if not value.IsMissing(xtitle) or xfactor 4.0 + axisSize * lineRatio else 0.0 end
+    bottom = outer + noteH + tickLen + tickGap + namesH + if not value.IsMissing(xtitle) or xfactor 4.0 + axisSize * lineRatio else 0.0 end
     ah = math.Floor(h - top - bottom)
     ay = math.Floor(oy + top)
     if ah < 20
@@ -1735,6 +1786,9 @@ defn drawGraph(g, ox, oy, w, h)
   if value.Len(entries) > 0
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
+  if not value.IsMissing(note)
+    items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
+  end
   result.Ok({Items: items, Dropped: dropped})
 end
 
@@ -1773,6 +1827,246 @@ defn legendItems(entries, x, y)
     items = list.Append(label(x + 28.0, mid + tickSize * cap / 2, e.Label, tickSize, "start", "legend"), items)
   end
   items
+end
+
+(* Animations: the frames checked once, when Frames makes the graph, with the ranges they share; one frame drawn at a
+   time; and their SVG, the axes once and each frame shown in turn by CSS. *)
+
+mostFrames = 300   (** The most frames of an animation: 10 seconds at 30 a second. *)
+mostSvg = 8000000   (** The most bytes of the SVG of an animation; past them, it keeps every k-th frame. *)
+
+defn ordinal(k)
+  (** A count as English writes a rank: 2nd, 3rd, 4th, 11th, 21st. *)
+  tens = math.Mod(k, 100)
+  last = math.Mod(k, 10)
+  "$k$(if tens >= 11 and tens <= 13 "th" else if last == 1 "st" else if last == 2 "nd" else if last == 3 "rd" else "th" end)"
+end
+
+(** The fields of a layer that hold its data, which a frame changes; its other fields stay as the first frame has them. *)
+dataFields = ["X", "Y", "Low", "High", "Heights", "Values", "Bins"]
+
+(** A field of a layer as its function names the option. *)
+optionOf(key) = if key == "Xs" "x" else if key == "Ys" "y" else text.Lower(key) end
+
+defn differs(first, g)
+  (** How a frame differs from the first besides its data and its title, in words, or missing when it doesn't. *)
+  options = [["x", first.xtitle, g.xtitle], ["y", first.ytitle, g.ytitle], ["xscale", first.xscale, g.xscale],
+    ["yscale", first.yscale, g.yscale], ["xlim", first.xlim, g.xlim], ["ylim", first.ylim, g.ylim],
+    ["legend", first.legend, g.legend], ["size", first.size, g.size]]
+  for o in options
+    if not value.Equal(o[2], o[3])
+      return "differs from frame 1 in its option $(o[1])"
+    end
+  end
+  if value.IsMissing(first.title) != value.IsMissing(g.title)
+    return if value.IsMissing(g.title) "has no title and frame 1 has one" else "has a title and frame 1 has none" end
+  end
+  n = value.Len(first.layers)
+  if value.Len(g.layers) != n
+    return "has $(value.Len(g.layers)) layers and frame 1 has $n"
+  end
+  for j in 1..n
+    a = first.layers[j]
+    b = g.layers[j]
+    if a.Fn != b.Fn
+      return "differs from frame 1 in the kind of layer $j, plot.$(b.Fn) and not plot.$(a.Fn)"
+    end
+    for key in dict.Keys(a)
+      if not (key in dataFields) and not value.Equal(a[key], b[key])
+        return "differs from frame 1 in the $(optionOf(key)) of layer $j"
+      end
+    end
+  end
+  missing
+end
+
+defn sharedOf(graphs, fps)
+  (** The frames of an animation checked, each layer of each, and the ranges they share in an Ok: for each layer, its x
+      and y over every frame, and the range of the values of a heatmap or a density, so that each frame draws the same
+      axes and the same colors. An Err names the first frame that is wrong and says what to do. *)
+  if not value.IsArray(graphs)
+    return fail("plot.Frames needs a list of graphs, as plot.Line or plot.Of makes, not $(brief(graphs)).")
+  end
+  n = value.Len(graphs)
+  if n == 0
+    return fail("plot.Frames needs 1 to $mostFrames graphs, not 0.")
+  end
+  if n > mostFrames
+    return fail("plot.Frames: $n frames are too many: at most $mostFrames, 10 s at 30 a second; keep every $(ordinal(math.Div(n + mostFrames - 1, mostFrames))).")
+  end
+  if not (value.IsNumber(fps) and fps >= 1 and fps <= 60)
+    return fail("plot.Frames: fps is $(brief(fps)); give 1 to 60 frames a second.")
+  end
+  first = graphs[1]
+  spans = []
+  for k in 1..n
+    g = graphs[k]
+    if not isGraph(g)
+      return fail("plot.Frames: frame $k is $(brief(g)); give graphs, as plot.Line or plot.Of makes.")
+    end
+    if not value.IsMissing(g.frames)
+      return fail("plot.Frames: frame $k is an animation; give its graphs in one list.")
+    end
+    if not value.IsMissing(g.cells)
+      return fail("plot.Frames: frame $k is a grid; each frame is a graph on one set of axes, as plot.Of makes.")
+    end
+    count = value.Len(g.layers)
+    if count == 0
+      return fail("plot.Frames: frame $k: plot.Of needs at least one layer.")
+    end
+    ps = []
+    for j in 1..count
+      got = prepare(g.layers[j], j, count)
+      if result.IsErr(got)
+        return fail("plot.Frames: frame $k: $(got.Error.Message)")
+      end
+      ps = list.Append(got.Value, ps)
+    end
+    if k > 1
+      how = differs(first, g)
+      if not value.IsMissing(how)
+        return fail("plot.Frames: frame $k $how; a frame changes only its data and its title.")
+      end
+    end
+    if not (value.IsMissing(g.title) or value.IsText(g.title))
+      return fail("plot.Frames: frame $k: its title is $(brief(g.title)); give a text.")
+    end
+    for p in ps
+      for which in ["x", "y"]
+        why = if which == "x" p.Xbad else p.Ybad end
+        if (if which == "x" g.xscale else g.yscale end) == "log" and not value.IsMissing(why)
+          return fail("plot.Frames: frame $k: $(p.W): a log $which axis needs values above 0, and $why.")
+        end
+      end
+    end
+    if k == 1
+      spans = [{Xlo: p.Xlo, Xhi: p.Xhi, Ylo: p.Ylo, Yhi: p.Yhi, Vlo: if p.Cells p.Vlo else 0.0 end, Vhi: if p.Cells p.Vhi else 0.0 end} for p in ps]
+    else
+      for j in 1..count
+        p = ps[j]
+        s = spans[j]
+        s.Xlo = list.Min(s.Xlo, p.Xlo)
+        s.Xhi = list.Max(s.Xhi, p.Xhi)
+        s.Ylo = list.Min(s.Ylo, p.Ylo)
+        s.Yhi = list.Max(s.Yhi, p.Yhi)
+        if p.Cells
+          s.Vlo = list.Min(s.Vlo, p.Vlo)
+          s.Vhi = list.Max(s.Vhi, p.Vhi)
+        end
+        spans[j] = s
+      end
+    end
+  end
+  result.Ok(spans)
+end
+
+defn spanned(p, s)
+  (** A layer of a frame with the ranges that every frame's layer at its place covers. *)
+  out = p
+  out.Xlo = s.Xlo
+  out.Xhi = s.Xhi
+  out.Ylo = s.Ylo
+  out.Yhi = s.Yhi
+  if p.Cells
+    out.Vlo = s.Vlo
+    out.Vhi = s.Vhi
+  end
+  out
+end
+
+defn drawFrame(f, k, w, h, note)
+  (** The items of frame k of an animation, on the axes its frames share: {Items, Dropped}, or the Err that names it. *)
+  r = drawGraph(f.Graphs[k], 0.0, 0.0, w, h, shared = f.Shared.Value, note = note)
+  if result.IsErr(r)
+    return fail("plot.Frames: frame $k: $(r.Error.Message)")
+  end
+  r
+end
+
+defn percent(m)
+  (** 100 / m, the share of a loop that one of m frames shows, as a percentage of CSS: rounded up at the fourth decimal,
+      so that one frame always shows, two at once for a microsecond at most. *)
+  q = math.Div(1000000 + m - 1, m)
+  f = math.Mod(q, 10000)
+  if f == 0
+    return "$(math.Div(q, 10000))"
+  end
+  digits = text.PadLeft(4, "0", "$f")
+  while text.EndsWith("0", digits)
+    digits = text.ByteSlice(1, text.ByteLength(digits) - 1, digits)
+  end
+  "$(math.Div(q, 10000)).$digits"
+end
+
+(** Is an item drawn in each frame of an animation, and not once for all of them? *)
+perFrame(item) = item.Role == "data" or item.Role == "title"
+
+defn framesSvg(f, w, h, keep, note)
+  (** The SVG of an animation keeping every keep-th frame, in an Ok of {Svg, Size}, the text and its bytes. The axes are written
+      once, and each frame's data and title in a group of class f, which CSS shows in turn: each group is hidden, but for
+      the first 100 / n % of a loop of n / fps seconds, which starts after a delay of (k - 1) / fps; paused at the start,
+      only the first frame shows. Classes and keyframes are named by numbers alone, the frames and the length of a loop,
+      so that two animations of one page each keep their own. *)
+  n = value.Len(f.Graphs)
+  kept = [k for k in 1..n if math.Mod(k - 1, keep) == 0]
+  m = value.Len(kept)
+  fps = f.Fps / keep
+  loop = m * 1000.0 / fps
+  name = "a$m-$(math.Div(math.Round(loop * 100.0), 1))"
+  share = percent(m)
+  scenes = []
+  for k in kept
+    scenes = list.Append(drawFrame(f, k, w, h, note)?, scenes)
+  end
+  clips = []
+  for r in scenes
+    for item in r.Items
+      if not value.IsMissing(item.Clip) and not (item.Clip in clips)
+        clips = list.Append(item.Clip, clips)
+      end
+    end
+  end
+  first = scenes[1].Items
+  grids = [x for x in first if x.Role == "grid"]
+  others = [x for x in first if x.Role != "grid" and not perFrame(x)]
+  rate = if m == n "$(num(f.Fps))" else "$(num(fps))" end
+  title = if m == n "Animation, $n frames at $rate a second" else "Animation, $m of $n frames at $rate a second" end
+  style = text.Str(".$name{visibility:hidden;animation:s$m $(num(loop))ms step-end infinite}",
+    "@keyframes s$m{0%{visibility:visible}$share%{visibility:hidden}}",
+    "@media (prefers-reduced-motion:reduce){g.f{animation-play-state:paused}}")
+  out = list.Concat([svgOpen(w, h), "<title>$title</title>", "<style>$style</style>"], pageSvg(w, h, clips))
+  out = list.Concat(out, itemsSvg(grids, clips))
+  for i in 1..m
+    delay = if i == 1 "" else " style=\"animation-delay:$(num((i - 1) * 1000.0 / fps))ms\"" end
+    out = list.Append("<g class=\"f $name\"$delay>", out)
+    out = list.Concat(out, itemsSvg([x for x in scenes[i].Items if perFrame(x)], clips))
+    out = list.Append("</g>", out)
+  end
+  out = list.Concat(out, itemsSvg(others, clips))
+  out = list.Append("</svg>\n", out)
+  svg = text.Join("\n", out)
+  result.Ok({Svg: svg, Size: text.ByteLength(svg)})
+end
+
+defn animationSvg(f, w, h)
+  (** The SVG of an animation, in an Ok: every frame, or past mostSvg bytes every k-th frame, k the least that fits, at
+      fps / k a second, with a note under the graph. *)
+  f.Shared?
+  n = value.Len(f.Graphs)
+  whole = framesSvg(f, w * 1.0, h * 1.0, 1, missing)?
+  if whole.Size <= mostSvg
+    return result.Ok(whole.Svg)
+  end
+  keep = math.Div(whole.Size + mostSvg - 1, mostSvg)
+  while keep < n
+    m = math.Div(n + keep - 1, keep)
+    thin = framesSvg(f, w * 1.0, h * 1.0, keep, "$m of $n frames kept, an SVG holds 8 MB at most")?
+    if thin.Size <= mostSvg
+      return result.Ok(thin.Svg)
+    end
+    keep += 1
+  end
+  result.Ok(framesSvg(f, w * 1.0, h * 1.0, n, "1 of $n frames kept, an SVG holds 8 MB at most")?.Svg)
 end
 
 (* SVG: the scene written out, numbers to a hundredth of a pixel. *)
@@ -1898,22 +2192,38 @@ end
 
 defn svgOf(scene)
   (** The SVG of a scene: a white page, the clip rectangles, then each item in order, inside the clip it names. *)
-  w = num(scene.Width)
-  h = num(scene.Height)
-  out = ["<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'Noto Sans', sans-serif\" font-weight=\"500\" style=\"font-kerning:none\">",
-         "<rect width=\"$w\" height=\"$h\" fill=\"#ffffff\"/>"]
   clips = []
   for item in scene.Items
     if not value.IsMissing(item.Clip) and not (item.Clip in clips)
       clips = list.Append(item.Clip, clips)
     end
   end
-  if value.Len(clips) > 0
-    defs = ["<clipPath id=\"c$k\"><rect x=\"$(num(clips[k][1]))\" y=\"$(num(clips[k][2]))\" width=\"$(num(clips[k][3]))\" height=\"$(num(clips[k][4]))\"/></clipPath>" for k in 1..value.Len(clips)]
-    out = list.Append("<defs>$(text.Join("", defs))</defs>", out)
+  out = list.Concat(list.Prepend(svgOpen(scene.Width, scene.Height), pageSvg(scene.Width, scene.Height, clips)), itemsSvg(scene.Items, clips))
+  text.Join("\n", list.Append("</svg>\n", out))
+end
+
+defn svgOpen(width, height)
+  (** The tag that opens an SVG of a size, with the font of the texts. *)
+  w = num(width)
+  h = num(height)
+  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'Noto Sans', sans-serif\" font-weight=\"500\" style=\"font-kerning:none\">"
+end
+
+defn pageSvg(width, height, clips)
+  (** A white page, and the clip rectangles, each with its number from 1. *)
+  out = ["<rect width=\"$(num(width))\" height=\"$(num(height))\" fill=\"#ffffff\"/>"]
+  if value.Len(clips) == 0
+    return out
   end
+  defs = ["<clipPath id=\"c$k\"><rect x=\"$(num(clips[k][1]))\" y=\"$(num(clips[k][2]))\" width=\"$(num(clips[k][3]))\" height=\"$(num(clips[k][4]))\"/></clipPath>" for k in 1..value.Len(clips)]
+  list.Append("<defs>$(text.Join("", defs))</defs>", out)
+end
+
+defn itemsSvg(items, clips)
+  (** The SVG of items in order, each inside the clip of clips that it names. *)
+  out = []
   current = missing
-  for item in scene.Items
+  for item in items
     if not value.Equal(item.Clip, current)
       if not value.IsMissing(current)
         out = list.Append("</g>", out)
@@ -1928,8 +2238,7 @@ defn svgOf(scene)
   if not value.IsMissing(current)
     out = list.Append("</g>", out)
   end
-  out = list.Append("</svg>\n", out)
-  text.Join("\n", out)
+  out
 end
 
 (* The colors of viridis, from matplotlib's table of its 256 (van der Walt and Smith, 2015), to 8 bits. *)

@@ -1,0 +1,26 @@
+(** std/plot's animations past 8 MB of SVG, beside tests/lang/plot.ce: every k-th frame kept, k the least that fits, at
+    fps / k a second, with a note under the graph. Slow by nature, 300 frames of 2,000 points: tools/check.sh runs it,
+    past the change loop. *)
+use std/list
+use std/math
+use std/num
+use std/plot
+use std/result
+use std/text
+use std/value
+
+(* A spiral of 2,000 points that turns: x goes back and forth, so M4 keeps every point, about 28 KB a frame. *)
+t = num.Linspace(0.0, 30.0, 2000)
+spin(a) = plot.Of([plot.Line(t * math.Cos(t + a), t * math.Sin(t + a))], title = "turn", xlim = [-31, 31], ylim = [-31, 31])
+spiral = plot.Frames([spin(a) for a in num.Linspace(0.0, 6.28, 300)], fps = 30)
+svg = result.Unwrap(plot.Svg(spiral))
+lines = text.Lines(svg)
+groups = list.Count(l -> text.StartsWith("<g class=\"f ", l), lines)
+
+isThinned() = text.ByteLength(svg) <= 8000000 and groups == 150
+isSaid() = "<title>Animation, 150 of 300 frames at 15 a second</title>" in lines and list.Any([text.Contains(">150 of 300 frames kept, an SVG holds 8 MB at most</text>", l) for l in lines])
+isLoopKept() = list.Any([text.StartsWith("<style>.a150-1000000{visibility:hidden;animation:s150 10000ms step-end infinite}", l) for l in lines])
+isLastFrameDelay() = "<g class=\"f a150-1000000\" style=\"animation-delay:9933.33ms\">" in lines
+
+(* The whole SVG, frames of 28 KB each, would pass 8 MB: this checks that the frames above were thinned, not small. *)
+isWholeTooBig() = 2 * (text.ByteLength(svg) - text.ByteLength(result.Unwrap(plot.Svg(plot.Frames([spin(0.0)]))))) > 8000000 * 0.9

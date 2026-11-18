@@ -678,7 +678,8 @@ defn Run(session, cell, width = 640)
       (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
       struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, 400 high) and Key, which
-      Scene draws again at another width; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
+      Scene draws again at another width, and for an animation of plot.Frames, Frames and Fps, and Scene its first
+      frame; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
       of field and value for each, an Ok of a struct as that struct, with Columns, Rows (the first 20, as texts) and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
       cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
       the session has ended. *)
@@ -729,10 +730,12 @@ defn Rows(session, name, first, last)
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok({Columns: got.Columns, Rows: got.Rows, Count: got.Count}) end
 end
 
-defn Scene(session, key, width)
+defn Scene(session, key, width, frame = 1)
   (** The scene of a graph that a run of the session showed, by its Key, drawn again at another width, 400 pixels high:
-      for a pane that changed its width. The session keeps the graphs of its last 64 runs; an Err for an older one. *)
-  ask(session, {Do: "scene", Key: key, Width: width})?
+      for a pane that changed its width, or for another frame of an animation, frame from 1, which plot.Scene draws
+      in the session, one at a time, so that an animation never crosses whole. The session keeps the graphs of its last
+      64 runs; an Err for an older one, or for a frame the graph doesn't have. *)
+  ask(session, {Do: "scene", Key: key, Width: width, Frame: frame})?
   got = answered(session)?
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok(got.Scene) end
 end
@@ -808,13 +811,16 @@ end
 (** The rows of a table, in HTML. *)
 cellsOf(rows, tag) = text.Join("", ["<tr>$(text.Join("", ["<$tag>$(escape(x))</$tag>" for x in row]))</tr>\n" for row in rows])
 
-defn valueHtml(v)
-  (** What a cell's value shows, in HTML. *)
+defn valueHtml(v, i)
+  (** What the value of cell i shows, in HTML. An animation starts paused on its first frame, under a box Play that runs
+      and stops it, by CSS alone: the box is a check box of the page, before the SVG, focused by Tab and checked by Space. *)
   if values.IsMissing(v)
     ""
   else if v.Kind == "table"
     more = if v.Count > values.Len(v.Rows) "<p class=\"count\">$(values.Len(v.Rows)) of $(v.Count) rows</p>\n" else "<p class=\"count\">$(v.Count) rows</p>\n" end
     "<table>\n<thead>$(cellsOf([v.Columns], "th"))</thead>\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n$more"
+  else if v.Kind == "graph" and dict.Has("Frames", v)
+    "<div class=\"graph anim\"><input type=\"checkbox\" class=\"play\" id=\"play$i\"><label for=\"play$i\">Play</label>\n$(v.Svg)</div>\n"
   else if v.Kind == "graph"
     "<div class=\"graph\">$(v.Svg)</div>\n"
   else if v.Kind == "array"
@@ -842,6 +848,8 @@ th, td { border: 1px solid var(--edge); padding: 2px 8px; text-align: right; whi
 th { color: var(--muted); font-weight: 600; }
 .count { color: var(--muted); font-size: 14px; margin: 0 0 8px; }
 .graph { margin: 0 0 8px; overflow-x: auto; } .graph svg { max-width: 100%; height: auto; }
+.anim label { font-size: 14px; color: var(--muted); } .anim svg { display: block; margin-top: 4px; }
+.anim .f { animation-play-state: paused; } .anim .play:checked ~ svg .f { animation-play-state: running; }
 .slider { margin: 0 0 8px; font-family: ui-monospace, \"SF Mono\", Menlo, Consolas, \"DejaVu Sans Mono\", monospace; font-size: 14px; }
 .slider input { vertical-align: middle; width: 240px; max-width: 50%; } .slider .value { color: var(--muted); }
 .k { color: var(--k); } .n { color: var(--n); } .s { color: var(--s); } .m { color: var(--m); }
@@ -856,8 +864,8 @@ defn sliderHtml(s)
     "\" step=\"", number(s.Step), "\" value=\"", number(s.Value), "\" disabled></label> <span class=\"value\">", number(s.Value), "</span></p>\n")
 end
 
-defn cellHtml(cell, errors, ran, sliders)
-  (** A cell of the page: its title, its code, then its errors, or its sliders, what it printed and its value. *)
+defn cellHtml(cell, i, errors, ran, sliders)
+  (** Cell i of the page: its title, its code, then its errors, or its sliders, what it printed and its value. *)
   title = if cell.Title == "" "" else "<h2>$(escape(cell.Title))</h2>\n" end
   body = text.Join("\n", list.DropWhile(l -> values.IsSome(marker(l)), text.Lines(cell.Source)))
   code = if text.Trim(body) == "" "" else "<pre><code class=\"cesia\">$(colored(body))</code></pre>\n" end
@@ -869,7 +877,7 @@ defn cellHtml(cell, errors, ran, sliders)
     if values.Len(ran.Output) > 0
       out = list.Append("<pre class=\"output\">$(escape(text.Join("\n", ran.Output)))</pre>\n", out)
     end
-    out = list.Append(if values.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value) end, out)
+    out = list.Append(if values.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value, i) end, out)
   end
   if title == "" and text.Join("", out) == "" "" else "<section>\n$title$(text.Join("", out))</section>\n" end
 end
@@ -877,7 +885,7 @@ end
 defn Html(path, allow = [])
   (** Runs every cell of a file in a new session, from the top, and gives the page of the file in an Ok: one HTML text
       that needs no other file and no script, with each cell's title, its code colored, what it printed, its value (a
-      graph as its SVG, a table, an array or a text) or its error. What it shows is what cesia run computes, not the state of an editor. The
+      graph as its SVG, an animation paused under a box Play, a table, an array or a text) or its error. What it shows is what cesia run computes, not the state of an editor. The
       session has the permissions of allow, as Session. Needs the read permission of the file. *)
   cells = Parse(sys.Read(path)?)
   analysis = Analyse(cells)
@@ -893,7 +901,7 @@ defn Html(path, allow = [])
       end
       ran = r.Value
     end
-    parts = list.Append(cellHtml(cells[i], errors, ran, analysis[i].Sliders), parts)
+    parts = list.Append(cellHtml(cells[i], i, errors, ran, analysis[i].Sliders), parts)
   end
   close(session)
   name = list.Last(text.Split("/", path))
@@ -923,27 +931,50 @@ isFrame(v) = values.IsDict(v) and values.Len(v) == 2 and dict.Has("Names", v) an
 (** The height of a graph under a cell, in pixels. *)
 graphHeight = 400
 
-defn drawn(v, width, svg)
-  (** The scene of a struct that is a graph of std/plot, or its SVG with svg, in an Ok; an Err of its message for a graph
-      that can't be drawn; missing for a struct that is no graph. std/plot loads here, in the session, the first time: a
-      program that only reads cells never pays for it. *)
+defn drawn(v, width, svg, frame = 1)
+  (** The scene of a struct that is a graph of std/plot, its frame of an animation, or its SVG with svg, in an Ok; an Err
+      of its message for a graph that can't be drawn; missing for a struct that is no graph. std/plot loads here, in the
+      session, the first time: a program that only reads cells never pays for it. *)
   f = evalCell(if svg "use std/plot\nplot.Svg" else "use std/plot\nplot.Scene" end, 0)
   if result.IsErr(f)
     return missing
   end
-  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), graphHeight) end
+  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), graphHeight, frame = frame) end
   if result.IsErr(r) and text.Contains("needs a graph", r.Error.Message)
     return missing
   end
   r
 end
 
+defn graphShown(v, width, svg, key)
+  (** What a graph shows, or missing for a struct that is no graph: its scene and its key, or its SVG with svg, and for an
+      animation its count of frames and their rate, read from the scene of its first frame. *)
+  scene = drawn(v, width, false)
+  if values.IsMissing(scene)
+    return missing
+  end
+  if svg
+    (* The SVG is drawn at the graph's own size, where a scene of this width may have no room: only the SVG says. *)
+    page = drawn(v, width, true)
+    if result.IsErr(page)
+      return {Kind: "error", Text: page.Error.Message}
+    end
+    out = {Kind: "graph", Svg: page.Value}
+    return if result.IsOk(scene) and dict.Has("Frames", scene.Value) dict.Merge(out, {Frames: scene.Value.Frames, Fps: scene.Value.Fps}) else out end
+  end
+  if result.IsErr(scene)
+    return {Kind: "error", Text: scene.Error.Message}
+  end
+  out = {Kind: "graph", Key: key, Scene: scene.Value}
+  if dict.Has("Frames", scene.Value) dict.Merge(out, {Frames: scene.Value.Frames, Fps: scene.Value.Fps}) else out end
+end
+
 defn shown(v, width = 640, svg = false, key = 0)
   (** What a cell's value shows, as texts that JSON carries. *)
   (* A graph's fields are all private (std/plot): a struct with a public field is none, and isn't sent to plot. *)
-  g = if values.IsStruct(v) and values.Len(dict.Fields(v)) == 0 drawn(v, width, svg) else missing end
+  g = if values.IsStruct(v) and values.Len(dict.Fields(v)) == 0 graphShown(v, width, svg, key) else missing end
   if values.IsSome(g)
-    return if result.IsErr(g) {Kind: "error", Text: g.Error.Message} else if svg {Kind: "graph", Svg: g.Value} else {Kind: "graph", Key: key, Scene: g.Value} end
+    return g
   end
   if values.IsMissing(v)
     missing
@@ -1021,7 +1052,7 @@ defn rescened(c, graphs)
   if values.IsMissing(g)
     return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds those of its last 64 runs."}
   end
-  r = drawn(g, c.Width, false)
+  r = drawn(g, c.Width, false, frame = dict.GetOr("Frame", 1, c))
   if result.IsErr(r) {Kind: "scene", Error: r.Error.Message} else {Kind: "scene", Scene: r.Value} end
 end
 
