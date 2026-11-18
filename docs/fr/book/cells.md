@@ -150,6 +150,7 @@ Ce que montre une valeur :
 |---|---|
 | un graphique de [std/plot] | `{Kind: "graph", Scene, Key}` : sa scène, [plot.Scene] à la largeur que Run donne, 640 pixels par défaut, et 400 de haut ; un graphique que std/plot ne sait pas dessiner est l'erreur de la cell, avec le message de std/plot |
 | une animation de [plot.Frames] | `{Kind: "graph", Scene, Key, Frames, Fps}` : la scène de sa première image, le nombre de ses images et leur rythme |
+| un graphique 3D de [plot.Surface] ou [plot.Line3] | `{Kind: "graph", Scene, Key, View}` : sa scène, et `View`, le `[az, el]` de son code |
 | un frame de [std/frame], une table de colonnes | `{Kind: "table", Columns, Rows, Count}` : ses 20 premières lignes, en textes, et son nombre de lignes |
 | un array (une suite de nombres rangés côte à côte) ou une matrice | `{Kind: "array", Shape, Rows}` : sa forme et ses 10 × 10 premières valeurs, en textes |
 | une struct d'au plus 20 champs, comme un `stats.Test` | `{Kind: "table", Columns, Rows, Count}` : une ligne par champ public, son nom et sa valeur en texte, `value.Text(v, 80)`, qui ne fait d'une longue liste que ses 80 caractères, de sorte qu'un modèle de $10^6$ lignes s'affiche tout de suite, et d'une matrice de plus de 1000 valeurs sa taille ; un `Ok` d'une struct montre la struct |
@@ -165,10 +166,13 @@ Les valeurs restent dans la session : [cells.Variables] donne pour chaque nom so
 sa Preview (un aperçu), quelques textes, et ne copie jamais un grand array : chaque texte est fait par
 `value.Text(v, 80)`, qui s'arrête à 80 caractères, de sorte qu'une session qui garde un modèle de $10^6$ lignes répond
 en un dixième de milliseconde. La session garde les graphiques de ses 64 derniers lancements, et [cells.Scene] en
-redessine un à une autre largeur, par sa Key (sa clé), pour un panneau qui a changé de largeur, ou une autre image d'une
-animation, `frame = k` : un éditeur demande chaque image au moment de la montrer, pour qu'une animation ne traverse
-jamais le pipe (le tuyau entre les deux processus) en entier, et une image de la courbe de Lorenz, 5 000 points, revient
-en 10 ms environ. [cells.Rows] donne les
+redessine un à une autre largeur, par sa Key (sa clé), pour un panneau qui a changé de largeur, une autre image d'une
+animation, `frame = k`, ou un graphique 3D tourné vers une autre vue, `view = [az, el]` : un éditeur demande chaque image
+au moment de la montrer, pour qu'une animation ne traverse jamais le pipe (le tuyau entre les deux processus) en entier,
+et une image de la courbe de Lorenz, 5 000 points, revient en 10 ms environ ; il demande chaque vue quand un graphique 3D
+tourne, et une surface de 100 par 100 quads revient en environ 14 ms, les places de ses points à l'écran, ses quads dans
+l'ordre où les dessiner. La session lit ses réponses par morceaux et joint chaque ligne une seule fois, si bien qu'une
+longue réponse coûte sa longueur, pas son carré. [cells.Rows] donne les
 lignes d'un frame, d'une matrice ou d'une liste, de l'une à une autre, en textes, pour qu'un visualiseur lise une grande
 valeur un écran à la fois.
 
@@ -304,7 +308,8 @@ graphique SVG, en table ou en texte, ou son erreur. La page n'a besoin d'aucun a
 montre ce que `cesia run` calcule, pas l'état d'un éditeur. Une animation démarre en pause sur sa première image, sous
 une case *Play* qui la joue et la met en pause, par le CSS seul, comme le dit
 [Graphiques](graphs.md#dans-une-page-web--des-images-en-css) : la case est une case à cocher, que Tab atteint et
-qu'Espace coche.
+qu'Espace coche. Un graphique 3D se montre à la vue de son code, et son SVG a un `<title>`, comme `Surface, 61 × 61
+points, z from −0.301 to 0.584`, qu'un lecteur d'écran prononce.
 
 ```cesia norun
 use std/cells
