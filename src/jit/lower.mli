@@ -17,3 +17,8 @@ val region : ?ctx:ctx -> world -> version -> Ast.expr -> (Ir.func array * int * 
     the loop can be lowered again later. Values of any type, maps and structs, are lowered only in regions, from what
     [ctx] holds: the keys of a map or the shape of a struct read there, an Int or a Float in arithmetic. *)
 exception Unseen
+
+(** Marks a variable of a module, by module and cell, as one that moved under native code: code lowered after reads it
+    from a value slot that [Engine] writes before each run ([Ir.func.moving]), rather than taking its number as a
+    constant. *)
+val mark : world -> int -> int -> unit

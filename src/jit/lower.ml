@@ -134,9 +134,13 @@ and dyn = {
   mutable starts : int list;  (* the block of each instruction put at a statement's start, the last first *)
   mutable vslots : int;  (* the slots of small arrays taken so far in the frame's area of them *)
   mutable cells : (int * int * t) list;  (* the variables of modules read as constants: module, cell, value *)
+  mutable moved : (int * int) list;  (* the variables of modules that moved read here: register, number in the unit *)
 }
 
-and unit_ = { versions : version Vec.t }
+and unit_ = {
+  versions : version Vec.t;
+  moving : (int * int * Ir.kind) Vec.t;  (* the variables of modules that moved, read in the unit, as [Ir.func.moving] *)
+}
 
 (* What a block may assign, or [Unknown] for a construct the walk doesn't follow: then nothing is taken as invariant. *)
 exception Unknown
@@ -530,6 +534,34 @@ let numbers st a b x y =
     x, guess st b y
   | _ -> x, y
 
+(* The variables of modules that moved under native code, by module and cell, for the world [moved_in]: a number set
+   in place, which code made after reads from a slot rather than as a constant, so that it is never made again for a new
+   number. At most [most_moved]: past that the table starts again, which costs a lowering once more. *)
+let moved : (int * int, unit) Hashtbl.t = Hashtbl.create 8
+let moved_in : world option ref = ref None
+let most_moved = 4096
+
+let of_world w = match !moved_in with Some x when x == w -> () | _ -> Hashtbl.reset moved; moved_in := Some w
+
+let mark w m k =
+  of_world w;
+  if Hashtbl.length moved >= most_moved then Hashtbl.reset moved;
+  Hashtbl.replace moved (m, k) ()
+
+let moves w m k = (match !moved_in with Some x -> x == w | None -> false) && Hashtbl.mem moved (m, k)
+
+(* The register of a variable that moved, loaded at the function's entry from its slot, of the kind it holds now. *)
+let slot_of st m k kind =
+  let ms = st.unit.moving in
+  let rec find j = if j = Vec.length ms then Vec.push ms (m, k, kind) else let m', k', _ = Vec.get ms j in if m' = m && k' = k then j else find (j + 1) in
+  let j = find 0 in
+  match List.find_opt (fun (_, j') -> j' = j) st.dyn.moved with
+  | Some (r, _) -> Ir.Reg r
+  | None ->
+    let r = reg st kind in
+    st.dyn.moved <- (r, j) :: st.dyn.moved;
+    Ir.Reg r
+
 (* The function of the unit for a version, lowered later. The first is the unit's entry, a region or the outermost frame
    of its version: a call of that version goes to a nested copy of its own. *)
 let callee st (v : version) =
@@ -555,7 +587,13 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
      | Float x when Float.is_finite x -> Float x, Kfloat
      | _ -> raise No)
   (* A variable of a module, as eps = 2.2e-16 at the top of a file: native code never assigns one, and only the code of
-     the file's top does, so its number now is a constant of the unit, which [Engine] checks before each run. *)
+     the file's top does, so its number now is a constant of the unit, which [Engine] checks before each run. One that
+     moved under native code before, as a slider's number set in place, is read from its slot at each run instead. *)
+  | Var { b = Cell { m; k; stable = false }; _ } when moves st.w m k ->
+    (match st.w.modules.(m).cells.(k) with
+     | Int _ -> slot_of st m k Kint, Kint
+     | Float _ -> slot_of st m k Kfloat, Kfloat
+     | _ -> raise No)
   | Var { b = Cell { m; k; stable = false }; _ } ->
     let v = st.w.modules.(m).cells.(k) in
     let c = match v with Int n -> (Ir.Int n, Ir.Kint) | Float x when Float.is_finite x -> Float x, Kfloat | _ -> raise No in
@@ -2307,7 +2345,7 @@ and finish ?(numbers = []) ?(sunk = []) st name ~params ~vars =
       spills = st.w.hooks;
       stride = st.mem.(0); need = st.mem.(1); numbers = Array.of_list numbers; lent = Array.of_list st.dyn.lent;
       sunk = Array.of_list sunk; points = Vec.to_array st.dyn.points; vslots; vecs = Array.of_list vecs;
-      cells = Array.of_list st.dyn.cells },
+      cells = Array.of_list st.dyn.cells; moved = Array.of_list st.dyn.moved; moving = [||] },
     Vec.to_array st.sites )
 
 (* What the lowering of a region leaves out of what it looks at, from the statements of its branches that didn't lower
@@ -2549,7 +2587,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
     fixed = fixed_params f; resumable = false; cold; vecs; vret = None; flags = Array.make f.nvars (-1);
     dyn = { bail = None; dirty = false; callable = None; restores = Vec.create (); keeps = Vec.create (); loose = false; start = (0, 0);
             vars = []; need = None; consts = Vec.create (); known = []; nums = []; elems = []; lent = []; ticked = true; ranges = [];
-            inside = []; points = Vec.create (); copies = (false, false); colds = []; dead = false; starts = []; vslots = !vs; cells = [] } }
+            inside = []; points = Vec.create (); copies = (false, false); colds = []; dead = false; starts = []; vslots = !vs; cells = [];
+            moved = [] } }
 
 (* Registers the sites of a lowered function, now that the whole unit lowered. *)
 let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool) array) =
@@ -2563,7 +2602,7 @@ let register (w : world) (fn : Ir.func) (pos : (Pos.t * version * Bytes.t * bool
 
 (* The unit whose first function [first] makes: then each version it calls, as whole functions. *)
 let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
-  let u = { versions = Vec.create () } in
+  let u = { versions = Vec.create (); moving = Vec.create () } in
   Vec.add_last u.versions ver;
   let out = Vec.create () in
   match
@@ -2581,7 +2620,13 @@ let lower_unit ?ctx ?scope ?values ?cold (w : world) (ver : version) first =
   | () ->
     let fs = Vec.to_array out in
     Array.iter (fun (fn, pos) -> register w fn pos) fs;
-    Some (Array.map fst fs)
+    let fns = Array.map fst fs in
+    (* The variables that moved, read anywhere in the unit, in value slots of the outermost frame after its own. *)
+    if Vec.length u.moving > 0 then begin
+      let moving = Vec.to_array u.moving and f0 = fns.(0) in
+      fns.(0) <- { f0 with moving; size = max f0.size (Ir.moved_at f0 + Array.length moving + 2) }
+    end;
+    Some fns
   | exception No -> None
   | exception Unseen when ctx = None -> None
 

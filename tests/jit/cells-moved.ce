@@ -1,0 +1,45 @@
+(* Module numbers that move between runs of the loops that read them, as a slider's set in place does: read in the
+   loop, in a function inlined into it, and in a function of the unit beside it (g, too big to inline); Floats, Ints,
+   and a change of kind. Each run must print what the interpreter prints. *)
+use std/io
+use std/math
+rho = 28.0
+k = 2
+defn lorenz(y1, y2, y3)
+  [10.0 * (y2 - y1), y1 * (rho - y3) - y2, y1 * y2 - 8.0 / 3.0 * y3]
+end
+defn g(x)
+  s = 0
+  j = 0
+  while j < 3
+    if x > k
+      s = s + 1
+    end
+    if x * 0.5 > k
+      s = s + 2
+    end
+    j += 1
+  end
+  s
+end
+defn euler(n)
+  y = [1.0, 1.0, 1.0]
+  for i in 1..n
+    d = lorenz(y[1], y[2], y[3])
+    y = [y[1] + 0.001 * d[1], y[2] + 0.001 * d[2], y[3] + 0.001 * d[3]]
+  end
+  y
+end
+defn count(n)
+  t = 0
+  for i in 1..n
+    t = t + g(math.Mod(i, 10)) + k
+  end
+  t
+end
+for step in 1..12
+  io.Print("rho $rho: $(euler(20000))")
+  io.Print("k $k: $(count(20000))")
+  rho = 28.0 + step * 0.5
+  k = if step < 5 step else if step < 8 step * 0.75 else step - 6 end
+end

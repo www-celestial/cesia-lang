@@ -46,7 +46,7 @@ let args_of ~nested (fn : Ir.func) =
 (* Each function is written twice: [f], the outermost frame, which the interpreter enters and which can leave and come
    back at a resume point; and [g], a nested frame, which only another native frame calls: no resume point, no slot
    written, a frame of 2 slots 2 above its caller's base. *)
-let func b ~prefix ~nested (fn : Ir.func) =
+let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
   let pr fmt = Printf.bprintf b fmt in
   let name = if nested then "g" ^ String.sub fn.name 1 (String.length fn.name - 1) else fn.name in
   (* MIR's labels belong to the module: each function gets its own. *)
@@ -614,12 +614,31 @@ let func b ~prefix ~nested (fn : Ir.func) =
          end)
       fn.arrays
   in
+  (* The variables of modules that moved, from their slots of the outermost frame, at [vp]: an Int's field, 2n + 1, as
+     2n; a Float's, its double. *)
+  let moved vp =
+    Array.iter
+      (fun (r, j) ->
+         pr "  mov x0, i64:%d(%s)\n" (8 * (moved_at + j)) vp;
+         match fn.kinds.(r) with
+         | Ir.Kfloat -> pr "  mov x0, i64:0(x0)\n  dmov r%d, d:0(x0)\n" r
+         | _ -> pr "  mov r%d, i64:0(x0)\n  sub r%d, r%d, 1\n" r r r)
+      fn.moved
+  in
   let lr = Printf.sprintf "%s%s_R" prefix name and lg = Printf.sprintf "%s%s_G" prefix name in
-  if nested then pr "  jmp %s\n" (bl 0)
+  if nested then begin
+    (* A nested frame finds the outermost one's base in the context. *)
+    if fn.moved <> [||] then begin
+      pr "  mov xa, %s\n  lsh xa, xa, 3\n  mov x1, %s\n  add x1, x1, xa\n" (cx Ir.io_base) (cx 2);
+      moved "x1"
+    end;
+    pr "  jmp %s\n" (bl 0)
+  end
   else begin
     (* The value stack at the frame, then, at the start or at a resume point, the variables; then once for both the
        constants and the checks of the arrays: nothing moves them while native code runs. *)
-    if Array.length fn.arrays > 0 || Array.length fn.consts > 0 || Array.exists (fun (v : Ir.var) -> v.kind = Kval) fn.vars
+    if Array.length fn.arrays > 0 || Array.length fn.consts > 0 || fn.moved <> [||]
+       || Array.exists (fun (v : Ir.var) -> v.kind = Kval) fn.vars
     then pr "  mov vp, %s\n  lsh xa, b, 3\n  add vp, vp, xa\n" (cx 2);
     (* The area of small arrays of floats, the last hidden slots of the float stack, where nothing moves while the run
        lasts. *)
@@ -639,6 +658,7 @@ let func b ~prefix ~nested (fn : Ir.func) =
       fn.vars;
     pr "%s:\n" lg;
     Array.iteri (fun j _ -> pr "  mov x0, i64:%d(vp)\n  mov c%d, i64:0(x0)\n" (8 * (fn.frame + j)) j) fn.consts;
+    moved "vp";
     guards ();
     pr "  switch entry, %s\n" (String.concat ", " (bl 0 :: Array.to_list (Array.map bl fn.resumes)))
   end;
@@ -727,8 +747,9 @@ let emit (fns : Ir.func array) =
     fns;
   let nested = List.filter (fun k -> called.(k)) (List.init (Array.length fns) Fun.id) in
   if nested <> [] then pr "  forward %s\n" (String.concat ", " (List.map (fun k -> Printf.sprintf "%sg%d" prefix k) nested));
-  func b ~prefix ~nested:false fns.(0);
-  List.iter (fun k -> func b ~prefix ~nested:true fns.(k)) nested;
+  let moved_at = Ir.moved_at fns.(0) in
+  func b ~prefix ~nested:false ~moved_at fns.(0);
+  List.iter (fun k -> func b ~prefix ~nested:true ~moved_at fns.(k)) nested;
   let f0 = fns.(0) in
   pr "%se: func i64, p:cx\n  local i64:b, i64:entry, i64:fuel, i64:ip, i64:fp, i64:x0, %s:res%s\n" prefix (ty f0.result)
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) f0.params)));

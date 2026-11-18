@@ -1,0 +1,13 @@
+off:
+kinds 1: 12000 calls, each between the counts of the values k held: true
+kinds 2: 12000 calls, each between the counts of the values k held: true
+kinds 3: 12000 calls, each between the counts of the values k held: true
+hot:
+kinds 1: 12000 calls, each between the counts of the values k held: true
+kinds 2: 12000 calls, each between the counts of the values k held: true
+kinds 3: 12000 calls, each between the counts of the values k held: true
+always:
+kinds 1: 12000 calls, each between the counts of the values k held: true
+kinds 2: 12000 calls, each between the counts of the values k held: true
+kinds 3: 12000 calls, each between the counts of the values k held: true
+exit 0
