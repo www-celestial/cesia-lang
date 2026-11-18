@@ -1,10 +1,15 @@
 (** std/plot: the SVG of each function and option, kept byte for byte in plot.snap; the rules of the ticks, the labels
-    and the layout on generated data; and every error message. M4 against all the points is in tests/slow/plot-m4.ce. *)
+    and the layout on generated data; the projection of 3D graphs and the order of the quads of a surface; and every
+    error message. M4 against all the points is in tests/slow/plot-m4.ce, and the order of the quads on many more grids
+    and the labels of 3D at many more views in tests/slow/plot-3d.ce. *)
+use std/columns as col
+use std/dict
 use std/gen
 use std/list
 use std/math
 use std/matrix
 use std/plot
+use std/random
 use std/result
 use std/test
 use std/text
@@ -71,6 +76,202 @@ defn isFramesCss()
 end
 isFramesOne() = text.Contains("@keyframes s1{0%{visibility:visible}100%{visibility:hidden}}", svg(plot.Frames([plot.Line([1, 2], [1, 2])], fps = 7.5)))
 isFrameOfGraph() = value.Equal(scene(plot.Line([1, 2], [3, 4]), 640, 400), result.Unwrap(plot.Scene(plot.Line([1, 2], [3, 4]), 640, 400, frame = 1)))
+
+(* 3D: a surface at a view in each quadrant, from above and from below, with a hole and as the means of blocks; 3D lines;
+   3D frames. Their SVG byte for byte, the corners of the box where the formulas put them, and the quads in an order
+   where the nearest covers the others. *)
+
+defn table(rows, cols, f)
+  (** The matrix of f(i, j) at each row i and column j. *)
+  m = matrix.Zeros(rows, cols)
+  for i in 1..rows
+    for j in 1..cols
+      m[i, j] = f(i, j)
+    end
+  end
+  m
+end
+wavy = table(5, 6, (i, j) -> math.Sin(i * 0.9) * math.Cos(j * 0.6))
+solid(view) = plot.Of([plot.Surface(wavy, x = [0, 1, 2, 4, 5, 6], y = [-1, 0, 0.5, 1, 2])], title = "Surface", x = "x", y = "y", z = "z", view = view)
+isSurfaceSvg() = list.All([test.Snapshot(svg(solid(v))) for v in [missing, [52.5, 30], [142.5, 30], [-127.5, 30], [0, 90], [-37.5, -30]]])
+holed = matrix.Reshape([4, 4], [1.0, 2.0, 1.0, 0.0, 2.0, math.Nan, 2.0, 1.0, 1.0, 2.0, 3.0, 2.0, 0.0, 1.0, 2.0, 1.0])
+isSurfaceHole() = test.Snapshot(svg(plot.Surface(holed, colors = "diverging")))
+meshOf(g) = list.FindFirst(x -> x.Kind == "mesh", scene(g, 640, 400).Items)
+isHoleQuads() = value.Equal(meshOf(plot.Surface(holed)).Colors[1..9] == -1, [true, true, false, true, true, false, false, false, false]) and scene(plot.Surface(holed), 640, 400).Dropped == 1
+tall = table(202, 2, (i, j) -> i * 1.0 + j)
+isSurfaceMeans() = test.Snapshot(svg(plot.Surface(tall))) and meshOf(plot.Surface(tall)).Rows == 100 and meshOf(plot.Surface(matrix.Zeros(201, 201))).Rows == 200
+
+defn lorenz(n)
+  (** The Lorenz system from (1, 1, 1), n steps of Euler's method of 0.01: its x, y and z. *)
+  x = 1.0
+  y = 1.0
+  z = 1.0
+  out = [matrix.Zeros(1, n), matrix.Zeros(1, n), matrix.Zeros(1, n)]
+  for k in 1..n
+    dx = 10.0 * (y - x)
+    dy = x * (28.0 - z) - y
+    dz = x * y - 8.0 / 3.0 * z
+    x += 0.01 * dx
+    y += 0.01 * dy
+    z += 0.01 * dz
+    out[1][k] = x
+    out[2][k] = y
+    out[3][k] = z
+  end
+  out
+end
+attractor = lorenz(400)
+isLine3Svg() = test.Snapshot(svg(plot.Of([plot.Line3(attractor[1], attractor[2], attractor[3], label = "Lorenz")], x = "x", y = "y", z = "z")))
+waves = plot.Frames([plot.Of([plot.Surface(wavy * k)], title = "k = $k") for k in [1, 2, 3]], fps = 2)
+isFrames3dSvg() = test.Snapshot(svg(waves))
+isFrames3dShareAxes() = value.Equal(still(frameOf2(waves, 1)), still(frameOf2(waves, 3)))
+(* Frame 1 of three, its heights a third of the last's, takes the colors of the heights of all three, not its own; frame 3, which
+   holds the least and the greatest, its own. *)
+frameMesh(k) = list.FindFirst(x -> x.Kind == "mesh", frameOf2(waves, k).Items)
+isFrames3dShareColors() = not value.Equal(frameMesh(1).Colors, meshOf(plot.Surface(wavy)).Colors) and value.Equal(frameMesh(3).Colors, meshOf(plot.Surface(wavy * 3)).Colors)
+
+defn isProjection()
+  (* The 8 corners of the box, 0 to 1 on each axis, at 6 views: from its center c, s pixels a unit, at
+     c + s (u cos az + v sin az, sin el (u sin az - v cos az) - w cos el), with u, v and w from -0.5 to 0.5, and
+     from -0.375 to 0.375 for w. c and s are those of the view [0, 0], where a corner is at c + s (u, -w): the size never
+     changes as the box turns. *)
+  corners = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [1, 1, 0], [0, 0, 1], [1, 0, 1], [0, 1, 1], [1, 1, 1]]
+  at = v -> result.Unwrap(plot.Scene(plot.Of([plot.Line3([c[1] for c in corners], [c[2] for c in corners], [c[3] for c in corners])], legend = false, view = v), 640, 400)).Items
+  line0 = list.FindFirst(x -> x.Role == "data", at([0, 0]))
+  s = line0.Xs[2] - line0.Xs[1]
+  cx = line0.Xs[1] + s / 2
+  cy = line0.Ys[1] - 0.375 * s
+  for v in [[0, 0], [90, 0], [-37.5, 30], [45, 60], [180, -30], [0, 90]]
+    l = list.FindFirst(x -> x.Role == "data", at(v))
+    a = v[1] * math.Pi / 180
+    e = v[2] * math.Pi / 180
+    for n in 1..8
+      u = corners[n][1] - 0.5
+      w = corners[n][2] - 0.5
+      h = 0.75 * (corners[n][3] - 0.5)
+      x = cx + s * (u * math.Cos(a) + w * math.Sin(a))
+      y = cy + s * (math.Sin(e) * (u * math.Sin(a) - w * math.Cos(a)) - h * math.Cos(e))
+      if math.Abs(l.Xs[n] - x) > 1e-6 or math.Abs(l.Ys[n] - y) > 1e-6
+        return false
+      end
+    end
+  end
+  value.Len(at([0, 0])) > 0 and math.Abs(s - (line0.Xs[2] - line0.Xs[1])) < 1e-9
+end
+
+defn orderHolds(c)
+  (** Is the quad painted last the nearest one, at points of the screen that two quads or more cover? The surface is
+      random, its x and y uneven and increasing or decreasing; its quads are split in two triangles here, and the depth
+      and the place on the screen computed here from the view, apart from std/plot, which gives only its order. *)
+  nx = c.Nx
+  ny = c.Ny
+  xs = [0.0]
+  for k in 2..nx
+    xs = list.Append(xs[k - 1] + c.Dx[k], xs)
+  end
+  ys = [0.0]
+  for k in 2..ny
+    ys = list.Append(ys[k - 1] + c.Dy[k], ys)
+  end
+  xs = if c.Flip == 1 or c.Flip == 3 list.Reverse(xs) else xs end
+  ys = if c.Flip >= 2 list.Reverse(ys) else ys end
+  spread = [0.3, 3.0, 30.0][c.Spread]
+  z = matrix.Zeros(ny, nx)
+  for i in 1..ny
+    for j in 1..nx
+      z[i, j] = spread * c.Z[(i - 1) * 11 + j]
+    end
+  end
+  az = [c.Az, 0.0, 90.0, 180.0, 270.0, 45.0][c.Turn]
+  el = [c.El, 90.0, -90.0, 0.5, 30.0][c.Tilt]
+  order = list.FindFirst(x -> x.Kind == "mesh", scene(plot.Of([plot.Surface(z, x = xs, y = ys)], view = [az, el]), 640, 400).Items).Order
+  a = az * math.Pi / 180
+  e = el * math.Pi / 180
+  v = [math.Cos(e) * math.Sin(a), 0.0 - math.Cos(e) * math.Cos(a), math.Sin(e)]
+  e1 = [math.Cos(a), math.Sin(a), 0.0]
+  e2 = [0.0 - math.Sin(e) * math.Sin(a), math.Sin(e) * math.Cos(a), math.Cos(e)]
+  unit = (t, lo, hi, k) -> (t - (lo + hi) / 2) * k / (hi - lo)
+  point = (i, j) -> [unit(xs[j], list.Min(xs), list.Max(xs), 1.0), unit(ys[i], list.Min(ys), list.Max(ys), 1.0), unit(z[i, j], list.Min(z), list.Max(z), 0.75)]
+  (* The triangles in the order painted, each with its quad; their corners on the screen and their depths. *)
+  rows = if order[1] > 0 1..ny - 1 else [ny - k for k in 1..ny - 1] end
+  cols = if order[2] > 0 1..nx - 1 else [nx - k for k in 1..nx - 1] end
+  tris = []
+  for i in rows
+    for j in cols
+      q = (j - 1) * ny + i
+      tris = list.Append({Quad: q, P: [point(i, j), point(i, j + 1), point(i + 1, j + 1)]}, tris)
+      tris = list.Append({Quad: q, P: [point(i, j), point(i + 1, j + 1), point(i + 1, j)]}, tris)
+    end
+  end
+  dot = (p, d) -> p[1] * d[1] + p[2] * d[2] + p[3] * d[3]
+  sx = [[dot(t.P[k], e1) for t in tris] for k in 1..3]
+  sy = [[dot(t.P[k], e2) for t in tris] for k in 1..3]
+  dz = [[dot(t.P[k], v) for t in tris] for k in 1..3]
+  quads = [t.Quad for t in tris]
+  ax = sx[2] - sx[1]
+  ay = sy[2] - sy[1]
+  bx = sx[3] - sx[1]
+  by = sy[3] - sy[1]
+  den = ax * by - ay * bx
+  lox = list.Min(list.Min(sx[1]), list.Min(list.Min(sx[2]), list.Min(sx[3])))
+  hix = list.Max(list.Max(sx[1]), list.Max(list.Max(sx[2]), list.Max(sx[3])))
+  loy = list.Min(list.Min(sy[1]), list.Min(list.Min(sy[2]), list.Min(sy[3])))
+  hiy = list.Max(list.Max(sy[1]), list.Max(list.Max(sy[2]), list.Max(sy[3])))
+  for n in 1..c.Samples
+    px = lox + (hix - lox) * random.Float()
+    py = loy + (hiy - loy) * random.Float()
+    cx = px - sx[1]
+    cy = py - sy[1]
+    w1 = (cx * by - cy * bx) / den
+    w2 = (ax * cy - ay * cx) / den
+    w0 = 1.0 - w1 - w2
+    hit = col.Positions((math.Abs(den) > 1e-12) * 1 + (w0 > 1e-9) * 1 + (w1 > 1e-9) * 1 + (w2 > 1e-9) * 1 == 4)
+    if value.Len(hit) >= 2
+      depth = col.Pick(hit, w0 * dz[1] + w1 * dz[2] + w2 * dz[3])
+      sorted = list.Sort(depth)
+      near = list.IndexOf(list.Max(depth), depth)
+      (* A tie, two faces at one depth along an edge they share, has no wrong order. *)
+      if sorted[value.Len(sorted)] - sorted[value.Len(sorted) - 1] > 1e-9 and quads[hit[near]] != quads[hit[value.Len(hit)]]
+        return false
+      end
+    end
+  end
+  true
+end
+(** Random surfaces seen from random views, and from the views on the axes, the edges of the cases of the order. *)
+grids = gen.Of({Nx: gen.Int(2, 11), Ny: gen.Int(2, 11), Dx: gen.List(gen.Float(0.2, 2.0), min = 11, max = 11), Dy: gen.List(gen.Float(0.2, 2.0), min = 11, max = 11),
+  Flip: gen.Int(0, 3), Spread: gen.Int(1, 3), Z: gen.List(gen.Float(-1, 1), min = 121, max = 121), Az: gen.Float(0, 360), El: gen.Float(-89, 89),
+  Turn: gen.Int(1, 6), Tilt: gen.Int(1, 5), Samples: gen.Int(40, 40)})
+isOrderHolds() = test.ForAll(orderHolds, grids, cases = 10)
+
+defn labelsApart(sizes, views)
+  (** Do the texts of the axes of a surface stand apart, and inside the graph, at each size and each view? *)
+  g = plot.Of([plot.Surface(wavy * 1000.0, x = [0, 1, 2, 4, 5, 6] * 0.001)], title = "T", x = "the x axis", y = "the y axis", z = "z")
+  for size in sizes
+    for v in views
+      s = result.Unwrap(plot.Scene(g, size[1], size[2], view = v))
+      texts = [box(x) for x in s.Items if x.Kind == "text" and x.Role != "colorbar"]
+      for i in 1..value.Len(texts)
+        b = texts[i]
+        if b.X < -0.01 or b.Y < -0.01 or b.X + b.W > s.Width + 0.01 or b.Y + b.H > s.Height + 0.01
+          return false
+        end
+        for j in i + 1..value.Len(texts)
+          o = texts[j]
+          if b.X < o.X + o.W and o.X < b.X + b.W and b.Y < o.Y + o.H and o.Y < b.Y + b.H
+            return false
+          end
+        end
+      end
+    end
+  end
+  true
+end
+(* The texts of the axes at 6 views, at one size; tests/slow/plot-3d.ce tries 72 views at 3 sizes. *)
+isLabelsApart() = labelsApart([[640, 400]], [[-180, -30], [-120, 30], [-60, -30], [0, 30], [60, -30], [120, 30]])
+
+isView() = value.Equal(scene(plot.Surface(wavy), 640, 400).View, [-37.5, 30.0]) and value.Equal(result.Unwrap(plot.Scene(solid([10, 20]), 640, 400, view = [-62.5, 15])).View, [-62.5, 15.0]) and not dict.Has("View", scene(plot.Line([1, 2], [1, 2]), 640, 400)) and not dict.Has("View", frameOf2(waves, 1))
+isTitle3d() = text.Contains("<title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>", svg(solid(missing))) and text.Contains("<title>3D line, 400 points, z from ", svg(plot.Line3(attractor[1], attractor[2], attractor[3]))) and not text.Contains("<title>", svg(plot.Line([1, 2], [1, 2])))
 
 (* Properties of the ticks and the layout, on data of any scale and any size of graph. *)
 
@@ -249,7 +450,33 @@ errors = [
   [plot.Frames([plot.Of([plot.Line([1, 2], [1, 2])], yscale = "log"), plot.Of([plot.Line([1, 2], [0, 1])], yscale = "log")]), "plot.Frames: frame 2: plot.Line: a log y axis needs values above 0, and y[1] is 0.0."],
   [plot.Frames([plot.Of([plot.Line([1], [1])], legend = "no")]), "plot.Frames: frame 1: plot.Line: legend is \"no\"; give true or false."],
   [plot.Of([plot.Frames([plot.Line([1], [1])])]), "plot.Of: layer 1 is an animation; plot.Frames goes around the graphs, as plot.Frames([plot.Of(...), ...])."],
-  [plot.Grid([plot.Frames([plot.Line([1], [1])])]), "plot.Grid: graph 1 is an animation; a grid holds graphs, as plot.Line or plot.Of makes, not animations."]
+  [plot.Grid([plot.Frames([plot.Line([1], [1])])]), "plot.Grid: graph 1 is an animation; a grid holds graphs, as plot.Line or plot.Of makes, not animations."],
+  [plot.Surface([1, 2]), "plot.Surface: z is 1 × 2; a surface needs at least 2 rows and 2 columns."],
+  [plot.Surface("a"), "plot.Surface: it needs a matrix of numbers, not \"a\"."],
+  [plot.Surface([1, 2; 3, 1.0 / 0.0]), "plot.Surface: z[2, 2] is inf; give finite values, or NaN for a hole."],
+  [plot.Surface([1, 2; -1.0 / 0.0, 1]), "plot.Surface: z[2, 1] is -inf; give finite values, or NaN for a hole."],
+  [plot.Surface([1, 2; 3, 4], x = [1, 1]), "plot.Surface: x[2] is 1.0; give finite values, increasing or decreasing."],
+  [plot.Surface([1, 2; 3, 4], y = [1, 2, 3]), "plot.Surface: y has 3 values for 2 rows; give one for each."],
+  [plot.Surface([1, 2; 3, 4], colors = "jet"), "plot.Surface: colors is \"jet\"; it is \"viridis\" or \"diverging\"."],
+  [plot.Surface([math.Nan, math.Nan; math.Nan, math.Nan]), "plot.Surface: no value is finite."],
+  [plot.Of([plot.Line([1], [1]), plot.Surface([1, 2; 3, 4], x = [2, 2])]), "plot.Surface (layer 2): x[2] is 2.0; give finite values, increasing or decreasing."],
+  [plot.Of([plot.Surface([1, 2; 3, 4]), plot.Line3([1], [1], [1])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 layers; layer 2 is plot.Line3."],
+  [plot.Of([plot.Surface([1, 2; 3, 4]), plot.Surface([1, 2; 3, 4])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 layers; layer 2 is plot.Surface."],
+  [plot.Of([plot.Line([1], [1]), plot.Line3([1], [1], [1])]), "plot.Of: a 3D graph holds one plot.Surface, or plot.Line3 layers; layer 1 is plot.Line."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], yscale = "log"), "plot.Surface: yscale is \"log\"; a 3D graph has linear axes."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], view = [0, 100]), "plot.Surface: view is [0, 100]; give [az, el] in degrees, el from -90 to 90."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], view = [math.Nan, 0]), "plot.Surface: view is [nan, 0]; give [az, el] in degrees, el from -90 to 90."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], zlim = [2, 1]), "plot.Surface: zlim is [2, 1]; give [low, high], finite, low below high."],
+  [plot.Of([plot.Line3([1], [1], [1])], z = 3), "plot.Line3: z is 3; give a text."],
+  [plot.Of([plot.Line([1], [1])], view = [1, 2]), "plot.Line: view is for a 3D graph, of plot.Surface or plot.Line3."],
+  [plot.Of([plot.Line([1], [1])], zlim = [1, 2]), "plot.Line: zlim is for a 3D graph, of plot.Surface or plot.Line3."],
+  [plot.Line3([1, 2], [1], [1]), "plot.Line3: x has 2 values, y 1 and z 1; give all three the same number."],
+  [plot.Line3([math.Nan], [1], [1]), "plot.Line3: no point has a finite x, y and z."],
+  [plot.Line3([1], [1], [1], width = 0), "plot.Line3: width is 0; give the width of the line in pixels, above 0."],
+  [plot.Line3([1], [1], [1], dash = "long"), "plot.Line3: dash is \"long\"; it is missing for a solid line, or \"dashed\", \"dotted\" or \"dashdot\"."],
+  [plot.Line3(1..1000001, 1..1000001, 1..1000001), "plot.Line3: 1000001 points are too many, past 1,000,000; keep every 2nd."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], size = [120, 90]), "plot.Surface: 120 by 90 pixels leave no room for the plot; give a larger size."],
+  [plot.Frames([plot.Surface([1, 2; 3, 4]), plot.Of([plot.Surface([1, 2; 3, 5])], view = [1, 2])]), "plot.Frames: frame 2 differs from frame 1 in its option view; a frame changes only its data and its title."]
 ]
 isEachError() = list.All([message(e[1]) == e[2] for e in errors])
 isErrorKind() = value.Equal(result.MapErr(e -> e.Kind, plot.Svg(plot.Line([], []))), result.Err("plot"))
@@ -259,6 +486,7 @@ message0(r) = match r
 end
 isSceneErrors() = message0(plot.Scene(1, 640, 400)) == "plot.Scene needs a graph, as plot.Line or plot.Of makes, not 1." and message0(plot.Scene(plot.Line([1], [1]), 50, 400)) == "plot.Scene needs at least 100 by 80 pixels, not 50 by 400."
 isFrameErrors() = message0(plot.Scene(anim, 640, 400, frame = 4)) == "plot.Scene: frame is 4; this animation has frames 1 to 3." and message0(plot.Scene(anim, 640, 400, frame = 1.0)) == "plot.Scene: frame is 1.0; this animation has frames 1 to 3." and message0(plot.Scene(plot.Line([1], [1]), 640, 400, frame = 2)) == "plot.Scene: frame is 2; a graph that is no animation has frame 1 only." and message0(plot.Scene(plot.Frames([]), 640, 400)) == "plot.Frames needs 1 to 300 graphs, not 0."
+isViewErrors() = message0(plot.Scene(plot.Line([1], [1]), 640, 400, view = [1, 2])) == "plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D." and message0(plot.Scene(plot.Surface([1, 2; 3, 4]), 640, 400, view = [1, 200])) == "plot.Scene: view is [1, 200]; give [az, el] in degrees, el from -90 to 90." and message0(plot.Scene(plot.Grid([plot.Surface([1, 2; 3, 4])]), 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; a grid shows each of its graphs at the view of their code." and message0(plot.Scene(waves, 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; an animation shows its frames at the view of their code."
 isSaveNeedsSvg() = message0(plot.Save(plot.Line([1], [1]), "a.png")) == "plot.Save writes SVG, to a name that ends in .svg, not \"a.png\"."
 isDropped() = scene(plot.Points([1, math.Nan, 3], [1, 2, missing]), 640, 400).Dropped == 2
 

@@ -65,6 +65,11 @@ as it did.
   editor fetches one frame at a time. `plot.Svg` and `plot.Save` write the frames as an animation of CSS that loops,
   without a script, paused on frame 1 under `prefers-reduced-motion`, keeping every k-th frame past 8 MB; `cells.Html`
   starts each paused under a box Play.
+- 3D graphs: `plot.Surface(z, x, y, colors)`, a height over a grid, and `plot.Line3(x, y, z, ...)`, in a box seen from
+  `view = [az, el]` as MATLAB's, with `z` and `zlim`, options of `plot.Of`; the quads of a surface drawn far to near in
+  an order that is exact without a sort, past 200 by 200 quads the means of blocks, said under the graph.
+  `plot.Scene(g, width, height, frame, view)` turns a 3D graph, its scene a new item `"mesh"` and a field `View`;
+  `cells.Scene(session, key, width, frame, view)` asks a session for a view, and a 3D graph's value gains `View`.
 - `std/plot`, graphs as values: `plot.Line`, `Points`, `Bars`, `Histogram`, `Heatmap`, `Density` and `Area`, on shared
   axes with `plot.Of` and side by side with `plot.Grid`, drawn to SVG by `plot.Svg` and `plot.Save`, and to a scene of
   shapes in pixels by `plot.Scene`; the ticks by the extended Wilkinson algorithm, long lines by M4, the colors of Okabe
@@ -138,6 +143,9 @@ as it did.
 
 Measured on the same machine as the others, in the book's chapters on speed and numerical methods:
 
+- `json.Parse` reads a number without a copy of its text when it is short, and a list of numbers without a box for each:
+  the scene of a surface of 100 by 100 quads, 192 KB, in 3.5 ms instead of 8.1, the same values to the bit.
+  std/cells reads a long answer of its session once, not once a chunk.
 - The cache of loaded packages: a package unchanged since the last run is neither lexed, parsed nor resolved again,
   its entry written once the run has ended, checked by its BLAKE2b digest, in a folder of the person's alone:
   `use std/plot` starts in 5.69 ms instead of 9.66, Cemacs reaches its first frame in 36.97 ms instead of 52.16. A

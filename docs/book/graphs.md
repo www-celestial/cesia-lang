@@ -1,7 +1,7 @@
 # Graphs
 
-In this chapter you draw data with [std/plot]: lines, points, bars, histograms, heatmaps, densities and bands, and
-animations of them. A graph is a value, as a number or a list is: you make it, put several on shared axes, and draw it to
+In this chapter you draw data with [std/plot]: lines, points, bars, histograms, heatmaps, densities and bands,
+surfaces and lines in 3D, and animations of them. A graph is a value, as a number or a list is: you make it, put several on shared axes, and draw it to
 an SVG file, or Cemacs draws it on its screen. Each step from the data to the pixels follows a published method, named here with its paper, and the
 tests of Cesia check what each step promises.
 
@@ -72,10 +72,12 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Heatmap] `(values, x, y, colors)` | a matrix as colored cells, with a color bar |
 | [plot.Density] `(x, y, bins)` | points of any number counted per cell, a 2D histogram |
 | [plot.Area] `(x, low, high, label, color)` | the band between two curves |
-| [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size)` | layers on shared axes |
+| [plot.Surface] `(z, x, y, colors)` | a surface in 3D, the height `z[i, j]` over `(x[j], y[i])` |
+| [plot.Line3] `(x, y, z, label, color, width, dash)` | a line in 3D |
+| [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view)` | layers on shared axes |
 | [plot.Grid] `(graphs, columns)` | graphs side by side |
 | [plot.Frames] `(graphs, fps)` | graphs one after the other: an animation |
-| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame)` | the drawing |
+| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view)` | the drawing |
 
 A color is written `"#rrggbb"`, the red, green and blue of a color in two hexadecimal digits each, as in CSS. A layer
 without a color takes the next of the palette of [Colors](#colors).
@@ -223,6 +225,7 @@ invisible(dev.off())
 or `"log"` for a logarithmic axis in base 10, where each power of ten takes the same length; `xlim` and `ylim`, the range
 of an axis as `[low, high]`; `legend = false` to hide the legend; `size = [width, height]` in pixels, 640 by 400 by
 default, 100 by 80 at least. The options of an [plot.Of] given as a layer are left aside: those of the outer one apply.
+A 3D graph takes `z`, `zlim` and `view` too, as [3D](#3d) shows; on a graph of 2D they are an error.
 
 ## Animations
 
@@ -312,6 +315,146 @@ Where they win: all three write video or GIF files, which Cesia doesn't; matplot
 animation has no length and no cap; plotly moves from one frame to the next by a smooth transition, for its scatter and
 bar charts, and its page can go to any frame with a slider, with a script. Where Cesia wins: the axes are shared by
 itself, a frame that changes more than its data is an error that names it, and the page plays with no script.
+
+## 3D
+
+[plot.Surface] draws a *surface*, a height over a grid: `z[i, j]` is the height over the point `(x[j], y[i])`, so the
+rows of the matrix go along y and its columns along x, as MATLAB's `surf` takes them. [plot.Line3] draws a line through
+points in space, as [plot.Line] does in the plane. Here a ripple, $\sin(2r) / (1 + r)$ at the distance $r$ from the
+middle, on a grid of 61 by 61 points:
+
+```cesia allow=read,write
+use std/matrix
+x = num.Linspace(-3.0, 3.0, 61)
+across = matrix.Matmul(matrix.Ones(61, 1), matrix.Reshape([1, 61], x))
+r = math.Sqrt(across * across + matrix.Transpose(across) * matrix.Transpose(across))
+ripple = plot.Of([plot.Surface(math.Sin(2.0 * r) / (1.0 + r), x = x, y = x)], x = "x", y = "y", z = "height")
+plot.Save(ripple, "ripple.svg") -->
+```
+
+`across` holds `x[j]` in each column $j$, and its transpose `y[i]` in each row $i$: the grid of both, as `meshgrid` gives
+it in MATLAB and numpy. [plot.Of] gives a 3D graph three options more: `z`, the name of its third axis, `zlim`, its range,
+and `view`, where it is seen from. A 3D graph holds one [plot.Surface], or [plot.Line3] layers, never both and never a
+layer of 2D; its axes are linear.
+
+### The view
+
+A *view* is two angles in degrees, `view = [az, el]`, as MATLAB's `view` takes them. The *azimuth* `az` turns around the
+vertical axis: 0 looks from the side of $-y$, toward $+y$, and the azimuth grows counterclockwise seen from above. The
+*elevation* `el`, from $-90$ to $90$, is the angle of the eye above the plane of x and y: 90 looks from straight above,
+$-30$ from below. Without one a graph takes MATLAB's own, `[-37.5, 30]`:
+
+```cesia
+result.Unwrap(plot.Scene(ripple, 640, 400)).View -->
+result.Unwrap(plot.Scene(ripple, 640, 400, view = [0, 90])).View -->
+```
+
+[plot.Scene] takes a `view` too, which turns the graph without changing it: Cemacs turns a graph so, and the code keeps
+its own view. The data go into a box of 1 by 1 by 0.75, as matplotlib's: each axis covers the data exactly, or its
+`xlim`, `ylim` or `zlim`, and its range takes the whole side of the box. The box is seen from far away, without
+perspective, an *orthographic* projection, MATLAB's default: lines that are parallel in space stay parallel on the
+screen. With $p$ a point of the box, measured from its center, the eye looks along $v$, and the screen's right and up are
+$e_1$ and $e_2$:
+
+$$v = (\cos el \sin az, -\cos el \cos az, \sin el),\quad e_1 = (\cos az, \sin az, 0),\quad e_2 = (-\sin el \sin az, \sin el \cos az, \cos el)$$
+
+The point is drawn at $c + s\,(p \cdot e_1, -p \cdot e_2)$, from the center $c$ of the plot, $s$ pixels a unit, and its
+depth, how near it is, is $p \cdot v$. The box turns inside the sphere around it, of radius
+$\sqrt{0.5^2 + 0.5^2 + 0.375^2} \approx 0.8004$, and $s$ makes that sphere fit the plot, with room for the labels: so the
+box keeps its size at every view, as `axis vis3d` keeps it in MATLAB, and a graph doesn't swell and shrink as it turns.
+A test puts the 8 corners of the box where these formulas put them, at 6 views.
+
+The axes are three edges of the box, on its outline, with their ticks and labels, found as in 2D by the search of
+Talbot, Lin and Hanrahan for the length each edge shows: x and y on the lowest edges, z on the edge most to the left. An
+axis that points at the eye shows no labels, as z seen from straight above. The three far sides of the box are shaded
+light, with the grid of the ticks, as matplotlib draws them; a test checks at 72 views and 3 sizes that no two texts
+meet and that all stay inside the graph.
+
+### The order of the quads
+
+A surface is drawn as *quads*, the four-sided pieces between four neighbor points of the grid, each filled with one color.
+Painted one over the other, the nearest must come last: this is the *painter's algorithm*, by Newell, Newell and Sancha
+(1972), which draws polygons from far to near. matplotlib sorts the polygons by their mean depth, and its own FAQ says why
+it fails: the "reduction of 3D data down to 2D + z-order scalar", one depth for a whole polygon, so that "from some
+viewing angles" an object "would appear in front of another object, even though it is physically behind it".
+
+A surface needs no sort. Its quads stand on a grid whose x and y each increase or each decrease, and seen without
+perspective, the trace of a ray of the eye on the plane of x and y is a straight line, along which the depth grows one
+way. That line meets the columns of the grid in order, and the rows in order. So the quads drawn row after row from the
+far side, and in each row column after column from the far side, put every quad that a ray meets behind another before
+it:
+
+1. the rows by increasing y when $v_y (y_{last} - y_{first}) \ge 0$, else by decreasing y;
+2. the columns the same, with $v_x$ and x.
+
+It is the case of one sheet of the order of McMillan (1995), who computes visibility without depth; Anderson (1982) walks
+a grid the same way for hidden lines. The order costs nothing: the sort it replaces takes 3.3 ms for 100 by 100 quads and
+14 ms for 200 by 200. A test draws random surfaces, uneven in x and y, increasing or decreasing, at random views and at
+the views on the axes, and checks at points of the screen that two quads or more cover that the quad painted last is the
+nearest one: 10 grids in the change loop, 1,500 in the slow tests, and 10,500 once, with no failure. The same check of
+matplotlib's sort found 0.6 % to 29 % of such points wrong, from a flat surface to a rough one.
+
+### Colors, holes and large surfaces
+
+A quad takes the color of the mean of its four heights, as matplotlib's `plot_surface` colors them, among the 256 of
+viridis, or of `colors = "diverging"` as for [plot.Heatmap], and a color bar beside says which height each color is.
+There is no light and no edge: the color alone says the height, as in MATLAB's `surf`, whose colors "vary according to
+the heights". A NaN leaves out the four quads around it, a *hole*, and [plot.Scene] counts it in `Dropped`; an infinity is
+an error that names its place:
+
+```cesia
+plot.Svg(plot.Surface([1, 2; 3, 1.0 / 0.0])) -->
+```
+
+A quad with a corner past `xlim`, `ylim` or `zlim` is left out too, as matplotlib's `axlim_clip` hides "patches with a
+vertex outside the axes view limits"; a [plot.Line3] is cut at a point past them, as at a NaN.
+
+A surface draws up to 200 by 200 quads exactly. Past 200 in a direction, its points become the means of blocks of $k$ by
+$k$ points, $k$ the least that fits, x, y and z each the mean of its block, NaNs left out; a note under the graph says so:
+
+```cesia
+big = matrix.Ones(1000, 300)
+[item.Text for item in result.Unwrap(plot.Scene(plot.Surface(big), 640, 400)).Items if item.Role == "note"] -->
+```
+
+matplotlib keeps 50 points a direction by default, "downsampled (by slicing)": one row in $k$, which can step over a
+narrow peak; a mean keeps a trace of it, smoothed. [plot.Surface] checks its matrix and takes these means once, when it
+is made, so that a graph turned again and again pays for them once.
+
+### 3D lines
+
+[plot.Line3] takes x, y and z, and the label, color, width and dash of [plot.Line]. Several share a graph, drawn in their
+order, the later on top: unlike a surface, two lines that cross in depth are drawn in the order of the layers, a limit
+of this version. Here the Lorenz system, solved by [std/ode], as [Numerical methods](numerical.md) shows:
+
+```cesia allow=read,write
+use std/ode
+lorenz(t, y) = [10.0 * (y[2] - y[1]), y[1] * (28.0 - y[3]) - y[2], y[1] * y[2] - 8.0 / 3.0 * y[3]]
+ys = result.Unwrap(ode.Solve(lorenz, [0.0, 50.0], [1.0, 1.0, 1.0])).At(num.Linspace(0.0, 50.0, 5000))
+plot.Save(plot.Of([plot.Line3(ys[:, 1], ys[:, 2], ys[:, 3])], x = "x", y = "y", z = "z"), "lorenz.svg") -->
+```
+
+### In Cemacs and in a page
+
+Cemacs turns a 3D graph of a cell or of `*repl*` when it is dragged, or with the arrows after `C-c e f`: each view is
+drawn by the session, by [cells.Scene] with `view`, and only the places of the points of the surface cross back; the code
+keeps its view. The page of [cells.Html] shows each graph at the view of its code, and its SVG has a `<title>` that a
+screen reader says, as `Surface, 61 × 61 points, z from −0.301 to 0.584`.
+
+### Compared with matplotlib, plotly and MATLAB
+
+| | Cesia | matplotlib `mplot3d` | plotly `go.Surface` | MATLAB, Octave `surf` |
+|---|---|---|---|---|
+| drawing | quads from far to near, an order exact for one surface, no sort | polygons sorted by one depth each, wrong at some views by its own FAQ | WebGL in the browser, a depth buffer | the graphics card's depth buffer |
+| several surfaces, a line on a surface | no: one surface, or 3D lines | yes, with the faults of its sort | yes | yes |
+| colors | the mean height of a quad, viridis; no light, no edge | a single color shaded by a light by default, or a colormap | a colorscale, and a light: ambient 0.8, diffuse 0.8 | the height, `FaceColor` flat, dark edges by default |
+| large surfaces | means of blocks past 200 by 200 quads, said under the graph | 50 points a direction by default, by slicing | all the points | all the points |
+| turning | Cemacs, by the session; the page shows the view of the code | a window | the page, with plotly.js | a window, `rotate3d` |
+
+Where they win: plotly turns its graph in the page itself, with a script, shows the value under the mouse and draws
+contours on the surface; MATLAB, Octave and plotly draw several surfaces that cross, with light and transparency, as a
+depth buffer does; all three offer perspective. Where Cesia wins: its picture is exact at every view without a graphics
+card, the same in Cemacs and in the SVG, and a large surface is smoothed by means, said under the graph, not sliced.
 
 ## From data to pixels
 
@@ -408,7 +551,7 @@ themes of Cemacs change the axes and the texts, never the colors of the data.
 
 [plot.Scene] gives what a graph is made of, so that a program other than a browser can draw it: `{Width, Height,
 Items, Dropped}`, its items in the order they are drawn, each a dictionary with a `Kind` and a `Role`; the scene of a
-frame of an animation has `Frames` and `Fps` too:
+frame of an animation has `Frames` and `Fps` too, and the scene of a 3D graph `View`, the `[az, el]` it is seen from:
 
 | Kind | Fields |
 |---|---|
@@ -417,14 +560,23 @@ frame of an animation has `Frames` and `Fps` too:
 | `"rect"` | `X`, `Y`, `W`, `H`, `Color`, `Opacity` |
 | `"marks"` | `Xs`, `Ys`, the centers, `Shape`, `Size`, `Color` |
 | `"cells"` | `Xs` and `Ys`, the edges of the columns and the rows, `Colors` row after row, missing for an empty cell |
+| `"mesh"` | the quads of a surface: `Rows` and `Columns`, their counts; `Xs` and `Ys`, the places of the `(Rows + 1) × (Columns + 1)` points, column by column, to a hundredth of a pixel; `Palette`, its colors; `Colors`, for each quad column by column, its place in `Palette` from 0, or -1 for a hole; `Order`, `[rowStep, columnStep]`, each 1 or -1 |
 | `"text"` | `X`, `Y` on the baseline, `Text`, `Size`, `Color`, `Anchor` (`"start"`, `"middle"` or `"end"`), `Angle` (0 or -90), `Width` |
 
 Coordinates are in pixels from the top left corner. The items of the data have `Clip`, the rectangle `[x, y, width,
 height]` of the plot they are cut to. A `Color` is `"#rrggbb"`, or `"ink"` and `"grid"` for the frame, the ticks and the
 texts, which a back-end paints in the colors of its theme; [plot.Svg] paints them `#222222` and `#e6e6e6` on white. The
-`Role` says what an item is: `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"` and `"ylabel"` for the labels of the
-ticks, `"factor"` for the power of ten or the offset of an axis, `"title"`, `"xtitle"`, `"ytitle"`, `"legend"` or
-`"colorbar"`.
+`Role` says what an item is: `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"`, `"ylabel"` and `"zlabel"` for the
+labels of the ticks, `"factor"` for the power of ten or the offset of an axis, `"title"`, `"xtitle"`, `"ytitle"`,
+`"ztitle"`, `"legend"`, `"colorbar"` or `"note"`, a line under the graph; in 3D, `"pane"` for the far sides of the box and
+`"axis"` for the edges that hold the labels.
+
+A back-end draws a mesh by its `Order`: the rows from the first when `rowStep` is 1, from the last when it is -1, and in
+each row the columns the same way; each quad is the path through its points $(i, j)$, $(i + 1, j)$, $(i + 1, j + 1)$ and
+$(i, j + 1)$, where point $(i, j)$ is number $(j - 1)(Rows + 1) + i$ of `Xs` and `Ys`. [plot.Svg] writes each quad as one
+path of its color in a group with `shape-rendering="crispEdges"`, so that no hairline shows between two quads; Cemacs
+splits each in two triangles of its color. At a grazing view a quad folded on itself may differ by a pixel or two
+between the two, in its own color.
 
 ## Errors
 
@@ -438,12 +590,18 @@ plot.Svg(plot.Of([plot.Line([1, 10], [0, 5], label = "rate")], yscale = "log")) 
 
 The checks: the lengths of `x` and `y`, a value that is no number, no finite value at all, a log axis with a value at 0
 or below, more than 200,000 points, a count of bins below 1 or edges that don't increase, a color, a shape, a dash, a
-scale or a range written wrong, and a size too small for the plot.
+scale or a range written wrong, and a size too small for the plot; in 3D, a surface of fewer than 2 by 2 points, an
+infinity in it, an x or a y that neither increases nor decreases, a view that is not `[az, el]` with `el` from -90 to 90,
+a 3D graph that holds more than one surface or a layer of 2D, and `z`, `zlim` or `view` on a graph of 2D:
+
+```cesia
+plot.Svg(plot.Of([plot.Surface([1, 2; 3, 4]), plot.Line3([1, 2], [1, 2], [1, 2])])) -->
+```
 
 ## Speed
 
-A program that doesn't use [std/plot] starts as fast as before: 2.8 ms for `io.Print(1)`. `use std/plot` loads its 2,300
-lines in about 8.6 ms the first time, before the cache of loaded packages holds them; once it does, a first graph, from
+A program that doesn't use [std/plot] starts as fast as before: 2.8 ms for `io.Print(1)`. `use std/plot` loads its 3,000
+lines in about 11 ms the first time, before the cache of loaded packages holds them; once it does, a first graph, from
 the start of the program to its SVG, takes 10 ms. Then [plot.Svg] takes,
 the median of 21 runs on a desktop of 8 cores:
 
@@ -464,14 +622,23 @@ and written as SVG in 0.43 s, 2.1 MB. One frame of the Lorenz curve, 5,000 point
 SVG of 300 frames, thinned to 100, takes 2.8 s. In Cemacs, a frame of it comes back from the session in about 10 ms, and
 it plays at 29 to 30 frames a second.
 
+A surface of 100 by 100 quads is checked and its quads colored once, when [plot.Surface] makes it, in 6.2 ms; then a
+scene of it at a new view takes 2.9 ms, the places of its 10,201 points and the axes, and its JSON 3.4 ms, 192
+KB; its SVG takes 38 ms, 855 KB. A surface of 1,000 by 1,000 points is made in 119 ms, the means of its blocks of
+5 by 5 included, and then draws as fast as one of 200 by 200. In Cemacs, a surface of 100 by 100 quads turns in 30 ms
+a step, from the key to the frame that shows the new view.
+
 ## Limits
 
 - SVG only, for now; PNG will come with a rasterizer chosen by measure.
 - One font is measured, Noto Sans Medium; other fonts draw a little wider or narrower.
 - The legend and the color bar sit right of the plot; bars stand upright; a graph holds one [plot.Bars].
 - A line whose x goes back and forth keeps all its points; past 200,000 markers, use [plot.Density].
-- No 3D or zoom in this version. An animation holds 300 frames at most, all in memory, and is written as SVG, not as
-  a video or a GIF.
+- No zoom in this version. An animation holds 300 frames at most, all in memory, and is written as SVG, not as a video
+  or a GIF.
+- In 3D: one surface a graph, or lines, never both; no perspective, no light, no edges, no transparency, no contours on
+  the surface, no points or log scales in 3D; 3D lines are drawn in the order of their layers; a grid or an animation
+  of 3D graphs shows them at the view of their code, and Cemacs doesn't turn them; a page shows the view of the code.
 
 ## Further reading
 
@@ -502,6 +669,17 @@ it plays at 29 to 30 frames a second.
   The animation that stays on frame 1.
 - W3C. *Web Content Accessibility Guidelines (WCAG) 2.2*, success criterion 2.2.2, Pause, Stop, Hide.
   <https://www.w3.org/TR/WCAG22/#pause-stop-hide>. The page that starts paused.
+- Martin E. Newell, Richard G. Newell, Tom L. Sancha. "A solution to the hidden surface problem". *Proceedings of the
+  ACM Annual Conference*, 443–450, 1972. <https://doi.org/10.1145/800193.569954>. The painter's algorithm.
+- Leonard McMillan. *Computing Visibility Without Depth*. Technical report TR95-047, University of North Carolina at
+  Chapel Hill, 1995. The order of a projected grid, a single sheet without perspective.
+- Peter R. Anderson. "Hidden Line Elimination in Projected Grid Surfaces". *ACM Transactions on Graphics* 1(4):274–288,
+  1982. <https://doi.org/10.1145/357311.357313>. A grid walked in order, for hidden lines.
+- MathWorks. *view*, the documentation of MATLAB's camera line of sight.
+  <https://www.mathworks.com/help/matlab/ref/view.html>. The azimuth, the elevation and the view `[-37.5, 30]`.
+- The Matplotlib development team. *mplot3d FAQ*, "My 3D plot doesn't look right at certain viewing angles", and
+  `Axes3D.plot_surface`. <https://matplotlib.org/stable/api/toolkits/mplot3d/faq.html>. The sort of matplotlib, its
+  downsampling and `axlim_clip`.
 - Microsoft and Adobe. *OpenType specification*: the tables cmap, hmtx and head.
   <https://learn.microsoft.com/typography/opentype/spec/>. How `tools/plot-font.ce` reads the widths of the font.
 

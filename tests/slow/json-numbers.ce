@@ -1,0 +1,35 @@
+(** json.Parse's numbers on many more cases than tests/lang/json.ce: 20,000 decimals of any form read as text.Number reads
+    them, and 20,000 floats read back from their JSON, to the bit. Slow by nature: tools/check.sh runs it, past the
+    change loop. *)
+use std/gen
+use std/json
+use std/result
+use std/test
+use std/text
+use std/value
+
+ok(s) = result.Unwrap(json.Parse(s))
+bad(s) = result.IsErr(json.Parse(s))
+
+defn decimalOf(c)
+  (** A number as JSON may write it: a sign, digits, maybe leading zeros, a fraction and an exponent. *)
+  whole = if c.Lead "0" else text.Join("", ["$d" for d in c.Whole]) end
+  fraction = if value.Len(c.Fraction) == 0 "" else ".$(text.Join("", ["$d" for d in c.Fraction]))" end
+  power = if c.Power "e$(c.Ten)" else "" end
+  "$(if c.Minus "-" else "" end)$whole$fraction$power"
+end
+defn readsAsText(c)
+  (** Does JSON read a number as text.Number does, or refuse it where it is past the largest float? *)
+  s = decimalOf(c)
+  want = text.Number(s)
+  if value.IsFloat(want) and want - want != 0.0
+    return bad(s) and bad("[$s]")
+  end
+  got = ok(s)
+  value.Equal(got, want) and value.IsInt(got) == value.IsInt(want) and value.Equal(ok("[$s, $s]"), [want, want])
+end
+numbers = gen.Of({Minus: gen.Bool(), Lead: gen.Bool(), Whole: gen.List(gen.Int(1, 9), min = 1, max = 22), Fraction: gen.List(gen.Int(0, 9), min = 0, max = 22),
+  Power: gen.Bool(), Ten: gen.Int(-330, 330)})
+isNumbersAsText() = test.ForAll(readsAsText, numbers, cases = 20000)
+readsBack(x) = value.Equal(ok(json.Text(x)), x) and value.Equal(ok(json.Text([x, x * 3.0])), [x, x * 3.0])   (** Does a float read back from its JSON? *)
+isFloatsReadBack() = test.ForAll(c -> readsBack(c.M * 10.0 ^ c.E), gen.Of({M: gen.Float(-1, 1), E: gen.Int(-320, 300)}), cases = 20000)

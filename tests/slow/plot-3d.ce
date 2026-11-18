@@ -1,0 +1,158 @@
+(** std/plot's 3D on many grids and views, beside tests/lang/plot.ce: the quad painted last is the nearest one at points of
+    the screen that two quads or more cover, on 1,500 random surfaces and views in fifteen tests, 60 points each; and the
+    texts of the axes of a surface stand apart and inside the graph at 72 views and 3 sizes. Slow by nature:
+    tools/check.sh runs it, past the change loop. *)
+use std/columns as col
+use std/gen
+use std/list
+use std/math
+use std/matrix
+use std/plot
+use std/random
+use std/result
+use std/test
+use std/value
+
+scene(g, w, h) = result.Unwrap(plot.Scene(g, w, h))
+
+defn box(t)
+  (** The rectangle a text covers: its width along its line, and its line's height. *)
+  h = t.Size * 1.362
+  start = if t.Anchor == "start" 0.0 else if t.Anchor == "middle" t.Width / 2 else t.Width end
+  if t.Angle == 0
+    {X: t.X - start, Y: t.Y - t.Size * 1.069, W: t.Width, H: h}
+  else
+    {X: t.X - t.Size * 1.069, Y: t.Y - t.Width + start, W: h, H: t.Width}
+  end
+end
+
+defn isLabelsApart()
+  (* At 72 views and 3 sizes, the texts of the axes of a surface stand apart, and inside the graph. *)
+  z = matrix.Zeros(5, 6)
+  for i in 1..5
+    for j in 1..6
+      z[i, j] = 1000.0 * math.Sin(i * 0.9) * math.Cos(j * 0.6)
+    end
+  end
+  g = plot.Of([plot.Surface(z, x = [0, 1, 2, 4, 5, 6] * 0.001)], title = "T", x = "the x axis", y = "the y axis", z = "z")
+  for size in [[640, 400], [400, 300], [1000, 700]]
+    for az in [k * 30.0 - 180.0 for k in 0..11]
+      for el in [-60.0, -30.0, 0.0, 30.0, 60.0, 90.0]
+        s = result.Unwrap(plot.Scene(g, size[1], size[2], view = [az, el]))
+        texts = [box(x) for x in s.Items if x.Kind == "text" and x.Role != "colorbar"]
+        for i in 1..value.Len(texts)
+          b = texts[i]
+          if b.X < -0.01 or b.Y < -0.01 or b.X + b.W > s.Width + 0.01 or b.Y + b.H > s.Height + 0.01
+            return false
+          end
+          for j in i + 1..value.Len(texts)
+            o = texts[j]
+            if b.X < o.X + o.W and o.X < b.X + b.W and b.Y < o.Y + o.H and o.Y < b.Y + b.H
+              return false
+            end
+          end
+        end
+      end
+    end
+  end
+  true
+end
+
+defn orderHolds(c)
+  (** Is the quad painted last the nearest one, at points of the screen that two quads or more cover? The surface is
+      random, its x and y uneven and increasing or decreasing; its quads are split in two triangles here, and the depth
+      and the place on the screen computed here from the view, apart from std/plot, which gives only its order. *)
+  nx = c.Nx
+  ny = c.Ny
+  xs = [0.0]
+  for k in 2..nx
+    xs = list.Append(xs[k - 1] + c.Dx[k], xs)
+  end
+  ys = [0.0]
+  for k in 2..ny
+    ys = list.Append(ys[k - 1] + c.Dy[k], ys)
+  end
+  xs = if c.Flip == 1 or c.Flip == 3 list.Reverse(xs) else xs end
+  ys = if c.Flip >= 2 list.Reverse(ys) else ys end
+  spread = [0.3, 3.0, 30.0][c.Spread]
+  z = matrix.Zeros(ny, nx)
+  for i in 1..ny
+    for j in 1..nx
+      z[i, j] = spread * c.Z[(i - 1) * 11 + j]
+    end
+  end
+  az = [c.Az, 0.0, 90.0, 180.0, 270.0, 45.0][c.Turn]
+  el = [c.El, 90.0, -90.0, 0.5, 30.0][c.Tilt]
+  order = list.FindFirst(x -> x.Kind == "mesh", scene(plot.Of([plot.Surface(z, x = xs, y = ys)], view = [az, el]), 640, 400).Items).Order
+  a = az * math.Pi / 180
+  e = el * math.Pi / 180
+  v = [math.Cos(e) * math.Sin(a), 0.0 - math.Cos(e) * math.Cos(a), math.Sin(e)]
+  e1 = [math.Cos(a), math.Sin(a), 0.0]
+  e2 = [0.0 - math.Sin(e) * math.Sin(a), math.Sin(e) * math.Cos(a), math.Cos(e)]
+  unit = (t, lo, hi, k) -> (t - (lo + hi) / 2) * k / (hi - lo)
+  point = (i, j) -> [unit(xs[j], list.Min(xs), list.Max(xs), 1.0), unit(ys[i], list.Min(ys), list.Max(ys), 1.0), unit(z[i, j], list.Min(z), list.Max(z), 0.75)]
+  (* The triangles in the order painted, each with its quad; their corners on the screen and their depths. *)
+  rows = if order[1] > 0 1..ny - 1 else [ny - k for k in 1..ny - 1] end
+  cols = if order[2] > 0 1..nx - 1 else [nx - k for k in 1..nx - 1] end
+  tris = []
+  for i in rows
+    for j in cols
+      q = (j - 1) * ny + i
+      tris = list.Append({Quad: q, P: [point(i, j), point(i, j + 1), point(i + 1, j + 1)]}, tris)
+      tris = list.Append({Quad: q, P: [point(i, j), point(i + 1, j + 1), point(i + 1, j)]}, tris)
+    end
+  end
+  dot = (p, d) -> p[1] * d[1] + p[2] * d[2] + p[3] * d[3]
+  sx = [[dot(t.P[k], e1) for t in tris] for k in 1..3]
+  sy = [[dot(t.P[k], e2) for t in tris] for k in 1..3]
+  dz = [[dot(t.P[k], v) for t in tris] for k in 1..3]
+  quads = [t.Quad for t in tris]
+  ax = sx[2] - sx[1]
+  ay = sy[2] - sy[1]
+  bx = sx[3] - sx[1]
+  by = sy[3] - sy[1]
+  den = ax * by - ay * bx
+  lox = list.Min(list.Min(sx[1]), list.Min(list.Min(sx[2]), list.Min(sx[3])))
+  hix = list.Max(list.Max(sx[1]), list.Max(list.Max(sx[2]), list.Max(sx[3])))
+  loy = list.Min(list.Min(sy[1]), list.Min(list.Min(sy[2]), list.Min(sy[3])))
+  hiy = list.Max(list.Max(sy[1]), list.Max(list.Max(sy[2]), list.Max(sy[3])))
+  for n in 1..c.Samples
+    px = lox + (hix - lox) * random.Float()
+    py = loy + (hiy - loy) * random.Float()
+    cx = px - sx[1]
+    cy = py - sy[1]
+    w1 = (cx * by - cy * bx) / den
+    w2 = (ax * cy - ay * cx) / den
+    w0 = 1.0 - w1 - w2
+    hit = col.Positions((math.Abs(den) > 1e-12) * 1 + (w0 > 1e-9) * 1 + (w1 > 1e-9) * 1 + (w2 > 1e-9) * 1 == 4)
+    if value.Len(hit) >= 2
+      depth = col.Pick(hit, w0 * dz[1] + w1 * dz[2] + w2 * dz[3])
+      sorted = list.Sort(depth)
+      near = list.IndexOf(list.Max(depth), depth)
+      (* A tie, two faces at one depth along an edge they share, has no wrong order. *)
+      if sorted[value.Len(sorted)] - sorted[value.Len(sorted) - 1] > 1e-9 and quads[hit[near]] != quads[hit[value.Len(hit)]]
+        return false
+      end
+    end
+  end
+  true
+end
+(** Random surfaces seen from random views, and from the views on the axes, the edges of the cases of the order. *)
+grids = gen.Of({Nx: gen.Int(2, 11), Ny: gen.Int(2, 11), Dx: gen.List(gen.Float(0.2, 2.0), min = 11, max = 11), Dy: gen.List(gen.Float(0.2, 2.0), min = 11, max = 11),
+  Flip: gen.Int(0, 3), Spread: gen.Int(1, 3), Z: gen.List(gen.Float(-1, 1), min = 121, max = 121), Az: gen.Float(0, 360), El: gen.Float(-89, 89),
+  Turn: gen.Int(1, 6), Tilt: gen.Int(1, 5), Samples: gen.Int(60, 60)})
+isOrderHolds() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsAgain() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsThird() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsFourth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsFifth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsSixth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsSeventh() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsEighth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsNinth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsTenth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsEleventh() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsTwelfth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsThirteenth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsFourteenth() = test.ForAll(orderHolds, grids, cases = 100)
+isOrderHoldsFifteenth() = test.ForAll(orderHolds, grids, cases = 100)

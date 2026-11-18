@@ -602,35 +602,42 @@ end
 mark = text.Char(1)
 
 defn heard(line, inbox, control)
-  (** Puts a line of the session where it goes: what a cell printed, an answer to a run, or another answer. *)
-  at = text.Find(mark, line)
+  (** Puts a line of the session where it goes: what a cell printed, an answer to a run, or another answer. The mark is
+      one byte: the answer after it is cut by bytes, as long as a scene. *)
+  at = text.ByteFind(mark, 1, line)
   if values.IsMissing(at)
     fiber.Send({Kind: "output", Text: line}, inbox)
     return missing
   end
   if at > 1
-    fiber.Send({Kind: "output", Text: text.Slice(1, at - 1, line)}, inbox)
+    fiber.Send({Kind: "output", Text: text.ByteSlice(1, at - 1, line)}, inbox)
   end
-  m = json.Parse(text.Slice(at + 1, values.Len(line), line))
+  m = json.Parse(text.ByteSlice(at + 1, text.ByteLength(line), line))
   if result.IsOk(m)
     fiber.Send(m.Value, if m.Value.Kind == "answer" inbox else control end)
   end
 end
 
 defn reading(p, inbox, control, alive)
-  (** Reads what the session writes, line by line, until its output closes. *)
-  partial = ""
+  (** Reads what the session writes, line by line, until its output closes. A line longer than a chunk, as a scene, keeps
+      its pieces until its end comes, and is joined once: each byte is read once. *)
+  partial = []
   chunk = sys.ReadOutput(p)
   while result.IsOk(chunk) and chunk.Value != ""
-    pieces = text.Split("\n", "$partial$(chunk.Value)")
-    partial = pieces[values.Len(pieces)]
-    for line in list.DropLast(1, pieces)
-      heard(line, inbox, control)
+    pieces = text.Split("\n", chunk.Value)
+    if values.Len(pieces) == 1
+      partial = list.Append(pieces[1], partial)
+    else
+      heard(text.Join("", list.Append(pieces[1], partial)), inbox, control)
+      for k in 2..values.Len(pieces) - 1
+        heard(pieces[k], inbox, control)
+      end
+      partial = [pieces[values.Len(pieces)]]
     end
     chunk = sys.ReadOutput(p)
   end
-  if partial != ""
-    heard(partial, inbox, control)
+  if text.Join("", partial) != ""
+    heard(text.Join("", partial), inbox, control)
   end
   code = sys.WaitExit(p)
   fiber.Close(alive)
@@ -678,8 +685,8 @@ defn Run(session, cell, width = 640)
       (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
       struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, 400 high) and Key, which
-      Scene draws again at another width, and for an animation of plot.Frames, Frames and Fps, and Scene its first
-      frame; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
+      Scene draws again at another width, for an animation of plot.Frames, Frames and Fps, and Scene its first frame,
+      and for a 3D graph View, [az, el], the view of its code; "text", and Text; "table", a frame, or a struct of at most 20 fields as a row
       of field and value for each, an Ok of a struct as that struct, with Columns, Rows (the first 20, as texts) and Count; or "array", with Shape and Rows (the first 10 by 10, as texts). Before it runs, the names it defines are forgotten. A
       cell whose From is 0 is code typed at a prompt, which no line of the file holds: its errors name <prompt>. An Err when
       the session has ended. *)
@@ -730,12 +737,14 @@ defn Rows(session, name, first, last)
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok({Columns: got.Columns, Rows: got.Rows, Count: got.Count}) end
 end
 
-defn Scene(session, key, width, frame = 1)
+defn Scene(session, key, width, frame = 1, view = missing)
   (** The scene of a graph that a run of the session showed, by its Key, drawn again at another width, 400 pixels high:
-      for a pane that changed its width, or for another frame of an animation, frame from 1, which plot.Scene draws
-      in the session, one at a time, so that an animation never crosses whole. The session keeps the graphs of its last
-      64 runs; an Err for an older one, or for a frame the graph doesn't have. *)
-  ask(session, {Do: "scene", Key: key, Width: width, Frame: frame})?
+      for a pane that changed its width, for another frame of an animation, frame from 1, or for a 3D graph turned to
+      view, [az, el] in degrees, as Cemacs turns it when it is dragged. plot.Scene draws it in the session, one at a time,
+      so that an animation never crosses whole and a surface crosses as the places of its points on the screen. The
+      session keeps the graphs of its last 64 runs; an Err for an older one, for a frame the graph doesn't have, or for a
+      view of a graph that is no 3D graph. *)
+  ask(session, {Do: "scene", Key: key, Width: width, Frame: frame, View: view})?
   got = answered(session)?
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok(got.Scene) end
 end
@@ -931,15 +940,15 @@ isFrame(v) = values.IsDict(v) and values.Len(v) == 2 and dict.Has("Names", v) an
 (** The height of a graph under a cell, in pixels. *)
 graphHeight = 400
 
-defn drawn(v, width, svg, frame = 1)
-  (** The scene of a struct that is a graph of std/plot, its frame of an animation, or its SVG with svg, in an Ok; an Err
-      of its message for a graph that can't be drawn; missing for a struct that is no graph. std/plot loads here, in the
-      session, the first time: a program that only reads cells never pays for it. *)
+defn drawn(v, width, svg, frame = 1, view = missing)
+  (** The scene of a struct that is a graph of std/plot, its frame of an animation or its view of a 3D graph, or its SVG
+      with svg, in an Ok; an Err of its message for a graph that can't be drawn; missing for a struct that is no graph.
+      std/plot loads here, in the session, the first time: a program that only reads cells never pays for it. *)
   f = evalCell(if svg "use std/plot\nplot.Svg" else "use std/plot\nplot.Scene" end, 0)
   if result.IsErr(f)
     return missing
   end
-  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), graphHeight, frame = frame) end
+  r = if svg f.Value(v) else f.Value(v, list.Max(100, width), graphHeight, frame = frame, view = view) end
   if result.IsErr(r) and text.Contains("needs a graph", r.Error.Message)
     return missing
   end
@@ -948,7 +957,7 @@ end
 
 defn graphShown(v, width, svg, key)
   (** What a graph shows, or missing for a struct that is no graph: its scene and its key, or its SVG with svg, and for an
-      animation its count of frames and their rate, read from the scene of its first frame. *)
+      animation its count of frames and their rate, read from the scene of its first frame, and for a 3D graph its view. *)
   scene = drawn(v, width, false)
   if values.IsMissing(scene)
     return missing
@@ -966,6 +975,9 @@ defn graphShown(v, width, svg, key)
     return {Kind: "error", Text: scene.Error.Message}
   end
   out = {Kind: "graph", Key: key, Scene: scene.Value}
+  if dict.Has("View", scene.Value)
+    return dict.Put("View", scene.Value.View, out)
+  end
   if dict.Has("Frames", scene.Value) dict.Merge(out, {Frames: scene.Value.Frames, Fps: scene.Value.Fps}) else out end
 end
 
@@ -1052,7 +1064,7 @@ defn rescened(c, graphs)
   if values.IsMissing(g)
     return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds those of its last 64 runs."}
   end
-  r = drawn(g, c.Width, false, frame = dict.GetOr("Frame", 1, c))
+  r = drawn(g, c.Width, false, frame = dict.GetOr("Frame", 1, c), view = dict.GetOr("View", missing, c))
   if result.IsErr(r) {Kind: "scene", Error: r.Error.Message} else {Kind: "scene", Scene: r.Value} end
 end
 

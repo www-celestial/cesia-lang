@@ -15,6 +15,9 @@ let[@inline] stops w =
   not (Int64.equal 0L (Int64.logor (zero_bytes (Int64.logand w 0xE0E0E0E0E0E0E0E0L))
                          (Int64.logor (zero_bytes (Int64.logxor w 0x2222222222222222L)) (zero_bytes (Int64.logxor w 0x5C5C5C5C5C5C5C5CL)))))
 
+(* The powers of ten that a double holds exactly, 10^0 to 10^22: the fast path of the numbers. *)
+let exact_tens = Array.init 23 (fun k -> float_of_string ("1e" ^ string_of_int k))
+
 let parse_text ctx s =
   let n = String.length s and i = ref 0 in
   (* A value as deep as the limit of values could not be shown, or even compared. *)
@@ -111,30 +114,82 @@ let parse_text ctx s =
     done;
     if !i = start then bad Messages.json_digits
   in
-  let number () =
+  (* A number, read into [an_int] or [a_float], without a copy of its text when it is short: an integer of at most 18
+     digits is summed digit by digit, and a decimal of at most 15 significant digits with a power of ten at most 22 away
+     is their product or quotient, one rounding of two exact doubles, the double nearest to the decimal, as Clinger
+     (1990) showed; any other goes through float_of_string, as all did before. Whether it is an integer. *)
+  let an_int = ref 0 and a_float = ref 0.0 in
+  let number_in () =
     let start = !i in
-    if peek () = '-' then incr i;
+    let neg = peek () = '-' in
+    if neg then incr i;
+    let first = !i in
     if peek () = '0' then incr i else digits ();
-    let whole = ref true in
+    let last = !i in
+    let whole = ref true and frac = ref !i and frac_end = ref !i and ten = ref 0 and ten_ok = ref true in
     if peek () = '.' then begin
       whole := false;
       incr i;
-      digits ()
+      frac := !i;
+      digits ();
+      frac_end := !i
     end;
     if peek () = 'e' || peek () = 'E' then begin
       whole := false;
       incr i;
+      let minus = peek () = '-' in
       if peek () = '+' || peek () = '-' then incr i;
-      digits ()
+      let from = !i in
+      digits ();
+      if !i - from > 5 then ten_ok := false
+      else
+        for k = from to !i - 1 do
+          ten := (!ten * 10) + Char.code s.[k] - 48
+        done;
+      if minus then ten := - !ten
     end;
-    let t = String.sub s start (!i - start) in
-    match if !whole then int_of_string_opt t else None with
-    | Some v -> Int v
-    | None ->
-      let x = float_of_string t in
-      if Float.abs x = infinity then bad Messages.json_large;
-      Float x
+    let slow () =
+      let t = String.sub s start (!i - start) in
+      match if !whole then int_of_string_opt t else None with
+      | Some v -> an_int := v; true
+      | None ->
+        let x = float_of_string t in
+        if Float.abs x = infinity then bad Messages.json_large;
+        a_float := x;
+        false
+    in
+    if !whole then begin
+      if last - first > 18 then slow ()
+      else begin
+        let v = ref 0 in
+        for k = first to last - 1 do
+          v := (!v * 10) + Char.code s.[k] - 48
+        done;
+        an_int := (if neg then - !v else !v);
+        true
+      end
+    end
+    else begin
+      let m = ref 0 and kept = ref 0 in
+      let take k =
+        let d = Char.code s.[k] - 48 in
+        if !m > 0 || d > 0 then begin
+          incr kept;
+          m := (!m * 10) + d
+        end
+      in
+      for k = first to last - 1 do take k done;
+      for k = !frac to !frac_end - 1 do take k done;
+      let e = !ten - (!frac_end - !frac) in
+      if !kept > 15 || not !ten_ok || e > 22 || e < -22 then slow ()
+      else begin
+        let x = if e >= 0 then float_of_int !m *. exact_tens.(e) else float_of_int !m /. exact_tens.(- e) in
+        a_float := (if neg then -. x else x);
+        false
+      end
+    end
   in
+  let number () = if number_in () then Int !an_int else Float !a_float in
   (* Rows of one document often have the same keys: they share them, as the maps of one literal do. *)
   let last = ref Trie.no_keys in
   let rec value depth =
@@ -156,17 +211,26 @@ let parse_text ctx s =
       incr i;
       Arrays.list [||]
     end else begin
-      let rec go acc =
-        let acc = value (depth + 1) :: acc in
+      (* The values go into the store of the list as they come: a list of numbers, as the places of a scene, is read
+         without a box for each. *)
+      let b = Arrays.builder () and site = ctx.site and count = ref 0 in
+      let rec go () =
+        spaces ();
+        (match peek () with
+         | '-' | '0' .. '9' ->
+           if depth + 1 > max_depth then bad Messages.json_deep;
+           if number_in () then Arrays.add_int ctx site b !an_int else Arrays.add_float ctx site b !a_float
+         | _ -> Arrays.add ctx site b (value (depth + 1)));
+        incr count;
         spaces ();
         match peek () with
-        | ',' -> incr i; go acc
-        | ']' -> incr i; acc
+        | ',' -> incr i; go ()
+        | ']' -> incr i
         | _ -> bad Messages.json_no_comma_array
       in
-      let items = Array.of_list (List.rev (go [])) in
-      Runtime.build ctx (Array.length items);
-      Arrays.list items
+      go ();
+      Runtime.pay ctx !count;
+      Arrays.built b
     end
   and obj depth =
     incr i;
