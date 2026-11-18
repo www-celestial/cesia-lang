@@ -287,6 +287,20 @@ let value_of ctx (a : t array) =
   | Some (Ast.Cell { m; k; _ }) when w.modules.(m).cells.(k) != Undef -> Value.ok w w.modules.(m).cells.(k)
   | _ -> Value.err w (Text name)
 
+(* setValue(name, x): a slider of std/cells moved, its number x given to the name in place, in the cell of the module that
+   holds it, so that the functions compiled with that cell read the new number: an Ok, or an Err when no module the prompt
+   sees holds a number under that name. A function's name, whose cell code may have folded, never changes here, nor a
+   value of another kind. *)
+let set_value ctx (a : t array) =
+  let w = ctx.w in
+  let name = Native.text_arg ctx "setValue" a.(0) in
+  let number = function Int _ | Float _ -> true | _ -> false in
+  match List.find_map (fun m -> Loader.in_module w m name) w.debug.scope with
+  | Some (Ast.Cell { m; k; stable = false }) when number w.modules.(m).cells.(k) && number a.(1) ->
+    w.modules.(m).cells.(k) <- a.(1);
+    Value.ok w Missing
+  | _ -> Value.err w (Text name)
+
 (* A condition of a breakpoint, at a site, with the variables there: whether it holds, or the error it gives. *)
 let test ctx s cond =
   (* The code runs above the frame of the site: the hook doesn't set it. *)
@@ -338,4 +352,5 @@ let natives =
     (* restartRandom(title): std/random starts again from the seed and a cell's title before the cell runs. *)
     "restartRandom", Native.nat ~perm:Debug "restartRandom" 1 1 (fun ctx a -> Rand.restart [ "cell"; Native.text_arg ctx "restartRandom" a.(0) ]; Missing);
     "forgetNames", Native.nat ~perm:Debug "forgetNames" 1 1 forget_names;
-    "valueOf", Native.nat ~perm:Debug ~result:true "valueOf" 1 1 value_of ]
+    "valueOf", Native.nat ~perm:Debug ~result:true "valueOf" 1 1 value_of;
+    "setValue", Native.nat ~perm:Debug ~result:true "setValue" 2 2 set_value ]
