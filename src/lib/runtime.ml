@@ -1,7 +1,10 @@
 open Types
 
 let default_period = 1_000_000
-let initial_stack = 4096
+(* The entries of a program's three stacks at its start: 256 words each, made in the young heap, where they cost a bump of
+   its pointer. 4,096 made 96 KB in the old heap at every start, and its pages, for programs that mostly never go that
+   deep; [grow] doubles them when a call needs more, as it does a fiber's. *)
+let initial_stack = 256
 
 let default_limits = { steps = max_int; memory_words = max_int; max_depth = 10_000; nesting = 600 }
 
@@ -201,11 +204,15 @@ let create_ctx ?(stack = initial_stack) ?(fiber = false) ?(id = 0) w =
     w }
 
 (* Three stacks of [cap] entries. Under 4,096 they are left to the full checkpoints: OCaml's count of the heap walks its
-   pools, and a server's fibers, which each grow their stacks at a request, paid a tenth of their time for it. *)
+   pools, and a server's fibers, which each grow their stacks at a request, paid a tenth of their time for it. From 4,096,
+   they count as a big allocation does, since the heap's count sees them only at the next cycle. *)
 let[@inline never] grow ctx need =
   let cap = max need (2 * ctx.cap) in
   if cap > base_mask then limit "memory" ctx.site;
-  if ctx.w.limits.memory_words <> max_int && cap >= 4096 then check_memory ctx (3 * cap) ctx.cap;
+  if ctx.w.limits.memory_words <> max_int && cap >= 4096 then begin
+    ctx.w.big_words <- ctx.w.big_words + (3 * cap);
+    check_memory ctx (3 * cap) ctx.cap
+  end;
   let v = Array.make cap Undef and f = Float.Array.make cap 0. and i = Array.make cap 0 in
   Array.blit ctx.v 0 v 0 ctx.cap;
   Float.Array.blit ctx.f 0 f 0 ctx.cap;

@@ -283,7 +283,7 @@ Words after `cesia` on the first line of a block change what is done with it:
 
 | Word | What it does |
 |---|---|
-| `norun` | shows the block without running it: a server, a program that waits for input. It is still checked, and norun blocks that follow one another are one program, so a name given in one is known in the next |
+| `norun` | shows the block without running it: a server, a program that waits for input. It is still checked, as `cesia check` checks, with the packages it uses, and nothing of them runs either, not even their top: so a norun block needs no permission, no server and no engine, and a block that runs writes its own uses. Norun blocks that follow one another are one program, so a name given in one is known in the next |
 | `fails` | the block must stop with an error, whose message is shown under it; one that doesn't fail stops the build |
 | `allow=read,write,net,net=own,net=:PORT,ffi=m` | runs the block with these permissions; no other is given |
 | `output=md` | what the block prints is Markdown, shown as a part of the page |
@@ -294,7 +294,13 @@ A `toml` block must be a valid `cesia.toml`, unless it is marked `norun` too: th
 
 This book is built that way, so its examples can't drift from the language: a block
 that gives another value stops the build. Each page runs as a program of the project, from `.cesia/site/`, which `cesia new`
-keeps out of git: its blocks can use the packages of `src/` and `deps/`, wherever the site is written.
+keeps out of git: its blocks can use the packages of `src/` and `deps/`, wherever the site is written. A book shows the
+project's own packages as another project uses them, `use deps/someone/shop/src/prices`, when `someone/shop` is the place
+that the `source` of `[site]` gives, `https://github.com/someone/shop/blob/main/` (a host other than `github.com` stays
+first, as in `deps/`): the site reads them from the project itself, as `use src/prices`, with no copy in `deps/`, no
+download and no script. No block is ever given the `native` permission, which runs machine code out of Cesia's reach: a
+block that calls a native of a native package stops the build, its own project's as a dependency's, and a norun block that
+uses one is checked without its engine.
 
 ```text
 docs/
@@ -348,9 +354,11 @@ disp(sqrt(2))
 Each tab of Cesia's own book runs, and must print what its cesia block shows: the value of each `-->` and what the block
 prints, in their order. `tools/check.sh` and the CI of the site run `tools/tabs.ce`, which compares the two one value at a
 time: texts exactly, `True` and `true` alike, R's marks of position such as `[1]` left out, `Ok(missing)`, what an action
-that went well gives, as nothing, and numbers to the digits the tab shows. A number Cesia shows is exact, the shortest
-text of its float; a number the tab prints stands for those it rounds, and Cesia's must be one of them, give or take
-1e-14 of its size. So R's `1.414214` and Octave's `1.4142` are `1.4142135623730951`, `0.54` is not `0.5`, and `3.0` is
+that went well gives, as nothing, and numbers to the digits the tab shows. A number Cesia shows is exact: its float
+with 15 significant digits, else 16, else 17, the first that reads back as the same float, which is also the shortest
+text of the float but for a few powers of 2 and the smallest subnormals (`4.94065645841247e-324`, where `5e-324` would
+do). A number the tab prints stands for those it rounds, and Cesia's must be one of them, give or take 1e-14 of its
+size. So R's `1.414214` and Octave's `1.4142` are `1.4142135623730951`, `0.54` is not `0.5`, and `3.0` is
 `3`. Python runs with numpy, scipy, pandas and matplotlib, R with its base packages, and the MATLAB tab in GNU Octave,
 which runs MATLAB code with no licence. Each tab runs alone, with the files of its book, so it holds its imports and its
 data; with no network, no variable of the environment but `PATH`, at most 1 GiB of memory and 30 seconds, in a folder
@@ -383,18 +391,18 @@ with its place and what to write: `docs/book/values.md:12: ≤ is no part of a f
 
 | Kind | Commands |
 |---|---|
-| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` |
-| operators | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod`, and `+ - = < > / ! , ; : .` |
+| relations | `\le` `\ge` `\ne` `\approx` `\equiv` `\sim` `\in` `\notin` `\ni` `\subset` `\subseteq` `\to` `\leftarrow` |
+| operators | `\times` `\cdot` `\pm` `\cup` `\cap` `\bmod` `\ast` `\circ`, and `+ - = < > / ! , ; : .` |
 | brackets | `( ) [ ] \|`, `\lceil` `\rceil` `\lfloor` `\rfloor`, `\{` `\}` |
 | Greek | `\alpha` to `\omega`, `\Gamma` `\Delta` `\Theta` `\Lambda` `\Xi` `\Pi` `\Sigma` `\Phi` `\Psi` `\Omega` |
 | functions | `\log` `\ln` `\exp` `\min` `\max` `\sin` `\cos`, with the thin spaces of TeX: $n \log n$ |
 | sums and products | `\sum` `\prod`, their limits with `_` and `^`, beside them in a line and above and below in a display |
 | structures | `x_i`, `2^{31}`, `f'`, `\frac{a}{b}`, `\sqrt{x}` |
-| words and names | `\text{some words}`, upright; `\mathit{vlo}`, a name of several letters in italic |
+| words and names | `\text{some words}`, upright; `\mathrm{pred}`, an upright name, of letters only, written as `\text` writes it; `\mathit{vlo}`, a name of several letters in italic |
 | others | `\dots` `\infty` `\emptyset`; the spaces `\,` `\;` `\quad` and `\ `; `1{,}000` for a comma inside a number |
 
 The font is a part of STIX Two Math 2.13 (the STIX Fonts Project, SIL Open Font License 1.1), cut to the characters a
-formula can hold, 74 KB; the site holds it beside its licence, `math-OFL.txt`.
+formula can hold, 75 KB; the site holds it beside its licence, `math-OFL.txt`.
 
 ### Notes and warnings
 

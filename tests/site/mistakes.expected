@@ -57,6 +57,9 @@ exit 1
 docs/book/first.md:75: ≤ is no part of a formula: write \le
 docs/book/first.md:75: something is missing at its end
 exit 1
+== a \mathrm with a space, which TeX would drop
+docs/book/first.md:75: \mathrm takes letters only: write words with \text
+exit 1
 == a formula whose group isn't closed
 docs/book/first.md:76: a { is never closed
 exit 1

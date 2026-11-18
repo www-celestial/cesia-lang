@@ -5,7 +5,6 @@ use std/lapack
 use std/list
 use std/math
 use std/matrix
-use std/random
 use std/result
 use std/text
 use std/value
@@ -466,11 +465,7 @@ defn Uniform(n)
       --seed N gives the same ones again. Never for secrets.
 
         value.Len(Uniform(3)) --> 3 *)
-  values = matrix.Zeros(1, n)
-  for k in 1..n
-    values[k] = random.Float()
-  end
-  values
+  uniform(n)
 end
 
 defn Normal(n)

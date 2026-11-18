@@ -118,5 +118,5 @@ color = "#0c8599"
 | Key | What it says |
 |---|---|
 | `title` | the name at the top of each page |
-| `source` | the start of a link to the code: a name's page links to its file and line |
+| `source` | the start of a link to the code: a name's page links to its file and line. Its host, owner and name are the place of the project, so the book's examples can use its packages as another project does: see Tests, A site for your project |
 | `color` | the color of the project, `#rrggbb`, from which the site makes its colors at AA contrast: see [Tests](tests.md#colors) |

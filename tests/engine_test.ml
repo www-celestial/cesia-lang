@@ -10,6 +10,27 @@ let check name ok =
     prerr_endline ("FAILED: " ^ name)
   end
 
+(* What the start of every program relies on, checked first, before the other tests allocate. The lexer's arrays of more
+   than 256 tokens are made without emptying the minor heap: their filler is never young. The sources of std/ are strings
+   that no data of the binary points to, each the same string at every call, which is how the cache knows them. *)
+let () =
+  let src = String.concat " " (List.init 2000 (fun i -> "x" ^ string_of_int i)) in
+  let before = (Gc.quick_stat ()).minor_collections in
+  let toks = Lexer.tokens ~file:"t.ce" src in
+  check "a file of 2000 tokens is read without a minor collection"
+    ((Gc.quick_stat ()).minor_collections = before && Array.length toks > 2000);
+  (match Embedded.file "list", Embedded.file "list" with
+   | Some a, Some b ->
+     check "a file of std/ is the same string at every call" (a == b && Embedded.holds a);
+     check "a copy of a file of std/ is not held" (not (Embedded.holds (Bytes.to_string (Bytes.of_string a))))
+   | _ -> check "std/list is embedded" false);
+  check "every name of std/ has its file" (List.for_all (fun n -> Embedded.file n <> None) Embedded.names);
+  check "every tool has its file" (List.for_all (fun n -> Embedded.tool n <> None) Embedded.tools);
+  check "a name not embedded has no file"
+    (Embedded.file "nope" = None && Embedded.file "" = None && Embedded.tool "list" = None && Embedded.asset "repl" = None);
+  check "the assets are embedded" (Embedded.asset "site.css" <> None && Embedded.asset "site.js" <> None);
+  check "the repl is a tool" (List.mem "repl" Embedded.tools && List.mem "list" Embedded.names)
+
 let native nname perm run =
   Native { nname; perm = Some perm; params = [||]; min_args = 0; max_args = 1; ret_ty = (fun _ -> TA); run; f1 = None; i2 = None; gives_result = false }
 

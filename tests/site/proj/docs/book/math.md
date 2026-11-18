@@ -2,6 +2,7 @@
 
 In a line: $O(n \log n)$, $2^{31} - 1$, $x_i$, $\lceil \log_T(N/B) \rceil$, $\lambda = N / W$, $\Theta(N^2)$,
 $1{,}000 / 36{,}200\ \text{s} = 27.6\ \text{ms}$, $\mathit{vlo} + 32j$, $(\text{view}, \text{delta}')$, $\sqrt{2}$.
+Closures and rules: $E^{\ast} \circ R$, $h \leftarrow b$, $\mathrm{pred}(a)$.
 
 $$
 \sum_{j \ni x} u_j \ge 1, \quad |Q| \le \prod_j |R_j|^{u_j}, \quad P(\text{a collision}) \le \frac{k(k - 1)}{2} \times 2^{-256}

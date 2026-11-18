@@ -5,9 +5,9 @@ Vous les lisez, vous y ajoutez, vous les triez, et vous calculez d'un coup sur d
 liste de valeurs rangées par position, ou une matrice.
 
 > [!NOTE]
-> The examples of arrays and matrices have tabs: the same computation in Python with numpy, in R and in MATLAB. Each tab
-> runs when the book is checked, and prints what the Cesia version shows; the MATLAB tabs run in GNU Octave. See
-> [Tabs in other languages](tests.md#tabs-in-other-languages).
+> Les exemples d'arrays et de matrices ont des onglets : le même calcul en Python avec numpy, en R et en MATLAB.
+> Chaque onglet tourne quand le livre est vérifié, et affiche ce que montre la version Cesia ; les onglets MATLAB
+> tournent dans GNU Octave. Voir [Onglets dans d'autres langages](tests.md#onglets-dans-dautres-langages).
 
 ## Listes
 

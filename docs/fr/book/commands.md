@@ -32,7 +32,7 @@ Lance un programme. Les mots après le fichier sont ses arguments, dans [sys.Arg
 | `--workers N` | sert sur N processus, de 1 à 1 024, ou un par cœur logique avec `cores`, sous un supervisor (le processus qui démarre les workers) qui redémarre un worker qui finit et les remplace tous sur HUP. Voir [Tous les cœurs](http.md#tous-les-cœurs) et [Comment Cesia fonctionne](internals.md#sur-chaque-cœur). Pas avec `--watch`, et pas sous Windows. |
 | `--debugger FILE` | lance un debugger (un programme qui exécute le vôtre et peut l'arrêter, pour montrer ses variables) écrit en Cesia à côté du programme, et lui donne de lui-même la permission `debug` : pas besoin de `--allow debug`. `--debugger debugger` est celui qui vient avec Cesia. Voir [Le prompt et le debugger](debug.md). |
 | `--repl` | ouvre un prompt (une ligne où vous tapez du code, et qui y répond) à côté du programme, dans le package de son fichier principal : une expression montre sa valeur, une fonction définie de nouveau remplace celle du programme. Sans fichier, un prompt sur un programme vide. Voir [Le prompt et le debugger](debug.md). |
-| `--cells` | ne lance rien du fichier : une session de [std/cells] dessus, que [cells.Session] démarre, lit les cellules à lancer sur son entrée et répond sur sa sortie. Les cellules tournent au niveau du fichier, comme au prompt, sans les hooks d'un debugger, et avec la permission `debug` d'elle-même. Voir [Cells](cells.md). |
+| `--cells` | ne lance rien du fichier : une session de [std/cells] dessus, que [cells.Session] démarre, lit les cells (les morceaux du notebook) à lancer sur son entrée et répond sur sa sortie. Les cells tournent au niveau du fichier, comme au prompt, sans les hooks d'un debugger, et avec la permission `debug` d'elle-même. Voir [Cells](cells.md). |
 | `--no-spec` | lance sans les versions de chaque fonction que Cesia fabrique pour les types qu'il voit : les résultats doivent être les mêmes |
 | `--no-jit` | lance sans code natif, dans l'[interpréteur](glossary.md#interpreter-and-jit) seulement |
 | `--seed N` | donne à [std/random] le seed N (le nombre dont part le générateur de nombres au hasard), un nombre entier, à la place d'un seed tiré du système : le même seed donne les mêmes nombres. [random.Seed] dit le seed d'un run. |
@@ -132,6 +132,14 @@ affiche d'abord chaque commande. Les mots après la tâche vont à son propre pr
 `cesia do seed 10 100` lance `cesia run seed.ce 10 100` pour une tâche de `file = "seed.ce"`, dont le programme les
 trouve dans `sys.Args` ; les tâches dont elle a besoin n'en reçoivent aucun, et une tâche qui ne lance pas de programme
 à elle n'en prend aucun. Chaque mot passe tel quel, jamais par un shell. Voir [cesia.toml](toml.md).
+
+Les tâches dont elle a besoin tournent l'une après l'autre, chacune comme un enfant de `cesia do` : une tâche qui finit
+avec un code autre que 0 l'arrête avec ce code, et une tâche tuée par un signal avec 1. Un signal d'arrêt, TERM ou INT,
+qui arrive pendant ce temps passe à l'enfant, et `cesia do` finit avec 1 une fois l'enfant fini, puisque les tâches
+d'après n'ont pas tourné. Sous Linux et macOS, la dernière tâche prend alors la place de `cesia do`, dans le même
+processus, comme le fait `exec` dans un shell : un superviseur comme systemd voit le programme lui-même, l'arrête avec un
+seul TERM, et reçoit son propre code de sortie, comme de `cesia run` ; tué par un signal, le shell donne 128 plus son
+numéro, 143 pour TERM. Windows n'a pas un tel `exec` : là, la dernière tâche tourne aussi comme un enfant.
 
 ## cesia new
 

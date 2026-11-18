@@ -1,0 +1,3 @@
+(* A folder of the root named as a library of Cesia, as a project keeps its tests in test/: the name test leads here, so
+   the docs still read test.ForAll in std/test. *)
+Probe() = 1  (** A probe. *)

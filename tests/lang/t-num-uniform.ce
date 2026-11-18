@@ -1,0 +1,24 @@
+(* num.Uniform draws as random.Float does, one after the other, from the same generator: for a seed, the same floats as
+   before, whatever mix of the two a program makes. *)
+use std/fiber
+use std/io
+use std/list
+use std/num
+use std/random
+use std/result
+use std/value
+
+message(f) = fiber.Wait(fiber.Spawn(f)) then result.MapErr(it.Message)
+
+io.Print(num.Uniform(3))
+io.Print(random.Float())
+io.Print(num.Uniform(0), value.Size(num.Uniform(0)))
+io.Print(num.Uniform(2.0))
+io.Print(random.Float())
+big = num.Uniform(200000)
+io.Print(list.Sum(big), big[1], big[200000], value.Size(big), list.Min(big) >= 0.0, list.Max(big) < 1.0)
+io.Print(random.Float(), random.Int(1, 6))
+for n in [-1, 2.5, "x", [2], 1e300]
+  io.Print(message(() -> num.Uniform(n)))
+end
+io.Print(list.Sum(num.Normal(1000)), num.Normal(2))

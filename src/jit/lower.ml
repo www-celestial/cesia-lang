@@ -932,6 +932,16 @@ and call_expr st e (call : call) =
        let a = args_of call 1 in
        let x = to_float st (expr st a.(0)) in
        fresh st Kfloat (fun r -> Math (List.assoc nname math, r, x))
+     | Native _ as n when n == Rand.float ->
+       ignore (args_of call 0);
+       (* The step changes the generator's state, which shows: a guard after it can't send the statement back, as the
+          interpreter would draw again. A function the unit calls draws none, so no call hides one. *)
+       if st.index <> 0 then raise No;
+       ignore (Rand.seed ());
+       let c = const st Rand.cell in
+       let r = fresh st Kfloat (fun r -> Draw (r, c)) in
+       shows st;
+       r
      | Native { nname = "Abs"; _ } ->
        let a = args_of call 1 in
        (match expr st a.(0) with
@@ -1039,7 +1049,8 @@ and call_value st e (call : call) f =
   if targets = [] then raise No;
   let k = match targets with (_, (v : version)) :: rest when List.for_all (fun (_, (w : version)) -> w.ret == v.ret) rest -> kind_of v.ret | _ -> Ir.Kval in
   let r = reg st k and join = block st in
-  let before = st.dyn.bail and clean = st.dyn.dirty and calm = st.dyn.ticked in
+  let before = st.dyn.bail and clean = st.dyn.dirty and calm = st.dyn.ticked and showed = ref false in
+  let callable = st.dyn.callable in
   List.iter
     (fun (p, (v : version)) ->
        let yes = block st and next = block st in
@@ -1048,20 +1059,25 @@ and call_value st e (call : call) f =
        st.cur <- yes;
        (* Each test runs after the ones before alone: a guard of its arguments may go back as the call's may. *)
        st.dyn.bail <- before;
+       st.dyn.callable <- callable;
        st.dyn.dirty <- clean;
        st.dyn.ticked <- calm;
        let args = Array.mapi (fun j (x, xk) -> match v.sg.(j), xk with TI, Ir.Kval -> unbox st x Only_int | TF, Ir.Kval -> unbox st x Only_float | _ -> x, xk) vals in
        note st v;
        let res = if st.inl = [] && inlinable v && not (own st v) then inline st e v args else native_call st e v (Array.map fst args) in
+       if st.dyn.bail = None then showed := true;
        emit st (Move (r, if k = Ir.Kval then box st res else fst res));
        close st (Jump join);
        st.cur <- next)
     targets;
   st.dyn.bail <- before;
+  st.dyn.callable <- callable;
   st.dyn.dirty <- clean;
   st.dyn.ticked <- true;
   close st (Bail (bail st));
   st.cur <- join;
+  (* A function that drew: nothing after the call may send the statement back. *)
+  if !showed then shows st;
   Ir.Reg r, k
 
 (* A call of a compiled version, native code to native code. When the callee's body starts with a test of its
@@ -1404,6 +1420,7 @@ and vcall st (e : expr) (call : call) : vec =
     if targets = [] then raise No;
     let out = { out = -1; shape = (0, 0, 0) } and join = block st in
     let before = st.dyn.bail and clean = st.dyn.dirty and calm = st.dyn.ticked and dead = st.dyn.dead in
+    let showed = ref false and callable = st.dyn.callable in
     List.iter
       (fun (p, (v : version)) ->
          let yes = block st and next = block st in
@@ -1411,20 +1428,24 @@ and vcall st (e : expr) (call : call) : vec =
          close st (Is_fun (f, c, yes, next));
          st.cur <- yes;
          st.dyn.bail <- before;
+         st.dyn.callable <- callable;
          st.dyn.dirty <- clean;
          st.dyn.ticked <- calm;
          st.dyn.dead <- dead;
          note st v;
          ignore (inline_args st e v args (Some out));
+         if st.dyn.bail = None then showed := true;
          close st (Jump join);
          st.cur <- next)
       targets;
     st.dyn.bail <- before;
+    st.dyn.callable <- callable;
     st.dyn.dirty <- clean;
     st.dyn.ticked <- true;
     st.dyn.dead <- dead;
     close st (Bail (bail st));
     st.cur <- join;
+    if !showed then shows st;
     made out
   | _ -> raise No
 
@@ -2284,7 +2305,7 @@ and finish ?(numbers = []) ?(sunk = []) st name ~params ~vars =
       size = ver.frame + max n_hidden (Vec.length st.dyn.consts + 1) + 2; hidden = n_hidden;
       consts = Vec.to_array st.dyn.consts; restores = Vec.to_array st.dyn.restores;
       keeps = Vec.to_array st.dyn.keeps; loose = st.dyn.loose; sites = Array.make (Vec.length st.sites) (-1);
-      pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ | Into _ -> true | _ -> false));
+      pure = not (has (function Ir.Set_elem _ | Set_at _ | Put _ | Into _ | Draw _ -> true | _ -> false));
       calls = has (function Ir.Call _ | Enter _ -> true | _ -> false); chains = Vec.to_array st.chains;
       spills = st.w.hooks;
       stride = st.mem.(0); need = st.mem.(1); numbers = Array.of_list numbers; lent = Array.of_list st.dyn.lent;

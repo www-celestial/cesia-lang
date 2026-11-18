@@ -1,7 +1,7 @@
 (** The tests of optimize.Root: closed forms, the test problems of Alefeld, Potra and Shi (1995), a property on
     polynomials with a known simple root, the bound on its calls of f, and its errors; those of Minimize and Simplex for
     each shape of x, their calls of f and their errors. Their tests on the problems of Moré, Garbow and Hillstrom are in
-    optimize-mgh.ce. *)
+    tests/slow/optimize-mgh.ce. *)
 use std/bug
 use std/fiber
 use std/gen

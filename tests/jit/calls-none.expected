@@ -1,0 +1,121 @@
+off:
+325000.0
+75000.0
+150000.5
+100000.0
+175000.0
+182500.0
+400000.0
+699999.0
+[nan, 6]
+calls-none.ce:77:19: Can't add the number 49997.25 and the text "a".
+  77 |     total = total + f()
+     |                   ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in late (calls-none.ce:77)
+  called from <anonymous> (calls-none.ce:81)
+Err("Can't add the number 49997.25 and the text \"a\".")
+calls-none.ce:89:19: The integer result of 599967 + 4611686018427387903 doesn't fit in 63 bits.
+  89 |     total = total + f()
+     |                   ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in overflow (calls-none.ce:89)
+  called from <anonymous> (calls-none.ce:93)
+Err("The integer result of 599967 + 4611686018427387903 doesn't fit in 63 bits.")
+calls-none.ce:97:39: <anonymous> needs the argument "a".
+  97 | io.Print(fiber.Wait(fiber.Spawn(() -> one())) then result.MapErr(it.Message))
+     |                                       ^
+  in <anonymous> (calls-none.ce:97)
+Err("<anonymous> needs the argument \"a\".")
+3.0
+calls-none.ce:101:39: Len takes 1 arguments, not 0.
+  101 | io.Print(fiber.Wait(fiber.Spawn(() -> n())) then result.MapErr(it.Message))
+      |                                       ^
+  in <anonymous> (calls-none.ce:101)
+Err("Len takes 1 arguments, not 0.")
+calls-none.ce:103:39: Can't call the number 3: it is not a function.
+  103 | io.Print(fiber.Wait(fiber.Spawn(() -> notf())) then result.MapErr(it.Message))
+      |                                       ^
+  in <anonymous> (calls-none.ce:103)
+Err("Can't call the number 3: it is not a function.")
+always:
+325000.0
+75000.0
+150000.5
+100000.0
+175000.0
+182500.0
+400000.0
+699999.0
+[nan, 6]
+calls-none.ce:77:19: Can't add the number 49997.25 and the text "a".
+  77 |     total = total + f()
+     |                   ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in late (calls-none.ce:77)
+  called from <anonymous> (calls-none.ce:81)
+Err("Can't add the number 49997.25 and the text \"a\".")
+calls-none.ce:89:19: The integer result of 599967 + 4611686018427387903 doesn't fit in 63 bits.
+  89 |     total = total + f()
+     |                   ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in overflow (calls-none.ce:89)
+  called from <anonymous> (calls-none.ce:93)
+Err("The integer result of 599967 + 4611686018427387903 doesn't fit in 63 bits.")
+calls-none.ce:97:39: <anonymous> needs the argument "a".
+  97 | io.Print(fiber.Wait(fiber.Spawn(() -> one())) then result.MapErr(it.Message))
+     |                                       ^
+  in <anonymous> (calls-none.ce:97)
+Err("<anonymous> needs the argument \"a\".")
+3.0
+calls-none.ce:101:39: Len takes 1 arguments, not 0.
+  101 | io.Print(fiber.Wait(fiber.Spawn(() -> n())) then result.MapErr(it.Message))
+      |                                       ^
+  in <anonymous> (calls-none.ce:101)
+Err("Len takes 1 arguments, not 0.")
+calls-none.ce:103:39: Can't call the number 3: it is not a function.
+  103 | io.Print(fiber.Wait(fiber.Spawn(() -> notf())) then result.MapErr(it.Message))
+      |                                       ^
+  in <anonymous> (calls-none.ce:103)
+Err("Can't call the number 3: it is not a function.")
+hot:
+325000.0
+75000.0
+150000.5
+100000.0
+175000.0
+182500.0
+400000.0
+699999.0
+[nan, 6]
+calls-none.ce:77:19: Can't add the number 49997.25 and the text "a".
+  77 |     total = total + f()
+     |                   ^
+  To put a value in a text, write "...$x" or value.Text(x).
+  in late (calls-none.ce:77)
+  called from <anonymous> (calls-none.ce:81)
+Err("Can't add the number 49997.25 and the text \"a\".")
+calls-none.ce:89:19: The integer result of 599967 + 4611686018427387903 doesn't fit in 63 bits.
+  89 |     total = total + f()
+     |                   ^
+  Integers have 63 bits. To go further, use a float: 1.0 * x.
+  in overflow (calls-none.ce:89)
+  called from <anonymous> (calls-none.ce:93)
+Err("The integer result of 599967 + 4611686018427387903 doesn't fit in 63 bits.")
+calls-none.ce:97:39: <anonymous> needs the argument "a".
+  97 | io.Print(fiber.Wait(fiber.Spawn(() -> one())) then result.MapErr(it.Message))
+     |                                       ^
+  in <anonymous> (calls-none.ce:97)
+Err("<anonymous> needs the argument \"a\".")
+3.0
+calls-none.ce:101:39: Len takes 1 arguments, not 0.
+  101 | io.Print(fiber.Wait(fiber.Spawn(() -> n())) then result.MapErr(it.Message))
+      |                                       ^
+  in <anonymous> (calls-none.ce:101)
+Err("Len takes 1 arguments, not 0.")
+calls-none.ce:103:39: Can't call the number 3: it is not a function.
+  103 | io.Print(fiber.Wait(fiber.Spawn(() -> notf())) then result.MapErr(it.Message))
+      |                                       ^
+  in <anonymous> (calls-none.ce:103)
+Err("Can't call the number 3: it is not a function.")
+exit 0

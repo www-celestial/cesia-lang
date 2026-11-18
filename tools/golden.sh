@@ -3,10 +3,10 @@
 # and compares stdout then stderr (2>&1), followed by an "exit N" line.
 # Optional files: name.flags, name.args, name.stdin, name.cmd (full command, replaces "cesia run").
 #   tools/golden.sh [--no-spec | --both] [--quick | --slow] FOLDER...
-# --no-spec runs the other path of the engine. --both runs each test on both, one after the other in the same job, so that
-# a test's ports never meet, but in a folder with a .one-path file, which says why, and for a .cmd that doesn't pass
-# $no_spec on. A name.slow file marks a test slow by nature (a compiler, git, every core): --quick leaves those out, for the
-# change loop, and --slow runs only them.
+# --no-spec runs the other path of the engine, for the tests that run differently there: not those of a folder with a
+# .one-path file, which says why, nor a .cmd that doesn't pass $no_spec on. --both runs each test on the first path, then on
+# the other as --no-spec does, in the same job, so that a test's ports never meet. A name.slow file marks a test slow by
+# nature (a compiler, git, every core): --quick leaves those out, for the change loop, and --slow runs only them.
 # The tests run side by side, the slowest of the last run first, so that none starts last and keeps the others waiting.
 # GOLDEN_TRACE=1 names each test as it starts: a test that hangs would otherwise leave no trace. GOLDEN_CACHE: below.
 set -u
@@ -26,7 +26,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-times="$root/_build/golden-times"
+# The times of each test, kept for each way of running them: the change loop's order is that of its own path.
+times="$root/_build/golden-times-$paths"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 # Cesia keeps the packages it loads in the folder of caches: the tests have their own, empty at the start, unless
@@ -75,11 +76,13 @@ run_path() {
   fi
 }
 
-# Does this test run differently on the other path? A .cmd does only when it passes $no_spec on to cesia.
-second() {
+# Does this test run differently on the other path? Not in a folder with a .one-path file, and a .cmd only when it passes
+# $no_spec on to cesia.
+second() {  # folder, name
   local body=""
-  [ -f "$1.cmd" ] || return 0
-  IFS= read -r -d '' body < "$1.cmd" || true
+  [ ! -f "$1/.one-path" ] || return 1
+  [ -f "$1/$2.cmd" ] || return 0
+  IFS= read -r -d '' body < "$1/$2.cmd" || true
   [[ $body == *no_spec* ]]
 }
 
@@ -92,7 +95,7 @@ run_one() {
     no-spec) run_path "$dir" "$name" "$out.b" "--no-spec" ;;
     both)
       run_path "$dir" "$name" "$out.a" ""
-      if [ ! -f "$dir/.one-path" ] && second "$dir/$name"; then run_path "$dir" "$name" "$out.b" "--no-spec"; fi
+      if second "$dir" "$name"; then run_path "$dir" "$name" "$out.b" "--no-spec"; fi
       ;;
   esac
   clock
@@ -111,6 +114,7 @@ for dir in "$@"; do
     [ -f "$dir/$name.slow" ] && slow=yes
     if [ "$pick" = quick ] && [ "$slow" = yes ]; then continue; fi
     if [ "$pick" = slow ] && [ "$slow" = no ]; then continue; fi
+    if [ "$paths" = no-spec ] && ! second "$dir" "$name"; then continue; fi
     echo "$dir $name"
   done
 done > "$tmp/names"

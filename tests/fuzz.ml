@@ -270,7 +270,42 @@ let odes st =
   p "fuzzRun(%s, idx, %d)\n" (if coin () then "fuzzF" else "fuzzG") turns;
   Buffer.contents b
 
-let shaped st = if Random.State.int st 3 = 0 then csc st else odes st
+(* Calls through a value with no argument, f(), in a loop: closures of nothing that give integers or floats, random
+   draws among them, inlined or called, more of them than a call remembers now and then, and late in the loop one that
+   gives a text, NaN or an integer past 63 bits; and a branch the JIT leaves to the interpreter (a text built) taken at
+   every turn, or rarely. Both paths draw the same numbers: each run starts from the seed. *)
+let thunks st =
+  let b = Buffer.create 2048 in
+  let p fmt = Printf.bprintf b fmt in
+  let int a z = a + Random.State.int st (z - a + 1) in
+  let coin () = Random.State.bool st in
+  let turns = int 21000 30000 and nf = int 1 6 in
+  let body k =
+    match int 0 7 with
+    | 0 -> Printf.sprintf "%d" (int (-9) 99)
+    | 1 -> Printf.sprintf "%d.%d" (int 0 9) (int 0 99)
+    | 2 -> Printf.sprintf "fuzzK * %d.5" (int 0 3)
+    | 3 -> Printf.sprintf "fuzzN + %d" k
+    | 4 -> Printf.sprintf "math.Sqrt(%d.25)" (int 0 50)
+    | 5 -> "random.Float()"
+    | 6 -> Printf.sprintf "random.Float() * %d.5 - fuzzK" (int 0 9)
+    | _ -> "fuzzLoop()"
+  in
+  p "use std/io\nuse std/math\nuse std/random\nuse std/value\n\nfuzzK = %d.%d\nfuzzN = %d\n" (int 0 9) (int 0 9) (int 0 1000);
+  p "defn fuzzLoop()\n  s = 0.0\n  for j in 1..%d\n    s = s + j * 0.5\n  end\n  s\nend\n" (int 1 4);
+  for k = 1 to nf do p "fuzzF%d() = %s\n" k (body k) done;
+  p "fuzzText() = \"t\"\nfuzzNan() = 0.0 / 0.0\nfuzzBig() = 4611686018427387903\n\n";
+  p "defn fuzzRun(ops, last, turns, every)\n  acc = %s\n  t = \"\"\n  for i in 1..turns\n" (if coin () then "0" else "0.0");
+  p "    f = if i < turns - %d ops[math.Mod(i * %d, value.Len(ops)) + 1] else last end\n" (int 0 20) (int 1 7);
+  p "    acc = %s\n" (pick st [| "acc + f()"; "acc * 0.5 + f()"; "f() - acc * 0.25"; "acc + f() * 2" |]);
+  p "    if math.Mod(i, every) == 0\n      t = \"k$i\"\n    end\n";
+  p "    if acc > %d.0\n      acc = acc / 2\n    end\n  end\n  io.Print(acc, value.Len(t))\nend\n\n" (int 100 100000);
+  let ops = String.concat ", " (List.init nf (fun k -> Printf.sprintf "fuzzF%d" (k + 1))) in
+  let last = pick st [| "fuzzF1"; "fuzzF1"; "fuzzText"; "fuzzNan"; "fuzzBig"; "() -> 1.5" |] in
+  p "fuzzRun([%s], %s, %d, %d)\n" ops last turns (pick st [| 1; 1; 2; 1000; turns + 1 |]);
+  Buffer.contents b
+
+let shaped st = match Random.State.int st 4 with 0 -> csc st | 1 -> thunks st | _ -> odes st
 
 let toml_sample = "[project]\nname = \"x\"\nnative = ['a', \"b\"]\n\n[tasks.a] # c\nrun = [\n  \"sh\",\n]\nwatch = true\n"
 let toml_bytes = "\"'[]=.,#\\\n\r\t"

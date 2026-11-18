@@ -149,6 +149,8 @@ nombre que le programme rend à celui qui l'a lancé) 0, sauf s'il en décide au
 programme s'arrête aussitôt, avec 128 plus le numéro du signal, 143 pour TERM et 130 pour INT, comme les donne un shell
 (le programme qui lit vos commandes dans le terminal). Les programmes qu'il a démarrés avec [sys.Start] ou [sys.Run]
 reçoivent aussi le premier signal, comme le dit le chapitre [Fichiers](files.md#les-programmes-qui-continuent-de-tourner).
+Lancé par `cesia do serve`, le serveur reste un seul processus : la dernière tâche prend la place de `cesia do`, comme le
+dit le chapitre Commandes, si bien que le TERM d'un superviseur lui arrive une seule fois, et que son arrêt est propre.
 
 ### Tous les cœurs
 

@@ -3,7 +3,8 @@
     units, then the sums. A worker silent 2 seconds past the deadline of its test is stopped, and the test named; one that
     ends without its counts, as after a crash, fails its unit, and the others go on.
     Arguments: the binary, the timeout of a test, the workers at once, the flags of each worker, then -- and the units,
-    then --serial and the units that run alone. *)
+    then --serial and the units that run alone, then --bytes and the size of each unit before --serial: the largest
+    start first, so that a long one doesn't start last and keep the others waiting. *)
 use std/sys
 use std/fiber
 use std/list
@@ -46,11 +47,14 @@ defn Main()
   most = text.Number(a[3])
   cut = list.IndexOf("--", a)
   late = list.IndexOf("--serial", a)
+  sizes = list.IndexOf("--bytes", a)
   flags = list.Take(cut - 4, list.Skip(3, a))
   together = list.Skip(cut, list.Take(late - 1, a))
-  units = list.Concat(together, list.Skip(late, a))
+  units = list.Concat(together, list.Skip(late, list.Take(sizes - 1, a)))
   alone = [k > value.Len(together) for k in 1..value.Len(units)]
   n = value.Len(units)
+  first = list.Order([-text.Number(b) for b in list.Skip(sizes, a)])
+  order = list.Concat(first, [k for k in value.Len(together) + 1..n])
   outs = list.Fill("", n)
   codes = list.Fill(missing, n)
   procs = list.Fill(missing, n)
@@ -65,18 +69,18 @@ defn Main()
   failed = 0
   seeded = false
   while shown <= n
-    while next <= n and busy < most and (not alone[next] or busy == 0)
-      p = sys.Start(binary, list.Concat(["test", "--worker", units[next]], flags))
+    while next <= n and busy < most and (not alone[order[next]] or busy == 0)
+      k = order[next]
+      p = sys.Start(binary, list.Concat(["test", "--worker", units[k]], flags))
       if result.IsOk(p)
-        k = next
         procs[k] = p.Value
         heard[k] = sys.Now()
         running[k] = true
         busy += 1
         fiber.Spawn(() -> reader(k, p.Value, ch))
       else
-        outs[next] = "$(units[next]): $(p.Error.Message)\n"
-        codes[next] = -1
+        outs[k] = "$(units[k]): $(p.Error.Message)\n"
+        codes[k] = -1
       end
       next += 1
     end

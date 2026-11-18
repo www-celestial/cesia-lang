@@ -1,0 +1,98 @@
+use std/fiber
+use std/io
+use std/list
+use std/math
+use std/matrix
+use std/num
+use std/random
+use std/result
+use std/value
+
+(* random.Float in machine code: the same numbers as the interpreter's, in the same order, whatever draws them, the
+   loop's code or the interpreter between two of its runs. *)
+defn sum(n)
+  s = 0.0
+  for k in 1..n
+    s += random.Float()
+  end
+  s
+end
+io.Print(sum(100000), random.Float())
+
+(* Through a value with no argument, as stats.MonteCarlo's single draws. *)
+defn gather(f, size)
+  buf = matrix.Zeros(1, size)
+  for k in 1..size
+    x = f()
+    if not value.IsNumber(x)
+      return {At: k, Value: x}
+    end
+    buf[k] = x
+  end
+  buf
+end
+b = gather(() -> random.Float(), 50000)
+io.Print(list.Sum(b), b[1], b[50000], random.Float())
+b2 = gather(() -> random.Float() * 2.0 - 1.0, 50000)
+io.Print(list.Sum(b2), b2[50000])
+
+(* A draw then something native code can't make in the same branch: the interpreter takes the statement, never a
+   second draw. *)
+defn mixed(n)
+  s = 0.0
+  t = ""
+  for k in 1..n
+    u = random.Float()
+    if u < 0.001
+      t = "at $k"
+    end
+    s += u
+  end
+  [s, t]
+end
+io.Print(mixed(100000))
+
+(* A guard that fails after a draw, in the same statement: an integer that the loop met first, then a float. *)
+defn guarded(xs, n)
+  s = 0.0
+  for k in 1..n
+    s = s + random.Float() * xs[math.Mod(k, 3) + 1]
+  end
+  s
+end
+io.Print(guarded([1, 2, 3], 30000), guarded([1.5, 2, 3], 30000))
+
+(* Draws in a condition, and in both branches. *)
+defn branches(n)
+  a = 0
+  s = 0.0
+  for k in 1..n
+    if random.Float() < 0.3
+      a += 1
+      s += random.Float()
+    else
+      s -= random.Float() * 0.5
+    end
+  end
+  [a, s]
+end
+io.Print(branches(100000))
+
+(* num.Uniform and random.Int between the loop's runs, and a fiber that draws in turn with another. *)
+defn both(n)
+  s = 0.0
+  for k in 1..n
+    s += random.Float()
+    if math.Mod(k, 10000) == 0
+      s += list.Sum(num.Uniform(3)) + random.Int(1, 6)
+    end
+  end
+  s
+end
+io.Print(both(100000))
+f1 = fiber.Spawn(() -> sum(60000))
+f2 = fiber.Spawn(() -> sum(60000))
+io.Print(fiber.Wait(f1), fiber.Wait(f2), random.Float())
+
+(* The state is 64 bits held as a float's: --seed -1 starts from all ones, a NaN as a float, kept bit for bit. *)
+io.Print(sum(20000), random.Seed())

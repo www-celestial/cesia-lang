@@ -361,7 +361,7 @@ let std name =
   | Some dir ->
     let path = Filename.concat dir (name ^ Package.suffix) in
     if Sys.file_exists path then Some (In_channel.with_open_bin path In_channel.input_all) else None
-  | None -> List.assoc_opt name Embedded.files
+  | None -> Embedded.file name
 
 let language = [ "natives"; "keywords" ]
 
@@ -531,7 +531,13 @@ let found_entry w name =
         let es = module_entries w m in
         match find short es with
         | Some e -> Some (outside w m es e), short, lazy (module_name w m), false
-        | None -> native, short, lazy ("std/" ^ m), true
+        | None ->
+          (* A folder of the project can take the name of a library, as test/ takes test: what that library defines in
+             Cesia, test.ForAll, is still its own, as DocNames lists it, and so are its natives. *)
+          let library = if String.contains m '/' then [] else module_entries w ("std/" ^ m) in
+          match find short library with
+          | Some e -> Some (outside w m library e), short, lazy ("std/" ^ m), false
+          | None -> native, short, lazy ("std/" ^ m), true
     in
     if public_name short then Option.map (fun e -> e, md, builtin) entry else None
 
@@ -578,7 +584,7 @@ let deps_modules w =
 (* The modules of Cesia itself: its libraries and the modules of the binary. *)
 let own_modules w =
   List.map (fun m -> "std/" ^ m)
-    (List.filter_map (fun (m, _) -> if List.mem m language then None else Some m) Embedded.files @ List.map fst w.native_modules)
+    (List.filter_map (fun m -> if List.mem m language then None else Some m) Embedded.names @ List.map fst w.native_modules)
 
 let modules w = List.sort_uniq String.compare (own_modules w @ project_modules w @ deps_modules w)
 

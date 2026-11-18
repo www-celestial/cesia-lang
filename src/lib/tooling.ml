@@ -136,7 +136,7 @@ let natives ~libraries =
     "DocEntry", Native.nat "cesia.DocEntry" 1 1 Docs.doc_entry;
     "Definitions", Native.nat ~result:true "cesia.Definitions" 1 1 Docs.definitions;
     "Keywords", Native.nat "cesia.Keywords" 0 0 (fun _ _ -> texts Lexer.words);
-    text "Asset" (fun _ name -> match List.assoc_opt name Embedded.assets with Some s -> Text s | None -> Missing);
+    text "Asset" (fun _ name -> match Embedded.asset name with Some s -> Text s | None -> Missing);
     "Uses", Native.nat ~result:true "cesia.Uses" 1 1 uses;
     "Reads", Native.nat ~result:true "cesia.Reads" 1 1 reads;
     "SameTree", Native.nat ~result:true "cesia.SameTree" 2 2 same_tree ]

@@ -1,0 +1,103 @@
+use std/io
+use std/fiber
+use std/math
+use std/result
+use std/value
+
+(* Calls through a value with no arguments, f(), in a native loop: each function the call reached is tested in turn and
+   called or inlined, any other goes back to the interpreter, with the same results. *)
+defn run(ops, n)
+  total = 0.0
+  for i in 1..n
+    f = ops[math.Mod(i, value.Len(ops)) + 1]
+    total = total + f()
+    if total > 1000000.0
+      total = total / 2
+    end
+  end
+  total
+end
+
+quarter() = 0.25
+three() = 3
+half() = 0.5
+defn steps()
+  (** A body with a loop: called, not inlined. *)
+  s = 0.0
+  for j in 1..3
+    s = s + j * 0.125
+  end
+  s
+end
+make(c) = () -> c * 2.0
+
+(* Two functions, a float and an integer. *)
+io.Print(run([quarter, three], 200000))
+(* A third arrives after the loop is native: it goes back to the interpreter. *)
+io.Print(run([quarter, half], 200000))
+io.Print(run([quarter, half, () -> 1.5], 200000))
+(* A function with a loop, called. *)
+io.Print(run([steps, quarter], 200000))
+(* A function of a variable outside it. *)
+io.Print(run([make(0.75), quarter], 200000))
+(* More functions than a call remembers. *)
+io.Print(run([quarter, three, half, steps, () -> 0.0625], 200000))
+
+(* A module variable the native code took as a number, changed between two runs: the code is made again. *)
+scale = 1.0
+scaled() = scale * 2.0
+io.Print(run([scaled], 200000))
+scale = 3.0
+io.Print(run([scaled], 200000))
+
+(* NaN and infinities go through as the interpreter's floats do. *)
+nan() = 0.0 / 0.0
+defn odd(n)
+  total = 0.0
+  hits = 0
+  for i in 1..n
+    x = if i < n - 5 quarter() else nan() end
+    f = if i < n - 5 quarter else nan end
+    y = f()
+    if y != y
+      hits += 1
+    end
+    total = total + x
+  end
+  [total, hits]
+end
+io.Print(odd(200000))
+
+(* A value whose kind changes late in the loop: a text, then the error of the interpreter at the same line. *)
+word() = "a"
+defn late(n)
+  total = 0.0
+  for i in 1..n
+    f = if i < n - 10 quarter else word end
+    total = total + f()
+  end
+  total
+end
+io.Print(fiber.Wait(fiber.Spawn(() -> late(200000))) then result.MapErr(it.Message))
+
+(* An integer that overflows inside the function called. *)
+big() = 4611686018427387903
+defn overflow(n)
+  total = 0
+  for i in 1..n
+    f = if i < n - 10 three else big end
+    total = total + f()
+  end
+  total
+end
+io.Print(fiber.Wait(fiber.Spawn(() -> overflow(200000))) then result.MapErr(it.Message))
+
+(* No argument given to a function that wants one, one with a default, a native: the interpreter's errors and values. *)
+one = a -> a * 2
+io.Print(fiber.Wait(fiber.Spawn(() -> one())) then result.MapErr(it.Message))
+dflt = (a = 2) -> a * 1.5
+io.Print(dflt())
+n = value.Len
+io.Print(fiber.Wait(fiber.Spawn(() -> n())) then result.MapErr(it.Message))
+notf = 3
+io.Print(fiber.Wait(fiber.Spawn(() -> notf())) then result.MapErr(it.Message))

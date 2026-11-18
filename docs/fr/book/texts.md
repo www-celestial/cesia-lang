@@ -21,6 +21,12 @@ text.Lower("SHOUT") -->
 text.Trim("   padded   ") -->
 ```
 
+Upper et Lower ne changent que de A à Z, comme le veulent les textes des protocoles : les noms des en-têtes, les hôtes,
+les jetons. Pour chercher et comparer ce qu'écrivent les gens, `text.Fold` replie la casse de toutes les écritures, à la
+façon d'Unicode : `text.Fold("ÉLODIE")` et `text.Fold("Élodie")` donnent tous deux `"élodie"`, et
+`text.Fold("ΣΊΣΥΦΟΣ")` donne `"σίσυφοσ"`. Son entrée dans la référence dit pourquoi Lower reste en ASCII : deux textes
+différents peuvent se replier en un seul.
+
 ## Couper
 
 [text.Split] coupe un texte à chaque séparateur, et donne la liste des morceaux. Deux séparateurs à la suite laissent un

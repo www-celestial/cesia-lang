@@ -186,9 +186,11 @@ let number st start_pos sp =
       | None -> error st start_pos (Messages.number_too_big text)
   end
 
-(* What fills the free places of a token array: made once, so old. Array.make with a young value, as a token just made, past
-   256 places, first empties the whole minor heap, and with it the tokens and trees of every file read before. *)
-let filler = { t = EOF; pos = Pos.make 1 1; sp = false }
+(* What fills the free places of a token array: a constant of the binary, so never young. Array.make with a young value, as
+   a token just made, past 256 places, first empties the whole minor heap, and with it the tokens and trees of every file
+   read before. Its place is Pos.make 1 1 written out: a call there, which a build without inlining across modules keeps,
+   made the token at the start, young, and the first file read emptied the minor heap. *)
+let filler = { t = EOF; pos = 4097; sp = false }
 
 let rec scan st ~in_code : token array =
   (* An array that doubles, faster than the dynamic array of the Stdlib: lexing is half of the start of a big program. *)

@@ -24,6 +24,9 @@ val code_points : string -> int
 (** The code points in the bytes of a text from a position up to another, excluded. *)
 val points_between : string -> int -> int -> int
 
+(** A size given to [name]: an integer, or a float with no fraction, from 0; else a [type] panic naming [name]. *)
+val dim : ctx -> string -> t -> int
+
 (** The text of an argument, or a [type] panic naming the function. *)
 val text_arg : ctx -> string -> t -> string
 

@@ -290,6 +290,15 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Fneg (r, x) -> pr "  dneg r%d, %s\n" r (in_reg Kfloat x)
     | Float_of (r, x) -> pr "  mov x0, %s\n  rsh x0, x0, 1\n  i2d r%d, x0\n" (operand x) r
     | Math (name, r, x) -> pr "  call pd1, %s, r%d, %s\n" name r (operand x)
+    | Draw (r, c) ->
+      (* The array's store, its floats, the cell: its bits plus the gamma, written back; then the mix of SplitMix64,
+         its 53 high bits, times 2^-53. *)
+      pr "  mov x0, i64:16(c%d)\n  mov x0, i64:0(x0)\n  mov x1, i64:0(x0)\n  add x1, x1, %Ld\n  mov i64:0(x0), x1\n" c
+        0x9E3779B97F4A7C15L;
+      pr "  ursh x2, x1, 30\n  xor x2, x2, x1\n  mul x2, x2, %Ld\n  ursh x3, x2, 27\n  xor x3, x3, x2\n  mul x3, x3, %Ld\n"
+        0xBF58476D1CE4E5B9L 0x94D049BB133111EBL;
+      pr "  ursh x4, x3, 31\n  xor x4, x4, x3\n  ursh x4, x4, 11\n  i2d r%d, x4\n  dmul r%d, r%d, %s\n" r r r
+        (float_lit 0x1p-53)
     | Len (r, a) -> pr "  mov r%d, %s\n" r (len a)
     | Dim (r, a, d) -> pr "  mov r%d, %s\n" r (dim a d)
     | Elem (r, a, i, site) when fn.kinds.(r) = Kint ->

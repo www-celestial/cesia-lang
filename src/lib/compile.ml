@@ -3177,7 +3177,7 @@ and call_dynamic c s id (call : call) target =
   let plain = Array.for_all (fun a -> a = None) names in
   let slots = Array.map (fun a -> Some a.value) args in
   let modes = passes c (fun k -> k >= 62 || not plain) (fun _ i -> i = target) slots in
-  if plain && n <= 3 && (n >= 1 || room = 1) then call_small c s id callee slots modes room
+  if plain && n <= 3 then call_small c s id callee slots modes room
   else
   let off = c.off in
   c.top <- max c.top (off + n + 2);
@@ -3202,9 +3202,8 @@ and call_dynamic c s id (call : call) target =
     end
     else dispatch_named ctx g off names s
 
-(* A dynamic call with 1 to 3 arguments: they stay in OCaml variables until the version is chosen, and only those of
-   type A go through the v stack, where each write costs a caml_modify. A call x.name() can also have none. [room] makes
-   room for the object of a method. *)
+(* A dynamic call with up to 3 arguments: they stay in OCaml variables until the version is chosen, and only those of
+   type A go through the v stack, where each write costs a caml_modify. [room] makes room for the object of a method. *)
 and call_small c s id callee slots modes room =
   let off = c.off in
   let n = Array.length slots in
@@ -3274,10 +3273,21 @@ and call_small c s id callee slots modes room =
   in
   match n with
   | 0 ->
+    let key = if no_spec then no_tag else 0 in
     fun ctx ->
       let g = callee ctx in
       ctx.site <- s;
-      slow ctx g Undef Undef Undef
+      (match g with
+       | Fun { proto; env } when proto.arity = 0 ->
+         note proto;
+         let ver =
+           match proto.last with
+           | Last l when l.ltag = key -> l.lver
+           | _ -> select_slow ctx proto 0 key key
+         in
+         let b = ctx.b in
+         finish ctx proto ver env (b + off) b s
+       | _ -> slow ctx g Undef Undef Undef)
   | 1 ->
     fun ctx ->
       let g = callee ctx in
