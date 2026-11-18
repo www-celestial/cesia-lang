@@ -2219,11 +2219,20 @@ defn ticks3(b, e)
   p0 = edgePoint(b, e, 0.0 - half)
   p1 = edgePoint(b, e, half)
   length = math.Sqrt((p1.X - p0.X) * (p1.X - p0.X) + (p1.Y - p0.Y) * (p1.Y - p0.Y))
+  (* Three labels need two gaps: each at least a digit and 6 pixels across, or a line and 2 pixels up and down, along the
+     edge. Shorter, none fits, and the search would try every set to find so. *)
+  ux = math.Abs(p1.X - p0.X) / list.Max(length, 1e-9)
+  uy = math.Abs(p1.Y - p0.Y) / list.Max(length, 1e-9)
+  gap = list.Min(if ux > 1e-9 (textWidth("0", tickSize) + 6.0) / ux else inf end, if uy > 1e-9 (tickSize * lineRatio + 2.0) / uy else inf end)
+  if length < 2.0 * gap
+    return none
+  end
   r = widened(b.R[e.Axis])
   at = v -> edgePoint(b, e, unitOf(b, e.Axis, v))
   m = list.Max(3, list.Min(12, math.Floor(length / 80.0) + 1))
   for short in [false, true]
-    best = extended(r[1], r[2], m, c -> apart(candidate(c, short = short), at, e.Out))
+    (* A set of more labels than the edge holds at the least gap is refused before its labels are written. *)
+    best = extended(r[1], r[2], m, c -> (c.K - 1) * gap <= length and apart(candidate(c, short = short), at, e.Out))
     if not value.IsMissing(best)
       return candidate(best, short = short)
     end

@@ -1,7 +1,7 @@
 (** std/plot: the SVG of each function and option, kept byte for byte in plot.snap; the rules of the ticks, the labels
     and the layout on generated data; the projection of 3D graphs and the order of the quads of a surface; and every
     error message. M4 against all the points is in tests/slow/plot-m4.ce, and the order of the quads on many more grids
-    in tests/slow/plot-order.ce. *)
+    and the labels of 3D at many more views in tests/slow/plot-3d.ce. *)
 use std/columns as col
 use std/dict
 use std/gen
@@ -242,26 +242,24 @@ end
 grids = gen.Of({Nx: gen.Int(2, 11), Ny: gen.Int(2, 11), Dx: gen.List(gen.Float(0.2, 2.0), min = 11, max = 11), Dy: gen.List(gen.Float(0.2, 2.0), min = 11, max = 11),
   Flip: gen.Int(0, 3), Spread: gen.Int(1, 3), Z: gen.List(gen.Float(-1, 1), min = 121, max = 121), Az: gen.Float(0, 360), El: gen.Float(-89, 89),
   Turn: gen.Int(1, 6), Tilt: gen.Int(1, 5), Samples: gen.Int(40, 40)})
-isOrderHolds() = test.ForAll(orderHolds, grids, cases = 40)
+isOrderHolds() = test.ForAll(orderHolds, grids, cases = 20)
 
-defn isLabelsApart()
-  (* At 72 views and 3 sizes, the texts of the axes of a surface stand apart, and inside the graph. *)
+defn labelsApart(sizes, views)
+  (** Do the texts of the axes of a surface stand apart, and inside the graph, at each size and each view? *)
   g = plot.Of([plot.Surface(wavy * 1000.0, x = [0, 1, 2, 4, 5, 6] * 0.001)], title = "T", x = "the x axis", y = "the y axis", z = "z")
-  for size in [[640, 400], [400, 300], [1000, 700]]
-    for az in [k * 30.0 - 180.0 for k in 0..11]
-      for el in [-60.0, -30.0, 0.0, 30.0, 60.0, 90.0]
-        s = result.Unwrap(plot.Scene(g, size[1], size[2], view = [az, el]))
-        texts = [box(x) for x in s.Items if x.Kind == "text" and x.Role != "colorbar"]
-        for i in 1..value.Len(texts)
-          b = texts[i]
-          if b.X < -0.01 or b.Y < -0.01 or b.X + b.W > s.Width + 0.01 or b.Y + b.H > s.Height + 0.01
+  for size in sizes
+    for v in views
+      s = result.Unwrap(plot.Scene(g, size[1], size[2], view = v))
+      texts = [box(x) for x in s.Items if x.Kind == "text" and x.Role != "colorbar"]
+      for i in 1..value.Len(texts)
+        b = texts[i]
+        if b.X < -0.01 or b.Y < -0.01 or b.X + b.W > s.Width + 0.01 or b.Y + b.H > s.Height + 0.01
+          return false
+        end
+        for j in i + 1..value.Len(texts)
+          o = texts[j]
+          if b.X < o.X + o.W and o.X < b.X + b.W and b.Y < o.Y + o.H and o.Y < b.Y + b.H
             return false
-          end
-          for j in i + 1..value.Len(texts)
-            o = texts[j]
-            if b.X < o.X + o.W and o.X < b.X + b.W and b.Y < o.Y + o.H and o.Y < b.Y + b.H
-              return false
-            end
           end
         end
       end
@@ -269,6 +267,8 @@ defn isLabelsApart()
   end
   true
 end
+(* The texts of the axes at 12 views, at one size; tests/slow/plot-3d.ce tries 72 views at 3 sizes. *)
+isLabelsApart() = labelsApart([[640, 400]], [[-180, -30], [-180, 30], [-120, -30], [-120, 30], [-60, -30], [-60, 30], [0, -30], [0, 30], [60, -30], [60, 30], [120, -30], [120, 30]])
 
 isView() = value.Equal(scene(plot.Surface(wavy), 640, 400).View, [-37.5, 30.0]) and value.Equal(result.Unwrap(plot.Scene(solid([10, 20]), 640, 400, view = [-62.5, 15])).View, [-62.5, 15.0]) and not dict.Has("View", scene(plot.Line([1, 2], [1, 2]), 640, 400)) and not dict.Has("View", frameOf2(waves, 1))
 isTitle3d() = text.Contains("<title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>", svg(solid(missing))) and text.Contains("<title>3D line, 400 points, z from ", svg(plot.Line3(attractor[1], attractor[2], attractor[3]))) and not text.Contains("<title>", svg(plot.Line([1, 2], [1, 2])))
