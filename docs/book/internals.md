@@ -687,6 +687,33 @@ the interpreter, and so does a call of a function that captured variables. A fun
 than numbers, as a small array of floats or a text on an error path, is inlined when it is small, with no loop: its
 body is made in place, and what it can't make goes back to the interpreter, which makes the call.
 
+The test is on the function's *code*, not on the function: each function has the identity of its code, its own. When
+the prompt or a cell of a session defines a function again with the same code, the new one takes the identity of the old
+one's, and the machine code of a loop that called the old one through a value runs the new one at once, made again
+neither by the JIT nor by MIR. The same code means: the same name, the same text on the same lines of the same file, so
+that an error prints the same; the same tree, each name bound to the same variable or function; and nothing whose
+meaning depends on the module that defines it, which is another at each run of a cell: no named struct, no private
+field, method or key read by name, and the same packages used with no interface declared in the cell, since a method
+found through an interface is looked up from there. A function that calls another of its own cell, or itself, reads a
+name of that new module: it is made again, as the first time; so are the loops of the function itself, which belong to
+the function and not to its code. The solve cell of a Lorenz notebook, `lorenz` defined again and `ode.Solve` on
+[0, 50], takes 2.2 ms instead of 53 to 64 ms, the time to make ode's loop again with one more function at its call of
+`f`, and of 22.7 ms for good once that call had met five (medians of 21 runs, 2026-11-18). A function defined again in
+the same place, the same or changed, takes the old one's place among the four a call remembers.
+
+A loop whose machine code is dropped, as when a variable it took as a constant holds another number, makes it again, and
+after eight drops stays the interpreter's for good, so that code that keeps failing isn't made over and over. Two drops
+don't count: that of code whose runs took as many steps as making it cost, which paid for itself; and that of code which
+took a variable of a cell that the session ran again, which the session forgot and which can never hold a number again,
+as an edit of the parameter cell of that notebook makes. Each such edit makes ode's loop again, 43 ms instead of 22.7
+interpreted, and the runs after it take 2.2 ms again.
+
+None of this runs code with a wrong value: the identity of a code is a number the session gives, never a hash that two
+codes could share; the session compares the two whole trees before it gives the old one's; the numbers a code took are
+checked before each of its runs, as for any code; and the session keeps the last function of at most 1,024 names, so
+that a session defining functions for hours holds no more. A fuzzer of sessions, `tests/jit/twins-fuzz.ce`, defines
+functions again at random, the same or changed, and checks that each answer is the interpreter's.
+
 A call with no argument, as `f()` in the single draws of `stats.MonteCarlo`, is made the same way: the interpreter notes
 the functions it reaches, as it does for one to three arguments, and a function of no parameter infers its variables
 and its result, as one called with typed arguments does, so that `() -> 0.25` is known to give a float. Such a call took

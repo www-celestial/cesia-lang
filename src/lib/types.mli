@@ -107,6 +107,9 @@ and shape = {
 and check = { accept : t -> t; wrong : t -> string * string }
 
 and proto = {
+  mutable code : int;
+      (** the identity of its code: its own, unless a session defined the same code again under its name (Eval); native
+          code tests a function value by it. The first field: native code reads it there. *)
   pname : string;
   mutable file : int;
   pm : int;  (** the module *)
@@ -222,6 +225,7 @@ and debug = {
   mutable typed_uses : (string * string) list;  (** the uses written at the prompt: alias and path *)
   mutable main : string;  (** the path of the main file *)
   made : (string, t) Hashtbl.t;  (** code run in frames, made once as a function of their variables *)
+  defined : (string, proto) Hashtbl.t;  (** the last function defined at the prompt under each name, for [Eval] *)
 }
 
 and limits = { steps : int; memory_words : int; max_depth : int; nesting : int }

@@ -1,0 +1,5 @@
+{"Do": "run", "Code": "use std/io", "Line": 1, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* % Parameters *)\nk = 3.0", "Line": 3, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Loop *)\ndefn run(f, n)\n  y = [1.0, 0.0]\n  for i in 1..n\n    y = y + 0.001 * f(i * 0.001, y)\n  end\n  y[1]\nend", "Line": 6, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1] - 0.1 * y[2]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}

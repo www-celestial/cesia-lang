@@ -1,0 +1,24 @@
+{"Do": "run", "Code": "use std/io", "Line": 1, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* % Parameters *)\nk = 3.0", "Line": 3, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Loop *)\ndefn run(f, n)\n  y = [1.0, 0.0]\n  for i in 1..n\n    y = y + 0.001 * f(i * 0.001, y)\n  end\n  y[1]\nend", "Line": 6, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1] - 0.1 * y[2]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* % Parameters *)\nk = 4.0", "Line": 3, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* % Parameters *)\nk = 4", "Line": 3, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[1]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Helper *)\nh(x) = -k * x", "Line": 4, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], h(y[1])]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Helper *)\nh(x) = -0.5 * x", "Line": 4, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], h(y[1])]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], h(y[1])]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "run(spring, 100000)", "Line": 18, "Path": "twins.ce"}
+{"Do": "run", "Code": "fib(n) = if n < 2 n else fib(n - 1) + fib(n - 2) end\nfib(22)", "Line": 19, "Path": "twins.ce"}
+{"Do": "run", "Code": "fib(n) = if n < 2 n else fib(n - 1) + fib(n - 2) end\nfib(22)", "Line": 19, "Path": "twins.ce"}
+{"Do": "run", "Code": "run((t, y) -> [y[2], -k * y[1]], 100000)", "Line": 20, "Path": "twins.ce"}
+{"Do": "run", "Code": "run((t, y) -> [y[2], -k * y[1]], 100000)", "Line": 20, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[3]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}
+{"Do": "run", "Code": "(* %% Spring *)\nspring(t, y) = [y[2], -k * y[3]]\nrun(spring, 100000)", "Line": 15, "Path": "twins.ce"}

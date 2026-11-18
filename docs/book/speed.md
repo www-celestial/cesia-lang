@@ -22,7 +22,8 @@ fails.
 - In a loop, maps and structs: reading their fields, computing with them, making new ones, storing them in a list.
 - In a loop, a call of a function held in a variable, as `f(x)` where `f` came from a list, or `f()` with no
   argument: the machine code tests the functions the call met, at most four, and runs the one it finds, as
-  [How Cesia works](internals.md#calls-through-a-value) shows.
+  [How Cesia works](internals.md#calls-through-a-value) shows; a function that a cell or the prompt defines again with
+  the same code is the same to it.
 - `random.Float()`, the step of its generator made in place, the same numbers as the interpreter's in the same order.
 
 A sparse product, its matrix in columns (CSC: the rows and values of each column, one after the other, and where each

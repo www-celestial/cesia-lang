@@ -26,6 +26,8 @@ type code = {
   mutable bails : int;  (* the runs that a failed guard sent back to the interpreter *)
   mutable colds : int;  (* the runs that ended for the interpreter to make a statement left to it *)
   mutable spent : int;  (* the steps of all its runs *)
+  worth : int;  (* the steps of native code that take about as long as making it: once its runs took them, it paid *)
+  cells : (int * int * t) array;  (* the variables of modules that any function of the unit took as constants *)
 }
 
 (* What the interpreter holds of it. *)
@@ -93,11 +95,13 @@ let make (w : world) (ver : version) fns start loops =
         let known = Array.for_all (fun (f : Ir.func) -> f.stride >= 0) fns in
         let most g = if known then Array.fold_left (fun m f -> max m (g f)) 0 fns else -1 in
         let lines = String.fold_left (fun n c -> if c = '\n' then n + 1 else n) 0 text in
-        let hot_at = if !Tier.mode = Tier.always then 0 else lines * steps_per_line in
+        let worth = lines * steps_per_line in
+        let hot_at = if !Tier.mode = Tier.always then 0 else worth in
         let code =
           { addr; mir; tier = Level1 { text; entry; hot_at; steps = 0 }; fn; ret = (match ver.ret with TF -> Kfloat | _ -> Kint);
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
-            need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0 }
+            need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; worth;
+            cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns)) }
         in
         Gc.finalise release code;
         Some code
@@ -107,23 +111,25 @@ let make (w : world) (ver : version) fns start loops =
         None
     end
 
-(* Does each variable of a module that the code took as a constant still hold that number. *)
-let cells_hold (w : world) (fn : Ir.func) =
+(* Does each variable of a module that the code took as a constant still hold that number: in every function of the
+   unit, the ones it calls as the first. *)
+let cells_hold (w : world) code =
   Array.for_all
     (fun (m, k, v) ->
        match w.modules.(m).cells.(k), v with
        | Int a, Int b -> a = b
        | Float a, Float b -> Int64.equal (Int64.bits_of_float a) (Int64.bits_of_float b)
        | _ -> false)
-    fn.cells
+    code.cells
 
 let vec_fits v rows cols = match v with Array { rows = r; cols = c; store = F _; dims = [||]; _ } -> r = rows && c = cols | _ -> false
 
 (* Does the value slot of each variable kept as a number hold one of its kind, of each kept as a small array of floats
    one of its shape, and of each kept as a map's or struct's floats one of those keys or that shape, of floats. One that a
    turn assigns before it reads it may hold anything: no turn reads that. *)
-let numbers_fit (ctx : ctx) (fn : Ir.func) =
-  cells_hold ctx.w fn
+let numbers_fit (ctx : ctx) code =
+  let fn = code.fn in
+  cells_hold ctx.w code
   && Array.for_all
     (fun ((v : Ir.var), slot, flag) ->
        flag >= 0 || match ctx.v.(ctx.b + slot), v.kind with Float _, Kfloat | Int _, Kint -> true | _ -> false)
@@ -146,7 +152,7 @@ let wrote (fn : Ir.func) st = st = Ir.ok || st = Ir.fuel_out || st = Ir.bailed |
 let rec run ?(leave = false) (ctx : ctx) code entry =
   let b = ctx.b and w = ctx.w in
   if b + code.fn.size > ctx.cap then Runtime.grow ctx (b + code.fn.size);
-  if not (numbers_fit ctx code.fn) then Ir.fallback else begin
+  if not (numbers_fit ctx code) then Ir.fallback else begin
   Array.iter
     (fun ((v : Ir.var), slot, flag) ->
        if flag >= 0 then ctx.i.(b + flag) <- 0;
@@ -367,6 +373,18 @@ let promote (w : world) (ver : version) =
 (* A loop whose guesses lack a value yet, or whose code was dropped, is tried again, a few times. *)
 let max_tries = 8
 
+(* A loop's code dropped: one more try, unless that code ran as long as it took to make, as one does whose function a
+   session defined again many times over: a loop gives up for good only after codes that didn't pay for themselves. *)
+let dropped (l : Tier.loop) code =
+  if code.spent >= code.worth then l.tries <- 0;
+  l.tries <- l.tries + 1;
+  if l.tries >= max_tries then l.failed <- true
+
+(* A variable of a module that a session forgot, as it does with the names of a cell it runs again, is Undef for good:
+   code that took it as a constant can never run again, and its drop is an edit of the session, no sign that the loop's
+   code keeps failing. *)
+let forgot (w : world) code = Array.exists (fun (m, k, _) -> match w.modules.(m).cells.(k) with Undef -> true | _ -> false) code.cells
+
 let compile (ctx : ctx) (l : Tier.loop) ver =
   let w = ctx.w in
   if (not l.failed) && l.code = None then begin
@@ -389,7 +407,7 @@ let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads =
    which the interpreter does, at its step. Checked before the interpreter leaves its loops, so that native code then never
    falls back; a loop that doesn't fit stays interpreted, and is checked again at its next checkpoint. *)
 let fits (ctx : ctx) code =
-  numbers_fit ctx (native code).fn
+  numbers_fit ctx (native code)
   && Array.for_all
     (fun (slot, written, store, nd) ->
        let dims d = nd = 0 || Array.length d = (if nd = 2 then 0 else nd) in
@@ -408,10 +426,9 @@ let pick (ctx : ctx) (l : Tier.loop) ver outer =
     | (c : Tier.loop) :: rest ->
       (* Code made for numbers that a module's variables no longer hold is made again. *)
       (match c.code with
-       | Some code when not (cells_hold ctx.w (native code).fn) ->
+       | Some code when not (cells_hold ctx.w (native code)) ->
          c.code <- None;
-         c.tries <- c.tries + 1;
-         if c.tries >= max_tries then c.failed <- true
+         if not (forgot ctx.w (native code)) then dropped c (native code)
        | _ -> ());
       compile ctx c ver;
       (* A region that left [l] to the interpreter, in a statement it doesn't make, can't take it over. *)
@@ -477,8 +494,7 @@ let enter (ctx : ctx) (l : Tier.loop) code entry : Tier.ran =
     end
     else if code.bails > 16 then begin
       l.code <- None;
-      l.tries <- l.tries + 1;
-      if l.tries >= max_tries then l.failed <- true;
+      dropped l code;
       l.seen <- 0
     end;
     (* A statement in a branch of an if goes to the interpreter as -2 - its node. *)

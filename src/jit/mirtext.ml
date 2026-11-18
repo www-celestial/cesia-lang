@@ -563,11 +563,11 @@ let func b ~prefix ~nested (fn : Ir.func) =
     | Fuel_ge (v, yes, no) ->
       pr "  mov x0, %s\n  rsh x0, x0, 1\n" (operand v);
       if yes = l then pr "  blt %s, fuel, x0\n" (bl no) else pr "  bge %s, fuel, x0\n  jmp %s\n" (bl yes) (bl no)
-    | Is_fun (v, c, yes, no) ->
-      (* A block of tag 5, Fun, whose first field, its code, is the constant's. *)
+    | Is_fun (v, code, yes, no) ->
+      (* A block of tag 5, Fun, whose first field is its proto, whose first field is the identity of its code. *)
       let v = in_reg Kval v in
       pr "  and x0, %s, 1\n  bne %s, x0, 0\n  mov x1, u8:-8(%s)\n  bne %s, x1, 5\n" v (bl no) v (bl no);
-      pr "  mov x2, i64:0(%s)\n  beq %s, x2, c%d\n  jmp %s\n" v (bl yes) c (bl no)
+      pr "  mov x2, i64:0(%s)\n  mov x2, i64:0(x2)\n  beq %s, x2, %s\n  jmp %s\n" v (bl yes) (tagged code) (bl no)
     | Done ->
       spill b;
       give (if fn.result = Kfloat then Ir.Float 0. else Int 0);

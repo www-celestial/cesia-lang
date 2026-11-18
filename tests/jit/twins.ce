@@ -1,0 +1,17 @@
+use std/io
+
+(* %% Parameters *)
+k = 3.0
+
+(* %% Loop *)
+defn run(f, n)
+  y = [1.0, 0.0]
+  for i in 1..n
+    y = y + 0.001 * f(i * 0.001, y)
+  end
+  y[1]
+end
+
+(* %% Spring *)
+spring(t, y) = [y[2], -k * y[1]]
+run(spring, 100000)

@@ -28,7 +28,8 @@ sorte de JIT c'est, comment il parie sur les types et comment il rend la main à
   une fois) : lire leurs champs, calculer avec eux, en créer de nouvelles, les ranger dans une liste.
 - Dans une boucle, l'appel d'une fonction gardée dans une variable, comme `f(x)` où `f` vient d'une liste, ou `f()` sans
   argument : le code machine teste les fonctions que l'appel a rencontrées, quatre au plus, et lance celle qu'il trouve,
-  comme le montre [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur).
+  comme le montre [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) ; une fonction qu'une cell ou
+  le prompt définit de nouveau avec le même code est la même pour lui.
 - `random.Float()`, le pas de son générateur fait sur place, les mêmes nombres que ceux de l'interpréteur dans le même
   ordre.
 

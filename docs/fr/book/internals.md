@@ -782,6 +782,39 @@ variables. Une fonction qui prend ou donne d'autres valeurs que des nombres, com
 sur un chemin d'erreur, est inlinée quand elle est petite, sans boucle : son corps est fait sur place, et ce qu'il ne
 sait pas faire retourne à l'interpréteur, qui fait l'appel.
 
+Le test porte sur le *code* de la fonction, pas sur la fonction : chaque fonction a l'identité de son code, la sienne.
+Quand le prompt (la ligne où l'on tape du code à côté du programme) ou une cell d'une session (un morceau d'un notebook,
+un cahier de calcul, que fait tourner un processus Cesia à part) définit de nouveau une fonction avec le même code, la
+nouvelle prend l'identité du code de l'ancienne, et le code machine d'une boucle qui appelait l'ancienne à travers une
+valeur lance la nouvelle tout de suite, refait ni par le JIT ni par MIR. Le même code veut dire : le même nom, le même
+texte sur les mêmes lignes du même fichier, pour qu'une erreur s'affiche pareil ; le même arbre, chaque nom lié à la
+même variable ou à la même fonction ; et rien dont le sens dépend du module qui la définit, qui est un autre à chaque
+lancement d'une cell : pas de struct nommée, ni de champ, de méthode ou de clé privés lus par leur nom, et les mêmes
+packages utilisés sans interface déclarée dans la cell, puisqu'une méthode trouvée à travers une interface est cherchée
+depuis là. Une fonction qui appelle une autre fonction de sa cell, ou elle-même, lit un nom de ce nouveau module : elle
+est refaite, comme la première fois ; les boucles de la fonction elle-même aussi, qui appartiennent à la fonction et non à
+son code. La cell de résolution d'un notebook de Lorenz, `lorenz` définie de nouveau puis `ode.Solve` sur [0, 50], prend
+2,2 ms au lieu de 53 à 64 ms, le temps de refaire la boucle d'ode avec une fonction de plus à son appel de `f`, et de
+22,7 ms pour de bon une fois que cet appel en avait rencontré cinq (médianes de 21 lancements, 2026-11-18). Une fonction
+définie de nouveau au même endroit, la même ou changée, prend la place de l'ancienne parmi les quatre dont un appel se
+souvient.
+
+Une boucle dont le code machine est jeté, comme quand une variable qu'il a prise pour une constante tient un autre
+nombre, le refait, et après huit codes jetés reste à l'interpréteur pour de bon, pour qu'un code qui échoue sans cesse ne
+soit pas refait encore et encore. Deux sortes de codes jetés ne comptent pas : celui dont les lancements ont fait autant
+de pas que sa fabrication en a coûté, qui s'est remboursé ; et celui qui a pris une variable d'une cell que la session a
+relancée, que la session a oubliée et qui ne tiendra plus jamais de nombre, comme le fait une modification de la cell des
+paramètres de ce notebook. Chacune de ces modifications refait la boucle d'ode, 43 ms au lieu de 22,7 interprétée, et les
+lancements d'après reprennent 2,2 ms.
+
+Rien de cela ne fait tourner du code avec une mauvaise valeur : l'identité d'un code est un nombre que donne la session,
+jamais un hash (une empreinte calculée) que deux codes pourraient partager ; la session compare les deux arbres entiers
+avant de donner celle de l'ancien ; les nombres qu'un code a pris sont vérifiés avant chacun de ses lancements, comme pour
+tout code ; et la session garde la dernière fonction d'au plus 1 024 noms, si bien qu'une session qui définit des
+fonctions pendant des heures n'en garde pas plus. Un fuzzer de sessions (un programme qui essaie des cas au hasard),
+`tests/jit/twins-fuzz.ce`, définit de nouveau des fonctions au hasard, les mêmes ou changées, et vérifie que chaque
+réponse est celle de l'interpréteur.
+
 Un appel sans argument, comme `f()` dans les tirages un par un de `stats.MonteCarlo`, est fait de la même façon :
 l'interpréteur note les fonctions qu'il atteint, comme il le fait pour un à trois arguments, et une fonction sans
 paramètre infère ses variables et son résultat, comme le fait une fonction appelée avec des arguments typés, si bien

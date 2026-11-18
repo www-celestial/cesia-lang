@@ -117,7 +117,8 @@ type term =
   | Room of int * int * int
       (** [Room (r, yes, no)]: to [yes] if a frame at base [r] is under the limit, with no slow check, and the fuel has a
           step left, else to [no] *)
-  | Is_fun of value * int * int * int  (** to the first block if the value is a function of the constant's code, else the second *)
+  | Is_fun of value * int * int * int
+      (** [Is_fun (v, code, yes, no)]: to [yes] if [v] is a function whose code has that identity ([proto.code]), else to [no] *)
   | Bail of int  (** the run bails before that statement *)
 
 type block = { mutable ins : ins list;  (** in order *) mutable term : term }

@@ -1,0 +1,50 @@
+(* Random redefinitions in a session on twins.ce: spring defined again with the same body or another, the number k of
+   another cell given again as a Float or an Int, the helper h that spring may call defined again, the loop run again with
+   spring kept, a recursion and a closure: each answer printed, so that a run under the JIT and one with CESIA_JIT=off
+   print the same. cesia run --seed N picks the actions. *)
+use std/cells
+use std/io
+use std/random
+use std/result
+use std/value
+
+bodies = ["[y[2], -k * y[1]]", "[y[2], -k * y[1] - 0.1 * y[2]]", "[y[2], h(y[1])]", "[y[2], -k * h(y[1])]", "[y[2] * k, -y[1]]", "[y[2], -k * y[3]]"]
+helpers = ["h(x) = -k * x", "h(x) = -0.5 * x", "h(x) = x - k"]
+ks = ["3.0", "4.0", "3", "-2.5", "0.125"]
+loop = "(* %% Loop *)\ndefn run(f, n)\n  y = [1.0, 0.0]\n  for i in 1..n\n    y = y + 0.001 * f(i * 0.001, y)\n  end\n  y[1]\nend"
+
+defn shown(r)
+  (** A run's value or error, without its time. *)
+  match r
+    result.Ok(x) -> if value.IsSome(x.Error) "error $(x.Error.Text)" else value.Text(x.Value, 300) end
+    result.Err(e) -> "session: $(e.Message)"
+  end
+end
+
+defn cell(s, code, line)
+  (** Runs code as the cell at that line. *)
+  shown(cells.Run(s, {Title: "", From: line, To: line, Source: code}))
+end
+
+s = result.Unwrap(cells.Session("twins.ce"))
+_ = cell(s, "use std/io", 1)
+_ = cell(s, "(* %% Parameters *)\nk = 3.0", 3)
+_ = cell(s, "(* %% Helper *)\nh(x) = -k * x", 4)
+_ = cell(s, loop, 6)
+for i in 1..40
+  a = random.Int(1, 7)
+  if a <= 3
+    b = random.Pick(bodies)
+    io.Print("spring $b: $(cell(s, "(* %% Spring *)\nspring(t, y) = $b\nrun(spring, 40000)", 15))")
+  else if a == 4
+    v = random.Pick(ks)
+    io.Print("k = $v: $(cell(s, "(* %% Parameters *)\nk = $v", 3))")
+  else if a == 5
+    v = random.Pick(helpers)
+    io.Print("$v: $(cell(s, "(* %% Helper *)\n$v", 4))")
+  else if a == 6
+    io.Print("again: $(cell(s, "run(spring, 40000)", 18))")
+  else
+    io.Print("closure and recursion: $(cell(s, "fib(n) = if n < 2 n else fib(n - 1) + fib(n - 2) end\n[run((t, y) -> [y[2], -k * y[1]], 40000), fib(18)]", 19))")
+  end
+end

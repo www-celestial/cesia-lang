@@ -167,6 +167,14 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - `s.At` of an `ode.Solution` at an array of times walks the steps once, in native code: the 5,000 times of a Lorenz
   curve 86.6 -> 0.53 ms, in a scrambled order 66.7 -> 1.9 ms, a time alone 12.8 -> 2.7 us, the same bits; scipy's
   `sol.sol(t)` takes 48 ms.
+- A cell run again, or code at the prompt, that defines a function with the same code keeps the machine code the JIT
+  made with the one before: the solve cell of a Lorenz notebook run again 2.2 ms instead of 22.7 (53 to 64 ms while the
+  JIT made ode's loop again at each run, then interpreted for good), and solving again with `lorenz` kept 2.2 ms instead
+  of 23 once it had been run again (medians of 21 runs). A function defined again, the same or changed, no longer fills
+  the four functions a call through a value remembers; a loop whose machine code paid for itself, or took a variable of
+  a cell that the session ran again, no longer counts that drop toward giving up for good: the parameter cell of that
+  notebook run again with a new number makes ode's loop again, 43 ms, instead of 22.7 ms interpreted for good after a
+  few edits.
 
 ### Fixes
 
@@ -176,6 +184,9 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   `Origin` with its `Host` finds the same text.
 - `cesia lsp` finds a name of a package of the project, as `shop.Total`, in its open buffers before the disk, with its
   doc text for hover.
+- Machine code no longer runs on with an old number of a module variable that a function it calls read, as `k` in a
+  loop's `g(x)` after `k = 5`: the numbers each function of the code took are checked before each run, not only the
+  loop's own.
 - The full list is in the commits since v1.1.0.
 
 ## 1.1.0
