@@ -554,7 +554,7 @@ let mark w m k =
 let moves (w : world) m k =
   List.mem m w.debug.scope || ((match !moved_in with Some x -> x == w | None -> false) && Hashtbl.mem moved (m, k))
 
-(* The register of a variable that moved, loaded at the function's entry from its slot, of the kind it holds now. *)
+(* The register of a variable read from a slot, loaded at the function's entry, of the kind it holds now. *)
 let slot_of st m k kind =
   let ms = st.unit.moving in
   let rec find j = if j = Vec.length ms then Vec.push ms (m, k, kind) else let m', k', _ = Vec.get ms j in if m' = m && k' = k then j else find (j + 1) in
@@ -592,7 +592,8 @@ let rec expr st (e : expr) : Ir.value * Ir.kind =
      | _ -> raise No)
   (* A variable of a module, as eps = 2.2e-16 at the top of a file: native code never assigns one, and only the code of
      the file's top does, so its number now is a constant of the unit, which [Engine] checks before each run. One that
-     moved under native code before, as a slider's number set in place, is read from its slot at each run instead. *)
+     moved under native code before, or that a session can set in place, as a slider's number, is read from its slot at
+     each run instead. *)
   | Var { b = Cell { m; k; stable = false }; _ } when moves st.w m k ->
     (match st.w.modules.(m).cells.(k) with
      | Int _ -> slot_of st m k Kint, Kint
