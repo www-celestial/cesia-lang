@@ -48,15 +48,9 @@ e4 = 71.0 / 1920.0
 e5 = -17253.0 / 339200.0
 e6 = 22.0 / 525.0
 e7 = -1.0 / 40.0
-(* The dense output of order 4 of Shampine (1986), in the form Hairer, Nørsett and Wanner give it for DOPRI5 (I, §II.6):
-   y(t + θh) = y + θ (r2 + (1 - θ) (r3 + θ (r4 + (1 - θ) r5))), with r2 = y1 - y, r3 = h k1 - r2, r4 = r2 - h k7 - r3
-   and r5 = h (d1 k1 + d3 k3 + d4 k4 + d5 k5 + d6 k6 + d7 k7). *)
-d1 = -12715105075.0 / 11282082432.0
-d3 = 87487479700.0 / 32700410799.0
-d4 = -10690763975.0 / 1880347072.0
-d5 = 701980252875.0 / 199316789632.0
-d6 = -1453857185.0 / 822651844.0
-d7 = 69997945.0 / 29380423.0
+(* The dense output of order 4 of Shampine (1986), in the form Hairer, Nørsett and Wanner give it for DOPRI5 (I, §II.6),
+   and that of Rodas5P below, are the natives states and stateIn, of src/lib/ode.ml: At walks the steps there, without
+   an array for each time. *)
 
 (* The Rosenbrock method of stiff = true (Hairer and Wanner II, §IV.7), in the form with the stages u_i that the code
    RODAS and those of Julia use: Steinebach's (1.2) with u_i = Σ_j Γ_ij k_j. With s the signed step, J = ∂f/∂y and
@@ -514,7 +508,7 @@ defn run(f, p)
         end
       end
       if watch
-        ev = eventsIn(p, gs, [t, s, y, k1, k3, k4, k5, k6], [t7, y7, k7])
+        ev = eventsIn(p, gs, buf[used - width + 1..used], [t7, y7, k7])
         if value.IsText(ev)
           return failed(ev, p, list.Append(buf, chunks), found, counts(taken, refused, evals), [t7, y7, k7], t7)
         end
@@ -831,8 +825,7 @@ defn stiffRun(f, p)
         end
         used += width
         if watch
-          qs = [if row q[j, :] else matrix.Transpose(q[j, :]) end for j in 1..nh]
-          ev = eventsIn(p, gs, list.Concat([t, s, y], qs), [t1, y1])
+          ev = eventsIn(p, gs, buf[used - width + 1..used], [t1, y1])
           if value.IsText(ev)
             return failed(ev, p, list.Append(buf, chunks), found, counts(taken, refused, evals, jacs = jacs, lus = lus), [t1, y1, f1], t1)
           end
@@ -867,62 +860,8 @@ perChunk(width) = if 65536 > width math.Div(65536, width) else 1 end
     output for the Rosenbrock method. *)
 widthOf(stiff, n) = if stiff (1 + value.Size(rodas5p.H, 1)) * n + 2 else 6 * n + 2 end
 
-defn dense(st, tail, size, u)
-  (** The state at u, inside the step st = [t, h, y, k1, k3, k4, k5, k6] that tail = [t + h, y1, k7] ends, from
-      Shampine's dense output, in the shape of y0, size. *)
-  h = st[2]
-  y = st[3]
-  k1 = st[4]
-  k7 = tail[3]
-  th = (u - st[1]) / h
-  r2 = tail[2] - y
-  r3 = h * k1 - r2
-  r4 = r2 - h * k7 - r3
-  r5 = (h * d1) * k1 + (h * d3) * st[5] + (h * d4) * st[6] + (h * d5) * st[7] + (h * d6) * st[8] + (h * d7) * k7
-  v = y + th * (r2 + (1.0 - th) * (r3 + th * (r4 + (1.0 - th) * r5)))
-  if value.IsMissing(size) or value.Size(v, 1) == size[1] v else matrix.Reshape(size, v) end
-end
-
-defn denseStiff(st, tail, size, u)
-  (** The state at u, inside the Rosenbrock step st = [t, h, y, q1, q2, ...] that tail = [t + h, y1] ends, in the shape
-      of y0, size. *)
-  th = (u - st[1]) / st[2]
-  last = value.Len(st)
-  q = st[last]
-  for j in list.Range(last - 1, 4, step = -1)
-    q = st[j] + th * q
-  end
-  v = (1.0 - th) * st[3] + th * (tail[2] + (1.0 - th) * q)
-  if value.IsMissing(size) or value.Size(v, 1) == size[1] v else matrix.Reshape(size, v) end
-end
-
-(** The state at u inside a step, by the dense output of its method. *)
-denseAt(stiff, st, tail, size, u) = if stiff denseStiff(st, tail, size, u) else dense(st, tail, size, u) end
-
-defn startOf(s, k)
-  (** Step k of a Solution, as dense takes it: [t, h, y, k1, k3, k4, k5, k6], or [t, h, y, q1, q2, ...] for a stiff
-      one, its arrays rows. *)
-  n = value.Len(s.tail[2])
-  width = widthOf(s.stiff, n)
-  per = perChunk(width)
-  o = math.Mod(k - 1, per) * width
-  b = s.chunks[math.Div(k - 1, per) + 1]
-  list.Concat([b[o + 1], b[o + 2]], [b[o + 3 + (j - 1) * n..o + 2 + j * n] for j in 1..math.Div(width - 2, n)])
-end
-
-defn stepOf(s, k)
-  (** Step k of a Solution and the tail that ends it, [t, y1, k7], or [t, y1] for a stiff one: the start of the next
-      step, or the Solution's own. *)
-  n = value.Len(s.tail[2])
-  if k == s.count
-    if s.stiff
-      return [startOf(s, k), [s.tail[1], matrix.Reshape([1, n], s.tail[2])]]
-    end
-    return [startOf(s, k), [s.tail[1], matrix.Reshape([1, n], s.tail[2]), matrix.Reshape([1, n], s.tail[3])]]
-  end
-  next = startOf(s, k + 1)
-  [startOf(s, k), if s.stiff [next[1], next[3]] else [next[1], next[3], next[4]] end]
-end
+(** A state of 1 × n in the shape of y0, size, or as it is for a number. *)
+shaped(v, size) = if value.IsMissing(size) or size[1] == 1 v else matrix.Reshape(size, v) end
 
 defn timeOf(s, k)
   (** The time at the start of step k. *)
@@ -932,13 +871,18 @@ defn timeOf(s, k)
   s.chunks[math.Div(k - 1, per) + 1][math.Mod(k - 1, per) * width + 1]
 end
 
-defn eventsIn(p, gs, st, tail)
-  (** The events of the step st that tail ends: the sign of each g at its end against its start, and each change
-      located by optimize.Root on the dense output. {G, Found, Stop}: the values of g at the end, the events in time
-      order up to the first that stops, and whether one stops; or a text when a g gives no finite number. *)
-  t = st[1]
+defn eventsIn(p, gs, step, tail)
+  (** The events of a step, its floats as the chunks keep them, which tail ends: the sign of each g at its end against
+      its start, and each change located by optimize.Root on the dense output, which the native stateIn gives. {G,
+      Found, Stop}: the values of g at the end, the events in time order up to the first that stops, and whether one
+      stops; or a text when a g gives no finite number. The step is a copy: the chunk itself, given to a function,
+      would be shared, and copied whole at the next write of the solver. *)
+  t = step[1]
   t7 = tail[1]
   size = p.Size
+  n = p.N
+  stiff = p.Stiff
+  state = u -> shaped(stateIn(stiff, n, step, 0, tail, u), size)
   user = v -> if p.Scalar v[1] else v end
   news = []
   hits = []
@@ -956,13 +900,13 @@ defn eventsIn(p, gs, st, tail)
         te = t7
         if g1 != 0.0
           g = e.g
-          r = optimize.Root(u -> g(u, user(denseAt(p.Stiff, st, tail, size, u))), [t, t7])
-          if result.IsErr(r)
-            return "ode.Solve: event $j near t = $t7: $(r.Error.Message)"
+          root = optimize.Root(u -> g(u, user(state(u))), [t, t7])
+          if result.IsErr(root)
+            return "ode.Solve: event $j near t = $t7: $(root.Error.Message)"
           end
-          te = r.Value.X
+          te = root.Value.X
         end
-        ye = if te == t7 tail[2] else denseAt(p.Stiff, st, tail, size, te) end
+        ye = if te == t7 tail[2] else state(te) end
         hits = list.Append({Event: j, T: te, Y: user(ye), stop: e.stop}, hits)
       end
     end
@@ -1017,40 +961,32 @@ defn solution(p, chunks, found, stats, tail, till)
   Solution(tt, yy, found, stats, chunks, m, tail, till, p.Size, p.Stiff)
 end
 
-defn locate(s, u)
-  (** The step that holds u: the last whose start is not past u, by a binary search. *)
-  dir = if s.till >= timeOf(s, 1) 1.0 else -1.0 end
-  lo = 1
-  hi = s.count
-  while lo < hi
-    mid = math.Div(lo + hi + 1, 2)
-    if dir * (timeOf(s, mid) - u) <= 0.0
-      lo = mid
-    else
-      hi = mid - 1
+defn statesAt(s, ts)
+  (** The state at each time of ts, a matrix of one row of n for each, from the native states, which walks the steps
+      once for times in order, and gives the same rows in any order. A time that is no finite number, or outside the
+      solution, is a panic, the first one in the order of ts. *)
+  n = value.Len(s.tail[2])
+  width = widthOf(s.stiff, n)
+  out = states(s.stiff, n, s.chunks, s.count, width, perChunk(width), s.tail, s.till, ts)
+  if value.IsInt(out)
+    x = ts[out]
+    if not isFinite(x)
+      bug.Panic("ode: At needs times, and its argument holds $(brief(x)) at $out.")
     end
+    first = if s.count == 0 s.tail[1] else timeOf(s, 1) end
+    bug.Panic("ode: At($(1.0 * x)) is outside the solution, from $first to $(s.till).")
   end
-  lo
+  out
 end
 
-defn stateAt(s, u)
-  (** The state at u, a time of the solution, as an array. *)
-  first = if s.count == 0 s.tail[1] else timeOf(s, 1) end
-  if not ((u - first) * (u - s.till) <= 0.0)
-    bug.Panic("ode: At($u) is outside the solution, from $first to $(s.till).")
-  end
-  if s.count == 0 or u == s.tail[1]
-    return s.tail[2]
-  end
-  w = stepOf(s, locate(s, u))
-  denseAt(s.stiff, w[1], w[2], s.shape, u)
-end
+(** The state at u, a time of the solution, in the shape of y0, or as an array of one for a number. *)
+stateAt(s, u) = shaped(statesAt(s, [u]), s.shape)
 
 defn (s Solution) At(t)
   (** The state at time t, from the first time of the solution to the last; with an array of times, a matrix as Y, one
-      row for each time. Inside a step, the dense output of Shampine (1986), of order 4, or with stiff = true that of
-      Rodas5P, of order 4 too, which meet the step's own states at both of its ends. A time outside the solution is a
-      panic.
+      row for each time, in any order: times in order cost the least, as their steps are walked once. Inside a step,
+      the dense output of Shampine (1986), of order 4, or with stiff = true that of Rodas5P, of order 4 too, which meet
+      the step's own states at both of its ends. A time outside the solution is a panic.
 
         s = Solve((t, y) -> [y[2], -y[1]], [0.0, 2.0], [0.0, 1.0]).Value
         math.Near(s.At([0.5, 1.5]), [math.Sin(0.5) math.Cos(0.5); math.Sin(1.5) math.Cos(1.5)], rel = 1e-5) --> true *)
@@ -1061,17 +997,5 @@ defn (s Solution) At(t)
   if not value.IsArray(t)
     bug.Panic("ode: At needs a time or an array of times, not $(brief(t)).")
   end
-  m = value.Len(t)
-  n = value.Len(s.tail[2])
-  out = matrix.Zeros(m, n)
-  for j in 1..m
-    if not isFinite(t[j])
-      bug.Panic("ode: At needs times, and its argument holds $(brief(t[j])) at $j.")
-    end
-    v = stateAt(s, 1.0 * t[j])
-    for i in 1..n
-      out[j, i] = v[i]
-    end
-  end
-  out
+  statesAt(s, t)
 end

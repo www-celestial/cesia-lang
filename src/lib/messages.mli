@@ -384,6 +384,7 @@ val need_task : string -> string -> t
 val empty_text : string -> t
 val need_array : string -> string -> t
 val sparse_bad : string -> t
+val ode_bad : t
 val c_no_library : string -> string -> t
 val c_no_function : string -> t
 val c_type : string -> t

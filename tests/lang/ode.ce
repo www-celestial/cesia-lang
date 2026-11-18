@@ -240,6 +240,38 @@ defn isAtEnds()
   list.All([value.Equal(s.At(s.T[k]), s.Y[k, :]) for k in 1..value.Len(s.T)])
 end
 
+defn isAtWalk()
+  (** At of an array walks the steps from the step of the time before, and each row is At of its time alone, in any
+      order: back, forth, repeated, at the starts of the steps and at both ends. *)
+  s = solved(ode.Solve((t, y) -> [y[2], -y[1]], [0.0, 10.0], [0.0, 1.0]))
+  m = value.Len(s.T)
+  ts = list.Concat([10.0, 0.0, 5.0, 5.0, 2.5, 7.25, 0.125, 10.0], [s.T[m + 1 - k] for k in 1..m])
+  ts = list.Concat(ts, [0.05 * k for k in 0..200])
+  ys = s.At(ts)
+  value.Equal(value.Size(ys), [value.Len(ts), 2]) and list.All([value.Equal(ys[j, :], s.At(ts[j])) for j in 1..value.Len(ts)])
+end
+
+defn isAtTimes()
+  (** At of an array takes integers, a matrix of times, and none; the first time that is no finite number or outside
+      the solution, in their order, is the panic. *)
+  s = solved(ode.Solve((t, y) -> [y[2], -y[1]], [0.0, 1.0], [0.0, 1.0]))
+  value.Equal(s.At([0, 1]), s.At([0.0, 1.0])) and value.Equal(s.At([0, 0.5]), s.At([0.0, 0.5])) and
+    value.Equal(value.Size(s.At([])), [0, 2]) and value.Equal(s.At([0.25 0.5; 0.75 1.0]), s.At([0.25, 0.75, 0.5, 1.0])) and
+    message(() -> s.At([0.5, math.Nan])) == result.Err("ode: At needs times, and its argument holds nan at 2.") and
+    message(() -> s.At([0.5, "a"])) == result.Err("ode: At needs times, and its argument holds \"a\" at 2.") and
+    message(() -> s.At([2.0, math.Nan])) == result.Err("ode: At(2.0) is outside the solution, from 0.0 to 1.0.") and
+    message(() -> s.At([0.5, -1])) == result.Err("ode: At(-1.0) is outside the solution, from 0.0 to 1.0.") and
+    message(() -> s.At(math.Inf)) == result.Err("ode: At needs a time or an array of times, not inf.")
+end
+
+defn isAtByHand()
+  (** A Solution written by hand, whose steps don't fit together, is an error, never a read outside its arrays. *)
+  s = ode.Solution([], [], [], {}, [[1.0]], 5, [0.0, [1.0], [1.0]], 1.0, missing, false)
+  bad = result.Err("ode: this Solution holds no steps of ode.Solve: its arrays don't fit together.")
+  message(() -> s.At(0.5)) == bad and message(() -> s.At([0.5])) == bad and
+    message(() -> ode.Solution([], [], [], {}, [], 0, [0.0, "y"], 0.0, missing, false).At(0.0)) == bad
+end
+
 (* Events. *)
 defn isBall()
   (** A fall from 10 m, stopped at the ground: an exact quadratic, so the dense output is exact and the time is
