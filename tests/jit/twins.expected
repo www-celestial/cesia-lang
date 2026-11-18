@@ -1,5 +1,6 @@
 units the same after four runs again: true
 units made again for another body: true
+units made again when the cell declares an interface: true
 @{"Kind":"answer","Value":null,"Seconds":0}
 @{"Kind":"answer","Value":null,"Seconds":0}
 @{"Kind":"answer","Value":null,"Seconds":0}

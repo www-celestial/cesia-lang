@@ -161,7 +161,7 @@ let dotted code =
    that defines it is a cell of another module at each run of that cell: a function that reads one is never the same.
    Nothing whose meaning depends on the module that defines it, whose shapes and private names change at each run: no
    named struct, no private field, method or key read or written by name, no use, interface, inner named function or
-   hook. *)
+   hook, and modules that see the same interfaces. *)
 exception Differ
 
 let same_code (w : world) (a : proto) (b : proto) =
@@ -263,7 +263,12 @@ let same_code (w : world) (a : proto) (b : proto) =
     let a = at 0 1 first in
     String.sub src a (at a first (final + 1) - a)
   in
+  (* A method that a value finds through an interface is looked up from the module of the call, its uses and the
+     interfaces of its package: the two modules see the same ones when they use the same packages and declare none. *)
+  let ma = w.modules.(a.pm) and mb = w.modules.(b.pm) in
+  let declares h = Hashtbl.fold (fun (host, _) _ found -> found || host = h) w.interfaces false in
   a.arity = b.arity && String.equal a.pname b.pname
+  && ma.uses = mb.uses && (not (declares ma.host)) && not (declares mb.host)
   && (let pa, sa = Vec.get w.files a.file and pb, sb = Vec.get w.files b.file in
       String.equal pa pb
       && (match func a.func b.func with () -> true | exception Differ -> false)

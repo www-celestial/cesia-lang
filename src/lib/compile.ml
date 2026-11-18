@@ -611,7 +611,7 @@ let seen_most = 4
    call reaching each definition in turn still reaches one function. The closures of one lambda, of one tree, stay
    apart, as before. *)
 let same_place (w : world) (p : proto) (q : proto) =
-  p.func != q.func && String.equal p.pname q.pname && Int.equal p.func.fpos q.func.fpos
+  p.func != q.func && Int.equal p.func.fpos q.func.fpos && String.equal p.pname q.pname
   && String.equal (fst (Vec.get w.files p.file)) (fst (Vec.get w.files q.file))
 
 let[@inline never] saw w seen l proto =
