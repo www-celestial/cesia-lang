@@ -534,9 +534,10 @@ let numbers st a b x y =
     x, guess st b y
   | _ -> x, y
 
-(* The variables of modules that moved under native code, by module and cell, for the world [moved_in]: a number set
-   in place, which code made after reads from a slot rather than as a constant, so that it is never made again for a new
-   number. At most [most_moved]: past that the table starts again, which costs a lowering once more. *)
+(* The variables of modules that moved under native code, by module and cell, for the world [moved_in], as a number
+   that the code of a file's top gives again: code made after reads them from a slot rather than as constants, so that it
+   is never made again for a new number. At most [most_moved]: past that the table starts again, which costs a lowering
+   once more. *)
 let moved : (int * int, unit) Hashtbl.t = Hashtbl.create 8
 let moved_in : world option ref = ref None
 let most_moved = 4096
@@ -548,7 +549,10 @@ let mark w m k =
   if Hashtbl.length moved >= most_moved then Hashtbl.reset moved;
   Hashtbl.replace moved (m, k) ()
 
-let moves w m k = (match !moved_in with Some x -> x == w | None -> false) && Hashtbl.mem moved (m, k)
+(* Read from a slot: a variable that moved, or one of a module of the code run at the prompt or in the cells of a
+   session, whose numbers the session sets in place, as [cells.Set] does for a slider: those it can reach, its scope. *)
+let moves (w : world) m k =
+  List.mem m w.debug.scope || ((match !moved_in with Some x -> x == w | None -> false) && Hashtbl.mem moved (m, k))
 
 (* The register of a variable that moved, loaded at the function's entry from its slot, of the kind it holds now. *)
 let slot_of st m k kind =
