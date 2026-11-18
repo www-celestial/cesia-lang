@@ -50,6 +50,11 @@ as it did.
   file, its graphs in SVG. Each cell starts std/random again from the session's seed and its title, so a cell run again
   draws the same numbers; a struct of at most 20 fields shows as a table of its fields, an `Ok` of a struct as the
   struct.
+- Sliders in cells: `rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)`, in a cell of sliders, is a number that an editor
+  moves by writing it in the file. `cells.Analyse` gives each cell its Sliders, and the errors of a cell with a slider
+  that holds other code, or of a slider whose numbers aren't written in the file; `cells.Snap` gives a slider's position
+  nearest a number and its text, `0.3` and not `0.30000000000000004`; `cells.Set` gives a session the new number in place
+  and the cells to run again, only those that read it; `cells.Html` shows each slider on the page.
 - `c.Write(type, offset, values, block)` writes a whole array of numbers into a block in one call, each converted as
   `c.Set` converts one: the vertices of a shape or the pixels of an image.
 - `cesia.Reads(source)`: the names a source reads and doesn't define, with the compiler's own resolver.
