@@ -160,10 +160,13 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   instead of up to three `printf` and two `strtod`, in the same bytes: `json.Text` of 32,000 floats 97 -> 3.9 ms, the
   scene of a Lorenz curve 30 -> 1.4 ms, `"$x"` of a float of 17 digits 2.9 us -> 0.19 us.
 - A cell run again, or code at the prompt, that defines a function with the same code keeps the machine code the JIT
-  made with the one before: the solve cell of a Lorenz notebook {{SAME}} ms instead of 22 (53 to 64 ms while the JIT
-  made ode's loop again at each run, then interpreted for good). A function defined again, the same or changed, no
-  longer fills the four functions a call through a value remembers, and a loop whose machine code paid for itself
-  before it was dropped no longer counts toward giving up for good.
+  made with the one before: the solve cell of a Lorenz notebook run again 2.2 ms instead of 22.7 (53 to 64 ms while the
+  JIT made ode's loop again at each run, then interpreted for good), and solving again with `lorenz` kept 2.2 ms instead
+  of 23 once it had been run again (medians of 21 runs). A function defined again, the same or changed, no longer fills
+  the four functions a call through a value remembers; a loop whose machine code paid for itself, or took a variable of
+  a cell that the session ran again, no longer counts that drop toward giving up for good: the parameter cell of that
+  notebook run again with a new number makes ode's loop again, 43 ms, instead of 22.7 ms interpreted for good after a
+  few edits.
 
 ### Fixes
 

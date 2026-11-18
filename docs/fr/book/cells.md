@@ -136,9 +136,9 @@ programme, pas sous le hook du debugger (le crochet qu'il pose sur chaque pas), 
 fib(35) dans une cell prend 56,8 ms, le même fichier sous `cesia run` 56,8 ms aussi (médianes de 21 lancements). Leurs
 erreurs et les appels qui y mènent nomment le fichier et ses lignes. Une cell relancée qui définit une fonction avec le
 même code qu'avant garde le code machine que le JIT a fait avec elle : la cell de résolution d'un notebook de Lorenz,
-`lorenz` définie de nouveau et résolue de nouveau, prend {{SAME}} ms au lieu de 22, comme le dit
-[Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) ; une fonction qui a changé, ou qui appelle une autre
-fonction de sa cell, est refaite.
+`lorenz` définie de nouveau et résolue de nouveau, prend 2,2 ms au lieu de 22,7, comme le dit
+[Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) ; une fonction qui a changé, qui lit un nom d'une
+cell relancée depuis, comme `rho` une fois sa cell modifiée, ou qui appelle une autre fonction de sa cell, est refaite.
 
 Une session n'a que les permissions de son `allow`, tel que `--allow` les prend :
 `cells.Session("mean.ce", allow = ["read"])`. Le programme qui la démarre a besoin de la permission `exec` de ce
