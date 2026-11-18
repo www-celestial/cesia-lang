@@ -1,9 +1,9 @@
 (** Graphs as values: lines, points, bars, histograms, heatmaps, densities and bands. Of puts layers on shared axes,
     Grid sets graphs side by side and Frames shows them one after the other, an animation. Nothing is drawn until a
     back-end asks for it: Svg gives the SVG text of a graph, Save writes it to a file, and Scene gives its shapes in
-    pixels, which Cemacs draws. The chapter Graphs of the book shows
-    each step with the papers it follows: the ticks of Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman
-    and Diaconis, and the colors of Okabe and Ito, viridis and ColorBrewer. *)
+    pixels, which Cemacs draws. The chapter Graphs of the book shows each step with the papers it follows: the ticks of
+    Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman and Diaconis, and the colors of Okabe and Ito,
+    viridis and ColorBrewer. *)
 use std/columns as col
 use std/dict
 use std/list
@@ -183,8 +183,8 @@ defn Scene(g, width, height, frame = 1)
   (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". The scene
       is {Width, Height, Items, Dropped}: Items are drawn in order, and Dropped counts the points left out for a NaN or an
       infinity. For an animation of Frames, it is the scene of one frame, frame from 1, with two fields more: Frames, how
-      many there are, and Fps, how many a second. An item is a dictionary with a Kind: "line" (Xs, Ys, Color, Width, Dash), "area" (Xs, Ys, Color,
-      Opacity), "rect" (X, Y, W, H, Color, Opacity), "marks" (Xs, Ys, Shape, Size, Color), "cells" (Xs and Ys, the edges of
+      many there are, and Fps, how many a second. An item is a dictionary with a Kind: "line" (Xs, Ys, Color, Width,
+      Dash), "area" (Xs, Ys, Color, Opacity), "rect" (X, Y, W, H, Color, Opacity), "marks" (Xs, Ys, Shape, Size, Color), "cells" (Xs and Ys, the edges of
       the columns and the rows, and Colors, row after row, missing for an empty cell) or "text" (X, Y on the baseline,
       Text, Size, Color, Anchor "start", "middle" or "end", Angle 0 or -90, and Width, its measured width). The data's
       items have Clip, the rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink" and "grid" for
