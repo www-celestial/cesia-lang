@@ -42,8 +42,8 @@ language.
 14. [Data](data.md): comprehensions, groups, counts and ranks, tables of columns from a CSV file, random samples.
 15. [Numbers and algorithms](numbers.md): std/math, std/num and LAPACK, the classic algorithms, sets, queues and heaps,
     and what each costs.
-16. [Graphs](graphs.md): lines, points, bars, histograms, heatmaps and densities as values, drawn to SVG, and the
-    methods each step follows.
+16. [Graphs](graphs.md): lines, points, bars, histograms, heatmaps and densities as values, and animations of them,
+    drawn to SVG, and the methods each step follows.
 17. [Numerical methods](numerical.md): the zero of a function, its minimum, differential equations, integrals and
     sparse systems, as `fzero`, `fminsearch`, `ode45`, `integral` and `A \ b`, with what each method promises, beside
     scipy and Octave.

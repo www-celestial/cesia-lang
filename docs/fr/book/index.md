@@ -47,7 +47,7 @@ construction : le livre ne peut donc pas s'écarter du langage.
 15. [Nombres et algorithmes](numbers.md) : std/math, std/num et LAPACK, les algorithmes classiques, les sets, les queues
     et les heaps, et ce que chacun coûte.
 16. [Graphiques](graphs.md) : courbes, points, barres, histogrammes, cartes de chaleur et densités comme
-    valeurs, dessinés en SVG, et la méthode que suit chaque étape.
+    valeurs, et leurs animations, dessinés en SVG, et la méthode que suit chaque étape.
 17. [Méthodes numériques](numerical.md) : le zéro d'une fonction, son minimum, les équations différentielles, les
     intégrales et les systèmes sparse (dont la matrice est presque toute faite de zéros), comme `fzero`, `fminsearch`,
     `ode45`, `integral` et `A \ b`, avec ce que promet chaque méthode, à côté de scipy et d'Octave.

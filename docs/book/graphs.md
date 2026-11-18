@@ -1,8 +1,8 @@
 # Graphs
 
-In this chapter you draw data with [std/plot]: lines, points, bars, histograms, heatmaps, densities and bands. A graph is a
-value, as a number or a list is: you make it, put several on shared axes, and draw it to an SVG file, or Cemacs draws it
-on its screen. Each step from the data to the pixels follows a published method, named here with its paper, and the
+In this chapter you draw data with [std/plot]: lines, points, bars, histograms, heatmaps, densities and bands, and
+animations of them. A graph is a value, as a number or a list is: you make it, put several on shared axes, and draw it to
+an SVG file, or Cemacs draws it on its screen. Each step from the data to the pixels follows a published method, named here with its paper, and the
 tests of Cesia check what each step promises.
 
 > [!NOTE]
@@ -74,7 +74,8 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Area] `(x, low, high, label, color)` | the band between two curves |
 | [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size)` | layers on shared axes |
 | [plot.Grid] `(graphs, columns)` | graphs side by side |
-| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height)` | the drawing |
+| [plot.Frames] `(graphs, fps)` | graphs one after the other: an animation |
+| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame)` | the drawing |
 
 A color is written `"#rrggbb"`, the red, green and blue of a color in two hexadecimal digits each, as in CSS. A layer
 without a color takes the next of the palette of [Colors](#colors).
@@ -223,6 +224,95 @@ or `"log"` for a logarithmic axis in base 10, where each power of ten takes the 
 of an axis as `[low, high]`; `legend = false` to hide the legend; `size = [width, height]` in pixels, 640 by 400 by
 default, 100 by 80 at least. The options of an [plot.Of] given as a layer are left aside: those of the outer one apply.
 
+## Animations
+
+[plot.Frames] makes an *animation*: graphs shown one after the other, `fps` of them a second (*frames per second*), from
+the first to the last and then again. Here a wave moves to the right, 60 frames at 30 a second, two seconds in all:
+
+```cesia allow=read,write
+use std/text
+x = num.Linspace(0.0, 10.0, 200)
+wave = plot.Frames([plot.Of([plot.Line(x, math.Sin(x - t))], title = "t = $(text.Decimals(1, t))") for t in num.Linspace(0.0, 6.0, 60)], fps = 30)
+plot.Save(wave, "wave.svg") -->
+```
+
+The list of frames is written as a *list comprehension*, `[f(t) for t in ts]`, the short form of [list.Map]:
+
+```cesia
+use std/list
+plain = plot.Frames(list.Map(t -> plot.Of([plot.Line(x, math.Sin(x - t))], title = "t = $(text.Decimals(1, t))"), num.Linspace(0.0, 6.0, 60)), fps = 30)
+plot.Svg(plain) == plot.Svg(wave) -->
+```
+
+An animation is a graph: [plot.Svg] and [plot.Save] write it whole, and [plot.Scene] draws one of its frames, `frame`
+from 1, with two fields more in the scene, `Frames`, their number, and `Fps`:
+
+```cesia
+one = result.Unwrap(plot.Scene(wave, 640, 400, frame = 30))
+[one.Frames, one.Fps, [item.Text for item in one.Items if item.Role == "title"]] -->
+```
+
+### What a frame changes
+
+The frames share one set of axes, so that the axes never jump while it plays. [plot.Frames] checks every frame once,
+when it is made, and keeps the range of each layer over all of them: each frame is drawn on the union of these ranges,
+the colors of a heatmap too, unless `xlim` and `ylim` give the axes. A frame changes only its data and its title; its
+layers, in kind and number, their options, such as a color or a label, and the options of [plot.Of] are those of the
+first frame, or the animation is an `Err` that names the first frame that differs:
+
+```cesia
+plot.Svg(plot.Frames([plot.Line([1, 2], [1, 2]), plot.Line([1, 2], [2, 1], color = "#000000")])) -->
+```
+
+An animation holds 1 to 300 frames, 10 seconds at 30 a second, and `fps` is from 1 to 60. All the frames are in
+memory: they are values, made once, and play at their own rate whatever they cost to compute. A frame is no grid and no
+animation, and an animation goes in no [plot.Of] and no [plot.Grid].
+
+### In a web page: frames of CSS
+
+*CSS*, Cascading Style Sheets, is the language of the style of a web page, which every browser runs without a script.
+The SVG of an animation writes the axes once, and the data and the title of each frame in a group of its own. One rule
+of CSS hides every group, and an *animation of CSS*, a change of style over time, shows each in turn:
+
+```css
+.a60-200000 { visibility: hidden; animation: s60 2000ms step-end infinite; }
+@keyframes s60 { 0% { visibility: visible; } 1.6667% { visibility: hidden; } }
+```
+
+The loop lasts $N / fps$ seconds, here 60 frames at 30 a second, 2 seconds. Each group is visible during the first
+$100 / N$ percent of the loop, rounded up at the fourth decimal so that a frame always shows, and starts after a delay of
+$(k - 1) / fps$ seconds, `style="animation-delay:33.33ms"` for frame 2: frame $k$ shows from $(k - 1) / fps$ to $k / fps$
+of each loop. `step-end` makes each change a jump, not a fade. The names of the rules hold only numbers, the count of
+frames and the length of the loop, so that two animations of one page each keep their own, and no text of a graph goes
+into the CSS.
+
+An SVG alone, opened in a browser, plays at once and loops; for a reader who asked the system for less motion, the
+setting `prefers-reduced-motion`, it stays on frame 1. The page of a file of cells, [cells.Html], starts it paused on
+frame 1, under a box *Play*, a check box of the page that the mouse, or Tab then Space, checks; see
+[A page to share](cells.md#a-page-to-share). This follows WCAG 2.2, the rules of the W3C for accessible pages, whose
+criterion 2.2.2 asks that what moves for more than 5 seconds can be paused. A test checks in Chromium and in Firefox
+that frame $k$ alone shows on its interval, that a page starts on frame 1, and that the box of one animation leaves the
+others still; Safari is not checked.
+
+An SVG keeps at most 8 MB of frames, so that a page loads fast: past that, it keeps every $k$-th frame, $k$ the least
+that fits, at $fps / k$ a second so that it lasts as long, and a note under the graph says so, `100 of 300 frames kept`.
+300 frames of a wave of 500 points take 2.1 MB; 300 frames of the Lorenz curve of 5,000 points would take 20 MB, so its
+SVG keeps 100. Cemacs never thins: it asks for each frame when it shows it.
+
+### Compared with matplotlib, plotly and MATLAB
+
+| | Cesia | matplotlib `FuncAnimation` | plotly | MATLAB, Octave |
+|---|---|---|---|---|
+| frames | values, made once, at most 300 | made by a function at each frame, as many as wanted, without end for `frames=None` | a list of frames in the figure | images captured by `getframe` |
+| axes | the union of all frames, computed | those the function and the figure set | Plotly Express "will not automatically compute the union of all x/y/color ranges": they are given by hand | those of the figure at each capture |
+| playing | Cemacs, and a page with no script | a window, or `to_jshtml`, a page with a script | in the browser, with plotly.js and the buttons and slider it draws | `movie(M, n, fps)`, 12 a second by default |
+| files | SVG, 8 MB at most | movies and GIFs: `save` with FFmpeg or Pillow | HTML with its script | `VideoWriter`: Motion JPEG AVI, MPEG-4 and others |
+
+Where they win: all three write video or GIF files, which Cesia doesn't; matplotlib computes frames as they play, so an
+animation has no length and no cap; plotly moves from one frame to the next by a smooth transition, for its scatter and
+bar charts, and its page can go to any frame with a slider, with a script. Where Cesia wins: the axes are shared by
+itself, a frame that changes more than its data is an error that names it, and the page plays with no script.
+
 ## From data to pixels
 
 ### The range of an axis
@@ -317,7 +407,8 @@ themes of Cemacs change the axes and the texts, never the colors of the data.
 ## Scenes, for a back-end
 
 [plot.Scene] gives what a graph is made of, so that a program other than a browser can draw it: `{Width, Height,
-Items, Dropped}`, its items in the order they are drawn, each a dictionary with a `Kind` and a `Role`:
+Items, Dropped}`, its items in the order they are drawn, each a dictionary with a `Kind` and a `Role`; the scene of a
+frame of an animation has `Frames` and `Fps` too:
 
 | Kind | Fields |
 |---|---|
@@ -367,13 +458,19 @@ the median of 21 runs on a desktop of 8 cores:
 All of it is Cesia, made fast by the JIT; for a long line, the pass over the points that finds their range and the pass
 of M4 take most of the time.
 
+An animation of 300 frames of a wave of 500 points is made in 35 ms, the check of every frame and their shared ranges,
+and written as SVG in 0.54 s, 2.1 MB. One frame of the Lorenz curve, 5,000 points, takes 2 ms to draw as a scene; its
+SVG of 300 frames, thinned to 100, takes 2.7 s. In Cemacs, a frame of it goes from the session to the screen in about
+10 ms, and it plays at 30 frames a second.
+
 ## Limits
 
 - SVG only, for now; PNG will come with a rasterizer chosen by measure.
 - One font is measured, Noto Sans Medium; other fonts draw a little wider or narrower.
 - The legend and the color bar sit right of the plot; bars stand upright; a graph holds one [plot.Bars].
 - A line whose x goes back and forth keeps all its points; past 200,000 markers, use [plot.Density].
-- No 3D, animation or zoom in this version.
+- No 3D or zoom in this version. An animation holds 300 frames at most, all in memory, and is written as SVG, not as
+  a video or a GIF.
 
 ## Further reading
 
@@ -398,6 +495,12 @@ of M4 take most of the time.
   Cartographic Journal* 40(1):27–37, 2003. <https://doi.org/10.1179/000870403235002042>. RdBu.
 - J. E. Bresenham. "Algorithm for computer control of a digital plotter". *IBM Systems Journal* 4(1):25–30, 1965.
   <https://doi.org/10.1147/sj.41.0025>. The pixels of a line, in the test of M4.
+- W3C. *CSS Animations Level 1*. <https://www.w3.org/TR/css-animations-1/>. The keyframes, the delays and `step-end`
+  of the frames of an animation.
+- W3C. *Media Queries Level 5*, `prefers-reduced-motion`. <https://www.w3.org/TR/mediaqueries-5/#prefers-reduced-motion>.
+  The animation that stays on frame 1.
+- W3C. *Web Content Accessibility Guidelines (WCAG) 2.2*, success criterion 2.2.2, Pause, Stop, Hide.
+  <https://www.w3.org/TR/WCAG22/#pause-stop-hide>. The page that starts paused.
 - Microsoft and Adobe. *OpenType specification*: the tables cmap, hmtx and head.
   <https://learn.microsoft.com/typography/opentype/spec/>. How `tools/plot-font.ce` reads the widths of the font.
 

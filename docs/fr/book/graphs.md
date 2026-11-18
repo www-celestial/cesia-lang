@@ -1,7 +1,7 @@
 # Graphiques
 
 Dans ce chapitre, vous dessinez des données avec [std/plot] : des courbes, des points, des barres, des histogrammes, des
-heatmaps (des cartes de chaleur), des densités et des bandes. Un graphique est une valeur, comme un nombre ou une liste
+heatmaps (des cartes de chaleur), des densités et des bandes, et des animations de tout cela. Un graphique est une valeur, comme un nombre ou une liste
 : vous le faites, en mettez plusieurs sur des axes communs, et le dessinez dans un fichier SVG, ou Cemacs le dessine sur
 son écran. Chaque étape des données jusqu'aux pixels suit une méthode publiée, nommée ici avec son article, et les tests
 de Cesia vérifient ce que promet chaque étape.
@@ -78,7 +78,8 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Area] `(x, low, high, label, color)` | la bande entre deux courbes |
 | [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size)` | des layers sur des axes communs |
 | [plot.Grid] `(graphs, columns)` | des graphiques côte à côte |
-| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height)` | le dessin |
+| [plot.Frames] `(graphs, fps)` | des graphiques l'un après l'autre : une animation |
+| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame)` | le dessin |
 
 Une couleur s'écrit `"#rrggbb"`, le rouge, le vert et le bleu d'une couleur en deux chiffres hexadécimaux chacun, comme
 en CSS. Un layer sans couleur prend la suivante de la palette de [Couleurs](#couleurs).
@@ -234,6 +235,101 @@ l'étendue d'un axe sous la forme `[low, high]` ; `legend = false` pour cacher l
 pixels, 640 sur 400 par défaut, 100 sur 80 au moins. Les options d'un [plot.Of] donné comme layer sont laissées de côté
 : celles du plus extérieur s'appliquent.
 
+## Animations
+
+[plot.Frames] fait une *animation* : des graphiques montrés l'un après l'autre, `fps` par seconde (*frames per second*,
+des images par seconde), du premier au dernier, puis de nouveau. Ici une onde avance vers la droite, 60 images à 30 par
+seconde, deux secondes en tout :
+
+```cesia allow=read,write
+use std/text
+x = num.Linspace(0.0, 10.0, 200)
+wave = plot.Frames([plot.Of([plot.Line(x, math.Sin(x - t))], title = "t = $(text.Decimals(1, t))") for t in num.Linspace(0.0, 6.0, 60)], fps = 30)
+plot.Save(wave, "wave.svg") -->
+```
+
+La liste des images s'écrit en *list comprehension* (une liste décrite par sa règle), `[f(t) for t in ts]`, la forme
+courte de [list.Map] :
+
+```cesia
+use std/list
+plain = plot.Frames(list.Map(t -> plot.Of([plot.Line(x, math.Sin(x - t))], title = "t = $(text.Decimals(1, t))"), num.Linspace(0.0, 6.0, 60)), fps = 30)
+plot.Svg(plain) == plot.Svg(wave) -->
+```
+
+Une animation est un graphique : [plot.Svg] et [plot.Save] l'écrivent entière, et [plot.Scene] dessine une de ses
+images, `frame` à partir de 1, avec deux champs de plus dans la scène, `Frames`, leur nombre, et `Fps` :
+
+```cesia
+one = result.Unwrap(plot.Scene(wave, 640, 400, frame = 30))
+[one.Frames, one.Fps, [item.Text for item in one.Items if item.Role == "title"]] -->
+```
+
+### Ce qu'une image change
+
+Les images partagent un seul jeu d'axes, pour que les axes ne sautent jamais pendant la lecture. [plot.Frames] vérifie
+chaque image une fois, quand elle est faite, et garde l'étendue de chaque layer sur toutes : chaque image est dessinée
+sur la réunion de ces étendues, les couleurs d'une heatmap aussi, sauf si `xlim` et `ylim` donnent les axes. Une image
+ne change que ses données et son titre ; ses layers, en sorte et en nombre, leurs options, comme une couleur ou un label,
+et les options de [plot.Of] sont celles de la première image, sinon l'animation est un `Err` qui nomme la première image
+qui diffère :
+
+```cesia
+plot.Svg(plot.Frames([plot.Line([1, 2], [1, 2]), plot.Line([1, 2], [2, 1], color = "#000000")])) -->
+```
+
+Une animation contient de 1 à 300 images, 10 secondes à 30 par seconde, et `fps` va de 1 à 60. Toutes les images sont en
+mémoire : ce sont des valeurs, faites une fois, qui se jouent à leur propre rythme quel que soit leur coût de calcul. Une
+image n'est ni une grille ni une animation, et une animation ne va dans aucun [plot.Of] ni aucun [plot.Grid].
+
+### Dans une page web : des images en CSS
+
+*CSS*, Cascading Style Sheets (les feuilles de style), est le langage du style d'une page web, que tout navigateur
+applique sans script. Le SVG d'une animation écrit les axes une fois, puis les données et le titre de chaque image dans
+un groupe à part. Une règle de CSS cache chaque groupe, et une *animation CSS*, un changement de style au fil du temps,
+montre chacun à son tour :
+
+```css
+.a60-200000 { visibility: hidden; animation: s60 2000ms step-end infinite; }
+@keyframes s60 { 0% { visibility: visible; } 1.6667% { visibility: hidden; } }
+```
+
+La boucle dure $N / fps$ secondes, ici 60 images à 30 par seconde, 2 secondes. Chaque groupe est visible pendant les
+premiers $100 / N$ pour cent de la boucle, arrondis vers le haut à la quatrième décimale pour qu'une image se voie
+toujours, et commence après un délai de $(k - 1) / fps$ secondes, `style="animation-delay:33.33ms"` pour l'image 2 :
+l'image $k$ se voit de $(k - 1) / fps$ à $k / fps$ de chaque boucle. `step-end` fait de chaque changement un saut, pas
+un fondu. Les noms des règles ne contiennent que des nombres, le nombre d'images et la durée de la boucle, pour que deux
+animations d'une même page gardent chacune les leurs, et aucun texte d'un graphique ne va dans le CSS.
+
+Un SVG seul, ouvert dans un navigateur, se joue tout de suite et en boucle ; pour un lecteur qui a demandé moins de
+mouvement à son système, le réglage `prefers-reduced-motion`, il reste sur l'image 1. La page d'un fichier de cells,
+[cells.Html], la démarre en pause sur l'image 1, sous une case *Play*, une case à cocher de la page que la souris, ou Tab
+puis Espace, coche ; voir [Une page à partager](cells.md#une-page-à-partager). Cela suit WCAG 2.2, les règles du W3C pour
+des pages accessibles, dont le critère 2.2.2 demande que ce qui bouge plus de 5 secondes puisse se mettre en pause. Un
+test vérifie dans Chromium et dans Firefox que l'image $k$ seule se voit sur son intervalle, qu'une page démarre sur
+l'image 1, et que la case d'une animation laisse les autres immobiles ; Safari n'est pas vérifié.
+
+Un SVG garde au plus 8 Mo d'images, pour qu'une page se charge vite : au-delà, il garde une image sur $k$, $k$ le plus
+petit qui tienne, à $fps / k$ par seconde pour qu'elle dure autant, et une note sous le graphique le dit,
+`100 of 300 frames kept`. 300 images d'une onde de 500 points prennent 2,1 Mo ; 300 images de la courbe de Lorenz de
+5 000 points prendraient 20 Mo, donc son SVG en garde 100. Cemacs n'en retire jamais : il demande chaque image quand il
+la montre.
+
+### Comparé à matplotlib, plotly et MATLAB
+
+| | Cesia | matplotlib `FuncAnimation` | plotly | MATLAB, Octave |
+|---|---|---|---|---|
+| images | des valeurs, faites une fois, 300 au plus | faites par une fonction à chaque image, autant qu'on veut, sans fin pour `frames=None` | une liste d'images dans la figure | des captures d'écran faites par `getframe` |
+| axes | la réunion de toutes les images, calculée | ceux que la fonction et la figure fixent | Plotly Express « will not automatically compute the union of all x/y/color ranges » : on les donne à la main | ceux de la figure à chaque capture |
+| lecture | Cemacs, et une page sans script | une fenêtre, ou `to_jshtml`, une page avec un script | dans le navigateur, avec plotly.js et les boutons et le curseur qu'il dessine | `movie(M, n, fps)`, 12 par seconde par défaut |
+| fichiers | SVG, 8 Mo au plus | des vidéos et des GIF : `save` avec FFmpeg ou Pillow | du HTML avec son script | `VideoWriter` : Motion JPEG AVI, MPEG-4 et d'autres |
+
+Là où ils gagnent : tous les trois écrivent des fichiers vidéo ou GIF, ce que Cesia ne fait pas ; matplotlib calcule
+les images pendant la lecture, donc une animation n'a ni durée ni limite ; plotly passe d'une image à la suivante par
+une transition douce, pour ses nuages de points et ses barres, et sa page peut aller à n'importe quelle image avec un
+curseur, grâce à un script. Là où Cesia gagne : les axes sont partagés tout seuls, une image qui change plus que ses
+données est une erreur qui la nomme, et la page se joue sans script.
+
 ## Des données aux pixels
 
 ### L'étendue d'un axe
@@ -339,7 +435,8 @@ côtés de 0. Les thèmes de Cemacs changent les axes et les textes, jamais les 
 
 [plot.Scene] donne ce dont un graphique est fait, pour qu'un autre programme qu'un navigateur puisse le dessiner (un
 back-end, la partie qui dessine) : `{Width, Height, Items, Dropped}`, ses éléments dans l'ordre où ils sont dessinés,
-chacun un dictionnaire avec un `Kind` (une sorte) et un `Role` (un rôle) :
+chacun un dictionnaire avec un `Kind` (une sorte) et un `Role` (un rôle) ; la scène d'une image d'une animation a aussi
+`Frames` et `Fps` :
 
 | Kind | Champs |
 |---|---|
@@ -392,6 +489,11 @@ Tout est en Cesia, rendu rapide par le JIT (le compilateur qui traduit le code e
 pour une longue courbe, le passage sur les points qui trouve leur étendue et le passage de M4 prennent l'essentiel du
 temps.
 
+Une animation de 300 images d'une onde de 500 points se fait en 35 ms, la vérification de chaque image et de leurs
+étendues communes, et s'écrit en SVG en 0,54 s, 2,1 Mo. Une image de la courbe de Lorenz, 5 000 points, se dessine en
+scène en 2 ms ; son SVG de 300 images, réduit à 100, prend 2,7 s. Dans Cemacs, une de ses images va de la session à
+l'écran en 10 ms environ, et elle se joue à 30 images par seconde.
+
 ## Limites
 
 - Du SVG seulement, pour l'instant ; le PNG viendra avec un rasterizer (le code qui change un dessin en pixels) choisi
@@ -400,7 +502,8 @@ temps.
 - La légende et la barre de couleurs sont à droite du tracé ; les barres sont debout ; un graphique contient un seul
   [plot.Bars].
 - Une courbe dont le x va et vient garde tous ses points ; au-delà de 200 000 marqueurs, prenez [plot.Density].
-- Ni 3D, ni animation, ni zoom dans cette version.
+- Ni 3D ni zoom dans cette version. Une animation contient au plus 300 images, toutes en mémoire, et s'écrit en SVG,
+  pas en vidéo ni en GIF.
 
 ## Pour aller plus loin
 
@@ -426,6 +529,12 @@ temps.
   Cartographic Journal* 40(1):27–37, 2003. <https://doi.org/10.1179/000870403235002042>. RdBu.
 - J. E. Bresenham. "Algorithm for computer control of a digital plotter". *IBM Systems Journal* 4(1):25–30, 1965.
   <https://doi.org/10.1147/sj.41.0025>. Les pixels d'une ligne, dans le test de M4.
+- W3C. *CSS Animations Level 1*. <https://www.w3.org/TR/css-animations-1/>. Les keyframes (les étapes d'une animation
+  CSS), les délais et `step-end` des images d'une animation.
+- W3C. *Media Queries Level 5*, `prefers-reduced-motion`. <https://www.w3.org/TR/mediaqueries-5/#prefers-reduced-motion>.
+  L'animation qui reste sur l'image 1.
+- W3C. *Web Content Accessibility Guidelines (WCAG) 2.2*, critère de succès 2.2.2, Pause, Stop, Hide.
+  <https://www.w3.org/TR/WCAG22/#pause-stop-hide>. La page qui démarre en pause.
 - Microsoft et Adobe. *OpenType specification* : les tables cmap, hmtx et head.
   <https://learn.microsoft.com/typography/opentype/spec/>. Comment `tools/plot-font.ce` lit les largeurs de la police.
 
