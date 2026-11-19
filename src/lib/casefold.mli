@@ -2,5 +2,7 @@
     casefold.ml: each character to one character, the same for its capital and its small letter. *)
 
 (** The runs of characters that move by the same distance, rising: four numbers each, its first character, its last, the
-    step between two of them (1, or 2 where capitals and small letters alternate) and the distance each moves. *)
-val runs : int array
+    step between two of them (1, or 2 where capitals and small letters alternate) and the distance each moves. Each
+    number takes four bytes, little-endian and signed ([String.get_int32_le]): a string, which a start neither copies
+    nor relocates. *)
+val runs : string

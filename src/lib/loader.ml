@@ -728,39 +728,74 @@ let len ctx (a : t array) =
      | _ -> Int (Native.length v))
   | v -> Int (Native.length v)
 
-(* The natives of the packages of std/, joined by package: std/list has some of Native, Lists and Columns. *)
-let std_packages () =
-  let groups =
-    Native.packages @ Lists.packages
-    @ [ "math", Near.natives; "list", Columns.list; "fiber", Fiber.natives;
-        "cesia", Tooling.natives ~libraries @ Docs.natives @ Engines.cesia @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
-        "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives; "csv", Columns.csv_natives;
-        "random", Rand.natives; "num", Rand.num; "value", [ "Len", Native.nat ~ret:(fun _ -> TI) "Len" 1 1 len ]; "quad", Quadrature.natives;
-        "ode", Ode.natives ]
-    @ Testing.natives
-  in
-  List.fold_left
-    (fun acc (name, natives) ->
-       match List.assoc_opt name acc with
-       | Some before -> List.map (fun (n, l) -> if String.equal n name then n, before @ natives else n, l) acc
-       | None -> acc @ [ name, natives ])
-    [] groups
+(* The natives of the packages of std/, by package: std/list has some of Native, Lists and Columns. *)
+let std_groups () =
+  Native.packages @ Lists.packages
+  @ [ "math", Near.natives; "list", Columns.list; "fiber", Fiber.natives;
+      "cesia", Tooling.natives ~libraries @ Docs.natives @ Engines.cesia @ [ "Check", Native.nat ~params:[| "paths"; "given" |] "cesia.Check" 1 2 check_native ];
+      "debug", Debug.natives; "json", Json.natives; "regex", Regex.natives (); "columns", Columns.natives; "csv", Columns.csv_natives;
+      "random", Rand.natives; "num", Rand.num; "value", [ "Len", Native.nat ~ret:(fun _ -> TI) "Len" 1 1 len ]; "quad", Quadrature.natives;
+      "ode", Ode.natives ]
+  @ Testing.natives
+
+(* A table of names, compared by String.equal: the generic one compares keys with the polymorphic compare. *)
+module Names = Hashtbl.Make (struct
+    type t = string
+    let equal = String.equal
+    let hash = Hashtbl.hash
+  end)
+
+(* The first entry of a list of pairs named [name], as List.assoc_opt, by String.equal. *)
+let rec assoc_text name = function
+  | [] -> None
+  | (n, v) :: rest -> if String.equal n name then Some v else assoc_text name rest
+
+(* The list without its first entry named [name], as List.remove_assoc. *)
+let rec remove_text name = function
+  | [] -> []
+  | ((n, _) as pair) :: rest -> if String.equal n name then rest else pair :: remove_text name rest
 
 let no_args = Array { rows = 1; cols = 0; store = V [||]; a_owned = false; a_tip = true; dims = [||] }
 
 (* The arguments of the program, sys.Args. *)
 let set_args_value w value =
-  let sys = Option.value (List.assoc_opt "sys" w.native_modules) ~default:[] in
-  w.native_modules <- ("sys", ("Args", value) :: List.remove_assoc "Args" sys) :: List.remove_assoc "sys" w.native_modules
+  let sys = Option.value (assoc_text "sys" w.native_modules) ~default:[] in
+  w.native_modules <- ("sys", ("Args", value) :: remove_text "Args" sys) :: remove_text "sys" w.native_modules
 
-(* Module 0 holds what only the compiler names; the packages of std/ load at their first use. A package that the system
-   adds to, as std/debug, gets both parts. *)
+(* Module 0 holds what only the compiler names; the packages of std/ load at their first use. Each package of std/ comes
+   once, where it first comes, with its groups' natives in their order; a package that the system adds to, as std/debug,
+   gets both parts, the system's first entry of that name after std/'s; the system's other packages follow. The join is
+   one pass over a table, as every start makes it: a search of the list for each group, by the polymorphic compare,
+   took 6 % of a start. *)
 let init w =
   Rand.reset ();
   let added = w.native_modules in
-  let joined = List.map (fun (name, ns) -> name, ns @ Option.value (List.assoc_opt name added) ~default:[]) (std_packages ()) in
-  w.native_modules <- joined @ List.filter (fun (name, _) -> not (List.mem_assoc name joined)) added;
-  if not (List.mem_assoc "Args" (Option.value (List.assoc_opt "sys" w.native_modules) ~default:[])) then set_args_value w no_args;
+  (* Each package's groups, the last first, and whether the system's entry of that name joined them. *)
+  let parts = Names.create 64 in
+  let order =
+    List.fold_left
+      (fun order (name, natives) ->
+         match Names.find_opt parts name with
+         | Some (groups, _) -> groups := natives :: !groups; order
+         | None ->
+           let part = ref [ natives ], ref false in
+           Names.add parts name part;
+           (name, part) :: order)
+      [] (std_groups ())
+  in
+  let rest =
+    List.filter
+      (fun (name, natives) ->
+         match Names.find_opt parts name with
+         | None -> true
+         | Some (groups, joined) ->
+           if not !joined then (joined := true; groups := natives :: !groups);
+           false)
+      added
+  in
+  let std = List.rev_map (fun (name, (groups, _)) -> name, match !groups with [ l ] -> l | ls -> List.concat (List.rev ls)) order in
+  w.native_modules <- std @ rest;
+  if Option.is_none (assoc_text "Args" (Option.value (assoc_text "sys" w.native_modules) ~default:[])) then set_args_value w no_args;
   w.modules <- [| core_module () |]
 
 (* A use in a reloaded file: the module must already be there, since we are in the middle of the program. *)

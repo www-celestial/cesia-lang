@@ -200,16 +200,19 @@ let points s =
 
 let pay ctx s = Runtime.pay_bytes ctx (String.length s)
 
+(* Number [k] of Casefold.runs, and how many it holds. *)
+let[@inline] fold_at k = Int32.to_int (String.get_int32_le Casefold.runs (4 * k))
+let fold_count = String.length Casefold.runs / 4
+
 (* The run of Casefold.runs whose first character is the last at or below p, found by halves: its index there. *)
 let run_of p =
-  let runs = Casefold.runs in
   let rec find lo hi =
     if hi - lo <= 1 then lo
     else
       let mid = (lo + hi) / 2 in
-      if runs.(4 * mid) <= p then find mid hi else find lo mid
+      if fold_at (4 * mid) <= p then find mid hi else find lo mid
   in
-  4 * find 0 (Array.length runs / 4)
+  4 * find 0 (fold_count / 4)
 
 (* A character may fold to one a byte longer (U+023A, two bytes, to U+2C65, three): the folded text is at most half
    again as long. *)
@@ -219,7 +222,7 @@ let folded_size n = n + (n / 2)
    are. A text of ASCII without a capital is given back as it is, without a copy. A text mostly keeps to one script: the
    run found for a character, from its first character to the next run's, serves the next one without a search. *)
 let fold s =
-  let runs = Casefold.runs and n = String.length s in
+  let n = String.length s in
   let rec start i =
     if i < n && (match s.[i] with 'A' .. 'Z' | '\128' .. '\255' -> false | _ -> true) then start (i + 1) else i
   in
@@ -237,14 +240,14 @@ let fold s =
         let d = String.get_utf_8_uchar s i in
         let w = Uchar.utf_decode_length d and p = Uchar.to_int (Uchar.utf_decode_uchar d) in
         let k, next =
-          if p >= runs.(k) && p < next then k, next
+          if p >= fold_at k && p < next then k, next
           else
             let k = run_of p in
-            k, if k + 4 < Array.length runs then runs.(k + 4) else max_int
+            k, if k + 4 < fold_count then fold_at (k + 4) else max_int
         in
-        let moves = p >= runs.(k) && p <= runs.(k + 1) && (p - runs.(k)) land (runs.(k + 2) - 1) = 0 in
+        let moves = p >= fold_at k && p <= fold_at (k + 1) && (p - fold_at k) land (fold_at (k + 2) - 1) = 0 in
         if moves && Uchar.utf_decode_is_valid d then
-          go (i + w) (j + Bytes.set_utf_8_uchar out j (Uchar.of_int (p + runs.(k + 3)))) k next
+          go (i + w) (j + Bytes.set_utf_8_uchar out j (Uchar.of_int (p + fold_at (k + 3)))) k next
         else begin
           Bytes.blit_string s i out j w;
           go (i + w) (j + w) k next

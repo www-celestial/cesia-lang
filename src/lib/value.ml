@@ -104,9 +104,12 @@ let pay ctx n = ctx.w.charge ctx ((n / 16) + 1)
 
 (* An integer in decimal, as string_of_int writes it, without C's printf: two digits by a division by 100, which the
    compiler makes a multiplication, read from a table of the pairs. The work is on the negative side, where min_int fits.
-   The digits go to [scratch], then out in one copy, the one allocation; texts are made on the main domain only. *)
-let small_ints = Array.init 10 string_of_int
-let pairs = String.init 200 (fun j -> Char.chr (48 + if j land 1 = 0 then j / 20 else j / 2 mod 10))
+   The digits go to [scratch], then out in one copy, the one allocation; texts are made on the main domain only. The
+   tables are written out, constants of the binary, where computing them took 17,000 instructions of every start. *)
+let small_ints = [| "0"; "1"; "2"; "3"; "4"; "5"; "6"; "7"; "8"; "9" |]
+let pairs =
+  "0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849\
+   5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899"
 let scratch = Bytes.create 64
 
 (* The digits of [i] written in [scratch] from [at]: where they end. *)

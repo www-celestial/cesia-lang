@@ -15,8 +15,11 @@ let[@inline] stops w =
   not (Int64.equal 0L (Int64.logor (zero_bytes (Int64.logand w 0xE0E0E0E0E0E0E0E0L))
                          (Int64.logor (zero_bytes (Int64.logxor w 0x2222222222222222L)) (zero_bytes (Int64.logxor w 0x5C5C5C5C5C5C5C5CL)))))
 
-(* The powers of ten that a double holds exactly, 10^0 to 10^22: the fast path of the numbers. *)
-let exact_tens = Array.init 23 (fun k -> float_of_string ("1e" ^ string_of_int k))
+(* The powers of ten that a double holds exactly, 10^0 to 10^22: the fast path of the numbers. Written out, a constant
+   that the start copies, where Array.init made them by float_of_string at every start, JSON or not. *)
+let exact_tens =
+  [| 1e0; 1e1; 1e2; 1e3; 1e4; 1e5; 1e6; 1e7; 1e8; 1e9; 1e10; 1e11; 1e12; 1e13; 1e14; 1e15; 1e16; 1e17; 1e18; 1e19; 1e20;
+     1e21; 1e22 |]
 
 let parse_text ctx s =
   let n = String.length s and i = ref 0 in
