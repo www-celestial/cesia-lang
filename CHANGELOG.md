@@ -99,7 +99,9 @@ as it did.
   network, and checks that it prints what its cesia block shows.
 - For those who work on Cesia: `tools/test.sh` runs the typed path and the OCaml tests only, the change loop, 11 ->
   4.4 s; `tools/test.sh --no-spec` runs the same tests on the other path, and `tools/test.sh --slow` the tests slow by
-  nature, on both paths; `tools/check.sh` runs those two after the loop, and the CI the first two.
+  nature, on both paths; `tools/check.sh` runs those two after the loop, and the CI all three. The tests added since
+  had made the loop 5.4 s again: it takes 4.0 s, as eleven tests of the JIT, whose loops are as long as the level 2
+  they check needs, run with `--slow`, and the dev build has no `-g`, a start 2.64 ms instead of 2.86.
 - The nightly pre-release is made again from main each time the CI passes there, from the commit it tested, so that
   projects that build against main test with it.
 
