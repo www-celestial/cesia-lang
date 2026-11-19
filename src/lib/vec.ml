@@ -1,7 +1,7 @@
 (* The cells past [size] hold a value added before, never read: a new array is the old one twice. Made of the value it
    grows for, young, an array past 256 cells would first empty the whole young heap (OCaml's caml_make_vect), with every
    tree and closure a load had just made: the sites of the code a first plot.Svg compiles passed 512, 1,024, 2,048 and
-   4,096 that way, four collections that moved 175K words to the major heap and a major cycle, 2.5 ms of its 7. *)
+   4,096 that way, four collections that moved 175K words to the major heap and a major cycle, 2.2 ms of its 6.9. *)
 type 'a t = { mutable items : 'a array; mutable size : int }
 
 let create () = { items = [||]; size = 0 }

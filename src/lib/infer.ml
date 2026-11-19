@@ -355,8 +355,9 @@ and call_type env (call : call) =
     (* Where a function can be defined again while a call to it runs, at the prompt, under --watch or a debugger, its
        result may come back of another type: the caller takes it as any value, as without the versions by type. *)
     else if (!Tier.watching || w.hooks) && not (Package.embedded_std w.modules.(proto.pm).path) then TA
-    (* A function that gives no number is any value to its caller, as its inference would find: it is inferred at its
-       first call only, so that a call never made costs neither its body nor the functions it calls. *)
+    (* A function that gives no number is any value to its caller, as its inference would find: the caller infers
+       neither it nor the functions it calls. It is inferred when it runs, or when a function that calls it is
+       compiled, which needs the slots of its parameters: a call in a branch that never runs costs no more. *)
     else if gives_no_number w proto.func then TA
     else (
       match bind_args proto.func call.args with

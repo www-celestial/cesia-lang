@@ -432,8 +432,9 @@ let rec nontail_in (e : expr) =
 let nontail (e : expr) = match nontail_in e with () -> false | exception Nontail -> true
 
 (* What a function gives back, as [Infer] types it: a number, an Int, a Float or an array of floats, comes only from a
-   literal, a variable, arithmetic, an index or a call. [Some cells] when none of the values it gives back can be one,
-   but for the calls of these stable cells it gives back, which give one only if they do; [None] when one can. *)
+   literal, a variable, arithmetic, an index or a call, and an if gives one only from both of its branches, as an empty
+   one is any value. [Some cells] when none of the values it gives back can be one, but for the calls of these stable
+   cells it gives back, which give one only if they do; [None] when one can. *)
 exception Number
 
 let no_number (f : func) =
@@ -443,7 +444,7 @@ let no_number (f : func) =
     | Lint _ | Lfloat _ | End_index | Var { b = Local _ | Cell { stable = true; _ }; _ }
     | Bin ((Add | Sub | Mul | Div | Pow), _, _) -> raise_notrace Number
     | Neg a | Index (a, _, _) -> given a
-    | If (_, a, b) -> last a; last b
+    | If (_, a, b) -> if Array.length a > 0 && Array.length b > 0 then (last a; last b)
     | Call { callee = { e = Var { b = Cell { stable = true; _ } as c; _ }; _ }; _ } ->
       if not (List.mem c !cells) then cells := c :: !cells
     | _ -> ()
