@@ -1111,11 +1111,14 @@ and call_value st e (call : call) f =
        close st (Jump join);
        st.cur <- next)
     targets;
+  (* No test passed: no step of a callee ran on the way here, so the statement goes back with its fuel as it is, which
+     needs no copy at its start; after the join, each call may have stepped. *)
   st.dyn.bail <- before;
   st.dyn.callable <- callable;
   st.dyn.dirty <- clean;
-  st.dyn.ticked <- true;
+  st.dyn.ticked <- calm;
   close st (Bail (bail st));
+  st.dyn.ticked <- true;
   st.cur <- join;
   (* A function that drew: nothing after the call may send the statement back. *)
   if !showed then shows st;
@@ -1478,12 +1481,14 @@ and vcall st (e : expr) (call : call) : vec =
          close st (Jump join);
          st.cur <- next)
       targets;
+    (* As [call_value]'s: no callee stepped on the way to the bail. *)
     st.dyn.bail <- before;
     st.dyn.callable <- callable;
     st.dyn.dirty <- clean;
-    st.dyn.ticked <- true;
+    st.dyn.ticked <- calm;
     st.dyn.dead <- dead;
     close st (Bail (bail st));
+    st.dyn.ticked <- true;
     st.cur <- join;
     if !showed then shows st;
     made out
