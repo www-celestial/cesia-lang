@@ -225,7 +225,9 @@ defn hooksFor(site, path, where, book = missing, formulas = false, lang = "en", 
     if value.IsSome(f) and book == ""
       target = readmeTarget(site, f)
       if value.IsMissing(target)
-        fiber.Send("$(where(line)): $f is no page of the site: a README links to the pages of docs/, or with a full URL.", site.Mistakes)
+        (* Up to 1.1 the README was no page, so a link of one to another file, as LICENSE, never stopped a build: it still
+           doesn't, the link kept as written, and its place is named. *)
+        io.PrintError("$(where(line)): $f is no page of the site, so this link is kept as written and leads nowhere there: a README links to the pages of docs/, or with a full URL.")
         return u
       end
       return text.Str(rel(path, target), anchorOf(u))

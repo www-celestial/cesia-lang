@@ -1,4 +1,5 @@
-# Each mistake of a book fails the build and names its place.
+# Each mistake of a book fails the build and names its place; a link of the README to a file that is no page is named and
+# kept, and the build goes on, as it did when the README was no page.
 t=$(mktemp -d)
 export XDG_CACHE_HOME="$t/cache"
 f='```'
@@ -12,7 +13,7 @@ french() {  # the same, with its French pages
   cp -r proj "$t/"
   # book.cmd serves on 18751 at the same time. Not sed -i, which macOS reads otherwise.
   sed 's/18751/18752/g' "$t/proj/docs/book/files.md" > "$t/files.md" && mv "$t/files.md" "$t/proj/docs/book/files.md"
-  (cd "$t/proj" && eval "$2" && cesia doc --site; echo "exit $?") 2>&1 | sed "s#$t#TMP#g"
+  (cd "$t/proj" && eval "$2" && cesia doc --site; echo "exit $?") 2>&1 | sed "s#$t#TMP#g; s#^[0-9]* files: #N files: #"
 }
 try "a wrong -->" 'add "" "${f}cesia" "1 + 1 --> 3" "$f"'
 try "a block that stops" 'add "" "${f}cesia" "math.Div(1, 0)" "$f"'

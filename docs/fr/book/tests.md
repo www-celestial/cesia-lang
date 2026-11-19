@@ -448,8 +448,10 @@ site prend `"#2b5fd9"`.
 
 Le `README.md` du projet (le fichier qui le présente, à la racine du dépôt) est une page du site, refaite à partir de lui à
 chaque build et montrée dans la colonne de côté : ses liens vers les pages de `docs/`, ou vers un de ses dossiers pour son
-index, mènent aux pages du site. Tout autre lien vers un fichier du projet, comme `LICENSE`, ne mène à aucune page du site et
-arrête le build : écrivez-le avec son URL complète. Ses blocs `cesia` sont montrés en couleur, jamais lancés.
+index, mènent aux pages du site. Tout autre lien vers un fichier du projet, comme `LICENSE`, ne mène à aucune page du site :
+le build écrit sa place sur la sortie d'erreur (la standard error) et garde le lien tel qu'il est écrit, qui ne mène nulle
+part sur le site, puis continue, comme quand le README n'était pas une page (jusqu'à 1.1). Écrivez un tel lien avec son URL
+complète. Ses blocs `cesia` sont montrés en couleur, jamais lancés.
 
 ### Les ids des titres
 

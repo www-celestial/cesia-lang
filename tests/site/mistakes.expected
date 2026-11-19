@@ -45,10 +45,10 @@ exit 1
 files.html and Files.html differ only in case.
 exit 1
 == a book without its index.md
+README.md:3: docs/book/index.md is no page of the site, so this link is kept as written and leads nowhere there: a README links to the pages of docs/, or with a full URL.
+README.md:3: docs/book/first.md is no page of the site, so this link is kept as written and leads nowhere there: a README links to the pages of docs/, or with a full URL.
 docs/book/index.md: a book starts at its index.md, which links to its other pages in their order.
 docs/guides/index.md:3: ../book/first.md is no page of docs/guides/.
-README.md:3: docs/book/index.md is no page of the site: a README links to the pages of docs/, or with a full URL.
-README.md:3: docs/book/first.md is no page of the site: a README links to the pages of docs/, or with a full URL.
 exit 1
 == a formula with a command it doesn't know
 docs/book/first.md:75: \foo is no command that cesia doc writes in a formula: the book lists them, in Tests, Formulas
@@ -67,8 +67,9 @@ exit 1
 TMP/proj/cesia.toml:4: [site] color is a color written #rrggbb, as "#3b5bdb".
 exit 1
 == a README that links to a file which is no page
-README.md:18: LICENSE is no page of the site: a README links to the pages of docs/, or with a full URL.
-exit 1
+README.md:18: LICENSE is no page of the site, so this link is kept as written and leads nowhere there: a README links to the pages of docs/, or with a full URL.
+N files: file://TMP/proj/site/index.html
+exit 0
 == a French page that drifts from its English one
 docs/fr/book/index.md: its links drift from those of docs/book/index.md, not here: first.html; only here: files.html (a link to a heading names its place on its page).
 docs/fr/book/first.md: its headings drift from those of docs/book/first.md from heading 1 on: a French page has the same headings, of the same levels, in the same order (1 here, 1 there).

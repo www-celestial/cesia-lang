@@ -429,8 +429,9 @@ with the pair and its ratio. Without `color`, the site takes `"#2b5fd9"`.
 
 The `README.md` of the project is a page of the site, made from it at each build and shown in the side: its links to the
 pages of `docs/`, or to a folder of it for its index, lead to the pages of the site. Any other link of the project, as one to
-`LICENSE`, is no page of the site and stops the build: write it with its full URL. Its `cesia` blocks are shown in color,
-never run.
+`LICENSE`, is no page of the site: the build names its place on the standard error and keeps the link as written, which
+leads nowhere on the site, and goes on, as it did when the README was no page (up to 1.1). Write such a link with its full
+URL. Its `cesia` blocks are shown in color, never run.
 
 ### The ids of the headings
 
