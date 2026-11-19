@@ -1151,9 +1151,9 @@ The first runs, with an empty cache, take the same time with either binary, with
 ([Memory](#memory-and-the-garbage-collector)), an entry is checked by XXH64 instead of BLAKE2b, and the number of each of
 its nodes takes a byte most often: the entry of [std/plot] is 126.6 KB instead of 132.8. In the process, the first
 [plot.Svg] of a line loses the four minor collections and the major cycle, 2.2 ms, 30 versions inferred, 0.3 ms, 21
-bodies read, 0.2 ms, and 0.15 ms in reading the entries. From the start of the process to its end, on 2026-11-19, 21 runs of each,
-the three binaries taking turns, the median and the fastest: Cesia of 2026-11-18 before the 3D graphs and the
-animations, which grew [std/plot] from 2,277 lines to 2,983; Cesia with them, before this change; and Cesia now:
+bodies read, 0.2 ms, and 0.15 ms in reading the entries. From the start of the process to its end, on 2026-11-19, 21
+runs of each, the three binaries taking turns, the median and the fastest: Cesia of 2026-11-18 before the 3D graphs and
+the animations, which grew [std/plot] from 2,277 lines to 2,983; Cesia with them, before this change; and Cesia now:
 
 | Program | Before 3D and animations | Before | Now |
 |---|---:|---:|---:|
