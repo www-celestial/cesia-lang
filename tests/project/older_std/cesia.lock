@@ -1,0 +1,7 @@
+# Written by cesia pkg, which the loader checks: run cesia pkg install to make std/ and deps/ match it.
+
+[std]
+cesia = "1.1.0"
+files = [
+  "std/websocket/websocket.ce blake2:997fb2ec0101f53d8991a44c6ecacbb27306f9e234a98859cb09f50e30dbf836",
+]

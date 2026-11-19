@@ -1,0 +1,5 @@
+1048576
+src/wrong.ce:3:19: Module "websocket" has no name "NoSuch".
+  3 | io.Print(websocket.NoSuch)
+    |                   ^
+exit 1

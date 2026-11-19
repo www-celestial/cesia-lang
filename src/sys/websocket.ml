@@ -218,4 +218,11 @@ let natives =
         Text (frame (Arrays.whole_index ctx a.(0)) p (random_bytes ctx 4)));
     "parseFrame", Native.nat "parseFrame" 4 4 client_frame;
     "newKey", Native.nat "newKey" 0 0 (fun ctx _ -> Text (base64 (random_bytes ctx 16)));
-    "answer", Native.nat "answer" 1 1 (fun ctx a -> Text (answer (Native.text_arg ctx "answer" a.(0)))) ]
+    "answer", Native.nat "answer" 1 1 (fun ctx a -> Text (answer (Native.text_arg ctx "answer" a.(0))));
+    (* The std/websocket of Cesia 1.1 unmasks a frame in Cesia with this one, each byte xor the byte of the key at its
+       place: a project whose std/ 1.1 installed keeps serving WebSockets. *)
+    "xorBytes", Native.nat "xorBytes" 2 2 (fun ctx a ->
+        let key = Native.text_arg ctx "xorBytes" a.(0) and s = Native.text_arg ctx "xorBytes" a.(1) in
+        if key = "" then Runtime.fail ctx Type (Messages.need_char "xorBytes");
+        Runtime.build ctx ((String.length s / 8) + 1);
+        Text (String.mapi (fun i c -> Char.chr (Char.code c lxor Char.code key.[i mod String.length key])) s)) ]
