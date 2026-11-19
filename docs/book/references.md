@@ -221,6 +221,10 @@ and, as there, a C library is outside the sandbox.
   <https://doi.org/10.1145/3192366.3192369>. A float and the bounds of the decimals that read back to it, scaled to a
   power of 10 at once by products with 126-bit powers of 5 from a table: the text of every float Cesia writes, in the bytes
   C's `printf` gave it before, 15 to 35 times faster.
+- William D. Clinger. "How to Read Floating Point Numbers Accurately". *PLDI 1990*, ACM, 92–101.
+  <https://doi.org/10.1145/93542.93557>. A decimal of at most 15 digits times or divided by a power of ten that a double
+  holds exactly, $10^{22}$ at most, is one correctly rounded operation of IEEE 754, and so the nearest double: how
+  [json.Parse] reads most numbers without the general conversion.
 - T. Bray (editor). "The JavaScript Object Notation (JSON) Data Interchange Format", RFC 8259, 2017.
   <https://www.rfc-editor.org/rfc/rfc8259>. [std/json].
 - Y. Shafranovich. "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005.

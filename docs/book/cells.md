@@ -261,6 +261,12 @@ defn Main()
 end
 ```
 
+Beside a slider of ipywidgets in Jupyter, which calls its function again at each move, scipy 1.18.1's `solve_ivp` of the
+same system, RK45 at the same tolerances, solved again at the new `rho`: 136.4 ms (135.6 to 138.9) a step, the solve
+alone, against **2.66 ms** (2.64 to 2.67) for Set and the cell it gives; the mean of 20 steps after a first one, inside
+each program, the median of 101 runs alternated and the 95 % interval of that median, on the machine of
+[Speed](speed.md#beside-the-giants), on 2026-11-19.
+
 Set is an Err for a name that is no slider of the analysis, a value that is no finite number or is outside the slider's
 min and max, and a session that has no value for the name yet: the slider's cell runs first, as [cells.ToRun] gives it.
 

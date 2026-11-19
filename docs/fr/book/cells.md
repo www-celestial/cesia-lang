@@ -286,6 +286,12 @@ defn Main()
 end
 ```
 
+À côté d'un slider d'ipywidgets dans Jupyter, qui rappelle sa fonction à chaque mouvement, le `solve_ivp` de scipy
+1.18.1 sur le même système, RK45 aux mêmes tolérances, résolu de nouveau au nouveau `rho` : 136,4 ms (135,6 à 138,9) par
+pas, la résolution seule, contre **2,66 ms** (2,64 à 2,67) pour Set et la cell qu'il donne ; la moyenne de 20 pas après
+un premier, à l'intérieur de chaque programme, la médiane de 101 lancements alternés et l'intervalle à 95 % de cette
+médiane, sur la machine de [Vitesse](speed.md#à-côté-des-géants), le 2026-11-19.
+
 Set est un Err pour un nom qui n'est pas un slider de l'analyse, une valeur qui n'est pas un nombre fini ou qui sort du
 min et du max du slider, et une session qui n'a pas encore de valeur pour le nom : la cell du slider tourne d'abord,
 comme [cells.ToRun] la donne.

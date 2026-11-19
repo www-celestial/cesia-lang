@@ -254,6 +254,10 @@ suivi du DOI mène à l'œuvre, où que son éditeur la déplace.
   <https://doi.org/10.1145/3192366.3192369>. Un float et les bornes des décimaux qui se relisent en lui, mis d'un coup à
   l'échelle d'une puissance de 10 par des produits avec des puissances de 5 de 126 bits tirées d'une table : le texte de
   chaque float qu'écrit Cesia, avec les octets que lui donnait avant le `printf` du C, de 15 à 35 fois plus vite.
+- William D. Clinger. "How to Read Floating Point Numbers Accurately". *PLDI 1990*, ACM, 92–101.
+  <https://doi.org/10.1145/93542.93557>. Un décimal d'au plus 15 chiffres multiplié ou divisé par une puissance de dix
+  qu'un double tient exactement, $10^{22}$ au plus, est une seule opération d'IEEE 754 arrondie correctement, et donc le
+  double le plus proche : c'est ainsi que [json.Parse] lit la plupart des nombres sans la conversion générale.
 - T. Bray (éditeur). "The JavaScript Object Notation (JSON) Data Interchange Format", RFC 8259, 2017.
   <https://www.rfc-editor.org/rfc/rfc8259>. [std/json].
 - Y. Shafranovich. "Common Format and MIME Type for Comma-Separated Values (CSV) Files", RFC 4180, 2005.

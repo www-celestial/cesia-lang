@@ -667,6 +667,26 @@ et son JSON 3,4 ms, 192 Ko ; son SVG prend 38 ms, 855 Ko. Une surface de 1 000 p
 119 ms, les moyennes de ses blocs de 5 par 5 comprises, puis se dessine aussi vite qu'une de 200 par 200. Dans Cemacs,
 une surface de 100 par 100 quads tourne en 30 ms par pas, de la touche à la frame qui montre la nouvelle vue.
 
+### À côté de matplotlib
+
+Les mêmes graphes par matplotlib 3.11.2 sur Agg (son moteur de dessin en pixels), sur la machine de
+[Vitesse](speed.md#à-côté-des-géants), le 2026-11-19 : chacun mesuré à l'intérieur de son programme, après un premier
+graphe dessiné et non mesuré, pour que le temps soit celui du dessin et non du chargement ; la médiane de 101 lancements
+alternés, et l'intervalle à 95 % de cette médiane :
+
+| | Cesia | matplotlib 3.11.2 |
+|---|---:|---:|
+| une ligne de 1 000 000 de points, en SVG | **28,2 ms** (28,1 à 28,2) | 113,1 ms (112,8 à 113,4) |
+| une surface de 100 sur 100 quads, une nouvelle vue | **3,17 ms** (3,15 à 3,18), une scène | 75,27 ms (74,98 à 75,46), `view_init` et un dessin |
+| la même surface, en SVG | **33,9 ms** (33,8 à 34,1) | 804,1 ms (801,2 à 809,5) |
+
+matplotlib dessine la ligne avec sa simplification des chemins, active par défaut, et la surface avec chaque point,
+`rstride = cstride = 1`, comme Cesia dessine chaque quad ; avec son réglage par défaut de 50 points par direction, il en
+dessinerait le quart. Une vue n'est pas le même travail chez les deux : celle de Cesia est une scène, les formes en
+pixels que Cemacs peint ensuite, la moyenne de 20 vues ; celle de matplotlib est un dessin de la figure sur Agg, ses
+pixels peints, ce que fait une fenêtre de `mplot3d` à chaque glissement de la souris, la moyenne de 20 vues aussi.
+matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer, là où Cesia laisse la peinture à Cemacs.
+
 ## Limites
 
 - Du SVG seulement, pour l'instant ; le PNG viendra avec un rasterizer (le code qui change un dessin en pixels) choisi

@@ -628,6 +628,25 @@ KB; its SVG takes 38 ms, 855 KB. A surface of 1,000 by 1,000 points is made in 1
 5 by 5 included, and then draws as fast as one of 200 by 200. In Cemacs, a surface of 100 by 100 quads turns in 30 ms
 a step, from the key to the frame that shows the new view.
 
+### Beside matplotlib
+
+The same graphs by matplotlib 3.11.2 on Agg, on the machine of [Speed](speed.md#beside-the-giants), on 2026-11-19: each
+timed inside its program, after a first graph drawn and not timed, so that the time is the drawing and not the loading;
+the median of 101 runs alternated, and the 95 % interval of that median:
+
+| | Cesia | matplotlib 3.11.2 |
+|---|---:|---:|
+| a line of 1,000,000 points, to SVG | **28.2 ms** (28.1 to 28.2) | 113.1 ms (112.8 to 113.4) |
+| a surface of 100 by 100 quads, a new view | **3.17 ms** (3.15 to 3.18), a scene | 75.27 ms (74.98 to 75.46), `view_init` and a draw |
+| the same surface, to SVG | **33.9 ms** (33.8 to 34.1) | 804.1 ms (801.2 to 809.5) |
+
+matplotlib draws the line with its path simplification, on by default, and the surface with every point,
+`rstride = cstride = 1`, as Cesia draws every quad; at its default of 50 points a direction it would draw a quarter of
+them. A view is not the same work in both: Cesia's is a scene, the shapes in pixels that Cemacs then paints, the mean of
+20 views; matplotlib's is a draw of the figure on Agg, its pixels painted, which is what an `mplot3d` window does at
+each drag, the mean of 20 views too. matplotlib wins none of the three; its view gives pixels ready to show, where Cesia
+leaves the painting to Cemacs.
+
 ## Limits
 
 - SVG only, for now; PNG will come with a rasterizer chosen by measure.

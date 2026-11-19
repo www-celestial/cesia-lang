@@ -214,6 +214,26 @@ markdown.Html(markdown.Parse("<script>alert(1)</script>"), markdown.Plain) -->
 markdown.Parse("# Prices")[1].Kind -->
 ```
 
+## Speed
+
+[json.Parse] reads the scene of a surface of 100 by 100 quads, 192 KB of JSON made mostly of numbers, as a session of
+[cells](cells.md) sends it to an editor: the mean of 20 parses after a first one, inside each program, the median of
+101 runs alternated and the 95 % interval of that median, on the machine of [Speed](speed.md#beside-the-giants), on
+2026-11-19:
+
+| | 192 KB |
+|---|---:|
+| **Cesia**, [json.Parse] | **3.36 ms** (3.34 to 3.36) |
+| Python 3.14.10, `json.loads` | 3.34 ms (3.34 to 3.35) |
+| Node 26.13, `JSON.parse` | 1.06 ms (1.05 to 1.06) |
+
+Cesia's parser is OCaml, in its binary: it looks at a text eight bytes at a time for the end of a string, and reads a
+decimal of 15 digits or fewer, with a power of ten from $10^{-22}$ to $10^{22}$, by one product or one quotient of two
+doubles that hold them exactly, which IEEE 754 rounds correctly: the *fast path* of Clinger (1990). Rows of a document
+with the same keys share them. Python's `json.loads` runs the scanner of its `_json` module, written in C: the two take
+the same time, within half a percent. **Where Node wins, and why:** V8's `JSON.parse` is C++ inside the engine, which
+makes JavaScript's own objects and numbers as it reads, 3.2 times faster than both.
+
 ## Further reading
 
 RFC 8259 for JSON, RFC 4180 for CSV, RFC 4648 for Base64 and hexadecimal, RFC 3986 for the escapes of URLs, and the
