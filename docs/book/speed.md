@@ -140,7 +140,11 @@ std/plot` starts in 5.69 ms against 9.66 before, and Cemacs reaches its first fr
 run, whose entries are written once it has ended, takes about the time it took before: 9.61 and 54.26 ms. Since
 2026-11-13, the body of a function is read from the cache at its first call only: `use std/plot` then starts in 4.03 ms
 against 5.74 with every body read at the load, and Cemacs with its cells and its IDE, from `bin/cemacs` to its first
-frame, in 50.62 ms against 61.12, 21 runs of each, alternated, medians.
+frame, in 50.62 ms against 61.12, 21 runs of each, alternated, medians. Since 2026-11-19, a function that gives no
+number is inferred only when it runs, a growing array of the core no longer empties OCaml's minor heap, and an entry is
+checked by XXH64 instead of BLAKE2b: a first [plot.Svg] of a line, from the start of the program to its end, takes
+6.99 ms against 10.29, a session of cells that draws one 7.74 against 11.54, and `use std/plot` 4.08 against 4.38, 21
+runs of each, alternated, medians ([How Cesia works](internals.md#the-cache-of-loaded-packages)).
 
 ### Computing
 

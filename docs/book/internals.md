@@ -126,6 +126,18 @@ A function has at most 8 versions; past them, a *generic version*, typed "anythi
 results. A type written in the code, as `n Int`, is checked when a value comes in, and is never used to make code faster:
 an untyped program runs as fast as a typed one, by the owner's choice.
 
+A version is inferred at its first call, or before, when a caller needs the type of what it gives back. The resolver
+notes, for each function, whether a value it gives back can be a number, as its code shows: a literal, a variable,
+arithmetic, an index or a call can; a text, a list, a dictionary, a struct, a result, a Bool or a comparison can't, and
+the call of a function that gives no number gives none either. The call of a function that gives no number is
+"anything" to its caller, which is what inferring it would find, so the caller doesn't infer it: it is inferred when it
+runs, or when a function that calls it is compiled, which needs the slots of its parameters. Before 2026-11-19 a caller
+inferred every function its code calls, whether the call runs or not, and every function those call: a first
+[plot.Svg] of a line inferred 140 versions of [std/plot] and read their bodies from the
+[cache](#the-cache-of-loaded-packages), its 3D graphs and its animations among them, for the 65 it compiles and runs;
+now 110, which cost 0.8 ms instead of 1.1, and 99 bodies instead of 120. The types are the same, so the code that runs
+is the same.
+
 ## Running: closures as code
 
 The compiler turns the syntax tree into *closures*: OCaml functions made once per node, each calling those of its
@@ -959,6 +971,13 @@ full: 24.4 ms instead of 38.2, the medians of 21 runs, on 2026-11-11. A larger l
 million words it makes, each copying the trees made since the one before: every tree is copied once, so the cost grows
 as the code does.
 
+An array that grows, as the table of the places in the code that the compiler makes, doubles by copying itself twice
+into the new one. Made with `Array.make` and the young value it grows for, an array past 256 places would first empty
+the whole minor heap, as OCaml does so that the major heap points to no young block: until 2026-11-19, a first
+[plot.Svg] of a line crossed 512, 1,024, 2,048 and 4,096 places that way, four minor collections that copied 175,000
+words of trees and code to the major heap, then a major cycle, 2.2 ms of its 6.9 in the process. Now it makes no
+collection at all: its 460,000 words fit in the minor heap, and the program ends before it is full.
+
 The memory limit, 80% of the machine's memory unless `--limit memory=` says otherwise, is checked at full checkpoints and
 before each large allocation. When the heap seems past it, Cesia runs a full collection first, and stops the program only
 if the memory still in use is past the limit: garbage alone never reaches it.
@@ -1037,8 +1056,14 @@ their entry is found and checked.
 - the file is the person's own, and no one else's: a plain file, not a link, that no one else may read or write, in a
   folder that is theirs alone, which Cesia makes so (permissions 0700 for the folder, 0600 for each file); the file
   opened is the one looked at, the same device and inode, so a link put in its place in between isn't followed;
-- its *digest* is the one written at its start. A digest is a fingerprint of all the bytes of a file that changes when
-  any of them does; Cesia's is BLAKE2b, of 16 bytes. A damaged or cut entry is never decoded;
+- its *checksum* is the one written at its start. A checksum is a number made from all the bytes of a file, which
+  changes when any of them does; Cesia's is XXH64, by Yann Collet, of 8 bytes, the one zstd and lz4 check their frames
+  with. A damaged or cut entry is never decoded. Until 2026-11-19 it was BLAKE2b, of 16 bytes, a cryptographic digest:
+  XXH64 finds a damage as well, with a chance of $2^{-64}$ to miss one, and is 7 times faster here, 4.1 GB/s against
+  0.57, 32 µs instead of 232 for the 133 KB of the entry of [std/plot]. Neither keeps out someone who can write the
+  folder, who can write an entry and its sum as well: the folder is the person's own, as above. The digests of the
+  sources, below, stay BLAKE2b's, whose collisions no one can make: they say that the code that runs is the code on
+  the disk;
 - the entry names this build of Cesia, a digest of its sources made when it is built, the same `nesting` limit, and the
   digest of each source of the package, in order: a file changed since the last run is read again. A file of `std/`
   inside the binary changes only with the build, and needs no digest of its own;
@@ -1060,12 +1085,13 @@ them all to the major heap: 723,000 words promoted at Cemacs's start, 318,000 no
 for its body, which it skips: the body is read from the entry the first time something needs it, its first call most
 often, or the JIT when it looks at a function it may inline. The body of a file, whose statements run at once, and the
 one of a struct, which the load reads to know its fields, are read with the rest. In the entry, a body comes after its
-length, and its places are counted from the place before it, so that skipping it changes nothing else; the texts of the
+length, and its places and the numbers of its nodes are counted from those before it, each most often in a byte, so
+that skipping it changes nothing else; the texts of the
 entry, its names among them, come once at its start, so that a body read later finds them. The bytes it is read from
 are those of the entry checked when the package loaded, kept in memory: an entry changed on the disk since, or rewritten
 by another run, changes nothing for this run. A body is read by the same reader, which checks every count and reference
 against those bytes and must end where its length says. One that doesn't, which only a bug of Cesia or a change of the
-bytes in memory could make, the digest having been checked, stops the program with an error at its function, "The cache
+bytes in memory could make, the checksum having been checked, stops the program with an error at its function, "The cache
 of loaded packages kept this function damaged", and the entry is removed, so that the next run reads the package from
 its sources. A body that the load doesn't read hides no error: an entry is written only for a package that loaded from
 its sources without one, and every error that a load finds, it finds then; the same functions run, with the same
@@ -1120,12 +1146,36 @@ the median and its 95 % interval, from the start of the process to its end, Cema
 
 The first runs, with an empty cache, take the same time with either binary, within what the runs spread.
 
+**The first graph.** Since 2026-11-19, a function that gives no number is inferred only when it runs
+([Types](#types-inference-and-versions)), a growing array no longer empties the minor heap
+([Memory](#memory-and-the-garbage-collector)), an entry is checked by XXH64 instead of BLAKE2b, and the number of each of
+its nodes takes a byte most often: the entry of [std/plot] is 126.6 KB instead of 132.8. In the process, the first
+[plot.Svg] of a line loses the four minor collections and the major cycle, 2.2 ms, 30 versions inferred, 0.3 ms, 21
+bodies read, 0.2 ms, and 0.15 ms in reading the entries. From the start of the process to its end, on 2026-11-19, 21
+runs of each, the three binaries taking turns, the median and the fastest: Cesia of 2026-11-18 before the 3D graphs and
+the animations, which grew [std/plot] from 2,277 lines to 2,983; Cesia with them, before this change; and Cesia now:
+
+| Program | Before 3D and animations | Before | Now |
+|---|---:|---:|---:|
+| `use std/io` and `io.Print(1)` | 3.20 ms (2.97) | 3.29 ms (3.06) | 3.11 ms (2.94) |
+| `use std/plot` | 4.08 ms (3.89) | 4.38 ms (4.05) | 4.08 ms (3.86) |
+| a first [plot.Svg] of a line of 3 points | 8.74 ms (8.28) | 10.29 ms (9.88) | 6.99 ms (6.59) |
+| a first [plot.Svg] of a surface of 3 by 3 | | 14.20 ms (13.78) | 9.59 ms (8.89) |
+| a session of cells, as Cemacs starts one, that runs `use std/plot` and a line | 9.72 ms (9.42) | 11.54 ms (11.10) | 7.74 ms (7.19) |
+| `cesia test tests/lang/plot.ce`, its 49 tests | | 514 ms (501) | 507 ms (495) |
+| the same, the 27 tests it had before 3D and animations | 228 ms (219) | | 230 ms (219) |
+
+The programs that compute run as before: `bench/fib.ce` 60.0 ms before and 60.9 now, `bench/structs.ce` 43.6 and
+42.8, `bench/real/csv.ce` 434.8 and 439.6, the medians of 11 runs taking turns, within what the runs spread.
+
 **Tested** by `tests/cache_test.ml`, which damages each entry at 60 places, cuts it at 8 lengths, grows it, swaps it
 with another and reads it with another build, each time with the same output and the entry written again as it was,
 changes a file and a dependency, runs in turn two programs that load the Cesia code of `std/list` before and after a
 package that reads only its natives, with nothing resolved again, checks that the bodies of the functions a run never
-calls stay unread, in a package with recursion, closures and a function inside a function, and damages an entry in
-memory once it was checked, which stops the run at the first call that needs a body of it; by
+calls stay unread, in a package with recursion, closures and a function inside a function, that a function that only
+a function never called calls stays unread too, and that one that gives back the number of a call keeps its type, an
+Int, checks the checksum against the values of `xxhsum`, and damages an entry in memory once it was checked, which
+stops the run at the first call that needs a body of it; by
 `tests/cache/entries.cmd`, the same with the binary, and with a link, an entry that others may read, a folder that
 others may read and one that can't be written, four runs at once, and an entry changed on the disk while a run that
 read it runs; and by the golden tests, run once with no cache, once with an empty one and once with it full.

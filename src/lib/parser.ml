@@ -278,7 +278,8 @@ and short_function p (body : expr) =
   let f =
     { fname = "<anonymous>"; params = [| { pname = "it"; default = None; ptype = None } |]; ret = None;
       body = Lazy.from_val [| returned |]; nnodes = p.next_id; fpos = body.pos; nvars = 0; var_names = [||]; captures = [||];
-      maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
+      maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||];
+      no_number = None }
   in
   node p body.pos (Lambda f)
 
@@ -301,7 +302,8 @@ and in_func p fname fpos parse =
   p.loop <- saved_loop;
   p.in_function <- saved_fn;
   { fname; params; ret; body = Lazy.from_val body; nnodes; fpos; nvars = 0; var_names = [||]; captures = [||];
-    maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||] }
+    maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0; cell_of = [||]; export_of = [||];
+    no_number = None }
 
 (* NAME [TYPE] [= default]: a parameter, or a field of a struct in either form. *)
 and param p what =
@@ -1115,4 +1117,4 @@ let program ?(hooks = false) ~file ~nesting toks =
   hides p body;
   { fname = ""; params = [||]; ret = None; body = Lazy.from_val body; nnodes = p.next_id; fpos = Pos.make 1 1; nvars = 0;
     var_names = [||]; captures = [||]; maybe_undef = [||]; has_return = false; has_self_tail = false; kept = 0;
-    cell_of = [||]; export_of = [||] }
+    cell_of = [||]; export_of = [||]; no_number = None }

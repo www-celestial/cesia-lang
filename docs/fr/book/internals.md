@@ -137,6 +137,18 @@ vérifier que les deux donnent les mêmes résultats. Un type écrit dans le cod
 valeur arrive, et ne sert jamais à rendre le code plus rapide : un programme sans types tourne aussi vite qu'un
 programme typé, par choix de l'auteur de Cesia.
 
+Une version est inférée à son premier appel, ou avant, quand un appelant a besoin du type de ce qu'elle rend. Le
+resolver note, pour chaque fonction, si une valeur qu'elle rend peut être un nombre, comme son code le montre : un
+littéral, une variable, un calcul, un index ou un appel le peuvent ; un texte, une liste, un dictionnaire, une struct, un
+résultat, un Bool ou une comparaison ne le peuvent pas, et l'appel d'une fonction qui ne rend aucun nombre n'en rend pas
+non plus. L'appel d'une fonction qui ne rend aucun nombre est « n'importe quoi » pour son appelant, ce que l'inférer
+trouverait, donc l'appelant ne l'infère pas : elle est inférée quand elle tourne, ou quand une fonction qui l'appelle est
+compilée, ce qui demande les places de ses paramètres. Avant le 2026-11-19, un appelant inférait chaque fonction que son
+code appelle, que l'appel tourne ou non, et chaque fonction que celles-ci appellent : un premier [plot.Svg] d'une ligne
+inférait 140 versions de [std/plot] et lisait leur corps dans le [cache](#le-cache-des-packages-chargés), ses graphiques
+3D et ses animations parmi elles, pour les 65 qu'il compile et exécute ; maintenant 110, qui coûtent 0,8 ms au lieu de
+1,1, et 99 corps au lieu de 120. Les types sont les mêmes, donc le code qui tourne est le même.
+
 ## L'exécution : des closures comme code
 
 Le compilateur change le syntax tree en *closures* : des fonctions OCaml créées une fois par nœud, chacune appelant
@@ -1092,6 +1104,14 @@ de 38,2, les médianes de 21 runs, le 2026-11-11. Un chargement plus grand a une
 mots qu'il fait, chacune copiant les arbres faits depuis la précédente : chaque arbre est copié une fois, donc le coût
 grandit comme le code.
 
+Un array qui grandit, comme la table des places du code que fait le compilateur, double en se copiant deux fois dans le
+nouveau. Fait avec `Array.make` et la jeune valeur pour laquelle il grandit, un array de plus de 256 places viderait
+d'abord tout le minor heap, comme OCaml le fait pour que le major heap ne pointe vers aucun jeune bloc : jusqu'au
+2026-11-19, un premier [plot.Svg] d'une ligne passait ainsi 512, 1 024, 2 048 et 4 096 places, quatre minor collections
+qui copiaient 175 000 mots d'arbres et de code dans le major heap, puis un cycle majeur, 2,2 ms de ses 6,9 dans le
+processus. Maintenant il ne fait aucune collection : ses 460 000 mots tiennent dans le minor heap, et le programme finit
+avant qu'il soit plein.
+
 La limite de mémoire, 80 % de la mémoire de la machine sauf si `--limit memory=` dit autre chose, est vérifiée aux
 checkpoints complets et avant chaque grande allocation. Quand le heap semble la dépasser, Cesia fait d'abord une
 collection complète, et n'arrête le programme que si la mémoire encore utilisée dépasse la limite : les déchets seuls ne
@@ -1180,8 +1200,14 @@ octets, que le parser lit plus vite qu'on ne trouve et ne vérifie leur entrée.
   lire ni écrire, dans un dossier qui n'est qu'à elle, ce que Cesia fait en le créant (les permissions 0700 pour le
   dossier, 0600 pour chaque fichier) ; le fichier ouvert est celui qu'on a regardé, le même device et le même inode (le
   disque et le numéro du fichier sur ce disque), donc un lien mis à sa place entre-temps n'est pas suivi ;
-- son *digest* est celui écrit à son début. Un digest est une empreinte de tous les octets d'un fichier, qui change dès
-  que l'un d'eux change ; celui de Cesia est BLAKE2b, sur 16 octets. Une entrée abîmée ou coupée n'est jamais décodée ;
+- son *checksum* (sa somme de contrôle) est celui écrit à son début. Un checksum est un nombre fait de tous les octets
+  d'un fichier, qui change dès que l'un d'eux change ; celui de Cesia est XXH64, de Yann Collet, sur 8 octets, celui
+  avec lequel zstd et lz4 vérifient leurs frames. Une entrée abîmée ou coupée n'est jamais décodée. Jusqu'au 2026-11-19
+  c'était BLAKE2b, sur 16 octets, un digest cryptographique : XXH64 trouve un dommage aussi bien, avec une chance de
+  $2^{-64}$ d'en manquer un, et va 7 fois plus vite ici, 4,1 GB/s contre 0,57, 32 µs au lieu de 232 pour les 133 KB de
+  l'entrée de [std/plot]. Aucun des deux n'arrête quelqu'un qui peut écrire dans le dossier, qui peut écrire une entrée
+  et sa somme aussi : le dossier est à la personne seule, comme plus haut. Les digests des sources, plus bas, restent
+  ceux de BLAKE2b, dont personne ne sait faire de collisions : ils disent que le code qui tourne est le code du disque ;
 - l'entrée nomme ce build de Cesia (cette version compilée du binaire), un digest de ses sources fait quand il est
   compilé, la même limite `nesting`, et le digest de chaque source du package, dans l'ordre : un fichier changé depuis
   le dernier run est relu. Un fichier de `std/` dans le binaire ne change qu'avec le build, et n'a pas besoin d'un
@@ -1206,13 +1232,14 @@ valeurs qui durent) : 723 000 mots promus au démarrage de Cemacs, 318 000 maint
 chaque fonction sauf son corps, qu'il saute : le corps est lu dans l'entrée la première fois que quelque chose en a
 besoin, son premier appel le plus souvent, ou le JIT quand il regarde une fonction qu'il pourrait inliner. Le corps d'un
 fichier, dont les instructions tournent tout de suite, et celui d'une struct, que le chargement lit pour connaître ses
-champs, sont lus avec le reste. Dans l'entrée, un corps vient après sa longueur, et ses places sont comptées à partir de
-la place d'avant, pour que le sauter ne change rien d'autre ; les textes de l'entrée, ses noms parmi eux, viennent une
+champs, sont lus avec le reste. Dans l'entrée, un corps vient après sa longueur, et ses places et les numéros de ses
+nœuds sont comptés à partir de ceux d'avant, chacun le plus souvent sur un octet, pour que le sauter ne change rien
+d'autre ; les textes de l'entrée, ses noms parmi eux, viennent une
 seule fois à son début, pour qu'un corps lu plus tard les trouve. Les octets dont il est lu sont ceux de l'entrée
 vérifiée quand le package s'est chargé, gardés en mémoire : une entrée changée sur le disque depuis, ou réécrite par un
 autre run, ne change rien pour ce run. Un corps est lu par le même lecteur, qui vérifie chaque compte et chaque référence
 contre ces octets et doit finir là où le dit sa longueur. Un corps qui ne le fait pas, ce que seul un bug de Cesia ou un
-changement des octets en mémoire pourrait produire, le digest ayant été vérifié, arrête le programme avec une erreur à sa
+changement des octets en mémoire pourrait produire, le checksum ayant été vérifié, arrête le programme avec une erreur à sa
 fonction, « The cache of loaded packages kept this function damaged », et l'entrée est retirée, pour que le run suivant
 lise le package depuis ses sources. Un corps que le chargement ne lit pas ne cache aucune erreur : une entrée n'est
 écrite que pour un package qui s'est chargé depuis ses sources sans erreur, et chaque erreur que trouve un chargement, il
@@ -1274,13 +1301,38 @@ image :
 Les premiers runs, avec un cache vide, prennent le même temps avec l'un ou l'autre binaire, à l'écart près entre les
 runs.
 
+**Le premier graphique.** Depuis le 2026-11-19, une fonction qui ne rend aucun nombre n'est inférée que quand elle tourne
+([Types](#les-types--inférence-et-versions)), un array qui grandit ne vide plus le minor heap
+([Mémoire](#la-mémoire-et-le-garbage-collector)), une entrée est vérifiée par XXH64 au lieu de BLAKE2b, et le numéro de
+chacun de ses nœuds tient le plus souvent sur un octet : l'entrée de [std/plot] fait 126,6 KB au lieu de 132,8. Dans le
+processus, le premier [plot.Svg] d'une ligne perd les quatre minor collections et le cycle majeur, 2,2 ms, 30 versions
+inférées, 0,3 ms, 21 corps lus, 0,2 ms, et 0,15 ms à lire les entrées. Du début du processus à sa fin, le 2026-11-19, 21
+runs de chacun, les trois binaires à tour de rôle, la médiane et le plus rapide : Cesia du 2026-11-18 d'avant les
+graphiques 3D et les animations, qui ont fait passer [std/plot] de 2 277 lignes à 2 983 ; Cesia avec eux, d'avant ce
+changement ; et Cesia maintenant :
+
+| Programme | Avant la 3D et les animations | Avant | Maintenant |
+|---|---:|---:|---:|
+| `use std/io` et `io.Print(1)` | 3,20 ms (2,97) | 3,29 ms (3,06) | 3,11 ms (2,94) |
+| `use std/plot` | 4,08 ms (3,89) | 4,38 ms (4,05) | 4,08 ms (3,86) |
+| un premier [plot.Svg] d'une ligne de 3 points | 8,74 ms (8,28) | 10,29 ms (9,88) | 6,99 ms (6,59) |
+| un premier [plot.Svg] d'une surface de 3 sur 3 | | 14,20 ms (13,78) | 9,59 ms (8,89) |
+| une session de cells, comme Cemacs en démarre une, qui exécute `use std/plot` et une ligne | 9,72 ms (9,42) | 11,54 ms (11,10) | 7,74 ms (7,19) |
+| `cesia test tests/lang/plot.ce`, ses 49 tests | | 514 ms (501) | 507 ms (495) |
+| le même, les 27 tests qu'il avait avant la 3D et les animations | 228 ms (219) | | 230 ms (219) |
+
+Les programmes qui calculent tournent comme avant : `bench/fib.ce` 60,0 ms avant et 60,9 maintenant, `bench/structs.ce`
+43,6 et 42,8, `bench/real/csv.ce` 434,8 et 439,6, les médianes de 11 runs à tour de rôle, à l'écart près entre les runs.
+
 **Testé** par `tests/cache_test.ml`, qui abîme chaque entrée à 60 endroits, la coupe à 8 longueurs, l'allonge, l'échange
 avec une autre et la lit avec un autre build, à chaque fois avec la même sortie et l'entrée réécrite telle qu'elle
 était, qui change un fichier et une dépendance, et qui lance tour à tour deux programmes qui chargent le code Cesia de
 `std/list` avant et après un package qui n'en lit que les natives, sans rien résoudre de nouveau, qui vérifie que les
 corps des fonctions qu'un run n'appelle jamais restent non lus, dans un package avec de la récursion, des closures et une
-fonction dans une fonction, et qui abîme une entrée en mémoire une fois vérifiée, ce qui arrête le run au premier appel
-qui a besoin d'un de ses corps ; par `tests/cache/entries.cmd`, la même chose avec le binaire, et avec un lien, une
+fonction dans une fonction, qu'une fonction que seule une fonction jamais appelée appelle reste non lue aussi, et qu'une
+fonction qui rend le nombre d'un appel garde son type, un Int, qui vérifie le checksum contre les valeurs de `xxhsum`, et
+qui abîme une entrée en mémoire une fois vérifiée, ce qui arrête le run au premier appel qui a besoin d'un de ses
+corps ; par `tests/cache/entries.cmd`, la même chose avec le binaire, et avec un lien, une
 entrée que d'autres peuvent lire, un dossier que d'autres peuvent lire et un dossier où l'on ne peut pas écrire, quatre
 runs en même temps, et une entrée changée sur le disque pendant qu'un run qui l'a lue tourne ; et par les
 golden tests (des tests qui comparent la sortie à un texte attendu), lancés une fois sans cache, une fois avec un cache

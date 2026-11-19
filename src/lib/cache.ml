@@ -61,18 +61,67 @@ let abs p u j =
     if j >= 0 && j < n then modules.(n - 1 - j) else raise Bad
   | _ -> raise Bad
 
-(* An entry: these 8 bytes, the BLAKE2b-128 of the rest, then the rest. *)
-let magic = "Cesia\000L2"
+(* An entry: these 8 bytes, the checksum of the rest, then the rest. *)
+let magic = "Cesia\000L3"
+
+(* The checksum of an entry: XXH64 of Yann Collet, seed 0, as zstd and lz4 check their frames. It finds a damaged or cut
+   entry, as BLAKE2b-128 did, 7 times faster here (4.1 GB/s against 0.57: 32 µs for the 133 KB of std/plot); neither
+   keeps out someone who can write the folder, who can write an entry and its sum, and the folder is the person's own.
+   The digests of the sources stay BLAKE2b's: they say that the code that runs is the code on the disk. *)
+let p1 = 0x9E3779B185EBCA87L and p2 = 0xC2B2AE3D27D4EB4FL and p3 = 0x165667B19E3779F9L
+and p4 = 0x85EBCA77C2B2AE63L and p5 = 0x27D4EB2F165667C5L
+
+let[@inline] rotl x r = Int64.logor (Int64.shift_left x r) (Int64.shift_right_logical x (64 - r))
+let[@inline] round acc x = Int64.mul (rotl (Int64.add acc (Int64.mul x p2)) 31) p1
+let[@inline] merge acc v = Int64.add (Int64.mul (Int64.logxor acc (round 0L v)) p1) p4
+
+let checksum s off len =
+  let stop = off + len and p = ref off in
+  let h =
+    if len < 32 then p5
+    else begin
+      let v1 = ref (Int64.add p1 p2) and v2 = ref p2 and v3 = ref 0L and v4 = ref (Int64.neg p1) in
+      while !p + 32 <= stop do
+        v1 := round !v1 (String.get_int64_le s !p);
+        v2 := round !v2 (String.get_int64_le s (!p + 8));
+        v3 := round !v3 (String.get_int64_le s (!p + 16));
+        v4 := round !v4 (String.get_int64_le s (!p + 24));
+        p := !p + 32
+      done;
+      let h = Int64.add (Int64.add (rotl !v1 1) (rotl !v2 7)) (Int64.add (rotl !v3 12) (rotl !v4 18)) in
+      merge (merge (merge (merge h !v1) !v2) !v3) !v4
+    end
+  in
+  let h = ref (Int64.add h (Int64.of_int len)) in
+  while !p + 8 <= stop do
+    h := Int64.add (Int64.mul (rotl (Int64.logxor !h (round 0L (String.get_int64_le s !p))) 27) p1) p4;
+    p := !p + 8
+  done;
+  if !p + 4 <= stop then begin
+    let x = Int64.logand (Int64.of_int32 (String.get_int32_le s !p)) 0xFFFFFFFFL in
+    h := Int64.add (Int64.mul (rotl (Int64.logxor !h (Int64.mul x p1)) 23) p2) p3;
+    p := !p + 4
+  end;
+  while !p < stop do
+    h := Int64.mul (rotl (Int64.logxor !h (Int64.mul (Int64.of_int (Char.code s.[!p])) p5)) 11) p1;
+    incr p
+  done;
+  let h = !h in
+  let h = Int64.mul (Int64.logxor h (Int64.shift_right_logical h 33)) p2 in
+  let h = Int64.mul (Int64.logxor h (Int64.shift_right_logical h 29)) p3 in
+  Int64.logxor h (Int64.shift_right_logical h 32)
 
 (* Writing. The strings of an entry are written once, at its start, and named by their number. *)
 module Out = struct
-  (* A place is written as its distance from the one before, most often a byte. *)
+  (* A place is written as its distance from the one before, most often a byte, and so is the number of a node: the
+     parser numbers the nodes as it ends them, so a node and the one written after it are most often close. *)
   type out = {
     mutable b : Bytes.t;
     mutable n : int;
     strings : (string, int) Hashtbl.t;
     rel : int -> int * int;
     mutable last : int;
+    mutable last_id : int;
   }
 
   let grow o k =
@@ -122,7 +171,7 @@ module Out = struct
   let ptype o t =
     pos o t.tpos; opt str o t.tpkg; str o t.tname; bool o t.topt; bool o t.tbang; binding o t.tb
 
-  let rec expr o (x : expr) = uint o x.id; pos o x.pos; node o x.e
+  let rec expr o (x : expr) = int o (x.id - o.last_id); o.last_id <- x.id; pos o x.pos; node o x.e
 
   and block o b = arr expr o b
 
@@ -203,16 +252,17 @@ module Out = struct
     str o f.fname; arr param o f.params; opt ptype o f.ret; uint o f.nnodes; pos o f.fpos;
     uint o f.nvars; arr str o f.var_names; arr (fun o (a, b) -> uint o a; uint o b) o f.captures;
     arr bool o f.maybe_undef; bool o f.has_return; bool o f.has_self_tail; int o f.kept; arr int o f.cell_of;
-    arr int o f.export_of;
+    arr int o f.export_of; opt (arr binding) o f.no_number;
     if now || Resolve.struct_fields f <> None then (byte o 0; block o (Lazy.force f.body))
     else begin
       byte o 1;
-      let at = o.n and last = o.last in
+      let at = o.n and last = o.last and last_id = o.last_id in
       if o.n + 4 > Bytes.length o.b then grow o 4;
       o.n <- o.n + 4;
       block o (Lazy.force f.body);
       Bytes.set_int32_le o.b at (Int32.of_int (o.n - at - 4));
-      o.last <- last
+      o.last <- last;
+      o.last_id <- last_id
     end
 
   let use o u = str o u.upath; str o u.ualias; pos o u.upos; list str o u.unames
@@ -238,7 +288,7 @@ end
 module In = struct
   (* [file] names the file whose tree is read, and [drop] removes the entry, for a body that doesn't read. *)
   type inp = { s : string; mutable p : int; strs : string array; mutable abs : int -> int -> int; mutable last : int;
-               mutable file : string; drop : unit -> unit }
+               mutable last_id : int; mutable file : string; drop : unit -> unit }
 
   let[@inline] byte d =
     let c = Char.code d.s.[d.p] in
@@ -294,7 +344,8 @@ module In = struct
     { tpos; tpkg; tname; topt; tbang; tb }
 
   let rec expr d =
-    let id = uint d in
+    let id = d.last_id + int d in
+    d.last_id <- id;
     let pos = pos d in
     let e = node d in
     { id; pos; e }
@@ -434,6 +485,7 @@ module In = struct
     let kept = int d in
     let cell_of = arr int d in
     let export_of = arr int d in
+    let no_number = opt (arr binding) d in
     let body =
       match byte d with
       | 0 -> Lazy.from_val (block d)
@@ -446,7 +498,7 @@ module In = struct
       | _ -> raise Bad
     in
     { fname; params; ret; body; nnodes; fpos; nvars; var_names; captures; maybe_undef; has_return; has_self_tail; kept;
-      cell_of; export_of }
+      cell_of; export_of; no_number }
 
   (* A body read at its first need, from the bytes checked with the entry: one that doesn't read as it was written is an
      error of the entry, which goes, and the program stops there. *)
@@ -504,18 +556,20 @@ type saved = { d : In.inp; uses : use list array; paths : string list }
 
 let uses saved = saved.uses
 
-(* Nothing of an entry is decoded before its digest and what it was made from, the build, the nesting limit and the digest
-   of each source, are those expected. *)
+(* Nothing of an entry is decoded before its checksum and what it was made from, the build, the nesting limit and the
+   digest of each source, are those expected. *)
 let read slot =
   match slot.kept.read slot.name with
   | None -> None
   | Some s ->
     try
-      if String.length s < 24 || not (String.starts_with ~prefix:magic s)
-         || not (String.equal (String.sub s 8 16) (Digest.BLAKE128.substring s 24 (String.length s - 24)))
+      if String.length s < 16 || not (String.starts_with ~prefix:magic s)
+         || not (Int64.equal (String.get_int64_le s 8) (checksum s 16 (String.length s - 16)))
       then raise Bad;
       let open In in
-      let none = { s; p = 24; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; file = ""; drop = ignore } in
+      let none =
+        { s; p = 16; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; last_id = 0; file = ""; drop = ignore }
+      in
       let d = { none with strs = texts none; drop = (fun () -> slot.kept.write slot.name "") } in
       let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = Lazy.force slot.digests in
       if same then Some { d; uses = arr (list use) d; paths = slot.paths } else None
@@ -556,7 +610,7 @@ let trees saved place ~lookup ~spaces ~is_type =
 
 let encode slot place log uses trees =
   let open Out in
-  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo place; last = 0 } in
+  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo place; last = 0; last_id = 0 } in
   try
     str o slot.kept.build;
     uint o slot.nesting;
@@ -577,7 +631,9 @@ let encode slot place log uses trees =
     o.n <- 0;
     arr raw o all;
     let body = Bytes.sub_string o.b 0 o.n ^ rest in
-    slot.kept.write slot.name (String.concat "" [ magic; Digest.BLAKE128.string body; body ])
+    let sum = Bytes.create 8 in
+    Bytes.set_int64_le sum 0 (checksum body 0 (String.length body));
+    slot.kept.write slot.name (String.concat "" [ magic; Bytes.to_string sum; body ])
   with Exit -> ()
 
 (* The entries to write, by name: the trees don't change once resolved, so they are written when the run ends, off its

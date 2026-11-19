@@ -34,7 +34,11 @@ val text_arg : ctx -> string -> t -> string
     panic naming the parameter. *)
 val flag_arg : ctx -> string -> t array -> int -> bool
 
-(** A native: name, minimum and maximum argument count, code. [result]: it gives an Ok or an Err. *)
+(** The type of the result of a native that says nothing of it, any value: never a number, as [Infer] knows. *)
+val any : ty array -> ty
+
+(** A native: name, minimum and maximum argument count, code. [ret]: the type of its result, by those of its arguments,
+    [any] without it. [result]: it gives an Ok or an Err. *)
 val nat :
   ?perm:perm -> ?params:string array -> ?ret:(ty array -> ty) -> ?result:bool -> string -> int -> int ->
   (ctx -> t array -> t) -> t

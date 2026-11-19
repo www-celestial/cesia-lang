@@ -47,14 +47,26 @@ let () =
     ("(** Recursion and closures. *)\nuse std/list\n\n(** A factorial. *)\nFact(n) = if n < 2 1 else n * Fact(n - 1) end\n\n\
       (** A function that adds n. *)\nAdder(n) = x -> x + n\n\n\
       (** Even, through odd. *)\nEven(n) = if n == 0 true else odd(n - 1) end\nodd(n) = if n == 0 false else Even(n - 1) end\n\n\
-      (** Each of xs times k, by a function inside. *)\ndefn Scaled(xs, k)\n  defn by(x)\n    x * k\n  end\n  list.Map(by, xs)\nend\n"
+      (** Each of xs times k, by a function inside. *)\ndefn Scaled(xs, k)\n  defn by(x)\n    x * k\n  end\n  list.Map(by, xs)\nend\n\n\
+      (** A name for n: the long one for a big n only. *)\nNamed(n) = if n > 100 longName(n) else \"small\" end\n\
+      longName(n) = \"big, $(further(n))\"\nfurther(n) = \"past $n\"\n\n\
+      (** The number of a call it gives back. *)\nWrap(n) = inner(n)\ninner(n) = n + 1\n"
      ^ fill "More");
   write (Filename.concat app "src/units/units.ce") (units "Unit = \" m2\"");
   write (Filename.concat app "loads.ce") "use src/shapes\nuse std/io\n\nio.Print(\"loaded\")\n";
   write (Filename.concat app "main.ce")
     "use src/shapes\nuse std/io\n\nio.Print(shapes.All([shapes.Rect(2, 3), shapes.Rect(4, 5)]))\n\
-     add = shapes.Adder(3)\nio.Print(shapes.Fact(10), add(4), shapes.Even(7), shapes.Scaled([1, 2], 3))\n\
+     add = shapes.Adder(3)\nio.Print(shapes.Fact(10), add(4), shapes.Even(7), shapes.Scaled([1, 2], 3), shapes.Named(3), shapes.Wrap(1))\n\
      io.Print(shapes.Broken(1))\n"
+
+(* The checksum is XXH64: the values of xxhsum -H1, from no byte to more than 32, each way through its loops. *)
+let () =
+  let text = "Nobody inspects the spammish repetition" in
+  let sum s = Printf.sprintf "%016Lx" (Cache.checksum s 0 (String.length s)) in
+  check "the checksum of no byte" (sum "" = "ef46db3751d8e999");
+  check "the checksum of 3 bytes" (sum "abc" = "44bc2cf5ad770999");
+  check "the checksum of 39 bytes" (sum text = "fbcea83c8a378bf1");
+  check "the checksum of a part of a text" (Cache.checksum ("xy" ^ text ^ "z") 2 (String.length text) = Cache.checksum text 0 39)
 
 (* A run in a world of its own, which it gives with its output. *)
 let world_run ?(then_run = ignore) file =
@@ -97,11 +109,23 @@ let () =
      && body "area.ce" "All" = Some true && body "area.ce" "Area" = Some true);
   check "warm: the bodies of the functions never called stay unread"
     (body "area.ce" "Fill0" = Some false && body "more.ce" "More11" = Some false);
+  (* A function that gives no number is inferred at its first call only: one that only a function never called calls
+     stays unread. One that gives the number of a call keeps its type, an Int. *)
+  check "warm: a function that only a function never called calls stays unread" (body "more.ce" "further" = Some false);
+  let ret name =
+    match Array.find_opt (fun (md : Types.modul) -> String.ends_with ~suffix:"more.ce" md.path) w.modules with
+    | Some md ->
+      (match md.cells.(List.assoc name md.mnames) with
+       | Fun { proto; _ } -> List.map (fun (v : Types.version) -> v.ret) proto.versions
+       | _ -> [])
+    | None -> []
+  in
+  check "warm: the number a function gives back through a call keeps its type" (ret "Wrap" = [ Types.TI ]);
   (* An entry damaged in memory once it was read and checked, which no digest can see: the body read later doesn't read
      as it was written, so the first call of its function stops the program with an error there, the entry goes, and the
      next run reads the package from its sources. *)
   Hashtbl.filter_map_inplace (fun _ s -> Some (Bytes.to_string (Bytes.of_string s))) mem;
-  let damage () = Hashtbl.iter (fun _ s -> let b = Bytes.unsafe_of_string s in Bytes.fill b 24 (Bytes.length b - 24) '\255') mem in
+  let damage () = Hashtbl.iter (fun _ s -> let b = Bytes.unsafe_of_string s in Bytes.fill b 16 (Bytes.length b - 16) '\255') mem in
   let _, damaged = world_run ~then_run:damage "loads.ce" in
   check "damaged after the load: refused at the first call, with an error at the function"
     (String.starts_with ~prefix:"loaded\n" damaged && String.ends_with ~suffix:"exit 1" damaged
@@ -125,7 +149,7 @@ let () =
          Bytes.set b i (Char.chr (Char.code good.[i] lxor (1 lsl (i mod 8))));
          again (Printf.sprintf "byte %d of %d changed" i n) (k, good) (Bytes.to_string b)
        done;
-       List.iter (fun cut -> again (Printf.sprintf "cut to %d" cut) (k, good) (String.sub good 0 cut)) [ 0; 1; 8; 23; 24; 25; n / 2; n - 1 ];
+       List.iter (fun cut -> again (Printf.sprintf "cut to %d" cut) (k, good) (String.sub good 0 cut)) [ 0; 1; 8; 15; 16; 17; n / 2; n - 1 ];
        again "a byte added" (k, good) (good ^ "\000");
        again "another entry" (k, good) (snd (List.find (fun (k', _) -> k' <> k) entries)))
     entries;

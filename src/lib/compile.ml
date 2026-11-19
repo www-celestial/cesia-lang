@@ -3616,8 +3616,8 @@ and from_native (proto : proto) pm =
       end
     with Return_value e -> e
   in
-  Native { nname = proto.pname ^ ".From"; perm = None; params = [| "m" |]; min_args = 1; max_args = 1; ret_ty = (fun _ -> TA);
-           run; f1 = None; i2 = None; gives_result = false }
+  Native { nname = proto.pname ^ ".From"; perm = None; params = [| "m" |]; min_args = 1; max_args = 1;
+           ret_ty = Native.any; run; f1 = None; i2 = None; gives_result = false }
 
 let run_main (ctx : ctx) ~file ~m (fn : func) =
   let proto = new_proto ~file ~m fn in

@@ -1,6 +1,9 @@
 (** The loaded form of a package, kept between runs, so that a package unchanged since the last run is not lexed, parsed
-    or resolved again. An entry is untrusted bytes: it is decoded only once its digest and what it was made from are
+    or resolved again. An entry is untrusted bytes: it is decoded only once its checksum and what it was made from are
     checked, by a decoder that raises on anything wrong, and any failure only means that the package loads as without it. *)
+
+(** The checksum of an entry, XXH64 with seed 0, of [len] bytes of a text from [off]. *)
+val checksum : string -> int -> int -> int64
 
 (** Where entries are kept, which the binary gives: its build, which an entry must name, and how an entry is read and
     replaced by its name, each failing in silence. Without it, nothing is cached. *)
