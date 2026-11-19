@@ -86,7 +86,7 @@ essayer une fonction avant de l'écrire dans un fichier. Ctrl-D en sort.
 $ cesia run --repl
 > use std/text
 > text.Upper("hello")
-HELLO
+"HELLO"
 ```
 
 Le chapitre [Le prompt et le debugger](debug.md) en montre davantage.
@@ -129,7 +129,7 @@ cesia do run
   fingerprint de chacun de leurs fichiers, son BLAKE2b-256 : un fichier changé à la main, ou une copie différente sur une
   autre machine, se voit donc ;
 - `.gitignore`, qui laisse `std/` et `deps/` hors de git : `cesia pkg install` les recrée après un clone (une copie du
-  dépôt git).
+  dépôt git). Il laisse aussi dehors `site/` et `.cesia/`, ce qu'écrivent `cesia doc --site` et `cesia test`.
 
 ### Son cesia.toml
 
@@ -138,14 +138,14 @@ Le `cesia.toml` d'un nouveau projet :
 ```toml
 [project]
 name = "hello"
-cesia = "1.0"
+cesia = "1.2"
 
 [tasks.run]
 file = "src/main.ce"
 ```
 
-`cesia = "1.0"` est la plus ancienne version de Cesia dont le projet a besoin. Une version plus ancienne s'arrête tout de
-suite, et dit de lancer `cesia upgrade`.
+`cesia = "1.2"` est la plus ancienne version de Cesia dont le projet a besoin : `cesia new` écrit les deux premiers
+nombres de sa propre version. Une version plus ancienne s'arrête tout de suite, et dit de lancer `cesia upgrade`.
 
 ## Tâches
 

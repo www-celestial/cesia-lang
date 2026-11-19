@@ -158,7 +158,7 @@ Un serveur tourne sur un cœur. `--workers` en fait tourner plusieurs, qui serve
 un par cœur avec `cores` :
 
 ```bash
-cesia run --workers cores --allow net=0.0.0.0:8080 shop.ce
+cesia run --workers cores --allow net=:8080 shop.ce
 ```
 
 Le premier processus exécute le programme jusqu'à son listener (la socket qui accepte les connexions), l'ouvre, et devient
@@ -675,10 +675,14 @@ Pour `https`, [std/tls] donne au client son chiffrement, par OpenSSL. Il lui fau
 d'atteindre l'hôte :
 
 ```cesia norun
-use std/tls
+(* page.ce *)
+use std/http
+use std/io
 use std/result
+use std/tls
 api = result.Unwrap(tls.Open())
 page = http.Fetch("https://example.com/", secure = tls.Client(api))
+io.Print(result.Unwrap(page).Status)
 ```
 
 ```bash

@@ -47,8 +47,9 @@ jamais une écriture hors de l'array. Les vérifications de `x[j]`, `colptr[j]` 
 fois, avant les boucles, comme le dit la partie *Ce qu'il produit* de Comment Cesia fonctionne.
 
 Cette boucle sur une liste de structs tourne en code machine dès qu'elle est hot, environ quinze fois plus vite que dans
-l'interpréteur : `bench/real/particles.ce`, la même boucle sur 2 000 particules, prend 49 ms contre 811 ms sans le JIT,
-les médianes de 11 et de 5 runs (exécutions) sur la machine d'[À côté des géants](#à-côté-des-géants) :
+l'interpréteur : `bench/real/particles.ce`, une boucle du même genre sur 2 000 particules, avec la gravité, des murs et
+un sol, prend 49 ms contre 811 ms sans le JIT, les médianes de 11 et de 5 runs (exécutions) sur la machine
+d'[À côté des géants](#à-côté-des-géants) :
 
 ```cesia
 use std/list

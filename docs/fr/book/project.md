@@ -36,7 +36,7 @@ permissions dont le serveur a besoin : le dossier de la base de données, et le 
 ```toml
 [project]
 name = "notes"
-cesia = "1.0"
+cesia = "1.2"
 
 [tasks.serve]
 file = "src/main.ce"
@@ -125,6 +125,7 @@ d'un package a ses propres lignes use :
 ```cesia
 (* src/notes/routes.ce *)
 use std/http
+use std/result
 use std/text
 use std/value
 
@@ -176,6 +177,7 @@ données en mémoire :
 ```cesia
 (* src/notes/routes.test.ce *)
 use std/http
+use std/result
 
 defn ask(method, path, body = "")
   db = result.Unwrap(Open("sqlite::memory:"))
@@ -204,7 +206,8 @@ cesia test
 
 ## Servir
 
-`src/main.ce` ouvre la base de données dans `data/`, et sert les routes derrière [http.Logger] :
+`src/main.ce` ouvre la base de données dans `data/`, et sert les routes derrière [http.Logger]. [result.Unwrap] arrête le
+programme avec le message d'une `Err`, comme un port déjà pris, là où un résultat ignoré le finirait sans un mot :
 
 ```text
 use std/result
@@ -212,7 +215,7 @@ use std/http
 use src/notes
 
 db = result.Unwrap(notes.Open("sqlite:data/notes.db"))
-http.Serve(http.Wrap(http.Logger, notes.App(db)), port = 8080)
+result.Unwrap(http.Serve(http.Wrap(http.Logger, notes.App(db)), port = 8080))
 ```
 
 `cesia do serve` le lance avec les permissions de sa tâche, et un client peut lui parler :

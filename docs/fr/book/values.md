@@ -6,7 +6,10 @@ utiliser.
 
 Dans les exemples de ce livre, une ligne qui finit par `-->` montre la valeur de ce qui est à sa gauche, telle que Cesia
 l'affiche. Une ligne qui a une valeur après son `-->` la vérifie : la construction du livre s'arrêterait si `2 + 2` ne
-valait pas `4`.
+valait pas `4`. Les blocs d'une page forment un seul programme : un bloc utilise donc les packages (du code groupé sous
+un nom, comme `std/io`) que les blocs au-dessus de lui ont nommés. Pour lancer un exemple comme un fichier à vous,
+donnez-lui leurs lignes `use` et écrivez [io.Print] à la place de chaque `-->` : dans un programme, `-->` s'arrête sur
+une erreur qui le dit.
 
 ```cesia
 2 + 2 --> 4

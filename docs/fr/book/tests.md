@@ -31,7 +31,7 @@ L'exemple dit au lecteur ce que fait la fonction, et `cesia test` vérifie qu'el
 pas celle qui est écrite, `cesia test` nomme le fichier, la ligne, et ce qu'il a obtenu :
 
 ```text
-src/prices/tax.ce:7: WithTax(0.99) --> 1.2, got 1.19
+src/prices/tax.ce:6: WithTax(0.99) --> 1.2, got 1.19
 3 passed, 1 failed
 ```
 

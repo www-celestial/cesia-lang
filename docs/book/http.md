@@ -155,7 +155,7 @@ A server runs on one core. `--workers` runs several, which serve the same port t
 with `cores`:
 
 ```bash
-cesia run --workers cores --allow net=0.0.0.0:8080 shop.ce
+cesia run --workers cores --allow net=:8080 shop.ce
 ```
 
 The first process runs the program up to its listener, opens it, and becomes the supervisor: it starts the workers and
@@ -632,10 +632,14 @@ For `https`, [std/tls] gives the client its encryption, through OpenSSL. It need
 host:
 
 ```cesia norun
-use std/tls
+(* page.ce *)
+use std/http
+use std/io
 use std/result
+use std/tls
 api = result.Unwrap(tls.Open())
 page = http.Fetch("https://example.com/", secure = tls.Client(api))
+io.Print(result.Unwrap(page).Status)
 ```
 
 ```bash

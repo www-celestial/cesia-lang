@@ -81,7 +81,7 @@ its value. It suits trying a function before you write it in a file. Ctrl-D leav
 $ cesia run --repl
 > use std/text
 > text.Upper("hello")
-HELLO
+"HELLO"
 ```
 
 The chapter [The prompt and the debugger](debug.md) shows more of it.
@@ -121,7 +121,8 @@ cesia do run
 - `std/`, a copy of the libraries of Cesia, and `cesia.lock`, a [lock file](glossary.md#lock-file) that keeps the
   fingerprint of each of their files, its BLAKE2b-256, so that a file changed by hand, or a different copy on another
   machine, shows;
-- `.gitignore`, which leaves `std/` and `deps/` out of git: `cesia pkg install` makes them again after a clone.
+- `.gitignore`, which leaves `std/` and `deps/` out of git: `cesia pkg install` makes them again after a clone. It leaves out
+  `site/` and `.cesia/` too, what `cesia doc --site` and `cesia test` write.
 
 ### Its cesia.toml
 
@@ -130,13 +131,14 @@ The `cesia.toml` of a new project:
 ```toml
 [project]
 name = "hello"
-cesia = "1.0"
+cesia = "1.2"
 
 [tasks.run]
 file = "src/main.ce"
 ```
 
-`cesia = "1.0"` is the oldest Cesia the project needs. An older one stops at once, and says to run `cesia upgrade`.
+`cesia = "1.2"` is the oldest Cesia the project needs: `cesia new` writes the first two numbers of its own version. An
+older one stops at once, and says to run `cesia upgrade`.
 
 ## Tasks
 

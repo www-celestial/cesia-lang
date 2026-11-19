@@ -39,8 +39,8 @@ checks of `x[j]`, `colptr[j]` and `colptr[j + 1]` are made once, before the loop
 Cesia works says.
 
 This loop over a list of structs runs as machine code once it is hot, about fifteen times as fast as in the interpreter:
-`bench/real/particles.ce`, the same loop on 2,000 particles, takes 49 ms against 811 ms without the JIT, the medians
-of 11 and 5 runs on the machine of [Beside the giants](#beside-the-giants):
+`bench/real/particles.ce`, a loop of the same kind on 2,000 particles, with gravity, walls and a floor, takes 49 ms
+against 811 ms without the JIT, the medians of 11 and 5 runs on the machine of [Beside the giants](#beside-the-giants):
 
 ```cesia
 use std/list

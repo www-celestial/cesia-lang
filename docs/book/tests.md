@@ -30,7 +30,7 @@ The example says to the reader what the function does, and `cesia test` checks t
 one written, `cesia test` names the file, the line, and what it got:
 
 ```text
-src/prices/tax.ce:7: WithTax(0.99) --> 1.2, got 1.19
+src/prices/tax.ce:6: WithTax(0.99) --> 1.2, got 1.19
 3 passed, 1 failed
 ```
 

@@ -33,12 +33,12 @@ ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/cesia
 ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/ce      # optional: the short name of the same binary
 ```
 
-Such a binary says `cesia 1.1.0+dev`: `git pull` and `dune build` update it, not `cesia upgrade`. `ce` and `cesia` are one
+Such a binary says `cesia 1.2.0+dev`: `git pull` and `dune build` update it, not `cesia upgrade`. `ce` and `cesia` are one
 program, as `vi` and `vim`: `ce run file.ce` is `cesia run file.ce`.
 
 ## Read the book
 
-The book teaches Cesia from the start, in 28 short chapters, and the reference has a page for every name, each with examples
+The book teaches Cesia from the start, in 32 short chapters, and the reference has a page for every name, each with examples
 that ran when the site was built: **https://www-celestial.github.io/cesia-lang/**. It follows `main`, and each push publishes
 it again.
 

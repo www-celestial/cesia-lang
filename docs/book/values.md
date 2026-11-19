@@ -3,8 +3,11 @@
 In this chapter you meet the values a program works with: numbers, texts, true and false, and `missing`. You give them names,
 change them, and see which names other files can use.
 
-In the examples of this book, a line that ends with `-->` shows the value on its left, as Cesia prints it. A line with a value
-after its `-->` checks it: the book would not build if `2 + 2` were not `4`.
+In the examples of this book, a line that ends with `-->` shows the value on its left, as Cesia prints it. A line with a
+value after its `-->` checks it: the book would not build if `2 + 2` were not `4`. The blocks of a page are one program,
+so a block uses the packages, code grouped under a name as `std/io`, that the blocks above it named. To run an example
+as a file of your own, give it their `use` lines and write [io.Print] in place of each `-->`: in a program, `-->` stops
+with an error that says so.
 
 ```cesia
 2 + 2 --> 4
