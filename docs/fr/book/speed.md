@@ -157,7 +157,11 @@ image en 36,97 ms contre 52,16. Le premier run, dont les entrées sont écrites 
 temps qu'il prenait avant : 9,61 et 54,26 ms. Depuis le 2026-11-13, le corps d'une fonction n'est lu dans le cache
 qu'à son premier appel : `use std/plot` démarre alors en 4,03 ms contre 5,74 avec chaque corps lu au chargement, et
 Cemacs avec ses cells et son IDE, de `bin/cemacs` jusqu'à sa première image, en 50,62 ms contre 61,12, 21 runs de
-chacun, alternés, médianes.
+chacun, alternés, médianes. Depuis le 2026-11-19, une fonction qui ne rend aucun nombre n'est inférée que quand elle
+tourne, un array du cœur qui grandit ne vide plus le minor heap d'OCaml, et une entrée est vérifiée par XXH64 au lieu de
+BLAKE2b : un premier [plot.Svg] d'une ligne, du début du programme à sa fin, prend 6,99 ms contre 10,29, une session de
+cells qui en dessine une 7,74 contre 11,54, et `use std/plot` 4,08 contre 4,38, 21 runs de chacun, alternés, médianes
+([Comment Cesia fonctionne](internals.md#le-cache-des-packages-chargés)).
 
 ### Le calcul
 

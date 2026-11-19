@@ -602,7 +602,7 @@ plot.Svg(plot.Of([plot.Surface([1, 2; 3, 4]), plot.Line3([1, 2], [1, 2], [1, 2])
 
 A program that doesn't use [std/plot] starts as fast as before: 2.8 ms for `io.Print(1)`. `use std/plot` loads its 3,000
 lines in about 11 ms the first time, before the cache of loaded packages holds them; once it does, a first graph, from
-the start of the program to its SVG, takes 10 ms. Then [plot.Svg] takes,
+the start of the program to its SVG, takes 7 ms. Then [plot.Svg] takes,
 the median of 21 runs on a desktop of 8 cores:
 
 | Graph | Time |

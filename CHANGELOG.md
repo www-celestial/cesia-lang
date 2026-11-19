@@ -147,11 +147,16 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   the scene of a surface of 100 by 100 quads, 192 KB, in 3.5 ms instead of 8.1, the same values to the bit.
   std/cells reads a long answer of its session once, not once a chunk.
 - The cache of loaded packages: a package unchanged since the last run is neither lexed, parsed nor resolved again,
-  its entry written once the run has ended, checked by its BLAKE2b digest, in a folder of the person's alone:
+  its entry written once the run has ended, checked by its XXH64 checksum, in a folder of the person's alone:
   `use std/plot` starts in 5.69 ms instead of 9.66, Cemacs reaches its first frame in 36.97 ms instead of 52.16. A
   function's body is read from the cache at its first call: 4.03 and 50.62 ms. An entry places a used package's modules
   from its end, so two programs run in turn no longer resolve a package again: 0.4 to 1.2 ms a run.
 - Loading makes half the garbage it made: Cemacs's 44 modules load in 24.4 ms instead of 38.2.
+- A first graph costs the code it runs: a function that gives no number is inferred when it runs, not by each caller
+  that might call it; a growing array of the core no longer empties the young heap first, as it did four times in a
+  first `plot.Svg`; a cache entry is checked by XXH64, 7 times faster than BLAKE2b, and writes the number of a node in a
+  byte most often. A first `plot.Svg` of a line in 6.99 ms instead of 10.29, of a surface 9.59 instead of 14.20, a
+  session of cells that draws a line 7.74 instead of 11.54, `use std/plot` 4.08 instead of 4.38 (medians of 21 runs).
 - The resolver's definite assignment costs the same per statement whatever the number of variables: a function of
   4,000 variables resolves in 6 to 7 ms instead of 120 to 190.
 - The start stays where it was before std/sparse and std/quad: the sources of std/ are strings that only code names,
