@@ -110,11 +110,11 @@ scipy fait 2 753 appels, puisqu'il s'arrête un float plus tôt.
 ### La vitesse de Root
 
 Le zéro de $x^3 - 2x - 5$ sur `[2, 3]` jusqu'au dernier float, 20 000 fois dans une boucle : 2,18 µs par appel dans
-Cesia (intervalle à 95 % de la médiane de 101 lancements : 2,16 à 2,19), 11,7 µs pour le `brentq` de scipy (11,6 à 11,9),
-chacun avec 8 appels de `f`, mesurés comme le sont les résolutions de [La vitesse de Solve](#la-vitesse-de-solve), le
-2026-11-19. La boucle de Root tourne en code machine : le 2026-11-13, elle tournait dans l'interpréteur, puisque le JIT
-(le compilateur qui traduit le code en code machine pendant qu'il tourne) ne faisait pas de code machine d'une boucle qui
-appelle [math.Abs] ou [value.IsNumber], et prenait 7,1 µs.
+Cesia (intervalle à 95 % de la médiane de 101 lancements : 2,16 à 2,19), 11,7 µs pour le `brentq` de scipy (11,6 à
+11,9), chacun avec 8 appels de `f`, mesurés comme le sont les résolutions de
+[La vitesse de Solve](#la-vitesse-de-solve), le 2026-11-19. La boucle de Root tourne en code machine : le 2026-11-13,
+elle tournait dans l'interpréteur, puisque le JIT (le compilateur qui traduit le code en code machine pendant qu'il
+tourne) ne faisait pas de code machine d'une boucle qui appelle [math.Abs] ou [value.IsNumber], et prenait 7,1 µs.
 
 ## Le minimum d'une fonction
 
@@ -324,10 +324,9 @@ lancements le 2026-11-13.
 
 scipy gagne Minimize, 11 % de temps en moins à la tolérance de Cesia et 16 % à ses réglages par défaut : sa boucle est
 en Fortran et sa `f` en numpy, alors que chaque pas de la line search de Cesia fait une douzaine d'arrays de 1 000
-floats ; les deux boucles de la
-direction, qui coûtent le plus, tournent en code natif, sans arrays faits à chaque pas. Le `fminunc` d'Octave garde une
-matrice $n \times n$ entière. Simplex est 13 fois plus rapide que celui de scipy à la même tolérance : ses pas sont quelques petites
-opérations sur des arrays, là où ceux de scipy paient Python à chacune.
+floats ; les deux boucles de la direction, qui coûtent le plus, tournent en code natif, sans arrays faits à chaque pas.
+Le `fminunc` d'Octave garde une matrice $n \times n$ entière. Simplex est 13 fois plus rapide que celui de scipy à la
+même tolérance : ses pas sont quelques petites opérations sur des arrays, là où ceux de scipy paient Python à chacune.
 
 Un programme qui appelle Root démarre 0,5 ms plus tard qu'un programme qui affiche 1, 3,71 ms contre 3,19, les médianes
 de 21 lancements une fois son code dans le [cache des packages chargés](internals.md#le-cache-des-packages-chargés) ; le
@@ -690,11 +689,10 @@ main.
 | GNU Octave 11.3, `ode45` | 7 549 ms (7 536 à 7 571) | 1 104 ms (1 102 à 1 107) |
 
 Les trois prennent la même méthode, aux mêmes tolérances, et font à peu près le même travail : sur `[0, 100]`, Cesia
-fait 11 412 pas et appelle `f` 69 002 fois, scipy 10 859 pas et 67 214 appels, Octave 12 855 pas et 77 593 appels.
-Cesia est 11 fois plus rapide que scipy et 133 fois plus rapide qu'Octave sur la première résolution, et 70 et 600 fois
-sur la seconde. Sur cinq autres problèmes, les orbites
-d'Arenstorf et de Kepler et l'oscillateur de Van der Pol à $\mu = 10$, Cesia appelle `f` aussi souvent que scipy à 6 %
-près.
+fait 11 412 pas et appelle `f` 69 002 fois, scipy 10 859 pas et 67 214 appels, Octave 12 855 pas et 77 593 appels. Cesia
+est 11 fois plus rapide que scipy et 133 fois plus rapide qu'Octave sur la première résolution, et 70 et 600 fois sur la
+seconde. Sur cinq autres problèmes, les orbites d'Arenstorf et de Kepler et l'oscillateur de Van der Pol à $\mu = 10$,
+Cesia appelle `f` aussi souvent que scipy à 6 % près.
 
 Chaque pas fait 6 appels de `f` et environ 58 opérations sur des arrays de 3 floats. Le JIT de
 [Vitesse](speed.md#ce-qui-devient-du-code-machine) fait du code machine de la boucle du solveur et de `f`, d'abord au
@@ -717,15 +715,16 @@ faites avant chaque release.
 
 `s.At` d'un array de temps parcourt les pas une seule fois : chaque temps est dans le pas du temps d'avant, ou sinon son
 pas est cherché à partir de là, et la sortie dense d'un pas est préparée une fois pour tous les temps qui y tombent, en
-code natif qui ne fait aucun array pour chaque temps. Mesurés de la même façon, le 2026-11-19, les 5 000 temps du
-graphe ci-dessus, sur les 2 284 pas de Lorenz sur `[0, 50]`, prennent **0,50 ms** (0,50 à 0,51) ; 86,6 ms (86,2 à
-87,7) le 2026-11-18, avant ce parcours, quand chaque temps cherchait son pas par moitiés depuis le premier et calculait son état sur des arrays
-de 3. Les mêmes 5 000 temps dans un ordre mélangé prennent 1,9 ms, car chacun cherche de nouveau son pas, et un seul
-temps 1,5 µs. Le `sol.sol(t)` de scipy prend 46,9 ms (46,7 à 47,2) pour les 5 000 temps, 40,0 ms dans l'ordre mélangé,
-et 18,3 µs pour un seul : il trie
-les temps, trouve leurs pas avec `searchsorted`, puis appelle la sortie dense de chaque pas tour à tour, depuis Python.
-Il ne gagne nulle part ici, pas même avec peu de pas et beaucoup de temps : sur l'oscillateur `[y[2], -y[1]]` sur
-`[0, 10]`, 56 pas ici et 52 pour scipy, un million de temps prennent 18,8 ms (18,8 à 18,9) contre 157,2 (156,9 à 157,5). Dans n'importe quel ordre, répétés ou non, les temps donnent les mêmes lignes, jusqu'au dernier bit.
+code natif qui ne fait aucun array pour chaque temps. Mesurés de la même façon, le 2026-11-19, les 5 000 temps du graphe
+ci-dessus, sur les 2 284 pas de Lorenz sur `[0, 50]`, prennent **0,50 ms** (0,50 à 0,51) ; 86,6 ms (86,2 à 87,7) le
+2026-11-18, avant ce parcours, quand chaque temps cherchait son pas par moitiés depuis le premier et calculait son état
+sur des arrays de 3. Les mêmes 5 000 temps dans un ordre mélangé prennent 1,9 ms, car chacun cherche de nouveau son pas,
+et un seul temps 1,5 µs. Le `sol.sol(t)` de scipy prend 46,9 ms (46,7 à 47,2) pour les 5 000 temps, 40,0 ms dans l'ordre
+mélangé, et 18,3 µs pour un seul : il trie les temps, trouve leurs pas avec `searchsorted`, puis appelle la sortie dense
+de chaque pas tour à tour, depuis Python. Il ne gagne nulle part ici, pas même avec peu de pas et beaucoup de temps :
+sur l'oscillateur `[y[2], -y[1]]` sur `[0, 10]`, 56 pas ici et 52 pour scipy, un million de temps prennent 18,8 ms (18,8
+à 18,9) contre 157,2 (156,9 à 157,5). Dans n'importe quel ordre, répétés ou non, les temps donnent les mêmes lignes,
+jusqu'au dernier bit.
 
 `use std/ode` ajoute au démarrage d'un programme le temps de lire son code et celui de std/optimize et de std/num, dont
 il se sert : 1,3 ms au plus rapide de 21 lancements (4,15 ms contre 2,86 pour un programme qui affiche 1, le

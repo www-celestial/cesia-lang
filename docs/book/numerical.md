@@ -302,9 +302,10 @@ Extended Rosenbrock with 1,000 numbers, given the gradient, from `(-1.2, 1, -1.2
 | GNU Octave 11.3, `fminunc` and `fminsearch` | 32 s, 1,416 steps | 11.9 ms, 200 calls |
 
 scipy wins Minimize, 11 % less time at Cesia's tolerance and 16 % at its defaults: its loop is Fortran and its `f`
-numpy, while each step of Cesia's line search makes a dozen arrays of 1,000 floats; the two loops of the direction, which cost most, run
-as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$ matrix. Simplex is 13
-times faster than scipy's at the same tolerance: its steps are a few small array operations, where scipy's pay for Python at each one.
+numpy, while each step of Cesia's line search makes a dozen arrays of 1,000 floats; the two loops of the direction,
+which cost most, run as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$
+matrix. Simplex is 13 times faster than scipy's at the same tolerance: its steps are a few small array operations, where
+scipy's pay for Python at each one.
 
 A program that calls Root starts 0.5 ms later than one that prints 1, 3.71 ms against 3.19, the medians of 21 runs
 once its code is in the [cache of loaded packages](internals.md#the-cache-of-loaded-packages); the first run, which
@@ -648,9 +649,10 @@ alone, inside each program, the solve on `[0, 50]` after the other: the median o
 | GNU Octave 11.3, `ode45` | 7,549 ms (7,536 to 7,571) | 1,104 ms (1,102 to 1,107) |
 
 The three use the same method, at the same tolerances, and do about the same work: on `[0, 100]`, Cesia takes 11,412
-steps and calls `f` 69,002 times, scipy 10,859 steps and 67,214 calls, Octave 12,855 steps and 77,593 calls. Cesia is
-11 times faster than scipy and 133 times faster than Octave on the first solve, and 70 and 600 times on the second. On five more problems, the orbits of Arenstorf and Kepler and
-Van der Pol's oscillator at $\mu = 10$, Cesia calls `f` within 6 % as often as scipy.
+steps and calls `f` 69,002 times, scipy 10,859 steps and 67,214 calls, Octave 12,855 steps and 77,593 calls. Cesia is 11
+times faster than scipy and 133 times faster than Octave on the first solve, and 70 and 600 times on the second. On five
+more problems, the orbits of Arenstorf and Kepler and Van der Pol's oscillator at $\mu = 10$, Cesia calls `f` within 6 %
+as often as scipy.
 
 Each step is 6 calls of `f` and about 58 operations on arrays of 3 floats. The JIT of
 [Speed](speed.md#what-becomes-machine-code) makes machine code of the solver's loop and of `f`, first at MIR's level 1,
@@ -669,15 +671,16 @@ loop of the stages in the interpreter. On a 1-D diffusion of 100 points, 53 step
 with Octave's `ode15s` waits for the measures made before each release.
 
 `s.At` of an array of times walks the steps once: each time is in the step of the time before, or else its step is
-sought from there, and the dense output of a step is prepared once for all the times in it, in native code that makes
-no array for each time. Measured the same way, on 2026-11-19, the 5,000 times of the graph above, on the 2,284 steps of
-Lorenz on `[0, 50]`, take **0.50 ms** (0.50 to 0.51); 86.6 ms (86.2 to 87.7) on 2026-11-18, before this walk, when each time looked for its step
-by halves from the first one and computed its state on arrays of 3. The same 5,000 times in a scrambled order take
-1.9 ms, as each looks for its step again, and a single time 1.5 µs. scipy's `sol.sol(t)` takes 46.9 ms (46.7 to 47.2)
-for the 5,000 times, 40.0 ms in the scrambled order, and 18.3 µs for a single one: it sorts the times, finds their steps with `searchsorted`, then calls
-the dense output of each step in turn, from Python. It wins nowhere here, not even with few steps and many times: on
-the oscillator `[y[2], -y[1]]` over `[0, 10]`, 56 steps here and 52 for scipy, a million times take 18.8 ms (18.8 to
-18.9) against 157.2 (156.9 to 157.5). In any order, repeated or not, the times give the same rows, to the last bit.
+sought from there, and the dense output of a step is prepared once for all the times in it, in native code that makes no
+array for each time. Measured the same way, on 2026-11-19, the 5,000 times of the graph above, on the 2,284 steps of
+Lorenz on `[0, 50]`, take **0.50 ms** (0.50 to 0.51); 86.6 ms (86.2 to 87.7) on 2026-11-18, before this walk, when each
+time looked for its step by halves from the first one and computed its state on arrays of 3. The same 5,000 times in a
+scrambled order take 1.9 ms, as each looks for its step again, and a single time 1.5 µs. scipy's `sol.sol(t)` takes 46.9
+ms (46.7 to 47.2) for the 5,000 times, 40.0 ms in the scrambled order, and 18.3 µs for a single one: it sorts the times,
+finds their steps with `searchsorted`, then calls the dense output of each step in turn, from Python. It wins nowhere
+here, not even with few steps and many times: on the oscillator `[y[2], -y[1]]` over `[0, 10]`, 56 steps here and 52 for
+scipy, a million times take 18.8 ms (18.8 to 18.9) against 157.2 (156.9 to 157.5). In any order, repeated or not, the
+times give the same rows, to the last bit.
 
 `use std/ode` adds to the start of a program the time to read its code and that of std/optimize and std/num, which it
 uses: 1.3 ms in the fastest of 21 runs (4.15 ms against 2.86 for a program that prints 1, on 2026-11-13), more on a
