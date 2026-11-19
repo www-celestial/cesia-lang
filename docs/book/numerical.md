@@ -99,10 +99,11 @@ the gain is small, and not on every problem. scipy's `brentq` makes 2,753 calls,
 
 ### Speed of Root
 
-The zero of $x^3 - 2x - 5$ on `[2, 3]` to the last float, 20,000 times in a loop: 7.1 µs a call in Cesia (95 % interval
-of the median of 21 runs: 6.9 to 7.5), 11.5 µs for scipy's `brentq` (11.3 to 12.0), each with 8 calls of `f`, measured as
-the solves of [Speed of Solve](#speed-of-solve) are. Root's loop runs in the interpreter, as the JIT doesn't yet make
-machine code of a loop that calls [math.Abs] or [value.IsNumber].
+The zero of $x^3 - 2x - 5$ on `[2, 3]` to the last float, 20,000 times in a loop: 2.18 µs a call in Cesia (95 % interval
+of the median of 101 runs: 2.16 to 2.19), 11.7 µs for scipy's `brentq` (11.6 to 11.9), each with 8 calls of `f`,
+measured as the solves of [Speed of Solve](#speed-of-solve) are, on 2026-11-19. Root's loop runs as machine code: on
+2026-11-13 it ran in the interpreter, as the JIT made no machine code of a loop that calls [math.Abs] or
+[value.IsNumber], and took 7.1 µs.
 
 ## The minimum of a function
 
@@ -288,21 +289,22 @@ their digits, from MINPACK's Levenberg-Marquardt, which agree with the six digit
 ### Speed of Minimize and Simplex
 
 Extended Rosenbrock with 1,000 numbers, given the gradient, from `(-1.2, 1, -1.2, 1, ...)`, and Rosenbrock with 2 from
-`(-1.2, 1)`, at `tol = 1e-8`: the time of one call, inside each program, the median of 21 runs alternated, and from the
-6th to the 16th of them, an interval that holds the true median 97 times in 100, on the machine of
-[Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-13.
+`(-1.2, 1)`, at `tol = 1e-8`: the time of one call, inside each program, the median of 101 runs alternated, and the
+41st to the 61st of them, an interval that holds the true median 95 times in 100, on the machine of
+[Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-19; Octave's row, 21 runs on
+2026-11-13.
 
 | | Minimize, n = 1,000 | Simplex, n = 2 |
 |---|---:|---:|
-| **Cesia** | **7.77 ms** (7.73 to 8.01) | **0.337 ms** (0.331 to 0.340) |
-| scipy 1.18.1, at Cesia's tolerance | 6.47 ms (6.41 to 6.59) | 3.98 ms (3.90 to 4.03) |
-| scipy 1.18.1, at its defaults | 6.10 ms (6.04 to 6.16) | 2.88 ms (2.84 to 3.01), 159 calls, `X` to $4 \cdot 10^{-5}$ |
+| **Cesia** | **7.19 ms** (7.17 to 7.20) | **0.309 ms** (0.308 to 0.310) |
+| scipy 1.18.1, at Cesia's tolerance | 6.42 ms (6.39 to 6.43) | 3.91 ms (3.88 to 3.93) |
+| scipy 1.18.1, at its defaults | 6.08 ms (6.06 to 6.09) | 2.86 ms (2.84 to 2.88), 159 calls, `X` to $4 \cdot 10^{-5}$ |
 | GNU Octave 11.3, `fminunc` and `fminsearch` | 32 s, 1,416 steps | 11.9 ms, 200 calls |
 
-scipy wins Minimize by a fifth: its loop is Fortran and its `f` numpy, while Cesia's line search runs in the
-interpreter, and each step makes a dozen arrays of 1,000 floats; the two loops of the direction, which cost most, run
-as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$ matrix. Simplex is 12
-times faster than scipy's: its steps are a few small array operations, where scipy's pay for Python at each one.
+scipy wins Minimize, 11 % less time at Cesia's tolerance and 16 % at its defaults: its loop is Fortran and its `f`
+numpy, while each step of Cesia's line search makes a dozen arrays of 1,000 floats; the two loops of the direction, which cost most, run
+as native code, without arrays made at each step. Octave's `fminunc` keeps a full $n \times n$ matrix. Simplex is 13
+times faster than scipy's at the same tolerance: its steps are a few small array operations, where scipy's pay for Python at each one.
 
 A program that calls Root starts 0.5 ms later than one that prints 1, 3.71 ms against 3.19, the medians of 21 runs
 once its code is in the [cache of loaded packages](internals.md#the-cache-of-loaded-packages); the first run, which
@@ -634,26 +636,28 @@ plot.Svg(g) then result.IsOk() -->
 ### Speed of Solve
 
 The Lorenz system on `[0, 100]` at `rtol = 1e-8` and `atol = 1e-10`, and on `[0, 50]` at the defaults, the solve
-alone, inside each program: the median of 21 runs of each, alternated, and the 95 % interval of that median, on the
-machine of [Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-13. The programs are in the
-text of this section; MATLAB was not measured, as no MATLAB was at hand.
+alone, inside each program, the solve on `[0, 50]` after the other: the median of 101 runs of each, alternated, and the
+95 % interval of that median, on the machine of [Speed](speed.md#beside-the-giants), with other work running on it, on
+2026-11-19. The programs are in the text of this section; MATLAB was not measured, as no MATLAB was at hand.
 
 | | `[0, 100]`, `1e-8` | `[0, 50]`, defaults |
 |---|---:|---:|
-| **Cesia**, `cesia run` | **127 ms** (118 to 145) | **21.1 ms** (20.6 to 24.5) |
-| **Cesia**, in a cell of a session | **125 ms** (121 to 139) | |
-| scipy 1.18.1, `solve_ivp`, RK45 | 681 ms (624 to 761) | 138 ms (129 to 159) |
-| GNU Octave 11.3, `ode45` | 8,827 ms (8,188 to 11,051) | 1,167 ms (1,142 to 1,530) |
+| **Cesia**, `cesia run` | **56.6 ms** (56.5 to 56.8) | **1.84 ms** (1.82 to 1.86) |
+| **Cesia**, in a cell of a session | **57.8 ms** (57.6 to 58.1) | |
+| scipy 1.18.1, `solve_ivp`, RK45 | 605 ms (600 to 614) | 128 ms (127 to 129) |
+| GNU Octave 11.3, `ode45` | 7,549 ms (7,536 to 7,571) | 1,104 ms (1,102 to 1,107) |
 
 The three use the same method, at the same tolerances, and do about the same work: on `[0, 100]`, Cesia takes 11,412
 steps and calls `f` 69,002 times, scipy 10,859 steps and 67,214 calls, Octave 12,855 steps and 77,593 calls. Cesia is
-5 times faster than scipy and 70 times faster than Octave. On five more problems, the orbits of Arenstorf and Kepler and
+11 times faster than scipy and 133 times faster than Octave on the first solve, and 70 and 600 times on the second. On five more problems, the orbits of Arenstorf and Kepler and
 Van der Pol's oscillator at $\mu = 10$, Cesia calls `f` within 6 % as often as scipy.
 
-Each step is 6 calls of `f` and about 58 operations on arrays of 3 floats, and both run in the interpreter: the JIT
-of [Speed](speed.md#what-becomes-machine-code) doesn't yet make machine code of a loop that makes arrays, as `[a, b, c]`,
-or computes on whole arrays, as `y + h * k`, so a top-level `f`, a closure and the `f` of a cell all cost the same:
-about 11 µs a step, 1.5 of them in the 6 calls of `f`, each array operation about 75 ns. The aim for the first solve, 60 ms, waits for a JIT that lowers that code.
+Each step is 6 calls of `f` and about 58 operations on arrays of 3 floats. The JIT of
+[Speed](speed.md#what-becomes-machine-code) makes machine code of the solver's loop and of `f`, first at MIR's level 1,
+then at level 2 from another core once it is hot, as [How Cesia works](internals.md#what-it-costs-to-make) says: the
+first solve, 11,412 steps, takes about 5 µs a step, the making of its code included, and the second, 2,284 steps on code
+already made, 0.8 µs a step. The `f` of a cell costs what a top-level `f` costs, 57.8 ms against 56.6. On 2026-11-13,
+when these loops ran in the interpreter, a step took about 11 µs, and the first solve 127 ms.
 
 With `stiff = true`, measured the same way: Robertson's problem on `[0, 1e11]` at `rtol = 1e-6` and `atol = 1e-10`
 takes 207 steps and **15.2 ms** (14.2 to 25.0), Van der Pol's at $\mu = 1000$ on `[0, 3000]` at `rtol = atol = 1e-6`
@@ -666,14 +670,14 @@ with Octave's `ode15s` waits for the measures made before each release.
 
 `s.At` of an array of times walks the steps once: each time is in the step of the time before, or else its step is
 sought from there, and the dense output of a step is prepared once for all the times in it, in native code that makes
-no array for each time. Measured the same way, on 2026-11-18, the 5,000 times of the graph above, on the 2,284 steps of
-Lorenz on `[0, 50]`, take **0.53 ms** (0.51 to 0.53); 86.6 ms (86.2 to 87.7) before, when each time looked for its step
+no array for each time. Measured the same way, on 2026-11-19, the 5,000 times of the graph above, on the 2,284 steps of
+Lorenz on `[0, 50]`, take **0.50 ms** (0.50 to 0.51); 86.6 ms (86.2 to 87.7) on 2026-11-18, before this walk, when each time looked for its step
 by halves from the first one and computed its state on arrays of 3. The same 5,000 times in a scrambled order take
-1.9 ms, as each looks for its step again, and a single time 2.7 µs. scipy's `sol.sol(t)` takes 48.0 ms (45.7 to 50.9)
-for the 5,000 times, and 18.8 µs for a single one: it sorts the times, finds their steps with `searchsorted`, then calls
+1.9 ms, as each looks for its step again, and a single time 1.5 µs. scipy's `sol.sol(t)` takes 46.9 ms (46.7 to 47.2)
+for the 5,000 times, 40.0 ms in the scrambled order, and 18.3 µs for a single one: it sorts the times, finds their steps with `searchsorted`, then calls
 the dense output of each step in turn, from Python. It wins nowhere here, not even with few steps and many times: on
-the oscillator `[y[2], -y[1]]` over `[0, 10]`, 56 steps here and 52 for scipy, a million times take 19.5 ms (19.3 to
-19.7) against 158.6 (157.6 to 160.3). In any order, repeated or not, the times give the same rows, to the last bit.
+the oscillator `[y[2], -y[1]]` over `[0, 10]`, 56 steps here and 52 for scipy, a million times take 18.8 ms (18.8 to
+18.9) against 157.2 (156.9 to 157.5). In any order, repeated or not, the times give the same rows, to the last bit.
 
 `use std/ode` adds to the start of a program the time to read its code and that of std/optimize and std/num, which it
 uses: 1.3 ms in the fastest of 21 runs (4.15 ms against 2.86 for a program that prints 1, on 2026-11-13), more on a
@@ -908,17 +912,17 @@ plot.Svg(plot.Of([plot.Area(us, 0.0 * us, h(us), label = "$(qh.Value) ± $(qh.Er
 ### Speed of Integral
 
 The integral of $x^{-1/2} \log(1/x)$ from 0 to 1 at the defaults, `rtol = 1e-10` and `atol = 1e-12`, 315 calls of `f` in each
-language: the median of 21 runs of each, alternated, and the 95 % interval of that median, on the machine of
-[Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-13. A first call is the first in a fresh
-program; then the mean of 1,000 calls in the same program.
+language: the median of 101 runs of each, alternated, and the 95 % interval of that median, on the machine of
+[Speed](speed.md#beside-the-giants), with other work running on it, on 2026-11-19. A first call is the first
+in a fresh program; then the mean of 1,000 calls in the same program.
 
 | | first call | then, each call |
 |---|---:|---:|
-| **Cesia** | 135 µs (129 to 144) | **46.7 µs** (45.3 to 47.7) |
-| scipy 1.18.1, `quad` | **116 µs** (112 to 118) | 82.3 µs (80.0 to 85.6) |
-| GNU Octave 11.3, `integral` | | 2,309 µs (2,283 to 2,330) |
+| **Cesia** | 152 µs (144 to 158) | **44.6 µs** (44.3 to 45.0) |
+| scipy 1.18.1, `quad` | **109 µs** (108 to 109) | 79.8 µs (79.6 to 80.2) |
+| GNU Octave 11.3, `integral` | | 2,286 µs (2,280 to 2,293) |
 
-Cesia is 1.8 times as fast as scipy once its code is read, and 49 times as fast as Octave, whose `integral` also stops
+Cesia is 1.8 times as fast as scipy once its code is read, and 51 times as fast as Octave, whose `integral` also stops
 further from 4, 2.3e-11 away. scipy wins the first call: Cesia reads and prepares the code of std/quad then. The time
 goes to the calls of `f`: with `math.Sqrt` as `f`, its integral from 0 to 1 takes 231 calls in 21 µs, about 90 ns each
 for the call and the method's own work, and `f`'s own work comes on top. MATLAB was not measured, as no MATLAB was at

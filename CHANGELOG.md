@@ -122,10 +122,10 @@ as it did, and so does a project whose `std/` 1.1.0 installed, without `cesia pk
 - `std/ode`: `ode.Solve`, the method of Dormand and Prince with its dense output, a PI control of the step, events
   located by `optimize.Root`, and an alarm when the problem is stiff; `stiff = true` runs Rodas5P, a Rosenbrock method
   of order 5, with the Jacobian given by `jacobian =` or by differences. An `Err` with the solution so far at a blow-up,
-  a NaN or past its steps. Lorenz on [0, 100] at `rtol = 1e-8` in 127 ms, against 681 for scipy and 8,827 for Octave.
+  a NaN or past its steps. Lorenz on [0, 100] at `rtol = 1e-8` in 57 ms, against 605 for scipy and 7,549 for Octave.
 - `std/quad`: `quad.Integral(f, a, b)`, QUADPACK's QAGS, QAGP at the `points` given and QAGI for an infinite bound,
   with Wynn's epsilon algorithm, in a native engine that calls `f` back: the same value and error estimate as scipy's
-  `quad`, to the last bit, on 42 integrals, in 46.7 us against scipy's 82.3. `math.Inf`, the infinity.
+  `quad`, to the last bit, on 42 integrals, in 44.6 us against scipy's 79.8. `math.Inf`, the infinity.
 - `std/sparse`: matrices in compressed columns, `sparse.Of` from triplets with every index checked, `Eye`, `Diags`,
   `Kron`, `Add`, `Scale`, `Transpose`, `Dense`, `Get` and `Mul`; `sparse.Solve`, as MATLAB's backslash, orders by
   approximate minimum degree, then factors by supernodes, multifrontal, Cholesky or LU on dense fronts through BLAS,
