@@ -123,6 +123,9 @@ as it did, and so does a project whose `std/` 1.1.0 installed, without `cesia pk
   located by `optimize.Root`, and an alarm when the problem is stiff; `stiff = true` runs Rodas5P, a Rosenbrock method
   of order 5, with the Jacobian given by `jacobian =` or by differences. An `Err` with the solution so far at a blow-up,
   a NaN or past its steps. Lorenz on [0, 100] at `rtol = 1e-8` in 57 ms, against 605 for scipy and 7,549 for Octave.
+  With `stiff = true`, Robertson's problem in 12.2 ms, Van der Pol's at mu = 1000 in 15.2, against 147 and 360 for
+  scipy's `Radau` and 929 and 116 for Octave's `ode15s`; scipy's `LSODA`, Fortran, takes 9.1 and 11.3 ms, with errors
+  100 times Cesia's on Van der Pol's.
 - `std/quad`: `quad.Integral(f, a, b)`, QUADPACK's QAGS, QAGP at the `points` given and QAGI for an infinite bound,
   with Wynn's epsilon algorithm, in a native engine that calls `f` back: the same value and error estimate as scipy's
   `quad`, to the last bit, on 42 integrals, in 44.6 us against scipy's 79.8. `math.Inf`, the infinity.
@@ -169,8 +172,11 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   session of cells that draws a line 7.74 instead of 11.54, `use std/plot` 4.08 instead of 4.38 (medians of 21 runs).
 - The resolver's definite assignment costs the same per statement whatever the number of variables: a function of
   4,000 variables resolves in 6 to 7 ms instead of 120 to 190.
-- The start stays where it was before std/sparse and std/quad: the sources of std/ are strings that only code names,
-  and a program's stacks start small: `io.Print(1)` in 2.70 ms, 2.82 before, in the release build.
+- The start is 1.1.0's again: the sources of std/ are strings that only code names, a program's stacks start small, the
+  natives of std/ are joined by package in one pass over a table instead of a search of a list for each, and the tables
+  of `text.Fold`, of `json.Parse`'s powers of ten and of the digits of an integer are constants of the binary instead
+  of being made at each start: `io.Print(1)` in 2.52 ms, as 1.1.0 built the same way, against 2.63 before (medians of
+  101 rounds of 50 runs, alternated, the release builds).
 - `encode.Unbase64` of 1.4 MB, a page's screenshot, 572 -> 5.7 ms.
 - The JIT makes a unit's machine code at MIR's level 1 first, in 30 to 60 % less time, and its level 2 in another
   domain once the unit is hot: Lorenz on [0, 100] 83 -> 66 ms, `structs` 51 -> 40, long runs at level 2's speed.
@@ -182,6 +188,11 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - The JIT keeps small arrays of floats in slots and inlines the functions that give them, goes back to the interpreter
   inside an if, and leaves it the statements it can't make, so the loop of `ode.Solve` is machine code; a loop whose
   statement left to the interpreter runs at nearly every turn stays in the interpreter: 1,011 -> 75 ms for 10^6 turns.
+- A call through a value that none of the functions the JIT saw takes goes back to the interpreter with the fuel it
+  has, as no callee stepped on the way: its statement no longer copies the fuel at its start at every turn.
+  `bench/dyn.ce` in 58.9 ms instead of 64.0; 1.1.0 takes 55.4, 6 % less (medians of 101 runs, alternated): the test of
+  the function by the identity of its code, which lets a function that a session defines again with the same code keep
+  its machine code, and the start of the loop at MIR's level 1 cost the rest.
 - `f()`, a call with no argument of a function held in a value, and `random.Float()` are machine code: `f()` 37 -> 2.2
   ns, 10^6 single draws of `stats.MonteCarlo` 539 -> 8.9 ms. `^`, `math.Exp` and the other functions of one float on an
   array of floats run unboxed, and `num.Uniform` draws in one native loop, the same numbers for a seed.

@@ -132,27 +132,37 @@ Un programme qui affiche `1`, 101 runs de chacun, alternés :
 | | Médiane | Intervalle à 95 % |
 |---|---:|---:|
 | `/usr/bin/true`, rien | 0,53 ms | 0,52 à 0,54 |
-| Lua | 0,85 ms | 0,84 à 0,88 |
-| LuaJIT | 1,01 ms | 1,00 à 1,02 |
-| OCaml, natif | 1,09 ms | 1,07 à 1,11 |
-| Go | 1,36 ms | 1,33 à 1,39 |
-| **Cesia** | **2,75 ms** | 2,73 à 2,77 |
-| Python | 13,85 ms | 13,79 à 13,93 |
-| Java | 24,25 ms | 24,14 à 24,34 |
-| Node | 36,32 ms | 35,38 à 37,18 |
+| Lua | 0,88 ms | 0,85 à 0,90 |
+| LuaJIT | 1,00 ms | 0,98 à 1,01 |
+| OCaml, natif | 1,08 ms | 1,06 à 1,09 |
+| Go | 1,32 ms | 1,29 à 1,35 |
+| **Cesia** | **2,68 ms** | 2,67 à 2,70 |
+| Python | 13,88 ms | 13,86 à 13,94 |
+| Java | 23,99 ms | 23,94 à 24,14 |
+| Node | 37,24 ms | 35,93 à 38,29 |
 
 Mesuré de nouveau le 2026-11-09 : 2,84 ms pour le binaire d'avant le changement qui ne fait grandir son young heap (la
 petite partie de la mémoire où naissent les nouvelles valeurs, vidée souvent) que quand un programme en a besoin,
 alterné dans les mêmes runs. Cesia démarre 5 fois plus vite que Python, 9 fois plus vite que Java et 13 fois plus vite
 que Node. Un programme compilé en Go ou en OCaml, ou Lua, démarre en la moitié à un tiers de son temps : Cesia porte dans un
 seul binaire tout son runtime (ce qui accompagne un programme pendant qu'il tourne), sa bibliothèque standard et son
-compilateur, 19 723 endroits de son code que le garbage collector d'OCaml (la partie qui libère la mémoire que plus rien
+compilateur, 22 247 endroits de son code que le garbage collector d'OCaml (la partie qui libère la mémoire que plus rien
 n'utilise) doit connaître, contre 322 dans le programme d'OCaml lui-même, et le système doit corriger les adresses de
 ses données à chaque démarrage, comme le montre [Comment Cesia fonctionne](internals.md#le-démarrage).
 
-Le démarrage a grandi depuis Cesia 1.1.0 : construit de la même façon et lancé en alternance avec celui-ci, 301 runs de
-chacun le 2026-11-19, 1.1.0 affiche `1` en 2,58 ms (2,55 à 2,60) contre 2,70 (2,68 à 2,71). Rien ne doit ralentir le
-démarrage : ces 0,12 ms sont un bug à corriger.
+Le démarrage avait grandi depuis Cesia 1.1.0, de 0,11 ms : un bug, puisque rien ne doit ralentir le démarrage, corrigé
+depuis. Chaque démarrage joignait les natives de `std/` par package en cherchant dans une liste pour chaque groupe, avec
+le compare polymorphe d'OCaml (la comparaison qui marche sur toute valeur en parcourant sa structure, plus lente qu'une
+comparaison de textes), et construisait trois tables, celles de `text.Fold`, des puissances de dix de `json.Parse` et
+des chiffres d'un entier : 243 000 instructions en tout ; la jointure se fait maintenant en un seul passage sur une
+table, et les tables sont des constantes du binaire. Construit de la même façon et lancé en alternance, 101 tours de
+50 runs de chacun le 2026-11-19, chaque tour la médiane de ses 50, la sortie jetée : 1.1.0 affiche `1` en 2,52 ms
+(2,51 à 2,53), celui-ci en 2,52 (2,50 à 2,53), et avant la correction 2,63 (2,61 à 2,64). Ce que 1.2.0 ajoute encore au
+démarrage, c'est son nouveau code, 22 247 frame descriptors (la description, pour chaque endroit où un appel revient,
+des cases de la pile qui tiennent des valeurs) au lieu de 19 746, que le loader (la partie du système qui charge le
+programme) reloge et que le runtime range dans sa table : d'après les compteurs du processeur, 180 000 instructions de
+plus à cet endroit, et le démarrage fait 2,04 millions d'instructions en tout, contre 2,06 millions pour 1.1.0 et
+2,29 millions avant la correction.
 
 Un programme qui utilise des packages écrits en Cesia les lit à son premier run et les garde dans le
 [cache des packages chargés](internals.md#le-cache-des-packages-chargés) : à partir du run suivant, un package dont les
@@ -170,7 +180,8 @@ cells qui en dessine une 7,74 contre 11,54, et `use std/plot` 4,08 contre 4,38, 
 
 ### Le calcul
 
-En millisecondes, la médiane et l'intervalle à 95 % de 101 runs :
+En millisecondes, la médiane et l'intervalle à 95 % de 101 runs ; la ligne `dyn` mesurée de nouveau, de la même façon,
+une fois son ralentissement corrigé, plus bas :
 
 | Programme | Cesia | Cesia, sans JIT | Python | Node | Java | Go | OCaml | Lua | LuaJIT |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -178,7 +189,7 @@ En millisecondes, la médiane et l'intervalle à 95 % de 101 runs :
 | `mandel` | **61** (61–62) | 471 (470–473) | 2 624 (2 615–2 639) | 91 (90–91) | 81 (81–81) | 52 (52–52) | 57 (57–57) | 434 (433–435) | 55 (55–55) |
 | `matmul` | **45** (45–45) | 980 (976–983) | 4 720 (4 701–4 756) | 96 (95–97) | 82 (82–82) | 33 (33–34) | 60 (60–60) | 832 (831–835) | 87 (87–88) |
 | `structs` | **38** (38–40) | 614 (611–616) | 1 722 (1 715–1 732) | 168 (167–169) | 110 (109–111) | 9 (9–9) | 30 (30–30) | 1 533 (1 521–1 537) | 397 (396–399) |
-| `dyn` | **64** (64–64) | 693 (692–695) | 1 366 (1 364–1 369) | 165 (164–166) | 96 (96–96) | 28 (28–28) | 68 (68–68) | 718 (716–719) | 57 (57–58) |
+| `dyn` | **58** (58–58) | 685 (683–690) | 1 370 (1 363–1 381) | 165 (164–165) | 96 (96–96) | 28 (28–28) | 68 (67–68) | 716 (715–717) | 57 (57–57) |
 | `maps` | **255** (254–255) | 250 (249–250) | 399 (399–400) | 528 (524–531) | 247 (244–248) | 268 (265–271) | 496 (493–500) | 788 (784–794) | 307 (306–309) |
 
 Mesuré de nouveau le 2026-11-09, après que les feuilles d'une récursion (ses derniers appels, qui ne rappellent plus la
@@ -197,7 +208,7 @@ puis lue.
 `matmul` tourne en environ la moitié du temps de Java, de Node et de LuaJIT, et devant OCaml, `fib` en 59 ms contre 70
 pour Java et 95 pour LuaJIT, et `mandel` devant Java et Node. Face à Python, le langage d'où viennent la plupart de ses
 utilisateurs, Cesia est 24 fois plus rapide sur `fib`, 43 fois sur `mandel` et 105 fois sur `matmul` ; face à Lua, 7 à
-40 fois, et 3 fois sur `maps`. Sur `dyn`, il est devant Node, Java et OCaml, 64 ms contre 165, 96 et 68, et 21 fois plus
+40 fois, et 3 fois sur `maps`. Sur `dyn`, il est devant Node, Java et OCaml, 58 ms contre 165, 96 et 68, et 24 fois plus
 rapide que Python. Sur `structs`, il est devant Java, 38 ms contre 110, devant Node, 168, et devant LuaJIT, 397. Sur
 `maps`, il est devant tous les langages sauf Java, Go compris : 255 ms contre 268.
 
@@ -207,7 +218,7 @@ rapide que Python. Sur `structs`, il est devant Java, 38 ms contre 110, devant N
   `dyn` ; Java gagne `maps`.** Go et OCaml compilent tout le programme en code machine avant qu'il tourne, chaque type
   connu, et démarrent en 1,1 à 1,4 ms. Un appel de `fib` coûte
   maintenant à Cesia 5,5 cycles du processeur, contre 5,9 à Go (selon les compteurs du processeur : le coût d'un appel de
-  plus) : ce qui garde Go 9 ms devant, c'est le coût fixe, le démarrage (2,75 ms contre 1,36), le chargement du JIT,
+  plus) : ce qui garde Go 9 ms devant, c'est le coût fixe, le démarrage (2,68 ms contre 1,32), le chargement du JIT,
   0,65 ms, et la compilation par MIR, 3,4 ms ([Comment Cesia fonctionne](internals.md#ce-que-coûte-sa-fabrication)). La boucle
   intérieure de `mandel` attend sa chaîne de floats, une soustraction, une addition et une multiplication d'un tour au
   suivant, 11 cycles, le plancher de tout langage : Cesia et Go prennent tous deux 3,7 à 3,8 ns par tour, et les 10 ms
@@ -224,15 +235,21 @@ rapide que Python. Sur `structs`, il est devant Java, 38 ms contre 110, devant N
   floats des enregistrements eux-mêmes, à des places connues ; et environ 10 ms de coût fixe, le démarrage du processus,
   les premiers pas dans l'interpréteur et la compilation de la boucle. OCaml construit un nouvel enregistrement de 5 mots
   à chaque pas, sans aucune vérification : 30 ms.
-- **`dyn` : Go prend moins de la moitié du temps, LuaJIT un dixième de moins ; Cesia est devant Java, OCaml et Node.** `total` vient
-  d'un appel à travers une fonction gardée dans une liste, que l'inférence (l'analyse qui trouve les types sans qu'on les
-  écrive) ne peut pas typer ; le JIT le garde comme un float dans un registre pendant toute la boucle, et l'appel devient
-  un test des deux fonctions qu'il a rencontrées, dont le code est recopié sur place (inlined), le *polymorphic inline
-  cache* (la mémoire, à l'endroit de l'appel, des fonctions qu'il a déjà rencontrées) de
-  [Comment Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) : 714 ms, puis 182, 114, 57, 55 le 2026-11-08,
-  et 64 le 2026-11-19, là où Cesia 1.1.0, construit de la même façon et lancé à côté, prend 56 : un ralentissement venu
-  du travail sur le JIT depuis, pas encore trouvé, et un bug à corriger. Le pas de Go
-  est un appel de code tout en floats, sans test de sorte et sans compte des pas.
+- **`dyn` : Go prend moins de la moitié du temps, LuaJIT 2 % de moins ; Cesia est devant Java, OCaml et Node.** `total`
+  vient d'un appel à travers une fonction gardée dans une liste, que l'inférence (l'analyse qui trouve les types sans
+  qu'on les écrive) ne peut pas typer ; le JIT le garde comme un float dans un registre pendant toute la boucle, et
+  l'appel devient un test des deux fonctions qu'il a rencontrées, dont le code est recopié sur place (inlined), le
+  *polymorphic inline cache* (la mémoire, à l'endroit de l'appel, des fonctions qu'il a déjà rencontrées) de [Comment
+  Cesia fonctionne](internals.md#les-appels-à-travers-une-valeur) : 714 ms, puis 182, 114, 57, 55 le 2026-11-08, 64 le
+  2026-11-19, et 58 une fois corrigé un bug trouvé ce jour-là : quand aucune des deux fonctions ne correspondait, le run
+  retournait à l'interpréteur avec le fuel (le compte des pas qu'il peut encore faire avant de laisser la main) du début
+  de l'instruction, et l'instruction recopiait donc son fuel à son début à chaque tour, alors qu'aucun pas ne tournait
+  sur ce chemin. Cesia 1.1.0, construit de la même façon et lancé en alternance avec celui-ci, 101 runs de chacun, prend
+  55,4 ms (55,3 à 55,5) contre 58,9 (58,5 à 59,1) : l'appel teste maintenant la fonction par l'identité de son code,
+  deux lectures en mémoire là où 1.1.0 en comparait une avec un registre, pour qu'une fonction qu'une session définit de
+  nouveau avec le même code garde son code machine, environ 1,5 ms ; et la boucle tourne au niveau 1 de MIR pendant ses
+  7 premières ms, jusqu'à ce que le niveau 2 arrive d'un autre cœur. Le pas de Go est un appel de code tout en floats,
+  sans test de sorte et sans compte des pas.
 - **`maps` : Java prend 3 % de temps en moins ; Cesia est devant tous les autres, Go compris.** Une grande map
   que tient un seul nom est maintenant une hash table (un array de slots où le hash d'une clé, un nombre calculé à partir
   d'elle, désigne la place où la chercher) rangée dans l'ordre d'insertion, la disposition de Python, et ne devient le

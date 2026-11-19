@@ -703,15 +703,61 @@ fait, 0,8 µs par pas. La `f` d'une cell coûte ce que coûte une `f` de premier
 2026-11-13, quand ces boucles tournaient dans l'interpréteur, un pas prenait environ 11 µs, et la première résolution
 127 ms.
 
-Avec `stiff = true`, mesuré de la même façon : le problème de Robertson sur `[0, 1e11]` à `rtol = 1e-6` et
-`atol = 1e-10` fait 207 pas en **15,2 ms** (14,2 à 25,0), celui de Van der Pol à $\mu = 1000$ sur `[0, 3000]` à
-`rtol = atol = 1e-6` 536 pas en **29,1 ms** (27,4 à 33,1) ; le `Radau` de scipy, à `atol = 1e-9`, fait 1 292 pas sur le
-second. Résolu de nouveau dans le même programme, une fois que le JIT a rendu `f` native, un pas de Robertson coûte
-environ 38 µs : le jacobien par différences, la factorisation de $W$ et ses 8 résolutions tournent en code natif en
-environ 10 µs de celles-ci, et le reste est la boucle des étages dans l'interpréteur. Sur une diffusion en 1-D de
-100 points, 53 pas prennent 70 ms avec `jacobian` donné, et 100 ms par différences, qui appellent `f` 100 fois de plus
-par pas. La comparaison avec le `Radau`, le `BDF` et le `LSODA` de scipy et avec le `ode15s` d'Octave attend les mesures
-faites avant chaque release.
+Avec `stiff = true`, sur la même machine, le 2026-11-19 : le problème de Robertson sur `[0, 1e11]` à `rtol = 1e-6` et
+`atol = 1e-10`, puis celui de Van der Pol à $\mu = 1000$ sur `[0, 3000]` à `rtol = atol = 1e-6`, chacun résolu deux
+fois dans un même programme, celui de Robertson d'abord, dans un processus neuf, ce qui pour Cesia compte la fabrication
+par le JIT de la boucle du solveur ; le même programme avec le `Radau`, le `BDF` et le `LSODA` de scipy 1.18.1, et avec
+le `ode15s` et le `ode23s` de GNU Octave 11.3, aux mêmes tolérances. La médiane de 101 runs de chaque programme,
+alternés, 21 pour `ode23s`, dont un run prend 8 s, et l'intervalle à 95 % de cette médiane ; puis les pas, les appels
+de `f`, les factorisations LU (la décomposition d'une matrice en deux triangulaires, qui sert ensuite à chaque
+résolution), et l'erreur du dernier état face au `Radau` de scipy à `rtol = 1e-13`, qui donne
+$y_3(10^{11}) = 0.9999999791665128$ et $y_1(3000) = -1.510606936745774$. Celui de Robertson :
+
+| | Première résolution | Résolu de nouveau | Pas | Appels de `f` | Factorisations | Erreur de $y_3$ |
+|---|---:|---:|---:|---:|---:|---:|
+| **Cesia**, Rodas5P | **12,2 ms** (12,2 à 12,2) | **7,36 ms** (7,34 à 7,42) | 207 | 2 507 | 210 | 5,6e-13 |
+| scipy, `LSODA` | 9,11 ms (9,03 à 9,19) | 8,73 ms (8,64 à 8,82) | 856 | 1 561 | 125 | 2,9e-11 |
+| scipy, `BDF` | 133 ms (132 à 134) | 132 ms (131 à 133) | 649 | 1 826 | 131 | 5,0e-11 |
+| scipy, `Radau` | 147 ms (147 à 148) | 146 ms (145 à 147) | 371 | 2 875 | 384 | 1,8e-14 |
+| Octave, `ode15s` | 929 ms (925 à 933) | 923 ms (921 à 926) | 3 754 | 20 059 | | sous 1e-10 |
+| Octave, `ode23s` | 1 240 ms (1 230 à 1 249) | 1 251 ms (1 241 à 1 260) | 1 671 | 20 052 | | sous 1e-10 |
+
+Celui de Van der Pol, après celui de Robertson dans le même programme :
+
+| | Première résolution | Résolu de nouveau | Pas | Appels de `f` | Factorisations | Erreur de $y_1$ |
+|---|---:|---:|---:|---:|---:|---:|
+| **Cesia**, Rodas5P | **15,2 ms** (15,1 à 15,2) | **19,9 ms** (19,8 à 20,0) | 536 | 6 059 | 559 | 2,9e-6 |
+| scipy, `LSODA` | 11,3 ms (11,3 à 11,5) | 11,3 ms (11,2 à 11,4) | 1 305 | 2 549 | 138 | 2,8e-4 |
+| scipy, `BDF` | 279 ms (277 à 281) | 277 ms (277 à 279) | 1 258 | 3 904 | 293 | 2,2e-4 |
+| scipy, `Radau` | 360 ms (358 à 362) | 360 ms (358 à 363) | 919 | 7 702 | 636 | 7,2e-7 |
+| Octave, `ode15s` | 116 ms (115 à 117) | 116 ms (116 à 117) | 1 393 | 2 651 | | 2,3e-4 |
+| Octave, `ode23s` | 2 401 ms (2 367 à 2 420) | 2 405 ms (2 394 à 2 430) | 3 892 | 38 950 | | 1,4e-4 |
+
+Les deux d'Octave s'arrêtent à `t = 0` avec le premier pas qu'ils choisissent : sous `ode15s`, l'IDA de SUNDIALS
+(Hindmarsh et al. 2005) dit que son correcteur n'a pas convergé sur celui de Robertson et que son test d'erreur a échoué
+sur celui de Van der Pol ; les deux reçoivent donc `InitialStep = 1e-6`. Leur solution ne donne aucun compte : ses pas
+sont ses points moins un, ses appels de `f` sont comptés dans `f`, et son dernier état est affiché avec 10 chiffres, si
+bien qu'une erreur sous 1e-10 se montre ainsi. Les programmes sont ceux de cette section, les comptes en plus.
+
+**Là où un géant gagne, et pourquoi.** Le `LSODA` de scipy prend moins de temps que Cesia sur celui de Van der Pol, 11,3
+ms contre 15,2 et 19,9, et sur la première résolution de celui de Robertson, 9,1 contre 12,2 ; Cesia gagne celui de
+Robertson résolu de nouveau, 7,4 contre 8,7, va 9 à 24 fois plus vite que le `BDF` et le `Radau` de scipy, et 8 à 160
+fois plus vite que le `ode15s` et le `ode23s` d'Octave. `LSODA` est le Fortran d'ODEPACK (Petzold 1983), compilé avant
+de tourner : il commence par les méthodes d'Adams et passe aux méthodes *BDF* (backward differentiation formulas, qui
+tirent l'état suivant de plusieurs états d'avant) une fois le problème stiff, et une méthode BDF garde son jacobien et
+sa factorisation sur de nombreux pas, 125 factorisations pour 856 pas sur celui de Robertson. Rodas5P, une méthode à un
+pas, refait un jacobien à chaque pas, par différences, $n + 1$ appels de `f`, et factorise $W$ à chaque pas, 210 fois
+pour 207 pas ; et la boucle de ses étages tourne encore dans l'interpréteur, comme plus bas. À ces tolérances, le
+dernier état de `LSODA` est plus loin : 100 fois l'erreur de Cesia sur celui de Van der Pol ; pour l'égaler, `LSODA`
+demanderait un `rtol` plus serré, ce qui n'a pas été mesuré. `Radau` fait les plus petites erreurs, 7,2e-7 sur celui de
+Van der Pol, en 24 fois le temps de Cesia, ses itérations de Newton en Python. Résolu de nouveau, celui de Van der Pol
+prend à Cesia plus de temps que la première fois, 19,9 ms contre 15,2, ce qui est mesuré et pas encore expliqué : le
+travail du JIT au second appel du solveur avec une autre `f` est l'endroit où chercher.
+
+Résolu de nouveau dans le même programme, une fois que le JIT a rendu `f` native, un pas de Robertson coûte environ
+36 µs : le jacobien par différences, la factorisation de $W$ et ses 8 résolutions tournent en code natif en environ
+10 µs de celles-ci, et le reste est la boucle des étages dans l'interpréteur. Sur une diffusion en 1-D de 100 points,
+53 pas prennent 70 ms avec `jacobian` donné, et 100 ms par différences, qui appellent `f` 100 fois de plus par pas.
 
 `s.At` d'un array de temps parcourt les pas une seule fois : chaque temps est dans le pas du temps d'avant, ou sinon son
 pas est cherché à partir de là, et la sortie dense d'un pas est préparée une fois pour tous les temps qui y tombent, en
@@ -1439,6 +1485,16 @@ Aucun des deux ne tire de nombre au hasard : le même appel donne la même répo
 - A. Prothero, A. Robinson. "On the stability and accuracy of one-step methods for solving stiff systems of ordinary
   differential equations". *Mathematics of Computation* 28(125):145–162, 1974.
   <https://doi.org/10.1090/S0025-5718-1974-0331793-2>. Leur problème de test.
+- Linda R. Petzold. "Automatic selection of methods for solving stiff and nonstiff systems of ordinary differential
+  equations". *SIAM Journal on Scientific and Statistical Computing* 4(1):136–148, 1983.
+  <https://doi.org/10.1137/0904010>. Le passage des méthodes d'Adams aux méthodes BDF de `LSODA`, face auquel Solve est
+  mesuré.
+- Lawrence F. Shampine, Mark W. Reichelt. "The MATLAB ODE Suite". *SIAM Journal on Scientific Computing* 18(1):1–22,
+  1997. <https://doi.org/10.1137/S1064827594276424>. Le `ode15s` et le `ode23s` de MATLAB, dont ceux d'Octave gardent
+  les noms.
+- Alan C. Hindmarsh, Peter N. Brown, Keith E. Grant, Steven L. Lee, Radu Serban, Dan E. Shumaker, Carol S. Woodward.
+  "SUNDIALS: Suite of nonlinear and differential/algebraic equation solvers". *ACM Transactions on Mathematical
+  Software* 31(3):363–396, 2005. <https://doi.org/10.1145/1089014.1089020>. IDA, que lance le `ode15s` d'Octave.
 
 
 ## La suite

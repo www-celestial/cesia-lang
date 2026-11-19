@@ -661,14 +661,59 @@ first solve, 11,412 steps, takes about 5 µs a step, the making of its code incl
 already made, 0.8 µs a step. The `f` of a cell costs what a top-level `f` costs, 57.8 ms against 56.6. On 2026-11-13,
 when these loops ran in the interpreter, a step took about 11 µs, and the first solve 127 ms.
 
-With `stiff = true`, measured the same way: Robertson's problem on `[0, 1e11]` at `rtol = 1e-6` and `atol = 1e-10`
-takes 207 steps and **15.2 ms** (14.2 to 25.0), Van der Pol's at $\mu = 1000$ on `[0, 3000]` at `rtol = atol = 1e-6`
-536 steps and **29.1 ms** (27.4 to 33.1); scipy's `Radau`, at `atol = 1e-9`, takes 1,292 steps on the second. Solved
-again in the same program, once the JIT has made `f` native, a step of Robertson's costs about 38 µs: the Jacobian by
-differences, the factorization of $W$ and its 8 solves run as native code in about 10 µs of them, and the rest is the
-loop of the stages in the interpreter. On a 1-D diffusion of 100 points, 53 steps take 70 ms with `jacobian` given, and
-100 ms by differences, which call `f` 100 more times a step. The comparison with scipy's `Radau`, `BDF` and `LSODA` and
-with Octave's `ode15s` waits for the measures made before each release.
+With `stiff = true`, on the same machine, on 2026-11-19: Robertson's problem on `[0, 1e11]` at `rtol = 1e-6` and
+`atol = 1e-10`, then Van der Pol's at $\mu = 1000$ on `[0, 3000]` at `rtol = atol = 1e-6`, each solved twice in one
+program, Robertson's first in a fresh process, which for Cesia includes the JIT's making of the solver's loop; the same
+program with scipy 1.18.1's `Radau`, `BDF` and `LSODA`, and with GNU Octave 11.3's `ode15s` and `ode23s`, at the same
+tolerances. The median of 101 runs of each program, alternated, 21 for `ode23s`, whose run takes 8 s, and the 95 %
+interval of that median; then the steps, the calls of `f`, the LU factorizations, and the error of the last state
+against scipy's `Radau` at `rtol = 1e-13`, which gives $y_3(10^{11}) = 0.9999999791665128$ and
+$y_1(3000) = -1.510606936745774$. Robertson's:
+
+| | First solve | Solved again | Steps | Calls of `f` | Factorizations | Error of $y_3$ |
+|---|---:|---:|---:|---:|---:|---:|
+| **Cesia**, Rodas5P | **12.2 ms** (12.2 to 12.2) | **7.36 ms** (7.34 to 7.42) | 207 | 2,507 | 210 | 5.6e-13 |
+| scipy, `LSODA` | 9.11 ms (9.03 to 9.19) | 8.73 ms (8.64 to 8.82) | 856 | 1,561 | 125 | 2.9e-11 |
+| scipy, `BDF` | 133 ms (132 to 134) | 132 ms (131 to 133) | 649 | 1,826 | 131 | 5.0e-11 |
+| scipy, `Radau` | 147 ms (147 to 148) | 146 ms (145 to 147) | 371 | 2,875 | 384 | 1.8e-14 |
+| Octave, `ode15s` | 929 ms (925 to 933) | 923 ms (921 to 926) | 3,754 | 20,059 | | below 1e-10 |
+| Octave, `ode23s` | 1,240 ms (1,230 to 1,249) | 1,251 ms (1,241 to 1,260) | 1,671 | 20,052 | | below 1e-10 |
+
+Van der Pol's, after Robertson's in the same program:
+
+| | First solve | Solved again | Steps | Calls of `f` | Factorizations | Error of $y_1$ |
+|---|---:|---:|---:|---:|---:|---:|
+| **Cesia**, Rodas5P | **15.2 ms** (15.1 to 15.2) | **19.9 ms** (19.8 to 20.0) | 536 | 6,059 | 559 | 2.9e-6 |
+| scipy, `LSODA` | 11.3 ms (11.3 to 11.5) | 11.3 ms (11.2 to 11.4) | 1,305 | 2,549 | 138 | 2.8e-4 |
+| scipy, `BDF` | 279 ms (277 to 281) | 277 ms (277 to 279) | 1,258 | 3,904 | 293 | 2.2e-4 |
+| scipy, `Radau` | 360 ms (358 to 362) | 360 ms (358 to 363) | 919 | 7,702 | 636 | 7.2e-7 |
+| Octave, `ode15s` | 116 ms (115 to 117) | 116 ms (116 to 117) | 1,393 | 2,651 | | 2.3e-4 |
+| Octave, `ode23s` | 2,401 ms (2,367 to 2,420) | 2,405 ms (2,394 to 2,430) | 3,892 | 38,950 | | 1.4e-4 |
+
+Octave's two stop at `t = 0` with the first step they choose: under `ode15s`, SUNDIALS's IDA (Hindmarsh et al. 2005)
+says that its corrector failed to converge on Robertson's and its error test on Van der Pol's; so both are given
+`InitialStep = 1e-6`. Their solution holds no counts: its steps are its points less one, its calls of `f` are counted in
+`f`, and its last state printed with 10 digits, so an error below 1e-10 shows as such. The programs are those of this
+section, with the counts added.
+
+**Where a giant wins, and why.** scipy's `LSODA` takes less time than Cesia on Van der Pol's, 11.3 ms against 15.2 and
+19.9, and on Robertson's first solve, 9.1 against 12.2; Cesia wins Robertson's solved again, 7.4 against 8.7, is 9 to 24
+times faster than scipy's `BDF` and `Radau`, and 8 to 160 times faster than Octave's `ode15s` and `ode23s`. `LSODA` is
+the Fortran of ODEPACK (Petzold 1983), compiled before it runs: it starts with Adams's methods and switches to the
+*BDF* methods (backward differentiation formulas, which take the next state from several states before it) once the
+problem is stiff, and a BDF method keeps its Jacobian and its factorization over many steps, 125 factorizations for 856
+steps on Robertson's. Rodas5P, a method of one step, makes a Jacobian at each step, by differences, $n + 1$ calls of
+`f`, and factorizes $W$ at each step, 210 times for 207 steps; and the loop of its stages still runs in the interpreter,
+as below. At these tolerances `LSODA`'s last state is further off: 100 times Cesia's error on Van der Pol's; to match
+it, `LSODA` would need a tighter `rtol`, which was not measured. `Radau` makes the smallest errors, 7.2e-7 on Van der
+Pol's, in 24 times Cesia's time, its Newton iterations in Python. Van der Pol's solved again takes Cesia longer than its
+first solve, 19.9 ms against 15.2, measured and not explained yet: the JIT's work on the second call of the solver with
+another `f` is the place to look.
+
+Solved again in the same program, once the JIT has made `f` native, a step of Robertson's costs about 36 µs: the
+Jacobian by differences, the factorization of $W$ and its 8 solves run as native code in about 10 µs of them, and the
+rest is the loop of the stages in the interpreter. On a 1-D diffusion of 100 points, 53 steps take 70 ms with
+`jacobian` given, and 100 ms by differences, which call `f` 100 more times a step.
 
 `s.At` of an array of times walks the steps once: each time is in the step of the time before, or else its step is
 sought from there, and the dense output of a step is prepared once for all the times in it, in native code that makes no
@@ -1357,6 +1402,15 @@ number: the same call gives the same answer.
 - A. Prothero, A. Robinson. "On the stability and accuracy of one-step methods for solving stiff systems of ordinary
   differential equations". *Mathematics of Computation* 28(125):145–162, 1974.
   <https://doi.org/10.1090/S0025-5718-1974-0331793-2>. Their test problem.
+- Linda R. Petzold. "Automatic selection of methods for solving stiff and nonstiff systems of ordinary differential
+  equations". *SIAM Journal on Scientific and Statistical Computing* 4(1):136–148, 1983.
+  <https://doi.org/10.1137/0904010>. The switch between Adams's and BDF methods of `LSODA`, which Solve is measured
+  against.
+- Lawrence F. Shampine, Mark W. Reichelt. "The MATLAB ODE Suite". *SIAM Journal on Scientific Computing* 18(1):1–22,
+  1997. <https://doi.org/10.1137/S1064827594276424>. MATLAB's `ode15s` and `ode23s`, whose names Octave's keep.
+- Alan C. Hindmarsh, Peter N. Brown, Keith E. Grant, Steven L. Lee, Radu Serban, Dan E. Shumaker, Carol S. Woodward.
+  "SUNDIALS: Suite of nonlinear and differential/algebraic equation solvers". *ACM Transactions on Mathematical
+  Software* 31(3):363–396, 2005. <https://doi.org/10.1145/1089014.1089020>. IDA, which Octave's `ode15s` runs.
 
 ## Next
 
