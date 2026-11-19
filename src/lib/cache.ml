@@ -556,8 +556,8 @@ type saved = { d : In.inp; uses : use list array; paths : string list }
 
 let uses saved = saved.uses
 
-(* Nothing of an entry is decoded before its checksum and what it was made from, the build, the nesting limit and the digest
-   of each source, are those expected. *)
+(* Nothing of an entry is decoded before its checksum and what it was made from, the build, the nesting limit and the
+   digest of each source, are those expected. *)
 let read slot =
   match slot.kept.read slot.name with
   | None -> None
@@ -567,7 +567,9 @@ let read slot =
          || not (Int64.equal (String.get_int64_le s 8) (checksum s 16 (String.length s - 16)))
       then raise Bad;
       let open In in
-      let none = { s; p = 16; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; last_id = 0; file = ""; drop = ignore } in
+      let none =
+        { s; p = 16; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; last_id = 0; file = ""; drop = ignore }
+      in
       let d = { none with strs = texts none; drop = (fun () -> slot.kept.write slot.name "") } in
       let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = Lazy.force slot.digests in
       if same then Some { d; uses = arr (list use) d; paths = slot.paths } else None

@@ -11,7 +11,8 @@ let set v i x = if i >= v.size then invalid_arg "Vec.set" else v.items.(i) <- x
 let get_last v = get v (v.size - 1)
 
 let[@inline] add_last v x =
-  if v.size = Array.length v.items then v.items <- (if v.size = 0 then Array.make 8 x else Array.append v.items v.items);
+  if v.size = Array.length v.items then
+    v.items <- (if v.size = 0 then Array.make 8 x else Array.append v.items v.items);
   v.items.(v.size) <- x;
   v.size <- v.size + 1
 
