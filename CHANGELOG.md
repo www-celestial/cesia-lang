@@ -3,7 +3,7 @@
 ## 1.2.0
 
 Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.1 runs
-as it did.
+as it did, and so does a project whose `std/` 1.1.0 installed, without `cesia pkg install`.
 
 ### Changed
 
@@ -16,8 +16,8 @@ as it did.
 
 - A do block after the `)` of a call, `list.Reduce(0, xs) do total, x` up to `end`: the function `defn (total, x) ... end`,
   the same tree, in the place of the argument that is `_` alone, or else first, as in Julia. `do` stays a plain name
-  elsewhere, and the function written inside the parentheses stays valid. `cesia fmt` and the modes for Emacs and Neovim
-  know it.
+  elsewhere, and the function written inside the parentheses stays valid. `cesia fmt` and the modes for Emacs and
+  Neovim know it, and `cesia.Keywords()` lists `do` with the others, 27 words.
 - `text.Fold(s)`, Unicode 18.0's simple case folding, to search and compare what people write:
   `text.Fold("ÉLODIE") == text.Fold("Élodie")`. `text.Lower` and `text.Upper` stay ASCII, for the texts of protocols.
 - `value.Text(x, most)`: the text of a value, cut at `most` characters, its first `most - 1` and an ellipsis; only that
@@ -93,7 +93,15 @@ as it did.
 - `cesia doc --site` writes formulas in MathML, GitHub's alerts and heading ids, the colors of `[site] color` at AA
   contrast and the README as a page, checks the `norun` blocks that follow one another as one program, and builds the
   French site of `docs/fr/`, whose pages must keep the headings, code and links of the English ones; Cesia's book is in
-  French too. `std/markdown` writes GitHub's alerts, and the formulas of `$...$` and `$$...$$`.
+  French too. `std/markdown` writes GitHub's alerts, and the formulas of `$...$` and `$$...$$`. A link of the README to
+  a file that is no page, as `LICENSE`, is kept as written and its place named on the standard error: the build goes on,
+  as it did when the README was no page.
+- A book uses the project's own packages as another project writes them, `use deps/someone/shop/src/prices` when
+  `[site] source` names `someone/shop`, read from the project itself, with no copy in `deps/`; the reference's page of a
+  folder of the project names that path too. `norun` blocks are checked as `cesia check` checks and never run, not even
+  the top of a package they use, so they need no engine and no `native` permission; a `toml` block marked `norun` isn't
+  checked. Formulas write `\ast`, `\circ`, `\leftarrow` and `\mathrm` too, and the band of another project's site names
+  the Cesia of its reference, as `Cesia 1.2.0`.
 - Tabs in the docs: a `python`, `r` or `matlab` block right after a `cesia` block shows as a tab beside it,
   Cesia | Python | R | MATLAB, with no script; `tools/tabs.ce` runs each tab of Cesia's book, capped and with no
   network, and checks that it prints what its cesia block shows.
@@ -167,7 +175,10 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - The JIT makes a unit's machine code at MIR's level 1 first, in 30 to 60 % less time, and its level 2 in another
   domain once the unit is hot: Lorenz on [0, 100] 83 -> 66 ms, `structs` 51 -> 40, long runs at level 2's speed.
 - The JIT reads and writes lists of integers by index, and checks the indexes that move with a loop's counter once,
-  before the loop: a sparse product 3.75 -> 2.79 ns a non-zero.
+  before the loop, and writes no jump to the block that comes next (24 jumps fewer in its unit): a sparse product 3.75 ->
+  2.79 ns a non-zero. A variable that an inner loop assigns before it reads it, as a row read from a list, carries
+  nothing from one turn of the outer loop to the next, so the inner loop called again starts as machine code instead of
+  going back to the interpreter.
 - The JIT keeps small arrays of floats in slots and inlines the functions that give them, goes back to the interpreter
   inside an if, and leaves it the statements it can't make, so the loop of `ode.Solve` is machine code; a loop whose
   statement left to the interpreter runs at nearly every turn stays in the interpreter: 1,011 -> 75 ms for 10^6 turns.
@@ -179,7 +190,8 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - A native that wakes many fibers from another domain writes the wake pipe once: when one native wakes 10,000 fibers,
   the last is awake in 9.5 ms instead of 11.6; `json.Text` of a small map in 314 ns instead of 390.
 - `json.Text` and `json.Parse` take a text eight bytes at a time, and so does the length of a text: 1.6 MB 3.6 ->
-  0.6 ms. `csv.Text` writes a list of lists natively, 5 times as fast.
+  0.6 ms. `csv.Text` writes a list of lists natively, 5 times as fast; `text.Repeat` copies what it made, not a byte at
+  a call, and `date.FormatDate` writes its usual years and two digits without padding.
 - `cells.Variables` of a session that holds 10^6 numbers and a model fitted on 10^6 rows answers in 0.09 ms instead of
   4.1 s; `"$xs"` of 10^6 integers 131 -> 55 ms, of 10^6 floats 1080 -> 936 ms; the text of `[1, 2, 3]` 145 -> 120 ns.
 - The text of a float, for `io.Print`, `"$x"`, `value.Text` and `json.Text`, by Ryu's tables (Adams, PLDI 2018)
