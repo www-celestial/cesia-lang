@@ -2,7 +2,11 @@
  ; Each start-up pays for the frame tables of the code linked in: the runtime relocates and registers every call site. So no
  ; -g, whose debug information nothing reads (no backtraces), and OCaml's default inlining, as tests are built: -inline 200
  ; tripled the call sites for no speed the benches could measure; the hot functions are marked [@inline] instead.
+ ; The dev build, which the tests and the change loop run, has no -g either: its frame tables are 28% smaller, and a
+ ; start takes 2.59 ms instead of 2.85 (medians of 900 runs of io.Print(1), 2026-11-19). The C keeps its -g.
  (release
+  (ocamlopt_flags ()))
+ (dev
   (ocamlopt_flags ()))
  ; dune build --profile sanitize --build-dir DIR tests/jit_test.exe: the C of src/sys/, MIR's included, under
  ; AddressSanitizer and UBSan. Run with ASAN_OPTIONS=detect_leaks=0, as OCaml frees nothing at exit.
