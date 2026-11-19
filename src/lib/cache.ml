@@ -113,13 +113,15 @@ let checksum s off len =
 
 (* Writing. The strings of an entry are written once, at its start, and named by their number. *)
 module Out = struct
-  (* A place is written as its distance from the one before, most often a byte. *)
+  (* A place is written as its distance from the one before, most often a byte, and so is the number of a node: the
+     parser numbers the nodes as it ends them, so a node and the one written after it are most often close. *)
   type out = {
     mutable b : Bytes.t;
     mutable n : int;
     strings : (string, int) Hashtbl.t;
     rel : int -> int * int;
     mutable last : int;
+    mutable last_id : int;
   }
 
   let grow o k =
@@ -169,7 +171,7 @@ module Out = struct
   let ptype o t =
     pos o t.tpos; opt str o t.tpkg; str o t.tname; bool o t.topt; bool o t.tbang; binding o t.tb
 
-  let rec expr o (x : expr) = uint o x.id; pos o x.pos; node o x.e
+  let rec expr o (x : expr) = int o (x.id - o.last_id); o.last_id <- x.id; pos o x.pos; node o x.e
 
   and block o b = arr expr o b
 
@@ -254,12 +256,13 @@ module Out = struct
     if now || Resolve.struct_fields f <> None then (byte o 0; block o (Lazy.force f.body))
     else begin
       byte o 1;
-      let at = o.n and last = o.last in
+      let at = o.n and last = o.last and last_id = o.last_id in
       if o.n + 4 > Bytes.length o.b then grow o 4;
       o.n <- o.n + 4;
       block o (Lazy.force f.body);
       Bytes.set_int32_le o.b at (Int32.of_int (o.n - at - 4));
-      o.last <- last
+      o.last <- last;
+      o.last_id <- last_id
     end
 
   let use o u = str o u.upath; str o u.ualias; pos o u.upos; list str o u.unames
@@ -285,7 +288,7 @@ end
 module In = struct
   (* [file] names the file whose tree is read, and [drop] removes the entry, for a body that doesn't read. *)
   type inp = { s : string; mutable p : int; strs : string array; mutable abs : int -> int -> int; mutable last : int;
-               mutable file : string; drop : unit -> unit }
+               mutable last_id : int; mutable file : string; drop : unit -> unit }
 
   let[@inline] byte d =
     let c = Char.code d.s.[d.p] in
@@ -341,7 +344,8 @@ module In = struct
     { tpos; tpkg; tname; topt; tbang; tb }
 
   let rec expr d =
-    let id = uint d in
+    let id = d.last_id + int d in
+    d.last_id <- id;
     let pos = pos d in
     let e = node d in
     { id; pos; e }
@@ -563,7 +567,7 @@ let read slot =
          || not (Int64.equal (String.get_int64_le s 8) (checksum s 16 (String.length s - 16)))
       then raise Bad;
       let open In in
-      let none = { s; p = 16; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; file = ""; drop = ignore } in
+      let none = { s; p = 16; strs = [||]; abs = (fun _ _ -> raise Bad); last = 0; last_id = 0; file = ""; drop = ignore } in
       let d = { none with strs = texts none; drop = (fun () -> slot.kept.write slot.name "") } in
       let same = String.equal (str d) slot.kept.build && uint d = slot.nesting && list str d = Lazy.force slot.digests in
       if same then Some { d; uses = arr (list use) d; paths = slot.paths } else None
@@ -604,7 +608,7 @@ let trees saved place ~lookup ~spaces ~is_type =
 
 let encode slot place log uses trees =
   let open Out in
-  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo place; last = 0 } in
+  let o = { b = Bytes.create 65536; n = 0; strings = Hashtbl.create 1024; rel = memo place; last = 0; last_id = 0 } in
   try
     str o slot.kept.build;
     uint o slot.nesting;
