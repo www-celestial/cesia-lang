@@ -1,0 +1,2 @@
+Slow by nature: four fibers of 400,000 turns each, in three modes; with 100,000, level 2 never replaces level 1, which
+is what it checks. tools/check.sh runs it, past the change loop.

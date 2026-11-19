@@ -1,0 +1,2 @@
+Slow by nature: loops of 6,000 turns run again after each of 22 changes of the numbers they read, in three modes; with
+2,000, its loops leave their machine code in other ways. tools/check.sh runs it, past the change loop.

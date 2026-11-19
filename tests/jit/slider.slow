@@ -1,0 +1,2 @@
+Slow by nature: a loop of 20,000 turns in each cell of six sessions, the JIT off as well as on; with 5,000, it never
+reaches level 2. tools/check.sh runs it, past the change loop.

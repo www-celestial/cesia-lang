@@ -1,0 +1,2 @@
+Slow by nature: runs of a loop of 40,000 turns, one after the other until the limit of 3,000,000 steps stops them; with
+10,000, one of its nine units is never made. tools/check.sh runs it, past the change loop.

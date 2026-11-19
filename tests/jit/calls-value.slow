@@ -1,0 +1,2 @@
+Slow by nature: seven loops of 200,000 calls; with 50,000, one of its eight units is never made. tools/check.sh runs it,
+past the change loop.

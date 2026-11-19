@@ -1,0 +1,2 @@
+Slow by nature: some 800,000 draws in each of six runs, two seeds in three modes. tools/check.sh runs it, past the
+change loop.

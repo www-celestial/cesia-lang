@@ -1,0 +1,2 @@
+Slow by nature: two fibers' loops of 3,000,000 and 2,000,000 turns while the top code changes k, in three modes; with a
+quarter, three of its eight level 2 units are never made. tools/check.sh runs it, past the change loop.

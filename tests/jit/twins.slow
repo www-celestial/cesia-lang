@@ -1,0 +1,2 @@
+Slow by nature: loops of 100,000 turns in seven sessions, the JIT off as well as on; with 50,000, three of its five
+level 2 units are never made. tools/check.sh runs it, past the change loop.

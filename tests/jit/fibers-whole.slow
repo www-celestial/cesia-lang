@@ -1,0 +1,2 @@
+Slow by nature: a fiber's 6,000 calls of a loop of 500 turns while the top code changes k 400 times, in three modes;
+with 3,000, two or three of its eight level 2 units are never made. tools/check.sh runs it, past the change loop.
