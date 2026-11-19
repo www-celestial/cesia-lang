@@ -298,7 +298,7 @@ Les mots qui suivent `cesia` sur la première ligne d'un bloc changent ce qu'on 
 
 | Mot | Ce qu'il fait |
 |---|---|
-| `norun` | montre le bloc sans le lancer : un serveur, un programme qui attend une entrée. Il est tout de même vérifié, et des blocs norun qui se suivent forment un seul programme : un nom donné dans l'un est donc connu dans le suivant |
+| `norun` | montre le bloc sans le lancer : un serveur, un programme qui attend une entrée. Il est tout de même vérifié, comme le vérifie `cesia check`, avec les packages qu'il utilise, et rien d'eux ne tourne non plus, pas même leur top (le code d'un fichier hors de ses fonctions) : un bloc norun n'a donc besoin d'aucune permission, d'aucun serveur ni d'aucun engine (le moteur natif d'un package), et un bloc qui tourne écrit ses propres `use`. Des blocs norun qui se suivent forment un seul programme : un nom donné dans l'un est donc connu dans le suivant |
 | `fails` | le bloc doit s'arrêter sur une erreur, dont le message est montré en dessous ; un bloc qui n'échoue pas arrête le build (la construction du site) |
 | `allow=read,write,net,net=own,net=:PORT,ffi=m` | lance le bloc avec ces permissions ; aucune autre n'est donnée |
 | `output=md` | ce qu'affiche le bloc est du Markdown, montré comme une partie de la page |
@@ -310,7 +310,14 @@ programme, comme celui d'un serveur.
 
 Ce livre est construit ainsi, si bien que ses exemples ne peuvent pas s'écarter du langage : un bloc qui donne une autre
 valeur arrête le build. Chaque page tourne comme un programme du projet, depuis `.cesia/site/`, que `cesia new` tient hors
-de git : ses blocs peuvent utiliser les packages de `src/` et de `deps/`, où que le site soit écrit.
+de git : ses blocs peuvent utiliser les packages de `src/` et de `deps/`, où que le site soit écrit. Un livre montre les
+packages du projet lui-même comme un autre projet les utilise, `use deps/someone/shop/src/prices`, quand `someone/shop`
+est la place que donne la `source` de `[site]`, `https://github.com/someone/shop/blob/main/` (un hôte autre que
+`github.com` reste en tête, comme dans `deps/`) : le site les lit dans le projet lui-même, comme `use src/prices`, sans
+copie dans `deps/`, sans téléchargement et sans script. Aucun bloc ne reçoit jamais la permission `native`, qui lance du
+code machine hors de portée de Cesia : un bloc qui appelle un native (une fonction écrite en OCaml) d'un package natif
+arrête le build, que ce package soit celui du projet ou celui d'une dépendance, et un bloc norun qui en utilise un est
+vérifié sans son engine.
 
 ```text
 docs/

@@ -121,5 +121,5 @@ color = "#0c8599"
 | Clé | Ce qu'elle dit |
 |---|---|
 | `title` | le nom en haut de chaque page |
-| `source` | le début d'un lien vers le code : la page d'un nom renvoie à son fichier et à sa ligne |
+| `source` | le début d'un lien vers le code : la page d'un nom renvoie à son fichier et à sa ligne. Son hôte, son propriétaire et son nom sont la place du projet, si bien que les exemples du livre peuvent utiliser ses packages comme le fait un autre projet : voir Tests, Un site pour votre projet |
 | `color` | la couleur du projet, `#rrggbb`, dont le site tire ses couleurs au contraste AA : voir [Tests](tests.md#couleurs) |
