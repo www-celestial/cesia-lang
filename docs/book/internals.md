@@ -368,7 +368,9 @@ program that never gets hot never pays for it.
 
 - A version of a function whose result inference proves to be a number, an integer or a float, after 1,000 calls.
 - A loop, at the second checkpoint met inside it: after 10,000 to 20,000 turns of a loop that runs alone. A loop that runs
-  often but briefly, as in a function called for each request, gets hot once its runs add up to 100,000 steps.
+  often but briefly, as in a function called for each request, gets hot once its runs add up to 100,000 steps; one whose
+  runs make fewer steps than coming into machine code and going back costs, about a dozen, stays in the interpreter
+  while they do, and a loop around it can still take it into its machine code.
 
 `CESIA_JIT=always` compiles every candidate at its first call or run, and makes its level 2 (below, *What it costs to
 make*) as soon as that first run ends, which the tests use to compare the interpreter and both levels on the whole

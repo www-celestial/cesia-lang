@@ -1,0 +1,28 @@
+use std/io
+use std/matrix
+use std/sys
+use std/value
+
+(* A loop of n turns in a function called often, which gives an array and so never runs natively as a whole. *)
+defn step(y, n)
+  z = y * 1.0
+  for c in 1..n
+    z[c] = z[c] + 0.5
+  end
+  z
+end
+
+defn run(n, times)
+  y = matrix.Zeros(n)
+  for r in 1..times
+    y = step(y, n)
+  end
+  y[n]
+end
+
+(* Two turns a run: native code would lose at each run, it stays interpreted. *)
+io.Print(run(2, 200000))
+(* Then thirty-two, as a session that solves a larger problem: the same loop gets native code. *)
+if value.Len(sys.Args) > 0
+  io.Print(run(32, 20000))
+end

@@ -27,7 +27,9 @@ val warm_steps : int
 
 (** The native state of one loop of a version: [Compile] keeps one with each loop it compiles, with the loop's expression;
     the JIT fills [code], made at [reloads], or sets [failed]; [tries] counts the times its code was dropped, or could not
-    be made yet. *)
+    be made yet; [starts] and [steps] count the last runs that ended in the interpreter before it had code, and their
+    steps, and [short] says that it is [failed] only because those were too short, until they are long; [wait], the runs
+    before the next one counted then. *)
 type loop = {
   mutable seen : int;
   mutable code : code option;
@@ -35,10 +37,23 @@ type loop = {
   mutable failed : bool;
   mutable tries : int;
   mutable runs : int;
+  mutable starts : int;
+  mutable steps : int;
+  mutable short : bool;
+  mutable wait : int;
   expr : Ast.expr;
 }
 
 val loop : Ast.expr -> loop
+
+(** The steps before the next full checkpoint of the fiber: one less at each step. *)
+val position : ctx -> int
+
+(** A loop without native code that may still get some: its runs are counted, by [position] at its start and [ran] at
+    its end, which leaves to the interpreter a loop whose last runs are too short to gain from native code. *)
+val counting : loop -> bool
+
+val ran : ctx -> loop -> int -> unit
 
 exception Handoff of code * int
 

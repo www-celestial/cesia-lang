@@ -2554,7 +2554,12 @@ and cu c (e : expr) : ctx -> unit =
           | Some code when lo <= hi ->
             Tier.place ctx code st lo hi;
             if not (entered ctx code (Tier.start code) hi) then interp ctx lo hi
-          | _ -> interp ~warm:(lo < hi && Tier.warm st (hi - lo + 1)) ctx lo hi
+          (* Its steps counted, so that the JIT leaves to the interpreter a loop whose runs are too short to gain. *)
+          | _ when Tier.counting st ->
+            let p = Tier.position ctx in
+            interp ~warm:(lo < hi && Tier.warm st (hi - lo + 1)) ctx lo hi;
+            Tier.ran ctx st p
+          | _ -> interp ctx lo hi
       end
     in
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
@@ -2638,7 +2643,11 @@ and cu c (e : expr) : ctx -> unit =
         fun ctx ->
           match Tier.ready ctx st ver with
           | Some code -> if not (entered ctx code (Tier.start code)) then interp ctx
-          | None -> interp ~warm:(Tier.warm st 16) ctx
+          | None when Tier.counting st ->
+            let p = Tier.position ctx in
+            interp ~warm:(Tier.warm st 16) ctx;
+            Tier.ran ctx st p
+          | None -> interp ctx
       end
     in
     if has_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
