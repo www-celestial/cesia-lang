@@ -197,7 +197,7 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   the interpreter: as machine code, coming in and going back at each run lost to the interpreter, 3 times slower at 2
   turns, and its making cost about 2 ms of the program's own time. Van der Pol's at mu = 1000 solved again after
   Robertson's, when two such loops of `ode.Solve` became hot, 20.6 -> 14.8 ms; a loop of 2 turns in a function called
-  10^6 times 666 -> 319 ms. Once its runs grow, as for a larger problem, the loop gets its machine code.
+  2 x 10^6 times 666 -> 319 ms. Once its runs grow, as for a larger problem, the loop gets its machine code.
 - `f()`, a call with no argument of a function held in a value, and `random.Float()` are machine code: `f()` 37 -> 2.2
   ns, 10^6 single draws of `stats.MonteCarlo` 539 -> 8.9 ms. `^`, `math.Exp` and the other functions of one float on an
   array of floats run unboxed, and `num.Uniform` draws in one native loop, the same numbers for a seed.
