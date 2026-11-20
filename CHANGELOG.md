@@ -202,8 +202,9 @@ Measured on the same machine as the others, in the book's chapters on speed and 
   on average, as one with a loop of 2 turns called from a loop that the interpreter keeps, gets its interpreted calls
   back, its machine code kept: coming in and going back at each call made it 3 times slower than the interpreter.
   Called 2 x 10^6 times, 439 -> 161 ms at 2 turns, 222 -> 110 at 4, 117 -> 84 at 8, where the JIT off takes 138, 100
-  and 81 (medians of 21 runs, alternated); from 12 turns on, as before. Its own calls stay machine code, so a recursion
-  is untouched, and now and then its next calls go through its machine code again, which keeps them once they are long.
+  and 81 (medians of 21 runs, alternated); from 12 turns on, as before. Its calls inside its machine code stay there, so
+  a recursion called once, as `bench/fib.ce`'s, is untouched, and now and then its next calls go through its machine
+  code again, which keeps them once they are long.
 - `f()`, a call with no argument of a function held in a value, and `random.Float()` are machine code: `f()` 37 -> 2.2
   ns, 10^6 single draws of `stats.MonteCarlo` 539 -> 8.9 ms. `^`, `math.Exp` and the other functions of one float on an
   array of floats run unboxed, and `num.Uniform` draws in one native loop, the same numbers for a seed.
