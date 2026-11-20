@@ -25,11 +25,14 @@ val watching : bool ref
 (** The steps a loop hot by its runs takes in the interpreter, at its next run, before it gets its machine code. *)
 val warm_steps : int
 
+(** The last runs of a loop, or native entries of a version, that were counted, and their steps: are they too short to
+    gain from native code. *)
+type counts
+
 (** The native state of one loop of a version: [Compile] keeps one with each loop it compiles, with the loop's expression;
     the JIT fills [code], made at [reloads], or sets [failed]; [tries] counts the times its code was dropped, or could not
-    be made yet; [starts] and [steps] count the last runs that ended in the interpreter before it had code, and their
-    steps, and [short] says that it is [failed] only because those were too short, until they are long; [wait], the runs
-    before the next one counted then. *)
+    be made yet; [counts], the last runs that ended in the interpreter before it had code: it is [failed] when those were
+    too short, until they are long. *)
 type loop = {
   mutable seen : int;
   mutable code : code option;
@@ -37,10 +40,7 @@ type loop = {
   mutable failed : bool;
   mutable tries : int;
   mutable runs : int;
-  mutable starts : int;
-  mutable steps : int;
-  mutable short : bool;
-  mutable wait : int;
+  counts : counts;
   expr : Ast.expr;
 }
 
@@ -88,8 +88,10 @@ val available : bool ref
 (** Can loops be native at all: a JIT to load, and not off. *)
 val on : unit -> bool
 
-(** After [Compile] made a version's entries: counts its calls, then gives it native entries when it lowers. Does nothing
-    for a version that can't be a candidate. *)
+(** After [Compile] made a version's entries: counts its calls, then gives it native entries when it lowers. Those that
+    its calls from the interpreter take are then counted too: when they are too short to gain from native code, as the
+    runs of a loop can be, the version gets its interpreted entries back, and from time to time its native ones for a
+    few calls, until those are long. Does nothing for a version that can't be a candidate. *)
 val watch : world -> version -> unit
 
 (** The native code of this loop of the version, when it has some; in mode [always], compiles it at its first run. *)

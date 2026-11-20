@@ -1,0 +1,19 @@
+short calls:
+a unit made
+jit: total interpreted, its calls are short
+a unit made
+jit: fib interpreted, its calls are short
+longer calls after:
+a unit made
+jit: total interpreted, its calls are short
+a unit made
+jit: fib interpreted, its calls are short
+jit: total native, its calls are long
+jit: fib native, its calls are long
+off:
+6000.0 1100
+54000.0 3620
+hot:
+6000.0 1100
+54000.0 3620
+exit 0

@@ -1,0 +1,46 @@
+use std/io
+use std/matrix
+use std/sys
+use std/value
+
+(* A loop of n turns in a function that gives a float: after a thousand calls, it is made native as a whole. *)
+defn total(u, n)
+  s = 0.0
+  for c in 1..n
+    s = s + u[c]
+  end
+  s
+end
+
+(* A recursion, native to native inside its machine code. *)
+defn fib(n)
+  if n < 2
+    n
+  else
+    fib(n - 1) + fib(n - 2)
+  end
+end
+
+u = matrix.Zeros(32) + 1.5
+s = 0.0
+f = 0
+(* Two turns a call, from a loop that the interpreter keeps: native code would lose at each call, so the calls go back to
+   the interpreter. So do those of fib(1), which gives back at once. *)
+for r in 1..2000
+  s = s + total(u, 2)
+end
+for r in 1..1100
+  f = f + fib(1)
+end
+io.Print(s, f)
+(* Then thirty-two turns, and fib(8), as a session that solves a larger problem: the code made before takes the calls
+   again, made only once. *)
+if value.Len(sys.Args) > 0
+  for r in 1..1000
+    s = s + total(u, 32)
+  end
+  for r in 1..120
+    f = f + fib(8)
+  end
+  io.Print(s, f)
+end
