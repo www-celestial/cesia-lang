@@ -366,7 +366,10 @@ program that never gets hot never pays for it.
 
 ### When code gets hot
 
-- A version of a function whose result inference proves to be a number, an integer or a float, after 1,000 calls.
+- A version of a function whose result inference proves to be a number, an integer or a float, after 1,000 calls; when
+  its calls from the interpreter make fewer steps than coming into machine code and going back costs, as one with a loop
+  of two turns does, they go back to the interpreter, which keeps its machine code and tries it again now and then, and
+  its calls inside it, as a recursion's, stay machine code.
 - A loop, at the second checkpoint met inside it: after 10,000 to 20,000 turns of a loop that runs alone. A loop that runs
   often but briefly, as in a function called for each request, gets hot once its runs add up to 100,000 steps; one whose
   runs make fewer steps than coming into machine code and going back costs, about a dozen, stays in the interpreter
