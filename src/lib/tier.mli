@@ -25,14 +25,22 @@ val watching : bool ref
 (** The steps a loop hot by its runs takes in the interpreter, at its next run, before it gets its machine code. *)
 val warm_steps : int
 
-(** The last runs of a loop, or native entries of a version, that were counted, and their steps: are they too short to
-    gain from native code. *)
-type counts
+(** A loop whose last [short_runs] runs or more made fewer than [short_steps] steps on average is left to the
+    interpreter, and one of its runs in [short_every] is counted then, to see whether they grow: the JIT holds the
+    native entries of a version that the interpreter calls to the same numbers. *)
+val short_runs : int
+
+val short_steps : int
+val short_every : int
+
+(** Can native code run: no debugger, or one that lets the program run without steps. *)
+val free : world -> bool
 
 (** The native state of one loop of a version: [Compile] keeps one with each loop it compiles, with the loop's expression;
     the JIT fills [code], made at [reloads], or sets [failed]; [tries] counts the times its code was dropped, or could not
-    be made yet; [counts], the last runs that ended in the interpreter before it had code: it is [failed] when those were
-    too short, until they are long. *)
+    be made yet; [starts] and [steps] count the last runs that ended in the interpreter before it had code, and their
+    steps, and [short] says that it is [failed] only because those were too short, until they are long; [wait], the runs
+    before the next one counted then. *)
 type loop = {
   mutable seen : int;
   mutable code : code option;
@@ -40,7 +48,10 @@ type loop = {
   mutable failed : bool;
   mutable tries : int;
   mutable runs : int;
-  counts : counts;
+  mutable starts : int;
+  mutable steps : int;
+  mutable short : bool;
+  mutable wait : int;
   expr : Ast.expr;
 }
 
@@ -64,8 +75,9 @@ exception Handoff of code * int
     anything of it showed: every variable in its slot, the interpreter goes on from there. *)
 type ran = Ran | Fell | Returned of t | Reloaded | Bailed of int
 
-(** What the JIT does: [promote] gives a hot version its native entries when it lowers, [compile] makes a loop's code,
-    [pick] chooses the region at a hot checkpoint; the others are below. *)
+(** What the JIT does: [promote] gives a hot version its native entries when it lowers, and takes them back while its
+    calls from the interpreter are too short to gain from them; [compile] makes a loop's code, [pick] chooses the region
+    at a hot checkpoint; the others are below. *)
 type jit = {
   promote : world -> version -> unit;
   compile : ctx -> loop -> version -> unit;
@@ -88,10 +100,8 @@ val available : bool ref
 (** Can loops be native at all: a JIT to load, and not off. *)
 val on : unit -> bool
 
-(** After [Compile] made a version's entries: counts its calls, then gives it native entries when it lowers. Those that
-    its calls from the interpreter take are then counted too: when they are too short to gain from native code, as the
-    runs of a loop can be, the version gets its interpreted entries back, and from time to time its native ones for a
-    few calls, until those are long. Does nothing for a version that can't be a candidate. *)
+(** After [Compile] made a version's entries: counts its calls, then gives it native entries when it lowers. Does nothing
+    for a version that can't be a candidate. *)
 val watch : world -> version -> unit
 
 (** The native code of this loop of the version, when it has some; in mode [always], compiles it at its first run. *)

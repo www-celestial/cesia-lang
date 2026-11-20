@@ -15,12 +15,6 @@ let watching = ref false
 let calls_before = 1000
 let checkpoints_before = 2
 
-(* The last runs of a loop, or native entries of a version, counted, and their steps; [short] says that they were too
-   short, and [wait] is the runs, or calls, before the next one counted then. *)
-type counts = { mutable starts : int; mutable steps : int; mutable short : bool; mutable wait : int }
-
-let counts () = { starts = 0; steps = 0; short = false; wait = 0 }
-
 type loop = {
   mutable seen : int;
   mutable code : code option;
@@ -28,11 +22,16 @@ type loop = {
   mutable failed : bool;
   mutable tries : int;
   mutable runs : int;
-  counts : counts;
+  mutable starts : int;
+  mutable steps : int;
+  mutable short : bool;
+  mutable wait : int;
   expr : Ast.expr;
 }
 
-let loop (e : Ast.expr) = { seen = 0; code = None; reloads = 0; failed = false; tries = 0; runs = 0; counts = counts (); expr = e }
+let loop (e : Ast.expr) =
+  { seen = 0; code = None; reloads = 0; failed = false; tries = 0; runs = 0; starts = 0; steps = 0; short = false;
+    wait = 0; expr = e }
 
 (* Where a fiber stands: the steps before its next full checkpoint. It falls by one at each step, the checkpoints
    between two full ones included, and is [period] again after a full one. *)
@@ -45,11 +44,10 @@ let short_every = 16
 let counting l =
   l.code = None
   && ((not l.failed)
-      || l.counts.short
+      || l.short
          && begin
-           let c = l.counts in
-           c.wait <- c.wait - 1;
-           c.wait <= 0
+           l.wait <- l.wait - 1;
+           l.wait <= 0
          end)
 
 (* A run that comes in from the interpreter and goes back costs about 450 ns, what native code gains on 8 to 20 steps,
@@ -63,31 +61,24 @@ let counting l =
 let short_runs = 64
 let short_steps = 12
 
-(* A run, or a call, that ended, from [p], a full checkpoint between counted back: true once enough were counted to
-   tell whether they are short. A run past two of them, longer than [period] steps, counts less than it made: it met
-   checkpoints, at which a loop gets hot anyway. *)
-let counted (ctx : ctx) c p =
-  let d = p - position ctx in
-  c.starts <- c.starts + 1;
-  c.steps <- c.steps + (if d >= 0 then d else max 0 (d + ctx.w.period));
-  if c.starts >= 2 * short_runs then begin
-    c.starts <- c.starts / 2;
-    c.steps <- c.steps / 2
-  end;
-  c.starts >= short_runs
-
-let too_short c = c.steps < c.starts * short_steps
-
+(* A run of a loop that ended, from [p], a full checkpoint between counted back. A run past two of them, longer than
+   [period] steps, counts less than it made: it met checkpoints, at which a loop gets hot anyway. *)
 let ran (ctx : ctx) l p =
-  let c = l.counts in
-  if counted ctx c p && l.code = None then begin
-    let short = too_short c in
-    if short <> c.short then begin
-      c.short <- short;
+  let d = p - position ctx in
+  l.starts <- l.starts + 1;
+  l.steps <- l.steps + (if d >= 0 then d else max 0 (d + ctx.w.period));
+  if l.starts >= 2 * short_runs then begin
+    l.starts <- l.starts / 2;
+    l.steps <- l.steps / 2
+  end;
+  if l.code = None && l.starts >= short_runs then begin
+    let short = l.steps < l.starts * short_steps in
+    if short <> l.short then begin
+      l.short <- short;
       l.failed <- short
     end
   end;
-  if c.short then c.wait <- short_every
+  if l.short then l.wait <- short_every
 
 (* The steps a loop runs over its runs before it gets native code at the end of a first step. *)
 let runs_before = 100_000
@@ -131,78 +122,6 @@ let on () = !mode <> off && !available
 (* Native code runs no hook: with a debugger, it runs only while the program runs without steps. *)
 let free (w : world) = (not w.hooks) || (w.debug.mode == Running && not w.debug.stopped)
 
-let show m = if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m)
-
-(* A version given native entries, which its calls from the interpreter take, as do those of a loop left to it: the
-   version's own calls, recursion, and those from native code go native to native, never by these entries. Its first
-   [short_runs] native entries are counted: when they made fewer than [short_steps] steps on average, each paid the way
-   into native code and out, as a loop's short runs do, for less than it gained, and the version gets its interpreted
-   entries back, its code kept. After [period] calls, [short_runs] of them are native again, and counted: as calls of
-   the interpreter, those of a recursion would count its smallest parts. Long, the native entries stay, for good; short,
-   the next try comes after twice as many calls, at most [most_calls]. No code is made again. *)
-let most_calls = 1 lsl 16
-
-let judge (w : world) (ver : version) ri rf rv =
-  let ni = ver.ri and nf = ver.rf and nv = ver.rv in
-  let c = counts () and ours = ref nv and final = ref false and period = ref (short_runs * short_every) in
-  let set i f v =
-    ver.ri <- i;
-    ver.rf <- f;
-    ver.rv <- v;
-    ours := v
-  in
-  (* Never over entries that came since, as a version defined again forwards its calls to the new one. *)
-  let rec after ctx p =
-    if (not !final) && (not c.short) && counted ctx c p && ver.rv == !ours then
-      if too_short c then begin
-        if !period = short_runs * short_every then show (ver.owner.pname ^ " interpreted, its calls are short");
-        c.short <- true;
-        c.wait <- !period;
-        period := min (2 * !period) most_calls;
-        set si sf sv
-      end
-      else if free w then begin
-        final := true;
-        set ni nf nv;
-        show (ver.owner.pname ^ " native, its calls are long")
-      end
-  (* The calls of the interpreter, until the next try. *)
-  and si ctx =
-    c.wait <- c.wait - 1;
-    if c.wait > 0 then ri ctx else (again (); ver.ri ctx)
-  and sf ctx =
-    c.wait <- c.wait - 1;
-    if c.wait > 0 then rf ctx else (again (); ver.rf ctx)
-  and sv ctx =
-    c.wait <- c.wait - 1;
-    if c.wait > 0 then rv ctx else (again (); ver.rv ctx)
-  and again () =
-    if free w && ver.rv == !ours then begin
-      c.short <- false;
-      c.starts <- 0;
-      c.steps <- 0;
-      set ci cf cv
-    end
-    else c.wait <- !period
-  (* The native entries counted. *)
-  and ci ctx =
-    let p = position ctx in
-    let x = ni ctx in
-    after ctx p;
-    x
-  and cf ctx =
-    let p = position ctx in
-    let x = nf ctx in
-    after ctx p;
-    x
-  and cv ctx =
-    let p = position ctx in
-    let x = nv ctx in
-    after ctx p;
-    x
-  in
-  set ci cf cv
-
 let watch (w : world) (ver : version) =
   if on () && (ver.ret == TI || ver.ret == TF) then begin
     let ri = ver.ri and rf = ver.rf and rv = ver.rv in
@@ -210,12 +129,7 @@ let watch (w : world) (ver : version) =
       ver.ri <- ri;
       ver.rf <- rf;
       ver.rv <- rv;
-      match loaded () with
-      | Some j ->
-        j.promote w ver;
-        (* In mode [always], native entries from the first call to the last, for tests. *)
-        if ver.rv != rv && !mode <> always then judge w ver ri rf rv
-      | None -> ()
+      match loaded () with Some j -> j.promote w ver | None -> ()
     in
     let calls = ref 0 in
     let due () =

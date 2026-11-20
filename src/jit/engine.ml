@@ -552,4 +552,92 @@ let counter (ctx : ctx) code (l : Tier.loop) =
   let rec find k = if k = Array.length code.loops then invalid_arg "Tier.counter" else let n, cs, _, _ = code.loops.(k) in if n = l.expr.id then ctx.i.(ctx.b + cs) else find (k + 1) in
   find 0
 
-let install () = Tier.jit := Some { promote; compile; pick; place; after; enter; start; counter }
+(* A version's native entries, which the interpreter's calls take, as do those of a loop left to it: the version's own
+   calls, recursion, and those of native code go native to native, never by them. Coming into native code and going
+   back costs what native code gains on about [Tier.short_steps] steps, as for the runs of a loop ([Tier.ran]): a
+   version whose first [Tier.short_runs] native entries made fewer steps on average gets its interpreted entries back,
+   its code kept, as one with a loop of 2 turns called from a loop that the interpreter keeps, which ran 3 times slower
+   native. After [period] calls, [Tier.short_runs] of them are native again, and counted: counted as calls of the
+   interpreter, those of a recursion would count its smallest parts. Long, the native entries stay, for good; short, the
+   next try comes after twice as many calls, at most [most_calls]. No code is made again, and a version defined again,
+   whose entries forward its calls to the new one, keeps those. *)
+type calls = { mutable starts : int; mutable steps : int; mutable wait : int; mutable short : bool }
+
+let most_calls = 1 lsl 16
+
+let judge (w : world) (ver : version) ri rf rv =
+  let ni = ver.ri and nf = ver.rf and nv = ver.rv in
+  let c = { starts = 0; steps = 0; wait = 0; short = false } in
+  let ours = ref nv and final = ref false and period = ref (Tier.short_runs * Tier.short_every) in
+  let set i f v =
+    ver.ri <- i;
+    ver.rf <- f;
+    ver.rv <- v;
+    ours := v
+  in
+  let show m = if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ ver.owner.pname ^ m) in
+  (* A native entry that ended, from [p], a full checkpoint between counted back, as a loop's run. *)
+  let rec ended (ctx : ctx) p =
+    if (not !final) && (not c.short) && ver.rv == !ours then begin
+      let d = p - Tier.position ctx in
+      c.starts <- c.starts + 1;
+      c.steps <- c.steps + (if d >= 0 then d else max 0 (d + ctx.w.period));
+      if c.starts >= 2 * Tier.short_runs then begin
+        c.starts <- c.starts / 2;
+        c.steps <- c.steps / 2
+      end;
+      if c.starts >= Tier.short_runs then
+        if c.steps < c.starts * Tier.short_steps then begin
+          if !period = Tier.short_runs * Tier.short_every then show " interpreted, its calls are short";
+          c.short <- true;
+          c.wait <- !period;
+          period := min (2 * !period) most_calls;
+          set (interpreted ri (fun v -> v.ri)) (interpreted rf (fun v -> v.rf)) (interpreted rv (fun v -> v.rv))
+        end
+        else if Tier.free w then begin
+          final := true;
+          set ni nf nv;
+          show " native, its calls are long"
+        end
+    end
+  and again () =
+    if Tier.free w && ver.rv == !ours then begin
+      c.short <- false;
+      c.starts <- 0;
+      c.steps <- 0;
+      set (measured ni) (measured nf) (measured nv)
+    end
+    else c.wait <- !period
+  (* A native entry, counted. *)
+  and measured : 'a. (ctx -> 'a) -> ctx -> 'a =
+    fun f ->
+    let entry ctx =
+      let p = Tier.position ctx in
+      let x = f ctx in
+      ended ctx p;
+      x
+    in
+    entry
+  (* An entry of the interpreter, until the next try, which then takes this call: [now] is the entry in its place. *)
+  and interpreted : 'a. (ctx -> 'a) -> (version -> ctx -> 'a) -> ctx -> 'a =
+    fun f now ->
+    let entry ctx =
+      c.wait <- c.wait - 1;
+      if c.wait > 0 then f ctx
+      else begin
+        again ();
+        now ver ctx
+      end
+    in
+    entry
+  in
+  set (measured ni) (measured nf) (measured nv)
+
+let install () =
+  let promote w (ver : version) =
+    let ri = ver.ri and rf = ver.rf and rv = ver.rv in
+    promote w ver;
+    (* In mode always, native entries from the first call to the last, for tests. *)
+    if ver.rv != rv && !Tier.mode <> Tier.always then judge w ver ri rf rv
+  in
+  Tier.jit := Some { promote; compile; pick; place; after; enter; start; counter }
