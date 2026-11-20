@@ -105,12 +105,12 @@ nouveau ses fichiers. Rien ne le cache : une cell qui doit écrire une seule foi
 ## La session
 
 [cells.Session] démarre une session sur un fichier : un seul processus Cesia, `cesia run --cells file.ce`, qui ne lance
-rien du fichier et attend des cells. [cells.Run] lui donne une cell et l'attend : un Ok avec Output, les lignes qu'elle
-a affichées, Value, ce que montre sa dernière expression, Error, ou missing, avec la Line du fichier et le Text de
-l'erreur tel que `cesia run` le montre, et Seconds, le temps qu'elle a tourné. Avant qu'une cell tourne, les noms
-qu'elle définit sont oubliés, pour qu'une cell qui échoue ne laisse aucune ancienne valeur derrière elle. Une cell dont
-le From vaut 0 est du code tapé à un prompt (une ligne où l'on tape du code à côté du programme) à côté des cells,
-qu'aucune ligne du fichier ne contient : ses erreurs nomment `<prompt>`.
+rien du fichier et attend des cells. [cells.Run] lui donne une cell et l'attend : un Ok avec Output, les lignes qu'elle a
+affichées, Value, ce que montre sa dernière expression, Shown, ce que [cells.Show] a montré, Error, ou missing, avec la
+Line du fichier et le Text de l'erreur tel que `cesia run` le montre, et Seconds, le temps qu'elle a tourné. Avant qu'une
+cell tourne, les noms qu'elle définit sont oubliés, pour qu'une cell qui échoue ne laisse aucune ancienne valeur derrière
+elle. Une cell dont le From vaut 0 est du code tapé à un prompt (une ligne où l'on tape du code à côté du programme) à côté
+des cells, qu'aucune ligne du fichier ne contient : ses erreurs nomment `<prompt>`.
 
 ```cesia norun
 use std/cells
@@ -129,6 +129,29 @@ defn Main()
   result.Ok(missing)
 end
 ```
+
+Une cell montre la valeur de sa dernière expression, et [cells.Show] en montre plus en chemin : un graphe, un tableau, une
+matrice ou le texte de n'importe quelle valeur, à sa place parmi ce que la cell affiche, comme `display` dans Jupyter. Deux
+graphes dans une cell :
+
+```cesia norun
+use std/cells
+use std/io
+use std/math
+use std/plot
+
+(* %% Sine and cosine *)
+t = [k / 10.0 for k in 0..62]
+cells.Show(plot.Line(t, [math.Sin(x) for x in t]))
+io.Print("then the cosine")
+plot.Line(t, [math.Cos(x) for x in t])
+```
+
+Sous la cell viennent le graphe du sinus, la ligne qu'elle a affichée (« then the cosine »), puis le graphe du cosinus.
+Chaque partie de Shown est {After, Value} : After compte les lignes d'Output affichées avant elle, et Value est comme le
+Value de la cell, un graphe avec sa propre Key pour [cells.Scene], ou de Kind `"error"`, avec Text, pour un graphe qui ne
+peut pas être dessiné. `cells.Show(x)` rend x, pour tenir dans une ligne qui continue avec x ; hors d'une session, comme
+sous `cesia run`, il ne montre rien et rend seulement x. La page de [cells.Html] montre les parties dans le même ordre.
 
 Les cells tournent au niveau du fichier, comme le prompt de `cesia run --repl` fait tourner du code : chacune voit les
 noms que les cells d'avant ont définis, et les uses écrits au-dessus d'elle. Elles tournent comme le ferait le
@@ -165,7 +188,7 @@ seul flux depuis le haut, tire d'autres nombres que ses cells.
 Les valeurs restent dans la session : [cells.Variables] donne pour chaque nom son Name, son Type, sa Size (sa taille) et
 sa Preview (un aperçu), quelques textes, et ne copie jamais un grand array : chaque texte est fait par
 `value.Text(v, 80)`, qui s'arrête à 80 caractères, de sorte qu'une session qui garde un modèle de $10^6$ lignes répond
-en un dixième de milliseconde. La session garde les graphiques de ses 64 derniers lancements, et [cells.Scene] en
+en un dixième de milliseconde. La session garde les 64 derniers graphiques que ses lancements ont montrés, et [cells.Scene] en
 redessine un à une autre largeur, par sa Key (sa clé), pour un panneau qui a changé de largeur, une autre image d'une
 animation, `frame = k`, ou un graphique 3D tourné vers une autre vue, `view = [az, el]` : un éditeur demande chaque image
 au moment de la montrer, pour qu'une animation ne traverse jamais le pipe (le tuyau entre les deux processus) en entier,

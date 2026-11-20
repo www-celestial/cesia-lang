@@ -2,6 +2,13 @@
 
 ## 1.3.0
 
+### Science
+
+- `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
+  Jupyter: two graphs, or a table then a graph, in one cell. `cells.Run` gives them in its new Shown, each with its place
+  among the lines of Output; each graph has its own Key for `cells.Scene`; the page of `cells.Html` shows them in order.
+  Out of a session, as under `cesia run`, Show only gives its value.
+
 ### Tools
 
 - `cesia doc --site` colors the blocks of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`,

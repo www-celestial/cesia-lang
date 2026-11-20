@@ -54,11 +54,18 @@ defn Main()
   io.Print("turned: $(turned.Width) wide, view $(turned.View), $(value.Len([x for x in turned.Items if x.Kind == "mesh"])) mesh")
   io.Print(cells.Scene(s, g.Key, 300, view = [0, 30]))
   io.Print(cells.Scene(s, solid.Key, 300, view = [0, 91]))
+  both = cells.Run(s, {Title: "", From: 45, To: 50, Source: "use std/cells\nuse std/io\nio.Print(\"before\")\ncells.Show(plot.Line([1, 2], [2, 1]))\nio.Print(\"after\")\ncells.Show(3)\n4"}, width = 500)?
+  io.Print("shown: $(both.Output), $([x.After for x in both.Shown]), $([x.Value.Kind for x in both.Shown]), $(both.Shown[2].Value.Text), value $(both.Value.Text)")
+  io.Print("shown again: $(cells.Scene(s, both.Shown[1].Value.Key, 300)?.Width) wide, key $(both.Shown[1].Value.Key)")
   page = cells.Html("page.ce")
   io.Print("$(value.Len(text.Split("<section>", page?)) - 1) sections")
   io.Print(text.Contains("<td>9.0</td>", page?), text.Contains("total 30", page?), text.Contains("<div class=\"graph\"><svg", page?))
   io.Print(text.Contains("<title>Surface, 2 × 3 points, z from 1 to 4</title>", page?))
   io.Print(text.Contains("<div class=\"graph anim\"><input type=\"checkbox\" class=\"play\" id=\"play5\"><label for=\"play5\">Play</label>\n<svg", page?), text.Contains(".anim .f { animation-play-state: paused; }", page?))
+  (* The cell of two: what it printed and what it showed, in their order, its own animation's box named apart, then its value. *)
+  two = text.Split("<h2>Two</h2>", page?)[2]
+  order = [text.Find(w, two) for w in ["<pre class=\"output\">first</pre>", "id=\"play7-1\"", "<pre class=\"output\">then</pre>", "<pre class=\"value\">9</pre>", "<div class=\"graph\"><svg"]]
+  io.Print("two: $(list.All([value.IsSome(k) for k in order]) and value.Equal(order, list.Sort(order)))")
   result.Ok(missing)
 end
 

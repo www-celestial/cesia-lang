@@ -23,8 +23,11 @@ surface: view [10.0, 20.0], its scene's [10.0, 20.0]
 turned: 400 wide, view [-62.5, 20.0], 1 mesh
 Err({Kind: "cells", Message: "plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D."})
 Err({Kind: "cells", Message: "plot.Scene: view is [0, 91]; give [az, el] in degrees, el from -90 to 90."})
-6 sections
+shown: ["before", "after"], [1, 2], ["graph", "text"], 3, value 4
+shown again: 300 wide, key 11.1
+7 sections
 true true true
 true
 true true
+two: true
 exit 0

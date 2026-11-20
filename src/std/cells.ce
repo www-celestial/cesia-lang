@@ -614,7 +614,7 @@ defn heard(line, inbox, control)
   end
   m = json.Parse(text.ByteSlice(at + 1, text.ByteLength(line), line))
   if result.IsOk(m)
-    fiber.Send(m.Value, if m.Value.Kind == "answer" inbox else control end)
+    fiber.Send(m.Value, if m.Value.Kind == "answer" or m.Value.Kind == "shown" inbox else control end)
   end
 end
 
@@ -682,7 +682,9 @@ end
 
 defn Run(session, cell, width = 640)
   (** Runs a cell of Parse in the session, and waits for it: an Ok of a struct with Output (the lines it printed), Value
-      (what its last expression shows, or missing), Error (missing, or a struct with Line, the line of the file or missing
+      (what its last expression shows, or missing), Shown (what Show showed, in order, each {After, Value}: After the
+      count of the lines of Output printed before it, Value as Value is, but a graph that can't be drawn, which is a
+      Value of Kind "error" with Text), Error (missing, or a struct with Line, the line of the file or missing
       when the error is elsewhere, and Text, the error as cesia run shows it) and Seconds (the time it ran). A Value is a
       struct with Kind: "graph", a graph of std/plot, with Scene (plot.Scene at width pixels, 400 high) and Key, which
       Scene draws again at another width, for an animation of plot.Frames, Frames and Fps, and Scene its first frame,
@@ -697,6 +699,7 @@ defn runWith(session, cell, width, svg)
   (** Run, with the SVG of a graph in place of its scene for svg, as Html wants it. *)
   ask(session, {Do: "run", Code: cell.Source, Line: list.Max(0, cell.From), Path: session.Path, Width: width, Svg: svg})?
   output = []
+  parts = []
   while true
     m = fiber.Receive(session.Inbox)
     if result.IsErr(m) or m.Value.Kind == "ended"
@@ -704,9 +707,11 @@ defn runWith(session, cell, width, svg)
     end
     if m.Value.Kind == "output"
       output = list.Append(m.Value.Text, output)
+    else if m.Value.Kind == "shown"
+      parts = list.Append({After: values.Len(output), Value: m.Value.Value}, parts)
     else
       a = m.Value
-      return result.Ok({Output: output, Value: dict.Get("Value", a), Error: dict.Get("Error", a), Seconds: a.Seconds})
+      return result.Ok({Output: output, Value: dict.Get("Value", a), Shown: parts, Error: dict.Get("Error", a), Seconds: a.Seconds})
     end
   end
 end
@@ -742,7 +747,7 @@ defn Scene(session, key, width, frame = 1, view = missing)
       for a pane that changed its width, for another frame of an animation, frame from 1, or for a 3D graph turned to
       view, [az, el] in degrees, as Cemacs turns it when it is dragged. plot.Scene draws it in the session, one at a time,
       so that an animation never crosses whole and a surface crosses as the places of its points on the screen. The
-      session keeps the graphs of its last 64 runs; an Err for an older one, for a frame the graph doesn't have, or for a
+      session keeps the last 64 graphs that its runs showed; an Err for an older one, for a frame the graph doesn't have, or for a
       view of a graph that is no 3D graph. *)
   ask(session, {Do: "scene", Key: key, Width: width, Frame: frame, View: view})?
   got = answered(session)?
@@ -821,7 +826,7 @@ end
 cellsOf(rows, tag) = text.Join("", ["<tr>$(text.Join("", ["<$tag>$(escape(x))</$tag>" for x in row]))</tr>\n" for row in rows])
 
 defn valueHtml(v, i)
-  (** What the value of cell i shows, in HTML. An animation starts paused on its first frame, under a box Play that runs
+  (** What a value of a cell shows, in HTML, i naming it among the values of the page. An animation starts paused on its first frame, under a box Play that runs
       and stops it, by CSS alone: the box is a check box of the page, before the SVG, focused by Tab and checked by Space. *)
   if values.IsMissing(v)
     ""
@@ -873,6 +878,25 @@ defn sliderHtml(s)
     "\" step=\"", number(s.Step), "\" value=\"", number(s.Value), "\" disabled></label> <span class=\"value\">", number(s.Value), "</span></p>\n")
 end
 
+defn printedHtml(ran, i)
+  (** What cell i printed and what it showed with Show, in their order, in HTML. *)
+  out = []
+  from = 1
+  j = 0
+  for part in dict.GetOr("Shown", [], ran)
+    j += 1
+    if part.After >= from
+      out = list.Append("<pre class=\"output\">$(escape(text.Join("\n", ran.Output[from..part.After])))</pre>\n", out)
+      from = part.After + 1
+    end
+    out = list.Append(if part.Value.Kind == "error" "<pre class=\"error\">$(escape(part.Value.Text))</pre>\n" else valueHtml(part.Value, "$i-$j") end, out)
+  end
+  if from <= values.Len(ran.Output)
+    out = list.Append("<pre class=\"output\">$(escape(text.Join("\n", ran.Output[from..values.Len(ran.Output)])))</pre>\n", out)
+  end
+  out
+end
+
 defn cellHtml(cell, i, errors, ran, sliders)
   (** Cell i of the page: its title, its code, then its errors, or its sliders, what it printed and its value. *)
   title = if cell.Title == "" "" else "<h2>$(escape(cell.Title))</h2>\n" end
@@ -883,10 +907,8 @@ defn cellHtml(cell, i, errors, ran, sliders)
     out = list.Append("<pre class=\"error\">$(escape(text.Join("\n", ["line $(e.Line): $(e.Message)" for e in errors])))</pre>\n", out)
   else if values.IsSome(ran)
     out = list.Concat(out, [sliderHtml(x) for x in sliders])
-    if values.Len(ran.Output) > 0
-      out = list.Append("<pre class=\"output\">$(escape(text.Join("\n", ran.Output)))</pre>\n", out)
-    end
-    out = list.Append(if values.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value, i) end, out)
+    out = list.Concat(out, printedHtml(ran, i))
+    out = list.Append(if values.IsSome(ran.Error) "<pre class=\"error\">$(escape(ran.Error.Text))</pre>\n" else valueHtml(ran.Value, "$i") end, out)
   end
   if title == "" and text.Join("", out) == "" "" else "<section>\n$title$(text.Join("", out))</section>\n" end
 end
@@ -1021,32 +1043,80 @@ defn errorLine(path, e)
   text.Number(text.Split(":", text.Slice(values.Len(path) + 2, values.Len(first), first))[1])
 end
 
+(* The run of a cell in the session, for Show in the cell's code: {Width, Svg, Key, Count, Graphs}, Count the values
+   shown so far and Graphs a channel of those that are graphs, {Key, Value}. A channel of one holds it, so that Show reads
+   and changes it; it is empty out of a run, and out of a session. *)
+running = fiber.Channel(size = 1)
+
+defn Show(x)
+  (** Shows x under the cell that runs, at this place among what the cell prints, as the value of its last expression
+      shows: a graph, a table, a matrix or the text of a value; missing shows nothing. The value of the last expression
+      still shows, after everything else. Gives x. Out of a session of cells, as in cesia run, it shows nothing.
+
+        Show(42) --> 42 *)
+  got = fiber.Receive(running, timeout = 0)
+  if result.IsErr(got)
+    return x
+  end
+  run = got.Value
+  run.Count = run.Count + 1
+  fiber.Send(run, running)
+  key = "$(run.Key).$(run.Count)"
+  v = shown(x, width = run.Width, svg = run.Svg, key = key)
+  if values.IsMissing(v)
+    return x
+  end
+  if v.Kind == "graph"
+    fiber.Send({Key: key, Value: x}, run.Graphs)
+  end
+  send({Kind: "shown", Value: v})
+  x
+end
+
+defn taken(ch)
+  (** The values a channel holds, taken out. *)
+  out = []
+  got = fiber.Receive(ch, timeout = 0)
+  while result.IsOk(got)
+    out = list.Append(got.Value, out)
+    got = fiber.Receive(ch, timeout = 0)
+  end
+  out
+end
+
 defn ran(c, key)
-  (** Runs the code of a cell and sends its answer; gives its value when it shows as a graph, which the session keeps.
-      std/random starts again first, from the seed of the session and the title of the cell, as cesia test does for each
-      test: a cell run again draws the same numbers, whatever ran before it. *)
+  (** Runs the code of a cell and sends its answer; gives the graphs it showed, which the session keeps, each {Key,
+      Value}: those of Show, then its value when it shows as a graph. std/random starts again first, from the seed of the
+      session and the title of the cell, as cesia test does for each test: a cell run again draws the same numbers,
+      whatever ran before it. *)
   start = sys.Now()
   first = text.Lines(c.Code)
   title = if values.Len(first) == 0 "" else marker(first[1]) end
   restartRandom(if values.IsMissing(title) "" else title end)
+  graphs = fiber.Channel()
+  (* A run that a stop ended left its own. *)
+  _ = taken(running)
+  fiber.Send({Width: dict.GetOr("Width", 640, c), Svg: dict.GetOr("Svg", false, c), Key: key, Count: 0, Graphs: graphs}, running)
   r = evalCell(c.Code, c.Line)
+  _ = taken(running)
   seconds = sys.Now() - start
+  shows = taken(graphs)
   if result.IsErr(r)
     send({Kind: "answer", Error: {Line: errorLine(c.Path, r.Error), Text: r.Error}, Seconds: seconds})
-    return missing
+    return shows
   end
   v = shown(r.Value, width = dict.GetOr("Width", 640, c), svg = dict.GetOr("Svg", false, c), key = key)
   if values.IsSome(v) and v.Kind == "error"
     (* A graph that std/plot can't draw: its message, as an error of the cell. *)
     send({Kind: "answer", Error: {Line: missing, Text: v.Text}, Seconds: seconds})
-    return missing
+    return shows
   end
   send({Kind: "answer", Value: v, Seconds: seconds})
-  if values.IsSome(v) and v.Kind == "graph" r.Value else missing end
+  if values.IsSome(v) and v.Kind == "graph" list.Append({Key: "$key", Value: r.Value}, shows) else shows end
 end
 
 defn kept(task, key, graphs)
-  (** The graphs of the session once a run ended: its own under its key, if it showed one, and the last 64. *)
+  (** The graphs of the session once a run ended: those it showed, under their keys, and the last 64. *)
   if values.IsMissing(task)
     return graphs
   end
@@ -1054,15 +1124,21 @@ defn kept(task, key, graphs)
   if result.IsErr(w) or values.IsMissing(w.Value)
     return graphs
   end
-  out = dict.Put("$key", w.Value, graphs)
-  if values.Len(out) > 64 dict.Drop(dict.Keys(out)[1], out) else out end
+  out = graphs
+  for g in w.Value
+    out = dict.Put(g.Key, g.Value, out)
+  end
+  while values.Len(out) > 64
+    out = dict.Drop(dict.Keys(out)[1], out)
+  end
+  out
 end
 
 defn rescened(c, graphs)
   (** The answer to a scene: the graph of a key drawn at a width. *)
   g = dict.Get("$(c.Key)", graphs)
   if values.IsMissing(g)
-    return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds those of its last 64 runs."}
+    return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds the last 64 that its runs showed."}
   end
   r = drawn(g, c.Width, false, frame = dict.GetOr("Frame", 1, c), view = dict.GetOr("View", missing, c))
   if result.IsErr(r) {Kind: "scene", Error: r.Error.Message} else {Kind: "scene", Scene: r.Value} end

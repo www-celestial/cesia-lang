@@ -95,10 +95,10 @@ cell that must write once is better run once, on purpose.
 
 [cells.Session] starts a session on a file: one Cesia process, `cesia run --cells file.ce`, that runs none of the file and
 waits for cells. [cells.Run] gives it one cell and waits for it: an Ok with Output, the lines it printed, Value, what its
-last expression shows, Error, or missing, with the Line of the file and the Text of the error as `cesia run` shows it,
-and Seconds, the time it ran. Before a cell runs, the names it defines are forgotten, so that a cell that fails leaves no
-old value behind. A cell whose From is 0 is code typed at a prompt beside the cells, which no line of the file holds:
-its errors name `<prompt>`.
+last expression shows, Shown, what [cells.Show] showed, Error, or missing, with the Line of the file and the Text of the
+error as `cesia run` shows it, and Seconds, the time it ran. Before a cell runs, the names it defines are forgotten, so
+that a cell that fails leaves no old value behind. A cell whose From is 0 is code typed at a prompt beside the cells, which
+no line of the file holds: its errors name `<prompt>`.
 
 ```cesia norun
 use std/cells
@@ -117,6 +117,28 @@ defn Main()
   result.Ok(missing)
 end
 ```
+
+A cell shows the value of its last expression, and [cells.Show] shows more on the way: a graph, a table, a matrix or the
+text of any value, at its place among what the cell prints, as `display` does in Jupyter. Two graphs in one cell:
+
+```cesia norun
+use std/cells
+use std/io
+use std/math
+use std/plot
+
+(* %% Sine and cosine *)
+t = [k / 10.0 for k in 0..62]
+cells.Show(plot.Line(t, [math.Sin(x) for x in t]))
+io.Print("then the cosine")
+plot.Line(t, [math.Cos(x) for x in t])
+```
+
+Under the cell come the graph of the sine, the line it printed, then the graph of the cosine. Each part of Shown is {After,
+Value}: After counts the lines of Output printed before it, and Value is as the cell's Value is, a graph with its own Key
+for [cells.Scene], or of Kind `"error"`, with Text, for a graph that can't be drawn. `cells.Show(x)` gives x, so it can
+stand in a line that goes on with x; out of a session, as under `cesia run`, it shows nothing and only gives x. The page of
+[cells.Html] shows the parts in the same order.
 
 The cells run at the file level, as the prompt of `cesia run --repl` runs code: each sees the names the cells before it
 defined, and the uses written above it. They run as the program would, not under the hook of the debugger, which costs
@@ -149,7 +171,7 @@ numbers; `cesia run` on the file, one stream from the top, draws other numbers t
 
 Values stay in the session: [cells.Variables] gives each name's Name, Type, Size and Preview, a few texts, and never
 copies a large array: each text is made by `value.Text(v, 80)`, which stops at 80 characters, so a session that holds a
-model of $10^6$ rows answers in a tenth of a millisecond. The session keeps the graphs of its last 64 runs, and [cells.Scene] draws one again at another
+model of $10^6$ rows answers in a tenth of a millisecond. The session keeps the last 64 graphs its runs showed, and [cells.Scene] draws one again at another
 width, by its Key, for a pane that changed its width, another frame of an animation, `frame = k`, or a 3D graph turned
 to another view, `view = [az, el]`: an editor asks for each frame as it shows it, so that an animation never crosses the
 pipe whole, and a frame of the Lorenz curve, 5,000 points, comes back in about 10 ms; it asks for each view as a 3D graph
