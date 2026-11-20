@@ -35,7 +35,7 @@ ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/cesia
 ln -s "$PWD/_build/default/src/bin/main.exe" ~/.local/bin/ce      # optional: the short name of the same binary
 ```
 
-Un tel binaire affiche `cesia 1.2.0+dev` : ce sont `git pull` et `dune build` qui le mettent à jour, pas `cesia upgrade`.
+Un tel binaire affiche `cesia 1.3.0+dev` : ce sont `git pull` et `dune build` qui le mettent à jour, pas `cesia upgrade`.
 `ce` et `cesia` sont un seul programme, comme `vi` et `vim` : `ce run file.ce` est `cesia run file.ce`.
 
 ## Lire le livre
