@@ -706,9 +706,13 @@ steps on Robertson's. Rodas5P, a method of one step, makes a Jacobian at each st
 `f`, and factorizes $W$ at each step, 210 times for 207 steps; and the loop of its stages still runs in the interpreter,
 as below. At these tolerances `LSODA`'s last state is further off: 100 times Cesia's error on Van der Pol's; to match
 it, `LSODA` would need a tighter `rtol`, which was not measured. `Radau` makes the smallest errors, 7.2e-7 on Van der
-Pol's, in 24 times Cesia's time, its Newton iterations in Python. Van der Pol's solved again takes Cesia longer than its
-first solve, 19.9 ms against 15.2, measured and not explained yet: the JIT's work on the second call of the solver with
-another `f` is the place to look.
+Pol's, in 24 times Cesia's time, its Newton iterations in Python. Van der Pol's solved again took Cesia longer than its
+first solve, 19.9 ms against 15.2: during that solve, two loops of the solver of 2 turns each, which copy a row of the
+stages and a column of the Jacobian, got hot, and the JIT made them machine code, about 2 ms each, on the program's own
+time; that code then ran slower than the interpreter, as coming in and going back at each run costs more than 2 turns
+gain. Since 2026-11-20 a loop whose runs make fewer than 12 steps on average stays in the interpreter, and Van der
+Pol's solved again takes 14.8 ms (14.3 to 15.0) against 20.6 (20.2 to 21.3) before, the medians of 21 runs, alternated,
+its first solve 15.3 against 15.2.
 
 Solved again in the same program, once the JIT has made `f` native, a step of Robertson's costs about 36 µs: the
 Jacobian by differences, the factorization of $W$ and its 8 solves run as native code in about 10 µs of them, and the

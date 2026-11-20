@@ -751,8 +751,13 @@ pour 207 pas ; et la boucle de ses étages tourne encore dans l'interpréteur, c
 dernier état de `LSODA` est plus loin : 100 fois l'erreur de Cesia sur celui de Van der Pol ; pour l'égaler, `LSODA`
 demanderait un `rtol` plus serré, ce qui n'a pas été mesuré. `Radau` fait les plus petites erreurs, 7,2e-7 sur celui de
 Van der Pol, en 24 fois le temps de Cesia, ses itérations de Newton en Python. Résolu de nouveau, celui de Van der Pol
-prend à Cesia plus de temps que la première fois, 19,9 ms contre 15,2, ce qui est mesuré et pas encore expliqué : le
-travail du JIT au second appel du solveur avec une autre `f` est l'endroit où chercher.
+prenait à Cesia plus de temps que la première fois, 19,9 ms contre 15,2 : pendant cette résolution, deux boucles du
+solveur de 2 tours chacune, qui copient une ligne des étages et une colonne du jacobien, devenaient chaudes, et le JIT
+en faisait du code machine, environ 2 ms chacune, sur le temps du programme lui-même ; ce code tournait ensuite plus
+lentement que l'interpréteur, car entrer et ressortir à chaque run coûte plus que ce que 2 tours gagnent. Depuis le
+2026-11-20, une boucle dont les runs font moins de 12 pas en moyenne reste dans l'interpréteur, et celui de Van der
+Pol résolu de nouveau prend 14,8 ms (14,3 à 15,0) contre 20,6 (20,2 à 21,3) avant, les médianes de 21 runs, alternés,
+sa première résolution 15,3 contre 15,2.
 
 Résolu de nouveau dans le même programme, une fois que le JIT a rendu `f` native, un pas de Robertson coûte environ
 36 µs : le jacobien par différences, la factorisation de $W$ et ses 8 résolutions tournent en code natif en environ
