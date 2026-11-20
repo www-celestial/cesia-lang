@@ -239,6 +239,10 @@ Measured on the same machine as the others, in the book's chapters on speed and 
 - A module's variable that the top code gave another number while another fiber's machine code that reads it waited at
   a full checkpoint no longer stops the program with an internal error: the code reads the new number at its next run,
   or a loop gives the rest of its turns to the interpreter at its next step.
+- Under `CESIA_JIT=always`, a loop that calls through a value, as `f(x)` in `run(f, n)`, gets machine code again: lowered
+  at its start, before that call had met any function, it stayed interpreted for good, so the tests and the fuzzer that
+  run in that mode compared such loops with the interpreter itself. A loop refused then is now lowered once more after
+  its first steps, as one hot by its runs is; the default mode, which lowers a loop only after steps, is unchanged.
 - The full list is in the commits since v1.1.0.
 
 ## 1.1.0

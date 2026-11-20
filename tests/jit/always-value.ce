@@ -1,0 +1,41 @@
+use std/io
+use std/math
+
+(* A loop of calls through a value, lowered at its start under CESIA_JIT=always, before the call met any function. *)
+defn run(f, n)
+  total = 0.0
+  for i in 1..n
+    total = total + f(i * 0.5)
+  end
+  total
+end
+
+(* After the steps that the machine code bet on, the call takes another function: back to the interpreter. *)
+defn swap(fs, n)
+  total = 0.0
+  for i in 1..n
+    k = 1
+    if i >= 500
+      k = 2
+    end
+    f = fs[k]
+    total = total + f(i * 0.5)
+  end
+  total
+end
+
+(* More functions than a call remembers: the loop stays interpreted. *)
+defn many(fs, n)
+  total = 0.0
+  for i in 1..n
+    f = fs[math.Mod(i, 5) + 1]
+    total = total + f(i * 0.5)
+  end
+  total
+end
+
+half(x) = x / 2.0
+twice(x) = x * 2.0
+io.Print(run(half, 100000))
+io.Print(swap([half, twice], 2000))
+io.Print(many([half, twice, (x) -> x + 1.0, (x) -> x - 1.0, (x) -> x * 3.0], 100000))

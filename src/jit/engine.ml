@@ -416,6 +416,11 @@ let forgot (w : world) code =
   let gone m k = match w.modules.(m).cells.(k) with Undef -> true | _ -> false in
   Array.exists (fun (m, k, _) -> gone m k) code.cells || Array.exists (fun (m, k, _) -> gone m k) code.fn.moving
 
+(* Under CESIA_JIT=always a loop is first lowered at its start, before any step, when its calls through a value have met
+   no function yet: a refusal then is no sign, and the loop is lowered once more after its first steps, as one hot by its
+   runs is ([Tier.warm]). In the default mode a loop is lowered only after steps, and a refusal is for good. *)
+let refused (l : Tier.loop) = if !Tier.mode = Tier.always && l.tries = 0 then l.tries <- 1 else l.failed <- true
+
 let compile (ctx : ctx) (l : Tier.loop) ver =
   let w = ctx.w in
   if (not l.failed) && l.code = None then begin
@@ -426,7 +431,7 @@ let compile (ctx : ctx) (l : Tier.loop) ver =
          l.code <- Some (Native c);
          l.reloads <- c.reloads
        | None -> l.failed <- true)
-    | None -> l.failed <- true
+    | None -> refused l
     | exception Lower.Unseen ->
       l.tries <- l.tries + 1;
       if l.tries >= max_tries then l.failed <- true
