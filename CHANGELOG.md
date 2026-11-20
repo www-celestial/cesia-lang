@@ -2,6 +2,13 @@
 
 ## 1.3.0
 
+### Files
+
+- `sys.Copy` copies a file with its mode and its times, as `cp -p`, refusing a folder or the same file under another
+  name before a byte is written; `sys.Chmod` and the new Mode of `sys.Stat` give and read the permission bits;
+  `sys.SetModified` sets the time of a change, as `touch`; `sys.Symlink`, `sys.Link` and `sys.ReadLink` make and read
+  links. Everything a file manager needs, as the folders of Cemacs.
+
 ### Science
 
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in

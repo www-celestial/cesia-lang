@@ -4,7 +4,7 @@ open Types
 let failure = Value.failure
 let io_error w text = failure w "io" text
 let reason e = String.uncapitalize_ascii (Unix.error_message e)
-let stat_keys = Trie.names [| "Size"; "Modified"; "IsDir"; "IsFile"; "IsLink" |]
+let stat_keys = Trie.names [| "Size"; "Modified"; "IsDir"; "IsFile"; "IsLink"; "Mode" |]
 let failed ctx verb target e = io_error ctx.w (Messages.io_failure verb target (reason e)).text
 
 let retry = function
@@ -164,6 +164,36 @@ let remove path =
   (if (Unix.lstat path).st_kind = Unix.S_DIR then Unix.rmdir else Unix.unlink) path;
   Missing
 
+(* The bytes of a file into another, chunk by chunk, with its mode and its times, as cp -p does: the copy is made or
+   emptied first, so a folder, or the same file under another name, is refused before a byte is lost. *)
+let copy_file from dest =
+  let st = Unix.stat from in
+  if st.st_kind = Unix.S_DIR then raise (Unix.Unix_error (Unix.EISDIR, "copy", from));
+  (match Unix.stat dest with
+   | d when d.st_dev = st.st_dev && d.st_ino = st.st_ino -> raise (Unix.Unix_error (Unix.EINVAL, "copy", dest))
+   | _ | (exception Unix.Unix_error (Unix.ENOENT, _, _)) -> ());
+  with_fd from [ Unix.O_RDONLY ] (fun src ->
+      with_fd ~perm:st.st_perm dest [ Unix.O_WRONLY; Unix.O_CREAT; Unix.O_TRUNC ] (fun dst ->
+          let b = Bytes.create 65536 in
+          let rec go () =
+            match Unix.read src b 0 65536 with
+            | 0 -> ()
+            | n ->
+              let rec put at = if at < n then put (at + Unix.write dst b at (n - at)) in
+              put 0;
+              go ()
+          in
+          go ();
+          if not Sys.win32 then Unix.fchmod dst st.st_perm));
+  Unix.utimes dest st.st_atime st.st_mtime;
+  Missing
+
+(* A mode of the permission bits, from 0 to 0o7777: setuid, setgid and sticky above the nine of read, write and run. *)
+let mode_arg ctx name v =
+  match v with
+  | Int n when n >= 0 && n <= 0o7777 -> n
+  | v -> Runtime.fail ctx Type (Messages.need_mode name (Value.describe v))
+
 (* With parents, like mkdir -p: a folder that exists is fine. Private, the folders it makes are 0700, and the last one is
    made so if it was there. *)
 let rec make_dir ?(perm = 0o755) path =
@@ -192,7 +222,27 @@ let natives =
         let s = Unix.stat path in
         Trie.record stat_keys
           [| Int s.st_size; Float s.st_mtime; Value.of_bool (s.st_kind = Unix.S_DIR);
-             Value.of_bool (s.st_kind = Unix.S_REG); Value.of_bool ((Unix.lstat path).st_kind = Unix.S_LNK) |]);
+             Value.of_bool (s.st_kind = Unix.S_REG); Value.of_bool ((Unix.lstat path).st_kind = Unix.S_LNK); Int s.st_perm |]);
+    on_path "Copy" Read "copy" 2 (fun ctx path a -> copy_file path (path_arg ctx "Copy" Write a.(1)));
+    on_path "Chmod" Write "change the mode of" 2 (fun ctx path a ->
+        Unix.chmod path (mode_arg ctx "Chmod" a.(1));
+        Missing);
+    on_path "SetModified" Write "change the time of" 2 (fun ctx path a ->
+        let t = match a.(1) with Int n -> float_of_int n | Float f -> f | v -> Runtime.fail ctx Type (Messages.need_number "SetModified" (Value.describe v)) in
+        (* For utimes, 0.0 is now: the start of 1970 is asked a millionth of a second after it. *)
+        let t = if t = 0.0 then 1e-6 else t in
+        Unix.utimes path t t;
+        Missing);
+    (* The link is the path that is written: what it points to is a text, read by no one here, and may not exist. *)
+    "Symlink",
+    Native.nat ~result:true "Symlink" 2 2 (fun ctx a ->
+        let target = Native.text_arg ctx "Symlink" a.(0) and link = path_arg ctx "Symlink" Write a.(1) in
+        attempt ctx "create the link" link (fun () -> Unix.symlink target link; Missing));
+    "Link",
+    Native.nat ~result:true "Link" 2 2 (fun ctx a ->
+        let target = path_arg ctx "Link" Read a.(0) and link = path_arg ctx "Link" Write a.(1) in
+        attempt ctx "create the link" link (fun () -> Unix.link target link; Missing));
+    on_path "ReadLink" Read "read the link" 1 (fun _ path _ -> Text (Unix.readlink path));
     on_path "Rename" Write "rename" 2 (fun ctx path a ->
         Unix.rename path (path_arg ctx "Rename" Write a.(1));
         Missing);

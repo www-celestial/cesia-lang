@@ -1066,7 +1066,8 @@ use std/test
       sys.Exists(file) --> false *)
 
 (** sys.Stat(path)
-    A dictionary with Size (bytes), Modified (seconds since 1970), IsDir, IsFile and IsLink, in an Ok, or an Err. A symbolic link
+    A dictionary with Size (bytes), Modified (seconds since 1970), IsDir, IsFile, IsLink and Mode, in an Ok, or an Err.
+    Mode holds the permission bits, as sys.Chmod takes them: 420 is 644 in octal, rw-r--r--. A symbolic link
     counts as what it points to, and IsLink says that it is one. IsFile is true for a regular file only, not for a folder, a device, a FIFO or a socket: their Size says nothing,
     and reading one can use all the memory or hang. Needs the read permission.
 
@@ -1096,6 +1097,63 @@ use std/test
     the program.
 
       fiber.Receive(sys.Stops(), timeout = 0).Error.Kind --> "timeout" *)
+
+(** sys.Copy(from, to)
+    Copies a file to another path, as cp -p does: its bytes, its mode and its times. A file at to is replaced; a folder,
+    or the same file under another name, gives an Err before anything is written. A symbolic link is copied as the
+    file it points to. Ok(missing) or an Err. Needs the read permission on from and the write permission on to.
+
+      d = test.Temp()
+      sys.Write("$(d)/a.txt", "text")
+      sys.Copy("$(d)/a.txt", "$(d)/b.txt") --> result.Ok(missing)
+      sys.Read("$(d)/b.txt") --> result.Ok("text")
+      result.IsErr(sys.Copy("$(d)/a.txt", "$(d)/a.txt")) --> true *)
+
+(** sys.Chmod(path, mode)
+    Gives a file or a folder the permission bits of mode, from 0 to 4095, as chmod does: 493 is 755 in octal, rwxr-xr-x,
+    and sys.Stat gives the mode a path has. On Windows only the bit of writing by the owner counts: without it, the file
+    is read only. Ok(missing) or an Err. Needs the write permission.
+
+      file = "$(test.Temp())/run.sh"
+      sys.Write(file, "")
+      sys.Chmod(file, 493) --> result.Ok(missing)
+      sys.Stat(file)?.Mode --> 493 *)
+
+(** sys.SetModified(path, seconds)
+    Gives a file or a folder the time of its last change, in seconds since 1970, as touch does: sys.Now() for now.
+    Ok(missing) or an Err. Needs the write permission.
+
+      file = "$(test.Temp())/old.txt"
+      sys.Write(file, "")
+      sys.SetModified(file, 86400) --> result.Ok(missing)
+      sys.Stat(file)?.Modified --> 86400.0 *)
+
+(** sys.Symlink(target, link)
+    Makes a symbolic link at link that points to target, a path that may not exist yet, relative to the folder of the
+    link or from the root. Ok(missing) or an Err, as on Windows without the right to make links. Needs the write
+    permission on link.
+
+      d = test.Temp()
+      sys.Write("$(d)/real.txt", "here")
+      sys.Symlink("real.txt", "$(d)/alias.txt") --> result.Ok(missing)
+      sys.Read("$(d)/alias.txt") --> result.Ok("here") *)
+
+(** sys.Link(target, link)
+    Makes a hard link: link becomes another name of the file target, on the same disk. Ok(missing) or an Err. Needs the
+    read permission on target and the write permission on link.
+
+      d = test.Temp()
+      sys.Write("$(d)/one.txt", "same")
+      sys.Link("$(d)/one.txt", "$(d)/two.txt") --> result.Ok(missing)
+      sys.Read("$(d)/two.txt") --> result.Ok("same") *)
+
+(** sys.ReadLink(path)
+    The path that a symbolic link points to, as it was written, in an Ok, or an Err for a path that is no link. Needs
+    the read permission.
+
+      d = test.Temp()
+      sys.Symlink("real.txt", "$(d)/to.txt")
+      sys.ReadLink("$(d)/to.txt") --> result.Ok("real.txt") *)
 
 (** sys.Rename(from, to)
     Moves a file or a folder: Ok(missing) or an Err. Needs the write permission on both paths.

@@ -282,6 +282,9 @@ val need_text : string -> string -> t
 
 (** [need_flag param a]: an optional parameter that is true or false, as fold = of text.ByteFind. *)
 val need_flag : string -> string -> t
+
+(** [need_mode name a]: a mode of the permission bits, 0 to 4095, as sys.Chmod takes it. *)
+val need_mode : string -> string -> t
 val empty_array : string -> t
 
 (** The texts of the command line. *)
