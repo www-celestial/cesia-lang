@@ -1,0 +1,45 @@
+use std/io
+use std/matrix
+use std/random
+
+(* The limit of steps names the step that went past it, a loop's turn or a call, in the interpreter and in native code
+   alike: never the last place that wrote its site, as a native called before or the growth of the stack. *)
+defn deep(n)
+  if n < 1
+    0
+  else
+    1 + deep(n - 1)
+  end
+end
+defn total(u, n)
+  s = 0.0
+  for c in 1..n
+    s = s + u[c]
+  end
+  s
+end
+u = matrix.Zeros(40) + 1.5
+f = 0
+for r in 1..3000
+  f = f + deep(30) + total(u, 3)
+end
+f = f + deep(9000)
+s = 0.0
+for i in 1..200000
+  if i > 10000
+    s = s + random.Float()
+  end
+end
+(* Two operations on a small array in one statement, whose steps native code counts at once: the limit names the one
+   that went past it. *)
+defn scaled(v, n)
+  t = 0.0
+  for i in 1..n
+    w = v * 2.0 + v
+    t = t + w[1]
+  end
+  t
+end
+v = [1.0, 2.0, 3.0, 4.0] + 0.0
+g = scaled(v, 10) + scaled(v, 100000)
+io.Print(f, s > 0.0, g)

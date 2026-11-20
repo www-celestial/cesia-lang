@@ -3,9 +3,10 @@ off:
 2668.5
 3007
 9997
-calls-leaf.ce:26:3: Limit "steps" reached.
-  26 | io.Print(fib(24))
-     |   ^
+calls-leaf.ce:9:5: Limit "steps" reached.
+  9 |     fib(n - 1) + fib(n - 2)
+    |     ^
+  in fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
@@ -18,9 +19,10 @@ calls-leaf.ce:26:3: Limit "steps" reached.
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
-calls-leaf.ce:26:3: Limit "steps" reached.
-  26 | io.Print(fib(24))
-     |   ^
+calls-leaf.ce:9:5: Limit "steps" reached.
+  9 |     fib(n - 1) + fib(n - 2)
+    |     ^
+  in fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
@@ -56,9 +58,10 @@ always:
 2668.5
 3007
 9997
-calls-leaf.ce:26:3: Limit "steps" reached.
-  26 | io.Print(fib(24))
-     |   ^
+calls-leaf.ce:9:5: Limit "steps" reached.
+  9 |     fib(n - 1) + fib(n - 2)
+    |     ^
+  in fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
@@ -71,9 +74,10 @@ calls-leaf.ce:26:3: Limit "steps" reached.
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
-calls-leaf.ce:26:3: Limit "steps" reached.
-  26 | io.Print(fib(24))
-     |   ^
+calls-leaf.ce:9:5: Limit "steps" reached.
+  9 |     fib(n - 1) + fib(n - 2)
+    |     ^
+  in fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)
   called from fib (calls-leaf.ce:9)

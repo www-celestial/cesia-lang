@@ -34,7 +34,8 @@
 1600120000.0
 1600120000.0
 1600120000.0
-bail-steps.ce:23:5: Limit "steps" reached.
-  23 |   io.Print(run(ms, n))
-     |     ^
+bail-steps.ce:10:3: Limit "steps" reached.
+  10 |   for i in 1..n
+     |   ^
+  in run (bail-steps.ce:10)
 exit 1

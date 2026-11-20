@@ -1,6 +1,7 @@
 6765
 100000
-steps.ce:21:3: Limit "steps" reached.
-  21 | io.Print(spin(1000))
-     |   ^
+steps.ce:7:5: Limit "steps" reached.
+  7 |     for j in 1..100
+    |     ^
+  in spin (steps.ce:7)
 exit 1

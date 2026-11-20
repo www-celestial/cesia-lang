@@ -3,6 +3,8 @@ open Types
 (* Each unit gets its own names: MIR's exported names are global. *)
 let units = ref 0
 
+type text = { text : string; entry : string; points : int array; ticks : int array array }
+
 (* A Cesia integer as a register holds it: 2n, which needs 64 bits. *)
 let doubled n = Int64.to_string (Int64.mul 2L (Int64.of_int n))
 let tagged n = Int64.to_string (Int64.add (Int64.mul 2L (Int64.of_int n)) 1L)
@@ -45,8 +47,8 @@ let args_of ~nested (fn : Ir.func) =
 
 (* Each function is written twice: [f], the outermost frame, which the interpreter enters and which can leave and come
    back at a resume point; and [g], a nested frame, which only another native frame calls: no resume point, no slot
-   written, a frame of 2 slots 2 above its caller's base. *)
-let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
+   written, a frame of 2 slots 2 above its caller's base. [points] and [ticks]: as [text]'s, the first only of [f]. *)
+let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
   let pr fmt = Printf.bprintf b fmt in
   let name = if nested then "g" ^ String.sub fn.name 1 (String.length fn.name - 1) else fn.name in
   (* MIR's labels belong to the module: each function gets its own. *)
@@ -477,9 +479,10 @@ let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
     | Set_at (a, i, k, v) -> pr "  dmov d:%d(%s, r%d, 4), %s\n" (8 * (k - 1)) (arr a) i (operand v)
     | Bump (r, v) -> pr "  add r%d, r%d, %s\n" r r (operand v)
     | Burn -> pr "  sub fuel, fuel, 1\n"
-    | Tick (p, can_leave, site) -> steps 1 p can_leave site
-    | Steps (k, site) -> steps k (-1) false site
-  and steps k p can_leave site =
+    | Tick (p, can_leave, site) -> steps p can_leave [| site |]
+    | Steps sites -> steps (-1) false sites
+  and steps p can_leave sites =
+      let k = Array.length sites and site = sites.(0) in
       let back = label () in
       let leave = can_leave && not nested in
       (* Another quantum, counted, within the limit of steps. When a full checkpoint is due, a tick of the outermost frame
@@ -488,6 +491,11 @@ let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
          a tick that can leave (owner, 2026-11-06: « attendre la fin »). Results, errors and limits are the same; only the
          interleaving of fibers' output can differ, around native recursion. *)
       let here = (not nested) && p >= 0 in
+      (* The sites a limit of steps names at this tick, for [Engine], which finds them on its slow path only: the steps'
+         own, in the world, or -1 for the call of the frame. A tick that leaves gives its point; one that stops at the
+         limit, its number in [ticks]. *)
+      let named = Array.map (fun s -> if s >= 0 then fn.sites.(s) else -1) sites in
+      if here then points.(p) <- named.(0);
       let refill s =
         let over = label () and small = label () and due = label () and go_on = label () in
         Printf.bprintf s "  mov x0, %s\n  sub x0, x0, fuel\n  mov x1, %s\n  add x1, x1, x0\n  mov %s, x1\n"
@@ -502,11 +510,11 @@ let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
           Printf.bprintf s "  mov %s, fuel\n  mov xp, %d\n  mov xs, %d\n  jmp %s\n" (cx Ir.io_quantum) p Ir.fuel_out (leave_block ())
         end else Printf.bprintf s "  mov %s, 1\n" (cx Ir.io_leave);
         Printf.bprintf s "%s:\n  mov %s, x2\n  mov fuel, x2\n  jmp %s\n%s:\n" go_on (cx Ir.io_quantum) back over;
-        (* The limit of steps, in the frame whose step this is: an inlined one's, its links written, as the interpreter's. *)
+        (* The limit of steps, in the frame whose step this is: an inlined one's, its links written, as the interpreter's;
+           then the end that all ticks share, with the frame in x5 and the tick's number in x4. *)
         if site >= 0 then links s site;
         base_in s "x5" (if site >= 0 then frame_of site else -1);
-        Printf.bprintf s "  mov %s, x5\n" (cx Ir.io_frame);
-        stop s Ir.too_long
+        Printf.bprintf s "  mov x4, %d\n  jmp %s\n" (Vec.push ticks named) (shared "T")
       in
       if leave then begin
         let out = stub (fun s -> Printf.bprintf s "  mov xp, %d\n  mov xs, %d\n  jmp %s\n" p Ir.fuel_out (leave_block ())) in
@@ -517,7 +525,9 @@ let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
       end
   in
   (* The steps of a statement's operations that can't leave, one after the other with nothing between them that can fail
-     or show: one count of them all, at the first, which the limit of steps meets no later than the interpreter's. *)
+     or show: one count of them all, at the first, which the limit of steps meets no later than the interpreter's. Their
+     sites are of one frame, the frame's own call (-1) or sites whose inlined frames are the same, so that the limit
+     names the frame of each. *)
   let rec fold = function
     | Ir.Tick (-1, false, s) :: rest ->
       let pure = function
@@ -527,13 +537,14 @@ let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
         | Op ((Add | Sub), _, _, _, site) -> site < 0
         | _ -> false
       in
-      let rec gather k between = function
-        | Ir.Tick (-1, false, s') :: r when s' = s -> gather (k + 1) between r
-        | i :: r when pure i -> gather k (i :: between) r
-        | r -> k, List.rev between, r
+      let same s' = s' = s || (s >= 0 && s' >= 0 && fn.chains.(s') = fn.chains.(s)) in
+      let rec gather sites between = function
+        | Ir.Tick (-1, false, s') :: r when same s' -> gather (s' :: sites) between r
+        | i :: r when pure i -> gather sites (i :: between) r
+        | r -> List.rev sites, List.rev between, r
       in
-      let k, between, r = gather 1 [] rest in
-      (if k = 1 then Ir.Tick (-1, false, s) else Steps (k, s)) :: between @ fold r
+      let sites, between, r = gather [ s ] [] rest in
+      (match sites with [ _ ] -> Ir.Tick (-1, false, s) | _ -> Steps (Array.of_list sites)) :: between @ fold r
     | i :: rest -> i :: fold rest
     | [] -> []
   in
@@ -695,6 +706,10 @@ let func b ~prefix ~nested ~moved_at (fn : Ir.func) =
          link_x ();
          pr "  mov %s, x5\n  mov %s, x4\n  mov %s, fuel\n  mov %s, x1\n  ret -1\n" (cx Ir.io_frame) (cx Ir.io_point) (cx Ir.io_fuel)
            (cx Ir.io_status)
+       | "T" ->
+         (* The limit of steps, at the tick of number x4, in the frame at x5. *)
+         pr "  mov %s, x4\n  mov %s, x5\n" (cx Ir.io_code) (cx Ir.io_frame);
+         stop b Ir.too_long
        | _ ->
          (* A call at x5 that stopped, on its way up: its frame's link; with a debugger, an error deeper writes this frame's
             variables back too, as one here does. *)
@@ -748,8 +763,9 @@ let emit (fns : Ir.func array) =
   let nested = List.filter (fun k -> called.(k)) (List.init (Array.length fns) Fun.id) in
   if nested <> [] then pr "  forward %s\n" (String.concat ", " (List.map (fun k -> Printf.sprintf "%sg%d" prefix k) nested));
   let moved_at = Ir.moved_at fns.(0) in
-  func b ~prefix ~nested:false ~moved_at fns.(0);
-  List.iter (fun k -> func b ~prefix ~nested:true ~moved_at fns.(k)) nested;
+  let points = Array.make (Array.length fns.(0).resumes) (-1) and ticks = Vec.create () in
+  func b ~prefix ~nested:false ~moved_at ~points ~ticks fns.(0);
+  List.iter (fun k -> func b ~prefix ~nested:true ~moved_at ~points ~ticks fns.(k)) nested;
   let f0 = fns.(0) in
   pr "%se: func i64, p:cx\n  local i64:b, i64:entry, i64:fuel, i64:ip, i64:fp, i64:x0, %s:res%s\n" prefix (ty f0.result)
     (String.concat "" (Array.to_list (Array.map (fun (v : Ir.var) -> Printf.sprintf ", %s:r%d" (ty v.kind) v.reg) f0.params)));
@@ -769,4 +785,4 @@ let emit (fns : Ir.func array) =
    | Kint | Kval -> pr "  rsh x0, res, 1\n  mov %s, x0\n" (cx Ir.io_int)
    | Kfloat -> pr "  dmov d:%d(fp), res\n" (8 * f0.frame));
   pr "  mov %s, fuel\n  ret 0\n%sX:\n  mov x0, %s\n  ret x0\n  endfunc\n  endmodule\n" (cx Ir.io_fuel) prefix (cx Ir.io_status);
-  Buffer.contents b, prefix ^ "e"
+  { text = Buffer.contents b; entry = prefix ^ "e"; points; ticks = Vec.to_array ticks }

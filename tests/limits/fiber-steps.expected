@@ -1,4 +1,5 @@
-fiber-steps.ce:6:17: Limit "steps" reached.
-  6 | fiber.Wait(fiber.Spawn(forever))
-    |                 ^
+fiber-steps.ce:4:3: Limit "steps" reached.
+  4 |   while true end
+    |   ^
+  in forever (fiber-steps.ce:4)
 exit 1

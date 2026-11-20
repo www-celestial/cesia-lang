@@ -28,6 +28,8 @@ type code = {
   mutable spent : int;  (* the steps of all its runs *)
   worth : int;  (* the steps of native code that take about as long as making it: once its runs took them, it paid *)
   cells : (int * int * t) array;  (* the variables of modules that any function of the unit took as constants *)
+  points : int array;  (* the sites a limit of steps names, as [Mirtext.text]'s: at a tick that leaves *)
+  ticks : int array array;  (* at one that stops *)
   last : t array;  (* the values of [fn.moving] that the last run took *)
 }
 
@@ -87,7 +89,7 @@ let make (w : world) (ver : version) fns start loops =
        come back through a call of the first function. *)
     if calls && (not pure) && fns.(0).loose then None
     else begin
-      let text, entry = Mirtext.emit fns in
+      let { Mirtext.text; entry; points; ticks } = Mirtext.emit fns in
       if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);
       match Jit.load text [| entry |] 1 with
       | [| mir; addr |] ->
@@ -103,7 +105,7 @@ let make (w : world) (ver : version) fns start loops =
             pure; calls; written = Array.of_list written; reloads = w.reloads; start; loops; stride = most (fun f -> f.stride);
             need = most (fun f -> f.need); bails = 0; colds = 0; spent = 0; worth;
             cells = Array.concat (List.map (fun (f : Ir.func) -> f.cells) (Array.to_list fns));
-            last = Array.make (Array.length fn.moving) Missing }
+            last = Array.make (Array.length fn.moving) Missing; points; ticks }
         in
         Gc.finalise release code;
         Some code
@@ -319,6 +321,27 @@ let fail (ctx : ctx) =
   end;
   failwith "jit: an error that the interpreter doesn't see"
 
+(* The site that a limit of steps names at the tick where native code left (status [st] [Ir.fuel_out], at its point) or
+   stopped (at the limit, its number in [io_code]), as the interpreter's tick names it: the step's own, or, at -1, the
+   call that made the frame at [ctx.b], read from its link, which the run wrote on its way out. Native code writes none
+   of it: found here, on the slow path. Of the k steps a tick counts at once, the one past the limit: with [io_spent]
+   steps spent with all k against a budget of [io_budget], the (budget - spent + k)-th from 0. A cell past the stack, or
+   a number that names no tick, names no site. *)
+let step_site (ctx : ctx) code st =
+  let get a k = if k >= 0 && k < Array.length a then a.(k) else -1 in
+  let at =
+    if st = Ir.fuel_out then get code.points io.(Ir.io_point)
+    else begin
+      let id = io.(Ir.io_code) in
+      if id < 0 || id >= Array.length code.ticks then -1
+      else
+        let sites = code.ticks.(id) in
+        let k = Array.length sites in
+        get sites (max 0 (min (k - 1) (io.(Ir.io_budget) - io.(Ir.io_spent) + k)))
+    end
+  in
+  if at >= 0 || ctx.b < 0 then at else get ctx.i (ctx.b + 1)
+
 (* Runs until native code ends: a checkpoint between quanta, as the interpreter's own, may let other fibers run, as no C
    frame is left. Gives ok, fallback (nothing ran) or returned. *)
 (* The point of a region's own loop after its step: where the interpreter can take the loop over. *)
@@ -335,7 +358,7 @@ let go (ctx : ctx) code entry =
     let st = run ~leave ~stale ctx code entry in
     if st = Ir.fuel_out then begin
       let p = io.(Ir.io_point) in
-      Runtime.checkpoint ctx (ctx.b + code.fn.frame);
+      Runtime.checkpoint ctx (ctx.b + code.fn.frame) (step_site ctx code st);
       (* Another fiber may have given a variable of a module another value there. One the code reads from a slot, still of
          its kind, is read at the next run, as the interpreter reads it at once. One taken as a constant, or of another
          kind now, is as a reload: the run ends at its loop's step, where the interpreter goes on and the loop's code is
@@ -357,7 +380,7 @@ let go (ctx : ctx) code entry =
     end
     else if st = Ir.too_long then begin
       ctx.b <- io.(Ir.io_frame);
-      Runtime.limit "steps" ctx.site
+      Runtime.limit "steps" (step_site ctx code st)
     end
     else if st = Ir.fallback && not first then failwith "jit: arrays changed under native code"
     else st

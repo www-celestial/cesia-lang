@@ -107,9 +107,10 @@ let fiber_stack = 8
 (* What a new fiber takes in memory, as measured by tools/fiber-size.sh. *)
 let fiber_words = 270
 
-(* The end of a fiber: its result kept in its task, which lets go of the fiber, and the fibers waiting for it woken. *)
-let finish fiber task r =
-  Runtime.settle fiber;
+(* The end of a fiber: its result kept in its task, which lets go of the fiber, and the fibers waiting for it woken. Its
+   last steps are counted at [from], the site that spawned it. *)
+let finish fiber task from r =
+  Runtime.settle fiber from;
   task.result <- Some r;
   task.cx <- None;
   List.iter (fun wake -> ignore (wake ())) (List.rev task.waiters);
@@ -117,19 +118,19 @@ let finish fiber task r =
 
 (* What a fiber runs: its function, then its result or the error that stopped it. *)
 let body task fiber g () =
-  let w = fiber.w in
+  let w = fiber.w and from = fiber.site in
   match if fiber.cancelled then raise Cancelled else Compile.call_value fiber ~base:2 g [||] with
-  | v -> finish fiber task (Value.ok w v)
-  | exception Cancelled -> finish fiber task (Value.err w (ended_value w Messages.cancelled.text "cancelled" fiber.site))
+  | v -> finish fiber task from (Value.ok w v)
+  | exception Cancelled -> finish fiber task from (Value.err w (ended_value w Messages.cancelled.text "cancelled" fiber.site))
   | exception (Value.Kerr { text; kind; at; _ } as e) ->
     w.on_panic fiber e;
-    finish fiber task (Value.err w (panic_value w text kind at))
+    finish fiber task from (Value.err w (panic_value w text kind at))
   | exception (Value.Limit { what = ("nesting" | "memory") as what; _ } as e) ->
     (* A value too deep to show is the problem of this fiber, and so is the memory it was taking when the limit came:
        a server's request that takes too much stops alone, and frees what it took. The steps belong to the whole
        program. *)
     w.on_panic fiber e;
-    finish fiber task (Value.err w (panic_value w (Messages.limit what).text (if what = "memory" then Math else Type) fiber.site))
+    finish fiber task from (Value.err w (panic_value w (Messages.limit what).text (if what = "memory" then Math else Type) fiber.site))
 
 let spawn (ctx : ctx) g =
   let w = ctx.w in

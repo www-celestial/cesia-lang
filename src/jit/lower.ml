@@ -275,10 +275,17 @@ let point st l = Vec.push st.resumes l
 (* A tick can leave the run only in no loop of the function, or as the tick of a loop in no other. *)
 let outer st = st.loops = []
 
-(* A tick, then on to [l]; the run comes back at [resume], [l] unless a block outside the loop says the same. *)
-let tick ?resume st l =
+(* The site of the step of a callee's frame entered by a call at [pos], its inlined frames [chain]: named as that call,
+   in the caller, as the interpreter's step of a call names it. *)
+let call_step st chain pos =
+  Vec.add_last st.chains chain;
+  Vec.push st.sites (pos, st.ver, Bytes.empty, true)
+
+(* A tick, then on to [l]; the run comes back at [resume], [l] unless a block outside the loop says the same. [at]: the
+   site of its step, as [Ir.Tick]'s. *)
+let tick ?resume st l at =
   let p = point st (Option.value resume ~default:l) in
-  emit st (Ir.Tick (p, outer st, -1));
+  emit st (Ir.Tick (p, outer st, at));
   goto st l;
   p
 
@@ -909,7 +916,7 @@ and inline_args st (e : expr) (v : version) args vout =
          child.vecs.(j) <- Some { slot = k; n = x.vn; rows = x.vr; cols = x.vc; vslot = -1; ro = false })
     args;
   (* The callee's step, as its frame's entry counts one. *)
-  emit child (Ir.Tick (-1, false, site child e.pos));
+  emit child (Ir.Tick (-1, false, call_step st child.inl e.pos));
   tail_block child (Lazy.force f.body);
   st.cur <- cont;
   st.ncalls <- child.ncalls + 1;
@@ -1054,7 +1061,7 @@ and made_here st (e : expr) =
        when Array.for_all (fun (p : param) -> p.ptype = None && p.default = None) params && Array.length params = arity ->
        Some (fun () ->
            let vals, floats = values st (args_of call arity) in
-           let c = frame_of_struct st proto sname sfields in
+           let c = frame_of_struct st e.pos proto sname sfields in
            c, vals, floats, 4)
      | _ -> None)
   | _ -> None
@@ -1066,14 +1073,15 @@ and record st e =
   alloc st (Array.length vals + 7);
   fresh st Kval (fun r -> Record (r, tag, c, vals))
 
-(* The step and frame of a call of a struct's own function, after its arguments: then its struct, of this constant. *)
-and frame_of_struct st (proto : proto) sname sfields =
+(* The step and frame of a call of a struct's own function at [pos], after its arguments: then its struct, of this
+   constant. The step is the callee's, in its frame, as the interpreter's. *)
+and frame_of_struct st pos (proto : proto) sname sfields =
   note st (Infer.version_for st.w proto (Array.make proto.arity TA));
   let base = match st.inl with [] -> -1 | (vb, _, _) :: _ -> vb in
   let vb = reg st Kint in
   emit st (Frame (vb, base));
   emit st (Enter_or_bail (vb, bail st));
-  emit st (Ir.Tick (-1, false, -1));
+  emit st (Ir.Tick (-1, false, call_step st ((vb, base, site st pos) :: st.inl) pos));
   let shape = Value.shape_of st.w ?sname ~m:st.w.modules.(proto.pm).host (Array.map fst sfields) in
   const st (Struct { shape; fields = Trie.no_vals; r_owned = false })
 
@@ -1299,9 +1307,9 @@ and select ?(kind = Ir.Kfloat) st cmp y x =
   carry st base join;
   Reg r
 
-(* The steps of an operation on an array of [n] cells, as the interpreter's natives charge them: n / 16 + 1. *)
+(* The steps of an operation on an array of [n] cells, as the interpreter's natives charge them: n / 16 + 1, at its site. *)
 and charge st (e : expr) n =
-  let s = if st.inl = [] then -1 else site st e.pos in
+  let s = site st e.pos in
   for _ = 1 to (n / 16) + 1 do emit st (Ir.Tick (-1, false, s)) done
 
 (* Is [e] a small array of floats by its form: a variable kept so, a literal, or an operation cell by cell with one. A
@@ -1579,7 +1587,7 @@ and inline_test st (e : expr) (v : version) args body yes no =
        child.regs.(j) <- r;
        emit child (Move (r, convert child (Vec.get st.kinds r) (x, xk))))
     args;
-  emit child (Ir.Tick (-1, false, site child e.pos));
+  emit child (Ir.Tick (-1, false, call_step st child.inl e.pos));
   cond child body yes no;
   st.ncalls <- child.ncalls + 1
 
@@ -1698,7 +1706,7 @@ and stmt st (e : expr) =
         st.cur <- inside;
         loop_in st exit (fun () -> Array.iter (stmt st) body);
         let p = point st pre in
-        emit st (Ir.Tick (p, outer st, -1));
+        emit st (Ir.Tick (p, outer st, site st e.pos));
         Vec.add_last st.infos (e.id, -1, -1, p);
         close st (Jump head);
         st.cur <- exit)
@@ -1960,7 +1968,7 @@ and for_loop ?lo ?(root = false) st (e : expr) i fbody =
   if not own then emit st (Move (r, Reg c));
   loop_in st exit (fun () -> stmts st ~root fbody);
   let inner = Vec.length st.resumes = points && st.ncalls = calls && (match need with Some n -> !n = 0 | None -> true) in
-  let p = tick ~resume:again st next in
+  let p = tick ~resume:again st next (site st e.pos) in
   Vec.add_last st.infos (e.id, cslot, hslot, p);
   Hashtbl.replace st.twins e.id { tc = c; th = h; tbody = body; tinner = inner };
   close st (Branch (Eq, Kint, Reg c, Reg h, exit, inc));
@@ -2016,7 +2024,7 @@ and plain_fors st (b : block) =
     b;
   !ok
 
-and fast_copy ?again st _e i c h fbody written ~root ~slow ~exit =
+and fast_copy ?again st e i c h fbody written ~root ~slow ~exit =
   (* The checks before the loop run one after the other, each block after the one before: an operation, a size or a test
      made once serves every index after it. [dry]: only whether an index is affine, nothing made. *)
   let made = Hashtbl.create 16 and sizes = Hashtbl.create 8 and tested = Hashtbl.create 16 and dry = ref false in
@@ -2197,12 +2205,19 @@ and fast_copy ?again st _e i c h fbody written ~root ~slow ~exit =
   st.fast <- table;
   loop_in st exit (fun () -> stmts st ~root fbody);
   st.fast <- around;
-  (* A step proved before the loop, or a tick, as the loops inside count steps that nothing proved. *)
+  (* A step proved before the loop, or a tick, as the loops inside count steps that nothing proved. The proof counts
+     the loop's own steps: a body that counts steps of its own, as an operation on a small array does, can take the
+     fuel to its end there, so the loop's step is counted too, and the limit of steps falls on the interpreter's step. *)
+  let ticks = ref false in
+  for k = fbody_b to Vec.length st.blocks - 1 do
+    if List.exists (function Ir.Tick _ -> true | _ -> false) (Vec.get st.blocks k).ins then ticks := true
+  done;
   (match again with
-   | None -> emit st Burn
+   | None when not !ticks -> emit st Burn
+   | None -> emit st (Ir.Tick (-1, false, site st e.pos))
    | Some p ->
      (* The slow copy's tick: the same point, so that a run that leaves comes back the same way from either. *)
-     emit st (Ir.Tick (p, outer st, -1));
+     emit st (Ir.Tick (p, outer st, site st e.pos));
      goto st (block st));
   (* Bounded, the counter's step can't overflow: the test at the bottom, one branch a turn; the variable then ends at
      its bound, as the interpreter's. *)
@@ -2315,7 +2330,7 @@ let rec func st name =
   st.cur <- entry;
   let body = block st in
   st.body <- body;
-  ignore (tick st body);
+  ignore (tick st body (-1));
   tail_block st (Lazy.force f.body);
   let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)
@@ -2676,7 +2691,7 @@ let region ?ctx (w : world) (ver : version) (loop : expr) =
        st.cur <- inside;
        loop_in st exit (fun () -> stmts st ~root:true body);
        let p = point st pre in
-       emit st (Ir.Tick (p, true, -1));
+       emit st (Ir.Tick (p, true, site st loop.pos));
        Vec.add_last st.infos (loop.id, -1, -1, p);
        close st (Jump head);
        st.cur <- exit;

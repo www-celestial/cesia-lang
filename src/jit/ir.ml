@@ -46,8 +46,10 @@ type ins =
       (** one step of fuel. When it runs out at a tick that can leave (outside any loop, or that of a loop in no other), the
           run leaves and comes back at the resume point; inside an inner loop, or in a nested frame, it takes another
           quantum, and when a full checkpoint is due it asks the next tick that can leave to do so: a full checkpoint then
-          waits at most for that inner loop. The last, a site whose inlined frames end with the one whose step it is, or
-          -1 for the function's own: where the limit of steps, reached there, names the frame *)
+          waits at most for that inner loop. The last, the site of the step, which the limit of steps reached there names
+          as the interpreter's does: a loop's, an operation's, or the call of an inlined frame, whose inlined frames end
+          with the one whose step it is; or -1 for a step of the function's own frame that names the call that made it,
+          its entry's or a self tail call's *)
   | Try of op * int * value * value * int  (** [Add], [Sub] or [Mul] that goes to the block on overflow, raising nothing *)
   | Elem_at of int * int * int * int
       (** the destination, the array, a register of its index from 1, doubled as every integer register, and a number of
@@ -59,7 +61,9 @@ type ins =
           error of a read, or of a write when [write], at the site *)
   | Bump of int * value  (** an integer register plus a value, unchecked: an index that a loop moves by its step *)
   | Burn  (** one step of fuel, unchecked: a loop that proved it has the fuel for all its steps *)
-  | Steps of int * int  (** [Tick (-1, false, site)] so many times, folded by [Mirtext] *)
+  | Steps of int array
+      (** [Tick (-1, false, site)] for each site, in order, folded by [Mirtext] into one count: sites of one frame, the
+          limit of steps reached there naming the one whose step went past it *)
   | Frame of int * int
       (** [Frame (r, base)]: [r], a raw integer, the base a callee of the frame at [base] takes: a register of a raw base,
           or -1 for the function's own frame *)
@@ -231,7 +235,7 @@ let io_spent = 10  (** the steps of the quanta that nested frames used up and re
 let io_quantum = 11  (** the fuel at the start of the last quantum *)
 let io_status = 12
 let io_point = 13  (** the resume point, or the site of an error *)
-let io_code = 14  (** the error *)
+let io_code = 14  (** the error; at the limit of steps, the number of the tick that stopped there, as [Mirtext] gives it *)
 let io_a = 15  (** the operands of the error *)
 let io_b = 16
 let io_frame = 17  (** the base of the frame of the error *)

@@ -275,7 +275,7 @@ let native name sg =
   match Lower.unit world ver with
   | None -> failwith ("not lowered: " ^ name)
   | Some fns ->
-    let text, entry = Mirtext.emit fns in
+    let { Mirtext.text; entry; _ } = Mirtext.emit fns in
     (* JIT_TEST_SHOW=fib prints the MIR of a unit. *)
     if Sys.getenv_opt "JIT_TEST_SHOW" = Some name then print_string text;
     (match Jit.load text [| entry |] 2 with

@@ -38,13 +38,15 @@ val fail : ctx -> kind -> Messages.t -> 'a
 val grow_young : unit -> unit
 
 (** The checkpoint: refills [fuel], flushes the output, looks at the memory, calls [on_checkpoint]. The second
-    argument is the top of the v stack still in use: beyond it, everything is dead. *)
-val checkpoint : ctx -> int -> unit
+    argument is the top of the v stack still in use: beyond it, everything is dead. The third is the site of the step
+    that ran out of fuel, which the limit of steps names: a loop's or a native's; or -1 for a frame's own step, the
+    call that made it, read from the frame's link. *)
+val checkpoint : ctx -> int -> int -> unit
 
-(** Counts [n] steps. *)
-val settle : ctx -> unit
-(** Counts the last steps of a fiber that ends. *)
+(** Counts the last steps of a fiber that ends; the limit of steps, reached there, names the site that spawned it. *)
+val settle : ctx -> int -> unit
 
+(** Counts [n] steps of a native, at its site. *)
 val charge : ctx -> int -> unit
 
 (** Steps for work over [n] cells. *)

@@ -106,13 +106,15 @@ let grow_young () = if not !grown then (grown := true; Gc.set { (Gc.get ()) with
 
 (* The checkpoint, with the top of the v stack still in use. A call adds a single frame and counts one step: at depth
    d, the limit can't fall before max_depth - d steps. Bounding fuel this way makes the limit exact without adding
-   anything to a call; the price, counting d frames, only matters very close to the limit. *)
-let[@inline never] checkpoint ctx top =
+   anything to a call; the price, counting d frames, only matters very close to the limit. The limit of steps names
+   [at], the site of the step that reached it, never the last site written: native code writes none of those, so the
+   two engines name the same. At -1, a frame's own step, it names the call that made the frame, as the limit of depth. *)
+let[@inline never] checkpoint ctx top at =
   let w = ctx.w in
   grow_young ();
   let spent = ctx.refill - ctx.fuel in
   if w.steps_left <> max_int then w.steps_left <- w.steps_left - spent;
-  if w.steps_left <= 0 then limit "steps" ctx.site;
+  if w.steps_left < 0 then limit "steps" (if at >= 0 then at else ctx.i.(ctx.b + 1));
   let d = frames ctx in
   if d > ctx.max_depth then limit "depth" ctx.i.(ctx.b + 1);
   ctx.until <- ctx.until - spent;
@@ -128,16 +130,18 @@ let site_top ctx =
   let w = ctx.w in
   if ctx.site < Vec.length w.sites then ctx.b + (Vec.get w.sites ctx.site).soff else ctx.cap
 
+(* A native's steps: its site is written before it runs. *)
 let charge ctx n =
   ctx.fuel <- ctx.fuel - n;
-  if ctx.fuel < 0 then checkpoint ctx (site_top ctx)
+  if ctx.fuel < 0 then checkpoint ctx (site_top ctx) ctx.site
 
-(* What a fiber spent since its last checkpoint, when it ends. Short fibers would otherwise run for free. *)
-let settle ctx =
+(* What a fiber spent since its last checkpoint, when it ends, at the site [at] that spawned it. Short fibers would
+   otherwise run for free. *)
+let settle ctx at =
   let w = ctx.w in
   if w.steps_left <> max_int then begin
     w.steps_left <- w.steps_left - (ctx.refill - ctx.fuel);
-    if w.steps_left <= 0 then limit "steps" ctx.site
+    if w.steps_left < 0 then limit "steps" at
   end
 
 let create_world o =

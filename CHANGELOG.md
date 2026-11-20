@@ -23,6 +23,14 @@
   comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
   as it builds, with no script, in the time the site took before.
 
+### Fixes
+
+- `Limit "steps" reached.` names the step that went past the limit: the turn of a loop, as `for j in 1..100` in
+  `spin`, or the call that made a frame, as `deep(n - 1)` in `deep`. It named the last place that had written its
+  site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,
+  named another place than the interpreter: now both name the same. A program run with `--limit steps=N` makes its N
+  steps, and the next one stops it; at the step of a full checkpoint, it stopped one step early.
+
 ## 1.2.0
 
 Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.1 runs

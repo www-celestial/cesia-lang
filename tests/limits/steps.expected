@@ -1,2 +1,4 @@
-Limit "steps" reached.
+steps.ce:1:1: Limit "steps" reached.
+  1 | while true end
+    | ^
 exit 1

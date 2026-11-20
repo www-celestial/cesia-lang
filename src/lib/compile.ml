@@ -62,11 +62,22 @@ let site c pos =
   Vec.add_last s { sfile = c.file; spos = pos; sfn = c.fn; sver = Some c.ver; soff = c.off; slive = c.live; shidden = false };
   Vec.length s - 1
 
-(* One step. [off]: beyond b + off, the v stack is dead. *)
+(* One step of a frame's own, at its entry or a self tail call. [off]: beyond b + off, the v stack is dead. The limit of
+   steps reached there names the call that made the frame, from its link (-1): a call keeps no register for it. *)
 let[@inline] tick ctx off =
   let f = ctx.fuel - 1 in
   ctx.fuel <- f;
-  if f < 0 then Runtime.checkpoint ctx (ctx.b + off)
+  if f < 0 then Runtime.checkpoint ctx (ctx.b + off) (-1)
+
+(* The checkpoint at a turn of a loop, whose site [at] the limit of steps names; beyond b + the site's offset, the v
+   stack is dead. A loop keeps only its site for its turns, as it kept only its offset. *)
+let[@inline never] turn_out ctx at = Runtime.checkpoint ctx (ctx.b + (Vec.get ctx.w.sites at).soff) at
+
+(* One step: a turn of the loop of site [at]. *)
+let[@inline] turn ctx at =
+  let f = ctx.fuel - 1 in
+  ctx.fuel <- f;
+  if f < 0 then turn_out ctx at
 
 let[@inline] truth s ctx v =
   match v with
@@ -750,6 +761,7 @@ let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -
       let r = guarded ctx in
       if ctx.again then begin
         ctx.again <- false;
+        (* The step of a self tail call, which goes on in the frame: as a call's, it names the call that made it. *)
         tick ctx frame;
         loop ctx
       end else r
@@ -1167,10 +1179,9 @@ and array_lit c e rows =
       Arrays.of_vals r cols out
   end
 
-(* A loop over a..b or over an array. [st] is the state of one run of the loop. *)
-and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 'st -> ctx -> unit =
-  fun c iter set body ->
-  let off = c.off in
+(* A loop over a..b or over an array, of site [at], which its turns name. [st] is the state of one run of the loop. *)
+and loop_over : 'st. c -> int -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 'st -> ctx -> unit =
+  fun c at iter set body ->
   match iter.e with
   | Range (a, b) ->
     let l = bound c a iter.pos and h = bound c b iter.pos in
@@ -1180,7 +1191,7 @@ and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 
       for i = lo to hi do
         set ctx (Int i);
         body st ctx;
-        tick ctx off
+        turn ctx at
       done
   | _ ->
     let src = cv c iter and s = site c iter.pos in
@@ -1193,7 +1204,7 @@ and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 
         for k = 0 to n - 1 do
           set ctx (Value.share (Value.elt a k));
           body st ctx;
-          tick ctx off
+          turn ctx at
         done
       | Handle { kind = "channel"; _ } as ch ->
         (* Each value as it comes, until the channel is closed and empty. *)
@@ -1203,7 +1214,7 @@ and loop_over : 'st. c -> expr -> (ctx -> t -> unit) -> ('st -> ctx -> unit) -> 
           | Some v ->
             set ctx v;
             body st ctx;
-            tick ctx off;
+            turn ctx at;
             go ()
           | None -> ()
         in
@@ -1225,7 +1236,7 @@ and comprehension c pos cbody cvar csrc cguard =
     | `V v -> fun out ctx -> Arrays.add ctx s out (v ctx)
   in
   let body = match guard with None -> push | Some g -> fun out ctx -> if g ctx then push out ctx in
-  let run = loop_over c csrc set body in
+  let run = loop_over c s csrc set body in
   fun ctx ->
     let out = Arrays.builder () in
     run out ctx;
@@ -2448,7 +2459,7 @@ and cu c (e : expr) : ctx -> unit =
     let stmts = Array.map (cu c) fbody in
     let body = seq_u (Array.to_list stmts) in
     c.loops <- outer;
-    let off = c.off in
+    let at = site c e.pos in
     let run =
       if not (Tier.on ()) then
         fun ctx ->
@@ -2457,7 +2468,7 @@ and cu c (e : expr) : ctx -> unit =
           for n = lo to hi do
             ctx.i.(ctx.b + k) <- n;
             body ctx;
-            tick ctx off
+            turn ctx at
           done
       else begin
         (* The same loop, which native code can take over: from its start once it has native code, or, hot, at a
@@ -2484,7 +2495,7 @@ and cu c (e : expr) : ctx -> unit =
                for j = k to Array.length stmts - 1 do stmts.(j) ctx done
              with
              | () ->
-               tick ctx off;
+               turn ctx at;
                if n < hi then begin
                  match Tier.ready ctx st ver with
                  | Some c when c == code ->
@@ -2510,12 +2521,12 @@ and cu c (e : expr) : ctx -> unit =
                 while !n < min (hi - 1) (lo + Tier.warm_steps - 1) do
                   ctx.i.(ctx.b + k) <- !n;
                   body ctx;
-                  tick ctx off;
+                  turn ctx at;
                   incr n
                 done;
                 ctx.i.(ctx.b + k) <- !n;
                 body ctx;
-                tick ctx off;
+                turn ctx at;
                 (match Tier.warmed ctx st ver outer with
                  | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
                  | None -> ());
@@ -2530,7 +2541,7 @@ and cu c (e : expr) : ctx -> unit =
                 let f = ctx.fuel - 1 in
                 ctx.fuel <- f;
                 if f < 0 || ctx.until <> !seen then begin
-                  if f < 0 then Runtime.checkpoint ctx (ctx.b + off);
+                  if f < 0 then turn_out ctx at;
                   seen := ctx.until;
                   match Tier.hot ctx st ver outer with
                   | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
@@ -2565,7 +2576,7 @@ and cu c (e : expr) : ctx -> unit =
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
   | For { var; iter; fbody; f_break } ->
     let body = cublock c fbody in
-    let run = loop_over c iter (setter c var) (fun () ctx -> body ctx) () in
+    let run = loop_over c (site c e.pos) iter (setter c var) (fun () ctx -> body ctx) () in
     if f_break then (fun ctx -> try run ctx with Break_loop -> ()) else run
   | Set { root; path; value } -> set_path c e root path value
   | While { cond; body; has_break } ->
@@ -2575,13 +2586,13 @@ and cu c (e : expr) : ctx -> unit =
     let stmts = Array.map (cu c) body in
     let body = seq_u (Array.to_list stmts) in
     c.loops <- outer;
-    let off = c.off in
+    let at = site c e.pos in
     let run =
       if not (Tier.on ()) then
         fun ctx ->
           while cond ctx do
             body ctx;
-            tick ctx off
+            turn ctx at
           done
       else begin
         let ver = c.ver in
@@ -2600,7 +2611,7 @@ and cu c (e : expr) : ctx -> unit =
                if k <> -1 then begin
                  let k = if k <= -2 then resume c ast (-2 - k) ctx else k in
                  for j = k to Array.length stmts - 1 do stmts.(j) ctx done;
-                 tick ctx off
+                 turn ctx at
                end
              with
              | () ->
@@ -2616,7 +2627,7 @@ and cu c (e : expr) : ctx -> unit =
           match
             if warm && cond ctx then begin
               body ctx;
-              tick ctx off;
+              turn ctx at;
               match Tier.warmed ctx st ver outer with
               | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
               | None -> ()
@@ -2627,7 +2638,7 @@ and cu c (e : expr) : ctx -> unit =
               let f = ctx.fuel - 1 in
               ctx.fuel <- f;
               if f < 0 || ctx.until <> !seen then begin
-                if f < 0 then Runtime.checkpoint ctx (ctx.b + off);
+                if f < 0 then turn_out ctx at;
                 seen := ctx.until;
                 match Tier.hot ctx st ver outer with
                 | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))

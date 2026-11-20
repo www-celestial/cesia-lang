@@ -1,0 +1,76 @@
+off:
+steps-site.ce:11:9: Limit "steps" reached.
+  11 |     1 + deep(n - 1)
+     |         ^
+  in deep (steps-site.ce:11)
+  called from deep (steps-site.ce:11)
+steps-site.ce:11:9: Limit "steps" reached.
+  11 |     1 + deep(n - 1)
+     |         ^
+  in deep (steps-site.ce:11)
+  ... and 4985 more
+steps-site.ce:28:1: Limit "steps" reached.
+  28 | for i in 1..200000
+     | ^
+     | ^
+steps-site.ce:38:17: Limit "steps" reached.
+  38 |     w = v * 2.0 + v
+     |                 ^
+  in scaled (steps-site.ce:38)
+  in scaled (steps-site.ce:38)
+steps-site.ce:38:11: Limit "steps" reached.
+  38 |     w = v * 2.0 + v
+     |           ^
+  in scaled (steps-site.ce:38)
+  in scaled (steps-site.ce:38)
+always:
+steps-site.ce:11:9: Limit "steps" reached.
+  11 |     1 + deep(n - 1)
+     |         ^
+  in deep (steps-site.ce:11)
+  called from deep (steps-site.ce:11)
+steps-site.ce:11:9: Limit "steps" reached.
+  11 |     1 + deep(n - 1)
+     |         ^
+  in deep (steps-site.ce:11)
+  ... and 4985 more
+steps-site.ce:28:1: Limit "steps" reached.
+  28 | for i in 1..200000
+     | ^
+     | ^
+steps-site.ce:38:17: Limit "steps" reached.
+  38 |     w = v * 2.0 + v
+     |                 ^
+  in scaled (steps-site.ce:38)
+  in scaled (steps-site.ce:38)
+steps-site.ce:38:11: Limit "steps" reached.
+  38 |     w = v * 2.0 + v
+     |           ^
+  in scaled (steps-site.ce:38)
+  in scaled (steps-site.ce:38)
+hot:
+steps-site.ce:11:9: Limit "steps" reached.
+  11 |     1 + deep(n - 1)
+     |         ^
+  in deep (steps-site.ce:11)
+  called from deep (steps-site.ce:11)
+steps-site.ce:11:9: Limit "steps" reached.
+  11 |     1 + deep(n - 1)
+     |         ^
+  in deep (steps-site.ce:11)
+  ... and 4985 more
+steps-site.ce:28:1: Limit "steps" reached.
+  28 | for i in 1..200000
+     | ^
+     | ^
+steps-site.ce:38:17: Limit "steps" reached.
+  38 |     w = v * 2.0 + v
+     |                 ^
+  in scaled (steps-site.ce:38)
+  in scaled (steps-site.ce:38)
+steps-site.ce:38:11: Limit "steps" reached.
+  38 |     w = v * 2.0 + v
+     |           ^
+  in scaled (steps-site.ce:38)
+  in scaled (steps-site.ce:38)
+exit 0
