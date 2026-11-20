@@ -364,6 +364,14 @@ which runs MATLAB code with no licence. Each tab runs alone, with the files of i
 data; with no network, no variable of the environment but `PATH`, at most 1 GiB of memory and 30 seconds, in a folder
 only its owner can open, deleted after it.
 
+### Colors of other languages
+
+A block of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`, `toml`, `ini` or `css`, a tab or not,
+takes the colors of Cesia's code: keywords, called names, texts, numbers and comments, and the variables of a shell, the
+keys and sections of `toml` and `ini`, and the properties of `css`. The site colors it when it builds, with no script, by
+one small reader set for each language; it reads what a book shows, not every corner of each language, and what it can't
+tell stays plain. A block of another language, as `text` or `output`, is shown as it is.
+
 ### Formulas
 
 A formula is written in TeX between two `$` in a line, or between two lines that hold `$$` alone, as a paragraph of its own:

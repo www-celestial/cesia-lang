@@ -383,6 +383,15 @@ MATLAB sans licence. Chaque onglet tourne seul, avec les fichiers de son livre, 
 ses données ; sans réseau, sans autre variable d'environnement que `PATH`, avec au plus 1 GiB de mémoire et
 30 secondes, dans un dossier que seul son propriétaire peut ouvrir, effacé après lui.
 
+### Couleurs des autres langages
+
+Un bloc `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`, `toml`, `ini` ou `css`, onglet ou non,
+prend les couleurs du code de Cesia : mots-clés, noms appelés, textes, nombres et commentaires, et aussi les variables d'un
+shell, les clés et les sections de `toml` et `ini`, et les propriétés de `css`. Le site le colore quand il se construit,
+sans script, par un petit lecteur réglé pour chaque langage ; il lit ce que montre un livre, pas chaque recoin de chaque
+langage, et ce qu'il ne sait pas dire reste sans couleur. Un bloc d'un autre langage, comme `text` ou `output`, est montré
+tel quel.
+
 ### Formules
 
 Une formule s'écrit en TeX entre deux `$` dans une ligne, ou entre deux lignes qui ne contiennent que `$$`, comme un

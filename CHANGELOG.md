@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Tools
+
+- `cesia doc --site` colors the blocks of `python`, `r`, `matlab`, `ocaml`, `js`, `lua`, `bash`, `sh`, `powershell`,
+  `toml`, `ini` and `css`, the tabs too, with the colors of Cesia's code: keywords, called names, texts, numbers and
+  comments, the variables of a shell, the keys and sections of `toml` and `ini`, the properties of `css`. It colors them
+  as it builds, with no script, in the time the site took before.
+
 ## 1.2.0
 
 Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.1 runs

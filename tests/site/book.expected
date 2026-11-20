@@ -66,19 +66,18 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot
 io.<span class="f">Print</span>(<span class="s">&quot;five&quot;</span>, x)</code></pre>
 <pre class="output"><code>five 5</code></pre>
 </div>
-<div class="tab"><pre><code class="language-python">print(5.5)
-print(&quot;five&quot;, 5)</code></pre></div>
-<div class="tab"><pre><code class="language-r">cat(5.5, &quot;\n&quot;)
-cat(&quot;five&quot;, 5, &quot;\n&quot;)</code></pre></div>
-<div class="tab"><pre><code class="language-matlab">disp(5.5)
-printf(&quot;five %d\n&quot;, 5)</code></pre></div>
+<div class="tab"><pre><code class="language-python"><span class="n">print</span>(<span class="m">5.5</span>)
+<span class="n">print</span>(<span class="s">&quot;five&quot;</span>, <span class="m">5</span>)</code></pre></div>
+<div class="tab"><pre><code class="language-r"><span class="n">cat</span>(<span class="m">5.5</span>, <span class="s">&quot;\n&quot;</span>)
+<span class="n">cat</span>(<span class="s">&quot;five&quot;</span>, <span class="m">5</span>, <span class="s">&quot;\n&quot;</span>)</code></pre></div>
+<div class="tab"><pre><code class="language-matlab"><span class="n">disp</span>(<span class="m">5.5</span>)
+<span class="n">printf</span>(<span class="s">&quot;five %d\n&quot;</span>, <span class="m">5</span>)</code></pre></div>
 </div>
 
 
 
-<pre><code class="language-toml">[project]
-name = &quot;x&quot;
-</code></pre>
+<pre><code class="language-toml"><span class="k">[project]</span>
+<span class="f">name</span> = <span class="s">&quot;x&quot;</span></code></pre>
 <nav class="pager" aria-label="Pages"><a rel="prev" href="index.html">← Proj</a><a rel="up" href="index.html">Proj</a><a rel="next" href="files.html">Files →</a></nav>
 </main>
 == files.html
@@ -186,9 +185,8 @@ Closures and rules: <math><msup><mi>E</mi><mo>∗</mo></msup><mo>∘</mo><mi>R</
 <span class="k">use</span> std/io
 page = http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot;</span>)</code></pre>
 <pre><code class="cesia">io.<span class="f">Print</span>(page)</code></pre>
-<pre><code class="language-toml">[[peer]]
-name = &quot;a&quot;
-</code></pre>
+<pre><code class="language-toml"><span class="k">[[peer]]</span>
+<span class="f">name</span> = <span class="s">&quot;a&quot;</span></code></pre>
 <nav class="pager" aria-label="Pages"><a rel="prev" href="files.html">← Files and folders</a><a rel="up" href="index.html">Proj</a><span></span></nav>
 </main>
 :root { --accent: #2a5dd5; --band: #224cae; --on-band: #ffffff; --zebra: #f8f9fe; --tint: #eef2fc; --pick: #dfe7f9; --alert-note: #0969da; --alert-tip: #1a7f37; --alert-important: #8250df; --alert-warning: #9a6700; --alert-caution: #cf222e; }
@@ -210,8 +208,8 @@ SIL OPEN FONT LICENSE Version 1.1
 <pre><code class="cesia"><span class="k">use</span> std/http
 http.<span class="f">Serve</span>(http.<span class="f">App</span>(), port = <span class="m">8080</span>)</code></pre>
 </div>
-<div class="tab"><pre><code class="language-python">from http.server import HTTPServer, BaseHTTPRequestHandler
-HTTPServer((&quot;127.0.0.1&quot;, 8080), BaseHTTPRequestHandler).serve_forever()</code></pre></div>
+<div class="tab"><pre><code class="language-python"><span class="k">from</span> http.server <span class="k">import</span> HTTPServer, BaseHTTPRequestHandler
+<span class="n">HTTPServer</span>((<span class="s">&quot;127.0.0.1&quot;</span>, <span class="m">8080</span>), BaseHTTPRequestHandler).<span class="n">serve_forever</span>()</code></pre></div>
 </div>
 </main>
 <a href="readme.html">README</a>
@@ -275,19 +273,18 @@ http.<span class="f">Fetch</span>(<span class="s">&quot;https://example.com&quot
 io.<span class="f">Print</span>(<span class="s">&quot;five&quot;</span>, x)</code></pre>
 <pre class="output"><code>five 5</code></pre>
 </div>
-<div class="tab"><pre><code class="language-python">print(5.5)
-print(&quot;five&quot;, 5)</code></pre></div>
-<div class="tab"><pre><code class="language-r">cat(5.5, &quot;\n&quot;)
-cat(&quot;five&quot;, 5, &quot;\n&quot;)</code></pre></div>
-<div class="tab"><pre><code class="language-matlab">disp(5.5)
-printf(&quot;five %d\n&quot;, 5)</code></pre></div>
+<div class="tab"><pre><code class="language-python"><span class="n">print</span>(<span class="m">5.5</span>)
+<span class="n">print</span>(<span class="s">&quot;five&quot;</span>, <span class="m">5</span>)</code></pre></div>
+<div class="tab"><pre><code class="language-r"><span class="n">cat</span>(<span class="m">5.5</span>, <span class="s">&quot;\n&quot;</span>)
+<span class="n">cat</span>(<span class="s">&quot;five&quot;</span>, <span class="m">5</span>, <span class="s">&quot;\n&quot;</span>)</code></pre></div>
+<div class="tab"><pre><code class="language-matlab"><span class="n">disp</span>(<span class="m">5.5</span>)
+<span class="n">printf</span>(<span class="s">&quot;five %d\n&quot;</span>, <span class="m">5</span>)</code></pre></div>
 </div>
 
 
 
-<pre><code class="language-toml">[project]
-name = &quot;x&quot;
-</code></pre>
+<pre><code class="language-toml"><span class="k">[project]</span>
+<span class="f">name</span> = <span class="s">&quot;x&quot;</span></code></pre>
 <nav class="pager" aria-label="Pages"><a rel="prev" href="index.html">← Proj</a><a rel="up" href="index.html">Proj</a><a rel="next" href="files.html">Files and folders →</a></nav>
 </main>
 <main id="text">

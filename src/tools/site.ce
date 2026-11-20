@@ -61,6 +61,290 @@ end
 
 codeBlock(code) = "<pre><code class=\"cesia\">$(colored(code))</code></pre>\n"
 
+(* ---- Other languages: a block of python, r, matlab, ocaml, a shell, toml and the others below, colored with the roles of
+   Cesia's code, by one small reader that a table sets for each: comments, texts, numbers, keywords and called names. It
+   reads what a book shows, not every corner of each language: what it can't tell stays plain, and every character stays. *)
+
+(** How a language is read. Line: the marks of a comment to the end of the line, which in a shell start only after a space
+    or at the start (Spaced). Blocks: the [open, close] of longer comments, which nest when Nest. Texts: the marks that open
+    and close a text, longest first, a backslash escaping the next character but in those of Raw. Keys: the keywords, read
+    in any case when Fold. Calls: a name right before ( is called. Vars: the mark of a variable, $ in a shell. Pairs: a
+    [section] and a key before =, at the start of a line, as in TOML. Props: a name before :, a property of CSS. Ticks: a
+    quote right after a name or a bracket is an operator, the transpose of MATLAB. Chars: a quote opens a text only as a
+    character, 'a' or '\n', as in OCaml, where 'a is a type. *)
+langBase = {Line: [], Spaced: false, Blocks: [], Nest: false, Texts: [], Raw: [], Keys: [], Fold: false, Calls: true, Vars: "",
+  Pairs: false, Props: false, Ticks: false, Chars: false}
+lang(fields) = dict.Merge(langBase, fields)
+shellKeys = ["if", "then", "else", "elif", "fi", "case", "esac", "for", "select", "while", "until", "do", "done", "in", "function",
+  "time", "return", "export", "local", "readonly", "declare", "set", "unset", "shift", "exit", "break", "continue", "source",
+  "alias", "true", "false"]
+shell = lang({Line: ["#"], Spaced: true, Texts: ["\"", "'"], Raw: ["'"], Keys: shellKeys, Calls: false, Vars: "$"})
+languages = {
+  python: lang({Line: ["#"], Texts: ["\"\"\"", "'''", "\"", "'"], Keys: ["False", "None", "True", "and", "as", "assert",
+    "async", "await", "break", "case", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
+    "global", "if", "import", "in", "is", "lambda", "match", "nonlocal", "not", "or", "pass", "raise", "return", "try",
+    "while", "with", "yield"]}),
+  r: lang({Line: ["#"], Texts: ["\"", "'"], Keys: ["if", "else", "repeat", "while", "function", "for", "in", "next", "break",
+    "return", "TRUE", "FALSE", "NULL", "Inf", "NaN", "NA", "NA_integer_", "NA_real_", "NA_character_"]}),
+  matlab: lang({Line: ["%"], Texts: ["\"", "'"], Raw: ["'", "\""], Ticks: true, Keys: ["break", "case", "catch", "classdef",
+    "continue", "else", "elseif", "end", "for", "function", "global", "if", "otherwise", "parfor", "persistent", "return",
+    "switch", "try", "while", "true", "false"]}),
+  ocaml: lang({Blocks: [["(*", "*)"]], Nest: true, Texts: ["\""], Chars: true, Calls: false, Keys: ["and", "as", "assert",
+    "begin", "class", "do", "done", "downto", "else", "end", "exception", "external", "false", "for", "fun", "function",
+    "functor", "if", "in", "include", "lazy", "let", "match", "method", "module", "mutable", "new", "nonrec", "not", "object",
+    "of", "open", "or", "private", "rec", "sig", "struct", "then", "to", "true", "try", "type", "val", "virtual", "when",
+    "while", "with"]}),
+  js: lang({Line: ["//"], Blocks: [["/*", "*/"]], Texts: ["\"", "'", "`"], Keys: ["async", "await", "break", "case", "catch",
+    "class", "const", "continue", "debugger", "default", "delete", "do", "else", "export", "extends", "false", "finally",
+    "for", "function", "if", "import", "in", "instanceof", "let", "new", "null", "of", "return", "static", "super", "switch",
+    "this", "throw", "true", "try", "typeof", "undefined", "var", "void", "while", "yield"]}),
+  lua: lang({Line: ["--"], Blocks: [["--[[", "]]"]], Texts: ["[[", "\"", "'"], Keys: ["and", "break", "do", "else", "elseif",
+    "end", "false", "for", "function", "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then", "true",
+    "until", "while"]}),
+  bash: shell,
+  sh: shell,
+  powershell: lang({Line: ["#"], Blocks: [["<#", "#>"]], Texts: ["\"", "'"], Raw: ["'"], Fold: true, Vars: "$", Keys: ["begin",
+    "break", "catch", "class", "continue", "do", "else", "elseif", "end", "exit", "filter", "finally", "for", "foreach",
+    "function", "if", "in", "param", "process", "return", "switch", "throw", "trap", "try", "until", "while"]}),
+  toml: lang({Line: ["#"], Texts: ["\"\"\"", "'''", "\"", "'"], Raw: ["'''", "'"], Keys: ["true", "false"], Calls: false,
+    Pairs: true}),
+  ini: lang({Line: [";", "#"], Spaced: true, Calls: false, Pairs: true}),
+  css: lang({Blocks: [["/*", "*/"]], Texts: ["\"", "'"], Calls: false, Props: true})
+}
+(* The roles of Cesia's code, as classes: see classes. *)
+keyClass = "k"
+callClass = "n"
+textClass = "s"
+numberClass = "m"
+commentClass = "c"
+fieldClass = "f"
+
+isDigitChar(c) = c >= "0" and c <= "9"
+isWordChar(c) = c == "_" or (c >= "a" and c <= "z") or (c >= "A" and c <= "Z") or isDigitChar(c) or text.ByteLength(c) > 1
+isBlank(c) = c == " " or c == "\t" or c == "\r"
+
+defn isAt(cs, i, mark)
+  (** Does mark start at character i of cs? *)
+  k = 1
+  for m in text.Chars(mark)
+    if cs[i + k - 1] != m
+      return false
+    end
+    k += 1
+  end
+  true
+end
+
+defn markAt(cs, i, marks)
+  (** The first of marks that starts at character i, or missing. *)
+  for m in marks
+    if isAt(cs, i, m)
+      return m
+    end
+  end
+  missing
+end
+
+defn wordEnd(cs, i, n)
+  (** The first character after the word that starts at i. *)
+  j = i
+  while j <= n and isWordChar(cs[j])
+    j += 1
+  end
+  j
+end
+
+defn lineEnd(cs, i, n)
+  (** The newline that ends the line of character i, or past the last character. *)
+  j = i
+  while j <= n and cs[j] != "\n"
+    j += 1
+  end
+  j
+end
+
+defn closeOf(cs, i, n, close, raw)
+  (** The first character after close, read from i, a backslash escaping the next character unless raw; past the end if
+      it never comes. *)
+  j = i
+  while j <= n
+    if not raw and cs[j] == "\\"
+      j += 2
+    else if isAt(cs, j, close)
+      return j + value.Len(text.Chars(close))
+    else
+      j += 1
+    end
+  end
+  n + 1
+end
+
+defn blockEnd(cs, i, n, open, close, nest)
+  (** The first character after the comment that opens at i, nested ones inside when nest. *)
+  depth = 1
+  j = i + value.Len(text.Chars(open))
+  while j <= n and depth > 0
+    if nest and isAt(cs, j, open)
+      depth += 1
+      j += value.Len(text.Chars(open))
+    else if isAt(cs, j, close)
+      depth -= 1
+      j += value.Len(text.Chars(close))
+    else
+      j += 1
+    end
+  end
+  list.Min(j, n + 1)
+end
+
+defn numberAfter(cs, i, n)
+  (** The first character after the number that starts at i: letters, digits, _ and dots before a digit, and a sign after
+      the e of an exponent. *)
+  hex = cs[i] == "0" and (cs[i + 1] == "x" or cs[i + 1] == "X")
+  j = i + 1
+  while j <= n and numberGoes(cs, j, hex)
+    j += 1
+  end
+  j
+end
+
+(** Does a number go on at character j? *)
+numberGoes(cs, j, hex) = isWordChar(cs[j]) or (cs[j] == "." and isDigitChar(cs[j + 1])) or (not hex and exponentSign(cs, j))
+exponentSign(cs, j) = (cs[j] == "+" or cs[j] == "-") and (cs[j - 1] == "e" or cs[j - 1] == "E") and isDigitChar(cs[j + 1])
+
+defn charEnd(cs, i, n)
+  (** After a quote at i in OCaml: the end of a character, 'a' or '\n' and the like, or missing for the quote of a type. *)
+  if cs[i + 1] == "\\"
+    j = i + 2
+    while j <= n and j < i + 6 and cs[j] != "'"
+      j += 1
+    end
+    return if cs[j] == "'" j + 1 else missing end
+  end
+  if cs[i + 1] != "" and cs[i + 1] != "'" and cs[i + 2] == "'" i + 3 else missing end
+end
+
+defn wordClass(l, keys, word, after)
+  (** The class of a word of language l, given its keywords and the character after it. *)
+  if dict.Has(if l.Fold text.Lower(word) else word end, keys)
+    keyClass
+  else if l.Calls and after == "("
+    callClass
+  else if l.Props and after == ":"
+    fieldClass
+  else
+    ""
+  end
+end
+
+defn spanAdd(cls, words, out)
+  (** Adds words of a class to the spans, plain words after plain words in one. *)
+  last = value.Len(out)
+  if cls == "" and last > 0 and out[last][1] == ""
+    out[last] = ["", text.Str(out[last][2], words)]
+    out
+  else
+    list.Append([cls, words], out)
+  end
+end
+
+defn LangSpans(name, code)
+  (** The code of a block in the language name, as [class, words] in order, all of its characters: a class of the roles of
+      Cesia's code, or "" for plain. A language not in languages gives missing.
+
+        LangSpans("python", "def f(x): # x\n    return 1") --> [["k", "def"], ["", " "], ["n", "f"], ["", "(x): "], ["c", "# x"], ["", "\n    "], ["k", "return"], ["", " "], ["m", "1"]] *)
+  if not dict.Has(name, languages)
+    return missing
+  end
+  l = languages[name]
+  words = if l.Fold [text.Lower(k) for k in l.Keys] else l.Keys end
+  keys = dict.Zipmap(words, [true for k in words])
+  textMarks = l.Texts
+  cs = list.Concat([""], list.Concat(text.Chars(code), ["", "", "", ""]))
+  n = value.Len(cs) - 4
+  out = []
+  i = 2
+  starts = true
+  while i <= n
+    c = cs[i]
+    start = i
+    before = cs[i - 1]
+    cls = ""
+    block = list.FindFirst(b -> isAt(cs, i, b[1]), l.Blocks)
+    line = if l.Spaced and not (before == "" or isBlank(before) or before == "\n" or before == ";") missing else markAt(cs, i, l.Line) end
+    mark = if l.Ticks and (isWordChar(before) or before == ")" or before == "]" or before == "}" or before == "'" or before == ".") missing else markAt(cs, i, textMarks) end
+    if value.IsSome(block)
+      i = blockEnd(cs, i, n, block[1], block[2], l.Nest)
+      cls = commentClass
+    else if value.IsSome(line)
+      i = lineEnd(cs, i, n)
+      cls = commentClass
+    else if l.Chars and c == "'"
+      e = charEnd(cs, i, n)
+      if value.IsSome(e)
+        i = e
+        cls = textClass
+      else
+        i += 1
+      end
+    else if value.IsSome(mark)
+      close = if mark == "[[" "]]" else mark end
+      i = closeOf(cs, i + value.Len(text.Chars(mark)), n, close, mark in l.Raw)
+      cls = textClass
+    else if l.Pairs and starts and c == "["
+      i = lineEnd(cs, i, n)
+      cls = keyClass
+    else if l.Pairs and starts and (isWordChar(c) or c == "-")
+      j = i
+      while j <= n and (isWordChar(cs[j]) or cs[j] == "-" or cs[j] == ".")
+        j += 1
+      end
+      k = j
+      while k <= n and isBlank(cs[k])
+        k += 1
+      end
+      i = j
+      cls = if cs[k] == "=" fieldClass else "" end
+    else if l.Vars != "" and c == l.Vars and cs[i + 1] == "{"
+      i = closeOf(cs, i + 2, n, "}", true)
+      cls = fieldClass
+    else if l.Vars != "" and c == l.Vars and (isWordChar(cs[i + 1]) or cs[i + 1] in ["@", "*", "#", "?", "!"])
+      i = if isWordChar(cs[i + 1]) wordEnd(cs, i + 1, n) else i + 2 end
+      cls = fieldClass
+    else if isDigitChar(c) or (c == "." and isDigitChar(cs[i + 1]))
+      i = numberAfter(cs, i, n)
+      cls = numberClass
+    else if isWordChar(c)
+      i = wordEnd(cs, i, n)
+      word = text.Join("", cs[start..i - 1])
+      cls = wordClass(l, keys, word, cs[i])
+    else
+      i += 1
+    end
+    starts = if c == "\n" true else if isBlank(c) starts else false end
+    if cls != ""
+      starts = false
+    end
+    out = spanAdd(cls, text.Join("", cs[start..list.Min(i, n + 1) - 1]), out)
+  end
+  out
+end
+
+defn langInner(name, code)
+  (** The HTML inside the code of a block of another language: its words in spans of their classes, or escaped alone for a
+      language that languages doesn't hold. A last newline goes, as in the block of Cesia. *)
+  trimmed = if text.EndsWith("\n", code) text.ByteSlice(1, text.ByteLength(code) - 1, code) else code end
+  spans = LangSpans(name, trimmed)
+  if value.IsMissing(spans)
+    return escape(trimmed)
+  end
+  text.Join("", [if s[1] == "" escape(s[2]) else "<span class=$quote$(s[1])$quote>$(escape(s[2]))</span>" end for s in spans])
+end
+
+(** A block of another language as HTML, colored, or missing for one that languages doesn't hold, which the reader of
+    Markdown writes as it is. *)
+langBlock(name, code) = if dict.Has(name, languages) "<pre><code class=$(quote)language-$(escape(name))$quote>$(langInner(name, code))</code></pre>\n" else missing end
+
 defn oldSlug(s)
   (** The id a heading had before the build took GitHub's: its letters and digits in lower case, words joined by -. A page
       keeps it beside the new one, so that a link made then still leads there. *)
@@ -247,7 +531,7 @@ defn hooksFor(site, path, where, book = missing, formulas = false, lang = "en", 
     end
     text.Str(rel(path, if lang == "fr" "fr/$target" else target end), anchorOf(u))
   end
-  code(info, s, line) = if text.Split(" ", info)[1] == "cesia" codeBlock(s) else missing end
+  code(info, s, line) = if text.Split(" ", info)[1] == "cesia" codeBlock(s) else langBlock(text.Split(" ", info)[1], s) end
   defn formula(tex, display, line)
     made = TexMath(tex, display)
     if result.IsErr(made)
@@ -1144,7 +1428,7 @@ defn tabbed(g, first, said)
   name = "tab.$(g.Line)"
   langs = list.Concat(["cesia"], [t.Lang for t in g.Tabs])
   heads = [text.Str("<input type=\"radio\" name=\"", name, "\" id=\"", name, ".", l, "\"", if l == "cesia" " checked" else "" end, "><label for=\"", name, ".", l, "\">", tabNames[l], "</label>\n") for l in langs]
-  panels = [text.Str("<div class=\"tab\"><pre><code class=\"language-", t.Lang, "\">", escape(if text.EndsWith("\n", t.Text) text.ByteSlice(1, text.ByteLength(t.Text) - 1, t.Text) else t.Text end), "</code></pre></div>\n") for t in g.Tabs]
+  panels = [text.Str("<div class=\"tab\"><pre><code class=\"language-", t.Lang, "\">", langInner(t.Lang, t.Text), "</code></pre></div>\n") for t in g.Tabs]
   text.Str("<div class=\"tabs\" role=\"group\" aria-label=\"", said.Versions, "\">\n", text.Join("", heads), "<div class=\"tab\">\n", first, "</div>\n", text.Join("", panels), "</div>\n")
 end
 
