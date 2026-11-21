@@ -77,6 +77,10 @@
   that read back as another.
 - `encode.Unbase64` takes the padding only at the end, one or two `=` of a text of a multiple of four: `aGk=aGk=`, two
   texts put end to end, and `aGk=junk` decoded to wrong bytes without an error.
+- `json.Parse` refuses a text that isn't UTF-8, as RFC 8259 asks, and `json.Text` a text of such bytes, which made JSON
+  that wasn't. An integer past 63 bits is kept as the text of its digits: `12345678901234567890` became the float
+  `1.2345678901234567e19`, which lost the digits of an ID or a hash. An error would have refused a whole document for a
+  number nobody reads, and no number of Cesia holds it, so its text, exact, breaks no correct use.
 
 ## 1.2.0
 

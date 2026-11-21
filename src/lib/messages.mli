@@ -346,6 +346,9 @@ val json_value : string -> t
 
 (** A value nested past the depth that JSON is written to. *)
 val json_nested : int -> t
+
+(** A text that JSON can't hold: it isn't UTF-8. *)
+val json_not_utf8 : t
 val column_sizes : int -> int -> t
 val need_groups : string -> t
 val json_at : string -> int -> string
@@ -358,6 +361,7 @@ val json_bad_escape : string
 val json_control : string
 val json_digits : string
 val json_large : string
+val json_utf8 : string
 val json_deep : string
 val json_no_value : string
 val json_no_comma_array : string

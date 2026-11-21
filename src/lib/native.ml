@@ -898,18 +898,20 @@ let decimals ctx (a : t array) =
 (* Valid UTF-8, as RFC 3629 defines it: no overlong form, no surrogate, nothing past U+10FFFF. Eight bytes of ASCII at a
    time, by one test of their high bits; past the first byte that isn't ASCII, the decoder of the Stdlib, which follows
    the same rules. *)
-let is_utf8 s =
+let utf8_end s =
   let n = String.length s in
   let rec go i =
     if i + 8 <= n && Int64.logand (String.get_int64_le s i) 0x8080808080808080L = 0L then go (i + 8)
-    else if i >= n then true
+    else if i >= n then n
     else if Char.code s.[i] < 128 then go (i + 1)
     else begin
       let d = String.get_utf_8_uchar s i in
-      Uchar.utf_decode_is_valid d && go (i + Uchar.utf_decode_length d)
+      if Uchar.utf_decode_is_valid d then go (i + Uchar.utf_decode_length d) else i
     end
   in
   go 0
+
+let is_utf8 s = utf8_end s = String.length s
 
 (* The occurrences of [part], not empty, in [s], without overlaps. A part of one byte is counted eight bytes at a time:
    the word xor the byte repeated is zero at each byte equal to it, and the classic test of a zero byte sets the high bit

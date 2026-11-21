@@ -33,9 +33,11 @@ order.note -->
 json.Parse("{\"id\": ") -->
 ```
 
-A number without a dot or an exponent that fits in 63 bits becomes an integer, and any other number a float: so
-`12345678901234567890` is read as a float, close to it. A key given twice keeps its last value, as most readers of JSON do.
-A text may hold any escape of JSON, `\u00e9` included. JSON nested deeper than half the `nesting` limit, 300 levels by
+A number without a dot or an exponent that fits in 63 bits becomes an integer, and any other number with them a float. An
+integer past 63 bits, as `12345678901234567890`, an ID or a hash, is kept as the text of its digits, exact: a float would
+lose some, and no number of Cesia holds it. A key given twice keeps its last value, as most readers of JSON do. A text may
+hold any escape of JSON, `\u00e9` included; JSON is UTF-8, as RFC 8259 asks, and bytes that aren't are an `Err`, as a
+text of such bytes is an error of `json.Text`. JSON nested deeper than half the `nesting` limit, 300 levels by
 default, is an `Err`, `Too deep`, so a hostile input of ten thousand `[` can't overflow the reader.
 
 ```cesia

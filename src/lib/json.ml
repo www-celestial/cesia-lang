@@ -27,6 +27,10 @@ let parse_text ctx s =
   let max_depth = min max_depth (ctx.w.limits.nesting / 2) in
   let peek () = if !i < n then s.[!i] else '\000' in
   let bad text = raise (Bad (Messages.json_at text (!i + 1))) in
+  (* JSON is UTF-8 (RFC 8259, 8.1): a text of other bytes, as FF FE or the overlong C0 AF, is refused, not kept. *)
+  i := Native.utf8_end s;
+  if !i < n then bad Messages.json_utf8;
+  i := 0;
   let spaces () =
     while !i < n && (match s.[!i] with ' ' | '\n' | '\r' | '\t' -> true | _ -> false) do
       incr i
@@ -121,7 +125,7 @@ let parse_text ctx s =
      digits is summed digit by digit, and a decimal of at most 15 significant digits with a power of ten at most 22 away
      is their product or quotient, one rounding of two exact doubles, the double nearest to the decimal, as Clinger
      (1990) showed; any other goes through float_of_string, as all did before. Whether it is an integer. *)
-  let an_int = ref 0 and a_float = ref 0.0 in
+  let an_int = ref 0 and a_float = ref 0.0 and big = ref None in
   let number_in () =
     let start = !i in
     let neg = peek () = '-' in
@@ -155,6 +159,8 @@ let parse_text ctx s =
       let t = String.sub s start (!i - start) in
       match if !whole then int_of_string_opt t else None with
       | Some v -> an_int := v; true
+      (* An integer past 63 bits keeps its digits, as the text of them: an ID or a hash a float rounded. *)
+      | None when !whole -> big := Some t; false
       | None ->
         let x = float_of_string t in
         if Float.abs x = infinity then bad Messages.json_large;
@@ -192,7 +198,9 @@ let parse_text ctx s =
       end
     end
   in
-  let number () = if number_in () then Int !an_int else Float !a_float in
+  let number () =
+    if number_in () then Int !an_int else match !big with Some t -> big := None; Text t | None -> Float !a_float
+  in
   (* Rows of one document often have the same keys: they share them, as the maps of one literal do. *)
   let last = ref Trie.no_keys in
   let rec value depth =
@@ -222,7 +230,8 @@ let parse_text ctx s =
         (match peek () with
          | '-' | '0' .. '9' ->
            if depth + 1 > max_depth then bad Messages.json_deep;
-           if number_in () then Arrays.add_int ctx site b !an_int else Arrays.add_float ctx site b !a_float
+           if number_in () then Arrays.add_int ctx site b !an_int
+           else (match !big with Some t -> big := None; Arrays.add ctx site b (Text t) | None -> Arrays.add_float ctx site b !a_float)
          | _ -> Arrays.add ctx site b (value (depth + 1)));
         incr count;
         spaces ();
@@ -273,28 +282,33 @@ let parse ctx (a : t array) =
   | v -> Value.ok ctx.w v
   | exception Bad text -> Value.failure ctx.w "json" text
 
-(* The bytes between two that need an escape go as one run. *)
+(* The bytes between two that need an escape go as one run. Whether a byte isn't ASCII, for the test of UTF-8 then. *)
 let add_text b s =
   Buffer.add_char b '"';
   let n = String.length s in
-  let rec go from k =
-    if k + 8 <= n && not (stops (String.get_int64_le s k)) then go from (k + 8)
-    else if k >= n then Buffer.add_substring b s from (n - from)
+  let rec go from k high =
+    if k + 8 <= n && not (stops (String.get_int64_le s k)) then
+      go from (k + 8) (high || Int64.logand (String.get_int64_le s k) 0x8080808080808080L <> 0L)
+    else if k >= n then begin
+      Buffer.add_substring b s from (n - from);
+      high
+    end
     else
       match s.[k] with
       | ('"' | '\\') as c ->
         Buffer.add_substring b s from (k - from);
         Buffer.add_char b '\\';
         Buffer.add_char b c;
-        go (k + 1) (k + 1)
+        go (k + 1) (k + 1) high
       | c when c < ' ' ->
         Buffer.add_substring b s from (k - from);
         Buffer.add_string b (match c with '\n' -> "\\n" | '\t' -> "\\t" | '\r' -> "\\r" | c -> Printf.sprintf "\\u%04x" (Char.code c));
-        go (k + 1) (k + 1)
-      | _ -> go from (k + 1)
+        go (k + 1) (k + 1) high
+      | c -> go from (k + 1) (high || c >= '\128')
   in
-  go 0 0;
-  Buffer.add_char b '"'
+  let high = go 0 0 false in
+  Buffer.add_char b '"';
+  high
 
 let write ctx ~pretty v =
   let b = Buffer.create 64 in
@@ -317,6 +331,8 @@ let write ctx ~pretty v =
     Buffer.add_char b closing
   in
   let bad x = Runtime.fail ctx Type (Messages.json_value (Value.describe x)) in
+  (* A text that isn't UTF-8 would make JSON that isn't: refused, as a NaN is. *)
+  let text s = if add_text b s && not (Native.is_utf8 s) then Runtime.fail ctx Type Messages.json_not_utf8 in
   let next = ref Value.reserve_every in
   let rec go depth x =
     if depth > max_depth then Runtime.fail ctx Type (Messages.json_nested max_depth);
@@ -329,7 +345,7 @@ let write ctx ~pretty v =
     | Float f ->
       if Float.is_nan f || Float.abs f = infinity then bad x;
       Buffer.add_subbytes b Value.scratch 0 (Ryu.write Value.scratch 0 f)
-    | Text s -> add_text b s
+    | Text s -> text s
     | Array a when Array.length a.dims > 0 ->
       (* Lists in lists, the first index outermost, so that x[i][j][k] of the JSON is a[i, j, k]. *)
       Runtime.pay ctx (a.rows * a.cols);
@@ -355,7 +371,7 @@ let write ctx ~pretty v =
       group '{' '}' depth (Array.length o / 2) (fun k -> member depth (Value.text_of ctx o.(2 * k)) o.((2 * k) + 1))
     | _ -> bad x
   and member depth k v =
-    add_text b k;
+    text k;
     Buffer.add_char b ':';
     if pretty then Buffer.add_char b ' ';
     go (depth + 1) v

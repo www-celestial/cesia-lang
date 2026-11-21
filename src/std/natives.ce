@@ -810,12 +810,12 @@ use std/test
       math.BitShift(1, 3) --> 8 *)
 
 (** json.Parse(s)
-    Reads JSON text: an Ok of the value (objects become dictionaries, null becomes missing), or an Err with the kind "json" and the place of the mistake.
+    Reads JSON text: an Ok of the value (objects become dictionaries, null becomes missing), or an Err with the kind "json" and the place of the mistake. JSON is UTF-8: bytes that aren't are an Err. An integer past 63 bits is the text of its digits, exact.
 
       json.Parse("[1, 2]") --> result.Ok([1, 2]) *)
 
 (** json.Text(x)
-    The JSON text of a value, on one line. A function, nan or an infinite float is an error.
+    The JSON text of a value, on one line. A function, nan, an infinite float or a text that isn't UTF-8 is an error.
 
       json.Text([1, "a"]) --> "[1,\"a\"]" *)
 

@@ -18,7 +18,10 @@ isNull() = value.IsMissing(ok("null"))
 isBools() = ok("true") == true and ok("false") == false
 isWhole() = ok("42") == 42 and value.IsInt(ok("-7"))
 isDecimal() = ok("1.5") == 1.5 and ok("1e3") == 1000.0 and value.IsFloat(ok("2.0"))
-isBigInt() = value.IsFloat(ok("123456789012345678901234567890"))
+(* An integer past 63 bits keeps every digit, as their text: an ID or a hash that a float rounded. *)
+isBigInt() = ok("123456789012345678901234567890") == "123456789012345678901234567890" and value.Equal(ok("[12345678901234567890, -4611686018427387905, 4611686018427387903]"), ["12345678901234567890", "-4611686018427387905", 4611686018427387903]) and value.IsFloat(ok("1.2e30"))
+(* JSON is UTF-8 (RFC 8259): bytes that aren't are refused when read, and when written. *)
+isNotUtf8() = result.IsErr(json.Parse(text.FromBytes([34, 255, 254, 34]))) and result.IsErr(json.Parse(text.FromBytes([34, 192, 175, 34]))) and fails(() -> json.Text(text.FromBytes([255, 97])), "type") and fails(() -> json.Text({(text.FromBytes([255])): 1}), "type") and ok("\"é\"") == "é" and json.Text("é😀") == "\"é😀\""
 isText() = ok("\"a\"") == "a"
 isEscapes() = ok("\"\\n\\t\\\"\\\\\\/\"") == "\n\t\"\\/"
 isUnicode() = ok("\"\u00e9\"") == "é" and ok("\"\ud83d\ude00\"") == "😀"
@@ -66,6 +69,10 @@ defn readsAsText(c)
   if value.IsFloat(want) and want - want != 0.0
     return bad(s) and bad("[$s]")
   end
+  (* An integer past 63 bits is kept as its digits. *)
+  if value.Len(c.Fraction) == 0 and not c.Power and value.IsFloat(want)
+    want = s
+  end
   got = ok(s)
   value.Equal(got, want) and value.IsInt(got) == value.IsInt(want) and value.Equal(ok("[$s, $s]"), [want, want])
 end
@@ -75,7 +82,7 @@ isNumbersAsText() = test.ForAll(readsAsText, numbers, cases = 300)
 readsBack(x) = value.Equal(ok(json.Text(x)), x) and value.Equal(ok(json.Text([x, x * 3.0])), [x, x * 3.0])   (** Does a float read back from its JSON? *)
 isFloatsReadBack() = test.ForAll(c -> readsBack(c.M * 10.0 ^ c.E), gen.Of({M: gen.Float(-1, 1), E: gen.Int(-320, 300)}), cases = 300)
 isNumberEdges() = value.Equal([ok("0.1"), ok("1e22"), ok("1e23"), ok("123456789012345.6"), ok("9007199254740993"), ok("-0.0"), ok("0e5"), ok("4.9e-324"), ok("1.7976931348623157e308")],
-  [0.1, 1e22, 1e23, 123456789012345.6, 9007199254740993, -0.0, 0.0, 4.9e-324, 1.7976931348623157e308]) and value.IsInt(ok("123456789012345678")) and value.IsInt(ok("-1234567890123456789")) and value.IsFloat(ok("12345678901234567890"))
+  [0.1, 1e22, 1e23, 123456789012345.6, 9007199254740993, -0.0, 0.0, 4.9e-324, 1.7976931348623157e308]) and value.IsInt(ok("123456789012345678")) and value.IsInt(ok("-1234567890123456789")) and ok("12345678901234567890") == "12345678901234567890"
 isArrayKinds() = columns.Kind(ok("[1.5, 2.5]")) == "float" and columns.Kind(ok("[1, 2]")) == "int" and columns.Kind(ok("[1, 2.5]")) == "value" and value.Equal(ok("[1, 2.5, \"a\"]"), [1, 2.5, "a"])
 
 defn isEveryPlaceOfAnEscape()
