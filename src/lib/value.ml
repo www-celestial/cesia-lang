@@ -429,7 +429,7 @@ and equal_at ctx depth a b =
     end
   | Int x, Int y -> x = y
   | Float x, Float y -> x = y || (Float.is_nan x && Float.is_nan y)
-  | Int x, Float y | Float y, Int x -> float_of_int x = y
+  | Int x, Float y | Float y, Int x -> Trie.int_float x y = 0
   | True, True | False, False | Missing, Missing -> true
   | Text x, Text y -> String.equal x y
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env

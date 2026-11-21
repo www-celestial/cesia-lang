@@ -40,6 +40,11 @@
 - `--limit memory` holds while values are written as a text: `value.Text`, an interpolation, `io.Print`, `json.Text`,
   `json.Pretty` and `csv.Text` reserve the bytes of their text each time it grows by a megabyte. A list of 100,000
   times one text of 10 KB, which costs little memory, made a text of 1 GB past any limit.
+- An integer and a float compare by their exact values, in `==`, `<`, `>`, maps, `list.Unique`, `list.Sort`, `in` and the
+  machine code of the JIT: `9007199254740993 > 9007199254740992.0` is `true`, and the two are two keys of a map. The
+  integer was rounded to a float first, which past 2^53 made it equal to its neighbours: a map merged them or lost one,
+  and `list.Unique` kept two or one of the same three numbers by their order. An integer and a float it is exactly, as
+  `9007199254740992` and `9007199254740992.0`, are one key as before.
 
 ## 1.2.0
 

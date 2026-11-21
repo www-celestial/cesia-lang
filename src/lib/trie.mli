@@ -24,7 +24,11 @@ val mask : int ref
 (** The rank at which a deep map renumbers its ranks in its order; 2^32, smaller in tests. *)
 val rank_limit : int ref
 
-(** The order of keys in a tree. *)
+(** An integer against a float, exactly: -1, 0 or 1 as the integer is below, at or above the float, 2 when the float is
+    NaN. 2^53 + 1 is above 2^53.0, which rounding the integer to a float would make equal. *)
+val int_float : int -> float -> int
+
+(** The order of keys in a tree: numbers by their exact values, NaN first. *)
 val compare_keys : t -> t -> int
 
 (** Is it the same key? *)

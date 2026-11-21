@@ -220,8 +220,9 @@ let order int_cmp float_cmp sym ctx a b =
   match a, b with
   | Int x, Int y -> Value.of_bool (int_cmp x y)
   | Float x, Float y -> Value.of_bool (float_cmp x y)
-  | Int x, Float y -> Value.of_bool (float_cmp (float_of_int x) y)
-  | Float x, Int y -> Value.of_bool (float_cmp x (float_of_int y))
+  (* Exactly: 2^53 + 1 > 2^53.0. NaN, 2, is neither below nor above. *)
+  | Int x, Float y -> let c = Trie.int_float x y in Value.of_bool (c <> 2 && int_cmp c 0)
+  | Float x, Int y -> let c = Trie.int_float y x in Value.of_bool (c <> 2 && int_cmp 0 c)
   | Text x, Text y -> Value.of_bool (int_cmp (String.compare x y) 0)
   | Missing, (Int _ | Float _ | Missing) | (Int _ | Float _), Missing -> Missing
   | _ -> Runtime.fail ctx Type (Messages.compare_op (Value.describe a) sym (Value.describe b))
@@ -233,7 +234,9 @@ let[@inline never] compared test ctx a b =
   trim b;
   let sh = typed a b in
   let n = sh.rows * sh.cols in
-  if n = 0 then None
+  (* Integers against floats as floats only while each is one exactly: past 2^53, cell by cell, as [order] does. *)
+  let inexact = function Some (d, _) -> Array.exists (fun i -> i >= 1 lsl 53 || i <= -(1 lsl 53)) d | None -> false in
+  if n = 0 || (match int_cells a, int_cells b with Some _, Some _ -> false | x, y -> inexact x || inexact y) then None
   else begin
     Runtime.build ctx n;
     let out = Array.make n False in

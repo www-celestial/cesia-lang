@@ -1150,7 +1150,7 @@ and member c e a b =
       let hi = h ctx in
       (match v with
        | Int i -> Value.of_bool (i >= lo && i <= hi)
-       | Float f -> Value.of_bool (Float.is_integer f && f >= float_of_int lo && f <= float_of_int hi)
+       | Float f -> Value.of_bool (Float.is_integer f && Trie.int_float lo f <= 0 && Trie.int_float hi f >= 0)
        | _ -> False)
   | _ ->
     let y = cv c b in
@@ -1897,7 +1897,11 @@ and cb c (e : expr) : ctx -> bool =
   | Bin (((Lt | Le | Gt | Ge | Eq | Ne) as op), a, b) ->
     (match ty c a, ty c b with
      | TI, TI -> compare_i c op a b
-     | (TI | TF), (TI | TF) -> compare_f c op a b
+     | TF, TF -> compare_f c op a b
+     (* An integer literal that is a float exactly compares as one. *)
+     | TI, TF when whole a -> compare_f c op a b
+     | TF, TI when whole b -> compare_f c op a b
+     | (TI | TF), (TI | TF) -> compare_m c op a b
      | _ -> compare_b c e op a b)
   | Lbool x -> fun _ -> x
   | _ ->
@@ -1936,6 +1940,32 @@ and compare_i c op a b : ctx -> bool =
      | Ge -> fun ctx -> let p = x ctx in p >= y ctx
      | Eq -> fun ctx -> let p = x ctx in p = y ctx
      | _ -> fun ctx -> let p = x ctx in p <> y ctx)
+
+(* An integer and a float, exactly, as [Arith.order]: [Trie.int_float] of them, -1, 0, 1 or 2 for NaN, in the order of
+   the code; [r lsr 1 = 0] is 0 or 1. *)
+and compare_m c op a b : ctx -> bool =
+  if ty c a == TI then begin
+    let i = ci c a and f = cf c b in
+    match op with
+    | Lt -> fun ctx -> let p = i ctx in Trie.int_float p (f ctx) < 0
+    | Le -> fun ctx -> let p = i ctx in Trie.int_float p (f ctx) <= 0
+    | Gt -> fun ctx -> let p = i ctx in Trie.int_float p (f ctx) = 1
+    | Ge -> fun ctx -> let p = i ctx in Trie.int_float p (f ctx) lsr 1 = 0
+    | Eq -> fun ctx -> let p = i ctx in Trie.int_float p (f ctx) = 0
+    | _ -> fun ctx -> let p = i ctx in Trie.int_float p (f ctx) <> 0
+  end
+  else begin
+    let f = cf c a and i = ci c b in
+    match op with
+    | Lt -> fun ctx -> let q = f ctx in Trie.int_float (i ctx) q = 1
+    | Le -> fun ctx -> let q = f ctx in Trie.int_float (i ctx) q lsr 1 = 0
+    | Gt -> fun ctx -> let q = f ctx in Trie.int_float (i ctx) q < 0
+    | Ge -> fun ctx -> let q = f ctx in Trie.int_float (i ctx) q <= 0
+    | Eq -> fun ctx -> let q = f ctx in Trie.int_float (i ctx) q = 0
+    | _ -> fun ctx -> let q = f ctx in Trie.int_float (i ctx) q <> 0
+  end
+
+and whole (e : expr) = match e.e with Lint k -> k < 1 lsl 53 && k > -(1 lsl 53) | _ -> false
 
 and compare_f c op a b : ctx -> bool =
   (* A closure returning a float allocates it: read the variables directly. *)

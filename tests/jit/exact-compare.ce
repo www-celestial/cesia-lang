@@ -1,0 +1,49 @@
+use std/io
+use std/math
+
+(** Integers against floats in machine code, exactly as the interpreter compares them: an integer register against a
+    float, a value against a float, and constants of each. 2^53 + 1 is above 2^53.0, which rounding it made equal. *)
+defn Ints(n, lo, x)
+  above = 0
+  equal = 0
+  for k in 1..n
+    i = lo + math.Mod(k, 5)
+    if i > x
+      above += 1
+    end
+    if x >= i
+      above += 10
+    end
+    if i == x
+      equal += 1
+    end
+    if x < 9007199254740993
+      equal += 10
+    end
+    if 9007199254740993 <= x
+      equal += 100
+    end
+  end
+  [above, equal]
+end
+
+(** Values of a list against a float: a value that is an integer past 2^53, no float exactly, leaves machine code. *)
+defn Values(n, xs, x)
+  above = 0
+  for k in 1..n
+    v = xs[1 + math.Mod(k, 4)]
+    if v > x
+      above += 1
+    end
+    if x == v
+      above += 10
+    end
+  end
+  above
+end
+
+io.Print(Ints(100000, 9007199254740990, 9007199254740992.0))
+io.Print(Ints(100000, 1, 2.5))
+io.Print(Ints(100000, 4611686018427387899, 4611686018427387904.0))
+io.Print(Values(100000, [1.5, 2, 2.5, 3], 2.0))
+io.Print(Values(100000, [9007199254740993, 9007199254740992, 9007199254740992.5, 1], 9007199254740992.0))

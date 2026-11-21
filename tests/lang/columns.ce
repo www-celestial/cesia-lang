@@ -134,8 +134,8 @@ end
 
 isJoinOfCollidingTexts() = value.Equal(columns.Join(colliding, colliding, false).Left, 1..16384)
 
-isGroupsTakeABigIntAndItsFloatAsOneKey() = columns.Groups([[9007199254740993, 9007199254740992.0]]).Count == 1
-isJoinMatchesABigIntAndItsFloat() = value.Equal(columns.Join([9007199254740993], [9007199254740992.0], false).Right, [1])
+isGroupsTakeABigIntAndItsFloatAsOneKey() = columns.Groups([[9007199254740992, 9007199254740992.0]]).Count == 1 and columns.Groups([[9007199254740993, 9007199254740992.0]]).Count == 2
+isJoinMatchesABigIntAndItsFloat() = value.Equal(columns.Join([9007199254740992], [9007199254740992.0], false).Right, [1]) and value.Len(columns.Join([9007199254740993], [9007199254740992.0], false).Right) == 0
 isGroupsKeepBigIntsApart() = columns.Groups([[9007199254740993, 9007199254740992]]).Count == 2 and columns.Groups([[9007199254740993, 9007199254740992, "a"]]).Count == 3
 isGroupsOfIntsNearTheTop() = columns.Groups([[4611686018427383807 + k for k in 0..4095]]).Count == 4096 and columns.Groups([list.Concat([4611686018427383807 + math.Mod(k, 7) for k in 0..4095], ["a"])]).Count == 8
 isJoinOfBigInts() = value.Len(columns.Join([9007199254740993], [9007199254740992], false).Left) == 0 and value.Equal(columns.Join([9007199254740993, 1], [1, 9007199254740993], false).Right, [2, 1])
@@ -251,7 +251,9 @@ defn isMasks()
   value.Equal(a, [true, false, false]) and value.Equal(b, [false, true]) and value.Equal(c, [true, false]) and value.Equal(d, [true]) and value.Equal(e, [true, false]) and value.Equal(f, [true, false, true]) and value.Equal(g, [true, false]) and value.Equal(h, [false, true, true]) and columns.Kind(a) == "value" and columns.Kind(h) == "value"
 end
 
-isMasksOfBigInts() = value.Equal([9007199254740993] > 9007199254740992, [true]) and value.Equal([9007199254740993] > 9007199254740992.0, [false]) and value.Equal([9007199254740993] == 9007199254740992.0, [true]) and value.Equal([9007199254740993] != [9007199254740992], [true])
+isMasksOfBigInts() = value.Equal([9007199254740993] > 9007199254740992, [true]) and value.Equal([9007199254740993] > 9007199254740992.0, [true]) and value.Equal([9007199254740993] == 9007199254740992.0, [false]) and value.Equal([9007199254740993] != [9007199254740992], [true])
+(* A mask of 16 cells or more, made in one loop, compares a big integer with a float exactly too. *)
+isLargeMasksOfBigInts() = value.Equal(list.Fill(9007199254740993, 16) > 9007199254740992.0, list.Fill(true, 16)) and value.Equal(list.Fill(9007199254740993, 16) == list.Fill(9007199254740992.0, 16), list.Fill(false, 16)) and value.Equal(list.Fill(9007199254740992, 16) == 9007199254740992.0, list.Fill(true, 16))
 isMaskOfAMatrix() = value.Equal(value.Size(matrix.Reshape([2, 3], 1..6) > 3), [2, 3]) and (matrix.Reshape([2, 3], 1..6) > 3)[2, 2] and not (matrix.Reshape([2, 3], 1..6) > 3)[1, 2]
 isMaskWithMissing() = value.Equal([1.5, 2.5] > missing, [missing, missing]) and value.Equal((1..2) == "a", [false, false])
 isIntOverflowNamesTheFirstCell() = message(() -> [4611686018427387903, 2] * 2) == overflowOf("4611686018427387903 * 2") and message(() -> [1, 4611686018427387903] + 1) == overflowOf("4611686018427387903 + 1")

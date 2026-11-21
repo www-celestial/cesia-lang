@@ -26,8 +26,8 @@ let column_list ctx name v =
   cols
 
 (* The hash of the maps, with its seed drawn at each run: no input can choose keys that fall together. Equal keys hash
-   alike, 1 and 1.0 too, as in a map. An integer past 2^53 is the same key as the float it rounds to, which up to 1,024
-   integers share: it hashes as that float only when [wide], a float past 2^53 among the keys; otherwise by all its bits. *)
+   alike, 1 and 1.0 too, as in a map. An integer past 2^53 hashes as the float it rounds to, which up to 1,024 integers
+   share, only when [wide], a float past 2^53 among the keys that it may be exactly; otherwise by all its bits. *)
 let[@inline] hash_int wide x =
   if wide || (x < 1 lsl 53 && x > -(1 lsl 53)) then Trie.hash_int x
   else Trie.hash_int (Trie.hash_int (x asr 11) lxor (x land 2047))
@@ -275,8 +275,7 @@ let combine h x = Trie.hash_int ((h * 31) + x)
 
 (* A hash of any key that [Equal] respects, to the depth where [Equal] stops at its nesting limit. Ints past 2^53 hash as
    their float with [wide], else by all their bits; [big] tells that a float past 2^53 was met. Arrays by their shape and
-   cells, structs and maps by the sum of their names or keys with their values. A map with a number key past 2^53, which
-   [Equal] can match to two keys of the other map, by its size alone. [nodes] counts the work. *)
+   cells, structs and maps by the sum of their names or keys with their values. [nodes] counts the work. *)
 let rec deep_hash ctx wide big nodes depth v =
   incr nodes;
   let hash = deep_hash ctx wide big nodes (depth + 1) in
@@ -305,10 +304,8 @@ let rec deep_hash ctx wide big nodes depth v =
       combine (match shape.sname with Some n -> Trie.hash_text n | None -> 5) (!sum land 0x3FFF_FFFF)
     | Dict _ ->
       let o = Trie.items v and sum = ref 0 in
-      let past = function Int i -> not (small i) | Float f -> Float.abs f >= 0x1p53 | _ -> false in
       let n = Array.length o / 2 in
-      let coarse = Array.exists past (Array.init n (fun i -> o.(2 * i))) in
-      if not coarse then for i = 0 to n - 1 do sum := !sum + combine (Trie.hash o.(2 * i)) (hash o.((2 * i) + 1)) done;
+      for i = 0 to n - 1 do sum := !sum + combine (Trie.hash o.(2 * i)) (hash o.((2 * i) + 1)) done;
       combine (6 + n) (!sum land 0x3FFF_FFFF)
     | Native { nname; _ } -> Trie.hash_text nname
     | Fun { proto; _ } -> Trie.hash_text proto.pname

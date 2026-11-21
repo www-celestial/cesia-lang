@@ -1230,12 +1230,23 @@ and cond st (e : expr) yes no =
     let op = match op with Lt -> Ir.Lt | Le -> Le | Gt -> Gt | Ge -> Ge | Eq -> Eq | _ -> Ne in
     let x = expr st a in
     let y = expr st b in
-    let x, y = numbers st a b x y in
+    (* Integers against floats exactly, as the interpreter: a value beside a float is a number that is a float exactly. *)
+    let x, y =
+      match snd x, snd y with
+      | Kval, Kfloat -> (fst (unbox st (fst x) Exact), Ir.Kfloat), y
+      | Kfloat, Kval -> x, (fst (unbox st (fst y) Exact), Ir.Kfloat)
+      | _ -> numbers st a b x y
+    in
     (match snd x, snd y with
      | Kint, Kint -> close st (Branch (op, Kint, fst x, fst y, yes, no))
-     | _ ->
-       let x = to_float st x and y = to_float st y in
-       close st (Branch (op, Kfloat, x, y, yes, no)))
+     (* An integer constant that is a float exactly compares as one. *)
+     | Kint, Kfloat when (match fst x with Int n -> n < 1 lsl 53 && n >= -(1 lsl 53) | _ -> false) ->
+       close st (Branch (op, Kfloat, to_float st x, fst y, yes, no))
+     | Kfloat, Kint when (match fst y with Int n -> n < 1 lsl 53 && n >= -(1 lsl 53) | _ -> false) ->
+       close st (Branch (op, Kfloat, fst x, to_float st y, yes, no))
+     | Kint, Kfloat -> close st (Mixed (op, fst x, to_float st x, fst y, yes, no))
+     | Kfloat, Kint -> close st (Mixed (Ir.flip op, fst y, to_float st y, fst x, yes, no))
+     | _ -> close st (Branch (op, Kfloat, to_float st x, to_float st y, yes, no)))
   | Call call when kind_test st call <> None ->
     let name = Option.get (kind_test st call) in
     (match expr st call.args.(0).value with

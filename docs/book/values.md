@@ -51,11 +51,13 @@ math.Mod(7, 2) -->
 ### Integers and floats
 
 An integer and a float mix: the result is a float, a [type coercion](glossary.md#type-coercion). And they compare by
-their value:
+their exact value, as in Python: past 2^53 a float no longer holds every integer, and an integer is compared with it as it
+is, not rounded to a float first:
 
 ```cesia
 1 + 0.5 -->
 1 == 1.0 -->
+9007199254740993 > 9007199254740992.0 -->
 ```
 
 An integer has 63 bits: from -4,611,686,018,427,387,904 to 4,611,686,018,427,387,903. A result past them is an error, not a

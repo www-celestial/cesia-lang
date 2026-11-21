@@ -11,11 +11,15 @@ type kind = Kint | Kfloat | Kval
     it is, a value that is no block: [missing], [true], [false]). *)
 type value = Reg of int | Int of int | Float of float | Word of int
 
-(** What [Unbox] takes: [Number] an Int or a Float, as a float; [Only_float] a Float; [Only_int] an Int. Anything else
+(** What [Unbox] takes: [Number] an Int or a Float, as a float; [Only_float] a Float; [Only_int] an Int; [Exact] as
+    [Number], an Int that is a float exactly, as a comparison with a float takes it: 2^53 + 1 isn't 2^53.0. Anything else
     bails. *)
-type unbox = Number | Only_float | Only_int
+type unbox = Number | Only_float | Only_int | Exact
 
 type cmp = Eq | Ne | Lt | Le | Gt | Ge
+
+(** [a cmp b] is [b (flip cmp) a]. *)
+let flip = function Lt -> Gt | Le -> Ge | Gt -> Lt | Ge -> Le | c -> c
 
 (** [Add], [Sub], [Mul], [Div], [Mod] on integers, checked as the interpreter checks them; [Div] and [Mod] as Cesia's
     natives of those names. The others on floats; [Fpow] is C's [pow], as OCaml's [**]. *)
@@ -114,6 +118,9 @@ type ins =
 type term =
   | Jump of int
   | Branch of cmp * kind * value * value * int * int  (** if a cmp b then the first block else the second *)
+  | Mixed of cmp * value * value * value * int * int
+      (** [Mixed (cmp, a, fa, b, yes, no)]: as [Branch] of an integer [a], [fa] as a float, and a float [b], exactly: an
+          integer past 2^53, no float exactly, against the float's integer when its rounding [fa] is the float *)
   | Return of value
   | Done  (** the end of a loop run natively: every variable back in its slot, and the interpreter goes on after the loop *)
   | Out of value  (** a [return] inside such a loop: the function ends with that value *)
