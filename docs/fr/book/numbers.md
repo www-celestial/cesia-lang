@@ -86,7 +86,9 @@ disp(mod(-7, 3))
 ### Les bits
 
 [math.BitAnd], [math.BitOr], [math.BitXor] et [math.BitNot] travaillent sur les bits des entiers, et [math.BitShift] les
-décale vers la gauche pour un nombre de positions positif, vers la droite pour un nombre négatif :
+décale vers la gauche pour un nombre de positions positif, vers la droite pour un nombre négatif. Un décalage à droite
+garde le signe, comme en Python et en Go ; un décalage à gauche travaille sur les 63 bits d'un entier, et les bits qui en
+sortent sont perdus :
 
 ```cesia
 math.BitAnd(12, 10) -->
@@ -94,6 +96,7 @@ math.BitOr(12, 10) -->
 math.BitXor(12, 10) -->
 math.BitShift(1, 4) -->
 math.BitShift(16, -2) -->
+math.BitShift(-8, -1) -->
 ```
 
 ```python
