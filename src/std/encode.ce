@@ -76,8 +76,9 @@ defn Base64(s)
 end
 
 defn Unbase64(s)
-  (** Takes the standard alphabet and the one of URLs, with or without padding. unbase64, a native of this package,
-      decodes in one pass: a screenshot of a page is a megabyte of Base64.
+  (** Takes the standard alphabet and the one of URLs, with or without padding: one or two = at the end of a text of a
+      multiple of four, none elsewhere. unbase64, a native of this package, decodes in one pass: a screenshot of a page is
+      a megabyte of Base64.
 
         Unbase64("aGk=") --> result.Ok("hi") *)
   out = unbase64(s)

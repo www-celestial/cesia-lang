@@ -435,14 +435,18 @@ let base64_digits =
          | '/' | '_' -> '\063'
          | _ -> '\255'))
 
-(* The bytes of Base64 with or without padding, or missing for a text that isn't Base64. Every = is left out wherever it
-   is, and the bits past the last whole byte are dropped, as encode.Unbase64 always did. Four digits make three bytes, with
-   no test inside the loop: a screenshot of a page is a megabyte of Base64. *)
+(* The bytes of Base64 with or without padding, or missing for a text that isn't Base64. The padding is one or two = at
+   the end of a text of a multiple of four: one elsewhere, as two texts of Base64 put end to end, decoded to wrong bytes.
+   The bits past the last whole byte are dropped, as encode.Unbase64 always did. Four digits make three bytes, with no
+   test inside the loop: a screenshot of a page is a megabyte of Base64. *)
 let unbase64 ctx (a : t array) =
   let s = text_arg ctx "unbase64" a.(0) in
   Runtime.pay_bytes ctx (String.length s);
-  let s = if String.contains s '=' then String.concat "" (String.split_on_char '=' s) else s in
-  let n = String.length s and d = Lazy.force base64_digits in
+  let whole = String.length s in
+  let pad = if whole > 0 && s.[whole - 1] = '=' then if whole > 1 && s.[whole - 2] = '=' then 2 else 1 else 0 in
+  let n = whole - pad and d = Lazy.force base64_digits in
+  if (pad > 0 && whole mod 4 <> 0) || (match String.index_opt s '=' with Some i -> i < n | None -> false) then Missing
+  else begin
   Runtime.build ctx ((n / 10) + 1);
   let out = Bytes.create (n * 3 / 4) and bad = ref 0 and i = ref 0 and o = ref 0 in
   let digit k = if k < n then Char.code d.[Char.code s.[k]] else 0 in
@@ -460,6 +464,7 @@ let unbase64 ctx (a : t array) =
   bad := !bad lor digit !i lor digit (!i + 1) lor digit (!i + 2);
   for k = 0 to Bytes.length out - !o - 1 do Bytes.set_uint8 out (!o + k) ((w lsr (16 - (8 * k))) land 255) done;
   if n mod 4 = 1 || !bad >= 64 then Missing else Text (Bytes.to_string out)
+  end
 
 let packages =
   [ "math", math_natives; "list", list_natives; "text", text_natives; "encode", [ "unbase64", nat "unbase64" 1 1 unbase64 ] ]

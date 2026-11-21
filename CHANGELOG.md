@@ -75,6 +75,8 @@
   never closes is an Err of the kind `"csv"`, from `csv.Parse`, `csv.Records`, `columns.ReadCsv` and `frame.FromCsv`. A
   separator is one byte, in Parse and Text, or a type error: `"::"` was ignored by Parse, and `""` made Text write a field
   that read back as another.
+- `encode.Unbase64` takes the padding only at the end, one or two `=` of a text of a multiple of four: `aGk=aGk=`, two
+  texts put end to end, and `aGk=junk` decoded to wrong bytes without an error.
 
 ## 1.2.0
 
