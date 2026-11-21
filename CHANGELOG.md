@@ -32,6 +32,10 @@
   that asked for `file:///tmp/x/someone/geometry` at a tag filled the cache for `github.com/someone/geometry` at that
   tag, for every project. A source fetched without encryption, `http://` or `git://`, is refused: anyone on the way
   could change its code.
+- `cesia doc --site` stops at a link in the `files/` of a book, which it copied as the file it led to, so that a block
+  allowed to read its own folder read any file of the person who built the site; at a `source` of `[site]` that is no
+  `https://` or `http://` address, as `javascript:`, put in the link of each page; and at a link under `docs/`, `std/`
+  or the sources that leads nowhere, with its name, where it stopped with an internal error.
 - `sys.Link` needs the write permission on its target, as well as the read one: a hard link is the same file under a
   second name, and a program allowed to read `readable/` only, with `write=out`, could link a file of `readable/` into
   `out/` and write, change the mode or the time of the original through it; in `cesia test`, a test could rewrite the

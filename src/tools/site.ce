@@ -1233,6 +1233,9 @@ defn settings(root)
       else if value.Equal(t.Path, ["site"]) and e.Key == "title"
         out.Title = e.Value
       else if value.Equal(t.Path, ["site"]) and e.Key == "source"
+        if not (value.IsText(e.Value) and (text.StartsWith("https://", e.Value) or text.StartsWith("http://", e.Value)))
+          return result.Err("$file:$(e.Line): [site] source is a URL of https:// or http://, as \"https://github.com/someone/project/blob/main/\".")
+        end
         out.Source = e.Value
       else if value.Equal(t.Path, ["site"]) and e.Key == "color"
         if not isHexColor(e.Value)
@@ -1669,11 +1672,26 @@ defn removed(path)
   sys.Remove(path)
 end
 
+defn plain(path)
+  (** Ok when a path is a plain file or folder, not a link, or isn't there; an Err otherwise: the files/ of a book are
+      copied for its blocks, and a link copied would let a block read a file out of the folder its run may read. *)
+  info = sys.Stat(path)
+  if result.IsErr(info) and not sys.Exists(path) and result.IsErr(sys.ReadLink(path))
+    return result.Ok(missing)
+  end
+  if result.IsErr(info) or info.Value.IsLink or not (info.Value.IsDir or info.Value.IsFile)
+    return result.Err("$path is a link, or no plain file: the files/ of a book are copied for its blocks as plain files and folders only, so that no block reads through them a file out of the project.")
+  end
+  result.Ok(missing)
+end
+
 defn copied(source, target)
-  (** A copy of the folder source, with all it holds, made at target. *)
+  (** A copy of the folder source, with all it holds, made at target: plain files and folders only. *)
+  plain(source)?
   sys.Mkdir(target)?
   if sys.Exists(source)
     for n in sys.List(source)?
+      plain("$source/$n")?
       if sys.Stat("$source/$n")?.IsDir
         copied("$source/$n", "$target/$n")?
       else
@@ -1804,6 +1822,22 @@ defn allRun(jobs)
     _ = fiber.Wait(f)
   end
   dict.Dict([{Key: d.Name, Value: d.Result} for d in drained(done)])
+end
+
+defn dangling(dir)
+  (** The first path under a folder that names nothing, a link that leads nowhere, or missing. *)
+  for n in [n for n in result.UnwrapOr([], sys.List(dir)) if not text.StartsWith(".", n)]
+    path = "$dir/$n"
+    info = sys.Stat(path)
+    if result.IsErr(info)
+      return path
+    end
+    inner = if info.Value.IsDir and not info.Value.IsLink dangling(path) else missing end
+    if not value.IsMissing(inner)
+      return inner
+    end
+  end
+  missing
 end
 
 defn filesUnder(dir)
@@ -2348,6 +2382,12 @@ defn build(root, folder, cache, runs)
   (** The pages of the site, written into the folder; the programs of its pages run in the folder runs. An Err lists the
       mistakes. *)
   config = settings(root)?
+  for dir in list.Concat(["docs", "std"], config.Src)
+    broken = dangling("$root/$dir")
+    if not value.IsMissing(broken)
+      return result.Err("$(text.Slice(value.Len(root) + 2, value.Len(broken), broken)) is a link that leads nowhere: remove it, or make it lead to a file.")
+    end
+  end
   colors = colorCss(config.Color, config.ColorAt)?
   modules = cesia.DocNames()
   lists = dict.Dict([{Key: m, Value: names(m)} for m in modules])
