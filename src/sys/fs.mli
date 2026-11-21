@@ -22,7 +22,9 @@ val retry : Unix.error -> bool
     folder that can't be listed, with its path. *)
 val paths : ?skip:(string -> string -> bool) -> string -> string list
 
-(** Removes a folder and all it holds, never following a link: a link goes, what it points to stays. *)
+(** Removes a folder and all it holds, as rm -r, never following a link: a link goes, what it points to stays. On Linux
+    and macOS it walks by descriptors, so that a folder swapped for a link while it runs is never entered. The first
+    failure raises [Unix.Unix_error] with the path of what failed; what went before is gone. *)
 val remove_tree : string -> unit
 
 (** Where a path leads, links resolved, for [Runtime.real_path]; a path not there yet, through the folder that will hold it. *)

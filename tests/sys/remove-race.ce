@@ -1,0 +1,18 @@
+(* For remove-race.cmd: makes shared/big, a folder of files with another inside, and
+   removes it with sys.RemoveTree, again and again, while another process swaps it, or the folder inside, for a link to
+   ../victim. What fails is left: only what victim holds at the end tells. *)
+use std/fiber
+use std/sys
+
+defn try(f)
+  fiber.Wait(fiber.Spawn(f))
+end
+
+for i in 1..300
+  try(() -> sys.Mkdir("shared/big/sub"))
+  for k in 1..20
+    try(() -> sys.Write("shared/big/f$k.txt", ""))
+    try(() -> sys.Write("shared/big/sub/f$k.txt", ""))
+  end
+  try(() -> sys.RemoveTree("shared/big"))
+end

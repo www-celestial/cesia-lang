@@ -8,7 +8,12 @@
   name before a byte is written; `sys.Chmod` and the new Mode of `sys.Stat` give and read the permission bits;
   `sys.SetModified` sets the time of a change, as `touch`; `sys.Symlink`, `sys.Link` and `sys.ReadLink` make and read
   links. Everything a file manager needs, as the folders of Cemacs.
-
+- `sys.RemoveTree(path)` deletes a folder and all it holds, as `rm -r`, never following a link: one inside goes
+  itself, and a path that is one goes alone. It walks by descriptors, each folder opened from the one above it and
+  checked to be the folder seen there, so that a folder swapped for a link while it runs is never entered, as Cemacs's
+  folders need to delete for good; its first failure is an Err that names the file, and a tree of any depth keeps at
+  most 32 folders open. On Windows it walks by paths and never enters a link or a junction. `cesia pkg`, `cesia
+  upgrade` and the Temp folder of `cesia test` use it, the last saying what it couldn't remove where it said nothing.
 
 ### Science
 

@@ -1,0 +1,16 @@
+a tree: ok missing
+gone: ok false
+a link to a folder: ok missing
+the link gone: ok true
+a file: ok missing
+a tree 200 deep: ok missing
+gone: ok false
+a file it can't remove: io: Can't remove out/locked/inner/l.txt: permission denied.
+nothing there: io: Can't remove out/nothing: no such file or directory.
+out of the folder: permission
+== outside holds
+outside
+outside/keep
+outside/keep/k.txt
+outside/k.txt
+exit 0

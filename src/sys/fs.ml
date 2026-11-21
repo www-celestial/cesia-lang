@@ -233,14 +233,82 @@ let walk path =
   let paths = Array.of_list (List.map (fun p -> Text p) (paths path)) in
   Array { rows = 1; cols = Array.length paths; store = V paths; a_owned = true; a_tip = true; dims = [||] }
 
-(* A folder and all it holds; a link goes, never what it points to. Errors are ignored: what stays, stays. *)
-let rec remove_tree path =
+external open_dir : int -> string -> int = "cesia_open_dir"
+external unlink_at : int -> string -> bool -> unit = "cesia_unlink_at"
+external names_at : int -> string list = "cesia_names"
+external fd_of : int -> Unix.file_descr = "%identity"
+
+(* A folder of the walk: its descriptor, -1 once closed; what it is, to know it again; its name in the one above; the
+   names it holds that are left. *)
+type level = { mutable fd : int; id : int * int; name : string; mutable left : string list }
+
+(* On Linux and macOS, by descriptors, never by paths made again: each folder is opened from the one above it, never
+   through a link (O_NOFOLLOW | O_DIRECTORY), its names read once, each removed from it. A link, or a file, swapped in
+   is removed itself; a folder swapped for one is never entered. It walks with a list, not by recursion, and keeps the
+   last 32 folders open: one above them is opened again from below by .., and must be the folder it left. [shown] names
+   what failed. *)
+let remove_walk path shown =
+  let id fd = let st = Unix.fstat (fd_of fd) in st.st_dev, st.st_ino in
+  let stack = ref [] in
+  let close l = if l.fd >= 0 then (Unix.close (fd_of l.fd); l.fd <- -1) in
+  let step extra f =
+    try f ()
+    with Unix.Unix_error (e, _, _) ->
+      let below = List.rev (List.filter_map (fun l -> if l.name = "" then None else Some l.name) !stack) in
+      List.iter close !stack;
+      raise (Unix.Unix_error (e, "remove", String.concat "/" ((shown :: below) @ extra)))
+  in
+  match step [] (fun () -> open_dir (-1) path) with
+  | exception Unix.Unix_error ((Unix.ENOTDIR | Unix.ELOOP | Unix.EMLINK), _, _) -> step [] (fun () -> unlink_at (-1) path false)
+  | top ->
+    let first = { fd = top; id = id top; name = ""; left = [] } in
+    stack := [ first ];
+    first.left <- step [] (fun () -> names_at top);
+    while !stack <> [] do
+      match !stack with
+      | [] -> ()
+      | l :: rest ->
+        match l.left, rest with
+        | name :: more, _ ->
+          l.left <- more;
+          (match open_dir l.fd name with
+           | exception Unix.Unix_error ((Unix.ENOTDIR | Unix.ELOOP | Unix.EMLINK), _, _) -> step [ name ] (fun () -> unlink_at l.fd name false)
+           | exception Unix.Unix_error (e, _, _) -> step [ name ] (fun () -> raise (Unix.Unix_error (e, "", "")))
+           | fd ->
+             let child = { fd; id = id fd; name; left = [] } in
+             stack := child :: !stack;
+             Option.iter close (List.nth_opt !stack 32);
+             child.left <- step [] (fun () -> names_at fd))
+        | [], [] -> close l; stack := []; step [] (fun () -> unlink_at (-1) path true)
+        | [], up :: _ ->
+          step [] (fun () ->
+              if up.fd < 0 then begin
+                let fd = open_dir l.fd ".." in
+                up.fd <- fd;
+                if id fd <> up.id then raise (Unix.Unix_error (Unix.EAGAIN, "", ""))
+              end;
+              unlink_at up.fd l.name true);
+          close l;
+          stack := rest
+    done
+
+(* Windows has no openat in OCaml: there the walk goes by paths, and enters a folder only if it is where its path leads,
+   so that a junction or a link to a folder, a reparse point that lstat may take for a folder, goes alone and is never
+   entered. A folder swapped for one between that check and the next step can still lead it out. *)
+let rec remove_paths path =
+  let real p = String.lowercase_ascii (Unix.realpath p) in
   match (Unix.lstat path).st_kind with
-  | Unix.S_DIR ->
-    (try Array.iter (fun n -> remove_tree (Filename.concat path n)) (Sys.readdir path) with Sys_error _ -> ());
-    (try Unix.rmdir path with Unix.Unix_error _ -> ())
-  | _ -> (try Unix.unlink path with Unix.Unix_error _ -> ())
-  | exception Unix.Unix_error _ -> ()
+  | Unix.S_DIR when real path = String.lowercase_ascii (Filename.concat (real (Filename.dirname path)) (Filename.basename path)) ->
+    Array.iter (fun n -> remove_paths (Filename.concat path n)) (Sys.readdir path);
+    Unix.rmdir path
+  | Unix.S_DIR -> Unix.rmdir path
+  | _ -> Unix.unlink path
+
+(* A folder and all it holds, as rm -r, a link never followed: one inside goes itself, and a path that is one goes alone.
+   The first failure raises Unix_error, with the path of what failed. *)
+let tree ?shown path = if Sys.win32 then remove_paths path else remove_walk path (Option.value shown ~default:path)
+
+let remove_tree path = tree path
 
 (* A link goes, never what it points to. *)
 let remove path =
@@ -306,6 +374,13 @@ let natives =
     on_path "List" Read "list" 1 (fun ctx path _ -> list_dir ctx path);
 
     on_path ~name:true "Remove" Write "remove" 1 (fun ctx path _ -> through ~name:true ctx Write path remove);
+    (* What failed deep inside is the path named. *)
+    "RemoveTree",
+    Native.nat ~result:true "RemoveTree" 1 1 (fun ctx a ->
+        let path = path_arg ~name:true ctx "RemoveTree" Write a.(0) in
+        match through ~name:true ctx Write path (tree ~shown:path) with
+        | () -> Value.ok ctx.w Missing
+        | exception Unix.Unix_error (e, _, at) -> failed ctx "remove" (if at = "" then path else at) e);
     on_path "Stat" Read "read" 1 (fun _ path _ ->
         let s = Unix.stat path in
         Trie.record stat_keys

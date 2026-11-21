@@ -1066,6 +1066,20 @@ use std/test
       sys.Remove(file) --> result.Ok(missing)
       sys.Exists(file) --> false *)
 
+(** sys.RemoveTree(path)
+    Deletes a folder and all it holds, as rm -r does, or a file: Ok(missing) or an Err that names the first file it
+    couldn't remove, what went before gone. It never follows a symbolic link: one inside the folder is deleted itself,
+    never what it points to, and a path that is one deletes the link alone. It walks by descriptors of the folders it
+    opens, never by paths made again, so that a folder that another program swaps for a link while it runs is never
+    entered: nothing out of the folder is touched. On Windows it walks by paths and never enters a link or a junction,
+    but a folder swapped in between can still lead it out. Needs the write permission on the path itself.
+
+      d = "$(test.Temp())/old"
+      sys.Mkdir("$(d)/photos/2026")
+      sys.Write("$(d)/photos/2026/a.jpg", "")
+      sys.RemoveTree(d) --> result.Ok(missing)
+      sys.Exists(d) --> false *)
+
 (** sys.Stat(path)
     A dictionary with Size (bytes), Modified (seconds since 1970), IsDir, IsFile, IsLink and Mode, in an Ok, or an Err.
     Mode holds the permission bits, as sys.Chmod takes them: 420 is 644 in octal, rw-r--r--. A symbolic link

@@ -38,18 +38,11 @@ defn walk(dir)
 end
 
 defn removeAll(path)
-  (** Deletes a file or a folder with all it holds. A link goes, never what it points to. *)
-  stat = sys.Stat(path)
-  link = sys.List(path)
-  if result.IsErr(stat) and result.IsErr(link) and not sys.Exists(path)
+  (** Deletes a file or a folder with all it holds, if it is there. A link goes, never what it points to. *)
+  if not sys.Exists(path) and result.IsErr(sys.ReadLink(path))
     return result.Ok(missing)
   end
-  if result.IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
-    for name in link?
-      removeAll("$path/$name")?
-    end
-  end
-  sys.Remove(path)
+  sys.RemoveTree(path)
 end
 
 defn quoted(s)

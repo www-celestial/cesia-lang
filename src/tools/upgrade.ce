@@ -161,14 +161,11 @@ defn shortCopy(home, ext, target)
 end
 
 defn removeAll(path)
-  (** Deletes a folder with all it holds; a link goes, never what it points to. *)
-  stat = sys.Stat(path)
-  if result.IsOk(stat) and stat.Value.IsDir and not stat.Value.IsLink
-    for name in sys.List(path)?
-      removeAll("$path/$name")?
-    end
+  (** Deletes a folder with all it holds, if it is there; a link goes, never what it points to. *)
+  if not sys.Exists(path) and result.IsErr(sys.ReadLink(path))
+    return result.Ok(missing)
   end
-  if sys.Exists(path) or result.IsOk(sys.List(path)) sys.Remove(path) else result.Ok(missing) end
+  sys.RemoveTree(path)
 end
 
 defn upgrade(args)
