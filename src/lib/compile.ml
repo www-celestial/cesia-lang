@@ -1260,23 +1260,28 @@ and index_arg c (ix : index) pos : ctx -> Arrays.ix =
       Arrays.ix_of ctx x
 
 and index_read c e b ixs uses_end =
-  let base = cv c b and s = site c e.pos in
+  (* The base and each index compiled once: compiled again, they doubled the time of each level of xs[1][1]... *)
+  let lb = leaf c b and s = site c e.pos in
+  let base = (match lb with `X f -> f | `L _ | `K _ -> cv c b) in
   let n = Array.length ixs in
   with_end c uses_end (fun slot ->
-      let saved = c.ends in
-      let args =
-        Array.mapi
-          (fun d ix ->
-             c.ends <- (slot, d, n) :: saved;
-             index_arg c ix e.pos)
-          ixs
+      let args () =
+        let saved = c.ends in
+        let args =
+          Array.mapi
+            (fun d ix ->
+               c.ends <- (slot, d, n) :: saved;
+               index_arg c ix e.pos)
+            ixs
+        in
+        c.ends <- saved;
+        args
       in
-      c.ends <- saved;
       let keep : ctx -> t -> unit =
         if slot < 0 then fun _ _ -> () else fun ctx x -> ctx.v.(ctx.b + slot) <- x
       in
-      match ixs, args with
-      | [| Ix { e = Ltext k; _ } |], _ when not uses_end ->
+      match ixs with
+      | [| Ix { e = Ltext k; _ } |] when not uses_end ->
         (* m["Name"] costs what m.Name costs. *)
         let cache = ref no_key and key = Text k in
         let h = Trie.hash key in
@@ -1292,7 +1297,7 @@ and index_read c e b ixs uses_end =
            | _ ->
              ctx.site <- s;
              Arrays.read1 ctx x (Arrays.Key key))
-      | [| Ix i |], _ when (not uses_end) && ty c i == TI ->
+      | [| Ix i |] when (not uses_end) && ty c i == TI ->
         let idx = ci c i in
         let[@inline] read (ctx : ctx) x k =
           match x with
@@ -1303,7 +1308,7 @@ and index_read c e b ixs uses_end =
             ctx.site <- s;
             Arrays.read1 ctx x (Arrays.At k)
         in
-        (match leaf c b with
+        (match lb with
          | `L slot ->
            fun ctx ->
              let k = idx ctx in
@@ -1312,7 +1317,7 @@ and index_read c e b ixs uses_end =
            fun ctx ->
              let x = base ctx in
              read ctx x (idx ctx))
-      | [| Ix { e = (Var _ | Lint _ | Bin _ | Call _ | Neg _ | Field _ | Index _ | Interp _); _ } as ix |], _ when not uses_end ->
+      | [| Ix { e = (Var _ | Lint _ | Bin _ | Call _ | Neg _ | Field _ | Index _ | Interp _); _ } as ix |] when not uses_end ->
         let v = (match ix with Ix i -> cv c i | All -> assert false) in
         fun ctx ->
           let x = base ctx in
@@ -1332,21 +1337,6 @@ and index_read c e b ixs uses_end =
            | _ ->
              ctx.site <- s;
              Arrays.read1 ctx x (Arrays.ix_of ctx i))
-      | _, [| a |] ->
-        fun ctx ->
-          let x = base ctx in
-          keep ctx x;
-          let i = a ctx in
-          ctx.site <- s;
-          Arrays.read1 ctx x i
-      | _, [| a; d |] ->
-        fun ctx ->
-          let x = base ctx in
-          keep ctx x;
-          let i = a ctx in
-          let j = d ctx in
-          ctx.site <- s;
-          Arrays.read2 ctx x i j
       | _ when (not uses_end) && whole_indexes c ixs ->
         let at, outside = nd_cell c ixs in
         fun ctx ->
@@ -1358,12 +1348,29 @@ and index_read c e b ixs uses_end =
              ctx.site <- s;
              Arrays.read ctx x (Array.map (fun k -> Arrays.At k) !outside))
       | _ ->
-        fun ctx ->
-          let x = base ctx in
-          keep ctx x;
-          let ixs = Array.map (fun a -> a ctx) args in
-          ctx.site <- s;
-          Arrays.read ctx x ixs)
+        (match args () with
+         | [| a |] ->
+           fun ctx ->
+             let x = base ctx in
+             keep ctx x;
+             let i = a ctx in
+             ctx.site <- s;
+             Arrays.read1 ctx x i
+         | [| a; d |] ->
+           fun ctx ->
+             let x = base ctx in
+             keep ctx x;
+             let i = a ctx in
+             let j = d ctx in
+             ctx.site <- s;
+             Arrays.read2 ctx x i j
+         | args ->
+           fun ctx ->
+             let x = base ctx in
+             keep ctx x;
+             let ixs = Array.map (fun a -> a ctx) args in
+             ctx.site <- s;
+             Arrays.read ctx x ixs))
 
 (* Indexes that are all integers, at least three. *)
 and whole_indexes c ixs = Array.length ixs >= 3 && Array.for_all (function Ix i -> ty c i == TI | All -> false) ixs
@@ -1707,10 +1714,12 @@ and binary c e op a b =
   let num = (match op with Add -> Some add_a | Sub -> Some sub_a | Mul -> Some mul_a | Div -> Some div_a | _ -> None) in
   match num, field_float c a, field_float c b with
   | Some slow, Some fa, _ when ty c a != TF && ty c a != TI ->
-    let general = binary_values c e op a b s in
+    (* Each operand compiled once: compiled again for the field that holds no float, [b] doubled the time of each level
+       of c.C0 + x * (c.C1 + x * (...)). The field is read again then, as [binary_values] would. *)
+    let x = cv c a in
     if ty c b == TF then begin
       let g = cf c b in
-      fun ctx -> (match field_get ctx fa with u -> Float (float_op op u (g ctx)) | exception Not_float -> general ctx)
+      fun ctx -> (match field_get ctx fa with u -> Float (float_op op u (g ctx)) | exception Not_float -> let p = x ctx in slow ctx s p (Float (g ctx)))
     end else begin
       let y = cv c b in
       fun ctx ->
@@ -1720,7 +1729,7 @@ and binary c e op a b =
            | Float w -> Float (float_op op u w)
            | Int w -> Float (float_op op u (float_of_int w))
            | q -> slow ctx s (Float u) q)
-        | exception Not_float -> general ctx
+        | exception Not_float -> let p = x ctx in slow ctx s p (y ctx)
     end
   | Some slow, None, Some fb when ty c b != TF && ty c b != TI ->
     let y = cv c b in

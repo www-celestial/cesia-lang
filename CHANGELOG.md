@@ -34,6 +34,9 @@
   from an inlined call, in an `if` that also held an empty `if`. A statement that doesn't become machine code now drops
   the blocks made for it with the rest of its code; and any bug of the JIT met while it makes code leaves that loop or
   function interpreted, so that it can never end a program again.
+- A nested expression loads in a time that grows with its size: each operand is compiled once. Horner's rule over a
+  struct's fields, `c.C0 + x * (c.C1 + x * (...))`, and a chain of indexes, `xs[1][1]...`, compiled an operand twice
+  at each level, so that a degree of 20 took 16 s to load and one of 25 never ended.
 
 ## 1.2.0
 
