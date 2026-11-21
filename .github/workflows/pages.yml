@@ -30,10 +30,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
-      - uses: ocaml/setup-ocaml@v3
+      - uses: ocaml/setup-ocaml@ff66428f72b64472e749b22e0ad4dded4b2ddca6 # v3
         with:
           ocaml-compiler: "5.5"
       # SQLite for the chapters on it, and the libraries the reference's own examples load.
@@ -59,7 +59,7 @@ jobs:
       # Python 3 with numpy, scipy, pandas and matplotlib at the versions the book was checked with, R, and GNU Octave for
       # MATLAB. Each tab runs capped and with no network, in a namespace of its own, which Ubuntu's AppArmor refuses to a
       # user unless told otherwise. With CI set, a tab that can't run fails the build.
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.14"
       - name: The languages of the tabs
@@ -74,7 +74,7 @@ jobs:
       # What the build keeps for itself: what lets the next build skip a page that didn't change, and the tabs it checked.
       - name: Only the pages
         run: rm -rf _site/.pages _site/.reference _site/.book _site/.tabs
-      - uses: actions/upload-pages-artifact@v5
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5
         with:
           path: _site
 
@@ -90,4 +90,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
