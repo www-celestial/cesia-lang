@@ -37,7 +37,7 @@ defn isSameAsTheRules()
   ok = true
   for run in 1..200
     rows = [[cell() for c in 1..random.Int(0, 5)] for r in 1..random.Int(0, 4)]
-    for separator in [",", ";", "::", ""]
+    for separator in [",", ";", "\t", "|"]
       ok = ok and csv.Text(rows, separator = separator) == written(rows, separator)
     end
   end

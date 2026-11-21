@@ -146,6 +146,17 @@ defn isCsvColumnsAreTyped()
 end
 
 isCsvParse() = value.Equal(csv.Parse("a,\"b,c\"\r\n\"d\"\"e\",f"), [["a", "b,c"], ["d\"e", "f"]])
+(* A quote inside a field that doesn't start with one is a quote, as Python's csv reads it: it opened a quoted field that
+   swallowed the rest of the text. *)
+isCsvQuoteInsideAField() = value.Equal(csv.Parse("item,count\n12\" pipe,3\nbolt,5\n"), [["item", "count"], ["12\" pipe", "3"], ["bolt", "5"]]) and value.Equal(csv.Parse("\"a\"b\"c\",d\n"), [["ab\"c\"", "d"]])
+(* A quoted field that never closes is an Err, from Parse, Records, columns.ReadCsv and frame.FromCsv. *)
+defn isCsvOpenQuoteIsAnErr()
+  bad = "a,b\n1,\"2\n3,4\n"
+  e = csv.Parse(bad)
+  result.IsErr(e) and e.Error.Kind == "csv" and text.Contains("line 2", e.Error.Message) and result.IsErr(csv.Records(bad)) and result.IsErr(columns.ReadCsv(bad, ",")) and result.IsErr(frame.FromCsv(bad))
+end
+(* A separator is one byte: a longer one was ignored by Parse, and none made Text write a field that read back as one. *)
+isCsvSeparatorIsOneByte() = fails(() -> csv.Parse("a::b\n", separator = "::"), "type") and fails(() -> csv.Text([["a", "b"]], separator = ""), "type") and fails(() -> columns.ReadCsv("a\n", "ab"), "type")
 isCsvParseEmpty() = value.Equal(csv.Parse(""), []) and value.Equal(csv.Parse("\n"), [[""]])
 
 defn isGroupBy()

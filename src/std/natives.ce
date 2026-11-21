@@ -912,12 +912,12 @@ use std/test
       columns.Present([1, missing, 2]) --> [1, 2] *)
 
 (** columns.Csv(s, separator)
-    The rows of CSV text (RFC 4180, quotes allowed) as lists of texts. The separator is one character.
+    The rows of CSV text (RFC 4180, quotes allowed) as lists of texts, or an Err of the kind "csv" when a quoted field never closes. A quote inside a field that doesn't start with one is a quote. The separator is one byte, or a type error.
 
       columns.Csv("a,b\n1,2\n", ",") --> [["a", "b"], ["1", "2"]] *)
 
 (** columns.ReadCsv(s, separator)
-    CSV text with a header row, as a struct with Names and Columns. An empty cell is missing, and a cell that reads as a number is one.
+    CSV text with a header row, as a struct with Names and Columns. An empty cell is missing, and a cell that reads as a number is one. An Err as columns.Csv gives.
 
       columns.ReadCsv("a\n1\n", ",").Columns --> [[1]] *)
 

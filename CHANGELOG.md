@@ -70,6 +70,11 @@
   callbacks under a limit of 30 MB took 292 MB of C memory.
 - Under the JIT, an index error of a small list of floats read at a constant index names that index, not its double:
   `Index 6 is outside this array of 2 elements`, where it said `Index 12`.
+- `csv.Parse` reads a quote inside a field that doesn't start with one as a quote, as Python's csv does: `12" pipe,3` is
+  the fields `12" pipe` and `3`, where it opened a quoted field that swallowed the rest of the text. A quoted field that
+  never closes is an Err of the kind `"csv"`, from `csv.Parse`, `csv.Records`, `columns.ReadCsv` and `frame.FromCsv`. A
+  separator is one byte, in Parse and Text, or a type error: `"::"` was ignored by Parse, and `""` made Text write a field
+  that read back as another.
 
 ## 1.2.0
 

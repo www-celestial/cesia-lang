@@ -439,6 +439,8 @@ let near_tolerance name v = plain (Printf.sprintf "Near needs %s to be a number 
 let listen_denied target port =
   hinted (Printf.sprintf "Permission \"net\" denied for listening on %s, which other machines can reach." target)
     (Printf.sprintf "Run again with --allow net=%s; net=:%d listens on this machine only." target port)
+let csv_separator s = plain (Printf.sprintf "A CSV separator is one byte, as \",\" or \";\", not %S." s)
+let csv_open line = plain (Printf.sprintf "A quoted field opened on line %d is never closed." line)
 let rows_same_key a b key =
   plain (Printf.sprintf "The columns %s and %s both give the key %s: rename one with as." a b key)
 let rows_cells cells names = plain (Printf.sprintf "%d cells don't make whole rows of %d names." cells names)

@@ -461,6 +461,11 @@ val workers_windows : string
 val bad_char : string -> t
 val need_size : string -> string -> t
 val deadlock : t
+(** A CSV separator that isn't one byte. *)
+val csv_separator : string -> t
+
+(** CSV whose quoted field, opened on that line, never closes. *)
+val csv_open : int -> t
 val rows_same_key : string -> string -> string -> t
 val rows_cells : int -> int -> t
 val sql_zero_byte : string -> t

@@ -447,17 +447,28 @@ let present ctx (a : t array) =
     Runtime.build ctx (Array.length d);
     Arrays.list (Array.of_seq (Seq.filter_map (fun v -> if is_missing v then None else Some (Value.share v)) (Array.to_seq d)))
 
-(* RFC 4180: quotes around a field, doubled inside. Gives the rows as arrays of fields. *)
+(* A separator is one byte: a longer one, or none, was ignored by Parse and written by Text, which then read back other. *)
+let separator_arg ctx name v =
+  let s = Native.text_arg ctx name v in
+  if String.length s <> 1 then Runtime.fail ctx Type (Messages.csv_separator s);
+  s.[0]
+
+(* RFC 4180: quotes around a field, doubled inside. Gives the rows as arrays of fields, or the line where a quoted field
+   opens that never closes, which swallowed the rest of the text. A quote inside a field that doesn't start with one is
+   a quote, as Python's csv reads it: the inch mark of a pipe of 12 inches. *)
 let csv_rows ctx s separator =
   Runtime.pay_bytes ctx (String.length s);
   Runtime.build ctx ((String.length s / 8) + 1);
   let n = String.length s in
-  let sep = if String.length separator = 1 then Char.code separator.[0] else -1 in
+  let sep = Char.code separator in
   let special c = c = '"' || c = '\n' || c = '\r' || Char.code c = sep in
   let rows = Vec.create () and row = Vec.create () and field = Buffer.create 64 in
+  (* At the start of a field, where a quote opens a quoted one; and the line of the last one opened. *)
+  let fresh = ref true and line = ref 1 and opened = ref 0 in
   let end_field () =
     Vec.add_last row (Buffer.contents field);
-    Buffer.clear field
+    Buffer.clear field;
+    fresh := true
   in
   let end_row () =
     end_field ();
@@ -471,6 +482,7 @@ let csv_rows ctx s separator =
       if c <> '"' then begin
         let stop = Option.value (String.index_from_opt s !i '"') ~default:n in
         Buffer.add_substring field s !i (stop - !i);
+        for k = !i to stop - 1 do if s.[k] = '\n' then incr line done;
         i := stop
       end
       else if !i + 1 < n && s.[!i + 1] = '"' then begin
@@ -482,8 +494,10 @@ let csv_rows ctx s separator =
         incr i
       end
     end
-    else if c = '"' then begin
+    else if c = '"' && !fresh then begin
       quoted := true;
+      fresh := false;
+      opened := !line;
       incr i
     end
     else if Char.code c = sep then begin
@@ -493,16 +507,22 @@ let csv_rows ctx s separator =
     else if c = '\n' || c = '\r' then begin
       if c = '\r' && !i + 1 < n && s.[!i + 1] = '\n' then incr i;
       end_row ();
+      incr line;
       incr i
     end
     else begin
       let start = !i in
+      incr i;
       while !i < n && not (special s.[!i]) do incr i done;
-      Buffer.add_substring field s start (!i - start)
+      Buffer.add_substring field s start (!i - start);
+      fresh := false
     end
   done;
-  if Buffer.length field > 0 || Vec.length row > 0 then end_row ();
-  Vec.to_array rows
+  if !quoted then Error !opened
+  else begin
+    if Buffer.length field > 0 || Vec.length row > 0 then end_row ();
+    Ok (Vec.to_array rows)
+  end
 
 let texts row = Arrays.list (Array.map (fun s -> Text s) row)
 
@@ -510,7 +530,7 @@ let texts row = Arrays.list (Array.map (fun s -> Text s) row)
    holds the separator, a quote or a line end, its quotes doubled (RFC 4180), and a line end after each row, as after
    none when there is no row. Missing when rows or a row isn't an array: std/csv writes those itself. *)
 let csv_text ctx (a : t array) =
-  let separator = Native.text_arg ctx "Text" a.(1) in
+  let separator = String.make 1 (separator_arg ctx "Text" a.(1)) in
   let holds s =
     let m = String.length separator and n = String.length s in
     let rec at i k = k = m || (s.[i + k] = separator.[k] && at i (k + 1)) in
@@ -551,13 +571,17 @@ let csv_text ctx (a : t array) =
   | _ -> Missing
 
 let csv ctx (a : t array) =
-  let s = Native.text_arg ctx "Csv" a.(0) and separator = Native.text_arg ctx "Csv" a.(1) in
-  Arrays.list (Array.map texts (csv_rows ctx s separator))
+  let s = Native.text_arg ctx "Csv" a.(0) and separator = separator_arg ctx "Csv" a.(1) in
+  match csv_rows ctx s separator with
+  | Ok rows -> Arrays.list (Array.map texts rows)
+  | Error line -> Value.failure ctx.w "csv" (Messages.csv_open line).text
 
 (* ReadCsv(s, separator): {Names, Columns}. An empty cell is missing, and a column of numbers takes its typed storage. *)
 let read_csv ctx (a : t array) =
-  let s = Native.text_arg ctx "ReadCsv" a.(0) and separator = Native.text_arg ctx "ReadCsv" a.(1) in
-  let rows = csv_rows ctx s separator in
+  let s = Native.text_arg ctx "ReadCsv" a.(0) and separator = separator_arg ctx "ReadCsv" a.(1) in
+  match csv_rows ctx s separator with
+  | Error line -> Value.failure ctx.w "csv" (Messages.csv_open line).text
+  | Ok rows ->
   let names = if Array.length rows = 0 then [||] else rows.(0) in
   let body = max 0 (Array.length rows - 1) in
   let cell k row =
