@@ -105,6 +105,7 @@ print(12 | 10)
 print(12 ^ 10)
 print(1 << 4)
 print(16 >> 2)
+print(-8 >> 1)
 ```
 
 ```r
@@ -113,6 +114,7 @@ print(bitwOr(12L, 10L))
 print(bitwXor(12L, 10L))
 print(bitwShiftL(1L, 4L))
 print(bitwShiftR(16L, 2L))
+print(-8L %/% 2L)
 ```
 
 ```matlab
@@ -121,6 +123,7 @@ disp(bitor(12, 10))
 disp(bitxor(12, 10))
 disp(bitshift(1, 4))
 disp(bitshift(16, -2))
+disp(floor(-8 / 2))
 ```
 
 ## Arrays et statistiques : std/num
