@@ -986,8 +986,9 @@ the whole minor heap, as OCaml does so that the major heap points to no young bl
 words of trees and code to the major heap, then a major cycle, 2.2 ms of its 6.9 in the process. Now it makes no
 collection at all: its 460,000 words fit in the minor heap, and the program ends before it is full.
 
-The memory limit, 80% of the machine's memory unless `--limit memory=` says otherwise, is checked at full checkpoints and
-before each large allocation. When the heap seems past it, Cesia runs a full collection first, and stops the program only
+The memory limit, 80% of the machine's memory unless `--limit memory=` says otherwise, is checked at full checkpoints,
+before each large allocation, and at each megabyte of a text that values are written into, as by `value.Text`,
+`io.Print` or `json.Text`. When the heap seems past it, Cesia runs a full collection first, and stops the program only
 if the memory still in use is past the limit: garbage alone never reaches it.
 
 The work on whole arrays and columns of [std/num], [std/frame] and [std/sql] runs on several cores, through OCaml 5's

@@ -533,19 +533,23 @@ let csv_text ctx (a : t array) =
       end
       else Buffer.add_string b s
     in
+    let next = ref Value.reserve_every in
     for i = 0 to (r.rows * r.cols) - 1 do
       (match Value.elt r i with
        | Array row ->
          for j = 0 to (row.rows * row.cols) - 1 do
            if j > 0 then Buffer.add_string b separator;
-           field (Value.elt row j)
+           field (Value.elt row j);
+           if Buffer.length b >= !next then next := Value.grown ctx b !next
          done
        | _ -> ());
       Buffer.add_char b '\n';
       Runtime.pay_bytes ctx 64
     done;
     if r.rows * r.cols = 0 then Buffer.add_char b '\n';
-    Runtime.build ctx ((Buffer.length b / 8) + 1);
+    (* The steps of the whole text, and the memory of what [grown] didn't reserve yet. *)
+    Runtime.pay ctx ((Buffer.length b / 8) + 1);
+    Runtime.reserve ctx (((Buffer.length b - !next + Value.reserve_every) / 8) + 1);
     Text (Buffer.contents b)
   | _ -> Missing
 

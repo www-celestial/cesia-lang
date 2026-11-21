@@ -1,0 +1,21 @@
+(** A text that writes values reserves its memory as it grows: a list of 4,000 times one text of 10 KB costs little
+    memory, its text 40 MB, past a limit of 16 MB, whether value.Text, an interpolation, io.Print, json.Text or csv.Text
+    writes it. *)
+use std/csv
+use std/io
+use std/json
+use std/list
+use std/sys
+use std/text
+use std/value
+
+s = text.Repeat(10000, "a")
+xs = list.Fill(s, 4000)
+r = match sys.Args[1]
+  "value" -> value.Len(value.Text(xs))
+  "interpolation" -> value.Len("$xs")
+  "print" -> io.Print(xs)
+  "json" -> value.Len(json.Text(xs))
+  _ -> value.Len(csv.Text(list.Fill(xs[1..10], 400)))
+end
+io.Print(r)

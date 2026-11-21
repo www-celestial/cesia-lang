@@ -317,8 +317,10 @@ let write ctx ~pretty v =
     Buffer.add_char b closing
   in
   let bad x = Runtime.fail ctx Type (Messages.json_value (Value.describe x)) in
+  let next = ref Value.reserve_every in
   let rec go depth x =
     if depth > max_depth then bad x;
+    if Buffer.length b >= !next then next := Value.grown ctx b !next;
     match x with
     | Missing -> Buffer.add_string b "null"
     | True -> Buffer.add_string b "true"

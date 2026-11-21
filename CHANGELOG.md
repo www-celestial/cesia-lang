@@ -37,6 +37,9 @@
 - A nested expression loads in a time that grows with its size: each operand is compiled once. Horner's rule over a
   struct's fields, `c.C0 + x * (c.C1 + x * (...))`, and a chain of indexes, `xs[1][1]...`, compiled an operand twice
   at each level, so that a degree of 20 took 16 s to load and one of 25 never ended.
+- `--limit memory` holds while values are written as a text: `value.Text`, an interpolation, `io.Print`, `json.Text`,
+  `json.Pretty` and `csv.Text` reserve the bytes of their text each time it grows by a megabyte. A list of 100,000
+  times one text of 10 KB, which costs little memory, made a text of 1 GB past any limit.
 
 ## 1.2.0
 

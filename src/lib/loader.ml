@@ -1,5 +1,8 @@
 open Types
 
+(* A text that [Value] builds reserves its memory as [Runtime] does. *)
+let () = Value.reserve := Runtime.reserve
+
 let loaded = ref 0
 
 let register_file w path src =
