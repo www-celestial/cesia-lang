@@ -43,6 +43,8 @@ let words = List.map fst keywords @ [ "it"; "as"; "_"; "?"; ".."; "!"; "do" ]
 type st = {
   src : string;
   file : string;
+  nesting : int;  (* the most texts nested in the code of texts *)
+  mutable depth : int;  (* the texts being read *)
   mutable i : int;
   mutable line : int;
   mutable line_start : int;
@@ -321,6 +323,9 @@ let rec scan st ~in_code : token array =
 
 and text st start_pos =
   let s = st.src and n = String.length st.src in
+  (* Each level made its tokens and buffers before the parser counted it: a deep one is refused here first. *)
+  st.depth <- st.depth + 1;
+  if st.depth > st.nesting then error st start_pos Messages.too_nested;
   st.i <- st.i + 1;
   let parts = ref [] in
   let run = Buffer.create 16 in
@@ -364,6 +369,7 @@ and text st start_pos =
       if c = '\n' then new_line st
   done;
   flush ();
+  st.depth <- st.depth - 1;
   match List.rev !parts with [] -> [ Plain "" ] | l -> l
 
 (* A token array of more than 256 places is made in the major heap, and the young tokens it points to stay roots of the next
@@ -372,9 +378,9 @@ and text st start_pos =
    with is filled with the old filler instead, so that its tokens die young; scan does so with the arrays it outgrows. *)
 let release (toks : token array) = Array.fill toks 0 (Array.length toks) filler
 
-let tokens ~file src =
+let tokens ~file ~nesting src =
   if not (String.is_valid_utf_8 src) then
     raise (Load_error { file; pos = Pos.make 1 1; kind = "syntax"; text = Messages.invalid_utf8.text; hint = None });
   let start = if String.starts_with ~prefix:"\xef\xbb\xbf" src then 3 else 0 in
-  let st = { src; file; i = start; line = 1; line_start = start; seen_i = start; seen_col = 1 } in
+  let st = { src; file; nesting; depth = 0; i = start; line = 1; line_start = start; seen_i = start; seen_col = 1 } in
   scan st ~in_code:false

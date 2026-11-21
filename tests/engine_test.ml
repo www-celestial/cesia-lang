@@ -16,7 +16,7 @@ let check name ok =
 let () =
   let src = String.concat " " (List.init 2000 (fun i -> "x" ^ string_of_int i)) in
   let before = (Gc.quick_stat ()).minor_collections in
-  let toks = Lexer.tokens ~file:"t.ce" src in
+  let toks = Lexer.tokens ~file:"t.ce" ~nesting:600 src in
   check "a file of 2000 tokens is read without a minor collection"
     ((Gc.quick_stat ()).minor_collections = before && Array.length toks > 2000);
   (match Embedded.file "list", Embedded.file "list" with
@@ -417,7 +417,7 @@ let () =
     "use std/list\nuse std/value\nuse std/test\nf(x) = x\nisA() = f(1) == 2 and list.All([f(2) > 1, not value.Equal(f([1]), [f(3)])])\n\
      defn isB()\n  x = f(2)?\n  if x > 1\n    return f(x)[1] == x\n  end\n  test.ForAll(y -> f(y) + it.K == y, list.Map(it + 1, [1]))\nend\n"
   in
-  let fn = Parser.program ~file:"a.test.ce" ~nesting:100 (Lexer.tokens ~file:"a.test.ce" src) in
+  let fn = Parser.program ~file:"a.test.ce" ~nesting:100 (Lexer.tokens ~file:"a.test.ce" ~nesting:100 src) in
   let notes = Cesia_testing.Verdict.rewrite fn in
   let ok = ref true in
   let rec func (f : Ast.func) =

@@ -219,7 +219,7 @@ let homes = [ "io"; "result"; "bug"; "list"; "matrix"; "text"; "dict"; "math"; "
 
 (* Does a source define this name? Read only for a message, so the cost is paid on an error. *)
 let defines path src name =
-  match Parser.program ~hooks:false ~file:path ~nesting:max_int (Lexer.tokens ~file:path src) with
+  match Parser.program ~hooks:false ~file:path ~nesting:max_int (Lexer.tokens ~file:path ~nesting:max_int src) with
   | fn -> List.exists (fun (text, _, _, _) -> String.equal text name) (Resolve.definitions fn)
   | exception Pos.Load_error _ -> false
 
@@ -295,7 +295,7 @@ let load_uses w ~use uses =
 (* Lexes and parses a source, which [file] says is already registered, then loads its uses. *)
 let parse ?(rewrite = ignore) ?file w ~hooks ~path ~src ~use =
   let file = match file with Some file -> file | None -> register_file w path src in
-  let toks = Lexer.tokens ~file:path src in
+  let toks = Lexer.tokens ~file:path ~nesting:w.limits.nesting src in
   let fn = Parser.program ~hooks ~file:path ~nesting:w.limits.nesting toks in
   rewrite fn;
   check_uses path fn;

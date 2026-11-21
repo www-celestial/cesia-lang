@@ -10,7 +10,7 @@ let get v name = Trie.find v (Trie.hash (Text name)) (Text name)
 let use_line (alias, path) =
   if String.equal (Filename.basename path) alias then "use " ^ path ^ "\n" else "use " ^ path ^ " as " ^ alias ^ "\n"
 
-let parsed path src = Parser.program ~file:path ~nesting:max_int (Lexer.tokens ~file:path src)
+let parsed path src = Parser.program ~file:path ~nesting:max_int (Lexer.tokens ~file:path ~nesting:max_int src)
 
 (* The uses of a source, as aliases and paths; none when it doesn't parse, as its error comes later. *)
 let uses_in path src =
@@ -139,7 +139,7 @@ let replace_functions w ~target ~file (layout : Ast.layout) =
 
 (* The aliases that a dot follows in the code, as io in io.Print: the uses that a cell needs from the cells above. *)
 let dotted code =
-  match Lexer.tokens ~file:prompt_path code with
+  match Lexer.tokens ~file:prompt_path ~nesting:Runtime.default_limits.nesting code with
   | exception Pos.Load_error _ -> []
   | toks ->
     let out = ref [] in
@@ -475,7 +475,7 @@ let reload ctx _ =
 let complete ctx (a : t array) =
   let code = Native.text_arg ctx "IsComplete" a.(0) in
   Value.of_bool
-    (match Lexer.tokens ~file:prompt_path code with
+    (match Lexer.tokens ~file:prompt_path ~nesting:ctx.w.limits.nesting code with
      | exception Pos.Load_error _ -> true
      | toks ->
        let fin = toks.(Array.length toks - 1).pos in

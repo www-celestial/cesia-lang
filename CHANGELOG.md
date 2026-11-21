@@ -45,6 +45,8 @@
   integer was rounded to a float first, which past 2^53 made it equal to its neighbours: a map merged them or lost one,
   and `list.Unique` kept two or one of the same three numbers by their order. An integer and a float it is exactly, as
   `9007199254740992` and `9007199254740992.0`, are one key as before.
+- A text in the code of a text, nested past the limit of nesting, is refused as the lexer reads it, as the parser
+  refused it after: a file of 5 MB of `"$("$(...)")"` took 735 MB before the message, and one of 15 MB was killed first.
 
 ## 1.2.0
 
