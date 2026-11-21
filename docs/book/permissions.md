@@ -37,7 +37,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `net=0.0.0.0:8080`, `net=[::]:8080` | listening on one port for other machines too, on every address or on one |
 | `net=example.com`, `net=example.com:443` | connecting to one host, on any port or on one |
 | `net=own` | listening on this machine, and connecting only to the program's own listeners while they are open, by address or `localhost`, with no name looked up: what a test gets |
-| `exec`, `exec=git` | running other programs, all of them or one |
+| `exec`, `exec=git` | running other programs, all of them or one, with any arguments: what it runs has all its own powers, see below |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
 | `ffi=m`, `ffi=build/libdemo.so` | loading a C library, by its name or by the exact path of its file |
 | `native=cepheus` | running the engine of a [native package](native.md), by the label of its `[deps]` in `cesia.toml`: total trust, as `ffi=` |
@@ -88,6 +88,12 @@ A C library, called through the [foreign function interface](glossary.md#foreign
 Cesia's checks: it can read any file, open any connection, and break the memory of the program.
 `ffi=NAME` gives a program everything for that library, so give it only to libraries you trust, as the ones Cesia's own
 modules use. `native=LABEL` is the same trust, for the OCaml engine of a [native package](native.md).
+
+`exec=PROGRAM` is a trust of the same kind. Cesia checks the name of the program it starts, never what that program does:
+it runs with every power of the person, with the arguments the program gives it, outside `read=`, `write=` and `net=`.
+`exec=git` lets a program run `git` with any arguments, `-c` options too; `exec=firefox` or another browser lets it open
+any file, write anywhere through the browser's own options and reach any host; `exec=sh`, `exec=bash`, `exec=python3` and
+`exec=cesia` run any code at all. Give `exec=` only for a program you would let do what the whole program may not.
 
 ## A task keeps its permissions
 

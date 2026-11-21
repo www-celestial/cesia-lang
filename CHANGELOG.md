@@ -67,6 +67,8 @@
   allowed to read its own folder read any file of the person who built the site; at a `source` of `[site]` that is no
   `https://` or `http://` address, as `javascript:`, put in the link of each page; and at a link under `docs/`, `std/`
   or the sources that leads nowhere, with its name, where it stopped with an internal error.
+- The chapter on permissions says plainly that `exec=PROGRAM` gives that program all its own powers, with any arguments,
+  as `ffi=` does: a browser, a shell or `cesia` itself is total trust.
 - `sys.Link` needs the write permission on its target, as well as the read one: a hard link is the same file under a
   second name, and a program allowed to read `readable/` only, with `write=out`, could link a file of `readable/` into
   `out/` and write, change the mode or the time of the original through it; in `cesia test`, a test could rewrite the
