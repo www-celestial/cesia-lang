@@ -84,7 +84,8 @@ disp(mod(-7, 3))
 ### Bits
 
 [math.BitAnd], [math.BitOr], [math.BitXor] and [math.BitNot] work on the bits of integers, and [math.BitShift] moves them
-left for a positive count, right for a negative one:
+left for a positive count, right for a negative one. A right shift keeps the sign, as in Python and Go; a left shift works
+on the 63 bits of an integer, and the bits shifted past them are lost:
 
 ```cesia
 math.BitAnd(12, 10) -->
@@ -92,6 +93,7 @@ math.BitOr(12, 10) -->
 math.BitXor(12, 10) -->
 math.BitShift(1, 4) -->
 math.BitShift(16, -2) -->
+math.BitShift(-8, -1) -->
 ```
 
 ```python
