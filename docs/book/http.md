@@ -347,8 +347,10 @@ opens the `http://` page. [live.Route] checks its WebSockets the same way.
 A *WebSocket*, RFC 6455, is a connection that stays open after an HTTP request and carries messages both ways, for a chat
 or a live page. [http.Websocket] adds a route of one: `onMessage(text, send)` runs for each message, and `send(text)`
 answers. The handshake, the *upgrade* of the request, gives the status `101`; [std/websocket] does the rest, with
-[websocket.Accept], a silent connection closed after [websocket.DefaultIdle] seconds, and a frame larger than
-[websocket.MaxFrame] refused:
+[websocket.Accept], a silent connection closed after [websocket.DefaultIdle] seconds, a frame larger than
+[websocket.MaxFrame] refused, a text or the reason of a close that isn't UTF-8 closed with 1007, and a close whose code
+RFC 6455 §7.4 refuses, or of one byte, closed with 1002. A frame that comes in pieces is read into one buffer, joined
+once:
 
 ```cesia
 chat = http.Handler(http.App() then http.Websocket("/chat", (m, send) -> send(m)))
@@ -412,7 +414,7 @@ What the client does for RFC 6455, so that a program never has to:
   a masked frame from the server, a reserved bit or opcode (the number of the kind of frame), or a control frame past
   125 bytes (§5.1, §5.2, §5.5); 1007 for a text that isn't UTF-8 (§8.1); 1009 for a message past `maxMessage` bytes,
   [websocket.DefaultMaxMessage] (64 MiB) unless `Dial` says otherwise, refused from the header of its frame, before its
-  bytes are read (§10.4). [websocket.Close] then gives the code, as `1009: message too big`.
+  bytes are read (§10.4), each fragment counted 64 bytes more than it holds, so that empty ones can't fill the memory. [websocket.Close] then gives the code, as `1009: message too big`.
 - [websocket.Close] sends the code 1000, a normal close, and waits at most a second for the close of the server and for
   the server to close the TCP connection first (§7.1.1); then it closes by itself.
 
@@ -620,7 +622,10 @@ net.Read(peer) -->
 
 [http.Fetch] sends a request, a `GET` unless `method` says otherwise, with a `body` and `headers` if you give them. It
 gives an `Ok` of the response, with its `Status`, its `Headers` and its `Body`, or an `Err` when the server can't be
-reached. A `404` is a response, not an error: look at `Status`.
+reached. A `404` is a response, not an error: look at `Status`. A server that sends nothing for `timeout` seconds, 300
+unless you say otherwise, gives an `Err` of the kind `"timeout"`: the time runs between two reads, so a long download
+goes on as long as its bytes come. The head of a response holds at most 16 KiB, and `maxBody`, if you give it, bounds
+its body in bytes: a server can't fill the memory of the program.
 
 ```cesia allow=net
 http.Fetch("http://127.0.0.1:1/") -->

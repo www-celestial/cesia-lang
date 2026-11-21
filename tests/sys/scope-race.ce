@@ -1,0 +1,23 @@
+(* read= and write= hold while another process swaps a folder of the path for a link that leads out: each act is checked
+   again where the system opened its file or its folder. A denial is caught, so that the run goes on. *)
+use std/sys
+use std/io
+use std/fiber
+use std/result
+
+defn try(f)
+  fiber.Wait(fiber.Spawn(f))
+end
+
+leaked = 0
+for i in 1..3000
+  try(() -> sys.Write("out/d/f.txt", "escaped\n"))
+  try(() -> sys.Append("out/d/g.txt", "escaped\n"))
+  try(() -> sys.Chmod("out/d/secret.txt", 511))
+  try(() -> sys.Symlink("planted", "out/d/l"))
+  match try(() -> sys.Read("out/d/secret.txt"))
+    result.Ok(result.Ok(t)) -> if t == "secret\n" leaked = leaked + 1 end
+    _ -> missing
+  end
+end
+io.Print("the secret read: $(leaked > 0)")

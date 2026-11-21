@@ -1,0 +1,8 @@
+silent: Err("timeout: The server sent nothing for 0.2 seconds.")
+in its time: true
+endless head: Err("http: The head of this response is longer than 16384 bytes.")
+a byte at a time: Ok("ok")
+too long by its length: Err("http: The body of this response is longer than maxBody, 100 bytes.")
+too long to its end: Err("http: The body of this response is longer than maxBody, 100 bytes.")
+as long as asked: 1000
+exit 0

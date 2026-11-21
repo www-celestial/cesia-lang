@@ -37,7 +37,7 @@ cesia run --allow net=:8080,env=HOME server.ce
 | `net=0.0.0.0:8080`, `net=[::]:8080` | listening on one port for other machines too, on every address or on one |
 | `net=example.com`, `net=example.com:443` | connecting to one host, on any port or on one |
 | `net=own` | listening on this machine, and connecting only to the program's own listeners while they are open, by address or `localhost`, with no name looked up: what a test gets |
-| `exec`, `exec=git` | running other programs, all of them or one |
+| `exec`, `exec=git` | running other programs, all of them or one, with any arguments: what it runs has all its own powers, see below |
 | `env`, `env=HOME` | reading environment variables, all of them or one |
 | `ffi=m`, `ffi=build/libdemo.so` | loading a C library, by its name or by the exact path of its file |
 | `native=cepheus` | running the engine of a [native package](native.md), by the label of its `[deps]` in `cesia.toml`: total trust, as `ffi=` |
@@ -63,6 +63,20 @@ A permission after `=` is as narrow as you can make it. Give that one, by the
 [principle of least privilege](glossary.md#principle-of-least-privilege): a program that reads its data from `./data` needs
 `read=./data`, not `read`. Reading outside the folder is denied as if nothing had been given. A folder holds a path by where
 it leads, its links followed: a link in `./data` that points outside it is denied too, as is writing a new file through one.
+A folder written from the root holds the same files as the folder written from the current one: `read=/home/me/data` and
+`read=data`, run from `/home/me`, allow the same reads.
+
+An act on a [symbolic link](glossary.md#hard-and-symbolic-links) itself, [sys.ReadLink], [sys.Remove] or [sys.Rename],
+checks where the link is, not where it points: a program can clean up a link of its folder that points out of it. A
+[hard link](glossary.md#hard-and-symbolic-links) is not a path that leads somewhere: it is the same file under a second
+name, and every write through it writes that file. So [sys.Link] needs the write permission on its target as well as on the
+new name, and a program allowed to read a file can't make itself a name of it that it may write.
+
+Another program of the machine can swap a folder of a path for a link between the check and the act: someone else who may
+write the folder, or the program's own workers. On Linux, under a folder of `read=` or `write=`, the act is checked a second
+time where the system holds the file or the folder it opened, and done through that open one, so the swap can't lead it out;
+a file is emptied only once it is seen inside. On macOS and Windows the act is on the path as it was checked: there, give a
+folder that no one else may write.
 
 Permissions say what the program may touch; the other people of the machine are kept out by the modes of the files. What
 holds a secret, keys or a session, is written with `private = true`, which [sys.Write] and [sys.Mkdir] take: the file or
@@ -74,6 +88,12 @@ A C library, called through the [foreign function interface](glossary.md#foreign
 Cesia's checks: it can read any file, open any connection, and break the memory of the program.
 `ffi=NAME` gives a program everything for that library, so give it only to libraries you trust, as the ones Cesia's own
 modules use. `native=LABEL` is the same trust, for the OCaml engine of a [native package](native.md).
+
+`exec=PROGRAM` is a trust of the same kind. Cesia checks the name of the program it starts, never what that program does:
+it runs with every power of the person, with the arguments the program gives it, outside `read=`, `write=` and `net=`.
+`exec=git` lets a program run `git` with any arguments, `-c` options too; `exec=firefox` or another browser lets it open
+any file, write anywhere through the browser's own options and reach any host; `exec=sh`, `exec=bash`, `exec=python3` and
+`exec=cesia` run any code at all. Give `exec=` only for a program you would let do what the whole program may not.
 
 ## A task keeps its permissions
 

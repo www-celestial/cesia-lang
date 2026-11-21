@@ -41,6 +41,19 @@ New
 Replace cesia 1.3.0+dev by cesia 99.0.0? [y/n]
 This release has no ARCHIVE with its fingerprint: nothing changed.
 the old binary, byte for byte
+== a step that fails puts back what was done: the new lib/ in place, the binary can't be moved aside
+Can't put cesia 99.0.0 in place, nothing changed: Can't rename TOP/inst/bin/cesia: is a directory.
+the old binary, byte for byte
+.:
+bin
+lib
+
+lib:
+licenses
+old.txt
+== an address without encryption
+http://127.0.0.1:9/a is no https:// address: Cesia is fetched with encryption alone.
+the old binary, byte for byte
 == y
 cesia 99.0.0
 
@@ -56,6 +69,14 @@ lib
 
 bin:
 cesia
+
+lib:
+new.txt
+== an archive that holds an old-lib/ of its own: lib/ is the new one, and nothing is left
+cesia 99.0.0 is in place.
+.:
+bin
+lib
 
 lib:
 new.txt

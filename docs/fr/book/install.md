@@ -7,7 +7,7 @@ Dans ce chapitre, vous installez Cesia, vous lancez un premier programme et vous
 Sur Linux et macOS, dans un terminal :
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh
 ```
 
 Sur Windows, dans PowerShell :

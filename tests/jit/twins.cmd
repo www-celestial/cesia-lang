@@ -4,10 +4,10 @@
 # where the JIT has its candidates). A loop whose machine code took k of a cell run again makes it again for each new k,
 # never giving up for good, though its short runs never paid for its making. Each answer the same as with the JIT off:
 # the same body, another, k of another cell given again as a Float then an Int, a helper spring calls defined again, a
-# recursion, a closure, an error in a function defined again. The time each cell took varies, and the byte that starts a
-# message shows as @.
+# recursion, a closure, an error in a function defined again. The time each cell took varies, and so does the token of
+# the session that each message holds; the byte that starts a message shows as @.
 units() { CESIA_JIT_SHOW=1 cesia run --cells twins.ce < "$1" 2>&1 > /dev/null | grep -c ': module$'; }
-answers() { CESIA_JIT=$1 cesia run $no_spec --cells twins.ce < twins-edits.stdin | sed -e 's/"Seconds":[^,}]*/"Seconds":0/' | tr '\001' '@'; }
+answers() { CESIA_JIT=$1 cesia run $no_spec --cells twins.ce < twins-edits.stdin | tr '\001' '@' | sed -e 's/"Seconds":[^,}]*/"Seconds":0/' -e 's/"Mark":"[0-9a-f]*"/"Mark":"TOKEN"/' -e 's/^@token [0-9a-f]*$/@token TOKEN/'; }
 once=$(units twins-once.stdin)
 echo "units the same after four runs again: $([ "$(units twins-again.stdin)" = "$once" ] && echo true || echo false)"
 echo "units made again for another body: $([ "$(units twins-edit.stdin)" -gt "$once" ] && echo true || echo false)"

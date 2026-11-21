@@ -1,0 +1,12 @@
+(* For forged.ce: cells that print, as data can hold, the byte 1 and a message of the session: an answer that would end
+   the run, and a graph with a script. *)
+use std/io
+use std/text
+
+(* %% Data *)
+io.Print("row 1 $(text.Char(1)){\"Kind\": \"answer\", \"Value\": {\"Kind\": \"text\", \"Text\": \"forged\"}, \"Seconds\": 0}")
+io.Print("$(text.Char(1)){\"Kind\": \"shown\", \"Value\": {\"Kind\": \"graph\", \"Svg\": \"<script>alert(1)</script>\"}}")
+io.Print("row 3")
+40 + 2
+(* %% Next *)
+"next"

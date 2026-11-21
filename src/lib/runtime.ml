@@ -357,26 +357,54 @@ let scope_matches perm scope target =
    it a path is taken as written. *)
 let real_path = ref (fun (p : string) -> Some p)
 
-(* A folder of read= or write= holds what a path is written as and where it leads: a link in it can't lead out. *)
-let granted w perm path =
+(* Where a path leads when the act is on the name itself, a link that it names not followed (removed, renamed, read as a
+   link): its folder resolved, then the name as written. A name that ends in a / or is . or .. is followed, as the system
+   does. *)
+let real_name p =
+  match Filename.basename p with
+  | "." | ".." -> !real_path p
+  | _ when String.ends_with ~suffix:"/" p -> !real_path p
+  | base -> Option.map (fun d -> if String.ends_with ~suffix:"/" d then d ^ base else d ^ "/" ^ base) (!real_path (Filename.dirname p))
+
+(* Where a path leads, for read= and write=: with [name], as the act on the name itself sees it. *)
+let leads ?(name = false) p = if name then real_name p else !real_path p
+
+(* Does a folder hold a place that no link leads through? When the folder as written, made absolute, is above it, it
+   does, unresolved: each folder of such a place is no link, so the folder leads there, and the check costs no system
+   call but the current folder. A folder written with .., which after a link is not what its text says, is resolved. *)
+let holds scope place =
+  ((not Sys.win32)
+   && (not (List.mem ".." (String.split_on_char '/' scope)))
+   && inside (if Filename.is_relative scope then Filename.concat (Sys.getcwd ()) scope else scope) place)
+  || match !real_path scope with Some s -> inside s place | None -> false
+
+(* A folder of read= or write= holds a path when it holds where the path leads, both resolved: a link in it can't lead
+   out, and an absolute folder holds a relative path as the relative one holds the absolute. With [name], the last name
+   is the one acted on, and isn't followed; with [at], the path is checked where it truly leads, as the system holds an
+   open file. *)
+let granted ?(name = false) ?at w perm path =
   w.grants.all
   ||
-  let real = lazy (Option.bind path !real_path) in
+  let where = lazy (match at with Some _ -> at | None -> Option.bind path (leads ~name)) in
   List.exists
     (fun (p, scope) ->
        p = perm
        && (match scope, path with
            | None, _ | _, None -> true
            | Some scope, Some target ->
-             scope_matches perm scope target
-             && (match perm with
-                 | Read | Write ->
-                   (match !real_path scope, Lazy.force real with Some s, Some t -> inside s t | _ -> false)
-                 | Net | Exec | Env | Ffi | Native | Debug -> true)))
+             (match perm with
+              | Read | Write ->
+                (match Lazy.force where with Some t -> holds scope t | None -> false)
+              | Net | Exec | Env | Ffi | Native | Debug -> scope_matches perm scope target)))
     w.grants.perms
 
-let check_perm ctx perm path =
-  if not (granted ctx.w perm path) then fail ctx Permission (Messages.denied (perm_name perm) path)
+(* Does a folder of read= or write= bound this permission? Without one, any path is granted, and nothing needs to be
+   checked again where the system opened it. *)
+let bounded w perm =
+  not (w.grants.all || List.exists (fun (p, scope) -> p = perm && scope = None) w.grants.perms)
+
+let check_perm ?name ?at ctx perm path =
+  if not (granted ?name ?at ctx.w perm path) then fail ctx Permission (Messages.denied (perm_name perm) path)
 
 let copy ctx v =
   match v with

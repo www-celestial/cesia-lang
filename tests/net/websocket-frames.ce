@@ -96,6 +96,10 @@ cases = [
   ["bytes after close", ["$(raw(136, ""))$(raw(129, "late"))"]],
   ["text then ping then text", ["$(raw(129, "a"))$(raw(137, "p"))$(raw(129, "b"))"]],
   ["invalid utf8 text", [raw(129, text.FromBytes([255, 254]))]],
+  ["close 1004, a code no endpoint sends", [raw(136, text.FromBytes([3, 236]))]],
+  ["close 999", [raw(136, text.FromBytes([3, 231]))]],
+  ["close 3000", [raw(136, text.FromBytes([11, 184]))]],
+  ["close reason not utf8", [raw(136, text.FromBytes([3, 232, 255]))]],
 ]
 for c in cases
   io.Print(c[1], exchange(port, c[2]))

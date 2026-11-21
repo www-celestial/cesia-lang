@@ -101,6 +101,21 @@ let debug_test ctx s cond =
 (* Without the plugin, a terminal gives its lines as a pipe does, as the JIT's absence leaves the program interpreted. *)
 let debug_editor () = match debug_plugin () with Ok (_, _, line) -> Some line | Error _ -> None
 
+(* The fingerprints of the libraries that std/cpp made, by the key of what each is made of, in the cache of loaded
+   packages, the person's alone: a library that someone else put in the build folder has none, and is made again. *)
+let cpp_natives =
+  let entry ctx name v =
+    match v with
+    | Text k when String.length k = 32 && String.for_all (function '0' .. '9' | 'a' .. 'f' -> true | _ -> false) k -> "cpp-" ^ k
+    | v -> Runtime.fail ctx Type (Messages.need_text name (Value.describe v))
+  in
+  let cache = lazy (Entries.store "") in
+  [ "kept", Native.nat "kept" 1 1 (fun ctx a ->
+        match (Lazy.force cache).read (entry ctx "kept" a.(0)) with Some t -> Text t | None -> Missing);
+    "keep", Native.nat "keep" 2 2 (fun ctx a ->
+        (Lazy.force cache).write (entry ctx "keep" a.(0)) (Native.text_arg ctx "keep" a.(1));
+        Missing) ]
+
 let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w =
   Runtime.real_path := Fs.real_path;
   let poll = Poll.create () in
@@ -141,5 +156,5 @@ let register ?(max_sleep = infinity) ?tick ?(watching = false) ?reset ?workers w
   w.debug.test <- debug_test;
   w.native_modules <-
     ("debug", Term.natives ~editor:debug_editor input @ debug_natives) :: ("cells", cells_natives) :: ("sys", sys) :: ("net", Net.natives net) :: ("log", Observe.log_natives) :: ("metrics", Observe.natives ()) :: ("http", Net.http_natives net) :: ("websocket", Websocket.natives) :: ("c", C.natives (C.create ())) :: ("sqlite3", sqlite_natives) :: ("lapack", Linalg.natives)
-    :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: w.native_modules;
+    :: ("date", [ "localClock", Native.nat "localClock" 1 1 local_clock ]) :: ("cpp", cpp_natives) :: w.native_modules;
   fun () -> Net.stopping net

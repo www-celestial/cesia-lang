@@ -275,7 +275,8 @@ cesia doc --site --open
 
 A project can have books too, in `docs/`: each folder of Markdown pages there is a book, whose `index.md` links to its
 chapters in their order. `docs/book/` is the home of the site, and another folder, as `docs/guides/`, is a book beside it. A
-`files/` folder in a book holds the files its examples read. Every `cesia` block of a page runs when the site is built, and
+`files/` folder in a book holds the files its examples read, plain files and folders: a link there stops the build, since
+a block allowed to read its own folder would read through it a file out of the project. Every `cesia` block of a page runs when the site is built, and
 what it prints is written under it. The blocks of a page are one program, in their order, so a name given in one block is
 known in the next.
 

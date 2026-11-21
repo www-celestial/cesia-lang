@@ -1,0 +1,19 @@
+(* For remove-race.cmd: swaps shared/big, then shared/big/sub, for a link to the victim's folders, as fast as it can,
+   while the file go is there, and two minutes at most. *)
+use std/math
+use std/result
+use std/sys
+
+deadline = sys.Now() + 120.0
+turn = 0
+while sys.Exists("go") and sys.Now() < deadline
+  turn += 1
+  top = math.Mod(turn, 2) == 0
+  at = if top "shared/big" else "shared/big/sub" end
+  if result.IsOk(sys.Rename(at, "shared/moved"))
+    sys.Symlink(if top "../victim" else "../../victim/sub" end, at)
+    sys.Sleep(0.0005)
+    sys.Remove(at)
+    sys.RemoveTree("shared/moved")
+  end
+end

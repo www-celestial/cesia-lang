@@ -39,10 +39,11 @@ if hits=$(find . \( -name '*.c' -o -name '*.h' \) -not -path './src/sys/*' -not 
   fail "C file outside src/sys/:
 $hits"
 fi
-# src/sys/mir/ is MIR, third-party: outside the budget, as generated files are. 520 lines (raised from 500 on 2026-11-13,
-# for the JIT's context of MIR per unit and its level 2 made in another domain).
+# src/sys/mir/ is MIR, third-party: outside the budget, as generated files are. 560 lines (raised from 500 on 2026-11-13,
+# for the JIT's context of MIR per unit and its level 2 made in another domain, then from 520 on 2026-11-21, for the
+# openat, unlinkat and readdir of a descriptor that sys.RemoveTree walks with, which OCaml's Unix lacks).
 c_lines=$(cat src/sys/stubs.c src/sys/ffi.c src/sys/linalg.c src/sys/jit.c | wc -l)
-[ "$c_lines" -le 520 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 520"
+[ "$c_lines" -le 560 ] || fail "the C of src/sys/ has $c_lines lines, the budget is 560"
 
 # Change loop: a touched .ml, rebuilt and tested on the typed path in under 5 s, in the dev profile.
 budget_ms=5000

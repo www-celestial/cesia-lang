@@ -1,6 +1,6 @@
 #!/bin/sh
 # Installs Cesia on Linux and macOS, from its releases:
-#   curl -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh
+#   curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh
 # The archive of this system (bin/cesia and lib/, every C library it uses) goes into ~/.cesia once its fingerprint is checked,
 # and cesia and ce into ~/.local/bin. Then cesia upgrade keeps it up to date. Downloaded this way, macOS doesn't hold the
 # binary back, as it does for a file taken through a browser.
@@ -25,7 +25,9 @@ trap 'rm -rf "$tmp"' EXIT
 fetch() {
   case "$1" in
     file://*) cp "${1#file://}" "$2" ;;
-    *) curl -fsSL --retry 3 -o "$2" "$1" ;;
+    # https alone, and TLS 1.2 at least, for the address and each of its redirects: anyone on the way of a plain one
+    # could change what is installed.
+    *) curl --proto '=https' --proto-redir '=https' --tlsv1.2 -fsSL --retry 3 -o "$2" "$1" ;;
   esac
 }
 fetch "$releases/$archive" "$tmp/$archive"

@@ -164,11 +164,21 @@ let ok_text = function
   | _ -> None
 
 let refused = "\136\002\003\234"  (* a close frame of the code 1002 *)
+let not_utf8 = "\136\002\003\239"  (* a close frame of the code 1007 *)
+
+(* The bytes from [at] that tell what the frame there needs, or the whole frame once they do: its length, its mask and
+   its payload. *)
+let needed s at =
+  match length s at with
+  | Some (n, p) -> p + 4 + n - at
+  | None -> if String.length s - at < 2 then 2 else if Char.code s.[at + 1] land 127 = 126 then 4 else 10
 
 (* The server side of a connection, once the response has gone: each message to [on_message], with a send that answers
-   it, a pong for each ping, a close for a close, and 1002 for what it refuses. The idle deadline starts again at each
-   message and each ping: an idle client doesn't hold its fiber forever. A buffer holds the frames read, the next one at
-   [at], and is copied only when a read adds to it. *)
+   it, a pong for each ping, a close for a close, 1002 for what it refuses, a close code that RFC 6455 §7.4 refuses
+   too, and 1007 for a text or a close reason that isn't UTF-8 (§8.1). The idle deadline starts again at each message and
+   each ping: an idle client doesn't hold its fiber forever. A buffer holds the frames read, the next one at [at]; a frame
+   not all there is read into a Buffer until it is, then joined once, so that one sent in small pieces isn't copied again
+   at each piece. *)
 let serve ctx io rest on_message idle =
   let call name args = Compile.call_back ctx (field ctx io name) args in
   let write s = ignore (call "Write" [| Text s |]) in
@@ -176,11 +186,24 @@ let serve ctx io rest on_message idle =
   let rec loop buffer at =
     match server_frame buffer at with
     | `More ->
-      (match ok_text (call "Read" [||]) with
-       | Some more when more <> "" -> loop (String.sub buffer at (String.length buffer - at) ^ more) 0
-       | _ -> ())
+      let need = needed buffer at and left = String.length buffer - at in
+      let b = Buffer.create (min 65536 (max need left)) in
+      Buffer.add_substring b buffer at left;
+      let rec fill () =
+        Buffer.length b >= need
+        ||
+        match ok_text (call "Read" [||]) with
+        | Some more when more <> "" -> Buffer.add_string b more; fill ()
+        | _ -> false
+      in
+      if fill () then loop (Buffer.contents b) 0
     | `Frame (op, p, _) when op >= 8 && String.length p > 125 -> write refused
-    | `Frame (8, p, _) -> write (frame 8 p "")
+    | `Frame (8, p, _) ->
+      let n = String.length p in
+      if n = 1 || (n >= 2 && not (sendable (String.get_uint16_be p 0))) then write refused
+      else if n > 2 && not (String.is_valid_utf_8 (String.sub p 2 (n - 2))) then write not_utf8
+      else write (frame 8 p "")
+    | `Frame (1, p, _) when not (String.is_valid_utf_8 p) -> write not_utf8
     | `Frame (op, p, next) when op = 9 || op = 1 || op = 2 ->
       Runtime.pay_bytes ctx (next - at);
       ignore (call "Arm" [| idle |]);
