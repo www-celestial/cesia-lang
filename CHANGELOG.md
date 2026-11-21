@@ -25,6 +25,12 @@
 
 ### Fixes
 
+- `cesia upgrade` fetches over `https://` alone, and refuses a redirect to another address, where it followed a
+  `Location` of plain `http://`; `install.sh` and the line that runs it ask `curl` for `https://` alone and TLS 1.2 at
+  least, redirects too, and `install.ps1` for TLS 1.2 and an `https://` address at the end of its redirects.
+- `cesia upgrade` puts the new `lib/` in place, then the binary, and undoes each step when a later one fails, so that a
+  failure leaves the old Cesia whole: it left the new binary with the old `lib/`, or none, when its `lib/` couldn't be
+  moved, as for an archive that held an `old-lib/` folder of its own.
 - What a cell prints is never taken for a message of its session: a line of data that held the byte 1 and JSON, as a
   row of a CSV, was read as one, so that it could end the run with a value of its own, put the next runs out of step,
   and give `cells.Html` a graph whose SVG held a script. Each message now holds a token that the session draws at

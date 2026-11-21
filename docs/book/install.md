@@ -7,7 +7,7 @@ In this chapter you install Cesia, run a first program, and make a project with 
 On Linux and macOS, in a terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh
 ```
 
 On Windows, in PowerShell:
@@ -19,7 +19,10 @@ irm https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.ps1 
 The script downloads the release for your system, Linux or macOS on x86-64 or arm64, Windows on x86-64, and checks its
 fingerprint: a *fingerprint*, or checksum, is a short number computed from every byte of a file, here its SHA-256, that
 changes if a single byte does. The release publishes the fingerprint of each archive, and a download that doesn't match it
-is refused, so a file cut or damaged on the way is never installed. The script puts the release in `~/.cesia` and two names
+is refused, so a file cut or damaged on the way is never installed. The script and `curl` above fetch over `https://`
+alone, with TLS 1.2 at least, redirects too: a plain address would let anyone on the way change what is installed. The
+fingerprint comes from the same release as the archive, so it tells a damaged file, not a release that someone else put
+in place. The script puts the release in `~/.cesia` and two names
 for the same program in `~/.local/bin`: `cesia` and the short `ce`. Your `PATH` is the list of folders where the shell looks
 for a command; if `~/.local/bin` isn't in it yet, the script says so. `CESIA_HOME` and `CESIA_BIN` change the two folders,
 and `CESIA_RELEASES` the place of the releases, as [Environment variables](env.md) says.
@@ -31,7 +34,8 @@ cesia version
 ```
 
 It prints the version, such as `cesia 1.2.0`. Later, `cesia upgrade` shows the notes of the newest release and asks before it
-installs it; it checks the BLAKE2b fingerprint of what it downloads the same way.
+installs it; it checks the BLAKE2b fingerprint of what it downloads the same way, fetches over `https://` alone, and
+puts the new binary and its `lib/` in place so that a step that fails puts back the old ones.
 
 ## A first program
 

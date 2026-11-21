@@ -26,13 +26,17 @@ defn parent(path)
 end
 
 defn download(url)
-  (** The bytes at a URL: a file:// one is read, an https:// one fetched, following its redirects. *)
+  (** The bytes at a URL: a file:// one is read, an https:// one fetched, following its redirects to https:// alone: a
+      Cesia fetched without encryption could be changed by anyone on the way. *)
   if text.StartsWith("file://", url)
     return sys.Read(text.Slice(8, value.Len(url), url))
   end
   secure = tls.Client(tls.Open()?)
   at = url
   for hop in 1..5
+    if not text.StartsWith("https://", text.Lower(at))
+      return result.Err("$at is no https:// address: Cesia is fetched with encryption alone.")
+    end
     r = http.Fetch(at, headers = [{Name: "User-Agent", Value: "cesia-upgrade"}], secure = secure)?
     location = http.HeaderValue("location", r.Headers)
     if r.Status >= 300 and r.Status < 400 and not value.IsMissing(location)
@@ -92,36 +96,68 @@ defn versionOf(binary)
 end
 
 defn replace(home, fresh, binary)
-  (** Puts the new cesia and lib/ in place of the old ones. A running binary can be renamed on every system, but not always
-      replaced, so the old one is moved away first. On Windows ce.exe is a copy of cesia.exe, not a link: it gets one too. *)
+  (** Puts the new cesia and lib/, unpacked in fresh/new, in place of the old ones: lib/ first, then the binary, then on
+      Windows ce.exe, a copy of cesia.exe, not a link. A running binary can be renamed on every system, but not always
+      replaced, so the old one is moved away first. Each step is undone when a later one fails, so that a failure leaves
+      the old Cesia whole, its binary with its lib/. *)
   ext = if text.EndsWith(".exe", binary) ".exe" else "" end
   target = "$home/bin/cesia$ext"
   old = "$home/bin/.old-cesia$ext"
+  lib = "$home/lib"
+  oldLib = "$fresh/old-lib"
+  newLib = sys.Exists("$fresh/new/lib")
+  hadLib = sys.Exists(lib)
+  if newLib and hadLib
+    sys.Rename(lib, oldLib)?
+  end
+  libBack = () -> if newLib and hadLib sys.Rename(oldLib, lib) else result.Ok(missing) end
+  if newLib
+    moved = sys.Rename("$fresh/new/lib", lib)
+    if result.IsErr(moved)
+      _ = libBack()
+      return moved
+    end
+  end
   if sys.Exists(old)
     _ = sys.Remove(old)
   end
   if sys.Exists(target)
-    sys.Rename(target, old)?
-  end
-  moved = sys.Rename("$fresh/bin/cesia$ext", target)
-  if result.IsErr(moved)
-    _ = sys.Rename(old, target)
-    return moved
-  end
-  short = "$home/bin/ce$ext"
-  stat = sys.Stat(short)
-  if ext != "" and result.IsOk(stat) and not stat.Value.IsLink
-    sys.Rename(short, "$home/bin/.old-ce$ext")?
-    sys.Write(short, sys.Read(target)?)?
-  end
-  if sys.Exists("$fresh/lib")
-    if sys.Exists("$home/lib")
-      sys.Rename("$home/lib", "$fresh/old-lib")?
+    aside = sys.Rename(target, old)
+    if result.IsErr(aside)
+      _ = if newLib sys.Rename(lib, "$fresh/new/lib") else result.Ok(missing) end
+      _ = libBack()
+      return aside
     end
-    sys.Rename("$fresh/lib", "$home/lib")?
+  end
+  binBack = () -> if sys.Exists(old) sys.Rename(old, target) else result.Ok(missing) end
+  moved = sys.Rename("$fresh/new/bin/cesia$ext", target)
+  if result.IsOk(moved)
+    moved = shortCopy(home, ext, target)
+  end
+  if result.IsErr(moved)
+    _ = sys.Rename(target, "$fresh/new/bin/cesia$ext")
+    _ = binBack()
+    _ = if newLib sys.Rename(lib, "$fresh/new/lib") else result.Ok(missing) end
+    _ = libBack()
+    return moved
   end
   _ = sys.Remove(old)
   result.Ok(missing)
+end
+
+defn shortCopy(home, ext, target)
+  (** On Windows, ce.exe made a copy of the new cesia.exe, the old one kept aside: Ok, or an Err with the old one back. *)
+  short = "$home/bin/ce$ext"
+  stat = sys.Stat(short)
+  if ext == "" or result.IsErr(stat) or stat.Value.IsLink
+    return result.Ok(missing)
+  end
+  sys.Rename(short, "$home/bin/.old-ce$ext")?
+  made = sys.Write(short, sys.Read(target)?)
+  if result.IsErr(made)
+    _ = sys.Rename("$home/bin/.old-ce$ext", short)
+  end
+  made
 end
 
 defn removeAll(path)
@@ -191,18 +227,23 @@ defn upgrade(args)
   removeAll(fresh)?
   sys.Mkdir(fresh)?
   sys.Write("$fresh/$archive", bytes)?
-  unpacked = sys.Run("tar", args = [if windows "-xf" else "-xzf" end, "$fresh/$archive", "-C", fresh])?
+  (* Into a folder of its own, beside which the old lib/ goes: nothing the archive holds can take its name. *)
+  sys.Mkdir("$fresh/new")?
+  unpacked = sys.Run("tar", args = [if windows "-xf" else "-xzf" end, "$fresh/$archive", "-C", "$fresh/new"])?
   if unpacked.Code != 0
     _ = removeAll(fresh)
     return result.Err("Can't unpack $archive: $(text.Trim(unpacked.Err)). Nothing changed.")
   end
-  tried = versionOf("$fresh/bin/cesia$(if text.EndsWith(".exe", binary) ".exe" else "" end)")
+  tried = versionOf("$fresh/new/bin/cesia$(if text.EndsWith(".exe", binary) ".exe" else "" end)")
   if result.IsErr(tried) or not text.StartsWith("cesia ", tried.Value)
     _ = removeAll(fresh)
     return result.Err("The new binary doesn't answer as Cesia: nothing changed.")
   end
-  replace(home, fresh, binary)?
+  replaced = replace(home, fresh, binary)
   _ = removeAll(fresh)
+  if result.IsErr(replaced)
+    return result.Err("Can't put $(tried.Value) in place, nothing changed: $(if value.IsText(replaced.Error) replaced.Error else replaced.Error.Message end)")
+  end
   io.Print("$(tried.Value) is in place.")
   result.Ok(missing)
 end
