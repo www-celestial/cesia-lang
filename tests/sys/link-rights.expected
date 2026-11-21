@@ -1,0 +1,20 @@
+hard link to a file granted to read only: permission
+write through it: ok missing
+chmod through it: ok missing
+hard link in the folder granted to write: ok missing
+link to a file outside: ok missing
+read that link: ok ../outside/secret.txt
+read through it: permission
+rename that link: ok missing
+remove that link: ok missing
+removed: ok false
+copy a file of 1970: ok missing
+its time: ok 0.0
+== readable holds
+decoy
+-rw-r--r-- decoy.txt
+read: Ok("decoy
+")
+read: Ok("decoy
+")
+exit 0

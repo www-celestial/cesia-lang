@@ -63,6 +63,20 @@ A permission after `=` is as narrow as you can make it. Give that one, by the
 [principle of least privilege](glossary.md#principle-of-least-privilege): a program that reads its data from `./data` needs
 `read=./data`, not `read`. Reading outside the folder is denied as if nothing had been given. A folder holds a path by where
 it leads, its links followed: a link in `./data` that points outside it is denied too, as is writing a new file through one.
+A folder written from the root holds the same files as the folder written from the current one: `read=/home/me/data` and
+`read=data`, run from `/home/me`, allow the same reads.
+
+An act on a [symbolic link](glossary.md#hard-and-symbolic-links) itself, [sys.ReadLink], [sys.Remove] or [sys.Rename],
+checks where the link is, not where it points: a program can clean up a link of its folder that points out of it. A
+[hard link](glossary.md#hard-and-symbolic-links) is not a path that leads somewhere: it is the same file under a second
+name, and every write through it writes that file. So [sys.Link] needs the write permission on its target as well as on the
+new name, and a program allowed to read a file can't make itself a name of it that it may write.
+
+Another program of the machine can swap a folder of a path for a link between the check and the act: someone else who may
+write the folder, or the program's own workers. On Linux, under a folder of `read=` or `write=`, the act is checked a second
+time where the system holds the file or the folder it opened, and done through that open one, so the swap can't lead it out;
+a file is emptied only once it is seen inside. On macOS and Windows the act is on the path as it was checked: there, give a
+folder that no one else may write.
 
 Permissions say what the program may touch; the other people of the machine are kept out by the modes of the files. What
 holds a secret, keys or a session, is written with `private = true`, which [sys.Write] and [sys.Mkdir] take: the file or

@@ -1058,7 +1058,8 @@ use std/test
       sys.Walk(d) --> result.Ok(["$(d)/2026/a.jpg"]) *)
 
 (** sys.Remove(path)
-    Deletes a file or an empty folder: Ok(missing) or an Err. A symbolic link is deleted, never what it points to. Needs the write permission.
+    Deletes a file or an empty folder: Ok(missing) or an Err. A symbolic link is deleted, never what it points to. Needs the
+    write permission on the path itself: a link in a folder granted to write can be removed wherever it points.
 
       file = "$(test.Temp())/old.txt"
       sys.Write(file, "")
@@ -1139,8 +1140,9 @@ use std/test
       sys.Read("$(d)/alias.txt") --> result.Ok("here") *)
 
 (** sys.Link(target, link)
-    Makes a hard link: link becomes another name of the file target, on the same disk. Ok(missing) or an Err. Needs the
-    read permission on target and the write permission on link.
+    Makes a hard link: link becomes another name of the file target, on the same disk. Ok(missing) or an Err. Every write
+    through link writes target, so it needs the read and the write permissions on target, and the write permission on
+    link.
 
       d = test.Temp()
       sys.Write("$(d)/one.txt", "same")
@@ -1149,14 +1151,15 @@ use std/test
 
 (** sys.ReadLink(path)
     The path that a symbolic link points to, as it was written, in an Ok, or an Err for a path that is no link. Needs
-    the read permission.
+    the read permission on the link itself, wherever it points.
 
       d = test.Temp()
       sys.Symlink("real.txt", "$(d)/to.txt")
       sys.ReadLink("$(d)/to.txt") --> result.Ok("real.txt") *)
 
 (** sys.Rename(from, to)
-    Moves a file or a folder: Ok(missing) or an Err. Needs the write permission on both paths.
+    Moves a file or a folder: Ok(missing) or an Err. Needs the write permission on both paths; a symbolic link is moved
+    itself, so the permission is on the link, wherever it points.
 
       d = test.Temp()
       sys.Write("$(d)/draft.txt", "text")

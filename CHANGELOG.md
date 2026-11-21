@@ -25,6 +25,17 @@
 
 ### Fixes
 
+- `sys.Link` needs the write permission on its target, as well as the read one: a hard link is the same file under a
+  second name, and a program allowed to read `readable/` only, with `write=out`, could link a file of `readable/` into
+  `out/` and write, change the mode or the time of the original through it; in `cesia test`, a test could rewrite the
+  project's sources whenever its Temp folder was on the same disk. `sys.ReadLink`, `sys.Remove` and `sys.Rename` check
+  the link itself, not where it points: a link out of the folder could be made but never read, moved or removed.
+  `read=` and `write=` written from the root hold the same files as written from the current folder, and the reverse:
+  a task with absolute folders was denied its own files. On Linux, a file or a folder is checked again where the system
+  opened it, and the act done through it, so another process that swaps a folder of the path for a link between the
+  check and the act can't lead a read, a write, a change of mode or a new link out of the folder; a link that another
+  process removed while a path was checked ended the program with an internal error. `sys.Copy` of a file dated the
+  first second of 1970 gave the copy the time of now.
 - `Limit "steps" reached.` names the step that went past the limit: the turn of a loop, as `for j in 1..100` in
   `spin`, or the call that made a frame, as `deep(n - 1)` in `deep`. It named the last place that had written its
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,

@@ -1,0 +1,31 @@
+(* The rights of the acts on links and copies, run with read=readable,read=out,write=out. A hard link is the same file
+   under a second name: its target must be granted to write as well. An act on a link itself, read, renamed or removed,
+   checks the link, not what it points to. A copy keeps the time of its file, the first second
+   of 1970 too, which the test makes. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> e.Kind
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+show("hard link to a file granted to read only", () -> sys.Link("readable/decoy.txt", "out/l"))
+show("write through it", () -> sys.Write("out/l", "OVERWRITTEN\n"))
+show("chmod through it", () -> sys.Chmod("out/l", 511))
+sys.Write("out/a.txt", "a\n")
+show("hard link in the folder granted to write", () -> sys.Link("out/a.txt", "out/b.txt"))
+show("link to a file outside", () -> sys.Symlink("../outside/secret.txt", "out/s"))
+show("read that link", () -> sys.ReadLink("out/s"))
+show("read through it", () -> sys.Read("out/s"))
+show("rename that link", () -> sys.Rename("out/s", "out/t"))
+show("remove that link", () -> sys.Remove("out/t"))
+show("removed", () -> result.Ok(sys.Exists("out/t")))
+show("copy a file of 1970", () -> sys.Copy("out/epoch.txt", "out/epoch-copy.txt"))
+show("its time", () -> result.Ok(sys.Stat("out/epoch-copy.txt")?.Modified))
