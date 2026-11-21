@@ -68,6 +68,8 @@
   grant. `c.Callback` of a function already made a callback with the same types gives the first one back, `c.Fn` and
   `c.Callback` share one signature for the same types, and each new callback counts against `--limit memory`: 300,000
   callbacks under a limit of 30 MB took 292 MB of C memory.
+- Under the JIT, an index error of a small list of floats read at a constant index names that index, not its double:
+  `Index 6 is outside this array of 2 elements`, where it said `Index 12`.
 
 ## 1.2.0
 

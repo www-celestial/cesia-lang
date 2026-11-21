@@ -317,7 +317,8 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
     | Vat (r, k, n, i, site, rows, cols) ->
       let e =
         stub (fun s ->
-            (match i with Ir.Reg q -> Printf.bprintf s "  rsh x1, r%d, 1\n" q | v -> Printf.bprintf s "  mov x1, %s\n" (operand v));
+            (* The index as the interpreter has it: a constant is written doubled as an operand. *)
+            (match i with Ir.Reg q -> Printf.bprintf s "  rsh x1, r%d, 1\n" q | Int n -> Printf.bprintf s "  mov x1, %d\n" n | v -> Printf.bprintf s "  mov x1, %s\n" (operand v));
             Printf.bprintf s "  mov %s, %d\n  mov x2, %d\n" (cx Ir.io_ixs) cols rows;
             links s site;
             base_in s "x5" (frame_of site);
