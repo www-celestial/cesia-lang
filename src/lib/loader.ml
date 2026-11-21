@@ -84,11 +84,25 @@ let with_natives w natives name =
   | Some b -> Some b
   | None -> lookup w name
 
+(* OCaml's stack is no part of the heap that the limit of memory counts: a recursion let deep by --limit depth took a
+   stack past the limit before the heap reached it. Under a limit, the stack takes a quarter of it at most, or 8 MB, four
+   times what the 10,000 calls of the default depth take, and running out of it is then reaching the limit of memory. *)
+let stack_sized = ref false
+
+let size_stack (w : world) =
+  let g = Gc.get () and most = max (1 lsl 20) (w.limits.memory_words / 4) in
+  if w.limits.memory_words <> max_int && most < g.stack_limit then begin
+    Gc.set { g with stack_limit = most };
+    stack_sized := true
+  end
+
+let stack_limit () = if !stack_sized then "memory" else "depth"
+
 let message_of_error = function
   | Pos.Load_error { text; _ } -> Some text
   | Value.Kerr { text; _ } -> Some text
   | Value.Limit { what; _ } -> Some (Messages.limit what).text
-  | Stack_overflow -> Some (Messages.limit "depth").text
+  | Stack_overflow -> Some (Messages.limit (stack_limit ())).text
   | Out_of_memory -> Some (Messages.limit "memory").text
   | _ -> None
 
@@ -934,6 +948,7 @@ let error_report ?above ctx = function
 (* Runs [body] and prints any Cesia error. Returns the exit code. With [strict], an OCaml stack overflow or a memory
    refusal from the system propagate: the fuzzer wants them, a normal program doesn't. *)
 let guarded ?(strict = false) w body =
+  size_stack w;
   let ctx = Runtime.create_ctx w in
   (* The fiber that was running: an error shows its stack. *)
   let current () = Option.value w.sched.current ~default:ctx in
@@ -969,7 +984,7 @@ let guarded ?(strict = false) w body =
     | Value.Limit { what; at } -> limit_reached what at
     | Sys_error text -> flushed (fun () -> w.err ("cesia: " ^ text ^ "\n"))
     (* The OCaml stack or the system said no: that is a limit, not a bug. *)
-    | Stack_overflow when not strict -> limit_reached "depth" (current ()).site
+    | Stack_overflow when not strict -> limit_reached (stack_limit ()) (current ()).site
     | Out_of_memory when not strict -> limit_reached "memory" (current ()).site
   in
   flush_all w;

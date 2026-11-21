@@ -1,0 +1,3 @@
+stack-memory.ce:5:7: Limit "memory" reached.
+under twice the limit
+exit 1

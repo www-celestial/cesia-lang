@@ -1,0 +1,7 @@
+(** A recursion let deep by --limit depth: OCaml's stack, which the heap doesn't count, grew past --limit memory. *)
+use std/io
+
+defn g(n)
+  1 + g(n + 1)
+end
+io.Print(g(1))

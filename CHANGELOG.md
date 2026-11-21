@@ -50,6 +50,9 @@
 - Under `CESIA_JIT=always`, a typed parameter is checked as the interpreter checks it: a version whose parameters' or
   result's types would be checked as it runs stays interpreted, so `f0(p Int)` called with `2.5` stops at the call, where
   it gave `1.0`.
+- A deep recursion, let deep by `--limit depth`, stops near `--limit memory`: OCaml's stack, which the heap doesn't
+  count, takes a quarter of the limit at most, or 8 MB, and running out of it is reaching the limit of memory. A
+  recursion under a limit of 300 MB took 734 MB before it stopped, now 341 MB.
 
 ## 1.2.0
 
