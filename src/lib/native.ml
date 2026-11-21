@@ -787,13 +787,15 @@ let byte_of_point s k =
 (* The code point of the character at byte [i], and its bytes: U+FFFD for one that is no UTF-8. *)
 let char_at s i =
   let n = String.length s and c = Char.code s.[i] in
-  let j = ref (i + 1) in
-  while !j < n && continues s !j do incr j done;
-  let w = !j - i in
-  if c < 0x80 then (if w = 1 then c else 0xFFFD), w
+  if c < 0x80 && (i + 1 >= n || not (continues s (i + 1))) then c, 1
   else begin
+    (* A code point of UTF-8 holds the bytes that continue it: only those after it can make it longer, and no UTF-8. *)
     let d = String.get_utf_8_uchar s i in
-    (if Uchar.utf_decode_is_valid d && Uchar.utf_decode_length d = w then Uchar.to_int (Uchar.utf_decode_uchar d) else 0xFFFD), w
+    let valid = Uchar.utf_decode_is_valid d in
+    let first = i + if valid then Uchar.utf_decode_length d else 1 in
+    let j = ref first in
+    while !j < n && continues s !j do incr j done;
+    (if valid && !j = first then Uchar.to_int (Uchar.utf_decode_uchar d) else 0xFFFD), !j - i
   end
 
 let slice ctx (a : t array) =
