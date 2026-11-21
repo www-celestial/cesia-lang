@@ -57,6 +57,8 @@
   10xxxxxx, and holds those that do after it; bytes that begin the text and continue nothing are one character.
   `value.Len`, `text.Slice`, `text.Find` and `text.PadLeft` counted so, but `text.Chars`, `text.Code` and regular
   expressions cut each bad byte alone, and `text.Slice` dropped the bytes at the start of a text.
+- `math.BitShift` shifts right with the sign, as Python and Go: `math.BitShift(-8, -1)` is `-4`, not
+  `4611686018427387900`. A left shift works on the 63 bits of an integer, as its doc now says.
 
 ## 1.2.0
 

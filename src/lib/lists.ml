@@ -329,8 +329,9 @@ let from_bytes ctx (a : t array) =
 let bits name f =
   name, nat name 2 2 (fun ctx a -> Int (f (Arrays.whole_index ctx a.(0)) (Arrays.whole_index ctx a.(1))))
 
+(* Right, the sign kept, as Python and Go shift: -8 by -1 is -4. Left, on 63 bits: the bits past them are lost. *)
 let shift x n =
-  if n >= Sys.int_size || n <= -Sys.int_size then 0 else if n >= 0 then x lsl n else x lsr -n
+  if n >= Sys.int_size then 0 else if n >= 0 then x lsl n else x asr (if n < 1 - Sys.int_size then Sys.int_size - 1 else - n)
 
 let math_natives =
   [ bits "BitAnd" ( land );

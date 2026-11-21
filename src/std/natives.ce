@@ -805,7 +805,7 @@ use std/test
       math.BitNot(0) --> -1 *)
 
 (** math.BitShift(a, n)
-    An integer shifted left by n bits, or right if n is negative.
+    An integer shifted left by n bits, or right if n is negative. A right shift keeps the sign, as in Python and Go: math.BitShift(-8, -1) is -4. A left shift works on the 63 bits of an integer: the bits shifted past them are lost, so math.BitShift(1, 62) is the lowest integer and math.BitShift(1, 63) is 0.
 
       math.BitShift(1, 3) --> 8 *)
 
