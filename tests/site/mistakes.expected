@@ -82,4 +82,13 @@ exit 1
 README.fr.md:3: #first-steps names no heading of the French first.html.
 README.fr.md: its links drift from those of README.md, not here: first.html#1; only here: first.html#0 (a link to a heading names its place on its page).
 exit 1
+== a source of [site] that is no web address
+TMP/proj/cesia.toml:4: [site] source is a URL of https:// or http://, as "https://github.com/someone/project/blob/main/".
+exit 1
+== a link in the files of a book, which its blocks would read through
+TMP/proj/docs/book/files/leak.txt is a link, or no plain file: the files/ of a book are copied for its blocks as plain files and folders only, so that no block reads through them a file out of the project.
+exit 1
+== a link under docs/ that leads nowhere
+docs/book/files/gone.txt is a link that leads nowhere: remove it, or make it lead to a file.
+exit 1
 exit 0

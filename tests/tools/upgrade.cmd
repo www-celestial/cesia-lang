@@ -53,7 +53,32 @@ same
 echo "== no archive for this system"
 echo y | CESIA_RELEASES="file://$top/none" cesia_copy upgrade 2>&1 | sed "s/$archive/ARCHIVE/"
 same
+echo "== a step that fails puts back what was done: the new lib/ in place, the binary can't be moved aside"
+mkdir -p "$top/inst/bin/.old-cesia/x"
+echo y | cesia_copy upgrade 2>&1 | tail -1 | sed "s|$top|TOP|g"
+same
+(cd "$top/inst" && ls -A . lib)
+rm -r "$top/inst/bin/.old-cesia"
+echo "== an address without encryption"
+mkdir -p "$top/plain"
+printf '{"tag_name": "v99.0.0", "name": "cesia 99.0.0", "body": "", "assets": [{"name": "%s", "browser_download_url": "http://127.0.0.1:9/a"}, {"name": "%s.blake2", "browser_download_url": "http://127.0.0.1:9/b"}]}\n' \
+  "$archive" "$archive" > "$top/plain/latest.json"
+echo y | CESIA_RELEASES="file://$top/plain" cesia_copy upgrade 2>&1 | tail -1
+same
 echo "== y"
 echo y | cesia_copy upgrade
 cesia_copy version
 cd "$top/inst" && ls -A . bin lib
+echo "== an archive that holds an old-lib/ of its own: lib/ is the new one, and nothing is left"
+mkdir -p "$top/inst2/bin" "$top/inst2/lib/licenses" "$top/new2/old-lib" "$top/rel2"
+cp "$root/_build/default/src/bin/main.exe" "$top/inst2/bin/cesia"
+printf 'Cesia\n' > "$top/inst2/lib/licenses/Cesia.txt"
+cp -R "$top/new/bin" "$top/new/lib" "$top/new2/"
+printf 'not a lib\n' > "$top/new2/old-lib/x.txt"
+(cd "$top/new2" && tar -czf "$top/rel2/$archive" bin lib old-lib)
+good2=$(cesia run --allow read "$root/tests/tools/fingerprint.ce" "$top/rel2/$archive")
+printf '{"tag_name": "v99.0.0", "name": "cesia 99.0.0", "body": "", "assets": [{"name": "%s", "browser_download_url": "file://%s"}, {"name": "%s.blake2", "browser_download_url": "file://%s"}]}\n' \
+  "$archive" "$top/rel2/$archive" "$archive" "$top/rel2/$archive.blake2" > "$top/rel2/latest.json"
+printf '%s\n' "$good2" > "$top/rel2/$archive.blake2"
+echo y | CESIA_RELEASES="file://$top/rel2" "$top/inst2/bin/cesia" upgrade 2>&1 | tail -1 | sed "s|$top|TOP|g"
+cd "$top/inst2" && ls -A . lib

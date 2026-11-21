@@ -104,6 +104,19 @@ sys.List("archive/2026") -->
 sys.Remove("archive/2026/done.txt") -->
 ```
 
+[sys.RemoveTree] deletes a folder and all it holds, as `rm -r` does. It never follows a symbolic link: one inside is
+deleted itself, never what it points to, and a path that is a link deletes the link alone. It walks by the folders it
+holds open, never by paths made again, so that another program that swaps a folder for a link while it runs can't lead it
+out of the folder: on Linux and macOS, nothing out of it is touched. The first file it can't remove stops it, with an
+`Err` that names that file:
+
+```cesia allow=read,write
+sys.Mkdir("old/2025") -->
+sys.Write("old/2025/notes.txt", "done") -->
+sys.RemoveTree("old") -->
+sys.Exists("old") -->
+```
+
 ### Yours alone
 
 A new folder can be entered and listed by everyone on the machine, and a new file read by everyone: only their owner can

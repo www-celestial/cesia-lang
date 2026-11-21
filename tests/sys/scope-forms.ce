@@ -1,0 +1,5 @@
+(* For link-rights: reads the file its argument names. *)
+use std/io
+use std/sys
+
+io.Print("read: $(sys.Read(sys.Args[1]))")

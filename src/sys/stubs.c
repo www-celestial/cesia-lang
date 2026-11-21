@@ -100,10 +100,50 @@ value cesia_close_from(value first) {
   for (long fd = Int_val(first), n = sysconf(_SC_OPEN_MAX); fd < n; fd++) close(fd);
   return Val_unit;
 }
+
+/* What sys.RemoveTree walks with, by descriptors (see fs.ml): a folder opened from one open above it (-1: the current
+   one), never through a link; a name removed from one; the names that one holds. */
+#include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <string.h>
+value cesia_open_dir(value dir, value name) {
+  int fd = openat(Int_val(dir) < 0 ? AT_FDCWD : Int_val(dir), String_val(name), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+  if (fd < 0) caml_unix_error(errno, "open", name);
+  return Val_int(fd);
+}
+value cesia_unlink_at(value dir, value name, value folder) {
+  if (unlinkat(Int_val(dir) < 0 ? AT_FDCWD : Int_val(dir), String_val(name), Bool_val(folder) ? AT_REMOVEDIR : 0) < 0) caml_unix_error(errno, "remove", name);
+  return Val_unit;
+}
+value cesia_names(value dir) {
+  CAMLparam1(dir);
+  CAMLlocal3(out, cell, name);
+  int fd = dup(Int_val(dir));
+  DIR *d = fd < 0 ? NULL : fdopendir(fd);
+  if (!d) { if (fd >= 0) close(fd); caml_unix_error(errno, "list", Nothing); }
+  out = Val_emptylist;
+  struct dirent *e;
+  while ((errno = 0, e = readdir(d)))
+    if (strcmp(e->d_name, ".") && strcmp(e->d_name, "..")) {
+      name = caml_copy_string(e->d_name);
+      cell = caml_alloc_small(2, 0);
+      Field(cell, 0) = name;
+      Field(cell, 1) = out;
+      out = cell;
+    }
+  int failed = errno;
+  closedir(d);
+  if (failed) caml_unix_error(failed, "list", Nothing);
+  CAMLreturn(out);
+}
 #else
 #include <caml/fail.h>
 value cesia_spawn_group(value cmd, value args, value fds) { caml_failwith("no process groups on Windows"); }
 value cesia_close_from(value first) { return Val_unit; }
+value cesia_open_dir(value dir, value name) { caml_failwith("fs.ml walks by paths on Windows"); }
+value cesia_unlink_at(value dir, value name, value folder) { caml_failwith("fs.ml walks by paths on Windows"); }
+value cesia_names(value dir) { caml_failwith("fs.ml walks by paths on Windows"); }
 #endif
 
 #ifdef __linux__

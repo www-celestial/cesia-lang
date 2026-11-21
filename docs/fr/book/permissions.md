@@ -67,6 +67,22 @@ Une permission avec `=` est la plus étroite que vous puissiez écrire. Donnez c
 programme qui lit ses données dans `./data` a besoin de `read=./data`, pas de `read`. Lire hors du dossier est refusé
 comme si rien n'avait été donné. Un dossier contient un chemin selon l'endroit où ce chemin mène, liens suivis : un lien
 dans `./data` qui pointe au-dehors est refusé lui aussi, comme l'écriture d'un nouveau fichier à travers un tel lien.
+Un dossier écrit depuis la racine contient les mêmes fichiers que le même dossier écrit depuis le dossier courant :
+`read=/home/me/data` et `read=data`, lancés depuis `/home/me`, permettent les mêmes lectures.
+
+Un acte sur un [symbolic link](glossary.md#hard-and-symbolic-links) (un lien symbolique) lui-même, [sys.ReadLink],
+[sys.Remove] ou [sys.Rename], vérifie l'endroit où est le lien, pas celui où il pointe : un programme peut faire le ménage
+d'un lien de son dossier qui pointe au-dehors. Un [hard link](glossary.md#hard-and-symbolic-links) (un lien physique) n'est pas un chemin qui mène ailleurs :
+c'est le même fichier sous un second nom, et chaque écriture à travers lui écrit ce fichier. [sys.Link] demande donc la
+permission d'écrire sur sa cible, en plus du nouveau nom : un programme qui peut lire un fichier ne peut pas s'en faire
+un nom qu'il pourrait écrire.
+
+Un autre programme de la machine peut remplacer un dossier d'un chemin par un lien entre la vérification et l'acte :
+quelqu'un d'autre qui peut écrire dans le dossier, ou les propres workers du programme. Sur Linux, sous un dossier de
+`read=` ou `write=`, l'acte est vérifié une seconde fois là où le système tient le fichier ou le dossier qu'il a ouvert,
+et fait à travers lui, si bien que l'échange ne peut pas l'emmener dehors ; un fichier n'est vidé qu'une fois vu dedans.
+Sur macOS et Windows, l'acte porte sur le chemin tel qu'il a été vérifié : là, donnez un dossier que personne d'autre ne
+peut écrire.
 
 Les permissions disent ce que le programme peut toucher ; les autres personnes de la machine sont tenues à l'écart par les
 modes des fichiers (les droits que le système note sur chacun). Ce qui contient un secret, des clés ou une session,
@@ -81,6 +97,14 @@ quel fichier, ouvrir n'importe quelle connexion, et casser la mémoire du progra
 pour cette bibliothèque : ne la donnez donc qu'à des bibliothèques en qui vous avez confiance, comme celles qu'utilisent
 les modules de Cesia lui-même. `native=LABEL` est la même confiance, pour le moteur OCaml d'un
 [package natif](native.md).
+
+`exec=PROGRAM` est une confiance du même genre. Cesia vérifie le nom du programme qu'il lance, jamais ce que fait ce
+programme : il tourne avec tous les pouvoirs de la personne, avec les arguments que le programme lui donne, hors de
+`read=`, `write=` et `net=`. `exec=git` laisse un programme lancer `git` avec n'importe quels arguments, options `-c`
+comprises ; `exec=firefox` ou un autre navigateur le laisse ouvrir n'importe quel fichier, écrire n'importe où par les
+options du navigateur lui-même et joindre n'importe quel hôte ; `exec=sh`, `exec=bash`, `exec=python3` et `exec=cesia`
+font tourner n'importe quel code. Ne donnez `exec=` que pour un programme à qui vous laisseriez faire ce que le programme
+entier n'a pas le droit de faire.
 
 ## Une tâche garde ses permissions
 

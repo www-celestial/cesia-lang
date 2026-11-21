@@ -1,0 +1,28 @@
+(* sys.RemoveTree, run with write=out and read=out: a folder and all it holds, its links removed themselves, never what
+   they point to; a path that is a link, the link alone; a tree deeper than the folders it keeps open; what it can't
+   remove, named; and a path out of the folder, denied. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+use std/text
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "$(e.Kind): $(text.Replace(sys.Args[1], "TOP", e.Message))"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+show("a tree", () -> sys.RemoveTree("out/tree"))
+show("gone", () -> result.Ok(sys.Exists("out/tree")))
+show("a link to a folder", () -> sys.RemoveTree("out/link"))
+show("the link gone", () -> result.Ok(result.IsErr(sys.ReadLink("out/link"))))
+show("a file", () -> sys.RemoveTree("out/file.txt"))
+show("a tree 200 deep", () -> sys.RemoveTree("out/deep"))
+show("gone", () -> result.Ok(sys.Exists("out/deep")))
+show("a file it can't remove", () -> sys.RemoveTree("out/locked"))
+show("nothing there", () -> sys.RemoveTree("out/nothing"))
+show("out of the folder", () -> sys.RemoveTree("outside"))

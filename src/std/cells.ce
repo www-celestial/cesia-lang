@@ -12,6 +12,7 @@ use std/io
 use std/json
 use std/list
 use std/math
+use std/random
 use std/result
 use std/syntax
 use std/sys
@@ -601,43 +602,68 @@ end
 (** The byte that starts a message of the session, on a line of its output. *)
 mark = text.Char(1)
 
-defn heard(line, inbox, control)
-  (** Puts a line of the session where it goes: what a cell printed, an answer to a run, or another answer. The mark is
-      one byte: the answer after it is cut by bytes, as long as a scene. *)
+(** The start of the first line of a session, before its token. *)
+told = "$(mark)token "
+
+defn lastMark(line)
+  (** The place of the last mark of a line, or missing: a message is the end of its line, and its JSON writes the byte 1
+      as \u0001, so a mark that a cell printed before it, with no end of line, is never taken for it. *)
   at = text.ByteFind(mark, 1, line)
-  if values.IsMissing(at)
+  next = at
+  while values.IsSome(next)
+    at = next
+    next = text.ByteFind(mark, at + 1, line)
+  end
+  at
+end
+
+defn heard(line, token, inbox, control)
+  (** Puts a line of the session where it goes, what a cell printed, an answer to a run, or another answer, and gives the
+      token to read the next line with: false before the first line. That line, which no cell can print, since none has
+      run, tells the token of the session, random, which each of its messages then holds: a line whose message lacks it
+      is what a cell printed, as data that holds the byte 1 and JSON, and shows as it is. A session of an older std/cells
+      tells none, and its messages are taken as they come. The mark is one byte: the answer after it is cut by bytes, as
+      long as a scene. *)
+  if values.IsBool(token)
+    if text.StartsWith(told, line)
+      return text.ByteSlice(text.ByteLength(told) + 1, text.ByteLength(line), line)
+    end
+    token = missing
+  end
+  at = lastMark(line)
+  m = if values.IsMissing(at) result.Err(missing) else json.Parse(text.ByteSlice(at + 1, text.ByteLength(line), line)) end
+  if result.IsErr(m) or not values.IsDict(m.Value) or not values.IsText(dict.GetOr("Kind", missing, m.Value)) or (values.IsSome(token) and dict.GetOr("Mark", missing, m.Value) != token)
     fiber.Send({Kind: "output", Text: line}, inbox)
-    return missing
+    return token
   end
   if at > 1
     fiber.Send({Kind: "output", Text: text.ByteSlice(1, at - 1, line)}, inbox)
   end
-  m = json.Parse(text.ByteSlice(at + 1, text.ByteLength(line), line))
-  if result.IsOk(m)
-    fiber.Send(m.Value, if m.Value.Kind == "answer" or m.Value.Kind == "shown" inbox else control end)
-  end
+  fiber.Send(m.Value, if m.Value.Kind == "answer" or m.Value.Kind == "shown" inbox else control end)
+  token
 end
 
 defn reading(p, inbox, control, alive)
   (** Reads what the session writes, line by line, until its output closes. A line longer than a chunk, as a scene, keeps
       its pieces until its end comes, and is joined once: each byte is read once. *)
   partial = []
+  token = false
   chunk = sys.ReadOutput(p)
   while result.IsOk(chunk) and chunk.Value != ""
     pieces = text.Split("\n", chunk.Value)
     if values.Len(pieces) == 1
       partial = list.Append(pieces[1], partial)
     else
-      heard(text.Join("", list.Append(pieces[1], partial)), inbox, control)
+      token = heard(text.Join("", list.Append(pieces[1], partial)), token, inbox, control)
       for k in 2..values.Len(pieces) - 1
-        heard(pieces[k], inbox, control)
+        token = heard(pieces[k], token, inbox, control)
       end
       partial = [pieces[values.Len(pieces)]]
     end
     chunk = sys.ReadOutput(p)
   end
   if text.Join("", partial) != ""
-    heard(text.Join("", partial), inbox, control)
+    heard(text.Join("", partial), token, inbox, control)
   end
   code = sys.WaitExit(p)
   fiber.Close(alive)
@@ -648,8 +674,9 @@ end
 defn Session(path, allow = [])
   (** Starts a session on a file: an Ok of the session, or an Err. It is a Cesia process of this binary, cesia run --cells,
       that runs none of the file: Run gives it one cell at a time, at the file level, as the prompt of cesia run --repl
-      runs code, with the permissions of allow, as --allow takes them, and none else. Needs the exec permission of this
-      cesia, cesia.Binary(). *)
+      runs code, with the permissions of allow, as --allow takes them, and none else. What a cell prints is its output,
+      even a line of data that looks like a message of the session: each message holds a token that the session draws at
+      random as it starts. Needs the exec permission of this cesia, cesia.Binary(). *)
   args = ["run", "--cells"]
   if values.Len(allow) > 0
     args = list.Concat(args, ["--allow", text.Join(",", allow)])
@@ -825,6 +852,45 @@ end
 (** The rows of a table, in HTML. *)
 cellsOf(rows, tag) = text.Join("", ["<tr>$(text.Join("", ["<$tag>$(escape(x))</$tag>" for x in row]))</tr>\n" for row in rows])
 
+(** The tags of an SVG as std/plot writes it, as the browser reads them, in small letters. *)
+svgTags = ["svg", "g", "path", "rect", "circle", "clippath", "defs", "text", "title", "style"]
+
+defn plotTag(tag)
+  (** Is the text of a tag, from after its < to before its >, one that std/plot writes: one of svgTags, each value of its
+      attributes in double quotes, out of them no ' that would quote otherwise, and no name that starts with on, which
+      runs a script? A browser ends a name at a space, a tab, an end of line or a /. *)
+  if text.StartsWith("/", tag)
+    return text.Lower(text.ByteSlice(2, text.ByteLength(tag), tag)) in svgTags
+  end
+  parts = text.Split("\"", tag)
+  if math.Mod(values.Len(parts), 2) == 0
+    return false
+  end
+  outside = text.Lower(text.Join(" ", [parts[j] for j in list.Range(1, values.Len(parts), step = 2)]))
+  for c in ["\t", "\n", "\r", "\f", "/"]
+    outside = text.Replace(c, " ", outside)
+  end
+  words = text.Split(" ", outside)
+  not text.Contains("'", outside) and not text.Contains(" on", outside) and words[1] in svgTags
+end
+
+defn plotSvg(svg)
+  (** Is a text an SVG as std/plot writes it: from <svg, each tag as plotTag takes it, and no javascript: address? Html
+      puts it in its page as it is, so that its animations play there: another one, as a message forged by what a cell
+      printed, could run a script. *)
+  if not values.IsText(svg) or not text.StartsWith("<svg ", svg) or text.Contains("javascript:", text.Lower(svg))
+    return false
+  end
+  pieces = text.Split("<", svg)
+  for k in 2..values.Len(pieces)
+    close = text.ByteFind(">", 1, pieces[k])
+    if values.IsMissing(close) or not plotTag(text.ByteSlice(1, close - 1, pieces[k]))
+      return false
+    end
+  end
+  true
+end
+
 defn valueHtml(v, i)
   (** What a value of a cell shows, in HTML, i naming it among the values of the page. An animation starts paused on its first frame, under a box Play that runs
       and stops it, by CSS alone: the box is a check box of the page, before the SVG, focused by Tab and checked by Space. *)
@@ -833,6 +899,8 @@ defn valueHtml(v, i)
   else if v.Kind == "table"
     more = if v.Count > values.Len(v.Rows) "<p class=\"count\">$(values.Len(v.Rows)) of $(v.Count) rows</p>\n" else "<p class=\"count\">$(v.Count) rows</p>\n" end
     "<table>\n<thead>$(cellsOf([v.Columns], "th"))</thead>\n<tbody>\n$(cellsOf(v.Rows, "td"))</tbody>\n</table>\n$more"
+  else if v.Kind == "graph" and not plotSvg(dict.GetOr("Svg", missing, v))
+    "<pre class=\"value\">A graph whose SVG is not one std/plot writes: left out.</pre>\n"
   else if v.Kind == "graph" and dict.Has("Frames", v)
     "<div class=\"graph anim\"><input type=\"checkbox\" class=\"play\" id=\"play$i\"><label for=\"play$i\">Play</label>\n$(v.Svg)</div>\n"
   else if v.Kind == "graph"
@@ -943,9 +1011,10 @@ end
 
 (* ---- The side of the session: cesia run --cells starts serve, which reads one command a line. *)
 
-defn send(message)
-  (** Writes a message for the program that asked, on one line that starts with the byte 1. *)
-  io.Print("$mark$(json.Text(message))")
+defn send(token, message)
+  (** Writes a message for the program that asked, on one line that starts with the byte 1, with the token of the
+      session in its Mark. *)
+  io.Print("$mark$(json.Text(dict.Put("Mark", token, message)))")
 end
 
 defn brief(x, n)
@@ -1043,9 +1112,9 @@ defn errorLine(path, e)
   text.Number(text.Split(":", text.Slice(values.Len(path) + 2, values.Len(first), first))[1])
 end
 
-(* The run of a cell in the session, for Show in the cell's code: {Width, Svg, Key, Count, Graphs}, Count the values
-   shown so far and Graphs a channel of those that are graphs, {Key, Value}. A channel of one holds it, so that Show reads
-   and changes it; it is empty out of a run, and out of a session. *)
+(* The run of a cell in the session, for Show in the cell's code: {Width, Svg, Key, Count, Graphs, Token}, Count the values
+   shown so far, Graphs a channel of those that are graphs, {Key, Value}, and Token that of the messages of the session.
+   A channel of one holds it, so that Show reads and changes it; it is empty out of a run, and out of a session. *)
 running = fiber.Channel(size = 1)
 
 defn Show(x)
@@ -1069,7 +1138,7 @@ defn Show(x)
   if v.Kind == "graph"
     fiber.Send({Key: key, Value: x}, run.Graphs)
   end
-  send({Kind: "shown", Value: v})
+  send(run.Token, {Kind: "shown", Value: v})
   x
 end
 
@@ -1084,7 +1153,7 @@ defn taken(ch)
   out
 end
 
-defn ran(c, key)
+defn ran(c, key, token)
   (** Runs the code of a cell and sends its answer; gives the graphs it showed, which the session keeps, each {Key,
       Value}: those of Show, then its value when it shows as a graph. std/random starts again first, from the seed of the
       session and the title of the cell, as cesia test does for each test: a cell run again draws the same numbers,
@@ -1096,22 +1165,22 @@ defn ran(c, key)
   graphs = fiber.Channel()
   (* A run that a stop ended left its own. *)
   _ = taken(running)
-  fiber.Send({Width: dict.GetOr("Width", 640, c), Svg: dict.GetOr("Svg", false, c), Key: key, Count: 0, Graphs: graphs}, running)
+  fiber.Send({Width: dict.GetOr("Width", 640, c), Svg: dict.GetOr("Svg", false, c), Key: key, Count: 0, Graphs: graphs, Token: token}, running)
   r = evalCell(c.Code, c.Line)
   _ = taken(running)
   seconds = sys.Now() - start
   shows = taken(graphs)
   if result.IsErr(r)
-    send({Kind: "answer", Error: {Line: errorLine(c.Path, r.Error), Text: r.Error}, Seconds: seconds})
+    send(token, {Kind: "answer", Error: {Line: errorLine(c.Path, r.Error), Text: r.Error}, Seconds: seconds})
     return shows
   end
   v = shown(r.Value, width = dict.GetOr("Width", 640, c), svg = dict.GetOr("Svg", false, c), key = key)
   if values.IsSome(v) and v.Kind == "error"
     (* A graph that std/plot can't draw: its message, as an error of the cell. *)
-    send({Kind: "answer", Error: {Line: missing, Text: v.Text}, Seconds: seconds})
+    send(token, {Kind: "answer", Error: {Line: missing, Text: v.Text}, Seconds: seconds})
     return shows
   end
-  send({Kind: "answer", Value: v, Seconds: seconds})
+  send(token, {Kind: "answer", Value: v, Seconds: seconds})
   if values.IsSome(v) and v.Kind == "graph" list.Append({Key: "$key", Value: r.Value}, shows) else shows end
 end
 
@@ -1229,7 +1298,10 @@ end
 defn serve()
   (** Reads the commands of std/cells, one a line, until the end of the input: a run starts its cell in a fiber of its
       own, which a stop cancels, and the other commands wait for it to end; the names of the cells run so far are those
-      the variables show, and the graphs of the last runs are kept for Scene. *)
+      the variables show, and the graphs of the last runs are kept for Scene. Its first line tells the token of its
+      messages, from the time and the seed of the system: data that a cell prints can't know it. *)
+  token = text.Slice(8, 39, cesia.Fingerprint(text.Str(sys.Now(), " ", random.Seed())))
+  io.Print("$told$token")
   task = missing
   key = 0
   graphs = {}
@@ -1251,30 +1323,30 @@ defn serve()
       known = list.Concat([k for k in known if not (k in names)], names)
       key += 1
       now = key
-      task = fiber.Spawn(() -> ran(c, now))
+      task = fiber.Spawn(() -> ran(c, now, token))
     else if c.Do == "stop"
       if values.IsSome(task)
         fiber.Cancel(task)
         w = fiber.Wait(task)
         if result.IsErr(w) and w.Error.Kind == "cancelled"
-          send({Kind: "answer", Error: {Line: missing, Text: "Stopped."}, Seconds: 0.0})
+          send(token, {Kind: "answer", Error: {Line: missing, Text: "Stopped."}, Seconds: 0.0})
         end
         graphs = kept(task, key, graphs)
         task = missing
       end
-      send({Kind: "stopped"})
+      send(token, {Kind: "stopped"})
     else if c.Do == "forget"
       forgetNames(c.Names)
       known = [k for k in known if not (k in c.Names)]
-      send({Kind: "forgot"})
+      send(token, {Kind: "forgot"})
     else if c.Do == "variables"
-      send({Kind: "variables", Rows: rows(known)})
+      send(token, {Kind: "variables", Rows: rows(known)})
     else if c.Do == "rows"
-      send(slice(c.Name, c.First, c.Last))
+      send(token, slice(c.Name, c.First, c.Last))
     else if c.Do == "scene"
-      send(rescened(c, graphs))
+      send(token, rescened(c, graphs))
     else if c.Do == "set"
-      send(setTo(c))
+      send(token, setTo(c))
     end
     line = debug.ReadLine()
   end

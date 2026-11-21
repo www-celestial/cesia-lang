@@ -109,6 +109,20 @@ sys.List("archive/2026") -->
 sys.Remove("archive/2026/done.txt") -->
 ```
 
+[sys.RemoveTree] supprime un dossier et tout ce qu'il contient, comme `rm -r`. Il ne suit jamais un lien symbolique : un
+lien à l'intérieur est supprimé lui-même, jamais ce vers quoi il pointe, et un chemin qui est un lien supprime le lien
+seul. Il parcourt l'arbre par les dossiers qu'il garde ouverts, jamais par des chemins refaits, si bien qu'un autre
+programme qui remplace un dossier par un lien pendant qu'il travaille ne peut pas l'emmener hors du dossier : sur Linux et
+macOS, rien au-dehors n'est touché. Le premier fichier qu'il ne peut pas supprimer l'arrête, avec un `Err` qui nomme ce
+fichier :
+
+```cesia allow=read,write
+sys.Mkdir("old/2025") -->
+sys.Write("old/2025/notes.txt", "done") -->
+sys.RemoveTree("old") -->
+sys.Exists("old") -->
+```
+
 ### À vous seul
 
 Un nouveau dossier peut être ouvert et listé par tous ceux qui utilisent la machine, et un nouveau fichier lu par tous :

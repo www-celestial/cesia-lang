@@ -1,0 +1,38 @@
+(** The client side of WebSocket against a server that sends a message of empty fragments, 2 bytes each on the wire: each
+    fragment counts against maxMessage, so the client ends the connection with 1009 after a few, where it kept them all. *)
+use std/encode
+use std/fiber
+use std/io
+use std/list
+use std/net
+use std/result
+use std/text
+use std/websocket
+
+crlf = "\r\n"
+guid = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+
+defn serveOne(listener)
+  c = net.Accept(listener)?
+  head = net.Read(c)?
+  key = list.Last([text.Trim(text.Split(":", l)[2]) for l in text.Split(crlf, head) if text.StartsWith("sec-websocket-key:", text.Lower(l))])
+  net.Write(c, "HTTP/1.1 101 Switching Protocols$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Accept: $(encode.Base64(encode.Sha1("$key$guid")))$crlf$crlf")?
+  (* A text begun, then empty continuations, then its end: a message of nothing. *)
+  net.Write(c, text.FromBytes([1, 0]))?
+  empty = text.Repeat(5000, text.FromBytes([0, 0]))
+  for i in 1..20
+    _ = net.Write(c, empty)
+  end
+  _ = net.Write(c, text.FromBytes([128, 0]))
+  _ = net.Read(c)
+  net.Close(c)
+  result.Ok(missing)
+end
+
+l = result.Unwrap(net.Listen(0))
+server = fiber.Spawn(() -> serveOne(l))
+conn = result.Unwrap(websocket.Dial("ws://127.0.0.1:$(net.Port(l))/", maxMessage = 1000))
+got = fiber.Receive(conn.Messages, timeout = 10)
+io.Print("a message: $(result.IsOk(got))")
+io.Print("ended: $(websocket.Close(conn))")
+fiber.Wait(server)

@@ -1,0 +1,15 @@
+(* For scope-race: swaps out/d between a folder and a link to ../outside, as fast as it can, while the file go is there,
+   and two minutes at most: it ends by itself, even if the test that started it is killed. *)
+use std/sys
+
+deadline = sys.Now() + 120.0
+while sys.Exists("go") and sys.Now() < deadline
+  sys.Mkdir("out/d")
+  sys.Write("out/d/secret.txt", "inside\n")
+  for name in ["secret.txt", "f.txt", "g.txt", "l"]
+    sys.Remove("out/d/$name")
+  end
+  sys.Remove("out/d")
+  sys.Symlink("../outside", "out/d")
+  sys.Remove("out/d")
+end

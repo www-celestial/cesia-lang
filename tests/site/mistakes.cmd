@@ -46,4 +46,7 @@ try "a README that links to a file which is no page" 'echo "See [the license](LI
 french "a French page that drifts from its English one" 'sed "s/^x \\* 2 --> 10$/x * 2 --> 11/; s/^# Premiers pas$/## Premiers pas/; s/(first.md)/(files.md)/" docs/fr/book/first.md > f && mv f docs/fr/book/first.md && sed "s/(first.md)/(files.md)/" docs/fr/book/index.md > f && mv f docs/fr/book/index.md'
 french "a French page with no English one" 'echo "# En plus" > docs/fr/book/extra.md'
 french "a French link to a heading that isn't there" 'sed "s/#premiers-pas/#first-steps/" README.fr.md > f && mv f README.fr.md'
+try "a source of [site] that is no web address" 'printf "%s\n" "[site]" "source = \"javascript:alert(1)//\"" >> cesia.toml'
+try "a link in the files of a book, which its blocks would read through" 'ln -s "$t/case" docs/book/files/leak.txt'
+try "a link under docs/ that leads nowhere" 'ln -s nowhere.txt docs/book/files/gone.txt'
 rm -rf "$t"

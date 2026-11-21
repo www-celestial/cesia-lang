@@ -87,15 +87,24 @@ val alloc_float : ctx -> int -> float -> floatarray
 val alloc_vals : ctx -> int -> t -> t array
 val alloc_ints : ctx -> int -> int -> int array
 
-(** Checks a permission, with the path concerned if any. *)
-val check_perm : ctx -> perm -> string option -> unit
+(** Checks a permission, with the path concerned if any. With [name], the last name of the path is what is acted on, a
+    link not followed (removed, renamed, read as a link); with [at], the path is checked where it truly leads, as the system
+    holds an open file, and the message names the path. *)
+val check_perm : ?name:bool -> ?at:string -> ctx -> perm -> string option -> unit
 
 (** Where a path leads, links resolved, or [None] when no place can be told: set by the system, which reads links. A
     folder of read= or write= holds a path only when it holds where the path leads too. *)
 val real_path : (string -> string option) ref
 
-(** Is the permission granted, for this path if any? *)
-val granted : world -> perm -> string option -> bool
+(** Is the permission granted, for this path if any? [name] and [at] as for {!check_perm}. *)
+val granted : ?name:bool -> ?at:string -> world -> perm -> string option -> bool
+
+(** Where a path leads, for read= and write=: with [name], its folder resolved and its last name as written, as an act on
+    the name itself (a link removed, not what it points to) sees it. *)
+val leads : ?name:bool -> string -> string option
+
+(** Does a folder of read= or write= bound this permission, so that a path can be denied? *)
+val bounded : world -> perm -> bool
 
 (** a/./b/../c becomes a/c. *)
 val normalize : string -> string

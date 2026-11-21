@@ -349,7 +349,11 @@ let test args =
   exit
     (t.run w
        { path; cases; only; worker = !worker; update = !update; dir; timeout = config.timeout; clock = Unix.gettimeofday;
-         remove = Cesia_sys.Fs.remove_tree })
+         remove =
+           (fun p ->
+              try Cesia_sys.Fs.remove_tree p with
+              | Unix.Unix_error (Unix.ENOENT, _, at) when at = p -> ()
+              | Unix.Unix_error (e, _, at) -> prerr_endline (Messages.io_failure "remove" at (Cesia_sys.Fs.reason e)).text) })
 
 let doc args =
   let w = Runtime.create_world Runtime.default_options in

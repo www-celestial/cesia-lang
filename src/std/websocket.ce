@@ -27,7 +27,8 @@ refused(message) = result.Err({Kind: "websocket", Message: message})   (* An Err
 defn Dial(url, timeout = 10, maxMessage = DefaultMaxMessage, headers = [])
   (** Connects to the server of a ws:// URL and makes the handshake of RFC 6455 §4.1, both within timeout seconds: an Ok
       of a Conn, or an Err of the kind "websocket" when the URL or the handshake is refused, or when the time runs out. A
-      message past maxMessage bytes ends the connection with the close code 1009. headers, a list of {Name, Value} as
+      message past maxMessage bytes ends the connection with the close code 1009, each of its fragments counted 64 bytes
+      more than it holds, the memory it takes while it waits: a server can't hold more with empty ones. headers, a list of {Name, Value} as
       http.Fetch takes, go with the handshake, as a cookie or an Origin. One whose name isn't a token of RFC 9110, or is
       one the handshake writes itself (Host, Upgrade, Connection, Content-Length, Transfer-Encoding, or a name that starts
       with Sec-WebSocket-), or whose value holds a line end or a zero byte, is an Err before any connection: no value can
@@ -206,6 +207,9 @@ defn Close(c)
   done?
 end
 
+(** What a fragment of a message counts against maxMessage beside its bytes. *)
+fragmentCost = 64
+
 defn read(socket, writer, closing, messages, buffer, most)
   (** The fiber that reads the frames of a connection, the next one at the byte at of buffer: each whole message goes to
       messages unless the connection is closing, and each ping gets its pong. It gives how the connection ended. The
@@ -235,7 +239,7 @@ defn read(socket, writer, closing, messages, buffer, most)
         write(frame(10, f.Payload), writer, closing, socket, data = false)
       else if f.Opcode != 10
         parts = list.Append(f.Payload, parts)
-        size += text.ByteLength(f.Payload)
+        size += text.ByteLength(f.Payload) + fragmentCost
         kind = if f.Opcode == 0 kind else f.Opcode end
         if f.Fin
           whole = if value.Len(parts) == 1 parts[1] else text.Join("", parts) end

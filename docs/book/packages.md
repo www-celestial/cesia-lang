@@ -155,7 +155,13 @@ cesia pkg install
 cesia pkg
 ```
 
-- git fetches each tag once, into a cache: another project that takes it needs no network.
+- git fetches each tag once, into a cache: another project that takes it from the same address needs no network. The
+  cache knows each repository by its whole address, so two that end in the same folders, as
+  `https://github.com/someone/geometry` and `file:///tmp/x/someone/geometry`, are two.
+- `from` is fetched over an encrypted connection, `https://` or `ssh://` (`git@host:`), or from this machine with
+  `file://`: a plain `http://` or `git://` is refused, since anyone on the way could change the code it brings.
+- A project fetched is taken as plain files and folders: one that holds a link, its `cesia.toml` too, is refused before
+  a byte of it is copied, since a link could bring into `deps/` any file of yours.
 - A project that has no tag yet is taken at a commit: `version` is then the whole hash of the commit, 40 hexadecimal
   digits, as `cesia pkg add github.com/someone/geometry@3f9c…` writes it. A commit never moves, as a tag can; git
   fetches that commit alone. Two projects that ask for the same one at a commit must ask for the same commit: a commit

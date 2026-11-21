@@ -8,6 +8,12 @@
   name before a byte is written; `sys.Chmod` and the new Mode of `sys.Stat` give and read the permission bits;
   `sys.SetModified` sets the time of a change, as `touch`; `sys.Symlink`, `sys.Link` and `sys.ReadLink` make and read
   links. Everything a file manager needs, as the folders of Cemacs.
+- `sys.RemoveTree(path)` deletes a folder and all it holds, as `rm -r`, never following a link: one inside goes
+  itself, and a path that is one goes alone. It walks by descriptors, each folder opened from the one above it and
+  checked to be the folder seen there, so that a folder swapped for a link while it runs is never entered, as Cemacs's
+  folders need to delete for good; its first failure is an Err that names the file, and a tree of any depth keeps at
+  most 32 folders open. On Windows it walks by paths and never enters a link or a junction. `cesia pkg`, `cesia
+  upgrade` and the Temp folder of `cesia test` use it, the last saying what it couldn't remove where it said nothing.
 
 ### Science
 
@@ -25,6 +31,55 @@
 
 ### Fixes
 
+- `cpp.Wrap` makes its library again when a header of the project that the layer includes by `"name"` changes, or the
+  compiler, its version or its flags, where it reused a library whose `.cpp` text matched: an edited header went
+  unseen, and a library that someone else put in the build folder beside that `.cpp` was loaded. The fingerprint of each
+  library it makes is kept in Cesia's cache, the person's alone, and a library without it is made again; it compiles
+  under a name of its own, then renames.
+- `http.Fetch` takes `timeout`, the seconds a server may stay silent between two reads, 300 unless it says otherwise,
+  and `maxBody`, the most bytes of a body, none unless it says so: a silent server held it for ever. It refuses a head
+  past 16 KiB, and searches each read alone for the end of the head, where a head that never ended filled the memory
+  and was searched whole again at each read.
+- WebSocket: the client counts each fragment of a message 64 bytes more than its payload against `maxMessage`, where a
+  server that sent empty fragments filled the memory with 2 bytes of traffic each; the server reads a frame that comes
+  in pieces into one buffer, joined once, where it copied all it had at each piece (a megabyte in pieces of 64 bytes
+  took 2.4 s of its processor); it closes with 1007 a text or the reason of a close that isn't UTF-8, and with 1002 a
+  close of one byte or of a code that RFC 6455 refuses, where it took the text and sent the close back.
+- `cesia upgrade` fetches over `https://` alone, and refuses a redirect to another address, where it followed a
+  `Location` of plain `http://`; `install.sh` and the line that runs it ask `curl` for `https://` alone and TLS 1.2 at
+  least, redirects too, and `install.ps1` for TLS 1.2 and an `https://` address at the end of its redirects.
+- `cesia upgrade` puts the new `lib/` in place, then the binary, and undoes each step when a later one fails, so that a
+  failure leaves the old Cesia whole: it left the new binary with the old `lib/`, or none, when its `lib/` couldn't be
+  moved, as for an archive that held an `old-lib/` folder of its own.
+- What a cell prints is never taken for a message of its session: a line of data that held the byte 1 and JSON, as a
+  row of a CSV, was read as one, so that it could end the run with a value of its own, put the next runs out of step,
+  and give `cells.Html` a graph whose SVG held a script. Each message now holds a token that the session draws at
+  random as it starts, and `cells.Html` puts in its page only an SVG as `std/plot` writes it. A session of an older
+  `std/cells`, as a project's own copy, still runs.
+- `cesia pkg` refuses a fetched project that holds a link, its `cesia.toml` too, before a byte of it is copied: a
+  link, as `cesia.toml -> ~/.cargo/credentials.toml` or `src/p/x.ce -> ...`, copied the file of the person it led to
+  into `deps/`, where the project read it, and the code of a dependency as its own. The cache of git knows a
+  repository by its whole address, so another one that ends in the same folders is never served for it: a dependency
+  that asked for `file:///tmp/x/someone/geometry` at a tag filled the cache for `github.com/someone/geometry` at that
+  tag, for every project. A source fetched without encryption, `http://` or `git://`, is refused: anyone on the way
+  could change its code.
+- `cesia doc --site` stops at a link in the `files/` of a book, which it copied as the file it led to, so that a block
+  allowed to read its own folder read any file of the person who built the site; at a `source` of `[site]` that is no
+  `https://` or `http://` address, as `javascript:`, put in the link of each page; and at a link under `docs/`, `std/`
+  or the sources that leads nowhere, with its name, where it stopped with an internal error.
+- The chapter on permissions says plainly that `exec=PROGRAM` gives that program all its own powers, with any arguments,
+  as `ffi=` does: a browser, a shell or `cesia` itself is total trust.
+- `sys.Link` needs the write permission on its target, as well as the read one: a hard link is the same file under a
+  second name, and a program allowed to read `readable/` only, with `write=out`, could link a file of `readable/` into
+  `out/` and write, change the mode or the time of the original through it; in `cesia test`, a test could rewrite the
+  project's sources whenever its Temp folder was on the same disk. `sys.ReadLink`, `sys.Remove` and `sys.Rename` check
+  the link itself, not where it points: a link out of the folder could be made but never read, moved or removed.
+  `read=` and `write=` written from the root hold the same files as written from the current folder, and the reverse:
+  a task with absolute folders was denied its own files. On Linux, a file or a folder is checked again where the system
+  opened it, and the act done through it, so another process that swaps a folder of the path for a link between the
+  check and the act can't lead a read, a write, a change of mode or a new link out of the folder; a link that another
+  process removed while a path was checked ended the program with an internal error. `sys.Copy` of a file dated the
+  first second of 1970 gave the copy the time of now.
 - `Limit "steps" reached.` names the step that went past the limit: the turn of a loop, as `for j in 1..100` in
   `spin`, or the call that made a frame, as `deep(n - 1)` in `deep`. It named the last place that had written its
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,

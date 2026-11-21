@@ -2,8 +2,8 @@ http-panic.ce:11:37: broken
   11 | handle(r) = if r.Path == "/boom" bug.Panic("broken") else {Status: 200, Body: "fine"} end
      |                                     ^
   in handle (http-panic.ce:11)
-  called from dispatch (std/http.ce:698)
-  called from <anonymous> (std/http.ce:709)
+  called from dispatch (std/http.ce:751)
+  called from <anonymous> (std/http.ce:762)
   called from <anonymous> (std/http.ce:161)
   called from answer (std/http.ce:161)
 Ok("HTTP/1.1 500 Internal Server Error")

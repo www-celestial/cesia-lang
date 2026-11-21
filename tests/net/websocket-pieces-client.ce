@@ -1,0 +1,27 @@
+(** For websocket-pieces.cmd: a frame of a megabyte sent to the server 128 bytes at a time, each piece alone on the
+    wire, and its answer. *)
+use std/net
+use std/sys
+use std/io
+use std/list
+use std/math
+use std/result
+use std/text
+
+crlf = "\r\n"
+be(n, k) = [math.Mod(math.Div(n, 256 ^ (k - i)), 256) for i in 1..k]
+n = 1048000
+(* A binary frame of 64-bit length, masked by a key of zeros, which leaves the payload as it is. *)
+frame = "$(text.FromBytes(list.Concat([130, 255], be(n, 8))))$(text.FromBytes([0, 0, 0, 0]))$(text.Repeat(n, "x"))"
+c = result.Unwrap(net.Connect("127.0.0.1", 18463))
+net.Write(c, "GET /echo HTTP/1.1$(crlf)Host: a$(crlf)Upgrade: websocket$(crlf)Connection: Upgrade$(crlf)Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==$(crlf)$crlf")
+_ = net.Read(c)
+size = text.ByteLength(frame)
+at = 1
+while at <= size
+  net.Write(c, text.ByteSlice(at, list.Min(size, at + 127), frame))
+  at += 128
+  sys.Sleep(0.001)
+end
+io.Print("answer: $(text.Bytes(net.Read(c).Value))")
+net.Close(c)

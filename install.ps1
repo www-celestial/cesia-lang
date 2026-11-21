@@ -10,8 +10,16 @@ $target = if ($env:CESIA_HOME) { $env:CESIA_HOME } else { Join-Path $env:USERPRO
 $tmp = Join-Path ([System.IO.Path]::GetTempPath()) ("cesia-" + [guid]::NewGuid())
 New-Item -ItemType Directory -Path $tmp | Out-Null
 
+# TLS 1.2 at least, as Windows PowerShell 5.1 may offer older ones first.
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# https alone, for the address and where its redirects end: anyone on the way of a plain one could change what is installed.
 function Fetch($url, $file) {
-  if ($url.StartsWith("file://")) { Copy-Item $url.Substring(7) $file } else { Invoke-WebRequest $url -OutFile $file -UseBasicParsing }
+  if ($url.StartsWith("file://")) { Copy-Item $url.Substring(7) $file; return }
+  if (-not $url.StartsWith("https://")) { throw "$url is no https:// address: nothing installed." }
+  $r = Invoke-WebRequest $url -OutFile $file -UseBasicParsing -PassThru
+  $final = if ($r.BaseResponse.ResponseUri) { $r.BaseResponse.ResponseUri } else { $r.BaseResponse.RequestMessage.RequestUri }
+  if ($final -and $final.Scheme -ne "https") { throw "$url led to $final, no https:// address: nothing installed." }
 }
 
 try {

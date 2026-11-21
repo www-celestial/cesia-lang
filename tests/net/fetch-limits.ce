@@ -1,0 +1,59 @@
+(** http.Fetch against servers that never end: one silent, one whose head never ends, one whose body is longer than
+    asked. Each gives an Err in its time, and a head sent a byte at a time is read once. *)
+use std/http
+use std/net
+use std/fiber
+use std/io
+use std/result
+use std/sys
+use std/text
+
+crlf = "\r\n"
+port = 18462
+
+defn serveOne(listener, talk)
+  c = net.Accept(listener)?
+  net.Read(c)?
+  _ = talk(c)
+  net.Close(c)
+  result.Ok(missing)
+end
+
+defn ask(talk, timeout = 300, maxBody = missing)
+  listener = net.Listen(port)?
+  server = fiber.Spawn(() -> serveOne(listener, talk))
+  got = http.Fetch("http://127.0.0.1:$port/", timeout = timeout, maxBody = maxBody)
+  fiber.Wait(server)
+  net.Close(listener)
+  got
+end
+
+shown(r) = r then result.MapOk(it.Body) then result.MapErr(e -> "$(e.Kind): $(e.Message)")
+
+defn padded(c)
+  (** A head that never ends, a line of 1 KiB at a time, until the client goes. *)
+  net.Write(c, "HTTP/1.1 200 OK$crlf")?
+  while true
+    net.Write(c, "X-Pad: $(text.Repeat(1000, "a"))$crlf")?
+    sys.Sleep(0.001)
+  end
+end
+
+defn dripped(c)
+  (** A response, a byte at a time. *)
+  for b in text.Chars("HTTP/1.1 200 OK$(crlf)Content-Length: 2$(crlf)$(text.Repeat(300, "X-A: b$crlf"))$(crlf)ok")
+    net.Write(c, b)?
+  end
+  result.Ok(missing)
+end
+
+start = sys.Now()
+io.Print("silent: $(shown(ask(c -> net.Read(c), timeout = 0.2)))")
+io.Print("in its time: $(sys.Now() - start < 2)")
+io.Print("endless head: $(shown(ask(padded)))")
+io.Print("a byte at a time: $(shown(ask(dripped)))")
+sized = "HTTP/1.1 200 OK$(crlf)Content-Length: 1000$crlf$crlf$(text.Repeat(1000, "z"))"
+io.Print("too long by its length: $(shown(ask(c -> net.Write(c, sized), maxBody = 100)))")
+unsized = "HTTP/1.1 200 OK$crlf$crlf$(text.Repeat(1000, "z"))"
+io.Print("too long to its end: $(shown(ask(c -> net.Write(c, unsized), maxBody = 100)))")
+io.Print("as long as asked: $(text.ByteLength(ask(c -> net.Write(c, unsized), maxBody = 1000).Value.Body))")

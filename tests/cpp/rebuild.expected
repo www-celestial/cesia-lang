@@ -1,0 +1,10 @@
+val() = 1
+== the header changed
+val() = 2
+== another library put in the folder, beside the .cpp that Wrap wrote
+val() = 2
+== nothing changed: the same library
+val() = 2
+not made again
+0
+exit 0
