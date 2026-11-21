@@ -13,6 +13,11 @@ system=$1
 root=$PWD
 out=$(mkdir -p "$2" && cd "$2" && pwd)
 openblas=0.3.28 sodium=1.0.20 openssl=3.5.4
+openblas_sha256=f1003466ad074e9b0c8d421a204121100b0751c96fc6fcf3d1456bd12f8a00a1
+openblas_win_sha256=4cbd0e5daa3fb083b18f5e5fa6eefe79e2f2c51a6d539f98a3c6309a21160042
+sodium_sha256=ebb65ef6ca439333c2bb41a0c1990587288da07f6c7fd07cb3a18cc18d30ce19
+sodium_win_sha256=01fb81c10ae3d249bfe5890ce59544571469e16691994ab6702a531533c6d726
+openssl_sha256=967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99
 # SQLite: its release, and the SHA3-256 of its files that sqlite.org publishes.
 sqlite=3540100 sqlite_year=2026 sqlite_version=3.54.1
 sqlite_sha3=92281c86e2957f9b9305890f9ac04204caa7b677cc868dc326d942689df28e30
@@ -21,12 +26,20 @@ work=$(mktemp -d)
 lib="$out/lib"
 mkdir -p "$lib/licenses"
 cd "$work"
-get() { curl -fsSL --retry 3 -o "$2" "$1"; }
+fetch() { curl -fsSL --proto '=https' --tlsv1.2 --retry 3 -o "$2" "$1"; }
+# A download checked against its SHA-256 before anything reads it. The fingerprints were checked by hand at each change of
+# version: OpenSSL's against the .sha256 it publishes, libsodium's against its minisign signatures, OpenBLAS's source
+# against the archive of its git tag; OpenBLAS publishes none for its Windows zip, so that one is the file as fetched then.
+get() {  # url, file, sha256
+  fetch "$1" "$2"
+  have=$(python3 -I -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$2")
+  [ "$have" = "$3" ] || { echo "$2: SHA-256 $have, not $3." >&2; exit 1; }
+}
 jobs=$(getconf _NPROCESSORS_ONLN 2> /dev/null || echo 4)
 
 # A download of SQLite, checked against the fingerprint above before anything reads it.
 get_sqlite() {  # file, sha3
-  get "https://www.sqlite.org/$sqlite_year/$1" "$1"
+  fetch "https://www.sqlite.org/$sqlite_year/$1" "$1"
   have=$(python3 -I -c 'import hashlib, sys; print(hashlib.sha3_256(open(sys.argv[1], "rb").read()).hexdigest())' "$1")
   [ "$have" = "$2" ] || { echo "$1: SHA3-256 $have, not $2." >&2; exit 1; }
   printf 'The author disclaims copyright to this source code. In place of a legal notice, here is a blessing:\n\n    May you do good and not evil.\n    May you find forgiveness for yourself and forgive others.\n    May you share freely, never taking more than you give.\n' > "$lib/licenses/SQLite.txt"
@@ -42,7 +55,7 @@ build_sqlite() {  # output file, then the flags that name it
 }
 
 build_openblas() {
-  get "https://github.com/OpenMathLib/OpenBLAS/releases/download/v$openblas/OpenBLAS-$openblas.tar.gz" openblas.tgz
+  get "https://github.com/OpenMathLib/OpenBLAS/releases/download/v$openblas/OpenBLAS-$openblas.tar.gz" openblas.tgz "$openblas_sha256"
   tar -xzf openblas.tgz
   make -C "OpenBLAS-$openblas" -j"$jobs" DYNAMIC_ARCH=1 NOFORTRAN=1 C_LAPACK=1 USE_OPENMP=0 NUM_THREADS=64 libs shared > /dev/null
   cp -L "OpenBLAS-$openblas/libopenblas.so.0" "$lib/"
@@ -50,14 +63,14 @@ build_openblas() {
 }
 
 build_sodium() {
-  get "https://download.libsodium.org/libsodium/releases/libsodium-$sodium.tar.gz" sodium.tgz
+  get "https://download.libsodium.org/libsodium/releases/libsodium-$sodium.tar.gz" sodium.tgz "$sodium_sha256"
   tar -xzf sodium.tgz
   (cd "libsodium-$sodium" && ./configure --disable-static --prefix="$work/prefix" > /dev/null && make -j"$jobs" install > /dev/null)
   cp "libsodium-$sodium/LICENSE" "$lib/licenses/libsodium.txt"
 }
 
 build_openssl() {
-  get "https://github.com/openssl/openssl/releases/download/openssl-$openssl/openssl-$openssl.tar.gz" openssl.tgz
+  get "https://github.com/openssl/openssl/releases/download/openssl-$openssl/openssl-$openssl.tar.gz" openssl.tgz "$openssl_sha256"
   tar -xzf openssl.tgz
   (cd "openssl-$openssl" && ./Configure "$1" shared no-tests --prefix="$work/prefix" --libdir=lib > /dev/null &&
     make -j"$jobs" > /dev/null && make install_sw > /dev/null)
@@ -91,11 +104,11 @@ case "$system" in
     done
     ;;
   windows-x86_64)
-    get "https://github.com/OpenMathLib/OpenBLAS/releases/download/v$openblas/OpenBLAS-$openblas-x64.zip" openblas.zip
+    get "https://github.com/OpenMathLib/OpenBLAS/releases/download/v$openblas/OpenBLAS-$openblas-x64.zip" openblas.zip "$openblas_win_sha256"
     unzip -q openblas.zip -d openblas
     cp openblas/bin/libopenblas.dll "$lib/"
     cp openblas/LICENSE "$lib/licenses/OpenBLAS.txt" 2> /dev/null || true
-    get "https://download.libsodium.org/libsodium/releases/libsodium-$sodium-mingw.tar.gz" sodium.tgz
+    get "https://download.libsodium.org/libsodium/releases/libsodium-$sodium-mingw.tar.gz" sodium.tgz "$sodium_win_sha256"
     tar -xzf sodium.tgz
     cp libsodium-win64/bin/libsodium-26.dll "$lib/libsodium.dll"
     # OpenSSL publishes no binaries: MSYS2's, which need only the DLLs of Windows itself. MSYS2_ROOT is where the release job
