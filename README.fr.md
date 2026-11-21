@@ -14,8 +14,8 @@ http.Serve(app, port = 8080)
 ## Installer
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh    # Linux and macOS
-irm https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.ps1 | iex         # Windows, in PowerShell
+curl --proto '=https' --tlsv1.2 -fsSL https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.sh | sh    # Linux and macOS
+irm https://raw.githubusercontent.com/www-celestial/cesia-lang/main/install.ps1 | iex                                    # Windows, in PowerShell
 cesia upgrade              # later: the newest release, after its notes and a question
 cesia upgrade --nightly    # a build of main between releases, made by hand
 ```
