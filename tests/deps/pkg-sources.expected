@@ -1,0 +1,16 @@
+== a cesia.toml that is a link
+someone/geometry at v1.0.0 holds cesia.toml, a link or no plain file: cesia pkg takes plain files only, so that nothing out of the project is copied.
+no deps/
+== code that is a link
+someone/geometry at v1.0.0 holds src/shapes/shapes.ce, a link or no plain file: cesia pkg takes plain files only, so that nothing out of the project is copied.
+the secret is not in deps/
+== two repositories that end in the same folders
+deps/someone/geometry: v1.0.0, src/shapes.
+deps/someone/geometry: v1.0.0, src/shapes.
+Name = "shapes of genuine"
+== without encryption
+"http://github.com/someone/geometry" is fetched without encryption, so anyone on the way can change its code: write it with https:// or ssh://.
+"git://github.com/someone/geometry" is fetched without encryption, so anyone on the way can change its code: write it with https:// or ssh://.
+"HTTP://github.com/someone/geometry" is fetched without encryption, so anyone on the way can change its code: write it with https:// or ssh://.
+4
+exit 0

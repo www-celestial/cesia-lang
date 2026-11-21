@@ -246,6 +246,42 @@ defn gitUrl(from)
   if text.Contains("://", from) or text.StartsWith("git@", from) from else "https://$from" end
 end
 
+defn sourceUrl(from)
+  (** The URL of a repository as the cache knows it: what git fetches, without a / or a .git at its end, so that one
+      repository written two ways is one, and two repositories that end in the same folders are two. *)
+  u = gitUrl(from)
+  if text.EndsWith("/", u)
+    u = text.Slice(1, value.Len(u) - 1, u)
+  end
+  if text.EndsWith(".git", u)
+    u = text.Slice(1, value.Len(u) - 4, u)
+  end
+  u
+end
+
+defn linked(dir, top)
+  (** The first path under a fetched project, past its .git, that is a link or neither a file nor a folder, or missing:
+      a project is read as plain files, and a link would lead the copy out of it, to any file of the person. *)
+  listed = sys.List(dir)
+  if result.IsErr(listed)
+    return dir
+  end
+  for name in listed.Value
+    path = "$dir/$name"
+    stat = sys.Stat(path)
+    if not (top and name == ".git")
+      if result.IsErr(stat) or stat.Value.IsLink or not (stat.Value.IsFile or stat.Value.IsDir)
+        return path
+      end
+      inner = if stat.Value.IsDir linked(path, false) else missing end
+      if not value.IsMissing(inner)
+        return inner
+      end
+    end
+  end
+  missing
+end
+
 nameChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-"
 
 defn isPart(s, more)
@@ -266,6 +302,10 @@ defn checkDep(path, from, version)
       the cache, or give git an option. *)
   parts = text.Split("/", path)
   printable = list.All(list.Map(b -> b > 32 and b != 127, text.Bytes(from)))
+  plain = text.Lower(from)
+  if text.StartsWith("http://", plain) or text.StartsWith("git://", plain) or text.StartsWith("ftp://", plain)
+    return result.Err("$quote$from$quote is fetched without encryption, so anyone on the way can change its code: write it with https:// or ssh://.")
+  end
   if text.StartsWith("-", from) or not printable or value.Len(parts) < 2 or not list.All(list.Map(p -> isPart(p, "@"), parts))
     return result.Err("$quote$from$quote is no repository cesia pkg takes: the folders of its place under deps/ are letters, digits and . _ - @, never first a . or a -.")
   end
@@ -316,7 +356,19 @@ defn fetch(path, from, version)
   (** A project at a tag or at a commit, from the cache, cloned there the first time: {Path, From, Version, Dir, Commit,
       Src, Deps}. A commit is fetched alone, by its hash, which the server must give: GitHub and git itself do. *)
   checkDep(path, from, version)?
-  dir = "$(cacheDir())/$path/$version"
+  url = sourceUrl(from)
+  (* The cache is kept by the URL, its scheme and host too: a project that ends in the same folders, from elsewhere, is
+     never served for this one. Each entry says where it was fetched from, and is fetched again if that is not url. *)
+  dir = "$(cacheDir())/$(text.Slice(8, 23, cesia.Fingerprint(url)))/$path/$version"
+  if sys.Exists("$dir/.git") and result.UnwrapOr("", git(["-C", dir, "config", "--get", "cesia.from"])) != "$url\n"
+    removeAll(dir)?
+  end
+  older = "$(cacheDir())/$path/$version"
+  if not sys.Exists("$dir/.git") and sys.Exists("$older/.git") and result.UnwrapOr("", git(["-C", older, "config", "--get", "remote.origin.url"])) == "$(gitUrl(from))\n"
+    sys.Mkdir(parent(dir))?
+    sys.Rename(older, dir)?
+    git(["-C", dir, "config", "cesia.from", url])?
+  end
   if not sys.Exists("$dir/.git")
     staging = "$dir.new"
     removeAll(staging)?
@@ -330,12 +382,17 @@ defn fetch(path, from, version)
       _ = removeAll(staging)
       return result.Err("Can't fetch $path at $version: $(cloned.Error)")
     end
+    git(["-C", staging, "config", "cesia.from", url])?
     removeAll(dir)?
     sys.Rename(staging, dir)?
   end
   commit = text.Trim(git(["-C", dir, "rev-parse", "HEAD"])?)
   if isCommit(version) and commit != version
     return result.Err("$path gave the commit $commit when $version was asked: its cache folder $dir is wrong; remove it.")
+  end
+  bad = linked(dir, true)
+  if not value.IsMissing(bad)
+    return result.Err("$path at $version holds $(text.Slice(value.Len(dir) + 2, value.Len(bad), bad)), a link or no plain file: cesia pkg takes plain files only, so that nothing out of the project is copied.")
   end
   if not sys.Exists("$dir/$projectFile")
     return result.Err("$path has no cesia.toml at $version: it is not a Cesia project.")

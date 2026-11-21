@@ -25,6 +25,13 @@
 
 ### Fixes
 
+- `cesia pkg` refuses a fetched project that holds a link, its `cesia.toml` too, before a byte of it is copied: a
+  link, as `cesia.toml -> ~/.cargo/credentials.toml` or `src/p/x.ce -> ...`, copied the file of the person it led to
+  into `deps/`, where the project read it, and the code of a dependency as its own. The cache of git knows a
+  repository by its whole address, so another one that ends in the same folders is never served for it: a dependency
+  that asked for `file:///tmp/x/someone/geometry` at a tag filled the cache for `github.com/someone/geometry` at that
+  tag, for every project. A source fetched without encryption, `http://` or `git://`, is refused: anyone on the way
+  could change its code.
 - `sys.Link` needs the write permission on its target, as well as the read one: a hard link is the same file under a
   second name, and a program allowed to read `readable/` only, with `write=out`, could link a file of `readable/` into
   `out/` and write, change the mode or the time of the original through it; in `cesia test`, a test could rewrite the
