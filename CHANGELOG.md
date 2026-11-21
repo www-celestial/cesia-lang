@@ -25,6 +25,11 @@
 
 ### Fixes
 
+- What a cell prints is never taken for a message of its session: a line of data that held the byte 1 and JSON, as a
+  row of a CSV, was read as one, so that it could end the run with a value of its own, put the next runs out of step,
+  and give `cells.Html` a graph whose SVG held a script. Each message now holds a token that the session draws at
+  random as it starts, and `cells.Html` puts in its page only an SVG as `std/plot` writes it. A session of an older
+  `std/cells`, as a project's own copy, still runs.
 - `cesia pkg` refuses a fetched project that holds a link, its `cesia.toml` too, before a byte of it is copied: a
   link, as `cesia.toml -> ~/.cargo/credentials.toml` or `src/p/x.ce -> ...`, copied the file of the person it led to
   into `deps/`, where the project read it, and the code of a dependency as its own. The cache of git knows a

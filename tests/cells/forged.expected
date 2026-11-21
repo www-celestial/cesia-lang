@@ -1,0 +1,5 @@
+lines: 3, value: {Kind: "text", Text: "42"}, shown: [], error: missing
+printed as it is: true
+next: {Kind: "text", Text: "next"}
+script in page: false
+exit 0

@@ -1,0 +1,24 @@
+(* What a cell prints is never taken for a message of its session, even when it holds the byte 1 and JSON: a run ends
+   with its own answer, its lines are what it printed, and the page of cells.Html holds no script. *)
+use std/cells
+use std/io
+use std/result
+use std/sys
+use std/text
+use std/value
+
+defn Main()
+  (** The runs, then the page. *)
+  cs = cells.Parse(sys.Read("forged-notebook.ce")?)
+  s = cells.Session("forged-notebook.ce")?
+  cells.Run(s, cs[1])?
+  r = cells.Run(s, cs[2])?
+  io.Print("lines: $(value.Len(r.Output)), value: $(r.Value), shown: $(r.Shown), error: $(r.Error)")
+  io.Print("printed as it is: $(text.Contains("forged", r.Output[1]) and text.Contains("<script>", r.Output[2]))")
+  io.Print("next: $(cells.Run(s, cs[3])?.Value)")
+  page = cells.Html("forged-notebook.ce")?
+  io.Print("script in page: $(text.Contains("<script>", page))")
+  result.Ok(missing)
+end
+
+result.Unwrap(Main())
