@@ -20,7 +20,8 @@ A key is a text or a number: a list, a dictionary or `missing` can't be one. A k
 {"first name": "Ana", 2: "two"} -->
 ```
 
-`1` and `1.0` are one key, as they are one number: `{1: "one"}[1.0]` is `"one"`.
+`1` and `1.0` are one key, as they are one number: `{1: "one"}[1.0]` is `"one"`. An integer is one key with a float only
+when it is that float exactly: past 2^53, `9007199254740993` and `9007199254740992.0` are two keys.
 
 ## Reading
 

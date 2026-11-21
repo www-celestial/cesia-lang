@@ -852,7 +852,7 @@ and inlinable ?(any = false) ?(most = 40) (v : version) =
        | _ -> 1)
   in
   (any || v.ret == TI || v.ret == TF) && v.state = 2 && Array.length f.captures = 0 && (not f.has_self_tail)
-  && blk_size size (Lazy.force f.body) <= most
+  && (not (Compile.checks v)) && blk_size size (Lazy.force f.body) <= most
 
 and blk_size size b = Array.fold_left (fun n x -> n + size x) 0 b
 
@@ -1230,12 +1230,23 @@ and cond st (e : expr) yes no =
     let op = match op with Lt -> Ir.Lt | Le -> Le | Gt -> Gt | Ge -> Ge | Eq -> Eq | _ -> Ne in
     let x = expr st a in
     let y = expr st b in
-    let x, y = numbers st a b x y in
+    (* Integers against floats exactly, as the interpreter: a value beside a float is a number that is a float exactly. *)
+    let x, y =
+      match snd x, snd y with
+      | Kval, Kfloat -> (fst (unbox st (fst x) Exact), Ir.Kfloat), y
+      | Kfloat, Kval -> x, (fst (unbox st (fst y) Exact), Ir.Kfloat)
+      | _ -> numbers st a b x y
+    in
     (match snd x, snd y with
      | Kint, Kint -> close st (Branch (op, Kint, fst x, fst y, yes, no))
-     | _ ->
-       let x = to_float st x and y = to_float st y in
-       close st (Branch (op, Kfloat, x, y, yes, no)))
+     (* An integer constant that is a float exactly compares as one. *)
+     | Kint, Kfloat when (match fst x with Int n -> n < 1 lsl 53 && n >= -(1 lsl 53) | _ -> false) ->
+       close st (Branch (op, Kfloat, to_float st x, fst y, yes, no))
+     | Kfloat, Kint when (match fst y with Int n -> n < 1 lsl 53 && n >= -(1 lsl 53) | _ -> false) ->
+       close st (Branch (op, Kfloat, fst x, to_float st y, yes, no))
+     | Kint, Kfloat -> close st (Mixed (op, fst x, to_float st x, fst y, yes, no))
+     | Kfloat, Kint -> close st (Mixed (Ir.flip op, fst y, to_float st y, fst x, yes, no))
+     | _ -> close st (Branch (op, Kfloat, to_float st x, to_float st y, yes, no)))
   | Call call when kind_test st call <> None ->
     let name = Option.get (kind_test st call) in
     (match expr st call.args.(0).value with
@@ -1869,8 +1880,11 @@ and saved st =
   let hidden = Vec.length st.hidden and points = Vec.length d.points and need = Option.map ( ! ) d.need in
   let loose = d.loose and lent = d.lent and known = d.known and nums = d.nums and elems = d.elems and ranges = d.ranges in
   let inside = d.inside and colds = d.colds and ncalls = st.ncalls and fast = st.fast and resumable = st.resumable in
-  let twins = Hashtbl.copy st.twins in
+  let twins = Hashtbl.copy st.twins and blocks = Vec.length st.blocks and loops = st.loops in
   fun () ->
+    (* The blocks made since go too: an error of theirs would name an inlined frame whose [Frame] was dropped. *)
+    shrink st.blocks blocks;
+    st.loops <- loops;
     let blk = Vec.get st.blocks b in
     let rec drop k l = if k = 0 then l else drop (k - 1) (List.tl l) in
     (* What [at_start] put in this block since stays, before the code dropped: its registers' copies and fuel. *)
@@ -2491,6 +2505,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
   let f = ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
   if (not region) && ver.ret != TI && ver.ret != TF then raise No;
+  (* A whole function in native code skips the checks of its parameters' and result's types. *)
+  if (not region) && Compile.checks ver then raise No;
   let kinds = Vec.create () in
   let regs = Array.make f.nvars (-1) and arrays = Array.make f.nvars (-1) and arr = Vec.create () in
   let np = Array.length f.params in

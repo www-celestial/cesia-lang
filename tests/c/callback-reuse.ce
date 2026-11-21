@@ -1,0 +1,19 @@
+(** A function made a callback again gets its first one back; each new one counts against --limit memory, as C keeps it
+    for good: 300,000 took 292 MB of C memory under a limit of 30 MB. *)
+use std/c
+use std/io
+use std/result
+use std/sys
+
+lib = result.Unwrap(c.Open(sys.Args[1]))
+twice = result.Unwrap(c.Fn("apply_twice", ["callback", "i64"], "i64", lib))
+s = 0
+for r in 1..300000
+  s = s + twice(c.Callback(x -> x + 1, ["i64"], "i64"), r)
+end
+io.Print(s)
+(* A new function each time: a callback each, until the limit. *)
+for r in 1..300000
+  s = s + twice(c.Callback(x -> x + r, ["i64"], "i64"), r)
+end
+io.Print(s)

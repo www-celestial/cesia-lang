@@ -33,9 +33,11 @@ order.note -->
 json.Parse("{\"id\": ") -->
 ```
 
-A number without a dot or an exponent that fits in 63 bits becomes an integer, and any other number a float: so
-`12345678901234567890` is read as a float, close to it. A key given twice keeps its last value, as most readers of JSON do.
-A text may hold any escape of JSON, `\u00e9` included. JSON nested deeper than half the `nesting` limit, 300 levels by
+A number without a dot or an exponent that fits in 63 bits becomes an integer, and any other number with them a float. An
+integer past 63 bits, as `12345678901234567890`, an ID or a hash, is kept as the text of its digits, exact: a float would
+lose some, and no number of Cesia holds it. A key given twice keeps its last value, as most readers of JSON do. A text may
+hold any escape of JSON, `\u00e9` included; JSON is UTF-8, as RFC 8259 asks, and bytes that aren't are an `Err`, as a
+text of such bytes is an error of `json.Text`. JSON nested deeper than half the `nesting` limit, 300 levels by
 default, is an `Err`, `Too deep`, so a hostile input of ten thousand `[` can't overflow the reader.
 
 ```cesia
@@ -182,7 +184,7 @@ io.Print(result.Unwrap(sys.Read("people.json")))
 [std/encode] writes bytes as text that any channel carries. [encode.Hex] writes each byte as two hexadecimal digits, and
 [encode.Unhex] reads them back; [encode.Base64] writes three bytes as four characters of an alphabet of 64, as RFC 4648
 says, and [encode.Unbase64] reads both its alphabets, the standard one and the one of URLs, with or without the `=` of
-padding. [encode.UrlEncode] writes every byte of a text that a URL can't hold as `%` and two digits, *percent-encoding*,
+padding, one or two at the end of a text of a multiple of four. [encode.UrlEncode] writes every byte of a text that a URL can't hold as `%` and two digits, *percent-encoding*,
 and [encode.UrlDecode] reads it back, a `+` as a space as forms write it; [encode.ParseQuery] reads the fields of a query
 or a form. [encode.Sha1] is the SHA-1 hash that the WebSocket handshake asks for, and nothing else: SHA-1 is broken for
 signatures, and [std/crypto] has the hashes for security.

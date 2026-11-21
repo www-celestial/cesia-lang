@@ -102,7 +102,10 @@ applyTwice(triple, 2)
 ```
 
 A panic inside a callback comes back to the Cesia code that called C. A C function that keeps a callback and calls it later,
-from another of its functions, says so when it is bound, with `callsBack = true`.
+from another of its functions, says so when it is bound, with `callsBack = true`: a callback that comes through a function
+bound without it, or from a thread of the library, stops the program with a message, as running Cesia there would corrupt
+its memory. [c.Callback] of a function made a callback before, with the same types, gives that one back: C may keep the
+pointer, so each callback is C memory kept to the end of the program, which counts against `--limit memory`.
 
 ### Variadic functions
 

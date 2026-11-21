@@ -21,9 +21,24 @@ isSha1() = encode.Hex(encode.Sha1("abc")) == "a9993e364706816aba3e25717850c26c9c
 isSha1Long() = encode.Hex(encode.Sha1(text.Repeat(1000, "a"))) == "291e9a6c66994949b57ba5e650361e98fc36b1ba"
 isWebsocketAccept() = encode.Base64(encode.Sha1("dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11")) == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo="
 
-(** Unbase64 as it was written in Cesia before it became a native: the oracle of the native, which must give the same. *)
+(** Unbase64 as it was written in Cesia before it became a native: the oracle of the native, which must give the same.
+    Its padding since: one or two = at the end of a text of a multiple of four, none elsewhere. *)
 defn oldUnbase64(s)
   digitOf(b) = if b >= 65 and b <= 90 b - 65 else if b >= 97 and b <= 122 b - 71 else if b >= 48 and b <= 57 b + 4 else if b == 43 or b == 45 62 else if b == 47 or b == 95 63 else missing end
+  bs = text.Bytes(s)
+  n = value.Len(bs)
+  pad = 0
+  if n >= 1 and bs[n] == 61
+    pad = if n >= 2 and bs[n - 1] == 61 2 else 1 end
+  end
+  if pad > 0 and math.Mod(n, 4) != 0
+    return result.Err({Kind: "encoding", Message: "This isn't valid Base64."})
+  end
+  for k in 1..(n - pad)
+    if bs[k] == 61
+      return result.Err({Kind: "encoding", Message: "This isn't valid Base64."})
+    end
+  end
   codes = text.Bytes(text.Replace("=", "", s))
   if math.Mod(value.Len(codes), 4) == 1
     return result.Err({Kind: "encoding", Message: "This isn't valid Base64."})
@@ -48,7 +63,9 @@ defn oldUnbase64(s)
 end
 
 base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/-_="
+(* Padding only at the end: two texts of Base64 end to end, or text after the padding, decoded to wrong bytes. *)
+isUnbase64Padding() = result.IsErr(encode.Unbase64("aGk=aGk=")) and result.IsErr(encode.Unbase64("aGk=junk")) and result.IsErr(encode.Unbase64("aGk==")) and result.IsErr(encode.Unbase64("a===")) and result.IsErr(encode.Unbase64("====")) and value.Equal(encode.Unbase64("aG=="), result.Ok("h")) and value.Equal(encode.Unbase64("aGk="), result.Ok("hi"))
 isUnbase64AsBefore() = test.ForAll(s -> value.Equal(encode.Unbase64(s), oldUnbase64(s)), gen.Text(max = 40, chars = base64Chars), cases = 2000)
 isUnbase64AsBeforeOnAnyText() = test.ForAll(s -> value.Equal(encode.Unbase64(s), oldUnbase64(s)), gen.Text(max = 12, chars = "$(base64Chars)!é \n.*"), cases = 2000)
 isUnbase64OfAnyBytes() = test.ForAll(bs -> encode.Unbase64(encode.Base64(text.FromBytes(bs))) then result.Unwrap(it) then text.Bytes(it) then value.Equal(it, bs), gen.List(gen.Int(0, 255), max = 50))
-isUnbase64Edges() = value.Equal(encode.Unbase64("=a=G=k="), result.Ok("hi")) and value.Equal(encode.Unbase64("aGk=a"), result.Ok(text.FromBytes([104, 105, 26]))) and result.IsErr(encode.Unbase64("aGkaa")) and value.Equal(encode.Unbase64(""), result.Ok("")) and value.Equal(encode.Unbase64("aGl"), result.Ok("hi")) and value.Equal(encode.Unbase64("_-8"), result.Ok(text.FromBytes([255, 239])))
+isUnbase64Edges() = result.IsErr(encode.Unbase64("=a=G=k=")) and result.IsErr(encode.Unbase64("aGk=a")) and result.IsErr(encode.Unbase64("aGkaa")) and value.Equal(encode.Unbase64(""), result.Ok("")) and value.Equal(encode.Unbase64("aGl"), result.Ok("hi")) and value.Equal(encode.Unbase64("_-8"), result.Ok(text.FromBytes([255, 239])))

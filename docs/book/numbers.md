@@ -84,7 +84,8 @@ disp(mod(-7, 3))
 ### Bits
 
 [math.BitAnd], [math.BitOr], [math.BitXor] and [math.BitNot] work on the bits of integers, and [math.BitShift] moves them
-left for a positive count, right for a negative one:
+left for a positive count, right for a negative one. A right shift keeps the sign, as in Python and Go; a left shift works
+on the 63 bits of an integer, and the bits shifted past them are lost:
 
 ```cesia
 math.BitAnd(12, 10) -->
@@ -92,6 +93,7 @@ math.BitOr(12, 10) -->
 math.BitXor(12, 10) -->
 math.BitShift(1, 4) -->
 math.BitShift(16, -2) -->
+math.BitShift(-8, -1) -->
 ```
 
 ```python
@@ -100,6 +102,7 @@ print(12 | 10)
 print(12 ^ 10)
 print(1 << 4)
 print(16 >> 2)
+print(-8 >> 1)
 ```
 
 ```r
@@ -108,6 +111,7 @@ print(bitwOr(12L, 10L))
 print(bitwXor(12L, 10L))
 print(bitwShiftL(1L, 4L))
 print(bitwShiftR(16L, 2L))
+print(-8L %/% 2L)
 ```
 
 ```matlab
@@ -116,6 +120,7 @@ disp(bitor(12, 10))
 disp(bitxor(12, 10))
 disp(bitshift(1, 4))
 disp(bitshift(16, -2))
+disp(floor(-8 / 2))
 ```
 
 ## Arrays and statistics: std/num

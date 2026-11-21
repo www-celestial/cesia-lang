@@ -1,0 +1,16 @@
+use std/io
+
+(** A typed parameter checked in machine code too: a version for a Float of a parameter Int, which the interpreter refuses
+    at its call, is left to it, so that CESIA_JIT=always stops at the same call. *)
+F0(p Int) = f1(p / p)
+f1(p) = p
+
+defn main()
+  s = 0.0
+  for i in 1..3000
+    s = s + F0(i)
+  end
+  io.Print(s)
+  io.Print(F0(2.5))
+end
+main()

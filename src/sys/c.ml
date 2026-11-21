@@ -57,6 +57,9 @@ type t = {
   mutable spare : ctx option;  (** the context of callbacks, free between two *)
   mutable calling : int;  (** how many calls through libffi are running, so a callback may be under way *)
   mutable freed : block list;  (** blocks freed during such a call: C may still be reading them *)
+  cifs : (int * int array * int, int) Hashtbl.t;  (** the signatures prepared, by their types: C memory, kept for good *)
+  callbacks : (int, (Types.t * int) list) Hashtbl.t;  (** by signature: the functions made C callbacks, the last first *)
+  mutable closures : int;  (** the callbacks made, each C memory kept for good, which --limit memory counts *)
 }
 
 let max_args = 6
@@ -66,7 +69,7 @@ let result_offset = 48
 let create () =
   { slots = Bytes.make 56 '\000'; texts = Array.make max_args ""; blocks = Hashtbl.create 16; next_block = 1;
     live_bytes = 0; opened = false; layouts = Hashtbl.create 8; ffi = 0; pending = None; spare = None;
-    calling = 0; freed = [] }
+    calling = 0; freed = []; cifs = Hashtbl.create 8; callbacks = Hashtbl.create 8; closures = 0 }
 
 let c_name ctx name v =
   let s = Native.text_arg ctx name v in
@@ -323,11 +326,12 @@ let candidates name version =
     in_release usual @ usual
   end
 
+(* Digits and dots only, as 6 or 1.2.3: a / made the name a path from the current folder, outside --allow ffi=NAME. *)
 let version_arg ctx (a : Types.t array) =
   match if Array.length a > 1 then a.(1) else Undef with
   | Undef | Missing -> None
-  | Int i -> Some (string_of_int i)
-  | Types.Text s -> Some s
+  | Int i when i >= 0 -> Some (string_of_int i)
+  | Types.Text s when s <> "" && String.for_all (function '0' .. '9' | '.' -> true | _ -> false) s -> Some s
   | v -> Runtime.fail ctx Type (Messages.c_version (Value.describe v))
 
 let library address : Types.t = Handle { kind = "library"; id = address; task = None }
@@ -413,7 +417,13 @@ let alignment_of = function
 (* Through libffi. It stays unloaded until a program needs it, and a program with no library has no use for it. *)
 let ready st ctx =
   if not st.opened then fail ctx Messages.c_no_open_library;
-  if st.ffi = 0 then st.ffi <- ffi_load ();
+  if st.ffi = 0 then begin
+    (* A callback that C makes outside a call bound with callsBack, from a plain or slow one or from a thread of its
+       own, would run OCaml where it can't, inside a call that holds no frame of it: the memory would be corrupted.
+       ffi.c stops the program there, with this message. *)
+    Callback.register "cesia callback outside" Messages.c_callback_outside.text;
+    st.ffi <- ffi_load ()
+  end;
   if st.ffi = 0 then fail ctx Messages.c_no_ffi
 
 let description st = function
@@ -424,10 +434,16 @@ let description st = function
        | Void -> 0 | U8 | Bool -> 1 | I8 -> 2 | U16 -> 3 | I16 -> 4 | U32 -> 5 | I32 -> 6 | U64 -> 7 | I64 -> 8 | F32 -> 9
        | F64 -> 10 | Ptr | Text | Callback | Aggregate _ -> 11)
 
+(* One signature for each list of types, whatever the number of c.Fn and c.Callback that use it: C memory, never freed. *)
 let signature st ctx args ret fixed =
-  match ffi_cif st.ffi (description st ret) (Array.map (description st) args) fixed with
-  | 0 -> fail ctx Messages.c_bad_signature
-  | cif -> cif
+  let key = (description st ret, Array.map (description st) args, fixed) in
+  match Hashtbl.find_opt st.cifs key with
+  | Some cif -> cif
+  | None ->
+    let r, a, f = key in
+    match ffi_cif st.ffi r a f with
+    | 0 -> fail ctx Messages.c_bad_signature
+    | cif -> Hashtbl.replace st.cifs key cif; cif
 
 (* Writes an argument, which stays valid across a callback: the GC can't move what C reads. *)
 let encode st ctx slots structs texts k ty (v : Types.t) =
@@ -568,6 +584,9 @@ let with_context st w f =
   st.spare <- Some ctx;
   r
 
+(* A libffi closure of 512 bytes, its holder and root, in words. *)
+let closure_words = 80
+
 let c_callback st ctx (a : Types.t array) : Types.t =
   let f = a.(0) in
   (match f with
@@ -594,9 +613,21 @@ let c_callback st ctx (a : Types.t array) : Types.t =
       st.pending <- Some e;
       poke result 0L
   in
-  match ffi_closure (signature st ctx args ret (-1)) entry with
-  | 0 -> fail ctx Messages.c_bad_signature
-  | id -> Handle { kind = "callback"; id; task = None }
+  (* A function made a callback again, as a literal in a loop, gets its first one back: a libffi closure and a root are
+     C memory, kept for good, since C may keep the pointer. Each new one counts against the limit of memory. *)
+  let cif = signature st ctx args ret (-1) in
+  let same (g, _) = match f, g with Fun a, Fun b -> a.proto == b.proto && a.env == b.env | _ -> f == g in
+  let made = Option.value (Hashtbl.find_opt st.callbacks cif) ~default:[] in
+  match List.find_opt same made with
+  | Some (_, id) -> Handle { kind = "callback"; id; task = None }
+  | None ->
+    st.closures <- st.closures + 1;
+    if st.closures * closure_words > ctx.w.limits.memory_words then raise (Value.Limit { what = "memory"; at = ctx.site });
+    match ffi_closure cif entry with
+    | 0 -> fail ctx Messages.c_bad_signature
+    | id ->
+      Hashtbl.replace st.callbacks cif ((f, id) :: List.filteri (fun k _ -> k < 15) made);
+      Handle { kind = "callback"; id; task = None }
 
 let offset_arg ctx ty (b : block) (v : Types.t) =
   match v with

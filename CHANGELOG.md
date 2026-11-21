@@ -85,6 +85,60 @@
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,
   named another place than the interpreter: now both name the same. A program run with `--limit steps=N` makes its N
   steps, and the next one stops it; at the step of a full checkpoint, it stopped one step early.
+- A valid program no longer ends with `Internal error: Not_found` under the JIT: a list of integers that took a float
+  from an inlined call, in an `if` that also held an empty `if`. A statement that doesn't become machine code now drops
+  the blocks made for it with the rest of its code; and any bug of the JIT met while it makes code leaves that loop or
+  function interpreted, so that it can never end a program again.
+- A nested expression loads in a time that grows with its size: each operand is compiled once. Horner's rule over a
+  struct's fields, `c.C0 + x * (c.C1 + x * (...))`, and a chain of indexes, `xs[1][1]...`, compiled an operand twice
+  at each level, so that a degree of 20 took 16 s to load and one of 25 never ended.
+- `--limit memory` holds while values are written as a text: `value.Text`, an interpolation, `io.Print`, `json.Text`,
+  `json.Pretty` and `csv.Text` reserve the bytes of their text each time it grows by a megabyte. A list of 100,000
+  times one text of 10 KB, which costs little memory, made a text of 1 GB past any limit.
+- An integer and a float compare by their exact values, in `==`, `<`, `>`, maps, `list.Unique`, `list.Sort`, `in` and the
+  machine code of the JIT: `9007199254740993 > 9007199254740992.0` is `true`, and the two are two keys of a map. The
+  integer was rounded to a float first, which past 2^53 made it equal to its neighbours: a map merged them or lost one,
+  and `list.Unique` kept two or one of the same three numbers by their order. An integer and a float it is exactly, as
+  `9007199254740992` and `9007199254740992.0`, are one key as before.
+- A text in the code of a text, nested past the limit of nesting, is refused as the lexer reads it, as the parser
+  refused it after: a file of 5 MB of `"$("$(...)")"` took 735 MB before the message, and one of 15 MB was killed first.
+- Under `CESIA_JIT=always`, a typed parameter is checked as the interpreter checks it: a version whose parameters' or
+  result's types would be checked as it runs stays interpreted, so `f0(p Int)` called with `2.5` stops at the call, where
+  it gave `1.0`.
+- A deep recursion, let deep by `--limit depth`, stops near `--limit memory`: OCaml's stack, which the heap doesn't
+  count, takes a quarter of the limit at most, or 8 MB, and running out of it is reaching the limit of memory. A
+  recursion under a limit of 300 MB took 734 MB before it stopped, now 341 MB.
+- A text that isn't UTF-8 follows one rule everywhere: a character starts at each byte that doesn't continue one,
+  10xxxxxx, and holds those that do after it; bytes that begin the text and continue nothing are one character.
+  `value.Len`, `text.Slice`, `text.Find` and `text.PadLeft` counted so, but `text.Chars`, `text.Code` and regular
+  expressions cut each bad byte alone, and `text.Slice` dropped the bytes at the start of a text.
+- `math.BitShift` shifts right with the sign, as Python and Go: `math.BitShift(-8, -1)` is `-4`, not
+  `4611686018427387900`. A left shift works on the 63 bits of an integer, as its doc now says.
+- Two messages say what is wrong: `json.Text` of a value nested past 1,000 levels says so, not that JSON can't hold an
+  array, and an index outside a text names a text of so many characters, or bytes, not an array of elements.
+- A C function that calls back into Cesia from a call bound without `callsBack = true`, or from a thread of its own,
+  stops the program with a message that says so: the callback ran inside a call that holds no frame of OCaml's and
+  corrupted the memory, a segmentation fault at best. The version of `c.Open` is digits and dots, as `6` or `"1.2.3"`:
+  one with a `/` made the name a path from the current folder, which opened a library that `--allow ffi=NAME` doesn't
+  grant. `c.Callback` of a function already made a callback with the same types gives the first one back, `c.Fn` and
+  `c.Callback` share one signature for the same types, and each new callback counts against `--limit memory`: 300,000
+  callbacks under a limit of 30 MB took 292 MB of C memory.
+- Under the JIT, an index error of a small list of floats read at a constant index names that index, not its double:
+  `Index 6 is outside this array of 2 elements`, where it said `Index 12`.
+- `csv.Parse` reads a quote inside a field that doesn't start with one as a quote, as Python's csv does: `12" pipe,3` is
+  the fields `12" pipe` and `3`, where it opened a quoted field that swallowed the rest of the text. A quoted field that
+  never closes is an Err of the kind `"csv"`, from `csv.Parse`, `csv.Records`, `columns.ReadCsv` and `frame.FromCsv`. A
+  separator is one byte, in Parse and Text, or a type error: `"::"` was ignored by Parse, and `""` made Text write a field
+  that read back as another.
+- `encode.Unbase64` takes the padding only at the end, one or two `=` of a text of a multiple of four: `aGk=aGk=`, two
+  texts put end to end, and `aGk=junk` decoded to wrong bytes without an error.
+- `json.Parse` refuses a text that isn't UTF-8, as RFC 8259 asks, and `json.Text` a text of such bytes, which made JSON
+  that wasn't. An integer past 63 bits is kept as the text of its digits: `12345678901234567890` became the float
+  `1.2345678901234567e19`, which lost the digits of an ID or a hash. An error would have refused a whole document for a
+  number nobody reads, and no number of Cesia holds it, so its text, exact, breaks no correct use.
+- `date.Format` writes a year before 1 with its sign, `-0005-01-01`, and an offset with seconds with them, `+00:09:21`,
+  the time of Paris before 1911, and `date.Parse` reads both: Format gave `00-2-12-17T...`, which Parse refused, and
+  rounded an offset of 90 s to `+00:01`.
 
 ## 1.2.0
 

@@ -1,0 +1,14 @@
+use std/io
+
+(* A small list of floats read at a constant index outside it: the error names that index, not its double. *)
+defn run(n, xs)
+  a = 0
+  for i in 1..n
+    a += xs[6]
+    if i == 4
+      xs = [1.5, 2.5]
+    end
+  end
+  a
+end
+io.Print(run(5, [0, 0, 0, 0, 0, 0, 0, 0]))

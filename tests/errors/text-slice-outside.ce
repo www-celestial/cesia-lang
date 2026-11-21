@@ -1,0 +1,5 @@
+use std/io
+use std/text
+
+(* An index outside a text names a text and its characters, not an array. *)
+io.Print(text.Slice(5, 10, "héllo𝄞"))

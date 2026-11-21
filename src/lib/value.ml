@@ -102,6 +102,19 @@ let nested ctx depth =
    memory, would escape --limit steps. *)
 let pay ctx n = ctx.w.charge ctx ((n / 16) + 1)
 
+(* [Runtime.reserve], set by [Loader]: [Value] doesn't know [Runtime]. *)
+let reserve = ref (fun (_ : ctx) (_ : int) -> ())
+
+(* A text being built reserves its bytes against the limit of memory each time it grows by a megabyte: a list of 100,000
+   times one text of 10 KB costs little memory, its text 1 GB. [next] is the length of the next reserve, and the one
+   after it. *)
+let reserve_every = 1 lsl 20
+
+let grown ctx b next =
+  let n = Buffer.length b in
+  !reserve ctx ((n - next + reserve_every) / 8);
+  n + reserve_every
+
 (* An integer in decimal, as string_of_int writes it, without C's printf: two digits by a division by 100, which the
    compiler makes a multiplication, read from a table of the pairs. The work is on the negative side, where min_int fits.
    The digits go to [scratch], then out in one copy, the one allocation; texts are made on the main domain only. The
@@ -139,18 +152,20 @@ let int_text i = if i >= 0 && i < 10 then small_ints.(i) else Bytes.sub_string s
 (* A text being written by [write]. [left] is the number of characters (code points, counted as value.Len counts them)
    that still fit: past them, [Full] stops the walk, the buffer holding exactly the characters that fit. With [left] =
    max_int nothing is counted, and the text is whole. [cap] bounds the bytes of a text that isn't UTF-8, whose
-   continuation bytes alone count no character: 4 bytes a character, which UTF-8 never reaches before [left] does. *)
-type out = { b : Buffer.t; mutable left : int; cap : int }
+   continuation bytes alone count no character: 4 bytes a character, which UTF-8 never reaches before [left] does.
+   [next]: as [grown]'s. *)
+type out = { b : Buffer.t; mutable left : int; cap : int; mutable next : int }
 
 exception Full
 
-(* [len] bytes of [s] from [pos], as many of their characters as fit. *)
+(* [len] bytes of [s] from [pos], as many of their characters as fit: one starts at each byte that doesn't continue
+   one, and at the first of the text, as [Native.char_at] has them. *)
 let add_sub o s pos len =
   if o.left = max_int then Buffer.add_substring o.b s pos len
   else begin
     let stop = pos + max 0 (min len (o.cap - Buffer.length o.b)) in
     for i = pos to stop - 1 do
-      if Char.code s.[i] land 0xC0 <> 0x80 then begin
+      if i = 0 || Char.code s.[i] land 0xC0 <> 0x80 then begin
         if o.left = 0 then begin
           Buffer.add_substring o.b s pos (i - pos);
           raise Full
@@ -211,7 +226,7 @@ let add_quoted o s =
   add_char o '"'
 
 let quote s =
-  let o = { b = Buffer.create (String.length s + 2); left = max_int; cap = max_int } in
+  let o = { b = Buffer.create (String.length s + 2); left = max_int; cap = max_int; next = max_int } in
   add_quoted o s;
   Buffer.contents o.b
 
@@ -242,6 +257,7 @@ let word = function
 (* The value written as code, in [o]. *)
 let rec write o ctx depth v =
   nested ctx depth;
+  if Buffer.length o.b >= o.next then o.next <- grown ctx o.b o.next;
   match v with
   | Int i -> if i >= 0 && i < 10 then add_char o (Char.chr (48 + i)) else add_ascii o scratch (digits 0 i)
   | Float x -> add_ascii o scratch (Ryu.write scratch 0 x)
@@ -330,7 +346,7 @@ and write_slices o ctx depth a num =
 let show ctx v =
   match v with
   | Text _ | Array _ | Dict _ | Struct _ ->
-    let o = { b = Buffer.create 64; left = max_int; cap = max_int } in
+    let o = { b = Buffer.create 64; left = max_int; cap = max_int; next = reserve_every } in
     write o ctx 0 v;
     Buffer.contents o.b
   | v -> word v
@@ -342,7 +358,7 @@ let text_upto ctx most v =
   match v with
   | Text s when String.length s <= most -> s
   | _ -> (
-    let o = { b = Buffer.create 64; left = most; cap = (if most > max_int / 4 then max_int else 4 * most) } in
+    let o = { b = Buffer.create 64; left = most; cap = (if most > max_int / 4 then max_int else 4 * most); next = reserve_every } in
     match (match v with Text s -> add o s | _ -> write o ctx 0 v) with
     | () -> Buffer.contents o.b
     | exception Full ->
@@ -414,7 +430,7 @@ and equal_at ctx depth a b =
     end
   | Int x, Int y -> x = y
   | Float x, Float y -> x = y || (Float.is_nan x && Float.is_nan y)
-  | Int x, Float y | Float y, Int x -> float_of_int x = y
+  | Int x, Float y | Float y, Int x -> Trie.int_float x y = 0
   | True, True | False, False | Missing, Missing -> true
   | Text x, Text y -> String.equal x y
   | Fun x, Fun y -> x.proto == y.proto && x.env == y.env

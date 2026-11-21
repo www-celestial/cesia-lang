@@ -463,7 +463,7 @@ let byte_of_col s col =
    the alias where it stands alone: not after a dot, nor as a key or a name being set. Inside a text too: "$(Temp())/a"
    gives "$(test.Temp())/a", and "$Name" gives "$(test.Name)", since "$test.Name" would put ".Name" in the text. *)
 let as_written alias own line =
-  match Lexer.tokens ~file:"" line with
+  match Lexer.tokens ~file:"" ~nesting:Runtime.default_limits.nesting line with
   | exception _ -> line
   | toks ->
     (* What to insert, at bytes of the line. *)
@@ -675,7 +675,7 @@ let definitions ctx (a : t array) =
   let w = ctx.w in
   let src = Native.text_arg ctx "cesia.Definitions" a.(0) in
   match
-    let toks = Lexer.tokens ~file:"" src in
+    let toks = Lexer.tokens ~file:"" ~nesting:w.limits.nesting src in
     toks, Parser.program ~file:"" ~nesting:w.limits.nesting toks
   with
   | exception Pos.Load_error { pos; text; _ } ->

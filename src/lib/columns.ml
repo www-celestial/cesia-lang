@@ -26,8 +26,8 @@ let column_list ctx name v =
   cols
 
 (* The hash of the maps, with its seed drawn at each run: no input can choose keys that fall together. Equal keys hash
-   alike, 1 and 1.0 too, as in a map. An integer past 2^53 is the same key as the float it rounds to, which up to 1,024
-   integers share: it hashes as that float only when [wide], a float past 2^53 among the keys; otherwise by all its bits. *)
+   alike, 1 and 1.0 too, as in a map. An integer past 2^53 hashes as the float it rounds to, which up to 1,024 integers
+   share, only when [wide], a float past 2^53 among the keys that it may be exactly; otherwise by all its bits. *)
 let[@inline] hash_int wide x =
   if wide || (x < 1 lsl 53 && x > -(1 lsl 53)) then Trie.hash_int x
   else Trie.hash_int (Trie.hash_int (x asr 11) lxor (x land 2047))
@@ -275,8 +275,7 @@ let combine h x = Trie.hash_int ((h * 31) + x)
 
 (* A hash of any key that [Equal] respects, to the depth where [Equal] stops at its nesting limit. Ints past 2^53 hash as
    their float with [wide], else by all their bits; [big] tells that a float past 2^53 was met. Arrays by their shape and
-   cells, structs and maps by the sum of their names or keys with their values. A map with a number key past 2^53, which
-   [Equal] can match to two keys of the other map, by its size alone. [nodes] counts the work. *)
+   cells, structs and maps by the sum of their names or keys with their values. [nodes] counts the work. *)
 let rec deep_hash ctx wide big nodes depth v =
   incr nodes;
   let hash = deep_hash ctx wide big nodes (depth + 1) in
@@ -305,10 +304,8 @@ let rec deep_hash ctx wide big nodes depth v =
       combine (match shape.sname with Some n -> Trie.hash_text n | None -> 5) (!sum land 0x3FFF_FFFF)
     | Dict _ ->
       let o = Trie.items v and sum = ref 0 in
-      let past = function Int i -> not (small i) | Float f -> Float.abs f >= 0x1p53 | _ -> false in
       let n = Array.length o / 2 in
-      let coarse = Array.exists past (Array.init n (fun i -> o.(2 * i))) in
-      if not coarse then for i = 0 to n - 1 do sum := !sum + combine (Trie.hash o.(2 * i)) (hash o.((2 * i) + 1)) done;
+      for i = 0 to n - 1 do sum := !sum + combine (Trie.hash o.(2 * i)) (hash o.((2 * i) + 1)) done;
       combine (6 + n) (!sum land 0x3FFF_FFFF)
     | Native { nname; _ } -> Trie.hash_text nname
     | Fun { proto; _ } -> Trie.hash_text proto.pname
@@ -450,17 +447,28 @@ let present ctx (a : t array) =
     Runtime.build ctx (Array.length d);
     Arrays.list (Array.of_seq (Seq.filter_map (fun v -> if is_missing v then None else Some (Value.share v)) (Array.to_seq d)))
 
-(* RFC 4180: quotes around a field, doubled inside. Gives the rows as arrays of fields. *)
+(* A separator is one byte: a longer one, or none, was ignored by Parse and written by Text, which then read back other. *)
+let separator_arg ctx name v =
+  let s = Native.text_arg ctx name v in
+  if String.length s <> 1 then Runtime.fail ctx Type (Messages.csv_separator s);
+  s.[0]
+
+(* RFC 4180: quotes around a field, doubled inside. Gives the rows as arrays of fields, or the line where a quoted field
+   opens that never closes, which swallowed the rest of the text. A quote inside a field that doesn't start with one is
+   a quote, as Python's csv reads it: the inch mark of a pipe of 12 inches. *)
 let csv_rows ctx s separator =
   Runtime.pay_bytes ctx (String.length s);
   Runtime.build ctx ((String.length s / 8) + 1);
   let n = String.length s in
-  let sep = if String.length separator = 1 then Char.code separator.[0] else -1 in
+  let sep = Char.code separator in
   let special c = c = '"' || c = '\n' || c = '\r' || Char.code c = sep in
   let rows = Vec.create () and row = Vec.create () and field = Buffer.create 64 in
+  (* At the start of a field, where a quote opens a quoted one; and the line of the last one opened. *)
+  let fresh = ref true and line = ref 1 and opened = ref 0 in
   let end_field () =
     Vec.add_last row (Buffer.contents field);
-    Buffer.clear field
+    Buffer.clear field;
+    fresh := true
   in
   let end_row () =
     end_field ();
@@ -474,6 +482,7 @@ let csv_rows ctx s separator =
       if c <> '"' then begin
         let stop = Option.value (String.index_from_opt s !i '"') ~default:n in
         Buffer.add_substring field s !i (stop - !i);
+        for k = !i to stop - 1 do if s.[k] = '\n' then incr line done;
         i := stop
       end
       else if !i + 1 < n && s.[!i + 1] = '"' then begin
@@ -485,8 +494,10 @@ let csv_rows ctx s separator =
         incr i
       end
     end
-    else if c = '"' then begin
+    else if c = '"' && !fresh then begin
       quoted := true;
+      fresh := false;
+      opened := !line;
       incr i
     end
     else if Char.code c = sep then begin
@@ -496,16 +507,22 @@ let csv_rows ctx s separator =
     else if c = '\n' || c = '\r' then begin
       if c = '\r' && !i + 1 < n && s.[!i + 1] = '\n' then incr i;
       end_row ();
+      incr line;
       incr i
     end
     else begin
       let start = !i in
+      incr i;
       while !i < n && not (special s.[!i]) do incr i done;
-      Buffer.add_substring field s start (!i - start)
+      Buffer.add_substring field s start (!i - start);
+      fresh := false
     end
   done;
-  if Buffer.length field > 0 || Vec.length row > 0 then end_row ();
-  Vec.to_array rows
+  if !quoted then Error !opened
+  else begin
+    if Buffer.length field > 0 || Vec.length row > 0 then end_row ();
+    Ok (Vec.to_array rows)
+  end
 
 let texts row = Arrays.list (Array.map (fun s -> Text s) row)
 
@@ -513,7 +530,7 @@ let texts row = Arrays.list (Array.map (fun s -> Text s) row)
    holds the separator, a quote or a line end, its quotes doubled (RFC 4180), and a line end after each row, as after
    none when there is no row. Missing when rows or a row isn't an array: std/csv writes those itself. *)
 let csv_text ctx (a : t array) =
-  let separator = Native.text_arg ctx "Text" a.(1) in
+  let separator = String.make 1 (separator_arg ctx "Text" a.(1)) in
   let holds s =
     let m = String.length separator and n = String.length s in
     let rec at i k = k = m || (s.[i + k] = separator.[k] && at i (k + 1)) in
@@ -533,30 +550,38 @@ let csv_text ctx (a : t array) =
       end
       else Buffer.add_string b s
     in
+    let next = ref Value.reserve_every in
     for i = 0 to (r.rows * r.cols) - 1 do
       (match Value.elt r i with
        | Array row ->
          for j = 0 to (row.rows * row.cols) - 1 do
            if j > 0 then Buffer.add_string b separator;
-           field (Value.elt row j)
+           field (Value.elt row j);
+           if Buffer.length b >= !next then next := Value.grown ctx b !next
          done
        | _ -> ());
       Buffer.add_char b '\n';
       Runtime.pay_bytes ctx 64
     done;
     if r.rows * r.cols = 0 then Buffer.add_char b '\n';
-    Runtime.build ctx ((Buffer.length b / 8) + 1);
+    (* The steps of the whole text, and the memory of what [grown] didn't reserve yet. *)
+    Runtime.pay ctx ((Buffer.length b / 8) + 1);
+    Runtime.reserve ctx (((Buffer.length b - !next + Value.reserve_every) / 8) + 1);
     Text (Buffer.contents b)
   | _ -> Missing
 
 let csv ctx (a : t array) =
-  let s = Native.text_arg ctx "Csv" a.(0) and separator = Native.text_arg ctx "Csv" a.(1) in
-  Arrays.list (Array.map texts (csv_rows ctx s separator))
+  let s = Native.text_arg ctx "Csv" a.(0) and separator = separator_arg ctx "Csv" a.(1) in
+  match csv_rows ctx s separator with
+  | Ok rows -> Arrays.list (Array.map texts rows)
+  | Error line -> Value.failure ctx.w "csv" (Messages.csv_open line).text
 
 (* ReadCsv(s, separator): {Names, Columns}. An empty cell is missing, and a column of numbers takes its typed storage. *)
 let read_csv ctx (a : t array) =
-  let s = Native.text_arg ctx "ReadCsv" a.(0) and separator = Native.text_arg ctx "ReadCsv" a.(1) in
-  let rows = csv_rows ctx s separator in
+  let s = Native.text_arg ctx "ReadCsv" a.(0) and separator = separator_arg ctx "ReadCsv" a.(1) in
+  match csv_rows ctx s separator with
+  | Error line -> Value.failure ctx.w "csv" (Messages.csv_open line).text
+  | Ok rows ->
   let names = if Array.length rows = 0 then [||] else rows.(0) in
   let body = max 0 (Array.length rows - 1) in
   let cell k row =

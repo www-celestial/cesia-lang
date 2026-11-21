@@ -192,7 +192,7 @@ let index_of ctx (a : t array) =
 let points s =
   let out = ref [] and i = ref 0 in
   while !i < String.length s do
-    let n = max 1 (Uchar.utf_decode_length (String.get_utf_8_uchar s !i)) in
+    let n = snd (Native.char_at s !i) in
     out := String.sub s !i n :: !out;
     i := !i + n
   done;
@@ -310,10 +310,10 @@ let pad name add ctx (a : t array) =
 
 let code ctx (a : t array) =
   let s = text_arg ctx "Code" a.(0) in
-  if s = "" then Runtime.fail ctx Type (Messages.need_char "Code") else Int (Uchar.to_int (Uchar.utf_decode_uchar (String.get_utf_8_uchar s 0)))
+  if s = "" then Runtime.fail ctx Type (Messages.need_char "Code") else Int (fst (Native.char_at s 0))
 
 let byte_position ctx i s =
-  if i < 1 || i > String.length s then Runtime.fail ctx Index (Messages.index_outside i (String.length s))
+  if i < 1 || i > String.length s then Runtime.fail ctx Index (Messages.text_outside i (String.length s) "bytes")
 
 let from_bytes ctx (a : t array) =
   let values = elements ctx "FromBytes" a.(0) in
@@ -329,8 +329,9 @@ let from_bytes ctx (a : t array) =
 let bits name f =
   name, nat name 2 2 (fun ctx a -> Int (f (Arrays.whole_index ctx a.(0)) (Arrays.whole_index ctx a.(1))))
 
+(* Right, the sign kept, as Python and Go shift: -8 by -1 is -4. Left, on 63 bits: the bits past them are lost. *)
 let shift x n =
-  if n >= Sys.int_size || n <= -Sys.int_size then 0 else if n >= 0 then x lsl n else x lsr -n
+  if n >= Sys.int_size then 0 else if n >= 0 then x lsl n else x asr (if n < 1 - Sys.int_size then Sys.int_size - 1 else - n)
 
 let math_natives =
   [ bits "BitAnd" ( land );
@@ -434,14 +435,18 @@ let base64_digits =
          | '/' | '_' -> '\063'
          | _ -> '\255'))
 
-(* The bytes of Base64 with or without padding, or missing for a text that isn't Base64. Every = is left out wherever it
-   is, and the bits past the last whole byte are dropped, as encode.Unbase64 always did. Four digits make three bytes, with
-   no test inside the loop: a screenshot of a page is a megabyte of Base64. *)
+(* The bytes of Base64 with or without padding, or missing for a text that isn't Base64. The padding is one or two = at
+   the end of a text of a multiple of four: one elsewhere, as two texts of Base64 put end to end, decoded to wrong bytes.
+   The bits past the last whole byte are dropped, as encode.Unbase64 always did. Four digits make three bytes, with no
+   test inside the loop: a screenshot of a page is a megabyte of Base64. *)
 let unbase64 ctx (a : t array) =
   let s = text_arg ctx "unbase64" a.(0) in
   Runtime.pay_bytes ctx (String.length s);
-  let s = if String.contains s '=' then String.concat "" (String.split_on_char '=' s) else s in
-  let n = String.length s and d = Lazy.force base64_digits in
+  let whole = String.length s in
+  let pad = if whole > 0 && s.[whole - 1] = '=' then if whole > 1 && s.[whole - 2] = '=' then 2 else 1 else 0 in
+  let n = whole - pad and d = Lazy.force base64_digits in
+  if (pad > 0 && whole mod 4 <> 0) || (match String.index_opt s '=' with Some i -> i < n | None -> false) then Missing
+  else begin
   Runtime.build ctx ((n / 10) + 1);
   let out = Bytes.create (n * 3 / 4) and bad = ref 0 and i = ref 0 and o = ref 0 in
   let digit k = if k < n then Char.code d.[Char.code s.[k]] else 0 in
@@ -459,6 +464,7 @@ let unbase64 ctx (a : t array) =
   bad := !bad lor digit !i lor digit (!i + 1) lor digit (!i + 2);
   for k = 0 to Bytes.length out - !o - 1 do Bytes.set_uint8 out (!o + k) ((w lsr (16 - (8 * k))) land 255) done;
   if n mod 4 = 1 || !bad >= 64 then Missing else Text (Bytes.to_string out)
+  end
 
 let packages =
   [ "math", math_natives; "list", list_natives; "text", text_natives; "encode", [ "unbase64", nat "unbase64" 1 1 unbase64 ] ]

@@ -83,16 +83,26 @@ let rise code text entry =
 (* A unit that nothing holds any more, [pending] included, so that nothing can run its code: its context goes. *)
 let release code = Jit.free code.mir
 
+(* A bug of the JIT: any exception but the program's own, an error, a limit or a quit, or memory gone.
+   The unit is then not made, and its loop or function stays interpreted: a bug of the JIT never ends a program. *)
+let bug = function
+  | Value.Kerr _ | Value.Limit _ | Value.Quit _ | Out_of_memory -> false
+  | e ->
+    if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ Printexc.to_string e);
+    true
+
 let make (w : world) (ver : version) fns start loops =
   let pure = Array.for_all (fun (f : Ir.func) -> f.pure) fns and calls = Array.exists (fun (f : Ir.func) -> f.calls) fns in
     (* A run that writes arrays can't start again when the stack runs out: its calls must bail then. Those of nested frames
        come back through a call of the first function. *)
     if calls && (not pure) && fns.(0).loose then None
     else begin
-      let { Mirtext.text; entry; points; ticks } = Mirtext.emit fns in
-      if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);
-      match Jit.load text [| entry |] 1 with
-      | [| mir; addr |] ->
+      match
+        let { Mirtext.text; entry; points; ticks } = Mirtext.emit fns in
+        if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then (prerr_string text; flush stderr);
+        (text, entry, points, ticks, Jit.load text [| entry |] 1)
+      with
+      | text, entry, points, ticks, [| mir; addr |] ->
         let fn = fns.(0) in
         let written = List.filter_map (fun (s, wr, _, _) -> if wr then Some s else None) (Array.to_list fn.arrays) in
         let known = Array.for_all (fun (f : Ir.func) -> f.stride >= 0) fns in
@@ -110,9 +120,7 @@ let make (w : world) (ver : version) fns start loops =
         Gc.finalise release code;
         Some code
       | _ -> None
-      | exception Failure m ->
-        if Sys.getenv_opt "CESIA_JIT_SHOW" <> None then prerr_endline ("jit: " ^ m);
-        None
+      | exception e when bug e -> None
     end
 
 (* Does each variable of a module that the code took as a constant still hold that number, and each it reads from a slot
@@ -403,6 +411,7 @@ let float_entry code rf (ctx : ctx) =
 let promote (w : world) (ver : version) =
   let ri = ver.ri and rf = ver.rf in
   match Lower.unit w ver with
+  | exception e when bug e -> ()
   | None -> ()
   (* A body without a loop or a call is as fast interpreted as the way in and out of native code. *)
   | Some fns when not (fns.(0).calls || Array.length fns.(0).resumes > 1) -> ()
@@ -458,6 +467,7 @@ let compile (ctx : ctx) (l : Tier.loop) ver =
     | exception Lower.Unseen ->
       l.tries <- l.tries + 1;
       if l.tries >= max_tries then l.failed <- true
+    | exception e when bug e -> l.failed <- true
   end
 
 let live (ctx : ctx) (l : Tier.loop) = match l.code with Some c when l.reloads = ctx.w.reloads -> Some c | _ -> None

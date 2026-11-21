@@ -79,6 +79,9 @@ val return_outside : t
 val range_bound : string -> t
 val index_type : string -> t
 val index_outside : int -> int -> t
+
+(** [text_outside i n unit]: an index outside a text of [n] characters or bytes, as [unit] says. *)
+val text_outside : int -> int -> string -> t
 val index_outside2 : int -> int -> int -> int -> t
 
 (** The indexes and the sizes of an array of three dimensions or more. *)
@@ -340,6 +343,12 @@ val doc_missing : string -> string
 (** [doc_moved name p]: cesia doc of a name of std/p written without its package, as Map for list.Map. *)
 val doc_moved : string -> string -> string
 val json_value : string -> t
+
+(** A value nested past the depth that JSON is written to. *)
+val json_nested : int -> t
+
+(** A text that JSON can't hold: it isn't UTF-8. *)
+val json_not_utf8 : t
 val column_sizes : int -> int -> t
 val need_groups : string -> t
 val json_at : string -> int -> string
@@ -352,6 +361,7 @@ val json_bad_escape : string
 val json_control : string
 val json_digits : string
 val json_large : string
+val json_utf8 : string
 val json_deep : string
 val json_no_value : string
 val json_no_comma_array : string
@@ -408,6 +418,8 @@ val c_need_layout : string -> string -> t
 val c_variadic_type : string -> t
 val c_callback_type : string -> t
 val c_need_library : string -> t
+(** A C function called back into Cesia outside a call bound with callsBack: what stops the program. *)
+val c_callback_outside : t
 val c_version : string -> t
 val c_fit : string -> string -> t
 val c_return_fit : string -> t
@@ -453,6 +465,11 @@ val workers_windows : string
 val bad_char : string -> t
 val need_size : string -> string -> t
 val deadlock : t
+(** A CSV separator that isn't one byte. *)
+val csv_separator : string -> t
+
+(** CSV whose quoted field, opened on that line, never closes. *)
+val csv_open : int -> t
 val rows_same_key : string -> string -> string -> t
 val rows_cells : int -> int -> t
 val sql_zero_byte : string -> t

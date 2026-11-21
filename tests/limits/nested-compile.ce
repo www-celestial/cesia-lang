@@ -1,0 +1,21 @@
+(** Each level of a nested expression compiled once: compiled twice, the time to load this file doubled at each level of
+    Horner's rule over a struct's fields, of a chain of indexes, and of a sum of fields, 2^40 times the work here. *)
+use std/io
+
+defn horner(c, x)
+  c.C0 + x * (c.C1 + x * (c.C2 + x * (c.C3 + x * (c.C4 + x * (c.C5 + x * (c.C6 + x * (c.C7 + x * (c.C8 + x * (c.C9 + x * (c.C10 + x * (c.C11 + x * (c.C12 + x * (c.C13 + x * (c.C14 + x * (c.C15 + x * (c.C16 + x * (c.C17 + x * (c.C18 + x * (c.C19 + x * (c.C20 + x * (c.C21 + x * (c.C22 + x * (c.C23 + x * (c.C24 + x * (c.C25 + x * (c.C26 + x * (c.C27 + x * (c.C28 + x * (c.C29 + x * (c.C30 + x * (c.C31 + x * (c.C32 + x * (c.C33 + x * (c.C34 + x * (c.C35 + x * (c.C36 + x * (c.C37 + x * (c.C38 + x * (c.C39 + x * (c.C40))))))))))))))))))))))))))))))))))))))))
+end
+
+defn sum(p)
+  p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (p.X + (1.0))))))))))))))))))))))))))))))))))))))))
+end
+
+xs = [1]
+for _ in 1..40
+  xs = [xs]
+end
+
+c = {C0: 1.0, C1: 1.0, C2: 1.0, C3: 1.0, C4: 1.0, C5: 1.0, C6: 1.0, C7: 1.0, C8: 1.0, C9: 1.0, C10: 1.0, C11: 1.0, C12: 1.0, C13: 1.0, C14: 1.0, C15: 1.0, C16: 1.0, C17: 1.0, C18: 1.0, C19: 1.0, C20: 1.0, C21: 1.0, C22: 1.0, C23: 1.0, C24: 1.0, C25: 1.0, C26: 1.0, C27: 1.0, C28: 1.0, C29: 1.0, C30: 1.0, C31: 1.0, C32: 1.0, C33: 1.0, C34: 1.0, C35: 1.0, C36: 1.0, C37: 1.0, C38: 1.0, C39: 1.0, C40: 1.0}
+io.Print(horner(c, 0.5))
+io.Print(sum({X: 0.5}))
+io.Print(xs[1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1][1])

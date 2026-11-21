@@ -24,6 +24,10 @@ val code_points : string -> int
 (** The code points in the bytes of a text from a position up to another, excluded. *)
 val points_between : string -> int -> int -> int
 
+(** The code point of the character at a byte, and how many bytes it holds: U+FFFD for one that is no UTF-8. A character
+    is a byte that doesn't continue one, 10xxxxxx, and those that do after it; those at the start of a text are one. *)
+val char_at : string -> int -> int * int
+
 (** A size given to [name]: an integer, or a float with no fraction, from 0; else a [type] panic naming [name]. *)
 val dim : ctx -> string -> t -> int
 

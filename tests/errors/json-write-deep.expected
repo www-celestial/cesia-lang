@@ -1,0 +1,4 @@
+json-write-deep.ce:9:14: JSON can't hold a value nested more than 1000 deep.
+  9 | io.Print(json.Text(x))
+    |              ^
+exit 1

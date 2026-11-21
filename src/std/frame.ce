@@ -4,6 +4,7 @@ use std/columns as col
 use std/csv
 use std/dict
 use std/list
+use std/result
 use std/text
 use std/value
 
@@ -193,10 +194,14 @@ defn Describe(df)
 end
 
 defn FromCsv(s, separator = ",")
-  (** A frame from CSV text with a header row. An empty cell is missing and a number is read as one.
+  (** A frame from CSV text with a header row. An empty cell is missing and a number is read as one. An Err of the kind
+      "csv" when a quoted field never closes, as csv.Parse.
 
         Column("a", FromCsv("a,b\n1,2\n")) --> [1] *)
   data = col.ReadCsv(s, separator)
+  if result.IsErr(data)
+    return data
+  end
   if value.Len(data.Names) == 0 Empty([]) else Table(data.Names, data.Columns) end
 end
 

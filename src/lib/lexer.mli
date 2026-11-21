@@ -19,7 +19,9 @@ and token = { t : tok; pos : Pos.t; sp : bool  (** a space precedes the token *)
 
 and part = Plain of string | Code of token array
 
-val tokens : file:string -> string -> token array
+(** The tokens of a source. A text in the code of a text, more than [nesting] deep, is refused as the parser refuses code
+    nested past it: before the memory of its levels grows. *)
+val tokens : file:string -> nesting:int -> string -> token array
 
 (** Empties a token array that is no longer read, so that the tokens it held die young: see the .ml. *)
 val release : token array -> unit

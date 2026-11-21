@@ -1,0 +1,4 @@
+text-slice-outside.ce:5:14: Index 10 is outside this text of 6 characters.
+  5 | io.Print(text.Slice(5, 10, "héllo𝄞"))
+    |              ^
+exit 1

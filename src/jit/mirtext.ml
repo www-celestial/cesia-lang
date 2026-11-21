@@ -24,7 +24,6 @@ let ty = function Ir.Kint | Kval -> "i64" | Kfloat -> "d"
    native code reads alone, as the header's first byte (x86-64 and arm64 are little-endian). *)
 let header words tag = string_of_int ((words lsl 10) lor tag)
 let cmp_name = function Ir.Eq -> "eq" | Ne -> "ne" | Lt -> "lt" | Le -> "le" | Gt -> "gt" | Ge -> "ge"
-let flip = function Ir.Lt -> Ir.Gt | Le -> Ge | Gt -> Lt | Ge -> Le | c -> c
 let negate = function Ir.Eq -> Ir.Ne | Ne -> Eq | Lt -> Ge | Ge -> Lt | Gt -> Le | Le -> Gt
 
 (* A cell of the context, raw integers: the C glue copies [io] there and back. The stacks are cells 0, 1 and 2. *)
@@ -318,7 +317,8 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
     | Vat (r, k, n, i, site, rows, cols) ->
       let e =
         stub (fun s ->
-            (match i with Ir.Reg q -> Printf.bprintf s "  rsh x1, r%d, 1\n" q | v -> Printf.bprintf s "  mov x1, %s\n" (operand v));
+            (* The index as the interpreter has it: a constant is written doubled as an operand. *)
+            (match i with Ir.Reg q -> Printf.bprintf s "  rsh x1, r%d, 1\n" q | Int n -> Printf.bprintf s "  mov x1, %d\n" n | v -> Printf.bprintf s "  mov x1, %s\n" (operand v));
             Printf.bprintf s "  mov %s, %d\n  mov x2, %d\n" (cx Ir.io_ixs) cols rows;
             links s site;
             base_in s "x5" (frame_of site);
@@ -371,11 +371,13 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
       (match how with
        | Ir.Only_float -> block_of v (Some 1) k; pr "  mov x2, i64:0(%s)\n  dmov r%d, d:0(x2)\n" v r
        | Only_int -> block_of v (Some 0) k; pr "  mov x2, i64:0(%s)\n  sub r%d, x2, 1\n" v r
-       | Number ->
+       | Number | Exact ->
          block_of v None k;
          let f = label () and d = label () in
-         pr "  beq %s, x1, 1\n  bne %s, x1, 0\n  mov x2, i64:0(%s)\n  rsh x2, x2, 1\n  i2d r%d, x2\n  jmp %s\n" f (bail_to k) v r d;
-         pr "%s:\n  mov x2, i64:0(%s)\n  dmov r%d, d:0(x2)\n%s:\n" f v r d)
+         pr "  beq %s, x1, 1\n  bne %s, x1, 0\n  mov x2, i64:0(%s)\n  rsh x2, x2, 1\n  i2d r%d, x2\n" f (bail_to k) v r;
+         (* An integer that comes back other from its float isn't one exactly. *)
+         if how = Exact then pr "  d2i x1, r%d\n  bne %s, x1, x2\n" r (bail_to k);
+         pr "  jmp %s\n%s:\n  mov x2, i64:0(%s)\n  dmov r%d, d:0(x2)\n%s:\n" d f v r d)
     | Box (r, x) ->
       (match x with
        | Ir.Float _ | Reg _ when (match x with Reg q -> fn.kinds.(q) = Kfloat | _ -> true) ->
@@ -559,12 +561,35 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks (fn : Ir.func) =
   let term l = function
     | Ir.Jump t -> if t <> l then pr "  jmp %s\n" (bl t)
     | Branch (c, k, x, y, yes, no) ->
-      let c, x, y = match x with Ir.Reg _ -> c, x, y | _ -> flip c, y, x in
+      let c, x, y = match x with Ir.Reg _ -> c, x, y | _ -> Ir.flip c, y, x in
       let x = in_reg k x in
       let d = if k = Kfloat then "d" else "" in
       if no = l then pr "  %sb%s %s, %s, %s\n" d (cmp_name c) (bl yes) x (operand y)
       else if yes = l && k = Kint then pr "  b%s %s, %s, %s\n" (cmp_name (negate c)) (bl no) x (operand y)
       else pr "  %sb%s %s, %s, %s\n  jmp %s\n" d (cmp_name c) (bl yes) x (operand y) (bl no)
+    | Mixed (c, i, fi, f, yes, no) ->
+      (* As floats, where the rounded integer is on the side of the float that the integer is, rounding keeping the
+         order; only where it is the float, rarely and out of the way, as integers, the float being a whole number then,
+         2^62 at most. A test that holds as floats, as a loop's, costs what it did. *)
+      let c', x, y = match fi with Ir.Reg _ -> c, fi, f | _ -> Ir.flip c, f, fi in
+      let x = in_reg Kfloat x and y = operand y in
+      let tie =
+        stub (fun s ->
+            (match i with
+             | Ir.Reg r -> Printf.bprintf s "  mov x0, r%d\n  rsh x0, x0, 1\n" r
+             | Int n -> Printf.bprintf s "  mov x0, %d\n" n
+             | _ -> invalid_arg "Mixed");
+            (match f with
+             | Ir.Reg r -> Printf.bprintf s "  d2i x1, r%d\n" r
+             | Float v -> Printf.bprintf s "  mov x1, %Ld\n" (if Float.is_integer v && Float.abs v <= 0x1p62 then Int64.of_float v else 0L)
+             | _ -> invalid_arg "Mixed");
+            Printf.bprintf s "  b%s %s, x0, x1\n  jmp %s\n" (cmp_name c) (bl yes) (bl no))
+      in
+      (match c' with
+       | Eq -> pr "  dbeq %s, %s, %s\n" tie x y
+       | Ne -> pr "  dbne %s, %s, %s\n  jmp %s\n" (bl yes) x y tie
+       | _ -> pr "  db%s %s, %s, %s\n  dbeq %s, %s, %s\n" (cmp_name (match c' with Le -> Lt | Ge -> Gt | o -> o)) (bl yes) x y tie x y);
+      if c' <> Ne && no <> l then pr "  jmp %s\n" (bl no)
     | Return v ->
       let v = match fn.result, v with Kfloat, Int n -> Ir.Float (float_of_int n) | _ -> v in
       give v;

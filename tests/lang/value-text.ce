@@ -89,8 +89,9 @@ isMostHuge() = value.Text([1, 2], 4611686018427387903) == "[1, 2]" and value.Tex
 isWideCharacters() = value.Text("a😀b", 2) == "a…" and value.Text(["😀😀"], 3) == "[\"…" and value.Text("😀😀", 2) == "😀😀"
 isLongWideText() = value.Text([text.Repeat(100000, "😀")], 5) == "[\"😀😀…"
 
-(* A text that isn't UTF-8: continuation bytes alone count no character, so the bytes stop at 4 a character. *)
+(* A text that isn't UTF-8: a character holds the bytes that continue it, those at the start of a text are one, and
+   the bytes stop at 4 a character. *)
 loose = text.FromBytes(list.Fill(0x80, 100000))
 isLooseBounded() = text.ByteLength(value.Text(loose, 5)) <= 20 + 3 and text.ByteLength(value.Text([loose], 5)) <= 20 + 3
-isLooseShort() = value.Text(text.FromBytes([0x80, 0x80, 0x41]), 1) == text.FromBytes([0x80, 0x80, 0x41])
+isLooseShort() = value.Text(text.FromBytes([0x80, 0x80, 0x41]), 2) == text.FromBytes([0x80, 0x80, 0x41]) and value.Text(text.FromBytes([0x80, 0x80, 0x41]), 1) == "…"
 isLooseMixed() = value.Text(text.FromBytes([0xFF, 0xFE, 0x41, 0x42]), 3) == "$(text.FromBytes([0xFF, 0xFE]))…"

@@ -111,7 +111,11 @@ applyTwice(triple, 2)
 ```
 
 Une panic (l'arrêt net du programme sur un bug) dans un callback revient au code de Cesia qui a appelé C. Une fonction C qui garde un callback et l'appelle plus
-tard, depuis une autre de ses fonctions, le dit quand elle est liée, avec `callsBack = true`.
+tard, depuis une autre de ses fonctions, le dit quand elle est liée, avec `callsBack = true` : un callback qui arrive par
+une fonction liée sans lui, ou depuis un thread de la bibliothèque, arrête le programme avec un message, car Cesia y
+corromprait sa mémoire. [c.Callback] d'une fonction déjà faite callback, avec les mêmes types, rend celui-là : C peut
+garder le pointeur, donc chaque callback est de la mémoire C gardée jusqu'à la fin du programme, que `--limit memory`
+compte.
 
 ### Les fonctions variadiques
 

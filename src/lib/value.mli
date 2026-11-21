@@ -54,6 +54,16 @@ val nested : ctx -> int -> unit
 (** Counts the steps of a walk over [n] values. *)
 val pay : ctx -> int -> unit
 
+(** [Runtime.reserve], set by [Loader]: [Value] doesn't know [Runtime]. *)
+val reserve : (ctx -> int -> unit) ref
+
+(** The bytes a text being built grows by between two reserves against the limit of memory: a megabyte. *)
+val reserve_every : int
+
+(** [grown ctx b next], once [b] holds at least [next] bytes: reserves those since the last reserve, and gives the next
+    [next]. Start at [reserve_every]. *)
+val grown : ctx -> Buffer.t -> int -> int
+
 (** Like [show], but a text stays raw: what [Print] and [Text] display. *)
 val text_of : ctx -> t -> string
 

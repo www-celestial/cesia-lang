@@ -25,7 +25,7 @@ let toml ctx a =
 let uses ctx a =
   let w = ctx.w in
   let src = Native.text_arg ctx "cesia.Uses" a.(0) in
-  match Parser.program ~file:"" ~nesting:w.limits.nesting (Lexer.tokens ~file:"" src) with
+  match Parser.program ~file:"" ~nesting:w.limits.nesting (Lexer.tokens ~file:"" ~nesting:w.limits.nesting src) with
   | fn ->
     let path (e : Ast.expr) = match e.e with Use { upath; _ } -> Some upath | _ -> None in
     Value.ok w (texts (List.filter_map path (Array.to_list (Lazy.force fn.body))))
@@ -38,7 +38,7 @@ let reads ctx a =
   let w = ctx.w in
   let src = Native.text_arg ctx "cesia.Reads" a.(0) in
   match
-    let toks = Lexer.tokens ~file:"" src in
+    let toks = Lexer.tokens ~file:"" ~nesting:w.limits.nesting src in
     toks, Parser.program ~file:"" ~nesting:w.limits.nesting toks
   with
   | exception Pos.Load_error { pos; text; _ } -> refused w (Pos.line pos) text
@@ -107,7 +107,7 @@ let tree w src =
     let t = match tk.t with TEXT parts -> Lexer.TEXT (List.map (function Lexer.Code c -> Lexer.Code (Array.map flat c) | p -> p) parts) | t -> t in
     { tk with t; pos = Pos.make 1 1 }
   in
-  let toks = Lexer.tokens ~file:"" src in
+  let toks = Lexer.tokens ~file:"" ~nesting:w.limits.nesting src in
   (* A source that doesn't read says where, while its tokens still have their places. *)
   ignore (Parser.program ~file:"" ~nesting:w.limits.nesting toks);
   Parser.program ~file:"" ~nesting:w.limits.nesting (Array.map flat toks)

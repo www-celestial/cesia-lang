@@ -1,0 +1,31 @@
+(** An integer and a float compared by their exact values: 2^53 + 1 is above 2^53.0, which rounding the integer to a
+    float made equal, so that a map merged them, list.Unique lost one and > said false. *)
+use std/dict
+use std/list
+use std/math
+use std/value
+
+big = 9007199254740993
+bigFloat = 9007199254740992.0
+
+isMapKeepsThemApart() = value.Len({9007199254740993: "a", 9007199254740992.0: "b"}) == 2 and dict.Get(9007199254740992, {9007199254740993: "a", 9007199254740992.0: "b"}) == "b" and dict.Get(big, {9007199254740993: "a", 9007199254740992.0: "b"}) == "a"
+isMapOfThreeKeepsTwo() = value.Equal({9007199254740992.0: "b", 9007199254740993: "a", 9007199254740992: "c"}, {9007199254740992.0: "c", 9007199254740993: "a"})
+isWholeFloatIsItsInteger() = {9007199254740994: 1}[9007199254740994.0] == 1 and {1: "x"}[1.0] == "x" and {9007199254740992.0: 2}[9007199254740992] == 2
+isUniqueInAnyOrder() = value.Len(list.Unique([big, bigFloat, 9007199254740992])) == 2 and value.Len(list.Unique([bigFloat, big, 9007199254740992])) == 2
+isOrder() = big > bigFloat and big >= bigFloat and not (big <= bigFloat) and bigFloat < big and not (bigFloat >= big)
+isEquality() = 9007199254740992 == bigFloat and big != bigFloat and not value.Equal(big, bigFloat) and value.Equal(9007199254740992, bigFloat)
+isTopOfTheIntegers() = 4611686018427387903 < 4611686018427387904.0 and 4611686018427387903 != 4611686018427387904.0 and -4611686018427387903 - 1 == -4611686018427387904.0
+isNan() = not (big > math.Nan) and not (big <= math.Nan) and big != math.Nan and not (math.Nan == big)
+isSort() = value.Equal(list.Sort([9007199254740994.0, big, bigFloat]), [bigFloat, big, 9007199254740994.0])
+isMinMax() = list.Max([bigFloat, big]) == big and list.Min([big, bigFloat]) == bigFloat
+isInRange() = not (bigFloat in big..(big + 2)) and 9007199254740994.0 in big..(big + 2) and 2.0 in 1..3 and not (2.5 in 1..3)
+
+defn above(n Int, x Float)
+  if n > x
+    return true
+  end
+  false
+end
+
+below(n Int, x Float) = n < x
+isTyped() = above(big, bigFloat) and not below(big, bigFloat) and not above(9007199254740992, bigFloat) and above(3, 2.5)

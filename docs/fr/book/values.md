@@ -54,11 +54,14 @@ math.Mod(7, 2) -->
 ### Entiers et floats
 
 Un entier et un float se mélangent : le résultat est un float. C'est une [type coercion](glossary.md#type-coercion), une
-valeur que le langage change lui-même en une valeur d'un autre type. Et ils se comparent par leur valeur :
+valeur que le langage change lui-même en une valeur d'un autre type. Et ils se comparent par leur valeur exacte, comme en
+Python : au-delà de 2^53, un float ne tient plus chaque entier, et un entier se compare à lui tel qu'il est, sans être
+d'abord arrondi en float :
 
 ```cesia
 1 + 0.5 -->
 1 == 1.0 -->
+9007199254740993 > 9007199254740992.0 -->
 ```
 
 Un entier a 63 bits : de -4 611 686 018 427 387 904 à 4 611 686 018 427 387 903. Un résultat au-delà est une erreur, pas

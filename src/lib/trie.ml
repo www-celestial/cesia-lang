@@ -16,17 +16,31 @@ let seed, seed2 =
 
 let mask = ref 0x3FFF_FFFF
 
+(* An integer against a float, exactly: -1, 0 or 1 as [x] is below, at or above [y], 2 when [y] is NaN. Past 2^53 an
+   integer is no float exactly, and rounded it would make 2^53 + 1 equal 2^53, so: a rounded integer that isn't the float
+   is on the same side of it as the integer, rounding keeping the order; one that is, is a float that is a whole number,
+   2^62 or one that an integer holds exactly. *)
+let[@inline] int_float x y =
+  let f = float_of_int x in
+  if f < y then -1
+  else if f > y then 1
+  else if f <> y then 2
+  else if y >= 0x1p62 then -1
+  else Int.compare x (int_of_float y)
+
 let compare_keys a b =
   match a, b with
   | Int x, Int y -> Int.compare x y
   | Text x, Text y -> String.compare x y
   | Float x, Float y -> Float.compare x y
-  | Int x, Float y -> Float.compare (float_of_int x) y
-  | Float x, Int y -> Float.compare x (float_of_int y)
+  (* NaN below every number, as Float.compare puts it. *)
+  | Int x, Float y -> (match int_float x y with 2 -> 1 | c -> c)
+  | Float x, Int y -> (match int_float y x with 2 -> -1 | c -> -c)
   | (Int _ | Float _), _ -> -1
   | _ -> 1
 
-(* 1 and 1.0 are one key, so a number hashes by its value as a float, which an integer below 2^53 is exactly. *)
+(* 1 and 1.0 are one key, so a number hashes by its value as a float, which an integer below 2^53 is exactly; one past
+   it by its rounding, which is the float that equals it if one does. *)
 let exact = 1 lsl 53
 
 (* An integer, mixed with the seed: two multiplies by odd numbers and shifts, a bijection, so no two integers share their

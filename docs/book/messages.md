@@ -122,6 +122,7 @@ A bug, when the line runs: an operation on a value that it can't take. The progr
 | `This range has too many elements.` | A range is held in memory when it isn't the range of a for: make it shorter, or loop over it. |
 | `An index must be a whole number, not ….` | `To get a whole number, use math.Floor(...), math.Ceil(...) or math.Round(...).` |
 | `Index … is outside this array of … elements.` | Positions count from 1 to value.Len(xs); list.First and list.Last give missing for an empty list. |
+| `Index … is outside this text of … characters.` | Positions count from 1 to value.Len(s); text.ByteLength counts bytes, of which the message says bytes. |
 | `Index […, …] is outside this array of … rows and … columns.` | Check the row and the column against value.Size. |
 | `Index […] is outside this array of … by ….` | Check each position against value.Size. |
 | `An array of … dimensions takes a whole number for each index, not a slice.` | Give a whole number for each index of an array of three dimensions or more. |
@@ -165,6 +166,8 @@ A bug, when the line runs: an operation on a value that it can't take. The progr
 | `sys.Exit takes a code from 0 to 255, not ….` | Give a code from 0 to 255. |
 | `Near needs … to be a number of 0 or more, not ….` | Give rel and abs of 0 or more. |
 | `JSON can't hold ….` | JSON holds numbers, texts, booleans, missing, lists and dictionaries: dict.Fields turns a struct into a dictionary. |
+| `JSON can't hold a value nested more than … deep.` | Flatten the value, or write its deepest parts as texts of their own. |
+| `JSON holds only UTF-8 texts, and this one has bytes that aren't.` | Write bytes as text with encode.Base64 or encode.Hex first. |
 
 ## Structs, interfaces and types
 
@@ -281,6 +284,7 @@ The `Message` of the `Err` of [json.Parse]: each ends with the byte where the te
 | `A control character in a text` |  |
 | `A number needs digits` |  |
 | `A number is too large` |  |
+| `Bytes that aren't UTF-8` | JSON is UTF-8 (RFC 8259): convert the text to it first. |
 | `Too deep` |  |
 | `Expected a value` |  |
 | `Expected a comma or ]` |  |
@@ -310,6 +314,8 @@ From std/sql, std/sqlite3 and std/columns. The errors of SQLite itself are `Err`
 | `SQLite's pragmas temp_store_directory and data_store_directory are refused: they would put its files where read= and write= don't reach.` | Keep SQLite's files where the permissions reach. |
 | `Can't load SQLite's plugin cesia_sqlite.cmxs: ….` | The release is incomplete: install it again. |
 | `The text holds no statement.` | Give one SQL statement. |
+| `A CSV separator is one byte, as "," or ";", not ….` | Give csv.Parse and csv.Text a separator of one byte. |
+| `A quoted field opened on line … is never closed.` | The Message of the Err of csv.Parse: close the quote, or double a quote inside a quoted field. |
 | `One statement per call: sql.Script runs several, without parameters.` | Split the text into calls, or use sql.Script for a schema. |
 | `Parameter … is …: SQL takes missing, a Bool, an Int, a Float or a Text.` | Give missing, a Bool, an Int, a Float or a Text: json.Text for a list or a dictionary. |
 | `The statement has … placeholders, given … values: one value for each ?.` | Give one value for each ?. |
@@ -350,7 +356,8 @@ From std/c: see [C and C++](c.md).
 | `… can't be a variadic argument: C promotes it. Use i32 or f64.` |  |
 | `… can't go through a callback.` | Use numbers and ptr in a callback. |
 | `c.Fn needs a library, not ….` | Give what c.Open gave. |
-| `c.Open needs a version as an integer or a text, not ….` | Give a version as 6 or "1.2". |
+| `c.Open needs a version of digits and dots, as 6 or "1.2.3", not ….` | Give a version as 6 or "1.2"; a path goes in the name. |
+| `A C function called back into Cesia, but it was bound without callsBack = true in c.Fn: Cesia stops, as running then would corrupt its memory.` | Bind with callsBack = true every function of the library that may call a callback it was given, now or later. |
 | `… doesn't fit in ….` | Give a value within the range of the C type. |
 | `This … doesn't fit in an integer.` | Use a smaller type, or read it as two halves. |
 | `… needs an integer, not ….` | Give an integer. |

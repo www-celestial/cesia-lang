@@ -41,6 +41,7 @@ typedef struct {
 } call;
 
 typedef struct { value f; } holder;
+static _Thread_local int inside; /* this thread's calls in invoke: only they may call back into OCaml, see c.ml */
 
 static const char *const names[] = { "libffi.so.8", "libffi.so.7", "libffi.so", "libffi.8.dylib", "libffi.dylib",
                                      "/opt/homebrew/lib/libffi.dylib", "libffi-8.dll", "ffi-8.dll" };
@@ -63,9 +64,7 @@ value cesia_ffi_load(value unit) {
   return Val_long((intnat) t);
 }
 
-value cesia_ffi_type(value t, value k) {
-  return Val_long((intnat) ((table *) Long_val(t))->types[Long_val(k)]);
-}
+value cesia_ffi_type(value t, value k) { return Val_long((intnat) ((table *) Long_val(t))->types[Long_val(k)]); }
 
 value cesia_ffi_struct(value fields) {
   size_t n = Wosize_val(fields);
@@ -102,7 +101,9 @@ value cesia_ffi_invoke(value vc, value fn, value slots, value structs, value ret
   for (unsigned k = 0; k < n; k++)
     pointers[k] = Long_val(structs) >> k & 1 ? (void *) (intptr_t) words[k] : (void *) &words[k];
   int64_t scalar[2] = { 0, 0 };
+  inside++;
   c->t->call(c->cif, (void *) Long_val(fn), Long_val(ret) ? (void *) Long_val(ret) : (void *) scalar, pointers);
+  inside--;
   memcpy(Bytes_val(slots) + n * sizeof(int64_t), scalar, sizeof(int64_t));
   free(words);
   free(pointers);
@@ -110,7 +111,10 @@ value cesia_ffi_invoke(value vc, value fn, value slots, value structs, value ret
 }
 
 static void entry(void *cif, void *ret, void **args, void *user) {
+  if (!inside) caml_fatal_error("%s", String_val(*caml_named_value("cesia callback outside")));
+  int outer = inside; inside = 0; /* a plain call made inside the callback can't call back either */
   caml_callback2(((holder *) user)->f, Val_long((intnat) args), Val_long((intnat) ret));
+  inside = outer;
 }
 
 /* A C function that calls [f]. It lives until the program ends, since C can keep it. */
@@ -134,10 +138,7 @@ value cesia_strdup(value s) {
   return Val_long((intnat) copy);
 }
 
-value cesia_free(value p) {
-  free((void *) Long_val(p));
-  return Val_unit;
-}
+value cesia_free(value p) { free((void *) Long_val(p)); return Val_unit; }
 
 value cesia_peek(value address, value width) {
   int64_t x = 0;
