@@ -1,0 +1,2 @@
+../version-path.ce:5:11: c.Open needs a version of digits and dots, as 6 or "1.2.3", not the text "6/../other/libother.so".
+exit 1

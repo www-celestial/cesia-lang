@@ -1,0 +1,5 @@
+use std/c
+use std/io
+
+(* A version that is a path: refused, so --allow ffi=m opens no other library. *)
+io.Print(c.Open("m", version = "6/../other/libother.so"))

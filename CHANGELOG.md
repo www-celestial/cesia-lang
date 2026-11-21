@@ -61,6 +61,13 @@
   `4611686018427387900`. A left shift works on the 63 bits of an integer, as its doc now says.
 - Two messages say what is wrong: `json.Text` of a value nested past 1,000 levels says so, not that JSON can't hold an
   array, and an index outside a text names a text of so many characters, or bytes, not an array of elements.
+- A C function that calls back into Cesia from a call bound without `callsBack = true`, or from a thread of its own,
+  stops the program with a message that says so: the callback ran inside a call that holds no frame of OCaml's and
+  corrupted the memory, a segmentation fault at best. The version of `c.Open` is digits and dots, as `6` or `"1.2.3"`:
+  one with a `/` made the name a path from the current folder, which opened a library that `--allow ffi=NAME` doesn't
+  grant. `c.Callback` of a function already made a callback with the same types gives the first one back, `c.Fn` and
+  `c.Callback` share one signature for the same types, and each new callback counts against `--limit memory`: 300,000
+  callbacks under a limit of 30 MB took 292 MB of C memory.
 
 ## 1.2.0
 

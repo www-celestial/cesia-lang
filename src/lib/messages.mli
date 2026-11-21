@@ -414,6 +414,8 @@ val c_need_layout : string -> string -> t
 val c_variadic_type : string -> t
 val c_callback_type : string -> t
 val c_need_library : string -> t
+(** A C function called back into Cesia outside a call bound with callsBack: what stops the program. *)
+val c_callback_outside : t
 val c_version : string -> t
 val c_fit : string -> string -> t
 val c_return_fit : string -> t

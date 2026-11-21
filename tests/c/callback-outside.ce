@@ -1,0 +1,13 @@
+(** A callback that C keeps, called later through a function bound without callsBack = true: the program stops with a
+    message, where the callback ran inside a call that holds no frame of OCaml's and corrupted the memory. *)
+use std/c
+use std/io
+use std/list
+use std/result
+use std/sys
+
+lib = result.Unwrap(c.Open(sys.Args[1]))
+keep = result.Unwrap(c.Fn("keep_callback", ["callback"], "void", lib))
+keep(c.Callback(x -> list.Sum([k * x for k in 1..20000]), ["i64"], "i64"))
+kept = result.Unwrap(c.Fn("call_kept", ["i64"], "i64", lib))
+io.Print(kept(1))

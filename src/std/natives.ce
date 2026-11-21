@@ -1369,7 +1369,7 @@ use std/test
 
 (** c.Open(name, version = missing)
     Loads a shared library by its short name ("m", "sodium"), trying the usual file names of each system, and on macOS the folders of Homebrew: an Ok of the
-    library, or an Err. The names with the version come first, then those without it. Needs the ffi permission.
+    library, or an Err. The names with the version come first, then those without it. A version is digits and dots, as 6 or "1.2.3". Needs the ffi permission.
 
       m = c.Open("m", version = 6).Value
       cos = c.Fn("cos", ["f64"], "f64", m).Value
