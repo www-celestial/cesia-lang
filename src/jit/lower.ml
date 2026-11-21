@@ -852,7 +852,7 @@ and inlinable ?(any = false) ?(most = 40) (v : version) =
        | _ -> 1)
   in
   (any || v.ret == TI || v.ret == TF) && v.state = 2 && Array.length f.captures = 0 && (not f.has_self_tail)
-  && blk_size size (Lazy.force f.body) <= most
+  && (not (Compile.checks v)) && blk_size size (Lazy.force f.body) <= most
 
 and blk_size size b = Array.fold_left (fun n x -> n + size x) 0 b
 
@@ -2505,6 +2505,8 @@ let start ?(region = false) ?ctx ?scope ?(values = []) ?(cold = []) (w : world) 
   let f = ver.owner.func in
   if ver.state <> 2 || ((not region) && Array.length f.captures > 0) then raise No;
   if (not region) && ver.ret != TI && ver.ret != TF then raise No;
+  (* A whole function in native code skips the checks of its parameters' and result's types. *)
+  if (not region) && Compile.checks ver then raise No;
   let kinds = Vec.create () in
   let regs = Array.make f.nvars (-1) and arrays = Array.make f.nvars (-1) and arr = Vec.create () in
   let np = Array.length f.params in

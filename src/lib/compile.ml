@@ -772,6 +772,12 @@ let wrap : 'a. func -> int -> (ctx -> unit) option -> (ctx -> t -> 'a) -> (ctx -
 let known_number (t : ptype) ty =
   (ty == TI || ty == TF) && (not t.tbang) && t.tb = Unresolved && (t.tname = "Number" || t.tname = (if ty == TI then "Int" else "Float"))
 
+let checks (ver : version) =
+  let f = ver.owner.func in
+  let met (t : ptype) ty = known_number t ty || (ty == TFA && t.tname = "Array" && t.tb = Unresolved && not t.tbang) in
+  let unmet (t : ptype option) ty = match t with Some t -> not (met t ty) | None -> false in
+  unmet f.ret ver.ret || Array.exists Fun.id (Array.mapi (fun k (p : param) -> unmet p.ptype ver.tv.(k)) f.params)
+
 (* The return type at a way out of the function, as for a parameter: the version may already know the answer. Else the value
    is checked there, and a wrong one stops the program. *)
 let result_check c pos known : (ctx -> t -> t) option =

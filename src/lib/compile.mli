@@ -13,6 +13,11 @@ val map_keys : string array -> keys
 (** Gives the shape of a struct, declared in module [m], the types of its fields, which a write checks. *)
 val set_checks : world -> int -> Ast.func -> unit
 
+(** Does a version check a parameter or its result as it runs: a declared type that its version doesn't meet already, as
+    a parameter Int in a version for a Float. Native code runs neither the checks of a call's start nor those of its way
+    out, so the JIT leaves such a version to the interpreter. *)
+val checks : version -> bool
+
 (** Compiles and runs the file level of a module, at [ctx.b]: gives the value of its last statement. *)
 val run_main : ctx -> file:int -> m:int -> Ast.func -> t
 

@@ -47,6 +47,9 @@
   `9007199254740992` and `9007199254740992.0`, are one key as before.
 - A text in the code of a text, nested past the limit of nesting, is refused as the lexer reads it, as the parser
   refused it after: a file of 5 MB of `"$("$(...)")"` took 735 MB before the message, and one of 15 MB was killed first.
+- Under `CESIA_JIT=always`, a typed parameter is checked as the interpreter checks it: a version whose parameters' or
+  result's types would be checked as it runs stays interpreted, so `f0(p Int)` called with `2.5` stops at the call, where
+  it gave `1.0`.
 
 ## 1.2.0
 
