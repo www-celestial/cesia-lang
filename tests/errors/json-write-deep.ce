@@ -1,0 +1,9 @@
+use std/io
+use std/json
+
+(* A value nested past the depth JSON is written to: the message says so, not that JSON can't hold an array. *)
+x = 1
+for i in 1..2000
+  x = [x]
+end
+io.Print(json.Text(x))

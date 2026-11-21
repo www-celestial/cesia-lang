@@ -319,7 +319,7 @@ let write ctx ~pretty v =
   let bad x = Runtime.fail ctx Type (Messages.json_value (Value.describe x)) in
   let next = ref Value.reserve_every in
   let rec go depth x =
-    if depth > max_depth then bad x;
+    if depth > max_depth then Runtime.fail ctx Type (Messages.json_nested max_depth);
     if Buffer.length b >= !next then next := Value.grown ctx b !next;
     match x with
     | Missing -> Buffer.add_string b "null"
@@ -338,7 +338,7 @@ let write ctx ~pretty v =
         if d = Array.length a.dims - 1 then group '[' ']' depth a.dims.(d) (fun i -> go (depth + 1) (Value.elt a (at + (i * stride))))
         else group '[' ']' depth a.dims.(d) (fun i -> nest (depth + 1) (d + 1) (at + (i * stride)) below)
       in
-      if depth + Array.length a.dims > max_depth then bad x;
+      if depth + Array.length a.dims > max_depth then Runtime.fail ctx Type (Messages.json_nested max_depth);
       nest depth 0 0 1
     | Array a ->
       Runtime.pay ctx (a.rows * a.cols);

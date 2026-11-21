@@ -313,7 +313,7 @@ let code ctx (a : t array) =
   if s = "" then Runtime.fail ctx Type (Messages.need_char "Code") else Int (fst (Native.char_at s 0))
 
 let byte_position ctx i s =
-  if i < 1 || i > String.length s then Runtime.fail ctx Index (Messages.index_outside i (String.length s))
+  if i < 1 || i > String.length s then Runtime.fail ctx Index (Messages.text_outside i (String.length s) "bytes")
 
 let from_bytes ctx (a : t array) =
   let values = elements ctx "FromBytes" a.(0) in

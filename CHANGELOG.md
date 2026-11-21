@@ -59,6 +59,8 @@
   expressions cut each bad byte alone, and `text.Slice` dropped the bytes at the start of a text.
 - `math.BitShift` shifts right with the sign, as Python and Go: `math.BitShift(-8, -1)` is `-4`, not
   `4611686018427387900`. A left shift works on the 63 bits of an integer, as its doc now says.
+- Two messages say what is wrong: `json.Text` of a value nested past 1,000 levels says so, not that JSON can't hold an
+  array, and an index outside a text names a text of so many characters, or bytes, not an array of elements.
 
 ## 1.2.0
 

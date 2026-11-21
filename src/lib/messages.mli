@@ -79,6 +79,9 @@ val return_outside : t
 val range_bound : string -> t
 val index_type : string -> t
 val index_outside : int -> int -> t
+
+(** [text_outside i n unit]: an index outside a text of [n] characters or bytes, as [unit] says. *)
+val text_outside : int -> int -> string -> t
 val index_outside2 : int -> int -> int -> int -> t
 
 (** The indexes and the sizes of an array of three dimensions or more. *)
@@ -340,6 +343,9 @@ val doc_missing : string -> string
 (** [doc_moved name p]: cesia doc of a name of std/p written without its package, as Map for list.Map. *)
 val doc_moved : string -> string -> string
 val json_value : string -> t
+
+(** A value nested past the depth that JSON is written to. *)
+val json_nested : int -> t
 val column_sizes : int -> int -> t
 val need_groups : string -> t
 val json_at : string -> int -> string

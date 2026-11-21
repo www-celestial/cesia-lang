@@ -800,8 +800,8 @@ let slice ctx (a : t array) =
   let first = Arrays.whole_index ctx a.(0) and last = Arrays.whole_index ctx a.(1) in
   let s = text_arg ctx "Slice" a.(2) in
   let n = code_points s in
-  if first < 1 then Runtime.fail ctx Index (Messages.index_outside first n);
-  if last > n then Runtime.fail ctx Index (Messages.index_outside last n);
+  if first < 1 then Runtime.fail ctx Index (Messages.text_outside first n "characters");
+  if last > n then Runtime.fail ctx Index (Messages.text_outside last n "characters");
   if last < first then Text ""
   else begin
     Runtime.build ctx ((String.length s / 8) + 1);
