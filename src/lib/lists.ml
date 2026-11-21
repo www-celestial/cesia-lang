@@ -192,7 +192,7 @@ let index_of ctx (a : t array) =
 let points s =
   let out = ref [] and i = ref 0 in
   while !i < String.length s do
-    let n = max 1 (Uchar.utf_decode_length (String.get_utf_8_uchar s !i)) in
+    let n = snd (Native.char_at s !i) in
     out := String.sub s !i n :: !out;
     i := !i + n
   done;
@@ -310,7 +310,7 @@ let pad name add ctx (a : t array) =
 
 let code ctx (a : t array) =
   let s = text_arg ctx "Code" a.(0) in
-  if s = "" then Runtime.fail ctx Type (Messages.need_char "Code") else Int (Uchar.to_int (Uchar.utf_decode_uchar (String.get_utf_8_uchar s 0)))
+  if s = "" then Runtime.fail ctx Type (Messages.need_char "Code") else Int (fst (Native.char_at s 0))
 
 let byte_position ctx i s =
   if i < 1 || i > String.length s then Runtime.fail ctx Index (Messages.index_outside i (String.length s))

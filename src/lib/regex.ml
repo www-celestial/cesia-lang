@@ -41,9 +41,9 @@ let parse pattern =
   let cs =
     let out = ref [] and i = ref 0 in
     while !i < String.length pattern do
-      let d = String.get_utf_8_uchar pattern !i in
-      out := Uchar.to_int (Uchar.utf_decode_uchar d) :: !out;
-      i := !i + max 1 (Uchar.utf_decode_length d)
+      let c, w = Native.char_at pattern !i in
+      out := c :: !out;
+      i := !i + w
     done;
     Array.of_list (List.rev !out)
   in
@@ -269,9 +269,7 @@ let matches re negated ranges c =
   let swapped = if c >= 65 && c <= 90 then c + 32 else if c >= 97 && c <= 122 then c - 32 else c in
   (in_ranges c ranges || (re.icase && in_ranges swapped ranges)) <> negated
 
-let decode s pos =
-  let d = String.get_utf_8_uchar s pos in
-  Uchar.to_int (Uchar.utf_decode_uchar d), max 1 (Uchar.utf_decode_length d)
+let decode = Native.char_at
 
 let is_word_byte s pos = pos >= 0 && pos < String.length s && in_ranges (Char.code s.[pos]) word
 

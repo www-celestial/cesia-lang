@@ -158,13 +158,14 @@ type out = { b : Buffer.t; mutable left : int; cap : int; mutable next : int }
 
 exception Full
 
-(* [len] bytes of [s] from [pos], as many of their characters as fit. *)
+(* [len] bytes of [s] from [pos], as many of their characters as fit: one starts at each byte that doesn't continue
+   one, and at the first of the text, as [Native.char_at] has them. *)
 let add_sub o s pos len =
   if o.left = max_int then Buffer.add_substring o.b s pos len
   else begin
     let stop = pos + max 0 (min len (o.cap - Buffer.length o.b)) in
     for i = pos to stop - 1 do
-      if Char.code s.[i] land 0xC0 <> 0x80 then begin
+      if i = 0 || Char.code s.[i] land 0xC0 <> 0x80 then begin
         if o.left = 0 then begin
           Buffer.add_substring o.b s pos (i - pos);
           raise Full

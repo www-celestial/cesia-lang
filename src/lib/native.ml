@@ -47,10 +47,15 @@ let print_error ctx args =
   w.err (String.concat " " (Array.to_list (Array.map (Value.text_of ctx) args)) ^ "\n");
   Missing
 
-(* Eight bytes at a time (SWAR): a byte that continues a code point is 10xxxxxx, its high bit set and the next one clear,
-   which [w land lnot (w lsl 1)] leaves at the high bit; a multiplication adds up those bits. *)
+(* A character starts at each byte that doesn't continue one, 10xxxxxx, and holds the bytes that do after it: in UTF-8,
+   a code point. A text that isn't UTF-8 follows the same rule, everywhere: a byte that continues nothing belongs to the
+   character before it, and those that begin the text are one character. Eight bytes at a time (SWAR): a byte that
+   continues is 10xxxxxx, its high bit set and the next one clear, which [w land lnot (w lsl 1)] leaves at the high bit; a
+   multiplication adds up those bits. *)
+let[@inline] continues s i = Char.code s.[i] land 0xC0 = 0x80
+
 let points_between s a b =
-  let n = ref 0 and k = ref a in
+  let n = ref (if a = 0 && b > 0 && continues s 0 then 1 else 0) and k = ref a in
   while !k + 8 <= b do
     let w = String.get_int64_le s !k in
     let follow = Int64.logand (Int64.logand w (Int64.lognot (Int64.shift_left w 1))) 0x8080808080808080L in
@@ -768,16 +773,28 @@ let join ctx (a : t array) =
     Text (Buffer.contents b)
   | v -> Runtime.fail ctx Type (Messages.need_array "Join" (Value.describe v))
 
-(* The byte where code point [k] starts, counting from 0, or the length of [s] past the end. *)
+(* The byte where character [k] starts, counting from 0, or the length of [s] past the end. *)
 let byte_of_point s k =
   let n = String.length s in
   let rec go i left =
     if i >= n then i
-    else if Char.code s.[i] land 0xC0 = 0x80 then go (i + 1) left
+    else if continues s i then go (i + 1) left
     else if left = 0 then i
     else go (i + 1) (left - 1)
   in
-  go 0 k
+  if n > 0 && continues s 0 then (if k = 0 then 0 else go 0 (k - 1)) else go 0 k
+
+(* The code point of the character at byte [i], and its bytes: U+FFFD for one that is no UTF-8. *)
+let char_at s i =
+  let n = String.length s and c = Char.code s.[i] in
+  let j = ref (i + 1) in
+  while !j < n && continues s !j do incr j done;
+  let w = !j - i in
+  if c < 0x80 then (if w = 1 then c else 0xFFFD), w
+  else begin
+    let d = String.get_utf_8_uchar s i in
+    (if Uchar.utf_decode_is_valid d && Uchar.utf_decode_length d = w then Uchar.to_int (Uchar.utf_decode_uchar d) else 0xFFFD), w
+  end
 
 let slice ctx (a : t array) =
   let first = Arrays.whole_index ctx a.(0) and last = Arrays.whole_index ctx a.(1) in

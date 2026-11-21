@@ -53,6 +53,10 @@
 - A deep recursion, let deep by `--limit depth`, stops near `--limit memory`: OCaml's stack, which the heap doesn't
   count, takes a quarter of the limit at most, or 8 MB, and running out of it is reaching the limit of memory. A
   recursion under a limit of 300 MB took 734 MB before it stopped, now 341 MB.
+- A text that isn't UTF-8 follows one rule everywhere: a character starts at each byte that doesn't continue one,
+  10xxxxxx, and holds those that do after it; bytes that begin the text and continue nothing are one character.
+  `value.Len`, `text.Slice`, `text.Find` and `text.PadLeft` counted so, but `text.Chars`, `text.Code` and regular
+  expressions cut each bad byte alone, and `text.Slice` dropped the bytes at the start of a text.
 
 ## 1.2.0
 
