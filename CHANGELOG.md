@@ -30,6 +30,10 @@
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,
   named another place than the interpreter: now both name the same. A program run with `--limit steps=N` makes its N
   steps, and the next one stops it; at the step of a full checkpoint, it stopped one step early.
+- A valid program no longer ends with `Internal error: Not_found` under the JIT: a list of integers that took a float
+  from an inlined call, in an `if` that also held an empty `if`. A statement that doesn't become machine code now drops
+  the blocks made for it with the rest of its code; and any bug of the JIT met while it makes code leaves that loop or
+  function interpreted, so that it can never end a program again.
 
 ## 1.2.0
 

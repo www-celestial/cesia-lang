@@ -1869,8 +1869,11 @@ and saved st =
   let hidden = Vec.length st.hidden and points = Vec.length d.points and need = Option.map ( ! ) d.need in
   let loose = d.loose and lent = d.lent and known = d.known and nums = d.nums and elems = d.elems and ranges = d.ranges in
   let inside = d.inside and colds = d.colds and ncalls = st.ncalls and fast = st.fast and resumable = st.resumable in
-  let twins = Hashtbl.copy st.twins in
+  let twins = Hashtbl.copy st.twins and blocks = Vec.length st.blocks and loops = st.loops in
   fun () ->
+    (* The blocks made since go too: an error of theirs would name an inlined frame whose [Frame] was dropped. *)
+    shrink st.blocks blocks;
+    st.loops <- loops;
     let blk = Vec.get st.blocks b in
     let rec drop k l = if k = 0 then l else drop (k - 1) (List.tl l) in
     (* What [at_start] put in this block since stays, before the code dropped: its registers' copies and fuel. *)
