@@ -3,7 +3,9 @@
 use std/c
 use std/sys
 use std/bug
+use std/cesia
 use std/dict
+use std/fiber
 use std/list
 use std/result
 use std/text
@@ -106,8 +108,11 @@ defn bind(lib, takeError, name, args, ret)
   result.Ok(guard(f, value.Len(args), takeError))
 end
 
+(** The flags of the compiler. *)
+flags = ["-std=c++20", "-shared", "-fPIC", "-O2"]
+
 defn compile(compiler, cppFile, library)
-  r = sys.Run(compiler, args = ["-std=c++20", "-shared", "-fPIC", "-O2", "-o", library, cppFile])?
+  r = sys.Run(compiler, args = list.Concat(flags, ["-o", library, cppFile]))?
   if r.Code == 0
     result.Ok(missing)
   else
@@ -115,18 +120,71 @@ defn compile(compiler, cppFile, library)
   end
 end
 
+defn quietly(f)
+  (** What f gives, an Ok or an Err, or an Err when it stops, as for a permission the program doesn't have. *)
+  got = fiber.Wait(fiber.Spawn(f))
+  if result.IsOk(got) got.Value else got end
+end
+
+defn headers(spec, folder)
+  (** The headers that the source includes by "name", from folder, and those that they include so, from their own
+      folder, each once, with its text: what the library is made of beside the source. One that can't be read counts
+      as empty. *)
+  todo = ["$folder/$(text.Slice(2, value.Len(h) - 1, h))" for h in spec.Include if text.StartsWith("\"", h)]
+  seen = dict.Dict()
+  while value.Len(todo) > 0 and value.Len(seen) < 1000
+    path = todo[1]
+    todo = todo[2..end]
+    if not dict.Has(path, seen)
+      got = quietly(() -> sys.Read(path))
+      seen[path] = result.UnwrapOr("", got)
+      folders = text.Split("/", path)
+      here = text.Join("/", folders[1..value.Len(folders) - 1])
+      for line in text.Lines(seen[path])
+        parts = text.Split("\"", text.Trim(line))
+        if text.StartsWith("#include", text.Trim(line)) and value.Len(parts) >= 3
+          todo = list.Append("$here/$(parts[2])", todo)
+        end
+      end
+    end
+  end
+  text.Join("\n", ["$p\n$(seen[p])" for p in list.Sort(dict.Keys(seen))])
+end
+
+defn keyOf(spec, folder, compiler, source)
+  (** What the library is made of: the source, its headers of the project, the compiler, as its --version tells, and its
+      flags, as a fingerprint of 128 bits. *)
+  said = quietly(() -> sys.Run(compiler, args = ["--version"]))
+  version = if result.IsOk(said) said.Value.Out else "" end
+  text.Slice(8, 39, cesia.Fingerprint(text.Join("\n", [source, headers(spec, folder), compiler, version, text.Join(" ", flags)])))
+end
+
 defn Wrap(spec, folder = ".", compiler = "c++")
   (** Compiles what changed into folder, made if it isn't there, loads it, and gives a dictionary of functions: "name",
-      "Class.method", "Class.new". It needs a C++ compiler, so it has no example here: the chapter
-      [C and C++](https://www-celestial.github.io/cesia-lang/c.html#c) runs one. *)
+      "Class.method", "Class.new". The library is made again when its source, a header of the project that the source
+      includes by "name", the compiler or its flags change: the first line of its .cpp keeps the fingerprint of them
+      all. It is compiled under a name of its own, then renamed, so that no program loads one half written; and the
+      fingerprint of each library Wrap makes is kept in Cesia's cache, the person's alone, so that a library put in
+      folder by someone else, as one a cloned project holds, is never loaded: it is made again. It needs a C++ compiler,
+      so it has no example here: the chapter [C and C++](https://www-celestial.github.io/cesia-lang/c.html#c) runs one. *)
   cppFile = "$folder/$(spec.Name)_cesia.cpp"
   library = "$folder/lib$(spec.Name)_cesia.so"
   source = Source(spec)
-  same = sys.Exists(cppFile) and sys.Exists(library) and result.UnwrapOr("", sys.Read(cppFile)) == source
+  key = keyOf(spec, folder, compiler, source)
+  stamped = "// Key $key\n$source"
+  print = () -> result.UnwrapOr("", result.MapOk(cesia.Fingerprint, sys.Read(library)))
+  same = sys.Exists(cppFile) and sys.Exists(library) and result.UnwrapOr("", sys.Read(cppFile)) == stamped and kept(key) == print()
   if not same
     sys.Mkdir(folder)?
-    sys.Write(cppFile, source)?
-    compile(compiler, cppFile, library)?
+    sys.Write(cppFile, stamped)?
+    fresh = "$folder/.lib$(spec.Name)_cesia.$(text.Slice(8, 23, cesia.Fingerprint(text.Str(sys.Now(), key)))).so"
+    made = compile(compiler, cppFile, fresh)
+    if result.IsErr(made)
+      _ = quietly(() -> sys.Remove(fresh))
+      return made
+    end
+    sys.Rename(fresh, library)?
+    keep(key, print())
   end
   lib = c.Open(library)?
   takeError = c.Fn("kp_take_error", [], "text", lib)?

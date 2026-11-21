@@ -1,0 +1,9 @@
+(* cpp.Wrap of a function whose value is in a header of the project, in the folder its argument names. *)
+use std/cpp
+use std/io
+use std/result
+use std/sys
+
+spec = {Name: "stale", Include: ["\"val.hpp\""], Classes: [], Functions: [cpp.Fn("val", [], "i64", call = "baseVal")]}
+m = result.Unwrap(cpp.Wrap(spec, folder = sys.Args[1], compiler = "g++"))
+io.Print("val() = $(m["val"]())")

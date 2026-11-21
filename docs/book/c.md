@@ -219,7 +219,14 @@ cesia run --allow exec=g++,read=build,write=build,ffi=build/libdemo_cesia.so dem
 
 [result.Unwrap] at the end stops the program with the message of an `Err`, if the compiler or the library fails.
 
-It compiles again only what changed. A C++ exception becomes a panic with its message. [cpp.Source] gives the text of
+It compiles again only what changed: the source of the layer, a header of the project that it includes by `"name"`, and
+those that header includes so, the compiler, as its `--version` tells, or its flags. The first line of the `.cpp` keeps
+the fingerprint of them all. The library is compiled under a name of its own, then renamed, so that a program started
+meanwhile never loads one half written. Cesia keeps the fingerprint of each library it makes in its own cache, which only
+you can read and write (`~/.cache/cesia`, 0700): a library that someone else put in `build`, as one a cloned project
+holds, is made again, never loaded. Someone who may write `build` while the program runs can still swap the library
+between that check and its load: build into a folder that is yours alone. A C++ exception becomes a panic with its
+message. [cpp.Source] gives the text of
 the C layer without compiling it, to read what [cpp.Wrap] would build.
 
 ## Next

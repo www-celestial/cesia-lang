@@ -31,6 +31,11 @@
 
 ### Fixes
 
+- `cpp.Wrap` makes its library again when a header of the project that the layer includes by `"name"` changes, or the
+  compiler, its version or its flags, where it reused a library whose `.cpp` text matched: an edited header went
+  unseen, and a library that someone else put in the build folder beside that `.cpp` was loaded. The fingerprint of each
+  library it makes is kept in Cesia's cache, the person's alone, and a library without it is made again; it compiles
+  under a name of its own, then renames.
 - `http.Fetch` takes `timeout`, the seconds a server may stay silent between two reads, 300 unless it says otherwise,
   and `maxBody`, the most bytes of a body, none unless it says so: a silent server held it for ever. It refuses a head
   past 16 KiB, and searches each read alone for the end of the head, where a head that never ended filled the memory
