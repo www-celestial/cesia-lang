@@ -1,0 +1,15 @@
+(** For websocket-pieces.cmd: a server of WebSocket that answers the size of the first message, then ends. *)
+use std/http
+use std/net
+use std/sys
+use std/fiber
+use std/io
+use std/result
+use std/text
+
+done = fiber.Channel()
+l = result.Unwrap(net.Listen(18463))
+fiber.Spawn(() -> http.Serve(http.App() then http.Websocket("/echo", (m, send) -> send("[$(text.ByteLength(m))]") then (_ -> fiber.Send(true, done))), listener = l))
+io.Print("listening")
+_ = fiber.Receive(done, timeout = 60)
+sys.Sleep(0.1)

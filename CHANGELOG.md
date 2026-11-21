@@ -9,6 +9,7 @@
   `sys.SetModified` sets the time of a change, as `touch`; `sys.Symlink`, `sys.Link` and `sys.ReadLink` make and read
   links. Everything a file manager needs, as the folders of Cemacs.
 
+
 ### Science
 
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
@@ -25,6 +26,15 @@
 
 ### Fixes
 
+- `http.Fetch` takes `timeout`, the seconds a server may stay silent between two reads, 300 unless it says otherwise,
+  and `maxBody`, the most bytes of a body, none unless it says so: a silent server held it for ever. It refuses a head
+  past 16 KiB, and searches each read alone for the end of the head, where a head that never ended filled the memory
+  and was searched whole again at each read.
+- WebSocket: the client counts each fragment of a message 64 bytes more than its payload against `maxMessage`, where a
+  server that sent empty fragments filled the memory with 2 bytes of traffic each; the server reads a frame that comes
+  in pieces into one buffer, joined once, where it copied all it had at each piece (a megabyte in pieces of 64 bytes
+  took 2.4 s of its processor); it closes with 1007 a text or the reason of a close that isn't UTF-8, and with 1002 a
+  close of one byte or of a code that RFC 6455 refuses, where it took the text and sent the close back.
 - `cesia upgrade` fetches over `https://` alone, and refuses a redirect to another address, where it followed a
   `Location` of plain `http://`; `install.sh` and the line that runs it ask `curl` for `https://` alone and TLS 1.2 at
   least, redirects too, and `install.ps1` for TLS 1.2 and an `https://` address at the end of its redirects.

@@ -402,16 +402,65 @@ defn fullSize(head)
   if value.IsText(size) and value.IsInt(text.Number(size)) text.ByteLength(head) + 4 + text.Number(size) else missing end
 end
 
-defn readResponse(conn, buffer)
-  (** Reads a whole response from a connection: an Ok of {Status, Headers, Body}, or an Err. The head comes first, and is read
-      once: the rest of a large response doesn't parse it again. *)
-  at = offset(blank, buffer)
-  if value.IsMissing(at)
-    more = conn.Read()?
-    if text.ByteLength(more) == 0 result.Ok(buffer) else readResponse(conn, "$buffer$more") end
-  else
-    gather(conn, buffer, fullSize(cutAt(at, buffer)[1]))
+defn within(timeout, socket, f)
+  (** What f gives, or an Err of kind "timeout" when it takes more than timeout seconds, the socket then closed, which ends
+      what f waited for. A missing timeout waits as long as it takes. *)
+  if value.IsMissing(timeout)
+    return f()
   end
+  waited = fiber.Wait(fiber.Spawn(f), timeout = timeout)
+  if result.IsOk(waited)
+    return waited.Value
+  end
+  net.Close(socket)
+  if waited.Error.Kind == "timeout" result.Err({Kind: "timeout", Message: "The server sent nothing for $timeout seconds."}) else waited end
+end
+
+defn readResponse(read, maxBody)
+  (** Reads a whole response with read, a read of the connection: an Ok of its bytes, or an Err. The head comes first, at
+      most maxHead bytes, each read searched for its end alone, after the last bytes before it, so that a head sent a byte
+      at a time isn't searched or copied again at each read; then the body, at most maxBody bytes after the head, the
+      marks of a chunked one too, or to the end the content-length gives, or the end of the connection. *)
+  pieces = {}
+  total = 0
+  tail = ""
+  at = missing
+  while value.IsMissing(at)
+    more = read()?
+    if text.ByteLength(more) == 0
+      return result.Ok(text.Join("", dict.Values(pieces)))
+    end
+    pieces[value.Len(pieces)] = more
+    seen = "$tail$more"
+    found = offset(blank, seen)
+    if not value.IsMissing(found)
+      at = total - text.ByteLength(tail) + found
+    else if total + text.ByteLength(more) > maxHead
+      return failed("The head of this response is longer than $maxHead bytes.")
+    end
+    total += text.ByteLength(more)
+    tail = lastBytes(3, seen)
+  end
+  needed = fullSize(text.ByteSlice(1, at, text.Join("", dict.Values(pieces))))
+  most = if value.IsMissing(maxBody) missing else at + 4 + maxBody end
+  if not value.IsMissing(most) and not value.IsMissing(needed) and needed > most
+    return failed("The body of this response is longer than maxBody, $maxBody bytes.")
+  end
+  while value.IsMissing(needed) or total < needed
+    if not value.IsMissing(most) and total > most
+      return failed("The body of this response is longer than maxBody, $maxBody bytes.")
+    end
+    more = read()?
+    if text.ByteLength(more) == 0
+      break
+    end
+    pieces[value.Len(pieces)] = more
+    total += text.ByteLength(more)
+  end
+  if not value.IsMissing(most) and total > most and value.IsMissing(needed)
+    return failed("The body of this response is longer than maxBody, $maxBody bytes.")
+  end
+  result.Ok(text.Join("", dict.Values(pieces)))
 end
 
 defn hex(digits)
@@ -483,9 +532,13 @@ defn hostOf(target)
   if target.Port == (if target.Secure 443 else 80 end) target.Host else "$(target.Host):$(target.Port)" end
 end
 
-defn Fetch(url, method = "GET", body = "", headers = [], secure = missing)
+defn Fetch(url, method = "GET", body = "", headers = [], secure = missing, timeout = 300, maxBody = missing)
   (** Asks a server: an Ok of {Status, Headers, Body}, as the server answered, or an Err when it can't be reached or its
-      answer isn't HTTP. A 404 is a response, not an error: look at Status. For https, secure = tls.Client(api).
+      answer isn't HTTP. A 404 is a response, not an error: look at Status. For https, secure = tls.Client(api). A server
+      silent for timeout seconds, as it starts TLS or between two reads of its response, gives an Err of kind
+      "timeout": a slow download goes on as long as bytes come; missing waits for ever. The head of a response holds at
+      most 16 KiB, and its body at most maxBody bytes, the marks of a chunked one too: past them an Err, and with missing
+      the body is only bounded by the memory of the program.
 
         Fetch("ftp://example.com/") then result.MapErr(it.Kind) --> result.Err("http") *)
   target = ParseUrl(url)?
@@ -496,7 +549,7 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing)
     return failed("https needs secure = tls.Client(api), with api from tls.Open(): see std/tls.")
   end
   c = net.Connect(target.Host, target.Port)?
-  made = if target.Secure secure(c, target.Host) else tcp(c) end
+  made = within(timeout, c, () -> if target.Secure secure(c, target.Host) else tcp(c) end)
   if result.IsErr(made)
     net.Close(c)
     return made
@@ -506,7 +559,7 @@ defn Fetch(url, method = "GET", body = "", headers = [], secure = missing)
   sized = if body == "" and method == "GET" "" else "Content-Length: $(text.ByteLength(body))$crlf" end
   message = "$method $(target.Path) HTTP/1.1$(crlf)Host: $(hostOf(target))$(crlf)Connection: close$crlf$sized$custom$crlf$body"
   sent = conn.Write(message)
-  raw = if result.IsOk(sent) readResponse(conn, "") else sent end
+  raw = if result.IsOk(sent) readResponse(() -> within(timeout, c, conn.Read), maxBody) else sent end
   conn.Close()
   parseResponse(raw?)
 end
