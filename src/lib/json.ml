@@ -15,6 +15,13 @@ let[@inline] stops w =
   not (Int64.equal 0L (Int64.logor (zero_bytes (Int64.logand w 0xE0E0E0E0E0E0E0E0L))
                          (Int64.logor (zero_bytes (Int64.logxor w 0x2222222222222222L)) (zero_bytes (Int64.logxor w 0x5C5C5C5C5C5C5C5CL)))))
 
+(* Or one that isn't ASCII, whose high bit is set: its character is checked to be UTF-8, in the same pass. *)
+let[@inline] stops_high w = Int64.logand w 0x8080808080808080L <> 0L || stops w
+
+(* The bytes of the character of UTF-8 at [k], or 0 for bytes that aren't one: JSON is UTF-8 (RFC 8259, 8.1), and a text
+   of other bytes, as FF FE or the overlong C0 AF, is refused rather than kept, read or written. *)
+let[@inline] utf8_at s k = let d = String.get_utf_8_uchar s k in if Uchar.utf_decode_is_valid d then Uchar.utf_decode_length d else 0
+
 (* The powers of ten that a double holds exactly, 10^0 to 10^22: the fast path of the numbers. Written out, a constant
    that the start copies, where Array.init made them by float_of_string at every start, JSON or not. *)
 let exact_tens =
@@ -27,10 +34,6 @@ let parse_text ctx s =
   let max_depth = min max_depth (ctx.w.limits.nesting / 2) in
   let peek () = if !i < n then s.[!i] else '\000' in
   let bad text = raise (Bad (Messages.json_at text (!i + 1))) in
-  (* JSON is UTF-8 (RFC 8259, 8.1): a text of other bytes, as FF FE or the overlong C0 AF, is refused, not kept. *)
-  i := Native.utf8_end s;
-  if !i < n then bad Messages.json_utf8;
-  i := 0;
   let spaces () =
     while !i < n && (match s.[!i] with ' ' | '\n' | '\r' | '\t' -> true | _ -> false) do
       incr i
@@ -67,11 +70,19 @@ let parse_text ctx s =
     Buffer.add_utf_8_uchar b (Uchar.of_int code)
   in
   (* The end of a run of bytes that a text keeps as they are, from j: its closing quote, an escape, a control character
-     or the end of the document. *)
+     or the end of the document. A byte past ASCII outside a text is no token: only a text needs the test of UTF-8. *)
   let rec plain j =
-    if j + 8 <= n && not (stops (String.get_int64_le s j)) then plain (j + 8)
-    else if j < n && (match s.[j] with '"' | '\\' -> false | c -> c >= ' ') then plain (j + 1)
-    else j
+    if j + 8 <= n && not (stops_high (String.get_int64_le s j)) then plain (j + 8)
+    else if j >= n then j
+    else
+      match s.[j] with
+      | '"' | '\\' -> j
+      | c when c < ' ' -> j
+      | c when c < '\128' -> plain (j + 1)
+      | _ ->
+        (match utf8_at s j with
+         | 0 -> i := j; bad Messages.json_utf8
+         | w -> plain (j + w))
   in
   let text () =
     incr i;
@@ -282,16 +293,16 @@ let parse ctx (a : t array) =
   | v -> Value.ok ctx.w v
   | exception Bad text -> Value.failure ctx.w "json" text
 
-(* The bytes between two that need an escape go as one run. Whether a byte isn't ASCII, for the test of UTF-8 then. *)
+(* The bytes between two that need an escape go as one run. Whether the text is UTF-8, each character past ASCII
+   checked as it goes by. *)
 let add_text b s =
   Buffer.add_char b '"';
   let n = String.length s in
-  let rec go from k high =
-    if k + 8 <= n && not (stops (String.get_int64_le s k)) then
-      go from (k + 8) (high || Int64.logand (String.get_int64_le s k) 0x8080808080808080L <> 0L)
+  let rec go from k =
+    if k + 8 <= n && not (stops_high (String.get_int64_le s k)) then go from (k + 8)
     else if k >= n then begin
       Buffer.add_substring b s from (n - from);
-      high
+      true
     end
     else
       match s.[k] with
@@ -299,16 +310,17 @@ let add_text b s =
         Buffer.add_substring b s from (k - from);
         Buffer.add_char b '\\';
         Buffer.add_char b c;
-        go (k + 1) (k + 1) high
+        go (k + 1) (k + 1)
       | c when c < ' ' ->
         Buffer.add_substring b s from (k - from);
         Buffer.add_string b (match c with '\n' -> "\\n" | '\t' -> "\\t" | '\r' -> "\\r" | c -> Printf.sprintf "\\u%04x" (Char.code c));
-        go (k + 1) (k + 1) high
-      | c -> go from (k + 1) (high || c >= '\128')
+        go (k + 1) (k + 1)
+      | c when c < '\128' -> go from (k + 1)
+      | _ -> (match utf8_at s k with 0 -> false | w -> go from (k + w))
   in
-  let high = go 0 0 false in
+  let utf8 = go 0 0 in
   Buffer.add_char b '"';
-  high
+  utf8
 
 let write ctx ~pretty v =
   let b = Buffer.create 64 in
@@ -332,7 +344,7 @@ let write ctx ~pretty v =
   in
   let bad x = Runtime.fail ctx Type (Messages.json_value (Value.describe x)) in
   (* A text that isn't UTF-8 would make JSON that isn't: refused, as a NaN is. *)
-  let text s = if add_text b s && not (Native.is_utf8 s) then Runtime.fail ctx Type Messages.json_not_utf8 in
+  let text s = if not (add_text b s) then Runtime.fail ctx Type Messages.json_not_utf8 in
   let next = ref Value.reserve_every in
   let rec go depth x =
     if depth > max_depth then Runtime.fail ctx Type (Messages.json_nested max_depth);

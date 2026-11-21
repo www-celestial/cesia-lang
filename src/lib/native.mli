@@ -28,12 +28,6 @@ val points_between : string -> int -> int -> int
     is a byte that doesn't continue one, 10xxxxxx, and those that do after it; those at the start of a text are one. *)
 val char_at : string -> int -> int * int
 
-(** Where a text stops being UTF-8, as RFC 3629 defines it: its first byte that isn't, or its length. *)
-val utf8_end : string -> int
-
-(** Is the text UTF-8 all through? *)
-val is_utf8 : string -> bool
-
 (** A size given to [name]: an integer, or a float with no fraction, from 0; else a [type] panic naming [name]. *)
 val dim : ctx -> string -> t -> int
 
