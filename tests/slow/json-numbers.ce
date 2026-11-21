@@ -25,6 +25,10 @@ defn readsAsText(c)
   if value.IsFloat(want) and want - want != 0.0
     return bad(s) and bad("[$s]")
   end
+  (* An integer past 63 bits is kept as its digits. *)
+  if value.Len(c.Fraction) == 0 and not c.Power and value.IsFloat(want)
+    want = s
+  end
   got = ok(s)
   value.Equal(got, want) and value.IsInt(got) == value.IsInt(want) and value.Equal(ok("[$s, $s]"), [want, want])
 end
