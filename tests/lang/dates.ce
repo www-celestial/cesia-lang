@@ -16,6 +16,10 @@ isAddDays() = date.FormatDate(date.AddDays(31, date.Date(2026, 12, 15))) == "202
 isBetween() = date.DaysBetween(date.Date(2026, 1, 1), date.Date(2026, 12, 31)) == 364
 isParse() = date.ToUnix(result.Unwrap(date.Parse("1970-01-02T00:00:01Z"))) == 86401
 isParseDay() = result.Unwrap(date.Parse("2026-11-01")).Month == 11
+(* Format writes what Parse reads back to the same instant: a year before 1 with its sign, an offset with its seconds. *)
+roundTrip(d) = result.MapOk(e -> date.ToUnix(e) == date.ToUnix(d) and e.Offset == d.Offset, date.Parse(date.Format(d))) == result.Ok(true)
+isFormatOfYearsBeforeOne() = date.FormatDate(date.Date(-5, 1, 1)) == "-0005-01-01" and roundTrip(date.FromUnix(-62200000000)) and roundTrip(date.Date(-5, 12, 31)) and roundTrip(date.Date(0, 2, 29)) and roundTrip(date.Date(12345, 6, 7))
+isFormatOfOffsetsWithSeconds() = date.Format(date.Date(2026, 1, 1, Offset = 90)) == "2026-01-01T00:00:00+00:01:30" and roundTrip(date.Date(1900, 1, 1, Offset = 561)) and roundTrip(date.Date(2026, 1, 1, Offset = -1801)) and result.IsErr(date.Parse("2026-01-01T00:00:00+00:01:60"))
 isParseBad() = list.All(list.Map(result.IsErr, list.Map(date.Parse, ["", "2026", "2026-13-01", "2026-02-30", "a-b-c", "2026-01-01T25:00:00Z"])))
 
 isCsvPlain() = value.Equal(csv.Parse("a,b\n1,2\n"), [["a", "b"], ["1", "2"]])

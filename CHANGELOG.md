@@ -81,6 +81,9 @@
   that wasn't. An integer past 63 bits is kept as the text of its digits: `12345678901234567890` became the float
   `1.2345678901234567e19`, which lost the digits of an ID or a hash. An error would have refused a whole document for a
   number nobody reads, and no number of Cesia holds it, so its text, exact, breaks no correct use.
+- `date.Format` writes a year before 1 with its sign, `-0005-01-01`, and an offset with seconds with them, `+00:09:21`,
+  the time of Paris before 1911, and `date.Parse` reads both: Format gave `00-2-12-17T...`, which Parse refused, and
+  rounded an offset of 90 s to `+00:01`.
 
 ## 1.2.0
 

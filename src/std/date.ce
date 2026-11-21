@@ -111,17 +111,21 @@ AddDays(n, d) = AddSeconds(n * 86400, d)
 DaysBetween(a, b) = daysFromCivil(b.Year, b.Month, b.Day) - daysFromCivil(a.Year, a.Month, a.Day)
 
 two(n) = if n >= 0 and n < 10 "0$n" else text.PadLeft(2, "0", value.Text(n)) end
-(** The day of a Date as 2026-11-01.
+year(y) = if y >= 1000 and y <= 9999 "$y" else if y < 0 "-$(year(0 - y))" else text.PadLeft(4, "0", value.Text(y)) end
+(** The day of a Date as 2026-11-01, a year before 1 with its sign, as ISO 8601 writes it: -0001-12-31.
 
       FormatDate(Date(2026, 11, 1)) --> "2026-11-01" *)
-FormatDate(d) = "$(if d.Year >= 1000 and d.Year <= 9999 d.Year else text.PadLeft(4, "0", value.Text(d.Year)) end)-$(two(d.Month))-$(two(d.Day))"
+FormatDate(d) = "$(year(d.Year))-$(two(d.Month))-$(two(d.Day))"
 defn zone(offset)
-  (** Z for UTC, else the offset as +03:00 or -05:30. *)
+  (** Z for UTC, else the offset as +03:00 or -05:30, with its seconds when it has some, as +00:09:21, the time of Paris
+      before 1911: Parse reads it back. *)
   if offset == 0
     return "Z"
   end
-  minutes = math.Div(math.Abs(offset), 60)
-  "$(if offset < 0 "-" else "+" end)$(two(math.Div(minutes, 60))):$(two(math.Mod(minutes, 60)))"
+  seconds = math.Abs(offset)
+  minutes = math.Div(seconds, 60)
+  rest = if math.Mod(seconds, 60) == 0 "" else ":$(two(math.Mod(seconds, 60)))" end
+  "$(if offset < 0 "-" else "+" end)$(two(math.Div(minutes, 60))):$(two(math.Mod(minutes, 60)))$rest"
 end
 
 (** A Date as 2026-11-01T12:30:05Z in UTC, or 2026-11-01T15:30:05+03:00 on another clock: the form that Parse reads.
@@ -135,27 +139,30 @@ bad(s) = result.Err({Kind: "date", Message: "Not a date: $s."})
 whole(s) = if list.All([c >= "0" and c <= "9" for c in text.Chars(s)]) and s != "" text.Number(s) else missing end
 
 defn offsetOf(z)
-  (** The seconds of an offset written +03:00 or -05:30, or missing. *)
-  if value.Len(z) != 6 or text.Slice(4, 4, z) != ":"
+  (** The seconds of an offset written +03:00, -05:30 or +00:09:21, or missing. *)
+  if (value.Len(z) != 6 and value.Len(z) != 9) or text.Slice(4, 4, z) != ":"
     return missing
   end
   h = whole(text.Slice(2, 3, z))
   m = whole(text.Slice(5, 6, z))
-  if value.IsMissing(h) or value.IsMissing(m) or h > 23 or m > 59
+  s = if value.Len(z) == 9 and text.Slice(7, 7, z) == ":" whole(text.Slice(8, 9, z)) else if value.Len(z) == 9 missing else 0 end
+  if value.IsMissing(h) or value.IsMissing(m) or value.IsMissing(s) or h > 23 or m > 59 or s > 59
     return missing
   end
-  seconds = h * 3600 + m * 60
+  seconds = h * 3600 + m * 60 + s
   if text.StartsWith("-", z) 0 - seconds else seconds end
 end
 
 defn Parse(s)
-  (** 2026-11-01, or 2026-11-01T12:30:05 then Z, an offset as +03:00, or nothing for UTC, or 2026-11-01 12:30:05 as SQL
-      writes it.
+  (** 2026-11-01, or 2026-11-01T12:30:05 then Z, an offset as +03:00 or +00:09:21, or nothing for UTC, or 2026-11-01
+      12:30:05 as SQL writes it. A year before 1 has its sign, -0001-12-31: what Format writes, Parse reads.
 
         Parse("2026-11-01") == result.Ok(Date(2026, 11, 1)) --> true
         Parse("2026-11-01T15:30:00+03:00")?.Offset --> 10800 *)
   parts = text.Split("T", text.Replace(" ", "T", if text.EndsWith("Z", s) text.Slice(1, value.Len(s) - 1, s) else s end))
-  day = text.Split("-", parts[1])
+  (* A year before 1 has its sign: -0001-12-31. *)
+  before = text.StartsWith("-", parts[1])
+  day = text.Split("-", if before text.Slice(2, value.Len(parts[1]), parts[1]) else parts[1] end)
   if value.Len(parts) > 2 or value.Len(day) != 3
     return bad(s)
   end
@@ -177,9 +184,10 @@ defn Parse(s)
   if list.Any(list.Map(value.IsMissing, n))
     return bad(s)
   end
+  y = if before 0 - n[1] else n[1] end
   ok = n[2] >= 1 and n[2] <= 12 and n[3] >= 1 and n[4] < 24 and n[5] < 60 and n[6] < 60
-  if not ok or n[3] > DaysInMonth(n[1], n[2])
+  if not ok or n[3] > DaysInMonth(y, n[2])
     return bad(s)
   end
-  result.Ok(Date(n[1], n[2], n[3], n[4], n[5], n[6], Offset = offset))
+  result.Ok(Date(y, n[2], n[3], n[4], n[5], n[6], Offset = offset))
 end
