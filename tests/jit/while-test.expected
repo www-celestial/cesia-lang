@@ -1,0 +1,61 @@
+off:
+while-test.ce:17:3: Limit "steps" reached.
+  17 |   for i in 1..n
+     |   ^
+  in spin (while-test.ce:17)
+while-test.ce:19:7: Limit "steps" reached.
+  19 |       for q in 1..4
+     |       ^
+  in spin (while-test.ce:19)
+4
+test of run 1
+test of run 2
+3
+test of run 6249
+test of run 6250
+test of run 6251
+test of run 6252
+while-test.ce:64:1: Limit "steps" reached.
+  64 | for i in 1..6260
+     | ^
+always:
+while-test.ce:17:3: Limit "steps" reached.
+  17 |   for i in 1..n
+     |   ^
+  in spin (while-test.ce:17)
+while-test.ce:19:7: Limit "steps" reached.
+  19 |       for q in 1..4
+     |       ^
+  in spin (while-test.ce:19)
+4
+test of run 1
+test of run 2
+3
+test of run 6249
+test of run 6250
+test of run 6251
+test of run 6252
+while-test.ce:64:1: Limit "steps" reached.
+  64 | for i in 1..6260
+     | ^
+hot:
+while-test.ce:17:3: Limit "steps" reached.
+  17 |   for i in 1..n
+     |   ^
+  in spin (while-test.ce:17)
+while-test.ce:19:7: Limit "steps" reached.
+  19 |       for q in 1..4
+     |       ^
+  in spin (while-test.ce:19)
+4
+test of run 1
+test of run 2
+3
+test of run 6249
+test of run 6250
+test of run 6251
+test of run 6252
+while-test.ce:64:1: Limit "steps" reached.
+  64 | for i in 1..6260
+     | ^
+exit 1

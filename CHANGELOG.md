@@ -113,6 +113,10 @@
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,
   named another place than the interpreter: now both name the same. A program run with `--limit steps=N` makes its N
   steps, and the next one stops it; at the step of a full checkpoint, it stopped one step early.
+- The test of a `while` runs once at each turn under the JIT, as in the interpreter. A test false at its first turn ran
+  twice once the loop was warm, in a function that stays interpreted: under `CESIA_JIT=always` at the loop's first run,
+  in the default mode at each run from its 6,250th. What the calls of the test printed came twice, their work was done
+  twice, and their steps counted twice, so that `--limit steps` named a later step than the interpreter.
 - A valid program no longer ends with `Internal error: Not_found` under the JIT: a list of integers that took a float
   from an inlined call, in an `if` that also held an empty `if`. A statement that doesn't become machine code now drops
   the blocks made for it with the rest of its code; and any bug of the JIT met while it makes code leaves that loop or

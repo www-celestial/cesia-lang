@@ -1,0 +1,66 @@
+use std/io
+use std/math
+
+(* A while loop's test runs once at each turn, the last too, however the JIT takes the loop. A test false at its first
+   turn ran twice once the loop was warm: under CESIA_JIT=always at its first run, in the default mode from its 6,250th
+   run. The calls of the test ran twice, what they printed came twice, and their steps counted twice, so that a limit of
+   steps named a later step than the interpreter's. *)
+
+neg(x) = -x
+
+(* Loops, then a while whose test calls a function through a value and is false at once: under CESIA_JIT=always the
+   loop is made again after its first run, which it starts warm, and a limit of steps names the same step in every
+   mode. *)
+defn spin(n, f)
+  b = 1
+  k = 0
+  for i in 1..n
+    for k in 1..4
+      for q in 1..4
+      end
+    end
+    while k < 10 and f(i) == math.Div(b, 1)
+    end
+  end
+  k
+end
+
+(* False, and says that it ran, at the runs [from] to [to]. *)
+defn said(i, from, to)
+  if i >= from and i <= to
+    io.Print("test of run", i)
+  end
+  false
+end
+
+(* A test with steps of its own, as many loops have, so that the JIT keeps the loop in view. *)
+defn busy(i)
+  s = 0
+  for j in 1..20
+    s += j
+  end
+  said(i, 6249, 6252)
+end
+
+defn turns(n)
+  for i in 1..n
+    for k in 1..3
+    end
+    while said(i, 1, 2)
+    end
+  end
+  n
+end
+
+(* A text, not a number: the function stays interpreted, and its loop is warm from its 6,250th run. *)
+defn often(i)
+  while busy(i)
+  end
+  ""
+end
+
+io.Print(spin(3000, neg))
+io.Print(turns(3))
+for i in 1..6260
+  often(i)
+end
