@@ -178,6 +178,15 @@
 - `date.Format` writes a year before 1 with its sign, `-0005-01-01`, and an offset with seconds with them, `+00:09:21`,
   the time of Paris before 1911, and `date.Parse` reads both: Format gave `00-2-12-17T...`, which Parse refused, and
   rounded an offset of 90 s to `+00:01`.
+- A line at the top of a file that starts as the head of a method, with a word glued after its parentheses and nothing
+  past it, as `a.v()m`, no longer stops `cesia.Definitions`, `cesia doc` and `cesia test` with an internal error, nor
+  `cells.Analyse` and `cesia lsp`, which read cells and files with it: the head was measured by its signature, which
+  puts one space before a return type, where the line may have none. It is measured in the line, so that a head with
+  two spaces before its return type, as `Rect.Unit()  Rect = ...`, or none around its `=`, as `Rect.Unit()Rect=...`,
+  keeps its documentation, which was lost.
+- A `defn` whose head, which doesn't read, goes on past its line with a space before a `)`, as `defn )((`, makes
+  `cesia test` say that its file can't load, and `cesia doc` leave it out, where both stopped with an internal error: the
+  lines of the head were joined with their `defn`, whose space was dropped as one before the `)`.
 
 ## 1.2.0
 

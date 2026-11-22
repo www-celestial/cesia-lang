@@ -1,5 +1,9 @@
 use std/cesia
+use std/gen
+use std/result
+use std/test
 use std/text
+use std/value
 
 (* The places of the documentation, read by Doc: inside a block, at the end of a line, on parameters. *)
 
@@ -30,3 +34,14 @@ isDocExampleInsideABlock() = text.Contains("  Halved(4) --> 2.0", cesia.Doc(Halv
 isDocAtTheEndOfALine() = cesia.Doc(Tripled) == "Tripled(x)\n\nThree times a number."
 isDocListsTheParts() = text.EndsWith("\n\n  r       the number to grow\n  by      how many times larger\n  result  the larger number", cesia.Doc(Grown))
 isDocAboveABlockIsNone() = cesia.Doc(Above) == "Above(x)"
+
+(* A head with no space before its return type, or several, keeps its documentation, as the parser reads a definition
+   there; a call glued to a word, as a.v()m, is no head. *)
+spaced = "struct Rect { W }\n(r Rect) Area()  Number = r.W   (** The area. *)\nRect.Unit()Rect=Rect{W: 1}   (** The unit. *)"
+isDocAfterAnySpacing() = value.Equal([[d.Signature, d.Text] for d in cesia.Definitions(spaced)?], [["Rect { W }", ""], ["(r Rect) Area() Number", "The area."], ["Rect.Unit() Rect", "The unit."]])
+isGluedCallNoHead() = value.Equal(cesia.Definitions("a.v()m"), result.Ok([]))
+
+(* Lines of the pieces of heads at random: Definitions reads them, or says why not. *)
+pieces = ["a", "Rect", ".", "v", "(", ")", "(r Rect) ", " ", "  ", "=", "==", "?", "1", ",", "\"", "(**", "*)", "(*", "defn ", "struct ", "{", "}", "end", "\n", "x"]
+heads = gen.Map(xs -> text.Join("", xs), gen.List(gen.Pick(pieces), max = 16))
+isRandomHeads() = test.ForAll(s -> cesia.Definitions(s) then result.IsOk(it) or result.IsErr(it), heads, cases = 1000)

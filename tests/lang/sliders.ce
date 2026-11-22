@@ -34,6 +34,8 @@ isTextIsNoSlider() = value.Equal(errors("use std/cells\nuse std/io\n(* %% A *)\n
 isR4() = value.Equal(errors("$(head)a = cells.Slider(1, 0, 2)\nb = a + 1", 2), ["A cell with a slider holds only sliders: move line 4 to a cell below."])
 isR4Place() = value.Equal(analysed("$(head)a = cells.Slider(1, 0, 2)\n  b = a + 1")[2].Errors[1] then [it.Line, it.Column], [4, 3])
 isFirstCell() = value.Equal(errors("use std/cells\na = cells.Slider(1, 0, 2)", 1), ["Sliders go in a cell below the uses, as (* %% Parameters *) starts one."])
+(* A call glued to a word, as the random line 1e308.value()minSlider has it, is a line of code like another. *)
+isGluedCall() = value.Equal(errors("$(head)a = cells.Slider(1, 0, 2)\na.v()m", 2), ["A cell with a slider holds only sliders: move line 4 to a cell below.", "Name \"m\" doesn't exist."])
 
 (* R5: numbers written in the file. *)
 r5 = "cells.Slider takes numbers written in the file, not expressions."
