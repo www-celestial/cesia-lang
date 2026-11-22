@@ -112,9 +112,9 @@
   3.0 µs instead of 7.7.
 - `sys.Copy` sees that the copy is no other name of the source on the file it opened, where it looked at the path
   first, and gives the copy its times to the nanosecond, where a float of seconds could round them. It opens its
-  source without waiting, then refuses what is no file, a pipe, a device or a socket, with an Err at once: a pipe at
-  its source, even one put there by another program after a check, held the program until someone wrote into it, and
-  a device as `/dev/zero` was copied for ever. A link is still copied as the file it leads to.
+  source without waiting, then refuses a pipe or a socket with an Err at once: a pipe at its source, even one put there
+  by another program after a check, held the program until someone wrote into it. A device is copied as before, as `dd`
+  does, and a link is still copied as the file it leads to.
 - `Limit "steps" reached.` names the step that went past the limit: the turn of a loop, as `for j in 1..100` in
   `spin`, or the call that made a frame, as `deep(n - 1)` in `deep`. It named the last place that had written its
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,

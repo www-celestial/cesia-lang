@@ -1,5 +1,5 @@
-# sys.Copy opens its source without waiting, then sees what it is: a pipe, a link to one, or a device is an Err at once,
-# where a pipe held the program until someone wrote into it; a link to a file still copies the file.
+# sys.Copy opens its source without waiting, then sees what it is: a pipe, or a link to one, is an Err at once, where a
+# pipe held the program until someone wrote into it; a device and a link to a file still copy, as before.
 dir=$(mktemp -d)
 trap 'rm -rf "$dir"' EXIT
 cp copy-fifo.ce "$dir"
@@ -13,3 +13,4 @@ timeout 20 "$root/_build/default/src/bin/main.exe" run $no_spec --allow read=.,r
 echo "exit $?"
 echo "made: $(ls | LC_ALL=C sort | tr '\n' ' ')"
 [ -L copy-of-file ] && echo "the copy is a link" || echo "the copy is a file: $(cat copy-of-file)"
+echo "the copy of /dev/null: $(wc -c < copy-of-null | tr -d ' ') bytes, $([ -f copy-of-null ] && echo a file)"

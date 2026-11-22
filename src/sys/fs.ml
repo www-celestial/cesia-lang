@@ -531,16 +531,16 @@ let copy_times src dst dest =
     Unix.utimes dest (if st.st_atime = 0.0 && st.st_mtime = 0.0 then 1e-6 else st.st_atime) st.st_mtime
 
 (* The bytes of a file into another, with its mode and its times, as cp -p does: the copy is opened, then seen to be no
-   other name of the same file before it is emptied, so that no byte is lost; a folder is refused before, and so is
-   what is no file, a pipe, a device or a socket, which the source is opened without waiting for (O_NONBLOCK), then seen
-   to be: a pipe, even one put at its path after a check, never holds the program. A link is copied as the file it
-   leads to. With [fresh], the copy is made only new. *)
+   other name of the same file before it is emptied, so that no byte is lost; a folder is refused before, and so are a
+   pipe and a socket, which can't be read whole: the source is opened without waiting (O_NONBLOCK), then seen, so that a
+   pipe, even one put at its path after a check, never holds the program. A device is copied, as dd does, its reads
+   waiting again as they did. A link is copied as the file it leads to. With [fresh], the copy is made only new. *)
 let copy_file ?fresh ctx from dest =
   let src = opened ctx Read from (if Sys.win32 then [ Unix.O_RDONLY ] else [ Unix.O_RDONLY; O_NONBLOCK ]) in
   using src (fun () ->
       let st = Unix.fstat src in
       if st.st_kind = Unix.S_DIR then raise (Unix.Unix_error (Unix.EISDIR, "copy", from));
-      if st.st_kind <> Unix.S_REG then raise (Unix.Unix_error (Unix.EOPNOTSUPP, "copy", from));
+      if st.st_kind = Unix.S_FIFO || st.st_kind = Unix.S_SOCK then raise (Unix.Unix_error (Unix.EOPNOTSUPP, "copy", from));
       if not Sys.win32 then Unix.clear_nonblock src;
       let dst = open_write ~mode:st.st_perm ?fresh ~trunc:false ctx dest [] in
       using dst (fun () ->
