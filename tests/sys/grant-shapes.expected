@@ -1,0 +1,1202 @@
+== --allow read=f.txt
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+./f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list ./f.txt: not a directory.
+  walk: err Can't list ./f.txt: not a directory.
+  readlink: err Can't read the link ./f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+TOP/f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/f.txt: not a directory.
+  walk: err Can't list TOP/f.txt: not a directory.
+  readlink: err Can't read the link TOP/f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+data/../f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/../f.txt: not a directory.
+  walk: err Can't list data/../f.txt: not a directory.
+  readlink: err Can't read the link data/../f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+flink
+  read: ok x
+
+  stat: ok dir false file true link true
+  exists: true
+  list: err Can't list flink: not a directory.
+  walk: err Can't list flink: not a directory.
+  readlink: permission
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+data/in.txt
+  read: permission
+  stat: permission
+  exists: permission
+  list: permission
+  walk: permission
+  readlink: permission
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: permission
+  rename: permission
+  mkdir: permission
+-- after: -rw-r--r-- -rw-r--r-- 
+== --allow read=TOP/f.txt
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+./f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list ./f.txt: not a directory.
+  walk: err Can't list ./f.txt: not a directory.
+  readlink: err Can't read the link ./f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+TOP/f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/f.txt: not a directory.
+  walk: err Can't list TOP/f.txt: not a directory.
+  readlink: err Can't read the link TOP/f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+data/../f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/../f.txt: not a directory.
+  walk: err Can't list data/../f.txt: not a directory.
+  readlink: err Can't read the link data/../f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+-- after: -rw-r--r-- -rw-r--r-- 
+== --allow read=f.txt,write=f.txt
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+./f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list ./f.txt: not a directory.
+  walk: err Can't list ./f.txt: not a directory.
+  readlink: err Can't read the link ./f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create ./f.txt: file exists.
+TOP/f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/f.txt: not a directory.
+  walk: err Can't list TOP/f.txt: not a directory.
+  readlink: err Can't read the link TOP/f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create TOP/f.txt: file exists.
+data/../f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/../f.txt: not a directory.
+  walk: err Can't list data/../f.txt: not a directory.
+  readlink: err Can't read the link data/../f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create data/../f.txt: file exists.
+-- after: -rw-r--r-- -rwxr-xr-x 
+== --allow read=TOP/f.txt,write=TOP/f.txt
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+TOP/f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/f.txt: not a directory.
+  walk: err Can't list TOP/f.txt: not a directory.
+  readlink: err Can't read the link TOP/f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create TOP/f.txt: file exists.
+-- after: -rw-r--r-- -rwxr-xr-x 
+== --allow write=f.txt
+f.txt
+  read: permission
+  stat: permission
+  exists: permission
+  list: permission
+  walk: permission
+  readlink: permission
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: permission
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+-- after: -rw-r--r-- -rwxr-xr-x 
+== --allow read=new.txt,write=new.txt
+new.txt
+  read: err Can't read new.txt: no such file or directory.
+  stat: err Can't read new.txt: no such file or directory.
+  exists: false
+  list: err Can't list new.txt: no such file or directory.
+  walk: err Can't list new.txt: no such file or directory.
+  readlink: err Can't read the link new.txt: no such file or directory.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create new.txt: file exists.
+./new.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list ./new.txt: not a directory.
+  walk: err Can't list ./new.txt: not a directory.
+  readlink: err Can't read the link ./new.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create ./new.txt: file exists.
+-- after: -rw-r--r-- -rw-r--r-- 
+== --allow write=TOP/new.txt
+new.txt
+  read: permission
+  stat: permission
+  exists: permission
+  list: permission
+  walk: permission
+  readlink: permission
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: permission
+  rename: ok missing
+  mkdir: err Can't create new.txt: file exists.
+-- after: -rw-r--r-- -rw-r--r-- 
+== --allow read=data,write=data
+data
+  read: err Can't read data: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["data/in.txt", "data/sub/s.txt"]
+  readlink: err Can't read the link data: invalid argument.
+  append: err Can't append to data: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write data: is a directory.
+  read again: err Can't read data: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+data/
+  read: err Can't read data/: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["data/in.txt", "data/sub/s.txt"]
+  readlink: err Can't read the link data/: invalid argument.
+  append: err Can't append to data/: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy data/: is a directory.
+  remove copy: err Can't remove data/.copy: no such file or directory.
+  write: err Can't write data/: is a directory.
+  read again: err Can't read data/: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+./data
+  read: err Can't read ./data: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["./data/in.txt", "./data/sub/s.txt"]
+  readlink: err Can't read the link ./data: invalid argument.
+  append: err Can't append to ./data: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write ./data: is a directory.
+  read again: err Can't read ./data: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+TOP/data
+  read: err Can't read TOP/data: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["TOP/data/in.txt", "TOP/data/sub/s.txt"]
+  readlink: err Can't read the link TOP/data: invalid argument.
+  append: err Can't append to TOP/data: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write TOP/data: is a directory.
+  read again: err Can't read TOP/data: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/in.txt: not a directory.
+  walk: err Can't list data/in.txt: not a directory.
+  readlink: err Can't read the link data/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create data/in.txt: file exists.
+./data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list ./data/in.txt: not a directory.
+  walk: err Can't list ./data/in.txt: not a directory.
+  readlink: err Can't read the link ./data/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create ./data/in.txt: file exists.
+TOP/data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/data/in.txt: not a directory.
+  walk: err Can't list TOP/data/in.txt: not a directory.
+  readlink: err Can't read the link TOP/data/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create TOP/data/in.txt: file exists.
+data/sub/../in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/sub/../in.txt: not a directory.
+  walk: err Can't list data/sub/../in.txt: not a directory.
+  readlink: err Can't read the link data/sub/../in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create data/sub/../in.txt: file exists.
+data/sub
+  read: err Can't read data/sub: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["s.txt"]
+  walk: ok ["data/sub/s.txt"]
+  readlink: err Can't read the link data/sub: invalid argument.
+  append: err Can't append to data/sub: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy data/sub: is a directory.
+  remove copy: err Can't remove data/sub.copy: no such file or directory.
+  write: err Can't write data/sub: is a directory.
+  read again: err Can't read data/sub: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+dlink/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list dlink/in.txt: not a directory.
+  walk: err Can't list dlink/in.txt: not a directory.
+  readlink: err Can't read the link dlink/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create dlink/in.txt: file exists.
+f.txt
+  read: permission
+  stat: permission
+  exists: permission
+  list: permission
+  walk: permission
+  readlink: permission
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: permission
+  rename: permission
+  mkdir: permission
+-- after: -rwxr-xr-x -rw-r--r-- 
+== --allow read=data/,write=data/
+data
+  read: err Can't read data: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["data/in.txt", "data/sub/s.txt"]
+  readlink: err Can't read the link data: invalid argument.
+  append: err Can't append to data: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write data: is a directory.
+  read again: err Can't read data: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/in.txt: not a directory.
+  walk: err Can't list data/in.txt: not a directory.
+  readlink: err Can't read the link data/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create data/in.txt: file exists.
+-- after: -rwxr-xr-x -rw-r--r-- 
+== --allow read=TOP/data/,write=TOP/data
+data
+  read: err Can't read data: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["data/in.txt", "data/sub/s.txt"]
+  readlink: err Can't read the link data: invalid argument.
+  append: err Can't append to data: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write data: is a directory.
+  read again: err Can't read data: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/in.txt: not a directory.
+  walk: err Can't list data/in.txt: not a directory.
+  readlink: err Can't read the link data/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create data/in.txt: file exists.
+TOP/data/sub/s.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/data/sub/s.txt: not a directory.
+  walk: err Can't list TOP/data/sub/s.txt: not a directory.
+  readlink: err Can't read the link TOP/data/sub/s.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create TOP/data/sub/s.txt: file exists.
+-- after: -rwxr-xr-x -rw-r--r-- 
+== --allow read=.,write=.
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/in.txt: not a directory.
+  walk: err Can't list data/in.txt: not a directory.
+  readlink: err Can't read the link data/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create data/in.txt: file exists.
+.
+  read: err Can't read .: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["alias", "data", "dlink", "f.txt", "flink", "outside", "real", "~"]
+  walk: ok ["alias", "data/in.txt", "data/sub/s.txt", "dlink", "f.txt", "flink", "outside/o.txt", "real/sub/y.txt", "real/x.txt", "~/h/t.txt"]
+  readlink: err Can't read the link .: invalid argument.
+  append: err Can't append to .: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy .: is a directory.
+  remove copy: err Can't remove ..copy: no such file or directory.
+  write: err Can't write .: is a directory.
+  read again: err Can't read .: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+./
+  read: err Can't read ./: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["alias", "data", "dlink", "f.txt", "flink", "outside", "real", "~"]
+  walk: ok ["alias", "data/in.txt", "data/sub/s.txt", "dlink", "f.txt", "flink", "outside/o.txt", "real/sub/y.txt", "real/x.txt", "~/h/t.txt"]
+  readlink: err Can't read the link ./: invalid argument.
+  append: err Can't append to ./: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy ./: is a directory.
+  remove copy: err Can't remove ./.copy: no such file or directory.
+  write: err Can't write ./: is a directory.
+  read again: err Can't read ./: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+flink
+  read: ok x
+
+  stat: ok dir false file true link true
+  exists: true
+  list: err Can't list flink: not a directory.
+  walk: err Can't list flink: not a directory.
+  readlink: ok f.txt
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create flink: file exists.
+dlink/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list dlink/in.txt: not a directory.
+  walk: err Can't list dlink/in.txt: not a directory.
+  readlink: err Can't read the link dlink/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create dlink/in.txt: file exists.
+outside/o.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list outside/o.txt: not a directory.
+  walk: err Can't list outside/o.txt: not a directory.
+  readlink: err Can't read the link outside/o.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create outside/o.txt: file exists.
+-- after: -rwxr-xr-x -rwxr-xr-x 
+== --allow read=./,write=./
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+.
+  read: err Can't read .: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["alias", "data", "dlink", "f.txt", "flink", "outside", "real", "~"]
+  walk: ok ["alias", "data/in.txt", "data/sub/s.txt", "dlink", "f.txt", "flink", "outside/o.txt", "real/sub/y.txt", "real/x.txt", "~/h/t.txt"]
+  readlink: err Can't read the link .: invalid argument.
+  append: err Can't append to .: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy .: is a directory.
+  remove copy: err Can't remove ..copy: no such file or directory.
+  write: err Can't write .: is a directory.
+  read again: err Can't read .: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+./
+  read: err Can't read ./: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["alias", "data", "dlink", "f.txt", "flink", "outside", "real", "~"]
+  walk: ok ["alias", "data/in.txt", "data/sub/s.txt", "dlink", "f.txt", "flink", "outside/o.txt", "real/sub/y.txt", "real/x.txt", "~/h/t.txt"]
+  readlink: err Can't read the link ./: invalid argument.
+  append: err Can't append to ./: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy ./: is a directory.
+  remove copy: err Can't remove ./.copy: no such file or directory.
+  write: err Can't write ./: is a directory.
+  read again: err Can't read ./: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+-- after: -rw-r--r-- -rwxr-xr-x 
+== --allow read=TOP,write=TOP
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+TOP/f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/f.txt: not a directory.
+  walk: err Can't list TOP/f.txt: not a directory.
+  readlink: err Can't read the link TOP/f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create TOP/f.txt: file exists.
+.
+  read: err Can't read .: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["alias", "data", "dlink", "f.txt", "flink", "outside", "real", "~"]
+  walk: ok ["alias", "data/in.txt", "data/sub/s.txt", "dlink", "f.txt", "flink", "outside/o.txt", "real/sub/y.txt", "real/x.txt", "~/h/t.txt"]
+  readlink: err Can't read the link .: invalid argument.
+  append: err Can't append to .: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy .: is a directory.
+  remove copy: err Can't remove ..copy: no such file or directory.
+  write: err Can't write .: is a directory.
+  read again: err Can't read .: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+-- after: -rw-r--r-- -rwxr-xr-x 
+== --allow read=flink,write=flink
+flink
+  read: ok x
+
+  stat: ok dir false file true link true
+  exists: true
+  list: err Can't list flink: not a directory.
+  walk: err Can't list flink: not a directory.
+  readlink: ok f.txt
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create flink: file exists.
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+-- after: -rw-r--r-- -rwxr-xr-x 
+== --allow read=dlink,write=dlink
+dlink
+  read: err Can't read dlink: is a directory.
+  stat: ok dir true file false link true
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["dlink/in.txt", "dlink/sub/s.txt"]
+  readlink: ok data
+  append: err Can't append to dlink: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write dlink: is a directory.
+  read again: err Can't read dlink: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+dlink/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list dlink/in.txt: not a directory.
+  walk: err Can't list dlink/in.txt: not a directory.
+  readlink: err Can't read the link dlink/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create dlink/in.txt: file exists.
+data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/in.txt: not a directory.
+  walk: err Can't list data/in.txt: not a directory.
+  readlink: err Can't read the link data/in.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create data/in.txt: file exists.
+dlink/
+  read: err Can't read dlink/: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["in.txt", "sub"]
+  walk: ok ["dlink/in.txt", "dlink/sub/s.txt"]
+  readlink: err Can't read the link dlink/: invalid argument.
+  append: err Can't append to dlink/: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: err Can't copy dlink/: is a directory.
+  remove copy: err Can't remove dlink/.copy: no such file or directory.
+  write: err Can't write dlink/: is a directory.
+  read again: err Can't read dlink/: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+-- after: -rwxr-xr-x -rw-r--r-- 
+== --allow read=alias/x.txt,write=alias/x.txt
+alias/x.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list alias/x.txt: not a directory.
+  walk: err Can't list alias/x.txt: not a directory.
+  readlink: err Can't read the link alias/x.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create alias/x.txt: file exists.
+real/x.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list real/x.txt: not a directory.
+  walk: err Can't list real/x.txt: not a directory.
+  readlink: err Can't read the link real/x.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create real/x.txt: file exists.
+TOP/alias/x.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list TOP/alias/x.txt: not a directory.
+  walk: err Can't list TOP/alias/x.txt: not a directory.
+  readlink: err Can't read the link TOP/alias/x.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create TOP/alias/x.txt: file exists.
+-- after: -rw-r--r-- -rw-r--r-- 
+== --allow read=alias/sub,write=alias/sub
+alias/sub
+  read: err Can't read alias/sub: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["y.txt"]
+  walk: ok ["alias/sub/y.txt"]
+  readlink: err Can't read the link alias/sub: invalid argument.
+  append: err Can't append to alias/sub: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write alias/sub: is a directory.
+  read again: err Can't read alias/sub: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+alias/sub/y.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list alias/sub/y.txt: not a directory.
+  walk: err Can't list alias/sub/y.txt: not a directory.
+  readlink: err Can't read the link alias/sub/y.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create alias/sub/y.txt: file exists.
+real/sub/y.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list real/sub/y.txt: not a directory.
+  walk: err Can't list real/sub/y.txt: not a directory.
+  readlink: err Can't read the link real/sub/y.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create real/sub/y.txt: file exists.
+-- after: -rw-r--r-- -rw-r--r-- 
+== --allow read=~/h,write=~/h
+~/h/t.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list ~/h/t.txt: not a directory.
+  walk: err Can't list ~/h/t.txt: not a directory.
+  readlink: err Can't read the link ~/h/t.txt: invalid argument.
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: ok missing
+  remove copy: ok missing
+  write: ok missing
+  read again: ok x
+
+  rename: ok missing
+  mkdir: err Can't create ~/h/t.txt: file exists.
+~/h
+  read: err Can't read ~/h: is a directory.
+  stat: ok dir true file false link false
+  exists: true
+  list: ok ["t.txt"]
+  walk: ok ["~/h/t.txt"]
+  readlink: err Can't read the link ~/h: invalid argument.
+  append: err Can't append to ~/h: is a directory.
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: err Can't write ~/h: is a directory.
+  read again: err Can't read ~/h: is a directory.
+  rename: ok missing
+  mkdir: ok missing
+-- after: -rw-r--r-- -rw-r--r-- 
+== --allow read=f.txt,write=data
+f.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list f.txt: not a directory.
+  walk: err Can't list f.txt: not a directory.
+  readlink: err Can't read the link f.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+data/in.txt
+  read: permission
+  stat: permission
+  exists: permission
+  list: permission
+  walk: permission
+  readlink: permission
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: err Can't remove data/in.txt.copy: no such file or directory.
+  write: ok missing
+  read again: permission
+  rename: ok missing
+  mkdir: err Can't create data/in.txt: file exists.
+-- after: -rwxr-xr-x -rw-r--r-- 
+== --allow read=data,write=f.txt
+f.txt
+  read: permission
+  stat: permission
+  exists: permission
+  list: permission
+  walk: permission
+  readlink: permission
+  append: ok missing
+  chmod: ok missing
+  time: ok missing
+  copy out: permission
+  remove copy: permission
+  write: ok missing
+  read again: permission
+  rename: ok missing
+  mkdir: err Can't create f.txt: file exists.
+data/in.txt
+  read: ok x
+
+  stat: ok dir false file true link false
+  exists: true
+  list: err Can't list data/in.txt: not a directory.
+  walk: err Can't list data/in.txt: not a directory.
+  readlink: err Can't read the link data/in.txt: invalid argument.
+  append: permission
+  chmod: permission
+  time: permission
+  copy out: permission
+  remove copy: permission
+  write: permission
+  read again: ok x
+
+  rename: permission
+  mkdir: permission
+-- after: -rw-r--r-- -rwxr-xr-x 
+exit 0

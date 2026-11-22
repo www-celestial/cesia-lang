@@ -1,0 +1,34 @@
+(* For grant-shapes.cmd: every act of std/sys on each path given, under the grant of the run, and what each gives. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "err $(e.Message)"
+    result.Ok(v) -> "$v"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("  $label: $k")
+end
+
+for p in sys.Args
+  io.Print("$p")
+  show("read", () -> sys.Read(p))
+  show("stat", () -> sys.Stat(p) then result.MapOk(s -> "dir $(s.IsDir) file $(s.IsFile) link $(s.IsLink)"))
+  show("exists", () -> sys.Exists(p))
+  show("list", () -> sys.List(p))
+  show("walk", () -> sys.Walk(p))
+  show("readlink", () -> sys.ReadLink(p))
+  show("append", () -> sys.Append(p, ""))
+  show("chmod", () -> sys.Chmod(p, 493))
+  show("time", () -> sys.SetModified(p, 86400))
+  show("copy out", () -> sys.Copy(p, "$(p).copy"))
+  show("remove copy", () -> sys.Remove("$(p).copy"))
+  show("write", () -> sys.Write(p, "x\n"))
+  show("read again", () -> sys.Read(p))
+  show("rename", () -> sys.Rename(p, p))
+  show("mkdir", () -> sys.Mkdir(p))
+end

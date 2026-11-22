@@ -20,9 +20,9 @@ a mode past 4095: type
 no group: type
 a new copy: ok missing
 its mode: 384
-a new copy onto a file: io: Can't copy out/doc.txt to out/fresh.txt: file exists.
-a new copy onto a link: io: Can't copy out/doc.txt to out/planted: file exists.
-a new copy onto a link to nothing: io: Can't copy out/doc.txt to out/dangling: file exists.
+a new copy onto a file: io: Can't copy out/doc.txt: file exists.
+a new copy onto a link: io: Can't copy out/doc.txt: file exists.
+a new copy onto a link to nothing: io: Can't copy out/doc.txt: file exists.
 a copy onto a file: ok missing
 its text: ok w
 exit 0

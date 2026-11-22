@@ -107,7 +107,8 @@ let fast ctx perm = guarded ctx perm && Lazy.force beneath
 
 (* [name]: the act is on the name itself, a link that it names not followed. [below]: the act opens the path by
    [checked_below] where the system has openat2, which checks it there: a check before, by where it leads, would cost
-   a system call for each of its folders. *)
+   a system call for each of its folders. Only an act on one path waits so: one on two checks both first, in order, as
+   before. *)
 let path_arg ?name ?(below = false) ctx fn perm v =
   let path = Native.text_arg ctx fn v in
   if not (below && fast ctx perm) then Runtime.check_perm ?name ctx perm (Some path);
@@ -162,10 +163,13 @@ let holder_written ctx perm path =
       | _ -> None)
     ctx.w.grants.perms
 
-(* [rel] opened below the folder [dir] by openat2, with the flags of [how]: the kernel refuses a walk out of it. *)
+(* [rel] opened below the folder [dir] by openat2, with the flags of [how]: the kernel refuses a walk out of it. The
+   path of a grant itself, a folder or a file, "." below it, is opened where that path leads, as the grant holds. *)
 let open_below (dir, rel) how mode =
-  let d = fd_of (open_at (-1) dir (o_path lor o_dir) 0) in
-  using d (fun () -> fd_of (open_at (fd_number d) rel (how lor o_beneath) mode))
+  if rel = "." then fd_of (open_at (-1) dir how mode)
+  else
+    let d = fd_of (open_at (-1) dir (o_path lor o_dir) 0) in
+    using d (fun () -> fd_of (open_at (fd_number d) rel (how lor o_beneath) mode))
 
 (* An open under the folders of read= or write= by openat2, from the folder of the grant that holds the path, so that
    no link swapped into the path can lead it out: first as the path is written, with no system call; if it leads out
@@ -711,11 +715,18 @@ let group_arg ctx name v =
   | Int n when n >= 0 && n < 0xFFFFFFFF -> n
   | v -> Runtime.fail ctx Type (Messages.need_group name (Value.describe v))
 
-let on_path ?params ?least ?name:link ?below fn perm verb arity f =
+(* [below]: the check of the path waits for the act, as [path_arg] says; a panic before it, as for an argument of
+   another type, comes after the check, which stops the program first when the path is denied, as it did before. *)
+let on_path ?params ?least ?name:link ?(below = false) fn perm verb arity f =
   fn,
   Native.nat ?params ~result:true fn (Option.value least ~default:arity) arity (fun ctx a ->
-      let path = path_arg ?name:link ?below ctx fn perm a.(0) in
-      attempt ctx verb path (fun () -> f ctx path a))
+      let path = path_arg ?name:link ~below ctx fn perm a.(0) in
+      let waits = below && fast ctx perm in
+      attempt ctx verb path (fun () ->
+          try f ctx path a
+          with e when waits && (match e with Unix.Unix_error _ -> false | _ -> true) ->
+            Runtime.check_perm ?name:link ctx perm (Some path);
+            raise e))
 
 let natives =
   [ on_path ~below:true "Read" Read "read" 1 (fun ctx path _ -> read_all ctx path);
@@ -744,8 +755,8 @@ let natives =
     (* What failed deep inside is named, in both trees. *)
     "CopyTree",
     Native.nat ~params:[| "from"; "to" |] ~result:true "CopyTree" 2 2 (fun ctx a ->
-        let from = path_arg ~name:true ~below:true ctx "CopyTree" Read a.(0) in
-        let dest = path_arg ~name:true ~below:true ctx "CopyTree" Write a.(1) in
+        let from = path_arg ~name:true ctx "CopyTree" Read a.(0) in
+        let dest = path_arg ~name:true ctx "CopyTree" Write a.(1) in
         match copy_tree ctx from dest with
         | () -> Value.ok ctx.w Missing
         | exception Unix.Unix_error (e, at, into) -> failed ctx "copy" (if into = "" then at else at ^ " to " ^ into) e);
@@ -755,13 +766,12 @@ let natives =
           [| Int s.st_size; Float s.st_mtime; Value.of_bool (s.st_kind = Unix.S_DIR);
              Value.of_bool (s.st_kind = Unix.S_REG); Value.of_bool ((Unix.lstat path).st_kind = Unix.S_LNK); Int s.st_perm;
              Int s.st_uid; Int s.st_gid |]);
-    (* Both paths are named, as a failure may be on either. *)
     "Copy",
     Native.nat ~params:[| "from"; "to"; "new" |] ~result:true "Copy" 2 3 (fun ctx a ->
-        let from = path_arg ~below:true ctx "Copy" Read a.(0) in
+        let from = path_arg ctx "Copy" Read a.(0) in
         let fresh = Native.flag_arg ctx "new" a 2 in
-        let dest = path_arg ~name:fresh ~below:true ctx "Copy" Write a.(1) in
-        attempt ctx "copy" (from ^ " to " ^ dest) (fun () -> copy_file ~fresh ctx from dest));
+        let dest = path_arg ~name:fresh ctx "Copy" Write a.(1) in
+        attempt ctx "copy" from (fun () -> copy_file ~fresh ctx from dest));
     on_path ~below:true "Chmod" Write "change the mode of" 2 (fun ctx path a ->
         let mode = mode_arg ctx "Chmod" a.(1) in
         on_open ctx Write path (fun p -> Unix.chmod p mode);
@@ -775,7 +785,7 @@ let natives =
     (* The link is the path that is written: what it points to is a text, read by no one here, and may not exist. *)
     "Symlink",
     Native.nat ~result:true "Symlink" 2 2 (fun ctx a ->
-        let target = Native.text_arg ctx "Symlink" a.(0) and link = path_arg ~name:true ~below:true ctx "Symlink" Write a.(1) in
+        let target = Native.text_arg ctx "Symlink" a.(0) and link = path_arg ~name:true ctx "Symlink" Write a.(1) in
         attempt ctx "create the link" link (fun () -> through ~name:true ctx Write link (Unix.symlink target); Missing));
     (* A hard link is the same file under a second name: every write through it writes the target. So the target must
        be granted to write, as well as to read. *)
@@ -789,8 +799,8 @@ let natives =
             Missing));
     on_path ~name:true ~below:true "ReadLink" Read "read the link" 1 (fun ctx path _ ->
         through ~name:true ctx Read path (fun p -> Text (Unix.readlink p)));
-    on_path ~name:true ~below:true "Rename" Write "rename" 2 (fun ctx path a ->
-        let dest = path_arg ~name:true ~below:true ctx "Rename" Write a.(1) in
+    on_path ~name:true "Rename" Write "rename" 2 (fun ctx path a ->
+        let dest = path_arg ~name:true ctx "Rename" Write a.(1) in
         through ~name:true ctx Write path (fun p -> through ~name:true ctx Write dest (Unix.rename p));
         Missing);
     on_path ~params:[| "path"; "private" |] ~least:1 "Mkdir" Write "create" 2 (fun ctx path a ->

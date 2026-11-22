@@ -1155,8 +1155,8 @@ use std/test
     or the same file under another name, gives an Err before anything is written. A symbolic link is copied as the
     file it points to. With new = true, the copy is made only new, as open(2) does with O_CREAT, O_EXCL and O_NOFOLLOW:
     a file at to, or a link, even one that leads nowhere, gives an Err and stays as it was, so no one can put a link
-    there for the copy to write through; the permission is then on to itself. Ok(missing) or an Err that names both
-    paths. Needs the read permission on from and the write permission on to.
+    there for the copy to write through; the permission is then on to itself. Ok(missing) or an Err. Needs the read
+    permission on from and the write permission on to.
 
       d = test.Temp()
       sys.Write("$(d)/a.txt", "text")

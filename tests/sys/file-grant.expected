@@ -1,0 +1,15 @@
+a mode and a group: ok missing
+a new copy, where nothing is: ok missing
+a new copy, where one is: err Can't copy src.txt: file exists.
+a copy of a tree from a file: err Can't copy src.txt to new.txt: not a directory.
+a copy of a tree to a file: err Can't copy src.txt to doc.txt: not a directory.
+a new copy beside the grant: permission
+a write beside the grant: permission
+exit 0
+-rw-r----- doc.txt
+-rw-r--r-- file-grant.ce
+-rw-r--r-- new.txt
+-rw-r--r-- src.txt
+new
+src
+exit 0

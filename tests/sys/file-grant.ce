@@ -1,0 +1,25 @@
+(* For file-grant.cmd, run with read=src.txt, write=doc.txt and write=new.txt, grants of files alone: the acts that came
+   after Cesia 4e5c0d8, a write with a mode and a group, a new copy, a copy of a tree, on those files. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "err $(e.Message)"
+    result.Ok(v) -> "$v"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+group = result.Unwrap(sys.Stat("src.txt")).Group
+show("a mode and a group", () -> sys.Write("doc.txt", "new\n", mode = 416, group = group))
+show("a new copy, where nothing is", () -> sys.Copy("src.txt", "new.txt", new = true))
+show("a new copy, where one is", () -> sys.Copy("src.txt", "new.txt", new = true))
+show("a copy of a tree from a file", () -> sys.CopyTree("src.txt", "new.txt"))
+show("a copy of a tree to a file", () -> sys.CopyTree("src.txt", "doc.txt"))
+show("a new copy beside the grant", () -> sys.Copy("src.txt", "other.txt", new = true))
+show("a write beside the grant", () -> sys.Write("other.txt", "x", mode = 416))
