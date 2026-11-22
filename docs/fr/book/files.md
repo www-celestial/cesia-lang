@@ -103,11 +103,13 @@ et le groupe de la personne, pas ceux du fichier qu'il remplace. [sys.Write] lui
 `group`, que [sys.Stat] donne comme `Mode` et `Group`. Elle les pose sur le fichier dès qu'il est ouvert, avant que le
 texte y soit, si bien que le texte n'est jamais dans un fichier aux autres droits, et le renommage met à l'ancien nom un
 fichier aux anciens droits : c'est ainsi qu'un éditeur enregistre. Seul un groupe dont la personne fait partie peut être
-donné, comme avec `chgrp` ; un autre donne un `Err`, et un fichier qui était là garde son texte.
+donné, comme avec `chgrp` ; un autre donne un `Err`, et un fichier qui était là garde son texte. Avec `new = true`,
+[sys.Write] ne fait qu'un nouveau fichier : un fichier ou un lien déjà au chemin donne un `Err`, et reste tel quel, si
+bien que personne ne peut mettre d'abord un lien au nom du nouveau fichier pour que l'enregistrement écrive à travers.
 
 ```cesia allow=read,write
 old = result.Unwrap(sys.Stat("todo.txt"))
-sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group) -->
+sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group, new = true) -->
 sys.Rename("todo.txt.new", "todo.txt") -->
 result.Unwrap(sys.Stat("todo.txt")).Mode == old.Mode -->
 ```

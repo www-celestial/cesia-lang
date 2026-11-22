@@ -1008,7 +1008,7 @@ use std/test
       sys.Read(file) --> result.Ok("hello")
       result.IsErr(sys.Read("$(test.Temp())/none.txt")) --> true *)
 
-(** sys.Write(path, text, sync = false, private = false, mode = missing, group = missing)
+(** sys.Write(path, text, sync = false, private = false, mode = missing, group = missing, new = false)
     Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission.
     A new file can be read by everyone on the machine and written by its owner (its mode is 0644, less the umask). With
     private = true, for keys, sessions and what is no one else's business, the text goes into a new file of its owner's
@@ -1033,6 +1033,10 @@ use std/test
     it then takes the mode of a new file. The bits setuid and setgid, which a write takes away,
     are given again once the text is in. With private = true, mode can only give rights to the owner, as 256, 400 in
     octal, read only. On Windows, mode counts as for sys.Chmod, given once the text is in, and group changes nothing.
+    With new = true, the file is made only new, as open(2) does with O_CREAT, O_EXCL and O_NOFOLLOW, as sys.Copy does
+    with new = true: a file at path, or a link, even one that leads nowhere, gives an Err and stays as it was, so the
+    new file of a save can't be a link that someone put at its name first; the permission is then on path itself. It
+    goes with sync, mode and group, and with private, the file then made at path itself, its owner's alone.
 
       file = "$(test.Temp())/write.txt"
       sys.Write(file, "one") --> result.Ok(missing)
@@ -1043,7 +1047,8 @@ use std/test
       old = result.Unwrap(sys.Stat(file))
       sys.Write("$(file).new", "four", mode = old.Mode, group = old.Group) --> result.Ok(missing)
       sys.Rename("$(file).new", file) --> result.Ok(missing)
-      sys.Stat(file)?.Mode --> 416 *)
+      sys.Stat(file)?.Mode --> 416
+      result.IsErr(sys.Write(file, "five", new = true)) --> true *)
 
 (** sys.Append(path, text)
     Adds a text at the end of a file, creating it if needed: Ok(missing) or an Err. Needs the write permission.

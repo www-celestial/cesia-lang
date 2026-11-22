@@ -335,11 +335,14 @@ let umask = lazy (if Sys.win32 then 0 else let u = Unix.umask 0o077 in ignore (U
    [mode] or [group], the file takes them on its descriptor before its old text is cut, then the new one is in. A file
    made then is its owner's alone, 0600, until it has them, so that no one of the person's group can open it before
    its group is given, then read the text through it; given a group alone, it then takes the mode of a new file, 0644
-   less the umask. On Windows the mode is given to the path once the text is in, and the group changes nothing. *)
-let write_all ?(sync = false) ?mode ?group ~trunc ctx path flags text =
-  let keep = mode <> None || group <> None in
+   less the umask. With [fresh], the file is made only new, as [open_write] says; with [alone] too, it is the person's
+   alone, as one of [write_private] is, with no file to replace. On Windows the mode is given to the path once the text
+   is in, and the group changes nothing. *)
+let write_all ?(sync = false) ?(fresh = false) ?(alone = false) ?mode ?group ~trunc ctx path flags text =
+  let keep = alone || mode <> None || group <> None in
   let fd, made =
-    if not keep then open_write ~trunc ctx path flags, false
+    if fresh then open_write ~fresh ~mode:(if keep then 0o600 else 0o644) ~trunc:false ctx path flags, true
+    else if not keep then open_write ~trunc ctx path flags, false
     else if mode <> None then open_write ~mode:0o600 ~trunc:false ctx path flags, false
     else
       match open_write ~create:false ~trunc:false ctx path flags with
@@ -348,8 +351,9 @@ let write_all ?(sync = false) ?mode ?group ~trunc ctx path flags text =
   in
   using fd (fun () ->
       if keep then begin
+        if alone then own fd;
         give ?mode ?group fd;
-        if made && not Sys.win32 then Unix.fchmod fd (0o644 land lnot (Lazy.force umask));
+        if made && mode = None && (not alone) && not Sys.win32 then Unix.fchmod fd (0o644 land lnot (Lazy.force umask));
         if trunc then cut fd
       end;
       put fd text;
@@ -740,9 +744,11 @@ let group_arg ctx name v =
 
 (* [below]: the check of the path waits for the act, as [path_arg] says; a panic before it, as for an argument of
    another type, comes after the check, which stops the program first when the path is denied, as it did before. *)
-let on_path ?params ?least ?name:link ?(below = false) fn perm verb arity f =
+let on_path ?params ?least ?name ?fresh_at ?(below = false) fn perm verb arity f =
   fn,
   Native.nat ?params ~result:true fn (Option.value least ~default:arity) arity (fun ctx a ->
+      (* [fresh_at]: the argument new, which makes the act one on the name itself, never followed. *)
+      let link = match fresh_at with Some k -> Some (Native.flag_arg ctx "new" a k) | None -> name in
       let path = path_arg ?name:link ~below ctx fn perm a.(0) in
       let waits = below && fast ctx perm in
       attempt ctx verb path (fun () ->
@@ -753,16 +759,16 @@ let on_path ?params ?least ?name:link ?(below = false) fn perm verb arity f =
 
 let natives =
   [ on_path ~below:true "Read" Read "read" 1 (fun ctx path _ -> read_all ctx path);
-    on_path ~params:[| "path"; "text"; "sync"; "private"; "mode"; "group" |] ~least:2 ~below:true "Write" Write "write" 6
-      (fun ctx path a ->
-         let sync = Native.flag_arg ctx "sync" a 2 and text = Native.text_arg ctx "Write" a.(1) in
-         let mode = if given a 4 then Some (mode_arg ctx "Write" a.(4)) else None in
-         let group = if given a 5 then Some (group_arg ctx "Write" a.(5)) else None in
-         if Native.flag_arg ctx "private" a 3 then begin
-           Option.iter (fun m -> if m land 0o077 <> 0 then Runtime.fail ctx Type (Messages.private_mode m)) mode;
-           through ~name:true ctx Write path (fun p -> write_private ~sync ?mode ?group p text)
-         end
-         else write_all ~sync ?mode ?group ~trunc:true ctx path [] text);
+    on_path ~params:[| "path"; "text"; "sync"; "private"; "mode"; "group"; "new" |] ~least:2 ~fresh_at:6 ~below:true
+      "Write" Write "write" 7 (fun ctx path a ->
+          let sync = Native.flag_arg ctx "sync" a 2 and text = Native.text_arg ctx "Write" a.(1) in
+          let mode = if given a 4 then Some (mode_arg ctx "Write" a.(4)) else None in
+          let group = if given a 5 then Some (group_arg ctx "Write" a.(5)) else None in
+          let alone = Native.flag_arg ctx "private" a 3 and fresh = Native.flag_arg ctx "new" a 6 in
+          if alone then Option.iter (fun m -> if m land 0o077 <> 0 then Runtime.fail ctx Type (Messages.private_mode m)) mode;
+          (* Private and new: no file to replace, so the file is made at the path itself, its owner's alone. *)
+          if alone && not fresh then through ~name:true ctx Write path (fun p -> write_private ~sync ?mode ?group p text)
+          else write_all ~sync ~fresh ~alone ?mode ?group ~trunc:true ctx path [] text);
     on_path ~below:true "Append" Write "append to" 2 (fun ctx path a ->
         write_all ~trunc:false ctx path [ Unix.O_APPEND ] (Native.text_arg ctx "Append" a.(1)));
     on_path ~below:true "List" Read "list" 1 (fun ctx path _ -> list_dir ctx path);

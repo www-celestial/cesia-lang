@@ -1,0 +1,37 @@
+== write=out
+a new file: ok missing
+again: err Can't write out/new.txt: file exists.
+a file planted: err Can't write out/planted.txt: file exists.
+a link planted, to a file out: err Can't write out/to-victim: file exists.
+a link planted, to nothing: err Can't write out/to-nothing: file exists.
+with sync, a mode and a group: ok missing
+its mode: 416
+a group alone: ok missing
+its mode: 420
+private: ok missing
+its mode: 384
+private, a file there: err Can't write out/key: file exists.
+private, read only: ok missing
+its mode: 256
+new = false, as before: ok missing
+out of the folder: permission
+exit 0
+== write=out/fresh.txt, write=out/to-victim, write=out/to-nothing
+the file of the grant: ok missing
+again: err Can't write out/fresh.txt: file exists.
+a link granted by its name, to a file out: err Can't write out/to-victim: file exists.
+a link granted by its name, to nothing: err Can't write out/to-nothing: file exists.
+beside the grant: permission
+exit 0
+== out holds
+-rw-r--r-- fresh.txt
+-rw-r--r-- grouped.txt
+-rw-r----- kept.txt
+-rw------- key
+-r-------- key2
+-rw-r--r-- new.txt
+-rw-r--r-- planted.txt
+lrwxrwxrwx ../outside/nothing.txt
+lrwxrwxrwx ../outside/victim.txt
+== outside holds: victim.txt victim
+exit 0

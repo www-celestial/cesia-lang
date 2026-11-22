@@ -98,11 +98,13 @@ the person, not those of the file it replaces. [sys.Write] gives it those of the
 [sys.Stat] tells as `Mode` and `Group`. It sets them on the file as soon as it is open, before the text is in, so the
 text is never in a file with other rights, and the rename puts at the old name a file with the old rights: this is how
 an editor saves. Only a group the person is in can be given, as with `chgrp`; another gives an `Err`, and a file that
-was there keeps its text.
+was there keeps its text. With `new = true`, [sys.Write] makes only a new file: a file or a link already at the path is
+an `Err`, and stays as it was, so no one can put a link at the name of the new file first for the save to write
+through.
 
 ```cesia allow=read,write
 old = result.Unwrap(sys.Stat("todo.txt"))
-sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group) -->
+sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group, new = true) -->
 sys.Rename("todo.txt.new", "todo.txt") -->
 result.Unwrap(sys.Stat("todo.txt")).Mode == old.Mode -->
 ```

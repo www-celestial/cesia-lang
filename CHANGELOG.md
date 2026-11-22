@@ -24,6 +24,10 @@
 - `sys.Copy(from, to, new = true)` makes the copy only new, as `O_CREAT | O_EXCL | O_NOFOLLOW`: a file or a link at `to`,
   even one that leads nowhere, is an Err and stays as it was, so no one can put a link there for the copy to write
   through. Without it, a file at `to` is replaced, as before.
+- `sys.Write(path, text, new = true)` makes the file only new, as `sys.Copy` with `new = true`: a file or a link at
+  `path`, even one that leads nowhere, is an Err and stays as it was, so the new file of a save can't be a link someone
+  put at its name first; the write permission is then on `path` itself. It goes with `sync`, `mode`, `group` and
+  `private`. Without it, a file at `path` is replaced, as before.
 - `sys.Write(path, text, mode = M, group = G)` gives the file the mode M, exactly, the umask aside, and the group G, as
   `chgrp`, on its descriptor once it is open, before its old text is cut and the new one is in: an editor's save, a new
   file renamed over the old one, keeps the old one's rights with no moment under others and no act by its path. A group

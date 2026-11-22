@@ -1,0 +1,42 @@
+(* For write-new.cmd: its arguments are the grant of the run, folder or file, and the person's group. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+use std/text
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "err $(e.Message)"
+    result.Ok(v) -> "$v"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+group = text.Number(sys.Args[2])
+if sys.Args[1] == "folder"
+  show("a new file", () -> sys.Write("out/new.txt", "new\n", new = true))
+  show("again", () -> sys.Write("out/new.txt", "again\n", new = true))
+  show("a file planted", () -> sys.Write("out/planted.txt", "lost\n", new = true))
+  show("a link planted, to a file out", () -> sys.Write("out/to-victim", "lost\n", new = true))
+  show("a link planted, to nothing", () -> sys.Write("out/to-nothing", "lost\n", new = true))
+  show("with sync, a mode and a group", () -> sys.Write("out/kept.txt", "k\n", sync = true, mode = 416, group = group, new = true))
+  show("its mode", () -> sys.Stat("out/kept.txt")?.Mode)
+  show("a group alone", () -> sys.Write("out/grouped.txt", "g\n", group = group, new = true))
+  show("its mode", () -> sys.Stat("out/grouped.txt")?.Mode)
+  show("private", () -> sys.Write("out/key", "s3cret\n", private = true, new = true))
+  show("its mode", () -> sys.Stat("out/key")?.Mode)
+  show("private, a file there", () -> sys.Write("out/key", "lost\n", private = true, new = true))
+  show("private, read only", () -> sys.Write("out/key2", "s3cret\n", private = true, mode = 256, new = true))
+  show("its mode", () -> sys.Stat("out/key2")?.Mode)
+  show("new = false, as before", () -> sys.Write("out/planted.txt", "planted\n"))
+  show("out of the folder", () -> sys.Write("outside/new.txt", "x\n", new = true))
+else
+  show("the file of the grant", () -> sys.Write("out/fresh.txt", "fresh\n", new = true))
+  show("again", () -> sys.Write("out/fresh.txt", "again\n", new = true))
+  show("a link granted by its name, to a file out", () -> sys.Write("out/to-victim", "lost\n", new = true))
+  show("a link granted by its name, to nothing", () -> sys.Write("out/to-nothing", "lost\n", new = true))
+  show("beside the grant", () -> sys.Write("out/other.txt", "x\n", new = true))
+end
