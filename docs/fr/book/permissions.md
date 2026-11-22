@@ -79,10 +79,17 @@ un nom qu'il pourrait écrire.
 
 Un autre programme de la machine peut remplacer un dossier d'un chemin par un lien entre la vérification et l'acte :
 quelqu'un d'autre qui peut écrire dans le dossier, ou les propres workers du programme. Sur Linux, sous un dossier de
-`read=` ou `write=`, l'acte est vérifié une seconde fois là où le système tient le fichier ou le dossier qu'il a ouvert,
-et fait à travers lui, si bien que l'échange ne peut pas l'emmener dehors ; un fichier n'est vidé qu'une fois vu dedans.
-Sur macOS et Windows, l'acte porte sur le chemin tel qu'il a été vérifié : là, donnez un dossier que personne d'autre ne
-peut écrire.
+`read=` ou `write=`, l'acte ouvre son fichier ou son dossier depuis le dossier de la permission avec *openat2*, un appel
+système de Linux 5.6 et après qui demande au noyau de garder tout le parcours du chemin sous ce dossier : un lien, ou un
+`..`, qui mène dehors fait échouer l'ouverture dans le même appel, si bien que l'échange ne peut pas emmener l'acte
+dehors, et l'acte est ensuite fait à travers ce qui a été ouvert. Un chemin qui sort puis revient, comme par un lien
+absolu vers un fichier du même dossier, est alors ouvert là où il mène, une fois vérifié. Là où openat2 manque, sur un Linux plus ancien ou sous
+un filtre d'appels système qui le refuse, comme dans certains containers, l'acte est vérifié une seconde fois là où le
+système tient le fichier ou le dossier qu'il a ouvert, puis fait à travers lui, avec le même résultat. Dans les deux cas,
+un fichier n'est vidé qu'une fois vu dedans. Sur macOS et Windows, l'acte porte sur le chemin tel qu'il a été vérifié :
+là, donnez un dossier que personne d'autre ne peut écrire. [sys.RemoveTree] et [sys.CopyTree] vont plus loin sur tous
+les systèmes sauf Windows : ils parcourent l'arbre par les dossiers qu'ils gardent ouverts, jamais par des chemins
+refaits.
 
 Les permissions disent ce que le programme peut toucher ; les autres personnes de la machine sont tenues à l'écart par les
 modes des fichiers (les droits que le système note sur chacun). Ce qui contient un secret, des clés ou une session,

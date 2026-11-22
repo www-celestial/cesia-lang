@@ -96,6 +96,22 @@ contre 3,5, les mêmes temps que Python, Node et Go avec leur propre fsync, puis
 du programme seul, sans `sync`, ne perd rien : ce qu'il a écrit est dans la mémoire du système, qui continue vers le
 disque ; seule une panne du système ou du courant peut le perdre.
 
+### Garder ses droits
+
+Le fichier renommé par-dessus l'ancien est un nouveau fichier : il a le mode d'un nouveau fichier, 0644 moins l'umask,
+et le groupe de la personne, pas ceux du fichier qu'il remplace. [sys.Write] lui donne ceux de l'ancien avec `mode` et
+`group`, que [sys.Stat] donne comme `Mode` et `Group`. Elle les pose sur le fichier dès qu'il est ouvert, avant que le
+texte y soit, si bien que le texte n'est jamais dans un fichier aux autres droits, et le renommage met à l'ancien nom un
+fichier aux anciens droits : c'est ainsi qu'un éditeur enregistre. Seul un groupe dont la personne fait partie peut être
+donné, comme avec `chgrp` ; un autre donne un `Err`, et un fichier qui était là garde son texte.
+
+```cesia allow=read,write
+old = result.Unwrap(sys.Stat("todo.txt"))
+sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group) -->
+sys.Rename("todo.txt.new", "todo.txt") -->
+result.Unwrap(sys.Stat("todo.txt")).Mode == old.Mode -->
+```
+
 ## Dossiers
 
 [sys.Mkdir] crée un dossier et les dossiers au-dessus de lui. [sys.List] donne les noms d'un dossier, triés.
@@ -123,6 +139,24 @@ sys.RemoveTree("old") -->
 sys.Exists("old") -->
 ```
 
+[sys.CopyTree] copie un dossier et tout ce qu'il contient, comme `cp -rp` : chaque fichier avec son mode et ses heures,
+chaque lien symbolique refait, jamais suivi. Un dossier qui est déjà là reçoit ce qu'il copie, chacun de ses fichiers
+remplacé en entier, sous un nom à lui jusqu'à ce que sa copie soit complète. Il parcourt les deux dossiers par les
+dossiers qu'il garde ouverts, comme [sys.RemoveTree], si bien qu'un dossier remplacé par un lien pendant qu'il travaille,
+dans l'un ou l'autre, n'emmène aucune lecture ni aucune écriture hors d'eux. [sys.Copy] copie un seul fichier ; avec
+`new = true`, il n'en fait qu'un nouveau, et ce qui est déjà au chemin, un lien aussi, donne un `Err`, pour que personne
+ne puisse y mettre un lien à travers lequel il écrirait :
+
+```cesia allow=read,write
+sys.Mkdir("photos/2026") -->
+sys.Write("photos/2026/beach.jpg", "jpg") -->
+sys.CopyTree("photos", "backup") -->
+sys.Read("backup/2026/beach.jpg") -->
+sys.Copy("photos/2026/beach.jpg", "backup/2026/beach.jpg", new = true) then result.IsErr() -->
+sys.RemoveTree("backup") -->
+sys.RemoveTree("photos") -->
+```
+
 ### À vous seul
 
 Un nouveau dossier peut être ouvert et listé par tous ceux qui utilisent la machine, et un nouveau fichier lu par tous :
@@ -146,7 +180,8 @@ Sur Windows, un fichier prend les droits du dossier qui le contient, et le dossi
 ### Exists et Stat
 
 [sys.Exists] demande si un chemin existe, et [sys.Stat] en dit plus : la taille en octets, l'heure du dernier
-changement, et s'il s'agit d'un dossier, d'un fichier ou d'un lien.
+changement, s'il s'agit d'un dossier, d'un fichier ou d'un lien, son mode, et à qui il est : `Owner` et `Group`, les
+numéros de son utilisateur et de son groupe (0 sur Windows, où un fichier n'a pas de tels numéros).
 
 ```cesia allow=read
 sys.Exists("todo.txt") -->

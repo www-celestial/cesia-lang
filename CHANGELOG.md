@@ -14,6 +14,21 @@
   folders need to delete for good; its first failure is an Err that names the file, and a tree of any depth keeps at
   most 32 folders open. On Windows it walks by paths and never enters a link or a junction. `cesia pkg`, `cesia
   upgrade` and the Temp folder of `cesia test` use it, the last saying what it couldn't remove where it said nothing.
+- `sys.CopyTree(from, to)` copies a folder and all it holds, as `cp -rp`: files with their modes and times, links made
+  again, never followed, the modes and times of the folders set last, the deepest first. A folder at `to` takes it in,
+  each file or link replaced whole through a name of its own. It walks by descriptors on both sides, as
+  `sys.RemoveTree`, each folder of the copy the person's alone while it fills, so that a folder swapped for a link while
+  it runs, in the source or in the copy, leads no read and no write out of them: the race that let a copy of Cemacs's
+  folders overwrite 2886 files of 3000 of another folder. A pipe, a device or a socket, a link where a folder is asked,
+  and a copy into its own source are each an Err. It needs read on `from` and write on `to`.
+- `sys.Copy(from, to, new = true)` makes the copy only new, as `O_CREAT | O_EXCL | O_NOFOLLOW`: a file or a link at `to`,
+  even one that leads nowhere, is an Err and stays as it was, so no one can put a link there for the copy to write
+  through. Without it, a file at `to` is replaced, as before.
+- `sys.Write(path, text, mode = M, group = G)` gives the file the mode M, exactly, the umask aside, and the group G, as
+  `chgrp`, on its descriptor once it is open, before its old text is cut and the new one is in: an editor's save, a new
+  file renamed over the old one, keeps the old one's rights with no moment under others and no act by its path. A group
+  the person is not in is an Err, and a file that was there keeps its text. `sys.Stat` gives `Owner` and `Group`, the
+  numbers of the file's user and group; 0 on Windows, as in Python and Node.
 
 ### Science
 
@@ -80,6 +95,19 @@
   check and the act can't lead a read, a write, a change of mode or a new link out of the folder; a link that another
   process removed while a path was checked ended the program with an internal error. `sys.Copy` of a file dated the
   first second of 1970 gave the copy the time of now.
+- On Linux 5.6 and later, an act under a folder of `read=` or `write=` opens its file or its folder from the folder of
+  the grant with `openat2`, `RESOLVE_BENEATH`, so the kernel refuses a walk out of it in the same call: the second
+  check of each act where the system holds its file, which made `sys.Read` of a small file 1.3 times slower and
+  `sys.Write` 1.5 times, is gone, and so is, for a path written below its folder, the walk of each folder of where it
+  leads to check it first. With `read=data,write=data`, a small file reads in 5.0 µs instead of 16.5, 12.7 before that
+  second check, and is written in 19.8 µs instead of 29.4 and 22.6 (median of 21 runs, the bench of the job). An older
+  Linux, or a filter of system calls that refuses `openat2`, keeps the second check.
+- `sys.Read` of a small file, or of one the system calls empty as those of `/proc`, no longer takes two buffers of 64
+  KB: it reads a file into one of its own size and a byte, and an empty-said one into a page. A read of 12 bytes takes
+  3.0 µs instead of 7.7.
+- `sys.Copy` names both of its paths in an Err, as `Can't copy a.txt to b.txt: file exists.`: it named the source
+  alone, even for a failure on the copy. It sees that the copy is no other name of the source on the file it opened,
+  where it looked at the path first, and gives the copy its times to the nanosecond.
 - `Limit "steps" reached.` names the step that went past the limit: the turn of a loop, as `for j in 1..100` in
   `spin`, or the call that made a frame, as `deep(n - 1)` in `deep`. It named the last place that had written its
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,

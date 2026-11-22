@@ -91,6 +91,22 @@ without, and 44 ms for 16 MB against 3.5, as Python, Node and Go take with their
 disk. A crash of the program alone, without `sync`, loses nothing: what it wrote is in the
 system's memory, which goes on to the disk; only the system or the power going down can lose it.
 
+### Keeping its rights
+
+The file renamed over the old one is a new file: it has the mode of a new file, 0644 less the umask, and the group of
+the person, not those of the file it replaces. [sys.Write] gives it those of the old one with `mode` and `group`, which
+[sys.Stat] tells as `Mode` and `Group`. It sets them on the file as soon as it is open, before the text is in, so the
+text is never in a file with other rights, and the rename puts at the old name a file with the old rights: this is how
+an editor saves. Only a group the person is in can be given, as with `chgrp`; another gives an `Err`, and a file that
+was there keeps its text.
+
+```cesia allow=read,write
+old = result.Unwrap(sys.Stat("todo.txt"))
+sys.Write("todo.txt.new", "buy bread\ncall Bo\nwater the plants\n", sync = true, mode = old.Mode, group = old.Group) -->
+sys.Rename("todo.txt.new", "todo.txt") -->
+result.Unwrap(sys.Stat("todo.txt")).Mode == old.Mode -->
+```
+
 ## Folders
 
 [sys.Mkdir] makes a folder and the folders above it. [sys.List] gives the names in a folder, sorted. [sys.Rename] moves a file
@@ -117,6 +133,23 @@ sys.RemoveTree("old") -->
 sys.Exists("old") -->
 ```
 
+[sys.CopyTree] copies a folder and all it holds, as `cp -rp` does: each file with its mode and its times, each symbolic
+link made again, never followed. A folder that is there takes in what it copies, each of its files replaced whole, under
+a name of its own until its copy is complete. It walks both folders by the folders it holds open, as [sys.RemoveTree]
+does, so a folder swapped for a link while it runs, in either, leads no read and no write out of them. [sys.Copy]
+copies one file; with `new = true` it makes only a new one, and something already at the path, a link too, is an `Err`,
+so that no one can put a link there for it to write through:
+
+```cesia allow=read,write
+sys.Mkdir("photos/2026") -->
+sys.Write("photos/2026/beach.jpg", "jpg") -->
+sys.CopyTree("photos", "backup") -->
+sys.Read("backup/2026/beach.jpg") -->
+sys.Copy("photos/2026/beach.jpg", "backup/2026/beach.jpg", new = true) then result.IsErr() -->
+sys.RemoveTree("backup") -->
+sys.RemoveTree("photos") -->
+```
+
 ### Yours alone
 
 A new folder can be entered and listed by everyone on the machine, and a new file read by everyone: only their owner can
@@ -138,8 +171,9 @@ On Windows a file takes the rights of the folder that holds it, and the folder o
 
 ### Exists and Stat
 
-[sys.Exists] asks whether a path is there, and [sys.Stat] tells more: the size in bytes, the time of the last change, and
-whether it is a folder, a file or a link.
+[sys.Exists] asks whether a path is there, and [sys.Stat] tells more: the size in bytes, the time of the last change,
+whether it is a folder, a file or a link, its mode, and whose it is: `Owner` and `Group`, the numbers of its user and of
+its group (0 on Windows, where a file has no such numbers).
 
 ```cesia allow=read
 sys.Exists("todo.txt") -->
