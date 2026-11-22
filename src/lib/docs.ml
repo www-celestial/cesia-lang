@@ -101,9 +101,9 @@ let receiver_end line =
       let sname = name_end line (self + 1) in
       if sname > self + 1 && sname + 1 < n && line.[sname] = ')' && line.[sname + 1] = ' ' then Some (sname + 1) else None
 
-(* The return type at the start of what follows the parameters, with its space: Rect, geo.Rect or Text?, which the end of the
-   code or the = of a body follow. Else nothing. *)
-let return_type rest =
+(* The return type at the start of what follows the parameters, Rect, geo.Rect or Text?, which the end of the code or the =
+   of a body follow, and where it ends in what follows. Else nothing. *)
+let return_type_end rest =
   let n = String.length rest in
   let rec spaces i = if i < n && rest.[i] = ' ' then spaces (i + 1) else i in
   let a = spaces 0 in
@@ -113,7 +113,10 @@ let return_type rest =
   let after = String.trim (String.sub rest b (n - b)) in
   let is prefix = String.starts_with ~prefix after in
   let word = String.sub rest a (b - a) in
-  if b > a && word <> "end" && (after = "" || (is "=" && not (is "==")) || is "(*") then " " ^ word else ""
+  if b > a && word <> "end" && (after = "" || (is "=" && not (is "==")) || is "(*") then Some (word, b) else None
+
+(* The return type with its space, as a signature writes it, or "". *)
+let return_type rest = match return_type_end rest with Some (word, _) -> " " ^ word | None -> ""
 
 (* Where the parenthesis that closes the first one of a line is, after an object if the line has one. *)
 let head_close line =
@@ -154,9 +157,15 @@ let is_short_method line i =
   let upto = name_end line from in
   upto > from && upto < String.length line && line.[upto] = '('
   &&
-  let n = String.length (signature_of line) in
-  let rest = String.trim (String.sub line n (String.length line - n)) in
-  String.starts_with ~prefix:"=" rest && not (String.starts_with ~prefix:"==" rest)
+  match head_close line with
+  | None -> false
+  | Some close ->
+    (* What follows the head and its return type, found in the line itself: the signature puts one space before the
+       return type, which the line may have none of, as a.v()m has, or several. *)
+    let rest = after_head line close in
+    let k = match return_type_end rest with Some (_, k) -> k | None -> 0 in
+    let rest = String.trim (String.sub rest k (String.length rest - k)) in
+    String.starts_with ~prefix:"=" rest && not (String.starts_with ~prefix:"==" rest)
 
 (* Keyword = 1: a value named at the top of a file, whose name is all its signature. *)
 let constant_end line =
