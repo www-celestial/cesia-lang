@@ -125,14 +125,14 @@ value cesia_close_from(value first) {
 static const int open_flags[] = { O_WRONLY, O_CREAT, O_TRUNC, O_APPEND, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_DIRECTORY, O_PATH };
 value cesia_open_at(value dir, value name, value how, value mode) {
   CAMLparam4(dir, name, how, mode);
-  int f = O_CLOEXEC, d = AT(dir), h = Int_val(how), m = Int_val(mode), fd = -1, tries = 8;
+  int f = O_CLOEXEC, d = AT(dir), h = Int_val(how), m = Int_val(mode), fd = -1;
   for (int i = 0; i < 9; i++) if (h & 1 << i) f |= open_flags[i];
   char *path = caml_stat_strdup(String_val(name));
   caml_enter_blocking_section();
   if (!(h & 1 << 9)) fd = openat(d, path, f, m);
 #if defined(SYS_openat2) && defined(RESOLVE_BENEATH)
   else {
-    struct open_how o = { .flags = f, .mode = f & O_CREAT ? m : 0, .resolve = RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS };
+    struct open_how o = { .flags = f, .mode = f & O_CREAT ? m : 0, .resolve = RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS }; int tries = 8;
     do fd = syscall(SYS_openat2, d, path, &o, sizeof o); while (fd < 0 && errno == EAGAIN && --tries);
   }
 #else
