@@ -235,6 +235,7 @@ let c_no_open_library = hinted "Nothing of C runs before a library is open: stru
 let c_zero_byte = plain "This text has a zero byte, which C would read as its end."
 let bad_duration name a = plain (Printf.sprintf "%s needs a finite duration of 0 or more, not %s." name a)
 let io_failure verb target why = plain (Printf.sprintf "Can't %s %s: %s." verb target why)
+let not_supported = "operation not supported"
 let need_socket name a = plain (Printf.sprintf "%s needs a socket, not %s." name a)
 let need_port a = plain (Printf.sprintf "A port is a number from 0 to 65535, not %s." a)
 let socket_closed = plain "This socket is closed."

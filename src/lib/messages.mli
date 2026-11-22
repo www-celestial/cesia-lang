@@ -447,6 +447,10 @@ val c_no_open_library : t
 val c_zero_byte : t
 val bad_duration : string -> string -> t
 val io_failure : string -> string -> string -> t
+
+(** The reason of an EOPNOTSUPP, as a pipe or a socket that a copy refuses, in the same words on every system: macOS
+    gives them for a socket alone. *)
+val not_supported : string
 val need_socket : string -> string -> t
 val need_port : string -> t
 val socket_closed : t

@@ -3,7 +3,10 @@ open Types
 
 let failure = Value.failure
 let io_error w text = failure w "io" text
-let reason e = String.uncapitalize_ascii (Unix.error_message e)
+(* The words of a Unix error: the system's, but for what a copy refuses, whose words macOS gives for a socket alone. *)
+let reason = function
+  | Unix.EOPNOTSUPP -> Messages.not_supported
+  | e -> String.uncapitalize_ascii (Unix.error_message e)
 let stat_keys = Trie.names [| "Size"; "Modified"; "IsDir"; "IsFile"; "IsLink"; "Mode"; "Owner"; "Group" |]
 let failed ctx verb target e = io_error ctx.w (Messages.io_failure verb target (reason e)).text
 
