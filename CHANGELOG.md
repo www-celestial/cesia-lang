@@ -105,9 +105,8 @@
 - `sys.Read` of a small file, or of one the system calls empty as those of `/proc`, no longer takes two buffers of 64
   KB: it reads a file into one of its own size and a byte, and an empty-said one into a page. A read of 12 bytes takes
   3.0 µs instead of 7.7.
-- `sys.Copy` names both of its paths in an Err, as `Can't copy a.txt to b.txt: file exists.`: it named the source
-  alone, even for a failure on the copy. It sees that the copy is no other name of the source on the file it opened,
-  where it looked at the path first, and gives the copy its times to the nanosecond.
+- `sys.Copy` sees that the copy is no other name of the source on the file it opened, where it looked at the path
+  first, and gives the copy its times to the nanosecond, where a float of seconds could round them.
 - `Limit "steps" reached.` names the step that went past the limit: the turn of a loop, as `for j in 1..100` in
   `spin`, or the call that made a frame, as `deep(n - 1)` in `deep`. It named the last place that had written its
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,

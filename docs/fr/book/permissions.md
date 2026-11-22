@@ -83,13 +83,14 @@ quelqu'un d'autre qui peut écrire dans le dossier, ou les propres workers du pr
 système de Linux 5.6 et après qui demande au noyau de garder tout le parcours du chemin sous ce dossier : un lien, ou un
 `..`, qui mène dehors fait échouer l'ouverture dans le même appel, si bien que l'échange ne peut pas emmener l'acte
 dehors, et l'acte est ensuite fait à travers ce qui a été ouvert. Un chemin qui sort puis revient, comme par un lien
-absolu vers un fichier du même dossier, est alors ouvert là où il mène, une fois vérifié. Là où openat2 manque, sur un Linux plus ancien ou sous
-un filtre d'appels système qui le refuse, comme dans certains containers, l'acte est vérifié une seconde fois là où le
-système tient le fichier ou le dossier qu'il a ouvert, puis fait à travers lui, avec le même résultat. Dans les deux cas,
-un fichier n'est vidé qu'une fois vu dedans. Sur macOS et Windows, l'acte porte sur le chemin tel qu'il a été vérifié :
-là, donnez un dossier que personne d'autre ne peut écrire. [sys.RemoveTree] et [sys.CopyTree] vont plus loin sur tous
-les systèmes sauf Windows : ils parcourent l'arbre par les dossiers qu'ils gardent ouverts, jamais par des chemins
-refaits.
+absolu vers un fichier du même dossier, est alors ouvert là où il mène, une fois vérifié ; une permission qui nomme un
+fichier, comme `read=notes.txt`, ouvre ce fichier lui-même, là où mène son chemin. Là où openat2 manque, sur un Linux
+plus ancien ou sous un filtre d'appels système qui le refuse, comme dans certains containers, l'acte est vérifié une
+seconde fois là où le système tient le fichier ou le dossier qu'il a ouvert, puis fait à travers lui, avec le même
+résultat. Dans les deux cas, un fichier n'est vidé qu'une fois vu dedans. Sur macOS et Windows, l'acte porte sur le
+chemin tel qu'il a été vérifié : là, donnez un dossier que personne d'autre ne peut écrire. [sys.RemoveTree] et
+[sys.CopyTree] vont plus loin sur tous les systèmes sauf Windows : ils parcourent l'arbre par les dossiers qu'ils
+gardent ouverts, jamais par des chemins refaits.
 
 Les permissions disent ce que le programme peut toucher ; les autres personnes de la machine sont tenues à l'écart par les
 modes des fichiers (les droits que le système note sur chacun). Ce qui contient un secret, des clés ou une session,

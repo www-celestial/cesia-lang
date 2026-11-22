@@ -72,17 +72,18 @@ checks where the link is, not where it points: a program can clean up a link of 
 name, and every write through it writes that file. So [sys.Link] needs the write permission on its target as well as on the
 new name, and a program allowed to read a file can't make itself a name of it that it may write.
 
-Another program of the machine can swap a folder of a path for a link between the check and the act: someone else who may
-write the folder, or the program's own workers. On Linux, under a folder of `read=` or `write=`, the act opens its file or
-its folder from the folder of the grant with *openat2*, a system call of Linux 5.6 and later that tells the kernel to keep
-the whole walk of the path below that folder: a link, or a `..`, that leads out makes the open fail in the same call, so a
-swap can't lead the act out, and the act is then done through what was opened. A path that leaves and comes back in, as
-through an absolute link to a file of the same folder, is then opened where it leads, once checked. Where openat2 is
+Another program of the machine can swap a folder of a path for a link between the check and the act: someone else who
+may write the folder, or the program's own workers. On Linux, under a folder of `read=` or `write=`, the act opens its
+file or its folder from the folder of the grant with *openat2*, a system call of Linux 5.6 and later that tells the
+kernel to keep the whole walk of the path below that folder: a link, or a `..`, that leads out makes the open fail in
+the same call, so a swap can't lead the act out, and the act is then done through what was opened. A path that leaves
+and comes back in, as through an absolute link to a file of the same folder, is then opened where it leads, once
+checked; a grant that names a file, as `read=notes.txt`, opens that file itself, where its path leads. Where openat2 is
 missing, on an older Linux or under a filter of system calls that refuses it, as in some containers, the act is checked
-a second time where the system holds the file or the folder it opened, then done through that open one, to the same
-end. Either way, a file is emptied only once it is seen inside. On macOS and Windows the act is on the path as it was
-checked: there, give a folder that no one else may write. [sys.RemoveTree] and [sys.CopyTree] go further on every
-system but Windows: they walk by the folders they hold open, never by paths made again.
+a second time where the system holds the file or the folder it opened, then done through that open one, to the same end.
+Either way, a file is emptied only once it is seen inside. On macOS and Windows the act is on the path as it was
+checked: there, give a folder that no one else may write. [sys.RemoveTree] and [sys.CopyTree] go further on every system
+but Windows: they walk by the folders they hold open, never by paths made again.
 
 Permissions say what the program may touch; the other people of the machine are kept out by the modes of the files. What
 holds a secret, keys or a session, is written with `private = true`, which [sys.Write] and [sys.Mkdir] take: the file or
