@@ -2670,26 +2670,31 @@ and cu c (e : expr) : ctx -> unit =
             true
         and interp ?(warm = false) ctx =
           match
-            if warm && cond ctx then begin
+            (* Hot by its runs: its first turn interpreted, then native code from the next. A test false at that first
+               turn ends the run there: a test runs once at each turn, its calls and their steps with it. *)
+            let going = (not warm) || cond ctx in
+            if warm && going then begin
               body ctx;
               turn ctx at;
               match Tier.warmed ctx st ver outer with
               | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
               | None -> ()
             end;
-            let seen = ref ctx.until in
-            while cond ctx do
-              body ctx;
-              let f = ctx.fuel - 1 in
-              ctx.fuel <- f;
-              if f < 0 || ctx.until <> !seen then begin
-                if f < 0 then turn_out ctx at;
-                seen := ctx.until;
-                match Tier.hot ctx st ver outer with
-                | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
-                | None -> ()
-              end
-            done
+            if going then begin
+              let seen = ref ctx.until in
+              while cond ctx do
+                body ctx;
+                let f = ctx.fuel - 1 in
+                ctx.fuel <- f;
+                if f < 0 || ctx.until <> !seen then begin
+                  if f < 0 then turn_out ctx at;
+                  seen := ctx.until;
+                  match Tier.hot ctx st ver outer with
+                  | Some code -> raise_notrace (Tier.Handoff (code, Tier.id st))
+                  | None -> ()
+                end
+              done
+            end
           with
           | () -> ()
           | exception (Tier.Handoff (code, from) as x) ->
