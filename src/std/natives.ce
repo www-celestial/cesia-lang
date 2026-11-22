@@ -1028,7 +1028,9 @@ use std/test
     own the file and be in the group, else an Err, and a file that was there keeps its text. Both are set on the file
     once it is open, before its old text is cut and the new one is in, so that no one gets the text under other rights,
     and no link put at its path since can take them: a save that writes a new file, then renames it over the old one,
-    gives the new file the Mode and the Group of the old one so. The bits setuid and setgid, which a write takes away,
+    gives the new file the Mode and the Group of the old one so. A file made then is its owner's alone (0600) until it
+    has them, so that no one of the person's own group can open it before it is given its group; given a group alone,
+    it then takes the mode of a new file. The bits setuid and setgid, which a write takes away,
     are given again once the text is in. With private = true, mode can only give rights to the owner, as 256, 400 in
     octal, read only. On Windows, mode counts as for sys.Chmod, given once the text is in, and group changes nothing.
 
@@ -1152,8 +1154,9 @@ use std/test
 
 (** sys.Copy(from, to, new = false)
     Copies a file to another path, as cp -p does: its bytes, its mode and its times. A file at to is replaced; a folder,
-    or the same file under another name, gives an Err before anything is written. A symbolic link is copied as the
-    file it points to. With new = true, the copy is made only new, as open(2) does with O_CREAT, O_EXCL and O_NOFOLLOW:
+    or the same file under another name, gives an Err before anything is written, and so does what is no file, a pipe,
+    a device or a socket, at once: the source is opened without waiting, then looked at, so a pipe, even one put at
+    from by another program, never holds the program. A symbolic link is copied as the file it points to. With new = true, the copy is made only new, as open(2) does with O_CREAT, O_EXCL and O_NOFOLLOW:
     a file at to, or a link, even one that leads nowhere, gives an Err and stays as it was, so no one can put a link
     there for the copy to write through; the permission is then on to itself. Ok(missing) or an Err. Needs the read
     permission on from and the write permission on to.

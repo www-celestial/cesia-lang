@@ -1,0 +1,8 @@
+a pipe: err Can't copy pipe: operation not supported.
+a link to a pipe: err Can't copy to-pipe: operation not supported.
+a device: err Can't copy /dev/null: operation not supported.
+a link to a file: ok missing
+exit 0
+made: copy-fifo.ce copy-of-file file.txt pipe to-file to-pipe 
+the copy is a file: x
+exit 0

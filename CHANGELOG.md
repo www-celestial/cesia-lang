@@ -27,7 +27,8 @@
 - `sys.Write(path, text, mode = M, group = G)` gives the file the mode M, exactly, the umask aside, and the group G, as
   `chgrp`, on its descriptor once it is open, before its old text is cut and the new one is in: an editor's save, a new
   file renamed over the old one, keeps the old one's rights with no moment under others and no act by its path. A group
-  the person is not in is an Err, and a file that was there keeps its text. `sys.Stat` gives `Owner` and `Group`, the
+  the person is not in is an Err, and a file that was there keeps its text. A file it makes so is its owner's alone,
+  0600, until it has them, so no one of the person's own group can open it on the way and read the text through it. `sys.Stat` gives `Owner` and `Group`, the
   numbers of the file's user and group; 0 on Windows, as in Python and Node.
 
 ### Science
@@ -106,7 +107,10 @@
   KB: it reads a file into one of its own size and a byte, and an empty-said one into a page. A read of 12 bytes takes
   3.0 µs instead of 7.7.
 - `sys.Copy` sees that the copy is no other name of the source on the file it opened, where it looked at the path
-  first, and gives the copy its times to the nanosecond, where a float of seconds could round them.
+  first, and gives the copy its times to the nanosecond, where a float of seconds could round them. It opens its
+  source without waiting, then refuses what is no file, a pipe, a device or a socket, with an Err at once: a pipe at
+  its source, even one put there by another program after a check, held the program until someone wrote into it, and
+  a device as `/dev/zero` was copied for ever. A link is still copied as the file it leads to.
 - `Limit "steps" reached.` names the step that went past the limit: the turn of a loop, as `for j in 1..100` in
   `spin`, or the call that made a frame, as `deep(n - 1)` in `deep`. It named the last place that had written its
   site, as `io.Print(spin(1000))` while `spin(100000000)` of the next line ran, and machine code, which writes none,

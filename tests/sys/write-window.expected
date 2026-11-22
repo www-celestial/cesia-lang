@@ -1,0 +1,10 @@
+a group refused: err Can't write out/refused.txt: operation not permitted.
+a group alone, a new file: ok missing
+a group alone, a file there: ok missing
+a second group: ok missing
+exit 0
+refused.txt -rw-------
+alone.txt -rw-r--r--
+private.txt -rw-------
+team.txt -rw-r-----, in the second group: yes
+exit 0

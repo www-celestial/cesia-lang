@@ -1,0 +1,19 @@
+(* For copy-fifo.cmd: sys.Copy of a pipe, of a link to one, of a device, and of a link to a file. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "err $(e.Message)"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+show("a pipe", () -> sys.Copy("pipe", "copy-of-pipe"))
+show("a link to a pipe", () -> sys.Copy("to-pipe", "copy-of-to-pipe"))
+show("a device", () -> sys.Copy("/dev/null", "copy-of-null"))
+show("a link to a file", () -> sys.Copy("to-file", "copy-of-file"))

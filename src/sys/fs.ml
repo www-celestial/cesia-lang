@@ -239,22 +239,24 @@ let through ?(name = false) ctx perm path f =
 let cut fd = try Unix.ftruncate fd 0 with Unix.Unix_error (Unix.EINVAL, _, _) -> ()
 
 (* A file opened to write, made if it isn't there, with [mode]; with [fresh], made only new: one that is there is an
-   Err, a link too, never followed, so that the act is on the name, checked as such. Under a folder of write=, with
-   openat2, below its folder; else one that is there is opened, then seen inside before it is emptied, and one that
-   isn't is made only new, in its checked folder, never through a link: nothing out of the folder is made or cut. *)
-let open_write ?(mode = 0o644) ?(fresh = false) ~trunc ctx path flags =
-  let how = o_write lor o_create lor how_of flags lor (if fresh then o_excl lor o_nofollow else 0) in
+   Err, a link too, never followed, so that the act is on the name, checked as such; with [create] false, never made.
+   Under a folder of write=, with openat2, below its folder; else one that is there is opened, then seen inside before
+   it is emptied, and one that isn't is made only new, in its checked folder, never through a link: nothing out of the
+   folder is made or cut. *)
+let open_write ?(mode = 0o644) ?(fresh = false) ?(create = true) ~trunc ctx path flags =
+  let how = o_write lor how_of flags lor (if create then o_create else 0) lor (if fresh then o_excl lor o_nofollow else 0) in
   let how = if trunc then how lor o_trunc else how in
   if fast ctx Write then checked_below ~name:fresh ctx Write path (fun h -> open_below h how mode)
   else if not (guarded ctx Write) then
     let flags = if fresh then Unix.O_EXCL :: flags else flags in
-    Unix.openfile path (Unix.O_WRONLY :: O_CREAT :: O_CLOEXEC :: (if trunc then O_TRUNC :: flags else flags)) mode
+    let flags = if create then Unix.O_CREAT :: flags else flags in
+    Unix.openfile path (Unix.O_WRONLY :: O_CLOEXEC :: (if trunc then O_TRUNC :: flags else flags)) mode
   else
     let make p = Unix.openfile p (Unix.O_WRONLY :: O_CREAT :: O_EXCL :: O_CLOEXEC :: flags) mode in
     let rec go tries p =
       match Unix.openfile p (Unix.O_WRONLY :: O_CLOEXEC :: flags) 0 with
       | fd -> held ctx Write path fd; fd
-      | exception Unix.Unix_error (Unix.ENOENT, _, _) when tries > 0 ->
+      | exception Unix.Unix_error (Unix.ENOENT, _, _) when tries > 0 && create ->
         through ctx Write path (fun p -> try make p with Unix.Unix_error (Unix.EEXIST, _, _) -> go (tries - 1) p)
     in
     let fd = if fresh then through ~name:true ctx Write path make else go 3 path in
@@ -325,14 +327,31 @@ let put fd text =
 
 let sync_dir path = if not Sys.win32 then with_fd (Filename.dirname path) [ Unix.O_RDONLY ] Unix.fsync
 
+(* The umask of the program, which no act of Cesia changes: read once, by setting it to 0077 for that moment, so that a
+   file made meanwhile by another domain is only more private. *)
+let umask = lazy (if Sys.win32 then 0 else let u = Unix.umask 0o077 in ignore (Unix.umask u); u)
+
 (* With [sync], the text is on the disk before the Ok: the file by fsync, and its folder, which holds its name. With
-   [mode] or [group], the file takes them on its descriptor before its old text is cut, then the new one is in; on
-   Windows the mode is given to the path once the text is in, and the group changes nothing. *)
+   [mode] or [group], the file takes them on its descriptor before its old text is cut, then the new one is in. A file
+   made then is its owner's alone, 0600, until it has them, so that no one of the person's group can open it before
+   its group is given, then read the text through it; given a group alone, it then takes the mode of a new file, 0644
+   less the umask. On Windows the mode is given to the path once the text is in, and the group changes nothing. *)
 let write_all ?(sync = false) ?mode ?group ~trunc ctx path flags text =
   let keep = mode <> None || group <> None in
-  let fd = open_write ?mode:(Option.map (fun m -> m land 0o777) mode) ~trunc:(trunc && not keep) ctx path flags in
+  let fd, made =
+    if not keep then open_write ~trunc ctx path flags, false
+    else if mode <> None then open_write ~mode:0o600 ~trunc:false ctx path flags, false
+    else
+      match open_write ~create:false ~trunc:false ctx path flags with
+      | fd -> fd, false
+      | exception Unix.Unix_error (Unix.ENOENT, _, _) -> open_write ~mode:0o600 ~trunc:false ctx path flags, true
+  in
   using fd (fun () ->
-      if keep then (give ?mode ?group fd; if trunc then cut fd);
+      if keep then begin
+        give ?mode ?group fd;
+        if made && not Sys.win32 then Unix.fchmod fd (0o644 land lnot (Lazy.force umask));
+        if trunc then cut fd
+      end;
       put fd text;
       give_again ?mode fd;
       if sync then (Unix.fsync fd; sync_dir path));
@@ -508,13 +527,17 @@ let copy_times src dst dest =
     Unix.utimes dest (if st.st_atime = 0.0 && st.st_mtime = 0.0 then 1e-6 else st.st_atime) st.st_mtime
 
 (* The bytes of a file into another, with its mode and its times, as cp -p does: the copy is opened, then seen to be no
-   other name of the same file before it is emptied, so that no byte is lost; a folder is refused before. With [fresh],
-   the copy is made only new. *)
+   other name of the same file before it is emptied, so that no byte is lost; a folder is refused before, and so is
+   what is no file, a pipe, a device or a socket, which the source is opened without waiting for (O_NONBLOCK), then seen
+   to be: a pipe, even one put at its path after a check, never holds the program. A link is copied as the file it
+   leads to. With [fresh], the copy is made only new. *)
 let copy_file ?fresh ctx from dest =
-  let src = opened ctx Read from [ Unix.O_RDONLY ] in
+  let src = opened ctx Read from (if Sys.win32 then [ Unix.O_RDONLY ] else [ Unix.O_RDONLY; O_NONBLOCK ]) in
   using src (fun () ->
       let st = Unix.fstat src in
       if st.st_kind = Unix.S_DIR then raise (Unix.Unix_error (Unix.EISDIR, "copy", from));
+      if st.st_kind <> Unix.S_REG then raise (Unix.Unix_error (Unix.EOPNOTSUPP, "copy", from));
+      if not Sys.win32 then Unix.clear_nonblock src;
       let dst = open_write ~mode:st.st_perm ?fresh ~trunc:false ctx dest [] in
       using dst (fun () ->
           let d = Unix.fstat dst in

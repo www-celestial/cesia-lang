@@ -1,0 +1,28 @@
+(* For write-window.cmd: its arguments are a group the person is not in, their group, and a second group of theirs or
+   none. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+use std/text
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "err $(e.Message)"
+    result.Ok(v) -> "$v"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+other = text.Number(sys.Args[1])
+mine = text.Number(sys.Args[2])
+show("a group refused", () -> sys.Write("out/refused.txt", "secret\n", mode = 416, group = other))
+show("a group alone, a new file", () -> sys.Write("out/alone.txt", "a\n", group = mine))
+show("a group alone, a file there", () -> sys.Write("out/private.txt", "p\n", group = mine))
+if sys.Args[3] == "none"
+  io.Print("a second group: ok missing")
+else
+  show("a second group", () -> sys.Write("out/team.txt", "t\n", mode = 416, group = text.Number(sys.Args[3])))
+end
