@@ -221,11 +221,12 @@ let opened code =
   String.iter (fun c -> if c = '"' then quoted := not !quoted else if not !quoted then (if c = '(' then incr n else if c = ')' then decr n)) code;
   !n
 
-(* The lines of a definition's head joined, as if written on one: defn Scaled(r Rect, by Number) Rect. *)
-let joined codes k h =
-  if h = k then codes.(k)
+(* The lines k to h of a definition's head joined, as if written on one, the first given without its defn, whose space the
+   joining would drop before a ), as in defn )(: Scaled(r Rect, by Number) Rect for defn Scaled(r Rect, by Number) Rect. *)
+let joined first codes k h =
+  if h = k then first
   else begin
-    let s = String.concat " " (List.map String.trim (Array.to_list (Array.sub codes k (h - k + 1)))) in
+    let s = String.concat " " (List.map String.trim (first :: Array.to_list (Array.sub codes (k + 1) (h - k)))) in
     let b = Buffer.create (String.length s) and quoted = ref false in
     let last () = if Buffer.length b = 0 then '(' else Buffer.nth b (Buffer.length b - 1) in
     String.iter
@@ -285,10 +286,10 @@ let entries ?(file = "") src =
       if not (outside.(k) && is_definition code) then go (k + 1)
       else
         (match drop_prefix "defn " code, drop_prefix "struct " code, drop_prefix "interface " code with
-         | Some _, _, _ ->
+         | Some first, _, _ ->
            let rec head j open_ = let o = open_ + opened codes.(j) in if o <= 0 || j + 1 >= count then j else head (j + 1) o in
            let h = head k 0 in
-           let r = Option.get (drop_prefix "defn " (joined codes k h)) in
+           let r = joined first codes k h in
            let signature = signature_of r in
            if is_block_head r then begin
              let name_on j = if String.starts_with ~prefix:")" (String.trim codes.(j)) || j = k then "result" else first_name codes.(j) in

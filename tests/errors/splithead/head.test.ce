@@ -1,0 +1,6 @@
+(* A head over two lines with a space before a ), as defn )( has, doesn't read: cesia test says so, as of any file that
+   doesn't load. *)
+defn )((
+  x
+)
+isRead() = true

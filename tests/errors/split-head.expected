@@ -1,0 +1,3 @@
+splithead/head.test.ce: can't load: Expected "(", found ).
+0 passed, 1 failed
+exit 1

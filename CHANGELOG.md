@@ -176,6 +176,9 @@
   puts one space before a return type, where the line may have none. It is measured in the line, so that a head with
   two spaces before its return type, as `Rect.Unit()  Rect = ...`, or none around its `=`, as `Rect.Unit()Rect=...`,
   keeps its documentation, which was lost.
+- A `defn` whose head, which doesn't read, goes on past its line with a space before a `)`, as `defn )((`, makes
+  `cesia test` say that its file can't load, and `cesia doc` leave it out, where both stopped with an internal error: the
+  lines of the head were joined with their `defn`, whose space was dropped as one before the `)`.
 
 ## 1.2.0
 
