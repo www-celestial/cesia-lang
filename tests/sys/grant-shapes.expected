@@ -694,7 +694,7 @@ data/in.txt
   remove copy: err Can't remove ..copy: no such file or directory.
   write: err Can't write .: is a directory.
   read again: err Can't read .: is a directory.
-  rename: ok missing
+  rename: not tried
   mkdir: ok missing
 ./
   read: err Can't read ./: is a directory.
@@ -710,7 +710,7 @@ data/in.txt
   remove copy: err Can't remove ./.copy: no such file or directory.
   write: err Can't write ./: is a directory.
   read again: err Can't read ./: is a directory.
-  rename: ok missing
+  rename: not tried
   mkdir: ok missing
 flink
   read: ok x
@@ -800,7 +800,7 @@ f.txt
   remove copy: err Can't remove ..copy: no such file or directory.
   write: err Can't write .: is a directory.
   read again: err Can't read .: is a directory.
-  rename: ok missing
+  rename: not tried
   mkdir: ok missing
 ./
   read: err Can't read ./: is a directory.
@@ -816,7 +816,7 @@ f.txt
   remove copy: err Can't remove ./.copy: no such file or directory.
   write: err Can't write ./: is a directory.
   read again: err Can't read ./: is a directory.
-  rename: ok missing
+  rename: not tried
   mkdir: ok missing
 -- after: -rw-r--r-- -rwxr-xr-x 
 == --allow read=TOP,write=TOP
@@ -870,7 +870,7 @@ TOP/f.txt
   remove copy: err Can't remove ..copy: no such file or directory.
   write: err Can't write .: is a directory.
   read again: err Can't read .: is a directory.
-  rename: ok missing
+  rename: not tried
   mkdir: ok missing
 -- after: -rw-r--r-- -rwxr-xr-x 
 == --allow read=flink,write=flink

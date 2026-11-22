@@ -18,5 +18,8 @@ echo "== write=out/fresh.txt, write=out/to-victim, write=out/to-nothing"
 cesia run $no_spec --allow read=out,write=out/fresh.txt,write=out/to-victim,write=out/to-nothing write-new.ce file "$(id -g)" 2> /dev/null
 echo "exit $?"
 echo "== out holds"
-LC_ALL=C ls -l out | awk 'NR > 1 { print substr($1, 1, 10), $NF }'
+# A link's own mode is the system's (lrwxrwxrwx on Linux, from the umask on macOS): a link shows its target alone.
+for f in $(LC_ALL=C ls out); do
+  if [ -L "out/$f" ]; then echo "$f -> $(readlink "out/$f")"; else echo "$(ls -ld "out/$f" | cut -c 1-10) $f"; fi
+done
 echo "== outside holds: $(LC_ALL=C ls outside | tr '\n' ' ')$(cat outside/victim.txt)"

@@ -18,5 +18,8 @@ while id -G | tr ' ' '\n' | grep -qx "$other"; do other=$((other + 1)); done
 cesia run $no_spec --allow read=out,write=out write-keep.ce $(ls -ln out/doc.txt | awk '{ print $3, $4 }') "$other" 2> /dev/null
 echo "exit $?"
 echo "== modes"
-ls -l out | awk 'NR > 1 { print substr($1, 1, 10), $NF }'
+# A link's own mode is the system's (lrwxrwxrwx on Linux, from the umask on macOS): a link shows its target alone.
+for f in $(LC_ALL=C ls out); do
+  if [ -L "out/$f" ]; then echo "$f -> $(readlink "out/$f")"; else echo "$(ls -ld "out/$f" | cut -c 1-10) $f"; fi
+done
 echo "== out of the folder: $(cat elsewhere.txt), $(ls nothing.txt 2> /dev/null | wc -l | tr -d ' ') new file"

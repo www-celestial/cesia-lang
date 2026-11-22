@@ -29,6 +29,11 @@ for p in sys.Args
   show("remove copy", () -> sys.Remove("$(p).copy"))
   show("write", () -> sys.Write(p, "x\n"))
   show("read again", () -> sys.Read(p))
-  show("rename", () -> sys.Rename(p, p))
+  (* The rename of . onto itself is the system's to refuse or not: Linux does it, macOS refuses it. *)
+  if p == "." or p == "./"
+    io.Print("  rename: not tried")
+  else
+    show("rename", () -> sys.Rename(p, p))
+  end
   show("mkdir", () -> sys.Mkdir(p))
 end

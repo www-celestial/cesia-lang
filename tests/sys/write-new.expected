@@ -31,7 +31,7 @@ exit 0
 -r-------- key2
 -rw-r--r-- new.txt
 -rw-r--r-- planted.txt
-lrwxrwxrwx ../outside/nothing.txt
-lrwxrwxrwx ../outside/victim.txt
+to-nothing -> ../outside/nothing.txt
+to-victim -> ../outside/victim.txt
 == outside holds: victim.txt victim
 exit 0
