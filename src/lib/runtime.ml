@@ -403,8 +403,9 @@ let granted ?(name = false) ?at w perm path =
 let bounded w perm =
   not (w.grants.all || List.exists (fun (p, scope) -> p = perm && scope = None) w.grants.perms)
 
-let check_perm ?name ?at ctx perm path =
-  if not (granted ?name ?at ctx.w perm path) then fail ctx Permission (Messages.denied (perm_name perm) path)
+let deny ctx perm path = fail ctx Permission (Messages.denied (perm_name perm) path)
+
+let check_perm ?name ?at ctx perm path = if not (granted ?name ?at ctx.w perm path) then deny ctx perm path
 
 let copy ctx v =
   match v with

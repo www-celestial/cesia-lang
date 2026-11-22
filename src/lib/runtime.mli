@@ -92,6 +92,9 @@ val alloc_ints : ctx -> int -> int -> int array
     holds an open file, and the message names the path. *)
 val check_perm : ?name:bool -> ?at:string -> ctx -> perm -> string option -> unit
 
+(** Stops the program on a denied permission, with the path concerned if any, as {!check_perm} does. *)
+val deny : ctx -> perm -> string option -> 'a
+
 (** Where a path leads, links resolved, or [None] when no place can be told: set by the system, which reads links. A
     folder of read= or write= holds a path only when it holds where the path leads too. *)
 val real_path : (string -> string option) ref

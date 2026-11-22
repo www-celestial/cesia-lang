@@ -1,0 +1,25 @@
+(* For copy-race.cmd: swaps shared/tree/sub, then shared/out/sub, for a link to the victims' folders, as fast as it can,
+   while the file go is there, and two minutes at most: the folder of the source is put back after, the one of the copy
+   removed. *)
+use std/math
+use std/result
+use std/sys
+
+deadline = sys.Now() + 120.0
+sys.Write("swapping", "")
+turn = 0
+while sys.Exists("go") and sys.Now() < deadline
+  turn += 1
+  source = math.Mod(turn, 2) == 0
+  at = if source "shared/tree/sub" else "shared/out/sub" end
+  if result.IsOk(sys.Rename(at, "shared/moved"))
+    sys.Symlink(if source "../../victim" else "../../victim2" end, at)
+    sys.Sleep(0.0005)
+    sys.Remove(at)
+    if source
+      sys.Rename("shared/moved", at)
+    else
+      sys.RemoveTree("shared/moved")
+    end
+  end
+end

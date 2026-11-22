@@ -1,0 +1,40 @@
+a tree: ok missing
+into a folder there: ok missing
+a tree 100 deep: ok missing
+a pipe: io: Can't copy src/pipe/fifo to out/pipe/fifo: operation not supported.
+into itself: io: Can't copy out/tree to out/tree/a/again: invalid argument.
+onto itself: io: Can't copy out/tree to out/tree: invalid argument.
+from a link: io: Can't copy src/tree/a/to-folder to out/from-link: not a directory.
+to a link: io: Can't copy src/tree/c to out/link: not a directory.
+from a file: io: Can't copy src/tree/run.sh to out/file: not a directory.
+nothing there: io: Can't copy src/none to out/none: no such file or directory.
+from out of the folder: permission
+to out of the folder: permission
+== the copy
+./ rwxr-xr-x
+./a/ rwxr-xr-x
+./a/b/ rwxr-xr-x
+./a/b/x.txt rw-r--r-- x
+./a/to-folder -> ../../../outside
+./a/to-x -> b/x.txt
+./c/ rwxr-x---
+./c/y.txt rw-r--r-- y
+./run.sh rwxr-x--- #!/bin/sh
+== times: 1 for the four
+== a folder there
+./ rwxr-xr-x
+./a/ rwxr-xr-x
+./a/b/ rwxr-xr-x
+./a/b/x.txt rw-r--r-- x
+./a/to-folder -> ../../../outside
+./a/to-x -> b/x.txt
+./a/x.txt rw-r--r-- old
+./c/ rwxr-x---
+./c/y.txt rw-r--r-- y
+./run.sh rwxr-x--- #!/bin/sh
+== deep: 1
+== outside holds
+outside
+outside/k.txt
+kept
+exit 0

@@ -1,0 +1,35 @@
+(* For scope-below.cmd, run with read=a, read=b and write= the absolute path of a; its argument is that of the folder. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "$(e.Kind): $(e.Message)"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+top = sys.Args[1]
+show("an absolute link back in", () -> sys.Read("a/abs-in"))
+show("a link into another folder granted", () -> sys.Read("a/to-b"))
+show("written through it, granted to read only", () -> sys.Write("a/to-b", "x"))
+show("an absolute link out", () -> sys.Read("a/abs-out"))
+show("a .. that comes back in", () -> sys.Read("a/../a/in.txt"))
+show("a .. that leads out", () -> sys.Read("a/../outside/s.txt"))
+show("the absolute path, a relative grant", () -> sys.Read("$top/a/in.txt"))
+show("a relative path, an absolute grant", () -> sys.Write("a/new-here.txt", "n"))
+show("a folder searched, not read", () -> sys.Write("a/locked/l.txt", "L"))
+show("listed", () -> sys.List("a/locked"))
+show("the folder granted", () -> sys.List("b"))
+show("a last /", () -> sys.Read("a/in.txt/"))
+show("a link to a new file inside", () -> sys.Write("a/dangling", "d"))
+show("its text", () -> sys.Read("a/new.txt"))
+show("renamed", () -> sys.Rename("a/new.txt", "a/renamed.txt"))
+show("a link removed itself", () -> sys.Remove("a/abs-out"))
+show("the mode of a file", () -> sys.Chmod("a/in.txt", 384))
+show("its time", () -> sys.SetModified("a/in.txt", 86400))
+show("both", () -> result.Ok("$(sys.Stat("a/in.txt")?.Mode) $(sys.Stat("a/in.txt")?.Modified)"))

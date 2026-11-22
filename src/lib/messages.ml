@@ -270,6 +270,9 @@ let bad_answer a =
 let need_text name a = plain (Printf.sprintf "%s needs a text, not %s." name a)
 let need_flag name a = plain (Printf.sprintf "%s needs true or false, not %s." name a)
 let need_mode name a = plain (Printf.sprintf "%s needs a mode from 0 to 4095, the bits of chmod, as 420 for 644 in octal, not %s." name a)
+let need_group name a = plain (Printf.sprintf "%s needs a group, the number that sys.Stat gives as Group, not %s." name a)
+let private_mode m =
+  plain (Printf.sprintf "With private = true, sys.Write takes a mode of its owner alone, as 384 for 600 in octal, not %d, %o in octal." m m)
 let empty_array name = plain (name ^ " of an empty array.")
 let usage =
   "usage: cesia run [--allow LIST] [--limit LIST] [--watch] [--workers N] [--debugger FILE] [--repl] [--cells] [--no-spec] [--no-jit] [--seed N] file.ce [args...]\n\

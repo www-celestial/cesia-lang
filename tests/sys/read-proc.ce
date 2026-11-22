@@ -1,0 +1,14 @@
+(* sys.Read of files that the system says are empty, as those of /proc: read whole, past a page; and of an empty file. *)
+use std/io
+use std/sys
+use std/result
+use std/text
+use std/value
+
+status = result.Unwrap(sys.Read("/proc/self/status"))
+io.Print("status starts with its name: $(text.StartsWith("Name:", status))")
+maps = result.Unwrap(sys.Read("/proc/self/smaps"))
+io.Print("smaps past a page: $(text.ByteLength(maps) > 4096), whole: $(text.EndsWith("\n", maps))")
+io.Print("each mapping with its size: $(value.Len(text.Split("\nSize:", maps)) > 2)")
+sys.Write(sys.Args[1], "")
+io.Print("an empty file: $(sys.Read(sys.Args[1]))")

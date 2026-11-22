@@ -1008,7 +1008,7 @@ use std/test
       sys.Read(file) --> result.Ok("hello")
       result.IsErr(sys.Read("$(test.Temp())/none.txt")) --> true *)
 
-(** sys.Write(path, text, sync = false, private = false)
+(** sys.Write(path, text, sync = false, private = false, mode = missing, group = missing)
     Replaces the content of a file with a text, creating it if needed: Ok(missing) or an Err. Needs the write permission.
     A new file can be read by everyone on the machine and written by its owner (its mode is 0644, less the umask). With
     private = true, for keys, sessions and what is no one else's business, the text goes into a new file of its owner's
@@ -1023,12 +1023,25 @@ use std/test
     program alone loses nothing either. A save that replaces a file writes a new file with sync = true, then renames it
     over the old one: after a power cut the whole new text is under one of the two names, on the journaling filesystems
     of today (ext4, XFS, btrfs, APFS, NTFS).
+    With mode, the file takes these permission bits, exactly, as sys.Chmod gives them (the umask aside): 416 is 640 in
+    octal, rw-r-----. With group, it takes that group, the number sys.Stat gives as Group, as chgrp does: the person must
+    own the file and be in the group, else an Err, and a file that was there keeps its text. Both are set on the file
+    once it is open, before its old text is cut and the new one is in, so that no one gets the text under other rights,
+    and no link put at its path since can take them: a save that writes a new file, then renames it over the old one,
+    gives the new file the Mode and the Group of the old one so. With private = true, mode can only give rights to the
+    owner, as 256, 400 in octal, read only. On Windows, mode counts as for sys.Chmod, given once the text is in, and
+    group changes nothing.
 
       file = "$(test.Temp())/write.txt"
       sys.Write(file, "one") --> result.Ok(missing)
       sys.Write(file, "two", sync = true) --> result.Ok(missing)
       sys.Read(file) --> result.Ok("two")
-      sys.Write("$(test.Temp())/key.txt", "s3cret", private = true) --> result.Ok(missing) *)
+      sys.Write("$(test.Temp())/key.txt", "s3cret", private = true) --> result.Ok(missing)
+      sys.Write(file, "three", mode = 416) --> result.Ok(missing)
+      old = result.Unwrap(sys.Stat(file))
+      sys.Write("$(file).new", "four", mode = old.Mode, group = old.Group) --> result.Ok(missing)
+      sys.Rename("$(file).new", file) --> result.Ok(missing)
+      sys.Stat(file)?.Mode --> 416 *)
 
 (** sys.Append(path, text)
     Adds a text at the end of a file, creating it if needed: Ok(missing) or an Err. Needs the write permission.
@@ -1080,16 +1093,40 @@ use std/test
       sys.RemoveTree(d) --> result.Ok(missing)
       sys.Exists(d) --> false *)
 
+(** sys.CopyTree(from, to)
+    Copies a folder and all it holds to another path, as cp -rp does: its files with their modes and times, its folders,
+    its symbolic links made again with the same text, never followed. Ok(missing), or an Err that names the first entry
+    it couldn't copy, what went before copied. A folder at to takes what from holds, its files and links replaced, each
+    whole until its copy is: the copy of a file or a link is made under a name of its own beside it, then renamed to its
+    name; a link there is replaced, never written through. A folder takes its mode and its times last, once all it holds
+    is in, the deepest first, so a folder that can't be written is written into first. It walks by descriptors on both
+    sides, as sys.RemoveTree does: each folder opened from the one above it, never through a link, each folder of the
+    copy made the person's alone while it fills, so that a folder that another program swaps for a link while it runs,
+    in from or in to, never leads a read or a write out of them. A link at from or at to, a file at from, a pipe, a
+    device or a socket inside, and a copy into from itself or into a folder of it are each an Err. On Windows it walks
+    by paths and never enters a link or a junction, but a folder swapped in between can still lead it out. Needs the
+    read permission on from and the write permission on to, both on the paths themselves.
+
+      d = test.Temp()
+      sys.Mkdir("$(d)/photos/2026")
+      sys.Write("$(d)/photos/2026/a.jpg", "jpg")
+      sys.CopyTree("$(d)/photos", "$(d)/copy") --> result.Ok(missing)
+      sys.Read("$(d)/copy/2026/a.jpg") --> result.Ok("jpg")
+      result.IsErr(sys.CopyTree("$(d)/photos", "$(d)/photos/2026/again")) --> true *)
+
 (** sys.Stat(path)
-    A dictionary with Size (bytes), Modified (seconds since 1970), IsDir, IsFile, IsLink and Mode, in an Ok, or an Err.
-    Mode holds the permission bits, as sys.Chmod takes them: 420 is 644 in octal, rw-r--r--. A symbolic link
+    A dictionary with Size (bytes), Modified (seconds since 1970), IsDir, IsFile, IsLink, Mode, Owner and Group, in an
+    Ok, or an Err. Mode holds the permission bits, as sys.Chmod takes them: 420 is 644 in octal, rw-r--r--. Owner and
+    Group are the numbers of the user who owns the file and of its group, as id -u and id -g give them, which sys.Write
+    takes as group; on Windows, where a file has no such numbers, both are 0, as in Python and Node. A symbolic link
     counts as what it points to, and IsLink says that it is one. IsFile is true for a regular file only, not for a folder, a device, a FIFO or a socket: their Size says nothing,
     and reading one can use all the memory or hang. Needs the read permission.
 
       file = "$(test.Temp())/stat.txt"
       sys.Write(file, "hello")
       sys.Stat(file)?.Size --> 5
-      sys.Stat(test.Temp())?.IsDir --> true *)
+      sys.Stat(test.Temp())?.IsDir --> true
+      value.IsInt(sys.Stat(file)?.Group) --> true *)
 
 (** sys.TakeStops(taken)
     Takes the TERM and INT signals from the program, or gives them back, in pairs: for a program that must end by itself
@@ -1113,16 +1150,20 @@ use std/test
 
       fiber.Receive(sys.Stops(), timeout = 0).Error.Kind --> "timeout" *)
 
-(** sys.Copy(from, to)
+(** sys.Copy(from, to, new = false)
     Copies a file to another path, as cp -p does: its bytes, its mode and its times. A file at to is replaced; a folder,
     or the same file under another name, gives an Err before anything is written. A symbolic link is copied as the
-    file it points to. Ok(missing) or an Err. Needs the read permission on from and the write permission on to.
+    file it points to. With new = true, the copy is made only new, as open(2) does with O_CREAT, O_EXCL and O_NOFOLLOW:
+    a file at to, or a link, even one that leads nowhere, gives an Err and stays as it was, so no one can put a link
+    there for the copy to write through; the permission is then on to itself. Ok(missing) or an Err that names both
+    paths. Needs the read permission on from and the write permission on to.
 
       d = test.Temp()
       sys.Write("$(d)/a.txt", "text")
       sys.Copy("$(d)/a.txt", "$(d)/b.txt") --> result.Ok(missing)
       sys.Read("$(d)/b.txt") --> result.Ok("text")
-      result.IsErr(sys.Copy("$(d)/a.txt", "$(d)/a.txt")) --> true *)
+      result.IsErr(sys.Copy("$(d)/a.txt", "$(d)/a.txt")) --> true
+      result.IsErr(sys.Copy("$(d)/a.txt", "$(d)/b.txt", new = true)) --> true *)
 
 (** sys.Chmod(path, mode)
     Gives a file or a folder the permission bits of mode, from 0 to 4095, as chmod does: 493 is 755 in octal, rwxr-xr-x,

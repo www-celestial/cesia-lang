@@ -288,6 +288,12 @@ val need_flag : string -> string -> t
 
 (** [need_mode name a]: a mode of the permission bits, 0 to 4095, as sys.Chmod takes it. *)
 val need_mode : string -> string -> t
+
+(** [need_group name a]: a group of the system, as sys.Stat gives it. *)
+val need_group : string -> string -> t
+
+(** A mode for a private file that others could read, write or run. *)
+val private_mode : int -> t
 val empty_array : string -> t
 
 (** The texts of the command line. *)

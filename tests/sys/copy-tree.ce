@@ -1,0 +1,29 @@
+(* For copy-tree.cmd: sys.CopyTree into a new folder and into one that is there, a tree deeper than the folders it keeps
+   open, a pipe it refuses, a copy into itself, a link or a file where a folder is asked, and paths out of the folders
+   granted. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "$(e.Kind): $(e.Message)"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+show("a tree", () -> sys.CopyTree("src/tree", "out/tree"))
+show("into a folder there", () -> sys.CopyTree("src/tree", "out/there"))
+show("a tree 100 deep", () -> sys.CopyTree("src/deep", "out/deep"))
+show("a pipe", () -> sys.CopyTree("src/pipe", "out/pipe"))
+show("into itself", () -> sys.CopyTree("out/tree", "out/tree/a/again"))
+show("onto itself", () -> sys.CopyTree("out/tree", "out/tree"))
+show("from a link", () -> sys.CopyTree("src/tree/a/to-folder", "out/from-link"))
+show("to a link", () -> sys.CopyTree("src/tree/c", "out/link"))
+show("from a file", () -> sys.CopyTree("src/tree/run.sh", "out/file"))
+show("nothing there", () -> sys.CopyTree("src/none", "out/none"))
+show("from out of the folder", () -> sys.CopyTree("outside", "out/stolen"))
+show("to out of the folder", () -> sys.CopyTree("src/tree", "outside/tree"))

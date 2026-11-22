@@ -101,20 +101,70 @@ value cesia_close_from(value first) {
   return Val_unit;
 }
 
-/* What sys.RemoveTree walks with, by descriptors (see fs.ml): a folder opened from one open above it (-1: the current
-   one), never through a link; a name removed from one; the names that one holds. */
+/* What fs.ml walks and acts with, by descriptors: a name opened from a folder open above it (-1: the current one), with
+   the flags of [how], bits in the order of [open_flags]; with bit 9, by openat2 (Linux 5.6+), RESOLVE_BENEATH |
+   RESOLVE_NO_MAGICLINKS, which refuses in the same call, with EXDEV, a walk that leaves the folder, by .., a link or a
+   mount, and gives ENOSYS where the system has none. Then a name removed, made a folder, made a link or renamed in an
+   open folder, a link read, the names a folder holds, and the mode and times of an open file given to another. */
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <string.h>
-value cesia_open_dir(value dir, value name) {
-  int fd = openat(Int_val(dir) < 0 ? AT_FDCWD : Int_val(dir), String_val(name), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-  if (fd < 0) caml_unix_error(errno, "open", name);
-  return Val_int(fd);
+#include <sys/stat.h>
+#if defined(__linux__) && __has_include(<linux/openat2.h>)
+#include <linux/openat2.h>
+#endif
+#ifndef O_PATH
+#define O_PATH O_RDONLY
+#endif
+#ifdef __APPLE__
+#define st_atim st_atimespec
+#define st_mtim st_mtimespec
+#endif
+#define AT(dir) (Int_val(dir) < 0 ? AT_FDCWD : Int_val(dir))
+static const int open_flags[] = { O_WRONLY, O_CREAT, O_TRUNC, O_APPEND, O_EXCL, O_NOFOLLOW, O_NONBLOCK, O_DIRECTORY, O_PATH };
+value cesia_open_at(value dir, value name, value how, value mode) {
+  CAMLparam4(dir, name, how, mode);
+  int f = O_CLOEXEC, d = AT(dir), h = Int_val(how), m = Int_val(mode), fd = -1, tries = 8;
+  for (int i = 0; i < 9; i++) if (h & 1 << i) f |= open_flags[i];
+  char *path = caml_stat_strdup(String_val(name));
+  caml_enter_blocking_section();
+  if (!(h & 1 << 9)) fd = openat(d, path, f, m);
+#if defined(SYS_openat2) && defined(RESOLVE_BENEATH)
+  else {
+    struct open_how o = { .flags = f, .mode = f & O_CREAT ? m : 0, .resolve = RESOLVE_BENEATH | RESOLVE_NO_MAGICLINKS };
+    do fd = syscall(SYS_openat2, d, path, &o, sizeof o); while (fd < 0 && errno == EAGAIN && --tries);
+  }
+#else
+  else errno = ENOSYS;
+#endif
+  int e = errno;
+  caml_leave_blocking_section();
+  caml_stat_free(path);
+  if (fd < 0) caml_unix_error(e, "open", name);
+  CAMLreturn(Val_int(fd));
 }
 value cesia_unlink_at(value dir, value name, value folder) {
-  if (unlinkat(Int_val(dir) < 0 ? AT_FDCWD : Int_val(dir), String_val(name), Bool_val(folder) ? AT_REMOVEDIR : 0) < 0) caml_unix_error(errno, "remove", name);
+  if (unlinkat(AT(dir), String_val(name), Bool_val(folder) ? AT_REMOVEDIR : 0) < 0) caml_unix_error(errno, "remove", name);
   return Val_unit;
+}
+value cesia_mkdir_at(value dir, value name, value mode) {
+  if (mkdirat(AT(dir), String_val(name), Int_val(mode)) < 0) caml_unix_error(errno, "mkdir", name);
+  return Val_unit;
+}
+value cesia_symlink_at(value target, value dir, value name) {
+  if (symlinkat(String_val(target), AT(dir), String_val(name)) < 0) caml_unix_error(errno, "symlink", name);
+  return Val_unit;
+}
+value cesia_rename_at(value dir, value from, value to) {
+  if (renameat(AT(dir), String_val(from), AT(dir), String_val(to)) < 0) caml_unix_error(errno, "rename", to);
+  return Val_unit;
+}
+value cesia_readlink_at(value dir, value name) {
+  char target[4096];
+  ssize_t n = readlinkat(AT(dir), String_val(name), target, sizeof target);
+  if (n < 0 || n == sizeof target) caml_unix_error(n < 0 ? errno : ENAMETOOLONG, "readlink", name);
+  return caml_alloc_initialized_string(n, target);
 }
 value cesia_names(value dir) {
   CAMLparam1(dir);
@@ -137,13 +187,26 @@ value cesia_names(value dir) {
   if (failed) caml_unix_error(failed, "list", Nothing);
   CAMLreturn(out);
 }
+value cesia_copy_meta(value from, value to) {
+  struct stat st;
+  if (fstat(Int_val(from), &st) < 0 || fchmod(Int_val(to), st.st_mode & 07777) < 0) caml_unix_error(errno, "copy", Nothing);
+  struct timespec times[2] = { st.st_atim, st.st_mtim };
+  if (futimens(Int_val(to), times) < 0) caml_unix_error(errno, "copy", Nothing);
+  return Val_unit;
+}
 #else
 #include <caml/fail.h>
 value cesia_spawn_group(value cmd, value args, value fds) { caml_failwith("no process groups on Windows"); }
 value cesia_close_from(value first) { return Val_unit; }
-value cesia_open_dir(value dir, value name) { caml_failwith("fs.ml walks by paths on Windows"); }
-value cesia_unlink_at(value dir, value name, value folder) { caml_failwith("fs.ml walks by paths on Windows"); }
-value cesia_names(value dir) { caml_failwith("fs.ml walks by paths on Windows"); }
+#define BY_PATHS { caml_failwith("fs.ml walks by paths on Windows"); }
+value cesia_open_at(value dir, value name, value how, value mode) BY_PATHS
+value cesia_unlink_at(value dir, value name, value folder) BY_PATHS
+value cesia_mkdir_at(value dir, value name, value mode) BY_PATHS
+value cesia_symlink_at(value target, value dir, value name) BY_PATHS
+value cesia_rename_at(value dir, value from, value to) BY_PATHS
+value cesia_readlink_at(value dir, value name) BY_PATHS
+value cesia_names(value dir) BY_PATHS
+value cesia_copy_meta(value from, value to) BY_PATHS
 #endif
 
 #ifdef __linux__

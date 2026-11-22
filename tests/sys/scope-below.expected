@@ -1,0 +1,36 @@
+an absolute link back in: ok in
+
+a link into another folder granted: ok b
+
+written through it, granted to read only: permission
+an absolute link out: permission
+a .. that comes back in: ok in
+
+a .. that leads out: permission
+the absolute path, a relative grant: ok in
+
+a relative path, an absolute grant: ok missing
+a folder searched, not read: ok missing
+listed: io: Can't list a/locked: permission denied.
+the folder granted: ok ["x.txt"]
+a last /: io: Can't read a/in.txt/: not a directory.
+a link to a new file inside: ok missing
+its text: ok d
+renamed: ok missing
+a link removed itself: ok missing
+the mode of a file: ok missing
+its time: ok missing
+both: ok 384 86400.0
+exit 0
+== a holds
+a
+a/abs-in
+a/dangling
+a/in.txt
+a/locked
+a/locked/l.txt
+a/new-here.txt
+a/renamed.txt
+a/to-b
+== b and outside: b secret 
+exit 0

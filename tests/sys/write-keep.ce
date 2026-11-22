@@ -1,0 +1,46 @@
+(* For write-keep.cmd: its arguments are the owner and the group of out/doc.txt, then a group the person is not in. *)
+use std/io
+use std/sys
+use std/fiber
+use std/result
+use std/text
+
+defn show(label, f)
+  k = match fiber.Wait(fiber.Spawn(f))
+    result.Ok(result.Ok(v)) -> "ok $v"
+    result.Ok(result.Err(e)) -> "$(e.Kind): $(e.Message)"
+    result.Ok(v) -> "$v"
+    result.Err(e) -> e.Kind
+  end
+  io.Print("$label: $k")
+end
+
+owner = text.Number(sys.Args[1])
+group = text.Number(sys.Args[2])
+other = text.Number(sys.Args[3])
+st = result.Unwrap(sys.Stat("out/doc.txt"))
+show("the owner", () -> st.Owner == owner)
+show("the group", () -> st.Group == group)
+show("the save, a new file", () -> sys.Write("out/.doc.new", "new\n", sync = true, mode = st.Mode, group = st.Group))
+show("renamed over the old one", () -> sys.Rename("out/.doc.new", "out/doc.txt"))
+show("its mode kept", () -> sys.Stat("out/doc.txt")?.Mode == 416)
+show("its group kept", () -> sys.Stat("out/doc.txt")?.Group == group)
+show("the text", () -> sys.Read("out/doc.txt"))
+show("a mode on a file there", () -> sys.Write("out/doc.txt", "again\n", mode = 384))
+show("its mode", () -> sys.Stat("out/doc.txt")?.Mode)
+show("a mode past the umask", () -> sys.Write("out/wide.txt", "w", mode = 438))
+show("its mode", () -> sys.Stat("out/wide.txt")?.Mode)
+show("a group the person is not in", () -> sys.Write("out/doc.txt", "lost\n", group = other))
+show("the text stays", () -> sys.Read("out/doc.txt"))
+show("private, for its owner alone", () -> sys.Write("out/key", "k", private = true, mode = 256))
+show("its mode", () -> sys.Stat("out/key")?.Mode)
+show("private, for others too", () -> sys.Write("out/key2", "k", private = true, mode = 420))
+show("a mode past 4095", () -> sys.Write("out/x", "x", mode = 4096))
+show("no group", () -> sys.Write("out/x", "x", group = -1))
+show("a new copy", () -> sys.Copy("out/doc.txt", "out/fresh.txt", new = true))
+show("its mode", () -> sys.Stat("out/fresh.txt")?.Mode)
+show("a new copy onto a file", () -> sys.Copy("out/doc.txt", "out/fresh.txt", new = true))
+show("a new copy onto a link", () -> sys.Copy("out/doc.txt", "out/planted", new = true))
+show("a new copy onto a link to nothing", () -> sys.Copy("out/doc.txt", "out/dangling", new = true))
+show("a copy onto a file", () -> sys.Copy("out/wide.txt", "out/fresh.txt"))
+show("its text", () -> sys.Read("out/fresh.txt"))

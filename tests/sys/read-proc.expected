@@ -1,0 +1,6 @@
+status starts with its name: true
+smaps past a page: true, whole: true
+each mapping with its size: true
+an empty file: Ok("")
+exit 0
+exit 0

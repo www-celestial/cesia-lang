@@ -1,0 +1,37 @@
+the owner: true
+the group: true
+the save, a new file: ok missing
+renamed over the old one: ok missing
+its mode kept: true
+its group kept: true
+the text: ok new
+
+a mode on a file there: ok missing
+its mode: 384
+a mode past the umask: ok missing
+its mode: 438
+a group the person is not in: io: Can't write out/doc.txt: operation not permitted.
+the text stays: ok again
+
+private, for its owner alone: ok missing
+its mode: 256
+private, for others too: type
+a mode past 4095: type
+no group: type
+a new copy: ok missing
+its mode: 384
+a new copy onto a file: io: Can't copy out/doc.txt to out/fresh.txt: file exists.
+a new copy onto a link: io: Can't copy out/doc.txt to out/planted: file exists.
+a new copy onto a link to nothing: io: Can't copy out/doc.txt to out/dangling: file exists.
+a copy onto a file: ok missing
+its text: ok w
+exit 0
+== modes
+lrwxrwxrwx ../nothing.txt
+-rw------- doc.txt
+-rw-rw-rw- fresh.txt
+-r-------- key
+lrwxrwxrwx ../elsewhere.txt
+-rw-rw-rw- wide.txt
+== out of the folder: elsewhere, 0 new file
+exit 0

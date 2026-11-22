@@ -1,0 +1,20 @@
+(* For copy-race.cmd: copies shared/tree to shared/out with sys.CopyTree, again and again for two seconds, once the
+   other process has started to swap shared/tree/sub or shared/out/sub for a link to ../../victim or ../../victim2; each
+   copy is then kept apart. What fails is left: only what the copies and victim2 hold at the end tells. *)
+use std/fiber
+use std/sys
+
+defn try(f)
+  fiber.Wait(fiber.Spawn(f))
+end
+
+while not sys.Exists("swapping")
+  sys.Sleep(0.001)
+end
+deadline = sys.Now() + 2.0
+i = 0
+while sys.Now() < deadline
+  i += 1
+  try(() -> sys.CopyTree("shared/tree", "shared/out"))
+  try(() -> sys.Rename("shared/out", "keep/out$i"))
+end
