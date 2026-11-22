@@ -10,7 +10,7 @@ nothing there: io: Can't remove out/nothing: no such file or directory.
 out of the folder: permission
 == outside holds
 outside
+outside/k.txt
 outside/keep
 outside/keep/k.txt
-outside/k.txt
 exit 0
