@@ -1028,9 +1028,9 @@ use std/test
     own the file and be in the group, else an Err, and a file that was there keeps its text. Both are set on the file
     once it is open, before its old text is cut and the new one is in, so that no one gets the text under other rights,
     and no link put at its path since can take them: a save that writes a new file, then renames it over the old one,
-    gives the new file the Mode and the Group of the old one so. With private = true, mode can only give rights to the
-    owner, as 256, 400 in octal, read only. On Windows, mode counts as for sys.Chmod, given once the text is in, and
-    group changes nothing.
+    gives the new file the Mode and the Group of the old one so. The bits setuid and setgid, which a write takes away,
+    are given again once the text is in. With private = true, mode can only give rights to the owner, as 256, 400 in
+    octal, read only. On Windows, mode counts as for sys.Chmod, given once the text is in, and group changes nothing.
 
       file = "$(test.Temp())/write.txt"
       sys.Write(file, "one") --> result.Ok(missing)

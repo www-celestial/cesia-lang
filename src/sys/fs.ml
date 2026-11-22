@@ -702,8 +702,8 @@ let rec make_dir ?(perm = 0o755) path =
   try Unix.mkdir path perm
   with Unix.Unix_error (Unix.EEXIST, _, _) when Sys.is_directory path -> ()
 
-(* An optional argument [k], absent or missing: None. *)
-let opt_arg (a : t array) k f = match if k < Array.length a then a.(k) else Undef with Undef | Missing -> None | v -> Some (f v)
+(* Is the optional argument [k] given, neither absent nor missing? *)
+let given (a : t array) k = k < Array.length a && match a.(k) with Undef | Missing -> false | _ -> true
 
 (* A group, as sys.Stat gives it: a number the system takes for one, not -1, which means none to chown. *)
 let group_arg ctx name v =
@@ -722,7 +722,8 @@ let natives =
     on_path ~params:[| "path"; "text"; "sync"; "private"; "mode"; "group" |] ~least:2 ~below:true "Write" Write "write" 6
       (fun ctx path a ->
          let sync = Native.flag_arg ctx "sync" a 2 and text = Native.text_arg ctx "Write" a.(1) in
-         let mode = opt_arg a 4 (mode_arg ctx "Write") and group = opt_arg a 5 (group_arg ctx "Write") in
+         let mode = if given a 4 then Some (mode_arg ctx "Write" a.(4)) else None in
+         let group = if given a 5 then Some (group_arg ctx "Write" a.(5)) else None in
          if Native.flag_arg ctx "private" a 3 then begin
            Option.iter (fun m -> if m land 0o077 <> 0 then Runtime.fail ctx Type (Messages.private_mode m)) mode;
            through ~name:true ctx Write path (fun p -> write_private ~sync ?mode ?group p text)
