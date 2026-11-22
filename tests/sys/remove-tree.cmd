@@ -18,4 +18,4 @@ printf 'l\n' > out/locked/inner/l.txt
 chmod a-w out/locked/inner
 cesia run $no_spec --allow read=out,write=out remove-tree.ce "$(pwd -P)" 2> /dev/null
 echo "== outside holds"
-find outside | sort
+find outside | LC_ALL=C sort

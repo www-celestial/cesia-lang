@@ -1,6 +1,9 @@
 (* Name resolution blocks in libc: a slow answer must stop only the fiber that asked. *)
 open Cesia
 
+(* How many lines "tick" the program printed, which a slow resolution waits for on its own domain. *)
+let ticks = Atomic.make 0
+
 (* A program, with the uses of the packages that these name at its end, so that its lines stay as written. *)
 let run ?(grants = { Types.all = true; perms = [] }) source =
   let path = Filename.temp_file "net_test" ".ce" in
@@ -14,10 +17,14 @@ let run ?(grants = { Types.all = true; perms = [] }) source =
   output_string file (source ^ String.concat "" (List.map (fun p -> if has ("use std/" ^ p) then "" else "\nuse std/" ^ p) packages) ^ "\n");
   close_out file;
   let out = Buffer.create 64 and err = Buffer.create 64 in
+  let print text =
+    Buffer.add_string out text;
+    if String.length text >= 4 && String.sub text 0 4 = "tick" then Atomic.incr ticks
+  in
   let options =
     { Runtime.default_options with
       o_grants = grants;
-      o_sink = Buffer.add_string out;
+      o_sink = print;
       o_err = Buffer.add_string err }
   in
   let w = Runtime.create_world options in
@@ -49,7 +56,16 @@ let () =
     Unix.sleepf 0.03;
     answer host
   in
-  Cesia_sys.Net.resolver := slow (fun _ -> Unix.inet_addr_loopback);
+  (* The answer comes only once the other fiber printed twice, so the order holds on a slow machine; were the fibers stopped, it would come after 10 s, last. *)
+  let after_ticks answer host =
+    let deadline = Unix.gettimeofday () +. 10. in
+    while Atomic.get ticks < 2 && Unix.gettimeofday () < deadline do
+      Unix.sleepf 0.001
+    done;
+    answer host
+  in
+  Atomic.set ticks 0;
+  Cesia_sys.Net.resolver := after_ticks (fun _ -> Unix.inet_addr_loopback);
   check "a fiber runs during a slow resolution" "tick\ntick\ndone\n"
     (run
        {|use std/sys
