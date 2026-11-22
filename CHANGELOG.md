@@ -100,7 +100,7 @@
   check of each act where the system holds its file, which made `sys.Read` of a small file 1.3 times slower and
   `sys.Write` 1.5 times, is gone, and so is, for a path written below its folder, the walk of each folder of where it
   leads to check it first. With `read=data,write=data`, a small file reads in 5.0 µs instead of 16.5, 12.7 before that
-  second check, and is written in 19.8 µs instead of 29.4 and 22.6 (median of 21 runs, the bench of the job). An older
+  second check, and is written in 19.8 µs instead of 29.4 and 22.6 (medians of 21 runs, alternated). An older
   Linux, or a filter of system calls that refuses `openat2`, keeps the second check.
 - `sys.Read` of a small file, or of one the system calls empty as those of `/proc`, no longer takes two buffers of 64
   KB: it reads a file into one of its own size and a byte, and an empty-said one into a page. A read of 12 bytes takes
