@@ -5,12 +5,12 @@
 dir=$(mktemp -d)
 trap 'chmod -R u+rwx "$dir"; rm -rf "$dir"' EXIT
 here=$(pwd)
-run() {  # grant, paths...
-  local grant=$1 d top
-  shift
-  d=$(mktemp -d "$dir/run.XXXXXX")
-  cd "$d" || exit 1
-  top=$(pwd -P)
+real=$(cd "$dir" && pwd -P)
+# The files, folders and links of a run, made once: each run starts from a copy of its own, in a folder as private as
+# mktemp makes one.
+first=$(mktemp -d "$dir/first.XXXXXX")
+(
+  cd "$first" || exit 1
   printf 'x\n' > f.txt
   mkdir -p data/sub real/sub outside "~/h"
   printf 'x\n' > data/in.txt
@@ -22,12 +22,23 @@ run() {  # grant, paths...
   ln -s f.txt flink
   ln -s data dlink
   ln -s real alias
+)
+runs=0
+nl=$'\n'
+run() {  # grant, paths...
+  local grant=$1 top after
+  shift
+  runs=$((runs + 1))
+  cp -R "$first" "$dir/run$runs"
+  cd "$dir/run$runs" || exit 1
+  top=$real/run$runs
+  echo "== --allow $grant"
   grant=${grant//TOP/$top}
   local args=()
   for p in "$@"; do args+=("${p//TOP/$top}"); done
-  echo "== --allow $grant" | sed "s|$top|TOP|g"
   cesia run $no_spec --allow "$grant" "$here/grant-shapes.ce" "${args[@]}" 2> /dev/null | sed "s|$top|TOP|g"
-  echo "-- after: $(find . -name '*.copy' | LC_ALL=C sort | tr '\n' ' ')$(ls -ld f.txt data/in.txt 2> /dev/null | cut -c 1-10 | tr '\n' ' ')"
+  after=$(find . -name '*.copy' | LC_ALL=C sort; ls -ld f.txt data/in.txt 2> /dev/null | cut -c 1-10)
+  echo "-- after: ${after//$nl/ }${after:+ }"
   cd "$here" || exit 1
 }
 run "read=f.txt" f.txt ./f.txt TOP/f.txt data/../f.txt flink data/in.txt
