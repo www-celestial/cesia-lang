@@ -1105,14 +1105,16 @@ use std/test
     its symbolic links made again with the same text, never followed. Ok(missing), or an Err that names the first entry
     it couldn't copy, what went before copied. A folder at to takes what from holds, its files and links replaced, each
     whole until its copy is: the copy of a file or a link is made under a name of its own beside it, then renamed to its
-    name; a link there is replaced, never written through. A folder takes its mode and its times last, once all it holds
-    is in, the deepest first, so a folder that can't be written is written into first. It walks by descriptors on both
-    sides, as sys.RemoveTree does: each folder opened from the one above it, never through a link, each folder of the
-    copy made the person's alone while it fills, so that a folder that another program swaps for a link while it runs,
-    in from or in to, never leads a read or a write out of them. A link at from or at to, a file at from, a pipe, a
-    device or a socket inside, and a copy into from itself or into a folder of it are each an Err. On Windows it walks
-    by paths and never enters a link or a junction, but a folder swapped in between can still lead it out. Needs the
-    read permission on from and the write permission on to, both on the paths themselves.
+    name; a link there is replaced, never written through. In a folder that it makes, the person's alone while it fills,
+    each is made at its own name at once, only new. On Linux the bytes of each file are copied in the kernel, as
+    sys.Copy copies them. A folder takes its mode and its times last, once all it holds is in, the deepest first, so a
+    folder that can't be written is written into first. It walks by descriptors on both sides, as sys.RemoveTree does:
+    each folder opened from the one above it, never through a link, each folder of the copy made the person's alone
+    while it fills, so that a folder that another program swaps for a link while it runs, in from or in to, never leads
+    a read or a write out of them. A link at from or at to, a file at from, a pipe, a device or a socket inside, and a
+    copy into from itself or into a folder of it are each an Err. On Windows it walks by paths and never enters a link
+    or a junction, but a folder swapped in between can still lead it out. Needs the read permission on from and the
+    write permission on to, both on the paths themselves.
 
       d = test.Temp()
       sys.Mkdir("$(d)/photos/2026")
@@ -1158,13 +1160,16 @@ use std/test
       fiber.Receive(sys.Stops(), timeout = 0).Error.Kind --> "timeout" *)
 
 (** sys.Copy(from, to, new = false)
-    Copies a file to another path, as cp -p does: its bytes, its mode and its times. A file at to is replaced; a folder,
-    or the same file under another name, gives an Err before anything is written, and so do a pipe and a socket, at
-    once: the source is opened without waiting, then looked at, so a pipe, even one put at from by another program,
-    never holds the program. A device is copied, as dd does. A symbolic link is copied as the file it points to. With new = true, the copy is made only new, as open(2) does with O_CREAT, O_EXCL and O_NOFOLLOW:
-    a file at to, or a link, even one that leads nowhere, gives an Err and stays as it was, so no one can put a link
-    there for the copy to write through; the permission is then on to itself. Ok(missing) or an Err. Needs the read
-    permission on from and the write permission on to.
+    Copies a file to another path, as cp -p does: its bytes, its mode and its times. On Linux the bytes are copied in
+    the kernel, as cp does, by copy_file_range: a clone on btrfs or XFS, which shares the file's blocks on the disk
+    until one of the two changes; a file the kernel can't copy so, as one of /proc, is read and written. A file at to is
+    replaced; a folder, or the same file under another name, gives an Err before anything is written, and so do a pipe
+    and a socket, at once: the source is opened without waiting, then looked at, so a pipe, even one put at from by
+    another program, never holds the program. A device is copied, as dd does. A symbolic link is copied as the file it
+    points to. With new = true, the copy is made only new, as open(2) does with O_CREAT, O_EXCL and O_NOFOLLOW: a file
+    at to, or a link, even one that leads nowhere, gives an Err and stays as it was, so no one can put a link there for
+    the copy to write through; the permission is then on to itself. Ok(missing) or an Err. Needs the read permission on
+    from and the write permission on to.
 
       d = test.Temp()
       sys.Write("$(d)/a.txt", "text")

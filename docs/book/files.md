@@ -137,7 +137,8 @@ sys.Exists("old") -->
 
 [sys.CopyTree] copies a folder and all it holds, as `cp -rp` does: each file with its mode and its times, each symbolic
 link made again, never followed. A folder that is there takes in what it copies, each of its files replaced whole, under
-a name of its own until its copy is complete. It walks both folders by the folders it holds open, as [sys.RemoveTree]
+a name of its own until its copy is complete; in a folder that it makes, which no one else can enter while it fills,
+each file is made at its own name at once. It walks both folders by the folders it holds open, as [sys.RemoveTree]
 does, so a folder swapped for a link while it runs, in either, leads no read and no write out of them. [sys.Copy]
 copies one file; with `new = true` it makes only a new one, and something already at the path, a link too, is an `Err`,
 so that no one can put a link there for it to write through:
@@ -151,6 +152,12 @@ sys.Copy("photos/2026/beach.jpg", "backup/2026/beach.jpg", new = true) then resu
 sys.RemoveTree("backup") -->
 sys.RemoveTree("photos") -->
 ```
+
+On Linux, both copy the bytes of a file inside the kernel, as `cp` does, with the system call `copy_file_range`: they
+never pass through the program, and on btrfs or XFS the copy is a *clone*, which shares the blocks of the file on the
+disk until one of the two changes, so a file of 100 MB copies in under 0.1 ms. What the kernel can't copy so, a file of
+`/proc`, which says it is empty, or a copy to another file system, is read and written piece by piece, as on macOS and
+Windows.
 
 ### Yours alone
 

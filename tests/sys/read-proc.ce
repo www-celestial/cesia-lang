@@ -1,4 +1,5 @@
-(* sys.Read of files that the system says are empty, as those of /proc: read whole, past a page; and of an empty file. *)
+(* sys.Read of files that the system says are empty, as those of /proc: read whole, past a page; and of an empty file.
+   sys.Copy of them, and of a file of /sys, whose size says a page for a few bytes: copied whole, the same. *)
 use std/io
 use std/sys
 use std/result
@@ -12,3 +13,14 @@ io.Print("smaps past a page: $(text.ByteLength(maps) > 4096), whole: $(text.Ends
 io.Print("each mapping with its size: $(value.Len(text.Split("\nSize:", maps)) > 2)")
 sys.Write(sys.Args[1], "")
 io.Print("an empty file: $(sys.Read(sys.Args[1]))")
+copy = sys.Args[2]
+result.Unwrap(sys.Copy("/proc/self/smaps", copy))
+copied = result.Unwrap(sys.Read(copy))
+io.Print("a copy of smaps past a page: $(text.ByteLength(copied) > 4096), whole: $(text.EndsWith("\n", copied))")
+online = "/sys/devices/system/cpu/online"
+if sys.Exists(online)
+  result.Unwrap(sys.Copy(online, "$copy-sys"))
+  io.Print("a copy of a file of /sys: the same $(sys.Read("$copy-sys") == sys.Read(online))")
+else
+  io.Print("a copy of a file of /sys: the same true")
+end

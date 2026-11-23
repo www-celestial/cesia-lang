@@ -75,7 +75,8 @@ let proc =
 (* What OCaml's Unix lacks, on Linux and macOS (stubs.c): the open of a name from a folder open above it, -1 for the
    current one, with the flags below in [how]; with [o_beneath], by openat2, which refuses in the same call, with EXDEV,
    a walk that leaves the folder. Then a name of an open folder removed, made a folder, made a link or renamed, a link
-   read, the names a folder holds, and the mode and the times of an open file given to another, as cp -p does. *)
+   read, the names a folder holds, the mode and the times of an open file given to another, as cp -p does, and its
+   bytes copied in the kernel. *)
 external open_at : int -> string -> int -> int -> int = "cesia_open_at"
 external unlink_at : int -> string -> bool -> unit = "cesia_unlink_at"
 external mkdir_at : int -> string -> int -> unit = "cesia_mkdir_at"
@@ -84,6 +85,7 @@ external rename_at : int -> string -> string -> unit = "cesia_rename_at"
 external readlink_at : int -> string -> string = "cesia_readlink_at"
 external names_at : int -> string list = "cesia_names"
 external copy_meta : int -> int -> unit = "cesia_copy_meta"
+external copy_data : int -> int -> int -> bool = "cesia_copy_data"
 
 let o_write = 1 and o_create = 2 and o_trunc = 4 and o_append = 8 and o_excl = 16 and o_nofollow = 32
 let o_nonblock = 64 and o_dir = 128 and o_path = 256 and o_beneath = 512
@@ -512,18 +514,23 @@ let remove path =
   (if (Unix.lstat path).st_kind = Unix.S_DIR then Unix.rmdir else Unix.unlink) path;
   Missing
 
-(* The bytes of an open file into another, chunk by chunk. *)
-let copy_bytes src dst =
-  let b = Bytes.create 65536 in
-  let rec go () =
-    match Unix.read src b 0 65536 with
-    | 0 -> ()
-    | n ->
-      let rec put at = if at < n then put (at + Unix.write dst b at (n - at)) in
-      put 0;
-      go ()
-  in
-  go ()
+(* The bytes of an open file into another: on Linux in the kernel, as cp does, to the end, unless it stops before the
+   [size] that fstat gave, which is 0 for the files of /proc; then, or elsewhere, chunk by chunk from where it stopped,
+   on to the end, past that size for a file that grows meanwhile. A small file takes a buffer of its size. *)
+let copy_bytes size src dst =
+  if Sys.win32 || not (copy_data (fd_number src) (fd_number dst) size) then begin
+    let k = if size > 0 && size < 65536 then size + 1 else 65536 in
+    let b = Bytes.create k in
+    let rec go () =
+      match Unix.read src b 0 k with
+      | 0 -> ()
+      | n ->
+        let rec put at = if at < n then put (at + Unix.write dst b at (n - at)) in
+        put 0;
+        go ()
+    in
+    go ()
+  end
 
 (* A file's mode and times given to its copy, as cp -p does: by descriptors, to the nanosecond; on Windows, the times by
    the path, where two times of 0.0 are now, so that the start of 1970 is a millionth of a second after it. *)
@@ -550,7 +557,7 @@ let copy_file ?fresh ctx from dest =
           let d = Unix.fstat dst in
           if d.st_dev = st.st_dev && d.st_ino = st.st_ino then raise (Unix.Unix_error (Unix.EINVAL, "copy", dest));
           cut dst;
-          copy_bytes src dst;
+          copy_bytes st.st_size src dst;
           copy_times src dst dest));
   Missing
 
@@ -559,26 +566,28 @@ let temp_name () =
   let r = Lazy.force rand in
   Printf.sprintf ".cesia-%08x%08x.tmp" (Random.State.bits r) (Random.State.bits r)
 
-(* [make] makes an entry at a name of its own in the open folder [d], which then takes the place of [name]: what was
+(* [make] makes an entry, only new, in the open folder [d], so that it is [name]. In a folder that the copy made, [made],
+   which no one else can enter while it fills, at [name] itself, once: nothing is there to replace, unless two names are
+   one there, as on a disk that ignores case. Else at a name of its own, which then takes the place of [name]: what was
    there stays whole until the new one is; a link there is replaced, never written through. A name taken is drawn
-   again. *)
-let placed d name make =
+   again. [make] removes what it made if it fails after. *)
+let placed ~made d name make =
   let rec go tries =
     let tmp = temp_name () in
     match make tmp with
     | exception Unix.Unix_error (Unix.EEXIST, _, _) when tries > 0 -> go (tries - 1)
-    | exception e -> (try unlink_at d tmp false with Unix.Unix_error _ -> ()); raise e
     | () -> (try rename_at d tmp name with e -> (try unlink_at d tmp false with Unix.Unix_error _ -> ()); raise e)
   in
-  go 8
+  if made then (try make name with Unix.Unix_error (Unix.EEXIST, _, _) -> go 8) else go 8
 
 (* A folder of a copy: its descriptors in the source and in the copy, -1 once closed; what they are, to know them again;
-   its name in the one above; the names it holds that are left. *)
+   whether the copy made it; its name in the one above; the names it holds that are left. *)
 type pair = {
   mutable src : int;
   src_id : int * int;
   mutable dst : int;
   dst_id : int * int;
+  made : bool;
   entry : string;
   mutable todo : string list;
 }
@@ -601,13 +610,13 @@ let within fd id =
    source opened from the one above it, its names read once, each opened so too (O_NOFOLLOW | O_NONBLOCK): a folder
    entered, a file copied, a link made again with the same text; a pipe, a device or a socket is refused, as no file to
    copy. In the copy, each folder is made, the person's alone while it fills, or taken as it is there, then opened, never
-   through a link; each file and link is made at a name of its own, then renamed to its name, which replaces what was
-   there. A folder takes its mode and its times once all it holds is in, the deepest first. The copy itself is never
-   entered as a folder of the source, as when another program moves it there meanwhile. It walks with a list, and keeps
-   the last 32 folders of each side open: one above them is opened again from below by .., and must be the folder it
-   left. The first failure raises Unix_error, with the paths of the entry that failed, from [shown] and to [shown_to];
-   what went before stays. *)
-let copy_walk sfd dfd shown shown_to =
+   through a link; each file and link is made only new, at its name in a folder the copy made, else at a name of its
+   own, then renamed to its name, which replaces what was there. A folder takes its mode and its times once all it holds
+   is in, the deepest first. The copy itself is never entered as a folder of the source, as when another program moves
+   it there meanwhile. It walks with a list, and keeps the last 32 folders of each side open: one above them is opened
+   again from below by .., and must be the folder it left. The first failure raises Unix_error, with the paths of the
+   entry that failed, from [shown] and to [shown_to]; what went before stays. [made]: the copy made [dfd]. *)
+let copy_walk sfd dfd made shown shown_to =
   let stack = ref [] in
   let close l =
     if l.src >= 0 then (Unix.close (fd_of l.src); l.src <- -1);
@@ -620,7 +629,7 @@ let copy_walk sfd dfd shown shown_to =
       List.iter close !stack;
       raise (Unix.Unix_error (e, String.concat "/" (shown :: below), String.concat "/" (shown_to :: below)))
   in
-  let top = { src = sfd; src_id = ident sfd; dst = dfd; dst_id = ident dfd; entry = ""; todo = [] } in
+  let top = { src = sfd; src_id = ident sfd; dst = dfd; dst_id = ident dfd; made; entry = ""; todo = [] } in
   stack := [ top ];
   step [] (fun () ->
       if top.dst_id = top.src_id then raise (Unix.Unix_error (Unix.EINVAL, "", ""));
@@ -630,7 +639,7 @@ let copy_walk sfd dfd shown shown_to =
     match open_at l.src name (o_nofollow lor o_nonblock) 0 with
     | exception Unix.Unix_error ((Unix.ELOOP | Unix.EMLINK), _, _) ->
       let target = readlink_at l.src name in
-      placed l.dst name (fun tmp -> symlink_at target l.dst tmp);
+      placed ~made:l.made l.dst name (fun at -> symlink_at target l.dst at);
       None
     | fd ->
       let d = ref (-1) in
@@ -639,13 +648,14 @@ let copy_walk sfd dfd shown shown_to =
         match st.st_kind with
         | Unix.S_DIR ->
           if (st.st_dev, st.st_ino) = top.dst_id then raise (Unix.Unix_error (Unix.EINVAL, "", ""));
-          (try mkdir_at l.dst name 0o700 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
+          let made = try mkdir_at l.dst name 0o700; true with Unix.Unix_error (Unix.EEXIST, _, _) -> false in
           d := open_dir l.dst name;
-          Some { src = fd; src_id = st.st_dev, st.st_ino; dst = !d; dst_id = ident !d; entry = name; todo = names_at fd }
+          Some { src = fd; src_id = st.st_dev, st.st_ino; dst = !d; dst_id = ident !d; made; entry = name; todo = names_at fd }
         | Unix.S_REG ->
-          placed l.dst name (fun tmp ->
-              let out = fd_of (open_at l.dst tmp (o_write lor o_create lor o_excl lor o_nofollow) 0o600) in
-              using out (fun () -> copy_bytes (fd_of fd) out; copy_meta fd (fd_number out)));
+          placed ~made:l.made l.dst name (fun at ->
+              let out = fd_of (open_at l.dst at (o_write lor o_create lor o_excl lor o_nofollow) 0o600) in
+              try using out (fun () -> copy_bytes st.st_size (fd_of fd) out; copy_meta fd (fd_number out))
+              with e -> (try unlink_at l.dst at false with Unix.Unix_error _ -> ()); raise e);
           Unix.close (fd_of fd);
           None
         | _ -> raise (Unix.Unix_error (Unix.EOPNOTSUPP, "", ""))
@@ -692,7 +702,7 @@ let rec copy_paths from dest =
     Unix.chmod dest st.st_perm
   | Unix.S_REG ->
     place (fun tmp ->
-        with_fd from [ O_RDONLY ] (fun src -> with_fd ~perm:0o600 tmp [ O_WRONLY; O_CREAT; O_EXCL ] (copy_bytes src)))
+        with_fd from [ O_RDONLY ] (fun src -> with_fd ~perm:0o600 tmp [ O_WRONLY; O_CREAT; O_EXCL ] (copy_bytes 0 src)))
   | Unix.S_LNK -> place (Unix.symlink (Unix.readlink from))
   | _ -> raise (Unix.Unix_error (Unix.EOPNOTSUPP, "copy", from))
 
@@ -716,11 +726,11 @@ let copy_tree ctx from dest =
             let up = fd_of (open_at (-1) (Filename.dirname p) (o_path lor o_dir) 0) and base = Filename.basename p in
             using up (fun () ->
                 if within (fd_number up) (ident sfd) then raise (Unix.Unix_error (Unix.EINVAL, "", ""));
-                (try mkdir_at (fd_number up) base 0o700 with Unix.Unix_error (Unix.EEXIST, _, _) -> ());
-                open_dir (fd_number up) base))
+                let made = try mkdir_at (fd_number up) base 0o700; true with Unix.Unix_error (Unix.EEXIST, _, _) -> false in
+                open_dir (fd_number up) base, made))
       with e -> Unix.close (fd_of sfd); (match e with Unix.Unix_error (e, _, _) -> fail e | e -> raise e)
     in
-    copy_walk sfd dfd from dest
+    copy_walk sfd (fst dfd) (snd dfd) from dest
 
 (* A mode of the permission bits, from 0 to 0o7777: setuid, setgid and sticky above the nine of read, write and run. *)
 let mode_arg ctx name v =
