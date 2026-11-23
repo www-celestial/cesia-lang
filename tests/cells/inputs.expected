@@ -1,0 +1,49 @@
+{Name: "year", Kind: "choice", Line: 8, Column: 21, End: 24, Value: 2026, Options: [2025, 2026, 2027]}
+{Name: "zone", Kind: "choice", Line: 9, Column: 21, End: 27, Value: "GMT-5", Options: ["GMT-6", "GMT-5", "GMT-4"]}
+{Name: "day", Kind: "date", Line: 10, Column: 18, End: 29, Value: Date(Year = 2026, Month = 11, Day = 23, Hour = 0, Minute = 0, Second = 0, Offset = 0)}
+{Name: "place", Kind: "field", Line: 11, Column: 21, End: 36, Value: "40.76, -73.984"}
+{Name: "high", Kind: "field", Line: 12, Column: 20, End: 21, Value: 50}
+{Name: "rho", Kind: "slider", Line: 13, Column: 20, End: 23, Value: 28.0, Min: 0.0, Max: 50.0, Step: 0.5}
+{Name: "bold", Kind: "check", Line: 14, Column: 20, End: 24, Value: false, Label: "Bold line"}
+{Name: "note", Kind: "field", Line: 15, Column: 20, End: 45, Value: "a \"<script>\" & $(b)
+"}
+sliders: [{Name: "rho", Line: 13, Column: 20, End: 23, Value: 28.0, Min: 0.0, Max: 50.0, Step: 0.5}]
+before its cell: Err({Kind: "cells", Message: "\"zone\" holds no text in the session yet: its cell runs first."})
+Ok: output [], value missing, error missing
+Ok: output [], value missing, error missing
+Ok: output [], value missing, error missing
+Ok: output ["2026 GMT-5 2026-11-23 40.76, -73.984 50 28.0 false", "40.76, -73.984"], value {Kind: "text", Text: "GMT-5 + 2 h"}, error missing
+Ok: text "GMT-4", value GMT-4, to run [3, 4]
+Ok: output [], value missing, error missing
+Ok: output ["2026 GMT-4 2026-11-23 40.76, -73.984 50 28.0 false", "40.76, -73.984"], value {Kind: "text", Text: "GMT-4 + 2 h"}, error missing
+Ok: text 2027, value 2027, to run [4]
+Ok: output ["2027 GMT-4 2026-11-23 40.76, -73.984 50 28.0 false", "40.76, -73.984"], value {Kind: "text", Text: "GMT-4 + 2 h"}, error missing
+Ok: text true, value true, to run [4]
+Ok: output ["2027 GMT-4 2026-11-23 40.76, -73.984 50 28.0 true", "40.76, -73.984"], value {Kind: "text", Text: "GMT-4 + 2 h"}, error missing
+Ok: text 62.5, value 62.5, to run [4]
+Ok: output ["2027 GMT-4 2026-11-23 40.76, -73.984 62.5 28.0 true", "40.76, -73.984"], value {Kind: "text", Text: "GMT-4 + 2 h"}, error missing
+Ok: text "2024-02-29", value Date(Year = 2024, Month = 2, Day = 29, Hour = 0, Minute = 0, Second = 0, Offset = 0), to run [4]
+Ok: output ["2027 GMT-4 2024-02-29 40.76, -73.984 62.5 28.0 true", "40.76, -73.984"], value {Kind: "text", Text: "GMT-4 + 2 h"}, error missing
+Ok: text 31.5, value 31.5, to run [4]
+Ok: output ["2027 GMT-4 2024-02-29 40.76, -73.984 62.5 31.5 true", "40.76, -73.984"], value {Kind: "text", Text: "GMT-4 + 2 h"}, error missing
+Ok: text "say \"hi\" \\ $$(io.Print(\"ran\")) $$zone\n<script>alert(1)</script>", value say "hi" \ $(io.Print("ran")) $zone
+<script>alert(1)</script>, to run [4]
+Ok: output ["2027 GMT-4 2024-02-29 say \"hi\" \\ $(io.Print(\"ran\")) $zone", "<script>alert(1)</script> 62.5 31.5 true", "say \"hi\" \\ $(io.Print(\"ran\")) $zone", "<script>alert(1)</script>"], value {Kind: "text", Text: "GMT-4 + 2 h"}, error missing
+Err: cells.Choice needs its value among its options: "GMT+9" is not.
+Err: cells.Choice needs its value among its options: "2026" is not.
+Err: cells.Check takes true or false as its value, not 1.
+Err: The field place takes a text, not 3.
+Err: The field high takes a finite number, not "50".
+Err: The field high takes a finite number, not inf.
+Err: The date day takes a date of std/date, a day of the years 0 to 9999, not "2026-11-23".
+Err: The date day takes a date of std/date, a day of the years 0 to 9999, not "2026-02-30".
+Err: "nope" is no input of the cells.
+<p class="input"><label>year <select disabled><option selected>2026</option></select></label></p>
+<p class="input"><label>zone <select disabled><option selected>GMT-5</option></select></label></p>
+<p class="input"><label>day <input type="date" value="2026-11-23" disabled></label></p>
+<p class="input"><label>place <input type="text" value="40.76, -73.984" disabled></label></p>
+<p class="input"><label>high <input type="text" value="50" disabled></label></p>
+<p class="slider"><label>rho <input type="range" min="0.0" max="50.0" step="0.5" value="28.0" disabled></label> <span class="value">28.0</span></p>
+<p class="input"><label><input type="checkbox" disabled> Bold line</label></p>
+<p class="input"><label>note <input type="text" value="a &quot;&lt;script&gt;&quot; &amp; $(b)&#10;" disabled></label></p>
+exit 0

@@ -1,0 +1,25 @@
+{"Do":"run","Code":"(* The file of the inputs of inputs.ce and set-inputs.cmd: a cell of inputs of every kind, as a form, one whose text the\n   page escapes, a function that reads one, and a cell that shows them all. *)\nuse std/cells\nuse std/date\nuse std/io\n","Line":1,"Path":"form.ce"}
+{"Do":"set","Name":"zone","Kind":"choice","Text":"\"GMT-4\""}
+{"Do":"run","Code":"(* %% Place and day *)\nyear = cells.Choice(2026, [2025, 2026, 2027])\nzone = cells.Choice(\"GMT-5\", [\"GMT-6\", \"GMT-5\", \"GMT-4\"])\nday = cells.Date(\"2026-11-23\")\nplace = cells.Field(\"40.76, -73.984\")\nhigh = cells.Field(50)\nrho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)\nbold = cells.Check(false, label = \"Bold line\")\nnote = cells.Field(\"a \\\"<script>\\\" & $$(b)\\n\")\n","Line":7,"Path":"form.ce"}
+{"Do":"run","Code":"(* %% Zone *)\ndefn shifted(hours)\n  \"$zone + $hours h\"\nend\n","Line":17,"Path":"form.ce"}
+{"Do":"set","Name":"zone","Kind":"choice","Text":"\"GMT-4\""}
+{"Do":"set","Name":"zone","Kind":"field","Text":"\"$(sys.Exit(3))\""}
+{"Do":"set","Name":"zone","Kind":"field","Text":"\"$zone\""}
+{"Do":"set","Name":"zone","Kind":"field","Text":"GMT-4"}
+{"Do":"set","Name":"zone","Kind":"field","Text":"\"a\" + \"b\""}
+{"Do":"set","Name":"zone","Kind":"choice","Text":"1"}
+{"Do":"set","Name":"high","Kind":"field","Text":"\"50\""}
+{"Do":"set","Name":"high","Kind":"field","Text":"62.5"}
+{"Do":"set","Name":"bold","Kind":"check","Text":"true"}
+{"Do":"set","Name":"bold","Kind":"check","Text":"1"}
+{"Do":"set","Name":"bold","Kind":"check","Text":"\"true\""}
+{"Do":"set","Name":"day","Kind":"date","Text":"\"2026-02-30\""}
+{"Do":"set","Name":"day","Kind":"date","Text":"\"2024-02-29\""}
+{"Do":"set","Name":"day","Kind":"field","Text":"\"x\""}
+{"Do":"set","Name":"rho","Text":"31.5"}
+{"Do":"set","Name":"place","Kind":"field","Text":"\"say \\\"hi\\\" \\\\ $$(io.Print(1)) $$zone\\n<script>\""}
+{"Do":"set","Name":"place","Kind":"nope","Text":"\"x\""}
+{"Do":"set","Name":"place","Kind":7,"Text":"\"x\""}
+{"Do":"set","Name":"shifted","Kind":"field","Text":"\"x\""}
+{"Do":"set","Name":"nothing","Kind":"field","Text":"\"x\""}
+{"Do":"run","Code":"[year, zone, day.Day, place, high, rho, bold, shifted(1)]","Line":0,"Path":"form.ce"}

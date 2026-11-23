@@ -1,0 +1,27 @@
+@token TOKEN
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"set","Error":"\"zone\" holds no text in the session yet: its cell runs first.","Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"answer","Value":null,"Seconds":0,"Mark":"TOKEN"}
+@{"Kind":"set","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a field takes its value as the file writes it, not \"\\\"$$(sys.Exit(3))\\\"\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a field takes its value as the file writes it, not \"\\\"$$zone\\\"\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a field takes its value as the file writes it, not \"GMT-4\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a field takes its value as the file writes it, not \"\\\"a\\\" + \\\"b\\\"\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"\"zone\" holds no number in the session yet: its cell runs first.","Mark":"TOKEN"}
+@{"Kind":"set","Error":"\"high\" holds no text in the session yet: its cell runs first.","Mark":"TOKEN"}
+@{"Kind":"set","Mark":"TOKEN"}
+@{"Kind":"set","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a check takes its value as the file writes it, not \"1\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a check takes its value as the file writes it, not \"\\\"true\\\"\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a date takes its value as the file writes it, not \"\\\"2026-02-30\\\"\".","Mark":"TOKEN"}
+@{"Kind":"set","Mark":"TOKEN"}
+@{"Kind":"set","Error":"\"day\" holds no text in the session yet: its cell runs first.","Mark":"TOKEN"}
+@{"Kind":"set","Mark":"TOKEN"}
+@{"Kind":"set","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a nope takes its value as the file writes it, not \"\\\"x\\\"\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"A set of a 7 takes its value as the file writes it, not \"\\\"x\\\"\".","Mark":"TOKEN"}
+@{"Kind":"set","Error":"\"shifted\" holds no text in the session yet: its cell runs first.","Mark":"TOKEN"}
+@{"Kind":"set","Error":"\"nothing\" holds no text in the session yet: its cell runs first.","Mark":"TOKEN"}
+@{"Kind":"answer","Value":{"Kind":"array","Shape":[1,8],"Rows":[["2026","GMT-4","29","say \"hi\" \\ $(io.Print(1)) $zone\n<script>","62.5","31.5","true","GMT-4 + 1 h"]]},"Seconds":0,"Mark":"TOKEN"}
+exit 0

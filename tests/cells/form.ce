@@ -1,0 +1,25 @@
+(* The file of the inputs of inputs.ce and set-inputs.cmd: a cell of inputs of every kind, as a form, one whose text the
+   page escapes, a function that reads one, and a cell that shows them all. *)
+use std/cells
+use std/date
+use std/io
+
+(* %% Place and day *)
+year = cells.Choice(2026, [2025, 2026, 2027])
+zone = cells.Choice("GMT-5", ["GMT-6", "GMT-5", "GMT-4"])
+day = cells.Date("2026-11-23")
+place = cells.Field("40.76, -73.984")
+high = cells.Field(50)
+rho = cells.Slider(28.0, 0.0, 50.0, step = 0.5)
+bold = cells.Check(false, label = "Bold line")
+note = cells.Field("a \"<script>\" & $$(b)\n")
+
+(* %% Zone *)
+defn shifted(hours)
+  "$zone + $hours h"
+end
+
+(* %% Show *)
+io.Print("$year $zone $(date.FormatDate(day)) $place $high $rho $bold")
+io.Print(place)
+shifted(2)

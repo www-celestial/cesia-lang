@@ -428,16 +428,22 @@ let value_of ctx (a : t array) =
   | Some (Ast.Cell { m; k; _ }) when w.modules.(m).cells.(k) != Undef -> Value.ok w w.modules.(m).cells.(k)
   | _ -> Value.err w (Text name)
 
-(* setValue(name, x): a slider of std/cells moved, its number x given to the name in place, in the cell of the module that
-   holds it, so that the functions compiled with that cell read the new number: an Ok, or an Err when no module the prompt
-   sees holds a number under that name. A function's name, whose cell code may have folded, never changes here, nor a
-   value of another kind. *)
+(* setValue(name, x): an input of std/cells changed, its value x given to the name in place, in the cell of the module that
+   holds it, so that the functions compiled with that cell read the new value: an Ok, or an Err when no module the prompt
+   sees holds a value of the same kind under that name, a number for a number, a text for a text, true or false for
+   true or false, or a struct of the same shape, as a date of std/date. A function's name, whose cell code may have
+   folded, never changes here, nor a value of another kind, which code compiled with the name may not expect. *)
 let set_value ctx (a : t array) =
   let w = ctx.w in
   let name = Native.text_arg ctx "setValue" a.(0) in
-  let number = function Int _ | Float _ -> true | _ -> false in
+  let same old x =
+    match old, x with
+    | (Int _ | Float _), (Int _ | Float _) | Text _, Text _ | (True | False), (True | False) -> true
+    | Struct { shape = s; _ }, Struct { shape = s'; _ } -> s.sid = s'.sid
+    | _ -> false
+  in
   match List.find_map (fun m -> Loader.in_module w m name) w.debug.scope with
-  | Some (Ast.Cell { m; k; stable = false }) when number w.modules.(m).cells.(k) && number a.(1) ->
+  | Some (Ast.Cell { m; k; stable = false }) when same w.modules.(m).cells.(k) a.(1) ->
     w.modules.(m).cells.(k) <- a.(1);
     Value.ok w Missing
   | _ -> Value.err w (Text name)

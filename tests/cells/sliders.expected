@@ -4,16 +4,16 @@ Ok: output [], value missing, error missing
 Ok: output [], value missing, error missing
 Ok: output [], value missing, error missing
 Ok: output ["n is 3"], value {Kind: "text", Text: "56.0"}, error missing
-Ok({Value: 31.5, ToRun: [3, 4]})
+Ok({Value: 31.5, ToRun: [3, 4], Text: "31.5"})
 Use alone: Ok: output ["n is 3"], value {Kind: "text", Text: "63.0"}, error missing
-Ok({Value: 7, ToRun: [4]})
+Ok({Value: 7, ToRun: [4], Text: "7"})
 Ok: output [], value missing, error {Line: missing, Text: "Stopped."}
 after a stop: Ok: output ["n is 7"], value {Kind: "text", Text: "63.0"}, error missing
 Err({Kind: "cells", Message: "51.0 is out of the slider rho, from 0.0 to 50.0."})
 Err({Kind: "cells", Message: "-0.5 is out of the slider rho, from 0.0 to 50.0."})
 Err({Kind: "cells", Message: "A slider takes a finite number, not inf."})
-Err({Kind: "cells", Message: "\"rate\" is no slider of the cells."})
-Err({Kind: "cells", Message: "\"nope\" is no slider of the cells."})
+Err({Kind: "cells", Message: "\"rate\" is no input of the cells."})
+Err({Kind: "cells", Message: "\"nope\" is no input of the cells."})
 <p class="slider"><label>rho <input type="range" min="0.0" max="50.0" step="0.5" value="28.0" disabled></label> <span class="value">28.0</span></p>
 <p class="slider"><label>n <input type="range" min="0" max="10" step="1" value="3" disabled></label> <span class="value">3</span></p>
 exit 0
