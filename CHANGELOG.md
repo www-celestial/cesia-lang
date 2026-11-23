@@ -46,6 +46,9 @@
   any layer a color of its own, as before; heatmaps and surfaces keep viridis and RdBu. The font being monospaced, a
   text is 0.6 em a column, none for a combining mark, two for a wide character of East Asia: the table of the widths of
   Noto Sans and `tools/plot-font.ce` are gone. A graph that drew draws the same data; its look alone changed.
+- `plot.Text(x, y, texts, color, size, anchor, dx, dy)` writes texts on a graph, each beside its point of the data, as
+  the hour beside each point of a curve: a layer that follows the axes, cut to the plot, at most 100,000 texts. The SVG
+  writes `"` as `&quot;` too, with `&`, `<` and `>`, in every text of the program.
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
   Jupyter: two graphs, or a table then a graph, in one cell. `cells.Run` gives them in its new Shown, each with its place
   among the lines of Output; each graph has its own Key for `cells.Scene`; the page of `cells.Html` shows them in order.

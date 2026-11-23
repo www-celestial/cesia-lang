@@ -72,6 +72,23 @@ isMapsKept() = role(scene(plot.Heatmap(grid), 640, 400), "data")[1].Colors[1] ==
 widthOf(words) = role(scene(plot.Of([plot.Line([1, 2], [1, 2])], title = words), 640, 400), "title")[1].Width / 15.0 * 12.0
 isMonospaced() = math.Abs(widthOf("abc") - 21.6) < 1e-9 and math.Abs(widthOf("−1.5×10⁶") - 57.6) < 1e-9 and math.Abs(widthOf("été") - 21.6) < 1e-9 and math.Abs(widthOf("中文a") - 36.0) < 1e-9 and math.Abs(widthOf("soft­hyphen") - 72.0) < 1e-9
 
+(* Texts placed on the graph: each at its point, moved by dx and dy, cut to the plot; escaped in the SVG. *)
+
+sun = [120.0, 125.0, 132.0, 142.0, 155.0, 170.0, 185.0, 200.0, 213.0, 224.0]
+high = [2.0, 10.0, 17.0, 23.0, 27.0, 29.0, 28.0, 24.0, 18.0, 10.0]
+hours = ["$h" for h in 7..16]
+isTextSvg() = test.Snapshot(svg(plot.Of([plot.Line(sun, high), plot.Points(sun, high, size = 3), plot.Text(sun, high, hours), plot.Text([150], [5], ["noon"], color = "#d55e00", size = 14, anchor = "middle", dx = 0, dy = 0)], x = "azimuth", y = "elevation")))
+defn isTextPlaced()
+  s = scene(plot.Of([plot.Points(sun, high), plot.Text(sun, high, hours, anchor = "right", dx = -2, dy = 3)]), 640, 400)
+  m = role(s, "data")[1]
+  ts = [x for x in role(s, "data") if x.Kind == "text"]
+  value.Len(ts) == 10 and list.All([math.Abs(ts[k].X - (m.Xs[k] - 2)) < 1e-9 and math.Abs(ts[k].Y - (m.Ys[k] + 3)) < 1e-9 and ts[k].Anchor == "end" and ts[k].Text == hours[k] and ts[k].Size == 11.0 and ts[k].Color == "ink" for k in 1..10])
+end
+(* A point past xlim, or with a NaN, leaves its text out; the NaN counts in Dropped; a text has no entry in the legend. *)
+isTextLeftOut() = value.Len([x for x in role(scene(plot.Of([plot.Text(sun, high, hours)], xlim = [100, 160]), 640, 400), "data") if x.Kind == "text"]) == 5 and scene(plot.Text([1, math.Nan], [1, 2], ["a", "b"]), 640, 400).Dropped == 1 and value.Len(role(scene(plot.Of([plot.Line([1, 2], [1, 2], label = "l"), plot.Text([1], [1], ["t"])]), 640, 400), "legend")) == 2
+isTextEscaped() = text.Contains(">&lt;script&gt;&amp;&quot;x&quot;</text>", svg(plot.Text([1, 2], [1, 2], ["<script>&\"x\"", "b"]))) and not text.Contains("<script>", svg(plot.Of([plot.Text([1, 2], [1, 2], ["<script>", "b"])], title = "<script>", x = "<script>", y = "&\"")))
+isTextBound() = message(plot.Text(1..100001, 1..100001, ["a" for k in 1..100001])) == "plot.Text: 100001 texts are too many, past 100,000; keep those that a reader can tell apart."
+
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
 
@@ -431,6 +448,15 @@ errors = [
   [plot.Density([math.Nan], [1]), "plot.Density: no point has a finite x and y."],
   [plot.Area([1, 2], [1], [2, 3]), "plot.Area: x has 2 values, low 1 and high 2; give all three the same number."],
   [plot.Area([1], [math.Nan], [1]), "plot.Area: no point has a finite x, low and high."],
+  [plot.Text([1, 2], [1, 2], ["a"]), "plot.Text: there are 2 points and 1 texts; give one text for each point."],
+  [plot.Text([1], [1, 2], ["a"]), "plot.Text: x has 1 values and y has 2; give both the same number."],
+  [plot.Text([1], [1], "a"), "plot.Text: texts must be a list of texts, not \"a\"."],
+  [plot.Text([1, 2], [1, 2], ["a", 2]), "plot.Text: texts[2] is 2, not a text."],
+  [plot.Text([1], [1], ["a"], anchor = "top"), "plot.Text: anchor is \"top\"; it is \"left\", \"middle\" or \"right\"."],
+  [plot.Text([1], [1], ["a"], size = 3), "plot.Text: size is 3; give the size of the texts in pixels, from 4 to 96."],
+  [plot.Text([1], [1], ["a"], dy = math.Nan), "plot.Text: dy is nan; give a move in pixels, a finite number."],
+  [plot.Text([1], [1], ["a"], color = "red"), "plot.Text: color is \"red\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
+  [plot.Text([math.Nan], [1], ["a"]), "plot.Text: no point has a finite x and y."],
   [plot.Of([]), "plot.Of needs at least one layer."],
   [plot.Of([1]), "plot.Of: layer 1 is 1, not a graph; give graphs, as plot.Line makes."],
   [plot.Of([plot.Line([1], [1]), plot.Points([1], [1], shape = "x")]), "plot.Points (layer 2): shape is \"x\"; it is \"circle\", \"square\", \"triangle\", \"diamond\", \"cross\" or \"plus\"."],

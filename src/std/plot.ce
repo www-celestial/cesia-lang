@@ -115,6 +115,19 @@ defn Area(x, low, high, label = missing, color = missing)
   one({Fn: "Area", X: x, Low: low, High: high, Label: label, Color: color})
 end
 
+defn Text(x, y, texts, color = missing, size = 11, anchor = "left", dx = 4, dy = -4)
+  (** Texts on the graph, each at a point of the data: texts[i] at (x[i], y[i]), moved dx pixels to the right and dy
+      down, as the hour written beside each point of a curve. anchor is the side of a text at that place, "left",
+      "middle" or "right"; size is in pixels, from 4 to 96; color is written "#rrggbb", the ink of the axes without it.
+      A layer as the others: it follows the axes and their limits, and has no entry in the legend. A point with a NaN or
+      an infinity leaves its text out, and Scene counts it in Dropped; a point outside the plot leaves it out too. At
+      most 100,000 texts.
+
+        Svg(Of([Line([1, 2, 3], [1, 4, 9]), Text([1, 2, 3], [1, 4, 9], ["7h", "8h", "9h"])])) then result.IsOk() --> true
+        Svg(Text([1, 2], [1, 4], ["a"])) --> result.Err({Kind: "plot", Message: "plot.Text: there are 2 points and 1 texts; give one text for each point."}) *)
+  one({Fn: "Text", X: x, Y: y, Texts: texts, Label: missing, Color: color, Size: size, Anchor: anchor, Dx: dx, Dy: dy})
+end
+
 defn Surface(z, x = missing, y = missing, colors = "viridis")
   (** A surface in 3D: the height z[i, j] over the point (x[j], y[i]), as MATLAB's surf, so row i of the matrix is at
       y[i] and column j at x[j]; without x and y, 1 to the count of columns and of rows. x and y are finite, and each
@@ -495,6 +508,7 @@ defn prepare(l, at, count)
     "Heatmap" -> heatmapOf(l, w)
     "Surface" -> renamed(l.Ready, w)
     "Line3" -> line3Of(l, w)
+    "Text" -> textsOf(l, w)
     else -> densityOf(l, w)
   end
 end
@@ -536,6 +550,64 @@ defn pointsOf(l, w, marks)
   p.X = x
   p.Y = y
   p.E = e
+  p.Xlo = e.Xlo
+  p.Xhi = e.Xhi
+  p.Ylo = e.Ylo
+  p.Yhi = e.Yhi
+  p.Xbad = bad("x", x, e.Xbad)
+  p.Ybad = bad("y", y, e.Ybad)
+  result.Ok(p)
+end
+
+mostTexts = 100000   (** The most texts of a plot.Text. *)
+anchors = ["left", "middle", "right"]   (** The sides of a text that plot.Text places at its point. *)
+
+defn textsOf(l, w)
+  x = floats(l.X, "x", w)?
+  y = floats(l.Y, "y", w)?
+  n = value.Len(x)
+  if value.Len(y) != n
+    return fail("$w: x has $n values and y has $(value.Len(y)); give both the same number.")
+  end
+  ts = l.Texts
+  if not value.IsArray(ts) or value.Len(value.Size(ts)) > 1 and value.Size(ts)[1] > 1
+    return fail("$w: texts must be a list of texts, not $(brief(ts)).")
+  end
+  if value.Len(ts) != n
+    return fail("$w: there are $n points and $(value.Len(ts)) texts; give one text for each point.")
+  end
+  if n > mostTexts
+    return fail("$w: $n texts are too many, past 100,000; keep those that a reader can tell apart.")
+  end
+  for i in 1..n
+    if not value.IsText(ts[i])
+      return fail("$w: texts[$i] is $(brief(ts[i])), not a text.")
+    end
+  end
+  if not (l.Anchor in anchors)
+    return fail("$w: anchor is $(brief(l.Anchor)); it is \"left\", \"middle\" or \"right\".")
+  end
+  if not (value.IsNumber(l.Size) and l.Size >= 4 and l.Size <= 96)
+    return fail("$w: size is $(brief(l.Size)); give the size of the texts in pixels, from 4 to 96.")
+  end
+  for d in [["dx", l.Dx], ["dy", l.Dy]]
+    if not (value.IsNumber(d[2]) and d[2] - d[2] == 0)
+      return fail("$w: $(d[1]) is $(brief(d[2])); give a move in pixels, a finite number.")
+    end
+  end
+  e = extent(x, y)
+  if e.Count == 0
+    return fail("$w: no point has a finite x and y.")
+  end
+  p = base(l, w)
+  p.X = x
+  p.Y = y
+  p.Texts = ts
+  p.Size = l.Size * 1.0
+  p.Anchor = ["start", "middle", "end"][list.IndexOf(l.Anchor, anchors)]
+  p.Dx = l.Dx * 1.0
+  p.Dy = l.Dy * 1.0
+  p.Dropped = n - e.Count
   p.Xlo = e.Xlo
   p.Xhi = e.Xhi
   p.Ylo = e.Ylo
@@ -1564,6 +1636,7 @@ defn dataItems(p, xa, ya, a, clip)
     "Area" -> areaItems(p, xa, ya, a, clip)
     "Bars" -> barItems(p, a, clip)
     "Histogram" -> histogramItems(p, xa, a, clip)
+    "Text" -> textItems(p, xa, ya, a, clip)
     else -> cellsItems(p, xa, ya, a, clip)
   end
 end
@@ -1580,6 +1653,14 @@ defn markItems(p, xa, ya, a, clip)
   py = a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy
   ok = col.Positions((px - px) + (py - py) == 0.0)
   [{Kind: "marks", Xs: col.Pick(ok, px), Ys: col.Pick(ok, py), Shape: p.Shape, Size: p.Size, Color: p.Color, Clip: clip, Role: "data"}]
+end
+
+defn textItems(p, xa, ya, a, clip)
+  (** The texts of a plot.Text whose point is inside the plot, each moved from it, cut to the plot as the data are. *)
+  px = a.X + (inT(xa, p.X) - a.T0x) * a.Sx
+  py = a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy
+  inside = col.Positions((px >= clip[1] - 0.5) * 1 + (px <= clip[1] + clip[3] + 0.5) * 1 + (py >= clip[2] - 0.5) * 1 + (py <= clip[2] + clip[4] + 0.5) * 1 == 4)
+  [{Kind: "text", X: px[i] + p.Dx, Y: py[i] + p.Dy, Text: p.Texts[i], Size: p.Size, Color: p.Color, Anchor: p.Anchor, Angle: 0, Width: textWidth(p.Texts[i], p.Size), Clip: clip, Role: "data"} for i in inside]
 end
 
 defn areaItems(p, xa, ya, a, clip)
@@ -2562,7 +2643,7 @@ defn ordinal(k)
 end
 
 (** The fields of a layer that hold its data, which a frame changes; its other fields stay as the first frame has them. *)
-dataFields = ["X", "Y", "Z", "Low", "High", "Heights", "Values", "Bins", "Ready"]
+dataFields = ["X", "Y", "Z", "Low", "High", "Heights", "Values", "Bins", "Ready", "Texts"]
 
 (** A field of a layer as its function names the option. *)
 optionOf(key) = if key == "Xs" "x" else if key == "Ys" "y" else text.Lower(key) end
@@ -2832,7 +2913,8 @@ paint(c) = match c
   else -> c
 end
 
-escaped(s) = text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s)))
+(** A text of the program as SVG holds it: its &, <, > and " written as entities, so that no text is read as markup. *)
+escaped(s) = text.Replace("\"", "&quot;", text.Replace(">", "&gt;", text.Replace("<", "&lt;", text.Replace("&", "&amp;", s))))
 
 defn pathOf(xs, ys, close)
   parts = list.Fill("", value.Len(xs))
