@@ -155,7 +155,7 @@ sys.RemoveTree("photos") -->
 
 On Linux, both copy the bytes of a file inside the kernel, as `cp` does, with the system call `copy_file_range`: they
 never pass through the program, and on btrfs or XFS the copy is a *clone*, which shares the blocks of the file on the
-disk until one of the two changes, so a file of 100 MB copies in under 0.1 ms. What the kernel can't copy so, a file of
+disk until one of the two changes, so a file of 100 MB copies in about 0.1 ms. What the kernel can't copy so, a file of
 `/proc`, which says it is empty, or a copy to another file system, is read and written piece by piece, as on macOS and
 Windows.
 
