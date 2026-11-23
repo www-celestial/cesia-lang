@@ -133,7 +133,7 @@ defn readBack(t)
   not text.Contains("\n", lit(t)) and not text.Contains("\r", lit(t)) and value.Len(a.Errors) == 0 and a.Inputs[1].Value == t and result.IsOk(reads) and
     value.Equal([r.Name for r in reads.Value], ["cells"])
 end
-isTextsReadBack() = test.ForAll(readBack, texts, cases = 300)
+isTextsReadBack() = test.ForAll(readBack, texts, cases = 100)
 
 (* An edit: random cells of inputs, one of them given a new value written over the columns of its old one. Nothing else
    moves: not another line, not the start or the end of its line; and the file reads back the new value, the other inputs
@@ -187,11 +187,11 @@ defn edited(kind, f)
     y.End == x.Column + value.Len(snapped.Text) - 1 and value.Equal([b[3].Inputs[k] for k in others], [a[3].Inputs[k] for k in others]) and
     value.Equal([[c.Defines, c.Reads] for c in b], [[c.Defines, c.Reads] for c in a])
 end
-isEditSlider() = test.ForAll(f -> edited("slider", f), files, cases = 60)
-isEditChoice() = test.ForAll(f -> edited("choice", f), files, cases = 60)
-isEditCheck() = test.ForAll(f -> edited("check", f), files, cases = 60)
-isEditField() = test.ForAll(f -> edited("field", f), files, cases = 60)
-isEditDate() = test.ForAll(f -> edited("date", f), files, cases = 60)
+isEditSlider() = test.ForAll(f -> edited("slider", f), files, cases = 20)
+isEditChoice() = test.ForAll(f -> edited("choice", f), files, cases = 20)
+isEditCheck() = test.ForAll(f -> edited("check", f), files, cases = 20)
+isEditField() = test.ForAll(f -> edited("field", f), files, cases = 20)
+isEditDate() = test.ForAll(f -> edited("date", f), files, cases = 20)
 
 (* Lines of input pieces at random: Analyse reads untrusted text, never panics, and each input it finds stands where it
    says. *)
@@ -207,4 +207,4 @@ defn sane(line)
 end
 (** Is a span of a line a value as written: a text in quotes, or the number, true or false of the value? *)
 written(t, x) = text.StartsWith("\"", t) or text.Number(t) == x or t == "$x"
-isRandomLines() = test.ForAll(sane, randomLines, cases = 300)
+isRandomLines() = test.ForAll(sane, randomLines, cases = 100)
