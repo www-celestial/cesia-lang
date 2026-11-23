@@ -1,5 +1,5 @@
 == isAreaSvg 1 (44 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="356"/></clipPath></defs>
 <path d="M53.5 10L53.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -44,7 +44,7 @@
 <text x="17.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">6</text>
 </svg>
 == isAreaSvg 2 (46 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="535" height="356"/></clipPath></defs>
 <path d="M50.5 10L50.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -91,7 +91,7 @@
 <text x="601.5" y="24.3" font-size="12" fill="#000000">band</text>
 </svg>
 == isBarsLongNames 1 (37 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="228"/></clipPath></defs>
 <path d="M26 238.5L630 238.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -129,7 +129,7 @@
 <text x="17.5" y="24.88" font-size="12" fill="#000000" text-anchor="end">6</text>
 </svg>
 == isBarsSvg 1 (31 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="33" y="10" width="597" height="356"/></clipPath></defs>
 <path d="M33 349.5L630 349.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -161,7 +161,7 @@
 <text x="24.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">3</text>
 </svg>
 == isBarsSvg 2 (34 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="556" height="356"/></clipPath></defs>
 <path d="M26 366.5L582 366.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -196,7 +196,7 @@
 <text x="622.5" y="44.14" font-size="12" fill="#000000">y</text>
 </svg>
 == isDensitySvg 1 (50 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="40" y="10" width="531" height="356"/></clipPath></defs>
 <path d="M40.5 10L40.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -247,7 +247,7 @@
 <text x="606" y="14.88" font-size="12" fill="#000000">2</text>
 </svg>
 == isFactorLabels 1 (42 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="27" width="604" height="338"/></clipPath></defs>
 <path d="M53.5 27L53.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -290,7 +290,7 @@
 <text x="26" y="23" font-size="12" fill="#000000">×10⁷</text>
 </svg>
 == isFactorLabels 2 (42 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="40" y="27" width="590" height="338"/></clipPath></defs>
 <path d="M66.5 27L66.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -333,7 +333,7 @@
 <text x="40" y="23" font-size="12" fill="#000000">×10⁻⁷</text>
 </svg>
 == isFrames3dSvg 1 (80 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Animation, 3 frames at 2 a second</title>
 <style>.a3-150000{visibility:hidden;animation:s3 1500ms step-end infinite}@keyframes s3{0%{visibility:visible}33.3334%{visibility:hidden}}@media (prefers-reduced-motion:reduce){g.f{animation-play-state:paused}}</style>
 <rect width="640" height="400" fill="#ffffff"/>
@@ -414,7 +414,7 @@
 <text x="523.48" y="63.88" font-size="12" fill="#000000">2.5</text>
 </svg>
 == isFramesSvg 1 (70 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Animation, 3 frames at 2 a second</title>
 <style>.a3-150000{visibility:hidden;animation:s3 1500ms step-end infinite}@keyframes s3{0%{visibility:visible}33.3334%{visibility:hidden}}@media (prefers-reduced-motion:reduce){g.f{animation-play-state:paused}}</style>
 <rect width="640" height="400" fill="#ffffff"/>
@@ -485,7 +485,7 @@
 <text x="622.5" y="49.3" font-size="12" fill="#000000">w</text>
 </svg>
 == isGridSvg 1 (105 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="1280" height="800" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="356"/></clipPath><clipPath id="c2"><rect x="680" y="10" width="590" height="356"/></clipPath><clipPath id="c3"><rect x="33" y="410" width="597" height="356"/></clipPath></defs>
 <path d="M53.5 10L53.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -591,7 +591,7 @@
 <text x="24.5" y="451.88" font-size="12" fill="#000000" text-anchor="end">30</text>
 </svg>
 == isHeatmapDiverging 1 (60 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="40" y="10" width="531" height="356"/></clipPath></defs>
 <path d="M40.5 10L40.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -652,7 +652,7 @@
 <text x="606" y="14.88" font-size="12" fill="#000000">3</text>
 </svg>
 == isHeatmapSvg 1 (70 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="40" y="10" width="531" height="356"/></clipPath></defs>
 <path d="M40.5 10L40.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -723,7 +723,7 @@
 <text x="606" y="14.88" font-size="12" fill="#000000">12</text>
 </svg>
 == isHeatmapSvg 2 (64 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="40" y="10" width="534" height="356"/></clipPath></defs>
 <path d="M40.5 10L40.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -788,7 +788,7 @@
 <text x="609" y="14.88" font-size="12" fill="#000000">12</text>
 </svg>
 == isHistogramEdges 1 (40 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="40" y="10" width="590" height="356"/></clipPath></defs>
 <path d="M66.5 10L66.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -829,7 +829,7 @@
 <text x="31.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">2</text>
 </svg>
 == isHistogramSvg 1 (56 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="356"/></clipPath></defs>
 <path d="M53.5 10L53.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -886,7 +886,7 @@
 <text x="17.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">5</text>
 </svg>
 == isHistogramSvg 2 (47 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="40" y="10" width="542" height="356"/></clipPath></defs>
 <path d="M64.5 10L64.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -934,7 +934,7 @@
 <text x="622.5" y="24.3" font-size="12" fill="#000000">h</text>
 </svg>
 == isLine3Svg 1 (59 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>3D line, 400 points, z from 0.951 to 53.6</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="71" y="10" width="414" height="380"/></clipPath></defs>
@@ -994,7 +994,7 @@
 <text x="525.38" y="24.3" font-size="12" fill="#000000">Lorenz</text>
 </svg>
 == isLineDashes 1 (52 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="33" y="10" width="506" height="356"/></clipPath></defs>
 <path d="M56.5 10L56.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1047,7 +1047,7 @@
 <text x="579.5" y="44.14" font-size="12" fill="#000000">dashdot</text>
 </svg>
 == isLineGap 1 (39 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="356"/></clipPath></defs>
 <path d="M53.5 10L53.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1087,7 +1087,7 @@
 <text x="17.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">5</text>
 </svg>
 == isLineSvg 1 (38 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="356"/></clipPath></defs>
 <path d="M53.5 10L53.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1126,7 +1126,7 @@
 <text x="17.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">5</text>
 </svg>
 == isLineSvg 2 (40 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="556" height="356"/></clipPath></defs>
 <path d="M51.5 10L51.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1167,7 +1167,7 @@
 <text x="622.5" y="24.3" font-size="12" fill="#000000">a</text>
 </svg>
 == isLogAxes 1 (38 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="33" y="10" width="597" height="356"/></clipPath></defs>
 <path d="M60.5 10L60.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1206,7 +1206,7 @@
 <text x="24.5" y="74.88" font-size="12" fill="#000000" text-anchor="end">20</text>
 </svg>
 == isLogAxes 2 (44 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="356"/></clipPath></defs>
 <path d="M53.5 10L53.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1251,7 +1251,7 @@
 <text x="17.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">7</text>
 </svg>
 == isLookSvg 1 (79 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="54" y="35" width="492" height="309"/></clipPath></defs>
 <path d="M76.5 35L76.5 344" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1330,8 +1330,108 @@
 <path d="M569.5 203.64h0" stroke="#0072b2" stroke-width="6" stroke-linecap="round"/>
 <text x="586.5" y="208.02" font-size="12" fill="#000000">blue</text>
 </svg>
+== isNoteSvg 1 (49 lines)
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<rect width="640" height="400" fill="#ffffff"/>
+<defs><clipPath id="c1"><rect x="33" y="10" width="597" height="356"/></clipPath></defs>
+<path d="M60.5 10L60.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M164.5 10L164.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M268.5 10L268.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M373.5 10L373.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M477.5 10L477.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M581.5 10L581.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 313.5L630 313.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 253.5L630 253.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 193.5L630 193.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 134.5L630 134.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 74.5L630 74.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 14.5L630 14.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<g clip-path="url(#c1)">
+<path d="M60.14 349.82L86.23 253.93L122.76 170.02L174.94 98.1L242.78 50.15L321.06 26.18L399.34 38.17L477.62 86.11L545.46 158.03L602.86 253.93" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+</g>
+<path d="M32.5 9.5L630.5 9.5L630.5 366.5L32.5 366.5L32.5 9.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M60.5 366.5L60.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="60.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">120</text>
+<path d="M164.5 366.5L164.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="164.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">140</text>
+<path d="M268.5 366.5L268.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="268.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">160</text>
+<path d="M373.5 366.5L373.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="373.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">180</text>
+<path d="M477.5 366.5L477.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="477.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">200</text>
+<path d="M581.5 366.5L581.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="581.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">220</text>
+<path d="M27.5 313.5L32.5 313.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="317.88" font-size="12" fill="#000000" text-anchor="end">5</text>
+<path d="M27.5 253.5L32.5 253.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="257.88" font-size="12" fill="#000000" text-anchor="end">10</text>
+<path d="M27.5 193.5L32.5 193.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="197.88" font-size="12" fill="#000000" text-anchor="end">15</text>
+<path d="M27.5 134.5L32.5 134.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="138.88" font-size="12" fill="#000000" text-anchor="end">20</text>
+<path d="M27.5 74.5L32.5 74.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="78.88" font-size="12" fill="#000000" text-anchor="end">25</text>
+<path d="M27.5 14.5L32.5 14.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="18.88" font-size="12" fill="#000000" text-anchor="end">30</text>
+<rect shape-rendering="crispEdges" x="39" y="16" width="130.4" height="69.36" fill="#ffffff" fill-opacity="0.85"/>
+<text x="43" y="31.24" font-size="12" fill="#000000">name: essai</text>
+<text x="43" y="47.08" font-size="12" fill="#000000">  lat: 40.76</text>
+<text x="43" y="62.92" font-size="12" fill="#000000">  lon: -73.984</text>
+<text x="43" y="78.76" font-size="12" fill="#000000"> date: 23/11/2026</text>
+</svg>
+== isNoteSvg 2 (49 lines)
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<rect width="640" height="400" fill="#ffffff"/>
+<defs><clipPath id="c1"><rect x="33" y="10" width="597" height="356"/></clipPath></defs>
+<path d="M60.5 10L60.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M164.5 10L164.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M268.5 10L268.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M373.5 10L373.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M477.5 10L477.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M581.5 10L581.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 313.5L630 313.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 253.5L630 253.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 193.5L630 193.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 134.5L630 134.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 74.5L630 74.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M33 14.5L630 14.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<g clip-path="url(#c1)">
+<path d="M60.14 349.82L86.23 253.93L122.76 170.02L174.94 98.1L242.78 50.15L321.06 26.18L399.34 38.17L477.62 86.11L545.46 158.03L602.86 253.93" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+</g>
+<path d="M32.5 9.5L630.5 9.5L630.5 366.5L32.5 366.5L32.5 9.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M60.5 366.5L60.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="60.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">120</text>
+<path d="M164.5 366.5L164.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="164.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">140</text>
+<path d="M268.5 366.5L268.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="268.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">160</text>
+<path d="M373.5 366.5L373.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="373.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">180</text>
+<path d="M477.5 366.5L477.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="477.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">200</text>
+<path d="M581.5 366.5L581.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="581.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">220</text>
+<path d="M27.5 313.5L32.5 313.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="317.88" font-size="12" fill="#000000" text-anchor="end">5</text>
+<path d="M27.5 253.5L32.5 253.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="257.88" font-size="12" fill="#000000" text-anchor="end">10</text>
+<path d="M27.5 193.5L32.5 193.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="197.88" font-size="12" fill="#000000" text-anchor="end">15</text>
+<path d="M27.5 134.5L32.5 134.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="138.88" font-size="12" fill="#000000" text-anchor="end">20</text>
+<path d="M27.5 74.5L32.5 74.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="78.88" font-size="12" fill="#000000" text-anchor="end">25</text>
+<path d="M27.5 14.5L32.5 14.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="24.5" y="18.88" font-size="12" fill="#000000" text-anchor="end">30</text>
+<rect shape-rendering="crispEdges" x="493.6" y="290.64" width="130.4" height="69.36" fill="#ffffff" fill-opacity="0.85"/>
+<text x="497.6" y="305.88" font-size="12" fill="#000000">name: essai</text>
+<text x="497.6" y="321.72" font-size="12" fill="#000000">  lat: 40.76</text>
+<text x="497.6" y="337.56" font-size="12" fill="#000000">  lon: -73.984</text>
+<text x="497.6" y="353.4" font-size="12" fill="#000000"> date: 23/11/2026</text>
+</svg>
 == isOfOptions 1 (39 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300" viewBox="0 0 500 300" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="300" viewBox="0 0 500 300" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="500" height="300" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="47" y="35" width="435" height="209"/></clipPath></defs>
 <path d="M47.5 35L47.5 244" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1371,7 +1471,7 @@
 <text x="23.26" y="139.5" font-size="13" fill="#000000" text-anchor="middle" transform="rotate(-90 23.26 139.5)">y (s)</text>
 </svg>
 == isPointsShapes 1 (61 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="506" height="356"/></clipPath></defs>
 <path d="M49.5 10L49.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1433,7 +1533,7 @@
 <text x="572.5" y="123.5" font-size="12" fill="#000000">plus</text>
 </svg>
 == isPointsSvg 1 (38 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="604" height="356"/></clipPath></defs>
 <path d="M53.5 10L53.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1472,7 +1572,7 @@
 <text x="17.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">5</text>
 </svg>
 == isPointsSvg 2 (40 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="26" y="10" width="556" height="356"/></clipPath></defs>
 <path d="M51.5 10L51.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
@@ -1520,7 +1620,7 @@
   Dropped: 0
 }
 == isSurfaceHole 1 (77 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 4 × 4 points, z from 0 to 3</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="101" y="10" width="389" height="380"/></clipPath></defs>
@@ -1598,7 +1698,7 @@
 <text x="524.68" y="14.88" font-size="12" fill="#000000">3</text>
 </svg>
 == isSurfaceMeans 1 (69 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 202 × 2 points, z from 2 to 204</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="95" y="10" width="394" height="360"/></clipPath></defs>
@@ -1668,7 +1768,7 @@
 <text x="10" y="386.4" font-size="12" fill="#000000">z 202 × 2 drawn as 101 × 2 means of 2 × 1 blocks</text>
 </svg>
 == isSurfaceSvg 1 (70 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="87" y="35" width="402" height="355"/></clipPath></defs>
@@ -1739,7 +1839,7 @@
 <text x="523.48" y="69.88" font-size="12" fill="#000000">0.8</text>
 </svg>
 == isSurfaceSvg 2 (70 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="87" y="35" width="402" height="355"/></clipPath></defs>
@@ -1810,7 +1910,7 @@
 <text x="523.48" y="69.88" font-size="12" fill="#000000">0.8</text>
 </svg>
 == isSurfaceSvg 3 (70 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="87" y="35" width="402" height="355"/></clipPath></defs>
@@ -1881,7 +1981,7 @@
 <text x="523.48" y="69.88" font-size="12" fill="#000000">0.8</text>
 </svg>
 == isSurfaceSvg 4 (70 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="87" y="35" width="402" height="355"/></clipPath></defs>
@@ -1952,7 +2052,7 @@
 <text x="523.48" y="69.88" font-size="12" fill="#000000">0.8</text>
 </svg>
 == isSurfaceSvg 5 (57 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="87" y="35" width="402" height="355"/></clipPath></defs>
@@ -2010,7 +2110,7 @@
 <text x="523.48" y="69.88" font-size="12" fill="#000000">0.8</text>
 </svg>
 == isSurfaceSvg 6 (70 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <title>Surface, 5 × 6 points, z from −0.964 to 0.968</title>
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="87" y="35" width="402" height="355"/></clipPath></defs>
@@ -2081,7 +2181,7 @@
 <text x="523.48" y="69.88" font-size="12" fill="#000000">0.8</text>
 </svg>
 == isTextSvg 1 (58 lines)
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none">
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>
 <defs><clipPath id="c1"><rect x="54" y="10" width="576" height="335"/></clipPath></defs>
 <path d="M80.5 10L80.5 345" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>

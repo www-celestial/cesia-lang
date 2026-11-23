@@ -38,6 +38,8 @@ struct Graph
   ztitle = missing
   zlim = missing
   view = missing
+  note = missing
+  noteAt = "top left"
 end
 
 one(l) = Graph([l])
@@ -153,7 +155,7 @@ defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
   one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash})
 end
 
-defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing)
+defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left")
   (** The layers on shared axes, the later on top: each layer is a graph, as Line or another Of gives, and its layers
       join in order. title goes above the plot; x and y name the axes; xscale and yscale are "linear" or "log" (base 10);
       xlim and ylim are [low, high], else an axis covers the data and 5 % more on each side; legend = false hides the
@@ -162,10 +164,12 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
       z names its third axis, zlim is its range, and view is where it is seen from, [az, el] in degrees as MATLAB's view:
       the azimuth az turns from the -y axis, counterclockwise seen from above, and the elevation el, from -90 to 90, is
       the angle above the x-y plane; [-37.5, 30] by default. Its axes are linear and cover the data exactly, unless their
-      lim gives them.
+      lim gives them. note is a text in a box at a corner of the plot, one line for each line of the text, as the name, the
+      place and the date of what is drawn: noteAt is "top left", "top right", "bottom left" or "bottom right".
 
         Svg(Of([Line([1, 2], [1, 4]), Points([1, 2], [1, 4])], title = "Squares", yscale = "log")) then result.IsOk() --> true
-        result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0] *)
+        result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0]
+        Svg(Of([Line([1, 2], [1, 4])], note = "lat: 40.76\nlon: -73.98", noteAt = "bottom right")) then result.IsOk() --> true *)
   ls = []
   if value.IsArray(layers)
     for k in 1..value.Len(layers)
@@ -179,7 +183,7 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   else
     ls = [{Fn: "bad", Value: layers, At: 0}]
   end
-  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view)
+  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt)
 end
 
 defn Grid(graphs, columns = missing)
@@ -248,8 +252,9 @@ defn Scene(g, width, height, frame = 1, view = missing)
       back-end gives the colors of its theme: the ink of the axes, the texts and the layers without a color, the grid,
       and the background. Each item has a Role too: "grid", "data", "frame", "tick",
       "xlabel", "ylabel" and "zlabel" (the labels of the ticks), "factor" (the power of ten of an axis's labels), "title",
-      "xtitle", "ytitle", "ztitle", "legend", "colorbar", "note" (a line under the graph), and in 3D "pane" (the three
-      far sides of the box) and "axis" (the edges that hold the labels).
+      "xtitle", "ytitle", "ztitle", "legend", "colorbar", "note" (a line under the graph), "info" (the box of the option
+      note of Of, its paper and its lines), and in 3D "pane" (the three far sides of the box) and "axis" (the edges that
+      hold the labels).
 
         value.Len(result.Unwrap(Scene(Line([1, 2], [3, 4]), 640, 400)).Items) > 0 --> true
         result.Unwrap(Scene(Line3([0, 1], [0, 1], [0, 1]), 640, 400, view = [0, 90])).View --> [0.0, 90.0] *)
@@ -317,7 +322,7 @@ end
 fail(message) = result.Err({Kind: "plot", Message: message})
 
 isGraph(g) = match g
-  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r) -> true
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t) -> true
   else -> false
 end
 
@@ -1788,7 +1793,8 @@ end
 defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing)
   (** The items of one graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}, and for a 3D graph View and
       Summary. A frame of an animation takes the ranges its frames share, those of each of its layers over every frame, so
-      that its axes and its colors are those of every frame. A note is a line under the graph. A view turns a 3D graph. *)
+      that its axes and its colors are those of every frame. A note is a line under the graph, as std/plot writes one,
+      not the box of the option note. A view turns a 3D graph. *)
   count = value.Len(g.layers)
   if count == 0
     return fail("plot.Of needs at least one layer.")
@@ -1819,6 +1825,7 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
     return fail("$gw: legend is $(brief(g.legend)); give true or false.")
   end
+  box = noteOf(g, gw)?
   bars = list.Filter(p -> p.Category, ps)
   if value.Len(bars) > 1
     return fail("$gw: a graph holds one plot.Bars; give its series together, as plot.Bars(names, [h1, h2]).")
@@ -1968,10 +1975,44 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if value.Len(entries) > 0
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
+  if not value.IsMissing(box)
+    items = list.Concat(items, noteItems(box, ax, ay, ax + aw, ay + ah))
+  end
   if not value.IsMissing(note)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
   end
   result.Ok({Items: items, Dropped: dropped})
+end
+
+corners = ["top left", "top right", "bottom left", "bottom right"]   (** The corners where the box of a note goes. *)
+
+defn noteOf(g, w)
+  (** The note of a graph, {Lines, At}, its lines and its corner, in an Ok; missing without one; an Err for a note that
+      is no text or a corner that is none. *)
+  if not (value.IsMissing(g.note) or value.IsText(g.note))
+    return fail("$w: note is $(brief(g.note)); give a text, a line for each line of the box.")
+  end
+  if not (g.noteAt in corners)
+    return fail("$w: noteAt is $(brief(g.noteAt)); it is \"top left\", \"top right\", \"bottom left\" or \"bottom right\".")
+  end
+  if value.IsMissing(g.note) result.Ok(missing) else result.Ok({Lines: text.Split("\n", g.note), At: g.noteAt}) end
+end
+
+defn noteItems(box, x0, y0, x1, y1)
+  (** The box of a note at its corner of the rectangle from (x0, y0) to (x1, y1), 6 pixels inside it: the paper behind,
+      which hides the grid, and a line of text in the ink of the axes for each line of the note, without a frame. *)
+  row = tickSize * lineRatio
+  wide = widest(box.Lines, tickSize) + 8.0
+  high = value.Len(box.Lines) * row + 6.0
+  left = if text.EndsWith("left", box.At) x0 + 6.0 else x1 - 6.0 - wide end
+  top = if text.StartsWith("top", box.At) y0 + 6.0 else y1 - 6.0 - high end
+  items = [{Kind: "rect", X: left, Y: top, W: wide, H: high, Color: "paper", Opacity: 0.85, Clip: missing, Role: "info"}]
+  for k in 1..value.Len(box.Lines)
+    if box.Lines[k] != ""
+      items = list.Append(label(left + 4.0, top + 3.0 + (k - 1) * row + tickSize * ascent, box.Lines[k], tickSize, "start", "info"), items)
+    end
+  end
+  items
 end
 
 defn colorBar(p, t, x, y, h)
@@ -2454,6 +2495,7 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
     return fail("$gw: legend is $(brief(g.legend)); give true or false.")
   end
+  box = noteOf(g, gw)?
   for o in [["xscale", g.xscale], ["yscale", g.yscale]]
     if o[2] != "linear"
       return fail("$gw: $(o[1]) is $(brief(o[2])); a 3D graph has linear axes.")
@@ -2620,6 +2662,9 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   if value.Len(entries) > 0
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
+  if not value.IsMissing(box)
+    items = list.Concat(items, noteItems(box, ox + outer - 6.0, ay - 6.0, ox + w - outer + 6.0, ay + ah + 6.0))
+  end
   if not value.IsMissing(note)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
   end
@@ -2653,7 +2698,7 @@ defn differs(first, g)
   options = [["x", first.xtitle, g.xtitle], ["y", first.ytitle, g.ytitle], ["xscale", first.xscale, g.xscale],
     ["yscale", first.yscale, g.yscale], ["xlim", first.xlim, g.xlim], ["ylim", first.ylim, g.ylim],
     ["legend", first.legend, g.legend], ["size", first.size, g.size], ["z", first.ztitle, g.ztitle], ["zlim", first.zlim, g.zlim],
-    ["view", first.view, g.view]]
+    ["view", first.view, g.view], ["note", first.note, g.note], ["noteAt", first.noteAt, g.noteAt]]
   for o in options
     if not value.Equal(o[2], o[3])
       return "differs from frame 1 in its option $(o[1])"
@@ -3041,10 +3086,10 @@ defn svgOf(scene, title = missing)
 end
 
 defn svgOpen(width, height)
-  (** The tag that opens an SVG of a size, with the font of the texts. *)
+  (** The tag that opens an SVG of a size, with the font of the texts, whose spaces are kept as std/plot measured them. *)
   w = num(width)
   h = num(height)
-  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'JetBrains Mono', monospace\" style=\"font-kerning:none\">"
+  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'JetBrains Mono', monospace\" style=\"font-kerning:none\" xml:space=\"preserve\">"
 end
 
 defn pageSvg(width, height, clips)
