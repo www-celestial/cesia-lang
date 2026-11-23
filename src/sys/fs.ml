@@ -107,6 +107,7 @@ let beneath =
      | fd -> Unix.close (fd_of fd); true
      | exception Unix.Unix_error _ -> false)
 
+(* Each act asks [guarded] first: an act that no folder bounds, the most common, goes on with no other test. *)
 let guarded ctx perm = Runtime.bounded ctx.w perm && Lazy.force proc
 let fast ctx perm = guarded ctx perm && Lazy.force beneath
 
@@ -202,11 +203,11 @@ let checked_below ?(name = false) ?(quick = true) ctx perm path open_from =
 
 (* An open file of a checked path, checked again where the system holds it: closed and denied when that is out. *)
 let held ctx perm path fd =
-  if guarded ctx perm then
-    try Runtime.check_perm ~at:(Unix.readlink (fd_place fd)) ctx perm (Some path) with e -> Unix.close fd; raise e
+  try Runtime.check_perm ~at:(Unix.readlink (fd_place fd)) ctx perm (Some path) with e -> Unix.close fd; raise e
 
 let opened ctx perm path flags =
-  if fast ctx perm then checked_below ctx perm path (fun h -> open_below h (how_of flags) 0)
+  if not (guarded ctx perm) then Unix.openfile path (Unix.O_CLOEXEC :: flags) 0o644
+  else if Lazy.force beneath then checked_below ctx perm path (fun h -> open_below h (how_of flags) 0)
   else begin
     let fd = Unix.openfile path (Unix.O_CLOEXEC :: flags) 0o644 in
     held ctx perm path fd;
@@ -219,7 +220,8 @@ let opened ctx perm path flags =
    is reached from the one above it. By the path, a folder that can be searched but not read can't be opened: there
    the act is on the path. *)
 let through ?(name = false) ctx perm path f =
-  if fast ctx perm then
+  if not (guarded ctx perm) then f path
+  else if Lazy.force beneath then
     let d, base =
       checked_below ~name ~quick:name ctx perm path (fun (dir, rel) ->
           if rel = "." then fd_of (open_at (-1) (Filename.dirname dir) (o_path lor o_dir) 0), Filename.basename dir
@@ -227,7 +229,7 @@ let through ?(name = false) ctx perm path f =
     in
     using d (fun () -> f (fd_place d ^ "/" ^ base))
   else
-    match if guarded ctx perm then Runtime.leads ~name path else None with
+    match Runtime.leads ~name path with
     | None -> f path
     | Some real ->
       let dir = Filename.dirname real in
@@ -249,13 +251,14 @@ let cut fd = try Unix.ftruncate fd 0 with Unix.Unix_error (Unix.EINVAL, _, _) ->
    it is emptied, and one that isn't is made only new, in its checked folder, never through a link: nothing out of the
    folder is made or cut. *)
 let open_write ?(mode = 0o644) ?(fresh = false) ?(create = true) ~trunc ctx path flags =
-  let how = o_write lor how_of flags lor (if create then o_create else 0) lor (if fresh then o_excl lor o_nofollow else 0) in
-  let how = if trunc then how lor o_trunc else how in
-  if fast ctx Write then checked_below ~name:fresh ctx Write path (fun h -> open_below h how mode)
-  else if not (guarded ctx Write) then
+  if not (guarded ctx Write) then
     let flags = if fresh then Unix.O_EXCL :: flags else flags in
     let flags = if create then Unix.O_CREAT :: flags else flags in
     Unix.openfile path (Unix.O_WRONLY :: O_CLOEXEC :: (if trunc then O_TRUNC :: flags else flags)) mode
+  else if Lazy.force beneath then
+    let how = o_write lor how_of flags lor (if create then o_create else 0) lor (if fresh then o_excl lor o_nofollow else 0) in
+    let how = if trunc then how lor o_trunc else how in
+    checked_below ~name:fresh ctx Write path (fun h -> open_below h how mode)
   else
     let make p = Unix.openfile p (Unix.O_WRONLY :: O_CREAT :: O_EXCL :: O_CLOEXEC :: flags) mode in
     let rec go tries p =
@@ -272,10 +275,10 @@ let open_write ?(mode = 0o644) ?(fresh = false) ?(create = true) ~trunc ctx path
    checked, by its name in /proc. With openat2, the file is opened as a place only, O_PATH, which needs no right to
    read it; else, one that can't be opened is reached through its folder. *)
 let on_open ctx perm path f =
-  if fast ctx perm then
+  if not (guarded ctx perm) then f path
+  else if Lazy.force beneath then
     let fd = checked_below ctx perm path (fun h -> open_below h o_path 0) in
     using fd (fun () -> f (fd_place fd))
-  else if not (guarded ctx perm) then f path
   else
     match opened ctx perm path [ Unix.O_RDONLY; O_NONBLOCK ] with
     | fd -> using fd (fun () -> f (fd_place fd))
@@ -749,6 +752,9 @@ let rec make_dir ?(perm = 0o755) path =
 (* Is the optional argument [k] given, neither absent nor missing? *)
 let given (a : t array) k = k < Array.length a && match a.(k) with Undef | Missing -> false | _ -> true
 
+(* A flag, false unless it is given true: an absent one, as most calls leave them, is read with no call. *)
+let flag ctx name (a : t array) k = k < Array.length a && Native.flag_arg ctx name a k
+
 (* A group, as sys.Stat gives it: a number the system takes for one, not -1, which means none to chown. *)
 let group_arg ctx name v =
   match v with
@@ -761,23 +767,27 @@ let on_path ?params ?least ?name ?fresh_at ?(below = false) fn perm verb arity f
   fn,
   Native.nat ?params ~result:true fn (Option.value least ~default:arity) arity (fun ctx a ->
       (* [fresh_at]: the argument new, which makes the act one on the name itself, never followed. *)
-      let link = match fresh_at with Some k -> Some (Native.flag_arg ctx "new" a k) | None -> name in
-      let path = path_arg ?name:link ~below ctx fn perm a.(0) in
-      let waits = below && fast ctx perm in
-      attempt ctx verb path (fun () ->
-          try f ctx path a
-          with e when waits && (match e with Unix.Unix_error _ -> false | _ -> true) ->
-            Runtime.check_perm ?name:link ctx perm (Some path);
-            raise e))
+      let link = match fresh_at with Some k -> if flag ctx "new" a k then Some true else Some false | None -> name in
+      let path = Native.text_arg ctx fn a.(0) in
+      if below && fast ctx perm then
+        attempt ctx verb path (fun () ->
+            try f ctx path a
+            with e when (match e with Unix.Unix_error _ -> false | _ -> true) ->
+              Runtime.check_perm ?name:link ctx perm (Some path);
+              raise e)
+      else begin
+        Runtime.check_perm ?name:link ctx perm (Some path);
+        attempt ctx verb path (fun () -> f ctx path a)
+      end)
 
 let natives =
   [ on_path ~below:true "Read" Read "read" 1 (fun ctx path _ -> read_all ctx path);
     on_path ~params:[| "path"; "text"; "sync"; "private"; "mode"; "group"; "new" |] ~least:2 ~fresh_at:6 ~below:true
       "Write" Write "write" 7 (fun ctx path a ->
-          let sync = Native.flag_arg ctx "sync" a 2 and text = Native.text_arg ctx "Write" a.(1) in
+          let sync = flag ctx "sync" a 2 and text = Native.text_arg ctx "Write" a.(1) in
           let mode = if given a 4 then Some (mode_arg ctx "Write" a.(4)) else None in
           let group = if given a 5 then Some (group_arg ctx "Write" a.(5)) else None in
-          let alone = Native.flag_arg ctx "private" a 3 and fresh = Native.flag_arg ctx "new" a 6 in
+          let alone = flag ctx "private" a 3 and fresh = flag ctx "new" a 6 in
           if alone then Option.iter (fun m -> if m land 0o077 <> 0 then Runtime.fail ctx Type (Messages.private_mode m)) mode;
           (* Private and new: no file to replace, so the file is made at the path itself, its owner's alone. *)
           if alone && not fresh then through ~name:true ctx Write path (fun p -> write_private ~sync ?mode ?group p text)
@@ -811,7 +821,7 @@ let natives =
     "Copy",
     Native.nat ~params:[| "from"; "to"; "new" |] ~result:true "Copy" 2 3 (fun ctx a ->
         let from = path_arg ctx "Copy" Read a.(0) in
-        let fresh = Native.flag_arg ctx "new" a 2 in
+        let fresh = flag ctx "new" a 2 in
         let dest = path_arg ~name:fresh ctx "Copy" Write a.(1) in
         attempt ctx "copy" from (fun () -> copy_file ~fresh ctx from dest));
     on_path ~below:true "Chmod" Write "change the mode of" 2 (fun ctx path a ->
@@ -846,7 +856,7 @@ let natives =
         through ~name:true ctx Write path (fun p -> through ~name:true ctx Write dest (Unix.rename p));
         Missing);
     on_path ~params:[| "path"; "private" |] ~least:1 "Mkdir" Write "create" 2 (fun ctx path a ->
-        let alone = Native.flag_arg ctx "private" a 1 in
+        let alone = flag ctx "private" a 1 in
         let perm = if alone then 0o700 else 0o755 in
         let parent = Filename.dirname path in
         if parent <> path && not (Sys.file_exists parent) then make_dir ~perm parent;
