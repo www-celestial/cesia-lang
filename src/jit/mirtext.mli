@@ -1,8 +1,7 @@
 (** The IR as MIR text, for the backend that makes machine code of it, [Tier.backend], which [src/sys] sets. *)
 
 (** The MIR text of a unit, whose function 0 the others serve, the name of its single entry, and the sites that a limit
-    of steps names at its ticks, which native code doesn't write: each a site in the world, or -1 for the call that made
-    the frame. *)
+    of steps names at its ticks, which native code doesn't write: each a site in the world. *)
 type text = {
   text : string;
   entry : string;

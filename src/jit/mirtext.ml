@@ -497,9 +497,8 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
          interleaving of fibers' output can differ, around native recursion. *)
       let here = (not nested) && p >= 0 in
       (* The sites a limit of steps names at this tick, for [Engine], which finds them on its slow path only: the steps'
-         own, in the world, or -1 for the call of the frame. A tick that leaves gives its point; one that stops at the
-         limit, its number in [ticks]. *)
-      let named = Array.map (fun s -> if s >= 0 then fn.sites.(s) else -1) sites in
+         own, in the world. A tick that leaves gives its point; one that stops at the limit, its number in [ticks]. *)
+      let named = Array.map (fun s -> fn.sites.(s)) sites in
       if here then points.(p) <- named.(0);
       let refill s =
         let over = label () and small = label () and due = label () and go_on = label () in
@@ -517,8 +516,8 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
         Printf.bprintf s "%s:\n  mov %s, x2\n  mov fuel, x2\n  jmp %s\n%s:\n" go_on (cx Ir.io_quantum) back over;
         (* The limit of steps, in the frame whose step this is: an inlined one's, its links written, as the interpreter's;
            then the end that all ticks share, with the frame in x5 and the tick's number in x4. *)
-        if site >= 0 then links s site;
-        base_in s "x5" (if site >= 0 then frame_of site else -1);
+        links s site;
+        base_in s "x5" (frame_of site);
         Printf.bprintf s "  mov x4, %d\n  jmp %s\n" (Vec.push ticks named) (shared "T")
       in
       if leave then begin
@@ -531,8 +530,7 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
   in
   (* The steps of a statement's operations that can't leave, one after the other with nothing between them that can fail
      or show: one count of them all, at the first, which the limit of steps meets no later than the interpreter's. Their
-     sites are of one frame, the frame's own call (-1) or sites whose inlined frames are the same, so that the limit
-     names the frame of each. *)
+     sites are of one frame, their inlined frames the same, so that the limit names the frame of each. *)
   let rec fold = function
     | Ir.Tick (-1, false, s) :: rest ->
       let pure = function
@@ -542,7 +540,7 @@ let func b ~prefix ~nested ~moved_at ~points ~ticks ~entries (fn : Ir.func) =
         | Op ((Add | Sub), _, _, _, site) -> site < 0
         | _ -> false
       in
-      let same s' = s' = s || (s >= 0 && s' >= 0 && fn.chains.(s') = fn.chains.(s)) in
+      let same s' = fn.chains.(s') = fn.chains.(s) in
       let rec gather sites between = function
         | Ir.Tick (-1, false, s') :: r when same s' -> gather (s' :: sites) between r
         | i :: r when pure i -> gather sites (i :: between) r

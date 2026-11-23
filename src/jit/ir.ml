@@ -53,8 +53,7 @@ type ins =
           quantum, and when a full checkpoint is due it asks the next tick that can leave to do so: a full checkpoint then
           waits at most for that inner loop. The last, the site of the step, which the limit of steps reached there names
           as the interpreter's does: a loop's, an operation's, or a frame's own, at its entry or a self tail call, which
-          names its function at its line, its inlined frames ending with the one whose step it is; -1 names the call that
-          made the frame *)
+          names its function at its line, its inlined frames ending with the one whose step it is *)
   | Try of op * int * value * value * int  (** [Add], [Sub] or [Mul] that goes to the block on overflow, raising nothing *)
   | Elem_at of int * int * int * int
       (** the destination, the array, a register of its index from 1, doubled as every integer register, and a number of
