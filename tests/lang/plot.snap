@@ -1674,6 +1674,62 @@
 <path d="M600.5 19.92h10" stroke="#aa0000" stroke-width="10"/>
 <text x="622.5" y="24.3" font-size="12" fill="#000000">p</text>
 </svg>
+== isRuleSvg 1 (55 lines)
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<rect width="640" height="400" fill="#ffffff"/>
+<defs><clipPath id="c1"><rect x="54" y="10" width="576" height="335"/></clipPath></defs>
+<path d="M80.5 10L80.5 345" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M180.5 10L180.5 345" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M281.5 10L281.5 345" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M382.5 10L382.5 345" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M482.5 10L482.5 345" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M583.5 10L583.5 345" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M54 329.5L630 329.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M54 277.5L630 277.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M54 224.5L630 224.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M54 172.5L630 172.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M54 119.5L630 119.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M54 67.5L630 67.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M54 14.5L630 14.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<g clip-path="url(#c1)">
+<path d="M80.18 308.77L105.36 224.76L140.6 151.25L190.95 88.24L256.41 46.23L331.93 25.23L407.45 35.73L482.98 77.74L548.43 140.74L603.82 224.76" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M382.5 10L382.5 345" fill="none" stroke="#808080" stroke-width="1" stroke-linejoin="round"/>
+<text x="386.5" y="26.24" font-size="12" fill="#808080">S</text>
+<path d="M54 329.5L630 329.5" fill="none" stroke="#808080" stroke-width="1" stroke-linejoin="round" stroke-dasharray="3.7 1.6"/>
+<text x="626" y="325.5" font-size="12" fill="#808080" text-anchor="end">horizon</text>
+<path d="M598.5 10L598.5 345" fill="none" stroke="#d55e00" stroke-width="1" stroke-linejoin="round"/>
+<text x="594.5" y="26.24" font-size="12" fill="#d55e00" text-anchor="end">late</text>
+</g>
+<path d="M53.5 9.5L630.5 9.5L630.5 345.5L53.5 345.5L53.5 9.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M80.5 345.5L80.5 350.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="80.5" y="365.74" font-size="12" fill="#000000" text-anchor="middle">120</text>
+<path d="M180.5 345.5L180.5 350.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="180.5" y="365.74" font-size="12" fill="#000000" text-anchor="middle">140</text>
+<path d="M281.5 345.5L281.5 350.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="281.5" y="365.74" font-size="12" fill="#000000" text-anchor="middle">160</text>
+<path d="M382.5 345.5L382.5 350.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="382.5" y="365.74" font-size="12" fill="#000000" text-anchor="middle">180</text>
+<path d="M482.5 345.5L482.5 350.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="482.5" y="365.74" font-size="12" fill="#000000" text-anchor="middle">200</text>
+<path d="M583.5 345.5L583.5 350.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="583.5" y="365.74" font-size="12" fill="#000000" text-anchor="middle">220</text>
+<path d="M48.5 329.5L53.5 329.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="45.5" y="333.88" font-size="12" fill="#000000" text-anchor="end">0</text>
+<path d="M48.5 277.5L53.5 277.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="45.5" y="281.88" font-size="12" fill="#000000" text-anchor="end">5</text>
+<path d="M48.5 224.5L53.5 224.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="45.5" y="228.88" font-size="12" fill="#000000" text-anchor="end">10</text>
+<path d="M48.5 172.5L53.5 172.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="45.5" y="176.88" font-size="12" fill="#000000" text-anchor="end">15</text>
+<path d="M48.5 119.5L53.5 119.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="45.5" y="123.88" font-size="12" fill="#000000" text-anchor="end">20</text>
+<path d="M48.5 67.5L53.5 67.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="45.5" y="71.88" font-size="12" fill="#000000" text-anchor="end">25</text>
+<path d="M48.5 14.5L53.5 14.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="45.5" y="18.88" font-size="12" fill="#000000" text-anchor="end">30</text>
+<text x="342" y="386.6" font-size="13" fill="#000000" text-anchor="middle">azimuth</text>
+<text x="23.26" y="177.5" font-size="13" fill="#000000" text-anchor="middle" transform="rotate(-90 23.26 177.5)">elevation</text>
+</svg>
 == isScene 1 (6 lines, no line end)
 {
   Width: 320

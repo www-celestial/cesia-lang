@@ -144,6 +144,22 @@ isTicksLog() = value.Equal(texts(plot.Of([plot.Line([1, 1000], [1, 2])], xscale 
 (* Without the options, the ticks are those computed, as before. *)
 isTicksUnchanged() = value.Equal(scene(plot.Of([plot.Line(xs, ys)], xticks = missing, ylabels = missing), 640, 400), scene(plot.Line(xs, ys), 640, 400))
 
+(* Rules: a line of reference across the plot at a value, grey unless a color is given, its label at its end. *)
+
+ruled = plot.Of([plot.Line(sun, high), plot.Rule(x = 180, label = "S"), plot.Rule(y = 0, label = "horizon", dash = "dashed"), plot.Rule(x = 223, label = "late", color = "#d55e00")], x = "azimuth", y = "elevation")
+isRuleSvg() = test.Snapshot(svg(ruled))
+defn isRuleAcross()
+  s = scene(ruled, 640, 400)
+  f = plotArea(s)
+  ls = lines(s)
+  south = ls[2]
+  flat = ls[3]
+  late = [x for x in role(s, "data") if x.Kind == "text" and x.Text == "late"][1]
+  south.Xs[1] == south.Xs[2] and south.Ys[1] == f.Y and south.Ys[2] == f.Y + f.H and south.Color == "#808080" and flat.Ys[1] == flat.Ys[2] and flat.Xs[1] == f.X and flat.Xs[2] == f.X + f.W and value.Len(flat.Dash) == 2 and late.Anchor == "end" and late.Color == "#d55e00" and value.Len(role(s, "legend")) == 0
+end
+(* The range of its axis holds the rule; the other axis is the data's; a graph of rules alone has the other axis from 0 to 1. *)
+isRuleRange() = value.Equal(texts(plot.Of([plot.Line([1, 2], [1, 2]), plot.Rule(y = 10)]), "ylabel")[1..2], ["2", "4"]) and value.Equal(texts(plot.Rule(y = 3), "xlabel"), ["0", "0.2", "0.4", "0.6", "0.8", "1"])
+
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
 
@@ -526,6 +542,14 @@ errors = [
   [plot.Of([plot.Histogram([1, 2], label = "h")], legend = "ends"), "plot.Histogram \"h\": legend = \"ends\" names the end of a line, and a histogram has none; give legend = true."],
   [plot.Of([plot.Line3([1], [1], [1])], legend = "ends"), "plot.Line3: legend is \"ends\"; the ends of lines are named in 2D: a 3D graph gives true or false."],
   [plot.Of([plot.Line([1], [1])], note = 3), "plot.Line: note is 3; give a text, a line for each line of the box."],
+  [plot.Rule(x = 1, y = 2), "plot.Rule: give x or y, one of them, not both."],
+  [plot.Rule(), "plot.Rule: give x or y, one of them, as x = 180 for a line upright at 180."],
+  [plot.Rule(x = "a"), "plot.Rule: x is \"a\"; give a finite number, where the line goes."],
+  [plot.Rule(y = math.Nan), "plot.Rule: y is nan; give a finite number, where the line goes."],
+  [plot.Rule(y = 1, dash = "long"), "plot.Rule: dash is \"long\"; it is missing for a solid line, or \"dashed\", \"dotted\" or \"dashdot\"."],
+  [plot.Rule(y = 1, color = "grey"), "plot.Rule: color is \"grey\"; write a color as \"#rrggbb\", as \"#d55e00\"."],
+  [plot.Rule(y = 1, label = 2), "plot.Rule: label is 2; give a text."],
+  [plot.Of([plot.Line([1, 2], [1, 2]), plot.Rule(y = 0)], yscale = "log"), "plot.Rule (layer 2): a log y axis needs values above 0, and y is 0."],
   [plot.Of([plot.Line([1, 2], [1, 2])], xticks = [2, 1]), "plot.Line: xticks[2] is 1.0; give finite numbers, increasing."],
   [plot.Of([plot.Line([1, 2], [1, 2])], yticks = [1, math.Nan]), "plot.Line: yticks[2] is nan; give finite numbers, increasing."],
   [plot.Of([plot.Line([1, 2], [1, 2])], xticks = "a"), "plot.Line: xticks is \"a\"; give a list of numbers, increasing."],

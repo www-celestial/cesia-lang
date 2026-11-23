@@ -57,6 +57,8 @@
 - `plot.Of(..., xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"])`, and `yticks`, `ylabels`:
   the ticks of an axis chosen, in place of those of Talbot, Lin and Hanrahan, and their labels, as many as the ticks, or
   the numbers written as the computed ones are; a log axis takes ticks above 0. Without them, nothing changes.
+- `plot.Rule(x = 180, label = "S")` and `plot.Rule(y = 0, dash = "dashed")`: a line of reference across the plot,
+  upright or across, grey unless a color is given, its label at its end; the range of its axis grows to hold it.
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
   Jupyter: two graphs, or a table then a graph, in one cell. `cells.Run` gives them in its new Shown, each with its place
   among the lines of Output; each graph has its own Key for `cells.Scene`; the page of `cells.Html` shows them in order.

@@ -134,6 +134,17 @@ defn Text(x, y, texts, color = missing, size = 11, anchor = "left", dx = 4, dy =
   one({Fn: "Text", X: x, Y: y, Texts: texts, Label: missing, Color: color, Size: size, Anchor: anchor, Dx: dx, Dy: dy})
 end
 
+defn Rule(x = missing, y = missing, label = missing, dash = missing, color = missing)
+  (** A line of reference across the plot, as the south of a sun path or the horizon: x = c draws it upright at c, y = c
+      across at c; exactly one of x and y. Its label is written at its end, inside the plot, in its color; dash is as for
+      Line; color is written "#rrggbb", a grey without it. The range of its axis grows to hold it, as for the data; the
+      other axis is left to the other layers. It has no entry in the legend.
+
+        Svg(Of([Line([0, 360], [0, 50]), Rule(x = 180, label = "S")])) then result.IsOk() --> true
+        Svg(Rule(x = 1, y = 2)) --> result.Err({Kind: "plot", Message: "plot.Rule: give x or y, one of them, not both."}) *)
+  one({Fn: "Rule", X: x, Y: y, Label: label, Color: color, Dash: dash})
+end
+
 defn Surface(z, x = missing, y = missing, colors = "viridis")
   (** A surface in 3D: the height z[i, j] over the point (x[j], y[i]), as MATLAB's surf, so row i of the matrix is at
       y[i] and column j at x[j]; without x and y, 1 to the count of columns and of rows. x and y are finite, and each
@@ -523,6 +534,7 @@ defn prepare(l, at, count)
     "Surface" -> renamed(l.Ready, w)
     "Line3" -> line3Of(l, w)
     "Text" -> textsOf(l, w)
+    "Rule" -> ruleOf(l, w)
     else -> densityOf(l, w)
   end
 end
@@ -628,6 +640,35 @@ defn textsOf(l, w)
   p.Yhi = e.Yhi
   p.Xbad = bad("x", x, e.Xbad)
   p.Ybad = bad("y", y, e.Ybad)
+  result.Ok(p)
+end
+
+ruleGrey = "#808080"   (** The color of a plot.Rule that gives none. *)
+
+defn ruleOf(l, w)
+  if value.IsMissing(l.X) == value.IsMissing(l.Y)
+    return fail("$w: give x or y, one of them, $(if value.IsMissing(l.X) "as x = 180 for a line upright at 180" else "not both" end).")
+  end
+  which = if value.IsMissing(l.X) "y" else "x" end
+  v = if which == "x" l.X else l.Y end
+  if not (value.IsNumber(v) and v - v == 0)
+    return fail("$w: $which is $(brief(v)); give a finite number, where the line goes.")
+  end
+  if not (value.IsMissing(l.Dash) or l.Dash in dashes)
+    return fail("$w: dash is $(brief(l.Dash)); it is missing for a solid line, or \"dashed\", \"dotted\" or \"dashdot\".")
+  end
+  p = base(l, w)
+  p.Axis = which
+  p.At = v * 1.0
+  p.Width = 1.0
+  p.Dash = l.Dash
+  p.Xlo = if which == "x" p.At else inf end
+  p.Xhi = if which == "x" p.At else -inf end
+  p.Ylo = if which == "y" p.At else inf end
+  p.Yhi = if which == "y" p.At else -inf end
+  why = if v <= 0 "$which is $(value.Text(v))" else missing end
+  p.Xbad = if which == "x" why else missing end
+  p.Ybad = if which == "y" why else missing end
   result.Ok(p)
 end
 
@@ -1043,6 +1084,11 @@ defn axisOf(which, ps, scale, lim, w)
         return fail("$(p.W): a log $which axis needs values above 0, and $why.")
       end
     end
+  end
+  if lo > hi
+    (* No layer has a value on this axis, as a graph of rules across it alone: 0 to 1, or 1 to 10 on a log axis. *)
+    lo = if scale == "log" 1.0 else 0.0 end
+    hi = if scale == "log" 10.0 else 1.0 end
   end
   axis = {Scale: scale, Lo: lo, Hi: hi, T0: 0.0, T1: 1.0, Flip: flip, Category: category, Names: missing}
   if not value.IsMissing(lim)
@@ -1718,6 +1764,7 @@ defn dataItems(p, xa, ya, a, clip)
     "Bars" -> barItems(p, a, clip)
     "Histogram" -> histogramItems(p, xa, a, clip)
     "Text" -> textItems(p, xa, ya, a, clip)
+    "Rule" -> ruleItems(p, xa, ya, a, clip)
     else -> cellsItems(p, xa, ya, a, clip)
   end
 end
@@ -1742,6 +1789,37 @@ defn textItems(p, xa, ya, a, clip)
   py = a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy
   inside = col.Positions((px >= clip[1] - 0.5) * 1 + (px <= clip[1] + clip[3] + 0.5) * 1 + (py >= clip[2] - 0.5) * 1 + (py <= clip[2] + clip[4] + 0.5) * 1 == 4)
   [{Kind: "text", X: px[i] + p.Dx, Y: py[i] + p.Dy, Text: p.Texts[i], Size: p.Size, Color: p.Color, Anchor: p.Anchor, Angle: 0, Width: textWidth(p.Texts[i], p.Size), Clip: clip, Role: "data"} for i in inside]
+end
+
+defn ruleItems(p, xa, ya, a, clip)
+  (** A rule across the plot at its value, on the middle of its pixels, and its label at its end inside the plot: right of
+      the top of an upright rule, or left of it near the right side; above the right end of a rule across, or below it
+      near the top. None when the value is outside the plot. *)
+  if p.Axis == "x"
+    x = a.X + (tf(xa, p.At) - a.T0x) * a.Sx
+    if x < clip[1] - 0.5 or x > clip[1] + clip[3] + 0.5
+      return []
+    end
+    x = snap(x)
+    out = [{Kind: "line", Xs: [x, x], Ys: [clip[2], clip[2] + clip[4]], Color: p.Color, Width: 1.0, Dash: dashOf(p.Dash, 1.0), Clip: clip, Role: "data"}]
+    if value.IsMissing(p.Label)
+      return out
+    end
+    wide = textWidth(p.Label, tickSize)
+    left = x + 4.0 + wide > clip[1] + clip[3]
+    return list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(if left x - 4.0 else x + 4.0 end, clip[2] + 4.0 + tickSize * ascent, p.Label, tickSize, if left "end" else "start" end, "data"))), out)
+  end
+  y = a.Y + (tf(ya, p.At) - a.T0y) * a.Sy
+  if y < clip[2] - 0.5 or y > clip[2] + clip[4] + 0.5
+    return []
+  end
+  y = snap(y)
+  out = [{Kind: "line", Xs: [clip[1], clip[1] + clip[3]], Ys: [y, y], Color: p.Color, Width: 1.0, Dash: dashOf(p.Dash, 1.0), Clip: clip, Role: "data"}]
+  if value.IsMissing(p.Label)
+    return out
+  end
+  under = y - 4.0 - tickSize * ascent < clip[2]
+  list.Append(dict.Put("Color", p.Color, dict.Put("Clip", clip, label(clip[1] + clip[3] - 4.0, if under y + 4.0 + tickSize * ascent else y - 4.0 end, p.Label, tickSize, "end", "data"))), out)
 end
 
 defn areaItems(p, xa, ya, a, clip)
@@ -1801,7 +1879,7 @@ defn legendEntries(ps)
           out = list.Append({Kind: "box", Label: p.Labels[s], Color: p.Colors[s], Opacity: p.Shades[s]}, out)
         end
       end
-    else if not value.IsMissing(p.Label) and not p.Cells
+    else if not value.IsMissing(p.Label) and not p.Cells and p.Fn != "Rule"
       kind = match p.Fn
         "Line" -> "line"
         "Line3" -> "line"
@@ -1839,7 +1917,7 @@ defn colored(ps)
     else if not p.Cells
       plain = value.IsMissing(p.Color)
       if plain
-        p.Color = "ink"
+        p.Color = if p.Fn == "Rule" ruleGrey else "ink" end
       end
       if (p.Fn == "Line" or p.Fn == "Line3") and plain and value.IsMissing(p.Dash)
         p.Dash = lineTurn[math.Mod(lines, 4) + 1]
