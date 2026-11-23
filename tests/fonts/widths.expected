@@ -1,2 +1,3 @@
-490 texts within a pixel of SDL3_ttf, 23 characters without a glyph counted an em
+536 texts within a pixel of SDL3_ttf, 77 characters drawn as .notdef, 23 combining marks
+wide, 中文 and a中: ["28.8", "21.6"] pixels at 12
 exit 0

@@ -39,6 +39,13 @@
 
 ### Science
 
+- Graphs are black on white, their texts in JetBrains Mono, the font of the code in Cemacs, which draws them as
+  `plot.Save` writes them: the layers without a color are black, lines told apart by their dash, solid, dashed, dotted
+  and dash-dot in turn, points by their shape, circle, square, triangle and cross, bars by their grey, the ink at 100,
+  60, 40 and 30 %; the grid `#d0d0d0` and the lines 1 pixel wide by default, `width = 1.5` still taken. `color =` gives
+  any layer a color of its own, as before; heatmaps and surfaces keep viridis and RdBu. The font being monospaced, a
+  text is 0.6 em a column, none for a combining mark, two for a wide character of East Asia: the table of the widths of
+  Noto Sans and `tools/plot-font.ce` are gone. A graph that drew draws the same data; its look alone changed.
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
   Jupyter: two graphs, or a table then a graph, in one cell. `cells.Run` gives them in its new Shown, each with its place
   among the lines of Output; each graph has its own Key for `cells.Scene`; the page of `cells.Html` shows them in order.

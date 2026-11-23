@@ -17,12 +17,12 @@ scene(g, w, h) = result.Unwrap(plot.Scene(g, w, h))
 
 defn box(t)
   (** The rectangle a text covers: its width along its line, and its line's height. *)
-  h = t.Size * 1.362
+  h = t.Size * 1.32
   start = if t.Anchor == "start" 0.0 else if t.Anchor == "middle" t.Width / 2 else t.Width end
   if t.Angle == 0
-    {X: t.X - start, Y: t.Y - t.Size * 1.069, W: t.Width, H: h}
+    {X: t.X - start, Y: t.Y - t.Size * 1.02, W: t.Width, H: h}
   else
-    {X: t.X - t.Size * 1.069, Y: t.Y - t.Width + start, W: h, H: t.Width}
+    {X: t.X - t.Size * 1.02, Y: t.Y - t.Width + start, W: h, H: t.Width}
   end
 end
 

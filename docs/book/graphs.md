@@ -48,7 +48,9 @@ invisible(dev.off())
 ```
 
 `waves.svg` is an image of 640 by 400 pixels in *SVG*, Scalable Vector Graphics, the format of drawings that every web
-browser opens and that stays sharp at any zoom. The legend shows because the layers have a label.
+browser opens and that stays sharp at any zoom. It is black on white: the two lines are black, the first solid and the
+second dashed, and the texts are in JetBrains Mono, the font of the code in Cemacs, which draws the graph the same. The
+legend shows because the layers have a label.
 
 ## A graph is a value
 
@@ -80,17 +82,19 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view)` | the drawing |
 
 A color is written `"#rrggbb"`, the red, green and blue of a color in two hexadecimal digits each, as in CSS. A layer
-without a color takes the next of the palette of [Colors](#colors).
+without a color is black, as [Colors](#colors) says: lines told apart by their dash, points by their shape, bars by
+their shade of grey. Any layer takes a color of its own, each its own, to tell curves apart by color or to bring one
+forward.
 
 ### Lines and points
 
 [plot.Line] joins the points in the order given. A NaN, *not a number*, or an infinity in `x` or `y` cuts the line: it
-leaves a gap there, as matplotlib does, so a missing measure doesn't draw a false segment. `dash` is `"dashed"`,
-`"dotted"` or `"dashdot"`, with the patterns of matplotlib's default style scaled by the width: 3.7 on and 1.6 off,
-1 and 1.65, and 6.4, 1.6, 1, 1.6 widths.
+leaves a gap there, as matplotlib does, so a missing measure doesn't draw a false segment. A line is 1 pixel wide unless
+`width` says otherwise. `dash` is `"dashed"`, `"dotted"` or `"dashdot"`, with the patterns of matplotlib's default style
+scaled by the width: 3.7 on and 1.6 off, 1 and 1.65, and 6.4, 1.6, 1, 1.6 widths.
 
 [plot.Points] draws a marker at each point, `"circle"`, `"square"`, `"triangle"`, `"diamond"`, `"cross"` or `"plus"`, of
-`size` pixels across. A point with a NaN or an infinity is left out, and the scene counts it in `Dropped`. At most 200,000
+`size` pixels across; without `shape`, the next of the turn of [Colors](#colors). A point with a NaN or an infinity is left out, and the scene counts it in `Dropped`. At most 200,000
 points are drawn one by one: past that, a cloud of markers hides its own shape, and the file grows by about 20 bytes a
 point, so [plot.Points] gives an `Err` that names [plot.Density], which counts any number of points per cell.
 
@@ -501,18 +505,18 @@ still, it places them as a linear axis would.
 ### Text, and the size of each label
 
 The margins around the plot are measured, not guessed: each label's width is the sum of the *advance widths* of its
-characters, how far each moves the pen, in the font Cemacs draws with, Noto Sans Medium. [std/plot] holds these widths
-for the Latin letters, Latin-1 and Latin Extended-A, Greek, and the punctuation, superscripts, subscripts and minus sign of
-numbers and units, read from the font file by `tools/plot-font.ce`. A test measures each of them with SDL3_ttf, the text
-library of Cemacs, and finds every one within a pixel. A character outside these, as a Chinese one, counts a whole *em*,
-the size of the font, as wide as any of these glyphs but `‰`, so that no label overlaps or is cut, at the cost of some
-room. The soft hyphen counts nothing, as shaping hides it.
+characters, how far each moves the pen, in the font Cemacs draws with, JetBrains Mono 2.304, the font of its code. It is
+*monospaced*: each of its 1,363 characters moves the pen 0.6 *em*, the size of the font, but the combining marks, which
+move it none, so a label of 12 pixels is 7.2 pixels a character. [std/plot] counts a text so, in *columns*, as a
+terminal counts them, by the rules of Markus Kuhn's `wcwidth`: a column a character, none for a combining mark, a soft
+hyphen or a character of zero width, two for a wide character of East Asia, which the font lacks and another font draws
+about an em wide. A test measures the characters of graphs with SDL3_ttf, the text library of Cemacs, and finds every
+one within a pixel.
 
-The texts are drawn without *kerning*, the small moves between pairs of letters such as `AV`, so that the widths measured
-are the widths drawn. The SVG names Noto Sans first, then the browser's own sans-serif: a viewer without Noto Sans
-draws the texts in another font, a little wider or narrower than measured. The ink of a few letters, as an `f` or an
-`î` at the end of a label, reaches up to about 0.2 em past its advance, 2 pixels at 12; the space kept between labels,
-6 pixels, covers it.
+The SVG names JetBrains Mono first, then the browser's own monospace font: a viewer without JetBrains Mono draws the
+texts in another monospaced font, as DejaVu Sans Mono, Menlo or Consolas, whose characters are as wide, 0.6 em or a
+little less, so the layout holds. A character that JetBrains Mono lacks, as the superscript minus of `10⁻³`, is drawn by
+another font, Noto Sans Medium in Cemacs.
 
 With the widths known, the layout reserves the title, the labels of the ticks, the names of the axes, the legend and the
 color bar, and gives the plot what is left. A label at the end of an axis may reach past the plot: the margin grows to
@@ -534,10 +538,19 @@ whose x goes back and forth, as a circle, keeps all its points.
 
 ### Colors
 
-The layers take the eight colors of Okabe and Ito (2008) in turn, chosen to stay apart for the common forms of color
-blindness: blue `#0072b2`, vermillion `#d55e00`, bluish green `#009e73`, reddish
-purple `#cc79a7`, sky blue `#56b4e9`, orange `#e69f00`, yellow `#f0e442` and black `#000000`. Black comes last, as it
-vanishes on a dark background.
+A graph is black on white, the grid a light grey, `#d0d0d0`, 1 pixel wide, as are the frame and the lines. The layers
+without a color are black, the ink of the axes, and tell themselves apart by what black and white keep:
+
+| Layers without a color | In turn |
+|---|---|
+| [plot.Line], [plot.Line3], without `dash` | solid, dashed, dotted, dash-dot |
+| [plot.Points], without `shape` | circle, square, triangle, cross |
+| the series of [plot.Bars], [plot.Histogram] | black, then the ink at 60, 40 and 30 %: the greys of matplotlib's `grayscale` style |
+| [plot.Area] | the ink at 30 %, a grey |
+
+The fifth of a kind starts the turn again. A layer with a `color` keeps a solid line or a circle and takes no turn: a
+color is given where it says something, to tell curves apart or to bring one forward, as the day of today among the
+others. The same graph prints and photocopies in black and white without losing a curve.
 
 Heatmaps and densities use *viridis*, by van der Walt and Smith (2015): its lightness grows evenly from the least value to
 the greatest, so equal steps of the data look like equal steps of color, a *perceptually uniform* map, and it stays in
@@ -565,7 +578,8 @@ frame of an animation has `Frames` and `Fps` too, and the scene of a 3D graph `V
 
 Coordinates are in pixels from the top left corner. The items of the data have `Clip`, the rectangle `[x, y, width,
 height]` of the plot they are cut to. A `Color` is `"#rrggbb"`, or `"ink"` and `"grid"` for the frame, the ticks and the
-texts, which a back-end paints in the colors of its theme; [plot.Svg] paints them `#222222` and `#e6e6e6` on white. The
+texts, which a back-end paints in the colors of its theme, as it does `"ink"` for the layers without a color and
+`"paper"` for what hides the grid behind a text; [plot.Svg] paints them `#000000`, `#d0d0d0` and `#ffffff`. The
 `Role` says what an item is: `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"`, `"ylabel"` and `"zlabel"` for the
 labels of the ticks, `"factor"` for the power of ten or the offset of an axis, `"title"`, `"xtitle"`, `"ytitle"`,
 `"ztitle"`, `"legend"`, `"colorbar"` or `"note"`, a line under the graph; in 3D, `"pane"` for the far sides of the box and
@@ -650,7 +664,8 @@ leaves the painting to Cemacs.
 ## Limits
 
 - SVG only, for now; PNG will come with a rasterizer chosen by measure.
-- One font is measured, Noto Sans Medium; other fonts draw a little wider or narrower.
+- One font is measured, JetBrains Mono; another monospaced font draws as wide or a little narrower, a proportional
+  font narrower.
 - The legend and the color bar sit right of the plot; bars stand upright; a graph holds one [plot.Bars].
 - A line whose x goes back and forth keeps all its points; past 200,000 markers, use [plot.Density].
 - No zoom in this version. An animation holds 300 frames at most, all in memory, and is written as SVG, not as a video
@@ -674,8 +689,6 @@ leaves the painting to Cemacs.
   21(153):65–66, 1926. <https://doi.org/10.1080/01621459.1926.10502161>. The count of bins when the IQR is 0.
 - Rob J. Hyndman, Yanan Fan. "Sample Quantiles in Statistical Packages". *The American Statistician* 50(4):361–365,
   1996. <https://doi.org/10.1080/00031305.1996.10473566>. The quartiles, by its type 7.
-- Masataka Okabe, Kei Ito. "Color Universal Design (CUD): How to make figures and presentations that are friendly to
-  Colorblind people". J*Fly, 2002, revised 2008. <https://jfly.uni-koeln.de/color/>. The colors of the layers.
 - Stéfan van der Walt, Nathaniel Smith. "matplotlib colormaps", the page of the colormaps they designed as matplotlib's
   default, with their talk at SciPy 2015. <https://bids.github.io/colormap/>. Viridis, from the table of matplotlib 3.11.
 - Mark Harrower, Cynthia A. Brewer. "ColorBrewer.org: An Online Tool for Selecting Colour Schemes for Maps". *The
@@ -699,8 +712,10 @@ leaves the painting to Cemacs.
 - The Matplotlib development team. *mplot3d FAQ*, "My 3D plot doesn't look right at certain viewing angles", and
   `Axes3D.plot_surface`. <https://matplotlib.org/stable/api/toolkits/mplot3d/faq.html>. The sort of matplotlib, its
   downsampling and `axlim_clip`.
-- Microsoft and Adobe. *OpenType specification*: the tables cmap, hmtx and head.
-  <https://learn.microsoft.com/typography/opentype/spec/>. How `tools/plot-font.ce` reads the widths of the font.
+- Markus Kuhn. *wcwidth*, the widths of the characters of Unicode in a terminal, 2007.
+  <https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c>. The columns of a text: none, one or two.
+- JetBrains. *JetBrains Mono*, version 2.304, SIL Open Font License 1.1. <https://www.jetbrains.com/lp/mono/>. The font
+  of the texts, each of its characters 600 thousandths of an em wide.
 
 ## Next
 

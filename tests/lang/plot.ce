@@ -51,6 +51,27 @@ isFactorLabels() = test.Snapshot(svg(plot.Line([0, 1, 2], [0.0, 2.5e7, 5e7]))) a
 isGridSvg() = test.Snapshot(svg(plot.Grid([plot.Line(xs, ys), plot.Bars(["a"], [1]), plot.Points(xs, zs)], columns = 2)))
 isScene() = test.Snapshot(scene(plot.Of([plot.Line([1, 2], [3, 4], label = "l")], title = "t"), 320, 200))
 
+(* The look: black on white, the texts in JetBrains Mono, 0.6 em a character. Layers without a color are the ink of the
+   axes, told apart by their dash, their shape or their shade, in turn; a color is given where it says something. *)
+
+look = plot.Of(list.Concat([plot.Line(xs, ys + k, label = "line $k") for k in 1..5], [plot.Line(xs, ys, color = "#d55e00", label = "orange"), plot.Points(xs, zs, label = "a"), plot.Points(xs, zs + 1, label = "b"), plot.Points(xs, zs + 2, color = "#0072b2", label = "blue")]), title = "The look", x = "x", y = "y")
+isLookSvg() = test.Snapshot(svg(look))
+lines(s) = [x for x in role(s, "data") if x.Kind == "line"]
+defn isDashesInTurn()
+  (* Five black lines: solid, dashed, dotted, dash-dot, solid again; the orange one keeps a solid line and no turn. *)
+  ls = lines(scene(look, 640, 400))
+  dashes = [if value.IsMissing(l.Dash) 0 else value.Len(l.Dash) end for l in ls]
+  value.Equal(dashes, [0, 2, 2, 4, 0, 0]) and ls[2].Dash[1] > ls[3].Dash[1] and list.All([l.Color == "ink" for l in ls[1..5]]) and ls[6].Color == "#d55e00" and list.All([l.Width == 1.0 for l in ls])
+end
+isShapesInTurn() = value.Equal([[m.Shape, m.Color] for m in role(scene(look, 640, 400), "data") if m.Kind == "marks"], [["circle", "ink"], ["square", "ink"], ["circle", "#0072b2"]]) and value.Equal([x.Shape for x in role(scene(plot.Of([plot.Points([1], [k]) for k in 1..5]), 640, 400), "data")], ["circle", "square", "triangle", "cross", "circle"])
+isShadesInTurn() = value.Equal([[r.Color, r.Opacity] for r in role(scene(plot.Bars(["a"], [[1], [2], [3], [4], [5]]), 640, 400), "data")], [["ink", 1.0], ["ink", 0.6], ["ink", 0.4], ["ink", 0.3], ["ink", 1.0]]) and role(scene(plot.Histogram([1, 2, 2]), 640, 400), "data")[1].Opacity == 1.0
+isWidthStillTaken() = lines(scene(plot.Line(xs, ys, width = 1.5), 640, 400))[1].Width == 1.5 and text.Contains("stroke-width=\"1.5\"", svg(plot.Line(xs, ys, width = 1.5)))
+isSvgInk() = text.Contains("font-family=\"'JetBrains Mono', monospace\"", svg(look)) and text.Contains("stroke=\"#000000\"", svg(look)) and text.Contains("stroke=\"#d0d0d0\"", svg(look)) and not text.Contains("\"ink\"", svg(look))
+isMapsKept() = role(scene(plot.Heatmap(grid), 640, 400), "data")[1].Colors[1] == "#440154"
+(** The width of a text as the scene measures it, at 12 pixels. *)
+widthOf(words) = role(scene(plot.Of([plot.Line([1, 2], [1, 2])], title = words), 640, 400), "title")[1].Width / 15.0 * 12.0
+isMonospaced() = math.Abs(widthOf("abc") - 21.6) < 1e-9 and math.Abs(widthOf("−1.5×10⁶") - 57.6) < 1e-9 and math.Abs(widthOf("été") - 21.6) < 1e-9 and math.Abs(widthOf("中文a") - 36.0) < 1e-9 and math.Abs(widthOf("soft­hyphen") - 72.0) < 1e-9
+
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
 
@@ -293,12 +314,12 @@ end
 
 defn box(t)
   (** The rectangle a text covers: its width along its line, and its line's height. *)
-  h = t.Size * 1.362
+  h = t.Size * 1.32
   start = if t.Anchor == "start" 0.0 else if t.Anchor == "middle" t.Width / 2 else t.Width end
   if t.Angle == 0
-    {X: t.X - start, Y: t.Y - t.Size * 1.069, W: t.Width, H: h}
+    {X: t.X - start, Y: t.Y - t.Size * 1.02, W: t.Width, H: h}
   else
-    {X: t.X - t.Size * 1.069, Y: t.Y - t.Width + start, W: h, H: t.Width}
+    {X: t.X - t.Size * 1.02, Y: t.Y - t.Width + start, W: h, H: t.Width}
   end
 end
 
@@ -311,7 +332,7 @@ defn ticksHold(s, horizontal)
     return false
   end
   for i in 1..n
-    p = if horizontal ls[i].X else ls[i].Y - ls[i].Size * 0.714 / 2 end
+    p = if horizontal ls[i].X else ls[i].Y - ls[i].Size * 0.73 / 2 end
     if p < (if horizontal a.X else a.Y end) - 1.0 or p > (if horizontal a.X + a.W else a.Y + a.H end) + 1.0
       return false
     end
@@ -323,7 +344,7 @@ defn ticksHold(s, horizontal)
       if not (v < w and ls[i].X + ls[i].Width / 2 + 6.0 <= ls[i + 1].X - ls[i + 1].Width / 2 + 0.01)
         return false
       end
-    else if not (v < w and ls[i].Y - ls[i + 1].Y >= ls[i].Size * 1.362 + 1.99)
+    else if not (v < w and ls[i].Y - ls[i + 1].Y >= ls[i].Size * 1.32 + 1.99)
       return false
     end
   end

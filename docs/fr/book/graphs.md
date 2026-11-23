@@ -51,8 +51,9 @@ invisible(dev.off())
 ```
 
 `waves.svg` est une image de 640 pixels sur 400 en *SVG*, Scalable Vector Graphics, le format de dessins que tout
-navigateur web ouvre et qui reste net à tous les zooms. La légende s'affiche parce que les layers ont un label (une
-étiquette).
+navigateur web ouvre et qui reste net à tous les zooms. Il est noir sur blanc : les deux courbes sont noires, la première
+en trait plein et la seconde en tirets, et les textes sont en JetBrains Mono, la police du code dans Cemacs, qui dessine
+le graphique de la même façon. La légende s'affiche parce que les layers ont un label (une étiquette).
 
 ## Un graphique est une valeur
 
@@ -85,17 +86,20 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view)` | le dessin |
 
 Une couleur s'écrit `"#rrggbb"`, le rouge, le vert et le bleu d'une couleur en deux chiffres hexadécimaux chacun, comme
-en CSS. Un layer sans couleur prend la suivante de la palette de [Couleurs](#couleurs).
+en CSS. Un layer sans couleur est noir, comme le dit [Couleurs](#couleurs) : les courbes se distinguent par leur trait,
+les points par leur forme, les barres par leur nuance de gris. Tout layer prend une couleur à lui, chacun la sienne, pour
+distinguer des courbes par la couleur ou en mettre une en avant.
 
 ### Courbes et points
 
 [plot.Line] relie les points dans l'ordre donné. Un NaN, *not a number* (pas un nombre), ou un infini dans `x` ou `y`
 coupe la courbe : elle y laisse un trou, comme le fait matplotlib, pour qu'une mesure manquante ne dessine pas un faux
-segment. `dash` (le tireté) vaut `"dashed"`, `"dotted"` ou `"dashdot"`, avec les motifs du style par défaut de
-matplotlib mis à l'échelle de la largeur : 3,7 tracé et 1,6 vide, 1 et 1,65, et 6,4, 1,6, 1, 1,6 largeurs.
+segment. Une courbe a 1 pixel de large, sauf si `width` dit autre chose. `dash` (le tireté) vaut `"dashed"`, `"dotted"`
+ou `"dashdot"`, avec les motifs du style par défaut de matplotlib mis à l'échelle de la largeur : 3,7 tracé et 1,6 vide,
+1 et 1,65, et 6,4, 1,6, 1, 1,6 largeurs.
 
 [plot.Points] dessine un marqueur à chaque point, `"circle"`, `"square"`, `"triangle"`, `"diamond"`, `"cross"` ou
-`"plus"`, de `size` pixels de large. Un point avec un NaN ou un infini est laissé de côté, et la scène le compte dans
+`"plus"`, de `size` pixels de large ; sans `shape`, la suivante du tour de [Couleurs](#couleurs). Un point avec un NaN ou un infini est laissé de côté, et la scène le compte dans
 `Dropped`. Au plus 200 000 points sont dessinés un par un : au-delà, un nuage de marqueurs cache sa propre forme, et le
 fichier grossit d'environ 20 octets par point, si bien que [plot.Points] donne un `Err` qui nomme [plot.Density], qui
 compte n'importe quel nombre de points par cellule.
@@ -532,19 +536,18 @@ puissance ; avec encore moins de 3 ticks, il les place comme le ferait un axe li
 
 Les marges autour du tracé sont mesurées, pas devinées : la largeur de chaque label est la somme des *advance widths*
 (les chasses) de ses caractères, de combien chacun fait avancer la plume, dans la police avec laquelle Cemacs dessine,
-Noto Sans Medium. [std/plot] garde ces largeurs pour les lettres latines, Latin-1 et Latin Extended-A, le grec, et la
-ponctuation, les exposants, les indices et le signe moins des nombres et des unités, lues dans le fichier de la police
-par `tools/plot-font.ce`. Un test mesure chacune d'elles avec SDL3_ttf, la bibliothèque de texte de Cemacs, et les
-trouve toutes à moins d'un pixel près. Un caractère hors de celles-ci, comme un caractère chinois, compte pour un *em*
-entier, la taille de la police, aussi large que n'importe lequel de ces glyphes sauf `‰`, pour qu'aucun label ne
-chevauche ou ne soit coupé, au prix d'un peu de place. Le trait d'union conditionnel ne compte rien, puisque la mise en
-forme le cache.
+JetBrains Mono 2.304, la police de son code. Elle est *monospaced* (à chasse fixe) : chacun de ses 1 363 caractères fait
+avancer la plume de 0,6 *em*, la taille de la police, sauf les diacritiques combinants, qui ne la font pas avancer, si
+bien qu'un label de 12 pixels fait 7,2 pixels par caractère. [std/plot] compte un texte ainsi, en *colonnes*, comme un
+terminal les compte, selon les règles du `wcwidth` de Markus Kuhn : une colonne par caractère, aucune pour un
+diacritique combinant, un trait d'union conditionnel ou un caractère de largeur nulle, deux pour un caractère large
+d'Asie de l'Est, que la police n'a pas et qu'une autre police dessine large d'environ un em. Un test mesure les
+caractères des graphiques avec SDL3_ttf, la bibliothèque de texte de Cemacs, et les trouve tous à moins d'un pixel près.
 
-Les textes sont dessinés sans *kerning* (le crénage), les petits déplacements entre des paires de lettres comme `AV`,
-pour que les largeurs mesurées soient les largeurs dessinées. Le SVG nomme d'abord Noto Sans, puis la police sans-serif
-du navigateur : un lecteur sans Noto Sans dessine les textes dans une autre police, un peu plus large ou plus étroite
-que ce qui a été mesuré. L'encre de quelques lettres, comme un `f` ou un `î` au bout d'un label, va jusqu'à environ 0,2
-em au-delà de sa chasse, 2 pixels à 12 ; l'espace gardé entre les labels, 6 pixels, le couvre.
+Le SVG nomme d'abord JetBrains Mono, puis la police monospace du navigateur : un lecteur sans JetBrains Mono dessine les
+textes dans une autre police à chasse fixe, comme DejaVu Sans Mono, Menlo ou Consolas, dont les caractères sont aussi
+larges, 0,6 em ou un peu moins, si bien que la mise en page tient. Un caractère que JetBrains Mono n'a pas, comme le
+moins en exposant de `10⁻³`, est dessiné par une autre police, Noto Sans Medium dans Cemacs.
 
 Les largeurs connues, la mise en page réserve le titre, les labels des ticks, les noms des axes, la légende et la barre
 de couleurs, et donne au tracé ce qui reste. Un label au bout d'un axe peut dépasser du tracé : la marge grandit pour le
@@ -568,10 +571,20 @@ tracé. Une courbe dont le x va et vient, comme un cercle, garde tous ses points
 
 ### Couleurs
 
-Les layers prennent tour à tour les huit couleurs d'Okabe et Ito (2008), choisies pour rester distinctes pour les formes
-courantes de daltonisme : bleu `#0072b2`, vermillon `#d55e00`, vert bleuté `#009e73`, pourpre rougeâtre `#cc79a7`, bleu
-ciel `#56b4e9`, orange `#e69f00`, jaune `#f0e442` et noir `#000000`. Le noir vient en dernier, puisqu'il disparaît sur
-un fond sombre.
+Un graphique est noir sur blanc, la grille d'un gris clair, `#d0d0d0`, de 1 pixel de large, comme le cadre et les
+courbes. Les layers sans couleur sont noirs, l'encre des axes, et se distinguent par ce que le noir et blanc garde :
+
+| Layers sans couleur | Tour à tour |
+|---|---|
+| [plot.Line], [plot.Line3], sans `dash` | trait plein, tirets, pointillés, tiret-point |
+| [plot.Points], sans `shape` | cercle, carré, triangle, croix |
+| les séries de [plot.Bars], [plot.Histogram] | noir, puis l'encre à 60, 40 et 30 % : les gris du style `grayscale` de matplotlib |
+| [plot.Area] | l'encre à 30 %, un gris |
+
+Le cinquième d'un genre recommence le tour. Un layer avec une `color` garde un trait plein ou un cercle et ne prend pas
+de tour : une couleur se donne là où elle dit quelque chose, pour distinguer des courbes ou en mettre une en avant, comme
+le jour d'aujourd'hui parmi les autres. Le même graphique s'imprime et se photocopie en noir et blanc sans perdre une
+courbe.
 
 Les heatmaps et les densités prennent *viridis*, de van der Walt et Smith (2015) : sa luminosité croît régulièrement de
 la plus petite valeur à la plus grande, si bien que des pas égaux des données ont l'air de pas égaux de couleur, une
@@ -601,8 +614,9 @@ chacun un dictionnaire avec un `Kind` (une sorte) et un `Role` (un rôle) ; la s
 
 Les coordonnées sont en pixels depuis le coin en haut à gauche. Les éléments des données ont `Clip`, le rectangle
 `[x, y, width, height]` du tracé auquel ils sont coupés. Une `Color` vaut `"#rrggbb"`, ou `"ink"` et `"grid"` pour le
-cadre, les ticks et les textes, qu'un back-end peint dans les couleurs de son thème ; [plot.Svg] les peint en `#222222`
-et `#e6e6e6` sur du blanc. Le `Role` dit ce qu'est un élément : `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"`,
+cadre, les ticks et les textes, qu'un back-end peint dans les couleurs de son thème, comme il peint `"ink"` pour les
+layers sans couleur et `"paper"` pour ce qui cache la grille derrière un texte ; [plot.Svg] les peint en `#000000`,
+`#d0d0d0` et `#ffffff`. Le `Role` dit ce qu'est un élément : `"grid"`, `"data"`, `"frame"`, `"tick"`, `"xlabel"`,
 `"ylabel"` et `"zlabel"` pour les labels des ticks, `"factor"` pour la puissance de dix ou l'offset d'un axe, `"title"`,
 `"xtitle"`, `"ytitle"`, `"ztitle"`, `"legend"`, `"colorbar"` ou `"note"`, une ligne sous le graphique ; en 3D, `"pane"`
 pour les faces du fond de la boîte et `"axis"` pour les arêtes qui portent les labels.
@@ -691,7 +705,8 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
 
 - Du SVG seulement, pour l'instant ; le PNG viendra avec un rasterizer (le code qui change un dessin en pixels) choisi
   sur mesure.
-- Une seule police est mesurée, Noto Sans Medium ; les autres polices dessinent un peu plus large ou plus étroit.
+- Une seule police est mesurée, JetBrains Mono ; une autre police à chasse fixe dessine aussi large ou un peu plus
+  étroit, une police proportionnelle plus étroit.
 - La légende et la barre de couleurs sont à droite du tracé ; les barres sont debout ; un graphique contient un seul
   [plot.Bars].
 - Une courbe dont le x va et vient garde tous ses points ; au-delà de 200 000 marqueurs, prenez [plot.Density].
@@ -717,8 +732,6 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
   21(153):65–66, 1926. <https://doi.org/10.1080/01621459.1926.10502161>. Le nombre de bins quand l'IQR vaut 0.
 - Rob J. Hyndman, Yanan Fan. "Sample Quantiles in Statistical Packages". *The American Statistician* 50(4):361–365,
   1996. <https://doi.org/10.1080/00031305.1996.10473566>. Les quartiles, par son type 7.
-- Masataka Okabe, Kei Ito. "Color Universal Design (CUD): How to make figures and presentations that are friendly to
-  Colorblind people". J*Fly, 2002, revu en 2008. <https://jfly.uni-koeln.de/color/>. Les couleurs des layers.
 - Stéfan van der Walt, Nathaniel Smith. "matplotlib colormaps", la page des cartes de couleurs qu'ils ont conçues pour
   être celles de matplotlib par défaut, avec leur exposé à SciPy 2015. <https://bids.github.io/colormap/>. Viridis,
   d'après la table de matplotlib 3.11.
@@ -743,8 +756,10 @@ matplotlib ne gagne aucune des trois ; sa vue donne des pixels prêts à montrer
 - L'équipe de développement de Matplotlib. *mplot3d FAQ*, "My 3D plot doesn't look right at certain viewing angles",
   et `Axes3D.plot_surface`. <https://matplotlib.org/stable/api/toolkits/mplot3d/faq.html>. Le tri de matplotlib, son
   sous-échantillonnage et `axlim_clip`.
-- Microsoft et Adobe. *OpenType specification* : les tables cmap, hmtx et head.
-  <https://learn.microsoft.com/typography/opentype/spec/>. Comment `tools/plot-font.ce` lit les largeurs de la police.
+- Markus Kuhn. *wcwidth*, les largeurs des caractères d'Unicode dans un terminal, 2007.
+  <https://www.cl.cam.ac.uk/~mgk25/ucs/wcwidth.c>. Les colonnes d'un texte : aucune, une ou deux.
+- JetBrains. *JetBrains Mono*, version 2.304, SIL Open Font License 1.1. <https://www.jetbrains.com/lp/mono/>. La police
+  des textes, chacun de ses caractères large de 600 millièmes d'em.
 
 ## La suite
 

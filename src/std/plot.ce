@@ -2,8 +2,10 @@
     puts layers on shared axes, Grid sets graphs side by side and Frames shows them one after the other, an animation.
     Nothing is drawn until a back-end asks for it: Svg gives the SVG text of a graph, Save writes it to a file, and Scene
     gives its shapes in pixels, which Cemacs draws. The chapter Graphs of the book shows each step with the papers it
-    follows: the ticks of Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman and Diaconis, the colors of
-    Okabe and Ito, viridis and ColorBrewer, and the order of the quads of a surface, which needs no sort. *)
+    follows: the ticks of Talbot, Lin and Hanrahan, M4 for long lines, the bins of Freedman and Diaconis, viridis and
+    ColorBrewer, and the order of the quads of a surface, which needs no sort. A graph is black on white, its texts in
+    JetBrains Mono, the font of the code in Cemacs: layers without a color are black, told apart by their dash or their
+    shape, and a color is given where it says something. *)
 use std/columns as col
 use std/dict
 use std/list
@@ -40,10 +42,11 @@ end
 
 one(l) = Graph([l])
 
-defn Line(x, y, label = missing, color = missing, width = 1.5, dash = missing)
+defn Line(x, y, label = missing, color = missing, width = 1, dash = missing)
   (** A line through the points (x[i], y[i]), in their order. A NaN or an infinity in x or y cuts it: a gap, as in
-      matplotlib. color is written "#rrggbb"; without it, the layers take the colors of Okabe and Ito in turn. width is
-      in pixels; dash is missing for a solid line, or "dashed", "dotted" or "dashdot". A line whose x never decreases and
+      matplotlib. color is written "#rrggbb"; without it, the line is black, the ink of the axes, and the lines without a
+      color or a dash are solid, dashed, dotted and dash-dot in turn. width is in pixels; dash is missing for a solid
+      line, or "dashed", "dotted" or "dashdot". A line whose x never decreases and
       that has more than 4 points per pixel column keeps 4 points per column, as M4 does: the first, the last, the lowest
       and the highest, which draw the same pixels.
 
@@ -52,10 +55,11 @@ defn Line(x, y, label = missing, color = missing, width = 1.5, dash = missing)
   one({Fn: "Line", X: x, Y: y, Label: label, Color: color, Width: width, Dash: dash})
 end
 
-defn Points(x, y, label = missing, color = missing, size = 6, shape = "circle")
+defn Points(x, y, label = missing, color = missing, size = 6, shape = missing)
   (** A marker at each point (x[i], y[i]): shape is "circle", "square", "triangle", "diamond", "cross" or "plus", and
-      size its width in pixels. A point with a NaN or an infinity is left out, and Scene counts it in Dropped. At most
-      200,000 points: plot.Density counts more, per cell.
+      size its width in pixels. Without a color, the markers are black, and the points without a color or a shape are
+      circles, squares, triangles and crosses in turn; with a color, circles. A point with a NaN or an infinity is left
+      out, and Scene counts it in Dropped. At most 200,000 points: plot.Density counts more, per cell.
 
         result.Unwrap(Scene(Points([1, 2, math.Nan], [3, 4, 5]), 640, 400)).Dropped --> 1 *)
   one({Fn: "Points", X: x, Y: y, Label: label, Color: color, Size: size, Shape: shape})
@@ -63,8 +67,9 @@ end
 
 defn Bars(names, heights, label = missing, color = missing)
   (** A bar for each name, as high as its height, from 0. With a list of lists of heights, the bars of a name stand side
-      by side, one series for each list; label and color are then lists too, one for each series. A graph holds one
-      plot.Bars, on a linear y axis; other layers on it are drawn at x = 1 for the first name, 2 for the second, and on.
+      by side, one series for each list; label and color are then lists too, one for each series. A series without a
+      color is black, then grey: the ink at 100, 60, 40 and 30 % in turn. A graph holds one plot.Bars, on a linear y
+      axis; other layers on it are drawn at x = 1 for the first name, 2 for the second, and on.
 
         Svg(Bars(["a", "b"], [[1, 2], [3, 4]], label = ["2025", "2026"])) then result.IsOk() --> true *)
   one({Fn: "Bars", Names: names, Heights: heights, Label: label, Color: color})
@@ -76,7 +81,7 @@ defn Histogram(values, bins = missing, label = missing, color = missing)
       when the IQR is 0; at most 10,000 bins. A count gives that many bins of equal width, from the least value to the
       greatest. A list gives the edges, increasing. A bin holds the values from its left edge, included, to its right edge,
       left out, and the last bin holds its right edge too, as in numpy. A NaN, an infinity or a value outside the edges is
-      left out.
+      left out. Without a color, it takes the shade of bars in turn.
 
         Svg(Histogram([1, 2, 2, 3], bins = 0)) --> result.Err({Kind: "plot", Message: "plot.Histogram: bins is 0; give a count of 1 or more, or the edges."}) *)
   one({Fn: "Histogram", Values: values, Bins: bins, Label: label, Color: color})
@@ -104,7 +109,7 @@ end
 
 defn Area(x, low, high, label = missing, color = missing)
   (** The band between two curves, from low[i] to high[i] at x[i]: an interval, an envelope. It is filled with its color
-      at 30 % opacity. A NaN or an infinity cuts it.
+      at 30 % opacity, black by default, which shows grey. A NaN or an infinity cuts it.
 
         Svg(Area([1, 2, 3], [0, 1, 0], [2, 3, 2])) then result.IsOk() --> true *)
   one({Fn: "Area", X: x, Low: low, High: high, Label: label, Color: color})
@@ -126,7 +131,7 @@ defn Surface(z, x = missing, y = missing, colors = "viridis")
   one(dict.Put("Ready", surfaceOf(l, "plot.Surface"), l))
 end
 
-defn Line3(x, y, z, label = missing, color = missing, width = 1.5, dash = missing)
+defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
   (** A line in 3D through the points (x[i], y[i], z[i]), in their order, as Line draws one in 2D, with the same label,
       color, width and dash. A NaN or an infinity cuts it, and so does a point past xlim, ylim or zlim: a gap. At most
       1,000,000 points. Several Line3 share a graph, drawn in their order, the later on top, but never with a Surface.
@@ -188,9 +193,9 @@ defn Frames(graphs, fps = 30)
 end
 
 defn Svg(g)
-  (** The SVG text of a graph, in an Ok, or an Err of kind "plot" that names the layer and says what to do. The texts
-      name the font Noto Sans Medium first, then sans-serif, and are drawn without kerning, so that their widths are the
-      ones std/plot measured.
+  (** The SVG text of a graph, in an Ok, or an Err of kind "plot" that names the layer and says what to do: black on
+      white, the grid light grey. The texts name the font JetBrains Mono first, then the browser's monospace, whose
+      characters are all as wide, so that their widths are the ones std/plot measured.
 
         text.StartsWith("<svg", result.Unwrap(Svg(Line([1, 2], [3, 4])))) --> true
         Svg(1) --> result.Err({Kind: "plot", Message: "plot.Svg needs a graph, as plot.Line or plot.Of makes, not 1."}) *)
@@ -226,8 +231,9 @@ defn Scene(g, width, height, frame = 1, view = missing)
       [rowStep, columnStep], each 1 or -1: a back-end draws the rows in that order, from the first or the last, and in
       each row the columns, so that the near quads cover the far ones) or "text" (X, Y on the baseline, Text, Size, Color,
       Anchor "start", "middle" or "end", Angle 0 or -90, and Width, its measured width). The data's items have Clip, the
-      rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink" and "grid" for the axes and the
-      texts, which a back-end gives the colors of its theme. Each item has a Role too: "grid", "data", "frame", "tick",
+      rectangle [x, y, width, height] they are cut to. A Color is "#rrggbb", or "ink", "grid" and "paper", which a
+      back-end gives the colors of its theme: the ink of the axes, the texts and the layers without a color, the grid,
+      and the background. Each item has a Role too: "grid", "data", "frame", "tick",
       "xlabel", "ylabel" and "zlabel" (the labels of the ticks), "factor" (the power of ten of an axis's labels), "title",
       "xtitle", "ytitle", "ztitle", "legend", "colorbar", "note" (a line under the graph), and in 3D "pane" (the three
       far sides of the box) and "axis" (the edges that hold the labels).
@@ -508,7 +514,7 @@ defn pointsOf(l, w, marks)
     if e.Count > 200000
       return fail("$w: $(e.Count) points are too many to draw one by one, past 200,000; plot.Density counts them per cell.")
     end
-    if not (l.Shape in shapes)
+    if not (value.IsMissing(l.Shape) or l.Shape in shapes)
       return fail("$w: shape is $(brief(l.Shape)); it is \"circle\", \"square\", \"triangle\", \"diamond\", \"cross\" or \"plus\".")
     end
     if not isPositive(l.Size)
@@ -988,37 +994,45 @@ defn axisOf(which, ps, scale, lim, w)
   result.Ok(axis)
 end
 
-(* Fonts: the advance widths of Noto Sans Medium, in thousandths of an em, made by tools/plot-font.ce from the font. A
-   character outside them counts a whole em, as wide as any of them but ‰, so that no text overlaps. *)
+(* Fonts: the texts are drawn in JetBrains Mono, the font of the code in Cemacs, a monospaced font: each of its glyphs
+   moves the pen 600 thousandths of an em, but the combining marks, which move it none. A text's width is 0.6 em a
+   column, a column a character, as a terminal counts them: none for a mark that combines with the character before,
+   a soft hyphen or a character of zero width, and two for a wide character of East Asia, so that a font that fills in
+   for one the font lacks, about an em wide, never overlaps the next text. The heights are those of the font, in em:
+   its line, its ascent above the baseline and the height of its capitals. *)
 
 tickSize = 12.0
 titleSize = 15.0
 axisSize = 13.0
-lineRatio = 1.362
-ascent = 1.069
-cap = 0.714
+lineRatio = 1.32
+ascent = 1.02
+cap = 0.73
 
-defn advance(code)
-  if code >= 32 and code <= 126
-    return basic[code - 31]
+defn columns(code)
+  (** The columns of a character: 0, 1 or 2, as Markus Kuhn's wcwidth counts them, with the emoji of Unicode 9 wide. *)
+  if code < 768
+    return if code == 173 0 else 1 end
   end
-  if code >= 160 and code <= 383
-    return latin[code - 159]
+  if code <= 879 or code >= 8203 and code <= 8207 or code == 8288 or code == 65279
+    return 0
   end
-  if code >= 880 and code <= 1023 and greek[code - 879] > 0
-    return greek[code - 879]
+  if code >= 4352 and code <= 4447 or code >= 11904 and code <= 42191 and code != 12351 or code >= 44032 and code <= 55203 or code >= 63744 and code <= 64255 or code >= 65040 and code <= 65049 or code >= 65072 and code <= 65135 or code >= 65280 and code <= 65376 or code >= 65504 and code <= 65510 or code >= 127744 and code <= 128591 or code >= 129280 and code <= 129535 or code >= 131072 and code <= 262141
+    return 2
   end
-  k = list.IndexOf(code, extraCodes)
-  if value.IsMissing(k) 1000 else extraWidths[k] end
+  1
 end
 
 defn textWidth(s, size)
-  (** The width of a text in pixels at a font size: the sum of the advances of its characters, without kerning. *)
+  (** The width of a text in pixels at a font size: 0.6 of the size a column. *)
+  n = value.Len(s)
+  if text.ByteLength(s) == n
+    return n * size * 0.6
+  end
   total = 0
   for c in text.Chars(s)
-    total += advance(text.Code(c))
+    total += columns(text.Code(c))
   end
-  total * size / 1000.0
+  total * size * 0.6
 end
 
 (* Labels: each the shortest decimal that reads back to its tick, written from integers, so that no rounding shows. *)
@@ -1273,9 +1287,12 @@ defn widest(labels, size)
   w
 end
 
-(* Colors: Okabe and Ito's eight for the layers, viridis and RdBu for the cells. *)
+(* Looks: the layers without a color in the ink of the axes, told apart by their dash, their shape or their shade;
+   viridis and RdBu for the cells. *)
 
-palette = ["#0072b2", "#d55e00", "#009e73", "#cc79a7", "#56b4e9", "#e69f00", "#f0e442", "#000000"]
+lineTurn = [missing, "dashed", "dotted", "dashdot"]   (** The dashes that lines without a color or a dash take in turn. *)
+markTurn = ["circle", "square", "triangle", "cross"]   (** The shapes that points without a color or a shape take in turn. *)
+fillTurn = [1.0, 0.6, 0.4, 0.3]   (** The shades of bars without a color: the ink at these opacities, in turn. *)
 rdbu = ["#053061", "#2166ac", "#4393c3", "#92c5de", "#d1e5f0", "#f7f7f7", "#fddbc7", "#f4a582", "#d6604d", "#b2182b", "#67001f"]
 
 hexOf(c, i) = math.Div(text.Byte(i, c) - if text.Byte(i, c) >= 97 87 else 48 end, 1)
@@ -1585,7 +1602,7 @@ defn barItems(p, a, clip)
       if h - h == 0.0
         x0 = a.X + (i - 0.4 + (s - 1) * width - a.T0x) * a.Sx
         top = a.Y + (h - a.T0y) * a.Sy
-        out = list.Append({Kind: "rect", X: x0, Y: list.Min(top, base), W: width * a.Sx, H: math.Abs(top - base), Color: p.Colors[s], Opacity: 1.0, Clip: clip, Role: "data"}, out)
+        out = list.Append({Kind: "rect", X: x0, Y: list.Min(top, base), W: width * a.Sx, H: math.Abs(top - base), Color: p.Colors[s], Opacity: p.Shades[s], Clip: clip, Role: "data"}, out)
       end
     end
   end
@@ -1600,7 +1617,7 @@ defn histogramItems(p, xa, a, clip)
     c = p.Counts[k]
     if c > 0.0
       top = a.Y + (c - a.T0y) * a.Sy
-      out = list.Append({Kind: "rect", X: xs[k], Y: top, W: xs[k + 1] - xs[k], H: base - top, Color: p.Color, Opacity: 1.0, Clip: clip, Role: "data"}, out)
+      out = list.Append({Kind: "rect", X: xs[k], Y: top, W: xs[k + 1] - xs[k], H: base - top, Color: p.Color, Opacity: p.Shade, Clip: clip, Role: "data"}, out)
     end
   end
   out
@@ -1619,7 +1636,7 @@ defn legendEntries(ps)
     if p.Fn == "Bars"
       for s in 1..value.Len(p.Labels)
         if not value.IsMissing(p.Labels[s])
-          out = list.Append({Kind: "box", Label: p.Labels[s], Color: p.Colors[s], Opacity: 1.0}, out)
+          out = list.Append({Kind: "box", Label: p.Labels[s], Color: p.Colors[s], Opacity: p.Shades[s]}, out)
         end
       end
     else if not value.IsMissing(p.Label) and not p.Cells
@@ -1629,29 +1646,51 @@ defn legendEntries(ps)
         "Points" -> "mark"
         else -> "box"
       end
-      out = list.Append({Kind: kind, Label: p.Label, Color: p.Color, Opacity: if p.Fn == "Area" 0.3 else 1.0 end, Layer: p}, out)
+      out = list.Append({Kind: kind, Label: p.Label, Color: p.Color, Opacity: if p.Fn == "Area" 0.3 else dict.GetOr("Shade", 1.0, p) end, Layer: p}, out)
     end
   end
   out
 end
 
 defn colored(ps)
-  (** The layers with their colors: those without one take Okabe and Ito's in turn, a series of bars counting as one. *)
-  k = 0
+  (** The layers with their looks: a layer without a color takes the ink of the axes, "ink", which a back-end paints in
+      its theme; then, in turn, a line without a dash a solid, a dashed, a dotted and a dash-dot line, points without a
+      shape a circle, a square, a triangle and a cross, and the bars of a series or a histogram the ink at 100, 60, 40
+      and 30 %, the greys of matplotlib's grayscale style. A layer with a color keeps a solid line and a circle. *)
+  lines = 0
+  marks = 0
+  fills = 0
   out = []
   for p in ps
     if p.Fn == "Bars"
       cs = p.Colors
+      shades = list.Fill(1.0, value.Len(cs))
       for s in 1..value.Len(cs)
         if value.IsMissing(cs[s])
-          cs[s] = palette[math.Mod(k, 8) + 1]
-          k += 1
+          cs[s] = "ink"
+          shades[s] = fillTurn[math.Mod(fills, 4) + 1]
+          fills += 1
         end
       end
       p.Colors = cs
-    else if not p.Cells and value.IsMissing(p.Color)
-      p.Color = palette[math.Mod(k, 8) + 1]
-      k += 1
+      p.Shades = shades
+    else if not p.Cells
+      plain = value.IsMissing(p.Color)
+      if plain
+        p.Color = "ink"
+      end
+      if (p.Fn == "Line" or p.Fn == "Line3") and plain and value.IsMissing(p.Dash)
+        p.Dash = lineTurn[math.Mod(lines, 4) + 1]
+        lines += 1
+      end
+      if p.Fn == "Points" and value.IsMissing(p.Shape)
+        p.Shape = if plain markTurn[math.Mod(marks, 4) + 1] else "circle" end
+        marks += if plain 1 else 0 end
+      end
+      if p.Fn == "Histogram"
+        p.Shade = if plain fillTurn[math.Mod(fills, 4) + 1] else 1.0 end
+        fills += if plain 1 else 0 end
+      end
     end
     out = list.Append(p, out)
   end
@@ -2785,9 +2824,11 @@ defn num(x)
   end
 end
 
+(** A color of a scene as SVG paints it: the ink of the axes black, the grid light grey, the paper white. *)
 paint(c) = match c
-  "ink" -> "#222222"
-  "grid" -> "#e6e6e6"
+  "ink" -> "#000000"
+  "grid" -> "#d0d0d0"
+  "paper" -> "#ffffff"
   else -> c
 end
 
@@ -2817,7 +2858,7 @@ defn itemSvg(item)
   match item.Kind
     "line" -> "<path d=\"$(pathOf(item.Xs, item.Ys, false))\" fill=\"none\" stroke=\"$(paint(item.Color))\" stroke-width=\"$(num(item.Width))\" stroke-linejoin=\"round\"$(if value.IsMissing(item.Dash) "" else " stroke-dasharray=\"$(text.Join(" ", [num(d) for d in item.Dash]))\"" end)/>"
     "area" -> "<path d=\"$(pathOf(item.Xs, item.Ys, true))\" fill=\"$(paint(item.Color))\" fill-opacity=\"$(num(item.Opacity))\"/>"
-    "rect" -> "<rect shape-rendering=\"crispEdges\" x=\"$(num(item.X))\" y=\"$(num(item.Y))\" width=\"$(num(item.W))\" height=\"$(num(item.H))\" fill=\"$(item.Color)\"$(if item.Opacity < 1.0 " fill-opacity=\"$(num(item.Opacity))\"" else "" end)/>"
+    "rect" -> "<rect shape-rendering=\"crispEdges\" x=\"$(num(item.X))\" y=\"$(num(item.Y))\" width=\"$(num(item.W))\" height=\"$(num(item.H))\" fill=\"$(paint(item.Color))\"$(if item.Opacity < 1.0 " fill-opacity=\"$(num(item.Opacity))\"" else "" end)/>"
     "marks" -> marksSvg(item)
     "cells" -> cellsSvg(item)
     "mesh" -> meshSvg(item)
@@ -2835,19 +2876,19 @@ defn marksSvg(item)
     for i in 1..n
       parts[i] = "M$(num(item.Xs[i])) $(num(item.Ys[i]))h0"
     end
-    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(item.Color)\" stroke-width=\"$(num(item.Size))\" stroke-linecap=\"round\"/>"
+    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(paint(item.Color))\" stroke-width=\"$(num(item.Size))\" stroke-linecap=\"round\"/>"
   end
   if item.Shape == "square"
     side = num(item.Size)
     for i in 1..n
       parts[i] = "M$(num(item.Xs[i] - r)) $(num(item.Ys[i]))h$side"
     end
-    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(item.Color)\" stroke-width=\"$side\"/>"
+    return "<path d=\"$(text.Join("", parts))\" stroke=\"$(paint(item.Color))\" stroke-width=\"$side\"/>"
   end
   for i in 1..n
     parts[i] = markOf(item.Shape, item.Xs[i], item.Ys[i], r)
   end
-  open = if item.Shape == "cross" or item.Shape == "plus" "<g fill=\"none\" stroke=\"$(item.Color)\" stroke-width=\"1.5\">" else "<g fill=\"$(item.Color)\">" end
+  open = if item.Shape == "cross" or item.Shape == "plus" "<g fill=\"none\" stroke=\"$(paint(item.Color))\" stroke-width=\"1.5\">" else "<g fill=\"$(paint(item.Color))\">" end
   "$open$(text.Join("", parts))</g>"
 end
 
@@ -2921,7 +2962,7 @@ defn svgOpen(width, height)
   (** The tag that opens an SVG of a size, with the font of the texts. *)
   w = num(width)
   h = num(height)
-  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'Noto Sans', sans-serif\" font-weight=\"500\" style=\"font-kerning:none\">"
+  "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"$w\" height=\"$h\" viewBox=\"0 0 $w $h\" font-family=\"'JetBrains Mono', monospace\" style=\"font-kerning:none\">"
 end
 
 defn pageSvg(width, height, clips)
@@ -2982,11 +3023,3 @@ viridis = [
   "#d8e219", "#dae319", "#dde318", "#dfe318", "#e2e418", "#e5e419", "#e7e419", "#eae51a", "#ece51b", "#efe51c", "#f1e51d", "#f4e61e",
   "#f6e620", "#f8e621", "#fbe723", "#fde725"
 ]
-
-(* Widths: from here *)
-basic = [260, 273, 429, 646, 572, 852, 737, 237, 312, 312, 548, 572, 273, 321, 272, 385, 572, 572, 572, 572, 572, 572, 572, 572, 572, 572, 272, 273, 572, 572, 572, 447, 899, 655, 654, 635, 731, 557, 528, 727, 748, 354, 290, 632, 534, 918, 776, 784, 610, 784, 632, 550, 562, 738, 615, 941, 611, 584, 574, 330, 385, 330, 572, 434, 306, 572, 620, 491, 620, 574, 357, 620, 627, 270, 270, 559, 270, 947, 627, 611, 620, 620, 423, 486, 383, 627, 527, 807, 543, 528, 477, 384, 551, 384, 572]
-latin = [260, 274, 572, 572, 571, 572, 551, 505, 584, 832, 364, 540, 572, 0, 832, 500, 427, 572, 359, 359, 306, 632, 653, 272, 236, 359, 379, 540, 770, 801, 800, 447, 655, 655, 655, 655, 655, 655, 902, 635, 557, 557, 557, 557, 354, 354, 354, 354, 731, 773, 784, 784, 784, 784, 784, 572, 784, 738, 738, 738, 738, 584, 612, 652, 572, 572, 572, 572, 572, 572, 880, 491, 574, 574, 574, 574, 270, 270, 270, 270, 611, 627, 611, 611, 611, 611, 611, 572, 609, 627, 627, 627, 627, 528, 620, 528, 655, 572, 655, 572, 655, 572, 635, 491, 635, 491, 635, 491, 635, 491, 731, 620, 731, 625, 557, 574, 557, 574, 557, 574, 557, 572, 557, 574, 727, 620, 727, 620, 727, 620, 727, 620, 748, 627, 748, 630, 354, 270, 354, 270, 354, 270, 354, 270, 354, 270, 644, 544, 290, 270, 631, 559, 559, 534, 270, 534, 270, 534, 270, 534, 298, 536, 272, 773, 627, 773, 627, 773, 627, 714, 776, 627, 784, 611, 784, 611, 784, 611, 941, 955, 632, 423, 632, 423, 632, 423, 550, 486, 550, 486, 550, 486, 550, 486, 562, 383, 562, 383, 562, 382, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 738, 627, 941, 808, 584, 528, 584, 574, 477, 574, 477, 574, 477, 343]
-greek = [455, 388, 691, 665, 192, 192, 784, 666, 0, 0, 257, 489, 491, 489, 273, 290, 0, 0, 0, 0, 251, 690, 734, 272, 739, 930, 558, 0, 917, 0, 814, 869, 352, 655, 654, 508, 648, 557, 574, 748, 784, 354, 631, 626, 918, 773, 625, 784, 738, 610, 0, 574, 562, 584, 861, 611, 838, 729, 354, 584, 633, 481, 618, 352, 610, 633, 618, 530, 594, 480, 467, 618, 600, 352, 559, 535, 640, 530, 500, 611, 680, 605, 495, 626, 506, 610, 751, 602, 773, 819, 352, 610, 611, 610, 821, 631, 646, 655, 610, 838, 610, 751, 904, 560, 771, 611, 635, 490, 522, 526, 497, 555, 593, 516, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 675, 605, 491, 270, 785, 503, 499, 612, 620, 635, 918, 754, 610, 635, 635, 635]
-extraCodes = [8211, 8212, 8216, 8217, 8220, 8221, 8226, 8230, 8240, 8242, 8243, 8304, 8305, 8308, 8309, 8310, 8311, 8312, 8313, 8314, 8315, 8316, 8317, 8318, 8319, 8320, 8321, 8322, 8323, 8324, 8325, 8326, 8327, 8328, 8329, 8330, 8331, 8332, 8333, 8334, 8722]
-extraWidths = [500, 1000, 187, 187, 384, 384, 376, 810, 1207, 253, 442, 359, 176, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 408, 359, 359, 359, 359, 359, 359, 359, 359, 359, 359, 344, 344, 344, 231, 231, 575]
-(* Widths: to here *)
