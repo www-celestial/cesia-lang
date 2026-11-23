@@ -31,8 +31,9 @@ defn Main()
     io.Print(shown(cells.Run(s, cs[i])))
   end
   io.Print(cells.Variables(s)?)
+  (* The cell's loop is machine code of level 2 within 20 ms: the stop, 50 ms after, stops a loop that runs. *)
   slow = fiber.Spawn(() -> cells.Run(s, cs[4]))
-  sys.Sleep(0.2)
+  sys.Sleep(0.05)
   s = cells.Stop(s)?
   io.Print("restarted: $(s.Restarted)")
   io.Print(shown(fiber.Wait(slow)?))

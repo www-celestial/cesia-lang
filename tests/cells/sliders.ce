@@ -30,8 +30,9 @@ defn Main()
   io.Print("Use alone: $(shown(cells.Run(s, cs[4])))")
   io.Print(cells.Set(s, a, "n", 7.4))
   loop = {Title: "", From: 0, To: 0, Source: "k = 0\nwhile true\n  k = k + 1\nend"}
+  (* The cell's loop is machine code of level 2 within 20 ms: the stop, 50 ms after, stops a loop that runs. *)
   slow = fiber.Spawn(() -> cells.Run(s, loop))
-  sys.Sleep(0.2)
+  sys.Sleep(0.05)
   s = cells.Stop(s)?
   io.Print(shown(fiber.Wait(slow)?))
   io.Print("after a stop: $(shown(cells.Run(s, cs[4])))")
