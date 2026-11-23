@@ -40,6 +40,10 @@ struct Graph
   view = missing
   note = missing
   noteAt = "top left"
+  xticks = missing
+  xlabels = missing
+  yticks = missing
+  ylabels = missing
 end
 
 one(l) = Graph([l])
@@ -155,7 +159,7 @@ defn Line3(x, y, z, label = missing, color = missing, width = 1, dash = missing)
   one({Fn: "Line3", X: x, Y: y, Z: z, Label: label, Color: color, Width: width, Dash: dash})
 end
 
-defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left")
+defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", yscale = "linear", xlim = missing, ylim = missing, legend = missing, size = missing, z = missing, zlim = missing, view = missing, note = missing, noteAt = "top left", xticks = missing, xlabels = missing, yticks = missing, ylabels = missing)
   (** The layers on shared axes, the later on top: each layer is a graph, as Line or another Of gives, and its layers
       join in order. title goes above the plot; x and y name the axes; xscale and yscale are "linear" or "log" (base 10);
       xlim and ylim are [low, high], else an axis covers the data and 5 % more on each side; legend = false hides the
@@ -167,11 +171,14 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
       the azimuth az turns from the -y axis, counterclockwise seen from above, and the elevation el, from -90 to 90, is
       the angle above the x-y plane; [-37.5, 30] by default. Its axes are linear and cover the data exactly, unless their
       lim gives them. note is a text in a box at a corner of the plot, one line for each line of the text, as the name, the
-      place and the date of what is drawn: noteAt is "top left", "top right", "bottom left" or "bottom right".
+      place and the date of what is drawn: noteAt is "top left", "top right", "bottom left" or "bottom right". xticks and
+      yticks are the ticks of an axis, a list of numbers, increasing, in place of those computed: those inside its range
+      are drawn; xlabels and ylabels their labels, as many texts as ticks, else the numbers, written as the computed ones.
 
         Svg(Of([Line([1, 2], [1, 4]), Points([1, 2], [1, 4])], title = "Squares", yscale = "log")) then result.IsOk() --> true
         result.Unwrap(Scene(Of([Surface([1, 2; 3, 4])], z = "height", view = [30, 60]), 640, 400)).View --> [30.0, 60.0]
-        Svg(Of([Line([1, 2], [1, 4])], note = "lat: 40.76\nlon: -73.98", noteAt = "bottom right")) then result.IsOk() --> true *)
+        Svg(Of([Line([1, 2], [1, 4])], note = "lat: 40.76\nlon: -73.98", noteAt = "bottom right")) then result.IsOk() --> true
+        [x.Text for x in result.Unwrap(Scene(Of([Line([0, 360], [0, 1])], xticks = list.Range(0, 360, step = 90), xlabels = ["N", "E", "S", "W", "N"]), 640, 400)).Items if x.Role == "xlabel"] --> ["N", "E", "S", "W", "N"] *)
   ls = []
   if value.IsArray(layers)
     for k in 1..value.Len(layers)
@@ -185,7 +192,7 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   else
     ls = [{Fn: "bad", Value: layers, At: 0}]
   end
-  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt)
+  Graph(ls, title, x, y, xscale, yscale, xlim, ylim, legend, size, ztitle = z, zlim = zlim, view = view, note = note, noteAt = noteAt, xticks = xticks, xlabels = xlabels, yticks = yticks, ylabels = ylabels)
 end
 
 defn Grid(graphs, columns = missing)
@@ -324,7 +331,7 @@ end
 fail(message) = result.Err({Kind: "plot", Message: message})
 
 isGraph(g) = match g
-  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t) -> true
+  Graph(a, b, c, d, e, f, h, i, j, k, l, m, n, o, q, r, s, t, u, v, x, y) -> true
   else -> false
 end
 
@@ -1348,7 +1355,20 @@ defn logTicks(axis, length, horizontal)
 end
 
 defn ticksOf(axis, length, horizontal)
-  (** The ticks of an axis: {Values, Labels, Factor}. *)
+  (** The ticks of an axis: {Values, Labels, Factor}; those the graph gives, inside its range, when it gives them. *)
+  given = dict.GetOr("Given", missing, axis)
+  if not value.IsMissing(given)
+    lo = list.Min(axis.Lo, axis.Hi)
+    hi = list.Max(axis.Lo, axis.Hi)
+    slack = (hi - lo) * 1e-9
+    keep = [k for k in 1..value.Len(given.Values) if given.Values[k] >= lo - slack and given.Values[k] <= hi + slack]
+    vs = [given.Values[k] for k in keep]
+    if value.IsMissing(given.Labels)
+      t = numbered(vs)
+      return {Values: vs, Labels: t.Labels, Factor: t.Factor}
+    end
+    return {Values: vs, Labels: [given.Labels[k] for k in keep], Factor: missing}
+  end
   if axis.Category
     return {Values: [k * 1.0 for k in 1..value.Len(axis.Names)], Labels: axis.Names, Factor: missing}
   end
@@ -1356,6 +1376,60 @@ defn ticksOf(axis, length, horizontal)
     return logTicks(axis, length, horizontal)
   end
   linearTicks(axis, length, horizontal)
+end
+
+mostTicks = 1000   (** The most ticks that xticks or yticks give. *)
+
+defn givenOf(ticks, labels, which, scale, w)
+  (** The ticks that a graph gives an axis, {Values, Labels}, in an Ok, Labels missing for the numbers themselves;
+      missing when it gives none; an Err for ticks that are no list of finite numbers, increasing, labels that are not as
+      many texts, or labels without ticks. *)
+  if value.IsMissing(ticks)
+    if not value.IsMissing(labels)
+      return fail("$w: $(which)labels needs $(which)ticks, the places of its labels.")
+    end
+    return result.Ok(missing)
+  end
+  vs = ticks
+  if not value.IsArray(vs) or value.Len(vs) == 0 or col.Kind(vs) != "int" and col.Kind(vs) != "float" and not list.All([value.IsNumber(v) for v in vs])
+    return fail("$w: $(which)ticks is $(brief(ticks)); give a list of numbers, increasing.")
+  end
+  n = value.Len(vs)
+  if n > mostTicks
+    return fail("$w: $(which)ticks has $n values, past 1,000; give fewer.")
+  end
+  vs = vs * 1.0
+  for k in 1..n
+    if vs[k] - vs[k] != 0.0 or k > 1 and not (vs[k - 1] < vs[k])
+      return fail("$w: $(which)ticks[$k] is $(value.Text(vs[k])); give finite numbers, increasing.")
+    end
+  end
+  if scale == "log" and vs[1] <= 0.0
+    return fail("$w: a log $which axis needs $(which)ticks above 0, and $(which)ticks[1] is $(value.Text(vs[1])).")
+  end
+  if value.IsMissing(labels)
+    return result.Ok({Values: vs, Labels: missing})
+  end
+  if not value.IsArray(labels) or value.Len(labels) != n
+    return fail("$w: $(which)labels is $(brief(labels)); give $n texts, one for each of $(which)ticks.")
+  end
+  for k in 1..n
+    if not value.IsText(labels[k])
+      return fail("$w: $(which)labels[$k] is $(brief(labels[k])), not a text.")
+    end
+  end
+  result.Ok({Values: vs, Labels: [l for l in labels]})
+end
+
+defn numbered(vs)
+  (** The labels of ticks given as numbers, written as the ticks computed, with their power of ten or their offset: each
+      n times 10^-k, for the least k up to 15 that makes every n a whole number to a billionth, so that each label is the
+      shortest decimal that reads back to its tick. *)
+  k = 0
+  while k < 15 and not list.All([math.Abs(v * pow10(k) - math.Round(v * pow10(k))) <= 1e-9 * list.Max(1.0, math.Abs(v * pow10(k))) for v in vs])
+    k += 1
+  end
+  labelsOf([math.Round(v * pow10(k)) for v in vs], 0 - k)
 end
 
 defn widest(labels, size)
@@ -1844,6 +1918,11 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   ya = axisOf("y", ps, g.yscale, g.ylim, gw)?
   if xa.Category
     xa.Names = bars[1].Names
+  end
+  xa.Given = givenOf(g.xticks, g.xlabels, "x", g.xscale, gw)?
+  ya.Given = givenOf(g.yticks, g.ylabels, "y", g.yscale, gw)?
+  if xa.Category and not value.IsMissing(xa.Given)
+    return fail("$gw: xticks is for an axis of numbers; the x axis of plot.Bars has a tick for each name.")
   end
   ps = colored(ps)
   entries = if g.legend == false or ends [] else legendEntries(ps) end
@@ -2590,6 +2669,11 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
     return fail("$gw: legend is $(brief(g.legend)); $(if g.legend == "ends" "the ends of lines are named in 2D: a 3D graph gives true or false" else "give true, false or \"ends\"" end).")
   end
   box = noteOf(g, gw)?
+  for o in [["xticks", g.xticks], ["xlabels", g.xlabels], ["yticks", g.yticks], ["ylabels", g.ylabels]]
+    if not value.IsMissing(o[2])
+      return fail("$gw: $(o[1]) is for a 2D graph; a 3D graph places the ticks of its edges as they show.")
+    end
+  end
   for o in [["xscale", g.xscale], ["yscale", g.yscale]]
     if o[2] != "linear"
       return fail("$gw: $(o[1]) is $(brief(o[2])); a 3D graph has linear axes.")
@@ -2792,7 +2876,8 @@ defn differs(first, g)
   options = [["x", first.xtitle, g.xtitle], ["y", first.ytitle, g.ytitle], ["xscale", first.xscale, g.xscale],
     ["yscale", first.yscale, g.yscale], ["xlim", first.xlim, g.xlim], ["ylim", first.ylim, g.ylim],
     ["legend", first.legend, g.legend], ["size", first.size, g.size], ["z", first.ztitle, g.ztitle], ["zlim", first.zlim, g.zlim],
-    ["view", first.view, g.view], ["note", first.note, g.note], ["noteAt", first.noteAt, g.noteAt]]
+    ["view", first.view, g.view], ["note", first.note, g.note], ["noteAt", first.noteAt, g.noteAt], ["xticks", first.xticks, g.xticks],
+    ["xlabels", first.xlabels, g.xlabels], ["yticks", first.yticks, g.yticks], ["ylabels", first.ylabels, g.ylabels]]
   for o in options
     if not value.Equal(o[2], o[3])
       return "differs from frame 1 in its option $(o[1])"

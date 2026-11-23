@@ -2301,3 +2301,48 @@
 <text x="342" y="386.6" font-size="13" fill="#000000" text-anchor="middle">azimuth</text>
 <text x="23.26" y="177.5" font-size="13" fill="#000000" text-anchor="middle" transform="rotate(-90 23.26 177.5)">elevation</text>
 </svg>
+== isTicksSvg 1 (44 lines)
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<rect width="640" height="400" fill="#ffffff"/>
+<defs><clipPath id="c1"><rect x="40" y="10" width="590" height="356"/></clipPath></defs>
+<path d="M66.5 10L66.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M200.5 10L200.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M335.5 10L335.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M469.5 10L469.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M603.5 10L603.5 366" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M40 349.5L630 349.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M40 295.5L630 295.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M40 241.5L630 241.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M40 188.5L630 188.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M40 134.5L630 134.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M40 80.5L630 80.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M40 26.5L630 26.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<g clip-path="url(#c1)">
+<path d="M66.82 349.82L200.91 134.06L335 241.94L469.09 26.18L603.18 349.82" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+</g>
+<path d="M39.5 9.5L630.5 9.5L630.5 366.5L39.5 366.5L39.5 9.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M66.5 366.5L66.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="66.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">N</text>
+<path d="M200.5 366.5L200.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="200.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">E</text>
+<path d="M335.5 366.5L335.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="335.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">S</text>
+<path d="M469.5 366.5L469.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="469.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">W</text>
+<path d="M603.5 366.5L603.5 371.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="603.5" y="386.74" font-size="12" fill="#000000" text-anchor="middle">N</text>
+<path d="M34.5 349.5L39.5 349.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="31.5" y="353.88" font-size="12" fill="#000000" text-anchor="end">1</text>
+<path d="M34.5 295.5L39.5 295.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="31.5" y="299.88" font-size="12" fill="#000000" text-anchor="end">1.5</text>
+<path d="M34.5 241.5L39.5 241.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="31.5" y="245.88" font-size="12" fill="#000000" text-anchor="end">2</text>
+<path d="M34.5 188.5L39.5 188.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="31.5" y="192.88" font-size="12" fill="#000000" text-anchor="end">2.5</text>
+<path d="M34.5 134.5L39.5 134.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="31.5" y="138.88" font-size="12" fill="#000000" text-anchor="end">3</text>
+<path d="M34.5 80.5L39.5 80.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="31.5" y="84.88" font-size="12" fill="#000000" text-anchor="end">3.5</text>
+<path d="M34.5 26.5L39.5 26.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="31.5" y="30.88" font-size="12" fill="#000000" text-anchor="end">4</text>
+</svg>

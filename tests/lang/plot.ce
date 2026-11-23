@@ -131,6 +131,19 @@ end
 (* A label whose line ends past xlim names the last point inside the plot; points and bands are named too, a layer without label not. *)
 isEndsInside() = value.Equal(list.Sort([t.Text for t in role(scene(plot.Of([plot.Line(ramp, ramp, label = "cut"), plot.Points([1, 2], [3, 4], label = "dots"), plot.Area(ramp, ramp - 1, ramp + 1, label = "band"), plot.Line(ramp, ramp * 2)], xlim = [0, 3], legend = "ends"), 640, 400), "legend")]), ["band", "cut", "dots"])
 
+(* Ticks and labels given: in place of those computed, those inside the range of the axis; their labels, or the numbers
+   written as the computed ones are. *)
+
+compass = plot.Of([plot.Line([0, 90, 180, 270, 360], [1, 3, 2, 4, 1])], xticks = [0, 90, 180, 270, 360], xlabels = ["N", "E", "S", "W", "N"], yticks = list.Range(0, 5, step = 0.5))
+isTicksSvg() = test.Snapshot(svg(compass))
+texts(g, r) = [x.Text for x in role(scene(g, 640, 400), r)]
+isTicksGiven() = value.Equal(texts(compass, "xlabel"), ["N", "E", "S", "W", "N"]) and value.Equal(texts(compass, "ylabel"), ["1", "1.5", "2", "2.5", "3", "3.5", "4"]) and value.Len(role(scene(compass, 640, 400), "grid")) == 5 + 7
+(* Only the ticks inside the range are drawn, and numbered among themselves: the 3e7 outside gives no power of ten. *)
+isTicksInside() = value.Equal(texts(plot.Of([plot.Line([1, 2], [1, 2])], xticks = [0.1, 1.25, 1.5, 3e7]), "xlabel"), ["1.25", "1.5"]) and value.Equal(texts(plot.Of([plot.Line([1, 1e8], [1, 2])], xticks = [1e7, 5e7, 1e8]), "xlabel"), ["0.1", "0.5", "1"]) and value.Equal(texts(plot.Of([plot.Line([1, 1e8], [1, 2])], xticks = [1e7, 5e7, 1e8]), "factor"), ["×10⁸"])
+isTicksLog() = value.Equal(texts(plot.Of([plot.Line([1, 1000], [1, 2])], xscale = "log", xticks = [1, 10, 100, 1000]), "xlabel"), ["1", "10", "100", "1000"]) and value.Equal(texts(plot.Of([plot.Line([1, 2], [-0.5, 1.5])], yticks = [-1, -0.5, 0, 0.5]), "ylabel"), ["−0.5", "0", "0.5"])
+(* Without the options, the ticks are those computed, as before. *)
+isTicksUnchanged() = value.Equal(scene(plot.Of([plot.Line(xs, ys)], xticks = missing, ylabels = missing), 640, 400), scene(plot.Line(xs, ys), 640, 400))
+
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
 
@@ -513,6 +526,17 @@ errors = [
   [plot.Of([plot.Histogram([1, 2], label = "h")], legend = "ends"), "plot.Histogram \"h\": legend = \"ends\" names the end of a line, and a histogram has none; give legend = true."],
   [plot.Of([plot.Line3([1], [1], [1])], legend = "ends"), "plot.Line3: legend is \"ends\"; the ends of lines are named in 2D: a 3D graph gives true or false."],
   [plot.Of([plot.Line([1], [1])], note = 3), "plot.Line: note is 3; give a text, a line for each line of the box."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = [2, 1]), "plot.Line: xticks[2] is 1.0; give finite numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], yticks = [1, math.Nan]), "plot.Line: yticks[2] is nan; give finite numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = "a"), "plot.Line: xticks is \"a\"; give a list of numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = []), "plot.Line: xticks is []; give a list of numbers, increasing."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = 1..1001), "plot.Line: xticks has 1001 values, past 1,000; give fewer."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], xticks = [1, 2], xlabels = ["a"]), "plot.Line: xlabels is [\"a\"]; give 2 texts, one for each of xticks."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], yticks = [1, 2], ylabels = ["a", 3]), "plot.Line: ylabels[2] is 3, not a text."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], ylabels = ["a"]), "plot.Line: ylabels needs yticks, the places of its labels."],
+  [plot.Of([plot.Line([1, 2], [1, 2])], yscale = "log", yticks = [0, 1]), "plot.Line: a log y axis needs yticks above 0, and yticks[1] is 0.0."],
+  [plot.Of([plot.Bars(["a"], [1])], xticks = [1]), "plot.Bars: xticks is for an axis of numbers; the x axis of plot.Bars has a tick for each name."],
+  [plot.Of([plot.Surface([1, 2; 3, 4])], xticks = [1, 2]), "plot.Surface: xticks is for a 2D graph; a 3D graph places the ticks of its edges as they show."],
   [plot.Of([plot.Line([1], [1])], note = "a", noteAt = "left"), "plot.Line: noteAt is \"left\"; it is \"top left\", \"top right\", \"bottom left\" or \"bottom right\"."],
   [plot.Frames([plot.Of([plot.Line([1], [1])], note = "a"), plot.Of([plot.Line([1], [2])], note = "b")]), "plot.Frames: frame 2 differs from frame 1 in its option note; a frame changes only its data and its title."],
   [plot.Of([plot.Line([1], [1])], size = [10]), "plot.Of: size is [10]; give [width, height] in pixels, at least [100, 80]."],
