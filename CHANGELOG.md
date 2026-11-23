@@ -187,6 +187,8 @@
 - A `defn` whose head, which doesn't read, goes on past its line with a space before a `)`, as `defn )((`, makes
   `cesia test` say that its file can't load, and `cesia doc` leave it out, where both stopped with an internal error: the
   lines of the head were joined with their `defn`, whose space was dropped as one before the `)`.
+- A value at the top of a file written `X=1` or `X  = 1`, with any spaces around its `=` or none, keeps its documentation
+  in `cesia doc`, `cesia.Doc` and `cesia.Definitions`, as `X = 1` does: only one space on each side was read as a value.
 
 ## 1.2.0
 

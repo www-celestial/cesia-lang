@@ -167,10 +167,13 @@ let is_short_method line i =
     let rest = String.trim (String.sub rest k (String.length rest - k)) in
     String.starts_with ~prefix:"=" rest && not (String.starts_with ~prefix:"==" rest)
 
-(* Keyword = 1: a value named at the top of a file, whose name is all its signature. *)
+(* Keyword = 1: a value named at the top of a file, whose name is all its signature; its = has any spaces around it, or
+   none, as the parser reads it, and == is no value. *)
 let constant_end line =
-  let i = name_end line 0 in
-  if i > 0 && String.starts_with ~prefix:" = " (String.sub line i (String.length line - i)) then Some i else None
+  let i = name_end line 0 and n = String.length line in
+  let j = ref i in
+  while !j < n && (line.[!j] = ' ' || line.[!j] = '\t') do incr j done;
+  if i > 0 && !j < n && line.[!j] = '=' && not (!j + 1 < n && line.[!j + 1] = '=') then Some i else None
 
 let is_definition line =
   String.starts_with ~prefix:"defn " line

@@ -41,6 +41,10 @@ spaced = "struct Rect { W }\n(r Rect) Area()  Number = r.W   (** The area. *)\nR
 isDocAfterAnySpacing() = value.Equal([[d.Signature, d.Text] for d in cesia.Definitions(spaced)?], [["Rect { W }", ""], ["(r Rect) Area() Number", "The area."], ["Rect.Unit() Rect", "The unit."]])
 isGluedCallNoHead() = value.Equal(cesia.Definitions("a.v()m"), result.Ok([]))
 
+(* A value at the top of a file keeps its documentation however its = is spaced, as the parser reads it there. *)
+values = "Pi=3   (** No space. *)\nE  =  2   (** Two spaces. *)\nTau =6   (** One before. *)\nPhi= 1   (** One after. *)"
+isValueDocAnySpacing() = value.Equal([[d.Signature, d.Text] for d in cesia.Definitions(values)?], [["Pi", "No space."], ["E", "Two spaces."], ["Tau", "One before."], ["Phi", "One after."]])
+
 (* Lines of the pieces of heads at random: Definitions reads them, or says why not. *)
 pieces = ["a", "Rect", ".", "v", "(", ")", "(r Rect) ", " ", "  ", "=", "==", "?", "1", ",", "\"", "(**", "*)", "(*", "defn ", "struct ", "{", "}", "end", "\n", "x"]
 heads = gen.Map(xs -> text.Join("", xs), gen.List(gen.Pick(pieces), max = 16))
