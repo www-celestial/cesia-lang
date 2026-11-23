@@ -52,6 +52,8 @@
 - `plot.Of(..., note = "lat: 40.76\nlon: -73.98", noteAt = "top left")` puts a box of text at a corner of the plot, a
   line for each line of the note, on the paper, a new color of scenes that a back-end paints as its ground; the SVG
   keeps the spaces of its texts, `xml:space="preserve"`, as std/plot measures them.
+- `plot.Of(..., legend = "ends")` names each line at its end, its label right of its last point in the plot, in its
+  color, the labels moved apart a line when two would overlap, the margin grown to hold them; the box stays the default.
 - `cells.Show(x)` shows a value under the cell that runs, at its place among what the cell prints, as `display` does in
   Jupyter: two graphs, or a table then a graph, in one cell. `cells.Run` gives them in its new Shown, each with its place
   among the lines of Output; each graph has its own Key for `cells.Scene`; the page of `cells.Html` shows them in order.

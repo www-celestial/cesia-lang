@@ -246,6 +246,68 @@
 <path d="M598 10.5L603 10.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
 <text x="606" y="14.88" font-size="12" fill="#000000">2</text>
 </svg>
+== isEndsSvg 1 (61 lines)
+<svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
+<rect width="640" height="400" fill="#ffffff"/>
+<defs><clipPath id="c1"><rect x="26" y="35" width="581" height="330"/></clipPath></defs>
+<path d="M52.5 35L52.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M184.5 35L184.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M316.5 35L316.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M448.5 35L448.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M580.5 35L580.5 365" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 360.5L607 360.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 318.5L607 318.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 277.5L607 277.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 236.5L607 236.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 194.5L607 194.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 153.5L607 153.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 112.5L607 112.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<path d="M26 70.5L607 70.5" fill="none" stroke="#d0d0d0" stroke-width="1" stroke-linejoin="round"/>
+<g clip-path="url(#c1)">
+<path d="M52.41 350L184.45 339.66L316.5 329.31L448.55 318.97L580.59 308.62" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M52.41 339.66L184.45 318.97L316.5 298.28L448.55 277.59L580.59 256.9" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round" stroke-dasharray="3.7 1.6"/>
+<path d="M52.41 329.31L184.45 298.28L316.5 267.24L448.55 236.21L580.59 205.17" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round" stroke-dasharray="1 1.65"/>
+<path d="M52.41 318.97L184.45 277.59L316.5 236.21L448.55 194.83L580.59 153.45" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round" stroke-dasharray="6.4 1.6 1 1.6"/>
+<path d="M52.41 308.62L184.45 256.9L316.5 205.17L448.55 153.45L580.59 101.72" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M52.41 298.28L184.45 236.21L316.5 174.14L448.55 112.07L580.59 50" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round" stroke-dasharray="3.7 1.6"/>
+<path d="M52.41 347.93L184.45 335.52L316.5 323.1L448.55 310.69L580.59 298.28" fill="none" stroke="#e07000" stroke-width="1" stroke-linejoin="round"/>
+</g>
+<path d="M25.5 34.5L607.5 34.5L607.5 365.5L25.5 365.5L25.5 34.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<path d="M52.5 365.5L52.5 370.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="52.5" y="385.74" font-size="12" fill="#000000" text-anchor="middle">1</text>
+<path d="M184.5 365.5L184.5 370.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="184.5" y="385.74" font-size="12" fill="#000000" text-anchor="middle">2</text>
+<path d="M316.5 365.5L316.5 370.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="316.5" y="385.74" font-size="12" fill="#000000" text-anchor="middle">3</text>
+<path d="M448.5 365.5L448.5 370.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="448.5" y="385.74" font-size="12" fill="#000000" text-anchor="middle">4</text>
+<path d="M580.5 365.5L580.5 370.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="580.5" y="385.74" font-size="12" fill="#000000" text-anchor="middle">5</text>
+<path d="M20.5 360.5L25.5 360.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="364.88" font-size="12" fill="#000000" text-anchor="end">0</text>
+<path d="M20.5 318.5L25.5 318.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="322.88" font-size="12" fill="#000000" text-anchor="end">1</text>
+<path d="M20.5 277.5L25.5 277.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="281.88" font-size="12" fill="#000000" text-anchor="end">2</text>
+<path d="M20.5 236.5L25.5 236.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="240.88" font-size="12" fill="#000000" text-anchor="end">3</text>
+<path d="M20.5 194.5L25.5 194.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="198.88" font-size="12" fill="#000000" text-anchor="end">4</text>
+<path d="M20.5 153.5L25.5 153.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="157.88" font-size="12" fill="#000000" text-anchor="end">5</text>
+<path d="M20.5 112.5L25.5 112.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="116.88" font-size="12" fill="#000000" text-anchor="end">6</text>
+<path d="M20.5 70.5L25.5 70.5" fill="none" stroke="#000000" stroke-width="1" stroke-linejoin="round"/>
+<text x="17.5" y="74.88" font-size="12" fill="#000000" text-anchor="end">7</text>
+<text x="316.5" y="25.3" font-size="15" fill="#000000" text-anchor="middle">Ends</text>
+<text x="586.59" y="54.38" font-size="12" fill="#000000">line 6</text>
+<text x="586.59" y="106.1" font-size="12" fill="#000000">line 5</text>
+<text x="586.59" y="157.83" font-size="12" fill="#000000">line 4</text>
+<text x="586.59" y="209.55" font-size="12" fill="#000000">line 3</text>
+<text x="586.59" y="261.28" font-size="12" fill="#000000">line 2</text>
+<text x="586.59" y="302.66" font-size="12" fill="#e07000">today</text>
+<text x="586.59" y="318.5" font-size="12" fill="#000000">line 1</text>
+</svg>
 == isFactorLabels 1 (42 lines)
 <svg xmlns="http://www.w3.org/2000/svg" width="640" height="400" viewBox="0 0 640 400" font-family="'JetBrains Mono', monospace" style="font-kerning:none" xml:space="preserve">
 <rect width="640" height="400" fill="#ffffff"/>

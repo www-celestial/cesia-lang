@@ -105,6 +105,32 @@ end
 isNoteEscaped() = text.Contains("&lt;b&gt;&amp;&quot;", svg(plot.Of([plot.Line([1, 2], [1, 2])], note = "<b>&\"")))
 isNote3d() = value.Len(role(scene(plot.Of([plot.Surface(wavy)], note = "z: a wave"), 640, 400), "info")) == 2
 
+(* legend = "ends": each label right of the last point of its line in the plot, apart from the others. *)
+
+ramp = [1.0, 2.0, 3.0, 4.0, 5.0]
+fan = plot.Of(list.Concat([plot.Line(ramp, ramp * k / 4.0, label = "line $k") for k in 1..6], [plot.Line(ramp, ramp * 0.3, color = "#e07000", label = "today")]), legend = "ends", title = "Ends")
+isEndsSvg() = test.Snapshot(svg(fan))
+defn isEndsApart()
+  (* The 7 labels: no legend box; each 6 pixels right of its last point when nothing is near; none overlaps another; all
+     inside the image, in the color of their line. *)
+  s = scene(plot.Of(list.Concat([plot.Line(ramp, ramp * k / 4.0, label = "line $k") for k in 1..6], [plot.Line(ramp, ramp * 0.3, color = "#e07000", label = "today")]), legend = "ends"), 640, 400)
+  tags = role(s, "legend")
+  ls = lines(s)
+  boxes = [box(t) for t in tags]
+  apart = true
+  for i in 1..7
+    for j in i + 1..7
+      if boxes[i].Y < boxes[j].Y + boxes[j].H - 0.01 and boxes[j].Y < boxes[i].Y + boxes[i].H - 0.01
+        apart = false
+      end
+    end
+  end
+  named = (words) -> list.FindFirst(t -> t.Text == words, tags)
+  value.Len(tags) == 7 and apart and insideScene(s) and list.All([math.Abs(named("line $k").X - (ls[k].Xs[5] + 6.0)) < 1e-9 for k in 1..6]) and named("today").Color == "#e07000" and named("line 1").Color == "ink"
+end
+(* A label whose line ends past xlim names the last point inside the plot; points and bands are named too, a layer without label not. *)
+isEndsInside() = value.Equal(list.Sort([t.Text for t in role(scene(plot.Of([plot.Line(ramp, ramp, label = "cut"), plot.Points([1, 2], [3, 4], label = "dots"), plot.Area(ramp, ramp - 1, ramp + 1, label = "band"), plot.Line(ramp, ramp * 2)], xlim = [0, 3], legend = "ends"), 640, 400), "legend")]), ["band", "cut", "dots"])
+
 (* Animations: the frames on the axes they share, written once, each frame's data and title in a group that CSS shows
    in turn. tests/slow/plot-frames.ce checks the SVG of 8 MB at most. *)
 
@@ -482,7 +508,10 @@ errors = [
   [plot.Of([plot.Line([1], [1])], xlim = [2, 1]), "plot.Line: xlim is [2, 1]; give [low, high], finite, low below high."],
   [plot.Of([plot.Line([1], [1])], xscale = "log", xlim = [0, 1]), "plot.Line: a log x axis needs xlim above 0, not [0, 1]."],
   [plot.Of([plot.Line([1], [1])], title = 1), "plot.Line: title is 1; give a text."],
-  [plot.Of([plot.Line([1], [1])], legend = "no"), "plot.Line: legend is \"no\"; give true or false."],
+  [plot.Of([plot.Line([1], [1])], legend = "no"), "plot.Line: legend is \"no\"; give true, false or \"ends\"."],
+  [plot.Of([plot.Bars(["a"], [[1], [2]], label = ["x", "y"])], legend = "ends"), "plot.Bars: legend = \"ends\" names the end of a line, and bars have none; give legend = true."],
+  [plot.Of([plot.Histogram([1, 2], label = "h")], legend = "ends"), "plot.Histogram \"h\": legend = \"ends\" names the end of a line, and a histogram has none; give legend = true."],
+  [plot.Of([plot.Line3([1], [1], [1])], legend = "ends"), "plot.Line3: legend is \"ends\"; the ends of lines are named in 2D: a 3D graph gives true or false."],
   [plot.Of([plot.Line([1], [1])], note = 3), "plot.Line: note is 3; give a text, a line for each line of the box."],
   [plot.Of([plot.Line([1], [1])], note = "a", noteAt = "left"), "plot.Line: noteAt is \"left\"; it is \"top left\", \"top right\", \"bottom left\" or \"bottom right\"."],
   [plot.Frames([plot.Of([plot.Line([1], [1])], note = "a"), plot.Of([plot.Line([1], [2])], note = "b")]), "plot.Frames: frame 2 differs from frame 1 in its option note; a frame changes only its data and its title."],
@@ -514,7 +543,7 @@ errors = [
   [plot.Frames([plot.Line([1], [1]), plot.Of([plot.Line([1], [2])], title = "b")]), "plot.Frames: frame 2 has a title and frame 1 has none; a frame changes only its data and its title."],
   [plot.Frames([plot.Of([plot.Line([1], [1])], title = 3)]), "plot.Frames: frame 1: its title is 3; give a text."],
   [plot.Frames([plot.Of([plot.Line([1, 2], [1, 2])], yscale = "log"), plot.Of([plot.Line([1, 2], [0, 1])], yscale = "log")]), "plot.Frames: frame 2: plot.Line: a log y axis needs values above 0, and y[1] is 0.0."],
-  [plot.Frames([plot.Of([plot.Line([1], [1])], legend = "no")]), "plot.Frames: frame 1: plot.Line: legend is \"no\"; give true or false."],
+  [plot.Frames([plot.Of([plot.Line([1], [1])], legend = "no")]), "plot.Frames: frame 1: plot.Line: legend is \"no\"; give true, false or \"ends\"."],
   [plot.Of([plot.Frames([plot.Line([1], [1])])]), "plot.Of: layer 1 is an animation; plot.Frames goes around the graphs, as plot.Frames([plot.Of(...), ...])."],
   [plot.Grid([plot.Frames([plot.Line([1], [1])])]), "plot.Grid: graph 1 is an animation; a grid holds graphs, as plot.Line or plot.Of makes, not animations."],
   [plot.Surface([1, 2]), "plot.Surface: z is 1 × 2; a surface needs at least 2 rows and 2 columns."],

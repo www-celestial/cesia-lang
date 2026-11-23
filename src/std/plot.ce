@@ -159,7 +159,9 @@ defn Of(layers, title = missing, x = missing, y = missing, xscale = "linear", ys
   (** The layers on shared axes, the later on top: each layer is a graph, as Line or another Of gives, and its layers
       join in order. title goes above the plot; x and y name the axes; xscale and yscale are "linear" or "log" (base 10);
       xlim and ylim are [low, high], else an axis covers the data and 5 % more on each side; legend = false hides the
-      legend, which shows when a layer has a label; size is [width, height] in pixels, 640 by 400 by default. The options
+      legend, which shows when a layer has a label, and legend = "ends" writes each label right of the last point of its
+      line in the plot, as a curve is named at its end, the labels moved apart when two would overlap; size is [width,
+      height] in pixels, 640 by 400 by default. The options
       of an Of given as a layer are left aside: those of this Of apply. A 3D graph, of Surface or Line3, has three more:
       z names its third axis, zlim is its range, and view is where it is seen from, [az, el] in degrees as MATLAB's view:
       the azimuth az turns from the -y axis, counterclockwise seen from above, and the elevation el, from -90 to 90, is
@@ -1822,10 +1824,18 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   title = checkText(g.title, "title", gw)?
   xtitle = checkText(g.xtitle, "x", gw)?
   ytitle = checkText(g.ytitle, "y", gw)?
-  if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
-    return fail("$gw: legend is $(brief(g.legend)); give true or false.")
+  if not (value.IsMissing(g.legend) or value.IsBool(g.legend) or g.legend == "ends")
+    return fail("$gw: legend is $(brief(g.legend)); give true, false or \"ends\".")
   end
   box = noteOf(g, gw)?
+  ends = g.legend == "ends"
+  if ends
+    for p in ps
+      if (p.Fn == "Bars" and list.Any([value.IsText(x) for x in p.Labels])) or (p.Fn == "Histogram" and value.IsText(p.Label))
+        return fail("$(p.W): legend = \"ends\" names the end of a line, and $(if p.Fn == "Bars" "bars have" else "a histogram has" end) none; give legend = true.")
+      end
+    end
+  end
   bars = list.Filter(p -> p.Category, ps)
   if value.Len(bars) > 1
     return fail("$gw: a graph holds one plot.Bars; give its series together, as plot.Bars(names, [h1, h2]).")
@@ -1836,9 +1846,11 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
     xa.Names = bars[1].Names
   end
   ps = colored(ps)
-  entries = if g.legend == false [] else legendEntries(ps) end
+  entries = if g.legend == false or ends [] else legendEntries(ps) end
   legendW = if value.Len(entries) == 0 0.0 else 12.0 + 22.0 + 6.0 + widest([e.Label for e in entries], tickSize) end
   shaded = list.Filter(p -> p.Cells, ps)
+  named = if ends [p for p in ps if value.IsText(p.Label) and (p.Fn == "Line" or p.Fn == "Points" or p.Fn == "Area")] else [] end
+  tags = []
   barTicks = missing
   barW = 0.0
   dropped = 0
@@ -1898,13 +1910,23 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
       rotated = true
       moved = true
     end
+    over = 0.0
+    if value.Len(named) > 0
+      (* The names at the ends of the lines may reach past the plot: the margin on the right holds them too. *)
+      tags = endsOf(named, xa, ya, mapOf(xa, ya, ax, ay, aw, ah), ay, ay + ah)
+      for t in tags
+        over = list.Max(over, t.X + t.W - (ox + w - outer - barW))
+      end
+    end
     if not rotated and value.Len(xt.Values) > 0
       n = value.Len(xt.Values)
-      over = ax + pos(xa, aw, xt.Values[n]) + textWidth(xt.Labels[n], tickSize) / 2 - (ox + w - outer - legendW - barW)
-      if over > 0.5
-        more += over
-        moved = true
-      end
+      over = list.Max(over, ax + pos(xa, aw, xt.Values[n]) + textWidth(xt.Labels[n], tickSize) / 2 - (ox + w - outer - legendW - barW))
+    end
+    if over > 0.5
+      more += over
+      moved = true
+    end
+    if not rotated and value.Len(xt.Values) > 0
       under = ox + outer - (ax + pos(xa, aw, xt.Values[1]) - textWidth(xt.Labels[1], tickSize) / 2)
       if under > 0.5
         less += under
@@ -1917,8 +1939,8 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   end
 
   (* The items: the grid, the data cut to the plot, the frame, the ticks and their labels, the titles, the legend. *)
-  sy = if ya.Flip ah / (ya.T1 - ya.T0) else 0.0 - ah / (ya.T1 - ya.T0) end
-  a = {X: ax, Y: if ya.Flip ay else ay + ah end, Sx: aw / (xa.T1 - xa.T0), Sy: sy, T0x: xa.T0, T0y: ya.T0, W: aw, H: ah}
+  a = mapOf(xa, ya, ax, ay, aw, ah)
+  sy = a.Sy
   clip = [ax, ay, aw, ah]
   items = []
   if not xa.Category
@@ -1975,6 +1997,9 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if value.Len(entries) > 0
     items = list.Concat(items, legendItems(entries, right + 12.0, ay))
   end
+  for t in tags
+    items = list.Append(dict.Put("Color", t.Color, label(t.X, t.Y, t.Text, tickSize, "start", "legend")), items)
+  end
   if not value.IsMissing(box)
     items = list.Concat(items, noteItems(box, ax, ay, ax + aw, ay + ah))
   end
@@ -1982,6 +2007,75 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
   end
   result.Ok({Items: items, Dropped: dropped})
+end
+
+(** How the data meet the pixels of a plot from (ax, ay), aw by ah: the place of the first value of each axis on the scale
+    and the pixels a unit of it, y running up unless its axis runs down. *)
+mapOf(xa, ya, ax, ay, aw, ah) = {X: ax, Y: if ya.Flip ay else ay + ah end, Sx: aw / (xa.T1 - xa.T0), Sy: (if ya.Flip ah else 0.0 - ah end) / (ya.T1 - ya.T0), T0x: xa.T0, T0y: ya.T0, W: aw, H: ah}
+
+defn lastInside(xs, ys, xa, ya)
+  (** The last point of a layer, in its order, whose x and y are finite and inside the ranges of the axes; 0 for none. *)
+  lx = list.Min(xa.Lo, xa.Hi)
+  hx = list.Max(xa.Lo, xa.Hi)
+  ly = list.Min(ya.Lo, ya.Hi)
+  hy = list.Max(ya.Lo, ya.Hi)
+  k = value.Len(xs)
+  while k >= 1
+    x = xs[k]
+    y = ys[k]
+    if x - x == 0.0 and y - y == 0.0 and x >= lx and x <= hx and y >= ly and y <= hy
+      return k
+    end
+    k -= 1
+  end
+  0
+end
+
+defn endsOf(ps, xa, ya, a, top, bottom)
+  (** The labels of legend = "ends": each right of the last point of its layer inside the plot, 6 pixels on, its middle at
+      the height of the point, in the color of the layer, a line of text {Text, X, Y, Color} on its baseline. Two labels
+      that would overlap are moved apart, a line apart, by a pass from the top, then from the bottom for those that
+      would pass the bottom of the plot, as a greedy layout of the labels of a column, kept from top to bottom. *)
+  row = tickSize * lineRatio
+  tags = []
+  for p in ps
+    ys = if p.Fn == "Area" (p.Low + p.High) / 2.0 else p.Y end
+    k = lastInside(p.X, ys, xa, ya)
+    if k > 0
+      px = a.X + (tf(xa, p.X[k]) - a.T0x) * a.Sx
+      py = a.Y + (tf(ya, ys[k]) - a.T0y) * a.Sy
+      tags = list.Append({Text: p.Label, X: px + 6.0, Y: py + tickSize * cap / 2.0, Color: p.Color, W: textWidth(p.Label, tickSize)}, tags)
+    end
+  end
+  placed(list.SortBy(t -> t.Y, tags), row, top + tickSize * ascent, bottom - tickSize * (lineRatio - ascent))
+end
+
+defn placed(tags, row, top, bottom)
+  (** Labels sorted by their baseline, moved down until none overlaps one above it that it meets across, then up from
+      bottom, the lowest baseline, for those that pass it. *)
+  n = value.Len(tags)
+  across = (i, j) -> tags[i].X < tags[j].X + tags[j].W and tags[j].X < tags[i].X + tags[i].W
+  for i in 1..n
+    t = tags[i]
+    t.Y = list.Max(t.Y, top)
+    for j in 1..i - 1
+      if across(i, j) and t.Y < tags[j].Y + row
+        t.Y = tags[j].Y + row
+      end
+    end
+    tags[i] = t
+  end
+  for i in [n + 1 - k for k in 1..n]
+    t = tags[i]
+    t.Y = list.Min(t.Y, bottom)
+    for j in i + 1..n
+      if across(i, j) and t.Y > tags[j].Y - row
+        t.Y = tags[j].Y - row
+      end
+    end
+    tags[i] = t
+  end
+  tags
 end
 
 corners = ["top left", "top right", "bottom left", "bottom right"]   (** The corners where the box of a note goes. *)
@@ -2493,7 +2587,7 @@ defn drawGraph3(g, ps, ox, oy, w, h, note, view)
   title = checkText(g.title, "title", gw)?
   titles = [checkText(g.xtitle, "x", gw)?, checkText(g.ytitle, "y", gw)?, checkText(g.ztitle, "z", gw)?]
   if not (value.IsMissing(g.legend) or value.IsBool(g.legend))
-    return fail("$gw: legend is $(brief(g.legend)); give true or false.")
+    return fail("$gw: legend is $(brief(g.legend)); $(if g.legend == "ends" "the ends of lines are named in 2D: a 3D graph gives true or false" else "give true, false or \"ends\"" end).")
   end
   box = noteOf(g, gw)?
   for o in [["xscale", g.xscale], ["yscale", g.yscale]]
