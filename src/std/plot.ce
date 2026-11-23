@@ -262,7 +262,7 @@ defn Save(g, path)
   sys.Write(path, Svg(g)?)
 end
 
-defn Scene(g, width, height, frame = 1, view = missing)
+defn Scene(g, width, height, frame = 1, view = missing, mark = missing)
   (** The shapes of a graph drawn in width by height pixels, for a back-end, in an Ok, or an Err of kind "plot". With
       height missing, the graph keeps the shape of its own size, its width and its height, as an editor fits it to a
       pane: it is drawn width pixels wide, or its own width when that is less, and as high as its shape asks, square for a
@@ -284,13 +284,22 @@ defn Scene(g, width, height, frame = 1, view = missing)
       "xlabel", "ylabel" and "zlabel" (the labels of the ticks), "factor" (the power of ten of an axis's labels), "title",
       "xtitle", "ytitle", "ztitle", "legend", "colorbar", "note" (a line under the graph), "info" (the box of the option
       note of Of, its paper and its lines), and in 3D "pane" (the three far sides of the box) and "axis" (the edges that
-      hold the labels).
+      hold the labels). A mark, [i, n], points at the place i, from 1, of the layers of n points, plot.Line, plot.Points
+      and plot.Text, as the row i of a table of n rows: each gets a ring at its exact point i, even where M4 left it
+      out, and a box beside the first gives its values, x = 128.27  y = 9.99, items of Role "mark"; and the scene gets
+      Points, for each such layer, {Layer, Kind, Label, At, Xs, Ys}: its place among the layers, "line", "points" or
+      "text", its label, the positions from 1 of its points on the screen, those that M4 keeps of a long line, at most
+      100,000, and their places in pixels. A mark is for a 2D graph; a grid, an animation or a 3D graph has none.
 
         value.Len(result.Unwrap(Scene(Line([1, 2], [3, 4]), 640, 400)).Items) > 0 --> true
+        result.Unwrap(Scene(Line([1, 2, 3], [3, 4, 2]), 640, 400, mark = [2, 3])).Points[1].At --> [1, 2, 3]
         [result.Unwrap(Scene(Line([1, 2], [3, 4]), 320, missing)).Height, result.Unwrap(Scene(Of([Line([0, 90], [1, 2])], polar = true), 900, missing)).Width] --> [200, 500]
         result.Unwrap(Scene(Line3([0, 1], [0, 1], [0, 1]), 640, 400, view = [0, 90])).View --> [0.0, 90.0] *)
   size = fitted(g, width, height)?
-  r = sceneOf(g, size[1], size[2], frame, view)?
+  if not (value.IsMissing(mark) or value.IsArray(mark) and value.Len(mark) == 2 and value.IsInt(mark[1]) and value.IsInt(mark[2]) and mark[1] >= 1 and mark[1] <= mark[2])
+    return fail("plot.Scene: mark is $(brief(mark)); give [i, n], the point i of the layers of n points, i from 1 to n.")
+  end
+  r = sceneOf(g, size[1], size[2], frame, view, mark)?
   result.Ok(if dict.Has("Summary", r) dict.Drop("Summary", r) else r end)
 end
 
@@ -308,7 +317,7 @@ defn fitted(g, width, height)
   result.Ok([wide, list.Max(80, math.Div(math.Round(wide * own[2] / own[1]), 1))])
 end
 
-defn sceneOf(g, width, height, frame, view)
+defn sceneOf(g, width, height, frame, view, mark = missing)
   (** Scene, and for one 3D graph its Summary, the words of the <title> of its SVG. *)
   if not isGraph(g)
     return fail("plot.Scene needs a graph, as plot.Line or plot.Of makes, not $(brief(g)).")
@@ -333,8 +342,9 @@ defn sceneOf(g, width, height, frame, view)
     return fail("plot.Scene: frame is $(brief(frame)); a graph that is no animation has frame 1 only.")
   end
   if value.IsMissing(g.cells)
-    r = drawGraph(g, 0.0, 0.0, width * 1.0, height * 1.0, view = view)?
+    r = drawGraph(g, 0.0, 0.0, width * 1.0, height * 1.0, view = view, mark = mark)?
     out = {Width: width, Height: height, Items: r.Items, Dropped: r.Dropped}
+    out = if dict.Has("Points", r) dict.Put("Points", r.Points, out) else out end
     return result.Ok(if dict.Has("View", r) dict.Merge(out, {View: r.View, Summary: r.Summary}) else out end)
   end
   cells = g.cells
@@ -1589,7 +1599,7 @@ defn runsOf(xs, ys, a, b)
     if i == n or ok[i + 1] != ok[i] + 1
       if i > from
         keep = ok[from..i]
-        out = list.Append({X: col.Pick(keep, px), Y: col.Pick(keep, py)}, out)
+        out = list.Append({X: col.Pick(keep, px), Y: col.Pick(keep, py), At: keep}, out)
       end
       from = i + 1
     end
@@ -1701,7 +1711,7 @@ defn runOut(run, xs, ys, a, out)
   if value.Len(run) < 2
     return out
   end
-  list.Append({X: a.X + (col.Pick(run, xs) - a.T0x) * a.Sx, Y: a.Y + (col.Pick(run, ys) - a.T0y) * a.Sy}, out)
+  list.Append({X: a.X + (col.Pick(run, xs) - a.T0x) * a.Sx, Y: a.Y + (col.Pick(run, ys) - a.T0y) * a.Sy, At: run}, out)
 end
 
 dashOf(d, width) = match d
@@ -1799,12 +1809,17 @@ defn dataItems(p, xa, ya, a, clip)
   end
 end
 
-defn lineItems(p, xa, ya, a, clip)
+defn lineRuns(p, xa, ya, a)
+  (** The runs of a line in pixels, {X, Y, At}, At the positions of their points in the data: those M4 keeps of a long
+      line. *)
   xs = inT(xa, p.X)
   ys = inT(ya, p.Y)
-  runs = if p.E.Sorted and p.E.Count > 4.0 * a.W m4(xs, ys, a, p.E) else runsOf(xs, ys, a, p.E) end
-  [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip, Role: "data"} for r in runs]
+  if p.E.Sorted and p.E.Count > 4.0 * a.W m4(xs, ys, a, p.E) else runsOf(xs, ys, a, p.E) end
 end
+
+(** The items of a line, one for each of its runs. *)
+lineItems(p, xa, ya, a, clip) = runItems(p, lineRuns(p, xa, ya, a), clip)
+runItems(p, runs, clip) = [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip, Role: "data"} for r in runs]   (** The items of the runs of a line. *)
 
 defn markItems(p, xa, ya, a, clip)
   px = a.X + (inT(xa, p.X) - a.T0x) * a.Sx
@@ -1974,11 +1989,12 @@ defn checkText(t, what, w)
   fail("$w: $what is $(brief(t)); give a text.")
 end
 
-defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing)
+defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing, mark = missing)
   (** The items of one graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}, and for a 3D graph View and
       Summary. A frame of an animation takes the ranges its frames share, those of each of its layers over every frame, so
       that its axes and its colors are those of every frame. A note is a line under the graph, as std/plot writes one,
-      not the box of the option note. A view turns a 3D graph. *)
+      not the box of the option note. A view turns a 3D graph. A mark, [i, n], rings point i of each layer of n points,
+      and gives Points too: see Scene. *)
   count = value.Len(g.layers)
   if count == 0
     return fail("plot.Of needs at least one layer.")
@@ -2007,7 +2023,7 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
     return fail("$gw: polar is $(brief(g.polar)); give true or false.")
   end
   if g.polar
-    return lazily(drawPolar)(g, ps, ox, oy, w, h, note)
+    return lazily(drawPolar)(g, ps, ox, oy, w, h, note, mark)
   end
   title = checkText(g.title, "title", gw)?
   xtitle = checkText(g.xtitle, "x", gw)?
@@ -2140,8 +2156,17 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
     y = snap(a.Y + (tf(ya, v) - ya.T0) * sy)
     items = list.Append(line([ax, ax + aw], [y, y], "grid", 1.0, "grid"), items)
   end
-  for p in ps
-    items = list.Concat(items, dataItems(p, xa, ya, a, clip))
+  linked = []
+  for k in 1..value.Len(ps)
+    p = ps[k]
+    if value.IsMissing(mark) or not lazily(isLinked)(p, mark)
+      items = list.Concat(items, dataItems(p, xa, ya, a, clip))
+    else
+      joined = p.Fn == "Line"
+      got = lazily(linkedItems)(p, k, if joined lineRuns(p, xa, ya, a) else [] end, if joined [] else dataItems(p, xa, ya, a, clip) end, [a.X + (inT(xa, p.X) - a.T0x) * a.Sx, a.Y + (inT(ya, p.Y) - a.T0y) * a.Sy], clip)
+      items = list.Concat(items, got.Items)
+      linked = list.Append(got.Points, linked)
+    end
   end
   items = list.Append(line([ax - 0.5, ax + aw + 0.5, ax + aw + 0.5, ax - 0.5, ax - 0.5], [ay - 0.5, ay - 0.5, ay + ah + 0.5, ay + ah + 0.5, ay - 0.5], "ink", 1.0, "frame"), items)
   below = ay + ah + 0.5
@@ -2193,7 +2218,103 @@ defn drawGraph(g, ox, oy, w, h, shared = missing, note = missing, view = missing
   if not value.IsMissing(note)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), note, tickSize, "start", "note"), items)
   end
-  result.Ok({Items: items, Dropped: dropped})
+  if value.IsMissing(mark)
+    return result.Ok({Items: items, Dropped: dropped})
+  end
+  rings = lazily(ringItems)(linked, mark[1], clip)
+  result.Ok({Items: list.Concat(items, rings), Dropped: dropped, Points: [dict.Drop("Data", l) for l in linked]})
+end
+
+(* -- A mark: point i of the layers of n points, as the row of a table of n rows, ringed, its values in a box. *)
+
+(** The most points that Points gives of a layer: past it, as many spread over the layer. *)
+mostPoints = 100000
+
+(** Is a layer one that a mark [i, n] points in: a line, points or texts of n points? *)
+isLinked(p, mark) = p.Fn in ["Line", "Points", "Text"] and value.Len(p.X) == mark[2]
+
+defn linkedItems(p, k, runs, drawn, pixels, clip)
+  (** The items of layer k, linked to a mark, and its Points, {Layer, Kind, Label, At, Xs, Ys, Data}: the positions of
+      its points on the screen, from 1, and their places in pixels: those of its runs for a line, as M4 keeps them, the
+      others inside the plot; Data the values and the pixels of every point, from which the ring of the mark is drawn.
+      A line's items are its runs; the others' are drawn, as they are without a mark. *)
+  px = pixels[1]
+  py = pixels[2]
+  inside = (xs, ys) -> ((xs - xs) + (ys - ys) == 0.0) * 1 + (xs >= clip[1] - 0.5) * 1 + (xs <= clip[1] + clip[3] + 0.5) * 1 + (ys >= clip[2] - 0.5) * 1 + (ys <= clip[2] + clip[4] + 0.5) * 1 == 5
+  if p.Fn == "Line"
+    items = runItems(p, runs, clip)
+    kind = "line"
+    at = [math.Div(math.Round(x), 1) for x in list.Flatten([r.At for r in runs])]
+    xs = list.Flatten([r.X for r in runs])
+    ys = list.Flatten([r.Y for r in runs])
+    at = list.Unique(col.Pick(col.Positions((at > 0) * 1 + inside(xs, ys) * 1 == 2), at))
+  else
+    at = col.Positions(inside(px, py))
+    kind = if p.Fn == "Points" "points" else "text" end
+    items = drawn
+  end
+  if value.Len(at) > mostPoints
+    at = col.Pick([1 + math.Div((j - 1) * value.Len(at), mostPoints) for j in 1..mostPoints], at)
+  end
+  (* Places to a hundredth of a pixel, as a mesh has them: shorter to send. *)
+  {Items: items, Points: {Layer: k, Kind: kind, Label: p.Label, At: at, Xs: math.Round(col.Pick(at, px) * 100.0) / 100.0, Ys: math.Round(col.Pick(at, py) * 100.0) / 100.0, Data: {X: p.X, Y: p.Y, Px: px, Py: py}}}
+end
+
+defn shortNumber(x)
+  (** A number of the data as the box of a mark writes it: at most 6 significant digits, an integer as it is. *)
+  if value.IsInt(x) or not (x - x == 0.0)
+    return "$x"
+  end
+  big = math.Abs(x)
+  if big != 0.0 and (big >= 1e9 or big < 1e-4)
+    return "$x"
+  end
+  d = if big == 0.0 0 else list.Max(0, list.Min(10, 5 - math.Div(math.Floor(math.Log(big) / ln10), 1))) end
+  t = text.Decimals(d, x)
+  while d > 0 and text.EndsWith("0", t)
+    t = text.ByteSlice(1, text.ByteLength(t) - 1, t)
+  end
+  if text.EndsWith(".", t) text.ByteSlice(1, text.ByteLength(t) - 1, t) else t end
+end
+
+defn ringItems(linked, i, clip)
+  (** The ring round point i of each linked layer, at its exact place, even one that M4 left out, when it is inside the
+      plot, and a box of its values beside the first: x = 128.27  y = 9.99, a line for each layer whose point differs,
+      named by its label when there are two. *)
+  items = []
+  lines = []
+  first = missing
+  for l in linked
+    x = l.Data.Px[i]
+    y = l.Data.Py[i]
+    if (x - x) + (y - y) == 0.0 and x >= clip[1] - 0.5 and x <= clip[1] + clip[3] + 0.5 and y >= clip[2] - 0.5 and y <= clip[2] + clip[4] + 0.5
+      if not list.Any([math.Abs(r[1] - x) < 0.5 and math.Abs(r[2] - y) < 0.5 for r in [[q.Cx, q.Cy] for q in items]])
+        items = list.Append({Kind: "line", Xs: [x + 7.0 * math.Sin(t) for t in [j * math.Pi / 12.0 for j in 0..24]], Ys: [y - 7.0 * math.Cos(t) for t in [j * math.Pi / 12.0 for j in 0..24]], Color: "ink", Width: 1.5, Dash: missing, Clip: clip, Role: "mark", Cx: x, Cy: y}, items)
+      end
+      lines = list.Append({Label: l.Label, Words: "x = $(shortNumber(l.Data.X[i]))  y = $(shortNumber(l.Data.Y[i]))"}, lines)
+      if value.IsMissing(first)
+        first = [x, y]
+      end
+    end
+  end
+  items = [dict.Drop("Cy", dict.Drop("Cx", q)) for q in items]
+  if value.IsMissing(first)
+    return items
+  end
+  (* One line when the points agree; else a line for each, named by its label. *)
+  same = value.Len(list.Unique([l.Words for l in lines])) == 1
+  lines = if same [lines[1].Words] else list.Unique([if value.IsText(l.Label) "$(l.Label): $(l.Words)" else l.Words end for l in lines]) end
+  row = tickSize * lineRatio
+  wide = widest(lines, tickSize) + 8.0
+  high = value.Len(lines) * row + 6.0
+  left = if first[1] + 10.0 + wide <= clip[1] + clip[3] first[1] + 10.0 else list.Max(clip[1], first[1] - 10.0 - wide) end
+  top = if first[2] - 10.0 - high >= clip[2] first[2] - 10.0 - high else list.Min(clip[2] + clip[4] - high, first[2] + 10.0) end
+  box = [{Kind: "rect", X: left, Y: top, W: wide, H: high, Color: "paper", Opacity: 0.9, Clip: missing, Role: "mark"},
+    line([left, left + wide, left + wide, left, left], [top, top, top + high, top + high, top], "ink", 1.0, "mark")]
+  for k in 1..value.Len(lines)
+    box = list.Append(label(left + 4.0, top + 3.0 + (k - 1) * row + tickSize * ascent, lines[k], tickSize, "start", "mark"), box)
+  end
+  list.Concat(items, box)
 end
 
 defn endsNamed(ps)
@@ -2424,18 +2545,21 @@ defn polarRuns(xs, ys, m)
       keep = inside[from..i]
       rx = col.Pick(keep, at.X)
       ry = col.Pick(keep, at.Y)
+      ks = keep
       if a > 1 and finite[a - 1] and at.R[a - 1] > edge
         q = rimPoint(at, a, a - 1, m)
         rx = list.Concat([q[1]], rx)
         ry = list.Concat([q[2]], ry)
+        ks = list.Concat([0], ks)
       end
       if b < n and finite[b + 1] and at.R[b + 1] > edge
         q = rimPoint(at, b, b + 1, m)
         rx = list.Append(q[1], rx)
         ry = list.Append(q[2], ry)
+        ks = list.Append(0, ks)
       end
       if value.Len(rx) >= 2
-        out = list.Append({X: rx, Y: ry}, out)
+        out = list.Append({X: rx, Y: ry, At: ks}, out)
       end
       from = i + 1
     end
@@ -2455,7 +2579,7 @@ defn polarItems(p, m, clip)
   (** The items of a layer of a polar graph. *)
   inside = (at) -> col.Positions(((at.X - at.X) + (at.Y - at.Y) == 0.0) * 1 + (at.R >= 0.0 - m.R * 1e-9) * 1 + (at.R <= m.R * (1.0 + 1e-9)) * 1 == 3)
   match p.Fn
-    "Line" -> [{Kind: "line", Xs: r.X, Ys: r.Y, Color: p.Color, Width: p.Width, Dash: dashOf(p.Dash, p.Width), Clip: clip, Role: "data"} for r in polarRuns(p.X, p.Y, m)]
+    "Line" -> runItems(p, polarRuns(p.X, p.Y, m), clip)
     "Points" -> polarMarks(p, m, clip, inside)
     "Text" -> polarTexts(p, m, clip, inside)
     else -> polarRule(p, m, clip)
@@ -2539,7 +2663,7 @@ defn polarRange(ps, lim, w)
   result.Ok([c0, hi + (hi - c0) * 0.05])
 end
 
-defn drawPolar(g, ps, ox, oy, w, h, footnote)
+defn drawPolar(g, ps, ox, oy, w, h, footnote, mark)
   (** The items of a polar graph in the rectangle from (ox, oy), w by h pixels: {Items, Dropped}. The disc in the middle
       of the room the texts leave, its labels outside the rim; a note at a corner of the graph, as the corners of the
       disc are narrow. *)
@@ -2628,8 +2752,18 @@ defn drawPolar(g, ps, ox, oy, w, h, footnote)
       items = list.Append(ring(m, r, "grid", "grid"), items)
     end
   end
-  for p in ps
-    items = list.Concat(items, polarItems(p, m, clip))
+  linked = []
+  for k in 1..value.Len(ps)
+    p = ps[k]
+    if value.IsMissing(mark) or not isLinked(p, mark)
+      items = list.Concat(items, polarItems(p, m, clip))
+    else
+      at = polarAt(m, p.X, p.Y)
+      joined = p.Fn == "Line"
+      got = linkedItems(p, k, if joined polarRuns(p.X, p.Y, m) else [] end, if joined [] else polarItems(p, m, clip) end, [at.X, at.Y], clip)
+      items = list.Concat(items, got.Items)
+      linked = list.Append(got.Points, linked)
+    end
   end
   items = list.Append(ring(m, m.R, "ink", "frame"), items)
   for i in 1..value.Len(angles.Values)
@@ -2669,7 +2803,11 @@ defn drawPolar(g, ps, ox, oy, w, h, footnote)
   if not value.IsMissing(footnote)
     items = list.Append(label(ox + outer, oy + h - outer - tickSize * (lineRatio - ascent), footnote, tickSize, "start", "note"), items)
   end
-  result.Ok({Items: items, Dropped: dropped})
+  if value.IsMissing(mark)
+    return result.Ok({Items: items, Dropped: dropped})
+  end
+  rings = ringItems(linked, mark[1], clip)
+  result.Ok({Items: list.Concat(items, rings), Dropped: dropped, Points: [dict.Drop("Data", l) for l in linked]})
 end
 
 defn polarEnds(ps, m, top, bottom, reach)
