@@ -313,14 +313,23 @@ defn Scene(g, width, height, frame = 1, view = missing, mark = missing, xlim = m
   if not value.IsBool(points)
     return fail("plot.Scene: points is $(brief(points)); give true or false.")
   end
+  if not (value.IsMissing(xlim) and value.IsMissing(ylim))
+    lazily(rangesFault)(xlim, ylim)?
+  end
+  r = sceneOf(g, size[1], size[2], frame, view, mark, xlim = xlim, ylim = ylim, points = points)?
+  result.Ok(if dict.Has("Summary", r) dict.Drop("Summary", r) else r end)
+end
+
+defn rangesFault(xlim, ylim)
+  (** Ok when xlim and ylim of Scene are each missing or [low, high], finite, low below high, ylim also [center, rim] of a
+      polar graph; an Err that says which is not. *)
   for o in [["xlim", xlim, ""], ["ylim", ylim, ", or [center, rim] for a polar graph"]]
     lim = o[2]
     if not (value.IsMissing(lim) or value.IsArray(lim) and value.Len(lim) == 2 and value.IsNumber(lim[1]) and value.IsNumber(lim[2]) and lim[1] - lim[1] == 0 and lim[2] - lim[2] == 0 and (lim[1] < lim[2] or o[1] == "ylim" and lim[1] != lim[2]))
       return fail("plot.Scene: $(o[1]) is $(brief(lim)); give [low, high], finite, low below high$(o[3]).")
     end
   end
-  r = sceneOf(g, size[1], size[2], frame, view, mark, xlim = xlim, ylim = ylim, points = points)?
-  result.Ok(if dict.Has("Summary", r) dict.Drop("Summary", r) else r end)
+  result.Ok(missing)
 end
 
 defn fitted(g, width, height)
