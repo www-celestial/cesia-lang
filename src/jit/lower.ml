@@ -2246,7 +2246,15 @@ and tail st (e : expr) =
     assume st c true (fun () -> tail_block st yes);
     st.cur <- n;
     assume st c false (fun () -> tail_block st no)
-  | Call ({ self_tail = true; _ } as call) when Array.length call.args = Array.length st.f.params ->
+  | Call ({ self_tail = true; callee = { e = Var { b = Cell { m; k; stable = true }; _ }; _ }; _ } as call)
+    when Array.length call.args = Array.length st.f.params ->
+    (* As the interpreter's (Compile.prepare_call), it loops in its own version only: one for other types, as a call
+       that gives a parameter the version's frame took by default, is a call, in a frame of its own. *)
+    (match st.w.modules.(m).cells.(k) with
+     | Fun { proto; env = [||] } ->
+       let sg = Array.map (fun (a : arg) -> match ty st a.value with TBot -> TA | t -> t) call.args in
+       if Infer.version_for st.w proto sg != st.ver then raise No
+     | _ -> raise No);
     let args = Array.map (fun (a : arg) -> if a.aname <> None then raise No else expr st a.value) call.args in
     let ps = Array.mapi (fun j (_ : param) -> var st j) st.f.params in
     (* The arguments first, then the parameters: an argument can read a parameter. *)
@@ -2315,7 +2323,23 @@ let rec func st name =
   st.cur <- entry;
   let body = block st in
   st.body <- body;
-  ignore (tick st body);
+  (* A parameter the call left out has no value in its slot: the interpreter's frame computes its default after the
+     call's step, before the body (Compile.compile_version), and so does native code, which the interpreter enters there.
+     A self tail call gives every argument: it comes back after them. One kept as an array of floats, read from its
+     slot, stays interpreted. *)
+  let omitted = List.filter (fun j -> ver.sg.(j) == TBot) (List.init (Array.length f.params) Fun.id) in
+  if omitted = [] then ignore (tick st body)
+  else begin
+    ignore (tick st (block st));
+    List.iter
+      (fun j ->
+         match f.params.(j).default with
+         | Some d when st.regs.(j) >= 0 -> emit st (Move (var st j, convert st (Vec.get st.kinds (var st j)) (expr st d)))
+         | Some _ when st.arrays.(j) < 0 -> ()
+         | _ -> raise No)
+      omitted;
+    goto st body
+  end;
   tail_block st (Lazy.force f.body);
   let var_of i = { Ir.reg = st.regs.(i); kind = Vec.get st.kinds st.regs.(i); slot = ver.map.(i) } in
   (* The parameters in registers, in order: a float array comes from its value slot instead. *)

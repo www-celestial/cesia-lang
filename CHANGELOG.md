@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.1
+
+Two fixes of machine code, and nothing else.
+
+### Fixes
+
+- A parameter left to its default holds its default in machine code too: a function called with it left out, made
+  machine code as a whole, read whatever an earlier frame had left where the value goes, in the default mode once it was
+  hot as under `CESIA_JIT=always`: 5,000 calls `sum(20)` of `defn sum(n, step = 1)`, a loop, among calls of another
+  function, summed 239,999,960 where they sum 100,000. A self tail call that gives that argument is a call to the
+  version for every argument, in a frame of its own, in machine code as in the interpreter: `count(5)` of
+  `defn count(n, acc = 0)` gave 11 under `CESIA_JIT=always`, and a limit of depth counts that frame in every mode.
+
 ## 1.2.0
 
 Everything here is added, but for two exit codes of `cesia do` (Changed, just below): a program written for 1.1 runs

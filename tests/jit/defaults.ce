@@ -1,0 +1,76 @@
+use std/io
+
+(** A self tail call that gives the argument its first call left to its default: the interpreter calls the version for
+    both arguments, in a frame of its own, which then loops. *)
+defn count(n, acc = 0)
+  if n == 0
+    return acc
+  end
+  count(n - 1, acc + 1)
+end
+
+struct Rect { X }
+
+(** The same, as a function of a struct. *)
+defn Rect.Count(n, acc = 0)
+  if n == 0
+    return acc
+  end
+  Rect.Count(n - 1, acc + 1)
+end
+
+(** A loop over a step left to its default, an Int or a Float, or one that reads the parameter before it. *)
+defn sum(n, step = 1)
+  t = 0
+  for i in 1..n
+    t = t + step
+  end
+  t
+end
+
+defn weighed(n, w = 0.5)
+  t = 0.0
+  for i in 1..n
+    t = t + w * i
+  end
+  t
+end
+
+defn scaled(n, by = n * 2)
+  t = 0
+  for i in 1..n
+    t = t + by
+  end
+  t
+end
+
+(** Its middle parameter left out by a named argument. *)
+defn mixed(n, a = 2, b = 3)
+  t = 0
+  for i in 1..n
+    t = t + a * 10 + b
+  end
+  t
+end
+
+(** Writes other numbers where the frames of the calls above were. *)
+defn other(a, b, c, d)
+  x = a * 1000 + b
+  y = c + d * 7
+  x + y
+end
+
+f() = count(5)
+
+defn main()
+  io.Print(f(), count(5), count(5), count(2, acc = 3))
+  io.Print(Rect.Count(5), Rect.Count(2, acc = 3), Rect.Count(200000))
+  s = 0
+  w = 0.0
+  for i in 1..3000
+    s = s + sum(20) + scaled(3) + mixed(2, b = 1) + count(7) + other(i, i, i, i) - other(i, i, i, i)
+    w = w + weighed(4)
+  end
+  io.Print(s, w)
+end
+main()
