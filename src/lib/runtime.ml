@@ -372,6 +372,13 @@ let real_name p =
 (* Where a path leads, for read= and write=: with [name], as the act on the name itself sees it. *)
 let leads ?(name = false) p = if name then real_name p else !real_path p
 
+(* Has [perm] a grant with no folder, as --allow read gives: one for any path? A plain walk, with no closure to make, as
+   each act asks. *)
+let rec whole (perm : perm) = function
+  | [] -> false
+  | (p, None) :: _ when p = perm -> true
+  | _ :: rest -> whole perm rest
+
 (* Does a folder hold a place that no link leads through? When the folder as written, made absolute, is above it, it
    does, unresolved: each folder of such a place is no link, so the folder leads there, and the check costs no system
    call but the current folder. A folder written with .., which after a link is not what its text says, is resolved. *)
@@ -386,7 +393,7 @@ let holds scope place =
    is the one acted on, and isn't followed; with [at], the path is checked where it truly leads, as the system holds an
    open file. *)
 let granted ?(name = false) ?at w perm path =
-  w.grants.all
+  w.grants.all || whole perm w.grants.perms
   ||
   let where = lazy (match at with Some _ -> at | None -> Option.bind path (leads ~name)) in
   List.exists
@@ -403,8 +410,7 @@ let granted ?(name = false) ?at w perm path =
 
 (* Does a folder of read= or write= bound this permission? Without one, any path is granted, and nothing needs to be
    checked again where the system opened it. *)
-let bounded w perm =
-  not (w.grants.all || List.exists (fun (p, scope) -> p = perm && scope = None) w.grants.perms)
+let bounded w perm = not (w.grants.all || whole perm w.grants.perms)
 
 let deny ctx perm path = fail ctx Permission (Messages.denied (perm_name perm) path)
 

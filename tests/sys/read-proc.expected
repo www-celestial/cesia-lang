@@ -2,5 +2,7 @@ status starts with its name: true
 smaps past a page: true, whole: true
 each mapping with its size: true
 an empty file: Ok("")
+a copy of smaps past a page: true, whole: true
+a copy of a file of /sys: the same true
 exit 0
 exit 0

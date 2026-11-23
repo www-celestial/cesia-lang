@@ -105,7 +105,8 @@ value cesia_close_from(value first) {
    the flags of [how], bits in the order of [open_flags]; with bit 9, by openat2 (Linux 5.6+), RESOLVE_BENEATH |
    RESOLVE_NO_MAGICLINKS, which refuses in the same call, with EXDEV, a walk that leaves the folder, by .., a link or a
    mount, and gives ENOSYS where the system has none. Then a name removed, made a folder, made a link or renamed in an
-   open folder, a link read, the names a folder holds, and the mode and times of an open file given to another. */
+   open folder, a link read, the names a folder holds, the mode and times of an open file given to another, and its
+   bytes copied in the kernel. */
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -194,6 +195,19 @@ value cesia_copy_meta(value from, value to) {
   if (futimens(Int_val(to), times) < 0) caml_unix_error(errno, "copy", Nothing);
   return Val_unit;
 }
+/* The bytes of an open file into another, in the kernel, as cp does: copy_file_range, which btrfs makes a clone, until
+   a copy of nothing past the size that fstat gave. False if it stops before, at a failure or at a copy of nothing, as
+   for /proc: the reads and writes of fs.ml go on from there, and do it all on macOS, whose fcopyfile never clones. */
+value cesia_copy_data(value from, value to, value size) {
+  long n = -1, done = 0, want = Long_val(size);
+#ifdef SYS_copy_file_range
+  int in = Int_val(from), out = Int_val(to);
+  caml_enter_blocking_section();
+  while (want > 0 && (n = syscall(SYS_copy_file_range, in, NULL, out, NULL, want > done ? want - done : 65536, 0)) > 0) done += n;
+  caml_leave_blocking_section();
+#endif
+  return Val_bool(n == 0 && done >= want);
+}
 #else
 #include <caml/fail.h>
 value cesia_spawn_group(value cmd, value args, value fds) { caml_failwith("no process groups on Windows"); }
@@ -207,6 +221,7 @@ value cesia_rename_at(value dir, value from, value to) BY_PATHS
 value cesia_readlink_at(value dir, value name) BY_PATHS
 value cesia_names(value dir) BY_PATHS
 value cesia_copy_meta(value from, value to) BY_PATHS
+value cesia_copy_data(value from, value to, value size) { return Val_false; }
 #endif
 
 #ifdef __linux__

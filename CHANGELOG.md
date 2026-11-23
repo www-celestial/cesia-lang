@@ -33,7 +33,9 @@
   file renamed over the old one, keeps the old one's rights with no moment under others and no act by its path. A group
   the person is not in is an Err, and a file that was there keeps its text. A file it makes so is its owner's alone,
   0600, until it has them, so no one of the person's own group can open it on the way and read the text through it. `sys.Stat` gives `Owner` and `Group`, the
-  numbers of the file's user and group; 0 on Windows, as in Python and Node.
+  numbers of the file's user and group; 0 on Windows, as in Python and Node. A write with none of `mode`, `group`,
+  `new` and `private`, under no folder of `write=`, costs what it did before them, within 1 %: 1.86 µs a call to
+  `/dev/null`, 1.84 before them (medians of 21 runs, alternated).
 
 ### Science
 
@@ -110,6 +112,15 @@
 - `sys.Read` of a small file, or of one the system calls empty as those of `/proc`, no longer takes two buffers of 64
   KB: it reads a file into one of its own size and a byte, and an empty-said one into a page. A read of 12 bytes takes
   3.0 µs instead of 7.7.
+- On Linux, `sys.Copy` and `sys.CopyTree` copy the bytes of a file in the kernel, as `cp` does, with `copy_file_range`:
+  a clone on btrfs or XFS, which shares the file's blocks until one of the two changes. A file the kernel can't copy
+  so, as one of `/proc` or a copy to another file system, is read and written as before, as on macOS and Windows. In a
+  folder that it makes, the person's alone while it fills, `sys.CopyTree` makes each file and link at its own name at
+  once, only new, where it made each under a name of its own and then renamed it, as it still does in a folder that
+  was there. A tree of 2000 files of 1 KB and 20 links copies in 52 ms instead of 114, where `cp -a` takes 60 and
+  Python's `shutil.copytree` 172; into a copy of it that is there, each file replaced whole, in 119 ms instead of 166,
+  where `cp -a`, which writes over each file in place, takes 52. One file of 1 KB copies in 19 µs instead of 40, and
+  one of 100 MB in 0.1 ms instead of 350 (medians of 21 runs, alternated, on btrfs).
 - `sys.Copy` sees that the copy is no other name of the source on the file it opened, where it looked at the path
   first, and gives the copy its times to the nanosecond, where a float of seconds could round them. It opens its
   source without waiting, then refuses a pipe or a socket with an Err at once: a pipe at its source, even one put there
