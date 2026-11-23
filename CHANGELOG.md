@@ -108,6 +108,12 @@
   points at its exact place, even one that M4 left out, write its values in a box beside it, and give Points, the places
   on the screen of those layers' points with their positions: the row of a table of n rows and its point on the graph of
   the same cell, which Cemacs links.
+- `plot.Scene(..., xlim, ylim, points = false)` and `cells.Scene` with the same draw a graph zoomed or moved without
+  changing it, and with `points = true` give the points of every line, points and texts, their values, `Values`, and
+  `Axes`, how the data meet the pixels, so that an editor shows the values under the mouse and zooms about it, as
+  Cemacs does; each entry of `Points` gives its `Count` and its `Values`, with a mark too. `cells.Svg(session, key)`
+  gives the SVG of a graph that the session keeps, as `plot.Save` writes it. A first graph is drawn as fast: 7.01 ms
+  for a scene of a line of 1,000 points, the whole run, against 7.00 (medians of 21 runs, alternated).
 - The page of `cells.Html` draws a table as Cemacs does: a thin frame and the rule under its header in ink, lighter
   lines between its rows and columns, its header bold, a number on the right with its decimal point under those of its
   column, a text on the left, every text escaped.

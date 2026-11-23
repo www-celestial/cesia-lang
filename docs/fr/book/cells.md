@@ -195,7 +195,12 @@ animation, `frame = k`, ou un graphique 3D tourné vers une autre vue, `view = [
 au moment de la montrer, pour qu'une animation ne traverse jamais le pipe (le tuyau entre les deux processus) en entier,
 et une image de la courbe de Lorenz, 5 000 points, revient en 10 ms environ ; il demande chaque vue quand un graphique 3D
 tourne, et une surface de 100 par 100 quads revient en environ 14 ms, les places de ses points à l'écran, ses quads dans
-l'ordre où les dessiner. La session lit ses réponses par morceaux et joint chaque ligne une seule fois, si bien qu'une
+l'ordre où les dessiner. Avec `xlim` et `ylim`, elle dessine un graphique zoomé ou déplacé, comme le fait
+[plot.Scene], et avec `points = true` elle donne les places et les valeurs des points de chaque ligne, points et textes,
+et la façon dont les axes rencontrent les pixels, pour qu'un éditeur montre les valeurs sous la souris sans autre
+question, comme le fait [Cemacs](https://www-celestial.github.io/cemacs/cells.html). [cells.Svg] donne le SVG d'un
+graphique que la session garde, par sa Key, comme [plot.Save] l'écrirait, pour un éditeur qui enregistre le graphique à
+côté du fichier. La session lit ses réponses par morceaux et joint chaque ligne une seule fois, si bien qu'une
 longue réponse coûte sa longueur, pas son carré. [cells.Rows] donne les lignes d'une table, de l'une à une autre, en
 textes, triées et filtrées là-bas, pour qu'un visualiseur lise une grande valeur un écran à la fois : voir
 [Tables](#tables).

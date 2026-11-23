@@ -85,7 +85,7 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view, note, noteAt, xticks, xlabels, yticks, ylabels, polar)` | des layers sur des axes communs |
 | [plot.Grid] `(graphs, columns)` | des graphiques côte à côte |
 | [plot.Frames] `(graphs, fps)` | des graphiques l'un après l'autre : une animation |
-| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view, mark)` | le dessin |
+| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view, mark, xlim, ylim, points)` | le dessin |
 
 Une couleur s'écrit `"#rrggbb"`, le rouge, le vert et le bleu d'une couleur en deux chiffres hexadécimaux chacun, comme
 en CSS. Un layer sans couleur est noir, comme le dit [Couleurs](#couleurs) : les courbes se distinguent par leur trait,
@@ -790,9 +790,9 @@ Une *marque* (un mark) désigne un point des données, comme la ligne d'une tabl
 entoure d'un cercle le point $i$ de chaque layer de $n$ points, [plot.Line], [plot.Points] ou [plot.Text], à sa place
 exacte, même là où M4 l'a laissé de côté dans une longue ligne, et écrit ses valeurs dans une boîte à côté du premier,
 `x = 2  y = 4`, les éléments du rôle `"mark"`. La scène a alors `Points`, pour chacun de ces layers,
-`{Layer, Kind, Label, At, Xs, Ys}` : sa place parmi les layers, `"line"`, `"points"` ou `"text"`, son label, les
-positions à partir de 1 de ses points à l'écran, ceux que M4 garde d'une longue ligne, au plus 100 000, et leurs places en
-pixels, au centième. Une marque est pour un graphique 2D ; une grille, une animation ou un graphique 3D n'en a pas.
+`{Layer, Kind, Label, Count, At, Xs, Ys, Values}` : sa place parmi les layers, `"line"`, `"points"` ou `"text"`, son
+label, le nombre de ses points dans les données, les positions à partir de 1 de ses points à l'écran, ceux que M4 garde
+d'une longue ligne, au plus 100 000, leurs places en pixels, au centième, et leurs valeurs, `{X, Y}`. Une marque est pour un graphique 2D ; une grille, une animation ou un graphique 3D n'en a pas.
 [cells.Scene] la demande à une session, comme le dit [Cells](cells.md#une-ligne-et-son-point).
 
 ```cesia
@@ -801,6 +801,28 @@ marked = result.Unwrap(plot.Scene(path3, 640, 400, mark = [2, 3]))
 [x.Text for x in marked.Items if x.Role == "mark" and x.Kind == "text"] -->
 [[p.Kind, p.At] for p in marked.Points] -->
 ```
+
+Un éditeur qui montre les valeurs sous la souris demande la scène une fois avec `points = true` : `Points` contient alors
+chaque layer de [plot.Line], [plot.Points] et [plot.Text], lié à une marque ou non, et la scène a aussi `Axes`, la façon
+dont les données rencontrent les pixels, si bien que le point le plus proche de la souris et ses valeurs se trouvent sans
+autre question, et qu'un zoom se calcule autour de la souris. `Axes` a `X` et `Y`, chacun `{Scale, Low, High, From, To}` :
+son échelle, `"linear"` (linéaire), `"log"`, ou `"names"` pour l'axe des noms de barres, l'étendue de ses données de `Low`
+à `High`, et les pixels de `Low` et de `High` le long de lui, `From` et `To`, qui montent pour y. Une valeur $v$ est au
+pixel $From + (t(v) - t(Low)) / (t(High) - t(Low)) \times (To - From)$, $t$ le logarithme en base 10 sur un axe log et la
+valeur elle-même sur un axe linéaire. Un graphique polaire a `Center`, `[x, y]` en pixels, et `Y` seul, ses `From` et `To`
+les distances au centre des valeurs au centre et sur le bord. `xlim` et `ylim` dessinent le graphique avec ces étendues à
+la place des siennes, comme les options de [plot.Of], sans changer le graphique : la vue zoomée ou déplacée, comme Cemacs
+le fait avec la molette et la souris ; un graphique polaire ne prend que `ylim`, `[center, rim]` (le centre, le bord).
+
+```cesia
+zoomed = result.Unwrap(plot.Scene(path3, 640, 400, xlim = [1.5, 3], points = true))
+[zoomed.Axes.X.Low, zoomed.Axes.X.High, zoomed.Axes.X.Scale] -->
+[[p.Layer, p.At, p.Values.Y] for p in zoomed.Points] -->
+```
+
+Les points et les axes ne viennent que quand on les demande : un premier graphique se dessine aussi vite sans eux, et un
+éditeur ne les demande que pour le graphique sous la souris. Les valeurs viennent avec les places, car les places sont
+arrondies au centième de pixel, ce qui ne redonnerait pas les valeurs des données jusqu'à leur dernier chiffre.
 
 Un back-end dessine un mesh (un maillage) selon son `Order` : les lignes depuis la première quand `rowStep` vaut 1, depuis
 la dernière quand il vaut -1, et dans chaque ligne les colonnes de même ; chaque quad est le chemin par ses points

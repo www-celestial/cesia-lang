@@ -177,8 +177,12 @@ width, by its Key, for a pane that changed its width, another frame of an animat
 to another view, `view = [az, el]`: an editor asks for each frame as it shows it, so that an animation never crosses the
 pipe whole, and a frame of the Lorenz curve, 5,000 points, comes back in about 10 ms; it asks for each view as a 3D graph
 turns, and a surface of 100 by 100 quads comes back in about 14 ms, the places of its points on the screen, its quads in
-the order to draw them. The session reads its answers by chunks and joins each line once, so a long answer costs its
-length, not its square. [cells.Rows] gives the rows from one to another of a table, as texts, sorted and filtered there,
+the order to draw them. With `xlim` and `ylim`, it draws a graph zoomed or moved, as [plot.Scene] does, and with
+`points = true` it gives the places and the values of the points of every line, points and texts, and how the axes meet
+the pixels, so that an editor shows the values under the mouse with no other question, as
+[Cemacs](https://www-celestial.github.io/cemacs/cells.html) does. [cells.Svg] gives the SVG of a graph that the session
+keeps, by its Key, as [plot.Save] would write it, for an editor that saves the graph beside the file. The session reads
+its answers by chunks and joins each line once, so a long answer costs its length, not its square. [cells.Rows] gives the rows from one to another of a table, as texts, sorted and filtered there,
 so that a viewer reads a large value one screen at a time: see [Tables](#tables).
 
 [cells.Stop] stops the cell that runs: its fiber is cancelled at its next wait or checkpoint, its Run gives the error

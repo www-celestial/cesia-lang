@@ -81,7 +81,7 @@ scene = result.Unwrap(plot.Scene(waves, 640, 400))
 | [plot.Of] `(layers, title, x, y, xscale, yscale, xlim, ylim, legend, size, z, zlim, view, note, noteAt, xticks, xlabels, yticks, ylabels, polar)` | layers on shared axes |
 | [plot.Grid] `(graphs, columns)` | graphs side by side |
 | [plot.Frames] `(graphs, fps)` | graphs one after the other: an animation |
-| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view, mark)` | the drawing |
+| [plot.Svg] `(g)`, [plot.Save] `(g, path)`, [plot.Scene] `(g, width, height, frame, view, mark, xlim, ylim, points)` | the drawing |
 
 A color is written `"#rrggbb"`, the red, green and blue of a color in two hexadecimal digits each, as in CSS. A layer
 without a color is black, as [Colors](#colors) says: lines told apart by their dash, points by their shape, bars by
@@ -747,10 +747,11 @@ and those of its rings `"ylabel"`. The labels of `legend = "ends"` have the role
 A *mark* points at one point of the data, as the row of a table points at its point: `mark = [i, n]` rings point $i$ of
 each layer of $n$ points, [plot.Line], [plot.Points] or [plot.Text], at its exact place, even where M4 left it out of a
 long line, and writes its values in a box beside the first, `x = 2  y = 4`, the items of the role `"mark"`. The scene
-then has `Points`, for each such layer, `{Layer, Kind, Label, At, Xs, Ys}`: its place among the layers, `"line"`,
-`"points"` or `"text"`, its label, the positions from 1 of its points on the screen, those that M4 keeps of a long line,
-at most 100,000, and their places in pixels, to a hundredth. A mark is for a 2D graph; a grid, an animation or a 3D graph
-has none. [cells.Scene] asks it of a session, as [Cells](cells.md#a-row-and-its-point) tells.
+then has `Points`, for each such layer, `{Layer, Kind, Label, Count, At, Xs, Ys, Values}`: its place among the layers,
+`"line"`, `"points"` or `"text"`, its label, the number of its points in the data, the positions from 1 of its points on
+the screen, those that M4 keeps of a long line, at most 100,000, their places in pixels, to a hundredth, and their values,
+`{X, Y}`. A mark is for a 2D graph; a grid, an animation or a 3D graph has none. [cells.Scene] asks it of a session, as
+[Cells](cells.md#a-row-and-its-point) tells.
 
 ```cesia
 path3 = plot.Of([plot.Line([1, 2, 3], [3, 4, 2]), plot.Points([1, 2, 3], [3, 4, 2])])
@@ -758,6 +759,28 @@ marked = result.Unwrap(plot.Scene(path3, 640, 400, mark = [2, 3]))
 [x.Text for x in marked.Items if x.Role == "mark" and x.Kind == "text"] -->
 [[p.Kind, p.At] for p in marked.Points] -->
 ```
+
+An editor that shows the values under the mouse asks the scene once with `points = true`: `Points` then holds every layer
+of [plot.Line], [plot.Points] and [plot.Text], linked to a mark or not, and the scene has `Axes` too, how the data meet
+the pixels, so that the point nearest the mouse and its values are found with no other question, and a zoom is computed
+about the mouse. `Axes` has `X` and `Y`, each `{Scale, Low, High, From, To}`: its scale, `"linear"`, `"log"`, or
+`"names"` for the axis of the names of bars, the range of its data from `Low` to `High`, and the pixels of `Low` and
+`High` along it, `From` and `To`, which run up for y. A value $v$ is at the pixel
+$From + (t(v) - t(Low)) / (t(High) - t(Low)) \times (To - From)$, $t$ the logarithm in base 10 on a log axis and the
+value itself on a linear one. A polar graph has `Center`, `[x, y]` in pixels, and `Y` alone, its `From` and `To` the
+distances from the center of the values at the center and on the rim. `xlim` and `ylim` draw the graph with these ranges
+in place of its own, as the options of [plot.Of] do, without changing the graph: the view zoomed or moved, as Cemacs does
+with the wheel and the mouse; a polar graph takes `ylim` alone, `[center, rim]`.
+
+```cesia
+zoomed = result.Unwrap(plot.Scene(path3, 640, 400, xlim = [1.5, 3], points = true))
+[zoomed.Axes.X.Low, zoomed.Axes.X.High, zoomed.Axes.X.Scale] -->
+[[p.Layer, p.At, p.Values.Y] for p in zoomed.Points] -->
+```
+
+The points and the axes come only when they are asked: a first graph is drawn as fast without them, and an editor asks
+them of the graph under the mouse alone. The values come with the places, as the places are rounded to a hundredth of a
+pixel, which would not give back the values of the data to their last digit.
 
 A back-end draws a mesh by its `Order`: the rows from the first when `rowStep` is 1, from the last when it is -1, and in
 each row the columns the same way; each quad is the path through its points $(i, j)$, $(i + 1, j)$, $(i + 1, j + 1)$ and
