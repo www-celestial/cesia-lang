@@ -1159,22 +1159,42 @@ defn Rows(session, name, first, last, sort = missing, filter = missing, find = m
   result.Ok(if values.IsSome(find) dict.Put("Found", dict.Get("Found", got), out) else out end)
 end
 
-defn Scene(session, key, width, frame = 1, view = missing, mark = missing)
+defn Scene(session, key, width, frame = 1, view = missing, mark = missing, xlim = missing, ylim = missing, points = false)
   (** The scene of a graph that a run of the session showed, by its Key, drawn again at another width, at most its own,
       and the height of its own shape, as Run draws it:
       for a pane that changed its width, for another frame of an animation, frame from 1, or for a 3D graph turned to
       view, [az, el] in degrees, as Cemacs turns it when it is dragged; mark, [i, n], rings the point i of each layer of
-      n points, as row i of a table of n rows, and gives the Points of those layers, as plot.Scene does. plot.Scene draws
+      n points, as row i of a table of n rows, and gives the Points of those layers, as plot.Scene does; xlim and ylim
+      draw it with other ranges than its own, as Cemacs zooms it, and points = true gives the Points of all its layers and
+      its Axes, as plot.Scene does. plot.Scene draws
       it in the session, one at a time, so that an animation never crosses whole and a surface crosses as the places of
       its points on the screen. The session keeps the last 64 graphs and tables that its runs showed; an Err for an older one, for a frame the graph doesn't have, for a
-      view of a graph that is no 3D graph, or for a mark that is no [i, n]. *)
+      view of a graph that is no 3D graph, for a mark that is no [i, n], or for ranges that plot.Scene refuses. *)
   command = {Do: "scene", Key: key, Width: width, Frame: frame, View: view}
   if values.IsSome(mark)
     command.Mark = mark
   end
+  if values.IsSome(xlim)
+    command.Xlim = xlim
+  end
+  if values.IsSome(ylim)
+    command.Ylim = ylim
+  end
+  if points == true
+    command.Points = true
+  end
   ask(session, command)?
   got = answered(session)?
   if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok(got.Scene) end
+end
+
+defn Svg(session, key)
+  (** The SVG of a graph that a run of the session showed, by its Key, as plot.Svg writes it at the graph's own size and
+      ranges, in an Ok: the text that plot.Save would write, which Cemacs saves beside the file of the cells. An Err for a
+      graph the session no longer keeps, as Scene gives. *)
+  ask(session, {Do: "svg", Key: key, Width: 0})?
+  got = answered(session)?
+  if dict.Has("Error", got) result.Err({Kind: "cells", Message: got.Error}) else result.Ok(got.Svg) end
 end
 
 defn Set(session, analysis, name, value)
@@ -1475,16 +1495,19 @@ end
 (** Is this value a frame of std/frame? *)
 isFrame(v) = values.IsDict(v) and values.Len(v) == 2 and dict.Has("Names", v) and dict.Has("Columns", v) and values.IsArray(v.Names)
 
-defn drawn(v, width, svg, frame = 1, view = missing, mark = missing)
-  (** The scene of a struct that is a graph of std/plot, its frame of an animation, its view of a 3D graph or its mark,
-      or its SVG with svg, in an Ok; an Err of its message for a graph that can't be drawn; missing for a struct that is
-      no graph. std/plot loads here, in the session, the first time: a program that only reads cells never pays for it. *)
+defn drawn(v, width, svg, frame = 1, view = missing, mark = missing, xlim = missing, ylim = missing, points = false)
+  (** The scene of a struct that is a graph of std/plot, its frame of an animation, its view of a 3D graph, its mark, its
+      ranges and its points, or its SVG with svg, in an Ok; an Err of its message for a graph that can't be drawn; missing
+      for a struct that is no graph. std/plot loads here, in the session, the first time: a program that only reads cells
+      never pays for it. *)
   f = evalCell(if svg "use std/plot\nplot.Svg" else "use std/plot\nplot.Scene" end, 0)
   if result.IsErr(f)
     return missing
   end
-  (* The scene keeps the shape of the graph's own size, at the width of the pane or its own when that is less. *)
-  r = if svg f.Value(v) else if values.IsMissing(mark) f.Value(v, list.Max(100, width), missing, frame = frame, view = view) else f.Value(v, list.Max(100, width), missing, frame = frame, view = view, mark = mark) end
+  (* The scene keeps the shape of the graph's own size, at the width of the pane or its own when that is less. The
+     options of a view that is asked are given only then: a project's own copy of std/plot from before them still draws. *)
+  plain = values.IsMissing(mark) and values.IsMissing(xlim) and values.IsMissing(ylim) and points != true
+  r = if svg f.Value(v) else if plain f.Value(v, list.Max(100, width), missing, frame = frame, view = view) else f.Value(v, list.Max(100, width), missing, frame = frame, view = view, mark = mark, xlim = xlim, ylim = ylim, points = points) end
   if result.IsErr(r) and text.Contains("needs a graph", r.Error.Message)
     return missing
   end
@@ -1650,13 +1673,15 @@ defn kept(task, key, graphs)
 end
 
 defn rescened(c, graphs)
-  (** The answer to a scene: the graph of a key drawn at a width. *)
+  (** The answer to a scene: the graph of a key drawn at a width; or to an svg, its SVG. *)
   g = dict.Get("$(c.Key)", graphs)
-  r = if values.IsMissing(g) missing else drawn(g, c.Width, false, frame = dict.GetOr("Frame", 1, c), view = dict.GetOr("View", missing, c), mark = dict.GetOr("Mark", missing, c)) end
+  svg = c.Do == "svg"
+  kind = if svg "svg" else "scene" end
+  r = if values.IsMissing(g) missing else drawn(g, c.Width, svg, frame = dict.GetOr("Frame", 1, c), view = dict.GetOr("View", missing, c), mark = dict.GetOr("Mark", missing, c), xlim = dict.GetOr("Xlim", missing, c), ylim = dict.GetOr("Ylim", missing, c), points = dict.GetOr("Points", false, c)) end
   if values.IsMissing(r)
-    return {Kind: "scene", Error: "No graph of key $(c.Key) in the session: it holds the last 64 that its runs showed."}
+    return {Kind: kind, Error: "No graph of key $(c.Key) in the session: it holds the last 64 that its runs showed."}
   end
-  if result.IsErr(r) {Kind: "scene", Error: r.Error.Message} else {Kind: "scene", Scene: r.Value} end
+  if result.IsErr(r) {Kind: kind, Error: r.Error.Message} else if svg {Kind: kind, Svg: r.Value} else {Kind: kind, Scene: r.Value} end
 end
 
 defn kind(v)
@@ -2030,7 +2055,7 @@ defn serve()
       got = slice(c, graphs, views)
       views = got.Views
       send(token, got.Answer)
-    else if c.Do == "scene"
+    else if c.Do == "scene" or c.Do == "svg"
       send(token, rescened(c, graphs))
     else if c.Do == "set"
       send(token, setTo(c))

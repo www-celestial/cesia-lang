@@ -697,6 +697,63 @@ message0(r) = match r
   result.Err(e) -> e.Message
   else -> "no error"
 end
+(* The mouse of an editor: points = true gives the points of every line, points and texts, their values, and how the
+   axes meet the pixels, so that the values under the mouse need no other question; xlim and ylim draw the graph with
+   other ranges, as a zoom, the same as the options of Of. *)
+
+(** The pixel of a value along an axis of Axes, linear or log. *)
+pixelOf(axis, v) = (t -> axis.From + (t(v) - t(axis.Low)) / (t(axis.High) - t(axis.Low)) * (axis.To - axis.From))(if axis.Scale == "log" (u -> math.Log(u) / math.Log(10.0)) else (u -> u * 1.0) end)
+
+defn agrees(s)
+  (* Each point kept is where Axes puts its values, to the hundredth of a pixel that Points rounds to. *)
+  all = []
+  for p in s.Points
+    for j in 1..value.Len(p.At)
+      all = list.Append(math.Abs(pixelOf(s.Axes.X, p.Values.X[j]) - p.Xs[j]) <= 0.006 and math.Abs(pixelOf(s.Axes.Y, p.Values.Y[j]) - p.Ys[j]) <= 0.006, all)
+    end
+  end
+  value.Len(all) > 0 and list.All(all)
+end
+
+pointy = plot.Of([plot.Line(xs, ys, label = "line"), plot.Points(xs, zs), plot.Text([2], [3], ["here"]), plot.Bars(["a", "b"], [1, 2]), plot.Rule(y = 1)])
+defn isScenePoints()
+  s = result.Unwrap(plot.Scene(plot.Of([plot.Line(xs, ys, label = "line"), plot.Points(xs, zs), plot.Text([2], [3], ["here"]), plot.Area(xs, ys - 1, ys + 1), plot.Rule(y = 1)]), 640, 400, points = true))
+  plain = scene(plot.Of([plot.Line(xs, ys, label = "line"), plot.Points(xs, zs), plot.Text([2], [3], ["here"]), plot.Area(xs, ys - 1, ys + 1), plot.Rule(y = 1)]), 640, 400)
+  value.Equal([[p.Layer, p.Kind, p.Label, p.Count, p.At] for p in s.Points], [[1, "line", "line", 6, [1, 2, 3, 4, 5, 6]], [2, "points", missing, 6, [1, 2, 3, 4, 5, 6]], [3, "text", missing, 1, [1]]]) and value.Equal(s.Points[2].Values, {X: xs * 1.0, Y: zs}) and value.Equal(s.Items, plain.Items) and s.Axes.X.Scale == "linear" and s.Axes.Y.From > s.Axes.Y.To and agrees(s)
+end
+isSceneAxesLog() = agrees(result.Unwrap(plot.Scene(plot.Of([plot.Line(zs, zs), plot.Points([2.0, 30.0], [5.0, 7.0])], xscale = "log", yscale = "log"), 640, 400, points = true))) and result.Unwrap(plot.Scene(plot.Of([plot.Line(zs, zs)], xscale = "log"), 640, 400, points = true)).Axes.X.Scale == "log" and result.Unwrap(plot.Scene(plot.Bars(["a", "b"], [1, 2]), 640, 400, points = true)).Axes.X.Scale == "names"
+defn isScenePointsLong()
+  (* A long line gives the points that M4 keeps, at most 4 a pixel column, each where Axes puts it. *)
+  n = 100000
+  t = num.Linspace(0.0, 10.0, n)
+  s = result.Unwrap(plot.Scene(plot.Line(t, math.Sin(t * 7.0)), 640, 400, points = true))
+  p = s.Points[1]
+  p.Count == n and value.Len(p.At) < 4 * 640 and value.Len(p.At) > 400 and agrees(s)
+end
+defn isSceneLimits()
+  (* xlim and ylim of Scene draw as those of Of: the graph zoomed, its own left as it is. *)
+  layers = [plot.Line(xs, ys), plot.Points(xs, zs)]
+  zoomed = result.Unwrap(plot.Scene(plot.Of(layers), 640, 400, xlim = [2, 4], ylim = [0, 5], points = true))
+  value.Equal(zoomed.Items, scene(plot.Of(layers, xlim = [2, 4], ylim = [0, 5]), 640, 400).Items) and zoomed.Axes.X.Low == 2.0 and zoomed.Axes.X.High == 4.0 and zoomed.Axes.Y.High == 5.0 and value.Equal(zoomed.Points[1].At, [2, 3, 4]) and value.Equal(zoomed.Points[2].At, [2, 3]) and agrees(zoomed)
+end
+defn isSceneMarkAndPoints()
+  (* With a mark, points gives every layer, and the rings stay on the layers the mark links. *)
+  g = plot.Of([plot.Line([1, 2, 3], [3, 4, 2]), plot.Points([1, 2], [5, 6])])
+  both = result.Unwrap(plot.Scene(g, 640, 400, mark = [2, 3], points = true))
+  marked = result.Unwrap(plot.Scene(g, 640, 400, mark = [2, 3]))
+  value.Equal([p.Layer for p in both.Points], [1, 2]) and value.Equal([p.Layer for p in marked.Points], [1]) and value.Equal(both.Items, marked.Items) and not dict.Has("Axes", marked)
+end
+defn isScenePolarAxes()
+  (* A polar graph's Axes: its center, and its y from the center to the rim; a point's pixel is there. *)
+  s = result.Unwrap(plot.Scene(plot.Of([plot.Points([0, 90, 180], [80, 45, 10])], polar = true, ylim = [90, 0]), 500, 500, points = true, ylim = [80, 0]))
+  a = s.Axes
+  p = s.Points[1]
+  r = (p.Values.Y[2] - a.Y.Low) / (a.Y.High - a.Y.Low) * (a.Y.To - a.Y.From)
+  value.Equal(p.At, [1, 2, 3]) and a.Y.Low == 80.0 and a.Y.High == 0.0 and math.Abs(p.Xs[2] - (a.Center[1] + r)) <= 0.006 and math.Abs(p.Ys[2] - a.Center[2]) <= 0.006 and not dict.Has("X", a)
+end
+isScenePlain() = not dict.Has("Points", scene(pointy, 640, 400)) and not dict.Has("Axes", scene(pointy, 640, 400)) and not dict.Has("Points", result.Unwrap(plot.Scene(plot.Grid([pointy]), 640, 400, points = true)))
+isSceneLimitErrors() = message0(plot.Scene(pointy, 640, 400, points = 1)) == "plot.Scene: points is 1; give true or false." and message0(plot.Scene(pointy, 640, 400, xlim = [3, 1])) == "plot.Scene: xlim is [3, 1]; give [low, high], finite, low below high." and message0(plot.Scene(pointy, 640, 400, ylim = [3, 1])) == "plot.Scene: ylim is [3, 1]; give [low, high], finite, low below high." and message0(plot.Scene(pointy, 640, 400, ylim = [1, math.Nan])) == "plot.Scene: ylim is [1, nan]; give [low, high], finite, low below high, or [center, rim] for a polar graph." and message0(plot.Scene(plot.Grid([pointy]), 640, 400, xlim = [1, 2])) == "plot.Scene: xlim and ylim zoom one graph; a grid shows each of its graphs at the ranges of their code." and message0(plot.Scene(dial, 500, 500, xlim = [1, 2])) == "plot.Scene: xlim is [1, 2]; a polar graph turns a full circle, 0 to 360 degrees, and ylim zooms it." and message0(plot.Scene(plot.Of([plot.Line(zs, zs)], xscale = "log"), 640, 400, xlim = [-1, 2])) == "plot.Line: a log x axis needs xlim above 0, not [-1, 2]."
+
 isSceneErrors() = message0(plot.Scene(1, 640, 400)) == "plot.Scene needs a graph, as plot.Line or plot.Of makes, not 1." and message0(plot.Scene(plot.Line([1], [1]), 50, 400)) == "plot.Scene needs at least 100 by 80 pixels, not 50 by 400."
 isFrameErrors() = message0(plot.Scene(anim, 640, 400, frame = 4)) == "plot.Scene: frame is 4; this animation has frames 1 to 3." and message0(plot.Scene(anim, 640, 400, frame = 1.0)) == "plot.Scene: frame is 1.0; this animation has frames 1 to 3." and message0(plot.Scene(plot.Line([1], [1]), 640, 400, frame = 2)) == "plot.Scene: frame is 2; a graph that is no animation has frame 1 only." and message0(plot.Scene(plot.Frames([]), 640, 400)) == "plot.Frames needs 1 to 300 graphs, not 0."
 isViewErrors() = message0(plot.Scene(plot.Line([1], [1]), 640, 400, view = [1, 2])) == "plot.Scene: view turns a 3D graph, of plot.Surface or plot.Line3; this graph is 2D." and message0(plot.Scene(plot.Surface([1, 2; 3, 4]), 640, 400, view = [1, 200])) == "plot.Scene: view is [1, 200]; give [az, el] in degrees, el from -90 to 90." and message0(plot.Scene(plot.Grid([plot.Surface([1, 2; 3, 4])]), 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; a grid shows each of its graphs at the view of their code." and message0(plot.Scene(waves, 640, 400, view = [1, 2])) == "plot.Scene: view turns one 3D graph; an animation shows its frames at the view of their code."

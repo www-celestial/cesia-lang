@@ -5,6 +5,7 @@ use std/dict
 use std/fiber
 use std/io
 use std/list
+use std/plot
 use std/result
 use std/sys
 use std/text
@@ -75,6 +76,15 @@ defn Main()
   io.Print("marked: $([[p.Layer, p.Kind, p.At, value.Len(p.Xs)] for p in marked.Points]), $([x.Text for x in marked.Items if x.Role == "mark" and x.Kind == "text"]), $(value.Len([x for x in marked.Items if x.Role == "mark" and x.Kind == "line"])) lines")
   io.Print("unmarked: $(dict.Has("Points", cells.Scene(s, day.Value.Key, 400)?)), $(value.Len([x for x in cells.Scene(s, day.Value.Key, 400)?.Items if x.Role == "mark"])) marks")
   io.Print(cells.Scene(s, day.Value.Key, 400, mark = [4, 3]))
+  (* The points of every layer, their values and the axes, for the mouse of an editor; other ranges, as a zoom; the SVG
+     of the graph, as plot.Save writes it. *)
+  pointed = cells.Scene(s, day.Value.Key, 400, points = true, xlim = [6, 10], ylim = [0, 20])?
+  io.Print("pointed: $([[p.Layer, p.Count, p.At, p.Values.X, p.Values.Y] for p in pointed.Points]), x $(pointed.Axes.X.Scale) from $(pointed.Axes.X.Low) to $(pointed.Axes.X.High), y to $(pointed.Axes.Y.High)")
+  both = cells.Scene(s, day.Value.Key, 400, mark = [2, 3], points = true)?
+  io.Print("marked and pointed: $([p.Layer for p in both.Points]) layers, $(value.Len([x for x in both.Items if x.Role == "mark" and x.Kind == "line"])) lines")
+  io.Print(cells.Scene(s, day.Value.Key, 400, xlim = [10, 6]))
+  io.Print("svg: $(text.StartsWith("<svg", cells.Svg(s, day.Value.Key)?)), the same as plot.Svg: $(cells.Svg(s, day.Value.Key)? == plot.Svg(plot.Of([plot.Line([7, 8, 9], [0.48, 9.99, 18.14]), plot.Points([1, 2], [3, 4])]))?)")
+  io.Print(cells.Svg(s, "999"))
   io.Print(cells.Rows(s, day.Value.Key, 1, 3))
   (* An ask gives at most 1000 rows, 20,000 cells and 256 columns, and a cell's text is cut at 200 characters. *)
   _ = cells.Run(s, {Title: "", From: 50, To: 50, Source: "use std/text\nlong = frame.Of({a: [k for k in 1..1500]})\nwide = frame.Table([\"c$$j\" for j in 1..300], [[j for k in 1..100] for j in 1..300])\nwordy = frame.Of({t: [text.Repeat(500, \"x\")]})"})?
