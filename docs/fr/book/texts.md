@@ -323,6 +323,41 @@ Une recherche compte dans `--limit steps` les octets qu'elle a lus, de son point
 trouvé : chercher la fin de ligne suivante d'un grand texte, ligne après ligne, coûte chaque ligne une fois, pas le texte
 entier à chaque fois.
 
+### Trouver l'un de quelques octets
+
+[text.ByteFindAny] donne la position en octets du premier octet, à partir d'un octet donné, qui est l'un des octets d'un
+texte, ou missing ; avec `not = true`, le premier qui n'en est aucun. Un lexer (le programme qui découpe du code en mots)
+s'en sert pour sauter un mot, une suite d'espaces ou l'intérieur d'un texte, comme le font `strings.IndexAny` en Go et
+`strcspn` et `strspn` en C :
+
+```cesia
+text.ByteFindAny("*)\"\\$", 1, "ab*c") -->
+text.ByteFindAny("abc", 1, "aabxd", not = true) -->
+text.ByteFindAny(" \t", 1, "let x") -->
+```
+
+Écrite simplement, c'est une boucle sur les octets, avec [text.Byte] et `in` : pour tout `from` de 1 ou plus,
+`text.ByteFindAny(bytes, from, s, not = out)` donne ce que donne `byteFindAny(bytes, from, s, out)` :
+
+```cesia
+defn byteFindAny(bytes, from, s, out)
+  wanted = text.Bytes(bytes)
+  for k in from..text.ByteLength(s)
+    if (text.Byte(k, s) in wanted) != out
+      return k
+    end
+  end
+  missing
+end
+byteFindAny("abc", 1, "aabxd", true) -->
+```
+
+Mais la boucle paie un appel pour chaque octet, environ 45 ns, là où [text.ByteFindAny] lit le texte huit octets à la
+fois à travers une table des 256 octets, faite une fois pour chacun des huit derniers ensembles qu'on lui a donnés : un
+mot d'un mégaoctet est sauté en 0,86 ms, là où une boucle de [text.Byte] qui s'arrête à une espace prend 45 ms, et un
+appel sur un mot de 5 octets prend 69 ns. Elle compte dans `--limit steps` les octets de son ensemble et ceux qu'elle a
+lus, comme [text.ByteFind].
+
 ### UTF-8 valide
 
 Un texte écrit dans un programme est toujours de l'UTF-8 valide, mais un texte lu dans un fichier ou sur le réseau
